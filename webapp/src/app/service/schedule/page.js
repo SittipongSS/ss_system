@@ -83,6 +83,7 @@ import { usePagination } from "@/lib/usePagination";
 import { navCountFor, useNavCountsState } from "@/lib/nav/useNavCounts";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
+import { addDays, weekStartOf } from "@/lib/datePeriods";
 import { fmtMonthShort, fmtNumber, naText } from "@/lib/format";
 import { apiFetch, apiJson } from "@/lib/apiFetch";
 
@@ -92,19 +93,15 @@ const UNASSIGNED = "__unassigned__";
    คอลัมน์ข้างตารางยาวไม่เกินตารางมากนัก */
 const QUEUE_PAGE_SIZE = 10;
 const COLLAPSE_KEY = "schedule.queue.collapsed";
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+/* วันจริงเท่านั้น — รูปถูกแต่วันไม่มีจริง (2026-02-30) บวกศูนย์วันแล้วไม่ได้สตริงเดิม */
+const isRealDay = (value) => Boolean(value) && addDays(value, 0) === value;
 
-// จันทร์เป็นวันแรกของสัปดาห์ (ปฏิทินงานไทยอ่านแบบนี้)
-function mondayOf(date) {
-  const d = new Date(date);
-  const shift = (d.getDay() + 6) % 7;
-  d.setDate(d.getDate() - shift);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-/* ⚠️ วันนี้มาจากนาฬิกาไทย (businessDate) ไม่ใช่นาฬิกาเครื่อง — สตริงวันที่ล้วนแปลงเป็น
-   Date เที่ยงคืนของเครื่องเพื่อหาวันจันทร์เท่านั้น ไม่ย้อนกลับไปเป็นเวลาสากล */
-const mondayIsoOf = (iso) => toLocalISODate(mondayOf(new Date(`${iso}T00:00:00`)));
+/* ⭐ สัปดาห์เริ่มวันอาทิตย์ (อา–ส) เหมือนปฏิทินทุกตัวของระบบ — มติเจ้าของ 2026-09-26
+   (เดิมตารางนี้เริ่มวันจันทร์) · ต้นสัปดาห์มาจาก `weekStartOf` ที่เดียว คิดบนสตริงวันล้วน
+   ⚠️ วันนี้มาจากนาฬิกาไทย (businessDate) ไม่ใช่นาฬิกาเครื่อง
+   🔗 ลิงก์เก่าที่ถือ `?week=<วันจันทร์>` ยังเปิดได้ — วันไหนก็ถูกพับเป็นวันอาทิตย์ของสัปดาห์นั้น
+   · ค่าที่ไม่ใช่วันจริง (2026-13-45 · 2026-02-30) ถอยไปสัปดาห์นี้ ไม่ใช่ตาราง NaN และไม่ปัดข้ามไป
+     สัปดาห์ของวันที่ปฏิทินเลื่อนให้ (Date.UTC พับ 30 ก.พ. เป็น 2 มี.ค. เงียบ ๆ) */
 
 const arrayOf = (value) => (Array.isArray(value) ? value : []);
 const objectOf = (value) => (value && typeof value === "object" ? value : {});
@@ -132,7 +129,7 @@ export default function ServiceSchedulePage() {
   const rangeParam = searchParams.get("range");
   const range = QUEUE_RANGES.includes(rangeParam) ? rangeParam : "all";
   const weekParam = searchParams.get("week");
-  const weekIso = weekParam && ISO_DATE.test(weekParam) ? mondayIsoOf(weekParam) : mondayIsoOf(todayIso);
+  const weekIso = (isRealDay(weekParam) && weekStartOf(weekParam)) || weekStartOf(todayIso);
   const visitParam = searchParams.get("visit");
   const setQuery = useCallback((patch) => {
     const next = new URLSearchParams(searchParams.toString());
@@ -144,8 +141,8 @@ export default function ServiceSchedulePage() {
     router.replace(`/service/schedule${qs ? `?${qs}` : ""}`, { scroll: false });
   }, [router, searchParams]);
   const goToWeek = useCallback((iso) => {
-    const monday = mondayIsoOf(iso);
-    setQuery({ week: monday === mondayIsoOf(todayIso) ? null : monday });
+    const sunday = weekStartOf(iso);
+    setQuery({ week: !sunday || sunday === weekStartOf(todayIso) ? null : sunday });
   }, [setQuery, todayIso]);
 
   const [visits, setVisits] = useState([]);

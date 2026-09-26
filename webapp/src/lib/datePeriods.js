@@ -291,17 +291,34 @@ export function addDays(day, amount) {
   return new Date(Date.UTC(y, m - 1, d + Number(amount || 0))).toISOString().slice(0, 10);
 }
 
-/** 0 = จันทร์ … 6 = อาทิตย์ (สัปดาห์ไทยเริ่มวันจันทร์) */
+/** 0 = อาทิตย์ … 6 = เสาร์ (ตรงกับ `Date.getUTCDay()` — ไม่มีระบบเลขของตัวเอง)
+ *
+ *  ⭐ **สัปดาห์ของทั้งระบบเริ่มวันอาทิตย์ (อา–ส)** — มติเจ้าของ 2026-09-26
+ *  เดิมตัวนี้คืน 0 = จันทร์ (ถังรายสัปดาห์ของ KPI ลีดนับ จ.–อา.) ขณะที่ปฏิทินทุกตัว
+ *  (MonthGrid · DateInput · DayRangePicker · กำหนดการของฉัน) ขึ้นต้นวันอาทิตย์อยู่แล้ว
+ *  ⇒ ในแผงเดียวกันมีสองสัปดาห์: ปฏิทินเริ่ม อา. แต่ชิป "สัปดาห์นี้" คลุม จ.–อา.
+ *  · ตารางที่วางหรือนับเป็นสัปดาห์ให้ถามตัวนี้ (หรือ `weekStartOf`) ที่เดียว อย่าคิดเอง
+ *  · ด่าน `weekStartsSunday.test.mjs` กันป้ายวันที่ขึ้นต้น จ. กับสูตรเลื่อนไปวันจันทร์ */
 export function dayOfWeek(day) {
   if (!isDayValue(day)) return null;
   const [y, m, d] = day.split('-').map(Number);
-  return (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7;
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 }
 
-/** วันจันทร์ของสัปดาห์ที่วันนั้นอยู่ — คีย์ของถังรายสัปดาห์ */
+/** วันอาทิตย์ของสัปดาห์ที่วันนั้นอยู่ — คีย์ของถังรายสัปดาห์ และวันแรกของตารางรายสัปดาห์ */
 export function weekStartOf(day) {
   const dow = dayOfWeek(day);
   return dow === null ? null : addDays(day, -dow);
+}
+
+/** ช่วงเต็มสัปดาห์ (อา–ส) ของวันนั้น เลื่อนไป `offset` สัปดาห์ — `{ from: อาทิตย์, to: เสาร์ }`
+ *  0 = สัปดาห์นี้ · -1 = สัปดาห์ก่อน · ชิป "สัปดาห์นี้/สัปดาห์ก่อน" ของ DayRangePicker ถามตัวนี้
+ *  (ตัวชิปอยู่ในไฟล์ JSX ที่เทสต์โหลดไม่ได้ ⇒ ยกเลขมาไว้ที่นี่ให้เทสต์ตรึงได้) */
+export function weekRange(day, offset = 0) {
+  const sunday = weekStartOf(day);
+  if (!sunday) return null;
+  const from = addDays(sunday, 7 * Number(offset || 0));
+  return { from, to: addDays(from, 6) };
 }
 
 /** วันสุดท้ายของงวดเดือน (YYYY-MM → YYYY-MM-DD) — คิดจากปฏิทินจริง ไม่ใช่ตาราง 30/31 */

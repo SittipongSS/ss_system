@@ -57,20 +57,56 @@ function dayInMonth(year, month, day) {
 const partsOf = (dateIso) => dateIso.split('-').map(Number);
 
 /* ── ตรวจ + ทำรูปมาตรฐาน ──────────────────────────────────────────────────
-   `null`/ไม่ส่ง = ล้างรอบ (ยังไม่ตั้ง) · คืน `{ rule, error }` — error เป็นภาษาไทยพร้อมขึ้นจอ
-   ⚠️ รูปต้องตรงกับ customer_billing_rule_ok() ของ mig 0389 (ฐานกันรูป · กติกาข้ามช่องอยู่ที่นี่) */
+   รูปมาตรฐาน (รุ่นสอง · mig 0390 · มติเจ้าของ 26/09: สวิตช์เครดิต + หลายรอบวางบิลต่อเดือน):
+     null                                            ยังไม่ระบุ
+     { credit: false, note? }                        ไม่มีเครดิต (ชำระก่อน/พร้อมสั่ง)
+     { billing, payment, note? }                     มีเครดิต
+       billing: { mode: 'anyday' } | { mode: 'monthly', days: [1..31 เรียงน้อยไปมาก ไม่ซ้ำ · 1–4 รอบ] }
+       payment: { mode: 'credit', days: 0..365 }     เครดิต n วันนับจากวันวางบิล (ทุกรอบเหมือนกัน)
+              | { mode: 'monthly', rounds: [{ day: 1..31, monthOffset: 0|1 }] }
+                 · คู่กับ billing.days ทีละรอบ (ยาวเท่ากัน) · วางบิลได้ทุกวัน = 1 ตัว
+   ⭐ รับรูปรุ่นแรก (0389) ด้วย: billing.day / payment.day+monthOffset ⇒ แปลงเป็นรุ่นสองตอนอ่าน
+   `null`/ไม่ส่ง = ล้าง · คืน `{ rule, error }` — error เป็นภาษาไทยพร้อมขึ้นจอ
+   ⚠️ รูปต้องตรงกับ customer_billing_rule_ok() ของ mig 0390 (ฐานกันรูป · กติกาข้ามช่องอยู่ที่นี่) */
+export const BILLING_ROUNDS_MAX = 4;
+
+const roundWord = (i, count) => (count > 1 ? `รอบที่ ${i + 1} ` : '');
+
+function normalizeNote(input) {
+  if (input.note === undefined || input.note === null) return { note: '', error: null };
+  if (typeof input.note !== 'string') return { note: '', error: 'หมายเหตุการวางบิลต้องเป็นข้อความ' };
+  const note = input.note.trim();
+  if (note.length > BILLING_NOTE_MAX) return { note: '', error: `หมายเหตุการวางบิลยาวเกิน ${BILLING_NOTE_MAX} ตัวอักษร` };
+  return { note, error: null };
+}
+
 export function normalizeBillingRule(input) {
   if (input === null || input === undefined) return { rule: null, error: null };
   if (typeof input !== 'object' || Array.isArray(input)) return { rule: null, error: 'รูปแบบรอบวางบิลไม่ถูกต้อง' };
+  const { note, error: noteError } = normalizeNote(input);
+  if (noteError) return { rule: null, error: noteError };
+
+  /* ไม่มีเครดิต — ไม่มีรอบ ไม่มีกำหนด · ข้ามส่วนที่เหลือทั้งหมด */
+  if (input.credit === false) return { rule: note ? { credit: false, note } : { credit: false }, error: null };
 
   const billingMode = input.billing?.mode;
   let billing;
   if (billingMode === 'anyday') billing = { mode: 'anyday' };
   else if (billingMode === 'monthly') {
-    const day = intIn(input.billing?.day, 1, 31);
-    if (day === null) return { rule: null, error: 'ใส่วันที่วางบิล 1–31 หรือเลือก "สิ้นเดือน"' };
-    billing = { mode: 'monthly', day };
+    const rawDays = Array.isArray(input.billing?.days) ? input.billing.days
+      : input.billing?.day !== undefined ? [input.billing.day] : [];
+    if (!rawDays.length) return { rule: null, error: 'ใส่วันที่วางบิล 1–31 หรือเลือก "สิ้นเดือน"' };
+    if (rawDays.length > BILLING_ROUNDS_MAX) return { rule: null, error: `วางบิลได้ไม่เกิน ${BILLING_ROUNDS_MAX} รอบต่อเดือน` };
+    const days = [];
+    for (const raw of rawDays) {
+      const day = intIn(raw, 1, 31);
+      if (day === null) return { rule: null, error: 'ใส่วันที่วางบิล 1–31 หรือเลือก "สิ้นเดือน"' };
+      days.push(day);
+    }
+    if (new Set(days).size !== days.length) return { rule: null, error: 'วันวางบิลซ้ำกัน — แต่ละรอบต้องคนละวัน' };
+    billing = { mode: 'monthly', days };
   } else return { rule: null, error: 'เลือกว่าวางบิลได้ทุกวัน หรือทุกเดือนตามวันที่' };
+  const roundCount = billing.mode === 'monthly' ? billing.days.length : 1;
 
   const paymentMode = input.payment?.mode;
   let payment;
@@ -79,32 +115,67 @@ export function normalizeBillingRule(input) {
     if (days === null) return { rule: null, error: `ใส่จำนวนวันเครดิต 0–${BILLING_CREDIT_MAX}` };
     payment = { mode: 'credit', days };
   } else if (paymentMode === 'monthly') {
-    const day = intIn(input.payment?.day, 1, 31);
-    if (day === null) return { rule: null, error: 'ใส่วันที่เงินเข้า 1–31 หรือเลือก "สิ้นเดือน"' };
-    const monthOffset = intIn(input.payment?.monthOffset, 0, 1);
-    if (monthOffset === null) return { rule: null, error: 'เลือกว่าเงินเข้าเดือนเดียวกับวางบิล หรือเดือนถัดไป' };
-    /* เงินเข้าเดือนเดียวกันแต่วันก่อนวันวางบิล = เงินเข้าก่อนวางบิลทุกรอบ ⇒ เกือบแน่ว่าเลือกเดือนผิด */
-    if (billing.mode === 'monthly' && monthOffset === 0 && day < billing.day) {
-      return { rule: null, error: 'เงินเข้าก่อนวันวางบิลในเดือนเดียวกัน — เลือก "เดือนถัดไป" หรือแก้วันที่' };
+    /* รุ่นแรก: เงินเข้าวันเดียวใช้กับทุกรอบ ⇒ ขยายเป็นหนึ่งตัวต่อรอบ */
+    const rawRounds = Array.isArray(input.payment?.rounds) ? input.payment.rounds
+      : input.payment?.day !== undefined ? Array.from({ length: roundCount }, () => ({ day: input.payment.day, monthOffset: input.payment.monthOffset }))
+        : [];
+    if (rawRounds.length !== roundCount) {
+      return { rule: null, error: roundCount > 1 ? 'ใส่วันเงินเข้าให้ครบทุกรอบ' : 'ใส่วันที่เงินเข้า 1–31 หรือเลือก "สิ้นเดือน"' };
     }
-    payment = { mode: 'monthly', day, monthOffset };
+    const rounds = [];
+    for (let i = 0; i < rawRounds.length; i += 1) {
+      const day = intIn(rawRounds[i]?.day, 1, 31);
+      if (day === null) return { rule: null, error: `${roundWord(i, roundCount)}ใส่วันที่เงินเข้า 1–31 หรือเลือก "สิ้นเดือน"`.trim() };
+      const monthOffset = intIn(rawRounds[i]?.monthOffset, 0, 1);
+      if (monthOffset === null) return { rule: null, error: `${roundWord(i, roundCount)}เลือกว่าเงินเข้าเดือนเดียวกับวางบิล หรือเดือนถัดไป`.trim() };
+      /* เงินเข้าเดือนเดียวกันแต่วันก่อนวันวางบิล = เงินเข้าก่อนวางบิลทุกรอบ ⇒ เกือบแน่ว่าเลือกเดือนผิด */
+      if (billing.mode === 'monthly' && monthOffset === 0 && day < billing.days[i]) {
+        return { rule: null, error: `${roundWord(i, roundCount)}เงินเข้าก่อนวันวางบิลในเดือนเดียวกัน — เลือก "เดือนถัดไป" หรือแก้วันที่`.trim() };
+      }
+      rounds.push({ day, monthOffset });
+    }
+    payment = { mode: 'monthly', rounds };
   } else return { rule: null, error: 'เลือกว่าเงินเข้าแบบเครดิตกี่วัน หรือทุกเดือนตามวันที่' };
 
-  const rule = { billing, payment };
-  if (input.note !== undefined && input.note !== null) {
-    if (typeof input.note !== 'string') return { rule: null, error: 'หมายเหตุการวางบิลต้องเป็นข้อความ' };
-    const note = input.note.trim();
-    if (note.length > BILLING_NOTE_MAX) return { rule: null, error: `หมายเหตุการวางบิลยาวเกิน ${BILLING_NOTE_MAX} ตัวอักษร` };
-    if (note) rule.note = note;
+  /* เรียงรอบตามวันวางบิล (คู่เงินเข้าย้ายตาม) — ลำดับที่คนกดไม่มีความหมาย */
+  if (billing.mode === 'monthly' && billing.days.length > 1) {
+    const order = billing.days.map((day, i) => i).sort((a, b) => billing.days[a] - billing.days[b]);
+    billing = { mode: 'monthly', days: order.map((i) => billing.days[i]) };
+    if (payment.mode === 'monthly') payment = { mode: 'monthly', rounds: order.map((i) => payment.rounds[i]) };
   }
+  const rule = { billing, payment };
+  if (note) rule.note = note;
   return { rule, error: null };
 }
 
 /* อ่านรอบจากแถวลูกค้า/ค่าที่ไม่รู้ที่มา — รูปผิด = ถือว่ายังไม่ตั้ง (ไม่ throw บนจอ) */
 export const billingRuleOf = (value) => normalizeBillingRule(value ?? null).rule;
 
+/* ── ตัวถามรูปของรอบ (จอใช้แทนการอ่านช่องข้างในตรง ๆ) ─────────────────────── */
+/* ไม่มีเครดิต — จอ SO/ทะเบียนทำเหมือน "ไม่มีรอบ" (กรอกกำหนดชำระเอง ไม่มีวันวางบิล) */
+export const billingRuleNoCredit = (value) => billingRuleOf(value)?.credit === false;
+/* มีรอบรายเดือนให้แตะ (ชิปรอบ · เติมเดือนละงวด · จัดวันใหม่) */
+export const billingRuleMonthly = (value) => billingRuleOf(value)?.billing?.mode === 'monthly';
+/* จำนวนรอบต่อเดือน — 0 = ไม่มีรอบ (ไม่ตั้ง · ไม่มีเครดิต · วางบิลได้ทุกวัน) */
+export const billingRoundCount = (value) => {
+  const rule = billingRuleOf(value);
+  return rule?.billing?.mode === 'monthly' ? rule.billing.days.length : 0;
+};
+/* ป้ายของแต่ละรอบ ["วันที่ 10", "สิ้นเดือน"] — ปุ่มเลือกรอบของ "เติมตามรอบ"/"จัดวันใหม่" */
+export function billingRoundLabels(value) {
+  const rule = billingRuleOf(value);
+  if (rule?.billing?.mode !== 'monthly') return [];
+  return rule.billing.days.map((day) => (day === MONTH_END_DAY ? 'สิ้นเดือน' : `วันที่ ${day}`));
+}
+
 /* ── ข้อความ ──────────────────────────────────────────────────────────────── */
 const dayWord = (day) => (day === MONTH_END_DAY ? 'สิ้นเดือน' : `วันที่ ${day}`);
+const joinThai = (items) => (items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} และ ${items[items.length - 1]}`);
+const sameRounds = (rounds) => rounds.every((r) => r.day === rounds[0].day && r.monthOffset === rounds[0].monthOffset);
+const payWhen = (round, { short }) => {
+  const when = round.day === MONTH_END_DAY ? 'สิ้นเดือน' : short ? String(round.day) : `ทุกวันที่ ${round.day}`;
+  return `${when}${round.monthOffset === 1 ? ' เดือนถัดไป' : ''}`;
+};
 
 /**
  * ประโยครอบวางบิล
@@ -114,67 +185,106 @@ const dayWord = (day) => (day === MONTH_END_DAY ? 'สิ้นเดือน' 
 export function describeBillingRule(value, { short = false } = {}) {
   const rule = billingRuleOf(value);
   if (!rule) return '';
-  const billing = rule.billing.mode === 'anyday'
-    ? 'วางบิลได้ทุกวัน'
-    : rule.billing.day === MONTH_END_DAY ? 'วางบิลสิ้นเดือน' : `วางบิลทุกวันที่ ${rule.billing.day}`;
-  let payment;
+  if (rule.credit === false) return 'ไม่มีเครดิต';
+  const days = rule.billing.mode === 'monthly' ? rule.billing.days : [];
+  let billing;
+  if (rule.billing.mode === 'anyday') billing = 'วางบิลได้ทุกวัน';
+  else if (days.length === 1) billing = days[0] === MONTH_END_DAY ? 'วางบิลสิ้นเดือน' : `วางบิลทุกวันที่ ${days[0]}`;
+  else billing = `วางบิล${joinThai(days.map(dayWord))}`;
+
   if (rule.payment.mode === 'credit') {
-    payment = rule.payment.days === 0 ? 'ชำระวันวางบิล' : `เครดิต ${rule.payment.days} วัน`;
-  } else {
-    const day = rule.payment.day;
-    const when = short
-      ? (day === MONTH_END_DAY ? 'สิ้นเดือน' : String(day))
-      : (day === MONTH_END_DAY ? 'สิ้นเดือน' : `ทุกวันที่ ${day}`);
-    payment = `เงินเข้า${short ? ' ' : ''}${when}${rule.payment.monthOffset === 1 ? ' เดือนถัดไป' : ''}`;
+    return `${billing} · ${rule.payment.days === 0 ? 'ชำระวันวางบิล' : `เครดิต ${rule.payment.days} วัน`}`;
   }
-  return `${billing} · ${payment}`;
+  const { rounds } = rule.payment;
+  if (sameRounds(rounds)) return `${billing} · เงินเข้า${short ? ' ' : ''}${payWhen(rounds[0], { short })}`;
+  /* หลายรอบ เงินเข้าไม่เหมือนกัน — บอกเป็นคู่ "วางบิล → เงินเข้า" ทีละรอบ */
+  return days.map((day, i) => `วางบิล ${day === MONTH_END_DAY ? 'สิ้นเดือน' : day} → เงินเข้า ${payWhen(rounds[i], { short: true })}`).join(' · ');
 }
 
-/* บรรทัดขยายของเงินเข้าแบบรายเดือน — "เงินเข้าเดือนเดียวกับวางบิล" / "เดือนถัดไป" · แบบเครดิต = "นับจากวันวางบิล" */
+/* บรรทัดขยายของเงินเข้า — "เงินเข้าเดือนเดียวกับวางบิล" / "เดือนถัดไป" · เครดิต = "นับจากวันวางบิล" · หลายรอบต่างกัน = '' */
 export function describeBillingRuleDetail(value) {
   const rule = billingRuleOf(value);
-  if (!rule) return '';
+  if (!rule || rule.credit === false) return '';
   if (rule.payment.mode === 'credit') {
     return rule.payment.days === 0 ? 'เงินเข้าวันเดียวกับวันวางบิล' : `นับ ${rule.payment.days} วันจากวันวางบิล`;
   }
-  return rule.payment.monthOffset === 1 ? 'เงินเข้าเดือนถัดจากเดือนที่วางบิล' : 'เงินเข้าเดือนเดียวกับวางบิล';
+  if (!sameRounds(rule.payment.rounds)) return '';
+  return rule.payment.rounds[0].monthOffset === 1 ? 'เงินเข้าเดือนถัดจากเดือนที่วางบิล' : 'เงินเข้าเดือนเดียวกับวางบิล';
 }
 
 /* ── คิดวัน ──────────────────────────────────────────────────────────────── */
 
+/* เงินเข้าของรอบหนึ่ง: วันที่ n ของ (เดือนที่วางบิล + offset) — ตกก่อนวันวางบิลเมื่อไร (วางบิลได้ทุกวันแล้ววางหลังวันเงินเข้า
+   / วันอื่นที่กรอกเอง) เลื่อนไปเดือนถัดไป */
+function payDateFor(round, bill) {
+  const [year, month] = partsOf(bill);
+  let due = dayInMonth(year, month + round.monthOffset, round.day);
+  if (due < bill) due = dayInMonth(year, month + round.monthOffset + 1, round.day);
+  return due;
+}
+
+/* รอบของวันวางบิลที่ไม่ได้มาจากชิป (วันอื่น…) — รอบล่าสุดของเดือนที่วันวางบิลของมันไม่เกินวันนั้น ·
+   ก่อนรอบแรกของเดือน = รอบสุดท้าย (ของรอบเดือนก่อน) */
+function roundIndexForDate(rule, bill) {
+  if (rule.billing.mode !== 'monthly') return 0;
+  const [year, month, day] = partsOf(bill);
+  let pick = rule.billing.days.length - 1;
+  rule.billing.days.forEach((billDay, i) => {
+    if (Number(dayInMonth(year, month, billDay).slice(8)) <= day) pick = i;
+  });
+  return pick;
+}
+
 /**
  * กำหนดชำระ ของงวดที่วางบิลวันนั้น ตามรอบของลูกค้า
- * เครดิต = วันวางบิล + n วัน · รายเดือน = วันที่ n ของ (เดือนที่วางบิล + offset) — ถ้าตกก่อนวันวางบิล
- * (ลูกค้าวางบิลได้ทุกวันแล้ววางหลังวันเงินเข้า) เลื่อนไปเดือนถัดไป · ไม่มีรอบ/วันผิด = ''
+ * เครดิต = วันวางบิล + n วัน · รายเดือน = เงินเข้าของรอบที่วันนั้นตกอยู่ · ไม่มีรอบ/ไม่มีเครดิต/วันผิด = ''
  */
 export function dueDateForBilling(value, billingDate) {
   const rule = billingRuleOf(value);
   const bill = dateOf(billingDate);
-  if (!rule || !bill) return '';
+  if (!rule || rule.credit === false || !bill) return '';
   if (rule.payment.mode === 'credit') return addDays(bill, rule.payment.days) || '';
-  const [year, month] = partsOf(bill);
-  let due = dayInMonth(year, month + rule.payment.monthOffset, rule.payment.day);
-  if (due < bill) due = dayInMonth(year, month + rule.payment.monthOffset + 1, rule.payment.day);
-  return due;
+  return payDateFor(rule.payment.rounds[roundIndexForDate(rule, bill)], bill);
 }
 
 /**
- * รอบวางบิลถัดไป `count` รอบ นับจาก `fromIso` (รวมวันนั้น) — ชิปที่ SA แตะ
- * ลูกค้าวางบิลได้ทุกวัน = [] (ไม่มีรอบ — จอให้กรอกวันวางบิลเอง แล้วคิดกำหนดชำระให้)
- * @returns `[{ billingDate, dueDate }]`
+ * รอบวางบิลถัดไป `count` รอบ นับจาก `fromIso` (รวมวันนั้น) — ชิปที่ SA แตะ · หลายรอบต่อเดือนเรียงตามวัน
+ * ไม่มีรอบรายเดือน (วางบิลได้ทุกวัน · ไม่มีเครดิต · ไม่ตั้ง) = []
+ * @param roundIndex จำกัดเฉพาะรอบนั้น (ปุ่มเติม/จัดวันใหม่ เดือนละงวด) · ไม่ส่ง = ทุกรอบ
+ * @returns `[{ billingDate, dueDate, roundIndex }]`
  */
-export function billingRounds(value, fromIso, count = 3) {
+export function billingRounds(value, fromIso, count = 3, { roundIndex = null } = {}) {
   const rule = billingRuleOf(value);
   const from = dateOf(fromIso);
-  if (!rule || !from || rule.billing.mode !== 'monthly') return [];
+  if (!rule || !from || rule.billing?.mode !== 'monthly') return [];
   const [year, month] = partsOf(from);
+  const indexes = rule.billing.days.map((d, i) => i).filter((i) => roundIndex === null || i === roundIndex);
+  if (!indexes.length) return [];
   const out = [];
-  for (let k = 0; out.length < count && k < count + 1; k += 1) {
-    const billingDate = dayInMonth(year, month + k, rule.billing.day);
-    if (billingDate < from) continue;
-    out.push({ billingDate, dueDate: dueDateForBilling(rule, billingDate) });
+  const seen = new Set();
+  for (let k = 0; out.length < count && k < count + 2; k += 1) {
+    const inMonth = indexes
+      .map((i) => ({ i, billingDate: dayInMonth(year, month + k, rule.billing.days[i]) }))
+      .sort((a, b) => (a.billingDate < b.billingDate ? -1 : 1));
+    for (const { i, billingDate } of inMonth) {
+      /* 30 กับ 31 ในเดือนที่มี 30 วัน ตกวันเดียวกัน — นับรอบเดียว */
+      if (billingDate < from || seen.has(billingDate) || out.length >= count) continue;
+      seen.add(billingDate);
+      const dueDate = rule.payment.mode === 'credit'
+        ? addDays(billingDate, rule.payment.days)
+        : payDateFor(rule.payment.rounds[i], billingDate);
+      out.push({ billingDate, dueDate, roundIndex: i });
+    }
   }
   return out;
+}
+
+/* ปุ่มเดือนละงวดของลูกค้าหลายรอบต้องรู้ว่าใช้รอบไหน — ตรวจ roundIndex ที่ส่งมา · คืน error ไทย หรือ null */
+function monthlyRoundError(rule, roundIndex) {
+  const count = rule.billing.days.length;
+  if (count === 1) return null;
+  if (roundIndex === null || roundIndex === undefined) return `ลูกค้ามี ${count} รอบต่อเดือน — เลือกก่อนว่าจะใช้รอบไหน`;
+  return Number.isInteger(roundIndex) && roundIndex >= 0 && roundIndex < count ? null : 'รอบที่เลือกไม่มีในรอบวางบิลของลูกค้า';
 }
 
 /* งวดที่ "ยังเติมรอบได้" — ยังไม่รับเงิน · ไม่ใช่งวดยกมา · ยังไม่มีวันวางบิลและไม่ได้รอเหตุการณ์ */
@@ -195,11 +305,15 @@ export function installmentBillingFillable(row) {
  * · ลูกค้าวางบิลได้ทุกวัน = ไม่มีรอบให้เติม → `{ rows: [], error }`
  * @returns `{ rows: [{ id, seq, billingDate, dueDate, keptDue }], error }`
  */
-export function planMonthlyFill(value, installments = [], todayIso) {
+export function planMonthlyFill(value, installments = [], todayIso, { roundIndex = null } = {}) {
   const rule = billingRuleOf(value);
   const today = dateOf(todayIso);
   if (!rule) return { rows: [], error: 'ลูกค้ายังไม่ตั้งรอบวางบิล' };
+  if (rule.credit === false) return { rows: [], error: 'ลูกค้าไม่มีเครดิต — ไม่มีรอบวางบิลให้เติม' };
   if (rule.billing.mode !== 'monthly') return { rows: [], error: 'ลูกค้าวางบิลได้ทุกวัน — ไม่มีรอบให้เติม เลือกวันวางบิลทีละงวด' };
+  const roundError = monthlyRoundError(rule, roundIndex);
+  if (roundError) return { rows: [], error: roundError };
+  const only = rule.billing.days.length === 1 ? 0 : roundIndex;
   if (!today) return { rows: [], error: 'ไม่รู้วันนี้' };
   const sorted = [...(installments || [])].sort((a, b) => Number(a.seq) - Number(b.seq));
   const targets = sorted.filter(installmentBillingFillable);
@@ -208,11 +322,11 @@ export function planMonthlyFill(value, installments = [], todayIso) {
   let cursor = latest && latest >= today ? addDays(latest, 1) : today;
   const rows = targets.map((row) => {
     const due = dateOf(row.dueDate);
-    const [first] = billingRounds(rule, cursor, 1);
+    const [first] = billingRounds(rule, cursor, 1, { roundIndex: only });
     let pick = first;
     if (due) {
       /* ไล่รอบจาก cursor ไปจนเงินเข้าเลยกำหนดเดิม — เก็บรอบสุดท้ายที่ยังทัน (สูงสุด 2 ปี) */
-      for (const round of billingRounds(rule, cursor, 24)) {
+      for (const round of billingRounds(rule, cursor, 24, { roundIndex: only })) {
         if (round.dueDate > due) break;
         pick = round;
       }
@@ -249,11 +363,15 @@ export function installmentBillingRedatable(row, { requested = false } = {}) {
  * @param requestedIds Set ของ id งวดที่ขอใบวางบิลแล้ว (ผู้เรียกตัดสินด้วย billingRequestLive)
  * @returns `{ rows: [{ id, seq, billingDate, dueDate, prevBillingDate, prevDueDate }], error }`
  */
-export function planRedate(value, installments = [], todayIso, { requestedIds = new Set() } = {}) {
+export function planRedate(value, installments = [], todayIso, { requestedIds = new Set(), roundIndex = null } = {}) {
   const rule = billingRuleOf(value);
   const today = dateOf(todayIso);
   if (!rule) return { rows: [], error: 'ลูกค้ายังไม่ตั้งรอบวางบิล' };
+  if (rule.credit === false) return { rows: [], error: 'ลูกค้าไม่มีเครดิต — ไม่มีรอบวางบิลให้จัด' };
   if (rule.billing.mode !== 'monthly') return { rows: [], error: 'ลูกค้าวางบิลได้ทุกวัน — ไม่มีรอบให้จัด เลือกวันวางบิลทีละงวด' };
+  const roundError = monthlyRoundError(rule, roundIndex);
+  if (roundError) return { rows: [], error: roundError };
+  const only = rule.billing.days.length === 1 ? 0 : roundIndex;
   if (!today) return { rows: [], error: 'ไม่รู้วันนี้' };
   const sorted = [...(installments || [])].sort((a, b) => Number(a.seq) - Number(b.seq));
   const isTarget = (row) => installmentBillingRedatable(row, { requested: requestedIds.has(row.id) });
@@ -266,7 +384,7 @@ export function planRedate(value, installments = [], todayIso, { requestedIds = 
       if (kept && kept >= cursor) cursor = addDays(kept, 1);
       continue;
     }
-    const [pick] = billingRounds(rule, cursor, 1);
+    const [pick] = billingRounds(rule, cursor, 1, { roundIndex: only });
     cursor = addDays(pick.billingDate, 1);
     const prevBillingDate = dateOf(row.billingDate);
     const prevDueDate = dateOf(row.dueDate);

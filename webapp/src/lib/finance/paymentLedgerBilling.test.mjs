@@ -5,6 +5,7 @@
 //   3. วันวางบิลที่ผ่านไปแล้ว = "เลยรอบวางบิล" ไม่ใช่ "เลยกำหนด" — สองธงแยกกันเสมอ
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   LEDGER_BILLING_FILTERS, LEDGER_BILLING_REQUESTED_TAG, LEDGER_BILLING_RULE_UNSET, LEDGER_BILLING_UNREQUESTED_TAG,
@@ -189,6 +190,28 @@ test('🔴 ส่วนที่ซ่อน: ไม่นับงวดขอ�
     make({ id: 'n4', seq: 4, billingDate: '2026-09-28', amount: 800 }, noRule), // มีวัน = ไม่ถูกซ่อน
   ];
   assert.deepEqual(ledgerBillingTally(rows, { billing: '7d' }).hidden, { count: 2, amount: 600 });
+});
+
+test('🔴 ไม่มีเครดิต (mig 0390): บรรทัดใต้ชื่อบอก "ไม่มีเครดิต" แต่ไม่ใช่ "มีรอบ" — ไม่นับเป็นงวดที่ขาดวันวางบิล', () => {
+  const noCredit = { customer: { billingRule: { credit: false } } };
+  const row = make({ id: 'c1', seq: 1, amount: 500 }, noCredit);
+  assert.equal(row.billingRuleText, 'ไม่มีเครดิต');
+  assert.equal(row.billingRuleActive, false);
+  assert.equal(make({ id: 'c2' }).billingRuleActive, true, 'ลูกค้ามีรอบ (รูปรุ่นแรกแปลงตอนอ่าน)');
+  assert.equal(make({ id: 'c3' }, { customer: { billingRule: null } }).billingRuleActive, false);
+  /* ตัวนับส่วนที่ซ่อน: ลูกค้าไม่มีเครดิตไม่มีรอบให้เลือก = สถานะปกติ (ข้อความไม่ว่างก็ห้ามนับ) */
+  assert.deepEqual(ledgerBillingTally([row], { billing: '7d' }).hidden, { count: 0, amount: 0 });
+  /* ก้อนของใบพกธงไปให้เซลล์ "วางบิลถัดไป" — "ยังไม่กำหนด" ขึ้นเฉพาะลูกค้าที่มีรอบ */
+  const [group] = groupLedgerByOrder([row]);
+  assert.equal(group.billingRuleText, 'ไม่มีเครดิต');
+  assert.equal(group.billingRuleActive, false);
+  assert.equal(groupLedgerByOrder([make({ id: 'c4' })])[0].billingRuleActive, true);
+  /* ค้นคำที่ตาเห็นได้ */
+  assert.deepEqual(filterLedger([row, make({ id: 'c5' })], { q: 'ไม่มีเครดิต' }).map((r) => r.id), ['c1']);
+  /* หน้า /finance/payments: เซลล์ "ยังไม่กำหนด" อ่านธง ไม่ใช่ความว่างของข้อความรอบ */
+  const page = readFileSync(new URL('../../app/finance/payments/page.js', import.meta.url), 'utf8');
+  assert.match(page, /if \(group\.billingUnset && group\.billingRuleActive\) \{/);
+  assert.doesNotMatch(page, /group\.billingUnset && group\.billingRuleText/);
 });
 
 // ── 5. ชุดค้น ────────────────────────────────────────────────────────────────────────────────────

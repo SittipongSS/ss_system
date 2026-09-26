@@ -163,10 +163,10 @@ test('ค้นหาได้ทุกอย่างที่ตาเห็�
 });
 
 test('ชิปสัปดาห์กรองเฉพาะร่างที่เสนอวันในสัปดาห์นั้น', () => {
-  const view = build({ bucket: 'waiting', within: { from: '2026-09-21', to: '2026-09-27' } });
+  const view = build({ bucket: 'waiting', within: { from: '2026-09-20', to: '2026-09-26' } });
   assert.deepEqual(view.rows.filter((r) => r.bucket === 'waiting').length, 4, 'rows ยังเก็บทั้งหมด');
   assert.equal(view.listedCount, 2, 'แสดงแค่ SV-01 กับ SV-02');
-  assert.equal(draftsInRange(visits, { from: '2026-09-21', to: '2026-09-27' }, ALL_TEAMS, crewByUser), 2);
+  assert.equal(draftsInRange(visits, { from: '2026-09-20', to: '2026-09-26' }, ALL_TEAMS, crewByUser), 2);
 });
 
 /* ⭐ มติ 24/09 แบบ A — โมดัลจัดคิวอ่านคำชุดเดียวกับการ์ด ⇒ ยกตัวช่วยออกมาเป็น export โดย **ผลเท่าของเดิมเป๊ะ** */
@@ -233,7 +233,8 @@ test('ข้อความช่วย: วัน · ต้นเรื่อ�
   assert.equal(originText({ kind: 'repair' }), 'งานนอกรอบ');
   assert.equal(ownerTone('SA → FN'), 'warning');
   assert.equal(ownerTone('TS'), 'info');
-  assert.equal(weekChipText('2026-09-21'), 'วันเสนอ 21–27 ก.ย.');
+  // ตารางเปิดทีละสัปดาห์ อา–ส (มติ 2026-09-26) ⇒ ต้นช่วงเป็นวันอาทิตย์เสมอ
+  assert.equal(weekChipText('2026-09-20'), 'วันเสนอ 20–26 ก.ย.');
 });
 
 /* ═══ คำร้องรอลงคิว (มติเจ้าของ 23/09) ═══════════════════════════════════════════
@@ -314,7 +315,7 @@ test('⭐ ตัวกรองทีมไม่ซ่อนการ์ดค�
   // คนว่างนับเฉพาะคนในทีมที่เลือก
   assert.equal(south.rows.find((r) => r.id === 'R-ack').dayLoad.text, 'วันนั้นว่าง 1 จาก 1 คน');
 
-  const week = build({ bucket: 'waiting', surveyRequests, within: { from: '2026-09-21', to: '2026-09-27' } });
+  const week = build({ bucket: 'waiting', surveyRequests, within: { from: '2026-09-20', to: '2026-09-26' } });
   assert.equal(week.groups.some((g) => g.key === 'requests'), false);
   assert.equal(week.listedCount, 2, 'เท่าตัวเลขบนชิปสัปดาห์ (ร่างสองใบ)');
   assert.equal(week.requestCount, 3, 'ตัวเลขบนแถบต้นทางงานไม่ขึ้นกับชิป');

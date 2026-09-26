@@ -246,7 +246,8 @@ export async function POST(request) {
     contactPerson: primary.name || null,
     contactPhone: primary.phone || null,
     email: primary.email || null,
-    creditTerms: body.creditTerms || null,
+    /* ⚠️ ไม่รับ `creditTerms` จาก body แล้ว (มติเจ้าของ 26/09 · mig 0390) — เครดิตตั้งที่เส้น `/billing-rule`
+       ทางเดียว (ลูกค้าใหม่เริ่ม "ยังไม่ระบุ") · คอลัมน์ยังอยู่ อ่านเป็นข้อความเดิม (CUSTOMER_PICKER_COLUMNS) */
     metadata: body.metadata || {},
     // Managing team + owner. team-role → ทีมตัวเอง; superuser → ทีมที่เลือก (หรือไร้ทีม).
     team: pickedTeams[0] ?? user?.team ?? null, // ทีมหลัก (คอลัมน์เก่า) = ทีมแรกที่ดูแล

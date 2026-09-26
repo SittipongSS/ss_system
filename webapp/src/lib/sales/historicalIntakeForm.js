@@ -33,7 +33,9 @@ import { QUOTE_DISCOUNT_TYPES, QUOTE_VAT_OPTIONS, quoteLineMoney } from '@/lib/s
 import { ownerLockedToSelf } from '@/lib/sales/dealOwner';
 import { externalDocKindLabel } from '@/lib/sales/contracts';
 import { addDays, dueDateByRule, monthEdge, splitCoverageByMonths } from '@/lib/sales/paymentCoverage';
-import { MONTH_END_DAY, billingRuleOf, describeBillingRule } from '@/lib/sales/billingRule';
+import {
+  MONTH_END_DAY, billingRoundCount, billingRuleNoCredit, billingRuleOf, describeBillingRule,
+} from '@/lib/sales/billingRule';
 import {
   HISTORICAL_APPROVER_LABEL, HISTORICAL_REF_MAX, INSTALLMENT_LABEL_MAX, INSTALLMENT_NOTE_MAX, OPENING_INSTALLMENT_LABEL,
   charLength, isOpeningInstallment,
@@ -1984,6 +1986,10 @@ export const HISTORICAL_DUE_RULES = Object.freeze([
        — บั๊กเดียวกับ SO-26080050-0 ที่เรื่องนี้มาแก้ · ขัดมติ 3 "ไม่เดาวัน"
      ⚠️ normalizeBillingRule ห้าม offset 0 เมื่อวันเงินเข้า < วันวางบิล ⇒ offset 1 คือรูปปกติของลูกค้าที่จ่ายวันต้นกว่าวันวางบิล
        ทางที่คิดถูก (ถ้าเจ้าของอยากได้): ใช้ `billingRounds(rule, coversFrom, 1)[0].dueDate` รายงวดในตัวคิด = สาขาใหม่ ต้องขอมติก่อน
+   🔴 รอบรุ่นสอง (mig 0390 · มติ 26/09 ข้อ 2–3) — ชิปมีเฉพาะ **รอบเดียวต่อเดือน** (หรือวางบิลได้ทุกวัน) + เงินเข้าเดือนเดียวกัน:
+     · **ไม่มีเครดิต** = ไม่มีชิป พร้อมเหตุ (ไม่มีรอบเงินเข้าให้ตาม — ประโยคบอก "ไม่มีเครดิต")
+     · **หลายรอบต่อเดือน** = ไม่มีชิป พร้อมเหตุ — แต่ละรอบมีวันเงินเข้าของตัวเอง ใบย้อนหลังไม่มีวันวางบิลบอกว่างวดไหน
+       อยู่รอบไหน (เลือกรอบแรกให้ = เดาวัน · ขัดมติ 3) · ห้ามอ่าน `rule.payment.day`/`.monthOffset` รุ่นแรก — อ่าน `rounds[0]`
    ⚠️ งวดยกมาไม่เกี่ยว — หน้าต่างนี้สร้างเฉพาะงวดที่ยังต้องเก็บ (งวดยกมาไม่มีวันวางบิลเสมอ · CHECK ของ 0389) */
 export const HISTORICAL_CUSTOMER_DUE_RULE = 'customer';
 /* ต้นประโยคเหตุที่ไม่มีชิป — บอกชื่อตัวเลือกที่หายไป ผู้ใช้ไม่ต้องเดาว่าอะไรไม่ขึ้น (กฎบ้าน: ติดด่าน = บอกเหตุ) */
@@ -1994,7 +2000,7 @@ const NO_CUSTOMER_CHIP = 'ไม่มีตัวเลือก "ตามร�
  * @param billingRule ค่า `customers."billingRule"` (รูปผิด/ไม่ตั้ง = ถือว่ายังไม่ตั้ง)
  * @returns `{ hint, option, note }`
  *   · `hint`   = ประโยครอบของลูกค้า ('' = ยังไม่ตั้ง ⇒ ไม่มีอะไรให้โชว์)
- *   · `option` = `{ value, label, dueRule, dueDay }` เฉพาะเงินเข้ารายเดือน เดือนเดียวกับวางบิล · นอกนั้น null
+ *   · `option` = `{ value, label, dueRule, dueDay }` เฉพาะรอบเดียวต่อเดือน + เงินเข้ารายเดือน เดือนเดียวกับวางบิล · นอกนั้น null
  *   · `note`   = บรรทัดอธิบาย — มีชิป: ชิปทำอะไร (โชว์ตอนเลือก) · ไม่มีชิป: ทำไมไม่มี (บรรทัดของตัวเองใต้ประโยครอบ)
  *     ⚠️ ห้ามมี "—" ใน note ที่ไม่มีชิป — ประโยครอบกับเหตุอยู่ใกล้กัน เคยขึ้นขีดยาวสองตัวในบรรทัดเดียว (รีวิว 26/09)
  */
@@ -2002,30 +2008,45 @@ export function historicalCustomerDueOption(billingRule) {
   const rule = billingRuleOf(billingRule);
   if (!rule) return { hint: '', option: null, note: null };
   const hint = describeBillingRule(rule);
+  if (billingRuleNoCredit(rule)) {
+    return { hint, option: null, note: `${NO_CUSTOMER_CHIP}ลูกค้าไม่มีเครดิต ไม่มีรอบเงินเข้าให้ตาม · เลือกวันครบกำหนดเอง` };
+  }
   if (rule.payment.mode !== 'monthly') {
     return { hint, option: null, note: `${NO_CUSTOMER_CHIP}เงินเข้านับจากวันวางบิล ซึ่งใบย้อนหลังไม่มี · เลือกวันครบกำหนดเอง` };
   }
-  if (rule.payment.monthOffset === 1) {
+  const perMonth = billingRoundCount(rule);
+  if (perMonth > 1) {
+    return {
+      hint,
+      option: null,
+      /* ⚠️ ไม่เขียนว่า "เงินเข้าคนละวัน" — หลายรอบที่เงินเข้าวันเดียวกันก็มี (วางบิล 5 และ 20 · เงินเข้า 25) มติให้ตัดชิปทั้งกลุ่ม */
+      note: `${NO_CUSTOMER_CHIP}ลูกค้าวางบิลเดือนละ ${perMonth} รอบ`
+        + ' ซึ่งใบย้อนหลังไม่มีวันวางบิลบอกว่างวดไหนอยู่รอบไหน · เลือกวันครบกำหนดเอง',
+    };
+  }
+  /* รอบเดียว (หรือวางบิลได้ทุกวัน) = เงินเข้าตัวเดียว */
+  const [round] = rule.payment.rounds;
+  if (round.monthOffset === 1) {
     return {
       hint,
       option: null,
       note: `${NO_CUSTOMER_CHIP}เงินเข้าเดือนถัดจากเดือนที่วางบิล ซึ่งใบย้อนหลังไม่มีวันวางบิล · เลือกวันครบกำหนดเอง`,
     };
   }
-  const monthEnd = rule.payment.day === MONTH_END_DAY;
+  const monthEnd = round.day === MONTH_END_DAY;
   /* ป้ายบอกว่าเป็นวัน **เงินเข้า** — ลูกค้า "วางบิล 5 · เงินเข้า 25" เคยอ่านชิป "(ทุกวันที่ 25)" เป็นวันวางบิล (รีวิว 26/09) */
-  const when = monthEnd ? 'เงินเข้าสิ้นเดือน' : `เงินเข้าทุกวันที่ ${rule.payment.day}`;
+  const when = monthEnd ? 'เงินเข้าสิ้นเดือน' : `เงินเข้าทุกวันที่ ${round.day}`;
   return {
     hint,
     option: {
       value: HISTORICAL_CUSTOMER_DUE_RULE,
       label: `ตามรอบของลูกค้า (${when})`,
       dueRule: monthEnd ? 'monthEnd' : 'day',
-      dueDay: monthEnd ? '' : String(rule.payment.day),
+      dueDay: monthEnd ? '' : String(round.day),
     },
     note: monthEnd
       ? 'ครบกำหนดสิ้นเดือนของแต่ละงวด (วันเงินเข้าของลูกค้า)'
-      : `ครบกำหนดวันที่ ${rule.payment.day} แรกนับจากวันเริ่มของแต่ละงวด (วันเงินเข้าของลูกค้า) · เดือนที่ไม่มีวันนั้นใช้สิ้นเดือน`,
+      : `ครบกำหนดวันที่ ${round.day} แรกนับจากวันเริ่มของแต่ละงวด (วันเงินเข้าของลูกค้า) · เดือนที่ไม่มีวันนั้นใช้สิ้นเดือน`,
   };
 }
 

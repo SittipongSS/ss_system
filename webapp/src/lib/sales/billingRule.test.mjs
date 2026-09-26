@@ -7,6 +7,10 @@ import assert from 'node:assert/strict';
 import {
   BILLING_REMIND_DAYS,
   billingRequestLive,
+  billingRoundCount,
+  billingRoundLabels,
+  billingRuleMonthly,
+  billingRuleNoCredit,
   billingRounds,
   billingState,
   billingStateLabel,
@@ -36,7 +40,12 @@ const CREDIT30 = { billing: { mode: 'anyday' }, payment: { mode: 'credit', days:
 test('รอบที่ถูกผ่าน และได้รูปมาตรฐาน (ตัดช่องแปลกปลอมทิ้ง)', () => {
   const { rule, error } = normalizeBillingRule({ ...AR267, extra: 1, note: '  แนบสำเนา PO  ' });
   assert.equal(error, null);
-  assert.deepEqual(rule, { ...AR267, note: 'แนบสำเนา PO' });
+  /* รูปรุ่นแรก (day เดี่ยว) ถูกแปลงเป็นรุ่นสองตอนอ่าน */
+  assert.deepEqual(rule, {
+    billing: { mode: 'monthly', days: [5] },
+    payment: { mode: 'monthly', rounds: [{ day: 25, monthOffset: 0 }] },
+    note: 'แนบสำเนา PO',
+  });
 });
 
 test('null = ล้างรอบ ไม่ใช่ error · หมายเหตุว่างไม่ถูกเก็บ', () => {
@@ -54,7 +63,7 @@ test('ตัวเลขนอกช่วง/ทศนิยม ถูกตี
   assert.ok(normalizeBillingRule({ billing: { mode: 'monthly', day: 5.5 }, payment: CREDIT30.payment }).error);
   assert.ok(normalizeBillingRule({ billing: CREDIT30.billing, payment: { mode: 'credit', days: 366 } }).error);
   assert.ok(normalizeBillingRule({ billing: CREDIT30.billing, payment: { mode: 'monthly', day: 25, monthOffset: 2 } }).error);
-  assert.equal(normalizeBillingRule({ billing: { mode: 'monthly', day: '5' }, payment: { mode: 'credit', days: '0' } }).rule.billing.day, 5);
+  assert.equal(normalizeBillingRule({ billing: { mode: 'monthly', day: '5' }, payment: { mode: 'credit', days: '0' } }).rule.billing.days[0], 5);
 });
 
 test('เงินเข้าเดือนเดียวกันแต่ก่อนวันวางบิล = เลือกเดือนผิด → error', () => {
@@ -83,9 +92,9 @@ test('ประโยครอบ — แบบเต็มและแบบย
 
 test('AR-267 — รอบถัดไป 3 รอบจาก ศ. 25 ก.ย. 2026 ตรงกับม็อก', () => {
   assert.deepEqual(billingRounds(AR267, '2026-09-25'), [
-    { billingDate: '2026-10-05', dueDate: '2026-10-25' },
-    { billingDate: '2026-11-05', dueDate: '2026-11-25' },
-    { billingDate: '2026-12-05', dueDate: '2026-12-25' },
+    { billingDate: '2026-10-05', dueDate: '2026-10-25', roundIndex: 0 },
+    { billingDate: '2026-11-05', dueDate: '2026-11-25', roundIndex: 0 },
+    { billingDate: '2026-12-05', dueDate: '2026-12-25', roundIndex: 0 },
   ]);
 });
 
@@ -97,16 +106,16 @@ test('วันวางบิลของเดือนนี้ยังไ�
 test('AR-015 — เงินเข้าเดือนถัดไป · ข้ามปีได้', () => {
   assert.equal(dueDateForBilling(AR015, '2026-12-25'), '2027-01-25');
   assert.deepEqual(billingRounds(AR015, '2026-09-26', 2), [
-    { billingDate: '2026-10-25', dueDate: '2026-11-25' },
-    { billingDate: '2026-11-25', dueDate: '2026-12-25' },
+    { billingDate: '2026-10-25', dueDate: '2026-11-25', roundIndex: 0 },
+    { billingDate: '2026-11-25', dueDate: '2026-12-25', roundIndex: 0 },
   ]);
 });
 
 test('วันที่ 31 = สิ้นเดือน ทั้งวางบิลและเงินเข้า (ก.พ. ใช้ 28/29)', () => {
   const r = { billing: { mode: 'monthly', day: 31 }, payment: { mode: 'monthly', day: 31, monthOffset: 0 } };
   assert.deepEqual(billingRounds(r, '2027-02-01', 2), [
-    { billingDate: '2027-02-28', dueDate: '2027-02-28' },
-    { billingDate: '2027-03-31', dueDate: '2027-03-31' },
+    { billingDate: '2027-02-28', dueDate: '2027-02-28', roundIndex: 0 },
+    { billingDate: '2027-03-31', dueDate: '2027-03-31', roundIndex: 0 },
   ]);
   assert.equal(billingRounds(r, '2028-02-10', 1)[0].billingDate, '2028-02-29');
 });
@@ -281,4 +290,84 @@ test('วันตรงรอบอยู่แล้ว = ไม่มีอ�
   assert.match(planRedate(AR267, rows, '2026-09-26').error, /ตรงกับรอบปัจจุบัน/);
   assert.match(planRedate(CREDIT30, rows, '2026-09-26').error, /ทุกวัน/);
   assert.match(planRedate(AR267, [inst(1, { status: 'confirmed' })], '2026-09-26').error, /ไม่มีงวดที่จัดวันใหม่ได้/);
+});
+
+/* ── รุ่นสอง (mig 0390 · มติ 26/09): สวิตช์เครดิต + หลายรอบวางบิลต่อเดือน ─────── */
+
+const TWO = {
+  billing: { mode: 'monthly', days: [10, 25] },
+  payment: { mode: 'monthly', rounds: [{ day: 25, monthOffset: 0 }, { day: 10, monthOffset: 1 }] },
+};
+
+test('ไม่มีเครดิต = รูปของตัวเอง · ไม่มีรอบ ไม่มีกำหนดชำระ · จอทำเหมือนไม่มีรอบ', () => {
+  const { rule, error } = normalizeBillingRule({ credit: false, billing: { mode: 'weekly' }, note: ' ชำระก่อนผลิต ' });
+  assert.equal(error, null);
+  assert.deepEqual(rule, { credit: false, note: 'ชำระก่อนผลิต' });
+  assert.equal(describeBillingRule(rule), 'ไม่มีเครดิต');
+  assert.equal(describeBillingRuleDetail(rule), '');
+  assert.equal(billingRuleNoCredit(rule), true);
+  assert.equal(billingRuleMonthly(rule), false);
+  assert.equal(billingRoundCount(rule), 0);
+  assert.deepEqual(billingRounds(rule, '2026-09-26'), []);
+  assert.equal(dueDateForBilling(rule, '2026-10-05'), '');
+  assert.match(planMonthlyFill(rule, [inst(1)], '2026-09-26').error, /ไม่มีเครดิต/);
+  assert.match(planRedate(rule, [inst(1)], '2026-09-26').error, /ไม่มีเครดิต/);
+});
+
+test('สองรอบต่อเดือน — รอบถัดไปเรียงตามวัน แต่ละรอบใช้วันเงินเข้าของตัวเอง', () => {
+  assert.equal(normalizeBillingRule(TWO).error, null);
+  assert.deepEqual(billingRounds(TWO, '2026-09-26', 4), [
+    { billingDate: '2026-10-10', dueDate: '2026-10-25', roundIndex: 0 },
+    { billingDate: '2026-10-25', dueDate: '2026-11-10', roundIndex: 1 },
+    { billingDate: '2026-11-10', dueDate: '2026-11-25', roundIndex: 0 },
+    { billingDate: '2026-11-25', dueDate: '2026-12-10', roundIndex: 1 },
+  ]);
+  assert.equal(billingRoundCount(TWO), 2);
+  assert.deepEqual(billingRoundLabels(TWO), ['วันที่ 10', 'วันที่ 25']);
+  assert.equal(describeBillingRule(TWO), 'วางบิล 10 → เงินเข้า 25 · วางบิล 25 → เงินเข้า 10 เดือนถัดไป');
+});
+
+test('สองรอบ เงินเข้าแบบเครดิต/วันเดียวกันทุกรอบ = ประโยคสั้น', () => {
+  const credit = { billing: { mode: 'monthly', days: [25, 10] }, payment: { mode: 'credit', days: 30 } };
+  assert.deepEqual(normalizeBillingRule(credit).rule.billing.days, [10, 25], 'เรียงวันให้');
+  assert.equal(describeBillingRule(credit), 'วางบิลวันที่ 10 และ วันที่ 25 · เครดิต 30 วัน');
+  const samePay = { billing: { mode: 'monthly', days: [5, 20] }, payment: { mode: 'monthly', day: 25, monthOffset: 1 } };
+  assert.deepEqual(normalizeBillingRule(samePay).rule.payment.rounds, [{ day: 25, monthOffset: 1 }, { day: 25, monthOffset: 1 }], 'รุ่นแรกขยายเป็นทุกรอบ');
+  assert.equal(describeBillingRule(samePay), 'วางบิลวันที่ 5 และ วันที่ 20 · เงินเข้าทุกวันที่ 25 เดือนถัดไป');
+});
+
+test('เรียงรอบใหม่แล้วคู่เงินเข้าย้ายตาม · วันซ้ำ/เกิน 4 รอบ/เงินเข้าไม่ครบ = error', () => {
+  const swapped = normalizeBillingRule({
+    billing: { mode: 'monthly', days: [25, 10] },
+    payment: { mode: 'monthly', rounds: [{ day: 10, monthOffset: 1 }, { day: 25, monthOffset: 0 }] },
+  }).rule;
+  assert.deepEqual(swapped, TWO);
+  assert.match(normalizeBillingRule({ billing: { mode: 'monthly', days: [5, 5] }, payment: { mode: 'credit', days: 30 } }).error, /ซ้ำ/);
+  assert.match(normalizeBillingRule({ billing: { mode: 'monthly', days: [1, 5, 10, 15, 20] }, payment: { mode: 'credit', days: 30 } }).error, /ไม่เกิน 4/);
+  assert.match(normalizeBillingRule({ billing: { mode: 'monthly', days: [5, 20] }, payment: { mode: 'monthly', rounds: [{ day: 25, monthOffset: 0 }] } }).error, /ครบทุกรอบ/);
+  assert.match(normalizeBillingRule({
+    billing: { mode: 'monthly', days: [10, 25] },
+    payment: { mode: 'monthly', rounds: [{ day: 25, monthOffset: 0 }, { day: 10, monthOffset: 0 }] },
+  }).error, /รอบที่ 2 เงินเข้าก่อนวันวางบิล/);
+});
+
+test('วันอื่น… ที่ไม่ตรงรอบ ใช้เงินเข้าของรอบที่วันนั้นตกอยู่', () => {
+  assert.equal(dueDateForBilling(TWO, '2026-10-12'), '2026-10-25', 'หลังรอบวันที่ 10 = รอบที่ 1');
+  assert.equal(dueDateForBilling(TWO, '2026-10-27'), '2026-11-10', 'หลังรอบวันที่ 25 = รอบที่ 2');
+  assert.equal(dueDateForBilling(TWO, '2026-10-03'), '2026-11-10', 'ก่อนรอบแรกของเดือน = รอบสุดท้าย (ของเดือนก่อน)');
+});
+
+test('เติม/จัดวันใหม่ เดือนละงวด ของลูกค้าหลายรอบ ต้องบอกว่าใช้รอบไหน', () => {
+  const rows = [inst(1), inst(2), inst(3)];
+  assert.match(planMonthlyFill(TWO, rows, '2026-09-26').error, /2 รอบต่อเดือน/);
+  assert.deepEqual(planMonthlyFill(TWO, rows, '2026-09-26', { roundIndex: 1 }).rows.map((r) => [r.billingDate, r.dueDate]), [
+    ['2026-10-25', '2026-11-10'], ['2026-11-25', '2026-12-10'], ['2026-12-25', '2027-01-10'],
+  ]);
+  assert.deepEqual(planRedate(TWO, rows, '2026-09-26', { roundIndex: 0 }).rows.map((r) => r.billingDate), ['2026-10-10', '2026-11-10', '2026-12-10']);
+  assert.match(planMonthlyFill(TWO, rows, '2026-09-26', { roundIndex: 5 }).error, /ไม่มีในรอบ/);
+});
+
+test('30 กับ 31 ในเดือน 30 วัน = รอบเดียว (ไม่ขึ้นชิปซ้ำ)', () => {
+  const r = { billing: { mode: 'monthly', days: [30, 31] }, payment: { mode: 'credit', days: 0 } };
+  assert.deepEqual(billingRounds(r, '2026-11-01', 2).map((x) => x.billingDate), ['2026-11-30', '2026-12-30']);
 });

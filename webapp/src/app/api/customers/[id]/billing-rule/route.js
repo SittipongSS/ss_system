@@ -7,9 +7,15 @@ import { logBillingRuleActivity } from '@/lib/master/customerBillingRuleUpdate';
 
 export const dynamic = 'force-dynamic';
 
-// ── PATCH /api/customers/[id]/billing-rule — ตั้ง/แก้/ล้าง "รอบวางบิล" ของลูกค้า (mig 0389) ──
+// ── PATCH /api/customers/[id]/billing-rule — ตั้ง/แก้/ล้าง "เครดิตและรอบวางบิล" ของลูกค้า (mig 0389 · รุ่นสอง 0390) ──
 //
-// body: `{ billingRule: object | null }` — null = ล้างรอบ (กลับเป็น "ยังไม่ตั้ง")
+// body: `{ billingRule: object | null }` — null = ล้าง (กลับเป็น "ยังไม่ระบุ")
+//   รูปรุ่นสอง (มติเจ้าของ 26/09): `{ credit:false, note? }` = ไม่มีเครดิต ·
+//   `{ billing: { mode:'anyday' } | { mode:'monthly', days:[1–4 วัน] }, payment: { mode:'credit', days } |
+//     { mode:'monthly', rounds:[{ day, monthOffset }] คู่กับ days }, note? }` = มีเครดิต (หลายรอบต่อเดือนได้)
+//   รูปรุ่นแรก (billing.day / payment.day+monthOffset) ยังรับ — `normalizeBillingRule` แปลงเป็นรุ่นสองก่อนเขียนเสมอ
+// ⭐ **เครดิตแก้ได้ทางนี้ทางเดียว** — ช่อง "เงื่อนไขเครดิต" แบบพิมพ์อิสระของฟอร์มลูกค้าถูกถอด และ PATCH ของลูกค้า
+//    ไม่รับ `creditTerms` แล้ว (มติ 26/09 "เครดิตไม่ต้องอนุมัติ" = เส้นเดียวกับรอบวางบิล)
 // คืน: `{ id, billingRule, billingRuleUpdatedAt, billingRuleUpdatedById, billingRuleUpdatedByName, unchanged, activityLogged }`
 //   `activityLogged` = ลงแถว "ความเคลื่อนไหว" ของลูกค้าสำเร็จไหม (โมดัลเตือนเมื่อไม่สำเร็จ — ดูข้างล่าง)
 //
@@ -39,7 +45,7 @@ export async function PATCH(request, { params }) {
   if (!customer) return Response.json({ error: 'ไม่พบข้อมูลลูกค้ารายนี้' }, { status: 404 });
 
   if (!canEditCustomerBillingRule(user, customer)) {
-    return Response.json({ error: 'ไม่มีสิทธิ์แก้รอบวางบิลของลูกค้ารายนี้ — แก้ได้เฉพาะฝ่ายขายทีมที่ดูแลลูกค้าและฝ่ายบัญชี' }, { status: 403 });
+    return Response.json({ error: 'ไม่มีสิทธิ์แก้เครดิตและรอบวางบิลของลูกค้ารายนี้ — แก้ได้เฉพาะฝ่ายขายทีมที่ดูแลลูกค้าและฝ่ายบัญชี' }, { status: 403 });
   }
 
   /* ก่อนรัน mig 0389 แถวลูกค้าไม่มีคอลัมน์นี้ (`select('*')` ไม่คืนคีย์) — บอกตรง ๆ แทนที่จะปล่อยให้
@@ -50,7 +56,7 @@ export async function PATCH(request, { params }) {
 
   const body = await request.json().catch(() => null);
   if (!body || typeof body !== 'object' || !('billingRule' in body)) {
-    return Response.json({ error: 'ต้องส่ง billingRule (null = ล้างรอบวางบิล)' }, { status: 400 });
+    return Response.json({ error: 'ต้องส่ง billingRule (null = ล้างเครดิตและรอบวางบิล)' }, { status: 400 });
   }
   const { rule, error: ruleError } = normalizeBillingRule(body.billingRule);
   if (ruleError) return Response.json({ error: ruleError }, { status: 400 });
@@ -86,21 +92,30 @@ export async function PATCH(request, { params }) {
     .select()
     .single();
   if (updateError) {
+    /* 23514 ที่ `customers_billing_rule_shape` หลังผ่าน normalizeBillingRule แล้ว = ตัวตรวจของฐานยังเป็นรุ่นแรก
+       (0389 รู้จักแค่ billing.day / payment.day) ⇒ รูปรุ่นสอง (ไม่มีเครดิต · days[] · rounds[]) ตกทุกตัวจนกว่าจะรัน 0390
+       — บอกทางแก้ ไม่ใช่ "กรอกผิด"
+       ⚠️ แยกด้วยชื่อ constraint ไม่ใช่รหัสอย่างเดียว — หลังรัน 0390 แล้ว 23514 ที่ยังเหลือคือ CHECK ตัวอื่นของแถวลูกค้า
+          หรือตัวทำรูปฝั่งโค้ดกับฐานเดินไม่ตรงกัน · บอก "รอรัน 0390" ตอนนั้น = ส่งคนไปรอ migration ที่รันไปแล้ว */
+    if (updateError.code === '23514' && /customers_billing_rule_shape/.test(updateError.message || '')) {
+      return Response.json({ error: 'ฐานข้อมูลยังไม่รับรูปแบบเครดิต/รอบวางบิลนี้ (รอรัน migration 0390) — แจ้งผู้ดูแลระบบ' }, { status: 503 });
+    }
     if (updateError.code === '23514') {
-      return Response.json({ error: 'รูปแบบรอบวางบิลไม่ผ่านการตรวจของฐานข้อมูล' }, { status: 400 });
+      return Response.json({ error: `ฐานข้อมูลไม่รับค่าที่บันทึก: ${updateError.message} — แจ้งผู้ดูแลระบบ` }, { status: 500 });
     }
     if (updateError.code === 'PGRST204' || updateError.code === '42703') {
       return Response.json({ error: 'ฐานข้อมูลยังไม่รองรับรอบวางบิล (รอรัน migration 0389) — แจ้งผู้ดูแลระบบ' }, { status: 503 });
     }
-    return Response.json({ error: `บันทึกรอบวางบิลไม่สำเร็จ: ${updateError.message}` }, { status: 500 });
+    return Response.json({ error: `บันทึกเครดิตและรอบวางบิลไม่สำเร็จ: ${updateError.message}` }, { status: 500 });
   }
 
   const verb = !rule ? 'ล้าง' : before ? 'แก้' : 'ตั้ง';
   const subject = [customer.arCode, customer.name].filter(Boolean).join(' ') || id;
+  /* ประโยคเดียวกับการ์ด/เธรด (`describeBillingRule` — รุ่นสองพูด "ไม่มีเครดิต" และหลายรอบเอง) */
   await recordAudit({
     user, action: 'update', entityType: 'customer', entityId: id,
     before: customer, after: updated,
-    summary: `${verb}รอบวางบิลของลูกค้า ${subject}${rule ? `: ${describeBillingRule(rule)}` : ''}`,
+    summary: `${verb}เครดิตและรอบวางบิลของลูกค้า ${subject}${rule ? `: ${describeBillingRule(rule)}` : ''}`,
     request,
   });
 

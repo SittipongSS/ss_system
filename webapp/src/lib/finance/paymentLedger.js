@@ -26,7 +26,8 @@ import {
   OPENING_INSTALLMENT_LABEL, ORIGIN_PIPELINE, historicalRefsOf, isHistoricalOrder, isOpeningInstallment,
 } from '@/lib/sales/historicalOrders';
 import {
-  BILLING_REMIND_DAYS, billingRequestLive, billingState, billingStateLabel, describeBillingRule,
+  BILLING_REMIND_DAYS, billingRequestLive, billingRuleNoCredit, billingRuleOf, billingState, billingStateLabel,
+  describeBillingRule,
 } from '@/lib/sales/billingRule';
 
 /** สถานะงวด → ป้ายไทย + โทนสี (ชุดเดียวกับที่การ์ดในใบ SO ใช้) */
@@ -174,7 +175,11 @@ export function ledgerRow({
        ⚠️ ค่าระดับลูกค้า — ทุกงวดของใบพกค่าเดียวกัน · '' = ยังไม่ตั้ง (หรือยังไม่รัน 0389 — route ถอยไปอ่านชุดเดิม)
        ⚠️ อยู่ในชุดค้นด้วย (ตาเห็นบนแถว = ต้องค้นเจอ) */
     customerId: order.customerId || customer?.id || null,
+    /* รอบรุ่นสอง (mig 0390): ลูกค้า "ไม่มีเครดิต" ได้ข้อความ "ไม่มีเครดิต" (ตั้งแล้ว — ไม่ใช่ "ยังไม่ตั้งรอบ") แต่ **ไม่มีรอบ**
+       ⇒ `billingRuleActive` = มีรอบให้เลือกวันงวด (ตั้งแล้วและมีเครดิต) · ตัวนับ "งวดที่ควรมีวันวางบิลแต่ยังไม่มี" และเซลล์
+         "ยังไม่กำหนด" อ่านธงนี้ ไม่ใช่ความว่างของข้อความ (ไม่งั้นทุกงวดของลูกค้าไม่มีเครดิตถูกนับว่าขาดวันวางบิล) */
     billingRuleText: describeBillingRule(customer?.billingRule, { short: true }),
+    billingRuleActive: Boolean(billingRuleOf(customer?.billingRule)) && !billingRuleNoCredit(customer?.billingRule),
     /* สองขั้นแรกของราง — พกมากับแถวเพื่อให้ก้อน (`groupLedgerByOrder`) ประกอบราง
        ได้โดยไม่ต้องยิง API ซ้ำ · ขั้นที่สามคำนวณจากงวดในก้อนเอง */
     orderStatus: order.status || null,
@@ -661,6 +666,7 @@ export function undatedHiddenBy(rows = [], filters = {}) {
  *   · `hidden` = งวดที่ยังมีงานวางบิลแต่ **ยังไม่มีวันวางบิล** ซึ่งตัวกรองตัดทิ้งตามความหมาย แต่ยอดสรุปคิดจากแถว
  *     ที่เหลือ ⇒ ต้องบอกว่าซ่อนไปเท่าไร (🐞 คลาสเดียวกับ #1257)
  *   ⚠️ นับเฉพาะงวดที่ "ควรมีวันแต่ไม่มี": รอเหตุการณ์ (มีงานวางบิลแน่ แค่ยังไม่รู้วัน) หรือ **ลูกค้ามีรอบแล้ว** แต่งวดยังไม่ได้เลือกวัน
+ *     ("มีรอบ" = `billingRuleActive` — ลูกค้าไม่มีเครดิตมีข้อความรอบ แต่ไม่มีรอบให้เลือก ⇒ ไม่นับ · mig 0390)
  *     ⇒ ไม่นับงวดของลูกค้าที่ไม่มีรอบและไม่มีใครเลือกอะไร — นั่นคือสถานะปกติ ("บางที่ไม่มีรอบวาง" · คำตอบเจ้าของข้อ 2 ·
  *     ใบเก่าไม่ถูกเติมย้อนหลัง มติข้อ 10) นับเมื่อไร FN เปิดจากกระดิ่งทุกครั้งเจอ "ซ่อน 300+ งวด" ถาวร อ่านเหมือนเงินหาย
  * @returns {{counts: {soon: number, '7d': number, month: number, late: number}, hidden: {count: number, amount: number}}}
@@ -669,7 +675,7 @@ export function ledgerBillingTally(rows = [], filters = {}) {
   const base = filterLedger(rows, { ...filters, billing: '' });
   const undated = ledgerBillingFilter(filters.billing)
     ? base.filter((r) => billingOpenKey(r.billingStateKey) && !r.billingDate
-      && (String(r.billingEvent || '').trim() || String(r.billingRuleText || '').trim()))
+      && (String(r.billingEvent || '').trim() || r.billingRuleActive))
     : [];
   return {
     counts: {
@@ -770,6 +776,7 @@ export function groupLedgerByOrder(rows = []) {
         // รอบวางบิลของลูกค้า (0389) — ค่าระดับลูกค้า ทุกงวดพกค่าเดียวกันมา · id ไว้ทำลิงก์ "ตั้งรอบ"
         customerId: row.customerId || null,
         billingRuleText: row.billingRuleText || '',
+        billingRuleActive: Boolean(row.billingRuleActive),
         orderStatus: row.orderStatus,
         financeStatus: row.financeStatus,
         // ผู้ดูแลมาจากดีลของใบ (ดู `ledgerRow`) — ใช้จัดกลุ่ม "ผู้ดูแล (AE)"

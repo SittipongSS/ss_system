@@ -14,10 +14,12 @@ import {
   loadCreateFormBillingTerms,
   parseCreateFormInstallments,
 } from './salesOrderCreateInstallments.js';
-import { EMPTY_PICKER_VALUE, applyPick } from './billingPicker.js';
+import { EMPTY_PICKER_VALUE, applyPick, pickerRuleOf } from './billingPicker.js';
 
-/* AR-267 เจอร์นัล แล็บ: วางบิลทุกวันที่ 5 · เงินเข้าทุกวันที่ 25 เดือนเดียวกัน (ม็อก จอ B) */
-const AR267 = { billing: { mode: 'monthly', day: 5 }, payment: { mode: 'monthly', day: 25, monthOffset: 0 } };
+/* AR-267 เจอร์นัล แล็บ: วางบิลทุกวันที่ 5 · เงินเข้าทุกวันที่ 25 เดือนเดียวกัน (ม็อก จอ B) — รูปรุ่นสอง (mig 0390)
+   `AR267_V1` = รูปเดียวกันแบบรุ่นแรก (0389) ที่ยังอยู่ในฐานก่อนรัน 0390 — ต้องออกมาเป็นรุ่นสองเสมอ */
+const AR267 = { billing: { mode: 'monthly', days: [5] }, payment: { mode: 'monthly', rounds: [{ day: 25, monthOffset: 0 }] } };
+const AR267_V1 = { billing: { mode: 'monthly', day: 5 }, payment: { mode: 'monthly', day: 25, monthOffset: 0 } };
 const PLAN = [
   { seq: 1, label: 'มัดจำ', percent: 50, amount: 51385.68 },
   { seq: 2, label: 'งวดสุดท้าย', percent: 50, amount: 51385.68 },
@@ -179,8 +181,8 @@ function fakeCustomers(responses) {
   };
 }
 
-test('อ่านรอบของลูกค้าแถวเดียว 4 คอลัมน์ (ไม่ใช่ทะเบียนลูกค้าทั้งก้อน) → สถานะของหน้า', async () => {
-  const supabase = fakeCustomers([{ data: { id: 'CUS-267', arCode: 'AR-267', creditTerms: ' เครดิต 30 วัน ', billingRule: AR267 }, error: null }]);
+test('อ่านรอบของลูกค้าแถวเดียว 4 คอลัมน์ (ไม่ใช่ทะเบียนลูกค้าทั้งก้อน) → สถานะของหน้า · รูปรุ่นแรกแปลงเป็นรุ่นสอง', async () => {
+  const supabase = fakeCustomers([{ data: { id: 'CUS-267', arCode: 'AR-267', creditTerms: ' เครดิต 30 วัน ', billingRule: AR267_V1 }, error: null }]);
   const payload = await loadCreateFormBillingTerms(supabase, 'CUS-267');
   assert.deepEqual(supabase.selects, ['id, "arCode", "creditTerms", "billingRule"']);
   assert.deepEqual(payload, { supported: true, billingRule: AR267, creditTerms: 'เครดิต 30 วัน', arCode: 'AR-267' });
@@ -215,6 +217,16 @@ test('อ่านไม่ขึ้น = { error } ข้อความดิ�
   assert.equal(createFormTermsState({ supported: true, billingRule: { billing: 'x' } }).rule, null);
 });
 
+test('ไม่มีเครดิต (mig 0390) = rule { credit:false } ถึงหน้า · ตัวเลือกรอบได้ null (ทำเหมือนไม่มีรอบ) · ค่าที่ส่งเหลือกำหนดชำระ', () => {
+  const state = createFormTermsState({ supported: true, billingRule: { credit: false, note: ' โอนก่อนส่ง ' }, creditTerms: 'เงินสด', arCode: 'AR-001' });
+  assert.deepEqual(state.rule, { credit: false, note: 'โอนก่อนส่ง' });
+  assert.equal(pickerRuleOf(state.rule), null, 'หน้าสร้างเปิดช่องกำหนดชำระแบบเดิม ไม่ใช่ตัวเลือกรอบ');
+  /* ค่าที่ค้างใน state จากตอนลูกค้ายังมีรอบ ต้องไม่หลุดไปกับใบ (withRule = Boolean(pickerRuleOf(...)) = false) */
+  const picked = { 1: pick({ mode: 'round', billingDate: '2026-10-05' }) };
+  assert.deepEqual(createFormInstallmentItems(PLAN, createFormVisibleValues(picked, { withRule: Boolean(pickerRuleOf(state.rule)) })),
+    [{ seq: 1, billingDate: null, billingEvent: null, dueDate: '2026-10-25' }]);
+});
+
 /* ── ต่อสายจริงในหน้า + route (อ่านซอร์ส — ไม่มี DB ในเทสต์) ──────────── */
 
 const read = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
@@ -238,6 +250,11 @@ test('หน้าสร้างส่งแถวผ่านตัวช่�
   const page = read('app/sales-planning/sales-orders/new/page.js');
   // ส่ง/ตรวจค่าตามที่ตาเห็น (รอบหาย = เหลือกำหนดชำระ) — ไม่ใช่ state ดิบ
   assert.match(page, /createFormVisibleValues\(billing, \{ withRule: Boolean\(rule\) \}\)/);
+  // ไม่มีเครดิต = ทำเหมือนไม่มีรอบ (ตัวตัดสินเดียวกับตัวเลือกรอบ/แผงงวด) แต่แถบบอกว่า "ไม่มีเครดิต"
+  assert.match(page, /const rule = pickerRuleOf\(customerRule\);/);
+  assert.match(page, /const noCredit = billingRuleNoCredit\(customerRule\);/);
+  assert.match(page, /เครดิตของลูกค้า: <b>\{describeBillingRule\(customerRule\)\}<\/b>/);
+  assert.doesNotMatch(page, /rule\.billing\.mode|rule\.payment\.|\.monthOffset/, 'รอบรุ่นสอง: ห้ามอ่านช่องข้างในตรง ๆ');
   assert.match(page, /installments: createFormInstallmentItems\(plannedInstallments, billingValues\)/);
   assert.match(page, /createFormBillingBlocker\(plannedInstallments, billingValues\)/);
   assert.match(page, /createFormDateCheck\(plannedInstallments, billingValues\)/);

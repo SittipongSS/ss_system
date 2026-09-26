@@ -947,15 +947,33 @@ export const billingFillStoppedMessage = (filled, stopped) => `เติมว�
  *   ต่างกัน = คนกดตัดสินจากของเก่า (มีคนแก้งวด/รอบวางบิลจากอีกหน้าต่าง · ข้ามวันระหว่างเปิดหน้าต่าง) ⇒ 409
  *   (ห้ามเขียนชุดที่ server คิดใหม่ทับไปเงียบ ๆ — เท่ากับยืนยันวันที่คนกดไม่เคยเห็น)
  * @param clientPlan `[{ id, billingDate, dueDate }]` ที่พรีวิวแสดง
+ * @param roundIndex รอบที่คนเลือกในโมดัล (ลูกค้าหลายรอบต่อเดือน · มติ 26/09) — ผ่าน `billingRoundIndexOf` ก่อน
+ *   ⭐ ไม่ส่ง/ส่งผิดกับลูกค้าหลายรอบ = `planMonthlyFill` ตีกลับ ⇒ 409 "โหลดหน้าใหม่" (รอบเพิ่งเปลี่ยนจากรอบเดียวเป็นหลายรอบ
+ *     ระหว่างเปิดโมดัล = จอยังไม่เคยถามรอบ · โหลดใหม่แล้วโมดัลถามเอง) · ลูกค้ารอบเดียวไม่อ่านค่านี้
  * @returns `{ rows }` (แถวของ `planMonthlyFill`) หรือ `{ error, status }`
  */
-export function billingFillCheck(rule, rows, clientPlan, todayIso) {
+export function billingFillCheck(rule, rows, clientPlan, todayIso, { roundIndex = null } = {}) {
   if (!Array.isArray(clientPlan) || !clientPlan.length) {
     return { error: 'ไม่ได้ส่งแผนวันงวดมา — เปิดหน้าต่างเติมตามรอบใหม่แล้วลองอีกครั้ง', status: 400 };
   }
-  const fresh = planMonthlyFill(rule, rows, todayIso);
+  const fresh = planMonthlyFill(rule, rows, todayIso, { roundIndex });
   if (fresh.error) return { error: `${fresh.error} — โหลดหน้าใหม่`, status: 409 };
   return samePlan(fresh.rows, clientPlan) ? { rows: fresh.rows } : { error: BILLING_FILL_STALE_MESSAGE, status: 409 };
+}
+
+/**
+ * `roundIndex` จาก body ของ `fill-billing` / `redate-billing` → ค่าที่ส่งเข้าตัวคิด
+ * · ไม่ส่ง / null / '' = ไม่ได้เลือก (ลูกค้ารอบเดียว — ตัวคิดใช้รอบนั้นเอง)
+ * · เลขจำนวนเต็ม (รวมสตริงตัวเลขล้วน) = index · ค่าอื่นส่งต่อตามเดิมให้ตัวคิดตีกลับ "รอบที่เลือกไม่มีในรอบวางบิลของลูกค้า"
+ *   (ห้ามแปลงค่าผิดเป็น null เงียบ ๆ — ลูกค้าหลายรอบจะได้ข้อความ "เลือกรอบก่อน" ทั้งที่จอเลือกไปแล้ว)
+ * ⚠️ แปลงเฉพาะ number/สตริงตัวเลขล้วน (review R-B2 26/09) — เดิม `Number(String(v))` รับ `[1]` เป็น 1 · `' '` เป็น 0 (รอบแรก!)
+ *   · `'1e0'`/`'0x1'` เป็น 1 ⇒ ค่ารูปอื่นส่งต่อทั้งตัวให้ตัวคิดตีกลับ ไม่เดาให้เป็นรอบไหน
+ */
+export function billingRoundIndexOf(value) {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string' && /^\s*-?\d+\s*$/.test(value)) return Number(value.trim());
+  return value;
 }
 
 /* แผนที่จอส่งมา = ชุดที่ server คิดเอง **ทุกแถว** (id ครบ ไม่เกิน ไม่ซ้ำ · วันวางบิล + กำหนดชำระตรงกันทุกงวด)
@@ -998,13 +1016,14 @@ export const billingRedateStoppedMessage = (done, stopped) => `จัดวั�
  * ⭐ กติกาเดียวกับ `billingFillCheck` — server ไม่เชื่อวันจากจอ · ไม่ตรงทุกแถว = 409 (ห้ามเขียนชุดใหม่ทับเงียบ ๆ)
  *   คำร้องที่ถูกส่ง/ยกเลิกระหว่างเปิดหน้าต่างก็ทำให้ชุดเปลี่ยน ⇒ 409 เหมือนกัน (คนกดต้องเห็นว่างวดไหนหลุด/เพิ่ม)
  * @param requestedIds Set ของ id งวดที่ขอใบวางบิลแล้ว (`billingRequestedIds` จากคำร้องที่อ่านสด)
+ * @param roundIndex รอบที่คนเลือกในโมดัล — กติกาเดียวกับ `billingFillCheck`
  * @returns `{ rows }` (แถวของ `planRedate` — เขียนทั้งวันวางบิลและกำหนดชำระ) หรือ `{ error, status }`
  */
-export function billingRedateCheck(rule, rows, clientPlan, todayIso, { requestedIds = new Set() } = {}) {
+export function billingRedateCheck(rule, rows, clientPlan, todayIso, { requestedIds = new Set(), roundIndex = null } = {}) {
   if (!Array.isArray(clientPlan) || !clientPlan.length) {
     return { error: 'ไม่ได้ส่งแผนวันงวดมา — เปิดหน้าต่างจัดวันใหม่อีกครั้ง', status: 400 };
   }
-  const fresh = planRedate(rule, rows, todayIso, { requestedIds });
+  const fresh = planRedate(rule, rows, todayIso, { requestedIds, roundIndex });
   if (fresh.error) return { error: `${fresh.error} — โหลดหน้าใหม่`, status: 409 };
   return samePlan(fresh.rows, clientPlan) ? { rows: fresh.rows } : { error: BILLING_REDATE_STALE_MESSAGE, status: 409 };
 }

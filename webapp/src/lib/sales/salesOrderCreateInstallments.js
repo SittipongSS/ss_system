@@ -188,7 +188,11 @@ export async function loadCreateFormBillingTerms(supabase, customerId) {
 }
 
 /* ก้อน `billingTerms` จาก API → สถานะของหน้า (`null` = ใบไม่ผูกลูกค้า/ไม่ได้ขอ = ไม่มีแถบ)
-   `{ status: 'ready', supported, rule, creditTerms, arCode }` · `{ status: 'error', detail }` */
+   `{ status: 'ready', supported, rule, creditTerms, arCode }` · `{ status: 'error', detail }`
+   ⭐ `rule` = รูปมาตรฐานรุ่นสอง (mig 0390) **รวม `{ credit: false }`** (ไม่มีเครดิต) — ผู้เรียกที่จะเปิดตัวเลือกรอบถาม
+     `pickerRuleOf(rule)` (ไม่มีเครดิต = null · ทำเหมือนไม่มีรอบ) ส่วนแถบ/ประโยคอ่าน `rule` ตรงเพื่อบอกว่า "ไม่มีเครดิต"
+   ⚠️ รูปรุ่นแรก (0389: billing.day / payment.day+monthOffset) ถูกแปลงเป็นรุ่นสองที่ `billingRuleOf` แล้ว ⇒ อย่าอ่านช่องรุ่นแรก
+   · `creditTerms` = ข้อความเครดิตเดิม (ช่องอิสระที่ถอดจากฟอร์มลูกค้าแล้ว · อ่านอย่างเดียว) */
 export function createFormTermsState(payload) {
   if (!payload || typeof payload !== 'object') return null;
   if (payload.error) return { status: 'error', detail: String(payload.error) };

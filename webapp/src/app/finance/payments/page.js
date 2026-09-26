@@ -101,8 +101,9 @@ function NextBillingCell({ group }) {
       </>
     );
   }
-  /* ไม่มีรอบถัดไป — บอกเหตุเท่าที่รู้ (ม็อก D) · ลูกค้าที่ไม่มีรอบ และไม่มีงวดไหนเลือกวัน = ขีด (สถานะปกติ) */
-  if (group.billingUnset && group.billingRuleText) {
+  /* ไม่มีรอบถัดไป — บอกเหตุเท่าที่รู้ (ม็อก D) · ลูกค้าที่ไม่มีรอบ และไม่มีงวดไหนเลือกวัน = ขีด (สถานะปกติ)
+     ⚠️ "มีรอบ" = `billingRuleActive` ไม่ใช่ความว่างของข้อความ — ลูกค้าไม่มีเครดิตมีข้อความ ("ไม่มีเครดิต") แต่ไม่มีรอบให้เลือก (mig 0390) */
+  if (group.billingUnset && group.billingRuleActive) {
     return (
       <>
         <span className="cell-quiet">ยังไม่กำหนด</span>

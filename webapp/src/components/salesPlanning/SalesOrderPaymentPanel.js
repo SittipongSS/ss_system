@@ -41,10 +41,13 @@ import {
 } from "@/lib/sales/installmentReplan";
 import { CONFIRM_DOC_TYPE_LABELS, orderConfirmationOf } from "@/lib/sales/orderConfirmationDocs";
 import {
-  billingRuleOf, billingState, describeBillingRule, describeBillingRuleDetail, dueDateForBilling, formatBillingDate,
-  installmentBillingRedatable, planMonthlyFill, planRedate, weekendNote,
+  billingRoundCount, billingRuleMonthly, billingRuleNoCredit, billingRuleOf, billingState, describeBillingRule,
+  describeBillingRuleDetail, dueDateForBilling, formatBillingDate, installmentBillingRedatable, planMonthlyFill, planRedate,
+  weekendNote,
 } from "@/lib/sales/billingRule";
-import { pickerMissing, pickerPayload, pickerValueFromRow } from "@/lib/sales/billingPicker";
+import {
+  billingRoundChoices, pickedRoundIndex, pickerMissing, pickerPayload, pickerRuleOf, pickerValueFromRow,
+} from "@/lib/sales/billingPicker";
 import { billingRequestHref } from "@/lib/sales/billingRequestHref";
 import {
   INSTALLMENT_STATUS_LABELS, INSTALLMENT_STATUS_TONES, MIN_REJECT_REASON,
@@ -109,6 +112,25 @@ function RedateCell({ from, to }) {
   );
 }
 
+/* "ใช้รอบไหน" ของปุ่มเดือนละงวด (เติมตามรอบ · จัดวันใหม่) — ลูกค้าวางบิลหลายรอบต่อเดือน (มติเจ้าของ 26/09 ข้อ 3 ·
+   "บางบริษัทมี 2 รอบ") · ใบหนึ่งเดือนละงวด ⇒ ต้องรู้ว่างวดของใบนี้ไปรอบไหน · ชิปจาก `billingRoundChoices`
+   🔴 **ไม่เลือกให้** (กฎบ้าน: ไม่มีค่าตั้งต้นให้การตัดสินใจ) — ยังไม่เลือก = ยังไม่มีพรีวิว ปุ่มยืนยันดับพร้อมเหตุ
+   ⚠️ route คิดแผนซ้ำด้วย `roundIndex` ตัวเดียวกัน · รอบของลูกค้าเปลี่ยนระหว่างเปิดโมดัล = แผนไม่ตรง = 409 (กติกาเดิม) */
+function BillingRoundChoice({ choices, value, onChange, disabled, verb }) {
+  return (
+    <div className={styles.field}>
+      <span>ใช้รอบไหน</span>
+      <ChoiceChips ariaLabel={`รอบวางบิลที่จะใช้${verb}`} options={choices} value={value} onChange={onChange}
+        disabled={disabled} />
+      <p className="form-note">
+        {value === null
+          ? `ลูกค้าวางบิลเดือนละ ${choices.length} รอบ — เลือกรอบที่งวดของใบนี้ใช้ แล้วระบบแสดงวันทุกงวดให้ดูก่อน${verb}`
+          : "ทุกงวดใช้รอบนี้ เดือนละงวด · เปลี่ยนรอบได้ ตารางข้างล่างเปลี่ยนตาม"}
+      </p>
+    </div>
+  );
+}
+
 /* การ์ด "การชำระ" ของใบสั่งขาย (mig 0245/0246) — **แบบ ข** (มติผู้ใช้ 2026-08-13)
    เทียบสามแบบไว้ที่ `docs/so-payment-panel-options-mockup.html`
    หลักฐานปิดการขายอยู่หัว · แถบสัดส่วนเงิน · ตารางแน่นที่เทียบข้ามงวดได้ด้วยตากวาดคอลัมน์
@@ -150,6 +172,11 @@ export default function SalesOrderPaymentPanel({
   const [fillOpen, setFillOpen] = useState(false);
   // จัดวันใหม่ตามรอบปัจจุบัน (กำหนดวางบิลรอบสอง) — พรีวิวคิดสดทุกครั้งที่วาดเหมือนเติมตามรอบ (409 แล้วตารางเปลี่ยนตามงวดสด)
   const [redateOpen, setRedateOpen] = useState(false);
+  /* รอบที่เลือกในสองโมดัลข้างบน — ลูกค้าหลายรอบต่อเดือน (มติ 26/09 ข้อ 3) ต้องเลือกก่อนว่าจะใช้รอบไหน · **วันวางบิลของรอบ**
+     (ไม่ใช่ลำดับ — 409 ดึงรอบลูกค้าใหม่แล้วลำดับเลื่อน ชิปที่เลือกจะกระโดดไปรอบอื่นเงียบ ๆ · `pickedRoundIndex` แปลงเป็นลำดับทุกครั้งที่วาด)
+     · **null = ยังไม่เลือก** (ไม่มีค่าตั้งต้น — เปิดโมดัลใหม่ล้างทุกครั้ง) · ลูกค้ารอบเดียวไม่อ่านค่านี้ */
+  const [fillRound, setFillRound] = useState(null);
+  const [redateRound, setRedateRound] = useState(null);
 
   /* ⭐ **ใบสั่งขายย้อนหลัง (มติ 22/09 · mig 0374)** — งวดมาจากฟอร์มคีย์ใบทั้งชุด (งวดยกมา + ที่ยังต้องเก็บ)
      ไม่มีใบเสนอราคาให้คำนวณแผน ⇒ ไม่มี preview · ไม่มี "แผนเปลี่ยน" · ไม่มีปุ่มเริ่มติดตาม
@@ -266,7 +293,22 @@ export default function SalesOrderPaymentPanel({
          แต่รอบวางบิลของใบที่ยกเลิกแล้วไม่มีความหมาย และคอลัมน์ที่ค้างอยู่ทำให้ลิงก์คำร้องของงวดโมฆะหายจากทั้งสองคอลัมน์ */
   const deadOrder = deadPipeline || (historical && order?.status === "cancelled");
   const billingOn = order?.billingSchemaReady !== false && !deadOrder && !movedAway;
-  const billingRule = billingOn ? billingRuleOf(order?.customer?.billingRule) : null;
+  /* ⭐ รอบรุ่นสอง (mig 0390 · มติ 26/09): **ไม่มีเครดิต = ทำเหมือนไม่มีรอบ** (`pickerRuleOf` คืน null) — ช่องกำหนดชำระแบบเดิม ·
+       ไม่มีชิปรอบ · ไม่มีปุ่มเติม/จัดวันใหม่ · แต่บรรทัดรอบบนการ์ด **บอกว่า "ไม่มีเครดิต"** (ไม่ใช่ "ยังไม่ตั้ง" ซึ่งชวนไปตั้ง)
+     ⚠️ ห้ามอ่าน `billingRule.billing.day`/`.payment.day` ตรง ๆ — ถามตัวช่วย (billingRuleMonthly · billingRoundCount) */
+  const billingRule = billingOn ? pickerRuleOf(order?.customer?.billingRule) : null;
+  const noCredit = billingOn && billingRuleNoCredit(order?.customer?.billingRule);
+  const noCreditNote = noCredit ? String(billingRuleOf(order?.customer?.billingRule)?.note || "") : "";
+  /* คอลัมน์ "วันวางบิล" — ลูกค้าไม่มีรอบ/ไม่มีเครดิต และไม่มีงวดไหนมีวันวางบิลหรือรอเหตุการณ์ = ซ่อนทั้งคอลัมน์
+     (ขึ้นขีดทุกแถวไม่บอกอะไร · มติ 26/09 ไม่มีเครดิตทำเหมือนไม่มีรอบ) · ปุ่ม "ขอใบวางบิลงวดนี้" ยังอยู่ในเมนูแถวเสมอ */
+  const billingColumn = billingOn && (Boolean(billingRule)
+    || (installments || []).some((r) => r?.billingDate || String(r?.billingEvent || "").trim()));
+  const monthlyRule = billingRuleMonthly(billingRule);
+  /* รอบต่อเดือน ≥ 2 = ปุ่มเดือนละงวดต้องถามก่อนว่าใช้รอบไหน (planMonthlyFill/planRedate ตีกลับถ้าไม่บอก) */
+  const roundChoices = billingRoundChoices(billingRule);
+  const multiRound = billingRoundCount(billingRule) > 1;
+  /* ประโยครอง "เงินเข้า…" ของรอบ — หลายรอบที่เงินเข้าต่างกันไม่มีบรรทัดนี้ ('') ⇒ ต่อเฉพาะท่อนที่มีค่า ไม่ขึ้น " · " ลอย */
+  const ruleDetail = billingRule ? describeBillingRuleDetail(billingRule) : "";
   /* สิทธิ์ตั้งรอบของลูกค้า — ธงจาก GET ของหน้าใบ (`canEditCustomerBillingRule` ตัวเดียวกับ API ตั้งรอบ)
      ⇒ ไม่มีสิทธิ์ = ไม่ชวน "ตั้งรอบวางบิล" (กติกา "ไม่มีสิทธิ์ = ไม่วาด") · ลิงก์ยังพาไปดูทะเบียนได้ */
   const canSetBillingRule = order?.canEditBillingRule === true;
@@ -307,20 +349,35 @@ export default function SalesOrderPaymentPanel({
   };
   /* ── เติมตามรอบ เดือนละงวด (มติข้อ 3) — พรีวิวกับ route คิดด้วย planMonthlyFill ตัวเดียวกัน · route คิดซ้ำแล้วตีกลับถ้าไม่ตรง
      ⭐ ขึ้นเฉพาะลูกค้าที่วางบิลเป็นรอบรายเดือน + งวดที่ยังเติมได้ ≥ 2 งวด (งวดเดียวใช้ "กำหนดวันงวด" ของแถวพอ)
+     ⭐ ลูกค้าหลายรอบต่อเดือน (มติ 26/09 ข้อ 3): โมดัลถามก่อนว่าใช้รอบไหน (ไม่เลือกให้) แล้วจึงพรีวิว · route คิดซ้ำด้วยรอบเดียวกัน
+       · ปุ่มบนการ์ดนับจาก "งวดที่ยังเติมได้" ซึ่งไม่ขึ้นกับรอบ (installmentBillingFillable) ⇒ นับด้วยรอบแรก (`fillProbe`)
+         เป็นแค่ตัวนับ ไม่ใช่รอบที่เลือกให้ — พรีวิว/ปุ่มยืนยันอ่าน `fillPlan` ที่คิดจากรอบที่คนเลือกเท่านั้น
      ⚠️ ไม่มีสิทธิ์แก้วันงวด/ใบล็อกทั้งใบ = ไม่วาด (ด่านเดียวกับเมนูแถว — ข้อความล็อกบนการ์ดบอกเหตุอยู่แล้ว) */
-  const fillPlan = billingRule?.billing.mode === "monthly" && saved.length ? planMonthlyFill(billingRule, saved, todayIso) : null;
+  /* รอบที่เลือกหายจากรอบลูกค้า (แก้รอบระหว่างเปิดโมดัล) = กลับเป็น "ยังไม่เลือก" · ชิปไม่ค้างสถานะเลือกของวันที่ไม่มีแล้ว */
+  const fillRoundIndex = pickedRoundIndex(billingRule, fillRound);
+  const fillRoundValue = fillRoundIndex === null ? null : fillRound;
+  const fillRoundMissing = multiRound && fillRoundIndex === null;
+  const fillPlan = monthlyRule && saved.length && !fillRoundMissing
+    ? planMonthlyFill(billingRule, saved, todayIso, { roundIndex: fillRoundIndex })
+    : null;
   const fillRows = fillPlan && !fillPlan.error ? fillPlan.rows : [];
+  const fillProbe = monthlyRule && saved.length
+    ? (multiRound ? planMonthlyFill(billingRule, saved, todayIso, { roundIndex: 0 }) : fillPlan)
+    : null;
+  const fillCandidates = fillProbe && !fillProbe.error ? fillProbe.rows : [];
+  const fillGatesOpen = (planned) => planned.length > 0
+    && planned.every((row) => !gate(saved.find((r) => r.id === row.id), "schedule"));
   /* `fillAllowed` = กดยืนยันในโมดัลได้ · `canFill` = ปุ่มเปิดโมดัลบนการ์ด (≥ 2 งวด)
      ⚠️ แยกกันโดยตั้งใจ — เติมหยุดกลางทาง (409) แล้วหน้าดึงงวดสด อาจเหลือ 1 งวดในโมดัลที่เปิดค้าง · route รับแผนงวดเดียวได้
        ถ้าใช้เกณฑ์ ≥ 2 ตัวเดียวกัน ปุ่มยืนยันจะดับโดยไม่มีเหตุบอก (ทางตัน) */
-  const fillAllowed = fillRows.length > 0
-    && fillRows.every((planned) => !gate(saved.find((r) => r.id === planned.id), "schedule"));
-  const canFill = fillRows.length >= 2 && fillAllowed;
-  const fillWithoutDue = fillRows.filter((planned) => !planned.keptDue).length;
+  const fillAllowed = fillRows.length > 0 && fillGatesOpen(fillRows);
+  const canFill = fillCandidates.length >= 2 && fillGatesOpen(fillCandidates);
+  const fillWithoutDue = fillCandidates.filter((planned) => !planned.keptDue).length;
   const submitFill = async () => {
     if (!fillAllowed || !onFillBilling) return;
     const done = await onFillBilling({
       plan: fillRows.map(({ id: rowId, billingDate, dueDate }) => ({ id: rowId, billingDate, dueDate })),
+      roundIndex: fillRoundIndex,
     });
     if (done) setFillOpen(false);
   };
@@ -337,26 +394,48 @@ export default function SalesOrderPaymentPanel({
      ⭐ ไม่มีสิทธิ์แก้วันงวด = ไม่วาด (`installmentScheduleAllowed` ตัวเดียวกับด่าน schedule) · ติดล็อกของใบ / อ่านคำร้อง
        ไม่ขึ้น = วาดแล้วบอกเหตุตอนกด (GatedAction)
      ⚠️ การแก้รายงวดอยู่ครบเหมือนเดิม ("กำหนดวันงวด" · "วันอื่น…" · "แก้กำหนดชำระ") — มติ 26/09: วันที่ระบบแนะนำต้องแก้เองได้เสมอ */
-  const redatePlan = billingRule?.billing.mode === "monthly" && saved.length
-    ? planRedate(billingRule, saved, todayIso, { requestedIds: billingRequestedIds(saved, requestById) })
-    : null;
+  /* ⭐ ลูกค้าหลายรอบต่อเดือน: ถามรอบก่อนพรีวิว (เหมือนเติมตามรอบ) · ปุ่มบนการ์ดขึ้นเมื่อ **รอบใดรอบหนึ่ง** มีงวดที่วันเดิมต้องแทน
+       (`redateProbes` — รอบที่งวดตรงอยู่แล้วตัดแถวทิ้งเอง ⇒ ถามทุกรอบ ไม่ใช่เดารอบแรก) */
+  const requestedIds = billingRequestedIds(saved, requestById);
+  const redateOf = (roundIndex) => planRedate(billingRule, saved, todayIso, { requestedIds, roundIndex });
+  const redateRoundIndex = pickedRoundIndex(billingRule, redateRound);
+  const redateRoundValue = redateRoundIndex === null ? null : redateRound;
+  const redateRoundMissing = multiRound && redateRoundIndex === null;
+  const redatePlan = monthlyRule && saved.length && !redateRoundMissing ? redateOf(redateRoundIndex) : null;
   const redateRows = redatePlan && !redatePlan.error ? redatePlan.rows : [];
+  const planRowsOf = (plan) => (plan && !plan.error ? plan.rows : []);
+  const redateProbes = monthlyRule && saved.length
+    ? (multiRound ? roundChoices.map((_, roundIndex) => planRowsOf(redateOf(roundIndex))) : [redateRows])
+    : [];
   /* อ่านคำร้องของงวดไม่ขึ้น = ไม่รู้ว่างวดไหนขอแล้ว ⇒ แผนบนจอเชื่อไม่ได้ (server อ่านสดแล้วจะได้คนละชุด = 409 วนไม่จบ)
      ⭐ นับเฉพาะงวดที่ "จัดใหม่ได้ถ้ายังไม่ขอ" (`installmentBillingRedatable` ตัวเดียวกับที่ planRedate คัด) — งวดที่รับเงิน/แจ้งชำระแล้ว ·
        ยกมา · รอเหตุการณ์ อยู่นอกแผนไม่ว่าคำร้องจะเป็นอะไร ⇒ อ่านคำร้องของมันไม่ขึ้นไม่เปลี่ยนแผน ไม่ต้องบล็อกทั้งใบ
        (เช่นงวดที่ชำระแล้วซึ่งย้ายมาจากใบที่ยกเลิก แล้วคำร้องเดิมอ่านไม่ขึ้น) */
-  const redateBlocker = saved.some((r) => billingUnknown(r) && installmentBillingRedatable(r))
+  /* ด่านของปุ่มบนการ์ดอ่านแถวของทุกรอบที่ถามไว้ (ยังไม่เลือกรอบ) · ในโมดัลอ่านแถวของรอบที่เลือก */
+  const redateBlockerOf = (planned) => (saved.some((r) => billingUnknown(r) && installmentBillingRedatable(r))
     ? "อ่านคำร้องขอเอกสารของงวดไม่สำเร็จ — ยังบอกไม่ได้ว่างวดไหนขอใบวางบิลแล้ว โหลดหน้าใหม่ก่อนจัดวันใหม่"
-    : redateRows.map((planned) => gate(saved.find((r) => r.id === planned.id), "schedule")).find(Boolean) || "";
+    : planned.map((row) => gate(saved.find((r) => r.id === row.id), "schedule")).find(Boolean) || "");
+  const redateBlocker = redateBlockerOf(redateRows);
+  const redateCardBlocker = redateBlockerOf(redateProbes.flat());
   const canRedate = Boolean(onRedateBilling) && installmentScheduleAllowed(user)
-    && redateRows.some((planned) => planned.prevBillingDate || planned.prevDueDate);
+    && redateProbes.some((planned) => planned.some((row) => row.prevBillingDate || row.prevDueDate));
   /* งวดในแผนที่ตอนนี้ขึ้นแดง "เลยกำหนด" — กำหนดชำระใหม่ไม่มีทางอยู่ก่อนวันนี้ (รอบแรกนับจากวันนี้) ⇒ แดงหายหลังจัด
      ต้องบอกก่อนกด: กำหนดชำระเป็นด่านเงิน (ป้ายแดง · ด่านนัดช่าง overdueUnconfirmed) ไม่ใช่แค่วันบนจอ */
+  /* โมดัลเปิดค้างแล้วหน้าดึงข้อมูลใหม่ (409 · อีกหน้าต่างแก้รอบลูกค้า) จนลูกค้า **ไม่มีรอบรายเดือนแล้ว** (ไม่มีเครดิต ·
+     วางบิลได้ทุกวัน · ถอดรอบ) — แผนเป็น null ⇒ ต้องบอกเหตุจริง ไม่ใช่ "ไม่มีงวดที่ต้อง…แล้ว" (ฟังเหมือนงวดครบแล้ว ทั้งที่รอบเปลี่ยน) */
+  const noMonthlyNote = (verb) => {
+    // ใบเลิกวางบิลระหว่างเปิดโมดัล (ถูกยกเลิก/ออก Rev. ทับ) — รอบลูกค้าไม่ได้เปลี่ยน อย่าโทษรอบ
+    if (!billingOn) return `ใบนี้ไม่ต้องวางบิลแล้ว — ไม่มีงวดให้${verb}`;
+    return noCredit
+      ? `ลูกค้าเปลี่ยนเป็นไม่มีเครดิตแล้ว — ไม่มีรอบรายเดือนให้${verb}`
+      : `รอบของลูกค้าเปลี่ยนแล้ว — ไม่มีรอบรายเดือนให้${verb}`;
+  };
   const redateClearsOverdue = redateRows.filter((planned) => planned.prevDueDate && planned.prevDueDate < todayIso).length;
   const submitRedate = async () => {
     if (!redateRows.length || redateBlocker || !onRedateBilling) return;
     const done = await onRedateBilling({
       plan: redateRows.map(({ id: rowId, billingDate, dueDate }) => ({ id: rowId, billingDate, dueDate })),
+      roundIndex: redateRoundIndex,
     });
     if (done) setRedateOpen(false);
   };
@@ -688,16 +767,25 @@ export default function SalesOrderPaymentPanel({
           · ตั้งแล้ว = รอบแบบอ่านง่าย + รายละเอียดเงินเข้า + ลิงก์ไปทะเบียนลูกค้า (ที่เดียวที่แก้รอบได้ — มติข้อ 4)
           · ยังไม่ตั้ง = บอกว่าใช้แบบเดิมได้ (ไม่บังคับ · มติข้อ 7) + ทางไปตั้ง · หมายเหตุการวางบิล (แนบ PO ฯลฯ) ต้องเห็นตอนขอใบวางบิล */}
       {billingOn && order?.customer ? (
-        <div className={styles.ruleLine} data-empty={billingRule ? undefined : "yes"}>
+        <div className={styles.ruleLine} data-empty={billingRule || noCredit ? undefined : "yes"}>
           <CalendarClock size={16} aria-hidden="true" className={styles.ruleIcon} />
           <span className={styles.ruleText}>
             {billingRule ? (
               <>
                 รอบวางบิล: <b>{describeBillingRule(billingRule)}</b>
                 <small>
-                  {describeBillingRuleDetail(billingRule)} · ตั้งที่ทะเบียนลูกค้า{customerCode ? ` ${customerCode}` : ""}
+                  {[ruleDetail, `ตั้งที่ทะเบียนลูกค้า${customerCode ? ` ${customerCode}` : ""}`].filter(Boolean).join(" · ")}
                 </small>
                 {billingRule.note ? <small>{billingRule.note}</small> : null}
+              </>
+            ) : noCredit ? (
+              /* ไม่มีเครดิต (มติ 26/09 ข้อ 2) — ตั้งไว้แล้ว ไม่ใช่ "ยังไม่ตั้ง" ⇒ ไม่ชวนไปตั้งรอบ · งวดกรอกกำหนดชำระเองเหมือนไม่มีรอบ */
+              <>
+                เครดิต: <b>{describeBillingRule(order?.customer?.billingRule)}</b>
+                <small>
+                  ไม่มีรอบวางบิล — กรอกกำหนดชำระเองรายงวด · ตั้งที่ทะเบียนลูกค้า{customerCode ? ` ${customerCode}` : ""}
+                </small>
+                {noCreditNote ? <small>{noCreditNote}</small> : null}
               </>
             ) : (
               <>
@@ -716,14 +804,14 @@ export default function SalesOrderPaymentPanel({
                   · ติดล็อก/อ่านคำร้องไม่ขึ้น = กดแล้วบอกเหตุ (GatedAction) · ไม่มีสิทธิ์ = ไม่มีปุ่ม (canRedate) */}
               {canRedate ? (
                 <GatedAction size="sm" variant="ghost" icon={<CalendarSync size={13} aria-hidden="true" />}
-                  blocker={redateBlocker} disabled={!!busy}
-                  onClick={() => { onClearError?.(); setRedateOpen(true); }}>
+                  blocker={redateCardBlocker} disabled={!!busy}
+                  onClick={() => { onClearError?.(); setRedateRound(null); setRedateOpen(true); }}>
                   จัดวันใหม่ตามรอบปัจจุบัน…
                 </GatedAction>
               ) : null}
               {customerHref ? (
                 <Link className={`linklike ${styles.ruleLink}`} href={customerHref} prefetch={false}>
-                  {!billingRule && canSetBillingRule ? "ตั้งรอบวางบิล" : "ดูที่ทะเบียนลูกค้า"}<ArrowUpRight size={13} aria-hidden="true" />
+                  {!billingRule && !noCredit && canSetBillingRule ? "ตั้งรอบวางบิล" : "ดูที่ทะเบียนลูกค้า"}<ArrowUpRight size={13} aria-hidden="true" />
                 </Link>
               ) : null}
             </span>
@@ -885,10 +973,10 @@ export default function SalesOrderPaymentPanel({
           ผ่านพรีวิวก่อนยืนยันเสมอ (งวดที่มีกำหนดชำระอยู่แล้วคงวันเดิม) */}
       {canFill ? (
         <StatusNotice tone="info" icon={CalendarRange}
-          title={`${fillRows.length} งวดยังไม่มีวันวางบิล${fillWithoutDue ? ` · ${fillWithoutDue} งวดยังไม่มีกำหนดชำระ` : ""}`}
+          title={`${fillCandidates.length} งวดยังไม่มีวันวางบิล${fillWithoutDue ? ` · ${fillWithoutDue} งวดยังไม่มีกำหนดชำระ` : ""}`}
           action={(
             <Button size="sm" tone="neutral" icon={<CalendarRange size={13} aria-hidden="true" />} disabled={!!busy}
-              onClick={() => { onClearError?.(); setFillOpen(true); }}>
+              onClick={() => { onClearError?.(); setFillRound(null); setFillOpen(true); }}>
               เติมตามรอบ เดือนละงวด…
             </Button>
           )}>
@@ -910,14 +998,14 @@ export default function SalesOrderPaymentPanel({
            ⚠️ ใช้ตัวแปรของ primitive ไม่เขียน border ทับเองในโมดูลนี้ — ไม่งั้นได้ทรงที่สอง */
         /* คอลัมน์วันวางบิล (กำหนดวางบิล) กว้างขึ้น ~170px — วัน + ป้ายสถานะ + ปุ่มขอใบวางบิล ตกบรรทัดในเซลล์เอง */
         <TableScroll family="editable" surface="auto" cells="stacked"
-          minWidth={(showCoverage ? 980 : 840) + (billingOn ? 170 : 0)}>
+          minWidth={(showCoverage ? 980 : 840) + (billingColumn ? 170 : 0)}>
           <table className={`${styles.table} ${isPreview ? styles.preview : ""}`.trim()}>
             <thead>
               <tr>
                 {single ? null : <th className={styles.seqCol}>งวด</th>}
                 <th>รายละเอียด</th>
                 {/* ⭐ วันวางบิล (mig 0389) — คนละช่องกับกำหนดชำระเสมอ (ข้างกันให้เทียบได้ แต่ไม่รวมเป็นช่องเดียว) */}
-                {billingOn ? <th>วันวางบิล</th> : null}
+                {billingColumn ? <th>วันวางบิล</th> : null}
                 <th>กำหนดชำระ / จ่ายจริง</th>
                 {showCoverage ? <th>ครอบคลุมบริการ</th> : null}
                 <th className="num">ยอด</th>
@@ -1075,7 +1163,7 @@ export default function SalesOrderPaymentPanel({
                       {/* ⭐ กำหนดวางบิล: คำร้องที่ยังมีชีวิตของงวดที่ยังรอวางบิลย้ายไปอยู่คอลัมน์วันวางบิล (ป้าย "ขอใบวางบิลแล้ว")
                           — ไม่พูดซ้ำสองที่ (ม็อก C) · งวดที่เงินเข้าแล้ว (ใบเสร็จหลังจ่าย) / คำร้องที่ตาย ยังบอกที่นี่ตามเดิม */}
                       {/* ⚠️ งวดโมฆะไม่ส่งต่อให้คอลัมน์วันวางบิล — เซลล์นั้นซ่อนป้ายของงวดโมฆะ ⇒ ลิงก์คำร้องจะหายจากทั้งสองที่ */}
-                      {row.billingRequestId && !(billingOn && !installmentVoid(row, order) && billingStateOf(row).key === "requested") ? (() => {
+                      {row.billingRequestId && !(billingColumn && !installmentVoid(row, order) && billingStateOf(row).key === "requested") ? (() => {
                         const linked = requestById.get(row.billingRequestId);
                         /* อ่านคำร้องไม่ขึ้น ≠ ถูกลบ (review F3) — บอกตามจริง ไม่ชวนออกคำร้องซ้ำ */
                         if (!linked) {
@@ -1114,7 +1202,7 @@ export default function SalesOrderPaymentPanel({
                         );
                       })() : null}
                     </td>
-                    {billingOn ? <td>{billingCell(row)}</td> : null}
+                    {billingColumn ? <td>{billingCell(row)}</td> : null}
                     <td>
                       {/* ⚠️ ธงแดง "เลยกำหนด" อ่าน dueDate ช่องเดียว (ไม่แตะเพราะกำหนดวางบิล) · วันเขียนแบบมีวันในสัปดาห์
                           ให้ตรงกับคอลัมน์วันวางบิลข้าง ๆ (ป้ายเสาร์-อาทิตย์เตือนอย่างเดียว ไม่เลื่อนวัน) */}
@@ -1311,7 +1399,7 @@ export default function SalesOrderPaymentPanel({
                     <tr className={styles.detailRow}>
                       {/* ⚠️ ตัวเลขนี้ต้องขยับทุกครั้งที่เพิ่ม/ลดคอลัมน์ — ไม่งั้นแถวเหตุผลตีกลับ
                           กินความกว้างผิดเฉพาะแถวที่ถูกตีกลับ (เคสที่ไม่ได้เจอทุกวัน) */}
-                      <td className={styles.detail} colSpan={(single ? 7 : 8) + (showCoverage ? 1 : 0) + (billingOn ? 1 : 0)}>
+                      <td className={styles.detail} colSpan={(single ? 7 : 8) + (showCoverage ? 1 : 0) + (billingColumn ? 1 : 0)}>
                         <div className={styles.rejected}>
                           <strong>บัญชีตีกลับ · {row.rejectedByName || "ฝ่ายบัญชี"}</strong>
                           <ReadableText text={row.rejectedReason} lines={3} />
@@ -1437,7 +1525,7 @@ export default function SalesOrderPaymentPanel({
               {withRule ? (
                 <>
                   <p className="form-note">
-                    รอบวางบิลของลูกค้า: <b>{describeBillingRule(billingRule)}</b> — {describeBillingRuleDetail(billingRule)}
+                    รอบวางบิลของลูกค้า: <b>{describeBillingRule(billingRule)}</b>{ruleDetail ? ` — ${ruleDetail}` : ""}
                   </p>
                   <BillingRoundPicker
                     rule={billingRule}
@@ -1453,7 +1541,12 @@ export default function SalesOrderPaymentPanel({
                 <>
                   {/* ลูกค้ายังไม่ตั้งรอบ (มติข้อ 7: ไม่บังคับ) — ทางไปตั้งอยู่ที่ทะเบียนลูกค้าที่เดียว
                       · ปุ่มไปตั้งเฉพาะคนที่ตั้งได้ (`canSetBillingRule`) — คนอื่นได้ประโยคบอกว่าใครตั้งได้ ไม่มีปุ่มที่พาไปเจอทางตัน */}
-                  {billingOn && order?.customer && customerHref ? (
+                  {/* ไม่มีเครดิต = ตั้งแล้ว (ไม่ชวนไปตั้ง) — บอกว่าทำไมไม่มีตัวเลือกรอบ แล้วใช้ช่องกำหนดชำระแบบเดิม */}
+                  {noCredit ? (
+                    <StatusNotice tone="neutral" icon={CalendarClock}>
+                      {`ลูกค้าไม่มีเครดิต${customerCode ? ` (${customerCode})` : ""} — ไม่มีรอบวางบิล กรอกวันครบกำหนดเองรายงวด`}
+                    </StatusNotice>
+                  ) : billingOn && order?.customer && customerHref ? (
                     <StatusNotice tone="neutral" icon={CalendarClock}
                       action={canSetBillingRule ? (
                         <Button as={Link} href={customerHref} prefetch={false} tone="neutral" size="sm"
@@ -1527,11 +1620,14 @@ export default function SalesOrderPaymentPanel({
         <Modal open onClose={() => setFillOpen(false)} title="เติมวันตามรอบ · เดือนละงวด" size="lg" dismissible={!busy}
           subtitle={[order?.orderNumber, customerCode].filter(Boolean).join(" · ")} footer={(
             <div className="action-bar">
-              {fillRows.length ? (
+              {fillRows.length || fillRoundMissing ? (
                 <>
                   <Button variant="ghost" onClick={() => setFillOpen(false)} disabled={!!busy}>ยกเลิก</Button>
-                  <Button tone="primary" disabled={!!busy || !fillAllowed} onClick={submitFill}>
-                    {busy === "installment-fill-billing" ? "กำลังเติม…" : `เติมวัน ${fillRows.length} งวด`}
+                  {/* ยังไม่เลือกรอบ = ปุ่มดับพร้อมเหตุ (บรรทัดใต้ชิปรอบบอกซ้ำ) — ไม่ใช่ปุ่มปิดปุ่มเดียวเหมือนไม่มีอะไรให้เติม
+                      · ป้ายไม่มีจำนวนงวด (เหมือน "จัดวันใหม่") — เลขที่นับก่อนเลือกรอบทำให้ปุ่มดูพร้อมกดทั้งที่ยังดับ */}
+                  <Button tone="primary" disabled={!!busy || !fillAllowed} onClick={submitFill}
+                    title={fillRoundMissing ? "เลือกรอบวางบิลก่อน" : undefined}>
+                    {busy === "installment-fill-billing" ? "กำลังเติม…" : fillRoundMissing ? "เติมวัน" : `เติมวัน ${fillRows.length} งวด`}
                   </Button>
                 </>
               ) : (
@@ -1544,7 +1640,11 @@ export default function SalesOrderPaymentPanel({
             {billingRule ? (
               <p className="form-note">รอบวางบิลของลูกค้า: <b>{describeBillingRule(billingRule)}</b></p>
             ) : null}
-            {fillRows.length ? (
+            {multiRound ? (
+              <BillingRoundChoice choices={roundChoices} value={fillRoundValue} onChange={setFillRound} disabled={!!busy}
+                verb="เติม" />
+            ) : null}
+            {fillRoundMissing ? null : fillRows.length ? (
               <>
                 <ul className={styles.fillLead}>
                   <li>
@@ -1596,7 +1696,9 @@ export default function SalesOrderPaymentPanel({
                 </TableScroll>
               </>
             ) : (
-              <StatusNotice tone="info">{fillPlan?.error || "ไม่มีงวดที่ต้องเติมวันแล้ว"}</StatusNotice>
+              <StatusNotice tone="info">
+                {monthlyRule ? fillPlan?.error || "ไม่มีงวดที่ต้องเติมวันแล้ว" : noMonthlyNote("เติมวัน")}
+              </StatusNotice>
             )}
             <p className="form-note">แก้รายงวดได้ภายหลังจากเมนูของงวด ("กำหนดวันงวด") · บันทึกลงประวัติของใบ</p>
             {/* ไม่เหลืองวดให้เติม (409 แล้วหน้าดึงงวดสด · อีกหน้าต่างเติมไปแล้ว) = ปุ่มปิดปุ่มเดียว — ปุ่มหลัก "เติมวัน 0 งวด" ที่ดับอยู่ไม่มีความหมาย */}
@@ -1614,12 +1716,13 @@ export default function SalesOrderPaymentPanel({
         <Modal open onClose={() => setRedateOpen(false)} title="จัดวันใหม่ตามรอบปัจจุบัน" size="lg" dismissible={!busy}
           subtitle={[order?.orderNumber, customerCode].filter(Boolean).join(" · ")} footer={(
             <div className="action-bar">
-              {redateRows.length ? (
+              {redateRows.length || redateRoundMissing ? (
                 <>
                   <Button variant="ghost" onClick={() => setRedateOpen(false)} disabled={!!busy}>ยกเลิก</Button>
-                  <Button tone="primary" disabled={!!busy || !!redateBlocker} title={redateBlocker || undefined}
+                  <Button tone="primary" disabled={!!busy || !!redateBlocker || !redateRows.length}
+                    title={redateRoundMissing ? "เลือกรอบวางบิลก่อน" : redateBlocker || undefined}
                     onClick={submitRedate}>
-                    {busy === "installment-redate-billing" ? "กำลังจัดวัน…" : `จัดวันใหม่ ${redateRows.length} งวด`}
+                    {busy === "installment-redate-billing" ? "กำลังจัดวัน…" : redateRoundMissing ? "จัดวันใหม่" : `จัดวันใหม่ ${redateRows.length} งวด`}
                   </Button>
                 </>
               ) : (
@@ -1632,7 +1735,13 @@ export default function SalesOrderPaymentPanel({
             {billingRule ? (
               <p className="form-note">รอบวางบิลของลูกค้าตอนนี้: <b>{describeBillingRule(billingRule)}</b></p>
             ) : null}
-            {redateRows.length ? (
+            {multiRound ? (
+              <BillingRoundChoice choices={roundChoices} value={redateRoundValue} onChange={setRedateRound} disabled={!!busy}
+                verb="จัดวันใหม่" />
+            ) : null}
+            {redateRoundMissing ? (
+              redateCardBlocker ? <StatusNotice tone="warning">{redateCardBlocker}</StatusNotice> : null
+            ) : redateRows.length ? (
               <>
                 <ul className={styles.fillLead}>
                   <li>
@@ -1675,7 +1784,9 @@ export default function SalesOrderPaymentPanel({
                 </TableScroll>
               </>
             ) : (
-              <StatusNotice tone="info">{redatePlan?.error || "ไม่มีงวดที่ต้องจัดวันใหม่แล้ว"}</StatusNotice>
+              <StatusNotice tone="info">
+                {monthlyRule ? redatePlan?.error || "ไม่มีงวดที่ต้องจัดวันใหม่แล้ว" : noMonthlyNote("จัดวันใหม่")}
+              </StatusNotice>
             )}
             <p className="form-note">แก้รายงวดได้ภายหลังจากเมนูของงวด ("กำหนดวันงวด") · บันทึกลงประวัติของใบ</p>
             {/* ไม่เหลืองวดให้จัด (409 แล้วหน้าดึงงวดสด · อีกหน้าต่างจัดไปแล้ว) = ปุ่มปิดปุ่มเดียว */}

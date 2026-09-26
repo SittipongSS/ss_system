@@ -13,7 +13,7 @@ import { notifyTaxInvoice } from '@/lib/sales/taxInvoiceNotify';
 import { orderHasServiceRounds } from '@/lib/sales/serviceOrders';
 import {
   INSTALLMENT_STALE_MESSAGE, billingFillCheck, billingFillStoppedMessage, billingRedateCheck, billingRedateRows,
-  billingRedateStoppedMessage, billingRequestedIds, installmentActionError, installmentReportOutcome,
+  billingRedateStoppedMessage, billingRequestedIds, billingRoundIndexOf, installmentActionError, installmentReportOutcome,
   installmentScheduleAllowed, installmentStale, installmentStartBlock, openingCoverageEnd, pipelineInstallmentLock,
   withLiveAmounts,
 } from '@/lib/sales/salesOrderPayments';
@@ -237,7 +237,8 @@ async function loadBillingRequestedIds(supabase, rows) {
      · งวดที่ขอใบวางบิลแล้ว / รอเหตุการณ์ / แจ้งชำระแล้ว / งวดยกมา ไม่ถูกแตะ — "ขอแล้ว" อ่านคำร้องสดที่ server
        (`loadBillingRequestedIds`) ไม่เชื่อจอ · คำร้องเปลี่ยนสถานะระหว่างเปิดหน้าต่าง = ชุดเปลี่ยน = 409
      · กำหนดชำระใหม่แทนวันเดิม ⇒ ป้าย "เลยกำหนด" และด่านนัดช่าง (overdueUnconfirmed) อ่านวันใหม่ทันที — โมดัลบอกก่อนกด
-   ⭐ body `{ action:'redate-billing', plan:[{ id, billingDate, dueDate }] }` = ตารางที่พรีวิวแสดง
+   ⭐ body `{ action:'redate-billing', plan:[{ id, billingDate, dueDate }], roundIndex? }` = ตารางที่พรีวิวแสดง
+     + รอบที่คนเลือก (ลูกค้าหลายรอบต่อเดือน · มติ 26/09 ข้อ 3 — รอบเดียว = ไม่ส่ง/null)
    ⭐ ผู้มีสิทธิ์ = ด่าน `schedule` ทีละงวด (ฝ่ายขายที่แก้ใบได้ · ฝ่ายบัญชี — มติข้อ 4) · ล็อกทั้งใบชนะก่อน
    🔴 ไม่ใช่สิ่งที่ระบบทำเองตอนแก้รอบของลูกค้า — คนกดบนใบเดียว เห็นตาราง "เดิม → ใหม่" ครบก่อนยืนยันเสมอ
    ⚠️ เขียนทีละงวดด้วย `writeBillingFill` ตัวเดียวกับเติมตามรอบ (มีเงื่อนไข updatedAt) — หยุดกลางทาง = งวดที่เขียนแล้วลง audit
@@ -255,7 +256,10 @@ async function redateBillingDates({ user, supabase, req, id, body }) {
     /* ⚠️ อ่านสดแบบโยน error — กลืนเป็น [] แล้วแผนถูกคิดจากงวดที่ไม่มีอยู่จริง */
     const live = await loadInstallments(supabase, order.id);
     const requestedIds = await loadBillingRequestedIds(supabase, live);
-    const built = billingRedateCheck(billing.rule, live, body.plan, businessDate(), { requestedIds });
+    /* `roundIndex` = รอบที่คนเลือกในโมดัล (ลูกค้าหลายรอบต่อเดือน · มติ 26/09 ข้อ 3) — คิดแผนซ้ำด้วยรอบเดียวกัน ·
+       ลูกค้าหลายรอบที่ไม่ส่งรอบมา = ตัวคิดตีกลับ ⇒ 409 (จอเก่าที่ยังไม่เคยถามรอบ) */
+    const roundIndex = billingRoundIndexOf(body.roundIndex);
+    const built = billingRedateCheck(billing.rule, live, body.plan, businessDate(), { requestedIds, roundIndex });
     if (built.error) return fail(built.error, built.status);
 
     const byId = new Map(live.map((row) => [row.id, row]));
@@ -298,7 +302,7 @@ async function redateBillingDates({ user, supabase, req, id, body }) {
       entityType: 'sales_order_installments',
       entityId: order.id,
       before: { installments: before },
-      after: { installments: after, redate: 'billing-rule', billingRule: billing.rule },
+      after: { installments: after, redate: 'billing-rule', billingRule: billing.rule, roundIndex },
       summary: `redate-billing ${after.length} งวด ของ ${order.orderNumber}`
         + (stopped ? ` (หยุดที่งวด ${stopped.seq})` : ''),
       request: req,
@@ -316,7 +320,7 @@ async function redateBillingDates({ user, supabase, req, id, body }) {
 /* ── เติมวันวางบิลตามรอบ เดือนละงวด (กำหนดวางบิล · mig 0389 · มติเจ้าของ 26/09 ข้อ 3 "เอา") ─────────────────
    ⭐ คำสั่งของ **ทั้งใบ** ⇒ PATCH ส่งมาที่นี่ก่อนด่าน `installmentId` (proxy ให้ FN ผ่านเฉพาะ PATCH ของ route นี้ ·
      มติข้อ 4 ให้ FN แก้วันงวดได้ ⇒ คำสั่งที่ FN กดได้ต้องอยู่ที่นี่ ไม่ใช่ sub-route ใหม่ที่ proxy ตัด 403)
-   ⭐ body `{ action:'fill-billing', plan:[{ id, billingDate, dueDate }] }` = แผนที่พรีวิวแสดง ·
+   ⭐ body `{ action:'fill-billing', plan:[{ id, billingDate, dueDate }], roundIndex? }` = แผนที่พรีวิวแสดง (+ รอบที่เลือก) ·
      server คิดชุดเองด้วย `planMonthlyFill` จากงวดสด + รอบสดของลูกค้า + วันนี้ (นาฬิกาไทย) — ไม่ตรงกับที่จอเห็น = 409
      (`billingFillCheck` · ห้ามเขียนชุดใหม่ทับไปเงียบ ๆ = ยืนยันวันที่คนกดไม่เคยเห็น)
    ⭐ ด่านเดียวกับ `schedule` ทีละงวด (installmentActionError · ตัวเดียวกับที่แผงใช้ซ่อนปุ่ม) — ล็อกทั้งใบชนะก่อน
@@ -335,7 +339,9 @@ async function fillBillingDates({ user, supabase, req, id, body }) {
     if (billing.error) return fail(billing.error, billing.status);
     /* ⚠️ อ่านสดแบบโยน error — กลืนเป็น [] แล้วแผนถูกคิดจากงวดที่ไม่มีอยู่จริง */
     const live = await loadInstallments(supabase, order.id);
-    const built = billingFillCheck(billing.rule, live, body.plan, businessDate());
+    /* รอบที่เลือกในโมดัล — กติกาเดียวกับ redate-billing ข้างบน */
+    const roundIndex = billingRoundIndexOf(body.roundIndex);
+    const built = billingFillCheck(billing.rule, live, body.plan, businessDate(), { roundIndex });
     if (built.error) return fail(built.error, built.status);
 
     const byId = new Map(live.map((row) => [row.id, row]));
@@ -379,7 +385,7 @@ async function fillBillingDates({ user, supabase, req, id, body }) {
       entityType: 'sales_order_installments',
       entityId: order.id,
       before: { installments: before },
-      after: { installments: after, fill: 'billing-monthly' },
+      after: { installments: after, fill: 'billing-monthly', billingRule: billing.rule, roundIndex },
       summary: `fill-billing ${after.length} งวด ของ ${order.orderNumber}`
         + (stopped ? ` (หยุดที่งวด ${stopped.seq})` : ''),
       request: req,
