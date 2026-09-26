@@ -518,3 +518,11 @@ test('ใบสเปคสินค้า: แจ้งเตือนพาไ
 test('นัดเข้าบริการ: แจ้งเตือนพาไปใบส่งงานของนัดนั้น ไม่ใช่หน้าตารางเปล่า', () => {
   assert.equal(notificationHref('service_visit', 'SV-26090003'), '/service/visits/SV-26090003');
 });
+
+test('แถวบันทึกรอบวางบิลไม่ลากคนเขียนเข้าเป็นผู้ติดตามเธรด (กำหนดวางบิล 26/09)', () => {
+  assert.deepEqual(threadParticipants([
+    { authorId: 'fn-1', kind: 'billing_rule' },
+    { authorId: 'sa-1', kind: 'comment' },
+    { authorId: 'mgr-1', kind: 'override' },
+  ]).sort(), ['mgr-1', 'sa-1']);
+});

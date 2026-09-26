@@ -12,8 +12,8 @@ import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { canAccessFinance } from '@/lib/permissions';
 import {
-  filterLedger, ledgerReport, ledgerRow, ledgerSummary, ledgerVoidInstallment, orderStateIndex, sortLedger,
-  stampConfirmOutlook, stampOrderPaidThrough, stampOrderReplanned, undatedHiddenBy,
+  filterLedger, ledgerBillingTally, ledgerReport, ledgerRow, ledgerSummary, ledgerVoidInstallment, orderStateIndex,
+  sortLedger, stampConfirmOutlook, stampOrderInstallmentCount, stampOrderPaidThrough, stampOrderReplanned, undatedHiddenBy,
 } from '@/lib/finance/paymentLedger';
 import { reportToXlsxBuffer } from '@/lib/tax/exportExcel';
 import { businessDate } from '@/lib/businessDate';
@@ -21,9 +21,25 @@ import { paymentNotRequired } from '@/lib/sales/salesOrderPayments';
 import { orderHasServiceRounds } from '@/lib/sales/serviceOrders';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { customerNameIn } from '@/lib/master/customerName';
+import { billingDueCandidates } from '@/lib/sales/billingDueNotify';
+import { SAHAMIT_AR_CODE } from '@/lib/sahamit/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+/* ลูกค้าของใบ + รอบวางบิล (mig 0389) — ยิงทีละก้อน: id ลูกค้าเป็น 'CUS-'+uuid ยาว 40 ตัวอักษร ⇒ URL เกิน 16 KB
+   ที่ ~330 ราย (เหตุผลเต็มที่ lib/supabaseInChunks.js) · ไล่หน้าด้วย fetchAllResult + `.order('id')` ที่นิ่ง
+   ⚠️ ก่อนรัน 0389 ไม่มีคอลัมน์ "billingRule" (42703) ⇒ ถอยไปอ่านชุดเดิม — ทะเบียนต้องเปิดได้ก่อนรันมิก
+     (ทุกลูกค้าอ่านเป็น "ยังไม่ตั้งรอบวางบิล" ซึ่งตรงความจริงของวันนั้น) · แพตเทิร์นเดียวกับ loadListInstallments */
+async function loadLedgerCustomers(supabase, customerIds) {
+  const withRule = await fetchInChunks(customerIds, (chunk) => fetchAllResult(() => supabase
+    .from('customers').select('id, name, "nameEn", "arCode", "billingRule"')
+    .in('id', chunk).order('id', { ascending: true })));
+  if (withRule.error?.code !== '42703') return withRule;
+  return fetchInChunks(customerIds, (chunk) => fetchAllResult(() => supabase
+    .from('customers').select('id, name, "nameEn", "arCode"')
+    .in('id', chunk).order('id', { ascending: true })));
+}
 
 /* ดึงทีละก้อนด้วย `.in()` ไม่ใช่ไล่ยิงต่อแถว — ทะเบียนนี้โตตามจำนวนงวดทั้งระบบ
    (ใบละ 1–4 งวด) ยิงต่อแถวเมื่อไรหน้าเดียวก็หลายร้อยรีเควสต์ */
@@ -129,15 +145,40 @@ async function loadLedger(supabase, todayIso) {
   const customerIds = [...new Set((orders || []).map((o) => o.customerId).filter(Boolean))];
   const customerById = new Map();
   if (customerIds.length) {
-    /* ยิงทีละก้อน — id ลูกค้าเป็น 'CUS-'+uuid ยาว 40 ตัวอักษร ⇒ URL เกิน 16 KB ที่ ~330 ราย
-       ทะเบียนลูกค้าวันนี้ 523 ราย (เหตุผลเต็มที่ lib/supabaseInChunks.js) */
-    const { data: customers, error: customerError } = await fetchInChunks(customerIds, (chunk) => supabase
-      .from('customers').select('id, name, "nameEn", "arCode"').in('id', chunk));
+    const { data: customers, error: customerError } = await loadLedgerCustomers(supabase, customerIds);
     if (customerError) throw customerError;
     /* 🐞 ลูกค้าที่มีแต่ชื่ออังกฤษเคยได้แถวไร้ชื่อทั้งบนจอและในไฟล์ Excel ที่บัญชีโหลดไป
        ⇒ ตัดสินชื่อที่จะวาดตั้งแต่ตรงนี้ ทางเดียวกันทั้งสองปลายทาง */
     (customers || []).forEach((c) => customerById.set(c.id, { ...c, name: customerNameIn(c) }));
   }
+
+  /* ── คำร้องขอใบวางบิลที่งวดผูกอยู่ (0260) — ตัดสิน "ขอใบแล้ว" ของรอบวางบิล (0389) ─────────────────
+     ⚠️ ยกเลิกคำร้องไม่ล้าง `billingRequestId` บนงวด ⇒ ต้องอ่านสถานะคำร้องจริง (`billingRequestAlive`)
+       ไม่งั้นงวดที่คำร้องตายแล้วหลุดจาก "เลยรอบ ยังไม่ขอใบวางบิล" เงียบ ๆ
+     ⚠️ เอาแค่ id + สถานะ · ไล่หน้า + ซอยก้อน (dept_requests อยู่ใน check:rowcap) · อ่านไม่ขึ้น = โยน (แบบทุกก้อนข้างบน)
+       ไม่ใช่ถือว่า "ยังไม่ขอ" ทุกงวด ซึ่งจะทำให้การ์ด/ตัวกรองนับเลยรอบเกินจริงโดยไม่มีอะไรบอก */
+  const requestIds = [...new Set(rows.map((r) => r.billingRequestId).filter(Boolean))];
+  const billingRequestById = new Map();
+  if (requestIds.length) {
+    const { data: requests, error: requestError } = await fetchInChunks(requestIds, (chunk) => fetchAllResult(() => supabase
+      .from('dept_requests').select('id, status').in('id', chunk).order('id', { ascending: true })));
+    if (requestError) throw requestError;
+    (requests || []).forEach((r) => billingRequestById.set(r.id, r));
+  }
+
+  /* ── ตัวกรอง `?billing=soon` = ชุดของกระดิ่ง "ถึงรอบวางบิล" เป๊ะ (รอบสอง 26/09 · มติเจ้าของ ข้อ 4) ─────────────────
+     ⭐ ถาม `billingDueCandidates` **ตัวเดียวกับ cron daily-digest** ด้วยวัตถุดิบชุดเดียวกัน (ใบ + สถานะ QT · ลูกค้า ·
+       คำร้องที่ผูก · ข้ามสหมิตรด้วยค่าคงที่บ้านเดียว) ⇒ หัวข้อ "N งวด" บนกระดิ่ง FN = แถวที่ลิงก์เปิดมาเจอ
+       เคยคิดเองจากสถานะงวดอย่างเดียวไม่ได้: ตัวคัดตัดร่างที่ QT ถูกถอด Won · ใบย้อนหลังที่ยังไม่อนุมัติ · ลูกค้าสหมิตร ด้วย
+     ⚠️ ใบต้องพก `quotation` ({ status }) — ไม่มี = ด่านร่างที่ QT ตายไม่ตัดสิน (แบบเดียวกับที่ cron แนบ)
+     ⚠️ งวดที่ตัวคัดเลือกเป็นเซตย่อยของทะเบียนเสมอ (ตัวคัดตัดใบยอด 0 · งวดโมฆะ · งวดร่าง เหมือนทะเบียน) */
+  const remindIds = new Set(billingDueCandidates(rows, {
+    todayIso,
+    ordersById: new Map([...orderById.values()].map((o) => [o.id, { ...o, quotation: quoteById.get(o.quotationId) || null }])),
+    customersById: customerById,
+    requestsById: billingRequestById,
+    skipArCodes: [SAHAMIT_AR_CODE],
+  }).map(({ installment }) => installment.id));
 
   const ledger = rows
     .map((installment) => {
@@ -159,6 +200,8 @@ async function loadLedger(supabase, todayIso) {
         deal: dealById.get(order.dealId) || null,
         todayIso,
         serviceRounds: serviceRoundsByOrder.get(order.id) || false,
+        billingRequest: billingRequestById.get(installment.billingRequestId) || null,
+        billingRemind: remindIds.has(installment.id),
       });
     })
     .filter(Boolean);
@@ -184,6 +227,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     /* ⚠️ "จ่ายถึง" ก็เป็นค่าระดับใบเหมือนกัน ⇒ ต้องประทับจากชุดก่อนกรองด้วยเหตุผลเดียวกัน
        (กรองสถานะงวดแล้วงวด confirmed หลุด ค่าจะกลายเป็น "ยังไม่ครอบ" ทั้งที่เงินครอบอยู่) */
     stampOrderPaidThrough(all);
+    /* จำนวนงวดของทั้งใบ ("แสดง n จาก m งวด" · "แบ่ง m งวด") — ค่าระดับใบ ประทับก่อนกรองด้วยเหตุผลเดียวกัน
+       (กระดิ่ง FN เปิด `?billing=soon` แล้วใบ 12 งวดเหลือหนึ่งงวด ⇒ นับหลังกรอง = "ชำระครั้งเดียว" ทั้งที่ไม่ใช่) */
+    stampOrderInstallmentCount(all);
     /* ภาพหลังรับรอง (จ่ายถึง · เก็บแล้ว · งวดถัดไป) ของงวดในคิว — ค่าระดับใบเหมือนกัน ประทับก่อนกรองด้วยเหตุผลเดียวกัน */
     stampConfirmOutlook(all);
     const filters = {
@@ -199,6 +245,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
          ⚠️ ต้องอยู่ใน literal นี้ ไม่งั้น API เมินพารามิเตอร์เงียบ ๆ **ทั้งจอและไฟล์**
          (ไฟล์ Excel ใช้ query ชุดเดียวกัน) แล้วชิปตัวกรองจะติดอยู่โดยข้อมูลไม่ถูกกรอง */
       taxInvoice: url.searchParams.get('taxInvoice') || '',
+      /* soon | 7d | month | late — รอบวางบิล (mig 0389 · ม็อก D) · กระดิ่งฝั่ง FN ลิงก์มาที่ `?billing=soon` (ชุดของกระดิ่ง)
+         ⚠️ เหตุผลเดียวกับ taxInvoice ข้างบน: ไม่อยู่ใน literal นี้ = API เมินเงียบทั้งจอและไฟล์ */
+      billing: url.searchParams.get('billing') || '',
       orderStates,
     };
     const filtered = sortLedger(filterLedger(all, filters));
@@ -206,6 +255,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
        ตัวกรอง) — แต่ยอดสรุปคิดจากแถวที่เหลือ ⇒ ต้องบอกด้วยว่าซ่อนไปเท่าไร
        ไม่งั้นบัญชีกรองดูเดือนหนึ่งแล้วเชื่อว่ายอดค้างมีเท่าที่เห็น */
     const undatedHidden = undatedHiddenBy(all, filters);
+    /* ตัวนับบนตัวเลือกของกลุ่ม "รอบวางบิล" + งวดที่ยังไม่มีวันวางบิลซึ่งตัวกรองนั้นซ่อน — กติกาเดียวกับ undatedHidden */
+    const billingTally = ledgerBillingTally(all, filters);
 
     if (url.searchParams.get('format') === 'xlsx') {
       /* ⚠️ ไฟล์ที่ดาวน์โหลด = **สิ่งที่กรองไว้บนจอ** ไม่ใช่ทั้งทะเบียนเสมอ —
@@ -228,6 +279,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       // สรุปของ **ทั้งทะเบียน** ไว้ให้หน้าภาพรวมบอกได้ว่ากรองอยู่เห็นไม่ครบ
       totalRows: all.length,
       undatedHidden,
+      billingTally,
       todayIso,
     });
   } catch (loadError) {

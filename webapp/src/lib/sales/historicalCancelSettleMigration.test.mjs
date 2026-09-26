@@ -152,6 +152,7 @@ test('🔒 ผู้เขียนงวดยกมามีแค่ใบย
     '0377_so_installment_replan.sql', // ปฏิเสธงวดยกมาในการปรับแผน
     '0379_historical_so_quote_lines.sql', // ตัวเขียนใบย้อนหลัง (บรรทัดแบบใบเสนอราคา)
     FILE,
+    '0389_customer_billing_rule.sql', // CHECK ห้ามงวดยกมามีวันวางบิล/รอเหตุการณ์ (ห้ามอย่างเดียว ไม่เขียนงวดยกมา)
   ]);
   const SRC = new URL('../../', import.meta.url);
   const walk = (dir) => readdirSync(dir).flatMap((name) => {
@@ -162,5 +163,10 @@ test('🔒 ผู้เขียนงวดยกมามีแค่ใบย
   const jsFiles = walk(SRC)
     .filter((url) => /'opening'|OPENING_INSTALLMENT_KIND/.test(stripJsComments(readFileSync(url, 'utf8'))))
     .map((url) => url.pathname.slice(SRC.pathname.length)).sort();
-  assert.deepEqual(jsFiles, ['lib/sales/historicalIntakeForm.js', 'lib/sales/historicalOrderPlan.js', 'lib/sales/historicalOrders.js']);
+  assert.deepEqual(jsFiles, [
+    'lib/sales/historicalIntakeForm.js',
+    'lib/sales/historicalOrderPlan.js',
+    'lib/sales/historicalOrders.js',
+    'lib/sales/historicalReviewView.js', // ขั้น ④: 'opening' = คีย์แถว/ช่องบนจอ (อ่านแผนอย่างเดียว ไม่เขียนงวด)
+  ]);
 });

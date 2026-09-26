@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  HISTORICAL_APPROVE_TOAST, historicalAfterSaveSteps, historicalApprovalFacts, historicalCancelEffect,
+  HISTORICAL_APPROVE_TOAST, historicalAfterSendRail, historicalApprovalFacts, historicalCancelEffect,
   historicalCancelPrompt, historicalCancelToast, historicalCoverageSegments, historicalOpeningVoidSummary, historicalOpeningRejectNote, historicalOverrideNote, historicalRejectDetail,
   historicalServiceProgress, historicalStatusCopy, historicalWithdrawDetail, historicalWorkflowSteps,
   historicalZoneState, quoteLineText,
@@ -83,7 +83,7 @@ const affirmsActual = (s) => {
 
 // ── สถานะ ─────────────────────────────────────────────────────────────────────────────────────
 test('สถานะ: ป้ายเท่าใบปกติ · คำอธิบายเป็นของใบย้อนหลัง · อนุมัติแล้ว = ไม่นับ Actual', () => {
-  assert.equal(collect(historicalStatusCopy('pending_approval')).label, 'รอ AE Supervisor อนุมัติ');
+  assert.equal(collect(historicalStatusCopy('pending_approval')).label, 'รอผู้จัดการฝ่ายขายอนุมัติ');
   assert.equal(historicalStatusCopy('approved').description, HISTORICAL_STATUS_NOTE);
   assert.equal(collect(historicalStatusCopy('rejected')).tone, 'danger');
   assert.match(collect(historicalStatusCopy('cancelled')).description, /คีย์ใบใหม่/);
@@ -101,13 +101,13 @@ const statesOf = (result, cancelled = false) => workflowStepsFromIndex(result.st
 
 test('รางก้าว: รออนุมัติ = 5 ขั้นตามม็อก · ชี้ขั้น AE Sup · บัญชีขึ้นคิวหลังอนุมัติ', () => {
   const r = collect(historicalWorkflowSteps(ORDER, [OPENING, REGULAR], [], [], TODAY));
-  assert.deepEqual(labelsOf(r), ['คีย์ใบ', 'AE Sup อนุมัติ', 'บัญชีรับรองงวดยกมา', 'TS ตั้งรอบ', 'เข้าบริการ']);
+  assert.deepEqual(labelsOf(r), ['คีย์ใบ', 'ผู้จัดการฝ่ายขายอนุมัติ', 'บัญชีรับรองงวดยกมา', 'TS ตั้งรอบ', 'เข้าบริการ']);
   assert.equal(r.index, 1);
   assert.deepEqual(statesOf(r), ['done', 'current', 'pending', 'pending', 'pending']);
   assert.equal(r.steps[0].hint, 'พิมพ์ชนก รัตนา · 22/09/2026');
-  assert.equal(r.steps[1].hint, 'รอ AE Sup · ไม่นับ Actual');
-  assert.equal(r.steps[2].hint, 'ขึ้นคิวบัญชีหลัง AE Sup อนุมัติ');
-  assert.equal(r.steps[3].hint, 'หลัง AE Sup อนุมัติ · 4 โซน', 'ก่อนอนุมัตินับโซนจากบรรทัด');
+  assert.equal(r.steps[1].hint, 'รอผู้จัดการฝ่ายขาย · ไม่นับ Actual');
+  assert.equal(r.steps[2].hint, 'ขึ้นคิวบัญชีหลังผู้จัดการฝ่ายขายอนุมัติ');
+  assert.equal(r.steps[3].hint, 'หลังผู้จัดการฝ่ายขายอนุมัติ · 4 โซน', 'ก่อนอนุมัตินับโซนจากบรรทัด');
   assert.equal(r.steps[4].hint, 'รอบัญชีรับรองงวด');
 });
 
@@ -167,7 +167,7 @@ test('รางก้าว: บัญชีรับรองแล้ว → T
 
 test('รางก้าว: ใบ ฿0 ไม่มีขั้นบัญชี · ใบไม่มีงวดยกมาใช้งวดแรก', () => {
   const zero = collect(historicalWorkflowSteps({ ...APPROVED, totalAmount: 0, subtotal: 0, vatAmount: 0 }, [], TERMS, [], TODAY));
-  assert.deepEqual(labelsOf(zero), ['คีย์ใบ', 'AE Sup อนุมัติ', 'TS ตั้งรอบ', 'เข้าบริการ']);
+  assert.deepEqual(labelsOf(zero), ['คีย์ใบ', 'ผู้จัดการฝ่ายขายอนุมัติ', 'TS ตั้งรอบ', 'เข้าบริการ']);
   assert.equal(zero.index, 2);
   assert.equal(zero.steps[3].hint, 'ใบยอด 0 บาท — ไม่มีด่านเงิน');
   const firstRow = { ...REGULAR, amount: 261936, coversFrom: '2026-01-01', frozenAt: APPROVED.approvedAt };
@@ -201,7 +201,7 @@ test('สรุปงานบริการ → terms/plans ของราง
 
 test('🔴 สถานะรอบรายโซน: ไม่รู้ = บอกว่าไม่รู้ ไม่ใช่เดาว่า "ยังไม่ตั้งรอบ"', () => {
   const zone = { zoneId: 'Z-1002-01', siteId: 'ST-1002' };
-  assert.equal(collect(historicalZoneState(ORDER, zone)), 'รอ AE Sup อนุมัติ');
+  assert.equal(collect(historicalZoneState(ORDER, zone)), 'รอผู้จัดการฝ่ายขายอนุมัติ');
   assert.equal(collect(historicalZoneState({ ...ORDER, status: 'cancelled' }, zone)), 'ใบยกเลิกแล้ว');
   assert.equal(collect(historicalZoneState(APPROVED, zone, { loading: true })), 'กำลังตรวจรอบบริการ…');
   assert.equal(collect(historicalZoneState(APPROVED, zone, { plannedSiteIds: null })), 'ตรวจรอบบริการไม่ขึ้น — ดูที่แท็บงานบริการ');
@@ -482,41 +482,48 @@ const planOf = (extra = {}, actor = PIM) => planHistoricalServiceOrder({
   todayIso: TODAY, selfOrderId: null,
 });
 
-test('หลังบันทึก: ชุดม็อก — AE Sup → FN → TS → SA ตามลำดับ (REVISION 2)', () => {
+/* ⭐ มติเจ้าของ 25/09 (รื้อขั้น ④): "หลังกดส่ง" เป็นรางแบบหน้าสร้างใบสั่งขาย · ผู้อนุมัติ = ผู้จัดการฝ่ายขาย (AE Sup · CM · CD) */
+test('หลังกดส่ง: ชุดม็อก — คีย์ใบ (คุณอยู่ตรงนี้) → ผู้จัดการฝ่ายขายอนุมัติ → บัญชีรับรองงวดยกมา → TS → ฝ่ายขายตามเก็บงวด', () => {
   const p = planOf();
   assert.deepEqual(p.errors, []);
-  const steps = collect(historicalAfterSaveSteps(p));
-  assert.deepEqual(steps.map((s) => s.key), ['approve', 'finance', 'ts', 'sales']);
-  assert.equal(steps[0].text, 'AE Sup อนุมัติใบ — ตรวจยอด โซน สัญญา');
-  assert.match(steps[0].note, /ไม่นับ Actual \/ FC \/ เป้า/);
-  assert.equal(steps[1].text, 'บัญชีรับรองงวดยกมา ฿196,452.00 → เปิดบริการถึง 30/09/2026');
-  assert.equal(steps[1].note, 'ขึ้นคิวบัญชีหลัง AE Sup อนุมัติ');
-  assert.equal(steps[2].text, 'ตั้งรอบของ 4 โซน — โซนผูกให้แล้ว ไม่ต้องผูกซ้ำ');
-  assert.equal(steps[3].text, 'งวด ต.ค.–ธ.ค. 2026 ฿65,484.00 ครบกำหนด 01/10/2026 — ลูกค้าจ่ายแล้วแจ้งชำระพร้อมหลักฐาน');
-  assert.equal(steps[3].note, null);
+  const steps = historicalAfterSendRail(p).map((step) => { collect([{ text: step.label, note: step.hint }]); return step; });
+  assert.deepEqual(steps.map((s) => s.id), ['keyed', 'approve', 'finance', 'ts', 'collect']);
+  assert.equal(steps[0].state, 'current');
+  assert.equal(steps[0].hint, 'คุณอยู่ตรงนี้ — กดส่งแล้วได้เลข SO (เลขใช้แล้วไม่คืน) · ไฟล์เอกสารแทนสัญญาล็อกระหว่างรออนุมัติ');
+  assert.equal(steps[1].label, 'ผู้จัดการฝ่ายขายอนุมัติ');
+  assert.match(steps[1].hint, /^AE Sup · CM · Commercial Director ตรวจตามรายการข้างบน/);
+  assert.equal(steps[2].label, 'บัญชีรับรองงวดยกมา');
+  assert.match(steps[2].hint, /^฿196,452\.00 แจ้งชำระในชื่อคุณ — รับรองแล้วนัดบริการได้ถึง 30\/09\/2026/);
+  assert.equal(steps[3].hint, '4 โซนขึ้นคิวฝ่ายบริการทันทีที่อนุมัติ — ตั้งรอบได้ก่อนบัญชีรับรอง แต่นัดเข้าบริการรอด่านเงิน');
+  assert.equal(steps[4].hint, 'งวด ต.ค.–ธ.ค. 2026 ฿65,484.00 ครบกำหนด 01/10/2026');
+  /* ป้ายขั้นชุดเดียวกับรางบนหน้าใบย้อนหลัง — ผู้คีย์เห็นรางเดิมต่อหลังระบบพาไปหน้าใบ */
+  const page = historicalWorkflowSteps({ status: 'pending_approval', totalAmount: 261936 }, [], [], [], TODAY).steps;
+  assert.equal(page[1].label, steps[1].label);
 });
 
-test('หลังบันทึก: ผู้คีย์เป็นผู้ตรวจเอง = ต้องให้ AE Sup คนอื่นหรือ admin อนุมัติ', () => {
-  const steps = collect(historicalAfterSaveSteps(planOf(), { keyerIsReviewer: true }));
-  assert.equal(steps[0].text, 'AE Sup คนอื่นหรือ admin อนุมัติใบ — ผู้คีย์อนุมัติใบตัวเองไม่ได้');
+test('หลังกดส่ง: ผู้คีย์เป็นผู้จัดการ = ผู้จัดการคนอื่นอนุมัติ · admin = Admin Override · ใบที่มีเลขแล้วส่งซ้ำใช้เลขเดิม', () => {
+  assert.match(historicalAfterSendRail(planOf(), { keyerMode: 'manager' })[1].hint, /คนอื่นเป็นผู้อนุมัติ — คุณคีย์\/ส่งใบนี้เองจึงอนุมัติเองไม่ได้/);
+  assert.match(historicalAfterSendRail(planOf(), { keyerMode: 'admin' })[1].hint, /Admin Override/);
+  assert.equal(historicalAfterSendRail(planOf(), { orderNumber: 'SO-26090240-0' })[0].hint, 'คุณอยู่ตรงนี้ — ส่ง SO-26090240-0 อีกครั้ง ใช้เลขเดิม');
 });
 
-test('หลังบันทึก: ใบ ฿0 ไม่มีขั้นบัญชี/ฝ่ายขาย · ไม่มีงวดยกมา = บัญชีรับรองงวดแรก · งวดหลายงวดบอกที่เหลือ', () => {
+test('หลังกดส่ง: ใบ ฿0 ไม่มีขั้นบัญชี/ตามเก็บ · ไม่มีงวดยกมา = บัญชีรับรองงวดแรก · งวดหลายงวดบอกที่เหลือ', () => {
   const zero = planOf({
     zones: [zoneRow('Z-1002-01', 72, { discountType: 'percent', discountValue: 100 })], opening: null, installments: [],
     notes: 'บริการเสริมฟรีตามสัญญาหลัก',
   });
   assert.deepEqual(zero.errors, []);
-  assert.equal(zero.zeroValue, true);
-  assert.deepEqual(collect(historicalAfterSaveSteps(zero)).map((s) => s.key), ['approve', 'ts']);
+  const zeroSteps = historicalAfterSendRail(zero);
+  assert.deepEqual(zeroSteps.map((s) => s.id), ['keyed', 'approve', 'ts']);
+  assert.match(zeroSteps[2].hint, /นัดได้ทันที ไม่มีด่านเงิน/);
 
   const noOpening = planOf({ opening: null, installments: [
     { label: 'ทั้งสัญญา', amount: 261936, dueDate: '2026-10-01', coversFrom: '2026-01-01', coversTo: '2026-12-31' },
   ] });
   assert.deepEqual(noOpening.errors, []);
-  const steps = collect(historicalAfterSaveSteps(noOpening));
-  assert.equal(steps[1].text, 'บัญชีรับรองงวดแรกเมื่อลูกค้าจ่ายและฝ่ายขายแจ้งชำระ');
-  assert.match(steps[1].note, /ไม่มีงวดยกมา/);
+  const steps = historicalAfterSendRail(noOpening);
+  assert.equal(steps[2].label, 'บัญชีรับรองงวดแรก');
+  assert.equal(steps[2].hint, 'เมื่อลูกค้าจ่ายและฝ่ายขายแจ้งชำระ — ก่อนนั้นนัดบริการไม่ได้');
 
   const split = planOf({ installments: [
     { label: 'งวด ต.ค.', amount: 21828, dueDate: '2026-10-01', coversFrom: '2026-10-01', coversTo: '2026-10-31' },
@@ -524,9 +531,7 @@ test('หลังบันทึก: ใบ ฿0 ไม่มีขั้นบ
     { label: 'งวด ธ.ค.', amount: 21828, dueDate: '2026-12-01', coversFrom: '2026-12-01', coversTo: '2026-12-31' },
   ] });
   assert.deepEqual(split.errors, []);
-  const last = collect(historicalAfterSaveSteps(split)).at(-1);
-  assert.match(last.text, /^งวด ต.ค. ฿21,828.00 ครบกำหนด 01\/10\/2026/);
-  assert.equal(last.note, 'อีก 2 งวดตามตาราง');
+  assert.equal(historicalAfterSendRail(split).at(-1).hint, 'งวด ต.ค. ฿21,828.00 ครบกำหนด 01/10/2026 · อีก 2 งวดตามตาราง');
 });
 
 // ── ยามรวม (ต้องอยู่ท้ายไฟล์ — อ่านทุกสตริงที่เทสต์ข้างบนเก็บไว้) ───────────────────────────────────
@@ -543,8 +548,8 @@ test('ไฟล์ถ้อยคำ pure — ไม่อ่านนาฬิ�
   assert.doesNotMatch(code, /new Date\(|Date\.now\(|businessDate\(|supabase|\.from\(/);
   const imports = [...code.matchAll(/from '([^']+)'/g)].map((m) => m[1]).sort();
   assert.deepEqual(imports, [
-    '@/lib/format', '@/lib/sales/contracts', '@/lib/sales/historicalOrders', '@/lib/sales/paymentCoverage',
-    '@/lib/sales/salesOrderPayments',
+    '@/lib/format', '@/lib/sales/contracts', '@/lib/sales/historicalDuplicates', '@/lib/sales/historicalOrders',
+    '@/lib/sales/paymentCoverage', '@/lib/sales/salesOrderPayments',
   ]);
 });
 
@@ -570,3 +575,33 @@ test('โมดัลอนุมัติ: ใบที่มีส่วนล
   assert.ok(none.checklist.some((line) => line.startsWith('ยอดรวมทั้งสิ้น:') && !line.includes('หัก ส่วนลด')));
 });
 
+
+/* ⭐ มติ 26/09 "บันทึกใบซ้ำที่ผู้คีย์ยืนยัน": หน้าต่างอนุมัติบอกใบที่ผู้คีย์ยืนยันว่าไม่ซ้ำ (ใคร · เมื่อไร · เหตุผล) และใบที่พบเพิ่ม
+   ตอนเปิดใบ — เตือน ไม่บล็อก · ต่อจากคำเตือนโซนซ้อน · ไม่มีอะไรจะพูด = ไม่มีแถว (ตารางตรวจทั้งใบข้างบนตรึงไว้แล้ว) */
+test('โมดัลอนุมัติ: ใบที่อาจซ้ำ — บันทึกของผู้คีย์ + ที่พบเพิ่ม · ต่อจากคำเตือนโซนซ้อน · ไม่มี = ไม่มีแถว', () => {
+  const review = {
+    v: 1, checkedAt: '2026-09-26T07:32:00.000Z', byName: 'พิมพ์ชนก รัตนา', basis: 'ids', note: 'คนละอาคาร',
+    orders: [{ id: 'SOR-A', orderNumber: 'SO-26090001-0', status: 'pending_approval', matchedOn: [{ kind: 'startDate', value: '2026-01-01' }] }],
+  };
+  const order = { ...ORDER, metadata: { historicalIntake: { vatRate: 7, duplicateReview: review } } };
+  const duplicateCheck = {
+    candidates: [
+      { id: 'SOR-A', status: 'approved', matchedOn: [] },
+      { id: 'SOR-N', orderNumber: 'SO-26090009-0', status: 'draft', matchedOn: [{ kind: 'ref', value: 'PO-1' }] },
+    ],
+    statusById: { 'SOR-A': 'approved', 'SOR-N': 'draft' },
+  };
+  const { checklist, effects } = historicalApprovalFacts(order, {
+    ...EXTRAS, liveTermWarnings: [{ zoneCode: 'ZN-1', orderNumber: 'SO-X', endDate: '2026-12-31' }], duplicateCheck,
+  });
+  const at = checklist.findIndex((line) => line.startsWith('⚠️ ใบที่อาจซ้ำ'));
+  assert.ok(at > checklist.findIndex((line) => line.includes('โซนนี้มีรอบขายของ')), 'ต่อจากคำเตือนโซนซ้อน');
+  assert.match(checklist[at], /ผู้คีย์ยืนยันว่าไม่ซ้ำ \(พิมพ์ชนก รัตนา · .+\) · เหตุผล: “คนละอาคาร”/);
+  assert.equal(checklist[at + 1], '⚠️ SO-26090001-0 (ตอนยืนยัน: รอผู้จัดการฝ่ายขายอนุมัติ · ตอนนี้: อนุมัติแล้ว) — ตรงกันที่ วันเริ่มสัญญา');
+  assert.equal(checklist[at + 2], '⚠️ พบใบที่อาจซ้ำเพิ่มหลังผู้คีย์ยืนยัน: SO-26090009-0 (ฉบับร่าง) — ตรงกันที่ เลขเอกสารเดิม PO-1');
+  assert.ok(!effects.some((line) => /ใบที่อาจซ้ำ/.test(line)), 'การยืนยันไม่ก่อผลตอนอนุมัติ — ไม่อยู่ใน effects');
+  /* ไม่มีใบที่อาจซ้ำ (บันทึก orders: [] และตรวจใหม่ว่าง) = ไม่มีแถวเพิ่ม */
+  const clean = historicalApprovalFacts({ ...ORDER, metadata: { historicalIntake: { duplicateReview: { ...review, orders: [] } } } },
+    { ...EXTRAS, duplicateCheck: { candidates: [], statusById: {} } });
+  assert.deepEqual(clean.checklist, historicalApprovalFacts(ORDER, EXTRAS).checklist);
+});

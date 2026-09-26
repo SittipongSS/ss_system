@@ -19,11 +19,11 @@ import {
   historicalAsideRows, historicalBulkAddRows, historicalIssueText, historicalBulkConsequence, historicalBulkQtyIssue,
   historicalContractDateIssues, historicalContractDateWarnings,
   historicalContractFileCount, historicalCoverageWarning,
-  historicalDownstreamReset, historicalDuplicateGate, historicalExitActions, historicalFieldAnchorId,
+  historicalDocStatusLabel, historicalDownstreamReset, historicalDuplicateGate, historicalFieldAnchorId,
   historicalFootNote, historicalIssuesWithRowKeys, historicalLineIssues,
   historicalLinesSummary, historicalMoneyView, historicalNextBlock, historicalPruneIssues,
   historicalReviewStaleNotice, historicalSaveExit,
-  historicalSaveFailureState, historicalStepIssueNotice,
+  historicalStepIssueNotice,
   HISTORICAL_FULL_WIDTH_STEPS, HISTORICAL_LINE_MESSAGES, historicalTotalsView,
   historicalZoneLines, historicalZonePickerOptions, historicalZonesWithPlanPrices,
   historicalTeamField, historicalWizardRail, historicalZoneBrowser, historicalZoneLineAmount,
@@ -38,6 +38,7 @@ import {
 import { QUOTE_VAT_OPTIONS } from '../salesPlanning.js';
 import { quoteLineFromProduct } from './quoteLines.js';
 import { OPENING_INSTALLMENT_LABEL } from './historicalOrders.js';
+import { historicalSaveResultView } from './historicalReviewView.js';
 import { coverageIsContinuous } from './paymentCoverage.js';
 
 /* ชุดตัวเลขของม็อก (mockups/legacy-so-service-flow) — 196,452 + 65,484 = 261,936 ครอบ 1 ม.ค.–31 ธ.ค. 2026 */
@@ -123,13 +124,21 @@ test('⭐ หลักฐานงวดยกมาส่งทั้งชุ�
   );
 });
 
-test('expectedUpdatedAt / acknowledgeDuplicates ติดไปเฉพาะตอนมีค่า', () => {
+test('expectedUpdatedAt / การยืนยันใบที่อาจซ้ำ ติดไปเฉพาะตอนมีค่า · ยืนยันเป็นรายใบ ไม่ใช่ธง (มติ 26/09)', () => {
   const plain = historicalWizardBody(filledState(), {});
   assert.ok(!('expectedUpdatedAt' in plain));
-  assert.ok(!('acknowledgeDuplicates' in plain));
-  const full = historicalWizardBody(filledState(), { expectedUpdatedAt: '2026-09-22T10:00:00Z', acknowledgeDuplicates: true });
+  assert.ok(!('acknowledgeDuplicates' in plain), 'ฟอร์มไม่ส่งธง true แล้ว — ผ่านกับรายการไหนก็ได้');
+  assert.ok(!('acknowledgedDuplicateIds' in plain));
+  assert.ok(!('duplicateNote' in plain));
+  const full = historicalWizardBody(filledState(), {
+    expectedUpdatedAt: '2026-09-22T10:00:00Z', acknowledgedDuplicateIds: ['SOR-A', ' SOR-B ', 'SOR-A', ''], duplicateNote: '  คนละอาคาร  ',
+  });
   assert.equal(full.expectedUpdatedAt, '2026-09-22T10:00:00Z');
-  assert.equal(full.acknowledgeDuplicates, true);
+  assert.deepEqual(full.acknowledgedDuplicateIds, ['SOR-A', 'SOR-B']);
+  assert.equal(full.duplicateNote, 'คนละอาคาร');
+  assert.ok(!('acknowledgeDuplicates' in full));
+  /* ช่องเหตุผลสังกัดขั้น ④ (ใต้สวิตช์ในการ์ดใบที่อาจซ้ำ) — 400 ของช่องนี้พากลับขั้น ④ ไม่ใช่ขั้น ① */
+  assert.equal(stepOfField('duplicateNote'), 'review');
 });
 
 // ── ② โหลดใบมาแก้ (ฟอร์มแก้ = ฟอร์มสร้าง) ──────────────────────────────────────────
@@ -221,9 +230,28 @@ test('⭐ โหลดมาแล้วประกอบ body กลับไ�
 });
 
 test('ใบร่างที่ยังไม่มีงวดเลย: hasOpening = null (ยังไม่ตัดสินใจ) ไม่ใช่ false', () => {
-  const state = wizardStateFromOrder({ ...ORDER, status: 'draft', installments: [] });
+  const state = wizardStateFromOrder({ ...ORDER, status: 'draft', installments: [], rejectedAt: null });
   assert.equal(state.hasOpening, null);
-  assert.equal(state.rejection, null);
+  assert.equal(state.rejection, null, 'ร่างที่ไม่เคยถูกตีกลับ = ไม่มีป้ายตีกลับ');
+});
+
+test('⭐ ร่างที่พก rejectedAt = ใบที่ถูกตีกลับแล้วบันทึกแก้ (RPC พลิกเป็นร่าง) — เหตุผลยังอยู่บนฟอร์มจนกว่าจะส่งใหม่ (รีวิวขั้น ④ 25/09)', () => {
+  const draft = wizardStateFromOrder({ ...ORDER, status: 'draft' });
+  assert.deepEqual(draft.rejection, wizardStateFromOrder({ ...ORDER, status: 'rejected' }).rejection);
+  assert.ok(draft.rejection?.reason);
+  assert.equal(wizardStateFromOrder({ ...ORDER, status: 'pending_approval' }).rejection, null, 'ส่งใหม่แล้ว = ป้ายหาย');
+  /* ป้ายสถานะบนหัวขั้น ① ④ เดินตามป้ายตีกลับ — ไม่ขึ้น "ฉบับร่าง" คู่กับ "ตีกลับให้แก้ไข" */
+  assert.equal(historicalDocStatusLabel({ ...draft, orderId: 'SOR-H1' }), 'ถูกตีกลับ — แก้แล้วส่งใหม่');
+  assert.equal(historicalDocStatusLabel({ orderId: 'SOR-H1', status: 'draft', rejection: null }), 'ฉบับร่าง — ยังไม่ส่งอนุมัติ');
+});
+
+test('⭐ รางขั้น ④: ปุ่มติดด่าน (ข้อค้าง/ใบซ้ำยังไม่ยืนยัน) = จุดเหลือง ไม่ใช่ "ครบ" · ข้อค้างบอกขั้นและจำนวน (รีวิวขั้น ④ 25/09)', () => {
+  const plan = { zeroValue: false };
+  const at = (options) => historicalWizardRail(emptyHistoricalWizard(), { step: 'review', plan, ...options }).find((r) => r.key === 'review');
+  assert.deepEqual([at({}).summary, at({}).tone], ['ตรวจแล้ว — พร้อมส่ง', 'full']);
+  assert.deepEqual([at({ duplicatesPending: true }).summary, at({ duplicatesPending: true }).tone], ['ตรวจแล้ว — ต้องยืนยันใบที่อาจซ้ำ', 'some']);
+  const local = at({ localIssues: [{ field: 'contract.file', message: 'x' }] });
+  assert.deepEqual([local.summary, local.tone], ['ตรวจแล้ว — ขั้น ① ต้องแก้ 1 ข้อ', 'some']);
 });
 
 // ── ช่อง → ขั้น ────────────────────────────────────────────────────────────────
@@ -790,9 +818,9 @@ test('⭐ รหัสการคีย์ชนใบเดิม: เสน�
   assert.equal(exit.existingOrderId, 'SOR-Habc');
   assert.equal(exit.canOpenExisting, true);
   assert.equal(exit.canRetry, false, 'กดซ้ำก้อนเดิมจะชนอีกทุกครั้ง');
-  const actions = historicalExitActions(exit);
-  assert.deepEqual(actions.map((a) => a.key), ['open']);
-  assert.equal(actions[0].orderId, 'SOR-Habc');
+  const view = historicalSaveResultView(exit);
+  assert.equal(view.action.key, 'open');
+  assert.equal(view.action.orderId, 'SOR-Habc');
 });
 
 test('ชนการหาดีลภาชนะ = ยังไม่มีอะไรลงฐาน ⇒ กดใหม่ได้เลย (คนละคำกับเน็ตหลุด)', () => {
@@ -808,12 +836,10 @@ test('⭐ ใบซ้ำ: กลับไปขั้น ④ พร้อมร
     duplicates: [{ id: 'SOR-H9', orderNumber: 'SO-1' }],
   }));
   assert.equal(exit.kind, 'duplicate');
-  assert.deepEqual(historicalExitActions(exit).map((a) => a.key), [], 'ไม่มีปุ่มทางออก — มันไม่ใช่จอผิดพลาด');
-  const next = historicalSaveFailureState(exit);
-  assert.equal(next.step, 'review');
-  assert.equal(next.exit, null);
-  assert.equal(next.acknowledged, false);
-  assert.equal(next.duplicates.length, 1);
+  /* ไม่มีทางออกให้กด — ฟอร์มรีเฟรชการ์ดใบที่อาจซ้ำ ปิดสวิตช์ แล้วอยู่ขั้น ④ (catch ของ runSave · ตรึงที่ historicalRegisterUi) */
+  assert.deepEqual([exit.canRetry, exit.canEdit, exit.canOpenExisting], [false, false, false]);
+  assert.equal(exit.goToStep, 'review');
+  assert.equal(exit.duplicates.length, 1);
 });
 
 test('400 พร้อม errors[] = กลับไปแก้ที่ขั้นแรกที่มีปัญหา · ไม่มี errors[] ก็ยังพกข้อความไปด้วย', () => {
@@ -821,17 +847,22 @@ test('400 พร้อม errors[] = กลับไปแก้ที่ขั�
     error: 'ต้องเลือกอย่างน้อย 1 โซน', errors: [{ field: 'zones', message: 'ต้องเลือกอย่างน้อย 1 โซน' }],
   }));
   assert.equal(withFields.goToStep, 'zones');
-  assert.equal(historicalExitActions(withFields)[0].carryMessage, null);
+  /* แผงบันทึกบอกขั้นที่พาไป + ข้อที่ต้องแก้อยู่ในก้อนแดงของขั้นนั้น (ไม่ซ้ำข้อความ) · ไม่มีปุ่ม — ฟอร์มพาไปแล้ว */
+  const fieldsView = historicalSaveResultView(withFields, { currentStep: 'zones' });
+  assert.match(fieldsView.title, /ขั้น ② .* มี 1 ข้อต้องแก้/);
+  assert.equal(fieldsView.action, null);
   const plain = historicalSaveExit(apiError(400, { error: 'ยอดงวดรวมไม่เท่ายอดใบ' }));
   assert.equal(plain.goToStep, 'contract');
-  assert.equal(historicalExitActions(plain)[0].carryMessage, 'ยอดงวดรวมไม่เท่ายอดใบ');
+  /* ไม่มี errors[] = ข้อความของ server คือเหตุผลเดียว ⇒ พกไปในแผงบันทึก (รอดการพาไปขั้นอื่น) */
+  assert.match(historicalSaveResultView(plain, { currentStep: 'contract' }).body, /ยอดงวดรวมไม่เท่ายอดใบ/);
 });
 
 test('🔴 รหัสอื่นของ 409/500 ห้ามเสนอ "บันทึกอีกครั้ง" — ก้อนเดิมได้รหัสเดิมวนไม่รู้จบ', () => {
   const exit = historicalSaveExit(apiError(409, { code: 'workflow_stale', error: 'เอกสารถูกเปลี่ยน' }));
   assert.equal(exit.canRetry, false);
   assert.equal(exit.canEdit, true);
-  assert.deepEqual(historicalExitActions(exit).map((a) => a.key), ['edit']);
+  /* ทางออกเดียวคือโหลดใบล่าสุด (ใบถูกแก้จากที่อื่น) — ไม่มี "บันทึกอีกครั้ง" */
+  assert.equal(historicalSaveResultView(exit).action.key, 'reload');
 });
 
 test('เน็ตหลุด / 5xx = อาจลงฐานไปแล้ว ⇒ กดซ้ำได้ (ระบบจำใบและไฟล์ที่ทำไปแล้ว)', () => {
@@ -846,9 +877,9 @@ test('เน็ตหลุด / 5xx = อาจลงฐานไปแล้�
 // ── ด่านก่อนกดบันทึก ────────────────────────────────────────────────────────────
 
 test('⭐ ด่านของปุ่มบันทึก: ใบซ้ำที่ยังไม่ยืนยัน และช่องที่ยังขาด ต่างกันคนละข้อความ', () => {
-  const clean = historicalDuplicateGate({ duplicates: [], acknowledged: false, warnings: ['เตือน'] });
+  const clean = historicalDuplicateGate({ duplicates: [], acknowledged: false });
   assert.equal(clean.gated, false);
-  assert.match(clean.footNote, /คำเตือน 1 ข้อ/);
+  assert.equal(clean.blockedNote, null);
 
   const dup = historicalDuplicateGate({ duplicates: [{ id: 'x' }], acknowledged: false });
   assert.equal(dup.gated, true);
@@ -1028,8 +1059,8 @@ test('🐞 บรรทัดใต้ปุ่ม: ขั้นที่ยั�
     assert.doesNotMatch(note, /อนุมัติทันทีที่บันทึก/, step);
     assert.ok(note.includes(HISTORICAL_SAVE_BUTTON_LABEL), 'บอกด้วยว่าใบจะถูกส่งตอนกดปุ่มไหน');
   }
-  const gate = historicalDuplicateGate({ duplicates: [], acknowledged: false, warnings: [] });
-  assert.equal(historicalFootNote({ step: 'review', gate }), gate.footNote);
+  /* ขั้น ④ มีตัวตัดสินของตัวเอง (historicalReviewFootNote — ทดสอบที่ historicalReviewView.test.mjs) */
+  assert.equal(historicalFootNote({ step: 'review' }), '');
 });
 
 /* 🐞 ฟอร์มเปล่าขึ้น "ยังกรอกไม่ครบ 3 ข้อ" ทั้งที่ช่องดาวแดงยังว่างอีกราว 7 ช่อง */
@@ -1651,7 +1682,6 @@ test('🔴 VAT ที่ยังไม่เลือกบล็อกขั�
     error: PLAN_DISCOUNT_MESSAGES.percent, errors: [{ field: 'discount', message: PLAN_DISCOUNT_MESSAGES.percent }],
   }));
   assert.equal(exit.goToStep, 'zones');
-  assert.equal(historicalExitActions(exit)[0].goToStep, 'zones');
 
   /* ราง: ข้อ VAT ทำให้ขั้น ② เหลือง ไม่ใช่ขั้น ① · ขั้น ① ผ่านแล้ว ⇒ แตะขั้น ② ได้ (ช่องที่ต้องแก้อยู่ที่นั่น) */
   const rail = Object.fromEntries(historicalWizardRail(state, { step: 'contract', localIssues: local }).map((r) => [r.key, r]));

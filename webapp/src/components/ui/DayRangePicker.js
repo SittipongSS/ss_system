@@ -17,12 +17,13 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import Button from "@/components/ui/Button";
-import { addDays, daysInRange, isDayValue, lastDayOfMonth, weekStartOf } from "@/lib/datePeriods";
+import { addDays, daysInRange, isDayValue, lastDayOfMonth, weekRange } from "@/lib/datePeriods";
 import { fmtDate } from "@/lib/format";
 
 const MONTHS_TH = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
 // สัปดาห์เริ่มวันอาทิตย์ — มติผู้ใช้ 2026-07-15 ให้ตรงกับปฏิทินหน้าวันหยุด/mgmt
-// (คนละเรื่องกับ "ถังรายสัปดาห์" ของกราฟซึ่งเป็น จ.–อา. ตามที่ Marketing นับจริง)
+// ⭐ มติเจ้าของ 2026-09-26: ทั้งระบบเริ่มวันอาทิตย์ รวมชิป "สัปดาห์นี้/สัปดาห์ก่อน" ข้างล่าง
+// (เดิมชิปคลุม จ.–อา. ตามถังรายสัปดาห์ของกราฟ ⇒ ไฮไลต์ในกริดเริ่มกลางแถว)
 const DAYS_TH = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];
 const PANEL_WIDTH = 560;
 const PANEL_HEIGHT = 340;
@@ -50,13 +51,15 @@ function cellsOfMonth(month) {
 /** ทางลัดที่ Marketing ใช้จริง — อิง `today` ที่ส่งเข้ามา ไม่ใช่นาฬิกาเครื่อง
  *  (หน้าจอส่งวันไทยมาให้ ไม่งั้นช่วงเลื่อนตาม timezone ของเบราว์เซอร์) */
 export function quickRanges(today) {
-  const monday = weekStartOf(today);
-  const lastMonday = addDays(monday, -7);
+  // สัปดาห์ = อา–ส (`weekRange` → `weekStartOf` ตัวเดียวกับถังรายสัปดาห์ของกราฟ) ⇒ ชิปตรงแถวของกริด
+  // เลขตรึงไว้ที่ datePeriods.test.mjs (ไฟล์ JSX นี้เทสต์โหลดไม่ได้)
+  const thisWeek = weekRange(today, 0);
+  const lastWeek = weekRange(today, -1);
   return [
     { key: "7", label: "7 วันล่าสุด", from: addDays(today, -6), to: today },
     { key: "14", label: "14 วัน", from: addDays(today, -13), to: today },
-    { key: "thisWeek", label: "สัปดาห์นี้", from: monday, to: addDays(monday, 6) },
-    { key: "lastWeek", label: "สัปดาห์ก่อน", from: lastMonday, to: addDays(lastMonday, 6) },
+    { key: "thisWeek", label: "สัปดาห์นี้", from: thisWeek?.from ?? null, to: thisWeek?.to ?? null },
+    { key: "lastWeek", label: "สัปดาห์ก่อน", from: lastWeek?.from ?? null, to: lastWeek?.to ?? null },
     { key: "thisMonth", label: "เดือนนี้", from: startOfMonth(monthOf(today)), to: today },
   ];
 }

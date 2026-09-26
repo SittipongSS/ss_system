@@ -10,40 +10,38 @@
 // ที่กดไปคิวได้เสมอ (`undated`) ไม่งั้นคนอ่านจะสรุปว่าสัปดาห์นี้ว่าง
 import { liveDueDate } from '@/lib/requests/dueRound';
 import { requestClosureStarted } from '@/lib/requests/closure';
+import { addDays, dayOfWeek, weekStartOf } from '@/lib/datePeriods';
 
-const DAY_MS = 86400000;
-
-export const WEEKDAY_LABELS = ['จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.', 'อา.'];
-
-const iso = (ms) => new Date(ms).toISOString().slice(0, 10);
+/** ป้ายวันตามเลข `dayOfWeek` (0 = อาทิตย์) — ไม่ใช่ตามลำดับคอลัมน์ */
+export const WEEKDAY_LABELS = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
 
 /**
- * วันจันทร์ของสัปดาห์ที่มี `todayIso` อยู่ — `offset` = เลื่อนกี่สัปดาห์ (ลบ = ย้อนหลัง)
+ * วันอาทิตย์ของสัปดาห์ที่มี `todayIso` อยู่ — `offset` = เลื่อนกี่สัปดาห์ (ลบ = ย้อนหลัง)
  *
- * ⚠️ **สัปดาห์เริ่มวันจันทร์** ไม่ใช่วันอาทิตย์ — ปฏิทินนี้อ่านเพื่อวางแผนงาน
- * เสาร์-อาทิตย์จึงต้องอยู่ท้ายแถวติดกัน ไม่ใช่คร่อมหัวท้าย
- * ⚠️ คำนวณด้วย UTC ล้วน — `todayIso` ผ่าน `businessDate()` (โซนไทย) มาแล้ว
+ * ⭐ **สัปดาห์เริ่มวันอาทิตย์ (อา–ส)** เหมือนปฏิทินทุกตัวของระบบ — มติเจ้าของ 2026-09-26
+ * (เดิมเริ่มวันจันทร์ให้เสาร์-อาทิตย์อยู่ท้ายแถวติดกัน · มติใหม่ให้ทุกปฏิทินอ่านแบบเดียวกัน
+ * ⇒ อาทิตย์หัวแถว เสาร์ท้ายแถว · วันหยุดยังจางลงทั้งสองช่อง)
+ * ⚠️ คิดบนสตริงวันล้วนผ่าน `weekStartOf` — `todayIso` ผ่าน `businessDate()` (โซนไทย) มาแล้ว
  * เอา Date ของเครื่องมาคิดต่อจะเลื่อนวันตอนตี 5 ของทุกวัน
  */
 export function weekStart(todayIso, offset = 0) {
-  const base = Date.parse(`${String(todayIso).slice(0, 10)}T00:00:00Z`);
-  if (!Number.isFinite(base)) return null;
-  const dow = new Date(base).getUTCDay();          // 0 = อาทิตย์
-  const backToMonday = (dow + 6) % 7;              // จันทร์ = 0
-  return iso(base - backToMonday * DAY_MS + offset * 7 * DAY_MS);
+  const start = weekStartOf(String(todayIso || '').slice(0, 10));
+  return start ? addDays(start, Number(offset || 0) * 7) : null;
 }
 
 /** เจ็ดวันของสัปดาห์ — `{ iso, label, weekend, today }` */
 export function weekDays(startIso, { todayIso = null } = {}) {
-  const base = Date.parse(`${String(startIso).slice(0, 10)}T00:00:00Z`);
-  if (!Number.isFinite(base)) return [];
+  const start = String(startIso || '').slice(0, 10);
+  if (dayOfWeek(start) === null) return [];
   return Array.from({ length: 7 }, (_, i) => {
-    const day = iso(base + i * DAY_MS);
+    const day = addDays(start, i);
+    const dow = dayOfWeek(day);
     return {
       iso: day,
-      label: WEEKDAY_LABELS[i],
+      // ป้ายมาจากวันจริง ไม่ใช่ลำดับคอลัมน์ — ผู้เรียกส่งวันเริ่มที่ไม่ใช่อาทิตย์มาก็ไม่โกหก
+      label: WEEKDAY_LABELS[dow],
       dayOfMonth: Number(day.slice(8, 10)),
-      weekend: i >= 5,
+      weekend: dow === 0 || dow === 6,
       today: !!todayIso && day === String(todayIso).slice(0, 10),
     };
   });

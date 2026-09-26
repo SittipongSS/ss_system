@@ -1,5 +1,7 @@
 import { loadScoped } from '@/lib/scopedRow';
 import { recordAudit } from '@/lib/audit';
+import { notifyUsers } from '@/lib/notifications';
+import { contractApprovedNotice } from '@/lib/sales/contractNotify';
 import { EXTERNAL_DOC_TYPE } from '@/lib/master/attachmentTypes';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import { canViewSalesPlanning } from '@/lib/salesPlanning';
@@ -139,6 +141,12 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       + `${approved.contractNo} (มีผล ${effectiveDate} ถึง ${expiryDate})`,
     request: req,
   });
+
+  /* ⭐ เจ้าของใบต้องรู้ว่าผ่านแล้ว (2026-09-15) — ของเดิมเงียบ ต้องเปิดใบเองถึงจะเห็น
+     ⚠️ หลัง audit เสมอ — แจ้งเตือนพลาดต้องไม่ทำให้การอนุมัติที่สำเร็จแล้วตอบ error
+        (`notifyUsers` กลืน error เองแล้วคืน `{ sent: 0 }` ไม่ throw) */
+  const notice = contractApprovedNotice(approved, user);
+  if (notice) await notifyUsers(supabase, { ...notice, entityType: 'sales_contract', actorName: user.name || null });
 
   const { issuedHtml, ...rest } = approved;
   return ok(rest);

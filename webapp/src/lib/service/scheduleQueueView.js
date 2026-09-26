@@ -607,7 +607,7 @@ export function draftsInRange(visits = [], { from, to }, teamFilter, crewByUser)
     && teamViewVisit(v, teamFilter, crewByUser)).length;
 }
 
-/** ช่วงวันของ "สัปดาห์" สำหรับชิป "วันเสนอ 21–27 ก.ย." */
+/** ช่วงวันของ "สัปดาห์" สำหรับชิป "วันเสนอ 20–26 ก.ย." — `from` เป็นวันอาทิตย์เสมอ (range7 ของตาราง · อา–ส) */
 export function weekChipText(from) {
   const to = addDaysIso(from, 6);
   const [, , d1] = from.split('-').map(Number);

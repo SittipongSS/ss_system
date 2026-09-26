@@ -117,10 +117,13 @@ test('ปุ่มหลักของใบย้อนหลังร่า�
   assert.match(page, /\{ id: "edit", kind: "edit",[^\n]*visible: canEditDocument && !editMode/);
 });
 
-test('"ออกสัญญาจากใบนี้" ไม่ขึ้นกับใบย้อนหลัง — สัญญาของใบคือเอกสารแทนสัญญาที่อนุมัติพร้อมใบ', () => {
+test('ปุ่มออกสัญญาไม่ขึ้นกับใบย้อนหลัง — สัญญาของใบคือเอกสารแทนสัญญาที่อนุมัติพร้อมใบ', () => {
   const page = code(PAGE);
-  const action = slice(page, 'id: "contract",', '},');
-  assert.match(action, /visible: canEdit && !historical &&/);
+  // 25/09 ปุ่มย้ายจากการ์ดจัดการเข้าการ์ดสัญญาของดีลในแท็บ — ด่านเดิมย้ายตามมาเป็น canCreateContract
+  assert.match(page, /const canCreateContract = canEdit && !historical &&/);
+  // ใบย้อนหลังไม่มีการ์ดสัญญาของดีลเลย (ดีลภาชนะ ⇒ ลิสต์ทั้งดีลพาเอกสารแทนสัญญาของใบพี่น้องมาปน)
+  assert.match(page, /\{showDealContracts \? \(\s*\n\s*<DealContractsCard/);
+  assert.match(page, /const showDealContracts = !isHistoricalOrder\(order\);/);
 });
 
 // ── 4. ของใบปกติที่ต้องไม่โผล่ ────────────────────────────────────────────────────────
@@ -144,6 +147,8 @@ test('การ์ดโซน + การ์ดช่วงบริการ �
   assert.match(page, /const historicalCoverage = historical\s*\n\s*\? historicalCoverageSegments\(installments, \{/);
   assert.match(page, /\{historicalCoverage \? \(\s*\n\s*<DetailCard/);
   assert.match(page, /<CoverageTimeline/);
+  /* มติ 26/09: การ์ดใบที่อาจซ้ำ (บันทึกการยืนยันของผู้คีย์) — ใบย้อนหลังเท่านั้น */
+  assert.match(page, /\{historical \? <HistoricalDuplicateReviewCard /);
 });
 
 test('รางก้าว + สถานะของใบย้อนหลังมาจาก historicalOrderCopy — ไม่ใช่ราง 4 ขั้นของใบปกติ', () => {

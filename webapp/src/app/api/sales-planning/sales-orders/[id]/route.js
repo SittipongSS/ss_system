@@ -8,7 +8,7 @@ import {
   DEFAULT_EVIDENCE_BUCKET, salesOrderConfirmationGate, validateOrderConfirmation,
 } from '@/lib/sales/orderConfirmationDocs';
 import { missingStoredEvidence, purgePrivateEvidence, removeEvidenceRefs } from '@/lib/upload/privateEvidence';
-import { departmentOf } from '@/lib/permissions';
+import { canEditCustomerBillingRule, departmentOf } from '@/lib/permissions';
 import {
   canEditSalesPlanning,
   canViewSalesPlanning,
@@ -218,6 +218,23 @@ const HISTORICAL_NO_REVISION = `ใบสั่งขายย้อนหลั
 
 export const dynamic = 'force-dynamic';
 
+/* ลูกค้าของใบ — รหัส AR (หัวหน้าใบ) + **รอบวางบิล** (mig 0389 · แผงงวดบรรทัด "รอบวางบิล: …" · ตัวเลือกรอบของงวด)
+   ⭐ รอบอ่านสดจากทะเบียนทุกครั้ง (ไม่ประทับลงใบ) — แก้รอบที่ทะเบียนแล้วชิปรอบของงวดถัดไปเปลี่ยนตาม ·
+     วันที่บันทึกลงงวดไปแล้วไม่ขยับ (ไม่มีทางเติม/คิดวันย้อนหลังให้ใบเก่าเอง · มติข้อ 10)
+   ⚠️ ก่อนรัน 0389 ไม่มีคอลัมน์ (42703) ⇒ ถอยไปอ่านชุดเดิม (แพตเทิร์น loadListInstallments) + บอกจอว่าฐานยังไม่พร้อม
+     (`billingSchemaReady: false` ⇒ แผงซ่อนคอลัมน์วันวางบิล/ตัวเลือกรอบ แทนที่จะชวนตั้งรอบที่ยังบันทึกไม่ได้)
+     · อ่านพลาดอย่างอื่น = ไม่มีแถวลูกค้า (พฤติกรรมเดิม — หัวใบขึ้นแค่ชื่อ) แต่ไม่โทษ migration
+   ⭐ `team, teams` = ทีมที่ดูแลลูกค้า — GET ถาม `canEditCustomerBillingRule` (ตัวเดียวกับ API ตั้งรอบ) ส่งเป็นธง
+     `canEditBillingRule` ให้แผงเลือกคำ "ตั้งรอบวางบิล" (คนที่ตั้งได้) หรือ "ดูที่ทะเบียนลูกค้า" (ไม่มีสิทธิ์ = ไม่ชวนตั้ง)
+     ⚠️ ขาดสองช่องนี้ = `caretakerTeamsOf` เห็นลูกค้าไร้ทีม ⇒ ถือเป็นของกลาง ⇒ ฝ่ายขายทุกทีมได้ธงจริงผิด ๆ */
+async function loadCustomerOfOrder(supabase, customerId) {
+  if (!customerId) return { customer: null, billingSchemaReady: true };
+  const withRule = await supabase.from('customers').select('id, arCode, team, teams, "billingRule"').eq('id', customerId).maybeSingle();
+  if (withRule.error?.code !== '42703') return { customer: withRule.data || null, billingSchemaReady: true };
+  const legacy = await supabase.from('customers').select('id, arCode, team, teams').eq('id', customerId).maybeSingle();
+  return { customer: legacy.data || null, billingSchemaReady: false };
+}
+
 /* `extras` = แนบของเสริมของใบย้อนหลัง (โซน · ไฟล์เอกสารแทนสัญญา · หลักฐานงวดยกมา · รอบขายของใบอื่น) — เฉพาะ GET
    ที่จอใช้โชว์/ป้อนโมดัลอนุมัติ · action ใน PATCH/DELETE ไม่ต้องจ่ายค่าคิวรีชุดนั้น */
 async function loadOrder(supabase, id, { extras = false } = {}) {
@@ -229,7 +246,7 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
   if (error) throw error;
   if (!order) return null;
 
-  const [{ data: deal }, { data: quotation, error: quotationError }, { data: project }, { data: signatureEvidence, error: signatureEvidenceError }, { data: scentRequest }, { data: customer }] = await Promise.all([
+  const [{ data: deal }, { data: quotation, error: quotationError }, { data: project }, { data: signatureEvidence, error: signatureEvidenceError }, { data: scentRequest }, { customer, billingSchemaReady }] = await Promise.all([
     /* `line` = สายธุรกิจ (PRODUCT|SERVICE|null) — หน้าใบใช้ตัดสินว่าเป็น "ใบมีรอบบริการ"
        ไหม (มติ 2026-08-30: สาย SERVICE + มีบรรทัดหมวด 02-001 ≥1) ผ่าน `orderHasServiceRounds`
        ⚠️ ตัวจริงของค่าอยู่ที่โครงการ ดีลเป็นสำเนาที่ใช้ตอนยังไม่มีโครงการ — ต้องดึงทั้งคู่
@@ -262,10 +279,9 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
       .maybeSingle(),
     /* รหัส AR ของลูกค้า — หัวหน้ารายละเอียดต้องขึ้น `AR-306 · ชื่อ` (มติผู้ใช้ 2026-08-21)
        ⚠️ อ่านสดจากทะเบียน ไม่ใช่ประทับลงใบ: ชื่อบนใบเป็นหลักฐาน ณ วันออก ส่วนรหัส
-       เป็นตัวชี้กลับทะเบียน ต้องเป็นค่าปัจจุบันเสมอ (กติกาเดียวกับ lib/master/customerAr.js) */
-    order.customerId
-      ? supabase.from('customers').select('id, arCode').eq('id', order.customerId).maybeSingle()
-      : Promise.resolve({ data: null }),
+       เป็นตัวชี้กลับทะเบียน ต้องเป็นค่าปัจจุบันเสมอ (กติกาเดียวกับ lib/master/customerAr.js)
+       + รอบวางบิลของลูกค้า (mig 0389) ให้แผงงวด — ดู loadCustomerOfOrder */
+    loadCustomerOfOrder(supabase, order.customerId),
   ]);
   if (signatureEvidenceError) throw signatureEvidenceError;
   /* ⚠️ อ่าน QT พลาด ≠ ใบไม่มี QT (review R1) — เดิมกลืน error ⇒ quotation = null แล้วด่านที่พึ่งสถานะ QT
@@ -331,11 +347,14 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
   const linkedRequestIds = [...new Set(installmentRows.map((r) => r?.billingRequestId)
     .filter((requestId) => requestId && !knownRequestIds.has(requestId)))];
   if (linkedRequestIds.length) {
+    /* ⭐ **รวมคำร้องที่ยกเลิกแล้วด้วย** (กำหนดวางบิล 26/09) — ยกเลิกคำร้องไม่ล้างลิงก์บนงวด ⇒ ถ้ากรองทิ้ง แผงขึ้น
+       "คำร้องขอเอกสารถูกลบไปแล้ว" ทั้งที่แค่ยกเลิก และบอกไม่ได้ว่าลิงก์นี้ตายเพราะอะไร · ตัวตัดสิน "ขอใบวางบิลแล้ว"
+       (installmentBillingRequested) ตัดคำร้องที่ตายทิ้งเอง · เฉพาะ **id ที่งวดผูกอยู่** — ชุดตามใบเสนอราคาข้างบน
+       (ตัวเลือกของ "แนบคำร้องที่ขอไว้แล้ว") ยังตัดใบที่ยกเลิกเหมือนเดิม */
     const { data: linkedRows, error: linkedError } = await fetchInChunks(linkedRequestIds, (chunk) => fetchAllResult(() => supabase
       .from('dept_requests')
       .select('id, docNo, status, title, "billAmount", "billPercent", "quotationId", items:dept_request_items(id, "docType", "docNumber", "docDueDate")')
       .in('id', chunk).eq('kind', 'billing_doc')
-      .neq('status', 'cancelled')
       .order('id', { ascending: true })));
     if (linkedError) {
       console.error('[sales-order] โหลดคำร้องวางบิลของงวดที่ยกมาไม่สำเร็จ:', id, linkedError);
@@ -377,7 +396,7 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
     } catch (extrasError) {
       console.error('[sales-order] โหลดของเสริมของใบย้อนหลังไม่สำเร็จ:', id, extrasError);
       historicalExtras = {
-        lineZones: [], serviceContract, serviceContractFiles: [], openingEvidence: [], liveTermWarnings: [],
+        lineZones: [], serviceContract, serviceContractFiles: [], openingEvidence: [], liveTermWarnings: [], duplicateCheck: null,
         extrasError: extrasError?.message || String(extrasError),
       };
     }
@@ -392,6 +411,7 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
     contractChoices,
     deal: deal || null,
     customer: customer || null,
+    billingSchemaReady,
     quotation: quotation || null,
     project: project || null,
     revisionHistory: revisionHistory || [],
@@ -567,6 +587,9 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
        ⇒ วันไหนขอบเขตแก้แคบกว่าขอบเขตอ่าน (role ใหม่) ปุ่มจะโผล่แล้วเด้ง 409 เงียบ ๆ
        · แพตเทิร์นเดียวกับ `/contracts/[id]` และ `/addenda/[id]` ที่ส่งค่านี้มาให้อยู่แล้ว */
     canEdit: canEditSalesPlanning(user) && inSalesEditScope(user, order.deal),
+    /* สิทธิ์ตั้งรอบวางบิลของลูกค้าของใบ (mig 0389 · มติข้อ 4: ฝ่ายขายทีมที่ดูแล + FN) — ตัวตัดสินตัวเดียวกับ
+       `/api/customers/[id]/billing-rule` ⇒ แผงไม่ชวน "ตั้งรอบวางบิล" คนที่ไปถึงทะเบียนแล้วกดแก้ไม่ได้ (ไม่มีสิทธิ์ = ไม่วาด) */
+    canEditBillingRule: canEditCustomerBillingRule(user, order.customer),
     approverSignature,
     proposerSignature,
     deliveries,

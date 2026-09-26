@@ -64,7 +64,7 @@ const CAPS = {
   sales_deals: 27,              // 353 · 28 → 27 (2026-09-25: cascade FC% ของ NPD อ่านดีลทั้งโครงการผ่าน fetchAll — lib/sales/dealProbability.js)
   products: 22,                 // 281 — ต้นทาง dropdown สินค้าทุกช่องในระบบ · 24 → 22 (ม-150: ด่าน 1 สูตร : 1 FG ถอดแล้ว + attachFormulaUsage ซอยก้อน)
   quotations: 6,                // 198
-  customers: 7,                 // 181 — ต้นทาง dropdown ลูกค้าทุกช่องในระบบ
+  customers: 6,                 // 181 — ต้นทาง dropdown ลูกค้าทุกช่องในระบบ · 7 → 6 (2026-09-26 กำหนดวางบิล: ทะเบียนการชำระ FN อ่านลูกค้าแบบแบ่งหน้า)
   projects: 7,                  // 155
   dept_requests: 12,            // 74 · 188 (2026-09-11)
   /* ⚠️ **ขึ้นทะเบียนตอนยังไม่เจ็บ** (2026-09-08 · mig 0350) — 30 แถววันนี้ แต่มันโต

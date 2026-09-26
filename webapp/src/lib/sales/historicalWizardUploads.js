@@ -18,6 +18,12 @@ import { uploadFileBytes } from "@/lib/master/uploadFile";
 import { EXTERNAL_DOC_TYPE } from "@/lib/master/attachmentTypes";
 
 const pick = (item) => (item?.file ? item : { file: item, ref: null });
+/* ⭐ รีวิวขั้น ④ 25/09: error ของการอัปพกชื่อไฟล์ + ชุดที่ล้ม (`failedFile`) ⇒ แผงบันทึกบอกได้ว่าไฟล์ไหนอัปไม่ขึ้น และเสนอ
+   "เอาไฟล์นี้ออกจากตะกร้า" (ไฟล์ที่ติดค้างในตะกร้าที่ไม่ได้อยู่บนจอขั้น ④ เคยเป็นทางตันที่มองไม่เห็น) */
+/* `key` = คีย์ของไฟล์ในตะกร้า (ชื่อ:ขนาด:เวลาแก้ — ตัวเดียวกับ `PendingFiles`/ฟอร์ม) ⇒ ปุ่ม "เอาไฟล์นี้ออกจากตะกร้า" ชี้ไฟล์ถูกใบแม้ชื่อซ้ำ */
+const failed = (message, file, kind) => Object.assign(new Error(message), {
+  failedFile: { name: file?.name || '', kind, key: file ? `${file.name}:${file.size}:${file.lastModified}` : '' },
+});
 
 /**
  * ① ไฟล์เอกสารแทนสัญญา — หนึ่งใบต่อหนึ่งแถว attachments ของสัญญา
@@ -35,7 +41,7 @@ export async function uploadContractFiles({ contractId, files = [], onUploaded }
     const result = await uploadAttachment({
       entityType: "contract", entityId: contractId, file, docType: EXTERNAL_DOC_TYPE,
     });
-    if (!result.ok) throw new Error(result.error || `แนบไฟล์ ${file?.name || ""} ไม่สำเร็จ`);
+    if (!result.ok) throw failed(result.error || `แนบไฟล์ ${file?.name || ""} ไม่สำเร็จ`, file, "contract");
     const uploaded = { fileName: file?.name || null, docType: EXTERNAL_DOC_TYPE };
     onUploaded?.(file, uploaded);
     done.push(uploaded);
@@ -58,7 +64,7 @@ export async function uploadOpeningEvidence({ orderId, files = [], onUploaded })
     try {
       stored = await uploadFileBytes({ file, entityType: "sales_order_payment_evidence", entityId: orderId });
     } catch (error) {
-      throw new Error(error?.message || `อัปโหลด ${file?.name || ""} ไม่สำเร็จ`);
+      throw failed(error?.message || `อัปโหลด ${file?.name || ""} ไม่สำเร็จ`, file, "evidence");
     }
     const uploaded = {
       storageBucket: stored.storageBucket || null,

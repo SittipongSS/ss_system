@@ -98,12 +98,12 @@ import { uploadFileBytes } from "@/lib/master/uploadFile";
 import SalesOrderWorkTrack from "@/components/salesPlanning/SalesOrderWorkTrack";
 import SalesOrderPaymentPanel from "@/components/salesPlanning/SalesOrderPaymentPanel";
 import ServiceContractCard from "@/components/salesPlanning/ServiceContractCard";
+import DealContractsCard from "@/components/salesPlanning/DealContractsCard";
 import Tabs from "@/components/ui/Tabs";
 import SalesOrderServiceTab from "@/components/salesPlanning/SalesOrderServiceTab";
 import SalesOrderDocumentsPanel, { installmentFilesKey, useSalesOrderDocuments } from "@/components/salesPlanning/SalesOrderDocumentsPanel";
 import { orderHasServiceRounds, orderOnServiceLine, serviceRoundsSold } from "@/lib/sales/serviceOrders";
 import { serviceContractHeadline } from "@/lib/sales/serviceContractLink";
-import ContractCreateModal from "@/components/salesPlanning/ContractCreateModal";
 import { salesOrderWorkTrack } from "@/lib/sales/salesOrderWorkTrack";
 import {
   cancelledMoneyRestoreBlock, installmentReportDoneMessage, installmentVoid, paymentRollup, salesOrderMoneyOutcome,
@@ -130,6 +130,8 @@ import {
   historicalWithdrawDetail, historicalWorkflowSteps,
 } from "@/lib/sales/historicalOrderCopy";
 import HistoricalZonesCard from "@/components/salesPlanning/HistoricalZonesCard";
+import HistoricalDuplicateReviewCard from "@/components/salesPlanning/HistoricalDuplicateReviewCard";
+import { historicalDuplicateReviewOf, historicalDuplicateReviewView } from "@/lib/sales/historicalDuplicates";
 import CoverageTimeline from "@/components/salesPlanning/historicalWizard/CoverageTimeline";
 
 /* โทนของ `historicalStatusCopy` → สีของป้ายสถานะบนหัวใบ/การ์ดจัดการ (ชิ้นพวกนั้นรับ `color` ไม่ใช่ tone)
@@ -181,7 +183,6 @@ export default function SalesOrderDetailPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const canEditCap = useCan("salesplan:edit");
-  const [contractOpen, setContractOpen] = useState(false);
   const canCreateFiling = useCan("sales:act");
   // เปิดคำร้องได้ = สาขาฝ่ายขายของด่าน POST /api/sa/requests (costing:edit) —
   // RD/PC ผ่านด่านนั้นทางสาขา "รับคำร้องของฝ่ายตนได้" ซึ่งไม่ใช่งานของหน้า SO
@@ -509,7 +510,8 @@ export default function SalesOrderDetailPage() {
           withdraw: "ดึงกลับแล้ว",
           confirm: "บัญชีรับรองการชำระแล้ว",
           reject: "ตีกลับให้ฝ่ายขายแก้แล้ว",
-          schedule: "บันทึกกำหนดชำระแล้ว",
+          // โมดัล "กำหนดวันงวด" (ลูกค้าที่ตั้งรอบวางบิล · mig 0389) ส่งวันวางบิล/เหตุการณ์มาด้วย — โมดัลแบบเดิมส่งแค่กำหนดชำระ
+          schedule: "billingDate" in options ? "บันทึกวันงวดแล้ว" : "บันทึกกำหนดชำระแล้ว",
           coverage: "บันทึกช่วงครอบบริการแล้ว",
           link: "แนบคำร้องขอเอกสารกับงวดนี้แล้ว",
           unlink: "ถอดคำร้องออกจากงวดแล้ว",
@@ -584,6 +586,67 @@ export default function SalesOrderDetailPage() {
       return true;
     } catch (carryError) {
       setError(carryError.message || "ยกเงินจากใบที่ยกเลิกไม่สำเร็จ");
+      return false;
+    } finally {
+      setBusy("");
+    }
+  }
+
+  /* ── เติมวันวางบิลตามรอบ เดือนละงวด (กำหนดวางบิล · mig 0389 · มติเจ้าของ 26/09 ข้อ 3) — คำสั่งของทั้งใบ ──────────
+     ⭐ แผงส่งแผนที่พรีวิวแสดง (`plan` = [{ id, billingDate, dueDate }]) · route คิดชุดเองแล้วเทียบ — ไม่ตรง = 409
+       (รอบ/งวดเพิ่งเปลี่ยน) ⇒ ดึงใบสดให้พรีวิววาดชุดใหม่ แล้วให้คนกดยืนยันจากของที่เห็นจริง
+     ⚠️ ไม่ลองซ้ำเอง (apiFetch ไม่ retry PATCH) — ยิงซ้ำหลังเขียนสำเร็จแล้วได้ 409 ที่ทำให้เข้าใจผิดว่าไม่สำเร็จ */
+  async function runBillingFill({ plan, roundIndex = null }) {
+    setBusy("installment-fill-billing");
+    setError("");
+    setToast(null);
+    try {
+      const res = await apiFetch(`/api/sales-planning/sales-orders/${id}/installments`, {
+        method: "PATCH",
+        /* `roundIndex` = รอบที่เลือกในโมดัล (ลูกค้าหลายรอบต่อเดือน · มติ 26/09) — route คิดแผนซ้ำด้วยรอบเดียวกัน · รอบเดียว = null */
+        json: { action: "fill-billing", plan, roundIndex },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (res.status === 409) refreshOrder();
+        setError(data.error || "เติมวันตามรอบไม่สำเร็จ");
+        return false;
+      }
+      setOrder((current) => ({ ...current, installments: data.installments || [] }));
+      setToast({ kind: "success", msg: `เติมวันแล้ว ${data.filled || plan.length} งวด` });
+      return true;
+    } catch (fillError) {
+      setError(fillError.message || "เติมวันตามรอบไม่สำเร็จ");
+      return false;
+    } finally {
+      setBusy("");
+    }
+  }
+
+  /* ── จัดวันใหม่ตามรอบปัจจุบัน (กำหนดวางบิลรอบสอง · มติเจ้าของ 26/09) — คำสั่งของทั้งใบ พี่น้องของเติมตามรอบ ──────────
+     ⭐ แผงส่งตาราง "เดิม → ใหม่" ที่พรีวิวแสดง (`plan` = [{ id, billingDate, dueDate }]) · route คิดชุดเองด้วยคำร้องสด
+       แล้วเทียบ — ไม่ตรง = 409 ⇒ ดึงใบสด (รวมคำร้องที่งวดผูก) ให้พรีวิววาดชุดใหม่ก่อนกดอีกครั้ง
+     ⚠️ ไม่ลองซ้ำเอง (apiFetch ไม่ retry PATCH) — ยิงซ้ำหลังเขียนสำเร็จแล้วได้ 409 ที่ทำให้เข้าใจผิดว่าไม่สำเร็จ */
+  async function runBillingRedate({ plan, roundIndex = null }) {
+    setBusy("installment-redate-billing");
+    setError("");
+    setToast(null);
+    try {
+      const res = await apiFetch(`/api/sales-planning/sales-orders/${id}/installments`, {
+        method: "PATCH",
+        json: { action: "redate-billing", plan, roundIndex },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (res.status === 409) refreshOrder();
+        setError(data.error || "จัดวันใหม่ไม่สำเร็จ");
+        return false;
+      }
+      setOrder((current) => ({ ...current, installments: data.installments || [] }));
+      setToast({ kind: "success", msg: `จัดวันใหม่ตามรอบปัจจุบันแล้ว ${data.redated || plan.length} งวด` });
+      return true;
+    } catch (redateError) {
+      setError(redateError.message || "จัดวันใหม่ไม่สำเร็จ");
       return false;
     } finally {
       setBusy("");
@@ -965,10 +1028,9 @@ export default function SalesOrderDetailPage() {
      ⚠️ **เส้นเดินงานเดิมอยู่ครบ** (บรีฟกลิ่น/ขึ้นทะเบียน/ของเข้า/ผลิต/ยื่นภาษี) —
      ใบส่วนใหญ่ในระบบเป็นสายสินค้า ถอดเส้นนั้นคือเสียมากกว่าได้
 
-     ⚠️ แท็บ "สัญญา" กับ "งานบริการ" ขึ้นเฉพาะใบที่มีรอบบริการ — เกณฑ์เดียวกับการ์ด
-     สัญญาเดิมเป๊ะ ๆ (ไม่ได้เปลี่ยนพฤติกรรม แค่ย้ายที่อยู่) */
-  /* ⚠️ **สองแท็บใช้คนละเกณฑ์โดยตั้งใจ** — "สัญญา" เป็นด่านแรกของเส้นบริการทั้งเส้น
-     ⇒ ต้องเปิดให้ใบบนเส้นบริการทุกใบ · ส่วน "งานบริการ" มีตารางกรอกจำนวนรอบที่ตีกลับ
+     ⚠️ แท็บ "งานบริการ" ขึ้นเฉพาะใบที่มีรอบบริการ · แท็บ "สัญญา" ขึ้นทุกใบตั้งแต่ 25/09 (ดู `showDealContracts`) */
+  /* ⚠️ **สองแท็บใช้คนละเกณฑ์โดยตั้งใจ** — "สัญญา" มีสัญญาทุกฉบับของดีล (ทุกสาย) + เป็นด่านแรกของเส้นบริการ
+     ⇒ เปิดทุกใบ · ส่วน "งานบริการ" มีตารางกรอกจำนวนรอบที่ตีกลับ
      บรรทัดนอกหมวด 02-001 (`validateServiceRoundsPatch`) ⇒ เปิดกว้างจะได้แท็บที่เปิดได้
      แต่ไม่มีแถวให้กรอก */
   /* ⭐ แท็บ "เอกสาร" (มติเจ้าของ 25/09/2569) — ทุกใบมี · อยู่ถัดภาพรวม · ตัวเลขบนหัวแท็บ = ไฟล์ทุกบ้านของใบ
@@ -977,7 +1039,12 @@ export default function SalesOrderDetailPage() {
     order?.id,
     `${order?.status || ""}|${order?.updatedAt || ""}|${order?.serviceContractId || ""}|${installmentFilesKey(installments)}`,
   );
-  const tabKeys = ["overview", "documents", ...(onServiceLine ? ["contract"] : []), "payment",
+  /* ⭐ **แท็บ "สัญญา" ขึ้นทุกใบ** (มติเจ้าของ 25/09/2569 "เพิ่มสัญญาในหน้า SO" → เลือก "ทุกใบ") —
+     ของเดิมขึ้นเฉพาะใบบนเส้นบริการ ⇒ สัญญาออกแบบกลิ่นบนดีลที่มี SO (8 ใบวันนั้น · 4 ใบเป็นสายสินค้า)
+     เปิดดูจาก SO ไม่ได้เลย · ในแท็บ: การ์ดผูกสัญญาบริการ (เฉพาะเส้นบริการ) + การ์ดสัญญาทุกฉบับของดีล
+     ⚠️ ใบย้อนหลังที่ไม่อยู่เส้นบริการไม่มีอะไรให้แสดง (ไม่มีการ์ดสัญญาของดีล — ดู `showDealContracts`) */
+  const showDealContracts = !isHistoricalOrder(order);
+  const tabKeys = ["overview", "documents", ...(onServiceLine || showDealContracts ? ["contract"] : []), "payment",
     ...(hasServiceRounds ? ["service"] : []), "history"];
   const urlTab = searchParams.get("tab");
   /* 🪤 `#payment` จากทะเบียนการชำระของฝ่ายบัญชี — ของเดิมเป็น anchor ไปการ์ดกลางหน้า
@@ -1040,6 +1107,14 @@ export default function SalesOrderDetailPage() {
      ⇒ ปุ่มหลักของใบร่าง/ตีกลับคือลิงก์ไปฟอร์มนั้น ไม่ใช่ `setEditMode(true)` ที่แก้ได้แค่หมายเหตุ */
   const canEditDocument = canEdit && !historical && ["draft", "rejected"].includes(order.status);
   const canEditHistorical = canEdit && historical && HISTORICAL_EDITABLE_STATUSES.includes(order.status);
+  /* ⭐ **ออกสัญญาจากใบนี้** — ปุ่มบนการ์ด "สัญญา" ในแท็บสัญญา (เดิมอยู่การ์ดจัดการ · ย้าย 25/09)
+     ⚠️ **ไม่ตรวจชนิด/ความพร้อมที่นี่** — โมดัลถามด่านตัวเดียวกับ API แล้วบอกเหตุถ้าออกไม่ได้
+        (ดีลไม่มีใบเสนอราคาที่อนุมัติ ฯลฯ) · ซ่อนเงียบ = คนถามว่าปุ่มอยู่ไหน
+     ⚠️ **สัญญาที่เพิ่งสร้างผูกเข้าใบนี้ไม่ได้ทันที** — ร่างใหม่เป็น `draft` ส่วนการ์ดผูกรับเฉพาะ `signed`
+        ⇒ เส้นทางจริงคือ ออกสัญญา → ออกเลข → ลงนาม → AE Sup รับรอง → กลับมาผูก (โมดัลพาไปหน้าสัญญาเอง)
+     ⚠️ ใบย้อนหลังไม่มีปุ่มนี้ — ออกฉบับที่สองจากใบนี้ = ฉบับที่ผูกไม่ได้ (ด่าน serviceContractLinkError ปิดอยู่)
+        · ใบยกเลิก/ถูกแทนด้วย Rev. ไม่มีปุ่ม · ระหว่างโหมดแก้ไม่มีปุ่ม (เงื่อนไขเดิมของปุ่มบนการ์ดจัดการ) */
+  const canCreateContract = canEdit && !historical && !editMode && !["cancelled", "revised"].includes(order.status);
   // ยื่น = ลงนามช่อง "ฝ่ายขาย" ซึ่งเป็นของ AE เจ้าของดีล — AC สร้างใบแทนได้ แต่ต้องส่งต่อ
   // ให้เจ้าของดีลกดยื่นเอง (มติผู้ใช้ 2026-08-05) · server บังคับซ้ำที่ action submit
   const canSubmitThis = canSubmitSalesOrder({ id: order.meId, role }, order.deal);
@@ -1168,7 +1243,10 @@ export default function SalesOrderDetailPage() {
       liveTermWarnings: order.liveTermWarnings,
       signedFile: signedFileCandidate,
       extrasError: order.extrasError,
+      duplicateCheck: order.duplicateCheck || null,
     });
+    /* ใบที่อาจซ้ำ (ที่ผู้คีย์ยืนยัน + ที่พบเพิ่มตอนเปิดใบ) — ลิงก์เปิดแท็บใหม่ให้ผู้อนุมัติเทียบก่อนกด (มติ 26/09) */
+    const duplicateRows = historicalDuplicateReviewView(historicalDuplicateReviewOf(order), order.duplicateCheck || null).rows;
     setConfirmState({
       ...historicalApprovalPrompt({ ...facts, override: override ? { note: historicalOverrideNote } : null }),
       /* ลิงก์ ไม่ใช่พรีวิวฝัง — ผู้อนุมัติเปิดไฟล์จริงได้จากในโมดัล ไม่ต้องปิดโมดัลไปตามเอง */
@@ -1191,6 +1269,11 @@ export default function SalesOrderDetailPage() {
               rel="noopener noreferrer"
             >
               หลักฐาน{OPENING_INSTALLMENT_LABEL} · {ref.fileName || "ไฟล์ไม่มีชื่อ"}
+            </a>
+          ))}
+          {duplicateRows.map((row) => (
+            <a key={`dup-${row.id}`} className="linklike" href={`/sa/sales-orders/${encodeURIComponent(row.id)}`} target="_blank" rel="noopener noreferrer">
+              ใบที่อาจซ้ำ{row.isNew ? " (พบเพิ่ม)" : ""} · {row.orderNumber || row.id}
             </a>
           ))}
         </div>
@@ -1316,27 +1399,6 @@ export default function SalesOrderDetailPage() {
       disabledReason: historical ? (historicalApproveBlocked || undefined) : undefined,
       onClick: () => (historical ? openHistoricalApprove(true) : setOverrideForm({ reason: "" })),
     },
-    {
-      /* ⭐ **ออกสัญญาจากใบนี้** — เดิมทางออกสัญญามีสี่ทาง (ดีล · โครงการ · ใบเสนอราคา ·
-         ทะเบียนสัญญา) แต่ไม่มีทางจาก SO ทั้งที่การ์ดสัญญาบนใบนี้เองเป็นคนบอกว่า
-         *"ออกสัญญาที่เมนู สัญญา"* ⇒ ไล่คนออกจากงานที่กำลังทำอยู่แล้วหวังว่าจะเดินกลับมาถูกที่
-         ⚠️ **อยู่บนการ์ดจัดการ ไม่ใช่ในแท็บสัญญา** — แท็บนั้นขึ้นเฉพาะใบที่มีรอบบริการ
-            (ดีลสาย SERVICE + บรรทัดหมวด 02-001) ⇒ ใบสายสินค้าที่ต้องออก "สัญญาจ้างผลิต"
-            จะไม่มีปุ่มเลยและไม่มีทางรู้ว่ามันมีอยู่ · แพตเทิร์นเดียวกับหน้าใบเสนอราคา
-         ⚠️ **ไม่ตรวจชนิด/ความพร้อมที่นี่** — โมดัลถามด่านตัวเดียวกับ API แล้วบอกเหตุ
-            ถ้าออกไม่ได้ (ดีลไม่มีใบเสนอราคาที่อนุมัติ ฯลฯ) · ซ่อนเงียบ = คนถามว่าปุ่มอยู่ไหน
-         ⚠️ **สัญญาที่เพิ่งสร้างผูกเข้าใบนี้ไม่ได้ทันที** — ร่างใหม่เป็น `draft` ส่วนการ์ด
-            ผูกสัญญารับเฉพาะใบที่ `signed` แล้ว ⇒ เส้นทางจริงคือ ออกสัญญา → ออกเลข →
-            ลงนาม → AE Sup รับรอง → กลับมาผูก · โมดัลพาไปหน้าสัญญาให้เองหลังสร้าง */
-      id: "contract",
-      kind: "goto",
-      label: "ออกสัญญาจากใบนี้",
-      variant: "outline",
-      /* ⚠️ ใบย้อนหลังไม่มีปุ่มนี้ — สัญญาของใบคือ "เอกสารแทนสัญญา" ที่ฟอร์มคีย์ใบสร้างให้และอนุมัติ
-         พร้อมใบ · ออกสัญญาฉบับที่สองจากใบนี้ = ฉบับที่ผูกไม่ได้ (ด่าน serviceContractLinkError ปิดอยู่) */
-      visible: canEdit && !historical && !editMode && !["cancelled", "revised"].includes(order.status),
-      onClick: () => setContractOpen(true),
-    },
     // label ชัดเจนว่าเป็นการกู้ SO ที่ "ยกเลิก" แล้ว — เดิมใช้ default "คืนเป็นฉบับร่าง"
     // ซึ่งความหมายชนกับ "ดึงกลับ" ที่เคยยืม kind:"restore" ตัวเดียวกัน (B8)
     // ใบสั่งขายย้อนหลังคืนเป็นร่างไม่ได้ (mig 0360 · API ปฏิเสธซ้ำ)
@@ -1442,7 +1504,18 @@ export default function SalesOrderDetailPage() {
             // กำหนดชำระขึ้นแถบหัวแทน "Actual ในระบบ" ที่พูดซ้ำกับการ์ดสรุปฝั่งขวา
             // (ที่นั่นมี "Actual ก่อน VAT" พร้อมกองของยอด — Actual/รออนุมัติ/ยังไม่นับ) — วันครบกำหนด
             // เป็นสิ่งที่คนเปิดใบอยากรู้ทันทีมากกว่า
-            { icon: CalendarDays, label: "กำหนดชำระ", value: fmtDate(order.paymentDueDate) },
+            /* ⭐ กำหนดชำระถัดไปจาก **งวด** (กำหนดวางบิลรอบสอง · มติเจ้าของ 26/09) — ตัวเดียวกับแผงงวดและรายการ SO
+               (`paymentSummary.nextDue` = installmentsNextDue ของงวดที่ไม่โมฆะ) · ไม่มีงวดค้างที่มีวัน = ขีด
+               🐞 เดิมอ่าน `order.paymentDueDate` ซึ่งเป็นค่าตายตั้งแต่ย้ายกำหนดชำระไปอยู่ที่งวด (2026-08-18) — SO-26080050-0
+                 หัวใบขึ้น 05/09/2026 ทั้งที่งวดบอก 25 ต.ค. · ⚠️ ช่องนั้นยังอยู่ในฐาน (ใบพิมพ์/ลายนิ้วมือการอนุมัติ/แผนผลิตอ่าน)
+               ⚠️ แดงเมื่อเลยกำหนด อ่าน dueDate ช่องเดียว (วันวางบิลไม่มีทางแดง) */
+            {
+              icon: CalendarDays,
+              label: "กำหนดชำระ",
+              value: paymentSummary.nextDue ? fmtDate(paymentSummary.nextDue) : NA,
+              tone: !paymentSummary.nextDue ? "muted" : paymentSummary.nextDue < todayIso ? "late" : undefined,
+              sub: paymentSummary.nextDue && paymentSummary.nextDue < todayIso ? "เลยกำหนด" : undefined,
+            },
             { icon: FileText, label: "อ้างอิง QT", value: naText(order.quotation?.quoteNumber) },
             { icon: CircleDollarSign, label: "ยอดก่อน VAT", value: fmtMoney(order.actualAmount) },
             /* ⭐ **สัญญาบริการอยู่บนหัวใบ ไม่ใช่หลังแท็บ** — งานบริการทั้งเส้นเดินได้ก็ต่อ
@@ -1596,7 +1669,7 @@ export default function SalesOrderDetailPage() {
               key,
               label: key === "overview" ? "ภาพรวม"
                 : key === "documents" ? (salesOrderDocs.data?.total ? `เอกสาร ${salesOrderDocs.data.total}` : "เอกสาร")
-                : key === "contract" ? (order.serviceContract ? "สัญญา" : "สัญญา · ยังไม่ผูก")
+                : key === "contract" ? (onServiceLine && !order.serviceContract ? "สัญญา · ยังไม่ผูก" : "สัญญา")
                   : key === "payment" ? (paymentSummary.count ? `การชำระ ${paymentSummary.confirmedCount}/${paymentSummary.count}` : "การชำระ")
                     : key === "service" ? "งานบริการ"
                       : "ประวัติ",
@@ -1635,6 +1708,8 @@ export default function SalesOrderDetailPage() {
               extrasError={order.extrasError}
             />
           ) : null}
+          {/* ⭐ ใบที่อาจซ้ำ — ผู้คีย์ยืนยันใบไหน ใคร เมื่อไร + ที่พบเพิ่มตอนเปิดใบ (มติ 26/09 ข้อ 4 · ขึ้นเฉพาะใบที่มี) */}
+          {historical ? <HistoricalDuplicateReviewCard order={order} duplicateCheck={order.duplicateCheck || null} /> : null}
 
           {/* ⭐ "ช่วงบริการ" (ม็อก SoStatus) — เงินที่บัญชีรับรองแล้วเป็นตัวเปิดด่านของนัดบริการ
               ⇒ คำถามที่ฝ่ายขายถามจริงคือ "นัดเดือนไหนขึ้นได้แล้วบ้าง" ซึ่งตารางงวดตอบเป็นตัวเลข
@@ -1790,10 +1865,9 @@ export default function SalesOrderDetailPage() {
               ⚠️ การ์ดคืน null เองเมื่อใบไม่มีบรรทัดหมวด 01/02 เลย (ใบที่ขายแต่ค่าออกแบบ) */}
           <SalesOrderFollowUpDocs orderId={order.id} orderStatus={order.status} />
 
-          {/* ⭐ การ์ดสัญญาบริการ (mig 0324) — ขึ้นเฉพาะใบที่มีรอบบริการ
-              (ดีลสาย SERVICE **และ** มีบรรทัดหมวด 02-001 อย่างน้อย 1 รายการ ⇒ ทั้งใบ)
-              ⚠️ วางเหนือการ์ดการชำระโดยตั้งใจ — สัญญามาก่อนเงิน ทั้งในลำดับงานจริง
-                 และในด่าน "จ่ายก่อนบริการ" ที่อ่านทั้งสองอย่างประกอบกัน */}
+          {/* ⭐ การ์ดสัญญาบริการ (mig 0324) — ย้ายเข้าแท็บ "สัญญา" แล้ว (PR-F) · ขึ้นเฉพาะใบบนเส้นบริการ
+              ⚠️ สัญญามาก่อนเงิน ทั้งในลำดับงานจริง และในด่าน "จ่ายก่อนบริการ" ที่อ่านทั้งสองอย่างประกอบกัน
+                 ⇒ แท็บ "สัญญา" อยู่ก่อนแท็บ "การชำระ" */}
           </>}
 
           {activeTab === "documents" && (
@@ -1808,13 +1882,32 @@ export default function SalesOrderDetailPage() {
           )}
 
           {activeTab === "contract" && (
-            <ServiceContractCard
-              order={order}
-              canEdit={canEdit}
-              busy={!!busy}
-              onLink={setServiceContract}
-              onSaveRounds={setServiceRounds}
-            />
+            <>
+              {/* การ์ดผูกสัญญาบริการ — เฉพาะใบบนเส้นบริการ (ด่านแรกของงานบริการทั้งเส้น) */}
+              {onServiceLine ? (
+                <ServiceContractCard
+                  order={order}
+                  canEdit={canEdit}
+                  busy={!!busy}
+                  onLink={setServiceContract}
+                  onSaveRounds={setServiceRounds}
+                  canCreateBelow={showDealContracts && canCreateContract}
+                  editMode={editMode}
+                />
+              ) : null}
+              {/* ⭐ **สัญญาทุกฉบับของดีล + ทางออกสัญญา/เอกสารแทน อยู่ในแท็บนี้** (มติ 15/09 + 25/09)
+                  การ์ดตัวเดียวกับหน้าดีล (โมดัลตัวเดียวกัน ไม่มีฟอร์มที่สอง) · เห็นร่าง/รอลงนาม/รอ AE Sup ด้วย
+                  🐞 ของเดิมการ์ดผูกเห็นแต่ใบที่ `signed` ⇒ ร่างเอกสารแทนสัญญาที่แนบไฟล์แล้วรอ AE Sup
+                     มองไม่เห็นจากใบนี้เลย
+                  ⭐ ปุ่ม "ออกสัญญา" ย้ายมาจากการ์ดจัดการ (เดิม "ออกสัญญาจากใบนี้") — แท็บขึ้นทุกใบแล้ว
+                     จึงไม่ต้องมีทางเข้าที่สองบนหน้าเดียวกัน · เงื่อนไขปุ่มเดิมทุกข้อ (`canCreateContract`)
+                  ⚠️ ใบย้อนหลังไม่มีการ์ดนี้ — สัญญาของใบคือ "เอกสารแทนสัญญา" ที่ฟอร์มคีย์ใบสร้างและอนุมัติ
+                     พร้อมใบ (การ์ดผูกข้างบนแสดงให้) · ดีลของใบย้อนหลังเป็นดีลภาชนะ ⇒ ลิสต์ทั้งดีลจะพาเอกสาร
+                     แทนสัญญาของใบพี่น้องมาปน */}
+              {showDealContracts ? (
+                <DealContractsCard dealId={order.dealId} quotationId={order.quotationId} canEdit={canCreateContract} />
+              ) : null}
+            </>
           )}
 
           {activeTab === "service" && (
@@ -1828,7 +1921,9 @@ export default function SalesOrderDetailPage() {
           <SalesOrderPaymentPanel
             order={order}
             installments={installments}
-            user={{ id: order.meId, role }}
+            /* ⭐ `department` ต้องมากับ user (กำหนดวางบิล · มติข้อ 4 FN แก้วันงวดได้) — ด่านวันงวด/รับรองตัดสินฝ่ายด้วย
+               `canConfirmPayment` · ไม่ส่ง = ถอยไปเดาฝ่ายจาก role ⇒ บัญชีที่ role ไม่ชี้ FN ไม่เห็นเมนูทั้งที่ API ให้ผ่าน */
+            user={{ id: order.meId, role, department: order.meDepartment }}
             todayIso={todayIso}
             canStart={canEdit}
             busy={busy}
@@ -1836,6 +1931,8 @@ export default function SalesOrderDetailPage() {
             onAction={runInstallmentAction}
             onReplan={runInstallmentReplan}
             onCarry={runInstallmentCarry}
+            onFillBilling={runBillingFill}
+            onRedateBilling={runBillingRedate}
             /* 🐞 แถบ error ของหน้าอยู่บนสุดของคอลัมน์ ⇒ **โมดัลบังไว้หมด** — กดบันทึก
                งวดแล้วโมดัลค้างเงียบ ไม่มีอะไรบอกว่าทำไมไม่ผ่าน (ผู้ใช้แจ้ง 2026-08-27)
                อาการเดียวกับที่ `ReasonDialog.submitError` แก้ไว้เมื่อ 2026-08-19 —
@@ -2072,17 +2169,6 @@ export default function SalesOrderDetailPage() {
           </>
         ) : null}
       </ConfirmDialog>
-      {/* ⭐ **โมดัลตัวเดียวกับที่หน้าดีล/โครงการ/ใบเสนอราคาใช้** — ห้ามเขียนฟอร์มที่สอง
-          (กติกา "ปุ่มแก้ไขต้องเปิดฟอร์มตัวเดียวกับตอนสร้าง" ของ AGENTS.md)
-          ส่ง `dealId`+`quotationId` ของใบมาให้ ⇒ ข้ามขั้นเลือกลูกค้า/ดีลไปเลย
-          ⚠️ ไม่ต้องส่ง `onCreated` ที่โหลดใบใหม่ — โมดัลพาไปหน้าสัญญาที่เพิ่งสร้างเอง
-             การรีเฟรชใบจะแข่งกับการเปลี่ยนหน้าแล้วไม่มีใครได้เห็นผล */}
-      <ContractCreateModal
-        open={contractOpen}
-        dealId={order.dealId}
-        quotationId={order.quotationId}
-        onClose={() => setContractOpen(false)}
-      />
       <Toast toast={toast} onClose={() => setToast(null)} />
     </Workspace>
   );

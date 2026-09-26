@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  WEEKDAY_LABELS, dueCalendar, weekDays, weekRangeText, weekStart,
+  dueCalendar, weekDays, weekRangeText, weekStart,
 } from './dueCalendar.js';
 import { fmtDate, fmtDayMonth } from '../format.js';
 
@@ -10,24 +10,34 @@ import { fmtDate, fmtDayMonth } from '../format.js';
 const todayIso = '2026-08-12';
 const req = (over = {}) => ({ id: 'DR-1', dept: 'RD', docNo: 'RQ-1', items: [], ...over });
 
-test('⭐ สัปดาห์เริ่มวันจันทร์ — เสาร์อาทิตย์อยู่ท้ายแถวติดกัน ไม่คร่อมหัวท้าย', () => {
-  assert.equal(weekStart(todayIso), '2026-08-10');       // พุธ → จันทร์
-  assert.equal(weekStart('2026-08-10'), '2026-08-10');   // จันทร์ → ตัวเอง
-  assert.equal(weekStart('2026-08-16'), '2026-08-10');   // อาทิตย์ → จันทร์ต้นสัปดาห์เดียวกัน
-  assert.equal(weekStart(todayIso, 1), '2026-08-17');
-  assert.equal(weekStart(todayIso, -1), '2026-08-03');
+test('⭐ สัปดาห์เริ่มวันอาทิตย์ (อา–ส) — มติเจ้าของ 2026-09-26 ทุกปฏิทินเริ่มวันเดียวกัน', () => {
+  assert.equal(weekStart(todayIso), '2026-08-09');       // พุธ → อาทิตย์
+  assert.equal(weekStart('2026-08-09'), '2026-08-09');   // อาทิตย์ → ตัวเอง
+  assert.equal(weekStart('2026-08-10'), '2026-08-09');   // จันทร์ → อาทิตย์ก่อนหน้า
+  assert.equal(weekStart('2026-08-15'), '2026-08-09');   // เสาร์ = วันสุดท้ายของสัปดาห์เดียวกัน
+  assert.equal(weekStart('2026-08-16'), '2026-08-16');   // อาทิตย์ถัดไป = สัปดาห์ใหม่
+  assert.equal(weekStart(todayIso, 1), '2026-08-16');
+  assert.equal(weekStart(todayIso, -1), '2026-08-02');
   assert.equal(weekStart('ไม่ใช่วันที่'), null);
+  assert.equal(weekStart(null), null);
 });
 
-test('เจ็ดวันของสัปดาห์ — ป้ายวัน · วันหยุด · วันนี้', () => {
-  const days = weekDays('2026-08-10', { todayIso });
+test('เจ็ดวันของสัปดาห์ — ป้ายวัน อา.–ส. · วันหยุดหัวกับท้ายแถว · วันนี้', () => {
+  const days = weekDays('2026-08-09', { todayIso });
   assert.equal(days.length, 7);
-  assert.deepEqual(days.map((d) => d.label), WEEKDAY_LABELS);
-  assert.deepEqual(days.map((d) => d.iso).slice(0, 3), ['2026-08-10', '2026-08-11', '2026-08-12']);
-  assert.deepEqual(days.filter((d) => d.weekend).map((d) => d.iso), ['2026-08-15', '2026-08-16']);
+  assert.deepEqual(days.map((d) => d.label), ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.']);
+  assert.deepEqual(days.map((d) => d.iso).slice(0, 3), ['2026-08-09', '2026-08-10', '2026-08-11']);
+  assert.deepEqual(days.filter((d) => d.weekend).map((d) => d.iso), ['2026-08-09', '2026-08-15']);
   assert.equal(days.filter((d) => d.today).length, 1);
   assert.equal(days.find((d) => d.today).iso, todayIso);
-  assert.equal(days[0].dayOfMonth, 10);
+  assert.equal(days[0].dayOfMonth, 9);
+  assert.deepEqual(weekDays('ไม่ใช่วันที่'), []);
+});
+
+test('ป้ายวันมาจากวันจริง ไม่ใช่ลำดับคอลัมน์ — ส่งวันเริ่มกลางสัปดาห์มาก็ไม่โกหก', () => {
+  const days = weekDays('2026-08-12');   // พุธ
+  assert.deepEqual(days.map((d) => d.label), ['พ.', 'พฤ.', 'ศ.', 'ส.', 'อา.', 'จ.', 'อ.']);
+  assert.deepEqual(days.filter((d) => d.weekend).map((d) => d.iso), ['2026-08-15', '2026-08-16']);
 });
 
 test('⭐ ใบลงวันของตัวเอง · ใบนอกสัปดาห์ไม่โผล่แต่ยังถูกนับ', () => {
@@ -76,15 +86,15 @@ test('เลื่อนสัปดาห์ — ใบของสัปดา
   assert.equal(dueCalendar(rows, { todayIso }).inWeek, 0);
   const next = dueCalendar(rows, { startIso: weekStart(todayIso, 1), todayIso });
   assert.equal(next.inWeek, 1);
-  assert.equal(next.start, '2026-08-17');
-  assert.equal(next.end, '2026-08-23');
+  assert.equal(next.start, '2026-08-16');
+  assert.equal(next.end, '2026-08-22');
   assert.equal(next.days.filter((d) => d.today).length, 0, 'สัปดาห์หน้าไม่มีวันนี้');
 });
 
 test('ข้อความช่วงวัน — ใช้ตัวจัดรูปแบบกลาง ไม่ประกอบเดือนเอง (ratchet ม-105)', () => {
-  assert.equal(weekRangeText('2026-08-10', '2026-08-16', { fmtDayMonth, fmtDate }), '10 – 16/08/2026');
+  assert.equal(weekRangeText('2026-08-09', '2026-08-15', { fmtDayMonth, fmtDate }), '9 – 15/08/2026');
   // ข้ามเดือน — ต้องเขียนเดือนของวันเริ่มด้วย ไม่งั้นอ่านเป็นเดือนเดียวกัน
-  assert.equal(weekRangeText('2026-08-31', '2026-09-06', { fmtDayMonth, fmtDate }), '31 ส.ค. – 06/09/2026');
+  assert.equal(weekRangeText('2026-08-30', '2026-09-05', { fmtDayMonth, fmtDate }), '30 ส.ค. – 05/09/2026');
   assert.equal(weekRangeText(null, null, { fmtDayMonth, fmtDate }), '');
 });
 

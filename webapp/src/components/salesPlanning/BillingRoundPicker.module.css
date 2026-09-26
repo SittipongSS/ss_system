@@ -1,0 +1,124 @@
+/* ตัวเลือกรอบวางบิลของงวด — ม็อก billing-cycle จอ B (เซลล์ตาราง · `data-compact`) + จอ C (ในโมดัล)
+   ⚠️ ชิปมาจาก ChoiceChips ของกลาง (`.choice-chip` ใน globals) — ห้าม :global() ทับจากที่นี่
+   ⚠️ ระยะห่าง/ขนาดตัวอักษร/ความสูงบรรทัดใช้โทเคนเท่านั้น (เพดานเลขดิบของ audit:ui เต็มพอดี)
+   ⚠️ ไม่มีจุดตัดจอ — ทุกแถวเป็น flex-wrap จอแคบตกบรรทัดเอง (เพดานจำนวนจุดตัดจอขึ้นไม่ได้) */
+
+.picker {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.picker[data-compact="yes"] { gap: var(--space-1-5); }
+
+.head {
+  color: var(--text-3);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-thai);
+}
+
+.note,
+.muted {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+/* แถว "ป้าย + ช่อง" — วันวางบิล (วันอื่น…) · เหตุการณ์ที่รอ */
+.row,
+.dueEdit {
+  display: flex;
+  max-width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1-5) var(--space-2-5);
+}
+/* ช่องแก้กำหนดชำระ = ของที่ "แก้ทับ" ค่าที่ระบบคิดให้ — มีกรอบบอกว่าเป็นโหมดพิเศษ (ม็อก B) */
+.dueEdit {
+  padding: var(--space-2) var(--space-2-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+}
+.inlineLabel {
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  white-space: nowrap;
+}
+/* ความกว้างอยู่ที่นี่ ไม่ใช่ style={{}} — เพดาน inlineStyle ของโมดูลขายเต็มแล้ว
+   190px พอสำหรับ "พฤ. 25 ก.พ. 2027" (โหมด weekday ของ DateInput) */
+.date { width: 190px; max-width: 100%; }
+.eventInput { flex: 1 1 220px; min-width: 0; max-width: 340px; }
+
+/* บรรทัดผล "วางบิล … → กำหนดชำระ …" */
+.result {
+  display: flex;
+  max-width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+}
+.part {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-1-5);
+}
+.part b {
+  color: var(--text);
+  font-weight: var(--fw-bold);
+  white-space: nowrap;
+}
+.okIcon { flex: none; color: var(--green); }
+.arrow { flex: none; color: var(--text-3); }
+
+/* ปุ่มในหน้า (`.text-action` เส้นประของ globals) — ไอคอนชิดข้อความ ไม่ตัดกลางป้าย */
+.action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-5);
+  white-space: nowrap;
+}
+
+/* คำบอกสถานะที่ยังไม่ใช่ข้อมูล: ยังไม่เลือก · รอเหตุการณ์ */
+.hint {
+  display: flex;
+  margin: 0;
+  align-items: flex-start;
+  gap: var(--space-1-5);
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+.hint > svg { flex: none; margin-top: var(--space-0-5); color: var(--text-3); }
+
+/* เตือน (ไม่ใช่ error — ไม่มีอะไรในตัวเลือกนี้บล็อกการบันทึก) */
+.warn {
+  display: flex;
+  margin: 0;
+  align-items: flex-start;
+  gap: var(--space-1-5);
+  color: var(--amber);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+.warn > svg { flex: none; margin-top: var(--space-0-5); }
+
+/* วันเงินเข้าบนชิปของลูกค้าหลายรอบต่อเดือน (มติ 26/09 ข้อ 3) — ท่อนรองของชิป ตัวเล็กและบางกว่าวันวางบิล
+   ⚠️ ไม่ตั้งสี/ไม่จาง — สืบสีจากชิป ([data-on] ของ ChoiceChips) ให้อ่านเป็นชิ้นเดียวกัน และตัวเล็กที่จางลงอีกชั้น
+      ตกเกณฑ์คอนทราสต์ (WCAG 1.4.3) · ห้าม :global() ทับชิปจากที่นี่ (ดูหัวไฟล์) */
+.chipDue {
+  font-size: var(--fs-5);
+  font-weight: var(--fw-normal);
+  white-space: nowrap;
+}

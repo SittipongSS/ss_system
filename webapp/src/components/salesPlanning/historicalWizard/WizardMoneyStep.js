@@ -22,11 +22,12 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import Textarea from "@/components/ui/Textarea";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { NA, fmtDate, fmtMoney, fmtNumber } from "@/lib/format";
-import { DOC_DATE_MAX, DOC_DATE_MIN, OPENING_INSTALLMENT_LABEL } from "@/lib/sales/historicalOrders";
+import { DOC_DATE_MAX, DOC_DATE_MIN, HISTORICAL_APPROVER_LABEL, OPENING_INSTALLMENT_LABEL } from "@/lib/sales/historicalOrders";
 import { addDays } from "@/lib/sales/paymentCoverage";
 import { QuoteLineTotals } from "@/components/salesPlanning/QuoteLineCells";
 import {
   historicalAddInstallment, historicalFieldAnchorId, historicalInstallmentChain, historicalInstallmentIssueText,
+  historicalOverdueWarningText,
   contractSpan, historicalInstallmentIssues, historicalMoneyView, historicalOpeningModeChange, historicalStepIssueNotice,
   historicalZeroValue, serviceMonthSpan,
 } from "@/lib/sales/historicalIntakeForm";
@@ -38,7 +39,7 @@ import styles from "./HistoricalOrderWizard.module.css";
 
 export default function WizardMoneyStep({
   state, onChange, issues = [], summary = true, plan = null, money = null, evidenceFiles = [], onEvidenceFiles,
-  todayIso = null, busy = false, onOversize,
+  todayIso = null, customerTerms = null, busy = false, onOversize,
 }) {
   const [splitOpen, setSplitOpen] = useState(false);
   const has = (field) => issues.some((issue) => issue.field === field);
@@ -197,7 +198,7 @@ export default function WizardMoneyStep({
             <CardHeading
               icon={Wallet}
               title={<span id="hist-card-paid">เงินที่เก็บก่อนเข้าระบบ</span>}
-              note={`รวมเป็น${OPENING_INSTALLMENT_LABEL} 1 งวด · บัญชีรับรองครั้งเดียวหลัง AE Sup อนุมัติ`}
+              note={`รวมเป็น${OPENING_INSTALLMENT_LABEL} 1 งวด · บัญชีรับรองครั้งเดียวหลัง${HISTORICAL_APPROVER_LABEL}อนุมัติ`}
             />
             <div className={styles.field} id={historicalFieldAnchorId("opening")}>
               <span>ลูกค้าจ่ายเงินมาแล้วหรือยัง <b className={styles.req}>*</b></span>
@@ -386,7 +387,7 @@ export default function WizardMoneyStep({
 
               {overdueCount > 0 ? (
                 <StatusNotice tone="warning" title="ขั้นนี้มีคำเตือน 1 ข้อ — ไม่บล็อกการบันทึก" className={styles.notice}>
-                  {fmtNumber(overdueCount)} งวดครบกำหนดก่อนวันนี้{todayIso ? ` (${fmtDate(todayIso)})` : ""} — หลัง AE Sup อนุมัติจะขึ้นเลยกำหนดทันที และนัดบริการรอจนบัญชีรับรอง
+                  {historicalOverdueWarningText(overdueCount, todayIso)}
                 </StatusNotice>
               ) : null}
 
@@ -421,6 +422,7 @@ export default function WizardMoneyStep({
         </>
       )}
 
+      {/* `customerTerms` = รอบวางบิลของลูกค้า (mig 0389) → ชิป "ตามรอบของลูกค้า" (ดูหัว `historicalCustomerDueOption`) */}
       <HistoricalSplitModal
         open={splitOpen}
         onClose={() => setSplitOpen(false)}
@@ -429,6 +431,7 @@ export default function WizardMoneyStep({
         amount={chain.remaining}
         gridStart={start || null}
         todayIso={todayIso}
+        customerTerms={customerTerms}
         replacing={rows.length}
         onCreate={(next) => { setRows(next); setSplitOpen(false); }}
       />

@@ -9,11 +9,13 @@ import UpdateThread from "@/components/updates/UpdateThread";
 import { ActionButton } from "@/components/ui/ActionButtons";
 import Tabs from "@/components/ui/Tabs";
 import Workspace from "@/components/ui/Workspace";
-import { useCan, useRole, useTeams } from "@/lib/roleContext";
-import { canEditIssuedMasterCode, isSuperuser } from "@/lib/permissions";
+import { useCan, useCapUser, useDepartment, useRole, useTeams } from "@/lib/roleContext";
+import { canEditCustomerBillingRule, canEditIssuedMasterCode, isSuperuser } from "@/lib/permissions";
 import { useIsPortrait } from "@/lib/useResponsiveView";
 import Modal from "@/components/Modal";
 import CustomerForm, { EMPTY_CUSTOMER, customerToForm } from "@/components/database/CustomerForm";
+import CustomerBillingRuleCard from "@/components/database/CustomerBillingRuleCard";
+import { describeBillingRule } from "@/lib/sales/billingRule";
 import { customerNameIn } from "@/lib/master/customerName";
 import { isAutoArCode, isReusableCode, reclaimableArNumber } from "@/lib/master/masterCodes";
 import { approvalStatusOf } from "@/components/ApprovalStatus";
@@ -68,6 +70,17 @@ import { apiFetch, apiJson } from "@/lib/apiFetch";
 // แถวความสัมพันธ์ในแท็บ 360-view: ชื่อ + บรรทัดรอง + ของฝั่งขวา · ทุกแท็บทรงเดียวกัน
 // เดิมก๊อปมาร์กอัปชุดนี้ซ้ำทีละแท็บ ซึ่งเป็นวิธีที่แท็บพวกนี้เพี้ยนหากันทีละนิด
 // (กฎเดียวกับ "ปุ่มแก้ไขต้องเปิดฟอร์มตัวเดียวกับตอนสร้าง" ใน AGENTS.md)
+/* แถว "เงื่อนไขเครดิต" ของการ์ดสรุป (มติเจ้าของ 26/09 · mig 0390) — ค่าในระบบก่อนข้อความเดิมเสมอ
+   · ตั้งแล้ว = ประโยคของรอบ (รูปย่อชุดเดียวกับทะเบียนการชำระ) / "ไม่มีเครดิต"
+   · ยังไม่ระบุ = ข้อความ "เงื่อนไขเครดิต" ที่พิมพ์ไว้สมัยก่อน **บอกว่าเป็นของเดิม** (ระบบไม่ได้ใช้คิดวัน)
+   · ไม่มีทั้งคู่ = '' → การ์ดขึ้นขีด */
+function creditSummaryOf(customer) {
+  const rule = describeBillingRule(customer?.billingRule, { short: true });
+  if (rule) return rule;
+  const legacy = String(customer?.creditTerms ?? "").trim();
+  return legacy ? `${legacy} (ข้อความเดิม)` : "";
+}
+
 /* หัวข้อย่อยในการ์ดข้อมูลลูกค้า — กินเต็มแถวของกริดสามคอลัมน์ ไม่งั้นหัวข้อไปนั่ง
    หนึ่งในสามของแถว แล้วช่องข้อมูลช่องแรกขึ้นมาอยู่ข้าง ๆ หัวข้อของตัวเอง
    (ตัวเดียวกับ SpecGroup ของหน้าสินค้า ต่างแค่จำนวนคอลัมน์ที่ต้อง span) */
@@ -131,6 +144,8 @@ export default function CustomerDetails() {
   const canViewTax = useCan("history:view");
   const role = useRole();
   const myTeams = useTeams();
+  const capUser = useCapUser();
+  const department = useDepartment();
   const superuser = isSuperuser(role);
   // แอดมินแก้เลข AR ได้ทุกใบ รวมใบที่ระบบออกเลขให้ (มติ 2026-08-24) — ด่านจริงอยู่ที่ PATCH
   const canFixArCode = canEditIssuedMasterCode(role);
@@ -196,6 +211,16 @@ export default function CustomerDetails() {
       .then((d) => { apiCache.set("/api/master/product-types", d || []); setProductTypes(d || []); })
       .catch(() => {});
   }, [id]);
+
+  /* ลิงก์ "ดูที่ทะเบียนลูกค้า"/"ตั้งรอบ" จากหน้าสร้าง SO · แผงงวด · ทะเบียน FN ชี้ `#billing-rule` (กำหนดวางบิล)
+     — การ์ดขึ้นหลังโหลดลูกค้าเสร็จ เบราว์เซอร์เลื่อนไปหา anchor ตอนเปิดหน้าไม่เจอ ⇒ เลื่อนเองครั้งเดียวหลังได้ลูกค้า */
+  const hasCustomer = Boolean(customer);
+  useEffect(() => {
+    if (!hasCustomer || typeof window === "undefined") return;
+    const hash = window.location.hash.slice(1);
+    if (hash !== "billing-rule") return;
+    window.requestAnimationFrame(() => document.getElementById(hash)?.scrollIntoView({ block: "start" }));
+  }, [hasCustomer]);
 
   // Cross-module relations (360-view): registrations + projects + ทะเบียนกลิ่น/สูตร
   // from one scoped endpoint instead of fetching every registration and filtering
@@ -283,7 +308,8 @@ export default function CustomerDetails() {
       addresses: formData.addresses || [],
       brands: formData.brands || [], // [{th,en}] — API normalize อีกชั้น (0059)
       contacts: formData.contacts || [],
-      creditTerms: formData.creditTerms || null,
+      /* ⚠️ ไม่ส่ง `creditTerms` แล้ว (มติเจ้าของ 26/09 · mig 0390) — เครดิตตั้งที่การ์ด "เครดิตและรอบวางบิล"
+         ทางเดียว (เส้น `/billing-rule` ไม่ต้องอนุมัติใหม่) · ข้อความเดิมในฐานคงไว้ อ่านอย่างเดียว */
     };
 
     try {
@@ -462,6 +488,10 @@ export default function CustomerDetails() {
   const workflowSteps = workflowStepsFromIndex(approvalView.steps, approvalView.currentIndex);
 
   const canDecide = approvalView.status === "pending" && canApproveMasterRecord(role, myTeams, customer);
+  /* รอบวางบิล (mig 0389 · มติเจ้าของ 25/09 ข้อ 4) — ฝ่ายขายทีมที่ดูแล **และฝ่ายบัญชี** แก้ได้
+     ⚠️ ด่านคนละตัวกับ `canEdit` ข้างบน: FN ไม่มี customers:edit แต่ต้องเห็นปุ่มแก้รอบวางบิล ·
+     ตัวตัดสินตัวเดียวกับ API (`canEditCustomerBillingRule`) — ส่งฝ่าย + ทีมเข้าไปด้วย ไม่งั้นแคบผิด */
+  const canEditBillingRule = canEditCustomerBillingRule({ ...capUser, department, teams: myTeams }, customer);
   const decideSubject = [customer.arCode, customerNameIn(customer)].filter(Boolean).join(" · ");
   const editAction = canEdit && {
     id: "edit",
@@ -506,7 +536,9 @@ export default function CustomerDetails() {
           { id: "type", label: "ประเภทลูกค้า", value: customer.customerType === "individual" ? "บุคคลธรรมดา" : "นิติบุคคล" },
           { id: "team", label: "ทีมดูแล", value: teamsLabel },
           { id: "tax", label: "เลขผู้เสียภาษี", value: customer.taxId ? fmtNationalId(customer.taxId) : "" },
-          { id: "credit", label: "เงื่อนไขเครดิต", value: customer.creditTerms },
+          /* เงื่อนไขเครดิต (mig 0390 · มติ 26/09) — ประโยคของรอบ (รูปย่อชุดเดียวกับทะเบียนการชำระ · "ไม่มีเครดิต")
+             ยังไม่ระบุ = ข้อความเดิมที่พิมพ์ไว้ (บอกว่าเป็นของเดิม) · ไม่มีทั้งคู่ = ขีด */
+          { id: "credit", label: "เงื่อนไขเครดิต", value: creditSummaryOf(customer) },
           { id: "addresses", label: "ที่อยู่", value: `${addresses.length} รายการ` },
           { id: "contacts", label: "ผู้ติดต่อ", value: `${(customer.contacts || []).length} คน` },
         ]}
@@ -534,9 +566,10 @@ export default function CustomerDetails() {
           : null}
         /* ⚠️ ต่างจากสินค้า: ผู้ติดต่อ/ที่อยู่ลิสต์ **ยกเว้น** จากการอนุมัติใหม่
            (CUSTOMER_CONTACT_FIELDS + CUSTOMER_ADDRESS_EXEMPT_FIELDS) — ชื่อ เลขภาษี
-           สาขา ที่อยู่ออกเอกสาร รหัส AR ไม่ยกเว้น เพราะไปโผล่บนเอกสารถึงกรมสรรพสามิต */
+           สาขา ที่อยู่ออกเอกสาร รหัส AR ไม่ยกเว้น เพราะไปโผล่บนเอกสารถึงกรมสรรพสามิต
+           · รอบวางบิล (mig 0389) บันทึกผ่านเส้นแยก `/billing-rule` ซึ่งไม่แตะด่านอนุมัติเลย (มติ 25/09 ข้อ 4) */
         footer={approvalView.status === "approved" && canEdit
-          ? <span>แก้ชื่อ · เลขผู้เสียภาษี · ที่อยู่ออกเอกสาร · รหัส AR = กลับไปรออนุมัติใหม่ และลูกค้าจะหลุดจากรายการเลือกทุกหน้าจนกว่าจะอนุมัติอีกครั้ง (แก้ผู้ติดต่อหรือที่อยู่จัดส่งไม่กระทบ)</span>
+          ? <span>แก้ชื่อ · เลขผู้เสียภาษี · ที่อยู่ออกเอกสาร · รหัส AR = กลับไปรออนุมัติใหม่ และลูกค้าจะหลุดจากรายการเลือกทุกหน้าจนกว่าจะอนุมัติอีกครั้ง (แก้ผู้ติดต่อ ที่อยู่จัดส่ง หรือเครดิตและรอบวางบิลไม่กระทบ)</span>
           : null}
       />
 
@@ -613,7 +646,8 @@ export default function CustomerDetails() {
               <Field label="รหัสลูกค้า AR Code" value={customer.arCode} mono />
               <Field label="เลขผู้เสียภาษี (Tax ID)" value={customer.taxId ? fmtNationalId(customer.taxId) : ""} mono />
               <Field label="เบอร์โทร (Phone)" value={customer.phone ? fmtPhone(customer.phone) : ""} mono />
-              <Field label="เงื่อนไขเครดิต (Credit Terms)" value={customer.creditTerms} />
+              {/* เงื่อนไขเครดิตย้ายไปการ์ด "เครดิตและรอบวางบิล" ข้างล่าง (มติ 26/09) — ฟอร์มลูกค้าไม่มีช่องนี้แล้ว
+                  การ์ดนี้เรียงตามฟอร์ม จึงไม่มีช่องนี้เหมือนกัน */}
               {/* แบรนด์เป็นของลูกค้า (customers.brands[]) — สินค้าหยิบไปเป็นตัวเลือก
                   ตอนตั้งแบรนด์ของ FG · เคยอยู่ในรางขวา ซึ่งทำให้คนหาไม่เจอตอนกรอกฟอร์ม */}
               <div className="md:col-span-3">
@@ -711,6 +745,20 @@ export default function CustomerDetails() {
               </div>
             </div>
           </DetailCard>
+
+          {/* เครดิตและรอบวางบิล (mig 0389/0390 · ม็อก A + modal-v2) — ใต้การ์ดข้อมูลลูกค้า · ที่เดียวที่แก้เครดิตได้
+              ⚠️ บันทึกแล้วเติมเฉพาะช่องรอบวางบิลลงแถวที่มีอยู่ ไม่โหลดทั้งหน้าใหม่ (ฟอร์มแก้ลูกค้า
+              ที่อาจค้างอยู่ไม่ถูกเขียนทับ · ด่านอนุมัติไม่ขยับ จึงไม่มีอะไรอื่นบนหน้าเปลี่ยน) */}
+          <CustomerBillingRuleCard
+            customer={customer}
+            canEdit={canEditBillingRule}
+            onSaved={(fields) => {
+              const { unchanged, ...saved } = fields || {};
+              setCustomer((prev) => (prev ? { ...prev, ...saved } : prev));
+              /* แถว "รอบวางบิล" เพิ่งลงเธรดความเคลื่อนไหว — โหลดเธรดใหม่ทันที ไม่รอรอบ poll (ช้าได้ถึงหลายนาที) */
+              if (!unchanged) setThreadToken((n) => n + 1);
+            }}
+          />
 
           {/* ความสัมพันธ์ทั้งหมดอยู่ในแท็บชุดเดียว — ไม่มีการ์ดโครงการซ้ำด้านบนแล้ว */}
           <div>

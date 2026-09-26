@@ -353,7 +353,10 @@ test('แก้กำหนดชำระได้เสมอ ยกเว้�
   assert.equal(installmentActionError({ status: 'pending' }, 'schedule', SA), null);
   assert.equal(installmentActionError({ status: 'reported' }, 'schedule', SA), null);
   assert.match(installmentActionError({ status: 'confirmed' }, 'schedule', SA), /คอนเฟิร์มแล้ว/);
-  assert.match(installmentActionError({ status: 'pending' }, 'schedule', FN_ROLE), /ไม่มีสิทธิ์/);
+  /* กำหนดวางบิล · มติเจ้าของ 26/09 ข้อ 4 "แก้ได้" — ฝ่ายบัญชีแก้วันงวดได้แล้ว (เดิมบรรทัดนี้ยืนยันว่า FN แก้ไม่ได้)
+     ⇒ ทดสอบเต็มชุดอยู่ที่ installmentBillingSchedule.test.mjs */
+  assert.equal(installmentActionError({ status: 'pending' }, 'schedule', FN_ROLE), null);
+  assert.match(installmentActionError({ status: 'pending' }, 'schedule', PC_STAFF), /ไม่มีสิทธิ์/);
 });
 
 // ── ผูก/ถอดคำร้องขอเอกสารการเงิน (B-5 · mig 0260) ───────────────────────
@@ -968,11 +971,11 @@ test('ใบ pipeline: เซลล์ช่วงครอบ — ถามไ�
 
 test('งวดปกติของใบย้อนหลัง: ช่วงครอบตรึงตอนอนุมัติ — แก้ได้เฉพาะบัญชี · กำหนดชำระฝ่ายขายยังเลื่อนได้', () => {
   const range = { coversFrom: '2026-10-01', coversTo: '2026-11-30' };
-  assert.match(installmentActionError(REGULAR, 'coverage', SA, { ...HIST, ...range }), /ตรึงตอน AE Sup อนุมัติ/);
+  assert.match(installmentActionError(REGULAR, 'coverage', SA, { ...HIST, ...range }), /ตรึงตอนผู้จัดการฝ่ายขายอนุมัติ/);
   assert.equal(installmentActionError(REGULAR, 'coverage', FN_STAFF, { ...HIST, ...range }), null);
   assert.equal(installmentActionError(REGULAR, 'schedule', SA, HIST), null, 'ลูกค้าเลื่อนจ่ายเป็นเรื่องปกติ');
   // แจ้งชำระที่พกช่วงครอบมาด้วย = แก้ช่วงทางอ้อม ⇒ ด่านเดียวกัน · ไม่พกมา = แจ้งได้ตามปกติ
-  assert.match(installmentActionError(REGULAR, 'report', SA, { ...HIST, paidOn: '2026-10-01', ...range }), /ตรึงตอน AE Sup อนุมัติ/);
+  assert.match(installmentActionError(REGULAR, 'report', SA, { ...HIST, paidOn: '2026-10-01', ...range }), /ตรึงตอนผู้จัดการฝ่ายขายอนุมัติ/);
   assert.equal(installmentActionError(REGULAR, 'report', SA, { ...HIST, paidOn: '2026-10-01', coversFrom: null, coversTo: null }), null);
   assert.equal(installmentActionError(REGULAR, 'withdraw', SA, HIST), 'ดึงกลับได้เฉพาะงวดที่แจ้งแล้วและบัญชียังไม่ตรวจ',
     'งวดปกติถอนตามกติกาเดิม (ยังไม่แจ้ง = ถอนไม่ได้ ด้วยเหตุผลเดิม)');

@@ -15,7 +15,11 @@
 //
 // ⚠️ **ห้ามส่ง `retry: true`** — route เขียนห้ามไว้ (สร้างซ้ำ/PATCH ซ้ำตอบคนละเรื่องกับความจริง)
 // ⚠️ ตรรกะฝั่งจอทั้งหมดอยู่ที่ `lib/sales/historicalIntakeForm.js` (ทดสอบได้โดยไม่ต้องเรนเดอร์)
+// ⭐ ขั้น ④ (มติเจ้าของ 25/09 — "ตรวจแบบผู้อนุมัติ"): ความคืบหน้า/ผลของการบันทึกอยู่ใน **แผงบันทึก** เหนือแถบท้าย
+//    (`historicalSaveStages` / `historicalSaveResultView` — lib/sales/historicalReviewView.js) · ปุ่มหลักมีตัวเดียว
+//    ลองใหม่ = ปุ่ม "บันทึกและส่งอนุมัติ" ตัวเดิมซึ่งผ่านด่านใบซ้ำทุกครั้ง (ของเดิมมี "บันทึกอีกครั้ง" ตัวที่สองที่ข้ามด่าน)
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, History } from "lucide-react";
@@ -26,6 +30,8 @@ import { ActionButton } from "@/components/ui/ActionButtons";
 import SectionRail from "@/components/ui/SectionRail";
 import SkeletonRows from "@/components/ui/Skeleton";
 import StatusNotice from "@/components/ui/StatusNotice";
+import { WorkflowRail } from "@/components/ui/DocumentControlPanel";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { DetailPageLayout } from "@/components/ui/DetailPage";
 import { apiJson } from "@/lib/apiFetch";
 import { cachedFetchJson, dropCache } from "@/lib/apiCache";
@@ -38,23 +44,30 @@ import { customerSelectOptions } from "@/components/master/customerOption";
 import { EXTERNAL_DOC_TYPE } from "@/lib/master/attachmentTypes";
 import { userTeams, ROLE_LABELS } from "@/lib/permissions";
 import { salesPlanningEditScope } from "@/lib/salesPlanning";
-import { isSalesOrderReviewer } from "@/lib/sales/salesOrderWorkflow";
 import {
   HISTORICAL_EDITABLE_STATUSES,
   canKeyHistoricalSalesOrder, historicalEditPath, isHistoricalOrder,
 } from "@/lib/sales/historicalOrders";
 import {
-  HISTORICAL_SAVE_BUTTON_LABEL, HISTORICAL_SAVE_STAGES, HISTORICAL_WIZARD_STEPS,
+  HISTORICAL_SAVE_BUTTON_LABEL, HISTORICAL_SAVE_STAGES, HISTORICAL_TERMS_LOAD_FAILED, HISTORICAL_WIZARD_STEPS,
   HISTORICAL_WIZARD_STEP_ORDER, emptyHistoricalWizard, emptySaveProgress,
   firstStepWithIssues, historicalAsideRows, historicalContractDateWarnings, historicalContractFileCount,
-  historicalDuplicateGate, historicalExitActions,
+  historicalDuplicateGate,
   historicalDocStatusLabel, historicalFieldAnchorId, historicalFootNote, historicalIssuesWithRowKeys, historicalMoneyView,
-  historicalMergeIssues, historicalNextBlock, historicalPruneIssues, historicalSaveExit, historicalSaveFailureState, historicalZeroValue,
+  historicalMergeIssues, historicalNextBlock, historicalPruneIssues, historicalSaveExit, historicalZeroValue,
   historicalStepHasInput, historicalTeamField, historicalVisibleIssues, historicalWizardBody,
   historicalWizardLocalIssues, historicalWizardRail, historicalZonesWithPlanPrices, issuesForStep,
   newHistoricalIntakeKey, nextSaveStage, saveProgressAfter, wizardStateFromOrder,
 } from "@/lib/sales/historicalIntakeForm";
+import {
+  historicalKeyerMode, historicalReviewFootNote, historicalSaveResultView, historicalSaveStages, historicalSubmitToast,
+  historicalWarningGroups,
+} from "@/lib/sales/historicalReviewView";
 import { uploadContractFiles, uploadOpeningEvidence } from "@/lib/sales/historicalWizardUploads";
+import { createFormTermsState } from "@/lib/sales/salesOrderCreateInstallments";
+import {
+  historicalDuplicateNoteClamp, historicalDuplicateReviewOf, historicalDuplicatesAcknowledged,
+} from "@/lib/sales/historicalDuplicates";
 import WizardContractStep from "./WizardContractStep";
 import WizardZonesStep from "./WizardZonesStep";
 import WizardMoneyStep from "./WizardMoneyStep";
@@ -89,9 +102,20 @@ export default function HistoricalOrderWizard({ orderId = null }) {
   const [serverMoney, setServerMoney] = useState(null);
   const [issues, setIssues] = useState([]);
   const [duplicates, setDuplicates] = useState([]);
-  const [acknowledged, setAcknowledged] = useState(false);
+  /* ⭐ มติ 26/09: ยืนยันใบที่อาจซ้ำ **เป็นรายใบ** — id ที่ผู้คีย์เห็นตอนเปิดสวิตช์ · "ยืนยันครบ" = ทุกใบที่อาจซ้ำตอนนี้อยู่ในชุดนี้
+     🐞 ของเดิมเป็นธง true/false ⇒ พรีวิวใหม่ได้ใบเพิ่ม (อีกคนเพิ่งคีย์) แต่สวิตช์ยังเปิดค้าง แล้ว server รับ true กับรายการใหม่ทั้งชุด */
+  const [ackIds, setAckIds] = useState([]);
+  const acknowledged = duplicates.length > 0 && historicalDuplicatesAcknowledged(duplicates, { ids: ackIds });
+  /* เหตุผลว่าทำไมไม่ใช่ใบซ้ำ (ไม่บังคับ · มติ 26/09 ข้อ 2) — state แยกจาก `patch` ⇒ แก้ช่องอื่นแล้วสวิตช์ปิด แต่ข้อความไม่หาย
+     · บันทึกของรอบก่อน (ใบที่ถูกตีกลับ/ดึงกลับแล้วเปิดมาแก้ · มติข้อ 3) — โชว์ "รอบก่อน …" + เติมเหตุผลเดิมให้ แต่ **ไม่เปิดสวิตช์ให้** */
+  const [duplicateNote, setDuplicateNote] = useState("");
+  const [previousReview, setPreviousReview] = useState(null);
   const [blockedNote, setBlockedNote] = useState(null);
-  const [exit, setExit] = useState(null);
+  /* ⭐ แผงบันทึก (ขั้น ④ · มติ 25/09) — `saveRun` = กำลังบันทึกจังหวะไหน นับไฟล์ไปกี่ไฟล์แล้ว · `saveFailure` = ผลที่ล้ม
+     (ทางออก · จังหวะที่ล้ม · ใบร่างที่ลงฐานแล้ว · ไฟล์ที่อัปไม่ขึ้น) · อยู่นอกเนื้อขั้น ⇒ รอดการพาไปขั้นอื่น · ล้างทุกครั้งที่แก้ฟอร์ม
+     ⚠️ `error` ข้างล่างเหลือไว้เฉพาะเรื่องที่ไม่ใช่การบันทึก (ไฟล์ใหญ่เกิน · ตรวจข้อมูลไม่สำเร็จ) */
+  const [saveRun, setSaveRun] = useState(null);
+  const [saveFailure, setSaveFailure] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [readOnly, setReadOnly] = useState(null);
@@ -100,8 +124,12 @@ export default function HistoricalOrderWizard({ orderId = null }) {
   /* ⭐ สองตัวนับของไฟล์เอกสารแทนสัญญา (รีวิว R6) — ดูหัว `historicalContractFileCount`
      · `panelContractFiles` = ของจริงที่แผงไฟล์แนบรายงานมา (นับเฉพาะ external_doc) · null = ยังไม่รายงาน
      · `hydratedContractFiles` = จำนวนที่ติดมากับใบตอนเปิดฟอร์ม — ที่ถอยไปใช้ระหว่างรอแผง */
-  const [panelContractFiles, setPanelContractFiles] = useState(null);
+  /* ⭐ ขั้น ④ ต้องรู้ **ชื่อ** ของไฟล์ ไม่ใช่แค่จำนวน (แถว "ไฟล์หลักฐานลงนาม" = ไฟล์แรกที่แนบ) ⇒ เก็บรายการ external_doc
+     เรียงตามเวลาแนบ · จำนวนอ่านจากความยาวของรายการเดียวกัน (ตัวนับกับชื่อจึงไม่พูดคนละเรื่อง) */
+  const [panelContractItems, setPanelContractItems] = useState(null);
+  const panelContractFiles = panelContractItems ? panelContractItems.length : null;
   const [hydratedContractFiles, setHydratedContractFiles] = useState(null);
+  const [hydratedContractNames, setHydratedContractNames] = useState([]);
   /* อัปไฟล์สัญญาสำเร็จแล้วแผงต้องอ่านใหม่ — มันโหลดตอน mount/เปลี่ยน entityId เท่านั้น
      ⇒ เลขนี้ถูกใช้เป็น React key ของแผง (บวกหนึ่ง = remount = fetch ใหม่) */
   const [contractFilesVersion, setContractFilesVersion] = useState(0);
@@ -111,14 +139,21 @@ export default function HistoricalOrderWizard({ orderId = null }) {
   const [customersError, setCustomersError] = useState("");
   const [products, setProducts] = useState([]);
   const [productsError, setProductsError] = useState("");
-  const [meId, setMeId] = useState(null);
+  /* ผู้คีย์ = ผู้ใช้ที่ล็อกอิน (ไม่ใช่ AE เจ้าของใบ) — ขั้น ④ บอก "คีย์โดย …" และตัดสินคำของขั้นผู้อนุมัติจากตำแหน่งของคนนี้ */
+  const [me, setMe] = useState(null);
+  const meId = me?.id || null;
 
   /* ไฟล์ที่อัปสำเร็จแล้วในรอบนี้ (คีย์ไฟล์ → ref) — กดใหม่ต้องไม่อัปซ้ำ (retry-must-not-reupload) */
   const uploadedContract = useRef(new Map());
   const uploadedEvidence = useRef(new Map());
+  /* ชื่อไฟล์เอกสารแทนสัญญาที่อัปสำเร็จในรอบนี้ (ตามลำดับ) — แถว "ไฟล์หลักฐานลงนาม" ของขั้น ④ ต้องรู้ไฟล์ที่ขึ้นไปแล้ว
+     แม้แผงไฟล์แนบ (ขั้น ①) ไม่ได้เรนเดอร์อยู่ (รีวิวขั้น ④ 25/09: อัปขึ้น 1 ไฟล์แล้วไฟล์ถัดไปล้ม ⇒ แถวเคยชี้ไฟล์ที่ล้ม) */
+  const uploadedContractNames = useRef([]);
   const progressRef = useRef(null);
   const [dirty, setDirty] = useState(false);
   const dupSwitchRef = useRef(null);
+  /* แผงผลการบันทึกที่ล้ม — เลื่อนมาให้เห็นและโฟกัส (ปุ่มกดแล้วผลอยู่นอกจอ = อ่านเหมือนปุ่มตาย) */
+  const savePanelRef = useRef(null);
   /* ช่องที่ต้องพาไปหาหลังกดปุ่มที่ติดด่าน — เก็บเป็น state เพราะจอต้องวาดเครื่องหมาย "ผิด"
      ให้เสร็จก่อน แล้วค่อยเลื่อน/โฟกัส (อ่านชื่อช่องจาก `historicalNextBlock`) */
   const [focusField, setFocusField] = useState(null);
@@ -134,8 +169,8 @@ export default function HistoricalOrderWizard({ orderId = null }) {
   useEffect(() => {
     let alive = true;
     apiJson("/api/users/me", { fallbackError: "อ่านข้อมูลผู้ใช้ไม่สำเร็จ" })
-      .then((me) => { if (alive) setMeId(me?.id || null); })
-      .catch(() => { if (alive) setMeId(null); });
+      .then((user) => { if (alive) setMe(user?.id ? { id: user.id, name: user.name || null } : null); })
+      .catch(() => { if (alive) setMe(null); });
     return () => { alive = false; };
   }, []);
 
@@ -165,11 +200,19 @@ export default function HistoricalOrderWizard({ orderId = null }) {
           return;
         }
         setState(wizardStateFromOrder(order));
+        const previous = historicalDuplicateReviewOf(order);
+        setPreviousReview(previous);
+        if (previous?.note) setDuplicateNote(String(previous.note));
         setContractId(order.serviceContract?.id || order.serviceContractId || null);
         /* 🔴 นับเฉพาะ `external_doc` — ชนิดเดียวที่ RPC ส่งอนุมัติยอมรับ (0374) · นับทุกชนิด =
            ด่านบนจอผ่านด้วยไฟล์ที่ฐานไม่รับ แล้วไปตายที่จังหวะสุดท้ายของการบันทึก */
-        setHydratedContractFiles((order.serviceContractFiles || [])
-          .filter((file) => file?.docType === EXTERNAL_DOC_TYPE).length);
+        const externalDocs = (order.serviceContractFiles || []).filter((file) => file?.docType === EXTERNAL_DOC_TYPE);
+        setHydratedContractFiles(externalDocs.length);
+        /* ⭐ ไฟล์หลักฐานลงนาม = `signedFileCandidate` ของ server (signedFileId หรือ external_doc ใบแรกตามเวลาแนบ) ⇒ ขึ้นก่อน */
+        setHydratedContractNames([
+          ...externalDocs.filter((file) => file.signedFileCandidate),
+          ...externalDocs.filter((file) => !file.signedFileCandidate),
+        ].map((file) => file.fileName).filter(Boolean));
       } catch (loadError) {
         if (alive) setReadOnly(loadError?.message || "โหลดใบสั่งขายย้อนหลังไม่สำเร็จ");
       } finally {
@@ -234,6 +277,27 @@ export default function HistoricalOrderWizard({ orderId = null }) {
       .finally(() => { if (alive) setProductsBusy(false); });
     return () => { alive = false; };
   }, [customerId, registryRound, productsRound]);
+
+  /* รอบวางบิลของลูกค้า (mig 0389 · กำหนดวางบิล รอบสอง ข้อ 6) — ชิป "ตามรอบของลูกค้า" ในหน้าต่างแบ่งงวดของขั้น ③
+     ⭐ อ่านแคบรายเดียว (`/api/customers?billingTermsOf=` — 4 คอลัมน์) ไม่ใช่ลิสต์ picker: ลิสต์ไม่แบกคอลัมน์นี้โดยเจตนา
+     `null` = ยังไม่เลือกลูกค้า/กำลังโหลด · `{ status: 'ready', supported, rule }` · `{ status: 'error', detail }`
+     (รูปเดียวกับหน้าสร้างใบสั่งขาย — `createFormTermsState`)
+     ⚠️ โหลดไม่ขึ้น **ไม่บล็อกอะไร** — หน้าต่างแบ่งงวดบอกเหตุหนึ่งบรรทัด ตัวเลือกวันครบกำหนดเดิมใช้ได้ครบ
+     ⚠️ ไม่แคช: รอบแก้ได้ตลอด (ทะเบียนลูกค้า — SA/FN ไม่ต้องอนุมัติ) ⇒ เปลี่ยนลูกค้า/รีเฟรชทะเบียนแล้วอ่านใหม่ */
+  const [billingTerms, setBillingTerms] = useState(null);
+  useEffect(() => {
+    if (!customerId) { setBillingTerms(null); return undefined; }
+    let alive = true;
+    setBillingTerms(null);
+    apiJson(`/api/customers?billingTermsOf=${encodeURIComponent(customerId)}`, {
+      cache: "no-store", fallbackError: HISTORICAL_TERMS_LOAD_FAILED,
+    })
+      .then((data) => { if (alive) setBillingTerms(createFormTermsState(data)); })
+      .catch((loadError) => {
+        if (alive) setBillingTerms({ status: "error", detail: loadError?.message || HISTORICAL_TERMS_LOAD_FAILED });
+      });
+    return () => { alive = false; };
+  }, [customerId, registryRound]);
 
   const customerOptions = useMemo(() => customerSelectOptions(customers), [customers]);
   const ownerOptions = useMemo(() => owners.map((person) => ({
@@ -333,12 +397,16 @@ export default function HistoricalOrderWizard({ orderId = null }) {
     /* 🪤 แก้ฟอร์ม = ยอดที่ server ตอบมาเป็นของ payload เก่า ⇒ ทิ้งทันที ไม่งั้นยอดค้างในอดีต */
     setServerMoney(null);
     setDuplicates([]);
-    setAcknowledged(false);
+    setAckIds([]);
     setBlockedNote(null);
+    setSaveFailure(null);
     progressRef.current = null;
   }, []);
 
-  useUnsavedChanges(dirty && !busy);
+  /* ⭐ ยามคลุมตอนกำลังบันทึกด้วย (ของเดิม `dirty && !busy` = ปิดยามพอดีตอนที่ออกแล้วใบค้างเป็นร่าง) · `router.push` หลังสำเร็จ
+     ไม่ผ่านยามนี้ (มันจับแค่ลิงก์กับการปิดแท็บ) ⇒ ไม่ถามซ้ำตอนระบบพาไปหน้าใบ */
+  /* ⚠️ ผูกกับ **รอบบันทึก** (`saveRun`) ไม่ใช่ `busy` — busy ติดระหว่างพรีวิวด้วย ซึ่งไม่เขียนอะไร (รีวิวขั้น ④: ถามว่า "ใบจะค้างเป็นร่าง" ทั้งที่ไม่มีร่าง) */
+  useUnsavedChanges(dirty || Boolean(saveRun), saveRun ? { message: "กำลังบันทึกอยู่ — ออกตอนนี้ใบจะค้างเป็นฉบับร่าง" } : undefined);
 
   /* ⭐ **ปุ่มที่ติดด่านต้องพาไปถึงช่องที่ผิดจริง** (กฎบ้าน ui-visibility: ติดด่าน = โชว์แล้วบอกเหตุ)
      🐞 UAT 23/09: กด "ถัดไป" ตอนยังไม่แนบไฟล์สัญญา = ไม่มีอะไรเกิดขึ้นเลย ⇒ อ่านเหมือนปุ่มตาย
@@ -356,19 +424,29 @@ export default function HistoricalOrderWizard({ orderId = null }) {
     return undefined;
   }, [focusField]);
 
+  useEffect(() => {
+    if (!saveFailure) return;
+    const node = savePanelRef.current;
+    node?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+    node?.focus?.({ preventScroll: true });
+  }, [saveFailure]);
+
   /* ⭐ **ตัวนับไฟล์สัญญาเดินตามของจริงบนเซิร์ฟเวอร์** (รีวิว R6) — แผงไฟล์แนบอัป/ลบเองได้ตรง ๆ
      ⚠️ `loaded` เท็จ = ยังไม่รู้ (ยังโหลดไม่เสร็จ หรือโหลดไม่สำเร็จ) ⇒ **null ไม่ใช่ 0** —
         0 ที่เดาเอาเองคือคำตอบที่ผิดทั้งสองทาง (บอกว่ายังไม่แนบ ทั้งที่แนบแล้ว)
      ⚠️ นับเฉพาะ `external_doc` — ชนิดเดียวที่ RPC ส่งอนุมัติของ 0374 ยอมรับ (แผงถูกแคบไว้
         ด้วย `docTypes` ชุดเดียวกันแล้ว แต่ตัวนับต้องไม่ฝากความถูกไว้กับ prop ของอีกไฟล์) */
   const handleContractPanelItems = useCallback((items, { loaded } = {}) => {
-    setPanelContractFiles(loaded
-      ? (Array.isArray(items) ? items : []).filter((item) => item?.docType === EXTERNAL_DOC_TYPE).length
+    /* เรียงตามเวลาแนบ (เก่าก่อน) แล้วตาม id — กติกาเดียวกับตัวเลือกไฟล์หลักฐานลงนามของ server (historicalOrderWorkflow) */
+    setPanelContractItems(loaded
+      ? (Array.isArray(items) ? items : []).filter((item) => item?.docType === EXTERNAL_DOC_TYPE)
+        .slice().sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || ""))
+          || String(a.id || "").localeCompare(String(b.id || "")))
       : null);
   }, []);
 
   /* เปลี่ยนสัญญา = จำนวนเดิมไม่ใช่ของใบนี้แล้ว ⇒ กลับไปเป็น "ยังไม่รู้" จนกว่าแผงจะรายงานใหม่ */
-  useEffect(() => { setPanelContractFiles(null); }, [contractId]);
+  useEffect(() => { setPanelContractItems(null); }, [contractId]);
 
   const evidenceRefs = useCallback(() => [
     ...(state.openingEvidence || []),
@@ -431,25 +509,11 @@ export default function HistoricalOrderWizard({ orderId = null }) {
   }, [state, intakeKey, evidenceRefs, invoiceTotal]);
 
   /**
-   * เดินไปอีกขั้น — ถอยหลังเดินได้เลย · เดินหน้าต้องผ่านพรีวิวของขั้นที่ยืนอยู่ก่อน
-   * ⚠️ พรีวิวไม่ผ่านไม่ได้แปลว่าขั้นนี้ผิด: ตอนอยู่ขั้น ① ใบยังไม่มีโซนเสมอ ⇒ ตกอยู่ที่ **ขั้นแรก
-   *    ที่มีข้อผิดพลาด** เมื่อขั้นนั้นอยู่ก่อนหรือเท่ากับขั้นปัจจุบัน ไม่งั้นเดินต่อได้ตามปกติ
+   * error รายช่องของพรีวิว → พาไปขั้นที่ผิด · **ตัวเดียว** ที่ทั้ง "ถัดไป" และการกดปุ่มบันทึกตอนยังไม่มีแผน (ขั้น ④) ใช้
+   * 🐞 รีวิวขั้น ④ 25/09: ปุ่มบันทึกตอนไม่มีแผนเคยเรียก `runPreview()` แล้วทิ้งผล ⇒ error รายช่องหายเงียบ ปุ่มอ่านเหมือนปุ่มตาย
    */
-  const goToStep = useCallback(async (to) => {
-    const from = step;
+  const applyPreviewErrors = useCallback((fieldErrors, from, to) => {
     const index = (key) => HISTORICAL_WIZARD_STEP_ORDER.indexOf(key);
-    if (index(to) <= index(from)) { setStep(to); return; }
-    /* ของที่ server มองไม่เห็น (ไฟล์ · โหมด VAT · ทีม) ตรวจก่อน แล้วค่อยจ่ายค่าพรีวิว
-       🐞 UAT 23/09: ของเดิมเขียน `{ setIssues([]); return; }` = **ไม่เกิดอะไรขึ้นเลยบนจอ** ซ้ำยัง
-          ล้าง error ของ server ที่ค้างอยู่ทิ้ง ⇒ ติดด่านต้อง **คาข้อความไว้แล้วพาไปที่ช่องแรกที่ผิด**
-          (ก้อน error ของขั้นวาดจาก localIssues อยู่แล้ว — ห้ามแตะ `issues` ซึ่งเป็นของ server) */
-    /* กดไปต่อจากขั้นนี้แล้ว = ขั้นนี้ "เปิดเผย" ข้อที่ต้องแก้ได้ (ก้อนแดง + ใต้ช่อง) — ไม่ว่าจะติดด่านหรือผ่าน */
-    reveal(from);
-    const block = historicalNextBlock(localIssues, from);
-    if (block.blocked) { setFocusField(block.field); return; }
-    const { ok, fieldErrors } = await runPreview();
-    if (ok) { setIssues([]); setStep(to); return; }
-    if (!fieldErrors) return;
     const first = firstStepWithIssues(fieldErrors);
     /* ⭐ ผูก error รายบรรทัดกับ `key` ของแถว **ตอนนี้** (ลำดับของ body = ลำดับของ state ที่ส่งไปตรวจ · ช่องปิดระหว่างตรวจ)
        ⇒ ลบ/เพิ่มบรรทัดทีหลังแล้วข้อความไม่เลื่อนไปเกาะบรรทัดผิด (บั๊กเดิม: จับคู่ด้วยลำดับตอนวาด) */
@@ -469,16 +533,41 @@ export default function HistoricalOrderWizard({ orderId = null }) {
     if (issuesForStep(carried, to).length && historicalStepHasInput(state, to)) reveal(to);
     setIssues(carried);
     setStep(to);
-  }, [step, runPreview, localIssues, state, reveal]);
+  }, [state, reveal]);
+
+  /**
+   * เดินไปอีกขั้น — ถอยหลังเดินได้เลย · เดินหน้าต้องผ่านพรีวิวของขั้นที่ยืนอยู่ก่อน
+   * ⚠️ พรีวิวไม่ผ่านไม่ได้แปลว่าขั้นนี้ผิด: ตอนอยู่ขั้น ① ใบยังไม่มีโซนเสมอ ⇒ ตกอยู่ที่ **ขั้นแรก
+   *    ที่มีข้อผิดพลาด** เมื่อขั้นนั้นอยู่ก่อนหรือเท่ากับขั้นปัจจุบัน ไม่งั้นเดินต่อได้ตามปกติ
+   */
+  const goToStep = useCallback(async (to) => {
+    const from = step;
+    const index = (key) => HISTORICAL_WIZARD_STEP_ORDER.indexOf(key);
+    if (index(to) <= index(from)) { setStep(to); return; }
+    /* ของที่ server มองไม่เห็น (ไฟล์ · โหมด VAT · ทีม) ตรวจก่อน แล้วค่อยจ่ายค่าพรีวิว
+       🐞 UAT 23/09: ของเดิมเขียน `{ setIssues([]); return; }` = **ไม่เกิดอะไรขึ้นเลยบนจอ** ซ้ำยัง
+          ล้าง error ของ server ที่ค้างอยู่ทิ้ง ⇒ ติดด่านต้อง **คาข้อความไว้แล้วพาไปที่ช่องแรกที่ผิด**
+          (ก้อน error ของขั้นวาดจาก localIssues อยู่แล้ว — ห้ามแตะ `issues` ซึ่งเป็นของ server) */
+    /* กดไปต่อจากขั้นนี้แล้ว = ขั้นนี้ "เปิดเผย" ข้อที่ต้องแก้ได้ (ก้อนแดง + ใต้ช่อง) — ไม่ว่าจะติดด่านหรือผ่าน */
+    reveal(from);
+    const block = historicalNextBlock(localIssues, from);
+    if (block.blocked) { setFocusField(block.field); return; }
+    const { ok, fieldErrors } = await runPreview();
+    if (ok) { setIssues([]); setStep(to); return; }
+    if (!fieldErrors) return;
+    applyPreviewErrors(fieldErrors, from, to);
+  }, [step, runPreview, localIssues, reveal, applyPreviewErrors]);
 
   /* ── บันทึกและส่งอนุมัติ: เดินทีละจังหวะจนจบ (nextSaveStage) ───────────────────────── */
   const runSave = useCallback(async () => {
     setBusy(true);
     setError("");
-    setExit(null);
+    setSaveFailure(null);
     let orderRowId = state.orderId;
+    let orderNumber = state.orderNumber || null;
     let updatedAt = state.updatedAt;
     let contractRowId = contractId;
+    let stage = null;
     const pendingOf = (files, store) => files.filter((file) => !store.current.has(fileKey(file))).length;
     /* 🐞 รีวิว 25/09: ใบที่ไม่มีงวดยกมาส่ง (ใบ ฿0 · ยังไม่เคยจ่าย) ไม่มีที่ให้หลักฐานไปผูก ⇒ ห้ามอัปไฟล์ในตะกร้าขึ้นไปเป็นไฟล์กำพร้า */
     const sendsOpening = historicalWizardBody(state, { totalAmount: invoiceTotal }).opening !== null;
@@ -488,12 +577,25 @@ export default function HistoricalOrderWizard({ orderId = null }) {
       pendingContractFiles: pendingOf(contractFiles, uploadedContract),
       pendingEvidence: pendingOf(evidenceToUpload, uploadedEvidence),
     });
+    /* แผงบันทึก: จำนวนไฟล์ของรอบนี้ (ที่ยังไม่ได้อัป) — นับขึ้นทีละไฟล์ตอนอัปสำเร็จ */
+    const contractTotal = pendingOf(contractFiles, uploadedContract);
+    const evidenceTotal = pendingOf(evidenceToUpload, uploadedEvidence);
+    const show = (patchRun) => setSaveRun((current) => ({
+      stage: null, orderNumber, counts: { contract: [0, contractTotal], evidence: [0, evidenceTotal] }, ...current, ...patchRun,
+    }));
+    const bump = (key) => setSaveRun((current) => {
+      if (!current) return current;
+      const [done, total] = current.counts[key];
+      return { ...current, counts: { ...current.counts, [key]: [Math.min(done + 1, total), total] } };
+    });
+    setSaveRun({ stage: null, orderNumber, counts: { contract: [0, contractTotal], evidence: [0, evidenceTotal] } });
 
     const persist = async () => {
       const body = historicalWizardBody(state, {
         intakeKey: orderRowId ? null : intakeKey,
         expectedUpdatedAt: orderRowId ? updatedAt : null,
-        acknowledgeDuplicates: acknowledged,
+        acknowledgedDuplicateIds: acknowledged ? ackIds : [],
+        duplicateNote: acknowledged ? duplicateNote : "",
         openingEvidenceRefs: evidenceRefs(),
         totalAmount: invoiceTotal,
       });
@@ -502,6 +604,8 @@ export default function HistoricalOrderWizard({ orderId = null }) {
         : await apiJson(HISTORICAL_PATH, { method: "POST", json: body, fallbackError: SAVE_ERROR });
       const created = !orderRowId;
       orderRowId = data?.order?.id || orderRowId;
+      orderNumber = data?.order?.orderNumber || orderNumber;
+      show({ orderNumber });
       updatedAt = data?.order?.updatedAt || updatedAt;
       contractRowId = data?.contract?.id || contractRowId;
       /* ⭐ URL กลายเป็นเส้นแก้ใบทันที — component ตัวเดิมทำงานต่อ (ไม่ remount) และรีโหลดแล้วได้ใบจากฐาน */
@@ -528,28 +632,37 @@ export default function HistoricalOrderWizard({ orderId = null }) {
           pendingContractFiles: pendingOf(contractFiles, uploadedContract),
           pendingEvidence: pendingOf(evidenceToUpload, uploadedEvidence),
         };
-        const stage = nextSaveStage(progress);
+        stage = nextSaveStage(progress);
         if (!stage) break;
+        show({ stage });
         if (stage === "persist") {
           await persist();
         } else if (stage === "contractFiles") {
           await uploadContractFiles({
             contractId: contractRowId,
             files: contractFiles.map((file) => ({ file, ref: uploadedContract.current.get(fileKey(file)) || null })),
-            onUploaded: (file, ref) => uploadedContract.current.set(fileKey(file), ref),
+            /* ⚠️ ขั้น ① อาจไม่ได้ถูกเรนเดอร์อยู่ตอนนี้ (ผู้คีย์ยืนอยู่ขั้น ④) ⇒ แผงไม่มีโอกาสรายงาน ⇒ นับ **ทีละไฟล์ที่ขึ้นจริง**
+               (แผงเขียนทับด้วยของจริงทันทีที่ได้เรนเดอร์) · 🐞 รีวิวขั้น ④ 25/09: ของเดิมตั้งพื้นหลังอัปครบทั้งชุดเท่านั้น ⇒ ไฟล์ที่ 2 ล้ม
+               = จำนวน "ยังอ่านไม่ได้" แล้วปุ่ม "เอาไฟล์นี้ออกจากตะกร้า" ส่งผู้คีย์กลับขั้น ① แทนที่จะส่งต่อได้ · รายการที่แผงรายงานไว้แล้ว
+               ต่อท้ายด้วยไฟล์ใหม่ (ใหม่สุด = ท้ายสุด — ไม่ใช่ไฟล์หลักฐานลงนาม) */
+            onUploaded: (file, ref) => {
+              uploadedContract.current.set(fileKey(file), ref);
+              uploadedContractNames.current = [...uploadedContractNames.current, file.name];
+              setHydratedContractFiles((current) => (current || 0) + 1);
+              setPanelContractItems((items) => (items
+                ? [...items, { id: ref?.id || fileKey(file), fileName: file.name, docType: EXTERNAL_DOC_TYPE }]
+                : items));
+              bump("contract");
+            },
           });
           /* แผงไฟล์แนบโหลดตอน mount/เปลี่ยน entityId เท่านั้น ⇒ อัปเสร็จแล้วต้องสั่งให้อ่านใหม่
              ไม่งั้นตัวนับของจริงค้างที่เลขก่อนอัป แล้วด่าน "ต้องแนบไฟล์" ค้างทั้งที่ไฟล์ขึ้นไปแล้ว */
           setContractFilesVersion((version) => version + 1);
-          /* ⚠️ ขั้น ① อาจไม่ได้ถูกเรนเดอร์อยู่ตอนนี้ (ผู้คีย์ยืนอยู่ขั้น ④) ⇒ แผงไม่มีโอกาสรายงาน
-             ⇒ ตั้ง **พื้นล่างที่รู้แน่** ไว้ก่อน: ไฟล์ที่เพิ่งอัปสำเร็จมีอยู่จริงอย่างน้อยเท่านี้
-             (แผงเขียนทับด้วยของจริงทันทีที่ได้เรนเดอร์) — ไม่ใช่ภาพนิ่ง แต่เป็นขอบล่างที่ไม่โกหก */
-          setHydratedContractFiles((current) => Math.max(current || 0, contractFiles.length));
         } else if (stage === "evidence") {
           await uploadOpeningEvidence({
             orderId: orderRowId,
             files: evidenceToUpload.map((file) => ({ file, ref: uploadedEvidence.current.get(fileKey(file)) || null })),
-            onUploaded: (file, ref) => uploadedEvidence.current.set(fileKey(file), ref),
+            onUploaded: (file, ref) => { uploadedEvidence.current.set(fileKey(file), ref); bump("evidence"); },
           });
         } else if (stage === "persistEvidence") {
           await persist();
@@ -569,32 +682,84 @@ export default function HistoricalOrderWizard({ orderId = null }) {
         progressRef.current = progress;
       }
       if (nextSaveStage(progress)) {
-        throw new Error('บันทึกไม่จบในรอบเดียว — กดบันทึกอีกครั้ง หากยังไม่ผ่านแจ้งผู้ดูแลระบบ');
+        throw new Error(`บันทึกไม่จบในรอบเดียว — กด “${HISTORICAL_SAVE_BUTTON_LABEL}” อีกครั้ง หากยังไม่ผ่านแจ้งผู้ดูแลระบบ`);
       }
       setDirty(false);
       progressRef.current = null;
       /* ⚠️ ไม่ปลด busy หลังสำเร็จโดยเจตนา — หน้ากำลังจะเปลี่ยนไปหน้าใบ ปลดตอนนี้ = ปุ่มกลับกดได้ซ้ำระหว่างนำทาง
          (ใบเกิดไปแล้ว กดซ้ำคือการส่งอนุมัติรอบสอง ซึ่ง RPC ตอบ replayed อยู่แล้ว — แต่ผู้คีย์ไม่ควรต้องเห็นปุ่มกระพริบ)
          toast ระดับแอป — อยู่รอดข้ามการเปลี่ยนหน้า (ผู้คีย์อ่านผลที่หน้าใบ ไม่ใช่ที่ฟอร์มที่กำลังหายไป) */
-      notifyToast.success("บันทึกและส่งให้ AE Sup อนุมัติแล้ว — ใบย้อนหลังไม่นับ Actual");
+      notifyToast.success(historicalSubmitToast(orderNumber));
       router.push(ORDER_PATH(orderRowId));
     } catch (saveError) {
-      /* ⭐ ผูก error รายบรรทัดกับ `key` **ตอนนี้** ด้วยชุดบรรทัดที่ส่งไปบันทึกจริง (`state` ของรอบนี้) — ผูกตอนกด "กลับไปแก้"
+      /* ⭐ ผูก error รายบรรทัดกับ `key` **ตอนนี้** ด้วยชุดบรรทัดที่ส่งไปบันทึกจริง (`state` ของรอบนี้) — ผูกทีหลัง
          = ใช้ชุดบรรทัดของตอนนั้น ซึ่งผู้คีย์อาจลบ/เพิ่มไปแล้ว ⇒ ข้อความเกาะบรรทัดผิด (รีวิว 25/09) */
       const exitInfo = historicalSaveExit(saveError);
-      const keyedExit = Array.isArray(exitInfo.errors)
-        ? { ...exitInfo, errors: historicalIssuesWithRowKeys(exitInfo.errors, state.zones, state.installments) }
-        : exitInfo;
-      const next = historicalSaveFailureState(keyedExit);
-      /* บันทึกไม่ผ่าน = ผู้คีย์พยายามไปต่อแล้ว ⇒ ขั้นปลายทางเปิดเผยข้อที่ต้องแก้ */
-      reveal(next.step);
-      setExit(next.exit);
-      setError(next.error);
-      if (next.duplicates) { setDuplicates(next.duplicates); setAcknowledged(false); }
-      setStep(next.step);
+      const errors = Array.isArray(exitInfo.errors)
+        ? historicalIssuesWithRowKeys(exitInfo.errors, state.zones, state.installments) : null;
+      const exit = errors ? { ...exitInfo, errors } : exitInfo;
+      setSaveRun(null);
       setBusy(false);
+      /* 409 ใบซ้ำ = **ไม่ใช่จอผิดพลาด** — การ์ดใบที่อาจซ้ำรีเฟรช สวิตช์กลับเป็นปิด เหตุอยู่ใต้สวิตช์ (ไม่มีแผงบันทึก) */
+      if (exit.kind === "duplicate") {
+        setDuplicates(Array.isArray(exit.duplicates) ? exit.duplicates : []);
+        setAckIds([]);
+        setBlockedNote(exit.message || null);
+        setStep("review");
+        return;
+      }
+      /* ⭐ 400 = **ลงเครื่องหมายผิดทันที** ที่ขั้นแรกที่มีข้อต้องแก้ (ของเดิมรอกด "กลับไปแก้" ก่อน) · ไม่มี error รายช่อง =
+         ตารางรหัส→ขั้นของ `historicalSaveExit` ตัดสินว่าขั้นไหน · ข้อความของ server อยู่ในแผงบันทึกซึ่งรอดการพาไปขั้นอื่น */
+      let landed = "review";
+      if (exit.kind === "invalid") {
+        landed = exit.goToStep || "contract";
+        reveal(landed);
+        if (errors?.length) {
+          setIssues(errors);
+          setFocusField(issuesForStep(errors, landed)[0]?.field || null);
+        }
+        setStep(landed);
+      }
+      setSaveFailure({
+        exit,
+        stage,
+        /* ใบร่างที่ **ของรอบนี้** ลงฐานแล้ว — จังหวะแรกผ่านในฟอร์มนี้ (แก้ฟอร์มแล้วรอบเริ่มใหม่ — `patch` ล้าง progressRef)
+           🐞 รีวิวขั้น ④ 25/09: ของเดิมดูแค่ "มีเลขใบ" ⇒ ใบเดิมที่ PATCH แรกล้มก็ขึ้น "ใบร่าง … บันทึกแล้ว" ทั้งที่ของที่แก้ไม่ได้ลง
+              (ใบที่ถูกตีกลับยังเป็น 'rejected' ด้วยซ้ำ) */
+        orderNumber: progress.persisted ? orderNumber : null,
+        orderId: orderRowId || null,
+        failedFile: saveError?.failedFile || null,
+        landed,
+      });
     }
-  }, [state, contractId, contractFiles, evidenceFiles, intakeKey, acknowledged, evidenceRefs, router, reveal, invoiceTotal]);
+  }, [state, contractId, contractFiles, evidenceFiles, intakeKey, acknowledged, ackIds, duplicateNote, evidenceRefs, router, reveal, invoiceTotal]);
+
+  /* ทางออกในแผงบันทึก (ไม่เกินหนึ่งปุ่ม · ไม่มีปุ่มหลักตัวที่สอง — ลองใหม่คือปุ่มบันทึกตัวเดิม) */
+  const runSaveAction = useCallback(async (action) => {
+    if (!action || !saveFailure) return;
+    if (action.key === "removeFile") {
+      const target = saveFailure.failedFile;
+      const keep = (file) => fileKey(file) !== target?.key;
+      if (target?.kind === "evidence") setEvidenceFiles((files) => files.filter(keep));
+      else setContractFiles((files) => files.filter(keep));
+      /* ⚠️ ไม่ต้องแตะรอบที่ค้าง (`progressRef`) — ตัวเดินจังหวะนับไฟล์ที่ยังไม่อัปจากตะกร้าจริงทุกรอบอยู่แล้ว */
+      setDirty(true);
+      setSaveFailure(null);
+      return;
+    }
+    if (action.key === "goToStep" && action.step) {
+      reveal(action.step);
+      setStep(action.step);
+      return;
+    }
+    if (action.key === "reload") {
+      const path = historicalEditPath(saveFailure.orderId || state.orderId || orderId);
+      if (!(await confirmAction("ของที่แก้หลังบันทึกครั้งล่าสุดจะหาย — โหลดใบล่าสุดจากฐานข้อมูล?", { title: "โหลดใบล่าสุด" }))) return;
+      /* ยืนยันแล้ว = ปลดยามงานยังไม่บันทึกก่อนออก (flushSync ⇒ ตัวดัก beforeunload ถูกถอดก่อน assign) ไม่งั้นเบราว์เซอร์ถามซ้ำ */
+      flushSync(() => { setDirty(false); });
+      window.location.assign(path);
+    }
+  }, [saveFailure, reveal, state.orderId, orderId]);
 
   if (!canKey || !canEdit) {
     return (
@@ -629,7 +794,7 @@ export default function HistoricalOrderWizard({ orderId = null }) {
     );
   }
 
-  const gate = historicalDuplicateGate({ duplicates, acknowledged, warnings: plan?.warnings, localIssues });
+  const gate = historicalDuplicateGate({ duplicates, acknowledged, localIssues });
   const stepIndex = HISTORICAL_WIZARD_STEP_ORDER.indexOf(step);
   const customerLabel = customerOptions.find((option) => option.value === state.customerId)?.label || null;
   const ownerLabel = ownerPick?.name || lockedOwner?.name || null;
@@ -638,7 +803,10 @@ export default function HistoricalOrderWizard({ orderId = null }) {
      🐞 UAT 23/09 สองข้อในก้อนเดียวกัน: รางนับเป็นเศษส่วน 1/1 ⇒ ขั้นที่ error มาจากพรีวิวอ่านว่า
         "ครบ" ตั้งแต่ฟอร์มยังเปล่า · แถบสรุปอ่าน `plan?.header` อย่างเดียว ⇒ เลือกลูกค้าแล้ว
         ยังขึ้นขีด ทั้งที่แถวช่วงสัญญาใต้มันขยับทันที (ดูหัว `historicalWizardRail`/`historicalAsideRows`) */
-  const rail = historicalWizardRail(state, { step, localIssues, serverIssues: issues, plan, customerLabel, revealedSteps, zeroValue });
+  const rail = historicalWizardRail(state, {
+    step, localIssues, serverIssues: issues, plan, customerLabel, revealedSteps, zeroValue,
+    duplicatesPending: duplicates.length > 0 && !acknowledged,
+  });
   const sections = rail.map((item) => ({
     key: item.key,
     /* `label` ของ SectionRail รับ node อยู่แล้ว ⇒ บรรทัดสรุปไม่ต้องเพิ่มช่องให้ primitive กลาง */
@@ -655,6 +823,32 @@ export default function HistoricalOrderWizard({ orderId = null }) {
   /* แถวสรุปชุดเดียว — ช่องสรุปบนหัวเอกสารของขั้น ① อ่านก้อนนี้ (`historicalContractFacts`)
      ⭐ มติเจ้าของ 25/09: ไม่มีแถบสรุปข้างขวาในขั้นไหนแล้ว (ขั้น ③ ถอดด้วย — ยอดอยู่ในกล่องสรุปท้ายตารางงวด) */
   const asideRows = historicalAsideRows(state, { plan, serverMoney, customerLabel, ownerLabel, contractFileCount, evidenceFileCount });
+
+  /* ⭐ ขั้น ④ แถว "ไฟล์หลักฐานลงนาม": ชื่อไฟล์ที่ขึ้นแล้ว (แผงรายงาน · ถอยไปชื่อที่ติดมากับใบ) ต่อด้วยไฟล์ในตะกร้าที่ยังไม่อัป */
+  const pendingContractNames = contractFiles
+    .filter((file) => !uploadedContract.current.has(fileKey(file))).map((file) => file.name);
+  const reviewContractFiles = {
+    count: contractFileCount,
+    names: [
+      ...(panelContractItems ? panelContractItems.map((item) => item.fileName) : [...hydratedContractNames, ...uploadedContractNames.current]),
+      ...pendingContractNames,
+    ],
+    pending: pendingContractNames,
+  };
+
+  /* ⭐ แผงบันทึก + บรรทัดใต้ปุ่มของขั้น ④ — ตัวตัดสินใน lib ตัวเดียว (historicalReviewView) */
+  const saving = saveRun ? historicalSaveStages({ stage: saveRun.stage, counts: saveRun.counts, orderNumber: saveRun.orderNumber }) : null;
+  const saveResult = saveFailure
+    ? historicalSaveResultView(saveFailure.exit, {
+      stage: saveFailure.stage, orderNumber: saveFailure.orderNumber, failedFile: saveFailure.failedFile, currentStep: step,
+    })
+    : null;
+  const footNote = step === "review"
+    ? historicalReviewFootNote({
+      plan, gate, localIssues, warningGroups: historicalWarningGroups(plan, { todayIso }), saving,
+      failed: saveFailure ? { orderNumber: saveFailure.orderNumber, exit: saveFailure.exit } : null,
+    })
+    : { text: historicalFootNote({ step }), tone: null };
 
   /* ⚠️ ข้อที่จอตรวจเองกับข้อของ server ช่องเดียวกัน (VAT ที่ยังไม่เลือก ฯลฯ) = **ข้อเดียว** — local ชนะ (มันสดกว่า
      และดับทันทีที่แก้) · 🐞 UAT 25/09: VAT ย้ายมาขั้น ② แล้วขึ้นสองบรรทัดคำเกือบเดียวกันในก้อนแดง */
@@ -714,6 +908,7 @@ export default function HistoricalOrderWizard({ orderId = null }) {
         evidenceFiles={evidenceFiles}
         onEvidenceFiles={(files) => { setDirty(true); setEvidenceFiles(files); }}
         todayIso={todayIso}
+        customerTerms={billingTerms}
         busy={busy}
         onOversize={setError}
       />
@@ -722,16 +917,38 @@ export default function HistoricalOrderWizard({ orderId = null }) {
     body = (
       <WizardReviewStep
         plan={plan}
-        keyerIsReviewer={isSalesOrderReviewer(role)}
-        keyerName={ownerPick?.name || lockedOwner?.name || null}
-        contractFileCount={contractFileCount}
+        keyerMode={historicalKeyerMode(role)}
+        keyerName={me?.name || null}
+        customerLabel={customerLabel}
+        orderNumber={state.orderNumber || null}
+        statusLabel={historicalDocStatusLabel(state)}
+        contractFiles={reviewContractFiles}
         evidenceFileCount={evidenceFileCount}
         duplicates={duplicates}
         acknowledged={acknowledged}
-        onAcknowledge={(next) => { setAcknowledged(next); setBlockedNote(null); }}
-        blockedNote={blockedNote}
+        onAcknowledge={(next) => {
+          setAckIds(next ? duplicates.map((row) => row.id) : []);
+          setBlockedNote(null);
+          /* 🐞 รีวิว 26/09: บันทึกการยืนยันเขียนตอน "บันทึกใบ" เท่านั้น — กดซ้ำหลังบันทึกค้างครึ่งทางข้ามจังหวะนั้น ⇒ เปลี่ยนการยืนยัน/เหตุผล
+             แล้วต้องบันทึกใบซ้ำ (เริ่มรอบใหม่ = PATCH · ไฟล์ที่อัปแล้วไม่อัปซ้ำ) ไม่งั้นผู้อนุมัติเห็นของรอบก่อน */
+          progressRef.current = null;
+          setSaveFailure(null);
+        }}
+        previousReview={previousReview}
+        duplicateNote={duplicateNote}
+        duplicateNoteError={stepIssues("review").find((issue) => issue.field === "duplicateNote")?.message || null}
+        onDuplicateNote={(value) => {
+          setDirty(true);
+          setDuplicateNote(historicalDuplicateNoteClamp(value));
+          setIssues((current) => current.filter((issue) => issue.field !== "duplicateNote"));
+          progressRef.current = null;
+          setSaveFailure(null);
+        }}
+        dupNote={blockedNote}
         switchRef={dupSwitchRef}
         busy={busy}
+        onEditStep={(key, field) => { setStep(key); setFocusField(field || null); }}
+        todayIso={todayIso}
       />
     );
   }
@@ -743,8 +960,9 @@ export default function HistoricalOrderWizard({ orderId = null }) {
   return (
     <Workspace {...workspaceProps}>
       {state.rejection ? (
-        /* ใบที่ AE Sup ตีกลับ — เหตุผลต้องอยู่บนฟอร์มจนกว่าจะส่งใหม่ ไม่ใช่ toast ที่หายไปแล้ว */
-        <StatusNotice tone="warning" title={`AE Sup ตีกลับให้แก้ไข${state.rejection.by ? ` — ${state.rejection.by}` : ""}`}>
+        /* ใบที่ถูกตีกลับ — เหตุผลต้องอยู่บนฟอร์มจนกว่าจะส่งใหม่ ไม่ใช่ toast ที่หายไปแล้ว
+           ⭐ มติ 25/09: ไม่เรียก "AE Sup" (CM/CD ก็ตีกลับได้) · ชื่อคนตีกลับบอกอยู่แล้วว่าใคร */
+        <StatusNotice tone="warning" title={`ตีกลับให้แก้ไข${state.rejection.by ? ` — ${state.rejection.by}` : ""}`}>
           {state.rejection.reason || "ไม่ได้ระบุเหตุผล"}
         </StatusNotice>
       ) : null}
@@ -770,7 +988,7 @@ export default function HistoricalOrderWizard({ orderId = null }) {
           </ul>
         </StatusNotice>
       ) : null}
-      {exit?.hint ? <StatusNotice tone="info" title="ทำต่อยังไง">{exit.hint}</StatusNotice> : null}
+      {/* ⚠️ error ของ **การบันทึก** ไม่ขึ้นที่นี่แล้ว — อยู่ในแผงบันทึกเหนือแถบท้าย (มติ 25/09) · ที่นี่เหลือไฟล์ใหญ่เกิน/ตรวจไม่สำเร็จ */}
       {error ? <p className="form-error" role="alert">{error}</p> : null}
 
       {/* ⭐ ไม่มีแถบสรุปข้างขวาในขั้นไหนแล้ว (มติเจ้าของ 25/09 — ขั้น ① ย้ายขึ้นหัวเอกสาร · ขั้น ③ อยู่ในกล่องสรุปท้ายตารางงวด)
@@ -785,13 +1003,57 @@ export default function HistoricalOrderWizard({ orderId = null }) {
           {body}
         </SectionRail>
 
+        {saving ? (
+          /* ⭐ แผงบันทึก — เฉพาะจังหวะที่มีงานจริงของรอบนี้ · อยู่นอกเนื้อขั้น ⇒ รอดการพาไปขั้นอื่น
+             (StatusNotice ให้ role เอง: info = status · error = alert) */
+          <div className={styles.savePanel}>
+            <StatusNotice tone="info" title="กำลังบันทึกและส่ง — อย่าปิดหน้านี้">
+              {/* ⚠️ รางแนวตั้ง (ค่าตั้งต้น) — แบบแนวนอนซ่อนบรรทัดรองที่จอ ≤1100px ซึ่งคือเลข SO กับ "k/n ไฟล์" (รีวิวขั้น ④ 25/09) */}
+              <WorkflowRail steps={saving.stages.map((item) => ({ id: item.key, label: item.label, hint: item.hint, state: item.state }))}
+                label="จังหวะของการบันทึก" />
+            </StatusNotice>
+          </div>
+        ) : saveResult ? (
+          <div className={styles.savePanel} ref={savePanelRef} tabIndex={-1}>
+            {/* ⚠️ ทางออกไม่เกินหนึ่งปุ่ม · ปุ่มรอง (neutral) เสมอ · **ไม่มี runSave ที่นี่** — ลองใหม่คือปุ่มบันทึกตัวเดิมซึ่งผ่านด่าน */}
+            <StatusNotice
+              tone="error"
+              title={saveResult.title}
+              action={saveResult.action ? (
+                saveResult.action.key === "open" ? (
+                  <Button as={Link} href={historicalEditPath(saveResult.action.orderId)} size="sm" tone="neutral" variant="ghost">
+                    {saveResult.action.label}
+                  </Button>
+                ) : saveResult.action.key === "openOrder" ? (
+                  <Button as={Link} href={ORDER_PATH(saveFailure.orderId || state.orderId)} size="sm" tone="neutral" variant="ghost">
+                    {saveResult.action.label}
+                  </Button>
+                ) : (
+                  <Button size="sm" tone="neutral" variant="ghost" disabled={busy} onClick={() => runSaveAction(saveResult.action)}>
+                    {saveResult.action.label}
+                  </Button>
+                )
+              ) : null}
+            >
+              {saveResult.body}
+            </StatusNotice>
+          </div>
+        ) : null}
+
         <div className="form-action-bar is-page">
           <div className={styles.footLead}>
-            <Button as={Link} href={REGISTER_PATH} tone="neutral" variant="quiet" disabled={busy}>ยกเลิก</Button>
+            {/* ⭐ "ออกจากฟอร์ม" (เดิม "ยกเลิก" — อ่านเหมือนยกเลิกใบ) · ว่าง = ลิงก์ (ยามงานยังไม่บันทึกถาม) ·
+                กำลังบันทึก = ปุ่มดับจริง **ไม่ใช่ router.push** (ยามจับ router.push ไม่ได้) */}
+            {busy ? (
+              <Button tone="neutral" variant="quiet" disabled>ออกจากฟอร์ม</Button>
+            ) : (
+              <Button as={Link} href={REGISTER_PATH} tone="neutral" variant="quiet">ออกจากฟอร์ม</Button>
+            )}
             {/* 🐞 UAT 23/09: ประโยค "ส่งให้ AE Sup อนุมัติทันทีที่บันทึก" เคยขึ้นบนขั้น ①–③ ซึ่งมี
                 ปุ่มเดียวคือ "ถัดไป" และไม่บันทึกอะไรเลย ⇒ ถ้อยคำของแถบท้ายมาจากตัวตัดสินตัวเดียว */}
-            <span className={styles.footNote} data-blocked={gate.gated && step === "review" ? "yes" : undefined}>
-              {historicalFootNote({ step, gate })}
+            <span className={styles.footNote} data-blocked={footNote.tone === "warn" ? "yes" : undefined}
+              data-busy={footNote.tone === "busy" ? "yes" : undefined}>
+              {footNote.text}
             </span>
           </div>
           {prevStep ? (
@@ -808,13 +1070,13 @@ export default function HistoricalOrderWizard({ orderId = null }) {
                ⭐ ปุ่มติดด่าน = **โชว์แล้วบอกเหตุตอนกด** ไม่ใช่ซ่อนหรือจางเฉย ๆ (กฎบ้าน) */
             <ActionButton
               kind="submit"
-              label={busy ? "กำลังบันทึก…" : HISTORICAL_SAVE_BUTTON_LABEL}
+              label={busy ? (saveRun ? "กำลังบันทึก…" : "กำลังตรวจ…") : HISTORICAL_SAVE_BUTTON_LABEL}
               disabled={busy}
               aria-disabled={gate.gated ? "true" : undefined}
+              className={gate.gated && !busy ? styles.gatedButton : ""}
               title={gate.buttonTitle || undefined}
-              onClick={() => {
+              onClick={async () => {
                 if (gate.gated) {
-                  setBlockedNote(gate.blockedNote);
                   /* ⚠️ ไม่ล้าง `issues` (ของ server) ทิ้ง — พาไปขั้นที่ยังขาด แล้วโฟกัสช่องแรกที่ผิด */
                   if (localIssues.length) {
                     const first = firstStepWithIssues(localIssues) || "contract";
@@ -823,48 +1085,25 @@ export default function HistoricalOrderWizard({ orderId = null }) {
                     setFocusField(historicalNextBlock(localIssues, first).field);
                     return;
                   }
+                  /* ใต้สวิตช์ใบซ้ำพูดเรื่องใบซ้ำเท่านั้น — ข้อที่ต้องแก้ของขั้นอื่นเคยค้างเป็นคำอำพันใต้สวิตช์ (รีวิวขั้น ④ 25/09) */
+                  setBlockedNote(gate.blockedNote);
                   /* เหตุผลของด่านอยู่ข้างสวิตช์ซึ่งอาจเลื่อนพ้นจอไปแล้ว — ไม่พาไปหา = ปุ่มอ่านเหมือนปุ่มตาย */
                   dupSwitchRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
                   dupSwitchRef.current?.focus();
                   return;
                 }
-                if (!plan) { runPreview(); return; }
+                /* ตอนยังไม่มีแผน การกดครั้งแรกคือการตรวจ — error รายช่องพาไปขั้นที่ผิดด้วยตัวเดียวกับ "ถัดไป" */
+                if (!plan) {
+                  const { fieldErrors } = await runPreview();
+                  if (fieldErrors) applyPreviewErrors(fieldErrors, "review", "review");
+                  return;
+                }
                 runSave();
               }}
             />
           )}
         </div>
 
-        {exit ? (
-          <div className={styles.splitRow}>
-            {historicalExitActions(exit).map((action) => {
-              if (action.key === "edit") {
-                return (
-                  <Button key="edit" tone="neutral" disabled={busy} onClick={() => {
-                    /* error ผูก `rowKey` ไว้แล้วตอนบันทึกไม่ผ่าน (ดู catch ของ runSave) */
-                    setIssues(action.errors);
-                    setError(action.carryMessage || "");
-                    setExit(null);
-                    reveal(action.goToStep);
-                    setStep(action.goToStep);
-                  }}>{action.label}</Button>
-                );
-              }
-              if (action.key === "open") {
-                return (
-                  <Button key="open" tone="neutral" as={Link} href={historicalEditPath(action.orderId)}>
-                    {action.label}
-                  </Button>
-                );
-              }
-              return (
-                <Button key="retry" tone="primary" disabled={busy} onClick={() => { setExit(null); runSave(); }}>
-                  {action.label}
-                </Button>
-              );
-            })}
-          </div>
-        ) : null}
       </DetailPageLayout>
     </Workspace>
   );

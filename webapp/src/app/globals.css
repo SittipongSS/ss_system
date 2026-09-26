@@ -1157,7 +1157,9 @@ button, select, input, textarea {
    มาใช้เป็น modifier ของ component เด็ดขาด */
 .form-action-bar.is-page {
   position: sticky;
-  bottom: 12px;
+  /* 🐞 UAT ขั้น ④ ใบย้อนหลัง 25/09 (จอ 390): `bottom: 12px` ดิบ ๆ ไม่รู้จักแถบเมนูล่างของมือถือ (fixed) ⇒ แถบปุ่ม
+     ไปยืนใต้แถบเมนู ปุ่มบันทึก/ย้อนกลับถูกทับมองไม่เห็น · เผื่อระยะเดียวกับ `.page` (จอใหญ่ --mobile-nav-h = 0 ⇒ เท่าเดิมเป๊ะ) */
+  bottom: calc(12px + var(--mobile-nav-h, 0px) + env(safe-area-inset-bottom));
   z-index: var(--z-sticky);
   padding: var(--space-2-5) var(--space-3);
   border: 1px solid var(--border-strong);

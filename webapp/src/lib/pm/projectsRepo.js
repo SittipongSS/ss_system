@@ -6,6 +6,7 @@ import { userTeams } from '@/lib/permissions';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { runSteps } from '@/lib/supabaseWriteBatch';
+import { snapshotRequestsForAudit } from '@/lib/requests/cascadeDelete';
 
 // Resolve a URL segment to a project. Internal ids ('PRJ-######') and human
 // project codes ('PJ-YYMMNNN') never collide, so accept either: try id first,
@@ -55,7 +56,9 @@ export async function projectHasExciseRegistrations(supabase, projectId) {
 // + back-linked personal_tasks (both no-FK), removed transitively. Caller is
 // responsible for permission + blocker checks (see projectHasExciseRegistrations).
 // Returns the removed child counts.
-export async function deleteProjectDeep(supabase, projectId) {
+// `auditRequests(rows)` = caller writes one audit row per dept_request (full row + thread)
+// before anything is purged — requests used to vanish with the project leaving no trace.
+export async function deleteProjectDeep(supabase, projectId, { auditRequests = null } = {}) {
   const [{ count: taskCount }, { count: revCount }] = await Promise.all([
     supabase.from('personal_tasks').select('id', { count: 'exact', head: true }).eq('projectId', projectId),
     supabase.from('project_doc_revisions').select('id', { count: 'exact', head: true }).eq('projectId', projectId),
@@ -87,6 +90,8 @@ export async function deleteProjectDeep(supabase, projectId) {
   if (inqsError) throw inqsError;
   const inquiryIds = (inqs || []).map((r) => r.id);
   if (inquiryIds.length) {
+    // snapshot ก่อนกวาดเธรด — กวาดแล้วค่อยอ่าน = audit ได้เธรดว่าง
+    if (auditRequests) await auditRequests(await snapshotRequestsForAudit(supabase, inquiryIds));
     // เธรดเป็น polymorphic ไม่มี FK — กวาดเอง (บรรทัด/ชั้นจำนวนมี FK CASCADE แล้ว)
     await purgeUpdatesMany(supabase, 'dept_request', inquiryIds);
     {

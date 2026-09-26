@@ -14,7 +14,7 @@
 // พอสำหรับงานที่วัดกันเป็นชั่วโมง และไม่เผาโควตา Supabase ทุกแท็บที่เปิดค้างไว้
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Bell, Check } from "lucide-react";
+import { Bell, Check, Receipt } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { fmtDateTime } from "@/lib/format";
 import styles from "./NotificationBell.module.css";
@@ -133,11 +133,26 @@ export default function NotificationBell() {
                 );
                 return (
                   <li key={n.id} className={`${styles.item} ${n.readAt ? "" : styles.itemUnread}`.trim()}>
-                    {/* กดแล้วไปหน้าเธรด — การ mark read เกิดตอน "เปิดเธรด" ไม่ใช่ตอนกด
-                        ในกล่อง (มติ 15) เพื่อให้ที่เดียวคุมทั้งกดจากกล่องและเปิดหน้าตรง */}
-                    {n.href
-                      ? <Link href={n.href} className={styles.link} onClick={() => setOpen(false)}>{row}</Link>
-                      : <div className={styles.link}>{row}</div>}
+                    <div className={styles.main}>
+                      {/* กดแล้วไปหน้าเธรด — การ mark read เกิดตอน "เปิดเธรด" ไม่ใช่ตอนกด
+                          ในกล่อง (มติ 15) เพื่อให้ที่เดียวคุมทั้งกดจากกล่องและเปิดหน้าตรง */}
+                      {n.href
+                        ? <Link href={n.href} className={styles.link} onClick={() => setOpen(false)}>{row}</Link>
+                        : <div className={styles.link}>{row}</div>}
+                      {/* ⭐ ปุ่มลงมือในแถว (กำหนดวางบิล รอบสอง 26/09) — วันนี้มีแต่ "ขอใบวางบิลงวดนี้" ของแถว "ถึงรอบวางบิล"
+                          ลิงก์ + ป้ายมาจาก API (`action` · lib/notifications.js `attachNotificationActions`) ซึ่งซ่อนปุ่มเองเมื่องวด
+                          ผูกคำร้องแล้ว/จ่ายแล้ว/หาไม่เจอ ⇒ ที่นี่วาดตามที่ได้ ไม่ตัดสินเอง
+                          ⚠️ อยู่ **นอก** ลิงก์ของแถว (ลิงก์ซ้อนลิงก์ = HTML ผิด · กดแล้วไปผิดที่) · โทนรอง ไม่ใช่ navy/terracotta
+                          — ก้าวหลักของแถวคือเปิดแผงงวด ปุ่มนี้เป็นทางลัด (หน้าตาเดียวกับปุ่มในแผงงวด) */}
+                      {n.action?.href ? (
+                        <div className={styles.actions}>
+                          <Button as={Link} href={n.action.href} prefetch={false} tone="neutral" variant="outline" size="sm"
+                            icon={<Receipt size={13} aria-hidden="true" />} onClick={() => setOpen(false)}>
+                            {n.action.label}
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
                     {!n.readAt && (
                       <Button
                         variant="quiet"
