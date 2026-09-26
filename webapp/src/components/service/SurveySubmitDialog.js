@@ -1,60 +1,64 @@
 "use client";
-// ── โมดัล "ส่งงานหน้างาน" ของนัดประเมินพื้นที่ (มติผู้ใช้ 2026-09-21) ──────────
+// ── กล่อง "ส่งงาน" ของนัดประเมินพื้นที่ (มติผู้ใช้ 2026-09-21 · รูปแบบ A §10.5 S8 · ม็อก A-4 · AT-4) ──────────
 //
 // ⭐ **แทนแผ่นปิดงานของงานบริการสำหรับนัดประเมิน** — ของที่ช่างต้องตอบตอนส่งมีสองอย่าง:
 //   เข้าพื้นที่ได้ไหม และ (ถ้าได้) ผลวัดครบหรือยัง · ของที่ใช้ · ลายเซ็นลูกค้า · รูปหน้างาน
 //   อีกชุด เป็นเรื่องของงานบริการ ไม่ใช่ของใบประเมิน (รูปอยู่รายพื้นที่แล้ว)
 //
-// 🔴 **ด่านตัวเดียวกับ server** (`surveyFieldSubmitError`) — จอบอกเหตุรายพื้นที่พร้อมปุ่ม
-//   พาไป แต่คนตัดสินจริงคือ route ปิดนัด (อ่านผลวัดจากฐาน ไม่ใช่จากจอ)
-// ⚠️ **ปุ่มส่งไม่จางเงียบ** — กดได้เสมอ ติดด่านก็บอกเหตุตรงนั้น (กติกา UI ของระบบ)
+// ⭐ **เปลือกเดียวกับโมดัลจัดคิว** (`ScheduleModalShell layout="split"`) — ซ้าย: ผลของการเข้า (+ เหตุผลเข้าไม่ได้) ·
+//   สรุปงานที่ทำ · ขวา: ผลวัดรายพื้นที่ + "กด ส่งงาน แล้วระบบจะ" · ท้าย: "กลับไปแก้ต่อ" · **ส่งงาน** + บรรทัดผลใต้ปุ่ม ·
+//   มือถือเป็นแผ่นเต็มจอ (ม็อก A-4) · ≥1000 เป็นโมดัลกลางจอ (AT-4)
+// 🔑 **วาดอย่างเดียว** — แถว · ยอดรวม · ผลที่จะเกิด · เหตุที่ส่งไม่ได้ มาจาก `surveySubmitView` (เทสต์ด้วยข้อมูลล้วน)
+//   · ด่านของจริงคือ route ปิดนัด (`surveyFieldSubmitError` อ่านผลวัดจากฐาน ไม่ใช่จากจอ)
+// 🔴 **ผลของการเข้าไม่มีค่าตั้งต้น** (pain B12 · กติกาฟอร์ม) — 🐞 เดิมเลือก "เข้าพื้นที่ได้" ไว้ให้ ⇒ ช่างที่เข้าไม่ได้
+//   กดส่งผ่าน ๆ แล้วนัดปิดเป็น "เข้าแล้ว" · ค่าเริ่มมีทางเดียว: เปิดจากแถว "ไปแล้วเข้าไม่ได้" (`initialOutcome="unable"`)
+// ⚠️ **ปุ่มส่งไม่จางเงียบ** — `GatedAction` ของเปลือก: กดได้เสมอ ติดด่านก็บอกเหตุ (กติกา UI ของระบบ · แผน §10 ข้อ 6)
 // ⚠️ **แผ่นใช้ซ้ำทุกครั้งที่เปิด ⇒ ล้าง state ที่อยู่นอกฟอร์มทุกครั้ง** (บทเรียน #1690:
 //   ชิป "ไปแล้วเข้าไม่ได้" ค้างข้ามใบแล้วปิดใบถัดไปด้วยเหตุผลของอีกงาน)
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, Check, CircleAlert, MapPinPlus, Pencil, Scissors } from "lucide-react";
-import Modal from "@/components/Modal";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Archive, ArrowRight, BellRing, CalendarCheck2, Check, ChevronRight, CircleAlert, ClipboardCheck, MapPinPlus,
+  MessageSquareText, Minus, Pencil, Send, Undo2,
+} from "lucide-react";
 import Button from "@/components/ui/Button";
-import ChoiceChips from "@/components/ui/ChoiceChips";
 import Input from "@/components/ui/Input";
-import StatusNotice from "@/components/ui/StatusNotice";
+import OptionTiles from "@/components/ui/OptionTiles";
 import Textarea from "@/components/ui/Textarea";
-import { surveyFieldMissing, surveyFieldSubmitError } from "@/lib/service/survey";
+import { SURVEY_UNABLE_REASON_MIN, surveySubmitView } from "@/lib/service/surveyFieldView";
+import { SURVEY_UNKNOWN_TEXT } from "@/lib/service/surveyControl";
+import { naText } from "@/lib/format";
+import ScheduleModalShell from "./ScheduleModalShell";
 import styles from "./SurveySubmitDialog.module.css";
 
-const UNABLE_MIN = 10;
-const zoneLabel = (row) => String(row?.zoneName || "").trim() || "พื้นที่ไม่มีชื่อ";
+/* ไอคอนของบรรทัด "กด ส่งงาน แล้วระบบจะ" ตาม `key` ของตัวตัดสิน — ของวาด (ข้อไหนขึ้นมาจากตัวตัดสิน) */
+const EFFECT_ICONS = {
+  close: CalendarCheck2, notify: BellRing, edit: Pencil, next: ArrowRight,
+  queue: Undo2, sales: MessageSquareText, kept: Archive,
+};
+const ROW_MARKS = { ok: Check, miss: CircleAlert, dirty: Pencil, cut: Minus };
 
 /**
- * @param zones         แถวผลวัดทุกแถวของใบ (รวมที่ตัดออก)
- * @param filesByZone   ไฟล์รายพื้นที่
- * @param dirtyZoneIds  พื้นที่ที่ยังมีค่าพิมพ์ค้างบนจอ — server มองไม่เห็น จอต้องกันเอง
- * @param onGoZone      (zoneId) => void — ปิดโมดัลแล้วพาไปที่การ์ดของพื้นที่นั้น
- * @param onSubmit      ({ status, unableReason, summary }) => Promise — โยน error = ไม่สำเร็จ
- * @param viewerKind    `crew` | `senior` (หัวหน้าที่ออกหน้างานเอง) | `head` (ส่งแทนช่างจาก `?submit=1`)
- *                      — บรรทัดบอกผลหลังส่งเปลี่ยนตามคนอ่าน (สามแบบ ไม่ใช่สอง: Senior คือคนเคาะต่อเอง)
- * @param onAddZone     () => void — ปิดโมดัลแล้วเปิดฟอร์มเพิ่มพื้นที่ (ใบที่ยังไม่มีพื้นที่เลย)
+ * @param visit          นัดของใบ (ชื่อกล่อง · ชิปสถานะ · ช่วงเวลาที่จะปิด)
+ * @param site           ไซต์ของใบ — บรรทัดบริบท "ST-… · ชื่อ"
+ * @param zones          แถวผลวัดทุกแถวของใบ (รวมที่ตัดออก)
+ * @param filesByZone    ไฟล์รายพื้นที่ชุดสด
+ * @param dirtyZoneIds   พื้นที่ที่ยังมีค่าพิมพ์ค้างบนจอ — server มองไม่เห็น จอต้องกันเอง
+ * @param viewerKind     `crew` | `senior` (หัวหน้าที่ออกหน้างานเอง) | `head` (ส่งแทนช่างจาก `?submit=1`)
+ * @param nowKey         `'YYYY-MM-DD HH:MM'` เวลาไทย — เวลาจบที่ server จะประทับ ("(10:12–11:46)")
+ * @param initialOutcome `null` | `'unable'` — เปิดจากแถว "ไปแล้วเข้าไม่ได้" เท่านั้นที่เลือกไว้ให้
+ * @param onGoZone       (zoneId) => void — ปิดกล่องแล้วพาไปที่หน้าพื้นที่นั้น
+ * @param onAddZone      () => void — ปิดกล่องแล้วเปิดฟอร์มเพิ่มพื้นที่ (ใบที่ยังไม่มีพื้นที่เลย)
+ * @param onSubmit       ({ status, unableReason, summary }) => Promise — โยน error = ไม่สำเร็จ
  */
 export default function SurveySubmitDialog({
-  open, visit, zones = [], filesByZone = {}, dirtyZoneIds = [], viewerKind = "crew",
-  onGoZone, onAddZone, onClose, onSubmit,
+  open, visit, site = null, zones = [], filesByZone = {}, dirtyZoneIds = [], viewerKind = "crew", nowKey = null,
+  initialOutcome = null, onGoZone, onAddZone, onClose, onSubmit,
 }) {
-  const [unable, setUnable] = useState(false);
+  const [outcome, setOutcome] = useState(initialOutcome ?? null);
   const [reason, setReason] = useState("");
   const [summary, setSummary] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  /* นับครั้งที่กดแล้วติด — ใช้เป็น `key` ของกล่องแจ้ง ⇒ กดซ้ำได้ข้อความเดิมก็ยัง mount ใหม่ และ
-     `role="alert"` ถูกอ่านออกเสียงอีกรอบ (ไม่งั้นโปรแกรมอ่านหน้าจอเงียบตั้งแต่ครั้งที่สอง) */
-  const [attempt, setAttempt] = useState(0);
-  /* 🐞 **กดส่งแล้วเหมือนไม่มีอะไรเกิด** (ตรวจจอ 2026-09-22) — โมดัลสูงเกินจอเตี้ย (โน้ตบุ๊ก
-     1366×768 · iPad แนวนอน) ตัวเนื้อเลื่อนได้ และกล่องแจ้งอยู่ท้ายสุดใต้ขอบที่มองเห็น ⇒ ต้อง
-     เลื่อนกล่องขึ้นมาให้เห็นทุกครั้งที่มี error ใหม่ */
-  const noticeRef = useRef(null);
-  /* ⚠️ เลื่อนทุกครั้งที่กดแล้วติด **ไม่ใช่เฉพาะตอนข้อความเปลี่ยน** — กดซ้ำได้ข้อความเดิม (state
-     ไม่เปลี่ยน = effect ไม่วิ่ง) ⇒ คนที่เลื่อนขึ้นไปอ่านรายการแล้วกดอีกรอบเจออาการเดิม "กดไม่ขึ้นอะไร" */
-  const revealNotice = () => requestAnimationFrame(() => {
-    noticeRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  });
 
   /* 🔴 **ล้างตอนเปิด/เปลี่ยนนัดเท่านั้น ไม่ใช่ทุกครั้งที่ `visit` เป็นก้อนใหม่** — หน้าโหลดซ้ำเอง
      ทุกครั้งที่กลับมามองแท็บ (`useRevalidateOnFocus`) และช่างสลับไปแอปกล้องแล้วกลับมาเป็นเรื่อง
@@ -63,194 +67,198 @@ export default function SurveySubmitDialog({
   const visitSummary = visit?.summary || "";
   useEffect(() => {
     if (!open) return;
-    setUnable(false);
+    setOutcome(initialOutcome ?? null);
     setReason("");
     setSummary(visitSummary);
     setError("");
     setBusy(false);
-    setAttempt(0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- สรุปเดิมอ่านครั้งเดียวตอนเปิด (ดูหัวข้อ)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- สรุปเดิม/ค่าเริ่มอ่านครั้งเดียวตอนเปิด (ดูหัวข้อ)
   }, [open, visitId]);
 
-  /* แถวละพื้นที่: ครบ · ตัดออก · ขาดอะไร — ข้อความรายข้อมาจากด่านกลางตัวเดียวกับการ์ด */
-  const rows = useMemo(() => (Array.isArray(zones) ? zones : []).map((row) => {
-    const cut = (row.status || "ok") === "cut";
-    const missing = cut ? [] : surveyFieldMissing(row, filesByZone?.[row.id] || []);
-    return { id: row.id, name: zoneLabel(row), cut, missing, dirty: dirtyZoneIds.map(String).includes(String(row.id)) };
-  }), [zones, filesByZone, dirtyZoneIds]);
-
-  const gateError = surveyFieldSubmitError(zones, filesByZone);
-  const dirtyNames = rows.filter((r) => r.dirty && !r.cut).map((r) => r.name);
-  const missingCount = rows.filter((r) => r.missing.length).length;
-  /* ⚠️ **ไม่ท่องรายการซ้ำใต้รายการ** — รายการพื้นที่ข้างบนบอกรายข้อพร้อมปุ่ม "ไปแก้" อยู่แล้ว
-     ข้อความเต็มของ server (ข้อ · ชื่อพื้นที่) กินสามบรรทัดและดันโมดัลเกินจอ ⇒ บนจอเหลือ
-     บรรทัดเดียว ส่วนข้อความเต็มยังขึ้นเมื่อ server ตีกลับ (ผู้เรียกโยนมา) */
-  /* ⚠️ ชื่อปุ่มในวงเล็บห้ามขาดกลางคำ ("“ไป" / "แก้”" ที่ 390px) ⇒ ห่อ nowrap เป็นก้อน
-     ⚠️ คำต้องตรงป้ายปุ่มเป๊ะ — "ตัดพื้นที่นี้ออก" คือป้ายบนการ์ดพื้นที่ */
-  const buttonName = (label) => <span className={styles.keep}>“{label}”</span>;
-  const noZones = rows.length === 0;
-  const blocked = unable
-    ? (reason.trim().length < UNABLE_MIN ? `บอกเหตุผลที่เข้าไม่ได้อย่างน้อย ${UNABLE_MIN} ตัวอักษร — ฝ่ายขายจะเห็นข้อความนี้` : null)
-    : dirtyNames.length
-      ? <>มีค่าที่ยังไม่บันทึก: {dirtyNames.join(" · ")} — กด {buttonName("บันทึกพื้นที่นี้")} ก่อนส่งงาน</>
-      : noZones
-        ? <>ใบนี้ยังไม่มีพื้นที่ให้วัด — เพิ่มพื้นที่ที่เจอหน้างานก่อน หรือเลือก {buttonName("ไปแล้วเข้าไม่ได้")}</>
-        : gateError && missingCount
-          ? <>ยังขาดผลวัด {missingCount} พื้นที่ — กด {buttonName("ไปแก้")} หรือ {buttonName("ตัดพื้นที่นี้ออก")}</>
-          : gateError;
+  const view = useMemo(() => surveySubmitView({
+    outcome, reason, visit, zones, filesByZone, dirtyZoneIds, viewerKind, nowKey,
+  }), [outcome, reason, visit, zones, filesByZone, dirtyZoneIds, viewerKind, nowKey]);
 
   const submit = async () => {
-    if (busy) return;
-    if (blocked) { setError(blocked); setAttempt((n) => n + 1); revealNotice(); return; }
+    if (busy || view.blocker) return;
     setBusy(true);
     setError("");
     try {
       await onSubmit?.({
-        status: unable ? "unable" : "done",
-        unableReason: unable ? reason.trim() : undefined,
+        status: outcome === "unable" ? "unable" : "done",
+        unableReason: outcome === "unable" ? reason.trim() : undefined,
         summary: summary.trim(),
       });
     } catch (e) {
       setError(e?.message || "ส่งงานไม่สำเร็จ");
-      setAttempt((n) => n + 1);
-      revealNotice();
     } finally {
       setBusy(false);
     }
   };
 
-  const measured = rows.filter((r) => !r.cut && !r.missing.length).length;
-  const active = rows.filter((r) => !r.cut).length;
+  const unable = outcome === "unable";
+  const noZones = view.rows.length === 0;
 
-  return (
-    <Modal
-      open={open}
-      onClose={() => { if (!busy) onClose?.(); }}
-      dismissible={!busy}
-      title="ส่งงานหน้างาน"
-      subtitle={visit?.code ? `นัด ${visit.code}` : undefined}
-      size="md"
-      footer={(
-        <>
-          <Button variant="quiet" onClick={onClose} disabled={busy}>ยังไม่ส่ง</Button>
-          <Button tone="primary" onClick={submit} disabled={busy} aria-busy={busy || undefined}>
-            {busy ? "กำลังส่ง…" : "ส่งงาน"}
-          </Button>
-        </>
-      )}
-    >
-      <section className={styles.block}>
-        <h3 className={styles.title}>ผลของการเข้าครั้งนี้</h3>
-        <ChoiceChips
-          value={unable ? "unable" : "entered"}
-          onChange={(next) => { setUnable(next === "unable"); setError(""); }}
-          options={[
-            { value: "entered", label: "เข้าพื้นที่ได้" },
-            { value: "unable", label: "ไปแล้วเข้าไม่ได้" },
-          ]}
-          disabled={busy}
+  /* ── ซ้าย: ผลของการเข้า (บังคับ · ไม่มีค่าตั้งต้น) + เหตุผลเมื่อเข้าไม่ได้ ── */
+  const aside = (
+    <section className={styles.block} aria-labelledby="survey-submit-outcome">
+      <h3 id="survey-submit-outcome" className={styles.title}>
+        ผลของการเข้าครั้งนี้ <span className={styles.req} aria-hidden="true">*</span>
+        <span className={styles.caption}>เลือกหนึ่งข้อ</span>
+      </h3>
+      <div className={styles.outcomes}>
+        <OptionTiles
+          value={outcome}
+          onChange={(next) => { setOutcome(next); setError(""); }}
           ariaLabel="ผลของการเข้าครั้งนี้"
+          options={[
+            /* ติดด่าน (ยังไม่กดเริ่มงาน) = แผ่นยังอยู่ พร้อมเหตุในแผ่น — ไม่ซ่อนตัวเลือก (กติกา ui-visibility) */
+            { value: "entered", label: "เข้าพื้นที่ได้", description: view.enteredBlocker || "ปิดนัดเป็น “เข้าแล้ว”" },
+            {
+              value: "unable",
+              label: "ไปแล้วเข้าไม่ได้",
+              description: `ปิดนัดเป็น “ทำไม่ได้” · คำร้องกลับเข้าคิว · ฝ่ายขายได้รับเหตุผล (อย่างน้อย ${SURVEY_UNABLE_REASON_MIN} ตัวอักษร)`,
+            },
+          ]}
         />
-      </section>
-
+      </div>
       {unable ? (
-        <section className={styles.block}>
-          <label className={styles.title} htmlFor="survey-unable-reason">เข้าไม่ได้เพราะอะไร</label>
+        <div className={styles.field}>
+          <label className={styles.label} htmlFor="survey-unable-reason">เข้าไม่ได้เพราะอะไร</label>
           <Input
             id="survey-unable-reason"
+            touch
             value={reason}
-            disabled={busy}
             maxLength={500}
             autoComplete="off"
+            /* เปิดจากแถว "ไปแล้วเข้าไม่ได้" = ของที่ต้องพิมพ์ต่อคือเหตุผล */
+            autoFocus={initialOutcome === "unable"}
             placeholder="เช่น อาคารไม่อนุญาตให้เข้าวันหยุด"
-            invalid={!!reason && reason.trim().length < UNABLE_MIN}
-            onChange={(e) => setReason(e.target.value)}
+            invalid={!!reason && reason.trim().length < SURVEY_UNABLE_REASON_MIN}
+            onChange={(e) => { setReason(e.target.value); setError(""); }}
           />
-          <p className={styles.note}>อย่างน้อย {UNABLE_MIN} ตัวอักษร · ฝ่ายขายจะได้รับแจ้งพร้อมเหตุผลนี้ และใบจะกลับไปขั้นลงคิวให้ TS ลงวันใหม่</p>
-        </section>
-      ) : (
-        <section className={styles.block}>
-          <h3 className={styles.title}>
-            ผลวัดรายพื้นที่
-            {active ? <span className={styles.count}>{measured} / {active}</span> : null}
-          </h3>
-          {noZones ? (
-            /* ปุ่มทำงานได้จริงในโมดัล — ไม่ใช่ข้อความชี้ไปหาปุ่มที่อาจจมอยู่ใต้แถบบนจอแคบ */
-            onAddZone ? (
+          <p className={styles.note}>ฝ่ายขายจะได้รับแจ้งพร้อมเหตุผลนี้ และใบจะกลับไปขั้นลงคิวให้ TS ลงวันใหม่</p>
+        </div>
+      ) : null}
+    </section>
+  );
+
+  /* ── ขวา: ผลวัดรายพื้นที่ + ยอดรวม · กด ส่งงาน แล้วระบบจะ ── */
+  const main = (
+    <>
+      <section className={styles.block} aria-labelledby="survey-submit-zones">
+        <h3 id="survey-submit-zones" className={styles.title}>
+          ผลวัดรายพื้นที่ <span className={styles.caption}>{view.progressText}</span>
+        </h3>
+        {noZones ? (
+          <>
+            <p className={styles.note}>ใบนี้ยังไม่มีพื้นที่ให้วัด</p>
+            {/* ปุ่มทำงานได้จริงในกล่อง — ไม่ใช่ข้อความชี้ไปหาปุ่มที่อาจจมอยู่ใต้แถบบนจอแคบ */}
+            {onAddZone ? (
               <Button variant="outline" className={styles.addZone} icon={<MapPinPlus size={15} aria-hidden="true" />}
-                onClick={onAddZone} disabled={busy}>
+                onClick={onAddZone}>
                 เพิ่มพื้นที่ที่เจอหน้างาน
               </Button>
-            ) : null
-          ) : (
-            <ul className={styles.zones}>
-              {rows.map((row) => {
-                const state = row.cut ? "cut" : row.missing.length ? "miss" : row.dirty ? "dirty" : "ok";
+            ) : null}
+          </>
+        ) : (
+          <div className={styles.sum}>
+            <ul className={styles.rows}>
+              {view.rows.map((row) => {
+                const Mark = ROW_MARKS[row.state] || Check;
                 return (
-                  <li key={row.id} className={styles.zone} data-state={state}>
-                    <span className={styles.mark} aria-hidden="true">
-                      {state === "cut" ? <Scissors size={14} />
-                        : state === "miss" ? <CircleAlert size={14} />
-                          : state === "dirty" ? <Pencil size={14} />
-                            : <Check size={14} />}
-                    </span>
-                    <span className={styles.zoneCopy}>
-                      <b>{row.name}</b>
-                      <small>
-                        {state === "cut" ? "ตัดออก — ไม่ต้องวัด"
-                          : state === "miss" ? `ขาด: ${row.missing.join(" · ")}`
-                            : state === "dirty" ? "ยังไม่บันทึก"
-                              : "ครบแล้ว"}
-                      </small>
-                    </span>
-                    {(state === "miss" || state === "dirty") && onGoZone ? (
-                      <button type="button" className={`text-action ${styles.go}`}
-                        onClick={() => onGoZone(row.id)}>
-                        ไปแก้ <ArrowRight size={13} aria-hidden="true" />
-                      </button>
-                    ) : null}
+                  <li key={row.id}>
+                    {/* แถวทั้งแถวพาไปที่หน้าพื้นที่ (ปิดกล่องก่อน) — แถวที่ยังขาด/ค้างบอกด้วยคำว่า "ไปแก้" */}
+                    <button type="button" className={styles.row} data-state={row.state} onClick={() => onGoZone?.(row.id)}>
+                      <span className={styles.mark} aria-hidden="true"><Mark size={14} /></span>
+                      <span className={styles.zone}>
+                        <span className={styles.code}>{row.codeUnknown ? SURVEY_UNKNOWN_TEXT : naText(row.code)}</span>
+                        <span className={styles.name}>{row.title}</span>
+                        {row.note ? <span className={styles.rowNote}>{row.note}</span> : null}
+                      </span>
+                      <span className={styles.figs}>
+                        {row.figures ? <span>{row.figures}</span> : null}
+                        {row.counts ? <small>{row.counts}</small> : null}
+                      </span>
+                      <span className={styles.go}>
+                        {row.go ? "ไปแก้" : null}
+                        <ChevronRight size={15} aria-hidden="true" />
+                      </span>
+                    </button>
                   </li>
                 );
               })}
             </ul>
-          )}
-          {/* บอกผลหลังส่ง — ใบว่างส่งไม่ได้อยู่แล้ว ไม่ต้องบอก */}
-          {noZones ? null : (
-            <p className={styles.note}>
-              {viewerKind === "head"
-                ? "ส่งแทนช่าง — ใบไปต่อที่ขั้นเคาะจุดติดตั้งและแพ็คเกจ ซึ่งคุณทำต่อได้ที่แท็บสรุปส่งผล"
-                : viewerKind === "senior"
-                  ? "ส่งแล้วใบไปต่อที่ขั้นเคาะจุดติดตั้งและแพ็คเกจ — คุณเคาะต่อได้เลยที่แท็บสรุปส่งผล"
-                  : "ส่งแล้วหัวหน้าจะได้แจ้งเตือนให้เคาะจุดติดตั้งและแพ็คเกจ — คุณยังแก้ผลวัดได้จนกว่าหัวหน้าจะส่งผลให้ฝ่ายขาย"}
+            <p className={styles.total}>
+              <span className={styles.totalLabel}>{view.totalsText.label}</span>
+              <span className={styles.figs}>
+                <span>{view.totalsText.figures}</span>
+                <small>{view.totalsText.counts}</small>
+              </span>
             </p>
-          )}
-        </section>
-      )}
-
-      <section className={styles.block}>
-        <label className={styles.title} htmlFor="survey-submit-summary">
-          สรุปงานที่ทำ <span className={styles.optional}>ไม่บังคับ</span>
-        </label>
-        <Textarea
-          id="survey-submit-summary"
-          value={summary}
-          rows={3}
-          maxLength={2000}
-          disabled={busy}
-          placeholder="เช่น ลูกค้าขอเพิ่มจุดที่ห้องประชุมเล็ก รอคอนเฟิร์มกับฝ่ายขาย"
-          onChange={(e) => setSummary(e.target.value)}
-        />
+          </div>
+        )}
       </section>
 
-      {/* เหตุที่ยังส่งไม่ได้ — ขึ้นเป็นตัวหนังสือตั้งแต่ก่อนกด (ไม่ใช่ปุ่มจาง) · กดแล้วยังติด
-          หรือ server ตีกลับ ⇒ ขึ้นเป็น alert ตรงนี้ */}
-      <div ref={noticeRef} className={styles.notice}>
-        {error ? (
-          <StatusNotice key={attempt} tone="error" role="alert">{error}</StatusNotice>
-        ) : blocked && !unable ? (
-          <StatusNotice tone="warning">{blocked}</StatusNotice>
-        ) : null}
-      </div>
-    </Modal>
+      <section className={styles.block} aria-labelledby="survey-submit-effects">
+        <h3 id="survey-submit-effects" className={styles.title}>
+          กด ส่งงาน แล้วระบบจะ <span className={styles.caption}>{view.effectsCaption}</span>
+        </h3>
+        <ul className={styles.effects}>
+          {view.effects.map((effect) => {
+            const Icon = EFFECT_ICONS[effect.key] || ClipboardCheck;
+            return (
+              <li key={effect.key}>
+                <Icon size={15} className={styles.effectIcon} aria-hidden="true" />
+                <span>{effect.text}</span>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+    </>
+  );
+
+  /* ── ซ้ายล่าง: สรุปงานที่ทำ (ไม่บังคับ) ── */
+  const tail = (
+    <div className={styles.field}>
+      <label className={styles.title} htmlFor="survey-submit-summary">
+        สรุปงานที่ทำ <span className={styles.caption}>ไม่บังคับ</span>
+      </label>
+      <Textarea
+        id="survey-submit-summary"
+        touch
+        value={summary}
+        rows={3}
+        maxLength={2000}
+        placeholder="เช่น ลูกค้าขอเพิ่มจุด รอคอนเฟิร์มกับฝ่ายขาย"
+        onChange={(e) => setSummary(e.target.value)}
+      />
+    </div>
+  );
+
+  return (
+    <ScheduleModalShell
+      open={open}
+      onClose={() => { if (!busy) onClose?.(); }}
+      busy={busy}
+      layout="split"
+      title={view.title}
+      status={view.statusLabel ? { label: view.statusLabel } : null}
+      context={site ? { code: site.code || null, name: site.name || null } : null}
+      aside={aside}
+      main={main}
+      tail={tail}
+      secondary={[{ key: "back", label: "กลับไปแก้ต่อ", onClick: () => onClose?.() }]}
+      primary={{
+        label: "ส่งงาน",
+        busyLabel: "กำลังส่ง…",
+        icon: <Send size={16} aria-hidden="true" />,
+        blocker: view.blocker,
+        onClick: submit,
+      }}
+      outcome={view.outcome}
+      error={error}
+    />
   );
 }

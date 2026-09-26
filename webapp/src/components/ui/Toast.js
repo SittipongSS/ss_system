@@ -78,8 +78,10 @@ function ToastCard({ toast, onClose, duration = 3600 }) {
       className={`${styles.toast} ${styles[kind]}`}
       role={role}
       aria-live={role === "alert" ? "assertive" : "polite"}
-      onMouseEnter={stopTimer}
-      onMouseLeave={startTimer}
+      // หยุดนับเฉพาะเมาส์ชี้ค้าง — การแตะบนจอสัมผัสยิง pointerenter ด้วย และเมื่อไม่มี pointerleave ตามมา
+      // toast จะค้างทับของข้างใต้ไปจนกว่าจะแตะที่อื่น
+      onPointerEnter={(e) => { if (e.pointerType === "mouse") stopTimer(); }}
+      onPointerLeave={(e) => { if (e.pointerType === "mouse") startTimer(); }}
       onFocus={stopTimer}
       onBlur={startTimer}
     >

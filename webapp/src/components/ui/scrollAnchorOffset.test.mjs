@@ -91,6 +91,11 @@ test("scroll-margin-top ต้องมาจากโทเคนเดีย�
       if (!hit) continue;
       const value = hit.trim();
       if (value.includes("var(--scroll-anchor-top)")) continue;
+      /* ข้อยกเว้นเดียว ระบุตัวตรง ๆ — ปุ่มที่อยู่ **ในหัวที่ติดบนของหน้าพื้นที่** หักล้าง `scroll-padding-top` ของหัวนั้นเอง
+         (review 26/09 WCAG 2.4.11) · ไม่ใช่จุดจอดของ anchor — หัวติดบนอยู่แล้ว ไม่หักล้าง = Tab เข้าปุ่มหัวแล้วหน้ากระโดด
+         ⚠️ ห้ามผ่อนเป็นแพตเทิร์น — เพิ่มจุดใหม่ต้องมาเขียนชื่อไว้ตรงนี้ทีละตัว */
+      if (rel(file).endsWith("service/SurveyZonePage.module.css") && rule.selector === ".head :is(button, a)"
+        && value === "calc(-1 * var(--survey-zone-head-h))") continue;
       offenders.push(`${rel(file)}:${rule.line} ${rule.selector} → ${value}`);
     }
   }

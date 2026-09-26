@@ -1,4 +1,4 @@
-// ── การ์ดควบคุมของใบประเมิน + หัวพื้นที่ที่พับได้ — ตัวตัดสินล้วน (PR2) ──────
+// ── การ์ดควบคุมของใบประเมิน + ข้อเท็จจริงรายพื้นที่ — ตัวตัดสินล้วน (PR2) ──────
 //
 // ⭐ ครอบ **ทุกสถานะที่แบบที่อนุมัติระบุไว้**: ยังไม่เริ่ม · กำลังวัด · วัดครบยังไม่เคาะ ·
 //   ส่งแล้ว · ดึงกลับ · ยกเลิก · ปิดโดยไม่ได้ตอบ · คนดูอย่างเดียว · ช่าง vs หัวหน้า ·
@@ -7,15 +7,18 @@
 //    "ไม่มีข้อมูล" เงียบ ๆ ถ้าไม่มีใครดักไว้)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 // 📍 `surveyRecallRecord` อยู่ใน `survey.js` (ฝั่งกฎ) เพราะ **server อ่านมันด้วย** —
 //    `surveyRepo` แกะแถวเดียวกันตอนตอบ GET ⇒ ชั้นต้องไหลทางเดียว จอ → กฎ ไม่ใช่ repo → จอ
 import { surveyRecallRecord } from './survey.js';
 import {
   SURVEY_UNKNOWN_TEXT,
   surveyControlView,
-  surveyFoldDefaults,
+  surveyDraftSync,
+  surveyZoneChangedSections,
   surveyNameList,
+  surveyResultZoneCell,
+  surveySendBackAskText,
   surveyTotalsText,
   surveyZoneDraftSignature,
   surveyZoneFacts,
@@ -127,6 +130,56 @@ test('พื้นที่ที่ถูกตัดออกไม่ต้�
   assert.deepEqual(f.missing, []);
 });
 
+// ══ ช่อง "พื้นที่ · ผลวัดจากช่าง" ของตารางสรุป (AW-3 · §10.5 S2) ═══════════════
+test('ช่องพื้นที่บนตารางสรุป: ตร.ม. · ลบ.ม. · ขนาดรายส่วน — ส่วนเดียวกับหลายส่วน', () => {
+  const one = surveyResultZoneCell(readyZone('z1', 'Reception', { parts: [part(8, 6, 3)] }), []);
+  assert.equal(one.figures, '48 ตร.ม. · 144 ลบ.ม.');
+  assert.equal(one.dims, '8 × 6 × 3 ม.');
+  assert.equal(one.partsText, null, 'ส่วนเดียวไม่ต้องบอกจำนวนส่วน');
+
+  const two = surveyResultZoneCell(readyZone('z2', 'ห้อง Treatment', {
+    parts: [part(7.5, 4, 3), part(3, 2, 3)],
+  }), []);
+  assert.equal(two.figures, '36 ตร.ม. · 108 ลบ.ม.');
+  assert.equal(two.dims, '7.5 × 4 × 3 + 3 × 2 × 3 ม.');
+  assert.equal(two.partsText, '2 ส่วน');
+});
+
+test('🐞 ช่องขนาดที่ยังว่างต้องเป็นขีด ไม่ใช่ "× 0" — ศูนย์อ่านเหมือนวัดได้ศูนย์เมตร', () => {
+  /* เดิมตารางเขียน `fmtNumber(p.heightM)` ตรง ๆ ⇒ `fmtNumber('')` = "0" ⇒ "8 × 6 × 0" */
+  const half = surveyResultZoneCell(emptyZone('z1', 'Reception', { parts: [part(8, 6, '')] }), []);
+  assert.equal(half.dims, '8 × 6 × — ม.');
+  assert.equal(half.figures, null, 'ยังไม่มีส่วนที่วัดครบ = ยังไม่มีตัวเลขพื้นที่ ไม่ใช่ 0 ตร.ม.');
+  const none = surveyResultZoneCell(emptyZone('z2', 'MD'), []);
+  assert.equal(none.dims, null);
+  assert.equal(none.figures, null);
+});
+
+test('รูปจากช่างบนช่องพื้นที่: ภาพกว้างก่อน แล้วภาพจุด · ไม่เอาผัง ไม่เอาไฟล์ที่ไม่ใช่รูป · นับครบทุกไฟล์', () => {
+  const img = (id, docType, fileName = `${id}.jpg`) => ({ id, docType, fileName, mimeType: 'image/jpeg', driveFileId: `d-${id}` });
+  const files = [
+    img('s1', 'survey_spot'), img('w1', 'survey_wide'), img('p1', 'survey_plan'),
+    { id: 'w2', docType: 'survey_wide', fileName: 'แบบ.pdf', mimeType: 'application/pdf' },
+    img('w3', 'survey_wide'),
+  ];
+  const cell = surveyResultZoneCell(readyZone('z1', 'Reception'), files);
+  assert.deepEqual(cell.thumbs.map((t) => [t.file.id, t.kind, t.startsGroup]),
+    [['w1', 'wide', false], ['w3', 'wide', false], ['s1', 'spot', true]]);
+  assert.deepEqual(cell.thumbs.map((t) => t.label), ['ภาพกว้าง', 'ภาพกว้าง', 'ภาพจุด']);
+  assert.equal(cell.thumbs[0].href, '/api/master/attachments/w1/file', 'เปิดผ่าน proxy ที่ตรวจสิทธิ์ ตัวเดียวกับแผงไฟล์แนบ');
+  assert.deepEqual(cell.photos, { wide: 3, plan: 1, spot: 1 }, 'ตัวนับนับไฟล์จริงทุกใบ ไม่ใช่เฉพาะที่มีภาพย่อ');
+  assert.equal(cell.moreThumbs, 0);
+
+  const many = surveyResultZoneCell(readyZone('z1', 'Reception'),
+    ['a', 'b', 'c', 'd', 'e'].map((id) => img(id, 'survey_wide')));
+  assert.equal(many.thumbs.length, 3, 'ภาพย่อไม่เกินสามช่อง — ช่องแคบ ตัวนับบอกที่เหลือ');
+  assert.equal(many.moreThumbs, 2);
+  assert.deepEqual(surveyResultZoneCell(readyZone('z1', 'R'), []).thumbs, []);
+  // แถวที่ไม่มีที่อยู่ไฟล์ = ไม่มีภาพย่อ (ลิงก์ที่ไม่มีปลายทาง) แต่ยังนับ
+  const lost = surveyResultZoneCell(readyZone('z1', 'R'), [{ id: 'x', docType: 'survey_wide', mimeType: 'image/png' }]);
+  assert.deepEqual([lost.thumbs.length, lost.photos.wide], [0, 1]);
+});
+
 test('🔴 "ยังไม่มีรหัส ZN" กับ "อ่านรหัสไม่สำเร็จ" ต้องแยกกันบนหัวพื้นที่', () => {
   const pending = surveyZoneFacts({ ...emptyZone('z9', 'พื้นที่ใหม่'), zoneId: null, zoneCode: null }, []);
   assert.equal(pending.zoneCode, null);
@@ -135,63 +188,14 @@ test('🔴 "ยังไม่มีรหัส ZN" กับ "อ่านร�
   assert.equal(broken.zoneCodeUnknown, true);
 });
 
-// ══ ค่าเปิด/ปิดตั้งต้น ═════════════════════════════════════════════════
-test('ค่าพับตั้งต้น: เปิดเฉพาะพื้นที่ที่คนดูแก้ได้และยังขาดของช่าง', () => {
-  const zones = [readyZone('z1', 'Studio 01'), readyZone('z2', 'Studio 02'), emptyZone('z3', 'Studio 03')];
-  const files = { z1: readyFiles, z2: readyFiles, z3: [] };
-  assert.deepEqual(surveyFoldDefaults(zones, files, { canWrite: true }), { z1: false, z2: false, z3: true });
-});
-
-test('ใบที่ส่งแล้ว · ใบที่ยกเลิก · คนดูอย่างเดียว = พับหมด', () => {
-  const zones = [readyZone('z1', 'Studio 01'), readyZone('z2', 'Studio 02'), emptyZone('z3', 'Studio 03')];
-  const files = { z1: readyFiles, z2: readyFiles, z3: [] };
-  assert.deepEqual(surveyFoldDefaults(zones, files, { canWrite: true, locked: true }),
-    { z1: false, z2: false, z3: false });
-  assert.deepEqual(surveyFoldDefaults(zones, files, { canWrite: false }),
-    { z1: false, z2: false, z3: false });
-});
-
-test('🐞 canWrite ของ server ไม่รู้จักการล็อก — ส่ง request มาแล้วต้องพับเองได้', () => {
-  /* `visitWriteAccess` ตอบแค่ "เป็นช่างของนัดใบนี้ไหม" ไม่เคยดู answeredAt/cancelledAt
-     ⇒ ค่าที่ GET ส่งออกมาจริงคือ `canWrite: true` แม้บนใบที่ส่งไปแล้ว · ถ้าตัวตัดสิน
-     เชื่อค่านั้นดิบ ๆ ใบที่ส่งแล้วจะกางพื้นที่ที่ "ยังขาด" ค้างทั้งหน้าโดยแก้อะไรไม่ได้ */
-  const zones = [readyZone('z1', 'Studio 01'), emptyZone('z2', 'Studio 02'), emptyZone('z3', 'Studio 03')];
-  const files = { z1: readyFiles, z2: [], z3: [] };
-  const sent = request({ answeredAt: '2026-09-14T10:20:00.000Z', answeredByName: 'Local D.' });
-  assert.deepEqual(surveyFoldDefaults(zones, files, { canWrite: true, request: sent }),
-    { z1: false, z2: false, z3: false }, 'ใบที่ส่งแล้ว = พับหมด');
-  assert.deepEqual(surveyFoldDefaults(zones, files, { canWrite: true, request: request({ cancelledAt: 'x' }) }),
-    { z1: false, z2: false, z3: false }, 'ใบที่ยกเลิก = พับหมด');
-  assert.deepEqual(surveyFoldDefaults(zones, files, { canWrite: true, request: request() }),
-    { z1: false, z2: true, z3: true }, 'ใบที่ยังเปิดอยู่ = เปิดของที่ยังขาด');
-
-  // ทางที่จอควรใช้จริง: ค่าหักลบมาให้แล้วในคำตอบก้อนเดียวกับการ์ด
-  const v = surveyControlView({ request: sent, zones, filesByZone: files, viewer: HEAD });
-  assert.deepEqual(v.foldDefaults, { z1: false, z2: false, z3: false });
-  assert.deepEqual(
-    surveyControlView({ request: request(), zones, filesByZone: files, viewer: HEAD }).foldDefaults,
-    { z1: false, z2: true, z3: true },
-  );
-});
-
-test('ใบที่มีพื้นที่เดียว = เปิดเสมอ **เฉพาะคนที่แก้ได้** · พื้นที่ที่ตัดออกยังพับ', () => {
-  /* ⚖️ มติเจ้าของ 2026-09-16: สองข้อในมติตั้งต้นชนกันเอง ("พื้นที่เดียวให้กาง" กับ
-     "ส่งแล้ว/อ่านอย่างเดียวให้พับ") · ให้พับตามคนอ่านชนะ */
-  const one = [readyZone('z1', 'Studio 01')];
-  assert.deepEqual(surveyFoldDefaults(one, { z1: readyFiles }, HEAD), { z1: true });
-  assert.deepEqual(surveyFoldDefaults(one, { z1: readyFiles }, VIEWER), { z1: false },
-    'คนอ่านอย่างเดียว = พับ แม้ใบมีพื้นที่เดียว');
-  assert.deepEqual(
-    surveyFoldDefaults(one, { z1: readyFiles }, { canWrite: true, request: request({ answeredAt: 'x' }) }),
-    { z1: false }, 'ใบพื้นที่เดียวที่ส่งไปแล้ว = พับ');
-  const oneActivePlusCut = [readyZone('z1', 'Studio 01'), emptyZone('z2', 'Studio 02', { status: 'cut' })];
-  assert.deepEqual(surveyFoldDefaults(oneActivePlusCut, {}, HEAD), { z1: true, z2: false });
-  assert.deepEqual(surveyFoldDefaults(oneActivePlusCut, {}, VIEWER), { z1: false, z2: false });
-});
-
-test('ใบที่ไม่มีพื้นที่เลย = แผนที่ว่าง (ไม่พังตอนเป็น useState initializer)', () => {
-  assert.deepEqual(surveyFoldDefaults([], {}, HEAD), {});
-  assert.deepEqual(surveyFoldDefaults(undefined, undefined, undefined), {});
+// ══ ค่าเปิด/ปิดตั้งต้น — ถอดแล้ว (§10.5 S10) ═══════════════════════════════════
+// 🔄 แบบ A ไม่มีอะไรพับ ⇒ `surveyFoldDefaults` ถอด · ของที่เคยตรึงไว้ย้ายไป `surveyFieldView.test.mjs`:
+//    พื้นที่ตั้งต้นของบานขวา (`surveyDefaultZoneId`) และ 🐞 `canWrite` ของ server ไม่รู้จักการล็อก
+test('ตัวตัดสินไม่ส่งค่าพับตั้งต้นแล้ว — ไม่มีจอไหนพับพื้นที่', () => {
+  const v = surveyControlView({ request: request(), zones: [emptyZone('z1', 'Studio 01')], filesByZone: {}, viewer: HEAD });
+  assert.equal(v.foldDefaults, undefined);
+  const src = readFileSync(new URL('./surveyControl.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(src, /export function surveyFoldDefaults/);
 });
 
 // ══ สถานะของใบ ═════════════════════════════════════════════════════════
@@ -498,6 +502,44 @@ test('การ์ดของหัวหน้าบอกว่ารอช�
   assert.ok(!sent.notices.some((n) => n.key.startsWith('send-back')));
 });
 
+/* ⭐ ส่งกลับทีละข้อ (แผน §10.5 S3) — หัวหน้าต้องเห็นว่าขอไปกี่เรื่อง เรื่องอะไร และช่างติ๊กมากี่ข้อ
+   ⚠️ ข้อเดียว = คำเดิมเป๊ะ (ไม่มีเลขข้อ) · ข้อที่ช่างไม่ได้ติ๊กต้องมีชื่อ — ตัวเลข "1 / 2" เฉย ๆ
+     หัวหน้าต้องเดาเองว่าข้อไหนค้าง · ไม่รู้ว่าติ๊กอะไร (แท็บเก่า/ปิดให้ตอนส่งงาน) = ไม่มีตัวนับ */
+test('🔑 การ์ดของหัวหน้า: ส่งกลับหลายข้อขึ้นเลขข้อ · ช่างแจ้ง "แก้แล้ว 1 / 2 ข้อ" พร้อมข้อที่ยังไม่ติ๊ก', () => {
+  const items = ['ห้อง Treatment ขอภาพส่วน B อีกรูป', 'จุดมุมเตียงที่ 1 ขอรูปใกล้อีกรูป'];
+  const sentBack = { id: 'B-1', at: '2026-09-29T02:10:00.000Z', byName: 'Arnon', note: items.join('\n'), items };
+  const zones = [measuredZone('z1', 'Studio 01')];
+  const files = { z1: measuredFiles };
+  const pending = surveyControlView({ request: request(), zones, filesByZone: files, viewer: HEAD, sendBack: { pending: true, sentBack, done: null } });
+  // ข้อความเดียวกันใช้ในกล่องยืนยันของช่าง — ข้อเดียว/ไม่มี items (ตัวอ่านรุ่นเก่า) = ข้อความเดิมเป๊ะ
+  assert.equal(surveySendBackAskText({ note: 'ถ่ายภาพกว้างเพิ่ม', items: ['ถ่ายภาพกว้างเพิ่ม'] }), 'ถ่ายภาพกว้างเพิ่ม');
+  assert.equal(surveySendBackAskText({ note: 'ถ่ายภาพกว้างเพิ่ม' }), 'ถ่ายภาพกว้างเพิ่ม');
+  assert.equal(surveySendBackAskText(null), '');
+  const p = pending.notices.find((n) => n.key === 'send-back-pending');
+  assert.match(p.text, /2 ข้อ: \(1\) ห้อง Treatment ขอภาพส่วน B อีกรูป \(2\) จุดมุมเตียงที่ 1 ขอรูปใกล้อีกรูป · รอช่างแจ้งว่าแก้แล้ว$/);
+  assert.doesNotMatch(p.text, /\n/, 'กล่องแจ้งไม่ตัดบรรทัดตาม \\n — ข้อต้องคั่นให้อ่านออกบนบรรทัดเดียว');
+
+  const half = { id: 'D-1', at: '2026-09-29T02:40:00.000Z', byName: 'Phuwadol', note: null, doneItems: [0], itemCount: 2 };
+  const fixed = surveyControlView({ request: request(), zones, filesByZone: files, viewer: HEAD, sendBack: { pending: false, sentBack, done: half } });
+  const f = fixed.notices.find((n) => n.key === 'send-back-done');
+  assert.match(f.text, /^ช่างแจ้งว่าแก้แล้ว 1 \/ 2 ข้อ · /);
+  assert.match(f.text, /Phuwadol/);
+  assert.match(f.text, /ยังไม่ติ๊ก: \(2\) จุดมุมเตียงที่ 1 ขอรูปใกล้อีกรูป/);
+  assert.equal(f.tone, 'warning', 'ยังมีข้อที่ช่างไม่ได้ติ๊ก — ไม่ใช่กล่องเขียวว่าเรียบร้อย');
+
+  const all = surveyControlView({ request: request(), zones, filesByZone: files, viewer: HEAD, sendBack: { pending: false, sentBack, done: { ...half, doneItems: [0, 1] } } });
+  const a = all.notices.find((n) => n.key === 'send-back-done');
+  assert.match(a.text, /^ช่างแจ้งว่าแก้แล้ว 2 \/ 2 ข้อ · /);
+  assert.doesNotMatch(a.text, /ยังไม่ติ๊ก/);
+  assert.equal(a.tone, 'success');
+
+  // ไม่รู้ว่าติ๊กอะไร = คำเดิม ไม่มีตัวนับ
+  const unknownTicks = surveyControlView({ request: request(), zones, filesByZone: files, viewer: HEAD, sendBack: { pending: false, sentBack, done: { ...half, doneItems: null, itemCount: null } } });
+  const u = unknownTicks.notices.find((n) => n.key === 'send-back-done');
+  assert.doesNotMatch(u.text, /ข้อ/);
+  assert.equal(u.tone, 'success');
+});
+
 test('🐞 ช่างหลังส่งแล้ว ต้องไม่ถูกส่งไปกดปุ่มบนหน้าที่ role ts เปิดไม่ได้ (403)', () => {
   const zones = [readyZone('z1', 'Studio 01')];
   const v = surveyControlView({
@@ -523,6 +565,39 @@ test('หัวหน้า — เห็นครบหกข้อ และ�
   assert.equal(v.flags.controlFirst, true);
 });
 
+/* 🔄 **ปุ่มส่งกลับไม่ผูกกับของขาดแล้ว** (แผน §10.5 S4 · ม็อก AW-2) — หัวหน้าเปิดรูปแล้วเห็นว่าภาพกว้างถ่ายไม่ถึง
+   ส่วน B ทั้งที่ด่านสามข้อของช่างเขียวครบ (A-5) ⇒ เดิมปุ่มหายไปพร้อมของขาด ขอรูปเพิ่มในระบบไม่ได้
+   ⚠️ `crewPending` ยังอยู่และยังหมายถึง "มีของช่างค้าง" — ปุ่มขึ้นตาม `sendBackAction.show` ตัวเดียว
+   ⚠️ ไม่มีช่างบนนัด = ไม่มีใครไปทำอะไรมาให้ส่งกลับ (ไม่ใช่ด่านที่รอให้ผ่าน) ⇒ ไม่มีปุ่ม */
+test('🔄 sendBackAction — หัวหน้าส่งกลับได้แม้ฝั่งช่างครบ 3/3 · ล็อกแล้ว/ไม่มีช่าง/ไม่ใช่หัวหน้า = ไม่มีปุ่ม', () => {
+  const crewDone = ['z1', 'z2', 'z3'].map((id, i) => measuredZone(id, `Studio 0${i + 1}`));
+  const files = { z1: measuredFiles, z2: measuredFiles, z3: measuredFiles };
+  const visit = { id: 'SVV-1', status: 'done', assigneeId: 'U-9', assistantIds: ['U-7'] };
+  const v = surveyControlView({ request: request(), zones: crewDone, filesByZone: files, viewer: HEAD, visit });
+  assert.equal(v.sendBackAction.show, true, 'ฝั่งช่างครบแล้วก็ยังขอเพิ่มได้ (A-5/AW-2)');
+  assert.equal(v.sendBackAction.label, 'ส่งกลับให้ช่างแก้', 'คำของม็อก AW-2');
+  assert.equal(v.zoneGaps.crewPending, false, 'crewPending ยังหมายถึง "มีของช่างค้าง" — ไม่ได้ถูกยืดความหมาย');
+  assert.equal(v.sendBackAction.message, 'ฝั่งช่างครบทุกพื้นที่แล้ว — ช่างจะได้เฉพาะข้อที่พิมพ์ด้านล่าง',
+    'กล่องยืนยันไม่มีของขาดให้เล่า ต้องไม่ขึ้น "ข้อที่ติด: " ว่าง ๆ');
+
+  // ยังมีของช่างค้าง — ปุ่มยังอยู่ และกล่องยืนยันเล่าว่าติดตรงไหน (คำเดิม)
+  const gaps = surveyControlView({
+    request: request(), zones: [measuredZone('z1', 'Studio 01'), emptyZone('z2', 'Studio 02')],
+    filesByZone: { z1: measuredFiles }, viewer: HEAD, visit,
+  });
+  assert.equal(gaps.sendBackAction.show, true);
+  assert.equal(gaps.sendBackAction.message, 'ข้อที่ติด: Studio 02 (ขนาด · ภาพกว้าง · จุดติดตั้ง)');
+
+  const locked = surveyControlView({
+    request: request({ answeredAt: '2026-09-29T07:20:00.000Z' }), zones: crewDone, filesByZone: files, viewer: HEAD, visit,
+  });
+  assert.equal(locked.sendBackAction.show, false, 'ส่งผลแล้ว — ต้องดึงกลับก่อน');
+  const noCrew = surveyControlView({ request: request(), zones: crewDone, filesByZone: files, viewer: HEAD, visit: null });
+  assert.equal(noCrew.sendBackAction.show, false, 'ยังไม่มีช่างบนนัด = ไม่มีใครได้รับ');
+  const crew = surveyControlView({ request: request(), zones: crewDone, filesByZone: files, viewer: CREW, visit });
+  assert.equal(crew.sendBackAction.show, false, 'ปุ่มของหัวหน้า');
+});
+
 // ══ ด่านที่ติด รวมเป็นกลุ่มต่อพื้นที่ ═══════════════════════════════════
 test('ด่านที่ติดรวมต่อพื้นที่ แยก "ช่างต้องเก็บ" กับ "หัวหน้าต้องทำ" พร้อมปุ่มพาไป', () => {
   const zones = [emptyZone('z1', 'Studio 01'), measuredZone('z2', 'Studio 02')];
@@ -536,7 +611,9 @@ test('ด่านที่ติดรวมต่อพื้นที่ แ�
   assert.equal(first.headText, 'หัวหน้าต้องทำ: ภาพผัง · เลือกจุด · แพ็คเกจ');
   assert.deepEqual(first.targets.map((t) => t.kind), ['zone'], 'ยังติดของช่าง = พาไปที่พื้นที่');
   assert.equal(second.crewText, null);
-  assert.deepEqual(second.targets.map((t) => t.label), ['เปิด Studio 02', 'เคาะที่สรุปส่งผล']);
+  /* 🔄 ผังย้ายไปแท็บสรุปส่งผลแล้ว (มติเจ้าของ 25/09 · §10.5 S2) — ฝั่งช่างครบ = ไม่มีอะไรให้ทำ
+     ในพื้นที่ ⇒ ปุ่ม "เปิด Studio 02" ที่เคยพาไปอัปผังคือปุ่มที่พาไปหน้าที่ไม่มีช่องอัปแล้ว */
+  assert.deepEqual(second.targets.map((t) => t.label), ['เคาะที่สรุปส่งผล']);
 });
 
 test('ด่านที่ติดแสดงไม่เกิน 3 พื้นที่ แล้วบอกว่าเหลืออีกกี่พื้นที่', () => {
@@ -598,20 +675,42 @@ test('ลำดับเหตุผล ③ ด่านหกข้อ — ข�
   }).send.reason.target, null);
 });
 
-test('🐞 ขาดแค่ "ภาพผัง" — ปุ่มพาไปต้องเป็นพื้นที่ ไม่ใช่แท็บสรุปที่อัปผังไม่ได้', () => {
-  /* ช่องอัป `survey_plan` อยู่ใน SurveyZoneCard ซึ่งเรนเดอร์เฉพาะแท็บหน้างาน ⇒ ปุ่มที่
-     พาไปแท็บสรุปคือทางตัน · กฎเดียวกับที่กลุ่มด่านต่อพื้นที่ใช้อยู่แล้ว */
+test('ขาดแค่ "ภาพผัง" — ผังอัปที่แท็บสรุปส่งผล: แท็บหน้างานพาไปแท็บนั้น · อยู่แท็บนั้นแล้วไม่มีปุ่มพาไป', () => {
+  /* 🔄 กลับทิศจากเทสต์เดิม (มติเจ้าของ 25/09 · §10.5 S2) — เดิมช่องอัป `survey_plan` อยู่ในการ์ด
+     พื้นที่ของแท็บหน้างาน ⇒ ปุ่มที่พาไปแท็บสรุปคือทางตัน · ตอนนี้ช่องอัปย้ายไปคอลัมน์ "ภาพผังที่
+     มาร์กจุดแล้ว" ของตารางสรุป และการ์ดพื้นที่ไม่มีช่องผังแล้ว ⇒ ปุ่ม "เปิด Studio 01" คือทางตันแทน */
   const zones = [readyZone('z1', 'Studio 01'), readyZone('z2', 'Studio 02')];
   const files = { z1: [WIDE], z2: [WIDE] };
   const v = surveyControlView({ request: request(), zones, filesByZone: files, viewer: HEAD, tab: 'field' });
   assert.equal(v.send.reason.key, 'head-gaps');
   assert.equal(v.send.reason.text, 'ยังส่งไม่ได้ — ติด 1 ข้อ ที่ Studio 01 · Studio 02');
-  assert.deepEqual(v.send.reason.target, { kind: 'zone', zoneId: 'z1', label: 'เปิด Studio 01' });
-  assert.deepEqual(v.send.reason.target, v.zoneGaps.rows[0].targets[0], 'กฎ "ไปไหน" ต้องมีชุดเดียว');
-  // อยู่แท็บสรุปแล้วก็ยังต้องพากลับเข้าพื้นที่ ไม่ใช่ตอบ null
-  assert.deepEqual(surveyControlView({
-    request: request(), zones, filesByZone: files, viewer: HEAD, tab: 'result',
-  }).send.reason.target, { kind: 'zone', zoneId: 'z1', label: 'เปิด Studio 01' });
+  assert.deepEqual(v.send.reason.target, { kind: 'tab', tab: 'result', label: 'ไปเคาะที่แท็บสรุปส่งผล' });
+  assert.deepEqual(v.zoneGaps.rows[0].targets, [{ kind: 'tab', tab: 'result', label: 'เคาะที่สรุปส่งผล' }]);
+  /* กฎ "ไปไหน" ต้องมีชุดเดียว — บรรทัดใต้ปุ่มส่งกับกลุ่มด่านต่อพื้นที่ต่างกันได้แค่ **คำบนปุ่ม** */
+  const where = ({ kind, tab, zoneId }) => ({ kind, tab, zoneId });
+  assert.deepEqual(where(v.send.reason.target), where(v.zoneGaps.rows[0].targets[0]), 'กฎ "ไปไหน" ต้องมีชุดเดียว');
+  // อยู่แท็บสรุปแล้ว = ช่องอัปผังอยู่ตรงหน้า ไม่มีที่ไหนให้พาไป
+  const onResult = surveyControlView({ request: request(), zones, filesByZone: files, viewer: HEAD, tab: 'result' });
+  assert.equal(onResult.send.reason.target, null);
+  assert.deepEqual(onResult.zoneGaps.rows[0].targets, []);
+  // ยังติดของช่างด้วย = พาไปพื้นที่เหมือนเดิม (ผังไม่ดึงไปแท็บสรุปแซงของที่ช่างต้องเก็บ)
+  const both = surveyControlView({
+    request: request(), zones: [emptyZone('z1', 'Studio 01')], filesByZone: {}, viewer: HEAD, tab: 'field',
+  });
+  assert.deepEqual(both.zoneGaps.rows[0].targets, [{ kind: 'zone', zoneId: 'z1', label: 'เปิด Studio 01' }]);
+});
+
+test('ช่องอัปภาพผังบนตารางสรุป — เฉพาะคนเคาะที่เขียนผลวัดของใบนี้ได้ และใบยังไม่ล็อก', () => {
+  const zones = [measuredZone('z1', 'Studio 01')];
+  const flag = (viewer, req = request()) => surveyControlView({
+    request: req, zones, filesByZone: { z1: measuredFiles }, viewer,
+  }).flags.canUploadPlan;
+  assert.equal(flag(HEAD), true);
+  // 🔴 ส่งผลได้แต่เขียนผลวัดไม่ได้ (ผู้บริหารที่ดูภาพรวม) — server ตีกลับ 403 ⇒ ห้ามยื่นปุ่ม
+  assert.equal(flag({ canWrite: false, canDecide: true }), false);
+  assert.equal(flag(CREW), false, 'ผังเป็นของหัวหน้า — ช่างอ่านอย่างเดียว');
+  assert.equal(flag(HEAD, request({ answeredAt: '2026-09-14T10:20:00.000Z' })), false, 'ส่งแล้ว = ล็อก');
+  assert.equal(flag(HEAD, request({ status: 'closed', closedAt: '2026-09-14T10:20:00.000Z' })), false);
 });
 
 test('🐞 คนที่ไม่มีสิทธิ์ส่ง — บรรทัดย่อกับเหตุผลเต็มต้องพูดตรงกัน และไม่มีปุ่มพาไป', () => {
@@ -785,51 +884,103 @@ test('ลายเซ็นไม่ระเบิดกับค่าที�
   assert.equal(surveyZoneDraftSignature(), surveyZoneDraftSignature({ parts: null, spots: undefined, note: null }));
 });
 
-test('จอส่ง dirtyZoneIds ที่ยกธงจากการ์ดจริง ๆ — ด่านของ PR2 ถึงจะมีคนยิงให้', () => {
+test('จอส่ง dirtyZoneIds ที่ยกธงจากหน้าพื้นที่จริง ๆ — ด่านของ PR2 ถึงจะมีคนยิงให้', () => {
   const page = readFileSync(new URL('../../app/service/surveys/[id]/page.js', import.meta.url), 'utf8');
   assert.match(page, /dirtyZoneIds,/, 'ต้องส่งเข้า surveyControlView');
-  assert.match(page, /onDirtyChange=\{handleDirtyZone\}/, 'การ์ดเป็นคนบอกว่าตัวเองมีค่าค้าง');
-  assert.match(page, /open=\{isZoneOpen\(zone\.id\)\}/);
-  assert.match(page, /view\.foldDefaults/, 'ค่าเปิด/ปิดตั้งต้นมาจากตัวตัดสิน ไม่ใช่กฎชุดที่สองบนจอ');
-  assert.match(page, /ย่อทุกพื้นที่/);
-  assert.match(page, /ขยายทุกพื้นที่/);
-  assert.doesNotMatch(page, /localStorage/, 'ค่าพับห้ามจำข้ามครั้ง (กติกาของแบบที่อนุมัติ)');
+  assert.match(page, /onDirtyChange=\{handleDirtyZone\}/, 'หน้าพื้นที่เป็นคนบอกว่าตัวเองมีค่าค้าง');
+  /* 🔄 §10.5 S7 — ค่าพับตั้งต้น/ย่อ-ขยายทุกพื้นที่ถอดแล้ว (แบบ A: หน้าหนึ่งพื้นที่เดียว ไม่มีอะไรพับ) */
+  assert.doesNotMatch(page, /foldDefaults|isZoneOpen|ย่อทุกพื้นที่/);
+  assert.match(page, /useUnsavedChanges\(/, 'ทุกทางออกจากหน้าถามก่อนทิ้ง (ลิงก์ · รีเฟรช · ปิดแท็บ)');
+  assert.match(page, /useSurveyZoneRoute\(/, 'ย้าย/ย้อนในหน้าถามก่อนทิ้งผ่านตัวต่อสายประวัติ');
+  /* ⭐ **ไม่มีร่างในเครื่อง** (มติเจ้าของ · แผนลงมือ §3.4) — ความเสี่ยงที่รับไว้คือ iOS ปิดแท็บระหว่างเปิดกล้อง
+     ⇒ ยามคือไม่มีไฟล์ไหนของจอนี้แตะที่เก็บของเบราว์เซอร์เลย */
+  const service = new URL('../../components/service/', import.meta.url);
+  const files = [
+    readFileSync(new URL('../../app/service/surveys/[id]/page.js', import.meta.url), 'utf8'),
+    readFileSync(new URL('useSurveyZoneRoute.js', service), 'utf8'),
+    ...readdirSync(service).filter((f) => /^Survey.*\.js$/.test(f)).map((f) => readFileSync(new URL(f, service), 'utf8')),
+  ];
+  assert.ok(files.length >= 9, 'ต้องอ่านไฟล์ของจอนี้ครบ (หน้า + ตัวต่อสาย + คอมโพเนนต์ Survey*)');
+  for (const src of files) assert.doesNotMatch(src, /localStorage|sessionStorage|indexedDB/);
 });
 
-test('การ์ดพื้นที่: ป้ายค้าง/ป้ายพัง · บังคับเปิดเมื่อบันทึกไม่สำเร็จ · ลิงก์ไปพื้นที่ถัดไป', () => {
-  const card = readFileSync(new URL('../../components/service/SurveyZoneCard.js', import.meta.url), 'utf8');
-  assert.match(card, /ยังไม่บันทึก/);
-  assert.match(card, /บันทึกไม่สำเร็จ/);
-  assert.match(card, /role="alert"/, 'error ต้องประกาศตัวเอง ไม่ใช่ตัวหนังสือเงียบ ๆ');
-  assert.match(card, /onSaveFailed\?\.\(zone\.id\)/, 'บันทึกไม่ผ่าน = บังคับเปิดพื้นที่นั้น');
-  /* คำบนลิงก์เปลี่ยนตามทิศ — ดูเทสต์ "ลิงก์ถัดไปต้องเดินไปข้างหน้า" ข้างล่าง
-     (เดิมพินไว้เป็น `ถัดไป: {nextZone.name}` ตายตัว ซึ่งเป็นคำที่ผิดตอนวนกลับต้นลิสต์) */
-  assert.match(card, /\{nextZone\.back \? "กลับไปที่" : "ถัดไป:"\} \{nextZone\.name\} \(ยังไม่ครบ\)/);
-  assert.match(card, /keepOpen: dirty \|\| !!error/,
-    'พับพื้นที่ปัจจุบันได้เฉพาะตอนไม่มีค่าค้างและไม่มี error');
-  assert.match(card, /surveyZoneFacts\(zone, shownFiles\)/,
-    'ตัวเลขบนหัวมาจากตัวตัดสินกลาง + ไฟล์สดของแผงแนบ (ตัวนับรูปต้องขยับทันที)');
+test('หน้าพื้นที่: ป้ายค้าง/ป้ายพัง · error ประกาศตัว · ท้ายหน้ามาจากตัวตัดสิน', () => {
+  const zonePage = readFileSync(new URL('../../components/service/SurveyZonePage.js', import.meta.url), 'utf8');
+  const fieldView = readFileSync(new URL('./surveyFieldView.js', import.meta.url), 'utf8');
+  assert.match(fieldView, /ยังไม่บันทึก/);
+  assert.match(zonePage, /บันทึกไม่สำเร็จ/);
+  assert.match(zonePage, /role="alert"/, 'error ต้องประกาศตัวเอง ไม่ใช่ตัวหนังสือเงียบ ๆ');
+  assert.match(zonePage, /surveyZoneFooterView\(/, '"ถัดไป" · "บันทึกพื้นที่นี้" · เหตุที่กดไม่ได้ มาจากตัวตัดสิน ไม่คิดในจอ');
+  assert.match(zonePage, /surveyZoneStateBadge\(/);
+  assert.match(zonePage, /data-osk-hide=""/, 'ท้ายหน้าหลบตอนแป้นพิมพ์บนจอขึ้น');
 });
 
-test('การ์ดรับแถวที่โหลดใหม่กลับเข้ามา — ค่าค้างปลอมล็อกปุ่มส่งผลไม่ได้', () => {
-  const card = readFileSync(new URL('../../components/service/SurveyZoneCard.js', import.meta.url), 'utf8');
+test('หน้าพื้นที่รับแถวที่โหลดใหม่กลับเข้ามา — ค่าค้างปลอมล็อกปุ่มส่งผลไม่ได้', () => {
+  const zonePage = readFileSync(new URL('../../components/service/SurveyZonePage.js', import.meta.url), 'utf8');
   /* 🐞 จอนี้โหลดซ้ำเองเมื่อสลับกลับมาที่แท็บ และนัดหนึ่งใบมีช่างได้หลายคน ⇒ ช่างอีกคน
-     บันทึกพื้นที่เดียวกันเมื่อไร การ์ดที่ไม่เคยอ่าน prop กลับเข้ามาจะโชว์ค่าเก่า ·
+     บันทึกพื้นที่เดียวกันเมื่อไร หน้าที่ไม่เคยอ่าน prop กลับเข้ามาจะโชว์ค่าเก่า ·
      ขึ้นป้าย "ยังไม่บันทึก" ทั้งที่ไม่มีใครพิมพ์ · แล้วธงนั้นวิ่งไป `dirtyZoneIds`
-     ล็อกปุ่มส่งผลถาวรโดยโทษผู้ใช้ (พิสูจน์สดแล้ว: ฐานเป็น 12 · ช่องยังเป็น 4) */
-  assert.match(card, /savedSigRef/, 'ต้องจำลายเซ็นของแถวที่รับมาล่าสุดไว้เทียบ');
-  assert.match(card, /adoptRow\(zoneRef\.current\)/, 'ไม่มีของค้าง = รับแถวใหม่มาเลย');
-  assert.match(card, /ถูกแก้จากที่อื่น/, 'มีของค้างจริง = บอกว่าแถวถูกแก้ ไม่ใช่เงียบแล้วให้ทับ');
-  assert.match(card, /ใช้ค่าล่าสุดจากฐาน/, 'ต้องมีทางออกที่ไม่ใช่การกดบันทึกทับ');
+     ล็อกปุ่มส่งผลถาวรโดยโทษผู้ใช้ (พิสูจน์สดแล้ว: ฐานเป็น 12 · ช่องยังเป็น 4)
+     🔄 §10.5 S7 — กติกา "รับ / ชน" อยู่ที่ตัวตัดสินล้วน `surveyDraftSync` (สี่กรณีข้างล่าง) */
+  assert.match(zonePage, /surveyDraftSync\(/, 'ถามตัวตัดสินตัวเดียว ไม่เขียน if ชุดที่สองในจอ');
+  assert.match(zonePage, /savedSigRef/, 'ต้องจำลายเซ็นของแถวที่รับมาล่าสุดไว้เทียบ');
+  assert.match(zonePage, /adoptRow\(zoneRef\.current\)/, 'ไม่มีของค้าง = รับแถวใหม่มาเลย');
+  assert.match(zonePage, /ถูกแก้จากที่อื่น/, 'มีของค้างจริง = บอกว่าแถวถูกแก้ ไม่ใช่เงียบแล้วให้ทับ');
+  assert.match(zonePage, /ใช้ค่าล่าสุดจากฐาน/, 'ต้องมีทางออกที่ไม่ใช่การกดบันทึกทับ');
 });
 
-test('ลิงก์ "ถัดไป" ต้องเดินไปข้างหน้าในลิสต์ ไม่ใช่เด้งกลับใบแรกเสมอ', () => {
+/* ── ตัวตัดสิน "รับแถวใหม่ หรือบอกว่าชน" (ยกจากการ์ดเป็นของล้วน · แผน §10.5 S5) ──────────────
+   ⭐ สี่กรณีเดียวกับที่การ์ดทำมาตลอด — หน้าพื้นที่ของแบบ A (S7) ถามตัวนี้แทนการเขียน if ชุดที่สอง */
+const SIG = {
+  old: surveyZoneDraftSignature({ parts: [part(4, 5, 3)] }),
+  fresh: surveyZoneDraftSignature({ parts: [part(12, 5, 3)] }),
+  typing: surveyZoneDraftSignature({ parts: [part(4, 5, 3.2)] }),
+};
+
+test('surveyDraftSync ① แถวที่โหลดมาเท่าเดิม = ไม่ต้องทำอะไร (แม้ผู้ใช้มีของค้าง)', () => {
+  assert.equal(surveyDraftSync({ prevSavedSig: SIG.old, savedSig: SIG.old, draftSig: SIG.typing, sentSig: null }), 'same');
+});
+
+test('surveyDraftSync ② ไม่มีของค้าง (ร่าง = แถวเดิม) แล้วอีกคนบันทึก = รับแถวใหม่ลงช่อง', () => {
+  assert.equal(surveyDraftSync({ prevSavedSig: SIG.old, savedSig: SIG.fresh, draftSig: SIG.old, sentSig: null }), 'adopt');
+  assert.equal(surveyDraftSync({ prevSavedSig: SIG.old, savedSig: SIG.fresh, draftSig: SIG.fresh, sentSig: null }), 'adopt',
+    'พิมพ์ตรงกับแถวใหม่พอดี = ไม่มีอะไรชน');
+});
+
+test('surveyDraftSync ③ แถวใหม่คือผลการบันทึกของเราเอง (server ปรับรูปเลขแล้ว) = รับ ไม่ใช่ "ยังไม่บันทึก" ค้าง', () => {
+  assert.equal(surveyDraftSync({ prevSavedSig: SIG.old, savedSig: SIG.fresh, draftSig: SIG.typing, sentSig: SIG.typing }), 'adopt');
+  assert.equal(surveyDraftSync({ prevSavedSig: SIG.old, savedSig: SIG.typing, draftSig: SIG.fresh, sentSig: SIG.typing }), 'same',
+    'พิมพ์ต่อระหว่างรอคำตอบของตัวเอง = เก็บร่างไว้ แต่ไม่ใช่การชนกับใคร');
+});
+
+test('surveyDraftSync ④ มีของค้างจริง แล้วอีกคนแก้แถวเดียวกัน = ชน (เก็บร่าง บอกว่าถูกแก้จากที่อื่น)', () => {
+  assert.equal(surveyDraftSync({ prevSavedSig: SIG.old, savedSig: SIG.fresh, draftSig: SIG.typing, sentSig: null }), 'conflict');
+  assert.equal(surveyDraftSync({ prevSavedSig: SIG.old, savedSig: SIG.fresh, draftSig: SIG.typing }), 'conflict',
+    'ไม่ส่ง sentSig = ยังไม่เคยบันทึกจากจอนี้');
+});
+
+/* 🐞 UAT 25/09 — ลายเซ็นใช้ `Number()` ⇒ '7,5' ได้ NaN แล้วเก็บข้อความดิบ ทั้งที่ตัวบันทึกอ่านเป็น 7.5
+   ⇒ ช่างแป้นจุลภาคที่พิมพ์ต่อระหว่างรอบันทึกเจอป้าย "ถูกแก้จากที่อื่น" เพราะการบันทึกของตัวเอง
+   และพิมพ์ '7,5' ทับค่า 7.5 เดิม = พื้นที่ขึ้น "ยังไม่บันทึก" ล็อกปุ่มส่งผลจนกว่าจะกดบันทึกซ้ำ */
+test('🐞 ลายเซ็น: "7,5" กับ 7.5 คือค่าเดียวกัน · บันทึกของตัวเองจากแป้นจุลภาคไม่ใช่การชน', () => {
+  const comma = surveyZoneDraftSignature({ parts: [part('7,5', '5', '3')] });
+  const saved = surveyZoneDraftSignature({ parts: [part(7.5, 5, 3)] });
+  assert.equal(comma, saved, 'ตัวบันทึกกับลายเซ็นต้องอ่านเลขด้วยตัวเดียวกัน');
+  const typingMore = surveyZoneDraftSignature({ parts: [part('7,5', '5', '3,2')] });
+  assert.equal(surveyDraftSync({ prevSavedSig: SIG.old, savedSig: saved, draftSig: typingMore, sentSig: comma }), 'same',
+    'แถวใหม่คือผลบันทึกของเราเอง — ไม่ใช่ "ถูกแก้จากที่อื่น"');
+  // ค่าที่ตัวบันทึกไม่รับ ยังเป็นข้อความดิบ — ไม่หายเป็น "ว่าง" และไม่เท่าเลขที่เดาเอา
+  assert.notEqual(surveyZoneDraftSignature({ parts: [part('1,200', '5', '3')] }),
+    surveyZoneDraftSignature({ parts: [part(1.2, 5, 3)] }));
+  assert.notEqual(surveyZoneDraftSignature({ parts: [part('abc', '', '')] }), surveyZoneDraftSignature({ parts: [] }));
+});
+
+/* 🔄 §10.5 S7 — ยาม "ถัดไปต้องเดินไปข้างหน้า" (บั๊ก 1↔5 ของหน้าเดิม) ย้ายไปเป็นเทสต์ของตัวตัดสิน `surveyNextStep`
+   (surveyFieldView.test.mjs) · หน้าไม่มีตัวหาพื้นที่ถัดไปของตัวเองแล้ว */
+test('หน้าไม่หาพื้นที่ถัดไปเอง — ถามตัวตัดสิน surveyNextStep', () => {
   const page = readFileSync(new URL('../../app/service/surveys/[id]/page.js', import.meta.url), 'utf8');
-  /* 🐞 เดิม `rows.find(r => r.crew.length && r.zoneId !== zoneId)` = ใบแรกของลิสต์เสมอ
-     ⇒ ใบ 5 พื้นที่ที่ขาดที่ 1 กับ 5 จะสลับ 1↔5 ไม่จบ และพับใบที่เพิ่งทำเสร็จทิ้ง */
-  assert.match(page, /const order = new Map\(zones\.map/, 'ลำดับวัดจากลิสต์ที่ตาเห็น');
-  assert.match(page, /order\.get\(r\.zoneId\) \?\? Infinity\) > here/, 'เลือกตัวที่อยู่หลังตำแหน่งปัจจุบัน');
-  assert.match(page, /back: !ahead/, 'วนกลับต้นลิสต์เมื่อไร ต้องบอกการ์ดให้เปลี่ยนคำ');
+  assert.match(page, /surveyNextStep\(\{/);
+  assert.doesNotMatch(page, /nextGapZone|const order = new Map\(zones\.map/);
 });
 
 /* ══ สามข้อที่เจอตอนตรวจก่อน merge 2026-09-16 ═══════════════════════════ */
@@ -852,28 +1003,21 @@ test('🐞 ร่างของหัวหน้าต้องอยู่ท
     'state คู่ขนานคือที่มาของธงค้าง');
 });
 
-test('🐞 ป้าย "นัดยังไม่ปิด" ขึ้นเฉพาะใบที่ส่งผลไปแล้ว', () => {
+test('🐞 ป้าย "นัดยังไม่ปิด" ขึ้นเฉพาะใบที่ส่งผลไปแล้ว — หน้าส่ง sent ให้ตัวตัดสินป้ายนัด', () => {
   /* มติ: กดส่งผลไม่ได้ปิดนัด ⇒ ป้ายอำพันเตือนเรื่องนัดที่ค้าง · เดิมเงื่อนไขไม่เคยถาม
-     `sent` เลย ⇒ นัดที่เพิ่งตั้งบนใบที่ยังไม่มีใครแตะก็ขึ้นคำเตือนทันทีที่เปิดจอ */
+     `sent` เลย ⇒ นัดที่เพิ่งตั้งบนใบที่ยังไม่มีใครแตะก็ขึ้นคำเตือนทันทีที่เปิดจอ
+     🔄 §10.5 S9: กติกาย้ายไปตัวตัดสิน `surveyVisitBadge` (เทสต์ด้วยข้อมูลใน surveyFieldView.test.mjs — "ถาม sent ก่อนเสมอ")
+        ⇒ ที่นี่ตรึงแค่ว่าหน้าเรียกตัวนั้นพร้อมธงส่งผล ไม่ได้ประกอบป้ายเอง */
   const page = readFileSync(new URL('../../app/service/surveys/[id]/page.js', import.meta.url), 'utf8');
-  const badge = page.slice(page.indexOf('const visitBadge'), page.indexOf('const dueSub'));
-  assert.match(badge, /view\.flags\.sent/, 'ป้ายต้องถามว่าส่งผลไปหรือยัง');
-  assert.ok(
-    badge.indexOf('view.flags.sent') < badge.indexOf('นัดยังไม่ปิด'),
-    'ด่าน sent ต้องมาก่อนป้ายอำพัน ไม่ใช่ตกไปอยู่กิ่ง else',
-  );
-  assert.match(badge, /กำลังเข้าพื้นที่/);
+  assert.match(page, /const visitBadge = surveyVisitBadge\(visit, \{ sent: view\.flags\.sent \}\);/,
+    'ป้ายต้องถามว่าส่งผลไปหรือยัง');
+  const pageCode = page.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.doesNotMatch(pageCode, /"นัดยังไม่ปิด"|"กำลังเข้าพื้นที่"/, 'คำบนป้ายมาจากตัวตัดสิน — หน้าไม่เขียนเอง');
 });
 
-test('🐞 หัวใบจอประเมินพื้นที่เรียบ — ไม่มีแสงส้มที่มุม', () => {
-  /* มติ: ถอดแสงหัวการ์ดบนจอนี้ · ของเดิมเลิกใช้ `.premium-header` แล้วจริง แต่ย้ายไป
-     `DetailOverview` ซึ่งทา radial ของตัวเอง ⇒ แสงถูกสืบทอดมา ไม่ได้ถูกถอด
-     🔄 รอบถอดทั้งระบบ: ไม่มีคลาส `.flat` ให้ขอแล้ว เพราะ `.overviewCard` เรียบเป็นค่าตั้งต้น
-        ⇒ จอนี้ต้อง **ไม่** ขอ prop ที่ไม่มีอยู่ และด่านจริงย้ายไปอยู่ที่
-        `pageHeaderFlat.test.mjs` ซึ่งคุมหัวทุกตัวของระบบ ไม่ใช่จอเดียว */
-  const page = readFileSync(new URL('../../app/service/surveys/[id]/page.js', import.meta.url), 'utf8');
-  assert.doesNotMatch(page, /^\s+flat$/m, 'ไม่มี prop flat แล้ว — หัวใบเรียบเป็นค่าตั้งต้น');
-});
+/* 🔄 §10.5 S10 — เทสต์ "หัวใบจอประเมินพื้นที่เรียบ" (หน้าไม่ขอ prop `flat` ของ `DetailOverview`) ถอดแล้ว:
+   จอนี้ไม่มี `DetailOverview` (S9 · ตรึงใน `surveyFieldScreen.test.mjs`) · หัวตัวใหม่ `SurveyJobHeader`
+   เข้าทะเบียนหัวของ `components/ui/pageHeaderFlat.test.mjs` ซึ่งคุมหัวทุกตัวของระบบแทน */
 
 // ── ส่งผลปิดนัดที่ยังเปิดให้ด้วย (มติเจ้าของ 24/09 ข้อ 2) ─────────────────────
 /* ⭐ โมดัลยืนยันต้องบอกผลก่อนกด ("ปิดนัด SV-… เป็น “เข้าแล้ว” ไปพร้อมกัน") ⇒ การ์ดส่ง `send.closesVisit`
@@ -951,7 +1095,8 @@ test('⭐ ปุ่มส่งผลส่งรหัสนัดที่โ�
 
 test('⭐ โมดัลส่งผลวาดผลทุกข้อจาก `surveySendConfirm` · ป้ายปุ่มพูดตามผล · ส่งไม่ได้แล้ว = ปุ่มเดียว "ปิด"', () => {
   const page = surveyPageCode();
-  assert.match(page, /surveySendConfirm\(\{ docNo: data\?\.request\?\.docNo, closesVisit: view\.send\.closesVisit \}\)/);
+  assert.match(page, /surveySendConfirm\(\{\s*docNo: data\?\.request\?\.docNo, closesVisit: view\.send\.closesVisit,[\s\S]{0,160}sendBackPending: view\.send\.sendBackPending,\s*\}\)/,
+    '🐞 review 26/09: ส่งกลับค้าง = โมดัลบอกก่อนกด');
   const at = page.indexOf('title="ส่งผลประเมินให้ฝ่ายขาย"');
   const dialog = page.slice(at, page.indexOf('</ConfirmDialog>', at));
   assert.match(dialog, /confirmLabel=\{view\.send\.allowed \? sendConfirm\.confirmLabel : "ปิด"\}/);
@@ -960,4 +1105,42 @@ test('⭐ โมดัลส่งผลวาดผลทุกข้อจา�
   assert.match(dialog, /!view\.send\.show \? `\$\{view\.status\.headline\} — \$\{view\.status\.sub\}`/,
     'ใบถูกล็อกระหว่างที่กล่องเปิด = บอกสถานะล่าสุด ไม่ใช่ตัวเลขชวนส่ง');
   assert.doesNotMatch(dialog, /ใบจะปิดเมื่อฝ่ายขายกดรับผล/, 'ข้อความเดิมไม่บอกเรื่องนัดเลย');
+});
+
+/* 🐞 review 26/09 — ส่งกลับได้แม้ด่านเขียวหมด (S4) ⇒ "ส่งกลับค้าง" กับ "ส่งผลได้" เกิดพร้อมกันได้แล้ว · ส่งผลตอนนั้น
+   = ใบล็อก ช่างแก้ต่อไม่ได้ ⇒ การ์ดส่ง `send.sendBackPending` ให้โมดัลเตือน (ไม่ใช่เหตุบล็อก — หัวหน้าตัดสินใจส่งได้) */
+test('🐞 ส่งกลับค้างแต่ด่านเขียวหมด: ส่งผลยังกดได้ + `send.sendBackPending` บอกจำนวนข้อให้โมดัล', () => {
+  const sentBack = {
+    id: 'B-1', at: '2026-09-26T03:00:00.000Z', byName: 'หัวหน้า', note: 'ขอภาพกว้างส่วน B',
+    items: ['ขอภาพกว้างส่วน B', 'ถ่ายผังใหม่'],
+  };
+  const pending = readyHead(null, { sendBack: { pending: true, sentBack, done: null } });
+  assert.equal(pending.send.allowed, true, 'เตือน ไม่บล็อก');
+  assert.equal(pending.send.reason, null);
+  assert.deepEqual(pending.send.sendBackPending, { itemCount: 2 });
+
+  const fixed = readyHead(null, { sendBack: { pending: false, sentBack, done: { id: 'D-1' } } });
+  assert.equal(fixed.send.sendBackPending, null, 'ช่างแจ้งแล้ว = ไม่มีอะไรให้เตือน');
+  assert.equal(readyHead(null).send.sendBackPending, null, 'อ่านเธรดไม่ได้/ไม่เคยส่งกลับ = ไม่เตือน');
+  const sent = readyHead(null, { request: request({ answeredAt: '2026-09-26T04:00:00Z' }), sendBack: { pending: true, sentBack, done: null } });
+  assert.equal(sent.send.sendBackPending, null, 'ใบล็อกแล้ว = ไม่มีปุ่มส่ง');
+  const crew = readyHead(null, { viewer: CREW, sendBack: { pending: true, sentBack, done: null } });
+  assert.equal(crew.send.sendBackPending, null, 'ไม่มีสิทธิ์ส่ง = ไม่มีโมดัล');
+});
+
+test('🐞 review 26/09 รอบสอง: บันทึกส่งเฉพาะส่วนที่แก้ — ผู้ช่วยเพิ่มจุดบนร่างที่มีส่วนว่าง ไม่ลบขนาดที่คนนำเพิ่งวัด', () => {
+  const origin = { parts: [], spots: [], note: '' };
+  const baseSig = surveyZoneDraftSignature(origin);
+  const helperDraft = { parts: [{ id: 'p1', label: '', widthM: '', lengthM: '', heightM: '' }], spots: [{ label: 'มุมเตียง' }], note: '' };
+  assert.deepEqual(surveyZoneChangedSections(baseSig, helperDraft), { parts: false, spots: true, note: false },
+    'ส่วนว่างที่จอเติมให้ไม่ใช่ "แก้ขนาด"');
+  assert.deepEqual(surveyZoneChangedSections(baseSig, { ...helperDraft, parts: [{ widthM: '7,5', lengthM: '4', heightM: '3' }] }),
+    { parts: true, spots: true, note: false });
+  assert.deepEqual(surveyZoneChangedSections(baseSig, { ...origin, note: ' ลูกค้าขอเลี่ยงมุม ' }), { parts: false, spots: false, note: true });
+  assert.equal(surveyZoneChangedSections(null, helperDraft), null, 'ไม่รู้แถวตั้งต้น = ส่งทั้งก้อนแบบเดิม');
+  assert.equal(surveyZoneChangedSections('ไม่ใช่ JSON', helperDraft), null);
+  const zone = readFileSync(new URL('../../components/service/SurveyZonePage.js', import.meta.url), 'utf8');
+  assert.match(zone, /const changed = surveyZoneChangedSections\(baseSig, draft\);/);
+  assert.match(zone, /let payload = pick\(baseRef\.current\?\.sig\);/);
+  assert.match(zone, /await onSave\(\{ \.\.\.payload, baseUpdatedAt: base \?\? undefined \}\);/);
 });

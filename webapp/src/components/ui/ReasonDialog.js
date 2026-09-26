@@ -30,6 +30,8 @@ export default function ReasonDialog({
   rows = 4,
   tone = "danger",
   busy = false,
+  // ช่องเหตุผลบนจอที่คนพิมพ์ด้วยมือถือ (จอหน้างาน) — ส่งต่อให้ Textarea: 16px กัน iOS ซูม
+  touch = false,
 }) {
   const normalized = String(value || "").trim();
   const invalid = normalized.length < minLength || normalized.length > maxLength || !!error;
@@ -43,6 +45,7 @@ export default function ReasonDialog({
           <span>{label} *</span>
           <Textarea
             rows={rows}
+            touch={touch}
             required
             minLength={minLength}
             maxLength={maxLength}

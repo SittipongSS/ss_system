@@ -1,0 +1,207 @@
+/* การ์ด "หัวหน้าส่งกลับให้แก้" ของช่าง (ม็อก A-5 · แผน §10.5 S8)
+   ⭐ โทนอำพันทั้งการ์ด — นี่คืองานตอนนี้ของช่าง (ไม่ใช่คำเตือนลอย ๆ) · ข้อละแถวสูงระดับนิ้ว
+   ⚠️ โทเคนล้วน (ธีมมืดพลิกเอง) · ช่องติ๊กเป็น checkbox ของเบราว์เซอร์ (แป้นพิมพ์/โปรแกรมอ่านจอใช้ได้ทันที) */
+
+.card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--amber) 38%, var(--border));
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--amber) 7%, var(--panel-solid));
+  box-shadow: var(--glass-shadow);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2-5);
+  padding: var(--space-3) var(--space-3-5) 0;
+}
+
+.icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-8);
+  height: var(--space-8);
+  border-radius: var(--radius-full);
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+.headCopy { min-width: 0; }
+
+.title {
+  margin: 0;
+  color: var(--text-1);
+  font-size: var(--fs-9);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-thai);
+}
+
+.who {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1-5);
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+/* วงอักษรย่อของหัวหน้า — ชุดเดียวกับวงชื่อทีมบนหัวงาน */
+.avatar {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-5);
+  height: var(--space-5);
+  border-radius: var(--radius-full);
+  background: var(--blue-soft);
+  color: var(--blue);
+  font-size: var(--fs-2);
+  font-weight: var(--fw-bold);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2-5);
+  padding: var(--space-2-5) var(--space-3-5) var(--space-3);
+}
+
+.asks {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-solid);
+}
+
+.ask {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
+}
+
+.ask + .ask { border-top: 1px solid var(--border); }
+
+/* ป้ายของช่องติ๊กคลุมทั้งข้อความ ⇒ แตะตรงไหนของข้อก็ติ๊กได้ · เป้าอย่างน้อยเท่านิ้ว */
+.askMain {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: var(--space-6) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-2-5);
+  min-width: 0;
+  min-height: var(--ctl-h-touch);
+  padding: var(--space-1-5) 0;
+}
+
+label.askMain { cursor: pointer; }
+
+.check {
+  width: var(--space-5);
+  height: var(--space-5);
+  margin: var(--space-0-5) 0 0;
+  accent-color: var(--green);
+  cursor: pointer;
+}
+
+.check:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+
+/* นัดยังเปิด (ไม่มีช่องติ๊ก) — เลขข้อแทนช่อง ให้ข้อเรียงตรงแนวเดียวกัน */
+.bullet {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-5);
+  height: var(--space-5);
+  margin-top: var(--space-0-5);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+.askCopy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.askText {
+  color: var(--text-1);
+  font-size: var(--fs-7);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+}
+
+.ask[data-done] .askText { color: var(--text-2); }
+
+.evidence {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  color: var(--green);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+.evidence svg { flex: none; margin-top: var(--space-1); }
+
+/* "ไปถ่าย ›" / "ไปแก้ ›" — ปุ่มพี่น้องของช่องติ๊ก (ไม่ซ้อนในป้าย) สูงเท่านิ้ว */
+.go {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-0-5);
+  min-height: var(--ctl-h-touch);
+  padding: 0 var(--space-1) 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--blue);
+  font: inherit;
+  font-size: var(--fs-7);
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.go:hover { background: var(--panel-2); }
+.go:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.label {
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+}
+
+.optional {
+  color: var(--text-3);
+  font-weight: var(--fw-normal);
+}
+
+.hint {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}

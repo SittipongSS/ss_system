@@ -38,6 +38,9 @@ const Input = forwardRef(function Input({
   // สถานะกรอกผิด — เดิมหน้าต้นแบบเขียน `premium-input error` ซึ่ง **ไม่มี selector
   // อยู่จริง** ช่อง "ที่ผิดพลาด" บนหน้าต้นแบบจึงหน้าตาเหมือนช่องปกติมาตลอด
   invalid = false,
+  // ช่องที่คนพิมพ์บนมือถือ/แท็บเล็ตหน้างาน — ตัวอักษร 16px ขึ้นไป (ต่ำกว่านี้ iOS ซูมทั้งหน้าตอนแตะช่อง)
+  // และช่องบรรทัดเดียวสูงเต็มนิ้ว 44px · UAT จอหน้างาน 25/09: ช่อง 14px ทำให้ซูมทุกช่องที่ช่างพิมพ์
+  touch = false,
   className = "",
   ...props
 }, ref) {
@@ -45,6 +48,7 @@ const Input = forwardRef(function Input({
     "premium-input",
     mono ? "mono" : null,
     combo ? "combo" : null,
+    touch ? "touch" : null,
     invalid ? "is-invalid" : null,
     className,
   ].filter(Boolean).join(" ").trim();

@@ -346,3 +346,24 @@ test('toast หลังส่งผลบอกผลกับนัดด้�
   assert.equal(surveySendDoneText(null), 'ส่งผลให้ฝ่ายขายแล้ว');
   assert.equal(surveySendDoneText(), 'ส่งผลให้ฝ่ายขายแล้ว');
 });
+
+/* 🐞 review 26/09 — ส่งกลับให้ช่างแก้ค้างอยู่ (ช่างยังไม่แจ้งว่าแก้แล้ว) แต่ด่านเขียวหมด ⇒ ส่งผลได้ (เตือน ไม่บล็อก)
+   แต่โมดัลต้องบอกก่อนกดว่า **ส่งแล้วเรื่องนั้นปิด และช่างแก้ต่อไม่ได้** (ใบล็อก) — กติกาโมดัลบอกผลลัพธ์ */
+test('🐞 ส่งกลับค้างอยู่ = โมดัลบอกว่าส่งผลจะปิดเรื่องนั้นไปด้วย · ต่อท้ายข้อ "ล็อก" · ไม่มีเรื่องค้าง = ไม่มีข้อนี้', () => {
+  const c = surveySendConfirm({ docNo: 'AS-26090001', closesVisit: closes(), sendBackPending: { itemCount: 2 } });
+  assert.equal(c.confirmLabel, 'ส่งผลและปิดนัด', 'เตือนอย่างเดียว ป้ายปุ่มไม่เปลี่ยน');
+  assert.equal(c.effects.length, 5);
+  assert.match(c.effects[1], /^ผลประเมินล็อก/);
+  assert.equal(c.effects[2],
+    'เรื่องที่ส่งกลับให้ช่างแก้ 2 ข้อ ยังรอช่างแจ้งว่าแก้แล้ว — ส่งผลแล้วช่างแก้ต่อไม่ได้ (ดึงผลกลับมาแก้ = เรื่องนี้กลับมารอช่างอีกครั้ง)');
+  assert.match(c.effects[3], /^ปิดนัด SV-2609001/);
+
+  // ไม่รู้จำนวนข้อ (แถวเก่าไม่มีข้อ) = ไม่มีตัวเลขลอย
+  assert.equal(surveySendConfirm({ sendBackPending: { itemCount: 0 } }).effects[2],
+    'เรื่องที่ส่งกลับให้ช่างแก้ ยังรอช่างแจ้งว่าแก้แล้ว — ส่งผลแล้วช่างแก้ต่อไม่ได้ (ดึงผลกลับมาแก้ = เรื่องนี้กลับมารอช่างอีกครั้ง)');
+  for (const none of [null, undefined]) {
+    const plain = surveySendConfirm({ docNo: 'AS-1', sendBackPending: none });
+    assert.equal(plain.effects.length, 3);
+    assert.ok(plain.effects.every((line) => !/ส่งกลับ/.test(line)));
+  }
+});

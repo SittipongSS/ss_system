@@ -11,7 +11,8 @@ import { readFileSync } from "node:fs";
 const src = (path) => readFileSync(new URL(path, import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const CARD = src("./CollapsibleCard.js");
 const CSS = src("./CollapsibleCard.module.css");
-const ZONE = src("../service/SurveyZoneCard.js");
+/* 🔄 §10.5 S7 — การ์ดพื้นที่พับได้ของจอประเมินกลายเป็นหน้าพื้นที่ (`SurveyZonePage`) ที่ไม่พับเลย (แบบ A: หน้าหนึ่งพื้นที่เดียว) */
+const ZONE_PAGE = src("../service/SurveyZonePage.js");
 const PREVIEW = src("../../app/settings/design-preview/page.js");
 
 test("หัวเป็นปุ่มเดียวทั้งแถว อยู่ใน h3 และประกาศ aria ครบ", () => {
@@ -60,10 +61,9 @@ test("บรรทัดสรุปตกลงมาทั้งบรรท�
     "บรรทัดสรุปต้องมีความกว้างต่ำสุดของตัวเอง ไม่งั้นมันยอมถูกบีบจนเหลือศูนย์");
 });
 
-test("การ์ดพื้นที่ของจอประเมินใช้ตัวนี้ ไม่ได้เขียนหัวพับเอง", () => {
-  assert.match(ZONE, /<CollapsibleCard/);
-  assert.doesNotMatch(ZONE, /aria-expanded/,
-    "หัวพับมีบ้านเดียว — เขียนเองอีกชุดเมื่อไรจะได้กติกาสองชุดที่เพี้ยนหากัน");
+test("หน้าพื้นที่ของจอประเมินไม่พับ — ไม่ใช้การ์ดพับได้ (แบบ A · มติเจ้าของ 25/09)", () => {
+  /* แบบที่ถูกตีกลับ 16/09: พื้นที่พับเองใต้มือช่าง · กติกาพับเปลี่ยนตามขนาดจอ ⇒ หน้าพื้นที่เปิดทีละหน้า ไม่มีอะไรพับ */
+  assert.doesNotMatch(ZONE_PAGE, /<CollapsibleCard/);
 });
 
 test("มีตัวอย่างที่กดได้จริงบนหน้าต้นแบบ", () => {

@@ -1,0 +1,683 @@
+/* หน้าพื้นที่ของจอหน้างาน (แผน §10.5 จอหน้างานแบบ A · ม็อก A-2 · A-3 · AT-2 · AT-3 · AW-1/2 · AO-1)
+   ⚠️ มือถือก่อน — ช่างยืนหน้างาน ถือมือถือ อีกมือถือตลับเมตร · ทุกอย่างที่กดได้สูงระดับนิ้ว (44px)
+   ⚠️ สองผิว (`data-layout`): "page" หน้าเต็มจอ (≤999 · เปลือกแอปหลบด้วย `data-immersive-page` ที่บานของมัน) ·
+      "pane" บานขวาของสองบาน (≥1000 · เลื่อนไปกับหน้า หัวติดบน ท้ายติดล่าง)
+   ⚠️ จุดตัดจอใช้ชุดของระบบเท่านั้น (680) — ความกว้างที่เหลือตัดสินที่ JS (`SURVEY_SPLIT_QUERY`) */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* หน้าเต็มจอสูงเท่าจอเสมอ ⇒ ท้ายหน้า (`margin-top: auto`) ชิดขอบล่างแม้พื้นที่มีของน้อย
+   🐞 UAT 25/09 แท็บเล็ต 768: ท้ายหน้าลอยเหนือขอบจอ 77px (sticky ติดขอบได้เฉพาะตอนของล้นจอ) */
+.page[data-layout="page"] { min-height: 100dvh; }
+
+.page[data-layout="pane"] {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+}
+
+/* ── หัว — ติดบนตอนเลื่อน ─────────────────────────────────────────────── */
+.head {
+  position: sticky;
+  z-index: var(--z-sticky);
+}
+
+/* หน้าเต็มจอ: เปลือกหลบแล้ว (`--topbar-h` = 0) ⇒ ติดขอบบนจริง */
+.page[data-layout="page"] .head { top: 0; }
+
+/* บานขวา: ติดใต้แถบบนของแอป (แถบระบุตัวใบนับด้วย — หัวใบยังอยู่ในหน้า) */
+.page[data-layout="pane"] .head {
+  top: calc(var(--topbar-h) + var(--sysbar-h) + var(--detail-pin-h));
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+/* แถบกรมท่าของหน้าเต็มจอ — ทางกลับ · ตัวเลื่อน · เมนู (โทเคนเดียวกับแถบบนของแอป)
+   ⚠️ เผื่อรอยบากจอด้านบน (`safe-area-inset-top`) เพราะแถบนี้คือของชิ้นบนสุดของจอแล้ว */
+.bar {
+  display: flex;
+  align-items: center;
+  min-height: calc(var(--ctl-h-touch) + var(--space-2));
+  padding: env(safe-area-inset-top) var(--space-1) 0;
+  background-color: var(--navy);
+  background-image: var(--navy-bar-bg);
+  color: var(--navy-fg);
+}
+
+.titleBand {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3) var(--page-gutter-tablet);
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-solid);
+}
+
+.page[data-layout="pane"] .titleBand {
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  border-radius: inherit;
+}
+
+.titleText {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.code {
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  font-variant-numeric: tabular-nums;
+}
+
+.title {
+  margin: 0;
+  color: var(--text-1);
+  font-size: var(--fs-12);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+}
+
+/* h2 รับโฟกัสจากโค้ด (เปิดพื้นที่ใหม่) — วงโฟกัสขึ้นเฉพาะคนที่ใช้คีย์บอร์ด */
+.title:focus { outline: none; }
+.title:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; border-radius: var(--radius); }
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1-5);
+}
+
+/* ── กล่องแจ้งเหนือเนื้อ (ชนกัน · บันทึกไม่ผ่าน) ────────────────────────────── */
+.conflict,
+.error {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-3) var(--space-3) 0;
+  padding: var(--space-2) var(--space-2-5);
+  border-radius: var(--radius);
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  line-height: var(--lh-text);
+}
+
+.conflict {
+  border: 1px solid var(--amber-soft);
+  background: var(--amber-soft);
+}
+
+.error {
+  border: 1px solid var(--red);
+  background: var(--red-soft);
+  color: var(--text-1);
+}
+
+.conflict > svg { flex: none; color: var(--amber); }
+.error > svg { flex: none; color: var(--red); }
+.conflict > span,
+.error > span { flex: 1 1 auto; min-width: 0; }
+.conflict b { margin-inline-end: var(--space-1); color: var(--amber); }
+.error b { margin-inline-end: var(--space-1); color: var(--red); }
+
+/* ── เนื้อ: สองคอลัมน์ (ของที่วัด | ของที่ถ่าย) · ≤680 คอลัมน์เดียวตามลำดับงานในห้อง ──────────────────
+   ⚠️ ลำดับใน DOM = ลำดับบนมือถือ (ขนาด → ภาพกว้าง → จุด → ภาพจุด → หมายเหตุ → ทางออก) · พื้นที่กริดจัดสองคอลัมน์
+   ⚠️ `align-items: start` — การ์ดไม่ยืดตามเพื่อนแถวเดียวกัน (ขนาดสูงกว่ารูปเสมอ) */
+.body {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-areas:
+    "size wide"
+    "size spotphotos"
+    "spots note"
+    "spots cut";
+  align-items: start;
+  gap: var(--space-3);
+  padding: var(--space-3);
+}
+
+.page[data-layout="page"] .body { padding: var(--space-4) var(--page-gutter-tablet); }
+
+.body > [data-area="size"] { grid-area: size; }
+.body > [data-area="wide"] { grid-area: wide; }
+.body > [data-area="spots"] { grid-area: spots; }
+.body > [data-area="spotphotos"] { grid-area: spotphotos; }
+.body > [data-area="note"] { grid-area: note; }
+.body > [data-area="cut"] { grid-area: cut; }
+
+/* บานขวาที่แคบเกินสองคอลัมน์ (`oneColumn` — JS ตัดสิน · §10.5 S9): ข้างรางของหัวหน้า (≥1200) และสองบาน 1000–1199 — คอลัมน์เดียวเหมือนมือถือ
+   ⚠️ รางกิน 348px + รายการ 336px ⇒ บานเหลือ ~460px ที่ 1200 · สองคอลัมน์ต้องการ ~620px (ถึงที่ ~1360 ซึ่งไม่ใช่เส้นของระบบ)
+   ⚠️ สองบานที่ 1024 บานเหลือ ~630px ⇒ สองคอลัมน์ได้ช่องวัดเหลือที่พิมพ์ 31px (review 26/09) */
+.page[data-cols="1"] .body {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: none;
+}
+
+.page[data-cols="1"] .body > [data-area] { grid-area: auto; }
+
+.card {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel-solid);
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2-5);
+  padding: var(--space-2-5) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+/* วงหน้าหัวข้อ — เลขข้อ · อำพันเมื่อมีค่าค้าง · ติ๊กเขียวเมื่อของลงฐานแล้ว (ไม่ใช่แค่พิมพ์แล้ว) */
+.ring {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+.ring[data-mark="dirty"] { border-color: var(--amber); color: var(--amber); }
+.ring[data-mark="done"] { border-color: var(--green); background: var(--green-soft); color: var(--green); }
+
+.cardTitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  color: var(--text-1);
+  font-size: var(--fs-9);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-thai);
+}
+
+.cardHint {
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-normal);
+}
+
+.chip { flex: none; }
+
+.cardBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2-5);
+  padding: var(--space-3);
+}
+
+/* ── ① ขนาด: ส่วนละกล่อง (ขอบซ้ายบอกสถานะ) ───────────────────────────────── */
+.part {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2-5);
+  border: 1px solid var(--border);
+  border-inline-start: 3px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+}
+
+.part[data-state="waiting"] { border-inline-start-color: var(--amber); }
+.part[data-state="complete"] { border-inline-start-color: var(--green); }
+
+.partHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--ctl-h);
+}
+
+.partName {
+  min-width: 0;
+  color: var(--text-1);
+  font-size: var(--fs-7);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-thai);
+}
+
+.partLabel { font-weight: var(--fw-normal); color: var(--text-2); }
+
+/* ผลรายส่วน ("30 ตร.ม. · 90 ลบ.ม." · "รอความสูง") ชิดขวา — ตัวเลขห้ามตกบรรทัดกลางหน่วย */
+.partResult {
+  margin-inline-start: auto;
+  color: var(--text-1);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+}
+
+.partResult[data-state="waiting"] { color: var(--amber); }
+.partResult[data-state="empty"] { color: var(--text-3); font-weight: var(--fw-normal); }
+
+.iconBtn {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--ctl-h-touch);
+  height: var(--ctl-h-touch);
+  margin-block: calc(-1 * var(--space-1));
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+
+.iconBtn:hover { background: var(--panel-3); color: var(--text-1); }
+.iconBtn[data-tone="danger"]:hover { color: var(--red); }
+.iconBtn:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -2px; }
+
+/* แถว ก × ย × ส — สามช่องเท่ากัน · เครื่องหมายคูณแคบคงที่ ⇒ จอ 360 ยังได้ช่องละ ~80px */
+.dims {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-1-5);
+}
+
+.times {
+  color: var(--text-3);
+  font-size: var(--fs-7);
+}
+
+.dim {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
+/* ตัวอักษร ก / ย / ส อยู่ในกรอบช่อง — แตะที่ตัวอักษรก็โฟกัสช่อง (อยู่ใน <label> เดียวกัน) */
+.dimLetter {
+  color: var(--text-3);
+  font-size: var(--fs-7);
+  font-weight: var(--fw-semibold);
+}
+
+.dim .dimLetter {
+  position: absolute;
+  inset-inline-start: var(--space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+/* ⭐ ข้อยกเว้นเดียวของกติกาช่องกรอก 14px — 18px สูง 52px (iOS ซูมทั้งหน้าเมื่อโฟกัสช่องที่ต่ำกว่า 16px)
+   ⚠️ ความจำเพาะสองชั้น (.dim .dimInput) ชนะ `.premium-input` ของ globals โดยไม่พึ่งลำดับไฟล์ CSS */
+.dim .dimInput {
+  height: calc(var(--ctl-h-touch) + var(--space-2));
+  padding-inline: calc(var(--space-3) + var(--space-4)) var(--space-2);
+  font-size: var(--fs-11);
+  font-variant-numeric: tabular-nums;
+}
+
+.dimRead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  min-width: 0;
+  color: var(--text-1);
+  font-size: var(--fs-9);
+  font-variant-numeric: tabular-nums;
+}
+
+/* "+ เพิ่มส่วน" / "+ เพิ่มจุดที่ติดตั้งได้" — ขอบประ สูงระดับนิ้ว (เดิม 30px กดพลาดบ่อย · pain B5) */
+.addRow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1-5);
+  min-height: var(--ctl-h-touch);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-1);
+  font-size: var(--fs-7);
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+}
+
+.addRow:hover { background: var(--panel-2); }
+.addRow:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+
+/* กล่องรวม — "รวมตอนนี้ / ครบ 2 ส่วน" ซ้าย · ตัวเลขขวา · บรรทัดรองเล่าสิ่งที่ยังขาด */
+.total {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2-5) var(--space-3);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+}
+
+.totalLabel,
+.totalValue {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: var(--lh-thai);
+}
+
+.totalValue { align-items: flex-end; text-align: end; }
+.totalLabel b { color: var(--text-2); font-size: var(--fs-6); }
+.totalValue b { color: var(--text-1); font-size: var(--fs-9); font-variant-numeric: tabular-nums; }
+.totalLabel small,
+.totalValue small { color: var(--text-3); font-size: var(--fs-4); }
+.total[data-complete] .totalValue b { color: var(--text-1); }
+
+/* ── แผ่นรูป — สามแผ่นต่อแถว (ค่าตั้งต้นของแผง) ────────────────────────────── */
+.photos { min-width: 0; }
+
+/* ── ③ จุด: เลข · ชื่อ (+ บันทึก) · เมนู ⋯ ─────────────────────────────── */
+.spot {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.spotNo {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-top: var(--space-2-5);
+  border-radius: var(--radius-full);
+  background: var(--panel-2);
+  color: var(--text-2);
+  font-size: var(--fs-4);
+  font-weight: var(--fw-semibold);
+}
+
+.spotMain {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+}
+
+/* ช่องชื่อ/บันทึกของจุดสูงระดับนิ้ว — ตัวอักษร 16px (iOS ซูมทั้งหน้าเมื่อช่องต่ำกว่า 16px · ม็อก A-3)
+   ⚠️ ความจำเพาะสองชั้นชนะช่องกรอกกลางโดยไม่พึ่งลำดับไฟล์ (ท่าเดียวกับช่องวัด) */
+.spotMain .spotInput {
+  min-height: var(--ctl-h-touch);
+  font-size: var(--fs-10);
+}
+
+.spotMenu :global(.btn-icon) {
+  width: var(--ctl-h-touch);
+  height: var(--ctl-h-touch);
+  border: 1px solid var(--border);
+}
+
+.picked {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-0-5);
+  margin-top: var(--space-0-5);
+  color: var(--green);
+  font-size: var(--fs-4);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  white-space: nowrap;
+}
+
+.readValue {
+  min-width: 0;
+  color: var(--text-1);
+  font-size: var(--fs-7);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+}
+
+.readText { color: var(--text-1); font-size: var(--fs-7); line-height: var(--lh-thai); }
+
+.empty,
+.hint {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+/* ── ทางออกท้ายเนื้อ ("เข้าห้องนี้ไม่ได้ / ไม่ต้องวัด · ตัดพื้นที่นี้ออก") ─────────────── */
+.cutRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0 var(--space-1-5);
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+}
+
+.cutBtn {
+  min-height: var(--ctl-h-touch);
+  padding: 0 var(--space-1);
+  border: 0;
+  background: transparent;
+  color: var(--red);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+}
+
+.cutBtn:hover { text-decoration: underline; text-underline-offset: 3px; }
+.cutBtn:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; border-radius: var(--radius); }
+
+.cutBody {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-3);
+}
+
+.page[data-layout="page"] .cutBody { padding-inline: var(--page-gutter-tablet); }
+
+.cutNote {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-7);
+  line-height: var(--lh-thai);
+}
+
+.touchBtn { min-height: var(--ctl-h-touch); }
+
+/* ── ท้ายหน้า — ติดขอบล่าง · หลบเมื่อแป้นบนจอขึ้น (`data-osk-hide` ที่ globals) ───────────────
+   ⚠️ พื้นทึบ — ลอยทับการ์ดตอนเลื่อน พื้นโปร่งแล้วตัวหนังสือซ้อนกัน */
+.foot {
+  position: sticky;
+  bottom: 0;
+  z-index: var(--z-sticky);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: auto;
+  padding: var(--space-2-5) var(--space-3);
+  border-top: 1px solid var(--border);
+  background: var(--panel-solid);
+  box-shadow: var(--shadow-md);
+}
+
+.page[data-layout="page"] .foot {
+  padding: var(--space-2-5) var(--page-gutter-tablet) calc(var(--space-2-5) + env(safe-area-inset-bottom));
+}
+
+.page[data-layout="pane"] .foot { border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
+
+/* 🐞 **ท้ายหน้าบังช่องที่กำลังโฟกัส** (WCAG 2.4.11 · UAT 25/09) — กด Tab ไปช่องจุด/ชื่อส่วนที่อยู่ใต้ท้ายหน้า เบราว์เซอร์
+   ไม่เลื่อนเพราะช่องยัง "อยู่ในจอ" ⇒ กันท้ายหน้าเท่าความสูงท้ายหน้า (ปุ่ม 44 + ขอบใน) · ท่าเดียวกับแถบงานของช่าง
+   ⚠️ เฉพาะท้ายหน้าที่อยู่บนจอ (`:has()` เห็นของที่ถูกซ่อนด้วย) · แป้นบนจอขึ้น = ท้ายหน้าหลบแล้ว ไม่กัน */
+:global(html):not([data-osk="up"]):has(.foot:not([hidden] *)) {
+  scroll-padding-bottom: calc(var(--ctl-h-touch) + var(--space-6) + env(safe-area-inset-bottom));
+}
+
+/* 🐞 **หัวที่ติดบนบังช่องที่กำลังโฟกัส** (WCAG 2.4.11 · review 26/09) — ท่าเดียวกับท้ายหน้า กันด้านบนเท่าความสูงหัวจริง
+   (`--survey-zone-head-h` วัดด้วย ResizeObserver ใน SurveyZonePage.js) · บานขวาของสองบานติดใต้แถบบนของแอปด้วย
+   ⚠️ ค่าตั้งต้น 0 ที่ <html> — ก่อนวัดเสร็จ/ไม่มีหน้าพื้นที่ = ไม่กัน */
+:global(html) { --survey-zone-head-h: 0px; }
+
+:global(html):has(.page[data-layout="page"] .head:not([hidden] *)) {
+  scroll-padding-top: var(--survey-zone-head-h);
+}
+
+/* บานขวา: **ไม่ใส่ที่ <html>** — scroll-padding มีผลกับ scrollIntoView ทุกตัวของหน้า ซ้อนกับ scroll-margin ของบานที่มีอยู่แล้ว
+   ⇒ ย้ายพื้นที่แล้วบานจอดต่ำไป ~130px (🐞 review 26/09 รอบสาม) · กันที่ช่อง/ปุ่มในเนื้อของบานเองแทน (ระยะจอด = แถบบนของแอป + หัวบาน) */
+.page[data-layout="pane"] :is(.body, .cutBody) :is(input, textarea, select, button, a) {
+  scroll-margin-top: calc(var(--scroll-anchor-top) + var(--survey-zone-head-h));
+}
+
+/* ปุ่มของหัวเองไม่นับแถบกัน — Tab มาที่ ‹ › / ⋮ แล้วหน้าไม่เลื่อนหนีหัวที่ติดบนอยู่แล้ว */
+.head :is(button, a) {
+  scroll-margin-top: calc(-1 * var(--survey-zone-head-h));
+}
+
+/* ปุ่มของท้ายหน้าเองไม่นับแถบกัน — ไม่งั้น Tab มาที่ "บันทึก" แล้วหน้าเลื่อนหนีปุ่มที่ติดขอบอยู่แล้ว */
+.foot :is(button, a) {
+  scroll-margin-bottom: calc(-1 * (var(--ctl-h-touch) + var(--space-6) + env(safe-area-inset-bottom)));
+}
+
+.footCopy {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.footHead {
+  margin: 0;
+  color: var(--text-1);
+  font-size: var(--fs-7);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+.foot[data-tone="dirty"] .footHead { color: var(--amber); }
+.foot[data-tone="error"] .footHead { color: var(--red); }
+.foot[data-tone="saved"] .footHead { color: var(--green); }
+
+.footSub {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}
+
+.footActs {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+/* ปุ่มสองบรรทัด — คำสั่ง + เหตุที่ยังกดไม่ได้ ("บันทึกก่อน" · "ยังไม่ได้แก้อะไร") ในตัวปุ่มเอง */
+.btnText {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: var(--lh-thai);
+  text-align: start;
+}
+
+.btnText small {
+  font-size: var(--fs-3);
+  font-weight: var(--fw-semibold);
+}
+
+/* ปุ่มท้ายหน้าที่ยังกดไม่ได้ = พื้นเทาทึบ ตัวหนังสือ --text-3 (ม็อก A-2 `.btn.two[aria-disabled]`) ไม่ใช่จาง 45%
+   🐞 UAT 25/09: `.btn:disabled` จาง .45 ซ้อน `small` จางอีก .55 ⇒ เหตุ "ส่วน A ยังขาดความยาว" เหลือหมึกราว 25% ·
+   บนมือถือบรรทัดสถานะของท้ายหน้าซ่อนอยู่ เหตุในปุ่มจึงเป็นเหตุเดียวที่ตาเห็น
+   ⚠️ สองคลาส (.foot .saveBtn) ชนะ `.btn:disabled` ของ globals โดยไม่พึ่งลำดับไฟล์ */
+.foot .saveBtn:disabled,
+.foot .nextBtn:disabled {
+  opacity: 1;
+  border-color: var(--border);
+  background: var(--panel-2);
+  color: var(--text-3);
+}
+
+.nextBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--ctl-h-touch);
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--panel-solid);
+  color: var(--text-1);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+}
+
+.nextBtn:hover:not(:disabled) { background: var(--panel-2); }
+.nextBtn:disabled { color: var(--text-3); cursor: not-allowed; }
+.nextBtn:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+
+.saveBtn { min-height: var(--ctl-h-touch); }
+
+@media (max-width: 680px) {
+  .titleBand { padding-inline: var(--page-gutter-mobile); }
+  .page[data-layout="page"] .body { padding-inline: var(--page-gutter-mobile); }
+  .page[data-layout="page"] .cutBody { padding-inline: var(--page-gutter-mobile); }
+
+  .body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: none;
+  }
+
+  .body > [data-area] { grid-area: auto; }
+
+  .page[data-layout="page"] .foot {
+    padding-inline: var(--page-gutter-mobile);
+  }
+
+  /* บรรทัดสถานะซ่อนจากตาบนมือถือ (โปรแกรมอ่านจอยังอ่านได้) — เหตุผลอยู่ที่คอมเมนต์ท้ายหน้าใน SurveyZonePage.js */
+  .footCopy {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* ท้ายหน้าที่ไม่มีปุ่ม — บรรทัดสถานะคือทั้งหมดที่มี ("ดูอย่างเดียว") ไม่ซ่อน */
+  .foot[data-empty] .footCopy {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+    white-space: normal;
+  }
+
+  .footActs { flex: 1 1 auto; }
+  .nextBtn { flex: 0 1 auto; }
+  .saveBtn { flex: 1 1 auto; justify-content: center; }
+}

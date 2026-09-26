@@ -28,7 +28,34 @@ test('ปุ่มถ่ายรูปไม่บังคับกล้อ�
   const panel = code(read('../../components/AttachmentsPanel.js'));
   assert.doesNotMatch(panel, /\scapture=/);
   assert.match(panel, /multiple=\{photoCapture \|\| undefined\}/);
-  const card = code(read('../../components/service/SurveyZoneCard.js'));
-  assert.match(card, /photoCapture/);
-  assert.match(card, /showPackage \? \(/, 'ตัวเลขสูตรแพ็คเกจต้องขึ้นเฉพาะคนที่เคาะได้');
+  // 🔄 §10.5 S7 — หน้าพื้นที่ใช้แผ่นรูป (ถ่าย/เลือกจากคลังได้ · ลบในกล่องดูรูป 44px)
+  const zonePage = code(read('../../components/service/SurveyZonePage.js'));
+  assert.match(zonePage, /photoCapture/);
+  assert.match(zonePage, /photoTiles/);
+  /* แพ็คเกจไม่อยู่บนหน้าพื้นที่ของใครเลย (แผน §10.5 C16 · AW-2) — เป็นของแท็บสรุปส่งผลกับราง */
+  assert.doesNotMatch(zonePage, /suggestedPackages|packageQty|showPackage/);
+});
+
+/* ══ ภาพผังย้ายไปแท็บสรุปส่งผล (มติเจ้าของ 25/09 · แผน §10.5 S2) ═══════════════════ */
+test('ภาพผัง: ช่องอัปอยู่คอลัมน์ของตารางสรุป (เฉพาะคนที่ server ยอมให้อัป) · การ์ดพื้นที่ของช่างไม่มีช่องผังแล้ว', () => {
+  const zonePage = code(read('../../components/service/SurveyZonePage.js'));
+  assert.doesNotMatch(zonePage, /SURVEY_DOC_PLAN|survey_plan/, 'ผังเป็นของหัวหน้า — หน้าพื้นที่ของช่างเหลือภาพกว้าง + ภาพจุด');
+
+  const table = code(read('../../components/service/SurveyResultTable.js'));
+  assert.match(table, /SURVEY_DOC_PLAN/);
+  assert.match(table, /canEdit=\{canUploadPlan\}/, 'ปุ่มอัปขึ้นตามด่านเดียวกับ server ไม่ใช่ตาม canDecide');
+  assert.match(table, /surveyResultZoneCell\(zone, files\)/, 'ผลวัดของช่างในช่องพื้นที่มาจากตัวตัดสิน');
+  // 🐞 "8 × 6 × 0" — ช่องขนาดที่ยังว่างต้องเป็นขีด (ตัวตัดสินทำให้แล้ว ห้ามตารางกลับไปจัดรูปเอง)
+  assert.doesNotMatch(table, /fmtNumber\(p\.(widthM|lengthM|heightM)\)/);
+  assert.match(table, /<td colSpan=\{3\}/, 'แถวที่ตัดออกกินสามคอลัมน์ที่เหลือ (สี่คอลัมน์แล้ว)');
+  assert.match(table, /<td colSpan=\{4\}>/, 'แถว "ยังขาด" กินเต็มแถว');
+
+  const page = code(read('../../app/service/surveys/[id]/page.js'));
+  assert.match(page, /canUploadPlan=\{view\.flags\.canUploadPlan\}/);
+  // ตารางเขียนว่า "ออกจากหน้านี้ก่อนบันทึก ระบบจะถามก่อนทิ้ง" — คำนั้นต้องจริง
+  // 🔄 §10.5 S7 — ด่านเดียวของหน้าถามทุกของค้าง (ค่าในพื้นที่ · การเคาะ · ข้อความถึงหัวหน้า · รูปที่ยังส่ง)
+  // 🐞 review 26/09: เดิมตรึงแค่สองเงื่อนไขแรกจากสี่ — ถอดข้อความถึงหัวหน้า/รูปที่ยังส่งออกแล้วเทสต์ยังเขียว ⇒ ตรึงทั้งสองบรรทัด
+  assert.match(page, /const pageDirty = pendingDecisionZoneIds\.length > 0 \|\| fixedNote\.trim\(\) !== "" \|\| uploadsBusy > 0;/);
+  assert.match(page, /const anyUnsaved = dirtyZoneIds\.length > 0 \|\| pageDirty;/);
+  assert.match(page, /useUnsavedChanges\(anyUnsaved,/);
 });

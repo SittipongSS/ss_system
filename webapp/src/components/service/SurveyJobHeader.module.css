@@ -1,0 +1,264 @@
+/* หัวงานของจอหน้างาน (แผน §10.5 จอหน้างานแบบ A · ม็อก A-1 · AT-1 · AT-3 · AW-1 · ชุด S9)
+   สองทรง ข้อมูลชุดเดียวกัน (`data-layout` — JS ตัดสินจากเส้น 1000):
+     "card" — การ์ดบนหน้า: ไซต์ | ปุ่ม แล้วข้อเท็จจริงสองคอลัมน์ (681–999 · AT-1) · ≤680 ปุ่มลงแถวใต้ไซต์ ข้อเท็จจริงคอลัมน์เดียว (A-1)
+     "band" — แถบบางเหนือสองบาน: ไซต์ | ปุ่ม แล้วข้อเท็จจริงเรียงต่อกันแถวล่าง (AT-3 · AW-1)
+   ⚠️ ปุ่มโทร/นำทาง และปุ่มกางที่อยู่สูง 44px ทุกทรง (เป้านิ้ว) */
+
+.job {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2-5);
+  min-width: 0;
+  padding: var(--space-3) var(--space-4) var(--space-3-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--glass-shadow);
+}
+
+/* ── แถวบน: ไซต์ · ปุ่มกางที่อยู่ · โทร/นำทาง ─────────────────────────────── */
+.top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas: "site toggle acts";
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.site {
+  grid-area: site;
+  min-width: 0;
+}
+
+.siteTitle {
+  margin: 0;
+  color: var(--text-1);
+  font-size: var(--fs-10);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+}
+
+/* ลิงก์ทะเบียนไซต์ — เป้านิ้ว 44px โดยไม่ดันบรรทัด: พื้นที่กดยืดบน/ล่างด้วย ::after (ตัวหนังสือยังอยู่ที่เดิม) */
+.siteLink {
+  position: relative;
+  color: inherit;
+  text-decoration: none;
+}
+
+.siteLink::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  inset-block: calc((100% - var(--ctl-h-touch)) / 2);
+}
+
+.siteLink:hover { color: var(--accent-ink); text-decoration: underline; text-underline-offset: 3px; }
+.siteLink:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; border-radius: var(--radius); }
+
+/* ที่อยู่บรรทัดเดียว (มติเจ้าของข้อ 4) — กางแล้วห่อได้เต็ม */
+.address {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.address[data-open] {
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.toggle {
+  grid-area: toggle;
+  display: grid;
+  place-items: center;
+  width: var(--ctl-h-touch);
+  height: var(--ctl-h-touch);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+
+.toggle:hover { background: var(--panel-2); color: var(--text-1); }
+.toggle:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -2px; }
+.toggle > svg { transition: transform var(--motion-fast); }
+.toggle[aria-expanded="true"] > svg { transform: rotate(180deg); }
+
+.acts {
+  grid-area: acts;
+  display: flex;
+  gap: var(--space-2);
+}
+
+.act {
+  min-height: var(--ctl-h-touch);
+  /* `safe` — ป้ายกว้างกว่าปุ่มแล้วไม่ล้นออกทั้งสองข้าง (ล้นข้างเดียวแล้วตัดด้วย .actLabel) */
+  justify-content: safe center;
+  white-space: nowrap;
+}
+
+.actLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── ข้อเท็จจริง: นัด · ทีม · ให้เข้า · ฝากมา ────────────────────────────────── */
+.facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-1-5) var(--space-5);
+  margin: 0;
+  padding-top: var(--space-2-5);
+  border-top: 1px solid var(--border);
+}
+
+.fact {
+  display: grid;
+  grid-template-columns: 3.75rem minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--space-2-5);
+  min-width: 0;
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+}
+
+.fact dt {
+  color: var(--text-3);
+  font-weight: var(--fw-semibold);
+}
+
+.fact dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--text-1);
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.muted {
+  color: var(--text-3);
+}
+
+.stamp {
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.team {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-1-5);
+}
+
+.person {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.sep {
+  margin-inline-start: var(--space-0-5);
+  color: var(--text-3);
+}
+
+.avatar {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-full);
+  background: var(--blue-soft);
+  color: var(--blue);
+  font-size: var(--fs-2);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-flat);
+}
+
+.you {
+  font-weight: var(--fw-semibold);
+}
+
+/* ก่อนเริ่มงาน: นัดอยู่นอกช่วงที่ไซต์ให้เข้า — ตัวตัดสินส่งมาเฉพาะตอนนัดยังไม่เริ่ม */
+.warn {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  margin-top: var(--space-0-5);
+  color: var(--amber);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+.warn > svg {
+  flex: none;
+  margin-top: var(--space-0-5);
+}
+
+/* ── แถบ (≥1000): ไซต์ | ปุ่ม แถวบน · ข้อเท็จจริงเรียงต่อกันแถวล่าง ─────────────────
+   ⚠️ ไม่ยุบเป็นแถวเดียวแบบ AW-1 — "ฝากมา" ยาวได้ถึงหลายร้อยตัวอักษร และทีมของหัวหน้ามีชื่อเต็มสองคน ⇒ แถวเดียว
+      ที่ 1200 บีบชื่อไซต์เหลือไม่กี่ตัวอักษร · เรียงต่อกันแล้วห่อเองเมื่อยาว */
+.job[data-layout="band"] {
+  gap: var(--space-1-5);
+  padding: var(--space-2) var(--space-3) var(--space-2-5) var(--space-4);
+}
+
+.job[data-layout="band"] .siteTitle {
+  font-size: var(--fs-9);
+}
+
+.job[data-layout="band"] .facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-6);
+  padding-top: var(--space-1-5);
+}
+
+.job[data-layout="band"] .fact {
+  display: flex;
+  max-width: 100%;
+}
+
+.job[data-layout="band"] .fact dd {
+  font-weight: var(--fw-semibold);
+}
+
+.job[data-layout="band"] .fact :is(.muted, .stamp) {
+  font-weight: var(--fw-normal);
+}
+
+/* ── มือถือ (≤680 · A-1): ปุ่มโทร/นำทางลงแถวของตัวเองเต็มความกว้าง · ข้อเท็จจริงคอลัมน์เดียว ─────────── */
+@media (max-width: 680px) {
+  .job {
+    padding: var(--space-2-5) var(--space-3-5) var(--space-3);
+  }
+
+  .top {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "site toggle"
+      "acts acts";
+  }
+
+  .acts > .act {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .facts {
+    grid-template-columns: minmax(0, 1fr);
+    padding-top: var(--space-2);
+  }
+}

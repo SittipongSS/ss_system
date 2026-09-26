@@ -1,0 +1,376 @@
+/* รายการพื้นที่ของจอหน้างาน (แผน §10.5 จอหน้างานแบบ A · ม็อก A-1 · AO-2 · AT-1 · AT-3)
+   ⭐ สองการจัดวาง ข้อมูลชุดเดียวกัน:
+     ซ้อนแถว (ค่าตั้งต้น) — มือถือ ≤680 และบานซ้ายของสองบาน (กว้าง 320px): รหัส/ชื่อ แล้วสามข้อใต้ชื่อ
+     คอลัมน์ — หน้ารายการของแท็บเล็ตแนวตั้ง 681–999 (`data-layout="pages"`): สามข้อเป็นสามคอลัมน์ใต้หัวคอลัมน์ (AT-1)
+   ⚠️ แถวทั้งแถวคือปุ่มเดียว สูงอย่างน้อย 56px (เป้านิ้ว + ที่ให้สองบรรทัด) */
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.panel {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel-solid);
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-2);
+}
+
+.title {
+  margin: 0;
+  color: var(--text-1);
+  font-size: var(--fs-9);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-thai);
+}
+
+.title:focus { outline: none; }
+.title:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; border-radius: var(--radius); }
+
+.progress {
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  font-variant-numeric: tabular-nums;
+}
+
+/* หัวคอลัมน์ — มีเฉพาะการจัดแบบคอลัมน์ (ป้ายของแต่ละข้ออยู่บนหัว ไม่ซ้ำในทุกแถว) */
+.cols { display: none; }
+
+.rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rows > li + li { border-top: 1px solid var(--border); }
+
+/* ── แถว (ซ้อนแถว) ─────────────────────────────────────────────────────── */
+/* `relative` = บล็อกอ้างอิงของป้ายที่ซ่อนจากตา (`.markLabel` ในโหมดคอลัมน์) — ไม่งั้นมันไปอิงกรอบหน้าจอ */
+.row {
+  position: relative;
+  width: 100%;
+  min-height: 56px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "lead ident chev"
+    ".    marks chev"
+    ".    missing chev"
+    ".    tags  chev";
+  align-items: center;
+  gap: var(--space-0-5) var(--space-3);
+  padding: var(--space-2-5) var(--space-3) var(--space-2-5) var(--space-4);
+  border: 0;
+  border-inline-start: 3px solid transparent;
+  background: transparent;
+  color: var(--text-1);
+  text-align: start;
+  cursor: pointer;
+}
+
+.row:hover { background: var(--panel-2); }
+.row:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -2px; }
+
+/* บานซ้าย: แถวที่บานขวากำลังเปิด */
+.row[aria-current="true"] {
+  border-inline-start-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.lead {
+  grid-area: lead;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--radius-full);
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.lead[data-state="done"] { border: 1.5px solid var(--green); background: var(--green-soft); color: var(--green); }
+.lead[data-state="cut"] { border-style: solid; color: var(--text-3); }
+
+.ident {
+  grid-area: ident;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.codeLine {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.code {
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  font-variant-numeric: tabular-nums;
+}
+
+.area {
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  white-space: nowrap;
+}
+
+.name {
+  font-size: var(--fs-9);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+}
+
+.editing {
+  color: var(--amber);
+  font-size: var(--fs-4);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+.marks {
+  grid-area: marks;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-0-5) var(--space-3);
+}
+
+/* เริ่มงานแล้วแต่ยังขาด = บรรทัด "ขาด: …" สีอำพันแทนวงสามวง (ซ้อนแถวเท่านั้น — คอลัมน์มีวงอยู่แล้ว) */
+.row[data-detail="missing"] .marks { display: none; }
+
+.mark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+  white-space: nowrap;
+}
+
+.mark[data-ok] { color: var(--green); }
+.markLabel { color: var(--text-2); }
+.mark[data-ok] .markLabel { color: var(--green); }
+.markValue { color: var(--text-2); font-variant-numeric: tabular-nums; }
+
+/* ตร.ม. อยู่บนบรรทัดรหัสแล้ว (ขวาบน · A-1/AT-3) — ข้างติ๊กขนาดไม่ต้องซ้ำ · คอลัมน์ไม่มีบรรทัดนั้น จึงโชว์ในช่องขนาดแทน */
+.mark[data-key="size"] .markValue { display: none; }
+
+/* ขีดของวงเปล่าเป็นของคอลัมน์ (ป้ายอยู่บนหัว) — ซ้อนแถวมีป้ายอยู่ข้างวงแล้ว */
+.markDash { display: none; }
+
+.missing {
+  grid-area: missing;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--amber);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+.missing > svg { flex: none; }
+
+.cutText {
+  grid-area: marks;
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+.tags {
+  grid-area: tags;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  padding-top: var(--space-0-5);
+}
+
+.tag {
+  padding: 0 var(--space-1-5);
+  border-radius: var(--radius-full);
+  background: var(--panel-2);
+  color: var(--text-2);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+.tag[data-tone="warning"] { background: var(--amber-soft); color: var(--amber); }
+.tag[data-tone="info"] { background: var(--blue-soft); color: var(--text-2); }
+.tag[data-tone="accent"] { background: var(--accent-soft); color: var(--accent-ink); }
+
+.chev {
+  grid-area: chev;
+  color: var(--text-3);
+}
+
+.empty {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border);
+  color: var(--text-3);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+}
+
+/* "+ เพิ่มพื้นที่ที่เจอหน้างาน" — แถวสุดท้ายของรายการ สูงระดับนิ้ว */
+.add {
+  width: 100%;
+  min-height: var(--ctl-h-touch);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--fs-7);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  text-align: start;
+  cursor: pointer;
+}
+
+.add:hover { background: var(--panel-2); color: var(--text-1); }
+.add:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -2px; }
+
+.addMark {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-full);
+}
+
+/* ── คอลัมน์ (หน้ารายการของแท็บเล็ตแนวตั้ง · AT-1) ─────────────────────────────
+   ⚠️ แถวกับหัวคอลัมน์ใช้เส้นกริดชุดเดียวกัน — ตัวเลขกับป้ายหัวต้องตรงแนว */
+.wrap[data-layout="pages"] .cols,
+.wrap[data-layout="pages"] .row {
+  grid-template-columns: 30px minmax(0, 1.6fr) repeat(3, minmax(0, 1fr)) 18px;
+  grid-template-areas: none;
+}
+
+.wrap[data-layout="pages"] .cols {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
+  border-top: 1px solid var(--border);
+  /* ขอบซ้ายโปร่งเท่าแถบของแถวที่เลือก — เส้นกริดของหัวคอลัมน์กับแถวต้องเริ่มที่จุดเดียวกัน */
+  border-inline-start: 3px solid transparent;
+  background: var(--panel-2);
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+.wrap[data-layout="pages"] .cols > :first-child { grid-column: 2; }
+
+.wrap[data-layout="pages"] .rows { border-top: 1px solid var(--border); }
+.wrap[data-layout="pages"] .lead { grid-column: 1; grid-row: 1 / span 3; }
+.wrap[data-layout="pages"] .ident { grid-column: 2; grid-row: 1; }
+.wrap[data-layout="pages"] .marks { display: contents; }
+.wrap[data-layout="pages"] .mark { grid-row: 1; }
+.wrap[data-layout="pages"] .markLabel {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.wrap[data-layout="pages"] .markDash { display: inline; }
+.wrap[data-layout="pages"] .area { display: none; }
+.wrap[data-layout="pages"] .mark[data-key="size"] .markValue { display: inline; }
+.wrap[data-layout="pages"] .mark[data-ok] .markValue { color: var(--text-1); font-weight: var(--fw-semibold); }
+.wrap[data-layout="pages"] .cutText { grid-column: 3 / 6; grid-row: 1; }
+.wrap[data-layout="pages"] .missing,
+.wrap[data-layout="pages"] .tags { grid-column: 2 / 6; }
+.wrap[data-layout="pages"] .chev { grid-column: 6; grid-row: 1 / span 3; }
+
+@media (max-width: 680px) {
+  .head { padding-inline: var(--space-3); }
+
+  .wrap[data-layout="pages"] .cols { display: none; }
+
+  .wrap[data-layout="pages"] .row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "lead ident chev"
+      ".    marks chev"
+      ".    missing chev"
+      ".    tags  chev";
+  }
+
+  .wrap[data-layout="pages"] .rows { border-top: 0; }
+  /* พื้นที่กริดของแถวซ้อนกลับมา — เส้นคอลัมน์ที่ตั้งไว้ข้างบนต้องถูกเขียนทับด้วยชื่อพื้นที่ ไม่ใช่ `auto` (auto = วางตามลำดับ) */
+  .wrap[data-layout="pages"] .lead { grid-area: lead; }
+  .wrap[data-layout="pages"] .ident { grid-area: ident; }
+  .wrap[data-layout="pages"] .cutText { grid-area: marks; }
+  .wrap[data-layout="pages"] .missing { grid-area: missing; }
+  .wrap[data-layout="pages"] .tags { grid-area: tags; }
+  .wrap[data-layout="pages"] .chev { grid-area: chev; }
+  .wrap[data-layout="pages"] .marks { display: flex; }
+  .wrap[data-layout="pages"] .row[data-detail="missing"] .marks { display: none; }
+  .wrap[data-layout="pages"] .markLabel {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+  }
+  .wrap[data-layout="pages"] .markDash { display: none; }
+  .wrap[data-layout="pages"] .area { display: inline; }
+  .wrap[data-layout="pages"] .mark[data-key="size"] .markValue { display: none; }
+}
+
+/* ── แถว "มาถึงแล้วแต่เข้าไม่ได้?" (ม็อก A-1 · AO-2) — คำถามชิดซ้าย ปุ่มเส้นแดงชิดขวา ไม่มีกรอบ (ไม่ใช่การ์ดอีกใบ) ── */
+.escape {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.escapePrompt {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+.escapeBtn {
+  min-height: var(--ctl-h-touch);
+  white-space: nowrap;
+}

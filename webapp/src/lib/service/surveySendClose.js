@@ -68,12 +68,18 @@ export function surveySendVisitStep(visit, { today = null } = {}) {
  * 🔴 ข้อ "ปิดนัด" ต้องบอก **เวลาที่จะเหลืออยู่บนนัด** ตามจริง — ส่งผลไม่ประทับเวลาจบ (วันส่งผล ≠ วันเข้าพื้นที่)
  *    ⇒ นัดที่ปิดทางนี้ไม่มีเวลาจบเสมอ · ไม่เคยกดเริ่ม = ไม่มีเวลาเข้าจริงด้วย · บอกก่อนกด ไม่ใช่ให้ไปเจอเองบนนัด
  * ⚠️ ป้ายปุ่มพูดตามผล: ปิดนัดด้วย = "ส่งผลและปิดนัด" · ไม่แตะนัด = "ส่งผล"
+ * @param sendBackPending  `view.send.sendBackPending` (`{ itemCount }` | null) — 🐞 review 26/09: ส่งกลับให้ช่างแก้ค้างอยู่
+ *                     ⇒ ข้อเตือนต่อท้ายข้อ "ล็อก" (ผลของการล็อกเอง: ช่างแก้ต่อไม่ได้ · ไม่เขียนอะไรลงเธรด — ใบที่ล็อกซ่อนเรื่องค้างที่ `surveySendBackOnSheet` ของ GET · ดึงกลับ = ค้างตามจริง) · ไม่เปลี่ยนป้ายปุ่ม
  */
-export function surveySendConfirm({ docNo = null, closesVisit = null } = {}) {
+export function surveySendConfirm({ docNo = null, closesVisit = null, sendBackPending = null } = {}) {
   const effects = [
     `${docNo ? `ใบ ${docNo}` : 'ใบนี้'} เป็น “ตอบแล้ว” — ฝ่ายขายได้แจ้งเตือนและเอาตัวเลขไปตั้งราคาได้ทันที`,
     'ผลประเมินล็อก แก้ไม่ได้ จนกว่าหัวหน้าจะกด “ดึงผลกลับมาแก้”',
   ];
+  if (sendBackPending) {
+    const n = Number.isInteger(sendBackPending.itemCount) && sendBackPending.itemCount > 0 ? ` ${sendBackPending.itemCount} ข้อ` : '';
+    effects.push(`เรื่องที่ส่งกลับให้ช่างแก้${n} ยังรอช่างแจ้งว่าแก้แล้ว — ส่งผลแล้วช่างแก้ต่อไม่ได้ (ดึงผลกลับมาแก้ = เรื่องนี้กลับมารอช่างอีกครั้ง)`);
+  }
   if (closesVisit) effects.push(surveySendVisitEffect(closesVisit));
   effects.push('ใบจะจบเมื่อฝ่ายขายกด “ปิดเรื่อง”');
   return { effects, confirmLabel: closesVisit ? 'ส่งผลและปิดนัด' : 'ส่งผล' };

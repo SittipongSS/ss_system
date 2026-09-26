@@ -1,98 +1,88 @@
 "use client";
-// ── แถบงานของช่างที่ขอบล่างจอประเมิน (มติผู้ใช้ 2026-09-21) ──────────────────
+// ── แถบงานของช่างที่ขอบล่างจอประเมิน (มติผู้ใช้ 2026-09-21 · รูปแบบ A §10.5 S8) ──────────────────
 //
 // ⭐ flow ของช่างอยู่จบในจอเดียว: **รับงาน (= เริ่มงาน) → ใส่รายละเอียด → รูป → ส่งงาน**
 //   🐞 เดิมจอประเมินไม่มีปุ่มส่งงานเลย — ช่างต้องย้อนกลับไป "งานวันนี้" แล้วกด "ปิดงาน"
 //   ซึ่งเปิดแผ่นปิดงานของงานบริการ (ของที่ใช้ · ลายเซ็นลูกค้า · รูปหน้างานอีกชุด) และเตือน
 //   "ยังไม่มีรูป" ทั้งที่แนบรูปรายพื้นที่ไปแล้ว
 //
-// ⚠️ **ปุ่มเดียวต่อจังหวะ** — ยังไม่เริ่ม = "เริ่มงาน" · กำลังทำ = "ส่งงาน" · ส่งแล้ว = บอกผล
-//   ไม่มีปุ่ม · ของหัวหน้า (เคาะแพ็คเกจ · ส่งผล) ไม่อยู่ที่นี่ — อยู่การ์ดจัดการผลประเมิน
-// ⚠️ **ติดขอบล่างเหนือแถบเมนูมือถือ** (`--mobile-nav-h` = 0 บนจอใหญ่) — ช่างเลื่อนไล่
-//   วัดทีละพื้นที่ ปุ่มส่งงานต้องอยู่ใต้นิ้วตลอด ไม่ใช่ท้ายหน้าที่ต้องเลื่อนหา
-import { CheckCheck, CheckCircle2, Play, Send } from "lucide-react";
-import Button from "@/components/ui/Button";
-import { isClosedVisit } from "@/lib/service/visitStatus";
+// 🔑 **วาดอย่างเดียว** — ทุกคำ/โทน/ปุ่ม/เหตุมาจาก `surveyFieldBarView` (เทสต์ด้วยข้อมูลล้วน)
+//   🐞 แถบเดิมหน้าตาเท่ากันตั้งแต่ 0/3 ถึง 3/3 และกดส่งงานได้ทั้งที่ยังไม่ได้วัดสักพื้นที่ (pain B7) ⇒ ตอนนี้แถบบอก
+//   ว่ากดได้ไหมตั้งแต่ก่อนกด ("ยังส่งไม่ได้ · ยังขาด ห้อง Treatment") และปุ่มถอยเป็นปุ่มเงียบ
+// ⚠️ **ปุ่มเดียวต่อจังหวะ · ปุ่มกรมท่าปุ่มเดียวต่อจอ** — ตัวตัดสินเลือก `emphasis` ให้ (ติดด่าน หรือสองบานที่
+//   "บันทึกพื้นที่นี้" กดได้อยู่ = ปุ่มเงียบ) · ของหัวหน้า (เคาะแพ็คเกจ · ส่งผล) ไม่อยู่ที่นี่ — อยู่การ์ดจัดการผลประเมิน
+// ⚠️ **ปุ่มส่งงานไม่ติดด่าน** (`gated: false`) — กดได้เสมอแล้วเปิดกล่องส่งงานที่บอกรายพื้นที่พร้อม "ไปแก้" และทาง
+//   "ไปแล้วเข้าไม่ได้" · ปุ่มอื่น (แจ้งหัวหน้าว่าแก้แล้ว) ยิงตรงจากแถบ ⇒ ติดด่าน = กดแล้วบอกเหตุ ไม่ยิง (`GatedAction`)
+// ⚠️ **ติดขอบล่างเหนือแถบเมนูมือถือ · หลบตอนแป้นพิมพ์บนจอขึ้น** (`data-osk-hide`) — แถบที่ค้างอยู่เหนือแป้น
+//   บีบช่องที่กำลังพิมพ์ (บทเรียน "field stepper" ที่ถูกตีกลับ 16/09)
+import { useId } from "react";
+import { CheckCheck, CheckCircle2, Lock, Play, Send } from "lucide-react";
+import GatedAction from "@/components/ui/GatedAction";
 import styles from "./SurveyFieldBar.module.css";
 
-const hhmm = (value) => String(value || "").slice(0, 5);
+/* ไอคอน/ป้ายระหว่างยิงของแต่ละจังหวะ — ของวาด ไม่ใช่กติกา (ปุ่มไหนขึ้นเมื่อไรมาจากตัวตัดสิน) */
+const ACTION_ICONS = { start: Play, submit: Send, "report-fixed": CheckCheck };
+
+/* ชื่อปุ่มในเครื่องหมายคำพูดเป็นก้อนเดียว — 🐞 UAT 25/09 จอ 1024: "หรือเลือก “ไป" / "แล้วเข้าไม่ได้”"
+   (ICU ตัดคำไทยในวงคำพูดได้ทุกที่) · ตัดบรรทัดได้แค่ก่อน “ ⇒ ชื่อปุ่มอ่านตรงกับปุ่มจริงเสมอ */
+function KeepQuoted({ text }) {
+  return String(text).split(/(“[^”]*”)/).map((part, index) => (
+    index % 2 ? <span key={index} className={styles.keep}>{part}</span> : part
+  ));
+}
+const BUSY_LABELS = { start: "กำลังเริ่ม…", "report-fixed": "กำลังแจ้ง…" };
 
 /**
- * @param visit     นัดของใบ (ต้องมี · ไม่มี = ไม่วาด)
- * @param progress  `view.progress` — `{ done, total, cut }`
- * @param starting  กำลังยิงเริ่มงานอยู่
- * @param sendBack  `surveySendBackState` จาก server — หัวหน้าส่งกลับให้แก้ค้างอยู่ไหม (มติ 2026-09-22)
- * @param onReportFixed  เปิดโมดัล "แจ้งหัวหน้าว่าแก้แล้ว"
+ * @param view    `surveyFieldBarView(...)` — `null` = ไม่มีแถบ
+ * @param layout  "page" (หน้าเดียว <1000 · แถบเต็มความกว้างชนขอบจอ ม็อก A-1/AO-2) | "pane" (สองบาน · การ์ดท้ายบานรายการ AT-4/AW-1)
+ * @param busy    กำลังยิงงานของปุ่มนี้อยู่ (เริ่มงาน · แจ้งแก้แล้ว)
+ * @param onAction `(key) => void` — `start` | `submit` | `report-fixed`
  */
-export default function SurveyFieldBar({ visit, progress, starting = false, sendBack = null, onStart, onSubmit, onReportFixed }) {
-  if (!visit) return null;
-  const status = visit.status;
-
-  let tone = "plain";
-  let head;
-  let sub;
-  let action = null;
-
-  const askedFix = sendBack?.pending === true;
-  const askedNote = sendBack?.sentBack?.note || null;
-
-  if (askedFix && isClosedVisit(visit) && status !== "unable") {
-    /* ⭐ **หัวหน้าส่งกลับให้แก้ = งานของช่างกลับมาอีกรอบ** (มติผู้ใช้ 2026-09-22) — แถบกลับมามีปุ่ม
-       และติดขอบล่างอีกครั้ง (โทน todo) · 🐞 เดิมแก้เสร็จแล้วไม่มีทางบอก หัวหน้าต้องคอยเปิดดูเอง
-       ⚠️ นัดไม่ถูกเปิดใหม่ — การส่งกลับไม่ใช่รอบวัดใหม่ (ดู `surveySendBackError`) */
-    tone = "todo";
-    head = "หัวหน้าให้กลับไปแก้";
-    sub = askedNote || "แก้ตามที่หัวหน้าแจ้งให้ครบ แล้วกดแจ้งหัวหน้า";
-    action = (
-      <Button tone="primary" icon={<CheckCheck size={16} aria-hidden="true" />} onClick={onReportFixed}>
-        แจ้งหัวหน้าว่าแก้แล้ว
-      </Button>
-    );
-  } else if (isClosedVisit(visit)) {
-    tone = status === "unable" ? "warn" : "ok";
-    head = status === "unable" ? "ปิดว่าไปแล้วเข้าไม่ได้" : "ส่งงานแล้ว";
-    sub = status === "unable"
-      ? "ใบกลับไปขั้นลงคิว — TS จะลงวันใหม่"
-      /* ⚠️ ไม่พูดสถานะของหัวหน้า ("รอหัวหน้าเคาะ") — รางขวาบอกอยู่แล้วและเป็นคนรู้ว่าเคาะหรือยัง
-         🐞 เคยเขียนตายตัว ⇒ ซ้ำพาดหัวของราง และเถียงกับรางทันทีที่หัวหน้าเคาะครบ ("พร้อมส่งผล") */
-      /* ไม่ระบุว่า "หัวหน้า" เป็นคนส่ง — Senior ที่ออกหน้างานเองอ่านแถบนี้ด้วย และเขาคือคนส่งเอง */
-      : `${hhmm(visit.actualEndTime) ? `เมื่อ ${hhmm(visit.actualEndTime)} น. · ` : ""}ยังแก้ผลวัดได้จนกว่าจะส่งผลให้ฝ่ายขาย`;
-  } else if (status === "in_progress") {
-    head = progress?.total ? `วัดแล้ว ${progress.done} / ${progress.total} พื้นที่` : "ยังไม่มีพื้นที่ให้วัด";
-    /* หัวหน้าส่งกลับระหว่างที่นัดยังเปิด — ส่งงานทีเดียวจบ (server ปิดเรื่องที่ค้างให้เอง) */
-    sub = askedFix
-      ? `หัวหน้าให้แก้: ${askedNote || "ดูข้อที่ยังขาดในแต่ละพื้นที่"} · แก้ครบแล้วกดส่งงาน`
-      : hhmm(visit.actualStartTime)
-        ? `เริ่มงาน ${hhmm(visit.actualStartTime)} น. · ครบแล้วกดส่งงาน`
-        : "ครบแล้วกดส่งงาน";
-    action = (
-      <Button tone="primary" icon={<Send size={16} aria-hidden="true" />} onClick={onSubmit}>
-        ส่งงาน
-      </Button>
-    );
-  } else if (status === "scheduled") {
-    head = "ยังไม่ได้เริ่มงาน";
-    sub = "ถึงหน้างานแล้วกดเริ่มงาน — ระบบจับเวลาให้";
-    action = (
-      <Button tone="primary" icon={<Play size={16} aria-hidden="true" />} disabled={starting} onClick={onStart}>
-        {starting ? "กำลังเริ่ม…" : "เริ่มงาน"}
-      </Button>
-    );
-  } else {
-    // ร่าง · ยกเลิก · เลื่อน — ไม่ใช่งานที่ช่างลงมือได้ ⇒ ไม่มีแถบ
-    return null;
-  }
+export default function SurveyFieldBar({ view, layout = "page", busy = false, onAction }) {
+  const copyId = useId();
+  if (!view) return null;
+  const { action } = view;
+  const blocked = !!action?.blocker;
+  const Icon = action ? ACTION_ICONS[action.key] || Send : null;
+  const primary = action?.emphasis === "primary";
 
   return (
-    <div className={styles.bar} data-tone={tone} role="region" aria-label={`งานของนัด ${visit.code || ""}`.trim()}>
-      <div className={styles.copy}>
-        <p className={styles.head}>
-          {tone === "ok" ? <CheckCircle2 size={16} aria-hidden="true" /> : null}
-          {head}
+    <div
+      className={styles.bar}
+      data-tone={view.tone}
+      data-layout={layout}
+      data-sticky={view.sticky ? "" : undefined}
+      data-osk-hide=""
+      data-survey-bar=""
+      data-toast-top=""
+      role="region"
+      aria-label={view.label}
+    >
+      <div className={styles.copy} id={copyId}>
+        <p className={styles.head} data-late={view.late ? "" : undefined} data-blocked={blocked ? "" : undefined}>
+          {blocked ? <Lock size={14} className={styles.headIcon} aria-hidden="true" />
+            : view.tone === "ok" ? <CheckCircle2 size={16} className={styles.headIcon} aria-hidden="true" /> : null}
+          {view.head}
         </p>
-        <p className={styles.sub}>{sub}</p>
+        {view.sub ? <p className={styles.sub}><KeepQuoted text={view.sub} /></p> : null}
       </div>
-      {action ? <div className={styles.action}>{action}</div> : null}
+      {action ? (
+        <div className={styles.action}>
+          <GatedAction
+            tone={primary ? "primary" : "neutral"}
+            blocker={action.gated ? action.blocker || "" : ""}
+            disabled={busy}
+            aria-busy={busy || undefined}
+            /* เหตุที่ยังทำไม่ได้อยู่บนแถบข้าง ๆ ปุ่ม — ผูกให้โปรแกรมอ่านจออ่านคู่กัน */
+            aria-describedby={blocked ? copyId : undefined}
+            icon={<Icon size={16} aria-hidden="true" />}
+            className={styles.actionBtn}
+            onClick={() => onAction?.(action.key)}
+          >
+            {busy && BUSY_LABELS[action.key] ? BUSY_LABELS[action.key] : action.label}
+          </GatedAction>
+        </div>
+      ) : null}
     </div>
   );
 }
