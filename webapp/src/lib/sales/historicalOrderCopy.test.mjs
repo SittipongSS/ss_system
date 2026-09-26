@@ -548,8 +548,8 @@ test('ไฟล์ถ้อยคำ pure — ไม่อ่านนาฬิ�
   assert.doesNotMatch(code, /new Date\(|Date\.now\(|businessDate\(|supabase|\.from\(/);
   const imports = [...code.matchAll(/from '([^']+)'/g)].map((m) => m[1]).sort();
   assert.deepEqual(imports, [
-    '@/lib/format', '@/lib/sales/contracts', '@/lib/sales/historicalOrders', '@/lib/sales/paymentCoverage',
-    '@/lib/sales/salesOrderPayments',
+    '@/lib/format', '@/lib/sales/contracts', '@/lib/sales/historicalDuplicates', '@/lib/sales/historicalOrders',
+    '@/lib/sales/paymentCoverage', '@/lib/sales/salesOrderPayments',
   ]);
 });
 
@@ -575,3 +575,33 @@ test('โมดัลอนุมัติ: ใบที่มีส่วนล
   assert.ok(none.checklist.some((line) => line.startsWith('ยอดรวมทั้งสิ้น:') && !line.includes('หัก ส่วนลด')));
 });
 
+
+/* ⭐ มติ 26/09 "บันทึกใบซ้ำที่ผู้คีย์ยืนยัน": หน้าต่างอนุมัติบอกใบที่ผู้คีย์ยืนยันว่าไม่ซ้ำ (ใคร · เมื่อไร · เหตุผล) และใบที่พบเพิ่ม
+   ตอนเปิดใบ — เตือน ไม่บล็อก · ต่อจากคำเตือนโซนซ้อน · ไม่มีอะไรจะพูด = ไม่มีแถว (ตารางตรวจทั้งใบข้างบนตรึงไว้แล้ว) */
+test('โมดัลอนุมัติ: ใบที่อาจซ้ำ — บันทึกของผู้คีย์ + ที่พบเพิ่ม · ต่อจากคำเตือนโซนซ้อน · ไม่มี = ไม่มีแถว', () => {
+  const review = {
+    v: 1, checkedAt: '2026-09-26T07:32:00.000Z', byName: 'พิมพ์ชนก รัตนา', basis: 'ids', note: 'คนละอาคาร',
+    orders: [{ id: 'SOR-A', orderNumber: 'SO-26090001-0', status: 'pending_approval', matchedOn: [{ kind: 'startDate', value: '2026-01-01' }] }],
+  };
+  const order = { ...ORDER, metadata: { historicalIntake: { vatRate: 7, duplicateReview: review } } };
+  const duplicateCheck = {
+    candidates: [
+      { id: 'SOR-A', status: 'approved', matchedOn: [] },
+      { id: 'SOR-N', orderNumber: 'SO-26090009-0', status: 'draft', matchedOn: [{ kind: 'ref', value: 'PO-1' }] },
+    ],
+    statusById: { 'SOR-A': 'approved', 'SOR-N': 'draft' },
+  };
+  const { checklist, effects } = historicalApprovalFacts(order, {
+    ...EXTRAS, liveTermWarnings: [{ zoneCode: 'ZN-1', orderNumber: 'SO-X', endDate: '2026-12-31' }], duplicateCheck,
+  });
+  const at = checklist.findIndex((line) => line.startsWith('⚠️ ใบที่อาจซ้ำ'));
+  assert.ok(at > checklist.findIndex((line) => line.includes('โซนนี้มีรอบขายของ')), 'ต่อจากคำเตือนโซนซ้อน');
+  assert.match(checklist[at], /ผู้คีย์ยืนยันว่าไม่ซ้ำ \(พิมพ์ชนก รัตนา · .+\) · เหตุผล: “คนละอาคาร”/);
+  assert.equal(checklist[at + 1], '⚠️ SO-26090001-0 (ตอนยืนยัน: รอผู้จัดการฝ่ายขายอนุมัติ · ตอนนี้: อนุมัติแล้ว) — ตรงกันที่ วันเริ่มสัญญา');
+  assert.equal(checklist[at + 2], '⚠️ พบใบที่อาจซ้ำเพิ่มหลังผู้คีย์ยืนยัน: SO-26090009-0 (ฉบับร่าง) — ตรงกันที่ เลขเอกสารเดิม PO-1');
+  assert.ok(!effects.some((line) => /ใบที่อาจซ้ำ/.test(line)), 'การยืนยันไม่ก่อผลตอนอนุมัติ — ไม่อยู่ใน effects');
+  /* ไม่มีใบที่อาจซ้ำ (บันทึก orders: [] และตรวจใหม่ว่าง) = ไม่มีแถวเพิ่ม */
+  const clean = historicalApprovalFacts({ ...ORDER, metadata: { historicalIntake: { duplicateReview: { ...review, orders: [] } } } },
+    { ...EXTRAS, duplicateCheck: { candidates: [], statusById: {} } });
+  assert.deepEqual(clean.checklist, historicalApprovalFacts(ORDER, EXTRAS).checklist);
+});

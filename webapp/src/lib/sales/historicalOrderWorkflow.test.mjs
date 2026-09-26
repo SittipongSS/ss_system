@@ -369,7 +369,7 @@ test('อนุมัติ: ผู้ตรวจอีกคน (AE Sup คน
 });
 
 // ── ของเสริมหน้าใบ ───────────────────────────────────────────────────────────────────────────
-const extrasTables = ({ files = [], terms = [], termOrders = [], contract = null } = {}) => ({
+const extrasTables = ({ files = [], terms = [], termOrders = [], contract = null, siblings = [] } = {}) => ({
   service_zones: (q) => ({
     data: [
       { id: 'Z-1', siteId: 'ST-1', code: 'ZN-1', name: 'ชั้น G ล็อบบี้', isActive: true },
@@ -387,7 +387,10 @@ const extrasTables = ({ files = [], terms = [], termOrders = [], contract = null
   sales_contracts: { data: contract, error: null },
   attachments: { data: files, error: null },
   service_zone_terms: (q) => ({ data: terms.filter((t) => inIds(q, 'zoneId').includes(t.zoneId)), error: null }),
-  sales_orders: (q) => ({ data: termOrders.filter((o) => inIds(q, 'id').includes(o.id)), error: null }),
+  /* ใบแม่ของรอบขาย (อ่านด้วย id) · ใบย้อนหลังของลูกค้าเดียวกัน (ตรวจใบที่อาจซ้ำใหม่ — อ่านด้วย customerId) */
+  sales_orders: (q) => (q.filters.some(([op, col]) => op === 'eq' && col === 'customerId')
+    ? { data: siblings, error: null }
+    : { data: termOrders.filter((o) => inIds(q, 'id').includes(o.id)), error: null }),
 });
 const extrasOrder = (extra = {}) => pending({
   lines: [
@@ -484,6 +487,37 @@ test('ของเสริม: รอบขายที่ยังมีผล
     zoneId: 'Z-1', zoneCode: 'ZN-1', zoneName: 'ชั้น G ล็อบบี้', orderId: 'SO-LIVE', orderNumber: 'SO-26010005-0', endDate: '2026-12-31',
   }]);
   assert.deepEqual(db.calls.from.find((c) => c.table === 'service_zone_terms').filters, [['in', 'zoneId', ['Z-1', 'Z-2']]]);
+});
+
+/* ⭐ มติ 26/09: ใบที่อาจซ้ำตรวจใหม่ทุกครั้งที่เปิดใบ (ตัวจับคู่ตัวเดียวกับแผนตอนคีย์) — ปิดช่องที่บันทึกของผู้คีย์ปิดไม่ได้
+   (ใบที่คนอื่นคีย์หลังยืนยัน · สร้างซ้ำที่ได้ใบเดิมคืนโดยไม่เขียนบันทึกใหม่) + สถานะปัจจุบันของใบที่ผู้คีย์ยืนยันไว้ */
+test('ของเสริม: ใบที่อาจซ้ำตอนนี้ + สถานะปัจจุบันของใบย้อนหลังของลูกค้า · ตัดใบตัวเอง · อ่านด้วยตัวกรอง origin', async () => {
+  const siblings = [
+    { id: ORDER_ID, orderNumber: 'SO-SELF', orderDate: '2026-01-01', status: 'pending_approval' },
+    { id: 'SOR-A', orderNumber: 'SO-A', orderDate: '2026-01-01', status: 'approved' },
+    { id: 'SOR-B', orderNumber: 'SO-B', orderDate: '2025-05-01', status: 'draft', historicalQuoteRef: 'qt-old-9' },
+    { id: 'SOR-C', orderNumber: 'SO-C', orderDate: '2026-01-01', status: 'cancelled' },
+    { id: 'SOR-D', orderNumber: 'SO-D', orderDate: '2026-02-01', status: 'approved' },
+  ];
+  const db = fakeDb({ tables: extrasTables({ siblings }) });
+  const extras = await loadHistoricalOrderExtras(db.supabase,
+    extrasOrder({ customerId: 'CUS-SPW', orderDate: '2026-01-01', historicalQuoteRef: 'QT-OLD-9' }), { todayIso: '2026-09-22' });
+  assert.deepEqual(extras.duplicateCheck.candidates.map((row) => [row.id, row.matchedOn.map((m) => m.kind)]), [
+    ['SOR-A', ['startDate']], ['SOR-B', ['ref']],
+  ]);
+  assert.deepEqual(extras.duplicateCheck.statusById, { 'SOR-A': 'approved', 'SOR-B': 'draft', 'SOR-C': 'cancelled', 'SOR-D': 'approved' });
+  const read = db.calls.from.find((q) => q.table === 'sales_orders' && q.filters.some(([, col]) => col === 'customerId'));
+  assert.ok(read.filters.some(([op, col, val]) => op === 'eq' && col === 'origin' && val === 'historical'), 'ใบย้อนหลังเท่านั้น (historicalRowsOnly)');
+  assert.ok(read.filters.some(([op, col, val]) => op === 'eq' && col === 'customerId' && val === 'CUS-SPW'));
+  /* ไม่มีลูกค้า (ข้อมูลเพี้ยน) = ยังไม่รู้ ไม่ใช่ "ไม่มีใบซ้ำ" */
+  const noCustomer = await loadHistoricalOrderExtras(fakeDb({ tables: extrasTables({ siblings }) }).supabase,
+    extrasOrder({ customerId: null }), { todayIso: '2026-09-22' });
+  assert.equal(noCustomer.duplicateCheck, null);
+  /* อ่านไม่ขึ้น = โยน (ผู้เรียกตั้ง extrasError) — ไม่กลืนเป็น "ไม่มีใบซ้ำ" */
+  const broken = fakeDb({ tables: { ...extrasTables(), sales_orders: (q) => (q.filters.some(([, col]) => col === 'customerId')
+    ? { data: null, error: { message: 'siblings boom' } } : { data: [], error: null }) } });
+  await assert.rejects(loadHistoricalOrderExtras(broken.supabase, extrasOrder({ customerId: 'CUS-SPW' }), { todayIso: '2026-09-22' }),
+    (error) => error?.message === 'siblings boom');
 });
 
 test('ของเสริม: อ่านไม่ขึ้น = โยน (ผู้เรียกตั้ง extrasError) · ใบ pipeline = ชุดว่างโดยไม่แตะฐาน', async () => {

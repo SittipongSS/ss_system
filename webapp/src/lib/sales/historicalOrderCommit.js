@@ -27,6 +27,7 @@ import { documentWorkflowError, workflowErrorMessage } from '@/lib/sales/documen
 import { externalDocKindLabel } from '@/lib/sales/contracts';
 import { sanitizeEvidenceAttachments } from '@/lib/sales/orderConfirmationDocs';
 import { PRIVATE_EVIDENCE_BUCKET, missingStoredEvidence, privateEvidencePrefix } from '@/lib/upload/privateEvidence';
+import { historicalDuplicateReviewRecord } from '@/lib/sales/historicalDuplicates';
 import {
   HISTORICAL_DEAL_TITLE, HISTORICAL_FLOW_SCHEMA_MISSING_MESSAGE, canKeyHistoricalSalesOrder, historicalOrderEditable,
   historicalOrderIdOf, historicalRefsOf, historicalRowsOnly, historicalSchemaMissing, isHistoricalOrder,
@@ -266,11 +267,19 @@ export async function commitHistoricalOrder({
   }
 
   const actor = { p_actor_id: user.id, p_actor_name: user.name || user.email || null, p_actor_role: user.role };
-  if (editing) return updateOrder({ supabase, user, existing, plan, expected, actor, audit, request });
+  /* ⭐ มติ 26/09 "บันทึกใบซ้ำที่ผู้คีย์ยืนยัน" — ใบไหน · ใคร · เมื่อไร · เหตุผล ลง `metadata.historicalIntake.duplicateReview`
+     ในทรานแซกชันเดียวกับใบ (RPC ของ 0374 เก็บ `p_header.intake` ทั้งก้อน — ไม่ต้องแก้ฐาน) · เขียนทุกครั้งที่บันทึกจริง (แม้ `orders: []`)
+     🔴 ต่อท้ายอาร์กิวเมนต์ **หลังประกอบแล้ว** เท่านั้น — ลายนิ้วมือคิดจาก `historicalServiceRpcArgs(plan)` ⇒ บันทึกนี้ไม่เข้าแฮช
+        (ใส่ใน historicalServiceRpcArgs/plan.header = เวลา/ผู้คีย์/รายการต่างกันแล้วส่งซ้ำได้ intake_key_conflict ทุกครั้ง) */
+  const duplicateReview = historicalDuplicateReviewRecord({ duplicates: plan.duplicates, ack: plan.duplicateAck, user, now });
+  const withDuplicateReview = (args) => ({
+    ...args, p_header: { ...args.p_header, intake: { ...(args.p_header?.intake || {}), duplicateReview } },
+  });
+  if (editing) return updateOrder({ supabase, user, existing, plan, expected, actor, audit, request, withDuplicateReview });
 
   // ⑥ สร้าง — ดีลภาชนะ + เลขใบ + เอกสารแทนสัญญา (ร่าง) + หัวใบ (ร่าง) + บรรทัด + งวด ในทรานแซกชันเดียว
   //   ตอนสร้างยังไม่มีหลักฐานงวดยกมา (ไฟล์ต้องอยู่ใต้โฟลเดอร์ของใบ ซึ่งยังไม่เกิด) — ฟอร์มอัปแล้วแก้ใบเก็บทีหลัง
-  const args = {
+  const args = withDuplicateReview({
     p_intake_key: intakeKey,
     p_intake_hash: sha256(historicalServiceFingerprintSource(plan)),
     ...actor,
@@ -283,7 +292,7 @@ export async function commitHistoricalOrder({
       ownerName: plan.header.ownerName,
       ...entityCodeArgs('DL', now),
     },
-  };
+  });
   const call = () => supabase.rpc('create_historical_sales_order', args);
   let { data: result, error } = await call();
   if (error && isOrderPkeyCollision(error)) ({ data: result, error } = await call());
@@ -361,7 +370,7 @@ export async function commitHistoricalOrder({
 }
 
 /* ⑥' แก้ใบร่าง/ใบที่ถูกตีกลับ — RPC เขียนบรรทัด+งวดใหม่ทั้งชุด · ใบที่ถูกตีกลับพลิกเป็นร่าง (ด่านอัปหลักฐานไม่รับใบตีกลับ) */
-async function updateOrder({ supabase, user, existing, plan, expected, actor, audit, request }) {
+async function updateOrder({ supabase, user, existing, plan, expected, actor, audit, request, withDuplicateReview = (args) => args }) {
   const orderId = existing.id;
 
   // หลักฐานงวดยกมา: ตัวเขียนของฐานเขียนงวดใหม่ทั้งชุด ⇒ ส่งครบทุกไฟล์เสมอ · กรองให้เหลือไฟล์ของใบนี้จริง
@@ -390,12 +399,13 @@ async function updateOrder({ supabase, user, existing, plan, expected, actor, au
     return reply(500, { error: `อ่านใบเดิมก่อนแก้ไม่สำเร็จ: ${beforeError.message}` });
   }
 
-  const { data: result, error } = await supabase.rpc('update_historical_sales_order', {
+  /* ⚠️ RPC แก้ใบแทน `historicalIntake` **ทั้งก้อน** (0374:1054-1056) ⇒ ทุกครั้งที่แก้ต้องแนบบันทึกใหม่ ไม่งั้นบันทึกเดิมหาย */
+  const { data: result, error } = await supabase.rpc('update_historical_sales_order', withDuplicateReview({
     p_order_id: orderId,
     p_expected_updated_at: expected.value,
     ...actor,
     ...historicalServiceRpcArgs({ ...plan, opening }, 'update'),
-  });
+  }));
   if (error) {
     if (historicalSchemaMissing(error)) return reply(503, { error: HISTORICAL_FLOW_SCHEMA_MISSING_MESSAGE });
     const mapped = documentWorkflowError(error, { context: `historical sales order update ${orderId}` });

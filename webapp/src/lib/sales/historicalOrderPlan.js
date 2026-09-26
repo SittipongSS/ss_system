@@ -26,9 +26,12 @@ import { bindTargetError } from '@/lib/service/intake';
 import { termIsActive } from '@/lib/service/terms';
 import { coverageContinuityErrors } from '@/lib/sales/paymentCoverage';
 import {
+  historicalDuplicateAckIssue, historicalDuplicateAckOf, historicalDuplicateMatches, historicalDuplicatesAcknowledged,
+} from '@/lib/sales/historicalDuplicates';
+import {
   DOC_DATE_MAX, DOC_DATE_MIN, HISTORICAL_DEAL_TITLE, HISTORICAL_REF_MAX, INSTALLATION_POINT_MAX,
   HISTORICAL_APPROVER_LABEL, INSTALLMENT_LABEL_MAX, INSTALLMENT_NOTE_MAX, OPENING_INSTALLMENT_KIND, OPENING_INSTALLMENT_LABEL,
-  charLength, historicalRefsOf,
+  charLength,
 } from '@/lib/sales/historicalOrders';
 
 /* หมวดแพ็คเกจบริการ = SERVICE_ROUND_CATEGORY ของ lib/sales/serviceOrders.js (ส่งต่อ ไม่ประกาศซ้ำ)
@@ -122,7 +125,6 @@ const inDocRange = (value) => isCalendarDate(value) && value >= DOC_DATE_MIN && 
 /* 🚫 ตัวแบ่งยอดตาม VAT (`splitHistoricalAmounts` — หารทุกบรรทัดด้วย 1.07 เมื่อ "ราคารวม VAT แล้ว") ถูกลบตามมติ 23/09
    ยอดบรรทัดของใบย้อนหลังต้องเป็น จำนวน × ราคา/หน่วย − ส่วนลด เหมือนใบเสนอราคา ⇒ ใช้ historicalLinesMoney แทน */
 
-const normRef = (value) => text(value).toLowerCase();
 
 /* JSON ที่เรียงคีย์ทุกชั้น — ลายนิ้วมือต้องไม่ขึ้นกับลำดับคีย์ที่ client ส่งมา */
 function stableStringify(value) {
@@ -650,21 +652,17 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
   }
 
   // ── ใบที่อาจซ้ำ (ไม่ใช่ error — ต้องยืนยันก่อนบันทึก) · ไม่นับใบนี้เองและใบที่ยกเลิกแล้ว ─────────────
-  const refSet = new Set(Object.values(refs).filter(Boolean).map(normRef));
-  /* ⭐ `matchedOn` (มติ 25/09 รื้อขั้น ④) — บอกว่าตรงกันที่ไหน (วันเริ่มสัญญา / เลขเอกสารเดิมตัวไหน) ผู้คีย์จะได้ไม่ต้องเดา */
-  const duplicates = (existingHistorical || [])
-    .filter((row) => row && row.id !== selfOrderId && row.status !== 'cancelled')
-    .map((row) => {
-      const sameStart = Boolean(contract.startDate && row.orderDate === contract.startDate);
-      const sameRefs = historicalRefsOf(row).filter((r) => refSet.has(normRef(r)));
-      return { row, sameStart, sameRefs };
-    })
-    .filter(({ sameStart, sameRefs }) => sameStart || sameRefs.length)
-    .map(({ row, sameStart, sameRefs }) => ({
-      id: row.id, orderNumber: row.orderNumber || null, orderDate: row.orderDate || null,
-      status: row.status || null, refs: historicalRefsOf(row),
-      matchedOn: [...(sameStart ? [{ kind: 'startDate', value: contract.startDate }] : []), ...sameRefs.map((ref) => ({ kind: 'ref', value: ref }))],
-    }));
+  /* ⭐ `matchedOn` (มติ 25/09 รื้อขั้น ④) — บอกว่าตรงกันที่ไหน · ตัวจับคู่ตัวเดียวกับที่หน้าใบตรวจซ้ำตอนผู้อนุมัติเปิด
+     (`historicalDuplicateMatches` — มติ 26/09) ⇒ "ใบที่อาจซ้ำ" ของผู้คีย์กับของผู้อนุมัติเป็นกติกาเดียวกัน */
+  const duplicates = historicalDuplicateMatches({
+    rows: existingHistorical, selfOrderId, startDate: contract.startDate, refs,
+  });
+  /* ⭐ มติ 26/09: ยืนยันเป็นรายใบ (id ที่ผู้คีย์เห็น) + เหตุผลไม่บังคับ ≤500 — ยาวเกิน = error ของขั้น ④ */
+  const duplicateAck = historicalDuplicateAckOf(body);
+  if (duplicates.length) {
+    const noteIssue = historicalDuplicateAckIssue(duplicateAck);
+    if (noteIssue) err(noteIssue.field, noteIssue.message);
+  }
 
   return {
     header,
@@ -674,7 +672,9 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
     installments: installments.filter(Boolean),
     deal,
     duplicates,
-    acknowledgeDuplicates: body.acknowledgeDuplicates === true,
+    /* ครบทุกใบที่อาจซ้ำ **ตอนนี้** (ใบที่ server เพิ่งพบแต่ผู้คีย์ไม่เคยเห็น = ยังไม่ครบ ⇒ 409) · ของที่บันทึกลงใบประกอบที่ route */
+    acknowledgeDuplicates: historicalDuplicatesAcknowledged(duplicates, duplicateAck),
+    duplicateAck,
     liveTerms,
     check: {
       installmentSum: fromSatang(sumSatang),
