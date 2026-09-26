@@ -510,6 +510,7 @@ CSS ไม่มี `@media`) ⇒ แถบระบุตัวใบ (`.ui-det
 - Page ใช้ `--bg`; card/table/drawer ใช้ `--panel`; inset/hover ใช้ `--panel-2`
 - Header, section, metric strip และ data surface ใช้ radius `--radius-lg`
 - Loading content ใช้ skeleton; ข้อมูลว่างใช้ `EmptyState`; async result ใช้ `Toast`
+- **สัปดาห์เริ่มวันอาทิตย์ทั้งระบบ (อา.–ส.)** (มติเจ้าของ 26/09) — ปฏิทินเดือนใช้ `MonthGrid` · ช่องวันใช้ `DateInput` (ห้าม `type="date"` ดิบ ปฏิทินเบราว์เซอร์เรียงตาม locale) · ตาราง/ช่วง/ถังรายสัปดาห์หาต้นสัปดาห์ด้วย `weekStartOf` ของ `lib/datePeriods.js` · ยาม `lib/weekStartsSunday.test.mjs`
 - Desktop และ mobile ใช้ top navigation ชุดเดียวกัน; mobile เปิด menu sheet จาก top bar
 - ทุก interactive element ต้องมี hover, `:focus-visible` และ disabled state
   - **วงโฟกัสใช้ `var(--accent-ink)` เสมอ ไม่ใช่ `var(--accent)`** — วัดบนพื้นจริง
