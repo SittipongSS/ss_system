@@ -464,3 +464,10 @@
   .totalControls > :first-child { grid-column: 1 / -1; }
   .totalControls > :last-child:nth-child(2) { grid-column: 1 / -1; }
 }
+
+/* ชื่อหมวดของบรรทัด "เพิ่มรายการเอง" ตอนดูอย่างเดียว (มติผู้ใช้ 2026-09-27) — ทรงเดียวกับบรรทัดเล็ก
+   "รหัส · แบรนด์ · หมวด" ของบรรทัด FG (.fgInfoMeta) เพื่อให้สองแบบอ่านเป็นชั้นเดียวกัน */
+.manualCategory {
+  color: var(--text-3);
+  font-size: var(--fs-4);
+}

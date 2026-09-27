@@ -728,6 +728,13 @@ test('model ของใบ: หมวดตามภาษาของใบ �
   assert.equal(buildQuotationMasterModelFromQuote(quote('th', {})).lines[0].category, '');
 });
 
+test('บรรทัดเพิ่มเอง (ไม่มีรหัส FG) พิมพ์หมวดที่เลือกไว้บนบรรทัดเล็กเหนือรายละเอียด (มติ 2026-09-27)', () => {
+  const quote = { docLanguage: 'en', lines: [{ id: 'L1', fgCode: null, description: 'ค่าติดตั้ง', metadata: { categoryCode: '02-001', categoryName: 'บริการ', categoryNameEn: 'Service' } }] };
+  const [line] = buildQuotationMasterModelFromQuote(quote).lines;
+  assert.equal(line.category, 'Service');
+  assert.deepEqual(lineIdentityParts(line), ['Service']);
+});
+
 /* ⭐ ใบที่ถูกยกเลิก (ปุ่มยกเลิกใบของผู้อนุมัติ มติ 24/09 · หรือ SO ย้อน Won ตาม 0116) พิมพ์ซ้ำได้
    แต่ต้องมีลายน้ำ "ยกเลิก" เสมอ — ฉบับตรึงล่าสุดถูกตอบ 409 แล้วปุ่มพิมพ์ตกมาเรนเดอร์สดที่นี่
    🐞 เดิมใบที่ยกเลิกหลังอนุมัติพิมพ์ออกมา **สะอาด** (ไม่มีลายน้ำ) เหมือนใบที่ใช้ได้ */
