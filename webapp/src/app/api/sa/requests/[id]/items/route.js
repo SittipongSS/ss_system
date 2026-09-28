@@ -20,6 +20,7 @@ import { getCurrentUser } from '@/lib/authUser';
 import { canViewRequests } from '@/lib/permissions';
 import { canAnswerRequest, canReadRequestRow } from '@/lib/deptRequests';
 import { requestRowsClosurePatch } from '@/lib/requests/stages';
+import { requestActorSide } from '@/lib/requests/replyTurn';
 import { REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS } from '@/lib/requests/statuses';
 import { deliveryItemRow, normalizeDeliveryRows } from '@/lib/requests/delivery';
 import { findRequest } from '@/lib/materialPricesAdmin';
@@ -285,7 +286,9 @@ export async function POST(request, { params }) {
   let statusWarning = null;
   try {
     const afterAdd = await findRequest(supabase, id);
-    const closurePatch = requestRowsClosurePatch(afterAdd, afterAdd?.items || [], nowIso);
+    const closurePatch = requestRowsClosurePatch(afterAdd, afterAdd?.items || [], nowIso, {
+      actorSide: requestActorSide(user, afterAdd),
+    });
     if (Object.keys(closurePatch).length) {
       const { error: closureError } = await supabase.from('dept_requests')
         .update({ ...closurePatch, updatedAt: nowIso })
