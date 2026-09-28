@@ -31,7 +31,8 @@ const count = (src, re) => (src.match(re) || []).length;
 test('โหลดก้อนงานบริการเฉพาะใบที่ต้องตั้ง · ยามออกจากหน้าเห็นร่างงานบริการด้วย', () => {
   assert.match(page, /const setupRequired = serviceSetupRequired\(order\);/);
   assert.match(page, /const setup = useServiceSetup\(order\?\.id, \{ enabled: setupRequired, customerId: order\?\.customerId \|\| null \}\);/);
-  assert.match(page, /useUnsavedChanges\(dirty \|\| setup\.dirty\);/);
+  /* ร่างของหน้า + ร่างวันงวด (#1846 datesDirty) + ร่างงานบริการ — ยามตัวเดียวต้องเห็นร่างงานบริการด้วย */
+  assert.match(page, /useUnsavedChanges\([^)]*\bsetup\.dirty\b[^)]*\);/);
   assert.equal(count(page, /useUnsavedChanges\(/g), 1, 'ยามออกจากหน้ามีตัวเดียว');
 });
 
@@ -211,7 +212,11 @@ test('แผงงวด: ช่วงบริการ · ขั้น · แ�
   const fill = slice(page, 'async function runFillCoverage({ mode, plan }) {', '\n  }\n');
   assert.match(fill, /method: "PATCH",\s*json: \{ action: "fill-coverage", mode, plan \},/);
   assert.doesNotMatch(fill, /retry/);
-  assert.match(fill, /if \(res\.status === 409\) refreshOrder\(\);/);
+  /* 409 ท่าเดียวกับ schedule-many: วางงวดสดที่พกมา → รอใบสด (ปุ่มยังดับจนจอตรง server) · ลงไปแล้วบางงวด = ข้อที่ยังขาดเปลี่ยน */
+  assert.match(fill, /if \(res\.status === 409\) \{\s*if \(Array\.isArray\(data\.installments\)\) setOrder\(\(current\) => \(\{ \.\.\.current, installments: data\.installments \}\)\);\s*await refreshOrder\(\);\s*if \(Number\(data\.filled\) > 0\) refreshServiceSetup\(\);\s*\}/);
+  const many = slice(page, 'async function runInstallmentScheduleMany({ rows }) {', '\n  }\n');
+  assert.match(many, /await refreshOrder\(\);\s*if \(Number\(data\.saved\) > 0\) refreshServiceSetup\(\);/,
+    'schedule-many หยุดกลางทาง = บางงวดลงแล้ว ⇒ ก้อนงานบริการตามด้วย');
   assert.match(fill, /return false;[\s\S]*return true;/);
   assert.match(page, /onFillCoverage=\{runFillCoverage\}/);
   assert.match(page, /servicePeriod=\{setupView \? setupView\.period : undefined\}/);
@@ -220,10 +225,28 @@ test('แผงงวด: ช่วงบริการ · ขั้น · แ�
 });
 
 test('"ไปแก้": สลับแท็บแล้วพาไปที่ช่องด้วย id ของ serviceSetupFieldId', () => {
-  const jump = slice(page, 'const jumpToIssue = (issue) => {', '\n  };');
-  assert.match(jump, /selectTab\(issue\.tab\)/);
+  const jump = slice(page, 'const jumpToIssue = async (issue) => {', '\n  };');
+  /* สลับแท็บถามก่อนได้ (ร่างวันงวดค้าง · #1846) ⇒ รอคำตอบ · ไม่ได้สลับ = ไม่พาไปที่ช่อง */
+  assert.match(jump, /!\(await selectTab\(issue\.tab\)\)\) return;/);
   assert.match(jump, /revealServiceSetupField\(serviceSetupFieldId\(issue\)\)/);
   assert.match(page, /onJump=\{jumpToIssue\}/);
+});
+
+test('#1846: "ไปแก้" ของข้อวันงวดที่รวมหลายงวด = ขอให้แผงงวดเปิด "เติมวันงวดที่ว่าง…" · เปิดไม่ได้ = ถอยไปโฟกัสช่องของงวดแรก', () => {
+  const jump = slice(page, 'const jumpToIssue = async (issue) => {', '\n  };');
+  /* แผงงวดอยู่แท็บการชำระ ⇒ สลับแท็บก่อน (ถามก่อนได้) แล้วค่อยขอ · ขอแล้วไม่โฟกัสเซลล์ซ้อน (แผงเติมโฟกัสหัวของมันเอง) */
+  assert.match(jump, /if \(issue\.dateFill\) \{\s*setDateFillAsk\(\{ issue \}\);\s*return;\s*\}/);
+  assert.ok(jump.indexOf('await selectTab(issue.tab)') < jump.indexOf('issue.dateFill'), 'สลับแท็บก่อนขอ');
+  assert.ok(jump.indexOf('issue.dateFill') < jump.indexOf('revealServiceSetupField('), 'ข้ออื่นยังไปที่ช่องเหมือนเดิม');
+  /* คำขอเป็น state (ไม่ใช่ ref/อีเวนต์) — แผงเพิ่งเมานต์จากการสลับแท็บยังได้รับ · ประกาศก่อน early return ของหน้า (กฎของ hook) */
+  assert.ok(page.indexOf('const [dateFillAsk, setDateFillAsk] = useState(null);') >= 0);
+  assert.ok(page.indexOf('const [dateFillAsk, setDateFillAsk] = useState(null);') < page.indexOf('if (!order) {\n    return <Workspace'));
+  const done = slice(page, 'const dateFillDone = (opened) => {', '\n  };');
+  assert.match(done, /setDateFillAsk\(null\);/, 'ตอบแล้วล้างคำขอ — กลับมาแท็บการชำระอีกครั้งไม่เปิดซ้ำ');
+  assert.match(done, /if \(!opened && ask\?\.issue\) revealServiceSetupField\(serviceSetupFieldId\(ask\.issue\)\);/);
+  const panel = slice(page, '<SalesOrderPaymentPanel', '/>\n');
+  assert.match(panel, /dateFillRequest=\{dateFillAsk\}/);
+  assert.match(panel, /onDateFillRequestDone=\{dateFillDone\}/);
 });
 
 test('ก้อนงานบริการตามเวอร์ชันของใบ — ยิงซ้ำไม่เกินครั้งเดียวต่อเวอร์ชัน (กันวน)', () => {

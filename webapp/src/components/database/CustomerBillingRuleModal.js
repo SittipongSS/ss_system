@@ -35,8 +35,8 @@ import { notifyToast } from "@/lib/feedback";
 import { NA } from "@/lib/format";
 import { customerNameIn } from "@/lib/master/customerName";
 import {
-  BILLING_CREDIT_MAX, BILLING_NOTE_MAX, BILLING_ROUNDS_MAX, MONTH_END_DAY, billingRounds, billingRuleOf,
-  describeBillingRule, dueDateForBilling, formatBillingDate, formatRoundChip,
+  BILLING_CREDIT_MAX, BILLING_NOTE_MAX, BILLING_ROUNDS_MAX, MONTH_END_DAY, NO_CREDIT_TEXT, PAY_ON_BILLING_TEXT, billingRounds,
+  billingRuleOf, creditDaysText, describeBillingRule, dueDateForBilling, formatBillingDate, formatRoundChip,
 } from "@/lib/sales/billingRule";
 import { daysBetween } from "@/lib/sales/paymentCoverage";
 import {
@@ -341,7 +341,8 @@ export default function CustomerBillingRuleModal({ open = true, onClose, custome
   let payState = null;
   if (cross) payState = null;
   else if (payDone) {
-    payState = ["ok", form.payMode === "credit" ? `เครดิต ${creditDaysNumber} วัน`
+    /* เครดิต 0 = "ชำระวันวางบิล" (`creditDaysText` · review 28/09: เดิมหัวขั้นขึ้น "เครดิต 0 วัน" ข้างประโยค "วันเดียวกับวันวางบิล") */
+    payState = ["ok", form.payMode === "credit" ? creditDaysText(creditDaysNumber)
       : multi ? "ครบทุกรอบ" : `${dayWord(rounds[0].day)} ${monthWord(rounds[0].monthOffset)}`];
   } else if (form.payMode === "credit") payState = creditInvalid ? ["danger", `0–${BILLING_CREDIT_MAX} วัน`] : warnOr("แตะจำนวนวัน");
   else if (form.payMode === "monthly") payState = warnOr(multi ? "แตะวันที่ให้ครบทุกรอบ" : "แตะวันที่");
@@ -428,7 +429,7 @@ export default function CustomerBillingRuleModal({ open = true, onClose, custome
         ) : gateMessage ? (
           <><TriangleAlert size={14} aria-hidden="true" /><span className={styles.sumText}>{gateMessage}</span></>
         ) : none ? (
-          <><Ban size={14} aria-hidden="true" /><span className={styles.sumText}>ไม่มีเครดิต · ชำระก่อนหรือพร้อมสั่ง</span></>
+          <><Ban size={14} aria-hidden="true" /><span className={styles.sumText}>{NO_CREDIT_TEXT}</span></>
         ) : result.rule && first ? (
           <>
             <span className={styles.sumKey}>{view.kind === "anyday" ? "เช่น" : "รอบถัดไป"}</span>
@@ -497,7 +498,7 @@ export default function CustomerBillingRuleModal({ open = true, onClose, custome
               ariaLabel="เครดิต"
               className={`${styles.seg} ${tried && !form.credit ? styles.segFlag : ""}`}
               options={[
-                { value: "none", label: segLabel("ไม่มีเครดิต", "ชำระก่อนหรือพร้อมสั่ง") },
+                { value: "none", label: segLabel("ไม่มีเครดิต", PAY_ON_BILLING_TEXT) },
                 { value: "yes", label: segLabel("มีเครดิต", "วางบิลแล้วรอเงินเข้า") },
               ]}
               value={form.credit}
@@ -709,11 +710,12 @@ export default function CustomerBillingRuleModal({ open = true, onClose, custome
         <aside ref={asideRef} className={styles.aside} aria-label="ผลของสิ่งที่เลือก">
           {view.kind === "none" ? (
             <div className={styles.noneBox}>
-              <p className={styles.noneTitle}><Ban size={18} aria-hidden="true" />ไม่มีเครดิต</p>
+              {/* มติ 28/09 ข้อ 17: ไม่มีเครดิต = วางบิลได้ทุกวัน + ชำระวันวางบิล (effectiveBillingRule) — แก้แค่คำ โครงกล่องเดิม */}
+              <p className={styles.noneTitle}><Ban size={18} aria-hidden="true" />{NO_CREDIT_TEXT}</p>
               <ul>
-                <li>ลูกค้าชำระก่อนหรือพร้อมสั่ง</li>
-                <li>ใบสั่งขายกรอกกำหนดชำระเองทีละงวด — ไม่มีวันวางบิลและปุ่มเติมตามรอบ</li>
-                <li>ไม่มีกระดิ่งเตือนก่อนถึงรอบวางบิล</li>
+                <li>ลูกค้าชำระในวันที่วางบิล (ก่อนหรือพร้อมสั่ง)</li>
+                <li>ใบสั่งขายเลือกวันวางบิลทีละงวด — กำหนดชำระเป็นวันเดียวกัน</li>
+                <li>กระดิ่งเตือนก่อนถึงวันวางบิลเหมือนลูกค้าทุกราย</li>
               </ul>
               <p className={styles.visFoot}>ลูกค้าเริ่มให้เครดิตเมื่อไร เปลี่ยนเป็น &quot;มีเครดิต&quot; ได้ทุกเมื่อ · ไม่ต้องขออนุมัติใหม่</p>
             </div>
@@ -738,7 +740,10 @@ export default function CustomerBillingRuleModal({ open = true, onClose, custome
               {view.kind === "anyday" ? (
                 <p className={styles.lead}>
                   ไม่มีรอบ — {result.rule?.payment?.mode === "credit"
-                    ? <>วางบิลวันไหน เงินเข้าอีก <b>{result.rule.payment.days} วัน</b> เช่น</>
+                    ? (result.rule.payment.days === 0
+                      /* เครดิต 0 — "เงินเข้าอีก 0 วัน" ไม่มีความหมาย (มติ 28/09: ชำระวันวางบิล) */
+                      ? <>วางบิลวันไหน เงินเข้า<b>วันเดียวกัน</b> ({PAY_ON_BILLING_TEXT}) เช่น</>
+                      : <>วางบิลวันไหน เงินเข้าอีก <b>{result.rule.payment.days} วัน</b> เช่น</>)
                     : "วางบิลวันไหน ระบบคิดวันเงินเข้าจากวันนั้น เช่น"}
                 </p>
               ) : null}

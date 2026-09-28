@@ -20,7 +20,8 @@ import { DetailCard } from "@/components/ui/DetailPage";
 import { businessDate } from "@/lib/businessDate";
 import { fmtTime, NA } from "@/lib/format";
 import {
-  MONTH_END_DAY, billingRoundLabels, billingRuleOf, describeBillingRule, describeBillingRuleDetail, formatBillingDate,
+  MONTH_END_DAY, NO_CREDIT_TEXT, billingRoundLabels, billingRuleOf, creditDaysText, describeBillingRule, describeBillingRuleDetail,
+  formatBillingDate,
 } from "@/lib/sales/billingRule";
 import CustomerBillingRuleModal from "./CustomerBillingRuleModal";
 import { BillingRoundsTable, billingPreviewOf } from "./CustomerBillingRuleRounds";
@@ -41,7 +42,8 @@ function billingPart(rule) {
 function paymentPart(rule) {
   const sub = describeBillingRuleDetail(rule);
   if (rule.payment.mode === "credit") {
-    return { main: `เครดิต ${rule.payment.days} วัน`, sub: rule.billing.mode === "monthly" && rule.billing.days.length > 1 ? `${sub} · ทุกรอบ` : sub };
+    /* เครดิต 0 = "ชำระวันวางบิล" (`creditDaysText` — คำเดียวกับบรรทัดหัวของการ์ด · review 28/09: เดิมพิมพ์ "เครดิต 0 วัน") */
+    return { main: creditDaysText(rule.payment.days), sub: rule.billing.mode === "monthly" && rule.billing.days.length > 1 ? `${sub} · ทุกรอบ` : sub };
   }
   const { rounds } = rule.payment;
   const same = rounds.every((r) => r.day === rounds[0].day && r.monthOffset === rounds[0].monthOffset);
@@ -108,8 +110,9 @@ export default function CustomerBillingRuleCard({ customer, canEdit = false, onS
         <div className={styles.ruleBox} data-tone="none">
           <Ban size={18} aria-hidden="true" />
           <div>
-            <strong>ไม่มีเครดิต</strong>
-            <small>ชำระก่อนหรือพร้อมสั่ง · ใบสั่งขายกรอกกำหนดชำระเองทีละงวด ไม่มีวันวางบิลและกระดิ่งเตือนวางบิล</small>
+            {/* มติ 28/09 ข้อ 17: ไม่มีเครดิต = วางบิลได้ทุกวัน + ชำระวันวางบิล — งวดมีวันวางบิลและกระดิ่งเหมือนลูกค้าทุกราย */}
+            <strong>{NO_CREDIT_TEXT}</strong>
+            <small>ใบสั่งขายเลือกวันวางบิลทีละงวด แล้วกำหนดชำระเป็นวันเดียวกัน · กระดิ่งเตือนก่อนถึงวันวางบิลเหมือนลูกค้าทุกราย</small>
           </div>
         </div>
         {rule.note ? (

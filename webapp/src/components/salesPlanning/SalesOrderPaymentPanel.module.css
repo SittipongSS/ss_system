@@ -181,7 +181,7 @@
   align-items: flex-start;
   gap: var(--space-1);
 }
-/* วัน + ป้ายเสาร์-อาทิตย์ในบรรทัดเดียว (ใช้ทั้งเซลล์วันวางบิล เซลล์กำหนดชำระ และตารางพรีวิวเติมตามรอบ) */
+/* วัน + ป้ายเสาร์-อาทิตย์ในบรรทัดเดียว (เซลล์วันวางบิลและเซลล์กำหนดชำระของตารางอ่านอย่างเดียว) */
 .dateLine {
   display: inline-flex;
   flex-wrap: wrap;
@@ -189,46 +189,6 @@
   gap: var(--space-1) var(--space-1-5);
 }
 .dateText { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.pickAction {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  font-weight: var(--fw-semibold);
-}
-
-/* โมดัลเติมตามรอบ — สรุปผลเป็นข้อ ๆ ก่อนตารางพรีวิว */
-.fillLead {
-  margin: 0;
-  padding-left: var(--space-4);
-  color: var(--text-2);
-  font-size: var(--fs-6);
-  line-height: var(--lh-thai);
-}
-.fillLead b { color: var(--text); }
-
-/* วันวางบิลที่สั่งล้างแล้วในโมดัลกำหนดชำระ (ลูกค้าไม่มีรอบ) — ขีดฆ่าให้เห็นว่าบันทึกแล้วจะหาย ยังกด "เก็บไว้" คืนได้ */
-.cleared {
-  color: var(--text-3);
-  text-decoration: line-through;
-  font-variant-numeric: tabular-nums;
-}
-
-/* ── จัดวันใหม่ตามรอบปัจจุบัน (กำหนดวางบิลรอบสอง · มติเจ้าของ 26/09) — เซลล์ "เดิม → ใหม่" ของตารางพรีวิว ────────────
-   เดิมจาง+ขีดฆ่า (`.cleared`) อยู่บรรทัดบน · ใหม่ (+ ป้ายเสาร์-อาทิตย์) อยู่บรรทัดล่าง — กวาดตาลงคอลัมน์อ่านวันใหม่ได้ต่อเนื่อง */
-.redateCell {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-1);
-}
-.redateFrom {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  color: var(--text-3);
-  font-size: var(--fs-5);
-}
 
 /* ── งานบริการรายบรรทัด (mig 0391 · แผน §2.8) ────────────────────────────────────────────────────────────────
    ⚠️ โทเคนเท่านั้น (เพดานเลขดิบของ audit:ui เต็มพอดี) · ไม่มีจุดตัดจอ — ทุกแถวเป็น flex-wrap จอแคบตกบรรทัดเอง */
@@ -253,6 +213,9 @@
   background: color-mix(in srgb, var(--red-soft) 60%, transparent);
 }
 .cellIssue:focus { outline: none; }
+/* โหมดตั้งวันงวด (#1846): ช่องที่ติดเป็นเซลล์ร่าง (ปุ่มเส้นประของ InstallmentDateCell) — ขอบของปุ่มเป็นแดงตามกรอบของ <td>
+   · ตัวแก้ของงวดเปิดอยู่ (`aria-expanded`) = คงขอบ accent ของโหมด · งวดที่ล็อก/ทางเข้านอกโหมดไม่มี aria-haspopup ⇒ ไม่โดน */
+.cellIssue [data-date-cell][aria-haspopup]:not([aria-expanded="true"]) { border-color: var(--red); }
 /* `.table small` (จาง) ของตารางงวดชนะคลาสเดี่ยว ⇒ ผูกกับ `.table` ให้เฉพาะเจาะจงกว่า (ไม่ใช้ !important) */
 .table .issueNote { color: var(--red); font-weight: var(--fw-semibold); }
 

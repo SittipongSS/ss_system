@@ -34,7 +34,7 @@ import { ownerLockedToSelf } from '@/lib/sales/dealOwner';
 import { externalDocKindLabel } from '@/lib/sales/contracts';
 import { addDays, dueDateByRule, monthEdge, splitCoverageByMonths } from '@/lib/sales/paymentCoverage';
 import {
-  MONTH_END_DAY, billingRoundCount, billingRuleNoCredit, billingRuleOf, describeBillingRule,
+  MONTH_END_DAY, billingRoundCount, describeBillingRule, effectiveBillingRule,
 } from '@/lib/sales/billingRule';
 import {
   HISTORICAL_APPROVER_LABEL, HISTORICAL_REF_MAX, INSTALLMENT_LABEL_MAX, INSTALLMENT_NOTE_MAX, OPENING_INSTALLMENT_LABEL,
@@ -1987,7 +1987,8 @@ export const HISTORICAL_DUE_RULES = Object.freeze([
      ⚠️ normalizeBillingRule ห้าม offset 0 เมื่อวันเงินเข้า < วันวางบิล ⇒ offset 1 คือรูปปกติของลูกค้าที่จ่ายวันต้นกว่าวันวางบิล
        ทางที่คิดถูก (ถ้าเจ้าของอยากได้): ใช้ `billingRounds(rule, coversFrom, 1)[0].dueDate` รายงวดในตัวคิด = สาขาใหม่ ต้องขอมติก่อน
    🔴 รอบรุ่นสอง (mig 0390 · มติ 26/09 ข้อ 2–3) — ชิปมีเฉพาะ **รอบเดียวต่อเดือน** (หรือวางบิลได้ทุกวัน) + เงินเข้าเดือนเดียวกัน:
-     · **ไม่มีเครดิต** = ไม่มีชิป พร้อมเหตุ (ไม่มีรอบเงินเข้าให้ตาม — ประโยคบอก "ไม่มีเครดิต")
+     · **ไม่มีเครดิต** = ไม่มีชิป พร้อมเหตุ — มติ 28/09 ข้อ 17: ไม่มีเครดิต = **ชำระวันวางบิล** (`effectiveBillingRule` · ทางเดียวกับ
+       เครดิต N วัน) ซึ่งใบย้อนหลังไม่มีวันวางบิลให้นับ ⇒ เหตุเดียวกับเครดิต ต่างแค่คำ (ประโยคบอก "ไม่มีเครดิต · ชำระวันวางบิล")
      · **หลายรอบต่อเดือน** = ไม่มีชิป พร้อมเหตุ — แต่ละรอบมีวันเงินเข้าของตัวเอง ใบย้อนหลังไม่มีวันวางบิลบอกว่างวดไหน
        อยู่รอบไหน (เลือกรอบแรกให้ = เดาวัน · ขัดมติ 3) · ห้ามอ่าน `rule.payment.day`/`.monthOffset` รุ่นแรก — อ่าน `rounds[0]`
    ⚠️ งวดยกมาไม่เกี่ยว — หน้าต่างนี้สร้างเฉพาะงวดที่ยังต้องเก็บ (งวดยกมาไม่มีวันวางบิลเสมอ · CHECK ของ 0389) */
@@ -2005,11 +2006,11 @@ const NO_CUSTOMER_CHIP = 'ไม่มีตัวเลือก "ตามร�
  *     ⚠️ ห้ามมี "—" ใน note ที่ไม่มีชิป — ประโยครอบกับเหตุอยู่ใกล้กัน เคยขึ้นขีดยาวสองตัวในบรรทัดเดียว (รีวิว 26/09)
  */
 export function historicalCustomerDueOption(billingRule) {
-  const rule = billingRuleOf(billingRule);
+  const rule = effectiveBillingRule(billingRule);
   if (!rule) return { hint: '', option: null, note: null };
   const hint = describeBillingRule(rule);
-  if (billingRuleNoCredit(rule)) {
-    return { hint, option: null, note: `${NO_CUSTOMER_CHIP}ลูกค้าไม่มีเครดิต ไม่มีรอบเงินเข้าให้ตาม · เลือกวันครบกำหนดเอง` };
+  if (rule.noCredit) {
+    return { hint, option: null, note: `${NO_CUSTOMER_CHIP}ลูกค้าไม่มีเครดิต (ชำระวันวางบิล) ซึ่งใบย้อนหลังไม่มีวันวางบิล · เลือกวันครบกำหนดเอง` };
   }
   if (rule.payment.mode !== 'monthly') {
     return { hint, option: null, note: `${NO_CUSTOMER_CHIP}เงินเข้านับจากวันวางบิล ซึ่งใบย้อนหลังไม่มี · เลือกวันครบกำหนดเอง` };

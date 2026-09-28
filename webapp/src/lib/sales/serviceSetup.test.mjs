@@ -47,6 +47,7 @@ import {
   validateServiceSetupPatch,
 } from './serviceSetup.js';
 import { SERVICE_ROUND_CATEGORY } from './serviceOrders.js';
+import { effectiveBillingRule } from './billingRule.js';
 import { bindTargetError } from '../service/intake.js';
 
 /* ── ของจริงย่อส่วน ─────────────────────────────────────────────────────────────────────────────────── */
@@ -264,6 +265,37 @@ test('ลูกค้ามีรอบวางบิลรายเดือ�
   const event = rows.map((r) => ({ ...r, billingEvent: 'ก่อนส่งสินค้า' }));
   assert.deepEqual(serviceSetupIssues(completeCtx({ installments: event, customerBillingRule: monthly })), []);
   assert.deepEqual(serviceSetupIssues(completeCtx({ installments: rows, customerBillingRule: { credit: false } })), []);
+});
+
+test('D7 ตามกติกาของ #1846 (effectiveBillingRule): วันวางบิลบังคับเฉพาะลูกค้าเครดิต · ไม่มีเครดิต/ยังไม่ตั้ง = กำหนดชำระพอ', () => {
+  /* ไม่มีเครดิต = "วางบิลได้ทุกวัน + ชำระวันวางบิล" (มติ 28/09 ข้อ 17) — รูปที่อ่านแล้วส่งกลับเข้ามาต้องยังเป็นไม่มีเครดิต
+     (ไม่ใช่ "ทุกวัน + เครดิต 0 วัน" ที่ขอวันวางบิล · B3) */
+  const noCredit = effectiveBillingRule({ credit: false });
+  assert.equal(noCredit.noCredit, true);
+  for (const rule of [null, { credit: false }, { credit: false, note: 'โอนทันที' }, noCredit]) {
+    assert.deepEqual(serviceSetupIssues(completeCtx({ customerBillingRule: rule })), [], JSON.stringify(rule));
+  }
+  const rows = monthlyRows();
+  rows[0] = { ...rows[0], dueDate: null };
+  assert.deepEqual(keys(serviceSetupIssues(completeCtx({ installments: rows, customerBillingRule: noCredit }))), ['due_missing'],
+    'ไม่มีเครดิต: ขาดแค่กำหนดชำระ ไม่ขอวันวางบิล');
+  // ลูกค้าเครดิต — รูปดิบและรูปที่อ่านแล้วได้ผลเดียวกัน · รายเดือน/ทุกวันบอกรูปของรอบให้แผงรวมข้อ
+  const anyday = { billing: { mode: 'anyday' }, payment: { mode: 'credit', days: 30 } };
+  const monthly = { billing: { mode: 'monthly', days: [10, 25] }, payment: { mode: 'credit', days: 30 } };
+  for (const [rule, mode] of [[anyday, 'anyday'], [effectiveBillingRule(anyday), 'anyday'], [monthly, 'monthly'], [effectiveBillingRule(monthly), 'monthly']]) {
+    const billing = serviceSetupIssues(completeCtx({ customerBillingRule: rule })).filter((i) => i.key === 'billing_missing');
+    assert.equal(billing.length, 12, JSON.stringify(rule));
+    assert.ok(billing.every((i) => i.billingMode === mode), mode);
+  }
+});
+
+test('D7 ลำดับข้อของงวดเดียว = วันวางบิล → กำหนดชำระ (ลำดับคอลัมน์ของตารางงวด #1846)', () => {
+  const credit = { billing: { mode: 'monthly', days: [25] }, payment: { mode: 'credit', days: 30 } };
+  const rows = monthlyRows();
+  rows[1] = { ...rows[1], dueDate: null };
+  const issues = serviceSetupIssues(completeCtx({ installments: rows, customerBillingRule: credit }));
+  assert.deepEqual(issues.filter((i) => i.seq === 2).map((i) => i.key), ['billing_missing', 'due_missing']);
+  assert.deepEqual(issues.slice(0, 3).map((i) => [i.key, i.seq]), [['billing_missing', 1], ['billing_missing', 2], ['due_missing', 2]]);
 });
 
 test('งวดที่บัญชีรับรองแล้วไม่มีช่วงครอบ = คำเตือนของบัญชี ไม่ใช่ข้อที่บล็อก', () => {
@@ -971,6 +1003,27 @@ test('F10: ลูกค้าวางบิลได้ทุกวัน (ไ�
   const m = serviceSetupIssues(completeCtx({ customerBillingRule: monthly }));
   assert.equal(m[0].message, 'งวด 1: ยังไม่เลือกรอบวางบิล (ลูกค้ามีรอบวางบิล)');
   assert.equal(m[0].billingMode, 'monthly');
+});
+
+test('#1846: ข้อวันงวดบอกว่าแผง "เติมวันงวดที่ว่าง…" เติมงวดนั้นได้ไหม (`dateFillable` — ตัวเลือกงวดของแผง `fillTargetsOf`)', () => {
+  const anyday = { billing: { mode: 'anyday' }, payment: { mode: 'credit', days: 30 } };
+  const monthly = { billing: { mode: 'monthly', days: [25] }, payment: { mode: 'credit', days: 30 } };
+  const billingOf = (issues) => issues.filter((i) => i.key === 'billing_missing');
+  // เครดิต (ทุกวัน) + งวดมีกำหนดชำระแล้ว ขาดแค่วันวางบิล = แผงเติมไม่แตะ (เติมเฉพาะงวดที่ว่างทั้งคู่) — จอ backfill SO-26090206-0
+  const dated = billingOf(serviceSetupIssues(completeCtx({ customerBillingRule: anyday })));
+  assert.equal(dated.length, 12);
+  assert.ok(dated.every((i) => i.dateFillable === false));
+  // งวดที่ว่างทั้งคู่ = เติมได้ ทั้งข้อวันวางบิลและข้อกำหนดชำระ
+  const blank = serviceSetupIssues(completeCtx({ customerBillingRule: anyday, installments: monthlyRows({ dueDate: null }) }));
+  assert.ok(billingOf(blank).every((i) => i.dateFillable === true));
+  assert.ok(blank.filter((i) => i.key === 'due_missing').every((i) => i.dateFillable === true));
+  // รายเดือน = งวดที่ยังไม่มีวันวางบิลเติมได้เสมอ (คงกำหนดชำระเดิม — planMonthlyFill)
+  assert.ok(billingOf(serviceSetupIssues(completeCtx({ customerBillingRule: monthly }))).every((i) => i.dateFillable === true));
+  // มีวันวางบิลแล้วแต่ไม่มีกำหนดชำระ = แผงเติมไม่แตะ (ทุกชนิดเติมเฉพาะงวดที่ยังไม่มีวันวางบิล)
+  const billedOnly = serviceSetupIssues(completeCtx({ installments: monthlyRows({ dueDate: null, billingDate: '2026-10-01' }) }));
+  const due = billedOnly.filter((i) => i.key === 'due_missing');
+  assert.equal(due.length, 12);
+  assert.ok(due.every((i) => i.dateFillable === false));
 });
 
 test('F4: ครอบซ้อนที่งวดถูกซ้อนรับรองแล้ว = คำเตือนชี้งวดคู่ที่ยังแก้ได้ · รับรองทั้งคู่ = คำเตือนของบัญชี', () => {

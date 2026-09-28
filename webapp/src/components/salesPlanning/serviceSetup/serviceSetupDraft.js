@@ -307,6 +307,8 @@ export function issueHeadTail(message) {
 
 /* ข้อที่รวมเป็นแถวเดียวได้เมื่อซ้ำหลายงวด — ข้อความรูปเดียวกันต่างแค่เลขงวด (12× "ยังไม่เลือกรอบวางบิล" = แถวเดียว) */
 const MERGE_KEYS = new Set(['billing_missing', 'due_missing', 'coverage_missing']);
+/* ข้อวันงวด — กลุ่มหลายงวดของสองข้อนี้ "ไปแก้" = โหมดตั้งวันงวด + แผง "เติมวันงวดที่ว่าง…" (#1846 · `entry.dateFill`) */
+const DATE_FILL_KEYS = new Set(['billing_missing', 'due_missing']);
 
 /** [1,2,3,5,7,8] → "1–3, 5, 7–8" (เลขงวดเรียงน้อยไปมาก · ค่าที่ไม่ใช่ตัวเลขต่อท้ายตามที่มา) */
 export function seqRangesText(seqs = []) {
@@ -321,15 +323,22 @@ export function seqRangesText(seqs = []) {
   return parts.join(', ');
 }
 
-/* ข้อเดียวกันหลายงวด → แถวเดียว "งวด 1–12: … · 12 งวด" · ไปแก้ = งวดแรก (ช่องอื่นยังแดงรายเซลล์จาก Map ของหน้า) */
-function mergedItem(entries) {
+/* ข้อเดียวกันหลายงวด → แถวเดียว "งวด 1–12: … · 12 งวด" (ช่องอื่นยังแดงรายเซลล์จาก Map ของหน้า)
+   · ข้อวันงวด (`dateFill`) — "ไปแก้" = หน้าใบขอแผงงวดเข้าโหมดตั้งวันงวดแล้วเปิดแผง "เติมวันงวดที่ว่าง…" (เปิดไม่ได้ = งวดแรก)
+     + ทางลัดเป็นตัวหนังสือ (`withHint` — กลุ่มวันงวดแรกของแผงเท่านั้น: สองกลุ่มเปิดแผงเติมอันเดียวกัน)
+   · ช่วงครอบ — "ไปแก้" = เซลล์ของงวดแรก */
+function mergedItem(entries, { withHint = false } = {}) {
   const [first] = entries;
   const { rest } = issueHeadTail(first?.message);
   const seqs = entries.map((entry) => entry?.seq);
-  const hint = first?.key === 'billing_missing' && first?.billingMode === 'monthly' ? SERVICE_SETUP_PANEL_TEXT.monthlyFillHint : '';
+  /* ทุกงวดของกลุ่มต้องเป็นงวดที่แผงเติมแตะ (`dateFillable` จากด่าน — ไม่มีธง = ถือว่าเติมได้) · มีงวดที่เติมไม่ได้ = ไปที่ช่องของงวดแรก
+     และไม่บอกทางลัด (ทางลัดพูดว่า "เติมทีเดียวได้" — ต้องจริงทั้งกลุ่ม) */
+  const dateFill = DATE_FILL_KEYS.has(first?.key) && entries.every((entry) => entry?.dateFillable !== false);
+  const hint = dateFill && withHint ? SERVICE_SETUP_PANEL_TEXT.dateFillHint : '';
+  const message = `${SERVICE_SETUP_PANEL_TEXT.mergedSeqs({ seqs: seqRangesText(seqs), rest, n: entries.length })}${hint}`;
   return {
     kind: 'issue',
-    entry: { ...first, message: `${SERVICE_SETUP_PANEL_TEXT.mergedSeqs({ seqs: seqRangesText(seqs), rest, n: entries.length })}${hint}` },
+    entry: { ...first, message, ...(dateFill ? { dateFill: true } : {}) },
     entries,
     tag: null,
     jump: true,
@@ -343,6 +352,7 @@ function mergedItem(entries) {
  *   · ของบัญชี (owner FN — ทั้งข้อที่บล็อกและคำเตือน) มีป้าย "รอฝ่ายบัญชี" และ **ไม่มี "ไปแก้"** (ฝ่ายขายแก้ไม่ได้)
  *   · ข้อเดียวกันหลายงวด (วันวางบิล · กำหนดชำระ · ช่วงครอบ) รวมเป็นแถวเดียว — `count` ยังนับทุกข้อ (ตรงกับป้ายบนแท็บ)
  *     🐞 เดิมแถวละงวด ⇒ ลูกค้าวางบิล 12 งวดได้ 12 แถวเหมือนกันทุกตัวอักษร จอ 375px ยาวหลายหน้าจอก่อนถึงตาราง
+ *   · แถวรวมของข้อวันงวดมี `entry.dateFill` — หน้าใบอ่านธงนี้ตอน "ไปแก้" (โหมดตั้งวันงวด + แผงเติม · #1846)
  */
 export function submitGateGroups(issues = [], warnings = []) {
   const groups = [
@@ -357,6 +367,7 @@ export function submitGateGroups(issues = [], warnings = []) {
     sameKey.set(mergeKey, [...(sameKey.get(mergeKey) || []), entry]);
   }
   const placed = new Set();
+  let hinted = false;
   for (const entry of list(issues)) {
     const group = groupOf(entry);
     group.count += 1;
@@ -365,7 +376,9 @@ export function submitGateGroups(issues = [], warnings = []) {
     if (bucket && bucket.length > 1) {
       if (placed.has(mergeKey)) continue;
       placed.add(mergeKey);
-      group.items.push(mergedItem(bucket));
+      const item = mergedItem(bucket, { withHint: !hinted });
+      if (item.entry.dateFill) hinted = true;
+      group.items.push(item);
       continue;
     }
     const fn = entry?.owner === 'FN';

@@ -80,6 +80,8 @@ export default function CoverageSplitModal({
     || null;
   const planned = mode && !previewError ? split.rows : [];
   const amountOf = (id) => rows.find((row) => row?.id === id)?.amount;
+  /* รุ่นของงวดที่ตาเห็น — route ตอบ 409 เมื่องวดถูกแก้จากอีกหน้าต่างหลังเปิดโมดัล (ตาราง "ครอบเดิม" เป็นของเก่า · ท่าเดียวกับ schedule-many) */
+  const versionOf = (id) => rows.find((row) => row?.id === id)?.updatedAt || "";
   const blocker = rowGate
     ? planned.map((row) => {
       const why = rowGate(row);
@@ -90,7 +92,7 @@ export default function CoverageSplitModal({
     if (!mode || previewError || blocker || !planned.length || !onApply) return;
     await onApply({
       mode,
-      plan: planned.map(({ id, coversFrom, coversTo }) => ({ id, coversFrom, coversTo })),
+      plan: planned.map(({ id, coversFrom, coversTo }) => ({ id, coversFrom, coversTo, updatedAt: versionOf(id) })),
     });
   };
 

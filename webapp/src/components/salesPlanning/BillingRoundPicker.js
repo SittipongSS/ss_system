@@ -4,8 +4,9 @@
 // ⭐ SA **แตะรอบเดียวได้ทั้งวันวางบิลและกำหนดชำระ** — ไม่ต้องพิมพ์วัน (มติ "คิดให้" = แตะชิป ระบบคิดต่อ)
 //   · ลูกค้าวางบิลทุกเดือน = ชิป 3 รอบถัดไป + "วันอื่น…" + "รอเหตุการณ์"
 //   · ลูกค้าวางบิลได้ทุกวัน = ไม่มีรอบให้แตะ ⇒ ช่องวันวางบิลขึ้นเลย (คิดกำหนดชำระให้) + "รอเหตุการณ์"
-//   · ยังไม่ตั้งรอบ (`rule` ว่าง/รูปผิด) **หรือไม่มีเครดิต** = **ไม่วาดอะไร** ผู้เรียกคงช่องกำหนดชำระแบบเดิมไว้เอง
-//     (มติ 26/09 ข้อ 2: ไม่มีเครดิต = ทำเหมือนไม่มีรอบ · ตัดสินที่ `pickerRuleOf` ตัวเดียวกับผู้เรียก)
+//   · ไม่มีเครดิต (มติ 28/09 ข้อ 17) = แบบวางบิลได้ทุกวัน — ช่องวันวางบิล แล้วกำหนดชำระ = วันเดียวกัน ("ชำระวันวางบิล")
+//     ตัดสินที่ `pickerRuleOf` (= `effectiveBillingRule`) ตัวเดียวกับผู้เรียก — ห้ามพูด "เครดิต 0 วัน"
+//   · ยังไม่ตั้งรอบ (`rule` ว่าง/รูปผิด) = **ไม่วาดอะไร** ผู้เรียกวาดช่องกำหนดชำระ + วันวางบิล (ไม่บังคับ) เอง
 //   · ลูกค้าหลายรอบต่อเดือน (ถึง 4 · มติ 26/09 ข้อ 3) = ชิปสลับรอบตามวัน + วันเงินเข้าบนชิป (`pickerRoundOptions`)
 // ⭐ **ไม่มีค่าตั้งต้น** (ยังไม่เลือก = ว่าง) และ **ไม่บังคับ** (บางที่ไม่มีรอบวาง · มติ 26/09 ข้อ 2)
 //   — ผู้เรียกที่อยากกันบันทึกครึ่ง ๆ กลาง ๆ ใช้ `pickerMissing(value)` ของ lib/sales/billingPicker.js
@@ -27,7 +28,7 @@ import Input from "@/components/ui/Input";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { NA } from "@/lib/format";
 import {
-  BILLING_EVENT_MAX, BILLING_EVENT_PRESETS, billingRoundCount, billingRuleMonthly, dueDateForBilling,
+  BILLING_EVENT_MAX, BILLING_EVENT_PRESETS, PAY_ON_BILLING_TEXT, billingRoundCount, billingRuleMonthly, dueDateForBilling,
   formatBillingDate, weekendNote,
 } from "@/lib/sales/billingRule";
 import {
@@ -46,7 +47,7 @@ function WeekendBadge({ iso }) {
 const dayText = (iso) => formatBillingDate(iso) || NA;
 
 /**
- * @param rule        customers."billingRule" (ดิบจากฐานได้ — อ่านผ่าน pickerRuleOf · ไม่มีเครดิต = ไม่วาด)
+ * @param rule        customers."billingRule" (ดิบจากฐานได้ — อ่านผ่าน pickerRuleOf · ยังไม่ตั้ง = ไม่วาด)
  * @param todayIso    businessDate() ของผู้เรียก — ตั้งต้นของ 3 รอบถัดไป
  * @param value       `{ mode, billingDate, billingEvent, dueDate, dueOverridden }` (ดู billingPicker.js)
  * @param onChange    (nextValue) => void
@@ -88,6 +89,8 @@ export default function BillingRoundPicker({
   /* ชื่อปุ่มข้อความสำหรับเสียงอ่าน — ตารางหลายงวดมีปุ่มชื่อเดียวกันทุกแถว ต่อบริบทงวดท้ายคำที่ตาเห็น (WCAG 2.5.3) */
   const named = (text) => (label ? `${text}${context}` : undefined);
   const monthly = billingRuleMonthly(cleanRule);
+  /* ชำระวันวางบิล (ไม่มีเครดิต · เครดิต 0) — กำหนดชำระที่คิดได้ = วันวางบิลเอง ⇒ คำว่า "คิดจากรอบ" ผิดความหมาย */
+  const payOnBilling = cleanRule.payment?.mode === "credit" && cleanRule.payment.days === 0;
   const perMonth = billingRoundCount(cleanRule);
   const rounds = monthly ? pickerRoundOptions(cleanRule, todayIso, ROUND_COUNT) : [];
   /* "รอบ" ที่ไม่อยู่ใน 3 รอบถัดไปแล้ว (รอบของลูกค้าเปลี่ยนหลังบันทึก · ผู้เรียกประกอบค่าเอง) = แสดงเป็น "วันอื่น…"
@@ -182,6 +185,8 @@ export default function BillingRoundPicker({
               <span className={styles.part}>
                 กำหนดชำระ <b>{dayText(v.dueDate)}</b>
                 <WeekendBadge iso={v.dueDate} />
+                {payOnBilling && v.dueDate === computedDue
+                  ? <StatusBadge size="sm" tone="neutral" label={PAY_ON_BILLING_TEXT} /> : null}
               </span>
               {disabled ? null : (
                 <button
@@ -214,22 +219,22 @@ export default function BillingRoundPicker({
           />
           {v.dueOverridden ? (
             <>
-              <StatusBadge size="sm" tone="info" icon={PencilLine} iconSize={11} label="แก้ทับรอบของลูกค้า" />
+              <StatusBadge size="sm" tone="info" icon={PencilLine} iconSize={11} label={payOnBilling ? "แก้ทับ" : "แก้ทับรอบของลูกค้า"} />
               {disabled || !computedDue ? null : (
                 <button
                   type="button"
                   className={`text-action ${styles.action}`}
-                  aria-label={named(`ใช้วันที่คิดจากรอบ (${formatBillingDate(computedDue)})`)}
+                  aria-label={named(`${payOnBilling ? "ใช้วันวางบิล" : "ใช้วันที่คิดจากรอบ"} (${formatBillingDate(computedDue)})`)}
                   onClick={() => { emit({ mode: "resetDue" }); setDueOpen(false); focusAfter(ids.dueEdit); }}
                 >
-                  ใช้วันที่คิดจากรอบ ({formatBillingDate(computedDue)})
+                  {payOnBilling ? "ใช้วันวางบิล" : "ใช้วันที่คิดจากรอบ"} ({formatBillingDate(computedDue)})
                 </button>
               )}
             </>
           ) : (
             <>
               <WeekendBadge iso={v.dueDate} />
-              <span className={styles.muted}>วันที่คิดจากรอบ · เลือกวันใหม่เพื่อแก้ทับ</span>
+              <span className={styles.muted}>{payOnBilling ? PAY_ON_BILLING_TEXT : "วันที่คิดจากรอบ"} · เลือกวันใหม่เพื่อแก้ทับ</span>
               {disabled ? null : (
                 <button
                   type="button"

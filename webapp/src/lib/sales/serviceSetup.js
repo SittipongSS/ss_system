@@ -19,7 +19,7 @@
 import { categoryOf } from '@/lib/master/categoryOf';
 import { orderBusinessLineOf } from '@/lib/sales/serviceOrders';
 import { addDays, daysBetween, isConfirmed, monthEdge, pipelineCoverageIssues, wholeMonthsIn } from '@/lib/sales/paymentCoverage';
-import { billingRuleOf } from '@/lib/sales/billingRule';
+import { billingRuleMonthly, billingRuleNeedsBillingDate } from '@/lib/sales/billingRule';
 import { installmentRefunded, installmentVoid, paymentNotRequired } from '@/lib/sales/salesOrderPayments';
 import { bindTargetError } from '@/lib/service/intake';
 import { isHistoricalOrder, isOpeningInstallment } from '@/lib/sales/historicalOrders';
@@ -106,11 +106,12 @@ export const SERVICE_SETUP_ISSUE_TEXT = Object.freeze({
   rounds_missing: ({ n } = {}) => `รายการ ${n}: ยังไม่ใส่รอบบริการ`,
   period_missing: () => 'ยังไม่ใส่ช่วงบริการ (วันเริ่ม–วันสิ้นสุด)',
   installments_missing: () => 'ยังไม่มีงวดชำระ — กด ‘เริ่มติดตามการชำระ’ ที่แท็บการชำระ',
-  due_missing: ({ seq } = {}) => `งวด ${seq}: ยังไม่ใส่กำหนดชำระ — หรือเลือก ‘รอเหตุการณ์’`,
-  /* ลูกค้าวางบิลได้ทุกวัน (ไม่มีรอบ) — ตัวเลือกวันวางบิลไม่มีชิปรอบ ⇒ ห้ามพูดว่า "เลือกรอบ" (มีแต่ช่องระบุวัน) */
+  /* สองข้อของวันงวดเรียง วันวางบิล → กำหนดชำระ (ลำดับคอลัมน์ · #1846) · วันวางบิลขึ้นเฉพาะลูกค้าเครดิต (D7/B3)
+     ลูกค้าวางบิลได้ทุกวัน (ไม่มีรอบ) — ตัวแก้ของโหมดตั้งวันไม่มีไทล์ "ตามรอบ" ⇒ ห้ามพูดว่า "เลือกรอบ" */
   billing_missing: ({ seq, anyday = false } = {}) => (anyday
     ? `งวด ${seq}: ยังไม่ใส่วันวางบิล (ลูกค้าวางบิลได้ทุกวัน) — ใส่วันที่คอลัมน์วันวางบิล หรือเลือก ‘รอเหตุการณ์’`
     : `งวด ${seq}: ยังไม่เลือกรอบวางบิล (ลูกค้ามีรอบวางบิล)`),
+  due_missing: ({ seq } = {}) => `งวด ${seq}: ยังไม่ใส่กำหนดชำระ — หรือเลือก ‘รอเหตุการณ์’`,
   coverage_missing: ({ seq } = {}) => `งวด ${seq}: ยังไม่ใส่ช่วงครอบบริการ`,
   /* งวดที่ขอบช่วงเป็นงวดที่บัญชีรับรองแล้ว (`confirmedSeq`) — ช่องของงวดนั้นล็อก ⇒ บอกทางที่ฝ่ายขายทำได้ (ปรับช่วงบริการ)
      หรือให้บัญชีแก้ · ข้อชี้ช่องช่วงบริการ ไม่ใช่เซลล์ที่ล็อก (installmentFindings) */
@@ -142,8 +143,10 @@ export const SERVICE_SETUP_PANEL_TEXT = Object.freeze({
   warnCount: (n) => `เตือน ${n} ข้อ`,
   /* ข้อเดียวกันหลายงวด (วันวางบิล/กำหนดชำระ/ช่วงครอบ) รวมเป็นแถวเดียว — "งวด 1–3, 5: … · 4 งวด" (submitGateGroups) */
   mergedSeqs: ({ seqs, rest, n }) => `งวด ${seqs}${rest} · ${n} งวด`,
-  /* ลูกค้ารายเดือน: ปุ่ม "เติมตามรอบ เดือนละงวด…" ของแผงงวดเติมทุกงวดได้ในครั้งเดียว */
-  monthlyFillHint: ' — เติมทีเดียวได้ด้วย ‘เติมตามรอบ เดือนละงวด…’ ที่แท็บการชำระ',
+  /* ข้อวันงวดที่รวมหลายงวด (วันวางบิล · กำหนดชำระ): โหมด "ตั้งวันงวด" ของแผงงวด → แผง "เติมวันงวดที่ว่าง…" เติมทุกงวดได้ในครั้งเดียว
+     · ทุกชนิดของรอบ (#1846: รายเดือน · ทุกวัน + เครดิต · ไม่มีเครดิต · ยังไม่ตั้ง) — ปุ่ม "เติมตามรอบ เดือนละงวด…" เดิมมีแค่รายเดือน
+       และไม่มีบนจอแล้ว ห้ามชี้ไปหา · ต่อท้ายกลุ่มวันงวดแรกของแผงครั้งเดียว (submitGateGroups) · "ไปแก้" ของกลุ่มเปิดแผงนั้นให้เลย */
+  dateFillHint: ' — เติมทีเดียวได้ด้วย ‘ตั้งวันงวด’ → ‘เติมวันงวดที่ว่าง…’ ที่แท็บการชำระ',
   warningTag: 'เตือน · ไม่บล็อกการยื่น',
   fnTag: 'รอฝ่ายบัญชี',
   jump: 'ไปแก้',
@@ -554,8 +557,8 @@ const ISSUE_PLACE = Object.freeze({
   rounds_missing: ['lines', 'overview', 'rounds'],
   period_missing: ['period', 'overview', 'period'],
   installments_missing: ['installments', 'payment', null],
-  due_missing: ['installments', 'payment', 'dueDate'],
   billing_missing: ['installments', 'payment', 'billingDate'],
+  due_missing: ['installments', 'payment', 'dueDate'],
   coverage_missing: ['installments', 'payment', 'coverage'],
   coverage_start: ['installments', 'payment', 'coverage'],
   coverage_gap: ['installments', 'payment', 'coverage'],
@@ -693,10 +696,12 @@ function installmentFindings(ctx, totals) {
     findings.issues.push(makeIssue('installments_missing'));
     return findings;
   }
-  const rule = billingRuleOf(ctx?.customerBillingRule);
-  const needsBilling = !!rule && rule.credit !== false;
+  /* D7/B3 ผ่านตัวถามรูปของรอบของ billingRule.js (อ่านด้วย `effectiveBillingRule` · มติ 28/09 ข้อ 17 ของ #1846) — ห้ามอ่านช่องของรอบเอง:
+     วันวางบิลบังคับ **เฉพาะลูกค้าเครดิต** (ตั้งแล้วและมีเครดิต) · ไม่มีเครดิต (= ทุกวัน + ชำระวันวางบิล) / ยังไม่ตั้ง = กำหนดชำระหรือรอเหตุการณ์พอ
+     🐞 เดิม `billingRuleOf(x).credit !== false` — รูปที่อ่านแล้วของ "ไม่มีเครดิต" (`noCredit` · ทุกวัน + เครดิต 0) ถูกนับเป็นลูกค้าเครดิต ⇒ ขอวันวางบิลทุกงวด */
+  const needsBilling = billingRuleNeedsBillingDate(ctx?.customerBillingRule);
   /* รูปของรอบ — ข้อความ "เลือกรอบ" ใช้ได้เฉพาะลูกค้ารายเดือน (ทุกวัน = ไม่มีชิปรอบ) · แผงแดงรวมข้อซ้ำด้วยค่านี้ */
-  const billingMode = rule?.billing?.mode === 'monthly' ? 'monthly' : 'anyday';
+  const billingMode = billingRuleMonthly(ctx?.customerBillingRule) ? 'monthly' : 'anyday';
   let unconfirmedMissing = false;
   for (const row of live) {
     const at = { installmentId: row.id ?? null, seq: row.seq ?? null };
@@ -712,9 +717,17 @@ function installmentFindings(ctx, totals) {
       continue;
     }
     const event = text(row.billingEvent);
-    if (!isoDay(row.dueDate) && !event) findings.issues.push(makeIssue('due_missing', at, { seq: row.seq }));
+    /* ลำดับ วันวางบิล → กำหนดชำระ เสมอ (ลำดับคอลัมน์ของตารางงวด · เจ้าของทัก 28/09 ใน #1846) — แผงแดงเรียงกลุ่มตามข้อแรกที่เจอ
+       ⭐ `dateFillable` = แผง "เติมวันงวดที่ว่าง…" ของ #1846 (ค่าตั้งต้น — ไม่เปิด "จัดใหม่งวดที่มีวันแล้วด้วย") เติมงวดนี้ให้ไหม
+         (`fillTargetsOf` ของ installmentDateDrafts.js): รายเดือน = งวดที่ยังไม่มีวันวางบิล · ชนิดอื่น = งวดที่ยังไม่มีทั้งวันวางบิลและกำหนดชำระ
+         ⇒ ลูกค้าเครดิตที่งวดมีกำหนดชำระแล้ว ขาดแค่วันวางบิล = เติมไม่ได้ — แผงแดงไม่ชี้ทางลัดนี้ และ "ไปแก้" ไปที่ช่องของงวดแทน
+         🐞 ไม่มีธงนี้ "ไปแก้" เปิดแผงเติมที่บอก "ไม่มีงวดที่ว่าง" ใต้ข้อที่เพิ่งบอกว่า "12 งวดยังไม่ใส่วันวางบิล" (จอ backfill 29/09) */
     if (needsBilling && !isoDay(row.billingDate) && !event) {
-      findings.issues.push(makeIssue('billing_missing', { ...at, billingMode }, { seq: row.seq, anyday: billingMode === 'anyday' }));
+      const dateFillable = billingMode === 'monthly' || !isoDay(row.dueDate);
+      findings.issues.push(makeIssue('billing_missing', { ...at, billingMode, dateFillable }, { seq: row.seq, anyday: billingMode === 'anyday' }));
+    }
+    if (!isoDay(row.dueDate) && !event) {
+      findings.issues.push(makeIssue('due_missing', { ...at, dateFillable: !isoDay(row.billingDate) }, { seq: row.seq }));
     }
     if (!hasCover(row)) {
       unconfirmedMissing = true;

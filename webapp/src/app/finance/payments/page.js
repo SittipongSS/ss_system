@@ -22,6 +22,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import Link from "next/link";
+import DetailRow from "@/components/ui/DetailRow";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlarmClock, CalendarClock, CircleDollarSign, ExternalLink, FileSpreadsheet, FileText, Flag, HandCoins, Receipt, Search,
@@ -102,7 +103,8 @@ function NextBillingCell({ group }) {
     );
   }
   /* ไม่มีรอบถัดไป — บอกเหตุเท่าที่รู้ (ม็อก D) · ลูกค้าที่ไม่มีรอบ และไม่มีงวดไหนเลือกวัน = ขีด (สถานะปกติ)
-     ⚠️ "มีรอบ" = `billingRuleActive` ไม่ใช่ความว่างของข้อความ — ลูกค้าไม่มีเครดิตมีข้อความ ("ไม่มีเครดิต") แต่ไม่มีรอบให้เลือก (mig 0390) */
+     ⚠️ "มีรอบ" = `billingRuleActive` ไม่ใช่ความว่างของข้อความ — เฉพาะรอบรายเดือน/เครดิต N วัน (`billingRuleNeedsBillingDate`)
+       ลูกค้าไม่มีเครดิต (ข้อความ "ไม่มีเครดิต · ชำระวันวางบิล") ไม่ขึ้นชวน: กำหนดชำระ = วันวางบิลอยู่แล้ว (มติ 28/09 · ดู paymentLedger.js) */
   if (group.billingUnset && group.billingRuleActive) {
     return (
       <>
@@ -388,16 +390,20 @@ export default function FinancePaymentsPage() {
   /* ── แถวของ "ใบ" หนึ่งใบ — ใช้ทั้งโหมดปกติและโหมดจัดกลุ่ม ────────────────
      ⚠️ ยกออกมาเป็นฟังก์ชันตัวเดียว ไม่ใช่เขียนซ้ำในสองสาขาของ tbody
      (AGENTS.md: สองสำเนาของสิ่งเดียวกันจะเพี้ยนหากันเสมอ) */
+  /* `#payment` พาไปยืนที่การ์ดการชำระพอดี · ⚠️ แถวกับลิงก์ในเซลล์ต้องได้ href ตัวเดียวกันเป๊ะ (ROW_MIRROR) */
+  const orderHref = (group) => `/sa/sales-orders/${group.orderId}#payment`;
   const orderRow = (group) => {
     const note = groupNote(group);
     const shaped = groupAsOrder(group);
     const track = shaped ? salesOrderListTrack(shaped) : null;
     return (
-      <tr key={group.key}>
+      <DetailRow key={group.key} href={orderHref(group)} className="premium-row">
         <td>
-          {/* เลขที่ SO เป็นข้อความ ไม่ใช่ลิงก์ — ทางไปใบมีทางเดียวคือปุ่ม
-              "เปิดใบ" ท้ายแถว · สองทางไปที่เดียวกันในแถวเดียวกดพลาดกันเอง */}
-          <span className="mono"><strong>{naText(group.orderNumber)}</strong></span>
+          {/* ⭐ ทรงเดียวกับตารางรายการ SO ฝ่ายขาย (มติผู้ใช้ 2026-09-28) — กดตรงไหนของแถวก็เปิดใบ
+              และเลขที่ SO เป็นลิงก์ (ทางของคีย์บอร์ด/คลิกขวาเปิดแท็บใหม่ · ด่าน ROW_MIRROR)
+              เดิมเป็นข้อความ + ปุ่ม "เปิดใบ" ท้ายแถว ⇒ บัญชีกดแถว/เลขที่แล้วไม่เกิดอะไร
+              ต้องเลื่อนตาราง 1320px ไปหาปุ่มขวาสุด · ตัวกรองอยู่ใน URL ⇒ กดย้อนกลับไม่เสีย */}
+          <Link prefetch={false} href={orderHref(group)} className="linklike mono"><strong>{naText(group.orderNumber)}</strong></Link>
           {/* อ้างอิง QT เป็นบรรทัดรอง — เป็นที่มาของใบ ไม่ใช่ตัวใบเอง
               (เลิกเป็นคอลัมน์ของตัวเองตอนยุบ 9 → 6)
               ⭐ เอกสารอ้างอิง (PO ลูกค้า) ต่อท้ายบรรทัดเดียวกัน ทรงเดียวกับตาราง
@@ -417,7 +423,7 @@ export default function FinancePaymentsPage() {
           {naText(group.customerName)}
           {/* ⭐ รอบวางบิลของลูกค้าแบบย่อ (mig 0389 · ม็อก D) — FN รู้ทันทีว่าใบนี้วางบิลวันไหน เงินเข้าวันไหน
               ⚠️ ยังไม่ตั้ง = บอกตรง ๆ (ข้อความเดียวกับชุดค้น) + ลิงก์ไปตั้งที่ทะเบียนลูกค้า (FN แก้รอบได้ · มติ 25/09 ข้อ 4)
-                เปิดแท็บใหม่แบบปุ่ม "เปิดใบ" — เด้งออกแล้วย้อนกลับ = เสียตัวกรอง */}
+                เปิดแท็บใหม่ — ไม่ใช่ปลายทางของแถว (แถว = ใบ SO) จึงไม่พาทั้งหน้าออกไป */}
           {group.billingRuleText ? (
             <span className="cell-sub">
               <CalendarClock size={12} aria-hidden="true" className={styles.billRuleIcon} />
@@ -472,10 +478,7 @@ export default function FinancePaymentsPage() {
           ) : null}
         </td>
         {/* ใบหนึ่งมีหลายงวดจึงมีหลายวัน — สิ่งที่ตอบ "ต้องตามใบนี้เมื่อไร"
-            คือวันของงวดที่ **ยังเก็บไม่ได้** ที่ใกล้ที่สุด (`nextDue`)
-            ⚠️ **เปิดแท็บใหม่** (มติผู้ใช้ 2026-08-13 · "ทำให้ลงมือได้เร็วขึ้น") —
-            บัญชีไล่ทีละใบจากหน้านี้ เด้งออกแล้วกดย้อนกลับทุกครั้งคือเสียตัวกรอง
-            · `#payment` พาไปยืนที่การ์ดการชำระพอดี ไม่ต้องเลื่อนหา */}
+            คือวันของงวดที่ **ยังเก็บไม่ได้** ที่ใกล้ที่สุด (`nextDue`) */}
         {/* ⭐ "จ่ายถึง" — เงินที่รับรองแล้วครอบบริการถึงวันไหน (mig 0320 · มติ 2026-08-30)
             บัญชีกดรับรองงวดแล้ววันนี้ขยับ = คิวช่างของ TS ปลดตาม ⇒ ต้องเห็นบนทะเบียนนี้
             ⚠️ โชว์ทุกแถวเพื่อให้ตารางมีทรงเดียว — ใบที่ไม่มีรอบบริการขึ้นขีดตามปกติ
@@ -508,18 +511,7 @@ export default function FinancePaymentsPage() {
             ? <span className="cell-sub">ยกมา: {openingInvoiceNote}{group.historicalInvoiceRef ? ` · ${group.historicalInvoiceRef}` : ""}</span>
             : null}
         </td>
-        <td>
-          <Link
-            prefetch={false}
-            href={`/sa/sales-orders/${group.orderId}#payment`}
-            target="_blank" rel="noreferrer"
-            className={`linklike ${styles.openLink}`}
-            title="เปิดใบในแท็บใหม่ ไปที่การ์ดการชำระ"
-          >
-            เปิดใบ<ExternalLink size={12} aria-hidden="true" className={styles.openIcon} />
-          </Link>
-        </td>
-      </tr>
+      </DetailRow>
     );
   };
 
@@ -925,7 +917,6 @@ export default function FinancePaymentsPage() {
                     {/* ใบกำกับภาษี (mig 0348) — ตารางเป็น **หนึ่งใบหนึ่งแถว** ⇒ ใส่ได้แค่
                         ตัวนับ ไม่ใช่เลขใบ · เลขรายงวดอยู่ในไฟล์ Excel และบนใบ SO */}
                     <th className="num">ใบกำกับ</th>
-                    <th aria-label="เปิดใบ" />
                   </tr>
                 </thead>
                 <tbody>
@@ -939,7 +930,7 @@ export default function FinancePaymentsPage() {
                         {/* ยอดของกลุ่ม = **ค้างรับ** ไม่ใช่ยอดรวม — เลขเดียวกับที่เป็น
                             ตัวเด่นในแถวใบ ⇒ หัวกลุ่มกับแถวข้างในพูดเรื่องเดียวกัน */}
                         <TableGroupRow
-                          colSpan={9}
+                          colSpan={8}
                           label={bucket.label}
                           sub={bucket.sub}
                           badge={`${bucket.count} ใบ`}
@@ -954,7 +945,7 @@ export default function FinancePaymentsPage() {
                   }) : pageRows.map(orderRow)}
                   {!rows.length && !loading && (
                     <TableEmpty
-                      colSpan={9}
+                      colSpan={8}
                       /* ตัวกรองรอบวางบิลบอกนิยามของตัวเองตอนว่าง — "ว่าง" ของ "เลยรอบ" ต้องอ่านออกว่านับอะไร (ม็อก D) */
                       title={onlyBillingFilter ? billingOption.empty : filtering ? "ไม่มีงวดที่ตรงกับตัวกรอง" : "ยังไม่มีงวดชำระในระบบ"}
                       description={onlyBillingFilter

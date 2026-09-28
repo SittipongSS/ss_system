@@ -12,6 +12,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { writeCoverageFill } from './salesOrderInstallmentsStore.js';
+import { INSTALLMENT_VERSION_MISSING, coveragePlanStale, scheduleManyShapeError } from './installmentScheduleMany.js';
 import { SERVICE_SETUP_SQL_MESSAGES } from './serviceSetup.js';
 import { splitCoverageByPeriod } from './paymentCoverage.js';
 import { withLiveAmounts } from './salesOrderPayments.js';
@@ -136,6 +137,11 @@ test('fill-coverage: สิทธิ์ก่อนโหลด → ด่าน
     'const split = splitCoverageByPeriod(period, installmentsForScreen(order, live), mode);',
     'if (split.error) return fail(split.error, 409);',
     'if (!coveragePlanMatches(split.rows, body.plan)) return fail(COVERAGE_PLAN_STALE, 409);',
+    /* ชั้นแรกของ optimistic lock (รุ่นของงวดที่พรีวิวเห็น) — ท่าเดียวกับ schedule-many: 409 พก conflicts + งวดสด */
+    'const stale = coveragePlanStale(live, body.plan);',
+    'if (stale?.status === 409) {',
+    'return ok({ error: stale.error, conflicts: stale.conflicts, installments: installmentsForScreen(order, live) }, 409);',
+    'if (stale) return fail(stale.error, stale.status);',
     "installmentActionError(byId.get(planned.id), 'coverage', user, {",
     'written = await writeCoverageFill(supabase, live, split.rows);',
     'await recordAudit({',
@@ -148,10 +154,17 @@ test('fill-coverage: สิทธิ์ก่อนโหลด → ด่าน
   }
   assert.match(fill, /orderLock = historicalInstallmentLock\(order\) \|\| pipelineInstallmentLock\(order, 'coverage'\)/);
   assert.match(fill, /coversFrom: planned\.coversFrom, coversTo: planned\.coversTo,/);
-  assert.match(fill, /if \(stopped\) return fail\(coverageFillStoppedMessage\(after\.length, stopped\), 409\);/);
   assert.ok(fill.indexOf('await recordAudit({') < fill.indexOf('coverageFillStoppedMessage(after.length, stopped)'),
     'หยุดกลางทางยังต้องลง audit งวดที่เขียนไปแล้วก่อนตอบ 409');
-  assert.match(fill, /return ok\(\{\s*filled: after\.length,\s*installments: installmentsForScreen\(order, await loadInstallments\(supabase, order\.id\)\),/);
+  /* หยุดกลางทาง/ไม่ได้เขียนสักงวด = 409 พกจำนวนที่ลงแล้ว + งวดสด (อ่านพลาด = ไม่พก ไม่กลายเป็น 500) — ท่าเดียวกับ schedule-many */
+  const stoppedBranch = slice(fill, 'if (stopped || !after.length) {', 'let settled;');
+  assert.match(stoppedBranch, /fresh = installmentsForScreen\(order, await loadInstallments\(supabase, order\.id\)\);\s*\} catch \{\s*fresh = null;/);
+  assert.match(stoppedBranch, /error: after\.length \? coverageFillStoppedMessage\(after\.length, stopped\) : \(stopped\?\.message \|\| INSTALLMENT_STALE_MESSAGE\),/);
+  assert.match(stoppedBranch, /filled: after\.length,\s*\.\.\.\(fresh \? \{ installments: fresh \} : \{\}\),\s*\}, 409\);/);
+  assert.ok(fill.indexOf('if (after.length) {\n      await recordAudit({') >= 0, 'ไม่ได้เขียนสักงวด = ไม่ลง audit');
+  /* เขียนครบ + audit แล้ว — อ่านงวดสดพลาดห้ามตกไป catch นอก (500 ทั้งที่ลงครบ) · ถอยไปงวดก่อนเขียนที่แทนด้วยแถวที่เพิ่งเขียน */
+  assert.match(fill, /try \{\s*settled = await loadInstallments\(supabase, order\.id\);\s*\} catch \{\s*settled = installmentsAfterWrite\(live, after\);\s*\}/);
+  assert.match(fill, /return ok\(\{ filled: after\.length, installments: installmentsForScreen\(order, settled\) \}\);/);
   // ข้อความเมื่อพรีวิวกับของจริงไม่ตรง = ข้อความของแผน §2.5 ข้อ 3
   assert.match(code(INSTALLMENTS_ROUTE), /const COVERAGE_PLAN_STALE = 'งวดหรือช่วงบริการเพิ่งเปลี่ยน — ตรวจพรีวิวใหม่';/);
 });
@@ -163,6 +176,27 @@ test('route งวด: select บรรทัดพกช่องที่ต�
     assert.ok(select.includes(column), `ขาด ${column}`);
   }
   assert.doesNotMatch(select, /(^|,\s*)metadata(\s*,|$)/, 'หมวดอ่านแค่คีย์เดียว ไม่ลาก metadata ทั้งก้อน');
+});
+
+// ── fill-coverage × schedule-many: รุ่นของงวดที่ตาเห็น (ชั้นแรกของ optimistic lock) ─────────────────────────────────
+test('coveragePlanStale: พรีวิวพกรุ่นของงวด (updatedAt) · อีกหน้าต่างแก้งวดหลังเปิดโมดัล = 409 ทุกงวดที่เปลี่ยน · ไม่ส่งรุ่น = 400', () => {
+  const live = [1, 2, 3].map((seq) => ({ id: `I${seq}`, seq, status: 'pending', updatedAt: `2026-09-29T0${seq}:00:00.123456+00:00` }));
+  const plan = live.map(({ id, updatedAt }) => ({ id, coversFrom: '2026-10-01', coversTo: '2026-12-31', updatedAt }));
+  assert.equal(coveragePlanStale(live, plan), null, 'รุ่นตรง = ผ่าน');
+  // รูปเวลาต่างแต่เป็นจุดเดียวกัน (Z กับ +00:00) = ไม่ใช่ของเก่า (installmentStale ตัวเดียวกับ schedule-many)
+  assert.equal(coveragePlanStale([{ ...live[0], updatedAt: '2026-09-29T01:00:00.123Z' }], [{ ...plan[0], updatedAt: '2026-09-29T01:00:00.123+00:00' }]), null);
+  const moved = live.map((row) => (row.seq === 1 ? row : { ...row, updatedAt: `${row.updatedAt}-other` }));
+  const res = coveragePlanStale(moved, plan);
+  assert.equal(res.status, 409);
+  assert.deepEqual(res.conflicts, [
+    { id: 'I2', seq: 2, reason: 'เพิ่งถูกแก้จากอีกหน้าต่าง' },
+    { id: 'I3', seq: 3, reason: 'เพิ่งถูกแก้จากอีกหน้าต่าง' },
+  ]);
+  assert.equal(res.error, 'ยังไม่ได้บันทึกงวดไหน — งวดที่ 2: เพิ่งถูกแก้จากอีกหน้าต่าง · งวดที่ 3: เพิ่งถูกแก้จากอีกหน้าต่าง · โหลดงวดล่าสุดแล้วตรวจอีกครั้ง',
+    'ประโยคเดียวกับ 409 ของ schedule-many');
+  // ไม่ส่งรุ่น = ตรวจ "ของเก่า" ไม่ได้ ⇒ ไม่รับ (คำเดียวกับ schedule-many) · ไม่ใช่ข้ามไปเขียนทับ
+  assert.deepEqual(coveragePlanStale(live, plan.map(({ updatedAt, ...rest }) => rest)), { error: INSTALLMENT_VERSION_MISSING, status: 400 });
+  assert.equal(scheduleManyShapeError([{ id: 'I1' }]), INSTALLMENT_VERSION_MISSING, 'schedule-many ยังพูดคำเดิม');
 });
 
 // ── writeCoverageFill: พฤติกรรมด้วยฐานปลอม (ท่าเดียวกับ writeBillingFill) ─────────────────────────────────────

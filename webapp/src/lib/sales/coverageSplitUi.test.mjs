@@ -81,8 +81,9 @@ test('โมดัล: พรีวิวจากตัวคิดเดีย
   assert.match(modal, /\{ value: "monthly", label: "เท่ากันรายเดือน" \}/);
   assert.match(modal, /\{ value: "proportional", label: "ตามสัดส่วนงวด" \}/);
   assert.match(modal, /<Segmented ariaLabel="วิธีแบ่งช่วงครอบ" options=\{COVERAGE_SPLIT_MODES\} value=\{mode\} onChange=\{setMode\} \/>/);
-  assert.match(modal, /plan: planned\.map\(\(\{ id, coversFrom, coversTo \}\) => \(\{ id, coversFrom, coversTo \}\)\),/,
-    'ห้ามแต่งวันเอง — route เทียบ id + วันกับชุดที่คิดซ้ำ');
+  assert.match(modal, /plan: planned\.map\(\(\{ id, coversFrom, coversTo \}\) => \(\{ id, coversFrom, coversTo, updatedAt: versionOf\(id\) \}\)\),/,
+    'ห้ามแต่งวันเอง — route เทียบ id + วันกับชุดที่คิดซ้ำ · พกรุ่นของงวดที่ตาเห็น (ชั้นแรกของ optimistic lock เหมือน schedule-many)');
+  assert.match(modal, /const versionOf = \(id\) => rows\.find\(\(row\) => row\?\.id === id\)\?\.updatedAt \|\| "";/);
   assert.match(modal, /await onApply\(\{\s*mode,\s*plan:/);
   // ตารางพรีวิว: งวด | สัดส่วน | ครอบเดิม → ครอบใหม่ · ข้อสังเกตสองข้อ
   assert.match(modal, /<th className=\{styles\.seqCol\}>งวด<\/th>\s*<th className="num">สัดส่วน<\/th>\s*<th>ครอบเดิม → ครอบใหม่<\/th>/);
@@ -162,6 +163,22 @@ test('แผง: กรอบแดงเฉพาะช่องใน highligh
   assert.match(panel, /invalid=\{Boolean\(coverIssue\)\}/);
   // ไม่มีการคิดแดงเองจากข้อมูลงวด — ตัวอ่านเดียวคือ highlight
   assert.match(panel, /return String\(\(highlight instanceof Map \? highlight\.get\(id\) : highlight\[id\]\) \|\| ""\);/);
+});
+
+test('แผง (#1846): คำขอ "ไปแก้" จากแผงแดง = เข้าโหมดตั้งวันงวดแล้วเปิด "เติมวันงวดที่ว่าง…" · ตอบหน้าใบทุกครั้งว่าเปิดได้ไหม', () => {
+  const panel = code(PANEL);
+  assert.match(panel, /servicePeriod, setupFlow, highlight = null, onFillCoverage, canEditSetup = canStart, onOpenTab,\s*dateFillRequest = null, onDateFillRequestDone,/);
+  const at = panel.indexOf('if (!dateFillRequest || dateFillSeen.current === dateFillRequest) return;');
+  assert.ok(at > panel.indexOf('const dateMode = useInstallmentDateMode({'), 'อ่านโหมดหลังสร้าง');
+  const effect = panel.slice(at, panel.indexOf('}, [dateFillRequest]);', at));
+  assert.match(effect, /dateFillSeen\.current = dateFillRequest;/, 'คำขอเดียวเปิดครั้งเดียว (StrictMode รัน effect ซ้ำ)');
+  // ทางเข้าของ #1846 ตัวเดียว (`openFill` = เข้าโหมด + เปิดแผงเติม · ติดด่าน = toast บอกเหตุเอง) — ไม่ตั้ง state ของโหมดเอง
+  // แผงเติมไม่มีงวดให้เติม = ไม่เปิดแผงที่บอก "ไม่มีงวดที่ว่าง" — ตอบเปิดไม่ได้ ให้หน้าใบไปที่ช่อง (ตัวเลือกงวดตัวเดียวกับแผงเติม)
+  assert.match(effect, /const fillable = fillTargetsOf\(mode\.fillKind, fillInputRows\(mode\.rows, mode\.current, mode\.isLocked\)\)\.length > 0;/);
+  assert.match(effect, /const opened = fillable && mode\.available && !mode\.busy && !mode\.blocker;/);
+  assert.match(effect, /if \(fillable && !mode\.fill\) mode\.openFill\(\);/, 'แผงเติมเปิดอยู่แล้ว = ไม่ตั้งต้นตัวเลือกที่กำลังเลือกทิ้ง');
+  assert.match(effect, /dateFillDoneRef\.current\?\.\(opened\);/);
+  assert.doesNotMatch(effect, /setActive|setFill|enter\(/);
 });
 
 // ── 5. การ์ดสัญญา (D21) ─────────────────────────────────────────────────────────────────────────────

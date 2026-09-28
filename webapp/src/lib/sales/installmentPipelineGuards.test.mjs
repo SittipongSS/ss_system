@@ -105,7 +105,6 @@ test('โมดัลของแผงงวดและคิวบัญช�
   assert.match(panel, /const live = \(row\) => \(row \? saved\.find\(\(r\) => r\.id === row\.id\) \|\| row : row\);/);
   for (const pattern of [
     /onAction\(live\(reportFor\.row\), "report"/,
-    /onAction\(live\(scheduleFor\.row\), "schedule"/,
     /onAction\(live\(linkFor\.row\), "link"/,
     /row=\{live\(confirmFor\?\.row\)\}/,
     /row=\{live\(invoiceFor\)\}/,
@@ -116,6 +115,12 @@ test('โมดัลของแผงงวดและคิวบัญช�
   ]) {
     assert.match(panel, pattern);
   }
+  /* โหมดตั้งวัน (มติ 28/09 — แทนโมดัลรายงวด): ร่างถือแค่วัน · body ประกอบจากแถวของตารางตอนกด (`changes[].row` มาจาก
+     `rows` ชุดล่าสุดที่แผงส่งให้) ⇒ หลัง 409 หน้าวางงวดสดแล้วกดใหม่ส่งตัวล็อกของแถวใหม่ ไม่วน 409 */
+  assert.match(panel, /rows: isPreview \? \[\] : saved,/);
+  assert.match(panel, /const saveDates = useCallback\(\(rows\) => onAction\(null, "schedule-many", \{ rows \}\), \[onAction\]\);/);
+  const drafts = code('lib/sales/installmentDateDrafts.js');
+  assert.match(slice(drafts, 'export function scheduleManyRows(', '\n}\n'), /updatedAt: row\.updatedAt \|\| null,/);
   const fn = code(FN_PAGE);
   assert.match(fn, /const liveRow = \(row\) => \(row \? rows\.find\(\(r\) => r\.id === row\.id\) \|\| row : null\);/);
   assert.match(fn, /const confirmRow = liveRow\(confirmFor\);/);

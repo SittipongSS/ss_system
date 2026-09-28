@@ -351,15 +351,56 @@ test('F10: แผงแดงรวมข้อซ้ำรายงวด (12×
   assert.equal(payment.items.length, 2);
   const merged = payment.items[0];
   assert.equal(merged.entry.message,
-    'งวด 1–3, 5–12: ยังไม่เลือกรอบวางบิล (ลูกค้ามีรอบวางบิล) · 11 งวด — เติมทีเดียวได้ด้วย ‘เติมตามรอบ เดือนละงวด…’ ที่แท็บการชำระ');
+    'งวด 1–3, 5–12: ยังไม่เลือกรอบวางบิล (ลูกค้ามีรอบวางบิล) · 11 งวด — เติมทีเดียวได้ด้วย ‘ตั้งวันงวด’ → ‘เติมวันงวดที่ว่าง…’ ที่แท็บการชำระ');
   assert.equal(merged.entry.installmentId, 'I1', '"ไปแก้" พาไปงวดแรก');
   assert.equal(merged.entries.length, 11);
   assert.equal(issueHeadTail(merged.entry.message).head, 'งวด 1–3, 5–12', 'หัวตัวหนาครอบช่วงงวด');
   assert.equal(payment.items[1].entry.message, 'งวด 4: ยังไม่ใส่กำหนดชำระ — หรือเลือก ‘รอเหตุการณ์’', 'ข้อเดี่ยวไม่เปลี่ยน');
-  // ลูกค้าวางบิลได้ทุกวัน — ไม่ชวนไปปุ่มเติมตามรอบ (ปุ่มไม่มีสำหรับรอบแบบนี้)
+  /* ลูกค้าวางบิลได้ทุกวัน — แผง "เติมวันงวดที่ว่าง…" ของ #1846 เติมได้ทุกชนิดของรอบ (ปุ่มเติมตามรอบเดิมมีแค่รายเดือน) ⇒ บอกทางเดียวกัน */
   const anyday = [1, 2].map((seq) => ({ ...billing(seq, 'anyday'), message: `งวด ${seq}: ยังไม่ใส่วันวางบิล (ลูกค้าวางบิลได้ทุกวัน) — ใส่วันที่คอลัมน์วันวางบิล หรือเลือก ‘รอเหตุการณ์’` }));
   assert.equal(submitGateGroups(anyday, [])[0].items[0].entry.message,
-    'งวด 1–2: ยังไม่ใส่วันวางบิล (ลูกค้าวางบิลได้ทุกวัน) — ใส่วันที่คอลัมน์วันวางบิล หรือเลือก ‘รอเหตุการณ์’ · 2 งวด');
+    'งวด 1–2: ยังไม่ใส่วันวางบิล (ลูกค้าวางบิลได้ทุกวัน) — ใส่วันที่คอลัมน์วันวางบิล หรือเลือก ‘รอเหตุการณ์’ · 2 งวด — เติมทีเดียวได้ด้วย ‘ตั้งวันงวด’ → ‘เติมวันงวดที่ว่าง…’ ที่แท็บการชำระ');
+});
+
+test('#1846: ข้อวันงวดที่รวมหลายงวด (วันวางบิล · กำหนดชำระ) "ไปแก้" = เปิดแผงเติมของโหมดตั้งวันงวด · ช่วงครอบ/ข้อเดี่ยว = ไปที่ช่อง', () => {
+  const issue = (key, seq, field, extra = {}) => ({
+    key, tab: 'payment', installmentId: `I${seq}`, seq, field, owner: 'SA', message: `งวด ${seq}: ${key}`, ...extra,
+  });
+  // ลำดับจากด่าน: รายงวด วันวางบิล → กำหนดชำระ → ช่วงครอบ (serviceSetupIssues)
+  const issues = [1, 2, 3].flatMap((seq) => [
+    issue('billing_missing', seq, 'billingDate', { billingMode: 'anyday' }),
+    issue('due_missing', seq, 'dueDate'),
+    issue('coverage_missing', seq, 'coverage'),
+  ]);
+  const [payment] = submitGateGroups(issues, []);
+  assert.equal(payment.count, 9);
+  assert.deepEqual(payment.items.map((item) => [item.entry.key, item.entry.dateFill === true, item.jump]), [
+    ['billing_missing', true, true], ['due_missing', true, true], ['coverage_missing', false, true],
+  ], 'กลุ่มเรียงตามลำดับคอลัมน์ วันวางบิล → กำหนดชำระ · เฉพาะกลุ่มวันงวดเปิดแผงเติม');
+  // ทางลัดบอกครั้งเดียวต่อแผง (สองกลุ่มวันงวดเปิดแผงเติมอันเดียวกัน — ต่อทั้งสองแถว = คำเดิมซ้ำ)
+  const hinted = payment.items.filter((item) => item.entry.message.endsWith('‘เติมวันงวดที่ว่าง…’ ที่แท็บการชำระ'));
+  assert.deepEqual(hinted.map((item) => item.entry.key), ['billing_missing']);
+  // ลูกค้าที่ไม่ต้องมีวันวางบิล (ไม่มีเครดิต/ยังไม่ตั้ง) — กลุ่มกำหนดชำระได้ทางลัดเอง
+  const dueOnly = submitGateGroups([1, 2].map((seq) => issue('due_missing', seq, 'dueDate')), [])[0].items;
+  assert.equal(dueOnly[0].entry.dateFill, true);
+  assert.equal(dueOnly[0].entry.message, 'งวด 1–2: due_missing · 2 งวด — เติมทีเดียวได้ด้วย ‘ตั้งวันงวด’ → ‘เติมวันงวดที่ว่าง…’ ที่แท็บการชำระ');
+  // งวดที่แผงเติมไม่แตะ (`dateFillable: false` จากด่าน — เช่น ลูกค้าเครดิตที่งวดมีกำหนดชำระแล้ว) = ไม่มีธง · ไม่มีทางลัด · ไปที่ช่องงวดแรก
+  const dated = [1, 2, 3].map((seq) => issue('billing_missing', seq, 'billingDate', { billingMode: 'anyday', dateFillable: false }));
+  const [datedItem] = submitGateGroups(dated, [])[0].items;
+  assert.equal(datedItem.entry.dateFill, undefined);
+  assert.equal(datedItem.entry.message, 'งวด 1–3: billing_missing · 3 งวด', 'ทางลัดพูดว่า "เติมทีเดียวได้" — ห้ามบอกเมื่อแผงเติมไม่แตะ');
+  assert.equal(serviceSetupFieldId(datedItem.entry), 'inst-I1-billingDate');
+  // กลุ่มปน (บางงวดเติมได้) = ทางลัดไม่จริงทั้งกลุ่ม ⇒ ไปที่ช่องเหมือนกัน · กลุ่มถัดไปที่เติมได้ทั้งกลุ่มยังได้ทางลัด
+  const mixed = submitGateGroups([
+    issue('billing_missing', 1, 'billingDate', { dateFillable: true }), issue('billing_missing', 2, 'billingDate', { dateFillable: false }),
+    issue('due_missing', 1, 'dueDate', { dateFillable: true }), issue('due_missing', 3, 'dueDate', { dateFillable: true }),
+  ], [])[0].items;
+  assert.deepEqual(mixed.map((item) => [item.entry.key, item.entry.dateFill === true]), [['billing_missing', false], ['due_missing', true]]);
+  assert.ok(mixed[1].entry.message.endsWith('‘เติมวันงวดที่ว่าง…’ ที่แท็บการชำระ'));
+  // ข้อเดี่ยว = ไปที่เซลล์ของงวดนั้น (แตะเซลล์ = เข้าโหมดตั้งวันที่งวดนั้นเอง) · ไม่มีธงเปิดแผงเติม
+  const single = submitGateGroups([issue('billing_missing', 4, 'billingDate', { billingMode: 'monthly' })], [])[0].items[0];
+  assert.equal(single.entry.dateFill, undefined);
+  assert.equal(serviceSetupFieldId(single.entry), 'inst-I4-billingDate');
 });
 
 test('F4/F14: ข้อบล็อกของบัญชี (FN) ไม่มี "ไปแก้" + ป้ายรอฝ่ายบัญชี · กลุ่มที่มีแต่คำเตือนนับเป็น "เตือน n ข้อ"', () => {

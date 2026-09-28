@@ -339,3 +339,27 @@ test('cron ยิงจาก daily-digest ในบล็อก try ของ�
   assert.match(block, /42703/);
   assert.doesNotMatch(block, /toISOString\(\)\.slice/);
 });
+
+test('⭐ มติ 28/09 ข้อ 17: กระดิ่งคัดจากวันวางบิลของงวดเท่านั้น — ไม่ดูกติกาของลูกค้าหรือสายของใบ', () => {
+  /* ลูกค้าไม่มีเครดิต / ยังไม่ตั้ง / ใบสินค้า — งวดที่มีวันวางบิลในหน้าต่างเตือนเหมือนกันหมด */
+  const customers = new Map([
+    ['C-NC', { id: 'C-NC', arCode: 'AR-622', billingRule: { credit: false } }],
+    ['C-UN', { id: 'C-UN', arCode: 'AR-726', billingRule: null }],
+  ]);
+  const ordersById = new Map([
+    ['SOR-NC', order({ id: 'SOR-NC', customerId: 'C-NC', line: 'PRODUCT' })],
+    ['SOR-UN', order({ id: 'SOR-UN', customerId: 'C-UN', line: 'PRODUCT' })],
+  ]);
+  const rows = [
+    inst({ id: 'SOI-NC', salesOrderId: 'SOR-NC' }),
+    inst({ id: 'SOI-UN', salesOrderId: 'SOR-UN', billingDate: '2026-10-02' }),
+  ];
+  assert.deepEqual(pick(rows, { ordersById, customersById: customers }), ['SOI-UN', 'SOI-NC']);
+  /* ตัวคัดและ query ของ cron ไม่อ่านกติกา/สาย — ต้นทางเดียวคือวันวางบิล */
+  const lib = readFileSync(new URL('./billingDueNotify.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(lib, /billingRuleOf|effectiveBillingRule|pickerRuleOf|billingRuleNoCredit|serviceRounds|orderOnServiceLine/);
+  const src = readFileSync(new URL('../../app/api/cron/daily-digest/route.js', import.meta.url), 'utf8');
+  const block = src.slice(src.indexOf('async function notifyBillingDue'), src.indexOf('export async function GET'));
+  assert.match(block, /\.gte\('billingDate', todayIso\)\s*\n\s*\.lte\('billingDate', until\)/);
+  assert.doesNotMatch(block, /"billingRule"|billingRule\b|\.eq\('line'|serviceRounds/);
+});

@@ -126,6 +126,7 @@ import { REPLAN_DONE_MESSAGE } from "@/lib/sales/installmentReplan";
 import { CARRY_DONE_MESSAGE } from "@/lib/sales/installmentCarry";
 import { approvalPrompt, historicalApprovalPrompt } from "@/lib/approvalPrompt";
 import { apiFetch, apiJson } from "@/lib/apiFetch";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { liveSpecDocumentCount, salesOrderSpecDocEffect } from "@/lib/sales/productSpecDocView";
 import {
   FINANCE_REVIEW_POINTS, FINANCE_STATUS_LABELS, FINANCE_STATUS_TONES,
@@ -248,6 +249,9 @@ export default function SalesOrderDetailPage() {
   const [toast, setToast] = useState(null);
   const [busy, setBusy] = useState("");
   const [dirty, setDirty] = useState(false);
+  /* ร่างวันงวดที่ยังไม่บันทึก (โหมดตั้งวันในแท็บการชำระ · มติ 28/09) — แผงบอกผ่าน `onDatesDirty` ⇒ ออกจากหน้า/สลับแท็บต้องถามก่อน
+     (แผงถูกถอดทั้งก้อนตอนสลับแท็บ = ร่างหายเงียบ) */
+  const [datesDirty, setDatesDirty] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [saveState, setSaveState] = useState("idle");
   const [overrideForm, setOverrideForm] = useState(null);
@@ -285,7 +289,12 @@ export default function SalesOrderDetailPage() {
   const submitWarningsRef = useRef([]);
   /* ตีกลับงานบริการย้อนหลัง (ผู้จัดการฝ่ายขาย) — ReasonDialog ของตัวเอง ไม่ปนกับตีกลับทั้งใบ */
   const [serviceRejectForm, setServiceRejectForm] = useState(null);
-  useUnsavedChanges(dirty || setup.dirty);
+  /* "ไปแก้" ของข้อวันงวดที่รวมหลายงวด (แผงแดง · `dateFill`) = ขอให้แผงงวดเข้าโหมดตั้งวันงวดแล้วเปิด "เติมวันงวดที่ว่าง…" (#1846)
+     ⭐ เป็น state ไม่ใช่ ref/อีเวนต์ — แผงงวดเมานต์เฉพาะแท็บการชำระ ⇒ คำขอต้องรอจนแผงเพิ่งเมานต์จากการสลับแท็บอ่านได้
+     · `{ issue }` ออบเจกต์ใหม่ทุกครั้งที่กด · แผงตอบ `dateFillDone(opened)` แล้วหน้าล้างคำขอ (กลับมาแท็บนี้อีกไม่เปิดซ้ำ) */
+  const [dateFillAsk, setDateFillAsk] = useState(null);
+  /* ร่างที่ยังไม่บันทึกสามก้อน: ฟอร์มของใบ · วันงวดในโหมดตั้งวัน (#1846) · งานบริการรายบรรทัด (hook) */
+  useUnsavedChanges(dirty || datesDirty || setup.dirty);
 
   const load = useCallback(async () => {
     setError("");
@@ -773,6 +782,8 @@ export default function SalesOrderDetailPage() {
      ⭐ optimistic lock (PR0) — ส่ง `updatedAt` ของแถวที่ตาเห็น (แผงส่งแถวล่าสุดของตารางมาเสมอ)
        ⇒ แถวถูกแก้จากอีกหน้าต่าง = 409 แล้วดึงใบสดมา (`refreshOrder` ไม่แตะฟอร์มที่พิมพ์ค้าง) ให้กดใหม่ได้ */
   async function runInstallmentAction(row, action, options = {}) {
+    /* คำสั่งของทั้งใบจากโหมดตั้งวัน (ไม่มีงวดเดียว) — ทางเดียวกับคำสั่งรายงวด แต่ body คนละรูป */
+    if (action === "schedule-many") return runInstallmentScheduleMany(options);
     setBusy(`installment-${action}`);
     setError("");
     setToast(null);
@@ -891,72 +902,54 @@ export default function SalesOrderDetailPage() {
     }
   }
 
-  /* ── เติมวันวางบิลตามรอบ เดือนละงวด (กำหนดวางบิล · mig 0389 · มติเจ้าของ 26/09 ข้อ 3) — คำสั่งของทั้งใบ ──────────
-     ⭐ แผงส่งแผนที่พรีวิวแสดง (`plan` = [{ id, billingDate, dueDate }]) · route คิดชุดเองแล้วเทียบ — ไม่ตรง = 409
-       (รอบ/งวดเพิ่งเปลี่ยน) ⇒ ดึงใบสดให้พรีวิววาดชุดใหม่ แล้วให้คนกดยืนยันจากของที่เห็นจริง
-     ⚠️ ไม่ลองซ้ำเอง (apiFetch ไม่ retry PATCH) — ยิงซ้ำหลังเขียนสำเร็จแล้วได้ 409 ที่ทำให้เข้าใจผิดว่าไม่สำเร็จ */
-  async function runBillingFill({ plan, roundIndex = null }) {
-    setBusy("installment-fill-billing");
+  /* ── ตั้งวันงวดทีละหลายงวด (โหมดตั้งวันในตาราง · แบบ C · มติเจ้าของ 28/09) — คำสั่งของทั้งใบ ──────────────────────────
+     ⭐ แผงส่ง `rows` = งวดที่ร่างต่างจากฐาน `[{ id, billingDate, billingEvent, dueDate, updatedAt }]` (updatedAt ของแถวที่ตาเห็นตอนกด)
+       · route ตรวจทุกงวดก่อนเขียนงวดแรก แล้วเขียนทีละงวดแบบมีเงื่อนไข (lib/sales/installmentScheduleMany.js)
+     ⭐ 409 (งวดเปลี่ยนใต้มือ · ล็อกระหว่างร่าง · หยุดกลางทาง) พก `installments` สดมาด้วย ⇒ วางงวดสดทันที **แล้วดึงใบสดทั้งใบเสมอ**
+       แผง **คงร่างที่ยังใช้ได้** แล้วบอกงวดที่เปลี่ยน/ล็อก — คนตรวจแล้วกดบันทึกอีกครั้ง (งวดที่ลงแล้วถูกข้ามเอง)
+       🐞 review R-UI: เดิมวางแค่ `installments` — แต่ล็อก "ขอใบวางบิลแล้ว" ของจออ่าน `order.billingRequests` (มากับ GET เต็มเท่านั้น)
+          งวดที่ถูกขอใบวางบิลจากอีกแท็บระหว่างร่างจึงมี billingRequestId ที่จอไม่รู้จัก ⇒ ไม่ล็อก ร่างไม่ถูกทิ้ง ⇒ กดบันทึก = 409 เดิม
+          วนไม่จบจนโหลดหน้าใหม่ (ร่างหายหมด) · สัญญาเดียว: 409 ของ schedule-many = `refreshOrder()` (เงียบ ไม่ถอดแผง ร่างอยู่)
+          แล้วล็อกคิดจากคำร้องชุดสด — `conflicts` ของ route เป็นแค่ข้อความ ไม่ใช่ล็อกของจอ
+       · รอใบสดก่อนปลด busy ⇒ ปุ่มบันทึกยังดับจนล็อกบนจอตรงกับ server (กดซ้ำระหว่างรอ = 409 เดิม)
+     ⚠️ ไม่ลองซ้ำเอง (apiFetch ไม่ retry PATCH) — ยิงซ้ำหลังเขียนสำเร็จแล้วจะได้ 409 ที่ทำให้เข้าใจผิดว่าไม่สำเร็จ
+     ⚠️ คำสั่ง "เติมตามรอบ" / "จัดวันใหม่" ของ route ยังอยู่ (แท็บเก่าก่อน deploy) แต่จอนี้ไม่เรียกแล้ว — งานของมันอยู่ในแผงเติมของโหมด */
+  async function runInstallmentScheduleMany({ rows }) {
+    setBusy("installment-schedule-many");
     setError("");
     setToast(null);
     try {
       const res = await apiFetch(`/api/sales-planning/sales-orders/${id}/installments`, {
         method: "PATCH",
-        /* `roundIndex` = รอบที่เลือกในโมดัล (ลูกค้าหลายรอบต่อเดือน · มติ 26/09) — route คิดแผนซ้ำด้วยรอบเดียวกัน · รอบเดียว = null */
-        json: { action: "fill-billing", plan, roundIndex },
+        json: { action: "schedule-many", rows },
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        if (res.status === 409) refreshOrder();
-        setError(data.error || "เติมวันตามรอบไม่สำเร็จ");
+        setError(data.error || "บันทึกวันงวดไม่สำเร็จ");
+        if (res.status === 409) {
+          if (Array.isArray(data.installments)) setOrder((current) => ({ ...current, installments: data.installments }));
+          await refreshOrder();
+          /* หยุดกลางทาง = บางงวดลงแล้ว ⇒ ข้อที่ยังขาดของงานบริการ (วันงวด) เปลี่ยน — ก้อนงานบริการตามเหมือนตอนสำเร็จ */
+          if (Number(data.saved) > 0) refreshServiceSetup();
+        }
         return false;
       }
       setOrder((current) => ({ ...current, installments: data.installments || [] }));
       refreshServiceSetup();
-      setToast({ kind: "success", msg: `เติมวันแล้ว ${data.filled || plan.length} งวด` });
+      const saved = Number.isInteger(data.saved) ? data.saved : rows.length;
+      setToast({ kind: "success", msg: saved ? `บันทึกวันงวดแล้ว ${saved} งวด · ลงประวัติของใบ` : "วันงวดตรงกับที่บันทึกไว้แล้ว" });
       return true;
-    } catch (fillError) {
-      setError(fillError.message || "เติมวันตามรอบไม่สำเร็จ");
+    } catch (scheduleError) {
+      setError(scheduleError.message || "บันทึกวันงวดไม่สำเร็จ");
       return false;
     } finally {
       setBusy("");
     }
   }
 
-  /* ── จัดวันใหม่ตามรอบปัจจุบัน (กำหนดวางบิลรอบสอง · มติเจ้าของ 26/09) — คำสั่งของทั้งใบ พี่น้องของเติมตามรอบ ──────────
-     ⭐ แผงส่งตาราง "เดิม → ใหม่" ที่พรีวิวแสดง (`plan` = [{ id, billingDate, dueDate }]) · route คิดชุดเองด้วยคำร้องสด
-       แล้วเทียบ — ไม่ตรง = 409 ⇒ ดึงใบสด (รวมคำร้องที่งวดผูก) ให้พรีวิววาดชุดใหม่ก่อนกดอีกครั้ง
-     ⚠️ ไม่ลองซ้ำเอง (apiFetch ไม่ retry PATCH) — ยิงซ้ำหลังเขียนสำเร็จแล้วได้ 409 ที่ทำให้เข้าใจผิดว่าไม่สำเร็จ */
-  async function runBillingRedate({ plan, roundIndex = null }) {
-    setBusy("installment-redate-billing");
-    setError("");
-    setToast(null);
-    try {
-      const res = await apiFetch(`/api/sales-planning/sales-orders/${id}/installments`, {
-        method: "PATCH",
-        json: { action: "redate-billing", plan, roundIndex },
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        if (res.status === 409) refreshOrder();
-        setError(data.error || "จัดวันใหม่ไม่สำเร็จ");
-        return false;
-      }
-      setOrder((current) => ({ ...current, installments: data.installments || [] }));
-      refreshServiceSetup();
-      setToast({ kind: "success", msg: `จัดวันใหม่ตามรอบปัจจุบันแล้ว ${data.redated || plan.length} งวด` });
-      return true;
-    } catch (redateError) {
-      setError(redateError.message || "จัดวันใหม่ไม่สำเร็จ");
-      return false;
-    } finally {
-      setBusy("");
-    }
-  }
-
-  /* ── แบ่งช่วงครอบตามช่วงบริการ (mig 0391 · แผน §2.5 ข้อ 3 / §2.8) — คำสั่งของทั้งใบ พี่น้องของเติมตามรอบ ──────────
-     ⭐ แผงส่งแผนที่พรีวิวแสดง (`plan` จาก `splitCoverageByPeriod` ของงวดที่หน้าใบส่งให้) · route คิดชุดเองจากแถวเดียวกัน
-       แล้วเทียบ — ไม่ตรง = 409 (งวด/ช่วงบริการเพิ่งเปลี่ยน) ⇒ ดึงใบสดให้พรีวิววาดชุดใหม่ก่อนกดอีกครั้ง
+  /* ── แบ่งช่วงครอบตามช่วงบริการ (mig 0391 · แผน §2.5 ข้อ 3 / §2.8) — คำสั่งของทั้งใบ พี่น้องของ schedule-many ──────────
+     ⭐ แผงส่งแผนที่พรีวิวแสดง (`plan` จาก `splitCoverageByPeriod` ของงวดที่หน้าใบส่งให้ + `updatedAt` ของงวดที่ตาเห็น) · route คิดชุดเอง
+       จากแถวเดียวกันแล้วเทียบ — ไม่ตรง/งวดถูกแก้จากอีกหน้าต่าง = 409 ⇒ วางงวดสด + ดึงใบสดให้พรีวิววาดชุดใหม่ก่อนกดอีกครั้ง
      ⚠️ ไม่ลองซ้ำเอง (apiFetch ไม่ retry PATCH) — ยิงซ้ำหลังเขียนสำเร็จแล้วได้ 409 ที่ทำให้เข้าใจผิดว่าไม่สำเร็จ */
   async function runFillCoverage({ mode, plan }) {
     setBusy("installment-fill-coverage");
@@ -969,8 +962,14 @@ export default function SalesOrderDetailPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        if (res.status === 409) refreshOrder();
         setError(data.error || "แบ่งช่วงครอบไม่สำเร็จ");
+        /* 409 ท่าเดียวกับ schedule-many: วางงวดสดที่ route พกมา (พรีวิววาดชุดใหม่ทันที) → รอใบสดก่อนปลด busy
+           · หยุดกลางทาง = บางงวดลงแล้ว ⇒ ข้อที่ยังขาดของงานบริการเปลี่ยน */
+        if (res.status === 409) {
+          if (Array.isArray(data.installments)) setOrder((current) => ({ ...current, installments: data.installments }));
+          await refreshOrder();
+          if (Number(data.filled) > 0) refreshServiceSetup();
+        }
         return false;
       }
       setOrder((current) => ({ ...current, installments: data.installments || [] }));
@@ -1416,11 +1415,21 @@ export default function SalesOrderDetailPage() {
   }, [order?.id, setupRequired, setup.data, setup.error]);
   // ใบเปลี่ยนสายกลางคัน (Rev./แก้บรรทัด) แล้วแท็บที่เลือกอยู่หายไป = จอว่างเปล่า
   const activeTab = tabKeys.includes(tab) ? tab : "overview";
-  const selectTab = (next) => {
+  const selectTab = async (next) => {
+    /* ร่างวันงวดค้างในแท็บการชำระ — สลับแท็บ = แผงถูกถอด ร่างหาย ⇒ ถามก่อน (กล่องเดียวกับการออกจากหน้า) */
+    if (activeTab === "payment" && next !== "payment" && datesDirty && !(await confirmAction({
+      title: "ทิ้งวันงวดที่ยังไม่บันทึก?",
+      description: "มีวันงวดที่แก้ค้างไว้ในโหมดตั้งวัน — สลับแท็บแล้วที่แก้ไว้จะหาย",
+      confirmLabel: "ทิ้งแล้วสลับแท็บ",
+      cancelLabel: "กลับไปบันทึก",
+      danger: true,
+    }))) return false;
     setTab(next);
     /* เขียนลง URL ให้คิว FN/TS และกระดิ่งลิงก์ตรงแท็บได้ — replace ไม่ push
        (สลับแท็บไม่ใช่การเดินทาง ปุ่ม back ต้องกลับไปหน้าก่อนหน้า ไม่ใช่แท็บก่อนหน้า) */
     router.replace(next === "overview" ? `/sa/sales-orders/${order.id}` : `/sa/sales-orders/${order.id}?tab=${next}`, { scroll: false });
+    /* คืนว่าสลับจริงไหม — "ไปแก้" ของแผงแดง (jumpToIssue) โฟกัสช่องต่อเฉพาะเมื่อสลับแล้ว (กดกลับไปบันทึก = อยู่ที่เดิม) */
+    return true;
   };
 
 
@@ -1589,10 +1598,23 @@ export default function SalesOrderDetailPage() {
     ? `ยอดถูกนับเป็น Actual แล้ว (อนุมัติ ${fmtDate(order.approvedAt)}) — การตั้งงานบริการย้อนหลังไม่เปลี่ยนยอดนี้`
     : null;
   /* "ไปแก้" ของแผงแดง — สลับแท็บแล้วพาไปที่ช่อง (ข้อที่ไม่มีช่อง เช่น "ยังไม่มีงวด" = แค่สลับแท็บ) */
-  const jumpToIssue = (issue) => {
+  /* ⚠️ สลับแท็บถามก่อนได้ (ร่างวันงวดค้างในแท็บการชำระ · #1846) ⇒ รอคำตอบ แล้วพาไปที่ช่องเฉพาะเมื่อสลับจริง
+     (ไม่รอ = ตัวหาช่องหมดรอบระหว่างกล่องยืนยันเปิดอยู่ แล้วสลับเสร็จโดยไม่มีอะไรถูกโฟกัส) */
+  const jumpToIssue = async (issue) => {
     if (!issue) return;
-    if (issue.tab && issue.tab !== activeTab) selectTab(issue.tab);
+    if (issue.tab && issue.tab !== activeTab && !(await selectTab(issue.tab))) return;
+    /* ข้อวันงวดหลายงวด (#1846) — แผงงวดเปิดแผงเติม (โฟกัสหัวของแผงเอง) · เปิดไม่ได้ = `dateFillDone` ถอยไปช่องของงวดแรก */
+    if (issue.dateFill) {
+      setDateFillAsk({ issue });
+      return;
+    }
     revealServiceSetupField(serviceSetupFieldId(issue));
+  };
+  /* แผงงวดตอบคำขอเปิดแผงเติม — ไม่มีสิทธิ์ตั้งวัน/ติดด่าน (ร่างช่วงครอบค้าง · ล็อกทั้งใบ — แผงบอกเหตุเป็น toast แล้ว) = ไปที่ช่องแทน */
+  const dateFillDone = (opened) => {
+    const ask = dateFillAsk;
+    setDateFillAsk(null);
+    if (!opened && ask?.issue) revealServiceSetupField(serviceSetupFieldId(ask.issue));
   };
   /* บรรทัดของโมดัลออก Rev. — ตั้งค่างานบริการที่ใบ Rev. ยกไป (P2 ของ 0391) · ใบที่ยังไม่ได้ตั้งอะไร = null */
   const serviceRevisionLine = (view) => {
@@ -2408,8 +2430,10 @@ export default function SalesOrderDetailPage() {
             onAction={runInstallmentAction}
             onReplan={runInstallmentReplan}
             onCarry={runInstallmentCarry}
-            onFillBilling={runBillingFill}
-            onRedateBilling={runBillingRedate}
+            /* โหมดตั้งวันบอกว่ามีร่างค้าง — ออกจากหน้า/สลับแท็บถามก่อน (useUnsavedChanges + selectTab) */
+            onDatesDirty={setDatesDirty}
+            /* กลับจากแท็บทะเบียนลูกค้า (ลิงก์ "ตั้งกำหนดวางบิล" · มติ 28/09) = ดึงใบสด — `refreshOrder` ไม่แตะฟอร์มที่พิมพ์ค้าง */
+            onRefreshOrder={refreshOrder}
             /* 🐞 แถบ error ของหน้าอยู่บนสุดของคอลัมน์ ⇒ **โมดัลบังไว้หมด** — กดบันทึก
                งวดแล้วโมดัลค้างเงียบ ไม่มีอะไรบอกว่าทำไมไม่ผ่าน (ผู้ใช้แจ้ง 2026-08-27)
                อาการเดียวกับที่ `ReasonDialog.submitError` แก้ไว้เมื่อ 2026-08-19 —
@@ -2423,6 +2447,9 @@ export default function SalesOrderDetailPage() {
             highlight={serviceHighlight}
             onFillCoverage={runFillCoverage}
             onOpenTab={selectTab}
+            /* "ไปแก้" ของข้อวันงวดหลายงวดในแผงแดง → โหมดตั้งวันงวด + แผง "เติมวันงวดที่ว่าง…" (#1846) */
+            dateFillRequest={dateFillAsk}
+            onDateFillRequestDone={dateFillDone}
           />
           )}
 
