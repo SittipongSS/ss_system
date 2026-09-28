@@ -14,6 +14,7 @@
 
 import { fmtDate } from '@/lib/format';
 import submitScope from '@/lib/requests/submitScope';
+import { requestWaitLabel } from '@/lib/requests/replyTurn';
 
 const clip = (s, n = 1000) => String(s ?? '').trim().slice(0, n) || null;
 
@@ -114,11 +115,16 @@ export function askActionUpdate(action, ask, {
   }
   /* ⭐ **ยังไม่จบ** — ถอนตราปิด · ต้องมีเหตุผลเสมอ (ด่านที่ `closure.js`) ⇒ คนอ่าน
      ย้อนหลังรู้ว่าใบวนอีกรอบเพราะอะไร ไม่ใช่เห็นแค่สถานะเด้งกลับ */
+  /* ⭐ **บอกด้วยว่ารอใคร** (มติผู้ใช้ 2026-09-29 · mig 0391) — คนกดเลือกฝั่งที่ต้องทำต่อ ⇒ กระดิ่ง
+     ที่เด้งถึงอีกฝั่งอ่านจบในบรรทัดเดียวว่าเป็นงานของตัวเองหรือแค่แจ้งให้รู้ ·
+     ใบก่อน mig 0391 ไม่มีค่า ⇒ ประโยคเดิม */
   if (action === 'reopen') {
+    const waitSide = ['dept', 'requester'].includes(ask.reopenWaitSide) ? ask.reopenWaitSide : null;
+    const wait = waitSide ? ` · ${requestWaitLabel(ask, waitSide, 'ทำต่อ')}` : '';
     return {
       kind: 'reopen',
-      body: `ยังไม่จบ — เปิดเรื่องกลับมา${clip(reason) ? ` · ${clip(reason)}` : ''}`,
-      meta: { dept },
+      body: `ยังไม่จบ — เปิดเรื่องกลับมา${wait}${clip(reason) ? ` · ${clip(reason)}` : ''}`,
+      meta: { dept, ...(waitSide ? { waitSide } : {}) },
     };
   }
   // ⭐ ตีกลับต้องลงเธรด **พร้อมเหตุผล** — ผู้ขอเปิดใบมาเห็นว่ากลับเป็นร่างแล้ว

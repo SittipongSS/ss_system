@@ -21,6 +21,7 @@ import { canViewRequests } from '@/lib/permissions';
 import { REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS } from '@/lib/requests/statuses';
 import { canAnswerRequest, canReadRequestRow } from '@/lib/deptRequests';
 import { requestRowsClosurePatch } from '@/lib/requests/stages';
+import { requestActorSide } from '@/lib/requests/replyTurn';
 import { canPriceRow } from '@/lib/requests/rowStage';
 import { mainPriceEntry, normalizeSlotPrices } from '@/lib/master/priceSlots';
 import { findRequest, priceRegistrySlots } from '@/lib/materialPricesAdmin';
@@ -138,7 +139,9 @@ export async function POST(request, { params }) {
 
     // ตอบครบทุกแถว → ใบได้ตราปิดฝั่งฝ่าย (`answeredAt`) เอง — ดู `closure.js`
     const after = await findRequest(supabase, id);
-    const closurePatch = requestRowsClosurePatch(after, after.items || [], nowIso);
+    const closurePatch = requestRowsClosurePatch(after, after.items || [], nowIso, {
+      actorSide: requestActorSide(user, after),
+    });
     if (Object.keys(closurePatch).length) {
       const { error: headError } = await supabase.from('dept_requests')
         .update({ ...closurePatch, updatedAt: nowIso }).eq('id', id);
