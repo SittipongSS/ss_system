@@ -177,3 +177,29 @@ test('⭐ ตารางวันที่ไม่ใช่ปฏิทิน�
   const grid = code('src/components/database/CustomerBillingRuleDayGrid.js');
   assert.equal(/อา\.|จ\.|weekday|getUTCDay|getDay/.test(grid), false, 'ตารางวันที่ต้องไม่มีความหมายวันในสัปดาห์');
 });
+
+test('⭐ มติ 28/09 ข้อ 17: สถานะ "ไม่มีเครดิต" บนการ์ด/โมดัลอธิบาย "ชำระวันวางบิล" — ไม่บอกว่าไม่มีวันวางบิล/กระดิ่งแล้ว (แก้แค่คำ)', () => {
+  const card = code('src/components/database/CustomerBillingRuleCard.js');
+  const modal = code('src/components/database/CustomerBillingRuleModal.js');
+  for (const src of [card, modal]) {
+    assert.match(src, /NO_CREDIT_TEXT/, 'คำกลางตัวเดียวกับทุกจอ ("ไม่มีเครดิต · ชำระวันวางบิล")');
+    assert.doesNotMatch(src, /ไม่มีวันวางบิลและ|ไม่มีกระดิ่งเตือน|กรอกกำหนดชำระเองทีละงวด|เครดิต 0 วัน/);
+  }
+  assert.match(card, /กำหนดชำระเป็นวันเดียวกัน/);
+  assert.match(modal, /segLabel\("ไม่มีเครดิต", PAY_ON_BILLING_TEXT\)/);
+  assert.match(modal, /ใบสั่งขายเลือกวันวางบิลทีละงวด — กำหนดชำระเป็นวันเดียวกัน/);
+});
+
+test('🔴 review 28/09: เครดิต 0 วัน (โมดัลรับ 0 ได้) บนการ์ด/หัวขั้นของโมดัล = "ชำระวันวางบิล" ผ่าน creditDaysText ตัวเดียว', () => {
+  const card = code('src/components/database/CustomerBillingRuleCard.js');
+  const modal = code('src/components/database/CustomerBillingRuleModal.js');
+  // การ์ด: ช่อง "เงินเข้า / กำหนดชำระ" · โมดัล: ป้ายสถานะของขั้นเงินเข้า — ไม่พิมพ์ `เครดิต ${…} วัน` เองอีก
+  assert.match(card, /return \{ main: creditDaysText\(rule\.payment\.days\), sub:/);
+  assert.match(modal, /payState = \["ok", form\.payMode === "credit" \? creditDaysText\(creditDaysNumber\)/);
+  for (const src of [card, modal]) assert.doesNotMatch(src, /`เครดิต \$\{[^}]*\} วัน`/, 'ประโยคจำนวนวันเครดิตมาจาก creditDaysText เท่านั้น');
+  // ตัวอย่างการคิดวันของโมดัล (วางบิลได้ทุกวัน) — เครดิต 0 ไม่พูด "เงินเข้าอีก 0 วัน"
+  assert.match(modal, /result\.rule\.payment\.days === 0\s*\? <>วางบิลวันไหน เงินเข้า<b>วันเดียวกัน<\/b> \(\{PAY_ON_BILLING_TEXT\}\) เช่น<\/>/);
+  // ที่เหลือที่พิมพ์ "เครดิต {n} วัน" ในโมดัลกัน 0 ไว้ก่อนแล้ว (ประโยคกติกา) หรือเป็นชิปทางลัดที่ไม่มี 0
+  assert.match(modal, /: n === 0 \? "วันเดียวกับวันวางบิล"\s*: <>เครดิต \{n\} วัน/);
+  assert.match(modal, /const QUICK_CREDITS = \[30, 14\];/);
+});

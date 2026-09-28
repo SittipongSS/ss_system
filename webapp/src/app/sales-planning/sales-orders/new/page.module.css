@@ -187,6 +187,19 @@
     margin-top: var(--space-2-5);
   }
 
+  /* วันวางบิล (ไม่บังคับ) ของลูกค้าที่ยังไม่ตั้งกำหนดวางบิล — แถวของตัวเอง **เหนือ** กำหนดชำระ (มติ 28/09 ข้อ 17 ·
+     เรียงวันวางบิล → กำหนดชำระ เสมอ) · มีช่องนี้ = กำหนดชำระเลื่อนลงไปแถว 4 */
+  .cellBill {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    margin-top: var(--space-2-5);
+  }
+
+  .cellBill + .cellPick {
+    grid-row: 4;
+    margin-top: var(--space-2);
+  }
+
   .cardOnly { display: inline; }
 
   .cardLabel {

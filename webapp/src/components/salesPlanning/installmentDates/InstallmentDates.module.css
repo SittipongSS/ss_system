@@ -1,0 +1,370 @@
+/* โหมดตั้งวันงวดในตาราง (แบบ C · มติเจ้าของ 28/09) — ม็อก mockups/billing-cycle/installment-v2/c.html + recommended.html
+   ⚠️ ระยะ/ตัวอักษร/เส้นใช้โทเคนเท่านั้น · จุดตัดจอใช้ค่าที่ระบบมีอยู่แล้ว (640 · 1000 — เพดานของ audit:ui ขึ้นไม่ได้)
+   ⚠️ ตำแหน่งป๊อปโอเวอร์มาจากการวัดจริง (ตั้งเป็นตัวแปร CSS ใน useLayoutEffect) — ไม่มี style={{}} (เพดาน inlineStyle เต็มพอดี)
+   ⚠️ สีวันวางบิล = น้ำเงิน (โหนดกลวง ○) · กำหนดชำระ = navy (โหนดทึบ ●) — ตรงกับม็อกและโมดัลรอบวางบิลของทะเบียนลูกค้า */
+
+/* ── กรอบตาราง + ป๊อปโอเวอร์ข้างแถว (≥1000px) ─────────────────────────────────────────────────
+   ป๊อปโอเวอร์อยู่ในกรอบของตาราง (absolute) ไม่ใช่ fixed ทั้งจอ ⇒ ไม่มีทางบังหัวใบ SO หรือปุ่มของการ์ด ·
+   กรอบยืดสูงตามก้นป๊อปโอเวอร์ (`--date-pop-bottom`) ⇒ ใบงวดเดียวก็ไม่ทับแถบบันทึกข้างล่าง */
+.frame { position: relative; min-width: 0; }
+.frame[data-pop="open"] { min-height: var(--date-pop-bottom, auto); }
+
+.pop {
+  position: absolute;
+  top: var(--date-pop-top, 0);
+  left: var(--date-pop-left, auto);
+  right: auto;
+  z-index: var(--z-inline-menu);
+  width: min(440px, 100%);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--panel-float);
+  box-shadow: var(--shadow-float);
+}
+/* ยังไม่ได้วัด (รอบวาดแรก) — ซ่อนไว้ก่อน ไม่ให้กระพริบที่มุมซ้ายบน */
+.pop:not([data-placed]) { visibility: hidden; }
+
+/* กางใต้แถว (641–999px) — แถวต่อจากงวดนั้นในตารางเดียวกัน
+   ⚠️ ตารางกว้างกว่ากล่องเลื่อน (minWidth ~1000px) ⇒ กล่องตัวแก้ติดขอบซ้ายของกล่องเลื่อน (sticky) ไม่ไหลไปกับการเลื่อนแนวนอน
+   ⚠️ padding ต้องชนะกฎเซลล์ของ TableScroll (`.scroll[data-family] td` ความจำเพาะสูงกว่า) — จึงใช้ตัวเลือกยาวแทน !important */
+.expandRow > td.expandCell { padding: var(--space-1) 0 var(--space-3); background: var(--panel-2); }
+.expandBox {
+  position: sticky;
+  left: 0;
+  width: min(600px, 100%);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--panel-solid);
+}
+
+/* ── ตัวแก้ของงวด ────────────────────────────────────────────────────────────────────────── */
+.editor { display: grid; min-width: 0; gap: var(--space-3); padding: var(--space-3) var(--space-3-5); }
+/* ระหว่างบันทึก (inert) — จางให้เห็นว่าแตะไม่ได้ชั่วคราว */
+.editor[aria-busy="true"] { opacity: var(--op-disabled); }
+.edHead { display: flex; align-items: flex-start; gap: var(--space-2); }
+.edTitle { flex: 1; min-width: 0; outline: none; }
+.edTitle b { display: block; color: var(--text); font-size: var(--fs-7); font-weight: var(--fw-bold); line-height: var(--lh-thai); }
+.edTitle small { display: block; color: var(--text-3); font-size: var(--fs-4); font-variant-numeric: tabular-nums; }
+.edTitle:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: var(--radius); }
+.edNav { display: inline-flex; flex: none; gap: var(--space-1); }
+
+/* แถบงวดทั้งใบ — เห็นเพื่อนบ้านระหว่างตั้ง (บรีฟข้อ "เห็นงวดอื่นของใบ") */
+.strip { display: flex; gap: var(--space-1); overflow-x: auto; padding-bottom: var(--space-0-5); scrollbar-width: thin; }
+.stripItem {
+  display: grid;
+  flex: none;
+  min-width: 64px;
+  gap: 0;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-solid);
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-3);
+  line-height: var(--lh-thai);
+  text-align: left;
+  cursor: pointer;
+}
+.stripItem b { color: var(--text); font-size: var(--fs-4); font-weight: var(--fw-semibold); }
+.stripItem[aria-current="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.stripItem[data-lock] { border-style: dashed; color: var(--text-3); }
+.stripItem[data-changed] b::after { content: " •"; color: var(--accent-ink); }
+
+.lead { margin: 0; color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-thai); }
+.legend { display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; }
+
+/* โหนดของสองวัน — ○ วางบิล (กลวง) · ● กำหนดชำระ (ทึบ) */
+.node,
+.nodeFill {
+  display: inline-block;
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--blue);
+  border-radius: var(--radius-full);
+  vertical-align: middle;
+}
+.nodeFill { border-color: var(--navy-ink); background: var(--navy-ink); }
+
+/* ── ไทล์ "○ วันวางบิล —n วัน→ ● กำหนดชำระ" (รอบ · ต่อจากงวดก่อน · แผงเติม) ── */
+.tiles { display: grid; gap: var(--space-1-5); }
+.tile {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-height: var(--ctl-h-touch);
+  padding: var(--space-2) var(--space-2-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-solid);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.tile:hover:not(:disabled) { border-color: var(--accent); }
+.tile[aria-checked="true"],
+.tile[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+.tile:disabled { opacity: var(--op-disabled); cursor: not-allowed; }
+.tile:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.tileCap { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); color: var(--text-2); font-size: var(--fs-4); font-weight: var(--fw-semibold); line-height: var(--lh-thai); }
+.tileDates { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-1-5); font-size: var(--fs-5); line-height: var(--lh-thai); }
+.tileDate { display: inline-flex; align-items: center; gap: var(--space-1); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tileGap { color: var(--text-3); font-size: var(--fs-3); white-space: nowrap; }
+.tileEnd { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--accent-ink); }
+.tileMeta { color: var(--text-3); font-size: var(--fs-3); font-weight: var(--fw-normal); }
+
+.more { justify-self: start; }
+
+/* ── ปฏิทินรายเดือนในตัวแก้ (อา–ส · มติ 26/09) ──
+   ⭐ เสาร์-อาทิตย์เป็นวันปกติ (ไม่จาง) — เตือนเป็นคำในบรรทัดผลแทน · วันที่ผ่านแล้วจางแต่ยังแตะได้ (เตือน ไม่กั้น) */
+.cal { display: grid; gap: var(--space-1); min-width: 0; }
+.calHead { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--space-1); }
+.calHead strong { text-align: center; color: var(--text); font-size: var(--fs-6); }
+.calWeek,
+.calGrid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--space-0-5); }
+.calWeek span { text-align: center; color: var(--text-3); font-size: var(--fs-3); font-weight: var(--fw-bold); }
+.calDay {
+  position: relative;
+  min-height: 34px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-5);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.calDay:hover { background: var(--accent-soft); color: var(--accent-ink); }
+.calDay:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.calDay[data-past] { color: var(--text-3); }
+.calDay[data-today] { border-color: var(--accent); }
+.calDay[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); font-weight: var(--fw-bold); }
+.calMark {
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  color: var(--text-3);
+  font-size: var(--fs-1);
+  line-height: var(--lh-none);
+}
+.calDay[aria-pressed="true"] .calMark { color: inherit; }
+.calPad { min-height: 34px; }
+.peek { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-1-5); margin: 0; min-height: var(--space-6); color: var(--text-2); font-size: var(--fs-4); line-height: var(--lh-thai); }
+
+/* ── ผล + ช่องกำหนดชำระ (อยู่ในตัวแก้เสมอ · ป้ายที่มา) ── */
+.result {
+  display: grid;
+  gap: var(--space-1-5);
+  padding: var(--space-2) var(--space-2-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+}
+.resLine { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-1-5); font-size: var(--fs-5); line-height: var(--lh-thai); }
+.resKey { min-width: 72px; color: var(--text-3); font-size: var(--fs-4); font-weight: var(--fw-bold); }
+.resValue { font-variant-numeric: tabular-nums; }
+.resValue b { color: var(--text); font-weight: var(--fw-semibold); }
+.dueInput { width: 190px; max-width: 100%; }
+.warns { display: grid; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
+.warn { display: flex; align-items: flex-start; gap: var(--space-1); color: var(--amber); font-size: var(--fs-4); line-height: var(--lh-thai); }
+.warn[data-tone="muted"] { color: var(--text-3); }
+.warn > svg { flex: none; margin-top: var(--space-0-5); }
+
+.eventOwn { display: grid; gap: var(--space-1); }
+.eventOwn > span { color: var(--text-3); font-size: var(--fs-label); font-weight: var(--fw-bold); }
+.hint { display: flex; align-items: flex-start; gap: var(--space-1-5); margin: 0; color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-thai); }
+.hint > svg { flex: none; margin-top: var(--space-0-5); }
+
+.foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1-5) var(--space-2); }
+.footNext { margin-left: auto; }
+
+/* ── เซลล์ในโหมดตั้งวัน — ปุ่มทั้งเซลล์ · ร่างมีจุดบอกหนึ่งจุด + "เดิม ~~วัน~~" เฉพาะที่แทนค่าที่บันทึกไว้
+   (ข้อ 6 ของกรรมการ: หลังเติมทั้งชุดต้องไม่เป็นกล่องสีเต็มตาราง) ── */
+.cell {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--ctl-h);
+  gap: var(--space-0-5);
+  padding: var(--space-1) var(--space-1-5);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--panel-solid);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cell:hover:not(:disabled) { border-color: var(--accent); }
+.cell:disabled, .lockCell:disabled, .entry:disabled { opacity: var(--op-disabled); cursor: progress; }
+.cell:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.cell[aria-expanded="true"] { border-style: solid; border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.cellMain { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); font-size: var(--fs-5); font-variant-numeric: tabular-nums; line-height: var(--lh-thai); }
+.cellMain b { font-weight: var(--fw-semibold); white-space: nowrap; }
+.cellSub { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-0-5) var(--space-1-5); color: var(--text-3); font-size: var(--fs-3); line-height: var(--lh-thai); }
+.cellSub s { color: var(--text-3); }
+.cellSub [data-tone="warn"] { color: var(--amber); }
+.cellEmpty { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--accent-ink); font-weight: var(--fw-semibold); }
+.changed { width: 6px; height: 6px; flex: none; border-radius: var(--radius-full); background: var(--accent); }
+.lockCell {
+  display: grid;
+  gap: var(--space-0-5);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.lockTag { display: inline-flex; align-items: flex-start; gap: var(--space-1); color: var(--text-3); font-size: var(--fs-3); line-height: var(--lh-thai); }
+.lockTag > svg { flex: none; margin-top: var(--space-0-5); }
+
+/* ทางเข้าจากตารางอ่านอย่างเดียว — วันในเซลล์เป็นปุ่ม (แตะแล้วเข้าโหมดที่งวดนั้น) */
+.entry {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0;
+  border: 0;
+  border-bottom: 1px dashed transparent;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.entry:hover:not(:disabled) { border-bottom-color: var(--accent); }
+.entry:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: var(--radius); }
+.entryIcon { flex: none; color: var(--text-3); }
+.none { color: var(--text-3); }
+
+/* ── บรรทัดใต้หัวการ์ดตอนอยู่ในโหมด ── */
+.modeHint { display: flex; align-items: flex-start; gap: var(--space-1-5); margin: 0; color: var(--text-2); font-size: var(--fs-5); line-height: var(--lh-thai); }
+.modeHint > svg { flex: none; margin-top: var(--space-0-5); color: var(--accent-ink); }
+.entryCount { font-variant-numeric: tabular-nums; }
+
+/* ── แถบบันทึก (ติดขอบล่างของจอ · อยู่ในลำดับของหน้า ⇒ ไม่บังเนื้อท้ายการ์ด) ──
+   ⚠️ แผงวางแถบนี้ **นอก** DetailCard (การ์ดเป็น overflow:hidden = sticky ข้างในยึดกับการ์ดที่ไม่เลื่อน)
+   ⚠️ ชั้นเดียวกับป๊อปโอเวอร์ของตัวแก้ (--z-inline-menu) และมาทีหลังใน DOM ⇒ ป๊อปโอเวอร์ไม่ทับปุ่มบันทึก ·
+     ต่ำกว่าโมดัล/ดรอปดาวน์/toast (ไม่ใช่ --z-save-bar ของไทม์ไลน์ที่ลอยเหนือโมดัล — กล่องยืนยันทิ้งร่างต้องอยู่บนแถบ)
+   · พื้นทึบ (--panel-float) เพราะลอยทับแถวตาราง */
+.bar {
+  position: sticky;
+  bottom: calc(var(--mobile-nav-h, 0px) + env(safe-area-inset-bottom) + var(--space-2));
+  z-index: var(--z-inline-menu);
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2-5) var(--space-3);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-lg);
+  background: var(--panel-float);
+  box-shadow: var(--shadow-md);
+}
+.barRow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.barInfo { display: grid; flex: 1 1 260px; min-width: 0; gap: var(--space-0-5); }
+.barCount { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1-5); margin: 0; color: var(--text); font-size: var(--fs-6); font-weight: var(--fw-semibold); line-height: var(--lh-thai); }
+.n { font-variant-numeric: tabular-nums; }
+.barNote { display: flex; align-items: flex-start; gap: var(--space-1); margin: 0; color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-thai); }
+.barNote[data-tone="warn"] { color: var(--amber); }
+.barNote > svg { flex: none; margin-top: var(--space-0-5); }
+.barActions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1-5); margin-left: auto; }
+.summary { display: grid; max-height: 25vh; gap: var(--space-1); margin: 0; padding: 0 0 0 var(--space-1); overflow-y: auto; list-style: none; }
+.summary li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); font-size: var(--fs-4); line-height: var(--lh-thai); }
+.summary li > b { min-width: 48px; }
+.summary s { color: var(--text-3); }
+.pair { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); font-variant-numeric: tabular-nums; }
+.stale { color: var(--amber); }
+
+/* ── แผงเติมวันงวดที่ว่าง… (อยู่ในการ์ดเหนือตาราง — ไม่ลอยทับ) ── */
+.fill {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3-5);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--panel-solid);
+}
+.fillHead { display: flex; align-items: flex-start; gap: var(--space-2); }
+.fillHead > div { flex: 1; min-width: 0; }
+.fillHead h3 { display: flex; align-items: center; gap: var(--space-1-5); margin: 0; color: var(--text); font-size: var(--fs-7); font-weight: var(--fw-bold); line-height: var(--lh-thai); outline: none; }
+.fillHead h3:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: var(--radius); }
+.fillHead p { margin: 0; color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-thai); }
+.fillQ { display: grid; gap: var(--space-1-5); min-width: 0; }
+.fillQ > span { display: inline-flex; align-items: center; gap: var(--space-1-5); color: var(--text-2); font-size: var(--fs-label); font-weight: var(--fw-bold); }
+.stepNo {
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: var(--radius-full);
+  background: var(--panel-3);
+  color: var(--text-2);
+  font-size: var(--fs-2);
+}
+.fillTiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--space-1-5); }
+.or { margin: 0; color: var(--text-3); font-size: var(--fs-4); }
+.dayGrid { --tone: var(--navy-ink); --tone-soft: color-mix(in srgb, var(--navy-ink) 10%, var(--panel-solid)); }
+.fillDone { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1-5) var(--space-2); }
+.fillDone p { flex: 1 1 240px; margin: 0; color: var(--text-2); font-size: var(--fs-5); line-height: var(--lh-thai); }
+
+/* สวิตช์ "จัดใหม่งวดที่มีวันแล้วด้วย (N งวด)" — แทนปุ่ม "จัดวันใหม่ตามรอบปัจจุบัน…" เดิม */
+.switch {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-1-5) 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.switch:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: var(--radius); }
+.track {
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 20px;
+  margin-top: var(--space-0-5);
+  border-radius: var(--radius-full);
+  background: var(--panel-3);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+.track::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+  background: var(--panel-solid);
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--motion-fast) var(--ease-standard);
+}
+.switch[aria-checked="true"] .track { background: var(--accent); box-shadow: none; }
+.switch[aria-checked="true"] .track::after { transform: translateX(14px); }
+.switch small { display: block; color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-thai); }
+.switch b { font-size: var(--fs-5); font-weight: var(--fw-semibold); line-height: var(--lh-thai); }
+
+/* ── แผ่นเต็มจอบนมือถือ (Modal sheetOnPhone) — เป้าแตะ 44px ── */
+.sheetBody { display: grid; gap: var(--space-3); }
+.sheetBody > .editor { padding: 0; }
+.sheetFoot { display: flex; width: 100%; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.sheetFoot > p { flex: 1 1 100%; }
+.sheetSave { flex: 1; min-width: 0; }
+
+@media (max-width: 640px) {
+  .calDay,
+  .calPad { min-height: var(--ctl-h-touch); }
+  .stripItem { min-height: var(--ctl-h-touch); }
+  .fillTiles { grid-template-columns: minmax(0, 1fr); }
+  .dueInput { width: 100%; }
+}

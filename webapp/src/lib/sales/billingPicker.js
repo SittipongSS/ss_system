@@ -17,7 +17,7 @@
 // ⚠️ รอบรุ่นสอง (mig 0390 · มติ 26/09): สวิตช์เครดิต + วางบิลได้ถึง 4 รอบต่อเดือน — **ห้ามอ่าน `rule.billing.day` /
 //    `rule.payment.day` / `.monthOffset` ตรง ๆ** อีก (รูปรุ่นแรกแปลงตอนอ่าน ช่องพวกนั้นไม่มีแล้ว) ถามผ่านตัวช่วยของ billingRule.js
 import {
-  BILLING_EVENT_MAX, billingRoundCount, billingRoundLabels, billingRounds, billingRuleOf, dueDateForBilling, formatRoundChip,
+  BILLING_EVENT_MAX, billingRoundCount, billingRoundLabels, billingRounds, dueDateForBilling, effectiveBillingRule, formatRoundChip,
 } from './billingRule.js';
 
 const dateOf = (value) => {
@@ -28,14 +28,14 @@ const MODES = new Set(['round', 'other', 'event']);
 
 /**
  * รอบที่ "ใช้เลือกวันงวดได้" — ตัวเลือกรอบ · แผงงวด · หน้าสร้าง SO ถามตัวนี้ตัวเดียว
- * ⭐ **ไม่มีเครดิต = null** (มติเจ้าของ 26/09 ข้อ 2): จอ SO ทำเหมือนลูกค้ายังไม่ตั้งรอบทุกอย่าง — ช่องกำหนดชำระแบบเดิม ·
- *   ไม่มีวันวางบิล · ไม่มีปุ่มเติม/จัดวันใหม่ · ไม่มีชิปรอบ — แต่ **แสดง** ว่า "ไม่มีเครดิต" (ผู้เรียกถาม `billingRuleNoCredit` เอง)
- * 🐞 ถ้าส่ง `{ credit: false }` เข้าตัวเลือกตรง ๆ ตัวเลือกจะหาชิปรอบจาก `billing` ที่ไม่มีอยู่ (จอล้มทั้งแผง)
- * @returns รอบรูปมาตรฐาน (มีเครดิต) หรือ null (ไม่ตั้ง · ไม่มีเครดิต · รูปผิด)
+ * ⭐ **ไม่มีเครดิต = วางบิลได้ทุกวัน + ชำระวันวางบิล** (มติเจ้าของ 28/09 ข้อ 17 · แทนมติ 26/09 "ไม่มีเครดิต = ทำเหมือนไม่มีรอบ")
+ *   = ผลของ `effectiveBillingRule` ตัวเดียว ⇒ ตัวเลือกเปิดช่องวันวางบิลให้ แล้วกำหนดชำระ = วันเดียวกัน (ทางเดียวกับเครดิต N วัน)
+ *   ผู้เรียกที่ต้องบอกว่า "ไม่มีเครดิต" ถาม `billingRuleNoCredit` / ธง `noCredit` ของผล (เลือกคำเท่านั้น)
+ * 🐞 ห้ามส่ง `{ credit: false }` ดิบเข้าตัวเลือกโดยไม่ผ่านตัวนี้ — ไม่มี `billing` ให้หาชิปรอบ (จอล้มทั้งแผง)
+ * @returns รอบที่ใช้คิดวัน (มีเครดิต · ไม่มีเครดิต) หรือ null (ยังไม่ตั้ง · รูปผิด — กรอกกำหนดชำระเอง)
  */
 export function pickerRuleOf(value) {
-  const rule = billingRuleOf(value);
-  return rule && rule.credit !== false ? rule : null;
+  return effectiveBillingRule(value);
 }
 
 /**

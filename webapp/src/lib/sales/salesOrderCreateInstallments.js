@@ -7,10 +7,14 @@
 // มติเจ้าของ 25–26/09/2026:
 //   · ลูกค้าที่ตั้งรอบวางบิลแล้ว = แต่ละงวดแตะเลือกรอบ (BillingRoundPicker) ได้ทั้งวันวางบิลและกำหนดชำระ
 //   · **ไม่บังคับเลือก** (รอบสาม ข้อ 2 "บางที่ไม่มีรอบวาง") — งวดที่ไม่เลือกไม่ถูกส่ง = งวดร่างว่างแบบเดิม
-//   · ลูกค้าที่ยังไม่ตั้งรอบ = ช่องกำหนดชำระแบบเดิม (ค่าอยู่ในรูปเดียวกัน: mode null + dueDate)
+//   · ลูกค้าที่ยังไม่ตั้งรอบ = ช่องกำหนดชำระแบบเดิม + **ช่องวันวางบิล (ไม่บังคับ)** (มติ 28/09 ข้อ 17 — ทุกใบมีสองช่อง ·
+//     ค่าอยู่ในรูปเดียวกัน: mode null/'other' + billingDate + dueDate · ไม่มีอะไรคิดกำหนดชำระให้)
+//   · ลูกค้าไม่มีเครดิต (28/09) = ตัวเลือกแบบลูกค้าวางบิลได้ทุกวัน — วันวางบิล แล้วกำหนดชำระ = วันเดียวกัน (`pickerRuleOf`)
+//   · "ยังไม่ตั้ง" ต้องรู้แน่ (`createFormTermsKind` 'unset') — โหลดไม่ขึ้น / ใบไม่ผูกลูกค้า / ฐานยังไม่รองรับ = ไม่รู้
+//     ⇒ ช่องกำหนดชำระอย่างเดียวแบบเดิม ไม่มีคำ "ลูกค้ายังไม่ตั้ง…" (review 28/09)
 // ⚠️ ตัวคิดวัน/ตัวตัดสินว่า "เลือกครบไหม" อยู่ที่ billingPicker.js + billingRule.js — ไฟล์นี้แค่ต่อสาย
 // ⚠️ วันวางบิลกับรอเหตุการณ์ไม่มาคู่กัน (CHECK ของ mig 0389) — ตรวจด้วย `normalizeInstallmentBilling` ตัวเดียวกับทุกเส้น
-import { billingRuleOf, normalizeInstallmentBilling } from './billingRule.js';
+import { billingRuleMonthly, billingRuleOf, effectiveBillingRule, normalizeInstallmentBilling } from './billingRule.js';
 import { EMPTY_PICKER_VALUE, normalizePickerValue, pickerMissing, pickerPayload } from './billingPicker.js';
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -44,19 +48,87 @@ function dateProblemText(check, field, seq) {
 const rowName = (row) => `งวด ${row.seq}${row.label ? ` ${row.label}` : ''}`;
 
 /**
- * ค่าของงวดตาม **สิ่งที่ตาเห็นบนจอ** — ลูกค้าไม่มีรอบ (หรือรอบถูกล้างจากอีกแท็บ) ตารางเหลือแค่ช่องกำหนดชำระ
- * ⇒ วันวางบิล/เหตุการณ์ที่ค้างใน state จากตอนยังมีรอบ **ต้องไม่ถูกส่ง และต้องไม่ถูกด่านกัน**
+ * ค่าของงวดตาม **สิ่งที่ตาเห็นบนจอ** — ลูกค้ายังไม่ตั้ง (หรือรอบถูกล้างจากอีกแท็บ) ตารางเหลือช่องกำหนดชำระ + ช่องวันวางบิล
+ * (ไม่บังคับ · มติ 28/09 ข้อ 17) ⇒ เหตุการณ์/โหมดของตัวเลือกที่ค้างใน state จากตอนยังมีรอบ **ต้องไม่ถูกส่ง และต้องไม่ถูกด่านกัน**
  * 🐞 ไม่งั้น: เลือก "วันอื่น…" ไว้แล้วรอบถูกล้าง ⇒ ปุ่มสร้างติด "ยังไม่ได้ใส่วันวางบิล" โดยไม่มีตัวเลือกให้แก้ (ทางตัน)
- *    หรือวันวางบิลที่มองไม่เห็นหลุดไปกับใบ · state เดิมไม่ถูกแตะ — รอบกลับมา ค่าที่เลือกไว้ก็กลับมาครบ
+ *    หรือค่าที่มองไม่เห็นหลุดไปกับใบ · state เดิมไม่ถูกแตะ — รอบกลับมา ค่าที่เลือกไว้ก็กลับมาครบ
+ * · วันวางบิลที่ค้างอยู่ **ขึ้นในช่องวันวางบิลที่เห็น** ⇒ ส่งได้ (ตาเห็น = ส่ง) · มีวัน = 'other' (ไม่ติดด่าน "ยังไม่ใส่วัน")
  * @param valuesBySeq `{ [seq]: pickerValue }` · @param withRule ตารางกำลังโชว์ตัวเลือกรอบอยู่ไหม
+ * @param withBilling ตารางมีช่องวันวางบิล (ไม่บังคับ) ของลูกค้าที่ยังไม่ตั้งไหม — ฐานที่ยังไม่รัน 0389 = ไม่มี (ส่งแค่กำหนดชำระ)
  */
-export function createFormVisibleValues(valuesBySeq = {}, { withRule = false } = {}) {
+export function createFormVisibleValues(valuesBySeq = {}, { withRule = false, withBilling = false } = {}) {
   if (withRule) return valuesBySeq || {};
   const out = {};
   for (const [seq, value] of Object.entries(valuesBySeq || {})) {
-    out[seq] = { ...EMPTY_PICKER_VALUE, dueDate: normalizePickerValue(value).dueDate };
+    const v = normalizePickerValue(value);
+    const billingDate = withBilling ? v.billingDate : '';
+    out[seq] = { ...EMPTY_PICKER_VALUE, mode: billingDate ? 'other' : null, billingDate, dueDate: v.dueDate };
   }
   return out;
+}
+
+/**
+ * ค่าของงวดหลังพิมพ์ในช่องของลูกค้าที่ยังไม่ตั้ง (กำหนดชำระ · วันวางบิลไม่บังคับ) — สองช่องแยกกัน **ไม่คิดอะไรให้กัน**
+ * · มีวันวางบิล = 'other' (รูปเดียวกับ "วันอื่น…" ของตัวเลือก ⇒ ลูกค้าตั้งกติกาในอีกแท็บแล้วกลับมา ค่าที่พิมพ์ไว้ขึ้นในตัวเลือกครบ)
+ * · กำหนดชำระที่พิมพ์เอง = `dueOverridden` (ตัวเลือกบอก "แก้ทับ" ถ้าไม่ตรงกับที่กติกาใหม่คิดได้ — ไม่ทับค่าที่คนพิมพ์เงียบ ๆ)
+ * @param patch `{ dueDate? , billingDate? }` — ช่องที่ไม่ส่ง = คงค่าเดิม
+ */
+export function createFormManualValue(value, patch = {}) {
+  const v = normalizePickerValue(value);
+  const billingDate = Object.hasOwn(patch, 'billingDate') ? String(patch.billingDate || '') : v.billingDate;
+  const dueDate = Object.hasOwn(patch, 'dueDate') ? String(patch.dueDate || '') : v.dueDate;
+  const clean = normalizePickerValue({ mode: 'other', billingDate, dueDate });
+  return {
+    ...EMPTY_PICKER_VALUE,
+    mode: clean.billingDate ? 'other' : null,
+    billingDate: clean.billingDate,
+    dueDate: clean.dueDate,
+    dueOverridden: Boolean(clean.dueDate),
+  };
+}
+
+/**
+ * สถานะกำหนดวางบิลของลูกค้าบนหน้าสร้าง — **ตัวตัดสินเดียว** ของคำใต้ตาราง และของช่องวันวางบิล (ไม่บังคับ)
+ *   'rule'  = ตั้งแล้ว (รวมไม่มีเครดิต) → ตัวเลือกรอบ/วันวางบิล (BillingRoundPicker)
+ *   'unset' = โหลดขึ้น · ฐานรองรับ · ลูกค้ายังไม่ตั้งจริง → กำหนดชำระ + วันวางบิล (ไม่บังคับ) + คำ "ลูกค้ายังไม่ตั้ง…"
+ *   'error' = โหลดไม่ขึ้น → กำหนดชำระอย่างเดียวแบบเดิม (แถบเหนือตารางบอกเหตุ + ลองใหม่อยู่แล้ว)
+ *   'off'   = ใบไม่ผูกลูกค้า · ฐานยังไม่รัน 0389 · ไม่เจอแถวลูกค้า → กำหนดชำระอย่างเดียวแบบเดิม
+ * 🐞 review 28/09: เดิมถามแค่ "มีรอบไหม" ⇒ โหลดไม่ขึ้น/ใบไม่ผูกลูกค้า ก็ขึ้น "ลูกค้ายังไม่ตั้งกำหนดวางบิล" (ไม่จริง — ไม่รู้ต่างหาก)
+ *    + ช่องวันวางบิลของลูกค้าที่ยังไม่ตั้ง ทั้งที่ลูกค้าอาจมีกติกาอยู่แล้ว (พิมพ์วันวางบิลเองแล้วกติกาจริงคิดคนละวัน)
+ * @param terms สถานะจาก `createFormTermsState` (null = ใบไม่ผูกลูกค้า)
+ */
+export function createFormTermsKind(terms) {
+  if (terms?.status === 'error') return 'error';
+  if (terms?.status !== 'ready' || terms.supported !== true) return 'off';
+  return effectiveBillingRule(terms.rule) ? 'rule' : 'unset';
+}
+
+/**
+ * บรรทัดใต้ตารางงวดของหน้าสร้าง — บอกว่าช่องทำงานอย่างไร **ตามแบบของกติกาลูกค้า** (มติ 28/09 ข้อ 17 · ตัวเดียวทุกแบบ)
+ * · รอบรายเดือน = ชิปรอบ · ทุกวัน + เครดิต N = ใส่วันวางบิลแล้วคิด +N · ไม่มีเครดิต = ชำระวันวางบิล (ห้ามพูด "เครดิต 0 วัน")
+ * · ทุกวัน + เงินเข้าตามวันที่ = คิดตามรอบ · ยังไม่ตั้ง = กรอกเองทั้งสองช่อง วันวางบิลไม่บังคับ ไม่มีอะไรคิดให้
+ * · ไม่มีรอบเพราะ **ไม่รู้** (`termsKind` 'error' / 'off' — ดู `createFormTermsKind`) = ห้ามพูด "ลูกค้ายังไม่ตั้ง…"
+ *   'error' = '' (แถบเหนือตาราง "โหลด…ไม่สำเร็จ — กรอกกำหนดชำระเองได้ตามเดิม" บอกครบแล้ว ไม่พูดซ้ำ) · 'off' = ประโยคกลาง
+ * @param value รอบของลูกค้า (ดิบได้) · @param termsKind 'unset' (ค่าตั้งต้น) | 'error' | 'off' — ใช้เฉพาะตอนไม่มีรอบ
+ * @returns ข้อความ หรือ '' (ผู้เรียกไม่วาดบรรทัด)
+ */
+export function createFormPlanNote(value, { termsKind = 'unset' } = {}) {
+  const rule = effectiveBillingRule(value);
+  const later = 'ไม่เลือกก็สร้างใบได้ — ตั้งภายหลังได้ที่การ์ด “การชำระ” บนใบ';
+  if (!rule) {
+    if (termsKind === 'error') return '';
+    if (termsKind !== 'unset') return `กรอกกำหนดชำระเองได้ · ${later}`;
+    return `ลูกค้ายังไม่ตั้งกำหนดวางบิล — วันวางบิลไม่บังคับ · กรอกกำหนดชำระเอง (ระบบไม่คิดให้) · ${later}`;
+  }
+  if (billingRuleMonthly(rule)) {
+    return `ชิปคือ 3 รอบถัดไปของลูกค้านับจากวันนี้ · แตะรอบเดียวได้ทั้งวันวางบิลและกำหนดชำระ · แก้กำหนดชำระทับรายงวดได้ · ${later}`;
+  }
+  /* รูปรุ่นสองที่อ่านผ่าน effectiveBillingRule แล้ว — `payment.days` ของเครดิตเป็นช่องมาตรฐาน (ไม่ใช่ช่องรุ่นแรก) */
+  const days = rule.payment?.mode === 'credit' ? rule.payment.days : null;
+  if (rule.noCredit) return `ลูกค้าไม่มีเครดิต · ชำระวันวางบิล — ใส่วันวางบิล กำหนดชำระเป็นวันเดียวกัน · ${later}`;
+  if (days === 0) return `ลูกค้าชำระวันวางบิล — ใส่วันวางบิล กำหนดชำระเป็นวันเดียวกัน · ${later}`;
+  if (days !== null) return `ลูกค้าวางบิลได้ทุกวัน · เครดิต ${days} วัน — ใส่วันวางบิล ระบบคิดกำหนดชำระ (+${days} วัน) ให้ · ${later}`;
+  return `ลูกค้าวางบิลได้ทุกวัน — ใส่วันวางบิล ระบบคิดกำหนดชำระตามรอบของลูกค้าให้ · ${later}`;
 }
 
 /**
@@ -190,7 +262,7 @@ export async function loadCreateFormBillingTerms(supabase, customerId) {
 /* ก้อน `billingTerms` จาก API → สถานะของหน้า (`null` = ใบไม่ผูกลูกค้า/ไม่ได้ขอ = ไม่มีแถบ)
    `{ status: 'ready', supported, rule, creditTerms, arCode }` · `{ status: 'error', detail }`
    ⭐ `rule` = รูปมาตรฐานรุ่นสอง (mig 0390) **รวม `{ credit: false }`** (ไม่มีเครดิต) — ผู้เรียกที่จะเปิดตัวเลือกรอบถาม
-     `pickerRuleOf(rule)` (ไม่มีเครดิต = null · ทำเหมือนไม่มีรอบ) ส่วนแถบ/ประโยคอ่าน `rule` ตรงเพื่อบอกว่า "ไม่มีเครดิต"
+     `pickerRuleOf(rule)` (ไม่มีเครดิต = วางบิลได้ทุกวัน + ชำระวันวางบิล · มติ 28/09) ส่วนแถบ/ประโยคถาม `billingRuleNoCredit` เพื่อเลือกคำ
    ⚠️ รูปรุ่นแรก (0389: billing.day / payment.day+monthOffset) ถูกแปลงเป็นรุ่นสองที่ `billingRuleOf` แล้ว ⇒ อย่าอ่านช่องรุ่นแรก
    · `creditTerms` = ข้อความเครดิตเดิม (ช่องอิสระที่ถอดจากฟอร์มลูกค้าแล้ว · อ่านอย่างเดียว) */
 export function createFormTermsState(payload) {
