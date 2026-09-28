@@ -479,7 +479,7 @@ test('แผงงวด: โหมดตั้งวัน (แบบ C · ม�
   assert.match(panel, /onDirtyChange: onDatesDirty,\s*onClearError,\s*\}\);/);
   const hook = code(MODE_HOOK);
   assert.match(slice(hook, 'const enter = useCallback(', '}, ['), /if \(blocker\) \{ notifyToast\.error\(blocker\); return; \}\s*clearErrorRef\.current\?\.\(\);/);
-  assert.match(slice(hook, 'const openFill = () => {', '\n  };'), /clearErrorRef\.current\?\.\(\);/);
+  assert.match(slice(hook, 'const openFill = ({ includeDated = false } = {}) => {', '\n  };'), /clearErrorRef\.current\?\.\(\);/);
   // "เอาคืน" ถามด่านล่าสุด (ร่างช่วงครอบที่เริ่มระหว่าง toast ค้าง) — สองชุดร่างเปิดพร้อมกันไม่ได้
   assert.match(slice(hook, 'const cancel = () => {', '\n  };'), /const gate = gateRef\.current;\s*if \(!gate\.available\) return;\s*if \(gate\.blocker\) \{ notifyToast\.error\(gate\.blocker\); return; \}/);
   // ระหว่างบันทึกแก้ร่างไม่ได้ (บันทึกสำเร็จแล้ว reset = ของที่แก้ตอนนั้นหายเงียบ) · เกินเพดานของ route = ดับปุ่มพร้อมเหตุ
@@ -524,10 +524,12 @@ test('แผงงวด: โหมดตั้งวัน (แบบ C · ม�
   // 409 พกงวดสดมา — วางทันที **แล้วดึงใบสดทั้งใบเสมอ** (คำร้องขอใบวางบิลมากับ GET เต็มเท่านั้น — ล็อก "ขอใบวางบิลแล้ว"
   // ที่เกิดระหว่างร่างต้องล็อกบนจอด้วย ไม่งั้นกดบันทึก = 409 เดิมวนไม่จบ) · refreshOrder ไม่ถอดแผง ⇒ ร่างที่ยังใช้ได้อยู่
   const many = slice(page, 'async function runInstallmentScheduleMany(', '\n  }\n');
-  assert.match(many, /if \(res\.status === 409\) \{\s*if \(Array\.isArray\(data\.installments\)\) setOrder\([^;]+;\s*await refreshOrder\(\);\s*\}/);
+  // (หลัง merge กับ PR-A งานบริการ: ต่อท้ายด้วย refreshServiceSetup เมื่อบางงวดลงแล้ว — ลำดับ "วางงวดสด → รอใบสด" คงเดิม)
+  assert.match(many, /if \(res\.status === 409\) \{\s*if \(Array\.isArray\(data\.installments\)\) setOrder\([^;]+;\s*await refreshOrder\(\);/);
   assert.doesNotMatch(many, /else refreshOrder\(\)/, 'ห้ามดึงใบสดเฉพาะตอนไม่มีชุดงวด — ล็อกของจออ่าน billingRequests ด้วย');
   // ร่างค้าง = ออกจากหน้า/สลับแท็บถามก่อน
-  assert.match(page, /useUnsavedChanges\(dirty \|\| datesDirty\);/);
+  // ยามออกจากหน้ารวมร่างวันงวดด้วย (หลัง merge กับ PR-A งานบริการ มีร่างงานบริการต่อท้ายในยามตัวเดียวกัน)
+  assert.match(page, /useUnsavedChanges\(dirty \|\| datesDirty\b[^)]*\);/);
   assert.match(page, /onDatesDirty=\{setDatesDirty\}/);
   assert.match(page, /activeTab === "payment" && next !== "payment" && datesDirty/);
 });
@@ -599,7 +601,8 @@ test('แผงงวด (review S3): คำร้องอ่านไม่ข
   assert.doesNotMatch(fill, /apiFetch|onAction|schedule-many/, 'แผงเติมไม่บันทึกเอง — บันทึกที่แถบล่างครั้งเดียว');
   assert.match(fill, /const labels = billingRoundLabels\(ruleValue\);/);
   assert.match(fill, /planDateFill\(ruleValue, inputRows, \{ \.\.\.option, includeDated \}, todayIso\)/);
-  assert.match(code(MODE_HOOK), /setFill\(\{ base: drafts, includeDated: false, choice: null, day: null, excluded: \[\] \}\);/,
+  /* สวิตช์ "จัดใหม่งวดที่มีวันแล้วด้วย" เปิดมาได้เฉพาะคำขอที่ส่ง true จริง ("ไปแก้" ของแผงแดงงานบริการ) — ตัวเลือกยังไม่ถูกเลือกเสมอ */
+  assert.match(code(MODE_HOOK), /setFill\(\{ base: drafts, includeDated: includeDated === true, choice: null, day: null, excluded: \[\] \}\);/,
     'เปิดแผงเติม = ยังไม่มีตัวเลือกไหนถูกเลือก (ไม่มีค่าตั้งต้น)');
   assert.match(code(DRAFTS), /: planMonthlyFill\(ruleValue, inputRows, todayIso, \{ roundIndex: option\.roundIndex \?\? null \}\);/);
   // มติ 28/09: ไม่มีเครดิต = ทุกวัน + ชำระวันวางบิล (pickerRuleOf = effectiveBillingRule) · `noCredit` ใช้เลือกคำเท่านั้น ·

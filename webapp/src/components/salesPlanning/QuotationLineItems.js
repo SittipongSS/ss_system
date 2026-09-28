@@ -7,7 +7,7 @@ import { TableScroll } from "@/components/ui/Table";
 // ยอดเงินคิดจริงที่ server — ที่นี่พรีวิวด้วยสูตรเดียวกัน (quoteTotals จาก lib กลาง)
 // ⭐ เซลล์ของบรรทัด (หัวคอลัมน์ · FG · จำนวน/ราคา/ส่วนลด/จำนวนเงิน) และกล่องตารางอยู่ที่ QuoteLineCells —
 //   ชุดเดียวกับบรรทัดโซนของใบสั่งขายย้อนหลัง (มติเจ้าของ 23/09: สองฟอร์มต้องไม่ต่างกัน) · แก้ที่นั่นที่เดียว
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import ReadableText from "@/components/ui/ReadableText";
 import { quoteTotals } from "@/lib/salesPlanning";
 import { fmtMoney, naText, NA } from "@/lib/format";
@@ -64,6 +64,11 @@ export function QuotationReadOnlyLineItems({
   grandTotalLabel = "ยอดรวมทั้งสิ้น",
   highlightRows = [],
   emptyText = "ยังไม่มีรายการ",
+  /* ⭐ `renderAfterRow(line, index)` — แถวต่อท้ายใต้แต่ละบรรทัด (กล่อง "งานบริการของรายการนี้" ของใบสั่งขาย · mig 0392)
+     เซลล์เดียวกินทั้งเจ็ดคอลัมน์ · คืน null = บรรทัดนั้นไม่มีแถวต่อท้าย
+     ⚠️ ไม่ส่ง = ผลลัพธ์เดิมทุกตัวอักษร (ใบเสนอราคา · ขั้น ④ ของใบย้อนหลังใช้ตารางนี้ตัวเดียวกัน)
+     ⚠️ `ui-cell-wide` ที่เซลล์ — เพดาน 220px + ตัดจุดไข่ปลาของเซลล์ตาราง (Table.module.css) ห้ามโดนกล่องนี้ */
+  renderAfterRow,
 }) {
   return (
     <>
@@ -81,40 +86,48 @@ export function QuotationReadOnlyLineItems({
             </tr>
           </thead>
           <tbody>
-            {lines.map((line, index) => (
-              <tr key={line.id || index}>
-                <td className={styles.rowNumber}>{index + 1}</td>
-                <td>
-                  <div className={styles.readOnlyDescription}>
-                    {/* รหัส FG · ชื่อหมวดสินค้า (มติผู้ใช้ 2026-09-22) — หมวดเป็น snapshot ในบรรทัด
-                        ใบเก่าที่ยังไม่มี server เติมให้ตอนเปิดใบ (fillMissingLineCategories) */}
-                    {/* บรรทัดเพิ่มเองไม่มีรหัส FG แต่มีหมวดที่คนออกใบเลือกไว้ได้ (มติผู้ใช้ 2026-09-27) */}
-                    {(line.fgCode || productCategoryName(line)) ? (
-                      <small>{[line.fgCode, productCategoryName(line)].filter(Boolean).join(" · ")}</small>
-                    ) : null}
-                    <ReadableText text={line.description} lines={3} />
-                    {showInstallationPoint ? <QuoteLineInstallationPoint point={line.installationPoint} /> : null}
-                    {showServiceRounds && lineIsServicePackage(line) ? (
-                      <span className={styles.serviceRoundsTag}>
-                        รอบบริการที่ขายไว้: <strong>{line.serviceRounds ? `${line.serviceRounds} รอบ` : NA}</strong>
-                      </span>
-                    ) : null}
-                    {line.metadata?.note ? (
-                      <span className={styles.noteReadonly}>
-                        <strong>หมายเหตุ:</strong>
-                        <ReadableText text={line.metadata.note} lines={2} />
-                      </span>
-                    ) : null}
-                  </div>
-                </td>
-                {/* data-label = ป้ายที่ใช้ตอนตารางแปลงเป็นการ์ดบนจอแคบ (หัวตารางถูกซ่อน) */}
-                <td className="num mono" data-label="จำนวน">{naText(line.qty)}</td>
-                <td data-label="หน่วย">{naText(line.unit)}</td>
-                <td className="num mono" data-label="ราคาต่อหน่วย">{fmtMoney(line.unitPrice)}</td>
-                <td className="num mono" data-label="ส่วนลด">{Number(line.discountAmount || 0) > 0 ? fmtMoney(line.discountAmount) : NA}</td>
-                <td className={`num mono ${styles.lineAmount}`} data-label="รวม">{fmtMoney(line.lineTotal)}</td>
-              </tr>
-            ))}
+            {lines.map((line, index) => {
+              const after = renderAfterRow ? renderAfterRow(line, index) : null;
+              return (
+                <Fragment key={line.id || index}>
+                  <tr>
+                    <td className={styles.rowNumber}>{index + 1}</td>
+                    <td>
+                      <div className={styles.readOnlyDescription}>
+                        {/* รหัส FG · ชื่อหมวดสินค้า (มติผู้ใช้ 2026-09-22) — หมวดเป็น snapshot ในบรรทัด
+                            ใบเก่าที่ยังไม่มี server เติมให้ตอนเปิดใบ (fillMissingLineCategories) */}
+                        {/* บรรทัดเพิ่มเองไม่มีรหัส FG แต่มีหมวดที่คนออกใบเลือกไว้ได้ (มติผู้ใช้ 2026-09-27) */}
+                        {(line.fgCode || productCategoryName(line)) ? (
+                          <small>{[line.fgCode, productCategoryName(line)].filter(Boolean).join(" · ")}</small>
+                        ) : null}
+                        <ReadableText text={line.description} lines={3} />
+                        {showInstallationPoint ? <QuoteLineInstallationPoint point={line.installationPoint} /> : null}
+                        {showServiceRounds && lineIsServicePackage(line) ? (
+                          <span className={styles.serviceRoundsTag}>
+                            รอบบริการที่ขายไว้: <strong>{line.serviceRounds ? `${line.serviceRounds} รอบ` : NA}</strong>
+                          </span>
+                        ) : null}
+                        {line.metadata?.note ? (
+                          <span className={styles.noteReadonly}>
+                            <strong>หมายเหตุ:</strong>
+                            <ReadableText text={line.metadata.note} lines={2} />
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
+                    {/* data-label = ป้ายที่ใช้ตอนตารางแปลงเป็นการ์ดบนจอแคบ (หัวตารางถูกซ่อน) */}
+                    <td className="num mono" data-label="จำนวน">{naText(line.qty)}</td>
+                    <td data-label="หน่วย">{naText(line.unit)}</td>
+                    <td className="num mono" data-label="ราคาต่อหน่วย">{fmtMoney(line.unitPrice)}</td>
+                    <td className="num mono" data-label="ส่วนลด">{Number(line.discountAmount || 0) > 0 ? fmtMoney(line.discountAmount) : NA}</td>
+                    <td className={`num mono ${styles.lineAmount}`} data-label="รวม">{fmtMoney(line.lineTotal)}</td>
+                  </tr>
+                  {after != null && after !== false ? (
+                    <tr className={styles.afterRow}><td colSpan={7} className="ui-cell-wide">{after}</td></tr>
+                  ) : null}
+                </Fragment>
+              );
+            })}
             {!lines.length ? <tr><td colSpan={7} className={styles.emptyRows}>{emptyText}</td></tr> : null}
           </tbody>
         </table>

@@ -83,3 +83,15 @@
   color: var(--amber);
   line-height: var(--lh-thai);
 }
+
+/* ── ใบ pipeline (mig 0392 · D21): บรรทัดบอกทางแทนการ์ดกรอกรอบที่ถอดออก — จำนวนรอบอยู่ที่ตารางรายการ แท็บภาพรวม ── */
+.roundsMoved {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  margin: var(--space-3) 0 0;
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+.roundsMoved > svg { flex: none; }

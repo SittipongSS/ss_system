@@ -346,6 +346,28 @@ export async function updateInstallment(supabase, id, patch, { expectedUpdatedAt
  *   `stopped` = null (ครบ) | `{ seq, error }` (`error` null = แถวเปลี่ยนไปแล้ว · ไม่ null = ฐานตีกลับ)
  */
 export async function writeBillingFill(supabase, rows, planned) {
+  return writePlannedFill(rows, planned,
+    (row, plan) => updateInstallment(supabase, row.id, billingFillPatch(plan), { expectedUpdatedAt: row.updatedAt }));
+}
+
+/**
+ * เขียนช่วงครอบของ "แบ่งช่วงครอบตามช่วงบริการ…" ทีละงวด (mig 0392 · PR-A · แผน §2.5 ข้อ 3) — สัญญาเดียวกับ `writeBillingFill`
+ * ⭐ route คิดชุดเองด้วย `splitCoverageByPeriod` แล้วเทียบกับพรีวิวที่จอส่งมาก่อน · ผ่านด่านรายงวด (`coverage`) ครบทุกงวดแล้วจึงเรียก
+ * ⭐ เขียนแค่ `coversFrom`/`coversTo` แบบมีเงื่อนไข `updatedAt` ของแถวที่ด่านเพิ่งตัดสิน ⇒ อีกหน้าต่างเขียนแทรก = หยุดที่งวดนั้น
+ *   งวดที่ลงแล้วคงอยู่ · กดใหม่ได้ชุดเดิม (การแบ่งไม่ขึ้นกับช่วงครอบเดิมของงวดที่ยังไม่รับรอง) ⇒ ปลอดภัยที่จะกดซ้ำ
+ * ⚠️ พังตั้งแต่งวดแรก = ยังไม่มีอะไรลงฐาน ⇒ โยน error เดิมให้ผู้เรียกแปล (เหมือนตัวเติมวันวางบิล)
+ * @param rows     งวดสดทั้งใบ (ตัวล็อก updatedAt มาจากชุดนี้)
+ * @param planned  แถวของ `splitCoverageByPeriod().rows` (id · seq · coversFrom · coversTo)
+ * @returns `{ before, after, stopped }` — ความหมายเดียวกับ `writeBillingFill`
+ */
+export async function writeCoverageFill(supabase, rows, planned) {
+  return writePlannedFill(rows, planned, (row, plan) => updateInstallment(supabase, row.id,
+    { coversFrom: plan.coversFrom, coversTo: plan.coversTo }, { expectedUpdatedAt: row.updatedAt }));
+}
+
+/* ตัวเขียนแผนทั้งใบทีละงวด — แกนเดียวของ writeBillingFill / writeCoverageFill (ต่างกันแค่ patch ต่องวด)
+   `write(row, plan)` = updateInstallment แบบมีเงื่อนไข updatedAt · คืน null เมื่อแถวเปลี่ยนไปแล้ว */
+async function writePlannedFill(rows, planned, write) {
   const byId = new Map((rows || []).map((row) => [row.id, row]));
   const before = [];
   const after = [];
@@ -354,7 +376,7 @@ export async function writeBillingFill(supabase, rows, planned) {
     if (!row) return { before, after, stopped: { seq: plan.seq, error: null } };
     let updated;
     try {
-      updated = await updateInstallment(supabase, row.id, billingFillPatch(plan), { expectedUpdatedAt: row.updatedAt });
+      updated = await write(row, plan);
     } catch (error) {
       if (!after.length) throw error;
       return { before, after, stopped: { seq: plan.seq, error } };

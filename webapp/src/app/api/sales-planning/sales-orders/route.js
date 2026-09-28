@@ -17,7 +17,8 @@ import { parseCreateFormInstallments } from '@/lib/sales/salesOrderCreateInstall
 import { applyCreateFormPayments } from '@/lib/sales/salesOrderCreatePayments';
 import { missingStoredEvidence } from '@/lib/upload/privateEvidence';
 import { businessDate } from '@/lib/businessDate';
-import { orderBusinessLineOf, orderHasServiceRounds } from '@/lib/sales/serviceOrders';
+import { orderBusinessLineOf, orderHasServiceRounds, serviceVisitsSold } from '@/lib/sales/serviceOrders';
+import { serviceBackfillAwaitingReview, serviceBackfillNeeded, serviceSetupTotals } from '@/lib/sales/serviceSetup';
 import { paidThrough } from '@/lib/sales/paymentCoverage';
 
 export const dynamic = 'force-dynamic';
@@ -28,8 +29,10 @@ export const GET = withUser(async ({ user, supabase }) => {
 
   // ⚠️ ไล่ทีละหน้า — เพดาน 1,000 แถวตัดเงียบ ๆ · `orderDate` ซ้ำกันได้ทั้งวัน จึงพ่วง
   // `id` ปิดท้ายให้ลำดับนิ่ง ไม่งั้นไล่หน้าแล้วได้แถวซ้ำและแถวหายพร้อมกัน
+  // ⭐ `*` = พก "serviceTermsOpenedAt" + สถานะตั้งงานบริการย้อนหลัง (mig 0392) ให้ตัวตัดสินด่านเงิน/ชิป/เลนข้างล่าง
   const { data: orders, error } = await fetchAllResult(() => supabase
     .from('sales_orders')
+    /* money-decider feed */
     .select('*')
     .order('orderDate', { ascending: false })
     .order('createdAt', { ascending: false })
@@ -52,7 +55,12 @@ export const GET = withUser(async ({ user, supabase }) => {
     /* 🚫 ธงของ 0362 (`siteNotFoundAt`/`siteClosedAt`) ไม่ถูกอ่านที่นี่แล้ว (มติ 22/09) — ชิป/ตัวกรอง
        "TS ไม่พบจุด" ถอดไปพร้อมเส้นนั้น · บรรทัดใบย้อนหลังผูกโซนตั้งแต่ตอนคีย์ ⇒ ไม่มีจุดลอยให้แจ้ง
        ⚠️ คอลัมน์ยังอยู่ในฐาน (0 แถว) — ไม่ต้องเลือกมาเพื่อให้ทะเบียนเบาลงอีกช่อง */
-    .select('id, salesOrderId, qty, fgCode, description, sortOrder, "serviceRounds"')
+    /* ⭐ งานบริการรายบรรทัด (mig 0392): `"serviceFgCode"` = รหัสที่ด่านเงินอ่านเมื่อใบประทับ (D13) · `"productId"` +
+       `"serviceKind"` + หมวดของบรรทัดพิมพ์เอง = ชนิดของบรรทัด (`serviceLineRole`) ที่ชิป "ยังไม่ตั้งงานบริการ" และเลน
+       "รอฉันลงมือ" ถาม (D25) · `"serviceProductId"` = ตัวนับบรรทัดครบของแถวรอตรวจ
+       ⚠️ หมวดอ่าน **คีย์เดียว** ของ metadata (`categoryCode:metadata->>categoryCode`) ไม่ใช่ metadata ทั้งก้อน — ทะเบียนมีหลายพันบรรทัด */
+    /* money-decider feed */
+    .select('id, salesOrderId, qty, fgCode, "productId", description, sortOrder, "serviceRounds", "serviceKind", "serviceProductId", "serviceFgCode", categoryCode:metadata->>categoryCode')
     .in('salesOrderId', chunk)
     .order('salesOrderId', { ascending: true })
     .order('sortOrder', { ascending: true })
@@ -140,7 +148,12 @@ export const GET = withUser(async ({ user, supabase }) => {
   /* ── สายธุรกิจของใบ + สรุปงานบริการ (PR-D · มติผู้ใช้ 2026-08-27) ─────────
      ⚠️ สายธุรกิจอ่าน **โครงการก่อน แล้วดีล** (orderBusinessLine) ⇒ ต้องมีโครงการด้วย
      ไม่งั้นใบที่อยู่ใต้โครงการสายบริการจะตอบสายตามดีลซึ่งอาจว่าง = หลุดจากตัวกรอง */
-  const projectIds = [...new Set((deals || []).map((row) => row.projectId).filter(Boolean))];
+  /* ⭐ โครงการของ **ใบ** ด้วย (ไม่ใช่แค่ของดีล) — ตัวตัดสินอ่าน `order.projectId` ก่อนเสมอ · ใบที่โครงการไม่ตรงกับของดีล
+     เคยตกไปอ่านสายของดีล ⇒ ทะเบียนตอบคนละสายกับหน้าใบ (loadOrder) และป้ายเลนตั้งงานบริการย้อนหลังบนเมนู (ฝังโครงการของใบ) */
+  const projectIds = [...new Set([
+    ...(deals || []).map((row) => row.projectId),
+    ...(orders || []).map((row) => row.projectId),
+  ].filter(Boolean))];
   // ⚠️ ไล่ทีละหน้า — ทะเบียนโครงการโตเกิน 1,000 ได้ และ id ที่ส่งเข้ามาเป็นชุดใหญ่
   // ตามจำนวนดีลของทั้งทะเบียน (เพดานตัดเงียบ = ใบบางใบตอบสายผิดโดยไม่มีใครรู้)
   const { data: projects, error: projectError } = projectIds.length
@@ -187,6 +200,65 @@ export const GET = withUser(async ({ user, supabase }) => {
     }
   }
   const serviceIdSet = new Set(serviceOrderIds);
+
+  /* ── งานบริการรายบรรทัด (mig 0392 · PR-A) ─────────────────────────────────────────────────────────────
+     ⭐ โซนที่เลือกไว้ (sales_order_line_zones) โหลด **เฉพาะ** ใบที่ต้องใช้: ใบที่งานบริการย้อนหลังรอผู้จัดการตรวจ
+       (แถวคิว "งานบริการ (ใบเดิม)" — z โซนใน s ไซต์ · รอบ) และใบบริการที่ประทับแล้ว (รอบที่ขาย n/N นับรายไซต์ · D23)
+       ทั้งทะเบียนมีหลายพันใบ แต่สองกลุ่มนี้หลักสิบ ⇒ กรองก่อนค่อยยิง · ซอยก้อน + ไล่หน้า (หนึ่งบรรทัดมีได้ 500 โซน)
+     ⚠️ อ่านไม่ขึ้น = 500 (ห้ามกลืนเป็น "ไม่มีโซน" — แถวคิวจะบอก 0 โซนทั้งที่ตั้งไว้แล้ว) */
+  const lineCtx = { projectsById, dealsById: dealById };
+  const allocationOrderIds = (orders || [])
+    .filter((row) => serviceBackfillAwaitingReview(row) || (serviceIdSet.has(row.id) && row.serviceTermsOpenedAt))
+    .map((row) => row.id);
+  const allocationsByOrder = new Map();
+  const zonesById = new Map();
+  if (allocationOrderIds.length) {
+    const { data: allocations, error: allocationError } = await fetchInChunks(allocationOrderIds, (chunk) => fetchAllResult(() => supabase
+      .from('sales_order_line_zones').select('id, "salesOrderId", "salesOrderLineId", "zoneId", "packsPerRound", "sortOrder"')
+      .in('salesOrderId', chunk).order('id', { ascending: true })));
+    if (allocationError) return fail(allocationError.message, 500);
+    for (const row of allocations || []) {
+      const list = allocationsByOrder.get(row.salesOrderId) || [];
+      list.push(row);
+      allocationsByOrder.set(row.salesOrderId, list);
+    }
+    const zoneIds = [...new Set((allocations || []).map((row) => row.zoneId).filter(Boolean))];
+    const { data: zones, error: zoneError } = await fetchInChunks(zoneIds, (chunk) => fetchAllResult(() => supabase
+      .from('service_zones').select('id, "siteId"').in('id', chunk).order('id', { ascending: true })));
+    if (zoneError) return fail(zoneError.message, 500);
+    for (const zone of zones || []) zonesById.set(zone.id, zone);
+  }
+  /* แถวคิว "งานบริการ (ใบเดิม)" ของผู้จัดการ — ตัวเลขชุดเดียวกับแถบผู้อนุมัติ (serviceSetupTotals) */
+  const serviceReviewOf = (row) => {
+    const totals = serviceSetupTotals({
+      lines: linesByOrder.get(row.id) || [], allocations: allocationsByOrder.get(row.id) || [], zonesById,
+    });
+    let roundsLabel = '—';
+    if (totals.roundsMin !== null) {
+      roundsLabel = totals.roundsMixed ? `${totals.roundsMin}–${totals.roundsMax} รอบ/โซน` : `${totals.roundsMin} รอบ/โซน`;
+    }
+    return {
+      zones: totals.zones,
+      sites: totals.sites,
+      roundsLabel,
+      submittedByName: row.serviceSetupSubmittedByName || null,
+      submittedAt: row.serviceSetupSubmittedAt || null,
+    };
+  };
+  /* ใบที่อนุมัติแล้วแต่ยังต้องตั้งงานบริการย้อนหลัง (D25) — คิดครั้งเดียว ใช้ทั้งชิปและเลนเจ้าของดีลของ "รอฉันลงมือ" */
+  const setupPendingIds = new Set((orders || [])
+    .filter((row) => serviceBackfillNeeded(row, linesByOrder.get(row.id) || [], lineCtx))
+    .map((row) => row.id));
+  const reviewer = isSalesOrderReviewer(user.role);
+  /* สายธุรกิจรายใบ — คิดครั้งเดียว ใช้ทั้งคอลัมน์ `businessLine` และด่านเลนผู้ตรวจงานบริการ */
+  const businessLineById = new Map((orders || []).map((row) => [row.id, orderBusinessLineOf(
+    { ...row, deal: dealById.get(row.dealId) || null },
+    { projectsById, dealsById: dealById },
+  )]));
+  /* ⭐ ค่า 'submitted' บนใบที่สายของโครงการ/ดีลเปลี่ยนไปแล้ว (ยื่นตอนเป็นบริการ แล้วแก้สายระหว่างรอตรวจ) — ไม่ใช่งานของผู้ตรวจ:
+     RPC อนุมัติปฏิเสธ และหน้าใบไม่มีการ์ดงานบริการ ⇒ ขึ้นคิวแล้วเคลียร์ไม่ได้ · ค่าคงไว้ สายกลับเป็นบริการแล้วกลับมารอตรวจเอง */
+  const staleServiceReview = (row) => serviceBackfillAwaitingReview(row) && businessLineById.get(row.id) !== 'SERVICE';
+
   const visible = (orders || [])
     .map((row) => ({
       ...row,
@@ -216,7 +288,12 @@ export const GET = withUser(async ({ user, supabase }) => {
       /* ⚠️ ส่ง `role` ด้วยเสมอ — เลนผู้รีวิวตัดใบที่ตัวเองสร้าง/ยื่นออก ยกเว้น admin (อนุมัติใบตัวเองได้)
          ไม่ส่ง = admin ถูกตัดใบของตัวเองออก ⇒ ลิสต์ "รอฉันลงมือ" ไม่ตรงกับป้ายบนเมนู (nav/counts ส่ง role) */
       /* ⚠️ แนบ deal ให้ helper — ใบที่ถูกย้อนอนุมัติตัดสินจากเจ้าของดีล (มติ 24/09) · แถวดิบไม่มี deal = ลิสต์กับป้ายไม่ตรงกัน */
-      _waitingOnMe: isSalesOrderWaitingOnMe({ ...row, deal: dealById.get(row.dealId) || null }, { userId: user.id, reviewer: isSalesOrderReviewer(user.role), role: user.role })
+      /* ⭐ เลนงานบริการย้อนหลัง (mig 0392 · D26): ผู้จัดการตรวจ (ตัวตัดสินอ่านจากแถว) + เจ้าของดีลตั้ง — เลนหลังต้องรู้ว่า
+         ใบนี้ **ต้องตั้งจริง** (`serviceBackfillNeeded` ใช้บรรทัด + สายธุรกิจ) ⇒ ผู้เรียกคิดส่งเข้าไป · ป้ายบนเมนูคิดแบบเดียวกัน */
+      _waitingOnMe: isSalesOrderWaitingOnMe({ ...row, deal: dealById.get(row.dealId) || null }, {
+        userId: user.id, reviewer: reviewer && !staleServiceReview(row), role: user.role,
+        serviceBackfillNeeded: setupPendingIds.has(row.id),
+      })
         || (canConfirmPayment(user) && awaitsFinanceReview(row, installmentsByOrder.get(row.id) || [])),
       /* ⭐ ชุดย่อย "รอฉันอนุมัติ" — ตัดใบที่ตัวเองสร้าง/ยื่นออก เพราะอนุมัติเองไม่ได้
          (admin ใช้สิทธิ์ฉุกเฉินได้ แต่ต้องไปทำที่หน้าใบพร้อมเหตุผล ไม่ใช่จากคิว) */
@@ -231,20 +308,33 @@ export const GET = withUser(async ({ user, supabase }) => {
          รอปิด" ไม่ใช่ทุกใบที่อนุมัติ · ไม่ส่งงวด = ด่านตอบ false ⇒ คิวจะว่างเงียบ ๆ */
       _awaitingFinanceReview: canConfirmPayment(user)
         && awaitsFinanceReview(row, installmentsByOrder.get(row.id) || []),
+      /* ⭐ งานบริการย้อนหลังรอฉันตรวจ (mig 0392 · D28) — ตัวตัดสินตัวเดียว (ค่า 'submitted' ค้างบนใบที่ไม่ได้อนุมัติอยู่ไม่มีผล)
+         · ตัดคนยื่นเองออก ยกเว้น admin (Admin Override ที่หน้าใบ) — กติกาเดียวกับ `_awaitingMyApproval` */
+      _awaitingMyServiceReview: reviewer && serviceBackfillAwaitingReview(row)
+        && (user.role === 'admin' || row.serviceSetupSubmittedById !== user.id)
+        && !staleServiceReview(row),
+      /* ชิป "ยังไม่ตั้งงานบริการ" บนแถบเครื่องมือ — ใบที่อนุมัติแล้วแต่ยังต้องตั้งงานบริการย้อนหลัง (D25: มีบรรทัดที่ยังไม่ใช่
+         "ไม่ใช่งานบริการ" อย่างน้อยหนึ่ง · ทุกผิวถามตัวเดียวกัน) */
+      _serviceSetupPending: setupPendingIds.has(row.id),
+      /* ตัวเลขของแถวคิว "งานบริการ (ใบเดิม)" — มีเฉพาะใบที่รอผู้จัดการตรวจ */
+      serviceReview: serviceBackfillAwaitingReview(row) ? serviceReviewOf(row) : null,
       /* ⭐ สายธุรกิจของใบ — ตัวกรอง segmented บนทะเบียน (PR-D)
          สามค่า: 'PRODUCT' · 'SERVICE' · null (ยังไม่ระบุ ซึ่งมีจริงเยอะ) */
-      businessLine: orderBusinessLineOf(
-        { ...row, deal: dealById.get(row.dealId) || null },
-        { projectsById, dealsById: dealById },
-      ),
+      businessLine: businessLineById.get(row.id) ?? null,
       /* สรุปงานบริการ — มีเฉพาะใบที่เข้าเกณฑ์ "ใบมีรอบบริการ" (orderHasServiceRounds)
          ใบสายบริการที่ไม่มีบรรทัดแพ็คเกจได้ null ⇒ คอลัมน์โชว์ขีด ไม่ใช่ 0/0 */
       service: serviceIdSet.has(row.id) ? {
         contract: row.serviceContractId ? (contractById.get(row.serviceContractId) || null) : null,
         // จ่ายถึง = ปลายช่วงครอบของงวดที่บัญชีรับรองแล้ว (ตัวตัดสินเดียว: paidThrough)
         paidThrough: paidThrough(installmentsByOrder.get(row.id) || []),
-        roundsSold: (linesByOrder.get(row.id) || [])
-          .reduce((sum, line) => sum + (Number(line.serviceRounds) || 0), 0) || null,
+        /* ⭐ ใบที่ประทับแล้ว (mig 0392 · D23): ครั้งที่ต้องไปหน้างาน = Σ รายไซต์ของรอบสูงสุดของบรรทัดที่ผูกไซต์นั้น
+           (หนึ่งไซต์ไปครั้งเดียวต่อรอบ ไม่ว่ากี่บรรทัด/กี่โซน) · ใบเดิมที่ยังไม่ประทับ = Σ รายบรรทัดตามเดิม */
+        roundsSold: row.serviceTermsOpenedAt
+          ? serviceVisitsSold({
+            lines: linesByOrder.get(row.id) || [], links: allocationsByOrder.get(row.id) || [], zonesById,
+          }).total
+          : (linesByOrder.get(row.id) || [])
+            .reduce((sum, line) => sum + (Number(line.serviceRounds) || 0), 0) || null,
         roundsDone: roundsDoneByOrder.get(row.id) || 0,
       } : null,
     }))

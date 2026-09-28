@@ -62,6 +62,10 @@ export function installmentDateLock(row, { order = null, requested = false, requ
   return null;
 }
 
+/* ไม่ได้ส่งรุ่นของงวด (`updatedAt`) มา = ตรวจ "ข้อมูลเก่า" ไม่ได้ ⇒ ไม่รับ — คำเดียวของคำสั่งทั้งใบที่เกิดพร้อมจอที่ส่งค่านี้เสมอ
+   (schedule-many · fill-coverage ของงานบริการ `coveragePlanStale`) */
+export const INSTALLMENT_VERSION_MISSING = 'ไม่ได้ส่งรุ่นของงวดที่เห็นอยู่มา — โหลดหน้าใหม่แล้วลองอีกครั้ง';
+
 /**
  * รูปของคำขอ — ตรวจก่อนแตะฐาน (400)
  * · อาเรย์ 1..SCHEDULE_MANY_MAX · ทุกแถวมี `id` + `updatedAt` (รุ่นของงวดที่ตาเห็น — ไม่มี = ตรวจ "ข้อมูลเก่า" ไม่ได้ ⇒ ไม่รับ)
@@ -78,9 +82,7 @@ export function scheduleManyShapeError(sent) {
     if (!id) return 'ไม่ได้ระบุงวดที่ต้องการ';
     if (seen.has(id)) return 'งวดเดียวกันถูกส่งมาซ้ำ — โหลดหน้าใหม่แล้วลองอีกครั้ง';
     seen.add(id);
-    if (typeof item.updatedAt !== 'string' || !item.updatedAt.trim()) {
-      return 'ไม่ได้ส่งรุ่นของงวดที่เห็นอยู่มา — โหลดหน้าใหม่แล้วลองอีกครั้ง';
-    }
+    if (typeof item.updatedAt !== 'string' || !item.updatedAt.trim()) return INSTALLMENT_VERSION_MISSING;
     for (const field of DATE_FIELDS) {
       const value = item[field];
       if (value !== undefined && value !== null && typeof value !== 'string') return 'รูปแบบวันงวดที่ส่งมาไม่ถูกต้อง';
@@ -131,11 +133,40 @@ const savedDates = (row) => ({
   dueDate: text(row.dueDate) || null,
 });
 
+/* เหตุของงวดที่ `updatedAt` ไม่ตรงแถวสดตอนตรวจก่อนเขียน (409 ก่อนเขียน · schedule-many และ fill-coverage) */
+const SCHEDULE_MANY_ROW_CHANGED = 'เพิ่งถูกแก้จากอีกหน้าต่าง';
+
 /* 409 ก่อนเขียน — บอกทุกงวดที่เปลี่ยนใต้มือ ไม่ใช่แค่งวดแรก (จอใช้รายการนี้บอกว่า "งวดไหนเปลี่ยน" ตอนรวมร่างกับงวดสด)
    · งวดที่ไม่อยู่ในใบแล้วไม่มีเลขงวดให้บอก ⇒ หลายงวดได้ประโยคเดียวกัน — พูดครั้งเดียว (รายการเต็มอยู่ใน `conflicts`) */
 export function scheduleManyConflictMessage(conflicts = []) {
   const parts = [...new Set(conflicts.map((c) => (c.seq == null ? c.reason : `งวดที่ ${c.seq}: ${c.reason}`)))];
   return `ยังไม่ได้บันทึกงวดไหน — ${parts.join(' · ')} · โหลดงวดล่าสุดแล้วตรวจอีกครั้ง`;
+}
+
+/**
+ * รุ่นของงวดที่พรีวิว "แบ่งช่วงครอบตามช่วงบริการ…" เห็น (`fill-coverage` · งานบริการ mig 0392) — ชั้นแรกของ optimistic lock
+ * **ท่าเดียวกับ schedule-many** (`updatedAt` ทีละงวด · 409 บอกทุกงวดที่เปลี่ยน · ประโยคเดียวกัน) · ชั้นสอง = เขียนแบบมีเงื่อนไขที่ตัวเขียน
+ * ⭐ ทำไมต้องมี ทั้งที่ route คิดชุดเองแล้วเทียบกับพรีวิว (`coveragePlanMatches`): การแบ่ง **ไม่ขึ้นกับช่วงครอบเดิม** ⇒ อีกหน้าต่างแก้
+ *   ช่วงครอบ/วันงวดหลังเปิดโมดัล พรีวิวยังตรง แต่ "ครอบเดิม" ที่คนเห็นเป็นของเก่า = เขียนทับของอีกหน้าต่างเงียบ ๆ (schedule-many ได้ 409)
+ * ⚠️ ผู้เรียกเทียบชุดงวด (id + วัน) มาก่อนแล้ว — ที่นี่ถามแค่รุ่น · งวดที่ไม่อยู่ในชุดสดข้าม (ด่านชุดงวดตัดสินไปแล้ว)
+ * @param live  งวดสดของใบ (ตัวล็อก updatedAt จริง)
+ * @param plan  `[{ id, coversFrom, coversTo, updatedAt }]` ที่โมดัลส่งมา
+ * @returns null (ผ่าน) · `{ error, status: 400 }` ไม่ได้ส่งรุ่น · `{ error, status: 409, conflicts: [{ id, seq, reason }] }`
+ */
+export function coveragePlanStale(live = [], plan = []) {
+  const sent = Array.isArray(plan) ? plan : [];
+  if (sent.some((item) => typeof item?.updatedAt !== 'string' || !item.updatedAt.trim())) {
+    return { error: INSTALLMENT_VERSION_MISSING, status: 400 };
+  }
+  const byId = new Map((live || []).map((row) => [row.id, row]));
+  const conflicts = [];
+  for (const item of sent) {
+    const row = byId.get(String(item.id || '').trim());
+    if (row && installmentStale(row, item.updatedAt)) conflicts.push({ id: row.id, seq: row.seq, reason: SCHEDULE_MANY_ROW_CHANGED });
+  }
+  if (!conflicts.length) return null;
+  conflicts.sort((a, b) => Number(a.seq) - Number(b.seq));
+  return { error: scheduleManyConflictMessage(conflicts), status: 409, conflicts };
 }
 
 /**
@@ -182,7 +213,7 @@ export function scheduleManyCheck(live = [], sent = [], { requestedIds = new Set
        และ 409 พาจอไปโหลดงวดสดแล้วตรวจร่างใหม่ (ร่างบนงวดล็อกถูกทิ้ง) · 400 จะค้างร่างที่คนลบเองไม่ได้เพราะแถวล็อก */
     const lock = installmentDateLock(row, { order, requested: requestedIds.has(row.id) });
     if (lock) conflicts.push({ id: row.id, seq: row.seq, reason: lock });
-    else if (installmentStale(row, item.updatedAt)) conflicts.push({ id: row.id, seq: row.seq, reason: 'เพิ่งถูกแก้จากอีกหน้าต่าง' });
+    else if (installmentStale(row, item.updatedAt)) conflicts.push({ id: row.id, seq: row.seq, reason: SCHEDULE_MANY_ROW_CHANGED });
   }
   if (conflicts.length) {
     /* งวดที่ไม่อยู่ในใบแล้ว (seq null) ขึ้นก่อน — ตัวเทียบสมมาตร: null คู่ null = 0 (ไม่ใช่ -1 ทั้งสองทาง) */

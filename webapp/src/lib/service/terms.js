@@ -1,8 +1,13 @@
 // ── รอบขายของโซน (mig 0297 · service_zone_terms) — ตัวตัดสินเดียว ─────────
 //
-// ⭐ **สะพานเส้นเดียวระหว่างฝ่ายขายกับฝ่ายบริการ**: 1 บรรทัดใบสั่งขาย = 1 รอบขาย
-//   ที่มา "ผูก" โซนหนึ่งโซน · ต่อสัญญา = ใบสั่งขายใบใหม่ ผูกโซน **เดิม** ⇒ ประวัติ
-//   และยอดการใช้ของโซนต่อเนื่อง ไม่ขาดตอนตอนเปลี่ยนรอบ (มติผู้ใช้ 2026-08-27)
+// ⭐ **สะพานเส้นเดียวระหว่างฝ่ายขายกับฝ่ายบริการ**: รอบขาย = (บรรทัดใบสั่งขาย × โซน)
+//   · ต่อสัญญา = ใบสั่งขายใบใหม่ ผูกโซน **เดิม** ⇒ ประวัติและยอดการใช้ของโซนต่อเนื่อง
+//   ไม่ขาดตอนตอนเปลี่ยนรอบ (มติผู้ใช้ 2026-08-27)
+//
+// 🔄 **ใครสร้าง term** — เดิม TS "ผูก/จัดสรร" บรรทัดลงโซนที่หน้างานเข้าใหม่ (mig 0297/0312) · ใบย้อนหลังเกิด term ตอน
+//   AE Sup อนุมัติ (mig 0374) · **ตั้งแต่ mig 0392 ใบ pipeline เกิด term ตอนอนุมัติ** จากโซนที่ฝ่ายขายเลือกในใบ
+//   (`sales_order_line_zones` → `sales_order_open_service_terms` · `packageQty` = แพ็คต่อรอบ · หน่วย 'แพ็ค')
+//   ⇒ ทางผูกของ TS ปิดแล้ว (409) · ตัวช่วย "จัดสรร" ที่เหลือในไฟล์นี้ใช้ **อ่าน** ใบเดิมเท่านั้น (สรุปงานบริการของใบ)
 //
 // ⚠️ **term ไม่มีคอลัมน์ status โดยเจตนา** (mig 0297:83-85) — "รอบนี้ยังมีผลไหม"
 //   คำนวณจากใบสั่งขายแม่เสมอ: `status = 'approved' AND supersededById IS NULL`
@@ -37,23 +42,11 @@ export function termIsActive(term, order, todayIso = businessDate()) {
   return termOrderActive(order) && termInWindow(term, todayIso);
 }
 
-/* ── snapshot จากบรรทัดขาย ──────────────────────────────────────────────
-   ⭐ ก๊อปเป็นภาพนิ่ง **ไม่ใช่ join** — บรรทัดขายถูกแก้/ใบถูก Rev. ได้ แต่รอบที่
-   ตกลงกันไว้ตอนนั้นต้องอ่านย้อนได้เหมือนเดิม (แพตเทิร์นเดียวกับเอกสารที่ตรึงแล้ว)
-   ⚠️ `packageQty` = จำนวนที่ขายในบรรทัดนั้น (แพ็ค = หน่วยคิดเงินตามมติสี่หน่วย)
-      บรรทัดขายไม่มีคอลัมน์ packageQty ของตัวเอง — `qty` คือตัวเดียวกัน */
-export function termSnapshotFromLine(line = {}) {
-  const qty = Number(line.qty);
-  return {
-    productId: line.productId || null,
-    fgCode: line.fgCode || null,
-    description: line.description || null,
-    packageQty: Number.isFinite(qty) && qty > 0 ? qty : null,
-    unit: line.unit || null,
-  };
-}
+/* 🔄 `termSnapshotFromLine` (ภาพนิ่งจากบรรทัดตอน TS ผูก) ถอดแล้ว (mig 0392) — ทางผูกของ TS ปิด ⇒ ไม่มีผู้เรียก
+   · ภาพนิ่งของ term ใบ pipeline ก๊อปใน SQL ตอนอนุมัติ (`sales_order_open_service_terms`) */
 
-/* ── จัดสรรบรรทัดขายลงโซน (mig 0312 · มติผู้ใช้ 2026-08-29) ─────────────────
+/* ── จัดสรรบรรทัดขายลงโซน (mig 0312 · มติผู้ใช้ 2026-08-29) — **อ่านอย่างเดียว** ตั้งแต่ mig 0392 ─────────────────
+   ⚠️ ใช้กับใบที่ยังไม่ประทับเท่านั้น (สรุปงานบริการของใบ · salesOrderServiceSummary) — ใบที่ประทับแล้วไม่มี "ของค้าง"
    > *"ไม่ต้องนับบรรทัดแล้ว นับแค่จำนวน FG พอ เพื่อให้ทาง TS จัดสรร ส่งโซนเอง"*
 
    "บรรทัด" เป็นรูปร่างของ **เอกสารขาย** (แยกตามราคา/ส่วนลด) ไม่ใช่รูปร่างของ **งาน**
@@ -83,10 +76,10 @@ export function allocatedByLine(terms = []) {
   return map;
 }
 
-/* จำนวนของบรรทัดที่ "ยังไม่ถูกจัดสรร"
+/* จำนวนของบรรทัดที่ "ยังไม่ถูกจัดสรร" — ตัวช่วยภายในของ `fgSummary` (ไม่ export แล้ว · mig 0392 ไม่มีผู้เรียกข้างนอก)
    ⚠️ บรรทัดที่ไม่มีจำนวน (qty ว่าง/0) ถือว่า **จัดสรรครบเมื่อมีอย่างน้อยหนึ่งโซน** —
       ของแบบนี้มีจริง (บริการรายเดือน "1 งาน") การบังคับให้กรอกจำนวนจะทำให้ผูกไม่ได้เลย */
-export function remainingOfLine(line = {}, allocated = 0) {
+function remainingOfLine(line = {}, allocated = 0) {
   const entry = typeof allocated === 'object' && allocated
     ? allocated
     : { qty: Number(allocated) || 0, whole: false };
@@ -94,16 +87,6 @@ export function remainingOfLine(line = {}, allocated = 0) {
   const qty = Number(line.qty);
   if (!Number.isFinite(qty) || qty <= 0) return entry.qty > 0 ? 0 : 1;
   return Math.max(0, qty - entry.qty);
-}
-
-/* บรรทัดนี้ยังต้องจัดสรรอยู่ไหม — **จุดคอขวดเดียว** ที่ `bindQueue` ใช้ ⇒ แท็บ "รอตั้งไซต์/โซน" ·
-   ป้ายตัวเลขบนเมนู และรายการกลุ่มในวิซาร์ด อ่านผลเดียวกันเสมอ แยกทางกันไม่ได้เชิงโครงสร้าง
-
-   🚫 ธง "TS ไม่พบจุดนี้หน้างาน" (มติ 16/09/2026 ข้อ 23 · mig 0362) ไม่ตัดบรรทัดออกจากคิวอีกแล้ว
-      (มติ 22/09) — บรรทัดของใบย้อนหลังผูกโซนจากทะเบียนตั้งแต่ตอนคีย์ใบ ⇒ ไม่มีชื่อจุดลอย ๆ
-      ให้ "หาไม่เจอ" และใบย้อนหลังไม่ผ่านถังผูกโซนเลย · คอลัมน์ทั้ง 9 ยังอยู่ในฐาน (0 แถว) */
-export function lineNeedsAllocation(line, allocatedMap = new Map()) {
-  return remainingOfLine(line, allocatedMap.get(line?.id)) > 0;
 }
 
 /* สรุป "ของที่ต้องจัดสรร" ของใบหนึ่ง — รวมตาม **FG** ไม่ใช่ตามบรรทัด
@@ -114,7 +97,8 @@ export function lineNeedsAllocation(line, allocatedMap = new Map()) {
       จุดติดตั้งตามชีต (`sales_order_lines.installationPoint`) และ FG เดียวกันอยู่คนละสาขาได้ ⇒ ยุบรวมเมื่อไร
       TS เห็น "FG-1 · 6 หน่วย" ก้อนเดียว แล้วไม่รู้ว่าต้องไปหาไซต์ไหนบ้าง
       ⚠️ บรรทัดที่ไม่มีจุดติดตั้ง (ใบปกติทั้งหมด) คีย์เดิมเป๊ะ — การยุบตาม FG ของมติ 2026-08-29 ไม่ขยับ
-      ⚠️ กลุ่มของจุดเดียวมักมีบรรทัดเดียว ⇒ `spreadAllocation` ผูกบรรทัดนั้นตรง ๆ ไม่ข้ามไปกินจุดอื่น */
+   🔄 mig 0392: ผู้อ่านเหลือตารางสรุปงานบริการของใบ (salesOrderServiceSummary) — คิวผูกโซนของ TS
+      (`lineNeedsAllocation` · `spreadAllocation`) ถอดพร้อมทางผูก */
 export function fgSummary(lines = [], allocatedMap = new Map()) {
   const groups = new Map();
   for (const line of lines) {
@@ -140,45 +124,6 @@ export function fgSummary(lines = [], allocatedMap = new Map()) {
     groups.set(key, row);
   }
   return [...groups.values()];
-}
-
-/* กระจาย "จัดสรรระดับ FG" ลงเป็น "จัดสรรระดับบรรทัด" ที่ API ต้องการ
-
-   ⭐ **คนทำงานคิดเป็น FG ระบบเก็บเป็นบรรทัด** — TS บอกว่า "FG-1 ลงโซน A 5 หน่วย"
-   แต่ FG-1 อาจกระจายอยู่ใน 10 บรรทัดของเอกสารขาย ⇒ ที่นี่แปลงให้ โดยไล่ตัดจาก
-   บรรทัดแรกที่ยังเหลือก่อน (greedy) · ผู้ใช้ไม่ต้องรู้ว่าเอกสารขายแบ่งบรรทัดยังไง
-
-   entries = [{ zoneId, qty, standardMlPerMonth }] ของ **กลุ่ม FG เดียว**
-   คืน [{ salesOrderLineId, zoneId, packageQty, standardMlPerMonth }]
-   ⚠️ ถ้าของในกลุ่มไม่พอ จะคืนเท่าที่มี — ตัวห้ามเกินอยู่ที่ API (อ่านของจริงจาก DB) */
-export function spreadAllocation(group = {}, entries = [], allocatedMap = new Map()) {
-  const pool = (group.lines || []).map((line) => ({
-    id: line.id,
-    left: remainingOfLine(line, allocatedMap.get(line.id)),
-  })).filter((l) => l.left > 0);
-
-  const out = [];
-  for (const entry of entries) {
-    const zoneId = String(entry.zoneId ?? '').trim();
-    if (!zoneId) continue;
-    let want = Number(entry.qty);
-    if (!Number.isFinite(want) || want <= 0) want = null;   // ไม่ระบุ = ยกที่เหลือทั้งกลุ่ม
-
-    for (const line of pool) {
-      if (line.left <= 0) continue;
-      if (want !== null && want <= 0) break;
-      const take = want === null ? line.left : Math.min(line.left, want);
-      out.push({
-        salesOrderLineId: line.id,
-        zoneId,
-        packageQty: take,
-        standardMlPerMonth: entry.standardMlPerMonth ?? null,
-      });
-      line.left -= take;
-      if (want !== null) want -= take;
-    }
-  }
-  return out;
 }
 
 /* ── มาตรฐานการใช้ต่อเดือน ──────────────────────────────────────────────
@@ -211,66 +156,8 @@ export function suggestStandardMl(packageQty, unit = null) {
   return Math.round(qty * ML_PER_PACK_HINT);
 }
 
-export const STANDARD_ML_HINT_TEXT =
-  `จากชีตของทีม 10 ใน 13 แถวลงตัวที่ 1 แพ็ค = 1 ลิตร/เดือน — กดใช้ได้ถ้าตรง ไม่ตรงก็พิมพ์ทับ`;
-
-/* ── ตรวจข้อมูลก่อนเขียนแถว ─────────────────────────────────────────── */
-export function normalizeTermInput(body = {}) {
-  const zoneId = String(body.zoneId ?? '').trim();
-  if (!zoneId) return { value: null, error: 'ต้องเลือกโซน' };
-
-  const salesOrderId = String(body.salesOrderId ?? '').trim();
-  const salesOrderLineId = String(body.salesOrderLineId ?? '').trim();
-  if (!salesOrderId || !salesOrderLineId) return { value: null, error: 'ต้องระบุบรรทัดในใบสั่งขาย' };
-
-  const number = (field, label) => {
-    const raw = body[field];
-    if (raw === undefined || raw === null || String(raw).trim() === '') return { value: null };
-    const value = Number(raw);
-    if (!Number.isFinite(value) || value <= 0) return { error: `${label}ต้องเป็นตัวเลขมากกว่า 0` };
-    return { value };
-  };
-  const pack = number('packageQty', 'จำนวนแพ็ค');
-  if (pack.error) return { value: null, error: pack.error };
-  const std = number('standardMlPerMonth', 'มาตรฐานต่อเดือน (ml)');
-  if (std.error) return { value: null, error: std.error };
-
-  const date = (field, label) => {
-    const value = String(body[field] ?? '').trim();
-    if (!value) return { value: null };
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return { error: `${label}ไม่ถูกต้อง` };
-    return { value };
-  };
-  const start = date('startDate', 'วันเริ่มบริการ');
-  if (start.error) return { value: null, error: start.error };
-  const end = date('endDate', 'วันสิ้นสุดบริการ');
-  if (end.error) return { value: null, error: end.error };
-  if (start.value && end.value && start.value > end.value) {
-    return { value: null, error: 'วันเริ่มบริการต้องไม่หลังวันสิ้นสุด' };
-  }
-
-  const text = (field, max) => {
-    const value = String(body[field] ?? '').trim();
-    return value ? value.slice(0, max) : null;
-  };
-
-  return {
-    value: {
-      zoneId,
-      salesOrderId,
-      salesOrderLineId,
-      productId: text('productId', 100),
-      fgCode: text('fgCode', 100),
-      description: text('description', 500),
-      packageQty: pack.value,
-      unit: text('unit', 50),
-      standardMlPerMonth: std.value,
-      startDate: start.value,
-      endDate: end.value,
-    },
-    error: null,
-  };
-}
+/* 🔄 `normalizeTermInput` (ตรวจแถวก่อน TS เขียน term) ถอดแล้ว (mig 0392) — ทางผูกปิด ไม่มีผู้เขียน term ฝั่ง JS
+   · ข้อความใบ้ `STANDARD_ML_HINT_TEXT` ถอดพร้อมกัน (ผู้ใช้คือวิซาร์ดที่ถูกลบ) */
 
 /* ── ตัวช่วยอ่าน ─────────────────────────────────────────────────────── */
 
@@ -295,7 +182,7 @@ export function termsByZone(terms = []) {
   return map;
 }
 
-/* โซนที่ยังไม่มีรอบที่มีผลเลย — คิวที่สองของหน้างานเข้าใหม่
+/* โซนที่ยังไม่มีรอบที่มีผลเลย — แท็บพื้นที่บริการของลูกค้า · ทะเบียนโซน
    ⚠️ "ไม่มีรอบ" ต่างจาก "รอบหมดอายุ" — ทั้งคู่ต้องตามต่อ แต่คนละข้อความ */
 export function zoneTermState(zoneId, terms = [], ordersById = new Map(), todayIso = businessDate()) {
   const rows = terms.filter((t) => t.zoneId === zoneId);

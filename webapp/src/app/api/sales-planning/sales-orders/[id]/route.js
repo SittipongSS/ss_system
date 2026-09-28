@@ -71,6 +71,10 @@ import { loadScoped } from '@/lib/scopedRow';
 import { serviceContractLinkError } from '@/lib/sales/serviceContractLink';
 import { serviceRoundsEditError, validateServiceRoundsPatch } from '@/lib/sales/serviceRoundsEntry';
 import {
+  SERVICE_SETUP_SQL_MESSAGES, serviceSetupIssues, serviceSetupRequired, serviceSetupSqlIssues, serviceSetupTotals,
+} from '@/lib/sales/serviceSetup';
+import { loadServiceSetupContext } from '@/lib/sales/serviceSetupRepo';
+import {
   HISTORICAL_CANCEL_SETTLE_STUCK, HISTORICAL_CORRECTION_PATH, historicalCancelBlock, historicalCancelNoteError,
   historicalCancelOpening, historicalCancelSettleBlock, historicalDeleteBlock, historicalOpeningSettled, isHistoricalOrder,
 } from '@/lib/sales/historicalOrders';
@@ -238,8 +242,11 @@ async function loadCustomerOfOrder(supabase, customerId) {
 /* `extras` = แนบของเสริมของใบย้อนหลัง (โซน · ไฟล์เอกสารแทนสัญญา · หลักฐานงวดยกมา · รอบขายของใบอื่น) — เฉพาะ GET
    ที่จอใช้โชว์/ป้อนโมดัลอนุมัติ · action ใน PATCH/DELETE ไม่ต้องจ่ายค่าคิวรีชุดนั้น */
 async function loadOrder(supabase, id, { extras = false } = {}) {
+  /* ⭐ ต้นทางของตัวตัดสินด่านเงิน (`orderHasServiceRounds` บนหน้าใบ/แผงงวด) — ใบ `*` พก "serviceTermsOpenedAt" ·
+     บรรทัด `*` พก "serviceFgCode" (mig 0392 · D13) · ยาม serviceMoneySelectGuard.test.mjs อ่านป้ายบรรทัดถัดไป */
   const { data: order, error } = await supabase
     .from('sales_orders')
+    /* money-decider feed */
     .select('*, lines:sales_order_lines(*)')
     .eq('id', id)
     .maybeSingle();
@@ -708,12 +715,14 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const gate = serviceRoundsEditError(before, { canEdit });
     if (gate) return fail(gate, 409);
 
+    /* ⭐ mig 0392: ช่องที่ตัวตัดสินชนิดบรรทัดอ่าน (`serviceLineRole` — FG · สินค้า · หมวดของบรรทัดพิมพ์เอง · ชนิดที่ฝ่ายขายเลือก ·
+       แพ็คเกจที่เลือก) ต้องมาครบ — ใบที่ประทับแล้วถามชนิดของบรรทัด ไม่ใช่รหัส FG ล้วน · และส่ง `before` เข้าตัวตรวจทั้งสอง */
     const { data: lines, error: lineError } = await supabase
-      .from('sales_order_lines').select('id, "fgCode", description, "serviceRounds"')
+      .from('sales_order_lines').select('id, "fgCode", "productId", description, metadata, "serviceKind", "serviceFgCode", "serviceRounds"')
       .eq('salesOrderId', id);
     if (lineError) return fail(lineError.message, 500);
 
-    const { value, error: invalid } = validateServiceRoundsPatch(body.serviceRounds, lines || []);
+    const { value, error: invalid } = validateServiceRoundsPatch(body.serviceRounds, lines || [], before);
     if (invalid) return badRequest(invalid);
 
     /* เขียนเฉพาะบรรทัดที่ค่าเปลี่ยนจริง — ไม่งั้นกดบันทึกโดยไม่แก้อะไรก็ยัง
@@ -725,6 +734,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     for (const [lineId, rounds] of changed) {
       const { error: updateError } = await supabase.from('sales_order_lines')
         .update({ serviceRounds: rounds }).eq('id', lineId).eq('salesOrderId', id);
+      /* 🔒 trigger ของ 0392 ล็อกการแก้รอบระหว่างรออนุมัติ/ย้อนแล้ว/รอตรวจย้อนหลัง — ด่าน JS ข้างบนตอบก่อนเสมอ
+         ถึงตรงนี้ได้เมื่อสถานะใบเปลี่ยนระหว่างด่านกับการเขียน (อีกหน้าต่างยื่น/อนุมัติ) ⇒ 409 ไทย ไม่ใช่ 500 ดิบจากฐาน */
+      if (updateError && String(updateError.message || '').includes('sales_order_service_setup_locked')) {
+        return fail(SERVICE_SETUP_SQL_MESSAGES.sales_order_service_setup_locked.message, 409);
+      }
       if (updateError) return fail(updateError.message, 500);
     }
 
@@ -1034,6 +1048,18 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
        (`orderConfirmationOf` อ่านสองบ้าน) */
     const confirmationGate = salesOrderConfirmationGate(before, before.quotation);
     if (confirmationGate) return badRequest(confirmationGate);
+    /* ⭐ **งานบริการรายบรรทัด** (mig 0392 · D4/D7) — ใบ pipeline สาย SERVICE ยื่นได้เมื่อทุกบรรทัดตอบว่าเป็นแพ็คเกจหรือไม่ ·
+       แพ็คเกจครบ (FG · โซน · แพ็คต่อรอบ · รอบ) · ช่วงบริการ · งวดครอบช่วงบริการ — ตัวตัดสินชุดเดียวกับตารางบนจอ
+       (`serviceSetupIssues` · GET ของ /service-setup ส่งข้อเดียวกัน) ⇒ ตอบ 400 พร้อม `issues` ให้แผงแดงวาดรายข้อ
+       ⚠️ `withFgOptions: true` บังคับ — ข้อ "แพ็คเกจของนิติบุคคลอื่น" ตรวจที่ JS เท่านั้น · ไม่โหลด = ตัวตัดสิน throw (fail-closed)
+       ⚠️ อ่านไม่ขึ้น = 500 ไม่ใช่ "ผ่าน" (ห้ามเดา) · ใบสายอื่น/ใบย้อนหลังไม่ผ่านด่านนี้ (serviceSetupRequired) */
+    if (serviceSetupRequired(before)) {
+      let setupCtx;
+      try { setupCtx = await loadServiceSetupContext(supabase, before, { lines: before.lines, withFgOptions: true }); }
+      catch (setupError) { return fail(`ตรวจงานบริการไม่สำเร็จ: ${setupError.message}`, 500); }
+      const issues = serviceSetupIssues(setupCtx);
+      if (issues.length) return Response.json({ error: `ยื่นอนุมัติไม่ได้ — ยังขาด ${issues.length} ข้อ`, issues }, { status: 400 });
+    }
     // การยื่น = การลงนามของผู้จัดทำ (mig 0153) — สถานะ + หลักฐาน proposer ต้อง commit
     // พร้อมกันในทรานแซกชันเดียว จึงยกจาก plain UPDATE มาเป็น RPC; ผู้ยื่นที่ไม่มีลายเซ็นจะ
     // ได้ 409 + ลิงก์ /account และสถานะไม่เปลี่ยนเลย (rollback ทั้งก้อน)
@@ -1080,6 +1106,19 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       if (reasonError) return badRequest(reasonError);
       overrideReason = normalizeAdminOverrideReason(body.overrideReason);
     }
+    /* ⭐ **งานบริการรายบรรทัด** (mig 0392 · D10) — อนุมัติ = เปิดรอบขายของโซนให้ TS ในทรานแซกชันเดียวกัน (P1 ของ 0392)
+       ⇒ ตรวจซ้ำด้วยตัวตัดสินเดียวกับตอนยื่นก่อนยิง: ของที่เปลี่ยนระหว่างรออนุมัติ (สินค้าแพ็คเกจถูกปิด · งวดถูกแก้) ตอบ 409
+       พร้อม `issues` แทนที่จะไปตายในฐาน · ฐานตรวจโครงสร้างซ้ำอีกชั้น (ไม่ครบ = ถอยทั้งการอนุมัติ → catch ข้างล่าง)
+       ⚠️ `withFgOptions: true` บังคับ (fail-closed) · อ่านไม่ขึ้น = 500 */
+    let setupCtx = null;
+    if (serviceSetupRequired(before)) {
+      try { setupCtx = await loadServiceSetupContext(supabase, before, { lines: before.lines, withFgOptions: true }); }
+      catch (setupError) { return fail(`ตรวจงานบริการไม่สำเร็จ: ${setupError.message}`, 500); }
+      const issues = serviceSetupIssues(setupCtx);
+      if (issues.length) {
+        return Response.json({ error: `อนุมัติไม่ได้ — งานบริการยังขาด ${issues.length} ข้อ · ตีกลับให้ฝ่ายขายแก้`, issues }, { status: 409 });
+      }
+    }
     let result;
     try {
       result = await approveSalesOrderWithSignatureEvidence(supabase, {
@@ -1092,6 +1131,13 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         user,
       });
     } catch (approvalError) {
+      /* ฐานตรวจงานบริการไม่ผ่าน (ข้อมูลเปลี่ยนหลังด่าน JS) — รหัสรายข้อ (DETAIL) แปลเป็นข้อที่ยังขาดด้วยบริบทที่เพิ่งโหลด */
+      if (approvalError?.code === 'service_setup_incomplete') {
+        return Response.json({
+          error: approvalError.message,
+          issues: serviceSetupSqlIssues(approvalError.extra?.setupErrors || [], setupCtx || {}),
+        }, { status: 409 });
+      }
       return signatureEvidenceErrorResponse(approvalError);
     }
     const data = result.document;
@@ -1176,7 +1222,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       request: req,
     });
     // แจ้งทีมขาย: SO อนุมัติแล้ว → ยอด Actual เข้าระบบ
-    return ok(data);
+    /* `termsOpened` = จำนวนโซนที่เปิดให้ TS (toast "อนุมัติแล้ว · เปิดงานบริการ n โซนให้ TS") — นับเฉพาะเมื่อฐานประทับจริง
+       (P1 อ่านใบซ้ำหลังเปิดรอบ ⇒ `document` พก "serviceTermsOpenedAt") · ใบสายอื่น = 0 */
+    return ok({ ...data, termsOpened: setupCtx && data?.serviceTermsOpenedAt ? serviceSetupTotals(setupCtx).zones : 0 });
   }
 
   if (action === 'reject') {
@@ -1527,6 +1575,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       approvedAt: null, approvedBy: null, approvedByName: null, approvalNote: null,
       submittedAt: null, submittedBy: null, submittedByName: null,
       rejectedAt: null, rejectedBy: null, rejectedByName: null, rejectionReason: null,
+      /* ⭐ งานบริการรายบรรทัด (mig 0392 · D22) — ร่างที่คืนมาต้องเปิดรอบขายใหม่ตอนอนุมัติรอบหน้า (ตราประทับเก่าไม่ติดมา)
+         และสถานะตั้งย้อนหลังของรอบก่อนไม่มีความหมายกับร่าง · term เก่าของใบถูกลบพร้อม audit ตอนอนุมัติใหม่ (SZT-S เท่านั้น) */
+      serviceTermsOpenedAt: null, serviceSetupState: null,
       updatedAt: new Date().toISOString(),
     };
     const { data, error } = await supabase.from('sales_orders').update(patch).eq('id', id).eq('status', before.status).select('*').maybeSingle();

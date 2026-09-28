@@ -103,6 +103,20 @@ import Tabs from "@/components/ui/Tabs";
 import SalesOrderServiceTab from "@/components/salesPlanning/SalesOrderServiceTab";
 import SalesOrderDocumentsPanel, { installmentFilesKey, useSalesOrderDocuments } from "@/components/salesPlanning/SalesOrderDocumentsPanel";
 import { orderHasServiceRounds, orderOnServiceLine, serviceRoundsSold } from "@/lib/sales/serviceOrders";
+import { serviceRoundsEditError } from "@/lib/sales/serviceRoundsEntry";
+/* ⭐ งานบริการรายบรรทัด (mig 0392 · PR-A) — ตัวตัดสินทุกตัวอยู่ที่ serviceSetup.js · ก้อน GET `…/service-setup`
+   (useServiceSetup) คือความจริงเดียวของตาราง/แผงแดง/การ์ดราง/แถบผู้อนุมัติ/หัวใบ — หน้านี้แค่ต่อสาย */
+import {
+  SERVICE_SETUP_PANEL_TEXT, issuesByTab, serviceBackfillAwaitingReview, serviceSetupFieldId, serviceSetupIssues, serviceSetupRequired,
+  serviceSetupRevisionLine,
+} from "@/lib/sales/serviceSetup";
+import useServiceSetup from "@/components/salesPlanning/serviceSetup/useServiceSetup";
+import SalesOrderServiceLines, { revealServiceSetupField } from "@/components/salesPlanning/serviceSetup/SalesOrderServiceLines";
+import SubmitGateNotice from "@/components/salesPlanning/serviceSetup/SubmitGateNotice";
+import { ServiceBackfillBanner, ServiceBackfillRailCard } from "@/components/salesPlanning/serviceSetup/ServiceBackfillPanel";
+import ServiceSetupStrip from "@/components/salesPlanning/serviceSetup/ServiceSetupStrip";
+import { localSetupCtx, mergedLines } from "@/components/salesPlanning/serviceSetup/serviceSetupDraft";
+import CountBadge from "@/components/ui/CountBadge";
 import { serviceContractHeadline } from "@/lib/sales/serviceContractLink";
 import { salesOrderWorkTrack } from "@/lib/sales/salesOrderWorkTrack";
 import {
@@ -179,6 +193,36 @@ const ACTION_MESSAGE = {
   set_service_rounds: "บันทึกจำนวนรอบบริการแล้ว",
 };
 
+/* ── งานบริการย้อนหลังของใบที่อนุมัติแล้ว (ภาคผนวก A.5) — ข้อความทักหลังทำรายการสำเร็จ ── */
+const SERVICE_BACKFILL_TOAST = {
+  submit: () => "ยื่นตรวจงานบริการแล้ว — รอผู้จัดการฝ่ายขายตรวจ",
+  approve: (data) => `อนุมัติงานบริการแล้ว · เปิด ${fmtNumber(Number(data?.termsOpened) || 0)} โซนให้ TS`,
+  reject: () => "ตีกลับงานบริการแล้ว",
+};
+const SERVICE_BACKFILL_FAILED = {
+  submit: "ยื่นตรวจงานบริการไม่สำเร็จ",
+  approve: "อนุมัติงานบริการไม่สำเร็จ",
+  reject: "ตีกลับงานบริการไม่สำเร็จ",
+};
+/* ไม่มีข้อที่ติด = Map ว่างตัวเดิมเสมอ — ตารางนับ "ช่องที่แก้แล้วหลังกด" ใหม่ทุกครั้งที่ตัวตนของ Map เปลี่ยน */
+const NO_HIGHLIGHT = new Map();
+
+/* คำเตือนที่ไม่บล็อกการยื่นของฝ่ายขาย (ครอบซ้อน) → บรรทัดของโมดัลยืนยัน · ของบัญชี (FN) ไม่ใส่ — แผงงวดบอกแล้วและฝ่ายขายแก้ไม่ได้
+   🐞 เดิมคำเตือนขึ้นเฉพาะในแผงแดง ซึ่งขึ้นเมื่อมีข้อที่บล็อกเท่านั้น ⇒ ยื่นผ่านแล้วคำเตือนหายเงียบ */
+const saWarningLines = (warnings) => (Array.isArray(warnings) ? warnings : [])
+  .filter((w) => w?.owner === "SA" && w?.message)
+  .map((w) => `${SERVICE_SETUP_PANEL_TEXT.warningTag}: ${w.message}`);
+
+/* ข้อความเดียวกับที่ route ตอบ 409 ตอนอนุมัติ (ใบ pipeline และงานบริการย้อนหลัง) */
+const serviceApproveBlockedText = (n) => `อนุมัติไม่ได้ — งานบริการยังขาด ${fmtNumber(n)} ข้อ · ตีกลับให้ฝ่ายขายแก้`;
+
+/** ข้อที่ยังขาดจาก API ตีกลับแบบมี `issues` (409 ตอนอนุมัติ) → ข้อความเดียวในโมดัล: 3 ข้อแรกคั่นด้วย " · " */
+function issuesErrorText(error, issues) {
+  const messages = (Array.isArray(issues) ? issues : []).map((issue) => issue?.message).filter(Boolean);
+  if (!messages.length) return error;
+  return `${error} — ${messages.slice(0, 3).join(" · ")}${messages.length > 3 ? ` · และอีก ${fmtNumber(messages.length - 3)} ข้อ` : ""}`;
+}
+
 export default function SalesOrderDetailPage() {
   const { id } = useParams();
   const router = useRouter();
@@ -231,7 +275,26 @@ export default function SalesOrderDetailPage() {
     amountToCollect: 0,
     error: "",
   });
-  useUnsavedChanges(dirty || datesDirty);
+  /* ── งานบริการรายบรรทัด (mig 0392 · PR-A · แผน §2.10) ─────────────────────────────────────────────
+     ⭐ ใบ pipeline สาย SERVICE (`serviceSetupRequired`) โหลดก้อน GET `…/service-setup` — ใบอื่นไม่ยิงอะไรเลย
+     ⭐ ร่างการแก้อยู่ใน hook (ไม่หายตอนสลับแท็บ) ⇒ ยามออกจากหน้าอ่าน `setup.dirty` ตรง ๆ
+     🔴 แดงหลังกดเท่านั้น (กฎ 3) — `submitIssues` ตั้งเมื่อกด "ยื่นอนุมัติ"/"ยื่นตรวจงานบริการ" แล้วไม่ผ่าน
+        `{ issues, warnings, flow: 'pipeline'|'backfill', checkedAt }` · ยื่นผ่าน = ล้าง */
+  const setupRequired = serviceSetupRequired(order);
+  const setup = useServiceSetup(order?.id, { enabled: setupRequired, customerId: order?.customerId || null });
+  const [submitIssues, setSubmitIssues] = useState(null);
+  const submitGateRef = useRef(null);
+  const submitLineRef = useRef(null);
+  /* คำเตือนของฝ่ายขาย (ครอบซ้อน) จากก้อนสดตอนกดยื่น — ส่งผ่าน ref แบบเดียวกับ submitLineRef · อ่านแล้วล้าง */
+  const submitWarningsRef = useRef([]);
+  /* ตีกลับงานบริการย้อนหลัง (ผู้จัดการฝ่ายขาย) — ReasonDialog ของตัวเอง ไม่ปนกับตีกลับทั้งใบ */
+  const [serviceRejectForm, setServiceRejectForm] = useState(null);
+  /* "ไปแก้" ของข้อวันงวดที่รวมหลายงวด (แผงแดง · `dateFill`) = ขอให้แผงงวดเข้าโหมดตั้งวันงวดแล้วเปิด "เติมวันงวดที่ว่าง…" (#1846)
+     ⭐ เป็น state ไม่ใช่ ref/อีเวนต์ — แผงงวดเมานต์เฉพาะแท็บการชำระ ⇒ คำขอต้องรอจนแผงเพิ่งเมานต์จากการสลับแท็บอ่านได้
+     · `{ issue, includeDated }` ออบเจกต์ใหม่ทุกครั้งที่กด · แผงตอบ `dateFillDone(opened)` แล้วหน้าล้างคำขอ (กลับมาแท็บนี้อีกไม่เปิดซ้ำ) */
+  const [dateFillAsk, setDateFillAsk] = useState(null);
+  /* ร่างที่ยังไม่บันทึกสามก้อน: ฟอร์มของใบ · วันงวดในโหมดตั้งวัน (#1846) · งานบริการรายบรรทัด (hook) */
+  useUnsavedChanges(dirty || datesDirty || setup.dirty);
 
   const load = useCallback(async () => {
     setError("");
@@ -292,6 +355,55 @@ export default function SalesOrderDetailPage() {
     } catch { /* รีเฟรชเงียบ — ข้อความที่ผู้ใช้ต้องอ่านคือ error ของ action */ }
   }, [id]);
 
+  /* ── ก้อนงานบริการต้องตามตัวใบให้ทัน ──────────────────────────────────────────────────────────
+     ⭐ ตัวใบขยับเวอร์ชัน (ยื่น · อนุมัติ · ดึงกลับ · ย้อน · ตีกลับ) = ขั้น/โหมด/ข้อที่ยังขาดของงานบริการเปลี่ยน
+        ⇒ โหลดก้อน GET ใหม่ **ครั้งเดียวต่อเวอร์ชันของใบ** (กันวนเมื่อรูปแบบเวลาของสองเส้นไม่ตรงกันเป๊ะ)
+     ⭐ งวด/ช่วงครอบเปลี่ยน (แผงการชำระ) ไม่ขยับเวอร์ชันของใบ ⇒ ผู้เรียกสั่ง `refreshServiceSetup()` เอง
+     ⚠️ โหลดไม่ขึ้น = การ์ดขึ้น `setup.error` + ปุ่มลองโหลดอีกครั้ง — ไม่โยนต่อ ไม่เดา */
+  const reloadSetup = setup.reload;
+  const refreshServiceSetup = useCallback(() => {
+    if (!setupRequired) return;
+    reloadSetup().catch(() => {});
+  }, [setupRequired, reloadSetup]);
+  const setupSyncedFor = useRef(null);
+  useEffect(() => {
+    if (!setupRequired || !order?.updatedAt || !setup.data || setup.loading) return;
+    if (setup.data.updatedAt === order.updatedAt || setupSyncedFor.current === order.updatedAt) return;
+    setupSyncedFor.current = order.updatedAt;
+    reloadSetup().catch(() => {});
+  }, [setupRequired, order?.updatedAt, setup.data, setup.loading, reloadSetup]);
+
+  /* โมดัล Admin Override ของใบ pipeline บอกผลของงานบริการจากก้อน GET — เปิดเมื่อไรโหลดสดเมื่อนั้น */
+  const overrideOpen = !!overrideForm;
+  useEffect(() => {
+    if (overrideOpen) refreshServiceSetup();
+  }, [overrideOpen, refreshServiceSetup]);
+
+  /* แผงแดงเพิ่งขึ้น = พาไปให้เห็น (ปุ่มยื่นอยู่รางขวา · แผงอยู่บนสุดของคอลัมน์หลัก) */
+  useEffect(() => {
+    if (submitIssues) submitGateRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+  }, [submitIssues]);
+
+  /* ช่องที่ขึ้นแดงหลังกดยื่น — fieldId → ข้อความ (หลายข้อชี้ช่องเดียวกัน = ต่อกัน) · ไม่มีข้อ = Map ว่างตัวเดิม
+     ⚠️ memo ตาม `submitIssues` เท่านั้น — ตัวตนของ Map ใหม่ทำให้ตารางลืมว่าช่องไหนแก้ไปแล้ว */
+  const serviceHighlight = useMemo(() => {
+    if (!submitIssues?.issues?.length) return NO_HIGHLIGHT;
+    const map = new Map();
+    for (const issue of submitIssues.issues) {
+      const fieldId = serviceSetupFieldId(issue);
+      if (!fieldId || !issue?.message) continue;
+      map.set(fieldId, map.has(fieldId) ? `${map.get(fieldId)} · ${issue.message}` : issue.message);
+    }
+    return map;
+  }, [submitIssues]);
+
+  const showSubmitIssues = (issues, warnings, flow) => setSubmitIssues({
+    issues: Array.isArray(issues) ? issues : [],
+    warnings: Array.isArray(warnings) ? warnings : [],
+    flow,
+    checkedAt: new Date().toISOString(),
+  });
+
   async function createFiling() {
     setBusy("filing");
     setError("");
@@ -345,7 +457,17 @@ export default function SalesOrderDetailPage() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       setBusy("");
-      setError(data.error || "อัปเดตใบสั่งขายไม่สำเร็จ");
+      /* ⭐ ด่านงานบริการของ route (mig 0392) ตอบ `issues` รายข้อ — ยื่นไม่ผ่าน = ปิดโมดัลแล้ววาดแผงแดง (ข้อเดียวกับ GET)
+         · อนุมัติไม่ผ่าน (ของเปลี่ยนระหว่างรออนุมัติ) = ข้อความในโมดัล 3 ข้อแรก — ผู้อนุมัติแก้เองไม่ได้ ต้องตีกลับ */
+      const issues = Array.isArray(data.issues) ? data.issues : null;
+      if (issues && action === "submit") {
+        setConfirmState(null);
+        setError("");
+        showSubmitIssues(issues, data.warnings, "pipeline");
+      } else {
+        setError(issues ? issuesErrorText(data.error || "อัปเดตใบสั่งขายไม่สำเร็จ", issues) : (data.error || "อัปเดตใบสั่งขายไม่สำเร็จ"));
+      }
+      if (issues) refreshServiceSetup();
       setErrorActionUrl(data.accountUrl || "");
       if (action === "save") setSaveState("error");
       /* ⭐ **ตีกลับ = จอไม่ตรงกับของจริงแล้ว ⇒ ดึงตัวใบกลับมา** — ด่านของ SO อ่านแถวสด
@@ -366,18 +488,23 @@ export default function SalesOrderDetailPage() {
       router.push(`/sa/sales-orders/${data.id}`);
       return data;
     }
+    /* ยื่นผ่าน = แผงแดงของรอบก่อนหมดความหมาย */
+    if (action === "submit") setSubmitIssues(null);
     await load();
     setBusy("");
     setToast({
       kind: action === "withdraw" ? "info" : "success",
       /* ⚠️ ข้อความของใบปกติพูดว่า "อัปเดต Actual แล้ว" ซึ่งไม่จริงกับใบย้อนหลังสักตัวอักษร —
          ของใบนี้บอกสิ่งที่เกิดจริง (อนุมัติ: เอกสารแทนสัญญาได้เลข CT · งวดขึ้นคิวบัญชี · โซนขึ้นคิว TS ·
-         ยกเลิก: สัญญาถูกยกเลิกตาม · งวดยกมาเป็นโมฆะ · ทางคีย์ใหม่ — จากคำตอบของ route · มติ 24/09) */
+         ยกเลิก: สัญญาถูกยกเลิกตาม · งวดยกมาเป็นโมฆะ · ทางคีย์ใหม่ — จากคำตอบของ route · มติ 24/09)
+         ⭐ ใบบริการที่อนุมัติแล้วเปิดงานให้ TS (mig 0392 · `termsOpened` จาก route) = บอกจำนวนโซนที่เปิด (ภาคผนวก A.5) */
       msg: (action === "approve" && isHistoricalOrder(order)
         ? HISTORICAL_APPROVE_TOAST
-        : action === "cancel" && isHistoricalOrder(order)
-          ? historicalCancelToast(data)
-          : ACTION_MESSAGE[action]) || "อัปเดตเรียบร้อยแล้ว",
+        : action === "approve" && Number(data?.termsOpened) > 0
+          ? `อนุมัติแล้ว · เปิดงานบริการ ${fmtNumber(Number(data.termsOpened))} โซนให้ TS`
+          : action === "cancel" && isHistoricalOrder(order)
+            ? historicalCancelToast(data)
+            : ACTION_MESSAGE[action]) || "อัปเดตเรียบร้อยแล้ว",
     });
     if (action === "save") setSaveState("saved");
     return data || true;
@@ -424,13 +551,21 @@ export default function SalesOrderDetailPage() {
   function openSubmitConfirm() {
     // เปิดโมดัลที่โชว์ error ของหน้า ⇒ ล้างของรอบก่อนทิ้ง (ดูคอมเมนต์ที่ `showsError` ข้างล่าง)
     setError("");
+    /* ⭐ งานบริการ (mig 0392): บรรทัด "ส่งการตั้งค่างานบริการ (…) ให้ผู้อนุมัติตรวจ" จากก้อน GET สดที่ `pressSubmit` เพิ่งโหลด
+       (ภาคผนวก A.5) — ส่งผ่าน ref เพราะ closure ของการกดครั้งนี้ยังเห็นก้อนเก่าของ render ก่อนหน้า · อ่านแล้วล้างทิ้ง */
+    const submitLine = submitLineRef.current;
+    submitLineRef.current = null;
+    const warningLines = submitWarningsRef.current;
+    submitWarningsRef.current = [];
     setConfirmState({
       title: "ยื่นอนุมัติ ใบสั่งขาย",
       description: `ยืนยันยื่น ${order.orderNumber} ให้ AE Supervisor ตรวจอนุมัติหรือไม่`,
       detail: [
         "หลังยื่นแล้วเอกสารจะถูกล็อก ผู้ยื่นดึงเอกสารของตัวเองกลับได้",
         `ยอด ${fmtMoney(order.actualAmount)} (ก่อน VAT) จะขึ้นเป็น "${PENDING_APPROVAL_LABEL}" บนภาพรวม ดีล และโครงการ — ยังไม่นับเป็น Actual จนกว่าจะอนุมัติ`,
-      ].join("\n"),
+        submitLine,
+        ...warningLines,
+      ].filter(Boolean).join("\n"),
       confirmLabel: "ยื่นอนุมัติ",
       /* 🐞 เหตุที่ API ปฏิเสธการยื่นต้องอ่านได้ **ในโมดัลที่ยังเปิดอยู่** — แถบ error ของหน้าอยู่บนสุด
          ของคอลัมน์ ⇒ โมดัลบังไว้หมด · ด่านของ `submit` ตอบหลายข้อจริง ๆ (ใบขยับไปแล้ว · ยังไม่มี
@@ -438,6 +573,170 @@ export default function SalesOrderDetailPage() {
       showsError: true,
       action: () => requestAction("submit"),
     });
+  }
+
+  /* ⭐ งานบริการรายบรรทัด (mig 0392 · แผน §2.10 ข้อ 5) — ด่านก่อนเปิดโมดัล "ยื่นอนุมัติ" / "ยื่นตรวจงานบริการ"
+     1) มีการแก้ที่ยังไม่บันทึก = ข้อเดียว "ยังไม่บันทึก" (ตรวจของที่ไม่ได้บันทึกไม่ได้) · 2) โหลดก้อน GET สด แล้วใช้
+     ข้อที่ยังขาดของ server (ตัวเดียวกับด่านของ route) · ติด = แผงแดง ไม่เปิดโมดัล · ผ่าน = คืนก้อนสดให้ผู้เรียกเปิดโมดัล
+     🔴 โหลดไม่ขึ้น = บอกว่าโหลดไม่ขึ้น ไม่ถือว่า "ผ่าน" (ห้ามเดา) */
+  /* ก้อน GET ของงานบริการ **สด** ตอนจะกด (ไม่ใช่ตอนเปิดหน้าไว้เมื่อชั่วโมงก่อน) — โหลดไม่ขึ้น = บอกเหตุ + null */
+  async function freshServiceView() {
+    setBusy("service-check");
+    try {
+      const fresh = await setup.reload();
+      if (!fresh) setError("โหลดงานบริการไม่สำเร็จ");
+      return fresh || null;
+    } catch (loadError) {
+      setError(loadError?.message || "โหลดงานบริการไม่สำเร็จ");
+      return null;
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function serviceGateBeforeSubmit(flow) {
+    setError("");
+    if (setup.dirty) {
+      showSubmitIssues(serviceSetupIssues({ unsaved: true }), [], flow);
+      return null;
+    }
+    const fresh = await freshServiceView();
+    if (!fresh) return null;
+    if (Array.isArray(fresh.issues) && fresh.issues.length) {
+      showSubmitIssues(fresh.issues, fresh.warnings, flow);
+      return null;
+    }
+    setSubmitIssues(null);
+    return fresh;
+  }
+
+  /* ปุ่ม "ยื่นอนุมัติ" ของใบ pipeline — ใบที่ไม่ต้องตั้งงานบริการเปิดโมดัลเดิมทันที */
+  async function pressSubmit() {
+    if (!setupRequired) {
+      submitLineRef.current = null;
+      submitWarningsRef.current = [];
+      openSubmitConfirm();
+      return;
+    }
+    const fresh = await serviceGateBeforeSubmit("pipeline");
+    if (!fresh) return;
+    submitLineRef.current = fresh.submitLine || null;
+    submitWarningsRef.current = saWarningLines(fresh.warnings);
+    openSubmitConfirm();
+  }
+
+  /* ── งานบริการย้อนหลัง (ใบที่อนุมัติแล้ว · D11/D12) — ยื่นตรวจ · อนุมัติ · ตีกลับ ผ่าน POST `…/service-setup` ──────
+     ⭐ ส่ง `updatedAt` ของก้อน GET **ตามตัวอักษร** (แปลงผ่าน Date = ไมโครวินาทีหาย ⇒ 409 ทุกครั้ง)
+     ⭐ ยื่น/อนุมัติส่ง **เวอร์ชันของก้อนสดที่โมดัลโชว์** (`expectedUpdatedAt` ที่ผู้เปิดโมดัลส่งมา) — lambda ของโมดัลจับ
+       `setup` ของ render ตอนกด (ก่อนโหลดสด) ⇒ ใช้ค่าตั้งต้นเมื่อไร ใบที่ขยับจากอีกหน้าต่างได้ 409 ทุกครั้งที่กดซ้ำ
+     ⭐ 409 ที่ไม่มีข้อที่ยังขาด (ใบขยับระหว่างเปิดโมดัล) = ปิดโมดัล — กดปุ่มบนรางใหม่ได้โมดัลของก้อนสด
+     ⚠️ ไม่ลองซ้ำเอง (apiJson ไม่ retry POST) — ยิงซ้ำหลังเขียนสำเร็จแล้วได้ 409 ที่ทำให้เข้าใจผิดว่าไม่สำเร็จ
+     ⭐ ยื่นแล้วติด (400 `issues`) = ปิดโมดัลแล้ววาดแผงแดง · อนุมัติแล้วติด (409 `issues`) = ข้อความในโมดัล */
+  async function runServiceBackfill(action, extra = {}, expectedUpdatedAt = setup.data?.updatedAt ?? null) {
+    setBusy(`service-${action}`);
+    setError("");
+    setToast(null);
+    try {
+      const data = await apiJson(`/api/sales-planning/sales-orders/${id}/service-setup`, {
+        method: "POST",
+        json: { action, expectedUpdatedAt, ...extra },
+        fallbackError: SERVICE_BACKFILL_FAILED[action],
+      });
+      if (action === "submit") setSubmitIssues(null);
+      await refreshOrder();
+      refreshServiceSetup();
+      setToast({ kind: action === "reject" ? "info" : "success", msg: SERVICE_BACKFILL_TOAST[action](data) });
+      return true;
+    } catch (failure) {
+      const issues = Array.isArray(failure?.data?.issues) ? failure.data.issues : null;
+      if (issues && action === "submit") {
+        setConfirmState(null);
+        showSubmitIssues(issues, failure.data.warnings, "backfill");
+      } else {
+        setError(issues ? issuesErrorText(failure.message, issues) : (failure?.message || SERVICE_BACKFILL_FAILED[action]));
+      }
+      if (failure?.status === 409 && !issues) setConfirmState(null);
+      if (failure?.status === 409 || issues) {
+        refreshOrder();
+        refreshServiceSetup();
+      }
+      return false;
+    } finally {
+      setBusy("");
+    }
+  }
+
+  /* ปุ่ม "ยื่นตรวจงานบริการ" บนการ์ดราง — ด่านเดียวกับยื่นอนุมัติ แล้วเปิดโมดัลยืนยัน (ถอนเองไม่ได้ · ยอดไม่เปลี่ยน · D12) */
+  async function pressBackfillSubmit() {
+    const fresh = await serviceGateBeforeSubmit("backfill");
+    if (!fresh) return;
+    if (!fresh.backfillSubmitPrompt || !fresh.backfill?.canSubmit) {
+      setError("ใบนี้ยื่นตรวจงานบริการไม่ได้แล้ว — โหลดหน้าใหม่");
+      return;
+    }
+    setError("");
+    const version = fresh.updatedAt ?? null;
+    setConfirmState({
+      ...approvalPrompt({
+        ...fresh.backfillSubmitPrompt,
+        checklist: [...(fresh.backfillSubmitPrompt.checklist || []), ...saWarningLines(fresh.warnings)],
+        verb: "ยื่นตรวจ",
+      }),
+      showsError: true,
+      action: () => runServiceBackfill("submit", {}, version),
+    });
+  }
+
+  /* ปุ่ม "อนุมัติงานบริการ" (ผู้จัดการฝ่ายขาย) — โมดัลบอกผลจากก้อน GET สด · Admin ที่ยื่นเองต้องใส่เหตุผล 10–500 ตัวอักษร */
+  async function openBackfillApprove() {
+    const fresh = await freshServiceView();
+    if (!fresh) return;
+    if (!fresh.backfill?.canReview) {
+      setError("งานบริการของใบนี้ไม่ได้รอตรวจแล้ว — โหลดหน้าใหม่");
+      return;
+    }
+    const needsOverrideReason = !!fresh.backfill.needsOverrideReason;
+    const version = fresh.updatedAt ?? null;
+    setError("");
+    setOverrideReason("");
+    overrideReasonRef.current = "";
+    setConfirmState({
+      ...approvalPrompt({
+        title: "อนุมัติงานบริการของใบสั่งขาย",
+        subject: fresh.approvalSubject,
+        checklist: fresh.approvalChecklist,
+        effects: fresh.approvalEffects,
+        confirmLabel: "อนุมัติงานบริการ",
+        /* ใบอนุมัติไปแล้ว — คำถามต้องพูดถึงงานบริการของใบ ไม่ใช่ "ยืนยันอนุมัติ SO-…" (คล้ายอนุมัติใบที่นับ Actual) */
+        verb: "อนุมัติงานบริการของ",
+      }),
+      overrideReason: needsOverrideReason,
+      overrideRequired: needsOverrideReason,
+      overridePlaceholder: "เหตุผลที่อนุมัติงานบริการที่ตัวเองยื่น",
+      showsError: true,
+      action: () => {
+        /* คำใบ้ก่อนยิง — route/RPC ตรวจซ้ำ (10–500 ตัวอักษร) */
+        if (needsOverrideReason && overrideReasonRef.current.trim().length < 10) {
+          setError("Admin Override ต้องระบุเหตุผล 10–500 ตัวอักษร");
+          return false;
+        }
+        return runServiceBackfill("approve", needsOverrideReason ? { overrideReason: overrideReasonRef.current } : {}, version);
+      },
+    });
+    /* ของเปลี่ยนหลังยื่น = route จะตีกลับ 409 ด้วยข้อเดียวกัน — บอกตั้งแต่เปิดโมดัล (ผู้จัดการตีกลับให้ฝ่ายขายแก้แทน) */
+    if (fresh.issues?.length) setError(issuesErrorText(serviceApproveBlockedText(fresh.issues.length), fresh.issues));
+  }
+
+  function openBackfillReject() {
+    setError("");
+    setServiceRejectForm({ reason: "" });
+  }
+
+  async function submitBackfillReject() {
+    const reason = String(serviceRejectForm?.reason || "").trim();
+    if (reason.length < 10) return;
+    const ok = await runServiceBackfill("reject", { reason });
+    if (ok) setServiceRejectForm(null);
   }
 
   /* ── งวดชำระ (mig 0245) ────────────────────────────────────────────────
@@ -474,6 +773,7 @@ export default function SalesOrderDetailPage() {
     if (!res.ok) { setError(data.error || "เริ่มติดตามการชำระไม่สำเร็จ"); return false; }
     setOrder((current) => ({ ...current, installments: data.installments || [] }));
     setToast({ kind: "success", msg: `สร้างงวดชำระ ${data.installments?.length || 0} งวดแล้ว` });
+    refreshServiceSetup();
     return true;
   }
 
@@ -508,6 +808,8 @@ export default function SalesOrderDetailPage() {
         return false;
       }
       setOrder((current) => ({ ...current, installments: data.installments || [] }));
+      /* งวด/ช่วงครอบเปลี่ยน = ข้อที่ยังขาดของงานบริการเปลี่ยน (การ์ดราง · หัวใบ) — ตัวใบไม่ขยับเวอร์ชันจึงต้องสั่งเอง */
+      refreshServiceSetup();
       setToast({
         kind: action === "reject" ? "info" : "success",
         msg: {
@@ -557,6 +859,7 @@ export default function SalesOrderDetailPage() {
         return false;
       }
       setOrder((current) => ({ ...current, installments: data.installments || [] }));
+      refreshServiceSetup();
       setToast({ kind: "success", msg: REPLAN_DONE_MESSAGE });
       return true;
     } catch (replanError) {
@@ -588,6 +891,7 @@ export default function SalesOrderDetailPage() {
       }
       /* ตัวใบต้องสดด้วย — ต้นทางที่ยกหมดแล้วต้องหายจากปุ่ม (`carrySources` มากับ GET ของใบ) */
       await refreshOrder();
+      refreshServiceSetup();
       setToast({ kind: "success", msg: CARRY_DONE_MESSAGE });
       return true;
     } catch (carryError) {
@@ -625,15 +929,55 @@ export default function SalesOrderDetailPage() {
         if (res.status === 409) {
           if (Array.isArray(data.installments)) setOrder((current) => ({ ...current, installments: data.installments }));
           await refreshOrder();
+          /* หยุดกลางทาง = บางงวดลงแล้ว ⇒ ข้อที่ยังขาดของงานบริการ (วันงวด) เปลี่ยน — ก้อนงานบริการตามเหมือนตอนสำเร็จ */
+          if (Number(data.saved) > 0) refreshServiceSetup();
         }
         return false;
       }
       setOrder((current) => ({ ...current, installments: data.installments || [] }));
+      refreshServiceSetup();
       const saved = Number.isInteger(data.saved) ? data.saved : rows.length;
       setToast({ kind: "success", msg: saved ? `บันทึกวันงวดแล้ว ${saved} งวด · ลงประวัติของใบ` : "วันงวดตรงกับที่บันทึกไว้แล้ว" });
       return true;
     } catch (scheduleError) {
       setError(scheduleError.message || "บันทึกวันงวดไม่สำเร็จ");
+      return false;
+    } finally {
+      setBusy("");
+    }
+  }
+
+  /* ── แบ่งช่วงครอบตามช่วงบริการ (mig 0392 · แผน §2.5 ข้อ 3 / §2.8) — คำสั่งของทั้งใบ พี่น้องของ schedule-many ──────────
+     ⭐ แผงส่งแผนที่พรีวิวแสดง (`plan` จาก `splitCoverageByPeriod` ของงวดที่หน้าใบส่งให้ + `updatedAt` ของงวดที่ตาเห็น) · route คิดชุดเอง
+       จากแถวเดียวกันแล้วเทียบ — ไม่ตรง/งวดถูกแก้จากอีกหน้าต่าง = 409 ⇒ วางงวดสด + ดึงใบสดให้พรีวิววาดชุดใหม่ก่อนกดอีกครั้ง
+     ⚠️ ไม่ลองซ้ำเอง (apiFetch ไม่ retry PATCH) — ยิงซ้ำหลังเขียนสำเร็จแล้วได้ 409 ที่ทำให้เข้าใจผิดว่าไม่สำเร็จ */
+  async function runFillCoverage({ mode, plan }) {
+    setBusy("installment-fill-coverage");
+    setError("");
+    setToast(null);
+    try {
+      const res = await apiFetch(`/api/sales-planning/sales-orders/${id}/installments`, {
+        method: "PATCH",
+        json: { action: "fill-coverage", mode, plan },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || "แบ่งช่วงครอบไม่สำเร็จ");
+        /* 409 ท่าเดียวกับ schedule-many: วางงวดสดที่ route พกมา (พรีวิววาดชุดใหม่ทันที) → รอใบสดก่อนปลด busy
+           · หยุดกลางทาง = บางงวดลงแล้ว ⇒ ข้อที่ยังขาดของงานบริการเปลี่ยน */
+        if (res.status === 409) {
+          if (Array.isArray(data.installments)) setOrder((current) => ({ ...current, installments: data.installments }));
+          await refreshOrder();
+          if (Number(data.filled) > 0) refreshServiceSetup();
+        }
+        return false;
+      }
+      setOrder((current) => ({ ...current, installments: data.installments || [] }));
+      refreshServiceSetup();
+      setToast({ kind: "success", msg: `แบ่งช่วงครอบแล้ว ${fmtNumber(Number(data.filled) || (Array.isArray(plan) ? plan.length : 0))} งวด` });
+      return true;
+    } catch (fillError) {
+      setError(fillError.message || "แบ่งช่วงครอบไม่สำเร็จ");
       return false;
     } finally {
       setBusy("");
@@ -651,6 +995,10 @@ export default function SalesOrderDetailPage() {
 
   async function review(action) {
     if (action === "approve") {
+      /* ⭐ งานบริการรายบรรทัด (mig 0392 · D10): การกดนี้เปิดงานให้ TS ในทรานแซกชันเดียวกัน ⇒ โมดัลต้องบอกผลนั้นด้วย
+         (โซน · ช่วงบริการ · สัญญา · ของที่ล็อกหลังอนุมัติ) จากก้อน GET สด · โหลดไม่ขึ้น = ไม่เปิดโมดัลที่บอกผลไม่ครบ */
+      const service = setupRequired ? await freshServiceView() : null;
+      if (setupRequired && !service) return;
       /* ⚠️ การกดครั้งนี้ทำ 4 อย่างพร้อมกัน ไม่ใช่แค่ปั๊มสถานะ — เดิมโมดัลบอกแต่ยอด Actual
          ทั้งที่ตอนเพิ่ม mig 0245/0250 มันเริ่มสร้างงวดชำระและส่งใบเข้าคิวบัญชีไปด้วย
          ⭐ ข้อแรกบอกทางของเงิน (มติผู้ใช้ 2026-09-11 · mig 0353): ยอดย้ายออกจาก "รออนุมัติ"
@@ -662,12 +1010,16 @@ export default function SalesOrderDetailPage() {
         ...approvalPrompt({
           title: "อนุมัติ ใบสั่งขาย",
           subject: `ใบสั่งขาย ${order.orderNumber}`,
+          /* "ตรวจแพ็คเกจ · โซน · แพ็คต่อรอบ · รอบ ในตารางรายการ" — ใบที่ไม่มีแพ็คเกจ = ว่าง (ภาคผนวก A.5) */
+          checklist: service?.approvalChecklist || [],
           effects: [
             `ยอด ${fmtMoney(order.actualAmount)} ย้ายจาก "${PENDING_APPROVAL_LABEL}" เข้าเป็น Actual ของเดือน ${formatMonthLabel(currentMonth())} (เดือนที่อนุมัติ) — ขึ้นบนดีลทันที`,
             /* งวด + ขั้นบัญชี (PR1 · mig 0376): ใบ Rev. ที่ยกงวดมา = ใช้งวดเดิม ไม่สร้างจาก QT (freeze ไม่แตะแถวที่ตรึงแล้ว)
                · เก็บครบแล้ว = เข้าคิวปิดใบของบัญชีทันที (financeStatus ของใบ Rev. เกิดเป็น NULL → pending · มติ D2) */
             /* PR3 (มติ D4): ดีลนี้มีเงินค้างจากใบที่ยกเลิก = เตือนให้ยกเข้าหลังอนุมัติ (RPC 0378 รับเฉพาะใบ approved) */
             ...salesOrderMoneyOutcome(order, installments, "approve", { strandedSources: order.carrySources }),
+            /* งานบริการ (mig 0392): เปิดโซนให้ TS · ช่วงบริการ/งวด · สัญญา · ต่ออายุ · ย้ายรอบของใบเดิม · ของที่ล็อก */
+            ...(service?.approvalEffects || []),
             "ตรึงลายเซ็นและสำเนาเอกสารฉบับที่อนุมัติ",
           ],
           confirmLabel: "อนุมัติและนับ Actual",
@@ -678,6 +1030,8 @@ export default function SalesOrderDetailPage() {
         showsError: true,
         action: () => requestAction("approve"),
       });
+      /* ของเปลี่ยนระหว่างรออนุมัติ (แพ็คเกจ/โซนถูกปิด · งวดถูกแก้) = route จะตีกลับ 409 ด้วยข้อเดียวกัน — บอกตั้งแต่เปิดโมดัล */
+      if (service?.issues?.length) setError(issuesErrorText(serviceApproveBlockedText(service.issues.length), service.issues));
       return;
     }
     // เหตุที่ API ตีกลับจะไปโผล่ใน `submitError` ของโมดัล (แถบของหน้าอยู่ใต้โมดัล) — ล้างของรอบก่อนตอนเปิด
@@ -1048,6 +1402,17 @@ export default function SalesOrderDetailPage() {
        ⚠️ ห้ามตัด `urlTab` ออก — ลิงก์ `?tab=` ต้องยังทำงานตอนสลับใบไปมาด้วย */
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlTab, hasServiceRounds, onServiceLine, order?.id]);
+  /* ⭐ ลิงก์ `#service-setup` (คิวอนุมัติ · รายการ · แท็บ TS) = แท็บภาพรวมแล้วเลื่อนไปการ์ดรายการ
+     ⚠️ รอก้อนงานบริการก่อน (ใบที่ต้องตั้ง) — การ์ดยังสั้นอยู่ตอนโหลด เลื่อนไปก่อนจะหยุดผิดที่ · ครั้งเดียวต่อการเปิดหน้า */
+  const hashScrolled = useRef(false);
+  useEffect(() => {
+    if (hashScrolled.current || !order?.id || typeof window === "undefined") return;
+    if (window.location.hash !== "#service-setup") return;
+    if (setupRequired && !setup.data && !setup.error) return;
+    hashScrolled.current = true;
+    setTab("overview");
+    window.requestAnimationFrame(() => document.getElementById("service-setup")?.scrollIntoView({ block: "start", behavior: "smooth" }));
+  }, [order?.id, setupRequired, setup.data, setup.error]);
   // ใบเปลี่ยนสายกลางคัน (Rev./แก้บรรทัด) แล้วแท็บที่เลือกอยู่หายไป = จอว่างเปล่า
   const activeTab = tabKeys.includes(tab) ? tab : "overview";
   const selectTab = async (next) => {
@@ -1058,11 +1423,13 @@ export default function SalesOrderDetailPage() {
       confirmLabel: "ทิ้งแล้วสลับแท็บ",
       cancelLabel: "กลับไปบันทึก",
       danger: true,
-    }))) return;
+    }))) return false;
     setTab(next);
     /* เขียนลง URL ให้คิว FN/TS และกระดิ่งลิงก์ตรงแท็บได้ — replace ไม่ push
        (สลับแท็บไม่ใช่การเดินทาง ปุ่ม back ต้องกลับไปหน้าก่อนหน้า ไม่ใช่แท็บก่อนหน้า) */
     router.replace(next === "overview" ? `/sa/sales-orders/${order.id}` : `/sa/sales-orders/${order.id}?tab=${next}`, { scroll: false });
+    /* คืนว่าสลับจริงไหม — "ไปแก้" ของแผงแดง (jumpToIssue) โฟกัสช่องต่อเฉพาะเมื่อสลับแล้ว (กดกลับไปบันทึก = อยู่ที่เดิม) */
+    return true;
   };
 
 
@@ -1197,14 +1564,87 @@ export default function SalesOrderDetailPage() {
   /* ⚠️ ต้องส่ง `installments` เข้าด่านเสมอ (มติ 2026-08-30) — ด่านปิดใบตัดสินจาก
      "เก็บครบทุกงวดหรือยัง" ไม่ส่ง = ด่านปฏิเสธ ⇒ ปุ่มบนจอกับ API พูดตรงกันเสมอ */
 
+  /* ── งานบริการรายบรรทัด (mig 0392 · แผน §2.10) — ค่าที่หัวใบ · แท็บ · ราง อ่าน ─────────────────────────────
+     ⭐ ขั้น (`flow`) มาจากก้อน GET ที่ server คิด (D25: อนุมัติแล้วแต่ไม่มีอะไรให้ตั้ง = 'none' ⇒ ไม่มีแถบ/การ์ด/ชิปที่ไหนเลย)
+     ⭐ "รอผู้จัดการตรวจ" ถามตัวตัดสินตัวเดียว (D28) — ค่า 'submitted' ค้างบนใบที่ย้อน/ยกเลิก/ถูก Rev. ทับไม่มีผล */
+  const setupView = setupRequired ? setup.data : null;
+  const setupFlow = setupView?.flow || null;
+  const backfillAwaiting = serviceBackfillAwaitingReview(order);
+  const showBackfillPanel = setupFlow === "backfill" || backfillAwaiting;
+  /* แถบสรุปของผู้อนุมัติ — ใบรออนุมัติของสาย SERVICE หรืองานบริการย้อนหลังที่รอตรวจ */
+  const showSetupStrip = setupRequired && reviewer && (order.status === "pending_approval" || backfillAwaiting);
+  /* ป้ายบนหัวแท็บ: หลังกดยื่น = จำนวนข้อที่ติด (แดง) · ก่อนกด = "ครบ x/n" เป็นกลาง ขณะยังแก้ได้ (กฎ 3) */
+  const tabIssueCounts = submitIssues ? issuesByTab(submitIssues.issues) : null;
+  const setupServiceLines = Number(setupView?.totals?.packageLines || 0) + Number(setupView?.totals?.unsetLines || 0);
+  const setupTabProgress = !submitIssues && setupView?.mode === "edit" && setupServiceLines > 0
+    ? `${fmtNumber(setupView.totals.completeLines || 0)}/${fmtNumber(setupView.totals.lineCount || 0)}`
+    : null;
+  /* ดินสอจำนวนรอบของใบที่อนุมัติแล้ว (D9: รอบยังแก้ได้หลังประทับ) — ด่านตัวเดียวกับ route `set_service_rounds` */
+  const canEditServiceRounds = canEdit && !serviceRoundsEditError(order, { canEdit });
+  /* ช่อง "รอบบริการที่ขาย" บนหัวใบ — ใบที่ต้องตั้งงานบริการใช้ของก้อน GET (`serviceSetupHeroFact`) · ใบอื่นเหมือนเดิมทุกตัวอักษร */
+  const serviceHeroFact = setupRequired && (setupFlow !== "none" || hasServiceRounds)
+    ? (setupView?.hero
+      ? {
+        icon: Repeat,
+        label: setupView.hero.label,
+        value: setupView.hero.value,
+        sub: setupView.hero.sub || undefined,
+        tone: setupView.hero.tone || undefined,
+      }
+      : { icon: Repeat, label: "รอบบริการที่ขาย", value: setup.error ? "โหลดไม่สำเร็จ" : "กำลังโหลด…", tone: "muted" })
+    : null;
+  /* ยอดของใบย้อนหลังไม่ขยับ (ม็อก BackfillApprovedSo) — แทนคำอธิบายสถานะ "ยอดถูกนับเป็น Actual แล้ว" ในที่เดิม */
+  const backfillActualNote = showBackfillPanel
+    ? `ยอดถูกนับเป็น Actual แล้ว (อนุมัติ ${fmtDate(order.approvedAt)}) — การตั้งงานบริการย้อนหลังไม่เปลี่ยนยอดนี้`
+    : null;
+  /* "ไปแก้" ของแผงแดง — สลับแท็บแล้วพาไปที่ช่อง (ข้อที่ไม่มีช่อง เช่น "ยังไม่มีงวด" = แค่สลับแท็บ) */
+  /* ⚠️ สลับแท็บถามก่อนได้ (ร่างวันงวดค้างในแท็บการชำระ · #1846) ⇒ รอคำตอบ แล้วพาไปที่ช่องเฉพาะเมื่อสลับจริง
+     (ไม่รอ = ตัวหาช่องหมดรอบระหว่างกล่องยืนยันเปิดอยู่ แล้วสลับเสร็จโดยไม่มีอะไรถูกโฟกัส) */
+  const jumpToIssue = async (issue) => {
+    if (!issue) return;
+    if (issue.tab && issue.tab !== activeTab && !(await selectTab(issue.tab))) return;
+    /* ข้อวันงวดหลายงวด (#1846) — แผงงวดเปิดแผงเติม (โฟกัสหัวของแผงเอง) · เปิดไม่ได้ = `dateFillDone` ถอยไปช่องของงวดแรก
+       · `dateFill: 'dated'` = ทุกงวดของกลุ่มแตะได้ด้วย "จัดใหม่งวดที่มีวันแล้วด้วย" (backfill ลูกค้าเครดิต: มีกำหนดชำระ ขาดวันวางบิล)
+         ⇒ ขอเปิดพร้อมสวิตช์นั้น (คำทางลัดบนแถวบอกแล้วว่าวันเดิมถูกแทน · คนเลือกตัวเลือกแล้วตรวจในตารางก่อนบันทึก) */
+    if (issue.dateFill) {
+      setDateFillAsk({ issue, includeDated: issue.dateFill === 'dated' });
+      return;
+    }
+    revealServiceSetupField(serviceSetupFieldId(issue));
+  };
+  /* แผงงวดตอบคำขอเปิดแผงเติม — ไม่มีสิทธิ์ตั้งวัน/ติดด่าน (ร่างช่วงครอบค้าง · ล็อกทั้งใบ — แผงบอกเหตุเป็น toast แล้ว) = ไปที่ช่องแทน */
+  const dateFillDone = (opened) => {
+    const ask = dateFillAsk;
+    setDateFillAsk(null);
+    if (!opened && ask?.issue) revealServiceSetupField(serviceSetupFieldId(ask.issue));
+  };
+  /* บรรทัดของโมดัลออก Rev. — ตั้งค่างานบริการที่ใบ Rev. ยกไป (P2 ของ 0392) · ใบที่ยังไม่ได้ตั้งอะไร = null */
+  const serviceRevisionLine = (view) => {
+    if (!view) return null;
+    const zonesById = new Map((view.zones || []).map((zone) => [zone.id, zone]));
+    return serviceSetupRevisionLine({
+      order: { ...order, servicePeriodFrom: view.period?.from ?? null, servicePeriodTo: view.period?.to ?? null },
+      ...localSetupCtx(mergedLines(view), zonesById),
+    });
+  };
+  /* หลังบันทึกงานบริการ: ก้อน GET ก่อน แล้วค่อยตัวใบ (เวอร์ชันของใบตรงกันแล้ว ⇒ ตัวตามไม่ยิงซ้ำ) */
+  const afterServiceSaved = async () => {
+    await setup.reload();
+    await refreshOrder();
+  };
+
   const setServiceContract = async (contractId) => {
     await requestAction("set_service_contract", { contractId: contractId || null });
   };
 
   /* จำนวนรอบบริการรายบรรทัด (mig 0326) — ด่านอยู่ที่ serviceRoundsEditError ฝั่ง API
      ⚠️ requestAction โหลดใบใหม่ให้เองเมื่อสำเร็จ ⇒ ค่าบนการ์ดกลับมาจากบรรทัดจริงเสมอ */
+  /* ⭐ คืน true/false — ดินสอบนตารางรายการ (ใบที่ประทับแล้ว) ปิดตัวแก้เมื่อสำเร็จเท่านั้น · สำเร็จแล้วก้อน GET ต้องตาม
+     (แก้บรรทัดไม่ขยับเวอร์ชันของใบ ⇒ ตัวตามอัตโนมัติไม่เห็น) */
   const setServiceRounds = async (map) => {
-    await requestAction("set_service_rounds", { serviceRounds: map });
+    const ok = !!(await requestAction("set_service_rounds", { serviceRounds: map }));
+    if (ok) refreshServiceSetup();
+    return ok;
   };
 
   const financeGate = (action, options) => financeActionError(
@@ -1321,7 +1761,8 @@ export default function SalesOrderDetailPage() {
               ? `ยื่นได้เฉพาะ AE เจ้าของดีล — ส่งต่อให้ ${dealOwnerName} กดยื่น`
               : "ยื่นได้เฉพาะ AE เจ้าของดีล — ส่งต่อให้เจ้าของดีลกดยื่น")
             : (confirmationGate || undefined),
-          onClick: openSubmitConfirm,
+          /* ⭐ งานบริการ (mig 0392): ด่านก่อนเปิดโมดัล — ติด = แผงแดง ไม่เปิดโมดัล (pressSubmit) */
+          onClick: pressSubmit,
         }
     : historical && canReviewThis && order.status === "pending_approval"
       ? {
@@ -1346,6 +1787,8 @@ export default function SalesOrderDetailPage() {
         onClick: async () => {
         // เอกสาร FM-SA-04 ย้ายตามใบ Rev. ใหม่ (hook ใน API) — นับก่อนเปิดโมดัลให้บอกผลได้ครบ
         const specDocEffect = salesOrderSpecDocEffect("revise", await loadSpecDocCount());
+        /* งานบริการ (mig 0392 · P2): ใบ Rev. คัดลอกชนิด/แพ็คเกจ/โซน/แพ็คต่อรอบ/รอบ/ช่วงบริการไป — บอกก่อนกด */
+        const revisionServiceLine = setupRequired ? serviceRevisionLine(setup.data) : null;
         // เปิดโมดัลที่โชว์ error ของหน้า ⇒ ล้างของรอบก่อนทิ้ง
         setError("");
         setConfirmState({
@@ -1368,6 +1811,7 @@ export default function SalesOrderDetailPage() {
               : null,
             /* ⭐ งวดชำระ **ย้ายไปใบ Rev. ทั้งชุด** (mig 0376) — บรรทัดของตัวเอง (detail เป็น pre-line) · ใบไม่มีงวด = ไม่พูด */
             ...salesOrderMoneyOutcome(order, installments, "revise"),
+            revisionServiceLine,
           ].filter(Boolean).join("\n"),
           confirmLabel: "สร้างร่าง Rev. ใหม่",
           /* 🐞 ออก Rev. ไม่ผ่านต้องอ่านได้ในโมดัล — ด่านกันแท็บค้าง (`expectedUpdatedAt`) ของ
@@ -1493,7 +1937,7 @@ export default function SalesOrderDetailPage() {
           description={`${customerHeadline(order.customerName, order.customer?.arCode) || "ไม่ระบุลูกค้า"} · ${order.deal?.title || "ไม่ระบุดีล"}`}
           /* ⭐ ป้าย "ย้อนหลัง" + "ไม่นับ Actual" บนหัวใบ (ม็อก SoStatus) — โทน info ตัวเดียวกับชิปในทะเบียน
              และคิวงานเข้าใหม่ของ TS · คนที่เปิดใบมาต้องรู้ตั้งแต่บรรทัดแรกว่ายอดนี้ไม่เข้า Actual/FC/เป้า */
-          badges={<><SalesStateBadge label={status.label} color={status.color} />{historical && <StatusBadge size="sm" tone="info" label="ย้อนหลัง" />}{historical && <StatusBadge size="sm" tone="neutral" label="ไม่นับ Actual" />}{order.signatureEvidenceId && <span className="ui-badge" style={{ color: "var(--green)" }}>มีหลักฐานลายเซ็น</span>}{order.approvalMode === "admin_override" && <span className="ui-badge ui-badge-warn">Admin Override</span>}{financeStatus && <StatusBadge size="sm" tone={FINANCE_STATUS_TONES[financeStatus]} label={FINANCE_STATUS_LABELS[financeStatus]} />}</>}
+          badges={<><SalesStateBadge label={status.label} color={status.color} />{historical && <StatusBadge size="sm" tone="info" label="ย้อนหลัง" />}{historical && <StatusBadge size="sm" tone="neutral" label="ไม่นับ Actual" />}{order.signatureEvidenceId && <span className="ui-badge" style={{ color: "var(--green)" }}>มีหลักฐานลายเซ็น</span>}{order.approvalMode === "admin_override" && <span className="ui-badge ui-badge-warn">Admin Override</span>}{financeStatus && <StatusBadge size="sm" tone={FINANCE_STATUS_TONES[financeStatus]} label={FINANCE_STATUS_LABELS[financeStatus]} />}{backfillAwaiting && <StatusBadge size="sm" tone="warning" label="งานบริการรอผู้จัดการตรวจ" />}</>}
           facts={[
             { icon: CalendarDays, label: "วันที่ SO", value: fmtDate(order.orderDate) },
             // กำหนดชำระขึ้นแถบหัวแทน "Actual ในระบบ" ที่พูดซ้ำกับการ์ดสรุปฝั่งขวา
@@ -1519,8 +1963,9 @@ export default function SalesOrderDetailPage() {
                ⚠️ ขึ้นเฉพาะใบบนเส้นบริการ — ใบสายสินค้าไม่มีสัญญาบริการให้พูดถึง */
             ...(onServiceLine ? [{ icon: FileSignature, label: "สัญญาบริการ", ...serviceContractHeadline(order.serviceContract, { linkedId: order.serviceContractId }) }] : []),
             /* "รอบที่ขาย" อ่านจากคอลัมน์รายบรรทัดซึ่งกรอกได้เฉพาะบรรทัดหมวด 02-001
-               ⇒ ผูกกับเกณฑ์แคบ ไม่ใช่เส้นบริการ (ไม่งั้นได้ขีดลอย ๆ บนใบที่กรอกไม่ได้) */
-            ...(hasServiceRounds ? [{
+               ⇒ ผูกกับเกณฑ์แคบ ไม่ใช่เส้นบริการ (ไม่งั้นได้ขีดลอย ๆ บนใบที่กรอกไม่ได้)
+               ⭐ ใบที่ต้องตั้งงานบริการ (mig 0392) ใช้ช่องจากก้อน GET แทน — รอบ/โซน · โซน · แพ็ค/รอบ หรือ "ยังไม่ตั้ง" */
+            ...(serviceHeroFact ? [serviceHeroFact] : !setupRequired && hasServiceRounds ? [{
               icon: Repeat,
               label: "รอบบริการที่ขาย",
               value: roundsSold == null ? NA : `${roundsSold} รอบ`,
@@ -1528,7 +1973,7 @@ export default function SalesOrderDetailPage() {
             }] : []),
           ]}
         >
-          <p className={styles.statusDescription}>{status.description}</p>
+          <p className={styles.statusDescription}>{backfillActualNote || status.description}</p>
         </SalesDetailOverview>
 
         {error && (
@@ -1648,24 +2093,61 @@ export default function SalesOrderDetailPage() {
               )}
             />
 
+            {/* ⭐ งานบริการย้อนหลัง (D11 · ม็อก BackfillApprovedSo) — ใต้การ์ดจัดการเอกสาร · ขั้น 'backfill' หรือรอผู้จัดการตรวจเท่านั้น
+                ⚠️ ปุ่มมาจากสิทธิ์ที่ server คิด (`setup.data.backfill`) · หน้าเป็นเจ้าของโมดัลทั้งสาม (ยื่น · อนุมัติ · ตีกลับ) */}
+            {showBackfillPanel ? (
+              <ServiceBackfillRailCard
+                setup={setup}
+                pressed={submitIssues?.flow === "backfill"}
+                busy={!!busy}
+                onSubmit={pressBackfillSubmit}
+                onApprove={openBackfillApprove}
+                onReject={openBackfillReject}
+              />
+            ) : null}
 
             {/* 🪤 การ์ด "การยื่นชำระสรรพสามิต" ถอดออกแล้ว (มติผู้ใช้ 2026-08-17) —
                 ทั้งสถานะ ยอดเรียกเก็บ ปุ่มสร้าง และลิงก์เปิดใบยื่น ย้ายขึ้นไปเป็นช่วงบนเส้นเดินงาน
                 ⚠️ อย่าเอากลับมา จะกลายเป็นสองที่ที่ตอบคำถามเดียวกันแล้วเพี้ยนหากัน */}
           </>}
         >
+          {/* ⭐ งานบริการรายบรรทัด (mig 0392) — บนสุดของคอลัมน์หลัก เหนือแท็บ (ม็อก BackfillApprovedSo / SoSubmitBlocked)
+              · แถบงานบริการย้อนหลัง: ขั้น 'backfill' ของก้อน GET เท่านั้น (D25 — ใบที่ไม่มีอะไรให้ตั้งไม่ขึ้นที่ไหนเลย)
+              · แถบสรุปของผู้อนุมัติ: ใบรออนุมัติสาย SERVICE / งานบริการย้อนหลังที่รอตรวจ
+              · แผงแดง: หลังกดยื่นแล้วไม่ผ่านเท่านั้น (กฎ 3) — "ไปแก้" สลับแท็บแล้วโฟกัสช่อง */}
+          {setupFlow === "backfill" ? <ServiceBackfillBanner setup={setup} /> : null}
+          {showSetupStrip ? <ServiceSetupStrip setup={setup} /> : null}
+          {submitIssues ? (
+            <div ref={submitGateRef} className={styles.submitGate}>
+              <SubmitGateNotice
+                issues={submitIssues.issues}
+                warnings={submitIssues.warnings}
+                flow={submitIssues.flow}
+                checkedAt={submitIssues.checkedAt}
+                onJump={jumpToIssue}
+              />
+            </div>
+          ) : null}
+
           {/* ป้ายบนหัวแท็บ = สถานะย่อของเรื่องนั้น (มติ "ทาง ก") — ห้ามคิดเลขใหม่ที่นี่
-              ทุกตัวมาจากของที่หน้านี้คำนวณไว้แล้วด้วยตัวตัดสินกลาง */}
+              ทุกตัวมาจากของที่หน้านี้คำนวณไว้แล้วด้วยตัวตัดสินกลาง
+              ⭐ งานบริการ (mig 0392): หลังกดยื่น = จำนวนข้อที่ติดของแท็บนั้น (แดง) · ก่อนกด = "ครบ x/n" เป็นกลาง */}
           <Tabs
             value={activeTab}
             onChange={selectTab}
             ariaLabel="ส่วนต่าง ๆ ของใบสั่งขาย"
             tabs={tabKeys.map((key) => ({
               key,
-              label: key === "overview" ? "ภาพรวม"
+              label: key === "overview" ? (tabIssueCounts?.overview
+                ? <>ภาพรวม <CountBadge count={tabIssueCounts.overview} tone="danger" label="ข้อที่ยังขาดในแท็บภาพรวม" /></>
+                : setupTabProgress
+                  ? <>ภาพรวม <span className={styles.tabProgress} aria-label={`งานบริการครบ ${setupTabProgress} รายการ`}>{setupTabProgress}</span></>
+                  : "ภาพรวม")
                 : key === "documents" ? (salesOrderDocs.data?.total ? `เอกสาร ${salesOrderDocs.data.total}` : "เอกสาร")
                 : key === "contract" ? (onServiceLine && !order.serviceContract ? "สัญญา · ยังไม่ผูก" : "สัญญา")
-                  : key === "payment" ? (paymentSummary.count ? `การชำระ ${paymentSummary.confirmedCount}/${paymentSummary.count}` : "การชำระ")
+                  : key === "payment" ? (tabIssueCounts?.payment
+                    ? <>{paymentSummary.count ? `การชำระ ${paymentSummary.confirmedCount}/${paymentSummary.count}` : "การชำระ"} <CountBadge count={tabIssueCounts.payment} tone="danger" label="ข้อที่ยังขาดในแท็บการชำระ" /></>
+                    : (paymentSummary.count ? `การชำระ ${paymentSummary.confirmedCount}/${paymentSummary.count}` : "การชำระ"))
                     : key === "service" ? "งานบริการ"
                       : "ประวัติ",
             }))}
@@ -1676,7 +2158,28 @@ export default function SalesOrderDetailPage() {
           {/* 🚫 การ์ด "ตัดสินจุดที่ TS ไม่พบ" (มติข้อ 23 · mig 0362) ถอดแล้ว (มติ 22/09) — บรรทัดของใบย้อนหลัง
               ผูกโซนจากทะเบียนตั้งแต่ตอนคีย์ใบ ⇒ ไม่มีชื่อจุดลอย ๆ ให้ TS "หาไม่เจอ" อีก · โซนของใบอยู่ที่
               การ์ด "โซนที่บริการ" ข้างล่างแทน */}
-          <DetailCard icon={Package} eyebrow="ORDER LINES" title="รายการสินค้าและบริการ" meta={order.quotationId ? `${sortedLines.length} รายการ · snapshot จาก QT Won` : `${sortedLines.length} รายการ · คีย์จากเอกสารเดิม`} actions={order.quotationId ? <Link href={`/sa/quotations/${order.quotationId}`} className="btn ghost sm"><ExternalLink size={13} /> เปิด QT ต้นทาง</Link> : undefined}>
+          {/* ⭐ ใบ pipeline สาย SERVICE (mig 0392 · PR-A): การ์ดทั้งใบเป็น `SalesOrderServiceLines` — ตารางตัวเดียวกับใบเสนอราคา
+              + กล่อง "งานบริการของรายการนี้" ใต้แต่ละบรรทัด + ช่วงบริการ + แถบบันทึก · ใบอื่น (สินค้า · ย้อนหลัง) เหมือนเดิมทุกตัวอักษร
+              ⚠️ id="service-setup" อยู่ทั้งสองทาง — ลิงก์ `#service-setup` จากคิวอนุมัติ/รายการพามาที่การ์ดนี้ */}
+          {setupRequired && !historical ? (
+            <SalesOrderServiceLines
+              order={order}
+              setup={setup}
+              mode={setup.data?.mode}
+              highlight={serviceHighlight}
+              onSaved={afterServiceSaved}
+              canEditRounds={canEditServiceRounds}
+              onRoundsSave={setServiceRounds}
+              summaryRows={[
+                { id: "subtotal", label: "ยอดก่อนส่วนลด", value: fmtMoney(order.subtotal) },
+                discountRow,
+                { id: "vat", label: "VAT", value: fmtMoney(order.vatAmount) },
+              ]}
+              grandTotal={fmtMoney(order.totalAmount)}
+              highlightRows={[amountHighlight]}
+            />
+          ) : (
+          <DetailCard id="service-setup" icon={Package} eyebrow="ORDER LINES" title="รายการสินค้าและบริการ" meta={order.quotationId ? `${sortedLines.length} รายการ · snapshot จาก QT Won` : `${sortedLines.length} รายการ · คีย์จากเอกสารเดิม`} actions={order.quotationId ? <Link href={`/sa/quotations/${order.quotationId}`} className="btn ghost sm"><ExternalLink size={13} /> เปิด QT ต้นทาง</Link> : undefined}>
             <QuotationReadOnlyLineItems
               lines={sortedLines}
               showServiceRounds
@@ -1691,6 +2194,7 @@ export default function SalesOrderDetailPage() {
               highlightRows={[amountHighlight]}
             />
           </DetailCard>
+          )}
 
           {/* ⭐ โซนที่ใบนี้ขาย (mig 0374) — ใบย้อนหลังผูกโซนตั้งแต่ตอนคีย์ ⇒ ตารางรายการข้างบน
               ไม่มีคอลัมน์ไซต์/โซนให้ดูเลย · การ์ดนี้บอกด้วยว่าฝ่าย TS ตั้งรอบไปถึงไหนแล้ว */}
@@ -1886,6 +2390,8 @@ export default function SalesOrderDetailPage() {
                   busy={!!busy}
                   onLink={setServiceContract}
                   onSaveRounds={setServiceRounds}
+                  /* ช่วงบริการของใบ (ก้อน GET) — ยังโหลดไม่เสร็จ/ใบที่ไม่ต้องตั้ง = undefined ⇒ การ์ดอ่านจากใบเอง */
+                  period={setupView ? setupView.period : undefined}
                   canCreateBelow={showDealContracts && canCreateContract}
                   editMode={editMode}
                 />
@@ -1936,6 +2442,16 @@ export default function SalesOrderDetailPage() {
                รอบนี้ยกให้ครบทุกโมดัลของแผงนี้ ⇒ ส่งข้อความเข้าไปในโมดัลด้วย */
             error={error}
             onClearError={() => setError("")}
+            /* ⭐ งานบริการ (mig 0392): ช่วงบริการ · ขั้น · ช่องแดงหลังกดยื่น · แบ่งช่วงครอบตามช่วงบริการ
+               ยังโหลดไม่เสร็จ/ใบที่ไม่ต้องตั้ง = undefined ⇒ แผงคิดจากใบเองด้วยตัวตัดสินชุดเดียวกับ GET */
+            servicePeriod={setupView ? setupView.period : undefined}
+            setupFlow={setupView ? setupView.flow : undefined}
+            highlight={serviceHighlight}
+            onFillCoverage={runFillCoverage}
+            onOpenTab={selectTab}
+            /* "ไปแก้" ของข้อวันงวดหลายงวดในแผงแดง → โหมดตั้งวันงวด + แผง "เติมวันงวดที่ว่าง…" (#1846) */
+            dateFillRequest={dateFillAsk}
+            onDateFillRequestDone={dateFillDone}
           />
           )}
 
@@ -1990,6 +2506,14 @@ export default function SalesOrderDetailPage() {
                 <p style={{ margin: "4px 0 0" }}>คุณเป็นผู้สร้างหรือผู้ยื่นใบนี้ — การอนุมัติจะย้ายยอด {fmtMoney(order.actualAmount)} จาก “{PENDING_APPROVAL_LABEL}” เข้า Actual ของเดือน {formatMonthLabel(currentMonth())} ทันที และบันทึกไว้กับหลักฐานลายเซ็นถาวรว่าเป็นการอนุมัติแบบ Admin Override</p>
               </div>
             </div>
+            {/* ⭐ งานบริการ (mig 0392 · D10): อนุมัติ = เปิดงานให้ TS ในทรานแซกชันเดียวกัน — บอกผลเหมือนโมดัลอนุมัติปกติ (กฎ 4) */}
+            {setupRequired && setupView?.approvalEffects?.length ? (
+              <StatusNotice tone="info" title="งานบริการของใบนี้">
+                <span className="pre-line">{setupView.approvalEffects.map((line) => `· ${line}`).join("\n")}</span>
+              </StatusNotice>
+            ) : null}
+            {/* เหตุที่ API ตีกลับ (ลายเซ็น · งานบริการยังขาด) ต้องอ่านได้ในโมดัล — แถบของหน้าอยู่ใต้โมดัล */}
+            {error ? <StatusNotice tone="error">{error}</StatusNotice> : null}
             <div className="action-bar" style={{ marginTop: 0 }}>
               <button type="button" className="btn ghost" onClick={() => setOverrideForm(null)} disabled={!!busy}>ยกเลิก</button>
               <button type="button" className="btn btn-warning" onClick={approveWithAdminOverride} disabled={!!busy}><ShieldAlert size={15} /> {busy === "approve" ? "กำลังอนุมัติ…" : "ยืนยัน Override และนับ Actual"}</button>
@@ -2057,6 +2581,30 @@ export default function SalesOrderDetailPage() {
         maxLength={500}
         busy={busy === "reject"}
         /* 🐞 เช่นเดียวกับโมดัลข้างบน — RPC ตีกลับใบย้อนหลังตอบได้หลายข้อ (ใบขยับไปแล้ว · ไม่ใช่ผู้ตรวจ) */
+        submitError={error}
+      />
+
+      {/* ⭐ ตีกลับงานบริการย้อนหลัง (ผู้จัดการฝ่ายขาย · ภาคผนวก A.5) — ใบยังอนุมัติแล้ว · Actual เท่าเดิม · งานบริการกลับเป็นแก้ได้
+          ⚠️ เหตุผล 10–500 ตัวอักษร (route/RPC ตรวจซ้ำหลังตัดช่องว่าง) · เหตุที่ API ตีกลับขึ้นในโมดัล (submitError) */}
+      <ReasonDialog
+        open={!!serviceRejectForm}
+        title="ตีกลับให้แก้ไข"
+        description={`${order.orderNumber} · ส่งกลับให้ ${setupView?.state?.submittedByName || "ผู้ยื่น"}`}
+        detail={[
+          "งานบริการกลับเป็นแก้ไขได้ — ฝ่ายขายแก้แล้วยื่นตรวจใหม่",
+          "ยังไม่เปิดงานให้ TS · ใบยังอนุมัติแล้ว · Actual เท่าเดิม",
+        ].join("\n")}
+        label="เหตุผลที่ตีกลับ"
+        helpText="ฝ่ายขายเห็นเหตุผลนี้บนแถบของใบตอนเปิดแก้"
+        value={serviceRejectForm?.reason || ""}
+        onChange={(reason) => setServiceRejectForm({ reason })}
+        onClose={() => setServiceRejectForm(null)}
+        onConfirm={submitBackfillReject}
+        confirmLabel="ยืนยันตีกลับ"
+        placeholder="ระบุสิ่งที่ต้องแก้ อย่างน้อย 10 ตัวอักษร"
+        minLength={10}
+        maxLength={500}
+        busy={busy === "service-reject"}
         submitError={error}
       />
 
@@ -2153,12 +2701,15 @@ export default function SalesOrderDetailPage() {
             {confirmState?.children}
             {confirmState?.overrideReason ? (
               <label className="form-field">
-                <span className="form-field-label">เหตุผลของ Admin Override (ไม่บังคับ)</span>
+                {/* งานบริการย้อนหลังที่ Admin ยื่นเอง = บังคับ 10–500 ตัวอักษร (D12 · route/RPC ตรวจซ้ำ) · ใบย้อนหลัง = ไม่บังคับ */}
+                <span className="form-field-label">
+                  {confirmState?.overrideRequired ? "เหตุผลของ Admin Override (บังคับ 10–500 ตัวอักษร)" : "เหตุผลของ Admin Override (ไม่บังคับ)"}
+                </span>
                 <Textarea
                   rows={2}
                   maxLength={500}
                   value={overrideReason}
-                  placeholder="บันทึกไว้กับใบว่าทำไมต้องอนุมัติใบของตัวเอง"
+                  placeholder={confirmState?.overridePlaceholder || "บันทึกไว้กับใบว่าทำไมต้องอนุมัติใบของตัวเอง"}
                   onChange={(event) => { overrideReasonRef.current = event.target.value; setOverrideReason(event.target.value); }}
                 />
               </label>

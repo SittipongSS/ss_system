@@ -1,0 +1,152 @@
+/* ── งานบริการย้อนหลัง: แบนเนอร์บนสุด · การ์ดราง "งานบริการ (ใบเดิม)" · แถบผู้อนุมัติ (ม็อก BackfillApprovedSo · SoApproveModal)
+   ใช้ร่วมกันสองไฟล์ (ServiceBackfillPanel · ServiceSetupStrip) */
+
+.bannerLine {
+  display: block;
+}
+
+.bannerReject {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--text);
+  font-weight: var(--fw-semibold);
+}
+
+/* ── การ์ดราง ───────────────────────────────────────────────────────────────────────── */
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  line-height: var(--lh-thai);
+}
+
+.railNote {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-5);
+}
+
+.railReject {
+  margin: 0;
+  padding: var(--space-2) var(--space-2-5);
+  border-radius: var(--radius);
+  background: var(--amber-soft);
+  color: var(--text);
+  font-size: var(--fs-5);
+}
+
+.checksTitle {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  font-weight: var(--fw-semibold);
+}
+
+.checks {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+.check {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border);
+}
+
+.check:first-child {
+  border-top: 0;
+}
+
+.check dt {
+  color: var(--text-2);
+  font-size: var(--fs-5);
+}
+
+/* ช่องขวา = ค่าสั้นอย่างเดียว ("0/5 รายการ" · "ยังขาด 12 ข้อ") — บรรทัดรองย้ายไปใต้ป้ายทางซ้าย (ม็อก BackfillApprovedSo)
+   🐞 เดิมบรรทัดรองอยู่ช่องนี้ ⇒ คอลัมน์ auto กว้างเท่าข้อความเต็ม ป้ายซ้าย (minmax 0) หดเหลือคำละบรรทัดแล้วทับกัน */
+.check dd {
+  margin: 0;
+  text-align: right;
+}
+
+.checkValue {
+  color: var(--text);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
+}
+
+.checkSub {
+  display: block;
+  margin-top: var(--space-0-5);
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+}
+
+/* หลังกด "ยื่นตรวจงานบริการ" ไม่ผ่านเท่านั้น (กฎ 3) — แถวที่ยังไม่ครบเป็นแดง */
+.check[data-bad] dt,
+.check[data-bad] .checkValue,
+.check[data-bad] .checkSub {
+  color: var(--red);
+}
+
+.railActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.railReason {
+  flex-basis: 100%;
+  color: var(--text-3);
+  font-size: var(--fs-4);
+}
+
+.railFoot {
+  margin: 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+  color: var(--text-3);
+  font-size: var(--fs-4);
+}
+
+/* ── แถบผู้อนุมัติ (ServiceSetupStrip) ─────────────────────────────────────────────────────── */
+.strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2-5) var(--space-4);
+  border: 1px solid color-mix(in srgb, var(--blue) 28%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--blue) 7%, var(--panel-solid));
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+}
+
+.stripIcon {
+  flex: none;
+  color: var(--blue);
+}
+
+.stripLabel {
+  color: var(--blue);
+  font-weight: var(--fw-bold);
+}
+
+.stripSep {
+  color: var(--text-3);
+}
+
+.stripWarn {
+  color: var(--amber);
+  font-weight: var(--fw-semibold);
+}

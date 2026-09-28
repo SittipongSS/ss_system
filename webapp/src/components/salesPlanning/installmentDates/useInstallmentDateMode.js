@@ -263,13 +263,16 @@ export default function useInstallmentDateMode({
 
   /* ── แผงเติม — ฐาน = ร่าง ณ ตอนเปิด · เลือกตัวเลือกใหม่ = เริ่มจากฐานเดิม (ไม่ซ้อนผลรอบก่อน) ──
      `choice` = ตัวเลือกที่ลงตารางอยู่ (null = ยังไม่ได้แตะ — ไม่มีค่าตั้งต้น) · `day` = วันที่ที่แตะในตารางวันที่ 1–31
-     `excluded` = งวดที่คนแก้เองระหว่างแผงเปิด (ค่าที่แก้เองเป็นฐานใหม่ ตัวเติมไม่แตะอีก) */
-  const openFill = () => {
+     `excluded` = งวดที่คนแก้เองระหว่างแผงเปิด (ค่าที่แก้เองเป็นฐานใหม่ ตัวเติมไม่แตะอีก)
+     `includeDated` (ไม่บังคับ) = เปิดแผงพร้อมสวิตช์ "จัดใหม่งวดที่มีวันแล้วด้วย" — ทางเดียวที่ใช้คือ "ไปแก้" ของแผงแดงงานบริการ
+       เมื่อทุกงวดของข้อแตะได้ด้วยการจัดใหม่เท่านั้น (backfill ลูกค้าเครดิต: มีกำหนดชำระแล้ว ขาดวันวางบิล) · ยังไม่มีตัวเลือกไหนถูกเลือก —
+       คนเลือกเองแล้วตรวจในตารางก่อนบันทึก · ปุ่มการ์ดเรียก `openFill()` = สวิตช์ปิดเหมือนเดิม · รับเฉพาะ true จริง (อีเวนต์/ค่าอื่น = ปิด) */
+  const openFill = ({ includeDated = false } = {}) => {
     if (!available || busy) return;
     if (blocker) { notifyToast.error(blocker); return; }
     clearErrorRef.current?.();
     setActive(true);
-    setFill({ base: drafts, includeDated: false, choice: null, day: null, excluded: [] });
+    setFill({ base: drafts, includeDated: includeDated === true, choice: null, day: null, excluded: [] });
     setOpenId(null);
   };
   const closeFill = () => setFill(null);

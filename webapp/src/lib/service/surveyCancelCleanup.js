@@ -5,9 +5,9 @@
 //   ⇒ โซนขยะไปโผล่เป็น **ไทล์ให้ติ๊ก** ในใบรอบหน้า และนับอยู่ในแท็บ "พื้นที่บริการ"
 //   ของหน้าลูกค้า ทั้งที่ไม่เคยมีใครไปวัดจริงสักครั้ง
 //
-// 🔴 **ห้ามลบพื้นที่ที่มีอะไรผูกอยู่** ต่อให้ยกเลิกใบ (แผน §5E ③) — FK กันไว้สามชั้นแล้ว
-//   (`service_zone_terms` RESTRICT · `service_assets` · `service_visits`) แต่ด่านที่ DB
-//   ตอบเป็น error ดิบ ⇒ ต้องตัดสินก่อนยิงลบ และของที่ลบไม่ได้ให้ **ปิดใช้งานแทน**
+// 🔴 **ห้ามลบพื้นที่ที่มีอะไรผูกอยู่** ต่อให้ยกเลิกใบ (แผน §5E ③) — FK กันไว้หลายชั้นแล้ว
+//   (`service_zone_terms` RESTRICT · `sales_order_line_zones` RESTRICT (mig 0392) · `service_assets` ·
+//   `service_visits`) แต่ด่านที่ DB ตอบเป็น error ดิบ ⇒ ต้องตัดสินก่อนยิงลบ และของที่ลบไม่ได้ให้ **ปิดใช้งานแทน**
 //
 // 🔑 **"โซนนี้เป็นของใบนี้ไหม" — ถามตัวชี้ที่เขียนไว้ตอนสร้าง** (`createdBySurveyRequestId`
 //   · mig 0355) ไม่ใช่เดาจากเวลา · ต้องครบทุกข้อถึงลบ:
@@ -59,10 +59,17 @@ export function zoneCleanupDecision({ zone, request, refs } = {}) {
   const others = Number(refs?.otherSurveyRows || 0);
   const terms = Number(refs?.terms || 0);
   const assets = Number(refs?.assets || 0);
+  const allocations = Number(refs?.allocations || 0);
   if (terms > 0 || assets > 0) {
     /* ขายไปแล้ว/มีเครื่องอยู่ = ของจริงหน้างาน ⇒ **ปิดใช้งานแทนลบ**
        (ลบไม่ได้อยู่แล้วเพราะ FK RESTRICT — แต่ต้องตอบให้ชัดว่าจะทำอะไรแทน) */
     return { action: 'keep', reason: 'พื้นที่นี้ขายไปแล้วหรือมีเครื่องอยู่ — เก็บไว้ในทะเบียน' };
+  }
+  /* ⭐ ฝ่ายขายเลือกโซนนี้ในรายการงานบริการของใบสั่งขายแล้ว (mig 0392) — แม้รอบขายยังไม่เกิด (ใบร่าง ·
+     ใบเดิมที่ยังไม่ตรวจ) โซนนี้ก็เป็นของที่ขายแล้ว ⇒ เก็บไว้ (ลบไม่ได้อยู่แล้วเพราะ FK RESTRICT
+     `sales_order_line_zones_zone_fk` — ตอบให้ชัดแทนที่จะไปชน error ดิบ) */
+  if (allocations > 0) {
+    return { action: 'keep', reason: 'พื้นที่นี้ถูกเลือกไว้ในรายการงานบริการของใบสั่งขาย — เก็บไว้ในทะเบียน' };
   }
   if (others > 0) {
     return { action: 'keep', reason: 'มีใบประเมินใบอื่นอ้างถึงพื้นที่นี้อยู่' };
@@ -86,21 +93,31 @@ export async function purgeSurveyZoneRows(supabase, rowIds = []) {
 /* ── นับของที่ผูกกับโซนแล้วถามตัวตัดสิน ─────────────────────────────────
    คืน `{ action, reason, label }` — ยังไม่ลบอะไรทั้งสิ้น
    ⚠️ **"แถวของใบอื่น" = ทุกแถวของโซนนี้ ลบแถวของใบนี้** ⇒ เรียกก่อนหรือหลังลบแถวของ
-     ใบนี้ก็ได้คำตอบเดียวกัน (ก่อนลบ mine = n · หลังลบ mine = 0) */
+     ใบนี้ก็ได้คำตอบเดียวกัน (ก่อนลบ mine = n · หลังลบ mine = 0)
+   🔴 **นี่คือด่านก่อนลบ — นับไม่ขึ้นไม่ใช่ 0** (mig 0392 · แผน R7) — ของเดิมทิ้ง `error` ของทุกก้อน ⇒ นับพัง
+      = "ไม่มีใครใช้" = ลบโซนที่ขายไปแล้ว · ตอนนี้ทุกก้อนต้องได้ตัวเลขจริง ไม่งั้นโยน (ผู้เรียกทั้งสองทาง
+      มี catch ของตัวเอง: เส้นยกเลิกใบจดเป็น "เก็บกวาดไม่สำเร็จ" · เส้นลบพื้นที่หน้างานตอบ 500 ก่อนแตะแถว) */
+const COUNT_LABELS = ['แถวผลวัดของโซน', 'แถวผลวัดของใบนี้', 'รอบขายของโซน', 'เครื่องในโซน', 'รายการงานบริการที่เลือกโซน'];
+
 export async function zoneReleaseDecision(supabase, { request, zone }) {
   const label = zone?.code || zone?.name || zone?.id || '';
-  const [{ count: allSurveys = 0 } = {}, { count: mySurveys = 0 } = {},
-    { count: terms = 0 } = {}, { count: assets = 0 } = {}] = await Promise.all([
+  const results = await Promise.all([
     supabase.from('service_survey_zones').select('id', { count: 'exact', head: true }).eq('zoneId', zone.id),
     supabase.from('service_survey_zones').select('id', { count: 'exact', head: true })
       .eq('zoneId', zone.id).eq('requestId', request.id),
     supabase.from('service_zone_terms').select('id', { count: 'exact', head: true }).eq('zoneId', zone.id),
     supabase.from('service_assets').select('id', { count: 'exact', head: true }).eq('zoneId', zone.id),
+    supabase.from('sales_order_line_zones').select('id', { count: 'exact', head: true }).eq('zoneId', zone.id),
   ]);
+  results.forEach((result, i) => {
+    if (result?.error) throw new Error(`ตรวจ${COUNT_LABELS[i]}ไม่สำเร็จ: ${result.error.message || 'ไม่ทราบสาเหตุ'}`);
+    if (!Number.isFinite(result?.count)) throw new Error(`ตรวจ${COUNT_LABELS[i]}ไม่สำเร็จ: ไม่ได้ตัวเลขกลับมา`);
+  });
+  const [allSurveys, mySurveys, terms, assets, allocations] = results.map((result) => result.count);
   const decision = zoneCleanupDecision({
     zone,
     request,
-    refs: { otherSurveyRows: Math.max(0, allSurveys - mySurveys), terms, assets },
+    refs: { otherSurveyRows: Math.max(0, allSurveys - mySurveys), terms, assets, allocations },
   });
   return { ...decision, label };
 }
