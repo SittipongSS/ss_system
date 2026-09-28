@@ -17,7 +17,7 @@ import { loadVisits, siteScheduleContext } from '@/lib/service/visitsRepo';
 import { loadTerms } from '@/lib/service/termsRepo';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { termOrderActive } from '@/lib/service/terms';
-import { serviceRoundsSold } from '@/lib/sales/serviceOrders';
+import { siteRoundsSoldOf } from '@/lib/sales/serviceOrders';
 import { businessDate } from '@/lib/businessDate';
 
 export const dynamic = 'force-dynamic';
@@ -58,18 +58,22 @@ async function siteRoundsSold(supabase, zones = []) {
   /* ⚠️ ไล่ทีละหน้าแม้จะกรองด้วย id ชุดเดียว — ไซต์ที่ต่อสัญญามาหลายปีสะสม term ได้เกิน
      พันแถว และเพดาน PostgREST ตัดเงียบ ๆ ⇒ ใบที่หลุดจะถูกนับเป็น "ไม่มีผล" แล้ว
      จำนวนรอบที่ขายหายไปดื้อ ๆ (ด่าน check:rowcap ใน CI คุมไว้) */
+  /* ⭐ "serviceTermsOpenedAt" — ใบที่ประทับแล้ว (mig 0391) นับรอบสูงสุดของบรรทัดที่ลงไซต์นี้ ตัวเดียวกับแถว "รอตั้งรอบ"
+     (D23 · `siteRoundsSoldOf`) · ใบเดิมนับรายบรรทัดตามเดิม */
   const { data: orders, error: orderError } = await fetchAllResult(() => supabase.from('sales_orders')
-    .select('id, status, "supersededById"').in('id', orderIds).order('id', { ascending: true }));
+    .select('id, status, "supersededById", "serviceTermsOpenedAt"').in('id', orderIds).order('id', { ascending: true }));
   if (orderError) throw orderError;
-  const activeIds = new Set((orders || []).filter(termOrderActive).map((o) => o.id));
-  const lineIds = terms
-    .filter((t) => activeIds.has(t.salesOrderId))
-    .map((t) => t.salesOrderLineId).filter(Boolean);
+  const activeOrders = (orders || []).filter(termOrderActive);
+  const activeIds = new Set(activeOrders.map((o) => o.id));
+  const activeTerms = terms.filter((t) => activeIds.has(t.salesOrderId));
+  const lineIds = [...new Set(activeTerms.map((t) => t.salesOrderLineId).filter(Boolean))];
   if (!lineIds.length) return null;
   const { data: lines, error: lineError } = await fetchAllResult(() => supabase.from('sales_order_lines')
     .select('id, "serviceRounds"').in('id', lineIds).order('id', { ascending: true }));
   if (lineError) throw lineError;
-  return serviceRoundsSold(lines || []);
+  return siteRoundsSoldOf({
+    orders: activeOrders, terms: activeTerms, lines: lines || [], zonesById: new Map(zones.map((z) => [z.id, z])),
+  });
 }
 
 export const GET = withUser(async ({ user, supabase, ctx }) => {

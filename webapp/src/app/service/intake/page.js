@@ -11,29 +11,35 @@
 //
 // ⚠️ ใบที่ตอบไม่ได้ว่าสายอะไรขึ้นแถบของมันเอง ระบบไม่เดาให้ — เดาเมื่อไร ใบสายสินค้า
 //   จะไหลเข้าคิวบริการ หรือใบบริการจะหายเงียบ ทั้งสองทางแย่พอกัน
+//
+// 🔄 **mig 0391 (PR-A · D14): TS ไม่ผูกโซนอีกแล้ว** — ฝ่ายขายตั้งแพ็คเกจ · โซน · แพ็คต่อรอบ · รอบ · ช่วงบริการ
+//   ที่หน้าใบสั่งขาย อนุมัติแล้วรอบขายของโซนเกิดเอง ⇒ งานแรกของ TS คือ "รอตั้งรอบ" (แท็บตั้งต้น)
+//   · วิซาร์ดผูกโซน (`IntakeWizard`) ถูกถอดทั้งไฟล์ · `POST /api/service/intake/bind` ตอบ 409
+//   · แท็บ `bind` (คีย์เดิม) = ใบเดิมที่อนุมัติก่อน 0391 รอฝ่ายขายตั้งงานบริการ — **ดูอย่างเดียว** ไม่มีปุ่ม
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowDownToLine, Building2, CalendarPlus, LayoutGrid, Link2, MapPin } from "lucide-react";
+import { AlertTriangle, ArrowDownToLine, CalendarPlus, ClipboardList, Info, LayoutGrid, Link2, MapPin, Search } from "lucide-react";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { DEFAULT_PAGE_SIZE, usePagination } from "@/lib/usePagination";
 import Button from "@/components/ui/Button";
+import Input from "@/components/ui/Input";
 import Pager from "@/components/ui/Pager";
+import Segmented from "@/components/ui/Segmented";
 import StatusNotice from "@/components/ui/StatusNotice";
 import Tabs from "@/components/ui/Tabs";
-import Toast from "@/components/ui/Toast";
 import ViewSwitcher from "@/components/ui/ViewSwitcher";
 import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
 import EmptyState from "@/components/ui/EmptyState";
 import StatusBadge from "@/components/ui/StatusBadge";
-import IntakeWizard from "@/components/service/IntakeWizard";
 import { VISIT_KIND_LABELS } from "@/lib/service/rounds";
-import { INTAKE_TABS, INTAKE_TAB_HINTS, INTAKE_TAB_LABELS } from "@/lib/service/intake";
+import { INTAKE_TABS, INTAKE_TAB_HINTS, INTAKE_TAB_LABELS, planRoundsSoldText } from "@/lib/service/intake";
+import {
+  LEGACY_SETUP_FILTERS, LEGACY_SETUP_FILTER_LABELS, legacySetupFilterCounts, legacySetupHaystack, legacySetupStatusView,
+} from "@/lib/service/legacySetupQueue";
 import { isHistoricalOrder } from "@/lib/sales/historicalOrders";
-import { canEditService } from "@/lib/permissions";
-import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { fmtDate, fmtNumber, naText } from "@/lib/format";
 import styles from "./page.module.css";
 import { apiFetch } from "@/lib/apiFetch";
@@ -44,10 +50,10 @@ const LOAD_ERROR_TITLE = "โหลดคิวงานเข้าใหม่
    ลึก 5,000px บนมือถือ ⇒ มุมมองการ์ดเริ่มที่ 10 ใบ (ตัวเลือกเดิมของ Pager) */
 const CARD_PAGE_SIZE = 10;
 
-// ข้อความ/ป้ายของแถวคิว "รอตั้งไซต์/โซน" — ใช้ทั้งตารางและการ์ด ให้สองมุมมองพูดตรงกัน
-const fgText = (row) => (row.fgKinds
-  ? `${fmtNumber(row.fgKinds)} ชนิด · ${fmtNumber(row.remainingQty)} หน่วย`
-  : naText(null));
+/* แท็บใบเดิม (mig 0391 · D14) — หัวแผงและคำอธิบายของตัวเอง (ม็อก TsIntakeLegacy) · ดูอย่างเดียว */
+const LEGACY_PANEL_TITLE = "รายการรอฝ่ายขายตั้งงานบริการ";
+const LEGACY_PANEL_SUB = "ดูอย่างเดียว — แพ็คเกจ · โซน · แพ็คต่อรอบ · รอบ · ช่วงบริการ ฝ่ายขายตั้งที่หน้าใบสั่งขาย";
+
 /* 🐞 เดิมตัดสตริง ISO ตรง ๆ — ขึ้น "2026-08-14" ข้างป้าย "จ่ายถึง 14/08/2026" ในแถวเดียวกัน
    และอนุมัติหลังเที่ยงคืนเวลาไทยจะขึ้นวันก่อนหน้า · fmtDate คิดวันไทยให้ */
 const approvedText = (row) => {
@@ -82,6 +88,18 @@ function revealTab(tab) {
   else if (tabBox.left < listBox.left) list.scrollLeft -= Math.ceil(listBox.left - tabBox.left);
 }
 
+/* เซลล์สถานะการตั้งงานบริการของใบเดิม — ป้าย + บรรทัดรองหนึ่งบรรทัด (ตาราง · การ์ดใช้ตัวเดียว)
+   ข้อความมาจาก `legacySetupStatusView` ⇒ สองมุมมองพูดตรงกันและค้นเจอคำเดียวกัน (legacySetupHaystack) */
+function LegacySetupStatus({ row }) {
+  const view = legacySetupStatusView(row);
+  return (
+    <>
+      <StatusBadge tone={view.tone} size="sm" dot label={view.label} title={view.label} />
+      {view.sub ? <span className={`cell-sub ${styles.statusSub}`}>{view.sub}</span> : null}
+    </>
+  );
+}
+
 function ContractBadge({ readiness }) {
   return (
     <span className={`ui-badge ${readiness?.hasContract ? "success" : "warning"}`}>
@@ -90,8 +108,9 @@ function ContractBadge({ readiness }) {
   );
 }
 
-/* ชิปเงินของใบ — ถังผูกโซนส่ง `row.readiness` · ถังตั้งรอบส่งแถวเอง (ชื่อช่องชุดเดียวกัน · lib/service/intake.js)
-   `label` = คำนำหน้าวัน: ถังผูกโซน "จ่ายถึง" (หัวคอลัมน์เดิม) · ถังตั้งรอบ "เงินครอบถึง" (ม็อก TsIntake 22/09) */
+/* ชิปเงินของใบ — ถังตั้งรอบส่งแถวเอง (ชื่อช่องชุดเดียวกับ `orderReadiness` · lib/service/intake.js)
+   `label` = คำนำหน้าวัน: ตั้งต้น "จ่ายถึง" · ถังตั้งรอบ "เงินครอบถึง" (ม็อก TsIntake 22/09)
+   ⚠️ แท็บใบเดิม (mig 0391) ไม่มีชิปนี้โดยตั้งใจ — ใบเดิมยังไม่เปิดงานให้ TS เรื่องเงินยังไม่ใช่คำถามของขั้นนี้ */
 function PaidBadge({ readiness, label = "จ่ายถึง" }) {
   /* ⭐ ใบยอด 0 ไม่มีงวดให้เก็บ (มติ 22/09 · mig 0374) — ตัวตัดสินเดียวกับ visitGate ข้อ② (ผ่านด่านเงินเอง)
      ป้าย "ยังไม่มีงวดที่รับรอง" จะส่ง TS ไปทวงเงินที่ไม่มีให้เก็บ · 🔄 แทนชิป "ยกเว้นด่านเงิน" ของ 0360 ที่ถอดแล้ว */
@@ -106,26 +125,19 @@ function PaidBadge({ readiness, label = "จ่ายถึง" }) {
 }
 
 export default function ServiceIntakePage() {
-  const role = useRole();
-  const team = useTeam();
-  const teams = useTeams();
-  const department = useDepartment();
-  const canEdit = useMemo(() => canEditService({ role, team, teams, department }), [role, team, teams, department]);
-
-  const [tab, setTab] = useState("bind");
+  /* ⭐ แท็บตั้งต้น = "รอตั้งรอบ" เสมอ (mig 0391 · D14) — ทุกใบมาถึง TS ที่ถังนี้ก่อน (รอบขายเกิดตอนอนุมัติ)
+     🔄 ถอดตัวสลับแท็บอัตโนมัติ "ถังผูกโซนว่างแล้วไปถังตั้งรอบ" (มติ 22/09) — ถังผูกโซนไม่มีแล้ว แท็บแรกคือถังตั้งรอบอยู่แล้ว */
+  const [tab, setTab] = useState("plan");
   const [data, setData] = useState(null);
-  const [sites, setSites] = useState([]);
-  const [zonesBySite, setZonesBySite] = useState(new Map());
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [wizardOrder, setWizardOrder] = useState(null);
-  const [toast, setToast] = useState(null);
+  /* ตัวกรองสถานะ + คำค้นของแท็บใบเดิม — ใช้เฉพาะแท็บนั้น (แท็บอื่นไม่มีแถบเครื่องมือนี้) */
+  const [legacyFilter, setLegacyFilter] = useState("all");
+  const [search, setSearch] = useState("");
 
   const startRun = useLatestRun();
   // ของที่โหลดสำเร็จล่าสุด — ให้รอบเบื้องหลังรู้ว่ามีของเดิมยืนอยู่บนจอไหม (อ่านใน callback เท่านั้น)
   const dataRef = useRef(null);
-  // เลือกแท็บตั้งต้นจากของจริงไปแล้วหรือยัง (ครั้งเดียว — ดูใน load)
-  const autoTabDone = useRef(false);
   const load = useCallback(async (opts) => {
     const isLatest = startRun();
     if (!opts?.background) setLoading(true);
@@ -140,16 +152,6 @@ export default function ServiceIntakePage() {
       dataRef.current = body;
       setData(body);
       setLoadError("");
-      /* ⭐ เปิดที่แท็บแรกที่มีงาน — **ครั้งเดียวหลังโหลดสำเร็จครั้งแรก** (มติ 22/09 · mig 0374)
-         ป้าย "งานเข้าใหม่" บนเมนูนับทั้งถังผูกโซนและถังตั้งรอบแล้ว · ใบย้อนหลังข้ามถังผูกโซนมาเข้าถังตั้งรอบตรง ๆ
-         ⇒ เปิดหน้ามาเจอแท็บแรกว่างทั้งที่ป้ายบอกว่ามีงาน = อ่านว่าป้ายโกหก
-         ⚠️ ไม่สลับตอนโหลดเบื้องหลัง/รอบถัดไป — คนเลือกแท็บเองแล้วต้องไม่ถูกดึงกลับ · เลือกไปก่อนโหลดเสร็จก็ไม่ทับ */
-      if (!autoTabDone.current) {
-        autoTabDone.current = true;
-        if (!(body?.bind || []).length && (body?.plan || []).length) {
-          setTab((current) => (current === "bind" ? "plan" : current));
-        }
-      }
     } catch (e) {
       /* ⚠️ ห้ามกลืน error เป็นคิวว่าง — "โหลดพัง" กับ "ไม่มีงานค้าง" หน้าตาเหมือนกัน
          จนแยกไม่ออก แล้วฝ่าย TS จะเชื่อว่าไม่มีอะไรต้องทำ ซึ่งคือรูเดิมที่หน้านี้มาปิด
@@ -164,105 +166,29 @@ export default function ServiceIntakePage() {
   useEffect(() => { load(); }, [load]);
   useRevalidateOnFocus(load);
 
-  // ทะเบียนไซต์/โซนโหลดตอนจะ "เลือก" เท่านั้น — คิวอย่างเดียวไม่ต้องใช้
-  const loadRegistry = useCallback(async (siteId = null) => {
-    const res = await apiFetch("/api/service/sites");
-    const body = await res.json().catch(() => null);
-    if (!res.ok) throw new Error(body?.error || "โหลดทะเบียนไซต์ไม่สำเร็จ");
-    /* ⚠️ /api/service/sites คืน **อาร์เรย์ตรง ๆ** ไม่ได้ห่อใน { sites } — ต่างจาก
-       /api/service/visits ที่ห่อ · เดาผิดแล้วรายการไซต์ว่างเปล่าโดยไม่มี error */
-    const rows = Array.isArray(body) ? body : (Array.isArray(body?.sites) ? body.sites : []);
-    setSites(rows);
-    if (siteId) {
-      const zoneRes = await apiFetch(`/api/service/sites/${siteId}/zones`);
-      const zoneBody = await zoneRes.json().catch(() => null);
-      if (zoneRes.ok) {
-        /* 🐞 **เคยอ่าน `zoneBody.zones` ตัวเดียว** ทั้งที่ endpoint คืนอาร์เรย์ตรง ๆ
-           (คอมเมนต์เหนือบรรทัด 79 เตือนเรื่องนี้ไว้เองแล้วสำหรับไซต์ แต่ท่อนโซนพลาด)
-           ⇒ สร้างโซนใหม่ใน wizard แล้วดรอปดาวน์โซน **ว่างเปล่า** จัดสรรของต่อไม่ได้ */
-        const zoneRows = Array.isArray(zoneBody)
-          ? zoneBody
-          : (Array.isArray(zoneBody?.zones) ? zoneBody.zones : []);
-        setZonesBySite((prev) => new Map(prev).set(siteId, zoneRows));
-      }
-    }
-    return rows;
-  }, []);
-
-  const openWizard = async (order) => {
-    try {
-      await loadRegistry();
-      /* ⚠️ **เลิกโหลดที่อยู่ลูกค้าที่นี่แล้ว** (มติ 2026-08-30) — มันมีไว้ทำไทล์
-         "ตั้งจากที่อยู่ไหน" ของฟอร์มสร้างไซต์ ซึ่งถูกถอดออกจาก wizard นี้แล้ว
-         (ไซต์เกิดจากใบคำร้องประเมินพื้นที่ทางเดียว) · `addresses` เป็น jsonb ก้อนใหญ่
-         — วัดจริง 136 KB บนลูกค้า 191 ราย ⇒ ไม่ดึงของที่ไม่มีใครใช้ */
-      setWizardOrder(order);
-    } catch (e) {
-      setToast({ kind: "error", msg: e.message });
-    }
-  };
-
-  // โหลดโซนของไซต์ที่ถูกเลือกใน wizard (ไม่โหลดทุกไซต์ล่วงหน้า — ไซต์ 200 แห่ง
-  // = 200 คำขอ) · ใช้ตัวอ้างอิงจาก state ปัจจุบันผ่าน setter เพื่อไม่ให้ callback
-  // เปลี่ยนตัวตนทุกครั้งที่ zonesBySite ขยับ (ไม่งั้น useEffect ใน wizard วนไม่จบ)
-  const ensureZones = useCallback(async (siteId) => {
-    if (!siteId) return;
-    let known = false;
-    setZonesBySite((prev) => { known = prev.has(siteId); return prev; });
-    if (known) return;
-    const res = await apiFetch(`/api/service/sites/${siteId}/zones`);
-    const body = await res.json().catch(() => null);
-    if (!res.ok) return;
-    const rows = Array.isArray(body) ? body : (Array.isArray(body?.zones) ? body.zones : []);
-    setZonesBySite((prev) => new Map(prev).set(siteId, rows));
-  }, []);
-
-  /* ⚠️ **ไม่มี `createSite` แล้ว** (มติผู้ใช้ 2026-08-30) — ไซต์เกิดจากใบคำร้อง
-     "ประเมินพื้นที่" ทางเดียว · เหลือเฉพาะโซน ซึ่งเป็นรายละเอียดของไซต์ที่มีต้นเรื่องแล้ว */
-  const registryActions = useMemo(() => ({
-    ensureZones,
-    createZone: async (siteId, form) => {
-      const res = await apiFetch(`/api/service/sites/${siteId}/zones`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form),
-      });
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.error || "สร้างโซนไม่สำเร็จ");
-      await loadRegistry(siteId);
-      return body;
-    },
-  }), [loadRegistry, ensureZones]);
-
-  const bindOrder = async (payload) => {
-    await ensureZones(payload.siteId);
-    const res = await apiFetch("/api/service/intake/bind", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
-    });
-    const body = await res.json().catch(() => null);
-    if (!res.ok) throw new Error(body?.error || "ผูกโซนไม่สำเร็จ");
-    setToast({ kind: "success", msg: `ผูกแล้ว ${body?.terms?.length || 0} บรรทัด — ขั้นต่อไปคือตั้งรอบเข้าบริการ` });
-    setTab("plan");
-    await load({ background: true });
-  };
-
   const counts = data?.counts || { bind: 0, plan: 0, visit: 0, unknownLine: 0 };
-
-  /* ⚠️ วิซาร์ดต้องอ่านแถวของรอบโหลดล่าสุดเสมอ — `wizardOrder` เป็นภาพนิ่งตอนกดเปิด
-     คิวโหลดใหม่เบื้องหลังได้ระหว่างเปิดค้าง (คนอื่นผูกจุดนั้นไปก่อน) ⇒ ภาพนิ่งจะชวนผูกของที่ไม่เหลือแล้ว
-     ⚠️ ใบที่หลุดจากคิวไปแล้วไม่มีแถวใหม่ให้หา — ใช้ภาพนิ่งเดิมไว้ก่อน แล้วให้ TS ปิดวิซาร์ดเอง
-        ดีกว่าจอว่างเปล่ากลางคัน */
-  const liveWizardOrder = useMemo(() => {
-    if (!wizardOrder) return null;
-    const rows = [...(data?.bind || []), ...(data?.unknownLine || [])];
-    return rows.find((r) => r.orderId === wizardOrder.orderId) || wizardOrder;
-  }, [wizardOrder, data]);
 
   /* 🐞 จอตั้งเคยได้ตาราง 720px ในกล่อง 360px — ปุ่ม "รับเข้าไซต์" อยู่นอกจอทุกแถว
      ⇒ จอตั้ง/จอแคบเป็นการ์ด จอนอนเป็นตาราง (ทรงเดียวกับ /database/sites) สลับเองได้ที่หัวหน้า */
   const [view, setView] = useResponsiveView({ portrait: "cards", landscape: "table" });
-  const tabRows = useMemo(() => data?.[tab] || [], [data, tab]);
+  const legacyRows = useMemo(() => data?.bind || [], [data]);
+  const legacyCounts = useMemo(() => legacySetupFilterCounts(legacyRows), [legacyRows]);
+  /* ใบเดิมที่ลูกค้ายังไม่มีไซต์ในทะเบียน — งานติดที่ TS (เพิ่มไซต์) ไม่ใช่ฝ่ายขาย ⇒ บอกจำนวนที่โน้ตของแท็บ */
+  const legacyNoSite = useMemo(
+    () => legacyRows.filter((row) => row.noSite && (row.state === "not_started" || row.state === "editing")).length,
+    [legacyRows],
+  );
+  const needle = search.trim().toLocaleLowerCase("th");
+  /* แท็บใบเดิม: ตัวกรองสถานะ + คำค้น (คำค้น = ทุกอย่างที่ตาเห็นบนแถว · legacySetupHaystack)
+     ⚠️ ป้ายเลขบนตัวกรองนับจากแถวทั้งหมด ไม่ใช่หลังค้นหา — เลขบนปุ่มคือ "มีกี่ใบในสถานะนี้" */
+  const tabRows = useMemo(() => {
+    if (tab !== "bind") return data?.[tab] || [];
+    return legacyRows.filter((row) => (legacyFilter === "all" || row.state === legacyFilter)
+      && (!needle || legacySetupHaystack(row).includes(needle)));
+  }, [data, tab, legacyRows, legacyFilter, needle]);
   const viewPageSize = view === "cards" ? CARD_PAGE_SIZE : DEFAULT_PAGE_SIZE;
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
-    usePagination(tabRows, { resetKey: tab, defaultSize: viewPageSize });
+    usePagination(tabRows, { resetKey: `${tab}|${legacyFilter}|${needle}`, defaultSize: viewPageSize });
   /* มุมมองตัดสินหลัง mount (ก่อน mount ถือเป็นจอนอน = ตาราง) ⇒ `defaultSize` ตอนเริ่มไม่พอ
      ต้องตามมุมมองที่เปลี่ยน · แต่ถ้าคนเลือกจำนวนต่อหน้าเองแล้ว สลับมุมมองต้องไม่ทับค่าที่เลือก */
   const pageSizePicked = useRef(false);
@@ -297,7 +223,7 @@ export default function ServiceIntakePage() {
     <Workspace
       icon={<ArrowDownToLine size={20} aria-hidden="true" />}
       title="งานเข้าใหม่"
-      subtitle="ใบสั่งขายสายบริการที่อนุมัติแล้ว รอผูกกับไซต์/โซน แล้วตั้งรอบเข้าบริการ"
+      subtitle="ใบสั่งขายสายบริการที่อนุมัติแล้ว — ใบใหม่มาพร้อมโซนและรอบ · ใบเดิมรอฝ่ายขายตั้งงานบริการ"
     >
       {/* แถบแท็บห่อกล่องของตัวเอง — ถือขอบจางตอนแท็บล้น และเลื่อนแท็บที่โฟกัสเข้ากล่อง
           🔄 คำอธิบายของแท็บเคยอยู่ใต้แท็บในกล่องนี้ ⇒ ย้ายไปเป็นคำอธิบายของแผงรายการ (มติผู้ใช้ 2026-09-15) */}
@@ -328,19 +254,20 @@ export default function ServiceIntakePage() {
               <li key={row.orderId}>
                 <b>{row.code}</b>
                 <span>{naText(row.customerName)}</span>
-                <span>{row.pendingLines} บรรทัด</span>
+                {/* 🔄 mig 0391: แถวมาจากถังใบเดิม — นับ "รายการที่ต้องตั้ง" ไม่ใช่บรรทัดที่ยังไม่ผูกโซน */}
+                <span>{fmtNumber(row.progress?.total ?? 0)} รายการ</span>
               </li>
             ))}
           </ul>
         </section>
       )}
 
-      {/* ⭐ ใบสั่งขายย้อนหลังไม่ผ่านถัง "รอตั้งไซต์/โซน" (มติ 22/09 · mig 0374) — ฝ่ายขายเลือกโซนจากทะเบียน
-          ตอนคีย์ และรอบขายเกิดตอน AE Sup อนุมัติ ⇒ TS เห็นใบนี้ครั้งแรกที่แท็บนี้ · บอกไว้ ไม่งั้น TS ไปหาใบ
-          ในแท็บผูกโซนแล้วไม่เจอ (ม็อก TsIntake) · ขึ้นเฉพาะตอนมีใบย้อนหลังในแท็บนี้จริง */}
+      {/* ⭐ ใบสั่งขายย้อนหลัง (มติ 22/09 · mig 0374) — ฝ่ายขายเลือกโซนจากทะเบียนตอนคีย์ และรอบขายเกิดตอน
+          AE Sup อนุมัติ ⇒ TS เห็นใบนี้ครั้งแรกที่แท็บนี้ · บอกไว้ว่าไม่ต้องผูกซ้ำ (ม็อก TsIntake)
+          🔄 mig 0391: ถัง "รอตั้งไซต์/โซน" ถอดแล้ว — ประโยคไม่ชี้ไปหาแท็บที่ไม่มีแล้ว · ขึ้นเฉพาะตอนมีใบย้อนหลังในแท็บนี้จริง */}
       {showCounts && tab === "plan" && historicalPlanOrders.length > 0 && (
         <StatusNotice tone="info" icon={Link2}
-          title="โซนผูกจากฝ่ายขายตอนคีย์ใบแล้ว — ใบย้อนหลังไม่ต้องผ่าน “รอตั้งไซต์/โซน”">
+          title="โซนผูกจากฝ่ายขายตอนคีย์ใบแล้ว — ใบย้อนหลังขึ้นที่ ‘รอตั้งรอบ’ ตรง ๆ">
           {`${historicalPlanOrders.join(" · ")} เลือกโซนจากทะเบียนไซต์ตอนคีย์ใบ · ฝ่าย TS ตั้งรอบอย่างเดียว ไม่ต้องผูกซ้ำ`
             + " · นัดที่เลยวัน “เงินครอบถึง” จะเป็นร่างรอบัญชีรับรองงวดถัดไปในหน้าจัดคิว"}
         </StatusNotice>
@@ -349,15 +276,56 @@ export default function ServiceIntakePage() {
       {/* ⭐ รายการ = ListPanel ใบเดียว ชื่อ · คำอธิบาย · จำนวน เดินตามแท็บ (มติผู้ใช้ 2026-09-15)
           · ป้ายจำนวน = แถวของแท็บนั้นทั้งหมด = ยอดของ Pager · ยังไม่รู้ (โหลด/พัง) = ขีด ไม่ใช่ 0
           · `loading` แทนที่เฉพาะเนื้อ — แท็บกับตัวสลับมุมมองยืนอยู่ระหว่างโหลด */}
+      {/* ⭐ แท็บใบเดิม (mig 0391 · D14) — บอกก่อนว่าใบพวกนี้คืออะไรและใครทำ (TS ไม่ต้องผูกโซน) ·
+          ขึ้นเหนือแผงแบบโน้ตของแท็บ (ม็อก TsIntakeLegacy) เพราะคำอธิบายของแผงเป็นเรื่อง "ดูอย่างเดียว" */}
+      {tab === "bind" && (
+        <StatusNotice tone="info" icon={Info}>
+          {INTAKE_TAB_HINTS.bind}
+          {legacyNoSite ? (
+            <span className="cell-sub">
+              {`${fmtNumber(legacyNoSite)} ใบรอไซต์ในทะเบียน — ลูกค้ายังไม่มีไซต์ TS เพิ่มไซต์ก่อน ฝ่ายขายจึงเลือกโซนได้`}
+            </span>
+          ) : null}
+        </StatusNotice>
+      )}
+
       <ListPanel
-        icon={<ArrowDownToLine size={17} aria-hidden="true" />}
-        title={`รายการ${INTAKE_TAB_LABELS[tab]}`}
+        icon={tab === "bind"
+          ? <ClipboardList size={17} aria-hidden="true" />
+          : <ArrowDownToLine size={17} aria-hidden="true" />}
+        title={tab === "bind" ? LEGACY_PANEL_TITLE : `รายการ${INTAKE_TAB_LABELS[tab]}`}
         /* คำอธิบายพูดถึง "ของที่อยู่ในคิว" — โหลดพังแล้วยังขึ้นคำอธิบาย อ่านเหมือนคิวว่างปกติ */
-        subtitle={loadError ? null : INTAKE_TAB_HINTS[tab]}
+        subtitle={loadError ? null : (tab === "bind" ? LEGACY_PANEL_SUB : INTAKE_TAB_HINTS[tab])}
         count={showCounts ? `${tabRows.length} ${tab === "visit" ? "รอบ" : "ใบ"}` : null}
         loading={loading}
         toolbar={(
           <>
+            {/* แท็บใบเดิม: ค้นหา + ตัวกรองสถานะ (เลขบนปุ่ม = ใบในสถานะนั้นทั้งหมด) — แท็บอื่นไม่มี */}
+            {tab === "bind" && (
+              <>
+                <div className={`search-glass ${styles.searchInput}`}>
+                  <Search size={15} aria-hidden="true" />
+                  <Input
+                    autoComplete="off"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="ค้นหาใบสั่งขาย ลูกค้า ผู้ดูแล"
+                    aria-label="ค้นหาใบสั่งขาย ลูกค้า ผู้ดูแลฝ่ายขาย สถานะ หรือสัญญา"
+                  />
+                </div>
+                <Segmented
+                  ariaLabel="สถานะการตั้งงานบริการ"
+                  className={styles.legacyFilter}
+                  value={legacyFilter}
+                  onChange={setLegacyFilter}
+                  options={LEGACY_SETUP_FILTERS.map((key) => ({
+                    value: key,
+                    label: LEGACY_SETUP_FILTER_LABELS[key],
+                    count: showCounts ? legacyCounts[key] : null,
+                  }))}
+                />
+              </>
+            )}
             {/* 🔄 ตัวสลับมุมมองย้ายจากหัวหน้าเข้าแถบเครื่องมือของแผง ท้ายแถบเหมือน /database/sites ·
                 /database/assets (มติผู้ใช้ 2026-09-15 · ListPanel) — แทนผลตรวจรอบสองวันเดียวกัน
                 ที่ยอมให้อยู่หัวหน้าเพราะหน้านี้ยังไม่มีแถบเครื่องมือ */}
@@ -380,63 +348,58 @@ export default function ServiceIntakePage() {
           </StatusNotice>
         ) : (
           <>
+            {/* ⭐ แท็บใบเดิม (mig 0391 · D14) — **ดูอย่างเดียว**: ไม่มีปุ่ม · ไม่มีชิปเงิน · ไม่มีป้าย "ย้อนหลัง"
+                (ใบในแท็บนี้เป็นใบ pipeline ทั้งหมดโดยนิยาม — ใบย้อนหลังเปิดงานให้ TS ตอนอนุมัติแล้ว)
+                ⚠️ ขั้น "ติดทะเบียนไซต์ — ขาด n สาขา" ของม็อกเลื่อนไป PR-B (ต้องเดาจำนวนสาขาจากหมายเหตุบรรทัด · D24) */}
             {tab === "bind" && (
-              (data?.bind || []).length === 0 ? (
-                <EmptyState plain icon={ArrowDownToLine}>
-                  ไม่มีใบสั่งขายรอผูกโซน — ใบสายบริการที่อนุมัติใหม่จะมาโผล่ที่นี่เอง
+              legacyRows.length === 0 ? (
+                <EmptyState plain icon={ClipboardList}>
+                  ไม่มีใบเดิมรอฝ่ายขายตั้งงานบริการ — ใบใหม่ฝ่ายขายตั้งโซนและรอบมาพร้อมใบ แล้วขึ้น ‘รอตั้งรอบ’ เอง
+                </EmptyState>
+              ) : tabRows.length === 0 ? (
+                <EmptyState
+                  plain
+                  icon={Search}
+                  action={{ label: "ล้างตัวกรอง", onClick: () => { setSearch(""); setLegacyFilter("all"); } }}
+                >
+                  {needle
+                    ? `ไม่มีใบที่ตรงกับ “${search.trim()}”`
+                    : `ไม่มีใบในสถานะ “${LEGACY_SETUP_FILTER_LABELS[legacyFilter]}”`}
                 </EmptyState>
               ) : view === "cards" ? (
-                <ul className={styles.cardList} aria-label="ใบสั่งขายที่รอตั้งไซต์/โซน">
+                <ul className={styles.cardList} aria-label={LEGACY_PANEL_TITLE}>
                   {pageRows.map((row) => (
                     <li key={row.orderId} className={styles.card}>
                       <div className={styles.cardHead}>
                         <span className={`mono ${styles.cardCode}`}>{row.code}</span>
                         <strong className={styles.cardTitle}>{naText(row.customerName)}</strong>
                       </div>
-                      {/* ใบย้อนหลัง — ป้าย + เลขเดิม + จุดติดตั้งตามใบ ชุดเดียวกับมุมมองตาราง (mig 0360 · มติข้อ 17) */}
-                      {isHistoricalOrder(row) && (
-                        <p className={styles.cardSub}>
-                          <StatusBadge tone="info" size="sm" label="ย้อนหลัง" />
-                          {row.historicalRefs?.length ? ` เลขเดิม ${row.historicalRefs.join(" · ")}` : null}
-                        </p>
-                      )}
                       <p className={styles.cardMeta}>
-                        {fgText(row)} · อนุมัติ <span className="mono">{approvedText(row)}</span>
-                        {row.roundsSold ? ` · ขายไว้ ${fmtNumber(row.roundsSold)} รอบ` : null}
-                        {isHistoricalOrder(row) && row.installationPoints?.length
-                          ? ` · จุดติดตั้งตามใบ ${row.installationPoints.join(" · ")}`
-                          : null}
+                        อนุมัติ <span className="mono">{approvedText(row)}</span>
+                        {" · "}ผู้ดูแลฝ่ายขาย {naText(row.ownerName)}
                       </p>
+                      <div className={styles.cardStatus}><LegacySetupStatus row={row} /></div>
                       <div className={styles.cardFoot}>
                         <ContractBadge readiness={row.readiness} />
-                        <PaidBadge readiness={row.readiness} />
-                        {canEdit && (
-                          <Button tone="neutral" className={styles.cardAction} onClick={() => openWizard(row)}
-                            icon={<Building2 size={15} aria-hidden="true" />}>
-                            รับเข้าไซต์
-                          </Button>
-                        )}
+                        <Link href={`/sa/sales-orders/${row.orderId}`} className={`linklike ${styles.cardFootLink}`}>
+                          เปิดใบสั่งขาย
+                        </Link>
                       </div>
                     </li>
                   ))}
                 </ul>
               ) : (
-                /* ⚠️ วันที่ · จำนวน · ป้าย · ปุ่ม เป็น nowrap ถือความกว้างเองแล้ว เหลือช่องชื่อลูกค้า
-                   ช่องเดียวที่ตัดบรรทัด ⇒ `minWidth` มีไว้แค่กันช่องนั้นแคบเกิน ไม่ใช่ความกว้างของเนื้อ
-                   🐞 เคยตั้ง 900 ⇒ จอนอน 821–935px กล่องแคบกว่าเนื้อ ปุ่ม "รับเข้าไซต์" โดนตัดขอบ
-                   (กล่องแคบสุดของจอนอน 783px ที่จอ 821 · 760 เผื่อ scrollbar 15px ของ Windows)
-                   🔄 ย้ายเข้า ListPanel (มติผู้ใช้ 2026-09-15) กล่องแคบลงอีก 34px (ระยะขอบเนื้อแผง 16×2 + เส้นกรอบ)
-                   ⇒ วัดใหม่ที่จอ 821 เหลือ 749px · 760 เดิมเลื่อนแนวนอน 11px ⇒ 730 เผื่อ scrollbar 15px เท่าเดิม */
-                <TableScroll family="list" minWidth={730} cells="stacked">
+                /* คอลัมน์ตามม็อก TsIntakeLegacy · เซลล์สถานะ = ป้าย + บรรทัดรองหนึ่งบรรทัด (ตัวเดียวกับการ์ด) */
+                <TableScroll family="list" minWidth={900} cells="stacked">
                   <table>
                     <thead>
                       <tr>
                         <th scope="col">ใบสั่งขาย · ลูกค้า</th>
                         <th scope="col" className="num">อนุมัติเมื่อ</th>
-                        <th scope="col"><span className={styles.qtyInset}>ของที่ต้องจัดสรร</span></th>
+                        <th scope="col">ผู้ดูแลฝ่ายขาย</th>
+                        <th scope="col">สถานะการตั้งงานบริการ</th>
                         <th scope="col">สัญญา</th>
-                        <th scope="col">จ่ายถึง</th>
-                        <th scope="col" className={styles.actionCell} aria-label="การกระทำ" />
+                        <th scope="col" className={styles.actionCell} aria-label="ลิงก์" />
                       </tr>
                     </thead>
                     <tbody>
@@ -446,51 +409,17 @@ export default function ServiceIntakePage() {
                           <th scope="row">
                             <span className="mono">{row.code}</span>
                             <span className={`cell-sub ${styles.rowHeadSub}`}>{naText(row.customerName)}</span>
-                            {/* ⭐ ใบสั่งขายย้อนหลัง (mig 0360 · มติข้อ 17) — TS ต้องรู้ว่าจุดติดตั้งมาจากชีตของฝ่ายขาย
-                                (ตรงงานจริงแค่ 25%) ไม่ใช่จากใบประเมินพื้นที่ · เลขเอกสารเดิมไว้ถามฝ่ายขายต่อ */}
-                            {isHistoricalOrder(row) && (
-                              <span className="cell-sub">
-                                <StatusBadge tone="info" size="sm" label="ย้อนหลัง" />
-                                {row.historicalRefs?.length ? ` เลขเดิม ${row.historicalRefs.join(" · ")}` : null}
-                              </span>
-                            )}
                           </th>
                           <td className={`num ${styles.nowrap}`}>{approvedText(row)}</td>
-                          {/* ⭐ นับ **FG + จำนวน** ไม่ใช่จำนวนบรรทัด (มติผู้ใช้ 2026-08-29)
-                              บรรทัดเป็นรูปร่างของเอกสารขาย ไม่ใช่ขนาดของงาน — ใบจริงใบหนึ่ง
-                              มี 10 บรรทัด แต่เป็น FG แค่ 2 ชนิด รวม 13 หน่วย */}
-                          <td className={styles.nowrap}>
-                            <div className={styles.qtyInset}>
-                              {fgText(row)}
-                              {/* ⭐ ข้อผูกพันจำนวนรอบที่ฝ่ายขายระบุไว้ (mig 0326) — TS ต้องเห็น
-                                  ตั้งแต่ตอนรับงาน จะได้ตั้งความถี่ให้ได้จำนวนนัดตรงกับที่ขาย
-                                  ⚠️ ไม่ขึ้นเลยเมื่อยังไม่กรอก — "ยังไม่ระบุ" ไม่ใช่ "ขายศูนย์รอบ" */}
-                              {row.roundsSold
-                                ? <span className={styles.rowNote}>ขายไว้ {fmtNumber(row.roundsSold)} รอบ</span>
-                                : null}
-                              {/* ⭐ จุดติดตั้งตามชีตของใบย้อนหลัง — เบาะแสว่าต้องไปหาไซต์ไหน (FG เดียวกันคนละจุดแยกกลุ่มแล้ว) */}
-                              {isHistoricalOrder(row) && row.installationPoints?.length
-                                ? <span className={styles.rowNote}>จุดติดตั้งตามใบ {row.installationPoints.join(" · ")}</span>
-                                : null}
-                            </div>
-                          </td>
-                          {/* ⭐ ชิปความพร้อม (PR-C) — TS ต้องรู้ **ตั้งแต่ตอนรับงาน** ว่าใบนี้
-                              พอจัดสรรแล้วจะเดินต่อได้ไหม · ของเดิมเห็นแต่ขนาดงาน แล้วไปเจอ
-                              ด่านตอนจัดคิวทีหลัง ซึ่งเป็นตอนที่เสียเวลาไปแล้ว
-                              ⚠️ นี่คือ *ป้ายบอกสถานะ* ไม่ใช่ด่าน — ใบที่ยังไม่พร้อมก็ยัง
-                                 รับเข้าไซต์/จัดสรรลงโซนได้ (คนละขั้นกัน)
-                              แยกเป็นสองคอลัมน์ ป้ายจะได้เรียงเป็นแนว ไม่ซ้อนกันตอนจอแคบ */}
+                          <td>{naText(row.ownerName)}</td>
+                          <td className={styles.statusCell}><LegacySetupStatus row={row} /></td>
                           <td className="ui-badge-cell ui-badge-w-contract-no"><ContractBadge readiness={row.readiness} /></td>
-                          <td className="ui-badge-cell ui-badge-w-paid"><PaidBadge readiness={row.readiness} /></td>
                           <td className={styles.actionCell}>
-                            {canEdit && (
-                              <div className={styles.rowAction}>
-                                <Button tone="neutral" size="sm" onClick={() => openWizard(row)}
-                                  icon={<Building2 size={15} aria-hidden="true" />}>
-                                  รับเข้าไซต์
-                                </Button>
-                              </div>
-                            )}
+                            <div className={styles.rowAction}>
+                              <Link href={`/sa/sales-orders/${row.orderId}`} className="linklike">
+                                เปิดใบสั่งขาย
+                              </Link>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -522,8 +451,10 @@ export default function ServiceIntakePage() {
                         <span className="mono">{naText(row.orderNumber)}</span>
                         {/* ใบย้อนหลัง — ป้ายชุดเดียวกับถังผูกโซน (มติ 22/09 · ม็อก TsIntake) */}
                         {isHistoricalOrder(row) && <> <StatusBadge tone="info" size="sm" label="ย้อนหลัง" /></>}
-                        {" · "}ขายไว้ {row.roundsSold ? `${fmtNumber(row.roundsSold)} รอบ` : naText(null)}
+                        {" · "}ขายไว้ {planRoundsSoldText(row)?.value || naText(null)}
                       </p>
+                      {/* รอบไม่เท่ากันระหว่างรายการในไซต์เดียว — บอกทุกค่า + คำแนะนำ (ไม่โชว์แค่ตัวมากสุดเงียบ ๆ) */}
+                      {planRoundsSoldText(row)?.hint ? <p className={styles.cardMeta}>{planRoundsSoldText(row).hint}</p> : null}
                       <p className={styles.cardMeta}>โซน: {row.zones.map((z) => z.name).join(" · ")}</p>
                       {/* ⭐ เงินครอบถึง (มติ 22/09 · ม็อก TsIntake) — นัดหลังวันนั้นจะจอดเป็นร่างรอบัญชีรับรองงวดถัดไป */}
                       <p className={styles.cardMeta}><PaidBadge readiness={row} label="เงินครอบถึง" /></p>
@@ -574,7 +505,10 @@ export default function ServiceIntakePage() {
                             )}
                           </td>
                           <td>{row.zones.map((z) => z.name).join(" · ")}</td>
-                          <td>{row.roundsSold ? `${fmtNumber(row.roundsSold)} รอบ` : naText(null)}</td>
+                          <td>
+                            {planRoundsSoldText(row)?.value || naText(null)}
+                            {planRoundsSoldText(row)?.hint ? <span className="cell-sub">{planRoundsSoldText(row).hint}</span> : null}
+                          </td>
                           {/* ⭐ เงินครอบถึง — นัดหลังวันนั้นจอดเป็นร่าง "SA → FN" จนบัญชีรับรองงวดถัดไป (visitGate ข้อ②) */}
                           <td className="ui-badge-cell ui-badge-w-paid"><PaidBadge readiness={row} label="เงินครอบถึง" /></td>
                           <td className={styles.actionCell}>
@@ -673,17 +607,6 @@ export default function ServiceIntakePage() {
         )}
       </ListPanel>
 
-      <IntakeWizard
-        open={!!wizardOrder}
-        order={liveWizardOrder}
-        sites={sites}
-        zonesBySite={zonesBySite}
-        onClose={() => setWizardOrder(null)}
-        onDone={bindOrder}
-        onReloadRegistry={registryActions}
-      />
-
-      <Toast toast={toast} onClose={() => setToast(null)} />
     </Workspace>
   );
 }

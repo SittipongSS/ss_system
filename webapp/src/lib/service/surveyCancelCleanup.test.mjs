@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { cancelCleanupSummary, zoneCleanupDecision } from './surveyCancelCleanup.js';
+import { cancelCleanupSummary, cleanupCancelledSurveyZones, zoneCleanupDecision, zoneReleaseDecision } from './surveyCancelCleanup.js';
 import { surveyEditLockError } from './survey.js';
 import { cancelRequestError, closeUnassessedError } from '@/lib/requests/stages';
 
@@ -93,6 +93,93 @@ test('🔴 ขายไปแล้ว / มีเครื่อง / มีใ
     assert.equal(d.action, 'keep');
     assert.match(d.reason, re);
   }
+});
+
+/* ⭐ mig 0391: ฝ่ายขายเลือกโซนในรายการงานบริการของใบสั่งขายแล้ว = ของที่ขายแล้ว แม้รอบขายยังไม่เกิด
+   (ใบร่าง · ใบเดิมที่ยังไม่ตรวจ) ⇒ เก็บไว้ · ลบไม่ได้อยู่แล้ว (FK RESTRICT) — ตอบให้ชัดแทน error ดิบ */
+test('🔴 โซนที่อยู่ในรายการงานบริการของใบสั่งขาย — เก็บไว้ (รอบขายยังไม่เกิดก็ตาม)', () => {
+  const d = zoneCleanupDecision({ zone: zone(), request: request(), refs: { allocations: 1 } });
+  assert.equal(d.action, 'keep');
+  assert.equal(d.reason, 'พื้นที่นี้ถูกเลือกไว้ในรายการงานบริการของใบสั่งขาย — เก็บไว้ในทะเบียน');
+  assert.equal(zoneCleanupDecision({ zone: zone(), request: request(), refs: { allocations: 0 } }).action, 'delete');
+});
+
+/* supabase ปลอมของตัวนับ — head-count ทุกก้อน · `fail` = ตารางที่อ่านพัง (error) · `blank` = ได้แถวแต่ไม่มีตัวเลข */
+function countDb(counts = {}, { fail = null, blank = null } = {}) {
+  const calls = [];
+  return {
+    calls,
+    from(table) {
+      const filters = [];
+      const q = {
+        select: () => q,
+        eq: (col, value) => { filters.push([col, value]); return q; },
+        delete: () => { calls.push(`delete ${table}`); return q; },
+        in: () => q,
+        limit: () => q,
+        then: (resolve, reject) => Promise.resolve().then(() => {
+          calls.push(`count ${table}`);
+          if (table === fail) return { count: null, error: { message: 'connection reset' } };
+          if (table === blank) return { count: null, error: null };
+          const key = filters.some(([col]) => col === 'requestId') ? `${table}:mine` : table;
+          return { count: counts[key] ?? 0, error: null };
+        }).then(resolve, reject),
+      };
+      return q;
+    },
+  };
+}
+
+test('⭐ zoneReleaseDecision นับรายการงานบริการที่เลือกโซนด้วย — มี = เก็บไว้', async () => {
+  const db = countDb({ sales_order_line_zones: 2 });
+  const d = await zoneReleaseDecision(db, { request: request(), zone: zone() });
+  assert.equal(d.action, 'keep');
+  assert.match(d.reason, /รายการงานบริการของใบสั่งขาย/);
+  assert.equal(d.label, 'ZN-A-01');
+  assert.ok(db.calls.includes('count sales_order_line_zones'));
+  // ไม่มีใครใช้เลย = ลบได้ (ตัวนับทุกก้อนตอบ 0 จริง)
+  assert.equal((await zoneReleaseDecision(countDb({}), { request: request(), zone: zone() })).action, 'delete');
+});
+
+/* 🔴 ด่านก่อนลบ: นับไม่ขึ้นไม่ใช่ 0 (แผน R7) — ของเดิมทิ้ง error ของทุกก้อน ⇒ นับพัง = "ไม่มีใครใช้" = ลบโซนที่ขายแล้ว */
+test('🔴 zoneReleaseDecision: ก้อนไหนนับพัง (error หรือไม่ได้ตัวเลข) = โยน ไม่ใช่ถือว่าไม่มีใครใช้', async () => {
+  for (const table of ['service_survey_zones', 'service_zone_terms', 'service_assets', 'sales_order_line_zones']) {
+    await assert.rejects(() => zoneReleaseDecision(countDb({}, { fail: table }), { request: request(), zone: zone() }),
+      /ไม่สำเร็จ: connection reset/, table);
+    await assert.rejects(() => zoneReleaseDecision(countDb({}, { blank: table }), { request: request(), zone: zone() }),
+      /ไม่ได้ตัวเลขกลับมา/, table);
+  }
+  await assert.rejects(() => zoneReleaseDecision(countDb({}, { fail: 'sales_order_line_zones' }), { request: request(), zone: zone() }),
+    /ตรวจรายการงานบริการที่เลือกโซนไม่สำเร็จ/);
+});
+
+test('🔴 เส้นยกเลิกใบ: นับพังแล้วไม่ลบโซน · จดเป็น "เก็บกวาดไม่สำเร็จ" (ผู้เรียกอยู่หลังจุดที่ยกเลิกสำเร็จแล้ว — ห้ามโยน)', async () => {
+  const db = countDb({}, { fail: 'sales_order_line_zones' });
+  // ใบนี้สร้างโซน ZN1 (ตัวชี้เจ้าของ) · แถวผลวัดของใบชี้โซนนั้น
+  const base = db.from;
+  db.from = (table) => {
+    if (table === 'service_survey_zones' || table === 'service_zones') {
+      const rows = table === 'service_survey_zones' ? [{ id: 'SZ1', zoneId: 'ZN1' }] : [zone()];
+      const q = base(table);
+      const head = { counting: false };
+      const wrap = {
+        select: (_c, opts) => { head.counting = !!opts?.head; q.select(); return wrap; },
+        eq: (...a) => { q.eq(...a); return wrap; },
+        in: () => wrap,
+        limit: () => wrap,
+        delete: () => { db.calls.push(`delete ${table}`); return wrap; },
+        then: (resolve, reject) => (head.counting ? q.then(resolve, reject)
+          : Promise.resolve({ data: rows, error: null }).then(resolve, reject)),
+      };
+      return wrap;
+    }
+    return base(table);
+  };
+  const out = await cleanupCancelledSurveyZones(db, { request: request() });
+  assert.deepEqual(out.deleted, []);
+  assert.equal(out.kept.length, 1);
+  assert.match(out.kept[0], /^เก็บกวาดไม่สำเร็จ: ตรวจรายการงานบริการที่เลือกโซนไม่สำเร็จ/);
+  assert.ok(!db.calls.some((c) => c.startsWith('delete')), 'นับไม่ขึ้น = ไม่ลบอะไรเลย');
 });
 
 /* 🐞 mig 0354: จุดติดตั้งบนโซนมาจากคนคีย์เสมอ (ใบประเมินไม่เขียนลงโซน) ⇒ โซนที่มีจุด = ทะเบียน

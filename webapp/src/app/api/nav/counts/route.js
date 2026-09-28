@@ -34,7 +34,7 @@ import { deptHasOwnModule, deptsInSharedQueue } from '@/lib/requests/modules';
 import {
   QUOTATION_ACTIONABLE_STATUSES, isQuotationWaitingOnMe,
 } from '@/lib/sales/quotationWorkflow';
-import { isSalesOrderReviewer, isSalesOrderWaitingOnMe } from '@/lib/sales/salesOrderWorkflow';
+import { isSalesOrderReviewer, salesOrderIdsWaitingOnMe } from '@/lib/sales/salesOrderWorkflow';
 import { historicalRowsOnly, pipelineRowsOnly } from '@/lib/sales/historicalOrders';
 import { awaitsFinanceReview } from '@/lib/sales/salesOrderFinanceApproval';
 import { isContractWaitingOnMe, latestContractRevisions } from '@/lib/sales/contracts';
@@ -48,7 +48,9 @@ import {
 } from '@/lib/sales/forecastSource';
 import { loadVisits } from '@/lib/service/visitsRepo';
 import { loadTerms } from '@/lib/service/termsRepo';
-import { bindQueue, planQueue } from '@/lib/service/intake';
+import { planQueue } from '@/lib/service/intake';
+import { orderBusinessLineOf } from '@/lib/sales/serviceOrders';
+import { serviceBackfillNeeded } from '@/lib/sales/serviceSetup';
 import { waitingOnMeVisitCount } from '@/lib/service/myVisits';
 import { listTasks } from '@/lib/mgmt/repo';
 import { isMyOpenTask } from '@/lib/mgmt/constants';
@@ -337,6 +339,26 @@ export const GET = withUser(async ({ user, supabase }) => {
         ? fetchAllResult(() => pipelineRowsOnly(supabase.from('sales_orders').select('id, status, createdBy, origin, deal:sales_deals(ownerId)'))
           .eq('status', 'approval_revoked').order('id', { ascending: true }))
         : Promise.resolve({ data: [] });
+      /* ── งานบริการย้อนหลัง (mig 0391 · D26 · D28) — ใบที่อนุมัติไปก่อนฝ่ายขายตั้งงานบริการเอง ────────────────
+         ⭐ เลนผู้จัดการตรวจ: ฝ่ายขายยื่นตรวจแล้ว — ชุดเล็ก (ยื่นค้างจริงเท่านั้น) · เงื่อนไขที่ query แคบลงเท่านั้น
+           ตัวตัดสินจริงคือ `serviceBackfillAwaitingReview` ใน helper (ค่า 'submitted' ที่ค้างบนใบที่ย้อนอนุมัติ/ยกเลิก/
+           ถูก Rev. ทับไม่มีผล) · ตัดคนยื่นเอง ยกเว้น admin ⇒ ต้องพก `serviceSetupSubmittedById`
+         ⚠️ นับจำนวนใบ ไม่รวมยอด · ใบย้อนหลัง (0374) ไม่มีเส้นนี้ ⇒ pipelineRowsOnly */
+      const reviewLane = can(user.role, 'salesplan:view') && reviewer
+        ? fetchAllResult(() => pipelineRowsOnly(supabase.from('sales_orders').select('id, status, origin, "projectId", "dealId", "supersededById", "serviceTermsOpenedAt", "serviceSetupState", "serviceSetupSubmittedById", project:projects(id, line), deal:sales_deals(id, line)'))
+          .eq('status', 'approved').eq('serviceSetupState', 'submitted').is('supersededById', null).is('serviceTermsOpenedAt', null)
+          .order('id', { ascending: true }))
+        : Promise.resolve({ data: [] });
+      /* ⭐ เลนเจ้าของดีลตั้ง: ใบอนุมัติแล้วที่ยังไม่ประทับของดีลที่ฉันเป็นเจ้าของ — ฝังโครงการ/ดีล (พร้อม id) ให้ตัวตัดสิน
+           สายธุรกิจ (โครงการก่อนแล้วดีล) ตอบได้จากแถวเดียว ไม่ต้องยิงรอบสอง · ตัดสายที่ไม่ใช่ SERVICE ใน JS
+           (`project!inner` กรองไม่ได้ — ใบที่ไม่มีโครงการต้องถอยไปอ่านสายของดีล) แล้วค่อยโหลดบรรทัดของใบที่เหลือ
+         ⚠️ ขนาด = ใบที่อนุมัติแล้วยังไม่ประทับของเจ้าของดีลคนนี้ — ไล่หน้าแล้ว แต่ **ไม่ได้เล็กโดยโครงสร้าง**
+           (ใบเก่าทั้งหมดของเขา รวมใบสายสินค้า) · บรรทัดโหลดเฉพาะใบสาย SERVICE */
+      const backfillLane = can(user.role, 'salesplan:view')
+        ? fetchAllResult(() => pipelineRowsOnly(supabase.from('sales_orders').select('id, status, origin, "projectId", "dealId", "supersededById", "serviceTermsOpenedAt", "serviceSetupState", "serviceSetupSubmittedById", project:projects(id, line), deal:sales_deals!inner(id, ownerId, line)'))
+          .eq('status', 'approved').is('serviceTermsOpenedAt', null).is('supersededById', null).eq('deal.ownerId', user.id)
+          .order('id', { ascending: true }))
+        : Promise.resolve({ data: [] });
       /* เลนบัญชี — **แคบด้วย `financeStatus` ก่อนเสมอ** ไม่ใช่ดึงใบ approved ทั้งหมด
          (ใบที่อนุมัติแล้วคือทะเบียนทั้งกอง ส่วนคิวบัญชีคือหลักสิบ)
          ⚠️ `awaitsFinanceReview` ต้องได้งวดของใบไปด้วย ไม่งั้นตอบ false ทุกใบ
@@ -349,21 +371,51 @@ export const GET = withUser(async ({ user, supabase }) => {
         { data: approvalRows, error: approvalError },
         { data: draftRows, error: draftError },
         { data: revokedRows, error: revokedError },
+        { data: reviewRows, error: reviewError },
+        { data: backfillRows, error: backfillError },
         { data: financeRows, error: financeError },
-      ] = await Promise.all([approvalLane, draftLane, revokedLane, financeLane]);
+      ] = await Promise.all([approvalLane, draftLane, revokedLane, reviewLane, backfillLane, financeLane]);
       // ทิ้ง error ที่นี่ = เลนนั้นกลายเป็น [] ⇒ ป้ายนับขาดเงียบ (เลนบัญชีเคยเป็นทั้งเลน)
-      if (approvalError || draftError || revokedError || financeError) throw approvalError || draftError || revokedError || financeError;
+      if (approvalError || draftError || revokedError || reviewError || backfillError || financeError) {
+        throw approvalError || draftError || revokedError || reviewError || backfillError || financeError;
+      }
 
-      // ⚠️ สามเลนไม่มีใบซ้อนกัน — แยกกันด้วยสถานะ (pending_approval/rejected · draft · approval_revoked)
-      const waiting = [...(approvalRows || []), ...(draftRows || []), ...(revokedRows || [])]
-        .filter((row) => isSalesOrderWaitingOnMe(row, { userId: user.id, reviewer, role: user.role })).length;
-      if (!(financeRows || []).length) return waiting;
+      /* บรรทัดของใบสาย SERVICE ในเลนเจ้าของดีล — ตัวตัดสิน "ต้องตั้งย้อนหลังไหม" (D25) ต้องเห็นชนิดของทุกบรรทัด
+         (ใบที่ทุกบรรทัดเป็น "ไม่ใช่งานบริการ" ไม่มีอะไรให้ตั้ง ⇒ ไม่นับ) · เลือกเฉพาะช่องที่ `serviceLineRole` อ่าน
+         (รหัส FG · สินค้า · ชนิดที่เลือก · หมวดของบรรทัดพิมพ์เอง) — ชุดย่อยของ select ทะเบียนใบสั่งขาย ⇒ ลิสต์กับป้ายตอบตรงกัน */
+      const serviceBackfillRows = (backfillRows || []).filter((row) => orderBusinessLineOf(row) === 'SERVICE');
+      const backfillLinesByOrder = new Map();
+      if (serviceBackfillRows.length) {
+        const orderIds = serviceBackfillRows.map((row) => row.id);
+        const { data: backfillLines, error: backfillLineError } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase.from('sales_order_lines')
+          .select('id, salesOrderId, fgCode, "productId", "serviceKind", categoryCode:metadata->>categoryCode')
+          .in('salesOrderId', chunk).order('id', { ascending: true })));
+        if (backfillLineError) throw backfillLineError;
+        for (const line of backfillLines || []) {
+          const list = backfillLinesByOrder.get(line.salesOrderId) || [];
+          list.push(line);
+          backfillLinesByOrder.set(line.salesOrderId, list);
+        }
+      }
 
-      const orderIds = financeRows.map((row) => row.id);
+      /* ⭐ **นับใบไม่ซ้ำ** (D26) — เลนซ้อนกันได้แล้ว: ใบที่อนุมัติแล้วอยู่ได้ทั้งเลนงานบริการย้อนหลัง (ผู้จัดการ/เจ้าของดีล) และเลนบัญชี
+         (admin · ผู้ถือ salesplan:view + canConfirmPayment · ผู้จัดการที่เป็นเจ้าของดีลเอง) ⇒ บวกความยาวของเลน = ป้ายเกินลิสต์
+         ⇒ `salesOrderIdsWaitingOnMe` รวม id ของทุกเลนที่ helper รับ แล้วนับขนาดชุด — ตรงกับทะเบียนที่โชว์ใบละแถว */
+      const waitingOptions = { userId: user.id, reviewer, role: user.role };
+      const lanes = {
+        /* เลนผู้ตรวจ: ใบที่สายเปลี่ยนเป็นอย่างอื่นระหว่างรอตรวจไม่นับ (ตัวเดียวกับทะเบียน · RPC อนุมัติปฏิเสธ · หน้าใบไม่มีปุ่ม) */
+        rows: [...(approvalRows || []), ...(draftRows || []), ...(revokedRows || []),
+          ...(reviewRows || []).filter((row) => orderBusinessLineOf(row) === 'SERVICE')],
+        backfillRows: backfillRows || [],
+        backfillNeeded: (row) => serviceBackfillNeeded(row, backfillLinesByOrder.get(row.id) || []),
+      };
+      if (!(financeRows || []).length) return salesOrderIdsWaitingOnMe(lanes, waitingOptions).size;
+
+      const financeIds = financeRows.map((row) => row.id);
       // ⚠️ ไล่ทีละหน้า — ใบหนึ่งมีได้หลายงวด ⇒ คิวหลักร้อยใบก็แตะเพดาน 1,000 ของ
       // PostgREST ได้ · ตัดกลางทางเมื่อไร ใบท้าย ๆ จะกลายเป็น "ยังเก็บไม่ครบ" เงียบ ๆ
       // ⚠️ ซอยลิสต์ด้วย — ไล่หน้าอย่างเดียวส่งลิสต์ id ก้อนเดิมทุกหน้า ⇒ ใบรอบัญชีหลายร้อยใบชนเพดาน URL
-      const { data: installments, error: installmentError } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
+      const { data: installments, error: installmentError } = await fetchInChunks(financeIds, (chunk) => fetchAllResult(() => supabase
         .from('sales_order_installments')
         .select('"salesOrderId", status')
         .in('salesOrderId', chunk)
@@ -377,9 +429,11 @@ export const GET = withUser(async ({ user, supabase }) => {
         list.push(row);
         byOrder.set(row.salesOrderId, list);
       }
-      // ⚠️ ใบที่นับสองแกนพร้อมกันไม่มี — approved ไม่มีทางเป็น pending_approval/rejected
-      return waiting
-        + financeRows.filter((row) => awaitsFinanceReview(row, byOrder.get(row.id) || [])).length;
+      return salesOrderIdsWaitingOnMe({
+        ...lanes,
+        financeRows,
+        financeWaiting: (row) => awaitsFinanceReview(row, byOrder.get(row.id) || []),
+      }, waitingOptions).size;
     }));
   }
 
@@ -459,83 +513,57 @@ export const GET = withUser(async ({ user, supabase }) => {
     }));
   }
 
-  /* งานเข้าใหม่ — ถัง "รอตั้งไซต์/โซน" + ถัง "รอตั้งรอบ" ของหน้า `/service/intake`
-     (ใบสายบริการที่อนุมัติแล้วแต่ยังจัดสรรลงโซนไม่ครบ · คู่ไซต์×ใบที่ขายแล้วแต่ยังไม่มีรอบ)
+  /* งานเข้าใหม่ — ถัง "รอตั้งรอบ" ของหน้า `/service/intake` (คู่ไซต์×ใบที่ขายแล้วแต่ยังไม่มีรอบ)
 
      ⭐ ที่มาของหน้านั้นคือ 102 จุดที่ลูกค้าจ่ายแล้วแต่ไม่มีคิวบริการ — คิวที่ไม่มีป้าย
      คือคิวที่ไม่มีใครเปิด แล้วตัวเลขนั้นก็โตอยู่เงียบ ๆ ต่อไป
-     🔄 **นับถัง "รอตั้งรอบ" ด้วยแล้ว** (มติ 22/09 · mig 0374) — ใบสั่งขายย้อนหลังเลือกโซนจากทะเบียนตอนคีย์
-     และรอบขายเกิดตอน AE Sup อนุมัติ ⇒ **ไม่เคยผ่านถังผูกโซน** มาโผล่ที่ถังตั้งรอบตรง ๆ · นับถังเดียวเหมือนเดิม
-     = ใบย้อนหลังมาถึง TS โดยไม่มีสัญญาณอะไรเลย (กระดิ่งไม่ใช่ช่องทาง — แคบไว้ที่คำร้อง/แจ้งปัญหา/มอบหมายงาน)
-     ⚠️ มีผลกับทุกใบ ไม่ใช่เฉพาะใบย้อนหลัง — ป้ายของใบ pipeline ที่ผูกโซนแล้วแต่ยังไม่ตั้งรอบก็นับด้วย
-        (ตรงกับแท็บ "รอตั้งรอบ" ที่หน้าเปิดขึ้นมาเจอ: หน้าเลือกแท็บแรกที่มีงานเอง)
-     ⚠️ **ยังไม่รวม "ครบรอบยังไม่มีนัด"** — ถังนั้นต้องโหลดนัดทั้งระบบ แพงเกินกว่าจะยิงทุก 2 นาที
+     🔄 **ถังผูกโซนถูกถอดแล้ว** (mig 0391 · D14) — TS ไม่ผูกโซนอีก: ฝ่ายขายตั้งงานบริการที่ใบสั่งขาย รอบขายของโซน
+       เกิดตอนอนุมัติ (ใบใหม่) หรือตอนผู้จัดการอนุมัติงานบริการย้อนหลัง (ใบเดิม) ⇒ มาถึง TS ที่ถัง "รอตั้งรอบ" ตรง ๆ
+       · แท็บ "รอฝ่ายขายตั้งงานบริการ (ใบเดิม)" ของหน้าคิวเป็นของ **ดูอย่างเดียว** (ไม่ใช่งานของ TS) ⇒ ไม่นับในป้าย
+       · ใบย้อนหลัง (mig 0374) ก็มาที่ถังนี้ตรง ๆ เหมือนเดิม (รอบขายเกิดตอน AE Sup อนุมัติ)
+     ⚠️ **ยังไม่รวม "ครบรอบยังไม่มีนัด"** [owner · D14] — ถังนั้นต้องโหลดนัดทั้งระบบ แพงเกินกว่าจะยิงทุก 2 นาที
+        (แท็บบนหน้ายังโชว์ตัวเลขของถังนั้นเอง)
      ⚠️ ด่าน `canEditService` ตรงกับเมนู (คนที่ *วางคิว* ได้เท่านั้น คือ Planner/หัวหน้า)
-     ⇒ จำนวนคนที่ยิงชุดนี้อยู่ในหลักหน่วย · ถังตั้งรอบเพิ่มแค่สอง query ไล่หน้า (โซน · รอบ) ที่เลือกคอลัมน์ผอม
-     ⚠️ ไม่ส่ง contractsById/installmentsByOrderId — สองตัวนั้นมีไว้ทำชิปความพร้อม/เงินครอบถึง
+     ⇒ จำนวนคนที่ยิงชุดนี้อยู่ในหลักหน่วย · สาม query ไล่หน้า (ใบ · โซน · รอบ) ที่เลือกคอลัมน์ผอม + รอบขายของโซน
+     ⚠️ ไม่ส่ง linesById/installmentsByOrderId — สองตัวนั้นมีไว้ทำตัวเลขรอบที่ขาย/ชิปเงินครอบถึง
      บนการ์ด ซึ่งตัวนับไม่อ่าน · ส่งไปก็ได้แค่ query ที่ไม่มีใครใช้
-     ⚠️ select ของบรรทัด/โซน/รอบผอมกว่าที่หน้าคิวใช้ **ได้เฉพาะเพราะเราอ่านแค่จำนวนแถว** —
-     ช่องที่ตัดออก (fgCode/description/unit/sortOrder · ชื่อโซน · ชนิดรอบ) ไปโผล่ในเนื้อการ์ดเท่านั้น
-     ไม่มีตัวไหนเปลี่ยนว่าแถวเข้าคิวหรือไม่ (ถังผูก: `qty` กับโซนที่จัดสรรแล้ว · ถังรอบ: term ที่มีผล ·
-     `siteId` ของโซน · รอบที่ยังเปิดของคู่ไซต์×ใบ)
+     ⚠️ select ของใบ/โซน/รอบผอมกว่าที่หน้าคิวใช้ **ได้เฉพาะเพราะเราอ่านแค่จำนวนแถว** — ช่องที่ตัดออก
+     (ชื่อโซน · ชนิดรอบ) ไปโผล่ในเนื้อการ์ดเท่านั้น ไม่มีตัวไหนเปลี่ยนว่าแถวเข้าคิวหรือไม่
+     (term ที่มีผล · `siteId` ของโซน · รอบที่ยังเปิดของคู่ไซต์×ใบ)
      ⚠️ โซนต้องเป็น **ทุกโซน** รวมที่ปิดใช้งาน — ตรงกับที่หน้าคิวโหลด (`loadAllZones`) · ตัดทิ้งแล้วป้ายนับไม่ตรงแท็บ
      ⭐ ใบสั่งขายย้อนหลังนับด้วยโดยตั้งใจ · ตัวนับอ่านแค่จำนวนแถว จึงไม่ต้องเลือก `origin`
-     (bindQueue/planQueue ถือว่าไม่ส่งมา = pipeline · นับตรงกับแท็บ) */
+     (planQueue ถือว่าไม่ส่งมา = pipeline · นับตรงกับแท็บ) */
   if (canEditService(user)) {
     jobs.push(attempt('serviceIntake', async () => {
       const { data: orders, error: orderError } = await fetchAllResult(() => supabase
         .from('sales_orders')
-        .select('id, status, supersededById, projectId, dealId, orderNumber, approvedAt, orderDate')
+        .select('id, status, supersededById, orderNumber, approvedAt, orderDate')
         .eq('status', 'approved')
         .is('supersededById', null)
         .order('id', { ascending: true }));
       if (orderError) throw orderError;
-      const orderIds = (orders || []).map((row) => row.id);
-      if (!orderIds.length) return 0;
-      const projectIds = [...new Set((orders || []).map((o) => o.projectId).filter(Boolean))];
-      const dealIds = [...new Set((orders || []).map((o) => o.dealId).filter(Boolean))];
-      /* 🔴 `.then((r) => r.data || [])` คือการทิ้ง error ทิ้งแบบที่ตาไม่เห็น — บรรทัดที่อ่าน
-         ไม่ขึ้นกลายเป็นชุดว่าง แล้ว `bindQueue` ตอบว่า "ไม่มีใบค้าง" ทั้งที่ยังไม่รู้ด้วยซ้ำ
+      if (!(orders || []).length) return 0;
+      /* 🔴 `.then((r) => r.data || [])` คือการทิ้ง error ทิ้งแบบที่ตาไม่เห็น — โซน/รอบที่อ่าน
+         ไม่ขึ้นกลายเป็นชุดว่าง แล้ว `planQueue` ตอบผิดทั้งที่ยังไม่รู้ด้วยซ้ำ
          ⇒ ทุกก้อนผ่าน `mustData` ซึ่งโยน error ขึ้นไปให้ `attempt()` เห็น */
       const mustData = (result) => {
         if (result?.error) throw result.error;
         return result?.data || [];
       };
-      const [lines, terms, projects, deals, zones, plans] = await Promise.all([
-        /* 🚫 ธง `"siteNotFoundAt"` (mig 0362) ไม่ต้องมีแล้ว (มติ 22/09) — ทางแจ้ง "ไม่พบจุดนี้หน้างาน"
-           ถอดทั้งเส้น · บรรทัดของใบย้อนหลังผูกโซนตั้งแต่ตอนคีย์ ⇒ ไม่มีบรรทัดไหนหลุดจากแท็บด้วยธงอีก */
-        fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase.from('sales_order_lines')
-          .select('id, salesOrderId, quotationLineId, qty, "serviceRounds"')
-          .in('salesOrderId', chunk).order('id', { ascending: true })))
-          .then(mustData),
+      const [terms, zones, plans] = await Promise.all([
         loadTerms(supabase),
-        projectIds.length
-          ? fetchInChunks(projectIds, (chunk) => fetchAllResult(() => supabase.from('projects').select('id, line')
-            .in('id', chunk).order('id', { ascending: true }))).then(mustData)
-          : [],
-        dealIds.length
-          ? fetchInChunks(dealIds, (chunk) => fetchAllResult(() => supabase.from('sales_deals').select('id, line')
-            .in('id', chunk).order('id', { ascending: true }))).then(mustData)
-          : [],
         // ถังตั้งรอบ: โซน (ไซต์ของ term) กับรอบ (คู่ไซต์×ใบที่มีรอบแล้ว) — ไล่หน้า เพดาน 1,000 แถวตัดเงียบ
         fetchAllResult(() => supabase.from('service_zones').select('id, "siteId", "isActive"')
           .order('id', { ascending: true })).then(mustData),
         fetchAllResult(() => supabase.from('service_plans').select('id, "siteId", "salesOrderId", "isActive"')
           .order('id', { ascending: true })).then(mustData),
       ]);
-      const bind = bindQueue({
-        orders: orders || [],
-        lines,
-        terms,
-        projectsById: new Map(projects.map((p) => [p.id, p])),
-        dealsById: new Map(deals.map((d) => [d.id, d])),
-      });
       // ถัง "รอตั้งรอบ" — ใบชุดเดียวกัน (อนุมัติ · ไม่ถูก Rev. ทับ) คือใบที่ `termIsActive` ยอมรับ
       const plan = planQueue({
         zones, terms, plans,
         ordersById: new Map((orders || []).map((o) => [o.id, o])),
       });
-      return bind.rows.length + plan.length;
+      return plan.length;
     }));
   }
 

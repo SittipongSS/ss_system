@@ -4,8 +4,11 @@
 //   ไม่ได้ "หายไป" มันไม่เคยปรากฏเลย เพราะไม่มีอะไรพาใบสั่งขายมาถึงฝ่าย TS
 //   (docs/business-line-level-and-handoff.md:157) ⇒ หน้านี้คือทางที่งานเดินมาถึง
 //
-// ⚠️ **TS ไม่ใช่ต้นทางของงาน** — หน้านี้อ่านว่า "รับใบที่อนุมัติแล้วมาผูก"
-//   ไม่ใช่ "สร้างงานบริการ" · ทุกแถวในคิวมีต้นเรื่องเป็นใบสั่งขายเสมอ
+// ⚠️ **TS ไม่ใช่ต้นทางของงาน** — ทุกแถวในคิวมีต้นเรื่องเป็นใบสั่งขายเสมอ
+//   🔄 **mig 0391 (PR-A · D14): TS ไม่ผูกโซนอีกแล้ว** — ฝ่ายขายตั้งแพ็คเกจ · โซน · แพ็คต่อรอบ · รอบ · ช่วงบริการ
+//      ที่หน้าใบสั่งขาย อนุมัติแล้วรอบขายของโซนเกิดเอง ⇒ งานแรกของ TS คือ "รอตั้งรอบ"
+//      ถังผูกโซนเดิม (`bindQueue`) ถูกถอด · ใบที่อนุมัติไปก่อน 0391 อยู่ที่ `legacySetupQueue.js`
+//      (แท็บ `bind` เดิม · ดูอย่างเดียว) — ไฟล์แยกเพราะต้องใช้ `serviceSetup.js` ซึ่งไฟล์นี้ **ห้าม** import (กฎ 16)
 //
 // ⚠️ **ใบที่ตอบไม่ได้ว่าสายอะไร ต้องขึ้นถังของมันเอง ห้ามเงียบและห้ามเดา**
 //   สายธุรกิจเป็นของโครงการ (projects.line) ส่วน sales_deals.line เป็นสำเนาที่ดีล
@@ -13,25 +16,42 @@
 //   ใบสายสินค้าจะไหลเข้าคิวบริการ หรือใบบริการจะหายไปเงียบ ๆ ทั้งสองทางแย่พอกัน
 import { businessDate } from '@/lib/businessDate';
 import { isBusinessLine } from '@/lib/master/businessLines';
-import { allocatedByLine, fgSummary, lineNeedsAllocation, termIsActive } from './terms';
-import { serviceRoundsSold } from '@/lib/sales/serviceOrders';
+import { termIsActive } from './terms';
+import { serviceRoundsSold, serviceVisitsSold } from '@/lib/sales/serviceOrders';
 import { coversDate, paidThrough } from '@/lib/sales/paymentCoverage';
 import { paymentNotRequired } from '@/lib/sales/salesOrderPayments';
-import { ORIGIN_PIPELINE, historicalRefsOf, isHistoricalOrder } from '@/lib/sales/historicalOrders';
+import { ORIGIN_PIPELINE } from '@/lib/sales/historicalOrders';
+import { fmtNumber } from '@/lib/format';
 
-export const INTAKE_TABS = ['bind', 'plan', 'visit'];
+/* แท็บของหน้างานเข้าใหม่ (mig 0391 · D14) — งานแรกของ TS คือ "รอตั้งรอบ" (ค่าตั้งต้นของหน้า)
+   ⚠️ **คีย์ `bind` คงไว้** เพื่อ URL/ลิงก์เดิม แต่ความหมายเปลี่ยนเป็น "ใบเดิมที่รอฝ่ายขายตั้งงานบริการ" (ดูอย่างเดียว)
+      และย้ายไปท้ายสุด · คีย์ชุดนี้ต้องตรงกันทั้ง route · หน้า · scheduleQueueView (แผน §4.1 ข้อ 9) */
+export const INTAKE_TABS = ['plan', 'visit', 'bind'];
 
 export const INTAKE_TAB_LABELS = {
-  bind: 'รอตั้งไซต์/โซน',
   plan: 'รอตั้งรอบ',
   visit: 'ครบรอบยังไม่มีนัด',
+  bind: 'รอฝ่ายขายตั้งงานบริการ (ใบเดิม)',
 };
 
 export const INTAKE_TAB_HINTS = {
-  bind: 'ใบสั่งขายที่อนุมัติแล้วแต่ยังไม่รู้ว่าของไปตั้งที่ไหน',
   plan: 'โซนที่ขายแล้วแต่ยังไม่มีรอบเข้าบริการ — ขายแล้วไม่มีใครไปคือที่มาของ 102 จุด',
   visit: 'รอบที่เดินอยู่แต่ไม่มีนัดข้างหน้าเลย',
+  bind: 'ใบที่อนุมัติก่อนฝ่ายขายตั้งงานบริการเอง — ฝ่ายขายตั้งค่าแล้วผู้จัดการฝ่ายขายตรวจ · ตรวจผ่านแล้วขึ้น ‘รอตั้งรอบ’ เอง · TS ไม่ต้องผูกโซน',
 };
+
+/**
+ * ช่อง "ขายไว้" ของแถวรอตั้งรอบ (การ์ด · ตาราง ใช้ตัวเดียว) → `{ value, hint }` · ยังไม่ระบุ = null (จอขีด)
+ *   บรรทัดในไซต์เดียวกันขายรอบไม่เท่ากัน (`roundsMixed`) = บอกทุกค่า + คำแนะนำ ไม่ใช่โชว์แค่ตัวมากสุดเงียบ ๆ (r2 §TS plan row)
+ */
+export function planRoundsSoldText(row) {
+  if (!row?.roundsSold) return null;
+  const values = Array.isArray(row.roundsValues) ? row.roundsValues : [];
+  if (row.roundsMixed && values.length > 1) {
+    return { value: `${values.map((n) => fmtNumber(n)).join(' · ')} รอบ (ต่างกันรายรายการ)`, hint: 'ตั้งรอบตามรายการที่มากที่สุด' };
+  }
+  return { value: `${fmtNumber(row.roundsSold)} รอบ`, hint: null };
+}
 
 /* ── สายธุรกิจของใบสั่งขาย ────────────────────────────────────────────
    ลำดับการถาม: โครงการก่อน (เจ้าของค่าจริง) แล้วค่อยดีล (สำเนาที่ใช้ตอนยังไม่มี
@@ -53,7 +73,9 @@ export const orderReceivable = (order) => order?.status === 'approved' && !order
    ⭐ เข้มขึ้นพร้อมใบสั่งขายย้อนหลัง (แผน P1 §3-K · มติข้อ 17) — บรรทัดของใบย้อนหลังมาจากชีตที่ตรงงานจริง
       แค่ 25% ⇒ TS หาไซต์/โซนเองแล้วผูก · ของเดิม server เชื่อ zoneId ที่จอส่งมาอย่างเดียว ⇒ ยิงตรงก็ผูกไซต์
       ของลูกค้าคนอื่น / คลังเครื่อง / โซนที่ปิดแล้วได้ (wizard กรองแค่ไซต์ตามลูกค้า และยังให้เลือกโซนที่ปิดใช้งาน)
-   ⚠️ ใช้กับทุกใบ ไม่ใช่เฉพาะใบย้อนหลัง · wizard เรียกตัวเดียวกันก่อนกดบันทึก (ปุ่มกับด่านพูดเรื่องเดียวกัน)
+   ⚠️ ใช้กับทุกใบ ไม่ใช่เฉพาะใบย้อนหลัง
+   🔄 mig 0391: วิซาร์ดผูกโซนของ TS ถูกถอด — ผู้ถามวันนี้คือตัวตัดสินงานบริการของใบสั่งขาย (`serviceSetup.js`:
+      ตรวจโซนที่ฝ่ายขายเลือก ทั้งตอนบันทึกและข้อที่ยังขาดตอนยื่น) ⇒ จอกับด่านยังพูดเรื่องเดียวกัน
    ⚠️ โซนไม่มี customerId ของตัวเอง — ตรวจผ่านไซต์ของโซนเสมอ
    ⚠️ ชนิดไซต์ตาม SITE_KINDS ของ sites.js (mig 0332) — คลังเครื่องเป็นไซต์จริงของบริษัท ไม่ใช่ที่ให้บริการ
    คืนข้อความไทยที่ขึ้นต้นด้วยชื่อของในบรรทัด (lineLabel) หรือ null */
@@ -78,25 +100,14 @@ export function bindTargetError({ order, zone, site, lineLabel = '' } = {}) {
   return null;
 }
 
-/* ── ถังที่ 1: ของที่ขายแล้วแต่ยังไม่ได้จัดสรรลงโซน ────────────────────────
-   หน่วยของคิวคือ **ใบ** (คนทำงานเปิดทีละใบ)
-
-   ⭐ **ตัวนับคือ FG + จำนวน ไม่ใช่จำนวนบรรทัด** (มติผู้ใช้ 2026-08-29)
-   > *"ไม่ต้องนับบรรทัดแล้ว นับแค่จำนวน FG พอ เพื่อให้ทาง TS จัดสรร ส่งโซนเอง"*
-
-   "บรรทัด" เป็นรูปร่างของเอกสารขาย (แยกตามราคา/ส่วนลด) ไม่ใช่รูปร่างของงาน —
-   ของจริง SO-26080077-0 มี **10 บรรทัด แต่เป็น FG แค่ 2 ชนิด รวม 13 หน่วย**
-   ⇒ โชว์ "10" ให้ TS คือบอกขนาดของงานผิดไปห้าเท่า
-
-   ⚠️ "ยังไม่ผูก" เปลี่ยนนิยามจาก **"บรรทัดไม่มี term"** เป็น **"จัดสรรยังไม่ครบจำนวน"**
-      (mig 0312 ปลด UNIQUE ของบรรทัดแล้ว — บรรทัดเดียวลงได้หลายโซน) */
 /* ความพร้อมของใบสำหรับงานบริการ — ตอบสองคำถามที่ TS ถามบ่อยที่สุดตอนรับงาน:
    "ใบนี้มีสัญญายัง" กับ "จ่ายถึงเมื่อไร"
    ⚠️ **ไม่ใช่ด่าน** — ด่านจริงคือ `visitGate` ตอนนัดจะขึ้นตาราง · ที่นี่แค่บอกล่วงหน้า
-      ให้ TS ทวงได้ตั้งแต่ยังไม่เสียเวลาจัดสรร */
+      ให้ TS ทวงได้ตั้งแต่ยังไม่เสียเวลาวางรอบ
+   ⭐ ผู้ใช้: ชิปสัญญาของแท็บใบเดิม (`legacySetupQueue`) · ชิปเงินของแท็บรอตั้งรอบ (`moneyReadiness`) */
 const pickFrom = (map, key) => (map instanceof Map ? map.get(key) : map?.[key]) || null;
 
-/* ความพร้อมเรื่องเงินของใบ — ชิป "จ่ายถึง / เงินครอบถึง" ของทั้งถังผูกโซนและถังตั้งรอบอ่านจากตัวนี้ตัวเดียว
+/* ความพร้อมเรื่องเงินของใบ — ชิป "เงินครอบถึง" ของถังตั้งรอบอ่านจากตัวนี้ตัวเดียว (ถังผูกโซนเดิมถอดแล้ว · mig 0391)
    ⭐ `paymentNotRequired` — ใบยอด 0 ไม่มีงวดให้เก็บ และผ่านด่านเข้าไซต์ข้อ② เอง (มติ 22/09 · mig 0374)
       ⇒ ชิปต้องพูดเรื่องเดียวกับ visitGate ข้อ② ไม่งั้นป้าย "ยังไม่มีงวดที่รับรอง" ส่ง TS ไปทวงเงินที่ไม่มีให้เก็บ
       🔄 แทนธงยกเว้นด่านเงินรายใบของใบย้อนหลัง (มติข้อ 13 · 0360) ที่ถอดแล้ว
@@ -120,86 +131,14 @@ export function orderReadiness(order, { contractsById = new Map(), installmentsB
   };
 }
 
-export function bindQueue({
-  orders = [], lines = [], terms = [], projectsById, dealsById,
-  // ⭐ บริบทสัญญา/เงินของใบ (PR-C) — ใช้ทำชิปบอกความพร้อมบนการ์ด
-  contractsById = new Map(), installmentsByOrderId = new Map(), todayIso = businessDate(),
-} = {}) {
-  const allocated = allocatedByLine(terms);
-  const linesByOrder = new Map();
-  for (const line of lines) {
-    const list = linesByOrder.get(line.salesOrderId) || [];
-    list.push(line);
-    linesByOrder.set(line.salesOrderId, list);
-  }
-
-  const rows = [];
-  const unknownLine = [];
-  for (const order of orders) {
-    if (!orderReceivable(order)) continue;
-    const orderLines = linesByOrder.get(order.id) || [];
-    const pending = orderLines.filter((l) => lineNeedsAllocation(l, allocated));
-    // ใบที่ไม่เหลืออะไรให้ผูกหลุดจากแท็บและป้ายทันที
-    if (!pending.length) continue;
-    const fg = fgSummary(pending, allocated);
-
-    const line = orderBusinessLine(order, { projectsById, dealsById });
-    const row = {
-      orderId: order.id,
-      // ⚠️ ใบสั่งขายใช้ `orderNumber` ไม่ใช่ `code` — ต่างจาก entity อื่นในระบบ
-      code: order.orderNumber || order.id,
-      customerId: order.customerId || null,
-      customerName: order.customerName || null,
-      projectId: order.projectId || null,
-      approvedAt: order.approvedAt || null,
-      orderDate: order.orderDate || null,
-      line,
-      /* ⭐ ใบสั่งขายย้อนหลัง (mig 0360 · มติข้อ 17) — ป้าย "ย้อนหลัง" + เลขเอกสารเดิม + จุดติดตั้งตามชีต
-         ให้ TS รู้ว่าต้องไปหาไซต์ไหน (ชีตตรงงานจริงแค่ 25% — ชื่อจุดเป็นเบาะแส ไม่ใช่คำตอบ)
-         ⚠️ ไม่ส่ง origin มา (ตัวนับบนเมนูเลือกคอลัมน์ผอม) = pipeline — ตัวนับอ่านแค่จำนวนแถว */
-      origin: order.origin || ORIGIN_PIPELINE,
-      historicalRefs: historicalRefsOf(order),
-      installationPoints: [...new Set(fg.map((g) => g.installationPoint).filter(Boolean))],
-      /* ⚠️ เก็บ `pendingLines` ไว้เพื่อความเข้ากันได้ของผู้เรียกเดิม แต่ **จอไม่ควรโชว์** —
-         ตัวเลขที่บอกขนาดงานจริงคือ fgKinds/remainingQty */
-      pendingLines: pending.length,
-      fgKinds: fg.length,
-      remainingQty: fg.reduce((sum, g) => sum + g.remaining, 0),
-      fg,
-      lines: pending,
-      /* ⭐ ขายไว้กี่รอบ (mig 0326) — TS ต้องเห็นข้อผูกพันตั้งแต่ตอนรับงาน ไม่ใช่ไปรู้
-         ตอนวางรอบแล้วพบว่าความถี่ที่ตั้งไว้ให้จำนวนนัดไม่ตรงกับที่ขาย
-         ⚠️ นับจาก **ทุกบรรทัดของใบ** ไม่ใช่เฉพาะบรรทัดที่ยังไม่จัดสรร — ข้อผูกพัน
-         เป็นของทั้งใบ ส่วน pending เป็นแค่ "เหลืออีกเท่าไรที่ต้องลงโซน"
-         ⚠️ null = ยังไม่กรอกที่ใบเสนอราคา ≠ ขายศูนย์รอบ */
-      roundsSold: serviceRoundsSold(linesByOrder.get(order.id) || []),
-      /* ⭐ ชิปความพร้อมของใบ (PR-C) — TS ต้องรู้ **ตั้งแต่ตอนรับงาน** ว่าใบนี้พอจัดสรร
-         แล้วจะเดินต่อได้ไหม · ของเดิมเห็นแต่ขนาดงาน แล้วไปเจอด่านตอนจัดคิวทีหลัง
-         ⚠️ นี่คือ *ป้ายบอกสถานะ* ไม่ใช่ด่าน — ด่านจริงอยู่ที่ `visitGate` ตอนขึ้นตาราง
-            ⇒ ใบที่ยังไม่พร้อมก็ยัง **จัดสรรลงโซนได้** (งานคนละขั้นกัน) */
-      readiness: orderReadiness(order, { contractsById, installmentsByOrderId, todayIso }),
-    };
-    if (line === 'SERVICE') rows.push(row);
-    else if (!line) unknownLine.push(row);
-    // สาย PRODUCT ไม่เข้าคิวนี้เลย — ของส่งออกจากบริษัทแล้วจบ ไม่มีอะไรให้ไปดูแล
-  }
-
-  const byNewest = (a, b) => String(b.approvedAt || b.orderDate || '').localeCompare(String(a.approvedAt || a.orderDate || ''));
-  /* ⭐ **ใบสั่งขายย้อนหลังต่อท้ายใบปกติเสมอ** (แผน P1 §3-K) — `approvedAt` ของใบย้อนหลัง = เวลาที่คีย์
-     ⇒ เรียงตามใหม่สุดล้วน ๆ ~220 ใบที่คีย์ช่วงเฟส 3 จะดันงานขายใหม่ของสัปดาห์นี้ลงไปใต้กอง
-     ⚠️ ยังอยู่ในคิวและนับบนป้ายครบ (มติข้อ 17) — แค่ไม่ให้กลบงานใหม่ */
-  const byQueue = (a, b) => (Number(isHistoricalOrder(a)) - Number(isHistoricalOrder(b))) || byNewest(a, b);
-  return { rows: rows.sort(byQueue), unknownLine: unknownLine.sort(byQueue) };
-}
-
 /* ── ถังที่ 2: โซนที่ขายแล้วแต่ไซต์ยังไม่มีรอบ ──────────────────────────
    ⚠️ รอบ (service_plans) ผูกกับ **ไซต์** ไม่ใช่โซน (mig 0188) — เจ้าหน้าที่เข้าไซต์ทีเดียว
    ทำทุกโซน · คิวนี้จึงเป็น "ไซต์ที่มีโซนขายแล้วแต่ไม่มีรอบ" ไม่ใช่รายโซน */
 /* ⚠️ `linesById` ไม่บังคับ — ไม่ส่งมา = แถวตอบ roundsSold: null (ยังไม่ระบุ)
    ไม่ใช่ 0 · ผู้เรียกที่มีบรรทัดอยู่แล้วส่งเข้ามาเพื่อให้จอบอก "ขายไว้กี่รอบ" ได้
    ⭐ `installmentsByOrderId` (มติ 22/09 · mig 0374) — แถวพก "เงินครอบถึง" (`paidThrough`) ให้ TS รู้ตั้งแต่ตอนตั้งรอบ
-      ว่านัดถึงวันไหนจะขึ้นตารางได้เลย · ใบสั่งขายย้อนหลังข้ามถังผูกโซนมาเข้าถังนี้ตรง ๆ (รอบขายเกิดตอน AE Sup
-      อนุมัติ) ⇒ ถังนี้คือจุดแรกที่ TS เห็นใบนั้น และเงินครอบถึงคือคำถามแรกของมัน (ม็อก TsIntake)
+      ว่านัดถึงวันไหนจะขึ้นตารางได้เลย · ทุกใบมาถึง TS ที่ถังนี้ก่อน (รอบขายเกิดตอนอนุมัติ: ใบใหม่ = ฝ่ายขายตั้งโซนในใบ
+      · mig 0391 · ใบย้อนหลัง = AE Sup อนุมัติ · mig 0374) ⇒ เงินครอบถึงคือคำถามแรกของมัน (ม็อก TsIntake)
    ⚠️ ไม่ส่งมา = `paidThrough: null` ("ยังไม่มีงวดที่รับรอง") — ตัวนับบนเมนูอ่านแค่จำนวนแถวจึงไม่ต้องส่ง */
 export function planQueue({ zones = [], terms = [], plans = [], sites = [], ordersById = new Map(), linesById = new Map(), installmentsByOrderId = new Map(), todayIso = businessDate() } = {}) {
   /* ── หน่วยของคิวนี้คือ (ไซต์, ใบสั่งขาย) ไม่ใช่ "ไซต์" ────────────────────
@@ -244,7 +183,7 @@ export function planQueue({ zones = [], terms = [], plans = [], sites = [], orde
       orderNumber: order?.orderNumber || null,
       /* ป้าย "ย้อนหลัง" + โน้ต "โซนผูกจากฝ่ายขายตอนคีย์ใบแล้ว" บนแท็บนี้ · ไม่ส่ง origin มา = pipeline */
       origin: order?.origin || ORIGIN_PIPELINE,
-      /* ชื่อช่องชุดเดียวกับ `readiness` ของถังผูกโซน ⇒ จอใช้ชิปตัวเดียวกันได้ */
+      /* ชื่อช่องชุดเดียวกับ `orderReadiness` ⇒ จอใช้ชิปตัวเดียวกันได้ */
       ...moneyReadiness(order, pickFrom(installmentsByOrderId, term.salesOrderId) || [], todayIso),
       unboundPlans: unboundBySite.get(zone.siteId) || 0,
       zones: [],
@@ -254,13 +193,21 @@ export function planQueue({ zones = [], terms = [], plans = [], sites = [], orde
     row.terms.push(term);
     bySite.set(key, row);
   }
-  /* ขายไว้กี่รอบของไซต์ = ผลรวมของบรรทัดที่ term ของไซต์นั้นชี้อยู่
-     ⚠️ อ่านสดจากบรรทัด ไม่ก๊อปเป็น snapshot ที่ term — จำนวนรอบแก้ได้ทางเดียวคือ
-     ออก Rev. ที่ใบเสนอราคา ซึ่งได้ใบสั่งขายใบใหม่ + term ชุดใหม่อยู่แล้ว */
+  /* ขายไว้กี่รอบของไซต์ = จำนวนครั้งที่ต้องไปไซต์นี้ (`serviceVisitsSold` · mig 0391 · D23 n/N)
+     🐞 ของเดิมบวกรอบของทุก term ⇒ บรรทัดเดียวที่ลงสองโซนในไซต์เดียวกันนับรอบซ้ำสองเท่า (12 รอบ → 24)
+        ทั้งที่เจ้าหน้าที่เข้าไซต์ทีเดียวทำทุกโซน ⇒ ต่อไซต์ = รอบสูงสุดของบรรทัด (ไม่ซ้ำ) ที่ลงไซต์นั้น
+     ⭐ `roundsMixed` = บรรทัดในไซต์เดียวกันขายรอบไม่เท่ากัน — จอบอก "รอบไม่เท่ากัน" ไม่ใช่เดาว่าเท่า
+     ⚠️ อ่านสดจากบรรทัด ไม่ก๊อปเป็น snapshot ที่ term — จำนวนรอบแก้ได้หลังอนุมัติ (บรรทัดของใบ) หรือออก Rev.
+     ⚠️ ไม่มีบรรทัดให้ชี้ (ไม่ส่ง `linesById` · ตัวนับบนเมนู) = null "ยังไม่ระบุ" ไม่ใช่ศูนย์ — ถอยไปตัวรวมเดิม
+        (`serviceRoundsSold`) ซึ่งตอบ null ให้ชุดว่างเหมือนกัน */
   for (const row of bySite.values()) {
-    row.roundsSold = serviceRoundsSold(
-      row.terms.map((t) => linesById.get(t.salesOrderLineId)).filter(Boolean),
-    );
+    const termLines = [...new Set(row.terms.map((t) => t.salesOrderLineId))]
+      .map((id) => linesById.get(id)).filter(Boolean);
+    const visits = serviceVisitsSold({ lines: termLines, links: row.terms, zonesById });
+    row.roundsSold = visits.total ?? serviceRoundsSold(termLines);
+    row.roundsMixed = visits.mixed;
+    /* รอบที่ไม่ซ้ำของบรรทัดในไซต์นี้ (มากไปน้อย) — จอเขียน "12 · 8 รอบ (ต่างกันรายรายการ)" (`planRoundsSoldText`) */
+    row.roundsValues = visits.bySite.get(row.siteId)?.values || [];
   }
   /* ⚠️ เรียงด้วยชื่อไซต์อย่างเดียวไม่พออีกแล้ว — ไซต์เดียวหลายใบจะสลับที่กันทุกครั้ง
      ที่โหลดใหม่ (ลำดับของ Map ตามลำดับที่ term เข้ามา) ⇒ ต่อท้ายด้วยเลขที่ใบ */
@@ -312,12 +259,13 @@ export function visitQueue({ plans = [], visits = [], sites = [], ordersById = n
   return rows.sort((a, b) => String(a.site?.name || '').localeCompare(String(b.site?.name || ''), 'th'));
 }
 
-/* จำนวนบนแท็บ — หน้าเดียวตอบ "มีอะไรค้างกี่ชิ้น" โดยไม่ต้องกดเข้าไปดู */
-export function intakeCounts({ bind = { rows: [], unknownLine: [] }, plan = [], visit = [] } = {}) {
+/* จำนวนบนแท็บ — หน้าเดียวตอบ "มีอะไรค้างกี่ชิ้น" โดยไม่ต้องกดเข้าไปดู
+   `legacy` = ผลของ `legacySetupQueue` (แท็บ `bind` · ใบเดิมรอฝ่ายขายตั้งงานบริการ) */
+export function intakeCounts({ legacy = { rows: [], unknownLine: [] }, plan = [], visit = [] } = {}) {
   return {
-    bind: bind.rows.length,
+    bind: legacy.rows.length,
     plan: plan.length,
     visit: visit.length,
-    unknownLine: bind.unknownLine.length,
+    unknownLine: legacy.unknownLine.length,
   };
 }

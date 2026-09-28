@@ -92,13 +92,16 @@ const CAPS = {
   sales_deal_forecast_lines: 5,
   /* 2026-09-14 — ขึ้นทะเบียนก่อนคีย์ใบสั่งขายย้อนหลัง (~220 ใบ · 379 บรรทัด · 379 รอบขายของโซน)
      ตารางกลุ่มนี้จะโตทันทีวันคีย์ ⇒ ตรึงจุดอ่านไร้ขอบเขตที่เหลือไว้ จุดใหม่ต้องห่อ fetchAll/fetchAllInChunks */
-  sales_order_lines: 6,
+  sales_order_lines: 5,         // 2026-09-28 mig 0391: POST /api/service/intake/bind ถูกปลด (ตอบ 409 ทุกคำขอ) 6 → 5
   service_zone_terms: 0,
   sales_contracts: 6,
-  service_zones: 6,
+  service_zones: 5,             // 2026-09-28 mig 0391: เส้น bind เดียวกัน 6 → 5
   service_plans: 1,
   service_visits: 3,
   sales_order_installments: 1,
+  /* 2026-09-28 — mig 0391 (งานบริการรายบรรทัดของใบสั่งขาย): ตารางใหม่ ขึ้นทะเบียนตั้งแต่ยังว่าง (แพตเทิร์นเดียวกับ
+     service_assets) · หนึ่งบรรทัดจัดสรรได้ถึง 500 โซน และตั้งย้อนหลังทีเดียว ~59 ใบ ⇒ ทุกจุดอ่านต้องห่อ fetchAll ตั้งแต่ต้น */
+  sales_order_line_zones: 0,
   sahamit_fc_flags: 2,
   material_prices: 1, // 2026-09-22 ม-148: attachRowPrice ซอย .in() เป็นก้อน (คิวทั้งหน้าอ่านราคา) 2 → 1
   audit_logs: 0,

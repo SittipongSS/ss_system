@@ -4,21 +4,17 @@
 // ที่ไฟล์เดียว ไม่งั้นระบบจะมีนาฬิกาสองเรือนแบบที่ "live visit" เคยมีห้าเรือน
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import * as termsModule from './terms.js';
 import {
   ML_PER_PACK_HINT,
   allocatedByLine,
   fgSummary,
   isPackUnit,
   latestTermOfZone,
-  lineNeedsAllocation,
-  normalizeTermInput,
-  remainingOfLine,
-  spreadAllocation,
   suggestStandardMl,
   termInWindow,
   termIsActive,
   termOrderActive,
-  termSnapshotFromLine,
   zoneTermState,
 } from './terms.js';
 
@@ -55,16 +51,6 @@ test('⭐ ใบ Rev. ทับ = รอบเก่าตายเองโด�
   assert.equal(termIsActive(t, order({ supersededById: 'SO2' }), '2026-08-28'), false);
 });
 
-test('snapshot ก๊อปจากบรรทัดขาย — qty คือจำนวนแพ็ค', () => {
-  const snap = termSnapshotFromLine({ productId: 'P1', fgCode: 'FG-1', description: 'A Breath of Dream', qty: 2, unit: 'แพ็ค' });
-  assert.deepEqual(snap, { productId: 'P1', fgCode: 'FG-1', description: 'A Breath of Dream', packageQty: 2, unit: 'แพ็ค' });
-});
-
-test('บรรทัดที่ไม่มีจำนวน = ปล่อยว่าง ไม่ใช่ 0 (0 แพ็ค/เดือน = ไม่มีวันเตือน)', () => {
-  assert.equal(termSnapshotFromLine({ qty: 0 }).packageQty, null);
-  assert.equal(termSnapshotFromLine({}).packageQty, null);
-});
-
 test('⭐ มาตรฐานต่อเดือนเป็น "ข้อเสนอ" ไม่ใช่ค่าที่ระบบเขียนเอง', () => {
   assert.equal(ML_PER_PACK_HINT, 1000);
   assert.equal(suggestStandardMl(2, 'แพ็ค'), 2000);
@@ -72,8 +58,6 @@ test('⭐ มาตรฐานต่อเดือนเป็น "ข้อ�
   // ไม่มีจำนวนแพ็ค = ไม่มีข้อเสนอ ไม่ใช่เดาเป็น 1000
   assert.equal(suggestStandardMl(null, 'แพ็ค'), null);
   assert.equal(suggestStandardMl('abc', 'แพ็ค'), null);
-  // และค่าที่เขียนลงแถวต้องมาจาก body เท่านั้น
-  assert.equal(normalizeTermInput({ zoneId: 'Z1', salesOrderId: 'SO1', salesOrderLineId: 'L1', packageQty: 2 }).value.standardMlPerMonth, null);
 });
 
 test('⭐ หน่วยที่ไม่ใช่แพ็ค ต้องไม่มีข้อเสนอ — "240 กิโลกรัม ⇒ 240,000 ml" ไม่มีความหมาย', () => {
@@ -82,20 +66,6 @@ test('⭐ หน่วยที่ไม่ใช่แพ็ค ต้องไ
   assert.equal(suggestStandardMl(3, null), null, 'ไม่รู้หน่วย = ไม่เดา');
   assert.equal(isPackUnit('แพ็ค'), true);
   assert.equal(isPackUnit('กิโลกรัม'), false);
-});
-
-test('ตรวจข้อมูลก่อนเขียน: ต้องมีโซนและบรรทัดขายเสมอ', () => {
-  assert.match(normalizeTermInput({}).error, /โซน/);
-  assert.match(normalizeTermInput({ zoneId: 'Z1' }).error, /บรรทัด/);
-  assert.equal(normalizeTermInput({ zoneId: 'Z1', salesOrderId: 'SO1', salesOrderLineId: 'L1' }).error, null);
-});
-
-test('ตัวเลขติดลบ/ศูนย์ และช่วงวันกลับหัว ต้องถูกปฏิเสธพร้อมบอกช่อง', () => {
-  const base = { zoneId: 'Z1', salesOrderId: 'SO1', salesOrderLineId: 'L1' };
-  assert.match(normalizeTermInput({ ...base, packageQty: -1 }).error, /แพ็ค/);
-  assert.match(normalizeTermInput({ ...base, standardMlPerMonth: 0 }).error, /ml/);
-  assert.match(normalizeTermInput({ ...base, startDate: '2026-06-01', endDate: '2026-01-01' }).error, /วันเริ่ม/);
-  assert.match(normalizeTermInput({ ...base, startDate: '01/06/2026' }).error, /ไม่ถูกต้อง/);
 });
 
 test('รอบล่าสุดของโซนเรียงตามวันเริ่ม — รอบที่เพิ่งผูกยังไม่ระบุวันถือว่าใหม่สุด', () => {
@@ -130,39 +100,42 @@ test('⭐ ต่อสัญญา = รอบใหม่ผูกโซนเ�
   assert.equal(rows.length, 2, 'รอบเก่ายังอยู่ ไม่ถูกเขียนทับ');
 });
 
-/* ── จัดสรรบรรทัดขายลงหลายโซน (mig 0312 · มติผู้ใช้ 2026-08-29) ──────────────
+/* ── จัดสรรบรรทัดขายลงหลายโซน (mig 0312 · มติผู้ใช้ 2026-08-29) — อ่านอย่างเดียวตั้งแต่ mig 0391 ──────────────
    > *"ไม่ต้องนับบรรทัดแล้ว นับแค่จำนวน FG พอ เพื่อให้ทาง TS จัดสรร ส่งโซนเอง"*
-   ของจริงที่เป็นเหตุ: SO-26080077-0 มี **10 บรรทัด แต่เป็น FG แค่ 2 ชนิด รวม 13 หน่วย** */
+   ของจริงที่เป็นเหตุ: SO-26080077-0 มี **10 บรรทัด แต่เป็น FG แค่ 2 ชนิด รวม 13 หน่วย**
+   🔄 ทางผูกของ TS ปิดแล้ว — "เหลือเท่าไร" อ่านผ่าน `fgSummary` (สรุปงานบริการของใบเดิม) ตัวเดียว */
+const remainingOf = (line, terms = []) => fgSummary([line], allocatedByLine(terms))[0].remaining;
+
 test('⭐ บรรทัดเดียวแบ่งลงหลายโซนได้ — เหลือเท่าไรคิดจากผลรวม', () => {
   const line = { id: 'L1', fgCode: 'FG-1', qty: 13, unit: 'แพ็คเกจ' };
-  const alloc = allocatedByLine([
+  assert.equal(remainingOf(line, [
     { salesOrderLineId: 'L1', zoneId: 'Z1', packageQty: 5 },
     { salesOrderLineId: 'L1', zoneId: 'Z2', packageQty: 4 },
-  ]);
-  assert.equal(remainingOfLine(line, alloc.get('L1')), 4);
-  assert.equal(lineNeedsAllocation(line, alloc), true);
+  ]), 4);
 });
 
-test('จัดสรรครบแล้วหลุดจากคิว', () => {
-  const line = { id: 'L1', qty: 13 };
-  const alloc = allocatedByLine([{ salesOrderLineId: 'L1', packageQty: 13 }]);
-  assert.equal(remainingOfLine(line, alloc.get('L1')), 0);
-  assert.equal(lineNeedsAllocation(line, alloc), false);
+test('จัดสรรครบแล้ว = ไม่เหลือ', () => {
+  assert.equal(remainingOf({ id: 'L1', qty: 13 }, [{ salesOrderLineId: 'L1', packageQty: 13 }]), 0);
 });
 
 /* ⚠️ แถวที่เกิดก่อน mig 0312 ไม่มี `packageQty` (ตอนนั้น 1 บรรทัด = 1 โซนเสมอ)
-   นับเป็น 0 เมื่อไร ใบเก่าทุกใบจะเด้งกลับเข้าคิวพร้อมกันทั้งกอง */
+   นับเป็น 0 เมื่อไร ใบเก่าทุกใบจะโชว์ว่าค้างลงโซนพร้อมกันทั้งกอง */
 test('⭐ term เก่าที่ไม่ระบุจำนวน = กินทั้งบรรทัด ไม่ใช่จัดสรร 0', () => {
-  const line = { id: 'L1', qty: 13 };
-  const alloc = allocatedByLine([{ salesOrderLineId: 'L1', packageQty: null }]);
-  assert.equal(remainingOfLine(line, alloc.get('L1')), 0);
-  assert.equal(lineNeedsAllocation(line, alloc), false);
+  assert.equal(remainingOf({ id: 'L1', qty: 13 }, [{ salesOrderLineId: 'L1', packageQty: null }]), 0);
 });
 
 test('บรรทัดที่ไม่มีจำนวน (บริการ "1 งาน") จัดสรรได้โซนเดียวแล้วจบ', () => {
   const line = { id: 'L9', qty: null, unit: 'งาน' };
-  assert.equal(remainingOfLine(line, undefined), 1, 'ยังไม่ผูก = ยังต้องจัดสรร');
-  assert.equal(remainingOfLine(line, allocatedByLine([{ salesOrderLineId: 'L9', packageQty: 1 }]).get('L9')), 0);
+  assert.equal(remainingOf(line), 1, 'ยังไม่ผูก = ยังต้องจัดสรร');
+  assert.equal(remainingOf(line, [{ salesOrderLineId: 'L9', packageQty: 1 }]), 0);
+});
+
+/* 🔄 mig 0391 (D14): ตัวช่วยของทางผูกโซนของ TS ถอดพร้อมทางผูก — กลับมา export เมื่อไร = มีคนเขียน term ฝั่ง JS อีก
+   (term ที่ไม่ได้เกิดจาก 0391 ทำให้การเปิดงานบริการของใบนั้นถูกปฏิเสธ · D29) */
+test('ตัวช่วยของทางผูกโซนของ TS ถอดแล้ว — ไม่มีใคร export กลับ', () => {
+  for (const name of ['termSnapshotFromLine', 'lineNeedsAllocation', 'spreadAllocation', 'remainingOfLine', 'normalizeTermInput', 'STANDARD_ML_HINT_TEXT']) {
+    assert.equal(name in termsModule, false, name);
+  }
 });
 
 test('⭐ สรุปเป็น FG ไม่ใช่บรรทัด — 10 บรรทัด 2 ชนิด ต้องอ่านออกว่า 2 ชนิด', () => {
@@ -195,43 +168,10 @@ test('หน่วยที่ปนกันในกลุ่มเดีย�
   assert.equal(rows[0].unit, 'ปนหน่วย');
 });
 
-/* ── กระจายจัดสรรระดับ FG ลงบรรทัด ─────────────────────────────────────
-   ⭐ คนทำงานคิดเป็น FG ระบบเก็บเป็นบรรทัด — TS ไม่ต้องรู้ว่าเอกสารขายแบ่งบรรทัดยังไง */
-test('⭐ FG เดียวข้าม 2 บรรทัด แบ่งลง 3 โซน — ไล่ตัดจากบรรทัดแรกก่อน', () => {
-  const group = fgSummary([
-    { id: 'L1', fgCode: 'FG-1', qty: 10 },
-    { id: 'L2', fgCode: 'FG-1', qty: 3 },
-  ])[0];
-  const out = spreadAllocation(group, [
-    { zoneId: 'Z1', qty: 5 }, { zoneId: 'Z2', qty: 6 }, { zoneId: 'Z3', qty: 2 },
-  ]);
-  assert.deepEqual(out.map((r) => [r.salesOrderLineId, r.zoneId, r.packageQty]), [
-    ['L1', 'Z1', 5],
-    ['L1', 'Z2', 5],
-    ['L2', 'Z2', 1],   // ล้นจากบรรทัดแรกไปบรรทัดถัดไปเอง
-    ['L2', 'Z3', 2],
-  ]);
-  assert.equal(out.reduce((s, r) => s + r.packageQty, 0), 13, 'รวมแล้วต้องเท่าของทั้งกลุ่ม');
-});
-
-test('ไม่ระบุจำนวน = ยกที่เหลือทั้งกลุ่มลงโซนนั้น', () => {
-  const group = fgSummary([{ id: 'L1', fgCode: 'FG-1', qty: 4 }])[0];
-  const out = spreadAllocation(group, [{ zoneId: 'Z1' }]);
-  assert.deepEqual(out.map((r) => r.packageQty), [4]);
-});
-
 test('ของที่จัดสรรไปแล้วรอบก่อนไม่ถูกนับซ้ำ', () => {
   const lines = [{ id: 'L1', fgCode: 'FG-1', qty: 10 }];
   const already = allocatedByLine([{ salesOrderLineId: 'L1', zoneId: 'Z0', packageQty: 7 }]);
-  const group = fgSummary(lines, already)[0];
-  assert.equal(group.remaining, 3);
-  const out = spreadAllocation(group, [{ zoneId: 'Z1' }], already);
-  assert.deepEqual(out.map((r) => r.packageQty), [3]);
-});
-
-test('โซนที่ยังไม่ได้เลือกถูกข้าม ไม่ใช่สร้างแถวเปล่า', () => {
-  const group = fgSummary([{ id: 'L1', fgCode: 'FG-1', qty: 5 }])[0];
-  assert.deepEqual(spreadAllocation(group, [{ zoneId: '', qty: 2 }]), []);
+  assert.equal(fgSummary(lines, already)[0].remaining, 3);
 });
 
 /* ── จุดติดตั้งของใบสั่งขายย้อนหลัง (mig 0360 · มติข้อ 8 + 17) ──────────────────────────
@@ -258,14 +198,4 @@ test('ไม่มีจุดติดตั้ง (ใบปกติ) = จ�
   assert.equal(rows[0].qty, 13);
   assert.equal(rows[0].lines.length, 2);
   assert.deepEqual(rows.map((g) => g.installationPoint), [null, null]);
-});
-
-test('กลุ่มของจุดเดียวบรรทัดเดียว — spreadAllocation ผูกบรรทัดนั้นตรง ๆ ไม่ข้ามไปกินจุดอื่น', () => {
-  const groups = fgSummary([
-    { id: 'L1', fgCode: 'FG-1', qty: 2, installationPoint: 'จุด A' },
-    { id: 'L2', fgCode: 'FG-1', qty: 2, installationPoint: 'จุด B' },
-  ]);
-  const pointB = groups.find((g) => g.installationPoint === 'จุด B');
-  const out = spreadAllocation(pointB, [{ zoneId: 'Z9' }]);
-  assert.deepEqual(out.map((r) => [r.salesOrderLineId, r.zoneId, r.packageQty]), [['L2', 'Z9', 2]]);
 });

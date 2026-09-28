@@ -118,3 +118,33 @@ test('🔴 ห้ามส่งคีย์ ctx ที่ตัวรับไ�
   const page = code('../../app/sales-planning/sales-orders/[id]/page.js');
   assert.doesNotMatch(page, /\{ project: order\?\.project \}/);
 });
+
+/* ══ mig 0391 (PR-A): แพ็คเกจที่ฝ่ายขายเลือกให้บรรทัดพิมพ์เอง — ด่านเงินขยายหลังประทับเท่านั้น ═══════════ */
+const manualPackage = { id: 'L3', fgCode: null, productId: null, serviceKind: 'package', serviceProductId: 'P1', serviceFgCode: 'FG-AAAA-02-001-00009' };
+const fnUser = { id: 'U1', role: 'finance', department: 'FN' };
+const uncoveredRow = { id: 'I1', seq: 1, status: 'reported', amount: 100, coversFrom: null, coversTo: null };
+const confirmGate = (o) => installmentActionError(uncoveredRow, 'confirm', fnUser, {
+  rows: [uncoveredRow], orderTotal: 100, serviceRounds: orderHasServiceRounds(o, o.lines),
+});
+
+test('🔴 บรรทัดพิมพ์เองแบบเก่า (ไม่มีแพ็คเกจที่เลือก) ยังไม่แคบ — ประทับแล้วก็ไม่แคบ', () => {
+  const o = order({ lines: [manualLine], serviceTermsOpenedAt: '2026-10-01T03:00:00Z' });
+  assert.equal(orderHasServiceRounds(o, o.lines), false);
+  assert.equal(confirmGate(o), null);
+});
+
+test('🔴 บรรทัดพิมพ์เองที่เลือกแพ็คเกจ 02-001: ร่าง/รอตรวจไม่แคบ (บัญชีรับรองได้เหมือนเดิม) · ประทับแล้วแคบ', () => {
+  const draft = order({ lines: [manualPackage], serviceTermsOpenedAt: null });
+  assert.equal(orderHasServiceRounds(draft, draft.lines), false);
+  assert.equal(confirmGate(draft), null, 'ตั้งค่างานบริการไม่ได้แปลว่าบัญชีต้องหยุดรับเงิน');
+  const stamped = order({ lines: [manualPackage], serviceTermsOpenedAt: '2026-10-01T03:00:00Z' });
+  assert.equal(orderHasServiceRounds(stamped, stamped.lines), true);
+  assert.match(confirmGate(stamped) || '', /ช่วงครอบบริการ/);
+});
+
+test('บรรทัด FG 02-001 แคบเหมือนเดิม ไม่ว่าใบจะประทับหรือยัง', () => {
+  for (const serviceTermsOpenedAt of [null, '2026-10-01T03:00:00Z']) {
+    const o = order({ lines: [pkgLine], serviceTermsOpenedAt });
+    assert.equal(orderHasServiceRounds(o, o.lines), true);
+  }
+});

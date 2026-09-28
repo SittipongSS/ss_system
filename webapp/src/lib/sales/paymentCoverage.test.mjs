@@ -319,3 +319,175 @@ test('ข้อมูลไม่ครบหรือช่วงสั้น�
   assert.deepEqual(splitCoverageEvenly({ startDate: '2026-09-01', endDate: '2027-08-31', count: 0 }), []);
   assert.deepEqual(splitCoverageEvenly(), []);
 });
+
+/* ══ ใบสั่งขายบริการตั้งค่ารายบรรทัด (mig 0391 · PR-A) ══════════════════════════════════════════
+   ช่วงครอบของงวดเทียบกับ "ช่วงบริการ" ของใบ — ช่องโหว่/เริ่มช้า/จบสั้น = บล็อกการยื่น · ซ้อน = เตือน
+   ปุ่ม "แบ่งช่วงครอบตามช่วงบริการ…" = พรีวิวก่อนเขียนเสมอ งวดที่บัญชีรับรองแล้วไม่ถูกแตะ */
+import {
+  pipelineCoverageIssues, splitCoverageByPeriod, wholeMonthsIn,
+} from './paymentCoverage.js';
+import { OPENING_INSTALLMENT_KIND } from './historicalOrders.js';
+
+const cov = (seq, from, to, over = {}) => ({ id: `I${seq}`, seq, status: 'pending', amount: 100, coversFrom: from, coversTo: to, ...over });
+const monthsOf = (n) => Array.from({ length: n }, (_, i) => cov(i + 1, null, null));
+
+test('wholeMonthsIn — นับเดือนเต็มแบบปฏิทิน + เศษวัน', () => {
+  assert.deepEqual(wholeMonthsIn('2026-10-01', '2027-09-30'), { months: 12, remainderDays: 0 });
+  assert.deepEqual(wholeMonthsIn('2026-09-02', '2027-09-25'), { months: 12, remainderDays: 24 });
+  assert.deepEqual(wholeMonthsIn('2026-10-01', '2026-10-20'), { months: 0, remainderDays: 20 });
+  assert.deepEqual(wholeMonthsIn('2026-01-31', '2026-02-28'), { months: 1, remainderDays: 0 });
+  assert.deepEqual(wholeMonthsIn('2026-10-01', null), { months: 0, remainderDays: 0 });
+  assert.deepEqual(wholeMonthsIn('2026-10-02', '2026-10-01'), { months: 0, remainderDays: 0 });
+});
+
+test('pipelineCoverageIssues — ต่อกันพอดีทั้งช่วง = ไม่มีอะไร', () => {
+  const rows = [cov(1, '2026-10-01', '2027-03-31'), cov(2, '2027-04-01', '2027-09-30')];
+  assert.deepEqual(pipelineCoverageIssues(rows, { from: '2026-10-01', to: '2027-09-30' }), { blocking: [], warnings: [] });
+});
+
+test('pipelineCoverageIssues — ช่องโหว่ / เริ่มช้า / จบสั้น บล็อก · ซ้อน เตือน (พร้อมงวดคู่ที่ซ้อน)', () => {
+  const period = { from: '2026-10-01', to: '2027-09-30' };
+  const gap = pipelineCoverageIssues([cov(1, '2026-10-01', '2027-02-28'), cov(2, '2027-04-01', '2027-09-30')], period);
+  assert.deepEqual(gap.blocking, [{ kind: 'gap', seq: 2, index: 1, since: '2027-03-01', until: '2027-03-31' }]);
+  assert.deepEqual(gap.warnings, []);
+
+  const start = pipelineCoverageIssues([cov(1, '2026-10-15', '2027-09-30')], period);
+  assert.deepEqual(start.blocking, [{ kind: 'start', seq: 1, index: 0, since: '2026-10-01', until: '2026-10-14' }]);
+
+  const end = pipelineCoverageIssues([cov(1, '2026-10-01', '2027-08-31')], period);
+  assert.deepEqual(end.blocking, [{ kind: 'end', seq: 1, index: 0, since: '2027-09-01', until: '2027-09-30' }]);
+
+  const overlap = pipelineCoverageIssues([cov(1, '2026-10-01', '2027-04-15'), cov(2, '2027-04-01', '2027-09-30')], period);
+  assert.deepEqual(overlap.blocking, []);
+  assert.deepEqual(overlap.warnings, [{
+    kind: 'overlap', seq: 2, index: 1, since: '2027-04-01', until: '2027-04-15', prevSeq: 1, prevIndex: 0,
+  }]);
+});
+
+test('pipelineCoverageIssues — ไม่คืน "missing" (ผู้เรียกคัดแถวที่มีช่วงครอบมาเอง) · ไม่มีช่วงบริการ = ไม่ตัดสิน', () => {
+  assert.deepEqual(pipelineCoverageIssues([], { from: '2026-10-01', to: '2027-09-30' }), { blocking: [], warnings: [] });
+  assert.deepEqual(pipelineCoverageIssues([cov(1, '2026-10-01', '2027-09-30')], null), { blocking: [], warnings: [] });
+  // แถวครึ่งช่วงหลุดมา = ไม่นับ (ไม่พาช่องโหว่ปลอมมาด้วย)
+  const half = pipelineCoverageIssues([cov(1, '2026-10-01', '2027-09-30'), cov(2, '2027-01-01', null)],
+    { from: '2026-10-01', to: '2027-09-30' });
+  assert.deepEqual(half, { blocking: [], warnings: [] });
+});
+
+test('splitCoverageByPeriod — 12 งวด เท่ากันรายเดือน ตรงเดือนปฏิทิน', () => {
+  const rows = monthsOf(12);
+  const { rows: out, error } = splitCoverageByPeriod({ from: '2026-10-01', to: '2027-09-30' }, rows, 'monthly');
+  assert.equal(error, null);
+  assert.equal(out.length, 12);
+  assert.deepEqual(out[0], { id: 'I1', seq: 1, coversFrom: '2026-10-01', coversTo: '2026-10-31', prevFrom: null, prevTo: null, share: 1 / 12 });
+  assert.equal(out[1].coversFrom, '2026-11-01');
+  assert.equal(out[1].coversTo, '2026-11-30');
+  assert.equal(out[11].coversFrom, '2027-09-01');
+  assert.equal(out[11].coversTo, '2027-09-30');
+});
+
+test('splitCoverageByPeriod — ตามสัดส่วนงวด 50/50 บน 2 งวด = 6+6 เดือน', () => {
+  const rows = [cov(1, null, null, { amount: 500 }), cov(2, null, null, { amount: 500 })];
+  const { rows: out, error } = splitCoverageByPeriod({ from: '2026-10-01', to: '2027-09-30' }, rows, 'proportional');
+  assert.equal(error, null);
+  assert.deepEqual(out.map((r) => [r.coversFrom, r.coversTo, r.share]), [
+    ['2026-10-01', '2027-03-31', 0.5],
+    ['2027-04-01', '2027-09-30', 0.5],
+  ]);
+  // monthly บน 12 งวดเท่ากับ proportional บน 12 งวดยอดเท่ากัน
+  const twelve = monthsOf(12);
+  const a = splitCoverageByPeriod({ from: '2026-10-01', to: '2027-09-30' }, twelve, 'monthly').rows;
+  const b = splitCoverageByPeriod({ from: '2026-10-01', to: '2027-09-30' }, twelve, 'proportional').rows;
+  assert.deepEqual(a.map((r) => [r.coversFrom, r.coversTo]), b.map((r) => [r.coversFrom, r.coversTo]));
+});
+
+test('splitCoverageByPeriod — สัดส่วนไม่เท่า: เศษมากสุดได้เดือนเพิ่ม · ทุกงวด ≥ 1 เดือน · รวม = เดือนของช่วง', () => {
+  const rows = [cov(1, null, null, { amount: 7000 }), cov(2, null, null, { amount: 2000 }), cov(3, null, null, { amount: 1000 })];
+  const { rows: out, error } = splitCoverageByPeriod({ from: '2026-10-01', to: '2027-09-30' }, rows, 'proportional');
+  assert.equal(error, null);
+  // 12 × 0.7 = 8.4 · 12 × 0.2 = 2.4 · 12 × 0.1 = 1.2 ⇒ 8 + 2 + 1 = 11 · เศษมากสุด (0.4 งวดแรก) ได้เพิ่ม ⇒ 9 + 2 + 1
+  assert.deepEqual(out.map((r) => [r.coversFrom, r.coversTo]), [
+    ['2026-10-01', '2027-06-30'],
+    ['2027-07-01', '2027-08-31'],
+    ['2027-09-01', '2027-09-30'],
+  ]);
+  // งวดยอดจิ๋วยังได้อย่างน้อย 1 เดือน
+  const tiny = [cov(1, null, null, { amount: 9999 }), cov(2, null, null, { amount: 1 })];
+  const t = splitCoverageByPeriod({ from: '2026-10-01', to: '2027-09-30' }, tiny, 'proportional').rows;
+  assert.deepEqual(t.map((r) => r.coversTo), ['2027-08-31', '2027-09-30']);
+});
+
+test('splitCoverageByPeriod — ช่วงไม่ครบเดือน: งวดสุดท้ายยืดไปถึงวันสิ้นสุดบริการ', () => {
+  const { rows: out, error } = splitCoverageByPeriod({ from: '2026-09-02', to: '2027-09-25' }, monthsOf(12), 'monthly');
+  assert.equal(error, null);
+  assert.equal(out[0].coversFrom, '2026-09-02');
+  assert.equal(out[0].coversTo, '2026-10-01');
+  assert.equal(out[11].coversFrom, '2027-08-02');
+  assert.equal(out[11].coversTo, '2027-09-25');
+});
+
+test('splitCoverageByPeriod — 5 งวดบน 12 เดือน หารไม่ลงตัว = บอกให้กรอกเอง (ไม่เดา)', () => {
+  const r = splitCoverageByPeriod({ from: '2026-10-01', to: '2027-09-30' }, monthsOf(5), 'monthly');
+  assert.deepEqual(r, { rows: [], error: 'แบ่งอัตโนมัติไม่ลงตัว — กรอกช่วงครอบรายงวดเอง' });
+  // สัดส่วน: งวดมากกว่าเดือน = ให้ทุกงวด ≥ 1 เดือนไม่ได้
+  const many = splitCoverageByPeriod({ from: '2026-10-01', to: '2026-12-31' }, monthsOf(5), 'proportional');
+  assert.equal(many.error, 'แบ่งอัตโนมัติไม่ลงตัว — กรอกช่วงครอบรายงวดเอง');
+});
+
+test('splitCoverageByPeriod — งวดแรกบัญชีรับรองแล้วพร้อมช่วงครอบ: ไม่แตะ แล้วเริ่มแบ่งถัดจากวันสิ้นสุดของงวดนั้น', () => {
+  const rows = [
+    cov(1, '2026-10-01', '2026-12-31', { status: 'confirmed' }),
+    cov(2, null, null), cov(3, null, null), cov(4, null, null),
+  ];
+  const { rows: out, error } = splitCoverageByPeriod({ from: '2026-10-01', to: '2027-09-30' }, rows, 'monthly');
+  assert.equal(error, null);
+  assert.deepEqual(out.map((r) => r.id), ['I2', 'I3', 'I4']);
+  assert.deepEqual(out.map((r) => [r.coversFrom, r.coversTo]), [
+    ['2027-01-01', '2027-03-31'],
+    ['2027-04-01', '2027-06-30'],
+    ['2027-07-01', '2027-09-30'],
+  ]);
+});
+
+test('splitCoverageByPeriod — เดินบนตารางเดือนของวันเริ่มบริการ แม้เริ่มต่อจากงวดที่รับรองแล้ว (วันที่ 31)', () => {
+  const rows = [cov(1, '2026-01-31', '2026-02-28', { status: 'confirmed' }), cov(2, null, null), cov(3, null, null)];
+  const { rows: out, error } = splitCoverageByPeriod({ from: '2026-01-31', to: '2026-04-30' }, rows, 'monthly');
+  assert.equal(error, null);
+  assert.deepEqual(out.map((r) => [r.coversFrom, r.coversTo]), [
+    ['2026-03-01', '2026-03-30'],
+    ['2026-03-31', '2026-04-30'],
+  ]);
+});
+
+test('splitCoverageByPeriod — งวดที่รับรองแล้วไม่มีช่วงครอบ หรืออยู่หลังงวดที่ยังไม่รับรอง = แบ่งเองไม่ได้', () => {
+  const period = { from: '2026-10-01', to: '2027-09-30' };
+  const noCover = [cov(1, null, null, { status: 'confirmed' }), cov(2, null, null)];
+  assert.equal(splitCoverageByPeriod(period, noCover, 'monthly').error, 'แบ่งอัตโนมัติไม่ลงตัว — กรอกช่วงครอบรายงวดเอง');
+  const after = [cov(1, null, null), cov(2, '2026-10-01', '2027-03-31', { status: 'confirmed' })];
+  assert.equal(splitCoverageByPeriod(period, after, 'monthly').error, 'แบ่งอัตโนมัติไม่ลงตัว — กรอกช่วงครอบรายงวดเอง');
+});
+
+test('splitCoverageByPeriod — ไม่มีช่วงบริการ / ไม่มีงวดให้แบ่ง / งวดคืนเงินแล้วไม่นับ / เก็บช่วงเดิมไว้ให้พรีวิว', () => {
+  assert.deepEqual(splitCoverageByPeriod(null, monthsOf(2), 'monthly'), { rows: [], error: 'ใส่ช่วงบริการก่อน' });
+  assert.equal(splitCoverageByPeriod({ from: '2026-10-01', to: null }, monthsOf(2), 'monthly').error, 'ใส่ช่วงบริการก่อน');
+  const period = { from: '2026-10-01', to: '2027-09-30' };
+  assert.deepEqual(splitCoverageByPeriod(period, [], 'monthly'), { rows: [], error: 'ไม่มีงวดที่ยังไม่รับรองให้แบ่ง' });
+  assert.equal(splitCoverageByPeriod(period, [cov(1, '2026-10-01', '2027-09-30', { status: 'confirmed' })], 'monthly').error,
+    'ไม่มีงวดที่ยังไม่รับรองให้แบ่ง');
+  const withRefund = [cov(1, null, null), cov(2, null, null, { refundedAt: '2026-10-05T03:00:00Z' }), cov(3, '2026-10-01', '2026-10-31')];
+  const { rows: out, error } = splitCoverageByPeriod(period, withRefund, 'monthly');
+  assert.equal(error, null);
+  assert.deepEqual(out.map((r) => [r.id, r.prevFrom, r.prevTo, r.coversFrom, r.coversTo]), [
+    ['I1', null, null, '2026-10-01', '2027-03-31'],
+    ['I3', '2026-10-01', '2026-10-31', '2027-04-01', '2027-09-30'],
+  ]);
+  assert.equal(splitCoverageByPeriod(period, monthsOf(2), 'weekly').error, 'แบ่งอัตโนมัติไม่ลงตัว — กรอกช่วงครอบรายงวดเอง');
+  // งวดยกมา (ใบย้อนหลัง) ไม่ใช่งวดให้แบ่ง
+  const withOpening = [cov(1, null, null, { kind: OPENING_INSTALLMENT_KIND }), cov(2, null, null)];
+  assert.deepEqual(splitCoverageByPeriod(period, withOpening, 'monthly').rows.map((r) => r.id), ['I2']);
+});
+
+test('splitCoverageByPeriod — งวดเดียว = ครอบทั้งช่วงที่เหลือ แม้ช่วงสั้นกว่าหนึ่งเดือน', () => {
+  const { rows: out, error } = splitCoverageByPeriod({ from: '2026-10-01', to: '2026-10-20' }, monthsOf(1), 'monthly');
+  assert.equal(error, null);
+  assert.deepEqual(out.map((r) => [r.coversFrom, r.coversTo]), [['2026-10-01', '2026-10-20']]);
+});

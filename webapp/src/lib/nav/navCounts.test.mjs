@@ -231,9 +231,10 @@ test('ป้ายใบสั่งขาย: เลนอนุมัติพ
   assert.ok(job.length > 100, 'หาก้อนตัวนับใบสั่งขายไม่เจอ');
   assert.match(job, /\.select\('id, status, createdBy, submittedBy, origin'\)\s*\.in\('status', \['pending_approval', 'rejected'\]\)/);
   assert.match(job, /fetchAllResult\(\(\) => historicalRowsOnly\(supabase\.from\('sales_orders'\)\.select\('id, status, createdBy, origin'\)\)\s*\.eq\('status', 'draft'\)\.eq\('createdBy', user\.id\)\.order\('id', \{ ascending: true \}\)\)/);
-  assert.match(job, /isSalesOrderWaitingOnMe\(row, \{ userId: user\.id, reviewer, role: user\.role \}\)/);
+  // ⭐ helper ตัวเดียวกับทะเบียน (salesOrderIdsWaitingOnMe → isSalesOrderWaitingOnMe) ได้ role ไปด้วยเสมอ
+  assert.match(job, /const waitingOptions = \{ userId: user\.id, reviewer, role: user\.role \};/);
   // error ของเลนร่างต้องโยน ไม่ใช่กลืนเป็น [] (ป้ายนับขาดเงียบ)
-  assert.match(job, /if \(approvalError \|\| draftError \|\| revokedError \|\| financeError\) throw/);
+  assert.match(job, /if \(approvalError \|\| draftError \|\| revokedError \|\| reviewError \|\| backfillError \|\| financeError\) \{\s*throw/);
   // literal ของ origin มีบ้านเดียว — ห้ามกรองเองในไฟล์นี้
   assert.doesNotMatch(code, /\.eq\(\s*['"]origin['"]/);
 });
@@ -258,7 +259,7 @@ test('ป้ายใบสั่งขาย: เลนย้อนการอ
   const job = code.slice(code.indexOf("attempt('salesOrders'"), code.indexOf("attempt('projectCloses'"));
   // ⭐ ใบย้อนหลังย้อนอนุมัติไม่ได้ (CHECK 0374) — กรอง pipeline ผ่านตัวกลางตัวเดียว (literal ของ origin มีบ้านเดียว)
   assert.match(job, /pipelineRowsOnly\(supabase\.from\('sales_orders'\)\.select\('id, status, createdBy, origin, deal:sales_deals\(ownerId\)'\)\)\s*\.eq\('status', 'approval_revoked'\)/);
-  assert.match(job, /if \(approvalError \|\| draftError \|\| revokedError \|\| financeError\) throw/);
+  assert.match(job, /if \(approvalError \|\| draftError \|\| revokedError \|\| reviewError \|\| backfillError \|\| financeError\) \{\s*throw/);
   assert.match(job, /\.\.\.\(revokedRows \|\| \[\]\)/);
 });
 
@@ -287,35 +288,106 @@ test('ป้ายสัญญา: select พก metadata ให้ตัวต�
   assert.match(job, /\.from\('sales_contracts'\)\s*\.select\('id, status, source, metadata, /);
 });
 
-// ── ป้ายงานเข้าใหม่ของ TS: ถังผูกโซน + ถังตั้งรอบ (มติ 22/09 · mig 0374) ────────────────────
-/* 🐞 ใบสั่งขายย้อนหลังเลือกโซนจากทะเบียนตอนคีย์ และรอบขายเกิดตอน AE Sup อนุมัติ ⇒ ไม่เคยผ่านถังผูกโซน
-   ป้ายที่นับถังเดียว = ใบย้อนหลังมาถึง TS โดยไม่มีสัญญาณอะไรเลย (ถังตั้งรอบไม่มีป้าย)
+// ── ป้ายงานเข้าใหม่ของ TS: ถังตั้งรอบถังเดียว (mig 0391 · D14 — ถังผูกโซนถอดแล้ว) ────────────────────
+/* 🐞 ใบสั่งขายย้อนหลังเลือกโซนจากทะเบียนตอนคีย์ และรอบขายเกิดตอน AE Sup อนุมัติ ⇒ มาที่ถังตั้งรอบตรง ๆ (มติ 22/09)
+   🔄 0391: TS ไม่ผูกโซนอีก (ฝ่ายขายตั้งงานบริการที่ใบสั่งขาย · รอบขายเกิดตอนอนุมัติ) ⇒ ป้าย = ถัง "รอตั้งรอบ" ถังเดียว
+      แท็บ "รอฝ่ายขายตั้งงานบริการ (ใบเดิม)" เป็นของดูอย่างเดียว ไม่นับ · "ครบรอบยังไม่มีนัด" ไม่นับ (แพงเกินทุก 2 นาที · [owner])
    ⚠️ โซน/รอบต้องไล่หน้า (เพดาน 1,000 แถว) · error ต้องโยนผ่าน mustData ไม่ใช่กลืนเป็นชุดว่าง */
-test('ป้ายงานเข้าใหม่: นับ bind + plan · อ่านโซน/รอบแบบไล่หน้าและไม่กลืน error', () => {
+test('ป้ายงานเข้าใหม่: นับถังตั้งรอบเท่านั้น · อ่านโซน/รอบแบบไล่หน้าและไม่กลืน error · ไม่มี bindQueue', () => {
   const route = readFileSync(new URL('../../app/api/nav/counts/route.js', import.meta.url), 'utf8');
   const code = route.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
   const job = code.slice(code.indexOf("attempt('serviceIntake'"), code.indexOf("attempt('payments'"));
   assert.ok(job.length > 100, 'หาก้อนตัวนับงานเข้าใหม่ไม่เจอ');
-  assert.match(code, /import \{ bindQueue, planQueue \} from '@\/lib\/service\/intake';/);
+  assert.match(code, /import \{ planQueue \} from '@\/lib\/service\/intake';/);
+  assert.doesNotMatch(code, /bindQueue/, 'ถังผูกโซนถอดแล้ว (D14) — ห้ามมีที่ไหนในไฟล์');
   assert.match(job, /fetchAllResult\(\(\) => supabase\.from\('service_zones'\)\.select\('id, "siteId", "isActive"'\)\s*\.order\('id', \{ ascending: true \}\)\)\.then\(mustData\)/);
   assert.match(job, /fetchAllResult\(\(\) => supabase\.from\('service_plans'\)\.select\('id, "siteId", "salesOrderId", "isActive"'\)\s*\.order\('id', \{ ascending: true \}\)\)\.then\(mustData\)/);
   // โซนต้องเป็นทุกโซน (หน้าคิวใช้ loadAllZones) — กรองที่ query แล้วป้ายนับไม่ตรงแท็บ
   assert.doesNotMatch(job, /from\('service_zones'\)[^;]*\.eq\(/);
+  // ถังผูกโซนเคยต้องการบรรทัด/โครงการ/ดีล — ตัวนับเหลือไม่ต้องอ่านแล้ว (ยิงทุก 2 นาที)
+  assert.doesNotMatch(job, /from\('sales_order_lines'\)|from\('projects'\)|from\('sales_deals'\)/);
   assert.match(job, /const plan = planQueue\(\{\s*zones, terms, plans,/);
-  assert.match(job, /return bind\.rows\.length \+ plan\.length;/);
+  assert.match(job, /return plan\.length;/);
 });
 
 test('ตัวตัดสินของป้ายงานเข้าใหม่: ใบย้อนหลังที่ผูกโซนตอนอนุมัติแล้วนับที่ถังตั้งรอบ · มีรอบแล้วไม่นับ', async () => {
-  const { bindQueue, planQueue } = await import('../service/intake.js');
+  const { planQueue } = await import('../service/intake.js');
   // คอลัมน์ผอมชุดเดียวกับที่ตัวนับเลือก (ไม่มี origin · ไม่มียอด)
-  const orders = [{ id: 'SOH', status: 'approved', supersededById: null, projectId: null, dealId: 'DL-S', orderNumber: 'SO-26090051-0' }];
-  const lines = [{ id: 'L1', salesOrderId: 'SOH', qty: 6 }];
+  const orders = [{ id: 'SOH', status: 'approved', supersededById: null, orderNumber: 'SO-26090051-0' }];
   const terms = [{ id: 'T1', zoneId: 'Z1', salesOrderId: 'SOH', salesOrderLineId: 'L1', packageQty: 6 }];
   const zones = [{ id: 'Z1', siteId: 'S1', isActive: true }];
-  const bind = bindQueue({ orders, lines, terms, dealsById: new Map([['DL-S', { id: 'DL-S', line: 'SERVICE' }]]) });
-  assert.equal(bind.rows.length, 0, 'ผูกครบตอนอนุมัติ = ไม่อยู่ถังผูกโซน');
   const ordersById = new Map(orders.map((o) => [o.id, o]));
   assert.equal(planQueue({ zones, terms, plans: [], ordersById, todayIso: '2026-09-23' }).length, 1);
   const plans = [{ id: 'PL1', siteId: 'S1', salesOrderId: 'SOH', isActive: true }];
   assert.equal(planQueue({ zones, terms, plans, ordersById, todayIso: '2026-09-23' }).length, 0, 'ตั้งรอบแล้วหลุดจากป้าย');
+});
+
+// ── ป้ายใบสั่งขาย: เลนงานบริการย้อนหลัง (mig 0391 · D26 · D28) ─────────────────────────────────────────
+/* ⭐ สองเลนใหม่: ผู้จัดการตรวจ (ยื่นแล้ว) + เจ้าของดีลตั้ง (อนุมัติแล้ว ยังไม่ประทับ) · ทั้งคู่ผ่าน pipelineRowsOnly และโยน error
+   ⭐ เลนเจ้าของดีลฝังโครงการ/ดีลพร้อม id (ตัวตัดสินสายธุรกิจหาแถวด้วย id) · โหลดบรรทัดเฉพาะใบสาย SERVICE แบบซอย + ไล่หน้า
+   ⚠️ ป้าย = จำนวน **ใบไม่ซ้ำ** ข้ามทุกเลน (รวมเลนบัญชี) — ห้ามบวกความยาวของเลน */
+test('ป้ายใบสั่งขาย: เลนผู้จัดการตรวจ + เลนเจ้าของดีลตั้งงานบริการ พกคอลัมน์ที่ตัวตัดสินอ่าน · นับใบไม่ซ้ำ', () => {
+  const route = readFileSync(new URL('../../app/api/nav/counts/route.js', import.meta.url), 'utf8');
+  const code = route.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+  const job = code.slice(code.indexOf("attempt('salesOrders'"), code.indexOf("attempt('projectCloses'"));
+  /* เลนผู้ตรวจฝังโครงการ/ดีล (พร้อม id) ให้ตัวตัดสินสายธุรกิจ — สายเปลี่ยนระหว่างรอตรวจ = ไม่นับ (F1: RPC อนุมัติปฏิเสธ · หน้าใบไม่มีปุ่ม) */
+  assert.match(job, /const reviewLane = can\(user\.role, 'salesplan:view'\) && reviewer\s*\? fetchAllResult\(\(\) => pipelineRowsOnly\(supabase\.from\('sales_orders'\)\.select\('id, status, origin, "projectId", "dealId", "supersededById", "serviceTermsOpenedAt", "serviceSetupState", "serviceSetupSubmittedById", project:projects\(id, line\), deal:sales_deals\(id, line\)'\)\)\s*\.eq\('status', 'approved'\)\.eq\('serviceSetupState', 'submitted'\)\.is\('supersededById', null\)\.is\('serviceTermsOpenedAt', null\)/);
+  assert.match(job, /\.\.\.\(reviewRows \|\| \[\]\)\.filter\(\(row\) => orderBusinessLineOf\(row\) === 'SERVICE'\)/);
+  assert.match(job, /const backfillLane = can\(user\.role, 'salesplan:view'\)\s*\? fetchAllResult\(\(\) => pipelineRowsOnly\(supabase\.from\('sales_orders'\)\.select\('[^']*project:projects\(id, line\), deal:sales_deals!inner\(id, ownerId, line\)'\)\)\s*\.eq\('status', 'approved'\)\.is\('serviceTermsOpenedAt', null\)\.is\('supersededById', null\)\.eq\('deal\.ownerId', user\.id\)/);
+  const backfillSelect = job.match(/const backfillLane[\s\S]*?\.select\('([^']*)'\)/)[1];
+  for (const column of ['status', 'origin', '"projectId"', '"dealId"', '"supersededById"', '"serviceTermsOpenedAt"', '"serviceSetupState"']) {
+    assert.ok(backfillSelect.includes(column), `เลนเจ้าของดีลขาด ${column}`);
+  }
+  // สายธุรกิจตัดใน JS ด้วยตัวตัดสินกลาง แล้วค่อยโหลดบรรทัดเฉพาะใบสาย SERVICE (ซอยก้อน + ไล่หน้า + โยน error)
+  assert.match(job, /\.filter\(\(row\) => orderBusinessLineOf\(row\) === 'SERVICE'\)/);
+  assert.match(job, /fetchInChunks\(orderIds, \(chunk\) => fetchAllResult\(\(\) => supabase\.from\('sales_order_lines'\)\s*\.select\('[^']*"serviceKind"[^']*categoryCode:metadata->>categoryCode'\)\s*\.in\('salesOrderId', chunk\)/);
+  assert.match(job, /if \(backfillLineError\) throw backfillLineError;/);
+  assert.match(job, /backfillNeeded: \(row\) => serviceBackfillNeeded\(row, backfillLinesByOrder\.get\(row\.id\) \|\| \[\]\)/);
+  // นับใบไม่ซ้ำ — ไม่มีการบวกความยาวเลนเหลืออยู่
+  assert.match(job, /salesOrderIdsWaitingOnMe\(lanes, waitingOptions\)\.size/);
+  assert.match(job, /financeWaiting: \(row\) => awaitsFinanceReview\(row, byOrder\.get\(row\.id\) \|\| \[\]\)/);
+  assert.doesNotMatch(job, /return waiting\s*\+|\.length\s*\+\s*financeRows/);
+  // literal ของ origin มีบ้านเดียว — ห้ามกรองเองในไฟล์นี้ · สถานะตั้งย้อนหลังอ่านผ่านตัวตัดสินเท่านั้น (query แค่ทำให้แคบ)
+  assert.doesNotMatch(code, /\.eq\(\s*['"]origin['"]/);
+  assert.doesNotMatch(job, /serviceSetupState\s*[!=]==/);
+});
+
+test('ตัวตัดสินของป้าย: ใบที่ย้อนอนุมัติแล้วแต่ค่า submitted ค้าง ไม่นับในเลนผู้จัดการ (D28)', async () => {
+  const { salesOrderIdsWaitingOnMe } = await import('../sales/salesOrderWorkflow.js');
+  const sup = { userId: 'U-SUP', reviewer: true, role: 'ae_supervisor' };
+  const submitted = {
+    id: 'SO-R', status: 'approved', origin: 'pipeline', supersededById: null, serviceTermsOpenedAt: null,
+    serviceSetupState: 'submitted', serviceSetupSubmittedById: 'U-AE',
+  };
+  assert.equal(salesOrderIdsWaitingOnMe({ rows: [submitted] }, sup).size, 1);
+  assert.equal(salesOrderIdsWaitingOnMe({ rows: [{ ...submitted, status: 'approval_revoked' }] }, sup).size, 0,
+    'ค่าค้างบนใบที่ย้อนอนุมัติแล้วไม่ใช่งานของผู้จัดการ (เลนย้อนอนุมัติเป็นของเจ้าของดีล)');
+  assert.equal(salesOrderIdsWaitingOnMe({ rows: [{ ...submitted, supersededById: 'SO-R-1' }] }, sup).size, 0);
+  assert.equal(salesOrderIdsWaitingOnMe({ rows: [{ ...submitted, serviceTermsOpenedAt: '2026-09-28T01:00:00Z' }] }, sup).size, 0);
+});
+
+test('⭐ นับใบไม่ซ้ำ: admin ที่เป็นทั้งเจ้าของดีล ผู้ตรวจ และอยู่เลนบัญชีของใบเดียวกัน = 1', async () => {
+  const { salesOrderIdsWaitingOnMe } = await import('../sales/salesOrderWorkflow.js');
+  const admin = { userId: 'U-ADM', reviewer: true, role: 'admin' };
+  const order = {
+    id: 'SO-X', status: 'approved', origin: 'pipeline', supersededById: null, serviceTermsOpenedAt: null,
+    serviceSetupState: 'submitted', serviceSetupSubmittedById: 'U-ADM', totalAmount: 1000, financeStatus: 'pending',
+    deal: { id: 'DL-1', ownerId: 'U-ADM', line: 'SERVICE' },
+  };
+  const ids = salesOrderIdsWaitingOnMe({
+    rows: [order],                                   // เลนผู้จัดการตรวจ (admin นับใบที่ตัวเองยื่น — Admin Override)
+    backfillRows: [order],                           // เลนเจ้าของดีล (แถวเดียวกันจากอีก query)
+    backfillNeeded: () => true,
+    financeRows: [order],                            // เลนบัญชี
+    financeWaiting: () => true,
+  }, admin);
+  assert.equal(ids.size, 1);
+  assert.deepEqual([...ids], ['SO-X']);
+  // เจ้าของดีลที่ยังไม่ยื่น (ตีกลับแล้ว) + บัญชี ของใบเดียวกัน ก็ยังเป็น 1
+  const rejected = { ...order, serviceSetupState: 'rejected' };
+  assert.equal(salesOrderIdsWaitingOnMe({
+    backfillRows: [rejected], backfillNeeded: () => true, financeRows: [rejected], financeWaiting: () => true,
+  }, admin).size, 1);
+  // ไม่มีเลนไหนรับ = 0 · เลนบัญชีที่ยังไม่พร้อมไม่นับ
+  assert.equal(salesOrderIdsWaitingOnMe({ financeRows: [order], financeWaiting: () => false }, { userId: 'U-FN' }).size, 0);
 });

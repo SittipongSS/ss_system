@@ -31,9 +31,11 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
 
   try {
     const todayIso = businessDate();
+    /* ⭐ mig 0391: ชนิด/แพ็คเกจที่ฝ่ายขายเลือก + หมวด (metadata #1844) — ใบที่ประทับแล้วถาม "มีแพ็คเกจไหม" ผ่าน
+       `serviceFgCode` (ตัวตัดสิน `hasServicePackageLine` อ่านช่องนี้เมื่อใบประทับ) · `productId` ให้ตัวตัดสินรู้ว่าเป็นบรรทัด FG */
     const { data: lines, error: lineError } = await supabase
       .from('sales_order_lines')
-      .select('id, "fgCode", description, qty, unit, "sortOrder", "serviceRounds"')
+      .select('id, "fgCode", "productId", description, qty, unit, "sortOrder", metadata, "serviceKind", "serviceProductId", "serviceFgCode", "serviceRounds"')
       .eq('salesOrderId', id).order('sortOrder', { ascending: true });
     if (lineError) return fail(lineError.message, 500);
 

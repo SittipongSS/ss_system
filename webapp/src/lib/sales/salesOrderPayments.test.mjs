@@ -1270,13 +1270,15 @@ test('โมดัลย้อนการอนุมัติ: เงินร
   assert.deepEqual(salesOrderMoneyOutcome(APPROVED_SO, [], 'revoke'), []);
 });
 
-test('โมดัลย้อนการอนุมัติ: ใบที่บัญชีปิดแล้ว (มติ D2) · ใบบริการ (ด่านนัดช่าง + ผูกโซนใหม่)', () => {
+test('โมดัลย้อนการอนุมัติ: ใบที่บัญชีปิดแล้ว (มติ D2) · ใบบริการ (ด่านนัดช่าง + ยกงานบริการไปใบ Rev.)', () => {
   const closed = salesOrderMoneyOutcome({ ...APPROVED_SO, financeStatus: 'approved' },
     MONEY_ROWS.map((r) => ({ ...r, status: 'confirmed' })), 'revoke');
   assert.ok(closed.includes('บัญชีปิดใบนี้แล้ว — ใบ Rev. จะกลับเข้าคิวให้บัญชีปิดใหม่'));
   assert.ok(!closed.some((l) => l.startsWith('สลิปรอบัญชีตรวจ')), 'ไม่มีงวดรอตรวจ = ไม่พูด');
   const service = salesOrderMoneyOutcome(APPROVED_SO, [], 'revoke', { serviceRounds: true });
-  assert.deepEqual(service, ['ระหว่างรอ Rev. อนุมัติ ด่านเงินของนัดช่างปิด และต้องผูกโซนกับใบ Rev. ใหม่']);
+  // mig 0391: ใบ Rev. ยกงานบริการ (แพ็คเกจ/โซน/แพ็ค/รอบ/ช่วงบริการ) ไปให้เอง — ไม่มีขั้น "ผูกโซนใหม่" ของ TS อีก
+  assert.deepEqual(service, ['ระหว่างรอ Rev. อนุมัติ นัดบริการของโซนในใบนี้ติดด่าน · ใบ Rev. คัดลอกแพ็คเกจ/โซน/แพ็ค/รอบ/ช่วงบริการไปให้ แก้ได้ก่อนยื่น · อนุมัติ Rev. แล้วรอบบริการของไซต์ที่ยังอยู่ย้ายตามไป']);
+  assert.ok(!service[0].includes('ผูกโซน'));
 });
 
 test('โมดัลออก Rev.: บอกว่างวดทั้งชุดย้ายไป (แยกยอดรับแล้ว/รอตรวจ/รอชำระ) · ใบที่ไม่มีงวด = ไม่พูด', () => {

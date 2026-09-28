@@ -1,0 +1,88 @@
+/* ── แผงแดง "ยื่นอนุมัติไม่ได้ — ยังขาด k ข้อ" (ม็อก SoSubmitBlocked) — ขึ้นหลังกดยื่นเท่านั้น ───────────────────
+   กล่องแดงคือ StatusNotice กลาง · ไฟล์นี้จัดข้างใน: คำอธิบาย · เวลาที่ตรวจ · กลุ่มตามแท็บ · แถวละข้อ + "ไปแก้" */
+
+.subtitle {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+}
+
+.checkedAt {
+  margin: var(--space-0-5) 0 0;
+  color: var(--text-3);
+  font-size: var(--fs-4);
+}
+
+.groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-2-5);
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.groupHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--text);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-bold);
+}
+
+.groupCount {
+  color: var(--red);
+  font-size: var(--fs-4);
+  font-weight: var(--fw-semibold);
+}
+
+/* กลุ่มที่มีแต่คำเตือน (ไม่บล็อก) — สีกลาง ไม่ใช่แดง */
+.groupWarnCount {
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  font-weight: var(--fw-semibold);
+}
+
+.items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-1-5) var(--space-2-5);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--red) 6%, var(--panel-solid));
+  color: var(--text);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+}
+
+/* คำเตือน — เทา ไม่บล็อก */
+.item[data-kind="warning"] {
+  background: color-mix(in srgb, var(--text-3) 8%, var(--panel-solid));
+  color: var(--text-2);
+}
+
+.itemText {
+  min-width: 0;
+  flex: 1;
+}
+
+.itemText b {
+  font-weight: var(--fw-bold);
+}

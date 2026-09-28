@@ -4,7 +4,10 @@
 // ใบสั่งขายมาถึงฝ่าย TS · และรูที่สอง 25 จุดที่ยังวิ่งอยู่ทั้งที่รอบจบไปแล้ว
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { bindQueue, bindTargetError, intakeCounts, orderBusinessLine, orderReadiness, orderReceivable, planQueue, visitQueue } from './intake.js';
+import {
+  INTAKE_TABS, INTAKE_TAB_HINTS, INTAKE_TAB_LABELS,
+  bindTargetError, intakeCounts, orderBusinessLine, orderReadiness, orderReceivable, planQueue, planRoundsSoldText, visitQueue,
+} from './intake.js';
 import { isLiveVisit } from './visitStatus.js';
 import { ORIGIN_HISTORICAL, ORIGIN_PIPELINE } from '../sales/historicalOrders.js';
 
@@ -36,57 +39,6 @@ test('รับได้เฉพาะใบที่อนุมัติแ�
   assert.equal(orderReceivable(so()), true);
   assert.equal(orderReceivable(so({ status: 'submitted' })), false);
   assert.equal(orderReceivable(so({ supersededById: 'SO2' })), false);
-});
-
-const lines = [
-  { id: 'L1', salesOrderId: 'SO1', qty: 2, unit: 'แพ็ค', fgCode: 'FG-1' },
-  { id: 'L2', salesOrderId: 'SO1', qty: 1, unit: 'แพ็ค', fgCode: 'FG-2' },
-  { id: 'L3', salesOrderId: 'SO2', qty: 1, unit: 'แพ็ค' },
-];
-
-test('⭐ ใบสายบริการที่ยังมีบรรทัดไม่ผูกโซน ขึ้นคิว — บรรทัดที่ผูกแล้วหายจากคิว', () => {
-  const q = bindQueue({
-    orders: [so({ projectId: 'PJ-S' })],
-    lines,
-    terms: [{ salesOrderLineId: 'L1' }],
-    ...ctx,
-  });
-  assert.equal(q.rows.length, 1);
-  assert.equal(q.rows[0].pendingLines, 1);
-  assert.equal(q.rows[0].lines[0].id, 'L2');
-});
-
-test('ใบที่ผูกครบทุกบรรทัดแล้ว ต้องหลุดจากคิวทั้งใบ', () => {
-  const q = bindQueue({
-    orders: [so({ projectId: 'PJ-S' })],
-    lines,
-    terms: [{ salesOrderLineId: 'L1' }, { salesOrderLineId: 'L2' }],
-    ...ctx,
-  });
-  assert.equal(q.rows.length, 0);
-});
-
-test('⭐ สายสินค้าไม่เข้าคิวเลย · สายที่ตอบไม่ได้ไปถังของมันเอง ไม่ใช่หายเงียบ', () => {
-  const q = bindQueue({
-    orders: [
-      so({ id: 'SO1', projectId: 'PJ-P' }),
-      so({ id: 'SO2', projectId: 'PJ-0', dealId: 'DL-0' }),
-    ],
-    lines: [{ id: 'L1', salesOrderId: 'SO1' }, { id: 'L3', salesOrderId: 'SO2' }],
-    terms: [],
-    ...ctx,
-  });
-  assert.equal(q.rows.length, 0);
-  assert.equal(q.unknownLine.length, 1);
-  assert.equal(q.unknownLine[0].orderId, 'SO2');
-});
-
-test('ใบที่ยังไม่อนุมัติผูกโซนไม่ได้ — snapshot จากยอดที่ยังขยับได้คือของปลอม', () => {
-  const q = bindQueue({
-    orders: [so({ status: 'submitted', projectId: 'PJ-S' })],
-    lines, terms: [], ...ctx,
-  });
-  assert.equal(q.rows.length, 0);
 });
 
 const orders = new Map([['SO1', so()]]);
@@ -153,13 +105,27 @@ test('รอบที่จบไปแล้วไม่ทวงหานั�
   assert.equal(q.length, 0);
 });
 
-test('ตัวนับบนแท็บนับถังที่ตอบไม่ได้แยกจากคิวจริง', () => {
+test('ตัวนับบนแท็บ: แท็บ bind = แถวของถังใบเดิม (legacySetupQueue) · ถังที่ตอบไม่ได้แยกจากคิวจริง', () => {
   const counts = intakeCounts({
-    bind: { rows: [1, 2], unknownLine: [3] },
+    legacy: { rows: [1, 2], unknownLine: [3] },
     plan: [1],
     visit: [],
   });
   assert.deepEqual(counts, { bind: 2, plan: 1, visit: 0, unknownLine: 1 });
+  assert.deepEqual(intakeCounts(), { bind: 0, plan: 0, visit: 0, unknownLine: 0 });
+});
+
+/* ── แท็บหลัง mig 0391 (D14) — TS ไม่ผูกโซนแล้ว งานแรกคือ "รอตั้งรอบ" ─────────────────────────────
+   ⚠️ คีย์ `bind` คงไว้ (URL เดิม) แต่เป็นแท็บดูอย่างเดียวของใบเดิม และย้ายไปท้ายสุด */
+test('⭐ แท็บ: รอตั้งรอบ → ครบรอบยังไม่มีนัด → ใบเดิมรอฝ่ายขายตั้งงานบริการ (คีย์ bind คงไว้)', () => {
+  assert.deepEqual(INTAKE_TABS, ['plan', 'visit', 'bind']);
+  assert.equal(INTAKE_TAB_LABELS.bind, 'รอฝ่ายขายตั้งงานบริการ (ใบเดิม)');
+  assert.equal(INTAKE_TAB_HINTS.bind,
+    'ใบที่อนุมัติก่อนฝ่ายขายตั้งงานบริการเอง — ฝ่ายขายตั้งค่าแล้วผู้จัดการฝ่ายขายตรวจ · ตรวจผ่านแล้วขึ้น ‘รอตั้งรอบ’ เอง · TS ไม่ต้องผูกโซน');
+  for (const key of INTAKE_TABS) {
+    assert.ok(INTAKE_TAB_LABELS[key] && INTAKE_TAB_HINTS[key], key);
+  }
+  assert.doesNotMatch(Object.values(INTAKE_TAB_LABELS).join(' '), /รอตั้งไซต์\/โซน/, 'ไม่มีถังผูกโซนของ TS แล้ว');
 });
 
 /* ── ชิปความพร้อมของใบ (PR-C · 2026-08-31) ──────────────────────────────────
@@ -282,53 +248,12 @@ test('งานซ่อมนอกรอบ (planId ว่าง) ไม่ค
   assert.equal(q.length, 1, 'นัดที่ไม่ได้เกิดจากรอบ ไม่นับเป็นรอบตามข้อผูกพัน');
 });
 
-/* ── ใบสั่งขายย้อนหลังในคิว (mig 0360 · มติข้อ 17: TS ผูกโซนให้ใบย้อนหลังในคิวนี้) ─────────────────
-   ใบย้อนหลังไม่มีโครงการ (มติข้อ 7) และดีลภาชนะเป็นสายบริการเสมอ (CHECK) · approvedAt = เวลาที่คีย์ */
+/* ── ใบสั่งขายย้อนหลังในคิว (mig 0360 → 0374) — รอบขายเกิดตอน AE Sup อนุมัติ ⇒ มาถึง TS ที่ถังตั้งรอบ ─────────
+   ใบย้อนหลังไม่มีโครงการ (มติข้อ 7) และดีลภาชนะเป็นสายบริการเสมอ (CHECK) · approvedAt = เวลาที่คีย์
+   🔄 ถังผูกโซน (`bindQueue`) ถอดแล้ว (mig 0391) — เคสของถังใบเดิมอยู่ที่ legacySetupQueue.test.mjs */
 const hso = (over = {}) => so({
   id: 'SOH', orderNumber: 'SO-26090191-0', origin: ORIGIN_HISTORICAL, projectId: null, dealId: 'DL-S', customerId: 'C1',
   historicalQuoteRef: 'Q#250313-0004-D', historicalInvoiceRef: 'IV6801041', ...over,
-});
-const hLines = [
-  { id: 'HL1', salesOrderId: 'SOH', qty: 2, unit: 'แพ็คเกจ', fgCode: 'FG-1', installationPoint: 'Empire Tower · ล็อบบี้' },
-  { id: 'HL2', salesOrderId: 'SOH', qty: 1, unit: 'แพ็คเกจ', fgCode: 'FG-1', installationPoint: 'สาขาสีลม' },
-];
-
-test('⭐ ใบย้อนหลัง (ไม่มีโครงการ · ดีลสายบริการ) ขึ้นคิวพร้อม origin · เลขเดิม · จุดติดตั้ง', () => {
-  const q = bindQueue({ orders: [hso()], lines: hLines, terms: [], ...ctx });
-  assert.equal(q.rows.length, 1);
-  const [row] = q.rows;
-  assert.equal(row.origin, ORIGIN_HISTORICAL);
-  assert.deepEqual(row.historicalRefs, ['Q#250313-0004-D', 'IV6801041']);
-  assert.deepEqual(row.installationPoints, ['Empire Tower · ล็อบบี้', 'สาขาสีลม']);
-  assert.equal(row.fgKinds, 2, 'FG เดียวกันคนละจุด = คนละกลุ่ม');
-});
-
-test('ใบย้อนหลังที่ดีลตอบสายไม่ได้ ไปถังของมันเอง ไม่หายเงียบ', () => {
-  const q = bindQueue({ orders: [hso({ dealId: 'DL-0' })], lines: hLines, terms: [], ...ctx });
-  assert.equal(q.rows.length, 0);
-  assert.equal(q.unknownLine.length, 1);
-  assert.equal(q.unknownLine[0].origin, ORIGIN_HISTORICAL);
-});
-
-test('ใบที่ไม่ส่ง origin มา (ตัวนับบนเมนูเลือกคอลัมน์ผอม) = pipeline ไม่มีเลขเดิม/จุดติดตั้ง', () => {
-  const q = bindQueue({ orders: [so({ projectId: 'PJ-S' })], lines, terms: [], ...ctx });
-  assert.equal(q.rows[0].origin, ORIGIN_PIPELINE);
-  assert.deepEqual(q.rows[0].historicalRefs, []);
-  assert.deepEqual(q.rows[0].installationPoints, []);
-});
-
-test('⭐ ใบปกติขึ้นก่อนใบย้อนหลังเสมอ แม้ใบย้อนหลังอนุมัติ (คีย์) ทีหลัง · ในกองเดียวกันยังเรียงใหม่สุดก่อน', () => {
-  const q = bindQueue({
-    orders: [
-      hso({ id: 'SOH2', approvedAt: '2026-09-14T08:00:00Z' }),
-      so({ id: 'SO1', projectId: 'PJ-S', approvedAt: '2026-08-20T03:00:00Z' }),
-      hso({ approvedAt: '2026-09-15T08:00:00Z' }),
-    ],
-    lines: [...lines, ...hLines, { id: 'HL3', salesOrderId: 'SOH2', qty: 1, fgCode: 'FG-9' }],
-    terms: [],
-    ...ctx,
-  });
-  assert.deepEqual(q.rows.map((r) => r.orderId), ['SO1', 'SOH', 'SOH2']);
 });
 
 /* ── ใบยอด 0 ไม่มีงวดให้เก็บ (มติ 22/09 · mig 0374) ──────────────────────────────────────
@@ -390,6 +315,55 @@ test('แถวรอตั้งรอบที่ไม่ได้ส่ง�
   assert.equal(bySo.SO1.paymentNotRequired, false);
   assert.equal(bySo.SO1.origin, ORIGIN_PIPELINE, 'ไม่ส่ง origin มา = pipeline');
   assert.equal(bySo.SO2.paymentNotRequired, true);
+});
+
+/* ── ขายไว้กี่รอบของไซต์ = จำนวนครั้งที่ต้องไปไซต์ (mig 0391 · D23 n/N) ────────────────────────────
+   🐞 ของเดิมบวกรอบของทุก term ⇒ บรรทัดเดียวลงสองโซนในไซต์เดียวกันนับซ้ำเป็น 24 ทั้งที่เข้าไซต์ 12 ครั้ง */
+const sameSiteZones = [
+  { id: 'Z1', siteId: 'S1', name: 'Lobby' },
+  { id: 'Z3', siteId: 'S1', name: 'Hall' },
+];
+const planWith = (terms, lines) => planQueue({
+  zones: sameSiteZones, sites, plans: [], ordersById: orders, todayIso: '2026-08-28',
+  terms, linesById: new Map(lines.map((l) => [l.id, l])),
+});
+
+test('⭐ n/N: บรรทัดเดียวลงสองโซนของไซต์เดียว = รอบของบรรทัด ไม่ใช่สองเท่า (ไม่นับซ้ำ)', () => {
+  const q = planWith(
+    [{ id: 'T1', zoneId: 'Z1', salesOrderId: 'SO1', salesOrderLineId: 'L1' }, { id: 'T3', zoneId: 'Z3', salesOrderId: 'SO1', salesOrderLineId: 'L1' }],
+    [{ id: 'L1', serviceRounds: 12 }],
+  );
+  assert.equal(q.length, 1);
+  assert.equal(q[0].roundsSold, 12, 'เจ้าหน้าที่เข้าไซต์ทีเดียวทำทุกโซน');
+  assert.equal(q[0].roundsMixed, false);
+});
+
+test('⭐ n/N: สองบรรทัดที่ไซต์เดียว = รอบสูงสุด · รอบไม่เท่ากันบอกด้วยธง roundsMixed', () => {
+  const q = planWith(
+    [{ id: 'T1', zoneId: 'Z1', salesOrderId: 'SO1', salesOrderLineId: 'L1' }, { id: 'T3', zoneId: 'Z3', salesOrderId: 'SO1', salesOrderLineId: 'L2' }],
+    [{ id: 'L1', serviceRounds: 12 }, { id: 'L2', serviceRounds: 8 }],
+  );
+  assert.equal(q[0].roundsSold, 12);
+  assert.equal(q[0].roundsMixed, true);
+  assert.deepEqual(q[0].roundsValues, [12, 8]);
+  assert.deepEqual(planRoundsSoldText(q[0]), { value: '12 · 8 รอบ (ต่างกันรายรายการ)', hint: 'ตั้งรอบตามรายการที่มากที่สุด' });
+  const same = planWith(
+    [{ id: 'T1', zoneId: 'Z1', salesOrderId: 'SO1', salesOrderLineId: 'L1' }, { id: 'T3', zoneId: 'Z3', salesOrderId: 'SO1', salesOrderLineId: 'L2' }],
+    [{ id: 'L1', serviceRounds: 12 }, { id: 'L2', serviceRounds: 12 }],
+  );
+  assert.equal(same[0].roundsSold, 12);
+  assert.equal(same[0].roundsMixed, false);
+  assert.deepEqual(planRoundsSoldText(same[0]), { value: '12 รอบ', hint: null });
+  assert.equal(planRoundsSoldText({ roundsSold: null }), null, 'ยังไม่ระบุ = null (จอขีด)');
+});
+
+test('n/N: บรรทัดที่ยังไม่กรอกรอบ = ยังไม่ระบุ (null) ไม่ใช่ศูนย์ · ไม่ส่งบรรทัดมาก็ null', () => {
+  const q = planWith([{ id: 'T1', zoneId: 'Z1', salesOrderId: 'SO1', salesOrderLineId: 'L1' }], [{ id: 'L1', serviceRounds: null }]);
+  assert.equal(q[0].roundsSold, null);
+  const bare = planQueue({ zones: sameSiteZones, sites, plans: [], ordersById: orders, todayIso: '2026-08-28',
+    terms: [{ id: 'T1', zoneId: 'Z1', salesOrderId: 'SO1', salesOrderLineId: 'L1' }] });
+  assert.equal(bare[0].roundsSold, null);
+  assert.equal(bare[0].roundsMixed, false);
 });
 
 test('🔴 ด่านปลายทางของการผูก: ไซต์ลูกค้าคนอื่น · ไม่ใช่ไซต์ลูกค้า · ไซต์/โซนปิดใช้งาน = ตีกลับพร้อมชื่อของ', () => {

@@ -211,3 +211,54 @@ test('🪤 จอต้องใช้สามสภาพ และปุ่�
     'รอบของใบอื่นเป็นเหตุให้ "เตือน" ไม่ใช่เหตุให้ "ซ่อนปุ่ม" (กติกา ติดด่าน = โชว์แล้วบอกเหตุ)',
   );
 });
+
+/* ── ใบที่ประทับแล้ว (mig 0391 · PR-A) — ฝ่ายขายตั้งโซน/แพ็คต่อรอบ/รอบในใบ รอบขายเกิดครบตอนอนุมัติ ──────────────
+   ⭐ ไม่มี "ของค้างรอลงโซน" (จำนวนในใบ = ระยะเวลา/แพ็คเกจ ไม่ใช่หน่วยที่ต้องจัดสรร) · ขายไว้ = จำนวนครั้งที่ต้องไปไซต์ (D23) */
+const stamped = { ...live, serviceTermsOpenedAt: '2026-09-28T03:00:00Z' };
+/* บรรทัดพิมพ์เอง 12 "เดือน" ที่ฝ่ายขายตั้งเป็นแพ็คเกจ — ลง 2 โซนของไซต์ A + 1 โซนของไซต์ B · 12 รอบ */
+const manualPackage = line({ id: 'L1', fgCode: null, productId: null, qty: 12, unit: 'เดือน', serviceKind: 'package', serviceProductId: 'P1', serviceFgCode: 'FG-0521-02-001-00012', serviceRounds: 12 });
+const zones3 = new Map([...zonesById, ['Z3', { id: 'Z3', siteId: 'ST1', name: 'Hall' }]]);
+
+test('⭐ ใบที่ประทับแล้ว: ไม่มีของค้างรอลงโซน · ครบเมื่อมีไซต์ · ขายไว้ = ครั้งที่ต้องไปไซต์ (ไม่บวกซ้ำรายโซน)', () => {
+  const out = salesOrderServiceSummary({
+    order: stamped, lines: [manualPackage], zonesById: zones3, sitesById, todayIso: TODAY,
+    terms: [
+      term({ id: 'T1', zoneId: 'Z1', packageQty: 2 }),
+      term({ id: 'T3', zoneId: 'Z3', packageQty: 1 }),
+      term({ id: 'T2', zoneId: 'Z2', packageQty: 1 }),
+    ],
+  });
+  assert.equal(out.allocation.remaining, 0, 'จำนวนในใบ 12 เดือน ≠ หน่วยที่ต้องจัดสรร');
+  assert.ok(out.allocation.fg.every((g) => g.remaining === 0), 'ตารางต้องไม่โชว์ "ยังไม่ลงโซน" ขัดกับหัวการ์ด');
+  assert.equal(out.allocation.complete, true);
+  assert.equal(out.allocation.sites.length, 2);
+  assert.equal(out.rounds.sold, 24, 'ไซต์ A 12 + ไซต์ B 12 — ไม่ใช่ 36 (บวกรายโซน) และไม่ใช่ 12 (บวกรายบรรทัด)');
+});
+
+test('ใบที่ประทับแล้วไม่มีบรรทัดแพ็คเกจเลย = ไม่มีอะไรต้องลง ⇒ ครบ · มีแพ็คเกจแต่ไม่มีไซต์ = ยังไม่ครบ', () => {
+  const none = salesOrderServiceSummary({
+    order: stamped, lines: [line({ fgCode: 'FG-0521-03-002-00007', serviceRounds: null })], terms: [], zonesById, sitesById, todayIso: TODAY,
+  });
+  assert.equal(none.allocation.complete, true);
+  assert.equal(none.rounds.sold, null, 'ไม่มีไซต์ = ยังไม่ระบุ ไม่ใช่ศูนย์');
+  const empty = salesOrderServiceSummary({ order: stamped, lines: [manualPackage], terms: [], zonesById, sitesById, todayIso: TODAY });
+  assert.equal(empty.allocation.complete, false);
+});
+
+test('ใบที่ยังไม่ประทับ (ใบเดิม) คงตัวนับเดิม — ของค้างนับจากจำนวน · ขายไว้ = Σ รอบรายบรรทัด', () => {
+  const out = salesOrderServiceSummary({
+    order: live, lines: [line({ qty: 3 }), line({ id: 'L2', serviceRounds: 6 })], zonesById, sitesById, todayIso: TODAY,
+    terms: [term({ packageQty: 1 })],
+  });
+  assert.equal(out.allocation.remaining, 5);
+  assert.equal(out.rounds.sold, 18);
+});
+
+test('route สรุปงานบริการเลือกช่องที่ตัวตัดสินของใบที่ประทับแล้วอ่าน (ไม่มีราคา)', () => {
+  const route = readFileSync(new URL('../../app/api/sales-planning/sales-orders/[id]/service/route.js', import.meta.url), 'utf8');
+  const select = route.match(/from\('sales_order_lines'\)\s*\.select\('([^']*)'\)/)?.[1] || '';
+  for (const col of ['"fgCode"', '"productId"', 'metadata', '"serviceKind"', '"serviceProductId"', '"serviceFgCode"', '"serviceRounds"']) {
+    assert.ok(select.includes(col), col);
+  }
+  assert.doesNotMatch(select, /unitPrice|lineTotal|discount/);
+});

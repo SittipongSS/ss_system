@@ -2,8 +2,8 @@
 import { Fragment, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowRight, ArrowRightLeft, ArrowUpRight, CalendarCheck, CalendarClock, CalendarRange, CalendarSync, FileText, HandCoins, Link2,
-  Lock, Paperclip, Receipt, TriangleAlert, Undo2, Unlink, Wallet, XCircle,
+  ArrowRight, ArrowRightLeft, ArrowUpRight, CalendarCheck, CalendarClock, CalendarDays, CalendarRange, CalendarSync, Columns3,
+  FileText, HandCoins, Link2, Lock, Paperclip, Receipt, TriangleAlert, Undo2, Unlink, Wallet, XCircle,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import ChoiceChips from "@/components/ui/ChoiceChips";
@@ -30,6 +30,8 @@ import InstallmentRefundDialog from "./InstallmentRefundDialog";
 import QuotationInstallments from "./QuotationInstallments";
 import BillingRoundPicker from "./BillingRoundPicker";
 import BillingStateBadge from "./BillingStateBadge";
+import CoverageSplitModal from "./CoverageSplitModal";
+import CoverageTimeline from "./historicalWizard/CoverageTimeline";
 import { paymentCarryPrompt, paymentPlanEditPrompt, paymentRefundClearPrompt } from "@/lib/approvalPrompt";
 import {
   CARRY_BUTTON, applyCarryIn, carriedAwayGroups, carriedFromOf, carryBlocker, carryExpected, carryPromptFacts,
@@ -58,8 +60,12 @@ import {
   installmentVoid, installmentVoidNote, openingCoverageEnd, paymentNotRequired, paymentRollup, pipelineInstallmentLock, previewInstallments,
   revisedInstallmentsNote, strandedInstallment,
 } from "@/lib/sales/salesOrderPayments";
-import { coverageRollup, coverageWarnings } from "@/lib/sales/paymentCoverage";
+import { COVERAGE_SPLIT_ERRORS, coverageRollup, coverageWarnings, splitCoverageByPeriod } from "@/lib/sales/paymentCoverage";
 import { orderHasServiceRounds, orderOnServiceLine } from "@/lib/sales/serviceOrders";
+import {
+  SERVICE_KIND_NOT_SERVICE, periodSpan, serviceLineRole, servicePeriodOf, serviceSetupEditError, serviceSetupFieldId,
+  serviceSetupFlow,
+} from "@/lib/sales/serviceSetup";
 import { HISTORICAL_APPROVER_LABEL, historicalInstallmentLock, isHistoricalOrder, isOpeningInstallment } from "@/lib/sales/historicalOrders";
 import { historicalOpeningRejectNote } from "@/lib/sales/historicalOrderCopy";
 import { openingInvoiceNote } from "@/lib/sales/taxInvoice";
@@ -146,6 +152,15 @@ function BillingRoundChoice({ choices, value, onChange, disabled, verb }) {
 export default function SalesOrderPaymentPanel({
   order, installments, user, todayIso, canStart, busy, onStart, onAction, onReplan, onCarry, onFillBilling, onRedateBilling,
   error = "", onClearError,
+  /* ── งานบริการรายบรรทัด (mig 0391 · แผน §2.8) ─────────────────────────────────────────────────────────
+     `servicePeriod` `{from,to}|null` = ช่วงบริการของใบ (ตั้งที่ตารางรายการ) · `setupFlow` = `setup.data.flow` ของหน้าใบ
+     ⭐ ไม่ส่งสองตัวนี้ (undefined — GET งานบริการยังโหลดไม่เสร็จ) = คิดจากใบเองด้วยตัวตัดสินชุดเดียวกับ GET
+       (`servicePeriodOf` · `serviceSetupFlow`) ⇒ แผงไม่กะพริบหายระหว่างรอ และตอบตรงกับ GET เสมอ
+     `highlight` Map `fieldId → ข้อความ` ของข้อที่ติดหลังกดยื่น (กติกา: แดงหลังกดเท่านั้น — หน้าใบส่งมาเฉพาะตอนนั้น)
+     `onFillCoverage({ mode, plan })` → Promise<boolean> = PATCH …/installments `{action:'fill-coverage'}` ของหน้าใบ
+     `canEditSetup` = สิทธิ์แก้ใบนี้ (`canEditSalesPlanning && inSalesEditScope`) — ไม่ส่ง = ใช้ `canStart` (หน้าใบส่ง canEdit ตัวเดียวกัน)
+     `onOpenTab(key)` (ไม่บังคับ) = สลับแท็บของหน้าใบ — ลิงก์ "แก้ที่แท็บภาพรวม" ข้างบรรทัดช่วงบริการ */
+  servicePeriod, setupFlow, highlight = null, onFillCoverage, canEditSetup = canStart, onOpenTab,
 }) {
   const [reportFor, setReportFor] = useState(null);
   const [rejectFor, setRejectFor] = useState(null);
@@ -177,6 +192,8 @@ export default function SalesOrderPaymentPanel({
      · **null = ยังไม่เลือก** (ไม่มีค่าตั้งต้น — เปิดโมดัลใหม่ล้างทุกครั้ง) · ลูกค้ารอบเดียวไม่อ่านค่านี้ */
   const [fillRound, setFillRound] = useState(null);
   const [redateRound, setRedateRound] = useState(null);
+  // แบ่งช่วงครอบตามช่วงบริการ (mig 0391) — พรีวิวคิดสดทุกครั้งที่วาด (409 แล้วหน้าดึงงวดสด พรีวิวเปลี่ยนตาม)
+  const [splitOpen, setSplitOpen] = useState(false);
 
   /* ⭐ **ใบสั่งขายย้อนหลัง (มติ 22/09 · mig 0374)** — งวดมาจากฟอร์มคีย์ใบทั้งชุด (งวดยกมา + ที่ยังต้องเก็บ)
      ไม่มีใบเสนอราคาให้คำนวณแผน ⇒ ไม่มี preview · ไม่มี "แผนเปลี่ยน" · ไม่มีปุ่มเริ่มติดตาม
@@ -745,6 +762,118 @@ export default function SalesOrderPaymentPanel({
     setSavingCover(false);
   };
 
+  /* ── งานบริการรายบรรทัด: ช่วงบริการ + แบ่งช่วงครอบ (mig 0391 · แผน §2.8 · r2 S7) ─────────────────────────────
+     ⭐ ขึ้นเฉพาะใบที่ต้องตั้งงานบริการ (`setupFlow` ≠ 'none' — ใบ pipeline สาย SERVICE) ที่มีช่วงบริการแล้ว หรือยังมีบรรทัดที่
+       อาจเป็นแพ็คเกจ (ช่วงบริการบังคับเมื่อมีแพ็คเกจ · D6) — ใบสายสินค้า/ใบย้อนหลัง/ใบที่ทุกบรรทัด "ไม่ใช่งานบริการ" เห็นการ์ดเดิมเป๊ะ
+     ⭐ ปุ่ม "แบ่งช่วงครอบตามช่วงบริการ…" (กติกาการโชว์ UI): **ไม่มีสิทธิ์แก้ใบ = ไม่มีปุ่ม** · **ติดเงื่อนไขของใบ = ปุ่มอยู่
+       แต่ดับ พร้อมเหตุเป็นตัวหนังสือข้าง ๆ** (จอสัมผัสไม่เห็น title) — เหตุมาจากตัวเดียวกับที่ route ตอบ 409:
+       `serviceSetupEditError` (รออนุมัติ/อนุมัติแล้ว/ยื่นตรวจแล้ว/ปิดแล้ว) → ไม่มีช่วงบริการ → ไม่มีงวดที่ยังไม่รับรองให้แบ่ง
+       ⚠️ **ห้ามย้ายเหตุพวกนี้ไปเป็นเงื่อนไขการโชว์** — ใบที่รออนุมัติต้องเห็นว่าปุ่มอยู่ที่นี่และทำไมกดไม่ได้
+     ⚠️ พรีวิวคิดจาก `saved` = งวดตามที่ GET ของงวดส่งมา (`installmentsForScreen` — ยอดของงวดร่างเดินตามแผน QT สด)
+       ชุดเดียวกับที่ route คิดซ้ำ ⇒ "ตามสัดส่วนงวด" ได้ชุดเดียวกันทั้งสองฝั่ง */
+  const flow = setupFlow === undefined ? serviceSetupFlow(order, { lines: order?.lines }) : setupFlow;
+  const setupShown = Boolean(flow) && flow !== "none";
+  const period = servicePeriod === undefined ? servicePeriodOf(order) : servicePeriod;
+  const periodReady = Boolean(period?.from && period?.to);
+  // บรรทัดที่อาจเป็นแพ็คเกจ (แพ็คเกจ หรือยังไม่เลือกชนิด) — ตัวตัดสินชนิดบรรทัดตัวเดียวกับตาราง/ด่าน (ไม่ใช่ตัวแคบของด่านเงิน)
+  const needsPeriod = (Array.isArray(order?.lines) ? order.lines : [])
+    .some((line) => serviceLineRole(line) !== SERVICE_KIND_NOT_SERVICE);
+  const periodLineShown = setupShown && (periodReady || needsPeriod);
+  /* ใบยอด 0 ที่ไม่มีงวด = ไม่มีอะไรให้แบ่งตลอดไป (ไม่ใช่เงื่อนไขที่รอแก้) ⇒ ไม่มีปุ่ม — ต่างจาก "ยังไม่มีงวด" ของใบที่มียอด */
+  const zeroWithoutRows = paymentNotRequired(order?.totalAmount) && !saved.length;
+  const coverageSplitVisible = periodLineShown && !zeroWithoutRows && Boolean(canEditSetup) && Boolean(onFillCoverage);
+  const coverageSplitBlocker = !coverageSplitVisible ? ""
+    : serviceSetupEditError(order, { canEdit: true })
+      || (!periodReady ? COVERAGE_SPLIT_ERRORS.noPeriod : "")
+      || (splitCoverageByPeriod(period, saved, "monthly").error === COVERAGE_SPLIT_ERRORS.noRows ? COVERAGE_SPLIT_ERRORS.noRows : "");
+  const openCoverageSplit = () => {
+    if (coverageSplitBlocker || !onFillCoverage) return;
+    onClearError?.();
+    setSplitOpen(true);
+  };
+  const submitCoverageSplit = async ({ mode, plan }) => {
+    if (!onFillCoverage) return;
+    const done = await onFillCoverage({ mode, plan });
+    if (done) setSplitOpen(false);
+  };
+  /* ด่านรายงวดของพรีวิว — `coverage` ตัวเดียวกับเซลล์ช่วงครอบและ route (ค่าชุดที่จะส่งจริง) */
+  const coverageSplitRowGate = (planned) => gate(saved.find((r) => r.id === planned.id), "coverage", {
+    coversFrom: planned.coversFrom, coversTo: planned.coversTo,
+  });
+  const periodText = periodReady ? `${fmtDate(period.from)}–${fmtDate(period.to)}` : "";
+  /* บรรทัด "ช่วงบริการ" ใต้หัวการ์ด — เมตาของใบ (พื้นอ่อนเหมือนบรรทัดรอบวางบิล) · ยังไม่ใส่ = เส้นประ ไม่แดง (แดงหลังกดยื่นเท่านั้น) */
+  const periodLine = periodLineShown ? (
+    <div className={styles.ruleLine} data-empty={periodReady ? undefined : "yes"}>
+      <CalendarDays size={16} aria-hidden="true" className={styles.ruleIcon} />
+      <span className={styles.ruleText}>
+        {periodReady
+          ? <>ช่วงบริการ <b>{periodText}</b> (ตั้งที่ตารางรายการ)</>
+          : <>ยังไม่ใส่ช่วงบริการ (ตั้งที่ตารางรายการ)</>}
+        {periodReady && periodSpan(period).label ? <small>{periodSpan(period).label}</small> : null}
+      </span>
+      {coverageSplitVisible || onOpenTab ? (
+        <span className={styles.ruleActions}>
+          {coverageSplitVisible ? (
+            <span className={styles.gatedAction}>
+              <Button size="sm" variant="ghost" icon={<Columns3 size={13} aria-hidden="true" />}
+                disabled={!!busy || !!coverageSplitBlocker} onClick={openCoverageSplit}>
+                แบ่งช่วงครอบตามช่วงบริการ…
+              </Button>
+              {/* เหตุต้องเป็นตัวหนังสือ ไม่ใช่ tooltip อย่างเดียว — จอสัมผัสไม่มีทางเห็น title */}
+              {coverageSplitBlocker ? <small className={styles.gateNote} role="status">{coverageSplitBlocker}</small> : null}
+            </span>
+          ) : null}
+          {onOpenTab ? (
+            <button type="button" className={`text-action ${styles.ruleLink}`} onClick={() => onOpenTab("overview")}>
+              แก้ที่แท็บภาพรวม<ArrowUpRight size={13} aria-hidden="true" />
+            </button>
+          ) : null}
+        </span>
+      ) : null}
+    </div>
+  ) : null;
+
+  /* ── ช่องที่ติดหลังกดยื่น (แผงแดง "ไปแก้" ชี้มาที่นี่) — id จาก `serviceSetupFieldId` ตัวเดียวกับที่หน้าใบโฟกัส ──────
+     ⭐ id อยู่ที่เซลล์ (`tabIndex=-1` ให้โฟกัสได้) เฉพาะใบที่ต้องตั้งงานบริการ + แถวงวดจริง — ใบอื่นไม่เปลี่ยน markup
+     🔴 กรอบแดงขึ้นเฉพาะช่องที่อยู่ใน `highlight` (หน้าใบส่งมาหลังกดยื่นเท่านั้น) — ห้ามคิดแดงเองจากข้อมูลงวดที่นี่ */
+  const cellId = (row, field) => (setupShown && row?.id && !row.preview
+    ? serviceSetupFieldId({ installmentId: row.id, field }) : undefined);
+  const issueOf = (row, field) => {
+    const id = cellId(row, field);
+    if (!id || !highlight) return "";
+    return String((highlight instanceof Map ? highlight.get(id) : highlight[id]) || "");
+  };
+  const cellProps = (row, field, className = "") => {
+    const id = cellId(row, field);
+    const classes = [className, id && issueOf(row, field) ? styles.cellIssue : ""].filter(Boolean).join(" ");
+    return { ...(id ? { id, tabIndex: -1 } : {}), className: classes || undefined };
+  };
+  /* ข้อความของข้อที่ติด ใต้ค่าในเซลล์ — ตัวหนังสือบอกเหตุคู่กรอบแดง (สีอย่างเดียวไม่พอ · WCAG 1.4.1) */
+  const issueNote = (row, field) => {
+    const why = issueOf(row, field);
+    return why ? <small className={styles.issueNote}>{why}</small> : null;
+  };
+
+  /* ── แถบช่วงครอบของงวดเทียบช่วงบริการ (CoverageTimeline · import เท่านั้น) ──────────────────────────────────────
+     ⚠️ ชนิดท่อนมีแค่ paid/due/planned/overdue ⇒ **ช่องโหว่ไม่ขึ้นแดงบนแถบ** (ท่อนว่างเป็นพื้นเฉย ๆ) — ช่องโหว่ถึงคนผ่าน
+       แผงแดงหลังกดยื่น + กรอบแดงของเซลล์ช่วงครอบ · แถบนี้ตอบแค่ "งวดไหนครอบช่วงไหน สถานะอะไร" */
+  const timelineRows = setupShown && periodReady && showCoverage && !deadPipeline
+    ? liveRows.filter((row) => row.coversFrom && row.coversTo && row.coversFrom <= row.coversTo)
+    : [];
+  const timelineKind = (row) => (row.status === "confirmed" ? "paid"
+    : row.dueDate && String(row.dueDate) < String(todayIso) ? "overdue" : "planned");
+  const timelineSegments = timelineRows.map((row) => ({
+    key: row.id, kind: timelineKind(row), from: row.coversFrom, to: row.coversTo,
+    label: `งวด ${row.seq} · ${fmtDate(row.coversFrom)}–${fmtDate(row.coversTo)}`,
+  }));
+  const timelineLegend = [
+    ["paid", "บัญชีรับรองแล้ว"], ["planned", "ยังไม่รับรอง"], ["overdue", "เลยกำหนดชำระ"],
+  ].map(([kind, text]) => ({ kind, count: timelineSegments.filter((segment) => segment.kind === kind).length, text }))
+    .filter((item) => item.count > 0)
+    .map((item) => ({ kind: item.kind, text: `${item.text} ${item.count} งวด` }));
+  const uncoveredCount = setupShown && periodReady && showCoverage && !deadPipeline
+    ? liveRows.length - timelineRows.length : 0;
+
   /* ── ใบยอด 0 จบที่อนุมัติใบ (มติผู้ใช้ 2026-08-18) ────────────────────────
      ไม่มีเงินให้เก็บ ⇒ ไม่มีงวด ไม่มีการแจ้ง/ยืนยัน · การ์ดยังอยู่เพื่อ **บอกว่าทำไม
      ไม่มีอะไรให้ทำ** ไม่ใช่ซ่อนทั้งการ์ด — การ์ดที่หายไปเฉย ๆ อ่านเหมือนระบบลืม
@@ -753,8 +882,12 @@ export default function SalesOrderPaymentPanel({
   if (noPaymentStep && !saved.length) {
     return (
       <DetailCard id="payment" icon={Wallet} eyebrow="PAYMENT" title="การชำระ" meta="ยอด 0 — ไม่ต้องยืนยันการชำระ">
+        {/* ใบงานบริการยอด 0 (D7): ไม่มีงวด แต่ช่วงบริการยังบังคับ — TS ใช้วางรอบ ⇒ บรรทัดช่วงบริการยังอยู่ (ไม่มีปุ่มแบ่ง: ไม่มีงวดให้แบ่ง) */}
+        {periodLineShown ? periodLine : null}
         <StatusNotice tone="info">
-          ใบนี้ยอดรวม 0 บาท จึงไม่มีงวดชำระให้ติดตาม — จบที่ขั้นอนุมัติใบสั่งขาย
+          {periodLineShown
+            ? "ใบยอด 0 บาท — ไม่มีงวด · ยังต้องใส่ช่วงบริการ (TS ใช้วางรอบ)"
+            : "ใบนี้ยอดรวม 0 บาท จึงไม่มีงวดชำระให้ติดตาม — จบที่ขั้นอนุมัติใบสั่งขาย"}
         </StatusNotice>
       </DetailCard>
     );
@@ -763,6 +896,9 @@ export default function SalesOrderPaymentPanel({
   return (
     <DetailCard id="payment" icon={Wallet} eyebrow="PAYMENT" title="การชำระ" meta={headline}
       actions={cardActions}>
+      {/* ⭐ ช่วงบริการของใบ (mig 0391) — บรรทัดแรกของเมตา (ม็อก SoSubmitBlocked: ช่วงบริการก่อน รอบวางบิลตามมา)
+          · ปุ่ม "แบ่งช่วงครอบตามช่วงบริการ…" อยู่บนบรรทัดนี้ เพราะเป็นผลของช่วงบริการ ไม่ใช่ของงวดใดงวดหนึ่ง */}
+      {periodLine}
       {/* ⭐ รอบวางบิลของลูกค้า (กำหนดวางบิล · mig 0389 · ม็อก C) — บรรทัดเมตาใต้หัวการ์ด ไม่ใช่คำเตือน
           · ตั้งแล้ว = รอบแบบอ่านง่าย + รายละเอียดเงินเข้า + ลิงก์ไปทะเบียนลูกค้า (ที่เดียวที่แก้รอบได้ — มติข้อ 4)
           · ยังไม่ตั้ง = บอกว่าใช้แบบเดิมได้ (ไม่บังคับ · มติข้อ 7) + ทางไปตั้ง · หมายเหตุการวางบิล (แนบ PO ฯลฯ) ต้องเห็นตอนขอใบวางบิล */}
@@ -1202,8 +1338,8 @@ export default function SalesOrderPaymentPanel({
                         );
                       })() : null}
                     </td>
-                    {billingColumn ? <td>{billingCell(row)}</td> : null}
-                    <td>
+                    {billingColumn ? <td {...cellProps(row, "billingDate")}>{billingCell(row)}{issueNote(row, "billingDate")}</td> : null}
+                    <td {...cellProps(row, "dueDate")}>
                       {/* ⚠️ ธงแดง "เลยกำหนด" อ่าน dueDate ช่องเดียว (ไม่แตะเพราะกำหนดวางบิล) · วันเขียนแบบมีวันในสัปดาห์
                           ให้ตรงกับคอลัมน์วันวางบิลข้าง ๆ (ป้ายเสาร์-อาทิตย์เตือนอย่างเดียว ไม่เลื่อนวัน) */}
                       <span className={styles.dateLine}>
@@ -1221,6 +1357,7 @@ export default function SalesOrderPaymentPanel({
                           {row.confirmedByName ? `บัญชีรับรอง ${row.confirmedByName}` : `แจ้งโดย ${row.reportedByName}`}
                         </small>
                       ) : null}
+                      {issueNote(row, "dueDate")}
                     </td>
                     {/* ⭐ ช่วงบริการที่งวดนี้จ่ายค่าให้ (mig 0320) — **ผูกเป็นวันที่ ไม่ใช่เลขรอบ**
                         (มติ 2026-08-30: รอบเลื่อน/งดได้ตลอดอายุสัญญา ผูกเลขรอบแล้วเพี้ยนเงียบ)
@@ -1263,8 +1400,9 @@ export default function SalesOrderPaymentPanel({
                         || (startLock && contractEnd
                           ? `ครอบได้ถึง ${fmtDate(contractEnd)} (วันสิ้นสุดสัญญา)`
                           : "");
+                      const coverIssue = issueOf(row, "coverage");
                       return (
-                        <td className={edited ? styles.coverEdited : undefined}>
+                        <td {...cellProps(row, "coverage", edited ? styles.coverEdited : "")}>
                           {lock ? (
                             /* ⚠️ **ล็อกต้องบอกเหตุตอนกด ไม่ใช่เซลล์ตาย** (กติกาเดียวกับ `GatedAction`) —
                                tooltip อย่างเดียวมือถืออ่านไม่ได้ และเซลล์ที่กดแล้วเงียบอ่านเหมือนระบบพัง
@@ -1290,12 +1428,12 @@ export default function SalesOrderPaymentPanel({
                               ) : (
                                 <DateInput compact value={draft.coversFrom} className={styles.coverDate}
                                   ariaLabel={`ครอบบริการตั้งแต่ · งวดที่ ${row.seq}`}
-                                  disabled={!!busy || savingCover}
+                                  disabled={!!busy || savingCover} invalid={Boolean(coverIssue)}
                                   onChange={(iso) => setCover(row, { coversFrom: iso })} />
                               )}
                               <DateInput compact value={draft.coversTo} className={styles.coverDate}
                                 ariaLabel={`ครอบบริการถึง · งวดที่ ${row.seq}`}
-                                disabled={!!busy || savingCover}
+                                disabled={!!busy || savingCover} invalid={Boolean(coverIssue)}
                                 onChange={(iso) => setCover(row, { coversTo: iso })} />
                               {/* กฎ/เหตุของเซลล์ — กินทั้งบรรทัดใต้สองช่อง (`.coverNote` ใน module css)
                                   ⚠️ `role="alert"` เฉพาะตอนเป็นเหตุจริง ไม่ใช่ตอนเป็นกฎที่ขึ้นค้างอยู่แล้ว */}
@@ -1308,6 +1446,7 @@ export default function SalesOrderPaymentPanel({
                               ) : null}
                             </span>
                           )}
+                          {issueNote(row, "coverage")}
                         </td>
                       );
                     })() : null}
@@ -1432,6 +1571,22 @@ export default function SalesOrderPaymentPanel({
             {savingCover ? "กำลังบันทึก…" : "บันทึกช่วงครอบ"}
           </Button>
         </div>
+      ) : null}
+
+      {/* ⭐ ช่วงครอบของงวดเทียบช่วงบริการ (mig 0391 · r2 S7) — ใต้ตาราง · เฉพาะใบงานบริการที่มีช่วงบริการและมีงวดแล้ว
+          ⚠️ ท่อนว่างบนแถบ = ช่วงที่ยังไม่มีงวดครอบ แต่ไม่ขึ้นแดง (แดงหลังกดยื่นเท่านั้น — ผ่านแผงแดง + กรอบเซลล์) */}
+      {timelineRows.length || uncoveredCount ? (
+        <section className={styles.timeline} aria-label="ช่วงครอบของงวด เทียบช่วงบริการ">
+          <div className={styles.timelineHead}>
+            <b>ช่วงครอบของงวด เทียบช่วงบริการ</b>
+            <span>{[periodText, periodSpan(period).label].filter(Boolean).join(" · ")}</span>
+          </div>
+          <CoverageTimeline startDate={period.from} endDate={period.to} segments={timelineSegments}
+            todayIso={todayIso} label="ช่วงครอบของงวด เทียบช่วงบริการ" legend={timelineLegend} />
+          {uncoveredCount ? (
+            <p className="form-note">{`อีก ${uncoveredCount} งวดยังไม่มีช่วงครอบ — ไม่อยู่บนแถบนี้ (ดูคอลัมน์ “ครอบคลุมบริการ”)`}</p>
+          ) : null}
+        </section>
       ) : null}
 
       {/* ⭐ **ปุ่มนี้เป็นทางกู้ ไม่ใช่ก้าวปกติ** (มติผู้ใช้ 2026-08-19) — งวดถูกสร้างให้
@@ -1704,6 +1859,17 @@ export default function SalesOrderPaymentPanel({
             {/* ไม่เหลืองวดให้เติม (409 แล้วหน้าดึงงวดสด · อีกหน้าต่างเติมไปแล้ว) = ปุ่มปิดปุ่มเดียว — ปุ่มหลัก "เติมวัน 0 งวด" ที่ดับอยู่ไม่มีความหมาย */}
           </div>
         </Modal>
+      ) : null}
+
+      {/* ⭐ แบ่งช่วงครอบตามช่วงบริการ (mig 0391 · แผน §2.8) — พรีวิวทุกงวดก่อนใช้ · แผนคิดสดทุกครั้งที่วาดจาก `saved`
+          (409 แล้วหน้าดึงงวดสด พรีวิวเปลี่ยนตามทันที) · error ของ API ขึ้นในโมดัล (แถบของหน้าอยู่ใต้โมดัล)
+          ⚠️ ใบเลิกแก้ได้ระหว่างเปิดค้าง (409 แล้วหน้าดึงใบสด — อีกหน้าต่างยื่นอนุมัติไปแล้ว) = โมดัลบอกเหตุตัวเดียวกับปุ่มบนการ์ด
+            แทนพรีวิว และเหลือแค่ปุ่มปิด (ไม่ปิดตัวเองเงียบ ๆ) */}
+      {splitOpen && coverageSplitVisible ? (
+        <CoverageSplitModal open onClose={() => setSplitOpen(false)} period={period} rows={saved}
+          rowGate={coverageSplitRowGate} onApply={submitCoverageSplit} blockedReason={coverageSplitBlocker}
+          busy={!!busy} error={error}
+          subtitle={[order?.orderNumber, customerCode].filter(Boolean).join(" · ")} />
       ) : null}
 
       {/* ⭐ จัดวันใหม่ตามรอบปัจจุบัน (กำหนดวางบิลรอบสอง · มติเจ้าของ 26/09) — ตาราง "เดิม → ใหม่" ทุกงวดก่อนยืนยันครั้งเดียว

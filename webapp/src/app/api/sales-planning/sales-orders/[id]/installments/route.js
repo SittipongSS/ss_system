@@ -20,7 +20,10 @@ import {
 import {
   INSTALLMENT_BILLING_SCHEMA_MISSING, carryInstallments, ensureInstallments, installmentBillingSchemaError,
   installmentRefundSchemaError, loadInstallment, loadInstallments, replanInstallments, updateInstallment, writeBillingFill,
+  writeCoverageFill,
 } from '@/lib/sales/salesOrderInstallmentsStore';
+import { COVERAGE_SPLIT_ERRORS, splitCoverageByPeriod } from '@/lib/sales/paymentCoverage';
+import { servicePeriodOf, serviceSetupEditError, serviceSetupFlow } from '@/lib/sales/serviceSetup';
 import { normalizeInstallmentBilling } from '@/lib/sales/billingRule';
 import { businessDate } from '@/lib/businessDate';
 import {
@@ -55,8 +58,10 @@ const installmentsForScreen = (order, rows) => (isHistoricalOrder(order)
    ⚠️ ฝ่ายบัญชีถือ `salesplan:view` แบบ scope กว้าง จึงเห็นทุกใบตามที่ควรเป็น —
    ด่านที่แคบคือ **คำสั่ง** ไม่ใช่การอ่าน (installmentActionError คุมอีกชั้น) */
 async function loadOrderForUser(supabase, user, id) {
+  /* ใบ `*` = พก "serviceTermsOpenedAt" ให้ตัวตัดสินด่านเงิน (mig 0391 · D13) */
   const { data: order, error } = await supabase
     .from('sales_orders')
+    /* money-decider feed */
     .select('*')
     .eq('id', id)
     .maybeSingle();
@@ -78,9 +83,14 @@ async function loadOrderForUser(supabase, user, id) {
   /* ⭐ บรรทัดของใบ + ดีล — ด่านรับรองงวดต้องรู้ว่า **ใบนี้เป็นงานบริการไหม**
      (ดีลสาย SERVICE + บรรทัดหมวด 02-001 ≥1 ⇒ ทั้งใบ) เพราะใบบริการต้องมีช่วงครอบ
      ก่อนบัญชีจะรับรองได้ (มติผู้ใช้ 2026-08-31)
-     ⚠️ เอาเฉพาะ `fgCode` — เกณฑ์อ่านแค่หมวดของรหัส ไม่ต้องลากราคามาทั้งแถว */
+     ⚠️ ไม่ลากราคามาทั้งแถว — เอาแค่ช่องที่ตัวตัดสินอ่าน:
+       · `fgCode` + `"serviceFgCode"` = รหัสที่ด่านเงินอ่าน (`effectiveServiceFgCode` · mig 0391 · D13 — แพ็คเกจที่ฝ่ายขาย
+         เลือกให้บรรทัดพิมพ์เองนับเมื่อใบประทับแล้วเท่านั้น) · ยาม serviceMoneySelectGuard.test.mjs
+       · `"productId"` · `"serviceKind"` · หมวดของบรรทัดพิมพ์เอง = ชนิดของบรรทัด (`serviceLineRole`) ที่ปุ่ม
+         "แบ่งช่วงครอบตามช่วงบริการ…" ถามว่าใบต้องตั้งงานบริการย้อนหลังไหม (D25) — หมวดอ่านแค่คีย์เดียวของ metadata */
   const { data: lines, error: lineError } = await supabase
-    .from('sales_order_lines').select('id, fgCode').eq('salesOrderId', order.id);
+    /* money-decider feed */
+    .from('sales_order_lines').select('id, fgCode, "productId", "serviceKind", "serviceFgCode", categoryCode:metadata->>categoryCode').eq('salesOrderId', order.id);
   if (lineError) throw lineError;
 
   /* 🐞 **โครงการหายไปจากก้อนที่ส่งให้ด่านเงิน** — ตัวตัดสินสายธุรกิจอ่าน "โครงการก่อน
@@ -400,6 +410,113 @@ async function fillBillingDates({ user, supabase, req, id, body }) {
   }
 }
 
+/* ── แบ่งช่วงครอบตามช่วงบริการ (งานบริการรายบรรทัด · mig 0391 · แผน §2.5 ข้อ 3 / §2.8) ─────────────────────────────
+   ⭐ คำสั่งของ **ทั้งใบ** ⇒ PATCH ส่งมาที่นี่ก่อนด่าน `installmentId` (proxy ให้ FN ผ่านเฉพาะ PATCH ของ route นี้)
+   ⭐ body `{ action:'fill-coverage', mode:'monthly'|'proportional', plan:[{ id, coversFrom, coversTo }] }` = พรีวิวที่โมดัลแสดง ·
+     server คิดชุดเองด้วย `splitCoverageByPeriod` ตัวเดียวกับโมดัล จากช่วงบริการ + งวดสด — ไม่ตรงกับที่จอเห็น = 409
+     (ห้ามเขียนชุดใหม่ทับไปเงียบ ๆ = ยืนยันช่วงที่คนกดไม่เคยเห็น)
+   ⭐ ใบต้องอยู่ในจังหวะที่งานบริการแก้ได้ (ร่าง/ถูกตีกลับ · หรือใบเดิมที่ต้องตั้งย้อนหลังและยังไม่ยื่นตรวจ) — ข้อความล็อกคือ
+     `serviceSetupEditError` ตัวเดียวกับที่ปุ่มบนแผงงวดโชว์ข้าง ๆ ตอนกดไม่ได้ (ปุ่มกับ API พูดคำเดียวกัน)
+     · ใบที่ประทับแล้ว/รออนุมัติ/รอตรวจ แก้ช่วงครอบรายงวดได้ตามเดิม (คำสั่ง `coverage`) — ปิดแค่ปุ่มแบ่งทั้งใบ
+   ⭐ ด่านรายงวด `coverage` ตัวเดียวกับเซลล์ช่วงครอบ (installmentActionError) ครบทุกงวดก่อนเขียนงวดแรก — ล็อกทั้งใบชนะก่อน
+   ⚠️ เขียนทีละงวดแบบมีเงื่อนไข updatedAt (writeCoverageFill · ไม่มี RPC) ⇒ อีกหน้าต่างเขียนแทรก = หยุดที่งวดนั้น
+     งวดที่ลงแล้วลง audit ครบ · กดใหม่ได้ชุดเดิม (การแบ่งไม่ขึ้นกับช่วงครอบเดิมของงวดที่ยังไม่รับรอง) */
+const COVERAGE_PLAN_STALE = 'งวดหรือช่วงบริการเพิ่งเปลี่ยน — ตรวจพรีวิวใหม่';
+const COVERAGE_FILL_NOTHING = 'ใบนี้ไม่มีงานบริการให้ตั้ง — กรอกช่วงครอบรายงวดเองที่แผงงวด';
+const coverageFillStoppedMessage = (filled, stopped) => `แบ่งช่วงครอบแล้ว ${filled} งวด แต่หยุดที่งวดที่ ${stopped.seq}`
+  + ` — ${stopped.message} · โหลดใหม่แล้วกดแบ่งอีกครั้ง (งวดที่ลงแล้วได้ช่วงเดิม)`;
+
+/* พรีวิวที่จอส่งมาตรงกับชุดที่ server คิดไหม — งวดชุดเดียวกัน (id) และวันตรงกันทุกงวด */
+function coveragePlanMatches(rows, plan) {
+  if (!Array.isArray(plan) || plan.length !== rows.length) return false;
+  const byId = new Map(plan.map((row) => [String(row?.id || ''), row]));
+  return rows.every((row) => {
+    const seen = byId.get(String(row.id));
+    return !!seen && String(seen.coversFrom || '') === row.coversFrom && String(seen.coversTo || '') === row.coversTo;
+  });
+}
+
+async function fillCoverage({ user, supabase, req, id, body }) {
+  /* สิทธิ์ก่อนโหลด — ชุดเดียวกับเซลล์ช่วงครอบของงวดที่ยังไม่รับรอง (ฝ่ายขาย · ฝ่ายบัญชี) */
+  if (!installmentScheduleAllowed(user)) return forbidden('ไม่มีสิทธิ์แก้ช่วงครอบบริการ');
+  const mode = ['monthly', 'proportional'].includes(body.mode) ? body.mode : null;
+  if (!mode) return badRequest('รูปแบบการแบ่งไม่ถูกต้อง — เลือก “เท่ากันรายเดือน” หรือ “ตามสัดส่วนงวด”');
+  try {
+    const { order, error } = await loadOrderForUser(supabase, user, id);
+    if (error) return error;
+    /* จังหวะของใบ — `canEdit: true` เพราะสิทธิ์ผ่านด่านบนแล้ว ⇒ เหลือแต่เหตุของสถานะใบ (ข้อความเดียวกับปุ่ม) */
+    const flow = serviceSetupFlow(order, { lines: order.lines });
+    const lockText = serviceSetupEditError(order, { canEdit: true });
+    if (lockText || !['pipeline', 'backfill'].includes(flow)) return fail(lockText || COVERAGE_FILL_NOTHING, 409);
+    const period = servicePeriodOf(order);
+    if (!period) return fail(COVERAGE_SPLIT_ERRORS.noPeriod, 409);
+
+    /* ⚠️ อ่านสดแบบโยน error — กลืนเป็น [] แล้ว "ไม่มีงวดให้แบ่ง" ปลอมตัวเป็นเหตุของข้อมูล */
+    const live = await loadInstallments(supabase, order.id);
+    /* ⭐ คิดจาก **ยอดชุดเดียวกับที่จอเห็น** (`installmentsForScreen`) — งวดร่างของใบปกติโชว์ยอดตามแผน QT สด (B-4 · ไม่เขียนลงฐาน)
+       ⇒ โหมด "ตามสัดส่วนงวด" คิดจากยอดดิบในฐานเมื่อไร พรีวิวของโมดัลจะไม่ตรงกับ server แล้วได้ 409 ทุกครั้งที่ยอดสองชุดต่างกัน
+       · ด่านรายงวดและการเขียนยังใช้แถวสดจากฐาน (`live` — updatedAt จริง) */
+    const split = splitCoverageByPeriod(period, installmentsForScreen(order, live), mode);
+    if (split.error) return fail(split.error, 409);
+    if (!coveragePlanMatches(split.rows, body.plan)) return fail(COVERAGE_PLAN_STALE, 409);
+
+    const byId = new Map(live.map((row) => [row.id, row]));
+    const orderLock = historicalInstallmentLock(order) || pipelineInstallmentLock(order, 'coverage');
+    for (const planned of split.rows) {
+      /* ตัวเลือกชุดเดียวกับที่ PATCH รายงวดส่ง — ด่านของ coverage อ่านล็อกทั้งใบ · สิทธิ์ตามสถานะงวด · ช่วงกลับหัว/ปีเพี้ยน */
+      const gate = installmentActionError(byId.get(planned.id), 'coverage', user, {
+        coversFrom: planned.coversFrom, coversTo: planned.coversTo,
+        rows: live, orderTotal: order.totalAmount,
+        serviceRounds: orderHasServiceRounds(order, order.lines),
+        orderLock, historical: isHistoricalOrder(order),
+        contractEnd: openingCoverageEnd(order, live),
+        orderCancelled: order.status === 'cancelled' && !isHistoricalOrder(order),
+      });
+      if (gate) return badRequest(split.rows.length > 1 ? `งวดที่ ${planned.seq}: ${gate}` : gate);
+    }
+
+    let written;
+    try {
+      written = await writeCoverageFill(supabase, live, split.rows);
+    } catch (writeError) {
+      const mapped = documentWorkflowError(writeError, { context: `installment fill-coverage ${order.id}` });
+      if (mapped.code) return fail(mapped.message, mapped.status);
+      throw writeError;
+    }
+    const { before, after } = written;
+    const stopped = written.stopped
+      ? {
+        seq: written.stopped.seq,
+        /* ฐานตีกลับงวดหลัง = ข้อความไทยของรหัสที่รู้จัก หรือข้อความกลาง (ข้อความดิบของ Postgres ไม่ออกจอ) */
+        message: written.stopped.error
+          ? documentWorkflowError(written.stopped.error, { context: `installment fill-coverage ${order.id}` }).message
+          : INSTALLMENT_STALE_MESSAGE,
+      }
+      : null;
+    if (!after.length) return fail(stopped?.message || INSTALLMENT_STALE_MESSAGE, 409);
+
+    /* audit before/after ทุกงวดที่เขียนจริง — ทางกู้ทางเดียวของระบบนี้ (ไม่มีถังขยะ) */
+    await recordAudit({
+      user,
+      action: 'update',
+      entityType: 'sales_order_installments',
+      entityId: order.id,
+      before: { installments: before },
+      after: { installments: after, fill: `coverage-${mode}`, servicePeriod: period },
+      summary: `fill-coverage ${after.length} งวด ของ ${order.orderNumber} (${mode})`
+        + (stopped ? ` (หยุดที่งวด ${stopped.seq})` : ''),
+      request: req,
+    });
+    if (stopped) return fail(coverageFillStoppedMessage(after.length, stopped), 409);
+    return ok({
+      filled: after.length,
+      installments: installmentsForScreen(order, await loadInstallments(supabase, order.id)),
+    });
+  } catch (fillError) {
+    return fail(fillError.message, 500);
+  }
+}
+
 /* ── ปรับแผนงวดของใบที่อนุมัติแล้ว (PR2 · mig 0377 · แผน so-payment-unlock-replan · มติเจ้าของ 23/09 D1/D5) ─────────
    ⭐ คำสั่งของ **ทั้งใบ** ไม่ใช่งวดเดียว ⇒ PATCH ส่งมาที่นี่ก่อนด่าน `installmentId`
      · proxy ให้ FN ผ่านเฉพาะ PATCH ของ route นี้อยู่แล้ว — แต่ด่าน D1 (AE Sup/admin) ตัดก่อนแตะข้อมูล
@@ -526,6 +643,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (action === 'replan') return replanOrderInstallments({ user, supabase, req, id, body });
   if (action === 'carry') return carryIntoOrder({ user, supabase, req, id, body });
   if (action === 'fill-billing') return fillBillingDates({ user, supabase, req, id, body });
+  if (action === 'fill-coverage') return fillCoverage({ user, supabase, req, id, body });
   if (action === 'redate-billing') return redateBillingDates({ user, supabase, req, id, body });
   const installmentId = String(body.installmentId || '').trim();
   if (!installmentId) return badRequest('ไม่ได้ระบุงวดที่ต้องการ');

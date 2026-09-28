@@ -76,9 +76,12 @@ async function loadLedger(supabase, todayIso) {
      ⇒ ไม่ใช่ข้อบังคับอีก แต่ยังอ่านง่ายกว่า จึงคงรูปนี้ไว้ */
   /* `approvedAt` + `approvedByName` = บรรทัด "อนุมัติใบ: <AE Sup> · <วัน> · ไม่นับ Actual" ในโมดัลรับรองงวดของ
      ใบย้อนหลัง (มติ 22/09 · mock FnConfirm) — บัญชีต้องเห็นว่าใบผ่าน AE Sup แล้วก่อนรับรองเงินก้อนแรก */
+  /* `serviceTermsOpenedAt` (mig 0391 · D13) = ตราเปิดงานบริการ — ตัวตัดสินด่านเงินนับแพ็คเกจที่ฝ่ายขายเลือกให้บรรทัดพิมพ์เอง
+     (`serviceFgCode`) เฉพาะใบที่ประทับแล้ว ⇒ ขาดช่องนี้ = ใบแพ็คเกจพิมพ์เองหลุดจากตัวกรอง/คอลัมน์ "ใบมีรอบบริการ" ของบัญชี */
   const { data: orders, error: orderError } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
     .from('sales_orders')
-    .select('id, "orderNumber", "quotationId", "referenceDoc", "dealId", "projectId", "customerId", "customerName", status, "financeStatus", "totalAmount", "approvedAt", "approvedByName", origin, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef"')
+    /* money-decider feed */
+    .select('id, "orderNumber", "quotationId", "referenceDoc", "dealId", "projectId", "customerId", "customerName", status, "financeStatus", "totalAmount", "approvedAt", "approvedByName", origin, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef", "serviceTermsOpenedAt"')
     .in('id', chunk)
     .order('id', { ascending: true })));
   if (orderError) throw orderError;
@@ -116,9 +119,11 @@ async function loadLedger(supabase, todayIso) {
 
   /* ⚠️ ก้อนนี้ใหญ่แน่ — ใบจริงมีได้ถึง 10 บรรทัดต่อใบ คูณทุกใบที่มีงวดตรึงแล้วทั้งระบบ
      ⇒ เกิน 1,000 แถวเป็นเรื่องปกติ ต้องมี `.order()` ที่นิ่ง ไม่งั้นบรรทัดหมวด 02-001
-     ของบางใบจะหายไปในหน้าที่สอง แล้วใบนั้นกลายเป็น "ไม่ใช่ใบบริการ" แบบสุ่มทุกครั้งที่รีเฟรช */
+     ของบางใบจะหายไปในหน้าที่สอง แล้วใบนั้นกลายเป็น "ไม่ใช่ใบบริการ" แบบสุ่มทุกครั้งที่รีเฟรช
+     ⭐ `"serviceFgCode"` (mig 0391 · D13) — แพ็คเกจของบรรทัดพิมพ์เอง · นับเมื่อใบประทับ `serviceTermsOpenedAt` แล้วเท่านั้น */
   const { data: orderLines, error: lineError } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
-    .from('sales_order_lines').select('id, "salesOrderId", "fgCode"').in('salesOrderId', chunk).order('id')));
+    /* money-decider feed */
+    .from('sales_order_lines').select('id, "salesOrderId", "fgCode", "serviceFgCode"').in('salesOrderId', chunk).order('id')));
   if (lineError) throw lineError;
   const linesByOrder = new Map();
   for (const line of orderLines || []) {

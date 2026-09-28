@@ -61,3 +61,33 @@ test('unknown database details are not exposed', () => {
   assert.equal(error.code, 'signature_evidence_failed');
   assert.equal(error.message.includes('postgres'), false);
 });
+
+/* ── งานบริการรายบรรทัด (mig 0391 P1): การอนุมัติใบสาย SERVICE ถอยทั้งก้อนเมื่องานบริการไม่ครบ ──────────
+   🐞 ไม่แปลรหัส = ตกไปข้อความกลาง "บันทึกหลักฐานลายเซ็นไม่สำเร็จ" ซึ่งชี้ไปเรื่องลายเซ็นทั้งที่ไม่เกี่ยว */
+test('service setup incomplete (0391 P1) maps to 409 with the DETAIL codes in extra.setupErrors', () => {
+  const error = signatureEvidenceRpcError({
+    message: 'sales_order_service_setup_incomplete',
+    details: 'kind_missing:SOL-a, packs_missing:SOL-a:ZN-1,,period_missing',
+  });
+  assert.equal(error.status, 409);
+  assert.equal(error.code, 'service_setup_incomplete');
+  assert.match(error.message, /^อนุมัติไม่ได้ — งานบริการของใบนี้ไม่ครบ/);
+  assert.deepEqual(error.extra.setupErrors, ['kind_missing:SOL-a', 'packs_missing:SOL-a:ZN-1', 'period_missing']);
+  // ไม่มี DETAIL = ลิสต์ว่าง (route ยังตอบ 409 ด้วยข้อความรวม)
+  assert.deepEqual(signatureEvidenceRpcError({ message: 'sales_order_service_setup_incomplete' }).extra.setupErrors, []);
+});
+
+test('legacy TS-bound terms (D29) map to 409 with the catalog text — not the signature fallback', () => {
+  const error = signatureEvidenceRpcError({ message: 'service_setup_legacy_terms_exist' });
+  assert.equal(error.status, 409);
+  assert.equal(error.code, 'service_setup_legacy_terms_exist');
+  assert.equal(error.message, 'ใบนี้มีรอบขายที่ TS ผูกไว้ด้วยทางเดิม — เปิดงานบริการทับไม่ได้ · แจ้งผู้ดูแลระบบ');
+  assert.equal(error.extra.setupErrors, undefined, 'setupErrors ติดไปเฉพาะรหัส incomplete');
+});
+
+test('the service-setup incomplete text matches the shared SQL message table on the part the catalog pins', async () => {
+  const { SERVICE_SETUP_SQL_MESSAGES } = await import('../sales/serviceSetup.js');
+  const legacy = signatureEvidenceRpcError({ message: 'service_setup_legacy_terms_exist' });
+  assert.equal(legacy.message, SERVICE_SETUP_SQL_MESSAGES.service_setup_legacy_terms_exist.message);
+  assert.equal(legacy.status, SERVICE_SETUP_SQL_MESSAGES.service_setup_legacy_terms_exist.status);
+});

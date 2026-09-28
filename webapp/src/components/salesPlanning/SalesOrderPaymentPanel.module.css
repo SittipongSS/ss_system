@@ -229,3 +229,51 @@
   color: var(--text-3);
   font-size: var(--fs-5);
 }
+
+/* ── งานบริการรายบรรทัด (mig 0391 · แผน §2.8) ────────────────────────────────────────────────────────────────
+   ⚠️ โทเคนเท่านั้น (เพดานเลขดิบของ audit:ui เต็มพอดี) · ไม่มีจุดตัดจอ — ทุกแถวเป็น flex-wrap จอแคบตกบรรทัดเอง */
+
+/* ปุ่ม "แบ่งช่วงครอบตามช่วงบริการ…" + เหตุที่กดไม่ได้ (ตัวหนังสือ ไม่ใช่ tooltip) — อยู่ด้วยกันเป็นก้อนเดียวบนบรรทัดช่วงบริการ */
+.gatedAction {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+.gateNote {
+  color: var(--amber);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}
+
+/* ช่องที่ติดหลังกดยื่น (แผงแดง "ไปแก้") — กรอบแดงด้านในเซลล์ (ขอบนอกชนเส้นตารางของ primitive) + เหตุใต้ค่า
+   ⚠️ ขึ้นเฉพาะช่องที่หน้าใบส่งมาใน `highlight` (หลังกดเท่านั้น) · `tabIndex=-1` ให้ "ไปแก้" โฟกัสได้ ไม่ต้องมีวงโฟกัสซ้ำกรอบ */
+.cellIssue {
+  box-shadow: inset 0 0 0 2px var(--red);
+  background: color-mix(in srgb, var(--red-soft) 60%, transparent);
+}
+.cellIssue:focus { outline: none; }
+/* `.table small` (จาง) ของตารางงวดชนะคลาสเดี่ยว ⇒ ผูกกับ `.table` ให้เฉพาะเจาะจงกว่า (ไม่ใช้ !important) */
+.table .issueNote { color: var(--red); font-weight: var(--fw-semibold); }
+
+/* แถบช่วงครอบของงวดเทียบช่วงบริการ (CoverageTimeline) ใต้ตาราง — กล่องเดียวกับบรรทัดเมตาของการ์ด */
+.timeline {
+  display: grid;
+  gap: var(--space-1-5);
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+}
+.timelineHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+  font-size: var(--fs-5);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.timelineHead b { color: var(--text); font-size: var(--fs-6); font-weight: var(--fw-semibold); }

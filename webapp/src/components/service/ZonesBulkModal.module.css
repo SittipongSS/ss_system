@@ -1,0 +1,182 @@
+/* ── หน้าต่าง "เพิ่มหลายโซน" (ZonesBulkModal · ม็อก SoBulkZonesModal) ───────────────────────────────────────────
+   แพ็คต่อรอบ (สองแบบ) → ค้น/ติ๊ก → ท้ายหน้าต่างบอกผลก่อนกด */
+
+.lead {
+  margin: 0 0 var(--space-3);
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+}
+
+.packs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.packsLabel {
+  color: var(--text-2);
+  font-size: var(--fs-4);
+  font-weight: var(--fw-semibold);
+}
+
+.req {
+  margin-left: var(--space-0-5);
+  color: var(--red);
+}
+
+.equal {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  color: var(--text-3);
+  font-size: var(--fs-5);
+}
+
+.equal input {
+  width: 76px;
+  text-align: right;
+}
+
+.tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2-5);
+}
+
+.search {
+  min-width: 240px;
+  flex: 1;
+}
+
+.count {
+  color: var(--text-3);
+  font-size: var(--fs-5);
+}
+
+.hint {
+  margin: 0 0 var(--space-2);
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+.sites {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.site {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2-5) 0;
+  border-top: 1px solid var(--border);
+}
+
+.site:first-child {
+  border-top: 0;
+}
+
+.siteName {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+}
+
+.siteText {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.siteCode {
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-2);
+}
+
+.zones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1-5);
+}
+
+.zone {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--panel-solid);
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+  cursor: pointer;
+}
+
+.zone[data-on] {
+  border-color: var(--accent-ink);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.zone[data-off] {
+  background: var(--panel-2);
+  color: var(--text-3);
+  cursor: not-allowed;
+}
+
+.zoneCode {
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-2);
+}
+
+.zoneNote {
+  color: var(--text-3);
+  font-size: var(--fs-3);
+}
+
+.empty {
+  color: var(--text-3);
+  font-size: var(--fs-5);
+}
+
+.foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2) var(--space-3);
+}
+
+.consequence {
+  min-width: 0;
+  flex: 1;
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+/* ข้อความติดด่าน — ขึ้นหลังกด "เพิ่ม n โซน" เท่านั้น (กฎ 3) */
+.consequence[data-blocked] {
+  color: var(--red);
+  font-weight: var(--fw-semibold);
+}
+
+@media (max-width: 640px) {
+  .site { grid-template-columns: minmax(0, 1fr); }
+}

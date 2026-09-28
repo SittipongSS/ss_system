@@ -1,0 +1,95 @@
+/* ── การ์ดตารางรายการ + งานบริการของใบสั่งขาย (SalesOrderServiceLines · mig 0391 · PR-A) ──────────────────────
+   ม็อก SoSetupTable: หัวการ์ด · แถบช่วงบริการ · ตาราง (ตัวเดียวกับใบเสนอราคา + กล่องใต้บรรทัด) · ท้ายตาราง · แถบบันทึกลอย
+   ใช้ร่วมกับ ServiceRegistryPaths (โฟลเดอร์เดียวกัน) */
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.headActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.loadLine {
+  color: var(--text-3);
+  font-size: var(--fs-5);
+}
+
+/* ── ท้ายตาราง: สรุปทั้งใบ · ทางเพิ่มไซต์ · ประกาศลูกค้าไม่มีไซต์ ───────────────────────────────── */
+.footer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2-5);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+.summarySub {
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-normal);
+}
+
+/* ใบที่ไม่มีแพ็คเกจเลย — ทั้งส่วนงานบริการยุบเหลือบรรทัดเดียว */
+.noPackage {
+  padding: var(--space-2-5) var(--space-3-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--panel-2) 60%, transparent);
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+.registryLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2-5) var(--space-3);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+.registryText {
+  min-width: 0;
+  flex: 1;
+}
+
+.registryGuide {
+  flex-basis: 100%;
+  color: var(--text-3);
+  font-size: var(--fs-4);
+}
+
+/* ── แถบบันทึกลอย (พื้น/ตำแหน่งลอยมาจาก `.form-action-bar.is-page` กลาง — เหนือแถบเมนูล่างของมือถือ) ──── */
+.saveBar {
+  flex-wrap: wrap;
+}
+
+.saveErrors {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--red);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}

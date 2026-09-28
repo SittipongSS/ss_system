@@ -25,12 +25,26 @@ import { orderBusinessLine } from '@/lib/service/intake';
    (02 = ธุรกิจบริการ · 001 = ระบบกระจายกลิ่น SDS — ทะเบียน product_types mig 0007) */
 export const SERVICE_ROUND_CATEGORY = '02-001';
 
-/* บรรทัดนี้เป็นแพ็คเกจบริการไหม — เทียบด้วย `categoryOf` ตัวกลาง ไม่ใช่ startsWith เอง
-   เพราะรหัส FG จริงมีทั้ง FG-AAAA-02-001-DDDDD และ FG-AAA-02-001-DDDD (ออโต้/กรอกมือ) */
-export const lineIsServicePackage = (line) => categoryOf(line?.fgCode) === SERVICE_ROUND_CATEGORY;
+/* ⭐ **รหัส FG ที่ด่านเงินอ่าน** (mig 0391 · PR-A · มติ r3 28/09) — FG ของบรรทัดก่อนเสมอ
+   แล้วค่อยแพ็คเกจที่ฝ่ายขายเลือกให้บรรทัดพิมพ์เอง (`serviceFgCode`) **เฉพาะเมื่อใบประทับ `serviceTermsOpenedAt` แล้ว**
+   🔴 ทำไมต้องรอประทับ (#1683): เกณฑ์แคบคือสวิตช์ของด่าน "ต้องมีช่วงครอบก่อนบัญชีรับรองงวด" — นับ `serviceFgCode`
+     ตั้งแต่ร่าง = บัญชีรับรองงวดของใบที่กำลังตั้งค่าไม่ได้ทันที · ประทับเกิดตอนอนุมัติ (ใบใหม่) หรือผู้จัดการอนุมัติ
+     งานบริการย้อนหลัง ซึ่งด่านยื่นตรวจแล้วว่างวดที่ยังไม่รับรองมีช่วงครอบครบ ⇒ ด่านเงินเปิดตอนที่ของพร้อมพอดี
+   ⚠️ ตัวเรียกที่ไม่ส่งใบ (ตัวเลือกสินค้า · วัตถุสินค้าไม่มี serviceFgCode) ได้ผลเหมือนเดิมทุกตัว
+   ⚠️ ใบ Rev. ไม่สืบตราประทับ ⇒ ระหว่างร่าง Rev. ของใบที่มีบรรทัดพิมพ์เอง ด่านหลวมลงชั่วคราว (ไม่เคยเข้มขึ้น · D13) */
+export function effectiveServiceFgCode(line, order = null) {
+  return line?.fgCode || (order?.serviceTermsOpenedAt ? line?.serviceFgCode : null) || null;
+}
 
-export const hasServicePackageLine = (lines = []) =>
-  (Array.isArray(lines) ? lines : []).some(lineIsServicePackage);
+/* บรรทัดนี้เป็นแพ็คเกจบริการไหม — เทียบด้วย `categoryOf` ตัวกลาง ไม่ใช่ startsWith เอง
+   เพราะรหัส FG จริงมีทั้ง FG-AAAA-02-001-DDDDD และ FG-AAA-02-001-DDDD (ออโต้/กรอกมือ)
+   ⚠️ มีอาร์กิวเมนต์ที่สอง (`order`) แล้ว — ห้ามส่งแบบ point-free ที่ใบจริงผ่าน (`.filter(lineIsServicePackage)`
+     ส่ง index มาเป็น order) · ใช้ลูกศร `(l) => lineIsServicePackage(l, order)` เสมอ */
+export const lineIsServicePackage = (line, order = null) =>
+  categoryOf(effectiveServiceFgCode(line, order)) === SERVICE_ROUND_CATEGORY;
+
+export const hasServicePackageLine = (lines = [], order = null) =>
+  (Array.isArray(lines) ? lines : []).some((l) => lineIsServicePackage(l, order));
 
 const oneEntryMap = (row) => (row?.id ? new Map([[row.id, row]]) : new Map());
 
@@ -76,8 +90,71 @@ export function serviceRoundsSold(lines = []) {
 
 export function orderHasServiceRounds(order, lines, ctx = {}) {
   const rows = Array.isArray(lines) ? lines : order?.lines;
-  if (!hasServicePackageLine(rows)) return false;
+  if (!hasServicePackageLine(rows, order)) return false;
   return orderBusinessLineOf(order, ctx) === 'SERVICE';
+}
+
+/* ⭐ **จำนวนครั้งที่ต้องไปหน้างานที่ขายไว้** (mig 0391 · D23) — n/N ของ TS สำหรับใบที่ตั้งงานบริการรายบรรทัดแล้ว
+   หนึ่งไซต์ไปครั้งเดียวต่อรอบ ไม่ว่าจะมีกี่บรรทัด/กี่โซน ⇒ ต่อไซต์ = รอบสูงสุดของบรรทัด (ไม่ซ้ำ) ที่ผูกไซต์นั้น
+   · ทั้งใบ = Σ ต่อไซต์ · `mixed` = บรรทัดในไซต์เดียวกันขายรอบไม่เท่ากัน (จอบอก "รอบไม่เท่ากัน" ไม่ใช่เดา)
+   @param links     terms หรือ allocations `[{ salesOrderLineId, zoneId }]`
+   @param zonesById Map zoneId → { siteId } — โซนที่ไม่รู้ไซต์ข้าม (นับไม่ได้ว่าไปไซต์ไหน)
+   → `{ bySite: Map<siteId, { rounds: number|null, mixed, values: number[] }>, total: number|null, mixed }`
+     `values` = รอบที่ไม่ซ้ำของบรรทัดในไซต์นั้น เรียงมากไปน้อย — จอบอก "12 · 8 รอบ (ต่างกันรายรายการ)" ไม่ใช่แค่ตัวมากสุด
+   ⚠️ null ไม่ใช่ 0 (กติกาเดียวกับ `serviceRoundsSold`) — ไม่มีไซต์ไหนมีรอบเลย ตอบ null ให้จอขีด
+   ⚠️ ใบเก่าที่ยังไม่ประทับยังใช้ `serviceRoundsSold` (Σ รายบรรทัด) ตามเดิม */
+export function serviceVisitsSold({ lines = [], links = [], zonesById = new Map() } = {}) {
+  const roundsByLine = new Map((Array.isArray(lines) ? lines : []).map((line) => [line?.id, line?.serviceRounds]));
+  const linesBySite = new Map();
+  for (const link of Array.isArray(links) ? links : []) {
+    const zone = zonesById instanceof Map ? zonesById.get(link?.zoneId) : null;
+    const siteId = zone?.siteId;
+    if (!siteId || !link?.salesOrderLineId) continue;
+    if (!linesBySite.has(siteId)) linesBySite.set(siteId, new Set());
+    linesBySite.get(siteId).add(link.salesOrderLineId);
+  }
+  const bySite = new Map();
+  let total = 0;
+  let seen = false;
+  let mixed = false;
+  for (const [siteId, lineIds] of linesBySite) {
+    const values = [...lineIds]
+      .map((id) => Number(roundsByLine.get(id)))
+      .filter((n) => Number.isFinite(n) && n > 0);
+    const rounds = values.length ? Math.max(...values) : null;
+    const distinct = [...new Set(values)].sort((a, b) => b - a);
+    const siteMixed = distinct.length > 1;
+    bySite.set(siteId, { rounds, mixed: siteMixed, values: distinct });
+    if (rounds !== null) { total += rounds; seen = true; }
+    if (siteMixed) mixed = true;
+  }
+  return { bySite, total: seen ? total : null, mixed };
+}
+
+/**
+ * ขายไว้กี่รอบของ **ไซต์เดียว** (หน้าไซต์ · ServicePlanModal) — ตัวนับเดียวกับแถว "รอตั้งรอบ" (D23)
+ *   ต่อใบที่ยังมีผล: ใบที่ประทับแล้ว (`serviceTermsOpenedAt`) = รอบสูงสุดของบรรทัดที่ลงไซต์นี้ (`serviceVisitsSold`)
+ *   · ใบเดิมที่ยังไม่ประทับ = Σ รายบรรทัด (`serviceRoundsSold` ตามเดิม) · หลายใบที่ยังมีผล (ต่ออายุซ้อน) = รวมกัน
+ * 🐞 เดิมบวกทุกบรรทัดเสมอ ⇒ สองบรรทัด 12 กับ 4 รอบที่ไซต์เดียวขึ้น 16 ที่หน้าไซต์ แต่แถวรอตั้งรอบขึ้น 12
+ * @param orders ใบที่ยังมีผลเท่านั้น (ผู้เรียกกรอง `termOrderActive`) · select ต้องพก "serviceTermsOpenedAt"
+ * @param terms รอบขายของโซนในไซต์นี้ `{ salesOrderId, salesOrderLineId, zoneId }` · @param zonesById Map zoneId → { siteId }
+ * → จำนวน หรือ null (ไม่มีรอบให้นับ — ไม่ใช่ 0)
+ */
+export function siteRoundsSoldOf({ orders = [], terms = [], lines = [], zonesById = new Map() } = {}) {
+  const linesById = new Map((Array.isArray(lines) ? lines : []).map((line) => [line?.id, line]));
+  const termList = Array.isArray(terms) ? terms : [];
+  let total = 0;
+  let seen = false;
+  for (const order of Array.isArray(orders) ? orders : []) {
+    const orderTerms = termList.filter((term) => term?.salesOrderId === order?.id);
+    const orderLines = [...new Set(orderTerms.map((term) => term?.salesOrderLineId).filter(Boolean))]
+      .map((id) => linesById.get(id)).filter(Boolean);
+    const rounds = order?.serviceTermsOpenedAt
+      ? serviceVisitsSold({ lines: orderLines, links: orderTerms, zonesById }).total
+      : serviceRoundsSold(orderLines);
+    if (rounds !== null && rounds !== undefined) { total += rounds; seen = true; }
+  }
+  return seen ? total : null;
 }
 
 /* ⭐ **"ใบนี้อยู่บนเส้นบริการไหม" — กว้างกว่าตัวบน และตั้งใจให้กว้าง**

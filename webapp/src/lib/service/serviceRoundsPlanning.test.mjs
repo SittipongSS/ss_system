@@ -64,3 +64,25 @@ test('คิววางรอบ: ไม่ส่ง linesById = ยังไ�
   });
   assert.equal(rows[0].roundsSold, null);
 });
+
+/* ⭐ mig 0391 · D23 — ขายไว้กี่รอบของไซต์ = จำนวนครั้งที่ต้องไปไซต์ (`serviceVisitsSold`) ไม่ใช่ผลบวกราย term
+   🐞 ใบที่ฝ่ายขายตั้งงานบริการเอง ลงบรรทัดเดียวหลายโซนในไซต์เดียวเป็นเรื่องปกติ (57 สาขา × หลายโซน)
+      ⇒ ตัวบวกเดิมทำให้ "ขายไว้" ของไซต์โตตามจำนวนโซน แล้วโมดัลวางรอบเสนอความถี่ผิด */
+test('คิววางรอบ: บรรทัดเดียวลงสามโซนของไซต์เดียว = รอบของบรรทัด (ไม่คูณจำนวนโซน)', () => {
+  const zones = [
+    { id: 'ZN1', siteId: 'ST1', name: 'Lobby' },
+    { id: 'ZN2', siteId: 'ST1', name: 'Hall' },
+    { id: 'ZN3', siteId: 'ST1', name: 'Toilet' },
+  ];
+  const rows = planQueue({
+    zones,
+    terms: zones.map((z, i) => ({ id: `T${i}`, zoneId: z.id, salesOrderId: 'SO1', salesOrderLineId: 'L1' })),
+    plans: [], sites: [{ id: 'ST1', name: 'ไซต์ A' }],
+    ordersById: new Map([['SO1', { id: 'SO1', status: 'approved', supersededById: null, serviceTermsOpenedAt: '2026-09-28T03:00:00Z' }]]),
+    linesById: new Map([['L1', { id: 'L1', serviceRounds: 12 }]]),
+    todayIso: '2026-09-28',
+  });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].roundsSold, 12, '36 = นับรอบซ้ำตามจำนวนโซน');
+  assert.equal(rows[0].zones.length, 3);
+});
