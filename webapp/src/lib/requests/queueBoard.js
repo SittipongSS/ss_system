@@ -33,7 +33,8 @@ import { liveDueDate } from '@/lib/requests/dueRound';
    ที่มีไว้ไม่ให้ฝ่ายถูกนับงานของคนอื่น ก็พังไปด้วย */
 export function requestNextStep(request) {
   const next = baseNextStep(request);
-  if (next && next.owner === 'dept' && requestAwaitingDue(request)) {
+  // ⚠️ ป้าย "ยังไม่จบ" ไม่ถูกทับ — มันคือคำทวงที่คนกดตั้งใจส่ง ("ลืมแจ้งกำหนดส่ง" ก็หลุดเองตอนฝ่ายแจ้งวัน)
+  if (next && next.owner === 'dept' && !next.reopened && requestAwaitingDue(request)) {
     return { ...next, label: 'รอกำหนดส่ง' };
   }
   return next;
@@ -68,6 +69,20 @@ function baseNextStep(request) {
     return { owner: 'dept', label: closureWaitLabel(request, 'dept') };
   }
   if (!REQUEST_OPEN_STATUSES.includes(request.status)) return null;
+
+  /* ⭐ **"ยังไม่จบ" = คนกดบอกไว้แล้วว่ารอใคร** (มติผู้ใช้ 2026-09-29 · mig 0391) — มาก่อนตัวงาน
+     🐞 ของเดิมถอนตราแล้วเดาจากตัวงาน ⇒ ใบสอบถามพลิกตามคนโพสต์ล่าสุด (เหตุผลของปุ่มไม่นับ) ·
+     ใบที่แถวครบตก "รอปิดเรื่อง" ตาผู้ขอเสมอ ⇒ SA กดให้ RD แก้กลิ่น แต่ใบไปค้างคิว SA เอง
+     (RQ-26080083) และไม่มีคำว่า "ยังไม่จบ" เหลือบนตารางเลย
+     ⚠️ หลุดเองเมื่อฝั่งนั้นขยับ (`reopenWaitClearPatch`) — ไม่ต้องมีใครจำมากดล้าง */
+  if (request.reopenWaitSide) {
+    const side = request.reopenWaitSide === 'dept' ? 'dept' : 'requester';
+    return {
+      owner: side,
+      label: `ยังไม่จบ · ${requestWaitLabel(request, side, '').trim()}`,
+      reopened: true,
+    };
+  }
 
   const items = request.items || [];
   /* ⭐ **หัวข้อที่ทั้งใบคือเธรด — ป้ายพลิกตามคนโพสต์ล่าสุด** (มติผู้ใช้ 2026-08-20)
@@ -133,8 +148,9 @@ export function requestQueueStatus(request) {
   if (next) {
     // ⚠️ "รอกำหนดส่ง" เหลืองเท่ากับ "รอรับเรื่อง" — ทั้งคู่คือนาฬิกาเดินแล้วแต่ยังไม่มี
     // คำสัญญา · ทาสีฟ้าเหมือนงานที่กำลังเดินอยู่เมื่อไร มันจะจมหายในคอลัมน์ทันที
+    // "ยังไม่จบ" เหลืองเหมือนแถวเธรด `reopen` (อำพัน) — เรื่องที่ฝั่งนั้นต้องรู้ทันที ไม่ใช่งานที่เดินอยู่
     const tone = next.bounced ? 'danger'
-      : next.label === 'รอรับเรื่อง' || next.label === 'รอกำหนดส่ง' ? 'warning'
+      : next.reopened || next.label === 'รอรับเรื่อง' || next.label === 'รอกำหนดส่ง' ? 'warning'
         : next.owner === 'dept' ? 'info'
           : 'neutral';
     return { label: next.label, tone, owner: next.owner, bounced: Boolean(next.bounced) };
