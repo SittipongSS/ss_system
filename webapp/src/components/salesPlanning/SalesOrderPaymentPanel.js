@@ -1,9 +1,9 @@
 "use client";
-import { Fragment, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowRight, ArrowRightLeft, ArrowUpRight, CalendarCheck, CalendarClock, CalendarRange, CalendarSync, FileText, HandCoins, Link2,
-  Lock, Paperclip, Receipt, TriangleAlert, Undo2, Unlink, Wallet, XCircle,
+  ArrowRightLeft, ArrowUpRight, CalendarClock, CalendarRange, ExternalLink, FileText, HandCoins, Link2,
+  Paperclip, Receipt, TriangleAlert, Undo2, Unlink, Wallet, XCircle,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import ChoiceChips from "@/components/ui/ChoiceChips";
@@ -28,8 +28,14 @@ import InstallmentConfirmDialog, { installmentConfirmPrompt } from "./Installmen
 import TaxInvoiceDialog from "./TaxInvoiceDialog";
 import InstallmentRefundDialog from "./InstallmentRefundDialog";
 import QuotationInstallments from "./QuotationInstallments";
-import BillingRoundPicker from "./BillingRoundPicker";
 import BillingStateBadge from "./BillingStateBadge";
+import useInstallmentDateMode from "./installmentDates/useInstallmentDateMode";
+import InstallmentDateCell, { InstallmentDateEntry } from "./installmentDates/InstallmentDateCell";
+import InstallmentDateFrame, { InstallmentDateExpandRow } from "./installmentDates/InstallmentDateFrame";
+import InstallmentDateFill from "./installmentDates/InstallmentDateFill";
+import {
+  InstallmentDateBar, InstallmentDateButton, InstallmentDateHint, InstallmentDateSheet,
+} from "./installmentDates/InstallmentDateChrome";
 import { paymentCarryPrompt, paymentPlanEditPrompt, paymentRefundClearPrompt } from "@/lib/approvalPrompt";
 import {
   CARRY_BUTTON, applyCarryIn, carriedAwayGroups, carriedFromOf, carryBlocker, carryExpected, carryPromptFacts,
@@ -41,13 +47,10 @@ import {
 } from "@/lib/sales/installmentReplan";
 import { CONFIRM_DOC_TYPE_LABELS, orderConfirmationOf } from "@/lib/sales/orderConfirmationDocs";
 import {
-  billingRoundCount, billingRuleMonthly, billingRuleNoCredit, billingRuleOf, billingState, describeBillingRule,
-  describeBillingRuleDetail, dueDateForBilling, formatBillingDate, installmentBillingRedatable, planMonthlyFill, planRedate,
-  weekendNote,
+  billingState, describeBillingRule, describeBillingRuleDetail, formatBillingDate, weekendNote,
 } from "@/lib/sales/billingRule";
-import {
-  billingRoundChoices, pickedRoundIndex, pickerMissing, pickerPayload, pickerRuleOf, pickerValueFromRow,
-} from "@/lib/sales/billingPicker";
+import { pickerRuleOf } from "@/lib/sales/billingPicker";
+import { dateLockView, dueSourceOf } from "@/lib/sales/installmentDateDrafts";
 import { billingRequestHref } from "@/lib/sales/billingRequestHref";
 import {
   INSTALLMENT_STATUS_LABELS, INSTALLMENT_STATUS_TONES, MIN_REJECT_REASON,
@@ -92,45 +95,6 @@ function InstallmentLabel({ label }) {
     : <strong>{thaiText(text)}</strong>;
 }
 
-/* วันเดิม → วันใหม่ ในตารางจัดวันใหม่ — เดิมจาง (ขีดฆ่าเมื่อจะเปลี่ยน) · ใหม่ + ป้ายเสาร์-อาทิตย์ · ตรงกันแล้ว = บอกว่าไม่เปลี่ยน */
-function RedateCell({ from, to }) {
-  const same = Boolean(from) && from === to;
-  return (
-    <span className={styles.redateCell}>
-      {same ? null : (
-        <span className={styles.redateFrom}>
-          {from ? <span className={styles.cleared}>{formatBillingDate(from)}</span> : NA}
-          <ArrowRight size={12} aria-hidden="true" /><span className="sr-only">เป็น</span>
-        </span>
-      )}
-      <span className={styles.dateLine}>
-        <span className={styles.dateText}>{formatBillingDate(to)}</span>
-        <WeekendBadge iso={to} />
-      </span>
-      {same ? <small>ไม่เปลี่ยน</small> : null}
-    </span>
-  );
-}
-
-/* "ใช้รอบไหน" ของปุ่มเดือนละงวด (เติมตามรอบ · จัดวันใหม่) — ลูกค้าวางบิลหลายรอบต่อเดือน (มติเจ้าของ 26/09 ข้อ 3 ·
-   "บางบริษัทมี 2 รอบ") · ใบหนึ่งเดือนละงวด ⇒ ต้องรู้ว่างวดของใบนี้ไปรอบไหน · ชิปจาก `billingRoundChoices`
-   🔴 **ไม่เลือกให้** (กฎบ้าน: ไม่มีค่าตั้งต้นให้การตัดสินใจ) — ยังไม่เลือก = ยังไม่มีพรีวิว ปุ่มยืนยันดับพร้อมเหตุ
-   ⚠️ route คิดแผนซ้ำด้วย `roundIndex` ตัวเดียวกัน · รอบของลูกค้าเปลี่ยนระหว่างเปิดโมดัล = แผนไม่ตรง = 409 (กติกาเดิม) */
-function BillingRoundChoice({ choices, value, onChange, disabled, verb }) {
-  return (
-    <div className={styles.field}>
-      <span>ใช้รอบไหน</span>
-      <ChoiceChips ariaLabel={`รอบวางบิลที่จะใช้${verb}`} options={choices} value={value} onChange={onChange}
-        disabled={disabled} />
-      <p className="form-note">
-        {value === null
-          ? `ลูกค้าวางบิลเดือนละ ${choices.length} รอบ — เลือกรอบที่งวดของใบนี้ใช้ แล้วระบบแสดงวันทุกงวดให้ดูก่อน${verb}`
-          : "ทุกงวดใช้รอบนี้ เดือนละงวด · เปลี่ยนรอบได้ ตารางข้างล่างเปลี่ยนตาม"}
-      </p>
-    </div>
-  );
-}
-
 /* การ์ด "การชำระ" ของใบสั่งขาย (mig 0245/0246) — **แบบ ข** (มติผู้ใช้ 2026-08-13)
    เทียบสามแบบไว้ที่ `docs/so-payment-panel-options-mockup.html`
    หลักฐานปิดการขายอยู่หัว · แถบสัดส่วนเงิน · ตารางแน่นที่เทียบข้ามงวดได้ด้วยตากวาดคอลัมน์
@@ -144,12 +108,11 @@ function BillingRoundChoice({ choices, value, onChange, disabled, verb }) {
    ⚠️ ยอด Actual ไม่เกี่ยวกับการ์ดนี้ — SA ได้ยอดเต็ม 100% ตั้งแต่ใบอนุมัติ
    ⚠️ ยอด "เก็บแล้ว" นับเฉพาะที่บัญชีคอนเฟิร์ม — `reported` ไม่นับ */
 export default function SalesOrderPaymentPanel({
-  order, installments, user, todayIso, canStart, busy, onStart, onAction, onReplan, onCarry, onFillBilling, onRedateBilling,
-  error = "", onClearError,
+  order, installments, user, todayIso, canStart, busy, onStart, onAction, onReplan, onCarry,
+  error = "", onClearError, onDatesDirty, onRefreshOrder,
 }) {
   const [reportFor, setReportFor] = useState(null);
   const [rejectFor, setRejectFor] = useState(null);
-  const [scheduleFor, setScheduleFor] = useState(null);
   const [unconfirmFor, setUnconfirmFor] = useState(null);
   const [confirmFor, setConfirmFor] = useState(null);
   const [linkFor, setLinkFor] = useState(null);
@@ -168,16 +131,6 @@ export default function SalesOrderPaymentPanel({
   const [carry, setCarry] = useState(null);
   // บันทึกคืนเงินของงวดใบที่ยกเลิก (PR3) — โมดัลตัวเดียวกับคิวเงินค้างบนทะเบียนการชำระ
   const [refundFor, setRefundFor] = useState(null);
-  // เติมวันวางบิลตามรอบ เดือนละงวด (กำหนดวางบิล · mig 0389) — พรีวิวคิดสดทุกครั้งที่วาด (ไม่จำชุดตอนเปิด)
-  const [fillOpen, setFillOpen] = useState(false);
-  // จัดวันใหม่ตามรอบปัจจุบัน (กำหนดวางบิลรอบสอง) — พรีวิวคิดสดทุกครั้งที่วาดเหมือนเติมตามรอบ (409 แล้วตารางเปลี่ยนตามงวดสด)
-  const [redateOpen, setRedateOpen] = useState(false);
-  /* รอบที่เลือกในสองโมดัลข้างบน — ลูกค้าหลายรอบต่อเดือน (มติ 26/09 ข้อ 3) ต้องเลือกก่อนว่าจะใช้รอบไหน · **วันวางบิลของรอบ**
-     (ไม่ใช่ลำดับ — 409 ดึงรอบลูกค้าใหม่แล้วลำดับเลื่อน ชิปที่เลือกจะกระโดดไปรอบอื่นเงียบ ๆ · `pickedRoundIndex` แปลงเป็นลำดับทุกครั้งที่วาด)
-     · **null = ยังไม่เลือก** (ไม่มีค่าตั้งต้น — เปิดโมดัลใหม่ล้างทุกครั้ง) · ลูกค้ารอบเดียวไม่อ่านค่านี้ */
-  const [fillRound, setFillRound] = useState(null);
-  const [redateRound, setRedateRound] = useState(null);
-
   /* ⭐ **ใบสั่งขายย้อนหลัง (มติ 22/09 · mig 0374)** — งวดมาจากฟอร์มคีย์ใบทั้งชุด (งวดยกมา + ที่ยังต้องเก็บ)
      ไม่มีใบเสนอราคาให้คำนวณแผน ⇒ ไม่มี preview · ไม่มี "แผนเปลี่ยน" · ไม่มีปุ่มเริ่มติดตาม
      ⚠️ ต่อ preview ให้ใบนี้เมื่อไร `paymentScheduleRows(null)` คืน "ชำระเต็มจำนวน 100%" ปลอมหนึ่งแถว
@@ -285,34 +238,52 @@ export default function SalesOrderPaymentPanel({
      ⭐ **สองช่องแยกกัน** — วันวางบิล (`billingDate` · คอลัมน์ใหม่) ≠ กำหนดชำระ (`dueDate`) · ป้ายแดง "เลยกำหนด" ของแถว
        การ์ด และด่านช่าง (visitGate) อ่าน dueDate ช่องเดียวเหมือนเดิม · วันวางบิลที่ผ่านไปแล้ว = "เลยรอบวางบิล" โทนเตือน
        (คำ/สีมาจาก billingRule.js ผ่าน BillingStateBadge — ห้ามเขียนเองที่นี่)
-     ⭐ รอบของลูกค้าอ่านสดจากทะเบียน (route ของหน้าใบ) · ยังไม่ตั้งรอบ = กำหนดชำระแบบเดิม + ทางไปตั้งรอบ
+     ⭐ รอบของลูกค้าอ่านสดจากทะเบียน (route ของหน้าใบ) · ยังไม่ตั้ง = กรอกได้ทั้งสองช่อง (ไม่มีอะไรคิดให้) + ข้อความชวนตั้ง
        (มติข้อ 7: ไม่บังคับเลือกรอบ — บางที่ไม่มีรอบวาง)
+     ⭐ (28/09 ข้อ 17) **ใช้เหมือนกันทุกลูกค้า ทุกใบ ทุกสาย** — ไม่มีโค้ดดูสายของใบ · คอลัมน์วันวางบิลขึ้นทุกใบที่ยังเดิน
      ⚠️ ฐานยังไม่รัน 0389 (`billingSchemaReady === false`) = ไม่วาดของใหม่เลย — ชวนตั้งรอบ/เลือกรอบที่ยังบันทึกไม่ได้คือทางตัน
      ⚠️ ใบที่ตาย (ยกเลิก/ถูกออก Rev. ทับ) ไม่มีอะไรให้วางบิล — คอลัมน์และบรรทัดรอบไม่ขึ้น (แถวของมันโมฆะแล้ว)
        · **รวมใบย้อนหลังที่ยกเลิก** (review S3 26/09) — `deadPipeline` ไม่นับใบย้อนหลัง (แถบเงิน/จ่ายถึงของมันยังขึ้นตามเดิม)
          แต่รอบวางบิลของใบที่ยกเลิกแล้วไม่มีความหมาย และคอลัมน์ที่ค้างอยู่ทำให้ลิงก์คำร้องของงวดโมฆะหายจากทั้งสองคอลัมน์ */
   const deadOrder = deadPipeline || (historical && order?.status === "cancelled");
   const billingOn = order?.billingSchemaReady !== false && !deadOrder && !movedAway;
-  /* ⭐ รอบรุ่นสอง (mig 0390 · มติ 26/09): **ไม่มีเครดิต = ทำเหมือนไม่มีรอบ** (`pickerRuleOf` คืน null) — ช่องกำหนดชำระแบบเดิม ·
-       ไม่มีชิปรอบ · ไม่มีปุ่มเติม/จัดวันใหม่ · แต่บรรทัดรอบบนการ์ด **บอกว่า "ไม่มีเครดิต"** (ไม่ใช่ "ยังไม่ตั้ง" ซึ่งชวนไปตั้ง)
+  /* ⭐ รอบที่ใช้คิดวัน (`pickerRuleOf` = `effectiveBillingRule` · มติเจ้าของ 28/09 ข้อ 17): **ไม่มีเครดิต = วางบิลได้ทุกวัน +
+       ชำระวันวางบิล** — ตัวแก้ในโหมดตั้งวันเดินทางเดียวกับเครดิต N วัน (ไม่มีสาขาแยก) · `noCredit` ใช้เลือกคำบนบรรทัดรอบเท่านั้น
+       (แทนมติ 26/09 "ไม่มีเครดิต = ทำเหมือนไม่มีรอบ" — ต้นเหตุที่ใบสินค้าเกือบทั้งหมดไม่มีวันวางบิลเลย)
      ⚠️ ห้ามอ่าน `billingRule.billing.day`/`.payment.day` ตรง ๆ — ถามตัวช่วย (billingRuleMonthly · billingRoundCount) */
   const billingRule = billingOn ? pickerRuleOf(order?.customer?.billingRule) : null;
-  const noCredit = billingOn && billingRuleNoCredit(order?.customer?.billingRule);
-  const noCreditNote = noCredit ? String(billingRuleOf(order?.customer?.billingRule)?.note || "") : "";
-  /* คอลัมน์ "วันวางบิล" — ลูกค้าไม่มีรอบ/ไม่มีเครดิต และไม่มีงวดไหนมีวันวางบิลหรือรอเหตุการณ์ = ซ่อนทั้งคอลัมน์
-     (ขึ้นขีดทุกแถวไม่บอกอะไร · มติ 26/09 ไม่มีเครดิตทำเหมือนไม่มีรอบ) · ปุ่ม "ขอใบวางบิลงวดนี้" ยังอยู่ในเมนูแถวเสมอ */
-  const billingColumn = billingOn && (Boolean(billingRule)
-    || (installments || []).some((r) => r?.billingDate || String(r?.billingEvent || "").trim()));
-  const monthlyRule = billingRuleMonthly(billingRule);
-  /* รอบต่อเดือน ≥ 2 = ปุ่มเดือนละงวดต้องถามก่อนว่าใช้รอบไหน (planMonthlyFill/planRedate ตีกลับถ้าไม่บอก) */
-  const roundChoices = billingRoundChoices(billingRule);
-  const multiRound = billingRoundCount(billingRule) > 1;
+  const noCredit = Boolean(billingRule?.noCredit);
+  /* คอลัมน์ "วันวางบิล" — **ขึ้นทุกใบที่ยังเดิน** (มติ 28/09 ข้อ 17) · ว่าง = ขีด · ไม่ขึ้นกับรอบของลูกค้าหรือว่ามีงวดไหนมีวันแล้ว
+     🐞 เดิมซ่อนเมื่อลูกค้าไม่มีรอบ/ไม่มีเครดิตและยังไม่มีงวดไหนมีวัน ⇒ ใบสินค้าเกือบทั้งหมดไม่มีช่องวันวางบิลให้เห็นหรือแตะเลย
+       ("ดูเหมือนใช้กับบริการอย่างเดียว" — ใบที่มีวันวางบิลวันนั้นมีแค่ใบบริการ 4 ใบ) */
+  const billingColumn = billingOn;
   /* ประโยครอง "เงินเข้า…" ของรอบ — หลายรอบที่เงินเข้าต่างกันไม่มีบรรทัดนี้ ('') ⇒ ต่อเฉพาะท่อนที่มีค่า ไม่ขึ้น " · " ลอย */
   const ruleDetail = billingRule ? describeBillingRuleDetail(billingRule) : "";
   /* สิทธิ์ตั้งรอบของลูกค้า — ธงจาก GET ของหน้าใบ (`canEditCustomerBillingRule` ตัวเดียวกับ API ตั้งรอบ)
-     ⇒ ไม่มีสิทธิ์ = ไม่ชวน "ตั้งรอบวางบิล" (กติกา "ไม่มีสิทธิ์ = ไม่วาด") · ลิงก์ยังพาไปดูทะเบียนได้ */
+     ⇒ ไม่มีสิทธิ์ = ไม่มีลิงก์ "ตั้งกำหนดวางบิล" (กติกา "ไม่มีสิทธิ์ = ไม่วาด") · เห็นแค่ข้อความชวน */
   const canSetBillingRule = order?.canEditBillingRule === true;
   const customerHref = order?.customerId ? `/database/customers/${order.customerId}` : "";
+  /* ลิงก์ "ตั้งกำหนดวางบิล" เปิดแท็บใหม่ (ร่างวันงวดของโหมดตั้งวันต้องไม่หาย) ⇒ กลับมาที่แท็บนี้ (focus / visibilitychange)
+     หลังเคยกดลิงก์นั้น = ดึงใบสด (`onRefreshOrder` = `refreshOrder` ของหน้า — ไม่แตะฟอร์มที่พิมพ์ค้าง · ร่างวันงวดผูกด้วย id อยู่ต่อ)
+     ท่าเดียวกับหน้าสร้าง SO (`registryOpened` + `termsBusy`) · สองเหตุการณ์มาพร้อมกันตอนสลับแท็บ — `refreshing` กันยิงซ้ำ */
+  const registryOpened = useRef(false);
+  const refreshing = useRef(false);
+  const markRegistryOpened = () => { registryOpened.current = true; };
+  const refreshRef = useRef(onRefreshOrder);
+  refreshRef.current = onRefreshOrder;
+  useEffect(() => {
+    const onReturn = async () => {
+      if (!registryOpened.current || refreshing.current || document.visibilityState !== "visible") return;
+      refreshing.current = true;
+      try { await refreshRef.current?.(); } finally { refreshing.current = false; }
+    };
+    window.addEventListener("focus", onReturn);
+    document.addEventListener("visibilitychange", onReturn);
+    return () => {
+      window.removeEventListener("focus", onReturn);
+      document.removeEventListener("visibilitychange", onReturn);
+    };
+  }, []);
   const customerCode = String(order?.customer?.arCode || "").trim();
   /* "ขอใบวางบิลแล้ว" = ผูกคำร้องที่ยังมีชีวิต (ยกเลิกคำร้องไม่ล้างลิงก์ — ตัวตัดสินตัดใบที่ตายทิ้งเอง) */
   const billingRequested = (row) => installmentBillingRequested(row, requestById);
@@ -338,109 +309,50 @@ export default function SalesOrderPaymentPanel({
     if (!BILLING_OPEN.includes(key) || (key === "upcoming" && row.id !== nextBillingId)) return false;
     return !gate(row, "link", { billingRequestId: "x" });
   };
-  /* โมดัล "กำหนดวันงวด" (ลูกค้ามีรอบ) / "กำหนดชำระ" (แบบเดิม) — ค่าเริ่มของตัวเลือกอ่านจากแถว (pickerValueFromRow:
-     เปิดแล้วกดบันทึกเลยต้องไม่ทำวันที่มีอยู่หาย) · `clearBilling` = โมดัลแบบเดิมสั่งล้างวันวางบิลที่ค้างอยู่ (เริ่มที่คงไว้ = ค่าในฐาน) */
-  const openSchedule = (row) => {
-    onClearError?.();
-    setScheduleFor({
-      row, dueDate: row.dueDate || "", pick: billingRule ? pickerValueFromRow(row, billingRule, todayIso) : null,
-      clearBilling: false,
-    });
-  };
-  /* ── เติมตามรอบ เดือนละงวด (มติข้อ 3) — พรีวิวกับ route คิดด้วย planMonthlyFill ตัวเดียวกัน · route คิดซ้ำแล้วตีกลับถ้าไม่ตรง
-     ⭐ ขึ้นเฉพาะลูกค้าที่วางบิลเป็นรอบรายเดือน + งวดที่ยังเติมได้ ≥ 2 งวด (งวดเดียวใช้ "กำหนดวันงวด" ของแถวพอ)
-     ⭐ ลูกค้าหลายรอบต่อเดือน (มติ 26/09 ข้อ 3): โมดัลถามก่อนว่าใช้รอบไหน (ไม่เลือกให้) แล้วจึงพรีวิว · route คิดซ้ำด้วยรอบเดียวกัน
-       · ปุ่มบนการ์ดนับจาก "งวดที่ยังเติมได้" ซึ่งไม่ขึ้นกับรอบ (installmentBillingFillable) ⇒ นับด้วยรอบแรก (`fillProbe`)
-         เป็นแค่ตัวนับ ไม่ใช่รอบที่เลือกให้ — พรีวิว/ปุ่มยืนยันอ่าน `fillPlan` ที่คิดจากรอบที่คนเลือกเท่านั้น
-     ⚠️ ไม่มีสิทธิ์แก้วันงวด/ใบล็อกทั้งใบ = ไม่วาด (ด่านเดียวกับเมนูแถว — ข้อความล็อกบนการ์ดบอกเหตุอยู่แล้ว) */
-  /* รอบที่เลือกหายจากรอบลูกค้า (แก้รอบระหว่างเปิดโมดัล) = กลับเป็น "ยังไม่เลือก" · ชิปไม่ค้างสถานะเลือกของวันที่ไม่มีแล้ว */
-  const fillRoundIndex = pickedRoundIndex(billingRule, fillRound);
-  const fillRoundValue = fillRoundIndex === null ? null : fillRound;
-  const fillRoundMissing = multiRound && fillRoundIndex === null;
-  const fillPlan = monthlyRule && saved.length && !fillRoundMissing
-    ? planMonthlyFill(billingRule, saved, todayIso, { roundIndex: fillRoundIndex })
-    : null;
-  const fillRows = fillPlan && !fillPlan.error ? fillPlan.rows : [];
-  const fillProbe = monthlyRule && saved.length
-    ? (multiRound ? planMonthlyFill(billingRule, saved, todayIso, { roundIndex: 0 }) : fillPlan)
-    : null;
-  const fillCandidates = fillProbe && !fillProbe.error ? fillProbe.rows : [];
-  const fillGatesOpen = (planned) => planned.length > 0
-    && planned.every((row) => !gate(saved.find((r) => r.id === row.id), "schedule"));
-  /* `fillAllowed` = กดยืนยันในโมดัลได้ · `canFill` = ปุ่มเปิดโมดัลบนการ์ด (≥ 2 งวด)
-     ⚠️ แยกกันโดยตั้งใจ — เติมหยุดกลางทาง (409) แล้วหน้าดึงงวดสด อาจเหลือ 1 งวดในโมดัลที่เปิดค้าง · route รับแผนงวดเดียวได้
-       ถ้าใช้เกณฑ์ ≥ 2 ตัวเดียวกัน ปุ่มยืนยันจะดับโดยไม่มีเหตุบอก (ทางตัน) */
-  const fillAllowed = fillRows.length > 0 && fillGatesOpen(fillRows);
-  const canFill = fillCandidates.length >= 2 && fillGatesOpen(fillCandidates);
-  const fillWithoutDue = fillCandidates.filter((planned) => !planned.keptDue).length;
-  const submitFill = async () => {
-    if (!fillAllowed || !onFillBilling) return;
-    const done = await onFillBilling({
-      plan: fillRows.map(({ id: rowId, billingDate, dueDate }) => ({ id: rowId, billingDate, dueDate })),
-      roundIndex: fillRoundIndex,
-    });
-    if (done) setFillOpen(false);
-  };
-  /* ── จัดวันใหม่ตามรอบปัจจุบัน (กำหนดวางบิลรอบสอง · มติเจ้าของ 26/09 "ลูกค้าเปลี่ยนฉุกเฉิน หรือเปลี่ยนรอบเลย") ──────────
-     ลูกค้าเปลี่ยนรอบถาวร ⇒ วันวางบิล **และ** กำหนดชำระของงวดที่ยังเปิดอยู่ผิดทั้งคู่ — จัดใหม่ทั้งใบผ่านตาราง "เดิม → ใหม่" ครั้งเดียว
-     ⭐ ตัวคิด `planRedate` ตัวเดียวกับ route (route คิดซ้ำด้วยคำร้องที่อ่านสดแล้วตีกลับถ้าไม่ตรง) · "ขอใบวางบิลแล้ว" =
-       `billingRequestedIds` → billingRequestLive ตัวเดียว (งวดที่ขอแล้ว/รอเหตุการณ์/แจ้งชำระแล้ว/ยกมา ไม่ถูกแตะ)
-     ⭐ ขึ้นเมื่อ: รอบรายเดือน + มีงวดที่วันไม่ตรงรอบปัจจุบัน + **มีงวดในแผนที่มีวันอยู่แล้ว (วันวางบิล หรือ กำหนดชำระ)**
-       = มีวันเดิมให้แทน · ใบที่ว่างทั้งสองช่องทุกงวดในแผนไม่ขึ้น — ตรงนั้น "เติมตามรอบ เดือนละงวด" ได้ผลเท่ากัน สองปุ่มซ้ำกัน = ชวนสงสัย
-       🐞 review รอบสอง 26/09: เดิมเช็กแค่ "เคยมีวันวางบิล" ⇒ ปุ่มหายจาก **ทุกใบที่มีวันนี้** — 0389 ไม่เติมย้อนหลัง (มติข้อ 10)
-          งวดเดิมจึงมีแต่กำหนดชำระ ส่วน "เติมตามรอบ" คงกำหนดชำระเดิมไว้ (keptDue) แม้ผิด/เลยไปแล้ว (SO-26080050-0 กรอก
-          วันวางบิลลงกำหนดชำระ ⇒ เติมแล้วยังแดง) ⇒ ทางเดียวที่แทนกำหนดชำระผิดทั้งใบกลายเป็น "เติมก่อน แล้วค่อยจัดใหม่"
-          · สองโมดัลบอกอยู่แล้วว่าตัวไหนคงวันเดิม ตัวไหนแทน
-     ⭐ ไม่มีสิทธิ์แก้วันงวด = ไม่วาด (`installmentScheduleAllowed` ตัวเดียวกับด่าน schedule) · ติดล็อกของใบ / อ่านคำร้อง
-       ไม่ขึ้น = วาดแล้วบอกเหตุตอนกด (GatedAction)
-     ⚠️ การแก้รายงวดอยู่ครบเหมือนเดิม ("กำหนดวันงวด" · "วันอื่น…" · "แก้กำหนดชำระ") — มติ 26/09: วันที่ระบบแนะนำต้องแก้เองได้เสมอ */
-  /* ⭐ ลูกค้าหลายรอบต่อเดือน: ถามรอบก่อนพรีวิว (เหมือนเติมตามรอบ) · ปุ่มบนการ์ดขึ้นเมื่อ **รอบใดรอบหนึ่ง** มีงวดที่วันเดิมต้องแทน
-       (`redateProbes` — รอบที่งวดตรงอยู่แล้วตัดแถวทิ้งเอง ⇒ ถามทุกรอบ ไม่ใช่เดารอบแรก) */
+  /* ── โหมดตั้งวันงวดในตาราง (แบบ C · มติเจ้าของ 28/09 · ม็อก mockups/billing-cycle/installment-v2) ─────────────────
+     ⭐ **ทางเข้าเดียว** — ปุ่ม "ตั้งวันงวด" บนการ์ด · แตะเซลล์วันวางบิล/กำหนดชำระในตาราง · เมนูแถว "ตั้งวันงวด" ⇒ เข้าโหมดเดียวกัน
+       แทนโมดัลรายงวด ("กำหนดวันงวด"/"ตั้ง-แก้กำหนดชำระ") ลิงก์ "เลือกรอบ" ในเซลล์ และปุ่ม "เติมตามรอบ เดือนละงวด…" /
+       "จัดวันใหม่ตามรอบปัจจุบัน…" (งานสองปุ่มนั้นย้ายไปแผง "เติมวันงวดที่ว่าง…" ในโหมด — ร่างลงตารางก่อนบันทึกเสมอ)
+     ⭐ แตะวัน = ร่าง · บันทึกครั้งเดียว `schedule-many` ผ่าน onAction ของหน้า (หน้าโหลดงวดสดเองเมื่อ 409 — ร่างที่ยังใช้ได้ค้างอยู่)
+     ⭐ ใครแก้ได้ = ด่าน `schedule` ตัวเดียวกับ route (ฝ่ายขายที่แก้ใบได้ + FN) · ไม่มีสิทธิ์/ไม่มีงวดที่แก้ได้ = ไม่มีทางเข้าเลย
+       (ตารางอ่านอย่างเดียวเหมือนเดิม) · งวดที่ล็อกอ่านอย่างเดียวพร้อมเหตุ — ประโยคเดียวกับที่ route ตีกลับ (`dateLockView`)
+     ⭐ ล็อกทั้งใบ (`scheduleOrderLock`) + มีสิทธิ์ = ปุ่ม "ตั้งวันงวด" ยังอยู่ กดแล้วบอกเหตุ (กติกา "ติดด่าน = โชว์แล้วบอกเหตุ" —
+       ปุ่ม "จัดวันใหม่…" เดิมบอกผ่าน GatedAction · review R-UI) · เซลล์/เมนูแถวไม่มีทางเข้า (ทุกงวดล็อกด้วย gate อยู่แล้ว)
+     ⚠️ ร่างของโหมดนี้กับร่างช่วงครอบ (coverDrafts) **เปิดพร้อมกันไม่ได้** — ร่างช่วงครอบค้าง = เข้าโหมดไม่ได้ (บอกเหตุ) ·
+       อยู่ในโหมด = ช่องช่วงครอบล็อก (บอกเหตุ) · สองแถบบันทึกไม่ขึ้นซ้อนกัน
+     ⚠️ ฐานยังไม่รัน 0389 (`billingOn` เท็จ) = ไม่มีโหมด — คำขอ schedule-many พาวันวางบิลไปด้วยเสมอ */
   const requestedIds = billingRequestedIds(saved, requestById);
-  const redateOf = (roundIndex) => planRedate(billingRule, saved, todayIso, { requestedIds, roundIndex });
-  const redateRoundIndex = pickedRoundIndex(billingRule, redateRound);
-  const redateRoundValue = redateRoundIndex === null ? null : redateRound;
-  const redateRoundMissing = multiRound && redateRoundIndex === null;
-  const redatePlan = monthlyRule && saved.length && !redateRoundMissing ? redateOf(redateRoundIndex) : null;
-  const redateRows = redatePlan && !redatePlan.error ? redatePlan.rows : [];
-  const planRowsOf = (plan) => (plan && !plan.error ? plan.rows : []);
-  const redateProbes = monthlyRule && saved.length
-    ? (multiRound ? roundChoices.map((_, roundIndex) => planRowsOf(redateOf(roundIndex))) : [redateRows])
-    : [];
-  /* อ่านคำร้องของงวดไม่ขึ้น = ไม่รู้ว่างวดไหนขอแล้ว ⇒ แผนบนจอเชื่อไม่ได้ (server อ่านสดแล้วจะได้คนละชุด = 409 วนไม่จบ)
-     ⭐ นับเฉพาะงวดที่ "จัดใหม่ได้ถ้ายังไม่ขอ" (`installmentBillingRedatable` ตัวเดียวกับที่ planRedate คัด) — งวดที่รับเงิน/แจ้งชำระแล้ว ·
-       ยกมา · รอเหตุการณ์ อยู่นอกแผนไม่ว่าคำร้องจะเป็นอะไร ⇒ อ่านคำร้องของมันไม่ขึ้นไม่เปลี่ยนแผน ไม่ต้องบล็อกทั้งใบ
-       (เช่นงวดที่ชำระแล้วซึ่งย้ายมาจากใบที่ยกเลิก แล้วคำร้องเดิมอ่านไม่ขึ้น) */
-  /* ด่านของปุ่มบนการ์ดอ่านแถวของทุกรอบที่ถามไว้ (ยังไม่เลือกรอบ) · ในโมดัลอ่านแถวของรอบที่เลือก */
-  const redateBlockerOf = (planned) => (saved.some((r) => billingUnknown(r) && installmentBillingRedatable(r))
-    ? "อ่านคำร้องขอเอกสารของงวดไม่สำเร็จ — ยังบอกไม่ได้ว่างวดไหนขอใบวางบิลแล้ว โหลดหน้าใหม่ก่อนจัดวันใหม่"
-    : planned.map((row) => gate(saved.find((r) => r.id === row.id), "schedule")).find(Boolean) || "");
-  const redateBlocker = redateBlockerOf(redateRows);
-  const redateCardBlocker = redateBlockerOf(redateProbes.flat());
-  const canRedate = Boolean(onRedateBilling) && installmentScheduleAllowed(user)
-    && redateProbes.some((planned) => planned.some((row) => row.prevBillingDate || row.prevDueDate));
-  /* งวดในแผนที่ตอนนี้ขึ้นแดง "เลยกำหนด" — กำหนดชำระใหม่ไม่มีทางอยู่ก่อนวันนี้ (รอบแรกนับจากวันนี้) ⇒ แดงหายหลังจัด
-     ต้องบอกก่อนกด: กำหนดชำระเป็นด่านเงิน (ป้ายแดง · ด่านนัดช่าง overdueUnconfirmed) ไม่ใช่แค่วันบนจอ */
-  /* โมดัลเปิดค้างแล้วหน้าดึงข้อมูลใหม่ (409 · อีกหน้าต่างแก้รอบลูกค้า) จนลูกค้า **ไม่มีรอบรายเดือนแล้ว** (ไม่มีเครดิต ·
-     วางบิลได้ทุกวัน · ถอดรอบ) — แผนเป็น null ⇒ ต้องบอกเหตุจริง ไม่ใช่ "ไม่มีงวดที่ต้อง…แล้ว" (ฟังเหมือนงวดครบแล้ว ทั้งที่รอบเปลี่ยน) */
-  const noMonthlyNote = (verb) => {
-    // ใบเลิกวางบิลระหว่างเปิดโมดัล (ถูกยกเลิก/ออก Rev. ทับ) — รอบลูกค้าไม่ได้เปลี่ยน อย่าโทษรอบ
-    if (!billingOn) return `ใบนี้ไม่ต้องวางบิลแล้ว — ไม่มีงวดให้${verb}`;
-    return noCredit
-      ? `ลูกค้าเปลี่ยนเป็นไม่มีเครดิตแล้ว — ไม่มีรอบรายเดือนให้${verb}`
-      : `รอบของลูกค้าเปลี่ยนแล้ว — ไม่มีรอบรายเดือนให้${verb}`;
-  };
-  const redateClearsOverdue = redateRows.filter((planned) => planned.prevDueDate && planned.prevDueDate < todayIso).length;
-  const submitRedate = async () => {
-    if (!redateRows.length || redateBlocker || !onRedateBilling) return;
-    const done = await onRedateBilling({
-      plan: redateRows.map(({ id: rowId, billingDate, dueDate }) => ({ id: rowId, billingDate, dueDate })),
-      roundIndex: redateRoundIndex,
-    });
-    if (done) setRedateOpen(false);
-  };
-  /* ที่มาของกำหนดชำระใต้วันที่ (ลูกค้ามีรอบ · ม็อก C) — "ตามรอบ" = เท่ากับที่คิดจากวันวางบิลของงวด · "แก้ทับ" = คนแก้ทับรอบไว้
-     · "กรอกเอง" = มีกำหนดชำระแต่ยังไม่มีวันวางบิล (ข้อมูลก่อนมีรอบ — ใบเก่าไม่ถูกเติมเอง มติข้อ 10)
+  const scheduleOrderLock = orderLock || pipelineInstallmentLock(order, "schedule");
+  const dateLockOf = (row) => dateLockView(row, {
+    order,
+    requested: requestedIds.has(row.id),
+    requestNo: requestById.get(row.billingRequestId)?.docNo || "",
+    requestUnknown: billingUnknown(row),
+    gateError: gate(row, "schedule") || "",
+  });
+  const dateModeOpen = !isPreview && billingOn && installmentScheduleAllowed(user)
+    && (Boolean(scheduleOrderLock) || saved.some((row) => !dateLockOf(row)));
+  const coverDraftCount = Object.keys(coverDrafts).length;
+  const saveDates = useCallback((rows) => onAction(null, "schedule-many", { rows }), [onAction]);
+  const dateMode = useInstallmentDateMode({
+    rows: isPreview ? [] : saved,
+    ruleValue: billingRule,
+    todayIso,
+    available: dateModeOpen,
+    blocker: scheduleOrderLock || (coverDraftCount
+      ? `แก้ช่วงครอบบริการค้างไว้ ${coverDraftCount} งวด — บันทึกหรือยกเลิกช่วงครอบก่อนตั้งวันงวด`
+      : ""),
+    lockOf: dateLockOf,
+    onSave: saveDates,
+    busy: busy === "installment-schedule-many",
+    onDirtyChange: onDatesDirty,
+    onClearError,
+  });
+  /* อยู่ในโหมดตั้งวัน = ช่องช่วงครอบล็อก (ร่างสองชุดไม่ซ้อนกัน) — เหตุขึ้นตอนแตะ เหมือนเซลล์ล็อกอื่นของตาราง */
+  const coverModeLock = dateMode.active ? "อยู่ในโหมดตั้งวันงวด — บันทึกหรือยกเลิกวันงวดก่อนแก้ช่วงครอบบริการ" : "";
+  /* ที่มาของกำหนดชำระใต้วันที่ (ลูกค้าตั้งกำหนดวางบิลแล้ว · ม็อก C) — คำจาก `dueSourceOf` ตัวเดียวกับป้ายในตัวแก้:
+     "ตามรอบ" / "ตามเครดิต N วัน" / "ชำระวันวางบิล" (ไม่มีเครดิต — ห้ามพูด "เครดิต 0 วัน") = เท่ากับที่คิดจากวันวางบิลของงวด ·
+     "แก้ทับ" = คนแก้ทับไว้ · "กรอกเอง" = มีกำหนดชำระแต่ยังไม่มีวันวางบิล (ข้อมูลก่อนมีรอบ — ใบเก่าไม่ถูกเติมเอง มติข้อ 10)
      · เฉพาะงวดที่ยังรอเงิน — งวดที่แจ้ง/รับเงินแล้ว ที่มาของวันไม่ใช่เรื่องที่ต้องตัดสินอะไรอีก */
   /* วันในเซลล์ "กำหนดชำระ / จ่ายจริง" — **รูปเดียวทั้งเซลล์** (review S3): มีคอลัมน์วันวางบิลข้าง ๆ = แบบมีวันในสัปดาห์
      ให้เทียบกันได้ ("อา. 25 ต.ค. 2026") · ไม่มีคอลัมน์นั้น (ฐานยังไม่รัน 0389 · ใบที่ตาย) = รูปตัวเลขเดิมของระบบ */
@@ -449,10 +361,13 @@ export default function SalesOrderPaymentPanel({
     if (!billingRule || row.preview || !row.dueDate || isOpeningInstallment(row)) return "";
     if (!["pending", "rejected"].includes(row.status || "pending")) return "";
     if (!row.billingDate) return "กรอกเอง";
-    return row.dueDate === dueDateForBilling(billingRule, row.billingDate) ? "ตามรอบ" : "แก้ทับ";
+    const source = dueSourceOf(billingRule, row);
+    return source.key === "override" ? "แก้ทับ" : source.label;
   };
   /* เซลล์ "วันวางบิล" (ม็อก C) — วัน + ป้ายเสาร์-อาทิตย์ · ป้ายสถานะ (BillingStateBadge: คำ/สีจาก billingRule.js ·
-     "เลยรอบวางบิล" โทนเตือน ไม่แดง) · ปุ่มขอใบวางบิลของงวดที่ถึงคิว · "เลือกรอบ" ของงวดที่ยังไม่มีวัน/รอเหตุการณ์
+     "เลยรอบวางบิล" โทนเตือน ไม่แดง) · ปุ่มขอใบวางบิลของงวดที่ถึงคิว
+     ⭐ ตัววันเป็นทางเข้าโหมดตั้งวัน (`InstallmentDateEntry` — แทนลิงก์ "เลือกรอบ" เดิม · เซลล์คือทางเข้า มติ 28/09)
+       ไม่มีสิทธิ์/งวดล็อก = ตัวอักษรเฉย ๆ เหมือนเดิม · ป้าย/ปุ่มขอใบวางบิลอยู่นอกปุ่ม (ตัวกดไม่ซ้อนตัวกด)
      ⚠️ งวดยกมาไม่มีวันวางบิลเสมอ (มติข้อ 10 · CHECK ของ 0389) · แถวพรีวิว (ยังไม่เริ่มติดตาม) ยังไม่มีอะไรให้ตั้ง */
   const billingCell = (row) => {
     if (row.preview || isOpeningInstallment(row)) return <span className={styles.none}>{NA}</span>;
@@ -462,15 +377,20 @@ export default function SalesOrderPaymentPanel({
     /* งวดโมฆะไม่มีอะไรให้วางบิล (ใบที่ตายไม่มีคอลัมน์นี้อยู่แล้ว — กันอีกชั้น) · คำร้องอ่านไม่ขึ้น = ไม่รู้สถานะ ไม่ขึ้นป้าย */
     const showBadge = !installmentVoid(row, order) && !billingUnknown(row)
       && (state.key !== "upcoming" || row.id === nextBillingId);
-    const canPick = Boolean(billingRule) && (state.key === "none" || state.key === "waiting") && !gate(row, "schedule");
     return (
       <span className={styles.billCell}>
         {row.billingDate ? (
           <span className={styles.dateLine}>
-            <span className={styles.dateText}>{formatBillingDate(row.billingDate)}</span>
+            <InstallmentDateEntry mode={dateMode} row={row} field="bill">
+              <span className={styles.dateText}>{formatBillingDate(row.billingDate)}</span>
+            </InstallmentDateEntry>
             <WeekendBadge iso={row.billingDate} />
           </span>
-        ) : state.key === "waiting" || requested ? null : <span className={styles.none}>{NA}</span>}
+        ) : state.key === "waiting" || requested ? null : (
+          <InstallmentDateEntry mode={dateMode} row={row} field="bill">
+            <span className={styles.none}>{NA}</span>
+          </InstallmentDateEntry>
+        )}
         {showBadge ? (
           <BillingStateBadge row={row} todayIso={todayIso} requested={billingRequested(row)}
             requestCode={linked?.docNo || ""} requestHref={requested && linked ? `/requests/${linked.id}` : ""} />
@@ -481,13 +401,6 @@ export default function SalesOrderPaymentPanel({
             icon={<Receipt size={13} aria-hidden="true" />}>
             ขอใบวางบิลงวดนี้
           </Button>
-        ) : null}
-        {canPick ? (
-          <button type="button" className={`text-action ${styles.pickAction}`} disabled={!!busy}
-            aria-label={single ? "เลือกรอบวางบิลของงวดนี้" : `เลือกรอบวางบิล งวดที่ ${row.seq}`}
-            onClick={() => openSchedule(row)}>
-            <CalendarCheck size={13} aria-hidden="true" />เลือกรอบ
-          </button>
         ) : null}
       </span>
     );
@@ -598,8 +511,10 @@ export default function SalesOrderPaymentPanel({
     if (done) setCarry(null);
   };
 
-  const cardActions = replanned || replanGate.visible || carryGate.visible ? (
+  const cardActions = replanned || replanGate.visible || carryGate.visible || (dateMode.available && !dateMode.active) ? (
     <>
+      {/* ⭐ ทางเข้าโหมดตั้งวันงวด (มติ 28/09) — ร่างช่วงครอบค้าง = กดแล้วบอกเหตุ (GatedAction) */}
+      <InstallmentDateButton mode={dateMode} disabled={!!busy} />
       {replanned ? (
         <StatusBadge size="sm" tone="info" label={REPLANNED_BADGE} title={REPLANNED_BADGE_TITLE} />
       ) : null}
@@ -761,59 +676,64 @@ export default function SalesOrderPaymentPanel({
   }
 
   return (
+    <>
     <DetailCard id="payment" icon={Wallet} eyebrow="PAYMENT" title="การชำระ" meta={headline}
       actions={cardActions}>
       {/* ⭐ รอบวางบิลของลูกค้า (กำหนดวางบิล · mig 0389 · ม็อก C) — บรรทัดเมตาใต้หัวการ์ด ไม่ใช่คำเตือน
           · ตั้งแล้ว = รอบแบบอ่านง่าย + รายละเอียดเงินเข้า + ลิงก์ไปทะเบียนลูกค้า (ที่เดียวที่แก้รอบได้ — มติข้อ 4)
-          · ยังไม่ตั้ง = บอกว่าใช้แบบเดิมได้ (ไม่บังคับ · มติข้อ 7) + ทางไปตั้ง · หมายเหตุการวางบิล (แนบ PO ฯลฯ) ต้องเห็นตอนขอใบวางบิล */}
+          · ไม่มีเครดิต = "ไม่มีเครดิต · ชำระวันวางบิล" (มติ 28/09 ข้อ 17 — ตั้งแล้ว ไม่ชวนไปตั้งซ้ำ · งวดเลือกวันวางบิลได้เหมือนเครดิต)
+          · ยังไม่ตั้ง = ข้อความชวน "ยังไม่ได้ตั้งกำหนดวางบิลของลูกค้า" (ไม่บังคับ · มติข้อ 7 — กรอกสองช่องเองได้ระหว่างนี้)
+            + ลิงก์ "ตั้งกำหนดวางบิล" เปิดแท็บใหม่ **เฉพาะคนที่ตั้งได้** (`canEditBillingRule`) · ไม่มีสิทธิ์ = เห็นข้อความอย่างเดียว
+          · หมายเหตุการวางบิล (แนบ PO ฯลฯ) ต้องเห็นตอนขอใบวางบิล */}
       {billingOn && order?.customer ? (
-        <div className={styles.ruleLine} data-empty={billingRule || noCredit ? undefined : "yes"}>
+        <div className={styles.ruleLine} data-empty={billingRule ? undefined : "yes"}>
           <CalendarClock size={16} aria-hidden="true" className={styles.ruleIcon} />
           <span className={styles.ruleText}>
-            {billingRule ? (
+            {billingRule && noCredit ? (
               <>
-                รอบวางบิล: <b>{describeBillingRule(billingRule)}</b>
+                กำหนดวางบิล: <b>{describeBillingRule(billingRule)}</b>
+                <small>
+                  เลือกวันวางบิลรายงวด — กำหนดชำระเป็นวันเดียวกัน · ตั้งที่ทะเบียนลูกค้า{customerCode ? ` ${customerCode}` : ""}
+                </small>
+                {billingRule.note ? <small>{billingRule.note}</small> : null}
+              </>
+            ) : billingRule ? (
+              <>
+                {/* หัวคำเดียวกับบรรทัดไม่มีเครดิตข้างบน — ชื่อเรื่องนี้คือ "กำหนดวางบิล" ทุกแบบ (UAT 28/09 เดิม "รอบวางบิล:") */}
+                กำหนดวางบิล: <b>{describeBillingRule(billingRule)}</b>
                 <small>
                   {[ruleDetail, `ตั้งที่ทะเบียนลูกค้า${customerCode ? ` ${customerCode}` : ""}`].filter(Boolean).join(" · ")}
                 </small>
                 {billingRule.note ? <small>{billingRule.note}</small> : null}
               </>
-            ) : noCredit ? (
-              /* ไม่มีเครดิต (มติ 26/09 ข้อ 2) — ตั้งไว้แล้ว ไม่ใช่ "ยังไม่ตั้ง" ⇒ ไม่ชวนไปตั้งรอบ · งวดกรอกกำหนดชำระเองเหมือนไม่มีรอบ */
-              <>
-                เครดิต: <b>{describeBillingRule(order?.customer?.billingRule)}</b>
-                <small>
-                  ไม่มีรอบวางบิล — กรอกกำหนดชำระเองรายงวด · ตั้งที่ทะเบียนลูกค้า{customerCode ? ` ${customerCode}` : ""}
-                </small>
-                {noCreditNote ? <small>{noCreditNote}</small> : null}
-              </>
             ) : (
               <>
-                ลูกค้ายังไม่ตั้งรอบวางบิล — กรอกกำหนดชำระเองรายงวดเหมือนเดิม
+                ยังไม่ได้ตั้งกำหนดวางบิลของลูกค้า
                 <small>
                   {canSetBillingRule
-                    ? `ตั้งรอบครั้งเดียวที่ทะเบียนลูกค้า${customerCode ? ` ${customerCode}` : ""} แล้วงวดของใบนี้แตะเลือกรอบได้เลย`
-                    : `ตั้งรอบได้โดยฝ่ายขายทีมที่ดูแลลูกค้าหรือฝ่ายบัญชี ที่ทะเบียนลูกค้า${customerCode ? ` ${customerCode}` : ""}`}
+                    ? `ระหว่างนี้ใส่วันวางบิล/กำหนดชำระเองรายงวดได้ · ตั้งครั้งเดียวที่ทะเบียนลูกค้า${customerCode ? ` ${customerCode}` : ""} แล้วระบบคิดกำหนดชำระจากวันวางบิลให้`
+                    : "ระหว่างนี้ใส่วันวางบิล/กำหนดชำระเองรายงวดได้ · ตั้งได้โดยฝ่ายขายทีมที่ดูแลลูกค้าหรือฝ่ายบัญชี"}
                 </small>
               </>
             )}
           </span>
-          {canRedate || customerHref ? (
+          {/* ⚠️ "จัดวันใหม่ตามรอบปัจจุบัน…" เดิมย้ายไปแผง "เติมวันงวดที่ว่าง…" ของโหมดตั้งวัน (สวิตช์ "จัดใหม่งวดที่มีวันแล้วด้วย")
+              — ลูกค้าเปลี่ยนรอบถาวรก็ยังจัดทั้งใบได้ แต่ผ่านร่างในตารางก่อนบันทึก (มติ 28/09) */}
+          {billingRule && customerHref ? (
             <span className={styles.ruleActions}>
-              {/* ⭐ จัดวันใหม่ตามรอบปัจจุบัน (กำหนดวางบิลรอบสอง) — อยู่บนบรรทัดรอบ เพราะเป็นผลของ "รอบเปลี่ยน" ไม่ใช่ของงวดใดงวดหนึ่ง
-                  · ติดล็อก/อ่านคำร้องไม่ขึ้น = กดแล้วบอกเหตุ (GatedAction) · ไม่มีสิทธิ์ = ไม่มีปุ่ม (canRedate) */}
-              {canRedate ? (
-                <GatedAction size="sm" variant="ghost" icon={<CalendarSync size={13} aria-hidden="true" />}
-                  blocker={redateCardBlocker} disabled={!!busy}
-                  onClick={() => { onClearError?.(); setRedateRound(null); setRedateOpen(true); }}>
-                  จัดวันใหม่ตามรอบปัจจุบัน…
-                </GatedAction>
-              ) : null}
-              {customerHref ? (
-                <Link className={`linklike ${styles.ruleLink}`} href={customerHref} prefetch={false}>
-                  {!billingRule && !noCredit && canSetBillingRule ? "ตั้งรอบวางบิล" : "ดูที่ทะเบียนลูกค้า"}<ArrowUpRight size={13} aria-hidden="true" />
-                </Link>
-              ) : null}
+              <Link className={`linklike ${styles.ruleLink}`} href={customerHref} prefetch={false}>
+                ดูที่ทะเบียนลูกค้า<ArrowUpRight size={13} aria-hidden="true" />
+              </Link>
+            </span>
+          ) : !billingRule && customerHref && canSetBillingRule ? (
+            /* แท็บใหม่ — ร่างวันงวดในโหมดตั้งวันไม่หาย · กลับมาที่แท็บนี้ = ดึงใบสด (`registryOpened`) ให้กติกาที่เพิ่งตั้งใช้ได้ทันที
+               ท่าเดียวกับหน้าสร้าง SO (ชี้การ์ด `#billing-rule` · คลิกกลาง/Ctrl-คลิกนับด้วย `onAuxClick`) */
+            <span className={styles.ruleActions}>
+              <Link className={`linklike ${styles.ruleLink}`} href={`${customerHref}#billing-rule`} prefetch={false}
+                target="_blank" rel="noopener noreferrer" onClick={markRegistryOpened} onAuxClick={markRegistryOpened}
+                aria-label="ตั้งกำหนดวางบิล (เปิดแท็บใหม่)">
+                ตั้งกำหนดวางบิล<ExternalLink size={13} aria-hidden="true" />
+              </Link>
             </span>
           ) : null}
         </div>
@@ -969,20 +889,9 @@ export default function SalesOrderPaymentPanel({
         </StatusNotice>
       ) : null}
 
-      {/* ⭐ เติมตามรอบ เดือนละงวด (มติข้อ 3 · ม็อก C ใบ B) — ใบหลายงวดที่ยังไม่มีวันวางบิล เติมทั้งใบในครั้งเดียว
-          ผ่านพรีวิวก่อนยืนยันเสมอ (งวดที่มีกำหนดชำระอยู่แล้วคงวันเดิม) */}
-      {canFill ? (
-        <StatusNotice tone="info" icon={CalendarRange}
-          title={`${fillCandidates.length} งวดยังไม่มีวันวางบิล${fillWithoutDue ? ` · ${fillWithoutDue} งวดยังไม่มีกำหนดชำระ` : ""}`}
-          action={(
-            <Button size="sm" tone="neutral" icon={<CalendarRange size={13} aria-hidden="true" />} disabled={!!busy}
-              onClick={() => { onClearError?.(); setFillRound(null); setFillOpen(true); }}>
-              เติมตามรอบ เดือนละงวด…
-            </Button>
-          )}>
-          ดูวันทุกงวดก่อนยืนยัน · แก้รายงวดได้ภายหลังจากเมนูของงวด
-        </StatusNotice>
-      ) : null}
+      {/* ⭐ โหมดตั้งวันงวด (มติ 28/09) — บรรทัดบอกโหมด + แผง "เติมวันงวดที่ว่าง…" อยู่ในการ์ดเหนือตาราง (ไม่ลอยทับ) */}
+      <InstallmentDateHint mode={dateMode} />
+      <InstallmentDateFill mode={dateMode} />
 
       {!rows.length ? (movedAway || (cancelledPipeline && carriedAway.length) ? null : (
         <p className="form-note">
@@ -996,7 +905,9 @@ export default function SalesOrderPaymentPanel({
         /* surface="auto" = ตารางมีขอบ/มุมมน/พื้นของตัวเอง (ตัวแปรกลางใน Table.module.css)
            เดิมใช้ "embedded" ซึ่งไม่มีขอบ ⇒ ตารางลอยอยู่ในการ์ดโดยไม่มีกรอบ (ผู้ใช้ขอเพิ่มขอบ)
            ⚠️ ใช้ตัวแปรของ primitive ไม่เขียน border ทับเองในโมดูลนี้ — ไม่งั้นได้ทรงที่สอง */
-        /* คอลัมน์วันวางบิล (กำหนดวางบิล) กว้างขึ้น ~170px — วัน + ป้ายสถานะ + ปุ่มขอใบวางบิล ตกบรรทัดในเซลล์เอง */
+        /* คอลัมน์วันวางบิล (กำหนดวางบิล) กว้างขึ้น ~170px — วัน + ป้ายสถานะ + ปุ่มขอใบวางบิล ตกบรรทัดในเซลล์เอง
+           ⭐ กรอบของโหมดตั้งวัน (InstallmentDateFrame) ห่อตาราง — ป๊อปโอเวอร์ของงวดอยู่ในกรอบนี้ ไม่บังหัวใบ/ปุ่มของการ์ด */
+        <InstallmentDateFrame mode={dateMode}>
         <TableScroll family="editable" surface="auto" cells="stacked"
           minWidth={(showCoverage ? 980 : 840) + (billingColumn ? 170 : 0)}>
           <table className={`${styles.table} ${isPreview ? styles.preview : ""}`.trim()}>
@@ -1065,12 +976,12 @@ export default function SalesOrderPaymentPanel({
                     : null;
 
                 const menu = row.preview ? [] : [
-                  /* ⭐ ลูกค้ามีรอบวางบิล = "กำหนดวันงวด" (วันวางบิล + กำหนดชำระในโมดัลเดียว · ม็อก C) · ยังไม่ตั้ง = แบบเดิม
-                     ⭐ ฝ่ายบัญชีเห็นด้วย (มติข้อ 4 — ด่าน schedule รับ FN แล้ว) */
-                  !gate(row, "schedule") && {
-                    id: "schedule", icon: CalendarClock,
-                    label: billingRule ? "กำหนดวันงวด" : row.dueDate ? "แก้กำหนดชำระ" : "ตั้งกำหนดชำระ",
-                    onClick: () => openSchedule(row),
+                  /* ⭐ "ตั้งวันงวด" = เข้าโหมดตั้งวันที่งวดนี้ (มติ 28/09 — แทน "กำหนดวันงวด"/"ตั้ง-แก้กำหนดชำระ" ของโมดัลรายงวดเดิม)
+                     · ด่านเดียวกับเซลล์วัน (สิทธิ์ schedule + ล็อกของโหมด) — งวดที่ล็อกไม่มีรายการนี้ · ฝ่ายบัญชีเห็นด้วย (มติข้อ 4)
+                     · อยู่ในโหมดแล้วไม่ต้องมี (แตะเซลล์วันได้เลย) */
+                  dateMode.available && !dateMode.active && !dateMode.isLocked(row) && {
+                    id: "dates", icon: CalendarClock, label: "ตั้งวันงวด",
+                    onClick: () => dateMode.enter(row.id),
                   },
                   !gate(row, "withdraw") && {
                     id: "withdraw", icon: Undo2, tone: "warning",
@@ -1139,7 +1050,8 @@ export default function SalesOrderPaymentPanel({
 
                 return (
                   <Fragment key={row.id || `preview-${row.seq}`}>
-                  <tr>
+                  {/* `data-date-row` = ที่ยึดของป๊อปโอเวอร์ตั้งวัน (InstallmentDateFrame วัดตำแหน่งจากแถวนี้) */}
+                  <tr data-date-row={row.preview ? undefined : row.id}>
                     {single ? null : <td className={styles.seqCol}>{row.seq}</td>}
                     <td>
                       {/* ชื่องวดสั้นห้ามแตกบรรทัด ("งวด / สุดท้าย" ตอนคอลัมน์วันวางบิลกว้าง) — ดู InstallmentLabel */}
@@ -1202,19 +1114,35 @@ export default function SalesOrderPaymentPanel({
                         );
                       })() : null}
                     </td>
-                    {billingColumn ? <td>{billingCell(row)}</td> : null}
+                    {/* ⭐ ในโหมดตั้งวัน สองคอลัมน์วันเป็นเซลล์ร่าง (InstallmentDateCell — แตะแล้วเปิดตัวแก้ของงวดนั้น) ·
+                        นอกโหมดเป็นตารางอ่านอย่างเดียวเดิม ตัววันเป็นทางเข้าโหมด (InstallmentDateEntry) */}
+                    {billingColumn ? (
+                      <td>
+                        {dateMode.active && !row.preview
+                          ? <InstallmentDateCell mode={dateMode} row={row} field="bill" />
+                          : billingCell(row)}
+                      </td>
+                    ) : null}
                     <td>
                       {/* ⚠️ ธงแดง "เลยกำหนด" อ่าน dueDate ช่องเดียว (ไม่แตะเพราะกำหนดวางบิล) · วันเขียนแบบมีวันในสัปดาห์
                           ให้ตรงกับคอลัมน์วันวางบิลข้าง ๆ (ป้ายเสาร์-อาทิตย์เตือนอย่างเดียว ไม่เลื่อนวัน) */}
-                      <span className={styles.dateLine}>
-                        <span className={overdue ? styles.overdue : undefined}>
-                          {row.dueDate ? cellDay(row.dueDate) : row.preview ? "กำหนดหลังอนุมัติ" : "ยังไม่กำหนด"}
-                          {overdue ? " · เลยกำหนด" : ""}
-                        </span>
-                        {billingOn && !overdue && !row.preview && ["pending", "rejected"].includes(row.status || "pending")
-                          ? <WeekendBadge iso={row.dueDate} /> : null}
-                      </span>
-                      {dueSourceNote(row) ? <small>{dueSourceNote(row)}</small> : null}
+                      {dateMode.active && !row.preview ? (
+                        <InstallmentDateCell mode={dateMode} row={row} field="due" billColumn={billingColumn} />
+                      ) : (
+                        <>
+                          <span className={styles.dateLine}>
+                            <InstallmentDateEntry mode={dateMode} row={row} field="due">
+                              <span className={overdue ? styles.overdue : undefined}>
+                                {row.dueDate ? cellDay(row.dueDate) : row.preview ? "กำหนดหลังอนุมัติ" : "ยังไม่กำหนด"}
+                                {overdue ? " · เลยกำหนด" : ""}
+                              </span>
+                            </InstallmentDateEntry>
+                            {billingOn && !overdue && !row.preview && ["pending", "rejected"].includes(row.status || "pending")
+                              ? <WeekendBadge iso={row.dueDate} /> : null}
+                          </span>
+                          {dueSourceNote(row) ? <small>{dueSourceNote(row)}</small> : null}
+                        </>
+                      )}
                       {row.paidOn ? <small>จ่าย {cellDay(row.paidOn)}</small> : null}
                       {row.reportedByName || row.confirmedByName ? (
                         <small>
@@ -1241,7 +1169,8 @@ export default function SalesOrderPaymentPanel({
                            (อาการเดียวกับที่เพิ่งถอดออกจากฟอร์มคีย์ใบย้อนหลังทั้งห้าช่อง)
                            ⇒ **กฎอยู่ใต้เซลล์ ไม่ใช่ที่ขอบของช่อง** · ค่าที่พิมพ์เข้าร่างได้เสมอ แล้วด่านตัวเดียวกับ
                              API เป็นคนบอกเหตุ (`coverDraftErrors[row.id]`) ทั้งใต้เซลล์และบนแถบบันทึก */
-                      const lock = row.preview ? "ยังไม่เริ่มติดตามการชำระ" : gate(row, "coverage");
+                      /* อยู่ในโหมดตั้งวันงวด = ล็อกพร้อมเหตุ (ร่างสองชุดไม่ซ้อนกัน · มติ 28/09) */
+                      const lock = row.preview ? "ยังไม่เริ่มติดตามการชำระ" : coverModeLock || gate(row, "coverage");
                       const draft = row.preview ? { coversFrom: "", coversTo: "" } : coverOf(row);
                       const edited = !row.preview && !!coverDrafts[row.id];
                       /* งวดยกมา: วันเริ่มล็อกที่วันเริ่มสัญญาจริง ๆ ⇒ วาดเป็นช่องกรอกไม่ได้ ไม่งั้นบัญชี
@@ -1407,12 +1336,16 @@ export default function SalesOrderPaymentPanel({
                       </td>
                     </tr>
                   ) : null}
+                  {/* 641–999px: ตัวแก้วันของงวดนี้กางใต้แถว (≥1000px ลอยข้างแถว · ≤640px แผ่นเต็มจอ) */}
+                  <InstallmentDateExpandRow mode={dateMode} row={row}
+                    colSpan={(single ? 7 : 8) + (showCoverage ? 1 : 0) + (billingColumn ? 1 : 0)} />
                   </Fragment>
                 );
               })}
             </tbody>
           </table>
         </TableScroll>
+        </InstallmentDateFrame>
       )}
 
       {/* ⭐ แถบบันทึกช่วงครอบที่แก้ค้าง — **ไม่ auto-save** (กฎฟอร์มของ repo)
@@ -1433,6 +1366,9 @@ export default function SalesOrderPaymentPanel({
           </Button>
         </div>
       ) : null}
+
+      <InstallmentDateSheet mode={dateMode} error={error}
+        subtitle={[order?.orderNumber, customerCode].filter(Boolean).join(" · ")} />
 
       {/* ⭐ **ปุ่มนี้เป็นทางกู้ ไม่ใช่ก้าวปกติ** (มติผู้ใช้ 2026-08-19) — งวดถูกสร้างให้
           ตั้งแต่ตอนออกใบจาก QT แล้ว (ดู POST `/api/sales-planning/sales-orders`)
@@ -1504,296 +1440,6 @@ export default function SalesOrderPaymentPanel({
         </Modal>
         );
       })() : null}
-
-      {/* ⭐ กำหนดวันงวด (กำหนดวางบิล · mig 0389 · ม็อก C) — ลูกค้ามีรอบ: แตะรอบครั้งเดียวได้ทั้งวันวางบิลและกำหนดชำระ
-          (BillingRoundPicker · "วันอื่น…" · "รอเหตุการณ์" · แก้ทับกำหนดชำระได้) แล้วส่ง `pickerPayload` เท่านั้น
-          · ลูกค้ายังไม่ตั้งรอบ: โมดัลกำหนดชำระแบบเดิมทุกอย่าง (ส่งแค่ dueDate — route ไม่แตะวันวางบิล) + ทางไปตั้งรอบ
-          ⚠️ ส่งแถวล่าสุดของตาราง (`live`) — ตัวล็อก updatedAt ต้องเป็นของแถวที่ตาเห็น (PR0) */}
-      {scheduleFor ? (() => {
-        const scheduleRow = live(scheduleFor.row);
-        const withRule = Boolean(billingRule && scheduleFor.pick);
-        const rowLabel = String(scheduleRow.label || "").trim();
-        const namedLabel = rowLabel && !/^งวด(ที่)?\s*\d+$/.test(rowLabel) ? rowLabel : "";
-        const pickLabel = single ? namedLabel : [`งวด ${scheduleRow.seq}`, namedLabel].filter(Boolean).join(" · ");
-        const missing = withRule ? pickerMissing(scheduleFor.pick) : "";
-        return (
-          <Modal open onClose={() => setScheduleFor(null)} size={withRule ? "md" : "sm"} dismissible={!busy}
-            title={withRule ? (pickLabel ? `กำหนดวันงวด · ${pickLabel}` : "กำหนดวันงวด") : "กำหนดชำระ"}
-            subtitle={`${order?.orderNumber || ""} · ${fmtMoney(scheduleRow.amount)}${single ? "" : ` (${fmtPercent(scheduleRow.percent)})`}`}>
-            <div className={styles.dialog}>
-              {error ? <StatusNotice tone="error" role="alert">{error}</StatusNotice> : null}
-              {withRule ? (
-                <>
-                  <p className="form-note">
-                    รอบวางบิลของลูกค้า: <b>{describeBillingRule(billingRule)}</b>{ruleDetail ? ` — ${ruleDetail}` : ""}
-                  </p>
-                  <BillingRoundPicker
-                    rule={billingRule}
-                    todayIso={todayIso}
-                    value={scheduleFor.pick}
-                    onChange={(pick) => setScheduleFor((f) => (f ? { ...f, pick } : f))}
-                    disabled={!!busy}
-                    label={pickLabel}
-                    savedDueDate={scheduleRow.dueDate || ""}
-                  />
-                </>
-              ) : (
-                <>
-                  {/* ลูกค้ายังไม่ตั้งรอบ (มติข้อ 7: ไม่บังคับ) — ทางไปตั้งอยู่ที่ทะเบียนลูกค้าที่เดียว
-                      · ปุ่มไปตั้งเฉพาะคนที่ตั้งได้ (`canSetBillingRule`) — คนอื่นได้ประโยคบอกว่าใครตั้งได้ ไม่มีปุ่มที่พาไปเจอทางตัน */}
-                  {/* ไม่มีเครดิต = ตั้งแล้ว (ไม่ชวนไปตั้ง) — บอกว่าทำไมไม่มีตัวเลือกรอบ แล้วใช้ช่องกำหนดชำระแบบเดิม */}
-                  {noCredit ? (
-                    <StatusNotice tone="neutral" icon={CalendarClock}>
-                      {`ลูกค้าไม่มีเครดิต${customerCode ? ` (${customerCode})` : ""} — ไม่มีรอบวางบิล กรอกวันครบกำหนดเองรายงวด`}
-                    </StatusNotice>
-                  ) : billingOn && order?.customer && customerHref ? (
-                    <StatusNotice tone="neutral" icon={CalendarClock}
-                      action={canSetBillingRule ? (
-                        <Button as={Link} href={customerHref} prefetch={false} tone="neutral" size="sm"
-                          icon={<ArrowUpRight size={13} aria-hidden="true" />}>
-                          ตั้งรอบวางบิลที่ทะเบียนลูกค้า
-                        </Button>
-                      ) : null}>
-                      {canSetBillingRule
-                        ? `ลูกค้ายังไม่ตั้งรอบวางบิล${customerCode ? ` (${customerCode})` : ""} — ตั้งแล้วงวดของใบนี้แตะเลือกรอบได้ ระบบคิดกำหนดชำระให้`
-                        /* ⚠️ อย่าเขียน "ฝ่ายบัญชีตั้ง…" ติดกัน — thaiWrap จับ "ชีต" (คำทับศัพท์) กลาง "บัญชีตั้ง" แล้วแทรก ZWSP หน้าสระบน */
-                        : `ลูกค้ายังไม่ตั้งรอบวางบิล${customerCode ? ` (${customerCode})` : ""} — ตั้งได้โดยฝ่ายขายทีมที่ดูแลลูกค้าหรือฝ่ายบัญชี ที่ทะเบียนลูกค้า`}
-                    </StatusNotice>
-                  ) : null}
-                  <p className="form-note">ใบเสนอราคาระบุแค่สัดส่วนของแต่ละงวด ไม่มีวัน — กรอกที่นี่</p>
-                  <label className={styles.field}>
-                    <span>วันครบกำหนด</span>
-                    <DateInput value={scheduleFor.dueDate} ariaLabel="วันครบกำหนด"
-                      onChange={(iso) => setScheduleFor((f) => ({ ...f, dueDate: iso }))} />
-                  </label>
-                  {/* ⭐ วันวางบิล/รอเหตุการณ์ที่ค้างบนงวดของลูกค้าที่ไม่มีรอบ (review S3 26/09) — รอบถูกล้างทีหลัง หรือวันถูกตั้งไว้ตอนสร้างใบ
-                      ⇒ โมดัลนี้ส่งแค่ dueDate (route ไม่แตะวันวางบิลเมื่อไม่ส่งคีย์) = ล้างจากแผงไม่ได้เลย แล้วป้าย/ประกาศ
-                      "เลยรอบวางบิล" ค้างถาวร · ทางออกคือ "ล้างวันวางบิล" ส่ง null ทั้งสองช่อง (route ตรวจด้วย normalizeInstallmentBilling)
-                      · เลือกวันใหม่ไม่ได้ที่นี่โดยตั้งใจ — ไม่มีรอบให้คิดกำหนดชำระ (ตัวเลือกรอบต้องมีรอบของลูกค้า) */}
-                  {billingOn && (scheduleRow.billingDate || scheduleRow.billingEvent) ? (
-                    <div className={styles.field}>
-                      <span>วันวางบิล</span>
-                      <div className={styles.dateLine}>
-                        <span className={scheduleFor.clearBilling ? styles.cleared : scheduleRow.billingDate ? styles.dateText : undefined}>
-                          {scheduleRow.billingDate
-                            ? formatBillingDate(scheduleRow.billingDate)
-                            : `รอเหตุการณ์ · ${scheduleRow.billingEvent}`}
-                        </span>
-                        <button type="button" className={`text-action ${styles.pickAction}`} disabled={!!busy}
-                          aria-pressed={scheduleFor.clearBilling}
-                          onClick={() => setScheduleFor((f) => (f ? { ...f, clearBilling: !f.clearBilling } : f))}>
-                          {scheduleFor.clearBilling ? "เก็บไว้" : "ล้างวันวางบิล"}
-                        </button>
-                      </div>
-                      <p className="form-note">
-                        {scheduleFor.clearBilling
-                          ? "บันทึกแล้ววันวางบิลของงวดนี้ถูกล้าง — ป้าย “เลยรอบวางบิล” ของงวดนี้หายไปด้วย · กำหนดชำระไม่ถูกแตะ"
-                          : "ลูกค้าไม่มีรอบวางบิลให้เลือกวันใหม่ — ล้างได้ถ้างวดนี้ไม่ต้องวางบิลตามวันนี้แล้ว"}
-                      </p>
-                    </div>
-                  ) : null}
-                </>
-              )}
-              {/* ⚠️ เหตุที่บันทึกไม่ได้ (pickerMissing) ตัวเลือกรอบบอกใต้ตัวเองแล้ว — ที่นี่แค่ดับปุ่ม ไม่พูดซ้ำ */}
-              <div className="action-bar">
-                <Button variant="ghost" onClick={() => setScheduleFor(null)} disabled={!!busy}>ยกเลิก</Button>
-                <Button tone="primary" disabled={!!busy || !!missing} title={missing || undefined}
-                  onClick={async () => {
-                    const done = await onAction(live(scheduleFor.row), "schedule", withRule
-                      ? pickerPayload(scheduleFor.pick)
-                      : {
-                        dueDate: scheduleFor.dueDate || null,
-                        ...(scheduleFor.clearBilling ? { billingDate: null, billingEvent: null } : {}),
-                      });
-                    if (done) setScheduleFor(null);
-                  }}>{withRule ? "บันทึกวันงวด" : "บันทึก"}</Button>
-              </div>
-            </div>
-          </Modal>
-        );
-      })() : null}
-
-      {/* ⭐ เติมวันตามรอบ เดือนละงวด (มติข้อ 3 · ม็อก C ใบ B) — พรีวิวเต็มทุกงวดก่อนยืนยัน (กติกา #1223: การยืนยันบอกผลที่ตรวจได้)
-          · แผนคิดสดทุกครั้งที่วาด (ไม่จำชุดตอนเปิด) ⇒ 409 แล้วหน้าดึงงวดสด พรีวิวเปลี่ยนตามทันที คนกดยืนยันจากของที่เห็นจริง
-          · error ของ API ขึ้นในโมดัล (แถบของหน้าอยู่ใต้โมดัล) */}
-      {fillOpen ? (
-        <Modal open onClose={() => setFillOpen(false)} title="เติมวันตามรอบ · เดือนละงวด" size="lg" dismissible={!busy}
-          subtitle={[order?.orderNumber, customerCode].filter(Boolean).join(" · ")} footer={(
-            <div className="action-bar">
-              {fillRows.length || fillRoundMissing ? (
-                <>
-                  <Button variant="ghost" onClick={() => setFillOpen(false)} disabled={!!busy}>ยกเลิก</Button>
-                  {/* ยังไม่เลือกรอบ = ปุ่มดับพร้อมเหตุ (บรรทัดใต้ชิปรอบบอกซ้ำ) — ไม่ใช่ปุ่มปิดปุ่มเดียวเหมือนไม่มีอะไรให้เติม
-                      · ป้ายไม่มีจำนวนงวด (เหมือน "จัดวันใหม่") — เลขที่นับก่อนเลือกรอบทำให้ปุ่มดูพร้อมกดทั้งที่ยังดับ */}
-                  <Button tone="primary" disabled={!!busy || !fillAllowed} onClick={submitFill}
-                    title={fillRoundMissing ? "เลือกรอบวางบิลก่อน" : undefined}>
-                    {busy === "installment-fill-billing" ? "กำลังเติม…" : fillRoundMissing ? "เติมวัน" : `เติมวัน ${fillRows.length} งวด`}
-                  </Button>
-                </>
-              ) : (
-                <Button variant="ghost" onClick={() => setFillOpen(false)} disabled={!!busy}>ปิด</Button>
-              )}
-            </div>
-          )}>
-          <div className={styles.dialog}>
-            {error ? <StatusNotice tone="error" role="alert">{error}</StatusNotice> : null}
-            {billingRule ? (
-              <p className="form-note">รอบวางบิลของลูกค้า: <b>{describeBillingRule(billingRule)}</b></p>
-            ) : null}
-            {multiRound ? (
-              <BillingRoundChoice choices={roundChoices} value={fillRoundValue} onChange={setFillRound} disabled={!!busy}
-                verb="เติม" />
-            ) : null}
-            {fillRoundMissing ? null : fillRows.length ? (
-              <>
-                <ul className={styles.fillLead}>
-                  <li>
-                    เริ่มงวดที่ {fillRows[0].seq} ที่รอบ <b>{formatBillingDate(fillRows[0].billingDate)}</b> แล้วเดือนละงวดจนครบ {fillRows.length} งวด
-                  </li>
-                  {fillRows.length > fillWithoutDue ? (
-                    <li>{fillRows.length - fillWithoutDue} งวดมีกำหนดชำระอยู่แล้ว — <b>คงวันเดิม</b> เติมแค่วันวางบิล (รอบที่เงินยังเข้าทันวันเดิม)</li>
-                  ) : null}
-                  {fillWithoutDue ? <li>{fillWithoutDue} งวดเติมทั้งวันวางบิลและกำหนดชำระ</li> : null}
-                  <li>งวดที่มีวันวางบิลหรือรอเหตุการณ์อยู่แล้ว และงวดที่แจ้งชำระแล้ว ไม่ถูกแตะ</li>
-                </ul>
-                <TableScroll surface="auto" cells="stacked" minWidth={540}>
-                  <table className={styles.table}>
-                    <thead>
-                      <tr>
-                        <th className={styles.seqCol}>งวด</th>
-                        <th className="num">ยอด</th>
-                        <th>วันวางบิล</th>
-                        <th>กำหนดชำระ</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {fillRows.map((planned) => {
-                        const source = saved.find((r) => r.id === planned.id);
-                        return (
-                          <tr key={planned.id}>
-                            <td className={styles.seqCol}>{planned.seq}</td>
-                            <td className="num">{fmtMoney(source?.amount)}</td>
-                            <td>
-                              <span className={styles.dateLine}>
-                                <span className={styles.dateText}>{formatBillingDate(planned.billingDate)}</span>
-                                <WeekendBadge iso={planned.billingDate} />
-                              </span>
-                            </td>
-                            <td>
-                              <span className={styles.dateLine}>
-                                <span className={styles.dateText}>{formatBillingDate(planned.dueDate)}</span>
-                                <WeekendBadge iso={planned.dueDate} />
-                                {planned.keptDue ? (
-                                  <StatusBadge size="sm" tone="neutral" icon={Lock} iconSize={11} label="คงกำหนดชำระเดิม" />
-                                ) : null}
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </TableScroll>
-              </>
-            ) : (
-              <StatusNotice tone="info">
-                {monthlyRule ? fillPlan?.error || "ไม่มีงวดที่ต้องเติมวันแล้ว" : noMonthlyNote("เติมวัน")}
-              </StatusNotice>
-            )}
-            <p className="form-note">แก้รายงวดได้ภายหลังจากเมนูของงวด ("กำหนดวันงวด") · บันทึกลงประวัติของใบ</p>
-            {/* ไม่เหลืองวดให้เติม (409 แล้วหน้าดึงงวดสด · อีกหน้าต่างเติมไปแล้ว) = ปุ่มปิดปุ่มเดียว — ปุ่มหลัก "เติมวัน 0 งวด" ที่ดับอยู่ไม่มีความหมาย */}
-          </div>
-        </Modal>
-      ) : null}
-
-      {/* ⭐ จัดวันใหม่ตามรอบปัจจุบัน (กำหนดวางบิลรอบสอง · มติเจ้าของ 26/09) — ตาราง "เดิม → ใหม่" ทุกงวดก่อนยืนยันครั้งเดียว
-          (กติกา #1223: การยืนยันบอกผลที่ตรวจได้) · แผนคิดสดทุกครั้งที่วาด ⇒ 409 แล้วหน้าดึงงวดสด ตารางเปลี่ยนตามทันที
-          ⚠️ ต้องบอกว่ากำหนดชำระใหม่ **แทน** วันเดิม — ป้ายแดง "เลยกำหนด" และด่านนัดช่างอ่านช่องนี้ (ต่างจากเติมตามรอบที่คงวันเดิม)
-          ⭐ บอกเรื่องด่านนัดด้วย `showCoverage` (ใบบนเส้นบริการ) ไม่ใช่ `hasServiceRounds` — visitGate อ่านงวดของทุกใบที่โซนผูกอยู่
-            (overdueUnconfirmed) รวมใบบริการที่บรรทัด "พิมพ์เอง" ไม่มีรหัส 02-001 · ใช้ตัวแคบ = ใบพวกนั้นไม่ถูกเตือนว่าด่านขยับ
-          · error ของ API ขึ้นในโมดัล (แถบของหน้าอยู่ใต้โมดัล) */}
-      {redateOpen ? (
-        <Modal open onClose={() => setRedateOpen(false)} title="จัดวันใหม่ตามรอบปัจจุบัน" size="lg" dismissible={!busy}
-          subtitle={[order?.orderNumber, customerCode].filter(Boolean).join(" · ")} footer={(
-            <div className="action-bar">
-              {redateRows.length || redateRoundMissing ? (
-                <>
-                  <Button variant="ghost" onClick={() => setRedateOpen(false)} disabled={!!busy}>ยกเลิก</Button>
-                  <Button tone="primary" disabled={!!busy || !!redateBlocker || !redateRows.length}
-                    title={redateRoundMissing ? "เลือกรอบวางบิลก่อน" : redateBlocker || undefined}
-                    onClick={submitRedate}>
-                    {busy === "installment-redate-billing" ? "กำลังจัดวัน…" : redateRoundMissing ? "จัดวันใหม่" : `จัดวันใหม่ ${redateRows.length} งวด`}
-                  </Button>
-                </>
-              ) : (
-                <Button variant="ghost" onClick={() => setRedateOpen(false)} disabled={!!busy}>ปิด</Button>
-              )}
-            </div>
-          )}>
-          <div className={styles.dialog}>
-            {error ? <StatusNotice tone="error" role="alert">{error}</StatusNotice> : null}
-            {billingRule ? (
-              <p className="form-note">รอบวางบิลของลูกค้าตอนนี้: <b>{describeBillingRule(billingRule)}</b></p>
-            ) : null}
-            {multiRound ? (
-              <BillingRoundChoice choices={roundChoices} value={redateRoundValue} onChange={setRedateRound} disabled={!!busy}
-                verb="จัดวันใหม่" />
-            ) : null}
-            {redateRoundMissing ? (
-              redateCardBlocker ? <StatusNotice tone="warning">{redateCardBlocker}</StatusNotice> : null
-            ) : redateRows.length ? (
-              <>
-                <ul className={styles.fillLead}>
-                  <li>
-                    จัดใหม่ {redateRows.length} งวด เดือนละงวด เริ่มงวดที่ {redateRows[0].seq} ที่รอบ{" "}
-                    <b>{formatBillingDate(redateRows[0].billingDate)}</b>
-                  </li>
-                  <li>
-                    <b>กำหนดชำระใหม่ใช้แทนวันเดิม</b> — ป้าย “เลยกำหนด”{showCoverage ? " และด่านนัดบริการของใบนี้" : ""} นับจากวันใหม่ทันที
-                  </li>
-                  {redateClearsOverdue ? (
-                    <li>{redateClearsOverdue} งวดที่ขึ้น “เลยกำหนด” อยู่ตอนนี้ จะไม่เลยกำหนดแล้วหลังจัดวันใหม่</li>
-                  ) : null}
-                  <li>งวดที่ขอใบวางบิลแล้ว รอเหตุการณ์ หรือแจ้งชำระแล้ว ไม่ถูกแตะ — แก้รายงวดได้จากเมนูของงวด</li>
-                </ul>
-                {redateBlocker ? <StatusNotice tone="warning">{redateBlocker}</StatusNotice> : null}
-                <TableScroll surface="auto" cells="stacked" minWidth={620}>
-                  <table className={styles.table}>
-                    <thead>
-                      <tr>
-                        <th className={styles.seqCol}>งวด</th>
-                        <th className="num">ยอด</th>
-                        <th>วันวางบิล เดิม → ใหม่</th>
-                        <th>กำหนดชำระ เดิม → ใหม่</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {redateRows.map((planned) => {
-                        const source = saved.find((r) => r.id === planned.id);
-                        return (
-                          <tr key={planned.id}>
-                            <td className={styles.seqCol}>{planned.seq}</td>
-                            <td className="num">{fmtMoney(source?.amount)}</td>
-                            <td><RedateCell from={planned.prevBillingDate} to={planned.billingDate} /></td>
-                            <td><RedateCell from={planned.prevDueDate} to={planned.dueDate} /></td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </TableScroll>
-              </>
-            ) : (
-              <StatusNotice tone="info">
-                {monthlyRule ? redatePlan?.error || "ไม่มีงวดที่ต้องจัดวันใหม่แล้ว" : noMonthlyNote("จัดวันใหม่")}
-              </StatusNotice>
-            )}
-            <p className="form-note">แก้รายงวดได้ภายหลังจากเมนูของงวด ("กำหนดวันงวด") · บันทึกลงประวัติของใบ</p>
-            {/* ไม่เหลืองวดให้จัด (409 แล้วหน้าดึงงวดสด · อีกหน้าต่างจัดไปแล้ว) = ปุ่มปิดปุ่มเดียว */}
-          </div>
-        </Modal>
-      ) : null}
-
 
       {/* ⭐ แนบคำร้องที่ขอไว้แล้ว (B-5) — โชว์ **ยอดของคำร้อง** คู่กับยอดของงวดเสมอ
           เพราะสองอย่างนี้ไม่จำเป็นต้องเท่ากัน (ขอวางบิลรวมสองงวดก็มี) ⇒ คนกดต้องเห็น
@@ -2085,5 +1731,11 @@ export default function SalesOrderPaymentPanel({
         busy={!!busy}
       />
     </DetailCard>
+    {/* ⭐ แถบบันทึกวันงวด (โหมดตั้งวัน · มติ 28/09) — ปุ่ม navy ปุ่มเดียว "บันทึก N งวด" = คำขอเดียว `schedule-many`
+        · อยู่ **นอกการ์ด** โดยตั้งใจ: `.card` ของ DetailCard เป็น overflow:hidden (= scroll container) ⇒ sticky ข้างในยึดกับการ์ด
+          ที่ไม่เคยเลื่อน แถบไม่ติดขอบจอ (บทเรียน stickyScrollport.test) · คอลัมน์ `.main` ของหน้าไม่ตัดขอบ ⇒ ติดขอบล่างของจอได้จริง
+        · error ของ API ขึ้นในแถบ (แถบ error ของหน้าอยู่บนสุด มองไม่เห็นตอนกดจากท้ายตาราง) · มือถือ: แผ่นเต็มจอมีปุ่มเดียวกันท้ายแผ่น */}
+    <InstallmentDateBar mode={dateMode} error={error} />
+    </>
   );
 }

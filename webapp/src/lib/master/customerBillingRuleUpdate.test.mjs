@@ -31,9 +31,9 @@ test('แก้ = ประโยคเดิม → ประโยคใหม
   assert.equal(got.meta.action, 'change');
 });
 
-test('⭐ สวิตช์เครดิต: ไม่มีเครดิต ↔ มีเครดิต อ่านออกในเธรด', () => {
-  assert.equal(billingRuleChangeUpdate(null, NO_CREDIT).body, 'ตั้งเครดิตและรอบวางบิล: — → ไม่มีเครดิต');
-  assert.equal(billingRuleChangeUpdate(NO_CREDIT, CREDIT).body, 'แก้เครดิตและรอบวางบิล: ไม่มีเครดิต → วางบิลสิ้นเดือน · เครดิต 30 วัน');
+test('⭐ สวิตช์เครดิต: ไม่มีเครดิต ↔ มีเครดิต อ่านออกในเธรด (ไม่มีเครดิต = "ไม่มีเครดิต · ชำระวันวางบิล" · มติ 28/09)', () => {
+  assert.equal(billingRuleChangeUpdate(null, NO_CREDIT).body, 'ตั้งเครดิตและรอบวางบิล: — → ไม่มีเครดิต · ชำระวันวางบิล');
+  assert.equal(billingRuleChangeUpdate(NO_CREDIT, CREDIT).body, 'แก้เครดิตและรอบวางบิล: ไม่มีเครดิต · ชำระวันวางบิล → วางบิลสิ้นเดือน · เครดิต 30 วัน');
   assert.deepEqual(billingRuleChangeUpdate(null, NO_CREDIT).meta.billingRuleAfter, { credit: false });
 });
 
@@ -70,7 +70,7 @@ test('⭐ หลายรอบ → ไม่มีเครดิต / ล้�
   assert.deepEqual(toNone, {
     head: 'แก้เครดิตและรอบวางบิล',
     old: 'วางบิล 10 → เงินเข้า 25 · วางบิล 25 → เงินเข้า 10 เดือนถัดไป',
-    new: 'ไม่มีเครดิต',
+    new: 'ไม่มีเครดิต · ชำระวันวางบิล',
   });
   const cleared = oldNew(billingRuleChangeUpdate(TWO_ROUNDS, null).body);
   assert.deepEqual(cleared, {
@@ -81,7 +81,7 @@ test('⭐ หลายรอบ → ไม่มีเครดิต / ล้�
 });
 
 test('รอบเดียวทั้งสองฝั่ง (ไม่มีลูกศรในประโยค) ยังเป็นบรรทัดเดียว "เดิม → ใหม่" แบบเดิม', () => {
-  assert.equal(billingRuleChangeUpdate(MONTHLY, NO_CREDIT).body, 'แก้เครดิตและรอบวางบิล: วางบิลทุกวันที่ 5 · เงินเข้าทุกวันที่ 25 → ไม่มีเครดิต');
+  assert.equal(billingRuleChangeUpdate(MONTHLY, NO_CREDIT).body, 'แก้เครดิตและรอบวางบิล: วางบิลทุกวันที่ 5 · เงินเข้าทุกวันที่ 25 → ไม่มีเครดิต · ชำระวันวางบิล');
 });
 
 test('⭐ ค่าเดิมรูปรุ่นแรก (0389) = รุ่นสองตัวเดียวกัน ⇒ ไม่มีอะไรเปลี่ยน (เปิดโมดัลแล้วกดบันทึกเฉย ๆ ต้องไม่ขึ้นแถว)', () => {

@@ -118,13 +118,14 @@ test('เครดิต n วัน (รวม 0 วัน · วางบิ�
   }
 });
 
-test('ไม่มีเครดิต (mig 0390) = ประโยค "ไม่มีเครดิต" ไม่มีชิป พร้อมเหตุ', () => {
+test('ไม่มีเครดิต (มติ 28/09 ข้อ 17) = ประโยค "ไม่มีเครดิต · ชำระวันวางบิล" ไม่มีชิป พร้อมเหตุ — เหตุเดียวกับเครดิต N วัน (ใบย้อนหลังไม่มีวันวางบิล)', () => {
   for (const rule of [{ credit: false }, { credit: false, note: 'โอนก่อนส่งของ' }]) {
     const due = historicalCustomerDueOption(rule);
-    assert.equal(due.hint, 'ไม่มีเครดิต');
+    assert.equal(due.hint, 'ไม่มีเครดิต · ชำระวันวางบิล');
     assert.equal(due.option, null);
-    assert.match(due.note, /^ไม่มีตัวเลือก "ตามรอบของลูกค้า" เพราะลูกค้าไม่มีเครดิต/);
+    assert.match(due.note, /^ไม่มีตัวเลือก "ตามรอบของลูกค้า" เพราะลูกค้าไม่มีเครดิต \(ชำระวันวางบิล\) ซึ่งใบย้อนหลังไม่มีวันวางบิล/);
     assert.doesNotMatch(due.note, /—/);
+    assert.doesNotMatch(due.note, /เครดิต 0 วัน/);
   }
 });
 

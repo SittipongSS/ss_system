@@ -26,7 +26,16 @@ import {
   normalizeInstallmentBilling,
   planMonthlyFill,
   planRedate,
+  creditCadenceSuggestion,
+  installmentLabelMonth,
+  planCreditCadence,
+  planNoCreditDates,
   weekendNote,
+  effectiveBillingRule,
+  billingRuleNeedsBillingDate,
+  NO_CREDIT_TEXT,
+  PAY_ON_BILLING_TEXT,
+  creditDaysText,
 } from './billingRule.js';
 
 /* AR-267 เจอร์นัล แล็บ: วางบิลทุกวันที่ 5 · เงินเข้าทุกวันที่ 25 เดือนเดียวกัน */
@@ -299,19 +308,65 @@ const TWO = {
   payment: { mode: 'monthly', rounds: [{ day: 25, monthOffset: 0 }, { day: 10, monthOffset: 1 }] },
 };
 
-test('ไม่มีเครดิต = รูปของตัวเอง · ไม่มีรอบ ไม่มีกำหนดชำระ · จอทำเหมือนไม่มีรอบ', () => {
+test('ไม่มีเครดิต = รูปของตัวเองตอนเก็บ · อ่านเป็นวางบิลได้ทุกวัน + ชำระวันวางบิล (มติ 28/09 ข้อ 17 · แทน "ทำเหมือนไม่มีรอบ")', () => {
   const { rule, error } = normalizeBillingRule({ credit: false, billing: { mode: 'weekly' }, note: ' ชำระก่อนผลิต ' });
   assert.equal(error, null);
+  /* ค่าที่เก็บไม่เปลี่ยน (ไม่มี migration) */
   assert.deepEqual(rule, { credit: false, note: 'ชำระก่อนผลิต' });
-  assert.equal(describeBillingRule(rule), 'ไม่มีเครดิต');
+  assert.equal(describeBillingRule(rule), 'ไม่มีเครดิต · ชำระวันวางบิล');
+  assert.equal(describeBillingRule(rule, { short: true }), 'ไม่มีเครดิต · ชำระวันวางบิล');
   assert.equal(describeBillingRuleDetail(rule), '');
   assert.equal(billingRuleNoCredit(rule), true);
   assert.equal(billingRuleMonthly(rule), false);
   assert.equal(billingRoundCount(rule), 0);
   assert.deepEqual(billingRounds(rule, '2026-09-26'), []);
-  assert.equal(dueDateForBilling(rule, '2026-10-05'), '');
+  /* ⭐ กำหนดชำระ = วันวางบิลเอง (ชำระวันวางบิล) — เดิม '' */
+  assert.equal(dueDateForBilling(rule, '2026-10-05'), '2026-10-05');
+  /* ไม่มีรอบรายเดือนให้เติม/จัด (เหมือนลูกค้าวางบิลได้ทุกวัน) — ข้อความยังบอกว่าเป็นเรื่องไม่มีเครดิต */
   assert.match(planMonthlyFill(rule, [inst(1)], '2026-09-26').error, /ไม่มีเครดิต/);
   assert.match(planRedate(rule, [inst(1)], '2026-09-26').error, /ไม่มีเครดิต/);
+});
+
+test('⭐ effectiveBillingRule — ที่เดียวที่ตัดสินว่าไม่มีเครดิตคิดวันอย่างไร · ส่งผลกลับเข้ามาได้ · ไม่ตั้ง/รูปผิด = null', () => {
+  const NO_CREDIT_RULE = { billing: { mode: 'anyday' }, payment: { mode: 'credit', days: 0 }, noCredit: true };
+  assert.deepEqual(effectiveBillingRule({ credit: false }), NO_CREDIT_RULE);
+  assert.deepEqual(effectiveBillingRule({ credit: false, note: 'โอนก่อนส่ง' }), { ...NO_CREDIT_RULE, note: 'โอนก่อนส่ง' });
+  /* ส่งผลของตัวเองกลับเข้ามา = รูปเดิม (ผู้เรียกไม่ต้องจำว่าถือค่าดิบหรือค่าที่อ่านแล้ว) */
+  const once = effectiveBillingRule({ credit: false, note: 'โอนก่อนส่ง' });
+  assert.deepEqual(effectiveBillingRule(once), once);
+  assert.equal(describeBillingRule(once), 'ไม่มีเครดิต · ชำระวันวางบิล', 'ธงไม่หลุดเมื่อส่งรูปที่อ่านแล้วเข้าตัวข้อความ');
+  assert.equal(billingRuleNoCredit(once), true);
+  /* มีเครดิต = รูปมาตรฐานเดิม (ไม่มีธง) · เครดิต 0 ที่ตั้งเองไม่ใช่ "ไม่มีเครดิต" แต่คิดวันเหมือนกัน */
+  assert.deepEqual(effectiveBillingRule(CREDIT30), { billing: { mode: 'anyday' }, payment: { mode: 'credit', days: 30 } });
+  const credit0 = { billing: { mode: 'anyday' }, payment: { mode: 'credit', days: 0 } };
+  assert.equal(effectiveBillingRule(credit0).noCredit, undefined);
+  assert.equal(describeBillingRule(credit0), 'วางบิลได้ทุกวัน · ชำระวันวางบิล');
+  assert.equal(dueDateForBilling(credit0, '2026-10-05'), dueDateForBilling({ credit: false }, '2026-10-05'));
+  /* ธงที่ติดมากับรอบอื่น (ไม่ใช่รูปของไม่มีเครดิต) ไม่มีผล */
+  assert.equal(effectiveBillingRule({ ...CREDIT30, noCredit: true }).noCredit, undefined);
+  assert.equal(effectiveBillingRule(null), null);
+  assert.equal(effectiveBillingRule({ billing: 'x' }), null);
+  /* คำกลาง — ห้ามพูด "เครดิต 0 วัน" */
+  assert.equal(NO_CREDIT_TEXT, 'ไม่มีเครดิต · ชำระวันวางบิล');
+  assert.equal(PAY_ON_BILLING_TEXT, 'ชำระวันวางบิล');
+  for (const value of [{ credit: false }, credit0]) {
+    assert.doesNotMatch(describeBillingRule(value), /เครดิต 0 วัน/);
+    assert.doesNotMatch(describeBillingRule(value, { short: true }), /เครดิต 0 วัน/);
+  }
+  /* 🔴 review 28/09: จำนวนวันเครดิตเป็นคำ — ตัวเดียวของประโยครอบ + การ์ด/โมดัลทะเบียนลูกค้า (เดิมการ์ดพิมพ์ "เครดิต 0 วัน" เอง) */
+  assert.equal(creditDaysText(0), PAY_ON_BILLING_TEXT);
+  assert.equal(creditDaysText(30), 'เครดิต 30 วัน');
+  assert.equal(creditDaysText(1), 'เครดิต 1 วัน');
+  assert.equal(describeBillingRule({ billing: { mode: 'monthly', days: [10, 25] }, payment: { mode: 'credit', days: 0 } }),
+    'วางบิลวันที่ 10 และ วันที่ 25 · ชำระวันวางบิล');
+});
+
+test('⭐ งวดที่ขาดวันวางบิลนับเฉพาะรอบรายเดือน/เครดิต — ไม่มีเครดิต/ยังไม่ตั้งไม่นับ (ทะเบียน FN · มติ 28/09)', () => {
+  assert.equal(billingRuleNeedsBillingDate(AR267), true);
+  assert.equal(billingRuleNeedsBillingDate(CREDIT30), true);
+  assert.equal(billingRuleNeedsBillingDate({ credit: false }), false);
+  assert.equal(billingRuleNeedsBillingDate(effectiveBillingRule({ credit: false })), false);
+  assert.equal(billingRuleNeedsBillingDate(null), false);
 });
 
 test('สองรอบต่อเดือน — รอบถัดไปเรียงตามวัน แต่ละรอบใช้วันเงินเข้าของตัวเอง', () => {
@@ -370,4 +425,140 @@ test('เติม/จัดวันใหม่ เดือนละงวด
 test('30 กับ 31 ในเดือน 30 วัน = รอบเดียว (ไม่ขึ้นชิปซ้ำ)', () => {
   const r = { billing: { mode: 'monthly', days: [30, 31] }, payment: { mode: 'credit', days: 0 } };
   assert.deepEqual(billingRounds(r, '2026-11-01', 2).map((x) => x.billingDate), ['2026-11-30', '2026-12-30']);
+});
+
+/* ── ตัวช่วยเติมวันในโหมดตั้งวัน (แบบ C · มติ 28/09) ─────────────────────── */
+
+test('เดือนจากชื่องวด — อังกฤษ/ไทย/พ.ศ. · ไม่มีปีหรือไม่มีเดือน = ว่าง (ไม่เดา)', () => {
+  assert.equal(installmentLabelMonth('1st Installment: October 2026 –'), '2026-10');
+  assert.equal(installmentLabelMonth('2nd Installment: February 2027'), '2027-02');
+  assert.equal(installmentLabelMonth('งวดที่ 3 ก.พ. 2570'), '2027-02');
+  assert.equal(installmentLabelMonth('ชำระ มิถุนายน 2027'), '2027-06');
+  assert.equal(installmentLabelMonth('Summary 2026'), '', 'mar ในคำอื่นไม่นับ');
+  assert.equal(installmentLabelMonth('งวดสุดท้าย'), '');
+  assert.equal(installmentLabelMonth('October'), '');
+  assert.equal(installmentLabelMonth('Sept 2026'), '2026-09');
+  assert.equal(installmentLabelMonth('งวดที่ 2 มิ.ย. 2027'), '2027-06');
+});
+
+test('🔴 review 28/09: ตัวย่อไม่มีจุดที่ซ่อนในคำธรรมดาไม่ชนะชื่อเดือนจริง — ชื่อเต็ม → ย่อมีจุด → ย่อไม่มีจุดที่ยืนเดี่ยว', () => {
+  /* ห้าคำที่เจอจริง: รวมค่า/ตามความ (มค) · ลูกค้า (กค) · มีค่า (มีค) · ทรัพย์ (พย) — ข้างชื่อเดือนจริง + ปี */
+  assert.equal(installmentLabelMonth('งวดที่ 3 รวมค่าติดตั้ง ธันวาคม 2569'), '2026-12', 'เดิมได้ 2026-01 จาก "มค" ใน "รวมค่า"');
+  assert.equal(installmentLabelMonth('ชำระตามความคืบหน้า ก.พ. 2570'), '2027-02');
+  assert.equal(installmentLabelMonth('ลูกค้าชำระ มีนาคม 2027'), '2027-03');
+  assert.equal(installmentLabelMonth('มีค่าบริการเพิ่ม ต.ค. 2569'), '2026-10');
+  assert.equal(installmentLabelMonth('ทรัพย์สิน ส.ค. 2570'), '2027-08');
+  /* คำพวกนั้นอยู่ลำพังกับปี = ไม่มีเดือน (ไม่เดา) */
+  for (const word of ['รวมค่าติดตั้ง 2569', 'ตามความคืบหน้า 2570', 'ลูกค้าจ่าย 2027', 'มีค่า 2569', 'ทรัพย์สิน 2570']) {
+    assert.equal(installmentLabelMonth(word), '', word);
+  }
+  /* ย่อไม่มีจุดยังใช้ได้เมื่อยืนเดี่ยว (ต้น/ท้ายข้อความ · ช่องว่าง · วงเล็บ · ตัวเลข) — ไล่ตัวถัดไปในข้อความต่อ */
+  assert.equal(installmentLabelMonth('งวด 2 มค 2570'), '2027-01');
+  assert.equal(installmentLabelMonth('งวด 2 (กพ 2570)'), '2027-02');
+  assert.equal(installmentLabelMonth('ลูกค้า กค 2570'), '2027-07', '"กค" ใน "ลูกค้า" ข้ามไป — ตัวที่ยืนเดี่ยวข้างหลังยังนับ');
+  /* ชั้นของชื่อก่อนตำแหน่ง · ตัวที่ไม่มีปีตามหลังข้ามไปตัวถัดไป */
+  assert.equal(installmentLabelMonth('ม.ค. 2570 (ชำระภายในกุมภาพันธ์)'), '2027-01');
+  assert.equal(installmentLabelMonth('งวด 1 มค 2570 · มีนาคม 2570'), '2027-03', 'ชื่อเต็มชนะตัวย่อไม่มีจุด');
+});
+
+test('AR-015 เครดิต 30 วัน — ต่อจากงวด 2 กำหนดชำระทุกวันที่ 25 · วันวางบิลย้อน 30 วัน (ไม่เลื่อนไป 24/27)', () => {
+  const rows = [
+    inst(1, { dueDate: '2026-11-25' }), inst(2, { dueDate: '2026-12-25' }),
+    ...Array.from({ length: 10 }, (_, i) => inst(i + 3)),
+  ];
+  const sug = creditCadenceSuggestion(rows);
+  assert.deepEqual(sug, { fromSeq: 2, dueDay: 25, startMonth: '2027-01' });
+  const { rows: plan, error } = planCreditCadence(CREDIT30, rows, sug);
+  assert.equal(error, null);
+  assert.equal(plan.length, 10, 'เติมเฉพาะงวดที่ว่าง (งวด 1–2 มีกำหนดชำระแล้ว)');
+  assert.deepEqual(plan[0], { id: 'i3', seq: 3, billingDate: '2026-12-26', dueDate: '2027-01-25', prevBillingDate: null, prevDueDate: null });
+  assert.deepEqual(plan[9].dueDate, '2027-10-25');
+  assert.ok(plan.every((r) => r.dueDate.endsWith('-25')));
+});
+
+test('🔴 review 28/09: วันสุดท้ายของเดือนสั้น ≠ สิ้นเดือน เมื่องวดก่อนพิสูจน์ว่าเป็นวันที่ตายตัว', () => {
+  /* 30 ต.ค. · 30 พ.ย. = วันที่ 30 ทุกเดือน (ต.ค. มี 31 วันแต่ลงวันที่ 30) — เดิมเสนอ "สิ้นเดือน" แล้วงวดถัดไปได้ 31 ธ.ค. */
+  const thirty = [inst(1, { dueDate: '2026-10-30' }), inst(2, { dueDate: '2026-11-30' }), inst(3)];
+  const a = creditCadenceSuggestion(thirty);
+  assert.deepEqual(a, { fromSeq: 2, dueDay: 30, startMonth: '2026-12' });
+  assert.equal(planCreditCadence(CREDIT30, thirty, a).rows[0].dueDate, '2026-12-30');
+  /* 28 ม.ค. · 28 ก.พ. = วันที่ 28 — เดิมได้ 31 มี.ค. */
+  const twentyEight = [inst(1, { dueDate: '2027-01-28' }), inst(2, { dueDate: '2027-02-28' }), inst(3)];
+  const b = creditCadenceSuggestion(twentyEight);
+  assert.deepEqual(b, { fromSeq: 2, dueDay: 28, startMonth: '2027-03' });
+  assert.equal(planCreditCadence(CREDIT30, twentyEight, b).rows[0].dueDate, '2027-03-28');
+  /* หลักฐานว่าเป็นสิ้นเดือนจริง / ไม่มีหลักฐานขัด = ยังเป็นสิ้นเดือน */
+  assert.equal(creditCadenceSuggestion([inst(1, { dueDate: '2026-10-31' }), inst(2, { dueDate: '2026-11-30' })]).dueDay, 31);
+  assert.equal(creditCadenceSuggestion([inst(1, { dueDate: '2026-09-30' }), inst(2, { dueDate: '2026-11-30' })]).dueDay, 31,
+    '30 ก.ย. เองก็เป็นวันสุดท้ายของเดือน — ไม่ขัด');
+  assert.equal(creditCadenceSuggestion([inst(1, { dueDate: '2026-10-15' }), inst(2, { dueDate: '2026-11-30' })]).dueDay, 31,
+    'งวดก่อนตกวันอื่น — ไม่ขัด');
+});
+
+test('ต่อจากงวดก่อนที่ครบสิ้นเดือน = สิ้นเดือนต่อไป · ไม่มีงวดที่มีวัน = ไม่มีข้อเสนอ', () => {
+  assert.equal(creditCadenceSuggestion([inst(1, { dueDate: '2026-11-30' })]).dueDay, 31);
+  assert.equal(creditCadenceSuggestion([inst(1)]), null);
+  assert.match(planCreditCadence(AR267, [inst(1)], { dueDay: 25, startMonth: '2026-10' }).error, /เครดิตเป็นจำนวนวัน/);
+  assert.match(planCreditCadence(CREDIT30, [inst(1)], { dueDay: 25 }).error, /เดือนเริ่ม/);
+});
+
+test('ยังไม่ตั้งกำหนดวางบิล (กำหนดชำระอย่างเดียว) — ใช้เดือนจากชื่องวด (AR-622) หรือเรียงเดือนจากเดือนเริ่ม · สิ้นเดือนตามเดือน', () => {
+  const rows = [
+    inst(1, { label: '1st Installment: October 2026 –' }), inst(2, { label: '2nd Installment: February 2027' }),
+    inst(3, { label: '3rd Installment: June 2027' }), inst(4, { label: '4th Installment: October 2027' }),
+  ];
+  const byLabel = planNoCreditDates(rows, { day: 31 });
+  assert.equal(byLabel.error, null);
+  assert.deepEqual(byLabel.rows.map((r) => r.dueDate), ['2026-10-31', '2027-02-28', '2027-06-30', '2027-10-31']);
+  assert.ok(byLabel.rows.every((r) => r.billingDate === null));
+  const seq = planNoCreditDates(rows, { day: 5, startMonth: '2026-11' });
+  assert.deepEqual(seq.rows.map((r) => r.dueDate), ['2026-11-05', '2026-12-05', '2027-01-05', '2027-02-05']);
+  const mixed = planNoCreditDates([inst(1, { label: 'October 2026' }), inst(2, { label: 'งวดสุดท้าย' })], { day: 15 });
+  assert.deepEqual(mixed.skipped, [2]);
+  assert.match(planNoCreditDates([inst(1, { label: 'งวดสุดท้าย' })], { day: 15 }).error, /ชื่องวดไม่บอกเดือน/);
+});
+
+test('⭐ AR-622 ไม่มีเครดิต + ตามเดือนในชื่องวด + วันที่ 31 — วันวางบิล = กำหนดชำระ (planCreditCadence · startMonth null)', () => {
+  const rows = [
+    inst(1, { label: '1st Installment: October 2026 –' }), inst(2, { label: '2nd Installment: February 2027' }),
+    inst(3, { label: '3rd Installment: June 2027' }), inst(4, { label: '4th Installment: October 2027' }),
+  ];
+  const plan = planCreditCadence({ credit: false }, rows, { dueDay: 31, startMonth: null });
+  assert.equal(plan.error, null);
+  assert.deepEqual(plan.skipped, []);
+  const want = ['2026-10-31', '2027-02-28', '2027-06-30', '2027-10-31'];
+  assert.deepEqual(plan.rows.map((r) => r.dueDate), want);
+  assert.deepEqual(plan.rows.map((r) => r.billingDate), want, 'ชำระวันวางบิล = วันเดียวกัน');
+  /* เครดิต N วัน + เดือนในชื่องวด = วันวางบิลย้อน N วันจากกำหนดชำระ */
+  const credit = planCreditCadence(CREDIT30, rows, { dueDay: 31, startMonth: null });
+  assert.deepEqual(credit.rows.map((r) => [r.billingDate, r.dueDate]), [
+    ['2026-10-01', '2026-10-31'], ['2027-01-29', '2027-02-28'], ['2027-05-31', '2027-06-30'], ['2027-10-01', '2027-10-31'],
+  ]);
+  /* งวดที่ชื่อไม่บอกเดือน = ข้าม พร้อมบอก · ไม่มีงวดไหนบอกเดือนเลย = error (ไม่เดาเดือน) */
+  const mixed = planCreditCadence({ credit: false }, [inst(1, { label: 'October 2026' }), inst(2, { label: 'งวดสุดท้าย' })], { dueDay: 15, startMonth: null });
+  assert.deepEqual(mixed.skipped, [2]);
+  assert.deepEqual(mixed.rows.map((r) => r.billingDate), ['2026-10-15']);
+  assert.match(planCreditCadence({ credit: false }, [inst(1, { label: 'งวดสุดท้าย' })], { dueDay: 15, startMonth: null }).error, /ชื่องวดไม่บอกเดือน/);
+  /* ไม่ส่งเดือนเลย (undefined) = ยังไม่เลือก — ไม่ใช่ "ตามชื่องวด" เงียบ ๆ (ไม่มีค่าตั้งต้นให้การตัดสินใจ) */
+  assert.match(planCreditCadence({ credit: false }, rows, { dueDay: 31 }).error, /เดือนเริ่ม/);
+  /* ไม่มีเครดิต + เรียงเดือนจากเดือนเริ่ม */
+  const seq = planCreditCadence({ credit: false }, rows, { dueDay: 5, startMonth: '2026-11' });
+  assert.deepEqual(seq.rows.map((r) => r.billingDate), ['2026-11-05', '2026-12-05', '2027-01-05', '2027-02-05']);
+  /* ยังไม่ตั้งกติกา = ไม่มีอะไรคิดวันวางบิลให้ */
+  assert.match(planCreditCadence(null, rows, { dueDay: 31, startMonth: null }).error, /เครดิต/);
+});
+
+test('ยังไม่ตั้งกำหนดวางบิล — ตัวเติมเขียนกำหนดชำระอย่างเดียว วันวางบิลที่เลือกไว้เองคงเดิม (planNoCreditDates)', () => {
+  const plan = planNoCreditDates([inst(1, { billingDate: '2026-10-01' }), inst(2)], { day: 25, startMonth: '2026-10', includeDated: true });
+  assert.deepEqual(plan.rows.map((r) => [r.seq, r.billingDate, r.dueDate]), [[1, '2026-10-01', '2026-10-25'], [2, null, '2026-11-25']]);
+});
+
+test('จัดใหม่งวดที่มีวันแล้วด้วย — ไม่แตะงวดที่ขอใบแล้ว/รับเงินแล้ว', () => {
+  const rows = [
+    inst(1, { dueDate: '2026-10-05', billingDate: '2026-09-05', status: 'confirmed' }),
+    inst(2, { dueDate: '2026-11-05', billingDate: '2026-10-06' }),
+    inst(3, { dueDate: '2026-12-05', billingDate: '2026-11-05' }),
+  ];
+  const plan = planCreditCadence(CREDIT30, rows, { dueDay: 25, startMonth: '2026-11', includeDated: true, requestedIds: new Set(['i3']) });
+  assert.deepEqual(plan.rows.map((r) => [r.seq, r.dueDate, r.prevDueDate]), [[2, '2026-11-25', '2026-11-05']]);
 });

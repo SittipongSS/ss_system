@@ -225,9 +225,14 @@ const TWO_ROUNDS = {
   payment: { mode: 'monthly', rounds: [{ day: 25, monthOffset: 0 }, { day: 15, monthOffset: 1 }] },
 };
 
-test('pickerRuleOf: ไม่มีเครดิต = null (ทำเหมือนไม่มีรอบ) · รูปรุ่นแรกแปลงเป็นรุ่นสอง · รูปผิด = null', () => {
-  assert.equal(pickerRuleOf({ credit: false }), null);
-  assert.equal(pickerRuleOf({ credit: false, note: 'โอนก่อนส่ง' }), null);
+test('pickerRuleOf: ไม่มีเครดิต = วางบิลได้ทุกวัน + ชำระวันวางบิล (มติ 28/09 ข้อ 17) · รูปรุ่นแรกแปลงเป็นรุ่นสอง · ไม่ตั้ง/รูปผิด = null', () => {
+  /* แทนมติ 26/09 "ไม่มีเครดิต = null (ทำเหมือนไม่มีรอบ)" — ต้นเหตุที่ใบสินค้าเกือบทั้งหมดไม่มีวันวางบิลเลย */
+  assert.deepEqual(pickerRuleOf({ credit: false }), {
+    billing: { mode: 'anyday' }, payment: { mode: 'credit', days: 0 }, noCredit: true,
+  });
+  assert.deepEqual(pickerRuleOf({ credit: false, note: 'โอนก่อนส่ง' }), {
+    billing: { mode: 'anyday' }, payment: { mode: 'credit', days: 0 }, noCredit: true, note: 'โอนก่อนส่ง',
+  });
   assert.equal(pickerRuleOf(null), null);
   assert.equal(pickerRuleOf({ billing: 'x' }), null);
   assert.deepEqual(pickerRuleOf(AR267), {
@@ -251,6 +256,24 @@ test('pickerRoundOptions: รอบเดียว = วันอย่างเ
   assert.deepEqual(pickerRoundOptions(CREDIT30, TODAY), []);
   assert.deepEqual(pickerRoundOptions({ credit: false }, TODAY), []);
   assert.deepEqual(pickerRoundOptions(null, TODAY), []);
+});
+
+test('⭐ ไม่มีเครดิต (มติ 28/09): ตัวเลือกเดินทางเดียวกับวางบิลได้ทุกวัน — ใส่วันวางบิลแล้วกำหนดชำระ = วันเดียวกัน · แก้ทับ/คืนค่าได้', () => {
+  const NO_CREDIT = { credit: false };
+  const picked = applyPick(EMPTY_PICKER_VALUE, { mode: 'other', billingDate: '2026-10-12' }, pickerRuleOf(NO_CREDIT));
+  assert.deepEqual(pickerPayload(picked), { billingDate: '2026-10-12', billingEvent: null, dueDate: '2026-10-12' });
+  assert.equal(picked.dueOverridden, false);
+  /* ค่าดิบจากฐานก็ได้ผลเดียวกัน (ผู้เรียกไม่ต้องจำว่าอ่านแล้วหรือยัง) */
+  assert.equal(applyPick(EMPTY_PICKER_VALUE, { mode: 'other', billingDate: '2026-10-12' }, NO_CREDIT).dueDate, '2026-10-12');
+  const moved = applyPick(picked, { mode: 'overrideDue', dueDate: '2026-10-20' }, NO_CREDIT);
+  assert.equal(moved.dueOverridden, true);
+  assert.equal(applyPick(moved, { mode: 'resetDue' }, NO_CREDIT).dueDate, '2026-10-12');
+  /* แถวเก่าที่มีแต่กำหนดชำระ = ยังไม่เลือก · มีวันวางบิลตรงกำหนดชำระ = 'other' ไม่แก้ทับ */
+  assert.equal(pickerValueFromRow({ dueDate: '2026-10-05' }, NO_CREDIT, TODAY).mode, null);
+  const fromRow = pickerValueFromRow({ billingDate: '2026-10-05', dueDate: '2026-10-05' }, NO_CREDIT, TODAY);
+  assert.equal(fromRow.mode, 'other');
+  assert.equal(fromRow.dueOverridden, false);
+  assert.deepEqual(billingRoundChoices(NO_CREDIT), []);
 });
 
 test('แตะชิปของลูกค้าหลายรอบ = กำหนดชำระของรอบนั้น · วันอื่น… = รอบที่วันนั้นตกอยู่', () => {

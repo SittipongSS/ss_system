@@ -43,7 +43,8 @@ import { previewInstallments } from "@/lib/sales/salesOrderPayments";
 import { billingRuleMonthly, billingRuleNoCredit, describeBillingRule } from "@/lib/sales/billingRule";
 import { EMPTY_PICKER_VALUE, pickerRuleOf } from "@/lib/sales/billingPicker";
 import {
-  createFormBillingBlocker, createFormDateCheck, createFormInstallmentItems, createFormTermsState, createFormVisibleValues,
+  createFormBillingBlocker, createFormDateCheck, createFormInstallmentItems, createFormManualValue, createFormPlanNote,
+  createFormTermsKind, createFormTermsState, createFormVisibleValues,
 } from "@/lib/sales/salesOrderCreateInstallments";
 import { validateOrderConfirmation, MAX_CONFIRM_ATTACHMENTS } from "@/lib/sales/orderConfirmationDocs";
 import { uploadFileBytes } from "@/lib/master/uploadFile";
@@ -169,13 +170,21 @@ function NewSalesOrderInner() {
       document.removeEventListener("visibilitychange", onReturn);
     };
   }, [creating, refreshTerms]);
-  /* มีรอบ (มีเครดิต) = แต่ละงวดได้ตัวเลือกรอบ · ไม่มี/โหลดไม่ขึ้น = ช่องกำหนดชำระแบบเดิม
-     ⭐ ไม่มีเครดิต (มติเจ้าของ 26/09 ข้อ 2) = ทำเหมือนไม่มีรอบทุกอย่าง (`pickerRuleOf` คืน null — ตัวเดียวกับตัวเลือกรอบ/แผงงวด)
-       แต่แถบเหนือตารางบอกว่า "ไม่มีเครดิต" ไม่ใช่ "ยังไม่ตั้ง" (ตั้งแล้ว — ไม่ชวนไปตั้งซ้ำ)
+  /* ตั้งแล้ว (มีเครดิต **หรือไม่มีเครดิต**) = แต่ละงวดได้ตัวเลือก · ยังไม่ตั้ง = ช่องกำหนดชำระ + ช่องวันวางบิล (ไม่บังคับ) ·
+     โหลดไม่ขึ้น/ไม่รู้ = ช่องกำหนดชำระอย่างเดียว
+     ⭐ ไม่มีเครดิต (มติเจ้าของ 28/09 ข้อ 17 · แทนมติ 26/09 "ทำเหมือนไม่มีรอบ") = ตัวเลือกแบบลูกค้าวางบิลได้ทุกวัน — ใส่วันวางบิล
+       แล้วกำหนดชำระ = วันเดียวกัน (`pickerRuleOf` = `effectiveBillingRule` ตัวเดียวกับตัวเลือกรอบ/แผงงวด) · `noCredit` ใช้เลือกคำ
+     ⭐ ช่องวันวางบิล (ไม่บังคับ) + คำ "ลูกค้ายังไม่ตั้ง…" = **เฉพาะตอนรู้แน่ว่ายังไม่ตั้ง** (`termsKind` 'unset': โหลดขึ้น · ฐานรองรับ ·
+       ไม่มีรอบ) — โหลดไม่ขึ้น / ใบไม่ผูกลูกค้า / ฐานยังไม่รัน 0389 = ไม่รู้ ⇒ ช่องกำหนดชำระอย่างเดียวแบบเดิม (`createFormTermsKind`)
+       🐞 review 28/09: เดิมเปิดช่องและพูด "ลูกค้ายังไม่ตั้งกำหนดวางบิล" ทุกกรณีที่ไม่ใช่ `supported: false` — รวมตอนโหลดไม่ขึ้น
+          (ลูกค้าอาจมีกติกาอยู่แล้ว · วันวางบิลที่พิมพ์เองกับกติกาจริงคิดคนละวัน) และใบไม่ผูกลูกค้า
      ⚠️ ห้ามอ่าน `rule.billing.day` / `.payment.day` ตรง ๆ (รอบรุ่นสอง mig 0390) — ถามตัวช่วยของ billingRule.js */
   const customerRule = terms?.status === "ready" && terms.supported ? terms.rule : null;
   const rule = pickerRuleOf(customerRule);
   const noCredit = billingRuleNoCredit(customerRule);
+  const termsKind = createFormTermsKind(terms);
+  const billingFields = termsKind === "unset";
+  const planNote = createFormPlanNote(rule, { termsKind });
 
   /* เลขที่เอกสารยืนยันเป็นค่าตั้งต้นของ "เอกสารอ้างอิง" (กติกาเดิมของ 0246 ที่เคยไหล
      มาจากตอนปิด Won) — หยุดตามทันทีที่ผู้ใช้พิมพ์ทับ ไม่ใช่ทับของที่เขาแก้ไว้ */
@@ -214,7 +223,10 @@ function NewSalesOrderInner() {
       : "";
   /* ค่าที่ส่ง/ที่ด่านตรวจ = ค่าตามที่ตาเห็น — รอบถูกล้าง/โหลดไม่ขึ้น ตารางเหลือแค่กำหนดชำระ
      ⇒ วันวางบิล/เหตุการณ์ที่ค้างใน state ต้องไม่ถูกส่งและไม่ถูกกัน (ไม่งั้นปุ่มติดด่านที่ไม่มีช่องให้แก้) */
-  const billingValues = useMemo(() => createFormVisibleValues(billing, { withRule: Boolean(rule) }), [billing, rule]);
+  const billingValues = useMemo(
+    () => createFormVisibleValues(billing, { withRule: Boolean(rule), withBilling: billingFields }),
+    [billing, rule, billingFields],
+  );
   /* ⚠️ ไม่ใช่ด่านบังคับเลือกรอบ (มติ 26/09 ข้อ 2) — กันเฉพาะงวดที่เริ่มเลือกแล้วยังไม่ครบ
      ("วันอื่น…" ที่ยังไม่ใส่วัน · รอเหตุการณ์ที่ยังไม่มีชื่อ) ไม่งั้นงวดนั้นหลุดเป็น "ยังไม่กำหนด" เงียบ ๆ */
   const billingBlocker = createFormBillingBlocker(plannedInstallments, billingValues);
@@ -336,7 +348,8 @@ function NewSalesOrderInner() {
     );
   } else if (terms?.status === "ready" && terms.supported) {
     const ruleNote = String(customerRule?.note || "").trim();
-    const ruleSet = Boolean(rule) || noCredit;
+    /* ตั้งแล้ว = มีเครดิตหรือไม่มีเครดิต (`rule` รวมไม่มีเครดิตแล้ว · มติ 28/09) — ไม่ชวนไปตั้งซ้ำ */
+    const ruleSet = Boolean(rule);
     termsNotice = (
       <StatusNotice
         tone={rule ? "info" : "neutral"}
@@ -361,11 +374,11 @@ function NewSalesOrderInner() {
         ) : null}
       >
         <span className={styles.termsLine}>
-          {rule
-            ? <>รอบวางบิลของลูกค้า: <b>{describeBillingRule(rule)}</b></>
-            : noCredit
-              ? <>เครดิตของลูกค้า: <b>{describeBillingRule(customerRule)}</b> — กรอกกำหนดชำระเองรายงวด</>
-              : "ลูกค้ายังไม่ตั้งเครดิตและรอบวางบิล — ตั้งได้ที่ทะเบียนลูกค้า"}
+          {noCredit
+            ? <>เครดิตของลูกค้า: <b>{describeBillingRule(customerRule)}</b></>
+            : rule
+              ? <>รอบวางบิลของลูกค้า: <b>{describeBillingRule(rule)}</b></>
+              : "ยังไม่ได้ตั้งกำหนดวางบิลของลูกค้า — ตั้งได้ที่ทะเบียนลูกค้า"}
         </span>
         {ruleNote ? (
           <span className={styles.termsSub}>
@@ -583,7 +596,7 @@ function NewSalesOrderInner() {
                      คอลัมน์ตัวเลือกหลุดจอทั้งคอลัมน์โดยไม่มีอะไรบอกว่าเลื่อนได้ (review S4 26/09) · DOM ชุดเดียว วัดด้วย @container
                      ป้าย "งวด" / "% ของยอดรวม" / หัวช่องในการ์ด (`cardOnly` · `cardLabel`) โผล่เฉพาะตอนเป็นการ์ด */}
               <div className={styles.planContainer}>
-                <TableScroll family="editable" surface="auto" cells="stacked" minWidth={rule ? 700 : 620}>
+                <TableScroll family="editable" surface="auto" cells="stacked" minWidth={rule ? 700 : billingFields ? 800 : 620}>
                   <table className={styles.planTable}>
                     <thead>
                       <tr>
@@ -591,8 +604,11 @@ function NewSalesOrderInner() {
                         <th>รายละเอียด</th>
                         <th className={`num ${styles.colPercent}`}>%</th>
                         <th className={`num ${styles.colAmount}`}>ยอด</th>
+                        {/* ⭐ ลูกค้าที่ยังไม่ตั้ง: วันวางบิลเป็นช่องของมันเอง (ไม่บังคับ · มติ 28/09 ข้อ 17) — ไม่คิดอะไรให้กำหนดชำระ
+                            ⚠️ เรียง **วันวางบิล → กำหนดชำระ** เสมอ (เจ้าของทัก 28/09) — ลำดับเดียวกับคอลัมน์บนแผงงวดของใบ */}
+                        {!rule && billingFields ? <th className={styles.colDue}>วันวางบิล (ไม่บังคับ)</th> : null}
                         {rule
-                          ? <th>เลือกรอบวางบิล</th>
+                          ? <th>{billingRuleMonthly(rule) ? "เลือกรอบวางบิล" : "วันวางบิล → กำหนดชำระ"}</th>
                           : <th className={styles.colDue}>กำหนดชำระ</th>}
                       </tr>
                     </thead>
@@ -610,9 +626,26 @@ function NewSalesOrderInner() {
                               <span className={styles.cardOnly}>% ของยอดรวม</span>
                             </td>
                             <td className={`num ${styles.cellAmount}`}>{fmtMoney(row.amount)}</td>
+                            {!rule && billingFields ? (
+                              <td className={styles.cellBill}>
+                                <span className={styles.cardLabel} aria-hidden="true">วันวางบิล (ไม่บังคับ)</span>
+                                {/* สองช่องแยกกัน — วันวางบิลไม่ขยับกำหนดชำระ (ไม่มีกติกาให้คิด) · ว่างได้ */}
+                                <DateInput
+                                  value={billingValues[row.seq]?.billingDate || ""}
+                                  disabled={creating}
+                                  ariaLabel={`วันวางบิล ${rowLabel} (ไม่บังคับ)`}
+                                  invalid={dateCheck.invalidSeqs.has(row.seq)}
+                                  onChange={(next) => setBilling((prev) => ({
+                                    ...prev, [row.seq]: createFormManualValue(billingValues[row.seq], { billingDate: next }),
+                                  }))}
+                                />
+                              </td>
+                            ) : null}
                             <td className={styles.cellPick}>
                               {/* ช่อง/ชิปมีชื่อสำหรับเสียงอ่านของตัวเองครบแล้ว — ป้ายนี้มีไว้ให้ตาเห็นตอนหัวตารางหายไป */}
-                              <span className={styles.cardLabel} aria-hidden="true">{rule ? "เลือกรอบวางบิล" : "กำหนดชำระ"}</span>
+                              <span className={styles.cardLabel} aria-hidden="true">
+                                {!rule ? "กำหนดชำระ" : billingRuleMonthly(rule) ? "เลือกรอบวางบิล" : "วันวางบิล → กำหนดชำระ"}
+                              </span>
                               {rule ? (
                                 <BillingRoundPicker
                                   compact
@@ -630,7 +663,9 @@ function NewSalesOrderInner() {
                                   disabled={creating}
                                   ariaLabel={`กำหนดชำระ ${rowLabel}`}
                                   invalid={dateCheck.invalidSeqs.has(row.seq)}
-                                  onChange={(next) => setBilling((prev) => ({ ...prev, [row.seq]: { ...EMPTY_PICKER_VALUE, dueDate: next } }))}
+                                  onChange={(next) => setBilling((prev) => ({
+                                    ...prev, [row.seq]: createFormManualValue(billingValues[row.seq], { dueDate: next }),
+                                  }))}
                                 />
                               )}
                             </td>
@@ -641,14 +676,9 @@ function NewSalesOrderInner() {
                   </table>
                 </TableScroll>
               </div>
-              {rule ? (
-                <p className={`form-note ${styles.planNote}`}>
-                  {billingRuleMonthly(rule)
-                    ? "ชิปคือ 3 รอบถัดไปของลูกค้านับจากวันนี้ · แตะรอบเดียวได้ทั้งวันวางบิลและกำหนดชำระ · แก้กำหนดชำระทับรายงวดได้"
-                    : "ลูกค้าวางบิลได้ทุกวัน — ใส่วันวางบิล ระบบคิดกำหนดชำระตามรอบของลูกค้าให้"}
-                  {" · "}ไม่เลือกก็สร้างใบได้ — เลือกภายหลังได้ที่การ์ด &ldquo;การชำระ&rdquo; บนใบ
-                </p>
-              ) : null}
+              {/* บรรทัดอธิบายตามแบบของกติกาลูกค้า — ตัวเดียวทุกแบบ (`createFormPlanNote` · ไม่มีเครดิตพูด "ชำระวันวางบิล" ไม่ใช่ "+0 วัน")
+                  โหลดไม่ขึ้น = ไม่มีบรรทัดนี้ (แถบเหนือตารางบอกเหตุแล้ว) · ไม่รู้กติกา = ห้ามพูด "ลูกค้ายังไม่ตั้ง…" (`termsKind`) */}
+              {planNote ? <p className={`form-note ${styles.planNote}`}>{planNote}</p> : null}
 
               {/* เงินที่ลูกค้าจ่ายมาก่อนออกใบ — ธง/โหมดพิเศษใช้สวิตช์ ไม่ใช่ช่องติ๊กลอย */}
               <div className={styles.prepaidBox}>

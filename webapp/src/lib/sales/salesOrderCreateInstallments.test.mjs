@@ -9,6 +9,9 @@ import {
   createFormBillingBlocker,
   createFormDateCheck,
   createFormInstallmentItems,
+  createFormManualValue,
+  createFormPlanNote,
+  createFormTermsKind,
   createFormTermsState,
   createFormVisibleValues,
   loadCreateFormBillingTerms,
@@ -217,14 +220,86 @@ test('อ่านไม่ขึ้น = { error } ข้อความดิ�
   assert.equal(createFormTermsState({ supported: true, billingRule: { billing: 'x' } }).rule, null);
 });
 
-test('ไม่มีเครดิต (mig 0390) = rule { credit:false } ถึงหน้า · ตัวเลือกรอบได้ null (ทำเหมือนไม่มีรอบ) · ค่าที่ส่งเหลือกำหนดชำระ', () => {
+test('ไม่มีเครดิต (มติ 28/09 ข้อ 17) = rule { credit:false } ถึงหน้า · ตัวเลือกแบบวางบิลได้ทุกวัน · กำหนดชำระ = วันวางบิล', () => {
   const state = createFormTermsState({ supported: true, billingRule: { credit: false, note: ' โอนก่อนส่ง ' }, creditTerms: 'เงินสด', arCode: 'AR-001' });
+  /* ค่าที่เก็บยังเป็นสวิตช์ (ไม่มี migration) — ผลการอ่านเป็นทุกวัน + เครดิต 0 */
   assert.deepEqual(state.rule, { credit: false, note: 'โอนก่อนส่ง' });
-  assert.equal(pickerRuleOf(state.rule), null, 'หน้าสร้างเปิดช่องกำหนดชำระแบบเดิม ไม่ใช่ตัวเลือกรอบ');
-  /* ค่าที่ค้างใน state จากตอนลูกค้ายังมีรอบ ต้องไม่หลุดไปกับใบ (withRule = Boolean(pickerRuleOf(...)) = false) */
-  const picked = { 1: pick({ mode: 'round', billingDate: '2026-10-05' }) };
-  assert.deepEqual(createFormInstallmentItems(PLAN, createFormVisibleValues(picked, { withRule: Boolean(pickerRuleOf(state.rule)) })),
+  const rule = pickerRuleOf(state.rule);
+  assert.equal(rule.noCredit, true, 'หน้าสร้างเปิดตัวเลือก (ไม่ใช่ช่องกำหนดชำระแบบเดิม)');
+  const picked = { 1: applyPick(EMPTY_PICKER_VALUE, { mode: 'other', billingDate: '2026-10-12' }, rule) };
+  assert.deepEqual(createFormInstallmentItems(PLAN, createFormVisibleValues(picked, { withRule: Boolean(rule) })),
+    [{ seq: 1, billingDate: '2026-10-12', billingEvent: null, dueDate: '2026-10-12' }]);
+  /* ข้อความใต้ตาราง: "ชำระวันวางบิล" ไม่ใช่ "+0 วัน" / "เครดิต 0 วัน" */
+  assert.match(createFormPlanNote(state.rule), /^ลูกค้าไม่มีเครดิต · ชำระวันวางบิล — ใส่วันวางบิล กำหนดชำระเป็นวันเดียวกัน/);
+  assert.doesNotMatch(createFormPlanNote(state.rule), /เครดิต 0|\+0/);
+});
+
+test('⭐ ยังไม่ตั้งกำหนดวางบิล = ช่องกำหนดชำระ + ช่องวันวางบิล (ไม่บังคับ) · สองช่องไม่คิดให้กัน · ค่าที่ตาเห็นถูกส่ง', () => {
+  /* พิมพ์กำหนดชำระก่อน แล้ววันวางบิล — วันวางบิลไม่แตะกำหนดชำระ (ไม่มีกติกาให้คิด) */
+  let v = createFormManualValue(undefined, { dueDate: '2026-10-30' });
+  assert.deepEqual([v.mode, v.billingDate, v.dueDate], [null, '', '2026-10-30']);
+  v = createFormManualValue(v, { billingDate: '2026-10-01' });
+  assert.deepEqual([v.mode, v.billingDate, v.dueDate], ['other', '2026-10-01', '2026-10-30']);
+  assert.equal(v.dueOverridden, true, 'กติกามาทีหลัง (ตั้งในแท็บอื่น) = ตัวเลือกบอกว่ากำหนดชำระนี้พิมพ์เอง ไม่ทับเงียบ ๆ');
+  /* ล้างวันวางบิล = กลับเป็นยังไม่เลือก (ไม่ติดด่าน "ยังไม่ได้ใส่วันวางบิล") */
+  const cleared = createFormManualValue(v, { billingDate: '' });
+  assert.deepEqual([cleared.mode, cleared.billingDate, cleared.dueDate], [null, '', '2026-10-30']);
+  const values = { 1: v, 2: createFormManualValue(undefined, { billingDate: '2026-11-01' }) };
+  const visible = createFormVisibleValues(values, { withRule: false, withBilling: true });
+  assert.deepEqual(createFormInstallmentItems(PLAN, visible), [
+    { seq: 1, billingDate: '2026-10-01', billingEvent: null, dueDate: '2026-10-30' },
+    { seq: 2, billingDate: '2026-11-01', billingEvent: null, dueDate: null },
+  ]);
+  assert.equal(createFormBillingBlocker(PLAN, visible), '', 'ไม่บังคับ — วันวางบิลเดี่ยว ๆ ก็ไม่ติดด่าน');
+  /* POST รับวันวางบิลของลูกค้าที่ยังไม่ตั้ง (ตัวตรวจไม่ดูกติกาหรือสายของใบ) */
+  assert.deepEqual(parseCreateFormInstallments(createFormInstallmentItems(PLAN, visible)).rows, [
+    { seq: 1, patch: { dueDate: '2026-10-30', billingDate: '2026-10-01' } },
+    { seq: 2, patch: { billingDate: '2026-11-01' } },
+  ]);
+  /* ค่าที่ค้างจากตอนลูกค้ามีรอบ: เหตุการณ์/โหมดไม่หลุด · วันวางบิลขึ้นในช่องที่เห็นจึงส่งได้ */
+  const fromRound = { 1: pick({ mode: 'round', billingDate: '2026-10-05' }), 2: pick({ mode: 'event', billingEvent: 'ก่อนส่งสินค้า' }) };
+  assert.deepEqual(createFormInstallmentItems(PLAN, createFormVisibleValues(fromRound, { withRule: false, withBilling: true })),
+    [{ seq: 1, billingDate: '2026-10-05', billingEvent: null, dueDate: '2026-10-25' }]);
+  /* ฐานที่ยังไม่รัน 0389 (ไม่มีช่องวันวางบิล) = ส่งแค่กำหนดชำระแบบเดิม */
+  assert.deepEqual(createFormInstallmentItems(PLAN, createFormVisibleValues(fromRound, { withRule: false })),
     [{ seq: 1, billingDate: null, billingEvent: null, dueDate: '2026-10-25' }]);
+});
+
+test('ข้อความใต้ตารางงวดถูกตามแบบของกติกา — รายเดือน · เครดิต N · ทุกวัน+เงินเข้า · ไม่มีเครดิต · ยังไม่ตั้ง', () => {
+  assert.match(createFormPlanNote(AR267), /^ชิปคือ 3 รอบถัดไป/);
+  assert.match(createFormPlanNote({ billing: { mode: 'anyday' }, payment: { mode: 'credit', days: 30 } }), /เครดิต 30 วัน — ใส่วันวางบิล ระบบคิดกำหนดชำระ \(\+30 วัน\) ให้/);
+  assert.match(createFormPlanNote({ billing: { mode: 'anyday' }, payment: { mode: 'credit', days: 0 } }), /^ลูกค้าชำระวันวางบิล/);
+  assert.match(createFormPlanNote({ billing: { mode: 'anyday' }, payment: { mode: 'monthly', rounds: [{ day: 25, monthOffset: 1 }] } }), /ตามรอบของลูกค้าให้/);
+  assert.match(createFormPlanNote({ credit: false }), /^ลูกค้าไม่มีเครดิต · ชำระวันวางบิล/);
+  assert.match(createFormPlanNote(null), /^ลูกค้ายังไม่ตั้งกำหนดวางบิล — วันวางบิลไม่บังคับ · กรอกกำหนดชำระเอง/);
+  assert.match(createFormPlanNote(null, { termsKind: 'unset' }), /^ลูกค้ายังไม่ตั้งกำหนดวางบิล/);
+  for (const rule of [AR267, null, { credit: false }]) assert.match(createFormPlanNote(rule), /ไม่เลือกก็สร้างใบได้/);
+});
+
+test('🔴 review 28/09: "ลูกค้ายังไม่ตั้งกำหนดวางบิล" + ช่องวันวางบิล (ไม่บังคับ) เฉพาะตอนรู้แน่ — โหลดไม่ขึ้น/ใบไม่ผูกลูกค้า = ไม่รู้', () => {
+  /* ตัวตัดสินเดียวของหน้า: ready + รองรับ + ไม่มีรอบ = 'unset' เท่านั้น */
+  const ready = (billingRule, supported = true) => createFormTermsState({ supported, billingRule, creditTerms: '', arCode: 'AR-1' });
+  assert.equal(createFormTermsKind(ready(null)), 'unset');
+  assert.equal(createFormTermsKind(ready({ billing: 'x' })), 'unset', 'รอบรูปเพี้ยนจากฐาน = อ่านเป็นยังไม่ตั้ง (billingRuleOf)');
+  assert.equal(createFormTermsKind(ready(AR267)), 'rule');
+  assert.equal(createFormTermsKind(ready({ credit: false })), 'rule', 'ไม่มีเครดิต = ตั้งแล้ว (มติ 28/09 ข้อ 17)');
+  assert.equal(createFormTermsKind(createFormTermsState({ error: 'canceling statement due to statement timeout' })), 'error');
+  assert.equal(createFormTermsKind(null), 'off', 'ใบไม่ผูกลูกค้า');
+  assert.equal(createFormTermsKind(ready(null, false)), 'off', 'ฐานยังไม่รัน 0389 / ไม่เจอแถวลูกค้า');
+  /* คำใต้ตาราง: โหลดไม่ขึ้น = ไม่มีบรรทัด (แถบเหนือตาราง "โหลด…ไม่สำเร็จ — กรอกกำหนดชำระเองได้ตามเดิม" บอกแล้ว) ·
+     ไม่ผูกลูกค้า/ไม่รองรับ = ประโยคกลาง · ทั้งสองแบบห้ามพูด "ลูกค้ายังไม่ตั้ง…" หรือ "วันวางบิลไม่บังคับ" (ไม่มีช่องนั้น) */
+  assert.equal(createFormPlanNote(null, { termsKind: 'error' }), '');
+  const off = createFormPlanNote(null, { termsKind: 'off' });
+  assert.match(off, /^กรอกกำหนดชำระเองได้ · ไม่เลือกก็สร้างใบได้/);
+  for (const text of [off, createFormPlanNote(null, { termsKind: 'error' })]) {
+    assert.doesNotMatch(text, /ลูกค้ายังไม่ตั้ง|วันวางบิลไม่บังคับ/);
+  }
+  /* มีรอบ = ประโยคของรอบเสมอ (termsKind ใช้เฉพาะตอนไม่มีรอบ) */
+  assert.match(createFormPlanNote({ credit: false }, { termsKind: 'error' }), /^ลูกค้าไม่มีเครดิต · ชำระวันวางบิล/);
+  /* ไม่มีช่องวันวางบิล = วันวางบิลที่ค้างใน state ไม่ถูกส่ง (ตาเห็น = ส่ง) */
+  const typed = { 1: createFormManualValue(undefined, { billingDate: '2026-10-01', dueDate: '2026-10-30' }) };
+  assert.deepEqual(createFormInstallmentItems(PLAN, createFormVisibleValues(typed, { withRule: false, withBilling: false })),
+    [{ seq: 1, billingDate: null, billingEvent: null, dueDate: '2026-10-30' }]);
 });
 
 /* ── ต่อสายจริงในหน้า + route (อ่านซอร์ส — ไม่มี DB ในเทสต์) ──────────── */
@@ -248,12 +323,23 @@ test('POST ตรวจวันของงวดก่อนออกเลข
 
 test('หน้าสร้างส่งแถวผ่านตัวช่วยเดียว · กันเลือกครึ่งทาง · อ่านคำเตือนหลัง 201', () => {
   const page = read('app/sales-planning/sales-orders/new/page.js');
-  // ส่ง/ตรวจค่าตามที่ตาเห็น (รอบหาย = เหลือกำหนดชำระ) — ไม่ใช่ state ดิบ
-  assert.match(page, /createFormVisibleValues\(billing, \{ withRule: Boolean\(rule\) \}\)/);
-  // ไม่มีเครดิต = ทำเหมือนไม่มีรอบ (ตัวตัดสินเดียวกับตัวเลือกรอบ/แผงงวด) แต่แถบบอกว่า "ไม่มีเครดิต"
+  // ส่ง/ตรวจค่าตามที่ตาเห็น (รอบหาย = กำหนดชำระ + วันวางบิลไม่บังคับ) — ไม่ใช่ state ดิบ
+  assert.match(page, /createFormVisibleValues\(billing, \{ withRule: Boolean\(rule\), withBilling: billingFields \}\)/);
+  // มติ 28/09: ไม่มีเครดิต = ตัวเลือกแบบวางบิลได้ทุกวัน (ตัวตัดสินเดียวกับตัวเลือกรอบ/แผงงวด) · แถบบอกว่า "ไม่มีเครดิต · ชำระวันวางบิล"
   assert.match(page, /const rule = pickerRuleOf\(customerRule\);/);
   assert.match(page, /const noCredit = billingRuleNoCredit\(customerRule\);/);
-  assert.match(page, /เครดิตของลูกค้า: <b>\{describeBillingRule\(customerRule\)\}<\/b>/);
+  assert.match(page, /เครดิตของลูกค้า: <b>\{describeBillingRule\(customerRule\)\}<\/b><\/>/);
+  assert.doesNotMatch(page, /กรอกกำหนดชำระเองรายงวด<\/>/, 'ไม่มีเครดิตไม่ได้กรอกกำหนดชำระเองแล้ว');
+  // ยังไม่ตั้ง = ช่องวันวางบิล (ไม่บังคับ) ของตัวเอง · สองช่องผ่าน createFormManualValue (ไม่คิดให้กัน) · ข้อความใต้ตารางตัวเดียวทุกแบบ
+  assert.match(page, /\{!rule && billingFields \? <th className=\{styles\.colDue\}>วันวางบิล \(ไม่บังคับ\)<\/th> : null\}/);
+  // ช่องวันวางบิล + คำ "ยังไม่ตั้ง" = เฉพาะ 'unset' (โหลดไม่ขึ้น/ใบไม่ผูกลูกค้า = ไม่รู้ — review 28/09)
+  assert.match(page, /const termsKind = createFormTermsKind\(terms\);\s*const billingFields = termsKind === "unset";/);
+  assert.doesNotMatch(page, /const billingFields = !\(terms/, 'ห้ามกลับไปเปิดช่องทุกกรณีที่ไม่ใช่ supported: false');
+  assert.match(page, /createFormManualValue\(billingValues\[row\.seq\], \{ dueDate: next \}\)/);
+  assert.match(page, /createFormManualValue\(billingValues\[row\.seq\], \{ billingDate: next \}\)/);
+  assert.match(page, /const planNote = createFormPlanNote\(rule, \{ termsKind \}\);/);
+  assert.match(page, /\{planNote \? <p className=\{`form-note \$\{styles\.planNote\}`\}>\{planNote\}<\/p> : null\}/);
+  assert.match(page, /ยังไม่ได้ตั้งกำหนดวางบิลของลูกค้า/);
   assert.doesNotMatch(page, /rule\.billing\.mode|rule\.payment\.|\.monthOffset/, 'รอบรุ่นสอง: ห้ามอ่านช่องข้างในตรง ๆ');
   assert.match(page, /installments: createFormInstallmentItems\(plannedInstallments, billingValues\)/);
   assert.match(page, /createFormBillingBlocker\(plannedInstallments, billingValues\)/);

@@ -192,18 +192,19 @@ test('🔴 ส่วนที่ซ่อน: ไม่นับงวดขอ�
   assert.deepEqual(ledgerBillingTally(rows, { billing: '7d' }).hidden, { count: 2, amount: 600 });
 });
 
-test('🔴 ไม่มีเครดิต (mig 0390): บรรทัดใต้ชื่อบอก "ไม่มีเครดิต" แต่ไม่ใช่ "มีรอบ" — ไม่นับเป็นงวดที่ขาดวันวางบิล', () => {
+test('🔴 ไม่มีเครดิต (มติ 28/09 ข้อ 17): บรรทัดใต้ชื่อบอก "ไม่มีเครดิต · ชำระวันวางบิล" แต่ไม่ชวน "ยังไม่กำหนด" — ไม่นับเป็นงวดที่ขาดวันวางบิล', () => {
   const noCredit = { customer: { billingRule: { credit: false } } };
   const row = make({ id: 'c1', seq: 1, amount: 500 }, noCredit);
-  assert.equal(row.billingRuleText, 'ไม่มีเครดิต');
+  assert.equal(row.billingRuleText, 'ไม่มีเครดิต · ชำระวันวางบิล');
+  assert.doesNotMatch(row.billingRuleText, /เครดิต 0 วัน/);
   assert.equal(row.billingRuleActive, false);
   assert.equal(make({ id: 'c2' }).billingRuleActive, true, 'ลูกค้ามีรอบ (รูปรุ่นแรกแปลงตอนอ่าน)');
   assert.equal(make({ id: 'c3' }, { customer: { billingRule: null } }).billingRuleActive, false);
-  /* ตัวนับส่วนที่ซ่อน: ลูกค้าไม่มีเครดิตไม่มีรอบให้เลือก = สถานะปกติ (ข้อความไม่ว่างก็ห้ามนับ) */
+  /* ตัวนับส่วนที่ซ่อน: ลูกค้าไม่มีเครดิต — กำหนดชำระ = วันวางบิลอยู่แล้ว (ข้อความไม่ว่างก็ห้ามนับ) */
   assert.deepEqual(ledgerBillingTally([row], { billing: '7d' }).hidden, { count: 0, amount: 0 });
-  /* ก้อนของใบพกธงไปให้เซลล์ "วางบิลถัดไป" — "ยังไม่กำหนด" ขึ้นเฉพาะลูกค้าที่มีรอบ */
+  /* ก้อนของใบพกธงไปให้เซลล์ "วางบิลถัดไป" — "ยังไม่กำหนด" ขึ้นเฉพาะลูกค้ารอบรายเดือน/เครดิต */
   const [group] = groupLedgerByOrder([row]);
-  assert.equal(group.billingRuleText, 'ไม่มีเครดิต');
+  assert.equal(group.billingRuleText, 'ไม่มีเครดิต · ชำระวันวางบิล');
   assert.equal(group.billingRuleActive, false);
   assert.equal(groupLedgerByOrder([make({ id: 'c4' })])[0].billingRuleActive, true);
   /* ค้นคำที่ตาเห็นได้ */
@@ -212,6 +213,36 @@ test('🔴 ไม่มีเครดิต (mig 0390): บรรทัดใ�
   const page = readFileSync(new URL('../../app/finance/payments/page.js', import.meta.url), 'utf8');
   assert.match(page, /if \(group\.billingUnset && group\.billingRuleActive\) \{/);
   assert.doesNotMatch(page, /group\.billingUnset && group\.billingRuleText/);
+});
+
+test('⭐ ข้อความชวน "ยังไม่กำหนด" (มติ 28/09 — ทางเลือกที่เงียบที่สุดที่ยังพูดจริง): ไม่มีเครดิตไม่ขึ้นแม้งวดว่างทั้งสามช่อง · เครดิตยังขึ้น', () => {
+  const noCredit = { customer: { billingRule: { credit: false } } };
+  /* ใบสินค้าเก่าของลูกค้าไม่มีเครดิต: มีแต่กำหนดชำระ (≈ ส่วนใหญ่ของ 116 ใบบน prod) และว่างทั้งสามช่อง — ทั้งคู่ไม่ชวน */
+  const oldDue = groupLedgerByOrder([make({ id: 'n1', seq: 1, dueDate: '2026-10-05' }, noCredit)])[0];
+  const blank = groupLedgerByOrder([make({ id: 'n2', seq: 1 }, noCredit)])[0];
+  for (const group of [oldDue, blank]) {
+    assert.equal(group.billingUnset, 1, 'ตัวนับดิบยังนับ (ข้อมูลจริง) — ธงเป็นตัวตัดสินว่าชวนไหม');
+    assert.equal(group.billingRuleActive, false);
+  }
+  /* ลูกค้าเครดิต N วัน / รอบรายเดือน: งวดที่ยังไม่มีวันวางบิล = ลืม — ยังชวนเหมือนเดิม */
+  const credit = { customer: { billingRule: { billing: { mode: 'anyday' }, payment: { mode: 'credit', days: 30 } } } };
+  assert.equal(groupLedgerByOrder([make({ id: 'k1', seq: 1, dueDate: '2026-10-05' }, credit)])[0].billingRuleActive, true);
+  assert.equal(groupLedgerByOrder([make({ id: 'm1', seq: 1 })])[0].billingRuleActive, true);
+});
+
+test('⭐ ตัวกรอง ?billing= ทำงานกับทุกใบที่มีวันวางบิล — ไม่มีเครดิต · ยังไม่ตั้ง · มีรอบ (ไม่มีโค้ดดูกติกาหรือสายของใบ)', () => {
+  const rows = [
+    make({ id: 'b1', seq: 1, billingDate: '2026-09-28' }, { customer: { billingRule: { credit: false } } }),
+    make({ id: 'b2', seq: 2, billingDate: '2026-09-29' }, { customer: { billingRule: null } }),
+    make({ id: 'b3', seq: 3, billingDate: '2026-09-30' }),
+    make({ id: 'b4', seq: 4, billingDate: '2026-09-20' }, { customer: { billingRule: { credit: false } } }),
+  ];
+  assert.deepEqual(filterLedger(rows, { billing: '7d' }).map((r) => r.id), ['b1', 'b2', 'b3']);
+  assert.deepEqual(filterLedger(rows, { billing: 'month' }).map((r) => r.id), ['b1', 'b2', 'b3', 'b4']);
+  assert.deepEqual(filterLedger(rows, { billing: 'late' }).map((r) => r.id), ['b4']);
+  const src = readFileSync(new URL('./paymentLedger.js', import.meta.url), 'utf8');
+  const block = src.slice(src.indexOf("if (billingFilter === 'soon'"), src.indexOf("if (billingFilter === 'late'") + 80);
+  assert.doesNotMatch(block, /billingRule|serviceRounds|\.line\b/, 'ตัวกรองรอบวางบิลอ่านธงของแถวเท่านั้น');
 });
 
 // ── 5. ชุดค้น ────────────────────────────────────────────────────────────────────────────────────

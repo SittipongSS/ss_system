@@ -26,8 +26,7 @@ import {
   OPENING_INSTALLMENT_LABEL, ORIGIN_PIPELINE, historicalRefsOf, isHistoricalOrder, isOpeningInstallment,
 } from '@/lib/sales/historicalOrders';
 import {
-  BILLING_REMIND_DAYS, billingRequestLive, billingRuleNoCredit, billingRuleOf, billingState, billingStateLabel,
-  describeBillingRule,
+  BILLING_REMIND_DAYS, billingRequestLive, billingRuleNeedsBillingDate, billingState, billingStateLabel, describeBillingRule,
 } from '@/lib/sales/billingRule';
 
 /** สถานะงวด → ป้ายไทย + โทนสี (ชุดเดียวกับที่การ์ดในใบ SO ใช้) */
@@ -175,11 +174,16 @@ export function ledgerRow({
        ⚠️ ค่าระดับลูกค้า — ทุกงวดของใบพกค่าเดียวกัน · '' = ยังไม่ตั้ง (หรือยังไม่รัน 0389 — route ถอยไปอ่านชุดเดิม)
        ⚠️ อยู่ในชุดค้นด้วย (ตาเห็นบนแถว = ต้องค้นเจอ) */
     customerId: order.customerId || customer?.id || null,
-    /* รอบรุ่นสอง (mig 0390): ลูกค้า "ไม่มีเครดิต" ได้ข้อความ "ไม่มีเครดิต" (ตั้งแล้ว — ไม่ใช่ "ยังไม่ตั้งรอบ") แต่ **ไม่มีรอบ**
-       ⇒ `billingRuleActive` = มีรอบให้เลือกวันงวด (ตั้งแล้วและมีเครดิต) · ตัวนับ "งวดที่ควรมีวันวางบิลแต่ยังไม่มี" และเซลล์
-         "ยังไม่กำหนด" อ่านธงนี้ ไม่ใช่ความว่างของข้อความ (ไม่งั้นทุกงวดของลูกค้าไม่มีเครดิตถูกนับว่าขาดวันวางบิล) */
+    /* ข้อความรอบ: ไม่มีเครดิต = "ไม่มีเครดิต · ชำระวันวางบิล" (มติ 28/09 ข้อ 17 — ตั้งแล้ว ไม่ใช่ "ยังไม่ตั้งรอบ")
+       ⭐ `billingRuleActive` = ธงของข้อความชวน "ยังไม่กำหนด · N งวดไม่มีวันวางบิล" + ตัวนับงวดที่ตัวกรองรอบวางบิลซ่อน —
+         **เฉพาะลูกค้าที่มีรอบรายเดือน/เครดิต** (`billingRuleNeedsBillingDate`) · ไม่มีเครดิตไม่นับ (มติ 28/09 · ทางเลือกที่เงียบที่สุด
+         ที่ยังพูดจริง): กำหนดชำระของลูกค้าไม่มีเครดิต = วันวางบิลอยู่แล้ว ใบเก่าที่มีกำหนดชำระจึงไม่ได้ขาดอะไร ·
+         นับเมื่อไร ใบไม่มีเครดิตที่มีงวดเปิดโดยไม่มีวันวางบิลขึ้นชวนทันที 46 ใบ (prod 28/09 — แม้นับเฉพาะงวดที่ว่างทั้งสามช่องก็ 24 ใบ)
+         ⇒ FN เปิดจากกระดิ่งแล้วเจอ "ยังไม่กำหนด" เต็มคอลัมน์ ทั้งที่งานของใบพวกนั้นคือตามกำหนดชำระ (คอลัมน์ของมันเอง)
+       ⚠️ ธงนี้ไม่แตะตัวกรอง `?billing=` — ตัวกรองอ่านธงของแถว (billingSoon/7d/month/late) ที่คิดจากวันวางบิลของงวดเท่านั้น
+         ⇒ งวดของลูกค้าไม่มีเครดิต/ยังไม่ตั้งที่มีวันวางบิล ติดตัวกรองเหมือนทุกใบ (ไม่มีโค้ดดูกติกาหรือสายของใบ) */
     billingRuleText: describeBillingRule(customer?.billingRule, { short: true }),
-    billingRuleActive: Boolean(billingRuleOf(customer?.billingRule)) && !billingRuleNoCredit(customer?.billingRule),
+    billingRuleActive: billingRuleNeedsBillingDate(customer?.billingRule),
     /* สองขั้นแรกของราง — พกมากับแถวเพื่อให้ก้อน (`groupLedgerByOrder`) ประกอบราง
        ได้โดยไม่ต้องยิง API ซ้ำ · ขั้นที่สามคำนวณจากงวดในก้อนเอง */
     orderStatus: order.status || null,
@@ -666,7 +670,7 @@ export function undatedHiddenBy(rows = [], filters = {}) {
  *   · `hidden` = งวดที่ยังมีงานวางบิลแต่ **ยังไม่มีวันวางบิล** ซึ่งตัวกรองตัดทิ้งตามความหมาย แต่ยอดสรุปคิดจากแถว
  *     ที่เหลือ ⇒ ต้องบอกว่าซ่อนไปเท่าไร (🐞 คลาสเดียวกับ #1257)
  *   ⚠️ นับเฉพาะงวดที่ "ควรมีวันแต่ไม่มี": รอเหตุการณ์ (มีงานวางบิลแน่ แค่ยังไม่รู้วัน) หรือ **ลูกค้ามีรอบแล้ว** แต่งวดยังไม่ได้เลือกวัน
- *     ("มีรอบ" = `billingRuleActive` — ลูกค้าไม่มีเครดิตมีข้อความรอบ แต่ไม่มีรอบให้เลือก ⇒ ไม่นับ · mig 0390)
+ *     ("มีรอบ" = `billingRuleActive` — รอบรายเดือน/เครดิต N วันเท่านั้น · ไม่มีเครดิตไม่นับ: กำหนดชำระ = วันวางบิลอยู่แล้ว · มติ 28/09)
  *     ⇒ ไม่นับงวดของลูกค้าที่ไม่มีรอบและไม่มีใครเลือกอะไร — นั่นคือสถานะปกติ ("บางที่ไม่มีรอบวาง" · คำตอบเจ้าของข้อ 2 ·
  *     ใบเก่าไม่ถูกเติมย้อนหลัง มติข้อ 10) นับเมื่อไร FN เปิดจากกระดิ่งทุกครั้งเจอ "ซ่อน 300+ งวด" ถาวร อ่านเหมือนเงินหาย
  * @returns {{counts: {soon: number, '7d': number, month: number, late: number}, hidden: {count: number, amount: number}}}

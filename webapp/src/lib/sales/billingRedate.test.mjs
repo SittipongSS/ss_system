@@ -247,6 +247,10 @@ const ROUTE = 'app/api/sales-planning/sales-orders/[id]/installments/route.js';
 const PANEL = 'components/salesPlanning/SalesOrderPaymentPanel.js';
 const SO_PAGE = 'app/sales-planning/sales-orders/[id]/page.js';
 const SO_LIST = 'app/sales-planning/sales-orders/page.js';
+const FILL = 'components/salesPlanning/installmentDates/InstallmentDateFill.js';
+const EDITOR = 'components/salesPlanning/installmentDates/InstallmentDateEditor.js';
+const CHROME = 'components/salesPlanning/installmentDates/InstallmentDateChrome.js';
+const DRAFTS = 'lib/sales/installmentDateDrafts.js';
 
 test('route งวด: redate-billing เป็นคำสั่งของทั้งใบ (ก่อนด่าน installmentId) · คำร้องอ่านสดแบบโยน · ด่าน schedule ก่อนเขียน · audit ก่อน 409', () => {
   const route = code(ROUTE);
@@ -286,43 +290,37 @@ test('route งวด: redate-billing เป็นคำสั่งของท
   assert.match(fn, /after: \{ installments: after, redate: 'billing-rule', billingRule: billing\.rule, roundIndex \},/);
 });
 
-test('แผงงวด: จัดวันใหม่คิดด้วย planRedate + คำร้องชุดเดียวกับป้าย · ไม่มีสิทธิ์ไม่วาด · ติดล็อกบอกเหตุ · แก้รายงวดยังอยู่', () => {
+test('แผงงวด: จัดวันใหม่ย้ายเข้าแผงเติมของโหมดตั้งวัน (สวิตช์ "จัดใหม่งวดที่มีวันแล้วด้วย") · คำร้องชุดเดียวกับป้าย · ทับกำหนดชำระต้องบอก · แก้รายงวดยังอยู่', () => {
   const panel = code(PANEL);
+  const fill = code(FILL);
+  const drafts = code(DRAFTS);
+  // งวดที่ขอใบวางบิลแล้ว = ล็อกในโหมด (ตัดสินด้วย billingRequestLive ชุดเดียวกับป้าย) ⇒ ตัวคิดเห็นเป็นสถานะ 'locked' ไม่ถูกแตะ
   assert.match(panel, /const requestedIds = billingRequestedIds\(saved, requestById\);/);
-  assert.match(panel, /planRedate\(billingRule, saved, todayIso, \{ requestedIds, roundIndex \}\)/);
-  assert.match(panel, /const canRedate = Boolean\(onRedateBilling\) && installmentScheduleAllowed\(user\)/);
-  // review รอบสอง: ใบที่มีวันนี้มีแต่กำหนดชำระ (0389 ไม่เติมย้อนหลัง) — เช็กแค่วันวางบิลเดิม = ปุ่มหายจากทุกใบจริง
-  // รอบรุ่นสอง: ลูกค้าหลายรอบ = ถามทุกรอบ (redateProbes) ไม่ใช่เดารอบแรก
-  assert.match(panel, /redateProbes\.some\(\(planned\) => planned\.some\(\(row\) => row\.prevBillingDate \|\| row\.prevDueDate\)\)/);
-  assert.doesNotMatch(panel, /\.some\(\(row\) => row\.prevBillingDate\)/);
-  assert.match(panel, /const redateBlockerOf = \(planned\) => \(saved\.some\(\(r\) => billingUnknown\(r\) && installmentBillingRedatable\(r\)\)/,
-    'คำร้องอ่านไม่ขึ้น = แผนบนจอเชื่อไม่ได้ — เฉพาะงวดที่อยู่ในแผนได้ (งวดที่ชำระแล้ว/ยกมา/รอเหตุการณ์ไม่บล็อกทั้งใบ)');
-  assert.match(panel, /blocker=\{redateCardBlocker\} disabled=\{!!busy\}/);
-  assert.match(panel, /จัดวันใหม่ตามรอบปัจจุบัน…/);
-  assert.match(panel, /`จัดวันใหม่ \$\{redateRows\.length\} งวด`/);
-  assert.match(panel, /<Button tone="primary" disabled=\{!!busy \|\| !!redateBlocker \|\| !redateRows\.length\}/, 'ปุ่มยืนยันเดียว (navy)');
-  // ลูกค้าหลายรอบต่อเดือน (มติ 26/09 ข้อ 3): ถามรอบก่อนพรีวิว · ไม่เลือกให้ · เปิดใหม่ล้างที่เลือก · ส่งรอบไปกับแผน
-  assert.match(panel, /const \[redateRound, setRedateRound\] = useState\(null\);/);
-  assert.match(panel, /setRedateRound\(null\); setRedateOpen\(true\);/);
-  assert.match(panel, /const redateRoundValue = redateRoundIndex === null \? null : redateRound;/);
-  assert.match(panel, /<BillingRoundChoice choices=\{roundChoices\} value=\{redateRoundValue\} onChange=\{setRedateRound\}/);
-  /* ปุ่มบนการ์ดถามทุกรอบด้วยลำดับ (ค่าของชิปเป็นวันวางบิล ห้ามส่งเข้าตัวคิดตรง ๆ) */
-  assert.match(panel, /roundChoices\.map\(\(_, roundIndex\) => planRowsOf\(redateOf\(roundIndex\)\)\)/);
-  assert.match(panel, /\{monthlyRule \? redatePlan\?\.error \|\| "ไม่มีงวดที่ต้องจัดวันใหม่แล้ว" : noMonthlyNote\("จัดวันใหม่"\)\}/);
-  assert.match(panel, /roundIndex: redateRoundIndex,/);
-  assert.match(panel, /กำหนดชำระใหม่ใช้แทนวันเดิม/, 'โมดัลต้องบอกว่ากำหนดชำระใหม่แทนวันเดิม (ป้ายแดง/ด่านนัดช่างอ่านช่องนี้)');
-  assert.match(panel, /งวดที่ขอใบวางบิลแล้ว รอเหตุการณ์ หรือแจ้งชำระแล้ว ไม่ถูกแตะ/);
-  assert.match(panel, /<RedateCell from=\{planned\.prevBillingDate\} to=\{planned\.billingDate\} \/>/);
-  assert.match(panel, /<RedateCell from=\{planned\.prevDueDate\} to=\{planned\.dueDate\} \/>/);
-  assert.match(panel, /<WeekendBadge iso=\{to\} \/>/);
-  // มติ 26/09: วันที่ระบบแนะนำต้องแก้เองได้เสมอ — เมนูแก้รายงวดห้ามหาย
-  assert.match(panel, /label: billingRule \? "กำหนดวันงวด" : row\.dueDate \? "แก้กำหนดชำระ" : "ตั้งกำหนดชำระ",/);
+  assert.match(panel, /requested: requestedIds\.has\(row\.id\),/);
+  assert.match(drafts, /status: isLocked\(row\) \? 'locked' : \(row\.status \|\| 'pending'\),/);
+  assert.match(drafts, /\? planRedate\(ruleValue, inputRows, todayIso, \{ roundIndex: option\.roundIndex \?\? null \}\)/,
+    'สวิตช์จัดใหม่ของรอบรายเดือน = planRedate ตัวเดียวกับ route เดิม');
+  assert.match(drafts, /if \(includeDated\) return inputRows\.filter\(\(row\) => installmentBillingRedatable\(row\)\);/);
+  // ปุ่มบนการ์ด + โมดัล "จัดวันใหม่ตามรอบปัจจุบัน…" ถอดแล้ว — จอไม่เรียก redate-billing
+  assert.doesNotMatch(panel, /จัดวันใหม่ตามรอบปัจจุบัน…|onRedateBilling|redate-billing|planRedate\(/);
+  assert.match(fill, /role="switch" aria-checked=\{includeDated\}/);
+  assert.match(fill, /จัดใหม่งวดที่มีวันแล้วด้วย \(\{dated\} งวด\)/);
+  assert.match(fill, /mode\.applyFill\(\{ includeDated: !includeDated, choice: null \}, null\)/, 'สลับสวิตช์ = ย้อนร่างกลับฐาน ไม่ซ้อนผลเก่า');
+  // กำหนดชำระใหม่แทนวันเดิม — ป้ายแดง/ด่านนัดช่างอ่านช่องนี้ ⇒ บอกทั้งในตัวแก้ (ทันทีใต้ช่อง) และบนแถบบันทึก (นับงวด)
+  assert.match(code(EDITOR), /ทับกำหนดชำระเดิม \$\{formatBillingDate\(saved\.dueDate\)\} — ป้ายเลยกำหนดและด่านนัดช่างนับจากวันใหม่ทันที/);
+  assert.match(code(CHROME), /แทนกำหนดชำระเดิม \{replaced\} งวด — ป้ายเลยกำหนดและด่านนัดช่างนับจากวันใหม่ทันทีที่บันทึก/);
+  assert.match(code(CHROME), /<Button tone="primary" disabled=\{mode\.busy \|\| Boolean\(mode\.saveBlocker\)\} onClick=\{mode\.save\}>/,
+    'ปุ่มยืนยันเดียว (navy) · ดับเมื่อเกินเพดานงวดต่อครั้งของ route พร้อมเหตุ');
+  // มติ 26/09: วันที่ระบบแนะนำต้องแก้เองได้เสมอ — ตัวแก้มี "วันอื่น" + ช่องกำหนดชำระที่แก้ได้เสมอ · เมนูแถวพาเข้าโหมด
+  assert.match(panel, /id: "dates", icon: CalendarClock, label: "ตั้งวันงวด",/);
+  assert.match(code(EDITOR), /\{ value: "other", label: "วันอื่น", icon: CalendarDays \}/);
+  assert.match(code(EDITOR), /<DateInput weekday value=\{v\.dueDate\}/);
   // ชื่องวดสั้นไม่แตกบรรทัด
   assert.match(panel, /<InstallmentLabel label=\{row\.label\} \/>/);
   assert.match(panel, /text\.length <= LABEL_NOWRAP_MAX\s*\? <strong className=\{styles\.nowrap\}>/);
   const page = code(SO_PAGE);
-  assert.match(page, /json: \{ action: "redate-billing", plan, roundIndex \}/);
-  assert.match(page, /onRedateBilling=\{runBillingRedate\}/);
+  assert.match(page, /json: \{ action: "schedule-many", rows \}/);
+  assert.doesNotMatch(page, /action: "redate-billing"|onRedateBilling/);
 });
 
 test('🔴 หัวใบ + รายการ SO: กำหนดชำระมาจากงวด (nextDue) — ไม่อ่าน paymentDueDate ค่าตายบนจอ', () => {
