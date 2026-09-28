@@ -327,6 +327,62 @@ export function leadFollowUpState(followUpAt, todayKey = businessDayKey(new Date
 }
 
 export const LEAD_EDIT_LOCKED_STATUSES = ['qualified', 'disqualified'];
+
+/* ── ลำดับของตารางลีด (หน้า /sa/leads) ────────────────────────────────────
+ *  ⭐ `followup` (ค่าตั้งต้น · มติผู้ใช้ 2026-09-29) = ตารางเป็น **คิวงาน**:
+ *    ใบที่มีวันติดตามขึ้นก่อน เก่า→ใหม่ ⇒ เลยกำหนด → ครบวันนี้ → ยังไม่ถึง
+ *    ใบที่ไม่มีวันติดตามต่อท้าย รับล่าสุดก่อนเสมอ
+ *  🐞 เดิมหัวคอลัมน์ "ติดตามต่อ / รับเมื่อ" ผูกคีย์ `created` ⇒ กดแล้วเรียงตามวันรับ
+ *    ไม่ใช่วันติดตาม ทั้งที่ช่องนั้นโชว์วันติดตามเป็นตัวหนา
+ *  ⚠️ กลับทิศได้เฉพาะก้อนที่มีวันติดตาม — ก้อนไม่มีวันอยู่ท้ายทั้งสองทิศ
+ *    ไม่งั้นกด desc แล้วใบที่ไม่มีใครรับปากอะไรไว้ขึ้นมาบังใบที่ต้องโทรตาม
+ *  ⚠️ ใบที่ปิดแล้ว (qualified/disqualified) **ไม่นับวันติดตาม** — การปิดไม่ได้ล้าง
+ *    `followUpAt` (มีแค่ bounce/meeting ที่ล้าง) ⇒ ไม่กันไว้ ใบที่จบไปแล้วจะค้างเป็น
+ *    "เลยกำหนด" แล้วลอยอยู่บนสุดของคิวตลอดไป
+ */
+export const LEAD_SORT_DEFAULT = 'followup';
+
+/** ทิศตั้งต้นต่อคีย์: ตัวหนังสือ/สถานะอ่าน ก→ฮ · วันติดตามเอาใกล้กำหนดก่อน (asc) · วันรับ/ยอดเอาใหม่/มากก่อน (desc) */
+export function leadSortDefaultDir(key) {
+  return key === 'name' || key === 'status' || key === 'followup' ? 'asc' : 'desc';
+}
+
+/** ลำดับของสถานะบนเส้นทาง — สถานะแปลกหน้าไปท้ายสุด
+ *  🐞 ห้ามเขียน `indexOf(s) || 99` — `indexOf('new')` = 0 แล้ว `0 || 99` = 99
+ *  ⇒ "รอคัดกรอง" (คิวกลางที่ต้องคัดก่อนใคร) ตกไปท้ายสุดตอนเรียง ก→ฮ */
+function leadStatusRank(status) {
+  const i = LEAD_STATUSES.indexOf(status);
+  return i < 0 ? 99 : i;
+}
+
+function leadFollowUpMs(lead) {
+  if (!lead.followUpAt || LEAD_EDIT_LOCKED_STATUSES.includes(lead.status)) return null;
+  const ms = Date.parse(lead.followUpAt);
+  return Number.isNaN(ms) ? null : ms;
+}
+
+const byCreatedAt = (a, b) => ((a.createdAt || '') < (b.createdAt || '') ? -1 : (a.createdAt || '') > (b.createdAt || '') ? 1 : 0);
+
+/** เรียงลีดตามคีย์/ทิศของตาราง — คืนอาร์เรย์ใหม่ ไม่แตะของเดิม */
+export function sortLeads(leads, sortKey, sortDir) {
+  const mul = sortDir === 'desc' ? -1 : 1;
+  return [...leads].sort((a, b) => {
+    if (sortKey === 'name') return (a.contactName || '').localeCompare(b.contactName || '', 'th') * mul;
+    if (sortKey === 'status') return (leadStatusRank(a.status) - leadStatusRank(b.status)) * mul;
+    if (sortKey === 'budget') return ((a.budget || 0) - (b.budget || 0)) * mul;
+    if (sortKey === 'followup') {
+      const fa = leadFollowUpMs(a);
+      const fb = leadFollowUpMs(b);
+      if (fa !== null && fb !== null && fa !== fb) return (fa - fb) * mul;
+      if (fa !== null && fb === null) return -1;
+      if (fa === null && fb !== null) return 1;
+      return -byCreatedAt(a, b); // เสมอกัน/ไม่มีวันทั้งคู่ ⇒ รับล่าสุดก่อน
+    }
+    // asc = เก่า→ใหม่ ให้ desc โชว์ล่าสุดก่อน
+    return byCreatedAt(a, b) * mul;
+  });
+}
+
 export const LEAD_DELETE_LOCKED_STATUSES = ['contacted', 'meeting', 'qualified', 'disqualified'];
 
 // ── ใครเห็นลีดแค่ไหน (เฟส C) ─────────────────────────────────────────────
