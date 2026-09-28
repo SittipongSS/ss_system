@@ -6,7 +6,7 @@ import {
 } from '@/lib/sales/historicalOrders';
 import { isSalesOrderSelfApproval } from '@/lib/sales/salesOrderApprovalOverride';
 import { ownerLockedToSelf } from '@/lib/sales/dealOwner';
-/* งานบริการรายบรรทัด (mig 0391) — ตัวตัดสินล้วน ใช้ได้ทั้งจอและ API · ไฟล์นั้นไม่ import ไฟล์นี้กลับ (ไม่มีวง · serviceSetupImports) */
+/* งานบริการรายบรรทัด (mig 0392) — ตัวตัดสินล้วน ใช้ได้ทั้งจอและ API · ไฟล์นั้นไม่ import ไฟล์นี้กลับ (ไม่มีวง · serviceSetupImports) */
 import { serviceBackfillAwaitingReview } from '@/lib/sales/serviceSetup';
 
 export const SALES_ORDER_STATUS_LABELS = {
@@ -57,7 +57,7 @@ export function isSalesOrderSubmitter(order, userId) {
      ปฏิเสธผู้ตรวจที่อนุมัติใบตัวเองมาตลอด (`isSalesOrderSelfApproval` → 403) ⇒ ใบนั้นไม่ได้รอเรา
      ป้ายบนเมนูเคยนับเกินคิว "รออนุมัติจากคุณ" ที่ตัดใบตัวเองออกแล้ว · เหลือ **admin** ที่นับ เพราะ
      admin อนุมัติใบตัวเองได้จริง (Admin Override) ⇒ ต้องส่ง `role` มาด้วย ไม่ส่ง = ถือว่าไม่ใช่ admin */
-/* ⭐ **งานบริการย้อนหลังสองเลน** (mig 0391 · D26 · D28) — ใบที่อนุมัติไปก่อนฝ่ายขายตั้งงานบริการเอง
+/* ⭐ **งานบริการย้อนหลังสองเลน** (mig 0392 · D26 · D28) — ใบที่อนุมัติไปก่อนฝ่ายขายตั้งงานบริการเอง
      · เลนผู้จัดการ: ฝ่ายขายยื่นตรวจแล้ว (`serviceBackfillAwaitingReview` — ตัวตัดสินตัวเดียว ห้ามอ่าน `serviceSetupState` เอง
        เพราะย้อนอนุมัติ/ยกเลิก/Rev. ไม่ล้างค่า 'submitted' · ค่าค้างบนใบที่ไม่ได้อนุมัติอยู่ต้องไม่มีผล) · ตัดคนยื่นเอง
        ยกเว้น admin (อนุมัติได้ด้วยเหตุผล Admin Override — กติกาเดียวกับใบปกติ)
@@ -88,7 +88,7 @@ export function isSalesOrderWaitingOnMe(order, {
   return order.status === 'draft' && isHistoricalOrder(order);
 }
 
-/* ⭐ **ป้าย "ใบสั่งขาย" บนเมนู = จำนวนใบไม่ซ้ำ** (mig 0391 · D26) — ชุด id ของใบที่รอฉัน รวมทุกเลน
+/* ⭐ **ป้าย "ใบสั่งขาย" บนเมนู = จำนวนใบไม่ซ้ำ** (mig 0392 · D26) — ชุด id ของใบที่รอฉัน รวมทุกเลน
    🐞 เดิมบวกความยาวของเลน (สามเลนสถานะไม่ซ้อนกัน + เลนบัญชี) — ตั้งแต่มีเลนงานบริการย้อนหลัง ใบที่อนุมัติแล้วใบเดียวอยู่ได้
      หลายเลนพร้อมกัน (admin ที่เป็นเจ้าของดีล + ผู้ตรวจ + ฝ่ายบัญชี) แต่ทะเบียนโชว์ใบละแถว ⇒ ป้ายต้องนับใบละหนึ่งเหมือนกัน
    @param rows         แถวของเลนที่ helper ตัดสินจากแถวล้วน (รออนุมัติ/ตีกลับ · ร่างใบย้อนหลัง · ย้อนอนุมัติ · รอตรวจงานบริการ)

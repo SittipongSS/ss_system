@@ -1,6 +1,6 @@
-// ── ยามตัวหนังสือของ mig 0391 (SO บริการ: ตั้งงานบริการรายบรรทัด + ตั้งย้อนหลัง) ─────────────────────
+// ── ยามตัวหนังสือของ mig 0392 (SO บริการ: ตั้งงานบริการรายบรรทัด + ตั้งย้อนหลัง) ─────────────────────
 //
-// ⭐ 0391 ปะฟังก์ชันอนุมัติ/ออก Rev. จากนิยามที่รันอยู่จริง (pg_get_functiondef แบบ 0382/0385) ⇒ ไม่มี CREATE ของสองตัวนั้น
+// ⭐ 0392 ปะฟังก์ชันอนุมัติ/ออก Rev. จากนิยามที่รันอยู่จริง (pg_get_functiondef แบบ 0382/0385) ⇒ ไม่มี CREATE ของสองตัวนั้น
 //    ในไฟล์ให้ยาม "นิยามล่าสุด" เห็น — เทสต์นี้ล็อกจุดปะ (anchor) กับตัวหนังสือของนิยามที่ฐานใช้อยู่จริง
 //    (0197 + 0382 · 0376 + 0382 + 0385) ว่าเจอ **ครั้งเดียวพอดี** และล็อกกติกาของไฟล์ที่ยามตัวอื่นพึ่งพา
 // ⚠️ อ่าน **ตัวหนังสือ SQL** · พฤติกรรมจริงลองบนฮาร์เนส PGlite นอก repo แล้ว
@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 
 const MIGRATIONS = new URL('../../../supabase/migrations/', import.meta.url);
-const FILE = '0391_so_service_setup.sql';
+const FILE = '0392_so_service_setup.sql';
 const read = (name) => readFileSync(new URL(name, MIGRATIONS), 'utf8');
 const stripComments = (sql) => sql.replace(/--[^\n]*/g, '');
 const RAW = read(FILE);
@@ -50,7 +50,7 @@ function definitions() {
 const DEFS = definitions();
 const body = (fn) => {
   const def = DEFS.get(fn);
-  assert.ok(def, `0391 ต้องนิยาม ${fn}`);
+  assert.ok(def, `0392 ต้องนิยาม ${fn}`);
   return def.body;
 };
 
@@ -78,7 +78,7 @@ function patch0382(fn) {
   assert.ok(m, `0382 ต้องมีแถวของ ${fn}`);
   return [m[1], m[2]];
 }
-/* นิยามที่ฐานใช้อยู่จริงของสองฟังก์ชันที่ 0391 ปะ */
+/* นิยามที่ฐานใช้อยู่จริงของสองฟังก์ชันที่ 0392 ปะ */
 function liveApprove() {
   const block = functionBlock(read('0197_sales_order_zero_actual.sql'), 'approve_sales_order_with_signature_evidence_atomic');
   const [o, n] = patch0382('approve_sales_order_with_signature_evidence_atomic');
@@ -100,27 +100,27 @@ function patchRows() {
   return rows.map((m) => ({ fn: m[1], anchor: m[2], replacement: m[3], marker: m[4] }));
 }
 
-test('0391: ทรานแซกชันเดียว · ด่านก่อนรันสองข้อ · NOTIFY หลัง COMMIT', () => {
+test('0392: ทรานแซกชันเดียว · ด่านก่อนรันสองข้อ · NOTIFY หลัง COMMIT', () => {
   assert.match(CODE, /^BEGIN;/m);
   assert.match(CODE, /^COMMIT;\s*\n\s*NOTIFY pgrst, 'reload schema';\s*$/m);
   const pre = dollar('pre')[0];
   assert.ok(pre, 'ต้องมี DO $pre$');
-  assert.match(pre, /RAISE EXCEPTION 'mig_0391_orders_in_flight/);
-  assert.match(pre, /RAISE EXCEPTION 'mig_0391_legacy_terms_exist/);
+  assert.match(pre, /RAISE EXCEPTION 'mig_0392_orders_in_flight/);
+  assert.match(pre, /RAISE EXCEPTION 'mig_0392_legacy_terms_exist/);
   // ข้อแรกเฉพาะรันครั้งแรก (ยังไม่มี P1) · ข้อสองทุกรอบ
-  assert.match(pre, /IF NOT EXISTS \([\s\S]*?strpos\(p\.prosrc, 'sales_order_open_service_terms\('\) > 0[\s\S]*?mig_0391_orders_in_flight[\s\S]*?END IF;\s*END IF;/);
-  assert.match(pre, /t\.id NOT LIKE 'SZT-S%'[\s\S]*?mig_0391_legacy_terms_exist/);
+  assert.match(pre, /IF NOT EXISTS \([\s\S]*?strpos\(p\.prosrc, 'sales_order_open_service_terms\('\) > 0[\s\S]*?mig_0392_orders_in_flight[\s\S]*?END IF;\s*END IF;/);
+  assert.match(pre, /t\.id NOT LIKE 'SZT-S%'[\s\S]*?mig_0392_legacy_terms_exist/);
   assert.ok(CODE.indexOf('$pre$') < CODE.indexOf('ALTER TABLE'), 'ด่านต้องมาก่อน DDL ตัวแรก');
 });
 
-test('0391: หัวไฟล์มี SELECT ตรวจหลังรัน + ค่าที่คาด · ด่านก่อนรัน · ถอยกลับ · ลำดับ deploy · รายชื่อคอลัมน์ใหม่', () => {
+test('0392: หัวไฟล์มี SELECT ตรวจหลังรัน + ค่าที่คาด · ด่านก่อนรัน · ถอยกลับ · ลำดับ deploy · รายชื่อคอลัมน์ใหม่', () => {
   for (const s of ['AS fg_rows', 'AS alloc_rows', 'AS stamped', 'AS p1', 'AS p2', 'AS anon_save', 'AS triggers', 'AS backfill_candidates',
     "has_function_privilege('anon','public.save_sales_order_service_setup(text,timestamptz,jsonb,text,text,text)','EXECUTE')"]) {
     assert.ok(HEADER.includes(s), `หัวไฟล์ต้องมี ${s}`);
   }
   assert.match(HEADER, /fg_rows = 0 · alloc_rows = 0 · stamped = 0 · p1 = 1 · p2 = 1 · anon_save = f · triggers = 3/);
-  assert.match(HEADER, /mig_0391_orders_in_flight/);
-  assert.match(HEADER, /mig_0391_legacy_terms_exist/);
+  assert.match(HEADER, /mig_0392_orders_in_flight/);
+  assert.match(HEADER, /mig_0392_legacy_terms_exist/);
   assert.match(HEADER, /ถอยกลับ/);
   assert.match(HEADER, /DO \$undo\$/);
   assert.match(HEADER, /ลำดับ deploy/);
@@ -137,7 +137,7 @@ test('0391: หัวไฟล์มี SELECT ตรวจหลังรัน
   }
 });
 
-test('0391: ลายเซ็นของฟังก์ชันใหม่ตรงแผน §3.2 · SET search_path = public ทุกตัว', () => {
+test('0392: ลายเซ็นของฟังก์ชันใหม่ตรงแผน §3.2 · SET search_path = public ทุกตัว', () => {
   assert.deepEqual([...DEFS.keys()].sort(), Object.keys(NEW_FUNCTIONS).sort());
   for (const [fn, args] of Object.entries(NEW_FUNCTIONS)) {
     const def = DEFS.get(fn);
@@ -151,7 +151,7 @@ test('0391: ลายเซ็นของฟังก์ชันใหม่�
   assert.match(DEFS.get('sales_order_copy_service_setup').header, /RETURNS integer/);
 });
 
-test('0391: สิทธิ์ — REVOKE จาก PUBLIC/anon/authenticated + GRANT service_role ทุกตัว (ฟังก์ชัน trigger: ถอน service_role ด้วย)', () => {
+test('0392: สิทธิ์ — REVOKE จาก PUBLIC/anon/authenticated + GRANT service_role ทุกตัว (ฟังก์ชัน trigger: ถอน service_role ด้วย)', () => {
   const flat = CODE.replace(/\s+/g, ' ');
   for (const [fn, args] of Object.entries(NEW_FUNCTIONS)) {
     const sig = args.split(',').filter(Boolean).join(', ');
@@ -173,7 +173,7 @@ test('0391: สิทธิ์ — REVOKE จาก PUBLIC/anon/authenticated + 
   assert.match(verify, /relrowsecurity/);
 });
 
-test('🔴 0391 ไม่มีข้อความ "FUNCTION public.<ฟังก์ชันเดิม>" — ยาม "นิยามล่าสุด" ของไฟล์อื่นจะอ่านผิดไฟล์', () => {
+test('🔴 0392 ไม่มีข้อความ "FUNCTION public.<ฟังก์ชันเดิม>" — ยาม "นิยามล่าสุด" ของไฟล์อื่นจะอ่านผิดไฟล์', () => {
   for (const s of ['FUNCTION public.revise_approved_sales_order_atomic', 'FUNCTION public.approve_sales_order_with_signature_evidence_atomic',
     'FUNCTION public.approve_historical_sales_order', 'FUNCTION public.create_sales_order_draft']) {
     assert.ok(!RAW.includes(s), `ห้ามมี "${s}" แม้ในคอมเมนต์`);
@@ -182,16 +182,16 @@ test('🔴 0391 ไม่มีข้อความ "FUNCTION public.<ฟัง
   assert.deepEqual([...named].filter((n) => !(n in NEW_FUNCTIONS)), [], 'เอ่ย FUNCTION public.<ชื่อ> ได้เฉพาะฟังก์ชันใหม่ของไฟล์นี้');
 });
 
-test('0391: ไม่ CREATE ฟังก์ชันที่มีอยู่แล้ว — ทุกตัวเป็นชื่อใหม่ที่ไม่เคยนิยามใน migration ก่อนหน้า', () => {
+test('0392: ไม่ CREATE ฟังก์ชันที่มีอยู่แล้ว — ทุกตัวเป็นชื่อใหม่ที่ไม่เคยนิยามใน migration ก่อนหน้า', () => {
   const earlier = readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql') && f < FILE).map((f) => stripComments(read(f)));
   for (const fn of DEFS.keys()) {
     const re = new RegExp(`CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+public\\.${fn}\\s*\\(`, 'i');
-    assert.ok(!earlier.some((sql) => re.test(sql)), `${fn} มีอยู่แล้วใน migration ก่อน 0391`);
+    assert.ok(!earlier.some((sql) => re.test(sql)), `${fn} มีอยู่แล้วใน migration ก่อน 0392`);
   }
   assert.doesNotMatch(CODE, /CREATE FUNCTION/, 'ฟังก์ชันต้อง CREATE OR REPLACE (รันซ้ำได้)');
 });
 
-test('0391 P1/P2: anchor + replacement + marker เป็นตัวหนังสือตามแผน', () => {
+test('0392 P1/P2: anchor + replacement + marker เป็นตัวหนังสือตามแผน', () => {
   const rows = patchRows();
   assert.equal(rows.length, 2);
   const [p1, p2] = rows;
@@ -208,16 +208,16 @@ test('0391 P1/P2: anchor + replacement + marker เป็นตัวหนั�
   assert.ok(p2.replacement.includes('PERFORM public.sales_order_copy_service_setup(v_source.id, v_revision.id);'));
   // กลไกของวง: overload = 1 · มี marker = ข้าม · นับ anchor สองที่ · แทนด้วย regexp_replace บน pg_get_functiondef
   const loop = dollar('patch')[0];
-  assert.match(loop, /IF v_n <> 1 THEN\s+RAISE EXCEPTION 'mig_0391_patch_overload/);
-  assert.match(loop, /IF strpos\(v_src, r\.marker\) > 0 THEN\s+RAISE NOTICE '0391: % — ปะไว้แล้ว', r\.fn;\s+CONTINUE;/);
+  assert.match(loop, /IF v_n <> 1 THEN\s+RAISE EXCEPTION 'mig_0392_patch_overload/);
+  assert.match(loop, /IF strpos\(v_src, r\.marker\) > 0 THEN\s+RAISE NOTICE '0392: % — ปะไว้แล้ว', r\.fn;\s+CONTINUE;/);
   assert.match(loop, /regexp_matches\(v_src, r\.anchor, 'g'\)/);
   assert.match(loop, /regexp_matches\(v_def, r\.anchor, 'g'\)/);
-  assert.match(loop, /IF v_hits_src <> 1 OR v_hits_def <> 1 THEN\s+RAISE EXCEPTION 'mig_0391_patch_anchor/);
+  assert.match(loop, /IF v_hits_src <> 1 OR v_hits_def <> 1 THEN\s+RAISE EXCEPTION 'mig_0392_patch_anchor/);
   assert.match(loop, /EXECUTE regexp_replace\(v_def, r\.anchor, r\.replacement\);/);
   // ตรวจท้าย: marker ละหนึ่งครั้งพอดี
   const verify = dollar('verify')[0];
-  assert.match(verify, /'sales_order_open_service_terms\('[\s\S]*?= 1;[\s\S]*?mig_0391_verify p1/);
-  assert.match(verify, /'sales_order_copy_service_setup\('[\s\S]*?= 1;[\s\S]*?mig_0391_verify p2/);
+  assert.match(verify, /'sales_order_open_service_terms\('[\s\S]*?= 1;[\s\S]*?mig_0392_verify p1/);
+  assert.match(verify, /'sales_order_copy_service_setup\('[\s\S]*?= 1;[\s\S]*?mig_0392_verify p2/);
 });
 
 test('🔴 P1 anchor เจอครั้งเดียวพอดีในนิยามอนุมัติที่ใช้อยู่จริง (0197 + 0382) · ปะแล้วเปิดงานหลัง UPDATE อนุมัติ ก่อน RETURN', () => {
@@ -252,7 +252,7 @@ test('🔴 P2 anchor เจอครั้งเดียวพอดีใน�
   assert.match(patched, /d\."ownerId" = p_actor_id/);
 });
 
-test('0391: คอลัมน์ใหม่อยู่ในคำสั่ง ALTER TABLE ชั้นนอกคำสั่งเดียวต่อตาราง (ยามคอลัมน์ Rev./ใบร่างมองเห็น)', () => {
+test('0392: คอลัมน์ใหม่อยู่ในคำสั่ง ALTER TABLE ชั้นนอกคำสั่งเดียวต่อตาราง (ยามคอลัมน์ Rev./ใบร่างมองเห็น)', () => {
   const collect = (table) => {
     const seen = [];
     for (const m of CODE.matchAll(new RegExp(`ALTER TABLE (?:ONLY )?public\\.${table}([\\s\\S]*?);`, 'g'))) {
@@ -272,7 +272,7 @@ test('0391: คอลัมน์ใหม่อยู่ในคำสั่�
   assert.doesNotMatch(CODE, /EXECUTE\s+format/i, 'DDL ผ่าน EXECUTE = ยามอ่านไม่เห็น');
 });
 
-test('0391: รันซ้ำได้ — CONSTRAINT/TRIGGER ถอดก่อนสร้าง · ตาราง/ดัชนี IF NOT EXISTS', () => {
+test('0392: รันซ้ำได้ — CONSTRAINT/TRIGGER ถอดก่อนสร้าง · ตาราง/ดัชนี IF NOT EXISTS', () => {
   for (const m of CODE.matchAll(/ADD CONSTRAINT (\w+)/g)) {
     const drop = CODE.indexOf(`DROP CONSTRAINT IF EXISTS ${m[1]};`);
     assert.ok(drop >= 0 && drop < m.index, `${m[1]}: ต้อง DROP CONSTRAINT IF EXISTS ก่อน`);
@@ -288,7 +288,7 @@ test('0391: รันซ้ำได้ — CONSTRAINT/TRIGGER ถอดก่�
   assert.doesNotMatch(outside, /\b(INSERT INTO|UPDATE|DELETE FROM) public\./);
 });
 
-test('0391: ตาราง sales_order_line_zones — FK โซนชื่อตายตัว (route ลบโซนจับชื่อนี้) · FK คู่ของบรรทัด · UNIQUE (บรรทัด, โซน)', () => {
+test('0392: ตาราง sales_order_line_zones — FK โซนชื่อตายตัว (route ลบโซนจับชื่อนี้) · FK คู่ของบรรทัด · UNIQUE (บรรทัด, โซน)', () => {
   const table = CODE.slice(CODE.indexOf('CREATE TABLE IF NOT EXISTS public.sales_order_line_zones'), CODE.indexOf(');', CODE.indexOf('CREATE TABLE IF NOT EXISTS public.sales_order_line_zones')));
   assert.match(table, /CONSTRAINT sales_order_line_zones_zone_fk\s+FOREIGN KEY \("zoneId"\) REFERENCES public\.service_zones\(id\) ON DELETE RESTRICT/);
   assert.match(table, /CONSTRAINT sales_order_line_zones_line_fk\s+FOREIGN KEY \("salesOrderLineId", "salesOrderId"\)\s+REFERENCES public\.sales_order_lines\(id, "salesOrderId"\) ON DELETE CASCADE/);
@@ -300,7 +300,7 @@ test('0391: ตาราง sales_order_line_zones — FK โซนชื่อ�
     'UNIQUE (id, salesOrderId) ต้องมีก่อน FK คู่');
 });
 
-test('0391: CHECK รูปทรงของบรรทัดและหัวใบ ตามแผน §3.1', () => {
+test('0392: CHECK รูปทรงของบรรทัดและหัวใบ ตามแผน §3.1', () => {
   const flat = CODE.replace(/\s+/g, ' ');
   assert.ok(flat.includes(`CHECK ("serviceKind" IS NULL OR "serviceKind" IN ('package', 'not_service'))`));
   /* สตริงว่าง = ไม่มี (NULLIF) — กติกาเดียวกับ sales_order_line_service_role · errors() · RPC บันทึก · isManualSalesLine
@@ -313,7 +313,7 @@ test('0391: CHECK รูปทรงของบรรทัดและหั�
   assert.ok(flat.includes(`length(btrim(COALESCE("serviceSetupRejectedReason", ''))) BETWEEN 10 AND 500`));
 });
 
-test('0391: trigger ล็อก 3 ตัว — สองตัวที่ UPDATE OF มี WHEN IS DISTINCT FROM ครบทุกคอลัมน์ · force delete ผ่านก่อนด่านอื่น', () => {
+test('0392: trigger ล็อก 3 ตัว — สองตัวที่ UPDATE OF มี WHEN IS DISTINCT FROM ครบทุกคอลัมน์ · force delete ผ่านก่อนด่านอื่น', () => {
   const trg = (name) => {
     const from = CODE.indexOf(`CREATE TRIGGER ${name}`);
     assert.ok(from >= 0, `ต้องมี ${name}`);
@@ -403,7 +403,7 @@ test('🔴 กฎข้อ 14: ทุกฟังก์ชันใหม่ท�
   assert.doesNotMatch(CODE, /origin\s*<>\s*'pipeline'|origin\s+IS\s+DISTINCT\s+FROM\s+'pipeline'/i, 'ใช้รูปบวก origin = \'pipeline\' เท่านั้น');
 });
 
-test('0391: รหัส error เป็นคำแรกของข้อความเสมอ (JS จับด้วย message.includes) · รายละเอียดไปทาง DETAIL', () => {
+test('0392: รหัส error เป็นคำแรกของข้อความเสมอ (JS จับด้วย message.includes) · รายละเอียดไปทาง DETAIL', () => {
   for (const [fn, def] of DEFS) {
     for (const m of def.body.matchAll(/RAISE EXCEPTION '([^']*)'/g)) {
       assert.match(m[1], /^[a-z_]+$/, `${fn}: RAISE EXCEPTION '${m[1]}' ต้องเป็นรหัสล้วน`);
@@ -415,7 +415,7 @@ test('0391: รหัส error เป็นคำแรกของข้อค�
     /RAISE EXCEPTION 'sales_order_service_setup_incomplete' USING DETAIL = array_to_string\(v_errors, ','\);/);
 });
 
-test('0391: ด่านของ RPC ตามลำดับแผน §6/§9 (สิทธิ์ → ล็อกแถว → สถานะ → stale)', () => {
+test('0392: ด่านของ RPC ตามลำดับแผน §6/§9 (สิทธิ์ → ล็อกแถว → สถานะ → stale)', () => {
   const order = (fn, needles) => {
     const b = body(fn);
     const at = needles.map((n) => b.indexOf(n));

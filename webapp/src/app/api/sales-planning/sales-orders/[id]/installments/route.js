@@ -62,7 +62,7 @@ const installmentsForScreen = (order, rows) => (isHistoricalOrder(order)
    ⚠️ ฝ่ายบัญชีถือ `salesplan:view` แบบ scope กว้าง จึงเห็นทุกใบตามที่ควรเป็น —
    ด่านที่แคบคือ **คำสั่ง** ไม่ใช่การอ่าน (installmentActionError คุมอีกชั้น) */
 async function loadOrderForUser(supabase, user, id) {
-  /* ใบ `*` = พก "serviceTermsOpenedAt" ให้ตัวตัดสินด่านเงิน (mig 0391 · D13) */
+  /* ใบ `*` = พก "serviceTermsOpenedAt" ให้ตัวตัดสินด่านเงิน (mig 0392 · D13) */
   const { data: order, error } = await supabase
     .from('sales_orders')
     /* money-decider feed */
@@ -88,7 +88,7 @@ async function loadOrderForUser(supabase, user, id) {
      (ดีลสาย SERVICE + บรรทัดหมวด 02-001 ≥1 ⇒ ทั้งใบ) เพราะใบบริการต้องมีช่วงครอบ
      ก่อนบัญชีจะรับรองได้ (มติผู้ใช้ 2026-08-31)
      ⚠️ ไม่ลากราคามาทั้งแถว — เอาแค่ช่องที่ตัวตัดสินอ่าน:
-       · `fgCode` + `"serviceFgCode"` = รหัสที่ด่านเงินอ่าน (`effectiveServiceFgCode` · mig 0391 · D13 — แพ็คเกจที่ฝ่ายขาย
+       · `fgCode` + `"serviceFgCode"` = รหัสที่ด่านเงินอ่าน (`effectiveServiceFgCode` · mig 0392 · D13 — แพ็คเกจที่ฝ่ายขาย
          เลือกให้บรรทัดพิมพ์เองนับเมื่อใบประทับแล้วเท่านั้น) · ยาม serviceMoneySelectGuard.test.mjs
        · `"productId"` · `"serviceKind"` · หมวดของบรรทัดพิมพ์เอง = ชนิดของบรรทัด (`serviceLineRole`) ที่ปุ่ม
          "แบ่งช่วงครอบตามช่วงบริการ…" ถามว่าใบต้องตั้งงานบริการย้อนหลังไหม (D25) — หมวดอ่านแค่คีย์เดียวของ metadata */
@@ -531,7 +531,7 @@ async function fillBillingDates({ user, supabase, req, id, body }) {
   }
 }
 
-/* ── แบ่งช่วงครอบตามช่วงบริการ (งานบริการรายบรรทัด · mig 0391 · แผน §2.5 ข้อ 3 / §2.8) ─────────────────────────────
+/* ── แบ่งช่วงครอบตามช่วงบริการ (งานบริการรายบรรทัด · mig 0392 · แผน §2.5 ข้อ 3 / §2.8) ─────────────────────────────
    ⭐ คำสั่งของ **ทั้งใบ** ⇒ PATCH ส่งมาที่นี่ก่อนด่าน `installmentId` (proxy ให้ FN ผ่านเฉพาะ PATCH ของ route นี้)
    ⭐ body `{ action:'fill-coverage', mode:'monthly'|'proportional', plan:[{ id, coversFrom, coversTo }] }` = พรีวิวที่โมดัลแสดง ·
      server คิดชุดเองด้วย `splitCoverageByPeriod` ตัวเดียวกับโมดัล จากช่วงบริการ + งวดสด — ไม่ตรงกับที่จอเห็น = 409

@@ -1,4 +1,4 @@
-// ── ตรรกะของ `…/sales-orders/[id]/service-setup` (mig 0391 · PR-A · แผน §2.4) — ฝั่ง server เท่านั้น ─────────
+// ── ตรรกะของ `…/sales-orders/[id]/service-setup` (mig 0392 · PR-A · แผน §2.4) — ฝั่ง server เท่านั้น ─────────
 //
 // ⭐ route เป็นเปลือกบาง ๆ (withUser + ด่านอ่าน) แล้วส่งต่อมาที่นี่ · ทุกฟังก์ชันคืน `{ status, body }`
 //   แบบเดียวกับ historicalOrderCommit.js ⇒ ทดสอบด้วย supabase ปลอมได้ (route.js import ใต้ node ไม่ได้ เพราะ

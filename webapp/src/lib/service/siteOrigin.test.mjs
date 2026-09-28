@@ -14,7 +14,7 @@ const read = (rel) => readFileSync(`src/${rel}`, 'utf8');
 
 /* จอที่ **ห้าม** มีทางสร้างไซต์ — ไล่ทั้งการเรียกฟอร์มและการยิง POST เอง
    (สองแบบนี้คือทางกลับมาที่เป็นไปได้จริงทั้งคู่) */
-/* 🔄 mig 0391 (D14): วิซาร์ดรับใบสั่งขายของ TS (`components/service/IntakeWizard.js`) ถูกถอดทั้งไฟล์ —
+/* 🔄 mig 0392 (D14): วิซาร์ดรับใบสั่งขายของ TS (`components/service/IntakeWizard.js`) ถูกถอดทั้งไฟล์ —
    ไม่มีทางสร้างไซต์ให้กันแล้ว (ยาม "ไฟล์ต้องไม่อยู่" อยู่ที่ historicalServiceSide.test.mjs) */
 const NO_CREATE = [
   ['app/database/sites/page.js', 'ทะเบียนไซต์'],

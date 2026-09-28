@@ -5,7 +5,7 @@
 //   ทุกสถานะพร้อมราคา/ส่วนลด ซึ่งฝ่ายบริการไม่ควรได้เห็น
 //   ⇒ ที่นี่คืนเฉพาะ **แถวคิวที่ประกอบแล้ว** (ไซต์รอตั้งรอบ · รอบที่ไม่มีนัดข้างหน้า · ใบเดิมที่รอฝ่ายขาย
 //     ตั้งงานบริการ) และเฉพาะช่องที่หน้าคิวใช้จริง (ไม่มีราคา ไม่มีส่วนลด)
-//   🔄 mig 0391 (D14): ถังผูกโซนของ TS ถอดแล้ว — คีย์ `bind` ของ response คงชื่อเดิม แต่แถวเป็นทรงของ
+//   🔄 mig 0392 (D14): ถังผูกโซนของ TS ถอดแล้ว — คีย์ `bind` ของ response คงชื่อเดิม แต่แถวเป็นทรงของ
 //     `legacySetupQueue` (ใบเดิมรอฝ่ายขายตั้งงานบริการ · TS ดูอย่างเดียว)
 //
 // ⚠️ ทุกคิวคำนวณด้วยตัวตัดสินกลาง: terms.js (รอบมีผลไหม) · visitStatus.isLiveVisit
@@ -41,7 +41,7 @@ export const GET = withUser(async ({ user, supabase }) => {
           🔒 ยอดไม่ออกไปกับ response — แถวคิวพกแค่ธง `paymentNotRequired` (ฝ่ายบริการไม่เห็นราคาโดยตั้งใจ · หัวไฟล์)
        🪤 **คอมเมนต์อยู่เหนือคำสั่ง ไม่แทรกระหว่าง `.from()` กับ `.select()`** — `check:columns` มองหา select
           ไม่เกิน 200 ตัวอักษรหลัง `.from()` · คอมเมนต์ที่เคยคั่นตรงนั้น (261 ตัวอักษร) ทำให้ select นี้หลุดจากด่านมาตลอด
-       ⭐ mig 0391: คอลัมน์ตั้งงานบริการของใบเดิม — `serviceTermsOpenedAt` (ประทับแล้ว = ไม่อยู่ในถังใบเดิม · ขาด = ตัวถังโยน)
+       ⭐ mig 0392: คอลัมน์ตั้งงานบริการของใบเดิม — `serviceTermsOpenedAt` (ประทับแล้ว = ไม่อยู่ในถังใบเดิม · ขาด = ตัวถังโยน)
           · สถานะ/ผู้ยื่น/ผู้ตีกลับ/เหตุผล · `servicePeriodFrom` (เริ่มตั้งแล้ว) · `updatedAt` (แก้ล่าสุด — RPC บันทึกขยับให้) */
     const { data: orders, error: orderError } = await fetchAllResult(() => supabase
       .from('sales_orders')
@@ -70,7 +70,7 @@ export const GET = withUser(async ({ user, supabase }) => {
          "installationPoint" = จุดติดตั้งตามชีตของใบย้อนหลัง (mig 0360) — fgSummary แยกกลุ่มตามจุด
          🚫 ธงจุด 9 ช่อง (mig 0362) ถอดออกจาก select แล้ว (มติ 22/09) — ทางแจ้ง "ไม่พบจุดนี้หน้างาน"
          หายทั้งเส้นพร้อมแผง "ถอนการแจ้ง" · บรรทัดของใบย้อนหลังผูกโซนตั้งแต่ตอนคีย์ใบ ⇒ ไม่เข้าถังนี้อีก
-         ⭐ mig 0391: ชนิด/แพ็คเกจ/หมวดของบรรทัด (`metadata.categoryCode` #1844) — ตัวตัดสิน "ใบเดิมต้องตั้งไหม ·
+         ⭐ mig 0392: ชนิด/แพ็คเกจ/หมวดของบรรทัด (`metadata.categoryCode` #1844) — ตัวตัดสิน "ใบเดิมต้องตั้งไหม ·
          ตั้งไปกี่รายการ" (serviceSetup.js) อ่านสามช่องนี้ · ยังไม่ดึงราคา/ส่วนลดเหมือนเดิม
          🪤 คอมเมนต์อยู่เหนือคำสั่ง — แทรกระหว่าง `.from()` กับ `.select()` แล้ว check:columns มองไม่เห็น select นี้ */
       fetchAllInChunks(orderIds, (chunk) => supabase.from('sales_order_lines')
@@ -92,7 +92,7 @@ export const GET = withUser(async ({ user, supabase }) => {
       loadSites(supabase),
       loadPlans(supabase),
       loadVisits(supabase, { from: businessDate() }),
-      /* โซนที่ฝ่ายขายเลือกในใบเดิม (mig 0391) — ความคืบหน้า + สรุป "ยื่นแล้ว n โซนใน m ไซต์" ของถังใบเดิม
+      /* โซนที่ฝ่ายขายเลือกในใบเดิม (mig 0392) — ความคืบหน้า + สรุป "ยื่นแล้ว n โซนใน m ไซต์" ของถังใบเดิม
          ⚠️ ซอยก้อน + ไล่หน้า (ใบเดียวลงได้ถึง 500 โซนต่อบรรทัด · check:rowcap) · อ่านพัง = โยน (catch ของ route ตอบ 500) */
       fetchAllInChunks(legacyCandidateIds, (chunk) => supabase.from('sales_order_line_zones')
         .select('id, "salesOrderId", "salesOrderLineId", "zoneId", "packsPerRound"')

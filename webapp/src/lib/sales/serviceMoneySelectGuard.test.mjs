@@ -1,7 +1,7 @@
-// ── ยามต้นทางของตัวตัดสินด่านเงิน (mig 0391 · PR-A · D13 · แผน §2.5 ข้อ 9) ───────────────────────────────
+// ── ยามต้นทางของตัวตัดสินด่านเงิน (mig 0392 · PR-A · D13 · แผน §2.5 ข้อ 9) ───────────────────────────────
 //
 // 🔴 ตัวตัดสิน "ใบมีรอบบริการ" (`orderHasServiceRounds` → `effectiveServiceFgCode`) คือสวิตช์ของด่านเงิน
-//    "ใบบริการต้องมีช่วงครอบก่อนบัญชีรับรองงวด" (#1683) · ตั้งแต่ 0391 มันอ่านสองช่องเพิ่ม:
+//    "ใบบริการต้องมีช่วงครอบก่อนบัญชีรับรองงวด" (#1683) · ตั้งแต่ 0392 มันอ่านสองช่องเพิ่ม:
 //      บรรทัด `"serviceFgCode"` (แพ็คเกจที่ฝ่ายขายเลือกให้บรรทัดพิมพ์เอง) · ใบ `"serviceTermsOpenedAt"` (ตราเปิดงาน)
 //    select ต้นทางที่ลืมสองช่องนี้ **ไม่ error** — ตัวตัดสินได้ undefined แล้วตอบ "ไม่ใช่ใบบริการ" เงียบ ๆ
 //    ⇒ ใบแพ็คเกจพิมพ์เองที่ประทับแล้วหลุดด่านเงินในจอ/route นั้น (fail-open) ทั้งที่จออื่นกั้น
@@ -64,7 +64,7 @@ const CLIENT_CALLERS = new Map([
   ['components/salesPlanning/SalesOrderPaymentPanel.js', 'แผงงวดบนหน้าใบ — order ที่หน้าใบส่งมา (loadOrder)'],
 ]);
 
-/* ผู้เรียกตัวตัดสินรายบรรทัดด้วย **วัตถุสินค้า** (ไม่มีใบ ⇒ ผลเหมือนก่อน 0391 ทุกตัว — D13) */
+/* ผู้เรียกตัวตัดสินรายบรรทัดด้วย **วัตถุสินค้า** (ไม่มีใบ ⇒ ผลเหมือนก่อน 0392 ทุกตัว — D13) */
 const PRODUCT_CALLERS = new Map([
   ['lib/sales/historicalOrderPlan.js', 'ฟอร์มคีย์ใบย้อนหลัง — ตรวจว่าสินค้าที่เลือกเป็นแพ็คเกจ'],
   ['components/salesPlanning/historicalWizard/WizardZonesStep.js', 'ตัวเลือกแพ็คเกจของวิซาร์ดใบย้อนหลัง (products)'],
@@ -110,7 +110,7 @@ const embedOf = (select, table) => {
 };
 const carries = (select, column) => topLevelStar(select) || select.includes(`"${column}"`) || new RegExp(`(^|[\\s,])${column}([\\s,]|$)`).test(select);
 
-test('(a) select ที่ติดป้ายป้อนตัวตัดสินพกช่องของ 0391 — ใบ "serviceTermsOpenedAt" · บรรทัด "serviceFgCode" (หรือ *)', () => {
+test('(a) select ที่ติดป้ายป้อนตัวตัดสินพกช่องของ 0392 — ใบ "serviceTermsOpenedAt" · บรรทัด "serviceFgCode" (หรือ *)', () => {
   const problems = [];
   for (const [rel, { markers }] of FEEDERS) {
     const found = markedSelects(rel);

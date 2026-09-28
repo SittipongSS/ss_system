@@ -58,7 +58,7 @@ async function siteRoundsSold(supabase, zones = []) {
   /* ⚠️ ไล่ทีละหน้าแม้จะกรองด้วย id ชุดเดียว — ไซต์ที่ต่อสัญญามาหลายปีสะสม term ได้เกิน
      พันแถว และเพดาน PostgREST ตัดเงียบ ๆ ⇒ ใบที่หลุดจะถูกนับเป็น "ไม่มีผล" แล้ว
      จำนวนรอบที่ขายหายไปดื้อ ๆ (ด่าน check:rowcap ใน CI คุมไว้) */
-  /* ⭐ "serviceTermsOpenedAt" — ใบที่ประทับแล้ว (mig 0391) นับรอบสูงสุดของบรรทัดที่ลงไซต์นี้ ตัวเดียวกับแถว "รอตั้งรอบ"
+  /* ⭐ "serviceTermsOpenedAt" — ใบที่ประทับแล้ว (mig 0392) นับรอบสูงสุดของบรรทัดที่ลงไซต์นี้ ตัวเดียวกับแถว "รอตั้งรอบ"
      (D23 · `siteRoundsSoldOf`) · ใบเดิมนับรายบรรทัดตามเดิม */
   const { data: orders, error: orderError } = await fetchAllResult(() => supabase.from('sales_orders')
     .select('id, status, "supersededById", "serviceTermsOpenedAt"').in('id', orderIds).order('id', { ascending: true }));

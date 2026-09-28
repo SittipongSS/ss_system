@@ -104,7 +104,7 @@ import SalesOrderServiceTab from "@/components/salesPlanning/SalesOrderServiceTa
 import SalesOrderDocumentsPanel, { installmentFilesKey, useSalesOrderDocuments } from "@/components/salesPlanning/SalesOrderDocumentsPanel";
 import { orderHasServiceRounds, orderOnServiceLine, serviceRoundsSold } from "@/lib/sales/serviceOrders";
 import { serviceRoundsEditError } from "@/lib/sales/serviceRoundsEntry";
-/* ⭐ งานบริการรายบรรทัด (mig 0391 · PR-A) — ตัวตัดสินทุกตัวอยู่ที่ serviceSetup.js · ก้อน GET `…/service-setup`
+/* ⭐ งานบริการรายบรรทัด (mig 0392 · PR-A) — ตัวตัดสินทุกตัวอยู่ที่ serviceSetup.js · ก้อน GET `…/service-setup`
    (useServiceSetup) คือความจริงเดียวของตาราง/แผงแดง/การ์ดราง/แถบผู้อนุมัติ/หัวใบ — หน้านี้แค่ต่อสาย */
 import {
   SERVICE_SETUP_PANEL_TEXT, issuesByTab, serviceBackfillAwaitingReview, serviceSetupFieldId, serviceSetupIssues, serviceSetupRequired,
@@ -275,7 +275,7 @@ export default function SalesOrderDetailPage() {
     amountToCollect: 0,
     error: "",
   });
-  /* ── งานบริการรายบรรทัด (mig 0391 · PR-A · แผน §2.10) ─────────────────────────────────────────────
+  /* ── งานบริการรายบรรทัด (mig 0392 · PR-A · แผน §2.10) ─────────────────────────────────────────────
      ⭐ ใบ pipeline สาย SERVICE (`serviceSetupRequired`) โหลดก้อน GET `…/service-setup` — ใบอื่นไม่ยิงอะไรเลย
      ⭐ ร่างการแก้อยู่ใน hook (ไม่หายตอนสลับแท็บ) ⇒ ยามออกจากหน้าอ่าน `setup.dirty` ตรง ๆ
      🔴 แดงหลังกดเท่านั้น (กฎ 3) — `submitIssues` ตั้งเมื่อกด "ยื่นอนุมัติ"/"ยื่นตรวจงานบริการ" แล้วไม่ผ่าน
@@ -457,7 +457,7 @@ export default function SalesOrderDetailPage() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       setBusy("");
-      /* ⭐ ด่านงานบริการของ route (mig 0391) ตอบ `issues` รายข้อ — ยื่นไม่ผ่าน = ปิดโมดัลแล้ววาดแผงแดง (ข้อเดียวกับ GET)
+      /* ⭐ ด่านงานบริการของ route (mig 0392) ตอบ `issues` รายข้อ — ยื่นไม่ผ่าน = ปิดโมดัลแล้ววาดแผงแดง (ข้อเดียวกับ GET)
          · อนุมัติไม่ผ่าน (ของเปลี่ยนระหว่างรออนุมัติ) = ข้อความในโมดัล 3 ข้อแรก — ผู้อนุมัติแก้เองไม่ได้ ต้องตีกลับ */
       const issues = Array.isArray(data.issues) ? data.issues : null;
       if (issues && action === "submit") {
@@ -497,7 +497,7 @@ export default function SalesOrderDetailPage() {
       /* ⚠️ ข้อความของใบปกติพูดว่า "อัปเดต Actual แล้ว" ซึ่งไม่จริงกับใบย้อนหลังสักตัวอักษร —
          ของใบนี้บอกสิ่งที่เกิดจริง (อนุมัติ: เอกสารแทนสัญญาได้เลข CT · งวดขึ้นคิวบัญชี · โซนขึ้นคิว TS ·
          ยกเลิก: สัญญาถูกยกเลิกตาม · งวดยกมาเป็นโมฆะ · ทางคีย์ใหม่ — จากคำตอบของ route · มติ 24/09)
-         ⭐ ใบบริการที่อนุมัติแล้วเปิดงานให้ TS (mig 0391 · `termsOpened` จาก route) = บอกจำนวนโซนที่เปิด (ภาคผนวก A.5) */
+         ⭐ ใบบริการที่อนุมัติแล้วเปิดงานให้ TS (mig 0392 · `termsOpened` จาก route) = บอกจำนวนโซนที่เปิด (ภาคผนวก A.5) */
       msg: (action === "approve" && isHistoricalOrder(order)
         ? HISTORICAL_APPROVE_TOAST
         : action === "approve" && Number(data?.termsOpened) > 0
@@ -551,7 +551,7 @@ export default function SalesOrderDetailPage() {
   function openSubmitConfirm() {
     // เปิดโมดัลที่โชว์ error ของหน้า ⇒ ล้างของรอบก่อนทิ้ง (ดูคอมเมนต์ที่ `showsError` ข้างล่าง)
     setError("");
-    /* ⭐ งานบริการ (mig 0391): บรรทัด "ส่งการตั้งค่างานบริการ (…) ให้ผู้อนุมัติตรวจ" จากก้อน GET สดที่ `pressSubmit` เพิ่งโหลด
+    /* ⭐ งานบริการ (mig 0392): บรรทัด "ส่งการตั้งค่างานบริการ (…) ให้ผู้อนุมัติตรวจ" จากก้อน GET สดที่ `pressSubmit` เพิ่งโหลด
        (ภาคผนวก A.5) — ส่งผ่าน ref เพราะ closure ของการกดครั้งนี้ยังเห็นก้อนเก่าของ render ก่อนหน้า · อ่านแล้วล้างทิ้ง */
     const submitLine = submitLineRef.current;
     submitLineRef.current = null;
@@ -575,7 +575,7 @@ export default function SalesOrderDetailPage() {
     });
   }
 
-  /* ⭐ งานบริการรายบรรทัด (mig 0391 · แผน §2.10 ข้อ 5) — ด่านก่อนเปิดโมดัล "ยื่นอนุมัติ" / "ยื่นตรวจงานบริการ"
+  /* ⭐ งานบริการรายบรรทัด (mig 0392 · แผน §2.10 ข้อ 5) — ด่านก่อนเปิดโมดัล "ยื่นอนุมัติ" / "ยื่นตรวจงานบริการ"
      1) มีการแก้ที่ยังไม่บันทึก = ข้อเดียว "ยังไม่บันทึก" (ตรวจของที่ไม่ได้บันทึกไม่ได้) · 2) โหลดก้อน GET สด แล้วใช้
      ข้อที่ยังขาดของ server (ตัวเดียวกับด่านของ route) · ติด = แผงแดง ไม่เปิดโมดัล · ผ่าน = คืนก้อนสดให้ผู้เรียกเปิดโมดัล
      🔴 โหลดไม่ขึ้น = บอกว่าโหลดไม่ขึ้น ไม่ถือว่า "ผ่าน" (ห้ามเดา) */
@@ -947,7 +947,7 @@ export default function SalesOrderDetailPage() {
     }
   }
 
-  /* ── แบ่งช่วงครอบตามช่วงบริการ (mig 0391 · แผน §2.5 ข้อ 3 / §2.8) — คำสั่งของทั้งใบ พี่น้องของ schedule-many ──────────
+  /* ── แบ่งช่วงครอบตามช่วงบริการ (mig 0392 · แผน §2.5 ข้อ 3 / §2.8) — คำสั่งของทั้งใบ พี่น้องของ schedule-many ──────────
      ⭐ แผงส่งแผนที่พรีวิวแสดง (`plan` จาก `splitCoverageByPeriod` ของงวดที่หน้าใบส่งให้ + `updatedAt` ของงวดที่ตาเห็น) · route คิดชุดเอง
        จากแถวเดียวกันแล้วเทียบ — ไม่ตรง/งวดถูกแก้จากอีกหน้าต่าง = 409 ⇒ วางงวดสด + ดึงใบสดให้พรีวิววาดชุดใหม่ก่อนกดอีกครั้ง
      ⚠️ ไม่ลองซ้ำเอง (apiFetch ไม่ retry PATCH) — ยิงซ้ำหลังเขียนสำเร็จแล้วได้ 409 ที่ทำให้เข้าใจผิดว่าไม่สำเร็จ */
@@ -995,7 +995,7 @@ export default function SalesOrderDetailPage() {
 
   async function review(action) {
     if (action === "approve") {
-      /* ⭐ งานบริการรายบรรทัด (mig 0391 · D10): การกดนี้เปิดงานให้ TS ในทรานแซกชันเดียวกัน ⇒ โมดัลต้องบอกผลนั้นด้วย
+      /* ⭐ งานบริการรายบรรทัด (mig 0392 · D10): การกดนี้เปิดงานให้ TS ในทรานแซกชันเดียวกัน ⇒ โมดัลต้องบอกผลนั้นด้วย
          (โซน · ช่วงบริการ · สัญญา · ของที่ล็อกหลังอนุมัติ) จากก้อน GET สด · โหลดไม่ขึ้น = ไม่เปิดโมดัลที่บอกผลไม่ครบ */
       const service = setupRequired ? await freshServiceView() : null;
       if (setupRequired && !service) return;
@@ -1018,7 +1018,7 @@ export default function SalesOrderDetailPage() {
                · เก็บครบแล้ว = เข้าคิวปิดใบของบัญชีทันที (financeStatus ของใบ Rev. เกิดเป็น NULL → pending · มติ D2) */
             /* PR3 (มติ D4): ดีลนี้มีเงินค้างจากใบที่ยกเลิก = เตือนให้ยกเข้าหลังอนุมัติ (RPC 0378 รับเฉพาะใบ approved) */
             ...salesOrderMoneyOutcome(order, installments, "approve", { strandedSources: order.carrySources }),
-            /* งานบริการ (mig 0391): เปิดโซนให้ TS · ช่วงบริการ/งวด · สัญญา · ต่ออายุ · ย้ายรอบของใบเดิม · ของที่ล็อก */
+            /* งานบริการ (mig 0392): เปิดโซนให้ TS · ช่วงบริการ/งวด · สัญญา · ต่ออายุ · ย้ายรอบของใบเดิม · ของที่ล็อก */
             ...(service?.approvalEffects || []),
             "ตรึงลายเซ็นและสำเนาเอกสารฉบับที่อนุมัติ",
           ],
@@ -1564,7 +1564,7 @@ export default function SalesOrderDetailPage() {
   /* ⚠️ ต้องส่ง `installments` เข้าด่านเสมอ (มติ 2026-08-30) — ด่านปิดใบตัดสินจาก
      "เก็บครบทุกงวดหรือยัง" ไม่ส่ง = ด่านปฏิเสธ ⇒ ปุ่มบนจอกับ API พูดตรงกันเสมอ */
 
-  /* ── งานบริการรายบรรทัด (mig 0391 · แผน §2.10) — ค่าที่หัวใบ · แท็บ · ราง อ่าน ─────────────────────────────
+  /* ── งานบริการรายบรรทัด (mig 0392 · แผน §2.10) — ค่าที่หัวใบ · แท็บ · ราง อ่าน ─────────────────────────────
      ⭐ ขั้น (`flow`) มาจากก้อน GET ที่ server คิด (D25: อนุมัติแล้วแต่ไม่มีอะไรให้ตั้ง = 'none' ⇒ ไม่มีแถบ/การ์ด/ชิปที่ไหนเลย)
      ⭐ "รอผู้จัดการตรวจ" ถามตัวตัดสินตัวเดียว (D28) — ค่า 'submitted' ค้างบนใบที่ย้อน/ยกเลิก/ถูก Rev. ทับไม่มีผล */
   const setupView = setupRequired ? setup.data : null;
@@ -1618,7 +1618,7 @@ export default function SalesOrderDetailPage() {
     setDateFillAsk(null);
     if (!opened && ask?.issue) revealServiceSetupField(serviceSetupFieldId(ask.issue));
   };
-  /* บรรทัดของโมดัลออก Rev. — ตั้งค่างานบริการที่ใบ Rev. ยกไป (P2 ของ 0391) · ใบที่ยังไม่ได้ตั้งอะไร = null */
+  /* บรรทัดของโมดัลออก Rev. — ตั้งค่างานบริการที่ใบ Rev. ยกไป (P2 ของ 0392) · ใบที่ยังไม่ได้ตั้งอะไร = null */
   const serviceRevisionLine = (view) => {
     if (!view) return null;
     const zonesById = new Map((view.zones || []).map((zone) => [zone.id, zone]));
@@ -1761,7 +1761,7 @@ export default function SalesOrderDetailPage() {
               ? `ยื่นได้เฉพาะ AE เจ้าของดีล — ส่งต่อให้ ${dealOwnerName} กดยื่น`
               : "ยื่นได้เฉพาะ AE เจ้าของดีล — ส่งต่อให้เจ้าของดีลกดยื่น")
             : (confirmationGate || undefined),
-          /* ⭐ งานบริการ (mig 0391): ด่านก่อนเปิดโมดัล — ติด = แผงแดง ไม่เปิดโมดัล (pressSubmit) */
+          /* ⭐ งานบริการ (mig 0392): ด่านก่อนเปิดโมดัล — ติด = แผงแดง ไม่เปิดโมดัล (pressSubmit) */
           onClick: pressSubmit,
         }
     : historical && canReviewThis && order.status === "pending_approval"
@@ -1787,7 +1787,7 @@ export default function SalesOrderDetailPage() {
         onClick: async () => {
         // เอกสาร FM-SA-04 ย้ายตามใบ Rev. ใหม่ (hook ใน API) — นับก่อนเปิดโมดัลให้บอกผลได้ครบ
         const specDocEffect = salesOrderSpecDocEffect("revise", await loadSpecDocCount());
-        /* งานบริการ (mig 0391 · P2): ใบ Rev. คัดลอกชนิด/แพ็คเกจ/โซน/แพ็คต่อรอบ/รอบ/ช่วงบริการไป — บอกก่อนกด */
+        /* งานบริการ (mig 0392 · P2): ใบ Rev. คัดลอกชนิด/แพ็คเกจ/โซน/แพ็คต่อรอบ/รอบ/ช่วงบริการไป — บอกก่อนกด */
         const revisionServiceLine = setupRequired ? serviceRevisionLine(setup.data) : null;
         // เปิดโมดัลที่โชว์ error ของหน้า ⇒ ล้างของรอบก่อนทิ้ง
         setError("");
@@ -1964,7 +1964,7 @@ export default function SalesOrderDetailPage() {
             ...(onServiceLine ? [{ icon: FileSignature, label: "สัญญาบริการ", ...serviceContractHeadline(order.serviceContract, { linkedId: order.serviceContractId }) }] : []),
             /* "รอบที่ขาย" อ่านจากคอลัมน์รายบรรทัดซึ่งกรอกได้เฉพาะบรรทัดหมวด 02-001
                ⇒ ผูกกับเกณฑ์แคบ ไม่ใช่เส้นบริการ (ไม่งั้นได้ขีดลอย ๆ บนใบที่กรอกไม่ได้)
-               ⭐ ใบที่ต้องตั้งงานบริการ (mig 0391) ใช้ช่องจากก้อน GET แทน — รอบ/โซน · โซน · แพ็ค/รอบ หรือ "ยังไม่ตั้ง" */
+               ⭐ ใบที่ต้องตั้งงานบริการ (mig 0392) ใช้ช่องจากก้อน GET แทน — รอบ/โซน · โซน · แพ็ค/รอบ หรือ "ยังไม่ตั้ง" */
             ...(serviceHeroFact ? [serviceHeroFact] : !setupRequired && hasServiceRounds ? [{
               icon: Repeat,
               label: "รอบบริการที่ขาย",
@@ -2111,7 +2111,7 @@ export default function SalesOrderDetailPage() {
                 ⚠️ อย่าเอากลับมา จะกลายเป็นสองที่ที่ตอบคำถามเดียวกันแล้วเพี้ยนหากัน */}
           </>}
         >
-          {/* ⭐ งานบริการรายบรรทัด (mig 0391) — บนสุดของคอลัมน์หลัก เหนือแท็บ (ม็อก BackfillApprovedSo / SoSubmitBlocked)
+          {/* ⭐ งานบริการรายบรรทัด (mig 0392) — บนสุดของคอลัมน์หลัก เหนือแท็บ (ม็อก BackfillApprovedSo / SoSubmitBlocked)
               · แถบงานบริการย้อนหลัง: ขั้น 'backfill' ของก้อน GET เท่านั้น (D25 — ใบที่ไม่มีอะไรให้ตั้งไม่ขึ้นที่ไหนเลย)
               · แถบสรุปของผู้อนุมัติ: ใบรออนุมัติสาย SERVICE / งานบริการย้อนหลังที่รอตรวจ
               · แผงแดง: หลังกดยื่นแล้วไม่ผ่านเท่านั้น (กฎ 3) — "ไปแก้" สลับแท็บแล้วโฟกัสช่อง */}
@@ -2131,7 +2131,7 @@ export default function SalesOrderDetailPage() {
 
           {/* ป้ายบนหัวแท็บ = สถานะย่อของเรื่องนั้น (มติ "ทาง ก") — ห้ามคิดเลขใหม่ที่นี่
               ทุกตัวมาจากของที่หน้านี้คำนวณไว้แล้วด้วยตัวตัดสินกลาง
-              ⭐ งานบริการ (mig 0391): หลังกดยื่น = จำนวนข้อที่ติดของแท็บนั้น (แดง) · ก่อนกด = "ครบ x/n" เป็นกลาง */}
+              ⭐ งานบริการ (mig 0392): หลังกดยื่น = จำนวนข้อที่ติดของแท็บนั้น (แดง) · ก่อนกด = "ครบ x/n" เป็นกลาง */}
           <Tabs
             value={activeTab}
             onChange={selectTab}
@@ -2158,7 +2158,7 @@ export default function SalesOrderDetailPage() {
           {/* 🚫 การ์ด "ตัดสินจุดที่ TS ไม่พบ" (มติข้อ 23 · mig 0362) ถอดแล้ว (มติ 22/09) — บรรทัดของใบย้อนหลัง
               ผูกโซนจากทะเบียนตั้งแต่ตอนคีย์ใบ ⇒ ไม่มีชื่อจุดลอย ๆ ให้ TS "หาไม่เจอ" อีก · โซนของใบอยู่ที่
               การ์ด "โซนที่บริการ" ข้างล่างแทน */}
-          {/* ⭐ ใบ pipeline สาย SERVICE (mig 0391 · PR-A): การ์ดทั้งใบเป็น `SalesOrderServiceLines` — ตารางตัวเดียวกับใบเสนอราคา
+          {/* ⭐ ใบ pipeline สาย SERVICE (mig 0392 · PR-A): การ์ดทั้งใบเป็น `SalesOrderServiceLines` — ตารางตัวเดียวกับใบเสนอราคา
               + กล่อง "งานบริการของรายการนี้" ใต้แต่ละบรรทัด + ช่วงบริการ + แถบบันทึก · ใบอื่น (สินค้า · ย้อนหลัง) เหมือนเดิมทุกตัวอักษร
               ⚠️ id="service-setup" อยู่ทั้งสองทาง — ลิงก์ `#service-setup` จากคิวอนุมัติ/รายการพามาที่การ์ดนี้ */}
           {setupRequired && !historical ? (
@@ -2442,7 +2442,7 @@ export default function SalesOrderDetailPage() {
                รอบนี้ยกให้ครบทุกโมดัลของแผงนี้ ⇒ ส่งข้อความเข้าไปในโมดัลด้วย */
             error={error}
             onClearError={() => setError("")}
-            /* ⭐ งานบริการ (mig 0391): ช่วงบริการ · ขั้น · ช่องแดงหลังกดยื่น · แบ่งช่วงครอบตามช่วงบริการ
+            /* ⭐ งานบริการ (mig 0392): ช่วงบริการ · ขั้น · ช่องแดงหลังกดยื่น · แบ่งช่วงครอบตามช่วงบริการ
                ยังโหลดไม่เสร็จ/ใบที่ไม่ต้องตั้ง = undefined ⇒ แผงคิดจากใบเองด้วยตัวตัดสินชุดเดียวกับ GET */
             servicePeriod={setupView ? setupView.period : undefined}
             setupFlow={setupView ? setupView.flow : undefined}
@@ -2506,7 +2506,7 @@ export default function SalesOrderDetailPage() {
                 <p style={{ margin: "4px 0 0" }}>คุณเป็นผู้สร้างหรือผู้ยื่นใบนี้ — การอนุมัติจะย้ายยอด {fmtMoney(order.actualAmount)} จาก “{PENDING_APPROVAL_LABEL}” เข้า Actual ของเดือน {formatMonthLabel(currentMonth())} ทันที และบันทึกไว้กับหลักฐานลายเซ็นถาวรว่าเป็นการอนุมัติแบบ Admin Override</p>
               </div>
             </div>
-            {/* ⭐ งานบริการ (mig 0391 · D10): อนุมัติ = เปิดงานให้ TS ในทรานแซกชันเดียวกัน — บอกผลเหมือนโมดัลอนุมัติปกติ (กฎ 4) */}
+            {/* ⭐ งานบริการ (mig 0392 · D10): อนุมัติ = เปิดงานให้ TS ในทรานแซกชันเดียวกัน — บอกผลเหมือนโมดัลอนุมัติปกติ (กฎ 4) */}
             {setupRequired && setupView?.approvalEffects?.length ? (
               <StatusNotice tone="info" title="งานบริการของใบนี้">
                 <span className="pre-line">{setupView.approvalEffects.map((line) => `· ${line}`).join("\n")}</span>

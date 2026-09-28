@@ -5,7 +5,7 @@
 //   ไม่ขาดตอนตอนเปลี่ยนรอบ (มติผู้ใช้ 2026-08-27)
 //
 // 🔄 **ใครสร้าง term** — เดิม TS "ผูก/จัดสรร" บรรทัดลงโซนที่หน้างานเข้าใหม่ (mig 0297/0312) · ใบย้อนหลังเกิด term ตอน
-//   AE Sup อนุมัติ (mig 0374) · **ตั้งแต่ mig 0391 ใบ pipeline เกิด term ตอนอนุมัติ** จากโซนที่ฝ่ายขายเลือกในใบ
+//   AE Sup อนุมัติ (mig 0374) · **ตั้งแต่ mig 0392 ใบ pipeline เกิด term ตอนอนุมัติ** จากโซนที่ฝ่ายขายเลือกในใบ
 //   (`sales_order_line_zones` → `sales_order_open_service_terms` · `packageQty` = แพ็คต่อรอบ · หน่วย 'แพ็ค')
 //   ⇒ ทางผูกของ TS ปิดแล้ว (409) · ตัวช่วย "จัดสรร" ที่เหลือในไฟล์นี้ใช้ **อ่าน** ใบเดิมเท่านั้น (สรุปงานบริการของใบ)
 //
@@ -42,10 +42,10 @@ export function termIsActive(term, order, todayIso = businessDate()) {
   return termOrderActive(order) && termInWindow(term, todayIso);
 }
 
-/* 🔄 `termSnapshotFromLine` (ภาพนิ่งจากบรรทัดตอน TS ผูก) ถอดแล้ว (mig 0391) — ทางผูกของ TS ปิด ⇒ ไม่มีผู้เรียก
+/* 🔄 `termSnapshotFromLine` (ภาพนิ่งจากบรรทัดตอน TS ผูก) ถอดแล้ว (mig 0392) — ทางผูกของ TS ปิด ⇒ ไม่มีผู้เรียก
    · ภาพนิ่งของ term ใบ pipeline ก๊อปใน SQL ตอนอนุมัติ (`sales_order_open_service_terms`) */
 
-/* ── จัดสรรบรรทัดขายลงโซน (mig 0312 · มติผู้ใช้ 2026-08-29) — **อ่านอย่างเดียว** ตั้งแต่ mig 0391 ─────────────────
+/* ── จัดสรรบรรทัดขายลงโซน (mig 0312 · มติผู้ใช้ 2026-08-29) — **อ่านอย่างเดียว** ตั้งแต่ mig 0392 ─────────────────
    ⚠️ ใช้กับใบที่ยังไม่ประทับเท่านั้น (สรุปงานบริการของใบ · salesOrderServiceSummary) — ใบที่ประทับแล้วไม่มี "ของค้าง"
    > *"ไม่ต้องนับบรรทัดแล้ว นับแค่จำนวน FG พอ เพื่อให้ทาง TS จัดสรร ส่งโซนเอง"*
 
@@ -76,7 +76,7 @@ export function allocatedByLine(terms = []) {
   return map;
 }
 
-/* จำนวนของบรรทัดที่ "ยังไม่ถูกจัดสรร" — ตัวช่วยภายในของ `fgSummary` (ไม่ export แล้ว · mig 0391 ไม่มีผู้เรียกข้างนอก)
+/* จำนวนของบรรทัดที่ "ยังไม่ถูกจัดสรร" — ตัวช่วยภายในของ `fgSummary` (ไม่ export แล้ว · mig 0392 ไม่มีผู้เรียกข้างนอก)
    ⚠️ บรรทัดที่ไม่มีจำนวน (qty ว่าง/0) ถือว่า **จัดสรรครบเมื่อมีอย่างน้อยหนึ่งโซน** —
       ของแบบนี้มีจริง (บริการรายเดือน "1 งาน") การบังคับให้กรอกจำนวนจะทำให้ผูกไม่ได้เลย */
 function remainingOfLine(line = {}, allocated = 0) {
@@ -97,7 +97,7 @@ function remainingOfLine(line = {}, allocated = 0) {
       จุดติดตั้งตามชีต (`sales_order_lines.installationPoint`) และ FG เดียวกันอยู่คนละสาขาได้ ⇒ ยุบรวมเมื่อไร
       TS เห็น "FG-1 · 6 หน่วย" ก้อนเดียว แล้วไม่รู้ว่าต้องไปหาไซต์ไหนบ้าง
       ⚠️ บรรทัดที่ไม่มีจุดติดตั้ง (ใบปกติทั้งหมด) คีย์เดิมเป๊ะ — การยุบตาม FG ของมติ 2026-08-29 ไม่ขยับ
-   🔄 mig 0391: ผู้อ่านเหลือตารางสรุปงานบริการของใบ (salesOrderServiceSummary) — คิวผูกโซนของ TS
+   🔄 mig 0392: ผู้อ่านเหลือตารางสรุปงานบริการของใบ (salesOrderServiceSummary) — คิวผูกโซนของ TS
       (`lineNeedsAllocation` · `spreadAllocation`) ถอดพร้อมทางผูก */
 export function fgSummary(lines = [], allocatedMap = new Map()) {
   const groups = new Map();
@@ -156,7 +156,7 @@ export function suggestStandardMl(packageQty, unit = null) {
   return Math.round(qty * ML_PER_PACK_HINT);
 }
 
-/* 🔄 `normalizeTermInput` (ตรวจแถวก่อน TS เขียน term) ถอดแล้ว (mig 0391) — ทางผูกปิด ไม่มีผู้เขียน term ฝั่ง JS
+/* 🔄 `normalizeTermInput` (ตรวจแถวก่อน TS เขียน term) ถอดแล้ว (mig 0392) — ทางผูกปิด ไม่มีผู้เขียน term ฝั่ง JS
    · ข้อความใบ้ `STANDARD_ML_HINT_TEXT` ถอดพร้อมกัน (ผู้ใช้คือวิซาร์ดที่ถูกลบ) */
 
 /* ── ตัวช่วยอ่าน ─────────────────────────────────────────────────────── */

@@ -1,4 +1,4 @@
-// ── บังคับลบของโมดูลบริการ × ใบสั่งขายที่ชี้โซน (mig 0374 บรรทัดใบย้อนหลัง · mig 0391 รายการงานบริการ) ────────
+// ── บังคับลบของโมดูลบริการ × ใบสั่งขายที่ชี้โซน (mig 0374 บรรทัดใบย้อนหลัง · mig 0392 รายการงานบริการ) ────────
 //
 // ⭐ มติ 22/09: ใบสั่งขายย้อนหลังเลือกโซนจากทะเบียนตอนคีย์ ⇒ `sales_order_lines."serviceZoneId"` เป็น FK
 //   **RESTRICT** ไปที่โซน · บรรทัดคือเนื้อเอกสารขาย ระบบไม่ลบ/ปลดให้จากฝั่งโซน
@@ -164,7 +164,7 @@ test('ข้อความขวางไม่ยาวจนอ่านไ�
   assert.doesNotMatch(manifest.notes[0], /SO-26090105-0/);
 });
 
-/* ── รายการงานบริการของใบสั่งขาย (mig 0391 · PR-A) — ฝ่ายขายเลือกโซนในใบเอง ⇒ `sales_order_line_zones."zoneId"`
+/* ── รายการงานบริการของใบสั่งขาย (mig 0392 · PR-A) — ฝ่ายขายเลือกโซนในใบเอง ⇒ `sales_order_line_zones."zoneId"`
    เป็น FK RESTRICT · ขวางแบบเดียวกับบรรทัดใบย้อนหลัง แต่ทางออกคนละทาง (ถอดโซนออกจากใบ · ไม่ใช่ลบใบ) ────────── */
 const withAllocations = (base = seed({ withLines: false })) => ({
   ...base,
@@ -251,8 +251,8 @@ test('ลบโซนแบบปกติ: 23503 จากบรรทัดใ
   assert.match(route, /conflict\('โซนนี้อยู่ในใบสั่งขาย ลบไม่ได้ — ปิดใช้งานแทนเพื่อเก็บประวัติ'\)/);
 });
 
-/* FK ตัวที่สาม (mig 0391): `sales_order_line_zones_zone_fk` — โซนที่ฝ่ายขายเลือกในรายการงานบริการ
-   ⚠️ ชื่อ FK ตั้งตายตัวใน 0391 เพื่อจุดนี้ · ต้องถามก่อนตกไปข้อความ "มีรอบขายผูกอยู่" */
+/* FK ตัวที่สาม (mig 0392): `sales_order_line_zones_zone_fk` — โซนที่ฝ่ายขายเลือกในรายการงานบริการ
+   ⚠️ ชื่อ FK ตั้งตายตัวใน 0392 เพื่อจุดนี้ · ต้องถามก่อนตกไปข้อความ "มีรอบขายผูกอยู่" */
 test('ลบโซนแบบปกติ: 23503 จากรายการงานบริการ (sales_order_line_zones_zone_fk) ได้ข้อความของมันเอง', async () => {
   const { readFileSync } = await import('node:fs');
   const route = readFileSync(new URL('../../app/api/service/sites/[id]/zones/[zoneId]/route.js', import.meta.url), 'utf8');
@@ -260,7 +260,7 @@ test('ลบโซนแบบปกติ: 23503 จากรายการง
   const terms = route.indexOf("conflict('โซนนี้มีรอบขายผูกอยู่");
   assert.ok(fk > 0 && terms > fk, 'ต้องถามชื่อ FK ของรายการงานบริการก่อนตกไปข้อความรอบขาย');
   assert.match(route, /if \(detail\.includes\('sales_order_line_zones_zone_fk'\)\) return conflict\('โซนนี้ถูกเลือกไว้ในรายการงานบริการของใบสั่งขาย ลบไม่ได้ — ให้ฝ่ายขายถอดโซนออกจากใบ หรือปิดใช้งานโซนแทน'\);/);
-  const migration = readFileSync(new URL('../../../supabase/migrations/0391_so_service_setup.sql', import.meta.url), 'utf8');
+  const migration = readFileSync(new URL('../../../supabase/migrations/0392_so_service_setup.sql', import.meta.url), 'utf8');
   assert.match(migration, /CONSTRAINT sales_order_line_zones_zone_fk\s+FOREIGN KEY \("zoneId"\) REFERENCES public\.service_zones\(id\) ON DELETE RESTRICT/,
     'ชื่อ FK ต้องตรงกับที่ route จับ');
 });

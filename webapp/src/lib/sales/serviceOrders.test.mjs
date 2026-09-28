@@ -81,7 +81,7 @@ test('ใบเปล่า/ไม่มีบรรทัด = ไม่เข�
   assert.equal(orderHasServiceRounds(null, null), false);
 });
 
-/* ══ mig 0391 (PR-A): บรรทัดพิมพ์เองที่ฝ่ายขายเลือกแพ็คเกจให้ (`serviceFgCode`) ═══════════════════════════════
+/* ══ mig 0392 (PR-A): บรรทัดพิมพ์เองที่ฝ่ายขายเลือกแพ็คเกจให้ (`serviceFgCode`) ═══════════════════════════════
    🔴 ด่านเงิน (#1683) ขยายได้ **หลังใบประทับ `serviceTermsOpenedAt` แล้วเท่านั้น** — ก่อนนั้นตอบเหมือนเดิมทุกทาง */
 import { effectiveServiceFgCode, serviceVisitsSold, siteRoundsSoldOf } from './serviceOrders.js';
 

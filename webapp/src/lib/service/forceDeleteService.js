@@ -46,7 +46,7 @@ const idsOf = (rows) => (rows || []).map((r) => r.id);
 /* ── ใบสั่งขายที่ชี้โซน — ตัวขวางที่ break-glass ข้ามไม่ได้ (สองทาง) ─────────────────────────────
    ① บรรทัดใบสั่งขายย้อนหลัง (mig 0374 · มติ 22/09) — เลือกโซนจากทะเบียนตอนคีย์ ⇒ `sales_order_lines."serviceZoneId"`
       เป็น FK **RESTRICT** ไปที่โซน · บรรทัดคือเนื้อของเอกสารขาย ระบบจะไม่ลบ/ปลดให้เองจากฝั่งโซน
-   ② รายการงานบริการของใบสั่งขาย (mig 0391 · PR-A) — ฝ่ายขายเลือกโซนในใบเอง ⇒ `sales_order_line_zones."zoneId"`
+   ② รายการงานบริการของใบสั่งขาย (mig 0392 · PR-A) — ฝ่ายขายเลือกโซนในใบเอง ⇒ `sales_order_line_zones."zoneId"`
       เป็น FK **RESTRICT** (`sales_order_line_zones_zone_fk`) · โซนที่เลือกเป็นเนื้อของการตั้งงานบริการที่ผู้จัดการอนุมัติแล้ว
       (หรือกำลังตั้ง) ⇒ ระบบไม่ถอดให้เองจากฝั่งโซน · ทางออกคือฝ่ายขายถอดโซนออกจากใบ (ร่าง/ตีกลับ/ใบเดิมที่ยังไม่ยื่น
       · ใบที่อนุมัติแล้วต้องย้อนแล้วออก Rev.) หรือปิดใช้งานโซนแทน
@@ -159,7 +159,7 @@ export async function deleteAssetDeep(supabase, assetId) {
 
 /* ── โซนหนึ่งโซน ─────────────────────────────────────────────────────────
    ลูกที่ RESTRICT: `service_zone_terms.zoneId` (0297) · `service_survey_zones.zoneId` (0314) ·
-     `sales_order_lines."serviceZoneId"` (0374) · `sales_order_line_zones."zoneId"` (0391)
+     `sales_order_lines."serviceZoneId"` (0374) · `sales_order_line_zones."zoneId"` (0392)
      — สองตัวหลังเป็นตัวขวาง ไม่ลบพ่วง · ดู `salesOrderLinesOnZones`
    ลูกที่ SET NULL: `service_assets.zoneId` (0298) — เครื่องหลุดกลับกอง "ยังไม่ระบุโซน" */
 export async function zoneForceManifest(supabase, zoneId) {
@@ -197,7 +197,7 @@ async function purgeSurveyZoneFiles(supabase, { zoneId = null, zoneIds = null })
 }
 
 export async function deleteZoneDeep(supabase, zoneId) {
-  /* 🔴 ถามบรรทัดใบสั่งขาย + รายการงานบริการก่อนขั้นแรก (mig 0374 · 0391) — FK RESTRICT จะตีกลับที่ขั้น "ลบโซน"
+  /* 🔴 ถามบรรทัดใบสั่งขาย + รายการงานบริการก่อนขั้นแรก (mig 0374 · 0392) — FK RESTRICT จะตีกลับที่ขั้น "ลบโซน"
      ซึ่งมาหลังการลบรอบขายและกวาดไฟล์ผลวัด ⇒ ไม่ถามก่อน = ทำลายของไปครึ่งทางแล้วโซนยังอยู่ */
   await assertNoSalesOrderLines(supabase, [zoneId], 'โซนนี้');
   /* ขั้นไหนพังต้องหยุดก่อนถึงขั้นถัดไป — โดยเฉพาะก่อนกวาดไฟล์: ลบเงื่อนไขไม่ลงแล้ว
@@ -228,7 +228,7 @@ export async function siteForceManifest(supabase, siteId) {
   const zoneIds = idsOf(zones);
   const assetIds = idsOf(assets);
 
-  /* ⭐ โซนของไซต์อยู่ในบรรทัดใบสั่งขายย้อนหลัง (mig 0374) หรือรายการงานบริการของใบ (mig 0391) = ขวางทั้งไซต์
+  /* ⭐ โซนของไซต์อยู่ในบรรทัดใบสั่งขายย้อนหลัง (mig 0374) หรือรายการงานบริการของใบ (mig 0392) = ขวางทั้งไซต์
      — ตัวลบลบโซนทุกโซนของไซต์ */
   const onLines = await salesOrderLinesOnZones(supabase, zoneIds);
   if (blocked(onLines)) {
@@ -287,7 +287,7 @@ export async function deleteSiteDeep(supabase, siteId) {
   const zoneIds = idsOf(zones);
   const assetIds = idsOf(assets);
 
-  /* 🔴 ถามบรรทัดใบสั่งขาย + รายการงานบริการที่ชี้โซนของไซต์ก่อนขั้นแรก (mig 0374 · 0391) — FK RESTRICT ตีกลับที่ขั้น "ลบโซน"
+  /* 🔴 ถามบรรทัดใบสั่งขาย + รายการงานบริการที่ชี้โซนของไซต์ก่อนขั้นแรก (mig 0374 · 0392) — FK RESTRICT ตีกลับที่ขั้น "ลบโซน"
      ซึ่งมาหลังลบนัด · เครื่อง · รอบขาย · ไฟล์ผลวัด ⇒ ไม่ถามก่อน = ประวัติทั้งไซต์หายแต่ไซต์ยังอยู่ */
   await assertNoSalesOrderLines(supabase, zoneIds, 'ไซต์นี้มีโซนที่');
 

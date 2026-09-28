@@ -35,9 +35,9 @@ test('ใบที่อนุมัติแล้วยังแก้จำ�
   assert.equal(serviceRoundsEditError({ status: 'draft' }, { canEdit: true }), null);
 });
 
-/* 🔄 mig 0391: trigger ของฐานล็อกการแก้รอบระหว่างรออนุมัติ/ย้อนการอนุมัติแล้วทุกใบ (ก่อนนี้แก้ได้) —
+/* 🔄 mig 0392: trigger ของฐานล็อกการแก้รอบระหว่างรออนุมัติ/ย้อนการอนุมัติแล้วทุกใบ (ก่อนนี้แก้ได้) —
    ด่าน JS ต้องพูดเรื่องเดียวกัน ไม่งั้นกดแล้วเจอ error ดิบจาก trigger */
-test('รออนุมัติ / ย้อนการอนุมัติแล้ว = ล็อกทุกใบ (trigger ของ 0391 บังคับ)', () => {
+test('รออนุมัติ / ย้อนการอนุมัติแล้ว = ล็อกทุกใบ (trigger ของ 0392 บังคับ)', () => {
   assert.equal(serviceRoundsEditError({ status: 'pending_approval' }, { canEdit: true }), 'รออนุมัติ — ดึงกลับก่อนแก้จำนวนรอบ');
   assert.equal(serviceRoundsEditError({ status: 'approval_revoked' }, { canEdit: true }), 'ย้อนการอนุมัติแล้ว — แก้จำนวนรอบที่ใบ Rev.');
 });
@@ -79,7 +79,7 @@ test('ก้อนที่จอส่งมาต้องเป็นบร�
   assert.equal(validateServiceRoundsPatch({ L1: '' }, lines).value.get('L1'), null);
 });
 
-/* ══ mig 0391 (PR-A): ใบสาย SERVICE ตั้งรอบที่ตารางรายการ · ใบที่ประทับแล้วแก้รอบได้ (≥ 1) ══════════════════ */
+/* ══ mig 0392 (PR-A): ใบสาย SERVICE ตั้งรอบที่ตารางรายการ · ใบที่ประทับแล้วแก้รอบได้ (≥ 1) ══════════════════ */
 const SERVICE_DEAL = { id: 'DL1', line: 'SERVICE' };
 const STAMP = '2026-10-01T03:00:00Z';
 const svcOrder = (over = {}) => ({ id: 'SO1', origin: 'pipeline', status: 'draft', dealId: 'DL1', deal: SERVICE_DEAL, serviceTermsOpenedAt: null, serviceSetupState: null, supersededById: null, ...over });
@@ -111,7 +111,7 @@ test('บรรทัดที่กรอกรอบได้: ใบประ
   assert.deepEqual(serviceRoundLines(lines, svcOrder({ status: 'approved', serviceTermsOpenedAt: STAMP })).map((l) => l.id), ['L1', 'L3']);
 });
 
-test('ใบที่ประทับแล้ว: บรรทัดแพ็คเกจต้องมีอย่างน้อย 1 รอบ (trigger ของ 0391 ห้ามล้าง)', () => {
+test('ใบที่ประทับแล้ว: บรรทัดแพ็คเกจต้องมีอย่างน้อย 1 รอบ (trigger ของ 0392 ห้ามล้าง)', () => {
   const stamped = svcOrder({ status: 'approved', serviceTermsOpenedAt: STAMP });
   const lines = [svc(), manualPkg()];
   assert.equal(validateServiceRoundsPatch({ L3: '' }, lines, stamped).error, 'แพ็คเกจต้องมีอย่างน้อย 1 รอบ');

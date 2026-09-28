@@ -243,7 +243,7 @@ async function loadCustomerOfOrder(supabase, customerId) {
    ที่จอใช้โชว์/ป้อนโมดัลอนุมัติ · action ใน PATCH/DELETE ไม่ต้องจ่ายค่าคิวรีชุดนั้น */
 async function loadOrder(supabase, id, { extras = false } = {}) {
   /* ⭐ ต้นทางของตัวตัดสินด่านเงิน (`orderHasServiceRounds` บนหน้าใบ/แผงงวด) — ใบ `*` พก "serviceTermsOpenedAt" ·
-     บรรทัด `*` พก "serviceFgCode" (mig 0391 · D13) · ยาม serviceMoneySelectGuard.test.mjs อ่านป้ายบรรทัดถัดไป */
+     บรรทัด `*` พก "serviceFgCode" (mig 0392 · D13) · ยาม serviceMoneySelectGuard.test.mjs อ่านป้ายบรรทัดถัดไป */
   const { data: order, error } = await supabase
     .from('sales_orders')
     /* money-decider feed */
@@ -715,7 +715,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const gate = serviceRoundsEditError(before, { canEdit });
     if (gate) return fail(gate, 409);
 
-    /* ⭐ mig 0391: ช่องที่ตัวตัดสินชนิดบรรทัดอ่าน (`serviceLineRole` — FG · สินค้า · หมวดของบรรทัดพิมพ์เอง · ชนิดที่ฝ่ายขายเลือก ·
+    /* ⭐ mig 0392: ช่องที่ตัวตัดสินชนิดบรรทัดอ่าน (`serviceLineRole` — FG · สินค้า · หมวดของบรรทัดพิมพ์เอง · ชนิดที่ฝ่ายขายเลือก ·
        แพ็คเกจที่เลือก) ต้องมาครบ — ใบที่ประทับแล้วถามชนิดของบรรทัด ไม่ใช่รหัส FG ล้วน · และส่ง `before` เข้าตัวตรวจทั้งสอง */
     const { data: lines, error: lineError } = await supabase
       .from('sales_order_lines').select('id, "fgCode", "productId", description, metadata, "serviceKind", "serviceFgCode", "serviceRounds"')
@@ -734,7 +734,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     for (const [lineId, rounds] of changed) {
       const { error: updateError } = await supabase.from('sales_order_lines')
         .update({ serviceRounds: rounds }).eq('id', lineId).eq('salesOrderId', id);
-      /* 🔒 trigger ของ 0391 ล็อกการแก้รอบระหว่างรออนุมัติ/ย้อนแล้ว/รอตรวจย้อนหลัง — ด่าน JS ข้างบนตอบก่อนเสมอ
+      /* 🔒 trigger ของ 0392 ล็อกการแก้รอบระหว่างรออนุมัติ/ย้อนแล้ว/รอตรวจย้อนหลัง — ด่าน JS ข้างบนตอบก่อนเสมอ
          ถึงตรงนี้ได้เมื่อสถานะใบเปลี่ยนระหว่างด่านกับการเขียน (อีกหน้าต่างยื่น/อนุมัติ) ⇒ 409 ไทย ไม่ใช่ 500 ดิบจากฐาน */
       if (updateError && String(updateError.message || '').includes('sales_order_service_setup_locked')) {
         return fail(SERVICE_SETUP_SQL_MESSAGES.sales_order_service_setup_locked.message, 409);
@@ -1048,7 +1048,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
        (`orderConfirmationOf` อ่านสองบ้าน) */
     const confirmationGate = salesOrderConfirmationGate(before, before.quotation);
     if (confirmationGate) return badRequest(confirmationGate);
-    /* ⭐ **งานบริการรายบรรทัด** (mig 0391 · D4/D7) — ใบ pipeline สาย SERVICE ยื่นได้เมื่อทุกบรรทัดตอบว่าเป็นแพ็คเกจหรือไม่ ·
+    /* ⭐ **งานบริการรายบรรทัด** (mig 0392 · D4/D7) — ใบ pipeline สาย SERVICE ยื่นได้เมื่อทุกบรรทัดตอบว่าเป็นแพ็คเกจหรือไม่ ·
        แพ็คเกจครบ (FG · โซน · แพ็คต่อรอบ · รอบ) · ช่วงบริการ · งวดครอบช่วงบริการ — ตัวตัดสินชุดเดียวกับตารางบนจอ
        (`serviceSetupIssues` · GET ของ /service-setup ส่งข้อเดียวกัน) ⇒ ตอบ 400 พร้อม `issues` ให้แผงแดงวาดรายข้อ
        ⚠️ `withFgOptions: true` บังคับ — ข้อ "แพ็คเกจของนิติบุคคลอื่น" ตรวจที่ JS เท่านั้น · ไม่โหลด = ตัวตัดสิน throw (fail-closed)
@@ -1106,7 +1106,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       if (reasonError) return badRequest(reasonError);
       overrideReason = normalizeAdminOverrideReason(body.overrideReason);
     }
-    /* ⭐ **งานบริการรายบรรทัด** (mig 0391 · D10) — อนุมัติ = เปิดรอบขายของโซนให้ TS ในทรานแซกชันเดียวกัน (P1 ของ 0391)
+    /* ⭐ **งานบริการรายบรรทัด** (mig 0392 · D10) — อนุมัติ = เปิดรอบขายของโซนให้ TS ในทรานแซกชันเดียวกัน (P1 ของ 0392)
        ⇒ ตรวจซ้ำด้วยตัวตัดสินเดียวกับตอนยื่นก่อนยิง: ของที่เปลี่ยนระหว่างรออนุมัติ (สินค้าแพ็คเกจถูกปิด · งวดถูกแก้) ตอบ 409
        พร้อม `issues` แทนที่จะไปตายในฐาน · ฐานตรวจโครงสร้างซ้ำอีกชั้น (ไม่ครบ = ถอยทั้งการอนุมัติ → catch ข้างล่าง)
        ⚠️ `withFgOptions: true` บังคับ (fail-closed) · อ่านไม่ขึ้น = 500 */
@@ -1575,7 +1575,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       approvedAt: null, approvedBy: null, approvedByName: null, approvalNote: null,
       submittedAt: null, submittedBy: null, submittedByName: null,
       rejectedAt: null, rejectedBy: null, rejectedByName: null, rejectionReason: null,
-      /* ⭐ งานบริการรายบรรทัด (mig 0391 · D22) — ร่างที่คืนมาต้องเปิดรอบขายใหม่ตอนอนุมัติรอบหน้า (ตราประทับเก่าไม่ติดมา)
+      /* ⭐ งานบริการรายบรรทัด (mig 0392 · D22) — ร่างที่คืนมาต้องเปิดรอบขายใหม่ตอนอนุมัติรอบหน้า (ตราประทับเก่าไม่ติดมา)
          และสถานะตั้งย้อนหลังของรอบก่อนไม่มีความหมายกับร่าง · term เก่าของใบถูกลบพร้อม audit ตอนอนุมัติใหม่ (SZT-S เท่านั้น) */
       serviceTermsOpenedAt: null, serviceSetupState: null,
       updatedAt: new Date().toISOString(),

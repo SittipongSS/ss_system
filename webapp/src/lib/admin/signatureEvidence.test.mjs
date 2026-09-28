@@ -62,9 +62,9 @@ test('unknown database details are not exposed', () => {
   assert.equal(error.message.includes('postgres'), false);
 });
 
-/* ── งานบริการรายบรรทัด (mig 0391 P1): การอนุมัติใบสาย SERVICE ถอยทั้งก้อนเมื่องานบริการไม่ครบ ──────────
+/* ── งานบริการรายบรรทัด (mig 0392 P1): การอนุมัติใบสาย SERVICE ถอยทั้งก้อนเมื่องานบริการไม่ครบ ──────────
    🐞 ไม่แปลรหัส = ตกไปข้อความกลาง "บันทึกหลักฐานลายเซ็นไม่สำเร็จ" ซึ่งชี้ไปเรื่องลายเซ็นทั้งที่ไม่เกี่ยว */
-test('service setup incomplete (0391 P1) maps to 409 with the DETAIL codes in extra.setupErrors', () => {
+test('service setup incomplete (0392 P1) maps to 409 with the DETAIL codes in extra.setupErrors', () => {
   const error = signatureEvidenceRpcError({
     message: 'sales_order_service_setup_incomplete',
     details: 'kind_missing:SOL-a, packs_missing:SOL-a:ZN-1,,period_missing',

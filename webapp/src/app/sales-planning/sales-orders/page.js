@@ -149,7 +149,7 @@ function roundsCell(service) {
 // โทนของบรรทัดสถานะการชำระ — ใช้คลาสกลางชุดเดียวกับตัวเลขในตาราง
 const NOTE_TONE = { danger: "cell-num-bad", success: "cell-num-ok", warning: "", idle: "" };
 
-/* ── แถวคิว "งานบริการ (ใบเดิม)" (mig 0391 · PR-A · D26) ─────────────────────────────
+/* ── แถวคิว "งานบริการ (ใบเดิม)" (mig 0392 · PR-A · D26) ─────────────────────────────
    ใบที่อนุมัติไปก่อนมีการตั้งงานบริการรายบรรทัด ⇒ ฝ่ายขายตั้งย้อนหลังแล้วยื่นให้ผู้จัดการฝ่ายขายตรวจ
    ⭐ **แถวในคิวเดียวกับใบรออนุมัติ ไม่ใช่คิวที่สอง** — ชนิดงานอยู่หน้าเลขใบ (คิวกลางมีแค่บรรทัดหลัก/รอง)
    ⭐ ตัวเลขทุกตัวมาจาก server (`serviceReview` = serviceSetupTotals ชุดเดียวกับแถบผู้อนุมัติบนหน้าใบ) — จอไม่นับโซนเอง
@@ -290,7 +290,7 @@ export default function SalesOrdersPage() {
      (ใบที่คนอื่นโดนตีกลับก็ status เดียวกัน แต่ไม่ใช่ของค้างของเรา) */
   const navCountParam = useSearchParams().get("count") || "";
   const [waitingOnMeOnly, setWaitingOnMeOnly] = useState(navCountParam === "salesOrders");
-  /* ⭐ ชิป "ยังไม่ตั้งงานบริการ" (mig 0391 · D26) — ใบที่อนุมัติแล้วแต่ยังต้องตั้งงานบริการย้อนหลัง (ธง `_serviceSetupPending`
+  /* ⭐ ชิป "ยังไม่ตั้งงานบริการ" (mig 0392 · D26) — ใบที่อนุมัติแล้วแต่ยังต้องตั้งงานบริการย้อนหลัง (ธง `_serviceSetupPending`
      จาก server = `serviceBackfillNeeded` ตัวเดียวกับหน้าใบ/เลน "รอฉันลงมือ"/คิว TS) · **ปุ่มสลับบนแถบ ไม่ใช่ตัวเลือกใน
      กล่องกรอง** (กฎ direct controls — ของค้าง ~59 ใบต้องเห็นตัวเลขโดยไม่ต้องเปิดกล่อง) ⇒ ไม่นับใน `filterCount` */
   const [serviceSetupPendingOnly, setServiceSetupPendingOnly] = useStickyState("serviceSetupPendingOnly", false);
@@ -422,7 +422,7 @@ export default function SalesOrdersPage() {
      ⚠️ ปุ่มยังเป็น "เปิดใบ" ทั้งสองโหมด — ด่านตรวจ/อนุมัติอยู่ที่หน้าเอกสารที่เดียว
      (กฎความเป็นเจ้าของโมดูล ข้อ 3: "ด่านเดียว ไม่ใช่จอเดียว") */
   const financeShell = useShellSystem(usePathname()) === "finance";
-  /* ⭐ เปลือกงานขายรวมแถว "งานบริการ (ใบเดิม)" ที่รอฉันตรวจ (mig 0391 · D26) — ธงจาก server ผ่านตัวตัดสินตัวเดียว
+  /* ⭐ เปลือกงานขายรวมแถว "งานบริการ (ใบเดิม)" ที่รอฉันตรวจ (mig 0392 · D26) — ธงจาก server ผ่านตัวตัดสินตัวเดียว
      (`serviceBackfillAwaitingReview`: ค่า 'submitted' ค้างบนใบที่ย้อนอนุมัติ/ออก Rev./ยกเลิกแล้วไม่ขึ้น) และตัดคนยื่นเอง
      ยกเว้น admin · ⚠️ ไม่ชนกับ `_awaitingMyApproval` บนแถวเดียวกัน (อันนั้น pending_approval · อันนี้ approved) */
   const approvalQueue = useMemo(
@@ -609,7 +609,7 @@ export default function SalesOrdersPage() {
              ⚠️ คิวของเปลือกบัญชี (ใบเก็บครบรอปิด) ยังเป็นยอดรวม VAT = เงินที่เก็บจริง */
           /* ⭐ ใบย้อนหลังในคิวนี้ต่อท้ายว่าไม่นับ Actual (มติ 22/09) — AE Sup กดจากคิวได้เลย
              จึงต้องรู้ตั้งแต่ก่อนเปิดว่ากำลังจะอนุมัติใบคนละกองกับยอดในการ์ดข้างบน */
-          /* ⭐ แถว "งานบริการ (ใบเดิม)" (mig 0391) พูดงานบริการ ไม่พูดยอด — ดู `serviceReviewLine` · ใบชนิดนี้ไม่เคยเป็นใบย้อนหลัง
+          /* ⭐ แถว "งานบริการ (ใบเดิม)" (mig 0392) พูดงานบริการ ไม่พูดยอด — ดู `serviceReviewLine` · ใบชนิดนี้ไม่เคยเป็นใบย้อนหลัง
              (ตัวตัดสินตัดทิ้งแล้ว) ⇒ ท้าย "ใบย้อนหลัง" ไม่มีทางต่อซ้ำ */
           secondary={(o) => (financeShell
             ? `${naText(o.customerName)} · ${fmtMoney(o.totalAmount)}`
@@ -640,7 +640,7 @@ export default function SalesOrdersPage() {
               value={lineView}
               onChange={setLineView}
             />
-            {/* ⭐ ชิป "ยังไม่ตั้งงานบริการ n" (mig 0391 · D26 · ม็อก BackfillApproveModal) — ติดท้ายมุมมองสาย · ขึ้นเมื่อมีของ
+            {/* ⭐ ชิป "ยังไม่ตั้งงานบริการ n" (mig 0392 · D26 · ม็อก BackfillApproveModal) — ติดท้ายมุมมองสาย · ขึ้นเมื่อมีของ
                 หรือกำลังเปิดอยู่ (ซ่อนตอนเปิด = ปิดไม่ได้) · กดซ้ำ = ถอด · ปุ่มตัวกรองล้างให้ด้วย */}
             {(serviceSetupPendingCount > 0 || serviceSetupPendingOnly) && (
               <Button

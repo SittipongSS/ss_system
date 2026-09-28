@@ -32,7 +32,7 @@ export function signatureEvidenceRpcError(error, { action = 'approve' } = {}) {
     ['signature_evidence_document_state_invalid', 'สถานะเอกสารไม่รองรับการอนุมัติ', 400, 'document_state_invalid', {}],
     ['signature_evidence_document_not_found', 'ไม่พบเอกสาร', 404, 'document_not_found', {}],
     ['signature_evidence_fingerprint_invalid', 'ข้อมูลยืนยันเอกสารไม่ถูกต้อง', 400, 'fingerprint_invalid', {}],
-    /* ── งานบริการรายบรรทัด (mig 0391 P1) — การอนุมัติใบสาย SERVICE เปิดรอบขายของโซนในทรานแซกชันเดียวกัน
+    /* ── งานบริการรายบรรทัด (mig 0392 P1) — การอนุมัติใบสาย SERVICE เปิดรอบขายของโซนในทรานแซกชันเดียวกัน
        ⭐ ไม่ครบ = ถอยทั้งการอนุมัติ · route ตรวจด้วยตัวตัดสิน JS ก่อนยิงแล้ว ⇒ ถึงตรงนี้ได้เมื่อข้อมูลเปลี่ยนหลังด่าน JS
          (เช่นสินค้าแพ็คเกจถูกปิดใช้งานระหว่างนั้น) · รหัสรายข้อ (DETAIL) ไปกับ `extra.setupErrors` ให้ route แปลเป็นข้อที่ยังขาด
        ⚠️ ห้ามปล่อยตกไปข้อความกลาง "บันทึกหลักฐานลายเซ็นไม่สำเร็จ" — ชี้ผิดเรื่อง (ไม่ได้เกี่ยวกับลายเซ็นเลย) */

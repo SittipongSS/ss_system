@@ -1,7 +1,7 @@
 # ใบสั่งขายสายบริการ — ฝ่ายขายตั้งงานบริการรายบรรทัด + ตั้งย้อนหลังบนใบที่อนุมัติแล้ว (PR-A)
 
 > สถานะ: **กำลังดำเนินการ** · ตรวจกับโค้ดเมื่อ 2026-09-29 (หลังรวม main #1846) · แบรนช์ `claude/so-service-lines` · ฝั่งฐาน/API/TS/ทะเบียน SO ลงโค้ดแล้ว ·
-> จอหน้าใบสั่งขาย (ตาราง · แผงแดง · แผงงวด · การ์ดตั้งย้อนหลัง) กำลังทำ · **mig 0391 ยังไม่รัน** — รันตามลำดับ deploy ข้างล่างเท่านั้น · ยังไม่ UAT
+> จอหน้าใบสั่งขาย (ตาราง · แผงแดง · แผงงวด · การ์ดตั้งย้อนหลัง) กำลังทำ · **mig 0392 ยังไม่รัน** — รันตามลำดับ deploy ข้างล่างเท่านั้น · ยังไม่ UAT
 
 ที่มา (อ่านถ้าต้องการเหตุผลเต็ม): `~/ss-team/mockups/so-service-lines/` — `IMPL_PLAN.md` (Rev. 2 · สัญญาของงานนี้) ·
 `r2_spec.md` (ดีไซน์ฐาน) · `r3_backfill.md` (คำตอบเจ้าของ B1–B4 วันที่ 28/09 · **ทับ r2 ตรงที่ขัดกัน**) · ม็อก `project/*.dc.html`
@@ -32,7 +32,7 @@
 | D10 | อนุมัติ = เปิดรอบขายในทรานแซกชันเดียว (ปะ P1 ที่ RPC อนุมัติ) · term: `packageQty` = แพ็คต่อรอบ หน่วย `'แพ็ค'` · ตีตรา `serviceTermsOpenedAt` · ตั้งไม่ครบ = **ถอยทั้งการอนุมัติ** |
 | D11 | **ตั้งย้อนหลัง** บนใบที่อนุมัติแล้ว (B4) — ตารางเดียวกัน ด่านเดียวกัน · "ยื่นตรวจงานบริการ" → ผู้จัดการฝ่ายขายอนุมัติ/ตีกลับ · **ไม่แตะ** สถานะใบ · approvedAt · fingerprint · ยอด · Actual · ฉบับตรึง · งวดชำระ |
 | D12 | ผู้ยื่นย้อนหลัง = ใครก็ได้ที่แก้ SO ในขอบเขต · **ไม่มีปุ่มถอน** (ผู้จัดการตีกลับแทน) ⇒ ยื่นผ่านโมดัลยืนยันที่บอกผลว่า "ถอนเองไม่ได้" · อนุมัติ = `serviceSetupState` กลับเป็น NULL + ตรา + หลักฐานผู้อนุมัติ · ยื่นเองอนุมัติเองไม่ได้ ยกเว้น admin ที่ต้องใส่เหตุผล 10–500 ตัวอักษร (ลง audit · ไม่มีคอลัมน์ใหม่) |
-| D13 | ด่านเงิน: `effectiveServiceFgCode(line, order)` นับ `serviceFgCode` **เมื่อใบประทับแล้วเท่านั้น** ⇒ ร่าง/ยื่นตรวจไม่เปลี่ยนพฤติกรรมของ FN · select ที่ป้อนตัวตัดสินต้องพก `"serviceFgCode"` + `"serviceTermsOpenedAt"` (ยาม) · ธงรายใบต้องเท่า baseline ที่เก็บก่อนรัน 0391 · ⚠️ **ด่านหลวมลงระหว่าง Rev.:** ตราไม่ถูกก๊อป ⇒ ใบ Rev. (ร่าง) ของใบแพ็คเกจพิมพ์เองที่ประทับแล้วตอบด่านแบบแคบ — FN รับรองงวด `reported` ที่ย้ายมาได้โดยไม่มีช่วงครอบ · หลวมอย่างเดียว ไม่เคยเข้มขึ้น · จบเมื่อ Rev. อนุมัติ (ประทับใหม่) · ยอมรับ |
+| D13 | ด่านเงิน: `effectiveServiceFgCode(line, order)` นับ `serviceFgCode` **เมื่อใบประทับแล้วเท่านั้น** ⇒ ร่าง/ยื่นตรวจไม่เปลี่ยนพฤติกรรมของ FN · select ที่ป้อนตัวตัดสินต้องพก `"serviceFgCode"` + `"serviceTermsOpenedAt"` (ยาม) · ธงรายใบต้องเท่า baseline ที่เก็บก่อนรัน 0392 · ⚠️ **ด่านหลวมลงระหว่าง Rev.:** ตราไม่ถูกก๊อป ⇒ ใบ Rev. (ร่าง) ของใบแพ็คเกจพิมพ์เองที่ประทับแล้วตอบด่านแบบแคบ — FN รับรองงวด `reported` ที่ย้ายมาได้โดยไม่มีช่วงครอบ · หลวมอย่างเดียว ไม่เคยเข้มขึ้น · จบเมื่อ Rev. อนุมัติ (ประทับใหม่) · ยอมรับ |
 | D14 | **ถอดวิซาร์ดผูกโซนของ TS** · แท็บ `bind` คงคีย์ (URL เดิม) ป้ายใหม่ "รอฝ่ายขายตั้งงานบริการ (ใบเดิม)" ดูอย่างเดียว อยู่ท้าย (`plan` · `visit` · `bind` · ตั้งต้น `plan`) · `POST /api/service/intake/bind` ตอบ **409** ทุกคำขอ · `IntakeWizard.js` ลบแล้ว · ถังใหม่ `legacySetupQueue` · **[owner]** ป้ายเมนู TS นับแค่ "รอตั้งรอบ" |
 | D15 | ด่านเข้าไซต์: โซนที่ไม่มี term = **งานของ SA** เสมอ (TS ผูกเองไม่ได้แล้ว) — สามข้อความตามที่มาของ term ที่ไซต์ (pipeline → ออก Rev. · ใบย้อนหลังล้วน → ทางแก้ใบย้อนหลัง · ไม่มีเลย → ฝ่ายขายตั้งแล้วยื่นให้ผู้จัดการตรวจ) · ไซต์ที่ยังไม่มีโซน = TS · **[owner]** ข้อความระดับไซต์ ไม่ใช่ "ใบสั่งขายนี้…" + ชิป SO เลื่อนไป PR-C |
 | D16 | Rev.: ปะ P2 ที่ RPC ออก Rev. ก๊อปชนิด/FG/ช่วง/โซนไปใบ Rev. · **ไม่ก๊อปตราและสถานะย้อนหลัง** · อนุมัติ Rev. = term ใหม่ · ml ยกจาก term ของใบเดิม (โซนเดียวกัน + `quotationLineId` เดียวกัน) · แผนรอบของไซต์ที่ยังอยู่ย้ายตามมา (audit รายแผน) |
@@ -48,9 +48,9 @@
 | D26 | เลน: ผู้จัดการ = แถว "งานบริการ (ใบเดิม)" ในคิวรออนุมัติของทะเบียน SO · เจ้าของดีล = "รอฉันลงมือ" · ป้ายเมนูนับ **ใบไม่ซ้ำข้ามทุกเลน** (รวมเลนบัญชี) · ชิป "ยังไม่ตั้งงานบริการ n" บนแถบเครื่องมือทะเบียน SO ข้างมุมมองสาย |
 | D27 | `components/service/ZonesBulkModal.js` ตัวกลางใหม่ (PR-D ห่อใช้ต่อ) · `HistoricalBulkZonesModal` ไม่แปลงใน PR-A |
 | D28 | **ตัวตัดสินเดียว** `serviceBackfillAwaitingReview(order)` — ย้อนอนุมัติ/ยกเลิก/ออก Rev. ไม่ล้างค่า `'submitted'` ⇒ ค่าค้างบนใบที่ไม่ได้อนุมัติอยู่ไม่มีผลทุกผิว และ RPC อนุมัติปฏิเสธ · ห้ามอ่าน `serviceSetupState` เอง |
-| D29 | term ที่ 0391 ไม่ได้สร้าง (id ไม่ขึ้นต้น `SZT-S`) **ห้ามทับหรือลบ** · เจอ = RAISE `service_setup_legacy_terms_exist` |
+| D29 | term ที่ 0392 ไม่ได้สร้าง (id ไม่ขึ้นต้น `SZT-S`) **ห้ามทับหรือลบ** · เจอ = RAISE `service_setup_legacy_terms_exist` |
 | D30 | สินค้าแพ็คเกจถูกลบ (`serviceProductId` → NULL · `serviceFgCode` ค้าง) = `fg_missing` ทั้ง JS และ SQL · ใบที่ประทับแล้วยังมี snapshot ใน term |
-| D31 | ลำดับ deploy — ดูหัวข้อถัดไป · P1 อยู่ใน 0391 (ช่วงรอยต่อ การอนุมัติใบบริการ **ล้มเสียงดังและถอย** ดีกว่าอนุมัติผ่านโดยไม่มี term) |
+| D31 | ลำดับ deploy — ดูหัวข้อถัดไป · P1 อยู่ใน 0392 (ช่วงรอยต่อ การอนุมัติใบบริการ **ล้มเสียงดังและถอย** ดีกว่าอนุมัติผ่านโดยไม่มี term) |
 
 ### ต่างจาก r3/ม็อก — ต้องบอกเจ้าของพร้อม PR
 
@@ -89,9 +89,9 @@
   เขียนครบแต่อ่านงวดสดพลาด = `installmentsAfterWrite` (ไม่ 500) · หน้าใบรับ 409 ของทั้งสองคำสั่งแบบเดียวกัน: วางงวดสด → `await refreshOrder()` →
   ลงไปแล้วบางงวด = `refreshServiceSetup()`
 
-## Migration 0391 + ลำดับ deploy
+## Migration 0392 + ลำดับ deploy
 
-`webapp/supabase/migrations/0391_so_service_setup.sql` — หัวไฟล์มีด่านก่อนรัน · SELECT ตรวจหลังรันพร้อมค่าที่คาด · บล็อกถอยกลับ · ลำดับ deploy
+`webapp/supabase/migrations/0392_so_service_setup.sql` — หัวไฟล์มีด่านก่อนรัน · SELECT ตรวจหลังรันพร้อมค่าที่คาด · บล็อกถอยกลับ · ลำดับ deploy
 
 | ส่วน | ทำอะไร |
 |---|---|
@@ -104,16 +104,16 @@
 
 **ลำดับ deploy (D31 · แผน §3.5)** — ช่วง "SQL ใหม่ + JS เก่า" ต้องสั้นเป็นนาที:
 
-0. ทุกด่านในเครื่องเขียว (`npm test` · `TZ=UTC npm test` · `npm run build` ตอนปิด dev server · gates ทุกตัว ยกเว้น `check:columns` ที่แดงเฉพาะชื่อของ 0391) · ฮาร์เนส PGlite ผ่านสองรอบ · PR rebase บน main ล่าสุด · ไม่มีแบรนช์อื่นจองเลข 0391
+0. ทุกด่านในเครื่องเขียว (`npm test` · `TZ=UTC npm test` · `npm run build` ตอนปิด dev server · gates ทุกตัว ยกเว้น `check:columns` ที่แดงเฉพาะชื่อของ 0392) · ฮาร์เนส PGlite ผ่านสองรอบ · PR rebase บน main ล่าสุด · ไม่มีแบรนช์อื่นจองเลข 0392
 1. baseline: `node --import ./scripts/test-loader.mjs scripts/check-service-money-scope.mjs --save-baseline` (อ่านอย่างเดียว)
 2. เจ้าของประกาศ freeze ~30 นาที: ห้ามอนุมัติใบสายบริการ · TS ห้ามกด "ผูกโซน" · ห้ามแก้จำนวนรอบของใบรออนุมัติ/ย้อนแล้ว
-3. เจ้าของรัน 0391 ที่ SQL Editor แล้วรัน SELECT ตรวจ — คาด `fg_rows=0 · alloc_rows=0 · stamped=0 · p1=1 · p2=1 · anon_save=f · triggers=3` · `backfill_candidates` ≈ 59
+3. เจ้าของรัน 0392 ที่ SQL Editor แล้วรัน SELECT ตรวจ — คาด `fg_rows=0 · alloc_rows=0 · stamped=0 · p1=1 · p2=1 · anon_save=f · triggers=3` · `backfill_candidates` ≈ 59
 4. ต่อกันทันที: CI rerun → merge → main CI → Deploy to production → `curl https://suk.scentandsense.co.th/api/version` ตรง sha
 5. ยก freeze
 6. `check-service-money-scope.mjs --compare` ต้องไม่มี FAIL · รัน SELECT ตรวจซ้ำ · UAT (แผน §4.3 · อ่านอย่างเดียว)
 
-⚠️ CI หยุดที่ `check:columns` ก่อนถึงเทสต์/build ⇒ ก่อนรัน 0391 CI ของแบรนช์นี้ **ไม่เคยรันเทสต์เลย** — ด่านในเครื่องต้องเขียวครบก่อนเสมอ
-⚠️ ก่อนรัน 0391 เซิร์ฟเวอร์ใดก็ตามบนแบรนช์นี้ตอบ 500 ที่ทะเบียน SO · route งวด · ทะเบียนการชำระ · หน้างานเข้าใหม่ (select อ่านคอลัมน์ใหม่ · dev DB = prod DB)
+⚠️ CI หยุดที่ `check:columns` ก่อนถึงเทสต์/build ⇒ ก่อนรัน 0392 CI ของแบรนช์นี้ **ไม่เคยรันเทสต์เลย** — ด่านในเครื่องต้องเขียวครบก่อนเสมอ
+⚠️ ก่อนรัน 0392 เซิร์ฟเวอร์ใดก็ตามบนแบรนช์นี้ตอบ 500 ที่ทะเบียน SO · route งวด · ทะเบียนการชำระ · หน้างานเข้าใหม่ (select อ่านคอลัมน์ใหม่ · dev DB = prod DB)
 
 ## เส้นตั้งย้อนหลัง (ใบที่อนุมัติก่อนมีการตั้งงานบริการ)
 
@@ -153,7 +153,7 @@ API: `src/app/api/sales-planning/sales-orders/[id]/service-setup/route.js` — G
 
 | ชั้น | ไฟล์ |
 |---|---|
-| ฐาน | `supabase/migrations/0391_so_service_setup.sql` · ฮาร์เนส PGlite นอก repo (`mockups/so-service-lines/pglite-harness/`) |
+| ฐาน | `supabase/migrations/0392_so_service_setup.sql` · ฮาร์เนส PGlite นอก repo (`mockups/so-service-lines/pglite-harness/`) |
 | ตัวตัดสิน (client+server) | `lib/sales/serviceSetup.js` (ชนิด · ด่าน · ข้อความ · มุมมอง GET) · `lib/sales/serviceOrders.js` (`effectiveServiceFgCode` · `serviceVisitsSold`) · `lib/sales/serviceRoundsEntry.js` · `lib/sales/paymentCoverage.js` (`pipelineCoverageIssues` · `splitCoverageByPeriod`) · `lib/service/zonePickerOptions.js` |
 | server | `lib/sales/serviceSetupRepo.js` (โหลดบริบท · RPC · แปลงรหัสเป็นไทย) · `lib/sales/serviceSetupRoute.js` |
 | API | `api/sales-planning/sales-orders/[id]/service-setup` · ด่านยื่น/อนุมัติ/`set_service_rounds`/กู้ใบใน `[id]/route.js` · `fill-coverage` ใน `[id]/installments` · ทะเบียน SO (ธง/เลน) · `api/nav/counts` · `api/finance/payments` (select) · `api/service/intake` (+ `bind` = 409) |
@@ -173,4 +173,4 @@ API: `src/app/api/sales-planning/sales-orders/[id]/service-setup/route.js` — G
 - แถบทำทีละหลายบรรทัด + "เติมจากข้อความ" (เดาจำนวนสาขาจากหมายเหตุ) · สถานะ "ติดทะเบียนไซต์ — ขาด n สาขา" ของแท็บ TS → **PR-B**
 - ข้อเท็จจริงบนแถวแผนรอบของ TS (ช่วง · ชิปความถี่ · ชิปสัญญา) · เติม `ServicePlanModal` จากช่วงบริการ · `suggestEveryDays` · PATCH ml · ทางสำรองของการต่ออายุ ·
   บรรทัดผลของ FN ตอนรับรอง · ป้ายต่อรอบ/ป้ายใบรออนุมัติในทะเบียนโซน · ชิป SO บนร่างนัดที่ติดด่าน (D15) · เติมโมดัลสัญญาจากช่วงบริการ → **PR-C**
-- วิซาร์ดใบย้อนหลัง · ตัวห่อ `HistoricalBulkZonesModal` (D27) · mig 0392 → **PR-D**
+- วิซาร์ดใบย้อนหลัง · ตัวห่อ `HistoricalBulkZonesModal` (D27) · mig 0393 → **PR-D**

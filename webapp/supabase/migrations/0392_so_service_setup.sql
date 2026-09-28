@@ -1,5 +1,6 @@
 -- ============================================================
---  Migration 0391: SO บริการ — ฝ่ายขายตั้งงานบริการรายบรรทัดที่ใบสั่งขาย + ตั้งย้อนหลังบนใบที่อนุมัติแล้ว
+--  Migration 0392: SO บริการ — ฝ่ายขายตั้งงานบริการรายบรรทัดที่ใบสั่งขาย + ตั้งย้อนหลังบนใบที่อนุมัติแล้ว
+--  🔢 เขียนเป็น 0391 · เลื่อนเป็น 0392 วันที่ 29/09 เพราะ #1847 (0391_dept_request_reopen_wait) ขึ้น main ก่อน · ยังไม่เคยรันบนฐานจริง
 --                  (PR-A · มติเจ้าของ 26/09 + คำตอบ B1–B4 วันที่ 28/09 · แผน IMPL_PLAN Rev. 2)
 --
 --  🐞 ของเดิม: ใบสั่งขายสายบริการอนุมัติแล้ว "ไม่มีใครรู้ว่าของไปตั้งที่ไหน" — TS ต้องเปิดใบไล่จับคู่บรรทัดกับโซน
@@ -54,10 +55,10 @@
 --   ทุกคีย์ของบรรทัดไม่มี = ไม่เปลี่ยน · บรรทัดที่ชนิดไม่ใช่แพ็คเกจ ⇒ ล้าง FG/รอบ/โซนของบรรทัดนั้น
 --
 --  ── ด่านก่อนรัน (§0 — RAISE แล้วทั้งไฟล์ถอย) ──────────────────────────────────────────────
---   mig_0391_orders_in_flight  (รันครั้งแรกเท่านั้น = ยังไม่มี P1) มีใบ pipeline สายบริการที่ "รออนุมัติ" ค้าง
+--   mig_0392_orders_in_flight  (รันครั้งแรกเท่านั้น = ยังไม่มี P1) มีใบ pipeline สายบริการที่ "รออนุมัติ" ค้าง
 --       ⇒ ใบพวกนั้นยื่นมาโดยไม่มีงานบริการ พออนุมัติหลังรันจะติด sales_order_service_setup_incomplete
 --       ⇒ ให้ผู้ยื่นดึงกลับก่อน แล้วค่อยรัน
---   mig_0391_legacy_terms_exist (ทุกรอบ) มี term บนใบ pipeline ที่ไม่ได้เกิดจากไฟล์นี้ (id ไม่ขึ้นต้น 'SZT-S')
+--   mig_0392_legacy_terms_exist (ทุกรอบ) มี term บนใบ pipeline ที่ไม่ได้เกิดจากไฟล์นี้ (id ไม่ขึ้นต้น 'SZT-S')
 --       ⇒ รอบแรก: พิสูจน์ว่าไม่มีรอบขายเดิมให้ปกป้อง (วัด prod 28/09 = 0 term ทั้งระบบ)
 --       ⇒ รอบซ้ำ: จับ term ที่ route ผูกโซนเดิมสร้างระหว่างรันถึง deploy (ช่วง freeze ควรทำให้เป็น 0)
 --
@@ -97,7 +98,7 @@
 --          SELECT p.oid INTO v_oid FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
 --           WHERE n.nspname = 'public' AND p.proname = r.fn;
 --          v_def := regexp_replace(pg_get_functiondef(v_oid),
---            '\n[^\n]*(-- 0391:|sales_order_open_service_terms\(|sales_order_copy_service_setup\(|WHERE id = v_order\.id;)[^\n]*',
+--            '\n[^\n]*(-- 0392:|sales_order_open_service_terms\(|sales_order_copy_service_setup\(|WHERE id = v_order\.id;)[^\n]*',
 --            '', 'g');
 --          EXECUTE v_def;
 --        END LOOP;
@@ -159,7 +160,7 @@ BEGIN
              CASE WHEN d.line IN ('PRODUCT', 'SERVICE') THEN d.line END
            ) = 'SERVICE';
     IF v_n > 0 THEN
-      RAISE EXCEPTION 'mig_0391_orders_in_flight — ดึงกลับใบสายบริการที่รออนุมัติก่อนรัน (% ใบ)', v_n;
+      RAISE EXCEPTION 'mig_0392_orders_in_flight — ดึงกลับใบสายบริการที่รออนุมัติก่อนรัน (% ใบ)', v_n;
     END IF;
   END IF;
 
@@ -169,7 +170,7 @@ BEGIN
     JOIN public.sales_orders o ON o.id = t."salesOrderId"
    WHERE o.origin = 'pipeline' AND t.id NOT LIKE 'SZT-S%';
   IF v_n > 0 THEN
-    RAISE EXCEPTION 'mig_0391_legacy_terms_exist — มีรอบขายที่ TS ผูกกับใบ pipeline % แถว ต้องตัดสินก่อน', v_n;
+    RAISE EXCEPTION 'mig_0392_legacy_terms_exist — มีรอบขายที่ TS ผูกกับใบ pipeline % แถว ต้องตัดสินก่อน', v_n;
   END IF;
 END
 $pre$;
@@ -210,13 +211,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS sales_order_lines_id_order_uk
   ON public.sales_order_lines (id, "salesOrderId");
 
 COMMENT ON COLUMN public.sales_order_lines."serviceRounds" IS
-  'รอบบริการต่อโซนของรายการนี้ (ทุกโซนของรายการเท่ากัน) ตลอดช่วงบริการ · บังคับตอนยื่นสำหรับรายการแพ็คเกจ · อ้างอิงเท่านั้น planGen ไม่อ่าน (0326 · 0391)';
+  'รอบบริการต่อโซนของรายการนี้ (ทุกโซนของรายการเท่ากัน) ตลอดช่วงบริการ · บังคับตอนยื่นสำหรับรายการแพ็คเกจ · อ้างอิงเท่านั้น planGen ไม่อ่าน (0326 · 0392)';
 COMMENT ON COLUMN public.sales_order_lines."serviceKind" IS
-  'ชนิดที่ฝ่ายขายเลือกให้บรรทัดพิมพ์เอง: package = แพ็คเกจบริการรายรอบ · not_service = ไม่ใช่งานบริการรายรอบ · NULL = ตามหมวด (FG / metadata.categoryCode) หรือยังไม่เลือก — บรรทัด FG ห้ามมีค่า (0391)';
+  'ชนิดที่ฝ่ายขายเลือกให้บรรทัดพิมพ์เอง: package = แพ็คเกจบริการรายรอบ · not_service = ไม่ใช่งานบริการรายรอบ · NULL = ตามหมวด (FG / metadata.categoryCode) หรือยังไม่เลือก — บรรทัด FG ห้ามมีค่า (0392)';
 COMMENT ON COLUMN public.sales_order_lines."serviceProductId" IS
-  'แพ็คเกจ (FG หมวด 02-001) ที่ฝ่ายขายเลือกให้บรรทัดพิมพ์เองที่เป็นแพ็คเกจ — SET NULL เมื่อสินค้าถูกลบ (ด่านนับเป็นยังไม่เลือก) (0391)';
+  'แพ็คเกจ (FG หมวด 02-001) ที่ฝ่ายขายเลือกให้บรรทัดพิมพ์เองที่เป็นแพ็คเกจ — SET NULL เมื่อสินค้าถูกลบ (ด่านนับเป็นยังไม่เลือก) (0392)';
 COMMENT ON COLUMN public.sales_order_lines."serviceFgCode" IS
-  'รหัส FG ของ serviceProductId ณ ตอนเลือก — ฐานเขียนเองจาก products.fgCode · ตัวตัดสินด่านเงินอ่านค่านี้เฉพาะใบที่มี serviceTermsOpenedAt (0391)';
+  'รหัส FG ของ serviceProductId ณ ตอนเลือก — ฐานเขียนเองจาก products.fgCode · ตัวตัดสินด่านเงินอ่านค่านี้เฉพาะใบที่มี serviceTermsOpenedAt (0392)';
 
 -- ── §2 sales_orders: ช่วงบริการ · ตราเปิดงาน · สถานะตั้งย้อนหลัง ─────────────────────
 -- ⚠️ คำสั่ง ALTER TABLE เดียวชั้นนอก — serviceRoundsCopyPaths.test.mjs เก็บคอลัมน์จากรูปประโยคนี้
@@ -266,15 +267,15 @@ ALTER TABLE public.sales_orders
   );
 
 COMMENT ON COLUMN public.sales_orders."servicePeriodFrom" IS
-  'วันเริ่มช่วงบริการของใบ (ช่วงเดียวต่อใบ · มติ B2) — บังคับตอนยื่นเมื่อมีรายการแพ็คเกจ · ก๊อปไปใบ Rev. โดย sales_order_copy_service_setup (0391)';
+  'วันเริ่มช่วงบริการของใบ (ช่วงเดียวต่อใบ · มติ B2) — บังคับตอนยื่นเมื่อมีรายการแพ็คเกจ · ก๊อปไปใบ Rev. โดย sales_order_copy_service_setup (0392)';
 COMMENT ON COLUMN public.sales_orders."servicePeriodTo" IS
-  'วันสิ้นสุดช่วงบริการของใบ (รวมวันนี้) — คู่กับ servicePeriodFrom เสมอ (0391)';
+  'วันสิ้นสุดช่วงบริการของใบ (รวมวันนี้) — คู่กับ servicePeriodFrom เสมอ (0392)';
 COMMENT ON COLUMN public.sales_orders."serviceTermsOpenedAt" IS
-  'เวลาที่เปิดรอบขาย (service_zone_terms) ให้ TS — ตั้งโดย sales_order_open_service_terms เท่านั้น · ไม่ก๊อปตอนออก Rev. · ตัวตัดสินด่านเงินอ่าน serviceFgCode เฉพาะใบที่มีตรานี้ (0391)';
+  'เวลาที่เปิดรอบขาย (service_zone_terms) ให้ TS — ตั้งโดย sales_order_open_service_terms เท่านั้น · ไม่ก๊อปตอนออก Rev. · ตัวตัดสินด่านเงินอ่าน serviceFgCode เฉพาะใบที่มีตรานี้ (0392)';
 COMMENT ON COLUMN public.sales_orders."serviceSetupState" IS
-  'สถานะตั้งงานบริการย้อนหลังของใบที่อนุมัติแล้ว: submitted = รอผู้จัดการฝ่ายขายตรวจ · rejected = ตีกลับ · NULL = ยังไม่ยื่น/อนุมัติแล้ว — มีความหมายเฉพาะใบ approved ที่ยังไม่ถูกแทนและยังไม่มีตรา (D28) (0391)';
+  'สถานะตั้งงานบริการย้อนหลังของใบที่อนุมัติแล้ว: submitted = รอผู้จัดการฝ่ายขายตรวจ · rejected = ตีกลับ · NULL = ยังไม่ยื่น/อนุมัติแล้ว — มีความหมายเฉพาะใบ approved ที่ยังไม่ถูกแทนและยังไม่มีตรา (D28) (0392)';
 COMMENT ON COLUMN public.sales_orders."serviceSetupApprovedAt" IS
-  'เวลาที่ผู้จัดการฝ่ายขายอนุมัติงานบริการย้อนหลัง — หลักฐานคู่กับ serviceTermsOpenedAt · ไม่แตะ approvedAt/Actual ของใบ (0391)';
+  'เวลาที่ผู้จัดการฝ่ายขายอนุมัติงานบริการย้อนหลัง — หลักฐานคู่กับ serviceTermsOpenedAt · ไม่แตะ approvedAt/Actual ของใบ (0392)';
 
 -- ── §3 sales_order_line_zones: บรรทัด → โซน · แพ็คต่อรอบรายโซน ───────────────────────
 CREATE TABLE IF NOT EXISTS public.sales_order_line_zones (
@@ -308,11 +309,11 @@ REVOKE ALL ON TABLE public.sales_order_line_zones FROM anon, authenticated;
 GRANT ALL ON TABLE public.sales_order_line_zones TO service_role;
 
 COMMENT ON TABLE public.sales_order_line_zones IS
-  'โซนของแต่ละบรรทัดใบสั่งขายสายบริการ — ฝ่ายขายตั้งก่อนยื่น · id = SLZ- || md5(lineId:zoneId) · อนุมัติแล้วกลายเป็น service_zone_terms (0391)';
+  'โซนของแต่ละบรรทัดใบสั่งขายสายบริการ — ฝ่ายขายตั้งก่อนยื่น · id = SLZ- || md5(lineId:zoneId) · อนุมัติแล้วกลายเป็น service_zone_terms (0392)';
 COMMENT ON COLUMN public.sales_order_line_zones."packsPerRound" IS
-  'แพ็คต่อรอบของโซนนี้ (จำนวนเต็ม 1–9999) — กลายเป็น service_zone_terms.packageQty ตอนอนุมัติ (0391)';
+  'แพ็คต่อรอบของโซนนี้ (จำนวนเต็ม 1–9999) — กลายเป็น service_zone_terms.packageQty ตอนอนุมัติ (0392)';
 COMMENT ON COLUMN public.service_zone_terms."packageQty" IS
-  'แพ็คต่อรอบของโซนนี้ — term ของใบที่มี serviceTermsOpenedAt (0391) · term เก่าของ TS (ถ้ามี) = จำนวนที่จัดสรร';
+  'แพ็คต่อรอบของโซนนี้ — term ของใบที่มี serviceTermsOpenedAt (0392) · term เก่าของ TS (ถ้ามี) = จำนวนที่จัดสรร';
 
 -- ── §4 ตัวตัดสินกลาง ────────────────────────────────────────────────────────
 -- หมวดของรหัส FG — ตัวเดียวกับ categoryOf (src/lib/master/categoryOf.js): 'FG-AAAA-02-001-DDDDD' → '02-001'
@@ -809,7 +810,7 @@ BEGIN
   -- term เก่าของใบนี้ที่ (บรรทัด, โซน) ไม่อยู่ในงานบริการแล้ว (เช่น คืนร่างแล้วถอดโซน) — บันทึกก่อนลบ
   INSERT INTO public.audit_logs ("actorId", "actorName", action, "entityType", "entityId", summary, before, "createdAt")
   SELECT p_actor_id, v_actor_name, 'delete', 'service_zone_term', t.id,
-         'ลบรอบขายของโซนที่ไม่อยู่ในงานบริการของ ' || v_order."orderNumber" || ' แล้ว (0391)',
+         'ลบรอบขายของโซนที่ไม่อยู่ในงานบริการของ ' || v_order."orderNumber" || ' แล้ว (0392)',
          to_jsonb(t), now()
     FROM public.service_zone_terms t
    WHERE t."salesOrderId" = v_order.id
@@ -879,7 +880,7 @@ BEGIN
   IF v_order."revisedFromId" IS NOT NULL THEN
     INSERT INTO public.audit_logs ("actorId", "actorName", action, "entityType", "entityId", summary, before, after, "createdAt")
     SELECT p_actor_id, v_actor_name, 'update', 'service_plan', sp.id,
-           'ย้ายรอบบริการไปใบ Rev. ' || v_order."orderNumber" || ' (0391)',
+           'ย้ายรอบบริการไปใบ Rev. ' || v_order."orderNumber" || ' (0392)',
            to_jsonb(sp),
            to_jsonb(sp) || jsonb_build_object('salesOrderId', v_order.id, 'updatedAt', now()),
            now()
@@ -1341,7 +1342,7 @@ BEGIN
         $re$(RETURNING \* INTO v_order;)(\s*RETURN jsonb_build_object\()$re$,
         $rp$\1
 
-  -- 0391: เปิดงานบริการในทรานแซกชันเดียวกับการอนุมัติ (ไม่ครบ = ถอยทั้งการอนุมัติ)
+  -- 0392: เปิดงานบริการในทรานแซกชันเดียวกับการอนุมัติ (ไม่ครบ = ถอยทั้งการอนุมัติ)
   PERFORM public.sales_order_open_service_terms(v_order.id, p_actor_id, p_actor_name);
   SELECT * INTO v_order FROM public.sales_orders WHERE id = v_order.id;\2$rp$,
         'sales_order_open_service_terms('),
@@ -1349,7 +1350,7 @@ BEGIN
         $re$(RAISE EXCEPTION 'sales_order_revision_lines_required';\s*END IF;)$re$,
         $rp$\1
 
-  -- 0391: ยกงานบริการ (ชนิด · แพ็คเกจ · ช่วงบริการ · โซน) ไปใบ Rev.
+  -- 0392: ยกงานบริการ (ชนิด · แพ็คเกจ · ช่วงบริการ · โซน) ไปใบ Rev.
   PERFORM public.sales_order_copy_service_setup(v_source.id, v_revision.id);$rp$,
         'sales_order_copy_service_setup(')
     ) AS t(fn, anchor, replacement, marker)
@@ -1358,7 +1359,7 @@ BEGIN
       FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
      WHERE n.nspname = 'public' AND p.proname = r.fn;
     IF v_n <> 1 THEN
-      RAISE EXCEPTION 'mig_0391_patch_overload % count=%', r.fn, v_n;
+      RAISE EXCEPTION 'mig_0392_patch_overload % count=%', r.fn, v_n;
     END IF;
 
     SELECT p.oid, p.prosrc INTO v_oid, v_src
@@ -1366,7 +1367,7 @@ BEGIN
      WHERE n.nspname = 'public' AND p.proname = r.fn;
 
     IF strpos(v_src, r.marker) > 0 THEN
-      RAISE NOTICE '0391: % — ปะไว้แล้ว', r.fn;
+      RAISE NOTICE '0392: % — ปะไว้แล้ว', r.fn;
       CONTINUE;
     END IF;
 
@@ -1374,11 +1375,11 @@ BEGIN
     SELECT count(*) INTO v_hits_src FROM regexp_matches(v_src, r.anchor, 'g');
     SELECT count(*) INTO v_hits_def FROM regexp_matches(v_def, r.anchor, 'g');
     IF v_hits_src <> 1 OR v_hits_def <> 1 THEN
-      RAISE EXCEPTION 'mig_0391_patch_anchor % hits=%/%', r.fn, v_hits_src, v_hits_def;
+      RAISE EXCEPTION 'mig_0392_patch_anchor % hits=%/%', r.fn, v_hits_src, v_hits_def;
     END IF;
 
     EXECUTE regexp_replace(v_def, r.anchor, r.replacement);
-    RAISE NOTICE '0391: % — ปะแล้ว', r.fn;
+    RAISE NOTICE '0392: % — ปะแล้ว', r.fn;
   END LOOP;
 END
 $patch$;
@@ -1396,7 +1397,7 @@ BEGIN
      AND strpos(p.prosrc, 'sales_order_open_service_terms(') > 0
      AND (length(p.prosrc) - length(replace(p.prosrc, 'sales_order_open_service_terms(', '')))
          / length('sales_order_open_service_terms(') = 1;
-  IF v_n <> 1 THEN RAISE EXCEPTION 'mig_0391_verify p1=%', v_n; END IF;
+  IF v_n <> 1 THEN RAISE EXCEPTION 'mig_0392_verify p1=%', v_n; END IF;
 
   SELECT count(*) INTO v_n
     FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
@@ -1405,7 +1406,7 @@ BEGIN
      AND strpos(p.prosrc, 'sales_order_copy_service_setup(') > 0
      AND (length(p.prosrc) - length(replace(p.prosrc, 'sales_order_copy_service_setup(', '')))
          / length('sales_order_copy_service_setup(') = 1;
-  IF v_n <> 1 THEN RAISE EXCEPTION 'mig_0391_verify p2=%', v_n; END IF;
+  IF v_n <> 1 THEN RAISE EXCEPTION 'mig_0392_verify p2=%', v_n; END IF;
 
   FOREACH v_fn IN ARRAY ARRAY[
     'public.fg_category_of(text)',
@@ -1423,7 +1424,7 @@ BEGIN
   ] LOOP
     IF has_function_privilege('anon', v_fn, 'EXECUTE')
        OR has_function_privilege('authenticated', v_fn, 'EXECUTE') THEN
-      RAISE EXCEPTION 'mig_0391_verify grant %', v_fn;
+      RAISE EXCEPTION 'mig_0392_verify grant %', v_fn;
     END IF;
   END LOOP;
 
@@ -1431,11 +1432,11 @@ BEGIN
    WHERE NOT tgisinternal
      AND tgname IN ('sales_order_line_zones_guard_trg', 'sales_order_lines_service_guard_trg',
                     'sales_orders_service_period_guard_trg');
-  IF v_n <> 3 THEN RAISE EXCEPTION 'mig_0391_verify triggers=%', v_n; END IF;
+  IF v_n <> 3 THEN RAISE EXCEPTION 'mig_0392_verify triggers=%', v_n; END IF;
 
   IF NOT (SELECT c.relrowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
            WHERE n.nspname = 'public' AND c.relname = 'sales_order_line_zones') THEN
-    RAISE EXCEPTION 'mig_0391_verify rls';
+    RAISE EXCEPTION 'mig_0392_verify rls';
   END IF;
 END
 $verify$;

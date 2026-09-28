@@ -241,7 +241,7 @@ test('🔴 โมดัลยกเลิก SO โชว์เหตุที�
 test('🔴 โมดัลอื่นของใบย้อนหลัง (ตีกลับ · ดึงกลับ · ลบ/บังคับลบ) ก็ต้องโชว์เหตุที่ API ตีกลับในโมดัล', () => {
   const page = code(PAGE);
   const dialogs = page.match(/<ReasonDialog[\s\S]*?\n {6}\/>/g) || [];
-  assert.equal(dialogs.length, 3, 'หน้านี้มีโมดัลเหตุผลสามตัว (ตีกลับ · ดึงกลับ/ย้อนการอนุมัติ · ตีกลับงานบริการย้อนหลัง — mig 0391)');
+  assert.equal(dialogs.length, 3, 'หน้านี้มีโมดัลเหตุผลสามตัว (ตีกลับ · ดึงกลับ/ย้อนการอนุมัติ · ตีกลับงานบริการย้อนหลัง — mig 0392)');
   for (const dialog of dialogs) assert.match(dialog, /submitError=\{error\}/);
   // โมดัลลบใช้ ConfirmDialog ตัวเดียวกับโมดัลอนุมัติ ⇒ ต้องเปิดธง showsError เองรายใบ
   const remove = slice(page, 'function remove() {', '\n  }');
@@ -270,7 +270,7 @@ test('🔴 โมดัลยืนยันทุกตัวของหน้
     ['const openHistoricalApprove = (override = false) => {', '\n  };'],
     ['{ id: "revise", kind: "revise"', '\n      } }'],
     ['id: "finance-approve"', '\n    },'],
-    /* งานบริการย้อนหลัง (mig 0391 · PR-A): ยื่นตรวจงานบริการ · อนุมัติงานบริการ */
+    /* งานบริการย้อนหลัง (mig 0392 · PR-A): ยื่นตรวจงานบริการ · อนุมัติงานบริการ */
     ['async function pressBackfillSubmit() {', '\n  }'],
     ['async function openBackfillApprove() {', '\n  }'],
   ];

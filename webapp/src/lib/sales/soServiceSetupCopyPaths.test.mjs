@@ -1,7 +1,7 @@
-// ── ทางก๊อปของงานบริการ (mig 0391) — ออก Rev. ยกไป · สร้างใบจากใบเสนอราคาไม่ยก ────────────────────────
+// ── ทางก๊อปของงานบริการ (mig 0392) — ออก Rev. ยกไป · สร้างใบจากใบเสนอราคาไม่ยก ────────────────────────
 //
 // ⭐ serviceRoundsCopyPaths.test.mjs อ่านแค่รายการคอลัมน์ INSERT ของฟังก์ชันออก Rev. (0376) — ช่วงบริการไม่ได้ไปทางนั้น
-//    แต่ไปทางจุดปะ P2 ของ 0391 (sales_order_copy_service_setup) ⇒ ยามนั้นประกาศ servicePeriodFrom/To ไว้ใน
+//    แต่ไปทางจุดปะ P2 ของ 0392 (sales_order_copy_service_setup) ⇒ ยามนั้นประกาศ servicePeriodFrom/To ไว้ใน
 //    REVISION_RESETS แล้วชี้มาที่นี่ · ไฟล์นี้ยืนยันว่าทางที่ยกไปจริงมีอยู่และยกของครบ
 // ⭐ ใบใหม่จากใบเสนอราคาเริ่มงานบริการว่างเสมอ — ฝ่ายขายตั้งที่ใบสั่งขาย (ไม่มีอะไรบนใบเสนอราคาให้ยก)
 import test from 'node:test';
@@ -11,7 +11,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 const MIGRATIONS = new URL('../../../supabase/migrations/', import.meta.url);
 const read = (name) => readFileSync(new URL(name, MIGRATIONS), 'utf8');
 const stripComments = (sql) => sql.replace(/--[^\n]*/g, '');
-const CODE = stripComments(read('0391_so_service_setup.sql'));
+const CODE = stripComments(read('0392_so_service_setup.sql'));
 
 /* นิยามล่าสุดในโฟลเดอร์ (ไฟล์หลังทับไฟล์ก่อน) — ท่าเดียวกับ serviceRoundsCopyPaths.test.mjs */
 function latestDefinitionOf(fnName) {
@@ -30,7 +30,7 @@ function latestDefinitionOf(fnName) {
 
 const copyFn = () => {
   const from = CODE.indexOf('CREATE OR REPLACE FUNCTION public.sales_order_copy_service_setup(');
-  assert.ok(from >= 0, '0391 ต้องนิยาม sales_order_copy_service_setup');
+  assert.ok(from >= 0, '0392 ต้องนิยาม sales_order_copy_service_setup');
   return CODE.slice(from, CODE.indexOf('\n$$;', from));
 };
 
@@ -40,7 +40,7 @@ const SETUP_STATE_COLUMNS = [
   'serviceSetupRejectedReason', 'serviceSetupApprovedAt', 'serviceSetupApprovedById', 'serviceSetupApprovedByName',
 ];
 
-test('P2 ของ 0391 เรียก sales_order_copy_service_setup(v_source.id, v_revision.id) ในฟังก์ชันออก Rev.', () => {
+test('P2 ของ 0392 เรียก sales_order_copy_service_setup(v_source.id, v_revision.id) ในฟังก์ชันออก Rev.', () => {
   const rows = [...CODE.matchAll(/\('revise_approved_sales_order_atomic',\s*\$re\$[\s\S]*?\$re\$,\s*\$rp\$([\s\S]*?)\$rp\$/g)];
   assert.equal(rows.length, 1, 'ต้องมีแถวปะของฟังก์ชันออก Rev. แถวเดียว');
   assert.ok(rows[0][1].includes('PERFORM public.sales_order_copy_service_setup(v_source.id, v_revision.id);'));

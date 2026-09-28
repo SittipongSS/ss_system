@@ -1,17 +1,17 @@
-// ── ด่านเงินของใบบริการขยับไหมหลังรัน 0391 — ธงรายใบก่อน/หลัง (อ่านอย่างเดียว) ──────────────────────────
+// ── ด่านเงินของใบบริการขยับไหมหลังรัน 0392 — ธงรายใบก่อน/หลัง (อ่านอย่างเดียว) ──────────────────────────
 //
 // ⭐ ทำไมต้องมี (#1683 · แผน PR-A §2.2 · §3.5): `orderHasServiceRounds` คือสวิตช์ของด่าน "ใบบริการต้องมีช่วงครอบ
-//   ก่อนบัญชีรับรองงวด" — 0391 เพิ่ม `serviceFgCode` ให้บรรทัดพิมพ์เองนับเป็นแพ็คเกจ **เฉพาะหลังใบประทับ
+//   ก่อนบัญชีรับรองงวด" — 0392 เพิ่ม `serviceFgCode` ให้บรรทัดพิมพ์เองนับเป็นแพ็คเกจ **เฉพาะหลังใบประทับ
 //   `serviceTermsOpenedAt`** ⇒ ใบที่ยังไม่ประทับต้องได้ธงเดิมทุกใบ ถ้าขยับ = บัญชีรับรองงวดของใบจริงไม่ได้ทันที
-//   ไม่ใช่ตัวเลขที่ฮาร์ดโค้ดไว้ (prod ขยับทุกวัน) — เทียบ **ธงรายใบ** กับฐานที่จับไว้ก่อนรัน 0391
+//   ไม่ใช่ตัวเลขที่ฮาร์ดโค้ดไว้ (prod ขยับทุกวัน) — เทียบ **ธงรายใบ** กับฐานที่จับไว้ก่อนรัน 0392
 //
 // ประชากร: ใบ pipeline ทุกใบที่ไม่ใช่ cancelled/revised — route งวดถามด่านนี้กับทุกสถานะ (installments/route.js)
-//   รวมร่าง Rev. ที่มีงวดย้ายมา · `select('*')` ทนคอลัมน์ 0391 ที่ยังไม่มีก่อนรัน
+//   รวมร่าง Rev. ที่มีงวดย้ายมา · `select('*')` ทนคอลัมน์ 0392 ที่ยังไม่มีก่อนรัน
 // บริบท: ต้องโหลดโครงการ/ดีลมาด้วย — ไม่งั้นสายของใบเป็น null แล้ว `orderHasServiceRounds` ตอบ false ทุกใบ
 //   (สคริปต์จะ "ผ่าน" โดยไม่ได้พิสูจน์อะไรเลย) ⇒ ยืนยันว่ามีอย่างน้อยหนึ่งใบที่ธงเป็นจริงด้วย
 //
 // Usage (รันจากโฟลเดอร์ webapp — loader map '@/' ไปที่ <cwd>/src · อ่าน .env.local):
-//   node --import ./scripts/test-loader.mjs scripts/check-service-money-scope.mjs --save-baseline   (ก่อนรัน 0391)
+//   node --import ./scripts/test-loader.mjs scripts/check-service-money-scope.mjs --save-baseline   (ก่อนรัน 0392)
 //   node --import ./scripts/test-loader.mjs scripts/check-service-money-scope.mjs --compare         (หลัง deploy)
 //   --out <ไฟล์>  ใช้ไฟล์อื่นแทนค่าตั้งต้น (ซ้อมรันโดยไม่ทับฐานจริง)
 //
@@ -31,7 +31,7 @@ const mode = args.includes('--save-baseline') ? 'save' : args.includes('--compar
 const outIndex = args.indexOf('--out');
 const OUT = outIndex >= 0 && args[outIndex + 1] ? args[outIndex + 1] : DEFAULT_OUT;
 if (!mode) {
-  console.error('ระบุโหมด: --save-baseline (ก่อนรัน 0391) หรือ --compare (หลัง deploy) · --out <ไฟล์> ได้');
+  console.error('ระบุโหมด: --save-baseline (ก่อนรัน 0392) หรือ --compare (หลัง deploy) · --out <ไฟล์> ได้');
   process.exit(2);
 }
 
@@ -131,7 +131,7 @@ let baseline;
 try {
   baseline = JSON.parse(readFileSync(OUT, 'utf8'));
 } catch (error) {
-  die(`ฐานเทียบ ${OUT} (รัน --save-baseline ก่อนรัน 0391)`, error);
+  die(`ฐานเทียบ ${OUT} (รัน --save-baseline ก่อนรัน 0392)`, error);
 }
 const before = baseline.rows || {};
 const fail = [];

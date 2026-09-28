@@ -119,7 +119,7 @@ test('🔴 ห้ามส่งคีย์ ctx ที่ตัวรับไ�
   assert.doesNotMatch(page, /\{ project: order\?\.project \}/);
 });
 
-/* ══ mig 0391 (PR-A): แพ็คเกจที่ฝ่ายขายเลือกให้บรรทัดพิมพ์เอง — ด่านเงินขยายหลังประทับเท่านั้น ═══════════ */
+/* ══ mig 0392 (PR-A): แพ็คเกจที่ฝ่ายขายเลือกให้บรรทัดพิมพ์เอง — ด่านเงินขยายหลังประทับเท่านั้น ═══════════ */
 const manualPackage = { id: 'L3', fgCode: null, productId: null, serviceKind: 'package', serviceProductId: 'P1', serviceFgCode: 'FG-AAAA-02-001-00009' };
 const fnUser = { id: 'U1', role: 'finance', department: 'FN' };
 const uncoveredRow = { id: 'I1', seq: 1, status: 'reported', amount: 100, coversFrom: null, coversTo: null };

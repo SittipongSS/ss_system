@@ -16,11 +16,11 @@
 import { lineIsServicePackage } from '@/lib/sales/serviceOrders';
 // ใบสั่งขายย้อนหลัง (mig 0374) — ไฟล์ตัวตัดสิน import แค่ permissions.js ซึ่งไม่ import อะไร (ไม่มีวงวน · ฝั่ง client ใช้ได้)
 import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
-// งานบริการรายบรรทัด (mig 0391) — ไฟล์นี้ import ตัวนั้นได้ แต่ตัวนั้นห้าม import ไฟล์นี้กลับ (กฎ 16 · serviceSetupImports.test.mjs)
+// งานบริการรายบรรทัด (mig 0392) — ไฟล์นี้ import ตัวนั้นได้ แต่ตัวนั้นห้าม import ไฟล์นี้กลับ (กฎ 16 · serviceSetupImports.test.mjs)
 import { serviceLineRole, serviceSetupFlow, serviceSetupRequired } from '@/lib/sales/serviceSetup';
 
 /** บรรทัดไหนกรอกรอบได้ — เกณฑ์เดียวกับที่ใช้ตัดสินว่าใบไหนมีรอบบริการ
- *  ⭐ mig 0391: ใบที่ประทับ `serviceTermsOpenedAt` แล้วถามชนิดของบรรทัด (แพ็คเกจพิมพ์เองที่ฝ่ายขายตั้งให้ก็นับ)
+ *  ⭐ mig 0392: ใบที่ประทับ `serviceTermsOpenedAt` แล้วถามชนิดของบรรทัด (แพ็คเกจพิมพ์เองที่ฝ่ายขายตั้งให้ก็นับ)
  *    ยังไม่ประทับ = เกณฑ์เดิม (รหัส FG หมวด 02-001) — บรรทัดพิมพ์เองตั้งรอบที่ตารางรายการ ไม่ใช่ช่องนี้
  *  ⚠️ มีอาร์กิวเมนต์ `order` แล้ว — ห้ามส่งแบบ point-free (`.filter(lineTakesServiceRounds)` ส่ง index มาเป็น order) */
 export const lineTakesServiceRounds = (line, order = null) => (order?.serviceTermsOpenedAt
@@ -73,11 +73,11 @@ export function serviceRoundsEditError(order, { canEdit = false } = {}) {
   if (isHistoricalOrder(order) && order?.status !== 'approved') {
     return 'จำนวนรอบของใบย้อนหลังแก้ที่ฟอร์มคีย์ใบจนกว่า AE Sup จะอนุมัติ';
   }
-  /* 🔄 mig 0391: trigger ของฐานล็อกการแก้รอบของทุกใบระหว่างรออนุมัติ/ย้อนการอนุมัติแล้ว (ผู้อนุมัติกำลังดูตัวเลขชุดนั้น ·
+  /* 🔄 mig 0392: trigger ของฐานล็อกการแก้รอบของทุกใบระหว่างรออนุมัติ/ย้อนการอนุมัติแล้ว (ผู้อนุมัติกำลังดูตัวเลขชุดนั้น ·
      ใบที่ย้อนแล้วแก้ที่ใบ Rev.) — ก่อนนี้ช่องนี้ปล่อยผ่าน ⇒ กดแล้วเจอ error ดิบจาก trigger */
   if (order?.status === 'pending_approval') return SERVICE_ROUNDS_EDIT_TEXT.pending;
   if (order?.status === 'approval_revoked') return SERVICE_ROUNDS_EDIT_TEXT.revoked;
-  /* ⭐ ใบ pipeline สาย SERVICE (mig 0391) — รอบเป็นส่วนหนึ่งของการตั้งงานบริการที่ตารางรายการ (บันทึกพร้อมโซน/แพ็ค)
+  /* ⭐ ใบ pipeline สาย SERVICE (mig 0392) — รอบเป็นส่วนหนึ่งของการตั้งงานบริการที่ตารางรายการ (บันทึกพร้อมโซน/แพ็ค)
      จนกว่าใบจะประทับ · ประทับแล้วแก้รอบที่นี่ได้ตามมติเดิม (≥ 1 — ตรวจที่ validateServiceRoundsPatch) */
   if (serviceSetupRequired(order)) {
     const flow = serviceSetupFlow(order);
@@ -107,7 +107,7 @@ export function validateServiceRoundsPatch(patch, lines = [], order = null) {
       return { value: null, error: 'กรอกจำนวนรอบได้เฉพาะรายการแพ็คเกจบริการ (หมวด 02-001)' };
     }
     const rounds = normalizeServiceRounds(raw);
-    /* ⭐ ใบที่ประทับแล้ว (mig 0391): รอบขายของโซนเกิดแล้ว — ล้างเป็น "ยังไม่ระบุ" ไม่ได้ (trigger ตอบ rounds_required) */
+    /* ⭐ ใบที่ประทับแล้ว (mig 0392): รอบขายของโซนเกิดแล้ว — ล้างเป็น "ยังไม่ระบุ" ไม่ได้ (trigger ตอบ rounds_required) */
     if (rounds === null && order?.serviceTermsOpenedAt) return { value: null, error: SERVICE_ROUNDS_EDIT_TEXT.required };
     value.set(lineId, rounds);
   }

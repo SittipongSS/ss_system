@@ -31,7 +31,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
 
   try {
     const todayIso = businessDate();
-    /* ⭐ mig 0391: ชนิด/แพ็คเกจที่ฝ่ายขายเลือก + หมวด (metadata #1844) — ใบที่ประทับแล้วถาม "มีแพ็คเกจไหม" ผ่าน
+    /* ⭐ mig 0392: ชนิด/แพ็คเกจที่ฝ่ายขายเลือก + หมวด (metadata #1844) — ใบที่ประทับแล้วถาม "มีแพ็คเกจไหม" ผ่าน
        `serviceFgCode` (ตัวตัดสิน `hasServicePackageLine` อ่านช่องนี้เมื่อใบประทับ) · `productId` ให้ตัวตัดสินรู้ว่าเป็นบรรทัด FG */
     const { data: lines, error: lineError } = await supabase
       .from('sales_order_lines')

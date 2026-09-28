@@ -1,4 +1,4 @@
-// ── เส้น `…/sales-orders/[id]/service-setup` (mig 0391 · PR-A · แผน §2.4) — handler จริงกับ supabase ปลอม + ยามรูปซอร์ส ──
+// ── เส้น `…/sales-orders/[id]/service-setup` (mig 0392 · PR-A · แผน §2.4) — handler จริงกับ supabase ปลอม + ยามรูปซอร์ส ──
 //
 // สิ่งที่ชุดนี้ล็อกไว้:
 //   · GET: อ่านใบด้วย loadScoped โหมด view · อ่านพัง (รวมตัวเลือก FG) = 500 ข้อความไทย ไม่เดา · canEdit มาจาก server

@@ -135,12 +135,12 @@ test('⭐ salesOrderForcePreview: บอกด้วยว่ารอบบร�
   assert.equal(row.count, 3);
   // ต้องบอกด้วยว่าอะไร **ไม่** หาย ไม่งั้นคนอ่านจะคิดว่าโซนกับประวัติหายไปทั้งหมด
   assert.match(row.label, /โซนและประวัติการเข้าไซต์ยังอยู่/);
-  /* 🔄 mig 0391 (D14): TS ผูกโซนเองไม่ได้แล้ว ⇒ รอบบริการกลับมาได้ทางเดียวคือฝ่ายขายออกใบใหม่ — ห้ามบอกว่าคิวจะ "ทวงซ้ำ" */
+  /* 🔄 mig 0392 (D14): TS ผูกโซนเองไม่ได้แล้ว ⇒ รอบบริการกลับมาได้ทางเดียวคือฝ่ายขายออกใบใหม่ — ห้ามบอกว่าคิวจะ "ทวงซ้ำ" */
   assert.ok(notes.includes('🔴 ใบนี้เป็นต้นเรื่องของรอบบริการ 3 รอบ — ลบแล้วรอบบริการของโซนเหล่านั้นหายไปกับใบ — TS ต้องให้ฝ่ายขายออกใบใหม่'));
   assert.ok(!notes.some((n) => n.includes('คิวงานเข้าใหม่จะทวงซ้ำ')));
 });
 
-test('⭐ salesOrderForcePreview: รายการงานบริการของใบ (โซนที่เลือก · mig 0391) หายตามใบ — พรีวิวต้องนับ', async () => {
+test('⭐ salesOrderForcePreview: รายการงานบริการของใบ (โซนที่เลือก · mig 0392) หายตามใบ — พรีวิวต้องนับ', async () => {
   const supabase = stubCount({ 'sales_order_line_zones:salesOrderId': 57 });
   const { cascade } = await salesOrderForcePreview(supabase, { id: 'SO1', status: 'draft' });
   const row = cascade.find((c) => c.label === 'รายการงานบริการ (โซนที่เลือกในใบ)');

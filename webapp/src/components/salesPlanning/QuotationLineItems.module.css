@@ -287,7 +287,7 @@
   font-size: var(--fs-2);
 }
 
-/* แถวต่อท้ายของบรรทัด (`renderAfterRow` — กล่อง "งานบริการของรายการนี้" ของใบสั่งขาย · mig 0391)
+/* แถวต่อท้ายของบรรทัด (`renderAfterRow` — กล่อง "งานบริการของรายการนี้" ของใบสั่งขาย · mig 0392)
    ⭐ อ่านเป็นก้อนเดียวกับบรรทัดข้างบน: บรรทัดที่มีแถวต่อท้ายไม่มีเส้นคั่นล่าง · แถวต่อท้ายไม่มีระยะบน
    ⚠️ specificity ต้องชนะ `.scroll[data-family] td` ของ Table.module.css (padding-block · hover) — จึงผูกกับ .readOnlyTable */
 .readOnlyTable tbody tr:has(+ tr.afterRow) > td {

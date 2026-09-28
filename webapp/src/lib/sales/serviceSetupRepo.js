@@ -1,4 +1,4 @@
-// ── ที่อ่าน/เขียนงานบริการรายบรรทัดของใบสั่งขาย (mig 0391 · PR-A) — ฝั่ง server เท่านั้น ─────────────────
+// ── ที่อ่าน/เขียนงานบริการรายบรรทัดของใบสั่งขาย (mig 0392 · PR-A) — ฝั่ง server เท่านั้น ─────────────────
 //
 // ⭐ **ตัวโหลดบริบทตัวเดียว** (`loadServiceSetupContext`) — GET/PATCH/POST ของ `…/service-setup` (U3) และด่านยื่น/อนุมัติ
 //   ของใบ (U4) ป้อนบริบทก้อนเดียวกันเข้าตัวตัดสินล้วนของ `serviceSetup.js` ⇒ จอกับด่านเห็นข้อที่ยังขาดชุดเดียวกัน
@@ -10,7 +10,7 @@
 //    และ `serviceSetupIssues` throw เมื่อไม่มี `fgOptionIds` (fail-closed) · ขอแล้ว = Set เสมอ (ว่างได้ ไม่ใช่ null)
 // ⚠️ ลิสต์ที่โตตามข้อมูล (โซน · ไซต์ · สินค้า · ไซต์ของพี่น้อง) ซอยก้อน + ไล่หน้า (`fetchAllInChunks`)
 //    และตารางที่ติดเพดาน check:rowcap อ่านผ่าน `fetchAllResult` / `.maybeSingle()` เท่านั้น
-// ⚠️ ไม่แตะคอลัมน์ snapshot ของบรรทัด — การเขียนทั้งหมดไปทาง RPC ของ 0391 (ด่านสถานะ/ล็อกอยู่ที่ฐานด้วย)
+// ⚠️ ไม่แตะคอลัมน์ snapshot ของบรรทัด — การเขียนทั้งหมดไปทาง RPC ของ 0392 (ด่านสถานะ/ล็อกอยู่ที่ฐานด้วย)
 import { businessDate } from '@/lib/businessDate';
 import { categoryOf } from '@/lib/master/categoryOf';
 import { customerTaxSiblings } from '@/lib/master/customerTaxSiblings';
@@ -315,7 +315,7 @@ export async function loadSiblingSiteCounts(supabase, customerId) {
   return siblingSiteCountsOf(supabase, id, await taxSiblingsOf(supabase, id));
 }
 
-/* ── RPC ของ 0391 ─────────────────────────────────────────────────────────────────────────────────────── */
+/* ── RPC ของ 0392 ─────────────────────────────────────────────────────────────────────────────────────── */
 
 const UNKNOWN_RPC_MESSAGE = 'ดำเนินการกับงานบริการไม่สำเร็จ กรุณาลองใหม่ หากยังไม่ได้แจ้งผู้ดูแลระบบ';
 

@@ -29,7 +29,7 @@ export const GET = withUser(async ({ user, supabase }) => {
 
   // ⚠️ ไล่ทีละหน้า — เพดาน 1,000 แถวตัดเงียบ ๆ · `orderDate` ซ้ำกันได้ทั้งวัน จึงพ่วง
   // `id` ปิดท้ายให้ลำดับนิ่ง ไม่งั้นไล่หน้าแล้วได้แถวซ้ำและแถวหายพร้อมกัน
-  // ⭐ `*` = พก "serviceTermsOpenedAt" + สถานะตั้งงานบริการย้อนหลัง (mig 0391) ให้ตัวตัดสินด่านเงิน/ชิป/เลนข้างล่าง
+  // ⭐ `*` = พก "serviceTermsOpenedAt" + สถานะตั้งงานบริการย้อนหลัง (mig 0392) ให้ตัวตัดสินด่านเงิน/ชิป/เลนข้างล่าง
   const { data: orders, error } = await fetchAllResult(() => supabase
     .from('sales_orders')
     /* money-decider feed */
@@ -55,7 +55,7 @@ export const GET = withUser(async ({ user, supabase }) => {
     /* 🚫 ธงของ 0362 (`siteNotFoundAt`/`siteClosedAt`) ไม่ถูกอ่านที่นี่แล้ว (มติ 22/09) — ชิป/ตัวกรอง
        "TS ไม่พบจุด" ถอดไปพร้อมเส้นนั้น · บรรทัดใบย้อนหลังผูกโซนตั้งแต่ตอนคีย์ ⇒ ไม่มีจุดลอยให้แจ้ง
        ⚠️ คอลัมน์ยังอยู่ในฐาน (0 แถว) — ไม่ต้องเลือกมาเพื่อให้ทะเบียนเบาลงอีกช่อง */
-    /* ⭐ งานบริการรายบรรทัด (mig 0391): `"serviceFgCode"` = รหัสที่ด่านเงินอ่านเมื่อใบประทับ (D13) · `"productId"` +
+    /* ⭐ งานบริการรายบรรทัด (mig 0392): `"serviceFgCode"` = รหัสที่ด่านเงินอ่านเมื่อใบประทับ (D13) · `"productId"` +
        `"serviceKind"` + หมวดของบรรทัดพิมพ์เอง = ชนิดของบรรทัด (`serviceLineRole`) ที่ชิป "ยังไม่ตั้งงานบริการ" และเลน
        "รอฉันลงมือ" ถาม (D25) · `"serviceProductId"` = ตัวนับบรรทัดครบของแถวรอตรวจ
        ⚠️ หมวดอ่าน **คีย์เดียว** ของ metadata (`categoryCode:metadata->>categoryCode`) ไม่ใช่ metadata ทั้งก้อน — ทะเบียนมีหลายพันบรรทัด */
@@ -201,7 +201,7 @@ export const GET = withUser(async ({ user, supabase }) => {
   }
   const serviceIdSet = new Set(serviceOrderIds);
 
-  /* ── งานบริการรายบรรทัด (mig 0391 · PR-A) ─────────────────────────────────────────────────────────────
+  /* ── งานบริการรายบรรทัด (mig 0392 · PR-A) ─────────────────────────────────────────────────────────────
      ⭐ โซนที่เลือกไว้ (sales_order_line_zones) โหลด **เฉพาะ** ใบที่ต้องใช้: ใบที่งานบริการย้อนหลังรอผู้จัดการตรวจ
        (แถวคิว "งานบริการ (ใบเดิม)" — z โซนใน s ไซต์ · รอบ) และใบบริการที่ประทับแล้ว (รอบที่ขาย n/N นับรายไซต์ · D23)
        ทั้งทะเบียนมีหลายพันใบ แต่สองกลุ่มนี้หลักสิบ ⇒ กรองก่อนค่อยยิง · ซอยก้อน + ไล่หน้า (หนึ่งบรรทัดมีได้ 500 โซน)
@@ -288,7 +288,7 @@ export const GET = withUser(async ({ user, supabase }) => {
       /* ⚠️ ส่ง `role` ด้วยเสมอ — เลนผู้รีวิวตัดใบที่ตัวเองสร้าง/ยื่นออก ยกเว้น admin (อนุมัติใบตัวเองได้)
          ไม่ส่ง = admin ถูกตัดใบของตัวเองออก ⇒ ลิสต์ "รอฉันลงมือ" ไม่ตรงกับป้ายบนเมนู (nav/counts ส่ง role) */
       /* ⚠️ แนบ deal ให้ helper — ใบที่ถูกย้อนอนุมัติตัดสินจากเจ้าของดีล (มติ 24/09) · แถวดิบไม่มี deal = ลิสต์กับป้ายไม่ตรงกัน */
-      /* ⭐ เลนงานบริการย้อนหลัง (mig 0391 · D26): ผู้จัดการตรวจ (ตัวตัดสินอ่านจากแถว) + เจ้าของดีลตั้ง — เลนหลังต้องรู้ว่า
+      /* ⭐ เลนงานบริการย้อนหลัง (mig 0392 · D26): ผู้จัดการตรวจ (ตัวตัดสินอ่านจากแถว) + เจ้าของดีลตั้ง — เลนหลังต้องรู้ว่า
          ใบนี้ **ต้องตั้งจริง** (`serviceBackfillNeeded` ใช้บรรทัด + สายธุรกิจ) ⇒ ผู้เรียกคิดส่งเข้าไป · ป้ายบนเมนูคิดแบบเดียวกัน */
       _waitingOnMe: isSalesOrderWaitingOnMe({ ...row, deal: dealById.get(row.dealId) || null }, {
         userId: user.id, reviewer: reviewer && !staleServiceReview(row), role: user.role,
@@ -308,7 +308,7 @@ export const GET = withUser(async ({ user, supabase }) => {
          รอปิด" ไม่ใช่ทุกใบที่อนุมัติ · ไม่ส่งงวด = ด่านตอบ false ⇒ คิวจะว่างเงียบ ๆ */
       _awaitingFinanceReview: canConfirmPayment(user)
         && awaitsFinanceReview(row, installmentsByOrder.get(row.id) || []),
-      /* ⭐ งานบริการย้อนหลังรอฉันตรวจ (mig 0391 · D28) — ตัวตัดสินตัวเดียว (ค่า 'submitted' ค้างบนใบที่ไม่ได้อนุมัติอยู่ไม่มีผล)
+      /* ⭐ งานบริการย้อนหลังรอฉันตรวจ (mig 0392 · D28) — ตัวตัดสินตัวเดียว (ค่า 'submitted' ค้างบนใบที่ไม่ได้อนุมัติอยู่ไม่มีผล)
          · ตัดคนยื่นเองออก ยกเว้น admin (Admin Override ที่หน้าใบ) — กติกาเดียวกับ `_awaitingMyApproval` */
       _awaitingMyServiceReview: reviewer && serviceBackfillAwaitingReview(row)
         && (user.role === 'admin' || row.serviceSetupSubmittedById !== user.id)
@@ -327,7 +327,7 @@ export const GET = withUser(async ({ user, supabase }) => {
         contract: row.serviceContractId ? (contractById.get(row.serviceContractId) || null) : null,
         // จ่ายถึง = ปลายช่วงครอบของงวดที่บัญชีรับรองแล้ว (ตัวตัดสินเดียว: paidThrough)
         paidThrough: paidThrough(installmentsByOrder.get(row.id) || []),
-        /* ⭐ ใบที่ประทับแล้ว (mig 0391 · D23): ครั้งที่ต้องไปหน้างาน = Σ รายไซต์ของรอบสูงสุดของบรรทัดที่ผูกไซต์นั้น
+        /* ⭐ ใบที่ประทับแล้ว (mig 0392 · D23): ครั้งที่ต้องไปหน้างาน = Σ รายไซต์ของรอบสูงสุดของบรรทัดที่ผูกไซต์นั้น
            (หนึ่งไซต์ไปครั้งเดียวต่อรอบ ไม่ว่ากี่บรรทัด/กี่โซน) · ใบเดิมที่ยังไม่ประทับ = Σ รายบรรทัดตามเดิม */
         roundsSold: row.serviceTermsOpenedAt
           ? serviceVisitsSold({
