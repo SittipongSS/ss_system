@@ -291,7 +291,7 @@ export default function SalesOrderDetailPage() {
   const [serviceRejectForm, setServiceRejectForm] = useState(null);
   /* "ไปแก้" ของข้อวันงวดที่รวมหลายงวด (แผงแดง · `dateFill`) = ขอให้แผงงวดเข้าโหมดตั้งวันงวดแล้วเปิด "เติมวันงวดที่ว่าง…" (#1846)
      ⭐ เป็น state ไม่ใช่ ref/อีเวนต์ — แผงงวดเมานต์เฉพาะแท็บการชำระ ⇒ คำขอต้องรอจนแผงเพิ่งเมานต์จากการสลับแท็บอ่านได้
-     · `{ issue }` ออบเจกต์ใหม่ทุกครั้งที่กด · แผงตอบ `dateFillDone(opened)` แล้วหน้าล้างคำขอ (กลับมาแท็บนี้อีกไม่เปิดซ้ำ) */
+     · `{ issue, includeDated }` ออบเจกต์ใหม่ทุกครั้งที่กด · แผงตอบ `dateFillDone(opened)` แล้วหน้าล้างคำขอ (กลับมาแท็บนี้อีกไม่เปิดซ้ำ) */
   const [dateFillAsk, setDateFillAsk] = useState(null);
   /* ร่างที่ยังไม่บันทึกสามก้อน: ฟอร์มของใบ · วันงวดในโหมดตั้งวัน (#1846) · งานบริการรายบรรทัด (hook) */
   useUnsavedChanges(dirty || datesDirty || setup.dirty);
@@ -1603,9 +1603,11 @@ export default function SalesOrderDetailPage() {
   const jumpToIssue = async (issue) => {
     if (!issue) return;
     if (issue.tab && issue.tab !== activeTab && !(await selectTab(issue.tab))) return;
-    /* ข้อวันงวดหลายงวด (#1846) — แผงงวดเปิดแผงเติม (โฟกัสหัวของแผงเอง) · เปิดไม่ได้ = `dateFillDone` ถอยไปช่องของงวดแรก */
+    /* ข้อวันงวดหลายงวด (#1846) — แผงงวดเปิดแผงเติม (โฟกัสหัวของแผงเอง) · เปิดไม่ได้ = `dateFillDone` ถอยไปช่องของงวดแรก
+       · `dateFill: 'dated'` = ทุกงวดของกลุ่มแตะได้ด้วย "จัดใหม่งวดที่มีวันแล้วด้วย" (backfill ลูกค้าเครดิต: มีกำหนดชำระ ขาดวันวางบิล)
+         ⇒ ขอเปิดพร้อมสวิตช์นั้น (คำทางลัดบนแถวบอกแล้วว่าวันเดิมถูกแทน · คนเลือกตัวเลือกแล้วตรวจในตารางก่อนบันทึก) */
     if (issue.dateFill) {
-      setDateFillAsk({ issue });
+      setDateFillAsk({ issue, includeDated: issue.dateFill === 'dated' });
       return;
     }
     revealServiceSetupField(serviceSetupFieldId(issue));

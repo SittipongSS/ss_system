@@ -18,7 +18,7 @@ import {
 import {
   ZONES_BULK_NONE_PICKED, ZONES_BULK_PACKS_INVALID, zonesBulkCapText, zonesBulkConsequence, zonesBulkPlan,
 } from '../../components/service/zonesBulkPlan.js';
-import { SERVICE_SETUP_LIMITS, serviceSetupFieldId, serviceSetupTotals } from './serviceSetup.js';
+import { SERVICE_SETUP_LIMITS, SERVICE_SETUP_PANEL_TEXT, serviceSetupFieldId, serviceSetupTotals } from './serviceSetup.js';
 
 const SRC = path.resolve(process.cwd(), 'src');
 const read = (rel) => readFileSync(path.join(SRC, rel), 'utf8');
@@ -374,33 +374,65 @@ test('#1846: ข้อวันงวดที่รวมหลายงวด 
   ]);
   const [payment] = submitGateGroups(issues, []);
   assert.equal(payment.count, 9);
-  assert.deepEqual(payment.items.map((item) => [item.entry.key, item.entry.dateFill === true, item.jump]), [
-    ['billing_missing', true, true], ['due_missing', true, true], ['coverage_missing', false, true],
+  assert.deepEqual(payment.items.map((item) => [item.entry.key, item.entry.dateFill, item.jump]), [
+    ['billing_missing', 'empty', true], ['due_missing', 'empty', true], ['coverage_missing', undefined, true],
   ], 'กลุ่มเรียงตามลำดับคอลัมน์ วันวางบิล → กำหนดชำระ · เฉพาะกลุ่มวันงวดเปิดแผงเติม');
   // ทางลัดบอกครั้งเดียวต่อแผง (สองกลุ่มวันงวดเปิดแผงเติมอันเดียวกัน — ต่อทั้งสองแถว = คำเดิมซ้ำ)
   const hinted = payment.items.filter((item) => item.entry.message.endsWith('‘เติมวันงวดที่ว่าง…’ ที่แท็บการชำระ'));
   assert.deepEqual(hinted.map((item) => item.entry.key), ['billing_missing']);
   // ลูกค้าที่ไม่ต้องมีวันวางบิล (ไม่มีเครดิต/ยังไม่ตั้ง) — กลุ่มกำหนดชำระได้ทางลัดเอง
   const dueOnly = submitGateGroups([1, 2].map((seq) => issue('due_missing', seq, 'dueDate')), [])[0].items;
-  assert.equal(dueOnly[0].entry.dateFill, true);
+  assert.equal(dueOnly[0].entry.dateFill, 'empty');
   assert.equal(dueOnly[0].entry.message, 'งวด 1–2: due_missing · 2 งวด — เติมทีเดียวได้ด้วย ‘ตั้งวันงวด’ → ‘เติมวันงวดที่ว่าง…’ ที่แท็บการชำระ');
-  // งวดที่แผงเติมไม่แตะ (`dateFillable: false` จากด่าน — เช่น ลูกค้าเครดิตที่งวดมีกำหนดชำระแล้ว) = ไม่มีธง · ไม่มีทางลัด · ไปที่ช่องงวดแรก
-  const dated = [1, 2, 3].map((seq) => issue('billing_missing', seq, 'billingDate', { billingMode: 'anyday', dateFillable: false }));
-  const [datedItem] = submitGateGroups(dated, [])[0].items;
-  assert.equal(datedItem.entry.dateFill, undefined);
-  assert.equal(datedItem.entry.message, 'งวด 1–3: billing_missing · 3 งวด', 'ทางลัดพูดว่า "เติมทีเดียวได้" — ห้ามบอกเมื่อแผงเติมไม่แตะ');
-  assert.equal(serviceSetupFieldId(datedItem.entry), 'inst-I1-billingDate');
-  // กลุ่มปน (บางงวดเติมได้) = ทางลัดไม่จริงทั้งกลุ่ม ⇒ ไปที่ช่องเหมือนกัน · กลุ่มถัดไปที่เติมได้ทั้งกลุ่มยังได้ทางลัด
+  // งวดที่แผงเติมไม่แตะทั้งสองทาง (`dateFill: null` จากด่าน — เช่น แจ้งชำระแล้ว) = ไม่มีธง · ไม่มีทางลัด · ไปที่ช่องงวดแรก
+  const locked = [1, 2, 3].map((seq) => issue('billing_missing', seq, 'billingDate', { billingMode: 'anyday', dateFill: null }));
+  const [lockedItem] = submitGateGroups(locked, [])[0].items;
+  assert.equal(lockedItem.entry.dateFill, undefined);
+  assert.equal(lockedItem.entry.message, 'งวด 1–3: billing_missing · 3 งวด', 'ทางลัดพูดว่า "เติมทีเดียวได้" — ห้ามบอกเมื่อแผงเติมไม่แตะ');
+  assert.equal(serviceSetupFieldId(lockedItem.entry), 'inst-I1-billingDate');
+  // กลุ่มปน (บางงวดไม่มีทางไหนแตะ) = ทางลัดไม่จริงทั้งกลุ่ม ⇒ ไปที่ช่องเหมือนกัน · กลุ่มถัดไปที่เติมได้ทั้งกลุ่มยังได้ทางลัด
   const mixed = submitGateGroups([
-    issue('billing_missing', 1, 'billingDate', { dateFillable: true }), issue('billing_missing', 2, 'billingDate', { dateFillable: false }),
-    issue('due_missing', 1, 'dueDate', { dateFillable: true }), issue('due_missing', 3, 'dueDate', { dateFillable: true }),
+    issue('billing_missing', 1, 'billingDate', { dateFill: 'empty' }), issue('billing_missing', 2, 'billingDate', { dateFill: null }),
+    issue('due_missing', 1, 'dueDate', { dateFill: 'empty' }), issue('due_missing', 3, 'dueDate', { dateFill: 'empty' }),
   ], [])[0].items;
-  assert.deepEqual(mixed.map((item) => [item.entry.key, item.entry.dateFill === true]), [['billing_missing', false], ['due_missing', true]]);
+  assert.deepEqual(mixed.map((item) => [item.entry.key, item.entry.dateFill]), [['billing_missing', undefined], ['due_missing', 'empty']]);
   assert.ok(mixed[1].entry.message.endsWith('‘เติมวันงวดที่ว่าง…’ ที่แท็บการชำระ'));
-  // ข้อเดี่ยว = ไปที่เซลล์ของงวดนั้น (แตะเซลล์ = เข้าโหมดตั้งวันที่งวดนั้นเอง) · ไม่มีธงเปิดแผงเติม
-  const single = submitGateGroups([issue('billing_missing', 4, 'billingDate', { billingMode: 'monthly' })], [])[0].items[0];
+  // ข้อเดี่ยว = ไปที่เซลล์ของงวดนั้น (แตะเซลล์ = เข้าโหมดตั้งวันที่งวดนั้นเอง) · ไม่มีธงเปิดแผงเติม (ธงรายงวดของด่านไม่หลุดมาเป็นคำขอเปิดแผง)
+  const single = submitGateGroups([issue('billing_missing', 4, 'billingDate', { billingMode: 'monthly', dateFill: 'empty' })], [])[0].items[0];
   assert.equal(single.entry.dateFill, undefined);
   assert.equal(serviceSetupFieldId(single.entry), 'inst-I4-billingDate');
+});
+
+test('backfill ลูกค้าเครดิต (SO-26090206-0 · AR-015): งวดมีกำหนดชำระแล้วขาดวันวางบิล = "ไปแก้" เปิดแผงเติมพร้อม "จัดใหม่งวดที่มีวันแล้วด้วย" · ทางลัดบอกว่าวันถูกคิดใหม่', () => {
+  const issue = (key, seq, field, extra = {}) => ({
+    key, tab: 'payment', installmentId: `I${seq}`, seq, field, owner: 'SA', message: `งวด ${seq}: ${key}`, ...extra,
+  });
+  const seqs = Array.from({ length: 12 }, (_, i) => i + 1);
+  // ทุกงวดของกลุ่มแตะได้ด้วย "จัดใหม่" เท่านั้น ⇒ ธงของกลุ่ม 'dated' (หน้าใบส่ง includeDated ต่อ) · ทางลัดคำของการจัดใหม่
+  const [datedItem] = submitGateGroups(seqs.map((seq) => issue('billing_missing', seq, 'billingDate', { billingMode: 'anyday', dateFill: 'dated' })), [])[0].items;
+  assert.equal(datedItem.entry.dateFill, 'dated');
+  assert.equal(datedItem.entry.message, `งวด 1–12: billing_missing · 12 งวด${SERVICE_SETUP_PANEL_TEXT.dateFillRedateHint}`);
+  assert.equal(SERVICE_SETUP_PANEL_TEXT.dateFillRedateHint,
+    ' — จัดวันใหม่ทีเดียวได้ด้วย ‘ตั้งวันงวด’ → ‘เติมวันงวดที่ว่าง…’ → ‘จัดใหม่งวดที่มีวันแล้วด้วย’ ที่แท็บการชำระ'
+    + ' (วันเดิมถูกแทนด้วยวันที่คิดตามรอบวางบิลของลูกค้า · ตรวจในตารางก่อนบันทึก)');
+  assert.equal(serviceSetupFieldId(datedItem.entry), 'inst-I1-billingDate', 'เปิดแผงไม่ได้ = ถอยไปช่องของงวดแรกเหมือนเดิม');
+  // กลุ่มปน ว่าง + มีวันแล้ว = ยังเปิดแผงได้ทั้งกลุ่ม (จัดใหม่ครอบงวดที่ว่างด้วย) ⇒ 'dated'
+  const [both] = submitGateGroups([
+    issue('billing_missing', 1, 'billingDate', { dateFill: 'empty' }), issue('billing_missing', 2, 'billingDate', { dateFill: 'dated' }),
+  ], [])[0].items;
+  assert.equal(both.entry.dateFill, 'dated');
+  assert.ok(both.entry.message.endsWith(SERVICE_SETUP_PANEL_TEXT.dateFillRedateHint));
+  // สองกลุ่มที่เปิดแผงคนละแบบ = ต่างคนต่างได้ทางลัดของตัวเอง (ครั้งเดียวต่อแบบ — แบบเดียวกันซ้ำ = คำเดิมซ้ำ)
+  const two = submitGateGroups([
+    ...[1, 2].map((seq) => issue('billing_missing', seq, 'billingDate', { dateFill: 'dated' })),
+    ...[1, 2].map((seq) => issue('due_missing', seq, 'dueDate', { dateFill: 'empty' })),
+  ], [])[0].items;
+  assert.deepEqual(two.map((item) => item.entry.dateFill), ['dated', 'empty']);
+  assert.ok(two[0].entry.message.endsWith(SERVICE_SETUP_PANEL_TEXT.dateFillRedateHint));
+  assert.ok(two[1].entry.message.endsWith(SERVICE_SETUP_PANEL_TEXT.dateFillHint));
+  // ด่านที่ยังไม่ส่งธง (ก้อน GET รุ่นก่อน) = ถือว่าค่าตั้งต้นเติมได้เหมือนเดิม · null = ไม่มีทางไหนแตะ (ไม่ใช่ "ไม่ส่ง")
+  const [legacy] = submitGateGroups([1, 2].map((seq) => issue('due_missing', seq, 'dueDate')), [])[0].items;
+  assert.equal(legacy.entry.dateFill, 'empty');
 });
 
 test('F4/F14: ข้อบล็อกของบัญชี (FN) ไม่มี "ไปแก้" + ป้ายรอฝ่ายบัญชี · กลุ่มที่มีแต่คำเตือนนับเป็น "เตือน n ข้อ"', () => {

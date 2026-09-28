@@ -20,6 +20,7 @@ import { categoryOf } from '@/lib/master/categoryOf';
 import { orderBusinessLineOf } from '@/lib/sales/serviceOrders';
 import { addDays, daysBetween, isConfirmed, monthEdge, pipelineCoverageIssues, wholeMonthsIn } from '@/lib/sales/paymentCoverage';
 import { billingRuleMonthly, billingRuleNeedsBillingDate } from '@/lib/sales/billingRule';
+import { fillInputRows, fillKindOf, fillTargetsOf } from '@/lib/sales/installmentDateDrafts';
 import { installmentRefunded, installmentVoid, paymentNotRequired } from '@/lib/sales/salesOrderPayments';
 import { bindTargetError } from '@/lib/service/intake';
 import { isHistoricalOrder, isOpeningInstallment } from '@/lib/sales/historicalOrders';
@@ -145,8 +146,13 @@ export const SERVICE_SETUP_PANEL_TEXT = Object.freeze({
   mergedSeqs: ({ seqs, rest, n }) => `งวด ${seqs}${rest} · ${n} งวด`,
   /* ข้อวันงวดที่รวมหลายงวด (วันวางบิล · กำหนดชำระ): โหมด "ตั้งวันงวด" ของแผงงวด → แผง "เติมวันงวดที่ว่าง…" เติมทุกงวดได้ในครั้งเดียว
      · ทุกชนิดของรอบ (#1846: รายเดือน · ทุกวัน + เครดิต · ไม่มีเครดิต · ยังไม่ตั้ง) — ปุ่ม "เติมตามรอบ เดือนละงวด…" เดิมมีแค่รายเดือน
-       และไม่มีบนจอแล้ว ห้ามชี้ไปหา · ต่อท้ายกลุ่มวันงวดแรกของแผงครั้งเดียว (submitGateGroups) · "ไปแก้" ของกลุ่มเปิดแผงนั้นให้เลย */
+       และไม่มีบนจอแล้ว ห้ามชี้ไปหา · ต่อท้ายกลุ่มวันงวดแรกที่เปิดแผงแบบค่าตั้งต้น ครั้งเดียวต่อแผง (submitGateGroups) · "ไปแก้" ของกลุ่มเปิดแผงนั้นให้เลย */
   dateFillHint: ' — เติมทีเดียวได้ด้วย ‘ตั้งวันงวด’ → ‘เติมวันงวดที่ว่าง…’ ที่แท็บการชำระ',
+  /* กลุ่มที่แผงเติมแตะได้ด้วย "จัดใหม่งวดที่มีวันแล้วด้วย" เท่านั้น (`dateFill: 'dated'` — backfill ลูกค้าเครดิต: งวดมีกำหนดชำระแล้ว
+     ขาดวันวางบิล · SO-26090206-0) — "ไปแก้" เปิดแผงพร้อมสวิตช์นั้น ⇒ คำต้องบอกตรง ๆ ว่าวันเดิมถูกแทนด้วยวันที่คิดตามรอบของลูกค้า
+     (ตัวจัดใหม่ของ #1846 ไม่คงวันเดิม) และคนตรวจในตารางก่อนบันทึก (แผงเติมเขียนร่างอย่างเดียว) */
+  dateFillRedateHint: ' — จัดวันใหม่ทีเดียวได้ด้วย ‘ตั้งวันงวด’ → ‘เติมวันงวดที่ว่าง…’ → ‘จัดใหม่งวดที่มีวันแล้วด้วย’ ที่แท็บการชำระ'
+    + ' (วันเดิมถูกแทนด้วยวันที่คิดตามรอบวางบิลของลูกค้า · ตรวจในตารางก่อนบันทึก)',
   warningTag: 'เตือน · ไม่บล็อกการยื่น',
   fnTag: 'รอฝ่ายบัญชี',
   jump: 'ไปแก้',
@@ -702,6 +708,18 @@ function installmentFindings(ctx, totals) {
   const needsBilling = billingRuleNeedsBillingDate(ctx?.customerBillingRule);
   /* รูปของรอบ — ข้อความ "เลือกรอบ" ใช้ได้เฉพาะลูกค้ารายเดือน (ทุกวัน = ไม่มีชิปรอบ) · แผงแดงรวมข้อซ้ำด้วยค่านี้ */
   const billingMode = billingRuleMonthly(ctx?.customerBillingRule) ? 'monthly' : 'anyday';
+  /* ⭐ แผง "เติมวันงวดที่ว่าง…" ของ #1846 แตะงวดนี้แบบไหน — ถามตัวเลือกงวดของแผงเอง (`fillTargetsOf` บนแถวรูปเดียวกับที่แผงส่ง
+       `fillInputRows` · ชนิดของแผง `fillKindOf`) ห้ามเขียนกติกาซ้ำที่นี่:
+       'empty' = ค่าตั้งต้นของแผงเติมให้ · 'dated' = แตะเฉพาะเมื่อเปิด "จัดใหม่งวดที่มีวันแล้วด้วย" (มีวันแล้ว · ยังไม่รับเงิน/ไม่ใช่งวดยกมา/
+       ไม่รอเหตุการณ์ — `installmentBillingRedatable`) · null = แผงไม่แตะเลย (แจ้งชำระแล้ว ฯลฯ)
+     ⚠️ ด่านไม่เห็นคำร้องขอใบวางบิล (ก้อน ctx ไม่มี) — งวดที่ขอใบแล้วอาจได้ 'dated' ที่นี่ แต่แผงงวดตรวจเป้าซ้ำตอนรับคำขอด้วยล็อกบนจอ
+       (ขอใบแล้ว = 'locked' ไม่อยู่ในเป้า) แล้วตอบ "เปิดไม่ได้" เมื่อไม่เหลืองวดให้แตะ (SalesOrderPaymentPanel) */
+  const fillKind = fillKindOf(ctx?.customerBillingRule);
+  const dateFillOf = (row) => {
+    const input = fillInputRows([row]);
+    if (fillTargetsOf(fillKind, input).length) return 'empty';
+    return fillTargetsOf(fillKind, input, { includeDated: true }).length ? 'dated' : null;
+  };
   let unconfirmedMissing = false;
   for (const row of live) {
     const at = { installmentId: row.id ?? null, seq: row.seq ?? null };
@@ -718,16 +736,15 @@ function installmentFindings(ctx, totals) {
     }
     const event = text(row.billingEvent);
     /* ลำดับ วันวางบิล → กำหนดชำระ เสมอ (ลำดับคอลัมน์ของตารางงวด · เจ้าของทัก 28/09 ใน #1846) — แผงแดงเรียงกลุ่มตามข้อแรกที่เจอ
-       ⭐ `dateFillable` = แผง "เติมวันงวดที่ว่าง…" ของ #1846 (ค่าตั้งต้น — ไม่เปิด "จัดใหม่งวดที่มีวันแล้วด้วย") เติมงวดนี้ให้ไหม
-         (`fillTargetsOf` ของ installmentDateDrafts.js): รายเดือน = งวดที่ยังไม่มีวันวางบิล · ชนิดอื่น = งวดที่ยังไม่มีทั้งวันวางบิลและกำหนดชำระ
-         ⇒ ลูกค้าเครดิตที่งวดมีกำหนดชำระแล้ว ขาดแค่วันวางบิล = เติมไม่ได้ — แผงแดงไม่ชี้ทางลัดนี้ และ "ไปแก้" ไปที่ช่องของงวดแทน
-         🐞 ไม่มีธงนี้ "ไปแก้" เปิดแผงเติมที่บอก "ไม่มีงวดที่ว่าง" ใต้ข้อที่เพิ่งบอกว่า "12 งวดยังไม่ใส่วันวางบิล" (จอ backfill 29/09) */
+       ⭐ `dateFill` (`dateFillOf` ข้างบน) — แผงแดงรวมข้อหลายงวดแล้ว "ไปแก้" เปิดแผงเติมเมื่อทุกงวดของกลุ่มเป็น 'empty'/'dated'
+         (มี 'dated' = เปิดพร้อม "จัดใหม่งวดที่มีวันแล้วด้วย") · มี null = ไปที่ช่องของงวดแรก (submitGateGroups)
+         🐞 เดิมธงบูลีน `dateFillable` (ค่าตั้งต้นของแผงเท่านั้น) ⇒ backfill ลูกค้าเครดิตที่งวดมีกำหนดชำระแล้ว ขาดแค่วันวางบิล
+            (SO-26090206-0 · AR-015 · ~49 ใบ) "ไปแก้" ได้แค่ช่องงวด 1 แล้วต้องพิมพ์วันวางบิลเอง 12 งวด ทั้งที่สวิตช์จัดใหม่ทำให้ได้ในครั้งเดียว */
     if (needsBilling && !isoDay(row.billingDate) && !event) {
-      const dateFillable = billingMode === 'monthly' || !isoDay(row.dueDate);
-      findings.issues.push(makeIssue('billing_missing', { ...at, billingMode, dateFillable }, { seq: row.seq, anyday: billingMode === 'anyday' }));
+      findings.issues.push(makeIssue('billing_missing', { ...at, billingMode, dateFill: dateFillOf(row) }, { seq: row.seq, anyday: billingMode === 'anyday' }));
     }
     if (!isoDay(row.dueDate) && !event) {
-      findings.issues.push(makeIssue('due_missing', { ...at, dateFillable: !isoDay(row.billingDate) }, { seq: row.seq }));
+      findings.issues.push(makeIssue('due_missing', { ...at, dateFill: dateFillOf(row) }, { seq: row.seq }));
     }
     if (!hasCover(row)) {
       unconfirmedMissing = true;

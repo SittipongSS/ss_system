@@ -309,6 +309,16 @@ export function issueHeadTail(message) {
 const MERGE_KEYS = new Set(['billing_missing', 'due_missing', 'coverage_missing']);
 /* ข้อวันงวด — กลุ่มหลายงวดของสองข้อนี้ "ไปแก้" = โหมดตั้งวันงวด + แผง "เติมวันงวดที่ว่าง…" (#1846 · `entry.dateFill`) */
 const DATE_FILL_KEYS = new Set(['billing_missing', 'due_missing']);
+/* แผงเติมแตะงวดนี้แบบไหน (ธงรายงวดจากด่าน `dateFill`: 'empty' | 'dated' | null) — ไม่มีธง (ก้อน GET รุ่นก่อน) = ค่าตั้งต้นเติมได้
+   · null = ไม่มีทางไหนแตะ (ต่างจาก "ไม่ส่ง") */
+const dateFillModeOf = (entry) => (hasOwn(entry, 'dateFill') ? entry.dateFill : 'empty');
+/* ธงรายงวดของด่านไม่ใช่คำขอเปิดแผง — แถวของแผงแดงมี `dateFill` เฉพาะแถวรวมที่ "ไปแก้" เปิดแผงเติมได้ (หน้าใบอ่านธงนี้) */
+const withoutDateFill = (entry) => {
+  if (!hasOwn(entry, 'dateFill')) return entry;
+  const out = { ...entry };
+  delete out.dateFill;
+  return out;
+};
 
 /** [1,2,3,5,7,8] → "1–3, 5, 7–8" (เลขงวดเรียงน้อยไปมาก · ค่าที่ไม่ใช่ตัวเลขต่อท้ายตามที่มา) */
 export function seqRangesText(seqs = []) {
@@ -325,20 +335,28 @@ export function seqRangesText(seqs = []) {
 
 /* ข้อเดียวกันหลายงวด → แถวเดียว "งวด 1–12: … · 12 งวด" (ช่องอื่นยังแดงรายเซลล์จาก Map ของหน้า)
    · ข้อวันงวด (`dateFill`) — "ไปแก้" = หน้าใบขอแผงงวดเข้าโหมดตั้งวันงวดแล้วเปิดแผง "เติมวันงวดที่ว่าง…" (เปิดไม่ได้ = งวดแรก)
-     + ทางลัดเป็นตัวหนังสือ (`withHint` — กลุ่มวันงวดแรกของแผงเท่านั้น: สองกลุ่มเปิดแผงเติมอันเดียวกัน)
+     'empty' = เปิดแบบค่าตั้งต้น · 'dated' = เปิดพร้อม "จัดใหม่งวดที่มีวันแล้วด้วย"
+     + ทางลัดเป็นตัวหนังสือ (`hinted` — ครั้งเดียวต่อแบบของแผง: สองกลุ่มที่เปิดแผงแบบเดียวกัน ต่อทั้งสองแถว = คำเดิมซ้ำ ·
+       สองกลุ่มที่เปิดคนละแบบ = คำคนละคำ ต่างคนต่างได้)
    · ช่วงครอบ — "ไปแก้" = เซลล์ของงวดแรก */
-function mergedItem(entries, { withHint = false } = {}) {
+function mergedItem(entries, { hinted = new Set() } = {}) {
   const [first] = entries;
   const { rest } = issueHeadTail(first?.message);
   const seqs = entries.map((entry) => entry?.seq);
-  /* ทุกงวดของกลุ่มต้องเป็นงวดที่แผงเติมแตะ (`dateFillable` จากด่าน — ไม่มีธง = ถือว่าเติมได้) · มีงวดที่เติมไม่ได้ = ไปที่ช่องของงวดแรก
-     และไม่บอกทางลัด (ทางลัดพูดว่า "เติมทีเดียวได้" — ต้องจริงทั้งกลุ่ม) */
-  const dateFill = DATE_FILL_KEYS.has(first?.key) && entries.every((entry) => entry?.dateFillable !== false);
-  const hint = dateFill && withHint ? SERVICE_SETUP_PANEL_TEXT.dateFillHint : '';
+  /* ทุกงวดของกลุ่มต้องเป็นงวดที่แผงเติมแตะ ('empty' หรือ 'dated' จากด่าน) · มีงวดที่ไม่มีทางไหนแตะ (null) = ไปที่ช่องของงวดแรก
+     และไม่บอกทางลัด (ทางลัดพูดว่า "ทีเดียวได้" — ต้องจริงทั้งกลุ่ม) · มี 'dated' แม้งวดเดียว = เปิดพร้อมสวิตช์จัดใหม่
+     (จัดใหม่ครอบงวดที่ว่างด้วย — `installmentBillingRedatable` ⊇ `installmentBillingFillable`) และคำทางลัดบอกว่าวันเดิมถูกแทน */
+  const modes = entries.map(dateFillModeOf);
+  const offered = DATE_FILL_KEYS.has(first?.key) && modes.every((mode) => mode === 'empty' || mode === 'dated');
+  const dateFill = offered ? (modes.includes('dated') ? 'dated' : 'empty') : null;
+  const hint = dateFill && !hinted.has(dateFill)
+    ? (dateFill === 'dated' ? SERVICE_SETUP_PANEL_TEXT.dateFillRedateHint : SERVICE_SETUP_PANEL_TEXT.dateFillHint)
+    : '';
+  if (hint) hinted.add(dateFill);
   const message = `${SERVICE_SETUP_PANEL_TEXT.mergedSeqs({ seqs: seqRangesText(seqs), rest, n: entries.length })}${hint}`;
   return {
     kind: 'issue',
-    entry: { ...first, message, ...(dateFill ? { dateFill: true } : {}) },
+    entry: { ...withoutDateFill(first), message, ...(dateFill ? { dateFill } : {}) },
     entries,
     tag: null,
     jump: true,
@@ -352,7 +370,8 @@ function mergedItem(entries, { withHint = false } = {}) {
  *   · ของบัญชี (owner FN — ทั้งข้อที่บล็อกและคำเตือน) มีป้าย "รอฝ่ายบัญชี" และ **ไม่มี "ไปแก้"** (ฝ่ายขายแก้ไม่ได้)
  *   · ข้อเดียวกันหลายงวด (วันวางบิล · กำหนดชำระ · ช่วงครอบ) รวมเป็นแถวเดียว — `count` ยังนับทุกข้อ (ตรงกับป้ายบนแท็บ)
  *     🐞 เดิมแถวละงวด ⇒ ลูกค้าวางบิล 12 งวดได้ 12 แถวเหมือนกันทุกตัวอักษร จอ 375px ยาวหลายหน้าจอก่อนถึงตาราง
- *   · แถวรวมของข้อวันงวดมี `entry.dateFill` — หน้าใบอ่านธงนี้ตอน "ไปแก้" (โหมดตั้งวันงวด + แผงเติม · #1846)
+ *   · แถวรวมของข้อวันงวดมี `entry.dateFill` ('empty' | 'dated') — หน้าใบอ่านธงนี้ตอน "ไปแก้" (โหมดตั้งวันงวด + แผงเติม · #1846 ·
+ *     'dated' = พร้อม "จัดใหม่งวดที่มีวันแล้วด้วย") · แถวเดี่ยวไม่มีธงนี้ (ธงรายงวดของด่านถูกถอด — แถวเดี่ยวไปที่เซลล์ของงวดนั้น)
  */
 export function submitGateGroups(issues = [], warnings = []) {
   const groups = [
@@ -367,7 +386,7 @@ export function submitGateGroups(issues = [], warnings = []) {
     sameKey.set(mergeKey, [...(sameKey.get(mergeKey) || []), entry]);
   }
   const placed = new Set();
-  let hinted = false;
+  const hinted = new Set();
   for (const entry of list(issues)) {
     const group = groupOf(entry);
     group.count += 1;
@@ -376,13 +395,11 @@ export function submitGateGroups(issues = [], warnings = []) {
     if (bucket && bucket.length > 1) {
       if (placed.has(mergeKey)) continue;
       placed.add(mergeKey);
-      const item = mergedItem(bucket, { withHint: !hinted });
-      if (item.entry.dateFill) hinted = true;
-      group.items.push(item);
+      group.items.push(mergedItem(bucket, { hinted }));
       continue;
     }
     const fn = entry?.owner === 'FN';
-    group.items.push({ kind: 'issue', entry, tag: fn ? (entry.tag || SERVICE_SETUP_PANEL_TEXT.fnTag) : null, jump: !fn });
+    group.items.push({ kind: 'issue', entry: withoutDateFill(entry), tag: fn ? (entry.tag || SERVICE_SETUP_PANEL_TEXT.fnTag) : null, jump: !fn });
   }
   for (const entry of list(warnings)) {
     const fn = entry?.owner === 'FN';

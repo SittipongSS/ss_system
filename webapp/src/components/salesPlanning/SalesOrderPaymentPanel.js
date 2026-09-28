@@ -125,7 +125,8 @@ export default function SalesOrderPaymentPanel({
      `canEditSetup` = สิทธิ์แก้ใบนี้ (`canEditSalesPlanning && inSalesEditScope`) — ไม่ส่ง = ใช้ `canStart` (หน้าใบส่ง canEdit ตัวเดียวกัน)
      `onOpenTab(key)` (ไม่บังคับ) = สลับแท็บของหน้าใบ — ลิงก์ "แก้ที่แท็บภาพรวม" ข้างบรรทัดช่วงบริการ
      `dateFillRequest` (ออบเจกต์ใหม่ต่อการกด · null = ไม่มี) = "ไปแก้" ของข้อวันงวดที่รวมหลายงวดในแผงแดง ⇒ เข้าโหมดตั้งวันงวดแล้วเปิดแผง
-       "เติมวันงวดที่ว่าง…" (#1846) · ตอบทุกคำขอด้วย `onDateFillRequestDone(opened)` (หน้าล้างคำขอ · เปิดไม่ได้ = หน้าไปที่ช่องแทน) */
+       "เติมวันงวดที่ว่าง…" (#1846) · `includeDated: true` = เปิดพร้อม "จัดใหม่งวดที่มีวันแล้วด้วย"
+       · ตอบทุกคำขอด้วย `onDateFillRequestDone(opened)` (หน้าล้างคำขอ · เปิดไม่ได้ = หน้าไปที่ช่องแทน) */
   servicePeriod, setupFlow, highlight = null, onFillCoverage, canEditSetup = canStart, onOpenTab,
   dateFillRequest = null, onDateFillRequestDone,
 }) {
@@ -385,11 +386,15 @@ export default function SalesOrderPaymentPanel({
     if (!dateFillRequest || dateFillSeen.current === dateFillRequest) return;
     dateFillSeen.current = dateFillRequest;
     const mode = dateModeRef.current;
-    /* แผงเติมไม่มีงวดให้เติม (ตัวเติมค่าตั้งต้นแตะแค่งวดที่ว่าง — `fillTargetsOf` ตัวเดียวกับแผง) = ไม่เปิดแผงที่บอก "ไม่มีงวดที่ว่าง"
-       ตอบ "เปิดไม่ได้" ให้หน้าใบไปที่ช่องของงวดแรกแทน · ด่านคัดไว้ก่อนแล้ว (`dateFillable`) — ที่นี่กันร่าง/ล็อกบนจอที่ด่านไม่เห็น */
-    const fillable = fillTargetsOf(mode.fillKind, fillInputRows(mode.rows, mode.current, mode.isLocked)).length > 0;
+    /* `includeDated` = เปิดพร้อม "จัดใหม่งวดที่มีวันแล้วด้วย" (กลุ่มที่ด่านบอก 'dated' — backfill ลูกค้าเครดิต) · true จริงเท่านั้น
+       แผงเติมไม่มีงวดให้แตะ (ตรวจด้วยสวิตช์เดียวกับที่จะเปิด — `fillTargetsOf` ตัวเดียวกับแผง) = ไม่เปิดแผงที่บอก "ไม่มีงวดที่ว่าง"
+       ตอบ "เปิดไม่ได้" ให้หน้าใบไปที่ช่องของงวดแรกแทน · ด่านคัดไว้ก่อนแล้ว (`dateFill`) — ที่นี่กันร่าง/ล็อกบนจอที่ด่านไม่เห็น
+       (ขอใบวางบิลแล้ว — ด่านไม่มีคำร้องในก้อน ctx · งวดที่ล็อกส่งเป็น 'locked' ไม่อยู่ในเป้าทั้งสองแบบ)
+       ⚠️ แผงเติมเปิดอยู่แล้ว = ไม่แตะ (รวมสวิตช์) — เปิดใหม่/สลับสวิตช์ = ตัวเลือกที่กำลังเลือกถูกย้อนทิ้ง · สวิตช์อยู่บนแผงให้กดเอง */
+    const includeDated = dateFillRequest.includeDated === true;
+    const fillable = fillTargetsOf(mode.fillKind, fillInputRows(mode.rows, mode.current, mode.isLocked), { includeDated }).length > 0;
     const opened = fillable && mode.available && !mode.busy && !mode.blocker;
-    if (fillable && !mode.fill) mode.openFill();
+    if (fillable && !mode.fill) mode.openFill({ includeDated });
     dateFillDoneRef.current?.(opened);
   }, [dateFillRequest]);
   /* ที่มาของกำหนดชำระใต้วันที่ (ลูกค้าตั้งกำหนดวางบิลแล้ว · ม็อก C) — คำจาก `dueSourceOf` ตัวเดียวกับป้ายในตัวแก้:

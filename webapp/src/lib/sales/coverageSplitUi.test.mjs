@@ -174,9 +174,12 @@ test('แผง (#1846): คำขอ "ไปแก้" จากแผงแด
   assert.match(effect, /dateFillSeen\.current = dateFillRequest;/, 'คำขอเดียวเปิดครั้งเดียว (StrictMode รัน effect ซ้ำ)');
   // ทางเข้าของ #1846 ตัวเดียว (`openFill` = เข้าโหมด + เปิดแผงเติม · ติดด่าน = toast บอกเหตุเอง) — ไม่ตั้ง state ของโหมดเอง
   // แผงเติมไม่มีงวดให้เติม = ไม่เปิดแผงที่บอก "ไม่มีงวดที่ว่าง" — ตอบเปิดไม่ได้ ให้หน้าใบไปที่ช่อง (ตัวเลือกงวดตัวเดียวกับแผงเติม)
-  assert.match(effect, /const fillable = fillTargetsOf\(mode\.fillKind, fillInputRows\(mode\.rows, mode\.current, mode\.isLocked\)\)\.length > 0;/);
+  // คำขอพา "จัดใหม่งวดที่มีวันแล้วด้วย" มาด้วย (backfill ลูกค้าเครดิต: งวดมีกำหนดชำระแล้วขาดวันวางบิล) — ตรวจเป้าด้วยสวิตช์เดียวกับที่จะเปิด
+  // (true จริงเท่านั้น · ไม่ส่ง = ค่าตั้งต้นเดิม) แล้วส่งต่อเข้า `openFill` ตัวเดียว
+  assert.match(effect, /const includeDated = dateFillRequest\.includeDated === true;/);
+  assert.match(effect, /const fillable = fillTargetsOf\(mode\.fillKind, fillInputRows\(mode\.rows, mode\.current, mode\.isLocked\), \{ includeDated \}\)\.length > 0;/);
   assert.match(effect, /const opened = fillable && mode\.available && !mode\.busy && !mode\.blocker;/);
-  assert.match(effect, /if \(fillable && !mode\.fill\) mode\.openFill\(\);/, 'แผงเติมเปิดอยู่แล้ว = ไม่ตั้งต้นตัวเลือกที่กำลังเลือกทิ้ง');
+  assert.match(effect, /if \(fillable && !mode\.fill\) mode\.openFill\(\{ includeDated \}\);/, 'แผงเติมเปิดอยู่แล้ว = ไม่ตั้งต้นตัวเลือกที่กำลังเลือกทิ้ง');
   assert.match(effect, /dateFillDoneRef\.current\?\.\(opened\);/);
   assert.doesNotMatch(effect, /setActive|setFill|enter\(/);
 });

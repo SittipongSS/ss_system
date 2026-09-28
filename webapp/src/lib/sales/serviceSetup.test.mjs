@@ -1005,25 +1005,32 @@ test('F10: ลูกค้าวางบิลได้ทุกวัน (ไ�
   assert.equal(m[0].billingMode, 'monthly');
 });
 
-test('#1846: ข้อวันงวดบอกว่าแผง "เติมวันงวดที่ว่าง…" เติมงวดนั้นได้ไหม (`dateFillable` — ตัวเลือกงวดของแผง `fillTargetsOf`)', () => {
+test('#1846: ข้อวันงวดบอกว่าแผง "เติมวันงวดที่ว่าง…" แตะงวดนั้นแบบไหน (`dateFill` — ตัวเลือกงวดของแผง `fillTargetsOf`)', () => {
   const anyday = { billing: { mode: 'anyday' }, payment: { mode: 'credit', days: 30 } };
   const monthly = { billing: { mode: 'monthly', days: [25] }, payment: { mode: 'credit', days: 30 } };
   const billingOf = (issues) => issues.filter((i) => i.key === 'billing_missing');
-  // เครดิต (ทุกวัน) + งวดมีกำหนดชำระแล้ว ขาดแค่วันวางบิล = แผงเติมไม่แตะ (เติมเฉพาะงวดที่ว่างทั้งคู่) — จอ backfill SO-26090206-0
+  const dueOf = (issues) => issues.filter((i) => i.key === 'due_missing');
+  const modes = (issues) => [...new Set(issues.map((i) => i.dateFill))];
+  // เครดิต (ทุกวัน) + งวดมีกำหนดชำระแล้ว ขาดแค่วันวางบิล = ค่าตั้งต้นของแผงไม่แตะ (เติมเฉพาะงวดที่ว่างทั้งคู่) แต่ "จัดใหม่งวดที่มีวันแล้วด้วย"
+  // แตะ ⇒ 'dated' — จอ backfill SO-26090206-0 (AR-015 · 12 งวด กำหนดชำระวันที่ 25 ไม่มีวันวางบิล)
   const dated = billingOf(serviceSetupIssues(completeCtx({ customerBillingRule: anyday })));
   assert.equal(dated.length, 12);
-  assert.ok(dated.every((i) => i.dateFillable === false));
-  // งวดที่ว่างทั้งคู่ = เติมได้ ทั้งข้อวันวางบิลและข้อกำหนดชำระ
+  assert.deepEqual(modes(dated), ['dated']);
+  assert.equal('dateFillable' in dated[0], false, 'ธงบูลีนเดิมถูกแทน — ไม่มีสองชื่อพูดเรื่องเดียวกัน');
+  // งวดที่ว่างทั้งคู่ = ค่าตั้งต้นของแผงเติมได้ ทั้งข้อวันวางบิลและข้อกำหนดชำระ
   const blank = serviceSetupIssues(completeCtx({ customerBillingRule: anyday, installments: monthlyRows({ dueDate: null }) }));
-  assert.ok(billingOf(blank).every((i) => i.dateFillable === true));
-  assert.ok(blank.filter((i) => i.key === 'due_missing').every((i) => i.dateFillable === true));
+  assert.deepEqual(modes(billingOf(blank)), ['empty']);
+  assert.deepEqual(modes(dueOf(blank)), ['empty']);
   // รายเดือน = งวดที่ยังไม่มีวันวางบิลเติมได้เสมอ (คงกำหนดชำระเดิม — planMonthlyFill)
-  assert.ok(billingOf(serviceSetupIssues(completeCtx({ customerBillingRule: monthly }))).every((i) => i.dateFillable === true));
-  // มีวันวางบิลแล้วแต่ไม่มีกำหนดชำระ = แผงเติมไม่แตะ (ทุกชนิดเติมเฉพาะงวดที่ยังไม่มีวันวางบิล)
-  const billedOnly = serviceSetupIssues(completeCtx({ installments: monthlyRows({ dueDate: null, billingDate: '2026-10-01' }) }));
-  const due = billedOnly.filter((i) => i.key === 'due_missing');
-  assert.equal(due.length, 12);
-  assert.ok(due.every((i) => i.dateFillable === false));
+  assert.deepEqual(modes(billingOf(serviceSetupIssues(completeCtx({ customerBillingRule: monthly })))), ['empty']);
+  // มีวันวางบิลแล้วแต่ไม่มีกำหนดชำระ = ค่าตั้งต้นไม่แตะ (ทุกชนิดเติมเฉพาะงวดที่ยังไม่มีวันวางบิล) · จัดใหม่แตะ ⇒ 'dated'
+  const billedOnly = dueOf(serviceSetupIssues(completeCtx({ installments: monthlyRows({ dueDate: null, billingDate: '2026-10-01' }) })));
+  assert.equal(billedOnly.length, 12);
+  assert.deepEqual(modes(billedOnly), ['dated']);
+  // งวดที่ทั้งสองทางไม่แตะ (แจ้งชำระแล้ว — ไม่อยู่ในสถานะเปิดของตัวเติม) = null · ตัวตัดสินเดียวกับแผง ไม่ใช่กติกาที่เขียนซ้ำ
+  const reported = monthlyRows().map((row, i) => (i < 2 ? { ...row, status: 'reported' } : row));
+  const mixed = billingOf(serviceSetupIssues(completeCtx({ customerBillingRule: anyday, installments: reported })));
+  assert.deepEqual(mixed.map((i) => i.dateFill), [null, null, ...Array(10).fill('dated')]);
 });
 
 test('F4: ครอบซ้อนที่งวดถูกซ้อนรับรองแล้ว = คำเตือนชี้งวดคู่ที่ยังแก้ได้ · รับรองทั้งคู่ = คำเตือนของบัญชี', () => {

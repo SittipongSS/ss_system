@@ -235,7 +235,8 @@ test('"ไปแก้": สลับแท็บแล้วพาไปที�
 test('#1846: "ไปแก้" ของข้อวันงวดที่รวมหลายงวด = ขอให้แผงงวดเปิด "เติมวันงวดที่ว่าง…" · เปิดไม่ได้ = ถอยไปโฟกัสช่องของงวดแรก', () => {
   const jump = slice(page, 'const jumpToIssue = async (issue) => {', '\n  };');
   /* แผงงวดอยู่แท็บการชำระ ⇒ สลับแท็บก่อน (ถามก่อนได้) แล้วค่อยขอ · ขอแล้วไม่โฟกัสเซลล์ซ้อน (แผงเติมโฟกัสหัวของมันเอง) */
-  assert.match(jump, /if \(issue\.dateFill\) \{\s*setDateFillAsk\(\{ issue \}\);\s*return;\s*\}/);
+  /* กลุ่มที่แตะได้ด้วย "จัดใหม่งวดที่มีวันแล้วด้วย" เท่านั้น (`dateFill: 'dated'` — backfill ลูกค้าเครดิต) = ขอเปิดแผงพร้อมสวิตช์นั้น */
+  assert.match(jump, /if \(issue\.dateFill\) \{\s*setDateFillAsk\(\{ issue, includeDated: issue\.dateFill === 'dated' \}\);\s*return;\s*\}/);
   assert.ok(jump.indexOf('await selectTab(issue.tab)') < jump.indexOf('issue.dateFill'), 'สลับแท็บก่อนขอ');
   assert.ok(jump.indexOf('issue.dateFill') < jump.indexOf('revealServiceSetupField('), 'ข้ออื่นยังไปที่ช่องเหมือนเดิม');
   /* คำขอเป็น state (ไม่ใช่ ref/อีเวนต์) — แผงเพิ่งเมานต์จากการสลับแท็บยังได้รับ · ประกาศก่อน early return ของหน้า (กฎของ hook) */
