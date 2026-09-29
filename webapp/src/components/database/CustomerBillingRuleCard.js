@@ -11,8 +11,14 @@
 // ⚠️ ปุ่มตั้ง/แก้ = `canEdit` จากผู้เรียก (ตัวตัดสิน `canEditCustomerBillingRule` ตัวเดียวกับ API · SA ทีมที่ดูแล + FN)
 //    ไม่มีสิทธิ์ = ไม่วาดปุ่ม (UI visibility rule) · ฝ่ายบัญชีเห็นปุ่มนี้ทั้งที่ไม่เห็นปุ่มแก้ลูกค้าส่วนอื่น
 // ⚠️ id="billing-rule" คือหมุดที่หน้าสร้างใบสั่งขาย/แผงงวดลิงก์มา — ห้ามเปลี่ยน
+//    (กระดิ่ง "ขอปฏิทินปีหน้า" `customer_billing_calendar_missing` ก็ลิงก์มาที่หมุดนี้ — LEDGER_HREF.calendar)
+// ⭐ ลูกค้าปฏิทินรายปี (รุ่นห้า · มติ 29/09): ครอบปีไหนกี่รอบ ("ปฏิทิน 2026 · 24 รอบ") · รูปที่แนบต่อปี · เวลาตัดรอบ ·
+//    แถบ "ขอปฏิทิน YYYY" เมื่อถึงช่วงเตือน (`calendarStatus().remind` ตัวเดียวกับกระดิ่งรายสัปดาห์) + ปุ่ม "ใส่ปฏิทิน YYYY"
+//    (คนแก้ได้เท่านั้น — เปิดโมดัลที่แท็บปีนั้น) · ปฏิทินหมด = "ยังไม่มีปฏิทิน YYYY · ใส่วันเองได้" ไม่มีประมาณการ (Q3)
 import { useState } from "react";
-import { CalendarClock, CalendarPlus, History, Pencil, ShieldCheck, StickyNote, TextQuote } from "lucide-react";
+import {
+  AlarmClock, CalendarCheck2, CalendarClock, CalendarPlus, CalendarX2, ExternalLink, History, Pencil, ShieldCheck, StickyNote, TextQuote,
+} from "lucide-react";
 import Button from "@/components/ui/Button";
 import { DetailCard } from "@/components/ui/DetailPage";
 import { businessDate } from "@/lib/businessDate";
@@ -20,9 +26,12 @@ import { notifyToast } from "@/lib/feedback";
 import { NO_BILLING_TEXT, NO_CREDIT_TEXT, fmtDate, policyPreview, ruleOf, sourceLabel } from "@/lib/sales/billingRule";
 import CustomerBillingRuleModal from "./CustomerBillingRuleModal";
 import CustomerBillingRuleRedate from "./CustomerBillingRuleRedate";
-import { hasRuleChange, policyWordsOf, reminderChipsOf, stampTextOf } from "./CustomerBillingRuleState";
+import { calendarCardOf, hasRuleChange, policyWordsOf, reminderChipsOf, stampTextOf } from "./CustomerBillingRuleState";
 import { PairList, PolicySentence, ReminderChips } from "./CustomerBillingRuleRounds";
+import useHolidayMap from "@/lib/useHolidayMap";
 import styles from "./CustomerBillingRule.module.css";
+
+const calendarFileHref = (fileId) => `/api/master/attachments/${encodeURIComponent(fileId)}/file`;
 
 /* สิ่งที่เกิดบนใบ SO ของแต่ละคำตอบ — ประโยคสั้นที่คนอ่านแล้วรู้ว่าจอตั้งวันงวดจะพาไปทางไหน */
 function factsOf(words) {
@@ -52,8 +61,10 @@ function factsOf(words) {
 }
 
 export default function CustomerBillingRuleCard({ customer, canEdit = false, onSaved }) {
+  /* editing: false | { year } — year = แท็บปีที่โมดัลเปิดก่อน (ปุ่ม "ใส่ปฏิทิน 2027") · null = ตามปกติ */
   const [editing, setEditing] = useState(false);
   const [redate, setRedate] = useState(null);
+  const holidays = useHolidayMap();
   const value = customer?.billingRule ?? null;
   const rule = ruleOf(value);
   const words = policyWordsOf(value);
@@ -63,14 +74,15 @@ export default function CustomerBillingRuleCard({ customer, canEdit = false, onS
   const stamp = stampTextOf(customer?.billingRuleUpdatedAt);
   const by = customer?.billingRuleUpdatedByName || "";
   const facts = factsOf(words);
-  const preview = words.need === "required" && !words.noTiming ? policyPreview(value, today, { count: 3 }) : null;
+  const preview = words.need === "required" && !words.noTiming ? policyPreview(value, today, { count: 3, holidays }) : null;
+  const calendar = calendarCardOf(value, today, { holidays });
 
   const editButton = canEdit ? (
     <Button
       tone="neutral"
       icon={asking ? <CalendarPlus size={15} aria-hidden="true" /> : <Pencil size={15} aria-hidden="true" />}
       aria-label={asking ? "ตั้งการวางบิลและกำหนดชำระ" : "แก้การวางบิลและกำหนดชำระ"}
-      onClick={() => setEditing(true)}
+      onClick={() => setEditing({ year: null })}
     >
       {asking ? "ตั้ง" : "แก้"}
     </Button>
@@ -119,22 +131,57 @@ export default function CustomerBillingRuleCard({ customer, canEdit = false, onS
           ) : null}
           {asking && !canEdit ? <p className={styles.cardHint}>ตั้งได้โดยฝ่ายขายทีมที่ดูแลลูกค้าหรือฝ่ายบัญชี</p> : null}
 
+          {calendar ? (
+            <div className={styles.calBox}>
+              {calendar.banner ? (
+                <div className={styles.calAsk} role="status">
+                  <CalendarX2 size={16} aria-hidden="true" />
+                  <div className={styles.calAskText}>
+                    <b>{calendar.banner.title}</b>
+                    <p>{calendar.banner.text}</p>
+                  </div>
+                  {canEdit ? (
+                    <Button tone="neutral" size="sm" icon={<CalendarPlus size={14} aria-hidden="true" />} onClick={() => setEditing({ year: calendar.banner.year })}>
+                      ใส่ปฏิทิน {calendar.banner.year}
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
+              <p className={styles.calLine}>
+                <CalendarCheck2 size={14} aria-hidden="true" />
+                <b>{calendar.coverage}</b>
+                {calendar.years.filter((y) => y.fileId).map((y) => (
+                  <a key={y.year} className={styles.calFile} href={calendarFileHref(y.fileId)} target="_blank" rel="noopener noreferrer" aria-label={`เปิดรูปปฏิทิน ${y.year} ของลูกค้าในแท็บใหม่`}>
+                    รูปปฏิทิน {y.year}<ExternalLink size={12} aria-hidden="true" />
+                  </a>
+                ))}
+              </p>
+              {calendar.upcoming ? <p className={styles.calLine}><small>{calendar.upcoming}</small></p> : null}
+              {calendar.cutoffLine ? (
+                <p className={styles.calLine}><AlarmClock size={14} aria-hidden="true" /><small>{calendar.cutoffLine}</small></p>
+              ) : null}
+            </div>
+          ) : null}
+
           {preview ? (
             <div className={styles.cardRounds}>
               <h3>
-                {preview.kind === "rounds" ? `${preview.rows.length} รอบถัดไป` : "ตัวอย่าง ถ้าวางบิลวันต่อไปนี้"}
+                {preview.kind !== "rounds" ? "ตัวอย่าง ถ้าวางบิลวันต่อไปนี้" : preview.rows.length ? `${preview.rows.length} รอบถัดไป` : "รอบถัดไป"}
                 <small>คิดจากวันนี้ {fmtDate(today)} · ตรงเสาร์/อาทิตย์ไม่เลื่อนวัน</small>
               </h3>
-              <PairList
-                rows={preview.rows.map((row) => ({ ...row, key: row.billingDate }))}
-                sourceText={(source) => sourceLabel(source, { creditDays: rule?.creditDays || 0 })}
-              />
+              {preview.rows.length ? (
+                <PairList
+                  rows={preview.rows.map((row) => ({ ...row, key: row.billingDate }))}
+                  sourceText={(source) => sourceLabel(source, { creditDays: rule?.creditDays || 0 })}
+                />
+              ) : null}
+              {preview.missing ? <p className={styles.pvGap}><CalendarX2 size={14} aria-hidden="true" /><span>{preview.missing.text}</span></p> : null}
             </div>
           ) : null}
 
           <div className={styles.cardRemind}>
             <small>การเตือนของลูกค้านี้</small>
-            <ReminderChips chips={reminderChipsOf(value)} />
+            <ReminderChips chips={reminderChipsOf(value, { todayIso: today, holidays })} />
           </div>
 
           {words.note ? (
@@ -164,6 +211,7 @@ export default function CustomerBillingRuleCard({ customer, canEdit = false, onS
         <CustomerBillingRuleModal
           open
           customer={customer}
+          calendarYear={editing.year || null}
           onClose={() => setEditing(false)}
           onSaved={handleSaved}
           onSynced={handleSynced}

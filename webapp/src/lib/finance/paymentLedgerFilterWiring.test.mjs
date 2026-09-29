@@ -29,8 +29,9 @@ const ROUTE = code('app/api/finance/payments/route.js');
 const LIB = code('lib/finance/paymentLedger.js');
 
 const FILTER_KEYS = JSON.parse(/const FILTER_KEYS = (\[[^\]]*\]);/.exec(PAGE)?.[1] || 'null');
-/* ช่วงวัน/คำค้นไม่อยู่ในตัวนับบนปุ่มโดยตั้งใจ — อยู่นอกปุ่มตัวกรอง (ช่อง DateInput · ช่องค้นหา) */
-const NOT_COUNTED = new Set(['from', 'to', 'q']);
+/* ช่วงวัน/คำค้นไม่อยู่ในตัวนับบนปุ่มโดยตั้งใจ — อยู่นอกปุ่มตัวกรอง (ช่อง DateInput · ช่องค้นหา)
+   · `on` (v5) = วันของตัวกรอง billing=cutoff — สองพารามิเตอร์ของตัวกรองเดียว นับครั้งเดียวที่ `billing` (ตรวจแยกข้างล่าง) */
+const NOT_COUNTED = new Set(['from', 'to', 'q', 'on']);
 
 test('FILTER_KEYS อ่านได้ และมีตัวกรองรอบวางบิล (mig 0389)', () => {
   assert.ok(Array.isArray(FILTER_KEYS) && FILTER_KEYS.length > 0, 'แกะ FILTER_KEYS ไม่ออก — ยามนี้ต้องแก้ตามรูปใหม่');
@@ -103,4 +104,18 @@ test('ทุกค่าของ LEDGER_BILLING_FILTERS มี clause ใน fi
     assert.match(filter, new RegExp(`billingFilter === '${value}' && !r\\.\\w+\\) return false;`), `filterLedger ไม่กรอง billing=${value}`);
     assert.match(counts, new RegExp(`(^|[\\s{,])'?${value}'?: base\\.filter`, 'm'), `ledgerBillingTally ไม่นับ ${value}`);
   }
+});
+
+/* ⭐ v5 · ตัวกรองวันตัดรอบ `?billing=cutoff&on=` (ลิงก์ของกระดิ่ง "วันตัดรอบ" ฝั่ง FN) — ต่อสายครบ: หน้าอ่าน `on` เฉพาะตอน cutoff ·
+   นับบนปุ่มครั้งเดียว (ที่ billing) · เปลี่ยนตัวกรองรอบวางบิลแล้ว `on` ถูกลบใน replace เดียวกัน · route คำนวณธงจากตัวคัดของกระดิ่ง */
+test('วันตัดรอบ: `on` อ่านเฉพาะตอน billing = cutoff · นับครั้งเดียว · ลบพร้อมการเปลี่ยนตัวกรองรอบวางบิล · route ต่อธงถึง ledgerRow', () => {
+  assert.match(PAGE, /const billing = ledgerBillingFilter\(params\.get\("billing"\) \|\| "", params\.get\("on"\) \|\| ""\);/);
+  assert.match(PAGE, /const on = billing === LEDGER_BILLING_CUTOFF \? ledgerCutoffOn\(params\.get\("on"\) \|\| ""\) : "";/);
+  assert.doesNotMatch(slice(PAGE, 'const filterCount =', ';'), /\bon\b/, '`on` ห้ามบวกแยกบนปุ่ม (นับที่ billing แล้ว)');
+  assert.match(PAGE, /if \(key === "billing" && value !== LEDGER_BILLING_CUTOFF\) sp\.delete\("on"\);/);
+  assert.match(slice(PAGE, 'key: "billing"', 'onChange'), /options: billingOptions\.map/, 'เมนูต้องมีตัวเลือกวันตัดรอบตอนกรองอยู่');
+  assert.match(ROUTE, /const cutoffOnById = billingCutoffOnIndex\(rows, \{/);
+  assert.match(ROUTE, /cutoffOn: cutoffOnById\.get\(installment\.id\) \|\| null,/);
+  assert.ok(ROUTE.indexOf('const cutoffOnById') < ROUTE.indexOf('const ledger = rows'), 'ธงต้องคิดจากงวดครบก่อนสร้างแถว');
+  assert.match(LIB, /if \(billingFilter === LEDGER_BILLING_CUTOFF && r\.billingCutoffOn !== cutoffOn\) return false;/);
 });

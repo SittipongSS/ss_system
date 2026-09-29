@@ -56,7 +56,9 @@ import {
   NO_BILLING_TEXT, SKIP_TEXT, billingNeed, billingState, canRequestBilling, dateModeOf, formatBillingDate, installmentNeed,
   ledgerFlags, needExceptionActions, weekendNote,
 } from "@/lib/sales/billingRule";
-import { dateLockView, dueSourceOf, fillInputRows, fillTargetsOf } from "@/lib/sales/installmentDateDrafts";
+import {
+  billingCutoffNote, calendarGapHead, dateLockView, dueSourceOf, fillInputRows, fillTargetsOf,
+} from "@/lib/sales/installmentDateDrafts";
 import { billingRequestHref } from "@/lib/sales/billingRequestHref";
 import {
   INSTALLMENT_STATUS_LABELS, INSTALLMENT_STATUS_TONES, MIN_REJECT_REASON,
@@ -431,12 +433,19 @@ export default function SalesOrderPaymentPanel({
      ให้เทียบกันได้ ("อา. 25 ต.ค. 2026") · ไม่มีคอลัมน์นั้น (ฐานยังไม่รัน 0389 · ใบที่ตาย) = รูปตัวเลขเดิมของระบบ */
   const cellDay = (iso) => (billingOn ? formatBillingDate(iso) || fmtDate(iso) : fmtDate(iso));
   const dueSourceNote = (row) => {
-    if (!billingRule || row.preview || !row.dueDate || isOpeningInstallment(row)) return "";
+    if (!billingRule || row.preview || isOpeningInstallment(row)) return "";
     if (!["pending", "rejected"].includes(row.status || "pending")) return "";
+    /* ⭐ รอบห้า (มติ 29/09 หยุดรอปฏิทินใหม่): มีวันวางบิลแต่ปีนั้นปฏิทินของลูกค้ายังไม่มี = ไม่มีกำหนดชำระคิดให้ ⇒ บอกเหตุใต้
+       "ยังไม่กำหนด" ("ยังไม่มีปฏิทิน 2027 · ใส่วันเองได้") · ใส่เองแล้ว = "ใส่เอง · ยังไม่มีปฏิทิน 2027" */
+    if (!row.dueDate) {
+      const missing = row.billingDate ? dueSourceOf(billingRule, row) : null;
+      return missing?.key === "calendarMissing" ? missing.label : "";
+    }
     /* ไม่ต้องวางบิล (ลูกค้า/ติ๊กงวดนี้) = กำหนดชำระตั้งตรงตัว ไม่มีที่มาให้บอก (`dueSourceOf` 'direct') */
     if (installmentNeed(row, billingRule) === "none" && !row.billingDate) return "";
     if (!row.billingDate) return "กรอกเอง";
     const source = dueSourceOf(billingRule, row);
+    if (source.key === "manual" && source.gap) return `${source.label} · ${calendarGapHead(source.gap)}`;
     return source.key === "override" ? "แก้ทับ" : source.label;
   };
   /* เซลล์ "วันวางบิล" (ม็อก C) — วัน + ป้ายเสาร์-อาทิตย์ · ป้ายสถานะ (BillingStateBadge: คำ/สีจาก billingRule.js ·
@@ -478,6 +487,11 @@ export default function SalesOrderPaymentPanel({
             <span className={styles.none}>{NA}</span>
           </InstallmentDateEntry>
         )}
+        {/* ⭐ รอบห้า: วันวางบิลที่เป็นวันตัดรอบของลูกค้าที่มีเวลา = "ส่งก่อน 16:00 น." (ชำระรอบเดียวกัน · เครดิต N ไม่พูดเวลา) —
+            เฉพาะงวดที่ยังรอวางบิล (เปิดอยู่ · ยังไม่ขอใบวางบิล · วันยังไม่ผ่าน) */}
+        {row.billingDate && !requested && ["pending", "rejected"].includes(row.status || "pending")
+          && String(row.billingDate) >= String(todayIso) && billingCutoffNote(billingRule, row.billingDate)
+          ? <small>{billingCutoffNote(billingRule, row.billingDate)}</small> : null}
         {/* ต้องวางบิล (ตอบแล้ว) แต่งวดยังไม่มีวันวางบิล — คำเดียวกับทะเบียนบัญชี (`ledgerFlags().missingBilling` · รูปเดิม/ติ๊ก/รอเหตุการณ์ไม่ชวน) */}
         {!row.billingDate && !installmentVoid(row, order) && ledgerFlags(row, billingRule, { todayIso }).missingBilling
           ? <small className={styles.billMissing}>ยังไม่มีวันวางบิล</small> : null}

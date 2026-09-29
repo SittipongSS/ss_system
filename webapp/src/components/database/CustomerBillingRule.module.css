@@ -418,6 +418,55 @@ button.slot:focus-visible { outline: 2px solid var(--accent-ink); outline-offset
 .gridCaption { margin: 0; color: var(--text-2); font-size: var(--fs-4); line-height: var(--lh-thai); }
 .gridCaption b { color: var(--text); font-weight: var(--fw-semibold); }
 
+/* ② ตามปฏิทินลูกค้า (รุ่นห้า) — โมดัลกว้างขึ้น (ตาราง | รูปของลูกค้า) · ผลก่อนบันทึกลงใต้ข้อ ③ (ข้างตารางเป็นที่ของรูป) */
+.calModal:global(.drawer.xl) { max-width: min(1240px, 100%); }
+.layout[data-wide] { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-template-areas: "qs" "aside" "extra"; }
+.layout[data-wide] .aside { position: static; }
+
+/* ผลก่อนบันทึกของปฏิทิน: ปฏิทินหมด (หยุด ไม่เดา) · ตัวอย่างกระดิ่งวันตัดรอบ */
+.pvGap {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1-5);
+  margin: 0;
+  padding: var(--space-1-5) var(--space-2-5);
+  border: 1px dashed var(--amber);
+  border-radius: var(--radius);
+  background: var(--amber-soft);
+  color: var(--text);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+.pvGap > svg { flex: none; margin-top: var(--space-1); color: var(--amber); }
+.bellPv { display: grid; gap: var(--space-1); padding: var(--space-2) var(--space-2-5); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--panel-solid); }
+.bellPv p { margin: 0; color: var(--text); font-size: var(--fs-5); line-height: var(--lh-text); }
+.bellPv small { color: var(--text-3); font-size: var(--fs-3); line-height: var(--lh-thai); }
+.bellAt { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--navy-ink); font-size: var(--fs-3); font-weight: var(--fw-bold); line-height: var(--lh-thai); }
+
+/* ═══ การ์ด: ปฏิทินรายปี (ครอบถึง · แถบขอปฏิทิน · เวลาตัดรอบ · รูปต่อปี) ═══ */
+.calBox { display: grid; gap: var(--space-2); min-width: 0; }
+.calLine { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); margin: 0; color: var(--text); font-size: var(--fs-6); line-height: var(--lh-thai); }
+.calLine > svg { flex: none; color: var(--text-2); }
+.calLine b { font-weight: var(--fw-semibold); }
+.calLine small { color: var(--text-2); font-size: var(--fs-4); }
+.calFile { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--accent-ink); font-size: var(--fs-4); line-height: var(--lh-thai); text-decoration: none; }
+.calFile:hover { text-decoration: underline; }
+.calAsk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2-5) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--amber) 45%, var(--border));
+  border-radius: var(--radius-md);
+  background: var(--amber-soft);
+}
+.calAsk > svg { flex: none; margin-top: var(--space-1); color: var(--amber); }
+.calAskText { flex: 1 1 16rem; min-width: 0; }
+.calAskText b { display: block; color: var(--text); font-size: var(--fs-7); line-height: var(--lh-thai); }
+.calAskText p { margin: 0; color: var(--text-2); font-size: var(--fs-5); line-height: var(--lh-text); }
+
 /* หมายเหตุ (ไม่บังคับ) */
 .noteField { display: grid; gap: var(--space-1-5); }
 .noteKey { color: var(--text-2); font-size: var(--fs-5); font-weight: var(--fw-semibold); line-height: var(--lh-thai); }

@@ -2,7 +2,9 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { can } from '@/lib/permissions';
 import { COSTING_ATTACHMENT_TABLE } from '@/lib/master/costingAttachmentAccess';
-import { canEditAttachmentParent, canViewAttachmentParent, canViewAttachmentRow } from '@/lib/master/attachmentAccess';
+import {
+  canAttachBillingCalendar, canEditAttachmentParent, canViewAttachmentParent, canViewAttachmentRow,
+} from '@/lib/master/attachmentAccess';
 import { ensureGoogleDocAccess } from '@/lib/master/googleDocAccess';
 import { listAttachments } from '@/lib/master/attachments';
 import { attachmentUrlErrorForEnv } from '@/lib/master/attachmentStorage';
@@ -167,7 +169,10 @@ export async function POST(request) {
     return Response.json({ error: e.message }, { status: 500 });
   }
   if (!parent) return Response.json({ error: 'ไม่พบระเบียนที่จะแนบเอกสาร' }, { status: 404 });
-  const allowedEdit = await canEditAttachmentParent(supabase, entityType, parent, user);
+  /* ⭐ รูปปฏิทินวางบิลของลูกค้า (v5) — ช่องแคบของคนที่แก้กำหนดวางบิลได้ (ฝ่ายขายทีมที่ดูแล + FN) · FN ไม่มีสิทธิ์แก้ทะเบียนลูกค้า
+     ⇒ ด่านรวมตอบ false · ⚠️ ถาม docType ที่ **ตรงทะเบียนเป๊ะ** (ค่าที่ไม่รู้จักตกเป็น 'other' ข้างล่าง = ไม่ใช่รูปปฏิทิน ไม่ได้ช่องนี้) */
+  const allowedEdit = await canEditAttachmentParent(supabase, entityType, parent, user)
+    || canAttachBillingCalendar(entityType, docType, parent, user);
   if (!allowedEdit) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }

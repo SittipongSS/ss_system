@@ -17,10 +17,13 @@
 // ⭐ แผ่นล่างบนมือถือ: ช่องคู่ ○ วันวางบิล → ● กำหนดชำระ บนหัว (แตะช่อง = ไปวิธีตั้งของช่องนั้น) + ชิปงวดทั้งใบ
 // ⚠️ ไม่มี "เสร็จ" ในตัวแก้ — บันทึกมีที่เดียว (แถบล่าง / ท้ายแผ่นบนมือถือ) · Segmented สลับวิธีเฉย ๆ ไม่ล้างค่า
 // ⚠️ รอเหตุการณ์ = ไม่มีกำหนดชำระ (ด่านเขียนรุ่นสี่ตีกลับคู่นี้) — เลือกเหตุการณ์ล้างกำหนดชำระ · พิมพ์กำหนดชำระล้างเหตุการณ์
+// ⭐ รอบห้า (มติเจ้าของ 29/09 · ปฏิทินรายปีของลูกค้า) — ลูกค้าตามปฏิทินใช้ "ตามรอบ" ตัวเดิม: ไทล์ ○ วันวางบิล (= วันตัดรอบ ·
+//   เครดิต N = วันทำงานสุดท้ายที่ทันรอบ) → ● วันจ่าย + คำ "ตามปฏิทินลูกค้า · ส่งก่อน 16:00 น." · ชิปหมดที่ปีที่ยังไม่มีปฏิทิน =
+//   "ยังไม่มีปฏิทิน 2027 · ใส่วันเองได้" (หยุด — ไม่มีชิปประมาณการ) · วันวางบิลในปีนั้นไม่มีกำหนดชำระคิดให้ ช่องกำหนดชำระพิมพ์เองได้
 import { useEffect, useRef, useState } from "react";
 import {
-  CalendarCheck, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, CornerDownRight, Eraser, HandCoins, Hourglass, Info, Receipt,
-  RotateCcw, Tag, TriangleAlert, Undo2, X,
+  CalendarCheck, CalendarDays, CalendarX, ChevronDown, ChevronLeft, ChevronRight, CornerDownRight, Eraser, HandCoins, Hourglass, Info,
+  Receipt, RotateCcw, Tag, TriangleAlert, Undo2, X,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import ChoiceChips from "@/components/ui/ChoiceChips";
@@ -30,12 +33,12 @@ import Segmented from "@/components/ui/Segmented";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { NA, fmtMoney, fmtPercent } from "@/lib/format";
 import {
-  BILLING_EVENT_MAX, BILLING_EVENT_PRESETS, MONTH_END_DAY, NO_BILLING_TEXT, SKIP_TEXT, billingNeed, billingRounds,
+  BILLING_EVENT_MAX, BILLING_EVENT_PRESETS, MONTH_END_DAY, NO_BILLING_TEXT, SKIP_TEXT, billingNeed, billingRounds, calendarGapFor,
   dueDateForBilling, formatBillingDate, installmentLabelMonth, needExceptionActions, ruleOf,
 } from "@/lib/sales/billingRule";
 import {
-  VIEW_LABELS, calendarMonthFor, clearedDates, continueChoiceFor, datesEmpty, datesOf, dueSourceOf, keepDueChoiceFor, openViewOf,
-  pickBillingDate, quickDueChoices, roundChoicesFor, sameDates, splitsFields,
+  VIEW_LABELS, billingCutoffNote, calendarGapHead, calendarMonthFor, clearedDates, continueChoiceFor, datesEmpty, datesOf, dueSourceOf,
+  isCalendarRule, keepDueChoiceFor, openViewOf, pickBillingDate, quickDueChoices, roundChoicesFor, roundTileNote, sameDates, splitsFields,
 } from "@/lib/sales/installmentDateDrafts";
 import InstallmentCalendar from "./InstallmentCalendar";
 import { BillNode, DateLegend, DatePair, DateText, DateTile, DueNode, WeekendBadge, pairLabel } from "./InstallmentDateParts";
@@ -138,9 +141,12 @@ export default function InstallmentDateEditor({ mode, row, variant = "popover" }
   if (view === "round") {
     /* 4 รอบถัดไป (สเปก 28/09 `billingRounds(rule, from, 4)`) — "ดูรอบถัดไปอีก" เพิ่มทีละ 3 */
     const count = 4 + more;
-    const { followSeq, list } = roundChoicesFor(ruleValue, rows, current, row, todayIso, count);
+    const { followSeq, list, missing } = roundChoicesFor(ruleValue, rows, current, row, todayIso, count, { holidays: mode.holidays });
     const tiles = v.billingDate && isRoundDay(v.billingDate) && !list.some((x) => x.billingDate === v.billingDate)
-      ? [{ billingDate: v.billingDate, dueDate: dueDateForBilling(ruleValue, v.billingDate), usedBySeq: null, current: true }, ...list]
+      ? [{
+        billingDate: v.billingDate, dueDate: dueDateForBilling(ruleValue, v.billingDate), usedBySeq: null, current: true,
+        note: roundTileNote(ruleValue, { billingDate: v.billingDate }),
+      }, ...list]
       : list;
     const prevBill = followSeq ? rows.find((x) => x.seq === followSeq) : null;
     body = (
@@ -149,25 +155,43 @@ export default function InstallmentDateEditor({ mode, row, variant = "popover" }
           {prevBill ? `รอบถัดจากงวด ${followSeq} (${formatBillingDate(current(prevBill).billingDate, { withYear: false })})` : "รอบถัดไปของลูกค้า"}
           {" · "}<DateLegend />
         </p>
-        <div className={styles.tiles} role="radiogroup" aria-label={`รอบวางบิล ${context}`}>
-          {tiles.map((round, index) => {
-            const tags = [];
-            if (round.current) tags.push(<StatusBadge key="cur" size="sm" tone="neutral" label="ที่ตั้งไว้" />);
-            if (index === 0 && followSeq && !round.current) {
-              tags.push(<StatusBadge key="follow" size="sm" tone="info" icon={CornerDownRight} iconSize={11} label={`ต่อจากงวด ${followSeq}`} />);
-            }
-            if (saved.billingDate === round.billingDate && !round.current) tags.push(<StatusBadge key="saved" size="sm" tone="neutral" label="บันทึกไว้" />);
-            if (round.usedBySeq) tags.push(<StatusBadge key="used" size="sm" tone="warning" label={`งวด ${round.usedBySeq} ใช้รอบนี้`} />);
-            return (
-              <DateTile key={round.billingDate} role="radio" billingDate={round.billingDate} dueDate={round.dueDate}
-                tags={tags.length ? tags : null} on={!v.billingEvent && v.billingDate === round.billingDate}
-                ariaLabel={pairLabel(round.billingDate, round.dueDate, round.usedBySeq ? `งวด ${round.usedBySeq} ใช้รอบนี้` : "")}
-                onClick={() => mode.choose(row, pickBillingDate(ruleValue, round.billingDate, v))} />
-            );
-          })}
-        </div>
-        <Button size="sm" variant="quiet" className={styles.more} icon={<ChevronDown size={14} aria-hidden="true" />}
-          onClick={() => setMore((n) => n + 3)}>ดูรอบถัดไปอีก</Button>
+        {tiles.length ? (
+          <div className={styles.tiles} role="radiogroup" aria-label={`รอบวางบิล ${context}`}>
+            {tiles.map((round, index) => {
+              const tags = [];
+              if (round.current) tags.push(<StatusBadge key="cur" size="sm" tone="neutral" label="ที่ตั้งไว้" />);
+              if (index === 0 && followSeq && !round.current) {
+                tags.push(<StatusBadge key="follow" size="sm" tone="info" icon={CornerDownRight} iconSize={11} label={`ต่อจากงวด ${followSeq}`} />);
+              }
+              if (saved.billingDate === round.billingDate && !round.current) tags.push(<StatusBadge key="saved" size="sm" tone="neutral" label="บันทึกไว้" />);
+              if (round.usedBySeq) tags.push(<StatusBadge key="used" size="sm" tone="warning" label={`งวด ${round.usedBySeq} ใช้รอบนี้`} />);
+              /* ⭐ รอบห้า: คำบนไทล์ = ที่มา "ตามปฏิทินลูกค้า" + "ส่งก่อน 16:00 น." (ชำระรอบเดียวกัน) / "ทันรอบตัด …" (เครดิต N) */
+              if (round.note) tags.push(<span key="note" className={styles.tileMeta}>{round.note}</span>);
+              return (
+                <DateTile key={round.billingDate} role="radio" billingDate={round.billingDate} dueDate={round.dueDate}
+                  tags={tags.length ? tags : null} on={!v.billingEvent && v.billingDate === round.billingDate}
+                  ariaLabel={pairLabel(round.billingDate, round.dueDate, [round.note, round.usedBySeq ? `งวด ${round.usedBySeq} ใช้รอบนี้` : ""].filter(Boolean).join(" · "))}
+                  onClick={() => mode.choose(row, pickBillingDate(ruleValue, round.billingDate, v))} />
+              );
+            })}
+          </div>
+        ) : null}
+        {missing ? (
+          /* ⭐ ปีถัดไปยังไม่มีปฏิทิน (มติ 29/09 "หยุดรอปฏิทินใหม่") — ชิปหยุดตรงนี้ ไม่มีชิปประมาณการ · ทางที่ยังทำได้:
+             วันวางบิลที่ "วันอื่น" (กำหนดชำระไม่คิดให้) หรือพิมพ์กำหนดชำระเองในช่องข้างล่าง */
+          <p className={styles.hint} role="note">
+            <CalendarX size={14} aria-hidden="true" />
+            <span>
+              <b>{missing.text}</b>
+              {tiles.length ? " — รอบหลังจากนี้ยังไม่มี" : ""}
+              {" · เลือกวันวางบิลที่ “วันอื่น” หรือพิมพ์กำหนดชำระในช่องข้างล่าง"}
+            </span>
+          </p>
+        ) : list.length >= count ? (
+          /* ได้ไม่ครบ count = สุดขอบฟ้าของตัวคิดแล้ว (48 เดือน) — ไม่มีรอบให้ดูเพิ่ม ปุ่มหายไป ไม่กดแล้วได้แผงเดิม */
+          <Button size="sm" variant="quiet" className={styles.more} icon={<ChevronDown size={14} aria-hidden="true" />}
+            onClick={() => setMore((n) => n + 3)}>ดูรอบถัดไปอีก</Button>
+        ) : null}
       </>
     );
   } else if (view === "follow") {
@@ -203,14 +227,28 @@ export default function InstallmentDateEditor({ mode, row, variant = "popover" }
       <>
         <p className={styles.lead}>
           {rm.kind === "rounds"
-            ? "วันวางบิลนอกรอบ — ระบบคิดกำหนดชำระตามรอบให้"
+            /* ปฏิทินของลูกค้า: ปีที่ยังไม่มีปฏิทินไม่มีวันคิดให้ (มติ 29/09 หยุด) — บอกตั้งแต่ก่อนแตะ */
+            ? (isCalendarRule(ruleValue)
+              ? "วันวางบิลนอกรอบ — ระบบคิดกำหนดชำระตามปฏิทินลูกค้าให้ · ปีที่ยังไม่มีปฏิทิน ใส่กำหนดชำระเอง"
+              : "วันวางบิลนอกรอบ — ระบบคิดกำหนดชำระตามรอบให้")
             /* ชำระวันวางบิล = "ชำระวันวางบิล" ไม่ใช่ "+0 วัน" (มติ 28/09 — ห้ามพูดเครดิต 0 วัน) */
             : creditDays === 0 ? "วันวางบิล — ชำระวันวางบิล (กำหนดชำระวันเดียวกัน)"
               : creditDays !== null ? `วันวางบิล — กำหนดชำระ = +${creditDays} วัน` : "วันวางบิล — ระบบคิดกำหนดชำระตามรอบให้"}
         </p>
         <InstallmentCalendar month={monthFor("billingDate")} onMonth={setMonth("billingDate")} selected={v.billingDate}
           todayIso={todayIso} marks={marksOf("billingDate")} ariaLabel={`วันวางบิล ${context}`}
-          peekOf={(iso) => <DatePair billingDate={iso} dueDate={dueDateForBilling(ruleValue, iso)} />}
+          peekOf={(iso) => {
+            /* ⭐ รอบห้า: วันที่ปฏิทินยังไม่ครอบ = บอกเหตุแทนกำหนดชำระ (ไม่มีวันคิดให้ · หยุด) · วันตัดรอบที่มีเวลา = "ส่งก่อน 16:00 น." */
+            const gap = calendarGapFor(ruleValue, iso);
+            const cut = billingCutoffNote(ruleValue, iso);
+            return (
+              <>
+                <DatePair billingDate={iso} dueDate={dueDateForBilling(ruleValue, iso)} />
+                {cut ? <span className={styles.tileMeta}>{cut}</span> : null}
+                {gap ? <span className={styles.gapNote}><CalendarX size={13} aria-hidden="true" />{gap.text}</span> : null}
+              </>
+            );
+          }}
           onPick={(iso) => mode.setValue(row, pickBillingDate(ruleValue, iso, v))} />
       </>
     );
@@ -372,7 +410,10 @@ export default function InstallmentDateEditor({ mode, row, variant = "popover" }
               onClick={() => mode.setView(row, billSlotView)}>
               <small><BillNode />วันวางบิล{rm.billingColumn === "optional" ? " · ไม่บังคับ" : ""}</small>
               <b>{v.billingDate ? formatBillingDate(v.billingDate) : v.billingEvent ? "รอเหตุการณ์" : NA}</b>
-              <span>{v.billingDate ? "ตั้งแล้ว" : v.billingEvent || (rm.billingColumn === "optional" ? "ไม่ใส่ก็ได้" : "แตะเพื่อตั้ง")}</span>
+              <span>
+                {v.billingDate ? (billingCutoffNote(ruleValue, v.billingDate) || "ตั้งแล้ว")
+                  : v.billingEvent || (rm.billingColumn === "optional" ? "ไม่ใส่ก็ได้" : "แตะเพื่อตั้ง")}
+              </span>
             </button>
           )}
           <ChevronRight size={16} aria-hidden="true" className={styles.slotArrow} />
@@ -380,7 +421,10 @@ export default function InstallmentDateEditor({ mode, row, variant = "popover" }
             onClick={() => (rm.views.includes("due") ? mode.setView(row, "due") : dueRef.current?.querySelector("input")?.focus())}>
             <small><DueNode />กำหนดชำระ</small>
             <b>{v.dueDate ? formatBillingDate(v.dueDate) : v.billingEvent && dueOnly ? "รอเหตุการณ์" : NA}</b>
-            <span>{v.dueDate ? (source.label || "ตั้งแล้ว") : v.billingEvent && dueOnly ? v.billingEvent : "แตะเพื่อตั้ง"}</span>
+            <span>
+              {v.dueDate ? (source.label || "ตั้งแล้ว") : v.billingEvent && dueOnly ? v.billingEvent
+                : source.key === "calendarMissing" ? source.label : "แตะเพื่อตั้ง"}
+            </span>
           </button>
         </div>
       ) : null}
@@ -400,6 +444,10 @@ export default function InstallmentDateEditor({ mode, row, variant = "popover" }
                 : v.billingDate ? <DateText iso={v.billingDate} node="bill" />
                   : <span>{rm.billingColumn === "optional" ? "ยังไม่มีวัน (ไม่บังคับ)" : "ยังไม่มีวัน"}</span>}
           </span>
+          {/* ⭐ รอบห้า: เวลาตัดรอบของรอบที่เลือก (วันวางบิล = วันตัดรอบ · ชำระรอบเดียวกัน) — เครดิต N ไม่พูดเวลา */}
+          {v.billingDate && billingCutoffNote(ruleValue, v.billingDate) ? (
+            <span className={styles.tileMeta}>{billingCutoffNote(ruleValue, v.billingDate)}</span>
+          ) : null}
           {split && v.billingDate ? (
             /* เปิดทีละช่อง — ล้างวันวางบิลอย่างเดียวได้ (กำหนดชำระคงเดิม) · ไม่งั้นต้อง "ล้างวัน" ทั้งคู่ */
             <Button size="sm" variant="quiet" icon={<Eraser size={13} aria-hidden="true" />}
@@ -412,9 +460,13 @@ export default function InstallmentDateEditor({ mode, row, variant = "popover" }
           <DateInput weekday value={v.dueDate} className={styles.dueInput} ariaLabel={`กำหนดชำระ ${context}`}
             onChange={(iso) => mode.setValue(row, withDue(iso))} />
           <WeekendBadge iso={v.dueDate} />
+          {/* ⭐ รอบห้า: 'calendarMissing' = มีวันวางบิลแต่ปีนั้นยังไม่มีปฏิทิน — ป้าย "ยังไม่มีปฏิทิน 2027 · ใส่วันเองได้" (ช่องนี้พิมพ์ได้เลย) ·
+              ใส่เองในปีที่ยังไม่มี = "ใส่เอง" + ปีที่ขาด (ใส่ปฏิทินแล้วระบบเสนอวันจริงให้ยืนยัน — planRuleChange `typedInGap`) */}
           {source.label ? (
-            <StatusBadge size="sm" tone={source.key === "override" ? "warning" : "neutral"} label={source.label} />
+            <StatusBadge size="sm" tone={source.key === "override" || source.key === "calendarMissing" ? "warning" : "neutral"}
+              icon={source.key === "calendarMissing" ? CalendarX : undefined} iconSize={11} label={source.label} />
           ) : null}
+          {source.key === "manual" && source.gap ? <span className={styles.tileMeta}>{calendarGapHead(source.gap)}</span> : null}
           {/* แตะเดียวกลับไปวันที่กติกาคิดได้ — แก้ทับไว้ ("แก้ทับ") หรือยังไม่มีกำหนดชำระทั้งที่มีวันวางบิล ('missing' · review 28/09:
               ใบที่มีวันวางบิลแต่กำหนดชำระว่าง เดิมไม่มีทางเติมแตะเดียว) */}
           {(source.key === "override" || source.key === "missing") && source.computed ? (
