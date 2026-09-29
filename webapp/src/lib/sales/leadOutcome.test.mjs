@@ -63,6 +63,22 @@ test('followup นับเป็นการติดต่อ (การติ
   assert.equal(leadOutcome(lead(), [ev('followup')]).reachedContact, true);
 });
 
+/* 🐞 ก.ย. 2026: 4 ใบกดนัดตรงจาก assigned (ไม่มี contact) ⇒ Funnel "ผ่านนัด" นับ แต่
+   "ติดต่อแล้ว" ไม่นับ — ผังสะสมที่ขั้นล่างหลุดจากขั้นบน */
+test('นัดตรงจาก assigned โดยไม่มี contact ก็นับเป็นติดต่อแล้ว — ผ่านนัด ⊂ ติดต่อแล้ว', () => {
+  const o = leadOutcome(lead({ status: 'meeting' }), [ev('create'), ev('screen'), ev('assign'), ev('meeting')]);
+  assert.equal(o.reachedMeeting, true);
+  assert.equal(o.reachedContact, true);
+});
+
+test('ทุกใบที่ผ่านนัดต้องติดต่อแล้วเสมอ (ทั้งสองแหล่ง)', () => {
+  const histories = [[ev('meeting')], [ev('contact'), ev('meeting')], [ev('meeting'), ev('bounce')]];
+  for (const h of histories) {
+    const o = leadOutcome(lead(), h);
+    assert.ok(!o.reachedMeeting || o.reachedContact, JSON.stringify(h.map((e) => e.kind)));
+  }
+});
+
 test('เหตุการณ์ที่ไม่ใช่การคุยกับลูกค้า ไม่นับเป็นติดต่อ', () => {
   const admin = [ev('create'), ev('screen'), ev('assign'), ev('reassign'), ev('update')];
   const o = leadOutcome(lead(), admin);
