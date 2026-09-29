@@ -11,14 +11,16 @@ import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 
 import {
-  EMPTY_DRAFT, PERIOD_FIELD_ID, SAVE_FIELD_ID, backfillBannerText, backfillRailChecks, linesCardMeta, backfillStateOfView, derivedRoleOf, draftDirty, fieldErrorsView,
-  intOrRaw, issueHeadTail, lineFieldId, lineFieldIds, lineMissing, localSetupCtx, mergedLines, patchDraftLine, rebaseDraft,
-  setupPayload, stripParts, submitGateGroups, surveyRequestHref, zonePacksFieldId,
+  EMPTY_DRAFT, PERIOD_FIELD_ID, SAVE_FIELD_ID, backfillBannerText, backfillRailChecks, backfillRailOnTop, backfillRailPressed, linesCardMeta, backfillStateOfView,
+  derivedRoleOf, draftDirty, fieldErrorsView, intOrRaw, issueHeadTail, lineFieldId, lineFieldIds, lineMissing, localSetupCtx, mergedLines, patchDraftLine,
+  rebaseDraft, setupPayload, stripParts, submitGateGroups, submitIssuesAfterSave, surveyRequestHref, zonePacksFieldId,
 } from '../../components/salesPlanning/serviceSetup/serviceSetupDraft.js';
 import {
   ZONES_BULK_NONE_PICKED, ZONES_BULK_PACKS_INVALID, zonesBulkCapText, zonesBulkConsequence, zonesBulkPlan,
 } from '../../components/service/zonesBulkPlan.js';
-import { SERVICE_SETUP_LIMITS, SERVICE_SETUP_PANEL_TEXT, serviceSetupFieldId, serviceSetupTotals } from './serviceSetup.js';
+import {
+  SERVICE_BACKFILL_RAIL_TEXT, SERVICE_SETUP_LIMITS, SERVICE_SETUP_PANEL_TEXT, serviceSetupFieldId, serviceSetupIssues, serviceSetupTotals,
+} from './serviceSetup.js';
 
 const SRC = path.resolve(process.cwd(), 'src');
 const read = (rel) => readFileSync(path.join(SRC, rel), 'utf8');
@@ -337,6 +339,78 @@ test('F9: ใบเดิมที่ยังไม่เริ่ม (ทุ�
   })).map((row) => [row.key, row]));
   assert.deepEqual([none.period.sub, none.period.ok], ['ไม่มีแพ็คเกจ — ไม่ต้องใส่', true]);
   assert.equal(none.installments.ok, true);
+});
+
+test('UAT 29/09 ข้อ 2: แถว "ช่วงบริการ" ที่ยังไม่ใส่ระหว่างรอเลือกชนิด บอกเหตุบนบรรทัดรองแบบแถวโซน (แผงแดงไม่มีข้อช่วงบริการ)', () => {
+  const unsetLine = (n) => ({ lineId: `U${n}`, lineNo: n, role: 'unset', roleSource: 'none', kind: null, serviceProductId: null, serviceFgCode: null, rounds: null, fgCode: null, productId: null, description: `สาขา ${n}`, categoryCode: null });
+  const kindIssues = (lines) => lines.map((l) => ({ key: 'kind_missing', tab: 'overview', lineId: l.lineId, lineNo: l.lineNo, message: `รายการ ${l.lineNo} · …` }));
+  /* ยังไม่มีแพ็คเกจที่บันทึกแล้ว ⇒ server ไม่ขึ้น period_missing (serviceSetupIssues: เฉพาะ packageLines > 0)
+     แต่แถวยังไม่ยอมบอกว่าครบ (บรรทัดที่ยังไม่เลือกชนิดอาจเป็นแพ็คเกจ) ⇒ หลังกดยื่นแถวแดงโดยไม่มีข้อในแผง — บรรทัดรองต้องบอกเหตุ */
+  const lines = [unsetLine(1), unsetLine(2), viewFixture().lines[3]];
+  const waiting = Object.fromEntries(backfillRailChecks(viewFixture({
+    flow: 'backfill', period: null, allocations: [], lines, totals: { packageLines: 0, unsetLines: 2 }, issues: kindIssues(lines.slice(0, 2)),
+  })).map((row) => [row.key, row]));
+  assert.deepEqual([waiting.period.value, waiting.period.ok, waiting.period.sub],
+    ['ยังไม่ใส่', false, 'รอเลือกชนิด 2 รายการ · ต้องใส่ถ้ามีแพ็คเกจ']);
+  assert.equal(waiting.zones.sub, 'รอเลือกชนิด 2 รายการ', 'แถวโซนพูดแบบเดิม');
+
+  /* มีแพ็คเกจที่บันทึกแล้ว ⇒ server ขึ้น period_missing (อยู่ในแผงแดงแล้ว) — ไม่พูดว่า "ถ้ามีแพ็คเกจ" ทั้งที่มีแล้ว */
+  const withPackage = Object.fromEntries(backfillRailChecks(viewFixture({
+    flow: 'backfill', period: null, totals: { packageLines: 1, unsetLines: 1 }, issues: [{ key: 'period_missing', tab: 'overview' }],
+  })).map((row) => [row.key, row]));
+  assert.deepEqual([withPackage.period.value, withPackage.period.ok, withPackage.period.sub], ['ยังไม่ใส่', false, null]);
+
+  /* ใส่ช่วงแล้ว = บรรทัดรองเป็นคำอ่านช่วงเหมือนเดิม (ไม่ใช่คำรอเลือกชนิด) */
+  const withPeriod = Object.fromEntries(backfillRailChecks(viewFixture({
+    flow: 'backfill', lines, totals: { packageLines: 0, unsetLines: 2 }, issues: kindIssues(lines.slice(0, 2)),
+  })).map((row) => [row.key, row]));
+  assert.equal(withPeriod.period.value, '01/10/2026–30/09/2027');
+  assert.doesNotMatch(String(withPeriod.period.sub), /รอเลือกชนิด/);
+
+  /* ข้อความอยู่ในแคตตาล็อก (ภาคผนวก A.7) — ตัวคิดแถวไม่เขียนภาษาไทยของบรรทัดรองเอง */
+  assert.equal(SERVICE_BACKFILL_RAIL_TEXT.waitKind('2'), 'รอเลือกชนิด 2 รายการ');
+  assert.equal(SERVICE_BACKFILL_RAIL_TEXT.periodWaitKind('2'), 'รอเลือกชนิด 2 รายการ · ต้องใส่ถ้ามีแพ็คเกจ');
+  const draft = code(`${FOLDER}/serviceSetupDraft.js`);
+  assert.match(draft, /SERVICE_BACKFILL_RAIL_TEXT\.waitKind\(fmtNumber\(unset\)\)/);
+  assert.match(draft, /SERVICE_BACKFILL_RAIL_TEXT\.periodWaitKind\(fmtNumber\(unset\)\)/);
+  assert.doesNotMatch(draft, /`รอเลือกชนิด \$\{/, 'บรรทัดรองรอเลือกชนิดมาจากแคตตาล็อกเท่านั้น');
+});
+
+test('UAT 29/09 ข้อ 1: การ์ดรางแดงจากด่านของ server เท่านั้น · ด่าน "ยังไม่บันทึก" ของจอไม่ทำให้แถว (คิดจากของที่บันทึกแล้ว) แดง', () => {
+  const checkedAt = '2026-09-29T03:00:00.000Z';
+  const unsaved = { issues: serviceSetupIssues({ unsaved: true }), warnings: [], flow: 'backfill', source: 'client', checkedAt };
+  const server = { issues: [{ key: 'kind_missing', tab: 'overview', lineId: 'L1', message: 'รายการ 1 · …' }], warnings: [], flow: 'backfill', source: 'server', checkedAt };
+  assert.equal(backfillRailPressed(unsaved), false, 'ตรวจของที่ยังไม่บันทึกไม่ได้ — แถวของการ์ดคิดจากของเก่าที่คนแก้ไปแล้ว');
+  assert.equal(backfillRailPressed(server), true);
+  assert.equal(backfillRailPressed({ ...server, flow: 'pipeline' }), false, 'การ์ดรางเป็นของใบเดิม (backfill) เท่านั้น');
+  assert.equal(backfillRailPressed({ ...server, source: undefined }), false, 'ไม่บอกที่มา = ไม่แดง (กฎ 3 — ปลอดภัยไว้ก่อน)');
+  assert.equal(backfillRailPressed(null), false);
+});
+
+test('UAT 29/09 ข้อ 1: บันทึกงานบริการสำเร็จ = ล้างแผงแดงที่มีแต่ข้อ "ยังไม่บันทึก" · แผงของ server คงไว้ตัวเดิม (ภาพ ณ ตอนกด)', () => {
+  const checkedAt = '2026-09-29T03:00:00.000Z';
+  const unsaved = { issues: serviceSetupIssues({ unsaved: true }), warnings: [], flow: 'backfill', source: 'client', checkedAt };
+  assert.equal(unsaved.issues[0].key, 'unsaved');
+  assert.equal(submitIssuesAfterSave(unsaved), null);
+  assert.equal(submitIssuesAfterSave({ ...unsaved, flow: 'pipeline' }), null, 'ยื่นอนุมัติก็เหมือนกัน');
+  const server = { issues: [{ key: 'kind_missing', tab: 'overview', lineId: 'L1', message: 'รายการ 1 · …' }], warnings: [], flow: 'backfill', source: 'server', checkedAt };
+  assert.equal(submitIssuesAfterSave(server), server, 'ตัวเดิม — memo ของช่องแดงไม่ขยับ (ตารางไม่ลืมว่าแก้ช่องไหนไปแล้ว)');
+  const mixed = { ...server, issues: [...unsaved.issues, ...server.issues] };
+  assert.equal(submitIssuesAfterSave(mixed), mixed, 'มีข้ออื่นปน = ไม่ใช่ของ "ยังไม่บันทึก" ล้วน — ไม่ล้าง');
+  assert.equal(submitIssuesAfterSave(null), null);
+});
+
+test('UAT 29/09 ข้อ 3 (มติเจ้าของ): การ์ดราง "งานบริการ (ใบเดิม)" อยู่บนสุดของรางขวาระหว่างยังไม่ยื่นตรวจ · ยื่นแล้ว/รอตรวจกลับที่เดิม', () => {
+  const backfill = (state, extra = {}) => viewFixture({ flow: 'backfill', state: { setupState: state }, ...extra });
+  assert.equal(backfillRailOnTop(backfill(null)), true, 'กำลังตั้ง');
+  assert.equal(backfillRailOnTop(backfill('rejected')), true, 'ตีกลับ — แก้แล้วยื่นใหม่');
+  assert.equal(backfillRailOnTop(backfill(null, {
+    period: null, allocations: [], lines: viewFixture().lines.map((line) => ({ ...line, kind: null, serviceProductId: null })),
+  })), true, 'ยังไม่เริ่ม');
+  assert.equal(backfillRailOnTop(backfill('submitted')), false, 'ยื่นตรวจแล้ว (รอผู้จัดการตรวจ) = ใต้การ์ดจัดการเอกสาร');
+  assert.equal(backfillRailOnTop(viewFixture()), false, 'ใบร่าง (pipeline) ไม่มีการ์ดนี้');
+  assert.equal(backfillRailOnTop(viewFixture({ flow: 'stamped' })), false, 'อนุมัติงานบริการแล้ว');
+  assert.equal(backfillRailOnTop(null), false, 'ก้อน GET ยังไม่มา');
 });
 
 test('F10: แผงแดงรวมข้อซ้ำรายงวด (12× วันวางบิล) เป็นแถวเดียว "งวด 1–12 … · 12 งวด" · นับข้อยังเท่าเดิม · ไปแก้ที่งวดแรก', () => {

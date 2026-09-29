@@ -115,7 +115,9 @@ import SalesOrderServiceLines, { revealServiceSetupField } from "@/components/sa
 import SubmitGateNotice from "@/components/salesPlanning/serviceSetup/SubmitGateNotice";
 import { ServiceBackfillBanner, ServiceBackfillRailCard } from "@/components/salesPlanning/serviceSetup/ServiceBackfillPanel";
 import ServiceSetupStrip from "@/components/salesPlanning/serviceSetup/ServiceSetupStrip";
-import { localSetupCtx, mergedLines } from "@/components/salesPlanning/serviceSetup/serviceSetupDraft";
+import {
+  backfillRailOnTop, backfillRailPressed, localSetupCtx, mergedLines, submitIssuesAfterSave,
+} from "@/components/salesPlanning/serviceSetup/serviceSetupDraft";
 import CountBadge from "@/components/ui/CountBadge";
 import { serviceContractHeadline } from "@/lib/sales/serviceContractLink";
 import { salesOrderWorkTrack } from "@/lib/sales/salesOrderWorkTrack";
@@ -279,7 +281,9 @@ export default function SalesOrderDetailPage() {
      ⭐ ใบ pipeline สาย SERVICE (`serviceSetupRequired`) โหลดก้อน GET `…/service-setup` — ใบอื่นไม่ยิงอะไรเลย
      ⭐ ร่างการแก้อยู่ใน hook (ไม่หายตอนสลับแท็บ) ⇒ ยามออกจากหน้าอ่าน `setup.dirty` ตรง ๆ
      🔴 แดงหลังกดเท่านั้น (กฎ 3) — `submitIssues` ตั้งเมื่อกด "ยื่นอนุมัติ"/"ยื่นตรวจงานบริการ" แล้วไม่ผ่าน
-        `{ issues, warnings, flow: 'pipeline'|'backfill', checkedAt }` · ยื่นผ่าน = ล้าง */
+        `{ issues, warnings, flow: 'pipeline'|'backfill', source: 'client'|'server', checkedAt }` · ยื่นผ่าน = ล้าง
+        · `source` = ด่านไหนตอบ: 'client' = ด่าน "ยังไม่บันทึก" ของจอ (ยังไม่ได้ถาม server) · 'server' = ก้อน GET สด / 400 ของการยื่น
+          การ์ดรางแดงจาก 'server' เท่านั้น (`backfillRailPressed` — แถวของการ์ดคิดจากของที่บันทึกแล้ว · UAT 29/09 ข้อ 1) */
   const setupRequired = serviceSetupRequired(order);
   const setup = useServiceSetup(order?.id, { enabled: setupRequired, customerId: order?.customerId || null });
   const [submitIssues, setSubmitIssues] = useState(null);
@@ -397,10 +401,11 @@ export default function SalesOrderDetailPage() {
     return map;
   }, [submitIssues]);
 
-  const showSubmitIssues = (issues, warnings, flow) => setSubmitIssues({
+  const showSubmitIssues = (issues, warnings, flow, source) => setSubmitIssues({
     issues: Array.isArray(issues) ? issues : [],
     warnings: Array.isArray(warnings) ? warnings : [],
     flow,
+    source,
     checkedAt: new Date().toISOString(),
   });
 
@@ -463,7 +468,7 @@ export default function SalesOrderDetailPage() {
       if (issues && action === "submit") {
         setConfirmState(null);
         setError("");
-        showSubmitIssues(issues, data.warnings, "pipeline");
+        showSubmitIssues(issues, data.warnings, "pipeline", "server");
       } else {
         setError(issues ? issuesErrorText(data.error || "อัปเดตใบสั่งขายไม่สำเร็จ", issues) : (data.error || "อัปเดตใบสั่งขายไม่สำเร็จ"));
       }
@@ -597,13 +602,13 @@ export default function SalesOrderDetailPage() {
   async function serviceGateBeforeSubmit(flow) {
     setError("");
     if (setup.dirty) {
-      showSubmitIssues(serviceSetupIssues({ unsaved: true }), [], flow);
+      showSubmitIssues(serviceSetupIssues({ unsaved: true }), [], flow, "client");
       return null;
     }
     const fresh = await freshServiceView();
     if (!fresh) return null;
     if (Array.isArray(fresh.issues) && fresh.issues.length) {
-      showSubmitIssues(fresh.issues, fresh.warnings, flow);
+      showSubmitIssues(fresh.issues, fresh.warnings, flow, "server");
       return null;
     }
     setSubmitIssues(null);
@@ -651,7 +656,7 @@ export default function SalesOrderDetailPage() {
       const issues = Array.isArray(failure?.data?.issues) ? failure.data.issues : null;
       if (issues && action === "submit") {
         setConfirmState(null);
-        showSubmitIssues(issues, failure.data.warnings, "backfill");
+        showSubmitIssues(issues, failure.data.warnings, "backfill", "server");
       } else {
         setError(issues ? issuesErrorText(failure.message, issues) : (failure?.message || SERVICE_BACKFILL_FAILED[action]));
       }
@@ -1571,6 +1576,22 @@ export default function SalesOrderDetailPage() {
   const setupFlow = setupView?.flow || null;
   const backfillAwaiting = serviceBackfillAwaitingReview(order);
   const showBackfillPanel = setupFlow === "backfill" || backfillAwaiting;
+  /* ⭐ การ์ดราง "งานบริการ (ใบเดิม)" (D11 · ม็อก BackfillApprovedSo) — ขั้น 'backfill' หรือรอผู้จัดการตรวจเท่านั้น
+     ⚠️ ปุ่มมาจากสิทธิ์ที่ server คิด (`setup.data.backfill`) · หน้าเป็นเจ้าของโมดัลทั้งสาม (ยื่น · อนุมัติ · ตีกลับ)
+     ⭐ ตัวเดียว วางได้สองที่ (มติเจ้าของ 29/09 · UAT ข้อ 3): ยังไม่ยื่นตรวจ = **บนสุดของรางขวา** เหนือการ์ดยอดสุทธิ
+       (รางปักหมุดสูงไม่เกินจอ ⇒ ใต้การ์ดจัดการเอกสาร ปุ่ม "ยื่นตรวจงานบริการ" ตกกรอบรางที่ปักหมุดที่ 1440) · ยื่นแล้ว/รอตรวจ = ใต้การ์ดจัดการเอกสารเหมือนเดิม
+     🔴 แถวตรวจแดงหลังกดยื่นแล้วไม่ผ่าน **ด่านของ server** เท่านั้น (`backfillRailPressed` · UAT ข้อ 1) */
+  const backfillRailFirst = backfillRailOnTop(setupView);
+  const backfillRail = showBackfillPanel ? (
+    <ServiceBackfillRailCard
+      setup={setup}
+      pressed={backfillRailPressed(submitIssues)}
+      busy={!!busy}
+      onSubmit={pressBackfillSubmit}
+      onApprove={openBackfillApprove}
+      onReject={openBackfillReject}
+    />
+  ) : null;
   /* แถบสรุปของผู้อนุมัติ — ใบรออนุมัติของสาย SERVICE หรืองานบริการย้อนหลังที่รอตรวจ */
   const showSetupStrip = setupRequired && reviewer && (order.status === "pending_approval" || backfillAwaiting);
   /* ป้ายบนหัวแท็บ: หลังกดยื่น = จำนวนข้อที่ติด (แดง) · ก่อนกด = "ครบ x/n" เป็นกลาง ขณะยังแก้ได้ (กฎ 3) */
@@ -1627,8 +1648,11 @@ export default function SalesOrderDetailPage() {
       ...localSetupCtx(mergedLines(view), zonesById),
     });
   };
-  /* หลังบันทึกงานบริการ: ก้อน GET ก่อน แล้วค่อยตัวใบ (เวอร์ชันของใบตรงกันแล้ว ⇒ ตัวตามไม่ยิงซ้ำ) */
+  /* หลังบันทึกงานบริการ: ก้อน GET ก่อน แล้วค่อยตัวใบ (เวอร์ชันของใบตรงกันแล้ว ⇒ ตัวตามไม่ยิงซ้ำ)
+     ⭐ แผงแดงที่มีแต่ข้อ "ยังไม่บันทึก" หมดความหมายทันทีที่บันทึกสำเร็จ = ล้าง (ไม่ค้างจนกดยื่นอีกครั้ง · UAT 29/09 ข้อ 1)
+       · แผงของ server คงตัวเดิม (ภาพ ณ ตอนกด — ตารางจำช่องที่แก้แล้วตามตัวตนของแผง) */
   const afterServiceSaved = async () => {
+    setSubmitIssues((current) => submitIssuesAfterSave(current));
     await setup.reload();
     await refreshOrder();
   };
@@ -2028,6 +2052,8 @@ export default function SalesOrderDetailPage() {
         <DetailPageLayout
           asideLabel="สรุปและจัดการ ใบสั่งขาย"
           aside={<>
+            {backfillRailFirst ? backfillRail : null}
+
             <DocumentSummaryCard
               title="ยอดสุทธิ ใบสั่งขาย"
               total={fmtMoney(order.totalAmount)}
@@ -2093,18 +2119,8 @@ export default function SalesOrderDetailPage() {
               )}
             />
 
-            {/* ⭐ งานบริการย้อนหลัง (D11 · ม็อก BackfillApprovedSo) — ใต้การ์ดจัดการเอกสาร · ขั้น 'backfill' หรือรอผู้จัดการตรวจเท่านั้น
-                ⚠️ ปุ่มมาจากสิทธิ์ที่ server คิด (`setup.data.backfill`) · หน้าเป็นเจ้าของโมดัลทั้งสาม (ยื่น · อนุมัติ · ตีกลับ) */}
-            {showBackfillPanel ? (
-              <ServiceBackfillRailCard
-                setup={setup}
-                pressed={submitIssues?.flow === "backfill"}
-                busy={!!busy}
-                onSubmit={pressBackfillSubmit}
-                onApprove={openBackfillApprove}
-                onReject={openBackfillReject}
-              />
-            ) : null}
+            {/* ⭐ งานบริการย้อนหลังที่ยื่นตรวจแล้ว/รอผู้จัดการตรวจ — ใต้การ์ดจัดการเอกสาร (ยังไม่ยื่น = บนสุดของราง · `backfillRailFirst`) */}
+            {backfillRailFirst ? null : backfillRail}
 
             {/* 🪤 การ์ด "การยื่นชำระสรรพสามิต" ถอดออกแล้ว (มติผู้ใช้ 2026-08-17) —
                 ทั้งสถานะ ยอดเรียกเก็บ ปุ่มสร้าง และลิงก์เปิดใบยื่น ย้ายขึ้นไปเป็นช่วงบนเส้นเดินงาน
