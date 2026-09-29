@@ -774,8 +774,12 @@ export function leadSlaNote(stage = {}, pendingLabel = 'ค้างตอนน
    ตามเดิม (ปลอดภัยกว่าเดา) — ดู mig 0289 ที่ตั้งใจไม่ backfill */
 
 /* เหตุการณ์ที่แปลว่า "ได้คุยกับลูกค้าแล้ว" — `followup` คือการติดต่อครั้งที่ 2 ขึ้นไป
-   (ยังไม่มีใน CHECK ของ lead_events วันนี้ ใส่ไว้ให้พร้อมก่อนเพื่อไม่ต้องกลับมาแก้สองรอบ) */
-const CONTACT_KINDS = new Set(['contact', 'followup']);
+   (ยังไม่มีใน CHECK ของ lead_events วันนี้ ใส่ไว้ให้พร้อมก่อนเพื่อไม่ต้องกลับมาแก้สองรอบ)
+   ⭐ `meeting` นับด้วย — นัดได้ = คุยกันแล้ว · `LEAD_TRANSITIONS.assigned` กดนัดตรงได้
+   โดยไม่มี `contact` ก่อน (มติ 2026-08-26) และ handler เขียน `firstContactAt` ให้อยู่แล้ว
+   🐞 เดิมไม่นับ ⇒ ก.ย. 2026 มี 4 ใบ "ผ่านนัดประชุม" แต่ไม่ "ติดต่อแล้ว" · Funnel ขึ้น
+   ติดต่อแล้ว 66 ขณะที่ SLA ติดต่อกลับ (อ่านคอลัมน์) นับ 69 บนจอเดียวกัน */
+const CONTACT_KINDS = new Set(['contact', 'followup', 'meeting']);
 
 const hasKind = (events, test) => (events || []).some((e) => test(e?.kind));
 
