@@ -1014,7 +1014,7 @@ export function salesOrderMoneyOutcome(order, rows = [], action, { serviceRounds
       /* มติ D2: ใบที่บัญชีปิดแล้วย้อนได้ · ใบ Rev. ไม่สืบสถานะปิดจากใบเดิม (financeStatus เกิดเป็น NULL) */
       order?.financeStatus === 'approved' ? 'บัญชีปิดใบนี้แล้ว — ใบ Rev. จะกลับเข้าคิวให้บัญชีปิดใหม่' : null,
       /* รอบขายของโซนนับเฉพาะใบ approved ที่ยังไม่ถูกแทน (lib/service/terms.js) */
-      serviceRounds ? 'ระหว่างรอ Rev. อนุมัติ ด่านเงินของนัดช่างปิด และต้องผูกโซนกับใบ Rev. ใหม่' : null,
+      serviceRounds ? 'ระหว่างรอ Rev. อนุมัติ นัดบริการของโซนในใบนี้ติดด่าน · ใบ Rev. คัดลอกแพ็คเกจ/โซน/แพ็ค/รอบ/ช่วงบริการไปให้ แก้ได้ก่อนยื่น · อนุมัติ Rev. แล้วรอบบริการของไซต์ที่ยังอยู่ย้ายตามไป' : null,
     ].filter(Boolean);
   }
   if (action === 'cancel') {

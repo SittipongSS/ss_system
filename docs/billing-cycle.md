@@ -2,7 +2,7 @@
 
 > สถานะ: **รอตรวจ** · ตรวจกับโค้ดเมื่อ 2026-09-29 · รอบแรก–ห้าขึ้น prod แล้ว (#1840 รุ่นสอง + mig 0390 · #1846 แบบ C + มติ 17) ·
 > **รอบหก = รุ่นสี่ "ต้องวางบิลไหม"** (มติ 18 · 29/09) เขียนครบในแบรนช์ `claude/billing-rework-v4` ยังไม่ commit/merge ·
-> **mig 0393 ยังไม่รัน** (เจ้าของรันใน SQL Editor ก่อน merge) · **backfill ยังไม่รัน** (ต้องได้คำยินยอมของเจ้าของ)
+> **mig 0393 รันแล้ว** (เจ้าของรันใน SQL Editor 29/09 ก่อน merge · ตรวจแล้ว: คอลัมน์ billingSkip มี · ลูกค้า 93/449/1/10 เท่าเดิม) · **backfill ยังไม่รัน** (ต้องได้คำยินยอมของเจ้าของ)
 
 ม็อกที่เจ้าของดูผ่าน: `~/ss-team/mockups/billing-cycle/` (5 จอ · brief.md มีมติ + ข้อมูลตัวอย่าง)
 
@@ -169,7 +169,7 @@
 
 | เรื่อง | ไฟล์ |
 |---|---|
-| ฐานข้อมูล | `supabase/migrations/0389_customer_billing_rule.sql` · `0390_billing_rule_credit_switch_rounds.sql` · **`0393_billing_rule_v4.sql`** (ยังไม่รัน) |
+| ฐานข้อมูล | `supabase/migrations/0389_customer_billing_rule.sql` · `0390_billing_rule_credit_switch_rounds.sql` · **`0393_billing_rule_v4.sql`** (รันแล้ว 29/09) |
 | ตัวคิด | **`lib/sales/billingRuleV4.js`** (รุ่นสี่ทั้งหมด: `ruleOf` · `normalizeRule` · `dateModeOf` · `validateInstallmentDates` · `planRuleChange` · `bellsFor` · `ledgerFlags` · ข้อความ) · `lib/sales/billingRule.js` (ชื่อเดิมเป็นตัวห่อ + ส่งออกรุ่นสี่) · `billingRuleFixtures.json` · ธงฐาน `lib/sales/billingPolicySchema.js` |
 | ทะเบียนลูกค้า | การ์ด `CustomerBillingRuleCard` · โมดัล `CustomerBillingRuleModal` (+ `CustomerBillingRuleState` · `CustomerBillingRuleRounds`) · จอ "งวดที่วันจะเปลี่ยน" `CustomerBillingRuleRedate` · `api/customers/[id]/billing-rule` (+ `/redate` · alias ใต้ `api/master`) · ตัวคิดของ route `lib/sales/customerRuleChange.js` + ตัวโหลด `lib/sales/installmentScheduleServer.js` · แถวเธรด `lib/master/customerBillingRuleUpdate.js` · proxy เปิดสองเส้นนี้ให้ FN |
 | แผงงวด SO | `components/salesPlanning/SalesOrderPaymentPanel.js` · แถบนโยบาย `installmentDates/BillingPolicyStrip.js` · โมดัล "งวดนี้ต้องวางบิล…" `installmentDates/RequireBillingModal.js` · `BillingStateBadge` · ลิงก์ขอใบวางบิล `lib/sales/billingRequestHref.js` |

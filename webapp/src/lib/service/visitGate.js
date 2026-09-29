@@ -24,6 +24,8 @@ import { contractCoverageOn } from '@/lib/sales/serviceContractLink';
 import { fmtDate } from '@/lib/format';
 // ใบยอด 0 ไม่มีงวดให้เก็บ — ตัวตัดสินเดียวกับงวดชำระ (ไฟล์ logic ล้วน ฝั่ง client ใช้ได้)
 import { paymentNotRequired } from '@/lib/sales/salesOrderPayments';
+// ใบย้อนหลังแก้ด้วย Rev. ไม่ได้ — เหตุของโซนที่ไม่อยู่ในใบย้อนหลังต้องชี้ทางแก้ของมันเอง (ไฟล์ logic ล้วน)
+import { HISTORICAL_CORRECTION_PATH, isHistoricalOrder } from '@/lib/sales/historicalOrders';
 
 /* สถานะของแต่ละข้อ
    · ok      — ผ่าน
@@ -38,11 +40,29 @@ export const GATE_STATES = ['ok', 'blocked', 'parked'];
       แล้วสะกดต่างไปตัวเดียว ร่างที่ TS แก้ได้จะไปจมในกลุ่มรอฝ่ายอื่นที่พับไว้ */
 export const GATE_OWNERS = Object.freeze({ SA: 'SA', FN: 'SA → FN', TS: 'TS' });
 
-/* เหตุของข้อสัญญาที่ **TS แก้เองได้** ที่หน้า "งานเข้าใหม่" (มติเจ้าของ 23/09) — ประกาศเป็นค่าคงที่
-   เพราะหน้าที่พาไปแก้ต้องชื่อตรงกับเมนูจริง · `fix` ยังเป็น null (ไม่มีช่องในโมดัลนัดให้แก้)
-   ⇒ การ์ดโชว์เหตุเต็มประโยค ไม่ตัดครึ่งหลังทิ้ง */
-export const UNALLOCATED_ZONE_REASON = 'โซนนี้ยังไม่ถูกจัดสรรจากใบสั่งขาย — TS ผูกใบสั่งขายเข้าโซนที่หน้า "งานเข้าใหม่" ก่อน';
-export const NO_ZONE_SITE_REASON = 'ไซต์นี้ยังไม่มีโซนที่ผูกกับใบสั่งขาย — TS ผูกใบสั่งขายเข้าโซนที่หน้า "งานเข้าใหม่" ก่อน';
+/* ── เหตุของโซนที่ "ไม่มีรอบขายเลย" (mig 0392 · PR-A · D15) ─────────────────────────────────────────
+   🔄 ก่อน 0392 โซนที่ยังไม่จัดสรรเป็นงานของ TS (มติเจ้าของ 23/09 · ผูกที่หน้า "งานเข้าใหม่") — ตั้งแต่ 0392
+      **TS ผูกโซนไม่ได้แล้ว** (ทางผูกตอบ 409) ⇒ โซนที่ไม่มีรอบขายเป็นงานของ **SA เสมอ** แยกเหตุตามรอบขายที่ยังมีผลของไซต์:
+      · ไซต์มีรอบขายที่มีผลของใบ **pipeline** ≥1 ⇒ โซนนี้ไม่อยู่ในใบนั้น — ทางแก้คือออก Rev.
+      · รอบขายที่มีผลของไซต์เป็นของใบ **ย้อนหลัง** ทั้งหมด ⇒ ใบย้อนหลังออก Rev. ไม่ได้ — ชี้ทางแก้ของใบย้อนหลัง
+      · ไซต์ไม่มีรอบขายที่มีผลเลย ⇒ ยังไม่มีใบไหนตั้งงานบริการให้โซนนี้ — ฝ่ายขายตั้งที่หน้าใบสั่งขาย
+   ⚠️ **ระดับไซต์ ไม่ใช่ "ใบสั่งขายนี้"** [owner] — บริบทด่านไม่มีใบให้โซนที่ไม่มีรอบขาย จึงชี้ใบไม่ได้ ·
+      ชิปใบสั่งขายบนร่างที่ติดด่านเลื่อนไป PR-C (ต้องค้นโซนที่เลือกในใบจาก gateContext)
+   ⚠️ `fix` ยังเป็น null (ไม่มีช่องในโมดัลนัดให้แก้) ⇒ การ์ดโชว์เหตุเต็มประโยค ไม่ตัดครึ่งหลังทิ้ง */
+export const NOT_IN_ORDER_ZONE_REASON = 'โซนนี้ไม่อยู่ในใบสั่งขายที่มีผล — ข้ามโซนนี้ในใบส่งงาน หรือให้ฝ่ายขายเพิ่มโซนด้วยการออก Rev.';
+export const NOT_IN_HISTORICAL_ORDER_ZONE_REASON = `โซนนี้ไม่อยู่ในใบสั่งขายย้อนหลังที่มีผล — ข้ามโซนนี้ในใบส่งงาน · ต้องเพิ่มโซน: ${HISTORICAL_CORRECTION_PATH}`;
+export const UNSET_SERVICE_ORDER_REASON = 'ยังไม่มีใบสั่งขายที่ตั้งงานบริการแล้วสำหรับโซนนี้ — ฝ่ายขายตั้งค่าที่หน้าใบสั่งขายแล้วยื่นให้ผู้จัดการตรวจ';
+/* ไซต์ที่ยังไม่มีโซนในทะเบียนเลย = งานทะเบียนของ **TS** (เพิ่มโซนที่หน้าไซต์) — ฝ่ายขายเลือกโซนในใบได้ก็ต่อเมื่อมีโซนก่อน */
+export const NO_ZONE_SITE_REASON = 'ไซต์นี้ยังไม่มีโซนในทะเบียน — TS เพิ่มโซนที่หน้าไซต์ แล้วให้ฝ่ายขายเลือกโซนในใบสั่งขาย';
+
+/* เหตุของโซนที่ไม่มีรอบขาย — ถามรอบขายที่ **มีผล ณ วันนัด** ของทั้งไซต์ (terms ที่ส่งมา = ของไซต์นี้)
+   ⚠️ ผู้เรียกที่ `ordersById` ไม่มี `origin` ได้เหตุของใบ pipeline (ค่าที่ปลอดภัย: บอกทาง Rev. ไม่ใช่เงียบ)
+      · `gateContext.js` เลือก `origin` มาอยู่แล้ว */
+function termlessZoneReason(liveSiteTerms, pick, ordersById) {
+  if (!liveSiteTerms.length) return UNSET_SERVICE_ORDER_REASON;
+  const anyPipeline = liveSiteTerms.some((t) => !isHistoricalOrder(pick(ordersById, t.salesOrderId)));
+  return anyPipeline ? NOT_IN_ORDER_ZONE_REASON : NOT_IN_HISTORICAL_ORDER_ZONE_REASON;
+}
 
 /* ⭐ **ปลดด่าน ①② แล้ว 2026-08-31 (PR-C)** — ค่าคงที่ `CONTRACT_PHASE_READY` ถูกถอดทิ้ง
    ทั้งสองข้อตรวจจากข้อมูลจริงแล้ว ไม่มีสถานะ `parked` เหลืออยู่ในสองข้อนี้อีก
@@ -91,6 +111,8 @@ export function evaluateVisitGate(visit, {
      ⚠️ ติดบางโซน = **นัดยังไปได้** แต่ใบส่งงานต้องตัดโซนนั้นเป็น "งดบริการ"
      ⇒ ผลรายโซนติดไปกับ item เสมอ (`zoneGates`) ไม่ใช่ยุบเหลือ ผ่าน/ไม่ผ่าน */
   const zoneList = (zones || []).filter(Boolean);
+  /* รอบขายที่มีผล ณ วันนัดของทั้งไซต์ — ใช้แยกเหตุของโซนที่ไม่มีรอบขาย (คิดครั้งเดียวต่อนัด) */
+  const liveSiteTerms = (terms || []).filter((t) => termIsActive(t, pick(ordersById, t.salesOrderId), visitDate));
   const zoneGates = zoneList.map((zone) => {
     const zoneTerms = (terms || []).filter((t) => t.zoneId === zone.id);
     /* term ที่ "มีผล ณ วันนัด" — ตัวตัดสินเดิมของ `terms.js` ตัวเดียวกับทั้งระบบ
@@ -98,29 +120,30 @@ export function evaluateVisitGate(visit, {
     const live = zoneTerms.filter((t) => termIsActive(t, pick(ordersById, t.salesOrderId), visitDate));
 
     if (!live.length) {
-      /* ⭐ **"ยังไม่จัดสรร" เป็นงานของ TS** (มติเจ้าของ 23/09 · แผนหน้าจัดคิว §7) — คนผูกใบสั่งขาย
-         เข้าโซนคือ TS ที่หน้า "งานเข้าใหม่" (`api/service/intake/bind` = `requireService edit`)
-         🐞 ของเดิมป้ายเป็น SA + "ฝ่ายขายต้อง…" ⇒ ร่างพวกนี้ไปจมกลุ่ม "รอฝ่ายอื่น" ที่พับไว้
-            ทั้งที่คนเดียวที่แก้ได้คือคนที่กำลังจัดคิวอยู่
+      /* ⭐ **โซนที่ไม่มีรอบขายเป็นงานของ SA** (mig 0392 · D15) — TS ผูกโซนไม่ได้แล้ว ฝ่ายขายเลือกโซนในใบเอง
+         🔄 ช่วง 23/09 → 0392 เคยเป็นของ TS (ผูกที่หน้า "งานเข้าใหม่") ⇒ ร่างย้ายจาก "TS แก้ได้เอง" ไป "รอฝ่ายอื่น" โดยตั้งใจ
+         ⭐ `unallocated: true` = โซนนี้ไม่มีรอบขายเลย — `contractStopOf` ใช้แยกโซนที่ "ข้ามได้ในใบส่งงาน" ออกจากเหตุหลัก
          ⚠️ "รอบขายไม่มีผล ณ วันนัด" ยังเป็นของ SA (ใบถูก Rev./หมดช่วง = เรื่องของฝ่ายขาย)
          ⚠️ `gate` บอกว่าโซนนี้ติดที่ **ข้อไหน** (ข้อสัญญา) แยกจากเจ้าของ — `contractStopOf`/`blockedBy`
-            เลือกโซนด้วยข้อ ไม่ใช่ด้วยสตริงเจ้าของ (ไม่งั้นเปลี่ยนเจ้าของแล้วไซต์ที่ทุกโซนยังไม่จัดสรร
-            จะหาเหตุฝั่งสัญญาไม่เจอ แล้ว **ผ่านด่าน** เงียบ ๆ) */
+            เลือกโซนด้วยข้อ ไม่ใช่ด้วยสตริงเจ้าของ (ไม่งั้นไซต์ที่ทุกโซนไม่มีรอบขายจะหาเหตุฝั่งสัญญาไม่เจอ
+            แล้ว **ผ่านด่าน** เงียบ ๆ) */
       return zoneTerms.length
         ? {
           zoneId: zone.id, zoneName: zone.name || null, state: 'blocked', gate: 'contract', owner: GATE_OWNERS.SA,
           reason: 'รอบขายของโซนนี้ไม่มีผล ณ วันนัด — ตรวจใบสั่งขายและช่วงวันของรอบ',
         }
         : {
-          zoneId: zone.id, zoneName: zone.name || null, state: 'blocked', gate: 'contract', owner: GATE_OWNERS.TS,
-          reason: UNALLOCATED_ZONE_REASON,
+          zoneId: zone.id, zoneName: zone.name || null, state: 'blocked', gate: 'contract', owner: GATE_OWNERS.SA,
+          unallocated: true,
+          reason: termlessZoneReason(liveSiteTerms, pick, ordersById),
         };
     }
 
     /* ── ข้อ① สัญญา — ใบแม่ของ term ต้องผูกสัญญาที่มีผลแล้ว ────────────
        ⚠️ **อ่านสัญญาจากใบ ไม่ใช่จาก term** (mig 0324) — แผนเดิมเขียนว่า
        `term.serviceContractId` แต่แหล่งความจริงย้ายมาอยู่ที่ `sales_orders`
-       เพราะ term เกิดตอน TS จัดสรรเท่านั้น ⇒ ผูกสัญญาก่อนจัดสรรไม่ได้ */
+       เพราะ term ยังไม่เกิดตอนผูกสัญญา (เดิมเกิดตอน TS จัดสรร · 🔄 ตั้งแต่ mig 0392 เกิดตอนอนุมัติใบ
+       และยื่น/อนุมัติไม่ต้องมีสัญญา — D5) ⇒ ผูกสัญญาไว้ที่ term ก่อน term เกิดไม่ได้ */
     const contractOf = (t) => {
       const order = pick(ordersById, t.salesOrderId);
       return order?.serviceContractId ? pick(contractsById, order.serviceContractId) : null;
@@ -217,8 +240,8 @@ export function evaluateVisitGate(visit, {
      เมื่อทุกโซนติด ผลคือนัดที่ติดเพราะ *เงิน* ขึ้นว่าติด *สัญญา* ด้วย ⇒ SA เปิดไปดู
      สัญญาแล้วไม่เจออะไรผิด · เหตุที่บอกผิดฝ่ายแย่กว่าไม่บอกเลย
      ⚠️ บล็อกเฉพาะตอน **ทุกโซนติด** — ติดบางโซนแปลว่านัดยังไปได้ (ตัดโซนนั้นบนใบส่งงาน) */
-  /* ⚠️ เลือกด้วย **ข้อ** (`gate`) ไม่ใช่เจ้าของ — ข้อสัญญามีเจ้าของได้สองฝ่ายแล้ว (SA · TS ของโซนที่ยัง
-     ไม่จัดสรร) ⇒ ผลผ่าน/ไม่ผ่านไม่ขยับ · ข้อสัญญาเลือกเหตุผ่าน `contractStopOf` (เจ้าของไม่พลิกตามลำดับโซน) */
+  /* ⚠️ เลือกด้วย **ข้อ** (`gate`) ไม่ใช่เจ้าของ — ข้อสัญญามีเจ้าของได้สองฝ่าย (SA · TS ของไซต์ที่ยังไม่มีโซน)
+     ⇒ ผลผ่าน/ไม่ผ่านไม่ขยับ · ข้อสัญญาเลือกเหตุผ่าน `contractStopOf` (เหตุไม่พลิกตามลำดับโซน) */
   const blockedBy = (gate) => (allBlocked ? blockedZones.find((z) => z.gate === gate) : null);
   const moneyStop = exempt ? null : blockedBy('payment');
   /* 🔴 **ไซต์ที่ไม่มีโซนเลย = ติด ไม่ใช่ผ่าน** — ไม่มีโซนแปลว่าไม่มีอะไรที่ได้รับอนุญาต
@@ -227,7 +250,7 @@ export function evaluateVisitGate(visit, {
   /* ⚠️ ลำดับสำคัญ: หาเหตุฝั่งสัญญาก่อน · ถ้าไม่มีโซนติดเลยแต่ก็ไม่มีโซนผ่าน แปลว่า
      **ไม่มีโซนอยู่เลย** ⇒ ติดที่ข้อสัญญา · ถ้ามีแต่โซนที่ติดเรื่องเงิน ข้อสัญญาต้อง `ok`
      (เหตุที่บอกผิดฝ่ายแย่กว่าไม่บอกเลย) */
-  /* ⭐ ไซต์ที่ไม่มีโซนเลย = งานของ TS เหมือนโซนที่ยังไม่จัดสรร (โซนเกิดตอนผูกใบสั่งขายที่หน้า "งานเข้าใหม่") */
+  /* ⭐ ไซต์ที่ไม่มีโซนเลย = งานทะเบียนของ TS (เพิ่มโซนที่หน้าไซต์ · ฝ่ายขายเลือกโซนในใบได้หลังจากนั้น · mig 0392) */
   const contractStop = exempt ? null : (contractStopOf(allBlocked ? blockedZones : []) || (allBlocked && !blockedZones.length ? {
     owner: GATE_OWNERS.TS,
     reason: NO_ZONE_SITE_REASON,
@@ -281,24 +304,23 @@ export function evaluateVisitGate(visit, {
   return items;
 }
 
-/* เหตุของข้อสัญญาเมื่อทุกโซนติด — **เจ้าของไม่ขึ้นกับลำดับโซน**
-   🐞 รีวิว 24/09: เคยหยิบโซนแรกที่ติดข้อสัญญาตามลำดับโซน (= ลำดับ id ในฐานข้อมูล) ⇒ ไซต์ที่โซนหนึ่ง
-      ยังไม่จัดสรร (TS) อีกโซนติดเหตุของ SA ได้เจ้าของ TS หรือ SA แล้วแต่ลำดับ ⇒ ร่างย้ายกลุ่ม
-      "TS แก้ได้เอง" ↔ "รอฝ่ายอื่น" เอง และปัญหาของฝ่ายที่ไม่ได้ถูกหยิบหายจากการ์ด
-   ⭐ มีเหตุของฝ่ายอื่นปนแม้โซนเดียว = เจ้าของฝ่ายนั้น (TS ปลดเองคนเดียวไม่ได้แน่นอน ⇒ `gateNeedsOthers`
-      ต้องเป็น true) · TS เฉพาะเมื่อทุกโซนที่ติดข้อสัญญาเป็นของ TS
-   ⭐ ปนกัน ⇒ เหตุบอกทั้งสองฝ่าย — เรื่องที่ TS ทำเองได้ (จัดสรรโซนที่เหลือ) ต่อท้าย ไม่ทิ้ง
+/* เหตุของข้อสัญญาเมื่อทุกโซนติด — **เหตุไม่ขึ้นกับลำดับโซน**
+   🐞 รีวิว 24/09: เคยหยิบโซนแรกที่ติดข้อสัญญาตามลำดับโซน (= ลำดับ id ในฐานข้อมูล) ⇒ เหตุ/เจ้าของพลิกตามลำดับ
+      ร่างย้ายกลุ่มเอง และปัญหาที่ไม่ได้ถูกหยิบหายจากการ์ด
+   ⭐ mig 0392 (D15): โซนที่ไม่มีรอบขายเลย (`unallocated`) เป็นของ SA แล้ว และ **ข้ามได้ในใบส่งงาน** ⇒ เหตุหลัก
+      = โซนแรกที่ติดด้วยเหตุอื่น (ใบยังไม่ผูกสัญญา · หมดอายุ · รอบไม่มีผล) + ต่อท้ายจำนวนโซนที่ไม่อยู่ในใบ (ไม่ทิ้ง)
+      · ทุกโซนไม่มีรอบขาย ⇒ เหตุของโซนแรก (ทุกโซนได้เหตุระดับไซต์ตัวเดียวกันอยู่แล้ว)
    ⚠️ เลือกด้วยข้อ (`gate`) ไม่ใช่เจ้าของ — โซนที่ติดเงินไม่เกี่ยวกับข้อนี้ */
 function contractStopOf(blockedZones) {
   const contractZones = blockedZones.filter((z) => z.gate === 'contract');
   if (!contractZones.length) return null;
-  const others = contractZones.find((z) => z.owner !== GATE_OWNERS.TS);
-  if (!others) return contractZones[0];
-  const tsCount = contractZones.filter((z) => z.owner === GATE_OWNERS.TS).length;
-  if (!tsCount) return others;
+  const main = contractZones.find((z) => !z.unallocated);
+  if (!main) return contractZones[0];
+  const notInOrder = contractZones.filter((z) => z.unallocated).length;
+  if (!notInOrder) return main;
   return {
-    ...others,
-    reason: `${others.reason} · อีก ${tsCount} โซนยังไม่ถูกจัดสรร (TS ผูกใบสั่งขายที่หน้า "งานเข้าใหม่")`,
+    ...main,
+    reason: `${main.reason} · อีก ${notInOrder} โซนไม่อยู่ในใบสั่งขายที่มีผล (ข้ามในใบส่งงาน)`,
   };
 }
 

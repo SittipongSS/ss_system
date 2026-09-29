@@ -6,6 +6,8 @@ import {
 } from '@/lib/sales/historicalOrders';
 import { isSalesOrderSelfApproval } from '@/lib/sales/salesOrderApprovalOverride';
 import { ownerLockedToSelf } from '@/lib/sales/dealOwner';
+/* งานบริการรายบรรทัด (mig 0392) — ตัวตัดสินล้วน ใช้ได้ทั้งจอและ API · ไฟล์นั้นไม่ import ไฟล์นี้กลับ (ไม่มีวง · serviceSetupImports) */
+import { serviceBackfillAwaitingReview } from '@/lib/sales/serviceSetup';
 
 export const SALES_ORDER_STATUS_LABELS = {
   draft: 'ฉบับร่าง',
@@ -55,8 +57,20 @@ export function isSalesOrderSubmitter(order, userId) {
      ปฏิเสธผู้ตรวจที่อนุมัติใบตัวเองมาตลอด (`isSalesOrderSelfApproval` → 403) ⇒ ใบนั้นไม่ได้รอเรา
      ป้ายบนเมนูเคยนับเกินคิว "รออนุมัติจากคุณ" ที่ตัดใบตัวเองออกแล้ว · เหลือ **admin** ที่นับ เพราะ
      admin อนุมัติใบตัวเองได้จริง (Admin Override) ⇒ ต้องส่ง `role` มาด้วย ไม่ส่ง = ถือว่าไม่ใช่ admin */
-export function isSalesOrderWaitingOnMe(order, { userId = '', reviewer = false, role = '' } = {}) {
+/* ⭐ **งานบริการย้อนหลังสองเลน** (mig 0392 · D26 · D28) — ใบที่อนุมัติไปก่อนฝ่ายขายตั้งงานบริการเอง
+     · เลนผู้จัดการ: ฝ่ายขายยื่นตรวจแล้ว (`serviceBackfillAwaitingReview` — ตัวตัดสินตัวเดียว ห้ามอ่าน `serviceSetupState` เอง
+       เพราะย้อนอนุมัติ/ยกเลิก/Rev. ไม่ล้างค่า 'submitted' · ค่าค้างบนใบที่ไม่ได้อนุมัติอยู่ต้องไม่มีผล) · ตัดคนยื่นเอง
+       ยกเว้น admin (อนุมัติได้ด้วยเหตุผล Admin Override — กติกาเดียวกับใบปกติ)
+     · เลนเจ้าของดีล: ใบต้องตั้งย้อนหลัง (`serviceBackfillNeeded` — **ผู้เรียกคิดมาให้** เพราะต้องใช้บรรทัด + สายธุรกิจ) ·
+       เจ้าของดีลปัจจุบัน = คนที่ต้องลงมือ (ไม่ใช่ผู้สร้างใบ — กติกาเดียวกับเลนย้อนอนุมัติ) · ยื่นตรวจแล้วไม่นับ (รอผู้จัดการ)
+   ⚠️ ไม่ส่ง `serviceBackfillNeeded` = เลนเจ้าของดีลไม่นับ (ผู้เรียกที่ไม่มีบรรทัด/สายธุรกิจห้ามเดา) */
+export function isSalesOrderWaitingOnMe(order, {
+  userId = '', reviewer = false, role = '', serviceBackfillNeeded = false,
+} = {}) {
   if (!order) return false;
+  if (reviewer && serviceBackfillAwaitingReview(order)) {
+    return role === 'admin' || order.serviceSetupSubmittedById !== userId;
+  }
   if (reviewer && order.status === 'pending_approval') {
     return role === 'admin' || !isSalesOrderSelfApproval(order, userId);
   }
@@ -66,9 +80,35 @@ export function isSalesOrderWaitingOnMe(order, { userId = '', reviewer = false, 
   if (order.status === 'approval_revoked') {
     return Boolean(userId) && order.deal?.ownerId === userId;
   }
+  if (order.status === 'approved' && serviceBackfillNeeded && !serviceBackfillAwaitingReview(order)) {
+    return Boolean(userId) && order.deal?.ownerId === userId;
+  }
   if (!userId || order.createdBy !== userId) return false;
   if (order.status === 'rejected') return true;
   return order.status === 'draft' && isHistoricalOrder(order);
+}
+
+/* ⭐ **ป้าย "ใบสั่งขาย" บนเมนู = จำนวนใบไม่ซ้ำ** (mig 0392 · D26) — ชุด id ของใบที่รอฉัน รวมทุกเลน
+   🐞 เดิมบวกความยาวของเลน (สามเลนสถานะไม่ซ้อนกัน + เลนบัญชี) — ตั้งแต่มีเลนงานบริการย้อนหลัง ใบที่อนุมัติแล้วใบเดียวอยู่ได้
+     หลายเลนพร้อมกัน (admin ที่เป็นเจ้าของดีล + ผู้ตรวจ + ฝ่ายบัญชี) แต่ทะเบียนโชว์ใบละแถว ⇒ ป้ายต้องนับใบละหนึ่งเหมือนกัน
+   @param rows         แถวของเลนที่ helper ตัดสินจากแถวล้วน (รออนุมัติ/ตีกลับ · ร่างใบย้อนหลัง · ย้อนอนุมัติ · รอตรวจงานบริการ)
+   @param backfillRows แถวเลนเจ้าของดีล (ใบอนุมัติแล้วยังไม่ประทับ) — `backfillNeeded(row)` ผู้เรียกคิดจากบรรทัด + สายธุรกิจ
+   @param financeRows  แถวเลนบัญชี — `financeWaiting(row)` = awaitsFinanceReview กับงวดของใบ (ผู้เรียกโหลดงวดมาแล้ว)
+   → Set ของ id (ป้าย = `.size`) · ตรงกับทะเบียน: `_waitingOnMe || _awaitingMyApproval || _awaitingMyServiceReview || _awaitingFinanceReview` */
+export function salesOrderIdsWaitingOnMe({
+  rows = [], backfillRows = [], backfillNeeded = () => false, financeRows = [], financeWaiting = () => false,
+} = {}, { userId = '', reviewer = false, role = '' } = {}) {
+  const ids = new Set();
+  for (const row of rows || []) {
+    if (isSalesOrderWaitingOnMe(row, { userId, reviewer, role })) ids.add(row.id);
+  }
+  for (const row of backfillRows || []) {
+    if (isSalesOrderWaitingOnMe(row, { userId, reviewer, role, serviceBackfillNeeded: !!backfillNeeded(row) })) ids.add(row.id);
+  }
+  for (const row of financeRows || []) {
+    if (financeWaiting(row)) ids.add(row.id);
+  }
+  return ids;
 }
 
 /* ยื่นใบสั่งขายย้อนหลังเข้าคิว AE Sup (มติ 22/09 · mig 0374) — คู่ขนานกับ `canSubmitSalesOrder` ของใบปกติ

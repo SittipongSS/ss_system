@@ -134,7 +134,8 @@
    ⚠️ ระยะห่าง/ขนาดตัวอักษร/ความสูงบรรทัดใช้โทเคนเท่านั้น (เพดานเลขดิบของ audit:ui เต็มพอดี) · ไม่มีจุดตัดจอ —
      ทุกแถวเป็น flex-wrap จอแคบตกบรรทัดเอง (เพดานจำนวนจุดตัดจอขึ้นไม่ได้) */
 
-/* บรรทัดรอบวางบิลของลูกค้า (.ruleLine เดิม) ย้ายเป็นแถบนโยบาย `installmentDates/BillingPolicyStrip` (รุ่นสี่ · 29/09) */
+/* บรรทัดรอบวางบิลของลูกค้า (.ruleLine เดิม) ย้ายเป็นแถบนโยบาย `installmentDates/BillingPolicyStrip` (รุ่นสี่ · 29/09)
+   · คลาส `.ruleLine` ชุดเดิมยังอยู่ — เหลือผู้ใช้คือบรรทัด "ช่วงบริการ" ของงานบริการรายบรรทัด (mig 0392 · ข้างล่าง) */
 
 /* เซลล์วันวางบิล — วัน · ป้ายสถานะ · ปุ่มขอใบวางบิล/เลือกรอบ เรียงลงเป็นกอง (ตารางแคบตกบรรทัดเอง) */
 .billCell {
@@ -157,3 +158,93 @@
 .colNote { color: var(--text-3); font-weight: var(--fw-normal); }
 /* ต้องวางบิลแต่ยังไม่มีวันวางบิล — โทนเตือน (ไม่แดง · แดงสงวนให้ "เลยกำหนด" ของกำหนดชำระ) */
 .billMissing { color: var(--amber); }
+
+/* ── งานบริการรายบรรทัด (mig 0392 · แผน §2.8) ────────────────────────────────────────────────────────────────
+   ⚠️ โทเคนเท่านั้น (เพดานเลขดิบของ audit:ui เต็มพอดี) · ไม่มีจุดตัดจอ — ทุกแถวเป็น flex-wrap จอแคบตกบรรทัดเอง */
+
+/* บรรทัด "ช่วงบริการ" ใต้หัวการ์ด — เมตาของใบ ไม่ใช่คำเตือน (พื้นอ่อน ไม่ใช่ StatusNotice) · ยังไม่ใส่ = เส้นประ พื้นใส
+   (ช่องว่างที่เติมได้ ไม่ใช่ของเสีย · แดงหลังกดยื่นเท่านั้น) — ชุดคลาสเดิมของบรรทัดรอบวางบิล (รุ่นสี่ย้ายไป BillingPolicyStrip แล้ว) */
+.ruleLine {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1-5) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+}
+.ruleLine[data-empty="yes"] { border-style: dashed; background: transparent; }
+.ruleIcon { flex: none; color: var(--navy-ink); }
+.ruleLine[data-empty="yes"] .ruleIcon { color: var(--text-3); }
+.ruleText { flex: 1 1 260px; min-width: 0; }
+.ruleText b { color: var(--text); font-weight: var(--fw-semibold); }
+.ruleText small { display: block; color: var(--text-3); font-size: var(--fs-5); }
+/* ปุ่ม "แบ่งช่วงครอบตามช่วงบริการ…" + ลิงก์ "แก้ที่แท็บภาพรวม" — ชิดขวาเป็นกลุ่มเดียว (จอแคบตกบรรทัดทั้งกลุ่ม) */
+.ruleActions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1-5) var(--space-3);
+  margin-left: auto;
+}
+.ruleLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
+}
+
+/* ปุ่ม "แบ่งช่วงครอบตามช่วงบริการ…" + เหตุที่กดไม่ได้ (ตัวหนังสือ ไม่ใช่ tooltip) — อยู่ด้วยกันเป็นก้อนเดียวบนบรรทัดช่วงบริการ */
+.gatedAction {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+.gateNote {
+  color: var(--amber);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}
+
+/* ช่องที่ติดหลังกดยื่น (แผงแดง "ไปแก้") — กรอบแดงด้านในเซลล์ (ขอบนอกชนเส้นตารางของ primitive) + เหตุใต้ค่า
+   ⚠️ ขึ้นเฉพาะช่องที่หน้าใบส่งมาใน `highlight` (หลังกดเท่านั้น) · `tabIndex=-1` ให้ "ไปแก้" โฟกัสได้ ไม่ต้องมีวงโฟกัสซ้ำกรอบ */
+.cellIssue {
+  box-shadow: inset 0 0 0 2px var(--red);
+  background: color-mix(in srgb, var(--red-soft) 60%, transparent);
+}
+.cellIssue:focus { outline: none; }
+/* โหมดตั้งวันงวด (#1846): ช่องที่ติดเป็นเซลล์ร่าง (ปุ่มเส้นประของ InstallmentDateCell) — ขอบของปุ่มเป็นแดงตามกรอบของ <td>
+   · ตัวแก้ของงวดเปิดอยู่ (`aria-expanded`) = คงขอบ accent ของโหมด · งวดที่ล็อก/ทางเข้านอกโหมดไม่มี aria-haspopup ⇒ ไม่โดน */
+.cellIssue [data-date-cell][aria-haspopup]:not([aria-expanded="true"]) { border-color: var(--red); }
+/* `.table small` (จาง) ของตารางงวดชนะคลาสเดี่ยว ⇒ ผูกกับ `.table` ให้เฉพาะเจาะจงกว่า (ไม่ใช้ !important) */
+.table .issueNote { color: var(--red); font-weight: var(--fw-semibold); }
+
+/* แถบช่วงครอบของงวดเทียบช่วงบริการ (CoverageTimeline) ใต้ตาราง — กล่องเดียวกับบรรทัดเมตาของการ์ด */
+.timeline {
+  display: grid;
+  gap: var(--space-1-5);
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+}
+.timelineHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+  font-size: var(--fs-5);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.timelineHead b { color: var(--text); font-size: var(--fs-6); font-weight: var(--fw-semibold); }

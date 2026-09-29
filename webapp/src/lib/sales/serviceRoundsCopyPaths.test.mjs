@@ -97,6 +97,15 @@ const REVISION_RESETS = new Set([
   'origin',
   'historicalQuoteRef', 'historicalExpressRef', 'historicalInvoiceRef', 'historicalIntakeHash',
   'paymentGateExemptAt', 'paymentGateExemptById', 'paymentGateExemptByName', 'paymentGateExemptReason',
+  /* ช่วงบริการ (mig 0392) — ก๊อปไปใบ Rev. โดย sales_order_copy_service_setup (0392 P2) — ยามนี้อ่านแค่ INSERT
+     จึงมองไม่เห็น · soServiceSetupCopyPaths.test.mjs ยืนยันแทน */
+  'servicePeriodFrom', 'servicePeriodTo',
+  /* ตราเปิดงาน + สถานะตั้งงานบริการย้อนหลัง (mig 0392) — ตั้งใจไม่ก๊อป — ใบ Rev. เปิดงานบริการใหม่ตอนอนุมัติของตัวเอง
+     · สถานะตั้งย้อนหลังเป็นของใบเดิม */
+  'serviceTermsOpenedAt', 'serviceSetupState',
+  'serviceSetupSubmittedAt', 'serviceSetupSubmittedById', 'serviceSetupSubmittedByName',
+  'serviceSetupRejectedAt', 'serviceSetupRejectedById', 'serviceSetupRejectedByName', 'serviceSetupRejectedReason',
+  'serviceSetupApprovedAt', 'serviceSetupApprovedById', 'serviceSetupApprovedByName',
 ]);
 
 test('🪤 Rev. ของใบสั่งขายต้องพาทุกคอลัมน์ที่ยังมีความหมายไปด้วย', () => {
@@ -180,6 +189,11 @@ const DRAFT_OWNED = new Set([
   'origin',
   'historicalQuoteRef', 'historicalExpressRef', 'historicalInvoiceRef', 'historicalIntakeHash',
   'paymentGateExemptAt', 'paymentGateExemptById', 'paymentGateExemptByName', 'paymentGateExemptReason',
+  /* ใบใหม่เริ่มงานบริการว่าง — ฝ่ายขายตั้งที่ใบสั่งขาย (0392) */
+  'servicePeriodFrom', 'servicePeriodTo', 'serviceTermsOpenedAt', 'serviceSetupState',
+  'serviceSetupSubmittedAt', 'serviceSetupSubmittedById', 'serviceSetupSubmittedByName',
+  'serviceSetupRejectedAt', 'serviceSetupRejectedById', 'serviceSetupRejectedByName', 'serviceSetupRejectedReason',
+  'serviceSetupApprovedAt', 'serviceSetupApprovedById', 'serviceSetupApprovedByName',
 ]);
 
 /* 🪤 **ทะเบียนนี้ต้องไม่มีชื่อที่ไม่ใช่คอลัมน์จริง** — ของที่ประกาศเกินไม่ทำให้เทสต์แดง

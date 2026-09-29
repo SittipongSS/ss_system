@@ -340,6 +340,48 @@ export async function updateInstallment(supabase, id, patch, { expectedUpdatedAt
   return data;
 }
 
+/**
+ * เขียนช่วงครอบของ "แบ่งช่วงครอบตามช่วงบริการ…" ทีละงวด (mig 0392 · PR-A · แผน §2.5 ข้อ 3) — route เรียกหลังด่านผ่าน **ครบทุกงวด** แล้ว
+ * ⭐ route คิดชุดเองด้วย `splitCoverageByPeriod` แล้วเทียบกับพรีวิวที่จอส่งมาก่อน · ผ่านด่านรายงวด (`coverage`) ครบทุกงวดแล้วจึงเรียก
+ * ⭐ เขียนแค่ `coversFrom`/`coversTo` แบบมีเงื่อนไข `updatedAt` ของแถวที่ด่านเพิ่งตัดสิน (ไม่มี RPC ⇒ ไม่มีทรานแซกชัน)
+ *   ⇒ อีกหน้าต่างเขียนแทรก = หยุดที่งวดนั้น · งวดที่ลงแล้วคงอยู่ · กดใหม่ได้ชุดเดิม (การแบ่งไม่ขึ้นกับช่วงครอบเดิมของงวดที่ยังไม่รับรอง)
+ *   ⇒ ปลอดภัยที่จะกดซ้ำ
+ * ⚠️ พังตั้งแต่งวดแรก = ยังไม่มีอะไรลงฐาน ⇒ **โยน error เดิม** ให้ผู้เรียกแปลแบบเขียนงวดเดียว (รหัสของฐาน)
+ * ⭐ ตัวเติมวันวางบิล `writeBillingFill` (fill-billing) ถอดแล้วในรุ่นสี่ (system-design §7.5 · route ตอบ 410) — แกน `writePlannedFill`
+ *   เหลือผู้เรียกตัวเดียว แต่คงไว้เป็นแกนของ "แผนทั้งใบทีละงวด" (สัญญา before/after/stopped ข้างล่าง)
+ * @param rows     งวดสดทั้งใบ (ตัวล็อก updatedAt มาจากชุดนี้)
+ * @param planned  แถวของ `splitCoverageByPeriod().rows` (id · seq · coversFrom · coversTo)
+ * @returns `{ before, after, stopped }` — before/after = **เฉพาะงวดที่เขียนจริง** (ป้อน audit ตรง ๆ) ·
+ *   `stopped` = null (ครบ) | `{ seq, error }` (`error` null = แถวเปลี่ยนไปแล้ว · ไม่ null = ฐานตีกลับ)
+ */
+export async function writeCoverageFill(supabase, rows, planned) {
+  return writePlannedFill(rows, planned, (row, plan) => updateInstallment(supabase, row.id,
+    { coversFrom: plan.coversFrom, coversTo: plan.coversTo }, { expectedUpdatedAt: row.updatedAt }));
+}
+
+/* ตัวเขียนแผนทั้งใบทีละงวด — แกนของ writeCoverageFill (ต่างกันแค่ patch ต่องวด)
+   `write(row, plan)` = updateInstallment แบบมีเงื่อนไข updatedAt · คืน null เมื่อแถวเปลี่ยนไปแล้ว */
+async function writePlannedFill(rows, planned, write) {
+  const byId = new Map((rows || []).map((row) => [row.id, row]));
+  const before = [];
+  const after = [];
+  for (const plan of planned || []) {
+    const row = byId.get(plan.id);
+    if (!row) return { before, after, stopped: { seq: plan.seq, error: null } };
+    let updated;
+    try {
+      updated = await write(row, plan);
+    } catch (error) {
+      if (!after.length) throw error;
+      return { before, after, stopped: { seq: plan.seq, error } };
+    }
+    if (!updated) return { before, after, stopped: { seq: plan.seq, error: null } };
+    before.push(row);
+    after.push(updated);
+  }
+  return { before, after, stopped: null };
+}
+
 export async function loadInstallment(supabase, id) {
   const { data, error } = await supabase.from(TABLE).select('*').eq('id', id).maybeSingle();
   if (error) throw error;

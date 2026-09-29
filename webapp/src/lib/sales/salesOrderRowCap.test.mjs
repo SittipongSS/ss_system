@@ -108,7 +108,7 @@ test('ตัวโหลดทั้งทะเบียนที่เคย�
     ['src/app/api/finance/payments/route.js', /fetchAllResult\(\(\) => supabase\s*\n\s*\.from\('sales_order_installments'\)/, 'ทะเบียนการชำระ: งวดที่ตรึงแล้วทั้งระบบ'],
     ['src/lib/pm/productionJobsRepo.js', /fetchAll\(\(\) => \{\s*\n\s*let query = supabase\s*\n\s*\.from\('sales_orders'\)/, 'autoDraft: ใบอนุมัติทั้งทะเบียน'],
     ['src/app/api/sales-planning/contracts/route.js', /fetchAllResult\(\(\) => \{\s*\n\s*let query = supabase\.from\('sales_contracts'\)/, 'ทะเบียนสัญญา (เดิม .limit(500))'],
-    ['src/app/api/nav/counts/route.js', /fetchInChunks\(orderIds, \(chunk\) => fetchAllResult\(\(\) => supabase\.from\('sales_order_lines'\)/, 'ป้ายคิวผูกโซน'],
+    ['src/app/api/nav/counts/route.js', /fetchInChunks\(orderIds, \(chunk\) => fetchAllResult\(\(\) => supabase\.from\('sales_order_lines'\)/, 'ป้ายเลนตั้งงานบริการย้อนหลัง (บรรทัดของใบ SERVICE)'],
     ['src/app/api/tax/orders/from-sales-order/route.js', /fetchAllResult\(\(\) => \{\s*\n\s*let query = supabase\s*\n\s*\.from\("sales_orders"\)/, 'ตัวเลือกยื่นภาษีจากใบสั่งขาย (เดิม .limit(200) ก่อนกรอง)'],
   ];
   const missing = must

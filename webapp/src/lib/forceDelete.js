@@ -434,7 +434,7 @@ export async function quotationForcePreview(supabase, quote, { movedOut = [] } =
 export async function salesOrderForcePreview(supabase, order, { movedOut = [] } = {}) {
   const movedBlock = movedOutDeleteBlock(movedOut);
   if (movedBlock) return { cascade: [], notes: [movedBlock], blocked: true };
-  const [evidence, issued, filings, installments, paidInstallments, zoneTerms, specDocuments] = await Promise.all([
+  const [evidence, issued, filings, installments, paidInstallments, zoneTerms, specDocuments, allocations] = await Promise.all([
     countBy(supabase, 'document_signature_evidence', 'salesOrderId', order.id),
     countBy(supabase, 'issued_documents', 'salesOrderId', order.id),
     exciseFilingsOfSalesOrder(supabase, order.id),
@@ -444,11 +444,15 @@ export async function salesOrderForcePreview(supabase, order, { movedOut = [] } 
     /* 🐞 รอบขายของโซนบริการหายตาม CASCADE โดยพรีวิวไม่เคยบอก — mig 0297:48 สั่งไว้
        ตั้งแต่วันสร้างตารางว่า dryRun ต้องนับแถวนี้ แต่เฟส 4 เพิ่งมาต่อของจริง
        ⚠️ โซนกับประวัติการเข้าไซต์ **ไม่หาย** (FK เป็น RESTRICT) — ที่หายคือสะพาน
-       ที่บอกว่าโซนนั้นขายอยู่ในรอบไหน ⇒ โซนจะเด้งกลับไปคิว "รอตั้งไซต์/โซน" เงียบ ๆ */
+       ที่บอกว่าโซนนั้นขายอยู่ในรอบไหน ⇒ ไซต์หลุดจากคิว TS เงียบ ๆ
+       🔄 mig 0392: TS ผูกโซนเองไม่ได้แล้ว ⇒ รอบบริการกลับมาได้ทางเดียวคือฝ่ายขายออกใบใหม่ (ข้อความข้างล่าง) */
     countBy(supabase, 'service_zone_terms', 'salesOrderId', order.id),
     /* เอกสาร FM-SA-04 ที่ยังใช้งาน (mig 0370) — ไม่หายตามใบ (FK SET NULL) แต่ route void ให้หลังลบ
        ⇒ เลขที่ที่ส่งลูกค้าไปแล้วถูกปิดถาวร ต้องบอกก่อนกด (เดิมพรีวิวไม่นับเลย) */
     countBy(supabase, 'product_spec_documents', 'salesOrderId', order.id, (q) => q.eq('status', 'active')),
+    /* ⭐ รายการงานบริการของใบ (mig 0392) — โซนที่ฝ่ายขายเลือก + แพ็คต่อรอบ หายตามใบ (FK CASCADE)
+       ⚠️ พรีวิวเท่านั้น (นับพลาด = แสดงไม่ครบ · กติกาหัวไฟล์) — ตัวลบจริงเป็น CASCADE ของฐาน ไม่ได้อ่านตัวเลขนี้ */
+    countBy(supabase, 'sales_order_line_zones', 'salesOrderId', order.id),
   ]);
   if (filings.length) {
     return { cascade: [], notes: [exciseFilingBlockMessage(filings, 'ใบสั่งขาย')], blocked: true };
@@ -459,6 +463,7 @@ export async function salesOrderForcePreview(supabase, order, { movedOut = [] } 
     line('งวดชำระของใบนี้', installments),
     line('— ในนั้นเป็นงวดที่บัญชีคอนเฟิร์มแล้ว', paidInstallments),
     line('รอบขายของโซนบริการที่ผูกกับใบนี้ (โซนและประวัติการเข้าไซต์ยังอยู่)', zoneTerms),
+    line('รายการงานบริการ (โซนที่เลือกในใบ)', allocations),
   ].filter((r) => r.count > 0);
   const notes = [];
   if (evidence > 0 || issued > 0) {
@@ -468,7 +473,7 @@ export async function salesOrderForcePreview(supabase, order, { movedOut = [] } 
     notes.push(`🔴 มีงวดที่บัญชีคอนเฟิร์มแล้ว ${paidInstallments} งวด = เงินที่รับมาจริง — ลบแล้วร่องรอยการรับเงินหายถาวร`);
   }
   if (zoneTerms > 0) {
-    notes.push(`🔴 ใบนี้เป็นต้นเรื่องของรอบบริการ ${zoneTerms} รอบ — ลบแล้วโซนเหล่านั้นจะกลับไปเป็น “ขายแล้วแต่ยังไม่ผูก” และคิวงานเข้าใหม่จะทวงซ้ำ`);
+    notes.push(`🔴 ใบนี้เป็นต้นเรื่องของรอบบริการ ${zoneTerms} รอบ — ลบแล้วรอบบริการของโซนเหล่านั้นหายไปกับใบ — TS ต้องให้ฝ่ายขายออกใบใหม่`);
   }
   if (specDocuments > 0) {
     notes.push(`🔴 ใบนี้มีเอกสาร FM-SA-04 ที่ยังใช้งาน ${specDocuments} ใบ — ลบแล้วเอกสารถูกยกเลิก (เลขที่ไม่นำกลับมาใช้) และหลุดจากใบสั่งขาย`);

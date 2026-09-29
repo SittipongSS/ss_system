@@ -214,3 +214,24 @@ test('🔴 review 29/09: หน้าสร้าง SO — ตอบ "ไม่
   /* ด่านสร้าง (createFormDateCheck) บอกทาง "ล้างวันวางบิล" — เทสต์ใน salesOrderCreateInstallments */
   assert.deepEqual(seen.after, ['dueOnly', '2026-10-05', 'exception', true]);
 });
+
+test('แผงเติมเปิดพร้อม "จัดใหม่งวดที่มีวันแล้วด้วย" ได้ (`openFill({ includeDated: true })` — "ไปแก้" ของแผงแดงงานบริการ) · ค่าตั้งต้นไม่เปลี่ยน', () => {
+  const seen = run([
+    ({ mode }) => mode.setValue(R1, { billingDate: '', billingEvent: '', dueDate: '2026-10-25' }),
+    ({ mode }) => mode.openFill({ includeDated: true }),
+    ({ mode, seen: s }) => { s.preset = { active: mode.active, fill: mode.fill, openId: mode.openId }; mode.closeFill(); },
+    ({ mode }) => mode.openFill(),
+    ({ mode, seen: s }) => { s.plain = mode.fill; mode.closeFill(); },
+    /* ปุ่มการ์ด/ตัวเรียกที่ส่งอีเวนต์หรือค่าอื่นมา ไม่เปิดสวิตช์เอง — ต้องเป็น true จริงเท่านั้น */
+    ({ mode }) => mode.openFill({ includeDated: 'yes' }),
+    ({ mode, seen: s }) => { s.junk = mode.fill.includeDated; },
+  ]);
+  assert.equal(seen.preset.active, true, 'เข้าโหมดตั้งวันงวดด้วย (ทางเข้าเดียวกับปุ่มการ์ด)');
+  assert.equal(seen.preset.openId, null);
+  const { base, ...panel } = seen.preset.fill;
+  assert.deepEqual(panel, { includeDated: true, choice: null, day: null, excluded: [] },
+    'สวิตช์เปิดไว้ · ยังไม่มีตัวเลือกไหนถูกเลือก (คนเลือกเองแล้วตรวจในตารางก่อนบันทึก)');
+  assert.deepEqual(Object.keys(base), ['i1'], 'ฐานของแผง = ร่าง ณ ตอนเปิด (เหมือน openFill() เดิม)');
+  assert.equal(seen.plain.includeDated, false, 'openFill() เดิม = สวิตช์ปิด');
+  assert.equal(seen.junk, false);
+});

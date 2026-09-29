@@ -370,7 +370,8 @@ test('route งวด: schedule-many เป็นคำสั่งของท�
     const at = patch.indexOf(line);
     assert.ok(at > 0 && at < guard, `proxy ให้ FN ผ่านเฉพาะ PATCH ของ route นี้ — ${line}`);
   }
-  const fn = slice(route, 'async function scheduleManyDates(', 'async function replanOrderInstallments(');
+  /* ตัดถึงปลายฟังก์ชันเอง (ไม่ใช่ฟังก์ชันถัดไป) — หลัง merge กับ PR-A งานบริการ `fillCoverage` มาอยู่ถัดจากตัวนี้และมี recordAudit ของมันเอง */
+  const fn = slice(route, 'async function scheduleManyDates(', '\n}\n');
   const steps = [
     "if (!installmentScheduleAllowed(user)) return forbidden('ไม่มีสิทธิ์แก้กำหนดชำระ');",
     'const shapeError = scheduleManyShapeError(body.rows);',
