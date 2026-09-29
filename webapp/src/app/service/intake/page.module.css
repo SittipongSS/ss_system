@@ -249,3 +249,107 @@
   min-height: var(--ctl-h);
   margin-top: auto;
 }
+
+/* ── แท็บรอตั้งรอบ (PR-C · C7 · ม็อก TsIntakePlan) ─────────────────────────────────────────── */
+
+/* ปุ่มท้ายแถว: ตั้งรอบ (บน) · เปิดใบสั่งขาย (ล่าง) ชิดขวา — ม็อก `.acts2` */
+.rowActions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+/* ชิปสัญญา "ยังไม่ผูก — นัดติดด่านสัญญา (SA)" ยาวกว่าชิปเลขสัญญา — จองความกว้างให้อ่านครบ ไม่ตัดจุดไข่ปลา
+   (`ui-badge-cell` อ่าน --cell-badge-w · ค่าวัดจากป้ายขนาด sm) */
+.contractCell {
+  --cell-badge-w: 196px;
+}
+
+/* ปุ่มกาง/ซ่อนรายละเอียดโซน — ข้อความที่ทำงานในหน้านี้ (`.text-action` เส้นประ) + ลูกศรบอกทิศ
+   เป้าแตะสูง 24px ขึ้นไป (WCAG 2.5.8) */
+.zoneToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--space-6);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+}
+
+/* บรรทัดรวมเหนือ Pager — "ทั้งหมด s ไซต์ · o ใบ · z โซน · p แพ็ค/รอบ" */
+.planTotals {
+  margin: var(--space-2) 0 0;
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+/* การ์ด: รหัสไซต์เป็นลิงก์ (รหัสบน · ชื่อล่าง) — เป้าแตะไม่ต่ำกว่า 24px */
+.cardSiteCode {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--space-6);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+}
+
+/* ข้อเท็จจริงของการ์ด — ป้ายซ้าย (จาง) · ค่าขวา · สองคอลัมน์ตัดบรรทัดได้ */
+.cardFacts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-1-5);
+  margin: 0;
+}
+
+.cardFact {
+  display: grid;
+  grid-template-columns: minmax(96px, auto) minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.cardFact > dt {
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+.cardFact > dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--space-2);
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+}
+
+/* บรรทัดรองในค่า (เดือน · จำนวนนัด · คำแนะนำ) ขึ้นบรรทัดใหม่เต็มกว้าง */
+.cardFact > dd > :global(.cell-sub) {
+  flex-basis: 100%;
+}
+
+/* ชิปสัญญา + เงินครอบถึง — แถวเดียว ตัดบรรทัดได้ */
+.cardBadges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1-5) var(--space-2);
+  min-width: 0;
+}
+
+/* ปุ่มท้ายการ์ด — ตั้งรอบ + เปิดใบสั่งขาย แถวเดียว ชิดล่างการ์ดเสมอ */
+.cardActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: auto;
+}

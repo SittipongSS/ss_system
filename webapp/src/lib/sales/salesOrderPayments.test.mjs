@@ -1035,7 +1035,8 @@ test('ภาพหลังรับรอง: งวดที่รับรอ
   assert.equal(outlook.next, null, 'งวด 1 ที่ยังไม่จ่ายอยู่ก่อนงวดนี้ — ไม่ใช่งวดถัดไป');
   // ไม่มีช่วงครอบเลย = จ่ายถึงยังว่าง (ไม่ใช่เดาเอง) · ไม่มีแถว = ค่าว่างที่ปลอดภัย
   assert.equal(installmentConfirmOutlook({ id: 'x', seq: 1, amount: 50 }, []).paidThrough, null);
-  assert.deepEqual(installmentConfirmOutlook(null, rows), { paidThrough: null, collected: 0, next: null });
+  /* PR-C (review 29/09): สองช่องใหม่ของวันเปิดด่านเงินของนัด — ไม่มีแถว = ว่างทั้งคู่ */
+  assert.deepEqual(installmentConfirmOutlook(null, rows), { paidThrough: null, collected: 0, next: null, gateOpenThrough: null, gateHeldBy: null });
 });
 
 /* ══ PR0 · วางพื้นกันพัง (แผน so-payment-unlock-replan · มติเจ้าของ 23/09) ══════════════════════

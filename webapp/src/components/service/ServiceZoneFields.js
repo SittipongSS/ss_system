@@ -13,6 +13,7 @@ import Button from "@/components/ui/Button";
 import { naText } from "@/lib/format";
 import ChoiceChips from "@/components/ui/ChoiceChips";
 import Input from "@/components/ui/Input";
+import StatusNotice from "@/components/ui/StatusNotice";
 import { floorChipOptions, normalizeFloor } from "@/lib/service/zoneCode";
 import {
   ZONE_SPOT_LABEL_MAX, ZONE_SPOT_MAX, ZONE_SPOT_NOTE_MAX, spotBatchLabels, spotBatchStart,
@@ -196,9 +197,11 @@ function ZoneSpotsEditor({ spots, onChange }) {
  * @param editing        โหมดแก้ = มีช่องสถานะ
  * @param floorHint      ข้อความใต้ช่องชั้นในโหมดสร้าง (ผู้เรียกที่รู้รหัสไซต์โชว์รหัสโซนที่จะออกได้)
  * @param knownFloors    ชั้นของโซนอื่นในไซต์เดียวกัน — ขึ้นเป็นชิปลัดต่อจากชั้นพิเศษ
+ * @param deactivateWarning ข้อความเตือนเมื่อติ๊ก "ใช้งานอยู่" ออก (โซนอยู่ในใบที่ยังไม่เปิดงานบริการ · PR-C C-D18)
+ *                       — ผู้เรียกที่ไม่รู้เรื่องใบ (โมดัลเพิ่มไซต์ย้อนหลัง) ไม่ส่ง = ไม่มีกล่อง
  */
 export default function ServiceZoneFields({
-  form, setForm, editing = false, floorHint = null, knownFloors = [],
+  form, setForm, editing = false, floorHint = null, knownFloors = [], deactivateWarning = null,
 }) {
   const set = (field) => (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }));
   const floor = normalizeFloor(form.floor);
@@ -271,6 +274,13 @@ export default function ServiceZoneFields({
             <span>ใช้งานอยู่ — ปิดเมื่อพื้นที่นี้เลิกให้บริการ (ประวัติยังอยู่)</span>
           </label>
         </label>
+      )}
+      {/* ⚠️ อยู่ **หลัง `</label>` ตัวนอก** เสมอ — กล่องบล็อกใน <label> ผิด HTML และคลิกกล่องแล้วช่องติ๊กจะสลับเอง
+          (critique L5) · ขึ้นเฉพาะตอนติ๊กออกจริง เตือนอย่างเดียว ไม่ขวางการบันทึก */}
+      {editing && !form.isActive && deactivateWarning && (
+        <div className={styles.wide}>
+          <StatusNotice tone="warning">{deactivateWarning}</StatusNotice>
+        </div>
       )}
 
       <label className={`${styles.field} ${styles.wide}`}>

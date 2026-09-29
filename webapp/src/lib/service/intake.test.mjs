@@ -209,6 +209,29 @@ test('รอบที่ไม่ผูกใบไม่ปิดคิวใ�
   assert.equal(q[0].unboundPlans, 1, 'แต่ต้องบอกว่าไซต์นี้มีรอบที่ยังไม่ผูกใบอยู่');
 });
 
+/* 🐞 review 29/09: ปุ่มตั้งรอบบนแถวสร้างรอบที่สองได้ในคลิกเดียว — ไซต์ที่มีรอบของใบอื่นเดินอยู่ (ใบที่ยกเลิก/ถูกแทน ·
+   ใบอื่นที่ยังมีผล) ต้องบอกบนแถว (กติกาเดียวกับ `hasForeignPlan` ของแท็บงานบริการของใบ) · ไม่ตัด/ไม่รวมแถว (ตัวนับบนเมนู) */
+test('🔴 รอบของใบอื่นที่ไซต์ (ใบยกเลิก · ใบถูกแทน · ใบอื่นที่มีผล) → foreignPlans บนแถว · ไม่นับรอบปิด/จบแล้ว/ไม่ผูกใบ', () => {
+  const q = planQueue({
+    zones, sites, ordersById: orders2, todayIso: '2026-08-28',
+    terms: [{ id: 'T2', zoneId: 'Z1', salesOrderId: 'SO2' }],
+    plans: [
+      { id: 'PL-dead', siteId: 'S1', salesOrderId: 'SO-CANCELLED', isActive: true },
+      { id: 'PL-old', siteId: 'S1', salesOrderId: 'SO-OLD-REV', isActive: true, endDate: '2026-12-31' },
+      { id: 'PL-off', siteId: 'S1', salesOrderId: 'SO-X', isActive: false },
+      { id: 'PL-ended', siteId: 'S1', salesOrderId: 'SO-Y', isActive: true, endDate: '2026-08-01' },
+      { id: 'PL-unbound', siteId: 'S1', salesOrderId: null, isActive: true },
+      { id: 'PL-elsewhere', siteId: 'S9', salesOrderId: 'SO1', isActive: true },
+    ],
+  });
+  assert.deepEqual(q.map((r) => r.salesOrderId), ['SO2'], 'จำนวนแถวเท่าเดิม');
+  assert.equal(q[0].foreignPlans, 2);
+  assert.equal(q[0].unboundPlans, 1, 'รอบไม่ผูกใบนับแยกตามเดิม');
+
+  const clean = planQueue({ zones, sites, ordersById: orders2, todayIso: '2026-08-28', terms: [{ id: 'T2', zoneId: 'Z1', salesOrderId: 'SO2' }], plans: [] });
+  assert.equal(clean[0].foreignPlans, 0);
+});
+
 /* ⭐ เคสที่พบบ่อยที่สุดของ "หลายใบต่อไซต์" คือออก Rev. — ไม่มีโค้ดไหนย้าย
    service_plans.salesOrderId ไปใบใหม่เลยทั้งระบบ ⇒ รอบชี้ใบที่ตายแล้วตลอดไป */
 test('⭐ ออก Rev. แล้วใบใหม่ต้องเข้าคิว ทั้งที่ไซต์มีรอบของใบเก่าอยู่', () => {
@@ -379,4 +402,54 @@ test('🔴 ด่านปลายทางของการผูก: ไซ�
   assert.match(bindTargetError({ order, zone, site: null, lineLabel }), /ไม่พบไซต์ของโซน ล็อบบี้/);
   assert.match(bindTargetError({ order, zone: null, site, lineLabel }), /ไม่พบโซน/);
   assert.match(bindTargetError({ order: { id: 'X' }, zone, site }), /ลูกค้ารายอื่น/, 'ใบไม่มีลูกค้า = ไม่เดาว่าตรง');
+});
+
+/* ── PR-C (C1): แถวรอตั้งรอบรู้ว่าใบ "ฝ่ายขายตั้งโซนแล้ว" ไหม (ตรา `serviceTermsOpenedAt` · mig 0392) ────────
+   ⭐ ใบที่ตั้งแล้ว term = แพ็คต่อรอบรายโซน ⇒ "ขายไว้" อ่านเป็น "n รอบ/โซน" · ใบเดิม/ย้อนหลังยังเป็น "n รอบ"
+   ⚠️ เพิ่มแค่คีย์เดียว — หน่วย (ไซต์ × ใบ) · จำนวนแถว · ลำดับ ไม่ขยับ (ตัวนับบนเมนูอ่าน `.length`) */
+test('C1: แถวพก stamped ตามตราของใบ — ไม่มีตรา/ไม่มีใบ = false', () => {
+  const q = planQueue({
+    zones, sites, plans: [], todayIso: '2026-09-29',
+    terms: [{ id: 'T1', zoneId: 'Z1', salesOrderId: 'SO1' }, { id: 'T2', zoneId: 'Z2', salesOrderId: 'SO2' }],
+    ordersById: new Map([
+      ['SO1', so({ serviceTermsOpenedAt: '2026-09-29T03:00:00Z' })],
+      ['SO2', so2()],
+    ]),
+  });
+  const bySo = Object.fromEntries(q.map((r) => [r.salesOrderId, r]));
+  assert.equal(bySo.SO1.stamped, true);
+  assert.equal(bySo.SO2.stamped, false, 'ไม่มีคีย์ serviceTermsOpenedAt = false');
+  const nullStamp = planQueue({
+    zones, sites, plans: [], todayIso: '2026-09-29',
+    terms: [{ id: 'T1', zoneId: 'Z1', salesOrderId: 'SO1' }],
+    ordersById: new Map([['SO1', so({ serviceTermsOpenedAt: null })]]),
+  });
+  assert.equal(nullStamp[0].stamped, false);
+});
+
+test('C1: "ขายไว้" ของใบที่ฝ่ายขายตั้งโซนแล้ว = "12 รอบ/โซน" · ใบเดิม "12 รอบ" · รอบไม่เท่ากันเขียนเหมือนเดิม', () => {
+  assert.deepEqual(planRoundsSoldText({ roundsSold: 12, stamped: true }), { value: '12 รอบ/โซน', hint: null });
+  assert.deepEqual(planRoundsSoldText({ roundsSold: 12, stamped: false }), { value: '12 รอบ', hint: null });
+  assert.deepEqual(planRoundsSoldText({ roundsSold: 12 }), { value: '12 รอบ', hint: null }, 'ไม่มีคีย์ = ใบเดิม');
+  assert.deepEqual(
+    planRoundsSoldText({ roundsSold: 12, stamped: true, roundsMixed: true, roundsValues: [12, 4] }),
+    { value: '12 · 4 รอบ (ต่างกันรายรายการ)', hint: 'ตั้งรอบตามรายการที่มากที่สุด' },
+  );
+  assert.equal(planRoundsSoldText({ roundsSold: null, stamped: true }), null);
+});
+
+test('C1: เรียกแบบตัวนับบนเมนู (ไม่ส่ง linesById · ใบไม่มีตรา) ได้จำนวนแถวเท่าเดิม', () => {
+  const args = {
+    zones: sameSiteZones.concat([{ id: 'Z2', siteId: 'S2', name: 'Reception' }]), sites, plans: [], todayIso: '2026-09-29',
+    terms: [
+      { id: 'T1', zoneId: 'Z1', salesOrderId: 'SO1' }, { id: 'T3', zoneId: 'Z3', salesOrderId: 'SO1' },
+      { id: 'T2', zoneId: 'Z2', salesOrderId: 'SO2' },
+    ],
+    ordersById: new Map([['SO1', so()], ['SO2', so2()]]),
+  };
+  const q = planQueue(args);
+  assert.equal(q.length, 2);
+  assert.ok(q.every((r) => r.stamped === false));
+  const stampedOrders = new Map([['SO1', so({ serviceTermsOpenedAt: '2026-09-29T03:00:00Z' })], ['SO2', so2()]]);
+  assert.equal(planQueue({ ...args, ordersById: stampedOrders }).length, 2, 'ตราไม่เปลี่ยนจำนวนแถว');
 });

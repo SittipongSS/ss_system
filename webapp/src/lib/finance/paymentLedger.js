@@ -176,6 +176,7 @@ export function ledgerBillingWhen(state) {
 export function ledgerRow({
   installment, order, quotation, customer, deal = null, todayIso = null,
   serviceRounds = false, billingRequest = null, billingRemind = false, dueRemind = false,
+  serviceTermZones = 0, serviceContractLinked = true,
 }) {
   if (!installment || !order) return null;
   const status = installment.status || 'pending';
@@ -311,6 +312,12 @@ export function ledgerRow({
     coversFrom: installment.coversFrom || null,
     coversTo: installment.coversTo || null,
     serviceRounds: Boolean(serviceRounds),
+    /* ── บรรทัดด่านเงินของนัดบริการในโมดัลรับรองบนทะเบียน (PR-C C5 · C-D15) — ค่าระดับใบ ผู้เรียกนับมาให้ ──
+       `serviceTermZones` = โซนไม่ซ้ำของรอบขายที่มีผลของใบที่เปิดงานบริการแล้ว (`serviceTermZoneCount`) · ไม่ส่ง/ไม่รู้ = 0 (ไม่มีบรรทัด)
+       `serviceContractLinked` = ใบผูกสัญญาแล้วไหม · ไม่ส่ง = true (ไม่รู้ ⇒ โมดัลไม่พูดเรื่องสัญญา)
+       ⚠️ whitelist — ลืมเติม = โมดัลบนทะเบียนไม่มีบรรทัดที่โมดัลบนใบมี (สองจอพูดไม่ตรงกันเงียบ ๆ) */
+    serviceTermZones: Number(serviceTermZones) || 0,
+    serviceContractLinked: serviceContractLinked !== false,
     paidOn: installment.paidOn || null,
     status,
     /* คืนเงินแล้ว (0378) — ค่าใน DB ยังเป็น confirmed แต่ในไฟล์/จอต้องไม่อ่านว่า "เก็บเงินแล้ว" */

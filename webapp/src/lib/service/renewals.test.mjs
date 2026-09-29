@@ -211,3 +211,165 @@ test('รอบที่สัญญาถูกยกเลิกหลัง�
   assert.equal(rows.length, 1, 'สัญญาปีหน้าที่ถูกยกเลิกวันนี้ต้องขึ้นทะเบียนทันที');
   assert.equal(rows[0].endDate, TODAY);
 });
+
+/* ── ใบที่ยังไม่ผูกสัญญา: วันหมดถอยไปที่ช่วงบริการของใบ (PR-C · C-D13) ─────────────
+   ⭐ ใบที่ **เปิดงานบริการแล้ว** (`serviceTermsOpenedAt` · 0392) แต่ยังไม่ผูกสัญญา = ขายช่วงบริการไว้จริง
+     ⇒ ทะเบียนตามต่อด้วย `servicePeriodTo` แทนการเงียบ · สัญญาผูกเมื่อไร สัญญาชนะเสมอ
+   🪤 ใบที่ยังไม่มีตรา = ช่วงบริการร่างของการตั้งย้อนหลัง (0392 บันทึกช่วงก่อนตรวจ) ⇒ ห้ามอ่าน
+   🪤 ช่วงที่จบก่อนวัน 0392 รัน (29/09/2026) ไม่ถอยมาให้ — ใบย้อนหลังที่ช่วงจบไปนานแล้วจะท่วม "หมดแล้ว" + กระดิ่ง */
+const OPENED_AT = '2026-09-29T04:08:11.170722+00:00';
+const openedOrder = (id, servicePeriodTo, extra = {}) => ({
+  id, status: 'approved', supersededById: null, serviceContractId: null,
+  servicePeriodFrom: '2025-10-01', servicePeriodTo, serviceTermsOpenedAt: OPENED_AT, ...extra,
+});
+const oneSite = { sites: [site('ST1', 'ไซต์ A')], zones: [zone('ZN1', 'ST1'), zone('ZN2', 'ST1')] };
+
+test('ค่าคงที่ของทางถอย: ข้อความใต้วัน + วันเริ่มใช้ = วันที่ 0392 รัน', async () => {
+  const { ORDER_PERIOD_END_NOTE, ORDER_PERIOD_FALLBACK_SINCE } = await import('./renewals.js');
+  assert.equal(ORDER_PERIOD_END_NOTE, 'ครบช่วงบริการของใบ · ยังไม่ผูกสัญญา');
+  assert.equal(ORDER_PERIOD_FALLBACK_SINCE, '2026-09-29');
+});
+
+test('ใบเปิดงานบริการแล้ว ไม่มีสัญญา ช่วงจบในอีก 60 วัน → ใกล้หมด · แหล่งวัน = ช่วงบริการของใบ', () => {
+  const rows = renewalRows({
+    ...oneSite, terms: [term('T1', 'ZN1', 'SO1')],
+    ordersById: new Map([['SO1', openedOrder('SO1', '2026-11-28')]]), contractsById: new Map(),
+    todayIso: '2026-09-29',
+  });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].state, 'due_soon');
+  assert.equal(rows[0].endDate, '2026-11-28');
+  assert.equal(rows[0].daysLeft, 60);
+  assert.equal(rows[0].endSource, 'order_period');
+  assert.equal(rows[0].terms[0].endSource, 'order_period');
+  assert.equal(rows[0].terms[0].endDate, '2026-11-28');
+});
+
+test('🪤 ใบที่ยังไม่มีตราเปิดงานบริการ (ช่วงร่างของการตั้งย้อนหลัง) → ไม่ขึ้นทะเบียน', () => {
+  const rows = renewalRows({
+    ...oneSite, terms: [term('T1', 'ZN1', 'SO1')],
+    ordersById: new Map([['SO1', openedOrder('SO1', '2026-11-28', { serviceTermsOpenedAt: null })]]),
+    contractsById: new Map(), todayIso: '2026-09-29',
+  });
+  assert.deepEqual(rows, []);
+});
+
+test('🪤 ช่วงที่จบก่อน 29/09/2026 ไม่ถอยมาให้ — ไม่ท่วมแถว "หมดแล้ว"', () => {
+  const at = (servicePeriodTo, todayIso = '2026-09-29') => renewalRows({
+    ...oneSite, terms: [term('T1', 'ZN1', 'SO1')],
+    ordersById: new Map([['SO1', openedOrder('SO1', servicePeriodTo)]]), contractsById: new Map(), todayIso,
+  });
+  assert.deepEqual(at('2026-08-31'), []);
+  assert.deepEqual(at('2026-09-28'), [], 'วันก่อนวันเริ่มใช้หนึ่งวัน = ไม่ถอย');
+  const edge = at('2026-09-29', '2026-10-01');
+  assert.equal(edge.length, 1, 'จบวันเริ่มใช้พอดี = ถอยให้');
+  assert.equal(edge[0].state, 'expired');
+});
+
+test('ช่วงจบ 15/10/2026 ดูวันที่ 01/11/2026 → หมดแล้ว (แหล่งวัน = ช่วงบริการของใบ)', () => {
+  const rows = renewalRows({
+    ...oneSite, terms: [term('T1', 'ZN1', 'SO1')],
+    ordersById: new Map([['SO1', openedOrder('SO1', '2026-10-15')]]), contractsById: new Map(),
+    todayIso: '2026-11-01',
+  });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].state, 'expired');
+  assert.equal(rows[0].daysLeft, -17);
+  assert.equal(rows[0].endSource, 'order_period');
+});
+
+test('ผูกสัญญาแล้ว → สัญญาชนะเสมอ แม้ช่วงของใบจะจบก่อน', () => {
+  const rows = renewalRows({
+    ...oneSite, terms: [term('T1', 'ZN1', 'SO1')],
+    ordersById: new Map([['SO1', openedOrder('SO1', '2026-10-15', { serviceContractId: 'CT1' })]]),
+    contractsById: new Map([['CT1', { id: 'CT1', status: 'signed', expiryDate: '2026-12-01' }]]),
+    todayIso: '2026-09-29',
+  });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].endDate, '2026-12-01');
+  assert.equal(rows[0].endSource, 'contract');
+});
+
+test('ผูกสัญญาปลายเปิด → ไม่ขึ้นทะเบียน (ไม่ถอยข้ามสัญญาไปหาช่วงของใบ)', () => {
+  const rows = renewalRows({
+    ...oneSite, terms: [term('T1', 'ZN1', 'SO1')],
+    ordersById: new Map([['SO1', openedOrder('SO1', '2026-10-15', { serviceContractId: 'CT1' })]]),
+    contractsById: new Map([['CT1', { id: 'CT1', status: 'signed', expiryDate: null }]]),
+    todayIso: '2026-09-29',
+  });
+  assert.deepEqual(rows, []);
+});
+
+test('ใบชี้สัญญาที่ไม่อยู่ในก้อน → ไม่ขึ้นทะเบียน (เหมือนเดิม · ไม่ถอยข้ามสัญญา)', () => {
+  const rows = renewalRows({
+    ...oneSite, terms: [term('T1', 'ZN1', 'SO1')],
+    ordersById: new Map([['SO1', openedOrder('SO1', '2026-10-15', { serviceContractId: 'CT-หาย' })]]),
+    contractsById: new Map(), todayIso: '2026-09-29',
+  });
+  assert.deepEqual(rows, []);
+});
+
+test('เรื่องที่ปิดไปแล้วของวันจบช่วงเดียวกันไม่โผล่ซ้ำ', () => {
+  const rows = renewalRows({
+    ...oneSite, terms: [term('T1', 'ZN1', 'SO1')],
+    ordersById: new Map([['SO1', openedOrder('SO1', '2026-11-28')]]), contractsById: new Map(),
+    closedEndDates: new Map([['ST1', ['2026-11-28']]]), todayIso: '2026-09-29',
+  });
+  assert.deepEqual(rows, []);
+});
+
+test('ไซต์เดียวสองแหล่ง: แหล่งของแถว = แหล่งของรอบที่หมดก่อน · วันชนกัน = สัญญา', () => {
+  const ordersById = new Map([
+    ['SO1', openedOrder('SO1', '2026-10-31')],
+    ['SO2', openedOrder('SO2', '2027-09-30', { serviceContractId: 'CT2' })],
+  ]);
+  const earlierPeriod = renewalRows({
+    ...oneSite, terms: [term('T2', 'ZN2', 'SO2'), term('T1', 'ZN1', 'SO1')], ordersById,
+    contractsById: new Map([['CT2', { id: 'CT2', status: 'signed', expiryDate: '2026-12-15' }]]),
+    todayIso: '2026-09-29',
+  });
+  assert.equal(earlierPeriod.length, 1);
+  assert.equal(earlierPeriod[0].endDate, '2026-10-31');
+  assert.equal(earlierPeriod[0].endSource, 'order_period');
+  assert.deepEqual(earlierPeriod[0].terms.map((t) => t.endSource), ['contract', 'order_period']);
+
+  const tie = renewalRows({
+    ...oneSite, terms: [term('T1', 'ZN1', 'SO1'), term('T2', 'ZN2', 'SO2')], ordersById,
+    contractsById: new Map([['CT2', { id: 'CT2', status: 'signed', expiryDate: '2026-10-31' }]]),
+    todayIso: '2026-09-29',
+  });
+  assert.equal(tie[0].endDate, '2026-10-31');
+  assert.equal(tie[0].endSource, 'contract', 'วันเดียวกัน = สัญญาเป็นแหล่งของแถว');
+});
+
+test('termEndInfo บอกทั้งวันและแหล่ง · termEndDate คืนแค่วันเหมือนเดิม', async () => {
+  const { termEndInfo, termEndDate } = await import('./renewals.js');
+  const ordersById = new Map([
+    ['SO1', openedOrder('SO1', '2026-11-28')],
+    ['SO2', openedOrder('SO2', '2026-11-28', { serviceContractId: 'CT2' })],
+    ['SO3', openedOrder('SO3', '2026-11-28', { serviceTermsOpenedAt: null })],
+  ]);
+  const contractsById = { CT2: { id: 'CT2', status: 'signed', expiryDate: '2027-01-31' } };
+  assert.deepEqual(termEndInfo(term('T1', 'Z1', 'SO1'), ordersById, contractsById), { date: '2026-11-28', source: 'order_period' });
+  assert.deepEqual(termEndInfo(term('T2', 'Z1', 'SO2'), ordersById, contractsById), { date: '2027-01-31', source: 'contract' });
+  assert.equal(termEndInfo(term('T3', 'Z1', 'SO3'), ordersById, contractsById), null);
+  assert.equal(termEndInfo(term('T4', 'Z1', 'SO-ไม่มี'), ordersById, contractsById), null);
+  assert.equal(termEndDate(term('T1', 'Z1', 'SO1'), ordersById, contractsById), '2026-11-28');
+  assert.equal(termEndDate(term('T3', 'Z1', 'SO3'), ordersById, contractsById), null);
+});
+
+test('รอบนำของแถว (ใบที่ลิงก์/ตัดสิทธิ์) = รอบที่วันและแหล่งตรงกับแถว', async () => {
+  const { renewalLeadTerm } = await import('./renewals.js');
+  const ordersById = new Map([
+    ['SO1', openedOrder('SO1', '2026-10-31')],
+    ['SO2', openedOrder('SO2', '2027-09-30', { serviceContractId: 'CT2' })],
+  ]);
+  const [row] = renewalRows({
+    ...oneSite, terms: [term('T1', 'ZN1', 'SO1'), term('T2', 'ZN2', 'SO2')], ordersById,
+    contractsById: new Map([['CT2', { id: 'CT2', status: 'signed', expiryDate: '2026-10-31' }]]),
+    todayIso: '2026-09-29',
+  });
+  assert.equal(renewalLeadTerm(row).salesOrderId, 'SO2', 'แถวบอกแหล่ง "สัญญา" ⇒ ใบที่ลิงก์ต้องเป็นใบที่มีสัญญา');
+  assert.equal(renewalLeadTerm({ endDate: 'x', endSource: 'contract', terms: [{ id: 'T9', endDate: 'y' }] }).id, 'T9');
+  assert.equal(renewalLeadTerm({ terms: [] }), null);
+});

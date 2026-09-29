@@ -4,7 +4,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { apiWriteAllowed, bypassesSessionGate, lockedOut } from './proxy.js';
-import { RD_ROLES, ROLES, can, canAnswerServiceRequests } from '@/lib/permissions';
+import { RD_ROLES, ROLES, can, canAnswerServiceRequests, canEditService } from '@/lib/permissions';
 
 /* 🐞 ของจริงที่หลุด prod: proxy ตอบ 401 ให้ทุก request ที่ไม่มี cookie session รวม
    Vercel Cron ซึ่งยืนยันตัวด้วย `Authorization: Bearer $CRON_SECRET` เท่านั้น
@@ -502,6 +502,30 @@ test('ฝ่ายขายต้องผ่านด่าน proxy ของ 
   // ⚠️ ฝ่ายที่ไม่เกี่ยวกับงานบริการยังต้องถูกกั้นตั้งแต่ชั้นนี้
   for (const role of ['wh', 'qc', 'pc', 'rd', 'finance', 'secretary', 'viewer']) {
     assert.equal(apiWriteAllowed('POST', '/api/service/sites', role, []), false, `${role} ต้องไม่ผ่าน`);
+  }
+});
+
+/* ── มาตรฐาน มล./เดือนของรอบขาย (PR-C · PATCH /api/service/terms/[id]) — สองด่านของ proxy คู่กันเสมอ ──
+   ⭐ ด่าน 1 `lockedOut`: `/api/service` อยู่ใน OPEN_WRITE_APIS ⇒ ผ่าน · ด่าน 2 `apiWriteAllowed`: service:edit
+   หรือ service:work ⇒ ผ่าน · **ด่านจริงคือ handler** `requireService({ user, edit: true })` = `canEditService`
+   (ถือ service:edit **และ** เป็นคนในโมดูล) ซึ่ง proxy มองไม่เห็นฝ่าย
+   ⚠️ ts (Operation · service:work) กับฝ่ายขาย (ถือ service:edit เพื่อสร้างไซต์ได้ — เทสต์ข้างบน) ผ่าน proxy ทั้งคู่
+      แล้วได้ 403 จาก handler — ไม่ใช่ช่องโหว่ แต่ห้ามมีใครย้ายด่านจริงมาไว้ที่ proxy แล้วคิดว่าพอ */
+test('⭐ PATCH /api/service/terms/[id] — TS Planner ผ่านทั้งสองด่านของ proxy · ด่านจริงคือ canEditService ใน handler', () => {
+  const path = '/api/service/terms/SZT-S1';
+  const planner = { role: 'ts_planner', extraCaps: [] };
+  assert.equal(lockedOut(planner, path, 'PATCH', true), false, 'ด่าน 1 (lockdown) ต้องไม่ตัด TS Planner');
+  assert.equal(apiWriteAllowed('PATCH', path, 'ts_planner', []), true, 'ด่าน 2 (cap) ต้องไม่ตัด TS Planner');
+  assert.equal(canEditService({ ...planner, department: 'TS' }), true, 'handler ปล่อย TS Planner');
+  // ts ถือแค่ service:work — proxy ปล่อย (ต้องปิดงานของตัวเองได้) แต่ handler ตอบ 403
+  assert.equal(apiWriteAllowed('PATCH', path, 'ts', []), true);
+  assert.equal(canEditService({ role: 'ts', department: 'TS' }), false, 'ts แก้มาตรฐานไม่ได้');
+  // ฝ่ายขายผ่าน proxy (service:edit ของการสร้างไซต์) — handler ตัดเพราะไม่ใช่คนในโมดูล
+  assert.equal(apiWriteAllowed('PATCH', path, 'ae', []), true);
+  assert.equal(canEditService({ role: 'ae', department: 'SA' }), false, 'ฝ่ายขายแก้มาตรฐานไม่ได้');
+  // ฝ่ายที่ไม่เกี่ยวกับงานบริการถูกตัดตั้งแต่ proxy
+  for (const role of ['wh', 'qc', 'pc', 'rd', 'finance', 'secretary', 'viewer']) {
+    assert.equal(apiWriteAllowed('PATCH', path, role, []), false, `${role} ต้องไม่ผ่าน`);
   }
 });
 

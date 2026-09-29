@@ -11,10 +11,13 @@ import {
   fgSummary,
   isPackUnit,
   latestTermOfZone,
+  orderPeriodPhase,
+  serviceTermZoneCount,
   suggestStandardMl,
   termInWindow,
   termIsActive,
   termOrderActive,
+  termsSoldNow,
   zoneTermState,
 } from './terms.js';
 
@@ -198,4 +201,80 @@ test('ไม่มีจุดติดตั้ง (ใบปกติ) = จ�
   assert.equal(rows[0].qty, 13);
   assert.equal(rows[0].lines.length, 2);
   assert.deepEqual(rows.map((g) => g.installationPoint), [null, null]);
+});
+
+/* ── PR-C C5 (C-D15): จำนวนโซนของรอบขายที่มีผลของใบ — บรรทัดด่านเงินในโมดัล FN รับรองงวด ──────────
+   ⭐ นับ **โซนไม่ซ้ำ** — สองบรรทัดของใบลงโซนเดียวกัน (SO-26090247-0: 2 term บน Office) = 1 โซน
+   ⚠️ ใบไม่มีผล (ออก Rev./ยกเลิก/ย้อนการอนุมัติ/ไม่ส่งใบ) = 0 — ตัดสินด้วย termOrderActive ตัวเดียวของระบบ */
+test('serviceTermZoneCount: โซนไม่ซ้ำของรอบขายของใบที่มีผล · ใบไม่มีผล = 0', () => {
+  const terms = [term({ id: 'T1', zoneId: 'Z1' }), term({ id: 'T2', zoneId: 'Z1' }), term({ id: 'T3', zoneId: 'Z2' }), term({ id: 'T4', zoneId: null })];
+  assert.equal(serviceTermZoneCount(terms.slice(0, 2), order()), 1, 'สอง term โซนเดียวกัน = 1 โซน');
+  assert.equal(serviceTermZoneCount(terms, order()), 2);
+  assert.equal(serviceTermZoneCount(terms, order({ supersededById: 'SO2' })), 0);
+  for (const status of ['approval_revoked', 'cancelled', 'revised', 'draft', 'pending_approval']) {
+    assert.equal(serviceTermZoneCount(terms, order({ status })), 0, status);
+  }
+  assert.equal(serviceTermZoneCount(terms, null), 0, 'ไม่ส่งใบ = 0 ไม่ใช่เดาว่ามีผล');
+  assert.equal(serviceTermZoneCount([], order()), 0);
+  assert.equal(serviceTermZoneCount(undefined, order()), 0);
+});
+
+/* ── PR-C (review 29/09): ช่วงบริการของใบที่ประทับแล้วเป็นหน้าต่างของ "ขายอยู่ตอนนี้" ─────────────────────
+   🐞 term ที่ 0392 เปิดไม่มี startDate/endDate (mig 0392 "⛔ ไม่เขียน startDate / endDate") ⇒ `termIsActive` ตอบ true
+      ตราบที่ใบยังอนุมัติ แม้ช่วงบริการของใบจบไปแล้ว · ต่อสัญญา = ใบใหม่ผูกโซนเดิม ⇒ ใบเก่า + ใบต่อสัญญามีผลพร้อมกัน
+      แล้วตัวรวม (มาตรฐาน มล. ของโซน · ป้าย "ขายแล้ว n แพ็ค/รอบ") นับซ้ำสองเท่า */
+const STAMP = '2026-09-29T03:00:00Z';
+const stampedOrder = (over = {}) => ({
+  id: 'SO-CUR', orderNumber: 'SO-CUR', status: 'approved', supersededById: null,
+  serviceTermsOpenedAt: STAMP, servicePeriodFrom: '2026-10-22', servicePeriodTo: '2027-10-21', ...over,
+});
+
+test('orderPeriodPhase: ใบประทับ = ช่วงบริการของใบ · ใบไม่ประทับ/ไม่รู้วัน = current (ไม่เดาว่าจบ)', () => {
+  const o = stampedOrder();
+  assert.equal(orderPeriodPhase(o, '2026-10-21'), 'future');
+  assert.equal(orderPeriodPhase(o, '2026-10-22'), 'current', 'วันเริ่มนับ');
+  assert.equal(orderPeriodPhase(o, '2027-10-21'), 'current', 'วันจบนับ');
+  assert.equal(orderPeriodPhase(o, '2027-10-22'), 'ended');
+  assert.equal(orderPeriodPhase({ ...o, serviceTermsOpenedAt: null }, '2030-01-01'), 'current', 'ใบไม่ประทับ: ช่วงร่างไม่ใช่ข้อเท็จจริง');
+  assert.equal(orderPeriodPhase({ ...o, servicePeriodTo: null }, '2030-01-01'), 'current', 'ไม่รู้วันจบ = ยังไม่จบ');
+  assert.equal(orderPeriodPhase({ ...o, servicePeriodFrom: null }, '2026-01-01'), 'current', 'ไม่รู้วันเริ่ม = เริ่มแล้ว');
+  assert.equal(orderPeriodPhase({ ...o, servicePeriodTo: '2027-10-21T00:00:00+07:00' }, '2027-10-22'), 'ended', 'ค่าที่มาเป็น timestamp ตัดเหลือวัน');
+  assert.equal(orderPeriodPhase(null, '2026-10-01'), 'current');
+});
+
+test('🔴 termsSoldNow: ใบเก่าที่ช่วงจบแล้วไม่นับ · ใบต่อสัญญาที่ยังไม่เริ่มไม่นับ · ใบขายเพิ่มที่ซ้อนช่วงนับ', () => {
+  const orders = new Map([
+    ['SO-OLD', stampedOrder({ id: 'SO-OLD', servicePeriodFrom: '2025-10-22', servicePeriodTo: '2026-10-21' })],
+    ['SO-CUR', stampedOrder()],
+    ['SO-ADD', stampedOrder({ id: 'SO-ADD', servicePeriodFrom: '2026-12-01', servicePeriodTo: '2027-10-21' })],
+    ['SO-REN', stampedOrder({ id: 'SO-REN', servicePeriodFrom: '2027-10-22', servicePeriodTo: '2028-10-21' })],
+    ['SO-LEG', { id: 'SO-LEG', status: 'approved', supersededById: null, serviceTermsOpenedAt: null, servicePeriodTo: '2020-01-01' }],
+    ['SO-DEAD', stampedOrder({ id: 'SO-DEAD', status: 'cancelled' })],
+  ]);
+  const t = (id, salesOrderId) => term({ id, zoneId: 'Z1', salesOrderId });
+  const terms = [t('OLD', 'SO-OLD'), t('CUR1', 'SO-CUR'), t('CUR2', 'SO-CUR'), t('ADD', 'SO-ADD'), t('REN', 'SO-REN'), t('LEG', 'SO-LEG'), t('DEAD', 'SO-DEAD')];
+  const ids = (today) => termsSoldNow(terms, orders, today).map((x) => x.id);
+
+  // ก่อนใบปัจจุบันเริ่ม: ใบเก่ายังอยู่ในช่วง ⇒ ใบที่ยังไม่เริ่มทุกใบรอก่อน
+  assert.deepEqual(ids('2026-10-01'), ['OLD', 'LEG']);
+  // ใบเก่าจบ ใบปัจจุบันเริ่ม ⇒ ไม่นับซ้อน · ใบขายเพิ่มยังไม่เริ่ม
+  assert.deepEqual(ids('2026-10-22'), ['CUR1', 'CUR2', 'LEG']);
+  // ใบขายเพิ่มเริ่มแล้วและซ้อนช่วง ⇒ นับรวม · ใบต่อสัญญายังไม่เริ่ม
+  assert.deepEqual(ids('2027-01-15'), ['CUR1', 'CUR2', 'ADD', 'LEG']);
+  // หลังช่วงของใบปัจจุบัน ⇒ ใบต่อสัญญาเท่านั้น
+  assert.deepEqual(ids('2027-10-22'), ['REN', 'LEG']);
+});
+
+test('termsSoldNow: ทุกใบยังไม่เริ่ม (ใบแรกของโซน) ⇒ ใบที่เริ่มก่อนสุด — "ขายแล้ว" ต้องไม่หายระหว่างรอวันเริ่ม', () => {
+  const orders = new Map([
+    ['SO-CUR', stampedOrder()],
+    ['SO-REN', stampedOrder({ id: 'SO-REN', servicePeriodFrom: '2027-10-22', servicePeriodTo: '2028-10-21' })],
+  ]);
+  const terms = [term({ id: 'A', zoneId: 'Z1', salesOrderId: 'SO-CUR' }), term({ id: 'B', zoneId: 'Z1', salesOrderId: 'SO-CUR' }), term({ id: 'R', zoneId: 'Z1', salesOrderId: 'SO-REN' })];
+  assert.deepEqual(termsSoldNow(terms, orders, '2026-09-29').map((x) => x.id), ['A', 'B'], 'SO-26090247-0 วันนี้ (เริ่ม 22/10)');
+  assert.deepEqual(termsSoldNow(terms, Object.fromEntries(orders), '2026-09-29').map((x) => x.id), ['A', 'B'], 'รับออบเจกต์ได้เหมือน Map');
+  // รอบที่ตัวเองไม่มีผล (ใบตาย / term หมดช่วงของตัวเอง) ไม่เข้าเลย
+  assert.deepEqual(termsSoldNow([term({ id: 'X', zoneId: 'Z1', salesOrderId: 'SO-CUR', endDate: '2026-01-01' })], orders, '2026-09-29'), []);
+  assert.deepEqual(termsSoldNow([], orders, '2026-09-29'), []);
+  assert.deepEqual(termsSoldNow(undefined, orders, '2026-09-29'), []);
 });

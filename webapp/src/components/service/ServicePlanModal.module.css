@@ -1,0 +1,64 @@
+/* โมดัลรอบบริการ — ส่วนที่มีเฉพาะตอนเปิดจากแถว "รอตั้งรอบ" (PR-C · C6)
+   ฟิลด์/กริดยังใช้ ServiceSiteModal.module.css ร่วมกับฟอร์มไซต์ (ไฟล์นั้นไม่ถูกแตะ)
+   ⚠️ ห้าม style={{…}} · โทเคนเท่านั้น (audit:ui) */
+
+/* แถบบริบท + คำเตือนสัญญา เหนือกริด — ช่องว่างของตัวเอง (.drawer-body ไม่มี gap ให้) */
+.context {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+/* "งานนี้ · SO-… · ไซต์ · 1 โซน · …" — ข้อเท็จจริงอ่านอย่างเดียว ไม่ใช่ช่องกรอก
+   ⇒ พื้น --panel-2 + กรอบบาง ทรงเดียวกับการ์ดอ้างอิงในโมดัลไซต์ ไม่ใช่ช่อง input เทา
+   ท่อนละ flex item ⇒ ขึ้นบรรทัดระหว่างท่อน ท่อนที่ยาวเกินบรรทัด (ชื่อไซต์ยาว) ยังตัดในท่อนได้ */
+.strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-1);
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
+
+.stripPart {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ท่อนแรก "งานนี้" = ป้ายกำกับของแถบ ไม่ใช่ข้อมูล (ทรงเดียวกับ mock TsIntakePlan) */
+.stripPart:first-child {
+  color: var(--text-3);
+  font-weight: var(--fw-bold);
+}
+
+/* ชิป "ตามที่ขาย R รอบ → ทุก D วัน [ใช้]" — ข้อเสนอ ไม่ใช่ค่าที่ตั้งแล้ว ⇒ กรอบประ + โทน accent อ่อน
+   อยู่ใน <label> ของช่องรอบ (วัน) ⇒ ตัวมันเป็น span (inline) · display ทำให้จัดแถวได้โดยไม่เป็นบล็อกใน HTML
+   ข้อความโดนเพดานยาวสองบรรทัดได้ ⇒ ขึ้นบรรทัดได้ ไม่ตัด … และมุมไม่เป็นแคปซูล (แคปซูลสองบรรทัดดูแตก) */
+.suggestion {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  align-self: flex-start;
+  gap: var(--space-1) var(--space-2);
+  max-width: 100%;
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-2-5);
+  border: 1px dashed color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent-soft) 60%, var(--panel-solid));
+  color: var(--accent-ink);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+/* ข้อความยาว (โดนเพดาน) ตัดในตัวเองได้ · ปุ่ม "ใช้" ไปบรรทัดใหม่เมื่อไม่พอ ไม่บีบจนอ่านไม่ออก */
+.suggestion > span {
+  min-width: 0;
+}

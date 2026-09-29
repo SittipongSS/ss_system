@@ -21,6 +21,7 @@ import DetailOverview, { DetailStateBadge } from "@/components/ui/DetailOverview
 import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import { DocumentControlCard, DocumentSummaryCard } from "@/components/ui/DocumentControlPanel";
 import StatusNotice from "@/components/ui/StatusNotice";
+import StatusBadge from "@/components/ui/StatusBadge";
 import ServiceSiteModal from "@/components/service/ServiceSiteModal";
 import ServiceAssetModal from "@/components/service/ServiceAssetModal";
 import ServicePlanModal from "@/components/service/ServicePlanModal";
@@ -716,6 +717,20 @@ export default function ServiceSiteDetailPage({ params }) {
                             {" · "}
                             <span className={styles.nowrap}>{fmtNumber(zoneAssetCount)} เครื่อง</span>
                           </span>
+                          {/* ⭐ การขายของโซน (PR-C · r2 R1) — ไม่เพิ่มคอลัมน์ (ตารางพับตามกติกาเดิม) · เห็นทุกความกว้าง
+                              เขียว = "ขายแล้ว n แพ็ค/รอบ (SO-…)" รวมทุกใบที่มีผล · เหลือง = ใบที่ยังถือโซนไว้โดยยังไม่เปิดงานบริการ
+                              (ปิดใช้งานโซนนี้แล้วใบนั้นจะยื่น/อนุมัติ/ตรวจไม่ผ่าน — โมดัลแก้โซนเตือนซ้ำตอนติ๊กออก)
+                              ⚠️ ข้อความมาจาก server (`zone.sale`) และอยู่ใน haystack ของช่องค้นหาแล้ว (siteDetailLists) */}
+                          {(zone.sale?.soldLabel || zone.sale?.pendingLabel) && (
+                            <span className={styles.saleTags}>
+                              {zone.sale?.soldLabel && (
+                                <StatusBadge tone="success" size="sm" className={styles.saleTag} label={zone.sale.soldLabel} />
+                              )}
+                              {zone.sale?.pendingLabel && (
+                                <StatusBadge tone="warning" size="sm" className={styles.saleTag} label={zone.sale.pendingLabel} />
+                              )}
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className={`num ${styles.numCol} ${styles.wideCol}`}>{spotCount}</td>

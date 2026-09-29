@@ -903,3 +903,29 @@ test('โมดัลแก้นัดตรวจด้วย `visitFormCheckI
   assert.match(src, /visitEndDateNote\(visit, form\)/);
   assert.match(src, /\{endDateNote \? <p className=\{styles\.hint\} role="note">\{endDateNote\}<\/p> : null\}/);
 });
+
+/* ═══ D15 · ชิปใบสั่งขายบนแผงด่าน (PR-C · C9 · C-D19) ═══════════════════════════════════════════════
+   ⭐ แผงวาด **แถว** ไม่ใช่ item ⇒ ชิปต้องติดไปกับแถวของข้อสัญญา · ไม่มีชิป = แถวรูปเดิมทุกไบต์ */
+test('D15 gatePanelView: แถวข้อสัญญาพกชิปเฉพาะตอนมี · เหตุ/สถานะ/เจ้าของเดิม', () => {
+  const chip = { orderId: 'SOR-D', orderNumber: 'SO-26100011-0', status: 'draft', group: 'unapproved', stateLabel: 'ฉบับร่าง', ownerName: 'สมหญิง รักงาน' };
+  const visit = form21({ assigneeId: 'PA', assigneeName: 'Phuwadol Aoonnankad' });
+  const termless = { ...riversideCtx, terms: [] };
+  const plain = gatePanelView(evaluateVisitGate(visit, termless), { visit, site: riverside });
+  const view = gatePanelView(evaluateVisitGate(visit, { ...termless, setupOrdersByZone: { Z1: [chip], Z2: [chip] } }), { visit, site: riverside });
+  const [contract, ...rest] = view.rows;
+  assert.equal(contract.state, 'fail');
+  assert.deepEqual(contract.orders, [chip], 'ใบเดียวสองโซน = ชิปเดียว');
+  const { orders, ...withoutChips } = contract;
+  assert.deepEqual(withoutChips, plain.rows[0], 'ตัดชิปออกแล้วเท่าแถวเดิม');
+  assert.deepEqual(rest, plain.rows.slice(1));
+  for (const row of plain.rows) assert.equal('orders' in row, false, row.key);
+  assert.equal(view.summary, plain.summary);
+  assert.equal(view.verdict, plain.verdict);
+  // ไม่มีชิป (ไม่ส่ง · ว่าง) = รูปเดิม
+  assert.deepEqual(gatePanelView(evaluateVisitGate(visit, { ...termless, setupOrdersByZone: { Z1: [] } }), { visit, site: riverside }), plain);
+  // งานสำรวจ/ถอนเครื่อง: ข้อ ①② ไม่ต้องตรวจ ⇒ ไม่มีชิป
+  const remove = { ...visit, kind: 'remove' };
+  const exempt = gatePanelView(evaluateVisitGate(remove, { ...termless, setupOrdersByZone: { Z1: [chip] } }), { visit: remove, site: riverside });
+  assert.equal(exempt.rows[0].state, 'exempt');
+  assert.equal('orders' in exempt.rows[0], false);
+});

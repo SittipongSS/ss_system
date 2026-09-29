@@ -133,6 +133,29 @@ export function estimateVisitCount({ startDate, endDate, everyDays } = {}) {
   return Math.floor(span / every) + 1;
 }
 
+/* ── "ขายไว้ n รอบ ⇒ ทุกกี่วัน" (PR-C · C-D7) — ตัวกลับของ estimateVisitCount ─────────────────────
+   ⭐ **ข้อเสนอให้คนกด ไม่ใช่ค่าตั้งต้นเงียบ ๆ** — แถว "รอตั้งรอบ" กับชิปในโมดัลรอบบริการอ่านตัวนี้ตัวเดียว
+   สูตร: รอบ ≥ 2 → floor(ช่วง ÷ (รอบ − 1)) · รอบเดียว → ช่วง + 1 (นัดเดียวพอดีทั้งช่วง)
+   ⇒ ช่วงพอ (ช่วง ≥ รอบ − 1) ได้นัด ≥ ที่ขายเสมอ (ปัดลง = ถี่ขึ้น ไม่ขาด) · `visits` = estimateVisitCount ตัวเดียวกับโมดัล
+   ⚠️ ความถี่ตั้งได้ 1–365 วัน (normalizePlanInput) ⇒ เกินเพดาน/ต่ำกว่าพื้น = ตัดแล้วบอก `clamped`
+      (2 รอบใน 2 ปี → ทุก 365 วัน ≈ 3 นัด · ได้เกินที่ขาย — จอต้องพูดตรง ๆ ไม่ใช่ทำเป็นพอดี)
+   ⚠️ ไม่มีวัน · รอบไม่ใช่จำนวนเต็มบวก · วันกลับด้าน = null (ไม่เดา — กติกาเดียวกับ estimateVisitCount) */
+const MAX_EVERY_DAYS = 365;
+
+export function suggestEveryDays({ startDate, endDate, rounds } = {}) {
+  if (!Number.isInteger(rounds) || rounds < 1) return null;
+  if (!startDate || !endDate) return null;
+  const span = daysBetween(startDate, endDate);
+  if (span == null || span < 0) return null;
+  const raw = rounds === 1 ? span + 1 : Math.floor(span / (rounds - 1));
+  const everyDays = Math.min(MAX_EVERY_DAYS, Math.max(1, raw));
+  return {
+    everyDays,
+    visits: estimateVisitCount({ startDate, endDate, everyDays }),
+    clamped: everyDays !== raw,
+  };
+}
+
 export function isReschedule(before, after) {
   if (!before || !after) return false;
   /* 🐞 ของเดิมกันแค่ done/cancelled ⇒ แก้วันย้อนหลังของใบ partial/unable จะถูกบังคับ

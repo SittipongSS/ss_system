@@ -42,6 +42,51 @@ export function termIsActive(term, order, todayIso = businessDate()) {
   return termOrderActive(order) && termInWindow(term, todayIso);
 }
 
+/* ── ชั้นที่ 3 (ตัวรวมเท่านั้น): ช่วงบริการของใบที่เปิดงานแล้ว (PR-C · review 29/09) ─────────────────────
+   🐞 term ที่ 0392 เปิดไม่มี startDate/endDate (mig 0392 "⛔ ไม่เขียน startDate / endDate") ⇒ `termIsActive` ตอบ true
+      ตราบที่ใบยังอนุมัติ แม้ช่วงบริการของใบจบไปแล้ว · ต่อสัญญา = ใบใหม่ผูกโซนเดิม (หัวไฟล์) ⇒ ใบเก่ากับใบต่อสัญญามีผล
+      พร้อมกัน แล้ว **ตัวรวม** (มาตรฐาน มล. ของโซน · ป้าย "ขายแล้ว n แพ็ค/รอบ") นับซ้ำสองเท่า
+   ⭐ ใบที่ประทับ (`serviceTermsOpenedAt`) รู้ช่วงของตัวเองที่หัวใบ (`servicePeriodFrom/To`) ⇒ ใช้เป็นหน้าต่าง
+   ⚠️ ใบไม่ประทับ = ช่วงร่างของงานตั้งย้อนหลัง (ผู้จัดการยังไม่ตรวจ) ไม่ใช่ข้อเท็จจริง ⇒ 'current' เสมอ ·
+      ไม่รู้วัน = ไม่รู้ ไม่ใช่ "จบแล้ว" (กติกาเดียวกับ `termInWindow`)
+   ⚠️ ไม่แตะ `termIsActive` — ด่านนัด/คิว/ฟิลด์เดิมของทะเบียนยังถามชั้น 1+2 ตามเดิม · ตัวนี้ใช้กับ "ผลรวมข้ามใบ" เท่านั้น */
+const isoDay = (value) => (/^\d{4}-\d{2}-\d{2}/.test(String(value ?? '')) ? String(value).slice(0, 10) : null);
+
+/** ช่วงบริการของใบ ณ วันนี้ — 'future' | 'current' | 'ended' */
+export function orderPeriodPhase(order, todayIso = businessDate()) {
+  if (!order?.serviceTermsOpenedAt) return 'current';
+  const from = isoDay(order.servicePeriodFrom);
+  const to = isoDay(order.servicePeriodTo);
+  if (from && todayIso < from) return 'future';
+  if (to && todayIso > to) return 'ended';
+  return 'current';
+}
+
+/* รอบขายที่ "ขายอยู่ตอนนี้" ของชุด term (โซนหนึ่ง) — ตัวรวมข้ามใบทุกตัวถามที่นี่ ห้ามกรองซ้ำที่จอ
+   · ตัดใบที่ช่วงจบแล้ว (ใบเก่าก่อนต่อสัญญา) เสมอ
+   · มีใบที่อยู่ในช่วง ⇒ นับเฉพาะใบในช่วง (ใบขายเพิ่มที่ซ้อนช่วงนับรวม · ใบต่อสัญญาที่ยังไม่เริ่มรอก่อน)
+   · ไม่มีใบในช่วงเลย ⇒ ใบที่เริ่มก่อนสุด (ใบแรกของโซนที่รอวันเริ่ม — "ขายแล้ว" ต้องไม่หายระหว่างรอ) */
+export function termsSoldNow(terms = [], ordersById = new Map(), todayIso = businessDate()) {
+  const orderOf = (id) => (ordersById instanceof Map ? ordersById.get(id) : ordersById?.[id]) || null;
+  const live = (Array.isArray(terms) ? terms : [])
+    .filter((t) => t && termIsActive(t, orderOf(t.salesOrderId), todayIso))
+    .map((t) => ({ term: t, order: orderOf(t.salesOrderId) }));
+  const current = live.filter(({ order }) => orderPeriodPhase(order, todayIso) === 'current');
+  if (current.length) return current.map(({ term }) => term);
+  const future = live.filter(({ order }) => orderPeriodPhase(order, todayIso) === 'future');
+  if (!future.length) return [];
+  const first = future.map(({ order }) => isoDay(order.servicePeriodFrom)).sort()[0];
+  return future.filter(({ order }) => isoDay(order.servicePeriodFrom) === first).map(({ term }) => term);
+}
+
+/* จำนวน **โซนไม่ซ้ำ** ของรอบขายของใบ เมื่อใบยังมีผล — บรรทัดด่านเงินในโมดัล FN รับรองงวด (PR-C C5 · C-D15)
+   ⭐ สองบรรทัดของใบลงโซนเดียวกันได้ (SO-26090247-0: 2 term บน Office) ⇒ นับโซน ไม่ใช่นับ term
+   ⚠️ ใบไม่มีผล/ไม่ส่งใบ = 0 (ชั้นที่ 1 ตัวเดียวของระบบ) · ไม่ดูช่วงวันของ term — ด่านเงินเปิดตาม "จ่ายถึง" ของใบ ไม่ใช่วันนี้ */
+export function serviceTermZoneCount(terms = [], order = null) {
+  if (!termOrderActive(order)) return 0;
+  return new Set((Array.isArray(terms) ? terms : []).map((t) => t?.zoneId).filter(Boolean)).size;
+}
+
 /* 🔄 `termSnapshotFromLine` (ภาพนิ่งจากบรรทัดตอน TS ผูก) ถอดแล้ว (mig 0392) — ทางผูกของ TS ปิด ⇒ ไม่มีผู้เรียก
    · ภาพนิ่งของ term ใบ pipeline ก๊อปใน SQL ตอนอนุมัติ (`sales_order_open_service_terms`) */
 

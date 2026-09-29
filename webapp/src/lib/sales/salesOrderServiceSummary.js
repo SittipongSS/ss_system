@@ -21,7 +21,41 @@ import { serviceRoundsSold, serviceVisitsSold } from '@/lib/sales/serviceOrders'
 /* ชนิดของบรรทัด (D2) — ถาม "มีแพ็คเกจให้ลงโซนไหม" ด้วยตัวตัดสินงานบริการ ไม่ใช่ตัวตัดสินด่านเงิน
    (`hasServicePackageLine` เป็นสวิตช์ของด่านรับรองงวด · serviceMoneySelectGuard คุมผู้เรียกของมัน) ·
    ไฟล์นี้ไม่อยู่ในวง intake ↔ serviceOrders (กฎ 16 ห้ามเฉพาะสองไฟล์นั้น import serviceSetup) */
-import { SERVICE_KIND_PACKAGE, serviceLineRole } from '@/lib/sales/serviceSetup';
+import { SERVICE_KIND_PACKAGE, periodSpan, serviceLineRole, servicePeriodOf } from '@/lib/sales/serviceSetup';
+/* ป้าย "รายการ n · FG" + ลำดับรอบขาย — ไฟล์ไม่มี import (ไม่ดึงไฟล์คิว TS ตามมา · §3.8) */
+import { termLineLabels } from '@/lib/service/termLabels';
+
+/* ── รอบขายรายไซต์ให้ช่องมาตรฐาน มล./เดือน (PR-C · C8 · IMPL_PLAN_C §4.3) ─────────────────────────
+   ⭐ **ทรงเดียวกับ `termDetails` ของคิว TS** (`intakePlanFacts.planRowFacts`) — `TermStandardMlCell` รับไปตรง ๆ
+     สองจอต้องเสนอมาตรฐานเลขเดียวกันสำหรับรอบขายเดียวกัน (เทสต์ C8 เทียบกันตรง ๆ)
+   ⚠️ ห้าม import ไฟล์ของคิว TS มาใช้ที่นี่ (แผน §3.8) ⇒ กติกาทุกข้อเขียนซ้ำให้ตรงกัน:
+     packageQty = แพ็คต่อรอบเฉพาะใบที่ประทับ (ใบเดิม = จำนวนที่จัดสรร ห้ามเรียกว่าแพ็ค/รอบ) ·
+     periodMonths เฉพาะใบที่ประทับ (ช่วงร่างของงานตั้งย้อนหลังยังไม่ผ่านผู้จัดการ) · ไม่รู้ = null ไม่ใช่ 0 */
+const positiveNumber = (value) => {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+const positiveInt = (value) => {
+  const n = positiveNumber(value);
+  return n != null && Number.isInteger(n) ? n : null;
+};
+
+function termItem(term, { zone, line, stamped, periodMonths }) {
+  return {
+    id: term.id,
+    zoneId: term.zoneId || null,
+    zoneCode: zone?.code || null,
+    zoneName: zone?.name || null,
+    fgCode: term.fgCode || null,
+    description: term.description || null,
+    packageQty: stamped ? positiveNumber(term.packageQty) : null,
+    unit: term.unit || null,
+    rounds: line ? positiveInt(line.serviceRounds) : null,
+    periodMonths,
+    standardMlPerMonth: positiveNumber(term.standardMlPerMonth),
+  };
+}
 
 /**
  * @param order      ใบสั่งขาย
@@ -49,6 +83,10 @@ export function salesOrderServiceSummary({
   const fg = stamped ? fgRows.map((g) => ({ ...g, remaining: 0 })) : fgRows;
   const remaining = fg.reduce((sum, g) => sum + g.remaining, 0);
 
+  /* C8: บรรทัดของรอบขาย (รอบที่ขาย) + เดือนของช่วงบริการ — ใช้กับทุก term ของใบ · ลำดับ "รายการ n" อยู่ที่ `termLineLabels` */
+  const lineById = new Map((Array.isArray(lines) ? lines : []).filter((line) => line?.id).map((line) => [line.id, line]));
+  const periodMonths = stamped ? (periodSpan(servicePeriodOf(order)).months || null) : null;
+
   /* ไซต์/โซนที่ใบนี้ลงไปแล้ว — หน่วยที่คนอ่านคือ "ไซต์" (คนเข้าไซต์ทีเดียวทำทุกโซน) */
   const bySite = new Map();
   for (const term of liveTerms) {
@@ -59,11 +97,21 @@ export function salesOrderServiceSummary({
       site: sitesById.get(zone.siteId) || null,
       zones: [],
       packageQty: 0,
+      terms: [],
     };
     if (!row.zones.some((z) => z.id === zone.id)) row.zones.push({ id: zone.id, name: zone.name });
     const qty = Number(term.packageQty);
     if (Number.isFinite(qty) && qty > 0) row.packageQty += qty;
+    row.terms.push(termItem(term, { zone, line: lineById.get(term.salesOrderLineId), stamped, periodMonths }));
     bySite.set(zone.siteId, row);
+  }
+  /* เรียง: ชื่อโซน → ลำดับบรรทัดในใบ · ป้าย: โซนที่มีหลายรอบขายบอก "รายการ n · FG" ไม่งั้นช่องหน้าตาเหมือนกันแยกไม่ออก
+     (ใบจริง SO-26090247-0: สองบรรทัด FG เดียวกันลงโซน Office ทั้งคู่)
+     ⭐ ตัวช่วยเดียวกับแถวคิว TS (`termLineLabels` · review 29/09) — สองจอติดป้ายรอบขายเดียวกันเหมือนกันทุกตัวอักษร */
+  for (const row of bySite.values()) {
+    const { items, labels } = termLineLabels(row.terms, { terms: liveTerms, lines });
+    row.terms = items;
+    row.termLabels = labels;
   }
 
   /* ── รอบของ "ใบนี้" กับรอบของ "ไซต์นี้" เป็นคนละชุด ────────────────────────
@@ -131,6 +179,8 @@ export function salesOrderServiceSummary({
     : serviceRoundsSold(lines);
 
   return {
+    /* C8: ช่องมาตรฐาน มล. เสนอค่าเฉพาะใบที่ประทับ (แพ็คต่อรอบมีความหมายเฉพาะใบนั้น) */
+    stamped,
     allocation: {
       fg,
       remaining,

@@ -23,7 +23,10 @@ import DetailOverview from "@/components/ui/DetailOverview";
 import { ContextCard, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import { TableScroll } from "@/components/ui/Table";
 import StatusNotice from "@/components/ui/StatusNotice";
-import { termIsActive, latestTermOfZone } from "@/lib/service/terms";
+import { termIsActive, termsSoldNow, latestTermOfZone } from "@/lib/service/terms";
+import { ZONE_PACK_SINGLE, ZONE_STANDARD_PARTIAL, ZONE_STANDARD_SUM, standardMlText, zoneStandardMl } from "@/lib/service/termStandardMl";
+import { zoneSaleFacts } from "@/lib/service/zoneRegistry";
+import { businessDate } from "@/lib/businessDate";
 import { usageBadge, usageSummary, usageVsStandard } from "@/lib/service/consumption";
 import { ASSET_KIND_LABELS } from "@/lib/service/assetKinds";
 import { VISIT_KIND_LABELS, VISIT_STATUS_LABELS } from "@/lib/service/rounds";
@@ -94,6 +97,29 @@ export default function ServiceZonePage({ params }) {
   );
   const latestTerm = useMemo(() => latestTermOfZone(data?.terms || []), [data?.terms]);
 
+  /* ⭐ มาตรฐานของโซน = **ผลรวม** ของรอบขายที่มีผลทุกรอบ (PR-C · C-D10) — โซนหนึ่งถือหลายบรรทัดพร้อมกันได้
+     (SO-26090247-0 ลงสองบรรทัดบนโซน Office) · 🐞 เดิมอ่านแค่ `activeTerm` (รอบแรกที่เจอ) ⇒ เทียบกับครึ่งเดียว
+     ไม่มีรอบที่มีผลเลย = ถอยไปรอบล่าสุดเหมือนเดิม · ตารางเทียบกับหัวใบใช้ค่าเดียวกันเสมอ */
+  const zoneStd = useMemo(
+    () => zoneStandardMl(data?.terms || [], ordersById, businessDate()),
+    [data?.terms, ordersById],
+  );
+  /* ก้อนการขายชุดเดียวกับป้ายหน้าไซต์/แท็บลูกค้า ("ขายแล้ว n แพ็ค/รอบ") — ช่อง "แพ็คที่ขาย" ต้องพูดเลขเดียวกัน (review 29/09) */
+  const sale = useMemo(
+    () => zoneSaleFacts(zoneId, { terms: data?.terms || [], ordersById, todayIso: businessDate() }),
+    [zoneId, data?.terms, ordersById],
+  );
+  /* รอบที่ "ขายอยู่ตอนนี้" ตัวแรก — ใบเก่าที่ช่วงบริการจบแล้วยังมีผลตามใบได้ (term ของ 0392 ไม่มีวัน) ⇒ กลิ่น/แพ็คของหัวหน้า
+     ต้องมาจากใบปัจจุบัน ไม่ใช่ใบแรกที่ `termIsActive` เจอ (ตัวเดียวกับที่ใช้รวมมาตรฐาน) */
+  const nowTerm = useMemo(
+    () => termsSoldNow(data?.terms || [], ordersById, businessDate())[0] || null,
+    [data?.terms, ordersById],
+  );
+  const standardMl = zoneStd.live > 0 ? zoneStd.value : (latestTerm?.standardMlPerMonth ?? null);
+  const standardNote = zoneStd.live > 0 && zoneStd.missing > 0
+    ? ZONE_STANDARD_PARTIAL(zoneStd.missing, zoneStd.live)
+    : zoneStd.live > 1 ? ZONE_STANDARD_SUM(zoneStd.live) : undefined;
+
   const zoneAssets = useMemo(
     () => (data?.assets || []).filter((a) => a.zoneId === zoneId),
     [data?.assets, zoneId],
@@ -116,9 +142,9 @@ export default function ServiceZonePage({ params }) {
     items: data?.items || [],
     assets: data?.assets || [],
     visits: data?.visits || [],
-    standardMlPerMonth: activeTerm?.standardMlPerMonth ?? latestTerm?.standardMlPerMonth ?? null,
+    standardMlPerMonth: standardMl,
     months: 6,
-  }), [zoneId, data, activeTerm, latestTerm]);
+  }), [zoneId, data, standardMl]);
   const summary = useMemo(() => usageSummary(usage), [usage]);
   const badge = usageBadge(summary);
 
@@ -160,8 +186,16 @@ export default function ServiceZonePage({ params }) {
     .filter((i) => i.visitId === visitId && i.assetId && zoneAssets.some((a) => a.id === i.assetId));
 
   const zoneSpots = Array.isArray(zone.spots) ? zone.spots : [];
-  // รอบที่ใช้เล่าค่าขาย — รอบที่ยังมีผลก่อน ไม่มีค่อยถอยไปรอบล่าสุด (ตัวเดียวกับที่ใช้คิดมาตรฐาน)
-  const saleTerm = activeTerm || latestTerm;
+  // รอบที่ใช้เล่าค่าขาย — รอบที่ขายอยู่ตอนนี้ก่อน (ชุดเดียวกับที่ใช้คิดมาตรฐาน) · แล้วรอบที่มีผล · ไม่มีค่อยถอยไปรอบล่าสุด
+  const saleTerm = nowTerm || activeTerm || latestTerm;
+  /* "แพ็คที่ขาย" — หลายรอบขายที่ขายอยู่จากใบที่ประทับ = ผลรวมแพ็คต่อรอบ (เลขเดียวกับป้าย "ขายแล้ว n แพ็ค/รอบ")
+     · มีใบไม่ประทับปน (packageQty = จำนวนทั้งบรรทัด บวกข้ามใบไม่มีความหมาย) = เล่ารอบเดียว แต่บอกว่าไม่ใช่ยอดของโซน */
+  const packFact = sale.soldPerRound && zoneStd.live > 1
+    ? { value: `${fmtNumber(sale.soldPerRoundPackages)} แพ็ค/รอบ`, sub: ZONE_STANDARD_SUM(zoneStd.live) }
+    : {
+      value: saleTerm?.packageQty != null ? `${fmtNumber(saleTerm.packageQty)}${saleTerm.unit ? ` ${saleTerm.unit}` : ""}` : null,
+      sub: zoneStd.live > 1 ? ZONE_PACK_SINGLE(zoneStd.live) : undefined,
+    };
 
   return (
     <Workspace hideHeader back={back}>
@@ -186,8 +220,8 @@ export default function ServiceZonePage({ params }) {
           { key: "spots", icon: Crosshair, label: "จุดติดตั้ง", value: `${fmtNumber(zoneSpots.length)} จุด` },
           ...(saleTerm ? [
             { key: "scent", icon: Package, label: "กลิ่นปัจจุบัน", value: saleTerm.description },
-            { key: "pack", icon: Hash, label: "แพ็คที่ขาย", value: saleTerm.packageQty != null ? `${fmtNumber(saleTerm.packageQty)}${saleTerm.unit ? ` ${saleTerm.unit}` : ""}` : null },
-            { key: "std", icon: Clock, label: "มาตรฐานต่อเดือน", value: saleTerm.standardMlPerMonth != null ? `${fmtNumber(saleTerm.standardMlPerMonth)} ml` : null },
+            { key: "pack", icon: Hash, label: "แพ็คที่ขาย", value: packFact.value, sub: packFact.sub, subWrap: true },
+            { key: "std", icon: Clock, label: "มาตรฐานต่อเดือน", value: standardMl != null ? standardMlText(standardMl) : null, sub: standardNote, subWrap: true },
           ] : []),
         ]}
       />
@@ -267,7 +301,7 @@ export default function ServiceZonePage({ params }) {
                           {term.packageQty == null ? naText(null) : `${fmtNumber(term.packageQty)}${term.unit ? ` ${term.unit}` : ""}`}
                         </td>
                         <td className={`num ${styles.num}`}>
-                          {term.standardMlPerMonth == null ? naText(null) : `${fmtNumber(term.standardMlPerMonth)} ml`}
+                          {standardMlText(term.standardMlPerMonth)}
                         </td>
                         <td>
                           <span className={`ui-badge ${active ? "success" : ""}`.trim()}>
@@ -296,7 +330,7 @@ export default function ServiceZonePage({ params }) {
               {summary.unconverted > 0 && (
                 <p className={styles.warn}>
                   <AlertTriangle size={14} aria-hidden="true" />
-                  มี {fmtNumber(summary.unconverted)} รายการที่หน่วยแปลงเป็น ml ไม่ได้ — ยอดข้างล่างยังไม่รวมของพวกนั้น
+                  มี {fmtNumber(summary.unconverted)} รายการที่หน่วยแปลงเป็น มล. ไม่ได้ — ยอดข้างล่างยังไม่รวมของพวกนั้น
                 </p>
               )}
               <TableScroll family="list" minWidth={620}>
@@ -317,10 +351,10 @@ export default function ServiceZonePage({ params }) {
                             ⇒ ไม่เคยติด "(เดือนนี้)" ⇒ เดือนที่ยังไม่จบอ่านเป็นใช้ขาดทั้งเดือน */}
                         <th scope="row">{row.month}{row.month === currentMonth() ? " (เดือนนี้)" : ""}</th>
                         <td className={`num ${styles.num}`}>{row.usedMl == null ? "ไม่ได้เข้า" : `${fmtNumber(row.visits)} ครั้ง`}</td>
-                        <td className={`num ${styles.num}`}>{row.standardMl == null ? naText(null) : `${fmtNumber(row.standardMl)} ml`}</td>
-                        <td className={`num ${styles.num}`}>{row.usedMl == null ? naText(null) : `${fmtNumber(row.usedMl)} ml`}</td>
+                        <td className={`num ${styles.num}`}>{row.standardMl == null ? naText(null) : `${fmtNumber(row.standardMl)} มล.`}</td>
+                        <td className={`num ${styles.num}`}>{row.usedMl == null ? naText(null) : `${fmtNumber(row.usedMl)} มล.`}</td>
                         <td className={`num ${styles.num}`} data-diff={row.diffMl == null ? undefined : row.diffMl > 0 ? "over" : row.diffMl < 0 ? "under" : "even"}>
-                          {row.diffMl == null ? naText(null) : `${row.diffMl > 0 ? "+" : ""}${fmtNumber(row.diffMl)} ml`}
+                          {row.diffMl == null ? naText(null) : `${row.diffMl > 0 ? "+" : ""}${fmtNumber(row.diffMl)} มล.`}
                         </td>
                       </tr>
                     ))}

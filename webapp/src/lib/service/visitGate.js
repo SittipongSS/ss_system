@@ -89,6 +89,9 @@ export const visitSkipsContractGates = (visit) => GATE_EXEMPT_KINDS.includes(vis
  *                                 (ใบยอด 0 ผ่านเอง · ไม่ส่งมา = ไม่รู้ยอด = เดินตามงวด)
  * @param ctx.installmentsByOrderId งวดชำระราย SO (id → installments[])
  * @param ctx.contractsById        สัญญา (id → contract)
+ * @param ctx.setupOrdersByZone    ⭐ D15 (PR-C · C9) ชิปใบสั่งขายรายโซน (zoneId → Chip[] · `gateContext` ขอเฉพาะจอจัดคิว)
+ *                                 ใบที่ฝ่ายขายเลือกโซนไว้แล้วแต่ยังไม่เปิดงานบริการ — ติดไปกับโซนที่ **ไม่มีรอบขายที่มีผล**
+ *                                 เป็น `orders` (ป้ายบอกทางล้วน: ผ่าน/ไม่ผ่าน เหตุ เจ้าของ ไม่ขยับ · ไม่ส่ง = รูปผลเดิมทุกไบต์)
  * @param ctx.todayIso             วันอ้างอิง (ทดสอบส่งเข้ามาได้)
  */
 export function evaluateVisitGate(visit, {
@@ -98,6 +101,7 @@ export function evaluateVisitGate(visit, {
   ordersById = {},
   installmentsByOrderId = {},
   contractsById = {},
+  setupOrdersByZone = {},
   todayIso = null,
 } = {}) {
   const items = [];
@@ -120,6 +124,11 @@ export function evaluateVisitGate(visit, {
     const live = zoneTerms.filter((t) => termIsActive(t, pick(ordersById, t.salesOrderId), visitDate));
 
     if (!live.length) {
+      /* ⭐ D15 (PR-C · C9 · C-D19): ใบที่ฝ่ายขายกำลังตั้งโซนนี้อยู่ ติดไปกับโซน **เฉพาะตอนมี** — ทั้งสองกิ่งข้างล่าง
+         (ไม่มีรอบขายเลย · รอบขายตายหมด เช่นใบถูกย้อนอนุมัติแล้วร่าง Rev. ถือโซนไว้ — critique L4)
+         ⚠️ โซนที่รอบขายยังมีผลไม่พกชิป (ติดสัญญา/เงินด้วยใบที่มีผลอยู่แล้ว — ใบร่างอีกใบไม่ใช่ทางแก้) */
+      const chips = pick(setupOrdersByZone, zone.id);
+      const orders = Array.isArray(chips) && chips.length ? { orders: chips } : {};
       /* ⭐ **โซนที่ไม่มีรอบขายเป็นงานของ SA** (mig 0392 · D15) — TS ผูกโซนไม่ได้แล้ว ฝ่ายขายเลือกโซนในใบเอง
          🔄 ช่วง 23/09 → 0392 เคยเป็นของ TS (ผูกที่หน้า "งานเข้าใหม่") ⇒ ร่างย้ายจาก "TS แก้ได้เอง" ไป "รอฝ่ายอื่น" โดยตั้งใจ
          ⭐ `unallocated: true` = โซนนี้ไม่มีรอบขายเลย — `contractStopOf` ใช้แยกโซนที่ "ข้ามได้ในใบส่งงาน" ออกจากเหตุหลัก
@@ -131,11 +140,13 @@ export function evaluateVisitGate(visit, {
         ? {
           zoneId: zone.id, zoneName: zone.name || null, state: 'blocked', gate: 'contract', owner: GATE_OWNERS.SA,
           reason: 'รอบขายของโซนนี้ไม่มีผล ณ วันนัด — ตรวจใบสั่งขายและช่วงวันของรอบ',
+          ...orders,
         }
         : {
           zoneId: zone.id, zoneName: zone.name || null, state: 'blocked', gate: 'contract', owner: GATE_OWNERS.SA,
           unallocated: true,
           reason: termlessZoneReason(liveSiteTerms, pick, ordersById),
+          ...orders,
         };
     }
 
@@ -265,6 +276,8 @@ export function evaluateVisitGate(visit, {
       : contractStop
         ? contractStop.reason
         : (blockedZones.length ? `งดบริการ ${blockedZones.length} โซน` : null),
+    /* D15 — ชิปใบสั่งขายของข้อที่ติด (ข้อผ่าน/ติดบางโซน/งานที่ข้ามข้อนี้ = ไม่มี · รูปผลเดิม) */
+    ...(contractStop?.orders?.length ? { orders: contractStop.orders } : {}),
   });
 
   const zeroValueZones = okZones.filter((z) => z.paymentNotRequired).length;
@@ -314,6 +327,24 @@ export function evaluateVisitGate(visit, {
 function contractStopOf(blockedZones) {
   const contractZones = blockedZones.filter((z) => z.gate === 'contract');
   if (!contractZones.length) return null;
+  const stop = contractReasonOf(contractZones);
+  /* ⭐ D15 (PR-C · C9): ชิปของข้อ = ใบของ **ทุกโซน** ที่ติดข้อสัญญาและพกชิป (ไม่ใช่แค่โซนที่ให้เหตุหลัก) รวมไม่ซ้ำใบ
+     ⇒ ไซต์ปน (เหตุหลักจากโซนที่ยังไม่ผูกสัญญา + โซนใหม่ที่ใบร่างกำลังตั้ง) ยังเห็นใบที่กำลังมา · เหตุ/เจ้าของเดิม
+     ⚠️ ลำดับ = ตามลำดับที่เจอ (ชิปในโซนเรียงกลุ่ม→เลขที่ใบมาแล้ว) · ไม่มีชิป = ไม่มีคีย์ (รูปผลเดิม) */
+  const orders = [];
+  const seen = new Set();
+  for (const zone of contractZones) {
+    for (const chip of zone.orders || []) {
+      if (!chip?.orderId || seen.has(chip.orderId)) continue;
+      seen.add(chip.orderId);
+      orders.push(chip);
+    }
+  }
+  return orders.length ? { ...stop, orders } : stop;
+}
+
+/* เหตุ/เจ้าของของข้อสัญญา (ตรรกะเดิมของ `contractStopOf` ทุกบรรทัด) */
+function contractReasonOf(contractZones) {
   const main = contractZones.find((z) => !z.unallocated);
   if (!main) return contractZones[0];
   const notInOrder = contractZones.filter((z) => z.unallocated).length;
@@ -342,6 +373,8 @@ export const gateReasons = (items = []) =>
 export const gateBlockedItems = (items = []) =>
   items.filter((i) => i.state === 'blocked').map((i) => ({
     key: i.key, owner: i.owner || null, reason: i.detail || i.label, fix: i.fix || null,
+    /* D15 — ชิปใบสั่งขายของข้อ (เฉพาะตอนมี · รูปเดิมของข้ออื่นทุกไบต์) */
+    ...(i.orders?.length ? { orders: i.orders } : {}),
   }));
 
 /* ติดข้อที่ **ฝ่ายอื่น** ต้องแก้อยู่ไหม — แยกกลุ่ม "ติดด่าน · ฝ่าย TS แก้ได้เอง" ออกจาก

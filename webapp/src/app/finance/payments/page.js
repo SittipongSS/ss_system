@@ -1037,6 +1037,7 @@ export default function FinancePaymentsPage() {
             totalAmount: confirmFor.orderTotal, approvedByName: confirmFor.orderApprovedByName,
             approvedAt: confirmFor.orderApprovedAt, historicalInvoiceRef: confirmFor.historicalInvoiceRef,
             status: confirmFor.orderStatus,
+            serviceTermZones: confirmFor.serviceTermZones, serviceContractLinked: confirmFor.serviceContractLinked,
           } : null}
           historical={isHistoricalOrder({ origin: confirmFor?.origin })}
           outlook={confirmRow?.confirmOutlook || null}

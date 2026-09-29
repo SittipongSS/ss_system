@@ -40,7 +40,9 @@ import BillingPolicyStrip from "./installmentDates/BillingPolicyStrip";
 import RequireBillingModal from "./installmentDates/RequireBillingModal";
 import CoverageSplitModal from "./CoverageSplitModal";
 import CoverageTimeline from "./historicalWizard/CoverageTimeline";
-import { paymentCarryPrompt, paymentPlanEditPrompt, paymentRefundClearPrompt } from "@/lib/approvalPrompt";
+import {
+  FN_SERVICE_GATE_UNREAD_MODAL, FN_SERVICE_GATE_UNREAD_PANEL, paymentCarryPrompt, paymentPlanEditPrompt, paymentRefundClearPrompt,
+} from "@/lib/approvalPrompt";
 import {
   CARRY_BUTTON, applyCarryIn, carriedAwayGroups, carriedFromOf, carryBlocker, carryExpected, carryPromptFacts,
 } from "@/lib/sales/installmentCarry";
@@ -646,6 +648,7 @@ export default function SalesOrderPaymentPanel({
   const reportPrompt = (row) => (confirmsNow(row)
     ? installmentConfirmPrompt({
       row, multi: rows.length > 1, historical, outlook: installmentConfirmOutlook(row, saved), orderStatus: order?.status,
+      serviceZones: order?.serviceTermZones ?? 0, serviceContractLinked: order?.serviceContractLinked ?? true,
     })
     : null);
 
@@ -1046,6 +1049,9 @@ export default function SalesOrderPaymentPanel({
         </StatusNotice>
       ) : null}
       {order?.moneyLinksError ? <StatusNotice tone="error">{order.moneyLinksError}</StatusNotice> : null}
+      {/* อ่านรอบขายของใบไม่ขึ้น (GET ใบ · PR-C C5) — โมดัลรับรองจะขาดบรรทัดด่านเงินของนัดบริการ ⇒ บอกก่อน ไม่เงียบ (review 29/09)
+          เหลือง ไม่ใช่แดง: ไม่ได้เกิดจากการกด */}
+      {order?.serviceTermZonesError ? <StatusNotice tone="warning">{order.serviceTermZonesError} — {FN_SERVICE_GATE_UNREAD_PANEL}</StatusNotice> : null}
 
       {isDraftPlan && !historical && !pipelineLock ? (
         <StatusNotice tone="info">
@@ -1644,6 +1650,8 @@ export default function SalesOrderPaymentPanel({
                   : `ยอด ${fmtMoney(reportRow.amount)} — บัญชีจะตรวจหลักฐานก่อนรับรอง`}
             </p>
             {prompt ? <p className="form-note pre-line">{prompt.detail}</p> : null}
+            {/* บัญชีบันทึก = รับรองในก้าวเดียว ⇒ รายการผลลัพธ์ข้างบนขาดบรรทัดด่านเงินของนัดเมื่ออ่านรอบขายไม่ขึ้น — บอกตรงนี้ (review 29/09) */}
+            {prompt && order?.serviceTermZonesError ? <StatusNotice tone="warning">{FN_SERVICE_GATE_UNREAD_MODAL}</StatusNotice> : null}
             <label className={styles.field}>
               <span>วันที่ลูกค้าชำระ *</span>
               <DateInput value={reportFor.paidOn} ariaLabel="วันที่ลูกค้าชำระ"
