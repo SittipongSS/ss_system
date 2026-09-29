@@ -10,8 +10,8 @@ import { fmtDate, fmtMoney, fmtNumber } from '@/lib/format';
 import { externalDocKindLabel } from '@/lib/sales/contracts';
 import { HISTORICAL_APPROVER_LABEL, OPENING_INSTALLMENT_LABEL } from '@/lib/sales/historicalOrders';
 import {
-  historicalContractFactText, historicalCoverageVerdictText, historicalOpeningFactText, historicalRemainingFactText,
-  historicalZoneSitesText,
+  historicalBillingDatesText, historicalContractFactText, historicalCoverageVerdictText, historicalOpeningFactText,
+  historicalPacksRoundsText, historicalRemainingFactText, historicalZoneSitesText,
 } from '@/lib/sales/historicalOrderCopy';
 import {
   HISTORICAL_SAVE_BUTTON_LABEL, HISTORICAL_SAVE_STAGES, HISTORICAL_WIZARD_STEPS, contractSpan, historicalOverdueWarningText,
@@ -114,6 +114,18 @@ export function historicalReviewChecklist(plan, { contractFiles = {}, evidenceFi
     key: 'zones', label: 'โซน', value: historicalZoneSitesText(plan.lines) || '—',
     warn: warnOf('liveTerm'), step: 'zones', field: 'zones',
   });
+  /* ⭐ PR-D (มติ 26/09 A3/O9 · mig 0394): แพ็คต่อรอบ · รอบ — ประโยคเดียวกับหน้าต่างอนุมัติ (historicalPacksRoundsText)
+     · ยังไม่ครบ = เหลือง ชี้ขั้น ② (แผนที่ผ่านด่านของฟอร์มครบเสมอ — แถวนี้กันแผนรุ่นเก่า/ข้อมูลเพี้ยน ไม่ให้ผ่านเงียบ)
+     ⚠️ ช่อง = 'zones' (จุดยึดที่ขั้น ② วาดอยู่แล้ว — ยามจุดยึดของ historicalRegisterUi) ไม่ใช่ zones.<i>.packsPerRound */
+  const packs = historicalPacksRoundsText(plan.lines);
+  const packsMissing = packs.totals.packsMissing;
+  rows.push({
+    key: 'packs', label: 'แพ็คต่อรอบ · รอบ',
+    value: !packs.totals.zoneCount ? '—'
+      : packsMissing ? `ยังไม่ครบ ${fmtNumber(packsMissing)} รายการ — กลับไปขั้น ②` : packs.total || '—',
+    sub: packs.perZone || (packs.overflow ? 'ดูรายการด้านล่าง' : null),
+    tone: packsMissing ? 'warn' : null, step: 'zones', field: 'zones',
+  });
 
   if (plan.zeroValue) {
     /* ยอดใบเปลี่ยนที่รายการ (ขั้น ②) — ขั้น ③ ของใบ ฿0 ไม่มีช่องให้แก้ (และไม่มีจุดยึด 'opening' · รีวิวขั้น ④ 25/09) */
@@ -132,6 +144,8 @@ export function historicalReviewChecklist(plan, { contractFiles = {}, evidenceFi
     if (remaining.length) {
       rows.push({
         key: 'remaining', label: 'งวดที่ยังต้องเก็บ', value: historicalRemainingFactText(remaining),
+        // วันวางบิลไม่บังคับ (PR-D · §3.3) — "มีวันวางบิล k จาก m งวด" คำเดียวกับหน้าต่างอนุมัติ · ไม่มีสักงวด = null
+        sub: historicalBillingDatesText(remaining),
         warn: warnOf('overdue'), step: 'money', field: 'installments',
       });
     }

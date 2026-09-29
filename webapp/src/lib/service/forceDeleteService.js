@@ -55,7 +55,9 @@ const idsOf = (rows) => (rows || []).map((r) => r.id);
    ⚠️ ยกเลิกใบอย่างเดียวไม่ปลด — บรรทัด/รายการของใบที่ยกเลิกยังชี้โซนอยู่ (ลบใบได้ที่หน้าใบสั่งขาย · ใบที่เคยอนุมัติ
       ใช้ทางบังคับลบของแอดมิน) · ถ้าแค่เลิกใช้โซน ให้ปิดใช้งานแทน ประวัติไม่ขาด
    ⚠️ ไล่หน้า + ซอยก้อน (check:rowcap) · อ่านไม่ขึ้น = โยน ไม่ใช่ตอบ "ไม่มี" (ด่านหน้างานทำลาย) — ทั้งสามก้อน
-   ⚠️ ใบอ่านด้วย id ล้วน **ไม่กรองสถานะ** — ทุกสถานะขวางเท่ากัน (สถานะมีไว้บอกในข้อความเท่านั้น) */
+   ⚠️ ใบอ่านด้วย id ล้วน **ไม่กรองสถานะ** — ทุกสถานะขวางเท่ากัน (สถานะมีไว้บอกในข้อความเท่านั้น)
+   ⭐ ใบย้อนหลังที่บันทึกหลัง mig 0394 ถือโซนทั้งสองทาง (บรรทัด + แถวโซนของงานบริการ บนโซนเดียวกัน — 0394/P6) ⇒ ใบที่อยู่ใน ①
+      แล้วไม่ถูกบอกซ้ำใน ② (ถอดโซนออกจากใบย้อนหลังไม่ได้ ทางออกคือลบใบ) · `allocations` ยังครบทุกแถว = ยังขวางเท่าเดิม */
 async function salesOrderLinesOnZones(supabase, zoneIds = []) {
   const [lineResult, allocationResult] = await Promise.all([
     fetchInChunks(zoneIds, (chunk) => fetchAllResult(() => supabase
@@ -72,7 +74,9 @@ async function salesOrderLinesOnZones(supabase, zoneIds = []) {
   const lines = lineResult.data || [];
   const allocations = allocationResult.data || [];
   const lineOrderIds = [...new Set(lines.map((l) => l.salesOrderId).filter(Boolean))];
-  const allocationOrderIds = [...new Set(allocations.map((a) => a.salesOrderId).filter(Boolean))];
+  const lineOrderSet = new Set(lineOrderIds);
+  const allocationOrderIds = [...new Set(allocations.map((a) => a.salesOrderId).filter(Boolean))]
+    .filter((id) => !lineOrderSet.has(id));
   const orderIds = [...new Set([...lineOrderIds, ...allocationOrderIds])];
   const { data: orders, error: orderError } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
     .from('sales_orders').select('id, "orderNumber", status')
@@ -104,7 +108,8 @@ function zoneLineBlockMessage(found, subject) {
     parts.push(`${subject}อยู่ในใบสั่งขายย้อนหลัง ${shown}${more} — ลบถาวรไม่ได้แม้ใช้สิทธิ์ผู้ดูแลระบบจนกว่าจะลบใบนั้นก่อน`
       + ' (ยกเลิกใบอย่างเดียวบรรทัดยังชี้โซนอยู่) · ถ้าแค่เลิกใช้ ให้ปิดใช้งานแทน');
   }
-  if (found.allocations.length) {
+  /* ถามจากรายการใบ ไม่ใช่จำนวนแถว — แถวของใบที่บอกไปแล้วใน ① ถูกตัดออกจากรายการใบ (ไม่งั้นได้ "ของ  —" ว่าง) */
+  if (found.allocationOrders.length) {
     const orders = found.allocationOrders;
     const shown = orders.slice(0, 5)
       .map((o) => `${o.orderNumber} (${SALES_ORDER_STATUS_LABELS[o.status] || o.status || 'ไม่ทราบสถานะ'})`)

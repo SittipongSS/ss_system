@@ -48,9 +48,13 @@ const editRow = (extra = {}) => ({
 });
 const inIds = (q, column) => q.filters.find((f) => f[0] === 'in' && f[1] === column)?.[2] || [];
 
+/* ⭐ PR-D (review 29/09): `sales_order_line_zones` ก่อน RPC = แถวเดิมของใบ (audit before) · หลัง RPC = แถวที่ตัวเขียนของ 0394
+   สร้าง (ตัวตรวจว่ารัน 0394 แล้ว — ว่างทั้งที่มีบรรทัด = ฐานยังเป็นตัวเขียนรุ่นเก่า) · `ruleError` = อ่านกติกาวางบิลของลูกค้าพลาด */
 function fakeDb({
   probeError = null, customerRow = spw, deals = [], orders = [], terms = [], termOrders = [], loaded = null,
   auditRow = null, rpc = [], stored = null, beforeLines = [], beforeInstallments = [], beforeContract = null, products = null,
+  lineZones = [], lineZonesError = null, savedLineZones = [{ id: 'SOLZ-1' }], savedLineZonesError = null, ruleError = null,
+  storedInstallmentsError = null,
 } = {}) {
   const calls = { from: [], rpc: [], storage: [] };
   const respond = (q) => {
@@ -60,14 +64,21 @@ function fakeDb({
         return { data: beforeLines, error: null };
       case 'sales_order_installments':
         if (q.selected === 'kind') return { data: [], error: probeError };
+        if (q.selected.includes('billingDate') && storedInstallmentsError) return { data: null, error: storedInstallmentsError };
         return { data: beforeInstallments, error: null };
+      case 'sales_order_line_zones':
+        return calls.rpc.length
+          ? { data: savedLineZonesError ? null : savedLineZones, error: savedLineZonesError }
+          : { data: lineZonesError ? null : lineZones, error: lineZonesError };
       case 'sales_orders':
         if (q.selected.startsWith('*')) return { data: loaded, error: null };            // loadScoped
         if (q.filters.some((f) => f[0] === 'in' && f[1] === 'id')) {                    // ใบแม่ของรอบขาย
           return { data: termOrders.filter((o) => inIds(q, 'id').includes(o.id)), error: null };
         }
         return { data: orders, error: null };                                           // ใบย้อนหลังของลูกค้า
-      case 'customers': return { data: customerRow, error: null };
+      case 'customers':
+        if (q.selected.includes('billingRule') && ruleError) return { data: null, error: ruleError };
+        return { data: customerRow, error: null };
       case 'products':
         return { data: (products || PRODUCTS).filter((p) => inIds(q, 'id').includes(p.id)).map((p) => project(p, q.selected)), error: null };
       case 'service_zones': return { data: ZONES.filter((z) => inIds(q, 'id').includes(z.id)), error: null };
@@ -127,8 +138,9 @@ const body = (extra = {}) => ({
   vatRate: 7,
   notes: null,
   zones: [
-    { zoneId: 'Z-1002-01', productId: 'P-PKG', qty: 72, discountType: null, discountValue: 0, rounds: 12 },
-    { zoneId: 'Z-1044-01', productId: 'P-PKG', qty: 48, discountType: null, discountValue: 0, rounds: 12 },
+    /* ⭐ PR-D (mig 0394): แพ็คต่อรอบของแต่ละบรรทัด (คนละช่องกับจำนวน) · รอบบริการบังคับ */
+    { zoneId: 'Z-1002-01', productId: 'P-PKG', qty: 72, discountType: null, discountValue: 0, rounds: 12, packsPerRound: 2 },
+    { zoneId: 'Z-1044-01', productId: 'P-PKG', qty: 48, discountType: null, discountValue: 0, rounds: 12, packsPerRound: 1 },
   ],
   opening: { amount: 115560, coversTo: '2026-09-30', paidOn: '2026-09-15', note: 'เก็บผ่าน Express แล้ว ม.ค.–ก.ย.' },
   installments: [
@@ -150,7 +162,7 @@ const created = (extra = {}) => ({
       id: REPLAY_ID, orderNumber: 'SO-26090191-0', origin: 'historical', status: 'draft', dealId: 'DEAL-NEW',
       historicalInvoiceRef: 'IV-2601-0412',
     },
-    lines: [{ id: 'SOL-1' }, { id: 'SOL-2' }],
+    lines: [{ id: 'SOL-1', serviceZoneId: 'Z-1002-01', sortOrder: 1 }, { id: 'SOL-2', serviceZoneId: 'Z-1044-01', sortOrder: 2 }],
     installments: [{ id: 'SOI-1', kind: 'opening' }, { id: 'SOI-2', kind: 'regular' }],
     contract: { id: 'CTR-H1', status: 'draft', externalDocKind: 'customer_po', externalRef: 'PO-SPW-2026-0118' },
     deal: { id: 'DEAL-NEW', code: 'DL-260900513', customerName: 'บจก. สยามพิวรรธน์', ownerName: 'พิมพ์ชนก รัตนา' },
@@ -264,6 +276,45 @@ test('แผนมี error = 400 พร้อมรายช่อง · ไม
   assert.equal(db.calls.rpc.length, 0);
 });
 
+/* ⭐ PR-D (DD13 · DD16): แท็บที่เปิดค้างจากก่อนมีช่องแพ็คต่อรอบ (บรรทัดไม่มีคีย์) = 400 "ฟอร์มรุ่นก่อน" ก่อนถึง RPC
+   (ไม่ปล่อยไปตายที่ `historical_so_line_packs_invalid` ของ 0394/P5) · รอบว่าง = 400 ที่ช่องรอบ · วันวางบิลผิดรูป = 400 ที่ช่องของงวด */
+test('PR-D: บรรทัดไม่มีแพ็คต่อรอบ/รอบว่าง/วันวางบิลผิดรูป = 400 รายช่อง · ไม่เรียก RPC', async () => {
+  const noPacks = body().zones.map(({ packsPerRound, ...zone }) => zone);
+  const cases = [
+    [{ zones: noPacks }, 'zones.0.packsPerRound', /ฟอร์มรุ่นก่อน.*แพ็คต่อรอบ/],
+    [{ zones: body().zones.map((zone, i) => (i ? zone : { ...zone, rounds: '' })) }, 'zones.0.rounds', /ยังไม่ใส่รอบบริการ/],
+    [{ installments: [{ ...body().installments[0], billingDate: '2026-02-30' }] }, 'installments.0.billingDate', /วันวางบิลไม่ถูกต้อง/],
+  ];
+  for (const [extra, field, pattern] of cases) {
+    const db = fakeDb({ rpc: [created()] });
+    const res = await run(db, extra);
+    assert.equal(res.status, 400, field);
+    const hit = res.body.errors.find((e) => e.field === field);
+    assert.ok(hit && pattern.test(hit.message), `${field}: ${JSON.stringify(res.body.errors)}`);
+    assert.equal(db.calls.rpc.length, 0, field);
+  }
+});
+
+test('PR-D: วันวางบิลของงวดไหลถึง RPC (สร้างและแก้) · งวดยกมาไม่มีคีย์ · แพ็คต่อรอบเป็นตัวเลขแม้จอส่งสตริง', async () => {
+  const extra = {
+    zones: body().zones.map((zone, i) => ({ ...zone, packsPerRound: i ? '1' : '2' })),
+    installments: [{ ...body().installments[0], billingDate: '2026-10-05' }],
+    opening: { ...body().opening, billingDate: '2026-09-01' },
+  };
+  const db = fakeDb({ rpc: [created()] });
+  const res = await run(db, extra);
+  assert.equal(res.status, 201);
+  const { args } = db.calls.rpc[0];
+  assert.deepEqual(args.p_lines.map((l) => l.packsPerRound), [2, 1]);
+  assert.ok(!('billingDate' in args.p_installments[0]), 'งวดยกมาที่จอส่งวันวางบิลมา — ไม่ถูกอ่าน');
+  assert.equal(args.p_installments[1].billingDate, '2026-10-05');
+
+  const edit = fakeDb({ loaded: editRow(), deals: [containerDeal()], rpc: [updated()] });
+  const res2 = await runEdit(edit, extra);
+  assert.equal(res2.status, 200);
+  assert.equal(edit.calls.rpc[0].args.p_installments[1].billingDate, '2026-10-05');
+});
+
 /* 🐞 **R7 ครึ่งที่ยังค้าง** — พรีวิวตอบ 400 **เปล่า** ทุกครั้งที่ฟอร์มยังไม่ผ่าน (ฟอร์มที่ยังไม่มีงวด
    สักงวดมี error `installments` เสมอ) ⇒ จอไม่เคยได้ยอดใบจาก server เลยตลอดรอบคีย์ใบใหม่ แล้วต้อง
    คิดยอดเองเพื่อวาดแผ่นแบ่งงวด ⇒ เลขคู่ขนานสองชุดที่วันหนึ่งจะตอบไม่เท่ากันเงียบ ๆ
@@ -290,7 +341,7 @@ test('R7: พรีวิวที่ "ยอดเองยังผิด" ต
   const bad = fakeDb({ rpc: [created()] });
   const res = await run(bad, {
     preview: true, intakeKey: undefined,
-    zones: [{ zoneId: 'Z-1002-01', productId: 'P-PKG', qty: '', discountType: null, discountValue: 0, rounds: 12 }],
+    zones: [{ zoneId: 'Z-1002-01', productId: 'P-PKG', qty: '', discountType: null, discountValue: 0, rounds: 12, packsPerRound: 2 }],
   });
   assert.equal(res.status, 400);
   assert.equal(res.body.money, null, 'ยอดคิดไม่ได้ = ยังไม่รู้ ห้ามส่งศูนย์');
@@ -346,8 +397,8 @@ test('R7: ใบยอด 0 บาทจริงยังคืนยอดม�
     preview: true, intakeKey: undefined,
     /* ใบ ฿0 แบบใบเสนอราคา = ส่วนลดเต็มจำนวน */
     zones: [
-      { zoneId: 'Z-1002-01', productId: 'P-PKG', qty: 72, discountType: 'percent', discountValue: 100, rounds: 12 },
-      { zoneId: 'Z-1044-01', productId: 'P-PKG', qty: 48, discountType: 'percent', discountValue: 100, rounds: 12 },
+      { zoneId: 'Z-1002-01', productId: 'P-PKG', qty: 72, discountType: 'percent', discountValue: 100, rounds: 12, packsPerRound: 2 },
+      { zoneId: 'Z-1044-01', productId: 'P-PKG', qty: 48, discountType: 'percent', discountValue: 100, rounds: 12, packsPerRound: 1 },
     ],
     opening: null,
     installments: [],
@@ -478,8 +529,10 @@ test('สร้าง: RPC ครั้งเดียว · อาร์กิ�
   assert.deepEqual(args.p_lines.map((l) => l.zoneId), ['Z-1002-01', 'Z-1044-01']);
   assert.deepEqual(args.p_lines[0], {
     zoneId: 'Z-1002-01', productId: 'P-PKG', qty: 72, unitPrice: 1200, discountType: null, discountValue: 0,
-    discountAmount: 0, lineTotal: 86400, serviceRounds: 12,
+    discountAmount: 0, lineTotal: 86400, serviceRounds: 12, packsPerRound: 2,
   });
+  /* ⭐ PR-D (0394/P5–P6): แพ็คต่อรอบรายบรรทัดไปเป็นตัวเลข — ตัวเขียนของฐานสร้างแถวโซนของงานบริการจากคีย์นี้ */
+  assert.deepEqual(args.p_lines.map((l) => l.packsPerRound), [2, 1]);
   // intake = ของที่คอลัมน์เก็บไม่ได้แต่ฟอร์มแก้ต้องได้คืน: ตัวเลือก VAT + ชนิด/ค่าส่วนลดท้ายใบ (มติ 25/09 · ไม่ลด = null/0)
   // + บันทึกการยืนยันใบที่อาจซ้ำ (มติ 26/09) — เขียนทุกครั้งแม้ไม่มีใบที่อาจซ้ำ (`orders: []`) ⇒ "ไม่มีบันทึก" = ใบก่อนมีระบบนี้
   const { duplicateReview, ...intake } = args.p_header.intake;
@@ -489,6 +542,9 @@ test('สร้าง: RPC ครั้งเดียว · อาร์กิ�
   });
   assert.equal(args.p_header.discountAmount, 0);
   assert.deepEqual(args.p_installments.map((r) => r.kind), ['opening', 'regular']);
+  /* ⭐ PR-D (0394/P7): งวดที่ยังต้องเก็บพกวันวางบิลเสมอ (ว่าง = null) · งวดยกมาไม่มีคีย์นี้ (CHECK ของ 0389) */
+  assert.ok(!('billingDate' in args.p_installments[0]), 'งวดยกมาไม่มีวันวางบิล');
+  assert.equal(args.p_installments[1].billingDate, null);
   assert.ok(args.p_installments.every((r) => !('evidence' in r)), 'ตอนสร้างยังไม่มีหลักฐาน (โฟลเดอร์ของใบยังไม่เกิด)');
   assert.equal(args.p_new_deal.ownerName, 'พิมพ์ชนก รัตนา');
   assert.equal(args.p_new_deal.month, '26');
@@ -739,6 +795,10 @@ test('แก้ใบ: RPC update ครั้งเดียว · หลัก
   assert.deepEqual(args.p_header.intake.duplicateReview.orders, []);
   const [opening, regular] = args.p_installments;
   assert.equal(opening.kind, 'opening');
+  /* ⭐ PR-D: ทางแก้ใบส่งวันวางบิลเหมือนทางสร้าง — ตัวเขียนของฐานเขียนงวดใหม่ทั้งชุด ไม่ส่ง = วันวางบิลเดิมหาย */
+  assert.ok(!('billingDate' in opening));
+  assert.equal(regular.billingDate, null);
+  assert.deepEqual(args.p_lines.map((l) => l.packsPerRound), [2, 1]);
   assert.deepEqual(opening.evidence.map((ref) => ref.storagePath), [OWN_REF.storagePath]);
   assert.equal(opening.evidence[0].fileUrl, null, 'ref ส่วนตัวไม่พก URL ไปด้วย');
   assert.ok(!('evidence' in regular));
@@ -837,3 +897,154 @@ test('🔴 บันทึกการยืนยันใบที่อาจ
   assert.notDeepEqual(a.calls.rpc[0].args.p_header.intake.duplicateReview, b.calls.rpc[0].args.p_header.intake.duplicateReview);
 });
 
+
+// ── PR-D review 29/09: แพ็คต่อรอบใน audit · ฐานที่ยังไม่รัน 0394 · ด่านวันวางบิลรุ่นสี่ ───────────────────────────
+/* ใบที่แก้แล้วได้สองบรรทัดกลับมา (RPC คืนบรรทัดเรียงตาม sortOrder — 0374:940) */
+const updatedTwo = () => ({
+  data: {
+    order: { id: EDIT_ID, orderNumber: 'SO-26090200-0', origin: 'historical', status: 'draft' },
+    lines: [{ id: 'SOL-A', serviceZoneId: 'Z-1002-01', sortOrder: 1 }, { id: 'SOL-B', serviceZoneId: 'Z-1044-01', sortOrder: 2 }],
+    installments: [{ id: 'SOI-1', kind: 'opening' }, { id: 'SOI-2', kind: 'regular' }],
+    contract: { id: 'CTR-HEDIT', status: 'draft' },
+  },
+  error: null,
+});
+const OLD_ZONES = [
+  { id: 'SOLZ-OLD-1', salesOrderId: EDIT_ID, salesOrderLineId: 'SOL-OLD', zoneId: 'Z-1002-01', packsPerRound: 3 },
+  { id: 'SOLZ-OLD-2', salesOrderId: EDIT_ID, salesOrderLineId: 'SOL-OLD2', zoneId: 'Z-1044-01', packsPerRound: 3 },
+];
+
+/* 🔴 แพ็คต่อรอบอยู่ใน sales_order_line_zones ที่เดียว (0394/P6) และถูกลบ-สร้างใหม่ทุกครั้งที่บันทึก (CASCADE จากบรรทัด)
+   ⇒ ไม่ลง audit = ค่าเดิมหายถาวร (ระบบไม่มีถังขยะ — กู้ได้จาก audit_logs.before เท่านั้น) */
+test('PR-D 🔴 แก้ใบ: แพ็คต่อรอบเดิมลง audit.before.lineZones · ค่าใหม่ลง after.lineZones (บรรทัดใหม่ × แพ็คจากแผน)', async () => {
+  const db = fakeDb({ loaded: editRow(), deals: [containerDeal()], rpc: [updatedTwo()], lineZones: OLD_ZONES });
+  const res = await runEdit(db);
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.equal(res.audits.length, 1);
+  const [entry] = res.audits;
+  assert.deepEqual(entry.before.lineZones, OLD_ZONES);
+  assert.deepEqual(entry.after.lineZones, [
+    { salesOrderLineId: 'SOL-A', zoneId: 'Z-1002-01', packsPerRound: 2 },
+    { salesOrderLineId: 'SOL-B', zoneId: 'Z-1044-01', packsPerRound: 1 },
+  ]);
+  const read = db.calls.from.find((q) => q.table === 'sales_order_line_zones');
+  assert.equal(read.selected, '*');
+  assert.deepEqual(read.filters, [['eq', 'salesOrderId', EDIT_ID]]);
+});
+
+test('PR-D 🔴 แก้ใบ: อ่านแพ็คต่อรอบเดิมไม่ขึ้น = 500 ก่อนเขียน (ไม่ใช่ "ไม่มี") · ไม่เรียก RPC · ไม่มี audit', async () => {
+  const db = fakeDb({
+    loaded: editRow(), deals: [containerDeal()], rpc: [updatedTwo()], lineZonesError: { code: '57014', message: 'timeout' },
+  });
+  const res = await runEdit(db);
+  assert.equal(res.status, 500);
+  assert.match(res.body.error, /อ่านใบเดิมก่อนแก้ไม่สำเร็จ: timeout/);
+  assert.equal(db.calls.rpc.length, 0);
+  assert.equal(res.audits.length, 0);
+});
+
+test('PR-D 🔴 สร้าง: audit ของใบพก after.lineZones (แพ็คต่อรอบที่ตัวเขียนของฐานเก็บ) · ส่งซ้ำที่ยังไม่มี audit ก็พก', async () => {
+  const db = fakeDb({ rpc: [created()] });
+  const res = await run(db);
+  assert.equal(res.status, 201, JSON.stringify(res.body));
+  assert.deepEqual(res.audits[0].after.lineZones, [
+    { salesOrderLineId: 'SOL-1', zoneId: 'Z-1002-01', packsPerRound: 2 },
+    { salesOrderLineId: 'SOL-2', zoneId: 'Z-1044-01', packsPerRound: 1 },
+  ]);
+  const replay = fakeDb({ rpc: [created({ replayed: true, dealCreated: false })], auditRow: null });
+  const again = await run(replay);
+  assert.equal(again.status, 200);
+  assert.deepEqual(again.audits[0].after.lineZones.map((row) => row.packsPerRound), [2, 1]);
+});
+
+/* 🔴 0394 ไม่เพิ่มคอลัมน์ ⇒ CI/check:columns ไม่รู้ว่ารันแล้วหรือยัง · ตัวเขียนรุ่นก่อน 0394 รับคีย์ packsPerRound เงียบ ๆ
+   แล้วไม่สร้างแถวแพ็คต่อรอบ ⇒ บอกผู้คีย์ทันที (ใบร่างถูกเก็บแล้ว — ห้ามทำเหมือนไม่ได้บันทึก) */
+test('PR-D 🔴 ฐานยังไม่รัน 0394: บันทึกได้แต่ไม่มีแถวแพ็คต่อรอบ = 503 บอกให้แจ้งผู้ดูแลระบบ · audit ของการเขียนที่เกิดแล้วยังลง', async () => {
+  const db = fakeDb({ rpc: [created()], savedLineZones: [] });
+  const res = await run(db);
+  assert.equal(res.status, 503);
+  assert.equal(res.body.code, 'historical_service_alignment_missing');
+  assert.match(res.body.error, /บันทึกใบร่างแล้ว/);
+  assert.match(res.body.error, /migration 0394/);
+  assert.match(res.body.error, /แจ้งผู้ดูแลระบบ/);
+  assert.equal(res.body.orderId, REPLAY_ID);
+  assert.deepEqual(res.audits.map((a) => a.entityType), ['sales_order', 'sales_contract', 'sales_deal']);
+  const readback = db.calls.from.filter((q) => q.table === 'sales_order_line_zones');
+  assert.equal(readback.length, 1);
+  assert.deepEqual(readback[0].filters, [['eq', 'salesOrderId', REPLAY_ID]]);
+
+  const edit = fakeDb({ loaded: editRow(), deals: [containerDeal()], rpc: [updatedTwo()], savedLineZones: [] });
+  const edited = await runEdit(edit);
+  assert.equal(edited.status, 503);
+  assert.equal(edited.body.orderId, EDIT_ID);
+  assert.equal(edited.audits.length, 1, 'แก้ใบสำเร็จแล้ว — audit ต้องลง');
+
+  /* อ่านกลับไม่ขึ้น ≠ ยังไม่รัน — การเขียนสำเร็จแล้ว ห้ามกลายเป็น error */
+  const flaky = fakeDb({ rpc: [created()], savedLineZonesError: { code: '57014', message: 'timeout' } });
+  assert.equal((await run(flaky)).status, 201);
+  /* ฐานที่รันแล้ว (มีแถว) = ผลเดิม */
+  assert.equal((await run(fakeDb({ rpc: [created()] }))).status, 201);
+});
+
+/* 🔴 installmentScheduleMany.js:19 — ทุกทางเขียนวันของงวดผ่าน `validateInstallmentDates` ตัวเดียว
+   (ลูกค้า "ไม่ต้องวางบิล" ตั้งวันวางบิลใหม่ไม่ได้ถ้าไม่ยืนยันข้อยกเว้น · อ่านกติกาไม่ได้ = เปลี่ยนวันวางบิลไม่ได้)
+   ใบย้อนหลังไม่มีทางยืนยันข้อยกเว้นในวิซาร์ด ⇒ บอกทางที่ทำได้จริง (ล้างวัน / ตั้งที่แท็บการชำระหลังอนุมัติ) */
+test('PR-D 🔴 วันวางบิลของใบย้อนหลังผ่านด่านรุ่นสี่ตัวเดียวกับทุกทางเขียน — ทั้งพรีวิวและบันทึก', async () => {
+  const NONE = { ...spw, billingRule: { v: 4, need: 'none' } };
+  const withBill = (billingDate) => ({ installments: [{ ...body().installments[0], billingDate }] });
+  for (const preview of [false, true]) {
+    const db = fakeDb({ customerRow: NONE, rpc: [created()] });
+    const res = await run(db, { ...withBill('2026-09-25'), preview });
+    assert.equal(res.status, 400, `preview=${preview}`);
+    const issue = res.body.errors.find((e) => e.field === 'installments.0.billingDate');
+    assert.ok(issue, JSON.stringify(res.body.errors));
+    assert.match(issue.message, /^งวดที่ 2: ลูกค้ารายนี้ไม่ต้องวางบิล — ล้างวันวางบิลของงวดนี้/);
+    assert.match(issue.message, /แท็บการชำระ/);
+    assert.doesNotMatch(issue.message, /ใช้ "งวดนี้ต้องวางบิล…"/, 'วิซาร์ดไม่มีเมนูนั้น — ห้ามชี้ไปทางตัน');
+    assert.equal(db.calls.rpc.length, 0);
+  }
+
+  /* แก้ใบ: คงวันเดิมของงวดเดิม (seq เดียวกัน) = ผ่าน · เปลี่ยนวัน = ตีกลับ · ล้างวัน = ผ่านเสมอ */
+  const storedRows = [
+    { id: 'SOI-OPEN', seq: 1, kind: 'opening', billingDate: null },
+    { id: 'SOI-2', seq: 2, kind: 'regular', billingDate: '2026-09-25' },
+  ];
+  const editDb = () => fakeDb({
+    customerRow: NONE, loaded: editRow(), deals: [containerDeal()], rpc: [updated()], beforeInstallments: storedRows,
+  });
+  assert.equal((await runEdit(editDb(), withBill('2026-09-25'))).status, 200, 'คงวันเดิม = ผ่าน');
+  const moved = await runEdit(editDb(), withBill('2026-09-28'));
+  assert.equal(moved.status, 400);
+  assert.ok(moved.body.errors.some((e) => e.field === 'installments.0.billingDate'));
+  assert.equal((await runEdit(editDb(), withBill(''))).status, 200, 'ล้างวัน = ผ่าน');
+  const storedRead = editDb();
+  await runEdit(storedRead, withBill('2026-09-25'));
+  const q = storedRead.calls.from.find((row) => row.table === 'sales_order_installments' && row.selected.includes('billingDate'));
+  assert.deepEqual(q.filters, [['eq', 'salesOrderId', EDIT_ID]]);
+  /* อ่านงวดเดิมไม่ขึ้น = 500 (ไม่ถือว่า "ไม่มีวันเดิม" แล้วตีกลับวันที่ผู้คีย์ไม่ได้แตะ) */
+  const brokenStored = fakeDb({
+    customerRow: NONE, loaded: editRow(), deals: [containerDeal()], rpc: [updated()], beforeInstallments: storedRows,
+    storedInstallmentsError: { code: '57014', message: 'timeout' },
+  });
+  const broken = await runEdit(brokenStored, withBill('2026-09-25'));
+  assert.equal(broken.status, 500);
+  assert.equal(brokenStored.calls.rpc.length, 0);
+
+  /* อ่านกติกาไม่ได้ = เปลี่ยนวันวางบิลไม่ได้ (ข้อความรุ่นสี่) · ไม่ใช่ 500 ทั้งคำขอ */
+  const flaky = fakeDb({ ruleError: { code: '57014', message: 'timeout' }, rpc: [created()] });
+  const unread = await run(flaky, withBill('2026-09-25'));
+  assert.equal(unread.status, 400);
+  assert.match(unread.body.errors.find((e) => e.field === 'installments.0.billingDate').message, /อ่านกำหนดวางบิลของลูกค้าไม่ได้ชั่วคราว/);
+  assert.equal((await run(fakeDb({ ruleError: { code: '57014', message: 'timeout' }, rpc: [created()] }))).status, 201,
+    'ไม่มีวันวางบิล = ไม่ต้องรู้กติกา');
+
+  /* ต้องวางบิล = ผ่าน และวันไปถึง RPC */
+  const required = fakeDb({ customerRow: { ...spw, billingRule: { v: 4, need: 'required' } }, rpc: [created()] });
+  assert.equal((await run(required, withBill('2026-09-25'))).status, 201);
+  assert.equal(required.calls.rpc[0].args.p_installments[1].billingDate, '2026-09-25');
+
+  /* ไม่มีวันวางบิลสักงวด = ไม่อ่านกติกา (พรีวิวยิงถี่) */
+  const plain = fakeDb({ rpc: [created()] });
+  await run(plain);
+  assert.ok(!plain.calls.from.some((row) => row.table === 'customers' && row.selected.includes('billingRule')));
+});

@@ -8,6 +8,9 @@
 //    ทุกไฟล์ 0001–0372 แล้วรัน 0374 สามรอบ + ทุกเคสในแผน) และบล็อก "ลองก่อนรันจริง" บนหัวไฟล์ที่ผู้ดูแลรันใน
 //    BEGIN…ROLLBACK · ยามที่นี่กันคนแก้ไฟล์ทีหลังแล้วลบด่านที่ฮาร์เนสพิสูจน์ไว้ทิ้งเงียบ ๆ
 // ⚠️ ตัวเลข/รายการที่ JS ต้องตรงกับ SQL (role ผู้คีย์ · หมวดแพ็คเกจ) เทียบกับค่าคงที่ฝั่ง JS ตรง ๆ
+// ⚠️ ตัวที่รันจริงของขั้น ④ ไม่ใช่ 0374 แล้ว — 0394/P3 ปะทับ (เปิดรอบขายผ่าน sales_order_open_service_terms · ไม่มี SZT-H)
+//    ยาม "นิยามล่าสุด" ในไฟล์นี้ยังได้ตัวหนังสือของ 0374 (0394 ปะด้วย pg_get_functiondef ไม่มี CREATE) ⇒ assert เรื่อง SZT-H
+//    ข้างล่างบรรยายของก่อน 0394 · ยามของ 0394 อยู่ที่ historicalServiceAlignmentMigration.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';

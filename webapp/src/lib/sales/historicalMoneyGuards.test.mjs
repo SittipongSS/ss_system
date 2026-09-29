@@ -386,11 +386,16 @@ test('ใบสั่งขาย [id] DELETE: ใบย้อนหลังล
   const del = slice(code('app/api/sales-planning/sales-orders/[id]/route.js'), 'export const DELETE');
   for (const needle of [
     "from('service_zone_terms')", "from('service_plans')", "from('sales_order_installments')", 'historicalDeleteBlock(',
-    'fetchAllResult(', '{ ...before, installments: installmentRows, zoneTerms, servicePlans }', "update({ salesOrderId: null",
+    'fetchAllResult(', '{ ...before, installments: installmentRows, zoneTerms, servicePlans, lineZones }', "update({ salesOrderId: null",
     'installmentsResult.error',
   ]) {
     assert.ok(del.includes(needle), `ขาด ${needle}`);
   }
+  /* 🔴 review 29/09 (PR-D · mig 0394/P6): แพ็คต่อรอบของใบย้อนหลังอยู่ใน sales_order_line_zones ที่เดียวก่อนอนุมัติ และหายตาม
+     CASCADE ตอนลบใบ ⇒ อ่านก่อนลบ (พลาด = 500 ยังไม่ลบ) แล้วเก็บลง audit.before — ระบบไม่มีถังขยะ กู้ได้จาก audit_logs.before เท่านั้น */
+  assert.match(del, /fetchAllResult\(\(\) => supabase\.from\('sales_order_line_zones'\)\.select\('\*'\)\.eq\('salesOrderId', id\)\.order\('id', \{ ascending: true \}\)\)/);
+  assert.match(del, /const loadError = termsResult\.error \|\| plansResult\.error \|\| installmentsResult\.error \|\| lineZonesResult\.error;/);
+  assert.ok(del.indexOf("from('sales_order_line_zones')") < del.indexOf("supabase.from('sales_orders').delete()"), 'อ่านก่อนลบ');
   /* 🐞 before.installments มาจาก loadOrder ที่กลืน error งวดเป็น [] ⇒ ด่านต้องได้งวดที่อ่านใหม่ (error = 500) */
   assert.match(del, /historicalDeleteBlock\(\{\s*order: \{ \.\.\.before, installments: installmentRows \},/);
   assert.doesNotMatch(del, /historicalDeleteBlock\(\{\s*order: before\b/);

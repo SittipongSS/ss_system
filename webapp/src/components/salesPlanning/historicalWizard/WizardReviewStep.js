@@ -183,10 +183,12 @@ export default function WizardReviewStep({
             <Button size="sm" variant="quiet" tone="neutral" disabled={busy} onClick={() => edit("zones", "zones")}>แก้ในขั้น ②</Button>
           )}
         />
-        {/* ⭐ ตารางรายการฝั่งอ่านตัวเดียวกับหน้าใบสั่งขาย/ใบเสนอราคา · ไซต์ · โซน กับรอบที่ขายไว้ขึ้นใต้คำอธิบาย */}
+        {/* ⭐ ตารางรายการฝั่งอ่านตัวเดียวกับหน้าใบสั่งขาย/ใบเสนอราคา · ไซต์ · โซน กับรอบที่ขายไว้ขึ้นใต้คำอธิบาย
+            ⭐ PR-D (mig 0394): + แพ็คต่อรอบของโซน (ป้ายที่สองต่อจากรอบ — ค่าจากแผนที่ server ตรวจแล้ว) */}
         <QuotationReadOnlyLineItems
           lines={lines}
           showServiceRounds
+          showPacksPerRound
           showInstallationPoint
           summaryRows={totals.rows}
           grandTotal={totals.grandTotal}

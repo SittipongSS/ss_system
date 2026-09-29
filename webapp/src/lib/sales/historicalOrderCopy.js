@@ -7,7 +7,7 @@
 //   (sync_sales_order_actual กรอง origin = 'pipeline') · เทสต์ไล่ทุกสตริงที่ไฟล์นี้คืนออกไป
 // ⚠️ pure — ไม่อ่านฐาน ไม่อ่านนาฬิกา ("วันนี้" รับเข้ามาเป็น `todayIso` จากนาฬิกาไทยของผู้เรียก)
 //   ฝั่งจอ import ได้: import เฉพาะ format · ป้ายของสัญญา · historicalOrders · paymentCoverage · paymentNotRequired
-import { fmtDate, fmtMoney, fmtNumber } from '@/lib/format';
+import { NA, fmtDate, fmtMoney, fmtNumber } from '@/lib/format';
 import { externalDocKindLabel } from '@/lib/sales/contracts';
 import {
   HISTORICAL_APPROVER_LABEL, HISTORICAL_APPROVER_ROLES_TEXT, HISTORICAL_CANCEL_NOTE_MIN, HISTORICAL_CORRECTION_PATH, HISTORICAL_STATUS_NOTE, OPENING_INSTALLMENT_LABEL,
@@ -259,7 +259,8 @@ export function historicalCoverageSegments(installments = [], { start = null, en
    @param order   ใบ (orderNumber · customerName · customer.arCode · totalAmount · subtotal · vatAmount · lines · notes)
    @param extras  `{ installments, contract, contractFiles, lineZones, liveTermWarnings, signedFile, extrasError }`
      · lineZones: `[{ zoneId, zoneCode, zoneName, siteId, siteCode, siteName, fgCode?, qty?, unit?, unitPrice?,
-       discountAmount?, lineTotal? }]` (หนึ่งแถวต่อบรรทัด — ของเสริมจาก loadHistoricalOrderExtras)
+       discountAmount?, lineTotal?, rounds?, packsPerRound? }]` (หนึ่งแถวต่อบรรทัด — ของเสริมจาก loadHistoricalOrderExtras ·
+       packsPerRound: number|null จาก sales_order_line_zones · mig 0394)
      · liveTermWarnings: สตริง หรือ `{ zoneCode|zoneName, orderNumber, endDate }`
    @returns `{ subject, checklist, effects }` — effects ไม่รวม HISTORICAL_STATUS_NOTE (ตัวสร้างโมดัลเติมเอง) */
 /* ── ประโยคของข้อเท็จจริงที่ผู้อนุมัติตรวจ — **ตัวเดียว** ของหน้าต่างอนุมัติ (`historicalApprovalFacts`) และขั้น ④ ของฟอร์มคีย์ใบ
@@ -305,6 +306,154 @@ export function historicalCoverageVerdictText(start, end) {
   return `ยอดงวดรวม = ยอดใบ · ช่วงบริการต่อเนื่อง ${span(start, end)} ไม่มีช่องโหว่`;
 }
 
+/**
+ * วันวางบิลของงวดที่ยังต้องเก็บ (PR-D · IMPL_PLAN_D §3.3 — ไม่บังคับ) → "มีวันวางบิล k จาก m งวด" · ไม่มีสักงวด = null
+ * ⚠️ งวดยกมาไม่นับทั้งตัวตั้งและตัวหาร — ไม่มีวันวางบิลเสมอ (CHECK sales_order_installments_billing_sane ของ 0389)
+ * @param installments งวดของใบ (ของเสริม) หรือ `plan.installments` (งวดปกติล้วน)
+ */
+export function historicalBillingDatesText(installments = []) {
+  const rows = list(installments).filter((row) => !isOpeningInstallment(row));
+  const billed = rows.filter((row) => text(row.billingDate)).length;
+  return billed ? `มีวันวางบิล ${fmtNumber(billed)} จาก ${fmtNumber(rows.length)} งวด` : null;
+}
+
+/* ── แพ็คต่อรอบ · รอบบริการของโซน (PR-D · มติเจ้าของ 26/09 A3/O9 · mig 0394) ─────────────────────────────
+   ⭐ "แพ็คต่อรอบ" เป็นช่องของ **โซน** (sales_order_line_zones.packsPerRound) คนละช่องกับจำนวนของบรรทัด (เงิน: 1 ชุด × 12 เดือน)
+     — อนุมัติแล้วเป็น packageQty ของรอบขาย (0394/P3 เปิดผ่าน sales_order_open_service_terms) ⇒ ผู้คีย์ (ขั้น ④)
+     ผู้อนุมัติ (โมดัล) และการ์ดโซนหน้าใบอ่านตัวเลขชุดเดียวกันจากตัวนี้
+   🔴 คำที่ยอม: "แพ็คต่อรอบ" · "แพ็ค/รอบ" เท่านั้น — "N แพ็ค" เปล่า ๆ อ่านได้สองความหมาย (มติ 23/09 · เทสต์ไล่ทุกสตริง)
+   ⚠️ ค่าที่ไม่ใช่จำนวนเต็มบวก = **ไม่รู้** (null) ไม่ใช่ 0 — ใบที่คีย์ก่อนมีช่องไม่มีแถวโซนของงานบริการ */
+const positiveInt = (value) => {
+  if (value === null || value === undefined || typeof value === 'boolean' || text(value) === '') return null;
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 ? n : null;
+};
+const ZONE_CARD_META_TAIL = 'โซนผูกจากทะเบียนไซต์ตอนคีย์ใบแล้ว ฝ่าย TS ตั้งรอบต่อได้เลย';
+
+/**
+ * ตัวเลขรวมของแพ็คต่อรอบ · รอบ — รับได้ทั้งแถวโซนของเสริม (`packsPerRound` · `rounds`) และบรรทัดของแผน (`packsPerRound` · `serviceRounds`)
+ * @returns `{ zoneCount, siteCount, packsKnown, packsMissing, packsTotal, roundsMin, roundsMax, perZone: [{ label, packs, rounds }] }`
+ */
+export function historicalServiceTotals(zones = []) {
+  const rows = list(zones);
+  const sites = new Set();
+  let packsKnown = 0;
+  let packsTotal = 0;
+  let roundsMin = null;
+  let roundsMax = null;
+  const perZone = rows.map((zone) => {
+    const site = text(zone.siteId) || text(zone.siteCode) || text(zone.siteName);
+    if (site) sites.add(site);
+    const packs = positiveInt(zone.packsPerRound);
+    const rounds = positiveInt(zone.rounds ?? zone.serviceRounds);
+    if (packs !== null) { packsKnown += 1; packsTotal += packs; }
+    if (rounds !== null) {
+      roundsMin = roundsMin === null ? rounds : Math.min(roundsMin, rounds);
+      roundsMax = roundsMax === null ? rounds : Math.max(roundsMax, rounds);
+    }
+    return { label: text(zone.zoneName) || text(zone.zoneCode) || 'โซน', packs, rounds };
+  });
+  return {
+    zoneCount: rows.length, siteCount: sites.size, packsKnown, packsMissing: rows.length - packsKnown, packsTotal,
+    roundsMin, roundsMax, perZone,
+  };
+}
+
+/* "12 รอบ/โซน" · รอบต่างกัน = ช่วง "6–12 รอบ/โซน" · ไม่รู้สักโซน = '' */
+function roundsPerZoneText(totals) {
+  if (totals.roundsMin === null) return '';
+  return totals.roundsMin === totals.roundsMax
+    ? `${fmtNumber(totals.roundsMin)} รอบ/โซน`
+    : `${fmtNumber(totals.roundsMin)}–${fmtNumber(totals.roundsMax)} รอบ/โซน`;
+}
+
+/* "Lobby 2 แพ็ค/รอบ × 12 รอบ" · ยังไม่มีแพ็ค = "Lobby ยังไม่มีแพ็คต่อรอบ · 12 รอบ" (บอกว่าโซนไหนขาด) */
+function zonePacksText({ label, packs, rounds }) {
+  if (packs === null) return `${label} ยังไม่มีแพ็คต่อรอบ${rounds !== null ? ` · ${fmtNumber(rounds)} รอบ` : ''}`;
+  return `${label} ${fmtNumber(packs)} แพ็ค/รอบ${rounds !== null ? ` × ${fmtNumber(rounds)} รอบ` : ''}`;
+}
+
+/**
+ * ประโยคของแพ็คต่อรอบ · รอบ (IMPL_PLAN_D §3.4)
+ * @returns `{ total, perZone, meta, overflow, totals }`
+ *   · total "รวม 9 แพ็ค/รอบ · 12 รอบ/โซน" (ขาดบางโซน = บอกจำนวนที่ขาดในวงเล็บ) · ไม่รู้แพ็คสักโซน = null
+ *   · perZone "Lobby 2 แพ็ค/รอบ × 12 รอบ · …" · เกิน `maxZones` = null + `overflow: true` (ผู้เรียกชี้ที่ของตัวเอง)
+ *   · meta = บรรทัดหัวของการ์ด "โซนในใบนี้" · ไม่รู้แพ็คสักโซน = null (การ์ดใช้ meta เดิม)
+ */
+export function historicalPacksRoundsText(zones = [], { maxZones = 5 } = {}) {
+  const totals = historicalServiceTotals(zones);
+  if (!totals.zoneCount) return { total: null, perZone: null, meta: null, overflow: false, totals };
+  const overflow = totals.zoneCount > maxZones;
+  const packs = totals.packsKnown
+    ? `รวม ${fmtNumber(totals.packsTotal)} แพ็ค/รอบ${totals.packsMissing ? ` (ยังไม่มีแพ็คต่อรอบ ${fmtNumber(totals.packsMissing)} โซน)` : ''}`
+    : null;
+  return {
+    total: packs ? [packs, roundsPerZoneText(totals)].filter(Boolean).join(' · ') : null,
+    perZone: overflow ? null : totals.perZone.map(zonePacksText).join(' · '),
+    meta: packs ? `${fmtNumber(totals.zoneCount)} โซน · ${packs} — ${ZONE_CARD_META_TAIL}` : null,
+    overflow,
+    totals,
+  };
+}
+
+/** เซลล์ "แพ็คต่อรอบ" ของการ์ดโซน — "2 แพ็ค/รอบ" · ไม่รู้ = ขีด (การ์ดไม่ประกอบคำว่าแพ็คเอง · M3) */
+export function historicalPacksCellText(value) {
+  const packs = positiveInt(value);
+  return packs === null ? NA : `${fmtNumber(packs)} แพ็ค/รอบ`;
+}
+
+/* ── ตัวกลางตีกลับการอนุมัติใบย้อนหลัง (mig 0394/P3 → sales_order_open_service_terms) ──────────────────────
+   ⭐ ฐานโยน `sales_order_service_setup_incomplete` DETAIL = '<ชนิด>:<บรรทัด>[:<โซน>]' คั่นจุลภาค (0392 §5 + 0394/P9c)
+     ⇒ ผู้อนุมัติต้องเห็น "รายการ n" (ลำดับบนใบ) ไม่ใช่รหัสบรรทัด · ทางออกเดียว = ตีกลับให้ผู้คีย์บันทึกขั้น ② ใหม่
+     (ขั้นส่ง/อนุมัติสร้างแถวโซนเองไม่ได้ — แถวเกิดตอนบันทึกฟอร์มเท่านั้น 0394/P6)
+   · ชนิดที่ไม่อยู่ในตาราง = "งานบริการไม่ครบ (ชนิด)" — ไม่มีข้อไหนหายเงียบ */
+export const HISTORICAL_SETUP_ISSUE_TEXT = Object.freeze({
+  zones_missing: 'ยังไม่มีแพ็คต่อรอบ (ใบนี้คีย์ก่อนมีช่องแพ็คต่อรอบ)',
+  packs_missing: 'ยังไม่ใส่แพ็คต่อรอบ',
+  rounds_missing: 'ยังไม่ใส่รอบบริการ',
+  zone_invalid: 'โซนถูกปิดใช้งานหรือไม่ใช่ไซต์ของลูกค้าแล้ว',
+  historical_zone_mismatch: 'โซนของงานบริการไม่ตรงกับโซนของรายการ',
+});
+const SETUP_ISSUES_SHOWN = 5;
+
+/* ── ฐานที่ยังไม่รัน 0394 (review 29/09) ────────────────────────────────────────────────────────────────
+   0394 ไม่เพิ่มคอลัมน์ ⇒ check:columns/CI มองไม่เห็นว่ารันแล้วหรือยัง · deploy อัตโนมัติวันละ 3 รอบไม่ถามมิก (historicalOrders.js)
+   ⇒ โค้ดขึ้นก่อนมิกได้: ตัวเขียนรุ่นเก่ารับคีย์ packsPerRound เงียบ ๆ แล้วไม่สร้างแถวแพ็คต่อรอบ · อนุมัติรุ่นเก่าเขียนรอบขาย
+   packageQty = จำนวนของบรรทัด (กับดักที่ PR-D มาแก้) ⇒ เข็มขัดฝั่ง JS สองจุด: บันทึก → 503 (ประโยคแรก) · อนุมัติ → 409 (ต่อท้ายด้วยประโยคสอง)
+   ⚠️ ประโยคของการบันทึกต้องบอกว่า "บันทึกแล้ว" — ใบร่างลงฐานไปแล้ว ห้ามอ่านเหมือนไม่ได้บันทึก */
+export const HISTORICAL_ALIGNMENT_MISSING_SAVED = 'บันทึกใบร่างแล้ว แต่ฐานข้อมูลยังไม่ได้รัน migration 0394 (แพ็คต่อรอบของใบย้อนหลัง)'
+  + ' — แพ็คต่อรอบของใบนี้ยังไม่ถูกเก็บ · แจ้งผู้ดูแลระบบ แล้วเปิดใบร่างบันทึกขั้น ② ใหม่หลังรันแล้ว';
+export const HISTORICAL_ALIGNMENT_HINT = 'หากเพิ่งอัปเดตระบบ ฐานข้อมูลอาจยังไม่ได้รัน migration 0394 — แจ้งผู้ดูแลระบบก่อนตีกลับ';
+
+/**
+ * ข้อความ 409 ของการอนุมัติที่ตัวกลางตีกลับ
+ * @param codes DETAIL ของฐาน — array หรือ CSV ดิบ ('zones_missing:SOL-a,packs_missing:SOL-b:ZN-1,…')
+ * @param lines บรรทัดของใบ (`id` · `sortOrder`) — เลขรายการ = ลำดับตาม sortOrder + 1 (ตารางบนหน้าใบ)
+ */
+export function historicalSetupIncompleteMessage(codes, lines = []) {
+  const raw = Array.isArray(codes) ? codes : text(codes).split(',');
+  const numberOf = new Map(list(lines).slice()
+    .sort((a, b) => (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0))
+    .map((line, index) => [text(line.id), index + 1]));
+  const seen = new Set();
+  const items = [];
+  for (const entry of raw) {
+    const [kind = '', lineId = ''] = text(entry).split(':');
+    if (!kind) continue;
+    const detail = HISTORICAL_SETUP_ISSUE_TEXT[kind] || `งานบริการไม่ครบ (${kind})`;
+    const n = numberOf.get(lineId) || null;
+    const itemText = n ? `รายการ ${fmtNumber(n)}: ${detail}` : detail;
+    if (seen.has(itemText)) continue;
+    seen.add(itemText);
+    items.push({ n, text: itemText });
+  }
+  // เรียงตามรายการบนใบ (ไม่มีเลขรายการไปท้าย) — sort ของ JS คงลำดับเดิมเมื่อเท่ากัน
+  items.sort((a, b) => (a.n === null ? Number.MAX_SAFE_INTEGER : a.n) - (b.n === null ? Number.MAX_SAFE_INTEGER : b.n));
+  const shown = items.slice(0, SETUP_ISSUES_SHOWN).map((item) => item.text);
+  if (items.length > SETUP_ISSUES_SHOWN) shown.push(`และอีก ${fmtNumber(items.length - SETUP_ISSUES_SHOWN)} ข้อ`);
+  return `อนุมัติไม่ได้ — งานบริการของใบนี้ไม่ครบ${shown.length ? `: ${shown.join(' · ')}` : ''} — ตีกลับให้ผู้คีย์บันทึกขั้น ② ใหม่`;
+}
+
 export function historicalApprovalFacts(order, {
   installments = [], contract = null, contractFiles = [], lineZones = [], liveTermWarnings = [], signedFile = null,
   extrasError = null, duplicateCheck = null,
@@ -339,13 +488,29 @@ export function historicalApprovalFacts(order, {
     checklist.push(`ไฟล์เอกสารแทนสัญญา: ${extrasError ? 'โหลดไม่ขึ้น' : 'ยังไม่มีไฟล์'} — อนุมัติไม่ได้จนกว่าจะเห็นไฟล์`);
   }
 
-  // ── โซน รายไซต์ + รายการแบบใบเสนอราคา (มติ 23/09 — ไม่นับ "แพ็ค" แล้ว) ──
+  // ── โซน รายไซต์ + รายการแบบใบเสนอราคา (มติ 23/09 — จำนวนของบรรทัดไม่ใช่ "แพ็ค") ──
   const zones = list(lineZones).length
     ? list(lineZones)
     : list(order?.lines).filter((l) => l.serviceZoneId).map((l) => ({ zoneId: l.serviceZoneId, siteName: null }));
   checklist.push(zones.length
     ? `โซน: ${historicalZoneSitesText(zones)}`
     : `โซน: ${missing} — ใบย้อนหลังต้องมีอย่างน้อย 1 โซน`);
+  /* ── แพ็คต่อรอบ · รอบ (PR-D · มติ 26/09 A3/O9) — แพ็คมากับแถวโซนของเสริมเท่านั้น (บรรทัดของใบไม่พก)
+     ⇒ ของเสริมโหลดไม่ขึ้น / ไม่มีแถวโซน = บอกว่าไม่รู้ ("โหลดไม่ขึ้น"/"ไม่พบ") ไม่ใช่ ⚠️ "คีย์ก่อนมีช่อง" (ไม่รู้ ≠ ไม่มี)
+     · ตัวกลางของ 0392 ตรวจซ้ำตอนกด (0394/P3) — แพ็คไม่ครบ = การอนุมัติทั้งก้อนถอย */
+  const service = historicalPacksRoundsText(list(lineZones));
+  if (extrasError) {
+    checklist.push('แพ็คต่อรอบ · รอบ: โหลดไม่ขึ้น — ระบบตรวจซ้ำตอนกดอนุมัติ');
+  } else if (!service.totals.zoneCount) {
+    if (zones.length) checklist.push(`แพ็คต่อรอบ · รอบ: ${missing} — ระบบตรวจซ้ำตอนกดอนุมัติ`);
+  } else {
+    const head = service.total || ['ยังไม่มีแพ็คต่อรอบ', roundsPerZoneText(service.totals)].filter(Boolean).join(' · ');
+    checklist.push(`แพ็คต่อรอบ · รอบ: ${head} — ${service.perZone || 'ดูการ์ดโซนในหน้าใบ'}`);
+    if (service.totals.packsMissing) {
+      checklist.push(`⚠️ แพ็คต่อรอบยังไม่ครบ ${fmtNumber(service.totals.packsMissing)} รายการ (ใบนี้คีย์ก่อนมีช่องแพ็คต่อรอบ)`
+        + ' — ระบบจะไม่ยอมให้อนุมัติ ตีกลับให้ผู้คีย์บันทึกขั้น ② ใหม่');
+    }
+  }
   /* บรรทัดของใบ = ของจริงที่จะอนุมัติ · ไม่มี (ของเสริมโหลดไม่ขึ้นและใบไม่พกบรรทัดมา) ⇒ ถอยไปแถวโซน */
   const priced = list(order?.lines).filter((l) => l.serviceZoneId || l.productId);
   const groups = lineGroups(priced.length ? priced : zones.filter((zone) => zone.qty !== undefined && zone.qty !== null));
@@ -373,7 +538,10 @@ export function historicalApprovalFacts(order, {
     } else {
       checklist.push(`${OPENING_INSTALLMENT_LABEL}: ไม่มี (ยังไม่เคยเก็บเงิน) — นัดบริการติดด่านเงินจนกว่าบัญชีรับรองงวดแรก`);
     }
-    if (remaining.length) checklist.push(`งวดที่ยังต้องเก็บ: ${historicalRemainingFactText(remaining)}`);
+    if (remaining.length) {
+      const billing = historicalBillingDatesText(remaining); // วันวางบิลไม่บังคับ (PR-D · §3.3) — ไม่มีสักงวด = บรรทัดเดิม
+      checklist.push(`งวดที่ยังต้องเก็บ: ${historicalRemainingFactText(remaining)}${billing ? ` · ${billing}` : ''}`);
+    }
     // ⭐ ตัวเดียวกับที่ฐานตรวจ (coverageContinuityErrors ↔ historical_so_check_installments) — ฐานตรวจซ้ำตอนกด
     const rowSum = rows.reduce((total, row) => total + Math.round((Number(row.amount) || 0) * 100), 0);
     const sumOk = Math.abs(rowSum - Math.round((Number(order?.totalAmount) || 0) * 100)) <= 1;
@@ -416,7 +584,13 @@ export function historicalApprovalFacts(order, {
   const gate = zeroValue ? 'นัดขึ้นตารางได้ทันที (ใบยอด 0 ไม่มีด่านเงิน)'
     : opening ? `นัดขึ้นตารางได้เมื่อบัญชีรับรอง${OPENING_INSTALLMENT_LABEL}`
       : 'นัดขึ้นตารางได้เมื่อบัญชีรับรองงวดแรก';
-  effects.push(`${fmtNumber(zones.length)} โซนขึ้นคิว TS งานเข้าใหม่ › รอตั้งรอบ — ${gate}`);
+  /* ⭐ PR-D: แพ็คครบทุกโซน = บอกสิ่งที่ TS จะเห็นในคิว (โซน · ไซต์ · แพ็ค/รอบ · รอบที่ขาย) · ไม่รู้/ไม่ครบ = ประโยคเดิม */
+  const totals = service.totals;
+  const rounds = roundsPerZoneText(totals);
+  effects.push(!extrasError && totals.zoneCount && !totals.packsMissing
+    ? `${fmtNumber(totals.zoneCount)} โซน${totals.siteCount ? `ใน ${fmtNumber(totals.siteCount)} ไซต์` : ''}`
+      + ` · รวม ${fmtNumber(totals.packsTotal)} แพ็ค/รอบ${rounds ? ` · ขายไว้ ${rounds}` : ''} ขึ้นคิว TS งานเข้าใหม่ › รอตั้งรอบ — ${gate}`
+    : `${fmtNumber(zones.length)} โซนขึ้นคิว TS งานเข้าใหม่ › รอตั้งรอบ — ${gate}`);
 
   return { subject: `ใบสั่งขาย ${text(order?.orderNumber) || '—'}`, checklist, effects };
 }

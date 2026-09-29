@@ -376,16 +376,22 @@ export function QuoteLineMoneyCells({
  * (`ServiceContractCard`: จำนวนเต็ม ≥ 1 · เว้นว่างได้ · ต่อท้ายด้วย "รอบ") วางใต้คำอธิบายของบรรทัด
  * ตรงที่ตารางฝั่งอ่านโชว์ "รอบบริการที่ขายไว้: N รอบ"
  * ⚠️ เป็นของ **ใบสั่งขาย** ที่เดียว (มติผู้ใช้ 2026-08-31) — ใบเสนอราคาไม่เรียกตัวนี้
+ * ⭐ PR-D (mig 0394 · r2 S12): ใบย้อนหลังบังคับรอบ ⇒ `required` = ดอกจัน + aria-required (ป้ายคำเดิม — DD2) ·
+ *   `invalid` = ผู้เรียกบอกว่าผิด (ใบย้อนหลัง: ข้อความของแผนหลังกด "ถัดไป" — แดงหลังกด) · ค่าตั้งต้นทั้งคู่ = ของเดิมทุกตัวอักษร
  */
-export function QuoteLineServiceRounds({ value, onChange, disabled = false, name, note = null }) {
+export function QuoteLineServiceRounds({
+  value, onChange, disabled = false, name, note = null, required = false, invalid = false,
+}) {
   return (
     <div className={styles.serviceRounds}>
-      <span>รอบบริการที่ขายไว้</span>
+      <span>รอบบริการที่ขายไว้{required ? <b className={styles.roundsReq} aria-hidden="true">*</b> : null}</span>
       <span className={styles.roundsField}>
         <Input
           type="number" min="1" step="1" inputMode="numeric" placeholder="—" autoComplete="off"
           value={value ?? ""}
           disabled={disabled}
+          invalid={invalid}
+          aria-required={required ? "true" : undefined}
           onChange={(event) => onChange?.(event.target.value)}
           aria-label={`รอบบริการที่ขายไว้ ${name}`}
         />

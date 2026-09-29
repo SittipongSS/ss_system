@@ -10,7 +10,7 @@ import { TableScroll } from "@/components/ui/Table";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import ReadableText from "@/components/ui/ReadableText";
 import { quoteTotals } from "@/lib/salesPlanning";
-import { fmtMoney, naText, NA } from "@/lib/format";
+import { fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
 import { lineNoteEdit, manualLineCategoryEdit, quoteLineFromProduct } from "@/lib/sales/quoteLines";
 import { cachedFetchJson } from "@/lib/apiCache";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
@@ -47,6 +47,14 @@ const HIGHLIGHT_TONE = {
   neutral: styles.neutralTotal,
 };
 
+/* ค่าของป้าย "แพ็คต่อรอบ" (PR-D) — จำนวนเต็มบวกเท่านั้น · ไม่รู้ = ขีด
+   ⚠️ ว่าง ≠ 0 (`Number(null)` = 0) · ค่าที่ไม่ใช่จำนวนเต็มบวกห้ามขึ้นเป็น "0 แพ็ค" */
+const packsPerRoundText = (value) => {
+  if (value === null || value === undefined || value === "") return NA;
+  const packs = Number(value);
+  return Number.isInteger(packs) && packs > 0 ? `${fmtNumber(packs)} แพ็ค` : NA;
+};
+
 export function QuotationReadOnlyLineItems({
   lines = [],
   /* ⭐ `showServiceRounds` — โชว์ "รอบบริการที่ขายไว้" ใต้คำอธิบายของบรรทัดหมวด 02-001
@@ -59,6 +67,11 @@ export function QuotationReadOnlyLineItems({
      (บรรทัด "12 แพ็คเกจ × 3,500" สี่บรรทัดที่เหมือนกันทุกตัวอักษรอ่านไม่ออกว่าต่างกันตรงไหน — มติ 23/09)
      ⚠️ ปิดเป็นค่าตั้งต้น เหตุผลเดียวกับ showServiceRounds: บรรทัดของใบเสนอราคาไม่มีโซน */
   showInstallationPoint = false,
+  /* ⭐ `showPacksPerRound` — ป้ายที่สอง "แพ็คต่อรอบ" ต่อจากรอบบริการ (บรรทัดหมวด 02-001 · `line.packsPerRound`)
+     ของขั้น ④ ของฟอร์มคีย์ใบย้อนหลัง (PR-D · มติเจ้าของ 26/09 A3/O9 · mig 0394) — แพ็คต่อรอบเป็นช่องของ **โซน**
+     คนละช่องกับจำนวนของบรรทัด (เงิน: 1 ชุด × 12 เดือน) ⇒ ต้องอ่านแยกจากคอลัมน์ "จำนวน"
+     ⚠️ ปิดเป็นค่าตั้งต้น เหตุผลเดียวกับ showServiceRounds: บรรทัดของใบเสนอราคา/หน้าใบสั่งขายไม่พกช่องนี้ */
+  showPacksPerRound = false,
   summaryRows = [],
   grandTotal,
   grandTotalLabel = "ยอดรวมทั้งสิ้น",
@@ -105,6 +118,11 @@ export function QuotationReadOnlyLineItems({
                         {showServiceRounds && lineIsServicePackage(line) ? (
                           <span className={styles.serviceRoundsTag}>
                             รอบบริการที่ขายไว้: <strong>{line.serviceRounds ? `${line.serviceRounds} รอบ` : NA}</strong>
+                          </span>
+                        ) : null}
+                        {showPacksPerRound && lineIsServicePackage(line) ? (
+                          <span className={styles.serviceRoundsTag}>
+                            แพ็คต่อรอบ: <strong>{packsPerRoundText(line.packsPerRound)}</strong>
                           </span>
                         ) : null}
                         {line.metadata?.note ? (

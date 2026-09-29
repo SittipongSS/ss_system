@@ -215,12 +215,18 @@ test('⭐ กริดความตรงกัน: เซลล์ · ยอ�
 
 test('⭐ ช่องรอบบริการที่ขายไว้ = ช่องของการ์ดสัญญาบริการใบสั่งขาย (จำนวนเต็ม ≥ 1 · เว้นว่างได้ · "รอบ")', () => {
   const rounds = slice(code(CELLS), 'export function QuoteLineServiceRounds', undefined);
-  assert.match(rounds, /<span>รอบบริการที่ขายไว้<\/span>/);
+  /* ⭐ PR-D (mig 0394 · r2 S12): ใบย้อนหลังบังคับรอบ ⇒ ดอกจันแบบเลือกได้ (`required`) — ป้ายคำเดิม (DD2) · ค่าตั้งต้นไม่บังคับ */
+  assert.match(rounds, /<span>รอบบริการที่ขายไว้\{required \? <b className=\{styles\.roundsReq\} aria-hidden="true">\*<\/b> : null\}<\/span>/);
+  assert.match(rounds, /required = false, invalid = false/);
   const control = 'type="number" min="1" step="1" inputMode="numeric" placeholder="—"';
   assert.ok(rounds.includes(control), 'ช่องเดียวกับ ServiceContractCard');
   assert.ok(code('components/salesPlanning/ServiceContractCard.js').includes(control),
     'ต้นแบบของช่องนี้ยังอยู่ที่การ์ดสัญญาบริการ — เปลี่ยนที่นั่นต้องเปลี่ยนที่นี่ด้วย');
   assert.match(rounds, /<span className=\{styles\.roundsUnit\}>รอบ<\/span>/);
+  /* แดงเมื่อผู้เรียกบอก (ใบย้อนหลัง: ข้อความของแผนหลังกด "ถัดไป") · บังคับ = บอกโปรแกรมอ่านหน้าจอด้วย ไม่ใช่แค่ดอกจัน */
+  assert.match(rounds, /invalid=\{invalid\}/);
+  assert.match(rounds, /aria-required=\{required \? "true" : undefined\}/);
+  assert.match(read('components/salesPlanning/QuotationLineItems.module.css'), /\.roundsReq \{[^}]*color: var\(--red\);/);
   /* ใบเสนอราคาไม่มีรอบ (เป็นของใบสั่งขาย — มติผู้ใช้ 2026-08-31) */
   assert.doesNotMatch(code(LINE_ITEMS), /<QuoteLineServiceRounds\b/);
   assert.match(code(ZONES), /<QuoteLineServiceRounds\b/);

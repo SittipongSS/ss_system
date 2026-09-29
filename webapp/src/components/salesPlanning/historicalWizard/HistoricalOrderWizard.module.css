@@ -254,7 +254,8 @@
   gap: var(--space-2);
 }
 
-/* แถบผูกของบรรทัด — ไซต์ · โซน (กว้าง) + รอบบริการที่ขายไว้ (แคบ) ใต้คำอธิบาย FG · จอแคบพับเป็นสองแถว */
+/* แถบผูกของบรรทัด — ไซต์ · โซน (กว้าง) + แพ็คต่อรอบ + รอบบริการที่ขายไว้ (แคบ) + ทั้งรายการ ใต้คำอธิบาย FG ·
+   จอแคบพับเป็นหลายแถว (PR-D เพิ่มแพ็คต่อรอบ + ทั้งรายการ) */
 .lineBind {
   display: flex;
   flex-wrap: wrap;
@@ -268,6 +269,7 @@
 }
 
 .lineBindZone,
+.lineBindPacks,
 .lineBindRounds {
   display: flex;
   flex-direction: column;
@@ -277,7 +279,73 @@
 
 /* ช่องโซนกินที่ที่เหลือ · ช่องรอบกว้างเท่าเนื้อ — แคบกว่านี้แล้วพับรอบลงบรรทัดใหม่เอง */
 .lineBindZone { flex: 1 1 16rem; }
+.lineBindPacks,
 .lineBindRounds { flex: 0 1 auto; }
+
+/* ช่องตัวเลข + หน่วย ("แพ็ค" / "รอบ") — ทรงเดียวกับช่องรอบของเซลล์กลาง (QuoteLineServiceRounds .roundsField) */
+.packsField {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+
+.packsField input {
+  width: 96px;
+  text-align: right;
+}
+
+.packsUnit {
+  color: var(--text-3);
+  font-size: var(--fs-5);
+}
+
+/* ชิป "ประเมินไว้ n แพ็ค" + ปุ่ม "ใช้" — ตัวช่วยเติมค่า ไม่ใช่ด่าน (สีกลาง) */
+.assessChip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1-5);
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
+
+/* ช่องรอบในแถบผูก = เซลล์กลาง QuoteLineServiceRounds (ตัวเดียวกับการ์ดสัญญา · มีเทสต์ของตัวเอง ไม่แตะ) — review 29/09:
+   อยู่แถวเดียวกับ "แพ็คต่อรอบ *" แล้วช่องกรอกต่ำกว่า ~9px (margin-top ของ .serviceRounds) และหัวช่องคนละหน้าตา
+   ⇒ ปรับเฉพาะในแถบผูก: ไม่มีระยะบน + หัวช่องเท่า .lineBindLabel (ขนาด · น้ำหนัก · สี) · หมายเหตุ <small> และ "รอบ" คงเดิม */
+.lineBindRounds > div { margin-top: 0; }
+.lineBindRounds > div > span:first-child {
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  color: var(--text-2);
+}
+
+/* "ทั้งรายการ n แพ็ค" (แพ็คต่อรอบ × รอบ) — ค่าที่ระบบคิดให้ อ่านอย่างเดียว · บรรทัดสรุปเต็มแถวใต้ช่องกรอก
+   🐞 review 29/09: เดิมเป็นกล่องสูงเท่าช่องกรอกชิดล่าง ⇒ พับลงแถวใหม่ในแถบแคบแล้วทิ้งช่องว่างสูงหนึ่งช่องเหนือข้อความ */
+.lineBindTotal {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  white-space: nowrap;
+}
+
+/* บรรทัดเทาของผลประเมิน: ขั้น ② อ่านไม่ขึ้น (+ ปุ่มลองใหม่) · หน้าต่างเพิ่มหลายโซนยังอ่าน/อ่านไม่ได้ (M6) — ไม่บล็อก */
+.assessNote {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin: var(--space-2) 0;
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+  color: var(--text-3);
+}
 
 .lineBindLabel {
   font-size: var(--fs-label);
@@ -336,102 +404,11 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
   gap: var(--space-3) var(--space-4);
+  /* ช่องของตัวห่อวาดเหนือแถวแพ็คต่อรอบของตัวกลาง (PR-D) — เว้นระยะก่อนแถวนั้น */
+  margin-bottom: var(--space-3);
 }
 
 .bulkFields > .field { margin-bottom: 0; }
-
-.bulkTools {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2) var(--space-3);
-  margin: var(--space-4) 0 var(--space-2);
-}
-
-.bulkSearch {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  width: min(100%, 22rem);
-  min-height: var(--ctl-h);
-  padding: 0 var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--panel-2);
-  color: var(--text-3);
-}
-
-.bulkSearch > input {
-  flex: 1;
-  min-width: 0;
-  align-self: stretch;
-  border: 0;
-  outline: none;
-  background: transparent;
-  font: inherit;
-  color: var(--text);
-}
-
-.bulkCount { font-size: var(--fs-5); color: var(--text-3); }
-
-.bulkGrow { flex: 1; }
-
-.bulkList {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--panel-solid);
-}
-
-.bulkSite {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
-  align-items: start;
-  gap: var(--space-2) var(--space-3);
-  padding: var(--space-2) var(--space-3);
-}
-
-.bulkSite + .bulkSite { border-top: 1px solid var(--border); }
-
-.bulkSiteName {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  min-width: 0;
-  line-height: var(--lh-thai);
-  cursor: pointer;
-}
-
-.bulkSiteName b { font-weight: var(--fw-semibold); overflow-wrap: anywhere; }
-
-.bulkZones {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1-5);
-}
-
-/* ทั้งชิปเป็น <label> ⇒ แตะชื่อโซนก็ติ๊กได้ (เป้ากดใหญ่กว่าช่องติ๊กตัวเดียว) */
-.bulkZone {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-0-5) var(--space-1-5);
-  min-height: var(--ctl-h);
-  padding: var(--space-1) var(--space-2-5);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--panel);
-  line-height: var(--lh-thai);
-  cursor: pointer;
-}
-
-.bulkZone > small { color: var(--text-3); font-size: var(--fs-label); }
-
-.bulkZone[data-on="yes"] { border-color: var(--accent-ink); background: var(--accent-soft); }
-
-.bulkZone[data-off="yes"] { background: var(--panel-2); color: var(--text-3); cursor: not-allowed; }
 
 .bulkFoot {
   display: flex;
@@ -493,8 +470,36 @@
 .instLabel { min-width: 13rem; }
 .instAmount { width: 10.5rem; }
 .instDue { width: 10.5rem; }
+/* คอลัมน์ "วันวางบิล" (PR-D · DD5 — ไม่บังคับ · ขึ้นเมื่อลูกค้าไม่ใช่ "ไม่ต้องวางบิล") — กว้างเท่าคอลัมน์ครบกำหนด ·
+   บรรทัดรองใต้หัว ("ไม่บังคับ · …") เทา น้ำหนักปกติ และตัดบรรทัดได้ (หัวตารางเป็น nowrap) */
+.instBill { width: 10.5rem; }
+.instBillHead small {
+  display: block;
+  font-size: var(--fs-label);
+  font-weight: var(--fw-normal);
+  line-height: var(--lh-thai);
+  color: var(--text-3);
+  white-space: normal;
+}
 .instCover { width: 17.5rem; }
 .instActions { width: 5.5rem; white-space: nowrap; }
+/* 🐞 review 29/09: มีคอลัมน์วันวางบิล = 71rem (1136px) ล้นตัวเลื่อนของการ์ดที่ 1440 (1070px) ⇒ ปุ่มลบงวดถูกตัดครึ่ง
+   ⇒ ใต้ธงเดียวกัน (data-billing บนตาราง) คอลัมน์ช่องวัน/เงินแคบลง: 3.5+13+9.5+9.5+11+14.5+5.5 = 66.5rem = 1064px (= minWidth ของตาราง)
+   · วัดจอ 1440 (UAT 29/09): หัว "ไม่บังคับ · วันที่ส่งใบวางบิล" กว้าง 149px ⇒ วันวางบิล 11rem (เนื้อ 150px) ตัดบรรทัดที่ "ของงวด"
+     (9rem ตัดกลาง "ใบวาง|บิล" เป็นสามบรรทัด) · ครบกำหนด/จำนวนเงิน 9.5rem ช่องกว้าง ~126px (DateInput compact ≥108px ·
+     เงินหลักล้านพอ) · ครอบคลุม 14.5rem = "dd/mm/yyyy –" 66px + ช่อง ~132px · รายละเอียดคง 13rem (placeholder ตัดเท่าเดิม) */
+.instTable[data-billing="yes"] .instAmount { width: 9.5rem; }
+.instTable[data-billing="yes"] .instDue { width: 9.5rem; }
+.instTable[data-billing="yes"] .instBill { width: 11rem; }
+.instTable[data-billing="yes"] .instCover { width: 14.5rem; }
+/* วันวางบิลเดิมที่ตั้งใหม่ไม่ได้ (review 29/09) — ข้อความวัน + ปุ่ม "ล้าง" แนวเดียวกับช่องวันของแถว */
+.instBillLocked {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--ctl-h);
+}
 .instActions > button + button { margin-left: var(--space-1); }
 .instOpening > td { background: color-mix(in srgb, var(--green) 5%, transparent); color: var(--text-2); }
 .instLast > td { background: color-mix(in srgb, var(--blue) 4%, transparent); }

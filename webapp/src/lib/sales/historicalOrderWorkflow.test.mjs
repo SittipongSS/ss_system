@@ -116,9 +116,10 @@ const approved = (extra = {}) => ({
     order: { id: ORDER_ID, orderNumber: 'SO-26090191-0', status: 'approved', approvedBy: 'U-SUP' },
     contract: { ...draftContract, status: 'signed', contractNo: 'CT-SR-26090007-0', signedFileId: FILE_ID },
     installments: [{ id: 'SOI-1', kind: 'opening', status: 'reported' }, { id: 'SOI-2', kind: 'regular', status: 'pending' }],
+    /* 0394/P3: รอบขายเปิดผ่านตัวกลางของ 0392 — id 'SZT-S…' · packageQty = แพ็คต่อรอบของโซน · หน่วย 'แพ็ค' */
     terms: [
-      { id: 'SZT-H1', zoneId: 'Z-1', salesOrderLineId: 'SOL-1', packageQty: 6 },
-      { id: 'SZT-H2', zoneId: 'Z-2', salesOrderLineId: 'SOL-2', packageQty: 4 },
+      { id: 'SZT-S1', zoneId: 'Z-1', salesOrderLineId: 'SOL-1', packageQty: 2, unit: 'แพ็ค' },
+      { id: 'SZT-S2', zoneId: 'Z-2', salesOrderLineId: 'SOL-2', packageQty: 1, unit: 'แพ็ค' },
     ],
     ...extra,
   },
@@ -329,7 +330,11 @@ test('อนุมัติ: audit สามก้อน (ใบ · เอกส
   assert.match(res.audits[1].summary, /CT-SR-26090007-0 พร้อมใบสั่งขายย้อนหลัง SO-26090191-0 \(มีผล 2026-01-01 ถึง 2026-12-31\)/);
   assert.equal(res.audits[1].before, draftContract);
   assert.deepEqual(res.audits[2].after.terms.map((t) => t.zoneId), ['Z-1', 'Z-2']);
-  assert.match(res.audits[2].summary, /2 โซน/);
+  /* PR-D (mig 0394): term = แพ็คต่อรอบ ⇒ ประโยคบอกยอดรวมต่อรอบ · after.terms[] ยังพก packageQty (กู้จาก audit ได้) */
+  assert.equal(res.audits[2].summary, 'เปิดโซนให้ TS จากการอนุมัติใบสั่งขายย้อนหลัง SO-26090191-0 — 2 โซน · รวม 3 แพ็ค/รอบ (รอตั้งรอบ)');
+  assert.deepEqual(res.audits[2].after.terms.map((t) => [t.id, t.salesOrderLineId, t.packageQty]), [
+    ['SZT-S1', 'SOL-1', 2], ['SZT-S2', 'SOL-2', 1],
+  ]);
   assert.deepEqual(res.threads.map((t) => t.action), ['approve']);
   // ทุกครั้งที่พูดถึง Actual ต้องเป็น "ไม่นับ Actual" — ตัดวลีที่ถูกออกแล้วต้องไม่เหลือ "นับ Actual" สักที่
   for (const audit of res.audits) assert.doesNotMatch(audit.summary.replaceAll('ไม่นับ Actual', ''), /นับ Actual/);
@@ -360,6 +365,128 @@ test('อนุมัติ: error ของฐาน — stale 409 · ไฟล
   }
 });
 
+test('อนุมัติ: audit รอบขาย — แพ็คต่อรอบไม่รู้บางโซน = บอกจำนวนที่ขาด · ไม่รู้สักโซน = ประโยคเดิม (ไม่พิมพ์ "รวม 0")', async () => {
+  const partial = await runApprove(fakeDb({ rpc: [approved({ terms: [
+    { id: 'SZT-S1', zoneId: 'Z-1', salesOrderLineId: 'SOL-1', packageQty: 2, unit: 'แพ็ค' },
+    { id: 'SZT-S2', zoneId: 'Z-2', salesOrderLineId: 'SOL-2', packageQty: null, unit: 'แพ็ค' },
+  ] })] }));
+  assert.equal(partial.audits[2].summary,
+    'เปิดโซนให้ TS จากการอนุมัติใบสั่งขายย้อนหลัง SO-26090191-0 — 2 โซน · รวม 2 แพ็ค/รอบ (ยังไม่มีแพ็คต่อรอบ 1 โซน) (รอตั้งรอบ)');
+  const unknown = await runApprove(fakeDb({ rpc: [approved({ terms: [
+    { id: 'SZT-S1', zoneId: 'Z-1', salesOrderLineId: 'SOL-1', packageQty: null },
+  ] })] }));
+  assert.equal(unknown.audits[2].summary, 'เปิดโซนให้ TS จากการอนุมัติใบสั่งขายย้อนหลัง SO-26090191-0 — 1 โซน (รอตั้งรอบ)');
+  // ไม่มีรอบขายคืนมา = ไม่มีก้อน audit ของรอบขาย (เหมือนเดิม)
+  const none = await runApprove(fakeDb({ rpc: [approved({ terms: [] })] }));
+  assert.deepEqual(none.audits.map((a) => a.entityType), ['sales_order', 'sales_contract']);
+});
+
+/* ⭐ DD9 (IMPL_PLAN_D §3.5): 0394/P3 เปิดรอบขายผ่านตัวกลางของ 0392 — ใบที่ไม่มีแถวโซน/แพ็คต่อรอบ/โซนไม่ตรงบรรทัด
+   ฐานโยน `sales_order_service_setup_incomplete` (DETAIL = CSV '<ชนิด>:<บรรทัด>[:<โซน>]') แล้วถอยการอนุมัติทั้งก้อน
+   ⇒ 409 พร้อม "รายการ n" (ลำดับบนใบ) ไม่ใช่ข้อความกลาง 500 · ทางออก = ตีกลับให้ผู้คีย์บันทึกขั้น ② ใหม่ */
+test('อนุมัติ: ตัวกลางตีกลับ (งานบริการไม่ครบ) = 409 บอกเลขรายการ + setupErrors · ไม่มี audit/เธรด', async () => {
+  const row = pending({ lines: [
+    { id: 'SOL-2', sortOrder: 1, serviceZoneId: 'Z-2' },
+    { id: 'SOL-1', sortOrder: 0, serviceZoneId: 'Z-1' },
+  ] });
+  const error = {
+    code: 'P0001', message: 'sales_order_service_setup_incomplete', details: 'zones_missing:SOL-2, packs_missing:SOL-1:Z-1,,', hint: null,
+  };
+  /* เข็มขัดฝั่ง JS (review 29/09) ผ่าน — ทุกบรรทัดมีแถวแพ็คต่อรอบ ⇒ ที่นี่เฝ้าคำตอบของตัวกลางในฐานล้วน ๆ */
+  const tables = { sales_order_line_zones: { data: [
+    { id: 'SOLZ-1', salesOrderLineId: 'SOL-1', zoneId: 'Z-1', packsPerRound: 2 },
+    { id: 'SOLZ-2', salesOrderLineId: 'SOL-2', zoneId: 'Z-2', packsPerRound: 1 },
+  ], error: null } };
+  const res = await runApprove(fakeDb({ rpc: [{ data: null, error }], tables }), { row });
+  assert.equal(res.status, 409);
+  assert.equal(res.body.code, 'historical_service_setup_incomplete');
+  assert.deepEqual(res.body.setupErrors, ['zones_missing:SOL-2', 'packs_missing:SOL-1:Z-1']);
+  assert.equal(res.body.error, 'อนุมัติไม่ได้ — งานบริการของใบนี้ไม่ครบ: รายการ 1: ยังไม่ใส่แพ็คต่อรอบ'
+    + ' · รายการ 2: ยังไม่มีแพ็คต่อรอบ (ใบนี้คีย์ก่อนมีช่องแพ็คต่อรอบ) — ตีกลับให้ผู้คีย์บันทึกขั้น ② ใหม่');
+  assert.equal(res.audits.length, 0);
+  assert.equal(res.threads.length, 0);
+
+  // ไม่มี DETAIL (ฐานรุ่นอื่น) = ยังเป็น 409 ประโยคเดียวกัน ไม่ใช่ข้อความกลาง
+  const bare = await runApprove(fakeDb({ rpc: [{ data: null, error: { message: 'sales_order_service_setup_incomplete' } }], tables }), { row });
+  assert.equal(bare.status, 409);
+  assert.deepEqual(bare.body.setupErrors, []);
+  assert.equal(bare.body.error, 'อนุมัติไม่ได้ — งานบริการของใบนี้ไม่ครบ — ตีกลับให้ผู้คีย์บันทึกขั้น ② ใหม่');
+});
+
+/* 🔴 review 29/09: 0394 ไม่เพิ่มคอลัมน์ ⇒ ไม่มีอะไรฟ้องถ้าโค้ดขึ้น prod ก่อนรันมิก (deploy อัตโนมัติวันละ 3 รอบ) · อนุมัติรุ่นก่อน 0394
+   เปิดรอบขาย 'SZT-H' ด้วย packageQty = จำนวนของบรรทัด (กับดักที่ PR-D มาแก้) และรัน 0394 ทีหลังก็ไม่ซ่อมให้
+   ⇒ ตรวจเองก่อน RPC: ทุกบรรทัดที่มีโซนต้องมีแถวแพ็คต่อรอบของ (บรรทัด, โซนของบรรทัด) ที่อ่านได้ — หลัง 0394 เข็มขัดนี้ไม่เปลี่ยนผลอะไร
+   (ตัวเขียน P6 เขียนครบทุกบรรทัด · ตัวกลางตรวจซ้ำด้วยรหัสเดียวกัน) · ข้อความพูดทั้งสองเหตุ (ใบเก่า / ฐานยังไม่รันมิก) */
+test('อนุมัติ 🔴 เข็มขัดก่อน RPC: บรรทัดที่มีโซนแต่ไม่มีแถวแพ็คต่อรอบ = 409 ไม่เรียก RPC · อ่านไม่ขึ้น = 500 · ส่งซ้ำข้าม', async () => {
+  const row = pending({ lines: [
+    { id: 'SOL-2', sortOrder: 1, serviceZoneId: 'Z-2' },
+    { id: 'SOL-1', sortOrder: 0, serviceZoneId: 'Z-1' },
+    { id: 'SOL-X', sortOrder: 2, serviceZoneId: null },
+  ] });
+  const zones = (data, error = null) => ({ sales_order_line_zones: { data, error } });
+
+  const none = fakeDb({ rpc: [approved()], tables: zones([]) });
+  const res = await runApprove(none, { row });
+  assert.equal(res.status, 409);
+  assert.equal(res.body.code, 'historical_service_setup_incomplete');
+  assert.deepEqual(res.body.setupErrors, ['zones_missing:SOL-1', 'zones_missing:SOL-2']);
+  assert.match(res.body.error, /^อนุมัติไม่ได้ — งานบริการของใบนี้ไม่ครบ: รายการ 1: ยังไม่มีแพ็คต่อรอบ .* · รายการ 2: ยังไม่มีแพ็คต่อรอบ/);
+  assert.match(res.body.error, / · หากเพิ่งอัปเดตระบบ ฐานข้อมูลอาจยังไม่ได้รัน migration 0394 — แจ้งผู้ดูแลระบบก่อนตีกลับ$/);
+  assert.equal(none.calls.rpc.length, 0);
+  assert.equal(res.audits.length, 0);
+  assert.equal(res.threads.length, 0);
+  const read = none.calls.from.find((q) => q.table === 'sales_order_line_zones');
+  assert.deepEqual(read.filters, [['eq', 'salesOrderId', ORDER_ID]]);
+  assert.deepEqual(read.orders, ['id'], 'ไล่หน้า (fetchAllResult) เรียงตาม id — ตาราง cap 0 ของ check:rowcap');
+
+  /* แถวของโซนอื่นบนบรรทัดเดียวกัน / แพ็คอ่านไม่ได้ ≠ แพ็คต่อรอบของบรรทัดนี้ */
+  const partial = fakeDb({ rpc: [approved()], tables: zones([
+    { id: 'A', salesOrderLineId: 'SOL-1', zoneId: 'Z-1', packsPerRound: 2 },
+    { id: 'B', salesOrderLineId: 'SOL-2', zoneId: 'Z-9', packsPerRound: 1 },
+    { id: 'C', salesOrderLineId: 'SOL-2', zoneId: 'Z-2', packsPerRound: null },
+  ]) });
+  const half = await runApprove(partial, { row });
+  assert.equal(half.status, 409);
+  assert.deepEqual(half.body.setupErrors, ['zones_missing:SOL-2']);
+  assert.equal(partial.calls.rpc.length, 0);
+
+  const full = fakeDb({ rpc: [approved()], tables: zones([
+    { id: 'A', salesOrderLineId: 'SOL-1', zoneId: 'Z-1', packsPerRound: 2 },
+    { id: 'B', salesOrderLineId: 'SOL-2', zoneId: 'Z-2', packsPerRound: 1 },
+  ]) });
+  assert.equal((await runApprove(full, { row })).status, 200);
+  assert.equal(full.calls.rpc.length, 1);
+
+  /* supabase ไม่ throw — อ่านไม่ขึ้นต้องไม่กลายเป็น "ไม่มีแถว" หรือ "ผ่าน" */
+  const broken = fakeDb({ rpc: [approved()], tables: zones(null, { code: '57014', message: 'timeout' }) });
+  const failed = await runApprove(broken, { row });
+  assert.equal(failed.status, 500);
+  assert.match(failed.body.error, /timeout/);
+  assert.equal(broken.calls.rpc.length, 0);
+
+  /* ส่งซ้ำหลังอนุมัติสำเร็จ (ใบ approved โดยผู้อนุมัติคนเดิม) — RPC ตอบผลเดิม ไม่ต้องตรวจ */
+  const replay = fakeDb({ rpc: [approved({ replayed: true })] });
+  const again = await runApprove(replay, { row: { ...row, status: 'approved', approvedBy: 'U-SUP' } });
+  assert.equal(again.status, 200);
+  assert.ok(!replay.calls.from.some((q) => q.table === 'sales_order_line_zones'));
+});
+
+test('ส่ง/อนุมัติ: รหัสใหม่ของ 0394 ผ่านตารางกลาง — รอบบริการ/แพ็คต่อรอบไม่ครบ 400 · มีรอบขายของโซนอยู่แล้ว 409', async () => {
+  for (const [code, status] of [['historical_so_line_rounds_required', 400], ['historical_so_line_packs_invalid', 400]]) {
+    const submit = await runSubmit(fakeDb({ rpc: [{ data: null, error: { message: code } }] }));
+    assert.equal(submit.status, status, code);
+    assert.equal(submit.body.code, code);
+    assert.match(submit.body.error, /กลับไปขั้น ②/);
+    const approve = await runApprove(fakeDb({ rpc: [{ data: null, error: { message: code } }] }));
+    assert.equal(approve.status, status, code);
+    assert.equal(approve.body.code, code);
+  }
+  const legacy = await runApprove(fakeDb({ rpc: [{ data: null, error: { message: 'service_setup_legacy_terms_exist' } }] }));
+  assert.equal(legacy.status, 409);
+  assert.equal(legacy.body.code, 'service_setup_legacy_terms_exist');
+  assert.equal(legacy.audits.length, 0);
+});
+
 test('อนุมัติ: ผู้ตรวจอีกคน (AE Sup คนที่สอง) อนุมัติใบที่ AE Sup คนแรกคีย์ได้ตามปกติ', async () => {
   const db = fakeDb({ rpc: [approved()] });
   const res = await runApprove(db, { user: sup2, row: pending({ createdBy: 'U-SUP', submittedBy: 'U-SUP' }) });
@@ -369,7 +496,16 @@ test('อนุมัติ: ผู้ตรวจอีกคน (AE Sup คน
 });
 
 // ── ของเสริมหน้าใบ ───────────────────────────────────────────────────────────────────────────
-const extrasTables = ({ files = [], terms = [], termOrders = [], contract = null, siblings = [] } = {}) => ({
+const eqOf = (q, column) => q.filters.find((f) => f[0] === 'eq' && f[1] === column)?.[2];
+/* แถวโซนของงานบริการ (0392 · ใบย้อนหลังเขียนตอนบันทึกฟอร์มผ่าน 0394/P6 — หนึ่งแถวต่อบรรทัด โซน = serviceZoneId) */
+const ALLOCATIONS = [
+  { id: 'SLZ-1', salesOrderId: ORDER_ID, salesOrderLineId: 'SOL-1', zoneId: 'Z-1', packsPerRound: 2 },
+  { id: 'SLZ-2', salesOrderId: ORDER_ID, salesOrderLineId: 'SOL-2', zoneId: 'Z-2', packsPerRound: 1 },
+];
+const extrasTables = ({
+  files = [], terms = [], termOrders = [], contract = null, siblings = [], allocations = ALLOCATIONS,
+} = {}) => ({
+  sales_order_line_zones: (q) => ({ data: allocations.filter((a) => a.salesOrderId === eqOf(q, 'salesOrderId')), error: null }),
   service_zones: (q) => ({
     data: [
       { id: 'Z-1', siteId: 'ST-1', code: 'ZN-1', name: 'ชั้น G ล็อบบี้', isActive: true },
@@ -416,7 +552,8 @@ test('ของเสริม: โซนหนึ่งแถวต่อบร
     ['SOL-1', 'ZN-1', 'ST-1002', true],
     ['SOL-2', 'ZN-2', 'ST-1044', false],
   ]);
-  /* ⭐ มติ 23/09: แถวโซนพกบรรทัดแบบใบเสนอราคา (จำนวน · หน่วย · ราคา/หน่วย · ส่วนลด · จำนวนเงิน) — ไม่มี "แพ็ค" แล้ว */
+  /* ⭐ มติ 23/09: แถวโซนพกบรรทัดแบบใบเสนอราคา (จำนวน · หน่วย · ราคา/หน่วย · ส่วนลด · จำนวนเงิน) — จำนวนเป็นเงิน
+     · แพ็คต่อรอบเป็นอีกช่องของโซน (packsPerRound · PR-D mig 0394) ไม่ใช่ "packs" ที่อ่านจากจำนวน */
   assert.deepEqual(extras.lineZones.map((z) => [z.fgCode, z.qty, z.unit, z.unitPrice, z.discountAmount, z.lineTotal, z.rounds]), [
     ['FG-SNS-02-001-0012', 72, 'แพ็คเกจ', 1200, 0, 86400, 12],
     ['FG-SNS-02-001-0012', 48, 'แพ็คเกจ', 1200, 600, 57000, 12],
@@ -426,6 +563,46 @@ test('ของเสริม: โซนหนึ่งแถวต่อบร
     const q = db.calls.from.find((c) => c.table === table);
     assert.ok(q.orders.includes('id'), `${table} ต้องเรียง id (ไล่หน้า)`);
   }
+});
+
+/* ⭐ PR-D (mig 0394): แพ็คต่อรอบของโซนอยู่ที่ sales_order_line_zones — โมดัลอนุมัติ · การ์ดโซน · โหมดแก้ของวิซาร์ด
+   อ่านจาก lineZones[].packsPerRound ตัวเดียว (page.js ไม่ต้องแก้) · จับคู่ด้วย **บรรทัด + โซน** (แถวของโซนอื่นบนบรรทัด
+   เดียวกัน = ไม่ใช่ของบรรทัดนี้ ⇒ null ไม่ใช่เดา) · ไม่มีแถว = null (ใบที่คีย์ก่อนมีช่อง) ไม่ใช่ 0 */
+test('ของเสริม: แพ็คต่อรอบมาจากแถวโซนของงานบริการ — บรรทัด + โซนต้องตรง · ไม่มี/ไม่ตรง = null · อ่านไล่หน้า', async () => {
+  const db = fakeDb({ tables: extrasTables() });
+  const extras = await loadHistoricalOrderExtras(db.supabase, extrasOrder(), { todayIso: '2026-09-22' });
+  assert.deepEqual(extras.lineZones.map((z) => [z.lineId, z.zoneId, z.packsPerRound]), [['SOL-1', 'Z-1', 2], ['SOL-2', 'Z-2', 1]]);
+  const read = db.calls.from.find((c) => c.table === 'sales_order_line_zones');
+  assert.equal(read.selected, 'id, "salesOrderLineId", "zoneId", "packsPerRound"');
+  assert.deepEqual(read.filters, [['eq', 'salesOrderId', ORDER_ID]]);
+  assert.ok(read.orders.includes('id'), 'ต้องเรียง id (ไล่หน้า · check:rowcap)');
+
+  const odd = await loadHistoricalOrderExtras(fakeDb({ tables: extrasTables({ allocations: [
+    // โซนไม่ตรงบรรทัด (ตัวกลางตีกลับ historical_zone_mismatch ตอนอนุมัติ) — ห้ามยืมตัวเลขมาโชว์
+    { id: 'SLZ-9', salesOrderId: ORDER_ID, salesOrderLineId: 'SOL-1', zoneId: 'Z-9', packsPerRound: 7 },
+    // ของใบอื่นบนบรรทัด/โซนชื่อเดียวกัน — ไม่ถูกอ่านมาเลย (กรอง salesOrderId)
+    { id: 'SLZ-X', salesOrderId: 'SOR-OTHER', salesOrderLineId: 'SOL-2', zoneId: 'Z-2', packsPerRound: 5 },
+  ] }) }).supabase, extrasOrder(), { todayIso: '2026-09-22' });
+  assert.deepEqual(odd.lineZones.map((z) => [z.lineId, z.packsPerRound]), [['SOL-1', null], ['SOL-2', null]]);
+  assert.ok(odd.lineZones.every((z) => 'packsPerRound' in z), 'คีย์ต้องมีเสมอ (null = ไม่รู้) — ผู้อ่านไม่ต้องเดาว่าไม่ได้โหลด');
+
+  // ค่าที่ไม่ใช่จำนวนเต็มบวก = ไม่รู้ (null) ไม่ใช่ 0 / สตริง
+  const junk = await loadHistoricalOrderExtras(fakeDb({ tables: extrasTables({ allocations: [
+    { id: 'SLZ-1', salesOrderId: ORDER_ID, salesOrderLineId: 'SOL-1', zoneId: 'Z-1', packsPerRound: null },
+    { id: 'SLZ-2', salesOrderId: ORDER_ID, salesOrderLineId: 'SOL-2', zoneId: 'Z-2', packsPerRound: '3' },
+  ] }) }).supabase, extrasOrder(), { todayIso: '2026-09-22' });
+  assert.deepEqual(junk.lineZones.map((z) => z.packsPerRound), [null, 3]);
+});
+
+test('ของเสริม: อ่านแถวโซนของงานบริการไม่ขึ้น = โยน (ผู้เรียกตั้ง extrasError) ไม่ใช่ "ยังไม่มีแพ็คต่อรอบ"', async () => {
+  const broken = fakeDb({ tables: { ...extrasTables(), sales_order_line_zones: { data: null, error: { message: 'alloc boom' } } } });
+  await assert.rejects(loadHistoricalOrderExtras(broken.supabase, extrasOrder(), { todayIso: '2026-09-22' }),
+    (error) => error?.message === 'alloc boom');
+  // ใบไม่มีบรรทัดที่ชี้โซน = ไม่ต้องถามแถวโซน
+  const bare = fakeDb({ tables: extrasTables() });
+  const extras = await loadHistoricalOrderExtras(bare.supabase, extrasOrder({ lines: [] }), { todayIso: '2026-09-22' });
+  assert.deepEqual(extras.lineZones, []);
+  assert.ok(!bare.calls.from.some((c) => c.table === 'sales_order_line_zones'));
 });
 
 test('ของเสริม: ไฟล์เอกสารแทนสัญญา — external_doc ไฟล์แรกเป็นตัวเลือก · สัญญาที่ลงนามแล้วใช้ไฟล์ที่ผูกจริง · จำกัดจำนวน', async () => {
@@ -593,4 +770,11 @@ test('ตัวเดินงานไม่ยืมของการอน�
   for (const rpc of ["rpc('submit_historical_sales_order'", "rpc('approve_historical_sales_order'"]) {
     assert.ok(code.includes(rpc), rpc);
   }
+  /* แถวโซนของงานบริการขึ้นทะเบียนเพดาน 0 (check:rowcap) — ทุกจุดอ่านต้องไล่หน้า */
+  assert.match(code, /fetchAllResult\(\(\) => supabase\s*\.from\('sales_order_line_zones'\)/);
+  /* ตัวกลางตีกลับต้องถูกจับก่อนตัวแปลกลาง (ไม่งั้นได้ข้อความกลาง 500 เพราะจงใจไม่อยู่ในตาราง) */
+  const approve = code.slice(code.indexOf('export async function approveHistoricalOrder'), code.indexOf('export async function loadHistoricalOrderExtras'));
+  assert.match(code, /const SETUP_INCOMPLETE = 'sales_order_service_setup_incomplete';/);
+  const incomplete = approve.indexOf('return setupIncompleteFailure(error, order)');
+  assert.ok(incomplete > 0 && incomplete < approve.indexOf('return rpcFailure(error'), 'จับตัวกลางตีกลับก่อน rpcFailure');
 });

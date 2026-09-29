@@ -1660,17 +1660,22 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   let zoneTerms = [];
   let servicePlans = [];
   let installmentRows = [];
+  let lineZones = [];
   if (historical) {
-    const [termsResult, plansResult, installmentsResult] = await Promise.all([
+    /* ⭐ PR-D (mig 0394/P6 · review 29/09): แพ็คต่อรอบของใบย้อนหลังอยู่ใน sales_order_line_zones ที่เดียวก่อนอนุมัติ
+       และหายตาม CASCADE (0392) ⇒ เก็บลง audit.before ด้วย · อ่านไม่ขึ้น = หยุดก่อนลบเหมือนสามก้อนแรก */
+    const [termsResult, plansResult, installmentsResult, lineZonesResult] = await Promise.all([
       fetchAllResult(() => supabase.from('service_zone_terms').select('*').eq('salesOrderId', id).order('id', { ascending: true })),
       fetchAllResult(() => supabase.from('service_plans').select('*').eq('salesOrderId', id).order('id', { ascending: true })),
       fetchAllResult(() => supabase.from('sales_order_installments').select('*').eq('salesOrderId', id).order('id', { ascending: true })),
+      fetchAllResult(() => supabase.from('sales_order_line_zones').select('*').eq('salesOrderId', id).order('id', { ascending: true })),
     ]);
-    const loadError = termsResult.error || plansResult.error || installmentsResult.error;
+    const loadError = termsResult.error || plansResult.error || installmentsResult.error || lineZonesResult.error;
     if (loadError) return fail(`ตรวจงานบริการ/งวดชำระที่ผูกใบนี้ไม่สำเร็จ: ${loadError.message} — ยังไม่ได้ลบใบ`, 500);
     zoneTerms = termsResult.data || [];
     servicePlans = plansResult.data || [];
     installmentRows = installmentsResult.data || [];
+    lineZones = lineZonesResult.data || [];
     if (!force) {
       const block = historicalDeleteBlock({
         order: { ...before, installments: installmentRows }, terms: zoneTerms, plans: servicePlans,
@@ -1740,8 +1745,8 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   const warning = [detachWarning, specWarning].filter(Boolean).join(' · ') || null;
   await recordAudit({
     user, action: 'delete', entityType: 'sales_order', entityId: id,
-    // ใบย้อนหลัง: เก็บรอบขายของโซน/รอบบริการ/งวดดิบที่ผูกไว้ก่อนลบ — CASCADE พารอบขายและงวดหายไปกับใบ
-    before: historical ? { ...before, installments: installmentRows, zoneTerms, servicePlans } : before,
+    // ใบย้อนหลัง: เก็บรอบขายของโซน/รอบบริการ/งวดดิบ/แพ็คต่อรอบที่ผูกไว้ก่อนลบ — CASCADE พาทั้งหมดหายไปกับใบ
+    before: historical ? { ...before, installments: installmentRows, zoneTerms, servicePlans, lineZones } : before,
     after: (historical && (detachedPlanIds.length || detachWarning || voidedContract)) || specDocs.documents.length
       ? {
         ...(historical ? { servicePlansDetached: detachedPlanIds } : {}),

@@ -16,6 +16,9 @@
 //      ช่องค้น + ปุ่มย่อ/ขยาย ("การแสดงผล") · ช่องแพ็คเกจทุกโซนที่เททับทุกบรรทัดเงียบ ๆ และไม่บันทึกอะไร
 //
 // ⭐ ของที่เพิ่มจากใบเสนอราคามีสองอย่างเท่านั้น (มติ 23/09): **ไซต์ · โซน** และ **รอบบริการที่ขายไว้**
+//   ⭐ PR-D (mig 0394 · r2 S12 · มติ 26/09 A3/O9): + **แพ็คต่อรอบ *** ต่อโซน (ชิป "ประเมินไว้ n แพ็ค" [ใช้] · ช่องของตัวเอง —
+//     ไม่ใช่จำนวนของบรรทัด) · **รอบบริการบังคับ** (เลิก "เว้นว่างได้") · "ทั้งรายการ n แพ็ค" อ่านอย่างเดียว
+//     (`HistoricalLineServiceFields`) · แดงหลังกด "ถัดไป" เหมือนช่องอื่นของบรรทัด
 // ⚠️ ข้อยกเว้นจากตารางใบเสนอราคา (เหตุผลด้านข้อมูล — เจ้าของรับรองแล้ว 25/09):
 //   จำนวนเริ่มที่ว่าง (1 ชุด × 12 เดือน = 12 · ใส่ 1 ให้ = เดาผิดเกือบทุกใบ) · ไม่มีหมายเหตุรายบรรทัด (ใบย้อนหลังไม่พิมพ์) ·
 //   ไม่มีบรรทัดพิมพ์เอง (ทุกบรรทัดต้องเป็นแพ็คเกจ 02-001 ที่ผูกโซน) · ราคา/หน่วยปิดตั้งแต่ยังไม่เลือกแพ็คเกจ (ใบนี้ไม่ส่งราคา)
@@ -32,9 +35,10 @@
 //   ไซต์เดียวโหลดไม่สำเร็จต้องไม่ทำให้ทั้งทะเบียนว่าง · ไซต์ที่พังมีปุ่มลองอีกครั้ง · โซนที่ใบผูกไว้ในไซต์ที่อ่านไม่ได้
 //   **ลบไม่ได้** จนกว่าจะอ่านครบ (N1 — ลบเพราะเน็ตกระตุก = ลบบรรทัดจริง)
 //
-// 🪤 **ทำไมยังยิงรายไซต์ ไม่ใช่คำขอเดียว**: เส้นที่คืนโซนทั้งลูกค้าในคำขอเดียว (`/api/service/customers/[customerId]/zones`)
-//   พก survey/term/order/request มาด้วยทั้งก้อน และคืนไซต์ที่ปิดใช้งานด้วย · เส้นไซต์ + โซนรายไซต์ที่ใช้อยู่เบากว่าและ
-//   ผ่านด่าน `canViewServiceRegistry` ตัวเดียวกัน ⇒ ยังไม่มีเหตุให้ย้าย
+// 🪤 **ตัวเลือกโซนยังยิงรายไซต์** (ตัวโหลดรายไซต์ + กติกาพังทีละใบ N1/R9/R10 ข้างบนคงเดิม) · ⭐ PR-D (DD3): เส้นทะเบียน
+//   ของลูกค้า (`/api/service/customers/[customerId]/zones` — พก survey/term/order มาทั้งก้อน · คืนไซต์ที่ปิดด้วย) ถูกอ่าน
+//   **ครั้งเดียวแบบไม่บล็อก เพื่อเอา `assessedPackages` อย่างเดียว** (ตัวโหลดรายไซต์ไม่มีผลประเมิน — V9) ⇒ อ่านไม่ขึ้น =
+//   ไม่มีชิป + บรรทัดเทาพร้อมปุ่มลองอ่านใหม่ · ไม่แตะ state ของตัวเลือกโซนเด็ดขาด
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ListPlus, MapPin, Plus, RefreshCw } from "lucide-react";
 import Link from "next/link";
@@ -53,16 +57,19 @@ import { fmtNumber } from "@/lib/format";
 import { lineIsServicePackage } from "@/lib/sales/serviceOrders";
 import { quoteLineFromProduct } from "@/lib/sales/quoteLines";
 import {
-  HISTORICAL_NEXT_BUTTON_LABEL, HISTORICAL_VAT_RATES, REGISTRY_LOAD_FAILED, emptyHistoricalZone,
-  historicalDownstreamReset, historicalFieldAnchorId, historicalIssueText, historicalLineIssues, historicalLinesSummary,
-  historicalMoneyView, historicalStepIssueNotice, historicalTotalsView, historicalZoneBrowser,
-  historicalZoneLineAmount, historicalZoneLines, historicalZonePickerOptions,
+  HISTORICAL_NEXT_BUTTON_LABEL, HISTORICAL_SERVICE_TEXT, HISTORICAL_VAT_RATES, REGISTRY_LOAD_FAILED, emptyHistoricalZone,
+  historicalAssessedByZone, historicalDownstreamReset, historicalFieldAnchorId, historicalIssueText, historicalLineIssues,
+  historicalLineServiceView, historicalLinesSummary, historicalMoneyView, historicalStepIssueNotice, historicalTotalsView,
+  historicalZoneBrowser, historicalZoneLineAmount, historicalZoneLines, historicalZonePickerOptions,
 } from "@/lib/sales/historicalIntakeForm";
 import HistoricalBulkZonesModal from "./HistoricalBulkZonesModal";
+import HistoricalLineServiceFields, { HistoricalLineServiceTotal } from "./HistoricalLineServiceFields";
 import styles from "./HistoricalOrderWizard.module.css";
 
 const SITES_PATH = (customerId) => `/api/service/sites?customerId=${encodeURIComponent(customerId)}&includeInactive=0`;
 const ZONES_PATH = (siteId) => `/api/service/sites/${encodeURIComponent(siteId)}/zones`;
+/* ผลประเมินรายโซน (PR-D · DD3) — เส้นทะเบียนของลูกค้า อ่านเฉพาะ `assessedPackages` (ดูหัวไฟล์) */
+const ASSESS_PATH = (customerId) => `/api/service/customers/${encodeURIComponent(customerId)}/zones`;
 
 /* ตัวเลือกของช่อง "ไซต์ · โซน" (ข้อมูลจาก `historicalZonePickerOptions`) → แถวที่วาดในดรอปดาวน์
    ⭐ ชื่อโซนเด่น · เหตุที่เลือกไม่ได้ (อยู่ในรายการอื่นแล้ว / ปิดใช้งาน) · รหัสโซนชิดขวา — ป้ายบนช่องที่ปิดอยู่
@@ -92,6 +99,11 @@ export default function WizardZonesStep({
   /* 🐞 รีวิว 25/09: เส้นทะเบียนไซต์พังแล้วไม่มีทางยิงใหม่ (เอฟเฟกต์ยิงเฉพาะตอนเปลี่ยนลูกค้า ซึ่งล้างทุกบรรทัด)
      ⇒ ทางออกเดียวคือรีโหลดหน้า = ชนยาม useUnsavedChanges (ทางตันแบบ N4) · ตัวนับรอบนี้คือปุ่ม "ลองโหลดใหม่" */
   const [sitesRound, setSitesRound] = useState(0);
+  /* ผลประเมินรายโซน (PR-D · DD3): "idle" (ยังไม่มีลูกค้า) · "loading" · "ok" · "error" — แยกจากสถานะทะเบียนไซต์ทั้งชุด */
+  const [assessedByZone, setAssessedByZone] = useState(() => new Map());
+  const [assessState, setAssessState] = useState("idle");
+  const [assessError, setAssessError] = useState("");
+  const [assessRound, setAssessRound] = useState(0);
   const customerId = state.customerId;
 
   /* โซนของไซต์เดียว — **ไม่ throw** คืนผลเป็นข้อมูลเสมอ (ไซต์ที่พังต้องไม่ลากไซต์อื่นลงไปด้วย) */
@@ -134,6 +146,31 @@ export default function WizardZonesStep({
     })();
     return () => { alive = false; };
   }, [customerId, loadSiteZones, sitesRound]);
+
+  /* ⭐ PR-D (DD3): ผลประเมินรายโซน — อ่านครั้งเดียวต่อการเปลี่ยนลูกค้า (หรือกดลองใหม่) · **ไม่บล็อก** ไม่แตะตัวเลือกโซน
+     ⚠️ ล้างผลของลูกค้าก่อนหน้าก่อนยิง — ชิปของลูกค้าเก่าค้างบนโซนของลูกค้าใหม่ไม่ได้แม้ครู่เดียว */
+  useEffect(() => {
+    setAssessedByZone(new Map());
+    setAssessError("");
+    if (!customerId) { setAssessState("idle"); return undefined; }
+    let alive = true;
+    setAssessState("loading");
+    (async () => {
+      try {
+        const data = await apiJson(ASSESS_PATH(customerId), { fallbackError: HISTORICAL_SERVICE_TEXT.assessFailed });
+        if (!alive) return;
+        setAssessedByZone(historicalAssessedByZone(data));
+        setAssessState("ok");
+      } catch (error) {
+        if (!alive) return;
+        setAssessError(error?.message || "");
+        setAssessState("error");
+      }
+    })();
+    return () => { alive = false; };
+  }, [customerId, assessRound]);
+  /* ยังไม่ ok = ไม่มีชิป (ไม่ใช่ตัวเลขค้างรอบก่อน) — ตัวตัดสินรับ null = "ยังไม่รู้" */
+  const assessedReady = assessState === "ok" ? assessedByZone : null;
 
   const retrySite = useCallback(async (site) => {
     setRetrying((current) => ({ ...current, [site.id]: true }));
@@ -331,6 +368,7 @@ export default function WizardZonesStep({
             const amount = historicalZoneLineAmount(row);
             const warn = row.zoneId ? liveTermByZone.get(row.zoneId) || null : null;
             const bad = lineIssues.get(row.key) || {};
+            const service = historicalLineServiceView(row, assessedReady);
             return (
               <tr key={row.key} className="premium-row">
                 <QuoteLineIndexCell index={index} />
@@ -351,7 +389,7 @@ export default function WizardZonesStep({
                       บรรทัดนี้ผูกแพ็คเกจไว้แล้ว ({row.productId}) — ชื่อไม่ขึ้นเพราะทะเบียนสินค้าโหลดไม่สำเร็จ
                     </span>
                   ) : null}
-                  {/* ⭐ ของเพิ่มสองอย่างของใบย้อนหลัง (มติ 23/09 · 25/09): ไซต์ · โซน (เลือกในบรรทัด) + รอบบริการที่ขายไว้ */}
+                  {/* ⭐ ของเพิ่มของใบย้อนหลัง (มติ 23/09 · 25/09 · PR-D): ไซต์ · โซน (เลือกในบรรทัด) · แพ็คต่อรอบ · รอบบริการที่ขายไว้ */}
                   <div className={styles.lineBind}>
                     <div className={styles.lineBindZone}>
                       <span className={styles.lineBindLabel}>ไซต์ · โซน <b className={styles.req}>*</b></span>
@@ -380,16 +418,27 @@ export default function WizardZonesStep({
                       {zone?.code ? <small className={styles.cellSub}>{zone.code}</small> : null}
                       {bad.zoneId ? <span className={styles.cellBad}>{bad.zoneId}</span> : null}
                     </div>
+                    <HistoricalLineServiceFields
+                      name={name}
+                      value={row.packsPerRound}
+                      view={service}
+                      error={bad.packsPerRound || null}
+                      disabled={busy}
+                      onChange={(value) => patchRow(row.key, { packsPerRound: value })}
+                    />
                     <div className={styles.lineBindRounds}>
                       <QuoteLineServiceRounds
                         value={row.rounds}
                         onChange={(value) => patchRow(row.key, { rounds: value })}
                         disabled={busy}
                         name={name}
-                        note="เว้นว่างได้ · TS ตั้งวันนัดเอง"
+                        required
+                        invalid={!!bad.rounds}
+                        note={HISTORICAL_SERVICE_TEXT.roundsNote}
                       />
                       {bad.rounds ? <span className={styles.cellBad}>{bad.rounds}</span> : null}
                     </div>
+                    <HistoricalLineServiceTotal view={service} />
                   </div>
                   {warn ? (
                     <span className={styles.cellSub}>
@@ -450,6 +499,20 @@ export default function WizardZonesStep({
         <span>ไม่เจอไซต์/โซนในช่อง “ไซต์ · โซน”? ทะเบียนไซต์เป็นของฝ่าย TS — แจ้ง TS เพิ่มก่อน แล้วกลับมาเลือก (ห้ามพิมพ์ชื่อจุดเอง)</span>
         <Link href="/database/sites" className="linklike">เปิดทะเบียนไซต์</Link>
       </p>
+      {assessState === "error" ? (
+        /* ⭐ PR-D (DD3): ผลประเมินอ่านไม่ขึ้น = เรื่องเสริมที่ไม่บล็อก ⇒ บรรทัดเทา + ปุ่มลองอ่านใหม่ (ไม่ใช่รีโหลดหน้า — N4) */
+        <p className={styles.assessNote}>
+          <span>{HISTORICAL_SERVICE_TEXT.assessFailed}{assessError && assessError !== HISTORICAL_SERVICE_TEXT.assessFailed ? ` · ${assessError}` : ""}</span>
+          <Button
+            size="sm" variant="quiet"
+            disabled={busy}
+            onClick={() => setAssessRound((round) => round + 1)}
+            icon={<RefreshCw size={14} aria-hidden="true" />}
+          >
+            {HISTORICAL_SERVICE_TEXT.assessRetry}
+          </Button>
+        </p>
+      ) : null}
 
       <HistoricalBulkZonesModal
         open={bulkOpen}
@@ -463,6 +526,8 @@ export default function WizardZonesStep({
         packageOptions={packageOptions}
         productsById={productsById}
         productsError={productsError}
+        assessedByZone={assessedByZone}
+        assessState={assessState}
         onAdd={(newRows, productId) => { addBulk(newRows, productId); setBulkOpen(false); }}
       />
     </>
