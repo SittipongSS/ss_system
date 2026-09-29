@@ -9,8 +9,8 @@
 // ⚠️ ไฟล์นี้ถูกเทสต์ใต้ node (serviceSetupUi.test.mjs) — ห้าม import คอมโพเนนต์/ของฝั่ง browser
 import { categoryOf } from '@/lib/master/categoryOf';
 import {
-  SERVICE_BACKFILL_RAIL_TEXT, SERVICE_KIND_NOT_SERVICE, SERVICE_KIND_PACKAGE, SERVICE_ROLE_UNSET, SERVICE_SETUP_EDIT_TEXT, SERVICE_SETUP_PANEL_TEXT,
-  periodSpan,
+  SERVICE_BACKFILL_RAIL_TEXT, SERVICE_KIND_NOT_SERVICE, SERVICE_KIND_PACKAGE, SERVICE_ROLE_UNSET, SERVICE_SETUP_EDIT_TEXT, SERVICE_SETUP_LINE_TEXT,
+  SERVICE_SETUP_PANEL_TEXT, periodSpan,
 } from '@/lib/sales/serviceSetup';
 import { NA, fmtDate, fmtDateTime, fmtNumber } from '@/lib/format';
 
@@ -299,7 +299,7 @@ export const periodReadout = (period) => periodSpan(period).label;
 
 /* ══ แผงแดงหลังกดยื่น (SubmitGateNotice) ══════════════════════════════════════════════════════════════ */
 
-/** "รายการ 3: ยังไม่ใส่ว่าไปกี่รอบ" → `{ head: 'รายการ 3', rest: ': ยังไม่ใส่ว่าไปกี่รอบ' }` (หัวตัวหนาตามม็อก) */
+/** "รายการ 3: ยังไม่ใส่จำนวนรอบบริการ" → `{ head: 'รายการ 3', rest: ': ยังไม่ใส่จำนวนรอบบริการ' }` (หัวตัวหนาตามม็อก) */
 export function issueHeadTail(message) {
   const value = String(message ?? '');
   const match = value.match(/^((?:รายการ|งวด) [^:]{1,80}?):\s/);
@@ -463,8 +463,8 @@ export function backfillBannerText(view) {
     const who = state.submittedByName ? ` โดย ${state.submittedByName}` : '';
     return `${SERVICE_SETUP_EDIT_TEXT.backfillSubmitted}${when}${who} · ${BANNER_UNCHANGED}`;
   }
-  /* มติ 29/09: ไปกี่รอบก่อน แล้วค่อยบอกว่าแต่ละครั้งกี่แพ็ค */
-  return `ตั้งแพ็คเกจ · ไปกี่รอบ · โซน · แต่ละครั้งกี่แพ็ค · ช่วงบริการ แล้วยื่นให้ผู้จัดการฝ่ายขายตรวจ · ${BANNER_UNCHANGED}`;
+  /* มติ 29/09: จำนวนรอบบริการก่อน แล้วค่อยบอกว่าแต่ละครั้งกี่แพ็ค (คำจากแคตตาล็อก `SERVICE_SETUP_LINE_TEXT`) */
+  return `ตั้งแพ็คเกจ · ${SERVICE_SETUP_LINE_TEXT.roundsLabel} · โซน · ${SERVICE_SETUP_LINE_TEXT.packsLabel} · ช่วงบริการ แล้วยื่นให้ผู้จัดการฝ่ายขายตรวจ · ${BANNER_UNCHANGED}`;
 }
 
 /** บรรทัดรองบนหัวการ์ด "รายการสินค้าและบริการ" ของใบสาย SERVICE (ที่มาของราคา · ขั้นของงานบริการ) */
@@ -486,7 +486,7 @@ export function linesCardMeta({ order, view, flow, editable, lineCount, totals }
 
 const LINE_SHORT = Object.freeze({
   kind_missing: 'ยังไม่เลือกชนิด', fg_missing: 'ยังไม่เลือกแพ็คเกจ', fg_invalid: 'แพ็คเกจใช้ไม่ได้แล้ว',
-  fg_foreign: 'แพ็คเกจของนิติบุคคลอื่น', rounds_missing: 'ยังไม่ใส่ว่าไปกี่รอบ',
+  fg_foreign: 'แพ็คเกจของนิติบุคคลอื่น', rounds_missing: SERVICE_SETUP_LINE_TEXT.noRounds,
 });
 const ZONE_SHORT = Object.freeze({
   zones_missing: 'ยังไม่เลือกโซน', packs_missing: 'ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค', zone_invalid: 'โซนใช้ไม่ได้', zones_on_not_service: 'มีโซนค้าง',
@@ -510,7 +510,7 @@ export function backfillRailChecks(view) {
   const unset = Number(view.totals?.unsetLines || 0);
   const packageLines = Number(view.totals?.packageLines || 0);
   const linesWith = (keys) => new Set(issues.filter((issue) => keys.has(issue?.key)).map((issue) => issue.lineId));
-  /* "รายการ 3: ยังไม่ใส่ว่าไปกี่รอบ · อีก 2 รายการ" — ข้อแรกของแถว + จำนวนบรรทัดที่เหลือ */
+  /* "รายการ 3: ยังไม่ใส่จำนวนรอบบริการ · อีก 2 รายการ" — ข้อแรกของแถว + จำนวนบรรทัดที่เหลือ */
   const shortSub = (keys, labels, badCount) => {
     const first = issues.find((issue) => keys.has(issue?.key));
     if (!first) return null;
@@ -535,7 +535,7 @@ export function backfillRailChecks(view) {
 
   return [
     {
-      key: 'lines', label: 'ชนิด · แพ็คเกจ · ไปกี่รอบ',
+      key: 'lines', label: `ชนิด · แพ็คเกจ · ${SERVICE_SETUP_LINE_TEXT.roundsLabel}`,
       value: `${fmtNumber(lines.length - lineBad.size)}/${fmtNumber(lines.length)} รายการ`,
       sub: shortSub(LINE_KEYS, LINE_SHORT, lineBad.size), ok: lineBad.size === 0,
     },

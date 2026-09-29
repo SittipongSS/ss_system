@@ -309,7 +309,7 @@ test('UAT 29/09 ข้อ 3 (มติเจ้าของ): การ์ดร
   assert.equal(count(aside, /\bbackfillRail\b/g), 2, 'วางสองที่ ขึ้นทีละที่');
 });
 
-/* ── มติ 29/09: คำเตือน "ไป n รอบ ในช่วงบริการ m เดือน" (ไม่บล็อก) ถึงทั้งผู้ยื่นและผู้อนุมัติ ───────────────────────────── */
+/* ── มติ 29/09: คำเตือน "จำนวนรอบบริการ n รอบ ในช่วงบริการ m เดือน" (ไม่บล็อก) ถึงทั้งผู้ยื่นและผู้อนุมัติ ───────────────────────────── */
 test('29/09 คำเตือนรอบน้อย: โมดัลยืนยันยื่น (คำเตือนของฝ่ายขาย) + โมดัลอนุมัติทั้งสองสาย (สิ่งที่ต้องตรวจก่อนกดจากก้อนสด)', () => {
   const line = (i, rounds) => ({
     id: `L${i}`, lineNo: i, fgCode: 'FG-364-02-001-1061', productId: `P${i}`, qty: 12, unit: 'เดือน', serviceRounds: rounds, metadata: {},
@@ -323,8 +323,8 @@ test('29/09 คำเตือนรอบน้อย: โมดัลยืน
   };
   const [warning] = serviceSetupWarnings(ctx);
   assert.equal(warning.owner, 'SA', 'ของฝ่ายขาย ⇒ saWarningLines ใส่ในโมดัลยืนยันยื่น');
-  assert.equal(warning.message, 'รายการ 1: ไป 1 รอบ ในช่วงบริการ 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็ยื่นได้)');
-  assert.ok(serviceSetupApprovalChecklist(ctx).includes('รายการ 1: ไป 1 รอบ ในช่วงบริการ 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็อนุมัติได้)'));
+  assert.equal(warning.message, 'รายการ 1: จำนวนรอบบริการ 1 รอบ ในช่วงบริการ 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็ยื่นได้)');
+  assert.ok(serviceSetupApprovalChecklist(ctx).includes('รายการ 1: จำนวนรอบบริการ 1 รอบ ในช่วงบริการ 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็อนุมัติได้)'));
   /* หน้าใบส่งต่อตรง ๆ — ไม่กรอง/ไม่เขียนคำเอง */
   assert.match(page, /\.filter\(\(w\) => w\?\.owner === "SA" && w\?\.message\)/);
   assert.match(slice(page, 'if (action === "approve") {', '\n      return;'), /checklist: service\?\.approvalChecklist \|\| \[\],/);

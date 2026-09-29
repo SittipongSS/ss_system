@@ -7,14 +7,14 @@
 //   · FG 02-001 — ชนิด/แพ็คเกจมาจากใบเสนอราคา (เส้นประ แก้ไม่ได้) เหลือโซน + รอบ
 //   · FG อื่น   — แถบจาง "ไม่ใช่งานบริการรายรอบ · หมวด … — ไม่ต้องตั้ง"
 // ⭐ ป้ายสถานะ "ตั้งครบ / ยังขาด n ข้อ / ยังไม่เลือกชนิด" **เป็นกลางก่อนกดยื่น** (กฎ 3) — แดงเมื่อแผงแดงชี้เข้าบรรทัดนี้แล้วเท่านั้น
-// ⭐ มติเจ้าของ 29/09 — **"ไปกี่รอบ" ก่อน แล้วค่อยบอกว่า "แต่ละครั้งกี่แพ็ค"** เป็นประโยคเดียวทั้งโหมดแก้และโหมดอ่าน:
-//     แพ็คเกจ FG-… → ไป 12 รอบ (ตลอดช่วงบริการ …) → แต่ละครั้ง: • ไซต์ · โซน — 2 แพ็ค → รวมทั้งรายการ 24 แพ็ค
-//   โหมดแก้: ช่อง "ไปกี่รอบ *" (+ ชิป ทุกเดือน ≈ n จากช่วงบริการ) → ตารางโซน "แต่ละครั้งกี่แพ็ค *" → "รวมทั้งรายการ n แพ็ค"
-//   (n = ไปกี่รอบ × Σ แพ็คของโซนในบรรทัด) + การเทียบจำนวนในใบ — คำทั้งหมดมาจาก `SERVICE_SETUP_LINE_TEXT` ของ serviceSetup.js
+// ⭐ มติเจ้าของ 29/09 — **"จำนวนรอบบริการ" ก่อน แล้วค่อยบอกว่า "แต่ละครั้งกี่แพ็ค"** เป็นประโยคเดียวทั้งโหมดแก้และโหมดอ่าน:
+//     แพ็คเกจ FG-… → จำนวนรอบบริการ 12 รอบ (ตลอดช่วงบริการ …) → แต่ละครั้ง: • ไซต์ · โซน — 2 แพ็ค → รวมทั้งรายการ 24 แพ็ค
+//   โหมดแก้: ช่อง "จำนวนรอบบริการ *" (+ ชิป ทุกเดือน ≈ n จากช่วงบริการ) → ตารางโซน "แต่ละครั้งกี่แพ็ค *" → "รวมทั้งรายการ n แพ็ค"
+//   (n = จำนวนรอบบริการ × Σ แพ็คของโซนในบรรทัด) + การเทียบจำนวนในใบ — คำทั้งหมดมาจาก `SERVICE_SETUP_LINE_TEXT` ของ serviceSetup.js
 //   ตัวเลขคิดจากบริบทบนจอ (ร่าง) — เปลี่ยนทันทีที่พิมพ์ ไม่ต้องรอบันทึก
-// ⭐ คำเตือนรอบน้อย (มติ 29/09 · ไม่บล็อก): ไปน้อยกว่าครึ่งหนึ่งของเดือนเต็มในช่วงบริการ ⇒ บรรทัดเทาใต้ "ไปกี่รอบ" ทั้งโหมดแก้
-//   และโหมดอ่าน (ใบอนุมัติแล้วด้วย — ไปกี่รอบยังแก้ได้ที่ดินสอ) · ท้ายคำตามขั้นของใบ (`roundsLowStage`)
-// ⭐ โหมดอ่าน (รออนุมัติ · อนุมัติแล้ว · ล็อกระหว่างรอตรวจ): ใบที่ประทับแล้วแก้ "ไปกี่รอบ" ได้ที่ดินสอ (≥ 1)
+// ⭐ คำเตือนรอบน้อย (มติ 29/09 · ไม่บล็อก): ไปน้อยกว่าครึ่งหนึ่งของเดือนเต็มในช่วงบริการ ⇒ บรรทัดเทาใต้ "จำนวนรอบบริการ" ทั้งโหมดแก้
+//   และโหมดอ่าน (ใบอนุมัติแล้วด้วย — จำนวนรอบบริการยังแก้ได้ที่ดินสอ) · ท้ายคำตามขั้นของใบ (`roundsLowStage`)
+// ⭐ โหมดอ่าน (รออนุมัติ · อนุมัติแล้ว · ล็อกระหว่างรอตรวจ): ใบที่ประทับแล้วแก้ "จำนวนรอบบริการ" ได้ที่ดินสอ (≥ 1)
 //   ผ่าน action เดิมของหน้า (`set_service_rounds`)
 import { useEffect, useMemo, useState } from "react";
 import { Package, Pencil, Repeat } from "lucide-react";
@@ -43,14 +43,14 @@ function StatusTag({ missing, pressed }) {
   return <Tag tone={pressed ? "danger" : "neutral"}>{missing.label}</Tag>;
 }
 
-/* คำเตือนรอบน้อย (มติ 29/09 · ไม่บล็อก) — บรรทัดเทาใต้ "ไปกี่รอบ" · ไม่ใช่ข้อผิด ⇒ ไม่แดงไม่ว่าก่อนหรือหลังกด
-   stage: 'submit' (โหมดแก้) · 'approved' (ประทับแล้ว — ไปกี่รอบยังแก้ได้ที่ดินสอ) · 'read' (รออนุมัติ/รอตรวจ) */
+/* คำเตือนรอบน้อย (มติ 29/09 · ไม่บล็อก) — บรรทัดเทาใต้ "จำนวนรอบบริการ" · ไม่ใช่ข้อผิด ⇒ ไม่แดงไม่ว่าก่อนหรือหลังกด
+   stage: 'submit' (โหมดแก้) · 'approved' (ประทับแล้ว — จำนวนรอบบริการยังแก้ได้ที่ดินสอ) · 'read' (รออนุมัติ/รอตรวจ) */
 function RoundsLowNote({ rounds, period, stage }) {
   const text = lineRoundsLowText(positiveIntOrNull(rounds), period, { stage });
   return text ? <span className={styles.roundsWarn} role="status">{text}</span> : null;
 }
 
-/* ช่อง "ไปกี่รอบ *" — มาก่อนตารางโซนเสมอ (มติ 29/09) · ท้ายช่องบอกช่วงบริการ (ยังไม่ใส่ = บอกว่ายังไม่ใส่)
+/* ช่อง "จำนวนรอบบริการ *" — มาก่อนตารางโซนเสมอ (มติ 29/09) · ท้ายช่องบอกช่วงบริการ (ยังไม่ใส่ = บอกว่ายังไม่ใส่)
    ชิปจำนวนรอบจากช่วงบริการ — แตะแล้วใส่ค่า (ไม่มีค่าตั้งต้นเงียบ ๆ) · ตัวที่เท่าค่าในช่องขึ้นเป็นตัวที่เลือก */
 function RoundsField({ line, period, error, onChange }) {
   const chips = roundChipsFromPeriod(period);
@@ -90,7 +90,7 @@ function RoundsField({ line, period, error, onChange }) {
   );
 }
 
-/* ท้ายบรรทัด: "รวมทั้งรายการ n แพ็ค" (= ไปกี่รอบ × Σ แต่ละครั้งกี่แพ็ค) + การเทียบจำนวนในใบ (ไม่บังคับให้เท่า) */
+/* ท้ายบรรทัด: "รวมทั้งรายการ n แพ็ค" (= จำนวนรอบบริการ × Σ แต่ละครั้งกี่แพ็ค) + การเทียบจำนวนในใบ (ไม่บังคับให้เท่า) */
 function LineTotal({ line, ctx }) {
   const ctxLine = ctxLineOf(line);
   const totals = lineSetupTotals(ctxLine, ctx);
@@ -103,7 +103,7 @@ function LineTotal({ line, ctx }) {
   );
 }
 
-/* ดินสอแก้ "ไปกี่รอบ" ของใบที่ประทับแล้ว — ≥ 1 (ล้างเป็นว่างไม่ได้ · trigger ของฐานตอบ rounds_required) */
+/* ดินสอแก้ "จำนวนรอบบริการ" ของใบที่ประทับแล้ว — ≥ 1 (ล้างเป็นว่างไม่ได้ · trigger ของฐานตอบ rounds_required) */
 function StampedRoundsEdit({ line, onRoundsSave }) {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState("");
@@ -113,7 +113,7 @@ function StampedRoundsEdit({ line, onRoundsSave }) {
     return (
       <Button
         iconOnly size="sm" variant="quiet" icon={<Pencil size={14} aria-hidden="true" />}
-        aria-label={`แก้ว่า${SERVICE_SETUP_LINE_TEXT.roundsLabel} รายการ ${line.lineNo}`}
+        aria-label={`แก้${SERVICE_SETUP_LINE_TEXT.roundsLabel} รายการ ${line.lineNo}`}
         onClick={() => { setValue(line.rounds); setError(""); setOpen(true); }}
       />
     );
@@ -153,7 +153,7 @@ function StampedRoundsEdit({ line, onRoundsSave }) {
  * @param zonesById / sitesById / registry / takenLines / liveTerms / zoneErrors / noSites — ส่งต่อให้ตารางโซน
  * @param highlightOf `(fieldId) => ข้อความ|null` — ช่องที่แดง (หลังกดเท่านั้น)
  * @param onLineChange `(patch, touchedFieldIds) => void` · @param onLineReplace `(draftLine, touchedFieldIds) => void`
- * @param onOpenBulk · @param canEditRounds / onRoundsSave ดินสอ "ไปกี่รอบ" ของใบที่ประทับแล้ว
+ * @param onOpenBulk · @param canEditRounds / onRoundsSave ดินสอ "จำนวนรอบบริการ" ของใบที่ประทับแล้ว
  * @param roundsLowStage ท้ายคำเตือนรอบน้อยในโหมดอ่าน — 'approved' (ประทับแล้ว) | 'read' (รออนุมัติ/รอตรวจ) · โหมดแก้ใช้ 'submit' เสมอ
  */
 export default function ServiceLineSetupBlock({
@@ -206,7 +206,7 @@ export default function ServiceLineSetupBlock({
         </div>
       );
     }
-    /* ประโยคเดียวกับโหมดแก้ (มติ 29/09): แพ็คเกจ → ไป n รอบ (ช่วง) [ดินสอ] → คำเตือนรอบน้อย → แต่ละครั้ง: … → รวมทั้งรายการ */
+    /* ประโยคเดียวกับโหมดแก้ (มติ 29/09): แพ็คเกจ → จำนวนรอบบริการ n รอบ (ช่วง) [ดินสอ] → คำเตือนรอบน้อย → แต่ละครั้ง: … → รวมทั้งรายการ */
     const fg = naText(line.fgCode || line.serviceFgCode);
     const rounds = positiveIntOrNull(line.rounds);
     const totals = lineSetupTotals(ctxLineOf(line), ctx);
@@ -308,7 +308,7 @@ export default function ServiceLineSetupBlock({
         <span className={styles.fieldError} role="alert" id={lineFieldId(line.lineId, "zones")} tabIndex={-1}>{zonesError}</span>
       ) : null}
 
-      {/* มติ 29/09: ไปกี่รอบ → แต่ละครั้ง (โซน · กี่แพ็ค) → รวมทั้งรายการ */}
+      {/* มติ 29/09: จำนวนรอบบริการ → แต่ละครั้ง (โซน · กี่แพ็ค) → รวมทั้งรายการ */}
       {roleIsPackage ? (
         <>
           <RoundsField

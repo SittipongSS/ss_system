@@ -19,8 +19,10 @@ import {
   ZONES_BULK_NONE_PICKED, ZONES_BULK_PACKS_INVALID, zonesBulkCapText, zonesBulkConsequence, zonesBulkPlan,
 } from '../../components/service/zonesBulkPlan.js';
 import {
-  SERVICE_BACKFILL_RAIL_TEXT, SERVICE_SETUP_LIMITS, SERVICE_SETUP_PANEL_TEXT, serviceSetupFieldId, serviceSetupIssues, serviceSetupTotals,
+  SERVICE_BACKFILL_RAIL_TEXT, SERVICE_SETUP_LIMITS, SERVICE_SETUP_LINE_TEXT, SERVICE_SETUP_PANEL_TEXT, serviceSetupFieldId, serviceSetupIssues,
+  serviceSetupTotals,
 } from './serviceSetup.js';
+import { salesOrderMoneyOutcome } from './salesOrderPayments.js';
 
 const SRC = path.resolve(process.cwd(), 'src');
 const read = (rel) => readFileSync(path.join(SRC, rel), 'utf8');
@@ -240,7 +242,7 @@ test('fieldErrorsView — 400 ของการบันทึก → ช่อ
 test('submitGateGroups — จัดตามแท็บ · "n ข้อ" นับเฉพาะข้อที่บล็อก · คำเตือนบัญชีไม่มี "ไปแก้"', () => {
   const groups = submitGateGroups(
     [
-      { key: 'rounds_missing', tab: 'overview', lineId: 'L3', message: 'รายการ 3: ยังไม่ใส่ว่าไปกี่รอบ' },
+      { key: 'rounds_missing', tab: 'overview', lineId: 'L3', message: 'รายการ 3: ยังไม่ใส่จำนวนรอบบริการ' },
       { key: 'due_missing', tab: 'payment', installmentId: 'I7', message: 'งวด 7: ยังไม่ใส่กำหนดชำระ' },
     ],
     [
@@ -259,10 +261,10 @@ test('submitGateGroups — จัดตามแท็บ · "n ข้อ" น�
 });
 
 test('issueHeadTail — หัวตัวหนาเฉพาะ "รายการ n …" / "งวด n …"', () => {
-  assert.deepEqual(issueHeadTail('รายการ 3: ยังไม่ใส่ว่าไปกี่รอบ'), { head: 'รายการ 3', rest: ': ยังไม่ใส่ว่าไปกี่รอบ' });
+  assert.deepEqual(issueHeadTail('รายการ 3: ยังไม่ใส่จำนวนรอบบริการ'), { head: 'รายการ 3', rest: ': ยังไม่ใส่จำนวนรอบบริการ' });
   assert.deepEqual(issueHeadTail('รายการ 5 · Floor 2: ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค'), { head: 'รายการ 5 · Floor 2', rest: ': ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค' });
-  assert.deepEqual(issueHeadTail('รายการ 1: ไป 1 รอบ ในช่วงบริการ 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็ยื่นได้)'),
-    { head: 'รายการ 1', rest: ': ไป 1 รอบ ในช่วงบริการ 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็ยื่นได้)' });
+  assert.deepEqual(issueHeadTail('รายการ 1: จำนวนรอบบริการ 1 รอบ ในช่วงบริการ 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็ยื่นได้)'),
+    { head: 'รายการ 1', rest: ': จำนวนรอบบริการ 1 รอบ ในช่วงบริการ 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็ยื่นได้)' });
   assert.deepEqual(issueHeadTail('ช่วงครอบขาด 01/04/2027–30/04/2027'), { head: '', rest: 'ช่วงครอบขาด 01/04/2027–30/04/2027' });
 });
 
@@ -514,7 +516,7 @@ test('backfill ลูกค้าเครดิต (SO-26090206-0 · AR-015): �
 test('F4/F14: ข้อบล็อกของบัญชี (FN) ไม่มี "ไปแก้" + ป้ายรอฝ่ายบัญชี · กลุ่มที่มีแต่คำเตือนนับเป็น "เตือน n ข้อ"', () => {
   const groups = submitGateGroups(
     [
-      { key: 'rounds_missing', tab: 'overview', lineId: 'L3', message: 'รายการ 3: ยังไม่ใส่ว่าไปกี่รอบ' },
+      { key: 'rounds_missing', tab: 'overview', lineId: 'L3', message: 'รายการ 3: ยังไม่ใส่จำนวนรอบบริการ' },
       { key: 'coverage_gap', tab: 'payment', owner: 'FN', tag: 'รอฝ่ายบัญชี', installmentId: 'I2', message: 'ช่วงครอบขาด … ที่บัญชีรับรองแล้ว — ฝ่ายบัญชีแก้ที่แผงงวด' },
     ],
     [],
@@ -522,7 +524,7 @@ test('F4/F14: ข้อบล็อกของบัญชี (FN) ไม่ม
   const fn = groups[1].items[0];
   assert.deepEqual([fn.kind, fn.tag, fn.jump], ['issue', 'รอฝ่ายบัญชี', false]);
   const warnOnly = submitGateGroups(
-    [{ key: 'rounds_missing', tab: 'overview', lineId: 'L3', message: 'รายการ 3: ยังไม่ใส่ว่าไปกี่รอบ' }],
+    [{ key: 'rounds_missing', tab: 'overview', lineId: 'L3', message: 'รายการ 3: ยังไม่ใส่จำนวนรอบบริการ' }],
     [{ key: 'fn_coverage_missing', tab: 'payment', owner: 'FN', tag: 'รอฝ่ายบัญชี', message: 'งวด 1 (บัญชีรับรองแล้ว): ยังไม่มีช่วงครอบ' }],
   );
   assert.deepEqual(warnOnly.map((g) => [g.key, g.count, g.warnCount]), [['overview', 1, 0], ['payment', 0, 1]]);
@@ -569,16 +571,16 @@ test('zonesBulkPlan — ติ๊กศูนย์/เกินเพดาน/
   assert.equal(zonesBulkPlan({ selectedIds: ['Z1'], zonesById, existingCount: 499, cap: 500 }).error, null, 'เต็มพอดี 500 ยังเพิ่มได้');
 });
 
-/* ══ มติเจ้าของ 29/09: "ไปกี่รอบ" ก่อน แล้วค่อยบอกว่า "แต่ละครั้งกี่แพ็ค" (ทั้งโหมดแก้และโหมดอ่าน) ═════════════════ */
+/* ══ มติเจ้าของ 29/09: "จำนวนรอบบริการ" ก่อน แล้วค่อยบอกว่า "แต่ละครั้งกี่แพ็ค" (ทั้งโหมดแก้และโหมดอ่าน) ═════════════════ */
 
-test('29/09 ไปกี่รอบก่อน: ไม่มีคำเก่า (แพ็คต่อรอบ · แพ็ค/รอบ · รอบ/โซน · รอบบริการ (ต่อโซน)) บนจองานบริการ', () => {
+test('29/09 จำนวนรอบบริการก่อน: ไม่มีคำเก่า (แพ็คต่อรอบ · แพ็ค/รอบ · รอบ/โซน · รอบบริการ (ต่อโซน)) บนจองานบริการ', () => {
   for (const rel of UI_FILES) {
     assert.doesNotMatch(code(rel), /แพ็คต่อรอบ|แพ็ค\/รอบ|รอบ\/โซน|รอบบริการ \(ต่อโซน\)|ต่อรอบ <b>/, rel);
   }
   assert.equal(ZONES_BULK_PACKS_INVALID, 'แต่ละครั้งกี่แพ็ค ต้องเป็นจำนวนเต็ม 1–9999');
 });
 
-test('29/09 ไปกี่รอบก่อน: โหมดแก้เรียง ไปกี่รอบ → แต่ละครั้ง (ตารางโซน) → รวมทั้งรายการ · ป้ายจากแคตตาล็อกเดียว', () => {
+test('29/09 จำนวนรอบบริการก่อน: โหมดแก้เรียง จำนวนรอบบริการ → แต่ละครั้ง (ตารางโซน) → รวมทั้งรายการ · ป้ายจากแคตตาล็อกเดียว', () => {
   const block = code(`${FOLDER}/ServiceLineSetupBlock.js`);
   const edit = block.slice(block.indexOf('const missing = lineMissing(line);'));
   const at = (needle) => {
@@ -586,13 +588,13 @@ test('29/09 ไปกี่รอบก่อน: โหมดแก้เรี
     assert.ok(index > 0, `โหมดแก้ขาด ${needle}`);
     return index;
   };
-  assert.ok(at('<RoundsField') < at('<ServiceZoneRows'), 'ไปกี่รอบมาก่อนตารางโซน');
+  assert.ok(at('<RoundsField') < at('<ServiceZoneRows'), 'จำนวนรอบบริการมาก่อนตารางโซน');
   assert.ok(at('<ServiceZoneRows') < at('<LineTotal'), 'รวมทั้งรายการอยู่ท้าย');
   assert.ok(at('SERVICE_SETUP_LINE_TEXT.eachTime') < at('<ServiceZoneRows'), 'ป้าย "แต่ละครั้ง" อยู่เหนือตารางโซน');
   const rounds = block.slice(block.indexOf('function RoundsField('), block.indexOf('function LineTotal('));
   assert.match(rounds, /\{SERVICE_SETUP_LINE_TEXT\.roundsLabel\}<span className=\{styles\.req\} aria-hidden="true">\*<\/span>/);
   assert.match(rounds, /\{lineRoundsSpan\(period\)\}/, 'บอกช่วงบริการข้างช่อง (ยังไม่ใส่ = บอกว่ายังไม่ใส่)');
-  assert.match(rounds, /roundChipsFromPeriod\(period\)/, 'ชิป ทุกเดือน ≈ n ยังอยู่กับช่องไปกี่รอบ');
+  assert.match(rounds, /roundChipsFromPeriod\(period\)/, 'ชิป ทุกเดือน ≈ n ยังอยู่กับช่องจำนวนรอบบริการ');
   const total = block.slice(block.indexOf('function LineTotal('), block.indexOf('function StampedRoundsEdit('));
   assert.match(total, /lineTotalText\(totals\)/);
   assert.match(total, /lineQtyCrossCheck\(ctxLine, totals\)/, 'ยังเทียบกับจำนวนในใบ');
@@ -602,7 +604,7 @@ test('29/09 ไปกี่รอบก่อน: โหมดแก้เรี
   assert.match(rows, /<span className=\{styles\.numUnit\}>\{SERVICE_SETUP_LINE_TEXT\.packUnit\}<\/span>/);
 });
 
-test('29/09 ไปกี่รอบก่อน: โหมดอ่านเป็นประโยคเดียว แพ็คเกจ → ไป n รอบ (ช่วง) → แต่ละครั้ง: • โซน — p แพ็ค → รวมทั้งรายการ', () => {
+test('29/09 จำนวนรอบบริการก่อน: โหมดอ่านเป็นประโยคเดียว แพ็คเกจ → จำนวนรอบบริการ n รอบ (ช่วง) → แต่ละครั้ง: • โซน — p แพ็ค → รวมทั้งรายการ', () => {
   const block = code(`${FOLDER}/ServiceLineSetupBlock.js`);
   const read = block.slice(block.indexOf('const fg = naText('), block.indexOf('const derivedHint'));
   const at = (needle) => {
@@ -613,7 +615,7 @@ test('29/09 ไปกี่รอบก่อน: โหมดอ่านเป
   assert.ok(at('แพ็คเกจ <b>{fg}</b>') < at('lineRoundsSentence(rounds, period)'));
   assert.ok(at('lineRoundsSentence(rounds, period)') < at('<ServiceZoneRows'));
   assert.ok(at('<ServiceZoneRows') < at('lineTotalText('));
-  assert.ok(at('lineRoundsSentence(rounds, period)') < at('<StampedRoundsEdit'), 'ดินสอแก้รอบอยู่บรรทัด "ไป n รอบ"');
+  assert.ok(at('lineRoundsSentence(rounds, period)') < at('<StampedRoundsEdit'), 'ดินสอแก้รอบอยู่บรรทัด "จำนวนรอบบริการ n รอบ"');
   const rows = code(`${FOLDER}/ServiceZoneRows.js`);
   const readRows = rows.slice(rows.indexOf('if (!editable) {'), rows.indexOf('const cap = SERVICE_SETUP_LIMITS.zonesPerLine;'));
   assert.match(readRows, /\{SERVICE_SETUP_LINE_TEXT\.eachTime\}:/);
@@ -636,17 +638,42 @@ test('29/09 คำเตือนรอบน้อย: เทาบนบรร
   assert.match(css, /\.roundsWarn \{[^}]*color: var\(--text-3\);/, 'เทา ไม่ใช่แดง/เหลือง');
 });
 
-test('29/09 การ์ดราง/ข้อสั้นพูดคำใหม่ — แถวบรรทัด "ไปกี่รอบ" · แถวโซน "แต่ละครั้งกี่แพ็ค"', () => {
+/* มติเจ้าของ 29/09 รอบสอง: "ไปกี่รอบ เปลี่ยน เป็น คำว่า จำนวนรอบบริการ" — ทุกผิวอ่านคำจากแคตตาล็อก ห้ามเหลือคำเก่าในโค้ด
+   (คอมเมนต์ที่เล่าที่มาไม่นับ) · `ไป ${…} รอบ` แบบเดิม = ประโยครอบที่ไม่ผ่านแคตตาล็อก ("ยกไป ${…}" ของคำอื่นไม่ใช่ — มีสระ/พยัญชนะนำ) */
+test('29/09 รอบสอง: ไม่มี "ไปกี่รอบ" / "ไป n รอบ" เหลือบนผิวงานบริการ — คำมาจาก SERVICE_SETUP_LINE_TEXT', () => {
+  const surfaces = [
+    ...UI_FILES,
+    'lib/sales/serviceSetup.js',
+    'lib/sales/salesOrderPayments.js',
+    'lib/service/legacySetupQueue.js',
+    'app/service/intake/page.js',
+    'app/sales-planning/sales-orders/page.js',
+    'app/sales-planning/sales-orders/[id]/page.js',
+    'app/api/sales-planning/sales-orders/route.js',
+  ];
+  for (const rel of surfaces) {
+    const src = code(rel);
+    assert.doesNotMatch(src, /ไปกี่รอบ/, rel);
+    assert.doesNotMatch(src, /(?<![฀-๿])ไป (?:\$\{[^}]*\}|\d+)(?:–(?:\$\{[^}]*\}|\d+))? รอบ/, rel);
+  }
+  assert.match(code('components/salesPlanning/serviceSetup/ServiceLineSetupBlock.js'),
+    /aria-label=\{`แก้\$\{SERVICE_SETUP_LINE_TEXT\.roundsLabel\} รายการ \$\{line\.lineNo\}`\}/, 'ดินสอ: "แก้จำนวนรอบบริการ รายการ n"');
+  /* salesOrderPayments.js import serviceSetup.js ไม่ได้ (วง) ⇒ เขียน literal เอง — ยึดให้ตรงกับแคตตาล็อก */
+  const revoke = salesOrderMoneyOutcome({ id: 'SO1', status: 'approved' }, [], 'revoke', { serviceRounds: true }).at(-1);
+  assert.ok(revoke.includes(`/${SERVICE_SETUP_LINE_TEXT.roundsLabel}/โซน/${SERVICE_SETUP_LINE_TEXT.packsLabel}/`), revoke);
+});
+
+test('29/09 การ์ดราง/ข้อสั้นพูดคำใหม่ — แถวบรรทัด "จำนวนรอบบริการ" · แถวโซน "แต่ละครั้งกี่แพ็ค"', () => {
   const view = viewFixture({
     flow: 'backfill',
     issues: [
-      { key: 'rounds_missing', lineId: 'L3', tab: 'overview', message: 'รายการ 3: ยังไม่ใส่ว่าไปกี่รอบ' },
+      { key: 'rounds_missing', lineId: 'L3', tab: 'overview', message: 'รายการ 3: ยังไม่ใส่จำนวนรอบบริการ' },
       { key: 'packs_missing', lineId: 'L2', zoneId: 'Z1', tab: 'overview', message: 'รายการ 2 · Floor 1: ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค' },
     ],
   });
   const rows = Object.fromEntries(backfillRailChecks(view).map((row) => [row.key, row]));
-  assert.equal(rows.lines.label, 'ชนิด · แพ็คเกจ · ไปกี่รอบ');
-  assert.equal(rows.lines.sub, 'รายการ 3: ยังไม่ใส่ว่าไปกี่รอบ');
+  assert.equal(rows.lines.label, 'ชนิด · แพ็คเกจ · จำนวนรอบบริการ');
+  assert.equal(rows.lines.sub, 'รายการ 3: ยังไม่ใส่จำนวนรอบบริการ');
   assert.equal(rows.zones.label, 'ไซต์ · โซน · แต่ละครั้งกี่แพ็ค');
   assert.equal(rows.zones.sub, 'รายการ 2: ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค');
 });
@@ -807,7 +834,7 @@ test('F14/F16: หัวกลุ่มที่มีแต่คำเตื�
 test('F12: แบนเนอร์ของใบที่ยื่นตรวจแล้วบอกว่ารอผู้จัดการ (ไม่ใช่สั่งให้ตั้งแล้วยื่นซ้ำ) · หัวการ์ดบอกวันยื่นตรวจ', () => {
   const view = (state, extra = {}) => viewFixture({ flow: 'backfill', state: { setupState: state, ...extra } });
   assert.equal(backfillBannerText(view(null)),
-    'ตั้งแพ็คเกจ · ไปกี่รอบ · โซน · แต่ละครั้งกี่แพ็ค · ช่วงบริการ แล้วยื่นให้ผู้จัดการฝ่ายขายตรวจ · ยอด/Actual/เอกสารไม่เปลี่ยน');
+    'ตั้งแพ็คเกจ · จำนวนรอบบริการ · โซน · แต่ละครั้งกี่แพ็ค · ช่วงบริการ แล้วยื่นให้ผู้จัดการฝ่ายขายตรวจ · ยอด/Actual/เอกสารไม่เปลี่ยน');
   assert.equal(backfillBannerText(view('submitted', { submittedAt: '2026-09-28T03:00:00Z', submittedByName: 'Lalida Chaiwanna' })),
     'ยื่นตรวจงานบริการแล้ว — รอผู้จัดการฝ่ายขายตรวจ (ตีกลับก่อนจึงแก้ได้) · ยื่นเมื่อ 28/09/2026 โดย Lalida Chaiwanna · ยอด/Actual/เอกสารไม่เปลี่ยน');
   const panel = code(`${FOLDER}/ServiceBackfillPanel.js`);

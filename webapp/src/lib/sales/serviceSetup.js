@@ -1,9 +1,10 @@
 // ── งานบริการรายบรรทัดของใบสั่งขาย: ตัวตัดสินล้วน (mig 0392 · PR-A · มติเจ้าของ 26–28/09) ─────────────
 //
 // ⭐ **ฝ่ายขายตั้งงานบริการที่ใบสั่งขายเอง** — ทุกบรรทัดของใบสาย SERVICE ต้องตอบว่า "เป็นแพ็คเกจบริการรายรอบไหม"
-//   แพ็คเกจต้องมี FG หมวด 02-001 · ไปกี่รอบ · โซน (หลายโซนได้ แต่ละโซนบอกว่า "แต่ละครั้งกี่แพ็ค") · และใบมีช่วงบริการหนึ่งช่วง
-//   ⭐ มติเจ้าของ 29/09: ทุกผิวเรียง **"ไปกี่รอบ" ก่อน แล้วค่อยบอกว่า "แต่ละครั้งกี่แพ็ค"** — คำอยู่ที่ `SERVICE_SETUP_LINE_TEXT`
+//   แพ็คเกจต้องมี FG หมวด 02-001 · จำนวนรอบบริการ · โซน (หลายโซนได้ แต่ละโซนบอกว่า "แต่ละครั้งกี่แพ็ค") · และใบมีช่วงบริการหนึ่งช่วง
+//   ⭐ มติเจ้าของ 29/09: ทุกผิวเรียง **"จำนวนรอบบริการ" ก่อน แล้วค่อยบอกว่า "แต่ละครั้งกี่แพ็ค"** — คำอยู่ที่ `SERVICE_SETUP_LINE_TEXT`
 //     (ค่าที่เก็บยังเป็น `serviceRounds` + `packsPerRound` เหมือนเดิม — เปลี่ยนแค่คำและลำดับบนจอ)
+//     · คำเรียกรอบเดิม "ไปกี่รอบ" → "จำนวนรอบบริการ" (มติเจ้าของ 29/09 รอบสอง) — คำนี้อยู่ที่ `ROUNDS_TERM` ที่เดียว
 //   ⇒ อนุมัติแล้วรอบขายของโซน (service_zone_terms) เกิดทันทีในทรานแซกชันเดียวกัน TS ไม่ต้องผูกโซนอีก
 //   ใบที่อนุมัติไปก่อนมีเรื่องนี้ = "ตั้งงานบริการย้อนหลัง" (ยื่นตรวจ → ผู้จัดการฝ่ายขายอนุมัติ · ไม่แตะยอด/Actual)
 //
@@ -40,12 +41,17 @@ export const SERVICE_ROLE_UNSET = 'unset';
    เขียน literal ซ้ำโดยตั้งใจ: ค่าคงที่ระดับบนสุดห้ามอ่านชื่อที่ import มา (กฎ 16) */
 const PACKAGE_CATEGORY = '02-001';
 
+/* คำเรียกจำนวนครั้งที่ไปของบรรทัดแพ็คเกจ (`serviceRounds`) — มติเจ้าของ 29/09: "ไปกี่รอบ" → "จำนวนรอบบริการ"
+   ที่เดียวของคำนี้ · แคตตาล็อกทุกตัวข้างล่าง (ข้อความ SQL · ข้อที่ยังขาด · คำเตือนรอบน้อย · ป้ายช่อง · ประโยครอบ) อ่านจากตัวนี้
+   literal ของไฟล์เอง ไม่ใช่ชื่อที่ import (กฎ 16) */
+const ROUNDS_TERM = 'จำนวนรอบบริการ';
+
 /* เพดานเดียวกับ CHECK/RPC ของ 0392 */
 export const SERVICE_SETUP_LIMITS = Object.freeze({ zonesPerLine: 500, packsMin: 1, packsMax: 9999, roundsMin: 1, roundsMax: 999 });
 
 /* ตัวเลือกชนิดบรรทัด (OptionTiles · ไม่มีค่าตั้งต้น) */
 export const SERVICE_KIND_OPTIONS = Object.freeze([
-  { value: 'package', label: 'แพ็คเกจบริการรายรอบ', description: 'เลือก FG หมวด 02-001 แล้วใส่ว่าไปกี่รอบ แต่ละครั้งไปโซนไหนกี่แพ็ค' },
+  { value: 'package', label: 'แพ็คเกจบริการรายรอบ', description: `เลือก FG หมวด 02-001 แล้วใส่${ROUNDS_TERM} แต่ละครั้งไปโซนไหนกี่แพ็ค` },
   { value: 'not_service', label: 'ไม่ใช่งานบริการรายรอบ', description: 'ค่าขนส่ง ค่าออกแบบ สินค้าส่งครั้งเดียว รายได้อื่นๆ — ไม่ส่งให้ TS' },
 ]);
 
@@ -71,12 +77,12 @@ export const SERVICE_SETUP_SQL_MESSAGES = Object.freeze({
   service_setup_kind_invalid: { message: 'ชนิดรายการไม่ถูกต้อง', status: 400 },
   service_setup_not_package: { message: 'รายการนี้ไม่ใช่แพ็คเกจบริการรายรอบ — เลือกชนิดเป็นแพ็คเกจก่อน แล้วจึงเลือก FG/รอบ/โซน', status: 400 },
   service_setup_product_invalid: { message: 'แพ็คเกจที่เลือกใช้ไม่ได้ — ต้องเป็น FG หมวด 02-001 ที่อนุมัติแล้วและยังใช้งาน', status: 400 },
-  service_setup_rounds_invalid: { message: 'ไปกี่รอบ ต้องเป็นจำนวนเต็ม 1–999', status: 400 },
+  service_setup_rounds_invalid: { message: `${ROUNDS_TERM} ต้องเป็นจำนวนเต็ม 1–999`, status: 400 },
   service_setup_zones_too_many: { message: 'เกิน 500 โซนต่อรายการ — แยกรายการที่ใบเสนอราคา', status: 400 },
   service_setup_zone_duplicate: { message: 'เลือกโซนเดียวกันซ้ำในรายการเดียว', status: 400 },
   service_setup_zone_invalid: { message: 'โซนที่เลือกใช้ไม่ได้ (ไม่พบ · ปิดใช้งาน · ไม่ใช่ไซต์ลูกค้าของใบนี้)', status: 400 },
   service_setup_packs_invalid: { message: 'แต่ละครั้งกี่แพ็ค ต้องเป็นจำนวนเต็ม 1–9999', status: 400 },
-  sales_order_service_setup_locked: { message: 'งานบริการของใบนี้ล็อกแล้ว — รออนุมัติ/อนุมัติแล้ว · แก้ด้วยการดึงกลับ หรือย้อนการอนุมัติแล้วออก Rev. (ไปกี่รอบยังแก้ได้หลังอนุมัติ)', status: 409 },
+  sales_order_service_setup_locked: { message: `งานบริการของใบนี้ล็อกแล้ว — รออนุมัติ/อนุมัติแล้ว · แก้ด้วยการดึงกลับ หรือย้อนการอนุมัติแล้วออก Rev. (${ROUNDS_TERM}ยังแก้ได้หลังอนุมัติ)`, status: 409 },
   sales_order_service_setup_incomplete: { message: 'งานบริการยังไม่ครบ — ตรวจรายการที่ขึ้นสีแดง', status: 409 },
   service_setup_review_forbidden: { message: 'อนุมัติ/ตีกลับงานบริการได้เฉพาะผู้จัดการฝ่ายขาย', status: 403 },
   service_setup_review_state_invalid: { message: 'งานบริการของใบนี้ไม่ได้รอตรวจ — โหลดหน้าใหม่', status: 409 },
@@ -99,9 +105,9 @@ export function serviceSetupSqlMessage(error) {
    · rounds/months/stage = คำเตือนรอบน้อย (`rounds_low` · มติ 29/09) */
 const dayText = (value) => (value ? fmtDate(value) : '—');
 /* ท้ายคำเตือนรอบน้อยตามขั้นของใบ — คนอ่านคนละคน: ผู้ยื่น (ร่าง · แผงแดง · โมดัลยืนยันยื่น) · ผู้อนุมัติ (โมดัลอนุมัติ)
-   · ใบอนุมัติแล้ว (ไปกี่รอบยังแก้ได้ที่ดินสอ — ไม่มีอะไรให้ "ยื่น" แล้ว) · โหมดอ่านอื่น (รออนุมัติ/รอตรวจ) = ไม่มีท้าย */
+   · ใบอนุมัติแล้ว (จำนวนรอบบริการยังแก้ได้ที่ดินสอ — ไม่มีอะไรให้ "ยื่น" แล้ว) · โหมดอ่านอื่น (รออนุมัติ/รอตรวจ) = ไม่มีท้าย */
 const ROUNDS_LOW_TAIL = Object.freeze({
-  submit: 'ถ้าตั้งใจก็ยื่นได้', approve: 'ถ้าตั้งใจก็อนุมัติได้', approved: 'ไปกี่รอบยังแก้ได้หลังอนุมัติ', read: '',
+  submit: 'ถ้าตั้งใจก็ยื่นได้', approve: 'ถ้าตั้งใจก็อนุมัติได้', approved: `${ROUNDS_TERM}ยังแก้ได้หลังอนุมัติ`, read: '',
 });
 export const SERVICE_SETUP_ISSUE_TEXT = Object.freeze({
   kind_missing: ({ n, label } = {}) => `รายการ ${n} · ${label}: ยังไม่เลือกว่าเป็น แพ็คเกจบริการรายรอบ หรือ ไม่ใช่งานบริการรายรอบ`,
@@ -112,7 +118,7 @@ export const SERVICE_SETUP_ISSUE_TEXT = Object.freeze({
   packs_missing: ({ n, zone } = {}) => `รายการ ${n} · ${zone || '—'}: ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค`,
   zone_invalid: ({ n, text } = {}) => `รายการ ${n}: ${text || 'โซนที่เลือกใช้ไม่ได้ (ไม่พบ · ปิดใช้งาน · ไม่ใช่ไซต์ลูกค้าของใบนี้)'}`,
   zones_on_not_service: ({ n } = {}) => `รายการ ${n}: ตั้งเป็นไม่ใช่งานบริการรายรอบแต่ยังมีโซนค้าง — บันทึกงานบริการใหม่`,
-  rounds_missing: ({ n } = {}) => `รายการ ${n}: ยังไม่ใส่ว่าไปกี่รอบ`,
+  rounds_missing: ({ n } = {}) => `รายการ ${n}: ${SERVICE_SETUP_LINE_TEXT.noRounds}`,
   period_missing: () => 'ยังไม่ใส่ช่วงบริการ (วันเริ่ม–วันสิ้นสุด)',
   installments_missing: () => 'ยังไม่มีงวดชำระ — กด ‘เริ่มติดตามการชำระ’ ที่แท็บการชำระ',
   /* สองข้อของวันงวดเรียง วันวางบิล → กำหนดชำระ (ลำดับคอลัมน์ · #1846) · วันวางบิลขึ้นเฉพาะลูกค้าเครดิต (D7/B3)
@@ -138,10 +144,11 @@ export const SERVICE_SETUP_ISSUE_TEXT = Object.freeze({
   coverage_overlap: ({ a, b, since, until } = {}) => `งวด ${a} กับ งวด ${b} ครอบซ้อน ${dayText(since)}–${dayText(until)}`,
   fn_coverage_missing: ({ seq } = {}) => `งวด ${seq} (บัญชีรับรองแล้ว): ยังไม่มีช่วงครอบ — ฝ่ายบัญชีกรอกที่แผงงวด`,
   /* คำเตือน (ไม่บล็อก · มติ 29/09): ไปน้อยกว่าครึ่งหนึ่งของจำนวนเดือนเต็มในช่วงบริการ (`roundsLowOf`) — เช่น 1 รอบในช่วง 12 เดือน
-     ไม่มี `n` = คำบนบรรทัดเอง (อยู่ใต้ช่องไปกี่รอบแล้ว) · มี `n` = แผงแดง/โมดัล */
+     ไม่มี `n` = คำบนบรรทัดเอง (อยู่ใต้ช่องจำนวนรอบบริการแล้ว) · มี `n` = แผงแดง/โมดัล
+     "จำนวนรอบบริการ 1 รอบ ในช่วงบริการ 12 เดือน — …" (ประโยครอบตัวเดียวกับบรรทัด · `SERVICE_SETUP_LINE_TEXT.roundsText`) */
   rounds_low: ({ n = null, rounds, months, stage = 'submit' } = {}) => {
     const tail = Object.prototype.hasOwnProperty.call(ROUNDS_LOW_TAIL, stage) ? ROUNDS_LOW_TAIL[stage] : ROUNDS_LOW_TAIL.submit;
-    const body = `ไป ${fmtNumber(rounds)} รอบ ในช่วงบริการ ${fmtNumber(months)} เดือน — ตรวจอีกครั้ง${tail ? ` (${tail})` : ''}`;
+    const body = `${SERVICE_SETUP_LINE_TEXT.roundsText(rounds)} ในช่วงบริการ ${fmtNumber(months)} เดือน — ตรวจอีกครั้ง${tail ? ` (${tail})` : ''}`;
     return n === null || n === undefined ? body : `รายการ ${n}: ${body}`;
   },
 });
@@ -182,21 +189,26 @@ export const SERVICE_BACKFILL_RAIL_TEXT = Object.freeze({
   periodWaitKind: (n) => `รอเลือกชนิด ${n} รายการ · ต้องใส่ถ้ามีแพ็คเกจ`,
 });
 
-/* ── คำของ "ไปกี่รอบ → แต่ละครั้งกี่แพ็ค" (มติเจ้าของ 29/09 · ภาคผนวก A.8) ─────────────────────────────────
+/* ── คำของ "จำนวนรอบบริการ → แต่ละครั้งกี่แพ็ค" (มติเจ้าของ 29/09 · ภาคผนวก A.8) ───────────────────────────
    เจ้าของ: "ตั้ง แพ็ค รอบ รายบรรทัด ยังเข้าใจยาก — เรียงว่าไปกี่รอบก่อน แล้วค่อยบอกว่าแต่ละครั้งกี่แพ็ค"
+   แล้วรอบสอง (29/09): "ไปกี่รอบ เปลี่ยน เป็น คำว่า จำนวนรอบบริการ" (`ROUNDS_TERM`)
    ⇒ ทุกผิวพูดเป็นประโยคเดียวกัน ทั้งโหมดแก้และโหมดอ่าน:
-       แพ็คเกจ FG-… → ไป 12 รอบ (ตลอดช่วงบริการ …) → แต่ละครั้ง: • ไซต์ · โซน — 2 แพ็ค → รวมทั้งรายการ 24 แพ็ค
-   ⚠️ ค่าที่เก็บไม่เปลี่ยน (`serviceRounds` = ไปกี่รอบ · `packsPerRound` = แต่ละครั้งกี่แพ็ค) — เปลี่ยนแค่คำและลำดับ
+       แพ็คเกจ FG-… → จำนวนรอบบริการ 12 รอบ (ตลอดช่วงบริการ …) → แต่ละครั้ง: • ไซต์ · โซน — 2 แพ็ค → รวมทั้งรายการ 24 แพ็ค
+   ⚠️ ค่าที่เก็บไม่เปลี่ยน (`serviceRounds` = จำนวนรอบบริการ · `packsPerRound` = แต่ละครั้งกี่แพ็ค) — เปลี่ยนแค่คำและลำดับ
    ⚠️ literal ล้วน (กฎ 16) — ตัวที่ต้องจัดรูปตัวเลขอ่าน `fmtNumber` ในฟังก์ชันเท่านั้น */
 export const SERVICE_SETUP_LINE_TEXT = Object.freeze({
-  roundsLabel: 'ไปกี่รอบ',
+  roundsLabel: ROUNDS_TERM,
   packsLabel: 'แต่ละครั้งกี่แพ็ค',
   eachTime: 'แต่ละครั้ง',
   roundUnit: 'รอบ',
   packUnit: 'แพ็ค',
-  noRounds: 'ยังไม่ใส่ว่าไปกี่รอบ',
+  noRounds: `ยังไม่ใส่${ROUNDS_TERM}`,
   noPacks: 'ยังไม่ใส่ว่ากี่แพ็ค',
   zonePacks: (packs) => `${fmtNumber(packs)} แพ็ค`,
+  /* "12 รอบ" · "8–12 รอบ" — ตัวเลขล้วน (ช่องหัวใบที่ป้ายบอกแล้วว่า "รอบบริการที่ขาย") */
+  roundsCount: (min, max = min) => `${min === max ? fmtNumber(min) : `${fmtNumber(min)}–${fmtNumber(max)}`} รอบ`,
+  /* "จำนวนรอบบริการ 12 รอบ" · "จำนวนรอบบริการ 8–12 รอบ" — ประโยครอบของทุกผิว (บรรทัด · ท้ายตาราง · แถบ · คิว · คำเตือน) */
+  roundsText: (min, max = min) => `${ROUNDS_TERM} ${SERVICE_SETUP_LINE_TEXT.roundsCount(min, max)}`,
 });
 
 /* ── ข้อความล็อกการแก้ (ภาคผนวก A.3) — ตัวเดียวกับที่ปุ่ม/ช่องบนจอบอกเหตุ และที่ API ตอบ 409 ─────────── */
@@ -205,7 +217,7 @@ export const SERVICE_SETUP_EDIT_TEXT = Object.freeze({
   notService: 'ใบนี้ไม่ใช่ใบสายบริการ — ไม่มีงานบริการให้ตั้ง',
   pending: 'รออนุมัติ — ดึงกลับก่อนแก้',
   revoked: 'ย้อนการอนุมัติแล้ว — ออก Rev. แล้วแก้ที่ใบ Rev.',
-  stamped: 'อนุมัติแล้ว — แพ็คเกจ/โซน/แต่ละครั้งกี่แพ็ค/ช่วงบริการล็อก · แก้ด้วยย้อนการอนุมัติแล้วออก Rev. (ไปกี่รอบยังแก้ได้)',
+  stamped: `อนุมัติแล้ว — แพ็คเกจ/โซน/แต่ละครั้งกี่แพ็ค/ช่วงบริการล็อก · แก้ด้วยย้อนการอนุมัติแล้วออก Rev. (${ROUNDS_TERM}ยังแก้ได้)`,
   backfillSubmitted: 'ยื่นตรวจงานบริการแล้ว — รอผู้จัดการฝ่ายขายตรวจ (ตีกลับก่อนจึงแก้ได้)',
   /* ยื่นตรวจแล้วแต่สายของโครงการ/ดีลเปลี่ยนเป็นอย่างอื่นระหว่างรอตรวจ — RPC อนุมัติปฏิเสธ (ไม่เปิดอะไรให้ TS) ⇒ บอกทางออก */
   reviewNotService: 'ใบนี้ไม่ใช่ใบสายบริการแล้ว (สายของโครงการ/ดีลเปลี่ยน) — อนุมัติงานบริการไม่ได้ · ตีกลับเพื่อล้างคำขอตรวจ',
@@ -442,7 +454,7 @@ const periodText = (period) => {
   return p ? `${fmtDate(p.from)}–${fmtDate(p.to)}` : '—';
 };
 
-/* ══ ประโยค "ไปกี่รอบ → แต่ละครั้งกี่แพ็ค" ของบรรทัด (มติ 29/09 · SERVICE_SETUP_LINE_TEXT) ═══════════════════════ */
+/* ══ ประโยค "จำนวนรอบบริการ → แต่ละครั้งกี่แพ็ค" ของบรรทัด (มติ 29/09 · SERVICE_SETUP_LINE_TEXT) ══════════════ */
 
 /** ท้ายประโยครอบ: "ตลอดช่วงบริการ dd/mm/yyyy–dd/mm/yyyy" · ยังไม่ใส่ (หรือใส่ครึ่งเดียว/กลับหัว) = "ยังไม่ใส่ช่วงบริการ" */
 export function lineRoundsSpan(period) {
@@ -450,14 +462,14 @@ export function lineRoundsSpan(period) {
   return p ? `ตลอดช่วงบริการ ${periodText(p)}` : 'ยังไม่ใส่ช่วงบริการ';
 }
 
-/** "ไป 12 รอบ (ตลอดช่วงบริการ …)" · "ไป 1 รอบ (ยังไม่ใส่ช่วงบริการ)" · ยังไม่มีรอบ = "ยังไม่ใส่ว่าไปกี่รอบ" */
+/** "จำนวนรอบบริการ 12 รอบ (ตลอดช่วงบริการ …)" · "จำนวนรอบบริการ 1 รอบ (ยังไม่ใส่ช่วงบริการ)" · ยังไม่มีรอบ = "ยังไม่ใส่จำนวนรอบบริการ" */
 export function lineRoundsSentence(rounds, period) {
   const n = Number(rounds);
   if (rounds === null || rounds === undefined || rounds === '' || !Number.isInteger(n) || n < 1) return SERVICE_SETUP_LINE_TEXT.noRounds;
-  return `ไป ${fmtNumber(n)} รอบ (${lineRoundsSpan(period)})`;
+  return `${SERVICE_SETUP_LINE_TEXT.roundsText(n)} (${lineRoundsSpan(period)})`;
 }
 
-/** "รวมทั้งรายการ 24 แพ็ค" (= ไปกี่รอบ × Σ แต่ละครั้งกี่แพ็คของโซนในบรรทัด · `lineSetupTotals().packsTotal`)
+/** "รวมทั้งรายการ 24 แพ็ค" (= จำนวนรอบบริการ × Σ แต่ละครั้งกี่แพ็คของโซนในบรรทัด · `lineSetupTotals().packsTotal`)
  *  ยังคิดไม่ได้ (ยังไม่มีรอบ · ยังไม่มีโซนที่ใส่แพ็ค) = "—" — ไม่ขึ้น "0 แพ็ค" ให้อ่านเหมือนตั้งไว้ศูนย์ (จอ 29/09) */
 export function lineTotalText(lineTotals) {
   const total = lineTotals?.packsTotal;
@@ -465,16 +477,14 @@ export function lineTotalText(lineTotals) {
   return `รวมทั้งรายการ ${blank ? '—' : fmtNumber(total)} แพ็ค`;
 }
 
-/** "ไป 12 รอบ" · หลายบรรทัดรอบไม่เท่ากัน "ไป 8–12 รอบ" · ยังไม่มีบรรทัดไหนใส่รอบ = null (ผู้เรียกเลือกคำเอง) */
+/** "จำนวนรอบบริการ 12 รอบ" · หลายบรรทัดรอบไม่เท่ากัน "จำนวนรอบบริการ 8–12 รอบ" · ยังไม่มีบรรทัดไหนใส่รอบ = null (ผู้เรียกเลือกคำเอง) */
 export function serviceRoundsText(totals) {
   if (totals?.roundsMin === null || totals?.roundsMin === undefined) return null;
-  return totals.roundsMixed
-    ? `ไป ${fmtNumber(totals.roundsMin)}–${fmtNumber(totals.roundsMax)} รอบ`
-    : `ไป ${fmtNumber(totals.roundsMin)} รอบ`;
+  return SERVICE_SETUP_LINE_TEXT.roundsText(totals.roundsMin, totals.roundsMixed ? totals.roundsMax : totals.roundsMin);
 }
 
 /**
- * ⭐ คำเตือนรอบน้อย (มติ 29/09 · **ไม่บล็อก**): ไปกี่รอบ < ครึ่งหนึ่งของจำนวน **เดือนเต็ม** ในช่วงบริการ → `{ rounds, months }` · ไม่เข้าเกณฑ์ = null
+ * ⭐ คำเตือนรอบน้อย (มติ 29/09 · **ไม่บล็อก**): จำนวนรอบบริการ < ครึ่งหนึ่งของจำนวน **เดือนเต็ม** ในช่วงบริการ → `{ rounds, months }` · ไม่เข้าเกณฑ์ = null
  *   เช่น 1 รอบในช่วง 12 เดือน (SO-26090247-0 ก่อนแก้ 29/09 — ฝ่ายขายใส่ 1 ทั้งที่จำนวนในใบ 12 เดือน) · ครึ่งพอดีไม่เตือน
  *   ไม่มีช่วงบริการ / ช่วงไม่ถึงเดือน / ยังไม่มีรอบ = ไม่เตือน (ข้อที่ยังขาดบอกเอง)
  * @param rounds จำนวนเต็ม (ข้อความที่พิมพ์ต้องแปลงก่อน — `positiveIntOrNull` ของจอ) · @param period `{ from, to }` ISO
@@ -600,7 +610,7 @@ export function serviceSetupTotals(ctx = {}) {
   return out;
 }
 
-/* "ไป r รอบ · แต่ละครั้ง z โซนใน s ไซต์ · ครั้งละ p แพ็ค · รวมทั้งใบ t แพ็ค" (มติ 29/09 — รอบก่อน แล้วค่อยแต่ละครั้ง)
+/* "จำนวนรอบบริการ r รอบ · แต่ละครั้ง z โซนใน s ไซต์ · ครั้งละ p แพ็ค · รวมทั้งใบ t แพ็ค" (มติ 29/09 — รอบก่อน แล้วค่อยแต่ละครั้ง)
    ส่วนเดียวกันทั้งท้ายตาราง · แถบผู้อนุมัติ · ผลของการอนุมัติ ⇒ สามผิวพูดตรงกัน · แยกด้วย " · " (แถบแยกเป็นชิปตามตัวนี้) */
 function roundsFirstParts(totals) {
   const t = totals || {};
@@ -612,14 +622,14 @@ function roundsFirstParts(totals) {
   ];
 }
 
-/** สรุปบรรทัดเดียว (ภาคผนวก A.4/A.8): "ไป y รอบ · แต่ละครั้ง x แพ็ค · รวมทั้งรายการ z แพ็ค" — ยังไม่มีรอบ = null */
+/** สรุปบรรทัดเดียว (ภาคผนวก A.4/A.8): "จำนวนรอบบริการ y รอบ · แต่ละครั้ง x แพ็ค · รวมทั้งรายการ z แพ็ค" — ยังไม่มีรอบ = null */
 export function lineDerivedText(lineTotals) {
   if (!lineTotals || lineTotals.rounds === null || lineTotals.rounds === undefined) return null;
-  return `ไป ${fmtNumber(lineTotals.rounds)} รอบ · ${SERVICE_SETUP_LINE_TEXT.eachTime} ${fmtNumber(lineTotals.packsPerRound)} แพ็ค`
+  return `${SERVICE_SETUP_LINE_TEXT.roundsText(lineTotals.rounds)} · ${SERVICE_SETUP_LINE_TEXT.eachTime} ${fmtNumber(lineTotals.packsPerRound)} แพ็ค`
     + ` · ${lineTotalText(lineTotals)}`;
 }
 
-/** ท้ายตาราง (ภาคผนวก A.4/A.8): "งานบริการทั้งใบ: k รายการแพ็คเกจ · ไป r รอบ · แต่ละครั้ง z โซนใน s ไซต์ · ครั้งละ p แพ็ค · รวมทั้งใบ t แพ็ค" */
+/** ท้ายตาราง (ภาคผนวก A.4/A.8): "งานบริการทั้งใบ: k รายการแพ็คเกจ · จำนวนรอบบริการ r รอบ · แต่ละครั้ง z โซนใน s ไซต์ · ครั้งละ p แพ็ค · รวมทั้งใบ t แพ็ค" */
 export function serviceSetupFooterText(totals) {
   const t = totals || {};
   return `งานบริการทั้งใบ: ${fmtNumber(t.packageLines || 0)} รายการแพ็คเกจ · ${roundsFirstParts(t).join(' · ')}`;
@@ -640,7 +650,7 @@ export function lineQtyCrossCheck(line, lineTotals) {
   if (unit.includes('เดือน')) return { tone: 'info', text: `จำนวนในใบ ${qty} เดือน = ระยะเวลา ไม่ได้นับเป็นแพ็ค` };
   if (!lineTotals?.zones) return { tone: 'none', text: `จำนวนในใบ ${qtyUnit} — ตรวจได้เมื่อเลือกโซนแล้ว` };
   if (lineTotals.packsTotal === null || lineTotals.packsTotal === undefined) {
-    return { tone: 'none', text: `จำนวนในใบ ${qtyUnit} — ตรวจได้เมื่อใส่ว่าไปกี่รอบและแต่ละครั้งกี่แพ็คแล้ว` };
+    return { tone: 'none', text: `จำนวนในใบ ${qtyUnit} — ตรวจได้เมื่อใส่${SERVICE_SETUP_LINE_TEXT.roundsLabel}และแต่ละครั้งกี่แพ็คแล้ว` };
   }
   if (Number.isFinite(qtyNumber) && qtyNumber === lineTotals.packsTotal) {
     return { tone: 'ok', text: `จำนวนในใบ ${qtyUnit} · ตรงกับทั้งรายการ ✓` };
@@ -1170,7 +1180,7 @@ export function serviceSetupApprovalEffects(ctx = {}, { flow = 'pipeline' } = {}
         : `ด่านเงินของบัญชีเริ่มใช้กับใบนี้: งวดที่ยังไม่รับรองต้องมีช่วงครอบก่อนรับรอง (ครบแล้ว ${money.unconfirmedCovered} งวด)`,
       fnLine,
       contractSigned(ctx) ? null : CONTRACT_WARNING,
-      'หลังอนุมัติล็อก — แก้ด้วยย้อนการอนุมัติใบแล้วออก Rev. (ไปกี่รอบยังแก้ได้)',
+      `หลังอนุมัติล็อก — แก้ด้วยย้อนการอนุมัติใบแล้วออก Rev. (${ROUNDS_TERM}ยังแก้ได้)`,
     ].filter(Boolean);
   }
 
@@ -1201,13 +1211,13 @@ export function serviceSetupApprovalEffects(ctx = {}, { flow = 'pipeline' } = {}
     renewals.size ? `${renewals.size} โซนมีรอบขายของ ${firstFew(renewalOrders)} ที่ยังมีผล (ต่ออายุ)` : null,
     moveLine,
     fnLine,
-    'หลังอนุมัติ แพ็คเกจ/โซน/แต่ละครั้งกี่แพ็ค/ช่วงบริการล็อก — แก้ด้วยย้อนการอนุมัติแล้วออก Rev. (ไปกี่รอบยังแก้ได้)',
+    `หลังอนุมัติ แพ็คเกจ/โซน/แต่ละครั้งกี่แพ็ค/ช่วงบริการล็อก — แก้ด้วยย้อนการอนุมัติแล้วออก Rev. (${ROUNDS_TERM}ยังแก้ได้)`,
   ].filter(Boolean);
 }
 
 /** สิ่งที่ผู้อนุมัติควรตรวจก่อนกด — ⭐ คำเตือนรอบน้อย (มติ 29/09) ต่อท้าย: ผู้อนุมัติเห็นก่อนกดทั้งใบ pipeline และงานบริการย้อนหลัง */
 export function serviceSetupApprovalChecklist(ctx = {}, { flow = 'pipeline' } = {}) {
-  const tableCheck = 'ตรวจแพ็คเกจ · ไปกี่รอบ · โซน · แต่ละครั้งกี่แพ็ค ในตารางรายการ';
+  const tableCheck = `ตรวจแพ็คเกจ · ${ROUNDS_TERM} · โซน · แต่ละครั้งกี่แพ็ค ในตารางรายการ`;
   const roundsLow = roundsLowLines(ctx).map(({ lineNo, rounds, months }) => SERVICE_SETUP_ISSUE_TEXT.rounds_low({
     n: lineNo, rounds, months, stage: 'approve',
   }));
@@ -1245,7 +1255,7 @@ export function serviceBackfillSubmitPrompt(ctx = {}) {
   };
 }
 
-/** แถบสรุปของผู้อนุมัติ: "งานบริการ: ไป r รอบ · แต่ละครั้ง z โซนใน s ไซต์ · ครั้งละ p แพ็ค · รวมทั้งใบ t แพ็ค · ช่วง … · สัญญา: …" */
+/** แถบสรุปของผู้อนุมัติ: "งานบริการ: จำนวนรอบบริการ r รอบ · แต่ละครั้ง z โซนใน s ไซต์ · ครั้งละ p แพ็ค · รวมทั้งใบ t แพ็ค · ช่วง … · สัญญา: …" */
 export function serviceSetupStripText(ctx = {}) {
   const totals = serviceSetupTotals(ctx);
   if (!totals.packageLines) return 'งานบริการ: ใบนี้ไม่มีแพ็คเกจบริการ';
@@ -1277,10 +1287,12 @@ export function serviceSetupHeroFact(ctx = {}, { flow = null } = {}) {
     const backfill = flow === 'backfill' || awaiting;
     return { label, value: 'ยังไม่ตั้ง', sub: backfill ? 'ตั้งที่ตารางรายการ แล้วยื่นตรวจ' : 'ตั้งที่ตารางรายการ แล้วยื่นอนุมัติ', tone: 'muted' };
   }
-  /* มติ 29/09: "ไป n รอบ" ก่อน แล้วค่อยบอกว่าแต่ละครั้งกี่โซน/กี่แพ็ค */
+  /* มติ 29/09: รอบก่อน แล้วค่อยบอกว่าแต่ละครั้งกี่โซน/กี่แพ็ค · ช่องนี้ป้ายบอกแล้วว่า "รอบบริการที่ขาย" ⇒ ค่าเป็นตัวเลขล้วน "12 รอบ"
+     (ไม่ซ้ำคำ "จำนวนรอบบริการ" ใต้ป้าย · รูปเดียวกับใบที่ไม่ต้องตั้งงานบริการ `${roundsSold} รอบ`) */
   return {
     label,
-    value: serviceRoundsText(totals) || '—',
+    value: totals.roundsMin === null || totals.roundsMin === undefined
+      ? '—' : SERVICE_SETUP_LINE_TEXT.roundsCount(totals.roundsMin, totals.roundsMax),
     sub: `${SERVICE_SETUP_LINE_TEXT.eachTime} ${fmtNumber(totals.zones)} โซน · ครั้งละ ${fmtNumber(totals.packsPerRound)} แพ็ค${awaiting ? ' · รอตรวจ' : ''}`,
     tone: null,
   };

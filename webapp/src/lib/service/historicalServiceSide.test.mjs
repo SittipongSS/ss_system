@@ -176,7 +176,9 @@ test('หน้างานเข้าใหม่: ป้าย "ย้อน�
 test('หน้างานเข้าใหม่: แท็บใบเดิมดูอย่างเดียว · ตัวกรองสถานะพร้อมตัวเลข · ค้นหาปิด autocomplete · ตาราง + การ์ดใช้เซลล์สถานะตัวเดียว', () => {
   const src = code('app/service/intake/page.js');
   assert.match(src, /const LEGACY_PANEL_TITLE = "รายการรอฝ่ายขายตั้งงานบริการ";/);
-  assert.match(src, /const LEGACY_PANEL_SUB = "ดูอย่างเดียว — แพ็คเกจ · ไปกี่รอบ · โซน · แต่ละครั้งกี่แพ็ค · ช่วงบริการ ฝ่ายขายตั้งที่หน้าใบสั่งขาย";/);
+  /* คำเรียกช่องมาจากแคตตาล็อกของหน้าใบสั่งขาย (มติ 29/09: จำนวนรอบบริการ · แต่ละครั้งกี่แพ็ค) */
+  assert.match(src, /const LEGACY_PANEL_SUB = `ดูอย่างเดียว — แพ็คเกจ · \$\{SERVICE_SETUP_LINE_TEXT\.roundsLabel\} · โซน · \$\{SERVICE_SETUP_LINE_TEXT\.packsLabel\} · ช่วงบริการ ฝ่ายขายตั้งที่หน้าใบสั่งขาย`;/);
+  assert.match(src, /import \{ SERVICE_SETUP_LINE_TEXT \} from "@\/lib\/sales\/serviceSetup";/);
   for (const head of ['ใบสั่งขาย · ลูกค้า', 'อนุมัติเมื่อ', 'ผู้ดูแลฝ่ายขาย', 'สถานะการตั้งงานบริการ', 'สัญญา']) {
     assert.ok(src.includes(`>${head}</th>`), head);
   }
