@@ -837,3 +837,27 @@ test('🔴 บันทึกการยืนยันใบที่อาจ
   assert.notDeepEqual(a.calls.rpc[0].args.p_header.intake.duplicateReview, b.calls.rpc[0].args.p_header.intake.duplicateReview);
 });
 
+
+/* ⭐ 0395 (มติ 26/09 "ปิดขาดใบซ้ำเลย"): RPC ตรวจใบซ้ำใต้ล็อกรายลูกค้า — อีกคำขอเพิ่งลงฐานใบที่ตรงกัน (แข่งกันบันทึก) = RPC โยนรหัส
+   ⇒ route อ่านใบย้อนหลังของลูกค้าใหม่แล้วตอบ 409 รูปเดียวกับด่านของ route (ฟอร์มรีเฟรชการ์ด ปิดสวิตช์ ให้ยืนยันใบใหม่) · ไม่มี audit */
+test('0395: RPC พบใบซ้ำที่เพิ่งลงฐาน (แข่งกัน) = 409 พร้อมรายการที่อ่านใหม่ — ทั้งสร้างและแก้ใบ · ไม่มี audit', async () => {
+  const orders = [{ id: 'SOR-OLD', orderNumber: 'SO-26090001-0', orderDate: '2026-01-01', status: 'approved' }];
+  const race = (list) => () => {
+    list.push({ id: 'SOR-RACE', orderNumber: 'SO-26090077-0', orderDate: '2026-01-01', status: 'draft' });
+    return { data: null, error: { message: 'historical_so_duplicate_unacknowledged', details: 'SOR-RACE' } };
+  };
+  const createOrders = [...orders];
+  const db = fakeDb({ orders: createOrders, rpc: [race(createOrders)] });
+  const res = await run(db, { acknowledgedDuplicateIds: ['SOR-OLD'] });
+  assert.equal(res.status, 409);
+  assert.equal(res.body.code, 'historical_so_duplicate_unacknowledged');
+  assert.deepEqual(res.body.duplicates.map((d) => d.id), ['SOR-OLD', 'SOR-RACE'], 'รายการใหม่มีใบที่อีกคำขอเพิ่งลงฐาน');
+  assert.deepEqual(res.audits, []);
+
+  const editOrders = [...orders];
+  const edit = fakeDb({ loaded: editRow(), deals: [containerDeal()], orders: editOrders, rpc: [race(editOrders)] });
+  const edited = await runEdit(edit, { acknowledgedDuplicateIds: ['SOR-OLD'] });
+  assert.equal(edited.status, 409);
+  assert.deepEqual(edited.body.duplicates.map((d) => d.id), ['SOR-OLD', 'SOR-RACE']);
+  assert.deepEqual(edited.audits, []);
+});
