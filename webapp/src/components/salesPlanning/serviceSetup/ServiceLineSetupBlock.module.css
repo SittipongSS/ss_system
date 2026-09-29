@@ -224,7 +224,7 @@
   font-size: var(--fs-3);
 }
 
-/* ช่องตัวเลข + หน่วย ("1 แพ็ค" · "12 รอบ ตลอดช่วงบริการ") อยู่ในก้อนเดียว */
+/* ช่องตัวเลข + หน่วย ("2 แพ็ค" · "12 รอบ") อยู่ในก้อนเดียว */
 .numField {
   display: flex;
   align-items: center;
@@ -304,14 +304,7 @@
   color: var(--red);
 }
 
-/* ── รอบบริการ + เส้นประผลรวม ──────────────────────────────────────────────────────── */
-.roundsRow {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: start;
-  gap: var(--space-3) var(--space-6);
-}
-
+/* ── "ไปกี่รอบ" (มาก่อนตารางโซน · มติ 29/09) + ท้ายบรรทัด "รวมทั้งรายการ n แพ็ค" ──────────────────── */
 .roundsControls {
   display: flex;
   flex-wrap: wrap;
@@ -319,13 +312,26 @@
   gap: var(--space-2) var(--space-3);
 }
 
-.derived {
+/* "(ตลอดช่วงบริการ dd/mm/yyyy–dd/mm/yyyy)" ข้างช่อง — ตัดบรรทัดได้ (จอแคบ) */
+.roundsSpan {
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+/* คำเตือนรอบน้อย (ไม่บล็อก) — เทาเสมอ ไม่ใช่ข้อผิด (แดงเป็นของหลังกดเท่านั้น · กฎ 3) */
+.roundsWarn {
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}
+
+.total {
   display: flex;
   min-width: 0;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-1-5);
-  padding-top: var(--space-5);
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1-5) var(--space-3);
 }
 
 .dchip {
@@ -339,14 +345,10 @@
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius);
   background: var(--panel-solid);
-  color: var(--text-2);
-  font-size: var(--fs-5);
-  font-variant-numeric: tabular-nums;
-}
-
-.dchip b {
   color: var(--text);
-  font-weight: var(--fw-bold);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
 }
 
 .xcheck {
@@ -359,7 +361,7 @@
 .xcheck[data-tone="warn"] { color: var(--amber); }
 .xcheck[data-tone="info"] { color: var(--text-2); }
 
-/* ── โหมดอ่าน (รออนุมัติ · อนุมัติแล้ว · ล็อกระหว่างรอตรวจ) ─────────────────────────────────── */
+/* ── โหมดอ่าน (รออนุมัติ · อนุมัติแล้ว · ล็อกระหว่างรอตรวจ) — แพ็คเกจ → ไป n รอบ → แต่ละครั้ง: • … → รวมทั้งรายการ ── */
 .readHead {
   display: flex;
   flex-wrap: wrap;
@@ -374,15 +376,36 @@
   font-weight: var(--fw-semibold);
 }
 
+.readRounds {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.readRoundsText {
+  color: var(--text);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+}
+
+/* "แต่ละครั้ง:" แล้วเป็นหัวข้อย่อย • ไซต์ · โซน — p แพ็ค (ภาพที่เจ้าของเลือก 29/09) */
 .readZones {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
   margin: 0;
-  padding: 0;
-  list-style: none;
+  padding: 0 0 0 var(--space-5);
+  list-style: disc;
   color: var(--text-2);
   font-size: var(--fs-5);
+}
+
+.readTotal {
+  color: var(--text);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
 }
 
 .roundsEdit {
@@ -437,12 +460,11 @@
 }
 
 @container (max-width: 640px) {
-  .grid2,
-  .roundsRow { grid-template-columns: minmax(0, 1fr); }
-  .derived { padding-top: 0; }
+  .grid2 { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* ตารางโซนแคบ: หัวคอลัมน์หาย · แถวละสองชั้น (ไซต์ · โซน เต็มแถว / แพ็คต่อรอบ + ผลประเมิน + ลบ) */
+/* ตารางโซนแคบ: หัวคอลัมน์หาย (ป้าย "แต่ละครั้ง" เหนือตารางยังบอกความหมาย) · แถวละสองชั้น
+   (ไซต์ · โซน เต็มแถว / แพ็ค + ผลประเมิน + ลบ) */
 @container (max-width: 560px) {
   .zoneHead { display: none; }
   .zoneRow { grid-template-columns: auto minmax(0, 1fr) auto; }

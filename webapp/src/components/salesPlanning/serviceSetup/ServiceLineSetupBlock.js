@@ -7,10 +7,15 @@
 //   · FG 02-001 — ชนิด/แพ็คเกจมาจากใบเสนอราคา (เส้นประ แก้ไม่ได้) เหลือโซน + รอบ
 //   · FG อื่น   — แถบจาง "ไม่ใช่งานบริการรายรอบ · หมวด … — ไม่ต้องตั้ง"
 // ⭐ ป้ายสถานะ "ตั้งครบ / ยังขาด n ข้อ / ยังไม่เลือกชนิด" **เป็นกลางก่อนกดยื่น** (กฎ 3) — แดงเมื่อแผงแดงชี้เข้าบรรทัดนี้แล้วเท่านั้น
-// ⭐ ตัวเลขใต้บรรทัด (ต่อรอบ x แพ็ค · y รอบ · ทั้งรายการ z แพ็ค) และการเทียบจำนวนในใบ มาจากตัวรวมของ serviceSetup.js
-//   ด้วยบริบทบนจอ (ร่าง) — เปลี่ยนทันทีที่พิมพ์ ไม่ต้องรอบันทึก
-// ⭐ โหมดอ่าน (รออนุมัติ · อนุมัติแล้ว · ล็อกระหว่างรอตรวจ): "แพ็คเกจ FG-… · 12 รอบ/โซน" + รายการโซน · ใบที่ประทับแล้ว
-//   แก้ "จำนวนรอบ" ได้ที่ดินสอ (≥ 1) ผ่าน action เดิมของหน้า (`set_service_rounds`)
+// ⭐ มติเจ้าของ 29/09 — **"ไปกี่รอบ" ก่อน แล้วค่อยบอกว่า "แต่ละครั้งกี่แพ็ค"** เป็นประโยคเดียวทั้งโหมดแก้และโหมดอ่าน:
+//     แพ็คเกจ FG-… → ไป 12 รอบ (ตลอดช่วงบริการ …) → แต่ละครั้ง: • ไซต์ · โซน — 2 แพ็ค → รวมทั้งรายการ 24 แพ็ค
+//   โหมดแก้: ช่อง "ไปกี่รอบ *" (+ ชิป ทุกเดือน ≈ n จากช่วงบริการ) → ตารางโซน "แต่ละครั้งกี่แพ็ค *" → "รวมทั้งรายการ n แพ็ค"
+//   (n = ไปกี่รอบ × Σ แพ็คของโซนในบรรทัด) + การเทียบจำนวนในใบ — คำทั้งหมดมาจาก `SERVICE_SETUP_LINE_TEXT` ของ serviceSetup.js
+//   ตัวเลขคิดจากบริบทบนจอ (ร่าง) — เปลี่ยนทันทีที่พิมพ์ ไม่ต้องรอบันทึก
+// ⭐ คำเตือนรอบน้อย (มติ 29/09 · ไม่บล็อก): ไปน้อยกว่าครึ่งหนึ่งของเดือนเต็มในช่วงบริการ ⇒ บรรทัดเทาใต้ "ไปกี่รอบ" ทั้งโหมดแก้
+//   และโหมดอ่าน (ใบอนุมัติแล้วด้วย — ไปกี่รอบยังแก้ได้ที่ดินสอ) · ท้ายคำตามขั้นของใบ (`roundsLowStage`)
+// ⭐ โหมดอ่าน (รออนุมัติ · อนุมัติแล้ว · ล็อกระหว่างรอตรวจ): ใบที่ประทับแล้วแก้ "ไปกี่รอบ" ได้ที่ดินสอ (≥ 1)
+//   ผ่าน action เดิมของหน้า (`set_service_rounds`)
 import { useEffect, useMemo, useState } from "react";
 import { Package, Pencil, Repeat } from "lucide-react";
 import Button from "@/components/ui/Button";
@@ -18,10 +23,10 @@ import ChoiceChips from "@/components/ui/ChoiceChips";
 import Input from "@/components/ui/Input";
 import OptionTiles from "@/components/ui/OptionTiles";
 import Tag from "@/components/ui/Tag";
-import { fmtNumber, naText } from "@/lib/format";
+import { naText } from "@/lib/format";
 import {
-  SERVICE_KIND_NOT_SERVICE, SERVICE_KIND_OPTIONS, SERVICE_KIND_PACKAGE, SERVICE_ROLE_UNSET,
-  lineQtyCrossCheck, lineSetupTotals, roundChipsFromPeriod,
+  SERVICE_KIND_NOT_SERVICE, SERVICE_KIND_OPTIONS, SERVICE_KIND_PACKAGE, SERVICE_ROLE_UNSET, SERVICE_SETUP_LINE_TEXT,
+  lineQtyCrossCheck, lineRoundsLowText, lineRoundsSentence, lineRoundsSpan, lineSetupTotals, lineTotalText, roundChipsFromPeriod,
 } from "@/lib/sales/serviceSetup";
 import { SERVICE_ROUNDS_EDIT_TEXT, normalizeServiceRounds } from "@/lib/sales/serviceRoundsEntry";
 import ServiceFgPicker from "./ServiceFgPicker";
@@ -38,14 +43,22 @@ function StatusTag({ missing, pressed }) {
   return <Tag tone={pressed ? "danger" : "neutral"}>{missing.label}</Tag>;
 }
 
-/* ชิปจำนวนรอบจากช่วงบริการ — แตะแล้วใส่ค่า (ไม่มีค่าตั้งต้นเงียบ ๆ) · ตัวที่เท่าค่าในช่องขึ้นเป็นตัวที่เลือก */
+/* คำเตือนรอบน้อย (มติ 29/09 · ไม่บล็อก) — บรรทัดเทาใต้ "ไปกี่รอบ" · ไม่ใช่ข้อผิด ⇒ ไม่แดงไม่ว่าก่อนหรือหลังกด
+   stage: 'submit' (โหมดแก้) · 'approved' (ประทับแล้ว — ไปกี่รอบยังแก้ได้ที่ดินสอ) · 'read' (รออนุมัติ/รอตรวจ) */
+function RoundsLowNote({ rounds, period, stage }) {
+  const text = lineRoundsLowText(positiveIntOrNull(rounds), period, { stage });
+  return text ? <span className={styles.roundsWarn} role="status">{text}</span> : null;
+}
+
+/* ช่อง "ไปกี่รอบ *" — มาก่อนตารางโซนเสมอ (มติ 29/09) · ท้ายช่องบอกช่วงบริการ (ยังไม่ใส่ = บอกว่ายังไม่ใส่)
+   ชิปจำนวนรอบจากช่วงบริการ — แตะแล้วใส่ค่า (ไม่มีค่าตั้งต้นเงียบ ๆ) · ตัวที่เท่าค่าในช่องขึ้นเป็นตัวที่เลือก */
 function RoundsField({ line, period, error, onChange }) {
   const chips = roundChipsFromPeriod(period);
   const current = positiveIntOrNull(line.rounds);
   const chipValue = chips.find((chip) => chip.rounds === current)?.key ?? null;
   return (
     <div className={styles.field}>
-      <span className={styles.label}>รอบบริการ (ต่อโซน)<span className={styles.req} aria-hidden="true">*</span></span>
+      <span className={styles.label}>{SERVICE_SETUP_LINE_TEXT.roundsLabel}<span className={styles.req} aria-hidden="true">*</span></span>
       <div className={styles.roundsControls}>
         <span className={styles.numField}>
           <Input
@@ -54,10 +67,11 @@ function RoundsField({ line, period, error, onChange }) {
             value={line.rounds}
             invalid={!!error}
             onChange={(event) => onChange(event.target.value)}
-            aria-label={`รอบบริการ รายการ ${line.lineNo}`}
+            aria-label={`${SERVICE_SETUP_LINE_TEXT.roundsLabel} รายการ ${line.lineNo}`}
           />
-          <span className={styles.numUnit}>รอบ ตลอดช่วงบริการ</span>
+          <span className={styles.numUnit}>{SERVICE_SETUP_LINE_TEXT.roundUnit}</span>
         </span>
+        <span className={styles.roundsSpan}>({lineRoundsSpan(period)})</span>
         {chips.length ? (
           <ChoiceChips
             value={chipValue}
@@ -70,27 +84,26 @@ function RoundsField({ line, period, error, onChange }) {
           />
         ) : null}
       </div>
+      <RoundsLowNote rounds={line.rounds} period={period} stage="submit" />
       {error ? <span className={styles.fieldError} role="alert">{error}</span> : null}
     </div>
   );
 }
 
-function Derived({ line, ctx }) {
+/* ท้ายบรรทัด: "รวมทั้งรายการ n แพ็ค" (= ไปกี่รอบ × Σ แต่ละครั้งกี่แพ็ค) + การเทียบจำนวนในใบ (ไม่บังคับให้เท่า) */
+function LineTotal({ line, ctx }) {
   const ctxLine = ctxLineOf(line);
   const totals = lineSetupTotals(ctxLine, ctx);
   const cross = lineQtyCrossCheck(ctxLine, totals);
-  const dash = (value) => (value === null || value === undefined || value === 0 ? "—" : fmtNumber(value));
   return (
-    <div className={styles.derived}>
-      <span className={styles.dchip}>
-        ต่อรอบ <b>{dash(totals.packsPerRound)}</b> แพ็ค · <b>{dash(totals.rounds)}</b> รอบ · ทั้งรายการ <b>{dash(totals.packsTotal)}</b> แพ็ค
-      </span>
+    <div className={styles.total}>
+      <span className={styles.dchip}>{lineTotalText(totals)}</span>
       {cross.text ? <span className={styles.xcheck} data-tone={cross.tone}>{cross.text}</span> : null}
     </div>
   );
 }
 
-/* ดินสอแก้ "จำนวนรอบ" ของใบที่ประทับแล้ว — ≥ 1 (ล้างเป็นว่างไม่ได้ · trigger ของฐานตอบ rounds_required) */
+/* ดินสอแก้ "ไปกี่รอบ" ของใบที่ประทับแล้ว — ≥ 1 (ล้างเป็นว่างไม่ได้ · trigger ของฐานตอบ rounds_required) */
 function StampedRoundsEdit({ line, onRoundsSave }) {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState("");
@@ -100,7 +113,7 @@ function StampedRoundsEdit({ line, onRoundsSave }) {
     return (
       <Button
         iconOnly size="sm" variant="quiet" icon={<Pencil size={14} aria-hidden="true" />}
-        aria-label={`แก้จำนวนรอบ รายการ ${line.lineNo}`}
+        aria-label={`แก้ว่า${SERVICE_SETUP_LINE_TEXT.roundsLabel} รายการ ${line.lineNo}`}
         onClick={() => { setValue(line.rounds); setError(""); setOpen(true); }}
       />
     );
@@ -123,9 +136,9 @@ function StampedRoundsEdit({ line, onRoundsSave }) {
           type="number" min="1" max="999" step="1" inputMode="numeric" autoComplete="off"
           value={value} invalid={!!error} disabled={busy}
           onChange={(event) => { setValue(event.target.value); setError(""); }}
-          aria-label={`จำนวนรอบ รายการ ${line.lineNo}`}
+          aria-label={`${SERVICE_SETUP_LINE_TEXT.roundsLabel} รายการ ${line.lineNo}`}
         />
-        <span className={styles.numUnit}>รอบ/โซน</span>
+        <span className={styles.numUnit}>{SERVICE_SETUP_LINE_TEXT.roundUnit}</span>
       </span>
       <Button size="sm" tone="primary" disabled={busy} onClick={save}>{busy ? "กำลังบันทึก…" : "บันทึกรอบ"}</Button>
       <Button size="sm" tone="neutral" disabled={busy} onClick={() => setOpen(false)}>ยกเลิก</Button>
@@ -140,13 +153,14 @@ function StampedRoundsEdit({ line, onRoundsSave }) {
  * @param zonesById / sitesById / registry / takenLines / liveTerms / zoneErrors / noSites — ส่งต่อให้ตารางโซน
  * @param highlightOf `(fieldId) => ข้อความ|null` — ช่องที่แดง (หลังกดเท่านั้น)
  * @param onLineChange `(patch, touchedFieldIds) => void` · @param onLineReplace `(draftLine, touchedFieldIds) => void`
- * @param onOpenBulk · @param canEditRounds / onRoundsSave ดินสอจำนวนรอบของใบที่ประทับแล้ว
+ * @param onOpenBulk · @param canEditRounds / onRoundsSave ดินสอ "ไปกี่รอบ" ของใบที่ประทับแล้ว
+ * @param roundsLowStage ท้ายคำเตือนรอบน้อยในโหมดอ่าน — 'approved' (ประทับแล้ว) | 'read' (รออนุมัติ/รอตรวจ) · โหมดแก้ใช้ 'submit' เสมอ
  */
 export default function ServiceLineSetupBlock({
   line, editable = false, period = null, ctx, fgOptions = [],
   zonesById, sitesById, registry, takenLines, liveTerms, zoneErrors, noSites = false,
   highlightOf = () => null, onLineChange, onLineReplace, onOpenBulk,
-  canEditRounds = false, onRoundsSave,
+  canEditRounds = false, onRoundsSave, roundsLowStage = "read",
 }) {
   const [showKinds, setShowKinds] = useState(false);
   const fieldIds = useMemo(() => lineFieldIds(line), [line]);
@@ -192,16 +206,23 @@ export default function ServiceLineSetupBlock({
         </div>
       );
     }
+    /* ประโยคเดียวกับโหมดแก้ (มติ 29/09): แพ็คเกจ → ไป n รอบ (ช่วง) [ดินสอ] → คำเตือนรอบน้อย → แต่ละครั้ง: … → รวมทั้งรายการ */
     const fg = naText(line.fgCode || line.serviceFgCode);
     const rounds = positiveIntOrNull(line.rounds);
+    const totals = lineSetupTotals(ctxLineOf(line), ctx);
     return (
       <div className={styles.block}>
         <div className={styles.readHead}>
           <Repeat size={15} aria-hidden="true" className={styles.headIcon} />
-          <span>แพ็คเกจ <b>{fg}</b> · <b>{rounds ? `${fmtNumber(rounds)} รอบ/โซน` : "ยังไม่ใส่รอบ"}</b></span>
+          <span>แพ็คเกจ <b>{fg}</b></span>
+        </div>
+        <div className={styles.readRounds}>
+          <span className={styles.readRoundsText}>{lineRoundsSentence(rounds, period)}</span>
           {canEditRounds ? <StampedRoundsEdit line={line} onRoundsSave={onRoundsSave} /> : null}
         </div>
+        <RoundsLowNote rounds={line.rounds} period={period} stage={roundsLowStage} />
         <ServiceZoneRows line={line} editable={false} zonesById={zonesById} sitesById={sitesById} registry={registry} />
+        <span className={styles.readTotal}>{lineTotalText(totals)}</span>
       </div>
     );
   }
@@ -287,31 +308,33 @@ export default function ServiceLineSetupBlock({
         <span className={styles.fieldError} role="alert" id={lineFieldId(line.lineId, "zones")} tabIndex={-1}>{zonesError}</span>
       ) : null}
 
+      {/* มติ 29/09: ไปกี่รอบ → แต่ละครั้ง (โซน · กี่แพ็ค) → รวมทั้งรายการ */}
       {roleIsPackage ? (
         <>
-          <ServiceZoneRows
+          <RoundsField
             line={line}
-            editable
-            zonesById={zonesById}
-            sitesById={sitesById}
-            registry={registry}
-            takenLines={takenLines}
-            liveTerms={liveTerms}
-            highlightOf={highlightOf}
-            zoneErrors={zoneErrors}
-            noSites={noSites}
-            onChange={(zones, touched) => onLineChange?.({ zones }, touched)}
-            onOpenBulk={onOpenBulk}
+            period={period}
+            error={highlightOf(lineFieldId(line.lineId, "rounds"))}
+            onChange={(rounds) => onLineChange?.({ rounds }, [lineFieldId(line.lineId, "rounds")])}
           />
-          <div className={styles.roundsRow}>
-            <RoundsField
+          <div className={styles.field}>
+            <span className={styles.label}>{SERVICE_SETUP_LINE_TEXT.eachTime}</span>
+            <ServiceZoneRows
               line={line}
-              period={period}
-              error={highlightOf(lineFieldId(line.lineId, "rounds"))}
-              onChange={(rounds) => onLineChange?.({ rounds }, [lineFieldId(line.lineId, "rounds")])}
+              editable
+              zonesById={zonesById}
+              sitesById={sitesById}
+              registry={registry}
+              takenLines={takenLines}
+              liveTerms={liveTerms}
+              highlightOf={highlightOf}
+              zoneErrors={zoneErrors}
+              noSites={noSites}
+              onChange={(zones, touched) => onLineChange?.({ zones }, touched)}
+              onOpenBulk={onOpenBulk}
             />
-            <Derived line={line} ctx={ctx} />
           </div>
+          <LineTotal line={line} ctx={ctx} />
         </>
       ) : null}
     </div>

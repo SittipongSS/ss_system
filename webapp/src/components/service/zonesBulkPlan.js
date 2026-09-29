@@ -1,6 +1,6 @@
 // ── ตัวคิดของหน้าต่าง "เพิ่มหลายโซน" (`ZonesBulkModal` · mig 0392 · PR-A) — ตรรกะล้วน ไม่มี JSX ─────────────────
 //
-// ⭐ ติ๊กโซนแล้วใส่ "แพ็คต่อรอบ" ครั้งเดียว — สองแบบ (มติ S5 ของ r2):
+// ⭐ ติ๊กโซนแล้วใส่ "แต่ละครั้งกี่แพ็ค" (ค่า packsPerRound) ทีเดียว — สองแบบ (มติ S5 ของ r2 · คำตามมติ 29/09):
 //   · 'assessed' ตามผลประเมินของแต่ละโซน (`assessedPackages` ของทะเบียน) — โซนที่ยังไม่เคยประเมิน = ว่าง ใส่ทีหลังในตาราง
 //   · 'equal'    เท่ากันทุกโซน (ตัวเลขเดียว 1–9999)
 // ⚠️ ข้อความตีกลับขึ้น **หลังกด** "เพิ่ม n โซน" เท่านั้น (กฎบ้าน: แดงหลังกด) — ตัวนี้แค่บอกว่ากดแล้วจะได้อะไร/ติดอะไร
@@ -9,7 +9,9 @@ import { naText } from '@/lib/format';
 
 export const ZONES_BULK_PACKS_MIN = 1;
 export const ZONES_BULK_PACKS_MAX = 9999;
-export const ZONES_BULK_PACKS_INVALID = 'แพ็คต่อรอบต้องเป็นจำนวนเต็ม 1–9999';
+/* คำเดียวกับ SERVICE_SETUP_LINE_TEXT.packsLabel ของใบสั่งขาย (มติ 29/09) — ตัวนี้ generic ของงานบริการ จึงเขียน literal เอง */
+export const ZONES_BULK_PACKS_LABEL = 'แต่ละครั้งกี่แพ็ค';
+export const ZONES_BULK_PACKS_INVALID = 'แต่ละครั้งกี่แพ็ค ต้องเป็นจำนวนเต็ม 1–9999';
 export const ZONES_BULK_NONE_PICKED = 'ยังไม่ได้เลือกโซน';
 export const zonesBulkCapText = (cap) => `เกิน ${cap} โซนต่อรายการ — แยกรายการที่ใบเสนอราคา`;
 
@@ -48,6 +50,6 @@ export function zonesBulkPlan({
 export function zonesBulkConsequence(plan, { lineNo = null, mode = 'assessed' } = {}) {
   const under = lineNo ? `ใต้รายการ ${lineNo}` : 'ใต้รายการนี้';
   const head = `จะเพิ่ม ${plan?.count ?? 0} โซน${under}`;
-  if (mode === 'equal') return `${head} · แพ็คต่อรอบเท่ากันทุกโซน ${naText(plan?.packs)} แพ็ค`;
-  return `${head} · แพ็คต่อรอบตามผลประเมิน ${plan?.assessed ?? 0} โซน · ยังว่าง ${plan?.blank ?? 0} โซน`;
+  if (mode === 'equal') return `${head} · แต่ละครั้งเท่ากันทุกโซน ครั้งละ ${naText(plan?.packs)} แพ็ค`;
+  return `${head} · ${ZONES_BULK_PACKS_LABEL}: ตามผลประเมิน ${plan?.assessed ?? 0} โซน · ยังว่าง ${plan?.blank ?? 0} โซน`;
 }

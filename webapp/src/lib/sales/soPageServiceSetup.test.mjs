@@ -10,6 +10,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { serviceSetupApprovalChecklist, serviceSetupWarnings } from './serviceSetup.js';
 
 const SRC = path.resolve(process.cwd(), 'src');
 const PAGE = 'app/sales-planning/sales-orders/[id]/page.js';
@@ -306,4 +307,27 @@ test('UAT 29/09 ข้อ 3 (มติเจ้าของ): การ์ดร
   assert.ok(top >= 0 && summary > top, 'ยังไม่ยื่นตรวจ = เหนือการ์ดยอดสุทธิ (ปุ่ม "ยื่นตรวจงานบริการ" อยู่ในกรอบรางที่ปักหมุดที่ 1440)');
   assert.ok(control > summary && bottom > control, 'ยื่นแล้ว/รอตรวจ = ใต้การ์ดจัดการเอกสาร (ที่เดิม)');
   assert.equal(count(aside, /\bbackfillRail\b/g), 2, 'วางสองที่ ขึ้นทีละที่');
+});
+
+/* ── มติ 29/09: คำเตือน "ไป n รอบ ในช่วงบริการ m เดือน" (ไม่บล็อก) ถึงทั้งผู้ยื่นและผู้อนุมัติ ───────────────────────────── */
+test('29/09 คำเตือนรอบน้อย: โมดัลยืนยันยื่น (คำเตือนของฝ่ายขาย) + โมดัลอนุมัติทั้งสองสาย (สิ่งที่ต้องตรวจก่อนกดจากก้อนสด)', () => {
+  const line = (i, rounds) => ({
+    id: `L${i}`, lineNo: i, fgCode: 'FG-364-02-001-1061', productId: `P${i}`, qty: 12, unit: 'เดือน', serviceRounds: rounds, metadata: {},
+  });
+  const ctx = {
+    order: { id: 'SO1', status: 'draft', origin: 'pipeline', servicePeriodFrom: '2026-10-22', servicePeriodTo: '2027-10-21', totalAmount: 0 },
+    lines: [line(1, 1), line(2, 12)],
+    allocations: [{ salesOrderLineId: 'L1', zoneId: 'Z1', packsPerRound: 2 }, { salesOrderLineId: 'L2', zoneId: 'Z1', packsPerRound: 2 }],
+    zonesById: new Map([['Z1', { id: 'Z1', siteId: 'S1', name: 'Office' }]]),
+    installments: [],
+  };
+  const [warning] = serviceSetupWarnings(ctx);
+  assert.equal(warning.owner, 'SA', 'ของฝ่ายขาย ⇒ saWarningLines ใส่ในโมดัลยืนยันยื่น');
+  assert.equal(warning.message, 'รายการ 1: ไป 1 รอบ ในช่วงบริการ 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็ยื่นได้)');
+  assert.ok(serviceSetupApprovalChecklist(ctx).includes('รายการ 1: ไป 1 รอบ ในช่วงบริการ 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็อนุมัติได้)'));
+  /* หน้าใบส่งต่อตรง ๆ — ไม่กรอง/ไม่เขียนคำเอง */
+  assert.match(page, /\.filter\(\(w\) => w\?\.owner === "SA" && w\?\.message\)/);
+  assert.match(slice(page, 'if (action === "approve") {', '\n      return;'), /checklist: service\?\.approvalChecklist \|\| \[\],/);
+  assert.match(slice(page, 'async function openBackfillApprove() {', '\n  }\n'), /checklist: fresh\.approvalChecklist,/);
+  assert.doesNotMatch(page, /ถ้าตั้งใจก็/, 'คำเตือนมาจาก serviceSetup.js ที่เดียว');
 });

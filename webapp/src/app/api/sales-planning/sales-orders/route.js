@@ -21,7 +21,7 @@ import { applyCreateFormPayments } from '@/lib/sales/salesOrderCreatePayments';
 import { missingStoredEvidence } from '@/lib/upload/privateEvidence';
 import { businessDate } from '@/lib/businessDate';
 import { orderBusinessLineOf, orderHasServiceRounds, serviceVisitsSold } from '@/lib/sales/serviceOrders';
-import { serviceBackfillAwaitingReview, serviceBackfillNeeded, serviceSetupTotals } from '@/lib/sales/serviceSetup';
+import { serviceBackfillAwaitingReview, serviceBackfillNeeded, serviceRoundsText, serviceSetupTotals } from '@/lib/sales/serviceSetup';
 import { paidThrough } from '@/lib/sales/paymentCoverage';
 
 export const dynamic = 'force-dynamic';
@@ -231,19 +231,16 @@ export const GET = withUser(async ({ user, supabase }) => {
     if (zoneError) return fail(zoneError.message, 500);
     for (const zone of zones || []) zonesById.set(zone.id, zone);
   }
-  /* แถวคิว "งานบริการ (ใบเดิม)" ของผู้จัดการ — ตัวเลขชุดเดียวกับแถบผู้อนุมัติ (serviceSetupTotals) */
+  /* แถวคิว "งานบริการ (ใบเดิม)" ของผู้จัดการ — ตัวเลขชุดเดียวกับแถบผู้อนุมัติ (serviceSetupTotals)
+     · "ไป n รอบ" คำเดียวกับหน้าใบ (`serviceRoundsText` · มติ 29/09 ไปกี่รอบก่อน) — ยังไม่มีรอบ = null (จอขึ้นขีดด้วย naText) */
   const serviceReviewOf = (row) => {
     const totals = serviceSetupTotals({
       lines: linesByOrder.get(row.id) || [], allocations: allocationsByOrder.get(row.id) || [], zonesById,
     });
-    let roundsLabel = '—';
-    if (totals.roundsMin !== null) {
-      roundsLabel = totals.roundsMixed ? `${totals.roundsMin}–${totals.roundsMax} รอบ/โซน` : `${totals.roundsMin} รอบ/โซน`;
-    }
     return {
       zones: totals.zones,
       sites: totals.sites,
-      roundsLabel,
+      roundsLabel: serviceRoundsText(totals),
       submittedByName: row.serviceSetupSubmittedByName || null,
       submittedAt: row.serviceSetupSubmittedAt || null,
     };
