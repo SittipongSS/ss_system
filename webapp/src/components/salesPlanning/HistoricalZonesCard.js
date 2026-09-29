@@ -15,6 +15,7 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import { TableScroll } from "@/components/ui/Table";
 import { fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
 import { historicalPacksCellText, historicalPacksRoundsText, historicalZoneState } from "@/lib/sales/historicalOrderCopy";
+import { SERVICE_ROUNDS_LABEL } from "@/lib/sales/serviceOrders";
 
 /**
  * @param order          ใบ (อ่าน `status` · `lines` เป็นตัวถอยเมื่อของเสริมไม่มา)
@@ -63,7 +64,7 @@ export default function HistoricalZonesCard({
               <th>รายการ</th>
               <th className="num">จำนวน</th>
               <th className="num">แพ็คต่อรอบ</th>
-              <th className="num">รอบบริการที่ขายไว้</th>
+              <th className="num">{SERVICE_ROUNDS_LABEL}</th>
               <th className="num">จำนวนเงิน</th>
               <th>สถานะรอบ</th>
             </tr></thead>

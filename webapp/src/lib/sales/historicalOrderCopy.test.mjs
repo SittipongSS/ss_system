@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  HISTORICAL_APPROVE_TOAST, HISTORICAL_SETUP_ISSUE_TEXT, historicalAfterSendRail, historicalApprovalFacts, historicalBillingDatesText,
+  HISTORICAL_APPROVE_TOAST, HISTORICAL_SETUP_ISSUE_TEXT, PACKS_ROUNDS_HEAD, historicalAfterSendRail, historicalApprovalFacts, historicalBillingDatesText,
   historicalCancelEffect,
   historicalCancelPrompt, historicalCancelToast, historicalCoverageSegments, historicalOpeningVoidSummary, historicalOpeningRejectNote, historicalOverrideNote, historicalRejectDetail,
   historicalPacksCellText, historicalPacksRoundsText, historicalServiceTotals, historicalSetupIncompleteMessage,
@@ -34,7 +34,7 @@ const ORDER = {
   ],
 };
 /* แถวโซนจาก loadHistoricalOrderExtras — พกบรรทัดแบบใบเสนอราคามาด้วย (จำนวนของบรรทัดไม่ใช่ "แพ็ค" · มติ 23/09)
-   + แพ็คต่อรอบของโซน (`packsPerRound` จาก sales_order_line_zones · มติ 26/09 A3/O9 · mig 0394) + รอบบริการที่ขายไว้ (`rounds`) */
+   + แพ็คต่อรอบของโซน (`packsPerRound` จาก sales_order_line_zones · มติ 26/09 A3/O9 · mig 0394) + จำนวนรอบบริการ (`rounds` · คำตามมติ 29/09) */
 const LINE_ZONES = [
   { zoneId: 'Z-1002-01', zoneCode: 'Z-1002-01', zoneName: 'ชั้น G ล็อบบี้', siteId: 'ST-1002', siteCode: 'ST-1002', siteName: 'สยามพารากอน', packsPerRound: 2 },
   { zoneId: 'Z-1002-02', zoneCode: 'Z-1002-02', zoneName: 'ชั้น M ทางเชื่อม BTS', siteId: 'ST-1002', siteCode: 'ST-1002', siteName: 'สยามพารากอน', packsPerRound: 1 },
@@ -44,7 +44,7 @@ const LINE_ZONES = [
   const { fgCode, qty, unit, unitPrice, discountAmount, lineTotal } = ORDER.lines[index];
   return { ...zone, fgCode, qty, unit, unitPrice, discountAmount, lineTotal, rounds: 12 };
 });
-const PACKS_ROW = 'แพ็คต่อรอบ · รอบ: รวม 6 แพ็ค/รอบ · 12 รอบ/โซน — ชั้น G ล็อบบี้ 2 แพ็ค/รอบ × 12 รอบ'
+const PACKS_ROW = 'แพ็คต่อรอบ · จำนวนรอบบริการ: รวม 6 แพ็ค/รอบ · 12 รอบ/โซน — ชั้น G ล็อบบี้ 2 แพ็ค/รอบ × 12 รอบ'
   + ' · ชั้น M ทางเชื่อม BTS 1 แพ็ค/รอบ × 12 รอบ · ห้องน้ำหญิง ชั้น 1 1 แพ็ค/รอบ × 12 รอบ · ทางเข้าหลัก 2 แพ็ค/รอบ × 12 รอบ';
 const PACKS_WARN = /^⚠️ แพ็คต่อรอบยังไม่ครบ/;
 /* คำที่ยอมให้มี "แพ็ค" (มติ 26/09 — IMPL_PLAN_D §0.2 ข้อ 14): แพ็คเกจ · แพ็คต่อรอบ · แพ็ค/รอบ เท่านั้นในไฟล์นี้ */
@@ -264,7 +264,7 @@ test('โมดัลอนุมัติ: ชุดม็อก — ตรว�
     'เอกสารแทนสัญญา ใบสั่งซื้อของลูกค้า (PO) PO-SPW-2026-0118 อนุมัติ ออกเลข CT แล้วผูกกับใบนี้ (มีผล 01/01/2026–31/12/2026)',
     'ส่งงวดยกมา ฿196,452.00 (ครอบบริการ 01/01/2026–30/09/2026) ให้บัญชีรับรอง',
     'งวดที่ยังต้องเก็บ 1 งวดขึ้นทะเบียนการชำระ — ฝ่ายขายแจ้งชำระเมื่อลูกค้าจ่าย',
-    '4 โซนใน 2 ไซต์ · รวม 6 แพ็ค/รอบ · ขายไว้ 12 รอบ/โซน ขึ้นคิว TS งานเข้าใหม่ › รอตั้งรอบ — นัดขึ้นตารางได้เมื่อบัญชีรับรองงวดยกมา',
+    '4 โซนใน 2 ไซต์ · รวม 6 แพ็ค/รอบ · จำนวนรอบบริการ 12 รอบ/โซน ขึ้นคิว TS งานเข้าใหม่ › รอตั้งรอบ — นัดขึ้นตารางได้เมื่อบัญชีรับรองงวดยกมา',
   ]);
   // ป้อนตัวสร้างโมดัลได้ตรง ๆ — ปกติและ override ใช้รายการตรวจชุดเดียวกัน
   const prompt = collect(historicalApprovalPrompt(facts));
@@ -295,43 +295,45 @@ test('🔴 โมดัลอนุมัติ: ของเสริมโห�
   assert.ok(fromZones.checklist.some((l) => l.startsWith('รายการ: FG-SNS-02-001-0012 72 แพ็คเกจ')));
   assert.ok(facts.checklist.some((l) => /ช่วงสัญญาโหลดไม่ขึ้น/.test(l)));
   /* แพ็คต่อรอบมากับของเสริม — โหลดไม่ขึ้น = บอกว่าโหลดไม่ขึ้น ไม่ใช่ ⚠️ "คีย์ก่อนมีช่อง" (ไม่รู้ ≠ ไม่มี) · ผลลัพธ์ถอยไปประโยคเดิม */
-  assert.equal(facts.checklist[facts.checklist.indexOf('โซน: 4 โซน') + 1], 'แพ็คต่อรอบ · รอบ: โหลดไม่ขึ้น — ระบบตรวจซ้ำตอนกดอนุมัติ');
+  assert.equal(facts.checklist[facts.checklist.indexOf('โซน: 4 โซน') + 1], 'แพ็คต่อรอบ · จำนวนรอบบริการ: โหลดไม่ขึ้น — ระบบตรวจซ้ำตอนกดอนุมัติ');
   assert.ok(!facts.checklist.some((l) => PACKS_WARN.test(l)));
   assert.equal(facts.effects.at(-1), '4 โซนขึ้นคิว TS งานเข้าใหม่ › รอตั้งรอบ — นัดขึ้นตารางได้เมื่อบัญชีรับรองงวดยกมา');
 });
 
-/* ⭐ PR-D (mig 0394/P3): รอบขายของโซนเปิดผ่านตัวกลาง — term.packageQty = แพ็คต่อรอบของโซน ⇒ โมดัลต้องพูดแพ็คต่อรอบ · รอบ
+/* ⭐ PR-D (mig 0394/P3): รอบขายของโซนเปิดผ่านตัวกลาง — term.packageQty = แพ็คต่อรอบของโซน ⇒ โมดัลต้องพูดแพ็คต่อรอบ · จำนวนรอบบริการ
    และบอกก่อนกดว่าใบที่ยังไม่มีแพ็คต่อรอบ (คีย์ก่อนมีช่อง) อนุมัติไม่ผ่าน */
-test('โมดัลอนุมัติ: แพ็คต่อรอบ · รอบ — รอบต่างกันเป็นช่วง · เกิน 5 โซนชี้การ์ดโซน · ขาดแพ็ค = ⚠️ + ประโยคผลลัพธ์เดิม', () => {
+test('โมดัลอนุมัติ: แพ็คต่อรอบ · จำนวนรอบบริการ — รอบต่างกันเป็นช่วง · เกิน 5 โซนชี้การ์ดโซน · ขาดแพ็ค = ⚠️ + ประโยคผลลัพธ์เดิม', () => {
+  /* ⭐ มติเจ้าของ 29/09: หัวแถว = "แพ็คต่อรอบ · จำนวนรอบบริการ" ค่าคงที่ตัวเดียวกับแถวของขั้น ④ (historicalReviewView) */
+  assert.equal(PACKS_ROUNDS_HEAD, 'แพ็คต่อรอบ · จำนวนรอบบริการ');
   const mixed = LINE_ZONES.map((zone, i) => ({ ...zone, rounds: [12, 12, 6, 12][i] }));
   const facts = collect(historicalApprovalFacts(ORDER, { ...EXTRAS, lineZones: mixed }));
-  assert.ok(facts.checklist.includes('แพ็คต่อรอบ · รอบ: รวม 6 แพ็ค/รอบ · 6–12 รอบ/โซน — ชั้น G ล็อบบี้ 2 แพ็ค/รอบ × 12 รอบ'
+  assert.ok(facts.checklist.includes('แพ็คต่อรอบ · จำนวนรอบบริการ: รวม 6 แพ็ค/รอบ · 6–12 รอบ/โซน — ชั้น G ล็อบบี้ 2 แพ็ค/รอบ × 12 รอบ'
     + ' · ชั้น M ทางเชื่อม BTS 1 แพ็ค/รอบ × 12 รอบ · ห้องน้ำหญิง ชั้น 1 1 แพ็ค/รอบ × 6 รอบ · ทางเข้าหลัก 2 แพ็ค/รอบ × 12 รอบ'),
   facts.checklist.join('\n'));
   assert.equal(facts.effects.at(-1),
-    '4 โซนใน 2 ไซต์ · รวม 6 แพ็ค/รอบ · ขายไว้ 6–12 รอบ/โซน ขึ้นคิว TS งานเข้าใหม่ › รอตั้งรอบ — นัดขึ้นตารางได้เมื่อบัญชีรับรองงวดยกมา');
+    '4 โซนใน 2 ไซต์ · รวม 6 แพ็ค/รอบ · จำนวนรอบบริการ 6–12 รอบ/โซน ขึ้นคิว TS งานเข้าใหม่ › รอตั้งรอบ — นัดขึ้นตารางได้เมื่อบัญชีรับรองงวดยกมา');
 
   const six = [...LINE_ZONES, ...LINE_ZONES.slice(0, 2).map((zone, i) => ({ ...zone, zoneId: `Z-X${i}`, zoneName: `โซนเสริม ${i + 1}` }))];
   const many = collect(historicalApprovalFacts(ORDER, { ...EXTRAS, lineZones: six }));
-  assert.ok(many.checklist.includes('แพ็คต่อรอบ · รอบ: รวม 9 แพ็ค/รอบ · 12 รอบ/โซน — ดูการ์ดโซนในหน้าใบ'), many.checklist.join('\n'));
+  assert.ok(many.checklist.includes('แพ็คต่อรอบ · จำนวนรอบบริการ: รวม 9 แพ็ค/รอบ · 12 รอบ/โซน — ดูการ์ดโซนในหน้าใบ'), many.checklist.join('\n'));
 
   /* ใบที่คีย์ก่อนมีช่อง (ไม่มีแถว sales_order_line_zones) — ของเสริมคืน packsPerRound: null */
   const blank = LINE_ZONES.map((zone, i) => ({ ...zone, packsPerRound: i === 1 ? null : zone.packsPerRound }));
   const missing = collect(historicalApprovalFacts(ORDER, { ...EXTRAS, lineZones: blank }));
-  const at = missing.checklist.findIndex((l) => l.startsWith('แพ็คต่อรอบ · รอบ:'));
-  assert.equal(missing.checklist[at], 'แพ็คต่อรอบ · รอบ: รวม 5 แพ็ค/รอบ (ยังไม่มีแพ็คต่อรอบ 1 โซน) · 12 รอบ/โซน — ชั้น G ล็อบบี้ 2 แพ็ค/รอบ × 12 รอบ'
+  const at = missing.checklist.findIndex((l) => l.startsWith('แพ็คต่อรอบ · จำนวนรอบบริการ:'));
+  assert.equal(missing.checklist[at], 'แพ็คต่อรอบ · จำนวนรอบบริการ: รวม 5 แพ็ค/รอบ (ยังไม่มีแพ็คต่อรอบ 1 โซน) · 12 รอบ/โซน — ชั้น G ล็อบบี้ 2 แพ็ค/รอบ × 12 รอบ'
     + ' · ชั้น M ทางเชื่อม BTS ยังไม่มีแพ็คต่อรอบ · 12 รอบ · ห้องน้ำหญิง ชั้น 1 1 แพ็ค/รอบ × 12 รอบ · ทางเข้าหลัก 2 แพ็ค/รอบ × 12 รอบ');
   assert.equal(missing.checklist[at + 1], '⚠️ แพ็คต่อรอบยังไม่ครบ 1 รายการ (ใบนี้คีย์ก่อนมีช่องแพ็คต่อรอบ) — ระบบจะไม่ยอมให้อนุมัติ ตีกลับให้ผู้คีย์บันทึกขั้น ② ใหม่');
   assert.equal(missing.effects.at(-1), '4 โซนขึ้นคิว TS งานเข้าใหม่ › รอตั้งรอบ — นัดขึ้นตารางได้เมื่อบัญชีรับรองงวดยกมา', 'แพ็คไม่ครบ = ประโยคเดิม');
   const none = collect(historicalApprovalFacts(ORDER, { ...EXTRAS, lineZones: LINE_ZONES.map((zone) => ({ ...zone, packsPerRound: null })) }));
-  assert.ok(none.checklist.includes('แพ็คต่อรอบ · รอบ: ยังไม่มีแพ็คต่อรอบ · 12 รอบ/โซน — ชั้น G ล็อบบี้ ยังไม่มีแพ็คต่อรอบ · 12 รอบ'
+  assert.ok(none.checklist.includes('แพ็คต่อรอบ · จำนวนรอบบริการ: ยังไม่มีแพ็คต่อรอบ · 12 รอบ/โซน — ชั้น G ล็อบบี้ ยังไม่มีแพ็คต่อรอบ · 12 รอบ'
     + ' · ชั้น M ทางเชื่อม BTS ยังไม่มีแพ็คต่อรอบ · 12 รอบ · ห้องน้ำหญิง ชั้น 1 ยังไม่มีแพ็คต่อรอบ · 12 รอบ · ทางเข้าหลัก ยังไม่มีแพ็คต่อรอบ · 12 รอบ'),
   none.checklist.join('\n'));
   assert.ok(none.checklist.some((l) => l.startsWith('⚠️ แพ็คต่อรอบยังไม่ครบ 4 รายการ')));
 
   /* ไม่มีแถวโซนของเสริม (แต่ไม่ได้โหลดพัง) = "ไม่พบ" แบบแถวอื่น ไม่เดาว่าคีย์ก่อนมีช่อง · ใบไม่มีโซนเลย = ไม่มีแถวนี้ (แถวโซนบอกแล้ว) */
   const bare = collect(historicalApprovalFacts(ORDER, { ...EXTRAS, lineZones: [] }));
-  assert.ok(bare.checklist.includes('แพ็คต่อรอบ · รอบ: ไม่พบ — ระบบตรวจซ้ำตอนกดอนุมัติ'));
+  assert.ok(bare.checklist.includes('แพ็คต่อรอบ · จำนวนรอบบริการ: ไม่พบ — ระบบตรวจซ้ำตอนกดอนุมัติ'));
   assert.ok(!bare.checklist.some((l) => PACKS_WARN.test(l)));
   const zoneless = collect(historicalApprovalFacts({ ...ORDER, lines: [] }, { ...EXTRAS, lineZones: [] }));
   assert.ok(!zoneless.checklist.some((l) => l.startsWith('แพ็คต่อรอบ')), zoneless.checklist.join('\n'));
@@ -358,7 +360,7 @@ test('วันวางบิล: "มีวันวางบิล k จา�
   assert.ok(plain.checklist.includes('งวดที่ยังต้องเก็บ: งวด ต.ค.–ธ.ค. 2026 ฿65,484.00 ครบกำหนด 01/10/2026'), 'ไม่มีวันวางบิล = บรรทัดเดิม');
 });
 
-/* ตัวสรุปกลางของแพ็คต่อรอบ · รอบ — อ่านได้ทั้งแถวโซนของเสริม (packsPerRound · rounds) และบรรทัดของแผน (packsPerRound · serviceRounds) */
+/* ตัวสรุปกลางของแพ็คต่อรอบ · จำนวนรอบบริการ — อ่านได้ทั้งแถวโซนของเสริม (packsPerRound · rounds) และบรรทัดของแผน (packsPerRound · serviceRounds) */
 test('historicalServiceTotals / historicalPacksRoundsText: แถวโซนของเสริม = บรรทัดของแผน · การ์ดโซนได้ meta · เซลล์ "n แพ็ค/รอบ"', () => {
   const fromExtras = historicalServiceTotals(LINE_ZONES);
   assert.deepEqual(fromExtras, {
@@ -403,7 +405,7 @@ test('ตัวกลางตีกลับการอนุมัติ: ท
   const one = (code) => historicalSetupIncompleteMessage([code], lines).slice(head.length, -tail.length);
   assert.equal(one('zones_missing:SOL-b'), 'รายการ 2: ยังไม่มีแพ็คต่อรอบ (ใบนี้คีย์ก่อนมีช่องแพ็คต่อรอบ)');
   assert.equal(one('packs_missing:SOL-a:ZN-1'), 'รายการ 1: ยังไม่ใส่แพ็คต่อรอบ');
-  assert.equal(one('rounds_missing:SOL-c'), 'รายการ 3: ยังไม่ใส่รอบบริการ');
+  assert.equal(one('rounds_missing:SOL-c'), 'รายการ 3: ยังไม่ใส่จำนวนรอบบริการ');
   assert.equal(one('zone_invalid:SOL-a:ZN-1'), 'รายการ 1: โซนถูกปิดใช้งานหรือไม่ใช่ไซต์ของลูกค้าแล้ว');
   assert.equal(one('historical_zone_mismatch:SOL-b'), 'รายการ 2: โซนของงานบริการไม่ตรงกับโซนของรายการ');
   assert.equal(one('kind_missing:SOL-c'), 'รายการ 3: งานบริการไม่ครบ (kind_missing)', 'รหัสอื่น = บอกรหัส ไม่หายเงียบ');
@@ -418,7 +420,7 @@ test('ตัวกลางตีกลับการอนุมัติ: ท
       + ` · งานบริการไม่ครบ (period_missing)${tail}`);
   const seven = Array.from({ length: 7 }, (_, i) => ({ id: `SOL-${i}`, sortOrder: i }));
   const capped = historicalSetupIncompleteMessage(seven.map((line) => `rounds_missing:${line.id}`), seven);
-  assert.equal(capped, `${head}${[1, 2, 3, 4, 5].map((n) => `รายการ ${n}: ยังไม่ใส่รอบบริการ`).join(' · ')} · และอีก 2 ข้อ${tail}`);
+  assert.equal(capped, `${head}${[1, 2, 3, 4, 5].map((n) => `รายการ ${n}: ยังไม่ใส่จำนวนรอบบริการ`).join(' · ')} · และอีก 2 ข้อ${tail}`);
   assert.equal(historicalSetupIncompleteMessage([], lines), `อนุมัติไม่ได้ — งานบริการของใบนี้ไม่ครบ${tail}`);
   assert.equal(historicalSetupIncompleteMessage(null, null), `อนุมัติไม่ได้ — งานบริการของใบนี้ไม่ครบ${tail}`);
   assert.doesNotMatch(capped, LOOSE_PACK);
@@ -496,7 +498,7 @@ test('โมดัลอนุมัติ: ตัวอย่างเจ้า
      "N แพ็ค" เปล่า ๆ (อ่านได้สองความหมาย · มติ 23/09) ยังห้าม */
   for (const facts of [owner, discounted, many]) {
     assert.ok(!facts.checklist.some((l) => LOOSE_PACK.test(l)), 'ไม่มีคำว่า "แพ็ค" ที่อ่านได้สองความหมายแล้ว');
-    assert.ok(facts.checklist.some((l) => l.startsWith('แพ็คต่อรอบ · รอบ:')), 'แถวแพ็คต่อรอบ · รอบ ขึ้นทุกใบที่มีโซน');
+    assert.ok(facts.checklist.some((l) => l.startsWith('แพ็คต่อรอบ · จำนวนรอบบริการ:')), 'แถวแพ็คต่อรอบ · จำนวนรอบบริการ ขึ้นทุกใบที่มีโซน');
   }
 });
 
@@ -694,6 +696,8 @@ test('ไฟล์ถ้อยคำ pure — ไม่อ่านนาฬิ�
   assert.deepEqual(imports, [
     '@/lib/format', '@/lib/sales/contracts', '@/lib/sales/historicalDuplicates', '@/lib/sales/historicalOrders',
     '@/lib/sales/paymentCoverage', '@/lib/sales/salesOrderPayments',
+    /* มติเจ้าของ 29/09: คำเรียกรอบ "จำนวนรอบบริการ" (SERVICE_ROUNDS_LABEL) มาจากตัวตัดสินงานบริการฝั่ง client ที่เดียว */
+    '@/lib/sales/serviceOrders',
   ]);
 });
 

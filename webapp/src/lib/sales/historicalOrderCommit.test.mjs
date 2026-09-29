@@ -282,7 +282,7 @@ test('PR-D: บรรทัดไม่มีแพ็คต่อรอบ/ร�
   const noPacks = body().zones.map(({ packsPerRound, ...zone }) => zone);
   const cases = [
     [{ zones: noPacks }, 'zones.0.packsPerRound', /ฟอร์มรุ่นก่อน.*แพ็คต่อรอบ/],
-    [{ zones: body().zones.map((zone, i) => (i ? zone : { ...zone, rounds: '' })) }, 'zones.0.rounds', /ยังไม่ใส่รอบบริการ/],
+    [{ zones: body().zones.map((zone, i) => (i ? zone : { ...zone, rounds: '' })) }, 'zones.0.rounds', /ยังไม่ใส่จำนวนรอบบริการ/],
     [{ installments: [{ ...body().installments[0], billingDate: '2026-02-30' }] }, 'installments.0.billingDate', /วันวางบิลไม่ถูกต้อง/],
   ];
   for (const [extra, field, pattern] of cases) {

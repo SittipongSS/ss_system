@@ -10,7 +10,7 @@ import { fmtDate, fmtMoney, fmtNumber } from '@/lib/format';
 import { externalDocKindLabel } from '@/lib/sales/contracts';
 import { HISTORICAL_APPROVER_LABEL, OPENING_INSTALLMENT_LABEL } from '@/lib/sales/historicalOrders';
 import {
-  historicalBillingDatesText, historicalContractFactText, historicalCoverageVerdictText, historicalOpeningFactText,
+  PACKS_ROUNDS_HEAD, historicalBillingDatesText, historicalContractFactText, historicalCoverageVerdictText, historicalOpeningFactText,
   historicalPacksRoundsText, historicalRemainingFactText, historicalZoneSitesText,
 } from '@/lib/sales/historicalOrderCopy';
 import {
@@ -114,13 +114,13 @@ export function historicalReviewChecklist(plan, { contractFiles = {}, evidenceFi
     key: 'zones', label: 'โซน', value: historicalZoneSitesText(plan.lines) || '—',
     warn: warnOf('liveTerm'), step: 'zones', field: 'zones',
   });
-  /* ⭐ PR-D (มติ 26/09 A3/O9 · mig 0394): แพ็คต่อรอบ · รอบ — ประโยคเดียวกับหน้าต่างอนุมัติ (historicalPacksRoundsText)
+  /* ⭐ PR-D (มติ 26/09 A3/O9 · mig 0394): แพ็คต่อรอบ · จำนวนรอบบริการ — หัว + ประโยคเดียวกับหน้าต่างอนุมัติ (PACKS_ROUNDS_HEAD · historicalPacksRoundsText)
      · ยังไม่ครบ = เหลือง ชี้ขั้น ② (แผนที่ผ่านด่านของฟอร์มครบเสมอ — แถวนี้กันแผนรุ่นเก่า/ข้อมูลเพี้ยน ไม่ให้ผ่านเงียบ)
      ⚠️ ช่อง = 'zones' (จุดยึดที่ขั้น ② วาดอยู่แล้ว — ยามจุดยึดของ historicalRegisterUi) ไม่ใช่ zones.<i>.packsPerRound */
   const packs = historicalPacksRoundsText(plan.lines);
   const packsMissing = packs.totals.packsMissing;
   rows.push({
-    key: 'packs', label: 'แพ็คต่อรอบ · รอบ',
+    key: 'packs', label: PACKS_ROUNDS_HEAD,
     value: !packs.totals.zoneCount ? '—'
       : packsMissing ? `ยังไม่ครบ ${fmtNumber(packsMissing)} รายการ — กลับไปขั้น ②` : packs.total || '—',
     sub: packs.perZone || (packs.overflow ? 'ดูรายการด้านล่าง' : null),

@@ -76,14 +76,14 @@ test('⭐ แถวตรวจ: ข้อเดียวกับหน้า�
   const rows = historicalReviewChecklist(plan(), {
     contractFiles: { count: 1, names: ['PO-7781.pdf'], pending: [] }, evidenceFileCount: 2, todayIso: '2026-09-25',
   });
-  /* ⭐ PR-D: แถว "แพ็คต่อรอบ · รอบ" ต่อจากโซน — ข้อเดียวกับหน้าต่างอนุมัติ (historicalPacksRoundsText) */
+  /* ⭐ PR-D: แถว "แพ็คต่อรอบ · จำนวนรอบบริการ" (มติ 29/09) ต่อจากโซน — ข้อเดียวกับหน้าต่างอนุมัติ (historicalPacksRoundsText) */
   assert.deepEqual(rows.map((r) => r.key), ['contract', 'signedFile', 'refs', 'zones', 'packs', 'opening', 'remaining', 'verdict']);
   assert.equal(rowOf(rows, 'contract').value, 'ใบสั่งซื้อของลูกค้า (PO) PO-7781 · 01/01/2026–31/12/2026 · 12 เดือน');
   assert.equal(rowOf(rows, 'signedFile').value, 'PO-7781.pdf');
   assert.equal(rowOf(rows, 'refs').value, 'QT-OLD-1 · IV-2601-0412');
   assert.equal(rowOf(rows, 'zones').value, '2 โซน — ST-01 อาคาร A 2 โซน');
   assert.deepEqual(rowOf(rows, 'packs'), {
-    key: 'packs', label: 'แพ็คต่อรอบ · รอบ', value: 'รวม 3 แพ็ค/รอบ · 12 รอบ/โซน',
+    key: 'packs', label: 'แพ็คต่อรอบ · จำนวนรอบบริการ', value: 'รวม 3 แพ็ค/รอบ · 12 รอบ/โซน',
     sub: 'Lobby 2 แพ็ค/รอบ × 12 รอบ · ทางเดิน 1 แพ็ค/รอบ × 12 รอบ', tone: null, step: 'zones', field: 'zones',
   });
   assert.equal(rowOf(rows, 'remaining').sub, null, 'ไม่มีวันวางบิลสักงวด = ไม่พูด');

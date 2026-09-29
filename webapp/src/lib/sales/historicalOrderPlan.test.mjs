@@ -475,7 +475,7 @@ test('v2 โซน: ต้องเป็นโซนของลูกค้า
   assert.deepEqual(planV2({}, { zones: embedded, sites: [] }).errors, []);
 });
 
-test('v2 แพ็คเกจ: สินค้านอกหมวด 02-001 = error (ไม่ใช่คำเตือน) · จำนวนเต็ม > 0 (ว่าง = ตีกลับ ไม่ใช่ 1) · รอบบริการที่ขายไว้', () => {
+test('v2 แพ็คเกจ: สินค้านอกหมวด 02-001 = error (ไม่ใช่คำเตือน) · จำนวนเต็ม > 0 (ว่าง = ตีกลับ ไม่ใช่ 1) · จำนวนรอบบริการ', () => {
   v2Has(planV2({ zones: zonesWith(0, { productId: 'P-OIL' }) }), 'zones.0.productId', /ไม่ใช่แพ็คเกจบริการ \(หมวด 02-001\)/);
   v2Has(planV2({ zones: zonesWith(0, { productId: '' }) }), 'zones.0.productId', /ต้องเลือกแพ็คเกจ/);
   v2Has(planV2({ zones: zonesWith(0, { productId: 'P-NONE' }) }), 'zones.0.productId', /ไม่พบแพ็คเกจ/);
@@ -488,13 +488,13 @@ test('v2 แพ็คเกจ: สินค้านอกหมวด 02-001 =
   const { qty: _qty, ...noQty } = v2Input().zones[0];
   v2Has(planV2({ zones: [noQty, ...v2Input().zones.slice(1)] }), 'zones.0.qty', /จำนวนต้องเป็นจำนวนเต็ม/);
   assert.deepEqual(planV2({ zones: zonesWith(0, { qty: '72' }) }).errors, [], 'สตริงตัวเลขจากช่องกรอกรับได้');
-  for (const rounds of [0, 2.5, 3e9]) v2Has(planV2({ zones: zonesWith(0, { rounds }) }), 'zones.0.rounds', /รอบบริการที่ขายไว้/);
+  for (const rounds of [0, 2.5, 3e9]) v2Has(planV2({ zones: zonesWith(0, { rounds }) }), 'zones.0.rounds', /จำนวนรอบบริการต้องเป็นจำนวนเต็ม/);
   assert.equal(SERVICE_PACKAGE_CATEGORY, SERVICE_ROUND_CATEGORY);
 });
 
 /* ⭐ PR-D (r2 S12 · mig 0394/P4): **รอบบริการบังคับ** — ของเดิม "เว้นว่างได้ · TS ตั้งวันนัดเอง" ถูกถอด
    (ตัวกลางเปิดรอบขายของ 0392 ต้องรู้จำนวนรอบของทุกโซน) · ว่าง = ข้อความของตัวเอง ไม่ใช่ "ต้องเป็นจำนวนเต็ม" */
-test('v2 PR-D รอบบริการบังคับ: ว่าง/null/ไม่มีคีย์ = "ยังไม่ใส่รอบบริการ" ที่ช่อง zones.<i>.rounds · ผิดรูปยังเป็นข้อความเดิม', () => {
+test('v2 PR-D รอบบริการบังคับ: ว่าง/null/ไม่มีคีย์ = "ยังไม่ใส่จำนวนรอบบริการ" ที่ช่อง zones.<i>.rounds · ผิดรูปคนละข้อความ', () => {
   for (const rounds of ['', '  ', null, undefined]) {
     const plan = planV2({ zones: zonesWith(0, { rounds }) });
     const hits = plan.errors.filter((e) => e.field === 'zones.0.rounds');
@@ -506,9 +506,10 @@ test('v2 PR-D รอบบริการบังคับ: ว่าง/null/�
     assert.equal(plan.lines[0].serviceRounds, null);
   }
   const { rounds: _rounds, ...noRounds } = v2Input().zones[0];
-  v2Has(planV2({ zones: [noRounds, ...v2Input().zones.slice(1)] }), 'zones.0.rounds', /ยังไม่ใส่รอบบริการ/);
-  assert.equal(HISTORICAL_LINE_MESSAGES.roundsMissing, 'ยังไม่ใส่รอบบริการ');
-  assert.equal(HISTORICAL_LINE_MESSAGES.rounds, 'รอบบริการที่ขายไว้ต้องเป็นจำนวนเต็มมากกว่า 0', 'ข้อความของค่าผิดรูปคงเดิม');
+  v2Has(planV2({ zones: [noRounds, ...v2Input().zones.slice(1)] }), 'zones.0.rounds', /ยังไม่ใส่จำนวนรอบบริการ/);
+  /* ⭐ มติเจ้าของ 29/09: คำเรียกรอบ = "จำนวนรอบบริการ" (SERVICE_ROUNDS_LABEL) ทั้งข้อความว่างและค่าผิดรูป */
+  assert.equal(HISTORICAL_LINE_MESSAGES.roundsMissing, 'ยังไม่ใส่จำนวนรอบบริการ');
+  assert.equal(HISTORICAL_LINE_MESSAGES.rounds, 'จำนวนรอบบริการต้องเป็นจำนวนเต็มมากกว่า 0');
   assert.equal(planV2({ zones: zonesWith(0, { rounds: '12' }) }).lines[0].serviceRounds, 12, 'สตริงตัวเลขจากช่องกรอกรับได้');
   /* รอบไม่ใช่เงิน — ยอดใบคิดได้ตามเดิมแม้รอบยังว่าง (ขั้น ③ ไม่ต้องรอช่องนี้) */
   assert.equal(planV2({ zones: zonesWith(0, { rounds: '' }) }).header.totalAmount, planV2().header.totalAmount);

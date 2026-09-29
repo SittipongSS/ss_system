@@ -46,6 +46,7 @@ import {
   HISTORICAL_SERVICE_LIMITS, HISTORICAL_VAT_RATES, historicalLinesMoney, historicalPacksValue, historicalRoundsValue, historicalZonePoint,
 } from '@/lib/sales/historicalOrderPlan';
 import { DEFAULT_SALE_UNIT } from '@/lib/master/units';
+import { SERVICE_ROUNDS_LABEL } from '@/lib/sales/serviceOrders';
 
 export {
   HISTORICAL_REF_MAX, INSTALLMENT_LABEL_MAX, INSTALLMENT_NOTE_MAX, HISTORICAL_VAT_RATES,
@@ -79,7 +80,7 @@ const nextKey = (prefix) => { seq += 1; return `${prefix}-${seq}`; };
 /**
  * แถวโซน = หนึ่งบรรทัดของใบ = **หนึ่งบรรทัดของใบเสนอราคา** (มติเจ้าของ 23/09)
  * ช่องเดียวกับตารางรายการของใบเสนอราคา: สินค้า (รหัส · คำอธิบาย · หน่วย · ราคา/หน่วยจากทะเบียน) ·
- * จำนวน · ส่วนลดรายการ — บวกของที่ใบย้อนหลังมีเพิ่มสองอย่างเท่านั้น: โซนที่ผูก และรอบบริการที่ขายไว้
+ * จำนวน · ส่วนลดรายการ — บวกของที่ใบย้อนหลังมีเพิ่มสองอย่างเท่านั้น: โซนที่ผูก และจำนวนรอบบริการ
  * ⭐ มติเจ้าของ 25/09: บรรทัดเกิดจากปุ่ม "เพิ่มรายการ" แบบใบเสนอราคา (ยังไม่มีโซน — เลือกในบรรทัด) หรือ
  *   "เพิ่มหลายโซน" · **`key` คือตัวตนของแถว** ไม่ใช่ `zoneId` (แถวใหม่ยังไม่มีโซน และเปลี่ยนโซนในบรรทัดได้)
  * ⚠️ จำนวนเริ่มที่ **ว่าง** (ใบเสนอราคาเริ่มที่ 1) — จำนวนที่เดาให้คือบั๊กที่มติ 23/09 แก้ · ว่าง = แผนตีกลับ
@@ -1513,11 +1514,12 @@ export function historicalLinesSummary(zones = []) {
   return `${fmtNumber(rows.length)} บรรทัด · ${fmtNumber(bound)} โซน`;
 }
 
-/* ── ขั้น ② งานบริการของบรรทัด: แพ็คต่อรอบ + รอบบริการ (PR-D · mig 0394 · r2 S12 · IMPL_PLAN_D §3.1–§3.2) ──────────
+/* ── ขั้น ② งานบริการของบรรทัด: แพ็คต่อรอบ + จำนวนรอบบริการ (PR-D · mig 0394 · r2 S12 · IMPL_PLAN_D §3.1–§3.2) ──────────
    ⭐ **ที่เดียวของคำว่า "แพ็ค" ในฟอร์มใบย้อนหลัง** (§0.2 ข้อ 14 — มติ 23/09 "จำนวนของบรรทัดไม่ใช่แพ็ค" ยังจริง ·
      มติ 26/09 A3/O9 นำ "แพ็คต่อรอบ" กลับมาเป็นช่องของตัวเอง) ⇒ component ไม่สะกดคำนี้เอง อ่านจากก้อนนี้เท่านั้น
      รูปที่อนุญาต: "แพ็คต่อรอบ" · "แพ็ค/รอบ" · "ประเมินไว้ n แพ็ค" · "ทั้งรายการ n แพ็ค" (+ หน่วยท้ายช่อง "แพ็ค")
-   ⚠️ `bulk` = คำของหน้าต่าง "เพิ่มหลายโซน" ของใบย้อนหลัง (ตัวห่อของ components/service/ZonesBulkModal — D27) */
+   ⚠️ `bulk` = คำของหน้าต่าง "เพิ่มหลายโซน" ของใบย้อนหลัง (ตัวห่อของ components/service/ZonesBulkModal — D27)
+   ⭐ คำเรียกรอบ = `SERVICE_ROUNDS_LABEL` "จำนวนรอบบริการ" (serviceOrders.js · มติเจ้าของ 29/09) */
 export const HISTORICAL_SERVICE_TEXT = Object.freeze({
   packsLabel: 'แพ็คต่อรอบ',
   packsUnit: 'แพ็ค',
@@ -1531,14 +1533,15 @@ export const HISTORICAL_SERVICE_TEXT = Object.freeze({
   assessRetry: 'ลองอ่านผลประเมินอีกครั้ง',
   bulk: Object.freeze({
     title: 'เพิ่มหลายโซน',
-    subtitle: 'ติ๊กโซนแล้วใส่แพ็คเกจ · จำนวน · แพ็คต่อรอบ · รอบบริการครั้งเดียว — ได้หนึ่งบรรทัดต่อโซน แก้ทีละบรรทัดต่อได้ในตาราง · บรรทัดที่มีอยู่แล้วไม่ถูกแตะ',
+    subtitle: `ติ๊กโซนแล้วใส่แพ็คเกจ · จำนวน · แพ็คต่อรอบ · ${SERVICE_ROUNDS_LABEL}ครั้งเดียว — ได้หนึ่งบรรทัดต่อโซน แก้ทีละบรรทัดต่อได้ในตาราง · บรรทัดที่มีอยู่แล้วไม่ถูกแตะ`,
     packageLabel: 'แพ็คเกจ',
     qtyLabel: 'จำนวน (ต่อบรรทัด)',
     qtyHint: (unit) => `หน่วย: ${naText(unit)} · เว้นว่างได้ — ใส่ทีละบรรทัดทีหลัง`,
     priceLabel: 'ราคา/หน่วย',
     priceHint: 'จากฐานข้อมูลสินค้า',
     packsLabel: 'แพ็คต่อรอบ (ทุกบรรทัด)',
-    roundsLabel: 'รอบบริการ (ทุกบรรทัด)',
+    roundsLabel: `${SERVICE_ROUNDS_LABEL} (ทุกบรรทัด)`,
+    roundsAria: `${SERVICE_ROUNDS_LABEL}ของทุกบรรทัดที่จะเพิ่ม`,
     roundsUnit: 'รอบ',
     noPackage: 'เลือกแพ็คเกจก่อน',
     assessLoading: 'กำลังอ่านผลประเมินของโซน… — “ตามผลประเมินของแต่ละโซน” ยังไม่มีตัวเลขให้',
@@ -1611,7 +1614,7 @@ export function historicalLineServiceView(row = {}, assessedByZone = null) {
    ⚠️ ข้ามเงียบไม่ได้: โซนที่อยู่ในใบแล้ว/ปิดใช้งาน ถูกปิดไว้ในหน้าต่างตั้งแต่ต้น (เห็นเหตุ) · ที่นี่กันซ้ำอีกชั้น
    ⚠️ แพ็คเกจเติมที่จอด้วย `quoteLineFromProduct` ตัวเดียวกับช่องเลือกในบรรทัด (ไฟล์นี้ไม่ลากทะเบียนสินค้ามา)
    ⭐ PR-D (D27 · DD4): หน้าต่างเป็นตัวห่อของ `components/service/ZonesBulkModal` — ตัวกลางถือ ค้น/ติ๊ก/แพ็คต่อรอบ
-     [ตามผลประเมิน | เท่ากันทุกโซน] · ตัวห่อถือ แพ็คเกจ · จำนวน · รอบบริการ (ทุกบรรทัด) ⇒ ตัวแปลงข้างล่างคือสะพานสองฝั่ง
+     [ตามผลประเมิน | เท่ากันทุกโซน] · ตัวห่อถือ แพ็คเกจ · จำนวน · จำนวนรอบบริการ (ทุกบรรทัด) ⇒ ตัวแปลงข้างล่างคือสะพานสองฝั่ง
      `rounds` + `packsByZone` (Map zoneId → แพ็คต่อรอบ|null จากแถวของตัวกลาง) ไม่ส่ง = ผลเท่าเดิมทุกช่อง (W1) */
 export function historicalBulkAddRows({
   zoneIds = [], sites = [], zonesBySite = {}, rows = [], qty = '', rounds = '', packsByZone = null,
@@ -1682,7 +1685,7 @@ export function historicalBulkQtyIssue(qty = '') {
   return Number.isInteger(value) && value > 0 ? null : HISTORICAL_LINE_MESSAGES.qty;
 }
 
-/** รอบบริการ (ทุกบรรทัด) ของหน้าต่างเพิ่มหลายโซน — **บังคับ** (PR-D) · ข้อความเดียวกับแผน */
+/** จำนวนรอบบริการ (ทุกบรรทัด) ของหน้าต่างเพิ่มหลายโซน — **บังคับ** (PR-D) · ข้อความเดียวกับแผน */
 export function historicalBulkRoundsIssue(rounds = '') {
   if (!text(rounds)) return HISTORICAL_LINE_MESSAGES.roundsMissing;
   return historicalRoundsValue(rounds) === null ? HISTORICAL_LINE_MESSAGES.rounds : null;
@@ -1700,7 +1703,7 @@ export function historicalBulkFieldsIssue({ productId = '', qty = '', rounds = '
 /**
  * ผลของปุ่ม "เพิ่ม N บรรทัด" ก่อนกด (กฎบ้าน: บอกผลลัพธ์ก่อนคลิก)
  * ⭐ PR-D: ตัวห่อส่ง `mode` ('assessed' | 'equal') + ตัวเลขจากแผนของตัวกลาง (`packs` · `assessed` · `blank`) + `rounds`
- *   ⇒ ต่อท้ายด้วยแพ็คต่อรอบและรอบ · ไม่ส่ง `mode` = ประโยคเดิมทุกตัวอักษร (pin ของ historicalRegisterUi ยังเขียวที่คลื่น W1)
+ *   ⇒ ต่อท้ายด้วยแพ็คต่อรอบและจำนวนรอบบริการ · ไม่ส่ง `mode` = ประโยคเดิมทุกตัวอักษร (pin ของ historicalRegisterUi ยังเขียวที่คลื่น W1)
  */
 export function historicalBulkConsequence({
   count = 0, qty = '', unitPrice = null, mode = null, packs = null, assessed = 0, blank = 0, rounds = '',
@@ -1721,7 +1724,7 @@ export function historicalBulkConsequence({
       ? `แพ็คต่อรอบ ${naText(packs === null || packs === undefined ? null : fmtNumber(packs))} แพ็คทุกบรรทัด`
       : `แพ็คต่อรอบตามผลประเมิน ${fmtNumber(Number(assessed) || 0)} โซน · ยังว่าง ${fmtNumber(Number(blank) || 0)} โซน`;
     const roundsValue = historicalRoundsValue(rounds);
-    const parts = [head, money, packsText, ...(roundsValue === null ? [] : [`รอบบริการ ${fmtNumber(roundsValue)} รอบ`])];
+    const parts = [head, money, packsText, ...(roundsValue === null ? [] : [`${SERVICE_ROUNDS_LABEL} ${fmtNumber(roundsValue)} รอบ`])];
     return `${parts.join(' · ')}${qtyOk && !priced ? ` — ${unpricedNote}` : ''}`;
   }
   if (priced) {

@@ -52,7 +52,7 @@ test('PR-D ⭐ QuotationReadOnlyLineItems: showPacksPerRound ปิดเป็�
   const tag = slice(ro, '{showPacksPerRound && lineIsServicePackage(line) ? (', ') : null}');
   assert.match(tag, /<span className=\{styles\.serviceRoundsTag\}>/, 'หน้าตาเดียวกับป้ายรอบบริการ (ไม่มีคลาสใหม่)');
   assert.match(tag, /แพ็คต่อรอบ: <strong>\{packsPerRoundText\(line\.packsPerRound\)\}<\/strong>/);
-  /* ลำดับ: ไซต์ · โซน → รอบบริการที่ขายไว้ → แพ็คต่อรอบ → หมายเหตุ */
+  /* ลำดับ: ไซต์ · โซน → จำนวนรอบบริการ → แพ็คต่อรอบ → หมายเหตุ */
   const rounds = ro.indexOf('{showServiceRounds && lineIsServicePackage(line) ? (');
   const packs = ro.indexOf('{showPacksPerRound && lineIsServicePackage(line) ? (');
   const note = ro.indexOf('{line.metadata?.note ? (');
@@ -88,7 +88,7 @@ test('PR-D ⭐ การ์ดโซน: เซลล์แพ็คต่อร
   assert.match(card, /historicalPacksRoundsText\(zones\)\.meta\s*\n?\s*\?\? `\$\{fmtNumber\(zones\.length\)\} โซน — /,
     'ไม่รู้แพ็คสักโซน (ใบที่คีย์ก่อนมีช่อง) = หัวเดิม ไม่ใช่ "รวม 0 แพ็ค/รอบ"');
   assert.match(card, /minWidth=\{760\}/, 'คอลัมน์เพิ่ม ⇒ ตารางกว้างขึ้น (จอแคบเลื่อนข้าง)');
-  /* ลำดับเซลล์ตรงกับหัว: จำนวน → แพ็คต่อรอบ → รอบบริการที่ขายไว้ */
+  /* ลำดับเซลล์ตรงกับหัว: จำนวน → แพ็คต่อรอบ → จำนวนรอบบริการ */
   const row = slice(card, '<tr key={zone.lineId || zone.zoneId}>', '</tr>');
   const qty = row.indexOf('{qtyText(zone)}');
   const packs = row.indexOf('historicalPacksCellText(');

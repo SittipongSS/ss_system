@@ -16,6 +16,7 @@ import {
 import { addDays, coverageContinuityErrors, isConfirmed, paidThrough } from '@/lib/sales/paymentCoverage';
 import { historicalDuplicateApprovalRows, historicalDuplicateReviewOf } from '@/lib/sales/historicalDuplicates';
 import { paymentNotRequired, salesOrderMoneyOutcome } from '@/lib/sales/salesOrderPayments';
+import { SERVICE_ROUNDS_LABEL } from '@/lib/sales/serviceOrders';
 
 const text = (value) => (value === null || value === undefined ? '' : String(value)).trim();
 const list = (value) => (Array.isArray(value) ? value.filter(Boolean) : []);
@@ -329,6 +330,9 @@ const positiveInt = (value) => {
   return Number.isInteger(n) && n > 0 ? n : null;
 };
 const ZONE_CARD_META_TAIL = 'โซนผูกจากทะเบียนไซต์ตอนคีย์ใบแล้ว ฝ่าย TS ตั้งรอบต่อได้เลย';
+/* หัวแถว "แพ็คต่อรอบ · จำนวนรอบบริการ" ของขั้น ④ (historicalReviewView) และโมดัลอนุมัติ — คำเรียกรอบตามมติเจ้าของ 29/09
+   (`SERVICE_ROUNDS_LABEL`) · ค่าตามหลังเป็นตัวเลขล้วน "รวม 6 แพ็ค/รอบ · 12 รอบ/โซน" (ป้ายบอกแล้วว่าตัวไหนคืออะไร) */
+export const PACKS_ROUNDS_HEAD = `แพ็คต่อรอบ · ${SERVICE_ROUNDS_LABEL}`;
 
 /**
  * ตัวเลขรวมของแพ็คต่อรอบ · รอบ — รับได้ทั้งแถวโซนของเสริม (`packsPerRound` · `rounds`) และบรรทัดของแผน (`packsPerRound` · `serviceRounds`)
@@ -410,7 +414,7 @@ export function historicalPacksCellText(value) {
 export const HISTORICAL_SETUP_ISSUE_TEXT = Object.freeze({
   zones_missing: 'ยังไม่มีแพ็คต่อรอบ (ใบนี้คีย์ก่อนมีช่องแพ็คต่อรอบ)',
   packs_missing: 'ยังไม่ใส่แพ็คต่อรอบ',
-  rounds_missing: 'ยังไม่ใส่รอบบริการ',
+  rounds_missing: `ยังไม่ใส่${SERVICE_ROUNDS_LABEL}`,
   zone_invalid: 'โซนถูกปิดใช้งานหรือไม่ใช่ไซต์ของลูกค้าแล้ว',
   historical_zone_mismatch: 'โซนของงานบริการไม่ตรงกับโซนของรายการ',
 });
@@ -500,12 +504,12 @@ export function historicalApprovalFacts(order, {
      · ตัวกลางของ 0392 ตรวจซ้ำตอนกด (0394/P3) — แพ็คไม่ครบ = การอนุมัติทั้งก้อนถอย */
   const service = historicalPacksRoundsText(list(lineZones));
   if (extrasError) {
-    checklist.push('แพ็คต่อรอบ · รอบ: โหลดไม่ขึ้น — ระบบตรวจซ้ำตอนกดอนุมัติ');
+    checklist.push(`${PACKS_ROUNDS_HEAD}: โหลดไม่ขึ้น — ระบบตรวจซ้ำตอนกดอนุมัติ`);
   } else if (!service.totals.zoneCount) {
-    if (zones.length) checklist.push(`แพ็คต่อรอบ · รอบ: ${missing} — ระบบตรวจซ้ำตอนกดอนุมัติ`);
+    if (zones.length) checklist.push(`${PACKS_ROUNDS_HEAD}: ${missing} — ระบบตรวจซ้ำตอนกดอนุมัติ`);
   } else {
     const head = service.total || ['ยังไม่มีแพ็คต่อรอบ', roundsPerZoneText(service.totals)].filter(Boolean).join(' · ');
-    checklist.push(`แพ็คต่อรอบ · รอบ: ${head} — ${service.perZone || 'ดูการ์ดโซนในหน้าใบ'}`);
+    checklist.push(`${PACKS_ROUNDS_HEAD}: ${head} — ${service.perZone || 'ดูการ์ดโซนในหน้าใบ'}`);
     if (service.totals.packsMissing) {
       checklist.push(`⚠️ แพ็คต่อรอบยังไม่ครบ ${fmtNumber(service.totals.packsMissing)} รายการ (ใบนี้คีย์ก่อนมีช่องแพ็คต่อรอบ)`
         + ' — ระบบจะไม่ยอมให้อนุมัติ ตีกลับให้ผู้คีย์บันทึกขั้น ② ใหม่');
@@ -584,12 +588,12 @@ export function historicalApprovalFacts(order, {
   const gate = zeroValue ? 'นัดขึ้นตารางได้ทันที (ใบยอด 0 ไม่มีด่านเงิน)'
     : opening ? `นัดขึ้นตารางได้เมื่อบัญชีรับรอง${OPENING_INSTALLMENT_LABEL}`
       : 'นัดขึ้นตารางได้เมื่อบัญชีรับรองงวดแรก';
-  /* ⭐ PR-D: แพ็คครบทุกโซน = บอกสิ่งที่ TS จะเห็นในคิว (โซน · ไซต์ · แพ็ค/รอบ · รอบที่ขาย) · ไม่รู้/ไม่ครบ = ประโยคเดิม */
+  /* ⭐ PR-D: แพ็คครบทุกโซน = บอกสิ่งที่ TS จะเห็นในคิว (โซน · ไซต์ · แพ็ค/รอบ · จำนวนรอบบริการ) · ไม่รู้/ไม่ครบ = ประโยคเดิม */
   const totals = service.totals;
   const rounds = roundsPerZoneText(totals);
   effects.push(!extrasError && totals.zoneCount && !totals.packsMissing
     ? `${fmtNumber(totals.zoneCount)} โซน${totals.siteCount ? `ใน ${fmtNumber(totals.siteCount)} ไซต์` : ''}`
-      + ` · รวม ${fmtNumber(totals.packsTotal)} แพ็ค/รอบ${rounds ? ` · ขายไว้ ${rounds}` : ''} ขึ้นคิว TS งานเข้าใหม่ › รอตั้งรอบ — ${gate}`
+      + ` · รวม ${fmtNumber(totals.packsTotal)} แพ็ค/รอบ${rounds ? ` · ${SERVICE_ROUNDS_LABEL} ${rounds}` : ''} ขึ้นคิว TS งานเข้าใหม่ › รอตั้งรอบ — ${gate}`
     : `${fmtNumber(zones.length)} โซนขึ้นคิว TS งานเข้าใหม่ › รอตั้งรอบ — ${gate}`);
 
   return { subject: `ใบสั่งขาย ${text(order?.orderNumber) || '—'}`, checklist, effects };

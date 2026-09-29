@@ -21,7 +21,7 @@ import {
 import { QUOTE_PRICE_FIELD } from '@/lib/sales/quoteLines';
 import { ownerLockedToSelf } from '@/lib/sales/dealOwner';
 import { EXTERNAL_DOC_KINDS } from '@/lib/sales/contracts';
-import { SERVICE_ROUND_CATEGORY, lineIsServicePackage } from '@/lib/sales/serviceOrders';
+import { SERVICE_ROUNDS_LABEL, SERVICE_ROUND_CATEGORY, lineIsServicePackage } from '@/lib/sales/serviceOrders';
 import { bindTargetError } from '@/lib/service/intake';
 import { termIsActive } from '@/lib/service/terms';
 import { coverageContinuityErrors } from '@/lib/sales/paymentCoverage';
@@ -57,7 +57,7 @@ export const HISTORICAL_REQUIRED_MESSAGES = Object.freeze({
 });
 
 /* ข้อความรายช่องของบรรทัดโซน — ก้อนเดียวที่แผนตีกลับ และเทสต์อ้าง
-   ⭐ PR-D (mig 0394 · r2 S12 · มติ 26/09 A3/O9): รอบบริการบังคับ (`roundsMissing`) + ช่อง "แพ็คต่อรอบ" ของแต่ละบรรทัด
+   ⭐ PR-D (mig 0394 · r2 S12 · มติ 26/09 A3/O9): จำนวนรอบบริการบังคับ (`roundsMissing`) + ช่อง "แพ็คต่อรอบ" ของแต่ละบรรทัด
      (`packsMissing` · `packs` · `packsStaleForm`) — แพ็คต่อรอบคือจำนวนแพ็คที่ TS ใช้ต่อการเข้าโซนหนึ่งครั้ง
      **คนละช่องกับ "จำนวน"** (จำนวน = เงิน: 1 ชุด × 12 เดือน · มติ 23/09) ⇒ ไม่แตะยอดใดเลย
    ⚠️ `packs` = คำเดียวกับ ZONES_BULK_PACKS_INVALID ของหน้าต่างเพิ่มหลายโซนงานบริการ (เทสต์ยึด — lib ไม่ import components) */
@@ -66,8 +66,8 @@ export const HISTORICAL_LINE_MESSAGES = Object.freeze({
   qty: 'จำนวนต้องเป็นจำนวนเต็มมากกว่า 0',
   unpriced: 'แพ็คเกจนี้ยังไม่ตั้งราคาในฐานข้อมูลสินค้า — ตั้งราคาที่ทะเบียนสินค้าก่อน แล้วค่อยบันทึก',
   priceUnknown: 'อ่านราคาของแพ็คเกจจากฐานข้อมูลสินค้าไม่ได้ — ลองใหม่อีกครั้ง (ถ้ายังไม่ได้ แจ้งผู้ดูแลระบบ)',
-  rounds: 'รอบบริการที่ขายไว้ต้องเป็นจำนวนเต็มมากกว่า 0',
-  roundsMissing: 'ยังไม่ใส่รอบบริการ',
+  rounds: `${SERVICE_ROUNDS_LABEL}ต้องเป็นจำนวนเต็มมากกว่า 0`,
+  roundsMissing: `ยังไม่ใส่${SERVICE_ROUNDS_LABEL}`,
   packsMissing: 'ยังไม่ใส่แพ็คต่อรอบ (จำนวนเต็ม 1–9999)',
   packs: 'แพ็คต่อรอบต้องเป็นจำนวนเต็ม 1–9999',
   packsStaleForm: 'ฟอร์มรุ่นก่อน (ยังไม่มีช่องแพ็คต่อรอบ) — โหลดหน้าใหม่ แล้วใส่แพ็คต่อรอบของทุกรายการ',
@@ -228,7 +228,7 @@ const pick = (source, key) => (source instanceof Map ? source.get(key) : source?
  *   zones: [{ zoneId, productId, qty, discountType, discountValue, rounds, packsPerRound }],
  *   opening: null | { amount, coversTo, paidOn, note, evidence? },
  *   installments: [{ label, amount, dueDate, coversFrom, coversTo, note?, billingDate? }], acknowledgeDuplicates }`
- *   - โซนหนึ่งแถว = บรรทัดใบเสนอราคาหนึ่งบรรทัด: จำนวน · ส่วนลดรายการ (ไม่ลด/percent/amount) · รอบบริการที่ขายไว้ (บังคับ)
+ *   - โซนหนึ่งแถว = บรรทัดใบเสนอราคาหนึ่งบรรทัด: จำนวน · ส่วนลดรายการ (ไม่ลด/percent/amount) · จำนวนรอบบริการ (บังคับ)
  *     + แพ็คต่อรอบ (PR-D · บังคับ · 1–9999 · คนละช่องกับจำนวน) — ไม่มีคีย์ = ฟอร์มรุ่นก่อน
  *   - งวดที่ยังต้องเก็บ: `billingDate` วันวางบิล ไม่บังคับ (PR-D · mig 0394/P7) · งวดยกมาไม่มีวันวางบิล
  *     ⚠️ **ไม่มีราคา/ยอดจากจอ** — ราคา/หน่วยอ่านจาก `ctx.products[].costPrice` (QUOTE_PRICE_FIELD) เสมอ

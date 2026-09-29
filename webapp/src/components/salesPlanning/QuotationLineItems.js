@@ -20,7 +20,7 @@ import { DEFAULT_SALE_UNIT } from "@/lib/master/units";
 import { productSelectOptions } from "@/components/master/productOption";
 import styles from "./QuotationLineItems.module.css";
 import Textarea from "@/components/ui/Textarea";
-import { lineIsServicePackage } from "@/lib/sales/serviceOrders";
+import { SERVICE_ROUNDS_LABEL, lineIsServicePackage } from "@/lib/sales/serviceOrders";
 import {
   QuoteLineActionsHead, QuoteLineFgInfo, QuoteLineHeadCells, QuoteLineIndexCell, QuoteLineIndexHead,
   QuoteLineInstallationPoint, QuoteLineItemCell, QuoteLineMoneyCells, QuoteLineProductPicker, QuoteLineRemoveCell,
@@ -57,7 +57,7 @@ const packsPerRoundText = (value) => {
 
 export function QuotationReadOnlyLineItems({
   lines = [],
-  /* ⭐ `showServiceRounds` — โชว์ "รอบบริการที่ขายไว้" ใต้คำอธิบายของบรรทัดหมวด 02-001
+  /* ⭐ `showServiceRounds` — โชว์ "จำนวนรอบบริการ" (`SERVICE_ROUNDS_LABEL` · มติ 29/09) ใต้คำอธิบายของบรรทัดหมวด 02-001
      ⚠️ ปิดไว้เป็นค่าตั้งต้นโดยตั้งใจ: คอมโพเนนต์นี้ใช้ทั้งใบเสนอราคาและใบสั่งขาย
      แต่จำนวนรอบเป็นของ **ใบสั่งขาย** ที่เดียว (มติผู้ใช้ 2026-08-31 รอบสอง)
      ⇒ เปิดทั่วไป = ใบเสนอราคาโชว์ขีดค้างไว้ทุกใบตลอดกาล */
@@ -117,7 +117,7 @@ export function QuotationReadOnlyLineItems({
                         {showInstallationPoint ? <QuoteLineInstallationPoint point={line.installationPoint} /> : null}
                         {showServiceRounds && lineIsServicePackage(line) ? (
                           <span className={styles.serviceRoundsTag}>
-                            รอบบริการที่ขายไว้: <strong>{line.serviceRounds ? `${line.serviceRounds} รอบ` : NA}</strong>
+                            {SERVICE_ROUNDS_LABEL}: <strong>{line.serviceRounds ? `${line.serviceRounds} รอบ` : NA}</strong>
                           </span>
                         ) : null}
                         {showPacksPerRound && lineIsServicePackage(line) ? (

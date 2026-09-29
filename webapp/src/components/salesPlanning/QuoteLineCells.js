@@ -10,9 +10,9 @@
 //   คีย์ 1 ชุด × 12 เดือน ได้สามแบบ (1 × 42,000 · 12 × 3,500 · ปุ่มเสนอ 504,000) ทั้งที่ในใบเสนอราคา
 //   มันคือ จำนวน 12 (แพ็คเกจ) × ราคา/หน่วย 3,500 = 42,000 แบบเดียว
 //
-// ⚠️ ของที่ใบย้อนหลังมีเพิ่มสองอย่าง (โซนที่ผูก · รอบบริการที่ขายไว้) เป็น **บรรทัดใต้คำอธิบายในเซลล์ "รายการ"**
+// ⚠️ ของที่ใบย้อนหลังมีเพิ่มสองอย่าง (โซนที่ผูก · จำนวนรอบบริการ) เป็น **บรรทัดใต้คำอธิบายในเซลล์ "รายการ"**
 //   (`QuoteLineInstallationPoint` · `QuoteLineServiceRounds`) — ตรงเดียวกับที่ตารางฝั่งอ่านของขั้น ④ และหน้าใบสั่งขาย
-//   โชว์ "ไซต์ · โซน" กับ "รอบบริการที่ขายไว้" ⇒ คอลัมน์ของสองฟอร์มเท่ากันเป๊ะ: # · รายการ · จำนวน · ราคา/หน่วย ·
+//   โชว์ "ไซต์ · โซน" กับ "จำนวนรอบบริการ" ⇒ คอลัมน์ของสองฟอร์มเท่ากันเป๊ะ: # · รายการ · จำนวน · ราคา/หน่วย ·
 //   ส่วนลดรายการ · จำนวนเงิน · ปุ่มลบ (UAT 23/09: ของเดิมเอาคอลัมน์ "โซน" มาแทน "#" แล้วซ้อนตารางไว้ในการ์ดไซต์
 //   ⇒ กล่องแคบกว่า 900 ทุกจอเดสก์ท็อป ตารางพับเป็นการ์ดตลอด — หน้าตาคนละแบบกับใบเสนอราคา)
 // ⚠️ สไตล์เป็นของ `QuotationLineItems.module.css` (โฟลเดอร์เดียวกัน) — ผู้เรียกที่อยู่คนละโฟลเดอร์
@@ -31,6 +31,7 @@ import { productIdentity } from "@/lib/master/productIdentity";
 import { DEFAULT_SALE_UNIT, SALE_UNITS, unitOptions } from "@/lib/master/units";
 import { QUOTE_VAT_OPTIONS, quoteLineNet } from "@/lib/salesPlanning";
 import { masterPriceDrift, masterPriceState, quoteLineLocks } from "@/lib/sales/quoteLines";
+import { SERVICE_ROUNDS_LABEL } from "@/lib/sales/serviceOrders";
 import styles from "./QuotationLineItems.module.css";
 
 /* พื้นความกว้างของตาราง — คอลัมน์ตายตัวรวมกัน 646 (36+120+130+210+150) ที่เหลือเป็นของ "รายการ"
@@ -372,11 +373,12 @@ export function QuoteLineMoneyCells({
 }
 
 /**
- * ช่อง "รอบบริการที่ขายไว้" ของบรรทัดแพ็คเกจบริการ — ช่องเดียวกับการ์ดสัญญาบริการของใบสั่งขาย
+ * ช่อง "จำนวนรอบบริการ" ของบรรทัดแพ็คเกจบริการ — ช่องเดียวกับการ์ดสัญญาบริการของใบสั่งขาย
  * (`ServiceContractCard`: จำนวนเต็ม ≥ 1 · เว้นว่างได้ · ต่อท้ายด้วย "รอบ") วางใต้คำอธิบายของบรรทัด
- * ตรงที่ตารางฝั่งอ่านโชว์ "รอบบริการที่ขายไว้: N รอบ"
+ * ตรงที่ตารางฝั่งอ่านโชว์ "จำนวนรอบบริการ: N รอบ"
+ * ⭐ ป้าย = `SERVICE_ROUNDS_LABEL` (serviceOrders.js · มติเจ้าของ 29/09) — ห้ามสะกดเอง
  * ⚠️ เป็นของ **ใบสั่งขาย** ที่เดียว (มติผู้ใช้ 2026-08-31) — ใบเสนอราคาไม่เรียกตัวนี้
- * ⭐ PR-D (mig 0394 · r2 S12): ใบย้อนหลังบังคับรอบ ⇒ `required` = ดอกจัน + aria-required (ป้ายคำเดิม — DD2) ·
+ * ⭐ PR-D (mig 0394 · r2 S12): ใบย้อนหลังบังคับรอบ ⇒ `required` = ดอกจัน + aria-required (ป้ายคำเดียวกับไม่บังคับ — DD2) ·
  *   `invalid` = ผู้เรียกบอกว่าผิด (ใบย้อนหลัง: ข้อความของแผนหลังกด "ถัดไป" — แดงหลังกด) · ค่าตั้งต้นทั้งคู่ = ของเดิมทุกตัวอักษร
  */
 export function QuoteLineServiceRounds({
@@ -384,7 +386,7 @@ export function QuoteLineServiceRounds({
 }) {
   return (
     <div className={styles.serviceRounds}>
-      <span>รอบบริการที่ขายไว้{required ? <b className={styles.roundsReq} aria-hidden="true">*</b> : null}</span>
+      <span>{SERVICE_ROUNDS_LABEL}{required ? <b className={styles.roundsReq} aria-hidden="true">*</b> : null}</span>
       <span className={styles.roundsField}>
         <Input
           type="number" min="1" step="1" inputMode="numeric" placeholder="—" autoComplete="off"
@@ -393,7 +395,7 @@ export function QuoteLineServiceRounds({
           invalid={invalid}
           aria-required={required ? "true" : undefined}
           onChange={(event) => onChange?.(event.target.value)}
-          aria-label={`รอบบริการที่ขายไว้ ${name}`}
+          aria-label={`${SERVICE_ROUNDS_LABEL} ${name}`}
         />
         <span className={styles.roundsUnit}>รอบ</span>
       </span>

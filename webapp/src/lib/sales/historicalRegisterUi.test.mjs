@@ -1023,7 +1023,7 @@ test('⭐ 23/09 → 26/09: ขั้น ② ไม่เหลือ "แพ็�
 });
 
 /* ⭐ PR-D (mig 0394 · r2 S12 · IMPL_PLAN_D DD1–DD2): แถบผูกของบรรทัด = ไซต์ · โซน * | แพ็คต่อรอบ * (ชิป "ประเมินไว้ n แพ็ค" [ใช้])
-   | รอบบริการที่ขายไว้ * (บังคับ — เลิก "เว้นว่างได้") | ทั้งรายการ n แพ็ค (อ่านอย่างเดียว เมื่อสองช่องถูก)
+   | จำนวนรอบบริการ * (บังคับ — เลิก "เว้นว่างได้" · คำตามมติ 29/09) | ทั้งรายการ n แพ็ค (อ่านอย่างเดียว เมื่อสองช่องถูก)
    🔴 แดงหลังกด "ถัดไป" เท่านั้น — ข้อความใต้ช่องมาจาก `bad` (issues ที่เปิดเผยแล้ว) ช่องเดียวกับช่องอื่นของบรรทัด */
 test('PR-D ⭐ ขั้น ②: "แพ็คต่อรอบ *" + ชิปผลประเมิน · "รอบบริการ" บังคับ · "ทั้งรายการ n แพ็ค" — แดงหลังกด ถัดไป', () => {
   const src = code(STEP_ZONES);
@@ -1219,7 +1219,7 @@ test('⭐ 23/09: ช่องเลือกแพ็คเกจกรองด
   const defaultPlaceholder = slice(code(CELLS), 'export function QuoteLineProductPicker', ') {').match(/placeholder = "([^"]+)"/)?.[1];
   assert.ok(defaultPlaceholder);
   assert.ok(bulkPicker.includes(`placeholder="${defaultPlaceholder}"`));
-  /* ของเพิ่มอย่างที่สองของใบย้อนหลัง — รอบบริการที่ขายไว้ (ช่องของบรรทัดใบสั่งขาย) · ผูกแถวด้วย key */
+  /* ของเพิ่มอย่างที่สองของใบย้อนหลัง — จำนวนรอบบริการ (ช่องของบรรทัดใบสั่งขาย) · ผูกแถวด้วย key */
   assert.match(src, /<QuoteLineServiceRounds\s*\n\s*value=\{row\.rounds\}/);
   assert.match(src, /onChange=\{\(value\) => patchRow\(row\.key, \{ rounds: value \}\)\}/);
 });
@@ -1477,12 +1477,12 @@ test('⭐ 25/09 → PR-D: ปุ่มยืนยันของหน้าต
   /* ของจริง: ลำดับเหตุ · ประโยคผลก่อนกด */
   assert.equal(intakeForm.historicalBulkFieldsIssue({ productId: '', qty: '1.5', rounds: '' }), 'เลือกแพ็คเกจก่อน');
   assert.equal(intakeForm.historicalBulkFieldsIssue({ productId: 'P', qty: '1.5', rounds: '' }), intakeForm.HISTORICAL_LINE_MESSAGES.qty);
-  assert.equal(intakeForm.historicalBulkFieldsIssue({ productId: 'P', qty: '', rounds: '' }), 'ยังไม่ใส่รอบบริการ');
+  assert.equal(intakeForm.historicalBulkFieldsIssue({ productId: 'P', qty: '', rounds: '' }), 'ยังไม่ใส่จำนวนรอบบริการ');
   assert.equal(intakeForm.historicalBulkFieldsIssue({ productId: 'P', qty: '', rounds: '12' }), null);
   assert.equal(intakeForm.historicalBulkQtyIssue('1.5'), intakeForm.HISTORICAL_LINE_MESSAGES.qty);
   assert.equal(intakeForm.historicalBulkQtyIssue(''), null);
   assert.equal(intakeForm.historicalBulkConsequence({ count: 3, qty: '12', unitPrice: 3500, mode: 'equal', packs: 2, rounds: '12' }),
-    'จะเพิ่ม 3 บรรทัด · บรรทัดละ 12 × ฿3,500.00 = ฿42,000.00 · รวม ฿126,000.00 · แพ็คต่อรอบ 2 แพ็คทุกบรรทัด · รอบบริการ 12 รอบ');
+    'จะเพิ่ม 3 บรรทัด · บรรทัดละ 12 × ฿3,500.00 = ฿42,000.00 · รวม ฿126,000.00 · แพ็คต่อรอบ 2 แพ็คทุกบรรทัด · จำนวนรอบบริการ 12 รอบ');
   assert.match(intakeForm.historicalBulkConsequence({ count: 3, qty: '', unitPrice: 3500, mode: 'assessed', assessed: 2, blank: 1, rounds: '' }),
     /จำนวนใส่ทีละบรรทัดในตาราง · แพ็คต่อรอบตามผลประเมิน 2 โซน · ยังว่าง 1 โซน$/);
 });
