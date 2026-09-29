@@ -404,9 +404,9 @@ function monthlyRoundError(rule, roundIndex) {
  * · ลูกค้าวางบิลได้ทุกวัน = ไม่มีรอบให้เติม → `{ rows: [], error }`
  * @returns `{ rows: [{ id, seq, billingDate, dueDate, keptDue }], error }`
  */
-export function planMonthlyFill(value, installments = [], todayIso, { roundIndex = null } = {}) {
-  /* รุ่นสี่ = planFill (แถวเพิ่ม `source` · งวดติ๊ก "ไม่ต้องวางบิล" ไม่ถูกเติม) */
-  if (isV4Rule(value)) return planFill(value, installments, todayIso, { slot: roundIndex });
+export function planMonthlyFill(value, installments = [], todayIso, { roundIndex = null, holidays = null } = {}) {
+  /* รุ่นสี่ = planFill (แถวเพิ่ม `source` · งวดติ๊ก "ไม่ต้องวางบิล" ไม่ถูกเติม) · holidays = วันทำงานสุดท้ายที่ยังทันรอบ (เครดิต N) */
+  if (isV4Rule(value)) return planFill(value, installments, todayIso, { slot: roundIndex, holidays });
   const rule = effectiveBillingRule(value);
   const today = dateOf(todayIso);
   if (!rule) return { rows: [], error: 'ลูกค้ายังไม่ตั้งรอบวางบิล' };
@@ -676,21 +676,23 @@ export function billingStateTone(state) {
 
 /* ── ชื่อรุ่นสี่ (billingRuleV4.js) — จอ/API/cron import จากไฟล์นี้ที่เดียว ─────────────────────────────────────
    ⚠️ สามชื่อที่ชนกับชื่อเดิม (billingState · dueDateForBilling · planRedate) เป็นตัวห่อข้างบน (รับรุ่นสี่ได้) — ไม่ re-export ซ้ำ
-   ⚠️ ตัวช่วยวันที่ทั่วไป (dateOf · addDays · daysBetween · iso …) ไม่ re-export — ใช้ของ paymentCoverage.js / import จาก billingRuleV4.js ตรง */
+   ⚠️ ตัวช่วยวันที่ทั่วไป (dateOf · addDays · daysBetween · iso …) ไม่ re-export — ใช้ของ paymentCoverage.js / import จาก billingRuleV4.js ตรง
+   รอบห้า (29/09 ปฏิทินรายปี · ปีที่ขาด = หยุด ไม่ประมาณ): roundChoices · calendarGapFor/Text · calendarReminder · cutoffDigest ·
+   calendarDiffSummary · nextRunInfo · matchesCutoffFilter — ตัวช่วยจอแก้ปฏิทิน (ตาราง · ร่าง · ตรงกับรูป) import จาก billingCalendarEdit.js ตรง */
 export {
   RULE_VERSION, NEED_NONE, NEED_REQUIRED, NEED_UNKNOWN, MONTH_END_DAY, ROUNDS_MAX, CREDIT_MAX, NOTE_MAX, EVENT_MAX,
   CALENDAR_RUNS_MAX_PER_YEAR, PAY_GAP_MAX_DAYS, BILLING_REMIND_DAYS, DUE_REMIND_DAYS, REMIND_CALENDAR_FROM_MMDD,
-  REMIND_CALENDAR_LEAD_DAYS, CALENDAR_FALLBACK_DEFAULT,
+  REMIND_CALENDAR_LEAD_DAYS, CALENDAR_FALLBACK, CALENDAR_FALLBACK_DEFAULT, CALENDAR_MANUAL_HINT, CALENDAR_ESTIMATE_ERROR,
   NO_CREDIT_TEXT, NO_BILLING_TEXT, NO_TIMING_TEXT, UNKNOWN_TEXT, NO_BILLING_WRITE_ERROR, RULE_UNAVAILABLE_ERROR, SKIP_TEXT,
-  weekendNote, isWorkday, firstWorkdayOnOrAfter, lastWorkdayOnOrBefore, fmtDate,
+  weekendNote, isWorkday, firstWorkdayOnOrAfter, lastWorkdayOnOrBefore, fmtDate, weekStartOf,
   toV4, validateCalendarYear, normalizeRule, ruleOf, sameRule,
   billingNeed, hasTiming, nagsMissingBilling, asksNeed, installmentNeed, needOverrideOf, canRequestBilling, needExceptionActions,
-  payRuns, deriveFormula, dueFor, slotCount, slotLabels, billingChoices, billingForDue,
-  datesOf, validateInstallmentDates, dueEstimatedAsFor, isEstimate, dueSourceOf, dueState,
+  payRuns, deriveFormula, dueFor, calendarGapFor, calendarGapText, slotCount, slotLabels, billingChoices, roundChoices, billingForDue,
+  datesOf, validateInstallmentDates, dueSourceOf, dueState,
   installmentBillingFillable, installmentBillingRedatable,
   fillKindOf, planFill, installmentLabelMonth, creditCadenceSuggestion, planDueCadence, planRuleChange,
-  draftCalendarYear, calendarDiff, calendarStatus, cutoffInfo, cutoffBell,
-  BELL, LEDGER_HREF, bellsFor, reminderKinds, ledgerFlags,
+  draftCalendarYear, calendarDiff, calendarDiffSummary, calendarStatus, calendarReminder, cutoffInfo, cutoffBell, cutoffDigest,
+  BELL, LEDGER_HREF, bellsFor, reminderKinds, ledgerFlags, matchesCutoffFilter, nextRunInfo,
   noteDateHints, dueSeriesGaps,
   NEED_BACKFILL_OPTIONS, backfillRuleFor, backfillPlan, backfillGate,
   formOf, ruleFromForm, describeRule, sourceLabel, billingCellText, dueCellText, dateModeOf, policyPreview,

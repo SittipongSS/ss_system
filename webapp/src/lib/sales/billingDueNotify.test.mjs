@@ -317,6 +317,16 @@ test('ทั้งรอบ: หนึ่งแถวต่องวดฝั่
 
 /* ── สายไฟ ───────────────────────────────────────────────────────────────── */
 
+/* ตัวฟังก์ชันหนึ่งตัวใน cron — ถึงวงเล็บปิดของมันเอง (ไม่ใช่ถึง GET) · v5 เพิ่มกระดิ่งวันตัดรอบ/ขอปฏิทินต่อท้ายกระดิ่งวางบิล
+   ซึ่งอ่านกติกาของลูกค้าโดยตั้งใจ ⇒ ตัดถึง GET เมื่อไร ยาม "กระดิ่งวางบิลไม่อ่านกติกา" (มติ 28/09 ข้อ 17) จะแดงผิดตัว */
+function cronBlock(src, name) {
+  const start = src.indexOf(`async function ${name}(`);
+  assert.ok(start >= 0, `หา ${name} ใน cron ไม่เจอ`);
+  const end = src.indexOf('\n}\n', start);
+  assert.ok(end > start, `หาจุดจบของ ${name} ไม่เจอ`);
+  return src.slice(start, end + 2);
+}
+
 test('ทั้งสอง kind อยู่ในกระดิ่ง (SALES_ORDER_BELL_KINDS) — ไม่งั้นแถวไปโผล่แค่หน้าเต็ม', () => {
   assert.ok(SALES_ORDER_BELL_KINDS.includes(BILLING_DUE_KIND));
   assert.ok(SALES_ORDER_BELL_KINDS.includes(BILLING_DUE_FN_KIND));
@@ -325,7 +335,7 @@ test('ทั้งสอง kind อยู่ในกระดิ่ง (SALES_
 test('cron ยิงจาก daily-digest ในบล็อก try ของตัวเอง · วันนี้จากนาฬิกาไทย · ข้ามสหมิตรด้วยค่าคงที่บ้านเดียว', () => {
   const src = readFileSync(new URL('../../app/api/cron/daily-digest/route.js', import.meta.url), 'utf8');
   assert.match(src, /try \{\s*\n\s*results\.billingDue = await notifyBillingDue\(supabase\);\s*\n\s*\} catch/);
-  const block = src.slice(src.indexOf('async function notifyBillingDue'), src.indexOf('export async function GET'));
+  const block = cronBlock(src, 'notifyBillingDue');
   assert.match(block, /const todayIso = businessDate\(\);/);
   assert.match(block, /skipArCodes: \[SAHAMIT_AR_CODE\]/);
   /* ด่านงวดต้องได้วัตถุดิบครบ — ขาด `origin` = ใบย้อนหลังถูกถามเป็นใบ pipeline · ขาด QT = ร่างที่ใช้ต่อไม่ได้ถูกเตือน
@@ -362,7 +372,7 @@ test('⭐ มติ 28/09 ข้อ 17: กระดิ่งคัดจาก�
   const lib = readFileSync(new URL('./billingDueNotify.js', import.meta.url), 'utf8');
   assert.doesNotMatch(lib, /billingRuleOf|effectiveBillingRule|pickerRuleOf|billingRuleNoCredit|serviceRounds|orderOnServiceLine/);
   const src = readFileSync(new URL('../../app/api/cron/daily-digest/route.js', import.meta.url), 'utf8');
-  const block = src.slice(src.indexOf('async function notifyBillingDue'), src.indexOf('export async function GET'));
+  const block = cronBlock(src, 'notifyBillingDue');
   assert.match(block, /\.gte\('billingDate', todayIso\)\s*\n\s*\.lte\('billingDate', until\)/);
   assert.doesNotMatch(block, /"billingRule"|billingRule\b|\.eq\('line'|serviceRounds/);
 });

@@ -12,17 +12,18 @@ import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { canAccessFinance } from '@/lib/permissions';
 import {
-  filterLedger, ledgerBillingTally, ledgerDueTally, ledgerReport, ledgerRow, ledgerSummary, ledgerVoidInstallment,
-  orderStateIndex, sortLedger, stampConfirmOutlook, stampOrderInstallmentCount, stampOrderPaidThrough, stampOrderReplanned,
-  undatedHiddenBy,
+  filterLedger, ledgerBillingTally, ledgerCustomerOutlook, ledgerDueTally, ledgerReport, ledgerRow, ledgerSummary,
+  ledgerVoidInstallment, orderStateIndex, sortLedger, stampConfirmOutlook, stampOrderInstallmentCount, stampOrderPaidThrough,
+  stampOrderReplanned, undatedHiddenBy,
 } from '@/lib/finance/paymentLedger';
+import { holidaySet } from '@/lib/master/holidays';
 import { reportToXlsxBuffer } from '@/lib/tax/exportExcel';
 import { businessDate } from '@/lib/businessDate';
 import { paymentNotRequired } from '@/lib/sales/salesOrderPayments';
 import { orderHasServiceRounds } from '@/lib/sales/serviceOrders';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { customerNameIn } from '@/lib/master/customerName';
-import { billingDueCandidates, dueSoonCandidates } from '@/lib/sales/billingDueNotify';
+import { billingCutoffOnIndex, billingDueCandidates, dueSoonCandidates } from '@/lib/sales/billingDueNotify';
 import { SAHAMIT_AR_CODE } from '@/lib/sahamit/server';
 
 export const runtime = 'nodejs';
@@ -151,11 +152,17 @@ async function loadLedger(supabase, todayIso) {
   const customerIds = [...new Set((orders || []).map((o) => o.customerId).filter(Boolean))];
   const customerById = new Map();
   if (customerIds.length) {
-    const { data: customers, error: customerError } = await loadLedgerCustomers(supabase, customerIds);
+    /* วันหยุดของเรา (v5) — ชิป "รอบถัดไป" ของเครดิต N เสนอวันทำงาน · `holidaySet` ถอยไปรายการที่ฝังไว้เองเมื่ออ่านไม่ขึ้น (ไม่ throw) */
+    const [{ data: customers, error: customerError }, holidays] = await Promise.all([
+      loadLedgerCustomers(supabase, customerIds), holidaySet(),
+    ]);
     if (customerError) throw customerError;
     /* 🐞 ลูกค้าที่มีแต่ชื่ออังกฤษเคยได้แถวไร้ชื่อทั้งบนจอและในไฟล์ Excel ที่บัญชีโหลดไป
-       ⇒ ตัดสินชื่อที่จะวาดตั้งแต่ตรงนี้ ทางเดียวกันทั้งสองปลายทาง */
-    (customers || []).forEach((c) => customerById.set(c.id, { ...c, name: customerNameIn(c) }));
+       ⇒ ตัดสินชื่อที่จะวาดตั้งแต่ตรงนี้ ทางเดียวกันทั้งสองปลายทาง
+       ⭐ v5 · รอบถัดไป + แถบ "ขอปฏิทิน YYYY" ของลูกค้า (`ledgerCustomerOutlook`) คิด **ครั้งเดียวต่อลูกค้า** ที่นี่ ไม่ใช่ทุกงวดใน ledgerRow */
+    (customers || []).forEach((c) => customerById.set(c.id, {
+      ...c, name: customerNameIn(c), billingOutlook: ledgerCustomerOutlook(c.billingRule ?? null, todayIso, { holidays }),
+    }));
   }
 
   /* ── คำร้องขอใบวางบิลที่งวดผูกอยู่ (0260) — ตัดสิน "ขอใบแล้ว" ของรอบวางบิล (0389) ─────────────────
@@ -195,6 +202,17 @@ async function loadLedger(supabase, todayIso) {
     requestsById: billingRequestById,
     skipArCodes: [SAHAMIT_AR_CODE],
   }).map(({ installment }) => installment.id));
+  /* ── ตัวกรอง `?billing=cutoff&on=` = ชุดของกระดิ่ง "วันตัดรอบ" เป๊ะ (v5 · มติเจ้าของ 29/09) ─────────────────────────────
+     ⭐ ถาม `billingCutoffOnIndex` ด้วยวัตถุดิบชุดเดียวกับ cron (ด่านใบ `collectibleOf` + `ledgerFlags().cutoffOn` ของตัวคิด)
+       ⇒ เช้าที่กระดิ่งยิง หัวข้อ "N งวด" ของแถว FN = แถวที่ลิงก์เปิดมาเจอ · ไม่ขึ้นกับวันนี้ (เปิดลิงก์วันหลังได้ชุดสดของเส้นตายนั้น)
+     ⚠️ ลูกค้าต้องพก `billingRule` (loadLedgerCustomers เลือกมาแล้ว) — รอบจ่าย/ปฏิทินอยู่ในนั้น */
+  const cutoffOnById = billingCutoffOnIndex(rows, {
+    todayIso,
+    ordersById: new Map([...orderById.values()].map((o) => [o.id, { ...o, quotation: quoteById.get(o.quotationId) || null }])),
+    customersById: customerById,
+    requestsById: billingRequestById,
+    skipArCodes: [SAHAMIT_AR_CODE],
+  });
 
   const ledger = rows
     .map((installment) => {
@@ -219,6 +237,7 @@ async function loadLedger(supabase, todayIso) {
         billingRequest: billingRequestById.get(installment.billingRequestId) || null,
         billingRemind: remindIds.has(installment.id),
         dueRemind: dueRemindIds.has(installment.id),
+        cutoffOn: cutoffOnById.get(installment.id) || null,
       });
     })
     .filter(Boolean);
@@ -268,6 +287,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       /* soon — ครบกำหนดชำระ 0..3 วัน (รุ่นสี่ · §6) · กระดิ่ง "ครบกำหนดชำระ" ฝั่ง FN ลิงก์มาที่ `?due=soon` (ชุดของกระดิ่ง)
          ⚠️ เหตุผลเดียวกับ taxInvoice/billing: ไม่อยู่ใน literal นี้ = API เมินเงียบทั้งจอและไฟล์ */
       due: url.searchParams.get('due') || '',
+      /* YYYY-MM-DD — เส้นตายของตัวกรอง `billing=cutoff` (v5 · ลิงก์ของกระดิ่งวันตัดรอบ) · ไม่มี/ผิดรูป = `cutoff` ไม่กรอง
+         ⚠️ เหตุผลเดียวกับ taxInvoice/billing/due: ไม่อยู่ใน literal นี้ = API เมินเงียบทั้งจอและไฟล์ */
+      on: url.searchParams.get('on') || '',
       orderStates,
     };
     const filtered = sortLedger(filterLedger(all, filters));

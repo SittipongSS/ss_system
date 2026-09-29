@@ -5,13 +5,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  applyRedateConflicts, blankForm, changeTextOf, chooseBill, chooseNeed, choosePay, clearTiming, conflictOf, creditNumber,
-  evaluateForm, everyDays, formFromStored, formWordsOf, keptTextOf, nextRoundNeedingDay, payDayStateOf, policyWordsOf,
-  redatePayloadOf, reminderChipsOf, saveBlockOf, savePayloadOf, setCreditDays, setRoundDay, setRoundOff, stampTextOf,
-  toggleBillDay, togglePayDay,
+  applyRedateConflicts, blankForm, calendarCardOf, calendarCountOf, calendarUpcomingRuns, changeTextOf, chooseBill, chooseCalPay,
+  chooseNeed, choosePay, clearTiming, conflictOf, creditNumber, cutoffBellPreviewOf, cutoffTimeOf, evaluateForm, everyDays,
+  formFromStored, formWordsOf, keptTextOf, nextRoundNeedingDay, payDayStateOf, policyWordsOf, redatePayloadOf, reminderChipsOf,
+  saveBlockOf, savePayloadOf, setCalCreditDays, setCreditDays, setCutoffTime, setRoundDay, setRoundOff, stampTextOf, toggleBillDay,
+  togglePayDay, updateCalendar,
 } from './CustomerBillingRuleState.js';
-import { BELL, dueDateForBilling, dueFor, normalizeRule, policyPreview, ruleOf, sameRule } from '../../lib/sales/billingRule.js';
+import { BELL, describeRule, dueDateForBilling, dueFor, normalizeRule, policyPreview, ruleOf, sameRule } from '../../lib/sales/billingRule.js';
 import { BILLING_V4_SCHEMA_MISSING } from '../../lib/sales/billingPolicySchema.js';
+import {
+  confirmCalendarMonth, draftCalendarFromPattern, setCalendarCell, setCalendarFile,
+} from '../../lib/sales/billingCalendarEdit.js';
 
 const tap = (form, day) => toggleBillDay(form, day).form;
 const tapPay = (form, day) => togglePayDay(form, day).form;
@@ -180,12 +184,11 @@ test('รุ่นสอง "วางบิล 5 → เงินเข้า 2
   assert.equal(dueFor(rule, '2026-10-05').dueDate, dueDateForBilling(V2_5_25, '2026-10-05'));
 });
 
-test('⭐ กติกาที่จอนี้แก้ไม่ได้ (ปฏิทิน · วันในสัปดาห์ · เครดิต + รอบจ่าย) = บอกเหตุ · ไม่ตอบข้อ ① ให้ (กดบันทึกเฉย ๆ ไม่ทับ)', () => {
+test('⭐ กติกาที่จอนี้แก้ไม่ได้ (วันในสัปดาห์ · เครดิต + รอบจ่าย · เวลาตัดรอบของรอบรายเดือน) = บอกเหตุ · ไม่ตอบข้อ ① ให้ (กดบันทึกเฉย ๆ ไม่ทับ)', () => {
   const stored = [
     { v: 4, need: 'required', billing: { mode: 'anyday' }, creditDays: 30, runs: { kind: 'weekday', weekday: 3, nths: [2, 4] } },
     { v: 4, need: 'required', billing: { mode: 'anyday' }, creditDays: 30, runs: { kind: 'monthly', rounds: [{ cutoffDay: 25, payDay: 25, payMonthOffset: 0 }] } },
-    { v: 4, need: 'required', billing: { mode: 'anyday' }, creditDays: 0, runs: { kind: 'calendar', years: { 2026: { runs: [{ cutoff: '2026-10-08', pay: '2026-10-15' }] } } } },
-    /* review 29/09: เวลาตัดรอบไม่มีช่องบนฟอร์ม — เดิมเปิดเป็นรอบจ่ายธรรมดา แล้วกดบันทึกเฉย ๆ ทิ้ง '16:00' เงียบ ๆ */
+    /* review 29/09: เวลาตัดรอบของรอบรายเดือนไม่มีช่องบนฟอร์ม (ช่องเวลามีเฉพาะปฏิทิน) — เดิมเปิดเป็นรอบจ่ายธรรมดา แล้วกดบันทึกเฉย ๆ ทิ้ง '16:00' เงียบ ๆ */
     { v: 4, need: 'required', billing: { mode: 'anyday' }, creditDays: 0, runs: { kind: 'monthly', rounds: [{ cutoffDay: 31, payDay: 15, payMonthOffset: 1 }], cutoffTime: '16:00' } },
   ];
   for (const value of stored) {
@@ -219,15 +222,18 @@ test('⭐ ประโยคนโยบายไม่พูด "เครด�
   }
 });
 
-test('⭐ การเตือน: ไม่ต้องวางบิล = ไม่มีกระดิ่งวางบิล (มีแต่ครบกำหนดชำระ) · กระดิ่งวันตัดรอบ (4b) ไม่พูดในรอบนี้', () => {
+test('⭐ การเตือน: ไม่ต้องวางบิล = ไม่มีกระดิ่งวางบิล (มีแต่ครบกำหนดชำระ) · มีรอบจ่าย = + กระดิ่งวันตัดรอบ (รุ่นห้า · ตัวเดียวกับ cron)', () => {
   const none = reminderChipsOf({ v: 4, need: 'none' });
   assert.deepEqual(none.filter((c) => c.on).map((c) => c.key), [BELL.DUE_SOON]);
   assert.ok(none.some((c) => !c.on && /วางบิล/.test(c.text)));
   const runs = reminderChipsOf({ v: 4, need: 'required', billing: { mode: 'anyday' }, creditDays: 0, runs: { kind: 'monthly', rounds: [{ cutoffDay: 5, payDay: 25, payMonthOffset: 0 }] } });
-  assert.deepEqual(runs.map((c) => c.key), [BELL.BILLING_DUE, BELL.DUE_SOON]);
+  assert.deepEqual(runs.map((c) => c.key), [BELL.BILLING_DUE, BELL.DUE_SOON, BELL.BILLING_CUTOFF]);
   assert.match(runs[0].text, /0–3 วัน/);
+  assert.match(runs[2].text, /^วันตัดรอบ \(เช้าวันก่อน \+ วันนั้น 08:30\)$/, 'ไม่มีเวลาตัดรอบ = ไม่พูดเวลา');
   assert.match(reminderChipsOf(null)[0].text, /งวดที่ใส่วันไว้/, 'ยังไม่ระบุ = กระดิ่งเฉพาะงวดที่มีวันวางบิล');
   assert.match(reminderChipsOf({ credit: false })[0].text, /งวดที่ใส่วันไว้/);
+  const plain = reminderChipsOf({ v: 4, need: 'required', billing: { mode: 'anyday' }, creditDays: 30, runs: null });
+  assert.deepEqual(plain.map((c) => c.key), [BELL.BILLING_DUE, BELL.DUE_SOON], 'ไม่มีรอบจ่าย = ไม่มีกระดิ่งวันตัดรอบ');
 });
 
 /* ── บันทึก · 409 · ด่านลำดับ deploy ─────────────────────────────────── */
@@ -292,4 +298,199 @@ test('409 ของ redate: งวดที่ติดหลุดจากท�
   const { selected, blocked } = applyRedateConflicts(new Set(['a', 'b', 'c']), [{ id: 'b', reason: 'มีคนแก้งวดนี้' }]);
   assert.deepEqual([...selected], ['a', 'c']);
   assert.equal(blocked.get('b'), 'มีคนแก้งวดนี้');
+});
+
+/* ── ปฏิทินรายปีของลูกค้า (รุ่นห้า · มติเจ้าของ 29/09 "แล้ววางบิลที่มีตามปฏิทินมีมั้ย") ───────────────────────────────
+   ตัวอย่างจริง: ปฏิทินมีเมตตา 2026 (AR-281 · calendar-v3/brief.md §1) · Q1 เครดิต 0 หรือ 30 ยังเปิด ⇒ เทสต์ทั้งสองทาง ·
+   Q3 หยุดรอปฏิทินใหม่ (ไม่มีประมาณการ) */
+const TODAY = '2026-09-29';
+const MEEMETTA_TABLE = [
+  [1, 9, 15, 22, 30], [2, 6, 16, 19, 27], [3, 6, 16, 23, 31], [4, 2, 16, 22, 30],
+  [5, 8, 15, 21, 29], [6, 8, 15, 22, 30], [7, 8, 15, 23, 30], [8, 10, 17, 21, 31],
+  [9, 8, 15, 22, 30], [10, 8, 15, 21, 30], [11, 9, 16, 20, 30], [12, 8, 15, 22, 30],
+];
+const d26 = (m, d) => `2026-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+const MEEMETTA_2026 = MEEMETTA_TABLE.flatMap(([m, c1, p1, c2, p2]) => [{ cutoff: d26(m, c1), pay: d26(m, p1) }, { cutoff: d26(m, c2), pay: d26(m, p2) }]);
+const FILE_2026 = '6f1c2d3e-4a5b-4c6d-8e7f-901234567890';
+const meemetta = (creditDays, { cutoffTime = '16:00', years = { 2026: { runs: MEEMETTA_2026, fileId: FILE_2026 } } } = {}) => ({
+  v: 4, need: 'required', billing: { mode: 'anyday' }, creditDays, runs: { kind: 'calendar', years, ...(cutoffTime ? { cutoffTime } : {}) },
+});
+const newCalendarForm = () => chooseBill(chooseNeed(blankForm(), 'required'), 'calendar', { todayIso: TODAY });
+const draftMonths = (form, year, pattern, fromMonth = 1) => updateCalendar(form, (c) => draftCalendarFromPattern(c, year, pattern, { fromMonth }).state);
+const confirmAll = (form, year) => {
+  let next = form;
+  for (let mi = 0; mi < 12; mi += 1) next = updateCalendar(next, (c) => confirmCalendarMonth(c, year, mi));
+  return next;
+};
+const MEE_PATTERN = [{ cutoffDay: 8, payDay: 15, payMonthOffset: 0 }, { cutoffDay: 22, payDay: 30, payMonthOffset: 0 }];
+
+test('⭐ ปฏิทินที่เก็บอยู่ (มีเมตตา · เครดิต 0 และ 30) เปิดแล้วบันทึกซ้ำ = กติกาเดียวกัน (API ตอบ unchanged) · รูป/เวลาตัดรอบไม่หาย', () => {
+  for (const credit of [0, 30]) {
+    const stored = meemetta(credit);
+    const form = formFromStored(stored, { todayIso: TODAY });
+    assert.equal(form.need, 'required');
+    assert.equal(form.bill, 'calendar');
+    assert.equal(form.unsupported, '', 'ปฏิทินแก้บนจอนี้ได้แล้ว — ไม่ใช่ unsupported');
+    assert.equal(form.calPay, credit ? 'credit' : 'same', 'คำตอบข้อ ③ มาจากค่าที่เก็บ ไม่ใช่ค่าตั้งต้น');
+    assert.equal(form.creditDays, credit ? '30' : '');
+    assert.equal(form.cutoffTime, '16:00');
+    assert.deepEqual(Object.keys(form.calendar.years).sort(), ['2026', '2027'], 'แท็บปีนี้ + ปีหน้า "ยังไม่มี"');
+    const { rule, why } = evaluateForm(form);
+    assert.equal(why, '');
+    assert.equal(sameRule(stored, rule), true, `เครดิต ${credit}: ตัวเทียบ unchanged ของ route`);
+    assert.equal(rule.runs.years['2026'].fileId, FILE_2026);
+    assert.equal(rule.runs.years['2027'], undefined, 'ปีที่ไม่มีวันไม่ถูกส่ง (ไม่มีปีว่าง)');
+    assert.equal(normalizeRule(rule, { allowLegacy: false }).error, null);
+  }
+});
+
+test('⭐ ตั้งปฏิทินใหม่: ด่านเรียงข้อ ②→③ · ร่างต้องแตะ "ตรงกับรูป" · ข้อ ③ ไม่มีค่าตั้งต้น (Q1) · ได้กติกาที่ API รับ', () => {
+  let form = newCalendarForm();
+  assert.equal(form.calPay, null, 'ไม่มีค่าตั้งต้นของข้อ ③');
+  let got = evaluateForm(form);
+  assert.deepEqual([got.rule, got.step], [undefined, 2]);
+  assert.match(got.why, /อย่างน้อยหนึ่งรอบ/);
+
+  form = draftMonths(form, 2026, MEE_PATTERN, 10);
+  got = evaluateForm(form);
+  assert.equal(got.step, 2);
+  assert.match(got.why, /ร่างที่ยังไม่ได้เทียบกับรูป 3 เดือน/, 'ร่างที่ยังไม่เทียบ = บันทึกไม่ได้');
+  form = confirmAll(form, 2026);
+  got = evaluateForm(form);
+  assert.equal(got.step, 3);
+  assert.match(got.why, /ไม่มีค่าตั้งต้น/);
+
+  const credit = chooseCalPay(form, 'credit');
+  assert.equal(evaluateForm(credit).step, 3, 'เลือกมีเครดิตแต่ยังไม่ใส่วัน');
+  assert.match(evaluateForm(setCalCreditDays(credit, '0')).why, /วันจ่ายของรอบเดียวกัน/, 'เครดิต 0 = ทางแรก ไม่ใช่ "เครดิต 0 วัน"');
+  const c30 = evaluateForm(setCalCreditDays(credit, '30'));
+  assert.equal(c30.rule.creditDays, 30);
+  const same = evaluateForm(chooseCalPay(form, 'same'));
+  assert.equal(same.rule.creditDays, 0);
+  for (const rule of [c30.rule, same.rule]) {
+    assert.equal(rule.billing.mode, 'anyday', 'ปฏิทิน = วางบิลได้ทุกวัน (วันตัดรอบ = วันวางบิล)');
+    assert.equal(rule.runs.kind, 'calendar');
+    assert.equal(rule.runs.years['2026'].runs.length, 6);
+    assert.equal(rule.runs.estimate, undefined, 'ไม่มีสูตรประมาณการ (Q3)');
+    assert.equal(normalizeRule(rule, { allowLegacy: false }).error, null);
+  }
+});
+
+test('ช่องตารางที่อ่านไม่ได้/ครึ่งคู่ = ด่านข้อ ② (ตัวเดียวกับ calendarEditorIssues) · สลับไปทางอื่นแล้วกลับมา ตารางยังอยู่', () => {
+  let form = newCalendarForm();
+  form = updateCalendar(form, (c) => setCalendarCell(c, 2026, 9, 0, 'c', '8'));
+  assert.deepEqual([evaluateForm(form).step, /1 ช่องที่ต้องแก้/.test(evaluateForm(form).why)], [2, true], 'คู่ครึ่งเดียว');
+  form = updateCalendar(form, (c) => setCalendarCell(c, 2026, 9, 0, 'p', '45'));
+  assert.deepEqual([evaluateForm(form).step, /ช่องที่ต้องแก้/.test(evaluateForm(form).why)], [2, true], 'วันที่ไม่มีจริง');
+  form = updateCalendar(form, (c) => setCalendarCell(c, 2026, 9, 0, 'p', '15'));
+  assert.equal(evaluateForm(form).step, 3);
+  const back = chooseBill(chooseBill(form, 'anyday'), 'calendar', { todayIso: TODAY });
+  assert.deepEqual(calendarCountOf(back.calendar), { count: 1, years: ['2026'] });
+});
+
+test('เวลาตัดรอบ: ไม่บังคับ · "1600"/"16.00" = 16:00 · รูปผิดบอกเหตุที่ข้อ ② · ว่าง = ไม่เก็บช่องนี้', () => {
+  assert.deepEqual(cutoffTimeOf('1600'), { value: '16:00', error: '' });
+  assert.deepEqual(cutoffTimeOf('9.30'), { value: '09:30', error: '' });
+  assert.deepEqual(cutoffTimeOf(''), { value: null, error: '' });
+  assert.match(cutoffTimeOf('25:00').error, /00:00–23:59/);
+  assert.match(cutoffTimeOf('บ่ายสี่').error, /16:00/);
+  const base = chooseCalPay(confirmAll(draftMonths(newCalendarForm(), 2026, MEE_PATTERN, 10), 2026), 'same');
+  assert.equal(evaluateForm(base).rule.runs.cutoffTime, undefined);
+  assert.equal(evaluateForm(setCutoffTime(base, '1600')).rule.runs.cutoffTime, '16:00');
+  const bad = evaluateForm(setCutoffTime(base, '4 โมง'));
+  assert.deepEqual([bad.rule, bad.step], [undefined, 2]);
+});
+
+test('รูปปฏิทินต่อปี: setCalendarFile → กติกาเก็บ fileId ของปีนั้น · เอาออก = ไม่มี fileId (ไฟล์ยังอยู่ในเอกสารของลูกค้า)', () => {
+  const form = chooseCalPay(confirmAll(draftMonths(newCalendarForm(), 2026, MEE_PATTERN, 10), 2026), 'same');
+  const withFile = updateCalendar(form, (c) => setCalendarFile(c, 2026, FILE_2026));
+  assert.equal(evaluateForm(withFile).rule.runs.years['2026'].fileId, FILE_2026);
+  const removed = updateCalendar(withFile, (c) => setCalendarFile(c, 2026, ''));
+  assert.equal(evaluateForm(removed).rule.runs.years['2026'].fileId, undefined);
+});
+
+test('⭐ ประโยคนโยบายของปฏิทิน · เครดิต 0 พูดเวลาตัดรอบ · เครดิต N ไม่พูดเวลา · ไม่มี "เครดิต 0 วัน" · ไม่มี "ประมาณการ"', () => {
+  const zero = policyWordsOf(meemetta(0));
+  assert.equal(zero.when, 'ตามปฏิทินลูกค้า 2026 (24 รอบ)');
+  assert.equal(zero.pay, 'วันจ่ายของรอบเดียวกัน');
+  assert.equal(zero.cutoff, 'ส่งเอกสารก่อน 16:00 น.');
+  const thirty = policyWordsOf(meemetta(30));
+  assert.equal(thirty.pay, 'ครบเครดิต 30 วันแล้วเข้ารอบจ่าย');
+  /* หนึ่งสิ่งหนึ่งชื่อ — ประโยค ③ ของโมดัล = ท้ายโมดัล/toast/เธรด (describeRule) */
+  assert.ok(describeRule(meemetta(0)).includes(zero.pay), describeRule(meemetta(0)));
+  assert.ok(describeRule(meemetta(30)).includes(thirty.pay), describeRule(meemetta(30)));
+  assert.equal(thirty.cutoff, '', 'เครดิต N ไม่พูดเวลา (system-design §6)');
+  const typing = formWordsOf(setCutoffTime(chooseCalPay(confirmAll(draftMonths(newCalendarForm(), 2026, MEE_PATTERN, 10), 2026), 'same'), '16:00'));
+  assert.deepEqual([typing.when, typing.pay, typing.cutoff], ['ตามปฏิทินลูกค้า 2026 (6 รอบ)', 'วันจ่ายของรอบเดียวกัน', 'ส่งเอกสารก่อน 16:00 น.']);
+  assert.equal(formWordsOf(newCalendarForm()).when, 'ตามปฏิทินลูกค้า');
+  for (const words of [zero, thirty, typing]) assert.doesNotMatch(JSON.stringify(words), /เครดิต 0 วัน|ประมาณการ/);
+});
+
+test('⭐ การเตือนของลูกค้าปฏิทิน = วันตัดรอบ + ขอปฏิทินปีหน้า (ตัวเดียวกับ cron) · มีเมตตา กระดิ่งแรก จ. 23 พ.ย. 2026', () => {
+  const zero = reminderChipsOf(meemetta(0), { todayIso: TODAY });
+  assert.deepEqual(zero.map((c) => c.key), [BELL.BILLING_DUE, BELL.DUE_SOON, BELL.BILLING_CUTOFF, BELL.CALENDAR_MISSING]);
+  assert.match(zero[2].text, /ส่งก่อน 16:00 น\./);
+  assert.equal(zero[3].text, 'ขอปฏิทิน 2027 · ทุกสัปดาห์ตั้งแต่ จ. 23 พ.ย. 2026');
+  const thirty = reminderChipsOf(meemetta(30), { todayIso: TODAY });
+  assert.match(thirty[2].text, /วันสุดท้ายที่วางบิลแล้วทันรอบ/);
+  assert.doesNotMatch(thirty[2].text, /16:00/, 'เครดิต N ไม่พูดเวลา');
+  assert.equal(thirty[3].text, 'ขอปฏิทิน 2027 · ทุกสัปดาห์ตั้งแต่ จ. 23 พ.ย. 2026', 'เครดิต 30 วันแรกเดียวกัน');
+});
+
+test('⭐ การ์ด: ครอบ "ปฏิทิน 2026 · 24 รอบ" · แถบ "ขอปฏิทิน 2027" ขึ้นพร้อมกระดิ่ง (23 พ.ย.) · ใส่ปี 2027 แล้วหายเอง', () => {
+  assert.equal(calendarCardOf({ v: 4, need: 'none' }, TODAY), null);
+  const before = calendarCardOf(meemetta(0), TODAY);
+  assert.equal(before.coverage, 'ปฏิทิน 2026 · 24 รอบ');
+  assert.equal(before.banner, null, 'ยังไม่ถึงช่วงเตือน');
+  assert.match(before.upcoming, /ปฏิทินใช้ได้ถึง ธ\.ค\. 2026 · เตือนขอปฏิทิน 2027 ทุกสัปดาห์ตั้งแต่ จ\. 23 พ\.ย\. 2026/);
+  assert.deepEqual(before.years, [{ year: 2026, count: 24, fileId: FILE_2026 }]);
+  assert.match(before.cutoffLine, /ส่งเอกสารก่อน 16:00 น\./);
+  assert.match(calendarCardOf(meemetta(30), TODAY).cutoffLine, /ไม่พูดเวลา/);
+  assert.equal(calendarCardOf(meemetta(0, { cutoffTime: null }), TODAY).cutoffLine, '');
+
+  for (const credit of [0, 30]) {
+    const due = calendarCardOf(meemetta(credit), '2026-11-23');
+    assert.equal(due.banner.title, 'ขอปฏิทิน 2027');
+    assert.equal(due.banner.year, 2027);
+    assert.match(due.banner.text, /ใส่วันเองได้/);
+    assert.doesNotMatch(due.banner.text, /ประมาณการ/);
+    assert.equal(due.upcoming, '');
+  }
+  const runs2027 = MEEMETTA_2026.map((r) => ({ cutoff: r.cutoff.replace('2026', '2027'), pay: r.pay.replace('2026', '2027') }));
+  const filled = calendarCardOf(meemetta(0, { years: { 2026: { runs: MEEMETTA_2026 }, 2027: { runs: runs2027 } } }), '2026-11-23');
+  assert.equal(filled.banner, null, 'มีปีถัดไปแล้ว = หยุดเตือน');
+  assert.equal(filled.coverage, 'ปฏิทิน 2026 · 24 รอบ · ปฏิทิน 2027 · 24 รอบ');
+});
+
+test('ตัวอย่างกระดิ่งวันตัดรอบ (ผลก่อนบันทึก) = ข้อความจาก cutoffBell ตัวเดียวกับ cron · ปฏิทินหมด = ไม่มีตัวอย่าง', () => {
+  const zero = cutoffBellPreviewOf(meemetta(0), TODAY, { customer: 'บริษัท มีเมตตา จำกัด' });
+  assert.equal(zero.fireOn, '2026-10-07');
+  assert.equal(zero.text, 'พรุ่งนี้ (พฤ. 8 ต.ค.) เป็นวันตัดรอบของ บริษัท มีเมตตา จำกัด — ส่งเอกสารก่อน 16:00 น.');
+  const thirty = cutoffBellPreviewOf(meemetta(30), TODAY, { customer: 'บริษัท มีเมตตา จำกัด' });
+  assert.match(thirty.text, /วางบิล บริษัท มีเมตตา จำกัด แล้วทันรอบจ่าย/);
+  assert.doesNotMatch(thirty.text, /16:00/);
+  assert.equal(cutoffBellPreviewOf(meemetta(0), '2026-12-23'), null, 'หลังวันตัดรอบสุดท้าย = ไม่มีรอบถัดไป (หยุด ไม่เดา)');
+  assert.equal(cutoffBellPreviewOf({ v: 4, need: 'required', billing: { mode: 'anyday' }, creditDays: 30, runs: null }, TODAY), null);
+});
+
+test('⭐ Q3 หยุดรอปฏิทินใหม่: ผลก่อนบันทึกได้รอบเท่าที่มี + "ยังไม่มีปฏิทิน 2027 · ใส่วันเองได้" · รอบถัดไปในตาราง (ก่อนตอบข้อ ③) ไม่สมมติเครดิต', () => {
+  const pv = policyPreview(meemetta(0), '2026-12-10', { count: 3 });
+  assert.equal(pv.rows.length, 1);
+  assert.equal(pv.missing.text, 'ยังไม่มีปฏิทิน 2027 · ใส่วันเองได้');
+  const form = formFromStored(meemetta(0), { todayIso: TODAY });
+  assert.deepEqual(calendarUpcomingRuns(form.calendar, TODAY), [
+    { cutoff: '2026-10-08', pay: '2026-10-15' }, { cutoff: '2026-10-21', pay: '2026-10-30' }, { cutoff: '2026-11-09', pay: '2026-11-16' },
+  ]);
+});
+
+test('จอ "งวดที่วันจะเปลี่ยน" ของปฏิทิน: ปีที่ยังไม่มีปฏิทิน = ไม่แตะพร้อมคำของ lib · ทางช้ากว่าอยู่ในปีที่ขาด · ใส่เองตอนยังไม่มีปฏิทิน = เสนอให้ยืนยัน', () => {
+  assert.equal(keptTextOf({ reason: 'calendarMissing', year: 2027, month: '2027-01', text: 'ยังไม่มีปฏิทิน 2027 · ใส่วันเองได้' }), 'ยังไม่มีปฏิทิน 2027 · ใส่วันเองได้ — ระบบไม่เดาวัน ไม่แตะ');
+  assert.match(keptTextOf({ reason: 'calendarMissing' }), /ใส่วันเองได้/);
+  assert.match(
+    keptTextOf({ reason: 'dueNotOnRound', earlier: { billingDate: '2026-12-08', dueDate: '2026-12-15' }, later: null, laterMissing: 'ยังไม่มีปฏิทิน 2027 · ใส่วันเองได้' }),
+    /ช้ากว่า ยังไม่มีปฏิทิน 2027 · ใส่วันเองได้$/,
+  );
+  const typed = { id: 'x', seq: 4, change: 'newDue', prevBillingDate: '2027-01-09', billingDate: '2027-01-09', prevDueDate: '2027-01-20', dueDate: '2027-01-15', typedInGap: true };
+  assert.match(changeTextOf(typed), /^กำหนดชำระ .* → .* · เดิมใส่เองตอนยังไม่มีปฏิทิน/);
+  assert.doesNotMatch(changeTextOf({ ...typed, typedInGap: undefined }), /ใส่เอง/);
 });

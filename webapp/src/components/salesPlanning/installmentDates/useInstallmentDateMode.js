@@ -18,6 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { notifyToast } from "@/lib/feedback";
 import { SCHEDULE_MANY_MAX } from "@/lib/sales/installmentScheduleMany";
 import { needExceptionActions, ruleOf } from "@/lib/sales/billingRule";
+import useHolidayMap from "@/lib/useHolidayMap";
 import {
   applyFillPlan, creditDaysOf, currentDates, dateCellTapCloses, dateModeKind, dateRuleShape, dateViewOf, dateWarnings,
   datesEmpty, draftChanges, fillKindOf, nextEmptyRow, openViewOf, replacesSavedDue, rowDateMode, scheduleManyRows, splitsFields,
@@ -74,6 +75,8 @@ export default function useInstallmentDateMode({
   /* ⭐ ผลการอ่านรุ่นสี่ตัวเดียว (`ruleOf`) — ตัวแก้/แผงเติม/ป้ายที่มาเดินตัวคิดเดียวกับที่ `dateModeOf` ตัดสินชนิด
      (รุ่นสองที่มีรอบจ่ายได้ชิปรอบของรุ่นสี่ · รูปเดิม { credit:false } = ผลการอ่าน legacyNoCredit — ห้ามส่งกลับไปบันทึก) */
   const ruleValue = useMemo(() => ruleOf(rawRule), [rawRule]);
+  /* วันหยุดในระบบ — ชิปรอบ/แผงเติม/แถบนโยบายเห็นชุดเดียวกับการ์ดลูกค้า · กระดิ่ง · ทะเบียน FN (โหลดพลาด = Map ว่าง เสาร์/อาทิตย์ยังถูก) */
+  const holidays = useHolidayMap();
   const media = useDatePlacement();
   /* หน้าสร้างไม่มีกรอบป๊อปโอเวอร์ (ตารางแผนงวดของหน้าเป็นคนละตาราง) — กางใต้แถวเสมอ ยกเว้นมือถือ */
   const placement = create ? (media === "sheet" ? "sheet" : "inline") : media;
@@ -371,7 +374,7 @@ export default function useInstallmentDateMode({
   };
 
   return {
-    available, active, blocker, placement, kind, fillKind, ruleValue, creditDays, todayIso, busy, create,
+    available, active, blocker, placement, kind, fillKind, ruleValue, creditDays, todayIso, holidays, busy, create,
     rows: sorted, editable, drafts, current, lock, isLocked, changes, dropped, changedIds, warnings, replaced, saveBlocker,
     emptyCount, dirty, openId, openRow, openField, focusTick,
     enter, cancel, save, open, close, tap, choose, setValue, revert, view, setView, rowMode,

@@ -404,8 +404,11 @@ test('🔴 โหมดตั้งวัน (review 28/09 MAJOR): กติก�
   assert.match(slice(hook, 'const enter = useCallback(', '}, ['), /seedView\(target, target && target === row \? field : null\);/);
   assert.match(slice(hook, 'const choose = (row, value', '\n  };'), /seedView\(next, null, currentDates\(next, nextDrafts\)\);/);
   // มีวันวางบิลแต่ไม่มีกำหนดชำระ (กติกาคิดได้) — เซลล์บอกตรง ๆ · ตัวแก้มีปุ่มแตะเดียวเหมือน "แก้ทับ"
-  assert.match(cell, /dueSourceOf\(mode\.ruleValue, v\)\.key === "missing"/);
+  assert.match(cell, /const source = dueSourceOf\(mode\.ruleValue, v\);/);
+  assert.match(cell, /else if \(source\.key === "missing"\) \{/);
   assert.match(cell, /ยังไม่มีกำหนดชำระ/);
+  // ⭐ รอบห้า (มติ 29/09 หยุดรอปฏิทินใหม่): วันวางบิลตกปีที่ปฏิทินยังไม่มี = บอกเหตุ (ไม่ใช่ "ได้เองเมื่อเลือกรอบ") — มาก่อน 'missing'
+  assert.match(cell, /else if \(source\.key === "calendarMissing"\) \{\s*(?:\/\*[\s\S]*?\*\/\s*)?main = <span>\{NA\}<\/span>;\s*sub\.push\(<span key="gap" data-tone="warn">\{source\.label\}<\/span>\);/);
   assert.match(editor, /\(source\.key === "override" \|\| source\.key === "missing"\) && source\.computed \? \(/);
 });
 
@@ -458,11 +461,12 @@ test('แผงงวด (review S3): คำร้องอ่านไม่ข
   const fill = code(FILL);
   assert.doesNotMatch(fill, /apiFetch|onAction|schedule-many/, 'แผงเติมไม่บันทึกเอง — บันทึกที่แถบล่างครั้งเดียว');
   assert.match(fill, /const labels = billingRoundLabels\(ruleValue\);/);
-  assert.match(fill, /planDateFill\(ruleValue, inputRows, \{ \.\.\.option, includeDated \}, todayIso\)/);
+  /* v5 · วันหยุดในระบบของฮุกโหมด (ชิปเครดิต N ตรงกับการ์ด/กระดิ่ง) */
+  assert.match(fill, /planDateFill\(ruleValue, inputRows, \{ \.\.\.option, includeDated \}, todayIso, \{ holidays: mode\.holidays \}\)/);
   /* สวิตช์ "จัดใหม่งวดที่มีวันแล้วด้วย" เปิดมาได้เฉพาะคำขอที่ส่ง true จริง ("ไปแก้" ของแผงแดงงานบริการ) — ตัวเลือกยังไม่ถูกเลือกเสมอ */
   assert.match(code(MODE_HOOK), /setFill\(\{ base: drafts, includeDated: includeDated === true, choice: null, day: null, excluded: \[\] \}\);/,
     'เปิดแผงเติม = ยังไม่มีตัวเลือกไหนถูกเลือก (ไม่มีค่าตั้งต้น)');
-  assert.match(code(DRAFTS), /: planMonthlyFill\(rule, rows, todayIso, \{ roundIndex: option\.roundIndex \?\? null \}\);/);
+  assert.match(code(DRAFTS), /: planMonthlyFill\(rule, rows, todayIso, \{ roundIndex: option\.roundIndex \?\? null, holidays \}\);/);
   // ⭐ รุ่นสี่: กติกาค่าดิบ (ตัวถามของ billingRule.js รับทุกรุ่น) — ห้ามผ่านตัวอ่านรุ่นสอง (รุ่นสี่ที่เขียนแทนไม่ได้กลายเป็น "ยังไม่ระบุ")
   // · ห้ามอ่านช่องในตรง ๆ
   assert.match(panel, /const billingRule = billingOn \? \(order\?\.customer\?\.billingRule \?\? null\) : null;/);
