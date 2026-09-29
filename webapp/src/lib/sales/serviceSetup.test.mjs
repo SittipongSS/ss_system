@@ -1005,6 +1005,22 @@ test('F10: ลูกค้าวางบิลได้ทุกวัน (ไ�
   assert.equal(m[0].billingMode, 'monthly');
 });
 
+test('รุ่นสี่ (mig 0393): งวดที่ติ๊ก "งวดนี้ไม่ต้องวางบิล" ไม่ติดข้อวันวางบิล — ติ๊กคู่กับวันวางบิลไม่ได้ ⇒ ขอ = ยื่นไม่ได้ตลอดไป', () => {
+  const required = { v: 4, need: 'required', billing: { mode: 'anyday' }, creditDays: 30, runs: null };
+  const billingOf = (issues) => issues.filter((i) => i.key === 'billing_missing').map((i) => i.seq);
+  // ลูกค้าต้องวางบิล: ทุกงวดที่ไม่มีวันวางบิลติด · งวด 1–2 ติ๊ก (เช่น มัดจำโอนก่อน) = ไม่ติด
+  assert.equal(billingOf(serviceSetupIssues(completeCtx({ customerBillingRule: required }))).length, 12);
+  const skipped = monthlyRows().map((row, i) => (i < 2 ? { ...row, billingSkip: true } : row));
+  const issues = serviceSetupIssues(completeCtx({ customerBillingRule: required, installments: skipped }));
+  assert.deepEqual(billingOf(issues), [3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+  // กำหนดชำระยังบังคับเหมือนเดิม (ติ๊กยกเว้นแค่วันวางบิล)
+  const noDue = monthlyRows({ dueDate: null, billingSkip: true });
+  assert.equal(serviceSetupIssues(completeCtx({ customerBillingRule: required, installments: noDue }))
+    .filter((i) => i.key === 'due_missing').length, 12);
+  // ลูกค้าไม่ต้องวางบิล = ไม่มีข้อวันวางบิลเลย (nagsMissingBilling)
+  assert.deepEqual(billingOf(serviceSetupIssues(completeCtx({ customerBillingRule: { v: 4, need: 'none', billing: null, creditDays: null, runs: null } }))), []);
+});
+
 test('#1846: ข้อวันงวดบอกว่าแผง "เติมวันงวดที่ว่าง…" แตะงวดนั้นแบบไหน (`dateFill` — ตัวเลือกงวดของแผง `fillTargetsOf`)', () => {
   const anyday = { billing: { mode: 'anyday' }, payment: { mode: 'credit', days: 30 } };
   const monthly = { billing: { mode: 'monthly', days: [25] }, payment: { mode: 'credit', days: 30 } };

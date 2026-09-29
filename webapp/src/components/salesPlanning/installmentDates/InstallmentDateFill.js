@@ -3,15 +3,15 @@
 //
 // ⭐ แทนสองปุ่มเดิมบนการ์ด ("เติมตามรอบ เดือนละงวด…" · "จัดวันใหม่ตามรอบปัจจุบัน…") และโมดัลพรีวิวของมัน —
 //   ตารางงวดคือพรีวิว (จุดบอก + "เดิม ~~วัน~~") · บันทึกครั้งเดียวที่แถบล่าง (`schedule-many`)
-// ⭐ ตัวคิดวันทั้งหมดอยู่ที่ billingRule.js ผ่าน `planDateFill` (planMonthlyFill · planRedate · planCreditCadence · planNoCreditDates)
-//   ตามชนิดของรอบลูกค้า:
-//   · รอบรายเดือน   — ไทล์ละรอบ (ลูกค้าหลายรอบ = ถามก่อนว่าใช้รอบไหน **ไม่เลือกให้** · มติ 26/09 ข้อ 15)
-//   · ทุกวัน + เครดิต N วัน **และไม่มีเครดิต** (ชำระวันวางบิล = เครดิต 0 · มติ 28/09 ข้อ 17) — ข้อเสนอแรก
-//     "ต่อจากงวด X · กำหนดชำระทุกวันที่ D" (ยึดกำหนดชำระ ไม่ยึดวันวางบิล — AR-015 ไม่ไหลเป็น 24/27 · ข้อ 1 ของกรรมการ)
-//     + เลือกวันที่เอง 1–31 แล้ว "ตามเดือนในชื่องวด" (AR-622) หรือเดือนเริ่ม · วันวางบิล = กำหนดชำระ − N (ไม่มีเครดิต = วันเดียวกัน)
-//   · ทุกวัน + เงินเข้าตามวันที่ — วันวางบิลวันที่ … เดือนละงวด (กำหนดชำระคิดตามรอบ)
-//   · ยังไม่ตั้งกำหนดวางบิล — วันที่ของกำหนดชำระ แล้ว "ตามเดือนในชื่องวด" หรือเดือนเริ่ม · **เขียนกำหนดชำระอย่างเดียว**
-//     (ไม่มีอะไรคิดวันวางบิลให้ · ชื่องวดเป็นแค่เบาะแส — ระบบไม่เดาวันเอง)
+// ⭐ ตัวคิดวันทั้งหมดอยู่ที่ billingRule.js ผ่าน `planDateFill` (planMonthlyFill · planRedate · planDueCadence) ตามชนิดของแผง
+//   (`fillKindOf` · รุ่นสี่ มติเจ้าของ 29/09):
+//   · มีรอบ (rounds) — ไทล์ละรอบ (ลูกค้าหลายรอบ = ถามก่อนว่าใช้รอบไหน **ไม่เลือกให้** · มติ 26/09 ข้อ 15) · งวดที่ติ๊ก
+//     "งวดนี้ไม่ต้องวางบิล" ไม่ถูกเติม (ตัวเติมตามรอบให้แต่วันวางบิล)
+//   · ยึดกำหนดชำระ (cadence) — ข้อเสนอแรก "ต่อจากงวด X · กำหนดชำระทุกวันที่ D" (AR-015 ไม่ไหลเป็น 24/27 · ข้อ 1 ของกรรมการ)
+//     + เลือกวันที่เอง 1–31 แล้ว "ตามเดือนในชื่องวด" (AR-622) หรือเดือนเริ่ม:
+//       ทุกวัน + เครดิต N = วันวางบิล = กำหนดชำระ − N · ชำระวันวางบิล = ถามเป็น "วันวางบิลวันที่" (ลำดับวันวางบิล → กำหนดชำระ)
+//       ไม่ต้องวางบิล · ยังไม่ระบุ · ยังไม่ตั้งรอบ · **รูปเดิม { credit:false }** = **เขียนกำหนดชำระอย่างเดียว** (ไม่มีวันวางบิลปลอม ·
+//       รอบกรรมการ 29/09 · ชื่องวดเป็นแค่เบาะแส — ระบบไม่เดาวันเอง)
 // ⭐ ทุกไทล์เห็นผลงวดแรก "○ → ●" ก่อนแตะ (ข้อ 3) · ไม่มีไทล์ไหนเลือกไว้ให้ (กฎบ้าน: ไม่มีค่าตั้งต้นให้การตัดสินใจ)
 // ⭐ สวิตช์ "จัดใหม่งวดที่มีวันแล้วด้วย (N งวด)" = งานของ "จัดวันใหม่ตามรอบปัจจุบัน…" เดิม (ลูกค้าเปลี่ยนรอบถาวร)
 // ⚠️ งวดที่ล็อก (แจ้งชำระ/ชำระแล้ว/ขอใบวางบิล/ยกมา) ส่งเข้าตัวคิดเป็นสถานะ 'locked' — ไม่ถูกแตะ แต่ยังกันไม่ให้งวดหลังย้อนแซง
@@ -55,7 +55,9 @@ function OptionTile({ plan, cap, on, onPick }) {
 
 export default function InstallmentDateFill({ mode }) {
   const headRef = useRef(null);
-  const { fill, fillKind, ruleValue, todayIso } = mode;
+  const { fill, fillKind, ruleValue, todayIso, kind, creditDays } = mode;
+  /* เติมวันวางบิลด้วยไหม (ทุกวัน + เครดิต/ชำระวันวางบิล) — ที่เหลือของแผงยึดกำหนดชำระเขียนกำหนดชำระอย่างเดียว */
+  const writesBilling = kind === "cadence" && creditDays !== null;
   const opened = Boolean(fill);
 
   /* เปิดแผง = โฟกัสหัว (คนใช้คีย์บอร์ด/เสียงอ่านรู้ว่าแผงมาแล้ว) + เลื่อนให้เห็น (แผงอยู่เหนือตาราง ปุ่มเปิดอยู่แถบล่าง) */
@@ -79,7 +81,7 @@ export default function InstallmentDateFill({ mode }) {
   /* ── ตัวเลือกตามชนิดรอบ ── */
   let options = null;
   if (targets.length) {
-    if (fillKind === "monthly") {
+    if (fillKind === "rounds") {
       const labels = billingRoundLabels(ruleValue);
       const rounds = labels.length > 1 ? labels.map((label, index) => ({ key: `round:${index}`, roundIndex: index, cap: `รอบ${label}` }))
         : [{ key: "round:0", roundIndex: null, cap: "ตามรอบของลูกค้า · เดือนละงวด" }];
@@ -92,26 +94,27 @@ export default function InstallmentDateFill({ mode }) {
           <p className={styles.lead}><DateLegend /></p>
           <div className={styles.fillTiles} role="radiogroup" aria-label="รอบที่ใช้เติม">
             {rounds.map((round) => (
-              <OptionTile key={round.key} plan={planOf({ kind: "monthly", roundIndex: round.roundIndex })} cap={round.cap}
+              <OptionTile key={round.key} plan={planOf({ kind: "rounds", roundIndex: round.roundIndex })} cap={round.cap}
                 on={fill.choice === round.key}
-                onPick={() => pick(round.key, planOf({ kind: "monthly", roundIndex: round.roundIndex }))} />
+                onPick={() => pick(round.key, planOf({ kind: "rounds", roundIndex: round.roundIndex }))} />
             ))}
           </div>
         </div>
       );
     } else {
-      const suggestion = fillKind === "credit" ? creditFillSuggestion(inputRows, { includeDated }) : null;
+      const suggestion = creditFillSuggestion(inputRows, { includeDated });
       const suggestionPlan = suggestion
-        ? planOf({ kind: "credit", dueDay: suggestion.dueDay, startMonth: suggestion.startMonth })
+        ? planOf({ kind: "cadence", dueDay: suggestion.dueDay, startMonth: suggestion.startMonth })
         : null;
       const day = fill.day;
       const months = fillStartMonths(inputRows, new Set(targets.map((row) => row.id)), todayIso);
-      const optionOf = (startMonth) => (fillKind === "credit"
-        ? { kind: "credit", dueDay: day, startMonth }
-        : { kind: fillKind, day, startMonth });
-      /* "ตามเดือนในชื่องวด" — ทุกชนิดที่เติมโดยยึดวันของกำหนดชำระ (เครดิต N · ไม่มีเครดิต · ยังไม่ตั้ง) · ชื่องวดไม่บอกเดือน = ไม่มีไทล์ */
-      const labelPlan = (fillKind === "none" || fillKind === "credit") && day ? planOf(optionOf(null)) : null;
-      const dayQuestion = fillKind === "anyday" ? "วันวางบิลวันที่ (ทุกงวด)" : "กำหนดชำระวันที่ (ทุกงวด)";
+      const optionOf = (startMonth) => ({ kind: "cadence", dueDay: day, startMonth });
+      /* "ตามเดือนในชื่องวด" — ทุกแบบที่ยึดวันของกำหนดชำระ · ชื่องวดไม่บอกเดือน = ไม่มีไทล์ */
+      const labelPlan = day ? planOf(optionOf(null)) : null;
+      /* ชำระวันวางบิล = วันเดียวถามเป็นวันวางบิลก่อน (ลำดับวันวางบิล → กำหนดชำระ · ไม่พูด "− 0 วัน") */
+      const dayQuestion = writesBilling && creditDays === 0
+        ? "วันวางบิลวันที่ (ชำระวันวางบิล — กำหนดชำระวันเดียวกัน)"
+        : writesBilling ? `กำหนดชำระวันที่ (วันวางบิล = กำหนดชำระ − ${creditDays} วัน)` : "กำหนดชำระวันที่ (ทุกงวด)";
       options = (
         <>
           {suggestionPlan && !suggestionPlan.error ? (
@@ -133,7 +136,7 @@ export default function InstallmentDateFill({ mode }) {
           <div className={styles.fillQ}>
             <span>
               <span className={styles.stepNo} aria-hidden="true">2</span>
-              {fillKind === "none" ? `งวด ${targets[0].seq} เดือนไหน` : `งวด ${targets[0].seq} เริ่มเดือนไหน`}
+              {writesBilling ? `งวด ${targets[0].seq} เริ่มเดือนไหน` : `งวด ${targets[0].seq} เดือนไหน`}
             </span>
             {day ? (
               <div className={styles.fillTiles} role="radiogroup" aria-label="เดือนของงวด">
@@ -174,6 +177,7 @@ export default function InstallmentDateFill({ mode }) {
           </h3>
           <p>
             {targets.length ? `${seqRange(targets)} · ${targets.length} งวด` : "ไม่มีงวดที่ว่าง"}
+            {fillKind === "rounds" ? " · ตามรอบของลูกค้า" : writesBilling ? " · ยึดกำหนดชำระ" : " · กำหนดชำระอย่างเดียว"}
             {" · ลงร่างในตาราง ยังไม่บันทึก"}
           </p>
         </div>
@@ -218,6 +222,15 @@ export default function InstallmentDateFill({ mode }) {
         <Info size={14} aria-hidden="true" />
         งวดที่ล็อก (แจ้งชำระ/ชำระแล้ว/ขอใบวางบิลแล้ว/ยกมา) และงวดที่แก้เองระหว่างแผงเปิดอยู่ ไม่ถูกแตะ
       </p>
+      {fillKind !== "rounds" && !writesBilling ? (
+        /* ไม่มีวันวางบิลปลอม (รอบกรรมการ 29/09) — ไม่ต้องวางบิล/ยังไม่ระบุ/รูปเดิม ได้แค่กำหนดชำระ */
+        <p className={styles.hint}>
+          <Info size={14} aria-hidden="true" />
+          {kind === "dueOnly"
+            ? "ลูกค้าไม่ต้องวางบิล — เติมกำหนดชำระอย่างเดียว"
+            : "เติมกำหนดชำระอย่างเดียว — วันวางบิลไม่บังคับ ใส่รายงวดเองได้"}
+        </p>
+      ) : null}
     </section>
   );
 }

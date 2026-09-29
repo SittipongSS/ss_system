@@ -158,6 +158,34 @@ test('รูปรุ่นแรก (0389 · ก่อนรัน 0390) ยั
   assert.equal(historicalCustomerDueOption(v1Next).option, null);
 });
 
+test('⭐ รุ่นสี่ (29/09): ไม่ต้องวางบิล = ประโยค "ไม่ต้องวางบิล" + ตัวเลือกวันครบกำหนดเดิมตรงตัว (ไม่มีชิปลูกค้า · ไม่มีวันวางบิล)', () => {
+  const due = historicalCustomerDueOption({ v: 4, need: 'none' });
+  assert.equal(due.hint, 'ไม่ต้องวางบิล');
+  assert.equal(due.option, null);
+  assert.match(due.note, /กำหนดชำระของงวดตรงตัว/);
+  assert.doesNotMatch(due.note, /—/);
+  /* ต้องวางบิลรุ่นสี่: ยังไม่ตั้งรอบ = ประโยค + เหตุ · รูปที่รุ่นสองเขียนแทนไม่ได้ (เครดิต + รอบจ่าย) = ประโยค + เหตุ ไม่มีชิป */
+  const noTiming = historicalCustomerDueOption({ v: 4, need: 'required', billing: null });
+  assert.equal(noTiming.hint, 'ต้องวางบิล · ยังไม่ตั้งรอบ');
+  assert.equal(noTiming.option, null);
+  assert.match(noTiming.note, /^ไม่มีตัวเลือก "ตามรอบของลูกค้า" เพราะลูกค้ายังไม่ตั้งรอบวางบิล/);
+  const creditRuns = historicalCustomerDueOption({
+    v: 4, need: 'required', billing: { mode: 'anyday' }, creditDays: 30,
+    runs: { kind: 'monthly', rounds: [{ cutoffDay: 31, payDay: 15, payMonthOffset: 1 }] },
+  });
+  assert.equal(creditRuns.option, null);
+  assert.ok(creditRuns.hint);
+  assert.match(creditRuns.note, /^ไม่มีตัวเลือก "ตามรอบของลูกค้า" เพราะ/);
+  /* รุ่นสี่ที่เป็นรุ่นสองได้ตรงเป๊ะ = ชิปเดิม (รอบเดียว · จ่ายเดือนเดียวกัน) */
+  const same = historicalCustomerDueOption({
+    v: 4, need: 'required', billing: { mode: 'monthly', days: [25] }, creditDays: 0,
+    runs: { kind: 'monthly', rounds: [{ cutoffDay: 25, payDay: 25, payMonthOffset: 0 }] },
+  });
+  assert.equal(same.option?.dueDay, '25');
+  /* ยังไม่ระบุ = เงียบเหมือนเดิม */
+  assert.deepEqual(historicalCustomerDueOption(null), { hint: '', option: null, note: null });
+});
+
 test('historicalCustomerTermsError: ติดเหตุจากเซิร์ฟเวอร์ · ไม่ซ้ำคำ · บอกว่ายังเลือกเองได้', () => {
   const tail = ' · เลือกวันครบกำหนดเองได้ตามเดิม';
   for (const detail of [null, undefined, '', '  ', HISTORICAL_TERMS_LOAD_FAILED]) {
@@ -238,6 +266,8 @@ test('ยาม: หน้าต่างแบ่งงวดส่งกติ
   assert.match(split, /customerTerms\?\.status === "error"/, 'โหลดรอบไม่ขึ้น = บอกเหตุ ไม่ใช่เงียบ');
   assert.match(split, /billingRuleNoCredit\(customerRule\) \? "เครดิตของลูกค้า" : "รอบวางบิลของลูกค้า"/,
     'ไม่มีเครดิตต้องขึ้นเป็นเรื่องเครดิต ไม่ใช่ "รอบวางบิลของลูกค้า: ไม่มีเครดิต"');
+  assert.match(split, /billingNeed\(customerRule\) === "none" \? "การวางบิลของลูกค้า"/,
+    'ไม่ต้องวางบิลไม่ใช่ "รอบวางบิลของลูกค้า: ไม่ต้องวางบิล"');
   assert.match(split, /historicalCustomerTermsError\(customerTerms\.detail\)/, 'บรรทัดโหลดไม่ขึ้นต้องติดเหตุจากเซิร์ฟเวอร์');
   assert.doesNotMatch(split, /` — \$\{customerDue\.note\}`/, 'เหตุที่ไม่มีชิปอยู่บรรทัดของตัวเอง ไม่ต่อท้ายประโยครอบด้วยขีดยาว');
 });

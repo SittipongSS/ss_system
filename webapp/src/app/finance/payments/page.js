@@ -25,8 +25,8 @@ import Link from "next/link";
 import DetailRow from "@/components/ui/DetailRow";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  AlarmClock, CalendarClock, CircleDollarSign, ExternalLink, FileSpreadsheet, FileText, Flag, HandCoins, Receipt, Search,
-  Wallet, Wrench,
+  AlarmClock, CalendarClock, CircleDollarSign, ExternalLink, FileSpreadsheet, FileText, Flag, HandCoins, Hourglass, Receipt,
+  Search, Wallet, Wrench,
 } from "lucide-react";
 import Workspace, { ListPanel, Metric, MetricStrip, WorkspaceSection } from "@/components/ui/Workspace";
 import { TableEmpty, TableGroupRow, TableScroll } from "@/components/ui/Table";
@@ -40,14 +40,14 @@ import { allBucketsCollapsed, toggleBucketKey } from "@/lib/listGrouping";
 import { usePagination } from "@/lib/usePagination";
 import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
 import {
-  LEDGER_BILLING_FILTERS, LEDGER_BILLING_REQUESTED_TAG, LEDGER_BILLING_RULE_UNSET, LEDGER_BILLING_UNREQUESTED_TAG,
-  LEDGER_BILLING_WAITING_TAG, LEDGER_BILLING_WINDOW_DAYS,
+  LEDGER_BILLING_FILTERS, LEDGER_BILLING_MISSING_TAG, LEDGER_BILLING_RULE_UNSET, LEDGER_BILLING_WAITING_TAG,
+  LEDGER_BILLING_WINDOW_DAYS, LEDGER_DUE_FILTERS,
   LEDGER_CANCELLED_TAG, LEDGER_GROUP_OPTIONS, LEDGER_HISTORICAL_TAG, LEDGER_ORDER_STATES, LEDGER_SORT_DEFAULT, LEDGER_SORT_OPTIONS,
   LEDGER_STATUS, LEDGER_STATUS_KEYS, LEDGER_STRANDED_TITLE, groupAsOrder, groupInstallmentNote, groupLedgerBuckets,
-  groupLedgerByOrder, groupNote, ledgerBillingFilter, ledgerBillingWhen, ledgerRowLock, ledgerSortDir, pendingConfirmations,
-  pendingStranded, pendingTaxInvoices, sortLedgerGroups,
+  groupLedgerByOrder, groupNote, ledgerBillingFilter, ledgerBillingWhen, ledgerDueFilter, ledgerRowLock, ledgerSortDir,
+  pendingConfirmations, pendingStranded, pendingTaxInvoices, sortLedgerGroups,
 } from "@/lib/finance/paymentLedger";
-import { billingStateTone, formatBillingDate, weekendNote } from "@/lib/sales/billingRule";
+import { DUE_REMIND_DAYS, NO_BILLING_TEXT, billingStateTone, formatBillingDate, weekendNote } from "@/lib/sales/billingRule";
 import { canConfirmPayment } from "@/lib/permissions";
 import { useCan, useCapUser, useDepartment } from "@/lib/roleContext";
 import { salesOrderListTrack } from "@/lib/sales/salesOrderListTrack";
@@ -71,14 +71,16 @@ import { apiFetch } from "@/lib/apiFetch";
    (ที่เหลือ `group` `sort` `dir` เป็นมุมมองบนจอ ล้างตัวกรองแล้วต้องยังอยู่) */
 /* ⚠️ ตัวกรองใหม่ต้องต่อสายครบหกที่ (FILTER_KEYS · query useMemo + dep array · filterCount · `filterValues` ·
    literal `filters` ของ route · clause ใน filterLedger) — ยาม paymentLedgerFilterWiring.test.mjs ไล่ตรวจทุกคีย์ในชุดนี้ */
-const FILTER_KEYS = ["status", "orderState", "line", "from", "to", "q", "overdue", "taxInvoice", "billing"];
+const FILTER_KEYS = ["status", "orderState", "line", "from", "to", "q", "overdue", "taxInvoice", "billing", "due"];
 
 /* ── เซลล์ "วางบิลถัดไป" (mig 0389 · ม็อก D) ─────────────────────────────────────────────────────────
-   วันวางบิล · "งวด n · ระยะ" · ป้ายขอใบแล้ว/ยังไม่ขอ — ค่าระดับใบมาจาก `groupLedgerByOrder` (nextBilling ฯลฯ)
+   วันวางบิล · "งวด n · ระยะ" — ค่าระดับใบมาจาก `groupLedgerByOrder` (nextBilling ฯลฯ)
    ⚠️ **ไม่มีสีแดงในเซลล์นี้** — เลยรอบ/ใกล้ถึงรอบ = โทนเตือน (`billingStateTone`) · แดงสงวนให้ "เลยกำหนด"
      ซึ่งอ่านกำหนดชำระ (คอลัมน์ถัดไป) เท่านั้น
    ⚠️ วันเสาร์/อาทิตย์ไม่เลื่อนวัน (มติข้อ 6) — เตือนเป็นบรรทัดรองที่ตาเห็น ไม่ใช่แค่ title (จอสัมผัส/คีย์บอร์ดไม่เคยเห็น title)
-   ⚠️ คำป้ายมาจากค่าคงที่ของ lib — ชุดค้นใช้คำเดียวกัน (ตาเห็นบนแถว = ต้องค้นเจอ) */
+   ⚠️ คำป้ายมาจากค่าคงที่ของ lib — ชุดค้นใช้คำเดียวกัน (ตาเห็นบนแถว = ต้องค้นเจอ)
+   ⭐ รุ่นสี่ (§6): ป้ายคำขอใบวางบิลย้ายไปคอลัมน์ของตัวเอง ("คำขอใบวางบิล") · ลูกค้า/งวดที่ไม่ต้องวางบิลขึ้นคำ "ไม่ต้องวางบิล"
+     ไม่มีสถานะวางบิล (เลยรอบ/ยังไม่มีวัน) ให้เห็น */
 function NextBillingCell({ group }) {
   const next = group.nextBilling;
   if (next) {
@@ -94,22 +96,17 @@ function NextBillingCell({ group }) {
           งวด {next.seq}{when ? ` · ${when}` : ""}
         </span>
         {weekend ? <span className="cell-sub">{weekend}</span> : null}
-        <span className={styles.billBadge}>
-          {next.requested
-            ? <StatusBadge size="sm" tone="info" label={LEDGER_BILLING_REQUESTED_TAG} title="มีคำร้องขอใบวางบิลของงวดนี้แล้ว" />
-            : <StatusBadge size="sm" tone={warn ? "warning" : "neutral"} label={LEDGER_BILLING_UNREQUESTED_TAG} title="ยังไม่มีคำร้องขอใบวางบิลของงวดนี้" />}
-        </span>
       </>
     );
   }
-  /* ไม่มีรอบถัดไป — บอกเหตุเท่าที่รู้ (ม็อก D) · ลูกค้าที่ไม่มีรอบ และไม่มีงวดไหนเลือกวัน = ขีด (สถานะปกติ)
-     ⚠️ "มีรอบ" = `billingRuleActive` ไม่ใช่ความว่างของข้อความ — เฉพาะรอบรายเดือน/เครดิต N วัน (`billingRuleNeedsBillingDate`)
-       ลูกค้าไม่มีเครดิต (ข้อความ "ไม่มีเครดิต · ชำระวันวางบิล") ไม่ขึ้นชวน: กำหนดชำระ = วันวางบิลอยู่แล้ว (มติ 28/09 · ดู paymentLedger.js) */
-  if (group.billingUnset && group.billingRuleActive) {
+  /* ไม่มีรอบถัดไป — บอกเหตุเท่าที่รู้ (ม็อก D)
+     ⭐ รุ่นสี่: คำชวน "ยังไม่มีวันวางบิล" อ่านธงรายงวด `billingMissing` ของตัวคิด (ลูกค้าต้องวางบิลจริง · ไม่นับงวดที่ติ๊ก
+       "งวดนี้ไม่ต้องวางบิล" · รูปเดิม { credit:false } ไม่ชวน = เท่ากับ prod) — โทนเตือน ไม่ใช่แดง */
+  if (group.billingMissing) {
     return (
       <>
-        <span className="cell-quiet">ยังไม่กำหนด</span>
-        <span className="cell-sub">{group.billingUnset} งวดไม่มีวันวางบิล</span>
+        <span className={`cell-quiet ${styles.billWarn}`}>{LEDGER_BILLING_MISSING_TAG}</span>
+        <span className="cell-sub">{group.billingMissing} งวดที่ต้องวางบิล</span>
       </>
     );
   }
@@ -129,7 +126,32 @@ function NextBillingCell({ group }) {
       </>
     );
   }
+  // ลูกค้าไม่ต้องวางบิล / งวดที่ติ๊กไม่ต้องวางบิล — คำเดียวกับเซลล์วันวางบิลบนแผงงวด (`billingCellText`) ไม่ใช่ช่องว่างที่ชวนกรอก
+  if (group.billingNotNeeded) return <span className="cell-quiet">{NO_BILLING_TEXT}</span>;
   return <span className="cell-quiet">{NA}</span>;
+}
+
+/* ── เซลล์ "คำขอใบวางบิล" (รุ่นสี่ · system-design §6 · ม็อก recommended `view=remind`) ─────────────────────────────
+   ร่าง / ส่งแล้ว / ยังไม่ขอ / — ของงวดในเซลล์ "วางบิลถัดไป" (ค่าจาก `groupLedgerByOrder().billingRequest`)
+   ⚠️ ไม่มีวันวางบิล = ขีด ไม่ใช่ "ยังไม่ขอ" (ไม่ชวนขอใบของงวดที่ไม่มีวันวางบิล · มติเจ้าของ 28/09)
+   ⚠️ "ร่าง" ยังไม่นับว่าขอ (คำร้องยังไม่ถึงบัญชี · กระดิ่งยังเตือน) — โทนกลาง ไม่ใช่ info แบบ "ส่งแล้ว"
+   ⚠️ ไม่มีปุ่ม "ส่งคำขอ" ที่นี่ — คำร้องขอใบวางบิลเป็นงานของฝ่ายขายบนแผงงวด (แถวพาไปใบอยู่แล้ว) */
+const BILLING_REQUEST_TITLE = {
+  sent: "มีคำร้องขอใบวางบิลของงวดนี้ที่ส่งถึงบัญชีแล้ว",
+  draft: "ฝ่ายขายเริ่มคำร้องไว้แต่ยังไม่ส่ง — ยังไม่นับว่าขอ",
+  none: "ยังไม่มีคำร้องขอใบวางบิลของงวดนี้",
+};
+function BillingRequestCell({ group }) {
+  const request = group.billingRequest;
+  if (!request?.state) return <span className="cell-quiet">{NA}</span>;
+  const warn = request.state === "none" && billingStateTone(group.nextBilling?.state) === "warning";
+  const tone = request.state === "sent" ? "info" : warn ? "warning" : "neutral";
+  return (
+    <>
+      <StatusBadge size="sm" tone={tone} label={request.label} title={BILLING_REQUEST_TITLE[request.state]} />
+      {request.seq ? <span className="cell-sub">งวด {request.seq}</span> : null}
+    </>
+  );
 }
 
 export default function FinancePaymentsPage() {
@@ -142,7 +164,7 @@ export default function FinancePaymentsPage() {
   const capUser = useCapUser();
   const department = useDepartment();
   const canSetBillingRule = useCan("customers:view") && canConfirmPayment({ ...capUser, department });
-  const [data, setData] = useState({ rows: [], summary: null, totalRows: 0, undatedHidden: null, billingTally: null });
+  const [data, setData] = useState({ rows: [], summary: null, totalRows: 0, undatedHidden: null, billingTally: null, dueTally: null });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [downloading, setDownloading] = useState(false);
@@ -170,6 +192,9 @@ export default function FinancePaymentsPage() {
      (= ชุดที่หัวข้อกระดิ่งนับเป๊ะ · รอบสอง 26/09 — ตัวคัดของกระดิ่งตัดสินที่ API) · ตัวเลือกในเมนูมาจาก `LEDGER_BILLING_FILTERS`
      ค่าที่ไม่รู้จัก = '' (ไม่ส่งขึ้น API · ไม่นับบนปุ่ม) — ตัวตัดสินชุดเดียวกับ filterLedger */
   const billing = ledgerBillingFilter(params.get("billing") || "");
+  /* ครบกำหนดชำระ (รุ่นสี่ · §6) — soon · กระดิ่ง "ครบกำหนดชำระ" ฝั่ง FN เปิดหน้านี้ด้วย `?due=soon` (= ชุดที่หัวข้อกระดิ่งนับ ·
+     ตัวคัดของกระดิ่งตัดสินที่ API) · ค่าที่ไม่รู้จัก = '' (ตัวตัดสินชุดเดียวกับ filterLedger) */
+  const due = ledgerDueFilter(params.get("due") || "");
   const groupBy = params.get("group") || "none";
   const sortKey = params.get("sort") || LEDGER_SORT_DEFAULT;
   const sortDir = params.get("dir") || ledgerSortDir(sortKey);
@@ -192,8 +217,9 @@ export default function FinancePaymentsPage() {
        dep array = query ค้างค่าเก่า fetch ไม่ยิงใหม่) */
     if (taxInvoice) sp.set("taxInvoice", taxInvoice);
     if (billing) sp.set("billing", billing);
+    if (due) sp.set("due", due);
     return sp;
-  }, [status, orderState, line, from, to, q, overdue, taxInvoice, billing]);
+  }, [status, orderState, line, from, to, q, overdue, taxInvoice, billing, due]);
 
   /* เขียนกลับจาก **params ทั้งชุด** ไม่ใช่จาก `query` — เขียนจาก query เมื่อไร
      การกดตัวกรองหนึ่งครั้งจะลบ group/sort/dir ทิ้งเงียบ ๆ */
@@ -208,12 +234,12 @@ export default function FinancePaymentsPage() {
 
   /* ⚠️ อ่านค่าที่ผ่านตัวตัดสินแล้ว ไม่ใช่พารามิเตอร์ดิบ — `?billing=bogus` ไม่ได้กรองอะไร (API เมิน) ⇒ ต้องไม่ขึ้น "จาก N"
      หรือปุ่ม "ล้างตัวกรอง" ทั้งที่ไม่มีอะไรให้ล้าง · ทุกคีย์ใน FILTER_KEYS ต้องมีค่าในก้อนนี้ (ยามต่อสายตรวจ) */
-  const filterValues = { status, orderState, line, from, to, q, overdue, taxInvoice, billing };
+  const filterValues = { status, orderState, line, from, to, q, overdue, taxInvoice, billing, due };
   const activeFilterKeys = FILTER_KEYS.filter((key) => Boolean(filterValues[key]));
   const filtering = activeFilterKeys.length > 0;
   /* ⚠️ ผลบวกเขียนมือ — `FILTER_KEYS` ให้ฟรีแค่ `filtering` กับ `clearFilters` ตัวนับบนปุ่มต้องบวกเอง */
   const filterCount = statusFilter.length + orderStateFilter.length + lineFilter.length
-    + (overdue ? 1 : 0) + (taxInvoice ? 1 : 0) + (billing ? 1 : 0);
+    + (overdue ? 1 : 0) + (taxInvoice ? 1 : 0) + (billing ? 1 : 0) + (due ? 1 : 0);
 
   /* ล้างตัวกรอง = ล้างเฉพาะชั้นข้อมูล **แต่คงมุมมองไว้** — คนกดล้างอยากเห็นของครบ
      ไม่ได้อยากให้การจัดกลุ่ม/การเรียงที่เพิ่งตั้งไว้หายไปด้วย */
@@ -250,6 +276,8 @@ export default function FinancePaymentsPage() {
         undatedHidden: body.undatedHidden || null,
         // ตัวนับของกลุ่มตัวกรองรอบวางบิล + งวดไม่มีวันวางบิลที่ตัวกรองนั้นซ่อน (คิดที่ API จากชุดที่ถอดตัวกรองนี้ออก)
         billingTally: body.billingTally || null,
+        // ตัวนับของกลุ่มตัวกรอง "ครบกำหนดชำระ" (คิดที่ API จากชุดที่ถอดตัวกรองนี้ออก — กติกาเดียวกับ billingTally)
+        dueTally: body.dueTally || null,
         /* ⚠️ "วันนี้" มาจาก server (นาฬิกาไทย) ไม่ใช่จากเครื่องผู้ใช้ — คอลัมน์ "จ่ายถึง"
            เทียบกับค่านี้ ถ้าอ่านนาฬิกาเบราว์เซอร์ คนที่ตั้งโซนเวลาอื่นจะเห็นสีคนละแบบ */
         todayIso: body.todayIso || null,
@@ -266,10 +294,12 @@ export default function FinancePaymentsPage() {
   const todayIso = data.todayIso;
   const undatedHidden = data.undatedHidden;
   const billingTally = data.billingTally;
+  const dueTally = data.dueTally;
   const billingOption = LEDGER_BILLING_FILTERS.find((option) => option.value === billing) || null;
-  /* คำของตารางว่างแบบ "รอบวางบิล" ใช้ได้เฉพาะตอนที่มันเป็นตัวกรองเดียว — มีคำค้น/ตัวกรองอื่นด้วยแล้วว่าง
+  const dueOption = LEDGER_DUE_FILTERS.find((option) => option.value === due) || null;
+  /* คำของตารางว่างแบบ "รอบวางบิล"/"ครบกำหนด" ใช้ได้เฉพาะตอนที่มันเป็นตัวกรองเดียว — มีคำค้น/ตัวกรองอื่นด้วยแล้วว่าง
      อาจเป็นตัวอื่นที่ตัดจนหมด ⇒ ถอยไปคำกลาง ๆ (review S5) */
-  const onlyBillingFilter = Boolean(billingOption) && activeFilterKeys.length === 1;
+  const onlyOption = activeFilterKeys.length === 1 ? (billingOption || dueOption) : null;
 
   /* ⭐ **จับกลุ่มตามใบ แล้วแบ่งหน้าที่ระดับ "ใบ" ไม่ใช่ระดับ "งวด"** (มติผู้ใช้ 2026-08-13)
      ⭐ **หนึ่งใบ = หนึ่งแถว ไม่มีแถวย่อย** (มติผู้ใช้ 2026-08-15) — ทะเบียนตอบคำถาม
@@ -424,6 +454,8 @@ export default function FinancePaymentsPage() {
           {/* ⭐ รอบวางบิลของลูกค้าแบบย่อ (mig 0389 · ม็อก D) — FN รู้ทันทีว่าใบนี้วางบิลวันไหน เงินเข้าวันไหน
               ⚠️ ยังไม่ตั้ง = บอกตรง ๆ (ข้อความเดียวกับชุดค้น) + ลิงก์ไปตั้งที่ทะเบียนลูกค้า (FN แก้รอบได้ · มติ 25/09 ข้อ 4)
                 เปิดแท็บใหม่ — ไม่ใช่ปลายทางของแถว (แถว = ใบ SO) จึงไม่พาทั้งหน้าออกไป */}
+          {/* ⭐ รุ่นสี่: ยังไม่ระบุ = "ยังไม่ระบุว่าต้องวางบิลไหม" (คำเดียวกับการ์ดลูกค้า) · ลิงก์ลงที่การ์ดกำหนดวางบิล (`#billing-rule`)
+              ซึ่งถามข้อแรกว่า "ต้องวางบิลไหม" ⇒ ป้ายลิงก์ "ตั้งค่า" ไม่ใช่ "ตั้งรอบ" (ลูกค้าไม่ต้องวางบิลไม่มีรอบให้ตั้ง) */}
           {group.billingRuleText ? (
             <span className="cell-sub">
               <CalendarClock size={12} aria-hidden="true" className={styles.billRuleIcon} />
@@ -437,12 +469,12 @@ export default function FinancePaymentsPage() {
                   {" · "}
                   <Link
                     prefetch={false}
-                    href={`/database/customers/${group.customerId}`}
+                    href={`/database/customers/${group.customerId}#billing-rule`}
                     target="_blank" rel="noreferrer"
                     className="linklike"
-                    title="ตั้งรอบวางบิลที่ทะเบียนลูกค้า (แท็บใหม่)"
+                    title="ตั้งกำหนดวางบิลที่ทะเบียนลูกค้า (แท็บใหม่)"
                   >
-                    ตั้งรอบ
+                    ตั้งค่า
                   </Link>
                 </>
               ) : null}
@@ -458,24 +490,6 @@ export default function FinancePaymentsPage() {
           {/* ⭐ งวดจริงต่างจากแผนของ QT (ปรับแผนหลังอนุมัติ · 0377 · มติ D5) — ฉบับพิมพ์ SO ที่ลูกค้าถือยังแสดงแผน QT
               ⇒ บัญชีต้องรู้ก่อนโทรตามเงินว่ายอดต่องวดบนกระดาษไม่ใช่ยอดในทะเบียน · ค่าระดับใบประทับจากชุดก่อนกรอง */}
           {group.replanned ? <StatusBadge size="sm" tone="info" label={REPLANNED_BADGE} title={REPLANNED_BADGE_TITLE} /> : null}
-        </td>
-        {/* ⭐ **ยอดค้างรับเป็นตัวเด่น** — เลขที่บัญชีตามจริง ของเดิมมีแต่
-            ยอดรวมกับเก็บแล้ว ต้องลบเอาเอง · แถบสัดส่วนอ่านความคืบหน้าด้วยตาเดียว */}
-        <td className="num mono">
-          {group.complete
-            ? <span className="cell-num-ok">เก็บครบ</span>
-            : <strong>{fmtMoney(group.summary.outstandingAmount)}</strong>}
-          <span className="cell-sub">
-            {fmtMoney(group.summary.collectedAmount)} / {fmtMoney(group.summary.totalAmount)}
-          </span>
-          {/* ⚠️ ใช้ <progress> ไม่ใช่ div+`style={{width}}` แบบที่อื่นในระบบ —
-              สัดส่วนมาทาง attribute ⇒ ไม่เพิ่มชั้น inlineStyle ที่ audit:ui
-              ล็อกเพดานไว้ (ratchet ขึ้นไม่ได้) และ semantic ตรงกว่า
-              ⚠️ ใบยอด 0 ไม่มีแถบ — รางเปล่าที่เติมไม่ได้อ่านเหมือนระบบค้าง */}
-          {group.summary.totalAmount > 0 ? (
-            <progress className={styles.mbar} aria-hidden="true"
-              value={group.summary.collectedAmount} max={group.summary.totalAmount} />
-          ) : null}
         </td>
         {/* ใบหนึ่งมีหลายงวดจึงมีหลายวัน — สิ่งที่ตอบ "ต้องตามใบนี้เมื่อไร"
             คือวันของงวดที่ **ยังเก็บไม่ได้** ที่ใกล้ที่สุด (`nextDue`) */}
@@ -494,9 +508,40 @@ export default function FinancePaymentsPage() {
         <td className="num">
           <NextBillingCell group={group} />
         </td>
+        {/* กำหนดถัดไป — แดง "เลยกำหนด" อ่านกำหนดชำระช่องเดียว (ไม่เคยแดงจากวันวางบิล)
+            ⭐ รุ่นสี่: ลูกค้าไม่ต้องวางบิลที่รอเหตุการณ์ พูดเหตุการณ์ที่ช่องนี้ (ช่องนำของเขา · `dueCellText`) ·
+              "ครบกำหนดใน 3 วัน" = งวดในชุดของกระดิ่งครบกำหนด (ตัวกรอง `?due=soon`) */}
         <td className={`num ${group.overdue ? "cell-num-bad" : ""}`.trim()}>
-          {group.nextDue ? fmtDate(group.nextDue) : <span className="cell-quiet">{NA}</span>}
+          {group.nextDue
+            ? fmtDate(group.nextDue)
+            : <span className="cell-quiet">{group.dueWaiting ? LEDGER_BILLING_WAITING_TAG : NA}</span>}
+          {!group.nextDue && group.dueWaiting
+            ? <span className="cell-sub">งวด {group.dueWaiting.seq} · {group.dueWaiting.event}</span>
+            : null}
+          {group.dueSoon ? <span className="cell-sub">ครบกำหนดใน {DUE_REMIND_DAYS} วัน · {group.dueSoon} งวด</span> : null}
           {note ? <span className="cell-sub">{note.label}</span> : null}
+        </td>
+        {/* ⭐ คำขอใบวางบิล (รุ่นสี่ · §6) — ลำดับคอลัมน์ตามงานจริง: วันวางบิล → กำหนดชำระ → คำขอใบวางบิล → ยอด */}
+        <td>
+          <BillingRequestCell group={group} />
+        </td>
+        {/* ⭐ **ยอดค้างรับเป็นตัวเด่น** — เลขที่บัญชีตามจริง ของเดิมมีแต่
+            ยอดรวมกับเก็บแล้ว ต้องลบเอาเอง · แถบสัดส่วนอ่านความคืบหน้าด้วยตาเดียว */}
+        <td className="num mono">
+          {group.complete
+            ? <span className="cell-num-ok">เก็บครบ</span>
+            : <strong>{fmtMoney(group.summary.outstandingAmount)}</strong>}
+          <span className="cell-sub">
+            {fmtMoney(group.summary.collectedAmount)} / {fmtMoney(group.summary.totalAmount)}
+          </span>
+          {/* ⚠️ ใช้ <progress> ไม่ใช่ div+`style={{width}}` แบบที่อื่นในระบบ —
+              สัดส่วนมาทาง attribute ⇒ ไม่เพิ่มชั้น inlineStyle ที่ audit:ui
+              ล็อกเพดานไว้ (ratchet ขึ้นไม่ได้) และ semantic ตรงกว่า
+              ⚠️ ใบยอด 0 ไม่มีแถบ — รางเปล่าที่เติมไม่ได้อ่านเหมือนระบบค้าง */}
+          {group.summary.totalAmount > 0 ? (
+            <progress className={styles.mbar} aria-hidden="true"
+              value={group.summary.collectedAmount} max={group.summary.totalAmount} />
+          ) : null}
         </td>
         {/* ออกใบกำกับไปกี่งวดแล้ว — ค้างเมื่อไรเป็นตัวเลขเตือน เพราะทุกงวดที่จ่ายแล้ว
             ต้องมีใบ (บริษัทเก็บ VAT · มติผู้ใช้ 2026-09-07)
@@ -586,10 +631,10 @@ export default function FinancePaymentsPage() {
         )}
         {/* ⚠️ กติกาเดียวกันกับตัวกรองรอบวางบิล (0389) — งวดที่ยังไม่มีวันวางบิล (ยังไม่เลือกรอบ/รอเหตุการณ์) หลุดตามความหมาย
             ของตัวกรอง แต่ยอดสรุปคิดจากแถวที่เหลือ ⇒ บอกส่วนที่ซ่อน · ปุ่มถอดเฉพาะตัวกรองนี้ ตัวกรองอื่นคงไว้
-            ⚠️ นับเฉพาะงวดที่ "ควรมีวันแต่ไม่มี" (`ledgerBillingTally`) — ลูกค้าไม่มีรอบคือสถานะปกติ ไม่ใช่เงินหาย */}
+            ⚠️ นับเฉพาะงวดที่ "ควรมีวันแต่ไม่มี" (`ledgerBillingTally`) — ลูกค้าไม่มีรอบ/ไม่ต้องวางบิลคือสถานะปกติ ไม่ใช่เงินหาย */}
         {billing && billingTally?.hidden?.count > 0 && (
           <StatusNotice tone="info" action={<Button size="sm" variant="ghost" onClick={() => setFilter("billing", "")}>ล้างตัวกรองรอบวางบิล</Button>}>
-            ยังมีอีก {billingTally.hidden.count} งวด · {fmtMoney(billingTally.hidden.amount)} ที่ยังไม่มีวันวางบิล (รอเหตุการณ์ หรือลูกค้ามีรอบแล้วแต่งวดยังไม่ได้เลือกวัน) — ตัวกรองนี้และยอดสรุปด้านบนไม่นับส่วนนี้
+            ยังมีอีก {billingTally.hidden.count} งวด · {fmtMoney(billingTally.hidden.amount)} ที่ยังไม่มีวันวางบิล (รอเหตุการณ์ หรือลูกค้าต้องวางบิลแต่งวดยังไม่ได้เลือกวัน) — ตัวกรองนี้และยอดสรุปด้านบนไม่นับส่วนนี้
           </StatusNotice>
         )}
 
@@ -851,6 +896,17 @@ export default function FinancePaymentsPage() {
                   selected: billing ? [billing] : [],
                   onChange: (values) => setFilter("billing", values[0] || ""),
                 },
+                {
+                  /* ⭐ ครบกำหนดชำระ (รุ่นสี่ · §6) — ชุดของกระดิ่ง "ครบกำหนดชำระ" (ทุกงวดที่มีกำหนดชำระ 0..3 วัน · ขอใบแล้วก็นับ)
+                     ⚠️ คนละเรื่องกับ "เลยกำหนด" (ความด่วน) · ตัวเลขในวงเล็บไม่รวมตัวกรองนี้เอง (`dueTally` จาก API) */
+                  key: "due", label: "ครบกำหนดชำระ", icon: Hourglass, single: true,
+                  options: LEDGER_DUE_FILTERS.map((option) => {
+                    const n = dueTally?.counts?.[option.value];
+                    return { value: option.value, label: `${option.label}${n ? ` (${n})` : ""}` };
+                  }),
+                  selected: due ? [due] : [],
+                  onChange: (values) => setFilter("due", values[0] || ""),
+                },
               ]}
             />
             {/* ⚠️ ช่วงวันกรองที่ **กำหนดชำระ** ไม่ใช่วันจ่ายจริง — คำถามของบัญชีคือ
@@ -896,7 +952,7 @@ export default function FinancePaymentsPage() {
           </>
           )}
         >
-          <TableScroll surface="embedded" cells="stacked" minWidth={1460} aria-busy={loading}>
+          <TableScroll surface="embedded" cells="stacked" minWidth={1580} aria-busy={loading}>
               <table className="w-full text-sm">
                 <thead>
                   {/* ⭐ 9 → 6 คอลัมน์ (มติผู้ใช้ 2026-08-13 · แบบ ก)
@@ -909,11 +965,13 @@ export default function FinancePaymentsPage() {
                     <th>เอกสาร / ความคืบหน้า</th>
                     <th>ลูกค้า</th>
                     <th className="num">งวด</th>
-                    <th className="num">ค้างรับ</th>
                     <th className="num">จ่ายถึง</th>
-                    {/* วันวางบิล (mig 0389) — ค่าระดับใบ = งวดถัดไปที่ต้องไปวางบิล · รายงวดครบอยู่ในไฟล์ Excel */}
+                    {/* วันวางบิล (mig 0389) — ค่าระดับใบ = งวดถัดไปที่ต้องไปวางบิล · รายงวดครบอยู่ในไฟล์ Excel
+                        ⭐ รุ่นสี่ (§6): วันวางบิล → กำหนดชำระ → คำขอใบวางบิล → ยอด (ค้างรับ) · ลำดับเดียวกับม็อก recommended */}
                     <th className="num">วางบิลถัดไป</th>
                     <th className="num">กำหนดถัดไป</th>
+                    <th>คำขอใบวางบิล</th>
+                    <th className="num">ค้างรับ</th>
                     {/* ใบกำกับภาษี (mig 0348) — ตารางเป็น **หนึ่งใบหนึ่งแถว** ⇒ ใส่ได้แค่
                         ตัวนับ ไม่ใช่เลขใบ · เลขรายงวดอยู่ในไฟล์ Excel และบนใบ SO */}
                     <th className="num">ใบกำกับ</th>
@@ -930,7 +988,7 @@ export default function FinancePaymentsPage() {
                         {/* ยอดของกลุ่ม = **ค้างรับ** ไม่ใช่ยอดรวม — เลขเดียวกับที่เป็น
                             ตัวเด่นในแถวใบ ⇒ หัวกลุ่มกับแถวข้างในพูดเรื่องเดียวกัน */}
                         <TableGroupRow
-                          colSpan={8}
+                          colSpan={9}
                           label={bucket.label}
                           sub={bucket.sub}
                           badge={`${bucket.count} ใบ`}
@@ -945,11 +1003,11 @@ export default function FinancePaymentsPage() {
                   }) : pageRows.map(orderRow)}
                   {!rows.length && !loading && (
                     <TableEmpty
-                      colSpan={8}
+                      colSpan={9}
                       /* ตัวกรองรอบวางบิลบอกนิยามของตัวเองตอนว่าง — "ว่าง" ของ "เลยรอบ" ต้องอ่านออกว่านับอะไร (ม็อก D) */
-                      title={onlyBillingFilter ? billingOption.empty : filtering ? "ไม่มีงวดที่ตรงกับตัวกรอง" : "ยังไม่มีงวดชำระในระบบ"}
-                      description={onlyBillingFilter
-                        ? billingOption.hint
+                      title={onlyOption ? onlyOption.empty : filtering ? "ไม่มีงวดที่ตรงกับตัวกรอง" : "ยังไม่มีงวดชำระในระบบ"}
+                      description={onlyOption
+                        ? onlyOption.hint
                         : filtering
                           ? "ลองขยายช่วงวันหรือล้างตัวกรอง"
                           : "งวดเกิดขึ้นเองตอน AE Supervisor อนุมัติใบสั่งขาย"}

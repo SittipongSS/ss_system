@@ -145,12 +145,6 @@
   font-weight: var(--fw-semibold);
 }
 
-/* ป้าย ขอใบแล้ว/ยังไม่ขอ — บรรทัดของตัวเองใต้คำบอกระยะ */
-.billBadge {
-  display: block;
-  margin-top: var(--space-1);
-}
-
 /* รอบวางบิลแบบย่อใต้ชื่อลูกค้า — ไอคอนปฏิทินนำหน้าให้แยกจากชื่อ/รหัสได้ด้วยตา
    ⚠️ ไม่ทับ `display` ของ `.cell-sub` (ลำดับโหลด globals กับ module ไม่การันตี) — ไอคอนวางแบบ inline แทน flex */
 .billRuleIcon {

@@ -34,7 +34,7 @@ import { ownerLockedToSelf } from '@/lib/sales/dealOwner';
 import { externalDocKindLabel } from '@/lib/sales/contracts';
 import { addDays, dueDateByRule, monthEdge, splitCoverageByMonths } from '@/lib/sales/paymentCoverage';
 import {
-  MONTH_END_DAY, billingRoundCount, describeBillingRule, effectiveBillingRule,
+  MONTH_END_DAY, NO_BILLING_TEXT, billingNeed, billingRoundCount, describeBillingRule, describeRule, effectiveBillingRule, hasTiming,
 } from '@/lib/sales/billingRule';
 import {
   HISTORICAL_APPROVER_LABEL, HISTORICAL_REF_MAX, INSTALLMENT_LABEL_MAX, INSTALLMENT_NOTE_MAX, OPENING_INSTALLMENT_LABEL,
@@ -1991,7 +1991,11 @@ export const HISTORICAL_DUE_RULES = Object.freeze([
        เครดิต N วัน) ซึ่งใบย้อนหลังไม่มีวันวางบิลให้นับ ⇒ เหตุเดียวกับเครดิต ต่างแค่คำ (ประโยคบอก "ไม่มีเครดิต · ชำระวันวางบิล")
      · **หลายรอบต่อเดือน** = ไม่มีชิป พร้อมเหตุ — แต่ละรอบมีวันเงินเข้าของตัวเอง ใบย้อนหลังไม่มีวันวางบิลบอกว่างวดไหน
        อยู่รอบไหน (เลือกรอบแรกให้ = เดาวัน · ขัดมติ 3) · ห้ามอ่าน `rule.payment.day`/`.monthOffset` รุ่นแรก — อ่าน `rounds[0]`
-   ⚠️ งวดยกมาไม่เกี่ยว — หน้าต่างนี้สร้างเฉพาะงวดที่ยังต้องเก็บ (งวดยกมาไม่มีวันวางบิลเสมอ · CHECK ของ 0389) */
+   ⚠️ งวดยกมาไม่เกี่ยว — หน้าต่างนี้สร้างเฉพาะงวดที่ยังต้องเก็บ (งวดยกมาไม่มีวันวางบิลเสมอ · CHECK ของ 0389)
+   ⭐ รุ่นสี่ (มติเจ้าของ 29/09 · "ต้องวางบิลไหม"): ใบย้อนหลังยังตั้ง **กำหนดชำระอย่างเดียว** (ไม่มีวันวางบิล) —
+     · **ไม่ต้องวางบิล** = ประโยค "ไม่ต้องวางบิล" + ตัวเลือกวันครบกำหนดเดิมเท่านั้น (ชิปกำหนดชำระตรงตัว — ไม่มีวันวางบิลให้คิด ไม่มีชิปลูกค้า)
+     · ต้องวางบิลแต่ยังไม่ตั้งรอบ = ประโยค + เหตุ · รูปรุ่นสี่ที่เขียนเป็นรุ่นสองตรงเป๊ะไม่ได้ (รอบจ่าย/เครดิตแล้วเข้ารอบ/ปฏิทิน) = ประโยค + เหตุ
+       (ชิปต้องมาจากรูปรุ่นสองที่ตรงเป๊ะเท่านั้น — `effectiveBillingRule` ไม่ประมาณ · มติ 3 ไม่เดาวัน) */
 export const HISTORICAL_CUSTOMER_DUE_RULE = 'customer';
 /* ต้นประโยคเหตุที่ไม่มีชิป — บอกชื่อตัวเลือกที่หายไป ผู้ใช้ไม่ต้องเดาว่าอะไรไม่ขึ้น (กฎบ้าน: ติดด่าน = บอกเหตุ) */
 const NO_CUSTOMER_CHIP = 'ไม่มีตัวเลือก "ตามรอบของลูกค้า" เพราะ';
@@ -2006,8 +2010,26 @@ const NO_CUSTOMER_CHIP = 'ไม่มีตัวเลือก "ตามร�
  *     ⚠️ ห้ามมี "—" ใน note ที่ไม่มีชิป — ประโยครอบกับเหตุอยู่ใกล้กัน เคยขึ้นขีดยาวสองตัวในบรรทัดเดียว (รีวิว 26/09)
  */
 export function historicalCustomerDueOption(billingRule) {
+  const need = billingNeed(billingRule);
+  if (need === 'none') {
+    return {
+      hint: NO_BILLING_TEXT,
+      option: null,
+      note: 'ลูกค้าไม่ต้องวางบิล · วันครบกำหนดที่เลือกคือกำหนดชำระของงวดตรงตัว (ไม่มีวันวางบิล)',
+    };
+  }
   const rule = effectiveBillingRule(billingRule);
-  if (!rule) return { hint: '', option: null, note: null };
+  if (!rule) {
+    /* ต้องวางบิลรุ่นสี่ที่รุ่นสองเขียนแทนไม่ได้ — ยังบอกประโยค (ไม่ใช่เงียบเหมือนยังไม่ตั้ง) แต่ไม่มีชิป */
+    if (need !== 'required') return { hint: '', option: null, note: null };
+    return {
+      hint: describeRule(billingRule),
+      option: null,
+      note: hasTiming(billingRule)
+        ? `${NO_CUSTOMER_CHIP}กำหนดชำระของลูกค้านับจากวันวางบิล/รอบจ่าย ซึ่งใบย้อนหลังไม่มีวันวางบิล · เลือกวันครบกำหนดเอง`
+        : `${NO_CUSTOMER_CHIP}ลูกค้ายังไม่ตั้งรอบวางบิล · เลือกวันครบกำหนดเอง`,
+    };
+  }
   const hint = describeBillingRule(rule);
   if (rule.noCredit) {
     return { hint, option: null, note: `${NO_CUSTOMER_CHIP}ลูกค้าไม่มีเครดิต (ชำระวันวางบิล) ซึ่งใบย้อนหลังไม่มีวันวางบิล · เลือกวันครบกำหนดเอง` };

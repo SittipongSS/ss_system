@@ -16,25 +16,38 @@
 // ⚠️ หมายเหตุการวางบิลเป็นส่วนหนึ่งของรอบ (ล้างรอบ = หมายเหตุหายไปด้วย) ⇒ เปลี่ยนเมื่อไรต้องเห็นค่าเดิมด้วย
 //    ไม่งั้นแก้แค่หมายเหตุแล้วเธรดขึ้น "X → X" ที่อ่านไม่ออกว่าอะไรเปลี่ยน
 // ⚠️ ทนของไม่ครบ (คืน null) — ผู้เรียกอยู่หลังจุดที่ DB เขียนสำเร็จแล้ว โยน error ตรงนั้น = action ที่สำเร็จตอบ 500
+//
+// ── รุ่นสี่ "ต้องวางบิลไหม" (mig 0393 · system-design §7.1) ─────────────────────────────────────────────────────
+// ⭐ ค่าใหม่ที่ route เขียนเป็นรุ่นสี่เสมอ (`normalizeRule(…, { allowLegacy:false })`) · ค่าเดิมอาจเป็นรูปไหนก็ได้
+//   · "ไม่มีอะไรเปลี่ยน" เทียบด้วย `sameRule` (ผลการอ่านรุ่นสี่ทั้งสองฝั่ง) — รุ่นสองกับรุ่นสี่ที่ความหมายเท่ากันไม่ขึ้นแถวปลอม
+//     · ⚠️ ห้ามกลับไปเทียบด้วย `billingRuleOf` — ตัวอ่านรุ่นเดิมเห็นรุ่นสี่เป็น null ⇒ ตั้งกติการุ่นสี่ทุกครั้งกลายเป็น "ล้าง"
+//   · ประโยค = `describeBillingRule` (ตัวห่อ: รูปเดิม = ประโยคเดิมทุกตัวอักษร · รุ่นสี่ = `describeRule` — "ไม่ต้องวางบิล" ·
+//     "ต้องวางบิล · ยังไม่ตั้งรอบ" · "วางบิลวันที่ 10 → กำหนดชำระวันที่ 25" …)
+//   · หัวบรรทัด: มีฝั่งไหนเป็นรุ่นสี่ = "กำหนดวางบิล" (คำถามใหม่ครอบทั้ง ต้องวางบิลไหม + รอบ + เครดิต) · รูปเดิมล้วน = คำเดิม
+//   · meta เก็บรูปมาตรฐานของรุ่นตัวเอง (รูปเดิม = billingRuleOf · รุ่นสี่ = ruleOf) — ย้อนอ่านด้วยเครื่องได้ไม่ต้องเดารุ่น
 import { NA } from '@/lib/format';
 import { appendUpdate } from '@/lib/master/updates';
-import { billingRuleOf, describeBillingRule } from '@/lib/sales/billingRule';
+import { billingRuleOf, describeBillingRule, isV4Rule, ruleOf, sameRule } from '@/lib/sales/billingRule';
 
 /* หมายเหตุหลายบรรทัด → บรรทัดเดียว (แถวระบบในเธรดโชว์สองบรรทัดแรกก่อนกดดูเพิ่ม) */
 const oneLine = (text) => String(text ?? '').replace(/\s+/g, ' ').trim();
 
+/* รูปมาตรฐานของค่าตามรุ่นของมันเอง — รูปพัง = null ("ไม่ตั้ง") */
+const canonicalOf = (value) => (isV4Rule(value) ? ruleOf(value) : billingRuleOf(value));
+
 /**
- * @param beforeValue  รอบเดิมบนแถวลูกค้า (ค่าดิบจาก DB — อ่านแบบทนด้วย billingRuleOf)
- * @param afterValue   รอบใหม่ที่บันทึกแล้ว (null = ล้าง)
+ * @param beforeValue  รอบเดิมบนแถวลูกค้า (ค่าดิบจาก DB · ทุกรุ่น — อ่านแบบทน รูปพัง = ไม่ตั้ง)
+ * @param afterValue   รอบใหม่ที่บันทึกแล้ว (รุ่นสี่ · null = ล้าง)
  * @returns `{ body, meta }` สำหรับ appendUpdate (kind `billing_rule` เขียนเป็นค่าคงที่ใน `logBillingRuleActivity` —
  *          ให้ยาม updateKindCallSites ตรวจกับทะเบียนได้) · `null` เมื่อไม่มีอะไรเปลี่ยน
  */
 export function billingRuleChangeUpdate(beforeValue, afterValue) {
-  const before = billingRuleOf(beforeValue);
-  const after = billingRuleOf(afterValue);
-  if (JSON.stringify(before) === JSON.stringify(after)) return null;
+  const before = canonicalOf(beforeValue);
+  const after = canonicalOf(afterValue);
+  if (sameRule(before, after)) return null;
 
   const verb = !after ? 'ล้าง' : before ? 'แก้' : 'ตั้ง';
+  const subject = isV4Rule(before) || isV4Rule(after) ? 'กำหนดวางบิล' : 'เครดิตและรอบวางบิล';
   const oldText = describeBillingRule(before) || NA;
   const newText = describeBillingRule(after) || NA;
   const oldNote = oneLine(before?.note);
@@ -44,10 +57,10 @@ export function billingRuleChangeUpdate(beforeValue, afterValue) {
   /* ⚠️ ประโยคหลายรอบใช้ → ในตัวเอง ("วางบิล 10 → เงินเข้า 25 · …") — ต่อ "เดิม → ใหม่" บรรทัดเดียวแล้วลูกศรห้าตัว
      มองไม่ออกว่าเดิมจบตรงไหน ⇒ ฝั่งไหนมีลูกศรในประโยค แยกเป็นบรรทัด "เดิม:" / "ใหม่:" ป้ายชัดแทนลูกศร */
   if (oldText !== newText && (oldText.includes('→') || newText.includes('→'))) {
-    lines.push(`${verb}เครดิตและรอบวางบิล`, `เดิม: ${oldText}`, `ใหม่: ${newText}`);
-  } else if (oldText !== newText) lines.push(`${verb}เครดิตและรอบวางบิล: ${oldText} → ${newText}`);
+    lines.push(`${verb}${subject}`, `เดิม: ${oldText}`, `ใหม่: ${newText}`);
+  } else if (oldText !== newText) lines.push(`${verb}${subject}: ${oldText} → ${newText}`);
   else if (oldNote !== newNote) lines.push(`แก้หมายเหตุการวางบิล · ค่าอื่นคงเดิม: ${newText}`);
-  else lines.push(`${verb}เครดิตและรอบวางบิล: ${newText}`);
+  else lines.push(`${verb}${subject}: ${newText}`);
   if (oldNote !== newNote) lines.push(`หมายเหตุ: ${oldNote || NA} → ${newNote || NA}`);
 
   return {

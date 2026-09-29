@@ -19,7 +19,7 @@
 import { categoryOf } from '@/lib/master/categoryOf';
 import { orderBusinessLineOf } from '@/lib/sales/serviceOrders';
 import { addDays, daysBetween, isConfirmed, monthEdge, pipelineCoverageIssues, wholeMonthsIn } from '@/lib/sales/paymentCoverage';
-import { billingRuleMonthly, billingRuleNeedsBillingDate } from '@/lib/sales/billingRule';
+import { NEED_NONE, billingRuleMonthly, billingRuleNeedsBillingDate, installmentNeed } from '@/lib/sales/billingRule';
 import { fillInputRows, fillKindOf, fillTargetsOf } from '@/lib/sales/installmentDateDrafts';
 import { installmentRefunded, installmentVoid, paymentNotRequired } from '@/lib/sales/salesOrderPayments';
 import { bindTargetError } from '@/lib/service/intake';
@@ -740,7 +740,9 @@ function installmentFindings(ctx, totals) {
          (มี 'dated' = เปิดพร้อม "จัดใหม่งวดที่มีวันแล้วด้วย") · มี null = ไปที่ช่องของงวดแรก (submitGateGroups)
          🐞 เดิมธงบูลีน `dateFillable` (ค่าตั้งต้นของแผงเท่านั้น) ⇒ backfill ลูกค้าเครดิตที่งวดมีกำหนดชำระแล้ว ขาดแค่วันวางบิล
             (SO-26090206-0 · AR-015 · ~49 ใบ) "ไปแก้" ได้แค่ช่องงวด 1 แล้วต้องพิมพ์วันวางบิลเอง 12 งวด ทั้งที่สวิตช์จัดใหม่ทำให้ได้ในครั้งเดียว */
-    if (needsBilling && !isoDay(row.billingDate) && !event) {
+    /* ⭐ รุ่นสี่ (mig 0393): งวดที่ติ๊ก "งวดนี้ไม่ต้องวางบิล" (`billingSkip`) ไม่ขอวันวางบิล — ตัวตัดสินรายงวดตัวเดียว `installmentNeed`
+       (กระดิ่ง · ทะเบียน FN · ตัวแก้วัน) · ติ๊กคู่กับวันวางบิลไม่ได้ ⇒ ถ้าด่านนี้ขอ = ยื่น/อนุมัติไม่ได้ตลอดไป (ทางตัน) */
+    if (needsBilling && installmentNeed(row, ctx?.customerBillingRule) !== NEED_NONE && !isoDay(row.billingDate) && !event) {
       findings.issues.push(makeIssue('billing_missing', { ...at, billingMode, dateFill: dateFillOf(row) }, { seq: row.seq, anyday: billingMode === 'anyday' }));
     }
     if (!isoDay(row.dueDate) && !event) {

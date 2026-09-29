@@ -199,7 +199,7 @@ test('coveragePlanStale: พรีวิวพกรุ่นของงวด 
   assert.equal(scheduleManyShapeError([{ id: 'I1' }]), INSTALLMENT_VERSION_MISSING, 'schedule-many ยังพูดคำเดิม');
 });
 
-// ── writeCoverageFill: พฤติกรรมด้วยฐานปลอม (ท่าเดียวกับ writeBillingFill) ─────────────────────────────────────
+// ── writeCoverageFill: พฤติกรรมด้วยฐานปลอม (ท่าเดียวกับ writeBillingFill เดิม — ถอดแล้วในรุ่นสี่) ─────────────────
 /* ฐานปลอมของ `updateInstallment`: update(patch).eq('id').eq('updatedAt').select().maybeSingle()
    · updatedAt ไม่ตรง = ไม่มีแถวถูกแก้ (data null — ท่าเดียวกับ PostgREST) · `failOn` = id ที่ฐานตีกลับ */
 const TABLE = 'sales_order_installments';

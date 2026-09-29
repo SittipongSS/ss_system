@@ -28,6 +28,7 @@ import { masterApprovalUpdate, masterReapprovalUpdate } from '@/lib/master/recor
 import { recordAudit } from '@/lib/audit';
 import { missingRequiredDocs } from '@/lib/master/attachmentRequirements';
 import { missingDocsMessage, overrideReasonError } from '@/lib/master/attachmentTypes';
+import { probeBillingSkip } from '@/lib/sales/billingPolicySchema';
 
 export const dynamic = 'force-dynamic';
 
@@ -122,7 +123,12 @@ export async function GET(request, { params }) {
     orders = (ord || []).filter((o) => canViewRecord(user, 'orders', o));
   }
 
-  return Response.json({ customer, products, orders });
+  /* ⭐ ฐานรัน 0393 แล้วหรือยัง (rework v4) — โมดัล "วางบิลและกำหนดชำระ" ใช้ปิดปุ่มบันทึกกติการุ่นสี่ก่อนยิง
+     (ก่อนรัน CHECK รุ่นสองตีกลับ 23514 ⇒ route ตอบ 503 "รอรัน migration 0393" อยู่แล้ว — ธงนี้แค่บอกก่อนกด)
+     · ส่งแยกจาก `customer` (ไม่ใช่คอลัมน์ของแถว) — หน้าเติมเข้าก้อนที่การ์ดอ่านเอง */
+  const { ready: billingSkipReady } = await probeBillingSkip(supabase);
+
+  return Response.json({ customer, products, orders, billingSkipReady });
 }
 
 // PATCH /api/customers/[id]
