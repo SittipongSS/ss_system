@@ -1,7 +1,8 @@
 # กำหนดวางบิล — รอบวางบิลของลูกค้า → วันวางบิล / กำหนดชำระรายงวด
 
-> สถานะ: **รอตรวจ** · ตรวจกับโค้ดเมื่อ 2026-09-28 · รอบแรก–สามขึ้น prod แล้ว (#1840 · รุ่นสอง + mig 0390 รันแล้ว) ·
-> **รอบสี่** (แบบ C — โหมดตั้งวันในตาราง · `schedule-many`) + **รอบห้า** (มติ 17 — ใช้เหมือนกันทุกใบ) อยู่ในแบรนช์ `claude/installment-dates-v2` รอ merge · ไม่มี migration ใหม่
+> สถานะ: **รอตรวจ** · ตรวจกับโค้ดเมื่อ 2026-09-29 · รอบแรก–ห้าขึ้น prod แล้ว (#1840 รุ่นสอง + mig 0390 · #1846 แบบ C + มติ 17) ·
+> **รอบหก = รุ่นสี่ "ต้องวางบิลไหม"** (มติ 18 · 29/09) เขียนครบในแบรนช์ `claude/billing-rework-v4` ยังไม่ commit/merge ·
+> **mig 0393 รันแล้ว** (เจ้าของรันใน SQL Editor 29/09 ก่อน merge · ตรวจแล้ว: คอลัมน์ billingSkip มี · ลูกค้า 93/449/1/10 เท่าเดิม) · **backfill ยังไม่รัน** (ต้องได้คำยินยอมของเจ้าของ)
 
 ม็อกที่เจ้าของดูผ่าน: `~/ss-team/mockups/billing-cycle/` (5 จอ · brief.md มีมติ + ข้อมูลตัวอย่าง)
 
@@ -53,6 +54,19 @@
     - ลูกค้าที่ยังไม่ตั้ง: กรอกได้ทั้งสองช่อง (วันวางบิลไม่บังคับ · ไม่มีอะไรคิดให้) + ข้อความชวน "ยังไม่ได้ตั้งกำหนดวางบิลของลูกค้า" ·
       คนที่ตั้งได้ (`canEditCustomerBillingRule`) ได้ลิงก์ "ตั้งกำหนดวางบิล" เปิดแท็บใหม่ แล้วกลับมาดึงใบสด · ไม่มีสิทธิ์ = เห็นข้อความอย่างเดียว
     - ทะเบียน FN: ข้อความชวน "ยังไม่กำหนด" คงไว้เฉพาะรอบรายเดือน/เครดิต — ไม่มีเครดิตไม่ขึ้น (ดู "กติกาที่ต้องรู้")
+18. (29/09 · **รุ่นสี่ "ต้องวางบิลไหม"** · ม็อก `mockups/billing-cycle/rework-v4/recommended.html` · แบบระบบ `rework-v4/system/system-design.md`)
+    — **แทนส่วน "ไม่มีเครดิต = ทุกวัน + ชำระวันวางบิล" ของมติ 17** (ลูกค้าที่โอนก่อนต้องใส่วันวางบิลปลอม)
+    - **แบบ A "ประโยคนโยบาย"** — เจ้าของเลือก (ม็อก + บันทึกกรรมการใน `rework-v4/index.html`)
+    - **กำหนดชำระเป็นหลัก ตั้งเดี่ยวได้เสมอ · วันวางบิลมีเฉพาะลูกค้าที่ต้องวางบิล** (เจ้าของ 28/09) · ไม่มีวันวางบิล = ไม่มีกระดิ่งวางบิล ·
+      ไม่มี "เลยรอบวางบิล" · ไม่ชวนขอใบวางบิล · ลำดับช่อง **วันวางบิล → กำหนดชำระ** เสมอ
+    - **แกน `need` ที่ลูกค้า**: `null` = ยังไม่ระบุ · `{v:4, need:'none'}` = ไม่ต้องวางบิล · `{v:4, need:'required', billing:null}` = ต้องวางบิล ยังไม่ตั้งรอบ ·
+      `{v:4, need:'required', billing, creditDays, runs}` = มีวิธีคิด · ข้อยกเว้นรายงวดสองทาง: "งวดนี้ต้องวางบิล…" (ยืนยันรายงวด ลงประวัติ ไม่มีคอลัมน์) ·
+      "งวดนี้ไม่ต้องวางบิล" (`sales_order_installments."billingSkip"`) · ไม่มีช่องรายใบ
+    - **ค่าตั้งต้นของลูกค้าเดิม = ทาง 3 "ตามหลักฐาน"** (มติข้อ 4): ต้องวางบิล 13 (เคยขอใบวางบิล) · ไม่ต้องวางบิล 38 (โอนก่อนทุกงวด) ·
+      ยังไม่ระบุ 491 (ถามตอนตั้งวันครั้งแรก) · ไม่แตะ 11 รายที่ตั้งแล้ว · ข้ามสหมิตร AR-109 — เป็นสคริปต์แยก **เตรียมไว้ ห้ามรันจนเจ้าของยินยอม**
+    - SA ทีมที่ดูแล + FN ตอบ/แก้ได้ ไม่ต้องอนุมัติ (`canEditCustomerBillingRule` ตัวเดิม) · ตัวล็อก `billingRuleUpdatedAt` (ค่าดิบ · null ⇒ `.is(null)`)
+    - **ยังเปิดอยู่ — ไม่อยู่ในรอบนี้**: ปฏิทินรายปีของลูกค้า + ประมาณการ + กระดิ่งวันตัดรอบ (ช่วง 2b/4b · ติดข้อ 1 มีเมตตาเครดิต 0/30 ·
+      ข้อ 3 รีเซ็ตรายปี) · วัน PO (ข้อ 2) · จอรอบจ่ายวันในสัปดาห์ (AR-035 — ตัวตรวจรับรูปได้ ไม่มีจอ) · CHECK "รอเหตุการณ์ ⇒ ไม่มีกำหนดชำระ" (ช่วง 5)
 
 ## กติกาที่ต้องรู้ก่อนแตะ
 
@@ -73,11 +87,11 @@
   รอบรายเดือน/เครดิต N วัน — **ไม่มีเครดิตไม่นับ** (ทางเลือกที่เงียบที่สุดที่ยังพูดจริง · 28/09): กำหนดชำระของลูกค้าไม่มีเครดิต = วันวางบิล
   อยู่แล้ว ใบเก่าที่มีกำหนดชำระจึงไม่ได้ขาดอะไร · prod 28/09 ถ้านับ = ขึ้นชวน 46 ใบ (นับเฉพาะงวดที่ว่างทั้งวันวางบิล/กำหนดชำระ/เหตุการณ์ก็ยัง 24 ใบ)
   · ตัวกรอง `?billing=soon|7d|month|late` อ่านธงของแถวที่คิดจากวันวางบิลเท่านั้น ⇒ ใช้ได้กับทุกใบที่มีวันวางบิล (ไม่มีเครดิต · ยังไม่ตั้ง · ทุกสาย)
-- กระดิ่ง (`billingDueNotify` + `daily-digest`) คัดจาก `billingDate` ของงวดเท่านั้น — ไม่ดูกติกาหรือสายของใบ ⇒ ลูกค้าไม่มีเครดิต/ยังไม่ตั้ง
-  ที่งวดมีวันวางบิลได้กระดิ่งเหมือนทุกราย
-- ทุกเส้นเขียนรับวันวางบิลโดยไม่ดูกติกา/สาย และตรวจรูปด้วย `normalizeInstallmentBilling` ตัวเดียว: หน้าสร้าง SO (`parseCreateFormInstallments`) ·
-  `schedule` · `schedule-many` (**เก็บกำหนดชำระตามที่จอส่ง ไม่คิดใหม่จากกติกา**) · `fill-billing`/`redate-billing` เป็นตัวคิดของรอบรายเดือนโดยธรรมชาติ
-  (ไม่มีเครดิต/ทุกวัน = ตีกลับพร้อมเหตุ · จอไม่เรียกแล้วตั้งแต่รอบสี่) · ใบย้อนหลัง: RPC ยังไม่มีสองคอลัมน์ (ดู "ยังไม่ทำ")
+- กระดิ่งวางบิล (`billingDueNotify` + `daily-digest`) คัดจาก `billingDate` ของงวดเท่านั้น — ไม่ดูสายของใบ ⇒ ลูกค้าไม่มีเครดิต/ยังไม่ตั้ง
+  ที่งวดมีวันวางบิลได้กระดิ่งเหมือนทุกราย · รุ่นสี่เพิ่ม **กระดิ่งครบกำหนดชำระ** ทุกงวดที่มีกำหนดชำระ (ดู "รอบหก")
+- ทุกเส้นเขียนตรวจรูปด้วย `normalizeInstallmentBilling` ตัวเดียว: หน้าสร้าง SO (`parseCreateFormInstallments`) · `schedule` ·
+  `schedule-many` (**เก็บกำหนดชำระตามที่จอส่ง ไม่คิดใหม่จากกติกา**) · รุ่นสี่เพิ่มด่านกติกา `validateInstallmentDates` (ดู "รอบหก") ·
+  `fill-billing`/`redate-billing` **ตอบ 410 แล้ว** (รุ่นสี่) · ใบย้อนหลัง: RPC ยังไม่มีสองคอลัมน์ (ดู "ยังไม่ทำ")
 - ตัวคิดวันทั้งหมดอยู่ที่ `webapp/src/lib/sales/billingRule.js` ที่เดียว (รอบ · กำหนดชำระ · เติมหลายงวด · สถานะ · ข้อความ)
 - **"ขอใบวางบิลแล้ว"** ตัดสินที่ `billingRequestLive` ตัวเดียว = คำร้องที่ผูกกับงวด **ส่งถึงบัญชีแล้วและยังไม่ถูกยกเลิก** ·
   ร่างที่ยังไม่ส่ง = ยังไม่ขอ (ปุ่ม "ขอใบวางบิลงวดนี้" ผูกงวดตั้งแต่บันทึกร่าง) · ลบคำร้อง = ถอดลิงก์บนงวด (`cleanupRequestOrphans`)
@@ -112,22 +126,59 @@
 - จอ: ≥1000px ป๊อปโอเวอร์ข้างแถว (ไม่บังหัวใบ/ปุ่มการ์ด) · 641–999px กางใต้แถว · ≤640px แผ่นเต็มจอที่ท้ายตรึงมีปุ่มบันทึกปุ่มเดียว ·
   ร่างวันงวดกับร่างช่วงครอบบริการเปิดพร้อมกันไม่ได้ · ออกจากหน้า/สลับแท็บที่มีร่างค้าง = ถามก่อน
 - **ถอดแล้ว**: โมดัลรายงวดทั้งสองแบบ ("กำหนดวันงวด" / "ตั้ง-แก้กำหนดชำระ") · เมนูแถวสามรายการเดิม (เหลือ "ตั้งวันงวด") · ลิงก์ "เลือกรอบ" ในเซลล์ ·
-  ปุ่ม+โมดัล "เติมตามรอบ เดือนละงวด…" และ "จัดวันใหม่ตามรอบปัจจุบัน…" บนการ์ด · action `fill-billing`/`redate-billing` ของ API **ยังอยู่**
-  (แท็บเก่าก่อน deploy) แต่จอไม่เรียกแล้ว · `BillingRoundPicker` **ยังใช้ที่หน้าสร้าง SO** (แผงงวดไม่ใช้แล้ว)
+  ปุ่ม+โมดัล "เติมตามรอบ เดือนละงวด…" และ "จัดวันใหม่ตามรอบปัจจุบัน…" บนการ์ด · action `fill-billing`/`redate-billing` ของ API
+  ตอบ **410** ตั้งแต่รุ่นสี่ · `BillingRoundPicker` **ถอดแล้ว** (หน้าสร้าง SO ใช้ตัวแก้ตัวเดียวกับแผงงวด — รอบหก)
+
+## รอบหก — รุ่นสี่ "ต้องวางบิลไหม" (มติ 18 · 29/09 · system-design §8 ช่วง 1 · 2a · 3 · 4a + สคริปต์ช่วง 5)
+
+- **ตัวคิดที่เดียว** `lib/sales/billingRuleV4.js` (พอร์ตจาก `rework-v4/system/calc.mjs`) · `billingRule.js` เหลือชื่อเดิมเป็นตัวห่อ + ส่งออก API รุ่นสี่ทั้งหมด ·
+  import จาก `@/lib/sales/billingRule` เสมอ · ตัวอย่างถูก/ผิดชุดเดียวใช้ทั้งเทสต์ JS และเทสต์ CHECK บน PGlite (`billingRuleFixtures.json`)
+- **อ่าน/ส่งค่าดิบ** — `ruleOf(x)` อ่านได้ทุกรุ่น · ⛔ ห้ามส่งกติกาผ่าน `billingRuleOf`/`normalizeBillingRule` (ตัวอ่านรุ่นสอง แปลงรุ่นสี่เป็น null) ·
+  ⛔ ห้ามบันทึกผลการอ่านของรูปเดิม (`legacyNoCredit` — CHECK 0393 ตีกลับ) · บันทึก = `normalizeRule(…, { allowLegacy:false })`
+- **รูปเดิม `{credit:false}`** (449 ราย) อ่านเหมือน prod ทุกวัน แต่ตัวตั้งวันเปิดแบบ **free (กำหนดชำระนำ วันวางบิลไม่บังคับ)** — ไม่ต้องใส่วันวางบิลปลอม ·
+  แถบ "ลูกค้ารายนี้ต้องวางบิลไหม?" (`asksNeed`) ขึ้นจนกว่าจะมีคนตอบ · ทะเบียนการชำระไม่ชวน "ยังไม่มีวันวางบิล" (`nagsMissingBilling` เท่า prod)
+- **ตัวแก้วัน (`dateModeOf`) ตัวเดียวทั้งหน้าสร้างและแผงงวด** — dueOnly (ไม่ต้องวางบิล) · free (ยังไม่ระบุ · ยังไม่ตั้งรอบ · รูปเดิม) · cadence · rounds ·
+  รายงวด: exception ("งวดนี้ต้องวางบิล…") · dueOnly + skip (ติ๊ก) · เมนูแถวถาม `needExceptionActions` หลังด่านล็อก
+- **ด่านเขียนตัวเดียว `validateInstallmentDates`** (จอ + `schedule` + `schedule-many` + สร้าง SO + redate ของลูกค้า) — ติ๊กคู่กับวันวางบิลไม่ได้ ·
+  วันวางบิลใหม่/เปลี่ยนของลูกค้าไม่ต้องวางบิลต้องมี `billingException:true` (จอส่งเองเมื่อยืนยันในโมดัล หรือเมื่องวดมีวันวางบิลในฐานอยู่แล้ว = ยืนยันรอบก่อน) ·
+  รอเหตุการณ์ ⇒ ไม่มีกำหนดชำระ · อ่านกติกาพลาด = ปิดเฉพาะการเปลี่ยนวันวางบิล/ติ๊ก (กำหนดชำระบันทึกได้ · ไม่ 500) · `billingSkip` เก็บ true/null เท่านั้น ·
+  ส่งเฉพาะเมื่อเปลี่ยน · Rev./ตรึงงวดพา `billingSkip` ไปด้วย (เฉพาะเมื่อฐานมีคอลัมน์)
+- **หน้าลูกค้า** (การ์ด "วางบิลและกำหนดชำระ" `#billing-rule` + โมดัลสามข้อ ①ต้องวางบิลไหม ②วางบิลเมื่อไร ③กำหนดชำระเมื่อไร · ไม่มีค่าตั้งต้น) ·
+  บันทึกแล้ว **ระบบเสนอ คนยืนยัน**: PATCH คืน `ruleChange` ⇒ จอ "งวดที่วันจะเปลี่ยน" (`CustomerBillingRuleRedate` · ไม่ติ๊กให้) ⇒
+  `POST /api/customers/[id]/billing-rule/redate` (ตรวจทุกแถวทุกใบก่อนเขียน · 409 พร้อมรายชื่อ) · ตอบจากแถบบนใบ SO/หน้าสร้างก็เปิดจอเดียวกัน ·
+  409 ของกติกา = บอกว่าใครแก้อะไร + ทางเลือก "ใช้ค่าที่เขาบันทึก" / "บันทึกของฉันทับ"
+- **ธงฐาน 0393 ตัวเดียว `billingSkipReady`** (GET ใบ SO · GET ลูกค้า · `billingTerms` ของหน้าสร้าง) — ก่อนรัน: ไม่มีติ๊ก · ปุ่มตอบของแถบ/บันทึกรุ่นสี่ขึ้น
+  "รอรัน migration 0393" · ตัวแปล error `billingV4SchemaError` มาก่อนตัวของ 0389/0378
+- **กระดิ่ง**: วางบิล (`sales_order_billing_due`) ยิงเฉพาะงวดที่มีวันวางบิล · **ครบกำหนดชำระ** (`sales_order_due_soon` ใหม่) ทุกงวดที่มีกำหนดชำระ 0–3 วัน
+  (ขอใบแล้วก็ยิง · รอเหตุการณ์เงียบ · ต่อท้าย "ยังไม่มีวันวางบิล" เฉพาะลูกค้าที่ต้องวางบิลจริง) · วันเดียวกัน = รวมเป็นแถววางบิล "· ครบกำหนดชำระวันเดียวกัน" ·
+  FN วันละสองแถว (วางบิล → `?billing=soon` · ครบกำหนด → `?due=soon` — หัวเลขต้องเท่าแถวที่ลิงก์เปิด) · ปุ่ม "ขอใบวางบิลงวดนี้" ถามกติกาสด + ติ๊กของงวด
+- **ทะเบียนการชำระ**: ตัวกรองใหม่ `?due=soon` · `?billing=missing` · ลูกค้าไม่ต้องวางบิลขึ้น "ไม่ต้องวางบิล" ไม่มีสถานะเลย/ขาด/ขอ · คอลัมน์ "คำขอใบวางบิล"
+  (ร่าง / ส่งแล้ว / ยังไม่ขอ / —) + คอลัมน์เดียวกันใน Excel
+- **ใบย้อนหลัง**: ยังกำหนดชำระอย่างเดียว · ลูกค้าไม่ต้องวางบิลได้คำใบ้ "ไม่ต้องวางบิล"
+- **migration 0393** (`supabase/migrations/0393_billing_rule_v4.sql` · DDL ล้วน · รันซ้ำได้ · รันก่อนโค้ดได้) — ตัวตรวจรูปรุ่นสี่ + กิ่งแรกของ
+  `customer_billing_rule_ok` + `sales_order_installments."billingSkip"` · ทดสอบบน PGlite 0389 → 0390 → 0393 → 0393 · ⚠️ `check:columns` แดงที่ `billingSkip`
+  (probe ของ `billingPolicySchema.js` + cron) จนกว่าจะรัน — ลำดับเดียวกับ 0389: **รัน DDL ก่อน merge**
+- **backfill** (ช่วง 5 · ทาง 3 · ⛔ ห้ามรันโดยไม่มีคำยินยอม): `scripts/backfill-billing-need-v4.mjs` · ตัวคิด `lib/sales/billingRuleV4Backfill.js`
+  (`runNeedBackfill` · ด่านหยุดก่อนแถวแรก) · รายชื่อ `billingRuleFixtures.json → backfill` · รันจาก `webapp/` หลังโค้ดขึ้น prod + หลัง 0393:
+  - ซ้อม (ค่าตั้งต้น อ่านอย่างเดียว): `node --import ./scripts/test-loader.mjs scripts/backfill-billing-need-v4.mjs [--out=plan.json]`
+  - เขียนจริง: เพิ่ม `--apply` — หยุดถ้าฐานยังไม่รัน 0393 · สำรองสี่ช่องกติกาของทุกลูกค้าลงไฟล์นอกรีโปก่อนแถวแรก · PATCH ทีละแถวแบบมีตัวล็อก
+    (มีคนตอบเองระหว่างรัน = ข้าม) · audit ต่อแถว · ตรา `billingRuleUpdatedById = 'migration-0393'` · ไม่แตะ `updatedAt`
+  - ซ้อมแห้ง 29/09 บนฐานจริง: ไม่ต้องวางบิล 38 · ต้องวางบิล 13 · ยังไม่ระบุ 491 · ไม่แตะ 11 · เขียน 462 แถว
 
 ## ที่อยู่ในโค้ด
 
 | เรื่อง | ไฟล์ |
 |---|---|
-| ฐานข้อมูล | `supabase/migrations/0389_customer_billing_rule.sql` |
-| ตัวคิด | `lib/sales/billingRule.js` (กติกาที่ใช้คิดวัน `effectiveBillingRule` ที่เดียว · ตัวเติม `planCreditCadence`/`planNoCreditDates`/`planMonthlyFill`/`planRedate`) · ค่าในตัวเลือกรอบ `lib/sales/billingPicker.js` |
-| ทะเบียนลูกค้า | โมดัล `CustomerBillingRuleModal` (+ `CustomerBillingRuleState`) · `api/customers/[id]/billing-rule` (+ alias ใต้ `api/master`) · `components/database/CustomerBillingRule*` · proxy เปิดเส้นนี้ให้ FN · แถวเธรด `billing_rule` (quiet) `lib/master/customerBillingRuleUpdate.js` |
-| แผงงวด SO | `components/salesPlanning/SalesOrderPaymentPanel.js` (บรรทัดกติกา + ลิงก์ "ตั้งกำหนดวางบิล" แท็บใหม่ · `onRefreshOrder`) · `BillingStateBadge` · ลิงก์ขอใบวางบิล `lib/sales/billingRequestHref.js` (ตัวเดียวกับกระดิ่ง) |
-| โหมดตั้งวัน (รอบสี่) | `components/salesPlanning/installmentDates/**` (`useInstallmentDateMode` สถานะของโหมด · `InstallmentDateEditor` ตัวแก้รายงวด · `InstallmentDateFill` แผงเติม · `InstallmentDateCell` เซลล์/ทางเข้า · `InstallmentDateChrome` ปุ่ม/แถบบันทึก/แผ่นมือถือ · `InstallmentDateFrame` · `InstallmentCalendar` อา–ส · `InstallmentDateParts`) · ร่าง/คำเตือน/ล็อกบนจอ `lib/sales/installmentDateDrafts.js` · action `schedule-many` ตรวจ+เขียน `lib/sales/installmentScheduleMany.js` (+ `schedule` / `fill-billing` / `redate-billing` เดิม) ใน `api/sales-planning/sales-orders/[id]/installments` |
-| หน้าสร้าง SO | `app/sales-planning/sales-orders/new/page.js` (`BillingRoundPicker` — รวมไม่มีเครดิต · ยังไม่ตั้ง = วันวางบิลไม่บังคับ + กำหนดชำระ **เฉพาะเมื่อโหลดขึ้นและยังไม่ตั้งจริง** · โหลดไม่ขึ้น/ใบไม่ผูกลูกค้า = กำหนดชำระอย่างเดียว ไม่พูด "ยังไม่ตั้ง") · `lib/sales/salesOrderCreateInstallments.js` (`createFormTermsKind` · `createFormManualValue` · `createFormPlanNote`) · `salesOrderCreatePayments.js` |
-| ทะเบียน FN | `lib/finance/paymentLedger.js` (`billingRuleActive` = `billingRuleNeedsBillingDate`) · `app/finance/payments` (การ์ด · ตัวกรอง `?billing=soon|7d|month|late` — `soon` = ชุดเดียวกับกระดิ่ง FN · คอลัมน์ · Excel) |
-| กระดิ่ง | `lib/sales/billingDueNotify.js` ในส่วนที่ 3 ของ `api/cron/daily-digest` · kind `sales_order_billing_due` / `sales_order_billing_due_fn` (ลิงก์ `?billing=soon`) · ปุ่ม "ขอใบวางบิลงวดนี้" ในแถว (กระดิ่ง + หน้า /notifications) คิดจากข้อมูลสดตอนเปิด `attachNotificationActions` |
-| ใบย้อนหลังขั้น ③ | ชิป "ตามรอบของลูกค้า (เงินเข้าทุกวันที่ n)" ในตัวช่วยแบ่งงวด (ไม่เลือกให้ก่อน) · รอบที่เงินเข้าเดือนถัดไป/เครดิต N วัน/**ไม่มีเครดิต (ชำระวันวางบิล)** ไม่มีชิป (ใบย้อนหลังไม่มีวันวางบิล) · `historicalCustomerDueOption` |
+| ฐานข้อมูล | `supabase/migrations/0389_customer_billing_rule.sql` · `0390_billing_rule_credit_switch_rounds.sql` · **`0393_billing_rule_v4.sql`** (รันแล้ว 29/09) |
+| ตัวคิด | **`lib/sales/billingRuleV4.js`** (รุ่นสี่ทั้งหมด: `ruleOf` · `normalizeRule` · `dateModeOf` · `validateInstallmentDates` · `planRuleChange` · `bellsFor` · `ledgerFlags` · ข้อความ) · `lib/sales/billingRule.js` (ชื่อเดิมเป็นตัวห่อ + ส่งออกรุ่นสี่) · `billingRuleFixtures.json` · ธงฐาน `lib/sales/billingPolicySchema.js` |
+| ทะเบียนลูกค้า | การ์ด `CustomerBillingRuleCard` · โมดัล `CustomerBillingRuleModal` (+ `CustomerBillingRuleState` · `CustomerBillingRuleRounds`) · จอ "งวดที่วันจะเปลี่ยน" `CustomerBillingRuleRedate` · `api/customers/[id]/billing-rule` (+ `/redate` · alias ใต้ `api/master`) · ตัวคิดของ route `lib/sales/customerRuleChange.js` + ตัวโหลด `lib/sales/installmentScheduleServer.js` · แถวเธรด `lib/master/customerBillingRuleUpdate.js` · proxy เปิดสองเส้นนี้ให้ FN |
+| แผงงวด SO | `components/salesPlanning/SalesOrderPaymentPanel.js` · แถบนโยบาย `installmentDates/BillingPolicyStrip.js` · โมดัล "งวดนี้ต้องวางบิล…" `installmentDates/RequireBillingModal.js` · `BillingStateBadge` · ลิงก์ขอใบวางบิล `lib/sales/billingRequestHref.js` |
+| โหมดตั้งวัน | `components/salesPlanning/installmentDates/**` (`useInstallmentDateMode` · `InstallmentDateEditor` · `InstallmentDateFill` · `InstallmentDateCell` · `InstallmentDateChrome` · `InstallmentDateFrame` · `InstallmentCalendar` อา–ส) · ร่าง/คำเตือน/ล็อก `lib/sales/installmentDateDrafts.js` · `schedule`/`schedule-many` `lib/sales/installmentScheduleMany.js` ใน `api/sales-planning/sales-orders/[id]/installments` (`fill-billing`/`redate-billing` = 410) · carry `lib/sales/installmentCarry.js` + `salesOrderInstallmentsStore.js` |
+| หน้าสร้าง SO | `app/sales-planning/sales-orders/new/page.js` (ตัวแก้ตัวเดียวกับแผงงวด `variant="inline"` · แผ่นล่างบนมือถือ · แถบนโยบาย) · `lib/sales/salesOrderCreateInstallments.js` (`loadCreateFormBillingTerms` · `createFormDateCheck` · `parseCreateFormInstallments`) · POST `api/sales-planning/sales-orders` · GET `api/sales-planning/quotations/[id]?include=billingTerms` |
+| ทะเบียนการชำระ | `lib/finance/paymentLedger.js` (`ledgerFlags` · `nagsMissingBilling`) · `api/finance/payments` · `app/finance/payments` (ตัวกรอง `?billing=soon|7d|month|late|missing` · `?due=soon` · คอลัมน์คำขอใบวางบิล · Excel) |
+| กระดิ่ง | `lib/sales/billingDueNotify.js` (`bellsFor` · kind `sales_order_billing_due`(`_fn`) + **`sales_order_due_soon`(`_fn`)**) ใน `api/cron/daily-digest` · ปุ่ม "ขอใบวางบิลงวดนี้" `attachNotificationActions` ใน `lib/notifications.js` (อ่านงวด/ใบ/QT/กติกาลูกค้าสด) |
+| ใบย้อนหลังขั้น ③ | `historicalWizard/HistoricalSplitModal.js` · `lib/sales/historicalIntakeForm.js` · `historicalCustomerDueOption` (กำหนดชำระอย่างเดียว) |
+| backfill | `scripts/backfill-billing-need-v4.mjs` · `lib/sales/billingRuleV4Backfill.js` (ยังไม่รัน) |
 | ผูกคำร้องอัตโนมัติ | `lib/requests/billingInstallmentLink.js` · `app/requests/new` · `api/sa/requests` POST |
 
 ## ยังไม่ทำ
@@ -135,3 +186,7 @@
 - ใบย้อนหลังยังไม่เก็บวันวางบิล (RPC ของใบย้อนหลังไม่มีสองคอลัมน์นี้ · ไม่ขึ้นกับกติกา — ทุกลูกค้าเหมือนกัน) — ชิปในขั้น ③ จึงใช้ได้เฉพาะรอบที่
   เงินเข้า "ทุกวันที่ n" เดือนเดียวกัน · ตั้งวันวางบิลหลังออกใบได้ที่โหมดตั้งวันของแผงงวด
 - RPC ปรับแผน (0377) ไม่มีช่องวันวางบิลในตัวแก้แผน — แก้วันวางบิลหลังปรับแผนทำที่แผงงวด
+- **รุ่นสี่ที่ยังไม่ทำ** (มติ 18 — ติดรอมติ): ปฏิทินรายปี + ประมาณการ `dueEstimatedAs` + กระดิ่งวันตัดรอบ/ปีหน้า (ช่วง 2b/4b · ข้อ 1 · ข้อ 3) ·
+  วัน PO (ข้อ 2) · จอรอบจ่ายวันในสัปดาห์ (AR-035) · เวลาตัดรอบ (กติกาที่มีเวลาตัดรอบเปิดโมดัลแบบ "ยังตอบไม่ได้" — ไม่ทับเงียบ) ·
+  CHECK "รอเหตุการณ์ ⇒ ไม่มีกำหนดชำระ" (ช่วง 5 หลังตรวจ 0377/ใบย้อนหลัง) · ข้อยกเว้นรายงวดลงแค่ audit (ยังไม่ลงเธรดของใบ — ต้องเพิ่มชนิดใน `updateTypes.js`) ·
+  ทะเบียนการชำระนับข้อยกเว้นต่อลูกค้า (§9 ข้อ 11) ยังไม่มี

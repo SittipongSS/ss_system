@@ -328,10 +328,13 @@ test('cron ยิงจาก daily-digest ในบล็อก try ของ�
   const block = src.slice(src.indexOf('async function notifyBillingDue'), src.indexOf('export async function GET'));
   assert.match(block, /const todayIso = businessDate\(\);/);
   assert.match(block, /skipArCodes: \[SAHAMIT_AR_CODE\]/);
-  // ด่านงวดต้องได้วัตถุดิบครบ — ขาด `origin` = ใบย้อนหลังถูกถามเป็นใบ pipeline · ขาด QT = ร่างที่ใช้ต่อไม่ได้ถูกเตือน
-  assert.match(block, /from\('sales_orders'\)\s*\n\s*\.select\('[^']*\borigin\b[^']*"quotationId"[^']*'\)/);
-  assert.match(block, /from\('quotations'\)\.select\('id, status, "quoteNumber"'\)/);
-  assert.match(block, /quotation: quoteById\.get\(o\.quotationId\) \|\| null/);
+  /* ด่านงวดต้องได้วัตถุดิบครบ — ขาด `origin` = ใบย้อนหลังถูกถามเป็นใบ pipeline · ขาด QT = ร่างที่ใช้ต่อไม่ได้ถูกเตือน
+     ⭐ รุ่นสี่: วัตถุดิบย้ายไปตัวโหลดร่วม `loadBellContext` (กระดิ่งวางบิล + ครบกำหนดใช้ชุดเดียวกัน) */
+  assert.match(block, /const context = await loadBellContext\(supabase, rows, \{ withRule: false \}\);/);
+  const loader = src.slice(src.indexOf('async function loadBellContext'), src.indexOf('async function notifyDueSoon'));
+  assert.match(loader, /from\('sales_orders'\)\s*\n\s*\.select\('[^']*\borigin\b[^']*"quotationId"[^']*'\)/);
+  assert.match(loader, /from\('quotations'\)\.select\('id, status, "quoteNumber"'\)/);
+  assert.match(loader, /quotation: quoteById\.get\(o\.quotationId\) \|\| null/);
   // notifyUsers ไม่ throw — error ของมันต้องขึ้นในผลของรอบ ไม่ใช่ sent: 0 เงียบ ๆ
   assert.match(block, /if \(result\.error && !notifyError\)/);
   // supabase ไม่ throw — คอลัมน์ยังไม่มี (ก่อนรัน 0389) ต้องเป็น error ไม่ใช่ "ไม่มีงวดถึงรอบ"

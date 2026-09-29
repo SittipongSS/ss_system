@@ -147,7 +147,10 @@ test('filterLedger: billing = 7d | month | late · ค่าว่าง/ไม�
   assert.equal(ledgerBillingFilter('late'), 'late');
   assert.equal(ledgerBillingFilter('LATE'), '');
   // `soon` (ชุดของกระดิ่ง · รอบสอง 26/09) มีเทสต์ของตัวเองที่ paymentLedgerBillingSoon.test.mjs
-  assert.deepEqual(LEDGER_BILLING_FILTERS.map((f) => f.value), ['soon', '7d', 'month', 'late']);
+  // `missing` (รุ่นสี่ · ต้องวางบิลแต่ยังไม่มีวัน) มีเทสต์ของตัวเองที่ paymentLedgerNeedV4.test.mjs
+  assert.deepEqual(LEDGER_BILLING_FILTERS.map((f) => f.value), ['soon', '7d', 'month', 'late', 'missing']);
+  // a4 = ลูกค้ามีรอบ (รุ่นแรก) แต่งวดยังไม่มีวันวางบิล · a5 รอเหตุการณ์ไม่นับ · a6 จบแล้วไม่นับ
+  assert.deepEqual(ids('missing'), ['a4']);
   // ประกอบกับตัวกรองอื่นได้ (และ)
   assert.deepEqual(filterLedger(rows, { billing: 'month', q: 'มัดจำ' }).map((r) => r.id), ['a1', 'a2']);
   assert.deepEqual(filterLedger(rows, { billing: 'month', status: ['confirmed'] }), []);
@@ -166,17 +169,17 @@ test('ledgerSummary: การ์ด "ถึงรอบวางบิล 7 ว
 test('ledgerBillingTally: ตัวนับไม่ขึ้นกับตัวกรองรอบวางบิลเอง · ส่วนที่ซ่อน = งวดที่ยังมีงานวางบิลแต่ไม่มีวันวางบิล', () => {
   const rows = fixture();
   const idle = ledgerBillingTally(rows, {});
-  assert.deepEqual(idle.counts, { soon: 0, '7d': 1, month: 2, late: 1 });
+  assert.deepEqual(idle.counts, { soon: 0, '7d': 1, month: 2, late: 1, missing: 1 });
   assert.deepEqual(idle.hidden, { count: 0, amount: 0 }, 'ไม่ได้กรองรอบวางบิล = ไม่มีอะไรถูกซ่อน');
 
   const on7 = ledgerBillingTally(rows, { billing: '7d' });
-  assert.deepEqual(on7.counts, { soon: 0, '7d': 1, month: 2, late: 1 }, 'กรอง 7 วันอยู่ ตัวเลือก "เดือนนี้" ยังบอก 2');
+  assert.deepEqual(on7.counts, { soon: 0, '7d': 1, month: 2, late: 1, missing: 1 }, 'กรอง 7 วันอยู่ ตัวเลือก "เดือนนี้" ยังบอก 2');
   // a4 (ยังไม่เลือก) + a5 (รอเหตุการณ์) — a6 จบแล้ว ไม่ใช่งานที่ถูกซ่อน
   assert.deepEqual(on7.hidden, { count: 2, amount: 2400 });
 
   // เคารพตัวกรองอื่น: ค้นงวดเดียวแล้วตัวนับ/ส่วนที่ซ่อนเหลือเฉพาะงวดนั้น
   const narrowed = ledgerBillingTally(rows, { billing: 'late', q: 'SO-26080050-0', status: ['pending'] });
-  assert.deepEqual(narrowed.counts, { soon: 0, '7d': 1, month: 2, late: 1 });
+  assert.deepEqual(narrowed.counts, { soon: 0, '7d': 1, month: 2, late: 1, missing: 1 });
   assert.equal(ledgerBillingTally(rows, { billing: 'late', status: ['confirmed'] }).hidden.count, 0);
   assert.equal(ledgerBillingTally(rows, { billing: 'bogus' }).hidden.count, 0, 'ค่าที่ไม่รู้จัก = ไม่ได้กรอง');
 });
@@ -209,9 +212,12 @@ test('🔴 ไม่มีเครดิต (มติ 28/09 ข้อ 17): บ
   assert.equal(groupLedgerByOrder([make({ id: 'c4' })])[0].billingRuleActive, true);
   /* ค้นคำที่ตาเห็นได้ */
   assert.deepEqual(filterLedger([row, make({ id: 'c5' })], { q: 'ไม่มีเครดิต' }).map((r) => r.id), ['c1']);
-  /* หน้า /finance/payments: เซลล์ "ยังไม่กำหนด" อ่านธง ไม่ใช่ความว่างของข้อความรอบ */
+  /* หน้า /finance/payments: คำชวน "ยังไม่มีวันวางบิล" อ่านธง ไม่ใช่ความว่างของข้อความรอบ
+     ⭐ รุ่นสี่: ธงรายงวด `billingMissing` (nagsMissingBilling + ข้อยกเว้นรายงวด) แทนตัวนับดิบคู่ธงระดับลูกค้า */
+  assert.equal(group.billingMissing, 0, 'ไม่มีเครดิต (รูปเดิม) ไม่ชวน');
+  assert.equal(groupLedgerByOrder([make({ id: 'c6' })])[0].billingMissing, 1, 'ลูกค้ามีรอบ งวดยังไม่มีวัน = ชวน');
   const page = readFileSync(new URL('../../app/finance/payments/page.js', import.meta.url), 'utf8');
-  assert.match(page, /if \(group\.billingUnset && group\.billingRuleActive\) \{/);
+  assert.match(page, /if \(group\.billingMissing\) \{/);
   assert.doesNotMatch(page, /group\.billingUnset && group\.billingRuleText/);
 });
 

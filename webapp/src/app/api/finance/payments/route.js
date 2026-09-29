@@ -12,8 +12,9 @@ import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { canAccessFinance } from '@/lib/permissions';
 import {
-  filterLedger, ledgerBillingTally, ledgerReport, ledgerRow, ledgerSummary, ledgerVoidInstallment, orderStateIndex,
-  sortLedger, stampConfirmOutlook, stampOrderInstallmentCount, stampOrderPaidThrough, stampOrderReplanned, undatedHiddenBy,
+  filterLedger, ledgerBillingTally, ledgerDueTally, ledgerReport, ledgerRow, ledgerSummary, ledgerVoidInstallment,
+  orderStateIndex, sortLedger, stampConfirmOutlook, stampOrderInstallmentCount, stampOrderPaidThrough, stampOrderReplanned,
+  undatedHiddenBy,
 } from '@/lib/finance/paymentLedger';
 import { reportToXlsxBuffer } from '@/lib/tax/exportExcel';
 import { businessDate } from '@/lib/businessDate';
@@ -21,7 +22,7 @@ import { paymentNotRequired } from '@/lib/sales/salesOrderPayments';
 import { orderHasServiceRounds } from '@/lib/sales/serviceOrders';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { customerNameIn } from '@/lib/master/customerName';
-import { billingDueCandidates } from '@/lib/sales/billingDueNotify';
+import { billingDueCandidates, dueSoonCandidates } from '@/lib/sales/billingDueNotify';
 import { SAHAMIT_AR_CODE } from '@/lib/sahamit/server';
 
 export const runtime = 'nodejs';
@@ -184,6 +185,16 @@ async function loadLedger(supabase, todayIso) {
     requestsById: billingRequestById,
     skipArCodes: [SAHAMIT_AR_CODE],
   }).map(({ installment }) => installment.id));
+  /* ── ตัวกรอง `?due=soon` = ชุดของกระดิ่ง "ครบกำหนดชำระ" เป๊ะ (รุ่นสี่ · system-design §6 ช่วง 4a) ─────────────────────
+     ⭐ ถาม `dueSoonCandidates` ตัวเดียวกับ cron ด้วยวัตถุดิบชุดเดียวกับข้างบน ⇒ หัวข้อ "N งวด" ของแถว FN = แถวที่ลิงก์เปิดมาเจอ
+     ⚠️ ลูกค้าต้องพก `billingRule` (loadLedgerCustomers เลือกมาแล้ว) — ตัวคิดต้องรู้ว่างวดไหนรวมเข้ากระดิ่งวางบิลวันเดียวกัน */
+  const dueRemindIds = new Set(dueSoonCandidates(rows, {
+    todayIso,
+    ordersById: new Map([...orderById.values()].map((o) => [o.id, { ...o, quotation: quoteById.get(o.quotationId) || null }])),
+    customersById: customerById,
+    requestsById: billingRequestById,
+    skipArCodes: [SAHAMIT_AR_CODE],
+  }).map(({ installment }) => installment.id));
 
   const ledger = rows
     .map((installment) => {
@@ -207,6 +218,7 @@ async function loadLedger(supabase, todayIso) {
         serviceRounds: serviceRoundsByOrder.get(order.id) || false,
         billingRequest: billingRequestById.get(installment.billingRequestId) || null,
         billingRemind: remindIds.has(installment.id),
+        dueRemind: dueRemindIds.has(installment.id),
       });
     })
     .filter(Boolean);
@@ -253,6 +265,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       /* soon | 7d | month | late — รอบวางบิล (mig 0389 · ม็อก D) · กระดิ่งฝั่ง FN ลิงก์มาที่ `?billing=soon` (ชุดของกระดิ่ง)
          ⚠️ เหตุผลเดียวกับ taxInvoice ข้างบน: ไม่อยู่ใน literal นี้ = API เมินเงียบทั้งจอและไฟล์ */
       billing: url.searchParams.get('billing') || '',
+      /* soon — ครบกำหนดชำระ 0..3 วัน (รุ่นสี่ · §6) · กระดิ่ง "ครบกำหนดชำระ" ฝั่ง FN ลิงก์มาที่ `?due=soon` (ชุดของกระดิ่ง)
+         ⚠️ เหตุผลเดียวกับ taxInvoice/billing: ไม่อยู่ใน literal นี้ = API เมินเงียบทั้งจอและไฟล์ */
+      due: url.searchParams.get('due') || '',
       orderStates,
     };
     const filtered = sortLedger(filterLedger(all, filters));
@@ -262,6 +277,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     const undatedHidden = undatedHiddenBy(all, filters);
     /* ตัวนับบนตัวเลือกของกลุ่ม "รอบวางบิล" + งวดที่ยังไม่มีวันวางบิลซึ่งตัวกรองนั้นซ่อน — กติกาเดียวกับ undatedHidden */
     const billingTally = ledgerBillingTally(all, filters);
+    // ตัวนับบนตัวเลือกของกลุ่ม "ครบกำหนดชำระ" — ถอดตัวกรองนี้เองออกก่อนนับ (กติกาเดียวกับ billingTally)
+    const dueTally = ledgerDueTally(all, filters);
 
     if (url.searchParams.get('format') === 'xlsx') {
       /* ⚠️ ไฟล์ที่ดาวน์โหลด = **สิ่งที่กรองไว้บนจอ** ไม่ใช่ทั้งทะเบียนเสมอ —
@@ -285,6 +302,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       totalRows: all.length,
       undatedHidden,
       billingTally,
+      dueTally,
       todayIso,
     });
   } catch (loadError) {

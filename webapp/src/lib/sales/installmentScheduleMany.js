@@ -14,15 +14,35 @@
 //   `requestUnknown` (จออ่านคำร้องไม่ขึ้น = ล็อกไว้ก่อน · server อ่านพลาด = โยน 500 ไม่เดา) กับ `gateError` (ด่าน schedule ของแผง)
 //   ⇒ เพิ่ม/ถอดเหตุล็อกที่นี่ที่เดียว ห้ามเขียนรายการซ้ำที่จอ (เทสต์ของไฟล์นี้ยืนยันว่าสองทางล็อกงวดชุดเดียวกัน)
 // ⚠️ logic ล้วน ใช้ได้ทั้ง client และ server — ไม่แตะฐาน (ตัวเขียนรับฟังก์ชันเขียนงวดเดียวจาก route) · ไม่อ่านนาฬิกา
+//
+// ── รุ่นสี่ "ต้องวางบิลไหม" (มติเจ้าของ 28–29/09 · mig 0393 · system-design §7.3) ─────────────────────────────────
+// ⭐ ด่านค่าวันของทุกทางเขียนวันงวด = `validateInstallmentDates` (billingRule.js) ตัวเดียว — schedule · schedule-many ·
+//   จัดวันใหม่ตามกติกาลูกค้า (`/api/customers/[id]/billing-rule/redate`) · หน้าสร้าง SO
+//   · ลูกค้าไม่ต้องวางบิล: วันวางบิล **ใหม่** ต้องมากับ `billingException: true` (โมดัล "งวดนี้ต้องวางบิล…") ไม่งั้น 400
+//   · ติ๊ก "งวดนี้ไม่ต้องวางบิล" (`billingSkip`) คู่กับวันวางบิลไม่ได้ · รอเหตุการณ์ ⇒ ไม่มีกำหนดชำระ
+//   · อ่านกติกาลูกค้าพลาด (`ruleUnavailable`) = ตีกลับเฉพาะงวดที่เปลี่ยนวันวางบิล/ติ๊ก — กำหนดชำระยังบันทึกได้
+// ⭐ `billingSkip` เก็บเป็น `true` หรือ `null` เท่านั้น (null = ตามลูกค้า · ไม่เก็บ false) และอยู่ใน patch เฉพาะเมื่อเปลี่ยน
+//   ⇒ ก่อนรัน 0393 (ไม่มีคอลัมน์) คำขอที่ไม่แตะติ๊กไม่เอ่ยชื่อคอลัมน์เลย · คำขอที่แตะ = 503 "รอรัน migration 0393"
+// ⭐ `billingException` เป็นของชั่วคราว — ไม่เก็บลงฐาน · ลงประวัติ (audit) ผ่าน `scheduleExceptionsOf`
+// ⚠️ server **ยังเก็บกำหนดชำระตามที่ส่ง** — ไม่คิดใหม่จากกติกาลูกค้า (มติ 28/09 ข้อ 17 · ด่านไม่ตรวจกำหนดชำระกับกติกา)
 import { installmentRefunded, installmentStale, installmentVoid, installmentVoidNote } from '@/lib/sales/salesOrderPayments';
 import { OPENING_INSTALLMENT_LABEL, isOpeningInstallment } from '@/lib/sales/historicalOrders';
-import { normalizeInstallmentBilling } from '@/lib/sales/billingRule';
+import {
+  NEED_NONE, SKIP_TEXT, billingNeed, normalizeInstallmentBilling, validateInstallmentDates,
+} from '@/lib/sales/billingRule';
+import { BILLING_V4_SCHEMA_MISSING } from '@/lib/sales/billingPolicySchema';
 
 /* งวดต่อคำขอ — ใบจริงมีไม่เกินสิบกว่างวด · เพดานกันคำขอผิดรูปที่ลากเขียนทีละแถวเป็นร้อยครั้ง (ไม่มี RPC ⇒ ไม่มีทรานแซกชัน) */
 export const SCHEDULE_MANY_MAX = 60;
 
-/* ช่องที่คำสั่งนี้เขียนได้ — ไม่มีอย่างอื่น (สถานะ/ยอด/ช่วงครอบ มีทางของมันเอง) */
+/* ช่องที่คำสั่งนี้เขียนได้ — ไม่มีอย่างอื่น (สถานะ/ยอด/ช่วงครอบ มีทางของมันเอง) · `billingSkip` = ติ๊ก "งวดนี้ไม่ต้องวางบิล" (0393) */
 const DATE_FIELDS = Object.freeze(['billingDate', 'billingEvent', 'dueDate']);
+const WRITE_FIELDS = Object.freeze([...DATE_FIELDS, 'billingSkip']);
+
+/* ค่าที่ลงฐานของติ๊ก — `true` หรือ `null` (ตามลูกค้า) · ไม่มีวันเก็บ false */
+const skipValue = (on) => (on ? true : null);
+/* ติ๊กในแถวที่อ่านจากฐาน — ก่อน 0393 ไม่มีคีย์ (undefined) = ไม่ติ๊ก */
+export const rowSkipped = (row) => row?.billingSkip === true;
 
 const text = (v) => String(v ?? '').trim();
 
@@ -71,6 +91,8 @@ export const INSTALLMENT_VERSION_MISSING = 'ไม่ได้ส่งรุ่
  * · อาเรย์ 1..SCHEDULE_MANY_MAX · ทุกแถวมี `id` + `updatedAt` (รุ่นของงวดที่ตาเห็น — ไม่มี = ตรวจ "ข้อมูลเก่า" ไม่ได้ ⇒ ไม่รับ)
  * · id ไม่ซ้ำ · ค่าวันเป็นสตริงหรือ null เท่านั้น (ออบเจกต์ถูก String() เป็น "[object Object]" แล้วกลายเป็นชื่อเหตุการณ์)
  * ⚠️ `updatedAt` บังคับที่นี่ ต่างจาก `schedule` งวดเดียว (ที่ปล่อยแท็บเก่าก่อน deploy) — คำสั่งนี้เกิดพร้อมจอที่ส่งค่านี้เสมอ
+ * · รุ่นสี่: `billingSkip` เป็น boolean/null · `billingException` เป็น boolean — อย่างอื่น ("true" สตริง) ไม่รับ
+ *   (สตริงไม่ว่างเป็น truthy ⇒ ถ้าปล่อยผ่าน ติ๊กจะถูกตีความตามใจตัวแปลง)
  */
 export function scheduleManyShapeError(sent) {
   if (!Array.isArray(sent) || !sent.length) return 'ไม่ได้ส่งงวดที่จะบันทึกมา — ตั้งวันงวดใหม่แล้วลองอีกครั้ง';
@@ -87,27 +109,78 @@ export function scheduleManyShapeError(sent) {
       const value = item[field];
       if (value !== undefined && value !== null && typeof value !== 'string') return 'รูปแบบวันงวดที่ส่งมาไม่ถูกต้อง';
     }
+    const flagError = billingFlagShapeError(item);
+    if (flagError) return flagError;
   }
   return null;
+}
+
+/* รูปของสองธงรุ่นสี่ในคำขอ (schedule งวดเดียว · schedule-many · หน้าสร้าง SO ถามตัวเดียวกัน) — ข้อความ หรือ null */
+export function billingFlagShapeError(item) {
+  const skip = item?.billingSkip;
+  if (skip !== undefined && skip !== null && typeof skip !== 'boolean') return `รูปแบบติ๊ก "${SKIP_TEXT}" ไม่ถูกต้อง`;
+  const exception = item?.billingException;
+  if (exception !== undefined && typeof exception !== 'boolean') return 'รูปแบบการยืนยัน "งวดนี้ต้องวางบิล" ไม่ถูกต้อง';
+  return null;
+}
+
+/**
+ * ข้อยกเว้นรายงวดที่คำขอนี้ทำ — ลงประวัติ (audit) ของใบ · ไม่มีคอลัมน์ของตัวเอง (system-design §2.3)
+ *   'billing' = ลูกค้าไม่ต้องวางบิล แต่ตั้งวันวางบิล **ใหม่** ผ่านการยืนยัน "งวดนี้ต้องวางบิล…" (`billingException`)
+ *   'skip'    = ติ๊ก "งวดนี้ไม่ต้องวางบิล" · 'unskip' = เอาติ๊กออก
+ * @param row  งวดในฐานตอนนี้ ({} = งวดใหม่ของหน้าสร้าง) · @param next ค่าหลังรวม `{ billingDate, billingSkip, billingException }`
+ */
+export function scheduleExceptionsOf(row, next, rule) {
+  const out = [];
+  const bill = String(next?.billingDate ?? '').trim();
+  if (bill && bill !== String(row?.billingDate ?? '').trim() && next?.billingException === true && billingNeed(rule) === NEED_NONE) {
+    out.push('billing');
+  }
+  const was = rowSkipped(row);
+  const now = next?.billingSkip === true;
+  if (now && !was) out.push('skip');
+  if (!now && was) out.push('unskip');
+  return out;
+}
+
+/* ประโยคของข้อยกเว้นในประวัติ (contracts §10 7.3) — ชื่อคนกดต่อท้ายสองแบบแรก */
+export function scheduleExceptionText(kind, name = '') {
+  const by = String(name || '').trim();
+  if (kind === 'billing') return `ยกเว้น: งวดนี้ต้องวางบิล${by ? ` โดย ${by}` : ''}`;
+  if (kind === 'skip') return `ยกเว้น: ${SKIP_TEXT}${by ? ` โดย ${by}` : ''}`;
+  if (kind === 'unskip') return `เอาติ๊ก "${SKIP_TEXT}" ออก`;
+  return '';
+}
+
+/* ต่อท้ายสรุป audit ของคำขอหลายงวด — `rows` = `[{ seq, exceptions }]` · ไม่มีข้อยกเว้น = '' */
+export function scheduleExceptionSummary(rows = [], name = '') {
+  const parts = [];
+  for (const row of rows || []) {
+    for (const kind of row?.exceptions || []) parts.push(`งวดที่ ${row.seq} ${scheduleExceptionText(kind, name)}`);
+  }
+  return parts.length ? ` · ${parts.join(' · ')}` : '';
 }
 
 /* ค่าที่งวดจะเป็นหลังบันทึก — กติกาเดียวกับ `schedule` งวดเดียว · `null`/'' = ล้างตั้งใจ ("ล้างวัน")
    · วันวางบิล/รอเหตุการณ์ = **คู่เดียวกัน**: ส่งคีย์ใดคีย์หนึ่งมา = ตั้งทั้งคู่ (อีกตัวที่ไม่ส่ง = ว่าง) — อย่างใดอย่างหนึ่งเสมอ
      (CHECK ของ 0389) ⇒ สลับ "รอเหตุการณ์ → วันวางบิล" ด้วย `billingDate` ตัวเดียวไม่ชนเหตุการณ์เดิมเป็น 400
      ไม่ส่งทั้งคู่ = คงคู่เดิม
-   · กำหนดชำระ: ไม่ส่งคีย์ = คงเดิม (ต่างจาก `schedule` ที่เขียน dueDate ทุกครั้ง — คำสั่งหลายงวดไม่ควรล้างวันที่จอไม่ได้พูดถึง) */
+   · กำหนดชำระ: ไม่ส่งคีย์ = คงเดิม (ต่างจาก `schedule` ที่เขียน dueDate ทุกครั้ง — คำสั่งหลายงวดไม่ควรล้างวันที่จอไม่ได้พูดถึง)
+   · ติ๊ก "งวดนี้ไม่ต้องวางบิล" (รุ่นสี่): ไม่ส่งคีย์ = คงเดิม — ⚠️ ต้องรวมค่าเดิมเสมอ ไม่งั้นงวดที่ติ๊กไว้แล้วแต่จอไม่ได้พูดถึง
+     ดูเหมือน "เอาติ๊กออก" ในสายตาของด่าน */
 function nextDates(row, item) {
   const billingSent = Object.hasOwn(item, 'billingDate') || Object.hasOwn(item, 'billingEvent');
   return {
     billingDate: billingSent ? (item.billingDate ?? null) : row.billingDate,
     billingEvent: billingSent ? (item.billingEvent ?? null) : row.billingEvent,
     dueDate: Object.hasOwn(item, 'dueDate') ? item.dueDate : row.dueDate,
+    billingSkip: Object.hasOwn(item, 'billingSkip') ? item.billingSkip === true : rowSkipped(row),
   };
 }
 
 /* ค่าใหม่ของงวดในรูปที่ลงฐาน — `{ value }` หรือ `{ error }` (ข้อความไทยไม่มีเลขงวด · ผู้เรียกเติม)
    วันวางบิล/รอเหตุการณ์ผ่าน `normalizeInstallmentBilling` ตัวเดียวกับ `schedule` (อย่างใดอย่างหนึ่ง · ปี 2000–2100 · ชื่อ ≤120)
-   กำหนดชำระเป็นวันที่มีจริง ปี 2000–2100 */
+   กำหนดชำระเป็นวันที่มีจริง ปี 2000–2100 · ติ๊กเป็น true/null */
 function wantedDates(row, item) {
   const next = nextDates(row, item);
   const billing = normalizeInstallmentBilling({ billingDate: next.billingDate, billingEvent: next.billingEvent });
@@ -115,14 +188,14 @@ function wantedDates(row, item) {
   const due = text(next.dueDate) || null;
   if (due && !realDay(due)) return { error: 'กำหนดชำระไม่ถูกต้อง' };
   if (due && (due < '2000-01-01' || due > '2100-12-31')) return { error: 'ปีของกำหนดชำระผิด' };
-  return { value: { ...billing.value, dueDate: due } };
+  return { value: { ...billing.value, dueDate: due, billingSkip: skipValue(next.billingSkip) } };
 }
 
 /* ช่องที่ค่าใหม่ต่างจากฐาน — `{}` = ตรงแล้วทุกช่อง */
 function changedFields(row, wanted) {
   const saved = savedDates(row);
   const patch = {};
-  for (const field of DATE_FIELDS) if (wanted[field] !== saved[field]) patch[field] = wanted[field];
+  for (const field of WRITE_FIELDS) if (wanted[field] !== saved[field]) patch[field] = wanted[field];
   return patch;
 }
 
@@ -131,7 +204,23 @@ const savedDates = (row) => ({
   billingDate: text(row.billingDate) || null,
   billingEvent: text(row.billingEvent) || null,
   dueDate: text(row.dueDate) || null,
+  billingSkip: skipValue(rowSkipped(row)),
 });
+
+/**
+ * ด่านค่าวันรุ่นสี่ของงวดเดียวที่ **จะเปลี่ยน** (ผ่านรูป/ล็อก/ด่าน schedule มาแล้ว) — ข้อความไทย หรือ null
+ * = `validateInstallmentDates` บนสภาพหลังรวม (คีย์ที่ไม่ส่ง = ค่าเดิม · ติ๊กด้วย) + ธงยืนยันข้อยกเว้นของคำขอ
+ * ⚠️ งวดที่ค่าตรงฐานถูกข้ามก่อนถึงตัวนี้ — แถวเก่าที่ผิดกติกาใหม่อยู่แล้ว (รอเหตุการณ์ + กำหนดชำระ) ไม่ทำให้ทั้งตารางตก
+ */
+export function scheduleValueError(row, value, { billingException = false, rule = null, ruleUnavailable = false } = {}) {
+  return validateInstallmentDates(row, {
+    billingDate: value.billingDate,
+    billingEvent: value.billingEvent,
+    dueDate: value.dueDate,
+    billingSkip: value.billingSkip === true,
+    billingException: billingException === true,
+  }, rule, { ruleUnavailable });
+}
 
 /* เหตุของงวดที่ `updatedAt` ไม่ตรงแถวสดตอนตรวจก่อนเขียน (409 ก่อนเขียน · schedule-many และ fill-coverage) */
 const SCHEDULE_MANY_ROW_CHANGED = 'เพิ่งถูกแก้จากอีกหน้าต่าง';
@@ -180,15 +269,21 @@ export function coveragePlanStale(live = [], plan = []) {
  *     `updatedAt` ไม่ตรงแถวสด · ล็อกในโหมดตั้งวัน (แจ้งชำระ/ขอใบวางบิล ระหว่างที่ร่างค้างอยู่ — จอเห็นเป็นงวดเปิดตอนร่าง)
  *  4. ด่าน `schedule` ทีละงวด (`gate` — ผู้เรียกส่ง installmentActionError ชุดเดียวกับแผง) → 400 บอกเลขงวด
  *  5. ค่าวัน (`wantedDates`) → 400 บอกเลขงวด
+ *  6. ด่านรุ่นสี่ (`scheduleValueError` = validateInstallmentDates กับกติกาลูกค้าที่ server อ่านเอง) → 400 บอกเลขงวด
+ *  7. ติ๊กเปลี่ยนแต่ฐานยังไม่มีคอลัมน์ (`skipReady` false · ก่อนรัน 0393) → 503 "รอรัน migration 0393"
  * ⚠️ ลำดับวันระหว่างงวด / วันวางบิลหลังกำหนดชำระ **ไม่บล็อก** (มติ 28/09 "เตือน ไม่บล็อก" — จอเตือนก่อนกด)
  * @param live   งวดสดทั้งใบ (loadInstallments — อ่านแบบโยน error)
  * @param sent   `body.rows`
  * @param requestedIds Set ของ id งวดที่ขอใบวางบิลแล้ว (`billingRequestedIds` จากคำร้องที่อ่านสด)
  * @param order  ใบของงวด (โมฆะ) · `gate(row)` → ข้อความ | null
- * @returns `{ rows: [{ id, seq, patch, before }] }` (เรียงตามเลขงวด · patch = เฉพาะช่องที่เปลี่ยน)
- *   หรือ `{ error, status, conflicts? }` — `conflicts` = `[{ id, seq, reason }]` เฉพาะ 409
+ * @param rule   กติกาวางบิลของลูกค้าของใบ (ค่าดิบ · ทุกรุ่น) · `ruleUnavailable` = อ่านไม่ขึ้น (ปิดแค่วันวางบิล/ติ๊ก)
+ * @param skipReady ฐานมีคอลัมน์ `billingSkip` แล้ว (`billingSkipReadyOf(live)`)
+ * @returns `{ rows: [{ id, seq, patch, before, exceptions }] }` (เรียงตามเลขงวด · patch = เฉพาะช่องที่เปลี่ยน ·
+ *   exceptions = ข้อยกเว้นรายงวดสำหรับประวัติ) หรือ `{ error, status, conflicts? }` — `conflicts` = `[{ id, seq, reason }]` เฉพาะ 409
  */
-export function scheduleManyCheck(live = [], sent = [], { requestedIds = new Set(), order = null, gate = () => null } = {}) {
+export function scheduleManyCheck(live = [], sent = [], {
+  requestedIds = new Set(), order = null, gate = () => null, rule = null, ruleUnavailable = false, skipReady = false,
+} = {}) {
   const shape = scheduleManyShapeError(sent);
   if (shape) return { error: shape, status: 400 };
   const byId = new Map((Array.isArray(live) ? live : []).map((row) => [row.id, row]));
@@ -222,11 +317,17 @@ export function scheduleManyCheck(live = [], sent = [], { requestedIds = new Set
   }
 
   const rows = [];
-  for (const { row, wanted, patch } of [...items].sort((a, b) => Number(a.row.seq) - Number(b.row.seq))) {
+  for (const { item, row, wanted, patch } of [...items].sort((a, b) => Number(a.row.seq) - Number(b.row.seq))) {
     const blocked = gate(row);
     if (blocked) return { error: `งวดที่ ${row.seq}: ${blocked}`, status: 400 };
     if (wanted.error) return { error: `งวดที่ ${row.seq}: ${wanted.error}`, status: 400 };
-    rows.push({ id: row.id, seq: row.seq, patch, before: row });
+    const billingException = item.billingException === true;
+    const v4 = scheduleValueError(row, wanted.value, { billingException, rule, ruleUnavailable });
+    if (v4) return { error: `งวดที่ ${row.seq}: ${v4}`, status: 400 };
+    /* ติ๊กเปลี่ยนก่อนรัน 0393 — บอกให้รันมิก ไม่ใช่ PGRST204 ดิบตอนเขียน (งวดอื่นในคำขอยังไม่ถูกเขียน) */
+    if (Object.hasOwn(patch, 'billingSkip') && !skipReady) return { error: BILLING_V4_SCHEMA_MISSING, status: 503 };
+    const exceptions = scheduleExceptionsOf(row, { ...wanted.value, billingException }, rule);
+    rows.push({ id: row.id, seq: row.seq, patch, before: row, exceptions });
   }
   return { rows };
 }

@@ -384,6 +384,12 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
   if (method === 'PATCH' && /^\/api\/customers\/[^/]+\/billing-rule$/.test(path)) {
     return can(role, 'customers:edit') || canUser(mgmtUser, 'payments:confirm');
   }
+  /* ⭐ **จัดวันงวดตามกำหนดวางบิลใหม่** (รุ่นสี่ · system-design §7.2) — จอ "งวดที่วันจะเปลี่ยน" หลังบันทึกกติกา
+     ช่องแคบเดียวกับข้างบน (FN แก้กติกาได้ ⇒ ต้องกดยืนยันวันใหม่ได้ด้วย ไม่งั้นบันทึกกติกาแล้วติดทางตัน)
+     ⚠️ แคบเป๊ะ: POST + `/billing-rule/redate` เท่านั้น · ด่านจริงใน handler = canEditCustomerBillingRule + ด่าน schedule ทีละงวด */
+  if (method === 'POST' && /^\/api\/customers\/[^/]+\/billing-rule\/redate$/.test(path)) {
+    return can(role, 'customers:edit') || canUser(mgmtUser, 'payments:confirm');
+  }
   if (path.startsWith('/api/customers')) {
     if (method === 'DELETE') return can(role, 'customers:delete');
     return can(role, 'customers:edit');

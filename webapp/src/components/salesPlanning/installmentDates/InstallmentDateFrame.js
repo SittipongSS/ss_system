@@ -104,8 +104,9 @@ export default function InstallmentDateFrame({ mode, children }) {
   );
 }
 
-/* 641–999px: แถวกางใต้งวดที่เปิด (ผู้เรียกวางต่อจาก <tr> ของงวดนั้น) · `colSpan` = จำนวนคอลัมน์ของตาราง */
-export function InstallmentDateExpandRow({ mode, row, colSpan }) {
+/* 641–999px: แถวกางใต้งวดที่เปิด (ผู้เรียกวางต่อจาก <tr> ของงวดนั้น) · `colSpan` = จำนวนคอลัมน์ของตาราง
+   · หน้าสร้าง SO ใช้ที่วางนี้ทุกความกว้างที่ไม่ใช่มือถือ (`create`) — `className` = คลาสของหน้าให้แถวนี้เต็มการ์ดตอนตารางเป็นการ์ดต่องวด */
+export function InstallmentDateExpandRow({ mode, row, colSpan, className = "" }) {
   if (!mode.active || mode.placement !== "inline" || mode.openId !== row?.id) return null;
   const onKeyDown = (event) => {
     if (event.key !== "Escape") return;
@@ -113,7 +114,7 @@ export function InstallmentDateExpandRow({ mode, row, colSpan }) {
     mode.close();
   };
   return (
-    <tr className={styles.expandRow}>
+    <tr className={`${styles.expandRow} ${className}`.trim()}>
       <td colSpan={colSpan} className={styles.expandCell}>
         <div className={styles.expandBox} role="group" aria-label={`ตั้งวัน งวดที่ ${row.seq}`} onKeyDown={onKeyDown}>
           {/* key เดียวกับป๊อปโอเวอร์/แผ่นมือถือ — งวด + ชนิดของกติกา (review 28/09: เดิมที่วางนี้ไม่มี key เลย) */}

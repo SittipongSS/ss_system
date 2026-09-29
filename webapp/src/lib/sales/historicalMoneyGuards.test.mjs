@@ -124,6 +124,10 @@ const SEES_HISTORICAL = new Map([
   ['app/api/sales-planning/sales-orders/route.js', { count: 1, reason: 'ทะเบียนใบสั่งขาย — แถวโชว์ได้ ยอดผ่าน salesOrderAmountKind (ใบย้อนหลัง = excluded)' }],
   ['app/api/sales-planning/deals/[id]/overview/route.js', { count: 1, reason: 'ใบของดีลใบเดียว — ยอดผ่าน splitSalesOrderAmounts/salesOrderAmountKind' }],
   ['app/api/sales-planning/deals/[id]/route.js', { count: 1, reason: 'ด่านย้ายเจ้าของดีลภาชนะ (0374) — หาใบย้อนหลังที่ยังไม่อนุมัติของดีลเดียวผ่าน historicalRowsOnly · ไม่รวมยอด' }],
+  /* รุ่นสี่ "ต้องวางบิลไหม" (mig 0393 · system-design §7.1–7.2): จอ "งวดที่วันจะเปลี่ยน" เมื่อกติกาลูกค้าเปลี่ยน —
+     งวดเปิดของใบย้อนหลังที่อนุมัติแล้วเป็นเงินจริงที่ต้องวางบิล/เก็บตามกติกาใหม่เหมือนใบปกติ (เหตุผลเดียวกับทะเบียนการชำระ) ·
+     ใบย้อนหลังที่ยังไม่อนุมัติถูกด่าน historicalInstallmentLock ย้ายไป kept 'locked' (customerRuleChange) · ยอดใช้แค่ withLiveAmounts ของงวดร่าง ไม่รวมยอด */
+  ['lib/sales/installmentScheduleServer.js', { count: 2, reason: 'ใบที่ยังมีชีวิตของลูกค้า (ruleChange) + ใบของงวดที่ส่งมาจัดวันใหม่ (redate) — งวดของใบย้อนหลังที่อนุมัติแล้วต้องตามกติกาใหม่ด้วย · ล็อกทั้งใบตัดใบที่ยังไม่อนุมัติ · ไม่รวมยอด' }],
 ]);
 /* ขอบเขตของคำสั่งทำให้ใบย้อนหลังเข้ามาไม่ได้ · count ความหมายเดียวกับข้างบน */
 const SCOPED_SAFE = new Map([

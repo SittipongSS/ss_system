@@ -13,6 +13,16 @@
 //    แล้วส่ง `todayIso` จาก `businessDate()` (นาฬิกาไทย) เข้ามา · ตัวตัดสิน "งวดนี้ถึงรอบไหม" คือ
 //    `needsBillingReminder` ของ billingRule.js ตัวเดียวกับป้ายบนแผงงวด/ทะเบียน FN — ไม่คิดหน้าต่างซ้ำที่นี่
 //
+// ── รุ่นสี่ (มติเจ้าของ 28–29/09 · "ต้องวางบิลไหม" · system-design §6 ช่วง 4a) ──────────────────────────────────────
+//   · กระดิ่งวางบิล (kind เดิม) ยิงเฉพาะงวดที่ **มีวันวางบิล** — ไม่มีวันวางบิล = ไม่มีกระดิ่งวางบิล ไม่มีปุ่มชวนขอใบ
+//   · ⭐ ใหม่: กระดิ่ง "ครบกำหนดชำระ" (`sales_order_due_soon`) **ทุกงวดที่มีกำหนดชำระ** 0..3 วัน — เจ้าของ: "เราตั้งกำหนดชำระ
+//     เพื่อไว้ติดตาม" · ไม่หยุดเมื่อขอใบแล้ว (ขอใบ ≠ ได้เงิน) · รอเหตุการณ์ = เงียบ · กุญแจ `due_soon:{id}:{dueDate}`
+//   · รวมเป็นกระดิ่งเดียวเมื่อกระดิ่งวางบิลยิงอยู่และวันวางบิล = กำหนดชำระ (ลูกค้าชำระวันวางบิลไม่ได้สองกระดิ่งวันเดียว)
+//   · ตัวตัดสิน "งวดนี้ได้กระดิ่งอะไร" คือ `bellsFor` ของ billingRule.js ตัวเดียว (ตัวเดียวกับม็อกและเทสต์ §9 ของตัวคิด)
+//     ⇒ ไฟล์นี้เหลือด่านระดับใบ (ใบยังเก็บเงิน · สหมิตร · งวดตรึงแล้ว) + ผู้รับ + ข้อความ
+//   · แถวสรุป FN แยกตามเรื่อง วันละไม่เกินเรื่องละแถว — หัวข้อ "N งวด" ต้องเท่าแถวที่ลิงก์เปิดมาเจอ (มติ 26/09 ข้อ 4)
+//     ⇒ รวมสองเรื่องไว้แถวเดียวไม่ได้ (ลิงก์เดียวชี้ได้ตัวกรองเดียว) · วางบิล → `?billing=soon` · ครบกำหนด → `?due=soon`
+//
 // ⚠️ **kind ต้องเป็นค่าคงที่ประกาศตรง ๆ ในไฟล์นี้** — ยามกันดริฟต์ใน `notifications.test.mjs` กวาดทั้ง
 //    `src/` หา `_KIND = 'sales_order_…'` แล้วเทียบกับ `SALES_ORDER_BELL_KINDS` · ประกอบจาก template
 //    string เมื่อไร ยามมองไม่เห็นแล้วแถวหายจากกระดิ่งเงียบ ๆ (ไปโผล่แค่หน้าเต็ม /notifications)
@@ -22,13 +32,18 @@ import { departmentOf } from '@/lib/permissions';
 import { historicalInstallmentLock, isOpeningInstallment } from '@/lib/sales/historicalOrders';
 import { installmentVoid, paymentNotRequired, pipelineInstallmentLock } from '@/lib/sales/salesOrderPayments';
 import {
-  BILLING_REMIND_DAYS, billingRequestLive, billingState, formatBillingDate, needsBillingReminder,
+  BELL, BILLING_REMIND_DAYS, DUE_REMIND_DAYS, LEDGER_HREF, bellsFor, billingRequestLive, billingState, canRequestBilling,
+  formatBillingDate,
 } from '@/lib/sales/billingRule';
 import { billingRequestHref } from '@/lib/sales/billingRequestHref';
 import { hrefWithAction } from '@/lib/notificationAction';
 
 export const BILLING_DUE_KIND = 'sales_order_billing_due';
 export const BILLING_DUE_FN_KIND = 'sales_order_billing_due_fn';
+/* ⭐ รุ่นสี่ (§6 ช่วง 4a) — ครบกำหนดชำระ 0..3 วัน · ฝ่ายขายหนึ่งแถวต่องวด + FN แถวสรุปวันละแถว (ลิงก์ `?due=soon`)
+   ⚠️ ค่าต้องตรงกับ `BELL.DUE_SOON` ของตัวคิด (เทสต์ตรึง) — ประกาศตรง ๆ เพราะยามดริฟต์อ่านได้แต่ literal */
+export const DUE_SOON_KIND = 'sales_order_due_soon';
+export const DUE_SOON_FN_KIND = 'sales_order_due_soon_fn';
 /* ใบสั่งขายไม่มีเธรด (มติ) ⇒ เข้ากระดิ่งทาง `kinds` · entityId = id ของ **ใบ** ไม่ใช่งวด —
    ลบใบแล้ว `purgeUpdates('sales_order', id)` กวาดแถวกระดิ่งตามไปด้วย (id อื่นเหลือแถวที่กดแล้วไปไม่ถึงไหน) */
 export const BILLING_DUE_ENTITY_TYPE = 'sales_order';
@@ -38,7 +53,13 @@ export const BILLING_DUE_ENTITY_TYPE = 'sales_order';
      `billingDueCandidates` ตัวเดียวกับ cron (api/finance/payments) ⇒ ตัวเลขบนกระดิ่ง = จำนวนแถวที่เปิดมาเจอ **ในเช้าวันที่ยิง**
      ⚠️ หัวข้อเป็นภาพนิ่งของเช้าวันที่ยิง ส่วนทะเบียนนับข้อมูลสดของ **วันนี้** — แถวค้างในกล่องหลายวัน ⇒ เปิดวันหลัง
        หรือหลังมีคนขอใบ/แจ้งชำระ/แก้วันวางบิล ตัวเลขสองฝั่งต่างกันได้ (ไม่ใช่บั๊ก · ทะเบียนคือความจริงของตอนนี้) */
-export const BILLING_DUE_FN_HREF = '/finance/payments?billing=soon';
+export const BILLING_DUE_FN_HREF = LEDGER_HREF.billingSoon;
+/* แถว FN "ครบกำหนดชำระ" → ทะเบียนที่กรอง `?due=soon` = ชุดเดียวกับที่หัวข้อนับ (`dueSoonCandidates` ตัวเดียวกับ route ของทะเบียน) */
+export const DUE_SOON_FN_HREF = LEDGER_HREF.dueSoon;
+/* ต่อท้ายหัวข้อของงวดที่ลูกค้าต้องวางบิลแต่งวดยังไม่มีวันวางบิล (`bellsFor().missingBilling` — ไม่ต่อท้ายงวดที่ติ๊ก/รูปเดิม) */
+export const DUE_SOON_MISSING_BILLING_TEXT = 'ยังไม่มีวันวางบิล';
+/* ต่อท้ายหัวข้อกระดิ่งวางบิลที่รวมกระดิ่งครบกำหนดไว้แล้ว (วันวางบิล = กำหนดชำระ · `sameDayDue`) */
+export const BILLING_DUE_SAME_DAY_TEXT = 'ครบกำหนดชำระวันเดียวกัน';
 /* ป้ายปุ่มในแถวฝั่งขาย — คำเดียวกับปุ่มในแผงงวด (SalesOrderPaymentPanel) */
 export const BILLING_DUE_ACTION_LABEL = 'ขอใบวางบิลงวดนี้';
 
@@ -48,6 +69,9 @@ export const BILLING_DUE_ACTION_LABEL = 'ขอใบวางบิลงวด
 export const billingDueDedupeKey = (installmentId, billingDate) => `billing_due:${installmentId}:${billingDate}`;
 /* FN ได้แถวสรุปวันละแถว (กติกาผู้รับ "หนึ่งคนหนึ่งเด้งต่อวัน") — unique (userId, updateId) ⇒ ต่อคนต่อวัน */
 export const billingDueFnDedupeKey = (todayIso) => `billing_due_fn:${todayIso}`;
+/* กุญแจของกระดิ่งครบกำหนด — หนึ่งงวด หนึ่งกำหนดชำระ หนึ่งครั้ง (แก้กำหนดชำระแล้วเตือนได้อีก · แบบเดียวกับวันวางบิล) */
+export const dueSoonDedupeKey = (installmentId, dueDate) => `due_soon:${installmentId}:${dueDate}`;
+export const dueSoonFnDedupeKey = (todayIso) => `due_soon_fn:${todayIso}`;
 
 /* แถว FN โชว์กี่งวดก่อนต่อ "และอีก n งวด" — กระดิ่งตัดบรรทัดรองที่ 2 บรรทัด (NotificationBell.module.css `.body`)
    ⇒ งวดที่สามไม่เคยโผล่ในกระดิ่งอยู่ดี · จำนวนงวดทั้งหมดอยู่บนหัวข้อแล้ว ("· N งวด ฿X") · หน้าเต็มไม่ตัด */
@@ -116,26 +140,54 @@ const byBillingDate = (a, b) => (
   || text(a.order.orderNumber).localeCompare(text(b.order.orderNumber))
   || (Number(a.installment.seq) || 0) - (Number(b.installment.seq) || 0)
 );
+const byDueDate = (a, b) => (
+  text(a.installment.dueDate).localeCompare(text(b.installment.dueDate))
+  || text(a.order.orderNumber).localeCompare(text(b.order.orderNumber))
+  || (Number(a.installment.seq) || 0) - (Number(b.installment.seq) || 0)
+);
 
 /**
- * งวดที่ต้องเตือน "ถึงรอบวางบิล" วันนี้ — ตัวคัดเดียวของทั้งฝั่งขายและฝั่ง FN
- *
- * ผ่านเมื่อครบทุกข้อ:
+ * ด่านระดับใบของกระดิ่งงวดทุกชนิด (วางบิล · ครบกำหนด) — ผ่านเมื่อครบทุกข้อ แล้วคืน `{ order, customer }` · ไม่ผ่าน = null
  *   · งวดหยุดยอดแล้ว (`frozenAt`) — งวดร่างยอดยังเดินตามแผนของ QT (ทะเบียน FN ก็ไม่แสดง)
- *   · ไม่ใช่งวดยกมาของใบย้อนหลัง (มติ 10: งวดยกมาไม่มีวันวางบิลเลย)
+ *   · ไม่ใช่งวดยกมาของใบย้อนหลัง (มติ 10: งวดยกมาไม่มีวันวางบิล/กำหนดชำระ)
  *   · ใบยังต้องตามเก็บเงิน (`orderCollecting` — ด่านงวดของแผง/API · ไม่ใช่ใบยอด 0 · งวดไม่โมฆะ)
  *   · ไม่ใช่ลูกค้าที่เก็บเงินนอกระบบ (`skipArCodes` — สหมิตร AR-109 · มติ 24/09 เงินสหมิตรอยู่นอกระบบ)
- *   · `needsBillingReminder` — รอชำระ (`pending` เท่านั้น: แจ้งชำระแล้ว = ลูกค้าจ่ายแล้ว) · ยอด > 0 ·
- *     วันวางบิลอยู่ในหน้าต่าง 0..BILLING_REMIND_DAYS วัน · ยังไม่มีคำร้องขอใบวางบิลที่ส่งแล้วผูกอยู่
+ * ⚠️ ด่านระดับงวด (รอชำระ · ยอด > 0 · หน้าต่างวัน · ขอใบแล้ว · รอเหตุการณ์) อยู่ที่ `bellsFor` ตัวเดียว — ไม่คิดซ้ำที่นี่
+ */
+function collectibleOf(installment, { ordersById, customersById, skip }) {
+  if (!installment?.id || !installment.frozenAt) return null;
+  if (isOpeningInstallment(installment)) return null;
+  const order = ordersById.get(installment.salesOrderId);
+  /* `installmentVoid` = ตัวตัดสินงวดโมฆะตัวเดียวของทั้งระบบ — วันนี้ด่านใบข้างบนตัดใบยกเลิก/ถูกออก Rev. ทับไปก่อนแล้ว
+     แต่คงไว้เป็นเข็มขัด: ด่านใบเปลี่ยนเมื่อไร (เช่นปล่อยบางคำสั่งบนใบยกเลิก) งวดโมฆะต้องยังไม่ถูกเตือน */
+  if (!orderCollecting(order) || installmentVoid(installment, order)) return null;
+  const customer = order.customerId ? customersById.get(order.customerId) || null : null;
+  if (customer && skip.has(text(customer.arCode))) return null;
+  return { order, customer };
+}
+
+/* กระดิ่งของงวดเช้านี้จากตัวคิดตัวเดียว (`bellsFor`) — กติกาของลูกค้าอ่านจาก `customer.billingRule` (ไม่มี = ยังไม่ระบุ)
+   ⚠️ กระดิ่งวางบิลไม่ขึ้นกับกติกา (ตัดสินจากวันวางบิลของงวดล้วน · มติ 28/09 ข้อ 17) — กติกามีผลแค่คำต่อท้าย
+     "ยังไม่มีวันวางบิล" ของกระดิ่งครบกำหนด (ต้องวางบิลจริง · ไม่ติ๊ก · ไม่ใช่รูปเดิม) */
+function bellsOf(installment, customer, { todayIso, requestsById }) {
+  const requested = installmentBillingRequested(installment, requestsById);
+  return bellsFor(installment, customer?.billingRule ?? null, { todayIso, requested });
+}
+
+/**
+ * งวดที่ต้องเตือน "ถึงรอบวางบิล" วันนี้ — ตัวคัดเดียวของทั้งฝั่งขาย ฝั่ง FN และตัวกรอง `?billing=soon` ของทะเบียน
+ *
+ * ผ่านเมื่อ: ด่านระดับใบ (`collectibleOf`) + `bellsFor` มีกระดิ่งวางบิล — รอชำระ (`pending` เท่านั้น: แจ้งชำระแล้ว = ลูกค้า
+ *   จ่ายแล้ว) · ยอด > 0 · **มีวันวางบิล** อยู่ในหน้าต่าง 0..BILLING_REMIND_DAYS วัน · ยังไม่มีคำร้องขอใบวางบิลที่ส่งแล้วผูกอยู่
  *
  * @param installments แถว `sales_order_installments`
  * @param ordersById   Map id → ใบ (`status` `origin` `totalAmount` `customerId` …) — ใบต้องมี `deal` ติดมาถ้าจะรู้เจ้าของดีล
  *                     และ `quotation` ({ status, quoteNumber }) ถ้าจะตัดร่างที่ QT ถูกถอด Won แล้ว
- * @param customersById Map id → ลูกค้า (`arCode` `name` `nameEn`)
+ * @param customersById Map id → ลูกค้า (`arCode` `name` `nameEn` · `billingRule` ถ้ามี)
  * @param requestsById Map id → คำร้อง (`status`)
  * @param skipArCodes  รหัสลูกค้าที่ไม่เตือน — ผู้เรียกส่ง `SAHAMIT_AR_CODE` (ค่าคงที่บ้านเดียวอยู่ที่ lib/sahamit/server.js
  *                     ซึ่งลาก auth ของ server มาด้วย ⇒ ไฟล์บริสุทธิ์นี้ไม่ import เอง)
- * @returns `[{ installment, order, customer }]` เรียงตามวันวางบิล
+ * @returns `[{ installment, order, customer, sameDayDue }]` เรียงตามวันวางบิล · `sameDayDue` = กระดิ่งนี้รวมครบกำหนดไว้แล้ว
  */
 export function billingDueCandidates(installments = [], {
   todayIso, ordersById = new Map(), customersById = new Map(), requestsById = new Map(), skipArCodes = [],
@@ -143,19 +195,40 @@ export function billingDueCandidates(installments = [], {
   const skip = new Set((skipArCodes || []).map(text).filter(Boolean));
   const out = [];
   for (const installment of installments || []) {
-    if (!installment?.id || !installment.frozenAt) continue;
-    if (isOpeningInstallment(installment)) continue;
-    const order = ordersById.get(installment.salesOrderId);
-    /* `installmentVoid` = ตัวตัดสินงวดโมฆะตัวเดียวของทั้งระบบ — วันนี้ด่านใบข้างบนตัดใบยกเลิก/ถูกออก Rev. ทับไปก่อนแล้ว
-       แต่คงไว้เป็นเข็มขัด: ด่านใบเปลี่ยนเมื่อไร (เช่นปล่อยบางคำสั่งบนใบยกเลิก) งวดโมฆะต้องยังไม่ถูกเตือน */
-    if (!orderCollecting(order) || installmentVoid(installment, order)) continue;
-    const customer = order.customerId ? customersById.get(order.customerId) || null : null;
-    if (customer && skip.has(text(customer.arCode))) continue;
-    const requested = installmentBillingRequested(installment, requestsById);
-    if (!needsBillingReminder(installment, { todayIso, requested })) continue;
-    out.push({ installment, order, customer });
+    const hit = collectibleOf(installment, { ordersById, customersById, skip });
+    if (!hit) continue;
+    const bell = bellsOf(installment, hit.customer, { todayIso, requestsById }).find((b) => b.kind === BELL.BILLING_DUE);
+    if (!bell) continue;
+    out.push({ installment, order: hit.order, customer: hit.customer, sameDayDue: Boolean(bell.sameDayDue) });
   }
   return out.sort(byBillingDate);
+}
+
+/**
+ * งวดที่ "ครบกำหนดชำระใน 0..3 วัน" วันนี้ (รุ่นสี่ · §6) — ตัวคัดเดียวของกระดิ่งครบกำหนด (ขาย + FN) และตัวกรอง `?due=soon`
+ *
+ * ผ่านเมื่อ: ด่านระดับใบ (`collectibleOf`) + งวดรอชำระที่มียอด มีกำหนดชำระในหน้าต่าง 0..DUE_REMIND_DAYS วัน ไม่รอเหตุการณ์
+ *   ⭐ **ทุกงวดที่มีกำหนดชำระ** — มี/ไม่มีวันวางบิล · ขอใบแล้วก็ยังเตือน (ขอใบ ≠ ได้เงิน) · ลูกค้าไม่ต้องวางบิลก็ได้
+ * ⭐ `merged` = งวดที่กระดิ่งวางบิลยิงอยู่และวันวางบิล = กำหนดชำระ ⇒ **ฝั่งขายไม่ได้แถวครบกำหนดแยก** (กระดิ่งวางบิลบอกแล้ว ·
+ *   `bellsFor` ไม่คืนกระดิ่งครบกำหนดของงวดนี้) แต่ **ยังอยู่ในชุดนี้** — แถวสรุป FN กับ `?due=soon` นับทุกงวดที่ครบกำหนด
+ *   (`ledgerFlags().dueSoon` "รวมงวดที่กระดิ่งถูกรวมเข้ากระดิ่งวางบิล") ⇒ หัวข้อแถว FN = จำนวนแถวที่ลิงก์เปิดมาเจอ
+ * @returns `[{ installment, order, customer, merged, missingBilling }]` เรียงตามกำหนดชำระ
+ */
+export function dueSoonCandidates(installments = [], {
+  todayIso, ordersById = new Map(), customersById = new Map(), requestsById = new Map(), skipArCodes = [],
+} = {}) {
+  const skip = new Set((skipArCodes || []).map(text).filter(Boolean));
+  const out = [];
+  for (const installment of installments || []) {
+    const hit = collectibleOf(installment, { ordersById, customersById, skip });
+    if (!hit) continue;
+    const bells = bellsOf(installment, hit.customer, { todayIso, requestsById });
+    const due = bells.find((b) => b.kind === BELL.DUE_SOON) || null;
+    const merged = !due && bells.some((b) => b.kind === BELL.BILLING_DUE && b.sameDayDue);
+    if (!due && !merged) continue;
+    out.push({ installment, order: hit.order, customer: hit.customer, merged, missingBilling: Boolean(due?.missingBilling) });
+  }
+  return out.sort(byDueDate);
 }
 
 /**
@@ -206,7 +279,10 @@ export function billingDueNotice({ installment, order, customer = null, director
     entityId: order.id,
     kind: BILLING_DUE_KIND,
     dedupeKey: billingDueDedupeKey(installment.id, billingDate),
-    title: `ถึงรอบวางบิล ${when} · ${text(order.orderNumber)} ${installmentName(installment)} ${fmtMoney(installment.amount)}`,
+    /* ⭐ รุ่นสี่: วันวางบิล = กำหนดชำระ (ชำระวันวางบิล) ⇒ กระดิ่งครบกำหนดของงวดนี้ถูกรวมไว้ที่นี่ (`bellsFor` ไม่คืนแยก)
+         ⇒ หัวข้อต้องบอกว่าเงินครบกำหนดวันเดียวกันด้วย ไม่งั้นเรื่องครบกำหนดหายไปจากกระดิ่งเงียบ ๆ */
+    title: `ถึงรอบวางบิล ${when} · ${text(order.orderNumber)} ${installmentName(installment)} ${fmtMoney(installment.amount)}${
+      text(installment.dueDate) === billingDate ? ` · ${BILLING_DUE_SAME_DAY_TEXT}` : ''}`,
     body: customerLine(order, customer) || null,
     /* ⭐ ปุ่ม "ขอใบวางบิลงวดนี้" ในแถว (รอบสอง 26/09) — ลิงก์ของปุ่มฝังท้าย `href` (lib/notificationAction.js)
        แถวยังพาไปแท็บการชำระเหมือนเดิม · ⚠️ ใบที่ไม่อ้างใบเสนอราคา (ใบย้อนหลัง) ไม่มีปุ่ม — คำร้องขอเอกสารการเงิน
@@ -267,6 +343,89 @@ export function billingDueNotices(installments = [], {
   return { candidates, sales, fn };
 }
 
+/* ── กระดิ่ง "ครบกำหนดชำระ" (รุ่นสี่ · §6 ช่วง 4a) ─────────────────────────────────────────────────────────── */
+
+/**
+ * กระดิ่งครบกำหนดฝั่งขาย หนึ่งแถวต่องวด — ผู้รับชุดเดียวกับกระดิ่งวางบิล (เจ้าของดีลวันนี้ + เจ้าของใบ)
+ * ⭐ แถวพาไปแท็บการชำระของใบ (ฝ่ายขายเข้าทะเบียน FN ไม่ได้ · `canAccessFinance`) · **ไม่มีปุ่ม "ขอใบวางบิลงวดนี้"** —
+ *   เรื่องของกระดิ่งนี้คือเงินใกล้ครบกำหนด ไม่ใช่การวางบิล (งวดที่ไม่มีวันวางบิลไม่ชวนขอใบ · มติเจ้าของ 28/09)
+ * @param missingBilling ต่อท้าย "ยังไม่มีวันวางบิล" (จาก `bellsFor` — ต้องวางบิลจริง ไม่ใช่งวดที่ติ๊ก/รูปเดิม)
+ * @returns payload ของ `notifyUsers` หรือ null เมื่อไม่มีใครต้องรู้
+ */
+export function dueSoonNotice({ installment, order, customer = null, directory = null, missingBilling = false } = {}) {
+  const dueDate = text(installment?.dueDate);
+  const when = formatBillingDate(dueDate, { withYear: false });
+  // ⚠️ หัวข้อประกอบจาก `orderNumber` ซึ่งมีค่าเสมอ — หัวข้อว่างตก CHECK ของ 0185 (เหตุผลเดียวกับกระดิ่งวางบิล)
+  if (!installment?.id || !order?.id || !text(order.orderNumber) || !when) return null;
+  const userIds = billingDueRecipients(order, { directory });
+  if (!userIds.length) return null;
+  return {
+    userIds,
+    entityType: BILLING_DUE_ENTITY_TYPE,
+    entityId: order.id,
+    kind: DUE_SOON_KIND,
+    dedupeKey: dueSoonDedupeKey(installment.id, dueDate),
+    title: `ครบกำหนดชำระ ${when} · ${text(order.orderNumber)} ${installmentName(installment)} ${fmtMoney(installment.amount)}${
+      missingBilling ? ` · ${DUE_SOON_MISSING_BILLING_TEXT}` : ''}`,
+    body: customerLine(order, customer) || null,
+    href: `/sa/sales-orders/${order.id}?tab=payment`,
+  };
+}
+
+/**
+ * กระดิ่งครบกำหนดฝั่ง FN แถวสรุปวันละแถว — "ครบกำหนดชำระใน 3 วัน · 3 งวด ฿X" → `/finance/payments?due=soon`
+ * ⭐ นับชุดเดียวกับที่ลิงก์เปิด (`dueSoonCandidates` รวมงวดที่ฝั่งขายรวมเข้ากระดิ่งวางบิลแล้ว) · บรรทัดรองไล่ FN_LINES งวดแรก
+ *   ตามกำหนดชำระ แล้วต่อ "และอีก n งวด" · มีงวดที่ยังไม่มีวันวางบิล = ต่อท้ายจำนวน (ตัวกรอง `?billing=missing` ของทะเบียน)
+ * ⚠️ แยกแถวจากแถวสรุปวางบิลโดยตั้งใจ — ดูหัวไฟล์ (หัวข้อหนึ่งแถว = ตัวกรองเดียวที่ลิงก์เปิด)
+ */
+export function dueSoonFnNotice(candidates = [], { todayIso, directory = null } = {}) {
+  if (!candidates?.length || !text(todayIso)) return null;
+  const userIds = financeRecipientIds(directory);
+  if (!userIds.length) return null;
+  const sorted = [...candidates].sort(byDueDate);
+  const total = sorted.reduce((sum, { installment }) => sum + (Number(installment.amount) || 0), 0);
+  const lines = sorted.slice(0, FN_LINES).map(({ installment, order, customer }) => {
+    const who = text(customer?.arCode) || text(order.customerName) || customerNameIn(customer);
+    const when = formatBillingDate(installment.dueDate, { withYear: false });
+    return [
+      `${text(order.orderNumber)} ${installmentName(installment)} ${fmtMoney(installment.amount)}`, who, `ครบกำหนด ${when}`,
+    ].filter(Boolean).join(' · ');
+  });
+  const more = sorted.length > FN_LINES ? ` และอีก ${sorted.length - FN_LINES} งวด` : '';
+  const missing = sorted.filter((c) => c.missingBilling).length;
+  return {
+    userIds,
+    entityType: BILLING_DUE_ENTITY_TYPE,
+    entityId: sorted[0].order.id,
+    kind: DUE_SOON_FN_KIND,
+    dedupeKey: dueSoonFnDedupeKey(text(todayIso)),
+    title: `ครบกำหนดชำระใน ${DUE_REMIND_DAYS} วัน · ${sorted.length} งวด ${fmtMoney(total)}`,
+    body: `${lines.join(' / ')}${more}${missing ? ` · ${DUE_SOON_MISSING_BILLING_TEXT} ${missing} งวด` : ''}`,
+    href: DUE_SOON_FN_HREF,
+  };
+}
+
+/**
+ * รอบเช้าของกระดิ่งครบกำหนดในคำสั่งเดียว — cron เรียกตัวนี้
+ * @returns `{ candidates, sales: [payload], fn: payload | null }` · ฝั่งขายข้ามงวดที่รวมเข้ากระดิ่งวางบิลแล้ว (`merged`)
+ *   `fn === null` ทั้งที่มี candidates = หาผู้ใช้ฝ่าย FN ที่เปิดอยู่ไม่เจอ (ผู้เรียกรายงานเป็น error)
+ */
+export function dueSoonNotices(installments = [], {
+  todayIso, ordersById, customersById, requestsById, skipArCodes = [], directory = null,
+} = {}) {
+  const candidates = dueSoonCandidates(installments, {
+    todayIso, ordersById, customersById, requestsById, skipArCodes,
+  });
+  const sales = candidates
+    .filter((c) => !c.merged)
+    .map(({ installment, order, customer, missingBilling }) => dueSoonNotice({
+      installment, order, customer, directory, missingBilling,
+    }))
+    .filter(Boolean);
+  const fn = dueSoonFnNotice(candidates, { todayIso, directory });
+  return { candidates, sales, fn };
+}
+
 /* ── ปุ่ม "ขอใบวางบิลงวดนี้" ในแถวกระดิ่ง (รอบสอง 26/09) — ตัวตัดสินล้วน ตัวโหลดอยู่ที่ lib/notifications.js ──────
    ปุ่มขึ้นเมื่องวดยัง "ขอใบได้" **ตอนเปิดกล่อง** ไม่ใช่ตอน cron ยิง (แถวอยู่ในกล่องหลายวัน)
    ตัดสินสองชั้น — **ไม่ใช่ "กติกาเดียวกับแผงงวด" ทั้งก้อน** (review รอบสอง 26/09: ข้อความเดิมอ้างเกินจริง):
@@ -300,8 +459,13 @@ export function billingDueNotices(installments = [], {
  * ⚠️ งวดที่หาไม่เจอ (ลบใบ/ปรับแผนสร้างงวดชุดใหม่ · อ่านพลาด) = ไม่มีปุ่ม — แถวยังพาไปแผงงวดตามเดิม
  * ⚠️ งวดจบแล้ว · งวดยกมา = ไม่มีปุ่ม — ถาม `billingState` ตัวเดียวกับทุกจอ ไม่เขียนกติกาเอง
  */
-export function billingDueActionOpen(installment) {
+export function billingDueActionOpen(installment, rule = null) {
   if (!text(installment?.id) || text(installment.billingRequestId)) return false;
+  /* ⭐ รุ่นสี่ (system-design §6 "สิ่งที่หายไปสำหรับลูกค้าไม่ต้องวางบิล"): ปุ่มในกระดิ่งถาม `canRequestBilling` ตัวเดียวกับเมนูแถว
+       ของแผงงวด — งวดที่ไม่ต้องวางบิล (ติ๊ก `billingSkip` · ลูกค้าไม่ต้องวางบิลและงวดไม่มีวันวางบิล) = ไม่มีปุ่ม · งวดที่มีวันวางบิล
+       ขอได้เสมอ (ข้อยกเว้น "งวดนี้ต้องวางบิล") · วันวางบิลถูกล้างแต่ลูกค้ายังต้องวางบิล/ยังไม่ระบุ = ยังขอได้ (เหมือนแผงงวด)
+       ⚠️ `rule` = กติกาของลูกค้าของใบ (ไม่ส่ง = ยังไม่ระบุ ⇒ ตัดสินจากงวดล้วน) — ตัวโหลดใน lib/notifications.js อ่านสดส่งมาทุกครั้ง */
+  if (!canRequestBilling(installment, rule)) return false;
   const { key } = billingState(installment);
   return key !== 'settled' && key !== 'carried';
 }
@@ -312,9 +476,10 @@ export function billingDueActionOpen(installment) {
  * @param order       ใบสดของ **`installment.salesOrderId`** (`id` `status` `origin` `quotationId`) · ต้องแนบ
  *                    `quotation: { status, quoteNumber }` ถ้าจะตัดร่างที่ QT ถูกถอด Won (ไม่มีค่า = ด่านนั้นไม่ตัดสิน
  *                    เหมือน `pipelineInstallmentLock` ทุกที่) · ไม่มีใบ = ไม่มีปุ่ม
+ * @param rule        กติกาของลูกค้าของใบ (รุ่นสี่ · `canRequestBilling`) — ไม่ส่ง = ยังไม่ระบุ · งวดที่มี `billingSkip` ตัดเองได้
  */
-export function billingDueAction(installment, order) {
-  if (!billingDueActionOpen(installment)) return null;
+export function billingDueAction(installment, order, { rule = null } = {}) {
+  if (!billingDueActionOpen(installment, rule)) return null;
   /* ใบต้องเป็นใบที่งวดอยู่ **ตอนนี้** — ผู้เรียกส่งใบผิด (เช่นใบเดิมก่อนออก Rev.) แล้วลิงก์พาไปผูกงวดกับใบที่ไม่ใช่บ้านของมัน
      · ใบที่ไม่อ้าง QT (ใบย้อนหลัง) ขอเอกสารการเงินไม่ได้ — ฟอร์มกับตัวผูกตีกลับ */
   if (!order || text(order.id) !== text(installment.salesOrderId) || !text(order.quotationId)) return null;

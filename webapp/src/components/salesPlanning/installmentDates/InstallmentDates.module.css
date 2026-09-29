@@ -368,3 +368,75 @@
   .fillTiles { grid-template-columns: minmax(0, 1fr); }
   .dueInput { width: 100%; }
 }
+
+/* ── รุ่นสี่ (มติเจ้าของ 29/09 แบบ A) ─────────────────────────────────────────────────────────────
+   ช่องคู่ ○ วันวางบิล → ● กำหนดชำระ บนหัวแผ่นล่าง (มือถือ) · ติ๊ก "งวดนี้ไม่ต้องวางบิล" · ช่องวันวางบิลของลูกค้าไม่ต้องวางบิล */
+.slots { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: stretch; gap: var(--space-1-5); }
+.slot {
+  display: grid;
+  align-content: start;
+  gap: var(--space-0-5);
+  min-width: 0;
+  min-height: var(--ctl-h-touch);
+  padding: var(--space-2) var(--space-2-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-solid);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+button.slot { cursor: pointer; }
+button.slot[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+button.slot:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.slot[data-off] { border-style: dashed; background: var(--panel-2); }
+.slot small { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--text-3); font-size: var(--fs-3); font-weight: var(--fw-bold); }
+.slot b { font-size: var(--fs-5); font-weight: var(--fw-semibold); line-height: var(--lh-thai); font-variant-numeric: tabular-nums; }
+.slot span { color: var(--text-3); font-size: var(--fs-3); line-height: var(--lh-thai); }
+.slotArrow { align-self: center; color: var(--text-3); }
+
+.skipCheck { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-2) var(--space-2-5); border: 1px dashed var(--border); border-radius: var(--radius-md); cursor: pointer; }
+.skipCheck input { flex: none; width: 18px; height: 18px; margin-top: var(--space-0-5); accent-color: var(--accent); }
+.skipCheck span { display: grid; gap: var(--space-0-5); min-width: 0; }
+.skipCheck b { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--text); font-size: var(--fs-5); font-weight: var(--fw-semibold); line-height: var(--lh-thai); }
+.skipCheck small { color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-thai); }
+
+/* เซลล์วันวางบิลของงวดที่ไม่ต้องวางบิล (ลูกค้าไม่ต้องวางบิล · ติ๊กรายงวด) — คำ ไม่ใช่ปุ่ม (ไม่มีอะไรให้ตั้ง) */
+.cellStatic { display: grid; min-width: 0; gap: var(--space-0-5); padding: var(--space-1) 0; color: var(--text-3); font-size: var(--fs-5); line-height: var(--lh-thai); }
+.cellStatic small { font-size: var(--fs-3); }
+
+/* แถบนโยบายของลูกค้าบนแผงงวด (BillingPolicyStrip · แทนบรรทัด "กำหนดวางบิล:" เดิม) — เมตาของใบ ไม่ใช่คำเตือน
+   ถาม "ต้องวางบิลไหม" = เส้นประ (ช่องว่างที่ตอบได้ ไม่ใช่ของเสีย) */
+.policy {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-1-5) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+}
+.policy[data-tone="ask"] { border-style: dashed; background: transparent; }
+.policyIcon { flex: none; margin-top: var(--space-0-5); color: var(--navy-ink); }
+.policy[data-tone="ask"] .policyIcon { color: var(--accent-ink); }
+.policyText { display: grid; flex: 1 1 260px; min-width: 0; gap: var(--space-0-5); }
+.policyText small { color: var(--text-3); font-size: var(--fs-4); }
+.policyText p { margin: 0; }
+.policyText b { color: var(--text); font-weight: var(--fw-semibold); }
+.policySub,
+.policyExc { display: flex; align-items: flex-start; gap: var(--space-1); color: var(--text-3); font-size: var(--fs-5); }
+.policyExc { color: var(--amber); }
+.policySub > svg,
+.policyExc > svg { flex: none; margin-top: var(--space-0-5); }
+.policyActions { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-1-5) var(--space-2); margin-left: auto; }
+.policyLink { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--fs-5); font-weight: var(--fw-semibold); white-space: nowrap; }
+
+/* โมดัล "ต้องวางบิลไหม" · "งวดนี้ต้องวางบิล…" */
+.askBody { display: grid; gap: var(--space-3); }
+.askFacts { display: grid; gap: var(--space-1); margin: 0; padding-left: var(--space-4); color: var(--text-2); font-size: var(--fs-5); line-height: var(--lh-thai); }
+.askConsequence { margin: 0; padding: var(--space-2) var(--space-2-5); border-radius: var(--radius-md); background: var(--panel-2); color: var(--text-2); font-size: var(--fs-5); line-height: var(--lh-thai); }

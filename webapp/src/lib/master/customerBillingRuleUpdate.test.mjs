@@ -114,6 +114,29 @@ test('ไม่มีอะไรเปลี่ยน = null (route ตอบ u
   assert.equal(billingRuleChangeUpdate({ billing: 'garbage' }, MONTHLY).meta.action, 'set');
 });
 
+/* ── รุ่นสี่ "ต้องวางบิลไหม" (mig 0393) — ค่าใหม่เป็นรุ่นสี่เสมอ · ค่าเดิมเป็นรูปไหนก็ได้ ─────────────────────────────── */
+const NONE = { v: 4, need: 'none' };
+const NO_TIMING = { v: 4, need: 'required', billing: null };
+test('⭐ รุ่นสี่: ตอบ "ต้องวางบิลไหม" อ่านออกในเธรด (หัว "กำหนดวางบิล") · ค่าเดิมรูปเก่าพูดแบบเดิม · meta เก็บรูปมาตรฐานของรุ่นตัวเอง', () => {
+  const first = billingRuleChangeUpdate(null, NONE);
+  assert.equal(first.body, 'ตั้งกำหนดวางบิล: — → ไม่ต้องวางบิล');
+  assert.deepEqual(first.meta.billingRuleAfter, { v: 4, need: 'none' });
+  assert.equal(billingRuleChangeUpdate(NO_CREDIT, NONE).body, 'แก้กำหนดวางบิล: ไม่มีเครดิต · ชำระวันวางบิล → ไม่ต้องวางบิล',
+    'รูปเดิม { credit:false } ≠ รุ่นสี่ — ตอบคำถามแล้วต้องขึ้นแถวเสมอ');
+  assert.equal(billingRuleChangeUpdate(NONE, NO_TIMING).body, 'แก้กำหนดวางบิล: ไม่ต้องวางบิล → ต้องวางบิล · ยังไม่ตั้งรอบ');
+  assert.equal(billingRuleChangeUpdate(NONE, null).body, 'ล้างกำหนดวางบิล: ไม่ต้องวางบิล → —');
+  assert.deepEqual(billingRuleChangeUpdate(MONTHLY, NONE).meta.billingRuleBefore.billing, { mode: 'monthly', days: [5] },
+    'ค่าเดิมรุ่นสองเก็บรูปรุ่นสองตามเดิม (ย้อนอ่านด้วยเครื่องได้)');
+});
+
+test('⭐ รุ่นสี่: ความหมายเท่ากับค่าเดิมรุ่นสอง = ไม่ขึ้นแถว · แก้แค่หมายเหตุ = บรรทัดหมายเหตุ (ตัวอ่านรุ่นเดิมเห็นรุ่นสี่เป็น null — ห้ามกลับไปใช้)', () => {
+  const credit30 = { v: 4, need: 'required', billing: { mode: 'monthly', days: [31] }, creditDays: 30, runs: null };
+  assert.equal(billingRuleChangeUpdate(CREDIT, credit30), null);
+  const got = billingRuleChangeUpdate({ ...NONE, note: 'โอนก่อนทุกงวด' }, { ...NONE, note: 'โอนก่อน · ส่งสลิปทางไลน์' });
+  assert.equal(got.body, ['แก้หมายเหตุการวางบิล · ค่าอื่นคงเดิม: ไม่ต้องวางบิล', 'หมายเหตุ: โอนก่อนทุกงวด → โอนก่อน · ส่งสลิปทางไลน์'].join('\n'));
+  assert.equal(got.meta.action, 'change');
+});
+
 test('ชนิด billing_rule: ลงทะเบียนเฉพาะลูกค้า · ระบบเขียนเท่านั้น · เป็น log ไม่ใช่บทสนทนา', () => {
   assert.equal(isKnownUpdateKind('customer', 'billing_rule'), true);
   assert.equal(updateKindMeta('customer', 'billing_rule').label, 'รอบวางบิล');

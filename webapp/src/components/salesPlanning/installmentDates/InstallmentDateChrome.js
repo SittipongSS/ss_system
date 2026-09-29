@@ -11,7 +11,7 @@ import Button from "@/components/ui/Button";
 import GatedAction from "@/components/ui/GatedAction";
 import StatusNotice from "@/components/ui/StatusNotice";
 import Modal from "@/components/Modal";
-import { formatBillingDate } from "@/lib/sales/billingRule";
+import { SKIP_TEXT, formatBillingDate } from "@/lib/sales/billingRule";
 import InstallmentDateEditor from "./InstallmentDateEditor";
 import styles from "./InstallmentDates.module.css";
 
@@ -131,6 +131,10 @@ export function InstallmentDateBar({ mode, error = "", savingLabel = "กำล�
               <b>งวด {row.seq}</b>
               <ChangePair label="วันวางบิล" from={billText(from)} to={billText(to)} />
               <ChangePair label="กำหนดชำระ" from={dueText(from)} to={dueText(to)} />
+              {/* ติ๊ก "งวดนี้ไม่ต้องวางบิล" (mig 0393) — ข้อยกเว้นรายงวด ลงประวัติของใบ */}
+              {Boolean(from.billingSkip) !== Boolean(to.billingSkip) ? (
+                <span className={styles.pair}>{to.billingSkip ? `ติ๊ก “${SKIP_TEXT}”` : `เอาติ๊ก “${SKIP_TEXT}” ออก`}</span>
+              ) : null}
               {moved ? <span className={styles.stale}>ถูกแก้จากอีกหน้าต่าง</span> : null}
             </li>
           ))}
@@ -140,27 +144,37 @@ export function InstallmentDateBar({ mode, error = "", savingLabel = "กำล�
   );
 }
 
-/* มือถือ (≤640px): ตัวแก้เป็นแผ่นเต็มจอ ท้ายตรึงมีปุ่ม navy ปุ่มเดียว "บันทึก N งวด" (ข้อ 2 ของกรรมการ)
-   · ปิดแผ่น (X) = กลับตาราง ร่างยังอยู่ (แถบล่างยังพาบันทึก) · error ของ API ขึ้นในแผ่น (แถบของหน้าอยู่ใต้แผ่น) */
+/* มือถือ (≤640px): ตัวแก้เป็นแผ่นล่าง ท้ายตรึงมีปุ่ม navy ปุ่มเดียว "บันทึก N งวด" (ข้อ 2 ของกรรมการ)
+   · ปิดแผ่น (X) = กลับตาราง ร่างยังอยู่ (แถบล่างยังพาบันทึก) · error ของ API ขึ้นในแผ่น (แถบของหน้าอยู่ใต้แผ่น)
+   · หน้าสร้าง SO (`mode.create`) ไม่มีอะไรให้บันทึกที่นี่ (วันไปกับคำขอสร้างใบ) ⇒ ปุ่ม navy ปุ่มเดียวคือ "เสร็จ" (ปิดแผ่น) */
 export function InstallmentDateSheet({ mode, error = "", subtitle = "", savingLabel = "กำลังบันทึก…" }) {
   const row = mode.active && mode.placement === "sheet" ? mode.openRow : null;
   if (!row) return null;
   const n = mode.changes.length;
+  const footer = mode.create ? (
+    <div className={styles.sheetFoot}>
+      <p className={styles.barNote}>
+        <Info size={13} aria-hidden="true" />
+        ไม่เลือก = ไม่ส่ง · วันงวดส่งพร้อมคำขอสร้างใบ
+      </p>
+      <Button tone="primary" className={styles.sheetSave} onClick={mode.close}>เสร็จ</Button>
+    </div>
+  ) : (
+    <div className={styles.sheetFoot}>
+      <p className={styles.barNote} data-tone={mode.replaced || mode.saveBlocker ? "warn" : undefined}>
+        {mode.replaced || mode.saveBlocker ? <TriangleAlert size={13} aria-hidden="true" /> : <Info size={13} aria-hidden="true" />}
+        {mode.saveBlocker || (n
+          ? `เปลี่ยน ${n} งวด${mode.replaced ? ` · แทนกำหนดชำระเดิม ${mode.replaced} งวด` : ""}`
+          : "ยังไม่ได้แก้ — เลือกวันของงวดนี้")}
+      </p>
+      <Button tone="primary" className={styles.sheetSave} disabled={mode.busy || Boolean(mode.saveBlocker)} onClick={mode.save}>
+        {mode.busy ? savingLabel : n ? `บันทึก ${n} งวด` : "บันทึก"}
+      </Button>
+    </div>
+  );
   return (
     <Modal open onClose={mode.close} sheetOnPhone size="md" dismissible={!mode.busy} title="ตั้งวันงวด" subtitle={subtitle}
-      footer={(
-        <div className={styles.sheetFoot}>
-          <p className={styles.barNote} data-tone={mode.replaced || mode.saveBlocker ? "warn" : undefined}>
-            {mode.replaced || mode.saveBlocker ? <TriangleAlert size={13} aria-hidden="true" /> : <Info size={13} aria-hidden="true" />}
-            {mode.saveBlocker || (n
-              ? `เปลี่ยน ${n} งวด${mode.replaced ? ` · แทนกำหนดชำระเดิม ${mode.replaced} งวด` : ""}`
-              : "ยังไม่ได้แก้ — เลือกวันของงวดนี้")}
-          </p>
-          <Button tone="primary" className={styles.sheetSave} disabled={mode.busy || Boolean(mode.saveBlocker)} onClick={mode.save}>
-            {mode.busy ? savingLabel : n ? `บันทึก ${n} งวด` : "บันทึก"}
-          </Button>
-        </div>
-      )}>
+      footer={footer}>
       <div className={styles.sheetBody}>
         {error ? <StatusNotice tone="error" role="alert">{error}</StatusNotice> : null}
         {/* key = งวด + ชนิดของกติกา (ตัวเดียวกับป๊อปโอเวอร์ · review 28/09) */}
