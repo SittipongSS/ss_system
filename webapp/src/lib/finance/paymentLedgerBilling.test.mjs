@@ -169,17 +169,17 @@ test('ledgerSummary: การ์ด "ถึงรอบวางบิล 7 ว
 test('ledgerBillingTally: ตัวนับไม่ขึ้นกับตัวกรองรอบวางบิลเอง · ส่วนที่ซ่อน = งวดที่ยังมีงานวางบิลแต่ไม่มีวันวางบิล', () => {
   const rows = fixture();
   const idle = ledgerBillingTally(rows, {});
-  assert.deepEqual(idle.counts, { soon: 0, '7d': 1, month: 2, late: 1, missing: 1 });
+  assert.deepEqual(idle.counts, { soon: 0, '7d': 1, month: 2, late: 1, missing: 1, cutoff: 0 });
   assert.deepEqual(idle.hidden, { count: 0, amount: 0 }, 'ไม่ได้กรองรอบวางบิล = ไม่มีอะไรถูกซ่อน');
 
   const on7 = ledgerBillingTally(rows, { billing: '7d' });
-  assert.deepEqual(on7.counts, { soon: 0, '7d': 1, month: 2, late: 1, missing: 1 }, 'กรอง 7 วันอยู่ ตัวเลือก "เดือนนี้" ยังบอก 2');
+  assert.deepEqual(on7.counts, { soon: 0, '7d': 1, month: 2, late: 1, missing: 1, cutoff: 0 }, 'กรอง 7 วันอยู่ ตัวเลือก "เดือนนี้" ยังบอก 2');
   // a4 (ยังไม่เลือก) + a5 (รอเหตุการณ์) — a6 จบแล้ว ไม่ใช่งานที่ถูกซ่อน
   assert.deepEqual(on7.hidden, { count: 2, amount: 2400 });
 
   // เคารพตัวกรองอื่น: ค้นงวดเดียวแล้วตัวนับ/ส่วนที่ซ่อนเหลือเฉพาะงวดนั้น
   const narrowed = ledgerBillingTally(rows, { billing: 'late', q: 'SO-26080050-0', status: ['pending'] });
-  assert.deepEqual(narrowed.counts, { soon: 0, '7d': 1, month: 2, late: 1, missing: 1 });
+  assert.deepEqual(narrowed.counts, { soon: 0, '7d': 1, month: 2, late: 1, missing: 1, cutoff: 0 });
   assert.equal(ledgerBillingTally(rows, { billing: 'late', status: ['confirmed'] }).hidden.count, 0);
   assert.equal(ledgerBillingTally(rows, { billing: 'bogus' }).hidden.count, 0, 'ค่าที่ไม่รู้จัก = ไม่ได้กรอง');
 });
@@ -287,6 +287,10 @@ test('🔴 ก้อนของใบ: วางบิลถัดไป = ง�
   const [group] = groupLedgerByOrder(rows);
   assert.deepEqual(group.nextBilling, {
     id: 'b3', seq: 3, label: 'มัดจำ', billingDate: '2026-10-25', state: { key: 'upcoming', days: 30 }, requested: false,
+    /* v5 · บรรทัดรอบของงวด (`ledgerFlags().cutoff` ของตัวคิด) — ลูกค้ารายนี้รับวางบิลแค่วันที่ 5 (billing.mode 'monthly') ⇒
+       "ตัดรอบ" ของตัวแปลงรุ่นเดิม (เงินเข้า 25) ไม่ใช่เส้นตายวางบิลจริง = ไม่มีบรรทัดตัดรอบ (review v5: เส้นตายปลอมของ AR-281) ·
+       ไม่ใช่ปฏิทิน = ไม่มีคำ "ยังไม่มีปฏิทิน" */
+    cutoffText: '', calendarGap: '',
   });
   assert.equal(group.billingBilled, 1);
   assert.equal(group.customerId, 'CUS-267');

@@ -15,13 +15,16 @@
 // ⭐ ทุกไทล์เห็นผลงวดแรก "○ → ●" ก่อนแตะ (ข้อ 3) · ไม่มีไทล์ไหนเลือกไว้ให้ (กฎบ้าน: ไม่มีค่าตั้งต้นให้การตัดสินใจ)
 // ⭐ สวิตช์ "จัดใหม่งวดที่มีวันแล้วด้วย (N งวด)" = งานของ "จัดวันใหม่ตามรอบปัจจุบัน…" เดิม (ลูกค้าเปลี่ยนรอบถาวร)
 // ⚠️ งวดที่ล็อก (แจ้งชำระ/ชำระแล้ว/ขอใบวางบิล/ยกมา) ส่งเข้าตัวคิดเป็นสถานะ 'locked' — ไม่ถูกแตะ แต่ยังกันไม่ให้งวดหลังย้อนแซง
+// ⭐ รอบห้า (มติเจ้าของ 29/09 · ปฏิทินรายปีของลูกค้า · Q3 หยุด): ลูกค้าตามปฏิทินเติม "ตามปฏิทินลูกค้า" (รอบจริงของปี) —
+//   งวดที่ตกปีที่ยังไม่มีปฏิทิน **ถูกข้ามพร้อมเหตุ** "งวด 4–12 ไม่ถูกเติม — ยังไม่มีปฏิทิน 2027 · ใส่วันเองได้" (งวดก่อนหน้ายังเติม) ·
+//   ไม่มีรอบให้เติมเลย = บอกเหตุแทนไทล์ว่าง · ไม่มีประมาณการ
 import { useEffect, useRef } from "react";
-import { CalendarRange, Info, ListRestart, TriangleAlert, Undo2, X } from "lucide-react";
+import { CalendarRange, CalendarX, Info, ListRestart, TriangleAlert, Undo2, X } from "lucide-react";
 import Button from "@/components/ui/Button";
 import CustomerBillingRuleDayGrid from "@/components/database/CustomerBillingRuleDayGrid";
 import { MONTH_END_DAY, billingRoundLabels, weekendNote } from "@/lib/sales/billingRule";
 import {
-  creditFillSuggestion, datedFillCount, fillInputRows, fillStartMonths, fillTargetsOf, planDateFill,
+  creditFillSuggestion, datedFillCount, fillInputRows, fillStartMonths, fillTargetsOf, isCalendarRule, planDateFill,
 } from "@/lib/sales/installmentDateDrafts";
 import { DateLegend, DateTile, pairLabel } from "./InstallmentDateParts";
 import styles from "./InstallmentDates.module.css";
@@ -42,9 +45,12 @@ function OptionTile({ plan, cap, on, onPick }) {
   const first = plan.rows[0] || null;
   if (!first) return null;
   const weekend = plan.rows.filter((row) => weekendNote(row.billingDate) || weekendNote(row.dueDate)).length;
+  /* งวดที่ตัวคิดข้าม (ปีที่ปฏิทินยังไม่มี · รอบห้า) — บอกจำนวนบนไทล์ เหตุอยู่ใต้ไทล์ (`SkipNotes`) */
+  const skipped = plan.skipNotes?.length ? plan.skipped?.length || 0 : 0;
   const meta = [
     plan.rows.length > 1 ? `${seqRange(plan.rows)} · ${plan.rows.length} งวด` : seqRange(plan.rows),
     weekend ? `ตรงเสาร์-อาทิตย์ ${weekend} งวด` : "",
+    skipped ? `ข้าม ${skipped} งวด` : "",
   ].filter(Boolean).join(" · ");
   return (
     <DateTile role="radio" billingDate={first.billingDate} dueDate={first.dueDate} on={on}
@@ -53,11 +59,29 @@ function OptionTile({ plan, cap, on, onPick }) {
   );
 }
 
+/* งวดที่ตัวเติมข้ามพร้อมเหตุ (รอบห้า · ปีที่ปฏิทินยังไม่มี) — "งวด 4–12 ไม่ถูกเติม — ยังไม่มีปฏิทิน 2027 · ใส่วันเองได้"
+   · จัดใหม่ (includeDated) = งวดเหล่านั้นคงวันเดิม · คนตั้งเองในตาราง (แตะช่องวัน — ช่องกำหนดชำระพิมพ์ได้) */
+function SkipNotes({ notes = [], keep = false }) {
+  if (!notes.length) return null;
+  return (
+    <ul className={styles.warns}>
+      {notes.map((note) => (
+        <li key={note.text} className={styles.warn}>
+          <CalendarX size={13} aria-hidden="true" />
+          {`${note.label} ${keep ? "คงวันเดิม" : "ไม่ถูกเติม"} — ${note.text}`}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default function InstallmentDateFill({ mode }) {
   const headRef = useRef(null);
   const { fill, fillKind, ruleValue, todayIso, kind, creditDays } = mode;
   /* เติมวันวางบิลด้วยไหม (ทุกวัน + เครดิต/ชำระวันวางบิล) — ที่เหลือของแผงยึดกำหนดชำระเขียนกำหนดชำระอย่างเดียว */
   const writesBilling = kind === "cadence" && creditDays !== null;
+  /* ลูกค้าตามปฏิทินรายปี (รอบห้า) — คำของแผงพูด "ตามปฏิทินลูกค้า" แทน "ตามรอบของลูกค้า" */
+  const calendar = isCalendarRule(ruleValue);
   const opened = Boolean(fill);
 
   /* เปิดแผง = โฟกัสหัว (คนใช้คีย์บอร์ด/เสียงอ่านรู้ว่าแผงมาแล้ว) + เลื่อนให้เห็น (แผงอยู่เหนือตาราง ปุ่มเปิดอยู่แถบล่าง) */
@@ -73,7 +97,7 @@ export default function InstallmentDateFill({ mode }) {
   const inputRows = fillInputRows(mode.rows, mode.fillCurrent, mode.fillLocked);
   const targets = fillTargetsOf(fillKind, inputRows, { includeDated });
   const dated = datedFillCount(fillKind, inputRows);
-  const planOf = (option) => planDateFill(ruleValue, inputRows, { ...option, includeDated }, todayIso);
+  const planOf = (option) => planDateFill(ruleValue, inputRows, { ...option, includeDated }, todayIso, { holidays: mode.holidays });
   /* `count` = งวดที่แผนนี้ลงตารางจริง (ตามเดือนในชื่องวดข้ามงวดที่ชื่อไม่บอกเดือน) */
   const pick = (key, plan) => mode.applyFill({ choice: key, count: plan.rows.length }, plan);
   const applied = fill.choice ? fill.count || 0 : 0;
@@ -83,22 +107,41 @@ export default function InstallmentDateFill({ mode }) {
   if (targets.length) {
     if (fillKind === "rounds") {
       const labels = billingRoundLabels(ruleValue);
-      const rounds = labels.length > 1 ? labels.map((label, index) => ({ key: `round:${index}`, roundIndex: index, cap: `รอบ${label}` }))
-        : [{ key: "round:0", roundIndex: null, cap: "ตามรอบของลูกค้า · เดือนละงวด" }];
+      /* ป้ายรอบของรุ่นสี่ที่มีคำว่า "รอบ" อยู่แล้ว ("รอบที่ 1 (ตัดรอบราววันที่ 8)" · "ตัดรอบวันที่ 21") ไม่เติม "รอบ" ซ้ำหน้า */
+      const capOf = (label) => (label.includes("รอบ") ? label : `รอบ${label}`);
+      const rounds = labels.length > 1
+        ? labels.map((label, index) => ({ key: `round:${index}`, roundIndex: index, cap: capOf(label) }))
+        : [{ key: "round:0", roundIndex: null, cap: `${calendar ? "ตามปฏิทินลูกค้า" : "ตามรอบของลูกค้า"} · เดือนละงวด` }];
+      const plans = rounds.map((round) => ({ ...round, plan: planOf({ kind: "rounds", roundIndex: round.roundIndex }) }));
+      /* เหตุที่ข้าม = ของตัวเลือกที่ลงตารางอยู่ (ยังไม่เลือก = ของตัวเลือกแรกที่มีงวดข้าม — ทุกรอบหยุดที่ปีเดียวกัน) */
+      const shown = plans.find((p) => p.key === fill.choice) || plans.find((p) => p.plan.skipNotes?.length) || null;
+      const none = plans.every((p) => !p.plan.rows.length);
       options = (
         <div className={styles.fillQ}>
           <span>
             <span className={styles.stepNo} aria-hidden="true">1</span>
             {rounds.length > 1 ? `ลูกค้าวางบิลเดือนละ ${rounds.length} รอบ — งวดของใบนี้ใช้รอบไหน` : `งวด ${targets[0].seq} เริ่มรอบถัดไป แล้วเดือนละงวด`}
           </span>
-          <p className={styles.lead}><DateLegend /></p>
-          <div className={styles.fillTiles} role="radiogroup" aria-label="รอบที่ใช้เติม">
-            {rounds.map((round) => (
-              <OptionTile key={round.key} plan={planOf({ kind: "rounds", roundIndex: round.roundIndex })} cap={round.cap}
-                on={fill.choice === round.key}
-                onPick={() => pick(round.key, planOf({ kind: "rounds", roundIndex: round.roundIndex }))} />
-            ))}
-          </div>
+          {none ? (
+            /* ไม่มีรอบให้เติมเลย — บอกเหตุแทนไทล์ว่าง (ทุกงวดตกปีที่ปฏิทินยังไม่มี = รายการงวดที่ข้ามข้างล่างบอกเหตุแล้ว ไม่พูดซ้ำ) */
+            shown ? null : (
+              <p className={styles.hint} role="note">
+                <Info size={14} aria-hidden="true" />
+                {plans[0]?.plan.error || "ไม่มีรอบถัดไปให้เติม"}
+              </p>
+            )
+          ) : (
+            <>
+              <p className={styles.lead}><DateLegend /></p>
+              <div className={styles.fillTiles} role="radiogroup" aria-label="รอบที่ใช้เติม">
+                {plans.map((round) => (
+                  <OptionTile key={round.key} plan={round.plan} cap={round.cap}
+                    on={fill.choice === round.key} onPick={() => pick(round.key, round.plan)} />
+                ))}
+              </div>
+            </>
+          )}
+          <SkipNotes notes={shown?.plan.skipNotes || []} keep={includeDated} />
         </div>
       );
     } else {
@@ -177,7 +220,8 @@ export default function InstallmentDateFill({ mode }) {
           </h3>
           <p>
             {targets.length ? `${seqRange(targets)} · ${targets.length} งวด` : "ไม่มีงวดที่ว่าง"}
-            {fillKind === "rounds" ? " · ตามรอบของลูกค้า" : writesBilling ? " · ยึดกำหนดชำระ" : " · กำหนดชำระอย่างเดียว"}
+            {fillKind === "rounds" ? (calendar ? " · ตามปฏิทินลูกค้า" : " · ตามรอบของลูกค้า")
+              : writesBilling ? " · ยึดกำหนดชำระ" : " · กำหนดชำระอย่างเดียว"}
             {" · ลงร่างในตาราง ยังไม่บันทึก"}
           </p>
         </div>

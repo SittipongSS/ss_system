@@ -36,7 +36,8 @@ function Slot({ n, text, placeholder, tone, onGoto }) {
 
 /**
  * ประโยคนโยบาย ① ต้องวางบิลไหม → ② วางบิลได้เมื่อไร → ③ กำหนดชำระเมื่อไร (แบบ A ที่เจ้าของเลือก)
- * @param words `policyWordsOf(rule)` / `formWordsOf(form)` — need 'ask' = ยังไม่ตอบในโมดัล
+ * @param words `policyWordsOf(rule)` / `formWordsOf(form)` — need 'ask' = ยังไม่ตอบในโมดัล ·
+ *   cutoff = "ส่งเอกสารก่อน 16:00 น." ต่อท้ายข้อ ② (เวลาตัดรอบ + ไม่มีเครดิต · รุ่นห้า)
  */
 export function PolicySentence({ words, onGoto, lead = "" }) {
   const slot = (n, text, placeholder, tone) => <Slot n={n} text={text} placeholder={placeholder} tone={tone} onGoto={onGoto} />;
@@ -62,6 +63,7 @@ export function PolicySentence({ words, onGoto, lead = "" }) {
         {slot(1, "ต้องวางบิล", "", "need")}
         <span className={styles.tx}>· วางบิลได้</span>
         {slot(2, words.when, words.noTiming ? "ยังไม่ตั้งรอบ" : "เมื่อไร?", "bill")}
+        {words.cutoff ? <span className={`${styles.tx} ${styles.nowrap}`}>{words.cutoff}</span> : null}
         <span className={styles.tx}>· กำหนดชำระ</span>
         {slot(3, words.pay, words.noTiming ? "ใส่เองรายงวด" : "เมื่อไร?", "pay")}
       </>

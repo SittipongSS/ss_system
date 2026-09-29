@@ -6,7 +6,7 @@
 //   · ตัวเติมหลายงวด ("เติมวันงวดที่ว่าง…") เขียนร่างอย่างเดียว คนดูในตารางก่อนบันทึกเสมอ
 //
 // ⚠️ ไฟล์นี้ไม่คิดวันเอง — รอบ/เครดิต/เดือนในชื่องวดมาจาก `billingRule.js` ที่เดียว (planMonthlyFill · planRedate ·
-//    planDueCadence · billingRounds · dueDateForBilling · creditCadenceSuggestion · dateModeOf)
+//    planDueCadence · roundChoices · dueDateForBilling · creditCadenceSuggestion · dateModeOf)
 // ⭐ รุ่นสี่ (มติเจ้าของ 29/09 · "ต้องวางบิลไหม" · แบบ A) — ตัวแก้เปิดแบบไหน = `dateModeOf` ของ billingRule.js ตัวเดียว
 //   (หน้าสร้าง SO ใช้ตัวเดียวกัน): 'rounds' · 'cadence' · 'free' (ยังไม่ระบุ · ยังไม่ตั้งรอบ · **รูปเดิม { credit:false }**) ·
 //   'dueOnly' (ไม่ต้องวางบิล) + รายงวด 'exception' ("งวดนี้ต้องวางบิล…") / dueOnly+skip ("งวดนี้ไม่ต้องวางบิล" · billingSkip)
@@ -16,13 +16,18 @@
 // ⚠️ สองช่องแยกกันเสมอ: `billingDate` = วันวางบิล · `dueDate` = กำหนดชำระ (ป้ายแดง "เลยกำหนด" + ด่านนัดช่างอ่านช่องนี้)
 //    · `billingEvent` = รอเหตุการณ์ (ไม่มีวันวางบิลคู่กันได้ — CHECK ของ mig 0389 · รุ่นสี่: รอเหตุการณ์ = **ไม่มีกำหนดชำระ**
 //      ด่าน validateInstallmentDates ตีกลับคู่นี้) · `billingSkip` = ติ๊ก "งวดนี้ไม่ต้องวางบิล" (mig 0393 · ไม่มีวันวางบิลคู่กันได้)
+// ⭐ รอบห้า (มติเจ้าของ 29/09 · ปฏิทินรายปีของลูกค้า · Q3 "หยุดรอปฏิทินใหม่") — ลูกค้าตามปฏิทินเดินทาง 'rounds' ตัวเดิม:
+//   · ชิปรอบ = `roundChoices` (รอบจริงของปฏิทิน + เหตุที่ชิปหมด `missing`) · ไทล์บอกที่มา "ตามปฏิทินลูกค้า" + "ส่งก่อน 16:00 น."
+//   · ปีที่ยังไม่มีปฏิทิน = **ไม่มีวันที่คิดให้** — "ยังไม่มีปฏิทิน 2027 · ใส่วันเองได้" (ตัวเติมข้ามงวดพร้อมเหตุ · ช่องกำหนดชำระพิมพ์เองได้)
+//   · ไม่มีประมาณการ ไม่มีป้าย "ประมาณการ" ที่ไหนเลย (มติ Q3)
 
 import { addDays, daysBetween } from './paymentCoverage.js';
 import { installmentDateLock } from './installmentScheduleMany.js';
 import {
-  BILLING_EVENT_MAX, billingRounds, creditCadenceSuggestion, dateModeOf, dueDateForBilling, dueSourceOf as dueSourceOfRule,
+  BILLING_EVENT_MAX, CALENDAR_MANUAL_HINT, calendarGapFor, calendarGapText, calendarStatus, creditCadenceSuggestion,
+  cutoffInfo, dateModeOf, dueDateForBilling, dueSourceOf as dueSourceOfRule, formatBillingDate,
   installmentBillingFillable, installmentBillingRedatable, installmentLabelMonth, planCreditCadence, planDueCadence,
-  needOverrideOf, planMonthlyFill, planRedate, ruleOf,
+  needOverrideOf, planMonthlyFill, planRedate, roundChoices, ruleOf, sourceLabel,
 } from './billingRule.js';
 
 const dateOf = (value) => {
@@ -248,10 +253,136 @@ export const dueSourceOf = (ruleValue, value) => dueSourceOfRule(ruleOf(ruleValu
 export function pickBillingDate(ruleValue, billingDate, current = null) {
   const bill = dateOf(billingDate);
   if (!bill) return clearedDates(current);
-  const computed = dueDateForBilling(ruleOf(ruleValue), bill) || '';
+  const rule = ruleOf(ruleValue);
+  const computed = dueDateForBilling(rule, bill) || '';
   const kind = dateModeKind(ruleValue);
-  const dueDate = kind === 'rounds' || kind === 'cadence' ? computed : (datesOf(current).dueDate || computed);
+  /* ⭐ ปีที่ปฏิทินยังไม่มี (มติ 29/09 หยุด) = ไม่มีวันให้คิด ⇒ กำหนดชำระที่คนพิมพ์เองไว้ (ไม่ก่อนวันวางบิลใหม่) อยู่ต่อ
+     ไม่ถูกล้างเป็นว่าง — "ใส่วันเองได้" ต้องไม่หายเพราะแตะวันวางบิลทีหลัง */
+  const typed = datesOf(current).dueDate;
+  const keepTyped = !computed && typed && typed >= bill && calendarGapFor(rule, bill) ? typed : '';
+  const dueDate = kind === 'rounds' || kind === 'cadence' ? (computed || keepTyped) : (typed || computed);
   return { billingDate: bill, billingEvent: '', dueDate, billingSkip: false };
+}
+
+/* ── ปฏิทินของลูกค้า (รอบห้า · มติ 29/09) — คำเล็กของวันวางบิล · ช่องว่างของปฏิทิน ──────────────────────────────── */
+
+/* ลูกค้ารายนี้วางบิลตามปฏิทินรายปีไหม (คำของแผงเติม/แถบนโยบาย) — จอไม่อ่านช่องในของกติกาเอง */
+export const isCalendarRule = (ruleValue) => ruleOf(ruleValue)?.runs?.kind === 'calendar';
+
+/* "ส่งก่อน 16:00 น." ข้างวันวางบิล — เฉพาะเมื่อรอบของวันนั้นมีเวลาตัดรอบ **และวันวางบิลคือวันตัดรอบ** (ชำระรอบเดียวกัน ·
+   `cutoffInfo` ให้เวลาเฉพาะเครดิต 0) · วางบิลก่อนวันตัดรอบ/เครดิต N = '' (เวลาเป็นของวันตัดรอบ ไม่ใช่ของวันที่เลือก · system-design §6) */
+export function billingCutoffNote(ruleValue, billingDate) {
+  const info = cutoffInfo(ruleOf(ruleValue), dateOf(billingDate));
+  return info?.cutoffTime && info.onLastDay ? `ส่งก่อน ${info.cutoffTime} น.` : '';
+}
+
+/* คำบนไทล์รอบของปฏิทิน — "ตามปฏิทินลูกค้า · ส่งก่อน 16:00 น." · เครดิต N = "ตามปฏิทินลูกค้า · ทันรอบตัด อ. 20 ต.ค."
+   (วันวางบิลของชิปเครดิต N คือวันทำงานสุดท้ายที่ยังทันรอบ ไม่ใช่วันตัดรอบ — บอกว่าทันรอบไหน · ไม่พูดเวลา)
+   รอบรายเดือน/วันจ่ายประจำ = แค่เวลาตัดรอบถ้ามี (ไม่ซ้อนป้ายที่มา — กรรมการ 28/09 "วันละหนึ่งป้าย")
+   `round` = ชิปของ `roundChoices` ({ billingDate, source, run }) หรือแค่ `{ billingDate }` (ไทล์ "ที่ตั้งไว้" — คิดรอบจากวันนั้น) */
+export function roundTileNote(ruleValue, round) {
+  const bill = dateOf(round?.billingDate);
+  if (!bill) return '';
+  const info = round.source && round.run ? null : cutoffInfo(ruleOf(ruleValue), bill);
+  const source = round.source || info?.source || '';
+  const run = round.run || info?.run || null;
+  const bits = [];
+  const calendar = source === 'calendar';
+  if (calendar) bits.push(sourceLabel('calendar'));
+  const cut = billingCutoffNote(ruleValue, bill);
+  if (cut) bits.push(cut);
+  else if (calendar && run?.cutoff && run.cutoff !== bill) bits.push(`ทันรอบตัด ${formatBillingDate(run.cutoff, { withYear: false })}`);
+  return bits.join(' · ');
+}
+
+/* หัวของคำช่องว่าง ("ยังไม่มีปฏิทิน 2027") — ป้ายของงวดที่คนใส่เองแล้ว ไม่ต้องชวน "ใส่วันเองได้" ซ้ำ */
+export function calendarGapHead(gap) {
+  const text = gap?.text || calendarGapText(gap);
+  const tail = ` · ${CALENDAR_MANUAL_HINT}`;
+  return text.endsWith(tail) ? text.slice(0, -tail.length) : text;
+}
+
+/* "งวด 4–6, 8" — เลขงวดเรียง แล้วยุบช่วงที่ติดกัน (คำของแผงเติม/แถบนโยบาย) */
+export function seqRangeText(seqs = []) {
+  const list = [...new Set((seqs || []).map(Number).filter(Number.isFinite))].sort((a, b) => a - b);
+  if (!list.length) return '';
+  const parts = [];
+  let start = list[0];
+  let prev = list[0];
+  for (const seq of [...list.slice(1), null]) {
+    if (seq !== null && seq === prev + 1) { prev = seq; continue; }
+    parts.push(start === prev ? String(start) : `${start}–${prev}`);
+    if (seq !== null) { start = seq; prev = seq; }
+  }
+  return `งวด ${parts.join(', ')}`;
+}
+
+/* งวดที่ข้ามรวมตามเหตุ — `[{ seqs, label: 'งวด 4–12', text: 'ยังไม่มีปฏิทิน 2027 · ใส่วันเองได้' }]` (ลำดับตามงวดแรกของกลุ่ม)
+   `skipped` = `[{ seq, text?, reason }]` ของตัวคิด (planFill · planRedate) · ไม่มีคำ (ไม่มีรอบถัดไป) = คำกลาง */
+export function skipNotesOf(skipped = []) {
+  const groups = new Map();
+  for (const item of skipped || []) {
+    const text = item?.text || `ไม่มีรอบถัดไปของลูกค้า · ${CALENDAR_MANUAL_HINT}`;
+    if (!groups.has(text)) groups.set(text, []);
+    groups.get(text).push(item.seq);
+  }
+  return [...groups.entries()]
+    .map(([text, seqs]) => ({ seqs: [...seqs].sort((a, b) => Number(a) - Number(b)), label: seqRangeText(seqs), text }))
+    .sort((a, b) => Number(a.seqs[0]) - Number(b.seqs[0]));
+}
+
+/**
+ * งวดนี้ตกปีที่ปฏิทินของลูกค้ายังไม่มีไหม (ลูกค้าตามปฏิทินเท่านั้น · มติ 29/09 หยุด) — ตัวเดียวของเซลล์/แถบนโยบาย
+ * · มีวันวางบิล = `calendarGapFor` ของวันนั้น · ไม่มีวันวางบิลแต่มีกำหนดชำระ = กำหนดชำระอยู่หลังเดือนที่ปฏิทินครอบ
+ * · ยังไม่มีวันเลย = **ไม่มีรอบให้เลือกต่อจากงวดก่อน** (ชิปของตัวแก้ `roundChoicesFor` หมดที่ปีที่ยังไม่มี — คำเดียวกับตัวแก้)
+ * · รอเหตุการณ์ = null (ไม่มีวันให้คิดอยู่แล้ว)
+ * @returns null | `{ year, month, yearKnown, text }`
+ */
+export function rowCalendarGap(ruleValue, rows = [], currentOf = datesOf, row = null, todayIso = '', { holidays = null } = {}) {
+  if (!row || !isCalendarRule(ruleValue)) return null;
+  const rule = ruleOf(ruleValue);
+  const v = datesOf(currentOf(row));
+  /* ติ๊ก "งวดนี้ไม่ต้องวางบิล" = ปฏิทินวางบิลไม่เกี่ยวกับงวดนี้ (กำหนดชำระตั้งเองอยู่แล้ว) */
+  if (v.billingSkip) return null;
+  if (v.billingDate) return calendarGapFor(rule, v.billingDate);
+  if (v.billingEvent) return null;
+  if (v.dueDate) {
+    const st = calendarStatus(rule, todayIso || v.dueDate);
+    return st && v.dueDate.slice(0, 7) > st.coveredThrough
+      ? { year: st.missingYear, month: st.missingFrom, yearKnown: st.partial, text: calendarGapText({ year: st.missingYear, month: st.missingFrom, yearKnown: st.partial }) }
+      : null;
+  }
+  if (!dateOf(todayIso)) return null;
+  const { list, missing } = roundChoicesFor(ruleValue, rows, currentOf, row, todayIso, 1, { holidays });
+  return !list.length && missing ? missing : null;
+}
+
+/**
+ * บรรทัดปฏิทินบนแถบนโยบายของใบ (ลูกค้าตามปฏิทิน · มติ 29/09) — ปฏิทินมีถึงเมื่อไร + งวดของใบนี้ที่ตกปีที่ยังไม่มี
+ * @param rows งวดของใบ · `currentOf` = ค่าปัจจุบันบนจอ (ฐาน + ร่าง) · `isLocked` = งวดที่แก้ไม่ได้ (ไม่นับ — ไม่มีอะไรให้ทำ)
+ * @returns null (ไม่ใช่ปฏิทิน / ไม่รู้วันนี้) | `{ coverage, gapText, requestText, remind, affected: [{ seqs, label, text }] }`
+ *   · affected = งวดที่ยังเปิดที่ `rowCalendarGap` บอกว่าตกปีที่ยังไม่มี (วันวางบิล/กำหนดชำระในปีนั้น · หรือยังไม่มีวันและไม่มีรอบ
+ *     ให้เลือกต่อจากงวดก่อนแล้ว)
+ */
+export function calendarPolicyOf(ruleValue, rows = [], currentOf = datesOf, todayIso = '', { isLocked = () => false, holidays = null } = {}) {
+  const rule = ruleOf(ruleValue);
+  const st = calendarStatus(rule, todayIso);
+  if (!st) return null;
+  const gapText = calendarGapText({ year: st.missingYear, month: st.missingFrom, yearKnown: st.partial });
+  const skipped = [];
+  for (const row of rows || []) {
+    if (isLocked(row)) continue;
+    /* ใส่ครบทั้งสองวันแล้ว (พิมพ์เองตอนยังไม่มีปฏิทิน) = ไม่มีอะไรให้ทำ — แถบไม่ชวน "ใส่วันเองได้" ซ้ำ ·
+       เซลล์ของงวดยังบอก "ใส่เอง · ยังไม่มีปฏิทิน 2027" อยู่ */
+    const v = datesOf(currentOf(row));
+    if (v.billingDate && v.dueDate) continue;
+    const gap = rowCalendarGap(ruleValue, rows, currentOf, row, todayIso, { holidays });
+    if (gap) skipped.push({ seq: row.seq, text: gap.text });
+  }
+  return {
+    coverage: `ปฏิทินของลูกค้ามีถึง ${st.coveredThroughText} — งวดที่วางบิลหลัง ${formatBillingDate(st.lastCoveredBilling)} ระบบไม่คิดกำหนดชำระให้`,
+    gapText, requestText: st.requestText, remind: st.remind, affected: skipNotesOf(skipped),
+  };
 }
 
 /* ── เหตุที่งวดแก้วันไม่ได้ในโหมดตั้งวัน (ตัวที่จอวาด) ─────────────────────────────────────────────
@@ -338,10 +469,13 @@ const before = (rows, row) => (rows || []).filter((x) => x.id !== row.id && Numb
 
 /**
  * รอบรายเดือนที่เสนอให้งวดนี้ — เริ่มต่อจากวันวางบิลของงวดก่อน (ไม่ย้อนก่อนวันนี้) · เป็นแค่ลำดับที่เสนอ ไม่ใช่ค่าที่เลือกให้
- * @returns `{ followSeq, list: [{ billingDate, dueDate, roundIndex, gap, usedBySeq }] }`
+ * @returns `{ followSeq, list: [{ billingDate, dueDate, roundIndex, gap, usedBySeq, source, run, note }], missing }`
  *   `followSeq` = งวดที่รอบแรกต่อจาก (ป้าย "ต่อจากงวด N") · `usedBySeq` = งวดอื่นที่ใช้รอบนั้นอยู่ (ป้าย "งวด N")
+ *   ⭐ รอบห้า: ชิปมาจาก `roundChoices` ตัวเดียวของ billingRule.js (ปฏิทินของลูกค้า = รอบจริงของปี) · `note` = คำบนไทล์
+ *     (`roundTileNote` — "ตามปฏิทินลูกค้า · ส่งก่อน 16:00 น.") · `missing` = ชิปหมดเพราะปีถัดไปยังไม่มีปฏิทิน
+ *     (`{ year, month, yearKnown, text: 'ยังไม่มีปฏิทิน 2027 · ใส่วันเองได้' }` · มติ 29/09 หยุด — ไม่มีชิปประมาณการ)
  */
-export function roundChoicesFor(ruleValue, rows, currentOf, row, todayIso, count = 3) {
+export function roundChoicesFor(ruleValue, rows, currentOf, row, todayIso, count = 3, { holidays = null } = {}) {
   const today = dateOf(todayIso);
   let prev = null;
   for (const x of before(rows, row)) {
@@ -357,12 +491,19 @@ export function roundChoicesFor(ruleValue, rows, currentOf, row, todayIso, count
     const bill = datesOf(currentOf(x)).billingDate;
     if (bill && !used.has(bill)) used.set(bill, x.seq);
   }
-  const list = billingRounds(ruleOf(ruleValue), from, count).map((round) => ({
-    ...round,
-    gap: daysBetween(round.billingDate, round.dueDate),
-    usedBySeq: used.get(round.billingDate) ?? null,
+  /* วันหยุดในระบบ (useHolidayMap) — ชิปเครดิต N = วันทำงานสุดท้ายที่ยังทันรอบ ต้องตรงกับการ์ด/กระดิ่ง/ทะเบียน FN */
+  const { chips, missing } = roundChoices(ruleOf(ruleValue), from, count, { holidays });
+  const list = chips.map((chip) => ({
+    billingDate: chip.billingDate,
+    dueDate: chip.dueDate,
+    roundIndex: chip.slot,
+    source: chip.source,
+    run: chip.run || null,
+    gap: daysBetween(chip.billingDate, chip.dueDate),
+    usedBySeq: used.get(chip.billingDate) ?? null,
+    note: roundTileNote(ruleValue, chip),
   }));
-  return { followSeq: follow ? prev.seq : null, list };
+  return { followSeq: follow ? prev.seq : null, list, missing: missing || null };
 }
 
 /**
@@ -498,8 +639,10 @@ export function datedFillCount(kind, inputRows = []) {
  *     เครดิต N / ชำระวันวางบิล = วันวางบิล = กำหนดชำระ − N · ไม่ต้องวางบิล · ยังไม่ระบุ · ยังไม่ตั้งรอบ · **รูปเดิม { credit:false }**
  *     = กำหนดชำระอย่างเดียว (วันวางบิลคงเดิม — ไม่มีวันวางบิลปลอม · รอบกรรมการ 29/09)
  * @returns `{ rows: [{ id, seq, billingDate, dueDate }], skipped: [seq], error }`
+ *   ⭐ รอบห้า (มีรอบ): + `skipNotes: [{ seqs, label, text }]` · `missing` — งวดที่ปีของปฏิทินยังไม่มี **ถูกข้ามพร้อมเหตุ**
+ *     ("งวด 4–12: ยังไม่มีปฏิทิน 2027 · ใส่วันเองได้" · มติ 29/09 หยุด) งวดก่อนหน้ายังเติมได้ · จัดใหม่ = งวดที่ข้ามคงวันเดิม
  */
-export function planDateFill(ruleValue, inputRows = [], option = {}, todayIso = '') {
+export function planDateFill(ruleValue, inputRows = [], option = {}, todayIso = '', { holidays = null } = {}) {
   /* ผลการอ่านรุ่นสี่ตัวเดียว (`ruleOf`) — ตัวเติมเดินตัวคิดเดียวกับที่ `dateModeOf` ตัดสินชนิด (รุ่นสองที่มีรอบจ่ายได้รอบของรุ่นสี่) */
   const rule = ruleOf(ruleValue);
   const includeDated = Boolean(option.includeDated);
@@ -508,9 +651,14 @@ export function planDateFill(ruleValue, inputRows = [], option = {}, todayIso = 
     /* งวดที่ติ๊กไม่ต้องวางบิลส่งเป็นงวดล็อก — ตัวคิดรุ่นสองของลูกค้าที่ตั้งรอบไว้ก่อน 0393 ไม่รู้จักติ๊ก (ร่างวันวางบิลที่บันทึกไม่ได้) */
     const rows = inputRows.map((row) => (row.billingSkip === true ? { ...row, status: 'locked' } : row));
     const plan = includeDated
-      ? planRedate(rule, rows, todayIso, { roundIndex: option.roundIndex ?? null })
-      : planMonthlyFill(rule, rows, todayIso, { roundIndex: option.roundIndex ?? null });
-    return { rows: shape(plan.rows), skipped: [], error: plan.error };
+      ? planRedate(rule, rows, todayIso, { roundIndex: option.roundIndex ?? null, holidays })
+      : planMonthlyFill(rule, rows, todayIso, { roundIndex: option.roundIndex ?? null, holidays });
+    /* 🐞 contracts §10 ข้อ 1: เดิมคืน `skipped: []` เสมอ ⇒ งวดที่ปีปฏิทินยังไม่มีหายไปจากแผงเงียบ ๆ (ไทล์บอก "งวด 1–3" ทั้งที่ใบมี 12) */
+    const skipped = Array.isArray(plan.skipped) ? plan.skipped : [];
+    return {
+      rows: shape(plan.rows), skipped: skipped.map((s) => s.seq), skipNotes: skipNotesOf(skipped), missing: plan.missing || null,
+      error: plan.error,
+    };
   }
   /* `startMonth: null` = "ตามเดือนในชื่องวด" (ข้อ 6 ของมติ 28/09 · AR-622) — ไม่ส่งมา = ยังไม่เลือก (undefined ⇒ error) */
   const plan = planDueCadence(rule, inputRows, { dueDay: option.dueDay, startMonth: option.startMonth, includeDated });

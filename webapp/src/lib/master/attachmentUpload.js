@@ -15,7 +15,9 @@ import { apiFetch } from "@/lib/apiFetch";
 // สเต็ปแรกอยู่ใน lib/master/uploadFile.js — เบราว์เซอร์ยิงไบต์ขึ้น Drive เอง ไม่ผ่าน
 // function (เพดาน request body ของโฮสติ้งคือ 4.5 MB)
 //
-// คืน { ok, error } — ไม่ toast เอง ผู้เรียกเป็นคนเลือกว่าจะแสดงยังไง
+// คืน { ok, error, attachment } — ไม่ toast เอง ผู้เรียกเป็นคนเลือกว่าจะแสดงยังไง
+// `attachment` = แถวที่ route เพิ่งสร้าง (body 201) · อ่านไม่ออก = null (ไฟล์บันทึกแล้ว — ไม่ใช่ error)
+//   ผู้เรียกที่ต้องผูก id ต่อ (รูปปฏิทินวางบิลของลูกค้า → `years[YYYY].fileId`) ใช้ตัวนี้แทนการเดาจากรายการก่อน/หลัง
 export async function uploadAttachment({
   entityType, entityId, file, docType = 'other', metadata = null, onProgress = null,
 }) {
@@ -56,5 +58,6 @@ export async function uploadAttachment({
     }
     return { ok: false, error: await describeResponseError(res, 'บันทึกเอกสารไม่สำเร็จ') };
   }
-  return { ok: true, error: null };
+  const attachment = await res.json().catch(() => null);
+  return { ok: true, error: null, attachment: attachment && typeof attachment === 'object' && attachment.id ? attachment : null };
 }
