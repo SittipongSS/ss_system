@@ -6,8 +6,16 @@
 // ⚠️ ผู้เรียกส่ง `todayIso` จาก `businessDate()` (นาฬิกาไทย) เสมอ · `holidays` (Map วัน → ชื่อ) ใช้กับวันที่ระบบเสนอเองเท่านั้น
 // ⚠️ รูปที่ตัวตรวจรับต้องตรงกับ customer_billing_rule_v4_ok() ของ mig 0393 — ตัวอย่างถูก/ผิดชุดเดียวกันอยู่ที่
 //    billingRuleFixtures.json (เทสต์ของไฟล์นี้ + เทสต์ PGlite ของ migration ใช้ไฟล์เดียวกัน)
-// ⚠️ ส่วนปฏิทินรายปี / วันจ่ายรายสัปดาห์ / รอยประมาณการ / กระดิ่งวันตัดรอบ (ช่วง 2b · 4b) **ตัวตรวจรับรูปได้แต่ยังไม่มีจอเขียน**
-//    — ติดรอมติ ข้อ 1 · ข้อ 3 (ห้ามทำจอปฏิทินรอบนี้)
+// ⚠️ วันจ่ายรายสัปดาห์ (AR-035) **ตัวตรวจรับรูปได้แต่ยังไม่มีจอเขียน** (นอกขอบเขต)
+//
+// ── ปฏิทินรายปีของลูกค้า (รอบห้า · มติเจ้าของ 29/09 "แล้ววางบิลที่มีตามปฏิทินมีมั้ย") ────────────────────────────────
+//   · ⭐ ปีที่ยังไม่มีปฏิทิน = **หยุด** (Q3 "หยุดรอปฏิทินใหม่") — ไม่มีประมาณการที่ไหนเลย: ไม่มีวันคิดให้ · ไม่มีป้าย "ประมาณการ" ·
+//     ไม่มีรอย dueEstimatedAs · จอบอก "ยังไม่มีปฏิทิน YYYY · ใส่วันเองได้" (calendarGapText) · ใส่วันเองได้เสมอ
+//     ตัวคิดไม่มีกิ่ง estimate เหลือ — ส่ง { fallback:'estimate' } มาก็ไม่มีผล (เทสต์ตรึง) · CALENDAR_FALLBACK = 'stop'
+//   · ช่องว่างก่อนเดือนแรกของปฏิทิน (เดือนที่ผ่านแล้วไม่ต้องกรอก) ไม่หยุดชิป — หยุดที่ช่องว่าง **หลัง** เดือนที่มีปฏิทินเท่านั้น
+//   · เตือนขอปฏิทินปีหน้า: 1 ธ.ค. หรือ 30 วันก่อนวันตัดรอบสุดท้าย อันไหนก่อน · ซ้ำทุกสัปดาห์ (อา–ส) จนใส่ปีถัดไป (calendarReminder)
+//   · เวลาตัดรอบ (cutoffTime) = ช่อง + กระดิ่งเช้าวันตัดรอบ (cutoffBell · cutoffDigest) · เครดิต N ไม่พูดเวลา
+//   · ตัวช่วยจอแก้ปฏิทิน (ตาราง · ร่าง · ตรงกับรูป · ปฏิทินเล็ก) อยู่ที่ billingCalendarEdit.js — ไฟล์นี้คือตัวคิดวัน
 //
 // รุ่นสี่ = รุ่นสาม + **แกน "ต้องวางบิลไหม"** นำหน้าทุกอย่าง (มติ 28/09 ข้อ 5):
 //   need   'none'      ไม่ต้องวางบิล — งวดมีแต่กำหนดชำระ (ตั้งเองรายงวด) · ไม่มีเตือนวางบิล/เลยรอบวางบิล/ชวนขอใบวางบิล
@@ -16,7 +24,7 @@
 //                        ② เครดิต        creditDays 0..365 (นับจากวันวางบิล · 0 = ชำระวันวางบิล)
 //                        ③ รอบจ่าย       runs null | { kind:'monthly', rounds:[{cutoffDay,payDay,payMonthOffset}] }
 //                                              | { kind:'weekday', weekday:0..6, nths:[1..5] }   (ใหม่ · AR-035 "พุธที่ 2,4")
-//                                              | { kind:'calendar', years:{YYYY:{runs:[{cutoff,pay}]}}, estimate?, cutoffTime? }
+//                                              | { kind:'calendar', years:{YYYY:{runs:[{cutoff,pay}], fileId?}}, cutoffTime? }
 //   null = ยังไม่ระบุ (unknown) — กรอกได้ทั้งสองช่อง ไม่มีอะไรคิดให้ (เหมือนวันนี้)
 //   กำหนดชำระ = วันจ่ายของรอบแรกที่ "วันตัดรอบ ≥ วันวางบิล + เครดิต" · ไม่มีรอบจ่าย = วันวางบิล + เครดิต
 //   รูปเดิม { credit:false } (449 แถว) อ่านเป็น "ต้องวางบิล · ได้ทุกวัน · ชำระวันวางบิล" + ธง legacyNoCredit — กำหนดชำระ/ชิป/ทะเบียน FN
@@ -24,11 +32,11 @@
 //   ของรอมติ ข้อ 4 จะเขียนทับ — ตัวคิดไม่ตัดสินข้อ 4 แทน
 //
 // รอบกรรมการ 29/09 (system-design.md §11): ข้อยกเว้นรายงวดสองทาง (วันวางบิลที่ยืนยัน · billingSkip) · กระดิ่งครบกำหนดทุกงวด ·
-//   ป้ายประมาณการค้าง/ยืนยันแล้ว · ลิงก์ทะเบียนในทุกกระดิ่ง · ด่าน backfill ใน JS · อ่านกติกาพลาดปิดแค่ช่องวันวางบิล
+//   ลิงก์ทะเบียนในทุกกระดิ่ง · ด่าน backfill ใน JS · อ่านกติกาพลาดปิดแค่ช่องวันวางบิล
 //
 // ที่มาของกำหนดชำระ (`source` · ป้ายเดียวต่อวัน):
-//   'calendar' ตามปฏิทินลูกค้า · 'estimate' ประมาณการ · 'rule' ตามรอบ · 'credit' ตามเครดิต N วัน · 'payOnBilling' ชำระวันวางบิล
-//   บนงวด (derived · dueSourceOf): + 'override' แก้ทับ · 'manual' ใส่เอง · 'estimateStale' ประมาณการที่ปฏิทินจริงให้วันอื่น ·
+//   'calendar' ตามปฏิทินลูกค้า · 'rule' ตามรอบ · 'credit' ตามเครดิต N วัน · 'payOnBilling' ชำระวันวางบิล
+//   บนงวด (derived · dueSourceOf): + 'override' แก้ทับ · 'manual' ใส่เอง · 'calendarMissing' ปีนั้นยังไม่มีปฏิทิน ·
 //   'direct' (ลูกค้าไม่ต้องวางบิล — กำหนดชำระคือกำหนดชำระ ไม่มีป้าย) · 'waiting' รอเหตุการณ์
 
 import { isOpeningInstallment } from './historicalOrders.js';
@@ -47,11 +55,15 @@ export const CALENDAR_RUNS_MAX_PER_YEAR = ROUNDS_MAX * 12;
 export const PAY_GAP_MAX_DAYS = 120;
 export const BILLING_REMIND_DAYS = 3;           // กระดิ่งวันวางบิล 0..3 วัน (ค่าเดิมของ prod)
 export const DUE_REMIND_DAYS = 3;               // กระดิ่งครบกำหนดชำระ 0..3 วัน (ใหม่ — ทุกงวดที่มีกำหนดชำระ · รวมกับกระดิ่งวางบิลเมื่อวันเดียวกัน · §6)
-/* ปฏิทินปีหน้า — ข้อเสนอรอมติ ข้อ 3 (brief v4 §5 · เดิมข้อ 4 ของ calendar-v3): 1 ธ.ค. หรือ 30 วันก่อนวันตัดรอบสุดท้าย อันไหนก่อน */
+/* ปฏิทินปีหน้า — มติ 29/09: เริ่มเตือน 1 ธ.ค. หรือ 30 วันก่อนวันตัดรอบสุดท้าย อันไหนก่อน · ซ้ำทุกสัปดาห์ (อา–ส) จนใส่ปีถัดไป */
 export const REMIND_CALENDAR_FROM_MMDD = '12-01';
 export const REMIND_CALENDAR_LEAD_DAYS = 30;
-/* ปฏิทินขาด: 'estimate' ใช้สูตรประมาณการต่อ (มีป้าย) · 'none' ไม่คิดวันให้ — ⚠️ **รอมติ ข้อ 3** (ทุกฟังก์ชันรับ { fallback } ทับได้) */
-export const CALENDAR_FALLBACK_DEFAULT = 'estimate';
+/* ปฏิทินขาด = **หยุด** (มติ 29/09 Q3 "หยุดรอปฏิทินใหม่") — ค่าเดียว ไม่มีทางเลือก · ฟังก์ชันไม่รับ { fallback } แล้ว (ส่งมาก็ไม่มีผล)
+   ⚠️ CALENDAR_FALLBACK_DEFAULT เหลือเป็นชื่อเดิมให้ผู้เรียกเก่า — ค่าเท่ากัน */
+export const CALENDAR_FALLBACK = 'stop';
+export const CALENDAR_FALLBACK_DEFAULT = CALENDAR_FALLBACK;
+/* คำท้ายของงวดที่ปีนั้นยังไม่มีปฏิทิน — ระบบไม่คิดวันให้ แต่คนใส่วันเองได้เสมอ */
+export const CALENDAR_MANUAL_HINT = 'ใส่วันเองได้';
 
 export const NO_CREDIT_TEXT = 'ไม่มีเครดิต · ชำระวันวางบิล';
 export const NO_BILLING_TEXT = 'ไม่ต้องวางบิล';
@@ -64,6 +76,8 @@ export const NO_BILLING_WRITE_ERROR = 'ลูกค้ารายนี้ไ�
 export const RULE_UNAVAILABLE_ERROR = 'อ่านกำหนดวางบิลของลูกค้าไม่ได้ชั่วคราว — บันทึกกำหนดชำระได้ แต่วันวางบิลต้องลองใหม่';
 /* ติ๊กรายงวด "งวดนี้ไม่ต้องวางบิล" (คอลัมน์ billingSkip) */
 export const SKIP_TEXT = 'งวดนี้ไม่ต้องวางบิล';
+/* โหมดบันทึกตีกลับสูตรประมาณการของปฏิทิน (มติ 29/09 Q3 — ปีที่ยังไม่มีปฏิทินระบบหยุด ไม่ประมาณ) */
+export const CALENDAR_ESTIMATE_ERROR = 'ปฏิทินของลูกค้าไม่มีสูตรประมาณการแล้ว — ปีที่ยังไม่มีปฏิทินระบบหยุดรอ ใส่วันเองได้';
 
 const MONTHS_TH = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
 const WEEKDAYS_TH = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
@@ -392,11 +406,9 @@ export function normalizeRule(input, { holidays = null, allowLegacy = true } = {
       if (block?.fileId) years[key].fileId = String(block.fileId).slice(0, 64);
     }
     runs = { kind: 'calendar', years };
-    if (present(input.runs.estimate)) {
-      const { rounds, error } = normalizeRounds(input.runs.estimate, 'สูตรประมาณการ');
-      if (error) return fail(error);
-      runs.estimate = rounds;
-    }
+    /* สูตรประมาณการ (runs.estimate) เลิกแล้ว — มติ 29/09 Q3 ปีที่ขาด = หยุด · โหมดบันทึกตีกลับ (จอไม่ส่ง) ·
+       โหมดอ่านทิ้งช่องนี้เงียบ ๆ (CHECK ของ 0393 ยังรับรูปนี้ — ค่าที่หลุดเข้าฐานต้องไม่ทำให้ลูกค้าทั้งรายกลายเป็น "ยังไม่ระบุ") */
+    if (present(input.runs.estimate) && !allowLegacy) return fail(CALENDAR_ESTIMATE_ERROR);
     if (cutoffTime) runs.cutoffTime = cutoffTime;
   } else return fail('รอบจ่ายต้องเป็น "ทุกวันที่" · "วันในสัปดาห์" หรือ "ตามปฏิทินของลูกค้า"');
 
@@ -509,8 +521,19 @@ function coveredMonths(years) {
   return covered;
 }
 
-/** รอบจ่ายที่วันตัดรอบอยู่ในช่วง (ขยายหัวท้ายเดือนละหนึ่ง) · ปฏิทินขาด = estimate หรือหมุดช่องว่าง { gap:true } (สำเนารุ่นสาม + weekday) */
-export function payRuns(value, fromIso, toIso, { fallback = CALENDAR_FALLBACK_DEFAULT } = {}) {
+/* เดือนแรกที่ปฏิทินครอบ (monthIndex) — ช่องว่างก่อนเดือนนี้ = "ยังไม่ได้กรอกเดือนที่ผ่านแล้ว" (ไม่หยุดชิป) */
+const firstCoveredMonth = (years) => {
+  const firsts = Object.keys(years || {}).map((key) => years[key].runs[0]?.cutoff).filter(Boolean).sort();
+  return firsts.length ? monthIndexOf(firsts[0]) : null;
+};
+
+/**
+ * รอบจ่ายที่วันตัดรอบอยู่ในช่วง (ขยายหัวท้ายเดือนละหนึ่ง) (สำเนารุ่นสาม + weekday)
+ * ⭐ ปฏิทินขาด = **หมุดช่องว่าง** `{ gap:true, pay:null, month, year, yearKnown, pre }` เสมอ (มติ 29/09 — ไม่มีประมาณการ)
+ *   cutoff ของหมุด = วันสุดท้ายของเดือน (ให้ dueFor เจอหมุดก่อนรอบของเดือนถัดไป) · `pre` = เดือนก่อนเดือนแรกของปฏิทิน
+ *   `yearKnown` = ปีนั้นมีปฏิทินบางเดือนแล้ว (คำบนจอ "ปฏิทิน 2027 ยังไม่มีเดือน ก.ค." แทน "ยังไม่มีปฏิทิน 2027")
+ */
+export function payRuns(value, fromIso, toIso) {
   const rule = ruleOf(value);
   const from = dateOf(fromIso);
   const to = dateOf(toIso);
@@ -521,6 +544,7 @@ export function payRuns(value, fromIso, toIso, { fallback = CALENDAR_FALLBACK_DE
   if (rule.runs.kind === 'weekday') return weekdayRuns(rule.runs, fromK, toK, 'rule');
   const { years } = rule.runs;
   const covered = coveredMonths(years);
+  const firstK = firstCoveredMonth(years);
   const out = [];
   for (const key of Object.keys(years)) {
     const bySlot = new Map();
@@ -532,16 +556,29 @@ export function payRuns(value, fromIso, toIso, { fallback = CALENDAR_FALLBACK_DE
       out.push({ cutoff: r.cutoff, pay: r.pay, source: 'calendar', slot });
     }
   }
-  const formula = rule.runs.estimate || deriveFormula(latestYearRuns(years));
   for (let k = fromK; k <= toK; k += 1) {
     if (covered.has(k)) continue;
-    if (fallback === 'estimate' && formula) out.push(...formulaRuns(formula, k, k, 'estimate'));
-    else {
-      const { year, month } = monthOfIndex(k);
-      out.push({ cutoff: iso(year, month, lastDayOf(year, month)), pay: null, source: 'none', slot: 0, gap: true });
-    }
+    const { year, month } = monthOfIndex(k);
+    out.push({
+      cutoff: iso(year, month, lastDayOf(year, month)), pay: null, source: 'none', slot: 0, gap: true,
+      month: monthKeyOf(k), year, yearKnown: Boolean(years[String(year)]?.runs?.length), pre: firstK === null || k < firstK,
+    });
   }
   return out.sort((a, b) => (a.cutoff < b.cutoff ? -1 : a.cutoff > b.cutoff ? 1 : 0));
+}
+
+/* หมุดช่องว่าง → ข้อมูลที่จอต้องใช้ (ปี · เดือน · คำ) */
+const gapInfo = (gap) => (gap ? { year: gap.year, month: gap.month, yearKnown: gap.yearKnown, text: calendarGapText(gap) } : null);
+/**
+ * คำของงวด/ชิปที่ปฏิทินยังไม่ครอบ — "ยังไม่มีปฏิทิน 2027 · ใส่วันเองได้" · ปีนั้นมีบางเดือนแล้ว = "ปฏิทิน 2027 ยังไม่มีเดือน ก.ค. · ใส่วันเองได้"
+ * @param gap `{ year, month: 'YYYY-MM', yearKnown }` (จาก dueFor · calendarGapFor · roundChoices · planFill)
+ */
+export function calendarGapText(gap) {
+  const year = Number(gap?.year);
+  if (!Number.isInteger(year)) return '';
+  const m = Number(String(gap?.month || '').slice(5, 7));
+  const head = gap?.yearKnown && m >= 1 && m <= 12 ? `ปฏิทิน ${year} ยังไม่มีเดือน ${MONTHS_TH[m - 1]}` : `ยังไม่มีปฏิทิน ${year}`;
+  return `${head} · ${CALENDAR_MANUAL_HINT}`;
 }
 
 /** สูตรที่ใกล้ปฏิทินที่สุด (มัธยฐานตัวล่าง · สำเนารุ่นสาม) — มีเมตตา 2026 → ตัด 8 → 15 · ตัด 22 → 30 */
@@ -580,11 +617,12 @@ export function deriveFormula(runs) {
 /* ── กำหนดชำระ ← วันวางบิล ───────────────────────────────────────────────────────────────────── */
 /**
  * กำหนดชำระของงวดที่วางบิลวันนั้น + ที่มา
- * @returns `{ dueDate: '' | 'YYYY-MM-DD', source, run?, reason? , year? }`
+ * @returns `{ dueDate: '' | 'YYYY-MM-DD', source, run?, reason?, year?, month?, yearKnown?, text? }`
  *   reason: 'unset' ยังไม่ระบุ · 'notNeeded' ไม่ต้องวางบิล (ไม่มีอะไรคิดจากวันวางบิล) · 'noTiming' ต้องวางบิลแต่ยังไม่ตั้งรอบ ·
- *           'calendarMissing' ปฏิทินขาดและนโยบาย = ไม่ประมาณ (year = ปีที่ต้องขอ)
+ *           'calendarMissing' วันวางบิล + เครดิต ตกเดือนที่ปฏิทินยังไม่ครอบ — **หยุด** (มติ 29/09 · year/month = ที่ต้องขอ ·
+ *           text = "ยังไม่มีปฏิทิน 2027 · ใส่วันเองได้")
  */
-export function dueFor(value, billingIso, { fallback = CALENDAR_FALLBACK_DEFAULT } = {}) {
+export function dueFor(value, billingIso) {
   const rule = ruleOf(value);
   if (!rule) return { dueDate: '', source: 'none', reason: 'unset' };
   if (rule.need === NEED_NONE) return { dueDate: '', source: 'none', reason: 'notNeeded' };
@@ -593,11 +631,14 @@ export function dueFor(value, billingIso, { fallback = CALENDAR_FALLBACK_DEFAULT
   if (!bill) return { dueDate: '', source: 'none', reason: 'noBilling' };
   const target = addDays(bill, rule.creditDays);
   if (!rule.runs) return { dueDate: target, source: rule.creditDays === 0 ? 'payOnBilling' : 'credit' };
-  const hit = payRuns(rule, target, addDays(target, 400), { fallback }).find((r) => r.cutoff >= target);
+  const hit = payRuns(rule, target, addDays(target, 400)).find((r) => r.cutoff >= target);
   if (!hit) return { dueDate: '', source: 'none', reason: 'noRun' };
-  if (hit.gap) return { dueDate: '', source: 'none', reason: 'calendarMissing', year: Number(hit.cutoff.slice(0, 4)) };
+  if (hit.gap) return { dueDate: '', source: 'none', reason: 'calendarMissing', ...gapInfo(hit) };
   return { dueDate: hit.pay, source: hit.source, run: { cutoff: hit.cutoff, pay: hit.pay, slot: hit.slot } };
 }
+/* งวดที่วางบิลวันนั้นตกช่องว่างของปฏิทินไหม — null = ไม่ตก (มีวัน · ไม่ใช่ปฏิทิน · ไม่มีวันวางบิล) · ตก = `{ year, month, yearKnown, text }` */
+const gapOfDue = (hit) => (hit?.reason === 'calendarMissing' ? { year: hit.year, month: hit.month, yearKnown: hit.yearKnown, text: hit.text } : null);
+export const calendarGapFor = (value, billingIso) => gapOfDue(dueFor(value, billingIso));
 export const dueDateForBilling = (value, billingIso, opts) => dueFor(value, billingIso, opts).dueDate;
 
 /* จำนวนรอบต่อเดือนที่ต้องเลือกตอนเติมเดือนละงวด — 0 = ไม่มีชิป (ไม่ต้องวางบิล · ยังไม่ตั้งรอบ · ได้ทุกวันไม่มีรอบ) */
@@ -622,7 +663,8 @@ export function slotLabels(value) {
   if (rule.billing.mode === 'monthly') return rule.billing.days.map(dayWord);
   if (rule.runs.kind === 'monthly') return rule.runs.rounds.map((r) => `ตัดรอบ${dayWord(r.cutoffDay)}`);
   if (rule.runs.kind === 'weekday') return rule.runs.nths.map((n) => `วัน${WEEKDAYS_FULL_TH[rule.runs.weekday]}${nthWord(n)}`);
-  const formula = rule.runs.estimate || deriveFormula(latestYearRuns(rule.runs.years)) || [];
+  /* "ราววันที่ 8" เป็นแค่ป้ายบอกว่ารอบที่เท่าไรของเดือน (สูตรที่ใกล้ปฏิทินปีล่าสุด) — ไม่ใช่วันที่คิดให้ */
+  const formula = deriveFormula(latestYearRuns(rule.runs.years)) || [];
   return Array.from({ length: slotCount(rule) }, (_, i) => (formula[i] ? `รอบที่ ${i + 1} (ตัดรอบราว${dayWord(formula[i].cutoffDay)})` : `รอบที่ ${i + 1}`));
 }
 function slotMatches(run, slot, countInMonth) {
@@ -634,12 +676,23 @@ function slotMatches(run, slot, countInMonth) {
  * ชิปวันวางบิล `count` ตัวถัดไปนับจาก `fromIso` (สำเนารุ่นสาม) — มีวันรับวางบิล = วันนั้น · มีรอบจ่าย: เครดิต 0 = วันตัดรอบ ·
  * เครดิต N = วันทำงานสุดท้ายที่ยังทันรอบ · ⭐ ทุกชิป dueDate = dueFor(billingDate)
  * ไม่ต้องวางบิล / ยังไม่ตั้งรอบ / ได้ทุกวันไม่มีรอบ / ยังไม่ระบุ = []
+ * ⭐ ปฏิทินของลูกค้า: ชิป **หยุดที่ช่องว่างแรกหลังเดือนที่มีปฏิทิน** (มติ 29/09 — ไม่ข้ามปีที่ขาดไปหยิบปีถัดไป) · เหตุที่หยุดถาม roundChoices
  * @returns `[{ billingDate, dueDate, source, slot, run, weekend }]`
  */
-export function billingChoices(value, fromIso, count = 3, { slot = null, fallback = CALENDAR_FALLBACK_DEFAULT, holidays = null } = {}) {
+export function billingChoices(value, fromIso, count = 3, { slot = null, holidays = null } = {}) {
+  return roundChoices(value, fromIso, count, { slot, holidays }).chips;
+}
+
+/**
+ * ชิปรอบ + เหตุที่หยุด — ตัวที่แผงงวด/แผงเติม/ตัวอย่างในโมดัลใช้เมื่อต้องบอกคนว่า "ทำไมชิปหมด"
+ * @returns `{ chips, missing }` · missing = null | `{ year, month, yearKnown, text }` (ชิปได้ไม่ครบ `count` เพราะปฏิทินยังไม่ครอบ)
+ *   ⚠️ ช่องว่างก่อนเดือนแรกของปฏิทิน (เดือนที่ผ่านแล้วไม่ได้กรอก) ไม่หยุดชิป และไม่ขึ้นเป็น missing
+ */
+export function roundChoices(value, fromIso, count = 3, { slot = null, holidays = null } = {}) {
+  const none = { chips: [], missing: null };
   const rule = ruleOf(value);
   const from = dateOf(fromIso);
-  if (!rule || rule.need !== NEED_REQUIRED || !rule.billing || !from || count <= 0) return [];
+  if (!rule || rule.need !== NEED_REQUIRED || !rule.billing || !from || count <= 0) return none;
   const out = [];
   if (rule.billing.mode === 'monthly') {
     const [year, month] = partsOf(from);
@@ -652,19 +705,32 @@ export function billingChoices(value, fromIso, count = 3, { slot = null, fallbac
       for (const { i, billingDate } of inMonth) {
         if (billingDate < from || seen.has(billingDate) || out.length >= count) continue;
         seen.add(billingDate);
-        const due = dueFor(rule, billingDate, { fallback });
+        const due = dueFor(rule, billingDate);
         out.push({ billingDate, dueDate: due.dueDate, source: due.source, slot: i, run: due.run || null, weekend: weekendNote(billingDate) });
       }
     }
-    return out;
+    return { chips: out, missing: null };
   }
-  if (!rule.runs) return [];
+  if (!rule.runs) return none;
   const n = rule.creditDays;
   const start = addDays(from, n);
-  for (let span = count + 2; span <= 48 && out.length < count; span += 12) {
+  let stop = null;
+  /* ขอบฟ้า 48 เดือน — เริ่มที่ count + 2 แต่ไม่เกินเพดาน (count ≥ 47 เคยได้ชิปว่างทั้งแผง: "ดูรอบถัดไปอีก" กดครั้งที่ 15) */
+  for (let span = Math.min(count + 2, 48); span <= 48 && out.length < count && !stop; span += 12) {
     out.length = 0;
     const seen = new Set();
-    const runs = payRuns(rule, start, addDays(start, span * 31), { fallback }).filter((r) => !r.gap);
+    /* รอบที่รู้จริง: ข้ามช่องว่างก่อนเดือนแรกของปฏิทิน (pre) และช่องว่างที่จบก่อนวันเริ่ม · หยุดที่ช่องว่างแรกหลังจากนั้น
+       ⚠️ รอบก่อนวันเริ่มยังต้องอยู่ในรายการ — นับ "รอบที่เท่าไรของเดือน" (slotMatches) จากทั้งเดือน ไม่ใช่จากส่วนที่เหลือ */
+    const runs = [];
+    stop = null;
+    for (const r of payRuns(rule, start, addDays(start, span * 31))) {
+      if (r.gap) {
+        if (r.pre || r.cutoff < start) continue;
+        stop = r;
+        break;
+      }
+      runs.push(r);
+    }
     const perMonth = new Map();
     for (const r of runs) perMonth.set(r.cutoff.slice(0, 7), (perMonth.get(r.cutoff.slice(0, 7)) || 0) + 1);
     for (const r of runs) {
@@ -674,14 +740,15 @@ export function billingChoices(value, fromIso, count = 3, { slot = null, fallbac
       const billingDate = n === 0 ? latest : lastWorkdayOnOrBefore(latest, holidays);
       if (billingDate < from || seen.has(billingDate)) continue;
       if (n > 0) {
-        const hit = dueFor(rule, billingDate, { fallback });
+        const hit = dueFor(rule, billingDate);
         if (!hit.run || hit.run.cutoff !== r.cutoff) continue;
       }
       seen.add(billingDate);
       out.push({ billingDate, dueDate: r.pay, source: r.source, slot: r.slot, run: { cutoff: r.cutoff, pay: r.pay, slot: r.slot }, weekend: weekendNote(billingDate) });
     }
   }
-  return out.slice(0, count);
+  const chips = out.slice(0, count);
+  return { chips, missing: chips.length < count && stop ? gapInfo(stop) : null };
 }
 
 /**
@@ -691,9 +758,12 @@ export function billingChoices(value, fromIso, count = 3, { slot = null, fallbac
  * · มีรอบ = ชิปที่ช้าที่สุดที่กำหนดชำระ ≤ วันที่ขอ (ชิปกฎเดียวกับ billingChoices ⇒ dueFor(billingDate) = dueDate เสมอ)
  *   exact:false = วันที่ขอไม่ใช่วันจ่ายของลูกค้า — dueDate คือวันจ่ายจริงที่ได้ (เร็วกว่า) · `next` = ทางเลือกที่ช้ากว่า
  *   ⚠️ ระบบไม่เลือกให้ระหว่างสองทาง — จอโชว์ทั้งคู่
- * @returns null | `{ billingDate, dueDate, exact, source, weekend, next?, reason? }`
+ * ⭐ ปฏิทินขาด (มติ 29/09 หยุด): กำหนดชำระตั้งแต่เดือนแรกที่ปฏิทินไม่ครอบ = ไม่รู้ว่ามีรอบที่ช้ากว่านี้ไหม ⇒ `reason:'calendarMissing'`
+ *   (billingDate null · `earlier` = รอบสุดท้ายที่รู้ ถ้ามี · year/month/text ของช่องว่าง) · กำหนดชำระก่อนช่องว่างยังตอบได้ตามเดิม
+ *   แต่ `next` ที่ไม่รู้ = null + `nextMissing` (คำของช่องว่าง)
+ * @returns null | `{ billingDate, dueDate, exact, source, weekend, next?, nextMissing?, reason?, earlier?, year?, month?, text? }`
  */
-export function billingForDue(value, dueIso, { fallback = CALENDAR_FALLBACK_DEFAULT, holidays = null } = {}) {
+export function billingForDue(value, dueIso, { holidays = null } = {}) {
   const rule = ruleOf(value);
   const due = dateOf(dueIso);
   if (!rule || !due) return null;
@@ -703,24 +773,35 @@ export function billingForDue(value, dueIso, { fallback = CALENDAR_FALLBACK_DEFA
     const billingDate = addDays(due, -rule.creditDays);
     return { billingDate, dueDate: due, exact: true, source: dueFor(rule, billingDate).source, weekend: weekendNote(billingDate) };
   }
-  /* ไล่ชิปเป็นชุด (billingChoices ขอได้ครั้งละไม่เกิน ~46 ตัว) จนเจอชิปแรกที่กำหนดชำระเลยวันที่ขอ — วันจ่ายห่างวันตัดรอบได้ถึง 120 วัน */
+  /* ไล่ชิปเป็นชุด (roundChoices ขอได้ครั้งละไม่เกิน ~46 ตัว) จนเจอชิปแรกที่กำหนดชำระเลยวันที่ขอ — วันจ่ายห่างวันตัดรอบได้ถึง 120 วัน */
   let cursor = addDays(due, -(rule.creditDays + PAY_GAP_MAX_DAYS + 10));
   let best = null;
   let next = null;
-  for (let guard = 0; guard < 12 && !next && cursor; guard += 1) {
-    const chips = billingChoices(rule, cursor, 24, { fallback, holidays });
-    if (!chips.length) break;
+  let missing = null;
+  for (let guard = 0; guard < 12 && !next && !missing && cursor; guard += 1) {
+    const { chips, missing: stop } = roundChoices(rule, cursor, 24, { holidays });
     for (const c of chips) {
       if (!c.dueDate) continue;
       if (c.dueDate <= due) best = c;
       else { next = c; break; }
     }
+    if (next) break;
+    if (stop) { missing = stop; break; }
+    if (!chips.length) break;
     cursor = addDays(chips[chips.length - 1].billingDate, 1);
   }
   const shape = (c) => (c ? { billingDate: c.billingDate, dueDate: c.dueDate, source: c.source, weekend: c.weekend } : null);
+  /* ชิปหมดที่ช่องว่างก่อนเจอวันที่ช้ากว่ากำหนดชำระ: กำหนดชำระตกเดือนที่ปฏิทินไม่ครอบ = ไม่รู้ (รอบในเดือนนั้นอาจจ่ายก่อนวันนี้) */
+  if (missing && due >= `${missing.month}-01`) {
+    /* คำพูดถึงเดือนของกำหนดชำระเอง (ถ้าเดือนนั้นไม่มีปฏิทิน) — "ยังไม่มีปฏิทิน 2028" ไม่ใช่ช่องว่างแรกที่ไล่ชิปไปชน */
+    const own = gapInfo(payRuns(rule, due, due).find((r) => r.gap && r.month === due.slice(0, 7)));
+    return { billingDate: null, dueDate: null, exact: false, source: 'none', weekend: '', next: null, reason: 'calendarMissing', earlier: shape(best), ...(own || missing) };
+  }
   if (!best) return { billingDate: null, dueDate: null, exact: false, source: 'none', weekend: '', next: shape(next), reason: 'noRound' };
   const exact = best.dueDate === due;
-  return { ...shape(best), exact, next: exact ? null : shape(next) };
+  const out = { ...shape(best), exact, next: exact ? null : shape(next) };
+  if (!exact && !next && missing) out.nextMissing = missing.text;
+  return out;
 }
 
 /* ── งวด: ค่า · ด่านเขียน · สถานะ · ที่มา ─────────────────────────────────────────────────────── */
@@ -769,53 +850,31 @@ export function validateInstallmentDates(row, next, value, { ruleUnavailable = f
 }
 
 /**
- * รอยประมาณการ (ค่าที่ server เขียนลง `dueEstimatedAs` ทุกครั้งที่เขียนวันของงวด) — คิดจากรอบ ณ ตอนเขียน ไม่เชื่อธงจากจอ
- * = กำหนดชำระ เมื่อกำหนดชำระนี้คือผลประมาณการของรอบ (ปฏิทินปีนั้นยังไม่มี) · ไม่ใช่ = null
- */
-export function dueEstimatedAsFor(value, next, { fallback = CALENDAR_FALLBACK_DEFAULT } = {}) {
-  /* รอบกรรมการ 29/09: คนโทรยืนยันวันกับลูกค้าแล้ว (ปุ่ม "ยืนยันวันนี้กับลูกค้าแล้ว") = ไม่มีรอย — หลุดจากตัวกรอง ?billing=estimate
-     ⚠️ ความจริงข้อนี้พึ่ง "ทุกทางเขียนกำหนดชำระต้องเขียนรอย" (ยาม check:estimate-writers ใน §8 ช่วง 2b) */
-  if (next?.estimateConfirmed === true) return null;
-  const bill = dateOf(next?.billingDate);
-  const due = dateOf(next?.dueDate);
-  if (!bill || !due) return null;
-  const hit = dueFor(value, bill, { fallback });
-  return hit.source === 'estimate' && hit.dueDate === due ? due : null;
-}
-/* งวดนี้ยังถือวันประมาณการอยู่ไหม — ⭐ รอยเท่ากับวันปัจจุบันเท่านั้น: ทางเขียนไหนแก้กำหนดชำระโดยไม่รู้จักคอลัมน์นี้ = รอยไม่ตรง = ไม่ใช่ประมาณการ (ไม่มีทางโกหก) */
-export const isEstimate = (row) => Boolean(dateOf(row?.dueEstimatedAs)) && dateOf(row.dueEstimatedAs) === dateOf(row?.dueDate);
-
-/**
- * ที่มาของกำหนดชำระบนงวด (ป้ายข้างช่อง) — derived ทั้งหมด ยกเว้นข้อเท็จจริง "เคยเป็นประมาณการ" ที่อ่านจากรอย
- * @returns `{ key, label, source?, computed? }`
+ * ที่มาของกำหนดชำระบนงวด (ป้ายข้างช่อง) — derived ทั้งหมด (มติ 29/09: ไม่มีประมาณการ ⇒ ไม่มีรอยให้อ่าน)
+ * @returns `{ key, label, source?, computed?, gap? }`
  *   key: '' (ไม่มีกำหนดชำระ) · 'waiting' รอเหตุการณ์ · 'missing' มีวันวางบิล กติกาคิดได้แต่ยังไม่มีกำหนดชำระ ·
- *        'direct' ไม่ต้องวางบิล (ไม่มีป้าย) · 'manual' ใส่เอง · 'rule' (ตามรอบ/ตามปฏิทินลูกค้า/ตามเครดิต N วัน/ชำระวันวางบิล) ·
- *        'estimate' ประมาณการ · 'estimateStale' ประมาณการที่รอบวันนี้ให้วันอื่นแล้ว (ปฏิทินจริงมา) · 'override' แก้ทับ
+ *        'calendarMissing' มีวันวางบิล ไม่มีกำหนดชำระ และปฏิทินปีนั้นยังไม่มี (label = "ยังไม่มีปฏิทิน 2027 · ใส่วันเองได้" · gap) ·
+ *        'direct' ไม่ต้องวางบิล (ไม่มีป้าย) · 'manual' ใส่เอง (รวมงวดที่ปฏิทินยังไม่ครอบแล้วคนใส่เอง — gap บอกปีที่ขาด) ·
+ *        'rule' (ตามรอบ/ตามปฏิทินลูกค้า/ตามเครดิต N วัน/ชำระวันวางบิล) · 'override' แก้ทับ
  */
-export function dueSourceOf(value, row, { fallback = CALENDAR_FALLBACK_DEFAULT } = {}) {
+export function dueSourceOf(value, row) {
   const v = datesOf(row);
   const rule = ruleOf(value);
   if (!v.dueDate) {
     if (v.billingEvent) return { key: 'waiting', label: '' };
     if (v.billingDate) {
-      const c = dueFor(rule, v.billingDate, { fallback });
+      const c = dueFor(rule, v.billingDate);
       if (c.dueDate) return { key: 'missing', label: '', computed: c.dueDate, source: c.source };
+      if (c.reason === 'calendarMissing') return { key: 'calendarMissing', label: c.text, gap: gapOfDue(c) };
     }
     return { key: '', label: '' };
   }
   if (installmentNeed(row, rule) === NEED_NONE) return { key: 'direct', label: '' };
-  const est = isEstimate(row);
   if (!v.billingDate) return { key: 'manual', label: 'ใส่เอง' };
-  const c = dueFor(rule, v.billingDate, { fallback });
+  const c = dueFor(rule, v.billingDate);
   const credit = rule?.creditDays || 0;
-  if (c.dueDate && c.dueDate === v.dueDate) {
-    if (c.source !== 'estimate') return { key: 'rule', label: sourceLabel(c.source, { creditDays: credit }), source: c.source };
-    return est
-      ? { key: 'estimate', label: sourceLabel('estimate'), source: 'estimate' }
-      : { key: 'estimateConfirmed', label: sourceLabel('estimateConfirmed'), source: 'estimate' };
-  }
-  /* รอบกรรมการ 29/09: ประมาณการที่ปฏิทินจริงให้วันอื่นแล้ว มีป้ายของตัวเอง + computed ให้แตะ "ใช้วันตามปฏิทิน" ครั้งเดียว */
-  if (est) return { key: 'estimateStale', label: sourceLabel('estimateStale'), computed: c.dueDate || '', source: c.source };
+  if (c.dueDate && c.dueDate === v.dueDate) return { key: 'rule', label: sourceLabel(c.source, { creditDays: credit }), source: c.source };
+  if (c.reason === 'calendarMissing') return { key: 'manual', label: 'ใส่เอง', gap: gapOfDue(c) };
   if (!c.dueDate) return { key: 'manual', label: 'ใส่เอง' };
   return { key: 'override', label: 'แก้ทับ', computed: c.dueDate };
 }
@@ -882,79 +941,113 @@ function roundsPrecondition(rule, verb) {
 /* ชนิดของแผงเติม — 'rounds' (มีรอบ: ชิป/ปฏิทิน) · 'cadence' (ทุกแบบที่เหลือ: ยึดกำหนดชำระ) */
 export const fillKindOf = (value) => (slotCount(value) > 0 ? 'rounds' : 'cadence');
 
-/** เติมเดือนละงวดตามรอบ (สำเนา planFill รุ่นสาม) — rows มี source · 'estimate' ⇒ API เขียนรอยประมาณการ */
-export function planFill(value, installments = [], todayIso, { slot = null, fallback = CALENDAR_FALLBACK_DEFAULT, holidays = null } = {}) {
+/**
+ * เติมเดือนละงวดตามรอบ (สำเนา planFill รุ่นสาม) — rows มี source (ร่าง · คนเห็นก่อนบันทึก)
+ * ⭐ ปฏิทินขาด (มติ 29/09 หยุด): งวดที่รอบหมดก่อนถึง = **ข้ามพร้อมเหตุ** ไม่คิดวันให้ — `skipped` (+ `unfilled` เลขงวดแบบเดิม) ·
+ *   งวดที่มีกำหนดชำระอยู่แล้วแต่กำหนดชำระตกเดือนที่ปฏิทินไม่ครอบ = ข้ามด้วย (ไม่รู้ว่ารอบที่ถูกคือรอบไหน)
+ * @returns `{ rows: [{ id, seq, billingDate, dueDate, keptDue, source }], unfilled: [seq],
+ *            skipped: [{ id, seq, reason:'calendarMissing', year, month, yearKnown, text }], reason?, missing?, error }`
+ */
+export function planFill(value, installments = [], todayIso, { slot = null, holidays = null } = {}) {
   const rule = ruleOf(value);
+  const empty = (error) => ({ rows: [], unfilled: [], skipped: [], error });
   const pre = roundsPrecondition(rule, 'เติม');
-  if (pre) return { rows: [], unfilled: [], error: pre };
+  if (pre) return empty(pre);
   const se = slotError(rule, slot);
-  if (se) return { rows: [], unfilled: [], error: se };
+  if (se) return empty(se);
   const only = slotCount(rule) === 1 ? 0 : slot;
   const today = dateOf(todayIso);
-  if (!today) return { rows: [], unfilled: [], error: 'ไม่รู้วันนี้' };
+  if (!today) return empty('ไม่รู้วันนี้');
   const sorted = [...(installments || [])].sort((a, b) => Number(a.seq) - Number(b.seq));
   /* งวดที่ติ๊ก "งวดนี้ไม่ต้องวางบิล" ไม่รับวันวางบิล (ด่านเขียนตีกลับคู่นี้อยู่แล้ว — ตัวเติมต้องไม่ร่างสิ่งที่บันทึกไม่ได้) */
   const targets = sorted.filter((row) => installmentBillingFillable(row) && row.billingSkip !== true);
-  if (!targets.length) return { rows: [], unfilled: [], error: 'ทุกงวดมีวันวางบิลหรือรอเหตุการณ์อยู่แล้ว' };
+  if (!targets.length) return empty('ทุกงวดมีวันวางบิลหรือรอเหตุการณ์อยู่แล้ว');
   const latest = sorted.map((row) => dateOf(row.billingDate)).filter(Boolean).sort().pop() || null;
   let cursor = latest && latest >= today ? addDays(latest, 1) : today;
   const rows = [];
+  const skipped = [];
+  const unknown = [];
+  let missing = null;
   for (const row of targets) {
     const due = dateOf(row.dueDate);
-    const [first] = billingChoices(rule, cursor, 1, { slot: only, fallback, holidays });
+    const { chips, missing: stop } = roundChoices(rule, cursor, 24, { slot: only, holidays });
+    const [first] = chips;
     if (!first) {
-      const unfilled = targets.slice(rows.length).map((r) => r.seq);
-      if (!rows.length) return { rows: [], unfilled, error: 'ไม่มีรอบถัดไปให้เติม — ปฏิทินของลูกค้าปีถัดไปยังไม่มี' };
-      return { rows, unfilled, reason: 'calendarMissing', error: null };
+      if (stop) { missing = missing || stop; skipped.push({ id: row.id, seq: row.seq, reason: 'calendarMissing', ...stop }); } else unknown.push(row.seq);
+      continue;
     }
     let pick = first;
+    let passed = false;
     if (due) {
-      for (const choice of billingChoices(rule, cursor, 24, { slot: only, fallback, holidays })) {
-        if (!choice.dueDate || choice.dueDate > due) break;
+      for (const choice of chips) {
+        if (!choice.dueDate || choice.dueDate > due) { passed = true; break; }
         pick = choice;
+      }
+      /* ชิปหมดที่ช่องว่างก่อนเลยกำหนดชำระ และกำหนดชำระตกเดือนที่ไม่มีปฏิทิน = รอบที่ถูกอาจอยู่ในปีที่ยังไม่มี ⇒ ไม่เดา */
+      if (!passed && stop && due >= `${stop.month}-01`) {
+        missing = missing || stop;
+        skipped.push({ id: row.id, seq: row.seq, reason: 'calendarMissing', ...stop });
+        continue;
       }
     }
     cursor = addDays(pick.billingDate, 1);
     rows.push({ id: row.id, seq: row.seq, billingDate: pick.billingDate, dueDate: due || pick.dueDate, keptDue: Boolean(due), source: due ? 'kept' : pick.source });
   }
-  return { rows, unfilled: [], error: null };
+  const unfilled = [...skipped.map((s) => s.seq), ...unknown].sort((a, b) => Number(a) - Number(b));
+  if (!rows.length) {
+    const error = missing ? `ไม่มีรอบถัดไปให้เติม — ${missing.text}` : 'ไม่มีรอบถัดไปให้เติม';
+    return { rows: [], unfilled, skipped, ...(missing ? { reason: 'calendarMissing', missing } : {}), error };
+  }
+  return { rows, unfilled, skipped, ...(missing ? { reason: 'calendarMissing', missing } : {}), error: null };
 }
 
 /**
  * "จัดใหม่งวดที่มีวันแล้วด้วย" ของลูกค้ามีรอบ (สำเนา planRedate รุ่นสาม) — วันวางบิล + กำหนดชำระใหม่ เดือนละงวดตั้งแต่วันนี้
  * ไม่แตะงวดที่ขอใบแล้ว/รอเหตุการณ์/แจ้งชำระแล้ว · งวดหลังไม่ย้อนมาก่อนงวดที่ไม่แตะ · แถวที่วันเท่าเดิมตัดทิ้ง
+ * ⭐ ปฏิทินขาด (มติ 29/09 หยุด): งวดที่รอบหมดก่อนถึง **คงวันเดิม** + `skipped: [{ id, seq, reason:'calendarMissing', year, month, text }]`
+ * @returns `{ rows: [{ id, seq, billingDate, dueDate, source, prevBillingDate, prevDueDate }], skipped, missing?, error }`
  */
-export function planRedate(value, installments = [], todayIso, { requestedIds = new Set(), slot = null, fallback = CALENDAR_FALLBACK_DEFAULT, holidays = null } = {}) {
+export function planRedate(value, installments = [], todayIso, { requestedIds = new Set(), slot = null, holidays = null } = {}) {
   const rule = ruleOf(value);
   const pre = roundsPrecondition(rule, 'จัด');
-  if (pre) return { rows: [], error: pre };
+  if (pre) return { rows: [], skipped: [], error: pre };
   const se = slotError(rule, slot);
-  if (se) return { rows: [], error: se };
+  if (se) return { rows: [], skipped: [], error: se };
   const only = slotCount(rule) === 1 ? 0 : slot;
   const today = dateOf(todayIso);
-  if (!today) return { rows: [], error: 'ไม่รู้วันนี้' };
+  if (!today) return { rows: [], skipped: [], error: 'ไม่รู้วันนี้' };
   const sorted = [...(installments || [])].sort((a, b) => Number(a.seq) - Number(b.seq));
   /* งวดที่ติ๊ก "งวดนี้ไม่ต้องวางบิล" ไม่ถูกจัดวันวางบิลให้ (คงไว้ตามเดิม) */
   const isTarget = (row) => row.billingSkip !== true && installmentBillingRedatable(row, { requested: requestedIds.has(row.id) });
-  if (!sorted.some(isTarget)) return { rows: [], error: 'ไม่มีงวดที่จัดวันใหม่ได้ (ขอใบวางบิลแล้ว · รอเหตุการณ์ · หรือแจ้งชำระแล้วทุกงวด)' };
+  if (!sorted.some(isTarget)) return { rows: [], skipped: [], error: 'ไม่มีงวดที่จัดวันใหม่ได้ (ขอใบวางบิลแล้ว · รอเหตุการณ์ · หรือแจ้งชำระแล้วทุกงวด)' };
   let cursor = today;
   const out = [];
+  const skipped = [];
+  let missing = null;
+  const keepCursor = (row) => {
+    const kept = dateOf(row.billingDate);
+    if (kept && kept >= cursor) cursor = addDays(kept, 1);
+  };
   for (const row of sorted) {
-    if (!isTarget(row)) {
-      const kept = dateOf(row.billingDate);
-      if (kept && kept >= cursor) cursor = addDays(kept, 1);
+    if (!isTarget(row)) { keepCursor(row); continue; }
+    const { chips: [pick], missing: stop } = roundChoices(rule, cursor, 1, { slot: only, holidays });
+    /* ปฏิทินขาด (มติ 29/09 หยุด): งวดนี้คงวันเดิม + เหตุ — ไม่ล้มทั้งแผน (งวดก่อนหน้ายังจัดได้) */
+    if (!pick) {
+      if (stop) missing = missing || stop;
+      skipped.push({ id: row.id, seq: row.seq, reason: stop ? 'calendarMissing' : 'noRound', ...(stop || {}) });
+      keepCursor(row);
       continue;
     }
-    const [pick] = billingChoices(rule, cursor, 1, { slot: only, fallback, holidays });
-    if (!pick) return { rows: [], error: 'ไม่มีรอบถัดไปให้จัด — ปฏิทินของลูกค้าปีถัดไปยังไม่มี' };
     cursor = addDays(pick.billingDate, 1);
     const prevBillingDate = dateOf(row.billingDate);
     const prevDueDate = dateOf(row.dueDate);
     if (prevBillingDate === pick.billingDate && prevDueDate === pick.dueDate) continue;
     out.push({ id: row.id, seq: row.seq, billingDate: pick.billingDate, dueDate: pick.dueDate, source: pick.source, prevBillingDate, prevDueDate });
   }
-  if (!out.length) return { rows: [], error: 'วันของทุกงวดตรงกับรอบปัจจุบันอยู่แล้ว' };
-  return { rows: out, error: null };
+  const tail = missing ? { missing } : {};
+  if (!out.length && skipped.length) return { rows: [], skipped, ...tail, error: `ไม่มีรอบถัดไปให้จัด — ${missing ? missing.text : 'ลูกค้าไม่มีรอบถัดไป'}` };
+  if (!out.length) return { rows: [], skipped, error: 'วันของทุกงวดตรงกับรอบปัจจุบันอยู่แล้ว' };
+  return { rows: out, skipped, ...tail, error: null };
 }
 
 /* ── ชื่องวดบอกเดือน (สำเนา installmentLabelMonth ของ prod) ─────────────────────────────────────── */
@@ -1088,12 +1181,16 @@ export function planDueCadence(value, installments = [], { dueDay, startMonth, i
 
 /* ── กติกาลูกค้าเปลี่ยน → จอ "งวดที่วันจะเปลี่ยน" (เสนอ · คนยืนยัน · ระบบไม่ย้ายวันเองตอนบันทึกรอบ) ─────────── */
 /**
- * @returns `{ rows: [{ id, seq, change, prevBillingDate, billingDate, prevDueDate, dueDate, source?, later? }], kept: [...], error }`
+ * @returns `{ rows: [{ id, seq, change, prevBillingDate, billingDate, prevDueDate, dueDate, source?, later?, typedInGap? }], kept: [...], error }`
  *   change: 'clearBilling' (ต้อง → ไม่ต้องวางบิล: ล้างวันวางบิล คงกำหนดชำระ) · 'addBilling' (ไม่ต้อง/ไม่รู้ → ต้องวางบิลมีรอบ:
  *           วันวางบิลถอยจากกำหนดชำระ เฉพาะที่ตรงวันจ่ายของลูกค้า) · 'newDue' (รอบเปลี่ยน: คงวันวางบิล กำหนดชำระตามรอบใหม่)
- *   kept: คนแก้เอง (manual) · กำหนดชำระไม่ใช่วันจ่ายของลูกค้า (dueNotOnRound — โชว์สองทาง ไม่เลือกให้) · ขอใบวางบิลแล้ว (requested)
+ *   ⭐ typedInGap = กำหนดชำระที่คนใส่เองตอนปฏิทินปีนั้นยังไม่มี (มติ 29/09 "ใส่วันเองได้") — ใส่ปฏิทินปีนั้นแล้ว **เสนอ** วันตามปฏิทิน
+ *     (คนยืนยันบนจอ "งวดที่วันจะเปลี่ยน" · ไม่ย้ายเอง) · ใส่เองตอนปฏิทินมีอยู่แล้ว = 'manual' ไม่แตะเหมือนเดิม
+ *   kept: คนแก้เอง (manual) · กำหนดชำระไม่ใช่วันจ่ายของลูกค้า (dueNotOnRound — โชว์สองทาง ไม่เลือกให้ · `laterMissing` = ทางที่ช้ากว่า
+ *         อยู่ในปีที่ยังไม่มีปฏิทิน) · ขอใบวางบิลแล้ว (requested) · ติ๊กไม่ต้องวางบิล (skip) ·
+ *         'calendarMissing' (กติกาใหม่ไม่มีปฏิทินของปีนั้น — `{ year, month, yearKnown, text }` "ยังไม่มีปฏิทิน 2027 · ใส่วันเองได้")
  */
-export function planRuleChange(beforeValue, afterValue, installments = [], { requestedIds = new Set(), fallback = CALENDAR_FALLBACK_DEFAULT, holidays = null } = {}) {
+export function planRuleChange(beforeValue, afterValue, installments = [], { requestedIds = new Set(), holidays = null } = {}) {
   const after = ruleOf(afterValue);
   const needAfter = billingNeed(after);
   const rows = [];
@@ -1116,21 +1213,29 @@ export function planRuleChange(beforeValue, afterValue, installments = [], { req
     if (!bill) {
       if (!prev) continue;
       if (row.billingSkip === true) { kept.push({ id: row.id, seq: row.seq, reason: 'skip', dueDate: prev }); continue; }
-      const back = billingForDue(after, prev, { fallback, holidays });
+      const back = billingForDue(after, prev, { holidays });
       if (back?.billingDate && back.exact) rows.push({ ...base, change: 'addBilling', billingDate: back.billingDate, dueDate: prev, source: back.source, weekend: back.weekend });
-      else kept.push({ id: row.id, seq: row.seq, reason: 'dueNotOnRound', dueDate: prev, earlier: back?.billingDate ? { billingDate: back.billingDate, dueDate: back.dueDate } : null, later: back?.next || null });
+      else if (back?.reason === 'calendarMissing') kept.push({ id: row.id, seq: row.seq, reason: 'calendarMissing', dueDate: prev, earlier: back.earlier ? { billingDate: back.earlier.billingDate, dueDate: back.earlier.dueDate } : null, ...gapOfDue(back) });
+      else {
+        const miss = { id: row.id, seq: row.seq, reason: 'dueNotOnRound', dueDate: prev, earlier: back?.billingDate ? { billingDate: back.billingDate, dueDate: back.dueDate } : null, later: back?.next || null };
+        kept.push(back?.nextMissing ? { ...miss, laterMissing: back.nextMissing } : miss);
+      }
       continue;
     }
-    const fromRule = prev && (prev === dueFor(beforeValue, bill, { fallback }).dueDate || isEstimate(row));
-    if (prev && !fromRule) { kept.push({ id: row.id, seq: row.seq, reason: 'manual', dueDate: prev }); continue; }
-    const next = dueFor(after, bill, { fallback });
+    const beforeDue = dueFor(beforeValue, bill);
+    const typedInGap = Boolean(prev) && beforeDue.reason === 'calendarMissing';
+    const fromRule = Boolean(prev) && prev === beforeDue.dueDate;
+    if (prev && !fromRule && !typedInGap) { kept.push({ id: row.id, seq: row.seq, reason: 'manual', dueDate: prev }); continue; }
+    const next = dueFor(after, bill);
+    if (next.reason === 'calendarMissing') { kept.push({ id: row.id, seq: row.seq, reason: 'calendarMissing', billingDate: bill, dueDate: prev, ...gapOfDue(next) }); continue; }
     if (!next.dueDate || next.dueDate === prev) continue;
-    rows.push({ ...base, change: 'newDue', billingDate: bill, dueDate: next.dueDate, source: next.source, later: Boolean(prev) && next.dueDate > prev });
+    const change = { ...base, change: 'newDue', billingDate: bill, dueDate: next.dueDate, source: next.source, later: Boolean(prev) && next.dueDate > prev };
+    rows.push(typedInGap ? { ...change, typedInGap: true } : change);
   }
   return { rows, kept, error: null };
 }
 
-/* ── ปฏิทิน: ร่าง · เทียบ · สถานะ · วันตัดรอบ (สำเนารุ่นสาม) ───────────────────────────────────────── */
+/* ── ปฏิทิน: ร่าง · เทียบ · สถานะ · วันตัดรอบ ──────────────────────────────────────────────────── */
 function nearestWorkdays(day, holidays) {
   const off = (d) => weekendNote(d) || holidayNameOf(holidays, d) !== null;
   let before = addDays(day, -1);
@@ -1139,11 +1244,19 @@ function nearestWorkdays(day, holidays) {
   while (off(after)) after = addDays(after, 1);
   return { before, after };
 }
-export function draftCalendarYear(year, rounds, { holidays = null } = {}) {
+/**
+ * ร่างปฏิทินหนึ่งปีจาก "รอบประจำ" (ตัดราววันที่ D → จ่าย P) — **ไม่เลื่อนวันเอง** · วันที่ตรงเสาร์/อาทิตย์/วันหยุดในระบบได้ธง +
+ * วันทำงานก่อน/หลังให้คนเลือก (ลูกค้าประกาศวันจริง — ร่างเป็นแค่จุดเริ่ม คนเทียบกับรูปทีละเดือน)
+ * @param fromMonth 1..12 — ร่างตั้งแต่เดือนนี้ (เดือนที่ผ่านแล้วไม่ต้องกรอก)
+ * @returns `{ runs: [{ cutoff, pay, slot, flags: [{ field, text, before, after }] }], error }`
+ */
+export function draftCalendarYear(year, rounds, { holidays = null, fromMonth = 1 } = {}) {
   const { rounds: clean, error } = normalizeRounds(rounds, 'สูตรร่าง');
   if (error) return { runs: [], error };
-  const y = Number(year);
-  const runs = formulaRuns(clean, y * 12, y * 12 + 11, 'draft').map((r) => {
+  const y = intIn(year, 2000, 2100);
+  if (y === null) return { runs: [], error: 'ปีของปฏิทินไม่ถูกต้อง' };
+  const m0 = intIn(fromMonth, 1, 12) || 1;
+  const runs = formulaRuns(clean, y * 12 + (m0 - 1), y * 12 + 11, 'draft').map((r) => {
     const flags = [];
     for (const field of ['cutoff', 'pay']) {
       const weekend = weekendNote(r[field]);
@@ -1155,14 +1268,23 @@ export function draftCalendarYear(year, rounds, { holidays = null } = {}) {
   return { runs, error: null };
 }
 export function calendarDiff(beforeRuns = [], afterRuns = []) {
+  const { changed, added, removed } = keyedCalendarDiff(beforeRuns, afterRuns);
+  const bare = (x) => ({ cutoff: x.run.cutoff, pay: x.run.pay });
+  return {
+    changed: changed.map((x) => ({ from: x.from, to: x.to })), added: added.map(bare), removed: removed.map(bare),
+    count: changed.length + added.length + removed.length,
+  };
+}
+/* เทียบรายเดือน × ลำดับรอบในเดือน (ต.ค. รอบ 2 เทียบกับ ต.ค. รอบ 2) — ตัวเดียวของ calendarDiff + calendarDiffSummary */
+function keyedCalendarDiff(beforeRuns = [], afterRuns = []) {
   const keyed = (runs) => {
     const map = new Map();
     const count = new Map();
-    for (const r of [...runs].sort((a, b) => (a.cutoff < b.cutoff ? -1 : 1))) {
+    for (const r of [...(runs || [])].sort((a, b) => (a.cutoff < b.cutoff ? -1 : 1))) {
       const month = r.cutoff.slice(0, 7);
       const i = count.get(month) || 0;
       count.set(month, i + 1);
-      map.set(`${month}#${i}`, r);
+      map.set(`${month}#${i}`, { run: r, month, index: i });
     }
     return map;
   };
@@ -1171,15 +1293,70 @@ export function calendarDiff(beforeRuns = [], afterRuns = []) {
   const changed = [];
   const added = [];
   const removed = [];
-  for (const [key, run] of b) {
+  for (const [key, cur] of b) {
     const old = a.get(key);
-    if (!old) added.push(run);
-    else if (old.cutoff !== run.cutoff || old.pay !== run.pay) changed.push({ from: old, to: run });
+    if (!old) added.push(cur);
+    else if (old.run.cutoff !== cur.run.cutoff || old.run.pay !== cur.run.pay) changed.push({ from: old.run, to: cur.run, month: cur.month, index: cur.index });
   }
-  for (const [key, run] of a) if (!b.has(key)) removed.push(run);
-  return { changed, added, removed, count: changed.length + added.length + removed.length };
+  for (const [key, old] of a) if (!b.has(key)) removed.push(old);
+  const order = (x, y) => (x.month < y.month ? -1 : x.month > y.month ? 1 : x.index - y.index);
+  return { changed: changed.sort(order), added: added.sort(order), removed: removed.sort(order) };
 }
-/** สถานะปฏิทิน ณ วันนี้ (การ์ด · ทะเบียน FN · กระดิ่งปีหน้า) — สำเนารุ่นสาม · `*Alt` = อีกทางของรอมติ ข้อ 3 */
+
+/**
+ * ⭐ สรุปการแก้ปฏิทินสำหรับเธรด/audit ของลูกค้า (มติ 29/09 "ทุกการแก้ต้องลงประวัติ · บรรทัดเธรดมีสรุปปฏิทิน")
+ * ประโยคกติกา (describeRule) บอกได้แค่ "ตามปฏิทินลูกค้า ปี 2026 (24 รอบ)" — แก้วันเดียวแล้วประโยคเท่าเดิม ⇒ ต้องมีตัวนี้ต่อท้าย
+ * สองฝั่งต้องเป็นปฏิทิน (ฝั่งเดียว = ประโยคกติกาเปลี่ยนอยู่แล้ว → lines ว่าง)
+ * @returns `{ lines: string[], text, count }` · count = จำนวนรอบที่เปลี่ยน (เพิ่ม/ลบ/แก้) · ไม่เปลี่ยน = `{ lines: [], text: '', count: 0 }`
+ *   เช่น ["ปฏิทิน 2026: แก้ 1 รอบ — ต.ค. รอบ 2: ตัด พ. 21 ต.ค. → พฤ. 22 ต.ค.", "เพิ่มปฏิทิน 2027 (24 รอบ)", "เวลาตัดรอบ 16:00 → —"]
+ */
+export function calendarDiffSummary(beforeValue, afterValue, { maxPerYear = 3 } = {}) {
+  const cal = (value) => { const rule = ruleOf(value); return rule?.runs?.kind === 'calendar' ? rule.runs : null; };
+  const a = cal(beforeValue);
+  const b = cal(afterValue);
+  if (!a || !b) return { lines: [], text: '', count: 0 };
+  const short = (d) => fmtDate(d, { withYear: false });
+  const label = (x) => `${MONTHS_TH[Number(x.month.slice(5, 7)) - 1]} รอบ ${x.index + 1}`;
+  const lines = [];
+  let count = 0;
+  for (const y of [...new Set([...Object.keys(a.years), ...Object.keys(b.years)])].sort()) {
+    const ra = a.years[y]?.runs || [];
+    const rb = b.years[y]?.runs || [];
+    if (!ra.length && rb.length) { lines.push(`เพิ่มปฏิทิน ${y} (${rb.length} รอบ)`); count += rb.length; }
+    else if (ra.length && !rb.length) { lines.push(`ลบปฏิทิน ${y} (${ra.length} รอบ)`); count += ra.length; }
+    else {
+      const { changed, added, removed } = keyedCalendarDiff(ra, rb);
+      const details = [
+        ...changed.map((x) => `${label(x)}: ${[
+          x.from.cutoff !== x.to.cutoff ? `ตัด ${short(x.from.cutoff)} → ${short(x.to.cutoff)}` : '',
+          x.from.pay !== x.to.pay ? `จ่าย ${short(x.from.pay)} → ${short(x.to.pay)}` : '',
+        ].filter(Boolean).join(' · ')}`),
+        ...added.map((x) => `${label(x)} เพิ่ม: ตัด ${short(x.run.cutoff)} → จ่าย ${short(x.run.pay)}`),
+        ...removed.map((x) => `${label(x)} ลบ (ตัด ${short(x.run.cutoff)} → จ่าย ${short(x.run.pay)})`),
+      ];
+      if (details.length) {
+        const rest = details.length - maxPerYear;
+        lines.push(`ปฏิทิน ${y}: แก้ ${details.length} รอบ — ${details.slice(0, maxPerYear).join(' · ')}${rest > 0 ? ` · และอีก ${rest} รอบ` : ''}`);
+        count += details.length;
+      }
+    }
+    const fa = a.years[y]?.fileId || '';
+    const fb = b.years[y]?.fileId || '';
+    if (fa !== fb) lines.push(!fa ? `แนบรูปปฏิทิน ${y}` : !fb ? `เอารูปปฏิทิน ${y} ออก` : `เปลี่ยนรูปปฏิทิน ${y}`);
+  }
+  if ((a.cutoffTime || '') !== (b.cutoffTime || '')) lines.push(`เวลาตัดรอบ ${a.cutoffTime || '—'} → ${b.cutoffTime || '—'}`);
+  return { lines, text: lines.join('\n'), count };
+}
+
+/**
+ * สถานะปฏิทิน ณ วันนี้ (การ์ดลูกค้า · ทะเบียน FN · กระดิ่งปีหน้า) — มติ 29/09
+ * · เตือนขอปฏิทินปีถัดไปตั้งแต่ `remindFrom` = 1 ธ.ค. ของปีวันตัดรอบสุดท้าย หรือ 30 วันก่อนวันตัดรอบสุดท้าย **อันไหนก่อน**
+ *   (มีเมตตา 2026: ตัดรอบสุดท้าย อ. 22 ธ.ค. → อา. 22 พ.ย. → กระดิ่งแรก `firstDigest` จ. 23 พ.ย. 2026 — วันทำงานแรก ≥ remindFrom)
+ * · ใส่ปีถัดไปแล้ว วันตัดรอบสุดท้ายเลื่อน ⇒ remindFrom เลื่อนตาม ⇒ หยุดเตือนเอง (ไม่มีธงให้ลืมล้าง)
+ * · `lastCoveredBilling` = วันวางบิลสุดท้ายที่ยังได้กำหนดชำระ (วันตัดรอบสุดท้าย − เครดิต) — เลยจากนี้ = "ยังไม่มีปฏิทิน YYYY · ใส่วันเองได้"
+ * @returns null (ไม่ใช่ปฏิทิน) | `{ years, coveredThrough, coveredThroughText, lastCutoff, lastCoveredBilling, missingFrom, missingYear,
+ *            nextYearMissing, partial, daysLeft, remindFrom, firstDigest, remind, requestText }`
+ */
 export function calendarStatus(value, todayIso, { leadDays = REMIND_CALENDAR_LEAD_DAYS, fromMmdd = REMIND_CALENDAR_FROM_MMDD, holidays = null } = {}) {
   const rule = ruleOf(value);
   const today = dateOf(todayIso);
@@ -1190,26 +1367,49 @@ export function calendarStatus(value, todayIso, { leadDays = REMIND_CALENDAR_LEA
   const coveredThroughK = monthIndexOf(lastCutoff);
   const missingFrom = monthKeyOf(coveredThroughK + 1);
   const { year: cy, month: cm } = monthOfIndex(coveredThroughK);
-  const ceiling = `${lastCutoff.slice(0, 4)}-${fromMmdd}`;
-  const lastCoveredBilling = addDays(lastCutoff, -rule.creditDays);
-  const firstEstimateBilling = addDays(lastCoveredBilling, 1);
-  const remindFrom = [ceiling, addDays(lastCutoff, -leadDays)].sort()[0];
-  const firstDigest = firstWorkdayOnOrAfter(remindFrom, holidays);
-  const remindFromAlt = [ceiling, addDays(lastCoveredBilling, -leadDays)].sort()[0];
-  const firstDigestAlt = firstWorkdayOnOrAfter(remindFromAlt, holidays);
+  const missingYear = Number(missingFrom.slice(0, 4));
+  const missingMonth = Number(missingFrom.slice(5, 7));
+  const partial = missingMonth !== 1;
+  const remindFrom = [`${lastCutoff.slice(0, 4)}-${fromMmdd}`, addDays(lastCutoff, -leadDays)].sort()[0];
   return {
     years, coveredThrough: monthKeyOf(coveredThroughK), coveredThroughText: `${MONTHS_TH[cm - 1]} ${cy}`,
-    lastCutoff, lastCoveredBilling, missingFrom, nextYearMissing: missingFrom.endsWith('-01'), missingYear: Number(missingFrom.slice(0, 4)),
-    daysLeft: daysBetween(today, lastCutoff), remindFrom, firstDigest, leadBeforeEstimate: daysBetween(firstDigest, firstEstimateBilling),
-    remindFromAlt, firstDigestAlt, leadBeforeEstimateAlt: daysBetween(firstDigestAlt, firstEstimateBilling), remind: today >= remindFrom,
+    lastCutoff, lastCoveredBilling: addDays(lastCutoff, -rule.creditDays), missingFrom, missingYear, nextYearMissing: !partial, partial,
+    daysLeft: daysBetween(today, lastCutoff), remindFrom, firstDigest: firstWorkdayOnOrAfter(remindFrom, holidays), remind: today >= remindFrom,
+    requestText: partial ? `ขอปฏิทิน ${missingYear} ตั้งแต่ ${MONTHS_TH[missingMonth - 1]}` : `ขอปฏิทิน ${missingYear}`,
   };
 }
-/* งวดที่วางบิลวันนี้เข้ารอบไหน + วันสุดท้ายที่ยังทันรอบ · kind ผูกรอมติ ข้อ 1 ('cutoffDay' เครดิต 0 · 'lastBillingDay' เครดิต N) */
-export function cutoffInfo(value, billingIso, { fallback = CALENDAR_FALLBACK_DEFAULT } = {}) {
+/* วันอาทิตย์ของสัปดาห์ (มติ 26/09 สัปดาห์เริ่มวันอาทิตย์) */
+export const weekStartOf = (day) => { const d = dateOf(day); return d ? addDays(d, -weekdayOf(d)) : null; };
+/**
+ * กระดิ่งเช้า "ขอปฏิทินปีหน้า" ของลูกค้าหนึ่งราย (cron daily-digest 08:30 จ.–ศ.) — มติ 29/09
+ * ยิงทุกวันทำงานตั้งแต่ remindFrom · **กุญแจรายสัปดาห์** (อา–ส) ⇒ ตารางกระดิ่งเก็บแถวแรกของสัปดาห์แถวเดียว = ซ้ำทุกสัปดาห์
+ *   (เช้าวันจันทร์พลาด วันอังคารยังส่งได้) · หยุดเองเมื่อมีปีถัดไป · ผู้รับ = ฝ่ายขายที่ดูแลลูกค้า + FN (ผู้เรียกเลือก)
+ * @returns null | `{ kind, key, weekStart, year, missingFrom, partial, text, href, firstDigest }`
+ */
+export function calendarReminder(value, todayIso, { holidays = null, customerId = '', customer = 'ลูกค้า' } = {}) {
+  const st = calendarStatus(value, todayIso, { holidays });
+  const today = dateOf(todayIso);
+  if (!st || !st.remind || !isWorkday(today, holidays)) return null;
+  const weekStart = weekStartOf(today);
+  const head = st.partial
+    ? `ขอปฏิทินวางบิลของ ${customer} ตั้งแต่ ${MONTHS_TH[Number(st.missingFrom.slice(5, 7)) - 1]} ${st.missingYear}`
+    : `ขอปฏิทินวางบิลปี ${st.missingYear} ของ ${customer}`;
+  return {
+    kind: BELL.CALENDAR_MISSING, key: `billing_calendar_missing:${customerId}:${st.missingFrom}:${weekStart}`, weekStart,
+    year: st.missingYear, missingFrom: st.missingFrom, partial: st.partial, firstDigest: st.firstDigest,
+    text: `${head} — ปฏิทินที่มีใช้ได้ถึงวันตัดรอบ ${fmtDate(st.lastCutoff)}`, href: LEDGER_HREF.calendar(customerId),
+  };
+}
+/* งวดที่วางบิลวันนี้เข้ารอบไหน + วันสุดท้ายที่ยังทันรอบ · kind: 'cutoffDay' (เครดิต 0 · พูดเวลาตัดรอบ) · 'lastBillingDay' (เครดิต N · ไม่พูดเวลา)
+   ปีที่ยังไม่มีปฏิทิน = null (ไม่มีรอบ ไม่มีกระดิ่ง)
+   ⚠️ เฉพาะลูกค้าที่ "วางบิลได้ทุกวัน" — ลูกค้าที่รับวางบิลแค่บางวัน (billing.mode 'monthly') วันตัดรอบไม่ใช่เส้นตายวางบิลจริง
+     (AR-281 รุ่นสองแปลงเป็นตัดรอบสิ้นเดือนสมมุติ · "วางบิลวันที่ 10 · เครดิต 30 แล้วจ่ายวันที่ 25" ได้เส้นตาย 26 ต.ค. ที่ลูกค้าไม่รับ)
+     ⇒ null · ลูกค้ากลุ่มนี้มีกระดิ่งวันวางบิล (sales_order_billing_due) อยู่แล้ว · ธงทะเบียน cutoff/cutoffOn ตามไปเอง */
+export function cutoffInfo(value, billingIso) {
   const rule = ruleOf(value);
   const bill = dateOf(billingIso);
-  if (!rule?.runs || !bill) return null;
-  const due = dueFor(rule, bill, { fallback });
+  if (!rule?.runs || rule.billing?.mode !== 'anyday' || !bill) return null;
+  const due = dueFor(rule, bill);
   if (!due.run) return null;
   const lastBillingDate = addDays(due.run.cutoff, -rule.creditDays);
   return {
@@ -1217,11 +1417,15 @@ export function cutoffInfo(value, billingIso, { fallback = CALENDAR_FALLBACK_DEF
     cutoffTime: rule.creditDays === 0 ? rule.runs.cutoffTime || null : null, source: due.source,
   };
 }
-/** กระดิ่งเช้าวันตัดรอบ (สำเนารุ่นสาม) · ยิง 'today' วันทำงานสุดท้าย ≤ เส้นตาย · 'next' วันทำงานก่อนนั้น · ประมาณการไม่ยิง */
-export function cutoffBell(value, billingIso, todayIso, { holidays = null, customer = 'ลูกค้า', fallback = CALENDAR_FALLBACK_DEFAULT } = {}) {
-  const info = cutoffInfo(value, billingIso, { fallback });
+/**
+ * กระดิ่งเช้าวันตัดรอบของงวดหนึ่ง — ยิง 'today' วันทำงานสุดท้าย ≤ เส้นตาย (ตารางวันหยุดของเรา · เส้นตายตรงเสาร์/อาทิตย์/วันหยุด =
+ * เตือนวันทำงานก่อนหน้า) · 'next' วันทำงานก่อนนั้น ("พรุ่งนี้…") · เครดิต 0 = "วันตัดรอบของ … — ส่งเอกสารก่อน 16:00 น." ·
+ * เครดิต N = "วันสุดท้ายที่วางบิล … แล้วทันรอบจ่าย …" ไม่พูดเวลา (system-design §6) · ปีที่ยังไม่มีปฏิทิน = ไม่ยิง
+ */
+export function cutoffBell(value, billingIso, todayIso, { holidays = null, customer = 'ลูกค้า' } = {}) {
+  const info = cutoffInfo(value, billingIso);
   const today = dateOf(todayIso);
-  if (!info || !today || info.source === 'estimate') return null;
+  if (!info || !today) return null;
   const deadline = info.lastBillingDate;
   const fireToday = lastWorkdayOnOrBefore(deadline, holidays);
   const fireNext = lastWorkdayOnOrBefore(addDays(fireToday, -1), holidays);
@@ -1236,15 +1440,40 @@ export function cutoffBell(value, billingIso, todayIso, { holidays = null, custo
   const msg = info.kind === 'cutoffDay'
     ? `${lead}${offDay ? 'ก่อน' : ''}วันตัดรอบของ ${customer} — ส่งเอกสาร${info.cutoffTime && !offDay ? `ก่อน ${info.cutoffTime} น.` : 'ภายในวันนั้น'}${tail}`
     : `${lead}${offDay ? 'ที่' : 'วันสุดท้ายที่'}วางบิล ${customer} แล้วทันรอบจ่าย ${day(info.run.pay)}${tail}`;
-  return { when, kind: info.kind, deadline, fireOn: when === 'today' ? fireToday : fireNext, run: info.run, text: msg };
+  return { when, kind: info.kind, deadline, fireOn: when === 'today' ? fireToday : fireNext, run: info.run, cutoffTime: info.cutoffTime, text: msg };
+}
+/**
+ * ⭐ กระดิ่งวันตัดรอบแบบรวมต่อรอบ (digest เช้า · มติ 29/09 "บอกงวดที่ยังรอวางบิลของรอบนั้น") — ลูกค้าหนึ่งราย หลายงวด
+ * ตัวตัดสินรายงวดคือ `bellsFor` ตัวเดียว (ยอด > 0 · รอชำระ · ไม่ใช่งวดยกมา · มีวันวางบิล · ยังไม่ขอใบวางบิล) → รวมตาม (เส้นตาย, today|next)
+ * @param rows งวดของลูกค้ารายนี้ (ทุกใบ) — ต้องมี `id, seq, status, amount, kind, billingDate, billingEvent, dueDate, billingSkip` (+ salesOrderId ถ้ามี)
+ * @returns `[{ kind, deadline, when, fireOn, cutoffKind, run, cutoffTime, text, ledgerHref, rows: [{ id, seq, billingDate, amount, salesOrderId? }] }]`
+ *   (เรียงเส้นตาย) · กุญแจกันยิงซ้ำ/ผู้รับเป็นของผู้เรียก — แนะนำ `billing_cutoff:{salesOrderId|customerId}:{deadline}:{when}`
+ */
+export function cutoffDigest(rows = [], value, todayIso, { holidays = null, customer = 'ลูกค้า', requestedIds = new Set() } = {}) {
+  const groups = new Map();
+  for (const row of rows || []) {
+    const bell = bellsFor(row, value, { todayIso, requested: requestedIds.has(row.id), holidays, customer }).find((b) => b.kind === BELL.BILLING_CUTOFF);
+    if (!bell) continue;
+    const key = `${bell.date}|${bell.when}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        kind: BELL.BILLING_CUTOFF, deadline: bell.date, when: bell.when, fireOn: bell.fireOn, cutoffKind: bell.cutoffKind, run: bell.run,
+        cutoffTime: bell.cutoffTime, text: bell.text, ledgerHref: bell.ledgerHref, rows: [],
+      });
+    }
+    const line = { id: row.id, seq: row.seq, billingDate: dateOf(row.billingDate), amount: Number(row.amount) };
+    if (row.salesOrderId) line.salesOrderId = row.salesOrderId;
+    groups.get(key).rows.push(line);
+  }
+  return [...groups.values()].sort((a, b) => (a.deadline < b.deadline ? -1 : a.deadline > b.deadline ? 1 : 0));
 }
 
 /* ── กระดิ่ง + ทะเบียน FN ─────────────────────────────────────────────────────────────────────── */
 export const BELL = Object.freeze({
   BILLING_DUE: 'sales_order_billing_due',          // มีแล้ว (prod) — วันวางบิล 0..3 วัน
-  BILLING_CUTOFF: 'sales_order_billing_cutoff',    // ใหม่ — เช้าวันตัดรอบ/วันสุดท้ายที่ทันรอบ
+  BILLING_CUTOFF: 'sales_order_billing_cutoff',    // ใหม่ (มติ 29/09) — เช้าวันตัดรอบ/วันสุดท้ายที่ทันรอบ · cutoffBell / cutoffDigest
   DUE_SOON: 'sales_order_due_soon',                // ใหม่ — ครบกำหนดชำระ 0..3 วัน · ทุกงวดที่มีกำหนดชำระ (รอบกรรมการ 29/09)
-  CALENDAR_MISSING: 'customer_billing_calendar_missing', // ใหม่ — ขอปฏิทินปีหน้า (ข้อเสนอรอมติ ข้อ 3)
+  CALENDAR_MISSING: 'customer_billing_calendar_missing', // ใหม่ (มติ 29/09) — ขอปฏิทินปีหน้า รายสัปดาห์ · calendarReminder
 });
 
 /* ลิงก์ของแถวสรุป FN — ทุกกระดิ่งพาไปทะเบียนที่กรองตรงกับกระดิ่ง (รอบกรรมการ 29/09: กระดิ่งวันตัดรอบเดิมไม่มีทางไปต่อ) */
@@ -1262,7 +1491,8 @@ export const LEDGER_HREF = Object.freeze({
  *     ก็ต้องได้กระดิ่งก่อนเงินเข้า) · ไม่หยุดเมื่อขอใบแล้ว (ขอใบ ≠ ได้เงิน)
  *   · รวมเป็นกระดิ่งเดียวเฉพาะเมื่อวันวางบิล = กำหนดชำระ (ชำระวันวางบิล) และกระดิ่งวางบิลยังยิงอยู่ (sameDayDue)
  *   · รอเหตุการณ์ = เงียบ (แม้แถวเก่าจะมีกำหนดชำระค้าง)
- * @returns `[{ kind, date, key, days?, text?, missingBilling?, sameDayDue?, ledgerHref }]` · key = กุญแจกันยิงซ้ำ (งวด + วัน · แบบ prod)
+ * @returns `[{ kind, date, key, days?, text?, missingBilling?, sameDayDue?, ledgerHref, when?, fireOn?, cutoffKind?, run?, cutoffTime? }]`
+ *   key = กุญแจกันยิงซ้ำ (งวด + วัน · แบบ prod) · กระดิ่งวันตัดรอบ: date = เส้นตาย (= ?billing=cutoff&on=) · when 'today'|'next'
  */
 export function bellsFor(row, value, { todayIso, requested = false, holidays = null, customer = 'ลูกค้า' } = {}) {
   if (!row?.id || String(row.status || '') !== 'pending' || !(Number(row.amount) > 0) || isOpening(row)) return [];
@@ -1279,7 +1509,12 @@ export function bellsFor(row, value, { todayIso, requested = false, holidays = n
     }
     if (!requested) {
       const cb = cutoffBell(value, bill, todayIso, { holidays, customer });
-      if (cb) out.push({ kind: BELL.BILLING_CUTOFF, date: cb.deadline, key: `billing_cutoff:${row.id}:${cb.deadline}:${cb.when}`, text: cb.text, ledgerHref: LEDGER_HREF.cutoff(cb.deadline) });
+      if (cb) {
+        out.push({
+          kind: BELL.BILLING_CUTOFF, date: cb.deadline, key: `billing_cutoff:${row.id}:${cb.deadline}:${cb.when}`, text: cb.text, ledgerHref: LEDGER_HREF.cutoff(cb.deadline),
+          when: cb.when, fireOn: cb.fireOn, cutoffKind: cb.kind, run: cb.run, cutoffTime: cb.cutoffTime,
+        });
+      }
     }
   }
   const days = due ? daysBetween(todayIso, due) : null;
@@ -1297,29 +1532,58 @@ export function reminderKinds(value) {
   const need = billingNeed(rule);
   if (need === NEED_NONE) return [BELL.DUE_SOON];
   const kinds = [BELL.BILLING_DUE, BELL.DUE_SOON];
-  if (rule?.runs) kinds.push(BELL.BILLING_CUTOFF);
+  /* กระดิ่งวันตัดรอบ = ตัวเดียวกับ cutoffInfo — รับวางบิลแค่บางวันไม่มีกระดิ่งนี้ (ชิปการ์ดต้องไม่สัญญาเกินที่ cron ยิง) */
+  if (rule?.runs && rule.billing?.mode === 'anyday') kinds.push(BELL.BILLING_CUTOFF);
   if (rule?.runs?.kind === 'calendar') kinds.push(BELL.CALENDAR_MISSING);
   return kinds;
 }
 /**
  * ธงของแถวทะเบียน FN — ตัวเดียวกับกระดิ่ง/แผงงวด · ตัวกรองของทะเบียนอ่านธงนี้ (ไม่คิดซ้ำ):
  *   `?due=soon` = dueSoon (กำหนดชำระ 0..3 วัน · งวดรอชำระ · รอเหตุการณ์ไม่นับ — ชุดของกระดิ่ง sales_order_due_soon
- *   รวมงวดที่กระดิ่งถูกรวมเข้ากระดิ่งวางบิลวันเดียวกัน) · `?billing=missing` = missingBilling · `?billing=estimate` = estimate (ช่วง 2b)
+ *   รวมงวดที่กระดิ่งถูกรวมเข้ากระดิ่งวางบิลวันเดียวกัน) · `?billing=missing` = missingBilling
+ *   ⭐ `?billing=cutoff&on=YYYY-MM-DD` = `cutoffOn === on` (มติ 29/09) — เส้นตายของรอบที่งวดนี้ยังรอวางบิล (วันตัดรอบ − เครดิต ·
+ *     = `date` ของกระดิ่งวันตัดรอบ ⇒ หัวข้อกระดิ่ง "N งวด" = แถวที่ลิงก์เปิดมาเจอในเช้าวันที่ยิง) · ขอใบแล้ว/ยอด 0/ไม่ใช่รอชำระ = null
+ *   `cutoff` = ข้อมูลรอบของงวด (cutoffInfo · ไม่สนว่าขอใบแล้วไหม) ให้แถวลูกค้าโชว์ "ตัดรอบ … ก่อน 16:00 น." · ปีที่ยังไม่มีปฏิทิน = null +
+ *   `calendarGap` = `{ year, month, text }`
  */
 export function ledgerFlags(row, value, { todayIso, requested = false } = {}) {
   const need = installmentNeed(row, value);
   const pending = String(row?.status || 'pending') === 'pending' && !isOpening(row);
   const bill = dateOf(row?.billingDate);
   const due = dueState(row, { todayIso });
+  const cutoff = bill ? cutoffInfo(value, bill) : null;
   return {
     need,
     billing: billingState(row, value, { todayIso, requested }),
     due,
     dueSoon: pending && (due.key === 'today' || due.key === 'soon'),
     missingBilling: pending && need === NEED_REQUIRED && nagsMissingBilling(value) && !bill && !text(row?.billingEvent),
-    estimate: isEstimate(row),
     requestable: canRequestBilling(row, value),
     override: needOverrideOf(row, value),
+    cutoff,
+    cutoffOn: cutoff && pending && !requested && Number(row?.amount) > 0 ? cutoff.lastBillingDate : null,
+    calendarGap: bill ? calendarGapFor(value, bill) : null,
+  };
+}
+/* ตัวกรองทะเบียน `?billing=cutoff&on=` — ตัวเดียวกับที่หน้า/route ใช้ (ไม่มีวัน = ไม่มีแถว) */
+export const matchesCutoffFilter = (flags, onIso) => Boolean(dateOf(onIso)) && flags?.cutoffOn === dateOf(onIso);
+
+/**
+ * "รอบถัดไปของลูกค้า" (แถวลูกค้าในทะเบียน FN · การ์ดลูกค้า) — ลูกค้าที่มีรอบเท่านั้น (ไม่มีรอบ = null)
+ * @returns null | `{ choice, missing, cutoffTime, text }` · choice = ตัวเลือกแรกจากวันนี้ (billingChoices) · ปฏิทินหมด = choice null + missing
+ *   text: "วางบิลภายใน พฤ. 8 ต.ค. 2026 ก่อน 16:00 น. → กำหนดชำระ พฤ. 15 ต.ค. 2026 · ตามปฏิทินลูกค้า" (เวลาเฉพาะเครดิต 0) ·
+ *         ปฏิทินหมด = "ยังไม่มีปฏิทิน 2027 · ใส่วันเองได้"
+ */
+export function nextRunInfo(value, todayIso, { holidays = null } = {}) {
+  const rule = ruleOf(value);
+  if (!slotCount(rule)) return null;
+  const { chips: [first], missing } = roundChoices(rule, todayIso, 1, { holidays });
+  if (!first) return missing ? { choice: null, missing, cutoffTime: null, text: missing.text } : null;
+  const cutoffTime = rule.creditDays === 0 ? rule.runs?.cutoffTime || null : null;
+  const src = sourceLabel(first.source, { creditDays: rule.creditDays });
+  return {
+    choice: first, missing: null, cutoffTime,
+    text: `วางบิลภายใน ${fmtDate(first.billingDate)}${cutoffTime ? ` ก่อน ${cutoffTime} น.` : ''} → กำหนดชำระ ${fmtDate(first.dueDate)}${src ? ` · ${src}` : ''}`,
   };
 }
 
@@ -1431,7 +1695,7 @@ export function backfillGate(plan) {
 /* ── โมดัล: ฟอร์ม ⇄ รูปที่เก็บ (สัญญาของงาน UI) ────────────────────────────────────────────────────
    ฟอร์ม = { need: null|'none'|'required', bill: null|'anyday'|'monthly'|'calendar', days, creditDays,
              rounds: [{day, off}] (ทุกเดือน D → P · คู่วันตัดรอบ) , payDays: null|{kind:'monthly',days}|{kind:'weekday',weekday,nths},
-             calPay: null|'same'|'credit' (รอมติ ข้อ 1 — ไม่มีค่าตั้งต้น), calendar: { years, estimate, cutoffTime, files }, note,
+             calPay: null|'same'|'credit' (รอมติ ข้อ 1 — ไม่มีค่าตั้งต้น), calendar: { years: { YYYY: [{cutoff,pay}] }, cutoffTime, files: { YYYY: fileId } }, note,
              legacy?: true (รูปผ่อนปรนของ AR-281) , legacyNoCredit?: true (ต้องตอบ need ใหม่) }
    ⭐ รูปเดิม { credit:false } เปิดมาเป็น need:null — โมดัลไม่เลือก "ต้องวางบิล" ให้ (รอมติ ข้อ 4 · ห้ามเดาเงียบ) */
 const payOnlyRounds = (rounds) => rounds.every((r) => r.cutoffDay === r.payDay && r.payMonthOffset === 0);
@@ -1447,10 +1711,14 @@ export function formOf(value) {
   if (rule.runs.kind === 'weekday') return { ...base, bill: rule.billing.mode, payDays: { kind: 'weekday', weekday: rule.runs.weekday, nths: [...rule.runs.nths] } };
   if (rule.runs.kind === 'calendar') {
     const years = {};
-    for (const y of Object.keys(rule.runs.years)) years[y] = rule.runs.years[y].runs.map((r) => ({ ...r }));
+    const files = {};
+    for (const y of Object.keys(rule.runs.years)) {
+      years[y] = rule.runs.years[y].runs.map((r) => ({ ...r }));
+      if (rule.runs.years[y].fileId) files[y] = rule.runs.years[y].fileId;
+    }
     return {
       ...base, bill: 'calendar', days: [], calPay: rule.creditDays === 0 ? 'same' : 'credit',
-      calendar: { years, estimate: rule.runs.estimate || null, cutoffTime: rule.runs.cutoffTime || null },
+      calendar: { years, cutoffTime: rule.runs.cutoffTime || null, files },
     };
   }
   const { rounds } = rule.runs;
@@ -1479,7 +1747,6 @@ export function ruleFromForm(form = {}) {
       if (cal.files && cal.files[y]) years[y].fileId = cal.files[y];
     }
     const runs = { kind: 'calendar', years };
-    if (cal.estimate && cal.estimate.length) runs.estimate = cal.estimate;
     if (cal.cutoffTime) runs.cutoffTime = cal.cutoffTime;
     return { v: RULE_VERSION, need: NEED_REQUIRED, billing: { mode: 'anyday' }, creditDays: form.calPay === 'same' ? 0 : form.calPay === 'credit' ? n : null, runs, ...note };
   }
@@ -1530,7 +1797,8 @@ export function describeRule(value) {
     const years = Object.keys(rule.runs.years).sort();
     const count = years.reduce((n, y) => n + rule.runs.years[y].runs.length, 0);
     parts.push(`ตามปฏิทินลูกค้า ปี ${years.join(', ')} (${count} รอบ)`);
-    parts.push(rule.creditDays > 0 ? `ครบเครดิต ${rule.creditDays} วันแล้วเข้ารอบจ่าย` : 'จ่ายรอบเดียวกับที่วางบิล');
+    /* ชื่อเดียวกับข้อ ③ ของโมดัล (calendarPayWord · ตัวเลือก Segmented) — หนึ่งสิ่งหนึ่งชื่อ ทั้งท้ายโมดัล/toast/เธรด/audit */
+    parts.push(rule.creditDays > 0 ? `ครบเครดิต ${rule.creditDays} วันแล้วเข้ารอบจ่าย` : 'วันจ่ายของรอบเดียวกัน');
     if (rule.runs.cutoffTime) parts.push(rule.creditDays === 0 ? `ส่งเอกสารก่อน ${rule.runs.cutoffTime} น. ของวันตัดรอบ` : `ลูกค้าตัดรอบ ${rule.runs.cutoffTime} น.`);
   }
   return parts.join(' · ');
@@ -1539,9 +1807,6 @@ export function describeRule(value) {
 export function sourceLabel(source, { creditDays = 0 } = {}) {
   switch (source) {
     case 'calendar': return 'ตามปฏิทินลูกค้า';
-    case 'estimate': return 'ประมาณการ';
-    case 'estimateStale': return 'ประมาณการ · ปฏิทินลูกค้าให้วันอื่น';
-    case 'estimateConfirmed': return 'ประมาณการ · ยืนยันกับลูกค้าแล้ว';
     case 'rule': return 'ตามรอบ';
     case 'credit': return `ตามเครดิต ${creditDays} วัน`;
     case 'payOnBilling': return 'ชำระวันวางบิล';
@@ -1621,20 +1886,23 @@ export function needExceptionActions(row, value) {
 
 /**
  * ผลก่อนบันทึกในโมดัล — "วางบิล X → กำหนดชำระ Y" 2–3 รอบ หรือประโยคของแบบที่ไม่มีรอบ
- * @returns `{ kind, text, rows: [{ billingDate, dueDate, source }] }`
+ * ⭐ ปฏิทินที่รอบหมดก่อนครบ `count` = `missing` (มติ 29/09 — โมดัลบอก "ยังไม่มีปฏิทิน 2027 · ใส่วันเองได้" แทนแถวประมาณการ)
+ * @returns `{ kind, text, rows: [{ billingDate, dueDate, source }], missing? }`
  */
-export function policyPreview(value, todayIso, { count = 3, holidays = null, fallback = CALENDAR_FALLBACK_DEFAULT } = {}) {
+export function policyPreview(value, todayIso, { count = 3, holidays = null } = {}) {
   const rule = ruleOf(value);
   if (!rule) return { kind: 'unknown', text: UNKNOWN_TEXT, rows: [] };
   if (rule.need === NEED_NONE) return { kind: 'none', text: `${NO_BILLING_TEXT} — กำหนดชำระตั้งรายงวดบนใบ SO · เตือนก่อนครบกำหนดชำระ`, rows: [] };
   if (!rule.billing) return { kind: 'noTiming', text: `${NO_TIMING_TEXT} — เลือกวันวางบิลรายงวด`, rows: [] };
   if (slotCount(rule) > 0) {
-    return { kind: 'rounds', text: describeRule(rule), rows: billingChoices(rule, todayIso, count, { holidays, fallback }).map((c) => ({ billingDate: c.billingDate, dueDate: c.dueDate, source: c.source })) };
+    const { chips, missing } = roundChoices(rule, todayIso, count, { holidays });
+    const out = { kind: 'rounds', text: describeRule(rule), rows: chips.map((c) => ({ billingDate: c.billingDate, dueDate: c.dueDate, source: c.source })) };
+    return missing ? { ...out, missing } : out;
   }
   const rows = [];
   let d = firstWorkdayOnOrAfter(todayIso, holidays);
   for (let i = 0; i < count && d; i += 1) {
-    const hit = dueFor(rule, d, { fallback });
+    const hit = dueFor(rule, d);
     rows.push({ billingDate: d, dueDate: hit.dueDate, source: hit.source });
     d = firstWorkdayOnOrAfter(addDays(d, 7), holidays);
   }

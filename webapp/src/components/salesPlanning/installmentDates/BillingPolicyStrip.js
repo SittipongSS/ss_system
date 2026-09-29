@@ -16,9 +16,16 @@
 //   = เปิดจอ "งวดที่วันจะเปลี่ยน" **ตัวเดียวกับการ์ดทะเบียนลูกค้า** (`CustomerBillingRuleRedate` · `ruleChange` ของคำตอบ API) ให้คนยืนยันทันที
 //   🐞 review 29/09: เดิมแค่ toast ชี้ไปทะเบียนลูกค้า — ที่นั่นเปิดจอนี้ได้เฉพาะหลังบันทึกที่เปลี่ยนค่า (บันทึกซ้ำ = unchanged ⇒ รายการว่าง)
 //      ⇒ ข้อเสนอ "ล้างวันวางบิล" หายถาวร วันวางบิลค้างบนลูกค้าไม่ต้องวางบิลแล้วเตือนวางบิลต่อ (§9 ความเสี่ยง 3)
+// ⭐ รอบห้า (มติเจ้าของ 29/09 · ปฏิทินรายปีของลูกค้า · Q3 "หยุดรอปฏิทินใหม่") — ลูกค้าตามปฏิทินได้อีกสองบรรทัด (`calendarPolicyOf`):
+//   · "ปฏิทินของลูกค้ามีถึง ธ.ค. 2026 — งวดที่วางบิลหลัง อ. 22 ธ.ค. 2026 ระบบไม่คิดกำหนดชำระให้" (ทุกครั้ง · ม็อก calendar-v3 `bound`)
+//   · งวดของใบนี้ที่ตกปีที่ยังไม่มี = "งวด 10–12 ของใบนี้: ยังไม่มีปฏิทิน 2027 · ใส่วันเองได้" · ไม่มีงวดตก แต่ถึงช่วงขอปฏิทินแล้ว
+//     (`remind` — ตัวเดียวกับกระดิ่งปีหน้า) = "ยังไม่มีปฏิทิน 2027 · ใส่วันเองได้ — ขอปฏิทิน 2027 จากลูกค้า"
+//   ไม่มีประมาณการ ไม่มีป้าย "ประมาณการ" (มติ Q3) · เวลาตัดรอบอยู่ในประโยคนโยบาย (`describeRule`) แล้ว
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowUpRight, CalendarClock, CircleHelp, HandCoins, Lock, Receipt, Split, TriangleAlert } from "lucide-react";
+import {
+  ArrowUpRight, CalendarClock, CalendarRange, CalendarX, CircleHelp, HandCoins, Lock, Receipt, Split, TriangleAlert,
+} from "lucide-react";
 import Button from "@/components/ui/Button";
 import OptionTiles from "@/components/ui/OptionTiles";
 import StatusNotice from "@/components/ui/StatusNotice";
@@ -29,6 +36,7 @@ import {
   NO_CREDIT_TEXT, asksNeed, billingNeed, describeRule, hasTiming, needOverrideOf, ruleOf,
 } from "@/lib/sales/billingRule";
 import { BILLING_V4_SCHEMA_MISSING } from "@/lib/sales/billingPolicySchema";
+import { calendarPolicyOf } from "@/lib/sales/installmentDateDrafts";
 import CustomerBillingRuleRedate from "@/components/database/CustomerBillingRuleRedate";
 import { hasRuleChange } from "@/components/database/CustomerBillingRuleState";
 import styles from "./InstallmentDates.module.css";
@@ -140,6 +148,10 @@ export default function BillingPolicyStrip({
 
   const need = billingNeed(ruleValue);
   const noTiming = need === "required" && !hasTiming(ruleValue);
+  /* ⭐ รอบห้า: ปฏิทินมีถึงเมื่อไร + งวดของใบนี้ที่ตกปีที่ยังไม่มี (ค่าปัจจุบันบนจอ — ร่างด้วย · งวดล็อกไม่นับ) · null = ไม่ใช่ปฏิทิน */
+  const calendar = mode
+    ? calendarPolicyOf(ruleValue, mode.rows, mode.current, mode.todayIso, { isLocked: mode.isLocked, holidays: mode.holidays })
+    : null;
   return (
     <div className={styles.policy}>
       {need === "none"
@@ -152,6 +164,21 @@ export default function BillingPolicyStrip({
           {need === "none" ? " · กำหนดชำระตั้งรายงวดบนใบ SO · เตือนก่อนครบกำหนดชำระ" : ""}
         </p>
         {rule?.note ? <p className={styles.policySub}>{rule.note}</p> : null}
+        {calendar ? (
+          <>
+            <p className={styles.policySub}><CalendarRange size={13} aria-hidden="true" />{calendar.coverage}</p>
+            {calendar.affected.map((group) => (
+              <p key={group.text} className={styles.policyExc}>
+                <CalendarX size={13} aria-hidden="true" />{`${group.label} ของใบนี้: ${group.text}`}
+              </p>
+            ))}
+            {!calendar.affected.length && calendar.remind ? (
+              <p className={styles.policyExc}>
+                <CalendarX size={13} aria-hidden="true" />{`${calendar.gapText} — ${calendar.requestText} จากลูกค้า`}
+              </p>
+            ) : null}
+          </>
+        ) : null}
         {exceptions.length ? (
           <p className={styles.policyExc}><Split size={13} aria-hidden="true" />{`ยกเว้นบนใบนี้: ${exceptions.join(" · ")}`}</p>
         ) : null}

@@ -253,6 +253,46 @@ test('⭐ route: ตั้งครั้งแรก (null) = .is(null) · ส�
   assert.match(audit.body.summary, /^ตั้งกำหนดวางบิลของลูกค้า AR-001 ลูกค้าทดสอบ: — → ไม่ต้องวางบิล$/);
 });
 
+/* ── รุ่นห้า: ปฏิทินรายปีของลูกค้า (มติ 29/09) — รูปปฏิทินที่เพิ่งผูกต้องเป็นไฟล์แนบของลูกค้ารายนี้ · audit ต่อท้ายสรุปการแก้ปฏิทิน ── */
+const CAL_FILE = '6f1c2d3e-4a5b-4c6d-8e7f-901234567890';
+const calRule = (fileId = '') => ({
+  v: 4, need: 'required', billing: { mode: 'anyday' }, creditDays: 0,
+  runs: { kind: 'calendar', cutoffTime: '16:00', years: { 2026: { runs: [{ cutoff: '2026-10-08', pay: '2026-10-15' }, { cutoff: '2026-10-21', pay: '2026-10-30' }], ...(fileId ? { fileId } : {}) } } },
+});
+const CAL_ROW = { ...V1_ROW, billingRule: calRule() };
+
+test('⭐ route (รุ่นห้า): รูปปฏิทินที่เพิ่งผูกไม่ใช่ไฟล์ของลูกค้ารายนี้ = 400 ก่อนเขียน · ไม่ลง audit/เธรด', async (t) => {
+  const { calls, call } = await routeHarness(t, { customer: () => CAL_ROW, tables: { attachments: () => [] } });
+  const res = await call({ billingRule: calRule(CAL_FILE), baseUpdatedAt: STAMP });
+  assert.equal(res.status, 400, JSON.stringify(res.body));
+  assert.match(res.body.error, /รูปปฏิทินปี 2026 ไม่ใช่ไฟล์ของลูกค้ารายนี้/);
+  const probe = calls.find((c) => c.table === 'attachments');
+  assert.equal(probe.params.get('entityType'), 'eq.customer');
+  assert.equal(probe.params.get('entityId'), 'eq.CUS-1');
+  assert.equal(calls.some((c) => c.method !== 'GET'), false, 'ไม่ PATCH ลูกค้า · ไม่ลง audit_logs / entity_updates');
+});
+
+test('⭐ route (รุ่นห้า): รูปเป็นของลูกค้ารายนี้ = บันทึก · audit ต่อท้าย "แนบรูปปฏิทิน 2026" · รูปที่ผูกไว้เดิมไม่ถูกตรวจซ้ำ', async (t) => {
+  const { calls, call } = await routeHarness(t, {
+    customer: () => CAL_ROW,
+    onPatch: (params, payload) => [{ ...CAL_ROW, ...payload }],
+    tables: { attachments: (params) => (String(params.get('id')).includes(CAL_FILE) ? [{ id: CAL_FILE }] : []) },
+  });
+  const res = await call({ billingRule: calRule(CAL_FILE), baseUpdatedAt: STAMP });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  const audit = calls.find((c) => c.table === 'audit_logs');
+  assert.match(audit.body.summary, / · แนบรูปปฏิทิน 2026$/);
+
+  /* ผูกไว้แล้ว (อาจถูกลบไปทีหลัง) — แก้เวลาตัดรอบอย่างเดียวต้องไม่ถามไฟล์เลย */
+  const bound = { ...CAL_ROW, billingRule: calRule(CAL_FILE) };
+  const again = await routeHarness(t, { customer: () => bound, onPatch: (params, payload) => [{ ...bound, ...payload }], tables: { attachments: () => [] } });
+  const next = calRule(CAL_FILE);
+  delete next.runs.cutoffTime;
+  const res2 = await again.call({ billingRule: next, baseUpdatedAt: STAMP });
+  assert.equal(res2.status, 200, JSON.stringify(res2.body));
+  assert.equal(again.calls.some((c) => c.table === 'attachments'), false);
+});
+
 test('⭐ ตารางวันที่ไม่ใช่ปฏิทินรายสัปดาห์ — จอกว้าง 8 คอลัมน์ · มือถือ 6 · ห้าม 7', () => {
   const css = fs.readFileSync(path.join(WEBAPP, 'src/components/database/CustomerBillingRule.module.css'), 'utf8');
   const cols = [...css.matchAll(/--cols:\s*(\d+)/g)].map((m) => Number(m[1]));

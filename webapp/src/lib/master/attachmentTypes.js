@@ -12,6 +12,16 @@ import { SURVEY_DOC_PLAN, SURVEY_DOC_SPOT, SURVEY_DOC_WIDE } from "@/lib/service
    แล้วรูปจะไม่ขึ้นบนกระดาษโดยไม่มีอะไรฟ้อง */
 export const SPEC_ILLUSTRATION_DOC_TYPE = 'spec_illustration';
 
+/* ⭐ รูปปฏิทินวางบิลของลูกค้า (v5 ปฏิทินรายปี · มติเจ้าของ 29/09 · contract §8) — แนบกับ **ตัวลูกค้า** ปีละรูป
+   (`metadata.year`) แล้วกติกาของลูกค้าชี้ด้วย id (`billingRule.runs.years[YYYY].fileId`) · ตัวแก้ปฏิทินเปิดรูปคู่กับตาราง
+   ให้คนกด "ตรงกับรูป" ทีละเดือน (ไม่มี AI อ่านรูป)
+   ⚠️ **อยู่ใน union ของลูกค้า แต่ไม่เป็นการ์ด** (`customerDocTypes()` ไม่คืน) — รูปนี้เป็นของกำหนดวางบิล ไม่ใช่เอกสารที่ทะเบียนลูกค้า
+     ต้องมี · แผงเอกสารของลูกค้ายังเห็นไฟล์ (ตกการ์ด "เอกสารอื่นๆ" พร้อมป้ายของมันเอง) แต่ไม่ชวนแนบจากตรงนั้น (แนบที่นั่น = ไม่มีปี)
+   ⚠️ แนบ/ลบได้ทั้งฝ่ายขายทีมที่ดูแลและ **FN** — ช่องแคบ `canAttachBillingCalendar` (lib/master/attachmentAccess.js) ด่านเดียวกับ
+     การแก้กำหนดวางบิล (`canEditCustomerBillingRule`) · FN ไม่ได้ customers:edit ⇒ ไม่มีช่องนี้ = 403 (ที่เจอใน calendar-v3)
+   ⚠️ ตาราง attachments ไม่มี CHECK ของ docType (mig 0028) ⇒ **ไม่ต้องออก migration** — คีย์ใหม่ใช้ได้ทันทีที่อยู่ในทะเบียนนี้ */
+export const BILLING_CALENDAR_DOC_TYPE = 'billing_calendar';
+
 /* ⭐ ไฟล์แนบที่ "ปลดระวาง" แล้ว (มติ 21/09/2569 · docs/fm-sa-04-document-model.md "รูปห้ามหาย")
    ลบภาพประกอบที่ Rev ของเอกสาร FM-SA-04 ที่ยื่นหรืออนุมัติแล้วอ้างอยู่ (`illustrationIds`)
    ⇒ DELETE ไม่ลบแถวและไม่ทิ้งไฟล์ แค่ประทับคีย์ชุดนี้ลง `metadata` · จอสเปคกับภาพนิ่ง
@@ -271,7 +281,8 @@ export const ATTACHMENT_TYPES = {
   // customer = union ของทุกคีย์ (ทั้ง 2 ประเภท) — ใช้ validate ฝั่ง API
   // (docType ที่ไม่อยู่ในนี้จะถูกตีเป็น 'other') และ lookup ป้ายชื่อ. การ์ดที่ UI
   // แสดงเลือกตามประเภทผ่าน customerDocTypes(). มาจาก CUSTOMER_DOC_TYPES ชุดเดียว.
-  customer: customerDocTypesUnion,
+  // ⭐ + รูปปฏิทินวางบิล (v5) — ผ่านด่าน docType และมีป้ายชื่อ แต่ไม่เป็นการ์ด (ดู BILLING_CALENDAR_DOC_TYPE)
+  customer: [...customerDocTypesUnion, { key: BILLING_CALENDAR_DOC_TYPE, label: "ปฏิทินวางบิลของลูกค้า", required: false }],
   // สัญญาจ้างผลิต ย้ายไปผูกกับลูกค้า (ดู customer ด้านบน) — สินค้าเหลือ Artwork.
   // ⚠️ ชุดนี้เป็น "ค่าเริ่มต้น/union" ใช้ validate docType กับ lookup ป้ายชื่อ — การ์ดที่
   // จอแสดงและด่านอนุมัติต้องเรียก productDocTypes(record) เพราะบางหมวดไม่บังคับ Artwork
@@ -457,6 +468,15 @@ export const DOC_TYPE_FILE_RULES = Object.freeze({
     accept: [...PRINTABLE_IMAGE_MIME, ...PRINTABLE_IMAGE_EXT.map((e) => `.${e}`)].join(","),
     mime: PRINTABLE_IMAGE_MIME,
     ext: PRINTABLE_IMAGE_EXT,
+  }),
+  /* ⭐ รูปปฏิทินวางบิล (v5) — ตัวแก้ปฏิทินเปิดไฟล์ **คู่กับตาราง** ให้คนเทียบทีละเดือน ("ตรงกับรูป") ⇒ ต้องเป็นชนิดที่เบราว์เซอร์
+     เปิดในหน้าได้: รูปชุดเดียวกับภาพประกอบ + PDF (ลูกค้าส่งปฏิทินเป็น PDF บ่อย) · Excel/เอกสาร Google เปิดคู่กับตารางไม่ได้ ⇒ ไม่รับ
+     (บันทึกเป็น PDF ก่อน) · เอกสาร Google ตกด่านนี้เองใน POST */
+  [BILLING_CALENDAR_DOC_TYPE]: Object.freeze({
+    label: "รูปภาพหรือ PDF (JPG · PNG · WEBP · GIF · PDF)",
+    accept: [...PRINTABLE_IMAGE_MIME, "application/pdf", ...PRINTABLE_IMAGE_EXT.map((e) => `.${e}`), ".pdf"].join(","),
+    mime: [...PRINTABLE_IMAGE_MIME, "application/pdf"],
+    ext: [...PRINTABLE_IMAGE_EXT, "pdf"],
   }),
 });
 

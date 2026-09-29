@@ -115,6 +115,9 @@
 .tileGap { color: var(--text-3); font-size: var(--fs-3); white-space: nowrap; }
 .tileEnd { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--accent-ink); }
 .tileMeta { color: var(--text-3); font-size: var(--fs-3); font-weight: var(--fw-normal); }
+/* ปีที่ปฏิทินของลูกค้ายังไม่มี (รอบห้า · มติ 29/09 หยุด) — คำเตือน ไม่ใช่ error: "ยังไม่มีปฏิทิน 2027 · ใส่วันเองได้" */
+.gapNote { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--amber); font-size: var(--fs-4); line-height: var(--lh-thai); }
+.gapNote > svg { flex: none; }
 
 .more { justify-self: start; }
 

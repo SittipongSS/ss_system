@@ -27,8 +27,9 @@ import {
 } from '@/lib/sales/historicalOrders';
 import {
   BILLING_REMIND_DAYS, DUE_REMIND_DAYS, NO_BILLING_TEXT, UNKNOWN_TEXT, billingRequestLive, billingState, billingStateLabel,
-  describeBillingRule, ledgerFlags, nagsMissingBilling,
+  calendarStatus, describeBillingRule, formatBillingDate, ledgerFlags, nagsMissingBilling, nextRunInfo,
 } from '@/lib/sales/billingRule';
+import { dateOf } from '@/lib/sales/billingRuleV4';
 
 /** สถานะงวด → ป้ายไทย + โทนสี (ชุดเดียวกับที่การ์ดในใบ SO ใช้) */
 export const LEDGER_STATUS = {
@@ -94,8 +95,62 @@ export const LEDGER_BILLING_FILTERS = Object.freeze([
      งวดที่ติ๊ก "งวดนี้ไม่ต้องวางบิล" · รูปเดิม { credit:false } (เท่า prod จนกว่า backfill) · งวดรอเหตุการณ์ */
   { value: 'missing', label: 'ยังไม่มีวันวางบิล', empty: 'ไม่มีงวดที่ต้องวางบิลแต่ยังไม่มีวันวางบิล', hint: 'นับเฉพาะงวดรอชำระของลูกค้าที่ต้องวางบิล — ไม่นับลูกค้าไม่ต้องวางบิล งวดที่ติ๊ก "งวดนี้ไม่ต้องวางบิล" ลูกค้าที่ยังไม่ระบุ/รูปเดิม "ไม่มีเครดิต" และงวดรอเหตุการณ์' },
 ]);
-/* ค่าที่ไม่รู้จัก = '' (ไม่กรอง) — ลิงก์พิมพ์ผิดต้องไม่ทำให้ทะเบียนว่างโดยไม่มีคำอธิบาย (กติกาเดียวกับ taxInvoice) */
-export const ledgerBillingFilter = (value) => (LEDGER_BILLING_FILTERS.some((f) => f.value === value) ? value : '');
+/* ── วันตัดรอบ `?billing=cutoff&on=YYYY-MM-DD` (v5 ปฏิทินรายปี · มติเจ้าของ 29/09) ─────────────────────────────────────
+   ⭐ **ชุดของกระดิ่งวันตัดรอบเป๊ะ** — แถวสรุป FN ของกระดิ่ง `sales_order_billing_cutoff` ลิงก์มาที่นี่ แล้วหัวข้อ "N งวด" ต้องเท่ากับที่
+     เปิดมาเจอ ⇒ ธงของแถว (`billingCutoffOn`) **ไม่คิดที่นี่** — route ถาม `billingCutoffOnIndex` (billingDueNotify.js · ด่านใบชุดเดียวกับ
+     cron + `ledgerFlags().cutoffOn` ของตัวคิด) แล้วส่งเข้า `ledgerRow` (`cutoffOn`) — แพตเทิร์นเดียวกับ `soon`
+   ⚠️ **ไม่อยู่ในเมนูตัวกรอง** (`LEDGER_BILLING_FILTERS`) — ต้องมีวันประกอบ (`on`) เสมอ · เปิดได้ทางลิงก์ของกระดิ่งเท่านั้น
+     จอเติมเป็นตัวเลือกชั่วคราวตอนกรองอยู่ (`ledgerBillingFilterOptions`) ให้เห็นว่ากรองอะไรและกดถอดได้
+   ⚠️ `cutoff` ที่ไม่มีวัน/วันผิดรูป = ไม่กรอง (กติกาเดียวกับค่าที่ไม่รู้จัก — ลิงก์พิมพ์ผิดต้องไม่ทำให้ทะเบียนว่าง) */
+export const LEDGER_BILLING_CUTOFF = 'cutoff';
+/* วันของตัวกรองวันตัดรอบ — วันที่มีจริงบนปฏิทินเท่านั้น (ตัวตัดสินเดียวกับตัวคิด) · ผิดรูป = '' */
+export const ledgerCutoffOn = (value) => dateOf(value) || '';
+/* ค่าที่ไม่รู้จัก = '' (ไม่กรอง) — ลิงก์พิมพ์ผิดต้องไม่ทำให้ทะเบียนว่างโดยไม่มีคำอธิบาย (กติกาเดียวกับ taxInvoice)
+   ⭐ `cutoff` ผ่านเมื่อมี `on` ที่ใช้ได้เท่านั้น (ดูหัวข้อวันตัดรอบข้างบน) */
+export const ledgerBillingFilter = (value, on = '') => {
+  if (value === LEDGER_BILLING_CUTOFF) return ledgerCutoffOn(on) ? value : '';
+  return LEDGER_BILLING_FILTERS.some((f) => f.value === value) ? value : '';
+};
+/* ตัวเลือกชั่วคราวของวันตัดรอบ — ป้าย/คำตอนว่าง/คำอธิบาย ทรงเดียวกับ `LEDGER_BILLING_FILTERS` · วันไม่ถูกต้อง = null
+   ⚠️ คำเดียวกับหัวข้อแถวสรุป FN ("วางบิลให้ทันรอบภายใน …") — คนกดจากกระดิ่งต้องเห็นว่าเป็นเรื่องเดียวกัน */
+export function ledgerCutoffFilterOption(on) {
+  const day = ledgerCutoffOn(on);
+  if (!day) return null;
+  const when = formatBillingDate(day);
+  return {
+    value: LEDGER_BILLING_CUTOFF,
+    label: `วางบิลให้ทันรอบภายใน ${when} · ยังไม่ขอใบ`,
+    empty: `ไม่มีงวดที่ยังรอวางบิลให้ทันรอบภายใน ${when}`,
+    hint: 'ชุดเดียวกับกระดิ่งวันตัดรอบ — งวดรอชำระที่มียอดและวันวางบิล ของลูกค้าที่มีรอบจ่าย/ปฏิทิน ซึ่งเส้นตายของรอบ (วันตัดรอบ − เครดิต) ตรงวันนี้ และยังไม่มีคำร้องขอใบวางบิลที่ส่งแล้ว',
+  };
+}
+/* ตัวเลือกของเมนู "รอบวางบิล" — ชุดมาตรฐาน + ตัวเลือกวันตัดรอบเมื่อกำลังกรองด้วยวันนั้นอยู่ (ให้เห็นว่าเลือกอะไร และกดถอดได้) */
+export function ledgerBillingFilterOptions(billing = '', on = '') {
+  const cutoff = ledgerBillingFilter(billing, on) === LEDGER_BILLING_CUTOFF ? ledgerCutoffFilterOption(on) : null;
+  return cutoff ? [...LEDGER_BILLING_FILTERS, cutoff] : [...LEDGER_BILLING_FILTERS];
+}
+
+/* ── รอบของลูกค้าบนแถวลูกค้า (v5 · contract §5) — "รอบถัดไป: วางบิลภายใน … ก่อน 16:00 น. → กำหนดชำระ …" + แถบ "ขอปฏิทิน YYYY" ──
+   ⭐ ตัวคิดตัดสินทั้งหมด (`nextRunInfo` · `calendarStatus`) — ลูกค้าไม่มีรอบ = ไม่มีบรรทัด · ปฏิทินหมด = คำ "ยังไม่มีปฏิทิน YYYY · ใส่วันเองได้"
+   ⚠️ ค่าระดับลูกค้า — route คิดครั้งเดียวต่อลูกค้า (`customer.billingOutlook`) ไม่ใช่ทุกงวด (ทะเบียนมีหลายพันงวด)
+   ⚠️ แถบขอปฏิทินขึ้นเมื่อถึงช่วงเตือน (`remind` — ช่วงเดียวกับกระดิ่งขอปฏิทินปีหน้า) ไม่ใช่ตั้งแต่ต้นปี */
+export function ledgerCustomerOutlook(rule, todayIso, { holidays = null } = {}) {
+  if (!todayIso) return { nextRunText: '', calendarRequest: '' };
+  const next = nextRunInfo(rule, todayIso, { holidays });
+  const status = calendarStatus(rule, todayIso, { holidays });
+  return {
+    nextRunText: next?.text || '',
+    calendarRequest: status?.remind ? status.requestText : '',
+  };
+}
+/* บรรทัดตัดรอบใต้ "วางบิลถัดไป" — เครดิต 0 = วันตัดรอบของลูกค้า (+ เวลา) · เครดิต N = วันสุดท้ายที่วางบิลแล้วทันรอบจ่าย (ไม่พูดเวลา ·
+   system-design §6) · ไม่มีรอบ = '' */
+export function ledgerCutoffText({ date, time = null, kind = null } = {}) {
+  const day = formatBillingDate(date, { withYear: false });
+  if (!day) return '';
+  if (kind === 'lastBillingDay') return `วางบิลภายใน ${day} ทันรอบจ่าย`;
+  return `ตัดรอบ ${day}${time ? ` ก่อน ${time} น.` : ''}`;
+}
 /* ── ครบกำหนดชำระ (รุ่นสี่ · §6 ช่วง 4a) — ตัวกรอง `?due=soon` = **ชุดของกระดิ่ง "ครบกำหนดชำระ" เป๊ะ** ────────────────
    ⭐ กระดิ่งแถวสรุป FN ลิงก์มาที่ `?due=soon` แล้วหัวข้อ "N งวด" ต้องเท่ากับที่เปิดมาเจอ (บทเรียนเดียวกับ `soon` ของวางบิล)
      ⇒ ธงของแถว (`dueSoon`) ไม่คิดที่นี่ — route ถามตัวคัด `dueSoonCandidates` (billingDueNotify.js) ตัวเดียวกับ cron แล้วส่งผล
@@ -140,6 +195,10 @@ function billingSearchWords(r) {
     // รุ่นสี่: คำชวน "ยังไม่มีวันวางบิล" · คำ "ไม่ต้องวางบิล" ของงวดที่ไม่ต้องวางบิล (เซลล์วางบิลถัดไป)
     r.billingMissing ? LEDGER_BILLING_MISSING_TAG : '',
     r.billingStateKey === 'notNeeded' ? NO_BILLING_TEXT : '',
+    /* v5: "ยังไม่มีปฏิทิน 2027 · ใส่วันเองได้" (เซลล์วางบิลถัดไป) · แถบ "ขอปฏิทิน 2027" ใต้ชื่อลูกค้า — FN ค้น "ขอปฏิทิน" หาลูกค้า
+       ที่ต้องทวงปฏิทินได้ · ⚠️ บรรทัด "รอบถัดไป"/"ตัดรอบ …" ไม่อยู่ในชุดค้น (เป็นวันที่ — เหตุผลเดียวกับระยะวันข้างบน) */
+    r.billingCalendarGap || '',
+    r.customerCalendarRequest || '',
   ];
 }
 
@@ -175,7 +234,7 @@ export function ledgerBillingWhen(state) {
  */
 export function ledgerRow({
   installment, order, quotation, customer, deal = null, todayIso = null,
-  serviceRounds = false, billingRequest = null, billingRemind = false, dueRemind = false,
+  serviceRounds = false, billingRequest = null, billingRemind = false, dueRemind = false, cutoffOn = null,
 }) {
   if (!installment || !order) return null;
   const status = installment.status || 'pending';
@@ -193,6 +252,8 @@ export function ledgerRow({
   const flags = ledgerFlags(installment, rule, { todayIso, requested: billingRequested });
   const billingOpen = billingOpenKey(billing.key) && Boolean(billingDate);
   const billingRequestState = billingRequestStateOf({ installment, billingRequest, billingDate, billingKey: billing.key });
+  /* รอบของลูกค้า (v5) — route คิดมาครั้งเดียวต่อลูกค้า · ผู้เรียกที่ประกอบแถวเอง (เทสต์) ได้ค่าคิดสดจากกติกาตัวเดียวกัน */
+  const outlook = customer?.billingOutlook || ledgerCustomerOutlook(rule, todayIso);
   return {
     id: installment.id,
     // ── อ้างอิงเอกสาร: ทั้งเลขที่ (สำหรับคนอ่าน) และ id (สำหรับลิงก์) ──
@@ -236,6 +297,11 @@ export function ledgerRow({
     /* ⭐ รุ่นสี่: ตัวตัดสินคือ `nagsMissingBilling` ของตัวคิด (ต้องวางบิลจริง · รูปเดิม { credit:false } = ไม่ชวน เท่ากับ prod)
        ผลเท่า `billingRuleNeedsBillingDate` เดิมทุกค่ารุ่นหนึ่ง/สอง · ลูกค้าไม่ต้องวางบิล/ยังไม่ตั้งรอบ = ตามรุ่นสี่ */
     billingRuleActive: nagsMissingBilling(rule),
+    /* ⭐ v5 · บรรทัดรอบของลูกค้าใต้ชื่อ (ค่าระดับลูกค้า — ทุกงวดพกค่าเดียวกัน) · ⚠️ whitelist: ลืมเติม = บรรทัดหายเงียบ
+       · `customerNextRun` = "วางบิลภายใน … ก่อน 16:00 น. → กำหนดชำระ … · ตามปฏิทินลูกค้า" / "ยังไม่มีปฏิทิน 2027 · ใส่วันเองได้" / ''
+       · `customerCalendarRequest` = "ขอปฏิทิน 2027" เมื่อถึงช่วงเตือน (ช่วงเดียวกับกระดิ่งขอปฏิทินปีหน้า) / '' */
+    customerNextRun: outlook.nextRunText || '',
+    customerCalendarRequest: outlook.calendarRequest || '',
     /* สองขั้นแรกของราง — พกมากับแถวเพื่อให้ก้อน (`groupLedgerByOrder`) ประกอบราง
        ได้โดยไม่ต้องยิง API ซ้ำ · ขั้นที่สามคำนวณจากงวดในก้อนเอง */
     orderStatus: order.status || null,
@@ -303,6 +369,17 @@ export function ledgerRow({
     dueStateKey: flags.due.key,
     dueDays: flags.due.days,
     dueSoon: Boolean(dueRemind),
+    /* ── v5 · วันตัดรอบของงวด (ตัวคิด `ledgerFlags().cutoff` · contract §5) — ⚠️ whitelist: ลืมเติม = ตัวกรอง/บรรทัดว่างเงียบ ๆ ──
+       · `billingCutoffOn` = เส้นตายของรอบที่งวดนี้ **ยังรอวางบิล** (ตัวกรอง `?billing=cutoff&on=`) — ผู้เรียกถามตัวคัดของกระดิ่งแล้วส่งมา
+         (`cutoffOn` · ด่านใบชุดเดียวกับ cron) · ไม่ส่ง = ไม่อยู่ในชุด (ไม่เดาเอง · กติกาเดียวกับ `billingSoon`)
+       · `billingCutoffDate`/`Time`/`Kind` = ข้อมูลรอบของงวดสำหรับบรรทัด "ตัดรอบ … ก่อน 16:00 น." — ขึ้นแม้ขอใบแล้ว (ข้อเท็จจริงของรอบ)
+         เวลาตัดรอบมีเฉพาะเครดิต 0 (ตัวคิดตัดให้แล้ว) · ไม่มีรอบ/ปีที่ยังไม่มีปฏิทิน = null
+       · `billingCalendarGap` = "ยังไม่มีปฏิทิน 2027 · ใส่วันเองได้" เมื่อวันวางบิลตกช่วงที่ปฏิทินยังไม่ครอบ (Q3 หยุดรอปฏิทินใหม่) / '' */
+    billingCutoffOn: dateOf(cutoffOn) || null,
+    billingCutoffDate: flags.cutoff?.lastBillingDate || null,
+    billingCutoffTime: flags.cutoff?.cutoffTime || null,
+    billingCutoffKind: flags.cutoff?.kind || null,
+    billingCalendarGap: flags.calendarGap?.text || '',
     /* ── ช่วงบริการที่งวดนี้ครอบ (mig 0320 · มติผู้ใช้ 2026-08-30) ────────────
        ⚠️ **ต้องอยู่ในรายชื่อนี้ถึงจะถึงจอ** — ตัวนี้เป็น whitelist ไม่ได้ spread แถวดิบมา
        ค่าที่ลืมเติมจะหายเงียบ ๆ โดยไม่มี error ให้เห็น
@@ -652,14 +729,15 @@ export function orderStateIndex(rows = []) {
  */
 export function filterLedger(rows = [], {
   status = [], from = null, to = null, q = '', overdueOnly = false,
-  orderState = [], orderStates = null, line = [], taxInvoice = '', billing = '', due = '',
+  orderState = [], orderStates = null, line = [], taxInvoice = '', billing = '', due = '', on = '',
 } = {}) {
   const wanted = Array.isArray(status) ? status.filter(Boolean) : [];
   /* ครบกำหนดชำระ (รุ่นสี่ · §6) — soon · ค่าที่ไม่รู้จัก = ไม่กรอง (ลิงก์พิมพ์ผิดต้องไม่ทำให้ทะเบียนว่าง) */
   const dueFilter = ledgerDueFilter(due);
-  /* รอบวางบิล (mig 0389) — soon | 7d | month | late · ค่าที่ไม่รู้จัก = ไม่กรอง
+  /* รอบวางบิล (mig 0389) — soon | 7d | month | late | missing · cutoff (+ `on` · v5 ลิงก์ของกระดิ่งวันตัดรอบ) · ค่าที่ไม่รู้จัก = ไม่กรอง
      ⚠️ ตัวกรองนี้ตัดงวดที่ยังไม่มีวันวางบิลออกตามความหมาย ⇒ ผู้เรียกต้องบอกส่วนที่ซ่อน (`ledgerBillingTally`) */
-  const billingFilter = ledgerBillingFilter(billing);
+  const billingFilter = ledgerBillingFilter(billing, on);
+  const cutoffOn = ledgerCutoffOn(on);
   const wantedOrders = Array.isArray(orderState) ? orderState.filter(Boolean) : [];
   /* สายของงาน — ค่าที่รับคือ 'service' (ใบที่เข้าเกณฑ์มีรอบบริการ) กับ 'other' (ที่เหลือ)
      ⚠️ **ไม่ใช่ตัวกรองสายธุรกิจดิบ** — เกณฑ์เต็มคือ สาย SERVICE **และ** มีบรรทัดหมวด
@@ -689,6 +767,8 @@ export function filterLedger(rows = [], {
     if (billingFilter === 'late' && !r.billingLate) return false;
     // รุ่นสี่: ต้องวางบิลแต่ยังไม่มีวันวางบิล — ธงของตัวคิด (`ledgerFlags().missingBilling`) ไม่คิดกติกาซ้ำที่นี่
     if (billingFilter === 'missing' && !r.billingMissing) return false;
+    // v5: วันตัดรอบ = ชุดของกระดิ่งวันตัดรอบเป๊ะ (ธงมาจากตัวคัดของกระดิ่ง ที่ route) · เส้นตายต้องตรงวันที่ลิงก์ขอ
+    if (billingFilter === LEDGER_BILLING_CUTOFF && r.billingCutoffOn !== cutoffOn) return false;
     // `soon` ของกำหนดชำระ = ชุดของกระดิ่ง "ครบกำหนดชำระ" เป๊ะ (ธงมาจากตัวคัดของกระดิ่ง ที่ route)
     if (dueFilter === 'soon' && !r.dueSoon) return false;
     /* ⚠️ **งวดที่ยังไม่มีกำหนดชำระถูกตัดออกเมื่อกรองช่วงวัน** — และนั่นถูกต้องตาม
@@ -761,11 +841,14 @@ export function ledgerBillingTally(rows = [], filters = {}) {
   /* ⭐ รุ่นสี่: "ควรมีวันแต่ไม่มี" = รอเหตุการณ์ของงวดที่ต้องวางบิล หรือ `billingMissing` (ต้องวางบิลจริง · ไม่ติ๊ก · ไม่ใช่รูปเดิม)
        ⇒ ลูกค้า/งวดที่ไม่ต้องวางบิล (`notNeeded`) ไม่ถูกนับว่าซ่อน · ผลเท่าเดิมทุกลูกค้ารุ่นหนึ่ง/สอง/รูปเดิม
      ⚠️ ตัวกรอง `missing` คืองวดชุดนั้นเอง ⇒ ไม่มีอะไร "ซ่อน" */
-  const filter = ledgerBillingFilter(filters.billing);
-  const undated = filter && filter !== 'missing'
+  const filter = ledgerBillingFilter(filters.billing, filters.on);
+  /* ⚠️ วันตัดรอบ (v5) ไม่มี "ส่วนที่ซ่อน" — งวดที่ไม่มีวันวางบิลไม่อยู่ในรอบไหนเลย (ไม่ใช่งวดของเส้นตายนี้ที่ถูกตัด)
+     นับเมื่อไร FN เปิดจากกระดิ่งวันตัดรอบแล้วเจอ "ยังมีอีก N งวด" ของลูกค้าทั้งทะเบียนที่ไม่เกี่ยวกับรอบนี้ */
+  const undated = filter && filter !== 'missing' && filter !== LEDGER_BILLING_CUTOFF
     ? base.filter((r) => billingOpenKey(r.billingStateKey) && r.billingStateKey !== 'notNeeded' && !r.billingDate
       && (String(r.billingEvent || '').trim() || r.billingMissing))
     : [];
+  const cutoffOn = ledgerCutoffOn(filters.on);
   return {
     counts: {
       soon: base.filter((r) => r.billingSoon).length,
@@ -773,6 +856,8 @@ export function ledgerBillingTally(rows = [], filters = {}) {
       month: base.filter((r) => r.billingThisMonth).length,
       late: base.filter((r) => r.billingLate).length,
       missing: base.filter((r) => r.billingMissing).length,
+      // ตัวเลือกชั่วคราวของวันตัดรอบ (ขึ้นในเมนูเฉพาะตอนกรองอยู่) — ไม่มีวัน = 0
+      cutoff: cutoffOn ? base.filter((r) => r.billingCutoffOn === cutoffOn).length : 0,
     },
     hidden: {
       count: undated.length,
@@ -854,6 +939,10 @@ function nextBillingOf(rows) {
     billingDate: row.billingDate,
     state: { key: row.billingStateKey || 'none', days: row.billingDays ?? null },
     requested: Boolean(row.billingRequested),
+    /* v5 · บรรทัด "ตัดรอบ พ. 21 ต.ค. ก่อน 16:00 น." / "วางบิลภายใน … ทันรอบจ่าย" ของงวดนี้ ('' = ไม่มีรอบ) ·
+       ปีที่ยังไม่มีปฏิทิน = คำ "ยังไม่มีปฏิทิน 2027 · ใส่วันเองได้" แทน */
+    cutoffText: ledgerCutoffText({ date: row.billingCutoffDate, time: row.billingCutoffTime, kind: row.billingCutoffKind }),
+    calendarGap: row.billingCalendarGap || '',
   };
 }
 
@@ -877,6 +966,9 @@ export function groupLedgerByOrder(rows = []) {
         customerId: row.customerId || null,
         billingRuleText: row.billingRuleText || '',
         billingRuleActive: Boolean(row.billingRuleActive),
+        // v5 · รอบถัดไปของลูกค้า + แถบ "ขอปฏิทิน YYYY" — ค่าระดับลูกค้า ทุกงวดพกค่าเดียวกันมา (ดู `ledgerCustomerOutlook`)
+        customerNextRun: row.customerNextRun || '',
+        customerCalendarRequest: row.customerCalendarRequest || '',
         orderStatus: row.orderStatus,
         financeStatus: row.financeStatus,
         // ผู้ดูแลมาจากดีลของใบ (ดู `ledgerRow`) — ใช้จัดกลุ่ม "ผู้ดูแล (AE)"

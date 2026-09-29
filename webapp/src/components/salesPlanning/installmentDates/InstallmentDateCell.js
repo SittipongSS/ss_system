@@ -10,10 +10,15 @@
 //   · ไม่ต้องวางบิล/ติ๊กรายงวด = เซลล์วันวางบิลเป็นคำ "—" (หัวคอลัมน์บอก "ไม่ต้องวางบิล" ครั้งเดียว · ติ๊ก = "ไม่ต้องวางบิล · เฉพาะงวดนี้")
 //     ไม่ใช่ปุ่ม (ไม่มีอะไรให้ตั้ง — ทางได้วันวางบิลคือ "งวดนี้ต้องวางบิล…") · รอเหตุการณ์อยู่ช่องกำหนดชำระ (ช่องนำของเขา)
 //   · ยังไม่ระบุ/รูปเดิม = วันวางบิล "ไม่บังคับ" · กำหนดชำระว่าง = "ตั้งกำหนดชำระ" (ช่องนำ — ไม่ใช่ "ได้เองเมื่อเลือกวันวางบิล")
+// ⭐ รอบห้า (มติเจ้าของ 29/09 · ปฏิทินรายปีของลูกค้า): วันวางบิลที่เป็นวันตัดรอบมีเวลา = "ส่งก่อน 16:00 น." ใต้วัน ·
+//   วันวางบิลตกปีที่ปฏิทินยังไม่มี = ช่องกำหนดชำระบอก "ยังไม่มีปฏิทิน 2027 · ใส่วันเองได้" (ไม่มีวันคิดให้ — หยุด ไม่ประมาณ)
+//   ใส่เองแล้ว = "ใส่เอง · ยังไม่มีปฏิทิน 2027" · งวดว่างที่ไม่มีรอบให้เลือกต่อแล้ว = "ตั้งวันวางบิล" + เหตุ (ไม่ชวน "เลือกรอบ")
 import { CalendarPlus, Hourglass, Lock, PencilLine } from "lucide-react";
 import { NA } from "@/lib/format";
 import { NO_BILLING_TEXT, formatBillingDate, formatRoundChip, weekendNote } from "@/lib/sales/billingRule";
-import { datesOf, dueSourceOf, splitsFields } from "@/lib/sales/installmentDateDrafts";
+import {
+  billingCutoffNote, calendarGapHead, datesOf, dueSourceOf, rowCalendarGap, splitsFields,
+} from "@/lib/sales/installmentDateDrafts";
 import { BillNode, DueNode } from "./InstallmentDateParts";
 import styles from "./InstallmentDates.module.css";
 
@@ -80,30 +85,49 @@ export default function InstallmentDateCell({ mode, row, field, billColumn = tru
   }
   let main;
   const sub = [];
+  /* ⭐ รอบห้า: งวดที่ยังไม่มีวันของลูกค้าตามปฏิทิน ที่ไม่มีรอบให้เลือกต่อจากงวดก่อนแล้ว (ปีถัดไปยังไม่มีปฏิทิน) — ไม่ชวน "เลือกรอบ"
+     ที่ไม่มีอยู่จริง · คำเดียวกับตัวแก้ (`rowCalendarGap` → `roundChoicesFor`) */
+  const emptyGap = !v.billingDate && !v.billingEvent && rm.kind === "rounds"
+    ? rowCalendarGap(mode.ruleValue, mode.rows, mode.current, row, mode.todayIso, { holidays: mode.holidays }) : null;
   if (field === "bill") {
     if (v.billingEvent) main = <><Hourglass size={13} aria-hidden="true" /><b>{v.billingEvent}</b></>;
     else if (v.billingDate) main = <><BillNode /><b>{formatBillingDate(v.billingDate)}</b></>;
     else {
-      main = <span className={styles.cellEmpty}><CalendarPlus size={13} aria-hidden="true" />{rm.kind === "rounds" ? "เลือกรอบ" : "ตั้งวันวางบิล"}</span>;
+      main = <span className={styles.cellEmpty}><CalendarPlus size={13} aria-hidden="true" />{rm.kind === "rounds" && !emptyGap ? "เลือกรอบ" : "ตั้งวันวางบิล"}</span>;
       /* ยังไม่ระบุ/รูปเดิม — ช่องนี้เลือกได้แต่ไม่บังคับ (ไม่มีวันวางบิลปลอม · รอบกรรมการ 29/09) */
       if (rm.billingColumn === "optional") sub.push(<span key="opt">ไม่บังคับ</span>);
+      if (emptyGap) sub.push(<span key="gap" data-tone="warn">{emptyGap.text}</span>);
     }
     const was = saved.billingDate || saved.billingEvent;
     const now = v.billingDate || v.billingEvent;
     if (changed && was && was !== now) {
       sub.push(<span key="was">เดิม <s>{saved.billingDate ? formatRoundChip(saved.billingDate) : saved.billingEvent}</s></span>);
     }
+    const cut = v.billingDate ? billingCutoffNote(mode.ruleValue, v.billingDate) : "";
+    if (cut) sub.push(<span key="cut">{cut}</span>);
     if (weekendNote(v.billingDate)) sub.push(<span key="we" data-tone="warn">{weekendNote(v.billingDate)}</span>);
   } else {
-    if (v.dueDate) main = <><DueNode /><b>{formatBillingDate(v.dueDate)}</b></>;
+    const source = dueSourceOf(mode.ruleValue, v);
+    if (v.dueDate) {
+      main = <><DueNode /><b>{formatBillingDate(v.dueDate)}</b></>;
+      if (source.key === "manual" && source.gap) sub.push(<span key="gap">{`${source.label} · ${calendarGapHead(source.gap)}`}</span>);
+    }
     /* ไม่ต้องวางบิล: รอเหตุการณ์คุมกำหนดชำระ ⇒ พูดที่ช่องนี้ (ช่องวันวางบิลเป็นขีด) */
     else if (v.billingEvent && (!billColumn || dueOnly)) main = <><Hourglass size={13} aria-hidden="true" /><b>รอเหตุการณ์ · {v.billingEvent}</b></>;
     else if (splitsFields(rm) && !v.billingEvent) main = <span className={styles.cellEmpty}><CalendarPlus size={13} aria-hidden="true" />ตั้งกำหนดชำระ</span>;
-    else if (dueSourceOf(mode.ruleValue, v).key === "missing") {
+    else if (source.key === "calendarMissing") {
+      /* ⭐ รอบห้า: วันวางบิลตกปีที่ปฏิทินยังไม่มี — ไม่ใช่ "ได้เองเมื่อเลือกรอบ" (รอบไม่มีจนกว่าจะใส่ปฏิทิน) · แตะแล้วพิมพ์เองได้ */
+      main = <span>{NA}</span>;
+      sub.push(<span key="gap" data-tone="warn">{source.label}</span>);
+    } else if (source.key === "missing") {
       /* มีวันวางบิลแล้วแต่ไม่มีกำหนดชำระ ทั้งที่กติกาคิดให้ได้ — "ได้เองเมื่อเลือกวันวางบิล" ไม่จริง (วันวางบิลมีแล้ว)
          ⇒ บอกตรง ๆ · แตะแล้วตัวแก้มีปุ่มแตะเดียว "ใช้วันตามรอบ"/"ใช้วันวางบิล" (review 28/09) · ป้ายเลยกำหนดไม่มีวันให้นับ = โทนเตือน */
       main = <span>{NA}</span>;
       sub.push(<span key="missing" data-tone="warn">ยังไม่มีกำหนดชำระ</span>);
+    } else if (emptyGap) {
+      /* ไม่มีรอบให้คิด (ปีที่ยังไม่มีปฏิทิน) — ไม่ใช่ "ได้เองเมื่อเลือกรอบ" · ช่องวันวางบิลบอกเหตุเต็มแล้ว ที่นี่แค่หัว */
+      main = <span>{NA}</span>;
+      sub.push(<span key="gap">{calendarGapHead(emptyGap)}</span>);
     } else {
       main = <span>{NA}</span>;
       sub.push(<span key="auto">{v.billingEvent ? "ตามเหตุการณ์" : rm.kind === "rounds" ? "ได้เองเมื่อเลือกรอบ" : "ได้เองเมื่อเลือกวันวางบิล"}</span>);
