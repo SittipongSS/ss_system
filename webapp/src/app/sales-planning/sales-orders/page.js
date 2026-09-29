@@ -5,10 +5,11 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { BadgeCheck, CircleDollarSign, ClipboardCheck, ClipboardList, FileText, Flag, History, Search, UserRound, Wallet } from "lucide-react";
+import { BadgeCheck, CircleDollarSign, ClipboardCheck, ClipboardList, FileText, Flag, History, Repeat, Search, UserRound, Wallet } from "lucide-react";
 import SaWorkspace, { ListPanel, Metric as SaMetric, MetricStrip as SaMetricStrip } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
 import Button from "@/components/ui/Button";
+import CountBadge from "@/components/ui/CountBadge";
 import FilterPopover from "@/components/ui/FilterPopover";
 import ApprovalQueue from "@/components/ui/ApprovalQueue";
 import { CollapseAllButton, GroupMenu, SortDirButton, SortMenu } from "@/components/ui/ViewMenus";
@@ -148,6 +149,21 @@ function roundsCell(service) {
 // โทนของบรรทัดสถานะการชำระ — ใช้คลาสกลางชุดเดียวกับตัวเลขในตาราง
 const NOTE_TONE = { danger: "cell-num-bad", success: "cell-num-ok", warning: "", idle: "" };
 
+/* ── แถวคิว "งานบริการ (ใบเดิม)" (mig 0392 · PR-A · D26) ─────────────────────────────
+   ใบที่อนุมัติไปก่อนมีการตั้งงานบริการรายบรรทัด ⇒ ฝ่ายขายตั้งย้อนหลังแล้วยื่นให้ผู้จัดการฝ่ายขายตรวจ
+   ⭐ **แถวในคิวเดียวกับใบรออนุมัติ ไม่ใช่คิวที่สอง** — ชนิดงานอยู่หน้าเลขใบ (คิวกลางมีแค่บรรทัดหลัก/รอง)
+   ⭐ ตัวเลขทุกตัวมาจาก server (`serviceReview` = serviceSetupTotals ชุดเดียวกับแถบผู้อนุมัติบนหน้าใบ) — จอไม่นับโซนเอง
+   ⭐ "ไม่นับ Actual" = การอนุมัติงานบริการไม่แตะยอด (ใบนับ Actual ไปแล้วตอนอนุมัติใบ) ⇒ ผู้จัดการรู้ก่อนเปิดว่า
+     ไม่ใช่การอนุมัติใบซ้ำ · ⚠️ บรรทัดนี้ไม่พูดยอดเงินโดยเจตนา
+   ⚠️ ชื่อผู้ยื่นเต็มตัวเดียวกับหัวโมดัลอนุมัติบนหน้าใบ (`approvalSubject`) — ไม่ย่อ */
+const SERVICE_REVIEW_LABEL = "งานบริการ (ใบเดิม)";
+function serviceReviewLine(order) {
+  const review = order.serviceReview || {};
+  const submitted = [naText(review.submittedByName), review.submittedAt ? fmtDate(review.submittedAt) : null]
+    .filter(Boolean).join(" ");
+  return `${naText(order.customerName)} · ${naText(review.zones)} โซนใน ${naText(review.sites)} ไซต์ · ${naText(review.roundsLabel)} · ไม่นับ Actual · ยื่นโดย ${submitted}`;
+}
+
 /* ── มุมมองของตาราง: เรียง · จัดกลุ่ม (มติผู้ใช้ 2026-08-15) ────────────────
    ทรงเดียวกับทะเบียนการชำระและตารางไปป์ไลน์ดีล — ปุ่มอยู่ใน `ui/ViewMenus`
    ตัวจัดถังอยู่ใน `lib/listGrouping` · ที่นี่ประกาศแค่ "หัวข้อของหน้านี้" */
@@ -225,13 +241,15 @@ const ORIGIN_FILTERS = {
 };
 
 /* ⚠️ **ใบที่ยังไม่มีกำหนดชำระอยู่ท้ายเสมอ ไม่ว่าเรียงขึ้นหรือลง** — กติกาเดียวกับ
-   ทะเบียนการชำระ: ยังไม่ถูกนัดวัน = ยังไม่ใช่งานของสัปดาห์นี้ */
+   ทะเบียนการชำระ: ยังไม่ถูกนัดวัน = ยังไม่ใช่งานของสัปดาห์นี้
+   ⭐ "กำหนดชำระ" = กำหนดชำระถัดไปจาก **งวด** (`payment.nextDue` · กำหนดวางบิลรอบสอง 26/09) ตัวเดียวกับบรรทัด
+     "กำหนด …" ในเซลล์และหัวใบ — 🐞 เดิมเรียงด้วย `paymentDueDate` ค่าตายของใบ ⇒ ลำดับไม่ตรงกับวันที่ตาเห็น */
 function compareOrders(a, b, key, dir) {
   const mul = dir === "desc" ? -1 : 1;
   const text = (value) => String(value || "");
   if (key === "due") {
-    const aDue = a.paymentDueDate || null;
-    const bDue = b.paymentDueDate || null;
+    const aDue = a.payment?.nextDue || null;
+    const bDue = b.payment?.nextDue || null;
     if (!aDue !== !bDue) return aDue ? -1 : 1;
     if (aDue !== bDue) return (String(aDue) < String(bDue) ? -1 : 1) * mul;
   } else if (key === "actual") {
@@ -272,6 +290,15 @@ export default function SalesOrdersPage() {
      (ใบที่คนอื่นโดนตีกลับก็ status เดียวกัน แต่ไม่ใช่ของค้างของเรา) */
   const navCountParam = useSearchParams().get("count") || "";
   const [waitingOnMeOnly, setWaitingOnMeOnly] = useState(navCountParam === "salesOrders");
+  /* ⭐ ชิป "ยังไม่ตั้งงานบริการ" (mig 0392 · D26) — ใบที่อนุมัติแล้วแต่ยังต้องตั้งงานบริการย้อนหลัง (ธง `_serviceSetupPending`
+     จาก server = `serviceBackfillNeeded` ตัวเดียวกับหน้าใบ/เลน "รอฉันลงมือ"/คิว TS) · **ปุ่มสลับบนแถบ ไม่ใช่ตัวเลือกใน
+     กล่องกรอง** (กฎ direct controls — ของค้าง ~59 ใบต้องเห็นตัวเลขโดยไม่ต้องเปิดกล่อง) ⇒ ไม่นับใน `filterCount` */
+  const [serviceSetupPendingOnly, setServiceSetupPendingOnly] = useStickyState("serviceSetupPendingOnly", false);
+  // ⚠️ นับจาก `rows` ทั้งหมด ไม่ใช่ `filtered` — ตัวเลขบนชิปไม่หดตามตัวกรองอื่น (ฐานเดียวกับการ์ดสรุปบนหัว)
+  const serviceSetupPendingCount = useMemo(
+    () => rows.filter((row) => row._serviceSetupPending).length,
+    [rows],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -312,6 +339,7 @@ export default function SalesOrdersPage() {
     const q = query.trim().toLowerCase();
     return rows.filter((row) => {
       if (waitingOnMeOnly && !row._waitingOnMe) return false;
+      if (serviceSetupPendingOnly && !row._serviceSetupPending) return false;
       if (lineView !== "all" && row.businessLine !== lineView) return false;
       if (statusFilter.length && !statusFilter.includes(row.status)) return false;
       // หลายหมวดการชำระ = "อย่างใดอย่างหนึ่ง" (เลยกำหนด **หรือ** ถูกตีกลับ = ใบที่ต้องตาม)
@@ -328,7 +356,7 @@ export default function SalesOrdersPage() {
       return !q || [row.orderNumber, row.customerName, row.customerArCode, row.deal?.title, row.deal?.ownerName, row.quotation?.quoteNumber, row.referenceDoc, ...historicalRefsOf(row)]
         .some((value) => String(value || "").toLowerCase().includes(q));
     });
-  }, [query, rows, statusFilter, paymentFilter, invoiceFilter, originFilter, waitingOnMeOnly, lineView]);
+  }, [query, rows, statusFilter, paymentFilter, invoiceFilter, originFilter, waitingOnMeOnly, serviceSetupPendingOnly, lineView]);
 
   /* `recent` = ลำดับที่ API ส่งมา (ล่าสุดก่อน) — ไม่คิดใหม่ที่นี่ ไม่งั้นมีกติกา
      "ล่าสุด" สองชุดที่เพี้ยนหากันได้ · สลับทิศคือกลับลำดับเดิม */
@@ -380,7 +408,7 @@ export default function SalesOrdersPage() {
     + (waitingOnMeOnly ? 1 : 0);
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
-    usePagination(sorted, { resetKey: `${query}|${statusFilter.join()}|${paymentFilter.join()}|${invoiceFilter.join()}|${originFilter.join()}|${waitingOnMeOnly}|${lineView}|${sortKey}|${sortDir}` });
+    usePagination(sorted, { resetKey: `${query}|${statusFilter.join()}|${paymentFilter.join()}|${invoiceFilter.join()}|${originFilter.join()}|${waitingOnMeOnly}|${serviceSetupPendingOnly}|${lineView}|${sortKey}|${sortDir}` });
 
   /* ⭐ **คิวบนหัวหน้าเดินตามเปลือกของคนดู** (มติผู้ใช้ 2026-08-25)
      ทะเบียนใบสั่งขายอยู่ในเมนูของทั้งสายขายและฝ่ายบัญชี (มติ 2026-08-22 · SHARED_DOC_ITEMS)
@@ -394,10 +422,15 @@ export default function SalesOrdersPage() {
      ⚠️ ปุ่มยังเป็น "เปิดใบ" ทั้งสองโหมด — ด่านตรวจ/อนุมัติอยู่ที่หน้าเอกสารที่เดียว
      (กฎความเป็นเจ้าของโมดูล ข้อ 3: "ด่านเดียว ไม่ใช่จอเดียว") */
   const financeShell = useShellSystem(usePathname()) === "finance";
+  /* ⭐ เปลือกงานขายรวมแถว "งานบริการ (ใบเดิม)" ที่รอฉันตรวจ (mig 0392 · D26) — ธงจาก server ผ่านตัวตัดสินตัวเดียว
+     (`serviceBackfillAwaitingReview`: ค่า 'submitted' ค้างบนใบที่ย้อนอนุมัติ/ออก Rev./ยกเลิกแล้วไม่ขึ้น) และตัดคนยื่นเอง
+     ยกเว้น admin · ⚠️ ไม่ชนกับ `_awaitingMyApproval` บนแถวเดียวกัน (อันนั้น pending_approval · อันนี้ approved) */
   const approvalQueue = useMemo(
-    () => rows.filter((row) => (financeShell ? row._awaitingFinanceReview : row._awaitingMyApproval)),
+    () => rows.filter((row) => (financeShell ? row._awaitingFinanceReview : (row._awaitingMyApproval || row._awaitingMyServiceReview))),
     [rows, financeShell],
   );
+  // เปลือกบัญชีไม่มีแถวชนิดนี้ — ใบเดียวกันอาจติดคิวปิดใบของบัญชีด้วย (admin) ซึ่งต้องพูดเรื่องเงินตามเดิม
+  const serviceReviewRow = (o) => !financeShell && !!o._awaitingMyServiceReview;
 
   /* ⭐ ตัวเลขบนการ์ดทั้งแถบคิดจาก `rows` ชุดเดียวกัน (ทุกใบในขอบเขตที่ดูได้ ไม่ใช่ตามตัวกรอง)
      ผ่าน `splitSalesOrderAmounts` ตัวกลาง — กติกาเดียวกับ cache บนดีล (mig 0353)
@@ -489,9 +522,11 @@ export default function SalesOrdersPage() {
                       คำเดียวกันสองบรรทัด (เจอตอนกดดูรอบแรก) */}
                   <td className="num mono">
                     {paymentCell(row.payment)}
-                    {/* วันครบกำหนดเป็นบรรทัดรองของงวด — แดงเมื่อเลยกำหนด (โทนเดิม) */}
+                    {/* วันครบกำหนดเป็นบรรทัดรองของงวด — แดงเมื่อเลยกำหนด (โทนเดิม)
+                        ⭐ กำหนดชำระถัดไปจากงวด (`payment.nextDue`) ไม่ใช่ `paymentDueDate` ค่าตายของใบ (กำหนดวางบิลรอบสอง 26/09)
+                        · ไม่มีงวดค้างที่มีวัน / ยังไม่เริ่มติดตาม = ขีด */}
                     <span className={`cell-sub ${row.payment?.overdue ? "cell-num-bad" : ""}`.trim()}>
-                      กำหนด {fmtDate(row.paymentDueDate)}
+                      กำหนด {row.payment?.nextDue ? fmtDate(row.payment.nextDue) : NA}
                     </span>
                   </td>
                   <td className="num mono">{taxInvoiceCell(row.payment)}</td>
@@ -568,15 +603,19 @@ export default function SalesOrdersPage() {
           items={approvalQueue}
           unit="ใบ"
           title={financeShell ? "ต้องทำตอนนี้ — ใบที่เก็บครบแล้ว รอปิด" : "ต้องทำตอนนี้ — รออนุมัติจากคุณ"}
-          primary={(o) => o.orderNumber}
+          primary={(o) => (serviceReviewRow(o) ? `${SERVICE_REVIEW_LABEL} · ${o.orderNumber}` : o.orderNumber)}
           /* ⭐ คิวรออนุมัติโชว์ **ยอดก่อน VAT** ตัวเดียวกับการ์ด "รอตรวจอนุมัติ" (มติ 2026-09-11)
              — เดิมเป็น totalAmount รวม VAT ⇒ ใบเดียวกันมีสองยอด "รออนุมัติ" บนหน้าเดียว
              ⚠️ คิวของเปลือกบัญชี (ใบเก็บครบรอปิด) ยังเป็นยอดรวม VAT = เงินที่เก็บจริง */
           /* ⭐ ใบย้อนหลังในคิวนี้ต่อท้ายว่าไม่นับ Actual (มติ 22/09) — AE Sup กดจากคิวได้เลย
              จึงต้องรู้ตั้งแต่ก่อนเปิดว่ากำลังจะอนุมัติใบคนละกองกับยอดในการ์ดข้างบน */
+          /* ⭐ แถว "งานบริการ (ใบเดิม)" (mig 0392) พูดงานบริการ ไม่พูดยอด — ดู `serviceReviewLine` · ใบชนิดนี้ไม่เคยเป็นใบย้อนหลัง
+             (ตัวตัดสินตัดทิ้งแล้ว) ⇒ ท้าย "ใบย้อนหลัง" ไม่มีทางต่อซ้ำ */
           secondary={(o) => (financeShell
             ? `${naText(o.customerName)} · ${fmtMoney(o.totalAmount)}`
-            : `${naText(o.customerName)} · ${fmtMoney(o.actualAmount)} ก่อน VAT`)
+            : serviceReviewRow(o)
+              ? serviceReviewLine(o)
+              : `${naText(o.customerName)} · ${fmtMoney(o.actualAmount)} ก่อน VAT`)
             + (isHistoricalOrder(o) ? " · ใบย้อนหลัง · ไม่นับ Actual" : "")}
           rowHref={(o) => `/sa/sales-orders/${o.id}`}
           renderAction={(o) => (
@@ -601,12 +640,28 @@ export default function SalesOrdersPage() {
               value={lineView}
               onChange={setLineView}
             />
+            {/* ⭐ ชิป "ยังไม่ตั้งงานบริการ n" (mig 0392 · D26 · ม็อก BackfillApproveModal) — ติดท้ายมุมมองสาย · ขึ้นเมื่อมีของ
+                หรือกำลังเปิดอยู่ (ซ่อนตอนเปิด = ปิดไม่ได้) · กดซ้ำ = ถอด · ปุ่มตัวกรองล้างให้ด้วย */}
+            {(serviceSetupPendingCount > 0 || serviceSetupPendingOnly) && (
+              <Button
+                size="sm"
+                tone={serviceSetupPendingOnly ? "primary" : undefined}
+                variant={serviceSetupPendingOnly ? "filled" : "outline"}
+                icon={<Repeat size={14} aria-hidden="true" />}
+                aria-pressed={serviceSetupPendingOnly}
+                title="ใบที่อนุมัติแล้วแต่ยังไม่ได้ตั้งแพ็คเกจ · โซน · รอบ · ช่วงบริการ — ฝ่ายขายตั้งย้อนหลังที่หน้าใบ แล้วยื่นให้ผู้จัดการตรวจ"
+                onClick={() => setServiceSetupPendingOnly((on) => !on)}
+              >
+                ยังไม่ตั้งงานบริการ
+                <CountBadge count={serviceSetupPendingCount} label="ใบที่ยังไม่ตั้งงานบริการ" />
+              </Button>
+            )}
             <div className="search-glass"><Search size={16} color="var(--text-3)" aria-hidden="true" /><input autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเลข SO / QT / ลูกค้า / AR / ดีล / เอกสารอ้างอิง / เลขเดิม" aria-label="ค้นหาใบสั่งขาย" /></div>
             <FilterPopover
               count={filterCount}
               onClear={() => {
                 setStatusFilter([]); setPaymentFilter([]); setInvoiceFilter([]); setOriginFilter([]);
-                setWaitingOnMeOnly(false);
+                setWaitingOnMeOnly(false); setServiceSetupPendingOnly(false);
               }}
               groups={[
                 {

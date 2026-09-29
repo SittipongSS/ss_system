@@ -22,7 +22,7 @@ import { dayText, daysBetween, relDayText, thaiDayOf } from './queueWords';
 import {
   surveyChangeCounts, surveyChangeText, surveyGateChecklist, surveyTotals,
 } from './survey';
-import { surveyControlView, surveyZoneFacts } from './surveyControl';
+import { surveyControlView, surveySendBackAskText, surveyZoneFacts } from './surveyControl';
 import { VISIT_STATUS_LABELS, holdsRequestSlot, isClosedVisit } from './visitStatus';
 
 const join = (...parts) => parts.flat().filter(Boolean).join(' · ');
@@ -89,10 +89,15 @@ function stageOf(request, visit, control, today, { filesUnknown = false, sendBac
     return key === 'awaiting-submit' ? 'awaiting-submit' : 'measuring';
   }
   if (reachedSite(visit)) {
-    if (key === 'recalled' || key === 'ready') return key;
+    if (key === 'recalled') return key;
+    /* 🐞 **ส่งกลับที่ค้างมาก่อนของขาด** (แผน §10.5 S4 · ม็อก A-5/AW-2) — หัวหน้าส่งกลับได้แม้ฝั่งช่างครบแล้ว
+       (ขอรูปเพิ่ม) · เดิมขั้นดูของขาดก่อน ⇒ ช่างครบ = "รอหัวหน้าเคาะ"/"พร้อมส่งผล" ตาหัวหน้า ทั้งที่คนที่ต้อง
+       ขยับคือช่าง · ⚠️ "ดึงกลับ" ยังมาก่อน — ใบที่ถูกดึงกลับ ตาหัวหน้าแก้ผลแล้วส่งอีกครั้ง */
+    if (sendBack?.pending) return 'sent-back';
+    if (key === 'ready') return key;
     /* 🐞 **ช่างส่งงานแล้ว (นัดปิด) แต่ของฝั่งช่างยังขาด** — ปุ่ม "ส่งงาน" ไม่มีแล้ว ⇒ ห้ามบอกให้ช่างกดส่งงาน
        ตาเป็นของหัวหน้า (ส่งกลับให้ช่างแก้ · ตัดพื้นที่) · ส่งกลับไปแล้ว = ตาช่างกด "แจ้งหัวหน้าว่าแก้แล้ว" (มติ 22/09) */
-    if (key === 'measuring') return sendBack?.pending ? 'sent-back' : 'crew-gaps';
+    if (key === 'measuring') return 'crew-gaps';
     return 'awaiting-decision';
   }
   if (visit?.status === 'draft') return 'visit-draft';
@@ -537,6 +542,7 @@ export function surveyJobView({
   );
   const leftGaps = (control.zoneGaps?.rows || []).filter((row) => row.crew.length);
   const gapText = leftGaps.length === 1 ? `ขาด: ${leftGaps[0].crew.join(' · ')}` : '';
+  const sendBackAsk = surveySendBackAskText(request.surveySendBack?.sentBack);
   const headWho = `หัวหน้า ${dept}`;
   const requesterWho = viewer.isOpener ? 'คุณ' : (request.requestedByName || requesterLabel);
   const nowByStage = {
@@ -614,9 +620,12 @@ export function surveyJobView({
       sub: join(
         request.surveySendBack?.sentBack?.at && `ส่งกลับ ${stampText(request.surveySendBack.sentBack.at)}`,
         request.surveySendBack?.sentBack?.byName && `โดย ${request.surveySendBack.sentBack.byName}`,
-        gapText || (progress.leftText && `ขาดที่ ${progress.leftText}`),
+        /* 🔄 S4 — ฝั่งช่างครบแล้วก็ส่งกลับได้ ⇒ ไม่มีของขาดให้เล่า ต้องบอกว่าหัวหน้า **ขออะไร**
+           (ไม่งั้นแถบเหลือแค่ "ใคร · เมื่อไร") · ข้อความชุดเดียวกับกล่องของหัวหน้าบนใบประเมิน */
+        gapText || (progress.leftText && `ขาดที่ ${progress.leftText}`)
+          || (sendBackAsk && `ขอ ${sendBackAsk}`),
       ),
-      next: `ช่างแก้ตามที่ขาด แล้วกด “แจ้งหัวหน้าว่าแก้แล้ว” ที่ใบประเมิน → ${headWho} เคาะแล้วส่งผล`,
+      next: `ช่างแก้ตามที่หัวหน้าแจ้ง แล้วกด “แจ้งหัวหน้าว่าแก้แล้ว” ที่ใบประเมิน → ${headWho} เคาะแล้วส่งผล`,
       turn: { side: dept, who: crewWho },
     },
     ready: {

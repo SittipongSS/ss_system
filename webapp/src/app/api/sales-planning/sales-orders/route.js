@@ -10,12 +10,18 @@ import { isSalesOrderSelfApproval } from '@/lib/sales/salesOrderApprovalOverride
 import { awaitsFinanceReview } from '@/lib/sales/salesOrderFinanceApproval';
 import { canConfirmPayment } from '@/lib/permissions';
 import { salesOrderPaymentCell } from '@/lib/sales/salesOrderPayments';
-import { ensureInstallments, loadInstallments, updateInstallment } from '@/lib/sales/salesOrderInstallmentsStore';
+import { ensureInstallments } from '@/lib/sales/salesOrderInstallmentsStore';
 import { validateOrderConfirmation, sanitizeEvidenceAttachments, DEFAULT_EVIDENCE_BUCKET } from '@/lib/sales/orderConfirmationDocs';
 import { parseDeliveryDueDate } from '@/lib/sales/salesOrderDeliveryDue';
+import { parseCreateFormInstallments } from '@/lib/sales/salesOrderCreateInstallments';
+import { billingFlagShapeError, scheduleExceptionSummary, scheduleExceptionsOf } from '@/lib/sales/installmentScheduleMany';
+import { loadScheduleRule } from '@/lib/sales/installmentScheduleServer';
+import { BILLING_V4_SCHEMA_MISSING, probeBillingSkip } from '@/lib/sales/billingPolicySchema';
+import { applyCreateFormPayments } from '@/lib/sales/salesOrderCreatePayments';
 import { missingStoredEvidence } from '@/lib/upload/privateEvidence';
 import { businessDate } from '@/lib/businessDate';
-import { orderBusinessLineOf, orderHasServiceRounds } from '@/lib/sales/serviceOrders';
+import { orderBusinessLineOf, orderHasServiceRounds, serviceVisitsSold } from '@/lib/sales/serviceOrders';
+import { serviceBackfillAwaitingReview, serviceBackfillNeeded, serviceSetupTotals } from '@/lib/sales/serviceSetup';
 import { paidThrough } from '@/lib/sales/paymentCoverage';
 
 export const dynamic = 'force-dynamic';
@@ -26,8 +32,10 @@ export const GET = withUser(async ({ user, supabase }) => {
 
   // ⚠️ ไล่ทีละหน้า — เพดาน 1,000 แถวตัดเงียบ ๆ · `orderDate` ซ้ำกันได้ทั้งวัน จึงพ่วง
   // `id` ปิดท้ายให้ลำดับนิ่ง ไม่งั้นไล่หน้าแล้วได้แถวซ้ำและแถวหายพร้อมกัน
+  // ⭐ `*` = พก "serviceTermsOpenedAt" + สถานะตั้งงานบริการย้อนหลัง (mig 0392) ให้ตัวตัดสินด่านเงิน/ชิป/เลนข้างล่าง
   const { data: orders, error } = await fetchAllResult(() => supabase
     .from('sales_orders')
+    /* money-decider feed */
     .select('*')
     .order('orderDate', { ascending: false })
     .order('createdAt', { ascending: false })
@@ -50,7 +58,12 @@ export const GET = withUser(async ({ user, supabase }) => {
     /* 🚫 ธงของ 0362 (`siteNotFoundAt`/`siteClosedAt`) ไม่ถูกอ่านที่นี่แล้ว (มติ 22/09) — ชิป/ตัวกรอง
        "TS ไม่พบจุด" ถอดไปพร้อมเส้นนั้น · บรรทัดใบย้อนหลังผูกโซนตั้งแต่ตอนคีย์ ⇒ ไม่มีจุดลอยให้แจ้ง
        ⚠️ คอลัมน์ยังอยู่ในฐาน (0 แถว) — ไม่ต้องเลือกมาเพื่อให้ทะเบียนเบาลงอีกช่อง */
-    .select('id, salesOrderId, qty, fgCode, description, sortOrder, "serviceRounds"')
+    /* ⭐ งานบริการรายบรรทัด (mig 0392): `"serviceFgCode"` = รหัสที่ด่านเงินอ่านเมื่อใบประทับ (D13) · `"productId"` +
+       `"serviceKind"` + หมวดของบรรทัดพิมพ์เอง = ชนิดของบรรทัด (`serviceLineRole`) ที่ชิป "ยังไม่ตั้งงานบริการ" และเลน
+       "รอฉันลงมือ" ถาม (D25) · `"serviceProductId"` = ตัวนับบรรทัดครบของแถวรอตรวจ
+       ⚠️ หมวดอ่าน **คีย์เดียว** ของ metadata (`categoryCode:metadata->>categoryCode`) ไม่ใช่ metadata ทั้งก้อน — ทะเบียนมีหลายพันบรรทัด */
+    /* money-decider feed */
+    .select('id, salesOrderId, qty, fgCode, "productId", description, sortOrder, "serviceRounds", "serviceKind", "serviceProductId", "serviceFgCode", categoryCode:metadata->>categoryCode')
     .in('salesOrderId', chunk)
     .order('salesOrderId', { ascending: true })
     .order('sortOrder', { ascending: true })
@@ -138,7 +151,12 @@ export const GET = withUser(async ({ user, supabase }) => {
   /* ── สายธุรกิจของใบ + สรุปงานบริการ (PR-D · มติผู้ใช้ 2026-08-27) ─────────
      ⚠️ สายธุรกิจอ่าน **โครงการก่อน แล้วดีล** (orderBusinessLine) ⇒ ต้องมีโครงการด้วย
      ไม่งั้นใบที่อยู่ใต้โครงการสายบริการจะตอบสายตามดีลซึ่งอาจว่าง = หลุดจากตัวกรอง */
-  const projectIds = [...new Set((deals || []).map((row) => row.projectId).filter(Boolean))];
+  /* ⭐ โครงการของ **ใบ** ด้วย (ไม่ใช่แค่ของดีล) — ตัวตัดสินอ่าน `order.projectId` ก่อนเสมอ · ใบที่โครงการไม่ตรงกับของดีล
+     เคยตกไปอ่านสายของดีล ⇒ ทะเบียนตอบคนละสายกับหน้าใบ (loadOrder) และป้ายเลนตั้งงานบริการย้อนหลังบนเมนู (ฝังโครงการของใบ) */
+  const projectIds = [...new Set([
+    ...(deals || []).map((row) => row.projectId),
+    ...(orders || []).map((row) => row.projectId),
+  ].filter(Boolean))];
   // ⚠️ ไล่ทีละหน้า — ทะเบียนโครงการโตเกิน 1,000 ได้ และ id ที่ส่งเข้ามาเป็นชุดใหญ่
   // ตามจำนวนดีลของทั้งทะเบียน (เพดานตัดเงียบ = ใบบางใบตอบสายผิดโดยไม่มีใครรู้)
   const { data: projects, error: projectError } = projectIds.length
@@ -185,6 +203,65 @@ export const GET = withUser(async ({ user, supabase }) => {
     }
   }
   const serviceIdSet = new Set(serviceOrderIds);
+
+  /* ── งานบริการรายบรรทัด (mig 0392 · PR-A) ─────────────────────────────────────────────────────────────
+     ⭐ โซนที่เลือกไว้ (sales_order_line_zones) โหลด **เฉพาะ** ใบที่ต้องใช้: ใบที่งานบริการย้อนหลังรอผู้จัดการตรวจ
+       (แถวคิว "งานบริการ (ใบเดิม)" — z โซนใน s ไซต์ · รอบ) และใบบริการที่ประทับแล้ว (รอบที่ขาย n/N นับรายไซต์ · D23)
+       ทั้งทะเบียนมีหลายพันใบ แต่สองกลุ่มนี้หลักสิบ ⇒ กรองก่อนค่อยยิง · ซอยก้อน + ไล่หน้า (หนึ่งบรรทัดมีได้ 500 โซน)
+     ⚠️ อ่านไม่ขึ้น = 500 (ห้ามกลืนเป็น "ไม่มีโซน" — แถวคิวจะบอก 0 โซนทั้งที่ตั้งไว้แล้ว) */
+  const lineCtx = { projectsById, dealsById: dealById };
+  const allocationOrderIds = (orders || [])
+    .filter((row) => serviceBackfillAwaitingReview(row) || (serviceIdSet.has(row.id) && row.serviceTermsOpenedAt))
+    .map((row) => row.id);
+  const allocationsByOrder = new Map();
+  const zonesById = new Map();
+  if (allocationOrderIds.length) {
+    const { data: allocations, error: allocationError } = await fetchInChunks(allocationOrderIds, (chunk) => fetchAllResult(() => supabase
+      .from('sales_order_line_zones').select('id, "salesOrderId", "salesOrderLineId", "zoneId", "packsPerRound", "sortOrder"')
+      .in('salesOrderId', chunk).order('id', { ascending: true })));
+    if (allocationError) return fail(allocationError.message, 500);
+    for (const row of allocations || []) {
+      const list = allocationsByOrder.get(row.salesOrderId) || [];
+      list.push(row);
+      allocationsByOrder.set(row.salesOrderId, list);
+    }
+    const zoneIds = [...new Set((allocations || []).map((row) => row.zoneId).filter(Boolean))];
+    const { data: zones, error: zoneError } = await fetchInChunks(zoneIds, (chunk) => fetchAllResult(() => supabase
+      .from('service_zones').select('id, "siteId"').in('id', chunk).order('id', { ascending: true })));
+    if (zoneError) return fail(zoneError.message, 500);
+    for (const zone of zones || []) zonesById.set(zone.id, zone);
+  }
+  /* แถวคิว "งานบริการ (ใบเดิม)" ของผู้จัดการ — ตัวเลขชุดเดียวกับแถบผู้อนุมัติ (serviceSetupTotals) */
+  const serviceReviewOf = (row) => {
+    const totals = serviceSetupTotals({
+      lines: linesByOrder.get(row.id) || [], allocations: allocationsByOrder.get(row.id) || [], zonesById,
+    });
+    let roundsLabel = '—';
+    if (totals.roundsMin !== null) {
+      roundsLabel = totals.roundsMixed ? `${totals.roundsMin}–${totals.roundsMax} รอบ/โซน` : `${totals.roundsMin} รอบ/โซน`;
+    }
+    return {
+      zones: totals.zones,
+      sites: totals.sites,
+      roundsLabel,
+      submittedByName: row.serviceSetupSubmittedByName || null,
+      submittedAt: row.serviceSetupSubmittedAt || null,
+    };
+  };
+  /* ใบที่อนุมัติแล้วแต่ยังต้องตั้งงานบริการย้อนหลัง (D25) — คิดครั้งเดียว ใช้ทั้งชิปและเลนเจ้าของดีลของ "รอฉันลงมือ" */
+  const setupPendingIds = new Set((orders || [])
+    .filter((row) => serviceBackfillNeeded(row, linesByOrder.get(row.id) || [], lineCtx))
+    .map((row) => row.id));
+  const reviewer = isSalesOrderReviewer(user.role);
+  /* สายธุรกิจรายใบ — คิดครั้งเดียว ใช้ทั้งคอลัมน์ `businessLine` และด่านเลนผู้ตรวจงานบริการ */
+  const businessLineById = new Map((orders || []).map((row) => [row.id, orderBusinessLineOf(
+    { ...row, deal: dealById.get(row.dealId) || null },
+    { projectsById, dealsById: dealById },
+  )]));
+  /* ⭐ ค่า 'submitted' บนใบที่สายของโครงการ/ดีลเปลี่ยนไปแล้ว (ยื่นตอนเป็นบริการ แล้วแก้สายระหว่างรอตรวจ) — ไม่ใช่งานของผู้ตรวจ:
+     RPC อนุมัติปฏิเสธ และหน้าใบไม่มีการ์ดงานบริการ ⇒ ขึ้นคิวแล้วเคลียร์ไม่ได้ · ค่าคงไว้ สายกลับเป็นบริการแล้วกลับมารอตรวจเอง */
+  const staleServiceReview = (row) => serviceBackfillAwaitingReview(row) && businessLineById.get(row.id) !== 'SERVICE';
+
   const visible = (orders || [])
     .map((row) => ({
       ...row,
@@ -194,6 +271,8 @@ export const GET = withUser(async ({ user, supabase }) => {
       quotation: quoteById.get(row.quotationId) || null,
       scentRequest: scentRequestByOrder.get(row.id) || null,
       // สรุปงวดพอให้ตารางวาดได้ — รายละเอียดเต็มอยู่ที่หน้ารายละเอียดใบ
+      // ⭐ `payment.nextDue` = กำหนดชำระถัดไปจากงวด (บรรทัด "กำหนด …" + การเรียง "กำหนดชำระ") แทน `paymentDueDate` ค่าตายของใบ
+      //   (กำหนดวางบิลรอบสอง 26/09) — คิดจาก `status` + `dueDate` ที่ loadListInstallments เลือกมาอยู่แล้ว ไม่ต้องอ่านเพิ่ม
       payment: salesOrderPaymentCell(
         installmentsByOrder.get(row.id) || [],
         quoteById.get(row.quotationId)?.paymentPlan,
@@ -212,7 +291,12 @@ export const GET = withUser(async ({ user, supabase }) => {
       /* ⚠️ ส่ง `role` ด้วยเสมอ — เลนผู้รีวิวตัดใบที่ตัวเองสร้าง/ยื่นออก ยกเว้น admin (อนุมัติใบตัวเองได้)
          ไม่ส่ง = admin ถูกตัดใบของตัวเองออก ⇒ ลิสต์ "รอฉันลงมือ" ไม่ตรงกับป้ายบนเมนู (nav/counts ส่ง role) */
       /* ⚠️ แนบ deal ให้ helper — ใบที่ถูกย้อนอนุมัติตัดสินจากเจ้าของดีล (มติ 24/09) · แถวดิบไม่มี deal = ลิสต์กับป้ายไม่ตรงกัน */
-      _waitingOnMe: isSalesOrderWaitingOnMe({ ...row, deal: dealById.get(row.dealId) || null }, { userId: user.id, reviewer: isSalesOrderReviewer(user.role), role: user.role })
+      /* ⭐ เลนงานบริการย้อนหลัง (mig 0392 · D26): ผู้จัดการตรวจ (ตัวตัดสินอ่านจากแถว) + เจ้าของดีลตั้ง — เลนหลังต้องรู้ว่า
+         ใบนี้ **ต้องตั้งจริง** (`serviceBackfillNeeded` ใช้บรรทัด + สายธุรกิจ) ⇒ ผู้เรียกคิดส่งเข้าไป · ป้ายบนเมนูคิดแบบเดียวกัน */
+      _waitingOnMe: isSalesOrderWaitingOnMe({ ...row, deal: dealById.get(row.dealId) || null }, {
+        userId: user.id, reviewer: reviewer && !staleServiceReview(row), role: user.role,
+        serviceBackfillNeeded: setupPendingIds.has(row.id),
+      })
         || (canConfirmPayment(user) && awaitsFinanceReview(row, installmentsByOrder.get(row.id) || [])),
       /* ⭐ ชุดย่อย "รอฉันอนุมัติ" — ตัดใบที่ตัวเองสร้าง/ยื่นออก เพราะอนุมัติเองไม่ได้
          (admin ใช้สิทธิ์ฉุกเฉินได้ แต่ต้องไปทำที่หน้าใบพร้อมเหตุผล ไม่ใช่จากคิว) */
@@ -227,20 +311,33 @@ export const GET = withUser(async ({ user, supabase }) => {
          รอปิด" ไม่ใช่ทุกใบที่อนุมัติ · ไม่ส่งงวด = ด่านตอบ false ⇒ คิวจะว่างเงียบ ๆ */
       _awaitingFinanceReview: canConfirmPayment(user)
         && awaitsFinanceReview(row, installmentsByOrder.get(row.id) || []),
+      /* ⭐ งานบริการย้อนหลังรอฉันตรวจ (mig 0392 · D28) — ตัวตัดสินตัวเดียว (ค่า 'submitted' ค้างบนใบที่ไม่ได้อนุมัติอยู่ไม่มีผล)
+         · ตัดคนยื่นเองออก ยกเว้น admin (Admin Override ที่หน้าใบ) — กติกาเดียวกับ `_awaitingMyApproval` */
+      _awaitingMyServiceReview: reviewer && serviceBackfillAwaitingReview(row)
+        && (user.role === 'admin' || row.serviceSetupSubmittedById !== user.id)
+        && !staleServiceReview(row),
+      /* ชิป "ยังไม่ตั้งงานบริการ" บนแถบเครื่องมือ — ใบที่อนุมัติแล้วแต่ยังต้องตั้งงานบริการย้อนหลัง (D25: มีบรรทัดที่ยังไม่ใช่
+         "ไม่ใช่งานบริการ" อย่างน้อยหนึ่ง · ทุกผิวถามตัวเดียวกัน) */
+      _serviceSetupPending: setupPendingIds.has(row.id),
+      /* ตัวเลขของแถวคิว "งานบริการ (ใบเดิม)" — มีเฉพาะใบที่รอผู้จัดการตรวจ */
+      serviceReview: serviceBackfillAwaitingReview(row) ? serviceReviewOf(row) : null,
       /* ⭐ สายธุรกิจของใบ — ตัวกรอง segmented บนทะเบียน (PR-D)
          สามค่า: 'PRODUCT' · 'SERVICE' · null (ยังไม่ระบุ ซึ่งมีจริงเยอะ) */
-      businessLine: orderBusinessLineOf(
-        { ...row, deal: dealById.get(row.dealId) || null },
-        { projectsById, dealsById: dealById },
-      ),
+      businessLine: businessLineById.get(row.id) ?? null,
       /* สรุปงานบริการ — มีเฉพาะใบที่เข้าเกณฑ์ "ใบมีรอบบริการ" (orderHasServiceRounds)
          ใบสายบริการที่ไม่มีบรรทัดแพ็คเกจได้ null ⇒ คอลัมน์โชว์ขีด ไม่ใช่ 0/0 */
       service: serviceIdSet.has(row.id) ? {
         contract: row.serviceContractId ? (contractById.get(row.serviceContractId) || null) : null,
         // จ่ายถึง = ปลายช่วงครอบของงวดที่บัญชีรับรองแล้ว (ตัวตัดสินเดียว: paidThrough)
         paidThrough: paidThrough(installmentsByOrder.get(row.id) || []),
-        roundsSold: (linesByOrder.get(row.id) || [])
-          .reduce((sum, line) => sum + (Number(line.serviceRounds) || 0), 0) || null,
+        /* ⭐ ใบที่ประทับแล้ว (mig 0392 · D23): ครั้งที่ต้องไปหน้างาน = Σ รายไซต์ของรอบสูงสุดของบรรทัดที่ผูกไซต์นั้น
+           (หนึ่งไซต์ไปครั้งเดียวต่อรอบ ไม่ว่ากี่บรรทัด/กี่โซน) · ใบเดิมที่ยังไม่ประทับ = Σ รายบรรทัดตามเดิม */
+        roundsSold: row.serviceTermsOpenedAt
+          ? serviceVisitsSold({
+            lines: linesByOrder.get(row.id) || [], links: allocationsByOrder.get(row.id) || [], zonesById,
+          }).total
+          : (linesByOrder.get(row.id) || [])
+            .reduce((sum, line) => sum + (Number(line.serviceRounds) || 0), 0) || null,
         roundsDone: roundsDoneByOrder.get(row.id) || 0,
       } : null,
     }))
@@ -256,6 +353,8 @@ export const GET = withUser(async ({ user, supabase }) => {
    แล้ว ref ตามเข้าใบตอนสร้างสำเร็จ
 
    payload: { quotationId, referenceDoc?, notes?, deliveryDueDate?, confirmation?, installments?, firstPayment? }
+   installments: [{ seq, dueDate?, billingDate?, billingEvent?, billingSkip?, billingException? }] — ดู salesOrderCreateInstallments.js
+     (รุ่นสี่ · mig 0393: ด่านเดียวกับ schedule กับกติกาของลูกค้าที่ server อ่านเอง · ข้อยกเว้นลงประวัติของการสร้างใบ)
    ⚠️ **เอกสารยืนยันไม่บังคับตอนสร้าง** — AE ที่ยังรอ PO ต้องตั้งใบร่างไว้ก่อนได้
    ด่านจริงคือตอนยื่นอนุมัติ (`salesOrderConfirmationGate`) */
 export const POST = withUser(async ({ user, supabase, req }) => {
@@ -267,7 +366,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   const { data: quote, error: quoteError } = await supabase
     .from('quotations')
-    .select('id, quoteNumber, status, paymentPlan, totalAmount, deal:sales_deals(*)')
+    .select('id, quoteNumber, status, paymentPlan, totalAmount, customerId, deal:sales_deals(*)')
     .eq('id', quotationId)
     .maybeSingle();
   if (quoteError) return fail(quoteError.message, 500);
@@ -307,6 +406,37 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   ]);
   if (storageMiss) return badRequest(storageMiss);
 
+  /* วันของงวด: กำหนดชำระ + วันวางบิล/รอเหตุการณ์ (mig 0389 · ม็อก billing-cycle จอ B) — ไม่บังคับ
+     ⭐ ตรวจ **ก่อนออกเลขใบ** — เลขใบใช้ซ้ำไม่ได้ (0241) ⇒ ค่าผิดต้องตอบ 400 ตั้งแต่ยังไม่มีใบ
+        (เดิมค่าผิดถูกข้ามเงียบ ๆ ใน applyCreateFormPayments แล้วใบออกไปโดยงวดไม่มีวันที่คนกรอก) */
+  /* ⭐ รุ่นสี่: กติกาวางบิลของลูกค้าของใบ (ลูกค้าเดียวกับที่ RPC ใส่ให้ใบ = ของใบเสนอราคา) อ่านสด ไม่เชื่อจอ ·
+     อ่านพลาด = ปิดแค่วันวางบิล/ติ๊ก (กำหนดชำระยังผ่าน) — ตัวอ่านเดียวกับ PATCH งวด */
+  const billingRule = await loadScheduleRule(supabase, quote.customerId);
+  /* ธงรุ่นสี่ต้องเป็น boolean (สตริง "true" เป็น truthy — ห้ามปล่อยให้ตัวแปลงตีความ) · รูปเดียวกับ schedule/schedule-many */
+  for (const item of Array.isArray(body.installments) ? body.installments : []) {
+    const flagError = billingFlagShapeError(item);
+    if (flagError) return badRequest(`งวด ${item?.seq ?? '?'}: ${flagError}`);
+  }
+  const installmentDates = parseCreateFormInstallments(body.installments, billingRule);
+  if (installmentDates.error) return badRequest(installmentDates.error);
+  /* ข้อยกเว้นรายงวดของใบใหม่ (ยืนยัน "งวดนี้ต้องวางบิล…" บนลูกค้าไม่ต้องวางบิล · ติ๊ก) — ตัวตัดสินเดียวกับ schedule (งวดใหม่ = {})
+     ⚠️ ธงยืนยันอ่านจากแถวที่ส่งมา (ไม่อยู่ใน patch — ไม่ลงฐาน) */
+  const sentBySeq = new Map((Array.isArray(body.installments) ? body.installments : []).map((item) => [Number(item?.seq), item]));
+  const createExceptions = installmentDates.rows.map((row) => ({
+    seq: row.seq,
+    exceptions: scheduleExceptionsOf({}, {
+      billingDate: row.patch.billingDate || null,
+      billingSkip: row.patch.billingSkip === true,
+      billingException: sentBySeq.get(row.seq)?.billingException === true,
+    }, billingRule.rule),
+  }));
+  /* ติ๊ก "งวดนี้ไม่ต้องวางบิล" ก่อนรัน 0393 = ไม่มีคอลัมน์ให้เขียน ⇒ บอกก่อนออกเลขใบ (ไม่ใช่ออกใบแล้วงวดตั้งไม่สำเร็จ)
+     ⚠️ ถามฐานเฉพาะเมื่อมีงวดติ๊ก — ใบส่วนใหญ่ไม่ยิงคำขอเพิ่ม */
+  if (installmentDates.rows.some((row) => row.patch.billingSkip === true)
+    && !(await probeBillingSkip(supabase)).ready) {
+    return fail(BILLING_V4_SCHEMA_MISSING, 503);
+  }
+
   const orderId = genId('SOR');
   const { data: order, error } = await supabase.rpc('create_sales_order_draft', {
     p_quote_id: quotationId,
@@ -329,7 +459,12 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     }
     return fail(error.message, /quotation_|sales_order_/.test(error.message || '') ? 400 : 500);
   }
-  await recordAudit({ user, action: 'create', entityType: 'sales_order', entityId: orderId, before: null, after: order, summary: `create SO draft from ${quote.quoteNumber}`, request: req });
+  await recordAudit({
+    user, action: 'create', entityType: 'sales_order', entityId: orderId, before: null, after: order,
+    summary: `create SO draft from ${quote.quoteNumber}`
+      + scheduleExceptionSummary(createExceptions, user.name || user.email || ''),
+    request: req,
+  });
 
   /* ── งวดชำระเกิดพร้อมใบ ไม่ต้องรอใครกดปุ่ม (มติผู้ใช้ 2026-08-19) ─────────
      เดิม B-4 ปลดด่าน "ต้องอนุมัติก่อน" แล้ว แต่ยังต้องกด "เริ่มติดตามการชำระ" ก่อน
@@ -349,24 +484,16 @@ export const POST = withUser(async ({ user, supabase, req }) => {
       user,
     });
     await applyCreateFormPayments(supabase, {
-      orderId, dues: body.installments, firstPaidOn, firstEvidence,
+      orderId, dates: installmentDates.rows, firstPaidOn, firstEvidence,
     });
   } catch (installmentError) {
     console.error('create SO: installments failed', orderId, installmentError);
-    installmentWarning = 'ออกใบสำเร็จ แต่ตั้งงวดชำระตามที่กรอกไม่สำเร็จ — ตรวจการ์ด "การชำระ" บนใบ';
+    installmentWarning = 'ออกใบสำเร็จ แต่ตั้งงวดชำระ (กำหนดชำระ · วันวางบิล) ตามที่กรอกไม่สำเร็จ — ตรวจการ์ด "การชำระ" บนใบ';
   }
 
   return ok(installmentWarning ? { ...order, warning: installmentWarning } : order, 201);
 });
 
-/**
- * กำหนดชำระรายงวด + เงินงวดแรกที่กรอกมาจากฟอร์มหน้าสร้าง
- *
- * ⚠️ เขียนหลังงวดเกิดแล้วเท่านั้น (จับคู่ด้วย `seq`) · สถานะไม่ถูกแตะเลย — งวดร่าง
- * ต้องเป็น `pending` ตาม CHECK `sales_order_installments_draft_pending` (0259)
- * `paidOn` + `evidence` บนแถว pending = "งวดร่างที่บันทึกเงินไว้" (installmentPrepaid)
- * ซึ่งจะกลายเป็นคำแจ้งให้บัญชีเองตอนใบอนุมัติ (freezeInstallments)
- */
 /* งวดของใบในหน้ารายการ — `taxInvoiceNo` = ตัวนับ "ใบกำกับ x/y" (mig 0348 · เอาแค่ "มีหรือยัง" ไม่ลากไฟล์มา) ·
    `refundedAt` = งวดที่คืนเงินแล้ว (0378) · ⚠️ ก่อนรัน 0378 = 42703 ⇒ อ่านชุดเดิม (ไม่มีงวดคืนเงินในฐานอยู่แล้ว) */
 async function loadListInstallments(supabase, orderIds) {
@@ -383,26 +510,4 @@ async function loadListInstallments(supabase, orderIds) {
     .in('salesOrderId', chunk)
     .order('salesOrderId', { ascending: true })
     .order('id', { ascending: true })));
-}
-
-async function applyCreateFormPayments(supabase, { orderId, dues, firstPaidOn, firstEvidence }) {
-  const rows = await loadInstallments(supabase, orderId);
-  if (!rows.length) return;
-  const bySeq = new Map(rows.map((row) => [row.seq, row]));
-
-  for (const item of Array.isArray(dues) ? dues : []) {
-    const row = bySeq.get(Number(item?.seq));
-    const dueDate = String(item?.dueDate || '').trim();
-    if (!row || !dueDate || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) continue;
-    await updateInstallment(supabase, row.id, { dueDate });
-  }
-
-  if (!firstPaidOn) return;
-  const first = bySeq.get(1);
-  if (!first) return;
-  await updateInstallment(supabase, first.id, {
-    paidOn: firstPaidOn,
-    evidence: firstEvidence,
-    note: first.note || 'ลูกค้าจ่ายมาก่อนออกใบ — บันทึกจากฟอร์มสร้างใบสั่งขาย',
-  });
 }

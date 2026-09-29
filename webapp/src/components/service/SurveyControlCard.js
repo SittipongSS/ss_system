@@ -54,6 +54,8 @@ export default function SurveyControlCard({
   requestHref = null,
   visitCode = null,
   visitHref = null,
+  dueLine = null,
+  inPane = false,
 }) {
   /* ปุ่มคลี่สองตัวในการ์ด — state อยู่ที่การ์ด ไม่ใช่ที่หน้า (หน้าถือ state ของปุ่ม
      ทุกปุ่มเมื่อไร ก็จะได้ state ปุ่มละก้อนเหมือนหน้าโครงการรุ่นก่อน) */
@@ -64,7 +66,7 @@ export default function SurveyControlCard({
   const uid = useId();
   if (!view) return null;
 
-  const { status, progress, gates, send, recallAction, notices, zoneGaps, step, flags } = view;
+  const { status, progress, gates, send, recallAction, sendBackAction, notices, zoneGaps, step, flags } = view;
   const extraId = `${uid}-extra`;
   const gatesId = `${uid}-gates`;
   const gapsId = `${uid}-gaps`;
@@ -265,10 +267,12 @@ export default function SurveyControlCard({
         </>
       ) : null}
       <p className={styles.secLinks}>
-        {/* "แจ้งช่างให้กลับไป" มีครั้งเดียวต่อใบ — ไม่ใช่ปุ่มต่อข้อเหมือนของเดิม */}
-        {zoneGaps.crewPending ? (
+        {/* ปุ่มส่งกลับมีครั้งเดียวต่อใบ — ไม่ใช่ปุ่มต่อข้อเหมือนของเดิม
+            🔄 ขึ้นตาม `sendBackAction.show` ไม่ใช่ "ยังมีของช่างค้าง" (§10.5 S4) — ฝั่งช่างครบแล้ว
+            หัวหน้ายังขอรูปเพิ่มได้ (ม็อก A-5/AW-2) · คำบนปุ่มมาจากตัวตัดสินตัวเดียวกัน */}
+        {sendBackAction.show ? (
           <button type="button" className="text-action" onClick={() => onSendBack?.()}>
-            แจ้งช่างให้กลับไป
+            {sendBackAction.label}
           </button>
         ) : null}
         <button
@@ -372,14 +376,17 @@ export default function SurveyControlCard({
 
   return (
     <DocumentControlCard
+      className={styles.card}
       icon={ListChecks}
       /* จอแคบ = การ์ดนี้ไหลขึ้นไปอยู่บนสุดของหน้า และมีพาดหัวสถานะของตัวเองอยู่แล้ว
          ⇒ แถบหัวการ์ดอีก 77px ดันแท็บและพื้นที่แรกตกจอที่ 1024×768 (แบบที่อนุมัติ
          ซ่อนหัวการ์ดที่ ≤1050 เหมือนกัน — ดู `.cc-head` ในม็อก) */
       headerNarrow="hide"
       /* แท็บเล็ต (681–1050): สถานะซ้าย · ปุ่มขวา — ที่ความกว้างนั้นการ์ดกินเต็มแถว
-         คอลัมน์เดียวจึงดันแถบแท็บและพื้นที่แรกตกจอ (แบบที่อนุมัติวางไว้แบบนี้เหมือนกัน) */
-      tabletSplit
+         คอลัมน์เดียวจึงดันแถบแท็บและพื้นที่แรกตกจอ (แบบที่อนุมัติวางไว้แบบนี้เหมือนกัน)
+         ⚠️ **ในบานรายการ 320px ไม่แบ่ง** (`inPane` · สองบาน 1000–1199 · §10.5 S9) — เส้น 1050 ของการ์ดกลางดูความกว้างจอ
+            ไม่ใช่ความกว้างของกล่อง ⇒ ที่ 1000–1050 การ์ดในบานแคบถูกผ่าเป็นสองคอลัมน์ละ ~140px */
+      tabletSplit={!inPane}
       eyebrow="SURVEY CONTROL"
       title="จัดการผลประเมิน"
       status={status.headline}
@@ -387,6 +394,8 @@ export default function SurveyControlCard({
       statusSub={(
         <>
           <span className={styles.statusSub}>{status.sub}</span>
+          {/* กำหนดส่งผล (ม็อก AW-2) — เดิมเป็นช่อง "TS จะส่งผล" ของหัวใบที่ถอดไปในชุด S9 · คำมาจาก `surveyDueLine` */}
+          {dueLine ? <span className={styles.due} data-late={dueLine.late ? "" : undefined}>{dueLine.text}</span> : null}
           {meter}
         </>
       )}

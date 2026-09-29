@@ -132,6 +132,15 @@ for (const [k, list] of duplicates) {
       const mine = patch[field] !== undefined ? patch[field] : keeper.row[field];
       if (!text(mine) && text(row[field])) patch[field] = row[field];
     }
+    // รอบวางบิล (mig 0389) เป็น jsonb ไม่ใช่ข้อความ — ใบหลักยังไม่ตั้ง แต่ใบที่พักตั้งไว้ = ยกมาทั้งก้อนพร้อมผู้แก้ล่าสุด
+    // (สี่ช่องไปด้วยกัน ไม่งั้นการ์ดขึ้น "แก้ล่าสุดโดย" ของคนที่ไม่เคยแตะรอบนี้)
+    const ruleMine = patch.billingRule !== undefined ? patch.billingRule : keeper.row.billingRule;
+    if (!ruleMine && row.billingRule) {
+      patch.billingRule = row.billingRule;
+      patch.billingRuleUpdatedAt = row.billingRuleUpdatedAt ?? null;
+      patch.billingRuleUpdatedById = row.billingRuleUpdatedById ?? null;
+      patch.billingRuleUpdatedByName = row.billingRuleUpdatedByName ?? null;
+    }
     // แบรนด์ที่ยังไม่มี (เทียบชื่อแบบตัดช่องว่าง/ตัวพิมพ์)
     const brands = patch.brands || keeper.row.brands || [];
     const brandKey = (b) => `${squash(b?.en).toLowerCase()}|${squash(b?.th)}`;

@@ -176,7 +176,8 @@ export default function CustomerDirectory() {
       addresses: formData.addresses || [],
       brands: formData.brands || [], // [{th,en}] — API normalize อีกชั้น (0059)
       contacts: formData.contacts || [],
-      creditTerms: formData.creditTerms || null,
+      /* ⚠️ ไม่มี `creditTerms` แล้ว (มติเจ้าของ 26/09 · mig 0390) — ลูกค้าใหม่เริ่มที่ "ยังไม่ระบุเครดิต"
+         แล้วตั้งที่การ์ด "เครดิตและรอบวางบิล" บนหน้าลูกค้า (ทางเดียว · ไม่ต้องอนุมัติใหม่) */
       // ทีมดูแล: server รับเฉพาะเมื่อคนสร้างเป็น superuser (team-role ตั้งจากทีมตัวเอง)
       teams: formData.teams || [],
     };

@@ -28,6 +28,8 @@ const blockOf = (css, selector) => {
 const HEADERS = [
   { file: "หัวหน้า (globals)", css: read("../../app/globals.css"), selector: ".premium-header" },
   { file: "หัวใบ (DetailOverview)", css: read("./DetailOverview.module.css"), selector: ".overviewCard" },
+  /* จอหน้างาน (`/service/surveys/[id]`) ถอด `DetailOverview` ใน §10.5 S9 — หัวของจอนั้นคือหัวงานตัวนี้ (S10 ลงทะเบียน) */
+  { file: "หัวงานจอหน้างาน (SurveyJobHeader)", css: read("../service/SurveyJobHeader.module.css"), selector: ".job" },
 ];
 
 for (const { file, css, selector } of HEADERS) {

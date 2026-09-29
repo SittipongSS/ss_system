@@ -64,10 +64,26 @@ export function fgLineCategoryMeta(product) {
 }
 
 /* ทับชื่อหมวดใน metadata ด้วยของสินค้าตัวนี้ — ลบคู่เดิมก่อนเสมอ (สินค้าที่เปลี่ยนไปอยู่หมวด
-   ไม่มีชื่อ ต้องไม่ติดชื่อหมวดของตัวเก่าค้างไว้) */
+   ไม่มีชื่อ ต้องไม่ติดชื่อหมวดของตัวเก่าค้างไว้) · `categoryCode` เป็นของบรรทัดพิมพ์เองเท่านั้น
+   (manualLineCategoryEdit) — บรรทัด FG ถอดหมวดจากสินค้า จึงล้างทิ้งด้วย */
 function withCategoryMeta(metadata, product) {
-  const { categoryName: _th, categoryNameEn: _en, ...rest } = metadata || {};
+  const { categoryName: _th, categoryNameEn: _en, categoryCode: _code, ...rest } = metadata || {};
   return { ...rest, ...fgLineCategoryMeta(product) };
+}
+
+/* หมวดสินค้าของบรรทัด "เพิ่มรายการเอง" (มติผู้ใช้ 2026-09-27) — บรรทัด FG ได้หมวดจากสินค้า
+   ส่วนบรรทัดพิมพ์เองให้คนออกใบเลือกจากทะเบียนหมวด แล้วเก็บเป็น snapshot คีย์เดียวกับบรรทัด FG
+   (`categoryName` / `categoryNameEn`) ⇒ ตารางบนจอ เอกสารพิมพ์ (lineIdentityParts) และ SO ที่ก๊อป
+   metadata ไปอ่านได้เลยโดยไม่ต้องแยกกรณี · `categoryCode` เก็บไว้ให้ตัวเลือกโชว์ค่าเดิมได้
+   `row` = แถว product_types (null = ไม่ระบุ ⇒ ลบทั้งชุด) · คืน metadata ชุดใหม่ ไม่ใช่ patch
+   ⚠️ หมวดที่ชื่อว่างทั้งสองภาษา (prod มีจริง) ถอยไปเก็บรหัส — บรรทัดนี้ไม่มีรหัส FG ให้บอกหมวดแทน */
+export function manualLineCategoryEdit(metadata, row) {
+  const { categoryName: _th, categoryNameEn: _en, categoryCode: _code, ...rest } = metadata || {};
+  const code = row?.mainCategoryCode && row?.typeCode ? `${row.mainCategoryCode}-${row.typeCode}` : '';
+  if (!code) return rest;
+  const th = String(row.nameTh || '').trim();
+  const en = String(row.nameEn || '').trim();
+  return { ...rest, categoryCode: code, categoryName: th || en || code, categoryNameEn: en || th || code };
 }
 
 /* ทะเบียนหมวดสำหรับหาชื่อ — **อ่านไม่ได้ = null** (ไม่รู้) ไม่ใช่ [] (รู้ว่าไม่มี)
@@ -477,7 +493,7 @@ export function quoteLineFromProduct(prevLine = {}, product = null) {
   const noteMeta = typedNote ? { note: typedNote } : fgLineNoteMeta(product);
   const {
     note: _note, noteEn: _noteEn, noteAuto: _noteAuto,
-    categoryName: _categoryName, categoryNameEn: _categoryNameEn, ...keptMeta
+    categoryName: _categoryName, categoryNameEn: _categoryNameEn, categoryCode: _categoryCode, ...keptMeta
   } = prevMeta;
   return {
     ...line,

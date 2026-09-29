@@ -282,3 +282,14 @@ test('ยกเงินเกินยอดใบ / ยกซ้ำกับ�
   assert.match(dup.message, /เงินก้อนเดียวกัน/);
   assert.ok(dup.message.endsWith(CARRY_DUPLICATE_WAY_OUT), dup.message);
 });
+
+/* mig 0392 (P2): ออก Rev. ยกงานบริการไปใบใหม่ — บรรทัดไม่ตรงกับใบเดิม = 409 ภาษาไทย ไม่ใช่ข้อความกลาง 500 */
+test('ยกงานบริการไปใบ Rev. ไม่ได้ (0392) แปลเป็นไทยพร้อมทางออก', () => {
+  assert.deepEqual(documentWorkflowError({ message: 'P0001: service_setup_copy_line_mismatch' }), {
+    code: 'service_setup_copy_line_mismatch',
+    message: 'ออก Rev. ไม่ได้ — บรรทัดของใบ Rev. ไม่ตรงกับใบเดิม (ยกงานบริการไม่ได้) · แจ้งผู้ดูแลระบบ',
+    status: 409,
+  });
+  assert.equal(workflowErrorMessage('service_setup_copy_line_mismatch'),
+    'ออก Rev. ไม่ได้ — บรรทัดของใบ Rev. ไม่ตรงกับใบเดิม (ยกงานบริการไม่ได้) · แจ้งผู้ดูแลระบบ');
+});

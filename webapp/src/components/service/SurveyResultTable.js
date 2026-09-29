@@ -4,6 +4,12 @@
 // ⭐ **ช่างส่งข้อเท็จจริงมาจากหน้างาน หัวหน้าตัดสินสองอย่าง**: จะติดตั้งจุดไหนบ้าง
 //   และแต่ละพื้นที่ใช้กี่แพ็คเกจ (มติผู้ใช้ 2026-08-29)
 //   ⇒ ตารางนี้มี **สองคอลัมน์ที่ต้องกรอก ไม่ใช่คอลัมน์เดียว** · ที่เหลืออ่านอย่างเดียว
+//   🔄 **+ คอลัมน์ "ภาพผังที่มาร์กจุดแล้ว"** (มติเจ้าของ 25/09 · แบบ AW-3 · แผน §10.5 S2) —
+//      ผังเดิมอัปในการ์ดพื้นที่ของช่าง ทั้งที่มันคือ **ผลของการเลือกจุด** (มาร์กจุดที่เลือกลงผัง)
+//      ⇒ ย้ายมาอยู่ข้างคอลัมน์เลือกจุด · รูปขึ้นระบบทันทีเหมือนรูปอื่น (ไม่รอปุ่มบันทึกการเคาะ)
+//   ⭐ ลำดับคอลัมน์ตาม AW-3: พื้นที่ · ผลวัดจากช่าง (ตัวเลข · ขนาด · ภาพย่อที่ช่างถ่าย) →
+//      ภาพผัง → เลือกจุด → แพ็คเกจ · คอลัมน์ "ขนาด" กับ "รูป" (เลข "1 / 0 / 2") ยุบเข้าช่องแรก
+//      เพราะหัวหน้าเคาะจากผลวัด ⇒ ผลวัดต้องอยู่ติดชื่อพื้นที่ ไม่ใช่ท้ายแถว
 //
 // ⭐ **เคาะแล้วกดบันทึกเอง ไม่ใช่บันทึกทุกคลิก** (มติผู้ใช้ 2026-09-16 · PR5)
 //   🐞 ของเดิมยิง `PUT` ทุกครั้งที่กด +/− หรือติ๊กจุด ⇒ หัวหน้าที่กำลังลองตัวเลขเขียน
@@ -23,13 +29,17 @@
 // ⭐ **ดูอย่างเดียว = ตัวหนังสือ ไม่ใช่ปุ่มจาง** — จุดที่เลือกคือผลที่ฝ่ายขายอ่าน ต้องชัดที่สุด
 //   ในแถว และบอกด้วยไอคอน ไม่ใช่สีขอบอย่างเดียว (WCAG 1.4.1)
 import { Fragment, useCallback, useMemo, useState } from "react";
-import { AlertTriangle, Check, ClipboardList, Minus, Pencil, Plus } from "lucide-react";
+import { AlertTriangle, Check, Circle, CircleCheck, ClipboardList, Minus, Pencil, Plus } from "lucide-react";
+import AttachmentsPanel from "@/components/AttachmentsPanel";
 import Button from "@/components/ui/Button";
 import { DetailCard } from "@/components/ui/DetailPage";
 import Input from "@/components/ui/Input";
+import PhotoThumb from "@/components/ui/PhotoThumb";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { TableScroll } from "@/components/ui/Table";
-import { surveyDocCounts, surveyResultMissing, surveyZoneSize } from "@/lib/service/survey";
+import { SURVEY_DOC_PLAN, surveyResultMissing, surveyZoneName } from "@/lib/service/survey";
+import { SURVEY_UNKNOWN_TEXT, surveyResultZoneCell } from "@/lib/service/surveyControl";
+import { surveyZoneTitle } from "@/lib/service/surveyFieldView";
 import {
   surveyDecisionDraft, surveyDecisionDirty, surveyDecisionError, surveyDecisionPayload,
   surveyPendingDecisions, surveySuggestedFor,
@@ -40,8 +50,52 @@ import styles from "./SurveyResultTable.module.css";
 /* วัดโหมดเคาะ (2026-09-15 · มีช่องเหตุผล + ปุ่มใช้สูตร + บรรทัดขาดอะไร): ดูอย่างเดียวรวม 573px
    แต่ตอนเคาะช่องเหตุผลกิน 160px · 🐞 640 เดิมคิดจากโหมดดูอย่างเดียว ⇒ แถวสูง 175px
    บรรทัด "ขาด…" ห่อ 6 บรรทัด · 680 ⇒ 138px และยังไม่เกินกรอบแท็บเล็ต (696px)
+   🔄 AW-3 (§10.5 S2): ห้าคอลัมน์ → สี่ · สามคอลัมน์มีความกว้างขั้นต่ำของตัวเอง (`<col>` ใน CSS:
+      พื้นที่ 13rem · ผัง 9rem · แพ็คเกจ 12rem = 544px) ⇒ เลือกจุดได้ส่วนที่เหลือ ≥136px ที่ 680
+      และยังไม่เกินกรอบแท็บเล็ต · ⚠️ ตัวเลขชุดนี้ **คิดจากเนื้อ ยังไม่ได้วัดบนจอจริง** (ชุดนี้ห้ามเปิด
+      dev server) — ชุดตรวจจอ (แผนลงมือ §9) ต้องวัด scrollWidth ที่ 768/1024/1440 แล้วแก้ตรงนี้ถ้าล้น
    ⚠️ ที่ ≤680px ตารางเลิกเป็นตาราง (แถวเรียงเป็นป้าย/ค่า) ⇒ ตัวเลขนี้ใช้กับ 681px ขึ้นไป */
 const TABLE_MIN_WIDTH = 680;
+
+/* ชนิดไฟล์ของช่องผัง — ค่าคงที่ระดับไฟล์ (ส่งอาร์เรย์ใหม่ทุกครั้งที่วาด = แผงคิดชุดชนิดใหม่ทุกรอบ) */
+const PLAN_DOC_TYPES = [{ key: SURVEY_DOC_PLAN, label: "ภาพผังที่มาร์กจุดแล้ว" }];
+
+/* ── ช่องภาพผังของพื้นที่หนึ่งแถว ────────────────────────────────────────────
+   ⭐ **component ระดับไฟล์ ไม่ใช่ฟังก์ชันในลูป** — แผงไฟล์แนบยิง `onItemsChange` ใน effect ที่ขึ้นกับ
+   ตัวตนของฟังก์ชัน ⇒ ต้องได้ตัวรายงานที่คงที่ต่อพื้นที่ (`useCallback`) ไม่ใช่ลูกศรใหม่ทุกครั้งที่วาด
+   ⚠️ ตัวนับ ("ขึ้นแล้ว n รูป" / "ยังไม่มี · ต้องมี") มาจาก **ก้อนรวมของหน้า** ไม่ใช่รายการในแผง —
+   ตัวเดียวกับที่ด่านส่งผลอ่าน ⇒ ตารางกับการ์ดจัดการผลบอกเลขเดียวกันเสมอ */
+function PlanPhotos({ zoneId, count, canUploadPlan, onFiles, intakeFirst }) {
+  const handleItems = useCallback((items, meta) => {
+    onFiles?.(zoneId, items, meta);
+  }, [onFiles, zoneId]);
+  return (
+    <>
+      <AttachmentsPanel
+        entityType="service_survey_zone" entityId={zoneId} canEdit={canUploadPlan} showCount={false}
+        title="" inlineUpload docTypes={PLAN_DOC_TYPES}
+        /* ปุ่มขนาดนิ้ว "ถ่ายรูป/แนบรูป" — หัวหน้าถ่ายผังที่มาร์กบนกระดาษได้จากแท็บเล็ต
+           ⭐ แผ่นรูปแบบหน้าพื้นที่ (ม็อก AW-3) — ลบอยู่ในกล่องดูรูปเต็ม ปุ่ม 44px · 🐞 UAT 25/09: แบบตั้งต้นของแผงมี × 22px
+             ที่มุมรูป ต่ำกว่าเป้านิ้ว (แผนลงมือ C11) */
+        photoCapture
+        photoTiles
+        onItemsChange={handleItems}
+        /* Ctrl+V ลอย ๆ ตกที่แถวที่หัวหน้ากำลังทำ (แผงนี้อัปขึ้นระบบทันที ของที่ไปผิดแถวคือของที่ต้องตามลบ) */
+        intakeWeight={intakeFirst ? 0 : 1}
+      />
+      {count > 0 ? (
+        <span className={styles.planState} data-tone="ok">
+          <Check size={12} aria-hidden="true" />ขึ้นแล้ว {fmtNumber(count)} รูป
+        </span>
+      ) : (
+        <span className={styles.planState} data-tone="miss">
+          ยังไม่มี · ต้องมี
+          {canUploadPlan ? <small>มาร์กจุดที่เลือกลงบนผังก่อนแนบ</small> : null}
+        </span>
+      )}
+    </>
+  );
+}
 
 /* ป้ายบอกว่าเคาะต่างจากสูตรแค่ไหน — **ไม่ใช่คำเตือน** สูตรเป็นข้อเสนอ ไม่ใช่คำสั่ง */
 function deltaText(qty, suggested) {
@@ -58,6 +112,11 @@ function deltaText(qty, suggested) {
 export default function SurveyResultTable({
   zones = [], filesByZone = {}, canDecide = false, busyZone, onSaveDecisions,
   drafts = {}, onDraftsChange, caption = null,
+  /* อัปภาพผังได้ไหม — `view.flags.canUploadPlan` (คนเคาะ + เขียนผลวัดของใบนี้ได้ + ยังไม่ล็อก)
+     ⚠️ แยกจาก `canDecide` — ผู้บริหารที่ส่งผลได้แต่เขียนผลวัดไม่ได้ อัปแล้วเจอ 403 */
+  canUploadPlan = false,
+  /* `(zoneId, items, meta)` — แผงผังรายงานรายการขึ้นไปที่ก้อนรวมของหน้า (`useLiveZoneFiles`) */
+  onFiles,
   /* โชว์บรรทัด "สูตร N" ไหม — แพ็คเกจเป็นงานของหัวหน้า (มติผู้ใช้ 2026-09-21) ⇒ ช่างเห็น
      เฉพาะเลขที่หัวหน้าเคาะแล้ว ไม่เห็นตัวเลขสูตร (กติกาเดียวกับการ์ดพื้นที่ `showPackage`)
      ⚠️ แยกจาก `canDecide` — หัวหน้าที่เปิดใบที่ส่งไปแล้ว (ล็อก) ยังต้องเห็นสูตรเทียบ */
@@ -72,6 +131,8 @@ export default function SurveyResultTable({
   const setDrafts = onDraftsChange;
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  /* แถวที่หัวหน้ากำลังทำ (โฟกัสล่าสุดอยู่ในแถวไหน) — เจ้าของ Ctrl+V ตอนไม่มีอะไรโฟกัส */
+  const [activeZone, setActiveZone] = useState(null);
   const patchDraft = useCallback((id, patch) => {
     setDrafts?.((d) => ({ ...d, [id]: { ...(d[id] || {}), ...patch } }));
   }, [setDrafts]);
@@ -114,10 +175,10 @@ export default function SurveyResultTable({
       <StatusBadge tone="info" icon={Pencil}>
         ยังไม่บันทึก {fmtNumber(pending.count)} พื้นที่
       </StatusBadge>
-      <Button size="sm" variant="quiet" onClick={discardAll} disabled={saving}>ยกเลิก</Button>
+      <Button size="sm" variant="quiet" className={styles.coarseTouch} onClick={discardAll} disabled={saving}>ยกเลิก</Button>
       {/* 🔑 **ปุ่มกดไม่ได้ต้องโชว์เสมอ แล้วบอกเหตุตอนกด** (กติกาของโปรเจกต์) ⇒ ปุ่มอยู่
           ตลอด ส่วนเหตุที่กดไม่ได้เป็นตัวหนังสือใต้แถบ ไม่ใช่ปุ่มที่หายไปเงียบ ๆ */}
-      <Button size="sm" onClick={saveAll} disabled={saving || !pending.canSave}>
+      <Button size="sm" className={styles.coarseTouch} onClick={saveAll} disabled={saving || !pending.canSave}>
         {saving ? "กำลังบันทึก..." : "บันทึกการเคาะ"}
       </Button>
     </div>
@@ -125,7 +186,7 @@ export default function SurveyResultTable({
 
   return (
     /* ⭐ ตารางในหน้ารายละเอียด = DetailCard + TableScroll (มติผู้ใช้ 2026-09-15 · ทรงเดียวกับ service/sites/[id])
-       ⚠️ minWidth = ผลรวมความกว้างจริงของห้าคอลัมน์ที่วัดบนจอ 1440 · cells="stacked" เพราะ
+       ⚠️ minWidth = ความกว้างที่เนื้อสี่คอลัมน์ต้องใช้ (ที่มาของตัวเลขอยู่ที่ TABLE_MIN_WIDTH) · cells="stacked" เพราะ
        ทุกเซลล์ซ้อนสองบรรทัด (กฎ 5) · `styles.shell` อยู่ที่กล่องเลื่อนเอง (container ของ `.rowMiss`)
        🐞 **ต้องส่ง `surface="embedded"`** — ค่าตั้งต้นคือพื้นผิวของตารางที่ยืนเดี่ยวบนหน้าเปล่า
        (ขอบ + มุมมน + พื้น --panel + เงา) ⇒ อยู่ในการ์ดแล้วกลายเป็นพื้นการ์ดซ้อนพื้นการ์ด */
@@ -140,33 +201,50 @@ export default function SurveyResultTable({
       {canDecide && pending.blocked.length ? (
         <p className={styles.saveBlocked}>
           <AlertTriangle size={13} aria-hidden="true" />
-          ยังบันทึกไม่ได้ — {pending.blocked.map((b) => `${b.zoneName || "พื้นที่ไม่มีชื่อ"}: ${b.error}`).join(" · ")}
+          ยังบันทึกไม่ได้ — {pending.blocked.map((b) => `${surveyZoneName(b)}: ${b.error}`).join(" · ")}
         </p>
       ) : null}
       {saveError ? <p className={styles.saveBlocked}><AlertTriangle size={13} aria-hidden="true" />{saveError}</p> : null}
 
       <TableScroll surface="embedded" minWidth={TABLE_MIN_WIDTH} cells="stacked" className={styles.shell}>
         <table>
+          {/* ความกว้างขั้นต่ำของสามคอลัมน์ (ดู TABLE_MIN_WIDTH) — เลือกจุดได้ส่วนที่เหลือ เพราะชิปจุด
+              ยาวไม่เท่ากันทุกใบ และเป็นคอลัมน์เดียวที่ห่อบรรทัดได้โดยไม่เสียอะไร */}
+          <colgroup>
+            <col className={styles.colZone} />
+            <col className={styles.colPlan} />
+            <col />
+            <col className={styles.colPackage} />
+          </colgroup>
           <thead>
             <tr>
-              <th>พื้นที่</th>
-              <th>แพ็คเกจ/เดือน</th>
-              <th>จุดติดตั้ง</th>
-              <th>ขนาด (ม.)</th>
-              <th>รูป</th>
+              <th>พื้นที่ · ผลวัดจากช่าง</th>
+              {/* ดอกจัน = ของที่ต้องมีก่อนส่งผล — ขึ้นเฉพาะคนที่เคาะได้ (คนอ่านอย่างเดียวไม่มีอะไรต้องทำตาม)
+                  ⚠️ ซ่อนจาก screen reader — "ต้องมี" พูดอยู่แล้วในบรรทัด "ยังขาด" ของแถวที่ติด */}
+              <th>ภาพผังที่มาร์กจุดแล้ว{canDecide ? <span className={styles.star} aria-hidden="true">*</span> : null}</th>
+              <th>
+                เลือกจุดที่จะติดตั้ง{canDecide ? <span className={styles.star} aria-hidden="true">*</span> : null}
+                <span className={styles.thNote}> · จากจุดที่ช่างแจ้ง</span>
+              </th>
+              <th>แพ็คเกจ/เดือน{canDecide ? <span className={styles.star} aria-hidden="true">*</span> : null}</th>
             </tr>
           </thead>
           <tbody className={styles.body}>
             {zones.map((zone) => {
               const cut = zone.status === "cut";
-              const size = surveyZoneSize(zone.parts);
               const suggested = surveySuggestedFor(zone);
               const files = filesByZone[zone.id] || [];
-              const docs = surveyDocCounts(files);
+              /* 🔑 ผลวัดของช่างทั้งช่อง (ตัวเลข · ขนาดรายส่วน · ภาพย่อ · ตัวนับ) มาจากตัวตัดสินตัวเดียว */
+              const cell = surveyResultZoneCell(zone, files);
               const miss = surveyResultMissing(zone, files);
               const missText = cut ? "" : [...miss.field, ...miss.result].join(" · ");
               const spots = Array.isArray(zone.spots) ? zone.spots : [];
               const busy = busyZone === zone.id || saving;
+              const zoneCode = zone.zoneCodeUnknown === true ? SURVEY_UNKNOWN_TEXT : naText(zone.zoneCode);
+              /* ⚠️ "เพิ่มหน้างาน" ต้องอ่านออกจาก `status` ไม่ใช่จาก `!zoneId` — พื้นที่ที่
+                 ช่างเพิ่มได้รหัส ZN ทันที ส่วนพื้นที่ใหม่ของ SA รอถึงตอนกดส่งใบ */
+              const tags = [zone.status === "added" ? "ช่างเพิ่มหน้างาน" : null,
+                zone.zoneId ? null : "พื้นที่ใหม่"].filter(Boolean).join(" · ");
 
               /* 🔑 **ทุกค่าที่วาดมาจากร่าง ไม่ใช่จากแถว** — ไม่งั้นกดเพิ่มแล้วตัวเลขไม่ขยับ
                  จนกว่าจะบันทึก ซึ่งคือจอที่ดูเหมือนปุ่มเสีย */
@@ -178,6 +256,7 @@ export default function SurveyResultTable({
               /* ต้องบอกเหตุผลไหม — อ่านจาก **ร่าง** เพื่อให้ช่องเหตุผลโผล่ทันทีที่กดจนต่างจากสูตร
                  ไม่ใช่หลังบันทึกแล้วถึงรู้ว่าต้องกรอก */
               const needNote = draft.packageQty !== null && !!suggested && draft.packageQty !== suggested;
+              const noteId = `package-note-${zone.id}`;
 
               const bump = (by) => {
                 const base = draft.packageQty || suggested || 1;
@@ -194,91 +273,84 @@ export default function SurveyResultTable({
               return (
                 <Fragment key={zone.id}>
                 <tr className={cut ? styles.cut : undefined} data-miss={missText ? "1" : undefined}
-                  data-dirty={dirty ? "1" : undefined}>
-                  <td data-label="พื้นที่">
-                    <b>{zone.zoneName}</b>
-                    <span className={styles.sub}>
-                      {/* ⚠️ "เพิ่มหน้างาน" ต้องอ่านออกจาก `status` ไม่ใช่จาก `!zoneId` — พื้นที่ที่
-                          ช่างเพิ่มได้รหัส ZN ทันที ส่วนพื้นที่ใหม่ของ SA รอถึงตอนกดส่งใบ */}
-                      {[zone.floor ? `ชั้น ${zone.floor}` : null,
-                        zone.status === "added" ? "ช่างเพิ่มหน้างาน" : null,
-                        zone.zoneId ? null : "พื้นที่ใหม่"]
-                        .filter(Boolean).join(" · ") || naText(null)}
+                  data-dirty={dirty ? "1" : undefined}
+                  onFocusCapture={() => setActiveZone(zone.id)}>
+                  {/* ── พื้นที่ · ผลวัดจากช่าง (อ่านอย่างเดียว) ──────────────────────
+                      รหัสบน · ชื่อล่าง (กติกาแสดงผลของตาราง) · ภาพย่อเปิดไฟล์จริงในแท็บใหม่
+                      ⚠️ `ui-cell-wide` — ภาพย่อเป็นลิงก์ ไม่ใช่ปุ่ม ⇒ เพดานข้อความ 220px ของเซลล์ตาราง
+                         จะตัดแถวภาพย่อขาดกลางรูป */}
+                  <td data-label="พื้นที่" className={`ui-cell-wide ${styles.zoneCell}`}>
+                    <span className={styles.code}>
+                      <span>{zoneCode}</span>
+                      {dirty ? <span className={styles.rowDirty}><Pencil size={11} aria-hidden="true" />ยังไม่บันทึก</span> : null}
                     </span>
-                    {dirty ? <span className={styles.rowDirty}><Pencil size={11} aria-hidden="true" />ยังไม่บันทึก</span> : null}
+                    {/* ชื่อ + ชั้นครั้งเดียว — ตัวเดียวกับรายการ/หน้าพื้นที่ (🐞 ชื่อที่มีชั้นอยู่แล้วเคยขึ้น "ชั้น 5 · ชั้น 05") */}
+                    <b className={styles.zoneName}>{surveyZoneTitle(zone)}</b>
+                    {tags ? <span className={styles.sub}>{tags}</span> : null}
+                    {!cut && (cell.figures || cell.dims) ? (
+                      <span className={styles.figures}>
+                        {cell.figures ? <b>{cell.figures}</b> : null}
+                        {cell.figures && (cell.partsText || cell.dims) ? " · " : null}
+                        {cell.partsText || cell.dims}
+                      </span>
+                    ) : null}
+                    {/* หลายส่วน = บรรทัดแรกบอกจำนวนส่วน บรรทัดนี้บอกขนาดรายส่วน */}
+                    {!cut && cell.partsText && cell.dims ? <span className={styles.dimsLine}>{cell.dims}</span> : null}
+                    {!cut ? (
+                      <div className={styles.thumbs} role="group" aria-label={`รูปจากช่าง ${surveyZoneName(zone)}`}>
+                        {cell.thumbs.map((t) => (
+                          <Fragment key={t.file.id}>
+                            {t.startsGroup ? <span className={styles.thumbSep} aria-hidden="true" /> : null}
+                            <a className={styles.thumb} href={t.href} target="_blank" rel="noreferrer"
+                              aria-label={`ดู${t.label} ${t.file.fileName || ""} (เปิดแท็บใหม่)`.replace(/\s+/g, " ")}>
+                              <PhotoThumb src={t.href} alt="" label="เปิดไม่ได้" className={styles.thumbImg} />
+                            </a>
+                          </Fragment>
+                        ))}
+                        {cell.moreThumbs ? <span className={styles.thumbMore}>+{fmtNumber(cell.moreThumbs)}</span> : null}
+                        <span className={styles.thumbCap}>
+                          <span data-low={cell.photos.wide === 0 ? "1" : undefined}>ภาพกว้าง {fmtNumber(cell.photos.wide)}</span>
+                          <span>ภาพจุด {fmtNumber(cell.photos.spot)}</span>
+                        </span>
+                      </div>
+                    ) : null}
                   </td>
 
                   {cut ? (
                     /* ⚠️ พื้นที่ที่ตัดออกยังต้องอยู่ในตาราง — SA ต้องเห็นว่าอะไรหายไปและเพราะอะไร
                        (ของที่หายจากสิ่งที่เขาจะเสนอราคา คือของที่ลูกค้าจะถาม) */
-                    <td colSpan={4} className={styles.cutCell} data-label="สถานะ">
+                    <td colSpan={3} className={styles.cutCell} data-label="สถานะ">
                       <span>ตัดออกหน้างาน — {naText(zone.cutReason)}</span>
                       <span className={styles.sub}>ไม่นับรวมในผลที่ส่งให้ฝ่ายขาย · พื้นที่ยังอยู่ในทะเบียน ประเมินใหม่ได้</span>
                     </td>
                   ) : (
                     <>
-                      {/* ── แพ็คเกจ — สูตรเสนอ หัวหน้าเคาะ ─────────────────── */}
-                      <td data-label="แพ็คเกจ/เดือน">
-                        {canDecide ? (
-                          <div className={styles.stepper}>
-                            <button type="button" aria-label="ลดแพ็คเกจ" disabled={busy} onClick={() => bump(-1)}>
-                              <Minus size={13} aria-hidden="true" />
-                            </button>
-                            <b>{naText(draft.packageQty)}</b>
-                            <button type="button" aria-label="เพิ่มแพ็คเกจ" disabled={busy} onClick={() => bump(1)}>
-                              <Plus size={13} aria-hidden="true" />
-                            </button>
-                          </div>
-                        ) : (
-                          <b className={styles.qty}>{naText(draft.packageQty)}</b>
-                        )}
-                        {showFormula ? (
-                          <span className={styles.sub}>
-                            สูตร {suggested ?? naText(null)}
-                            {delta ? <> · <span className={styles.delta} data-tone={delta.tone}>{delta.text}</span></> : null}
-                          </span>
-                        ) : null}
-                        {draft.packageQty === null && suggested && canDecide ? (
-                          <Button size="sm" variant="quiet" disabled={busy}
-                            onClick={() => patchDraft(zone.id, { packageQty: suggested })}>
-                            ใช้ {suggested} ที่สูตรบอก
-                          </Button>
-                        ) : null}
-                        {/* 🔴 ทับสูตรแล้วต้องบอกเหตุผล — ของที่ต่างจากที่ SA จะเสนอราคา
-                            คือของที่ลูกค้าจะถาม และ SA ไม่ได้ไปหน้างาน
-                            🐞 **ช่องต้องอยู่ต่อตราบใดที่ยังมีข้อความอยู่ในนั้น** แม้จะกดกลับมา
-                              ตรงกับสูตรแล้ว — ของเดิมผูกช่องไว้กับ `needNote` อย่างเดียว ⇒ พิมพ์
-                              เหตุผล แล้วกดลดกลับเป็นเลขเดิม: ช่องหายไปพร้อมข้อความที่ยังค้างอยู่
-                              ในร่าง ⇒ แถบยังขึ้น "ยังไม่บันทึก 1 พื้นที่" โดยที่ **ไม่มีอะไรบนจอ
-                              ให้แก้หรือให้ลบเลย** (วัดจริงทั้ง 1440/1024/390) */}
-                        {canDecide && (needNote || draft.packageNote) ? (
-                          <div className={styles.noteBox}>
-                            {needNote
-                              ? <span className={styles.req}>ต้องบอกเหตุผล</span>
-                              : <span className={styles.sub}>เหตุผลที่ต่างจากสูตร (ตอนนี้ตรงกับสูตรแล้ว — ลบทิ้งได้)</span>}
-                            <Input
-                              value={draft.packageNote} disabled={busy} maxLength={500} autoComplete="off"
-                              placeholder="ทำไมถึงต่างจากสูตร"
-                              onChange={(e) => patchDraft(zone.id, { packageNote: e.target.value })}
-                            />
-                          </div>
-                        ) : null}
-                        {!canDecide && zone.packageNote ? (
-                          <span className={styles.note}>เหตุผลที่ต่างจากสูตร: {naText(zone.packageNote)}</span>
-                        ) : null}
+                      {/* ── ภาพผังที่มาร์กจุดแล้ว — ของหัวหน้า ขึ้นระบบทันที ─────────── */}
+                      <td data-label="ภาพผัง" className={styles.planCell}>
+                        <PlanPhotos
+                          zoneId={zone.id}
+                          count={cell.photos.plan}
+                          canUploadPlan={canUploadPlan}
+                          onFiles={onFiles}
+                          intakeFirst={activeZone === zone.id}
+                        />
                       </td>
 
-                      {/* ── จุดติดตั้ง — ติ๊กจากที่ช่างแจ้งมา ────────────────── */}
-                      <td data-label="จุดติดตั้ง">
+                      {/* ── เลือกจุดที่จะติดตั้ง — ติ๊กจากที่ช่างแจ้งมา ──────────────── */}
+                      <td data-label="เลือกจุด">
                         {spots.length === 0 ? (
                           <span className={styles.warnText}>ช่างยังไม่แจ้งจุดสักจุด</span>
                         ) : (
                           <>
                             {/* ชุดตัวเลือกเล็กตายตัวต้องกางให้เห็น ไม่ใช่ดรอปดาวน์ (กติกาคอนโทรล)
-                                ไม่มีสิทธิ์เคาะ = ไม่โชว์ปุ่ม ⇒ ชิปเป็นตัวหนังสือ */}
+                                ไม่มีสิทธิ์เคาะ = ไม่โชว์ปุ่ม ⇒ ชิปเป็นตัวหนังสือ
+                                ⭐ ชิปที่กดได้สูง 44px (ขนาดนิ้ว · AW-3) — หัวหน้าเคาะบนแท็บเล็ตด้วย */}
                             <div className={styles.spots}>
                               {spots.map((s) => {
                                 const on = draft.spotIds.includes(String(s.id));
+                                /* บันทึกของช่างต่อท้ายชื่อจุด ("ปลั๊กอยู่ใต้โซฟา") — ข้อมูลที่ใช้ตัดสินว่าจะเลือกจุดไหน
+                                   ⚠️ ตัดยาวด้วยจุดไข่ปลา ข้อความเต็มอยู่ในการ์ดพื้นที่ของแท็บหน้างาน */
+                                const note = String(s.note || "").trim();
                                 return canDecide ? (
                                   <button
                                     key={s.id} type="button" className={styles.spotChip}
@@ -287,8 +359,11 @@ export default function SurveyResultTable({
                                     aria-pressed={on ? "true" : "false"}
                                     onClick={() => toggleSpot(s.id)}
                                   >
-                                    {on && <Check size={12} aria-hidden="true" />}
+                                    {on
+                                      ? <CircleCheck size={15} aria-hidden="true" />
+                                      : <Circle size={15} aria-hidden="true" />}
                                     {s.label}
+                                    {note ? <span className={styles.spotNote} title={note}>· {note}</span> : null}
                                   </button>
                                 ) : (
                                   <span key={s.id} className={styles.spotChip} data-on={on ? "1" : undefined}>
@@ -303,25 +378,62 @@ export default function SurveyResultTable({
                         )}
                       </td>
 
-                      <td className={styles.dims} data-label="ขนาด (ม.)">
-                        {(zone.parts || []).map((p, i) => (
-                          <span key={p.id || i}>
-                            {fmtNumber(p.widthM)} × {fmtNumber(p.lengthM)} × {fmtNumber(p.heightM)}
-                          </span>
-                        ))}
-                        <span className={styles.sub}>
-                          {fmtNumber(size.volumeCbm)} ลบ.ม.{size.parts > 1 ? ` · ${size.parts} ส่วน` : ""}
-                        </span>
-                      </td>
-
-                      {/* ⚠️ ตัวเลขสามตัวกับขีดคั่นต้องอยู่ใน **element เดียว** — ที่ ≤680px เซลล์เป็น
-                          กริดป้าย/ค่า ซึ่งจับ *ลูกทุกตัว* เป็นช่องของกริด ⇒ ขีด "/" ที่เป็น
-                          text node ลอย ๆ กลายเป็นช่องของตัวเอง แล้ว "1 / 1 / 0" แตกเป็นสี่บรรทัด */}
-                      <td className={styles.docs} data-label="รูป">
-                        <span className={styles.docsVal}>
-                          <span>{docs.wide}</span> / <span data-low={docs.plan === 0 ? "1" : undefined}>{docs.plan}</span> / <span>{docs.spot}</span>
-                        </span>
-                        <span className={styles.sub}>กว้าง / ผัง / จุด</span>
+                      {/* ── แพ็คเกจ — สูตรเสนอ หัวหน้าเคาะ ─────────────────────────── */}
+                      <td data-label="แพ็คเกจ/เดือน">
+                        <div className={styles.packageRow}>
+                          {canDecide ? (
+                            <div className={styles.stepper} role="group" aria-label={`แพ็คเกจต่อเดือน ${surveyZoneName(zone)}`}>
+                              <button type="button" aria-label="ลดแพ็คเกจ" disabled={busy} onClick={() => bump(-1)}>
+                                <Minus size={15} aria-hidden="true" />
+                              </button>
+                              <b>{naText(draft.packageQty)}</b>
+                              <button type="button" aria-label="เพิ่มแพ็คเกจ" disabled={busy} onClick={() => bump(1)}>
+                                <Plus size={15} aria-hidden="true" />
+                              </button>
+                            </div>
+                          ) : (
+                            <b className={styles.qty}>{naText(draft.packageQty)}</b>
+                          )}
+                          {showFormula ? (
+                            <span className={styles.formula}>
+                              <b>สูตร {suggested ?? naText(null)}</b>
+                              {delta ? <span className={styles.delta} data-tone={delta.tone}>{delta.text}</span> : null}
+                            </span>
+                          ) : null}
+                        </div>
+                        {draft.packageQty === null && suggested && canDecide ? (
+                          <Button size="sm" variant="quiet" className={styles.coarseTouch} disabled={busy}
+                            onClick={() => patchDraft(zone.id, { packageQty: suggested })}>
+                            ใช้ {suggested} ที่สูตรบอก
+                          </Button>
+                        ) : null}
+                        {/* 🔴 ทับสูตรแล้วต้องบอกเหตุผล — ของที่ต่างจากที่ SA จะเสนอราคา
+                            คือของที่ลูกค้าจะถาม และ SA ไม่ได้ไปหน้างาน
+                            🐞 **ช่องต้องอยู่ต่อตราบใดที่ยังมีข้อความอยู่ในนั้น** แม้จะกดกลับมา
+                              ตรงกับสูตรแล้ว — ของเดิมผูกช่องไว้กับ `needNote` อย่างเดียว ⇒ พิมพ์
+                              เหตุผล แล้วกดลดกลับเป็นเลขเดิม: ช่องหายไปพร้อมข้อความที่ยังค้างอยู่
+                              ในร่าง ⇒ แถบยังขึ้น "ยังไม่บันทึก 1 พื้นที่" โดยที่ **ไม่มีอะไรบนจอ
+                              ให้แก้หรือให้ลบเลย** (วัดจริงทั้ง 1440/1024/390) */}
+                        {canDecide && (needNote || draft.packageNote) ? (
+                          <div className={styles.noteBox}>
+                            {/* ป้ายผูกกับช่อง (`htmlFor`) — ช่องที่ไม่มีชื่อ screen reader อ่านว่า "ช่องแก้ไข" เฉย ๆ */}
+                            <label htmlFor={noteId}>
+                              {needNote
+                                ? <span className={styles.req}>ต้องบอกเหตุผล</span>
+                                : <span className={styles.sub}>เหตุผลที่ต่างจากสูตร (ตอนนี้ตรงกับสูตรแล้ว — ลบทิ้งได้)</span>}
+                            </label>
+                            <Input
+                              id={noteId}
+                              touch
+                              value={draft.packageNote} disabled={busy} maxLength={500} autoComplete="off"
+                              placeholder="ทำไมถึงต่างจากสูตร"
+                              onChange={(e) => patchDraft(zone.id, { packageNote: e.target.value })}
+                            />
+                          </div>
+                        ) : null}
+                        {!canDecide && zone.packageNote ? (
+                          <span className={styles.note}>เหตุผลที่ต่างจากสูตร: {naText(zone.packageNote)}</span>
+                        ) : null}
                       </td>
                     </>
                   )}
@@ -335,11 +447,11 @@ export default function SurveyResultTable({
                     เพราะสเปกให้ชี้ได้แค่ th และ screen reader หลายตัวไม่อ่าน */}
                 {(missText || rowError) && (
                   <tr data-miss-row="1">
-                    <td colSpan={5}>
+                    <td colSpan={4}>
                       {rowError ? (
                         <span className={styles.rowMiss} data-block="1">
                           <span className={styles.srOnly}>
-                            {`${String(zone.zoneName || "").trim() || "พื้นที่ไม่มีชื่อ"} บันทึกไม่ได้: `}
+                            {`${surveyZoneName(zone)} บันทึกไม่ได้: `}
                           </span>
                           <AlertTriangle size={12} aria-hidden="true" />
                           {rowError}
@@ -348,7 +460,7 @@ export default function SurveyResultTable({
                       {missText ? (
                         <span className={styles.rowMiss}>
                           <span className={styles.srOnly}>
-                            {`${String(zone.zoneName || "").trim() || "พื้นที่ไม่มีชื่อ"} ยังไม่ผ่าน: `}
+                            {`${surveyZoneName(zone)} ยังไม่ผ่าน: `}
                           </span>
                           <AlertTriangle size={12} aria-hidden="true" />
                           {missText}
@@ -363,6 +475,17 @@ export default function SurveyResultTable({
           </tbody>
         </table>
       </TableScroll>
+      {/* ⭐ บอกกติกาสองข้อที่ต่างกันในตารางเดียว — ผังไม่รอปุ่ม แต่การเคาะรอ (คนที่อัปผังแล้วเลื่อน
+          หาปุ่มบันทึกให้ผัง คือคนที่เสียเวลาเพราะเราไม่บอก) · ขึ้นเฉพาะคนที่มีอะไรให้ทำในตารางนี้
+          ⚠️ "ระบบจะถามก่อนทิ้ง" ต้องจริง — หน้าเฝ้าร่างการเคาะด้วย `useUnsavedChanges` (ลิงก์ · รีเฟรช · ปิดแท็บ)
+          🐞 UAT 25/09 คำเดิม "ออกจากหน้านี้ก่อนบันทึก" สัญญาเกินจริง — ปุ่มย้อนของเครื่องบนมือถือ (หน้าเดียว) ออกจากหน้า
+             ได้โดยไม่ถาม (เบราว์เซอร์ไม่ให้ขวางปุ่มย้อน · สองบานถามแล้วผ่านตัวต่อสายประวัติ) ⇒ บอกเฉพาะทางที่ถามจริงทุกจอ */}
+      {canDecide ? (
+        <p className={styles.footnote}>
+          {canUploadPlan ? "ภาพผังขึ้นระบบทันที ไม่ต้องบันทึก · " : ""}
+          การเคาะต้องกด “บันทึกการเคาะ” · กดลิงก์ออก รีเฟรช หรือปิดแท็บก่อนบันทึก ระบบจะถามก่อนทิ้ง
+        </p>
+      ) : null}
     </DetailCard>
   );
 }

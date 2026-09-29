@@ -23,17 +23,20 @@ import { canEditProduction } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
+import { weekStartOf } from "@/lib/datePeriods";
 import { fmtMonthShort, fmtNumber, fmtPercent } from "@/lib/format";
 import { apiFetch } from "@/lib/apiFetch";
 
 const DAY_LABELS = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 const WEEKS = 4;
 
-function mondayOf(date) {
-  const d = new Date(date);
-  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-  d.setHours(0, 0, 0, 0);
-  return d;
+/* ⭐ บอร์ดเริ่มวันอาทิตย์ของสัปดาห์นี้ (อา–ส) เหมือนปฏิทินทุกตัวของระบบ — มติเจ้าของ 2026-09-26
+   (เดิมเริ่มวันจันทร์) · ต้นสัปดาห์มาจาก `weekStartOf` ที่เดียว
+   ⚠️ "วันนี้" = `businessDate()` (นาฬิกาไทย) ไม่ใช่ `new Date()` ของเครื่อง — เดิมเครื่องที่ตั้งโซน
+   ต่างประเทศ/ตี 5 ข้ามวันเปิดบอร์ดคนละสัปดาห์กับวันนี้ที่ไฮไลต์ · สตริงวันแปลงเป็น Date
+   เที่ยงคืนของเครื่องเพื่อบวกวันต่อเท่านั้น (เลขคณิตปฏิทิน ไม่ย้อนกลับเป็นเวลาสากล) */
+function thisWeekStart() {
+  return new Date(`${weekStartOf(businessDate())}T00:00:00`);
 }
 
 export default function ProductionBoardPage() {
@@ -43,7 +46,7 @@ export default function ProductionBoardPage() {
   const department = useDepartment();
   const canEdit = useMemo(() => canEditProduction({ role, team, teams, department }), [role, team, teams, department]);
 
-  const [start, setStart] = useState(() => mondayOf(new Date()));
+  const [start, setStart] = useState(thisWeekStart);
   const [lines, setLines] = useState([]);
   const [jobs, setJobs] = useState([]);
   const [capacityDays, setCapacityDays] = useState([]);
@@ -151,7 +154,7 @@ export default function ProductionBoardPage() {
             <Button tone="neutral" variant="quiet" iconOnly aria-label="ย้อน 1 สัปดาห์" onClick={() => shiftWeeks(-1)} icon={<ChevronLeft size={16} aria-hidden="true" />} />
             <strong className={styles.rangeLabel}>{rangeLabel}</strong>
             <Button tone="neutral" variant="quiet" iconOnly aria-label="ถัดไป 1 สัปดาห์" onClick={() => shiftWeeks(1)} icon={<ChevronRight size={16} aria-hidden="true" />} />
-            <Button tone="neutral" variant="quiet" size="sm" onClick={() => setStart(mondayOf(new Date()))}>สัปดาห์นี้</Button>
+            <Button tone="neutral" variant="quiet" size="sm" onClick={() => setStart(thisWeekStart())}>สัปดาห์นี้</Button>
             <div className="spacer" />
             {overloaded > 0 && <strong className={styles.overCount}>เกินกำลัง {overloaded} ช่อง</strong>}
           </>

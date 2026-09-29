@@ -13,6 +13,7 @@ import { ArrowRight } from "lucide-react";
 import AlertBanner from "@/components/ui/AlertBanner";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/Modal";
+import DateInput from "@/components/ui/DateInput";
 import Input from "@/components/ui/Input";
 import Textarea from "@/components/ui/Textarea";
 import SearchableSelect from "@/components/ui/SearchableSelect";
@@ -173,7 +174,9 @@ export default function AssetMoveModal({ open, kind, asset, fromSite, sites = []
 
       <label className="form-field">
         <span>วันที่ <em className={styles.req}>ต้องระบุ</em></span>
-        <Input type="date" value={form.movedAt || ""} onChange={(e) => patch({ movedAt: e.target.value })} />
+        {/* มติเจ้าของ 26/09 สัปดาห์เริ่มวันอาทิตย์ — ปฏิทินของ DateInput เรียง อา.–ส. เอง
+            (ปฏิทินของ `type="date"` ดิบเรียงตาม locale ของเครื่อง บังคับไม่ได้) · ค่ายังเป็น ISO เดิม */}
+        <DateInput value={form.movedAt || ""} onChange={(iso) => patch({ movedAt: iso })} />
         <small className={styles.hintSm}>กรอกย้อนหลังได้ — ไทม์ไลน์เรียงตามวันที่นี้ ไม่ใช่เวลาที่กดบันทึก</small>
       </label>
 

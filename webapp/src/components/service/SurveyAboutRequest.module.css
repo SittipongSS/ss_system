@@ -1,0 +1,123 @@
+/* "เกี่ยวกับคำร้อง" ท้ายรายการพื้นที่ (แผน §10.5 · ม็อก A-1 · AT-1 · AW-1 · AW-2 · ชุด S9)
+   แถวละปุ่ม/ลิงก์ สูงอย่างน้อย 48px (เป้านิ้ว + สองบรรทัด) · หน้ารายการของแท็บเล็ตแนวตั้ง (681–999) วางสองคอลัมน์ (AT-1)
+   · มือถือและบานซ้ายของสองบานคอลัมน์เดียว */
+
+.about {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel-solid);
+}
+
+.title {
+  margin: 0;
+  padding: var(--space-1-5) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+.rows {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item { min-width: 0; }
+.item + .item { border-top: 1px solid var(--border); }
+
+.row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: var(--space-2-5);
+  width: 100%;
+  min-height: 48px;
+  padding: var(--space-1-5) var(--space-3);
+  border: 0;
+  background: transparent;
+  color: var(--text-1);
+  font-family: inherit;
+  text-align: start;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.row:hover { background: var(--panel-2); }
+.row:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -2px; }
+
+.icon,
+.chev { color: var(--text-3); }
+
+.chev[data-turn] { transition: transform var(--motion-fast); }
+.row[aria-expanded="true"] .chev[data-turn] { transform: rotate(180deg); }
+
+.text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.label {
+  font-size: var(--fs-7);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+.sub {
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* รายละเอียดที่กางในที่ — ลูกค้า · เรื่อง · เลขคำร้อง (ห่อได้เต็ม ไม่ตัดบรรทัด) */
+.detail {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  /* ย่อหน้าตรงกับตัวหนังสือของแถว (ขอบซ้าย + ไอคอน 18px + ระยะ) */
+  padding: 0 var(--space-3) var(--space-2-5) calc(var(--space-3) + var(--space-4-5) + var(--space-2-5));
+}
+
+/* คลาสมี display ของตัวเอง ⇒ ต้องประกาศทับให้ `hidden` ทำงาน */
+.detail[hidden] { display: none; }
+
+.fact {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  gap: var(--space-2);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+}
+
+.fact dt {
+  color: var(--text-3);
+  font-weight: var(--fw-semibold);
+}
+
+.fact dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--text-1);
+  overflow-wrap: anywhere;
+}
+
+/* หน้ารายการของแท็บเล็ตแนวตั้ง (681–999 · AT-1) — สองคอลัมน์ · มือถือกับบานซ้ายของสองบาน (320px) คอลัมน์เดียว */
+.about[data-layout="pages"] .rows { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.about[data-layout="pages"] .item:nth-child(2) { border-top: 0; }
+.about[data-layout="pages"] .item:nth-child(even) { border-inline-start: 1px solid var(--border); }
+
+@media (max-width: 680px) {
+  .about[data-layout="pages"] .rows { grid-template-columns: minmax(0, 1fr); }
+  .about[data-layout="pages"] .item:nth-child(2) { border-top: 1px solid var(--border); }
+  .about[data-layout="pages"] .item:nth-child(even) { border-inline-start: 0; }
+}

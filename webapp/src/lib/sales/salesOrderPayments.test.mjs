@@ -353,7 +353,10 @@ test('แก้กำหนดชำระได้เสมอ ยกเว้�
   assert.equal(installmentActionError({ status: 'pending' }, 'schedule', SA), null);
   assert.equal(installmentActionError({ status: 'reported' }, 'schedule', SA), null);
   assert.match(installmentActionError({ status: 'confirmed' }, 'schedule', SA), /คอนเฟิร์มแล้ว/);
-  assert.match(installmentActionError({ status: 'pending' }, 'schedule', FN_ROLE), /ไม่มีสิทธิ์/);
+  /* กำหนดวางบิล · มติเจ้าของ 26/09 ข้อ 4 "แก้ได้" — ฝ่ายบัญชีแก้วันงวดได้แล้ว (เดิมบรรทัดนี้ยืนยันว่า FN แก้ไม่ได้)
+     ⇒ ทดสอบเต็มชุดอยู่ที่ installmentBillingSchedule.test.mjs */
+  assert.equal(installmentActionError({ status: 'pending' }, 'schedule', FN_ROLE), null);
+  assert.match(installmentActionError({ status: 'pending' }, 'schedule', PC_STAFF), /ไม่มีสิทธิ์/);
 });
 
 // ── ผูก/ถอดคำร้องขอเอกสารการเงิน (B-5 · mig 0260) ───────────────────────
@@ -1267,13 +1270,15 @@ test('โมดัลย้อนการอนุมัติ: เงินร
   assert.deepEqual(salesOrderMoneyOutcome(APPROVED_SO, [], 'revoke'), []);
 });
 
-test('โมดัลย้อนการอนุมัติ: ใบที่บัญชีปิดแล้ว (มติ D2) · ใบบริการ (ด่านนัดช่าง + ผูกโซนใหม่)', () => {
+test('โมดัลย้อนการอนุมัติ: ใบที่บัญชีปิดแล้ว (มติ D2) · ใบบริการ (ด่านนัดช่าง + ยกงานบริการไปใบ Rev.)', () => {
   const closed = salesOrderMoneyOutcome({ ...APPROVED_SO, financeStatus: 'approved' },
     MONEY_ROWS.map((r) => ({ ...r, status: 'confirmed' })), 'revoke');
   assert.ok(closed.includes('บัญชีปิดใบนี้แล้ว — ใบ Rev. จะกลับเข้าคิวให้บัญชีปิดใหม่'));
   assert.ok(!closed.some((l) => l.startsWith('สลิปรอบัญชีตรวจ')), 'ไม่มีงวดรอตรวจ = ไม่พูด');
   const service = salesOrderMoneyOutcome(APPROVED_SO, [], 'revoke', { serviceRounds: true });
-  assert.deepEqual(service, ['ระหว่างรอ Rev. อนุมัติ ด่านเงินของนัดช่างปิด และต้องผูกโซนกับใบ Rev. ใหม่']);
+  // mig 0392: ใบ Rev. ยกงานบริการ (แพ็คเกจ/โซน/แพ็ค/รอบ/ช่วงบริการ) ไปให้เอง — ไม่มีขั้น "ผูกโซนใหม่" ของ TS อีก
+  assert.deepEqual(service, ['ระหว่างรอ Rev. อนุมัติ นัดบริการของโซนในใบนี้ติดด่าน · ใบ Rev. คัดลอกแพ็คเกจ/โซน/แพ็ค/รอบ/ช่วงบริการไปให้ แก้ได้ก่อนยื่น · อนุมัติ Rev. แล้วรอบบริการของไซต์ที่ยังอยู่ย้ายตามไป']);
+  assert.ok(!service[0].includes('ผูกโซน'));
 });
 
 test('โมดัลออก Rev.: บอกว่างวดทั้งชุดย้ายไป (แยกยอดรับแล้ว/รอตรวจ/รอชำระ) · ใบที่ไม่มีงวด = ไม่พูด', () => {

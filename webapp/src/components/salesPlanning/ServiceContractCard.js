@@ -3,6 +3,10 @@
 //
 //   1. "สัญญาบริการของใบนี้" — ผูก/ถอดสัญญา (มติผู้ใช้ 2026-08-31)
 //   2. "จำนวนรอบบริการที่ขายไว้" — กรอกรายบรรทัด (มติผู้ใช้ 2026-08-31 รอบสอง)
+//      ⭐ **เหลือเฉพาะใบย้อนหลัง** (mig 0392 · แผน D21) — ใบ pipeline ตั้งรอบที่ตารางรายการแท็บภาพรวมแล้ว
+//        (งานบริการรายบรรทัด: แพ็คเกจ · โซน · แพ็คต่อรอบ · รอบ · ช่วงบริการ) ⇒ การ์ดนี้เหลือบรรทัดบอกทางแทน
+//        ใบย้อนหลังยังไม่มีตัวแก้รอบที่อื่นจนถึง PR-D จึงคงการ์ดเดิมไว้ทั้งการ์ด
+//   ⭐ ใบ pipeline: บรรทัด "ช่วงบริการตามใบ" · "สัญญาที่ผูก: ยังไม่ผูก — …" · คำเตือนช่วงสัญญาไม่ตรงช่วงบริการ (D21)
 //
 // ⚠️ **แยกเป็นสองการ์ด ไม่ใช่สองบล็อกในการ์ดเดียว** — คนละคำถามคนละด่าน และการ์ด
 //   ที่มีปุ่มบันทึกสองปุ่มในกล่องเดียวอ่านกำกวมว่าปุ่มไหนคุมอะไร
@@ -33,15 +37,24 @@ import { contractKindLabel, contractStatusLabel, externalDocKindLabel, isSubstit
 import { isHistoricalOrder } from "@/lib/sales/historicalOrders";
 import { serviceContractLinkError, serviceContractOptions } from "@/lib/sales/serviceContractLink";
 import { normalizeServiceRounds, serviceRoundLines, serviceRoundsEditError } from "@/lib/sales/serviceRoundsEntry";
-import { fmtDate, naText } from "@/lib/format";
+import { periodSpan, servicePeriodOf } from "@/lib/sales/serviceSetup";
+import { fmtDate, naText, NA } from "@/lib/format";
 import styles from "./ServiceContractCard.module.css";
+
+/* ช่วงของสัญญาที่ผูกไม่ตรงช่วงบริการของใบ — นัดที่ตกนอกช่วงสัญญาติดด่าน ① (visitGate) · เตือน ไม่บล็อก (สัญญาผูกทีหลังได้ · D5) */
+const periodMismatchText = (contract) => `สัญญา ${contract?.contractNo || "ที่ผูก"} ครอบ `
+  + `${contract?.effectiveDate ? fmtDate(contract.effectiveDate) : NA}–${contract?.expiryDate ? fmtDate(contract.expiryDate) : NA}`
+  + " ไม่ตรงกับช่วงบริการของใบ — นัดนอกช่วงสัญญาจะติดด่าน";
 
 export default function ServiceContractCard({
   order,
   canEdit = false,
   busy = false,
   onLink,          // (contractId | null) => Promise<void>
-  onSaveRounds,    // ({ [lineId]: จำนวนรอบ }) => Promise<boolean>
+  onSaveRounds,    // ({ [lineId]: จำนวนรอบ }) => Promise<boolean> — ใช้เฉพาะใบย้อนหลัง (ใบ pipeline ตั้งรอบที่ตารางรายการ · D21)
+  /* ช่วงบริการของใบ `{from,to}|null` (หน้าใบส่ง `setup.data.period`) — ไม่ส่ง (undefined) = อ่านจากใบด้วย `servicePeriodOf`
+     ตัวเดียวกับ GET ของงานบริการ */
+  period,
   /* การ์ด "สัญญา" ของดีลข้างล่างมีปุ่มออกสัญญาให้คนนี้จริงไหม (หน้า SO คำนวณ: `showDealContracts && canCreateContract`)
      ⚠️ ข้อความว่างของการ์ดนี้ชี้ไปที่ปุ่มนั้น — ไม่มีปุ่มแล้วยังชี้ = พาคนไปหาของที่ไม่มี (รีวิว 25/09) */
   canCreateBelow = false,
@@ -105,7 +118,8 @@ export default function ServiceContractCard({
      "แก้บรรทัดได้" ซึ่งไม่จริง · ที่นี่คือแผงงานบริการของใบ ซึ่งเป็นบ้านที่ถูกของมัน
      ⚠️ ค่าตั้งต้นมาจากบรรทัดของใบเสมอ และรีเซ็ตเมื่อใบถูกโหลดใหม่ ไม่งั้นจอค้าง
      ค่าที่พิมพ์ไว้แล้วบันทึกไม่ผ่าน จนคนเข้าใจว่าบันทึกไปแล้ว */
-  const roundLines = useMemo(() => serviceRoundLines(order?.lines), [order?.lines]);
+  /* ⚠️ ส่ง `order` เสมอ (กฎ 17 ของแผน 0392) — ใบที่ประทับแล้วถามชนิดบรรทัด ไม่ใช่รหัส FG ล้วน */
+  const roundLines = useMemo(() => serviceRoundLines(order?.lines, order), [order]);
   const [rounds, setRounds] = useState({});
   useEffect(() => {
     setRounds(Object.fromEntries(roundLines.map((l) => [l.id, l.serviceRounds ?? ""])));
@@ -117,10 +131,42 @@ export default function ServiceContractCard({
   const saveRounds = () => onSaveRounds?.(
     Object.fromEntries(roundLines.map((l) => [l.id, normalizeServiceRounds(rounds[l.id])])),
   );
+  /* ⭐ D21: การ์ดกรอกรอบเหลือเฉพาะใบย้อนหลัง — ใบ pipeline ตั้งรอบที่ตารางรายการ (แท็บภาพรวม · ด่านเดียวกับ RPC บันทึกงานบริการ)
+     ⚠️ ห้ามคืนการ์ดนี้ให้ใบ pipeline — สองที่แก้ค่าเดียวกันคนละด่าน = รอบบนใบกับที่ตารางยื่นตรวจพูดคนละเรื่อง */
+  const historical = isHistoricalOrder(order);
+  const showRoundsCard = historical && roundLines.length > 0;
+
+  /* ── ช่วงบริการตามใบ + สัญญาที่ผูก (ใบ pipeline · D21) ─────────────────────────────────────────────────
+     ⭐ ช่วงบริการตั้งที่ตารางรายการ — ที่นี่แสดงอย่างเดียว · ใบย้อนหลังใช้ช่วงของเอกสารแทนสัญญา (ไม่มีช่วงของใบเอง) ⇒ ไม่ขึ้น */
+  const servicePeriod = period === undefined ? servicePeriodOf(order) : period;
+  const periodReady = Boolean(servicePeriod?.from && servicePeriod?.to);
+  const periodValue = periodReady
+    ? `${fmtDate(servicePeriod.from)}–${fmtDate(servicePeriod.to)}`
+      + (periodSpan(servicePeriod).label ? ` (${periodSpan(servicePeriod).label})` : "")
+    : NA;
+  /* สัญญาที่ผูกไม่ตรงช่วงบริการ — เทียบวันเป๊ะ ๆ (มีผล = วันเริ่ม · สิ้นสุด = วันสิ้นสุด) */
+  const periodMismatch = !historical && Boolean(linked) && periodReady
+    && (linked.effectiveDate !== servicePeriod.from || linked.expiryDate !== servicePeriod.to);
 
   return (
     <>
     <DetailCard icon={FileSignature} title="สัญญาบริการของใบนี้">
+      {/* ⭐ ใบ pipeline (D21 · D5): ช่วงบริการตามใบ + สถานะการผูกสัญญา — สัญญาไม่ต้องมีก่อนยื่น/อนุมัติ (TS วางรอบได้)
+          แต่นัดบริการติดด่านสัญญา ① จนกว่าจะผูก ⇒ ต้องบอกผลนี้ตรงที่ผูก ไม่ใช่ปล่อยให้ TS มาถาม */}
+      {historical ? null : (
+        <div className="form-grid cols-2">
+          <div className="form-field">
+            <span className="form-field-label">ช่วงบริการตามใบ</span>
+            <span>{periodValue}</span>
+          </div>
+          {linked ? null : (
+            <div className="form-field">
+              <span className="form-field-label">สัญญาที่ผูก</span>
+              <span>ยังไม่ผูก — TS วางรอบได้ แต่นัดบริการติดด่านสัญญาจนกว่าจะผูก</span>
+            </div>
+          )}
+        </div>
+      )}
       {substituteDraft ? (
         <>
           <div className="form-grid cols-2">
@@ -191,6 +237,8 @@ export default function ServiceContractCard({
               {unlinkGate ? <span className={styles.gate} role="status">{unlinkGate}</span> : null}
             </div>
           )}
+          {/* ช่วงสัญญาไม่ตรงช่วงบริการของใบ — เตือน ไม่บล็อก (นัดที่ตกนอกช่วงสัญญาติดด่าน ① ของ visitGate) */}
+          {periodMismatch ? <StatusNotice tone="warning">{periodMismatchText(linked)}</StatusNotice> : null}
         </>
       ) : historicalUnlinked ? (
         /* ⚠️ ใบย้อนหลังที่ยังไม่อนุมัติแต่ไม่มีเอกสารแทนสัญญา = ของที่ไม่ควรเกิด (RPC คีย์ใบสร้างให้เสมอ)
@@ -241,15 +289,20 @@ export default function ServiceContractCard({
         </>
       )}
 
-      {/* ⭐ ข้อผูกพันจำนวนครั้งที่ต้องไปหน้างาน — ไม่กระทบยอดเงินและไม่อยู่บนเอกสาร
-          ที่ออกไปแล้ว ⇒ แก้ได้แม้ใบอนุมัติแล้ว โดยไม่ต้องออก Rev. (มติผู้ใช้)
-          ⚠️ เป็นตัวเลขอ้างอิง ไม่ได้บังคับจำนวนนัดที่ระบบสร้าง — รอบจริงเลื่อน/งดได้ */}
+      {/* ⭐ D21: จำนวนรอบของใบ pipeline ย้ายไปอยู่ที่ตารางรายการ (แท็บภาพรวม) — บอกทางแทนการ์ดกรอกรอบที่ถอดออก */}
+      {historical ? null : (
+        <p className={styles.roundsMoved}>
+          <Repeat size={14} aria-hidden="true" />
+          <span>จำนวนรอบอยู่ที่ตารางรายการ แท็บภาพรวม</span>
+        </p>
+      )}
     </DetailCard>
 
     {/* ⭐ ข้อผูกพันจำนวนครั้งที่ต้องไปหน้างาน — ไม่กระทบยอดเงินและไม่อยู่บนเอกสาร
         ที่ออกไปแล้ว ⇒ แก้ได้แม้ใบอนุมัติแล้ว โดยไม่ต้องออก Rev. (มติผู้ใช้)
-        ⚠️ เป็นตัวเลขอ้างอิง ไม่ได้บังคับจำนวนนัดที่ระบบสร้าง — รอบจริงเลื่อน/งดได้ */}
-    {roundLines.length > 0 && (
+        ⚠️ เป็นตัวเลขอ้างอิง ไม่ได้บังคับจำนวนนัดที่ระบบสร้าง — รอบจริงเลื่อน/งดได้
+        ⭐ D21 (mig 0392): เหลือเฉพาะใบย้อนหลัง (`showRoundsCard`) — ใบ pipeline ตั้งรอบที่ตารางรายการ */}
+    {showRoundsCard && (
       <DetailCard icon={Repeat} title="จำนวนรอบบริการที่ขายไว้">
         <p className={styles.roundsHint}>
           ฝ่ายบริการเห็นตัวเลขนี้ตอนรับงานและตอนวางรอบ — เป็นข้อผูกพันอ้างอิง

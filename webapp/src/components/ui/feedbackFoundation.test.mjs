@@ -21,6 +21,14 @@ test("Toast foundation exposes a global provider, queue API, and portal", () => 
   // ดู components/ui/formActionBar.test.mjs)
   assert.match(TOAST_CSS, /body:has\(\.form-actions, \.form-action-bar\.is-page, \[data-toast-avoid\]\)/);
   assert.doesNotMatch(TOAST_CSS, /border-inline-start|border-left/);
+  // 🐞 UAT จอหน้างาน 25/09: toast ขอบล่างทับปุ่มหลักของแผ่นเต็มจอ แล้วการแตะทำให้มันค้าง
+  assert.match(TOAST_CSS, /@media \(max-width: 640px\)\s*\{\s*:global\(body:has\(\.overlay\.phone-sheet\)\)\s*\.viewport\s*\{[^}]*top:[^}]*bottom: auto/);
+  assert.doesNotMatch(TOAST, /onMouseEnter=\{stopTimer\}/, "แตะบนจอสัมผัสยิง mouseenter ด้วย — หยุดนับเฉพาะ pointerType mouse");
+  assert.match(TOAST, /pointerType === "mouse"\) stopTimer/);
+  // 🐞 review 26/09: แถบงานของช่างสูงเกินกว่าที่ยก 88px พ้น — แถบที่อยู่บนจอส่ง toast ขึ้นบน (กฎมาหลัง data-toast-avoid)
+  const avoidAt = TOAST_CSS.indexOf('[data-toast-avoid]');
+  const topAt = TOAST_CSS.indexOf(':global(body:has([data-toast-top]:not([hidden] *))) .viewport {');
+  assert.ok(avoidAt > -1 && topAt > avoidAt, 'กฎขึ้นบนต้องมาหลังกฎยก');
 });
 
 test("ConfirmDialog owns async, error, busy, and deliberate focus behavior", () => {

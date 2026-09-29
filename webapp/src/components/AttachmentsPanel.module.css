@@ -1,10 +1,9 @@
 /* รายการรูปแบบรายแถว (prop `photoRows`) — รูปซ้าย ของที่ผู้เรียกเขียนกำกับรูปอยู่ขวา
-   ⚠️ ความกว้างรูปมาจาก `--attach-thumb-w` ตัวเดียวกับตะแกรง ⇒ ผู้เรียกที่ตั้งค่านี้ไว้
-   แล้วได้ขนาดเดิมทั้งสองทรง · `align-items: start` เพราะฝั่งขวาสูงได้หลายบรรทัด */
+   ⚠️ ความกว้างรูปเท่าช่องของตะแกรง (148px · มือถือ 96px) · `align-items: start` เพราะฝั่งขวาสูงได้หลายบรรทัด */
 .photoRows { display: grid; gap: var(--space-2); margin-top: var(--space-2); }
 .photoRow {
   display: grid;
-  grid-template-columns: var(--attach-thumb-w, 148px) minmax(0, 1fr);
+  grid-template-columns: 148px minmax(0, 1fr);
   gap: var(--space-3);
   align-items: start;
 }
@@ -16,7 +15,7 @@
       ความสูงตามไป = **สี่เหลี่ยม 300×300 กลางการ์ด** (โรคเดียวกับที่ `PhotoGrid`
       เจอมาแล้วตอนใช้ `minmax(148px, 1fr)`) · ของที่ต้องเล็กลงคือรูป ไม่ใช่จำนวนคอลัมน์ */
 @media (max-width: 480px) {
-  .photoRow { grid-template-columns: var(--attach-thumb-w, 96px) minmax(0, 1fr); gap: var(--space-2); }
+  .photoRow { grid-template-columns: 96px minmax(0, 1fr); gap: var(--space-2); }
 }
 
 /* ปุ่ม "ถ่ายรูป" ของโหมด `photoCapture` — เป้านิ้วเต็มความสูงระบบสัมผัส (44px)
@@ -64,4 +63,145 @@
 @media (pointer: coarse) {
   .pointerOnly { display: none; }
   .touchOnly { display: inline; }
+}
+
+/* ── แผ่นรูป (prop `photoTiles`) — ม็อก A-3 · AT-2 · AW-1 · AO-3 (แผน §10.5 จอหน้างานแบบ A) ──────
+   รูปที่ขึ้นแล้ว → รูปที่กำลังส่ง → แผ่น "ถ่าย / เลือกรูป" ในตะแกรงเดียว
+   ⭐ ผู้เรียกปรับได้ผ่านตัวแปร CSS (ไม่ใช่ prop — ขนาดต่างตามจอ ตอบได้ใน media query ของผู้เรียกเท่านั้น):
+      `--attach-tile-cols` จำนวนคอลัมน์ (ตั้งต้น 3 = ม็อกทุกขนาดจอ) · `--attach-tile-h` ความสูงแผ่น
+      (ตั้งต้น 92px ตามม็อก — จอ 360 ได้แผ่นกว้าง ~95px ยังสูงกว่าเป้านิ้วสองเท่า)
+   ⚠️ ค่าตั้งต้นประกาศด้วย `@property` (สืบทอดได้) ไม่ใช่ประกาศที่ `.tiles` — ประกาศที่ตัวแผ่นเองจะทับค่าที่ผู้เรียก
+      ตั้งไว้ที่กล่องแม่เสมอ · ค่าสำรองใน `var()` ยังอยู่ให้เบราว์เซอร์ที่ไม่รู้จัก `@property` (Safari ก่อน 16.4) */
+@property --attach-tile-cols {
+  syntax: "<integer>";
+  inherits: true;
+  initial-value: 3;
+}
+@property --attach-tile-h {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 92px;
+}
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(var(--attach-tile-cols, 3), minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+/* หนึ่งแผ่น — ทั้งแผ่นรูป (ปุ่ม) · แผ่นกำลังส่ง (กล่อง) · แผ่นถ่ายรูป (ปุ่ม) ใช้กรอบเดียวกัน
+   ⚠️ ไม่ใช้ `font:` ย่อ — ล้าง `font-variant-numeric` ทิ้งด้วย (กับดักของ `.linklike` · `.ui-workspace-back`) */
+.tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  min-width: 0;
+  height: var(--attach-tile-h, 92px);
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-3);
+  color: var(--text-3);
+  font-family: inherit;
+  font-size: var(--fs-3);
+  line-height: var(--lh-thai);
+  text-align: center;
+}
+button.tile { cursor: pointer; }
+button.tile:hover { border-color: var(--border-strong); }
+button.tile:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+
+/* รูปจริงเต็มแผ่น · contain ไม่ใช่ cover (IS-26080016 — cover ครอปจนดูไม่ออกว่าเป็นอะไร) */
+.tileImg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* ป้าย "ขึ้นแล้ว" มุมซ้ายบน — บอกว่ารูปนี้อยู่บนระบบแล้ว ไม่ต้องกดบันทึก (ต่างจากค่าที่พิมพ์) */
+.tileChip {
+  position: absolute;
+  top: var(--space-1-5);
+  left: var(--space-1-5);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-0-5);
+  padding: 0 var(--space-1-5);
+  border-radius: var(--radius-full);
+  background: var(--green-soft);
+  color: var(--green);
+  font-size: var(--fs-2);
+  font-weight: var(--fw-bold);
+}
+
+/* ชื่อไฟล์ทับขอบล่าง — ช่างเทียบกับรูปในคลังของเครื่องได้ (IMG_2046.jpg) */
+.tileName {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: var(--space-0-5) var(--space-1-5);
+  overflow: hidden;
+  background: color-mix(in srgb, var(--panel-solid) 88%, transparent);
+  color: var(--text-2);
+  font-size: var(--fs-2);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* รูปที่กำลังส่ง — คำ % บน แถบล่าง (แถบเป็น <progress> ย้อมผ่าน pseudo ของแต่ละเอนจิน) */
+.tile[data-kind="upload"] { background: var(--panel-2); }
+.tilePct {
+  color: var(--blue);
+  font-size: var(--fs-4);
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+}
+.tileBar {
+  appearance: none;
+  display: block;
+  width: 72%;
+  height: 4px;
+  margin-bottom: var(--space-3);
+  border: 0;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--blue) 18%, transparent);
+  overflow: hidden;
+}
+.tileBar::-webkit-progress-bar { background: color-mix(in srgb, var(--blue) 18%, transparent); }
+.tileBar::-webkit-progress-value { background: var(--blue); }
+.tileBar::-moz-progress-bar { background: var(--blue); }
+
+/* แผ่นสุดท้าย "ถ่าย / เลือกรูป" — เส้นประ = ช่องที่ยังว่างให้เติม (ภาษาเดียวกับปุ่ม "+ เพิ่มส่วน" ของม็อก) */
+.tile[data-kind="add"] {
+  border: 1.5px dashed var(--border-strong);
+  background: var(--panel-solid);
+  color: var(--text);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+}
+.tile[data-kind="add"] svg { color: var(--text-2); }
+.tileHint {
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-normal);
+}
+
+/* แถบท้ายกล่องดูรูปเต็ม (โหมดแผ่นรูป) — ที่เดียวที่ลบรูปได้ · ปุ่มสูงระดับนิ้ว */
+.lightboxActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  width: 100%;
+}
+.lightboxBtn { min-height: var(--ctl-h-touch); justify-content: center; }
+/* จอแคบ: สองปุ่มแบ่งแถวกันเท่า ๆ — นิ้วโป้งเอื้อมถึงทั้งคู่ */
+@media (max-width: 680px) {
+  .lightboxBtn { flex: 1 1 0; }
 }

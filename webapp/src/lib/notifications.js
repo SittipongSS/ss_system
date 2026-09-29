@@ -21,6 +21,14 @@ import { mentionIdsOf } from '@/lib/master/mentions';
 // ปลายทาง/ป้ายชื่ออยู่แยกเพราะหน้าจอต้อง import ด้วย (ไฟล์นี้ลากของฝั่ง server มา)
 // re-export ไว้ให้ผู้เรียกเดิมไม่ต้องแก้ — ทะเบียนยังมีชุดเดียว
 import { ENTITY_LABEL, entityLabel, notificationHref } from '@/lib/notificationTargets';
+import { splitNotificationAction } from '@/lib/notificationAction';
+import {
+  BILLING_CUTOFF_KIND, BILLING_DUE_KIND, billingDueAction, billingDueActionInstallmentId,
+} from '@/lib/sales/billingDueNotify';
+
+/* ชนิดแถวที่มีปุ่ม "ขอใบวางบิลงวดนี้" — กระดิ่งถึงรอบวางบิล (รอบสอง 26/09) + กระดิ่งวันตัดรอบของใบที่รอแค่งวดเดียว (v5 · 29/09)
+   ⭐ สองชนิดใช้ตัวตัดสิน/ตัวโหลดชุดเดียวกัน (`billingDueAction` · งวด+ใบสดตอนเปิดกล่อง) — แถวชนิดอื่นที่บังเอิญมีพารามิเตอร์ปุ่ม = ไม่มีปุ่ม */
+const BILLING_ACTION_KINDS = new Set([BILLING_DUE_KIND, BILLING_CUTOFF_KIND]);
 
 export { entityLabel, notificationHref };
 
@@ -172,6 +180,25 @@ export const SALES_ORDER_BELL_KINDS = Object.freeze([
   'sales_order_tax_invoice',
   // บัญชีถอนใบกำกับคืน → คนเดียวกัน (อาจส่งไฟล์ให้ลูกค้าไปแล้ว)
   'sales_order_tax_invoice_cleared',
+  /* ⭐ กำหนดวางบิล (mig 0389 · มติเจ้าของ 25–26/09) — cron daily-digest ยิงเมื่อวันวางบิลของงวดเหลือ 0–3 วัน
+     ยิงจาก `lib/sales/billingDueNotify.js` (`BILLING_DUE_KIND` / `BILLING_DUE_FN_KIND`) */
+  // งวดถึงรอบวางบิล → เจ้าของดีล + เจ้าของใบ หนึ่งแถวต่องวด (ครั้งเดียวต่องวดต่อวันวางบิล)
+  'sales_order_billing_due',
+  /* สรุปงวดที่ถึงรอบวางบิล → ทุกคนในฝ่าย FN วันละแถว
+     🔴 ข้อยกเว้นกติกา "ห้ามแจ้งทุกคนในฝ่าย" (mig 0185 มติ 14) — เจ้าของสั่งเอง 26/09 "แจ้งทั้งฝ่ายไปก่อน" */
+  'sales_order_billing_due_fn',
+  /* ⭐ ครบกำหนดชำระ (รุ่นสี่ · system-design §6 ช่วง 4a · มติเจ้าของ 29/09) — cron daily-digest ยิงเมื่อกำหนดชำระของงวดเหลือ 0–3 วัน
+     **ทุกงวดที่มีกำหนดชำระ** (ขอใบแล้วก็ยังเตือน) · ยิงจาก `lib/sales/billingDueNotify.js` (`DUE_SOON_KIND` / `DUE_SOON_FN_KIND`) */
+  // งวดใกล้ครบกำหนด → เจ้าของดีล + เจ้าของใบ หนึ่งแถวต่องวด (ครั้งเดียวต่องวดต่อกำหนดชำระ · วันวางบิล = กำหนดชำระ ⇒ รวมในแถววางบิล)
+  'sales_order_due_soon',
+  // สรุปงวดที่ใกล้ครบกำหนด → ทุกคนในฝ่าย FN วันละแถว → ทะเบียน `?due=soon` (ข้อยกเว้นมติ 14 ชุดเดียวกับแถว FN ของวางบิล)
+  'sales_order_due_soon_fn',
+  /* ⭐ เช้าวันตัดรอบ (v5 · มติเจ้าของ 29/09 "เตือนดีกว่า") — เช้าวันทำงานก่อนเส้นตาย + เช้าวันสุดท้าย · งวดที่ยังรอวางบิลของรอบ
+     ยิงจาก `lib/sales/billingDueNotify.js` (`BILLING_CUTOFF_KIND` / `BILLING_CUTOFF_FN_KIND`) */
+  // ใบที่มีงวดรอวางบิลในรอบ → เจ้าของดีล + เจ้าของใบ หนึ่งแถวต่อใบต่อรอบ → แท็บการชำระ (งวดเดียว = ปุ่ม "ขอใบวางบิลงวดนี้")
+  'sales_order_billing_cutoff',
+  // สรุปต่อเส้นตาย (รวมทุกลูกค้า) → ทุกคนในฝ่าย FN → ทะเบียน `?billing=cutoff&on=<เส้นตาย>` (ข้อยกเว้นมติ 14 ชุดเดียวกัน)
+  'sales_order_billing_cutoff_fn',
   /* 🚫 'sales_order_site_not_found' (TS แจ้งว่าไม่พบจุดติดตั้ง · มติ 16/09/2026 ข้อ 23.2) ถอดแล้ว
      (มติ 22/09) — บรรทัดของใบย้อนหลังผูกโซนจากทะเบียนตั้งแต่ตอนคีย์ ⇒ ไม่มีทางแจ้งให้ยิงกระดิ่งอีก */
 ]);
@@ -198,13 +225,28 @@ export const PRODUCT_SPEC_DOC_BELL_KINDS = Object.freeze([
   'product_spec_doc_void',        // ยกเลิกเอกสาร → ผู้ยื่น + ผู้ออกเอกสาร + AE เจ้าของดีล
 ]);
 
+/* ── ลูกค้า: เหตุการณ์ที่ฝ่ายขาย/FN ต้องไปทำต่อที่การ์ดลูกค้า (v5 ปฏิทินรายปี · มติเจ้าของ 29/09) ────────────────
+ *
+ * ⭐ "ขอปฏิทินปีหน้า" — ปีที่ยังไม่มีปฏิทิน ระบบหยุดคิดกำหนดชำระ (Q3 "หยุดรอปฏิทินใหม่") ⇒ ต้องมีคนไปขอปฏิทินจากลูกค้า
+ *   ก่อนถึงปีนั้น · ซ้ำทุกสัปดาห์จนกว่าจะใส่ (กุญแจรายสัปดาห์ของ `calendarReminder`) → การ์ดกำหนดวางบิล `#billing-rule`
+ *
+ * 🪤 **ทำไมไม่ใส่ `'customer'` ลง `entityTypes`** ทั้งที่ลูกค้ามีเธรด: เธรดลูกค้าเปิดอยู่ทุกราย (คอมเมนต์ · อนุมัติ ·
+ *   กำหนดวางบิล) ⇒ ลากทั้ง entity = เธรดลูกค้าทั้งระบบไหลเข้ากระดิ่งจนคำร้องตกขอบ 30 แถว (เหตุผลเดียวกับลีด)
+ *
+ * ⚠️ ชุดนี้ต้องตรงกับ kind ที่ยิงจริง · notifications.test.mjs กวาดทั้ง src หา `kind: 'customer_…'` และ
+ *    `_KIND = 'customer_…'` มาเทียบ ดริฟต์แล้วแดง */
+export const CUSTOMER_BELL_KINDS = Object.freeze([
+  // ลูกค้าที่วางบิลตามปฏิทินใกล้หมดปี → ฝ่ายขายทีมที่ดูแล + FN · หนึ่งแถวต่อลูกค้าต่อสัปดาห์ (ยิงจาก billingDueNotify.js `CALENDAR_MISSING_KIND`)
+  'customer_billing_calendar_missing',
+]);
+
 export const NOTIFICATION_BOXES = {
   bell: {
     entityTypes: ['dept_request', 'system_issue'],
     kinds: [
       'task_assign',
       ...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS, ...SERVICE_BELL_KINDS, ...CONTRACT_BELL_KINDS,
-      ...SALES_ORDER_BELL_KINDS, ...PRODUCT_SPEC_DOC_BELL_KINDS,
+      ...SALES_ORDER_BELL_KINDS, ...PRODUCT_SPEC_DOC_BELL_KINDS, ...CUSTOMER_BELL_KINDS,
     ],
   },
 };
@@ -252,17 +294,23 @@ export function entityTitle(entityType, parent) {
 //
 // ⭐ "คนเคยโพสต์" คือส่วนที่ทำให้เธรดสองฝ่ายทำงานได้โดยไม่ต้องแจ้งทั้งฝ่าย: RD ที่
 // ตอบเคสไปแล้วครั้งหนึ่งจะได้รับข้อความถัดไปเอง ส่วนคนที่ไม่เคยเกี่ยวไม่ถูกรบกวน
+/* แถวบันทึกที่คนเขียนไม่ได้ "เข้ามาคุย" — ไม่นับเป็นคนเคยโพสต์ (กำหนดวางบิล 26/09)
+   `billing_rule` (ลูกค้า): SA/FN ที่แค่บันทึกรอบวางบิลจะกลายเป็นผู้ติดตามทั้งเธรดของลูกค้าถ้านับ
+   แล้วโดนเด้งทุกข้อความหลังจากนั้น ⇒ เงียบทั้งตอนเขียน (quiet) และไม่ลากคนเขียนเข้าวงสนทนา
+   ⚠️ ไม่เหมารวม quiet ทุกชนิด — `override` เขียนคู่ `approve` และคนอนุมัติควรได้ข้อความถัดไปตามเดิม */
+const NON_PARTICIPANT_KINDS = new Set(['billing_rule']);
+
 export function threadParticipants(items = []) {
   return [...new Set(
     items
-      .filter((row) => !row?.deletedAt && row?.authorId)
+      .filter((row) => !row?.deletedAt && row?.authorId && !NON_PARTICIPANT_KINDS.has(row?.kind))
       .map((row) => String(row.authorId)),
   )];
 }
 
 async function pastAuthors(supabase, entityType, entityId) {
   const { data, error } = await supabase
-    .from('entity_updates').select('authorId, deletedAt')
+    .from('entity_updates').select('authorId, deletedAt, kind')
     .eq('entityType', entityType).eq('entityId', String(entityId));
   if (error) {
     // อ่านคนเคยโพสต์ไม่ได้ ≠ ไม่มีใครเคยโพสต์ — log แล้วเดินต่อด้วยผู้รับจากทะเบียน
@@ -291,8 +339,9 @@ export async function recipientsForUpdate(supabase, { entityType, entityId, pare
 export async function notifyThreadUpdate(supabase, { entityType, entityId, parent, update, actor }) {
   try {
     if (!updateEntityConfig(entityType) || !update?.id) return { sent: 0 };
-    // ชนิดที่ลงเธรดแต่ไม่เด้ง — วันนี้คือ `override` ของลูกค้า/สินค้า ซึ่งถูกเขียนคู่กับ
-    // `approve` เสมอ (ดูเหตุผลเต็มที่ isQuietUpdateKind ใน lib/master/updateTypes.js)
+    // ชนิดที่ลงเธรดแต่ไม่เด้ง — `override` ของลูกค้า/สินค้า (เขียนคู่กับ `approve` เสมอ) และ
+    // `billing_rule` ของลูกค้า (บันทึกไว้อ่านย้อน ไม่มีเหตุการณ์คู่ · มติ 26/09) — เหตุผลเต็มที่
+    // isQuietUpdateKind ใน lib/master/updateTypes.js
     if (isQuietUpdateKind(entityType, update.kind)) return { sent: 0, quiet: true };
     const userIds = await recipientsForUpdate(supabase, {
       entityType, entityId, parent, actorId: actor?.id, update,
@@ -441,10 +490,103 @@ export async function listNotificationPage(supabase, userId, options = {}) {
   const rows = await listNotifications(supabase, userId, { ...options, limit: limit + 1 });
   const items = rows.slice(0, limit);
   return {
-    items,
+    // ⚠️ แกะปุ่มในแถวก่อนออกจาก lib — จอทุกจอ (กระดิ่ง · หน้าเต็ม) ต้องได้ `href` สะอาด (ดู attachNotificationActions)
+    items: await attachNotificationActions(supabase, items),
     hasMore: rows.length > limit,
     nextCursor: rows.length > limit ? notificationCursor(items[items.length - 1]) : null,
   };
+}
+
+/**
+ * ปุ่มลงมือในแถว (กำหนดวางบิล รอบสอง · 26/09) — แกะลิงก์ของปุ่มออกจาก `href` แล้วตัดสินว่าปุ่มยังควรขึ้นไหม
+ *
+ * ⭐ ตาราง (mig 0185) ไม่มีช่องเก็บลิงก์ของปุ่ม และงานนี้ห้ามออก migration ⇒ ผู้ยิงฝังลิงก์ปุ่มท้าย `href` ของแถว
+ *   (lib/notificationAction.js) · ที่นี่ถอดออกทุกแถว ⇒ แถวพาไปที่เดิม + `action: { href, label } | null` แยกช่อง
+ * ⭐ ปุ่มขึ้นเฉพาะชนิดที่รู้จัก (`BILLING_ACTION_KINDS`): `sales_order_billing_due` + `sales_order_billing_cutoff` (v5 — ใบที่รอแค่
+ *   งวดเดียว) · ปุ่มเดียวกัน "ขอใบวางบิลงวดนี้" (billingDueNotify)
+ *   ตัดสินจาก **งวด + ใบสด ตอนเปิดกล่อง** (แถวอยู่ในกล่องหลายวัน · งวดอาจถูกขอใบ/จ่าย/ย้ายไปร่าง Rev./จัดวันใหม่ ·
+ *   ใบอาจถูกยกเลิก) — ตัวตัดสินล้วน `billingDueAction` (ชั้นงวด + ล็อกทั้งใบตัวเดียวกับ `link` ของแผงงวด)
+ *   ⇒ อ่านเพิ่มไม่เกินสาม query ต่อหน้า (งวด → ใบ → QT) **เฉพาะเมื่อหน้านั้นมีแถวชนิดนี้** · ขอบเขตเท่าจำนวน id (≤ 100)
+ * ⭐ `action.href` **ประกอบใหม่จากค่าสด** — ลิงก์ที่ฝังตอนยิงใช้เป็นแค่ธง "แถวนี้มีปุ่ม" + id งวด
+ *   (ออก Rev. แล้วลิงก์เก่าชี้ใบที่ถูกทับ · จัดวันใหม่แล้ววัน/ยอดเก่าค้าง — ดูหัวข้อท้าย billingDueNotify.js)
+ * ⚠️ อ่านอะไรไม่ขึ้น = ไม่มีปุ่ม (ไม่ใช่มีปุ่ม) — ปุ่มที่ขึ้นทั้งที่ไม่รู้ว่างวดขอใบไปแล้วหรือใบยังมีชีวิต = คำร้องซ้ำ/คำร้องของใบตาย
+ *   แถวยังพาไปแผงงวดซึ่งมีปุ่มเดียวกัน · ⚠️ ห้าม throw — กระดิ่งอยู่บนทุกหน้า (route จับแล้วตอบกล่องว่างทั้งกล่อง)
+ * ⚠️ แถวที่ไม่มีลิงก์ปุ่มคืน `href` เดิมทุกตัวอักษร (ไม่ประกอบใหม่)
+ */
+export async function attachNotificationActions(supabase, items = []) {
+  const split = (items || []).map((row) => ({ row, ...splitNotificationAction(row?.href) }));
+  const installmentIds = [...new Set(split
+    .filter(({ row, actionHref }) => actionHref && BILLING_ACTION_KINDS.has(row?.kind))
+    .map(({ actionHref }) => billingDueActionInstallmentId(actionHref))
+    .filter(Boolean))];
+  const live = installmentIds.length ? await loadBillingDueActionRows(supabase, installmentIds) : null;
+  return split.map(({ row, href, actionHref }) => {
+    let action = null;
+    if (actionHref && BILLING_ACTION_KINDS.has(row?.kind) && live) {
+      const installment = live.installmentsById.get(billingDueActionInstallmentId(actionHref));
+      const order = installment ? live.ordersById.get(String(installment.salesOrderId)) : null;
+      /* ⭐ รุ่นสี่: กติกาของลูกค้าของใบ (ไม่ต้องวางบิล + งวดไม่มีวันวางบิล = ไม่ชวนขอใบ · §6) — ตัวตัดสินเดียวกับเมนูแถวของแผงงวด */
+      action = billingDueAction(installment, order, { rule: live.rulesByCustomerId.get(String(order?.customerId || '')) ?? null });
+    }
+    return { ...row, href, action };
+  });
+}
+
+/* งวดสด + ใบสดของงวด (+ สถานะ QT) ของปุ่มในแถว — คืน `{ installmentsById, ordersById }` หรือ null เมื่ออ่านพลาดข้อไหนก็ตาม
+   ⭐ ใบอ่านจาก `salesOrderId` **ของงวดสด** ไม่ใช่ใบที่แถวชี้ — งวดที่ย้ายไปร่าง Rev. ต้องได้ร่าง Rev.
+   ⭐ QT อ่านเพื่อด่านร่างที่ QT ถูกถอด Won (`pipelineInstallmentLock` อ่าน `order.quotation.status`) — ไม่แนบ = ด่านนั้นเงียบ
+     ปล่อยปุ่มบนร่างที่กู้คืนจากการยกเลิก (SO-26080039-0) ซึ่งฟอร์มคำร้องรับ (QT ยังอนุมัติอยู่) แต่ตัวผูกตีกลับ
+   ⚠️ ทุก query มี `.limit` = จำนวน id (ไม่มีทางเกิน · ด่าน check:rowcap) · ⚠️ ห้าม throw — ผู้เรียกถือ null = ไม่มีปุ่ม */
+async function loadBillingDueActionRows(supabase, installmentIds) {
+  /* ⚠️ สาม query เขียนตรง ๆ ทีละตัว ไม่ห่อเป็นตัวช่วยรับชื่อตาราง/คอลัมน์ — ด่าน check:columns/check:rowcap
+     อ่าน `.from('…').select('…')` ที่เป็นตัวอักษรตรง ๆ เท่านั้น (ค่าที่ส่งผ่านตัวแปร = ด่านแกะไม่ได้) */
+  const rowsOf = ({ data, error }, table) => {
+    if (error) throw new Error(`${table}: ${error.message}`);
+    return data || [];
+  };
+  try {
+    /* งวด = `*` โดยเจตนา (rework v4) — ติ๊ก "งวดนี้ไม่ต้องวางบิล" (`billingSkip` · mig 0393) มากับแถวเมื่อฐานมีคอลัมน์ ·
+       ก่อนรัน 0393 ไม่มีคีย์ = ไม่ติ๊ก (ไม่ต้องยิงสองรอบ/ถามฐานก่อน) · แถว ≤ 100 */
+    const installments = rowsOf(await supabase
+      .from('sales_order_installments')
+      .select('*')
+      .in('id', installmentIds)
+      .limit(installmentIds.length), 'sales_order_installments');
+    const orderIds = [...new Set(installments.map((row) => String(row.salesOrderId || '')).filter(Boolean))];
+    const orders = orderIds.length ? rowsOf(await supabase
+      .from('sales_orders')
+      .select('id, status, origin, "quotationId", "customerId"')
+      .in('id', orderIds)
+      .limit(orderIds.length), 'sales_orders') : [];
+    const quotationIds = [...new Set(orders.map((order) => String(order.quotationId || '')).filter(Boolean))];
+    const customerIds = [...new Set(orders.map((order) => String(order.customerId || '')).filter(Boolean))];
+    const [quotations, customers] = await Promise.all([
+      quotationIds.length ? supabase
+        .from('quotations')
+        .select('id, status, "quoteNumber"')
+        .in('id', quotationIds)
+        .limit(quotationIds.length)
+        .then((res) => rowsOf(res, 'quotations')) : [],
+      /* กติกาของลูกค้า (รุ่นสี่ · `canRequestBilling`) — ส่งค่าดิบ ตัวตัดสินอ่านได้ทุกรุ่น */
+      customerIds.length ? supabase
+        .from('customers')
+        .select('id, "billingRule"')
+        .in('id', customerIds)
+        .limit(customerIds.length)
+        .then((res) => rowsOf(res, 'customers')) : [],
+    ]);
+    const quotationsById = new Map(quotations.map((quotation) => [String(quotation.id), quotation]));
+    return {
+      rulesByCustomerId: new Map(customers.map((customer) => [String(customer.id), customer.billingRule ?? null])),
+      installmentsById: new Map(installments.map((row) => [String(row.id), row])),
+      ordersById: new Map(orders.map((order) => [String(order.id), {
+        ...order, quotation: quotationsById.get(String(order.quotationId || '')) || null,
+      }])),
+    };
+  } catch (e) {
+    console.error('[notifications] อ่านงวด/ใบของปุ่มในแถวไม่ขึ้น — ซ่อนปุ่ม', e?.message || e);
+    return null;
+  }
 }
 
 // ⚠️ เลขบนป้ายต้องนับ **กล่องเดียวกับที่กระดิ่งแสดง** — ป้ายขึ้น 12 แล้วเปิดมาเจอ

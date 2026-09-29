@@ -28,6 +28,8 @@ import {
 } from '@/lib/sales/historicalOrders';
 // เอกสารยืนยันคำสั่งซื้อของใบ (อ่านสองบ้าน) — ไฟล์นั้นไม่มี import (ไม่มีวงวน)
 import { orderConfirmationOf } from '@/lib/sales/orderConfirmationDocs';
+// กำหนดวางบิล (mig 0389) — ตัวคิดวัน import แค่ paymentCoverage (ไม่มีวงวน · ฝั่ง client ใช้ได้)
+import { billingRequestLive } from '@/lib/sales/billingRule';
 
 export const INSTALLMENT_STATUSES = ['pending', 'reported', 'confirmed', 'rejected'];
 
@@ -329,11 +331,6 @@ export function paymentRollup(rows = [], todayIso = null) {
     ? open.filter((r) => r.dueDate && String(r.dueDate) < String(todayIso))
     : [];
 
-  const upcoming = open
-    .map((r) => r.dueDate)
-    .filter(Boolean)
-    .sort();
-
   const complete = count > 0 && confirmed.length === count;
 
   return {
@@ -349,9 +346,27 @@ export function paymentRollup(rows = [], todayIso = null) {
     // ค้างรับ = งวดที่ยังไม่ confirmed (ยอดรวม − เก็บได้ − คืนแล้ว) · ไม่มีงวดคืนเงิน = ค่าเดิมทุกตัว
     outstandingAmount: money(totalAmount - confirmedAmount - refundedAmount),
     overdueCount: overdue.length,
-    nextDue: upcoming[0] || null,
+    nextDue: installmentsNextDue(list),
     complete,
   };
+}
+
+/**
+ * กำหนดชำระถัดไปของใบ = วันที่ใกล้ที่สุดของงวดที่ **ยังไม่รับรอง** (รวมงวดที่เลยกำหนดแล้ว — วันที่ค้างคือวันที่ต้องตาม)
+ *
+ * ⭐ ตัวเดียวของสามที่ (มติเจ้าของ 26/09 · กำหนดวางบิลรอบสอง): ช่อง "กำหนดชำระ" บนหัวใบ SO · บรรทัด "กำหนด …"
+ *   ใต้เซลล์งวดของรายการ SO · การเรียง "กำหนดชำระ" ของรายการ SO — ทั้งสามเคยอ่าน `sales_orders.paymentDueDate`
+ *   🐞 ช่องนั้นเป็นค่าตาย (วันเดียวทั้งใบ ตั้งตอนสร้าง ไม่มีใครแก้ได้ตั้งแต่มติ 2026-08-18) — SO-26080050-0 หัวใบขึ้น
+ *     05/09/2026 ทั้งที่งวดบอก 25 ต.ค. ⇒ คนเปิดใบเห็นคนละวันกับแผงงวดข้างล่าง
+ * ⚠️ ไม่แตะ `paymentDueDate` ในฐาน — ใบพิมพ์ · ลายนิ้วมือการอนุมัติ · แผนผลิต ยังอ่านช่องนั้น (ใบที่พิมพ์ไปแล้วต้องนิ่ง)
+ * ⚠️ `reported` นับ (แจ้งแล้วแต่เงินยังไม่เข้าจริง — กติกาเดียวกับ "เลยกำหนด") · ผู้เรียกกรองงวดโมฆะออกก่อน
+ * @returns 'YYYY-MM-DD' หรือ null (ไม่มีงวดที่ยังค้าง / ยังไม่มีงวดไหนมีกำหนดชำระ)
+ */
+export function installmentsNextDue(rows = []) {
+  return (Array.isArray(rows) ? rows : [])
+    .filter((r) => r?.status !== 'confirmed' && r?.dueDate)
+    .map((r) => String(r.dueDate))
+    .sort()[0] || null;
 }
 
 /**
@@ -589,6 +604,11 @@ export function installmentReportDoneMessage(status) {
   return 'ส่งให้บัญชีตรวจแล้ว';
 }
 
+/* สิทธิ์แก้วันงวด (กำหนดชำระ · วันวางบิล · ติ๊ก "งวดนี้ไม่ต้องวางบิล" · โหมดตั้งวัน `schedule-many` · จัดวันใหม่ตามกติกาลูกค้า) = ฝ่ายขายที่แก้ใบได้ หรือฝ่ายบัญชี (มติ 26/09 ข้อ 4)
+   ⭐ แยกออกมาให้แผงถาม "มีสิทธิ์ไหม" ได้โดยไม่ต้องมีแถว — ปุ่มระดับทั้งใบ ("จัดวันใหม่ตามรอบปัจจุบัน…") ไม่มีสิทธิ์ = ไม่วาด
+     ส่วนติดล็อกของใบ = วาดแล้วบอกเหตุ (กติกาเดียวกับทั้งระบบ) · ด่าน `schedule` ข้างล่างถามตัวนี้ตัวเดียว */
+export const installmentScheduleAllowed = (user) => canUser(user, 'salesplan:edit') || canConfirmPayment(user);
+
 export function installmentActionError(row, action, user, options = {}) {
   /* ── ล็อกทั้งใบ (ผู้เรียกคำนวณมา = `historicalInstallmentLock(order) || pipelineInstallmentLock(order, action)`)
      — ชนะทุกคำสั่ง ─────────
@@ -678,8 +698,15 @@ export function installmentActionError(row, action, user, options = {}) {
   // ตั้ง/แก้วันครบกำหนดรายงวด — QT ไม่มีวันมาให้ (มติผู้ใช้: SA กรอกเองทีละงวด)
   // แก้ได้เสมอแม้ใบอนุมัติแล้ว เพราะของจริงลูกค้าเลื่อนจ่ายบ่อย · แต่ยอด/% แก้รายงวดที่นี่ไม่ได้ —
   // ทางเดียวคือ "ปรับแผนงวด" ของ AE Sup/admin ทั้งใบ (PR2 · mig 0377 · lib/sales/installmentReplan.js)
+  /* ⭐ คำสั่งเดียวกันถือ **วันวางบิล / รอเหตุการณ์** ของงวดด้วย (กำหนดวางบิล · mig 0389) และข้อยกเว้นรายงวดรุ่นสี่
+     (ติ๊ก/ยืนยัน "งวดนี้ต้องวางบิล" · 0393) · `schedule-many` และจัดวันใหม่ตามกติกาลูกค้าถามด่านนี้ทีละงวด — ด่านวันงวดมีบ้านเดียว
+     ⭐ **ฝ่ายบัญชีแก้ได้ด้วย** (มติเจ้าของ 26/09 ข้อ 4 "แก้ได้") — FN เป็นคนที่เห็นรอบวางบิลของลูกค้าจริง
+       และเห็นงวดทั้งบริษัทที่ทะเบียนการชำระ · ตัดสินฝ่ายด้วย `canConfirmPayment` ตัวเดียวกับด่านรับรองงวด
+       (ไม่ใช่ role ล้วน — กติกา 🔴 ของ permissions.js ห้ามเอา superuser มาเป็นด่านเงิน)
+     ⚠️ แผงงวดต้องส่ง `department` มากับ user (หน้าใบส่ง `meDepartment`) — ไม่ส่ง = บัญชีที่ role
+       ไม่ได้ชี้ฝ่าย FN มองไม่เห็นเมนูทั้งที่ API ให้ผ่าน (ปุ่มกับ API ต้องตอบคำเดียวกัน) */
   if (action === 'schedule') {
-    if (!canUser(user, 'salesplan:edit')) return 'ไม่มีสิทธิ์แก้กำหนดชำระ';
+    if (!installmentScheduleAllowed(user)) return 'ไม่มีสิทธิ์แก้กำหนดชำระ';
     if (status === 'confirmed') return 'งวดนี้บัญชีคอนเฟิร์มแล้ว แก้กำหนดชำระไม่ได้';
     return null;
   }
@@ -887,6 +914,38 @@ export function installmentActionError(row, action, user, options = {}) {
    · ย้อนการอนุมัติ/ออก Rev. ไม่ถามตั้งแต่ PR1 (งวดย้ายไปใบ Rev.) · ยกเลิกใบ pipeline ไม่ถามตั้งแต่ PR3 (เงินค้างอยู่กับใบ)
    ⚠️ อย่าเขียนด่าน "งวดรับรองแล้วห้าม…" ชุดใหม่ที่นี่ — สองชุดเพี้ยนหากันแน่นอน (ยามที่ salesOrderPayments.test.mjs) */
 
+/* ══ กำหนดวางบิล (mig 0389 · มติเจ้าของ 25–26/09 · ม็อก mockups/billing-cycle จอ C) ═══════════════════════
+   ตัวคิดวันทั้งหมดอยู่ที่ `billingRule.js` — ที่นี่เหลือเรื่องเดียวของ "งวดในใบ": คำร้องที่ผูกยังมีชีวิตไหม (ป้าย "ขอใบวางบิลแล้ว") */
+
+/* "ขอใบวางบิลแล้ว" ตัดสินที่ `billingRequestLive` (billingRule.js) ตัวเดียวกับทะเบียน FN และกระดิ่ง —
+   ร่างที่ยังไม่ส่ง = ยังไม่ขอ · ยกเลิกแล้ว (ลิงก์บนงวดไม่ถูกล้าง) = ยังไม่ขอ
+   `billingRequestDead` เหลือไว้บอก **บนจอ** ว่าคำร้องที่ผูกถูกยกเลิกแล้ว (ถอดออกจากงวดแล้วขอใหม่ได้) — ไม่ใช่ตัวตัดสิน */
+export const billingRequestDead = (request) => String(request?.status || '') === 'cancelled';
+
+/**
+ * งวดนี้ "ขอใบวางบิลแล้ว" ไหม = ผูกคำร้อง **และ** คำร้องนั้นส่งถึงบัญชีแล้ว ยังไม่ถูกยกเลิก
+ * @param requestById Map id → คำร้อง (`order.billingRequests` ของหน้าใบ) · หาไม่เจอ (ถูกลบ/อ่านไม่ขึ้น) = ยังไม่ขอ
+ */
+export function installmentBillingRequested(row, requestById) {
+  const id = String(row?.billingRequestId || '').trim();
+  if (!id) return false;
+  return billingRequestLive(requestById?.get?.(id) || null);
+}
+
+/* ⚠️ "เติมตามรอบ เดือนละงวด" / "จัดวันใหม่ตามรอบปัจจุบัน" ของทั้งใบ (`fill-billing` · `redate-billing`) **ถอดแล้ว** (รุ่นสี่ ·
+   system-design §7.5 — route ตอบ 410) พร้อมตัวตรวจแผน/ตัวเขียนของมัน · งานของมันอยู่ที่แผง "เติมวันงวดที่ว่าง…" (ร่างบนจอ →
+   `schedule-many`) และจอ "งวดที่วันจะเปลี่ยน" ของกติกาลูกค้า (lib/sales/customerRuleChange.js) */
+
+/**
+ * id ของงวดที่ "ขอใบวางบิลแล้ว" — ป้อน `requestedIds` ของตัวคิด/ด่านวันงวด (แผง · schedule-many · planRuleChange ของกติกาลูกค้า)
+ * @param requestById Map id → คำร้อง (`{ id, status }` พอ) · หาไม่เจอ = ยังไม่ขอ (billingRequestLive)
+ */
+export function billingRequestedIds(rows = [], requestById = new Map()) {
+  return new Set((Array.isArray(rows) ? rows : [])
+    .filter((row) => row?.id && installmentBillingRequested(row, requestById))
+    .map((row) => row.id));
+}
+
 /* ══ PR1 · ย้อนการอนุมัติ + ออก Rev. ย้ายงวดทั้งแถว (mig 0376 · มติเจ้าของ 23/09) ═════════════════════════
    หลักการ "เงินหนึ่งก้อน = งวดหนึ่งแถว" — ข้อความทุกบรรทัดข้างล่างพูดตามสิ่งที่ RPC 0376 ทำจริง */
 
@@ -955,7 +1014,7 @@ export function salesOrderMoneyOutcome(order, rows = [], action, { serviceRounds
       /* มติ D2: ใบที่บัญชีปิดแล้วย้อนได้ · ใบ Rev. ไม่สืบสถานะปิดจากใบเดิม (financeStatus เกิดเป็น NULL) */
       order?.financeStatus === 'approved' ? 'บัญชีปิดใบนี้แล้ว — ใบ Rev. จะกลับเข้าคิวให้บัญชีปิดใหม่' : null,
       /* รอบขายของโซนนับเฉพาะใบ approved ที่ยังไม่ถูกแทน (lib/service/terms.js) */
-      serviceRounds ? 'ระหว่างรอ Rev. อนุมัติ ด่านเงินของนัดช่างปิด และต้องผูกโซนกับใบ Rev. ใหม่' : null,
+      serviceRounds ? 'ระหว่างรอ Rev. อนุมัติ นัดบริการของโซนในใบนี้ติดด่าน · ใบ Rev. คัดลอกแพ็คเกจ/โซน/แพ็ค/รอบ/ช่วงบริการไปให้ แก้ได้ก่อนยื่น · อนุมัติ Rev. แล้วรอบบริการของไซต์ที่ยังอยู่ย้ายตามไป' : null,
     ].filter(Boolean);
   }
   if (action === 'cancel') {
@@ -1148,13 +1207,17 @@ export function salesOrderPaymentCell(rows = [], plan = null, todayIso = null, o
       invoiced,
       stranded,
       refunded,
+      /* บรรทัด "กำหนด …" ใต้เซลล์ + การเรียง "กำหนดชำระ" (กำหนดวางบิลรอบสอง 26/09) — ตัวเดียวกับหัวใบ SO
+         (`installmentsNextDue`) จากงวดที่ไม่โมฆะชุดเดียวกับตัวนับข้างบน · ⚠️ ผู้เรียกต้องเลือก `status` + `dueDate` มาด้วย */
+      nextDue: installmentsNextDue(list),
     };
   }
   const planned = paymentScheduleRows(plan).length;
   if (!planned) return null;
+  /* ยังไม่เริ่มติดตาม = ยังไม่มีงวดจริง ⇒ ไม่มีกำหนดชำระให้บอก (ขีด) — ไม่ถอยไปอ่าน `paymentDueDate` ที่ตายแล้ว */
   return {
     tracked: false, paid: 0, count: planned, complete: false, overdue: 0, reviewing: 0, rejected: 0,
-    invoiceNeeded: 0, invoiced: 0,
+    invoiceNeeded: 0, invoiced: 0, nextDue: null,
   };
 }
 

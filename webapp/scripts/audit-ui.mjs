@@ -663,7 +663,7 @@ const RAW_SHADOW_CAP = 7;
    7 พักไว้" ทิ้งทั้งดุ้น
 
    6 จุดคือ: master/AddBrandButton.js:116 · pm/PredecessorPicker.js:71 ·
-   pm/SalesKpiDashboard.js:140,182 · pm/ProjectDocumentView.js:840,884
+   pm/SalesKpiDashboard.js:140,182 · pm/ProjectDocumentView.js:880,924
    สองจุดหลังเป็น **กิ่งของ ternary** (`dragging ? "0 2px 8px …" : "none"`) ซึ่ง regex
    บรรทัดเดียวอ่านไม่เจอ · ค่าที่พบ: 0 4px 12px rgba(0,0,0,0.1) ×2 · 0 8px 24px rgba(0,0,0,.14)
    · 0 8px 28px rgba(0,0,0,0.28) · 0 2px 8px rgba(0,0,0,0.25) · 0 3px 10px rgba(0,0,0,0.25)

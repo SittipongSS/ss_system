@@ -287,6 +287,22 @@
   font-size: var(--fs-2);
 }
 
+/* แถวต่อท้ายของบรรทัด (`renderAfterRow` — กล่อง "งานบริการของรายการนี้" ของใบสั่งขาย · mig 0392)
+   ⭐ อ่านเป็นก้อนเดียวกับบรรทัดข้างบน: บรรทัดที่มีแถวต่อท้ายไม่มีเส้นคั่นล่าง · แถวต่อท้ายไม่มีระยะบน
+   ⚠️ specificity ต้องชนะ `.scroll[data-family] td` ของ Table.module.css (padding-block · hover) — จึงผูกกับ .readOnlyTable */
+.readOnlyTable tbody tr:has(+ tr.afterRow) > td {
+  border-bottom: 0;
+}
+
+.readOnlyTable tbody tr.afterRow > td {
+  padding-top: 0;
+  padding-bottom: var(--space-3);
+}
+
+.readOnlyTable tbody tr.afterRow:hover > td {
+  background: transparent;
+}
+
 .highlightTotal {
   display: flex;
   align-items: center;
@@ -450,6 +466,21 @@
 
   .linesTable tbody tr:has(td.emptyRows),
   .readOnlyTable tbody tr:has(td.emptyRows) { border: 0; padding: 0; }
+
+  /* การ์ดของบรรทัด + แถวต่อท้าย = การ์ดใบเดียว (ขอบล่างของบรรทัด/ขอบบนของแถวต่อท้ายหาย มุมที่ต่อกันเหลี่ยม) */
+  .readOnlyTable tbody tr:has(+ tr.afterRow) {
+    margin-bottom: 0;
+    border-bottom: 0;
+    border-bottom-right-radius: 0;
+    border-bottom-left-radius: 0;
+  }
+
+  .readOnlyTable tbody tr.afterRow {
+    padding-top: 0;
+    border-top: 0;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+  }
 }
 
 @media (max-width: 640px) {
@@ -463,4 +494,11 @@
   }
   .totalControls > :first-child { grid-column: 1 / -1; }
   .totalControls > :last-child:nth-child(2) { grid-column: 1 / -1; }
+}
+
+/* ชื่อหมวดของบรรทัด "เพิ่มรายการเอง" ตอนดูอย่างเดียว (มติผู้ใช้ 2026-09-27) — ทรงเดียวกับบรรทัดเล็ก
+   "รหัส · แบรนด์ · หมวด" ของบรรทัด FG (.fgInfoMeta) เพื่อให้สองแบบอ่านเป็นชั้นเดียวกัน */
+.manualCategory {
+  color: var(--text-3);
+  font-size: var(--fs-4);
 }

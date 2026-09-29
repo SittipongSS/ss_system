@@ -22,6 +22,7 @@ import {
   isDayValue,
   lastDayOfMonth,
   weekStartOf,
+  weekRange,
   clampMonth,
   compareMonths,
   currentMonth,
@@ -146,20 +147,38 @@ test('route KPI ต้องเทียบขอบด้วยเวลาไ�
    🔴 กับดักที่เจอจริงตอนสำรวจข้อมูลก่อนทำใบนี้: หาวันในสัปดาห์ด้วย
    `new Date('2026-07-20T00:00:00+07:00').getUTCDay()` แล้วลีดวันจันทร์ตกไปอยู่
    สัปดาห์ก่อนหน้าทั้งก้อน — ยอดรายสัปดาห์เพี้ยนทุกสัปดาห์โดยไม่มีอะไรฟ้อง */
-test('วันในสัปดาห์: จันทร์ = 0 และคำนวณจากสตริงวันล้วน ไม่ผ่าน timezone', () => {
-  assert.equal(dayOfWeek('2026-07-20'), 0);   // จันทร์
-  assert.equal(dayOfWeek('2026-07-24'), 4);   // ศุกร์
-  assert.equal(dayOfWeek('2026-07-26'), 6);   // อาทิตย์
+test('วันในสัปดาห์: อาทิตย์ = 0 และคำนวณจากสตริงวันล้วน ไม่ผ่าน timezone', () => {
+  // ⭐ มติเจ้าของ 2026-09-26: สัปดาห์ทั้งระบบเริ่มวันอาทิตย์ — เลขตรงกับ getUTCDay()
+  assert.equal(dayOfWeek('2026-07-19'), 0);   // อาทิตย์
+  assert.equal(dayOfWeek('2026-07-20'), 1);   // จันทร์
+  assert.equal(dayOfWeek('2026-07-24'), 5);   // ศุกร์
+  assert.equal(dayOfWeek('2026-07-25'), 6);   // เสาร์
   assert.equal(dayOfWeek('ไม่ใช่วัน'), null);
 });
 
-test('ต้นสัปดาห์ = วันจันทร์ · วันจันทร์เป็นต้นสัปดาห์ของตัวเอง', () => {
-  assert.equal(weekStartOf('2026-07-20'), '2026-07-20');
-  assert.equal(weekStartOf('2026-07-26'), '2026-07-20');
-  assert.equal(weekStartOf('2026-07-27'), '2026-07-27');
+test('ต้นสัปดาห์ = วันอาทิตย์ · วันอาทิตย์เป็นต้นสัปดาห์ของตัวเอง · เสาร์ปิดสัปดาห์', () => {
+  assert.equal(weekStartOf('2026-07-19'), '2026-07-19');   // อาทิตย์ → ตัวเอง
+  assert.equal(weekStartOf('2026-07-20'), '2026-07-19');   // จันทร์ → อาทิตย์ก่อนหน้า
+  assert.equal(weekStartOf('2026-07-25'), '2026-07-19');   // เสาร์ = วันสุดท้ายของสัปดาห์เดียวกัน
+  assert.equal(weekStartOf('2026-07-26'), '2026-07-26');   // อาทิตย์ถัดไป = สัปดาห์ใหม่
   // ข้ามเดือน/ปี ต้องไม่พัง
-  assert.equal(weekStartOf('2026-08-02'), '2026-07-27');
-  assert.equal(weekStartOf('2026-01-01'), '2025-12-29');
+  assert.equal(weekStartOf('2026-08-01'), '2026-07-26');
+  assert.equal(weekStartOf('2026-01-01'), '2025-12-28');
+  assert.equal(weekStartOf('ไม่ใช่วัน'), null);
+});
+
+/* ชิป "สัปดาห์นี้/สัปดาห์ก่อน" ของ DayRangePicker คิดจาก weekRange — ตรึงเลขที่นี่
+   (ตัวชิปอยู่ในไฟล์ JSX ที่ตัวโหลดเทสต์เปิดไม่ได้) · มติเจ้าของ 2026-09-26: อา–ส */
+test('weekRange: สัปดาห์นี้/สัปดาห์ก่อน = อาทิตย์ถึงเสาร์ (ชิปของ DayRangePicker)', () => {
+  // วันเสาร์ 26 ก.ย. 2569 = วันสุดท้ายของสัปดาห์ 20–26
+  assert.deepEqual(weekRange('2026-09-26', 0), { from: '2026-09-20', to: '2026-09-26' });
+  assert.deepEqual(weekRange('2026-09-26', -1), { from: '2026-09-13', to: '2026-09-19' });
+  assert.deepEqual(weekRange('2026-09-26'), weekRange('2026-09-26', 0));
+  // อาทิตย์เป็นวันแรกของสัปดาห์ตัวเอง — ไม่ใช่วันสุดท้ายของสัปดาห์ก่อน
+  assert.deepEqual(weekRange('2026-09-27', 0), { from: '2026-09-27', to: '2026-10-03' });
+  // ข้ามปี
+  assert.deepEqual(weekRange('2027-01-01', 1), { from: '2027-01-03', to: '2027-01-09' });
+  assert.equal(weekRange('ไม่ใช่วัน'), null);
 });
 
 test('addDays / daysInRange ทำงานบนสตริงวัน ข้ามเดือนและปีอธิกสุรทิน', () => {

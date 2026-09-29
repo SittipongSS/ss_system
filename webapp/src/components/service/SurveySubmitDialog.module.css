@@ -1,71 +1,97 @@
-/* โมดัล "ส่งงานหน้างาน" — ถามแค่สองเรื่อง: เข้าได้ไหม · ผลวัดครบหรือยัง */
+/* กล่อง "ส่งงาน" (ม็อก A-4 · AT-4) — เปลือก `ScheduleModalShell` จัดคอลัมน์/ท้ายกล่องให้ · ไฟล์นี้จัดแค่ของในช่อง
+   ⚠️ โทเคนล้วน · ไม่มี style={{}} · สถานะรายพื้นที่บอกด้วยไอคอน+คำ ไม่ใช่สีอย่างเดียว */
+
 .block {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  margin-bottom: var(--space-4);
+  min-width: 0;
 }
-
-/* บล็อกสุดท้ายไม่ต้องมีระยะท้าย — ตัวเนื้อของโมดัลมี padding ของตัวเองอยู่แล้ว
-   🐞 เดิมใต้ช่องสรุปงานห่างเส้นท้ายโมดัล 34px ขณะที่หัวห่าง 18px = โมดัลดูหนักล่าง */
-.block:last-of-type { margin-bottom: 0; }
-/* กล่องแจ้งต่อท้าย — ระยะห่างมาจากตัวกล่องเอง (บล็อกสุดท้ายไม่มีระยะท้ายแล้ว) · ว่าง = ไม่กินที่ */
-.notice:not(:empty) { margin-top: var(--space-4); }
 
 .title {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: var(--space-2);
+  gap: var(--space-1) var(--space-2);
   margin: 0;
   color: var(--text-1);
-  font-size: var(--fs-5);
+  font-size: var(--fs-8);
   font-weight: var(--fw-semibold);
   line-height: var(--lh-thai);
 }
 
-.count {
+.req { color: var(--red); }
+
+.caption {
   color: var(--text-3);
-  font-size: var(--fs-4);
-  font-weight: var(--fw-medium);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-normal);
   font-variant-numeric: tabular-nums;
 }
 
-.optional {
-  color: var(--text-3);
-  font-size: var(--fs-3);
-  font-weight: var(--fw-normal);
+/* ผลของการเข้า — แผ่นซ้อนกันทีละแถว (ม็อก A-4/AT-4) · คำกำกับยาวสองบรรทัด วางข้างกันในคอลัมน์ 376px แล้วอ่านไม่ออก */
+.outcomes :global(.option-tiles) { grid-template-columns: minmax(0, 1fr); grid-auto-rows: auto; }
+.outcomes :global(.option-tile) { min-height: var(--ctl-h-touch); padding: var(--space-2-5) var(--space-3); }
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  min-width: 0;
+}
+
+/* ช่องเหตุผลสูงเท่านิ้ว — กล่องนี้เปิดบนมือถือของช่างที่ยืนอยู่หน้าตึก */
+.label {
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
 }
 
 .note {
   margin: 0;
   color: var(--text-3);
-  font-size: var(--fs-4);
+  font-size: var(--fs-5);
   line-height: var(--lh-thai);
 }
 
-/* รายการพื้นที่ — แถวละพื้นที่ บอกสภาพด้วยไอคอน+คำ ไม่ใช่สีอย่างเดียว */
-.zones {
-  display: flex;
-  flex-direction: column;
+/* ── ผลวัดรายพื้นที่ ─────────────────────────────────────────────────────── */
+.sum {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-solid);
+}
+
+.rows {
   margin: 0;
   padding: 0;
   list-style: none;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
 }
 
-.zone {
-  display: flex;
+.rows > li { border-bottom: 1px solid var(--border); }
+
+/* แถวทั้งแถวเป็นปุ่มเดียว (เปิดหน้าพื้นที่) — สูงอย่างน้อยเท่านิ้ว */
+.row {
+  display: grid;
+  grid-template-columns: var(--space-6) minmax(0, 1fr) auto auto;
   align-items: center;
   gap: var(--space-2-5);
-  padding: var(--space-2-5) var(--space-3);
+  width: 100%;
+  min-height: var(--ctl-h-touch);
+  padding: var(--space-1-5) var(--space-2) var(--space-1-5) var(--space-3);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
 }
 
-.zone + .zone { border-top: 1px solid var(--border); }
+.row:hover { background: var(--panel-2); }
+.row:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -2px; }
 
 .mark {
   display: inline-flex;
-  flex: none;
   align-items: center;
   justify-content: center;
   width: var(--space-6);
@@ -75,36 +101,112 @@
   color: var(--text-3);
 }
 
-.zone[data-state="ok"] .mark { background: var(--green-soft); color: var(--green); }
-.zone[data-state="miss"] .mark,
-.zone[data-state="dirty"] .mark { background: var(--amber-soft); color: var(--amber); }
+.row[data-state="ok"] .mark { background: var(--green-soft); color: var(--green); }
+.row[data-state="miss"] .mark,
+.row[data-state="dirty"] .mark { background: var(--amber-soft); color: var(--amber); }
 
-.zoneCopy {
+.zone {
   display: flex;
-  flex: 1 1 auto;
   flex-direction: column;
   min-width: 0;
   line-height: var(--lh-thai);
 }
 
-.zoneCopy b { color: var(--text-1); font-size: var(--fs-5); font-weight: var(--fw-semibold); }
-.zoneCopy small { color: var(--text-3); font-size: var(--fs-4); }
-.zone[data-state="miss"] .zoneCopy small,
-.zone[data-state="dirty"] .zoneCopy small { color: var(--amber); }
+.code {
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+}
 
-/* ปุ่มพาไปแก้ — เป้านิ้วสูงพอ ไม่ใช่ลิงก์ตัวจิ๋ว */
-.go {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: var(--space-1);
-  min-height: var(--ctl-h-touch);
+.name {
+  color: var(--text-1);
+  font-size: var(--fs-7);
+  font-weight: var(--fw-bold);
+}
+
+.rowNote {
+  color: var(--text-3);
   font-size: var(--fs-5);
 }
 
-/* ชื่อปุ่มที่อ้างในข้อความ — ก้อนเดียว ไม่ขาดกลางคำ */
-.keep { white-space: nowrap; }
+.row[data-state="miss"] .rowNote,
+.row[data-state="dirty"] .rowNote { color: var(--amber); }
 
-/* ปุ่มเพิ่มพื้นที่ในโมดัล (ใบว่าง) — กว้างเท่าป้าย ไม่ยืดเต็มบล็อก (ยืดแล้วหน้าตาเหมือนช่องกรอก
-   ใต้ช่องสรุปงาน) · บล็อกเป็น flex คอลัมน์ ⇒ ลูกยืดเองถ้าไม่บอก */
-.addZone { align-self: flex-start; }
+/* ตัวเลขชิดขวา — พื้นที่/ปริมาตรบรรทัดบน · ภาพกว้าง/จุดบรรทัดล่าง */
+.figs {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  color: var(--text-1);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.figs small {
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-normal);
+}
+
+.go {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-0-5);
+  color: var(--blue);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
+}
+
+.row[data-state="ok"] .go,
+.row[data-state="cut"] .go { color: var(--text-3); }
+
+.total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-2) var(--space-8) var(--space-2) var(--space-3);
+  background: var(--panel-2);
+}
+
+.totalLabel {
+  color: var(--text-1);
+  font-size: var(--fs-7);
+  font-weight: var(--fw-bold);
+}
+
+/* ── กด ส่งงาน แล้วระบบจะ ──────────────────────────────────────────────────── */
+.effects {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  margin: 0;
+  padding: var(--space-3);
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+}
+
+.effects li {
+  display: grid;
+  grid-template-columns: var(--space-4) minmax(0, 1fr);
+  gap: var(--space-2);
+  color: var(--text-1);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+}
+
+.effectIcon {
+  margin-top: var(--space-0-5);
+  color: var(--text-2);
+}
+
+/* ปุ่มเพิ่มพื้นที่ในกล่อง (ใบว่าง) — กว้างเท่าป้าย ไม่ยืดเต็มบล็อก (ยืดแล้วหน้าตาเหมือนช่องกรอก) */
+.addZone { align-self: flex-start; min-height: var(--ctl-h-touch); }

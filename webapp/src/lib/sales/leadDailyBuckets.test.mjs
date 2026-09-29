@@ -31,31 +31,48 @@ test('รายวัน: ไม่ส่งรายชื่อวันมา
 });
 
 /* 🔴 ตัวเลขสี่ตัวนี้คือหัวใจของใบนี้ — ตอนสำรวจข้อมูลรอบแรกผมหาวันในสัปดาห์ด้วยวัน UTC
-   แล้วได้ 13/44/22/48/7 (ห้าสัปดาห์!) เพราะลีดวันจันทร์ตกไปอยู่สัปดาห์ก่อนทั้งก้อน */
-test('รายสัปดาห์: จันทร์–อาทิตย์ ตรงกับที่นับจากข้อมูลจริง', () => {
+   แล้วได้ 13/44/22/48/7 (ห้าสัปดาห์!) เพราะลีดวันต้นสัปดาห์ตกไปอยู่สัปดาห์ก่อนทั้งก้อน
+   ⭐ มติเจ้าของ 2026-09-26: สัปดาห์เริ่มวันอาทิตย์ (อา–ส) — ข้อมูลชุดนี้ไม่มีลีดวันเสาร์/อาทิตย์
+   ยอดสี่สัปดาห์จึงเท่าเดิมเป๊ะ ต่างแค่คีย์ถัง (อาทิตย์) กับถังแรกที่กลายเป็นไม่เต็มสัปดาห์ */
+test('รายสัปดาห์: อาทิตย์–เสาร์ ตรงกับที่นับจากข้อมูลจริง', () => {
   const buckets = leadDailyBuckets({ byDay: BY_DAY, days: DAYS, unit: 'week' });
   assert.deepEqual(
     buckets.map((b) => [b.key, b.count, b.withLeads]),
     [
-      ['2026-07-20', 45, 5],
-      ['2026-07-27', 29, 4],
-      ['2026-08-03', 36, 5],
-      ['2026-08-10', 24, 3],
+      ['2026-07-19', 45, 5],
+      ['2026-07-26', 29, 4],
+      ['2026-08-02', 36, 5],
+      ['2026-08-09', 24, 3],
     ],
   );
   // ผลรวมต้องเท่าจำนวนลีดจริงเป๊ะ ไม่มีใบไหนตกหล่นหรือถูกนับซ้ำ
   assert.equal(buckets.reduce((n, b) => n + b.count, 0), 134);
-  assert.equal(buckets[0].name, '2026-07-20..2026-07-26');
-  assert.equal(buckets[0].partial, false);
-  // สัปดาห์สุดท้ายจบที่ 13 ส.ค. ไม่ใช่ 16 — ป้ายต้องบอกช่วงที่อยู่ในงวดจริง
-  assert.equal(buckets[3].name, '2026-08-10..2026-08-13');
+  // งวดเริ่มจันทร์ 20 ก.ค. ⇒ ถังแรก (สัปดาห์ของอาทิตย์ 19) มีในงวดแค่ 20–25
+  assert.equal(buckets[0].name, '2026-07-20..2026-07-25');
+  assert.equal(buckets[0].partial, true);
+  assert.equal(buckets[1].name, '2026-07-26..2026-08-01');
+  assert.equal(buckets[1].partial, false);
+  // สัปดาห์สุดท้ายจบที่ 13 ส.ค. ไม่ใช่ 15 — ป้ายต้องบอกช่วงที่อยู่ในงวดจริง
+  assert.equal(buckets[3].name, '2026-08-09..2026-08-13');
   assert.equal(buckets[3].partial, true);
+});
+
+test('รายสัปดาห์: ลีดวันอาทิตย์เปิดสัปดาห์ใหม่ · ลีดวันเสาร์ปิดสัปดาห์เดิม', () => {
+  const byDay = { '2026-08-08': 1, '2026-08-09': 2, '2026-08-10': 4 };   // ส. · อา. · จ.
+  const buckets = leadDailyBuckets({ byDay, days: daysInRange('2026-08-08', '2026-08-10'), unit: 'week' });
+  assert.deepEqual(
+    buckets.map((b) => [b.key, b.count, b.name]),
+    [
+      ['2026-08-02', 1, '2026-08-08..2026-08-08'],
+      ['2026-08-09', 6, '2026-08-09..2026-08-10'],
+    ],
+  );
 });
 
 test('รายสัปดาห์: สัปดาห์ที่ยังไม่จบนับเฉพาะวันที่มีจริง ไม่เติมให้ครบเจ็ด', () => {
   const buckets = leadDailyBuckets({ byDay: BY_DAY, days: DAYS, unit: 'week' });
   const last = buckets[buckets.length - 1];
-  assert.equal(last.key, '2026-08-10');
+  assert.equal(last.key, '2026-08-09');
   assert.equal(last.withLeads, 3);   // 10, 11, 13 ส.ค.
 });
 
@@ -79,9 +96,10 @@ test('งวดว่าง = ไม่มีถัง (หน้าจอโช
 test('รายสัปดาห์: สัปดาห์ที่คาบเกี่ยวขอบงวด ป้ายบอกเฉพาะวันที่อยู่ในงวด', () => {
   const days = daysInRange('2026-08-01', '2026-08-31');
   const buckets = leadDailyBuckets({ byDay: BY_DAY, days, unit: 'week' });
-  assert.equal(buckets[0].name, '2026-08-01..2026-08-02');
+  // เสาร์ 1 ส.ค. อยู่สัปดาห์ของอาทิตย์ 26 ก.ค. — ในงวดมีวันเดียว
+  assert.equal(buckets[0].name, '2026-08-01..2026-08-01');
   assert.equal(buckets[0].partial, true);
-  assert.equal(buckets[1].name, '2026-08-03..2026-08-09');
+  assert.equal(buckets[1].name, '2026-08-02..2026-08-08');
   assert.equal(buckets[1].partial, false);
   assert.equal(buckets[1].count, 36);
 });
@@ -94,6 +112,6 @@ test('ช่วงวันเดียว ทำงานได้ทั้ง�
   );
   const week = leadDailyBuckets({ byDay: BY_DAY, days, unit: 'week' });
   assert.equal(week.length, 1);
-  assert.equal(week[0].key, '2026-08-03');   // ศุกร์ 7 ส.ค. อยู่สัปดาห์ที่เริ่ม 3 ส.ค.
+  assert.equal(week[0].key, '2026-08-02');   // ศุกร์ 7 ส.ค. อยู่สัปดาห์ที่เริ่มอาทิตย์ 2 ส.ค.
   assert.equal(week[0].count, 18);
 });

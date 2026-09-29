@@ -12,58 +12,31 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound } from '@/lib/http';
 import { canDoFieldWork, canEditService, canSendSurveyResult } from '@/lib/permissions';
 import { deleteZoneRow, purgeSurveyZoneRows, zoneReleaseDecision } from '@/lib/service/surveyCancelCleanup';
-import { normalizeSurveyPart, packageNeedsNote, surveyAddZoneError, surveyEditLockError } from '@/lib/service/survey';
+import {
+  normalizeSurveyParts, normalizeSurveySpots, packageNeedsNote, surveyAddZoneError, surveyEditLockError,
+  surveyZoneStaleBody, surveyZoneStaleError,
+  surveyOnlyBlankRows,
+} from '@/lib/service/survey';
 import { findSurveyVisit } from '@/lib/service/surveyVisit';
 import { visitWriteAccess } from '@/lib/service/visitAccess';
 import { genId } from '@/lib/id';
 
 export const dynamic = 'force-dynamic';
 
-/** จุดที่ติดตั้งได้ — ช่างเพิ่มรายการเอง จุดละชื่อ (รูปผูกทีหลังผ่านไฟล์แนบ)
- *  🔴 **จุดต้องมีตัวตนแม้ยังไม่มีรูป** — ถ้าออกแบบให้ "จุด = รูปที่มีป้ายชื่อ" จุดที่ยัง
- *    ไม่ได้ถ่ายจะไม่มีอยู่ในระบบ แล้วช่างไม่มีทางรู้ว่าเหลือถ่ายอะไร
- *  ⚠️ `selected` **ไม่รับจากฝั่งนี้** — คงค่าเดิมที่หัวหน้าเคาะไว้เสมอ */
-function normalizeSpots(input, before = []) {
-  if (input === undefined) return { value: undefined, error: null };
-  if (!Array.isArray(input)) return { value: null, error: 'รายการจุดติดตั้งไม่ถูกต้อง' };
-  if (input.length > 30) return { value: null, error: 'จุดติดตั้งต่อพื้นที่ไม่ควรเกิน 30 จุด' };
-  const keep = new Map((Array.isArray(before) ? before : []).map((s) => [s?.id, s?.selected === true]));
-  const out = [];
-  const seen = new Set();
-  for (const raw of input) {
-    const label = String(raw?.label ?? '').trim();
-    if (!label) return { value: null, error: 'จุดติดตั้งต้องมีชื่อ' };
-    if (label.length > 100) return { value: null, error: `ชื่อจุด "${label.slice(0, 20)}…" ยาวเกิน 100 ตัวอักษร` };
-    const id = String(raw?.id ?? '').trim() || genId('SPT');
-    if (seen.has(id)) return { value: null, error: 'รายการจุดติดตั้งมี id ซ้ำ' };
-    seen.add(id);
-    const note = String(raw?.note ?? '').trim();
-    if (note.length > 300) return { value: null, error: 'บันทึกของจุดยาวเกิน 300 ตัวอักษร' };
-    out.push({ id, label, note: note || null, selected: keep.get(id) === true });
-  }
-  return { value: out, error: null };
-}
-
-/** ส่วนที่วัด — `[{ id, label, widthM, lengthM, heightM }]`
- *  ⚠️ ส่วนที่กรอกไม่ครบสามช่อง = **แถวเสีย ต้องตีกลับ** ไม่ใช่แถวที่คิดเป็น 0 */
-function normalizeParts(input) {
-  if (input === undefined) return { value: undefined, error: null };
-  if (!Array.isArray(input)) return { value: null, error: 'รายการส่วนของพื้นที่ไม่ถูกต้อง' };
-  if (input.length > 20) return { value: null, error: 'แบ่งส่วนได้ไม่เกิน 20 ส่วนต่อพื้นที่' };
-  const out = [];
-  for (const raw of input) {
-    const { value, error } = normalizeSurveyPart(raw);
-    if (error) return { value: null, error };
-    out.push({ ...value, id: value.id || genId('PRT') });
-  }
-  return { value: out, error: null };
-}
+/* ⭐ **ตัวจัดแถว (ส่วน · จุด) อยู่ที่ `lib/service/survey.js`** — จอถามตัวเดียวกันก่อนยิง
+   (`surveyZoneSavePayload`) ⇒ ของที่จอส่งผ่านเสมอ และกฎ "แถวว่าง ≠ แถวเสีย" มีที่เดียว
+   🐞 เดิมสองตัวนี้อยู่ในไฟล์นี้ และตีกลับแถวว่าง ⇒ ตัดพื้นที่ที่ยังไม่เคยวัดไม่ได้ (การ์ดส่งร่างที่มี
+     "ส่วน" ว่างแถวเดียวมาพร้อมคำขอตัด) · แท็บเก่าที่เปิดค้างยังส่งทรงนั้นอยู่ ⇒ server ต้องรับได้เอง
+     ไม่ใช่พึ่งจอรุ่นใหม่อย่างเดียว */
 
 /* ⚠️ **ทั้งสองเมธอดต้องถามใบแม่ก่อนเขียน** — แถวผลวัดเป็นลูกของใบคำร้อง และของที่
-   ล็อกคือ *ใบ* ไม่ใช่ *แถว* ⇒ อ่านที่เดียว ใช้ด่านตัวเดียว (`surveyEditLockError`) */
+   ล็อกคือ *ใบ* ไม่ใช่ *แถว* ⇒ อ่านที่เดียว ใช้ด่านตัวเดียว (`surveyEditLockError`)
+   🐞 **ต้องเลือกทุกคอลัมน์ที่ด่านอ่าน** — เดิมเลือกแค่ `answeredAt`/`cancelledAt` ขณะที่ด่านอ่าน
+     `status` (ปิดโดยไม่ประเมิน) กับ `closedAt` (ฝ่ายขายปิดเรื่องก่อนได้ผล) ด้วย ⇒ สองข้อนั้นได้
+     `undefined` แล้วปล่อยผ่านเงียบ ๆ · จอบอกล็อก แต่ยิง API ตรงยังเขียนผลวัดได้ */
 async function requestLock(supabase, id) {
   const { data, error } = await supabase
-    .from('dept_requests').select('id, "answeredAt", "cancelledAt"').eq('id', id).maybeSingle();
+    .from('dept_requests').select('id, status, "answeredAt", "cancelledAt", "closedAt"').eq('id', id).maybeSingle();
   if (error) throw error;
   return surveyEditLockError(data);
 }
@@ -92,13 +65,25 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (!access.ok) return access.error ? forbidden(access.error) : forbidden();
 
     const body = await req.json().catch(() => ({}));
+
+    /* 🐞 review 26/09 — **ร่างตั้งต้นจากแถวรุ่นไหน** (`baseUpdatedAt`) · ไม่ตรงกับแถวในฐาน = อีกคนบันทึกไปก่อน
+       ⇒ 409 พร้อมแถวล่าสุด แทนการเขียนทั้งก้อนทับ (ร่างเก่าที่มีแค่ส่วนว่าง = `parts: []` ลบขนาดที่เขาเพิ่งวัด)
+       ⚠️ ไม่ส่งมา = ไม่ถาม (แท็บเก่า · ตัด/เอากลับจากหน้าแม่ซึ่งไม่แตะขนาด/จุด/หมายเหตุ) */
+    if (surveyZoneStaleError(row, body.baseUpdatedAt)) return Response.json(surveyZoneStaleBody(row), { status: 409 });
+
     const patch = {};
 
-    const parts = normalizeParts(body.parts);
+    /* แท็บรุ่นเก่า (ไม่ส่งรุ่น) ส่งส่วน/จุดว่างที่จอเติมให้ทั้งก้อน = ไม่ได้ตั้งใจแก้ช่องนั้น — ไม่งั้นกลายเป็น `[]` ทับของอีกคน (review 26/09) */
+    if (body.baseUpdatedAt === undefined) {
+      if (surveyOnlyBlankRows(body.parts, ['label', 'widthM', 'lengthM', 'heightM'])) body.parts = undefined;
+      if (surveyOnlyBlankRows(body.spots, ['label', 'note'])) body.spots = undefined;
+    }
+
+    const parts = normalizeSurveyParts(body.parts, { newId: () => genId('PRT') });
     if (parts.error) return badRequest(parts.error);
     if (parts.value !== undefined) patch.parts = parts.value;
 
-    const spots = normalizeSpots(body.spots, row.spots);
+    const spots = normalizeSurveySpots(body.spots, row.spots, { newId: () => genId('SPT') });
     if (spots.error) return badRequest(spots.error);
     if (spots.value !== undefined) patch.spots = spots.value;
 
@@ -142,9 +127,19 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     patch.surveyedByName = user.name || null;
     patch.updatedAt = patch.surveyedAt;
 
+    /* 🐞 review 26/09 — **เขียนแบบมีเงื่อนไขกับรุ่นที่เพิ่งอ่าน** ปิดช่องระหว่างอ่านกับเขียน (อีกคนบันทึกแทรกกลาง
+       = 0 แถว ไม่ใช่ทับ · จุดที่หัวหน้าเคาะไว้ที่อ่านจาก `row.spots` ก็ไม่ถูกย้อน) — ใช้ทุกคำขอ ไม่ใช่แค่ที่ส่งรุ่นมา
+       ⚠️ supabase ไม่ throw และ update ที่ไม่โดนแถวไหนไม่ใช่ error ⇒ `maybeSingle` แล้วเช็ก `data` เอง
+          (`single` เดิมเจอ 0 แถว = 500 "JSON object requested…" ที่ไม่บอกอะไรผู้ใช้) */
     const { data, error } = await supabase
-      .from('service_survey_zones').update(patch).eq('id', zoneId).select().single();
+      .from('service_survey_zones').update(patch).eq('id', zoneId).eq('updatedAt', row.updatedAt).select().maybeSingle();
     if (error) return fail(error.message, 500);
+    if (!data) {
+      // อ่านไม่ได้ = ไม่มีแถวพกกลับ (จอยังขึ้นป้ายชนได้ แค่ยังไม่มีรุ่นใหม่ให้ใช้)
+      const { data: latest } = await supabase
+        .from('service_survey_zones').select('*').eq('id', zoneId).eq('requestId', id).maybeSingle();
+      return Response.json(surveyZoneStaleBody(latest || null), { status: 409 });
+    }
 
     await recordAudit({
       user, action: 'update', entityType: 'service_survey_zone', entityId: zoneId,

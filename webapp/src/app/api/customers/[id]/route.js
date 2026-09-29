@@ -28,6 +28,7 @@ import { masterApprovalUpdate, masterReapprovalUpdate } from '@/lib/master/recor
 import { recordAudit } from '@/lib/audit';
 import { missingRequiredDocs } from '@/lib/master/attachmentRequirements';
 import { missingDocsMessage, overrideReasonError } from '@/lib/master/attachmentTypes';
+import { probeBillingSkip } from '@/lib/sales/billingPolicySchema';
 
 export const dynamic = 'force-dynamic';
 
@@ -122,7 +123,12 @@ export async function GET(request, { params }) {
     orders = (ord || []).filter((o) => canViewRecord(user, 'orders', o));
   }
 
-  return Response.json({ customer, products, orders });
+  /* ⭐ ฐานรัน 0393 แล้วหรือยัง (rework v4) — โมดัล "วางบิลและกำหนดชำระ" ใช้ปิดปุ่มบันทึกกติการุ่นสี่ก่อนยิง
+     (ก่อนรัน CHECK รุ่นสองตีกลับ 23514 ⇒ route ตอบ 503 "รอรัน migration 0393" อยู่แล้ว — ธงนี้แค่บอกก่อนกด)
+     · ส่งแยกจาก `customer` (ไม่ใช่คอลัมน์ของแถว) — หน้าเติมเข้าก้อนที่การ์ดอ่านเอง */
+  const { ready: billingSkipReady } = await probeBillingSkip(supabase);
+
+  return Response.json({ customer, products, orders, billingSkipReady });
 }
 
 // PATCH /api/customers/[id]
@@ -319,7 +325,9 @@ export async function PATCH(request, { params }) {
   // by canEditRecord — supervisor cross-team, team roles within their scope).
   for (const k of [
     'arCode', 'name', 'nameEn', 'taxId', 'customerType', 'branchCode', 'phone', 'address', 'shippingAddress', 'brands',  // mapFileUrl ย้ายไป attachments แล้ว
-    'contactPerson', 'contactPhone', 'email', 'creditTerms', 'metadata',  // master-data fields (0005, 0025)
+    'contactPerson', 'contactPhone', 'email', 'metadata',  // master-data fields (0005, 0025)
+    // ⚠️ ไม่มี 'creditTerms' แล้ว (มติเจ้าของ 26/09 · mig 0390) — เครดิตแก้ได้ทางเดียวที่ `/billing-rule` (ไม่ต้องอนุมัติใหม่)
+    //    ทางนี้เขียนทับข้อความเดิมได้ทั้งที่จอไม่มีช่องให้เห็นแล้ว · ข้อความเดิมคงไว้ในฐาน อ่านอย่างเดียว
     'team', 'ownerId',
     'isActive',  // lifecycle flag (0030) — พักใช้/เปิดใช้ลูกค้า; edit-level gate (canEditRecord above)
     'isForeign', // ต่างประเทศ = เลขผู้เสียภาษีไม่ใช่ 13 หลักของไทย (migration 0319)

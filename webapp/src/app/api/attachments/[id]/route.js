@@ -9,6 +9,7 @@ import {
 import { isIllustrationReferenced } from '@/lib/sales/productSpecStore';
 import { productCaretakerTeams } from '@/lib/master/productScope';
 import { canAttachToPersonalTask } from '@/lib/pm/personalTaskAccess';
+import { canAttachBillingCalendar } from '@/lib/master/attachmentAccess';
 import {
   COSTING_ATTACHMENT_TABLE, canAttachToCosting, isCostingAttachment,
 } from '@/lib/master/costingAttachmentAccess';
@@ -108,6 +109,8 @@ async function guardAttachmentWrite(supabase, att, user, actionLabel) {
     if (parentError) return Response.json({ error: parentError.message }, { status: 500 });
     // product: edit scope follows the OWNING CUSTOMER's caretaker team (มติ
     // 2026-07-20/21) — resolve it so the check matches the product detail page.
+    /* ⭐ รูปปฏิทินวางบิลของลูกค้า (v5) — ลบ/แก้ได้ด้วยช่องแคบเดียวกับตอนแนบ (`canAttachBillingCalendar` · ฝ่ายขายทีมที่ดูแล + FN)
+       ⚠️ อ่าน docType **ของแถว** (ไม่ใช่ค่าจากคำขอ) — ไฟล์อื่นของลูกค้ายังต้องผ่านด่านแก้ทะเบียนลูกค้า */
     const canEditParent = att.entityType === 'personal_task'
       ? await canAttachToPersonalTask(supabase, parent, user)
       : canEditRecord(
@@ -115,7 +118,7 @@ async function guardAttachmentWrite(supabase, att, user, actionLabel) {
           RESOURCE[att.entityType],
           parent,
           att.entityType === 'product' ? await productCaretakerTeams(parent, supabase) : undefined,
-        );
+        ) || canAttachBillingCalendar(att.entityType, att.docType, parent, user);
     if (parent && !canEditParent) {
       return Response.json({ error: 'forbidden' }, { status: 403 });
     }

@@ -1,42 +1,109 @@
 /* จอบันทึกหน้างานของใบประเมิน (เฟส 3 · จอ 06+07)
-   ⚠️ มือถือก่อน — บนมือถือการ์ดเรียงลงล่าง ไม่มีคอลัมน์ที่ต้องเลื่อนแนวนอน
-      จับคู่สองคอลัมน์เฉพาะตอนที่การ์ด 34rem วางคู่กันได้จริง (auto-fit ⇒ พื้นที่เดียวยังเต็มแถว)
-   🐞 เดิมเรียงแถวเดียวทุกจอ ⇒ เดสก์ท็อปช่องตัวเลข 1–3 หลักกว้าง 436px ใบสองพื้นที่สูง 3,400px
-   ⚠️ ตั้งแต่ PR3 ลิสต์นี้อยู่ใน **คอลัมน์เนื้อ** ของ `DetailPageLayout` (ไม่เต็มหน้าแล้ว)
-      ⇒ ที่ ≥1051px คอลัมน์กว้างราว 1,020px ยังได้สองการ์ดต่อแถวเหมือนเดิม */
+   🔄 ลิสต์การ์ดพับได้ของแท็บหน้างาน (`.list` · `.listBar` ย่อ/ขยายทุกพื้นที่) ถูกแทนด้วยรายการ → หน้าพื้นที่ของแบบ A
+      (แผน §10.5 S7) — หน้าตาของสองบานอยู่ที่ `SurveyFieldWorkspace` · `SurveyZoneList` · `SurveyZonePage`
+   🔄 หัวใบ (`DetailOverview`) + ราง (`DetailPageLayout`) ถูกแทนด้วยหัวงาน + เปลือกของใบ (§10.5 S9) — `SurveyJobHeader` ·
+      `SurveySheetLayout` · ที่นี่เหลือของที่เป็นของหน้าเอง: รหัสคำร้องบนแถวย้อน · กล่องแจ้งของช่าง · ทางกลับจากสรุปส่งผล · กล่องยืนยัน */
 
-/* ⭐ **ตั้งแต่ PR4 การ์ดพับได้ ⇒ ลิสต์เป็นคอลัมน์เดียวเสมอ** — หัวที่พับสูงราว 60px
-   ใบสามพื้นที่จึงอ่านจบในหน้าจอเดียว · สองคอลัมน์แบบเดิมมีไว้แก้ปัญหา "การ์ดกางค้าง
-   ทุกใบจนหน้ายาว 3,400px" ซึ่งการพับแก้ตรงจุดกว่า และเนื้อของการ์ดเองแบ่งสองคอลัมน์
-   (ขนาด+จุด | รูป+บันทึก) อยู่แล้วเมื่อจอกว้างพอ */
-.list {
+/* ── แถวย้อน: ← งานวันนี้ | RQ-… (h1) · ชื่อเรื่อง · ลูกค้า (สองบาน) · ป้ายนัดชิดขวา (ม็อก A-1 · AT-1 · AW-1) ──
+   ⚠️ กล่องปุ่มท้ายแถวของเปลือก (`.ui-workspace-back-actions`) ชิดขวาและกว้างเท่าเนื้อ — จอนี้ขอให้มันกินที่เหลือทั้งแถว
+      (รหัสต้องติดลิงก์ย้อน ไม่ใช่ลอยไปขวาสุด) · ถามผ่านคลาสของ `Workspace` หน้านี้ ⇒ หน้าอื่นไม่โดน */
+.shell :global(.ui-workspace-back-actions) {
+  flex: 1 1 auto;
+  justify-content: flex-start;
+  margin-left: 0;
+  flex-wrap: nowrap;
+}
+
+/* ลิงก์ย้อนสูงระดับนิ้ว (ม็อก A-1 · 44px) — ของกลางสูง 32px (จอคอม) · จอนี้ถือมือถือมือเดียวหน้าตึก */
+.shell :global(.ui-workspace-back) {
+  min-height: var(--ctl-h-touch);
+}
+
+/* ห่อได้ — ลิงก์ย้อน + รหัส + ป้ายนัดไม่พอบรรทัดเดียวที่ 360 ("คิวคำร้อง" · ป้าย "นัดยังไม่ปิด") ⇒ ป้ายนัดลงบรรทัดใหม่
+   ไม่ดันหน้าล้นแนวนอน · ลิงก์ย้อนของคนอ่านอย่างเดียวเหลือ "คำร้อง" (S9 · รหัสอยู่ใน h1 ติดกันแล้ว) */
+.ident {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  min-width: 0;
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--border-strong);
+}
+
+.docNo {
+  flex: none;
+  margin: 0;
+  color: var(--text-1);
+  font-size: var(--fs-9);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-thai);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ชื่อเรื่อง · ลูกค้า — บรรทัดเดียวตัดท้าย (ของเต็มอยู่ใน "รายละเอียดคำร้อง") */
+.docLine {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: var(--fs-8);
+  line-height: var(--lh-thai);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.docLine b {
+  color: var(--text-1);
+  font-weight: var(--fw-semibold);
+}
+
+.visitBadge {
+  flex: none;
+  margin-left: auto;
+}
+
+/* ── กล่องแจ้งของคนที่ไม่มีการ์ดจัดการผล (ช่าง · คนอ่านอย่างเดียว) — บนสุดของรายการ/สรุป ── */
+.notices {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2-5);
+  gap: var(--space-2);
+  min-width: 0;
 }
 
-/* แถวเหนือลิสต์ — จำนวนพื้นที่ทางซ้าย ปุ่มขยาย/ย่อทั้งหมดทางขวา */
-.listBar {
+/* บรรทัดหลักฐาน/ทางออกใต้ข้อความ (ใครกด · เมื่อไร · "แจ้งหัวหน้าให้กดดึงผลกลับมาแก้") */
+.noticeMeta {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}
+
+/* ── ทางกลับจากสรุปส่งผล (คนที่ไม่มีแท็บ · แผนลงมือ §3.8) ── */
+.resultBack {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
   flex-wrap: wrap;
-  gap: var(--space-3);
-}
-
-.listBar p { margin: 0; color: var(--text-2); font-size: var(--fs-6); line-height: var(--lh-thai); }
-.listBar p b { color: var(--text-1); font-variant-numeric: tabular-nums; }
-/* ปุ่มขยาย/ย่อทั้งหมด — `.text-action` ไม่ได้ประกาศ display ของตัวเอง ⇒ ไอคอนกับคำจะ
-   ตกคนละบรรทัดทันทีที่บรรทัดซ้ายยาวจนบีบปุ่ม (เจอจริงตอนถ่ายจอ 1440) */
-.listBar button {
-  flex: none;
-  display: inline-flex;
   align-items: center;
-  gap: var(--space-1-5);
-  font-size: var(--fs-5);
+  gap: var(--space-1) var(--space-3);
 }
 
-/* ปุ่มท้ายลิสต์ — อยู่ตรงที่ช่างไล่วัดมาถึงพอดี ไม่ใช่บนหัวจอ */
+.resultBackBtn {
+  min-height: var(--ctl-h-touch);
+}
+
+.resultBackText {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-7);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+/* ปุ่มเพิ่มพื้นที่ใต้สถานะว่างของแท็บสรุป (ใบที่ยังไม่มีพื้นที่) — แท็บหน้างานมีแถวของมันในรายการพื้นที่แล้ว */
 .listFoot { margin-top: var(--space-1); }
 
 /* เหตุที่ปุ่มในโมดัลยังกดไม่ได้ — ตัวหนังสือ ไม่ใช่ปุ่มจางเงียบ ๆ */
@@ -46,29 +113,6 @@
   border-radius: var(--radius);
   background: var(--amber-soft);
   color: var(--amber);
-  font-size: var(--fs-4);
-  line-height: var(--lh-thai);
-}
-
-/* รหัส AR อยู่ **หน้าชื่อลูกค้า** — กติกาเดียวกับทุกหน้ารายละเอียด (มติผู้ใช้ 2026-08-21)
-   ⚠️ nowrap — "AR-000" ที่ขึ้นบรรทัดใหม่ตรงขีดกลางอ่านเป็นคนละรหัส */
-.arCode {
-  margin-right: var(--space-1-5);
-  color: var(--text-3);
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: var(--fs-3);
-  white-space: nowrap;
-}
-
-/* ผู้ติดต่อของไซต์ใต้หัวเรื่อง — เบอร์กดโทรได้ คือของชิ้นเดียวที่ช่างต้องใช้ทันที
-   ตอนไปถึงหน้าตึกแล้วหาทางเข้าไม่เจอ (ช่องข้อเท็จจริงตัดข้อความเหลือบรรทัดเดียว
-   จึงไม่ใช่ที่ของลิงก์ที่ต้องกดได้) */
-.contact {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-2);
-  color: var(--text-3);
   font-size: var(--fs-4);
   line-height: var(--lh-thai);
 }

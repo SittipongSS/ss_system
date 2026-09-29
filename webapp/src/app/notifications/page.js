@@ -13,7 +13,7 @@ import { useCallback, useEffect, useState } from "react";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import Link from "next/link";
-import { Bell, BellOff, Check } from "lucide-react";
+import { Bell, BellOff, Check, Receipt } from "lucide-react";
 import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
@@ -231,9 +231,21 @@ export default function NotificationsPage() {
                   <li key={row.id} className={`${styles.item} ${row.readAt ? "" : styles.itemUnread}`.trim()}>
                     {/* กดแถว = ไปที่ของจริง · การ mark read ของเธรดยังเกิดที่หน้าปลายทาง
                         (มติ 15) ปุ่มถูกใจด้านขวาจึงมีไว้สำหรับแถวที่ปลายทางไม่มีเธรด */}
-                    {row.href
-                      ? <Link href={row.href} className={styles.link}>{body}</Link>
-                      : <div className={styles.link}>{body}</div>}
+                    <div className={styles.main}>
+                      {row.href
+                        ? <Link href={row.href} className={styles.link}>{body}</Link>
+                        : <div className={styles.link}>{body}</div>}
+                      {/* ปุ่มลงมือในแถว — ตัวเดียวกับกระดิ่ง (NotificationBell) · ลิงก์ + ป้ายมาจาก API (`action`)
+                          ซึ่งซ่อนเองเมื่องวดขอใบแล้ว/จ่ายแล้ว ⇒ ที่นี่วาดตามที่ได้ · อยู่นอกลิงก์ของแถว (ลิงก์ซ้อนลิงก์ = HTML ผิด) */}
+                      {row.action?.href ? (
+                        <div className={styles.actions}>
+                          <Button as={Link} href={row.action.href} prefetch={false} tone="neutral" variant="outline" size="sm"
+                            icon={<Receipt size={13} aria-hidden="true" />}>
+                            {row.action.label}
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
                     {!row.readAt && (
                       <Button
                         variant="quiet"

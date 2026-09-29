@@ -135,7 +135,19 @@ test('⭐ salesOrderForcePreview: บอกด้วยว่ารอบบร�
   assert.equal(row.count, 3);
   // ต้องบอกด้วยว่าอะไร **ไม่** หาย ไม่งั้นคนอ่านจะคิดว่าโซนกับประวัติหายไปทั้งหมด
   assert.match(row.label, /โซนและประวัติการเข้าไซต์ยังอยู่/);
-  assert.ok(notes.some((n) => n.includes('คิวงานเข้าใหม่จะทวงซ้ำ')));
+  /* 🔄 mig 0392 (D14): TS ผูกโซนเองไม่ได้แล้ว ⇒ รอบบริการกลับมาได้ทางเดียวคือฝ่ายขายออกใบใหม่ — ห้ามบอกว่าคิวจะ "ทวงซ้ำ" */
+  assert.ok(notes.includes('🔴 ใบนี้เป็นต้นเรื่องของรอบบริการ 3 รอบ — ลบแล้วรอบบริการของโซนเหล่านั้นหายไปกับใบ — TS ต้องให้ฝ่ายขายออกใบใหม่'));
+  assert.ok(!notes.some((n) => n.includes('คิวงานเข้าใหม่จะทวงซ้ำ')));
+});
+
+test('⭐ salesOrderForcePreview: รายการงานบริการของใบ (โซนที่เลือก · mig 0392) หายตามใบ — พรีวิวต้องนับ', async () => {
+  const supabase = stubCount({ 'sales_order_line_zones:salesOrderId': 57 });
+  const { cascade } = await salesOrderForcePreview(supabase, { id: 'SO1', status: 'draft' });
+  const row = cascade.find((c) => c.label === 'รายการงานบริการ (โซนที่เลือกในใบ)');
+  assert.ok(row, 'พรีวิวต้องมีบรรทัดรายการงานบริการ');
+  assert.equal(row.count, 57);
+  const none = await salesOrderForcePreview(stubCount({}), { id: 'SO1', status: 'draft' });
+  assert.ok(!none.cascade.some((c) => c.label.startsWith('รายการงานบริการ')), 'ไม่มี = ไม่มีบรรทัดนี้');
 });
 
 test('⭐ salesOrderForcePreview: บอกว่าเอกสาร FM-SA-04 ที่ยังใช้งานจะถูกยกเลิก (นับเฉพาะใบที่ active)', async () => {
@@ -542,4 +554,13 @@ test('dealForcePreview: คำร้องที่ส่งแล้วขึ�
   const note = notes.find((n) => n.includes('คำร้องที่ส่งถึงฝ่ายอื่นแล้ว'));
   assert.ok(note, notes.join(' | '));
   assert.match(note, /1 ใบ \(RQ-IQ-26090026\)/);
+});
+
+test('ลบคำร้อง = ถอดลิงก์ billingRequestId บนงวดชำระด้วย (กำหนดวางบิล 26/09 — ปุ่มขอใบวางบิลผูกตั้งแต่ร่าง)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('./forceDelete.js', import.meta.url), 'utf8');
+  const body = src.slice(src.indexOf('export async function cleanupRequestOrphans'), src.indexOf('export async function formulaForcePreview'));
+  assert.match(body, /\.from\('sales_order_installments'\)/);
+  assert.match(body, /billingRequestId: null/);
+  assert.match(body, /\.eq\('billingRequestId', requestId\)/);
 });

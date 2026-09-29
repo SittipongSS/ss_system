@@ -9,10 +9,19 @@
 //   ⇒ เทสต์ได้โดยไม่ต้องมีฐานข้อมูล และตรรกะไม่ไปซ้ำอยู่ใน route
 //
 // ⚠️ ทุกเกณฑ์ยืมตัวตัดสินกลางทั้งหมด — `allocatedByLine`/`fgSummary` (การจัดสรร) ·
-//   `termOrderActive` (รอบยังมีผลไหม) · `serviceRoundsSold` (ขายไว้กี่รอบ) ·
-//   `evaluateVisitGate` (นัดผ่านด่านไหม) · ห้ามเขียนเงื่อนไขซ้ำที่นี่
+//   `termOrderActive` (รอบยังมีผลไหม) · `serviceRoundsSold`/`serviceVisitsSold` (ขายไว้กี่รอบ) ·
+//   `serviceLineRole` (บรรทัดเป็นแพ็คเกจไหม) · `evaluateVisitGate` (นัดผ่านด่านไหม) · ห้ามเขียนเงื่อนไขซ้ำที่นี่
+//
+// ⭐ **ใบที่ประทับแล้ว (`serviceTermsOpenedAt` · mig 0392)** — ฝ่ายขายตั้งโซน/แพ็คต่อรอบ/รอบในใบ แล้วรอบขายเกิดตอน
+//   อนุมัติครบทุกโซนที่เลือก ⇒ ไม่มี "ของค้างรอลงโซน" อีก (จำนวนในใบ = ระยะเวลา/แพ็คเกจ ไม่ใช่หน่วยที่ต้องจัดสรร)
+//   และ "ขายไว้กี่รอบ" = จำนวนครั้งที่ต้องไปไซต์ (`serviceVisitsSold` · D23 n/N) ไม่ใช่ผลบวกรอบรายบรรทัด
+//   ใบเดิมที่ยังไม่ประทับ (TS ผูกโซนก่อน 0392 · ใบย้อนหลัง) คงตัวนับเดิมทุกตัว
 import { allocatedByLine, fgSummary, termOrderActive } from '@/lib/service/terms';
-import { serviceRoundsSold } from '@/lib/sales/serviceOrders';
+import { serviceRoundsSold, serviceVisitsSold } from '@/lib/sales/serviceOrders';
+/* ชนิดของบรรทัด (D2) — ถาม "มีแพ็คเกจให้ลงโซนไหม" ด้วยตัวตัดสินงานบริการ ไม่ใช่ตัวตัดสินด่านเงิน
+   (`hasServicePackageLine` เป็นสวิตช์ของด่านรับรองงวด · serviceMoneySelectGuard คุมผู้เรียกของมัน) ·
+   ไฟล์นี้ไม่อยู่ในวง intake ↔ serviceOrders (กฎ 16 ห้ามเฉพาะสองไฟล์นั้น import serviceSetup) */
+import { SERVICE_KIND_PACKAGE, serviceLineRole } from '@/lib/sales/serviceSetup';
 
 /**
  * @param order      ใบสั่งขาย
@@ -32,8 +41,12 @@ export function salesOrderServiceSummary({
   /* ⚠️ นับเฉพาะรอบขายที่ **ใบแม่ยังมีผล** — ใบถูก Rev./ยกเลิกแล้ว term ยังค้างในฐาน
      (ตารางไม่มีคอลัมน์สถานะโดยเจตนา) ⇒ ไม่กรอง = จัดสรรซ้ำสองเท่าหลังออก Rev. */
   const liveTerms = termOrderActive(order) ? terms : [];
+  /* ใบที่ประทับแล้ว: รอบขายเกิดครบทุกโซนที่ฝ่ายขายเลือกในทรานแซกชันเดียวกับการอนุมัติ ⇒ ไม่มีของค้างให้ TS ลงโซน
+     ⚠️ ถามจากตราประทับบนใบ ไม่ใช่เดาจาก term — ใบเดิมมี term ที่ TS ผูกไว้ก็ได้ (ยังนับแบบเดิม) */
+  const stamped = !!order?.serviceTermsOpenedAt;
   const allocated = allocatedByLine(liveTerms);
-  const fg = fgSummary(lines, allocated);
+  const fgRows = fgSummary(lines, allocated);
+  const fg = stamped ? fgRows.map((g) => ({ ...g, remaining: 0 })) : fgRows;
   const remaining = fg.reduce((sum, g) => sum + g.remaining, 0);
 
   /* ไซต์/โซนที่ใบนี้ลงไปแล้ว — หน่วยที่คนอ่านคือ "ไซต์" (คนเข้าไซต์ทีเดียวทำทุกโซน) */
@@ -111,14 +124,21 @@ export function salesOrderServiceSummary({
        ส่วน `hasPlan` ถามคนละคำถาม ("ยังต้องวางรอบอีกไหม") จึงดูเฉพาะรอบที่ยังเปิด
        ⇒ เกณฑ์ตรงกับคอลัมน์ "รอบที่เดิน" บนทะเบียน ซึ่งก็ไม่กรอง `isActive` เช่นกัน */
   const done = visits.filter((v) => v.status === 'done' && ownVisit(v)).length;
-  const sold = serviceRoundsSold(lines);
+  /* ⭐ ใบที่ประทับแล้ว: ขายไว้ = จำนวนครั้งที่ต้องไปไซต์ (Σ ไซต์ของรอบสูงสุดของบรรทัดที่ลงไซต์นั้น · D23)
+     ⚠️ ผลบวกรายบรรทัดของเดิมนับบรรทัดเดียวที่ลงหลายไซต์/หลายโซนผิด (ไปไซต์ละครั้งต่อรอบ ไม่ใช่บรรทัดละครั้ง) */
+  const sold = stamped
+    ? serviceVisitsSold({ lines, links: liveTerms, zonesById }).total
+    : serviceRoundsSold(lines);
 
   return {
     allocation: {
       fg,
       remaining,
       // ⚠️ "จัดสรรครบ" = ไม่เหลือของค้าง **และ** มีอย่างน้อยหนึ่งโซนจริง
-      complete: remaining === 0 && bySite.size > 0,
+      /* ใบที่ประทับแล้ว: มีไซต์ = ครบ · ไม่มีบรรทัดแพ็คเกจเลย (ใบที่ตั้งทุกบรรทัดเป็น "ไม่ใช่งานบริการ") = ไม่มีอะไรต้องลง = ครบ */
+      complete: stamped
+        ? bySite.size > 0 || !lines.some((l) => serviceLineRole(l) === SERVICE_KIND_PACKAGE)
+        : remaining === 0 && bySite.size > 0,
       /* ⭐ **ธง `hasPlan` รายแถว** — `planSites` คำนวณอยู่แล้วสองบรรทัดข้างบน แต่ถูกใช้
          ครั้งเดียวเพื่อ *นับ* ไซต์ที่ยังไม่วางรอบ ⇒ ตารางบอกได้แค่ยอดรวม คนอ่านต้อง
          ไล่เปิดทีละไซต์เพื่อหาว่าไซต์ไหนคือไซต์ที่ค้าง · ผูกกลับเข้าแถวได้ฟรี ไม่มีคิวรีเพิ่ม

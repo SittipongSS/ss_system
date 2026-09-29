@@ -2,7 +2,7 @@
 //
 // ⭐ **ทำไมแยกไฟล์จาก `survey.js`** — `survey.js` คือ *กฎของงาน* (ด่านหกข้อ · ล็อกหลังส่ง ·
 //   สูตรแพ็คเกจ) ที่ทั้งจอและ server ถามร่วมกัน · ไฟล์นี้คือ *การประกอบคำตอบให้จอเดียว*
-//   (สถานะ · โทน · เหตุผลที่กดส่งไม่ได้ · ค่าเปิด/ปิดของพื้นที่) ⇒ กฎอยู่บ้านเดิมบ้านเดียว
+//   (สถานะ · โทน · เหตุผลที่กดส่งไม่ได้ · ข้อเท็จจริงรายพื้นที่) ⇒ กฎอยู่บ้านเดิมบ้านเดียว
 //   ไฟล์นี้ **ไม่ประกาศกฎใหม่เลย** มันถามตัวเดิมทั้งหมด (`surveySendError` · `surveyRecallError`
 //   · `surveyGateChecklist` · `surveyEditLockError`) แล้วจัดเป็นของที่การ์ดวางได้
 //   🔴 กฎใหม่ของใบประเมินให้เขียนที่ `survey.js` เสมอ — เขียนที่นี่เมื่อไรจะได้กฎสองชุด
@@ -14,10 +14,15 @@
 //
 // ⚠️ **"อ่านไม่สำเร็จ" ต้องไม่กลายเป็น "ไม่มี"** (กติกา supabase-never-throws) — ชิ้นที่
 //   อ่านพลาดมาทาง `unknown` แล้วกลายเป็นข้อความ "ไม่ทราบ" บนจอ ไม่ใช่ขีดหรือศูนย์
-import { fmtDateTime, fmtNumber } from '@/lib/format';
+import { fmtDateTime, fmtNumber, naText } from '@/lib/format';
+import { attachmentHref } from '@/lib/master/attachmentStorage';
+import { isPreviewableImage } from '@/lib/master/attachmentTypes';
 import { requestRailSteps } from '@/lib/requests/requestRail';
 import {
+  SURVEY_DOC_SPOT,
+  SURVEY_DOC_WIDE,
   SURVEY_GATES,
+  parseSurveyMeters,
   spotCounts,
   suggestedPackages,
   surveyDocCounts,
@@ -26,8 +31,10 @@ import {
   surveyFieldProgress,
   surveyGateChecklist,
   surveyRecallError,
+  surveySendBackDoneCountText,
   surveySendError,
   surveyTotals,
+  surveyZoneName,
   surveyZoneSize,
 } from '@/lib/service/survey';
 import { surveySendVisitStep } from '@/lib/service/surveySendClose';
@@ -44,11 +51,12 @@ export const SURVEY_UNKNOWN_LABELS = {
   recall: 'ประวัติการดึงผลกลับ',
   visit: 'นัดสำรวจ',
   sendBack: 'ประวัติการส่งกลับให้ช่างแก้',
+  /* ชื่อผู้ช่วยบนนัด (GET `crew` · แผน §10.5 S5) — อ่านจากบัญชีรายคน ล้มได้ทีละคน */
+  crew: 'ชื่อทีมบนนัด',
 };
 
 const isCut = (row) => (row?.status || 'ok') === 'cut';
 const activeZones = (rows) => (Array.isArray(rows) ? rows : []).filter((r) => !isCut(r));
-const zoneName = (row) => String(row?.zoneName || '').trim() || 'พื้นที่ไม่มีชื่อ';
 
 /**
  * ชื่อพื้นที่ต่อกันในที่แคบ — เกิน 3 ชื่อแล้วยุบเป็น "อีก n"
@@ -75,11 +83,13 @@ export function surveyTotalsText(totals) {
 }
 
 /**
- * 🔑 **ข้อเท็จจริงของพื้นที่หนึ่งแถวที่หัวที่ *พับอยู่* ต้องตอบได้โดยไม่ต้องเปิด**
+ * 🔑 **ข้อเท็จจริงของพื้นที่หนึ่งแถวที่ต้องตอบได้โดยไม่ต้องเปิดพื้นที่** (แถวรายการ · จุดของตัวเลื่อน ·
+ *   การ์ดจัดการผล · หน้าคำร้อง)
  *
- * ⭐ กติกาของแบบที่อนุมัติ: หัวที่พับต้องตอบ "ครบไหม ได้เท่าไร" — ครบแล้วโชว์ตัวเลข
+ * ⭐ กติกาของแบบที่อนุมัติ: แถวต้องตอบ "ครบไหม ได้เท่าไร" — ครบแล้วโชว์ตัวเลข
  *   (ตร.ม. · ลบ.ม. · สูตรกี่แพ็คเกจ · กี่จุด · กี่รูป) ยังไม่ครบโชว์ "ขาด: …"
- *   ⇒ ตัวเลขทุกตัวต้องมาจากที่นี่ ไม่ใช่ให้การ์ดคำนวณเอง (การ์ดสองใบจะคำนวณไม่เท่ากัน)
+ *   ⇒ ตัวเลขทุกตัวต้องมาจากที่นี่ ไม่ใช่ให้จอคำนวณเอง (สองจอจะคำนวณไม่เท่ากัน)
+ *   🔄 เดิมคือหัวของการ์ดพื้นที่ที่พับอยู่ — การพับถอดแล้ว (§10.5 S7 · ค่าพับตั้งต้นถอดใน S10) กติกาย้ายมาที่แถวรายการ
  *
  * ⚠️ `files = []` ตอนยังโหลดไม่เสร็จ ⇒ ตอบว่า "ยังไม่มีรูป" ซึ่ง **fail-closed ถูกแล้ว**
  *   (เหตุผลเดียวกับ `surveyDocCounts`)
@@ -103,7 +113,7 @@ export function surveyZoneFacts(zone = {}, files = []) {
   const head = gaps.filter((g) => g.owner === 'head');
   return {
     zoneId: zone.id || null,
-    zoneName: zoneName(zone),
+    zoneName: surveyZoneName(zone),
     /* รหัส ZN อ่านสดจากทะเบียน — route เติมลงแถวให้
        🔴 **"ยังไม่มีรหัส" กับ "อ่านรหัสไม่สำเร็จ" ต้องแยกกัน** — พื้นที่ใหม่ของ SA ยังไม่มี
           `zoneId` จนกว่าจะกดส่งใบ (ว่างเป็นเรื่องปกติ) ส่วนอ่านไม่สำเร็จคือของที่มีอยู่
@@ -126,7 +136,7 @@ export function surveyZoneFacts(zone = {}, files = []) {
     missing: gaps,
     missingCrew: crew,
     missingHead: head,
-    /* บรรทัด "ขาด: …" ของหัวที่พับ = **ของฝั่งช่างเท่านั้น** — ของหัวหน้า (ผัง/เลือกจุด/
+    /* บรรทัด "ขาด: …" ของแถวพื้นที่ = **ของฝั่งช่างเท่านั้น** — ของหัวหน้า (ผัง/เลือกจุด/
        แพ็คเกจ) ทำที่แท็บสรุปส่งผล ไม่ได้ทำในพื้นที่ ⇒ เขียนไว้บนหัวพื้นที่คือชี้ผิดที่ */
     missingText: crew.length ? `ขาด: ${crew.map((g) => g.short).join(' · ')}` : null,
     crewComplete: !cut && crew.length === 0,
@@ -135,13 +145,75 @@ export function surveyZoneFacts(zone = {}, files = []) {
   };
 }
 
+/* ภาพย่อบนช่องพื้นที่ของตารางสรุป — ช่องกว้าง ~13rem ⇒ สามช่องขนาดนิ้ว (44px) คือที่ที่มี
+   ที่เหลือบอกด้วยตัวนับ "ภาพกว้าง n · ภาพจุด n" ข้างล่าง ไม่ใช่ภาพย่อแถวที่สอง */
+const RESULT_THUMBS = 3;
+const RESULT_PHOTO_KINDS = [
+  { kind: 'wide', docType: SURVEY_DOC_WIDE, label: 'ภาพกว้าง' },
+  { kind: 'spot', docType: SURVEY_DOC_SPOT, label: 'ภาพจุด' },
+];
+/* ช่องขนาดหนึ่งช่อง — ยังว่าง/ไม่ใช่เลขบวก = ขีด
+   🐞 ตารางเดิมเขียน `fmtNumber(p.heightM)` ตรง ๆ ⇒ `fmtNumber('')` = "0" ⇒ ส่วนที่ยังวัดไม่ครบ
+      ขึ้น "8 × 6 × 0" ซึ่งอ่านเหมือนวัดได้ศูนย์เมตร ไม่ใช่ "ยังไม่ได้วัด" */
+const dimText = (value) => {
+  const n = Number(value);
+  return value !== '' && value !== null && Number.isFinite(n) && n > 0 ? fmtNumber(n) : naText(null);
+};
+
+/**
+ * 🔑 **ช่อง "พื้นที่ · ผลวัดจากช่าง" ของตารางสรุปส่งผล** (แบบ AW-3 · แผน §10.5 S2)
+ *
+ * ⭐ หัวหน้าเคาะจุด/แพ็คเกจ **จากผลวัดของช่าง** ⇒ ของที่เขาต้องเห็นอยู่ช่องเดียวกับชื่อพื้นที่:
+ *   ตัวเลข (ตร.ม. · ลบ.ม.) · ขนาดรายส่วน · ภาพย่อที่ช่างถ่าย · จำนวนรูป — เดิมแยกเป็นคอลัมน์ "ขนาด"
+ *   กับ "รูป" (เลข "1 / 0 / 2") ซึ่งไม่มีภาพให้ดูเลย และผังปนอยู่ในตัวนับของช่าง
+ * ⚠️ **ภาพผังไม่อยู่ในช่องนี้** — มันเป็นของหัวหน้า มีคอลัมน์ของตัวเอง (ที่อัปได้) · ภาพย่อที่นี่
+ *   อ่านอย่างเดียว เพราะรูปของช่างแก้ที่หน้างาน ไม่ใช่ที่ตารางเคาะ
+ * ⚠️ `thumbs` ≠ ตัวนับ — ไฟล์ที่ไม่ใช่รูป (PDF ที่ลากมาวาง) และแถวที่ไม่มีที่อยู่ไฟล์ให้เปิด
+ *   ไม่มีภาพย่อ แต่ **นับ** เพราะด่าน "ภาพกว้าง" ของ server ก็นับ (`surveyDocCounts`) ·
+ *   ตัวนับบนจอต้องตรงกับด่าน
+ *
+ * @param zone  แถว `service_survey_zones`
+ * @param files ไฟล์ของแถวนั้น (ชุดสดจาก `useLiveZoneFiles`)
+ * @returns `{ figures, dims, partsText, photos:{wide,plan,spot}, thumbs:[{file,href,kind,label,startsGroup}], moreThumbs }`
+ */
+export function surveyResultZoneCell(zone = {}, files = []) {
+  const parts = Array.isArray(zone?.parts) ? zone.parts : [];
+  const size = surveyZoneSize(parts);
+  const rows = Array.isArray(files) ? files : [];
+  /* ที่อยู่ไฟล์มาจากกติกาเดียวกับแผงไฟล์แนบ (`attachmentHref` — Drive ผ่าน proxy ที่ตรวจสิทธิ์) */
+  const pictures = RESULT_PHOTO_KINDS.flatMap(({ kind, docType, label }) => rows
+    .filter((f) => f?.docType === docType && isPreviewableImage(f))
+    .map((file) => ({ file, href: attachmentHref(file), kind, label }))
+    .filter((t) => t.href));
+  const thumbs = pictures.slice(0, RESULT_THUMBS).map((t, i, list) => ({
+    ...t,
+    // เส้นคั่นระหว่างกลุ่ม (ภาพกว้าง | ภาพจุด) — ตัวแรกของกลุ่มที่สองเป็นคนบอก
+    startsGroup: i > 0 && list[i - 1].kind !== t.kind,
+  }));
+  return {
+    /* ยังไม่มีส่วนที่วัดครบ = ยังไม่มีตัวเลข (ไม่ใช่ "0 ตร.ม." ที่อ่านเหมือนวัดได้ศูนย์) */
+    figures: size.measuredParts > 0
+      ? `${fmtNumber(size.areaSqm)} ตร.ม. · ${fmtNumber(size.volumeCbm)} ลบ.ม.`
+      : null,
+    dims: parts.length
+      ? `${parts.map((p) => `${dimText(p?.widthM)} × ${dimText(p?.lengthM)} × ${dimText(p?.heightM)}`).join(' + ')} ม.`
+      : null,
+    partsText: parts.length > 1 ? `${fmtNumber(parts.length)} ส่วน` : null,
+    photos: surveyDocCounts(rows),
+    thumbs,
+    moreThumbs: pictures.length - thumbs.length,
+  };
+}
+
 /* ตัวเลขที่พิมพ์คนละรูปแต่เป็นค่าเดียวกัน — "8.00" กับ 8 ต้องเท่ากัน
-   (server ปรับรูปให้ตอนบันทึก ⇒ เทียบเป็นสตริงดิบจะได้ "ต่าง" ทุกครั้งหลังบันทึก) */
+   (server ปรับรูปให้ตอนบันทึก ⇒ เทียบเป็นสตริงดิบจะได้ "ต่าง" ทุกครั้งหลังบันทึก)
+   🐞 UAT 25/09 — เดิมใช้ `Number()` ⇒ '7,5' ได้ NaN แล้วเก็บข้อความดิบ ทั้งที่ตัวบันทึกอ่านเป็น 7.5 ⇒ ช่างแป้นจุลภาค
+      พิมพ์ต่อระหว่างรอบันทึกเจอ "ถูกแก้จากที่อื่น" เพราะการบันทึกของตัวเอง ⇒ อ่านด้วยตัวเดียวกับตัวบันทึก
+      · ค่าที่ตัวบันทึกไม่รับ (NaN) = ข้อความดิบ (ไม่หายเป็น "ว่าง") */
 const sigNumber = (value) => {
-  const text = String(value ?? '').trim();
-  if (!text) return '';
-  const n = Number(text);
-  return Number.isFinite(n) ? String(n) : text;
+  const n = parseSurveyMeters(value);
+  if (n === null) return '';
+  return Number.isFinite(n) ? String(n) : String(value).trim();
 };
 
 /**
@@ -168,49 +240,54 @@ export function surveyZoneDraftSignature({ parts = [], spots = [], note = '' } =
 }
 
 /**
- * 🔑 **ค่าเปิด/ปิดตั้งต้นของพื้นที่ — คำนวณจากข้อมูลทุกครั้งที่โหลด ไม่จำข้ามครั้ง**
- *
- * ⭐ กติกาที่อนุมัติ (สามข้อ ตามลำดับนี้):
- *   1. พื้นที่ที่ถูก **ตัดออก** → พับเสมอ (ไม่มีอะไรให้ทำแล้ว)
- *   2. ใบที่เหลือ **พื้นที่เดียว** → เปิดเสมอ แม้คนดูแก้ไม่ได้ (เปิดมาเจอการ์ดพับอันเดียว
- *      คือหน้าที่ไม่ตอบอะไรเลย)
- *   3. คนดู **แก้ได้** และพื้นที่นั้น **ยังขาดของฝั่งช่าง** → เปิด · นอกนั้นพับ
- *      ⇒ วัดครบ · ใบที่ส่งแล้ว · ใบที่ยกเลิก · คนดูอย่างเดียว = พับหมด
- *
- * ⚠️ **ไม่ขึ้นกับขนาดจอและไม่จำค่าเดิม** — ค่าที่จำไว้จะพาไปเปิดพื้นที่ที่จบไปแล้ว
- *   และซ่อนพื้นที่ที่เพิ่งกลายเป็นงานค้าง
- *
- * 🐞 **`canWrite` ของ server ไม่รู้จักการล็อก** — `visitWriteAccess` ตอบแค่ "คนนี้เป็นช่าง
- *   ของนัดใบนี้ไหม" ไม่เคยดู `answeredAt` / `cancelledAt` / `closedAt` เลย ⇒ ส่งค่าที่ได้
- *   จาก GET มาดิบ ๆ แล้วใบที่ส่งไปแล้วจะกางพื้นที่ที่ "ยังขาด" ค้างไว้ทั้งหน้า ทั้งที่
- *   แก้อะไรไม่ได้สักช่อง · **ห้ามให้ผู้เรียกต้องจำหักลบเอง** — ส่ง `request` มาแล้ว
- *   ตัวตัดสินถามด่านล็อกตัวเดียวกับการ์ดควบคุมให้เอง
- *
- * @param viewer `{ canWrite, locked, request }` — `canWrite` มาจาก server (จอไม่รู้ user id
- *               ตัวเอง) · **ต้องส่ง `request` หรือ `locked` มาอย่างน้อยหนึ่งอย่าง** ไม่งั้น
- *               ตัวตัดสินไม่มีทางรู้ว่าใบถูกล็อกแล้ว · ทางที่สั้นที่สุดคือใช้
- *               `surveyControlView(...).foldDefaults` ซึ่งหักลบมาให้แล้ว
- * @returns `{ [zoneRowId]: boolean }` — ใช้เป็นค่าตั้งต้นของ `useState` ได้ตรง ๆ
+ * ส่วนไหนของร่างที่ต่างจากแถวที่ร่างตั้งต้น — การบันทึกส่ง **เฉพาะส่วนที่แก้** (route รับทีละส่วน: ไม่ส่ง = ไม่แตะ)
+ * 🐞 review 26/09 รอบสอง — ช่างสองคนบนพื้นที่เดียว: ผู้ช่วยเพิ่มจุดบนร่างเก่า (ส่วนว่าง) แล้วกดทับหลังป้าย "ถูกแก้จากที่อื่น"
+ *   ⇒ ส่ง `parts: []` ทั้งก้อน ลบขนาดที่คนนำเพิ่งวัด ทั้งที่ผู้ช่วยไม่ได้แตะขนาดเลย · ส่งเฉพาะส่วนที่แก้ = ทับได้แค่ของที่ตั้งใจทับ
+ *   ⚠️ แถวส่วน/จุดที่ว่างทั้งแถวไม่นับ (ลายเซ็นตัดทิ้งอยู่แล้ว) — ส่วนว่างที่จอเติมให้ไม่ใช่ "แก้ขนาด"
+ * @param baseSig `surveyZoneDraftSignature(แถวที่ร่างตั้งต้น)`
+ * @returns `{ parts, spots, note }` (true = แก้) · `null` = ไม่รู้แถวตั้งต้น (ผู้เรียกส่งทั้งก้อนแบบเดิม)
  */
-export function surveyFoldDefaults(zones = [], filesByZone = {}, viewer = {}) {
-  const rows = Array.isArray(zones) ? zones : [];
-  const active = activeZones(rows);
-  const locked = viewer?.locked === true
-    || (viewer?.request != null && !!surveyEditLockError(viewer.request));
-  const editable = viewer?.canWrite === true && !locked;
-  const open = {};
-  for (const row of rows) {
-    if (!row?.id) continue;
-    if (isCut(row)) { open[row.id] = false; continue; }
-    /* ⚖️ **คนดูมาก่อนจำนวนพื้นที่** (มติเจ้าของ 2026-09-16) — มติตั้งต้นมีสองข้อที่ชนกันเอง
-       ("ใบพื้นที่เดียวให้กาง" กับ "ใบที่ส่งแล้ว/คนอ่านอย่างเดียวให้พับ") · เจ้าของเคาะให้
-       ข้อหลังชนะ ⇒ ใบพื้นที่เดียวที่ส่งไปแล้วหรือคนอ่านอย่างเดียวเปิดมาก็พับ
-       เหตุผล: การ์ดที่กางอยู่คือคำเชิญให้กรอก คนที่กรอกไม่ได้ไม่ควรได้รับคำเชิญนั้น */
-    if (!editable) { open[row.id] = false; continue; }
-    if (active.length === 1) { open[row.id] = true; continue; }
-    open[row.id] = surveyFieldMissing(row, filesByZone?.[row.id] || []).length > 0;
+export function surveyZoneChangedSections(baseSig, draft = {}) {
+  let base;
+  try {
+    base = JSON.parse(baseSig);
+  } catch {
+    return null;
   }
-  return open;
+  if (!Array.isArray(base) || base.length !== 3) return null;
+  const now = JSON.parse(surveyZoneDraftSignature(draft));
+  return {
+    parts: JSON.stringify(base[0]) !== JSON.stringify(now[0]),
+    spots: JSON.stringify(base[1]) !== JSON.stringify(now[1]),
+    note: base[2] !== now[2],
+  };
+}
+
+/**
+ * 🔑 **แถวที่โหลดใหม่ไหลเข้ามา — รับเลย หรือเก็บร่างไว้แล้วบอกว่าชน** (ยกมาจาก `SurveyZoneCard` · แผน §10.5 S5)
+ *
+ * 🐞 ที่มา (บทเรียนของการ์ดเดิม): หน้านี้โหลดซ้ำเองทุกครั้งที่กลับมาที่แท็บ และนัดหนึ่งใบมีช่างได้หลายคน
+ *   ⇒ แถวที่อีกคนเพิ่งบันทึกไหลเข้ามาระหว่างที่ช่องยังโชว์เลขเก่า · ถ้าไม่รับ ช่องค้างเลขเก่าและขึ้น "ยังไม่บันทึก"
+ *   ทั้งที่ไม่ได้แตะอะไร (แล้วกดบันทึกก็ทับงานของอีกคนเงียบ ๆ) · ถ้ารับทับทุกครั้ง ค่าที่ผู้ใช้พิมพ์ค้างหาย
+ *   ⇒ แยกสองกรณี: **ไม่มีของค้าง = รับแถวใหม่** · **มีของค้างจริง = เก็บร่าง แล้วบอกว่าแถวถูกแก้จากที่อื่น**
+ * ⭐ ย้ายมาเป็นตัวตัดสินล้วน เพราะหน้าพื้นที่ของแบบ A (S7) ต้องถามกติกาเดียวกันเป๊ะ — เขียนซ้ำในจอ = สองกติกา
+ *
+ * ลายเซ็นทุกตัวมาจาก `surveyZoneDraftSignature`
+ * @param prevSavedSig แถวที่ร่างนี้ตั้งต้นจาก (รอบก่อน)
+ * @param savedSig     แถวที่เพิ่งโหลดมา
+ * @param draftSig     ร่างบนจอตอนนี้
+ * @param sentSig      ของที่จอนี้ **บันทึกสำเร็จไปเอง** ล่าสุด (server ปรับรูปเลขก่อนส่งกลับ ⇒ เทียบกับแถวตรง ๆ ไม่ได้)
+ * @returns `'same'` ไม่ต้องทำอะไร (แถวเดิม · หรือแถวใหม่คือผลการบันทึกของเราเองขณะที่ผู้ใช้พิมพ์ต่อ — ไม่ใช่การชน)
+ *   · `'adopt'` รับแถวใหม่ลงช่อง · `'conflict'` เก็บร่างไว้ แล้วขึ้นป้าย "ถูกแก้จากที่อื่น" พร้อมทางเลือก
+ */
+export function surveyDraftSync({ prevSavedSig, savedSig, draftSig, sentSig = null } = {}) {
+  if (savedSig === prevSavedSig) return 'same';
+  /* ผู้ใช้ไม่มีของค้าง: ร่างตรงกับแถวเดิม · ตรงกับแถวใหม่ · หรือตรงกับที่เราเพิ่งบันทึกไป */
+  if (draftSig === prevSavedSig || draftSig === savedSig || (sentSig !== null && draftSig === sentSig)) {
+    return 'adopt';
+  }
+  /* มีของค้างจริง — แถวใหม่คือผลการบันทึกของเราเอง (พิมพ์ต่อระหว่างรอคำตอบ) = ไม่ชน · นอกนั้นมีคนอื่นแก้ */
+  return sentSig !== null && savedSig === sentSig ? 'same' : 'conflict';
 }
 
 /* ── ขั้นของใบ — ชุด 6 ขั้นเดียวกับหน้าคำร้อง ────────────────────────────────
@@ -253,6 +330,26 @@ function overdueBy(dueDate, today) {
   if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return null;
   const days = Math.round((to - from) / 86400000);
   return days > 0 ? days : null;
+}
+
+/** ข้อที่หัวหน้าขอ — `sentBack.items` (S3) · ของที่ไม่มี items (ส่งจากตัวอ่านรุ่นเก่า) = note ทั้งก้อนเป็นหนึ่งข้อ
+ *  ⚠️ ส่งออกให้การ์ดส่งกลับของช่าง (`surveyFieldView` · S5) นับข้อชุดเดียวกับการ์ดของหัวหน้า — เลขข้อที่ช่างติ๊ก
+ *    (`doneItems`) อ้างลำดับของลิสต์นี้ ⇒ สองจอนับคนละแบบเมื่อไร ติ๊กข้อหนึ่งจะไปขึ้นเป็นอีกข้อ */
+export const surveySendBackAsks = (sentBack) => (Array.isArray(sentBack?.items) && sentBack.items.length
+  ? sentBack.items
+  : (sentBack?.note ? [sentBack.note] : []));
+const numberedAsks = (asks, indexes) => indexes.map((i) => `(${i + 1}) ${asks[i]}`).join(' ');
+
+/**
+ * ⭐ ข้อที่หัวหน้าส่งกลับเป็นบรรทัดเดียว (แผน §10.5 S3) — ข้อเดียว = ข้อความเดิมเป๊ะ · หลายข้อ = "2 ข้อ: (1) … (2) …"
+ * ⚠️ กล่องแจ้ง/กล่องยืนยันไม่ตัดบรรทัดตาม `\n` ⇒ ใช้ `note` ตรง ๆ ไม่ได้อีกแล้ว (ข้อจะติดกันเป็นประโยคเดียว)
+ *   และคั่นด้วย " · " ก็ไม่ได้ — ข้อความของหัวหน้าเองมีจุดคั่นอยู่ข้างในได้ (ม็อก A-5)
+ * @returns ข้อความ หรือ `''` เมื่อไม่มีข้อ
+ */
+export function surveySendBackAskText(sentBack) {
+  const asks = surveySendBackAsks(sentBack);
+  if (asks.length <= 1) return asks[0] || '';
+  return `${asks.length} ข้อ: ${numberedAsks(asks, asks.map((_, i) => i))}`;
 }
 
 /**
@@ -319,6 +416,9 @@ export function surveyControlView({
     && (!!request?.closedAt || request?.status === 'closed');
   const lockReason = surveyEditLockError(request);
   const locked = !!lockReason;
+  /* 🐞 **`canWrite` ของ server ไม่รู้จักการล็อก** — `visitWriteAccess` ตอบแค่ "เป็นช่างของนัดใบนี้ไหม" ไม่เคยดู
+     `answeredAt`/`cancelledAt`/`closedAt` ⇒ หักล็อกที่นี่ที่เดียว แล้วจอถาม `flags.canWrite` (พื้นที่ตั้งต้นของบานขวา ·
+     แถบ · ช่องกรอก) · 🔄 เดิมบทเรียนนี้อยู่กับค่าพับตั้งต้น (`surveyFoldDefaults`) ซึ่งถอดไปพร้อมการพับใน §10.5 S10 */
   const canWrite = canWriteRaw && !locked;
   const readOnly = !canWriteRaw && !canDecide;
   /* ใบที่ถูกดึงกลับ **และยังไม่ได้ส่งซ้ำ** — แถว recall ค้างอยู่ตลอดไป ⇒ ต้องคู่กับ
@@ -359,7 +459,7 @@ export function surveyControlView({
   const dirtyRows = active.filter((r) => dirtyIds.includes(String(r.id)));
 
   // ── สถานะ + โทน ────────────────────────────────────────────────────────
-  const leftText = surveyNameList(leftZones.map(zoneName));
+  const leftText = surveyNameList(leftZones.map(surveyZoneName));
   const measuredSub = `วัดแล้ว ${progress.done} / ${progress.total} พื้นที่`
     + (leftText ? ` · เหลือ ${leftText}` : '');
   let status;
@@ -472,20 +572,22 @@ export function surveyControlView({
     if (!crew.length && !head.length) continue;
     const targets = [];
     /* 🔑 **กฎ "ไปไหนถึงจะแก้ข้อนี้ได้" มีชุดเดียว และอยู่ตรงนี้ที่เดียว** —
-       ขนาด/รูป/จุดหน้างาน และ **"ภาพผัง"** แก้ในพื้นที่ (ช่องอัปผังอยู่ใน `SurveyZoneCard`
-       ซึ่งเรนเดอร์เฉพาะแท็บหน้างาน) · เลือกจุด/แพ็คเกจ เคาะที่แท็บสรุป
-       🐞 บรรทัดเหตุผลใต้ปุ่มส่งเคยมีกฎของตัวเองที่ลืมข้อ "ภาพผัง" ⇒ ใบที่ขาดแต่ผัง
-          ได้ปุ่ม "ไปเคาะที่แท็บสรุปส่งผล" ซึ่งเป็นแท็บที่อัปผังไม่ได้ = ปุ่มพาไปทางตัน
-          ⇒ ตอนนี้บรรทัดนั้นหยิบ `targets` ของแถวนี้ไปใช้ ไม่คิดเอง */
-    if (crew.length || head.some((g) => g.key === 'plan')) {
-      targets.push({ kind: 'zone', zoneId: row.id, label: `เปิด ${zoneName(row)}` });
+       ขนาด/ภาพกว้าง/จุดหน้างาน (ของช่าง) แก้ในพื้นที่ · **ภาพผัง** เลือกจุด แพ็คเกจ (ของหัวหน้า)
+       ทำที่แท็บสรุปส่งผล · อยู่แท็บนั้นแล้ว = ไม่มีปุ่มพาไป (ของที่ต้องทำอยู่ในตารางตรงหน้า)
+       🔄 **ผังย้ายจากการ์ดพื้นที่ไปคอลัมน์ของตารางสรุป** (มติเจ้าของ 25/09 · แผน §10.5 S2) —
+          เดิมช่องอัปผังอยู่ในการ์ดพื้นที่ของแท็บหน้างาน ⇒ แถวที่ขาดผังได้ปุ่ม "เปิด <พื้นที่>"
+          · ตอนนี้ปุ่มนั้นพาไปหน้าที่ไม่มีช่องผังแล้ว = ทางตัน ⇒ ของหัวหน้าทั้งสามข้อไปทางเดียวกัน
+       🐞 บรรทัดเหตุผลใต้ปุ่มส่งเคยมีกฎของตัวเองที่ลืมข้อ "ภาพผัง" ⇒ ปุ่มพาไปทางตัน
+          ⇒ บรรทัดนั้นหยิบ `targets` ของแถวนี้ไปใช้ ไม่คิดเอง (ยามคือเทสต์ "กฎไปไหนต้องมีชุดเดียว") */
+    if (crew.length) {
+      targets.push({ kind: 'zone', zoneId: row.id, label: `เปิด ${surveyZoneName(row)}` });
     }
-    if (canDecide && !crew.length && head.some((g) => g.key !== 'plan') && tab !== 'result') {
+    if (canDecide && !crew.length && head.length && tab !== 'result') {
       targets.push({ kind: 'tab', tab: 'result', label: 'เคาะที่สรุปส่งผล' });
     }
     gapRows.push({
       zoneId: row.id,
-      zoneName: zoneName(row),
+      zoneName: surveyZoneName(row),
       zoneCode: row.zoneCode ?? null,
       zoneCodeUnknown: row.zoneCodeUnknown === true,
       crew: crew.map((g) => g.short),
@@ -505,6 +607,21 @@ export function surveyControlView({
        ⚠️ แจ้งไม่ถึงใครถ้านัดไม่มีช่าง — ด่านจริงอยู่ที่ `surveySendBackError` ที่ปุ่มถามต่อ */
     crewPending: canDecide && !locked && gapRows.some((r) => r.crew.length > 0),
     crewIds,
+  };
+  /* 🔄 **ปุ่ม "ส่งกลับให้ช่างแก้" ไม่ผูกกับของขาดแล้ว** (มติเจ้าของ 25/09 · แผน §10.5 S4 · ม็อก A-5/AW-2)
+     — ด่านสามข้อของช่างบอกได้แค่ "มีรูปไหม" ไม่ได้บอกว่า "รูปใช้ได้ไหม" · เดิมปุ่มขึ้นตาม `crewPending`
+     ⇒ ฝั่งช่างเขียวครบแล้วหัวหน้าเห็นว่าภาพกว้างถ่ายไม่ถึงส่วน B ก็ขอเพิ่มในระบบไม่ได้
+     ⚠️ `crewPending` ยังอยู่และยังหมายถึง "มีของช่างค้าง" — ไม่ยืดความหมาย
+     ⚠️ นัดไม่มีช่าง = ยังไม่มีใครไปทำอะไรมาให้ส่งกลับ (ไม่ใช่ด่านที่รอผ่าน) ⇒ ไม่มีปุ่ม
+        · ด่านจริงยังอยู่ที่ `surveySendBackError` (route ตีกลับด้วยเหตุเดียวกัน)
+     `message` = บรรทัดหลักของกล่องยืนยัน — ฝั่งช่างครบแล้วต้องไม่ขึ้น "ข้อที่ติด: " ว่าง ๆ */
+  const crewGapRows = gapRows.filter((r) => r.crew.length > 0);
+  const sendBackAction = {
+    show: canDecide && !locked && crewIds.length > 0,
+    label: 'ส่งกลับให้ช่างแก้',
+    message: crewGapRows.length
+      ? `ข้อที่ติด: ${crewGapRows.map((r) => `${r.zoneName} (${r.crew.join(' · ')})`).join(' · ')}`
+      : 'ฝั่งช่างครบทุกพื้นที่แล้ว — ช่างจะได้เฉพาะข้อที่พิมพ์ด้านล่าง',
   };
 
   // ── เหตุผลที่ยังกดส่งไม่ได้ + จุดที่พาไปแก้ ───────────────────────────────
@@ -530,12 +647,12 @@ export function surveyControlView({
         target: tab === 'result' ? null : { kind: 'tab', tab: 'result', label: 'ไปบันทึกการเคาะ' },
       };
     } else if (dirtyIds.length) {
-      const names = surveyNameList(dirtyRows.map(zoneName));
+      const names = surveyNameList(dirtyRows.map(surveyZoneName));
       sendReason = {
         key: 'field-dirty',
         text: names ? `${names} มีค่าที่พิมพ์ค้าง ยังไม่บันทึก` : 'มีค่าที่พิมพ์ค้าง ยังไม่บันทึก — บันทึกก่อนส่ง',
         target: dirtyRows[0]
-          ? { kind: 'zone', zoneId: dirtyRows[0].id, label: `ไปที่ ${zoneName(dirtyRows[0])}` }
+          ? { kind: 'zone', zoneId: dirtyRows[0].id, label: `ไปที่ ${surveyZoneName(dirtyRows[0])}` }
           : null,
       };
     } else if (serverSendReason) {
@@ -586,6 +703,12 @@ export function surveyControlView({
     allowed: canDecide && !locked && !serverSendReason && !sendReason && visitStep.action !== 'block',
     reason: sendReason,
     closesVisit,
+    /* 🐞 review 26/09 — **ส่งกลับให้ช่างแก้ค้างอยู่** (ช่างยังไม่แจ้งว่าแก้แล้ว) — ตั้งแต่ S4 ค้างได้ทั้งที่ด่านเขียวหมด
+       ⇒ โมดัลต้องบอกก่อนกดว่าส่งผลจะปิดเรื่องนั้นและช่างแก้ต่อไม่ได้ (ใบล็อกแล้ว GET ซ่อนเรื่องค้างเอง — `surveySendBackOnSheet` · ไม่เขียนแถวปิดลงเธรด) · **เตือน ไม่บล็อก**
+       (ไม่เข้า `allowed`/`reason`) — หัวหน้าเห็นของครบแล้วตัดสินใจส่งได้ · `null` = ไม่มีเรื่องค้าง/อ่านเธรดไม่ได้ */
+    sendBackPending: canDecide && !locked && sendBack?.pending
+      ? { itemCount: Array.isArray(sendBack.sentBack?.items) ? sendBack.sentBack.items.length : 0 }
+      : null,
   };
 
   /* ⚠️ เหตุผลของการดึงกลับยังไม่ถูกพิมพ์ตอนนี้ (อยู่ในโมดัล) ⇒ ยิงค่ายาวพอผ่านด่าน
@@ -643,18 +766,27 @@ export function surveyControlView({
      ⚠️ "แจ้งแล้ว" ขึ้นเฉพาะรอบล่าสุดที่ยังไม่ถูกส่งกลับซ้ำ (ส่งกลับซ้ำ = ค้างใหม่) */
   if (canDecide && !lockReason && sendBack?.sentBack) {
     const back = sendBack.sentBack;
+    const asks = surveySendBackAsks(back);
+    const askText = surveySendBackAskText(back);
     if (sendBack.pending) {
       notices.push({
         key: 'send-back-pending', tone: 'warning',
-        text: `ส่งกลับให้ช่างแก้${back.at ? ` ${fmtDateTime(back.at)}` : ''}${back.note ? ` — ${back.note}` : ''}`
+        text: `ส่งกลับให้ช่างแก้${back.at ? ` ${fmtDateTime(back.at)}` : ''}${askText ? ` — ${askText}` : ''}`
           + ' · รอช่างแจ้งว่าแก้แล้ว',
       });
     } else if (sendBack.done) {
       const done = sendBack.done;
+      /* "แก้แล้ว 1 / 2 ข้อ" ต้องบอกด้วยว่า **ข้อไหน** ยังไม่ติ๊ก — ตัวเลขเฉย ๆ หัวหน้าต้องเปิดเทียบเอง
+         ⚠️ ติ๊กไม่ครบ = กล่องเหลือง (ช่างบอกเองว่ายังไม่ได้ทำ) · ไม่รู้ว่าติ๊กอะไร = คำเดิม กล่องเขียว */
+      const doneItems = Array.isArray(done.doneItems) ? done.doneItems : null;
+      const count = doneItems ? surveySendBackDoneCountText(doneItems.length, done.itemCount) : null;
+      const open = count ? asks.map((_, i) => i).filter((i) => !doneItems.includes(i)) : [];
+      const facts = [count, done.at ? fmtDateTime(done.at) : null].filter(Boolean).join(' · ');
       notices.push({
-        key: 'send-back-done', tone: 'success',
-        text: `ช่างแจ้งว่าแก้แล้ว${done.at ? ` ${fmtDateTime(done.at)}` : ''}${done.byName ? ` · ${done.byName}` : ''}`
-          + (done.note ? ` — ${done.note}` : ''),
+        key: 'send-back-done', tone: open.length ? 'warning' : 'success',
+        text: `ช่างแจ้งว่าแก้แล้ว${facts ? ` ${facts}` : ''}${done.byName ? ` · ${done.byName}` : ''}`
+          + (done.note ? ` — ${done.note}` : '')
+          + (open.length ? ` · ยังไม่ติ๊ก: ${numberedAsks(asks, open)}` : ''),
       });
     }
   }
@@ -671,7 +803,7 @@ export function surveyControlView({
   }
 
   const nextZone = leftZones[0]
-    ? { id: leftZones[0].id, name: zoneName(leftZones[0]) }
+    ? { id: leftZones[0].id, name: surveyZoneName(leftZones[0]) }
     : null;
 
   return {
@@ -682,7 +814,7 @@ export function surveyControlView({
       complete: progress.complete,
       percent: progress.total ? Math.round((progress.done / progress.total) * 100) : 0,
       cut: totals.cutZones,
-      leftNames: leftZones.map(zoneName),
+      leftNames: leftZones.map(surveyZoneName),
       leftText,
     },
     totals,
@@ -702,9 +834,7 @@ export function surveyControlView({
     nextZone,
     notices,
     zoneGaps,
-    /* ค่าพับตั้งต้นสำเร็จรูป — คิดจาก `canWrite` ที่ **หักลบด่านล็อกแล้ว** ⇒ จอเรียก
-       `view.foldDefaults` ได้เลย ไม่ต้องรู้ว่าต้องหักอะไรก่อน (ที่เดียวที่พลาดได้) */
-    foldDefaults: surveyFoldDefaults(rows, files, { canWrite, locked }),
+    sendBackAction,
     step: stepOf(request, { cancelled, recallPending, recall, progress, visit }),
     /* ⭐ **กำหนดของจอนี้คือวันส่งผล ไม่ใช่วันเข้าพื้นที่** (มติผู้ใช้ 2026-09-21 · mig 0368)
        — ทั้งจอเป็นเรื่องการส่งตัวเลขให้ฝ่ายขาย · วันนัดเข้าพื้นที่มีแถวของตัวเองอยู่แล้ว
@@ -726,6 +856,11 @@ export function surveyControlView({
          ซึ่งอ่านเหมือนอย่างแรกแต่หมายถึงอย่างหลัง */
       settled, closedWithoutAnswer,
       canWrite, canDecide,
+      /* ⭐ **อัปภาพผังได้ไหม** (ช่องอัปอยู่คอลัมน์ของตารางสรุป · §10.5 S2) = คนเคาะ **และ** คนเขียน
+         ผลวัดของใบนี้ได้ · 🔴 ต้องมีทั้งสองข้อ — ด่านเขียนไฟล์ของ server (`canWriteSurveyZoneFiles`)
+         ถาม `visitWriteAccess` ตัวเดียวกับ `canWrite` ไม่ได้ถาม "เป็นหัวหน้าไหม" ⇒ ผู้บริหารที่ส่งผล
+         ได้แต่ไม่มีสิทธิ์เขียนผลวัด (CD/CM) กดอัปแล้วเจอ 403 · ล็อกแล้วก็อัปไม่ได้ (`canWrite` หักแล้ว) */
+      canUploadPlan: canDecide && canWrite,
       recallPending,
       /* ⚠️ `recallPending === false` แปลว่า "ไม่ได้ถูกดึงกลับ" **ก็ต่อเมื่อ `recallKnown`**
          — อ่านแถว recall ไม่สำเร็จแล้วตอบว่า "ไม่เคยดึงกลับ" คือการแปลงความล้มเหลว

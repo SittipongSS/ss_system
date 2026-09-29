@@ -269,6 +269,58 @@ test('🐞 ช่างส่งงานแล้ว (นัดปิด) แ�
   assert.match(back.now.next, /แจ้งหัวหน้าว่าแก้แล้ว/);
 });
 
+/* 🐞 **ฝั่งช่างครบแล้ว หัวหน้าส่งกลับ (A-5/AW-2 · แผน §10.5 S4) — แถบ "ตอนนี้" ยังบอกว่าตาหัวหน้า**
+   ขั้นตัดสินจากของขาดก่อนดูการส่งกลับ ⇒ ของช่างครบ = "รอหัวหน้าเคาะ" (หรือ "พร้อมส่งผล") ทั้งที่หัวหน้า
+   เพิ่งส่งกลับไปขอรูปเพิ่ม และคนที่ต้องขยับคือช่าง ⇒ การส่งกลับที่ค้างมาก่อนของขาด (ถัดจาก "ดึงกลับ") */
+test('🐞 ช่างครบแล้วแต่หัวหน้าส่งกลับ — ขั้น "ส่งกลับให้ช่างแก้" ตาช่าง ไม่ใช่ "รอหัวหน้าเคาะ"', () => {
+  const measured = zones().map((z, i) => (i === 2
+    ? { ...z, parts: [{ id: 'a', widthM: 7.5, lengthM: 4, heightM: 3 }], spots: [{ id: 'a' }, { id: 'b' }] }
+    : z));
+  const crewDone = request({
+    surveyVisit: visit({ status: 'done', actualEndTime: '11:46:00' }),
+    surveyZones: measured,
+    surveyFilesByZone: {
+      z1: [{ docType: 'survey_wide' }, { docType: 'survey_wide' }],
+      z2: [{ docType: 'survey_wide' }],
+      z3: [{ docType: 'survey_wide' }, { docType: 'survey_wide' }],
+    },
+  });
+  assert.equal(surveyJobView({ request: crewDone, today: '2026-09-29' }).stage, 'awaiting-decision',
+    'ยังไม่ส่งกลับ = ตาหัวหน้าเหมือนเดิม');
+
+  const sendBack = {
+    pending: true,
+    sentBack: {
+      at: '2026-09-29T02:10:00Z', byName: 'Arnon Aunsapwilai',
+      items: ['ห้อง Treatment ภาพกว้างเห็นแค่ส่วน A — ขอภาพส่วน B อีกรูป', 'จุดมุมเตียงที่ 1 ขอรูปใกล้อีกรูป'],
+    },
+    done: null,
+  };
+  const back = surveyJobView({ request: { ...crewDone, surveySendBack: sendBack }, today: '2026-09-29' });
+  assert.equal(back.stage, 'sent-back');
+  assert.deepEqual(back.status, { label: 'ส่งกลับให้ช่างแก้', tone: 'warning' });
+  assert.equal(back.now.turn.who, 'เจ้าหน้าที่ Phuwadol Aoonnankad');
+  assert.match(back.now.next, /แจ้งหัวหน้าว่าแก้แล้ว/);
+  assert.doesNotMatch(back.now.next, /ตามที่ขาด/, 'ของช่างไม่ได้ขาด — ช่างแก้ตามที่หัวหน้าขอ');
+  // ไม่มีของขาดให้เล่า ⇒ บรรทัดรองบอกว่าหัวหน้าขออะไร (ไม่งั้นเหลือแค่ "ใคร · เมื่อไร")
+  assert.match(back.now.sub, /ส่งกลับ อ\. 29 ก\.ย\. 09:10/);
+  assert.match(back.now.sub, /ขอ 2 ข้อ: \(1\) ห้อง Treatment ภาพกว้างเห็นแค่ส่วน A — ขอภาพส่วน B อีกรูป \(2\) จุดมุมเตียงที่ 1/);
+
+  // หัวหน้าเคาะครบหกข้อแล้วก็เช่นกัน — ค้างส่งกลับอยู่ = ยังไม่ "พร้อมส่งผล"
+  const decided = {
+    ...crewDone,
+    surveyZones: measured.map((z) => ({ ...z, packageQty: 1, spots: z.spots.map((s, j) => ({ ...s, selected: j === 0 })) })),
+    surveyFilesByZone: Object.fromEntries(Object.entries(crewDone.surveyFilesByZone)
+      .map(([id, files]) => [id, [...files, { docType: 'survey_plan' }]])),
+  };
+  assert.equal(surveyJobView({ request: decided, today: '2026-09-29' }).stage, 'ready');
+  assert.equal(surveyJobView({ request: { ...decided, surveySendBack: sendBack }, today: '2026-09-29' }).stage, 'sent-back');
+  // แจ้งว่าแก้แล้ว = ไม่ค้าง ⇒ กลับเป็นขั้นตามของขาด
+  assert.equal(surveyJobView({
+    request: { ...decided, surveySendBack: { ...sendBack, pending: false } }, today: '2026-09-29',
+  }).stage, 'ready');
+});
+
 test('ใบยกเลิก — ขั้นส่งผลไม่นับถอยหลัง ไม่สั่งหัวหน้า', () => {
   const v = surveyJobView({
     request: request({

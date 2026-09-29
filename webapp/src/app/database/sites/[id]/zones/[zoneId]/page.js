@@ -240,7 +240,7 @@ export default function ServiceZonePage({ params }) {
         <DetailCard icon={ClipboardList} title={`รอบขายของโซนนี้ ${data.terms.length} รอบ`}
           meta="แต่ละรอบคือหนึ่งบรรทัดในใบสั่งขาย — ต่อสัญญา = ใบใหม่ผูกโซนเดิม">
           {data.terms.length === 0 ? (
-            <EmptyState icon={ClipboardList} plain>โซนนี้ยังไม่เคยถูกผูกกับบรรทัดใบสั่งขาย — ผูกได้ที่หน้างานเข้าใหม่</EmptyState>
+            <EmptyState icon={ClipboardList} plain>โซนนี้ยังไม่เคยอยู่ในใบสั่งขายที่อนุมัติ — ฝ่ายขายเลือกโซนในใบสั่งขาย</EmptyState>
           ) : (
             <TableScroll family="list" minWidth={760}>
               <table>

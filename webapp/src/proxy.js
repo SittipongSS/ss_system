@@ -374,6 +374,22 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
   if (path.startsWith('/api/users')) return can(role, 'users:manage');
   // ทะเบียนทีม — ด่านจริง (ฝ่ายไหน) อยู่ใน handler เหมือนกัน
   if (path.startsWith('/api/teams')) return canUser(mgmtUser, 'team:manage');
+  /* ⭐ **รอบวางบิลของลูกค้า** (mig 0389 · มติเจ้าของ 25/09 ข้อ 4: ฝ่ายขายทีมที่ดูแล + ฝ่ายบัญชีแก้ได้)
+     ฝ่ายบัญชีถือแค่ `customers:view` ⇒ กฎรวม `/api/customers` ข้างล่างตัด PATCH ของเขาทิ้งก่อนถึง handler
+     ⇒ ต้องมีช่องของตัวเอง **ก่อน** กฎนั้น (รูปเดียวกับเส้นย้ายทีม `/api/users/<id>/team` ข้างบน)
+     ⚠️ แคบเป๊ะ: PATCH + ลงท้าย `/billing-rule` เท่านั้น — เส้นอื่นใต้ลูกค้ายังต้อง customers:edit
+     ⚠️ ด่านนี้หยาบ (เห็นแค่ role/cap) · ตัวตัดสินจริงคือ `canEditCustomerBillingRule` ใน handler
+        (ฝ่าย FN ผ่าน canConfirmPayment · ฝ่ายขายต้องอยู่ทีมที่ดูแลลูกค้า) ซึ่ง proxy มองไม่เห็น
+     ⚠️ ชั้น `lockedOut` ผ่านอยู่แล้ว (`/api/customers` อยู่ใน OPEN_WRITE_APIS) และตัดสินก่อนเสมอ */
+  if (method === 'PATCH' && /^\/api\/customers\/[^/]+\/billing-rule$/.test(path)) {
+    return can(role, 'customers:edit') || canUser(mgmtUser, 'payments:confirm');
+  }
+  /* ⭐ **จัดวันงวดตามกำหนดวางบิลใหม่** (รุ่นสี่ · system-design §7.2) — จอ "งวดที่วันจะเปลี่ยน" หลังบันทึกกติกา
+     ช่องแคบเดียวกับข้างบน (FN แก้กติกาได้ ⇒ ต้องกดยืนยันวันใหม่ได้ด้วย ไม่งั้นบันทึกกติกาแล้วติดทางตัน)
+     ⚠️ แคบเป๊ะ: POST + `/billing-rule/redate` เท่านั้น · ด่านจริงใน handler = canEditCustomerBillingRule + ด่าน schedule ทีละงวด */
+  if (method === 'POST' && /^\/api\/customers\/[^/]+\/billing-rule\/redate$/.test(path)) {
+    return can(role, 'customers:edit') || canUser(mgmtUser, 'payments:confirm');
+  }
   if (path.startsWith('/api/customers')) {
     if (method === 'DELETE') return can(role, 'customers:delete');
     return can(role, 'customers:edit');

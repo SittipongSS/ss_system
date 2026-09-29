@@ -22,8 +22,8 @@ const TODAY = '2026-09-22'; // อังคาร
 
 /* บริบทด่าน: ไซต์ S-BAD มีโซนที่ผูกใบสั่งขายแล้ว แต่ใบยังไม่ผูกสัญญา ⇒ ติดด่านสัญญาของ SA
    (รอฝ่ายอื่น) · งานถอนเครื่อง/ประเมินพื้นที่ข้ามด่าน ①② (GATE_EXEMPT_KINDS) จึงเหลือแค่ด่านของ TS
-   ⚠️ เดิมใช้บริบทว่าง (= ไซต์ไม่มีโซน) แทน "ติด SA" — ตั้งแต่มติ 23/09 ไซต์ที่ไม่มีโซน/โซนที่ยังไม่จัดสรร
-      เป็นงานของ TS ที่หน้า "งานเข้าใหม่" ⇒ ต้องใช้เหตุที่เป็นของ SA จริง ๆ */
+   ⚠️ เดิมใช้บริบทว่าง (= ไซต์ไม่มีโซน) แทน "ติด SA" — ไซต์ที่ไม่มีโซนเป็นงานทะเบียนของ TS (มติ 23/09 · ยังเป็น
+      ของ TS หลัง mig 0392) ⇒ ต้องใช้เหตุที่เป็นของ SA จริง ๆ */
 const sites = [
   { id: 'S1', code: 'ST-1001', name: 'เซ็นทรัลเวิลด์', routeZone: 'BKK-C', customerName: 'บจก. เซ็นทรัล' },
   { id: 'S-BAD', code: 'ST-1002', name: 'ไซต์ไม่มีสัญญา', routeZone: 'BKK-E', customerName: 'บจก. ทดสอบ' },
@@ -163,10 +163,10 @@ test('ค้นหาได้ทุกอย่างที่ตาเห็�
 });
 
 test('ชิปสัปดาห์กรองเฉพาะร่างที่เสนอวันในสัปดาห์นั้น', () => {
-  const view = build({ bucket: 'waiting', within: { from: '2026-09-21', to: '2026-09-27' } });
+  const view = build({ bucket: 'waiting', within: { from: '2026-09-20', to: '2026-09-26' } });
   assert.deepEqual(view.rows.filter((r) => r.bucket === 'waiting').length, 4, 'rows ยังเก็บทั้งหมด');
   assert.equal(view.listedCount, 2, 'แสดงแค่ SV-01 กับ SV-02');
-  assert.equal(draftsInRange(visits, { from: '2026-09-21', to: '2026-09-27' }, ALL_TEAMS, crewByUser), 2);
+  assert.equal(draftsInRange(visits, { from: '2026-09-20', to: '2026-09-26' }, ALL_TEAMS, crewByUser), 2);
 });
 
 /* ⭐ มติ 24/09 แบบ A — โมดัลจัดคิวอ่านคำชุดเดียวกับการ์ด ⇒ ยกตัวช่วยออกมาเป็น export โดย **ผลเท่าของเดิมเป๊ะ** */
@@ -233,7 +233,10 @@ test('ข้อความช่วย: วัน · ต้นเรื่อ�
   assert.equal(originText({ kind: 'repair' }), 'งานนอกรอบ');
   assert.equal(ownerTone('SA → FN'), 'warning');
   assert.equal(ownerTone('TS'), 'info');
-  assert.equal(weekChipText('2026-09-21'), 'วันเสนอ 21–27 ก.ย.');
+  // ตารางเปิดทีละสัปดาห์ อา–ส (มติ 2026-09-26) ⇒ ต้นช่วงเป็นวันอาทิตย์เสมอ
+  assert.equal(weekChipText('2026-09-20'), 'วันเสนอ 20–26 ก.ย.');
+  assert.equal(weekChipText('2026-09-27'), 'วันเสนอ 27 ก.ย.–3 ต.ค.', 'สัปดาห์คร่อมเดือนบอกเดือนทั้งสองฝั่ง');
+  assert.equal(weekChipText('2026-12-27'), 'วันเสนอ 27 ธ.ค.–2 ม.ค.');
 });
 
 /* ═══ คำร้องรอลงคิว (มติเจ้าของ 23/09) ═══════════════════════════════════════════
@@ -314,7 +317,7 @@ test('⭐ ตัวกรองทีมไม่ซ่อนการ์ดค�
   // คนว่างนับเฉพาะคนในทีมที่เลือก
   assert.equal(south.rows.find((r) => r.id === 'R-ack').dayLoad.text, 'วันนั้นว่าง 1 จาก 1 คน');
 
-  const week = build({ bucket: 'waiting', surveyRequests, within: { from: '2026-09-21', to: '2026-09-27' } });
+  const week = build({ bucket: 'waiting', surveyRequests, within: { from: '2026-09-20', to: '2026-09-26' } });
   assert.equal(week.groups.some((g) => g.key === 'requests'), false);
   assert.equal(week.listedCount, 2, 'เท่าตัวเลขบนชิปสัปดาห์ (ร่างสองใบ)');
   assert.equal(week.requestCount, 3, 'ตัวเลขบนแถบต้นทางงานไม่ขึ้นกับชิป');
@@ -414,30 +417,36 @@ test('⭐ ค้นหาเจอทุกอย่างที่ตาเห�
   assert.deepEqual(find('คำร้องประเมินพื้นที่'), ['R-requeue', 'R-ack', 'R-queue']);
 });
 
-/* ⭐ โซนที่ยังไม่จัดสรร = งานของ TS (มติเจ้าของ 23/09) — ร่างย้ายจาก "รอฝ่ายอื่น" มาอยู่ "TS แก้ได้เอง"
-   และบรรทัดย่อยของกลุ่มบอกว่ากี่ใบติดเพราะเหตุนี้ */
-test('⭐ ร่างที่โซนยังไม่จัดสรรอยู่กลุ่ม TS แก้ได้เอง · บรรทัดย่อยบอก "ยังไม่จัดสรรโซน n"', () => {
+/* ⭐ mig 0392 (D15): โซนที่ไม่มีรอบขายเป็นงานของ SA (ฝ่ายขายเลือกโซนในใบ · TS ผูกไม่ได้แล้ว) ⇒ ร่างไปอยู่ "รอฝ่ายอื่น"
+   · ข้อสัญญาที่ยังเป็นของ TS เหลือ "ไซต์ยังไม่มีโซน" (งานทะเบียน) — บรรทัดย่อยของกลุ่ม TS บอกจำนวนนั้น */
+test('⭐ ร่างที่โซนไม่มีรอบขายอยู่กลุ่มรอฝ่ายอื่น (SA) · ไซต์ที่ยังไม่มีโซนอยู่กลุ่ม TS · บรรทัดย่อยบอก "ไซต์ยังไม่มีโซน n"', () => {
   const unalloc = v({ id: 'D-zone', code: 'SV-20', status: 'draft', siteId: 'S-ZONE', scheduledDate: '2026-09-24', assigneeId: 'U1', assigneeName: 'สมชาย ใจดี' });
+  const noZone = v({ id: 'D-nozone', code: 'SV-21', status: 'draft', siteId: 'S-EMPTY', scheduledDate: '2026-09-24', assigneeId: 'U1', assigneeName: 'สมชาย ใจดี' });
   const ctx = {
     ...gateContext,
     zonesBySite: { ...gateContext.zonesBySite, 'S-ZONE': [{ id: 'Z-NEW', siteId: 'S-ZONE', name: 'โซนใหม่' }] },
   };
-  const view = build({ bucket: 'waiting', visits: [...visits, unalloc], gateContext: ctx });
+  const view = build({ bucket: 'waiting', visits: [...visits, unalloc, noZone], gateContext: ctx });
   const ts = view.groups.find((g) => g.key === 'ts');
-  assert.deepEqual(ts.rows.map((r) => r.id).sort(), ['D-ts', 'D-zone']);
-  assert.equal(ts.sub, 'ขาดเจ้าหน้าที่ 1 · นอกช่วงเข้าไซต์ 0 · ยังไม่จัดสรรโซน 1');
-  const item = ts.rows.find((r) => r.id === 'D-zone').gateItems[0];
-  assert.equal(item.owner, 'TS');
-  assert.equal(item.ownerTone, 'info');
+  const others = view.groups.find((g) => g.key === 'others');
+  assert.deepEqual(ts.rows.map((r) => r.id).sort(), ['D-nozone', 'D-ts']);
+  assert.equal(ts.sub, 'ขาดเจ้าหน้าที่ 1 · นอกช่วงเข้าไซต์ 0 · ไซต์ยังไม่มีโซน 1');
+  const noZoneItem = ts.rows.find((r) => r.id === 'D-nozone').gateItems[0];
+  assert.equal(noZoneItem.owner, 'TS');
+  assert.equal(noZoneItem.reason, 'ไซต์นี้ยังไม่มีโซนในทะเบียน — TS เพิ่มโซนที่หน้าไซต์ แล้วให้ฝ่ายขายเลือกโซนในใบสั่งขาย');
+  assert.ok(others.rows.some((r) => r.id === 'D-zone'), 'โซนไม่มีรอบขาย ⇒ รอฝ่ายขาย');
+  const item = others.rows.find((r) => r.id === 'D-zone').gateItems[0];
+  assert.equal(item.owner, 'SA');
   assert.equal(item.fix, null, 'ไม่มีช่องในโมดัลนัดให้แก้ ⇒ เหตุเต็มประโยค');
-  assert.match(item.reason, /TS ผูกใบสั่งขายเข้าโซนที่หน้า "งานเข้าใหม่"/);
+  assert.equal(item.reason, 'ยังไม่มีใบสั่งขายที่ตั้งงานบริการแล้วสำหรับโซนนี้ — ฝ่ายขายตั้งค่าที่หน้าใบสั่งขายแล้วยื่นให้ผู้จัดการตรวจ');
+  assert.doesNotMatch(item.reason, /งานเข้าใหม่/, 'TS ผูกโซนไม่ได้แล้ว — ห้ามชี้ไปหาทางที่ปิด');
   // ไม่มีร่างแบบนี้ = บรรทัดย่อยเดิม (ไม่มีท่อนต่อท้าย)
   assert.equal(build({ bucket: 'waiting' }).groups.find((g) => g.key === 'ts').sub, 'ขาดเจ้าหน้าที่ 1 · นอกช่วงเข้าไซต์ 0');
 });
 
-test('แถวนัดติดชนิด "visit" · ป้ายตัวเลขงานเข้าใหม่บอกทั้งสองแท็บที่นับรวม', () => {
+test('แถวนัดติดชนิด "visit" · ป้ายตัวเลขงานเข้าใหม่ = แท็บรอตั้งรอบแท็บเดียว (ตัวเลขบนเมนูนับแท็บนี้)', () => {
   assert.ok(build({ bucket: 'waiting' }).rows.every((r) => r.type === 'visit'));
-  assert.equal(INTAKE_UPSTREAM_LABEL, 'รอตั้งไซต์/โซน + รอตั้งรอบ');
+  assert.equal(INTAKE_UPSTREAM_LABEL, 'รอตั้งรอบ');
 });
 
 /* 🐞 UAT 24/09: การ์ดคำร้องบอก "วันนั้นว่าง 5 จาก 5 คน" (นับแค่คนหน้างาน `crewPeople` — Operation/Senior)

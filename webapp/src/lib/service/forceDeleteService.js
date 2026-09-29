@@ -16,6 +16,7 @@ import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { runSteps } from '@/lib/supabaseWriteBatch';
 import { isClosedVisit } from '@/lib/service/visitStatus';
 import { purgeAttachments } from '@/lib/master/attachments';
+import { SALES_ORDER_STATUS_LABELS } from '@/lib/sales/salesOrderWorkflow';
 
 const line = (label, count) => ({ label, count: count || 0 });
 
@@ -42,43 +43,82 @@ async function countIn(supabase, table, column, values) {
 
 const idsOf = (rows) => (rows || []).map((r) => r.id);
 
-/* ── บรรทัดใบสั่งขายที่ชี้โซน (mig 0374) — ตัวขวางที่ break-glass ข้ามไม่ได้ ─────────────────
-   ⭐ มติ 22/09: ใบสั่งขายย้อนหลังเลือกโซนจากทะเบียนตอนคีย์ ⇒ `sales_order_lines."serviceZoneId"`
+/* ── ใบสั่งขายที่ชี้โซน — ตัวขวางที่ break-glass ข้ามไม่ได้ (สองทาง) ─────────────────────────────
+   ① บรรทัดใบสั่งขายย้อนหลัง (mig 0374 · มติ 22/09) — เลือกโซนจากทะเบียนตอนคีย์ ⇒ `sales_order_lines."serviceZoneId"`
       เป็น FK **RESTRICT** ไปที่โซน · บรรทัดคือเนื้อของเอกสารขาย ระบบจะไม่ลบ/ปลดให้เองจากฝั่งโซน
+   ② รายการงานบริการของใบสั่งขาย (mig 0392 · PR-A) — ฝ่ายขายเลือกโซนในใบเอง ⇒ `sales_order_line_zones."zoneId"`
+      เป็น FK **RESTRICT** (`sales_order_line_zones_zone_fk`) · โซนที่เลือกเป็นเนื้อของการตั้งงานบริการที่ผู้จัดการอนุมัติแล้ว
+      (หรือกำลังตั้ง) ⇒ ระบบไม่ถอดให้เองจากฝั่งโซน · ทางออกคือฝ่ายขายถอดโซนออกจากใบ (ร่าง/ตีกลับ/ใบเดิมที่ยังไม่ยื่น
+      · ใบที่อนุมัติแล้วต้องย้อนแล้วออก Rev.) หรือปิดใช้งานโซนแทน
    🔴 **ต้องขวางตั้งแต่พรีวิว และก่อนขั้นแรกของตัวลบจริง** — ขั้นของตัวลบ commit แยกกันทีละขั้น (runSteps
       ไม่ใช่ transaction) ⇒ ปล่อยไปตายที่ FK ตอนลบโซน = รอบขายกับผลวัด+ไฟล์บน Drive หายไปแล้ว แต่โซนยังอยู่
-   ⚠️ ยกเลิกใบอย่างเดียวไม่ปลด — บรรทัดของใบที่ยกเลิกยังชี้โซนอยู่ (ลบใบได้ที่หน้าใบสั่งขาย · ใบที่เคยอนุมัติ
+   ⚠️ ยกเลิกใบอย่างเดียวไม่ปลด — บรรทัด/รายการของใบที่ยกเลิกยังชี้โซนอยู่ (ลบใบได้ที่หน้าใบสั่งขาย · ใบที่เคยอนุมัติ
       ใช้ทางบังคับลบของแอดมิน) · ถ้าแค่เลิกใช้โซน ให้ปิดใช้งานแทน ประวัติไม่ขาด
-   ⚠️ ไล่หน้า + ซอยก้อน (check:rowcap) · อ่านไม่ขึ้น = โยน ไม่ใช่ตอบ "ไม่มี" (ด่านหน้างานทำลาย) */
+   ⚠️ ไล่หน้า + ซอยก้อน (check:rowcap) · อ่านไม่ขึ้น = โยน ไม่ใช่ตอบ "ไม่มี" (ด่านหน้างานทำลาย) — ทั้งสามก้อน
+   ⚠️ ใบอ่านด้วย id ล้วน **ไม่กรองสถานะ** — ทุกสถานะขวางเท่ากัน (สถานะมีไว้บอกในข้อความเท่านั้น) */
 async function salesOrderLinesOnZones(supabase, zoneIds = []) {
-  const { data: lines, error } = await fetchInChunks(zoneIds, (chunk) => fetchAllResult(() => supabase
-    .from('sales_order_lines').select('id, "salesOrderId"')
-    .in('serviceZoneId', chunk).order('id', { ascending: true })));
-  if (error) throw new Error(`ตรวจบรรทัดใบสั่งขายที่ชี้โซนไม่สำเร็จ: ${error.message}`);
-  const orderIds = [...new Set((lines || []).map((l) => l.salesOrderId).filter(Boolean))];
+  const [lineResult, allocationResult] = await Promise.all([
+    fetchInChunks(zoneIds, (chunk) => fetchAllResult(() => supabase
+      .from('sales_order_lines').select('id, "salesOrderId"')
+      .in('serviceZoneId', chunk).order('id', { ascending: true }))),
+    fetchInChunks(zoneIds, (chunk) => fetchAllResult(() => supabase
+      .from('sales_order_line_zones').select('id, "salesOrderId", "zoneId"')
+      .in('zoneId', chunk).order('id', { ascending: true }))),
+  ]);
+  if (lineResult.error) throw new Error(`ตรวจบรรทัดใบสั่งขายที่ชี้โซนไม่สำเร็จ: ${lineResult.error.message}`);
+  if (allocationResult.error) {
+    throw new Error(`ตรวจรายการงานบริการของใบสั่งขายที่เลือกโซนไม่สำเร็จ: ${allocationResult.error.message}`);
+  }
+  const lines = lineResult.data || [];
+  const allocations = allocationResult.data || [];
+  const lineOrderIds = [...new Set(lines.map((l) => l.salesOrderId).filter(Boolean))];
+  const allocationOrderIds = [...new Set(allocations.map((a) => a.salesOrderId).filter(Boolean))];
+  const orderIds = [...new Set([...lineOrderIds, ...allocationOrderIds])];
   const { data: orders, error: orderError } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
-    .from('sales_orders').select('id, "orderNumber"')
+    .from('sales_orders').select('id, "orderNumber", status')
     .in('id', chunk).order('id', { ascending: true })));
   if (orderError) throw new Error(`ตรวจใบสั่งขายที่ชี้โซนไม่สำเร็จ: ${orderError.message}`);
-  const numberOf = new Map((orders || []).map((o) => [o.id, o.orderNumber || o.id]));
+  const orderOf = new Map((orders || []).map((o) => [o.id, o]));
+  const numberOf = (id) => orderOf.get(id)?.orderNumber || id;
   return {
-    lines: lines || [],
-    orderNumbers: orderIds.map((id) => numberOf.get(id) || id).sort(),
+    lines,
+    allocations,
+    orderNumbers: lineOrderIds.map(numberOf).sort(),
+    /* ใบที่เลือกโซนในรายการงานบริการ + สถานะ (ป้ายไทย) — ข้อความบอกว่าต้องไปแก้ที่ใบไหน ในขั้นไหน */
+    allocationOrders: allocationOrderIds
+      .map((id) => ({ orderNumber: numberOf(id), status: orderOf.get(id)?.status || null }))
+      .sort((a, b) => String(a.orderNumber).localeCompare(String(b.orderNumber))),
   };
 }
 
-/* ข้อความขวาง — บอกเลขใบให้ครบพอไปตามต่อได้ (เกินห้าใบบอกจำนวนที่เหลือ ไม่พิมพ์ยาวจนอ่านไม่จบ) */
-function zoneLineBlockMessage(orderNumbers, subject) {
-  const shown = orderNumbers.slice(0, 5).join(', ');
-  const more = orderNumbers.length > 5 ? ` และอีก ${orderNumbers.length - 5} ใบ` : '';
-  return `${subject}อยู่ในใบสั่งขายย้อนหลัง ${shown}${more} — ลบถาวรไม่ได้แม้ใช้สิทธิ์ผู้ดูแลระบบจนกว่าจะลบใบนั้นก่อน`
-    + ' (ยกเลิกใบอย่างเดียวบรรทัดยังชี้โซนอยู่) · ถ้าแค่เลิกใช้ ให้ปิดใช้งานแทน';
+const blocked = (found) => found.lines.length > 0 || found.allocations.length > 0;
+
+/* ข้อความขวาง — บอกเลขใบให้ครบพอไปตามต่อได้ (เกินห้าใบบอกจำนวนที่เหลือ ไม่พิมพ์ยาวจนอ่านไม่จบ)
+   ① ใบย้อนหลัง: ลบใบก่อน · ② รายการงานบริการ: ถอดโซนออกจากใบก่อน · ทั้งสองทาง: ปิดใช้งานโซนแทนได้เสมอ */
+function zoneLineBlockMessage(found, subject) {
+  const parts = [];
+  if (found.lines.length) {
+    const numbers = found.orderNumbers;
+    const shown = numbers.slice(0, 5).join(', ');
+    const more = numbers.length > 5 ? ` และอีก ${numbers.length - 5} ใบ` : '';
+    parts.push(`${subject}อยู่ในใบสั่งขายย้อนหลัง ${shown}${more} — ลบถาวรไม่ได้แม้ใช้สิทธิ์ผู้ดูแลระบบจนกว่าจะลบใบนั้นก่อน`
+      + ' (ยกเลิกใบอย่างเดียวบรรทัดยังชี้โซนอยู่) · ถ้าแค่เลิกใช้ ให้ปิดใช้งานแทน');
+  }
+  if (found.allocations.length) {
+    const orders = found.allocationOrders;
+    const shown = orders.slice(0, 5)
+      .map((o) => `${o.orderNumber} (${SALES_ORDER_STATUS_LABELS[o.status] || o.status || 'ไม่ทราบสถานะ'})`)
+      .join(', ');
+    const more = orders.length > 5 ? ` และอีก ${orders.length - 5} ใบ` : '';
+    parts.push(`${subject}อยู่ในรายการงานบริการของ ${shown}${more} — ถอดโซนออกจากใบก่อน หรือปิดใช้งานโซนแทน`);
+  }
+  return parts.join(' · ');
 }
 
 /* ตัวลบจริงถามซ้ำเองก่อนขั้นแรก — ไม่พึ่งว่าจอเปิดพรีวิวมาก่อน (ยิง ?force=1 ตรงได้) */
 async function assertNoSalesOrderLines(supabase, zoneIds, subject) {
   const found = await salesOrderLinesOnZones(supabase, zoneIds);
-  if (found.lines.length) throw new Error(zoneLineBlockMessage(found.orderNumbers, subject));
+  if (blocked(found)) throw new Error(zoneLineBlockMessage(found, subject));
 }
 
 /* ── เครื่องหนึ่งตัว ─────────────────────────────────────────────────────
@@ -119,13 +159,14 @@ export async function deleteAssetDeep(supabase, assetId) {
 
 /* ── โซนหนึ่งโซน ─────────────────────────────────────────────────────────
    ลูกที่ RESTRICT: `service_zone_terms.zoneId` (0297) · `service_survey_zones.zoneId` (0314) ·
-     `sales_order_lines."serviceZoneId"` (0374 — ตัวขวาง ไม่ลบพ่วง · ดู `salesOrderLinesOnZones`)
+     `sales_order_lines."serviceZoneId"` (0374) · `sales_order_line_zones."zoneId"` (0392)
+     — สองตัวหลังเป็นตัวขวาง ไม่ลบพ่วง · ดู `salesOrderLinesOnZones`
    ลูกที่ SET NULL: `service_assets.zoneId` (0298) — เครื่องหลุดกลับกอง "ยังไม่ระบุโซน" */
 export async function zoneForceManifest(supabase, zoneId) {
   /* `blocked` = forceDeleteClient ไม่เสนอปุ่มบังคับลบที่ยังไงก็ล้ม และโชว์ notes[0] เป็นเหตุ */
   const onLines = await salesOrderLinesOnZones(supabase, [zoneId]);
-  if (onLines.lines.length) {
-    return { blocked: true, notes: [zoneLineBlockMessage(onLines.orderNumbers, 'โซนนี้')], cascade: [] };
+  if (blocked(onLines)) {
+    return { blocked: true, notes: [zoneLineBlockMessage(onLines, 'โซนนี้')], cascade: [] };
   }
   const [terms, surveys, assets, moves] = await Promise.all([
     countBy(supabase, 'service_zone_terms', 'zoneId', zoneId),
@@ -156,8 +197,8 @@ async function purgeSurveyZoneFiles(supabase, { zoneId = null, zoneIds = null })
 }
 
 export async function deleteZoneDeep(supabase, zoneId) {
-  /* 🔴 ถามบรรทัดใบสั่งขายก่อนขั้นแรก (mig 0374) — FK RESTRICT จะตีกลับที่ขั้น "ลบโซน" ซึ่งมาหลังการลบ
-     รอบขายและกวาดไฟล์ผลวัด ⇒ ไม่ถามก่อน = ทำลายของไปครึ่งทางแล้วโซนยังอยู่ */
+  /* 🔴 ถามบรรทัดใบสั่งขาย + รายการงานบริการก่อนขั้นแรก (mig 0374 · 0392) — FK RESTRICT จะตีกลับที่ขั้น "ลบโซน"
+     ซึ่งมาหลังการลบรอบขายและกวาดไฟล์ผลวัด ⇒ ไม่ถามก่อน = ทำลายของไปครึ่งทางแล้วโซนยังอยู่ */
   await assertNoSalesOrderLines(supabase, [zoneId], 'โซนนี้');
   /* ขั้นไหนพังต้องหยุดก่อนถึงขั้นถัดไป — โดยเฉพาะก่อนกวาดไฟล์: ลบเงื่อนไขไม่ลงแล้ว
      เดินต่อ = ไฟล์บน Drive หายไปแล้วแต่แถวผลวัดยังอยู่ ชี้ไปหาไฟล์ที่ไม่มีแล้ว */
@@ -187,10 +228,11 @@ export async function siteForceManifest(supabase, siteId) {
   const zoneIds = idsOf(zones);
   const assetIds = idsOf(assets);
 
-  /* ⭐ โซนของไซต์อยู่ในบรรทัดใบสั่งขายย้อนหลัง (mig 0374) = ขวางทั้งไซต์ — ตัวลบลบโซนทุกโซนของไซต์ */
+  /* ⭐ โซนของไซต์อยู่ในบรรทัดใบสั่งขายย้อนหลัง (mig 0374) หรือรายการงานบริการของใบ (mig 0392) = ขวางทั้งไซต์
+     — ตัวลบลบโซนทุกโซนของไซต์ */
   const onLines = await salesOrderLinesOnZones(supabase, zoneIds);
-  if (onLines.lines.length) {
-    return { blocked: true, notes: [zoneLineBlockMessage(onLines.orderNumbers, 'ไซต์นี้มีโซนที่')], cascade: [] };
+  if (blocked(onLines)) {
+    return { blocked: true, notes: [zoneLineBlockMessage(onLines, 'ไซต์นี้มีโซนที่')], cascade: [] };
   }
 
   const [visits, planRows, followups, terms, surveys, moves] = await Promise.all([
@@ -245,7 +287,7 @@ export async function deleteSiteDeep(supabase, siteId) {
   const zoneIds = idsOf(zones);
   const assetIds = idsOf(assets);
 
-  /* 🔴 ถามบรรทัดใบสั่งขายที่ชี้โซนของไซต์ก่อนขั้นแรก (mig 0374) — FK RESTRICT ตีกลับที่ขั้น "ลบโซน"
+  /* 🔴 ถามบรรทัดใบสั่งขาย + รายการงานบริการที่ชี้โซนของไซต์ก่อนขั้นแรก (mig 0374 · 0392) — FK RESTRICT ตีกลับที่ขั้น "ลบโซน"
      ซึ่งมาหลังลบนัด · เครื่อง · รอบขาย · ไฟล์ผลวัด ⇒ ไม่ถามก่อน = ประวัติทั้งไซต์หายแต่ไซต์ยังอยู่ */
   await assertNoSalesOrderLines(supabase, zoneIds, 'ไซต์นี้มีโซนที่');
 

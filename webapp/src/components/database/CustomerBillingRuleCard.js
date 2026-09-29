@@ -1,0 +1,231 @@
+"use client";
+// ── การ์ด "วางบิลและกำหนดชำระ" บนหน้าลูกค้า (รุ่นสี่ · mig 0393 · แบบ A "ประโยคนโยบาย" · มติเจ้าของ 29/09) ──────────
+//
+// ม็อก: mockups/billing-cycle/rework-v4/recommended.html (`?view=cust&cust=b|d|f|g|k`)
+//   ประโยคบรรทัดเดียว ① ต้องวางบิลไหม → ② วางบิลได้เมื่อไร → ③ กำหนดชำระเมื่อไร (ลำดับ วันวางบิล → กำหนดชำระ เสมอ · เจ้าของ 28/09)
+//   ตามด้วยสิ่งที่เกิดบนใบ SO ของแต่ละคำตอบ · 3 รอบถัดไป (`policyPreview` ตัวเดียวกับโมดัล) · การเตือนของลูกค้านี้ · หมายเหตุ · ใครแก้ล่าสุด
+// ⭐ หลักของเจ้าของ (28/09): กำหนดชำระเป็นช่องหลัก ตั้งเดี่ยวได้เสมอ · วันวางบิลมีเฉพาะลูกค้าที่ต้องวางบิล
+//    ⇒ ลูกค้าไม่ต้องวางบิล = ไม่มีกระดิ่งวางบิล ไม่ชวนขอใบวางบิล (เดิมการ์ดพูด "กระดิ่งเตือนก่อนถึงวันวางบิลเหมือนลูกค้าทุกราย" — ไม่จริงแล้ว)
+// ⭐ บันทึกกติกาแล้วระบบไม่ย้ายวันของงวดเอง — API คืน `ruleChange` ⇒ การ์ดเปิดจอ "งวดที่วันจะเปลี่ยน" ให้คนเลือกยืนยัน
+// ⚠️ ข้อความ "เงื่อนไขเครดิต" เดิม (customers.creditTerms) โชว์ **เฉพาะตอนยังไม่ระบุ/รูปเดิม** — ตอบแล้ว = ค่าในระบบคือความจริง
+// ⚠️ ปุ่มตั้ง/แก้ = `canEdit` จากผู้เรียก (ตัวตัดสิน `canEditCustomerBillingRule` ตัวเดียวกับ API · SA ทีมที่ดูแล + FN)
+//    ไม่มีสิทธิ์ = ไม่วาดปุ่ม (UI visibility rule) · ฝ่ายบัญชีเห็นปุ่มนี้ทั้งที่ไม่เห็นปุ่มแก้ลูกค้าส่วนอื่น
+// ⚠️ id="billing-rule" คือหมุดที่หน้าสร้างใบสั่งขาย/แผงงวดลิงก์มา — ห้ามเปลี่ยน
+//    (กระดิ่ง "ขอปฏิทินปีหน้า" `customer_billing_calendar_missing` ก็ลิงก์มาที่หมุดนี้ — LEDGER_HREF.calendar)
+// ⭐ ลูกค้าปฏิทินรายปี (รุ่นห้า · มติ 29/09): ครอบปีไหนกี่รอบ ("ปฏิทิน 2026 · 24 รอบ") · รูปที่แนบต่อปี · เวลาตัดรอบ ·
+//    แถบ "ขอปฏิทิน YYYY" เมื่อถึงช่วงเตือน (`calendarStatus().remind` ตัวเดียวกับกระดิ่งรายสัปดาห์) + ปุ่ม "ใส่ปฏิทิน YYYY"
+//    (คนแก้ได้เท่านั้น — เปิดโมดัลที่แท็บปีนั้น) · ปฏิทินหมด = "ยังไม่มีปฏิทิน YYYY · ใส่วันเองได้" ไม่มีประมาณการ (Q3)
+import { useState } from "react";
+import {
+  AlarmClock, CalendarCheck2, CalendarClock, CalendarPlus, CalendarX2, ExternalLink, History, Pencil, ShieldCheck, StickyNote, TextQuote,
+} from "lucide-react";
+import Button from "@/components/ui/Button";
+import { DetailCard } from "@/components/ui/DetailPage";
+import { businessDate } from "@/lib/businessDate";
+import { notifyToast } from "@/lib/feedback";
+import { NO_BILLING_TEXT, NO_CREDIT_TEXT, fmtDate, policyPreview, ruleOf, sourceLabel } from "@/lib/sales/billingRule";
+import CustomerBillingRuleModal from "./CustomerBillingRuleModal";
+import CustomerBillingRuleRedate from "./CustomerBillingRuleRedate";
+import { calendarCardOf, hasRuleChange, policyWordsOf, reminderChipsOf, stampTextOf } from "./CustomerBillingRuleState";
+import { PairList, PolicySentence, ReminderChips } from "./CustomerBillingRuleRounds";
+import useHolidayMap from "@/lib/useHolidayMap";
+import styles from "./CustomerBillingRule.module.css";
+
+const calendarFileHref = (fileId) => `/api/master/attachments/${encodeURIComponent(fileId)}/file`;
+
+/* สิ่งที่เกิดบนใบ SO ของแต่ละคำตอบ — ประโยคสั้นที่คนอ่านแล้วรู้ว่าจอตั้งวันงวดจะพาไปทางไหน */
+function factsOf(words) {
+  if (words.need === "legacy") {
+    return [
+      "ตัวตั้งวันบนใบ SO เปิดที่กำหนดชำระ · วันวางบิลไม่บังคับ — ไม่ต้องใส่วันวางบิลปลอม",
+      "ทะเบียนการชำระไม่ชวนเติมวันวางบิล · ใส่วันวางบิลเมื่อไร กำหนดชำระ = วันเดียวกัน",
+      "ข้อ 1 (ต้องวางบิลไหม) ยังไม่ได้ตอบ — ตอบได้ที่นี่ หรือบนใบ SO",
+    ];
+  }
+  if (words.need === "unknown") {
+    return ["งวดของลูกค้านี้กรอกได้ทั้งสองช่อง ไม่มีอะไรคิดให้ · ถามข้อ 1 บนใบ SO ตอนตั้งวันงวดครั้งแรก (คนที่ตั้งค่าลูกค้าได้เท่านั้น)"];
+  }
+  if (words.need === "none") {
+    return [
+      "กำหนดชำระตั้งรายงวดบนใบ SO (หรือรอเหตุการณ์) — ไม่ต้องมีวันวางบิล",
+      `ช่องวันวางบิลของทุกงวดขึ้น "${NO_BILLING_TEXT}" · ไม่ชวนขอใบวางบิล · ลูกค้าขอใบวางบิลงวดเดียว = "งวดนี้ต้องวางบิล…" บนใบ`,
+    ];
+  }
+  if (words.noTiming) {
+    return [
+      "รู้ว่าต้องวางบิล แต่ยังไม่รู้รอบ — วันวางบิลตั้งรายงวดบนใบ SO ไม่มีอะไรคิดให้",
+      "ทะเบียนการชำระชวน \"ยังไม่มีวันวางบิล\" จนกว่าจะตั้งรอบหรือใส่วัน",
+    ];
+  }
+  return [];
+}
+
+export default function CustomerBillingRuleCard({ customer, canEdit = false, onSaved }) {
+  /* editing: false | { year } — year = แท็บปีที่โมดัลเปิดก่อน (ปุ่ม "ใส่ปฏิทิน 2027") · null = ตามปกติ */
+  const [editing, setEditing] = useState(false);
+  const [redate, setRedate] = useState(null);
+  const holidays = useHolidayMap();
+  const value = customer?.billingRule ?? null;
+  const rule = ruleOf(value);
+  const words = policyWordsOf(value);
+  const asking = words.need === "unknown" || words.need === "legacy";
+  const today = businessDate();
+  const legacyTerms = String(customer?.creditTerms ?? "").trim();
+  const stamp = stampTextOf(customer?.billingRuleUpdatedAt);
+  const by = customer?.billingRuleUpdatedByName || "";
+  const facts = factsOf(words);
+  const preview = words.need === "required" && !words.noTiming ? policyPreview(value, today, { count: 3, holidays }) : null;
+  const calendar = calendarCardOf(value, today, { holidays });
+
+  const editButton = canEdit ? (
+    <Button
+      tone="neutral"
+      icon={asking ? <CalendarPlus size={15} aria-hidden="true" /> : <Pencil size={15} aria-hidden="true" />}
+      aria-label={asking ? "ตั้งการวางบิลและกำหนดชำระ" : "แก้การวางบิลและกำหนดชำระ"}
+      onClick={() => setEditing({ year: null })}
+    >
+      {asking ? "ตั้ง" : "แก้"}
+    </Button>
+  ) : null;
+
+  /* บันทึกแล้ว: หน้าแม่เติมช่องกติกาลงแถวที่มีอยู่ (ไม่โหลดทั้งหน้า) → มีงวดที่วันจะเปลี่ยน = เปิดจอยืนยัน ไม่งั้นจบ */
+  const handleSaved = (fields, { ruleChange, before, after } = {}) => {
+    onSaved?.(fields);
+    setEditing(false);
+    if (fields?.unchanged) return;
+    if (hasRuleChange(ruleChange)) setRedate({ change: ruleChange, before, after });
+    else if (Number(ruleChange?.hiddenOrders) > 0) {
+      notifyToast.info(`ลูกค้านี้มีอีก ${ruleChange.hiddenOrders} ใบที่คุณมองไม่เห็น — ไม่ได้ตรวจงวดของใบเหล่านั้น`);
+    }
+  };
+  /* 409 ในโมดัล: ค่าล่าสุดของคนอื่นลงการ์ดทันที (โมดัลยังเปิด · ฟอร์มที่กรอกไม่ถูกแตะ) · เธรดโหลดใหม่ให้เห็นแถวของเขา */
+  const handleSynced = (current) => onSaved?.({ id: customer?.id, ...current, unchanged: false });
+
+  return (
+    <>
+      <DetailCard
+        id="billing-rule"
+        icon={CalendarClock}
+        eyebrow="Billing & due"
+        title="วางบิลและกำหนดชำระ"
+        meta="ตั้งที่นี่ที่เดียว · ใบ SO ทุกใบของลูกค้านี้ใช้นโยบายนี้ · งวดยกเว้นได้บนใบ"
+        actions={editButton}
+      >
+        <div className={styles.card}>
+          <PolicySentence words={words} />
+
+          {asking && legacyTerms ? (
+            <p className={styles.legacyNote}>
+              <TextQuote size={14} aria-hidden="true" />
+              <span>
+                <b>เงื่อนไขเครดิตเดิม:</b> &quot;{legacyTerms}&quot;
+                {words.need === "legacy" ? <> · ย้ายข้อมูล 0390 แปลงเป็น &quot;{NO_CREDIT_TEXT}&quot;</> : null}
+              </span>
+            </p>
+          ) : null}
+
+          {facts.length ? (
+            <ul className={styles.facts} data-tone={words.noTiming ? "warn" : undefined}>
+              {facts.map((fact) => <li key={fact}>{fact}</li>)}
+            </ul>
+          ) : null}
+          {asking && !canEdit ? <p className={styles.cardHint}>ตั้งได้โดยฝ่ายขายทีมที่ดูแลลูกค้าหรือฝ่ายบัญชี</p> : null}
+
+          {calendar ? (
+            <div className={styles.calBox}>
+              {calendar.banner ? (
+                <div className={styles.calAsk} role="status">
+                  <CalendarX2 size={16} aria-hidden="true" />
+                  <div className={styles.calAskText}>
+                    <b>{calendar.banner.title}</b>
+                    <p>{calendar.banner.text}</p>
+                  </div>
+                  {canEdit ? (
+                    <Button tone="neutral" size="sm" icon={<CalendarPlus size={14} aria-hidden="true" />} onClick={() => setEditing({ year: calendar.banner.year })}>
+                      ใส่ปฏิทิน {calendar.banner.year}
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
+              <p className={styles.calLine}>
+                <CalendarCheck2 size={14} aria-hidden="true" />
+                <b>{calendar.coverage}</b>
+                {calendar.years.filter((y) => y.fileId).map((y) => (
+                  <a key={y.year} className={styles.calFile} href={calendarFileHref(y.fileId)} target="_blank" rel="noopener noreferrer" aria-label={`เปิดรูปปฏิทิน ${y.year} ของลูกค้าในแท็บใหม่`}>
+                    รูปปฏิทิน {y.year}<ExternalLink size={12} aria-hidden="true" />
+                  </a>
+                ))}
+              </p>
+              {calendar.upcoming ? <p className={styles.calLine}><small>{calendar.upcoming}</small></p> : null}
+              {calendar.cutoffLine ? (
+                <p className={styles.calLine}><AlarmClock size={14} aria-hidden="true" /><small>{calendar.cutoffLine}</small></p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {preview ? (
+            <div className={styles.cardRounds}>
+              <h3>
+                {preview.kind !== "rounds" ? "ตัวอย่าง ถ้าวางบิลวันต่อไปนี้" : preview.rows.length ? `${preview.rows.length} รอบถัดไป` : "รอบถัดไป"}
+                <small>คิดจากวันนี้ {fmtDate(today)} · ตรงเสาร์/อาทิตย์ไม่เลื่อนวัน</small>
+              </h3>
+              {preview.rows.length ? (
+                <PairList
+                  rows={preview.rows.map((row) => ({ ...row, key: row.billingDate }))}
+                  sourceText={(source) => sourceLabel(source, { creditDays: rule?.creditDays || 0 })}
+                />
+              ) : null}
+              {preview.missing ? <p className={styles.pvGap}><CalendarX2 size={14} aria-hidden="true" /><span>{preview.missing.text}</span></p> : null}
+            </div>
+          ) : null}
+
+          <div className={styles.cardRemind}>
+            <small>การเตือนของลูกค้านี้</small>
+            <ReminderChips chips={reminderChipsOf(value, { todayIso: today, holidays })} />
+          </div>
+
+          {words.note ? (
+            <p className={styles.cardNote}><StickyNote size={14} aria-hidden="true" /><span>หมายเหตุ: {words.note}</span></p>
+          ) : null}
+
+          {/* บรรทัด "ใครแก้ล่าสุด" — ใช้ทั้งตอนมีค่าและตอนถูกล้าง (ยังไม่ระบุ + มีตราเวลา = **ถูกล้าง**)
+              ⭐ mig 0390 / backfill ประทับชื่อผู้แก้เป็น "ระบบ · …" ⇒ บรรทัดนี้บอกเองว่าค่ามาจากการแปลง
+              ค่าเดิม → ใหม่ทุกครั้งอยู่ในแถว "ความเคลื่อนไหว" ของลูกค้า (audit_logs เปิดได้เฉพาะแอดมิน — ไม่ชี้ไปที่นั่น) */}
+          {stamp ? (
+            <div className={styles.meta}>
+              <span className={styles.metaItem}>
+                <History size={14} aria-hidden="true" />
+                <span>
+                  {rule ? "แก้ล่าสุด" : "ล้างล่าสุด"} <span className={styles.nowrap}>{stamp}</span>{by ? <> โดย <b>{by}</b></> : null}
+                  {rule ? null : <> · <span className={styles.nowrap}>ค่าเดิมดูได้ในความเคลื่อนไหว</span></>}
+                </span>
+              </span>
+              <span className={styles.metaOk}><ShieldCheck size={13} aria-hidden="true" />ไม่ต้องอนุมัติใหม่</span>
+            </div>
+          ) : null}
+        </div>
+      </DetailCard>
+
+      {/* mount ตอนเปิดเท่านั้น — ฟอร์มตั้งต้นจากค่าที่บันทึกไว้ทุกครั้งที่เปิด (ดูหัวโมดัล) */}
+      {canEdit && editing ? (
+        <CustomerBillingRuleModal
+          open
+          customer={customer}
+          calendarYear={editing.year || null}
+          onClose={() => setEditing(false)}
+          onSaved={handleSaved}
+          onSynced={handleSynced}
+        />
+      ) : null}
+      {canEdit && redate ? (
+        <CustomerBillingRuleRedate
+          open
+          customer={customer}
+          change={redate.change}
+          after={redate.after}
+          onClose={() => setRedate(null)}
+        />
+      ) : null}
+    </>
+  );
+}

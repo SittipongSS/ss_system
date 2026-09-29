@@ -1,0 +1,84 @@
+/* สองบานของแท็บหน้างาน (แผน §10.5 จอหน้างานแบบ A · แผนลงมือ §3.1–3.2 · ม็อก AT-3 · AW-1)
+   "pages" = คอลัมน์เดียว เห็นทีละบาน (การนำทางตัดสิน) · "split" = รายการ 320px ซ้าย + พื้นที่ขวา
+   ⚠️ สองบาน: **รายการเลื่อนเอง** (ติดใต้แถบบน สูงไม่เกินจอ) · **พื้นที่เลื่อนไปกับหน้า** — เบราว์เซอร์เลื่อนตามช่องที่
+      โฟกัสได้เองตอนแป้นพิมพ์ขึ้น (บานที่เลื่อนในตัวเองกับแป้น iPad ไม่ถูกกัน) · หัว/ท้ายของหน้าพื้นที่ติดขอบเอง */
+
+.workspace {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.listCol,
+.zonePane {
+  min-width: 0;
+}
+
+/* คลาสของบานมี display ของตัวเอง ⇒ ต้องประกาศทับให้ `hidden` ทำงาน (บทเรียนของ CollapsibleCard) */
+.listCol[hidden],
+.zonePane[hidden] {
+  display: none;
+}
+
+/* คอลัมน์รายการ: รายการ แล้วแถบงานของช่าง · ระยะห่างมาจาก `gap` ของคอลัมน์ (แถบเลิกใช้ margin ของตัวเอง) */
+.listCol {
+  --survey-bar-h: 0px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.listCol > [data-survey-bar] { margin-top: 0; }
+
+/* แถบที่ติดขอบ (มีปุ่มให้กด) ชิดล่างเสมอ — คอลัมน์สูงอย่างน้อยเท่าจอใต้แถบบน แล้วแถบดันลงล่างสุด
+   🐞 UAT 25/09 แท็บเล็ต 768/820: รายการสั้นแล้วแถบลอยกลางจอ (sticky ติดขอบได้เฉพาะเมื่อของล้นจอ) · ม็อก AT-1 วาดแถบชิดเมนูล่าง
+   ⚠️ เฉพาะแถบที่ติดขอบ — 🐞 review 26/09: ยืดทุกกรณีแล้ว "ส่งงานแล้ว" (แถบบอกผล ไม่ติดขอบ) ถูกดันห่างรายการไปใต้จอ
+      และคนที่ไม่มีแถบได้ที่ว่างเลื่อนเปล่า ๆ · ชุดกติกาเดียวกันใช้กับแท็บสรุปส่งผล (`.barColumn`) */
+.listCol:has(> [data-survey-bar][data-sticky]),
+.barColumn:has(> [data-survey-bar][data-sticky]) {
+  min-height: calc(100dvh - var(--scroll-anchor-top) - var(--mobile-nav-h, 0px));
+}
+
+.listCol > [data-survey-bar][data-sticky],
+.barColumn > [data-survey-bar][data-sticky] { margin-top: auto; }
+
+/* แท็บสรุปส่งผลที่มีแถบงานของช่าง — ห่อเนื้อทั้งแท็บให้แถบชิดล่างแบบเดียวกับแท็บหน้างาน */
+.barColumn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.barColumn > [data-survey-bar] { margin-top: 0; }
+
+.listPane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.workspace[data-layout="split"] {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  align-items: start;
+}
+
+/* สองบาน: คอลัมน์ซ้ายยืดเท่าแถว (สูงเท่าบานขวา) ⇒ แถบ sticky มีที่วิ่ง และติดขอบล่างของ **จอ** ตั้งแต่เปิดหน้า
+   · รายการเลื่อนเองในกล่องที่ติดใต้แถบบน สูงไม่เกินจอหักแถบ (`--survey-bar-h` วัดจากแถบจริง) */
+.workspace[data-layout="split"] .listCol {
+  align-self: stretch;
+  min-height: 0;
+}
+
+.workspace[data-layout="split"] .listPane {
+  position: sticky;
+  top: var(--scroll-anchor-top);
+  max-height: calc(var(--pinned-box-max) - var(--survey-bar-h) - var(--space-4));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* ย้ายพื้นที่ในสองบานตอนเลื่อนลงมาลึก — บานขวาถูกพาขึ้นมาจอดใต้แถบบน ไม่ใช่ใต้มัน */
+.zonePane { scroll-margin-top: var(--scroll-anchor-top); }

@@ -32,9 +32,21 @@ export function signatureEvidenceRpcError(error, { action = 'approve' } = {}) {
     ['signature_evidence_document_state_invalid', 'สถานะเอกสารไม่รองรับการอนุมัติ', 400, 'document_state_invalid', {}],
     ['signature_evidence_document_not_found', 'ไม่พบเอกสาร', 404, 'document_not_found', {}],
     ['signature_evidence_fingerprint_invalid', 'ข้อมูลยืนยันเอกสารไม่ถูกต้อง', 400, 'fingerprint_invalid', {}],
+    /* ── งานบริการรายบรรทัด (mig 0392 P1) — การอนุมัติใบสาย SERVICE เปิดรอบขายของโซนในทรานแซกชันเดียวกัน
+       ⭐ ไม่ครบ = ถอยทั้งการอนุมัติ · route ตรวจด้วยตัวตัดสิน JS ก่อนยิงแล้ว ⇒ ถึงตรงนี้ได้เมื่อข้อมูลเปลี่ยนหลังด่าน JS
+         (เช่นสินค้าแพ็คเกจถูกปิดใช้งานระหว่างนั้น) · รหัสรายข้อ (DETAIL) ไปกับ `extra.setupErrors` ให้ route แปลเป็นข้อที่ยังขาด
+       ⚠️ ห้ามปล่อยตกไปข้อความกลาง "บันทึกหลักฐานลายเซ็นไม่สำเร็จ" — ชี้ผิดเรื่อง (ไม่ได้เกี่ยวกับลายเซ็นเลย) */
+    ['sales_order_service_setup_incomplete', 'อนุมัติไม่ได้ — งานบริการของใบนี้ไม่ครบ (มีการเปลี่ยนหลังยื่น) · ตีกลับให้ฝ่ายขายแก้', 409, 'service_setup_incomplete', {}],
+    /* term ที่ทางผูกโซนเดิมของ TS สร้างไว้ (ไม่ใช่ 'SZT-S…') ห้ามถูกเขียนทับ (D29) — ใบ pipeline ปกติไม่มีทางเจอ แต่ถ้าเจอต้องบอกตรง ๆ */
+    ['service_setup_legacy_terms_exist', 'ใบนี้มีรอบขายที่ TS ผูกไว้ด้วยทางเดิม — เปิดงานบริการทับไม่ได้ · แจ้งผู้ดูแลระบบ', 409, 'service_setup_legacy_terms_exist', {}],
   ];
   const match = mappings.find(([token]) => raw.includes(token));
-  if (match) return new SignatureEvidenceError(match[1], match[2], match[3], match[4]);
+  if (match) {
+    const extra = match[3] === 'service_setup_incomplete'
+      ? { ...match[4], setupErrors: String(error?.details || '').split(',').map((code) => code.trim()).filter(Boolean) }
+      : match[4];
+    return new SignatureEvidenceError(match[1], match[2], match[3], extra);
+  }
   return new SignatureEvidenceError('บันทึกหลักฐานลายเซ็นไม่สำเร็จ');
 }
 

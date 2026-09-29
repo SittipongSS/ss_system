@@ -1,0 +1,23 @@
+/* ป้าย "ขอใบวางบิลแล้ว · RQ-…" ที่กดไปคำร้องได้ — ตัวป้ายยังเป็น StatusBadge ของกลาง (ขนาด/โทนเดียวกับป้ายอื่นในแถว)
+   ที่นี่เติมแค่ความเป็นลิงก์: เส้นใต้ (สีไม่ใช่สัญญาณเดียว — WCAG 1.4.1) + วงโฟกัส */
+.link {
+  display: inline-flex;
+  max-width: 100%;
+  border-radius: var(--radius);
+  text-decoration: none;
+}
+.link:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 2px;
+}
+.linkBadge {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.link:hover .linkBadge,
+.link:focus-visible .linkBadge {
+  text-decoration-color: currentColor;
+  text-decoration-thickness: 2px;
+}

@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlarmClock, CircleDollarSign, ClipboardCheck, HandCoins, Wallet } from "lucide-react";
+import { AlarmClock, CalendarClock, CircleDollarSign, ClipboardCheck, HandCoins, Wallet } from "lucide-react";
 import Workspace, { ListPanel, Metric, MetricStrip } from "@/components/ui/Workspace";
 import { TableEmpty, TableScroll } from "@/components/ui/Table";
 import DetailRow from "@/components/ui/DetailRow";
@@ -22,7 +22,7 @@ import Button from "@/components/ui/Button";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { fmtDate, fmtMoney, naText } from "@/lib/format";
 import { apiFetch } from "@/lib/apiFetch";
-import { LEDGER_STRANDED_TITLE } from "@/lib/finance/paymentLedger";
+import { LEDGER_BILLING_WINDOW_DAYS, LEDGER_STRANDED_TITLE } from "@/lib/finance/paymentLedger";
 
 export default function FinanceOverviewPage() {
   const router = useRouter();
@@ -108,6 +108,16 @@ export default function FinanceOverviewPage() {
               note={fmtMoney(summary?.overdueAmount ?? 0)}
               tone={summary?.overdueCount ? "danger" : "good"}
               onClick={() => router.push("/finance/payments?overdue=1")}
+            />
+            {/* ⭐ ถึงรอบวางบิล 7 วัน (mig 0389 · ม็อก D) — การ์ดใบที่หก (แถบรองรับสูงสุด 6) · ลิงก์เดียวกับกระดิ่งฝั่ง FN
+                ⚠️ โทน info ไม่ใช่ danger — ยังไม่มีอะไรเลย (เลยรอบวางบิลก็ไม่แดง: แดงสงวนให้เลยกำหนดชำระ) */}
+            <Metric
+              as="button" type="button"
+              icon={<CalendarClock />} label={`ถึงรอบวางบิล ${LEDGER_BILLING_WINDOW_DAYS} วัน`}
+              value={`${summary?.billingIn7DaysCount ?? 0} งวด`}
+              note={fmtMoney(summary?.billingIn7DaysAmount ?? 0)}
+              tone={summary?.billingIn7DaysCount ? "info" : undefined}
+              onClick={() => router.push("/finance/payments?billing=7d")}
             />
             {/* ⚠️ "ค้างรับ" ไม่ใช่ "ยังไม่จ่าย" — รวมงวดที่ SA แจ้งแล้วแต่ยังไม่รับรองด้วย
                 เพราะยังไม่ใช่เงินที่นับได้ (กติกาจาก mig 0245) */}

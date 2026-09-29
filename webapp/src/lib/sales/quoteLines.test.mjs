@@ -9,6 +9,7 @@ import {
   fillMissingLineCategories,
   fgLineDescription,
   masterPriceDrift,
+  manualLineCategoryEdit,
   masterPriceState,
   normalizeManualLines,
   quoteLineFromProduct,
@@ -466,4 +467,30 @@ test('normalizeManualLines คิดเงินผ่าน quoteLineMoney — 
     assert.deepEqual([line.discountType, line.discountValue, line.discountAmount, line.lineTotal],
       [m.discountType, m.discountValue, m.discountAmount, m.lineTotal]);
   });
+});
+
+/* ⭐ บรรทัด "เพิ่มรายการเอง" เลือกหมวดสินค้าได้ (มติผู้ใช้ 2026-09-27) — เก็บคีย์เดียวกับหมวดของบรรทัด FG
+   ⇒ ตาราง/ใบพิมพ์/SO อ่านได้เลย · ต้องรอดทางบันทึก (normalize → enforceMasterPrices) ไม่โดนล้าง */
+test('manualLineCategoryEdit: เลือก = เก็บรหัส+ชื่อสองภาษา · ไม่ระบุ = ลบทั้งชุด · ไม่แตะคีย์อื่น', () => {
+  const row = { mainCategoryCode: '02', typeCode: '001', nameTh: 'บริการเครื่องพ่น', nameEn: 'Scent service' };
+  const picked = manualLineCategoryEdit({ note: 'ส่งทุกเดือน' }, row);
+  assert.deepEqual(picked, {
+    note: 'ส่งทุกเดือน', categoryCode: '02-001', categoryName: 'บริการเครื่องพ่น', categoryNameEn: 'Scent service',
+  });
+  assert.deepEqual(manualLineCategoryEdit(picked, null), { note: 'ส่งทุกเดือน' });
+  // มีภาษาเดียว = ถอยไปอีกภาษา · ชื่อว่างทั้งคู่ (prod มีจริง) = ถอยไปรหัส ไม่ใช่ป้ายว่าง
+  assert.equal(manualLineCategoryEdit({}, { ...row, nameEn: '' }).categoryNameEn, 'บริการเครื่องพ่น');
+  assert.equal(manualLineCategoryEdit({}, { ...row, nameTh: '', nameEn: '' }).categoryName, '02-001');
+});
+
+test('หมวดของบรรทัดเพิ่มเองรอดทางบันทึก · บรรทัดเปลี่ยนเป็น FG = หมวดตามสินค้า ไม่ติดรหัสเดิม', async () => {
+  const metadata = manualLineCategoryEdit({}, { mainCategoryCode: '02', typeCode: '001', nameTh: 'บริการ', nameEn: 'Service' });
+  const [saved] = await enforceMasterPrices(fakeSupabase({}), normalizeManualLines([
+    { description: 'ค่าติดตั้ง', qty: 1, unitPrice: 500, metadata },
+  ]));
+  assert.equal(saved.metadata.categoryName, 'บริการ');
+  assert.equal(saved.metadata.categoryCode, '02-001');
+  const asFg = quoteLineFromProduct(saved, { ...SDS, categoryName: 'น้ำหอม', categoryNameEn: 'Perfume' });
+  assert.equal(asFg.metadata.categoryName, 'น้ำหอม');
+  assert.equal(asFg.metadata.categoryCode, undefined);
 });

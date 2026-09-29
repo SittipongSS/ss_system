@@ -24,14 +24,42 @@ import { requiredChecks } from "@/lib/requests/formTabs";
 import Toast from "@/components/ui/Toast";
 import RequestForm, { emptyRequestForm } from "@/components/requests/RequestForm";
 import { createRequestDraft, requestFormBlocker, uploadDraftFiles } from "@/lib/master/requestCreate";
-import { requestKindLabel } from "@/lib/master/requestTypes";
+import { requestKindLabel, requestKindMeta } from "@/lib/master/requestTypes";
 import { scentCountForOrder } from "@/lib/requests/scentDesignOrders";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
+import { businessDate } from "@/lib/businessDate";
+import { formatBillingDate } from "@/lib/sales/billingRule";
+import { RESPONSE_WARNING_TOAST } from "@/lib/apiWarnings";
+import { notifyToast } from "@/components/ui/Toast";
 import styles from "./page.module.css";
 import { apiFetch } from "@/lib/apiFetch";
 
 const asArray = (d) => (Array.isArray(d) ? d : []);
+const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/* วันที่ YYYY-MM-DD ที่มีจริงบนปฏิทิน — คืน "" ถ้าไม่ใช่
+   🐞 `Date.parse("2026-02-30")` ของ V8 ปัดไปเป็น 2 มี.ค. แล้วตอบว่าใช้ได้ ⇒ ลิงก์ที่แก้มือหลุดไปถึง insert
+      แล้ว Postgres ตีกลับเป็น 500 ดิบ (date/time field value out of range) ⇒ ประกอบวันกลับแล้วเทียบทุกส่วน */
+function calendarIso(value) {
+  const iso = String(value || "").trim();
+  const match = ISO_DATE.exec(iso);
+  if (!match) return "";
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+    ? iso : "";
+}
+
+/* วันที่ต้องการรับงานที่เติมจากลิงก์ (`?requiredDate=` = วันวางบิลของงวด) — คืน "" ถ้าไม่เติม
+   ⚠️ **วันที่ผ่านไปแล้วไม่เติม** — ด่านของช่องนี้ตรวจแค่รูปแบบ (requestTypes) ⇒ งวดที่เลยรอบวางบิล
+      จะได้ใบที่ "ต้องการรับงาน" เมื่อวานโดยไม่มีใครทัก แล้วบัญชีเห็นใบเลยกำหนดตั้งแต่วินาทีแรก
+      ⇒ ปล่อยว่างให้ผู้ขอเลือกเอง (ช่องบังคับ ด่านฟอร์มบอกเหตุอยู่แล้ว) · "วันนี้" = นาฬิกาไทย
+      · รายการความพร้อมบอกว่าทำไมช่องว่าง (`droppedDueDate` ในหน้า) */
+function prefillDueDate(value) {
+  const iso = calendarIso(value);
+  return iso && iso >= businessDate() ? iso : "";
+}
 
 export default function NewRequestPage() {
   const router = useRouter();
@@ -46,6 +74,10 @@ export default function NewRequestPage() {
   // (B-5) — คนที่เพิ่งดูงวดอยู่กดต่อได้เลย ไม่ต้องมาไล่หาใบเสนอราคาใน dropdown ซ้ำ
   // ⚠️ **เติมค่าไม่ใช่ปลดด่าน** — ใบต้องอนุมัติแล้ว (ม-ง) และยอดต้องไม่เกินใบ ยังตรวจ
   // ครบทั้งที่ฟอร์มและ POST เหมือนเปิดเองจาก /requests
+  /* ⭐ `requiredDate` (กำหนดวางบิล) — วันวางบิลของงวดที่กดมา เติมลง "วันที่ต้องการรับงาน"
+     **ให้เห็นและแก้ได้** (ช่องเดิมบนฟอร์ม ไม่ใช่ค่าซ่อน) · ฟอร์มเปิดใหม่ช่องว่างเสมอ = เติมได้เลย
+     ⚠️ อยู่ใน `defaults` ชุดเดียวกับของเติมอื่น ⇒ `pristine` ไม่นับว่าแก้ และปุ่ม "เปลี่ยนฝ่าย/หัวข้อ"
+        เติมกลับให้เหมือนค่าที่มากับลิงก์ตัวอื่น */
   const defaults = useMemo(() => ({
     kind: searchParams.get("kind") || "",
     dealId: searchParams.get("dealId") || "",
@@ -53,11 +85,23 @@ export default function NewRequestPage() {
     salesOrderId: searchParams.get("salesOrderId") || "",
     quotationId: searchParams.get("quotationId") || "",
     billAmount: searchParams.get("billAmount") ? Number(searchParams.get("billAmount")) : null,
+    requestedDueDate: prefillDueDate(searchParams.get("requiredDate")),
   }), [searchParams]);
+  /* ⭐ งวดที่ต้องผูกกับคำร้องนี้ (`?installmentId=` จากปุ่ม "ขอใบวางบิลงวดนี้" · กำหนดวางบิล)
+     — server ผูกให้หลังบันทึกร่าง ⇒ งวดนั้นขึ้น "ขอใบวางบิลแล้ว" และกระดิ่งก่อนวันวางบิลหยุด
+     ⚠️ **ไม่ใช่ช่องในฟอร์ม** — ส่งแยกทาง `extra` ของ createRequestDraft (ฟอร์มกับหน้าแก้ไม่ต้องรู้จัก)
+     ⚠️ ส่งเฉพาะตอนใบยังเป็น "ขอเอกสารการเงิน" ของ **ใบสั่งขาย + ใบเสนอราคาใบที่กดมา** — ผู้ใช้เปลี่ยนหัวข้อ/ใบในฟอร์ม
+        แปลว่าไม่ใช่งานของงวดนั้นแล้ว (server ตรวจซ้ำทุกข้ออยู่ดี · ผูกไม่ได้ = ใบยังบันทึก + คำเตือน) */
+  const linkInstallmentId = (searchParams.get("installmentId") || "").trim().slice(0, 120);
+  /* วันที่มากับลิงก์แต่ไม่ได้เติมเพราะผ่านไปแล้ว — ช่องว่างเฉย ๆ ดูเหมือนลิงก์พัง ⇒ รายการความพร้อมบอกเหตุ */
+  const linkDueDate = calendarIso(searchParams.get("requiredDate"));
+  const droppedDueDate = linkDueDate && !defaults.requestedDueDate ? linkDueDate : "";
   // ⚠️ กลับไปที่เดิมหลังบันทึก — แพตเทิร์นเดียวกับ pm/tasks · ค่าที่ไม่ใช่เส้นทาง
   // ภายในถูกทิ้ง (open redirect จากโดเมนของเราเองคือของจริงที่เคยหลุดมาแล้ว)
   const back = searchParams.get("returnTo");
-  const returnTo = back && back.startsWith("/") && !back.startsWith("//") ? back : "/requests";
+  /* ลิงก์กลับต้องเป็น path ในระบบเท่านั้น — "//x" และ "/\\x" เบราว์เซอร์อ่านเป็นโดเมนอื่นทั้งคู่
+     (ปุ่ม "ขอใบวางบิลงวดนี้" ในกระดิ่งส่ง returnTo มาด้วย · กำหนดวางบิล 26/09) */
+  const returnTo = back && /^\/(?![\/\\])/.test(back) ? back : "/requests";
 
   const [form, setForm] = useState(() => emptyRequestForm(defaults));
   /* ⭐ **กันงานหายเมื่อออกจากหน้ากลางคัน** — หัวข้อ scent_dev มี PDR 41 ช่อง +
@@ -138,6 +182,11 @@ export default function NewRequestPage() {
   // ปุ่มส่งเปิดเมื่อกรอกครบ — **ด่านเดียวกับข้อความที่ฟอร์มแสดง**
   // ห้ามเขียนเงื่อนไขเพิ่มที่นี่: เงื่อนไขที่ปุ่มรู้แต่ฟอร์มไม่รู้ = ปุ่มจางแบบไม่บอกเหตุผล
   const blocker = requestFormBlocker(form);
+  /* ⚠️ ต้องเทียบ **ใบเสนอราคา** ด้วย — ช่อง QT ของขอเอกสารการเงินยังเปลี่ยนได้ตอนสร้าง และเปลี่ยนแล้ว
+     ไม่ล้าง `salesOrderId` ⇒ เทียบแค่ SO = ท้ายแผงสัญญาว่าจะผูก แต่ server ตีกลับ "คนละใบเสนอราคา" */
+  const linksInstallment = !!linkInstallmentId && form.kind === "billing_doc"
+    && !!form.salesOrderId && form.salesOrderId === defaults.salesOrderId
+    && form.quotationId === defaults.quotationId;
 
   // ⭐ **บันทึกร่างอย่างเดียว ไม่ส่ง** — เลขที่ออกตอนกดส่งที่หน้ารายละเอียด
   // สองขั้นนี้แยกกันเพราะการออกเลขที่ย้อนไม่ได้ (trigger ทำให้ `docNo` immutable)
@@ -155,8 +204,14 @@ export default function NewRequestPage() {
   const saveDraft = async () => {
     setSaving(true);
     try {
-      const { id, error } = await createRequestDraft(form);
+      const { id, error, warning } = await createRequestDraft(
+        form, linksInstallment ? { linkInstallmentId } : {},
+      );
       if (error) { setToast({ kind: "error", msg: error }); return; }
+      /* ใบร่างเก็บแล้วแต่ผูกงวดไม่ได้ (server ตอบ 201 + `_warning`) — ทักโทนเตือนผ่านถาดกลาง
+         (`notifyToast` อยู่ที่ layout ⇒ ไม่หายตอน router.push ต่างจาก Toast ของหน้านี้)
+         ⚠️ `warning` ต้องมาจาก createRequestDraft (responseWarningText ของคำตอบ) — ไม่มี = เงียบ */
+      if (warning) notifyToast.warning(warning, RESPONSE_WARNING_TOAST);
       // ⭐ อัปไฟล์ที่แนบไว้ในฟอร์ม (มติผู้ใช้ 2026-08-08: แนบได้ตั้งแต่หน้าสร้าง) —
       // ต้องมี id ก่อนถึงอัปได้ จึงมาหลัง create เสมอ
       // ⚠️ อัปพลาด **ไม่ rollback ร่าง** — ของที่อัปแล้วอยู่ครบ พาไปหน้ารายละเอียด
@@ -178,12 +233,17 @@ export default function NewRequestPage() {
      ⇒ สามที่พูดตรงกันเสมอ (แผงบอกว่าครบ แต่ปุ่มกดไม่ได้ = สิ่งที่ทำให้คนเลิกเชื่อจอ)
      ⚠️ ปุ่มลบ/แก้ **ไม่ได้อยู่ที่นี่** — ร่างที่บันทึกแล้วมีชีวิตอยู่ที่หน้ารายละเอียด
      ซึ่งมีทั้งส่ง/ยกเลิก/ลบครบอยู่แล้ว · ทำซ้ำที่นี่ = สองที่ที่ต้องคอยให้ตรงกัน */
+  // ป้ายช่องวันที่ของหัวข้อนี้ — ตัวเดียวกับที่ `requiredChecks` ตั้ง (ทะเบียนหัวข้อ) ใช้หาแถวที่ต้องบอกเหตุ
+  const dueLabel = requestKindMeta(form.kind)?.form?.dueLabel;
   const readinessItems = revealed
     ? requiredChecks(form).map((c) => ({
       id: `${c.tab}-${c.label}`,
       label: c.label,
       ready: c.ok,
-      detail: c.ok ? undefined : "ยังไม่ได้กรอก",
+      detail: c.ok ? undefined
+        : droppedDueDate && c.tab === "due" && c.label === dueLabel
+          ? `วันที่ที่มากับลิงก์ (${formatBillingDate(droppedDueDate)}) ผ่านไปแล้ว — เลือกวันเอง`
+          : "ยังไม่ได้กรอก",
     }))
     : [{
       id: "kind",
@@ -218,7 +278,10 @@ export default function NewRequestPage() {
         href: returnTo,
       }]}
       busy={saving}
-      footer="บันทึกแล้วไปต่อที่หน้ารายละเอียด — เลขที่ออกตอนกดส่ง · ร่างที่ยังไม่ส่งลบได้ที่นั่น"
+      // บอกล่วงหน้าว่าบันทึกแล้วงวดจะถูกผูก — ผูกแล้วงวดนั้นถูกล็อกจาก "ปรับแผนงวด" จนกว่าจะถอด
+      footer={linksInstallment
+        ? "บันทึกแล้วระบบผูกคำร้องนี้กับงวดชำระที่กดมาให้ แล้วไปต่อที่หน้ารายละเอียด — เลขที่ออกตอนกดส่ง · ร่างที่ยังไม่ส่งลบได้ที่นั่น"
+        : "บันทึกแล้วไปต่อที่หน้ารายละเอียด — เลขที่ออกตอนกดส่ง · ร่างที่ยังไม่ส่งลบได้ที่นั่น"}
     />
   );
 

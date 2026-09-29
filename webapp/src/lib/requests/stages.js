@@ -13,7 +13,7 @@ import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { isRowSettled } from '@/lib/requests/rowStage';
 import { soReconcile } from '@/lib/requests/soReconcile';
 import { scentDesignLines } from '@/lib/requests/scentDesignOrders';
-import { closureStatus } from '@/lib/requests/closure';
+import { closureStatus, reopenWaitClearPatch } from '@/lib/requests/closure';
 import { requestSideText } from '@/lib/requests/replyTurn';
 
 // ── ความคืบหน้า + สถานะที่ derive ────────────────────────────────────────
@@ -54,12 +54,15 @@ export function deriveRequestStatusAfterAnswer(items = [], currentStatus = 'ackn
  * ⚠️ ใบที่ยังไม่มีแถวสักแถว (ก่อนฝ่ายส่งงาน) ไม่แตะอะไรเลย — `requestProgress` ของ
  * ใบเปล่าคือ "ยังไม่ครบ" ซึ่งไม่ได้แปลว่าต้องถอนตรา
  */
-export function requestRowsClosurePatch(request, items = [], nowIso) {
+export function requestRowsClosurePatch(request, items = [], nowIso, { actorSide = null } = {}) {
   const patch = {};
   if (!request || ['cancelled', 'closed'].includes(request.status)) return patch;
   // ⚠️ ตราปิดมีความหมายหลังรับเรื่องเท่านั้น — ใบร่าง/รอรับเรื่องต้องไม่ถูก `closureStatus` ดันเป็น
   //    "รับเรื่องแล้ว" จากแถวที่ลบ/เพิ่ม (ผู้เรียกใหม่ เช่นทางลบแถว ไม่ต้องจำเงื่อนไขนี้เอง)
   if (!['acknowledged', 'answered'].includes(request.status)) return patch;
+  /* ⭐ ฝั่งที่ถูกรอหลัง "ยังไม่จบ" เดินแถว = ป้าย "ยังไม่จบ" หลุด (mig 0391) — ผู้เรียกส่ง `actorSide`
+     (`requestActorSide`) · ไม่ส่ง = ไม่แตะป้าย (ทางที่ระบบเดินแถวเอง ไม่ใช่คนลงมือ) */
+  if (actorSide) Object.assign(patch, reopenWaitClearPatch(request, { side: actorSide }));
   if (!items.length) return patch;
 
   // ⭐ NPD: สินค้าในแบบฟอร์มที่ยังไม่มีแถวงาน = งานยังไม่จบ (ม-144 · เหตุผลที่ `npdUncoveredPairs`)
@@ -75,6 +78,8 @@ export function requestRowsClosurePatch(request, items = [], nowIso) {
       patch.answeredByName = null;
     }
   }
+  // ตราฝ่ายกลับมาเอง (แถวครบ) = ช่วงปิดสองฝั่งเล่าต่อเองว่าเหลือใคร ⇒ ป้าย "ยังไม่จบ" หมดหน้าที่
+  if (answeredAt && !request.answeredAt) Object.assign(patch, reopenWaitClearPatch(request, { stamps: true }));
   if (!complete && request.closedAt) {
     patch.closedAt = null;
     patch.closedById = null;

@@ -12,6 +12,7 @@ import {
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
+import OptionTiles from "@/components/ui/OptionTiles";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import PersonSelect from "@/components/ui/PersonSelect";
 import { usePeopleDirectoryState } from "@/lib/usePeopleDirectory";
@@ -70,7 +71,7 @@ import { assignBriefPerfumerError } from "@/lib/requests/briefPerfumer";
 import { answerViaBlockedReason, genericAnswerError, requestAnswerVia } from "@/lib/requests/answerVia";
 import BriefPerfumerModal from "@/components/requests/BriefPerfumerModal";
 import { requestAwaitingDue, requestStatusView } from "@/lib/requests/statuses";
-import { requestSideLabel, requestSideText } from "@/lib/requests/replyTurn";
+import { requestActorSide, requestSideLabel, requestSideText } from "@/lib/requests/replyTurn";
 import { requestClosure, requestClosureLine, reopenRequestError } from "@/lib/requests/closure";
 import { requestSettled } from "@/lib/requests/queueBoard";
 import { SO_RECONCILE_TONE, soReconcile, soReconcileText } from "@/lib/requests/soReconcile";
@@ -1392,7 +1393,7 @@ export default function RequestDetailPage() {
         label: "ยังไม่จบ",
         kind: "edit",
         icon: Undo2,
-        onClick: () => setReopen({ reason: "" }),
+        onClick: () => setReopen({ reason: "", waitSide: null }),
         visible: canReopen,
       },
       {
@@ -2058,17 +2059,35 @@ export default function RequestDetailPage() {
                 placeholder="เช่น กลิ่นที่ส่งมายังไม่ได้ให้ลูกค้าดม · ขอเอกสารเพิ่มอีกฉบับ"
                 onChange={(e) => setReopen({ ...reopen, reason: e.target.value })}
               />
+            </div>
+            {/* ⭐ **ใครทำต่อ** (มติผู้ใช้ 2026-09-29 · mig 0391) — ใบไปอยู่คิวฝั่งที่เลือกพร้อมป้าย "ยังไม่จบ"
+                🐞 เดิมคิวเดาจากตัวงาน ⇒ SA กดให้ RD แก้กลิ่นแต่ใบไปค้างคิว SA เอง · ไม่มีกฎไหนเดาถูกทุกใบ
+                (วัดของจริง 6 ใบ) จึงให้คนกดตอบ · บังคับเลือก ไม่มีค่าเริ่มต้น — ค่าเริ่มต้นคือการเดาอีกรอบ */}
+            <div className="form-group">
+              <label id="reopen-wait-label">ใครต้องทำต่อ *</label>
+              <OptionTiles
+                ariaLabel="ใครต้องทำต่อ"
+                value={reopen.waitSide}
+                disabled={saving}
+                onChange={(waitSide) => setReopen({ ...reopen, waitSide })}
+                options={["dept", "requester"].map((side) => ({
+                  value: side,
+                  label: requestSideText(req, side, "ทำต่อ"),
+                  description: (requestActorSide({ department }, req) === side ? "ฝั่งฉันเอง · " : "")
+                    + (side === "dept" ? "เช่น แก้งาน · ส่งของเพิ่ม · แจ้งกำหนดส่ง" : "เช่น รอลูกค้าตอบ · ส่งข้อมูลเพิ่ม"),
+                }))}
+              />
               <small className={styles.hint}>
-                ตราปิดที่กดไปแล้วจะถูกถอน แล้วใบกลับมาอยู่ในคิวของทั้งสองฝั่ง
+                ตราปิดที่กดไปแล้วจะถูกถอน · ใบขึ้น &ldquo;ยังไม่จบ&rdquo; ในคิวฝั่งที่เลือก จนกว่าฝั่งนั้นจะตอบหรือขยับงาน
               </small>
             </div>
             <div className={`action-bar ${styles.modalActions}`}>
               <Button variant="quiet" disabled={saving} onClick={() => setReopen(null)}>ยกเลิก</Button>
               <Button
-                tone="danger" disabled={saving || !reopen.reason.trim()}
+                tone="danger" disabled={saving || !reopen.reason.trim() || !reopen.waitSide}
                 onClick={() => call("", {
                   method: "PATCH",
-                  body: JSON.stringify({ action: "reopen", reason: reopen.reason }),
+                  body: JSON.stringify({ action: "reopen", reason: reopen.reason, waitSide: reopen.waitSide }),
                 }, "เปิดเรื่องกลับมาแล้ว").then((ok) => { if (ok) setReopen(null); })}
               >
                 ยังไม่จบ

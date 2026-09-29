@@ -12,6 +12,7 @@ import { normalizeLinesFor } from '@/lib/requests/kinds/lineShapes';
 import { pdrArtworkError } from '@/lib/requests/pdrFields';
 import { uploadAttachment } from '@/lib/master/attachmentUpload';
 import { apiFetch } from "@/lib/apiFetch";
+import { responseWarningText } from '@/lib/apiWarnings';
 
 /**
  * เหตุผลเดียวที่ยังส่งคำร้องไม่ได้ — คืนข้อความไทย หรือ null ถ้าพร้อมส่ง
@@ -203,7 +204,7 @@ export async function uploadDraftFiles(id, files = []) {
 }
 
 /**
- * ขั้นแรกอย่างเดียว: ค่าในฟอร์ม → **ร่าง** ที่ยังไม่กินเลขที่ — คืน { id, error }
+ * ขั้นแรกอย่างเดียว: ค่าในฟอร์ม → **ร่าง** ที่ยังไม่กินเลขที่ — คืน { id, error, warning }
  *
  * ⭐ หน้า `/requests/new` หยุดที่นี่ (ปุ่ม "บันทึกร่าง") แล้วพาไปหน้ารายละเอียด ซึ่ง
  * เป็นที่เดียวที่ **แนบไฟล์ได้จริง** (`AttachmentsPanel` ต้องมี `entityId` ก่อน) และ
@@ -220,7 +221,11 @@ export async function createRequestDraft(form, extra = {}) {
   });
   const created = await res.json().catch(() => ({}));
   if (!res.ok) return { id: null, error: created.error || 'เปิดคำร้องไม่สำเร็จ' };
-  return { id: created.id, error: null };
+  /* ⭐ `warning` = คำเตือนที่มากับ 201 (lib/apiWarnings) — ใบร่างเก็บแล้วแต่ของประกอบไม่ลง
+     เช่นผูกงวดชำระจากปุ่ม "ขอใบวางบิลงวดนี้" ไม่ได้ (กำหนดวางบิล · 26/09)
+     🐞 เดิมคืนแค่ id/error ⇒ `_warning` ถูกทิ้งตรงนี้ จอไม่มีทางรู้ แล้วงวดถูกเตือน "ยังไม่ขอ" ต่อเงียบ ๆ
+        (ยาม: billingInstallmentLink.test.mjs ตรวจรูปบรรทัดนี้) */
+  return { id: created.id, error: null, warning: responseWarningText(created) || null };
 }
 
 // ส่งร่างที่มีอยู่แล้ว — ออกเลขที่ · ลงเธรด · แจ้งคนที่ถูก @ · คืน { error }

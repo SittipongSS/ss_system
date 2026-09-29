@@ -91,6 +91,9 @@ a.link:hover { background: var(--panel-2); }
 
 
 /* ปุ่มอ่านแล้วรายแถว — อยู่กลางแนวตั้งของแถว ไม่เกาะบรรทัดแรก */
+/* เนื้อแถว + ปุ่มลงมือ (ถ้ามี) ซ้อนกันแนวตั้ง — แบบเดียวกับกระดิ่ง */
+.main { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.actions { display: flex; flex-wrap: wrap; gap: var(--space-2); padding: 0 var(--space-4) var(--space-3); }
 .readBtn { align-self: center; }
 
 .more {

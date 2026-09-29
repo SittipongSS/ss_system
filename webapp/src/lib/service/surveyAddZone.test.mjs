@@ -151,10 +151,13 @@ test('🔑 กระดิ่งตอนส่งผลต้องบอกว
 });
 
 test('🔑 ป้าย "เพิ่มหน้างาน" ต้องขึ้นทั้งจอช่างและจอสรุป (แผน §9 ข้อ 1)', () => {
-  const card = code('../../components/service/SurveyZoneCard.js');
-  assert.match(card, /"added"/);
-  assert.match(card, /เพิ่มหน้างาน/);
-  assert.match(card, /ลบพื้นที่นี้ทิ้ง/, 'แถวที่เพิ่มเองต้องมีทางลบบนจอ ไม่ใช่มีแต่ที่ API');
+  // 🔄 §10.5 S7 — การ์ดพื้นที่กลายเป็นหน้าพื้นที่ · "added" ตัดสินที่ตัวตัดสิน (`surveyZoneStateBadge` · `surveyZoneActions`)
+  const zonePage = code('../../components/service/SurveyZonePage.js');
+  const fieldView = code('./surveyFieldView.js');
+  assert.match(fieldView, /isAddedZone\(zone\)/, 'ป้ายและทางลบถามตัวเดียวกับ server ว่าเป็นพื้นที่ที่ช่างเพิ่มเอง');
+  assert.match(zonePage, /badge\.added \? <StatusBadge tone="accent">เพิ่มหน้างาน<\/StatusBadge>/);
+  const menu = zonePage.slice(zonePage.indexOf('const menuItems = ['), zonePage.indexOf('].filter(Boolean);', zonePage.indexOf('const menuItems = [')));
+  assert.match(menu, /label: "ลบพื้นที่นี้ทิ้ง"/, 'แถวที่เพิ่มเองต้องมีทางลบบนจอ (เมนู ⋮ บนหัว) ไม่ใช่มีแต่ที่ API');
 
   const table = code('../../components/service/SurveyResultTable.js');
   assert.match(table, /zone\.status === "added"/);

@@ -12,6 +12,25 @@
   bottom: max(88px, calc(env(safe-area-inset-bottom) + 80px));
 }
 
+/* แผ่นเต็มจอบนมือถือ (Modal sheetOnPhone) มีปุ่มหลักชิดขอบล่าง — toast ที่ขอบล่างจะทับปุ่มนั้นพอดี
+   และกลืนการแตะครั้งถัดไป (UAT จอหน้างาน 25/09: กด "ส่งงาน" ซ้ำแล้วไม่มีคำขอออกเลย)
+   ⚠️ 640px = จุดเดียวกับที่ globals.css เปลี่ยนโมดัลเป็นแผ่น ไม่ใช่ 680 */
+@media (max-width: 640px) {
+  :global(body:has(.overlay.phone-sheet)) .viewport {
+    top: max(12px, calc(env(safe-area-inset-top) + 8px));
+    bottom: auto;
+  }
+}
+
+/* แถบปุ่มติดขอบล่างที่สูงเกินกว่าที่ `data-toast-avoid` ยกพ้น (`data-toast-top` — แถบงานของช่าง: เหนือเมนูล่าง สูงราว 164px จากขอบ)
+   = toast ขึ้นบนใต้แถบบนของแอป · 🐞 review 26/09: toast ทับปุ่มของแถบ/ท้ายหน้าพื้นที่ 3.6 วินาที (แตะแล้วโดน toast)
+   ⚠️ มาหลังกฎ `data-toast-avoid` โดยตั้งใจ — สองบานมีทั้งแถบ (ซ้าย) และท้ายหน้าพื้นที่ (ขวา) ขึ้นบนพ้นทั้งคู่
+   ⚠️ ถามเฉพาะแถบที่อยู่บนจอ (`:has()` เห็นของที่ซ่อนด้วย `hidden` — หน้าเต็มจอของพื้นที่ซ่อนรายการ+แถบไว้) */
+:global(body:has([data-toast-top]:not([hidden] *))) .viewport {
+  top: max(var(--scroll-anchor-top), calc(env(safe-area-inset-top) + 8px));
+  bottom: auto;
+}
+
 .toast {
   --toast-tone: var(--blue);
   display: flex;

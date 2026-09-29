@@ -8,6 +8,7 @@ import {
   SURVEY_DOC_WIDE,
   normalizeSurveyPart,
   packageNeedsNote,
+  parseSurveyMeters,
   spotCounts,
   suggestedPackages,
   surveyEditLockError,
@@ -16,11 +17,15 @@ import {
   surveyFieldMissing,
   surveyFieldProgress,
   surveyFieldSubmitError,
+  surveyGateChecklist,
+  surveyPartLetter,
   surveyResultMissing,
   surveySendError,
   surveyTotals,
+  surveyZoneName,
   surveyZoneSize,
   surveyZoneSummary,
+  surveyZoneSavePayload,
 } from './survey.js';
 
 const part = (w, l, h, label = null) => ({ widthM: w, lengthM: l, heightM: h, label });
@@ -34,6 +39,72 @@ test('ส่วนที่กรอกไม่ครบสามช่อง =
 
 test('เพดานกันพิมพ์ผิดหลัก — 500 ม. คือสนามบิน ไม่ใช่โซนในห้าง', () => {
   assert.match(normalizeSurveyPart(part(3, 4, 900)).error, /พิมพ์ผิดหลัก/);
+});
+
+/* 🐞 ช่องว่างจากจอเป็น `''` ไม่ใช่ `undefined` — `Number('')` = 0 ⇒ เดิมช่องที่ไม่ได้กรอก
+   ถูกฟ้องว่า "ต้องมากกว่า 0" ทั้งที่ช่างไม่ได้พิมพ์ 0 · ช่องว่างต้องได้คำว่า "ต้องระบุ" */
+test('ช่องว่าง = ยังไม่ได้ระบุ · พิมพ์มั่ว = ไม่ใช่ตัวเลข · 0 = ต้องมากกว่า 0 — สามเหตุ สามคำ', () => {
+  assert.match(normalizeSurveyPart({ widthM: '3', lengthM: '4', heightM: '' }).error, /ต้องระบุสูง/);
+  assert.match(normalizeSurveyPart({ widthM: '3', lengthM: '4', heightM: null }).error, /ต้องระบุสูง/);
+  assert.match(normalizeSurveyPart({ widthM: 'x', lengthM: '4', heightM: '3' }).error, /กว้างต้องเป็นตัวเลข/);
+  assert.match(normalizeSurveyPart({ widthM: '0', lengthM: '4', heightM: '3' }).error, /กว้างต้องมากกว่า 0/);
+  assert.equal(normalizeSurveyPart({ widthM: '7,5', lengthM: '4', heightM: '3' }).value.widthM, 7.5);
+  assert.equal(normalizeSurveyPart(null).error, 'ส่วนของพื้นที่: ต้องระบุกว้าง (เมตร)', 'null ต้องถูกตีกลับ ไม่ใช่ TypeError 500');
+});
+
+/* ⭐ แป้นทศนิยมของมือถือบางภาษาให้ "," แทน "." — ช่างพิมพ์ 7,5 หมายถึง 7.5 เสมอ
+   (เพดาน 500 ม. ⇒ ไม่มีค่าจริงที่ต้องใช้ "," คั่นหลักพัน) */
+test('แปลงตัวเลขเมตรจากช่องกรอก', () => {
+  assert.equal(parseSurveyMeters(''), null);
+  assert.equal(parseSurveyMeters('   '), null);
+  assert.equal(parseSurveyMeters(null), null);
+  assert.equal(parseSurveyMeters(undefined), null);
+  assert.equal(parseSurveyMeters('7,5'), 7.5);
+  assert.equal(parseSurveyMeters(' 2.80 '), 2.8);
+  assert.equal(parseSurveyMeters(12), 12);
+  assert.ok(Number.isNaN(parseSurveyMeters('x')));
+  assert.ok(Number.isNaN(parseSurveyMeters('1,2,3')));
+  assert.ok(Number.isNaN(parseSurveyMeters('Infinity')));
+});
+
+/* 🐞 UAT 25/09 — ช่องเป็นข้อความอิสระแล้ว (ไม่ใช่ type=number ที่เบราว์เซอร์กรองให้) ⇒ `Number()` รับรูปที่ช่าง
+   ไม่ได้ตั้งใจ: '0x1F' → 31 · '1e2' → 100 · '+5' → 5 · และ **'1,200' → 1.2** — พิมพ์ผิดหน่วยแบบคั่นหลักพัน
+   หลบเพดาน 500 ม. ไปเงียบ ๆ แล้วไหลเข้าพื้นที่/ปริมาตร/แพ็คเกจ ⇒ รับเฉพาะเลขล้วน + ทศนิยมหนึ่งตัว (จุด/จุลภาค)
+   · รูปหลักพันที่กำกวม = ไม่รับ และข้อความบอกให้ใช้จุด */
+test('🐞 แปลงเมตร: ฐานสิบหก · เลขชี้กำลัง · เครื่องหมาย · คั่นหลักพัน = ไม่ใช่ตัวเลข', () => {
+  for (const raw of ['0x1F', '1e2', '+5', '1,200', '1,000', '12,500', '1.2.3', '1 200', '.', ',', '-']) {
+    assert.ok(Number.isNaN(parseSurveyMeters(raw)), raw);
+  }
+  // ⚠️ รูปที่เป็นตัวเลขจริงยังเป็นตัวเลข — '.5' / '5.' (ช่อง type=number เดิมก็รับ) · ติดลบ = ตัวเลขที่ด่าน "ต้องมากกว่า 0" ตอบ
+  //   (ถ้าเป็น NaN ช่างจะได้คำว่า "ต้องเป็นตัวเลข" ทั้งที่พิมพ์ตัวเลข)
+  assert.equal(parseSurveyMeters('.5'), 0.5);
+  assert.equal(parseSurveyMeters(',5'), 0.5);
+  assert.equal(parseSurveyMeters('5.'), 5);
+  assert.equal(parseSurveyMeters('-5'), -5);
+  // จุลภาคทศนิยมที่ไม่ใช่รูปหลักพันยังรับ — แป้นทศนิยมของบางภาษา
+  assert.equal(parseSurveyMeters('1,25'), 1.25);
+  assert.equal(parseSurveyMeters('12,5'), 12.5);
+  assert.equal(parseSurveyMeters('0,125'), 0.125, 'ขึ้นต้นด้วย 0 ไม่มีทางเป็นหลักพัน');
+  assert.equal(parseSurveyMeters('2.125'), 2.125, 'จุดไม่กำกวม — สามตำแหน่งก็ทศนิยม');
+  assert.equal(parseSurveyMeters('7'), 7);
+});
+
+test('🐞 จอ: "1,200" ถูกตีกลับพร้อมบอกให้ใช้จุดทศนิยม · ค่าพิมพ์มั่วอื่นได้คำเดิม', () => {
+  const size = (widthM) => surveyZoneSavePayload({ parts: [{ label: '', widthM, lengthM: '4', heightM: '3' }] });
+  const text = size('1,200').blocker;
+  assert.match(text, /^ส่วน A ความกว้างต้องเป็นตัวเลข/);
+  assert.match(text, /1,200 อ่านได้ทั้ง 1\.2 และ 1200/);
+  assert.match(text, /ทศนิยมให้ใช้จุด/);
+  assert.equal(size('x').blocker, 'ส่วน A ความกว้างต้องเป็นตัวเลข');
+  assert.match(normalizeSurveyPart({ widthM: '1,200', lengthM: '4', heightM: '3' }).error, /ทศนิยมให้ใช้จุด/,
+    'server พูดเหมือนจอ (แท็บเก่าที่ส่งข้อความดิบ)');
+});
+
+test('ชื่อส่วนบนจอเป็นตัวอักษร A B C… ตามลำดับแถว', () => {
+  assert.equal(surveyPartLetter(0), 'A');
+  assert.equal(surveyPartLetter(1), 'B');
+  assert.equal(surveyPartLetter(19), 'T');
+  assert.equal(surveyPartLetter(26), '27', 'เกินตัวอักษรแล้วใช้เลขลำดับ ไม่ใช่ undefined');
 });
 
 // ── ⭐ หนึ่งพื้นที่วัดได้หลายส่วน ────────────────────────────────────────
@@ -205,6 +276,33 @@ test('ข้อความบอกชื่อพื้นที่ที่�
   assert.doesNotMatch(err, /ล็อบบี้/, 'พื้นที่ที่ครบแล้วต้องไม่ถูกเอ่ยถึง');
 });
 
+test('ชื่อพื้นที่ที่คนอ่าน: ว่าง/ช่องว่าง = "พื้นที่ไม่มีชื่อ" — ตัวเดียวทั้งด่านและจอ (§10.5 S10)', () => {
+  assert.equal(surveyZoneName({ zoneName: '  ห้อง MD ' }), 'ห้อง MD');
+  for (const blank of [{ zoneName: '' }, { zoneName: '   ' }, { zoneName: null }, {}, null, undefined]) {
+    assert.equal(surveyZoneName(blank), 'พื้นที่ไม่มีชื่อ');
+  }
+  /* 🐞 ด่านส่งผลเคยถอยไปที่ "พื้นที่" เฉย ๆ (และไม่ตัดช่องว่าง) ขณะที่รายการด่าน/ตารางเรียก "พื้นที่ไม่มีชื่อ" */
+  const nameless = zone({ id: 'B', zoneName: '  ', spots: [{ id: 's', selected: true }], packageQty: 1 });
+  const err = surveySendError([nameless], { B: [wide] }, { canSend: true });
+  assert.match(err, /ยังส่งผลไม่ได้ — พื้นที่ไม่มีชื่อ: /);
+  const gate = surveyGateChecklist([nameless], { B: [wide] }).find((g) => !g.ok);
+  assert.deepEqual(gate.zones, ['พื้นที่ไม่มีชื่อ'], 'รายการด่านเรียกพื้นที่เดียวกันด้วยชื่อเดียวกัน');
+});
+
+test('คำว่า "พื้นที่ไม่มีชื่อ" มีที่เดียว — จอ/ตัวตัดสินเรียก surveyZoneName ไม่เขียนเอง', () => {
+  const read = (rel) => readFileSync(new URL(rel, import.meta.url), 'utf8');
+  const code = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  for (const rel of [
+    './surveyControl.js', './surveyFieldView.js', './surveyDecision.js', './surveyJob.js',
+    '../../components/service/SurveyResultTable.js', '../../components/service/SurveyZoneList.js',
+    '../../components/service/SurveyZonePage.js', '../../components/service/SurveyControlCard.js',
+    '../../app/service/surveys/[id]/page.js',
+  ]) {
+    assert.doesNotMatch(code(read(rel)), /พื้นที่ไม่มีชื่อ/, `${rel} เขียนชื่อสำรองเอง`);
+  }
+  assert.equal(code(read('./survey.js')).match(/พื้นที่ไม่มีชื่อ/g)?.length, 1);
+});
+
 test('ครบทุกพื้นที่ = ส่งผลได้', () => {
   const a = zone({ id: 'A', spots: [{ id: 's', selected: true }], packageQty: 1 });
   assert.equal(surveySendError([a], { A: [wide, plan] }, { canSend: true }), null);
@@ -255,11 +353,12 @@ test('ใบที่ไม่มีพื้นที่เลย ส่งง�
 });
 
 test('🔴 ป้ายปุ่มที่ข้อความส่งงานชี้ไปหา ต้องมีอยู่จริงบนจอ', () => {
-  const card = readFileSync(new URL('../../components/service/SurveyZoneCard.js', import.meta.url), 'utf8');
-  const page = readFileSync(new URL('../../app/service/surveys/[id]/page.js', import.meta.url), 'utf8');
+  // 🔄 §10.5 S7 — "ตัดพื้นที่นี้ออก" อยู่ที่หน้าพื้นที่ · "เพิ่มพื้นที่ที่เจอหน้างาน" เป็นแถวท้ายรายการพื้นที่
+  const zonePage = readFileSync(new URL('../../components/service/SurveyZonePage.js', import.meta.url), 'utf8');
+  const list = readFileSync(new URL('../../components/service/SurveyZoneList.js', import.meta.url), 'utf8');
   const sheet = readFileSync(new URL('../../components/service/SurveySubmitDialog.js', import.meta.url), 'utf8');
-  assert.match(card, />\s*ตัดพื้นที่นี้ออก\s*</);
-  assert.match(page, />\s*เพิ่มพื้นที่ที่เจอหน้างาน\s*</);
+  assert.match(zonePage, />\s*ตัดพื้นที่นี้ออก\s*</);
+  assert.match(list, />\s*เพิ่มพื้นที่ที่เจอหน้างาน\s*</);
   assert.match(sheet, /label: "ไปแล้วเข้าไม่ได้"/);
 });
 

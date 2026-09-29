@@ -281,6 +281,60 @@ test('⭐ ใบสั่งขายที่ถูกตีกลับมา�
   assert.equal(isSalesOrderWaitingOnMe(null, { userId: me }), false);
 });
 
+/* ── งานบริการย้อนหลัง (mig 0392 · D26 · D28): เลนผู้จัดการตรวจ + เลนเจ้าของดีลตั้ง ────────────────────────
+   ⭐ เลนผู้จัดการอ่าน `serviceBackfillAwaitingReview` ตัวเดียว — ย้อนอนุมัติ/ยกเลิก/Rev. ไม่ล้างค่า 'submitted'
+     ⇒ ใบเดิมที่สถานะเปลี่ยนไปแล้วต้องไม่นับ (ค่าค้าง = ไม่มีผล) · ใบที่ประทับแล้วก็ไม่นับ
+   ⭐ เลนเจ้าของดีล: ผู้เรียกบอก `serviceBackfillNeeded` (ต้องใช้บรรทัด + สายธุรกิจ) · เจ้าของดีลปัจจุบันเท่านั้น */
+const backfillSubmitted = (over = {}) => ({
+  id: 'SO-B', status: 'approved', origin: 'pipeline', supersededById: null, serviceTermsOpenedAt: null,
+  serviceSetupState: 'submitted', serviceSetupSubmittedById: 'USR-AE', createdBy: 'USR-AC',
+  deal: { ownerId: 'USR-AE' }, ...over,
+});
+
+test('⭐ งานบริการย้อนหลังที่ยื่นตรวจแล้ว = เลนของผู้จัดการ (ไม่ใช่คนยื่นเอง ยกเว้น admin)', async () => {
+  const { isSalesOrderWaitingOnMe } = await import('./salesOrderWorkflow.js');
+  const row = backfillSubmitted();
+  assert.equal(isSalesOrderWaitingOnMe(row, { userId: 'USR-SUP', reviewer: true, role: 'ae_supervisor' }), true);
+  assert.equal(isSalesOrderWaitingOnMe(row, { userId: 'USR-SUP', reviewer: false, role: 'ae' }), false, 'ไม่ใช่ผู้ตรวจ = ไม่มีอะไรให้ทำ');
+  // คนยื่นเองอนุมัติเองไม่ได้ (route/RPC ตอบ separation) · admin ใช้ Admin Override ได้ ⇒ นับ
+  const selfSubmitted = backfillSubmitted({ serviceSetupSubmittedById: 'USR-SUP' });
+  assert.equal(isSalesOrderWaitingOnMe(selfSubmitted, { userId: 'USR-SUP', reviewer: true, role: 'ae_supervisor' }), false);
+  assert.equal(isSalesOrderWaitingOnMe(selfSubmitted, { userId: 'USR-SUP', reviewer: true, role: 'admin' }), true);
+  // เจ้าของดีลที่ยื่นไปแล้วไม่ถูกทวงซ้ำ (รอผู้จัดการ) แม้ผู้เรียกบอกว่าใบยังต้องตั้ง
+  assert.equal(isSalesOrderWaitingOnMe(row, { userId: 'USR-AE', reviewer: false, role: 'ae', serviceBackfillNeeded: true }), false);
+});
+
+test('🔴 ค่า submitted ที่ค้างบนใบที่ย้อนอนุมัติ/ถูก Rev. ทับ/ยกเลิก/ประทับแล้ว ไม่นับในเลนผู้จัดการ (D28)', async () => {
+  const { isSalesOrderWaitingOnMe } = await import('./salesOrderWorkflow.js');
+  const sup = { userId: 'USR-SUP', reviewer: true, role: 'ae_supervisor' };
+  for (const status of ['approval_revoked', 'revised', 'cancelled']) {
+    assert.equal(isSalesOrderWaitingOnMe(backfillSubmitted({ status }), sup), false, `${status} + submitted ค้าง`);
+  }
+  assert.equal(isSalesOrderWaitingOnMe(backfillSubmitted({ supersededById: 'SO-B-1' }), sup), false, 'ถูก Rev. ทับ');
+  assert.equal(isSalesOrderWaitingOnMe(backfillSubmitted({ serviceTermsOpenedAt: '2026-09-28T03:00:00Z' }), sup), false, 'ประทับแล้ว');
+  assert.equal(isSalesOrderWaitingOnMe(backfillSubmitted({ origin: 'historical' }), sup), false, 'ใบย้อนหลังไม่มีเส้นนี้');
+  // ใบที่ย้อนอนุมัติแล้วยังเป็นงานของเจ้าของดีลตามเลนเดิม (ออก Rev.) — ค่าค้างไม่แย่งเลนนั้น
+  assert.equal(isSalesOrderWaitingOnMe(backfillSubmitted({ status: 'approval_revoked' }), { userId: 'USR-AE' }), true);
+});
+
+test('⭐ ใบที่ต้องตั้งงานบริการย้อนหลัง = เลนของเจ้าของดีลปัจจุบัน · ผู้เรียกต้องบอก serviceBackfillNeeded', async () => {
+  const { isSalesOrderWaitingOnMe } = await import('./salesOrderWorkflow.js');
+  const pending = backfillSubmitted({ serviceSetupState: null, serviceSetupSubmittedById: null });
+  const owner = { userId: 'USR-AE', reviewer: false, role: 'ae' };
+  assert.equal(isSalesOrderWaitingOnMe(pending, { ...owner, serviceBackfillNeeded: true }), true);
+  assert.equal(isSalesOrderWaitingOnMe(pending, owner), false, 'ไม่บอก = ไม่เดา (ผู้เรียกที่ไม่มีบรรทัด/สายธุรกิจ)');
+  assert.equal(isSalesOrderWaitingOnMe(pending, { ...owner, serviceBackfillNeeded: false }), false, 'ทุกบรรทัดไม่ใช่งานบริการ (D25)');
+  // ตีกลับแล้ว = กลับมาเป็นงานของเจ้าของดีล
+  assert.equal(isSalesOrderWaitingOnMe({ ...pending, serviceSetupState: 'rejected' }, { ...owner, serviceBackfillNeeded: true }), true);
+  // ผู้สร้างใบ (AC) ไม่ใช่เจ้าของดีล · ไม่มีดีลแนบมา/ไม่มีผู้ใช้ = ไม่นับ
+  assert.equal(isSalesOrderWaitingOnMe(pending, { userId: 'USR-AC', serviceBackfillNeeded: true }), false);
+  assert.equal(isSalesOrderWaitingOnMe({ ...pending, deal: null }, { ...owner, serviceBackfillNeeded: true }), false);
+  assert.equal(isSalesOrderWaitingOnMe(pending, { userId: '', serviceBackfillNeeded: true }), false);
+  // ผู้จัดการที่เป็นเจ้าของดีลด้วยก็นับ (เลนเจ้าของดีล) · ใบที่ไม่ได้อนุมัติอยู่ไม่ใช่เลนนี้
+  assert.equal(isSalesOrderWaitingOnMe(pending, { userId: 'USR-AE', reviewer: true, role: 'ae_supervisor', serviceBackfillNeeded: true }), true);
+  assert.equal(isSalesOrderWaitingOnMe({ ...pending, status: 'cancelled' }, { ...owner, serviceBackfillNeeded: true }), false);
+});
+
 /* ⭐ ร่างของใบสั่งขายย้อนหลัง = บันทึกค้างครึ่งทาง/ดึงกลับ (มติ 22/09 · 0374) — ผู้คีย์ต้องกลับมาทำต่อ
    ⚠️ ร่างของใบปกติยังไม่นับเหมือนเดิม (ไม่มีใครรออยู่ปลายทาง) */
 test('⭐ ร่างใบย้อนหลังของฉันนับ · ร่างใบปกติยังไม่นับ · ร่างของคนอื่นไม่นับ', async () => {

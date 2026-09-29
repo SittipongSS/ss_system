@@ -1,7 +1,9 @@
-/* แถบงานของช่างที่ขอบล่างจอประเมิน — ติดอยู่เหนือแถบเมนูมือถือ
+/* แถบงานของช่างที่ขอบล่างจอประเมิน — ติดอยู่เหนือแถบเมนูมือถือ (รูปแบบ A §10.5 S8 · ม็อก A-1 · A-5 · AO-2 · AT-4)
    ⚠️ `sticky` ไม่ใช่ `fixed` — แถบอยู่ในลำดับของหน้า ⇒ ไม่บังเนื้อท้ายหน้า และไม่ต้องเผื่อ
       padding ให้หน้าเอง · `--mobile-nav-h` เป็น 0 บนจอใหญ่ ค่าจึงถูกทั้งสองแบบ
-   ⚠️ พื้นทึบ (`--panel-solid`) — แถบลอยทับการ์ดพื้นที่ตอนเลื่อน พื้นโปร่งแล้วตัวหนังสือซ้อนกัน */
+   ⚠️ พื้นทึบ (`--panel-solid`) — แถบลอยทับรายการพื้นที่ตอนเลื่อน พื้นโปร่งแล้วตัวหนังสือซ้อนกัน
+   ⭐ สองทรง ข้อมูลชุดเดียวกัน: "page" (หน้าเดียว <1000) = แถบเต็มความกว้างชนขอบจอ มีเส้นบนเส้นเดียวแบบม็อก ·
+      "pane" (สองบาน ≥1000) = การ์ดท้ายบานรายการ (บานเลื่อนเอง ⇒ `sticky` ติดขอบล่างของบาน) */
 .bar {
   position: sticky;
   bottom: calc(var(--mobile-nav-h, 0px) + env(safe-area-inset-bottom) + var(--space-2));
@@ -17,11 +19,32 @@
   box-shadow: var(--shadow-md);
 }
 
+/* หน้าเดียว: ชนขอบจอสองข้าง (ถอยออกเท่าระยะขอบของ `.page` พอดี ⇒ ไม่ล้นแนวนอน) · จอดชิดเมนูล่าง ไม่ลอย */
+.bar[data-layout="page"] {
+  bottom: calc(var(--mobile-nav-h, 0px) + env(safe-area-inset-bottom));
+  margin-inline: calc(-1 * var(--page-gutter-tablet));
+  padding-inline: var(--page-gutter-tablet);
+  border-width: 1px 0 0;
+  border-radius: 0;
+  background: var(--panel-float);
+  box-shadow: var(--glass-shadow);
+}
+
+/* 🐞 **แถบลอยเหนือเมนูล่างตอนเลื่อนถึงท้ายหน้า** — `.page` เผื่อระยะท้ายไว้ให้เนื้อพ้นเมนูล่าง ⇒ เลื่อนสุดแล้วแถบกลับไปอยู่
+   ตำแหน่งจริงของมัน ซึ่งสูงกว่าเมนูล่างเท่าระยะนั้น (ช่องว่างสีพื้นใต้แถบ) · หน้าที่มีแถบแบบเต็มความกว้างติดขอบ =
+   แถบคือของท้ายหน้าเอง ⇒ ระยะท้ายเหลือแค่เมนูล่าง · ⚠️ ถามเฉพาะแถบที่ **อยู่บนจอ** (หน้าเต็มจอของพื้นที่ซ่อนบานรายการไว้
+   ด้วย `hidden` — `:has()` ยังเห็นของที่ซ่อน) */
+:global(.page):has(.bar[data-layout="page"][data-sticky]:not([hidden] *)) {
+  padding-bottom: calc(var(--mobile-nav-h, 0px) + env(safe-area-inset-bottom));
+}
+
 /* 🐞 **แถบบังช่องที่กำลังโฟกัส** (WCAG 2.4.11 · ตรวจจอ 2026-09-22) — กด Tab ไปช่องถัดไปที่อยู่
    ในจออยู่แล้วแต่ตรงกับแถบ เบราว์เซอร์ไม่เลื่อน ⇒ วงโฟกัสจมใต้แถบ (หนักบนจอคอมที่กรอกด้วย Tab)
-   ⇒ กันที่ท้ายหน้าเท่าความสูงแถบ **เฉพาะตอนแถบที่มีปุ่มอยู่บนจอ** · แถบบอกผล (ok/warn) ไม่ติดขอบ
-   จึงไม่ต้องกัน · ค่า = ปุ่มสูงระดับนิ้ว + ขอบใน/ระยะลอยของแถบ (≈ 84px เหนือแถบเมนูมือถือ) */
-:global(html):has(.bar:is([data-tone="plain"], [data-tone="todo"])) {
+   ⇒ กันที่ท้ายหน้าเท่าความสูงแถบ **เฉพาะตอนแถบที่ติดขอบอยู่บนจอ** · แถบบอกผล (ส่งงานแล้ว) ไม่ติดขอบ
+   จึงไม่ต้องกัน · ค่า = ปุ่มสูงระดับนิ้ว + ขอบใน/ระยะลอยของแถบ (≈ 84px เหนือแถบเมนูมือถือ)
+   ⚠️ **แป้นบนจอขึ้น (`data-osk="up"`) = ไม่กัน** — แถบหลบไปแล้ว (แผน §10.5 · §3.5) · กันค้างไว้ 84px
+      เหนือแป้นคือเบราว์เซอร์ดันช่องที่กำลังพิมพ์ขึ้นไปลอยกลางจอ ทิ้งช่องว่างเปล่าเท่าแถบที่ไม่มีอยู่แล้ว */
+:global(html):not([data-osk="up"]):has(.bar[data-sticky]:not([hidden] *)) {
   scroll-padding-bottom: calc(var(--mobile-nav-h, 0px) + env(safe-area-inset-bottom) + var(--ctl-h-touch) + var(--space-9));
 }
 
@@ -31,15 +54,13 @@
   scroll-margin-bottom: calc(-1 * (var(--mobile-nav-h, 0px) + env(safe-area-inset-bottom) + var(--ctl-h-touch) + var(--space-9)));
 }
 
-/* ส่งงานแล้ว = ข้อความบอกผล ไม่มีปุ่มให้กด ⇒ ไม่ต้องตามนิ้ว · ติดขอบค้างไว้ = บังการ์ดพื้นที่
+/* ส่งงานแล้ว = ข้อความบอกผล ไม่มีปุ่มให้กด ⇒ ไม่ต้องตามนิ้ว · ติดขอบค้างไว้ = บังรายการพื้นที่
    ที่ช่างยังเปิดแก้ได้อยู่ (ยังแก้ผลวัดได้จนหัวหน้าส่งผล) */
-.bar[data-tone="ok"],
-.bar[data-tone="warn"] { position: static; box-shadow: none; }
+.bar:not([data-sticky]) { position: static; box-shadow: none; }
 .bar[data-tone="ok"] { border-color: var(--green); }
 .bar[data-tone="warn"] { border-color: var(--amber); }
 /* หัวหน้าส่งกลับให้แก้ — มีปุ่มให้กด ⇒ ติดขอบล่างเหมือนแถบที่ยังทำงานอยู่ (ไม่ใช่แถบบอกผล) */
 .bar[data-tone="todo"] { border-color: var(--amber); }
-.bar[data-tone="todo"] .head { color: var(--amber); }
 
 .copy {
   flex: 1 1 auto;
@@ -49,29 +70,44 @@
 .head {
   display: flex;
   align-items: center;
-  gap: var(--space-1-5);
+  gap: var(--space-1);
   margin: 0;
   color: var(--text-1);
-  font-size: var(--fs-6);
-  font-weight: var(--fw-semibold);
+  font-size: var(--fs-7);
+  font-weight: var(--fw-bold);
   line-height: var(--lh-thai);
   font-variant-numeric: tabular-nums;
 }
+
+.headIcon { flex: none; }
+/* ติดด่าน = กุญแจสีอำพันหน้าคำ (ม็อก AO-2 "ยังส่งไม่ได้") · สถานะไม่พึ่งสีอย่างเดียว — คำบนแถบบอกเอง */
+.head[data-blocked] .headIcon { color: var(--amber); }
+/* เลยเวลานัดแล้วยังไม่กดเริ่มงาน — เวลานัดเป็นสีอำพัน (ตัวตัดสินบอก `late`) */
+.head[data-late] { color: var(--amber); }
 
 .bar[data-tone="ok"] .head { color: var(--green); }
 .bar[data-tone="warn"] .head { color: var(--amber); }
 
 .sub {
-  margin: var(--space-0-5) 0 0;
-  color: var(--text-3);
-  font-size: var(--fs-4);
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-5);
   line-height: var(--lh-thai);
 }
 
-/* ปุ่มหลักสูงระดับนิ้ว — ช่างถือมือถือมือเดียว อีกมือถือตลับเมตร */
+.keep { white-space: nowrap; }
+
+/* ปุ่มหลักสูงระดับนิ้ว — ช่างถือมือถือมือเดียว อีกมือถือตลับเมตร · กว้างพอให้ป้ายไม่หักบรรทัด */
 .action { flex: none; }
-.action :global(.btn) { min-height: var(--ctl-h-touch); }
+.actionBtn {
+  min-height: var(--ctl-h-touch);
+  white-space: nowrap;
+}
 
 @media (max-width: 680px) {
   .bar { padding: var(--space-2-5) var(--space-3); }
+  .bar[data-layout="page"] {
+    margin-inline: calc(-1 * var(--page-gutter-mobile));
+    padding: var(--space-3) var(--page-gutter-mobile);
+  }
 }

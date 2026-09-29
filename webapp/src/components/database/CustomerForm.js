@@ -46,9 +46,13 @@ import { apiFetch } from "@/lib/apiFetch";
 // server เป็นคนกระจกกลับลง address/shippingAddress/branchCode ให้เอง
 export const EMPTY_CUSTOMER = {
   arCode: "", name: "", nameEn: "", nameTitle: "", namePerson: "", customerType: "company", taxId: "",
-  phone: "", addresses: [], brands: [], contacts: [], creditTerms: "",
+  phone: "", addresses: [], brands: [], contacts: [],
   teams: [], isForeign: false,
 };
+/* ⚠️ ไม่มี `creditTerms` (เงื่อนไขเครดิตแบบพิมพ์อิสระ) แล้ว — มติเจ้าของ 26/09 (mig 0390): "เครดิตเป็นข้อความ
+   อยากให้เป็นสวิตช์" ⇒ เครดิตตั้งได้ทางเดียวที่การ์ด "เครดิตและรอบวางบิล" บนหน้าลูกค้า (เส้น `/billing-rule`
+   ไม่ต้องอนุมัติใหม่ · ฝ่ายบัญชีแก้ได้) · ข้อความเดิมยังอยู่ในฐาน การ์ด/สรุปโชว์แบบอ่านอย่างเดียว
+   🪤 อย่าเติมกลับ — สองทางแก้ค่าเดียวกัน = วันหนึ่งพูดไม่ตรงกัน และทางนี้ส่งลูกค้ากลับไปรออนุมัติ */
 
 // แปลงลูกค้าจาก API → state ของฟอร์ม (โมดัลแก้ใช้ตอนเปิด).
 // รวม fallback ข้อมูลยุคเก่าไว้ที่นี่ที่เดียว — แถวที่ยังไม่ย้ายมา teams[]/brands[]/
@@ -79,7 +83,6 @@ export const customerToForm = (c) => ({
     : (c.contactPerson || c.contactPhone || c.email
         ? [{ role: "", name: c.contactPerson || "", phone: c.contactPhone || "", email: c.email || "" }]
         : []),
-  creditTerms: c.creditTerms || "",
   // teams[] (0037) — ยุคเก่ามีทีมเดียวที่คอลัมน์ team
   teams: c.teams?.length ? c.teams : (c.team ? [c.team] : []),
 });
@@ -428,13 +431,12 @@ export default function CustomerForm({
             <BrandsEditor value={form.brands} onChange={(v) => onForm({ brands: v })} />
             <span className="text-[11px] text-[var(--text-3)] mt-1">ใส่ได้หลายแบรนด์</span>
           </div>
-          {/* เงื่อนไขเครดิตเคยเป็น section ของตัวเอง (“4. ข้อมูลเพิ่มเติม”) ที่มีช่องเดียว
-              — section ทั้งอันเพื่อช่องเดียวอ่านเหมือนมีอะไรสำคัญรออยู่ข้างล่าง */}
+          {/* ช่อง "เงื่อนไขเครดิต" แบบพิมพ์อิสระถูกถอด (มติ 26/09 · ดูหัว EMPTY_CUSTOMER) — บอกทางไปที่ตั้งจริง
+              ทั้งโหมดสร้างและแก้ (ลูกค้าใหม่เริ่มที่ "ยังไม่ระบุ" แล้วตั้งหลังบันทึก) */}
           <div className="form-group col-span-2">
-            <label>เงื่อนไขเครดิต (Credit Terms)</label>
-            <input type="text" name="creditTerms" value={form.creditTerms} onChange={set("creditTerms")} placeholder="เช่น เครดิต 30 วัน" className="premium-input w-full" />
             <span className="text-[11px] text-[var(--text-3)] mt-1">
-              แผนที่และเอกสารแนบ (สัญญา/หนังสือรับรอง/ภพ.20 ฯลฯ) เพิ่มได้ที่หน้าข้อมูลลูกค้า
+              เงื่อนไขเครดิตและรอบวางบิล ตั้งที่การ์ด “เครดิตและรอบวางบิล” บนหน้าข้อมูลลูกค้า (ไม่ต้องขออนุมัติใหม่) ·
+              แผนที่และเอกสารแนบ (สัญญา/หนังสือรับรอง/ภพ.20 ฯลฯ) เพิ่มได้ที่หน้าข้อมูลลูกค้าเช่นกัน
             </span>
           </div>
         </div>
