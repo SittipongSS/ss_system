@@ -9,6 +9,7 @@ import {
 } from '@/lib/sales/orderConfirmationDocs';
 import { missingStoredEvidence, purgePrivateEvidence, removeEvidenceRefs } from '@/lib/upload/privateEvidence';
 import { canEditCustomerBillingRule, departmentOf } from '@/lib/permissions';
+import { billingSkipReadyOf, probeBillingSkip } from '@/lib/sales/billingPolicySchema';
 import {
   canEditSalesPlanning,
   canViewSalesPlanning,
@@ -226,10 +227,13 @@ export const dynamic = 'force-dynamic';
      · อ่านพลาดอย่างอื่น = ไม่มีแถวลูกค้า (พฤติกรรมเดิม — หัวใบขึ้นแค่ชื่อ) แต่ไม่โทษ migration
    ⭐ `team, teams` = ทีมที่ดูแลลูกค้า — GET ถาม `canEditCustomerBillingRule` (ตัวเดียวกับ API ตั้งรอบ) ส่งเป็นธง
      `canEditBillingRule` ให้แผงเลือกคำ "ตั้งรอบวางบิล" (คนที่ตั้งได้) หรือ "ดูที่ทะเบียนลูกค้า" (ไม่มีสิทธิ์ = ไม่ชวนตั้ง)
-     ⚠️ ขาดสองช่องนี้ = `caretakerTeamsOf` เห็นลูกค้าไร้ทีม ⇒ ถือเป็นของกลาง ⇒ ฝ่ายขายทุกทีมได้ธงจริงผิด ๆ */
+     ⚠️ ขาดสองช่องนี้ = `caretakerTeamsOf` เห็นลูกค้าไร้ทีม ⇒ ถือเป็นของกลาง ⇒ ฝ่ายขายทุกทีมได้ธงจริงผิด ๆ
+   ⭐ `billingRuleUpdatedAt` = ตัวล็อกของแถบ "ลูกค้ารายนี้ต้องวางบิลไหม?" (rework v4) — ส่งค่าดิบกลับไปเป็น `baseUpdatedAt`
+     ⚠️ ขาดช่องนี้ = แถบส่ง null ⇒ route ล็อกด้วย `.is(null)` ⇒ ลูกค้า {credit:false} 449 รายที่ 0390 ประทับเวลาไว้ ตอบ 409 ทุกครั้ง
+     (มากับ 0389 คอลัมน์ชุดเดียวกับ billingRule ⇒ ทางถอย 42703 ยังครอบ) */
 async function loadCustomerOfOrder(supabase, customerId) {
   if (!customerId) return { customer: null, billingSchemaReady: true };
-  const withRule = await supabase.from('customers').select('id, arCode, team, teams, "billingRule"').eq('id', customerId).maybeSingle();
+  const withRule = await supabase.from('customers').select('id, arCode, team, teams, "billingRule", "billingRuleUpdatedAt"').eq('id', customerId).maybeSingle();
   if (withRule.error?.code !== '42703') return { customer: withRule.data || null, billingSchemaReady: true };
   const legacy = await supabase.from('customers').select('id, arCode, team, teams').eq('id', customerId).maybeSingle();
   return { customer: legacy.data || null, billingSchemaReady: false };
@@ -337,6 +341,12 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
   let installmentsError = null;
   const installmentRows = await loadInstallments(supabase, order.id)
     .catch((error) => { installmentsError = error; return []; });
+  /* ⭐ ฐานรัน 0393 แล้วหรือยัง (rework v4 · ติ๊ก "งวดนี้ไม่ต้องวางบิล" + แถบ "ต้องวางบิลไหม") — อ่านจากแถวงวดที่โหลดด้วย
+     select('*') อยู่แล้ว (มีคีย์ billingSkip = มีคอลัมน์) · ใบไม่มีงวด/อ่านงวดพลาด = ถามฐานหนึ่งแถว
+     ⚠️ ก่อน 0389 (`billingSchemaReady` เท็จ) ไม่ต้องถาม — 0393 ต่อจาก 0389 เสมอ */
+  const billingSkipReady = !billingSchemaReady
+    ? false
+    : (billingSkipReadyOf(installmentRows) ?? (await probeBillingSkip(supabase)).ready);
 
   /* ⭐ คำร้องวางบิลที่งวดผูกอยู่ แต่เป็นของ **ใบเสนอราคาอื่น** (review F3) — งวดที่ยกมาจากใบที่ยกเลิก (0378) พก billingRequestId
      ของใบเดิมมาด้วย และใบใหม่ของดีลเดียวกันมาจาก QT คนละใบเสมอ (sales_orders.quotationId UNIQUE) ⇒ ค้นด้วย QT ของใบนี้ไม่เจอ
@@ -412,6 +422,7 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
     deal: deal || null,
     customer: customer || null,
     billingSchemaReady,
+    billingSkipReady,
     quotation: quotation || null,
     project: project || null,
     revisionHistory: revisionHistory || [],

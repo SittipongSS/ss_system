@@ -14,7 +14,7 @@
 // ⚠️ **`reported` ไม่นับว่าเก็บเงินได้** — นับเฉพาะ `confirmed` (กติกาจาก mig 0245:
 // SA แจ้งเองนับเอง = ไม่มีด่าน) · ยอด "เก็บได้" ทุกตัวในไฟล์นี้จึงนับจาก confirmed เท่านั้น
 
-import { fmtMonthYear, fmtName } from '@/lib/format';
+import { NA, fmtMonthYear, fmtName } from '@/lib/format';
 import { bucketList } from '@/lib/listGrouping';
 import { paidThrough } from '@/lib/sales/paymentCoverage';
 import {
@@ -26,7 +26,8 @@ import {
   OPENING_INSTALLMENT_LABEL, ORIGIN_PIPELINE, historicalRefsOf, isHistoricalOrder, isOpeningInstallment,
 } from '@/lib/sales/historicalOrders';
 import {
-  BILLING_REMIND_DAYS, billingRequestLive, billingRuleNeedsBillingDate, billingState, billingStateLabel, describeBillingRule,
+  BILLING_REMIND_DAYS, DUE_REMIND_DAYS, NO_BILLING_TEXT, UNKNOWN_TEXT, billingRequestLive, billingState, billingStateLabel,
+  describeBillingRule, ledgerFlags, nagsMissingBilling,
 } from '@/lib/sales/billingRule';
 
 /** สถานะงวด → ป้ายไทย + โทนสี (ชุดเดียวกับที่การ์ดในใบ SO ใช้) */
@@ -79,22 +80,46 @@ export function ledgerVoidInstallment(installment, order) {
      เพราะตัวคัดตัดมากกว่าสถานะงวด (ร่างที่ QT ถูกถอด Won · ใบย้อนหลังที่ยังไม่อนุมัติ · ลูกค้าสหมิตร) ⇒ คิดซ้ำที่นี่ = สองชุดเพี้ยนกัน
    ⚠️ **วันวางบิล ≠ กำหนดชำระ** — "เลยกำหนด" (แดง) ยังอ่าน `dueDate` ช่องเดียว · วันวางบิลที่ผ่านไปแล้ว = "เลยรอบวางบิล"
      โทนเตือน ไม่มีทางแดงจากช่องนี้ (ตัวคิดสถานะอยู่ที่ billingRule.js ตัวเดียว — ห้ามคิดซ้ำที่นี่)
-   ⚠️ นับเฉพาะงวดที่ "ยังมีงานวางบิล" (ยังไม่แจ้งชำระ/ยังไม่รับเงิน · ไม่ใช่งวดยกมา) — กติกาเดียวกับกระดิ่ง */
+   ⚠️ นับเฉพาะงวดที่ "ยังมีงานวางบิล" (ยังไม่แจ้งชำระ/ยังไม่รับเงิน · ไม่ใช่งวดยกมา) — กติกาเดียวกับกระดิ่ง
+   ⭐ รุ่นสี่ (มติเจ้าของ 28–29/09 · system-design §6): ลูกค้า/งวดที่ **ไม่ต้องวางบิล** ไม่มีสถานะวางบิลเลย (`notNeeded` — ไม่มีเลยรอบ ·
+     ไม่มีคำชวน "ยังไม่มีวันวางบิล" · คำขอใบวางบิลเป็นขีด) · ตัวกรองรอบวางบิลอ่านวันวางบิลของงวด ⇒ ลูกค้าไม่ต้องวางบิลไม่เข้าเอง
+     · ใหม่: `?billing=missing` (ต้องวางบิลแต่ยังไม่มีวัน) + `?due=soon` (ชุดของกระดิ่งครบกำหนด · `LEDGER_DUE_FILTERS`) */
 export const LEDGER_BILLING_WINDOW_DAYS = 7;
 export const LEDGER_BILLING_FILTERS = Object.freeze([
   { value: 'soon', label: `ถึงรอบใน ${BILLING_REMIND_DAYS} วัน · ยังไม่ขอใบ`, empty: `ไม่มีงวดที่ถึงรอบวางบิลใน ${BILLING_REMIND_DAYS} วันโดยยังไม่ขอใบ`, hint: `ชุดเดียวกับกระดิ่ง "ถึงรอบวางบิล" — งวดรอชำระที่มียอด วันวางบิลอยู่ในวันนี้ถึงอีก ${BILLING_REMIND_DAYS} วัน และยังไม่มีคำร้องขอใบวางบิลที่ส่งแล้ว` },
   { value: '7d', label: 'ถึงรอบใน 7 วัน', empty: 'ไม่มีงวดที่ถึงรอบวางบิลใน 7 วันนี้', hint: 'นับเฉพาะงวดที่มีวันวางบิลและยังไม่แจ้งชำระ ทั้งที่ขอใบแล้วและยังไม่ขอ' },
   { value: 'month', label: 'ถึงรอบเดือนนี้', empty: 'ไม่มีงวดที่ถึงรอบวางบิลเดือนนี้', hint: 'นับเฉพาะงวดที่มีวันวางบิลในเดือนนี้ (รวมวันที่ผ่านไปแล้ว) และยังไม่แจ้งชำระ' },
   { value: 'late', label: 'เลยรอบ ยังไม่ขอใบวางบิล', empty: 'ไม่มีงวดที่เลยรอบวางบิลโดยยังไม่ขอใบ', hint: 'งวดที่ขอใบวางบิลแล้ว หรือฝ่ายขายแจ้งชำระแล้ว ไม่นับเป็นเลยรอบ' },
+  /* ⭐ รุ่นสี่ (§6): งวดของลูกค้าที่ **ต้องวางบิล** แต่ยังไม่มีวันวางบิล (`ledgerFlags().missingBilling`) — ไม่นับลูกค้าไม่ต้องวางบิล ·
+     งวดที่ติ๊ก "งวดนี้ไม่ต้องวางบิล" · รูปเดิม { credit:false } (เท่า prod จนกว่า backfill) · งวดรอเหตุการณ์ */
+  { value: 'missing', label: 'ยังไม่มีวันวางบิล', empty: 'ไม่มีงวดที่ต้องวางบิลแต่ยังไม่มีวันวางบิล', hint: 'นับเฉพาะงวดรอชำระของลูกค้าที่ต้องวางบิล — ไม่นับลูกค้าไม่ต้องวางบิล งวดที่ติ๊ก "งวดนี้ไม่ต้องวางบิล" ลูกค้าที่ยังไม่ระบุ/รูปเดิม "ไม่มีเครดิต" และงวดรอเหตุการณ์' },
 ]);
 /* ค่าที่ไม่รู้จัก = '' (ไม่กรอง) — ลิงก์พิมพ์ผิดต้องไม่ทำให้ทะเบียนว่างโดยไม่มีคำอธิบาย (กติกาเดียวกับ taxInvoice) */
 export const ledgerBillingFilter = (value) => (LEDGER_BILLING_FILTERS.some((f) => f.value === value) ? value : '');
-/* คำบนแถวของลูกค้าที่ยังไม่ตั้งรอบ — ค่าว่างของรอบคือสถานะปกติ (ลูกค้าส่วนใหญ่จ่ายก่อน/พร้อมสั่ง · บางที่ไม่มีรอบวาง) */
-export const LEDGER_BILLING_RULE_UNSET = 'ยังไม่ตั้งรอบวางบิล';
-/* ป้ายในเซลล์ "วางบิลถัดไป" — จอกับชุดค้นใช้ค่าเดียวกัน (ตาเห็นบนแถว = ต้องค้นเจอ) */
-export const LEDGER_BILLING_REQUESTED_TAG = 'ขอใบแล้ว';
+/* ── ครบกำหนดชำระ (รุ่นสี่ · §6 ช่วง 4a) — ตัวกรอง `?due=soon` = **ชุดของกระดิ่ง "ครบกำหนดชำระ" เป๊ะ** ────────────────
+   ⭐ กระดิ่งแถวสรุป FN ลิงก์มาที่ `?due=soon` แล้วหัวข้อ "N งวด" ต้องเท่ากับที่เปิดมาเจอ (บทเรียนเดียวกับ `soon` ของวางบิล)
+     ⇒ ธงของแถว (`dueSoon`) ไม่คิดที่นี่ — route ถามตัวคัด `dueSoonCandidates` (billingDueNotify.js) ตัวเดียวกับ cron แล้วส่งผล
+       เข้า `ledgerRow` (`dueRemind`) · ชุดนี้รวมงวดที่กระดิ่งฝั่งขายถูกรวมเข้ากระดิ่งวางบิลวันเดียวกันด้วย (`ledgerFlags().dueSoon`)
+   ⚠️ อ่านกำหนดชำระช่องเดียว · รอเหตุการณ์ไม่นับ · ไม่เกี่ยวกับ "เลยกำหนด" (แดง) ซึ่งยังเป็นตัวกรอง `overdue` เดิม */
+export const LEDGER_DUE_FILTERS = Object.freeze([
+  { value: 'soon', label: `ครบกำหนดใน ${DUE_REMIND_DAYS} วัน`, empty: `ไม่มีงวดที่ครบกำหนดชำระใน ${DUE_REMIND_DAYS} วัน`, hint: `ชุดเดียวกับกระดิ่ง "ครบกำหนดชำระ" — งวดรอชำระที่มียอด กำหนดชำระอยู่ในวันนี้ถึงอีก ${DUE_REMIND_DAYS} วัน (รวมงวดที่ขอใบวางบิลแล้ว · ไม่นับงวดรอเหตุการณ์)` },
+]);
+export const ledgerDueFilter = (value) => (LEDGER_DUE_FILTERS.some((f) => f.value === value) ? value : '');
+/* คำบนแถวของลูกค้าที่ยังไม่ตอบ "ต้องวางบิลไหม" (`billingRule` null · รุ่นสี่) — คำเดียวกับการ์ดลูกค้า (`UNKNOWN_TEXT`)
+   ⚠️ ไม่ใช่ข้อมูลเสีย: ลูกค้าส่วนใหญ่ยังไม่ถูกถาม (ถามตอนตั้งวันงวดครั้งแรก · มติข้อ 4 ทาง 3) */
+export const LEDGER_BILLING_RULE_UNSET = UNKNOWN_TEXT;
+/* ป้ายของคอลัมน์ "คำขอใบวางบิล" (รุ่นสี่ · §6: ร่าง / ส่งแล้ว / ยังไม่ขอ / —) — จอกับชุดค้นใช้ค่าเดียวกัน (ตาเห็นบนแถว = ต้องค้นเจอ)
+   ⚠️ "ส่งแล้ว" = `billingRequestLive` (ส่งถึงบัญชีแล้ว ยังไม่ยกเลิก) · "ร่าง" = ผูกคำร้องที่ยังไม่ส่ง (ยังไม่นับว่าขอ — กระดิ่งยังเตือน) */
+export const LEDGER_BILLING_REQUESTED_TAG = 'ส่งแล้ว';
+export const LEDGER_BILLING_DRAFT_TAG = 'ร่าง';
 export const LEDGER_BILLING_UNREQUESTED_TAG = 'ยังไม่ขอ';
 export const LEDGER_BILLING_WAITING_TAG = 'รอเหตุการณ์';
+/* คำชวนของใบที่มีงวดต้องวางบิลแต่ยังไม่มีวันวางบิล (`billingMissing`) — คำเดียวกับตัวเลือก `?billing=missing` และคำต่อท้ายกระดิ่งครบกำหนด */
+export const LEDGER_BILLING_MISSING_TAG = 'ยังไม่มีวันวางบิล';
+/* สถานะคำขอใบวางบิลของงวด → ป้าย ('' = ขีด: ไม่มีวันวางบิล · งวดจบแล้ว/ยกมา · ลูกค้า/งวดไม่ต้องวางบิล) */
+export const LEDGER_BILLING_REQUEST_LABEL = Object.freeze({
+  sent: LEDGER_BILLING_REQUESTED_TAG, draft: LEDGER_BILLING_DRAFT_TAG, none: LEDGER_BILLING_UNREQUESTED_TAG,
+});
 
 /* ── "ขอใบวางบิลแล้ว" = งวดผูกคำร้อง (billingRequestId · 0260) **และคำร้องส่งถึงบัญชีแล้ว ยังไม่ถูกยกเลิก** ──
    กติกาอยู่ที่ `billingRequestLive` (billingRule.js) ตัวเดียว — ร่างที่ยังไม่ส่ง = ยังไม่ขอ · ยกเลิก/ถูกลบ = ยังไม่ขอ
@@ -108,11 +133,28 @@ const billingOpenKey = (key) => key !== 'settled' && key !== 'carried';
    ⚠️ วันที่/ระยะ ("อีก 3 วัน") ไม่อยู่ในชุดค้นโดยตั้งใจ — เปลี่ยนทุกวัน และตัวกรอง "รอบวางบิล" ตอบคำถามนั้นอยู่แล้ว */
 function billingSearchWords(r) {
   const event = String(r.billingEvent || '').trim();
-  const open = billingOpenKey(r.billingStateKey);
   return [
     event ? `${LEDGER_BILLING_WAITING_TAG} ${event}` : '',
-    open && r.billingDate ? (r.billingRequested ? LEDGER_BILLING_REQUESTED_TAG : LEDGER_BILLING_UNREQUESTED_TAG) : '',
+    // คำในคอลัมน์ "คำขอใบวางบิล" (ขีด = ไม่มีคำให้ค้น)
+    LEDGER_BILLING_REQUEST_LABEL[r.billingRequestState] || '',
+    // รุ่นสี่: คำชวน "ยังไม่มีวันวางบิล" · คำ "ไม่ต้องวางบิล" ของงวดที่ไม่ต้องวางบิล (เซลล์วางบิลถัดไป)
+    r.billingMissing ? LEDGER_BILLING_MISSING_TAG : '',
+    r.billingStateKey === 'notNeeded' ? NO_BILLING_TEXT : '',
   ];
+}
+
+/**
+ * สถานะคำขอใบวางบิลของงวด (รุ่นสี่ · คอลัมน์ "คำขอใบวางบิล") — 'sent' | 'draft' | 'none' | ''
+ *   · คำร้องที่ผูกอยู่เป็นข้อเท็จจริง — ส่งแล้ว/ร่าง ขึ้นเสมอ (ลูกค้าเปลี่ยนเป็นไม่ต้องวางบิลทีหลัง คำร้องเดิมไม่หายจากจอ)
+ *   · ไม่มีคำร้องที่ยังมีชีวิต + มีวันวางบิล + งวดยังมีงานวางบิล = 'none' (ยังไม่ขอ) · นอกนั้น '' (ขีด)
+ *     ⭐ ไม่มีวันวางบิล = ขีด ไม่ใช่ "ยังไม่ขอ" — ไม่ชวนขอใบของงวดที่ไม่มีวันวางบิล (มติเจ้าของ 28/09) · ลูกค้าไม่ต้องวางบิลจึงไม่มีป้ายชวน
+ * ⚠️ คำร้องที่ยกเลิก/ถูกลบ/เป็นของงวดอื่น = ไม่มีคำร้อง (กติกาเดียวกับ `billingRequested`)
+ */
+function billingRequestStateOf({ installment, billingRequest, billingDate, billingKey }) {
+  const linked = Boolean(installment.billingRequestId) && billingRequest?.id === installment.billingRequestId;
+  if (linked && billingRequestAlive(billingRequest)) return 'sent';
+  if (linked && String(billingRequest.status || '') === 'draft') return 'draft';
+  return billingDate && billingOpenKey(billingKey) && billingKey !== 'notNeeded' ? 'none' : '';
 }
 
 /* คำบอกระยะของวันวางบิลถัดไปบนแถวใบ (ม็อก D) — สั้นกว่า `billingStateLabel` เพราะป้าย "ขอใบแล้ว/ยังไม่ขอ"
@@ -133,7 +175,7 @@ export function ledgerBillingWhen(state) {
  */
 export function ledgerRow({
   installment, order, quotation, customer, deal = null, todayIso = null,
-  serviceRounds = false, billingRequest = null, billingRemind = false,
+  serviceRounds = false, billingRequest = null, billingRemind = false, dueRemind = false,
 }) {
   if (!installment || !order) return null;
   const status = installment.status || 'pending';
@@ -143,8 +185,14 @@ export function ledgerRow({
   const billingDate = installment.billingDate || null;
   const billingRequested = Boolean(installment.billingRequestId)
     && billingRequestAlive(billingRequest) && billingRequest.id === installment.billingRequestId;
-  const billing = billingState(installment, { todayIso, requested: billingRequested });
+  /* ⭐ รุ่นสี่: สถานะรู้กติกาของลูกค้า (`customer.billingRule` · ไม่มี = ยังไม่ระบุ) — ลูกค้า/งวดที่ไม่ต้องวางบิลได้ 'notNeeded'
+     (ไม่มี late/soon ไม่มีทางเข้าตัวกรองรอบวางบิล) · งวดที่มีวันวางบิลได้สถานะเดิมทุกตัวอักษร (วันที่เก็บไม่ถูกซ่อน)
+     ธงชุดเดียวกับกระดิ่ง/แผงงวด (`ledgerFlags`) — ทะเบียนไม่คิดกติกาเอง */
+  const rule = customer?.billingRule ?? null;
+  const billing = billingState(installment, rule, { todayIso, requested: billingRequested });
+  const flags = ledgerFlags(installment, rule, { todayIso, requested: billingRequested });
   const billingOpen = billingOpenKey(billing.key) && Boolean(billingDate);
+  const billingRequestState = billingRequestStateOf({ installment, billingRequest, billingDate, billingKey: billing.key });
   return {
     id: installment.id,
     // ── อ้างอิงเอกสาร: ทั้งเลขที่ (สำหรับคนอ่าน) และ id (สำหรับลิงก์) ──
@@ -175,15 +223,19 @@ export function ledgerRow({
        ⚠️ อยู่ในชุดค้นด้วย (ตาเห็นบนแถว = ต้องค้นเจอ) */
     customerId: order.customerId || customer?.id || null,
     /* ข้อความรอบ: ไม่มีเครดิต = "ไม่มีเครดิต · ชำระวันวางบิล" (มติ 28/09 ข้อ 17 — ตั้งแล้ว ไม่ใช่ "ยังไม่ตั้งรอบ")
-       ⭐ `billingRuleActive` = ธงของข้อความชวน "ยังไม่กำหนด · N งวดไม่มีวันวางบิล" + ตัวนับงวดที่ตัวกรองรอบวางบิลซ่อน —
+       · รุ่นสี่: "ไม่ต้องวางบิล" · "ต้องวางบิล · ยังไม่ตั้งรอบ" · ประโยคนโยบาย (`describeRule`) · '' = ยังไม่ระบุ (จอขึ้น `LEDGER_BILLING_RULE_UNSET`)
+       ⭐ `billingRuleActive` = ลูกค้ารายนี้ถูกชวน "ยังไม่มีวันวางบิล" ได้ไหม (`nagsMissingBilling`) · จอ/ตัวนับอ่านธงรายงวด
+         `billingMissing` (ข้างล่าง) ซึ่งรวมข้อยกเว้นรายงวดแล้ว — ย่อหน้าต่อไปนี้เป็นเหตุผลของยุคก่อนรุ่นสี่ที่ยังจริงอยู่ —
          **เฉพาะลูกค้าที่มีรอบรายเดือน/เครดิต** (`billingRuleNeedsBillingDate`) · ไม่มีเครดิตไม่นับ (มติ 28/09 · ทางเลือกที่เงียบที่สุด
          ที่ยังพูดจริง): กำหนดชำระของลูกค้าไม่มีเครดิต = วันวางบิลอยู่แล้ว ใบเก่าที่มีกำหนดชำระจึงไม่ได้ขาดอะไร ·
          นับเมื่อไร ใบไม่มีเครดิตที่มีงวดเปิดโดยไม่มีวันวางบิลขึ้นชวนทันที 46 ใบ (prod 28/09 — แม้นับเฉพาะงวดที่ว่างทั้งสามช่องก็ 24 ใบ)
          ⇒ FN เปิดจากกระดิ่งแล้วเจอ "ยังไม่กำหนด" เต็มคอลัมน์ ทั้งที่งานของใบพวกนั้นคือตามกำหนดชำระ (คอลัมน์ของมันเอง)
        ⚠️ ธงนี้ไม่แตะตัวกรอง `?billing=` — ตัวกรองอ่านธงของแถว (billingSoon/7d/month/late) ที่คิดจากวันวางบิลของงวดเท่านั้น
          ⇒ งวดของลูกค้าไม่มีเครดิต/ยังไม่ตั้งที่มีวันวางบิล ติดตัวกรองเหมือนทุกใบ (ไม่มีโค้ดดูกติกาหรือสายของใบ) */
-    billingRuleText: describeBillingRule(customer?.billingRule, { short: true }),
-    billingRuleActive: billingRuleNeedsBillingDate(customer?.billingRule),
+    billingRuleText: describeBillingRule(rule, { short: true }),
+    /* ⭐ รุ่นสี่: ตัวตัดสินคือ `nagsMissingBilling` ของตัวคิด (ต้องวางบิลจริง · รูปเดิม { credit:false } = ไม่ชวน เท่ากับ prod)
+       ผลเท่า `billingRuleNeedsBillingDate` เดิมทุกค่ารุ่นหนึ่ง/สอง · ลูกค้าไม่ต้องวางบิล/ยังไม่ตั้งรอบ = ตามรุ่นสี่ */
+    billingRuleActive: nagsMissingBilling(rule),
     /* สองขั้นแรกของราง — พกมากับแถวเพื่อให้ก้อน (`groupLedgerByOrder`) ประกอบราง
        ได้โดยไม่ต้องยิง API ซ้ำ · ขั้นที่สามคำนวณจากงวดในก้อนเอง */
     orderStatus: order.status || null,
@@ -234,6 +286,23 @@ export function ledgerRow({
     /* งวดนี้อยู่ในชุดของกระดิ่ง "ถึงรอบวางบิล" วันนี้ (ตัวกรอง `soon`) — ผู้เรียกถามตัวคัดของกระดิ่งแล้วส่งมา
        (`billingRemind` · ดูหัวข้อรอบวางบิลข้างบน) · ไม่ส่ง = ไม่อยู่ในชุด (ตัวกรองว่าง ไม่เดาเอง) */
     billingSoon: Boolean(billingRemind),
+    /* ── รุ่นสี่ (§6 · "ต้องวางบิลไหม") — ⚠️ whitelist: ลืมเติม = ตัวกรอง/คอลัมน์ใหม่ว่างเงียบ ๆ ──────────────────────────
+       · `billingNeed` = งวดนี้ต้องวางบิลไหม ('required' | 'none' | 'unknown' · `installmentNeed`)
+       · `billingOverride` = ข้อยกเว้นรายงวด ('billing' งวดนี้ต้องวางบิล · 'skip' งวดนี้ไม่ต้องวางบิล · null)
+       · `billingMissing` = ต้องวางบิลแต่ยังไม่มีวันวางบิล (ตัวกรอง `?billing=missing` + คำชวน "ยังไม่กำหนด" ของก้อนใบ)
+       · `billingRequestState`/`billingRequestLabel` = คอลัมน์ "คำขอใบวางบิล" (ร่าง / ส่งแล้ว / ยังไม่ขอ / —) — Excel ได้เป็นคำ
+       · `dueStateKey`/`dueDays` = สถานะกำหนดชำระ (`dueState` — 'late' คือแดง "เลยกำหนด" ตัวเดียวกับ `overdue`)
+       · `dueSoon` = งวดนี้อยู่ในชุดของกระดิ่ง "ครบกำหนดชำระ" วันนี้ (ตัวกรอง `?due=soon`) — ผู้เรียกถามตัวคัดของกระดิ่งแล้วส่งมา
+         (`dueRemind`) · ไม่ส่ง = ไม่อยู่ในชุด (ไม่เดาเอง · กติกาเดียวกับ `billingSoon`) */
+    billingNeed: flags.need,
+    billingOverride: flags.override,
+    billingSkip: installment.billingSkip === true,
+    billingMissing: flags.missingBilling,
+    billingRequestState,
+    billingRequestLabel: LEDGER_BILLING_REQUEST_LABEL[billingRequestState] || NA,
+    dueStateKey: flags.due.key,
+    dueDays: flags.due.days,
+    dueSoon: Boolean(dueRemind),
     /* ── ช่วงบริการที่งวดนี้ครอบ (mig 0320 · มติผู้ใช้ 2026-08-30) ────────────
        ⚠️ **ต้องอยู่ในรายชื่อนี้ถึงจะถึงจอ** — ตัวนี้เป็น whitelist ไม่ได้ spread แถวดิบมา
        ค่าที่ลืมเติมจะหายเงียบ ๆ โดยไม่มี error ให้เห็น
@@ -361,6 +430,8 @@ export const LEDGER_COLUMNS = [
   { key: 'billingDate', label: 'วันวางบิล', date: true },
   { key: 'billingStatusLabel', label: 'สถานะวางบิล' },
   { key: 'dueDate', label: 'กำหนดชำระ', date: true },
+  /* คำขอใบวางบิล (รุ่นสี่ · §6: ร่าง / ส่งแล้ว / ยังไม่ขอ / —) — ต่อจากกำหนดชำระตามลำดับของจอ · เป็นคำ ไม่ใช่ธง boolean */
+  { key: 'billingRequestLabel', label: 'คำขอใบวางบิล' },
   /* ช่วงบริการที่งวดครอบ (mig 0320) — ต้องอยู่ในไฟล์ด้วย ไม่ใช่เห็นแต่บนจอ:
      บัญชีกรอง "สายของงาน = ใบมีรอบบริการ" แล้วโหลดไฟล์ ข้อมูลชุดที่เป็นเหตุผลของ
      การกรองนั้นต้องติดไปด้วย (หัวไฟล์นี้เขียนกฎไว้เองว่าจอกับไฟล์ห้ามพูดคนละเรื่อง)
@@ -417,6 +488,10 @@ export function ledgerSummary(rows = []) {
     billingThisMonthCount: list.filter((r) => r.billingThisMonth).length,
     billingLateCount: list.filter((r) => r.billingLate).length,
     billingLateAmount: sum((r) => r.billingLate),
+    /* ⭐ รุ่นสี่ (§6) — ครบกำหนดใน 3 วัน (ชุดของกระดิ่ง) · ต้องวางบิลแต่ยังไม่มีวันวางบิล · ตัวเลขของตัวเอง ห้ามบวกรวมกับตัวอื่น */
+    dueSoonCount: list.filter((r) => r.dueSoon).length,
+    dueSoonAmount: sum((r) => r.dueSoon),
+    billingMissingCount: list.filter((r) => r.billingMissing).length,
   };
 }
 
@@ -577,9 +652,11 @@ export function orderStateIndex(rows = []) {
  */
 export function filterLedger(rows = [], {
   status = [], from = null, to = null, q = '', overdueOnly = false,
-  orderState = [], orderStates = null, line = [], taxInvoice = '', billing = '',
+  orderState = [], orderStates = null, line = [], taxInvoice = '', billing = '', due = '',
 } = {}) {
   const wanted = Array.isArray(status) ? status.filter(Boolean) : [];
+  /* ครบกำหนดชำระ (รุ่นสี่ · §6) — soon · ค่าที่ไม่รู้จัก = ไม่กรอง (ลิงก์พิมพ์ผิดต้องไม่ทำให้ทะเบียนว่าง) */
+  const dueFilter = ledgerDueFilter(due);
   /* รอบวางบิล (mig 0389) — soon | 7d | month | late · ค่าที่ไม่รู้จัก = ไม่กรอง
      ⚠️ ตัวกรองนี้ตัดงวดที่ยังไม่มีวันวางบิลออกตามความหมาย ⇒ ผู้เรียกต้องบอกส่วนที่ซ่อน (`ledgerBillingTally`) */
   const billingFilter = ledgerBillingFilter(billing);
@@ -610,6 +687,10 @@ export function filterLedger(rows = [], {
     if (billingFilter === '7d' && !r.billingIn7Days) return false;
     if (billingFilter === 'month' && !r.billingThisMonth) return false;
     if (billingFilter === 'late' && !r.billingLate) return false;
+    // รุ่นสี่: ต้องวางบิลแต่ยังไม่มีวันวางบิล — ธงของตัวคิด (`ledgerFlags().missingBilling`) ไม่คิดกติกาซ้ำที่นี่
+    if (billingFilter === 'missing' && !r.billingMissing) return false;
+    // `soon` ของกำหนดชำระ = ชุดของกระดิ่ง "ครบกำหนดชำระ" เป๊ะ (ธงมาจากตัวคัดของกระดิ่ง ที่ route)
+    if (dueFilter === 'soon' && !r.dueSoon) return false;
     /* ⚠️ **งวดที่ยังไม่มีกำหนดชำระถูกตัดออกเมื่อกรองช่วงวัน** — และนั่นถูกต้องตาม
        ความหมายของตัวกรอง ("ครบกำหนดในช่วงนี้") แต่มัน **เงียบ** ไม่ได้: `ledgerSummary`
        คิดจากแถวที่เหลือ ⇒ ยอดค้างบนหัวจอลดลงตามโดยไม่มีอะไรบอก และงวดไม่มีวันกำหนด
@@ -677,9 +758,13 @@ export function undatedHiddenBy(rows = [], filters = {}) {
  */
 export function ledgerBillingTally(rows = [], filters = {}) {
   const base = filterLedger(rows, { ...filters, billing: '' });
-  const undated = ledgerBillingFilter(filters.billing)
-    ? base.filter((r) => billingOpenKey(r.billingStateKey) && !r.billingDate
-      && (String(r.billingEvent || '').trim() || r.billingRuleActive))
+  /* ⭐ รุ่นสี่: "ควรมีวันแต่ไม่มี" = รอเหตุการณ์ของงวดที่ต้องวางบิล หรือ `billingMissing` (ต้องวางบิลจริง · ไม่ติ๊ก · ไม่ใช่รูปเดิม)
+       ⇒ ลูกค้า/งวดที่ไม่ต้องวางบิล (`notNeeded`) ไม่ถูกนับว่าซ่อน · ผลเท่าเดิมทุกลูกค้ารุ่นหนึ่ง/สอง/รูปเดิม
+     ⚠️ ตัวกรอง `missing` คืองวดชุดนั้นเอง ⇒ ไม่มีอะไร "ซ่อน" */
+  const filter = ledgerBillingFilter(filters.billing);
+  const undated = filter && filter !== 'missing'
+    ? base.filter((r) => billingOpenKey(r.billingStateKey) && r.billingStateKey !== 'notNeeded' && !r.billingDate
+      && (String(r.billingEvent || '').trim() || r.billingMissing))
     : [];
   return {
     counts: {
@@ -687,12 +772,23 @@ export function ledgerBillingTally(rows = [], filters = {}) {
       '7d': base.filter((r) => r.billingIn7Days).length,
       month: base.filter((r) => r.billingThisMonth).length,
       late: base.filter((r) => r.billingLate).length,
+      missing: base.filter((r) => r.billingMissing).length,
     },
     hidden: {
       count: undated.length,
       amount: Math.round(undated.reduce((sum, r) => sum + (Number(r.amount) || 0), 0) * 100) / 100,
     },
   };
+}
+
+/**
+ * ตัวนับของกลุ่มตัวกรอง "ครบกำหนดชำระ" (รุ่นสี่ · §6) — คิดจากตัวกรองชุดเดียวกันแต่ถอด `due` ออก (เหตุผลเดียวกับ `ledgerBillingTally`)
+ * ⚠️ ไม่มี `hidden` โดยตั้งใจ — งวดที่ยังไม่มีกำหนดชำระไม่ใช่ "งวดครบกำหนดที่ซ่อน" (ยังไม่ถูกนัด · ช่วงวันก็ตัดแบบเดียวกัน)
+ * @returns {{counts: {soon: number}}}
+ */
+export function ledgerDueTally(rows = [], filters = {}) {
+  const base = filterLedger(rows, { ...filters, due: '' });
+  return { counts: { soon: base.filter((r) => r.dueSoon).length } };
 }
 
 /**
@@ -806,6 +902,13 @@ export function groupLedgerByOrder(rows = []) {
     .map((group) => {
       const rowsInOrder = sortLedger(group.rows);
       const summary = ledgerSummary(rowsInOrder);
+      const nextBilling = nextBillingOf(rowsInOrder);
+      const bySeq = [...rowsInOrder].sort((a, b) => (a.seq || 0) - (b.seq || 0));
+      /* งวดที่ยังมีงานวางบิล (ไม่จบ · ไม่ยกมา) **และต้องวางบิล** — ลูกค้า/งวดที่ไม่ต้องวางบิล (`notNeeded`) ไม่มีสถานะวางบิลให้บอก
+         (รุ่นสี่ · §6 "สิ่งที่หายไปสำหรับลูกค้าไม่ต้องวางบิล") */
+      const billingWork = (r) => billingOpenKey(r.billingStateKey) && r.billingStateKey !== 'notNeeded';
+      const billingBilled = rowsInOrder.filter((r) => r.billingRequested && r.billingDate
+        && billingOpenKey(r.billingStateKey) && (r.billingDays ?? 0) < 0).length;
       return {
         ...group,
         // ในก้อนเรียงตาม **งวดที่** เพราะคนอ่านคาดว่างวด 1 มาก่อนงวด 2 เสมอ
@@ -848,19 +951,39 @@ export function groupLedgerByOrder(rows = []) {
            ⚠️ ข้ามงวดที่ **ขอใบแล้วและวันวางบิลผ่านไปแล้ว** — วางบิลไปแล้ว รอเงินเข้า ไม่ใช่ "ถัดไป"
              (ไม่ข้าม = ใบหลายงวดค้างโชว์รอบที่วางไปแล้วตลอดจนเงินเข้า แล้วรอบที่ต้องไปวางจริงไม่ขึ้น)
            ⚠️ คิดจากแถวที่ผ่านตัวกรองแล้ว (กติกาเดียวกับ nextDue) — กรอง "เลยรอบ" แล้วเห็นงวดที่เลยรอบ คือคำตอบที่ถูก */
-        nextBilling: nextBillingOf(rowsInOrder),
+        nextBilling,
         /* สถานะรองของเซลล์ตอนไม่มี "วางบิลถัดไป" — นับจากงวดที่ยังมีงานวางบิลเท่านั้น
-           · billingUnset = ไม่มีทั้งวันวางบิลและเหตุการณ์ (SA ยังไม่เลือกรอบ) · billingWaiting = งวดแรกที่รอเหตุการณ์
-           · billingBilled = ขอใบแล้วและผ่านวันวางบิลแล้ว (รอเงินเข้า) */
-        billingUnset: rowsInOrder.filter((r) => billingOpenKey(r.billingStateKey) && !r.billingDate
+           · billingUnset = ไม่มีทั้งวันวางบิลและเหตุการณ์ (ตัวนับดิบ) · billingWaiting = งวดแรกที่รอเหตุการณ์
+           · billingBilled = ขอใบแล้วและผ่านวันวางบิลแล้ว (รอเงินเข้า)
+           ⭐ รุ่นสี่: ไม่นับงวดที่ไม่ต้องวางบิล (`notNeeded`) · คำชวน "ยังไม่กำหนด" อ่าน `billingMissing` (ธงรายงวดของตัวคิด —
+             ต้องวางบิลจริง · ไม่ติ๊ก · ไม่ใช่รูปเดิม) ไม่ใช่ตัวนับดิบคู่ธงระดับลูกค้าแบบเดิม (ข้อยกเว้นรายงวดอยู่ในธงรายงวดเท่านั้น) */
+        billingUnset: rowsInOrder.filter((r) => billingWork(r) && !r.billingDate
           && !String(r.billingEvent || '').trim()).length,
+        billingMissing: rowsInOrder.filter((r) => r.billingMissing).length,
         billingWaiting: (() => {
-          const row = [...rowsInOrder].sort((a, b) => (a.seq || 0) - (b.seq || 0))
-            .find((r) => billingOpenKey(r.billingStateKey) && !r.billingDate && String(r.billingEvent || '').trim());
+          const row = bySeq.find((r) => billingWork(r) && !r.billingDate && String(r.billingEvent || '').trim());
           return row ? { seq: row.seq, event: String(row.billingEvent).trim() } : null;
         })(),
-        billingBilled: rowsInOrder.filter((r) => r.billingRequested && r.billingDate
-          && billingOpenKey(r.billingStateKey) && (r.billingDays ?? 0) < 0).length,
+        billingBilled,
+        /* ลูกค้า/งวดที่ไม่ต้องวางบิล — เซลล์วันวางบิลขึ้นคำ "ไม่ต้องวางบิล" (`billingCellText`) ไม่ใช่ช่องว่างที่ชวนกรอก ·
+           รอเหตุการณ์ของงวดพวกนี้พูดในช่องกำหนดชำระ (ช่องนำของเขา · `dueCellText`) */
+        billingNotNeeded: rowsInOrder.filter((r) => r.billingStateKey === 'notNeeded').length,
+        dueWaiting: (() => {
+          const row = bySeq.find((r) => r.billingStateKey === 'notNeeded' && String(r.billingEvent || '').trim());
+          return row ? { seq: row.seq, event: String(row.billingEvent).trim() } : null;
+        })(),
+        /* คอลัมน์ "คำขอใบวางบิล" ของใบ = คำขอของงวดที่อยู่ในเซลล์ "วางบิลถัดไป" (ร่าง / ส่งแล้ว / ยังไม่ขอ) ·
+           ไม่มีงวดถัดไปแต่วางบิลไปแล้วรอเงิน = ส่งแล้ว · นอกนั้นขีด (ไม่มีวันวางบิล = ไม่ชวนขอใบ) */
+        billingRequest: (() => {
+          if (nextBilling) {
+            const row = rowsInOrder.find((r) => r.id === nextBilling.id);
+            const state = row?.billingRequestState || '';
+            return { state, label: LEDGER_BILLING_REQUEST_LABEL[state] || '', seq: nextBilling.seq };
+          }
+          return billingBilled ? { state: 'sent', label: LEDGER_BILLING_REQUESTED_TAG, seq: null } : { state: '', label: '', seq: null };
+        })(),
+        // ครบกำหนดใน 3 วัน (ชุดของกระดิ่ง) — บรรทัดรองของเซลล์ "กำหนดถัดไป"
+        dueSoon: rowsInOrder.filter((r) => r.dueSoon).length,
         billingLate: rowsInOrder.filter((r) => r.billingLate).length,
         billingIn7Days: rowsInOrder.filter((r) => r.billingIn7Days).length,
         /* ⭐ "จ่ายถึง" ของใบ (mig 0320) — เงินที่บัญชีรับรองแล้วครอบบริการถึงวันไหน

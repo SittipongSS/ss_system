@@ -11,9 +11,12 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  SCHEDULE_MANY_MAX, SCHEDULE_MANY_ROW_STALE, installmentDateLock, installmentsAfterWrite, scheduleManyCheck,
+  SCHEDULE_MANY_MAX, SCHEDULE_MANY_ROW_STALE, billingFlagShapeError, installmentDateLock, installmentsAfterWrite,
+  scheduleExceptionSummary, scheduleExceptionText, scheduleExceptionsOf, scheduleManyCheck,
   scheduleManyConflictMessage, scheduleManyShapeError, scheduleManyStoppedMessage, writeScheduleMany,
 } from './installmentScheduleMany.js';
+import { NO_BILLING_WRITE_ERROR, RULE_UNAVAILABLE_ERROR } from './billingRule.js';
+import { BILLING_V4_SCHEMA_MISSING } from './billingPolicySchema.js';
 import { installmentActionError } from './salesOrderPayments.js';
 import { dateLockView } from './installmentDateDrafts.js';
 import { updateInstallment } from './salesOrderInstallmentsStore.js';
@@ -123,14 +126,18 @@ test('scheduleManyCheck: patch เฉพาะช่องที่เปลี�
   assert.deepEqual(scheduleManyCheck(live, [sent('I2', { billingDate: null, billingEvent: '  ก่อนส่งสินค้า ' })]).rows[0].patch,
     { billingEvent: 'ก่อนส่งสินค้า' });
   // วันวางบิล/รอเหตุการณ์ = คู่เดียวกัน (กติกาเดียวกับ `schedule`): ส่งคีย์ใดคีย์หนึ่ง = ตั้งทั้งคู่ อีกตัวว่าง
-  assert.deepEqual(scheduleManyCheck(live, [sent('I1', { billingDate: null, billingEvent: 'หลังติดตั้ง' })]).rows[0].patch,
-    { billingDate: null, billingEvent: 'หลังติดตั้ง' });
-  assert.deepEqual(scheduleManyCheck(live, [sent('I1', { billingEvent: 'หลังติดตั้ง' })]).rows[0].patch,
-    { billingDate: null, billingEvent: 'หลังติดตั้ง' }, 'วันวางบิล → รอเหตุการณ์ ด้วย billingEvent ตัวเดียว');
+  // รุ่นสี่ (system-design §3.1): รอเหตุการณ์ ⇒ ไม่มีกำหนดชำระ — จอล้างกำหนดชำระมาพร้อมกัน (I1 มีกำหนดชำระอยู่)
+  assert.deepEqual(scheduleManyCheck(live, [sent('I1', { billingDate: null, billingEvent: 'หลังติดตั้ง', dueDate: null })]).rows[0].patch,
+    { billingDate: null, billingEvent: 'หลังติดตั้ง', dueDate: null });
+  assert.deepEqual(scheduleManyCheck(live, [sent('I1', { billingEvent: 'หลังติดตั้ง', dueDate: null })]).rows[0].patch,
+    { billingDate: null, billingEvent: 'หลังติดตั้ง', dueDate: null }, 'วันวางบิล → รอเหตุการณ์ ด้วย billingEvent ตัวเดียว');
+  assert.deepEqual(scheduleManyCheck(live, [sent('I1', { billingEvent: 'หลังติดตั้ง' })]),
+    { error: 'งวดที่ 1: งวดที่รอเหตุการณ์ยังไม่มีกำหนดชำระ — ล้างกำหนดชำระ หรือเลือกวันแทน "รอเหตุการณ์"', status: 400 },
+    'กำหนดชำระเดิมที่ไม่ได้ล้าง = ไม่เดาวันให้งวดที่ผูกเหตุการณ์ (ด่าน API ตีกลับ ไม่ล้างเงียบ)');
   assert.deepEqual(scheduleManyCheck(live, [sent('I3', { billingDate: '2026-12-05' })]).rows[0].patch,
     { billingDate: '2026-12-05', billingEvent: null }, 'รอเหตุการณ์ → วันวางบิล ด้วย billingDate ตัวเดียว ไม่ชนเหตุการณ์เดิมเป็น 400');
-  assert.deepEqual(scheduleManyCheck(live, [sent('I3', { dueDate: '2027-01-04' })]).rows[0].patch,
-    { dueDate: '2027-01-04' }, 'ไม่ส่งทั้งคู่ = คงเหตุการณ์เดิม');
+  assert.match(scheduleManyCheck(live, [sent('I3', { dueDate: '2027-01-04' })]).error, /^งวดที่ 3: งวดที่รอเหตุการณ์ยังไม่มีกำหนดชำระ/,
+    'ไม่ส่งทั้งคู่ = คงเหตุการณ์เดิม (ด่านจึงเห็นเหตุการณ์คู่กับกำหนดชำระที่ส่งมา)');
   // ส่งทั้งสองอย่างมาพร้อมกันตั้งใจ = 400 (อย่างใดอย่างหนึ่ง)
   assert.deepEqual(scheduleManyCheck(live, [sent('I2', { billingDate: '2026-11-05', billingEvent: 'หลังติดตั้ง' })]),
     { error: 'งวดที่ 2: เลือกวันวางบิล หรือ รอเหตุการณ์ อย่างใดอย่างหนึ่ง', status: 400 });
@@ -352,19 +359,18 @@ function slice(text, from, to) {
 }
 const ROUTE = 'app/api/sales-planning/sales-orders/[id]/installments/route.js';
 
-test('route งวด: schedule-many เป็นคำสั่งของทั้งใบ (ก่อนด่าน installmentId) · fill/redate ยังอยู่ · สิทธิ์ก่อนโหลด · ตรวจครบก่อนเขียน · audit ก่อน 409', () => {
+test('route งวด: schedule-many เป็นคำสั่งของทั้งใบ (ก่อนด่าน installmentId) · fill/redate = 410 · สิทธิ์ก่อนโหลด · ตรวจครบก่อนเขียน · audit ก่อน 409', () => {
   const route = code(ROUTE);
   const patch = slice(route, 'export const PATCH');
   const guard = patch.indexOf('if (!installmentId) return badRequest(');
   for (const line of [
     "if (action === 'schedule-many') return scheduleManyDates({ user, supabase, req, id, body });",
-    "if (action === 'fill-billing') return fillBillingDates({ user, supabase, req, id, body });",
-    "if (action === 'redate-billing') return redateBillingDates({ user, supabase, req, id, body });",
+    'if (RETIRED_BILLING_ACTIONS.includes(action)) return fail(RETIRED_BILLING_MESSAGE, 410);',
   ]) {
     const at = patch.indexOf(line);
     assert.ok(at > 0 && at < guard, `proxy ให้ FN ผ่านเฉพาะ PATCH ของ route นี้ — ${line}`);
   }
-  const fn = slice(route, 'async function scheduleManyDates(', 'async function redateBillingDates(');
+  const fn = slice(route, 'async function scheduleManyDates(', 'async function replanOrderInstallments(');
   const steps = [
     "if (!installmentScheduleAllowed(user)) return forbidden('ไม่มีสิทธิ์แก้กำหนดชำระ');",
     'const shapeError = scheduleManyShapeError(body.rows);',
@@ -373,8 +379,11 @@ test('route งวด: schedule-many เป็นคำสั่งของท�
     'const requestedIds = await loadBillingRequestedIds(supabase, live);',
     "const orderLock = historicalInstallmentLock(order) || pipelineInstallmentLock(order, 'schedule');",
     'if (orderLock) return badRequest(orderLock);',
+    'const billingRule = await loadScheduleRule(supabase, order.customerId);',
+    'const skipReady = await billingSkipReady(supabase, live);',
     'const built = scheduleManyCheck(live, body.rows, {',
     "gate: (row) => installmentActionError(row, 'schedule', user, gateOptions),",
+    'rule: billingRule.rule, ruleUnavailable: billingRule.ruleUnavailable, skipReady,',
     'if (built.status === 409) {',
     'written = await writeScheduleMany(built.rows,',
     'await recordAudit({',
@@ -398,17 +407,26 @@ test('route งวด: schedule-many เป็นคำสั่งของท�
   assert.match(fn, /updateInstallment\(\s*supabase, rowId, patch, \{ expectedUpdatedAt \},\s*\)/);
   const writeCatch = slice(fn, '} catch (writeError) {', 'const { before, after } = written;');
   assert.ok(writeCatch.indexOf('installmentBillingSchemaError(writeError)') < writeCatch.indexOf('documentWorkflowError(writeError'));
-  // audit ก้อนเดียว before/after ทุกงวดที่เขียนจริง · 409 พก conflicts + งวดสด
+  /* รุ่นสี่: ตัวแปล 0393 (billingSkip) ก่อน 0389 — ตัวของ 0389 ไม่รู้จักคอลัมน์ติ๊ก · ทั้งทางพังงวดแรกและทางหยุดกลางทาง */
+  assert.ok(writeCatch.indexOf('billingV4SchemaError(writeError)') >= 0
+    && writeCatch.indexOf('billingV4SchemaError(writeError)') < writeCatch.indexOf('installmentBillingSchemaError(writeError)'));
+  const failMessage = slice(fn, 'const failMessage = (writeError) =>', ';');
+  assert.ok(failMessage.indexOf('billingV4SchemaError') < failMessage.indexOf('installmentBillingSchemaError'));
+  // audit ก้อนเดียว before/after ทุกงวดที่เขียนจริง (+ ข้อยกเว้นรายงวด) · 409 พก conflicts + งวดสด
   assert.match(fn, /before: \{ installments: before \},/);
-  assert.match(fn, /after: \{ installments: after, schedule: 'many' \},/);
+  assert.match(fn, /after: \{ installments: after, schedule: 'many', exceptions \},/);
+  assert.match(fn, /\+ scheduleExceptionSummary\(exceptions, user\.name \|\| user\.email \|\| ''\)/);
   assert.equal((fn.match(/await recordAudit\(\{/g) || []).length, 1);
   assert.match(fn, /return ok\(\{ error: built\.error, conflicts: built\.conflicts, installments: installmentsForScreen\(order, live\) \}, 409\);/);
   /* สำเร็จครบ: อ่านงวดสดพลาดหลังเขียน ≠ 500 "ไม่สำเร็จ" (ทุกงวดลงจริง + audit แล้ว) — ถอยไปงวดก่อนเขียนที่แทนด้วยแถวที่เพิ่งเขียน */
-  const success = slice(fn, "after: { installments: after, schedule: 'many' },", '} catch (scheduleError) {');
+  const success = slice(fn, "after: { installments: after, schedule: 'many', exceptions },", '} catch (scheduleError) {');
   const tail = success.slice(success.lastIndexOf('if (stopped) {'));
   const tailAfterStopped = tail.slice(tail.indexOf('}, 409);'));
   assert.match(tailAfterStopped, /settled = await loadInstallments\(supabase, order\.id\);\s*\} catch \{\s*settled = installmentsAfterWrite\(live, after\);/);
   assert.match(tailAfterStopped, /return ok\(\{ saved: after\.length, installments: installmentsForScreen\(order, settled\) \}\);/);
+  /* fill-billing / redate-billing ถอดทั้งตัว (system-design §7.5) — ไม่เหลือตัวคิดรอบรุ่นสองฝั่ง server */
+  assert.doesNotMatch(route, /async function (fillBillingDates|redateBillingDates)\(|billingFillCheck|billingRedateCheck|writeBillingFill/);
+  assert.match(route, /const RETIRED_BILLING_MESSAGE = 'คำสั่งนี้เลิกใช้แล้ว — โหลดหน้าใหม่';/);
 });
 
 test('lib ตั้งวันหลายงวดไม่แตะฐานเอง (client ใช้ได้) · ไม่อ่านนาฬิกา', () => {
@@ -426,10 +444,229 @@ test('⭐ มติ 28/09 ข้อ 17: server เก็บกำหนดชำ
   assert.deepEqual(built.rows[0].patch, { billingDate: '2026-11-01', dueDate: '2026-11-15' });
   /* ตัวคิดของ lib ไม่รู้จักกติกาหรือสายของใบเลย — ไม่มีอะไรให้ "คิดกำหนดชำระให้ใหม่" ฝั่ง server */
   const lib = code('lib/sales/installmentScheduleMany.js');
-  assert.doesNotMatch(lib, /dueDateForBilling|billingRuleOf|effectiveBillingRule|pickerRuleOf|serviceRounds|\.line\b/);
-  assert.match(lib, /import \{ normalizeInstallmentBilling \} from '@\/lib\/sales\/billingRule';/, 'ตัวตรวจรูปตัวเดียวกับทุกเส้น');
-  /* route: schedule-many ไม่อ่านกติกาของลูกค้า (ต่างจาก fill-billing/redate-billing ที่คิดแผนซ้ำจากรอบรายเดือน) */
+  assert.doesNotMatch(lib, /dueDateForBilling|dueFor\(|billingRuleOf|effectiveBillingRule|pickerRuleOf|planFill|planRedate|serviceRounds|\.line\b/);
+  assert.match(lib, /import \{\s*NEED_NONE, SKIP_TEXT, billingNeed, normalizeInstallmentBilling, validateInstallmentDates,\s*\} from '@\/lib\/sales\/billingRule';/,
+    'ตัวตรวจรูป + ด่านรุ่นสี่ตัวเดียวกับทุกเส้น');
+  /* route: schedule-many อ่านกติกาของลูกค้าเพื่อ **ด่าน** เท่านั้น (รุ่นสี่ · ลูกค้าไม่ต้องวางบิล/ติ๊ก) — ไม่คิดกำหนดชำระให้ใหม่ */
   const route = code('app/api/sales-planning/sales-orders/[id]/installments/route.js');
   const fn = slice(route, 'async function scheduleManyDates(', '\n}\n');
-  assert.doesNotMatch(fn, /loadCustomerBillingRule|dueDateForBilling|billingRuleOf|effectiveBillingRule/);
+  assert.match(fn, /loadScheduleRule\(supabase, order\.customerId\)/);
+  assert.doesNotMatch(fn, /dueDateForBilling|dueFor\(|billingRuleOf|effectiveBillingRule|planFill|planRedate/);
+});
+
+// ── 6. รุ่นสี่ "ต้องวางบิลไหม" (mig 0393 · system-design §7.3) ─────────────────────────────────────────────────────
+const NONE = { v: 4, need: 'none' };
+const REQUIRED = { v: 4, need: 'required', billing: { mode: 'anyday' }, creditDays: 30, runs: null };
+const NO_CREDIT = { credit: false };
+/* งวดสดหลังรัน 0393 — select('*') คืนคีย์ billingSkip (null = ตามลูกค้า) */
+const rowsV4 = () => rows().map((row) => ({ ...row, billingSkip: row.id === 'I2' ? true : null }));
+
+test('รุ่นสี่: ลูกค้าไม่ต้องวางบิล — วันวางบิลใหม่ต้องยืนยัน "งวดนี้ต้องวางบิล…" · วันเดิมคง/ล้างได้ · กำหนดชำระตั้งเดี่ยวได้เสมอ', () => {
+  const live = rowsV4();
+  const opts = { rule: NONE, skipReady: true };
+  assert.deepEqual(scheduleManyCheck(live, [sent('I3', { billingDate: '2026-12-05' })], opts),
+    { error: `งวดที่ 3: ${NO_BILLING_WRITE_ERROR}`, status: 400 });
+  const confirmed = scheduleManyCheck(live, [sent('I3', { billingDate: '2026-12-05', billingException: true })], opts);
+  assert.deepEqual(confirmed.rows[0].patch, { billingDate: '2026-12-05', billingEvent: null });
+  assert.deepEqual(confirmed.rows[0].exceptions, ['billing'], 'ข้อยกเว้นลงประวัติ — ไม่มีคอลัมน์ของตัวเอง');
+  assert.equal('billingException' in confirmed.rows[0].patch, false, 'billingException ไม่ลงฐาน');
+  // I1 มีวันวางบิลเดิม (ก่อนลูกค้าเปลี่ยนเป็นไม่ต้องวางบิล): แก้กำหนดชำระอย่างเดียวได้ · ล้างวันวางบิลได้ · ไม่ถูกซ่อน/บังคับ
+  assert.deepEqual(scheduleManyCheck(live, [sent('I1', { dueDate: '2026-11-20' })], opts).rows[0].patch, { dueDate: '2026-11-20' });
+  assert.deepEqual(scheduleManyCheck(live, [sent('I1', { billingDate: null })], opts).rows[0].patch, { billingDate: null });
+  // กำหนดชำระอย่างเดียวของงวดที่ไม่มีวันวางบิล — ไม่ต้องยืนยันอะไร
+  const dueOnly = scheduleManyCheck(live, [sent('I4', { dueDate: '2027-01-05' })], { ...opts, gate: () => null });
+  assert.equal(dueOnly.status, 409, 'งวดที่แจ้งชำระแล้วยังล็อกตามเดิม (ล็อกไม่ใช่เรื่องของด่านรุ่นสี่)');
+  // ยืนยันข้อยกเว้นบนลูกค้าที่ต้องวางบิลอยู่แล้ว = ไม่ใช่ข้อยกเว้น (ไม่ลงประวัติเกินจริง)
+  assert.deepEqual(scheduleManyCheck(live, [sent('I3', { billingDate: '2026-12-05', billingException: true })], { rule: REQUIRED }).rows[0].exceptions, []);
+});
+
+test('รุ่นสี่: ติ๊ก "งวดนี้ไม่ต้องวางบิล" — เก็บ true/null · อยู่ใน patch เฉพาะเมื่อเปลี่ยน · ไม่ส่งคีย์ = คงติ๊กเดิม', () => {
+  const live = rowsV4();
+  const opts = { rule: REQUIRED, skipReady: true };
+  const tick = scheduleManyCheck(live, [sent('I3', { billingSkip: true, billingEvent: null })], opts);
+  assert.deepEqual(tick.rows[0].patch, { billingEvent: null, billingSkip: true });
+  assert.deepEqual(tick.rows[0].exceptions, ['skip']);
+  const untick = scheduleManyCheck(live, [sent('I2', { billingSkip: false })], opts);
+  assert.deepEqual(untick.rows[0].patch, { billingSkip: null }, 'ไม่เก็บ false — null = ตามลูกค้า');
+  assert.deepEqual(untick.rows[0].exceptions, ['unskip']);
+  // งวด 2 ติ๊กอยู่แล้ว: แก้กำหนดชำระโดยไม่ส่งคีย์ติ๊ก = ติ๊กคงเดิม (ไม่ใช่ "เอาติ๊กออก")
+  const dueOnly = scheduleManyCheck(live, [sent('I2', { dueDate: '2026-12-01' })], opts);
+  assert.deepEqual(dueOnly.rows[0].patch, { dueDate: '2026-12-01' });
+  assert.deepEqual(dueOnly.rows[0].exceptions, []);
+  assert.deepEqual(scheduleManyCheck(live, [sent('I2', { billingSkip: true })], opts), { rows: [] }, 'ติ๊กซ้ำ = ค่าตรงฐาน ข้าม');
+  // ติ๊กคู่วันวางบิล = 400 · ลูกค้าไม่ต้องวางบิลอยู่แล้วติ๊กไม่ได้
+  assert.match(scheduleManyCheck(live, [sent('I2', { billingDate: '2026-11-05' })], opts).error,
+    /^งวดที่ 2: ติ๊ก "งวดนี้ไม่ต้องวางบิล" แล้วมีวันวางบิลไม่ได้/, 'ติ๊กเดิมที่ไม่ได้ส่งก็ถูกนับ (รวมค่าเดิมก่อนตรวจ)');
+  assert.deepEqual(scheduleManyCheck(live, [sent('I2', { billingDate: '2026-11-05', billingSkip: false })], opts).rows[0].patch,
+    { billingDate: '2026-11-05', billingSkip: null }, 'เอาติ๊กออกพร้อมใส่วันวางบิลในคำขอเดียว = ได้');
+  assert.equal(scheduleManyCheck(live, [sent('I3', { billingSkip: true, billingEvent: null })], { rule: NONE, skipReady: true }).error,
+    'งวดที่ 3: ลูกค้าไม่ต้องวางบิลอยู่แล้ว — ไม่ต้องติ๊กรายงวด');
+  // รูป: ติ๊ก/ยืนยันต้องเป็น boolean (สตริง "true" เป็น truthy — ไม่ปล่อยให้ตัวแปลงตีความ)
+  assert.match(scheduleManyShapeError([sent('I3', { billingSkip: 'true' })]), /รูปแบบติ๊ก "งวดนี้ไม่ต้องวางบิล"/);
+  assert.match(scheduleManyShapeError([sent('I3', { billingException: 1 })]), /งวดนี้ต้องวางบิล/);
+  assert.equal(billingFlagShapeError({ billingSkip: null, billingException: false }), null);
+});
+
+test('รุ่นสี่: ก่อนรัน 0393 — ติ๊กเปลี่ยน = 503 "รอรัน migration 0393" (ไม่มีงวดไหนถูกเขียน) · คำขอที่ไม่แตะติ๊กไม่เอ่ยคอลัมน์', () => {
+  const before0393 = rows(); // select('*') ไม่คืนคีย์ billingSkip
+  assert.deepEqual(scheduleManyCheck(before0393, [
+    sent('I2', { dueDate: '2026-11-05' }),
+    sent('I3', { billingSkip: true, billingEvent: null }),
+  ], { rule: REQUIRED, skipReady: false }), { error: BILLING_V4_SCHEMA_MISSING, status: 503 });
+  const plain = scheduleManyCheck(before0393, [sent('I2', { dueDate: '2026-11-05' })], { rule: REQUIRED, skipReady: false });
+  assert.deepEqual(plain.rows[0].patch, { dueDate: '2026-11-05' }, 'ไม่มีคีย์ billingSkip ใน patch ⇒ ไม่ชน PGRST204');
+  assert.deepEqual(scheduleManyCheck(before0393, [sent('I2', { billingSkip: false, dueDate: '2026-11-05' })], { skipReady: false }).rows[0].patch,
+    { dueDate: '2026-11-05' }, 'ส่ง false ของงวดที่ไม่เคยติ๊ก = ไม่เปลี่ยน ไม่ต้องมีคอลัมน์');
+});
+
+test('รุ่นสี่: อ่านกติกาลูกค้าไม่ขึ้น (ruleUnavailable) — ปิดเฉพาะงวดที่เปลี่ยนวันวางบิล/ติ๊ก · กำหนดชำระบันทึกได้ (ไม่ 500)', () => {
+  const live = rowsV4();
+  const opts = { ruleUnavailable: true, skipReady: true };
+  assert.deepEqual(scheduleManyCheck(live, [sent('I1', { dueDate: '2026-11-30' })], opts).rows[0].patch, { dueDate: '2026-11-30' });
+  assert.deepEqual(scheduleManyCheck(live, [sent('I3', { billingDate: '2026-12-05' })], opts),
+    { error: `งวดที่ 3: ${RULE_UNAVAILABLE_ERROR}`, status: 400 });
+  assert.equal(scheduleManyCheck(live, [sent('I2', { billingSkip: false })], opts).error, `งวดที่ 2: ${RULE_UNAVAILABLE_ERROR}`);
+});
+
+test('รุ่นสี่: รูปเดิม { credit:false } = เหมือนวันนี้ (วันวางบิลตั้งได้โดยไม่ต้องยืนยัน) · กำหนดชำระเก็บตามที่ส่ง ไม่คิดใหม่', () => {
+  const built = scheduleManyCheck(rowsV4(), [sent('I3', { billingDate: '2026-12-05', dueDate: '2026-12-20' })], { rule: NO_CREDIT, skipReady: true });
+  assert.deepEqual(built.rows[0].patch, { billingDate: '2026-12-05', billingEvent: null, dueDate: '2026-12-20' },
+    'ชำระวันวางบิลของรูปเดิมคือตัวช่วยบนจอ — server ไม่ทับกำหนดชำระที่คนเลือก');
+});
+
+test('ข้อยกเว้นรายงวด: ประโยคในประวัติ (contracts §10 7.3) · สรุปหลายงวด · งวดใหม่ของหน้าสร้าง', () => {
+  assert.equal(scheduleExceptionText('billing', 'สมชาย'), 'ยกเว้น: งวดนี้ต้องวางบิล โดย สมชาย');
+  assert.equal(scheduleExceptionText('skip', 'สมชาย'), 'ยกเว้น: งวดนี้ไม่ต้องวางบิล โดย สมชาย');
+  assert.equal(scheduleExceptionText('unskip', 'สมชาย'), 'เอาติ๊ก "งวดนี้ไม่ต้องวางบิล" ออก');
+  assert.equal(scheduleExceptionSummary([{ seq: 2, exceptions: ['billing'] }, { seq: 3, exceptions: [] }, { seq: 4, exceptions: ['skip'] }], 'ก'),
+    ' · งวดที่ 2 ยกเว้น: งวดนี้ต้องวางบิล โดย ก · งวดที่ 4 ยกเว้น: งวดนี้ไม่ต้องวางบิล โดย ก');
+  assert.equal(scheduleExceptionSummary([{ seq: 1 }]), '');
+  assert.deepEqual(scheduleExceptionsOf({}, { billingDate: '2026-10-05', billingException: true }, NONE), ['billing']);
+  assert.deepEqual(scheduleExceptionsOf({}, { billingDate: '2026-10-05', billingException: true }, null), [], 'ยังไม่ระบุ = ไม่ใช่ข้อยกเว้น');
+  assert.deepEqual(scheduleExceptionsOf({ billingDate: '2026-10-05' }, { billingDate: '2026-10-05', billingException: true }, NONE), [],
+    'วันเดิมไม่เปลี่ยน = ไม่ได้ยกเว้นใหม่');
+});
+
+test('writeScheduleMany: ติ๊กลงฐานผ่านตัวเขียนเดียวกัน (patch เฉพาะช่องที่เปลี่ยน · มีเงื่อนไข updatedAt)', async () => {
+  const live = rowsV4();
+  const db = condDb(live);
+  const plan = scheduleManyCheck(live, [sent('I3', { billingSkip: true, billingEvent: null }), sent('I2', { billingSkip: false })],
+    { rule: REQUIRED, skipReady: true }).rows;
+  const res = await writeScheduleMany(plan, writerFor(db));
+  assert.equal(res.stopped, null);
+  assert.deepEqual(db.writes.map((w) => [w.id, w.patch.billingSkip]), [['I2', null], ['I3', true]]);
+  assert.equal(db.store.get('I3').billingSkip, true);
+});
+
+// ── 7. route ตัวจริง (fetch ปลอม · devBypass admin) — ด่านรุ่นสี่ถึงฐานครบทาง ─────────────────────────────────────────
+/* ไม่มีฐานจริง: fetch ปลอมตอบตามตาราง · next/headers ต่อเป็นโมดูลว่าง (raw Node แกะ subpath ของ next ไม่ได้ · ทาง devBypass ไม่อ่าน cookie) */
+async function installmentsRoute(t, { customers, installments }) {
+  const { register } = await import('node:module');
+  register('data:text/javascript,' + encodeURIComponent(`
+    export async function resolve(spec, ctx, next) {
+      if (spec === 'next/headers') {
+        return { url: 'data:text/javascript,export function cookies(){throw new Error("no cookie in devBypass")}export const headers=cookies;', shortCircuit: true };
+      }
+      return next(spec, ctx);
+    }
+  `));
+  const env = {
+    NEXT_PUBLIC_SUPABASE_URL: undefined, NEXT_PUBLIC_SUPABASE_ANON_KEY: undefined,
+    SUPABASE_URL: 'http://supabase.test', SUPABASE_SERVICE_ROLE_KEY: 'test-service-role', NEXT_PUBLIC_DEV_BYPASS_ROLE: 'admin',
+  };
+  const saved = Object.fromEntries(Object.keys(env).map((k) => [k, process.env[k]]));
+  for (const [k, v] of Object.entries(env)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
+  t.after(() => { for (const [k, v] of Object.entries(saved)) if (v === undefined) delete process.env[k]; else process.env[k] = v; });
+
+  const store = new Map(installments.map((r) => [r.id, { ...r }]));
+  const writes = [];
+  const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+  t.mock.method(globalThis, 'fetch', async (input, init = {}) => {
+    const url = new URL(typeof input === 'string' ? input : input?.url || String(input));
+    const method = String(init.method || input?.method || 'GET').toUpperCase();
+    const table = url.pathname.replace('/rest/v1/', '');
+    const one = String(new Headers(init.headers || {}).get('accept') || '').includes('vnd.pgrst.object');
+    const reply = (rows) => json(one ? (rows[0] ?? null) : rows);
+    if (table === 'sales_orders') return reply([{ id: 'SOR-1', orderNumber: 'SO-26090001-0', dealId: 'D1', quotationId: 'Q1', customerId: 'CUS-1', status: 'approved', totalAmount: 1000 }]);
+    if (table === 'sales_deals') return reply([{ id: 'D1', team: 'KA', ownerId: 'u-1' }]);
+    if (table === 'quotations') return reply([{ id: 'Q1', quoteNumber: 'QT-1', status: 'accepted', paymentPlan: null }]);
+    if (table === 'customers') return customers();
+    if (table === 'sales_order_installments' && method === 'GET') {
+      const id = url.searchParams.get('id');
+      const rows = [...store.values()].filter((r) => !id || `eq.${r.id}` === id).sort((a, b) => a.seq - b.seq);
+      return reply(rows);
+    }
+    if (table === 'sales_order_installments' && method === 'PATCH') {
+      const id = url.searchParams.get('id').replace(/^eq\./, '');
+      const patch = JSON.parse(init.body);
+      writes.push({ id, patch });
+      const next = { ...store.get(id), ...patch };
+      store.set(id, next);
+      return reply([next]);
+    }
+    if (method === 'POST') return json(one ? {} : [], 201);
+    return reply([]);
+  });
+  const { PATCH } = await import('../../app/api/sales-planning/sales-orders/[id]/installments/route.js');
+  const call = async (body) => {
+    const res = await PATCH(new Request('http://localhost/api/sales-planning/sales-orders/SOR-1/installments', {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    }), { params: Promise.resolve({ id: 'SOR-1' }) });
+    return { status: res.status, body: await res.json() };
+  };
+  return { call, writes, store };
+}
+const liveRow = (id, seq, over = {}) => ({
+  id, salesOrderId: 'SOR-1', seq, status: 'pending', amount: 500, label: `งวดที่ ${seq}`, frozenAt: T1,
+  billingDate: null, billingEvent: null, dueDate: null, billingSkip: null, billingRequestId: null, updatedAt: T1, ...over,
+});
+
+test('⭐ route: อ่านกติกาลูกค้าไม่ขึ้น — schedule-many บันทึกกำหนดชำระได้ (ไม่ 500) · งวดที่เปลี่ยนวันวางบิลได้ 400 บอกเหตุ', async (t) => {
+  t.mock.method(console, 'error', () => {});
+  const { call, writes } = await installmentsRoute(t, {
+    customers: () => new Response(JSON.stringify({ code: '57014', message: 'canceling statement due to statement timeout' }), { status: 500, headers: { 'content-type': 'application/json' } }),
+    installments: [liveRow('I1', 1), liveRow('I2', 2)],
+  });
+  const due = await call({ action: 'schedule-many', rows: [{ id: 'I1', updatedAt: T1, dueDate: '2026-11-05' }] });
+  assert.equal(due.status, 200, JSON.stringify(due.body));
+  assert.deepEqual(writes.map((w) => [w.id, w.patch.dueDate, 'billingDate' in w.patch]), [['I1', '2026-11-05', false]]);
+  const bill = await call({ action: 'schedule-many', rows: [{ id: 'I2', updatedAt: T1, billingDate: '2026-10-05' }] });
+  assert.equal(bill.status, 400);
+  assert.equal(bill.body.error, `งวดที่ 2: ${RULE_UNAVAILABLE_ERROR}`);
+  assert.equal(writes.length, 1, 'ไม่มีอะไรถูกเขียนเพิ่ม');
+});
+
+test('⭐ route: ลูกค้าไม่ต้องวางบิล — schedule งวดเดียวตีกลับวันวางบิลที่ไม่ยืนยัน · ยืนยันแล้วเขียน · fill-billing = 410', async (t) => {
+  const { call, writes } = await installmentsRoute(t, {
+    customers: () => new Response(JSON.stringify([{ id: 'CUS-1', billingRule: { v: 4, need: 'none' } }]), { status: 200, headers: { 'content-type': 'application/json' } }),
+    installments: [liveRow('I1', 1), { ...liveRow('I2', 2), billingSkip: undefined }],
+  });
+  const blocked = await call({ action: 'schedule', installmentId: 'I1', dueDate: '2026-10-05', billingDate: '2026-10-05', expectedUpdatedAt: T1 });
+  assert.equal(blocked.status, 400);
+  assert.equal(blocked.body.error, NO_BILLING_WRITE_ERROR);
+  assert.equal(writes.length, 0);
+  const confirmed = await call({
+    action: 'schedule', installmentId: 'I1', dueDate: '2026-10-05', billingDate: '2026-10-05', billingException: true, expectedUpdatedAt: T1,
+  });
+  assert.equal(confirmed.status, 200, JSON.stringify(confirmed.body));
+  assert.deepEqual(writes[0].patch.billingDate, '2026-10-05');
+  assert.equal('billingException' in writes[0].patch, false, 'ธงยืนยันไม่ลงฐาน');
+  const retired = await call({ action: 'fill-billing', plan: [] });
+  assert.deepEqual([retired.status, retired.body.error], [410, 'คำสั่งนี้เลิกใช้แล้ว — โหลดหน้าใหม่']);
+});
+
+test('⭐ route: ฐานยังไม่รัน 0393 (แถวไม่มีคีย์ billingSkip) — ติ๊ก = 503 "รอรัน migration 0393" ก่อนเขียน · แก้กำหนดชำระไม่เอ่ยคอลัมน์', async (t) => {
+  const before0393 = (id, seq) => { const row = liveRow(id, seq); delete row.billingSkip; return row; };
+  const { call, writes } = await installmentsRoute(t, {
+    customers: () => new Response(JSON.stringify([{ id: 'CUS-1', billingRule: null }]), { status: 200, headers: { 'content-type': 'application/json' } }),
+    installments: [before0393('I1', 1), before0393('I2', 2)],
+  });
+  const one = await call({ action: 'schedule', installmentId: 'I1', dueDate: '2026-10-05', billingSkip: true, expectedUpdatedAt: T1 });
+  assert.deepEqual([one.status, one.body.error], [503, BILLING_V4_SCHEMA_MISSING]);
+  const many = await call({ action: 'schedule-many', rows: [{ id: 'I2', updatedAt: T1, dueDate: '2026-11-05', billingSkip: true }] });
+  assert.deepEqual([many.status, many.body.error], [503, BILLING_V4_SCHEMA_MISSING]);
+  assert.equal(writes.length, 0);
+  const due = await call({ action: 'schedule', installmentId: 'I1', dueDate: '2026-10-05', expectedUpdatedAt: T1 });
+  assert.equal(due.status, 200, JSON.stringify(due.body));
+  assert.equal('billingSkip' in writes[0].patch, false);
 });

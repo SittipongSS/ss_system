@@ -134,44 +134,7 @@
    ⚠️ ระยะห่าง/ขนาดตัวอักษร/ความสูงบรรทัดใช้โทเคนเท่านั้น (เพดานเลขดิบของ audit:ui เต็มพอดี) · ไม่มีจุดตัดจอ —
      ทุกแถวเป็น flex-wrap จอแคบตกบรรทัดเอง (เพดานจำนวนจุดตัดจอขึ้นไม่ได้) */
 
-/* บรรทัดรอบวางบิลของลูกค้าใต้หัวการ์ด — เมตาของใบ ไม่ใช่คำเตือน (พื้นอ่อน ไม่ใช่ StatusNotice)
-   ยังไม่ตั้งรอบ = เส้นประ พื้นใส (ช่องว่างที่เติมได้ ไม่ใช่ของเสีย) */
-.ruleLine {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-1-5) var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--panel-2);
-  color: var(--text-2);
-  font-size: var(--fs-6);
-  line-height: var(--lh-thai);
-}
-.ruleLine[data-empty="yes"] { border-style: dashed; background: transparent; }
-.ruleIcon { flex: none; color: var(--navy-ink); }
-.ruleLine[data-empty="yes"] .ruleIcon { color: var(--text-3); }
-.ruleText { flex: 1 1 260px; min-width: 0; }
-.ruleText b { color: var(--text); font-weight: var(--fw-semibold); }
-.ruleText small { display: block; color: var(--text-3); font-size: var(--fs-5); }
-/* ปุ่ม "จัดวันใหม่ตามรอบปัจจุบัน…" + ลิงก์ทะเบียนลูกค้า — ชิดขวาเป็นกลุ่มเดียว (จอแคบตกบรรทัดทั้งกลุ่ม) */
-.ruleActions {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-1-5) var(--space-3);
-  margin-left: auto;
-}
-.ruleLink {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  font-size: var(--fs-5);
-  font-weight: var(--fw-semibold);
-  white-space: nowrap;
-}
+/* บรรทัดรอบวางบิลของลูกค้า (.ruleLine เดิม) ย้ายเป็นแถบนโยบาย `installmentDates/BillingPolicyStrip` (รุ่นสี่ · 29/09) */
 
 /* เซลล์วันวางบิล — วัน · ป้ายสถานะ · ปุ่มขอใบวางบิล/เลือกรอบ เรียงลงเป็นกอง (ตารางแคบตกบรรทัดเอง) */
 .billCell {
@@ -189,3 +152,8 @@
   gap: var(--space-1) var(--space-1-5);
 }
 .dateText { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* หัวคอลัมน์วันวางบิลของรุ่นสี่ — "(ไม่ต้องวางบิล)" / "(ไม่บังคับ)" บอกครั้งเดียวที่หัว (แถวเป็นขีด · §3.4) */
+.colNote { color: var(--text-3); font-weight: var(--fw-normal); }
+/* ต้องวางบิลแต่ยังไม่มีวันวางบิล — โทนเตือน (ไม่แดง · แดงสงวนให้ "เลยกำหนด" ของกำหนดชำระ) */
+.billMissing { color: var(--amber); }

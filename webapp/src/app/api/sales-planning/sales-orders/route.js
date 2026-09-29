@@ -14,6 +14,9 @@ import { ensureInstallments } from '@/lib/sales/salesOrderInstallmentsStore';
 import { validateOrderConfirmation, sanitizeEvidenceAttachments, DEFAULT_EVIDENCE_BUCKET } from '@/lib/sales/orderConfirmationDocs';
 import { parseDeliveryDueDate } from '@/lib/sales/salesOrderDeliveryDue';
 import { parseCreateFormInstallments } from '@/lib/sales/salesOrderCreateInstallments';
+import { billingFlagShapeError, scheduleExceptionSummary, scheduleExceptionsOf } from '@/lib/sales/installmentScheduleMany';
+import { loadScheduleRule } from '@/lib/sales/installmentScheduleServer';
+import { BILLING_V4_SCHEMA_MISSING, probeBillingSkip } from '@/lib/sales/billingPolicySchema';
 import { applyCreateFormPayments } from '@/lib/sales/salesOrderCreatePayments';
 import { missingStoredEvidence } from '@/lib/upload/privateEvidence';
 import { businessDate } from '@/lib/businessDate';
@@ -260,7 +263,8 @@ export const GET = withUser(async ({ user, supabase }) => {
    แล้ว ref ตามเข้าใบตอนสร้างสำเร็จ
 
    payload: { quotationId, referenceDoc?, notes?, deliveryDueDate?, confirmation?, installments?, firstPayment? }
-   installments: [{ seq, dueDate?, billingDate?, billingEvent? }] — ดู salesOrderCreateInstallments.js
+   installments: [{ seq, dueDate?, billingDate?, billingEvent?, billingSkip?, billingException? }] — ดู salesOrderCreateInstallments.js
+     (รุ่นสี่ · mig 0393: ด่านเดียวกับ schedule กับกติกาของลูกค้าที่ server อ่านเอง · ข้อยกเว้นลงประวัติของการสร้างใบ)
    ⚠️ **เอกสารยืนยันไม่บังคับตอนสร้าง** — AE ที่ยังรอ PO ต้องตั้งใบร่างไว้ก่อนได้
    ด่านจริงคือตอนยื่นอนุมัติ (`salesOrderConfirmationGate`) */
 export const POST = withUser(async ({ user, supabase, req }) => {
@@ -272,7 +276,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   const { data: quote, error: quoteError } = await supabase
     .from('quotations')
-    .select('id, quoteNumber, status, paymentPlan, totalAmount, deal:sales_deals(*)')
+    .select('id, quoteNumber, status, paymentPlan, totalAmount, customerId, deal:sales_deals(*)')
     .eq('id', quotationId)
     .maybeSingle();
   if (quoteError) return fail(quoteError.message, 500);
@@ -315,8 +319,33 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   /* วันของงวด: กำหนดชำระ + วันวางบิล/รอเหตุการณ์ (mig 0389 · ม็อก billing-cycle จอ B) — ไม่บังคับ
      ⭐ ตรวจ **ก่อนออกเลขใบ** — เลขใบใช้ซ้ำไม่ได้ (0241) ⇒ ค่าผิดต้องตอบ 400 ตั้งแต่ยังไม่มีใบ
         (เดิมค่าผิดถูกข้ามเงียบ ๆ ใน applyCreateFormPayments แล้วใบออกไปโดยงวดไม่มีวันที่คนกรอก) */
-  const installmentDates = parseCreateFormInstallments(body.installments);
+  /* ⭐ รุ่นสี่: กติกาวางบิลของลูกค้าของใบ (ลูกค้าเดียวกับที่ RPC ใส่ให้ใบ = ของใบเสนอราคา) อ่านสด ไม่เชื่อจอ ·
+     อ่านพลาด = ปิดแค่วันวางบิล/ติ๊ก (กำหนดชำระยังผ่าน) — ตัวอ่านเดียวกับ PATCH งวด */
+  const billingRule = await loadScheduleRule(supabase, quote.customerId);
+  /* ธงรุ่นสี่ต้องเป็น boolean (สตริง "true" เป็น truthy — ห้ามปล่อยให้ตัวแปลงตีความ) · รูปเดียวกับ schedule/schedule-many */
+  for (const item of Array.isArray(body.installments) ? body.installments : []) {
+    const flagError = billingFlagShapeError(item);
+    if (flagError) return badRequest(`งวด ${item?.seq ?? '?'}: ${flagError}`);
+  }
+  const installmentDates = parseCreateFormInstallments(body.installments, billingRule);
   if (installmentDates.error) return badRequest(installmentDates.error);
+  /* ข้อยกเว้นรายงวดของใบใหม่ (ยืนยัน "งวดนี้ต้องวางบิล…" บนลูกค้าไม่ต้องวางบิล · ติ๊ก) — ตัวตัดสินเดียวกับ schedule (งวดใหม่ = {})
+     ⚠️ ธงยืนยันอ่านจากแถวที่ส่งมา (ไม่อยู่ใน patch — ไม่ลงฐาน) */
+  const sentBySeq = new Map((Array.isArray(body.installments) ? body.installments : []).map((item) => [Number(item?.seq), item]));
+  const createExceptions = installmentDates.rows.map((row) => ({
+    seq: row.seq,
+    exceptions: scheduleExceptionsOf({}, {
+      billingDate: row.patch.billingDate || null,
+      billingSkip: row.patch.billingSkip === true,
+      billingException: sentBySeq.get(row.seq)?.billingException === true,
+    }, billingRule.rule),
+  }));
+  /* ติ๊ก "งวดนี้ไม่ต้องวางบิล" ก่อนรัน 0393 = ไม่มีคอลัมน์ให้เขียน ⇒ บอกก่อนออกเลขใบ (ไม่ใช่ออกใบแล้วงวดตั้งไม่สำเร็จ)
+     ⚠️ ถามฐานเฉพาะเมื่อมีงวดติ๊ก — ใบส่วนใหญ่ไม่ยิงคำขอเพิ่ม */
+  if (installmentDates.rows.some((row) => row.patch.billingSkip === true)
+    && !(await probeBillingSkip(supabase)).ready) {
+    return fail(BILLING_V4_SCHEMA_MISSING, 503);
+  }
 
   const orderId = genId('SOR');
   const { data: order, error } = await supabase.rpc('create_sales_order_draft', {
@@ -340,7 +369,12 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     }
     return fail(error.message, /quotation_|sales_order_/.test(error.message || '') ? 400 : 500);
   }
-  await recordAudit({ user, action: 'create', entityType: 'sales_order', entityId: orderId, before: null, after: order, summary: `create SO draft from ${quote.quoteNumber}`, request: req });
+  await recordAudit({
+    user, action: 'create', entityType: 'sales_order', entityId: orderId, before: null, after: order,
+    summary: `create SO draft from ${quote.quoteNumber}`
+      + scheduleExceptionSummary(createExceptions, user.name || user.email || ''),
+    request: req,
+  });
 
   /* ── งวดชำระเกิดพร้อมใบ ไม่ต้องรอใครกดปุ่ม (มติผู้ใช้ 2026-08-19) ─────────
      เดิม B-4 ปลดด่าน "ต้องอนุมัติก่อน" แล้ว แต่ยังต้องกด "เริ่มติดตามการชำระ" ก่อน

@@ -6,10 +6,14 @@
 //   ผู้ใช้ที่ไม่มีสิทธิ์ / งวดที่ล็อก: เซลล์เหมือนเดิมทุกอย่าง (ไม่มีอะไรให้แตะ)
 // ⭐ ในโหมด: ร่างมีจุดบอก **หนึ่งจุด** + "เดิม ~~วัน~~" เฉพาะเมื่อแทนค่าที่บันทึกไว้ (ข้อ 6: หลังเติมทั้งชุดต้องไม่เป็นกล่องสีเต็มตาราง)
 //   งวดที่ล็อก = อ่านอย่างเดียว + ไอคอนกุญแจ + เหตุในบรรทัด (มือถือแตะ tooltip ไม่ได้) · แตะ = toast บอกเหตุและทางออก
+// ⭐ รุ่นสี่ (มติเจ้าของ 29/09 แบบ A) — คำในเซลล์ตามตัวแก้ของงวด (`mode.rowMode`):
+//   · ไม่ต้องวางบิล/ติ๊กรายงวด = เซลล์วันวางบิลเป็นคำ "—" (หัวคอลัมน์บอก "ไม่ต้องวางบิล" ครั้งเดียว · ติ๊ก = "ไม่ต้องวางบิล · เฉพาะงวดนี้")
+//     ไม่ใช่ปุ่ม (ไม่มีอะไรให้ตั้ง — ทางได้วันวางบิลคือ "งวดนี้ต้องวางบิล…") · รอเหตุการณ์อยู่ช่องกำหนดชำระ (ช่องนำของเขา)
+//   · ยังไม่ระบุ/รูปเดิม = วันวางบิล "ไม่บังคับ" · กำหนดชำระว่าง = "ตั้งกำหนดชำระ" (ช่องนำ — ไม่ใช่ "ได้เองเมื่อเลือกวันวางบิล")
 import { CalendarPlus, Hourglass, Lock, PencilLine } from "lucide-react";
 import { NA } from "@/lib/format";
-import { formatBillingDate, formatRoundChip, weekendNote } from "@/lib/sales/billingRule";
-import { datesOf, dueSourceOf } from "@/lib/sales/installmentDateDrafts";
+import { NO_BILLING_TEXT, formatBillingDate, formatRoundChip, weekendNote } from "@/lib/sales/billingRule";
+import { datesOf, dueSourceOf, splitsFields } from "@/lib/sales/installmentDateDrafts";
 import { BillNode, DueNode } from "./InstallmentDateParts";
 import styles from "./InstallmentDates.module.css";
 
@@ -59,15 +63,30 @@ export default function InstallmentDateCell({ mode, row, field, billColumn = tru
   const changed = mode.changedIds.has(row.id);
   const open = mode.openId === row.id;
   const warns = (mode.warnings[row.id] || []).filter((w) => w.field === field && w.tone === "warn");
+  const rm = mode.rowMode(row);
+  const dueOnly = rm.kind === "dueOnly";
+  /* ไม่ต้องวางบิล (ทั้งลูกค้า · หรือติ๊กงวดนี้) — ช่องวันวางบิลไม่มีอะไรให้ตั้ง ⇒ คำ ไม่ใช่ปุ่ม */
+  if (field === "bill" && dueOnly && !v.billingDate) {
+    return (
+      <span className={styles.cellStatic} data-date-cell-static="bill">
+        <span className={styles.cellMain}>
+          {changed ? <span className={styles.changed} aria-hidden="true" /> : null}
+          <span>{NA}</span>
+        </span>
+        {rm.override === "skip" ? <small>{NO_BILLING_TEXT} · เฉพาะงวดนี้</small> : null}
+        <span className="sr-only">{`วันวางบิล งวดที่ ${row.seq} — ${NO_BILLING_TEXT}`}</span>
+      </span>
+    );
+  }
   let main;
   const sub = [];
   if (field === "bill") {
     if (v.billingEvent) main = <><Hourglass size={13} aria-hidden="true" /><b>{v.billingEvent}</b></>;
     else if (v.billingDate) main = <><BillNode /><b>{formatBillingDate(v.billingDate)}</b></>;
     else {
-      main = <span className={styles.cellEmpty}><CalendarPlus size={13} aria-hidden="true" />{mode.kind === "monthly" ? "เลือกรอบ" : "ตั้งวันวางบิล"}</span>;
-      /* ยังไม่ตั้งกำหนดวางบิล — ช่องนี้เลือกได้แต่ไม่บังคับ (มติ 28/09 ข้อ 17: ทุกใบมีสองช่อง · ไม่มีอะไรคิดกำหนดชำระให้) */
-      if (mode.kind === "none") sub.push(<span key="opt">ไม่บังคับ</span>);
+      main = <span className={styles.cellEmpty}><CalendarPlus size={13} aria-hidden="true" />{rm.kind === "rounds" ? "เลือกรอบ" : "ตั้งวันวางบิล"}</span>;
+      /* ยังไม่ระบุ/รูปเดิม — ช่องนี้เลือกได้แต่ไม่บังคับ (ไม่มีวันวางบิลปลอม · รอบกรรมการ 29/09) */
+      if (rm.billingColumn === "optional") sub.push(<span key="opt">ไม่บังคับ</span>);
     }
     const was = saved.billingDate || saved.billingEvent;
     const now = v.billingDate || v.billingEvent;
@@ -77,8 +96,9 @@ export default function InstallmentDateCell({ mode, row, field, billColumn = tru
     if (weekendNote(v.billingDate)) sub.push(<span key="we" data-tone="warn">{weekendNote(v.billingDate)}</span>);
   } else {
     if (v.dueDate) main = <><DueNode /><b>{formatBillingDate(v.dueDate)}</b></>;
-    else if (v.billingEvent && !billColumn) main = <><Hourglass size={13} aria-hidden="true" /><b>รอเหตุการณ์ · {v.billingEvent}</b></>;
-    else if (mode.kind === "none") main = <span className={styles.cellEmpty}><CalendarPlus size={13} aria-hidden="true" />ตั้งกำหนดชำระ</span>;
+    /* ไม่ต้องวางบิล: รอเหตุการณ์คุมกำหนดชำระ ⇒ พูดที่ช่องนี้ (ช่องวันวางบิลเป็นขีด) */
+    else if (v.billingEvent && (!billColumn || dueOnly)) main = <><Hourglass size={13} aria-hidden="true" /><b>รอเหตุการณ์ · {v.billingEvent}</b></>;
+    else if (splitsFields(rm) && !v.billingEvent) main = <span className={styles.cellEmpty}><CalendarPlus size={13} aria-hidden="true" />ตั้งกำหนดชำระ</span>;
     else if (dueSourceOf(mode.ruleValue, v).key === "missing") {
       /* มีวันวางบิลแล้วแต่ไม่มีกำหนดชำระ ทั้งที่กติกาคิดให้ได้ — "ได้เองเมื่อเลือกวันวางบิล" ไม่จริง (วันวางบิลมีแล้ว)
          ⇒ บอกตรง ๆ · แตะแล้วตัวแก้มีปุ่มแตะเดียว "ใช้วันตามรอบ"/"ใช้วันวางบิล" (review 28/09) · ป้ายเลยกำหนดไม่มีวันให้นับ = โทนเตือน */
@@ -86,7 +106,7 @@ export default function InstallmentDateCell({ mode, row, field, billColumn = tru
       sub.push(<span key="missing" data-tone="warn">ยังไม่มีกำหนดชำระ</span>);
     } else {
       main = <span>{NA}</span>;
-      sub.push(<span key="auto">{v.billingEvent ? "ตามเหตุการณ์" : mode.kind === "monthly" ? "ได้เองเมื่อเลือกรอบ" : "ได้เองเมื่อเลือกวันวางบิล"}</span>);
+      sub.push(<span key="auto">{v.billingEvent ? "ตามเหตุการณ์" : rm.kind === "rounds" ? "ได้เองเมื่อเลือกรอบ" : "ได้เองเมื่อเลือกวันวางบิล"}</span>);
     }
     if (changed && saved.dueDate && saved.dueDate !== v.dueDate) {
       sub.unshift(<span key="was">เดิม <s>{formatRoundChip(saved.dueDate)}</s></span>);
@@ -97,7 +117,7 @@ export default function InstallmentDateCell({ mode, row, field, billColumn = tru
 
   return (
     /* ระหว่างบันทึก = แตะไม่ได้ (แก้ตอนคำขอยังไม่กลับ แล้วบันทึกสำเร็จ = ร่างนั้นถูกล้างทิ้งเงียบ ๆ · review R-UI)
-       แตะ = `mode.tap` — งวดที่เปิดอยู่ปิด เว้นแต่ลูกค้ายังไม่ตั้งแล้วแตะอีกช่อง (สลับไปช่องนั้น · review 28/09) */
+       แตะ = `mode.tap` — งวดที่เปิดอยู่ปิด เว้นแต่ตัวแก้ของงวดเปิดทีละช่องแล้วแตะอีกช่อง (สลับไปช่องนั้น · review 28/09) */
     <button type="button" className={styles.cell} data-date-cell={field} disabled={mode.busy}
       aria-haspopup="dialog" aria-expanded={open}
       aria-label={`${FIELD_WORD[field]} งวดที่ ${row.seq}${changed ? " · แก้แล้ว ยังไม่บันทึก" : ""}`}

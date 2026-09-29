@@ -9,12 +9,19 @@
 // ⭐ ร่างของโหมดนี้กับร่างช่วงครอบบริการ (coverDrafts) เปิดพร้อมกันไม่ได้ — ผู้เรียกส่ง `blocker` (เหตุ) มา
 // ⚠️ สามที่วาง (ตัดสินด้วยความกว้างจอ ไม่ใช่ user agent): ≥1000px = ป๊อปโอเวอร์ข้างแถว (ไม่บังหัวใบ/ปุ่มของการ์ด) ·
 //    641–999px = กางใต้แถว · ≤640px = แผ่นเต็มจอที่ท้ายตรึงมีปุ่มบันทึก navy ปุ่มเดียว (ไม่มี "เสร็จ" แล้วบันทึกอีกชั้น)
+// ⭐ รุ่นสี่ (มติเจ้าของ 29/09 แบบ A): ตัวแก้ของแต่ละงวดเปิดตาม `rowMode(row)` (dateModeOf ของ billingRule.js) —
+//   ข้อยกเว้นรายงวดสองทางเป็นร่างของโหมดนี้: "งวดนี้ต้องวางบิล…" (`requireBilling` · ธงในโหมด `exceptionIds` ส่งเป็น
+//   `billingException` กับวันวางบิลใหม่) · "งวดนี้ไม่ต้องวางบิล" (`toggleSkip` · ร่าง `billingSkip` · เฉพาะเมื่อฐานรัน 0393 แล้ว)
+// ⭐ หน้าสร้าง SO ใช้ฮุกนี้ด้วย (`create`) — โหมดเปิดตลอด ไม่มีบันทึก/ยกเลิก (ร่างไปกับคำขอสร้างใบ) · ตัวแก้กางใต้แถว
+//   (มือถือเป็นแผ่นล่าง) · ตัวแก้ตัวเดียวกับใบ SO (AGENTS.md: สร้าง/แก้ใช้ตัวเดียว)
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { notifyToast } from "@/lib/feedback";
 import { SCHEDULE_MANY_MAX } from "@/lib/sales/installmentScheduleMany";
+import { needExceptionActions, ruleOf } from "@/lib/sales/billingRule";
 import {
-  DATE_VIEWS, applyFillPlan, creditDaysOf, currentDates, dateCellTapCloses, dateRuleKind, dateRuleShape, dateViewOf, dateWarnings,
-  datesEmpty, draftChanges, fillKindOf, nextEmptyRow, noneOpenView, replacesSavedDue, scheduleManyRows, withDraft,
+  applyFillPlan, creditDaysOf, currentDates, dateCellTapCloses, dateModeKind, dateRuleShape, dateViewOf, dateWarnings,
+  datesEmpty, draftChanges, fillKindOf, nextEmptyRow, openViewOf, replacesSavedDue, rowDateMode, scheduleManyRows, splitsFields,
+  withDraft,
 } from "@/lib/sales/installmentDateDrafts";
 
 /* ความกว้างจอ → ที่วางตัวแก้ · ค่าเดียวกับจุดตัดจอที่มีอยู่แล้วของระบบ (640 · 1000 — เพดานจุดตัดจอของ audit:ui) */
@@ -36,6 +43,11 @@ export function useDatePlacement() {
 }
 
 const bySeq = (a, b) => Number(a.seq) - Number(b.seq);
+/* ไม่รู้กติกา/ฐานยังไม่รัน 0389 (หน้าสร้าง SO `billingOff`) — กำหนดชำระอย่างเดียวแบบเดิม · ไม่มีช่องวันวางบิล/รอเหตุการณ์
+   (ค่าที่ลงฐานไม่ได้ หรืออาจชนกติกาจริงของลูกค้า ต้องไม่มีทางกรอก) */
+const DUE_ONLY_OFF = Object.freeze({
+  kind: "dueOnly", views: Object.freeze(["due"]), start: "due", lead: "due", billingColumn: "off", askNeed: false, override: null,
+});
 
 /**
  * @param rows        งวดจริงของใบ (แถวล่าสุดของตาราง — หลัง 409 หน้าโหลดสดแล้วแผงส่งชุดใหม่มา)
@@ -49,13 +61,24 @@ const bySeq = (a, b) => Number(a.seq) - Number(b.seq);
  * @param busy        คำขอบันทึกกำลังวิ่ง — ทุกทางที่แก้ร่างเงียบ (เซลล์/ตัวแก้ปิดไว้ด้วย) · แก้ตอนนี้แล้วบันทึกสำเร็จ = ถูกล้างทิ้ง
  * @param onClearError ล้าง error ของหน้า ตอนเข้าโหมด/เปิดแผงเติม — error เก่าที่ไม่เกี่ยว (แจ้งชำระไม่ผ่าน ฯลฯ)
  *                    ไม่ขึ้นค้างในแถบบันทึกใหม่ (ทุกทางเข้า — ปุ่มการ์ด · เซลล์ · เมนูแถว — ผ่าน `enter` ตัวเดียว)
+ * @param skipReady   ฐานรัน 0393 แล้ว (`billingSkipReady` ของ GET) — เท็จ = ไม่มีติ๊ก "งวดนี้ไม่ต้องวางบิล" (คีย์นี้ลงฐานไม่ได้)
+ * @param onAskRequireBilling (row) => void — เปิดโมดัลขอบเขต "งวดนี้ต้องวางบิล…" ของผู้เรียก (ไม่ส่ง = ไม่มีปุ่มนี้ในตัวแก้ ·
+ *                    หน้าสร้าง SO: ลูกค้าไม่ต้องวางบิลตั้งได้แค่กำหนดชำระ)
+ * @param create      หน้าสร้าง SO — โหมดเปิดตลอด ไม่มีบันทึก (ผู้เรียกอ่าน `current(row)` ไปกับคำขอสร้างใบ) · ที่วาง = กางใต้แถว/แผ่นล่าง
+ * @param billingOff  ไม่รู้กติกาของลูกค้า / ฐานยังไม่รัน 0389 — ตัวแก้เหลือกำหนดชำระอย่างเดียว (`DUE_ONLY_OFF`)
  */
 export default function useInstallmentDateMode({
-  rows = [], ruleValue = null, todayIso = "", available = false, blocker = "", lockOf = () => null, onSave,
-  busy = false, onDirtyChange, onClearError,
+  rows = [], ruleValue: rawRule = null, todayIso = "", available = false, blocker = "", lockOf = () => null, onSave,
+  busy = false, onDirtyChange, onClearError, skipReady = false, onAskRequireBilling = null, create = false, billingOff = false,
 }) {
-  const placement = useDatePlacement();
-  const [active, setActive] = useState(false);
+  /* ⭐ ผลการอ่านรุ่นสี่ตัวเดียว (`ruleOf`) — ตัวแก้/แผงเติม/ป้ายที่มาเดินตัวคิดเดียวกับที่ `dateModeOf` ตัดสินชนิด
+     (รุ่นสองที่มีรอบจ่ายได้ชิปรอบของรุ่นสี่ · รูปเดิม { credit:false } = ผลการอ่าน legacyNoCredit — ห้ามส่งกลับไปบันทึก) */
+  const ruleValue = useMemo(() => ruleOf(rawRule), [rawRule]);
+  const media = useDatePlacement();
+  /* หน้าสร้างไม่มีกรอบป๊อปโอเวอร์ (ตารางแผนงวดของหน้าเป็นคนละตาราง) — กางใต้แถวเสมอ ยกเว้นมือถือ */
+  const placement = create ? (media === "sheet" ? "sheet" : "inline") : media;
+  const [activeState, setActive] = useState(false);
+  const active = create || activeState;
   const [openId, setOpenId] = useState(null);
   /* เซลล์ที่พาเข้ามา ("bill" | "due" | null) — ลูกค้าที่ยังไม่ตั้งกำหนดวางบิลแตะเซลล์วันวางบิล = ตัวแก้เปิดปฏิทินวันวางบิล
      (ช่องหลักของลูกค้ากลุ่มนี้คือกำหนดชำระ · วันวางบิลไม่บังคับ แต่แตะช่องนั้นแล้วต้องได้ช่องนั้น) */
@@ -66,11 +89,22 @@ export default function useInstallmentDateMode({
   const [summaryOpen, setSummaryOpen] = useState(false);
   /* แถวที่เพิ่งถูกเลื่อนมาหลังเลือก ("ไปงวดถัดไปที่ว่างเอง") — ตัวแก้ย้ายโฟกัสไปหัวของงวดใหม่ */
   const [focusTick, setFocusTick] = useState(0);
+  /* งวดที่ยืนยัน "งวดนี้ต้องวางบิล…" แล้ว (ลูกค้าไม่ต้องวางบิล) — ยังไม่มีคอลัมน์ (วันวางบิลที่ยืนยันคือตัวยกเว้น · §2.3)
+     ⇒ อยู่ในโหมดจนบันทึก · ส่งเป็น `billingException` เฉพาะงวดที่ได้วันวางบิลใหม่ (scheduleManyRows) · ทิ้งพร้อมร่าง */
+  const [exceptionIds, setExceptionIds] = useState(() => new Set());
 
   const sorted = useMemo(() => [...(rows || [])].sort(bySeq), [rows]);
-  const kind = dateRuleKind(ruleValue);
+  const kind = billingOff ? "dueOnly" : dateModeKind(ruleValue);
   const fillKind = fillKindOf(ruleValue);
   const creditDays = creditDaysOf(ruleValue);
+  /* ตัวแก้ของงวดนั้น — อ่านค่าปัจจุบันบนจอ (ฐาน + ร่าง) ⇒ ติ๊ก/ล้างวันวางบิลในร่างเปลี่ยนวิธีของงวดทันที */
+  const rowModeWith = (row, draftsNow, exceptionsNow) => {
+    if (billingOff) return DUE_ONLY_OFF;
+    return row
+      ? rowDateMode(ruleValue, { ...row, ...currentDates(row, draftsNow) }, { exception: exceptionsNow.has(row.id) })
+      : rowDateMode(ruleValue, null);
+  };
+  const rowMode = (row) => rowModeWith(row, drafts, exceptionIds);
   const lockCache = useMemo(() => new Map(sorted.map((row) => [row.id, lockOf(row)])), [sorted, lockOf]);
   const lock = useCallback((row) => (row ? lockCache.get(row.id) ?? lockOf(row) : null), [lockCache, lockOf]);
   const isLocked = useCallback((row) => Boolean(lock(row)), [lock]);
@@ -95,6 +129,8 @@ export default function useInstallmentDateMode({
      · วิธีที่จำไว้รายงวด (`views`) — ของชนิดเก่าไม่มีในชุดใหม่ ⇒ ล้าง (ยังไม่ตั้ง = จำช่องของงวดที่เปิดอยู่ใหม่ ดู `seedView`)
      · แผงเติม — ตัวเลือก/วันที่ที่แตะคิดจากกติกาเก่า ⇒ ตั้งต้นใหม่เหมือนเพิ่งเปิดแผง (ฐาน = ร่าง ณ ตอนนี้ · ร่างที่เติมไปแล้วอยู่ต่อ)
      · ร่างไม่ถูกแตะ — ร่างที่ผิดกติกาใหม่ขึ้นคำเตือนเดิมเอง (แก้ทับ · ยังไม่มีกำหนดชำระ · ลำดับวัน)
+       หน้าสร้าง + ลูกค้าเพิ่งเป็นไม่ต้องวางบิล: วันวางบิลที่ร่างไว้ติดด่านสร้างพร้อมทางที่ทำได้บนหน้านั้น (ปุ่ม "ล้างวันวางบิล" ·
+       `CREATE_NO_BILLING_ERROR` · review 29/09) — ไม่ล้างให้เงียบ ๆ
      ⚠️ ปรับ state ระหว่าง render (แพตเทิร์น "เก็บค่าก่อนหน้า" ของ React) ไม่ใช่ effect — ไม่มีเฟรมที่ตัวแก้วาดด้วยวิธีของกติกาเก่า
      ⚠️ ผู้เรียกทุกที่ผูก key ของตัวแก้ด้วย `${row.id}:${mode.kind}` ⇒ วิธีที่ตัวแก้ตัดสินตอนเปิด (openedView) คิดใหม่ตามชนิดใหม่
      🐞 review 28/09 (MAJOR): เดิมไม่มีอะไรรีเซ็ต — ตัวแก้วาดสาขา "ยังไม่ตั้ง" ต่อหลังตั้งกติกา: เลือกวันวางบิลแล้วกำหนดชำระไม่ตาม
@@ -104,7 +140,12 @@ export default function useInstallmentDateMode({
   const [shapeSeen, setShapeSeen] = useState(ruleShape);
   if (shapeSeen !== ruleShape) {
     setShapeSeen(ruleShape);
-    setViews(kind === "none" && openRow ? { [openRow.id]: noneOpenView(openField, currentDates(openRow, drafts)) } : {});
+    /* ข้อยกเว้น "งวดนี้ต้องวางบิล…" ผูกกับกติกาเก่า (ลูกค้าไม่ต้องวางบิล) — กติกาเปลี่ยน = ถามใหม่ (วันวางบิลที่ร่างไว้อยู่ในร่างครบ) */
+    setExceptionIds(new Set());
+    const openMode = openRow ? rowModeWith(openRow, drafts, new Set()) : null;
+    setViews(openRow && splitsFields(openMode)
+      ? { [openRow.id]: openViewOf(openField, currentDates(openRow, drafts), openMode) }
+      : {});
     setFill((f) => (f ? { base: drafts, includeDated: false, choice: null, day: null, excluded: [] } : f));
   }
 
@@ -126,14 +167,16 @@ export default function useInstallmentDateMode({
 
   const firstTarget = () => editable.find((row) => datesEmpty(current(row))) || editable[0] || null;
 
-  /* ลูกค้าที่ยังไม่ตั้ง: ตัวแก้เปิดทีละช่อง (วันวางบิล | กำหนดชำระ | รอเหตุการณ์) — **จำช่องที่เปิดไว้ที่ `views` ตั้งแต่ตอนเปิด**
-     (ไม่ใช่แค่ตอนแตะ Segmented) ⇒ เซลล์รู้ว่าตัวแก้อยู่ช่องไหน (`tap`: แตะอีกช่องของงวดที่เปิดอยู่ = สลับ ไม่ใช่ปิด)
-     · มาจากเซลล์ = ช่องนั้นเสมอ (แทนวิธีที่จำไว้) · ทางอื่น (ปุ่มการ์ด · แถบงวด · ลูกศร · ไปงวดถัดไปเอง) = ที่จำไว้ ไม่มี = ค่าตั้งต้น
-     · ตั้งแล้ว = ไม่ต้องจำ (ตัวแก้เดียวแก้ทั้งสองช่อง — ตัวแก้ตัดสินวิธีเองตอนเปิด) */
-  const seedView = (row, field, value) => {
-    if (kind !== "none" || !row) return;
-    setViews((v) => (field || !DATE_VIEWS.none.includes(v[row.id])
-      ? { ...v, [row.id]: noneOpenView(field, value ?? currentDates(row, drafts)) }
+  /* ตัวแก้ที่เปิดทีละช่อง (free · dueOnly · งวดยกเว้น — วันวางบิล | กำหนดชำระ | รอเหตุการณ์) — **จำช่องที่เปิดไว้ที่ `views`
+     ตั้งแต่ตอนเปิด** (ไม่ใช่แค่ตอนแตะ Segmented) ⇒ เซลล์รู้ว่าตัวแก้อยู่ช่องไหน (`tap`: แตะอีกช่องของงวดที่เปิดอยู่ = สลับ ไม่ใช่ปิด)
+     · มาจากเซลล์ = ช่องนั้นเสมอ (แทนวิธีที่จำไว้) · ทางอื่น (ปุ่มการ์ด · แถบงวด · ลูกศร · ไปงวดถัดไปเอง) = ที่จำไว้ ไม่มี = ช่องนำ
+     · ตัวแก้ตัวเดียวแก้ทั้งสองช่อง (rounds · cadence) = ไม่ต้องจำ (ตัวแก้ตัดสินวิธีเองตอนเปิด) */
+  const seedView = (row, field, value, exceptionsNow = exceptionIds) => {
+    if (!row) return;
+    const rm = rowModeWith(row, drafts, exceptionsNow);
+    if (!splitsFields(rm)) return;
+    setViews((v) => (field || !rm.views.includes(v[row.id])
+      ? { ...v, [row.id]: openViewOf(field, value ?? currentDates(row, drafts), rm) }
       : v));
   };
 
@@ -154,7 +197,7 @@ export default function useInstallmentDateMode({
     seedView(target, target && target === row ? field : null);
     setFocusTick((t) => t + 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [available, busy, blocker, sorted, isLocked, lock, placement, drafts, kind]);
+  }, [available, busy, blocker, sorted, isLocked, lock, placement, drafts, kind, exceptionIds]);
 
   const reset = () => {
     setActive(false);
@@ -164,6 +207,7 @@ export default function useInstallmentDateMode({
     setViews({});
     setFill(null);
     setSummaryOpen(false);
+    setExceptionIds(new Set());
   };
 
   /* ยกเลิก = ทิ้งร่างทั้งหมดแล้วออกจากโหมด · มี toast "เอาคืน" (ยืมจากแบบ C) — ไม่ต้องถามก่อน เพราะเอาคืนได้
@@ -172,6 +216,7 @@ export default function useInstallmentDateMode({
   const cancel = () => {
     if (busy) return;
     const kept = drafts;
+    const keptExceptions = exceptionIds;
     const count = changes.length;
     reset();
     if (!count) return;
@@ -183,6 +228,7 @@ export default function useInstallmentDateMode({
           if (!gate.available) return;
           if (gate.blocker) { notifyToast.error(gate.blocker); return; }
           setDrafts(kept);
+          setExceptionIds(keptExceptions);
           setActive(true);
         },
       },
@@ -196,7 +242,7 @@ export default function useInstallmentDateMode({
       return;
     }
     if (saveBlocker) { notifyToast.error(saveBlocker); return; }
-    const ok = await onSave?.(scheduleManyRows(changes));
+    const ok = await onSave?.(scheduleManyRows(changes, { exceptionIds, rule: ruleValue }));
     if (ok) reset();
   };
 
@@ -215,10 +261,11 @@ export default function useInstallmentDateMode({
     setFocusTick((t) => t + 1);
   };
   const close = () => setOpenId(null);
-  /* แตะเซลล์วันในโหมด — งวดอื่น = เปิดงวดนั้นที่ช่องที่แตะ · งวดที่เปิดอยู่ = ปิด **เว้นแต่** ลูกค้ายังไม่ตั้งแล้วแตะอีกช่อง
+  /* แตะเซลล์วันในโหมด — งวดอื่น = เปิดงวดนั้นที่ช่องที่แตะ · งวดที่เปิดอยู่ = ปิด **เว้นแต่** ตัวแก้ของงวดเปิดทีละช่องแล้วแตะอีกช่อง
      (สลับไปช่องนั้น — `dateCellTapCloses` · review 28/09) */
   const tap = (rowId, field) => {
-    if (openId === rowId && dateCellTapCloses(kind, field, views[rowId])) close();
+    const row = sorted.find((r) => r.id === rowId);
+    if (openId === rowId && dateCellTapCloses(rowMode(row), field, views[rowId])) close();
     else open(rowId, { field });
   };
 
@@ -256,10 +303,46 @@ export default function useInstallmentDateMode({
   };
 
   /* วิธีที่ตัวแก้วาด — ที่จำไว้ของงวด > ที่ตัวแก้ตัดสินตอนเปิด (`opened`) > ค่าตั้งต้นตามชนิดตอนนี้ (`fallback`)
-     ⚠️ ค่าที่ไม่อยู่ในชุดวิธีของชนิดตอนนี้ถูกข้ามเสมอ (`dateViewOf`) — กติกาเปลี่ยนระหว่างอยู่ในโหมดแล้วยังค้างวิธีเก่า
-       = วาดสาขาของกติกาเก่า (review 28/09 · ดู `ruleShape` ข้างบน) */
-  const view = (row, opened, fallback) => dateViewOf(kind, views[row?.id], opened, fallback);
+     ⚠️ ค่าที่ไม่อยู่ในชุดวิธีของงวดตอนนี้ถูกข้ามเสมอ (`dateViewOf`) — กติกาเปลี่ยนระหว่างอยู่ในโหมด / ติ๊กงวดนี้ไม่ต้องวางบิล
+       แล้วยังค้างวิธีเก่า = วาดสาขาของกติกาเก่า (review 28/09 · ดู `ruleShape` ข้างบน) */
+  const view = (row, opened, fallback) => dateViewOf(rowMode(row).views, views[row?.id], opened, fallback);
   const setView = (row, next) => setViews((v) => ({ ...v, [row.id]: next }));
+
+  /* ── ข้อยกเว้นรายงวด (รอบกรรมการ 29/09 · §2.3) — ด่านเขียนจริงคือ validateInstallmentDates ของ route ──────────────────
+     "งวดนี้ต้องวางบิล…" ยืนยันในโมดัลขอบเขตของผู้เรียกแล้ว: `scope` 'one' = งวดนี้ · 'so' = ทุกงวดที่ยังเปิดของใบ
+     (ไม่ล็อก · ยังไม่มีวันวางบิล · ไม่ติ๊ก — ทางลัด ไม่มีธงระดับใบ) ⇒ ตัวแก้ของงวดเปิดที่ปฏิทินวันวางบิลทันที */
+  const requireBilling = (rowId, scope = "one") => {
+    if (!available || busy) return;
+    if (blocker) { notifyToast.error(blocker); return; }
+    const row = sorted.find((r) => r.id === rowId);
+    if (!row || isLocked(row)) return;
+    const targets = scope === "so"
+      ? editable.filter((r) => r.id === row.id || needExceptionActions({ ...r, ...current(r) }, ruleValue).requireBilling)
+      : [row];
+    const next = new Set([...exceptionIds, ...targets.map((r) => r.id)]);
+    clearErrorRef.current?.();
+    setExceptionIds(next);
+    setActive(true);
+    setOpenId(row.id);
+    setOpenField("bill");
+    setViews((v) => ({ ...v, [row.id]: "bill" }));
+    setFocusTick((t) => t + 1);
+  };
+  /* "งวดนี้ไม่ต้องวางบิล" (ติ๊ก) / "เอาติ๊กออก" จากเมนูแถว — ลงร่างแล้วเปิดตัวแก้ของงวดนั้น (เห็นผล · บันทึกครั้งเดียวที่แถบล่าง)
+     ⚠️ ฐานยังไม่รัน 0393 = ไม่มีทางนี้ (`skipReady`) — ปุ่มไม่ขึ้นตั้งแต่ต้น */
+  const toggleSkip = (rowId) => {
+    if (!available || busy || !skipReady) return;
+    if (blocker) { notifyToast.error(blocker); return; }
+    const row = sorted.find((r) => r.id === rowId);
+    if (!row || isLocked(row)) return;
+    const v = current(row);
+    clearErrorRef.current?.();
+    setActive(true);
+    setValue(row, { ...v, billingSkip: !v.billingSkip });
+    setOpenId(row.id);
+    setOpenField(null);
+    setFocusTick((t) => t + 1);
+  };
 
   /* ── แผงเติม — ฐาน = ร่าง ณ ตอนเปิด · เลือกตัวเลือกใหม่ = เริ่มจากฐานเดิม (ไม่ซ้อนผลรอบก่อน) ──
      `choice` = ตัวเลือกที่ลงตารางอยู่ (null = ยังไม่ได้แตะ — ไม่มีค่าตั้งต้น) · `day` = วันที่ที่แตะในตารางวันที่ 1–31
@@ -285,10 +368,12 @@ export default function useInstallmentDateMode({
   };
 
   return {
-    available, active, blocker, placement, kind, fillKind, ruleValue, creditDays, todayIso, busy,
+    available, active, blocker, placement, kind, fillKind, ruleValue, creditDays, todayIso, busy, create,
     rows: sorted, editable, drafts, current, lock, isLocked, changes, dropped, changedIds, warnings, replaced, saveBlocker,
     emptyCount, dirty, openId, openRow, openField, focusTick,
-    enter, cancel, save, open, close, tap, choose, setValue, revert, view, setView,
+    enter, cancel, save, open, close, tap, choose, setValue, revert, view, setView, rowMode,
+    skipReady: skipReady && !billingOff, exceptionIds, requireBilling, toggleSkip, billingOff,
+    askRequireBilling: typeof onAskRequireBilling === "function" && !create ? onAskRequireBilling : null,
     summaryOpen, setSummaryOpen,
     fill, openFill, closeFill, fillCurrent, fillLocked, patchFill, applyFill,
   };

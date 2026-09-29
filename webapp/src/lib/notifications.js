@@ -181,6 +181,12 @@ export const SALES_ORDER_BELL_KINDS = Object.freeze([
   /* สรุปงวดที่ถึงรอบวางบิล → ทุกคนในฝ่าย FN วันละแถว
      🔴 ข้อยกเว้นกติกา "ห้ามแจ้งทุกคนในฝ่าย" (mig 0185 มติ 14) — เจ้าของสั่งเอง 26/09 "แจ้งทั้งฝ่ายไปก่อน" */
   'sales_order_billing_due_fn',
+  /* ⭐ ครบกำหนดชำระ (รุ่นสี่ · system-design §6 ช่วง 4a · มติเจ้าของ 29/09) — cron daily-digest ยิงเมื่อกำหนดชำระของงวดเหลือ 0–3 วัน
+     **ทุกงวดที่มีกำหนดชำระ** (ขอใบแล้วก็ยังเตือน) · ยิงจาก `lib/sales/billingDueNotify.js` (`DUE_SOON_KIND` / `DUE_SOON_FN_KIND`) */
+  // งวดใกล้ครบกำหนด → เจ้าของดีล + เจ้าของใบ หนึ่งแถวต่องวด (ครั้งเดียวต่องวดต่อกำหนดชำระ · วันวางบิล = กำหนดชำระ ⇒ รวมในแถววางบิล)
+  'sales_order_due_soon',
+  // สรุปงวดที่ใกล้ครบกำหนด → ทุกคนในฝ่าย FN วันละแถว → ทะเบียน `?due=soon` (ข้อยกเว้นมติ 14 ชุดเดียวกับแถว FN ของวางบิล)
+  'sales_order_due_soon_fn',
   /* 🚫 'sales_order_site_not_found' (TS แจ้งว่าไม่พบจุดติดตั้ง · มติ 16/09/2026 ข้อ 23.2) ถอดแล้ว
      (มติ 22/09) — บรรทัดของใบย้อนหลังผูกโซนจากทะเบียนตั้งแต่ตอนคีย์ ⇒ ไม่มีทางแจ้งให้ยิงกระดิ่งอีก */
 ]);
@@ -490,7 +496,9 @@ export async function attachNotificationActions(supabase, items = []) {
     let action = null;
     if (actionHref && row?.kind === BILLING_DUE_KIND && live) {
       const installment = live.installmentsById.get(billingDueActionInstallmentId(actionHref));
-      action = billingDueAction(installment, installment ? live.ordersById.get(String(installment.salesOrderId)) : null);
+      const order = installment ? live.ordersById.get(String(installment.salesOrderId)) : null;
+      /* ⭐ รุ่นสี่: กติกาของลูกค้าของใบ (ไม่ต้องวางบิล + งวดไม่มีวันวางบิล = ไม่ชวนขอใบ · §6) — ตัวตัดสินเดียวกับเมนูแถวของแผงงวด */
+      action = billingDueAction(installment, order, { rule: live.rulesByCustomerId.get(String(order?.customerId || '')) ?? null });
     }
     return { ...row, href, action };
   });
@@ -509,25 +517,39 @@ async function loadBillingDueActionRows(supabase, installmentIds) {
     return data || [];
   };
   try {
+    /* งวด = `*` โดยเจตนา (rework v4) — ติ๊ก "งวดนี้ไม่ต้องวางบิล" (`billingSkip` · mig 0393) มากับแถวเมื่อฐานมีคอลัมน์ ·
+       ก่อนรัน 0393 ไม่มีคีย์ = ไม่ติ๊ก (ไม่ต้องยิงสองรอบ/ถามฐานก่อน) · แถว ≤ 100 */
     const installments = rowsOf(await supabase
       .from('sales_order_installments')
-      .select('id, "salesOrderId", amount, status, kind, "refundedAt", "billingDate", "billingRequestId"')
+      .select('*')
       .in('id', installmentIds)
       .limit(installmentIds.length), 'sales_order_installments');
     const orderIds = [...new Set(installments.map((row) => String(row.salesOrderId || '')).filter(Boolean))];
     const orders = orderIds.length ? rowsOf(await supabase
       .from('sales_orders')
-      .select('id, status, origin, "quotationId"')
+      .select('id, status, origin, "quotationId", "customerId"')
       .in('id', orderIds)
       .limit(orderIds.length), 'sales_orders') : [];
     const quotationIds = [...new Set(orders.map((order) => String(order.quotationId || '')).filter(Boolean))];
-    const quotations = quotationIds.length ? rowsOf(await supabase
-      .from('quotations')
-      .select('id, status, "quoteNumber"')
-      .in('id', quotationIds)
-      .limit(quotationIds.length), 'quotations') : [];
+    const customerIds = [...new Set(orders.map((order) => String(order.customerId || '')).filter(Boolean))];
+    const [quotations, customers] = await Promise.all([
+      quotationIds.length ? supabase
+        .from('quotations')
+        .select('id, status, "quoteNumber"')
+        .in('id', quotationIds)
+        .limit(quotationIds.length)
+        .then((res) => rowsOf(res, 'quotations')) : [],
+      /* กติกาของลูกค้า (รุ่นสี่ · `canRequestBilling`) — ส่งค่าดิบ ตัวตัดสินอ่านได้ทุกรุ่น */
+      customerIds.length ? supabase
+        .from('customers')
+        .select('id, "billingRule"')
+        .in('id', customerIds)
+        .limit(customerIds.length)
+        .then((res) => rowsOf(res, 'customers')) : [],
+    ]);
     const quotationsById = new Map(quotations.map((quotation) => [String(quotation.id), quotation]));
     return {
+      rulesByCustomerId: new Map(customers.map((customer) => [String(customer.id), customer.billingRule ?? null])),
       installmentsById: new Map(installments.map((row) => [String(row.id), row])),
       ordersById: new Map(orders.map((order) => [String(order.id), {
         ...order, quotation: quotationsById.get(String(order.quotationId || '')) || null,

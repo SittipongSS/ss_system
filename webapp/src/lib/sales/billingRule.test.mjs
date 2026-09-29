@@ -37,6 +37,9 @@ import {
   PAY_ON_BILLING_TEXT,
   creditDaysText,
 } from './billingRule.js';
+/* ชุดรุ่นสี่ท้ายไฟล์ (ตัวห่อ + re-export) */
+import * as legacy from './billingRule.js';
+import * as V4 from './billingRuleV4.js';
 
 /* AR-267 เจอร์นัล แล็บ: วางบิลทุกวันที่ 5 · เงินเข้าทุกวันที่ 25 เดือนเดียวกัน */
 const AR267 = { billing: { mode: 'monthly', day: 5 }, payment: { mode: 'monthly', day: 25, monthOffset: 0 } };
@@ -561,4 +564,119 @@ test('จัดใหม่งวดที่มีวันแล้วด้�
   ];
   const plan = planCreditCadence(CREDIT30, rows, { dueDay: 25, startMonth: '2026-11', includeDated: true, requestedIds: new Set(['i3']) });
   assert.deepEqual(plan.rows.map((r) => [r.seq, r.dueDate, r.prevDueDate]), [[2, '2026-11-25', '2026-11-05']]);
+});
+
+/* ══ รุ่นสี่ (mig 0393 · มติ 28–29/09) — ชื่อเดิมเป็นตัวห่อ · re-export ชื่อรุ่นสี่ ══════════════════════════════════
+   ⭐ รูปเดิมทุกรูปคิดแบบเดิม (เทสต์ข้างบนทั้งชุดไม่แก้) · รูปรุ่นสี่ส่งต่อให้ตัวคิดรุ่นสี่ · ภาพรุ่นสองเฉพาะที่ตรงเป๊ะ */
+
+const V4R = (over) => ({ v: 4, need: 'required', ...over });
+const V4_NONE = { v: 4, need: 'none' };
+const V4_NO_TIMING = { v: 4, need: 'required', billing: null };
+const V4_CREDIT30 = V4R({ billing: { mode: 'anyday' }, creditDays: 30, runs: null });
+const V4_B = V4R({ billing: { mode: 'anyday' }, creditDays: 0, runs: { kind: 'monthly', rounds: [{ cutoffDay: 5, payDay: 25, payMonthOffset: 0 }] } });
+const V4_C = V4R({ billing: { mode: 'anyday' }, creditDays: 0, runs: { kind: 'monthly', rounds: [{ cutoffDay: 10, payDay: 25, payMonthOffset: 0 }, { cutoffDay: 25, payDay: 10, payMonthOffset: 1 }] } });
+const days731 = Array.from({ length: 731 }, (_, i) => V4.addDays('2026-09-28', i));
+
+test('รุ่นสี่ · re-export ครบ — ชื่อรุ่นสี่ทุกตัว import จาก billingRule.js ได้ (ยกเว้นตัวช่วยวันที่ทั่วไป) · สามชื่อที่ชนเป็นตัวห่อ', () => {
+  const skip = new Set(['iso', 'lastDayOf', 'dateOf', 'addDays', 'daysBetween', 'dayInMonth', 'weekdayOf']);
+  const wrapped = new Set(['billingState', 'dueDateForBilling', 'planRedate']);
+  for (const name of Object.keys(V4)) {
+    if (skip.has(name)) { assert.equal(name in legacy, false, `${name} ไม่ re-export`); continue; }
+    assert.ok(name in legacy, `${name} ต้อง import จาก billingRule.js ได้`);
+    if (!wrapped.has(name)) assert.equal(legacy[name], V4[name], `${name} = ตัวเดียวกับรุ่นสี่`);
+  }
+  for (const name of wrapped) assert.notEqual(legacy[name], V4[name], `${name} เป็นตัวห่อ`);
+});
+
+test('รุ่นสี่ · ตัวอ่านรูปที่เก็บรุ่นเดิมไม่รับรุ่นสี่ (ไม่แปลงเงียบ — "ไม่ต้องวางบิล" แปลงเป็นรุ่นสองไม่ได้ = กลายเป็นล้างรอบ)', () => {
+  for (const rule of [V4_NONE, V4_CREDIT30]) {
+    const out = normalizeBillingRule(rule);
+    assert.equal(out.rule, null);
+    assert.match(out.error, /normalizeRule/);
+    assert.equal(legacy.billingRuleOf(rule), null);
+  }
+  assert.equal(legacy.isV4Rule(V4_NONE), true);
+  assert.equal(legacy.isV4Rule(V4.ruleOf({ credit: false })), true, 'ผลการอ่านรูปเดิมก็เป็นรูปรุ่นสี่');
+  assert.equal(legacy.isV4Rule({ credit: false }), false);
+  assert.equal(legacy.isV4Rule(null), false);
+});
+
+test('⭐ รุ่นสี่ · legacyViewOf = ภาพรุ่นสองเฉพาะที่ตรงเป๊ะ — ตัวคิดรุ่นเดิมบนภาพได้กำหนดชำระเท่ารุ่นสี่ทุกวัน 24 เดือน + ชิปเท่ากัน', () => {
+  const exact = [
+    V4_CREDIT30,
+    V4R({ billing: { mode: 'anyday' }, creditDays: 0, runs: null }),
+    V4R({ billing: { mode: 'monthly', days: [10, 25] }, creditDays: 30, runs: null }),
+    V4R({ billing: { mode: 'monthly', days: [21] }, creditDays: 0, runs: { kind: 'monthly', rounds: [{ cutoffDay: 31, payDay: 30, payMonthOffset: 1 }] } }),
+    V4R({ billing: { mode: 'monthly', days: [5] }, creditDays: 0, runs: { kind: 'monthly', rounds: [{ cutoffDay: 25, payDay: 25, payMonthOffset: 0 }] } }),
+    V4R({ billing: { mode: 'anyday' }, creditDays: 0, runs: { kind: 'monthly', rounds: [{ cutoffDay: 31, payDay: 15, payMonthOffset: 1 }] } }),
+    V4R({ billing: { mode: 'monthly', days: [31] }, creditDays: 0, runs: { kind: 'monthly', rounds: [{ cutoffDay: 31, payDay: 31, payMonthOffset: 0 }] } }),
+  ];
+  for (const rule of exact) {
+    const view = legacy.legacyViewOf(rule);
+    assert.ok(view && !view.v, JSON.stringify(rule));
+    assert.equal(normalizeBillingRule(view).error, null, JSON.stringify(view));
+    for (const day of days731) assert.equal(dueDateForBilling(view, day), V4.dueFor(rule, day).dueDate, `${JSON.stringify(rule)} ${day}`);
+    if (rule.billing.mode === 'monthly') {
+      assert.deepEqual(billingRounds(view, '2026-09-28', 12).map((c) => [c.billingDate, c.dueDate]),
+        V4.billingChoices(rule, '2026-09-28', 12).map((c) => [c.billingDate, c.dueDate]), JSON.stringify(rule));
+    }
+  }
+  /* V4_B (ตัดรอบวันที่ 5 → จ่าย 25) ≠ รุ่นสอง "วางบิลวันที่ 5 → เงินเข้า 25": วางบิลวันที่ 6 รุ่นสี่ตกรอบหน้า รุ่นสองได้ 25 เดือนเดียวกัน */
+  for (const rule of [V4_NONE, V4_NO_TIMING, V4_B, V4_C,
+    V4R({ billing: { mode: 'anyday' }, creditDays: 30, runs: { kind: 'monthly', rounds: [{ cutoffDay: 25, payDay: 25, payMonthOffset: 0 }] } }),
+    V4R({ billing: { mode: 'anyday' }, creditDays: 30, runs: { kind: 'weekday', weekday: 3, nths: [2, 4] } }),
+    V4R({ billing: { mode: 'anyday' }, creditDays: 0, runs: { kind: 'monthly', rounds: [{ cutoffDay: 5, payDay: 25, payMonthOffset: 0 }], cutoffTime: '16:00' } })]) {
+    assert.equal(legacy.legacyViewOf(rule), null, `ไม่มีภาพที่ตรงเป๊ะ: ${JSON.stringify(rule)}`);
+  }
+  assert.deepEqual(legacy.legacyViewOf(V4.ruleOf({ credit: false, note: 'x' })), { credit: false, note: 'x' });
+  assert.deepEqual(legacy.legacyViewOf(CREDIT30), CREDIT30, 'รูปเดิมคืนค่าเดิม');
+  assert.deepEqual(effectiveBillingRule(V4_CREDIT30), { billing: { mode: 'anyday' }, payment: { mode: 'credit', days: 30 } });
+  assert.equal(effectiveBillingRule(V4_NONE), null, 'ไม่ต้องวางบิล = จอรุ่นเดิมเห็น "ยังไม่ตั้ง" (ไม่มีวันวางบิลให้คิด)');
+  assert.equal(billingRuleNoCredit(V4.ruleOf({ credit: false })), true);
+  assert.equal(billingRuleNoCredit(V4R({ billing: { mode: 'anyday' }, creditDays: 0, runs: null })), false, 'รุ่นสี่ไม่มีคำ "ไม่มีเครดิต"');
+});
+
+test('รุ่นสี่ · ตัวคิดชื่อเดิมส่งต่อให้รุ่นสี่ (รูปคืนเท่าเดิม + ช่องเพิ่ม)', () => {
+  assert.equal(dueDateForBilling(V4_B, '2026-10-06'), '2026-11-25');
+  assert.equal(dueDateForBilling(V4_NONE, '2026-10-06'), '', 'ไม่ต้องวางบิล = ไม่มีอะไรคิดจากวันวางบิล');
+  assert.deepEqual(billingRounds(V4_C, '2026-09-28', 3), [
+    { billingDate: '2026-10-10', dueDate: '2026-10-25', roundIndex: 0 },
+    { billingDate: '2026-10-25', dueDate: '2026-11-10', roundIndex: 1 },
+    { billingDate: '2026-11-10', dueDate: '2026-11-25', roundIndex: 0 },
+  ]);
+  assert.deepEqual(billingRounds(V4_C, '2026-09-28', 2, { roundIndex: 1 }).map((c) => c.billingDate), ['2026-10-25', '2026-11-25']);
+  assert.equal(billingRoundCount(V4_C), 2);
+  assert.deepEqual(billingRoundLabels(V4_C), ['ตัดรอบวันที่ 10', 'ตัดรอบวันที่ 25']);
+  assert.equal(billingRuleMonthly(V4_B), true);
+  assert.equal(billingRuleMonthly(V4_CREDIT30), false);
+  assert.equal(billingRuleNeedsBillingDate(V4_NONE), false);
+  assert.equal(billingRuleNeedsBillingDate(V4_CREDIT30), true);
+  assert.equal(describeBillingRule(V4_NONE), 'ไม่ต้องวางบิล');
+  assert.equal(describeBillingRule(V4_NO_TIMING), 'ต้องวางบิล · ยังไม่ตั้งรอบ');
+  assert.equal(describeBillingRule(V4_B), 'วางบิลวันที่ 5 → กำหนดชำระวันที่ 25');
+  assert.equal(describeBillingRule(V4.ruleOf({ credit: false })), NO_CREDIT_TEXT);
+  assert.equal(describeBillingRuleDetail(V4_CREDIT30), '');
+  const rows = [inst(1), inst(2, { billingSkip: true }), inst(3)];
+  const fill = planMonthlyFill(V4_B, rows, '2026-09-25');
+  assert.deepEqual(fill.rows.map((r) => [r.seq, r.billingDate, r.dueDate, r.source]), [[1, '2026-10-05', '2026-10-25', 'rule'], [3, '2026-11-05', '2026-11-25', 'rule']], 'งวดติ๊กไม่ถูกเติม');
+  const redate = planRedate(V4_C, [inst(1, { billingDate: '2026-12-10', dueDate: '2026-12-25' })], '2026-09-28', { roundIndex: 1 });
+  assert.deepEqual(redate.rows.map((r) => [r.billingDate, r.dueDate]), [['2026-10-25', '2026-11-10']]);
+  const cadence = planCreditCadence(V4_NONE, [inst(1), inst(2)], { dueDay: 5, startMonth: '2026-10' });
+  assert.deepEqual(cadence.rows.map((r) => [r.billingDate, r.dueDate]), [[null, '2026-10-05'], [null, '2026-11-05']], 'ไม่ต้องวางบิล = กำหนดชำระอย่างเดียว');
+});
+
+test('⭐ รุ่นสี่ · billingState รับสองแบบ — แบบเดิม (row, { todayIso }) ผลเดิม · แบบรุ่นสี่ (row, rule, opts) มี "ไม่ต้องวางบิล"', () => {
+  const late = inst(1, { dueDate: '2026-09-25' });
+  const billed = inst(2, { billingDate: '2026-10-05', dueDate: '2026-11-04' });
+  assert.deepEqual(billingState(billed, { todayIso: '2026-10-02' }), { key: 'soon', days: 3 });
+  assert.deepEqual(billingState(billed, V4_CREDIT30, { todayIso: '2026-10-02' }), { key: 'soon', days: 3 });
+  assert.equal(billingState(late, { todayIso: '2026-09-28' }).key, 'none', 'แบบเดิมไม่รู้กติกา = ยังไม่ระบุ');
+  assert.equal(billingState(late, V4_NONE, { todayIso: '2026-09-28' }).key, 'notNeeded');
+  assert.equal(billingState(late, null, { todayIso: '2026-09-28' }).key, 'none');
+  assert.equal(billingState(inst(3, { billingSkip: true }), { todayIso: '2026-09-28' }).key, 'notNeeded', 'ติ๊กรายงวด = ไม่ต้องวางบิล แม้ไม่รู้กติกา');
+  assert.equal(billingState(billed, V4_NONE, { todayIso: '2026-10-07' }).key, 'late', 'วันวางบิลเดิมไม่ถูกซ่อน');
+  assert.equal(billingState(billed, { todayIso: '2026-10-07', requested: true }).key, 'requested');
+  assert.equal(billingStateLabel({ key: 'notNeeded', days: null }), 'ไม่ต้องวางบิล');
+  assert.equal(billingStateTone({ key: 'notNeeded', days: null }), 'neutral');
+  assert.equal(needsBillingReminder(billed, { todayIso: '2026-10-02' }), true, 'ตัวเดิมของกระดิ่งยังใช้ได้');
 });

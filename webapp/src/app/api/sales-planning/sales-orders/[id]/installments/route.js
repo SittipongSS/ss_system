@@ -12,21 +12,22 @@ import {
 import { notifyTaxInvoice } from '@/lib/sales/taxInvoiceNotify';
 import { orderHasServiceRounds } from '@/lib/sales/serviceOrders';
 import {
-  INSTALLMENT_STALE_MESSAGE, billingFillCheck, billingFillStoppedMessage, billingRedateCheck, billingRedateRows,
-  billingRedateStoppedMessage, billingRequestedIds, billingRoundIndexOf, installmentActionError, installmentReportOutcome,
+  INSTALLMENT_STALE_MESSAGE, installmentActionError, installmentReportOutcome,
   installmentScheduleAllowed, installmentStale, installmentStartBlock, openingCoverageEnd, pipelineInstallmentLock,
   withLiveAmounts,
 } from '@/lib/sales/salesOrderPayments';
 import {
-  INSTALLMENT_BILLING_SCHEMA_MISSING, carryInstallments, ensureInstallments, installmentBillingSchemaError,
-  installmentRefundSchemaError, loadInstallment, loadInstallments, replanInstallments, updateInstallment, writeBillingFill,
+  carryInstallments, ensureInstallments, installmentBillingSchemaError,
+  installmentRefundSchemaError, loadInstallment, loadInstallments, replanInstallments, updateInstallment,
 } from '@/lib/sales/salesOrderInstallmentsStore';
-import { normalizeInstallmentBilling } from '@/lib/sales/billingRule';
+import { normalizeInstallmentBilling, validateInstallmentDates } from '@/lib/sales/billingRule';
+import { BILLING_V4_SCHEMA_MISSING, billingV4SchemaError } from '@/lib/sales/billingPolicySchema';
 import {
-  SCHEDULE_MANY_ROW_STALE, installmentsAfterWrite, scheduleManyCheck, scheduleManyShapeError, scheduleManyStoppedMessage,
+  SCHEDULE_MANY_ROW_STALE, billingFlagShapeError, installmentsAfterWrite, rowSkipped, scheduleExceptionSummary,
+  scheduleExceptionText, scheduleExceptionsOf, scheduleManyCheck, scheduleManyShapeError, scheduleManyStoppedMessage,
   writeScheduleMany,
 } from '@/lib/sales/installmentScheduleMany';
-import { businessDate } from '@/lib/businessDate';
+import { billingSkipReady, loadBillingRequestedIds, loadScheduleRule } from '@/lib/sales/installmentScheduleServer';
 import {
   REPLAN_STALE_MESSAGE, buildReplanRows, installmentReplanBlocker, replanAuditSummary, replanReasonError, replanStale,
 } from '@/lib/sales/installmentReplan';
@@ -40,7 +41,6 @@ import {
   OPENING_INSTALLMENT_LABEL, historicalInstallmentLock, isHistoricalOrder, isOpeningInstallment,
 } from '@/lib/sales/historicalOrders';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
-import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { loadScoped } from '@/lib/scopedRow';
 
 export const dynamic = 'force-dynamic';
@@ -206,41 +206,26 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   }
 });
 
-/* รอบวางบิลของลูกค้าของใบ (mig 0389) — อ่านสดจากทะเบียน ไม่เชื่อรอบที่จอส่งมา
-   ⚠️ ก่อนรัน 0389 ไม่มีคอลัมน์ (42703) ⇒ 503 บอกให้รันมิก · อ่านพลาดอย่างอื่นต้องดัง (supabase ไม่ throw เอง)
-   ⚠️ ด่านสิทธิ์ของแถวนี้คือด่านของใบที่ผ่านมาแล้ว (ลูกค้าของใบที่คนนี้เห็น) — ส่งกลับแค่รอบ ไม่ส่งแถวลูกค้า */
-async function loadCustomerBillingRule(supabase, order) {
-  if (!order.customerId) return { rule: null };
-  const { data, error } = await supabase
-    .from('customers').select('id, "billingRule"').eq('id', order.customerId).maybeSingle();
-  if (error?.code === '42703') return { error: INSTALLMENT_BILLING_SCHEMA_MISSING, status: 503 };
-  if (error) throw error;
-  return { rule: data?.billingRule ?? null };
-}
-
-/* คำร้องขอใบวางบิลที่งวดผูกอยู่ (0260) → id ของงวดที่ "ขอใบวางบิลแล้ว" (billingRequestedIds → billingRequestLive ตัวเดียว)
-   ⚠️ อ่านสดทุกครั้ง · เอาแค่ id + สถานะ · ไล่หน้า + ซอยก้อน (dept_requests อยู่ใน check:rowcap · ท่าเดียวกับทะเบียน FN)
-   ⚠️ อ่านพลาด = โยน (→ 500) ห้ามถือว่า "ยังไม่ขอ" — ไม่งั้นงวดที่บัญชีออกใบตามวันเดิมไปแล้วถูกย้ายวันเงียบ ๆ
-   ⚠️ ไม่กรองสถานะที่ query — ยกเลิกคำร้องไม่ล้างลิงก์บนงวด ตัวตัดสินต้องเห็นสถานะจริงเอง
-   ⚠️ กรอง `kind` ชุดเดียวกับที่หน้าใบโหลดให้แผง (route ของใบ: คำร้อง billing_doc เท่านั้น) — แผนที่จอส่งมาคิดจากชุดนั้น
-     ต่างชุดกันเมื่อไร = 409 วนไม่จบ */
-async function loadBillingRequestedIds(supabase, rows) {
-  const ids = [...new Set((rows || []).map((row) => row.billingRequestId).filter(Boolean))];
-  if (!ids.length) return new Set();
-  const { data, error } = await fetchInChunks(ids, (chunk) => fetchAllResult(() => supabase
-    .from('dept_requests').select('id, status').in('id', chunk).eq('kind', 'billing_doc')
-    .order('id', { ascending: true })));
-  if (error) throw error;
-  return billingRequestedIds(rows, new Map((data || []).map((request) => [request.id, request])));
-}
+/* คำสั่ง "เติมตามรอบ" / "จัดวันใหม่ตามรอบ" ของทั้งใบ (fill-billing · redate-billing) — **ถอดแล้ว** (รุ่นสี่ · system-design §7.5)
+   ⭐ ไม่ port: ตัวคิดของสองคำสั่งนี้เป็นรอบรายเดือนรุ่นสอง คิดวันวางบิลฝั่ง server เอง และข้ามด่าน "ไม่ต้องวางบิล"
+     (ลูกค้าไม่ต้องวางบิลจะได้วันวางบิลปลอม) · งานของมันย้ายไปแผง "เติมวันงวดที่ว่าง…" ของโหมดตั้งวัน (ร่างบนจอ → schedule-many)
+     และจอ "งวดที่วันจะเปลี่ยน" ของกติกาลูกค้า (`/api/customers/[id]/billing-rule/redate`)
+   ⚠️ แท็บเก่าที่ยังเปิดค้างได้ 410 พร้อมคำบอกให้โหลดใหม่ — ไม่ใช่ 400 "ไม่ได้ระบุงวด" ที่ชี้ทางผิด */
+const RETIRED_BILLING_ACTIONS = Object.freeze(['fill-billing', 'redate-billing']);
+const RETIRED_BILLING_MESSAGE = 'คำสั่งนี้เลิกใช้แล้ว — โหลดหน้าใหม่';
 
 /* ── ตั้งวันงวดทีละหลายงวด (แผงงวดแบบ C "โหมดตั้งวัน" · มติเจ้าของ 28/09) ─────────────────────────────────────
    คนร่างวันในตาราง (แตะเซลล์วันวางบิล/กำหนดชำระ · "เติมวันงวดที่ว่าง…") แล้วกด "บันทึก N งวด" ครั้งเดียว — คำขอเดียวพาทุกงวดที่เปลี่ยน
    ⭐ body `{ action:'schedule-many', rows:[{ id, billingDate, billingEvent, dueDate, updatedAt }] }` (≤ SCHEDULE_MANY_MAX)
      = สภาพที่คนเห็นในตารางตอนกด · `null` = ล้างตั้งใจ ("ล้างวัน") · วันวางบิล/รอเหตุการณ์เป็นคู่ (ส่งตัวหนึ่ง = อีกตัวว่าง ·
      กติกาเดียวกับ `schedule`) · ไม่ส่ง dueDate = คงเดิม · งวดที่ค่าตรงฐานแล้วถูกข้ามก่อนทุกด่าน (ส่งทั้งตารางได้ · ไม่ 409 เพราะงวดที่ไม่ได้แก้)
-   ⭐ ต่างจาก fill-billing / redate-billing: server **ไม่คิดวันเอง** (วันมาจากคนเลือก) ⇒ ด่านคือ "งวดที่คนเห็นยังเป็นรุ่นเดิมไหม"
+   ⭐ server **ไม่คิดวันเอง** (วันมาจากคนเลือก · เก็บกำหนดชำระตามที่ส่ง) ⇒ ด่านคือ "งวดที่คนเห็นยังเป็นรุ่นเดิมไหม"
      (`updatedAt` ทีละงวด) · ตัวตรวจ/ตัวเขียน/ล็อกของโหมดอยู่ที่ lib/sales/installmentScheduleMany.js (มีเทสต์ · จอถาม `installmentDateLock` ตัวเดียวกันนี้ผ่าน `dateLockView` ของ installmentDateDrafts.js)
+   ⭐ รุ่นสี่ (mig 0393 · system-design §7.3): แถวรับ `billingSkip` (ติ๊ก "งวดนี้ไม่ต้องวางบิล") + `billingException` (ยืนยัน
+     "งวดนี้ต้องวางบิล…") เพิ่ม · อ่านกติกาของลูกค้าของใบ **ครั้งเดียวต่อคำขอ** แล้วทุกงวดที่เปลี่ยนผ่าน `validateInstallmentDates`
+     · อ่านกติกาพลาด = `ruleUnavailable` — ตีกลับเฉพาะงวดที่เปลี่ยนวันวางบิล/ติ๊ก (กำหนดชำระยังบันทึกได้ · ไม่ 500 ทั้งคำขอ)
+     · ติ๊กเปลี่ยนก่อนรัน 0393 = 503 "รอรัน migration 0393" (`billingSkipReadyOf` จากงวดสดที่อ่านด้วย select *)
+     · ข้อยกเว้นลงประวัติในสรุป audit ก้อนเดียวกัน ("งวดที่ 2 ยกเว้น: งวดนี้ต้องวางบิล โดย …")
    ⭐ ลำดับ: สิทธิ์ (ก่อนโหลด) → รูปคำขอ → ใบ (view-scope) → งวดสด + คำร้องสด (โยน error) → ล็อกทั้งใบ →
      ตรวจ **ทุกงวดก่อนเขียนงวดแรก** (ไม่อยู่ในใบ/รุ่นเก่า/ล็อกโหมดตั้งวัน = 409 พร้อมรายชื่องวด · ด่าน schedule + ค่าวัน = 400 บอกเลขงวด)
      → เขียนทีละงวดแบบมีเงื่อนไข updatedAt → audit ก้อนเดียว (before/after ทุกงวดที่เขียนจริง) → งวดสดกลับไปให้จอ
@@ -264,7 +249,10 @@ async function scheduleManyDates({ user, supabase, req, id, body }) {
     /* ล็อกทั้งใบชนะก่อน — ตอบครั้งเดียวไม่ต้องไล่บอกทีละงวด (จอไม่เปิดโหมดตั้งวันบนใบที่ล็อกอยู่แล้ว) */
     const orderLock = historicalInstallmentLock(order) || pipelineInstallmentLock(order, 'schedule');
     if (orderLock) return badRequest(orderLock);
-    /* ตัวเลือกชุดเดียวกับที่แผงส่งให้ `gate()` และกับ fill-billing / redate-billing */
+    /* กติกาวางบิลของลูกค้าของใบ (อ่านสด · ไม่โยน — อ่านพลาดปิดแค่วันวางบิล/ติ๊ก) + ฐานรัน 0393 แล้วไหม (ติ๊กเขียนได้ไหม) */
+    const billingRule = await loadScheduleRule(supabase, order.customerId);
+    const skipReady = await billingSkipReady(supabase, live);
+    /* ตัวเลือกชุดเดียวกับที่แผงส่งให้ `gate()` */
     const gateOptions = {
       rows: live, orderTotal: order.totalAmount,
       serviceRounds: orderHasServiceRounds(order, order.lines),
@@ -274,6 +262,7 @@ async function scheduleManyDates({ user, supabase, req, id, body }) {
     };
     const built = scheduleManyCheck(live, body.rows, {
       order, requestedIds, gate: (row) => installmentActionError(row, 'schedule', user, gateOptions),
+      rule: billingRule.rule, ruleUnavailable: billingRule.ruleUnavailable, skipReady,
     });
     if (built.status === 409) {
       return ok({ error: built.error, conflicts: built.conflicts, installments: installmentsForScreen(order, live) }, 409);
@@ -282,8 +271,9 @@ async function scheduleManyDates({ user, supabase, req, id, body }) {
     /* ทุกงวดตรงค่าเดิมอยู่แล้ว (กดซ้ำหลังบันทึกสำเร็จ) — ไม่มีอะไรต้องเขียน ไม่ลง audit */
     if (!built.rows.length) return ok({ saved: 0, installments: installmentsForScreen(order, live) });
 
-    /* documentWorkflowError คืนข้อความไทยเสมอ (รหัสที่ไม่รู้จัก = ข้อความกลาง) — ไม่มีทางถอยไป writeError.message ภาษาอังกฤษดิบของฐาน */
-    const failMessage = (writeError) => installmentBillingSchemaError(writeError)
+    /* documentWorkflowError คืนข้อความไทยเสมอ (รหัสที่ไม่รู้จัก = ข้อความกลาง) — ไม่มีทางถอยไป writeError.message ภาษาอังกฤษดิบของฐาน
+       ⚠️ ลำดับตัวแปล: 0393 (billingSkip) → 0389 (billingDate/Event) → ตัวกลาง — ตัวของ 0389 ไม่รู้จัก billingSkip */
+    const failMessage = (writeError) => billingV4SchemaError(writeError) || installmentBillingSchemaError(writeError)
       || documentWorkflowError(writeError, { context: `installment schedule-many ${order.id}` }).message;
     let written;
     try {
@@ -291,10 +281,10 @@ async function scheduleManyDates({ user, supabase, req, id, body }) {
         supabase, rowId, patch, { expectedUpdatedAt },
       ));
     } catch (writeError) {
-      /* พังตั้งแต่งวดแรก = ยังไม่มีอะไรลงฐาน ⇒ แปลแบบเขียนงวดเดียว (มิก 0389 ก่อนตัวของ 0378 — ตัวนั้นเหมารหัสเดียวกันทุกคอลัมน์)
+      /* พังตั้งแต่งวดแรก = ยังไม่มีอะไรลงฐาน ⇒ แปลแบบเขียนงวดเดียว (มิก 0393 → 0389 ก่อนตัวของ 0378 — ตัวนั้นเหมารหัสเดียวกันทุกคอลัมน์)
          รหัสที่ไม่รู้จัก = ข้อความไทยกลาง (documentWorkflowError ลง console ให้แล้ว) — ไม่โยนต่อให้ catch นอกตอบข้อความดิบของฐาน
          เป็นภาษาอังกฤษ (ทางหยุดกลางทางข้างล่างก็ใช้ข้อความชุดเดียวกัน) */
-      const billingSchema = installmentBillingSchemaError(writeError);
+      const billingSchema = billingV4SchemaError(writeError) || installmentBillingSchemaError(writeError);
       if (billingSchema) return fail(billingSchema, 503);
       const mapped = documentWorkflowError(writeError, { context: `installment schedule-many ${order.id}` });
       return fail(mapped.message, mapped.status);
@@ -308,16 +298,22 @@ async function scheduleManyDates({ user, supabase, req, id, body }) {
       }
       : null;
 
-    /* audit ก้อนเดียว before/after ทุกงวดที่เขียนจริง — ทางกู้ทางเดียวของระบบนี้ (ไม่มีถังขยะ) · หยุดกลางทางก็ลงก่อนตอบ 409 */
+    /* audit ก้อนเดียว before/after ทุกงวดที่เขียนจริง — ทางกู้ทางเดียวของระบบนี้ (ไม่มีถังขยะ) · หยุดกลางทางก็ลงก่อนตอบ 409
+       ⭐ ข้อยกเว้นรายงวด (รุ่นสี่ · ไม่มีคอลัมน์ของ `billingException`) ลงที่นี่ — เฉพาะงวดที่เขียนจริง */
     if (after.length) {
+      const writtenIds = new Set(after.map((row) => row.id));
+      const exceptions = built.rows
+        .filter((row) => writtenIds.has(row.id) && row.exceptions?.length)
+        .map((row) => ({ id: row.id, seq: row.seq, exceptions: row.exceptions }));
       await recordAudit({
         user,
         action: 'update',
         entityType: 'sales_order_installments',
         entityId: order.id,
         before: { installments: before },
-        after: { installments: after, schedule: 'many' },
+        after: { installments: after, schedule: 'many', exceptions },
         summary: `schedule-many ${after.length} งวด ของ ${order.orderNumber}`
+          + scheduleExceptionSummary(exceptions, user.name || user.email || '')
           + (stopped ? ` (หยุดที่งวด ${stopped.seq})` : ''),
         request: req,
       });
@@ -348,176 +344,6 @@ async function scheduleManyDates({ user, supabase, req, id, body }) {
     return ok({ saved: after.length, installments: installmentsForScreen(order, settled) });
   } catch (scheduleError) {
     return fail(scheduleError.message, 500);
-  }
-}
-
-/* ── จัดวันใหม่ตามรอบปัจจุบัน (กำหนดวางบิลรอบสอง · มติเจ้าของ 26/09 "ลูกค้าเปลี่ยนฉุกเฉิน หรือเปลี่ยนรอบเลย") ──────────
-   ลูกค้าเปลี่ยนรอบถาวร ⇒ วันวางบิล **และ** กำหนดชำระของงวดที่ยังเปิดอยู่ผิดทั้งคู่ — จัดใหม่ทั้งใบในครั้งเดียว
-   ⭐ พี่น้องของ `fill-billing` ทุกข้อ (ด่าน · ผู้มีสิทธิ์ · เขียนแบบมีเงื่อนไข · audit · 409 เมื่อจอเก่า) ต่างกันสามข้อ:
-     · ตัวคิดคือ `planRedate` — รวมงวดที่มีวันแล้ว และ **ไม่คงกำหนดชำระเดิม** (billingRedateRows เขียนทั้งสองช่อง)
-     · งวดที่ขอใบวางบิลแล้ว / รอเหตุการณ์ / แจ้งชำระแล้ว / งวดยกมา ไม่ถูกแตะ — "ขอแล้ว" อ่านคำร้องสดที่ server
-       (`loadBillingRequestedIds`) ไม่เชื่อจอ · คำร้องเปลี่ยนสถานะระหว่างเปิดหน้าต่าง = ชุดเปลี่ยน = 409
-     · กำหนดชำระใหม่แทนวันเดิม ⇒ ป้าย "เลยกำหนด" และด่านนัดช่าง (overdueUnconfirmed) อ่านวันใหม่ทันที — โมดัลบอกก่อนกด
-   ⭐ body `{ action:'redate-billing', plan:[{ id, billingDate, dueDate }], roundIndex? }` = ตารางที่พรีวิวแสดง
-     + รอบที่คนเลือก (ลูกค้าหลายรอบต่อเดือน · มติ 26/09 ข้อ 3 — รอบเดียว = ไม่ส่ง/null)
-   ⭐ ผู้มีสิทธิ์ = ด่าน `schedule` ทีละงวด (ฝ่ายขายที่แก้ใบได้ · ฝ่ายบัญชี — มติข้อ 4) · ล็อกทั้งใบชนะก่อน
-   🔴 ไม่ใช่สิ่งที่ระบบทำเองตอนแก้รอบของลูกค้า — คนกดบนใบเดียว เห็นตาราง "เดิม → ใหม่" ครบก่อนยืนยันเสมอ
-   ⚠️ เขียนทีละงวดด้วย `writeBillingFill` ตัวเดียวกับเติมตามรอบ (มีเงื่อนไข updatedAt) — หยุดกลางทาง = งวดที่เขียนแล้วลง audit
-     แล้วตอบ 409 · กดซ้ำปลอดภัย (งวดที่จัดแล้วตรงรอบ `planRedate` ตัดทิ้งเอง) */
-async function redateBillingDates({ user, supabase, req, id, body }) {
-  /* สิทธิ์ก่อนโหลด (ท่าเดียวกับ replan/carry) — proxy ปล่อย PATCH ของ route นี้ให้ทุกคนที่ถือ payments:confirm ⇒ คนที่ไม่ได้อยู่ FN
-     และแก้ใบไม่ได้ต้องได้ 403 ตั้งแต่ตรงนี้ ไม่ใช่ "ยังไม่ตั้งรอบวางบิล" / 409 จอเก่า ก่อนจะถูกด่านรายงวดตีกลับ
-     (review รอบสอง 26/09 — ด่านรายงวดข้างล่างยังอยู่ นี่แค่ตอบเหตุจริงให้เร็ว) · ตัวตัดสินเดียวกับที่แผงใช้ซ่อนปุ่ม */
-  if (!installmentScheduleAllowed(user)) return forbidden('ไม่มีสิทธิ์แก้กำหนดชำระ');
-  try {
-    const { order, error } = await loadOrderForUser(supabase, user, id);
-    if (error) return error;
-    const billing = await loadCustomerBillingRule(supabase, order);
-    if (billing.error) return fail(billing.error, billing.status);
-    /* ⚠️ อ่านสดแบบโยน error — กลืนเป็น [] แล้วแผนถูกคิดจากงวดที่ไม่มีอยู่จริง */
-    const live = await loadInstallments(supabase, order.id);
-    const requestedIds = await loadBillingRequestedIds(supabase, live);
-    /* `roundIndex` = รอบที่คนเลือกในโมดัล (ลูกค้าหลายรอบต่อเดือน · มติ 26/09 ข้อ 3) — คิดแผนซ้ำด้วยรอบเดียวกัน ·
-       ลูกค้าหลายรอบที่ไม่ส่งรอบมา = ตัวคิดตีกลับ ⇒ 409 (จอเก่าที่ยังไม่เคยถามรอบ) */
-    const roundIndex = billingRoundIndexOf(body.roundIndex);
-    const built = billingRedateCheck(billing.rule, live, body.plan, businessDate(), { requestedIds, roundIndex });
-    if (built.error) return fail(built.error, built.status);
-
-    const byId = new Map(live.map((row) => [row.id, row]));
-    const orderLock = historicalInstallmentLock(order) || pipelineInstallmentLock(order, 'schedule');
-    for (const planned of built.rows) {
-      /* ตัวเลือกชุดเดียวกับที่แผงส่งให้ `gate()` และกับ fill-billing */
-      const gate = installmentActionError(byId.get(planned.id), 'schedule', user, {
-        rows: live, orderTotal: order.totalAmount,
-        serviceRounds: orderHasServiceRounds(order, order.lines),
-        orderLock, historical: isHistoricalOrder(order),
-        contractEnd: openingCoverageEnd(order, live),
-        orderCancelled: order.status === 'cancelled' && !isHistoricalOrder(order),
-      });
-      if (gate) return badRequest(built.rows.length > 1 ? `งวดที่ ${planned.seq}: ${gate}` : gate);
-    }
-
-    const failMessage = (writeError) => installmentBillingSchemaError(writeError)
-      || documentWorkflowError(writeError, { context: `installment redate-billing ${order.id}` }).message
-      || writeError.message;
-    let written;
-    try {
-      written = await writeBillingFill(supabase, live, billingRedateRows(built.rows));
-    } catch (writeError) {
-      const billingSchema = installmentBillingSchemaError(writeError);
-      if (billingSchema) return fail(billingSchema, 503);
-      const mapped = documentWorkflowError(writeError, { context: `installment redate-billing ${order.id}` });
-      if (mapped.code) return fail(mapped.message, mapped.status);
-      throw writeError;
-    }
-    const { before, after } = written;
-    const stopped = written.stopped
-      ? { seq: written.stopped.seq, message: written.stopped.error ? failMessage(written.stopped.error) : INSTALLMENT_STALE_MESSAGE }
-      : null;
-    if (!after.length) return fail(stopped?.message || INSTALLMENT_STALE_MESSAGE, 409);
-
-    /* audit before/after ทุกงวดที่เขียนจริง + รอบที่ใช้คิด — ทางกู้ทางเดียวของระบบนี้ (ไม่มีถังขยะ) */
-    await recordAudit({
-      user,
-      action: 'update',
-      entityType: 'sales_order_installments',
-      entityId: order.id,
-      before: { installments: before },
-      after: { installments: after, redate: 'billing-rule', billingRule: billing.rule, roundIndex },
-      summary: `redate-billing ${after.length} งวด ของ ${order.orderNumber}`
-        + (stopped ? ` (หยุดที่งวด ${stopped.seq})` : ''),
-      request: req,
-    });
-    if (stopped) return fail(billingRedateStoppedMessage(after.length, stopped), 409);
-    return ok({
-      redated: after.length,
-      installments: installmentsForScreen(order, await loadInstallments(supabase, order.id)),
-    });
-  } catch (redateError) {
-    return fail(redateError.message, 500);
-  }
-}
-
-/* ── เติมวันวางบิลตามรอบ เดือนละงวด (กำหนดวางบิล · mig 0389 · มติเจ้าของ 26/09 ข้อ 3 "เอา") ─────────────────
-   ⭐ คำสั่งของ **ทั้งใบ** ⇒ PATCH ส่งมาที่นี่ก่อนด่าน `installmentId` (proxy ให้ FN ผ่านเฉพาะ PATCH ของ route นี้ ·
-     มติข้อ 4 ให้ FN แก้วันงวดได้ ⇒ คำสั่งที่ FN กดได้ต้องอยู่ที่นี่ ไม่ใช่ sub-route ใหม่ที่ proxy ตัด 403)
-   ⭐ body `{ action:'fill-billing', plan:[{ id, billingDate, dueDate }], roundIndex? }` = แผนที่พรีวิวแสดง (+ รอบที่เลือก) ·
-     server คิดชุดเองด้วย `planMonthlyFill` จากงวดสด + รอบสดของลูกค้า + วันนี้ (นาฬิกาไทย) — ไม่ตรงกับที่จอเห็น = 409
-     (`billingFillCheck` · ห้ามเขียนชุดใหม่ทับไปเงียบ ๆ = ยืนยันวันที่คนกดไม่เคยเห็น)
-   ⭐ ด่านเดียวกับ `schedule` ทีละงวด (installmentActionError · ตัวเดียวกับที่แผงใช้ซ่อนปุ่ม) — ล็อกทั้งใบชนะก่อน
-   ⭐ เขียนเฉพาะ `billingDate` (+ `dueDate` ของงวดที่ยังไม่มี) — งวดที่มีกำหนดชำระแล้วคงวันเดิม (keptDue)
-   🔴 ใบเก่าไม่ถูกเติมเอง (มติข้อ 10) — ทางนี้เกิดจากคนกดปุ่มบนใบเดียว เห็นพรีวิวครบก่อนยืนยันเสมอ
-   ⚠️ เขียนทีละงวดแบบมีเงื่อนไข updatedAt ของแถวที่ด่านเพิ่งตัดสิน (ไม่มี RPC — ไม่ต้องมี migration เพิ่ม)
-     ⇒ อีกหน้าต่างเขียนแทรกกลางทาง = หยุดที่งวดนั้น · งวดที่เขียนไปแล้วลง audit ครบ · กดใหม่เติมต่อเฉพาะงวดที่ยังว่าง
-     (`installmentBillingFillable` ข้ามงวดที่มีวันวางบิลแล้ว) */
-async function fillBillingDates({ user, supabase, req, id, body }) {
-  /* สิทธิ์ก่อนโหลด — เหตุผลเดียวกับ redate-billing ข้างบน (403 ของจริง ไม่ใช่เหตุของแผน/รอบที่มาก่อนด่านรายงวด) */
-  if (!installmentScheduleAllowed(user)) return forbidden('ไม่มีสิทธิ์แก้กำหนดชำระ');
-  try {
-    const { order, error } = await loadOrderForUser(supabase, user, id);
-    if (error) return error;
-    const billing = await loadCustomerBillingRule(supabase, order);
-    if (billing.error) return fail(billing.error, billing.status);
-    /* ⚠️ อ่านสดแบบโยน error — กลืนเป็น [] แล้วแผนถูกคิดจากงวดที่ไม่มีอยู่จริง */
-    const live = await loadInstallments(supabase, order.id);
-    /* รอบที่เลือกในโมดัล — กติกาเดียวกับ redate-billing ข้างบน */
-    const roundIndex = billingRoundIndexOf(body.roundIndex);
-    const built = billingFillCheck(billing.rule, live, body.plan, businessDate(), { roundIndex });
-    if (built.error) return fail(built.error, built.status);
-
-    const byId = new Map(live.map((row) => [row.id, row]));
-    const orderLock = historicalInstallmentLock(order) || pipelineInstallmentLock(order, 'schedule');
-    for (const planned of built.rows) {
-      /* ตัวเลือกชุดเดียวกับที่แผงส่งให้ `gate()` — ด่านของ schedule อ่านแค่ล็อกทั้งใบ · งวดยกมา · สิทธิ์ · สถานะ */
-      const gate = installmentActionError(byId.get(planned.id), 'schedule', user, {
-        rows: live, orderTotal: order.totalAmount,
-        serviceRounds: orderHasServiceRounds(order, order.lines),
-        orderLock, historical: isHistoricalOrder(order),
-        contractEnd: openingCoverageEnd(order, live),
-        orderCancelled: order.status === 'cancelled' && !isHistoricalOrder(order),
-      });
-      if (gate) return badRequest(built.rows.length > 1 ? `งวดที่ ${planned.seq}: ${gate}` : gate);
-    }
-
-    /* เขียนทีละงวด (writeBillingFill — มีเทสต์พฤติกรรมด้วยฐานปลอม) · พังตั้งแต่งวดแรก = ยังไม่มีอะไรลง ⇒ แปลแบบงวดเดียว */
-    const failMessage = (writeError) => installmentBillingSchemaError(writeError)
-      || documentWorkflowError(writeError, { context: `installment fill-billing ${order.id}` }).message
-      || writeError.message;
-    let written;
-    try {
-      written = await writeBillingFill(supabase, live, built.rows);
-    } catch (writeError) {
-      const billingSchema = installmentBillingSchemaError(writeError);
-      if (billingSchema) return fail(billingSchema, 503);
-      const mapped = documentWorkflowError(writeError, { context: `installment fill-billing ${order.id}` });
-      if (mapped.code) return fail(mapped.message, mapped.status);
-      throw writeError;
-    }
-    const { before, after } = written;
-    const stopped = written.stopped
-      ? { seq: written.stopped.seq, message: written.stopped.error ? failMessage(written.stopped.error) : INSTALLMENT_STALE_MESSAGE }
-      : null;
-    if (!after.length) return fail(stopped?.message || INSTALLMENT_STALE_MESSAGE, 409);
-
-    /* audit before/after ทุกงวดที่เขียนจริง — ทางกู้ทางเดียวของระบบนี้ (ไม่มีถังขยะ) */
-    await recordAudit({
-      user,
-      action: 'update',
-      entityType: 'sales_order_installments',
-      entityId: order.id,
-      before: { installments: before },
-      after: { installments: after, fill: 'billing-monthly', billingRule: billing.rule, roundIndex },
-      summary: `fill-billing ${after.length} งวด ของ ${order.orderNumber}`
-        + (stopped ? ` (หยุดที่งวด ${stopped.seq})` : ''),
-      request: req,
-    });
-    if (stopped) return fail(billingFillStoppedMessage(after.length, stopped), 409);
-    return ok({
-      filled: after.length,
-      installments: installmentsForScreen(order, await loadInstallments(supabase, order.id)),
-    });
-  } catch (fillError) {
-    return fail(fillError.message, 500);
   }
 }
 
@@ -632,7 +458,7 @@ async function carryIntoOrder({ user, supabase, req, id, body }) {
   }
 }
 
-/* PATCH — เดินสถานะของงวดเดียว (+ `replan` / `carry` / `fill-billing` / `redate-billing` / `schedule-many` ของทั้งใบ — ดูข้างบน)
+/* PATCH — เดินสถานะของงวดเดียว (+ `replan` / `carry` / `schedule-many` ของทั้งใบ — ดูข้างบน · `fill-billing`/`redate-billing` = 410)
    pending/rejected ──report──> reported ──confirm──> confirmed
                         ↑                    └─reject──> rejected
                         └────── withdraw ────┘
@@ -646,8 +472,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const action = String(body.action || '').trim();
   if (action === 'replan') return replanOrderInstallments({ user, supabase, req, id, body });
   if (action === 'carry') return carryIntoOrder({ user, supabase, req, id, body });
-  if (action === 'fill-billing') return fillBillingDates({ user, supabase, req, id, body });
-  if (action === 'redate-billing') return redateBillingDates({ user, supabase, req, id, body });
+  if (RETIRED_BILLING_ACTIONS.includes(action)) return fail(RETIRED_BILLING_MESSAGE, 410);
   if (action === 'schedule-many') return scheduleManyDates({ user, supabase, req, id, body });
   const installmentId = String(body.installmentId || '').trim();
   if (!installmentId) return badRequest('ไม่ได้ระบุงวดที่ต้องการ');
@@ -712,6 +537,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const now = new Date().toISOString();
     const actorName = user.name || user.email || null;
     let patch = null;
+    /* ข้อยกเว้นรายงวดของ `schedule` (รุ่นสี่) — ลงในสรุป audit ข้างล่าง */
+    let scheduleExceptions = [];
 
     if (action === 'schedule') {
       const dueDate = body.dueDate || null;
@@ -733,6 +560,29 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         if (billing.error) return badRequest(billing.error);
         patch = { ...patch, ...billing.value };
       }
+      /* ⭐ รุ่นสี่ "ต้องวางบิลไหม" (mig 0393 · system-design §7.3) — ด่านเดียวกับ schedule-many (`validateInstallmentDates`)
+         · body รับ `billingSkip` (ติ๊ก "งวดนี้ไม่ต้องวางบิล" · ไม่ส่ง = คงเดิม) + `billingException` (ยืนยัน "งวดนี้ต้องวางบิล…" ·
+           ของชั่วคราว ไม่เก็บ — ลงประวัติ) · ลูกค้าไม่ต้องวางบิล: วันวางบิลใหม่ที่ไม่มีการยืนยัน = 400
+         · กติกาลูกค้าอ่านสดที่นี่ (ไม่โยน) — อ่านพลาดปิดแค่วันวางบิล/ติ๊ก · กำหนดชำระยังบันทึกได้
+         · ติ๊กลงฐานเป็น true/null เฉพาะเมื่อเปลี่ยน · ฐานยังไม่รัน 0393 = 503 (ไม่ปล่อยให้ PGRST204 ไปโทษ 0378) */
+      const flagError = billingFlagShapeError(body);
+      if (flagError) return badRequest(flagError);
+      const skipNext = Object.hasOwn(body, 'billingSkip') ? body.billingSkip === true : rowSkipped(row);
+      const billingRule = await loadScheduleRule(supabase, order.customerId);
+      const next = {
+        billingDate: Object.hasOwn(patch, 'billingDate') ? patch.billingDate : row.billingDate,
+        billingEvent: Object.hasOwn(patch, 'billingEvent') ? patch.billingEvent : row.billingEvent,
+        dueDate,
+        billingSkip: skipNext,
+        billingException: body.billingException === true,
+      };
+      const dateError = validateInstallmentDates(row, next, billingRule.rule, { ruleUnavailable: billingRule.ruleUnavailable });
+      if (dateError) return badRequest(dateError);
+      if (skipNext !== rowSkipped(row)) {
+        if (!(await billingSkipReady(supabase, siblings))) return fail(BILLING_V4_SCHEMA_MISSING, 503);
+        patch = { ...patch, billingSkip: skipNext ? true : null };
+      }
+      scheduleExceptions = scheduleExceptionsOf(row, next, billingRule.rule);
     } else if (action === 'coverage') {
       /* ⭐ ช่วงบริการที่งวดนี้จ่ายค่าให้ (mig 0320 · มติผู้ใช้ 2026-08-30 "จ่ายก่อนบริการเสมอ")
          max(coversTo) ของงวดที่ confirmed = ค่า "จ่ายถึง" ที่ด่านเข้าไซต์ใช้ตัดสิน
@@ -892,7 +742,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     try {
       updated = await updateInstallment(supabase, installmentId, patch, { expectedUpdatedAt: row.updatedAt });
     } catch (writeError) {
-      /* ฐานยังไม่ได้รัน 0389 (ไม่มีคอลัมน์วันวางบิล) — ถามก่อนตัวของ 0378 ซึ่งเหมารหัสเดียวกันทุกคอลัมน์ */
+      /* ฐานยังไม่ได้รัน 0393 (ติ๊ก billingSkip) / 0389 (ไม่มีคอลัมน์วันวางบิล) — ถามก่อนตัวของ 0378 ซึ่งเหมารหัสเดียวกันทุกคอลัมน์ */
+      const v4Schema = billingV4SchemaError(writeError);
+      if (v4Schema) return fail(v4Schema, 503);
       const billingSchema = installmentBillingSchemaError(writeError);
       if (billingSchema) return fail(billingSchema, 503);
       /* ฐานยังไม่ได้รัน 0378 (ไม่มีคอลัมน์คืนเงิน) — บอกให้รันมิก ไม่ใช่ 500 ดิบ */
@@ -920,7 +772,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       entityId: installmentId,
       before: row,
       after: updated,
-      summary: `${action} งวด ${row.seq} ของ ${order.orderNumber}`,
+      summary: `${action} งวด ${row.seq} ของ ${order.orderNumber}`
+        + scheduleExceptions.map((kind) => ` · ${scheduleExceptionText(kind, actorName)}`).join(''),
       request: req,
     });
     /* ── กระดิ่งแจ้งฝ่ายขาย (มติผู้ใช้ 2026-09-09) ─────────────────────────

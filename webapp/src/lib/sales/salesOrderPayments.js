@@ -29,7 +29,7 @@ import {
 // เอกสารยืนยันคำสั่งซื้อของใบ (อ่านสองบ้าน) — ไฟล์นั้นไม่มี import (ไม่มีวงวน)
 import { orderConfirmationOf } from '@/lib/sales/orderConfirmationDocs';
 // กำหนดวางบิล (mig 0389) — ตัวคิดวัน import แค่ paymentCoverage (ไม่มีวงวน · ฝั่ง client ใช้ได้)
-import { billingRequestLive, planMonthlyFill, planRedate } from '@/lib/sales/billingRule';
+import { billingRequestLive } from '@/lib/sales/billingRule';
 
 export const INSTALLMENT_STATUSES = ['pending', 'reported', 'confirmed', 'rejected'];
 
@@ -604,7 +604,7 @@ export function installmentReportDoneMessage(status) {
   return 'ส่งให้บัญชีตรวจแล้ว';
 }
 
-/* สิทธิ์แก้วันงวด (กำหนดชำระ · วันวางบิล · เติมตามรอบ · จัดวันใหม่ · โหมดตั้งวัน `schedule-many`) = ฝ่ายขายที่แก้ใบได้ หรือฝ่ายบัญชี (มติ 26/09 ข้อ 4)
+/* สิทธิ์แก้วันงวด (กำหนดชำระ · วันวางบิล · ติ๊ก "งวดนี้ไม่ต้องวางบิล" · โหมดตั้งวัน `schedule-many` · จัดวันใหม่ตามกติกาลูกค้า) = ฝ่ายขายที่แก้ใบได้ หรือฝ่ายบัญชี (มติ 26/09 ข้อ 4)
    ⭐ แยกออกมาให้แผงถาม "มีสิทธิ์ไหม" ได้โดยไม่ต้องมีแถว — ปุ่มระดับทั้งใบ ("จัดวันใหม่ตามรอบปัจจุบัน…") ไม่มีสิทธิ์ = ไม่วาด
      ส่วนติดล็อกของใบ = วาดแล้วบอกเหตุ (กติกาเดียวกับทั้งระบบ) · ด่าน `schedule` ข้างล่างถามตัวนี้ตัวเดียว */
 export const installmentScheduleAllowed = (user) => canUser(user, 'salesplan:edit') || canConfirmPayment(user);
@@ -698,8 +698,8 @@ export function installmentActionError(row, action, user, options = {}) {
   // ตั้ง/แก้วันครบกำหนดรายงวด — QT ไม่มีวันมาให้ (มติผู้ใช้: SA กรอกเองทีละงวด)
   // แก้ได้เสมอแม้ใบอนุมัติแล้ว เพราะของจริงลูกค้าเลื่อนจ่ายบ่อย · แต่ยอด/% แก้รายงวดที่นี่ไม่ได้ —
   // ทางเดียวคือ "ปรับแผนงวด" ของ AE Sup/admin ทั้งใบ (PR2 · mig 0377 · lib/sales/installmentReplan.js)
-  /* ⭐ คำสั่งเดียวกันถือ **วันวางบิล / รอเหตุการณ์** ของงวดด้วย (กำหนดวางบิล · mig 0389) และ
-     ปุ่ม "เติมตามรอบ เดือนละงวด" (action `fill-billing`) ถามด่านนี้ทีละงวด — ด่านวันงวดมีบ้านเดียว
+  /* ⭐ คำสั่งเดียวกันถือ **วันวางบิล / รอเหตุการณ์** ของงวดด้วย (กำหนดวางบิล · mig 0389) และข้อยกเว้นรายงวดรุ่นสี่
+     (ติ๊ก/ยืนยัน "งวดนี้ต้องวางบิล" · 0393) · `schedule-many` และจัดวันใหม่ตามกติกาลูกค้าถามด่านนี้ทีละงวด — ด่านวันงวดมีบ้านเดียว
      ⭐ **ฝ่ายบัญชีแก้ได้ด้วย** (มติเจ้าของ 26/09 ข้อ 4 "แก้ได้") — FN เป็นคนที่เห็นรอบวางบิลของลูกค้าจริง
        และเห็นงวดทั้งบริษัทที่ทะเบียนการชำระ · ตัดสินฝ่ายด้วย `canConfirmPayment` ตัวเดียวกับด่านรับรองงวด
        (ไม่ใช่ role ล้วน — กติกา 🔴 ของ permissions.js ห้ามเอา superuser มาเป็นด่านเงิน)
@@ -915,8 +915,7 @@ export function installmentActionError(row, action, user, options = {}) {
    ⚠️ อย่าเขียนด่าน "งวดรับรองแล้วห้าม…" ชุดใหม่ที่นี่ — สองชุดเพี้ยนหากันแน่นอน (ยามที่ salesOrderPayments.test.mjs) */
 
 /* ══ กำหนดวางบิล (mig 0389 · มติเจ้าของ 25–26/09 · ม็อก mockups/billing-cycle จอ C) ═══════════════════════
-   ตัวคิดวันทั้งหมดอยู่ที่ `billingRule.js` — ที่นี่เหลือสองเรื่องของ "งวดในใบ": คำร้องที่ผูกยังมีชีวิตไหม (ป้าย "ขอใบวางบิลแล้ว")
-   และการตรวจแผน "เติมตามรอบ เดือนละงวด" ที่จอส่งมา กับชุดที่ server คิดเอง */
+   ตัวคิดวันทั้งหมดอยู่ที่ `billingRule.js` — ที่นี่เหลือเรื่องเดียวของ "งวดในใบ": คำร้องที่ผูกยังมีชีวิตไหม (ป้าย "ขอใบวางบิลแล้ว") */
 
 /* "ขอใบวางบิลแล้ว" ตัดสินที่ `billingRequestLive` (billingRule.js) ตัวเดียวกับทะเบียน FN และกระดิ่ง —
    ร่างที่ยังไม่ส่ง = ยังไม่ขอ · ยกเลิกแล้ว (ลิงก์บนงวดไม่ถูกล้าง) = ยังไม่ขอ
@@ -933,70 +932,12 @@ export function installmentBillingRequested(row, requestById) {
   return billingRequestLive(requestById?.get?.(id) || null);
 }
 
-export const BILLING_FILL_STALE_MESSAGE = 'งวดหรือรอบวางบิลของลูกค้าเพิ่งเปลี่ยน — วันที่ที่เห็นไม่ตรงกับที่ระบบคิดตอนนี้'
-  + ' โหลดหน้าใหม่แล้วเติมอีกครั้ง';
-
-/* 409 ของการเติมที่หยุดกลางทาง (เขียนไปแล้วบางงวด) — บอกว่าลงแล้วกี่งวด หยุดที่งวดไหนเพราะอะไร และกดซ้ำปลอดภัย
-   (งวดที่มีวันวางบิลแล้วไม่ถูกเติมซ้ำ — installmentBillingFillable) · `stopped` = `{ seq, message }` */
-export const billingFillStoppedMessage = (filled, stopped) => `เติมวันแล้ว ${filled} งวด แต่หยุดที่งวดที่ ${stopped.seq}`
-  + ` — ${stopped.message} · โหลดหน้าใหม่แล้วกดเติมอีกครั้ง (งวดที่เติมแล้วไม่ถูกเติมซ้ำ)`;
+/* ⚠️ "เติมตามรอบ เดือนละงวด" / "จัดวันใหม่ตามรอบปัจจุบัน" ของทั้งใบ (`fill-billing` · `redate-billing`) **ถอดแล้ว** (รุ่นสี่ ·
+   system-design §7.5 — route ตอบ 410) พร้อมตัวตรวจแผน/ตัวเขียนของมัน · งานของมันอยู่ที่แผง "เติมวันงวดที่ว่าง…" (ร่างบนจอ →
+   `schedule-many`) และจอ "งวดที่วันจะเปลี่ยน" ของกติกาลูกค้า (lib/sales/customerRuleChange.js) */
 
 /**
- * ตรวจแผน "เติมตามรอบ เดือนละงวด" ที่จอส่งมา กับชุดที่ server คิดเองจากงวดสด + รอบของลูกค้า + วันนี้
- * ⭐ server ไม่เชื่อวันจากจอ — คิดใหม่ด้วย `planMonthlyFill` ตัวเดียวกับพรีวิว แล้ว **ต้องเท่ากันทุกแถว**
- *   ต่างกัน = คนกดตัดสินจากของเก่า (มีคนแก้งวด/รอบวางบิลจากอีกหน้าต่าง · ข้ามวันระหว่างเปิดหน้าต่าง) ⇒ 409
- *   (ห้ามเขียนชุดที่ server คิดใหม่ทับไปเงียบ ๆ — เท่ากับยืนยันวันที่คนกดไม่เคยเห็น)
- * @param clientPlan `[{ id, billingDate, dueDate }]` ที่พรีวิวแสดง
- * @param roundIndex รอบที่คนเลือกในโมดัล (ลูกค้าหลายรอบต่อเดือน · มติ 26/09) — ผ่าน `billingRoundIndexOf` ก่อน
- *   ⭐ ไม่ส่ง/ส่งผิดกับลูกค้าหลายรอบ = `planMonthlyFill` ตีกลับ ⇒ 409 "โหลดหน้าใหม่" (รอบเพิ่งเปลี่ยนจากรอบเดียวเป็นหลายรอบ
- *     ระหว่างเปิดโมดัล = จอยังไม่เคยถามรอบ · โหลดใหม่แล้วโมดัลถามเอง) · ลูกค้ารอบเดียวไม่อ่านค่านี้
- * @returns `{ rows }` (แถวของ `planMonthlyFill`) หรือ `{ error, status }`
- */
-export function billingFillCheck(rule, rows, clientPlan, todayIso, { roundIndex = null } = {}) {
-  if (!Array.isArray(clientPlan) || !clientPlan.length) {
-    return { error: 'ไม่ได้ส่งแผนวันงวดมา — เปิดหน้าต่างเติมตามรอบใหม่แล้วลองอีกครั้ง', status: 400 };
-  }
-  const fresh = planMonthlyFill(rule, rows, todayIso, { roundIndex });
-  if (fresh.error) return { error: `${fresh.error} — โหลดหน้าใหม่`, status: 409 };
-  return samePlan(fresh.rows, clientPlan) ? { rows: fresh.rows } : { error: BILLING_FILL_STALE_MESSAGE, status: 409 };
-}
-
-/**
- * `roundIndex` จาก body ของ `fill-billing` / `redate-billing` → ค่าที่ส่งเข้าตัวคิด
- * · ไม่ส่ง / null / '' = ไม่ได้เลือก (ลูกค้ารอบเดียว — ตัวคิดใช้รอบนั้นเอง)
- * · เลขจำนวนเต็ม (รวมสตริงตัวเลขล้วน) = index · ค่าอื่นส่งต่อตามเดิมให้ตัวคิดตีกลับ "รอบที่เลือกไม่มีในรอบวางบิลของลูกค้า"
- *   (ห้ามแปลงค่าผิดเป็น null เงียบ ๆ — ลูกค้าหลายรอบจะได้ข้อความ "เลือกรอบก่อน" ทั้งที่จอเลือกไปแล้ว)
- * ⚠️ แปลงเฉพาะ number/สตริงตัวเลขล้วน (review R-B2 26/09) — เดิม `Number(String(v))` รับ `[1]` เป็น 1 · `' '` เป็น 0 (รอบแรก!)
- *   · `'1e0'`/`'0x1'` เป็น 1 ⇒ ค่ารูปอื่นส่งต่อทั้งตัวให้ตัวคิดตีกลับ ไม่เดาให้เป็นรอบไหน
- */
-export function billingRoundIndexOf(value) {
-  if (value === undefined || value === null || value === '') return null;
-  if (typeof value === 'number') return value;
-  if (typeof value === 'string' && /^\s*-?\d+\s*$/.test(value)) return Number(value.trim());
-  return value;
-}
-
-/* แผนที่จอส่งมา = ชุดที่ server คิดเอง **ทุกแถว** (id ครบ ไม่เกิน ไม่ซ้ำ · วันวางบิล + กำหนดชำระตรงกันทุกงวด)
-   — ตัวเทียบเดียวของ "เติมตามรอบ" และ "จัดวันใหม่ตามรอบปัจจุบัน" */
-function samePlan(freshRows, clientPlan) {
-  const text = (v) => String(v ?? '').trim();
-  const sent = new Map(clientPlan.map((p) => [text(p?.id), p]));
-  return freshRows.length === clientPlan.length && sent.size === clientPlan.length
-    && freshRows.every((r) => {
-      const p = sent.get(text(r.id));
-      return Boolean(p) && text(p.billingDate) === text(r.billingDate) && text(p.dueDate) === text(r.dueDate);
-    });
-}
-
-/* ── จัดวันใหม่ตามรอบปัจจุบัน (มติเจ้าของ 26/09: "ลูกค้าเปลี่ยนฉุกเฉิน หรือเปลี่ยนรอบเลย") ──────────────────────────
-   ลูกค้าเปลี่ยนรอบถาวร ⇒ วันวางบิล **และ** กำหนดชำระของงวดที่ยังเปิดอยู่ผิดทั้งคู่ — ตัวคิดคือ `planRedate` (billingRule.js)
-   ⭐ งวดที่ **ขอใบวางบิลแล้ว** ไม่ถูกแตะ (บัญชีออกใบตามวันเดิมไปแล้ว) — ตัดสินด้วย `billingRequestLive` ผ่าน
-     `installmentBillingRequested` ตัวเดียวกับป้ายบนแผง (ห้ามเขียนกติกา "ขอแล้ว" ซ้ำ)
-   ⚠️ การแก้วันรายงวดย้ายไปโหมดตั้งวันในตาราง (แบบ C · มติ 28/09 · action `schedule-many` — lib/sales/installmentScheduleMany.js)
-     งานของปุ่มนี้ย้ายไปแผง "เติมวันงวดที่ว่าง…" (ร่างลงตารางก่อนบันทึก) · action `redate-billing`/`fill-billing` คงไว้ให้แท็บเก่า */
-
-/**
- * id ของงวดที่ "ขอใบวางบิลแล้ว" — ป้อน `planRedate({ requestedIds })` ทั้งแผงและ route
+ * id ของงวดที่ "ขอใบวางบิลแล้ว" — ป้อน `requestedIds` ของตัวคิด/ด่านวันงวด (แผง · schedule-many · planRuleChange ของกติกาลูกค้า)
  * @param requestById Map id → คำร้อง (`{ id, status }` พอ) · หาไม่เจอ = ยังไม่ขอ (billingRequestLive)
  */
 export function billingRequestedIds(rows = [], requestById = new Map()) {
@@ -1004,41 +945,6 @@ export function billingRequestedIds(rows = [], requestById = new Map()) {
     .filter((row) => row?.id && installmentBillingRequested(row, requestById))
     .map((row) => row.id));
 }
-
-export const BILLING_REDATE_STALE_MESSAGE = 'งวดหรือรอบวางบิลของลูกค้าเพิ่งเปลี่ยน — วันที่ที่เห็นไม่ตรงกับที่ระบบคิดตอนนี้'
-  + ' โหลดหน้าใหม่แล้วจัดวันใหม่อีกครั้ง';
-
-/* 409 ของการจัดวันใหม่ที่หยุดกลางทาง — กดซ้ำปลอดภัย: งวดที่จัดแล้วตรงรอบอยู่แล้ว `planRedate` ตัดทิ้งเอง (ไม่เขียนซ้ำ) */
-export const billingRedateStoppedMessage = (done, stopped) => `จัดวันใหม่แล้ว ${done} งวด แต่หยุดที่งวดที่ ${stopped.seq}`
-  + ` — ${stopped.message} · โหลดหน้าใหม่แล้วกดจัดวันใหม่อีกครั้ง (งวดที่จัดแล้วไม่ถูกแตะซ้ำ)`;
-
-/**
- * ตรวจแผน "จัดวันใหม่ตามรอบปัจจุบัน" ที่จอส่งมา กับชุดที่ server คิดเองจากงวดสด + รอบสดของลูกค้า + คำร้องสด + วันนี้
- * ⭐ กติกาเดียวกับ `billingFillCheck` — server ไม่เชื่อวันจากจอ · ไม่ตรงทุกแถว = 409 (ห้ามเขียนชุดใหม่ทับเงียบ ๆ)
- *   คำร้องที่ถูกส่ง/ยกเลิกระหว่างเปิดหน้าต่างก็ทำให้ชุดเปลี่ยน ⇒ 409 เหมือนกัน (คนกดต้องเห็นว่างวดไหนหลุด/เพิ่ม)
- * @param requestedIds Set ของ id งวดที่ขอใบวางบิลแล้ว (`billingRequestedIds` จากคำร้องที่อ่านสด)
- * @param roundIndex รอบที่คนเลือกในโมดัล — กติกาเดียวกับ `billingFillCheck`
- * @returns `{ rows }` (แถวของ `planRedate` — เขียนทั้งวันวางบิลและกำหนดชำระ) หรือ `{ error, status }`
- */
-export function billingRedateCheck(rule, rows, clientPlan, todayIso, { requestedIds = new Set(), roundIndex = null } = {}) {
-  if (!Array.isArray(clientPlan) || !clientPlan.length) {
-    return { error: 'ไม่ได้ส่งแผนวันงวดมา — เปิดหน้าต่างจัดวันใหม่อีกครั้ง', status: 400 };
-  }
-  const fresh = planRedate(rule, rows, todayIso, { requestedIds, roundIndex });
-  if (fresh.error) return { error: `${fresh.error} — โหลดหน้าใหม่`, status: 409 };
-  return samePlan(fresh.rows, clientPlan) ? { rows: fresh.rows } : { error: BILLING_REDATE_STALE_MESSAGE, status: 409 };
-}
-
-/* ค่าที่เขียนต่องวดของการจัดวันใหม่ — **ทั้งสองช่องเสมอ** (รอบเปลี่ยน = วันเดิมผิดทั้งคู่ · ไม่มี keptDue)
-   ⚠️ ส่งเข้า `writeBillingFill` (ตัวเขียนแบบมีเงื่อนไขตัวเดียว) ⇒ แถวต้องบอก `keptDue: false` ชัด ๆ ให้ billingFillPatch เขียนกำหนดชำระ */
-export const billingRedateRows = (planned = []) => planned.map((row) => ({ ...row, keptDue: false }));
-
-/* ค่าที่เขียนต่องวดของการเติมตามรอบ — งวดที่มีกำหนดชำระอยู่แล้ว **คงวันเดิม** (`keptDue` · วันที่คนตกลงกับลูกค้าไว้
-   ห้ามถูกรอบทับ) · ไม่แตะ `billingEvent` (งวดที่เติมได้ไม่มีเหตุการณ์อยู่แล้ว — installmentBillingFillable) */
-export const billingFillPatch = (planned) => ({
-  billingDate: planned.billingDate,
-  ...(planned.keptDue ? {} : { dueDate: planned.dueDate }),
-});
 
 /* ══ PR1 · ย้อนการอนุมัติ + ออก Rev. ย้ายงวดทั้งแถว (mig 0376 · มติเจ้าของ 23/09) ═════════════════════════
    หลักการ "เงินหนึ่งก้อน = งวดหนึ่งแถว" — ข้อความทุกบรรทัดข้างล่างพูดตามสิ่งที่ RPC 0376 ทำจริง */

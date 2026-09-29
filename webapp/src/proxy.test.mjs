@@ -753,6 +753,34 @@ test('⭐ ฝ่ายบัญชีผ่านทั้ง lockedOut แล�
   }
 });
 
+/* ── จัดวันงวดตามกำหนดวางบิลใหม่ (รุ่นสี่ · system-design §7.2) — จอ "งวดที่วันจะเปลี่ยน" หลังบันทึกกติกา ─────────
+   ⭐ FN แก้กติกาได้ ⇒ ต้องกด "ใช้วันใหม่" ได้ด้วย (ไม่งั้นบันทึกกติกาแล้วติดทางตัน) · ช่องแคบเดียวกับ PATCH /billing-rule */
+const REDATE_PATHS = ['/api/customers/C1/billing-rule/redate', '/api/master/customers/C1/billing-rule/redate'];
+
+test('⭐ ฝ่ายบัญชีผ่านทั้ง lockedOut และ apiWriteAllowed ของ POST จัดวันใหม่ตามกติกาลูกค้า · ฝ่ายขายผ่านเหมือนเดิม', () => {
+  const fn = { role: 'finance', extraCaps: [] };
+  for (const path of REDATE_PATHS) {
+    assert.equal(lockedOut(fn, path, 'POST', true), false, `lockedOut ${path}`);
+    assert.equal(apiWriteAllowed('POST', path, fn.role, fn.extraCaps), true, `apiWriteAllowed ${path}`);
+    for (const role of ['ae', 'ac', 'senior_ae', 'ae_supervisor']) {
+      assert.equal(apiWriteAllowed('POST', path, role, []), true, `${role} ${path}`);
+    }
+  }
+  // แคบเป๊ะ: เมธอดอื่น / ชื่อคล้าย / เส้นลูก ไม่ได้ช่องนี้ · ฝ่ายที่ไม่ถือทั้งสอง cap ไม่ได้อะไร
+  for (const [method, path] of [
+    ['PATCH', '/api/customers/C1/billing-rule/redate'],
+    ['DELETE', '/api/customers/C1/billing-rule/redate'],
+    ['POST', '/api/customers/C1/billing-rule/redate/x'],
+    ['POST', '/api/customers/C1/billing-rule/redates'],
+    ['POST', '/api/customers/billing-rule/redate'],
+  ]) {
+    assert.equal(apiWriteAllowed(method, path, 'finance', []), false, `บัญชีต้อง ${method} ${path} ไม่ได้`);
+  }
+  for (const role of ['marketing', 'viewer', 'executive', 'rd', 'ra', 'pc', 'ts']) {
+    assert.equal(apiWriteAllowed('POST', '/api/customers/C1/billing-rule/redate', role, []), false, role);
+  }
+});
+
 test('ช่องรอบวางบิลของฝ่ายบัญชีแคบเป๊ะ — ไม่ลามไปแก้ทะเบียนลูกค้าส่วนอื่น', () => {
   const FN = 'finance';
   for (const [method, path] of [
