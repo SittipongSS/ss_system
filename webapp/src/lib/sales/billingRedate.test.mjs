@@ -161,7 +161,7 @@ test('แผงงวด: จัดวันใหม่ย้ายเข้า
   assert.match(panel, /const requestedIds = billingRequestedIds\(saved, requestById\);/);
   assert.match(panel, /requested: requestedIds\.has\(row\.id\),/);
   assert.match(drafts, /status: isLocked\(row\) \? 'locked' : \(row\.status \|\| 'pending'\),/);
-  assert.match(drafts, /\? planRedate\(rule, rows, todayIso, \{ roundIndex: option\.roundIndex \?\? null \}\)/,
+  assert.match(drafts, /\? planRedate\(rule, rows, todayIso, \{ roundIndex: option\.roundIndex \?\? null, holidays \}\)/,
     'สวิตช์จัดใหม่ของลูกค้ามีรอบ = planRedate (ผลการอ่านรุ่นสี่ตัวเดียว · งวดที่ติ๊กไม่ต้องวางบิลส่งเป็นล็อก)');
   assert.match(drafts, /if \(includeDated\) return inputRows\.filter\(\(row\) => installmentBillingRedatable\(row\) && !roundsSkip\(row\)\);/);
   // ปุ่มบนการ์ด + โมดัล "จัดวันใหม่ตามรอบปัจจุบัน…" ถอดแล้ว — จอไม่เรียก redate-billing

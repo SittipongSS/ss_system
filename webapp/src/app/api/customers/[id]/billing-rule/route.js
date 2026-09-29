@@ -8,7 +8,8 @@ import { billingV4SchemaError } from '@/lib/sales/billingPolicySchema';
 import { loadCustomerOrdersBundle } from '@/lib/sales/installmentScheduleServer';
 import { customerRuleChange } from '@/lib/sales/customerRuleChange';
 import { recordAudit } from '@/lib/audit';
-import { logBillingRuleActivity } from '@/lib/master/customerBillingRuleUpdate';
+import { holidaySet } from '@/lib/master/holidays';
+import { calendarChangeLines, calendarFileIdsToCheck, checkCalendarFiles, logBillingRuleActivity } from '@/lib/master/customerBillingRuleUpdate';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,6 +57,8 @@ function baseUpdatedAtOf(body) {
 //     + ผู้แก้ล่าสุด 3 ช่อง (การ์ดบนหน้าลูกค้าโชว์ "แก้ล่าสุดโดย")
 //     + แถว "ความเคลื่อนไหว" ของลูกค้า เดิม → ใหม่ (มติเจ้าของ 26/09 ข้อ 7 · ชนิด quiet ไม่เด้งกระดิ่ง)
 // ⚠️ ฐานมี CHECK `customers_billing_rule_shape` กันรูปอีกชั้น — ก่อนรัน 0393 รุ่นสี่ตกทุกตัว (23514) ⇒ 503 "รอรัน migration 0393"
+// ⭐ ปฏิทินรายปี (รุ่นห้า · มติ 29/09): รูปมาตรฐาน + ด่าน "ไม่มีสูตรประมาณการ" อยู่ใน normalizeRule แล้ว · ที่นี่เพิ่มแค่
+//   (1) fileId ของรูปปฏิทินที่เพิ่งผูกต้องเป็นไฟล์แนบของลูกค้ารายนี้ (2) audit + เธรดต่อท้ายสรุปการแก้ปฏิทิน (calendarChangeLines)
 export async function PATCH(request, { params }) {
   const { id } = await params;
   const supabase = getSupabaseAdmin();
@@ -104,6 +107,11 @@ export async function PATCH(request, { params }) {
     return Response.json({ ...savedFields(customer), unchanged: true, ruleChange: { rows: [], kept: [], same: [], hiddenOrders: 0 } });
   }
 
+  /* ⭐ รูปปฏิทินที่เพิ่งผูก (รุ่นห้า · years[YYYY].fileId) ต้องเป็นไฟล์แนบของลูกค้ารายนี้ — ตรวจเฉพาะ id ใหม่
+     (ไฟล์ที่ผูกไว้เดิมแล้วถูกลบทีหลัง ต้องไม่ทำให้แก้กติกาไม่ได้) · อ่านพลาด = 503 ไม่ผ่านเงียบ */
+  const fileProblem = await checkCalendarFiles(supabase, id, calendarFileIdsToCheck(before, rule));
+  if (fileProblem) return Response.json({ error: fileProblem.error }, { status: fileProblem.status });
+
   const now = new Date().toISOString();
   /* ⚠️ เขียนเป็น object literal ตรงใน `.update({...})` โดยเจตนา — check:columns อ่านคีย์ของรูปนี้ได้
      (ตัวแปรที่ประกาศเป็นก้อนเดียวมันมองไม่เห็น) ⇒ พิมพ์ชื่อคอลัมน์ผิดแล้ว CI จับได้ */
@@ -151,11 +159,13 @@ export async function PATCH(request, { params }) {
 
   const verb = !rule ? 'ล้าง' : ruleOf(before) ? 'แก้' : 'ตั้ง';
   const subject = [customer.arCode, customer.name].filter(Boolean).join(' ') || id;
-  /* ประโยคเดียวกับการ์ด/เธรด — เดิม → ใหม่ (`describeBillingRule`: รูปเดิมพูดแบบเดิม · รุ่นสี่ = describeRule) */
+  /* ประโยคเดียวกับการ์ด/เธรด — เดิม → ใหม่ (`describeBillingRule`: รูปเดิมพูดแบบเดิม · รุ่นสี่ = describeRule)
+     + สรุปการแก้ปฏิทิน (รุ่นห้า) ชุดเดียวกับแถวเธรด — แก้วันเดียวแล้วประโยคกติกาเท่าเดิม ต้องเห็นว่าแก้อะไร */
+  const calendarLines = calendarChangeLines(before, rule);
   await recordAudit({
     user, action: 'update', entityType: 'customer', entityId: id,
     before: customer, after: updated,
-    summary: `${verb}กำหนดวางบิลของลูกค้า ${subject}: ${describeBillingRule(before) || NA} → ${describeBillingRule(rule) || NA}`,
+    summary: `${verb}กำหนดวางบิลของลูกค้า ${subject}: ${describeBillingRule(before) || NA} → ${describeBillingRule(rule) || NA}${calendarLines.length ? ` · ${calendarLines.join(' · ')}` : ''}`,
     request,
   });
 
@@ -179,8 +189,9 @@ async function ruleChangeOf(supabase, user, customerId, before, after) {
     return { ruleChange: null, ruleChangeError: 'ไม่มีสิทธิ์ดูใบสั่งขาย — ตรวจงวดที่เปิดอยู่ของลูกค้ารายนี้ไม่ได้' };
   }
   try {
-    const bundle = await loadCustomerOrdersBundle(supabase, user, customerId);
-    return { ruleChange: customerRuleChange(before, after, bundle, user), ruleChangeError: null };
+    /* วันหยุดในระบบ — ข้อเสนอวันวางบิลของเครดิต N ถอยข้ามวันหยุดชุดเดียวกับชิปบนใบ (holidaySet ไม่ throw · อ่านพลาด = รายการฝังในโค้ด) */
+    const [bundle, holidays] = await Promise.all([loadCustomerOrdersBundle(supabase, user, customerId), holidaySet(supabase)]);
+    return { ruleChange: customerRuleChange(before, after, bundle, user, { holidays }), ruleChangeError: null };
   } catch (err) {
     console.error('[billing-rule] อ่านงวดที่เปิดอยู่ของลูกค้าไม่สำเร็จ', customerId, err?.message || err);
     return {

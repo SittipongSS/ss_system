@@ -45,12 +45,13 @@ const rowFacts = (row, order) => ({
  * ขา 1 — งวดที่วันจะเปลี่ยนเมื่อกติกาเปลี่ยนจาก `before` เป็น `after` (ค่าดิบ · ทุกรุ่น)
  * @param bundle ผลของ `loadCustomerOrdersBundle` — `{ orders, hidden, installments, requestedIds }`
  * @param user   คนที่บันทึกกติกา (ด่าน schedule ทีละงวด — งวดที่เขากดใช้วันใหม่ไม่ได้ไปอยู่ `kept`)
+ * @param holidays วันหยุดในระบบ (Set/Map · `holidaySet`) — วันวางบิลที่เสนอของเครดิต N ถอยข้ามวันหยุดชุดเดียวกับชิปบนใบ/การ์ด/กระดิ่ง
  * @returns `{ rows, kept, same, hiddenOrders }`
  *   rows: `planRuleChange().rows` + `{ salesOrderId, salesOrderCode, label, amount, updatedAt }` (ป้อน redate ตรง ๆ)
  *   kept: `planRuleChange().kept` + ใบ + `'locked'` (`lock` = เหตุ) · same: งวดเปิดที่วันเท่าเดิม (ป้าย "วันเท่าเดิม N งวด")
  *   hiddenOrders: ใบของลูกค้าที่คนนี้มองไม่เห็น (ไม่อ่านงวด)
  */
-export function customerRuleChange(before, after, bundle, user) {
+export function customerRuleChange(before, after, bundle, user, { holidays = null } = {}) {
   const rows = [];
   const kept = [];
   const same = [];
@@ -59,7 +60,7 @@ export function customerRuleChange(before, after, bundle, user) {
   for (const order of sortedOrders(bundle?.orders)) {
     const live = byOrder.get(order.id) || [];
     if (!live.length) continue;
-    const plan = planRuleChange(before, after, live, { requestedIds });
+    const plan = planRuleChange(before, after, live, { requestedIds, holidays });
     const byId = new Map(live.map((row) => [row.id, row]));
     const options = scheduleGateOptions(order, live);
     const touched = new Set();

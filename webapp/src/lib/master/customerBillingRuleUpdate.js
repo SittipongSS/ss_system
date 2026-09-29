@@ -25,15 +25,71 @@
 //     "ต้องวางบิล · ยังไม่ตั้งรอบ" · "วางบิลวันที่ 10 → กำหนดชำระวันที่ 25" …)
 //   · หัวบรรทัด: มีฝั่งไหนเป็นรุ่นสี่ = "กำหนดวางบิล" (คำถามใหม่ครอบทั้ง ต้องวางบิลไหม + รอบ + เครดิต) · รูปเดิมล้วน = คำเดิม
 //   · meta เก็บรูปมาตรฐานของรุ่นตัวเอง (รูปเดิม = billingRuleOf · รุ่นสี่ = ruleOf) — ย้อนอ่านด้วยเครื่องได้ไม่ต้องเดารุ่น
+//
+// ── รุ่นห้า "ปฏิทินรายปีของลูกค้า" (มติ 29/09 · contracts v5 §6) ─────────────────────────────────────────────────────
+// ⭐ ประโยคกติกาของปฏิทินบอกได้แค่ "ตามปฏิทินลูกค้า ปี 2026 (24 รอบ)" — แก้วันเดียว/แนบรูป/ใส่ปีหน้าแล้วประโยคเท่าเดิม
+//    ⇒ ต่อท้ายด้วย `calendarDiffSummary` ของ lib ("ปฏิทิน 2026: แก้ 1 รอบ — ต.ค. รอบ 2: ตัด พ. 21 ต.ค. → พฤ. 22 ต.ค." ·
+//    "แนบรูปปฏิทิน 2027" · "เพิ่มปฏิทิน 2027 (24 รอบ)" · "เวลาตัดรอบ 16:00 → —") ทั้งเธรดและ audit (`calendarChangeLines`)
+//    ประโยคเท่ากัน + หมายเหตุเท่ากัน = หัวบรรทัด "แก้ปฏิทินวางบิล" แทน "แก้กำหนดวางบิล: X" ที่อ่านเหมือนไม่มีอะไรเปลี่ยน
+// ⭐ รูปปฏิทิน (`years[YYYY].fileId`) ต้องเป็นไฟล์แนบของลูกค้ารายนี้ (`calendarFileIdsToCheck` + `checkCalendarFiles`) —
+//    ตรวจเฉพาะ id ที่เพิ่งเข้ามา (ไฟล์ที่ผูกไว้เดิมแล้วถูกลบทีหลังต้องไม่ทำให้บันทึกกติกาไม่ได้)
 import { NA } from '@/lib/format';
 import { appendUpdate } from '@/lib/master/updates';
-import { billingRuleOf, describeBillingRule, isV4Rule, ruleOf, sameRule } from '@/lib/sales/billingRule';
+import { billingRuleOf, calendarDiffSummary, describeBillingRule, isV4Rule, ruleOf, sameRule } from '@/lib/sales/billingRule';
 
 /* หมายเหตุหลายบรรทัด → บรรทัดเดียว (แถวระบบในเธรดโชว์สองบรรทัดแรกก่อนกดดูเพิ่ม) */
 const oneLine = (text) => String(text ?? '').replace(/\s+/g, ' ').trim();
 
 /* รูปมาตรฐานของค่าตามรุ่นของมันเอง — รูปพัง = null ("ไม่ตั้ง") */
 const canonicalOf = (value) => (isV4Rule(value) ? ruleOf(value) : billingRuleOf(value));
+
+/**
+ * บรรทัดสรุปการแก้ปฏิทิน (เธรด + audit ใช้ชุดเดียวกัน) — สองฝั่งต้องเป็นปฏิทิน ไม่งั้น `[]` (ประโยคกติกาเปลี่ยนอยู่แล้ว)
+ * ⚠️ ทน: ค่าพังทุกแบบ = `[]` (ผู้เรียกอยู่หลังจุดที่เขียนฐานแล้ว)
+ */
+export function calendarChangeLines(beforeValue, afterValue) {
+  try {
+    return calendarDiffSummary(beforeValue, afterValue).lines;
+  } catch {
+    return [];
+  }
+}
+
+/* รูปปฏิทินที่ต้องตรวจตอนบันทึก = fileId ใหม่ (ไม่มีในค่าเดิม) · @returns `[{ year, fileId }]` */
+export function calendarFileIdsToCheck(beforeValue, afterValue) {
+  const files = (value) => {
+    const rule = ruleOf(value);
+    if (rule?.runs?.kind !== 'calendar') return [];
+    return Object.keys(rule.runs.years).sort()
+      .map((year) => ({ year, fileId: rule.runs.years[year].fileId || '' }))
+      .filter((f) => f.fileId);
+  };
+  const seen = new Set(files(beforeValue).map((f) => f.fileId));
+  return files(afterValue).filter((f) => !seen.has(f.fileId));
+}
+
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/**
+ * รูปปฏิทินที่เพิ่งผูกต้องเป็นไฟล์แนบของลูกค้ารายนี้ — `{ error, status }` (null = ผ่าน)
+ * ⚠️ supabase ไม่ throw (คืน `{ error }`) — อ่านพลาด = 503 บอกให้ลองใหม่ ไม่ใช่ผ่านเงียบ (ไม่งั้นด่านนี้ไม่มีความหมาย)
+ */
+export async function checkCalendarFiles(supabase, customerId, list) {
+  if (!list?.length) return null;
+  const bad = list.find((f) => !UUID_SHAPE.test(f.fileId));
+  if (bad) return { status: 400, error: `รูปปฏิทินปี ${bad.year} ไม่ถูกต้อง — แนบรูปใหม่` };
+  const ids = [...new Set(list.map((f) => f.fileId))];
+  const { data, error } = await supabase
+    .from('attachments')
+    .select('id')
+    .eq('entityType', 'customer')
+    .eq('entityId', customerId)
+    .in('id', ids)
+    .limit(ids.length);   // ขอบเขตจริง = จำนวนปีที่เพิ่งผูกรูป (ไม่กี่แถว) — ด่าน check:rowcap
+  if (error) return { status: 503, error: 'ตรวจรูปปฏิทินไม่สำเร็จ — ลองบันทึกอีกครั้ง' };
+  const found = new Set((data || []).map((row) => row.id));
+  const missing = list.find((f) => !found.has(f.fileId));
+  return missing ? { status: 400, error: `รูปปฏิทินปี ${missing.year} ไม่ใช่ไฟล์ของลูกค้ารายนี้ (หรือถูกลบไปแล้ว) — แนบรูปใหม่` } : null;
+}
 
 /**
  * @param beforeValue  รอบเดิมบนแถวลูกค้า (ค่าดิบจาก DB · ทุกรุ่น — อ่านแบบทน รูปพัง = ไม่ตั้ง)
@@ -53,15 +109,21 @@ export function billingRuleChangeUpdate(beforeValue, afterValue) {
   const oldNote = oneLine(before?.note);
   const newNote = oneLine(after?.note);
 
+  const calendar = calendarChangeLines(before, after);
+
   const lines = [];
   /* ⚠️ ประโยคหลายรอบใช้ → ในตัวเอง ("วางบิล 10 → เงินเข้า 25 · …") — ต่อ "เดิม → ใหม่" บรรทัดเดียวแล้วลูกศรห้าตัว
      มองไม่ออกว่าเดิมจบตรงไหน ⇒ ฝั่งไหนมีลูกศรในประโยค แยกเป็นบรรทัด "เดิม:" / "ใหม่:" ป้ายชัดแทนลูกศร */
   if (oldText !== newText && (oldText.includes('→') || newText.includes('→'))) {
     lines.push(`${verb}${subject}`, `เดิม: ${oldText}`, `ใหม่: ${newText}`);
   } else if (oldText !== newText) lines.push(`${verb}${subject}: ${oldText} → ${newText}`);
+  /* ปฏิทินที่แก้แค่วัน/รูป — ประโยคเท่าเดิม ⇒ หัวบรรทัดบอกว่าแก้ปฏิทิน แล้วรายละเอียดอยู่บรรทัดถัดไป
+     ⚠️ มาก่อน "แก้หมายเหตุ · ค่าอื่นคงเดิม" — แก้วันในปฏิทิน + หมายเหตุพร้อมกัน ห้ามหัวบรรทัดบอกว่าค่าอื่นคงเดิม */
+  else if (calendar.length) lines.push(`แก้ปฏิทินวางบิล · ${newText}`);
   else if (oldNote !== newNote) lines.push(`แก้หมายเหตุการวางบิล · ค่าอื่นคงเดิม: ${newText}`);
   else lines.push(`${verb}${subject}: ${newText}`);
   if (oldNote !== newNote) lines.push(`หมายเหตุ: ${oldNote || NA} → ${newNote || NA}`);
+  lines.push(...calendar);
 
   return {
     body: lines.join('\n'),

@@ -34,14 +34,63 @@ test('⭐ หลักของเจ้าของ 28/09: ไม่ต้อ�
   }
 });
 
-test('⭐ รอบนี้ไม่มีปฏิทินรายปี (2b) — ข้อ ② ไม่วาดตัวเลือก "ตามปฏิทินลูกค้า" (ไม่ใช่ปุ่มจาง "เร็ว ๆ นี้")', () => {
+test('⭐ รุ่นห้า: ข้อ ② มีทางที่สาม "ตามปฏิทินลูกค้า" · ข้อ ③ ของปฏิทิน = วันจ่ายตามปฏิทิน + เครดิต (ไม่มีค่าตั้งต้น · Q1) · วันจ่ายรายสัปดาห์ยังไม่มีจอ', () => {
   const src = modal();
-  assert.doesNotMatch(src, /value: "calendar"|ตามปฏิทินลูกค้า|เร็ว ๆ นี้/);
   const bill = src.slice(src.indexOf('ariaLabel="วางบิลได้เมื่อไร"'), src.indexOf('value={form.bill}'));
-  assert.deepEqual([...bill.matchAll(/value: "(\w+)"/g)].map((m) => m[1]), ['anyday', 'monthly']);
+  assert.deepEqual([...bill.matchAll(/value: "(\w+)"/g)].map((m) => m[1]), ['anyday', 'monthly', 'calendar']);
   const pay = src.slice(src.indexOf('ariaLabel="กำหนดชำระเมื่อไร"'), src.indexOf('value={form.pay}'));
-  assert.deepEqual([...pay.matchAll(/value: "(\w+)"/g)].map((m) => m[1]), ['same', 'credit', 'runs'], 'ข้อ ③ สามทาง (มติ 29/09)');
+  assert.deepEqual([...pay.matchAll(/value: "(\w+)"/g)].map((m) => m[1]), ['same', 'credit', 'runs'], 'ข้อ ③ ของทุกวัน/ทุกวันที่… สามทาง (มติ 29/09)');
+  const calPay = src.slice(src.indexOf('ariaLabel="วันจ่ายตามปฏิทิน — มีเครดิตไหม"'), src.indexOf('value={form.calPay}'));
+  assert.deepEqual([...calPay.matchAll(/value: "(\w+)"/g)].map((m) => m[1]), ['same', 'credit']);
+  assert.match(src, /value=\{form\.calPay\}/, 'ค่าของข้อ ③ ปฏิทินมาจากฟอร์ม (blankForm = null) ไม่มีค่าตั้งต้น');
   assert.doesNotMatch(src, /weekday|วันในสัปดาห์/, 'วันจ่ายรายสัปดาห์ (AR-035) ไม่มีจอรอบนี้');
+  assert.match(src, /<CalendarEditor[\s\S]*onUpdate=\{editCalendar\}/, 'ตัวแก้ตารางส่งตัวปรับ (prev → next) ไม่ใช่ค่าที่คิดจาก render เก่า');
+  assert.match(src, /setForm\(\(prev\) => updateCalendar\(prev, fn\)\)/);
+  assert.match(src, /<CutoffTimeField /, 'เวลาตัดรอบ (ไม่บังคับ) อยู่ในข้อ ②');
+});
+
+test('⭐ Q3 หยุดรอปฏิทินใหม่ — ไม่มีคำ "ประมาณการ"/estimate บนจอของลูกค้าเลย · ปฏิทินหมด = บรรทัดช่องว่างจาก lib (`missing.text`)', () => {
+  const calendarFiles = ['CalendarEditor.js', 'CalendarPicture.js', 'CutoffTimeField.js'].map((f) => code(`${DIR}/billingCalendar/${f}`));
+  calendarFiles.push(code('src/lib/useHolidayMap.js'));
+  for (const src of [card(), modal(), redate(), parts(), state(), ...calendarFiles]) {
+    assert.doesNotMatch(src, /ประมาณการ|estimate|dueEstimatedAs/i);
+  }
+  assert.match(modal(), /pv\.missing \? <p className=\{styles\.pvGap\}>/);
+  assert.match(card(), /preview\.missing \? <p className=\{styles\.pvGap\}>/);
+});
+
+test('⭐ ตัวแก้ปฏิทิน: สถานะ/ด่านมาจาก lib ของ CORE ตัวเดียว · กริดเดือนจาก ui/MonthGrid · รูปแนบผ่านทางเดียวของระบบ', () => {
+  const ed = code(`${DIR}/billingCalendar/CalendarEditor.js`);
+  assert.match(ed, /from "@\/lib\/sales\/billingCalendarEdit"/);
+  assert.match(ed, /import MonthGrid from "@\/components\/ui\/MonthGrid"/, 'ปฏิทินเล็ก อา–ส = MonthGrid (monthGridSingleSource)');
+  assert.match(ed, /draftCalendarFromPattern\(/);
+  assert.match(ed, /confirmCalendarMonth\(/, 'ปุ่ม "ตรงกับรูป" รายเดือน');
+  assert.match(ed, /ตรงกับรูป/);
+  assert.match(ed, /calendarPastMonths\(/, 'เดือนที่ผ่านแล้วพับ');
+  assert.match(ed, /calendarYearTabs\(/, 'แท็บปี (ปีนี้ · ปีหน้า "ยังไม่มี")');
+  assert.match(ed, /ลงเฉพาะช่องที่ว่าง/, 'ร่างลงเฉพาะช่องว่างเป็นทางแรก · ทับทั้งปีเป็นอีกทางที่คนเลือก');
+  const st = state();
+  assert.match(st, /calendarEditorIssues\(form\.calendar\)/, 'ด่านบันทึกของตาราง = ตัวเดียวกับ CORE');
+  const pic = code(`${DIR}/billingCalendar/CalendarPicture.js`);
+  assert.match(pic, /uploadAttachment\(\{/, 'ไบต์ขึ้น Drive + แถว attachments ทางเดียวของระบบ');
+  assert.match(pic, /useFileIntake\(/, 'กดเลือก · ลากวาง · Ctrl+V (form-design-rules "แนบไฟล์")');
+  assert.match(pic, /BILLING_CALENDAR_DOC_TYPE/);
+  assert.doesNotMatch(pic, /export const BILLING_CALENDAR_DOC_TYPE|"billing_calendar"/, 'ชนิดเอกสารมาจากทะเบียนกลาง ไม่พิมพ์ซ้ำ');
+  for (const src of [ed, pic, code(`${DIR}/billingCalendar/CutoffTimeField.js`)]) {
+    assert.doesNotMatch(src, /new Date\(|Date\.UTC|setDate\(|getDate\(/, 'ไม่มีเลขคณิตวันที่ในจอ');
+    assert.doesNotMatch(src, /<input type="file"|fetch\(/, 'ไม่เขียนทางเข้าไฟล์/fetch ดิบเอง');
+  }
+});
+
+test('⭐ การ์ด: แถบ "ขอปฏิทิน YYYY" + ปุ่ม "ใส่ปฏิทิน YYYY" (คนแก้ได้เท่านั้น · เปิดโมดัลที่แท็บปีนั้น) · ตัวตัดสินช่วงเตือนตัวเดียวกับกระดิ่ง', () => {
+  const src = card();
+  assert.match(src, /calendarCardOf\(value, today/);
+  assert.match(src, /\{canEdit \? \(\s*<Button[\s\S]{0,200}onClick=\{\(\) => setEditing\(\{ year: calendar\.banner\.year \}\)\}/, 'ไม่มีสิทธิ์ = ไม่วาดปุ่ม');
+  assert.match(src, /ใส่ปฏิทิน \{calendar\.banner\.year\}/);
+  assert.match(src, /calendarYear=\{editing\.year \|\| null\}/);
+  assert.match(modal(), /initialYear=\{calendarYear\}/);
+  const st = state();
+  assert.match(st, /calendarStatus\(value, todayIso, \{ holidays \}\)/, 'การ์ด = calendarStatus ตัวเดียวกับ calendarReminder ของ cron');
 });
 
 test('⭐ ข้อ ① ไม่มีค่าตั้งต้น — แผ่นสามทาง · ค่าตั้งต้นของฟอร์มมาจากค่าที่เก็บ (formFromStored) เท่านั้น', () => {

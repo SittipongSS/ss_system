@@ -9,8 +9,10 @@
 // เป็นที่สามตอนเพิ่มการให้สิทธิ์เอกสาร Google — ยกออกมาก่อนเพิ่มผู้ใช้รายที่สาม
 // ตามกฎของโปรเจกต์ · สองชุดที่ต้องแก้พร้อมกันด้วยมือคือของที่เพี้ยนหากันแน่นอน
 // และความเพี้ยนของด่านสิทธิ์ = คนเห็นของที่ไม่ควรเห็น ซึ่งไม่มีใครสังเกตจนสาย
-import { canUser, canEditRecord, canViewRecord, caretakerTeamsOf, hasTeam, isSuperuser } from '@/lib/permissions';
-import { isPersonalDoc } from '@/lib/master/attachmentTypes';
+import {
+  canUser, canEditCustomerBillingRule, canEditRecord, canViewRecord, caretakerTeamsOf, hasTeam, isSuperuser,
+} from '@/lib/permissions';
+import { BILLING_CALENDAR_DOC_TYPE, isPersonalDoc } from '@/lib/master/attachmentTypes';
 import { canAttachToCosting, canViewCostingAttachment, isCostingAttachment } from '@/lib/master/costingAttachmentAccess';
 import { canAttachToPersonalTask, canViewPersonalTask } from '@/lib/pm/personalTaskAccess';
 import { canAttachToSalesEntity, canViewSalesAttachment, isSalesAttachment } from '@/lib/sales/salesAttachmentAccess';
@@ -79,4 +81,19 @@ export async function canEditAttachmentParent(supabase, entityType, parent, user
     parent,
     entityType === 'product' ? await productCaretakerTeams(parent, supabase) : undefined,
   );
+}
+
+/**
+ * ⭐ ช่องแคบของรูปปฏิทินวางบิล (v5 · มติเจ้าของ 29/09 · contract §8) — แนบ/ลบ/แก้รายละเอียด **รูปปฏิทิน** ของลูกค้าได้
+ * ถ้าแก้กำหนดวางบิลของลูกค้ารายนั้นได้ (`canEditCustomerBillingRule` ตัวเดียวกับ PATCH `/api/customers/[id]/billing-rule` —
+ * ฝ่ายขายทีมที่ดูแล + ฝ่าย FN)
+ * ⭐ ทำไมต้องมี: FN ถือแค่ `customers:view` (ห้ามให้ customers:edit — cap นั้นเปิดทั้งฟอร์มลูกค้า) ⇒ `canEditAttachmentParent` ตอบ false
+ *   ⇒ FN ตั้งปฏิทินได้แต่แนบรูปที่ใช้เทียบไม่ได้ (403 ที่เจอใน calendar-v3)
+ * ⚠️ **แคบเป๊ะ**: entity ลูกค้า + docType รูปปฏิทินเท่านั้น — เอกสารอื่นของลูกค้ายังต้องผ่านด่านแก้ทะเบียนลูกค้าตามเดิม
+ * ⚠️ ผู้เรียกส่ง docType **ที่จะเก็บจริง** (POST: ค่าที่ผ่านทะเบียนแล้ว · ลบ/แก้: `docType` ของแถว) — ไม่ใช่ค่าดิบที่ตกเป็น 'other'
+ * ⚠️ ไม่เปิดสาขาเอกสาร Google — กติกาไฟล์ของ docType นี้ (DOC_TYPE_FILE_RULES) ตีกลับเอกสาร Google ก่อนคุยกับ Drive อยู่แล้ว
+ */
+export function canAttachBillingCalendar(entityType, docType, parent, user) {
+  if (entityType !== 'customer' || docType !== BILLING_CALENDAR_DOC_TYPE || !parent) return false;
+  return canEditCustomerBillingRule(user, parent);
 }

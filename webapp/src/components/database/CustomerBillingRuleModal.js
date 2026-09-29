@@ -3,10 +3,14 @@
 //
 // ม็อก: mockups/billing-cycle/rework-v4/recommended.html (`?view=cust&cust=b&modal=setup`) — โมดัลเดิมของ prod + ข้อ ① ไว้หน้าสุด
 //   ① ต้องวางบิลไหม [ต้องวางบิล | ไม่ต้องวางบิล | ยังไม่ระบุ] — **ไม่มีค่าตั้งต้น** (รูปเดิม { credit:false } เปิดมา = ยังไม่ตอบ)
-//   ② วางบิลได้เมื่อไร [ทุกวัน | ทุกวันที่… 1–4 รอบ + สิ้นเดือน] — ข้ามได้ = "ต้องวางบิล · ยังไม่ตั้งรอบ"
-//      (ตามปฏิทินลูกค้า = ช่วง 2b ยังไม่ทำ ⇒ **ไม่วาดเลย** ตามกติกา "ไม่มีสิทธิ์/ยังไม่มี = ไม่โชว์" — ไม่ใช่ปุ่มจาง "เร็ว ๆ นี้")
+//   ② วางบิลได้เมื่อไร [ทุกวัน | ทุกวันที่… 1–4 รอบ + สิ้นเดือน | ตามปฏิทินลูกค้า] — ข้ามได้ = "ต้องวางบิล · ยังไม่ตั้งรอบ"
+//      ⭐ ตามปฏิทินลูกค้า (รุ่นห้า · มติ 29/09 · ม็อก calendar-v3/recommended.html + rework-v4 `modal=setup` ของ AR-281):
+//         เวลาตัดรอบ (ไม่บังคับ) + ตารางรอบจ่ายรายปี `billingCalendar/CalendarEditor` (แท็บปี · ร่างจากรอบประจำ · ตรงกับรูป ·
+//         ปฏิทินเล็ก อา–ส · รูปของลูกค้าข้างตาราง) — โมดัลกว้างขึ้น ผลก่อนบันทึกย้ายลงใต้ข้อ ③ (ข้างตารางเป็นที่ของรูป)
 //   ③ กำหนดชำระเมื่อไร [ชำระวันวางบิล | เครดิต N วัน | ตามรอบจ่าย/วันจ่ายประจำ (รายเดือน)]
+//      ปฏิทิน: "วันจ่ายตามปฏิทิน" [วันจ่ายของรอบเดียวกัน | ครบเครดิต N วันแล้วเข้ารอบจ่าย] — **ไม่มีค่าตั้งต้น** (Q1 มีเมตตา 0 หรือ 30 ยังเปิด)
 //   ขวา: ผลก่อนบันทึก 3 รอบ (`policyPreview` ตัวเดียวกับการ์ด) + การเตือนที่จะได้ · ท้าย: ใครแก้ล่าสุด + ตัวล็อก
+//   ⚠️ ปฏิทินหมดก่อนครบ 3 รอบ = บรรทัด "ยังไม่มีปฏิทิน YYYY · ใส่วันเองได้" (Q3 หยุดรอ) — ไม่มีแถว "ประมาณการ"
 // ⭐ ด่านบันทึก = `evaluateForm` → `normalizeRule(…, { allowLegacy:false })` **ตัวเดียวกับที่ API ใช้ปฏิเสธ** — ปุ่มกับด่านพูดเรื่องเดียวกัน
 // ⭐ ตัวล็อก (§7.1): ส่ง `baseUpdatedAt` = สตริงดิบของ `billingRuleUpdatedAt` ตอนเปิด · 409 = **ไม่ทิ้งที่กรอก** —
 //    บอกว่าใครบันทึกอะไรไว้ แล้วให้เลือก "ใช้ค่าที่เขาบันทึก" หรือ "บันทึกของฉันทับ" (ส่งซ้ำด้วยตัวล็อกใหม่)
@@ -17,7 +21,9 @@
 //    ล้างเป็น "ยังไม่ระบุ" ยังบันทึกได้ (null ผ่าน CHECK ทุกรุ่น)
 // ⚠️ ผู้เรียก **mount ตอนเปิดเท่านั้น** — ฟอร์มตั้งต้นจากค่าที่บันทึกไว้ทุกครั้งที่เปิด (กดยกเลิกแล้วเปิดใหม่ = เริ่มใหม่)
 import { useEffect, useRef, useState } from "react";
-import { CircleAlert, CircleCheck, CircleDashed, History, Info, MousePointerClick, ShieldCheck, TriangleAlert } from "lucide-react";
+import {
+  AlarmClock, BellRing, CalendarX2, CircleAlert, CircleCheck, CircleDashed, History, Info, MousePointerClick, ShieldCheck, TriangleAlert,
+} from "lucide-react";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
 import ChoiceChips from "@/components/ui/ChoiceChips";
@@ -31,16 +37,20 @@ import { businessDate } from "@/lib/businessDate";
 import { notifyToast } from "@/lib/feedback";
 import { customerNameIn } from "@/lib/master/customerName";
 import {
-  CREDIT_MAX, NOTE_MAX, NO_CREDIT_TEXT, NO_TIMING_TEXT, ROUNDS_MAX, UNKNOWN_TEXT, describeRule, fmtDate, hasTiming, policyPreview,
-  ruleOf, sourceLabel,
+  CREDIT_MAX, NOTE_MAX, NO_CREDIT_TEXT, NO_TIMING_TEXT, ROUNDS_MAX, UNKNOWN_TEXT, calendarStatus, describeRule, fmtDate, hasTiming,
+  policyPreview, ruleOf, sourceLabel,
 } from "@/lib/sales/billingRule";
 import {
-  CREDIT_CHIPS, chooseBill, chooseNeed, choosePay, clearTiming, conflictOf, creditNumber, dayWord, evaluateForm, formFromStored,
-  formWordsOf, nextRoundNeedingDay, payDayStateOf, policyWordsOf, reminderChipsOf, roundName, sameMonthBlocked, saveBlockOf,
-  savePayloadOf, setCreditDays, setRoundDay, setRoundOff, stampTextOf, toggleBillDay, togglePayDay,
+  CREDIT_CHIPS, calendarCountOf, calendarUpcomingRuns, chooseBill, chooseCalPay, chooseNeed, choosePay, clearTiming, conflictOf,
+  creditNumber, cutoffBellPreviewOf, dayWord, evaluateForm, formFromStored, formWordsOf, nextRoundNeedingDay, payDayStateOf,
+  policyWordsOf, reminderChipsOf, roundName, sameMonthBlocked, saveBlockOf, savePayloadOf, setCalCreditDays, setCreditDays, setCutoffTime,
+  setRoundDay, setRoundOff, stampTextOf, toggleBillDay, togglePayDay, updateCalendar,
 } from "./CustomerBillingRuleState";
 import { PairList, PolicySentence, ReminderChips } from "./CustomerBillingRuleRounds";
 import DayGrid from "./CustomerBillingRuleDayGrid";
+import CalendarEditor from "./billingCalendar/CalendarEditor";
+import CutoffTimeField from "./billingCalendar/CutoffTimeField";
+import useHolidayMap from "@/lib/useHolidayMap";
 import styles from "./CustomerBillingRule.module.css";
 
 const NEED_OPTIONS = [
@@ -69,8 +79,10 @@ function StepHead({ n, title, sub, done, id }) {
   );
 }
 
-export default function CustomerBillingRuleModal({ open = true, onClose, customer, onSaved, onSynced }) {
+export default function CustomerBillingRuleModal({ open = true, onClose, customer, onSaved, onSynced, calendarYear = null }) {
   const [form, setForm] = useState(() => formFromStored(customer?.billingRule));
+  /* วันหยุดในระบบ — เครื่องหมายบนปฏิทินเล็ก · ชิปวันทำงานของร่าง · ตัวอย่างกระดิ่ง (เตือนอย่างเดียว ไม่เลื่อนวัน) */
+  const holidays = useHolidayMap();
   /* ค่าที่เชื่อว่าเก็บอยู่ + ตัวล็อก — เปลี่ยนเมื่อ 409 บอกค่าล่าสุดมา (ฟอร์มไม่ถูกแตะ) */
   const [stored, setStored] = useState(() => customer?.billingRule ?? null);
   const [base, setBase] = useState(() => ({
@@ -125,6 +137,17 @@ export default function CustomerBillingRuleModal({ open = true, onClose, custome
     setRowWhy(null);
     setSaveError("");
   };
+  /* ตารางปฏิทิน — ตัวแก้ส่งตัวปรับ (prev → next) มา ⇒ ปรับบนฟอร์มล่าสุดเสมอ (พิมพ์เร็ว/แตะวันติดกันไม่ทับกันเอง) */
+  const editCalendar = (fn) => {
+    setForm((prev) => updateCalendar(prev, fn));
+    setSaveError("");
+  };
+
+  /* การ์ด "ใส่ปฏิทิน 2027" เปิดโมดัลมาที่แท็บปีนั้น — เลื่อนไปข้อ ② ครั้งเดียวตอนเปิด */
+  useEffect(() => {
+    if (!calendarYear) return;
+    requestAnimationFrame(() => q2Ref.current?.scrollIntoView?.({ block: "start" }));
+  }, [calendarYear]);
 
   const tapBillDay = (day) => {
     const { form: next, limited } = toggleBillDay(form, day);
@@ -222,8 +245,24 @@ export default function CustomerBillingRuleModal({ open = true, onClose, custome
   };
 
   /* ── ผลก่อนบันทึก (กล่องขวา · คิดสดจาก lib ไม่ใช่ช่องกรอก) ─────────────────── */
+  const isCalendar = form.need === "required" && form.bill === "calendar";
+  const customerName = customer ? customerNameIn(customer) : "ลูกค้า";
   let preview;
-  if (!ready) {
+  if (!ready && isCalendar && result.step === 3) {
+    /* ตารางผ่านแล้ว เหลือข้อ ③ — โชว์รอบถัดไปในตาราง (ตัดรอบ → วันจ่าย) แบบกลาง ๆ ไม่สมมติเครดิต (Q1 ยังเปิด · ไม่มีค่าตั้งต้น) */
+    const upcoming = calendarUpcomingRuns(form.calendar, today, 3);
+    preview = (
+      <>
+        <h4 className={styles.pvHead}>รอบถัดไปในปฏิทิน<small>ตัดรอบ → วันจ่าย · กำหนดชำระขึ้นหลังตอบข้อ 3</small></h4>
+        {upcoming.length ? (
+          <ul className={styles.facts}>
+            {upcoming.map((run) => <li key={run.cutoff}>ตัด {fmtDate(run.cutoff)} → จ่าย {fmtDate(run.pay)}</li>)}
+          </ul>
+        ) : <p className={styles.pvText}><CalendarX2 size={14} aria-hidden="true" /><span>ไม่มีรอบหลังวันนี้ในตาราง</span></p>}
+        <p className={styles.pvText}><CircleDashed size={14} aria-hidden="true" /><span>{result.why}</span></p>
+      </>
+    );
+  } else if (!ready) {
     preview = (
       <div className={styles.pvEmpty}>
         <CircleDashed size={18} aria-hidden="true" />
@@ -257,19 +296,39 @@ export default function CustomerBillingRuleModal({ open = true, onClose, custome
       </>
     );
   } else {
-    const pv = policyPreview(result.rule, today, { count: 3 });
+    const pv = policyPreview(result.rule, today, { count: 3, holidays });
+    /* ปฏิทินเท่านั้น: ครอบถึงเมื่อไร + วันแรกของกระดิ่งขอปีหน้า · ตัวอย่างกระดิ่งวันตัดรอบ (ข้อความจาก cutoffBell ตัวเดียวกับ cron) */
+    const status = isCalendar ? calendarStatus(result.rule, today, { holidays }) : null;
+    const bell = result.rule?.runs ? cutoffBellPreviewOf(result.rule, today, { holidays, customer: customerName }) : null;
     preview = (
       <>
         <h4 className={styles.pvHead}>
           ผลก่อนบันทึก
-          <small>{pv.kind === "rounds" ? `${pv.rows.length} รอบถัดไป · คิดจาก ${fmtDate(today)}` : "ตัวอย่างถ้าวางบิลวันต่อไปนี้"}</small>
+          <small>{pv.kind !== "rounds" ? "ตัวอย่างถ้าวางบิลวันต่อไปนี้" : `${pv.rows.length ? `${pv.rows.length} รอบถัดไป · ` : ""}คิดจาก ${fmtDate(today)}`}</small>
         </h4>
-        <PairList
-          rows={pv.rows.map((row) => ({ ...row, key: row.billingDate }))}
-          sourceText={(source) => sourceLabel(source, { creditDays: result.rule.creditDays })}
-          compact
-        />
+        {pv.rows.length ? (
+          <PairList
+            rows={pv.rows.map((row) => ({ ...row, key: row.billingDate }))}
+            sourceText={(source) => sourceLabel(source, { creditDays: result.rule.creditDays })}
+            compact
+          />
+        ) : null}
+        {/* ⭐ Q3 หยุดรอปฏิทินใหม่ — ปฏิทินหมดก่อนครบ 3 รอบ = บอกตรง ๆ แทนแถวเดา */}
+        {pv.missing ? <p className={styles.pvGap}><CalendarX2 size={14} aria-hidden="true" /><span>{pv.missing.text}</span></p> : null}
         <p className={styles.pvFoot}>ตรงเสาร์/อาทิตย์ไม่เลื่อนวัน เตือนอย่างเดียว</p>
+        {status ? (
+          <p className={styles.pvText}>
+            <BellRing size={14} aria-hidden="true" />
+            <span>ปฏิทินใช้ได้ถึง {status.coveredThroughText} · {status.requestText} — กระดิ่งถึงฝ่ายขายทีมที่ดูแลและฝ่ายบัญชีทุกสัปดาห์ตั้งแต่ {fmtDate(status.firstDigest)} จนกว่าจะใส่</span>
+          </p>
+        ) : null}
+        {bell ? (
+          <div className={styles.bellPv}>
+            <span className={styles.bellAt}><AlarmClock size={13} aria-hidden="true" />{fmtDate(bell.fireOn, { withYear: false })} 08:30</span>
+            <p>{bell.text}</p>
+            <small>ถึงเจ้าของดีล · เจ้าของใบ SO · ฝ่ายบัญชี — เฉพาะรอบที่มีงวดรอวางบิล</small>
+          </div>
+        ) : null}
       </>
     );
   }
@@ -362,9 +421,12 @@ export default function CustomerBillingRuleModal({ open = true, onClose, custome
     if (need === "none") return step === 2 ? "ไม่ต้องตอบ — ลูกค้าไม่ต้องวางบิล" : "ไม่ต้องตอบ — กำหนดชำระตั้งรายงวดบนใบ SO";
     if (need === "unknown") return "ไม่ต้องตอบ — ยังไม่ระบุ";
     if (need === "required" && step === 3 && !form.bill) return "ไม่ต้องตอบ — ยังไม่ตั้งรอบ";
+    if (need === "required" && step === 3 && form.bill === "calendar") return "กรอกปฏิทินในข้อ 2 อย่างน้อยหนึ่งรอบก่อน";
     return step === 2 ? "ตอบข้อ 1 ก่อน" : "ตอบข้อ 2 ก่อน";
   };
-  const billDone = form.bill === "anyday" || (form.bill === "monthly" && form.days.length > 0);
+  /* ปฏิทิน: ข้อ ② "ตอบแล้ว" เมื่อมีรอบที่อ่านได้อย่างน้อยหนึ่งรอบ — ข้อ ③ ตอบได้ระหว่างกรอกตาราง (ตาราง 12 เดือนยาว ไม่ต้องรอครบ) */
+  const calendarCount = form.bill === "calendar" ? calendarCountOf(form.calendar).count : 0;
+  const billDone = form.bill === "anyday" || (form.bill === "monthly" && form.days.length > 0) || calendarCount > 0;
   const payReady = need === "required" && billDone;
   const payDone = ready && payReady;
   const flag = (step) => tried && !ready && result.step === step;
@@ -372,6 +434,7 @@ export default function CustomerBillingRuleModal({ open = true, onClose, custome
   const runsLabel = form.bill === "monthly" ? segLabel("ตามรอบจ่าย", "แต่ละวันวางบิลมีวันจ่ายของมัน") : segLabel("วันจ่ายประจำ", "เช่น ทุกวันที่ 25");
   const creditValue = creditNumber(form.creditDays);
   const creditInvalid = form.pay === "credit" && form.creditDays !== "" && creditValue === null;
+  const calCreditInvalid = form.calPay === "credit" && form.creditDays !== "" && !creditValue;
   const activeRow = rounds[active];
 
   return (
@@ -381,6 +444,7 @@ export default function CustomerBillingRuleModal({ open = true, onClose, custome
       dismissible={!saving}
       size="xl"
       sheetOnPhone
+      className={isCalendar ? styles.calModal : ""}
       title={firstSet ? "ตั้งการวางบิลและกำหนดชำระ" : "แก้การวางบิลและกำหนดชำระ"}
       subtitle={subject}
       toolbar={toolbar}
@@ -389,7 +453,7 @@ export default function CustomerBillingRuleModal({ open = true, onClose, custome
       <div className={styles.sentBar}>
         <PolicySentence words={words} onGoto={goto} lead={customer?.arCode || ""} />
       </div>
-      <div className={styles.layout}>
+      <div className={styles.layout} data-wide={isCalendar ? "1" : undefined}>
         <div className={styles.qs}>
           {/* ① ต้องวางบิลไหม — ตัวกำหนดบริบทอยู่บนสุด (form-design-rules §1) · ไม่มีค่าตั้งต้น */}
           <section ref={q1Ref} className={styles.q} data-flag={flag(1) ? "1" : undefined} aria-labelledby="billing-rule-q1">
@@ -410,14 +474,29 @@ export default function CustomerBillingRuleModal({ open = true, onClose, custome
               <>
                 <Segmented
                   ariaLabel="วางบิลได้เมื่อไร"
-                  className={styles.seg}
+                  className={`${styles.seg} ${styles.seg3}`}
                   options={[
                     { value: "anyday", label: segLabel("ทุกวัน", "ไม่มีรอบ") },
                     { value: "monthly", label: segLabel("ทุกวันที่…", `1–${ROUNDS_MAX} รอบต่อเดือน · สิ้นเดือน`) },
+                    { value: "calendar", label: segLabel("ตามปฏิทินลูกค้า", "รายปี · ลูกค้าประกาศวันตัดรอบ/วันจ่าย") },
                   ]}
                   value={form.bill}
-                  onChange={(bill) => act(chooseBill(form, bill))}
+                  onChange={(bill) => act(chooseBill(form, bill, { todayIso: today }))}
                 />
+                {form.bill === "calendar" ? (
+                  <>
+                    <CutoffTimeField value={form.cutoffTime} credit={form.calPay === "credit"} onChange={(text) => act(setCutoffTime(form, text))} />
+                    <CalendarEditor
+                      state={form.calendar}
+                      onUpdate={editCalendar}
+                      todayIso={today}
+                      holidays={holidays}
+                      customerId={customer?.id}
+                      initialYear={calendarYear}
+                      flagged={flag(2)}
+                    />
+                  </>
+                ) : null}
                 {form.bill === "monthly" ? (
                   <>
                     <DayGrid ariaLabel="วันที่รับวางบิลของทุกเดือน (แตะได้หลายวัน)" multiple value={form.days} onPick={tapBillDay} />
@@ -445,8 +524,58 @@ export default function CustomerBillingRuleModal({ open = true, onClose, custome
 
           {/* ③ กำหนดชำระเมื่อไร */}
           <section ref={q3Ref} className={`${styles.q} ${styles.qPay}`} data-skip={payReady ? undefined : "1"} data-flag={flag(3) ? "1" : undefined} aria-labelledby="billing-rule-q3">
-            <StepHead n={3} id="billing-rule-q3" title="กำหนดชำระเมื่อไร" sub={payReady ? "ลูกค้าจ่ายวันไหน = กำหนดชำระของงวด" : skipWhy(3)} done={payDone} />
-            {payReady ? (
+            <StepHead
+              n={3}
+              id="billing-rule-q3"
+              title="กำหนดชำระเมื่อไร"
+              sub={!payReady ? skipWhy(3) : isCalendar ? "วันจ่ายตามปฏิทินของลูกค้า · เครดิตไม่บังคับ" : "ลูกค้าจ่ายวันไหน = กำหนดชำระของงวด"}
+              done={payDone}
+            />
+            {/* ⭐ ③ ของปฏิทิน (มติ 29/09) — วันจ่ายมาจากตารางเสมอ · คำถามเหลือแค่ "มีเครดิตไหม" · ไม่มีค่าตั้งต้น (Q1 ยังเปิด)
+                เครดิต N = วันจ่ายของรอบแรกที่วันตัดรอบไม่ก่อน วันวางบิล + N (ตัวคิดของ lib — ไม่ใช่ "วันวางบิล + N") */}
+            {payReady && isCalendar ? (
+              <>
+                <Segmented
+                  ariaLabel="วันจ่ายตามปฏิทิน — มีเครดิตไหม"
+                  className={styles.seg}
+                  options={[
+                    { value: "same", label: segLabel("วันจ่ายของรอบเดียวกัน", "ไม่มีเครดิต · วางบิลถึงวันตัดรอบ → ได้เงินวันจ่ายรอบนั้น") },
+                    { value: "credit", label: segLabel("ครบเครดิต N วันแล้วเข้ารอบจ่าย", "มีเครดิต · เข้ารอบจ่ายแรกที่ตัดรอบหลังวันครบเครดิต") },
+                  ]}
+                  value={form.calPay}
+                  onChange={(calPay) => act(chooseCalPay(form, calPay))}
+                />
+                {form.calPay === "credit" ? (
+                  <div className={styles.creditPay}>
+                    <ChoiceChips
+                      ariaLabel="จำนวนวันเครดิต"
+                      options={CREDIT_CHIPS.map((n) => ({ value: n, label: `${n} วัน` }))}
+                      value={CREDIT_CHIPS.includes(creditValue) ? creditValue : null}
+                      onChange={(n) => act(setCalCreditDays(form, String(n)))}
+                    />
+                    <div className={styles.creditRow}>
+                      <label htmlFor="billing-rule-cal-credit">หรือพิมพ์</label>
+                      <Input
+                        id="billing-rule-cal-credit"
+                        className={styles.num}
+                        inputMode="numeric"
+                        maxLength={3}
+                        autoComplete="off"
+                        placeholder={`1–${CREDIT_MAX}`}
+                        invalid={calCreditInvalid}
+                        value={form.creditDays}
+                        onChange={(event) => act(setCalCreditDays(form, event.target.value))}
+                      />
+                      <span>วัน · นับจากวันวางบิล</span>
+                    </div>
+                  </div>
+                ) : null}
+                {form.calPay === "same" ? (
+                  <p className={styles.hint}><Info size={13} aria-hidden="true" /><span>วางบิลเลยวันตัดรอบ = ตกไปรอบถัดไป · เวลาตัดรอบ (ถ้ามี) ใช้เตือน ไม่ได้ย้ายงวดเอง</span></p>
+                ) : null}
+              </>
+            ) : null}
+            {payReady && !isCalendar ? (
               <>
                 <Segmented
                   ariaLabel="กำหนดชำระเมื่อไร"
@@ -584,7 +713,7 @@ export default function CustomerBillingRuleModal({ open = true, onClose, custome
               </div>
               <div className={styles.pvBlock}>
                 <h5>การเตือนที่จะได้</h5>
-                <ReminderChips chips={reminderChipsOf(result.clear ? null : result.rule)} />
+                <ReminderChips chips={reminderChipsOf(result.clear ? null : result.rule, { todayIso: today, holidays })} />
               </div>
             </>
           ) : null}

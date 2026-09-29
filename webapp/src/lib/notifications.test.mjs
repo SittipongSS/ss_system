@@ -22,7 +22,7 @@ function* walk(dir) {
 }
 
 import {
-  CONTRACT_BELL_KINDS, EXCISE_BELL_KINDS, LEAD_BELL_KINDS, PRODUCT_SPEC_DOC_BELL_KINDS,
+  CONTRACT_BELL_KINDS, CUSTOMER_BELL_KINDS, EXCISE_BELL_KINDS, LEAD_BELL_KINDS, PRODUCT_SPEC_DOC_BELL_KINDS,
   SALES_ORDER_BELL_KINDS, SERVICE_BELL_KINDS,
   NOTIFICATION_BOXES, entityLabel, entityTitle, listNotificationPage, markAllRead,
   notificationBox, notificationCursor, notificationHref, notifyThreadUpdate,
@@ -264,7 +264,7 @@ test('⭐ กระดิ่งกรองเหลือคำร้อง + �
   assert.deepEqual(calls.ors, [
     'entityType.eq.dept_request,entityType.eq.system_issue,kind.eq.task_assign,'
     + [...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS, ...SERVICE_BELL_KINDS, ...CONTRACT_BELL_KINDS,
-      ...SALES_ORDER_BELL_KINDS, ...PRODUCT_SPEC_DOC_BELL_KINDS]
+      ...SALES_ORDER_BELL_KINDS, ...PRODUCT_SPEC_DOC_BELL_KINDS, ...CUSTOMER_BELL_KINDS]
       .map((k) => `kind.eq.${k}`).join(','),
   ]);
 });
@@ -275,7 +275,7 @@ test('⭐ มอบหมายงานเข้ากล่องด้วย 
   assert.equal(NOTIFICATION_BOXES.bell.entityTypes.includes('personal_task'), false);
   assert.deepEqual(NOTIFICATION_BOXES.bell.kinds,
     ['task_assign', ...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS, ...SERVICE_BELL_KINDS,
-      ...CONTRACT_BELL_KINDS, ...SALES_ORDER_BELL_KINDS, ...PRODUCT_SPEC_DOC_BELL_KINDS]);
+      ...CONTRACT_BELL_KINDS, ...SALES_ORDER_BELL_KINDS, ...PRODUCT_SPEC_DOC_BELL_KINDS, ...CUSTOMER_BELL_KINDS]);
 });
 
 /* ── ลีดเข้ากระดิ่ง (2026-08-25) ────────────────────────────────────────────
@@ -437,6 +437,33 @@ test('PRODUCT_SPEC_DOC_BELL_KINDS ครบทุก kind ที่ยิงจ�
   for (const kind of kinds) {
     assert.ok(PRODUCT_SPEC_DOC_BELL_KINDS.includes(kind),
       `${kind} ยิงอยู่จริงแต่ยังไม่อยู่ใน PRODUCT_SPEC_DOC_BELL_KINDS ⇒ ไม่ขึ้นกระดิ่ง`);
+  }
+});
+
+/* ── ลูกค้าเข้ากระดิ่ง (v5 ปฏิทินรายปี · มติเจ้าของ 29/09) ─────────────────────────────────────────
+   🪤 ลูกค้า **มีเธรด** (ต่างจากใบสั่งขาย) แต่ใส่ 'customer' ลง entityTypes ไม่ได้ — เธรดลูกค้าเปิดอยู่ทุกราย
+      (คอมเมนต์ · อนุมัติ · กำหนดวางบิล) จะไหลเข้ากระดิ่งทั้งหมดจนคำร้องตกขอบ 30 แถว ⇒ เข้าทาง kinds เท่านั้น */
+test('⭐ ลูกค้าเข้ากระดิ่งด้วย kind ไม่ใช่ทั้ง entity — เธรดลูกค้าต้องไม่ตามมา', () => {
+  assert.equal(NOTIFICATION_BOXES.bell.entityTypes.includes('customer'), false);
+  assert.ok(CUSTOMER_BELL_KINDS.includes('customer_billing_calendar_missing'));
+  for (const kind of CUSTOMER_BELL_KINDS) {
+    assert.ok(NOTIFICATION_BOXES.bell.kinds.includes(kind), `${kind} หลุดจากกระดิ่ง`);
+  }
+});
+
+/* ⚠️ ดริฟต์ตัวเดียวกับใบสั่งขาย: ไฟล์ที่ **ประกาศ** kind (`sales/billingDueNotify.js`) กับไฟล์ที่ **ยิง** (cron daily-digest)
+   คนละไฟล์ ⇒ จับด้วยคำนำหน้าชื่อ kind ทั้ง src */
+test('CUSTOMER_BELL_KINDS ครบทุก kind ที่ยิงจริง', () => {
+  const kinds = new Set();
+  for (const file of walk(new URL('..', import.meta.url))) {
+    const src = readFileSync(file, 'utf8');
+    for (const [, kind] of src.matchAll(/kind: '(customer_[a-z_]+)'/g)) kinds.add(kind);
+    for (const [, kind] of src.matchAll(/_KIND = '(customer_[a-z_]+)'/g)) kinds.add(kind);
+  }
+  assert.ok(kinds.size >= 1, 'หา kind ของแจ้งเตือนลูกค้าไม่เจอเลย — เทสต์นี้ตาบอดแล้ว');
+  for (const kind of kinds) {
+    assert.ok(CUSTOMER_BELL_KINDS.includes(kind),
+      `${kind} ยิงอยู่จริงแต่ยังไม่อยู่ใน CUSTOMER_BELL_KINDS ⇒ ไม่ขึ้นกระดิ่ง`);
   }
 });
 

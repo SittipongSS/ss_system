@@ -14,7 +14,10 @@ import { businessDate } from '@/lib/businessDate';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { addDays } from '@/lib/sales/paymentCoverage';
 import { BILLING_REMIND_DAYS, DUE_REMIND_DAYS } from '@/lib/sales/billingRule';
-import { billingDueNotices, dueSoonNotices } from '@/lib/sales/billingDueNotify';
+import {
+  BILLING_CUTOFF_LOOKAHEAD_DAYS, BILLING_CUTOFF_LOOKBACK_DAYS, billingCutoffNotices, billingDueNotices, calendarMissingNotices,
+  dueSoonNotices,
+} from '@/lib/sales/billingDueNotify';
 import { billingV4SchemaError } from '@/lib/sales/billingPolicySchema';
 import { SAHAMIT_AR_CODE } from '@/lib/sahamit/server';
 
@@ -22,8 +25,9 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 // GET /api/cron/daily-digest — ทวงงานค้างเข้ากล่องแจ้งเตือน **รายคน**
-// วันนี้มีห้าเรื่อง: ลีดค้างเกิน SLA · สัญญาค้างรอลงนามเกินเกณฑ์ · สัญญารอ AE Sup อนุมัติ
+// วันนี้มีเจ็ดเรื่อง: ลีดค้างเกิน SLA · สัญญาค้างรอลงนามเกินเกณฑ์ · สัญญารอ AE Sup อนุมัติ
 // · งวดชำระถึงรอบวางบิล (กำหนดวางบิล · mig 0389) · งวดใกล้ครบกำหนดชำระ (รุ่นสี่ · system-design §6 ช่วง 4a)
+// · เช้าวันตัดรอบของลูกค้า + ขอปฏิทินปีหน้า (v5 ปฏิทินรายปี · มติเจ้าของ 29/09)
 // เรียกโดย Vercel Cron (08:30 ไทย จ-ศ, ดู webapp/vercel.json) ด้วย Authorization:
 // Bearer CRON_SECRET หรือ admin เปิดเองจากเบราว์เซอร์เพื่อทดสอบ
 //
@@ -191,7 +195,8 @@ async function notifyPendingContractApprovals(supabase) {
 /* ── วัตถุดิบร่วมของกระดิ่งงวด (วางบิล · ครบกำหนด) — ใบ (+ดีล · QT) · ลูกค้า · คำร้องที่ผูก · ทะเบียนผู้ใช้ ─────────────────
    ⭐ ตัวเดียวของสองเรื่อง — ด่านงวด (`collectibleOf` ใน billingDueNotify.js) ต้องได้วัตถุดิบชุดเดียวกันเป๊ะ ไม่งั้นงวดเดียวกัน
      ผ่านด่านของเรื่องหนึ่งแต่ตกของอีกเรื่อง
-   `withRule` = เลือกกติกาของลูกค้ามาด้วย (กระดิ่งครบกำหนดต่อท้าย "ยังไม่มีวันวางบิล") · กระดิ่งวางบิลไม่อ่านกติกา (มติ 28/09 ข้อ 17)
+   `withRule` = เลือกกติกาของลูกค้ามาด้วย (กระดิ่งครบกำหนดต่อท้าย "ยังไม่มีวันวางบิล" · กระดิ่งวันตัดรอบอ่านรอบจ่าย/ปฏิทิน · v5)
+     · กระดิ่งวางบิลไม่อ่านกติกา (มติ 28/09 ข้อ 17)
    @returns `{ ordersById, customersById, requestsById, directory }` หรือ `{ error }` (ข้อความ) */
 async function loadBellContext(supabase, rows, { withRule = false } = {}) {
   const orderIds = [...new Set(rows.map((r) => r.salesOrderId).filter(Boolean))];
@@ -217,7 +222,8 @@ async function loadBellContext(supabase, rows, { withRule = false } = {}) {
       .from('sales_deals').select('id, "ownerId"').in('id', chunk).order('id', { ascending: true }))),
     /* `arCode` = บรรทัดรองของกระดิ่ง + ตัวตัดลูกค้าสหมิตร (เงินเก็บนอกระบบ · มติ 24/09)
        `name`/`nameEn` = ชื่อสำรองเมื่อสำเนาชื่อบนใบว่าง (ลูกค้าที่มีแต่ชื่ออังกฤษ)
-       `billingRule` (เฉพาะกระดิ่งครบกำหนด) = ต้องวางบิลไหม → คำต่อท้าย "ยังไม่มีวันวางบิล" (mig 0389 รันแล้ว — คอลัมน์มีจริง) */
+       `billingRule` (กระดิ่งครบกำหนด + วันตัดรอบ) = ต้องวางบิลไหม → คำต่อท้าย "ยังไม่มีวันวางบิล" · รอบจ่าย/ปฏิทิน → เส้นตายของรอบ
+       (mig 0389 รันแล้ว — คอลัมน์มีจริง) */
     withRule
       ? fetchInChunks(customerIds, (chunk) => fetchAllResult(() => supabase
         .from('customers').select('id, "arCode", name, "nameEn", "billingRule"').in('id', chunk).order('id', { ascending: true })))
@@ -371,6 +377,106 @@ async function notifyBillingDue(supabase) {
   return out;
 }
 
+/* ⭐ เช้าวันตัดรอบของลูกค้า (v5 · มติเจ้าของ 29/09 "เตือนดีกว่า") — เช้าวันทำงานก่อนเส้นตาย + เช้าวันทำงานสุดท้าย ≤ เส้นตาย
+   บอกงวดที่ยังรอวางบิลของรอบ · ฝ่ายขาย = หนึ่งแถวต่อใบต่อรอบ (เจ้าของดีล + เจ้าของใบ) · FN = หนึ่งแถวต่อเส้นตาย
+   → `/finance/payments?billing=cutoff&on=<เส้นตาย>` · กติกาทั้งหมดอยู่ที่ `billingCutoffNotices` (lib/sales/billingDueNotify.js →
+   `cutoffDigest` ของตัวคิด) — ที่นี่แค่ดึงข้อมูลกับยิง
+   ⚠️ กรองที่วันวางบิล **ช่วงกว้าง** (ย้อน 70 · ล่วงหน้า 21 วัน — เหตุผลที่ค่าคงที่) ไม่ใช่ 0..N วันแบบกระดิ่งวางบิล: เส้นตายอยู่
+      หลังวันวางบิลได้ถึงหนึ่งรอบ และงวดที่เลยวันวางบิลแต่ยังไม่ขอใบก็ยังรอรอบถัดไปของมัน
+   ⚠️ ลูกค้าต้องพกกติกา (`withRule: true`) — รอบจ่าย/ปฏิทิน/เวลาตัดรอบอยู่ในนั้น · วันทำงานของการยิงใช้ตารางวันหยุดของเรา
+   ⚠️ `billingSkip` เลือกได้หลังรัน 0393 (รันแล้ว · owner 29/09) — ถอยไป select ชุดเดิมเมื่อฐานตอบ 42703 (แบบเดียวกับกระดิ่งครบกำหนด)
+   ⚠️ admin เปิด route นี้เองจากเบราว์เซอร์ = ยิงจริงถึงคนจริง (ฐาน dev = ฐาน prod) — dedupe กันแค่รอบซ้ำ ไม่กันรอบแรก */
+async function notifyBillingCutoff(supabase) {
+  const todayIso = businessDate();
+  const from = addDays(todayIso, -BILLING_CUTOFF_LOOKBACK_DAYS);
+  const until = addDays(todayIso, BILLING_CUTOFF_LOOKAHEAD_DAYS);
+  let result = await fetchAllResult(() => supabase
+    .from('sales_order_installments')
+    .select('id, "salesOrderId", seq, label, amount, status, kind, "frozenAt", "refundedAt", "billingDate", "billingEvent", "dueDate", "billingRequestId", "billingSkip"')
+    .eq('status', 'pending')
+    .not('frozenAt', 'is', null)
+    .gte('billingDate', from)
+    .lte('billingDate', until)
+    .order('id', { ascending: true }));
+  if (billingV4SchemaError(result.error)) {
+    result = await fetchAllResult(() => supabase
+      .from('sales_order_installments')
+      .select('id, "salesOrderId", seq, label, amount, status, kind, "frozenAt", "refundedAt", "billingDate", "billingEvent", "dueDate", "billingRequestId"')
+      .eq('status', 'pending')
+      .not('frozenAt', 'is', null)
+      .gte('billingDate', from)
+      .lte('billingDate', until)
+      .order('id', { ascending: true }));
+  }
+  // supabase ไม่ throw — ทิ้ง `.error` = "ไม่มีงวดรอวางบิล" ทั้งที่ query พัง
+  if (result.error) return { sent: 0, error: result.error.message };
+  const rows = result.data || [];
+  if (!rows.length) return { sent: 0, reason: 'ไม่มีงวดที่รอวางบิลในช่วงวันตัดรอบ' };
+
+  // `holidaySet` ถอยไปรายการวันหยุดที่ฝังไว้เองเมื่ออ่านตารางไม่ขึ้น (ไม่ throw)
+  const [context, holidays] = await Promise.all([loadBellContext(supabase, rows, { withRule: true }), holidaySet()]);
+  if (context.error) return { sent: 0, error: context.error };
+  const { ordersById, customersById, requestsById, directory } = context;
+
+  const { candidates, sales, fn } = billingCutoffNotices(rows, {
+    todayIso, ordersById, customersById, requestsById, directory, holidays, skipArCodes: [SAHAMIT_AR_CODE],
+  });
+  if (!candidates.length) return { sent: 0, reason: 'ไม่มีงวดที่ถึงเช้าวันตัดรอบ (ไม่มีรอบจ่าย/ขอใบแล้ว/ยังไม่ถึงวันเตือน/ลูกค้านอกระบบ)' };
+
+  let sent = 0;
+  // `notifyUsers` กลืน error เอง — ต้องขึ้นเป็น error ของรอบนี้ (เหตุผลเดียวกับกระดิ่งวางบิล)
+  let notifyError = null;
+  for (const notice of [...sales, ...fn]) {
+    const out = await notifyUsers(supabase, { ...notice, actorName: 'สรุปประจำวัน' });
+    sent += out.sent || 0;
+    if (out.error && !notifyError) notifyError = `${notice.kind}: ${out.error}`;
+  }
+  const out = { sent, candidates: candidates.length, sales: sales.length, finance: fn.length };
+  const errors = [];
+  if (notifyError) errors.push(`ยิงกระดิ่งไม่สำเร็จ — ${notifyError}`);
+  if (!fn.length) errors.push(`มีงวดถึงเช้าวันตัดรอบ ${candidates.length} งวด แต่ไม่พบผู้ใช้ฝ่าย FN ที่เปิดอยู่ — กระดิ่งฝั่งบัญชีไม่ถูกส่ง`);
+  if (errors.length) out.error = errors.join(' · ');
+  return out;
+}
+
+/* ⭐ ขอปฏิทินปีหน้า (v5 · มติเจ้าของ 29/09 Q3 "หยุดรอปฏิทินใหม่") — ลูกค้าที่วางบิลตามปฏิทินใกล้หมดปีที่มี
+   ⇒ เตือนทุกสัปดาห์ (อา–ส) ตั้งแต่ 1 ธ.ค. หรือ 30 วันก่อนวันตัดรอบสุดท้าย · หยุดเองเมื่อใส่ปีถัดไป (`calendarReminder` ของตัวคิด)
+   ผู้รับ = ฝ่ายขายทีมที่ดูแลลูกค้า + FN (`calendarMissingNotices`) → การ์ดลูกค้า `#billing-rule`
+   ⚠️ กรองที่ฐานด้วยชนิดรอบ (`billingRule->runs->>kind = calendar`) — ลูกค้าส่วนใหญ่ไม่มีปฏิทิน ไม่ต้องลากทั้งทะเบียนมาทุกเช้า
+   ⚠️ `team, teams` = ทีมที่ดูแล (ผู้รับฝั่งขาย) · `isActive` = ข้ามลูกค้าที่ปิดใช้งาน */
+async function notifyCalendarMissing(supabase) {
+  const todayIso = businessDate();
+  const { data, error } = await fetchAllResult(() => supabase
+    .from('customers')
+    .select('id, "arCode", name, "nameEn", team, teams, "isActive", "billingRule"')
+    .eq('billingRule->runs->>kind', 'calendar')
+    .order('id', { ascending: true }));
+  if (error) return { sent: 0, error: error.message };
+  if (!data?.length) return { sent: 0, reason: 'ไม่มีลูกค้าที่วางบิลตามปฏิทิน' };
+
+  const holidays = await holidaySet();
+  const directory = await loadUserDirectory(supabase).catch(() => new Map());
+  const { notices, due, unrouted } = calendarMissingNotices(data, {
+    todayIso, holidays, directory, skipArCodes: [SAHAMIT_AR_CODE],
+  });
+  if (!due) return { sent: 0, customers: data.length, reason: 'ยังไม่มีลูกค้าที่ถึงช่วงขอปฏิทินปีหน้า (หรือวันนี้ไม่ใช่วันทำงาน)' };
+
+  let sent = 0;
+  let notifyError = null;
+  for (const notice of notices) {
+    const out = await notifyUsers(supabase, { ...notice, actorName: 'สรุปประจำวัน' });
+    sent += out.sent || 0;
+    if (out.error && !notifyError) notifyError = `${notice.kind}: ${out.error}`;
+  }
+  const out = { sent, customers: data.length, due, notices: notices.length };
+  const errors = [];
+  if (notifyError) errors.push(`ยิงกระดิ่งไม่สำเร็จ — ${notifyError}`);
+  // ถึงช่วงเตือนแต่ไม่มีผู้รับเลย (ไม่มีทีมที่ดูแล + อ่านทะเบียนผู้ใช้ไม่ขึ้น/ไม่มี FN) ≠ ไม่มีอะไรต้องเตือน
+  if (unrouted) errors.push(`ลูกค้า ${unrouted} รายถึงช่วงขอปฏิทินปีหน้า แต่ไม่พบผู้รับกระดิ่ง (ฝ่ายขายทีมที่ดูแล/ฝ่าย FN)`);
+  if (errors.length) out.error = errors.join(' · ');
+  return out;
+}
+
 export async function GET(request) {
   // ผ่านได้ 2 ทาง: Vercel Cron (Bearer CRON_SECRET) หรือ admin กดทดสอบเองจากเบราว์เซอร์
   //
@@ -413,6 +519,16 @@ export async function GET(request) {
     results.dueSoon = await notifyDueSoon(supabase);
   } catch (e) {
     results.dueSoon = { sent: 0, error: e?.message || String(e) };
+  }
+  try {
+    results.billingCutoff = await notifyBillingCutoff(supabase);
+  } catch (e) {
+    results.billingCutoff = { sent: 0, error: e?.message || String(e) };
+  }
+  try {
+    results.calendarMissing = await notifyCalendarMissing(supabase);
+  } catch (e) {
+    results.calendarMissing = { sent: 0, error: e?.message || String(e) };
   }
 
   return Response.json({ ok: true, at: new Date().toISOString(), results });
