@@ -405,7 +405,8 @@ test('🔴 ด่านปลายทางของการผูก: ไซ�
 });
 
 /* ── PR-C (C1): แถวรอตั้งรอบรู้ว่าใบ "ฝ่ายขายตั้งโซนแล้ว" ไหม (ตรา `serviceTermsOpenedAt` · mig 0392) ────────
-   ⭐ ใบที่ตั้งแล้ว term = แพ็คต่อรอบรายโซน ⇒ "ขายไว้" อ่านเป็น "n รอบ/โซน" · ใบเดิม/ย้อนหลังยังเป็น "n รอบ"
+   ⭐ ใบที่ตั้งแล้ว term = แพ็คต่อรอบรายโซน · ช่อง "จำนวนรอบบริการ" อ่านเป็น "n รอบ" ทั้งใบที่ตั้งแล้วและใบเดิม/ย้อนหลัง
+      (มติเจ้าของ 29/09: "ไปกี่รอบ" → "จำนวนรอบบริการ" · เดิมใบที่ตั้งแล้วเขียน "n รอบ/โซน")
    ⚠️ เพิ่มแค่คีย์เดียว — หน่วย (ไซต์ × ใบ) · จำนวนแถว · ลำดับ ไม่ขยับ (ตัวนับบนเมนูอ่าน `.length`) */
 test('C1: แถวพก stamped ตามตราของใบ — ไม่มีตรา/ไม่มีใบ = false', () => {
   const q = planQueue({
@@ -427,8 +428,8 @@ test('C1: แถวพก stamped ตามตราของใบ — ไม�
   assert.equal(nullStamp[0].stamped, false);
 });
 
-test('C1: "ขายไว้" ของใบที่ฝ่ายขายตั้งโซนแล้ว = "12 รอบ/โซน" · ใบเดิม "12 รอบ" · รอบไม่เท่ากันเขียนเหมือนเดิม', () => {
-  assert.deepEqual(planRoundsSoldText({ roundsSold: 12, stamped: true }), { value: '12 รอบ/โซน', hint: null });
+test('C1 · มติ 29/09: "จำนวนรอบบริการ" ของใบที่ฝ่ายขายตั้งโซนแล้ว = "12 รอบ" (ไม่มี "/โซน" แล้ว) · ใบเดิม "12 รอบ" · รอบไม่เท่ากันเขียนเหมือนเดิม', () => {
+  assert.deepEqual(planRoundsSoldText({ roundsSold: 12, stamped: true }), { value: '12 รอบ', hint: null });
   assert.deepEqual(planRoundsSoldText({ roundsSold: 12, stamped: false }), { value: '12 รอบ', hint: null });
   assert.deepEqual(planRoundsSoldText({ roundsSold: 12 }), { value: '12 รอบ', hint: null }, 'ไม่มีคีย์ = ใบเดิม');
   assert.deepEqual(

@@ -46,6 +46,7 @@ import {
 } from "@/lib/service/siteDetailLists";
 import { usePagination } from "@/lib/usePagination";
 import {
+  ROUNDS_SOLD_LABEL,
   VISIT_KIND_LABELS,
   VISIT_STATUS_LABELS,
   visitTimeText,
@@ -571,7 +572,7 @@ export default function ServiceSiteDetailPage({ params }) {
         rows={[
           { id: "lastRefill", label: "เข้าเติมล่าสุด", value: schedule.lastRefillDate },
           { id: "nextVisit", label: "นัดครั้งหน้า", value: schedule.nextVisitDate || upcoming.map((v) => v.scheduledDate).sort()[0] },
-          ...(roundsSold != null ? [{ id: "roundsSold", label: "รอบที่ขายไว้", value: `${fmtNumber(roundsSold)} รอบ` }] : []),
+          ...(roundsSold != null ? [{ id: "roundsSold", label: ROUNDS_SOLD_LABEL, value: `${fmtNumber(roundsSold)} รอบ` }] : []),
         ]}
       />
 

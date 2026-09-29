@@ -43,7 +43,7 @@ function rowFor({ order = stampedOrder(), zones = [OFFICE], terms = TERMS, lines
 
 test('ข้อความคงที่ของแท็บรอตั้งรอบ (แคตตาล็อก §5)', () => {
   assert.equal(STAMPED_BADGE_LABEL, 'ฝ่ายขายตั้งโซนแล้ว');
-  assert.equal(PLAN_TAB_STAMPED_NOTE, 'ใบที่มีป้าย “ฝ่ายขายตั้งโซนแล้ว” มาพร้อมโซน แพ็คต่อรอบ และรอบที่ขาย — โซนผิดให้ฝ่ายขายออก Rev.');
+  assert.equal(PLAN_TAB_STAMPED_NOTE, 'ใบที่มีป้าย “ฝ่ายขายตั้งโซนแล้ว” มาพร้อมโซน แพ็คต่อรอบ และจำนวนรอบบริการ — โซนผิดให้ฝ่ายขายออก Rev.');
   assert.equal(PLAN_EMPTY_TEXT, 'ไม่มีไซต์ที่รอตั้งรอบ — ใบที่อนุมัติแล้วจะมาอยู่ที่นี่ทันที');
   assert.equal(CONTRACT_MISSING_CHIP, 'ยังไม่ผูก — นัดติดด่านสัญญา (SA)');
   assert.equal(CONTRACT_MISSING_WARNING, 'ใบนี้ยังไม่ผูกสัญญา — สร้างรอบและนัดได้ แต่นัดจะติดด่านสัญญาจนกว่าฝ่ายขาย (SA) ผูกสัญญาที่ครอบวันนัด');
@@ -80,7 +80,7 @@ test('⭐ SO-26090247-0: แพ็ครายโซน · ช่วงบริ
   assert.deepEqual(facts.prefill, { kind: 'refill', startDate: '2026-10-22', endDate: '2027-10-21', startHint: 'ตามวันเริ่มช่วงบริการของใบ' });
   assert.deepEqual(facts.context, {
     subtitle: 'ST-0364-01-BKK-1120 · Asan Service',
-    strip: 'งานนี้ · SO-26090247-0 · Asan Service · 1 โซน · 4 แพ็ค/รอบ · ขายไว้ 1 รอบ · ช่วงบริการ 22/10/2026–21/10/2027',
+    strip: 'งานนี้ · SO-26090247-0 · Asan Service · 1 โซน · 4 แพ็ค/รอบ · จำนวนรอบบริการ 1 รอบ · ช่วงบริการ 22/10/2026–21/10/2027',
     contractWarning: true,
     roundsSold: 1,
   });
@@ -121,7 +121,7 @@ test('ช่วงบริการจบแล้ว → ไม่เติม
   assert.equal(facts.cadenceSub, null);
   assert.equal(facts.periodText, '22/10/2026 – 21/10/2027');
   assert.equal(facts.context.strip,
-    'งานนี้ · SO-26090247-0 · Asan Service · 1 โซน · 4 แพ็ค/รอบ · ขายไว้ 1 รอบ · ช่วงบริการ 22/10/2026–21/10/2027 · ช่วงบริการจบแล้ว 21/10/2027');
+    'งานนี้ · SO-26090247-0 · Asan Service · 1 โซน · 4 แพ็ค/รอบ · จำนวนรอบบริการ 1 รอบ · ช่วงบริการ 22/10/2026–21/10/2027 · ช่วงบริการจบแล้ว 21/10/2027');
 });
 
 test('สองโซนในไซต์เดียว 2 + 1 แพ็ค = รวม 3 แพ็ค/รอบ · เรียงชื่อโซนแบบหน้าไซต์ (ไทยก่อน · ตัวเลขเรียงเป็นเลข)', () => {
@@ -163,7 +163,7 @@ test('⚠️ ใบเดิม (ยังไม่มีตรา): แพ็�
   assert.equal(facts.cadenceText, null);
   assert.equal(facts.prefill, null);
   assert.ok(facts.termDetails.every((t) => t.packageQty === null && t.periodMonths === null && t.rounds === 12 && t.unit === 'ชุด'));
-  assert.equal(facts.context.strip, 'งานนี้ · SO-26090247-0 · Asan Service · 1 โซน · ขายไว้ 12 รอบ');
+  assert.equal(facts.context.strip, 'งานนี้ · SO-26090247-0 · Asan Service · 1 โซน · จำนวนรอบบริการ 12 รอบ');
   assert.equal(facts.context.roundsSold, null, 'ไม่มีรอบที่แนะนำบนแถว = ไม่มีชิปในโมดัล (ใช้ช่วงเดียวกัน)');
 });
 
@@ -229,10 +229,10 @@ test('planWindow: ไม่มีช่วง/ช่วงเพี้ยน/จ
     { startDate: '2026-09-29', endDate: '2026-09-29', startHint: 'ช่วงบริการเริ่ม 01/01/2026 ไปแล้ว — เริ่มวันนี้' });
 });
 
-test('planSuggestionLabel: ชิป "ตามที่ขาย" · โดนเพดาน = บอกว่าได้ราวกี่นัด · ไม่มีข้อเสนอ = null', () => {
-  assert.equal(planSuggestionLabel(12, suggestEveryDays({ startDate: '2026-10-01', endDate: '2027-09-30', rounds: 12 })), 'ตามที่ขาย 12 รอบ → ทุก 33 วัน');
+test('planSuggestionLabel: ชิป "จำนวนรอบบริการ" · โดนเพดาน = บอกว่าได้ราวกี่นัด · ไม่มีข้อเสนอ = null', () => {
+  assert.equal(planSuggestionLabel(12, suggestEveryDays({ startDate: '2026-10-01', endDate: '2027-09-30', rounds: 12 })), 'จำนวนรอบบริการ 12 รอบ → ทุก 33 วัน');
   assert.equal(planSuggestionLabel(2, suggestEveryDays({ startDate: '2026-01-01', endDate: '2028-01-01', rounds: 2 })),
-    'ตามที่ขาย 2 รอบ → ทุก 365 วัน (สูงสุดที่ตั้งได้ · ได้ราว 3 นัด)');
+    'จำนวนรอบบริการ 2 รอบ → ทุก 365 วัน (สูงสุดที่ตั้งได้ · ได้ราว 3 นัด)');
   assert.equal(planSuggestionLabel(12, null), null);
 });
 

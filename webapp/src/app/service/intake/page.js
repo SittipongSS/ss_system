@@ -36,7 +36,7 @@ import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
 import EmptyState from "@/components/ui/EmptyState";
 import StatusBadge from "@/components/ui/StatusBadge";
-import { VISIT_KIND_LABELS } from "@/lib/service/rounds";
+import { ROUNDS_SOLD_LABEL, VISIT_KIND_LABELS } from "@/lib/service/rounds";
 import { INTAKE_TABS, INTAKE_TAB_HINTS, INTAKE_TAB_LABELS, planRoundsSoldText } from "@/lib/service/intake";
 import {
   LEGACY_SETUP_FILTERS, LEGACY_SETUP_FILTER_LABELS, legacySetupFilterCounts, legacySetupHaystack, legacySetupStatusView,
@@ -586,7 +586,7 @@ export default function ServiceIntakePage() {
                             </dd>
                           </div>
                           <div className={styles.cardFact}>
-                            <dt>ขายไว้</dt>
+                            <dt>{ROUNDS_SOLD_LABEL}</dt>
                             <dd>
                               {planRoundsSoldText(row)?.value || naText(null)}
                               {/* รอบไม่เท่ากันระหว่างรายการในไซต์เดียว — บอกทุกค่า + คำแนะนำ (ไม่โชว์แค่ตัวมากสุดเงียบ ๆ) */}
@@ -650,7 +650,7 @@ export default function ServiceIntakePage() {
                         <th scope="col">ไซต์</th>
                         <th scope="col">ใบสั่งขาย</th>
                         <th scope="col">โซน · แพ็ค/รอบ</th>
-                        <th scope="col">ขายไว้</th>
+                        <th scope="col">{ROUNDS_SOLD_LABEL}</th>
                         <th scope="col">ช่วงบริการ</th>
                         <th scope="col">รอบที่แนะนำ</th>
                         <th scope="col">สัญญา</th>

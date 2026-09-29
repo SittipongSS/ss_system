@@ -41,9 +41,10 @@ export const INTAKE_TAB_HINTS = {
 };
 
 /**
- * ช่อง "ขายไว้" ของแถวรอตั้งรอบ (การ์ด · ตาราง ใช้ตัวเดียว) → `{ value, hint }` · ยังไม่ระบุ = null (จอขีด)
+ * ช่อง "จำนวนรอบบริการ" ของแถวรอตั้งรอบ (การ์ด · ตาราง ใช้ตัวเดียว · หัวช่อง = `ROUNDS_SOLD_LABEL` ของ rounds.js) → `{ value, hint }` · ยังไม่ระบุ = null (จอขีด)
  *   บรรทัดในไซต์เดียวกันขายรอบไม่เท่ากัน (`roundsMixed`) = บอกทุกค่า + คำแนะนำ ไม่ใช่โชว์แค่ตัวมากสุดเงียบ ๆ (r2 §TS plan row)
- *   ⭐ PR-C (C1): ใบที่ฝ่ายขายตั้งโซนแล้ว (`row.stamped`) ขายเป็นรอบของทุกโซนในไซต์ ⇒ "12 รอบ/โซน" · ใบเดิม/ย้อนหลัง "12 รอบ" เท่าเดิม
+ *   ⭐ มติเจ้าของ 29/09 ("ไปกี่รอบ" → "จำนวนรอบบริการ"): ค่าเป็น "12 รอบ" ทั้งใบที่ฝ่ายขายตั้งโซนแล้วและใบเดิม/ย้อนหลัง
+ *      (เดิม PR-C C1 ใบที่ตั้งแล้วเขียน "12 รอบ/โซน" — รอบหนึ่ง = ไปไซต์หนึ่งครั้ง ครอบทุกโซนของบรรทัด ไม่ใช่รอบรายโซน)
  */
 export function planRoundsSoldText(row) {
   if (!row?.roundsSold) return null;
@@ -51,7 +52,7 @@ export function planRoundsSoldText(row) {
   if (row.roundsMixed && values.length > 1) {
     return { value: `${values.map((n) => fmtNumber(n)).join(' · ')} รอบ (ต่างกันรายรายการ)`, hint: 'ตั้งรอบตามรายการที่มากที่สุด' };
   }
-  return { value: `${fmtNumber(row.roundsSold)} ${row.stamped ? 'รอบ/โซน' : 'รอบ'}`, hint: null };
+  return { value: `${fmtNumber(row.roundsSold)} รอบ`, hint: null };
 }
 
 /* ── สายธุรกิจของใบสั่งขาย ────────────────────────────────────────────

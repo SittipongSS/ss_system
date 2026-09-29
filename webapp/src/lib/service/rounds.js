@@ -8,6 +8,7 @@ import { isBusinessDay, toLocalISODate } from '@/lib/pm/dateHelpers';
 import { daysBetween } from '@/lib/sales/paymentCoverage';
 import { accessConflict, minutesOf, toHHMM } from './sites';
 import { businessDate } from '@/lib/businessDate';
+import { fmtNumber } from '@/lib/format';
 import { VISIT_STATUSES, canRescheduleVisit, isClosedVisit, isLiveVisit } from './visitStatus';
 
 export const PLAN_KINDS = ['refill', 'maintenance', 'inspect'];
@@ -133,7 +134,23 @@ export function estimateVisitCount({ startDate, endDate, everyDays } = {}) {
   return Math.floor(span / every) + 1;
 }
 
-/* ── "ขายไว้ n รอบ ⇒ ทุกกี่วัน" (PR-C · C-D7) — ตัวกลับของ estimateVisitCount ─────────────────────
+/* ── คำเรียกจำนวนรอบที่ขาย (มติเจ้าของ 29/09: "ไปกี่รอบ" → "จำนวนรอบบริการ") ─────────────────────────
+   ⭐ คำเดียวกับฝั่งใบสั่งขาย · ฝั่ง TS อ่านจากที่นี่ที่เดียว: หัวคอลัมน์/การ์ด "จำนวนรอบบริการ" ของแถวรอตั้งรอบ ·
+      แถบบริบท + ชิปความถี่ + บรรทัดประมาณนัดของโมดัลรอบบริการ · สรุปไซต์
+   ⚠️ เปลี่ยนแค่คำเรียกจำนวนรอบ — คำบอกความถี่ ("ทุก 33 วัน") และคำ "แต่ละครั้ง" คงเดิม */
+export const ROUNDS_SOLD_LABEL = 'จำนวนรอบบริการ';
+
+/** "จำนวนรอบบริการ 12 รอบ" */
+export const roundsSoldSentence = (rounds) => `${ROUNDS_SOLD_LABEL} ${fmtNumber(rounds)} รอบ`;
+
+/* บรรทัดประมาณนัดของโมดัลรอบบริการ — เปิดจากใบ/แถวคิว = ตัวเลขของใบนั้น · เปิดจากหน้าไซต์ = ของทั้งไซต์ (คำต้องบอกให้ตรง) */
+export const PLAN_ROUNDS_SOLD_HINT = Object.freeze({
+  ofOrder: `${ROUNDS_SOLD_LABEL}ของใบนี้`,
+  ofSite: `${ROUNDS_SOLD_LABEL}ที่ฝ่ายขายระบุ`,
+  diff: (n) => `ต่างจาก${ROUNDS_SOLD_LABEL} ${fmtNumber(n)} นัด (ตั้งต่อได้ ไม่ใช่ข้อห้าม)`,
+});
+
+/* ── "จำนวนรอบบริการ n รอบ ⇒ ทุกกี่วัน" (PR-C · C-D7) — ตัวกลับของ estimateVisitCount ─────────────────────
    ⭐ **ข้อเสนอให้คนกด ไม่ใช่ค่าตั้งต้นเงียบ ๆ** — แถว "รอตั้งรอบ" กับชิปในโมดัลรอบบริการอ่านตัวนี้ตัวเดียว
    สูตร: รอบ ≥ 2 → floor(ช่วง ÷ (รอบ − 1)) · รอบเดียว → ช่วง + 1 (นัดเดียวพอดีทั้งช่วง)
    ⇒ ช่วงพอ (ช่วง ≥ รอบ − 1) ได้นัด ≥ ที่ขายเสมอ (ปัดลง = ถี่ขึ้น ไม่ขาด) · `visits` = estimateVisitCount ตัวเดียวกับโมดัล

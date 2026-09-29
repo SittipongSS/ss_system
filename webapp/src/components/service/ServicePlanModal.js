@@ -10,7 +10,7 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import Select from "@/components/ui/Select";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { CONTRACT_MISSING_WARNING, planSuggestionLabel } from "@/lib/service/intakePlanFacts";
-import { PLAN_KINDS, VISIT_KIND_LABELS, estimateVisitCount, normalizePlanInput, suggestEveryDays } from "@/lib/service/rounds";
+import { PLAN_KINDS, PLAN_ROUNDS_SOLD_HINT, VISIT_KIND_LABELS, estimateVisitCount, normalizePlanInput, suggestEveryDays } from "@/lib/service/rounds";
 import styles from "./ServiceSiteModal.module.css";
 import planStyles from "./ServicePlanModal.module.css";
 
@@ -41,7 +41,7 @@ const EMPTY = {
       ไปใบใหม่ให้ ⇒ รอบชี้ใบที่ตายแล้วจนกว่าจะมีคนย้ายเอง */
 /* ⭐ **เปิดจากแถว "รอตั้งรอบ" (PR-C · C6 · IMPL_PLAN_C §4.5)** — สอง props เสริม ไม่ส่ง = หน้าตาเดิมเป๊ะ
    · `context = { subtitle, strip, contractWarning, roundsSold, existingPlanWarning? }` = ของแสดงผลล้วน (แถบ "งานนี้ · …" ·
-     คำเตือนสัญญา · ชิป "ตามที่ขาย" · คำเตือนรอบซ้อน) — ไม่เคยกลายเป็นค่าในฟอร์มเอง
+     คำเตือนสัญญา · ชิป "จำนวนรอบบริการ" · คำเตือนรอบซ้อน) — ไม่เคยกลายเป็นค่าในฟอร์มเอง
    · `prefill = { kind, startDate, endDate, startHint }` = ค่าเริ่มของโหมดสร้างเท่านั้น (ช่วงบริการของใบ ·
      ช่วงเริ่มไปแล้ว = วันนี้) · ทั้งสองก้อนมาจาก `planRowFacts` (intakePlanFacts.js) ตัวเดียว
    🔴 **ความถี่ไม่เติมเงียบ** (C-D6) — ค่าเริ่มยังเป็น 30 วัน · ข้อเสนอเป็นชิปที่ต้องกด "ใช้" เอง
@@ -96,7 +96,7 @@ export default function ServicePlanModal({
     startDate: form.startDate, endDate: form.endDate, everyDays: Number(form.everyDays),
   });
 
-  /* ชิป "ตามที่ขาย R รอบ → ทุก D วัน" (C-D6/C-D7) — ตัวตัดสินเดียวกับคอลัมน์ "รอบที่แนะนำ" ของแถวคิว
+  /* ชิป "จำนวนรอบบริการ R รอบ → ทุก D วัน" (C-D6/C-D7 · คำตามมติ 29/09) — ตัวตัดสินเดียวกับคอลัมน์ "รอบที่แนะนำ" ของแถวคิว
      (`suggestEveryDays`) แต่คิดจากวันที่ที่อยู่ในฟอร์มตอนนี้ ⇒ TS แก้วันเริ่ม/สิ้นสุดแล้วข้อเสนอขยับตาม
      · ค่าตรงกับที่ตั้งอยู่แล้ว = ไม่มีอะไรให้เสนอ ⇒ ชิปหาย (ไม่ใช่ปุ่ม "ใช้" ที่กดแล้วไม่เกิดอะไร)
      · โดนเพดาน 365 วัน ⇒ ข้อความบอกว่าได้ราวกี่นัด (อาจเกินที่ขาย) — มาจาก `planSuggestionLabel` */
@@ -268,13 +268,13 @@ export default function ServicePlanModal({
           {/* เปิดจากหน้าใบสั่งขาย = ตัวเลขของ *ใบนั้น* · เปิดจากหน้าไซต์ = ของทั้งไซต์
               ⇒ ต้องบอกให้ตรง ไม่งั้นฟอร์มหน้าตาเดียวกันโชว์ N คนละตัวโดยไม่มีใครรู้ */}
           {roundsSold
-            ? <>{salesOrderId ? "ใบนี้ระบุไว้ " : "ฝ่ายขายระบุไว้ "}<strong>{roundsSold} รอบ</strong>{" · "}</>
+            ? <>{salesOrderId ? PLAN_ROUNDS_SOLD_HINT.ofOrder : PLAN_ROUNDS_SOLD_HINT.ofSite}{" "}<strong>{roundsSold} รอบ</strong>{" · "}</>
             : null}
           {estimate
             ? <>ความถี่นี้จะได้ราว <strong>{estimate} นัด</strong> ในช่วงที่ตั้งไว้</>
             : <>ใส่วันสิ้นสุดรอบด้วย จึงจะประมาณจำนวนนัดให้ได้</>}
           {roundsSold && estimate && estimate !== roundsSold
-            ? <> — ต่างจากที่ขายไว้ {Math.abs(estimate - roundsSold)} นัด (ตั้งต่อได้ ไม่ใช่ข้อห้าม)</>
+            ? <>{" — "}{PLAN_ROUNDS_SOLD_HINT.diff(Math.abs(estimate - roundsSold))}</>
             : null}
         </p>
       )}

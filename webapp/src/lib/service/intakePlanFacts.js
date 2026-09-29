@@ -14,13 +14,13 @@ import { fmtDate, fmtNumber } from '@/lib/format';
 import { periodSpan, servicePeriodOf } from '@/lib/sales/serviceSetup';
 import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
 import { orderReadiness } from './intake';
-import { suggestEveryDays } from './rounds';
+import { ROUNDS_SOLD_LABEL, roundsSoldSentence, suggestEveryDays } from './rounds';
 import { termOrderActive } from './terms';
 import { termLineLabels } from './termLabels';
 
 /* ── ข้อความ (แคตตาล็อก §5 ของแผน PR-C) ─────────────────────────────────────────────────── */
 export const STAMPED_BADGE_LABEL = 'ฝ่ายขายตั้งโซนแล้ว';
-export const PLAN_TAB_STAMPED_NOTE = 'ใบที่มีป้าย “ฝ่ายขายตั้งโซนแล้ว” มาพร้อมโซน แพ็คต่อรอบ และรอบที่ขาย — โซนผิดให้ฝ่ายขายออก Rev.';
+export const PLAN_TAB_STAMPED_NOTE = `ใบที่มีป้าย “ฝ่ายขายตั้งโซนแล้ว” มาพร้อมโซน แพ็คต่อรอบ และ${ROUNDS_SOLD_LABEL} — โซนผิดให้ฝ่ายขายออก Rev.`;
 export const PLAN_EMPTY_TEXT = 'ไม่มีไซต์ที่รอตั้งรอบ — ใบที่อนุมัติแล้วจะมาอยู่ที่นี่ทันที';
 /* ด่านสัญญา (visitGate ข้อ ①) นับเฉพาะสัญญา signed ⇒ ผูกแล้วแต่ยังไม่ signed ก็ยังติดด่าน — ชิปพูดตามด่าน */
 export const CONTRACT_MISSING_CHIP = 'ยังไม่ผูก — นัดติดด่านสัญญา (SA)';
@@ -67,10 +67,10 @@ export function planWindow(period, todayIso = businessDate()) {
   return { startDate: todayIso, endDate: p.to, startHint: `ช่วงบริการเริ่ม ${fmtDate(p.from)} ไปแล้ว — เริ่มวันนี้` };
 }
 
-/** ชิป "ตามที่ขาย 12 รอบ → ทุก 33 วัน" (+ หมายเหตุเมื่อโดนเพดาน 365 วัน · C-D7) · ไม่มีข้อเสนอ = null */
+/** ชิป "จำนวนรอบบริการ 12 รอบ → ทุก 33 วัน" (+ หมายเหตุเมื่อโดนเพดาน 365 วัน · C-D7 · คำตามมติ 29/09) · ไม่มีข้อเสนอ = null */
 export function planSuggestionLabel(rounds, suggestion) {
   if (!suggestion) return null;
-  const base = `ตามที่ขาย ${fmtNumber(rounds)} รอบ → ทุก ${fmtNumber(suggestion.everyDays)} วัน`;
+  const base = `${roundsSoldSentence(rounds)} → ทุก ${fmtNumber(suggestion.everyDays)} วัน`;
   return suggestion.clamped ? `${base} (สูงสุดที่ตั้งได้ · ได้ราว ${fmtNumber(suggestion.visits)} นัด)` : base;
 }
 
@@ -180,7 +180,7 @@ export function planRowFacts(row, { order = null, contract = null, linesById = n
     site?.name || null,
     `${fmtNumber(zones.length)} โซน`,
     stamped && packsPerRound != null ? `${fmtNumber(packsPerRound)} แพ็ค/รอบ` : null,
-    row?.roundsSold ? `ขายไว้ ${fmtNumber(row.roundsSold)} รอบ` : null,
+    row?.roundsSold ? roundsSoldSentence(row.roundsSold) : null,
     period ? `ช่วงบริการ ${fmtDate(period.from)}–${fmtDate(period.to)}` : null,
     ended ? `ช่วงบริการจบแล้ว ${fmtDate(period.to)}` : null,
   ].filter(Boolean).join(' · ')}`;

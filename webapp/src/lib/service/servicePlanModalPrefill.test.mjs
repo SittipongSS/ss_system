@@ -1,4 +1,4 @@
-// ── โมดัลรอบบริการ: ค่าเติมจากแถว "รอตั้งรอบ" + แถบบริบท + ชิป "ตามที่ขาย" (PR-C · C6) ─────────────────────
+// ── โมดัลรอบบริการ: ค่าเติมจากแถว "รอตั้งรอบ" + แถบบริบท + ชิป "จำนวนรอบบริการ" (PR-C · C6 · คำตามมติ 29/09) ─────────────────────
 //
 // ตัวโมดัลเป็น JSX (node รันตรงไม่ได้) ⇒ ยามรูปโค้ด + ยามสัญญาระหว่างโมดัลกับตัวสร้างค่าเติม (C1 `planRowFacts`)
 // สามเรื่องที่พังเงียบถ้าไม่มียาม:
@@ -86,13 +86,13 @@ test('ชื่อช่องที่โมดัลอ่านจาก cont
   assert.deepEqual(readKeys('prefill'), Object.keys(facts.prefill).sort(), 'โมดัลต้องอ่าน prefill ครบทุกช่องและไม่อ่านช่องที่ไม่มี');
 });
 
-test('⭐ ตัวเลขของใบจริง SO-26090247-0 ที่โมดัลจะเห็น: เริ่ม 22/10/2026 · ชิป "ตามที่ขาย 1 รอบ → ทุก 365 วัน"', () => {
+test('⭐ ตัวเลขของใบจริง SO-26090247-0 ที่โมดัลจะเห็น: เริ่ม 22/10/2026 · ชิป "จำนวนรอบบริการ 1 รอบ → ทุก 365 วัน"', () => {
   const { prefill, context } = liveFacts();
   assert.deepEqual(prefill, { kind: 'refill', startDate: '2026-10-22', endDate: '2027-10-21', startHint: 'ตามวันเริ่มช่วงบริการของใบ' });
   assert.equal(context.contractWarning, true);
   const s = suggestEveryDays({ startDate: prefill.startDate, endDate: prefill.endDate, rounds: context.roundsSold });
   assert.deepEqual(s, { everyDays: 365, visits: 1, clamped: false });
-  assert.equal(planSuggestionLabel(context.roundsSold, s), 'ตามที่ขาย 1 รอบ → ทุก 365 วัน');
+  assert.equal(planSuggestionLabel(context.roundsSold, s), 'จำนวนรอบบริการ 1 รอบ → ทุก 365 วัน');
   assert.notEqual(s.everyDays, 30, 'ค่าเริ่ม 30 ≠ ข้อเสนอ ⇒ ชิปต้องขึ้นตอนเปิด (ไม่ใช่เติมให้เงียบ ๆ)');
   // แถบตัดเป็นท่อนตาม " · " — ต่อกลับต้องได้สตริงเดิมทุกตัวอักษร (ไม่มีท่อนหาย)
   const parts = context.strip.split(' · ');
@@ -102,9 +102,9 @@ test('⭐ ตัวเลขของใบจริง SO-26090247-0 ที่�
 
 test('ตัวอย่างใน mock (12 รอบ ปีเต็ม) + ชิปโดนเพดานบอกว่าได้ราวกี่นัด (C-D7)', () => {
   const twelve = suggestEveryDays({ startDate: '2026-10-01', endDate: '2027-09-30', rounds: 12 });
-  assert.equal(planSuggestionLabel(12, twelve), 'ตามที่ขาย 12 รอบ → ทุก 33 วัน');
+  assert.equal(planSuggestionLabel(12, twelve), 'จำนวนรอบบริการ 12 รอบ → ทุก 33 วัน');
   const clamped = suggestEveryDays({ startDate: '2026-01-01', endDate: '2028-01-01', rounds: 2 });
-  assert.equal(planSuggestionLabel(2, clamped), 'ตามที่ขาย 2 รอบ → ทุก 365 วัน (สูงสุดที่ตั้งได้ · ได้ราว 3 นัด)');
+  assert.equal(planSuggestionLabel(2, clamped), 'จำนวนรอบบริการ 2 รอบ → ทุก 365 วัน (สูงสุดที่ตั้งได้ · ได้ราว 3 นัด)');
 });
 
 test('ช่วงเริ่มไปแล้ว = เริ่มวันนี้พร้อมคำบอก · ช่วงจบแล้ว = ไม่มีค่าเติม (โมดัลเริ่มว่างเหมือนเดิม)', () => {
@@ -154,10 +154,10 @@ test('🔴 คนเขียน everyDays มีแค่: ค่าเริ�
   assert.match(MODAL, /onClick=\{\(\) => setForm\(\(prev\) => \(\{ \.\.\.prev, everyDays: suggestion\.everyDays \}\)\)\}/);
 });
 
-/* ═══ ชิป "ตามที่ขาย" ═════════════════════════════════════════════════════════════════════ */
+/* ═══ ชิป "จำนวนรอบบริการ" ═════════════════════════════════════════════════════════════════════ */
 
 test('ชิปคำนวณจากวันที่ในฟอร์ม + รอบของ context · ซ่อนเมื่อค่าตรงกับที่ตั้งอยู่แล้ว', () => {
-  assert.match(MODAL, /import \{ PLAN_KINDS, VISIT_KIND_LABELS, estimateVisitCount, normalizePlanInput, suggestEveryDays \} from "@\/lib\/service\/rounds";/);
+  assert.match(MODAL, /import \{ PLAN_KINDS, PLAN_ROUNDS_SOLD_HINT, VISIT_KIND_LABELS, estimateVisitCount, normalizePlanInput, suggestEveryDays \} from "@\/lib\/service\/rounds";/);
   assert.match(MODAL, /const suggestion = context\?\.roundsSold && form\.startDate && form\.endDate\s*\? suggestEveryDays\(\{ startDate: form\.startDate, endDate: form\.endDate, rounds: context\.roundsSold \}\)\s*: null;/);
   assert.match(MODAL, /const suggestionLabel = suggestion && suggestion\.everyDays !== Number\(form\.everyDays\)\s*\? planSuggestionLabel\(context\.roundsSold, suggestion\)\s*: null;/);
 });

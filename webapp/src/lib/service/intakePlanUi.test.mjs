@@ -107,7 +107,7 @@ test('หน้า: ตารางแท็บตั้งรอบ — หั�
   const block = planBlock(code(PAGE));
   const heads = [...block.matchAll(/<th scope="col"(?: className=\{[^}]*\})?(?: aria-label="([^"]*)")?\s*(?:\/>|>([^<]*)<\/th>)/g)]
     .map((m) => m[2] ?? `[${m[1]}]`);
-  assert.deepEqual(heads, ['ไซต์', 'ใบสั่งขาย', 'โซน · แพ็ค/รอบ', 'ขายไว้', 'ช่วงบริการ', 'รอบที่แนะนำ', 'สัญญา', 'เงินครอบถึง', '[การกระทำ]']);
+  assert.deepEqual(heads, ['ไซต์', 'ใบสั่งขาย', 'โซน · แพ็ค/รอบ', '{ROUNDS_SOLD_LABEL}', 'ช่วงบริการ', 'รอบที่แนะนำ', 'สัญญา', 'เงินครอบถึง', '[การกระทำ]']);
   assert.match(block, /<TableScroll family="list" minWidth=\{1240\} cells="stacked">/);
   assert.match(block, /<EmptyState plain icon=\{CalendarPlus\}>\s*\{PLAN_EMPTY_TEXT\}\s*<\/EmptyState>/);
   assert.doesNotMatch(block, /ทุกไซต์ที่ขายแล้วมีรอบครบ|ตั้งรอบที่หน้าไซต์/, 'ลิงก์ "ตั้งรอบที่หน้าไซต์" ถูกแทนด้วยปุ่มตั้งรอบ + รหัสไซต์เป็นลิงก์');
@@ -122,7 +122,7 @@ test('หน้า: ข้อเท็จจริงของแถวครบ
   }
   assert.equal(count(block, /<Link href=\{`\/database\/sites\/\$\{row\.siteId\}`\} className=/g), 2, 'รหัสไซต์ลิงก์ไปหน้าไซต์ทั้งสองมุมมอง');
   assert.equal(count(block, /row\.zonePacksText \?\? zoneNames\(row\)/g), 2);
-  // "ขายไว้" คงตัวเดิม (ยาม F18 · intakePlanRoundsUi.test.mjs)
+  // ช่อง "จำนวนรอบบริการ" (เดิม "ขายไว้") ยังอ่าน planRoundsSoldText (ยาม F18 · intakePlanRoundsUi.test.mjs)
   assert.equal(count(block, /planRoundsSoldText\(row\)\?\.value/g), 2);
 });
 
