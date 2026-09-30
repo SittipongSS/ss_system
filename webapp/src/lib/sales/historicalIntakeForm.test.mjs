@@ -2689,26 +2689,26 @@ test('PR-D ⭐ HISTORICAL_SERVICE_TEXT: คำของขั้น ② แล�
   const T = intakeForm.HISTORICAL_SERVICE_TEXT;
   assert.ok(Object.isFrozen(T) && Object.isFrozen(T.bulk));
   /* ⭐ มติเจ้าของ 29/09 (ใบใหม่และใบย้อนหลัง): ป้ายช่อง = "แต่ละครั้งกี่แพ็ค" (SERVICE_PACKS_LABEL) */
-  assert.equal(T.packsLabel, 'แต่ละครั้งกี่แพ็ค');
+  assert.equal(T.packsLabel, 'รอบละกี่แพ็ค');
   assert.equal(T.packsUnit, 'แพ็ค');
-  assert.equal(T.packsAria('รายการ 2'), 'แต่ละครั้งกี่แพ็ค รายการ 2');
+  assert.equal(T.packsAria('รายการ 2'), 'รอบละกี่แพ็ค รายการ 2');
   assert.equal(T.roundsNote, 'บังคับ · จำนวนครั้งที่ต้องเข้าโซนนี้ตลอดสัญญา');
   assert.equal(T.assessed(12), 'ประเมินไว้ 12 แพ็ค');
   assert.equal(T.assessed(1200), 'ประเมินไว้ 1,200 แพ็ค');
   assert.equal(T.useAssessed, 'ใช้');
-  assert.equal(T.useAssessedAria(3, 'รายการ 1'), 'ใช้ผลประเมิน 3 แพ็คในช่องแต่ละครั้งกี่แพ็คของรายการ 1');
+  assert.equal(T.useAssessedAria(3, 'รายการ 1'), 'ใช้ผลประเมิน 3 แพ็คในช่องรอบละกี่แพ็คของรายการ 1');
   assert.equal(T.lineTotal(24), 'รวมทั้งรายการ 24 แพ็ค', 'คำเดียวกับท้ายบรรทัดของใบใหม่');
-  assert.equal(T.assessFailed, 'อ่านผลประเมินของโซนไม่สำเร็จ — ใส่แต่ละครั้งกี่แพ็คเองได้ (ไม่กระทบการเลือกโซน)');
+  assert.equal(T.assessFailed, 'อ่านผลประเมินของโซนไม่สำเร็จ — ใส่รอบละกี่แพ็คเองได้ (ไม่กระทบการเลือกโซน)');
   assert.equal(T.assessRetry, 'ลองอ่านผลประเมินอีกครั้ง');
   assert.equal(T.bulk.title, 'เพิ่มหลายโซน');
   assert.equal(T.bulk.subtitle,
-    'ติ๊กโซนแล้วใส่แพ็คเกจ · จำนวน · จำนวนรอบบริการ · แต่ละครั้งกี่แพ็คทีเดียว — ได้หนึ่งบรรทัดต่อโซน แก้ทีละบรรทัดต่อได้ในตาราง · บรรทัดที่มีอยู่แล้วไม่ถูกแตะ');
+    'ติ๊กโซนแล้วใส่แพ็คเกจ · จำนวน · จำนวนรอบบริการ · รอบละกี่แพ็คทีเดียว — ได้หนึ่งบรรทัดต่อโซน แก้ทีละบรรทัดต่อได้ในตาราง · บรรทัดที่มีอยู่แล้วไม่ถูกแตะ');
   /* ช่องเดิมของหน้าต่าง (คำคงเดิม — ย้ายมาอยู่ที่นี่ให้ตัวห่อใช้) */
   assert.deepEqual([T.bulk.packageLabel, T.bulk.qtyLabel, T.bulk.priceLabel, T.bulk.priceHint],
     ['แพ็คเกจ', 'จำนวน (ต่อบรรทัด)', 'ราคา/หน่วย', 'จากฐานข้อมูลสินค้า']);
   assert.equal(T.bulk.qtyHint('แพ็คเกจ'), 'หน่วย: แพ็คเกจ · เว้นว่างได้ — ใส่ทีละบรรทัดทีหลัง');
   assert.equal(T.bulk.qtyHint(null), 'หน่วย: — · เว้นว่างได้ — ใส่ทีละบรรทัดทีหลัง');
-  assert.equal(T.bulk.packsLabel, 'แต่ละครั้งกี่แพ็ค (ทุกบรรทัด)');
+  assert.equal(T.bulk.packsLabel, 'รอบละกี่แพ็ค (ทุกบรรทัด)');
   /* ⭐ มติเจ้าของ 29/09: คำเรียกรอบ = "จำนวนรอบบริการ" (SERVICE_ROUNDS_LABEL) — ป้าย + aria ของช่องรอบทุกบรรทัด */
   assert.equal(T.bulk.roundsLabel, 'จำนวนรอบบริการ (ทุกบรรทัด)');
   assert.equal(T.bulk.roundsAria, 'จำนวนรอบบริการของทุกบรรทัดที่จะเพิ่ม');
@@ -2729,7 +2729,7 @@ test('PR-D ⭐ HISTORICAL_SERVICE_TEXT: คำของขั้น ② แล�
     else if (value && typeof value === 'object') Object.values(value).forEach(walk);
   };
   walk(T);
-  const allowed = /แต่ละครั้งกี่แพ็ค|แพ็ค\/รอบ|ประเมินไว้ 7 แพ็ค|ทั้งรายการ 7 แพ็ค|ผลประเมิน 7 แพ็คใน|^แพ็ค$|แพ็คเกจ/g;
+  const allowed = /รอบละกี่แพ็ค|แพ็ค\/รอบ|ประเมินไว้ 7 แพ็ค|ทั้งรายการ 7 แพ็ค|ผลประเมิน 7 แพ็คใน|^แพ็ค$|แพ็คเกจ/g;
   for (const text of strings) assert.doesNotMatch(text.replace(allowed, ''), /แพ็ค/, text);
   for (const text of strings) assert.doesNotMatch(text, /แพ็คต่อรอบ/, `คำเดิมก่อนมติ 29/09: ${text}`);
 });
@@ -2852,16 +2852,16 @@ test('PR-D ⭐ historicalBulkAddRows: พกรอบ + แพ็คต่อร
 test('PR-D ⭐ historicalBulkConsequence + โหมดรอบ/แพ็ค · ไม่ส่งโหมด = ข้อความเดิม', () => {
   const C = historicalBulkConsequence;
   assert.equal(C({ count: 3, qty: '12', unitPrice: 1200, mode: 'assessed', assessed: 2, blank: 1, rounds: '12' }),
-    'จะเพิ่ม 3 บรรทัด · บรรทัดละ 12 × ฿1,200.00 = ฿14,400.00 · รวม ฿43,200.00 · จำนวนรอบบริการ 12 รอบ · แต่ละครั้งกี่แพ็ค: ตามผลประเมิน 2 โซน · ยังว่าง 1 โซน');
+    'จะเพิ่ม 3 บรรทัด · บรรทัดละ 12 × ฿1,200.00 = ฿14,400.00 · รวม ฿43,200.00 · จำนวนรอบบริการ 12 รอบ · รอบละกี่แพ็ค: ตามผลประเมิน 2 โซน · ยังว่าง 1 โซน');
   assert.equal(C({ count: 3, qty: '', unitPrice: 1200, mode: 'equal', packs: 2, rounds: '12' }),
     'จะเพิ่ม 3 บรรทัด · จำนวนใส่ทีละบรรทัดในตาราง · จำนวนรอบบริการ 12 รอบ · แต่ละครั้งเท่ากันทุกบรรทัด ครั้งละ 2 แพ็ค');
   assert.equal(C({ count: 3, qty: '', unitPrice: 1200, mode: 'equal', packs: null, rounds: '' }),
     'จะเพิ่ม 3 บรรทัด · จำนวนใส่ทีละบรรทัดในตาราง · แต่ละครั้งเท่ากันทุกบรรทัด ครั้งละ — แพ็ค', 'รอบยังผิด = ไม่พูดรอบ · แพ็คยังผิด = ขีด');
   assert.equal(C({ count: 3, qty: '12', unitPrice: 0, mode: 'assessed', assessed: 0, blank: 3, rounds: '6' }),
-    'จะเพิ่ม 3 บรรทัด · บรรทัดละจำนวน 12 · จำนวนรอบบริการ 6 รอบ · แต่ละครั้งกี่แพ็ค: ตามผลประเมิน 0 โซน · ยังว่าง 3 โซน — แพ็คเกจนี้ยังไม่ตั้งราคาในฐานข้อมูลสินค้า จึงยังไม่มียอด');
+    'จะเพิ่ม 3 บรรทัด · บรรทัดละจำนวน 12 · จำนวนรอบบริการ 6 รอบ · รอบละกี่แพ็ค: ตามผลประเมิน 0 โซน · ยังว่าง 3 โซน — แพ็คเกจนี้ยังไม่ตั้งราคาในฐานข้อมูลสินค้า จึงยังไม่มียอด');
   assert.equal(C({ count: 0, qty: '12', unitPrice: 1200, mode: 'assessed', rounds: '12' }), 'ยังไม่ได้เลือกโซน');
   assert.equal(C({ count: 1200, qty: '1', unitPrice: 10, mode: 'assessed', assessed: 1000, blank: 200, rounds: '1' }),
-    'จะเพิ่ม 1,200 บรรทัด · บรรทัดละ 1 × ฿10.00 = ฿10.00 · รวม ฿12,000.00 · จำนวนรอบบริการ 1 รอบ · แต่ละครั้งกี่แพ็ค: ตามผลประเมิน 1,000 โซน · ยังว่าง 200 โซน');
+    'จะเพิ่ม 1,200 บรรทัด · บรรทัดละ 1 × ฿10.00 = ฿10.00 · รวม ฿12,000.00 · จำนวนรอบบริการ 1 รอบ · รอบละกี่แพ็ค: ตามผลประเมิน 1,000 โซน · ยังว่าง 200 โซน');
   /* ไม่ส่งโหมด = ข้อความเดิมเป๊ะ (pin ของ historicalRegisterUi ยังเขียวที่คลื่น W1) */
   assert.equal(C({ count: 3, qty: '12', unitPrice: 1200, rounds: '12', assessed: 1 }),
     'จะเพิ่ม 3 บรรทัด · บรรทัดละ 12 × ฿1,200.00 = ฿14,400.00 · รวม ฿43,200.00');

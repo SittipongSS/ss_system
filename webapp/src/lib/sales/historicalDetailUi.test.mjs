@@ -311,14 +311,14 @@ test('การ์ดโซนไม่คิดสถานะเอง · ไ�
    ⭐ PR-D (มติเจ้าของ 26/09 A3/O9 · mig 0394): "แพ็คต่อรอบ" กลับมาเป็น **ช่องของโซน** (sales_order_line_zones) คนละช่องกับ
    จำนวนของบรรทัด ⇒ คอลัมน์ใหม่ "แพ็คต่อรอบ" · ข้อห้ามแคบลงโดยตั้งใจ: ห้าม "แพ็ค" ที่ไม่ใช่ แพ็คเกจ/แพ็คต่อรอบ/แพ็ค/รอบ
    และ (M3) ตัวการ์ดเองมีคำว่าแพ็คได้ที่หัวคอลัมน์ที่เดียว — ค่าในเซลล์/หัวการ์ดประกอบที่ lib (historicalOrderCopy) */
-test('⭐ 23/09 + PR-D: การ์ดโซนพูดรายการ · จำนวน + หน่วย · จำนวนรอบบริการ · แต่ละครั้งกี่แพ็ค · จำนวนเงิน — ไม่มี "N แพ็ค" เปล่า', () => {
+test('⭐ 23/09 + PR-D: การ์ดโซนพูดรายการ · จำนวน + หน่วย · จำนวนรอบบริการ · รอบละกี่แพ็ค · จำนวนเงิน — ไม่มี "N แพ็ค" เปล่า', () => {
   const card = code(ZONES_CARD);
   const heads = [...slice(card, '<thead>', '</thead>').matchAll(/<th\b[^>]*>([^<]+)<\/th>/g)].map((m) => m[1].trim());
   /* ⭐ มติเจ้าของ 29/09 (ใบใหม่และใบย้อนหลัง): หัวคอลัมน์ = ค่าคงที่ `SERVICE_ROUNDS_LABEL` "จำนวนรอบบริการ" ก่อน
-     `SERVICE_PACKS_LABEL` "แต่ละครั้งกี่แพ็ค" (ไม่สะกดเองในการ์ด) */
+     `SERVICE_PACKS_LABEL` "รอบละกี่แพ็ค" (ไม่สะกดเองในการ์ด) */
   assert.deepEqual(heads, ['ไซต์ · โซน', 'รายการ', 'จำนวน', '{SERVICE_ROUNDS_LABEL}', '{SERVICE_PACKS_LABEL}', 'จำนวนเงิน', 'สถานะรอบ']);
   assert.equal(SERVICE_ROUNDS_LABEL, 'จำนวนรอบบริการ');
-  assert.equal(SERVICE_PACKS_LABEL, 'แต่ละครั้งกี่แพ็ค');
+  assert.equal(SERVICE_PACKS_LABEL, 'รอบละกี่แพ็ค');
   assert.match(card, /import \{ SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL \} from "@\/lib\/sales\/serviceOrders";/);
   assert.doesNotMatch(card, /รอบบริการที่ขายไว้|ไปกี่รอบ|แพ็คต่อรอบ/, 'คำเก่าห้ามกลับมา (มติ 29/09)');
   assert.doesNotMatch(card, /\bpacks\b|แพ็ค(?!เกจ|\/รอบ)/);

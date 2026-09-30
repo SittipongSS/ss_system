@@ -4,12 +4,12 @@
 // ⭐ **generic** — ไม่รู้จักใบสั่งขาย: รับทะเบียนไซต์ของลูกค้า + โซนที่ติดอยู่แล้ว แล้วคืนแถว `{ zoneId, packsPerRound }`
 //   ⇒ ตารางงานบริการของใบสั่งขาย + หน้าต่างเพิ่มหลายโซนของใบย้อนหลัง (`HistoricalBulkZonesModal` = ตัวห่อ · PR-D)
 // ⭐ PR-D (DD4): prop เสริมล้วน ค่าตั้งต้น = หน้าตาเดิมทุกตัวอักษร — `title` · `subtitle` · `lead` (undefined = ประโยคเดิม ·
-//   null = ซ่อน) · `packsLabel` · `renderFields({ pressed, plan })` (ช่องของผู้เรียก เหนือแถวแต่ละครั้งกี่แพ็ค) · `extraError`
+//   null = ซ่อน) · `packsLabel` · `renderFields({ pressed, plan })` (ช่องของผู้เรียก เหนือแถวรอบละกี่แพ็ค) · `extraError`
 //   (ด่านของช่องผู้เรียก — มาก่อนด่านของตัวนี้) · `consequence(plan, { lineNo, mode })` · `confirmLabel(count)` ·
 //   `emptyRegistryText` · ไซต์ที่พก `loadError` (ผู้เรียกอ่านโซนของไซต์นั้นไม่สำเร็จ) = ประโยคแทนชิปโซน และขึ้นเสมอแม้คำค้นไม่ตรง
 //   · `assessedHint` (review 29/09) ประโยคข้างโหมด "ตามผลประเมิน" (undefined = ประโยคเดิม · null = ซ่อน — ผู้เรียกที่ผลประเมิน
 //   ยังโหลด/อ่านไม่ได้ ซึ่งทุกโซนจะว่าง ไม่ใช่เฉพาะโซนที่ไม่เคยประเมิน)
-// ⭐ แต่ละครั้งกี่แพ็ค [ตามผลประเมินของแต่ละโซน | เท่ากันทุกโซน: __] → ค้น (รหัส/ชื่อไซต์ + ชื่อ/รหัสโซน) → ติ๊กทีละโซน/ทั้งไซต์/
+// ⭐ รอบละกี่แพ็ค [ตามผลประเมินของแต่ละโซน | เท่ากันทุกโซน: __] → ค้น (รหัส/ชื่อไซต์ + ชื่อ/รหัสโซน) → ติ๊กทีละโซน/ทั้งไซต์/
 //   ทุกโซนที่เห็น → ท้ายหน้าต่างบอกผลก่อนกด ("จะเพิ่ม n โซนใต้รายการ k · …")
 // ⭐ แถวแสดงผลมาจาก `zoneBrowserRows` ตัวเดียวกับช่องเลือกโซน — ไซต์/โซนปิดใช้งาน และโซนที่อยู่ในรายการนี้แล้ว
 //   **เห็นแต่ติ๊กไม่ได้ พร้อมเหตุ** (กฎบ้าน: ติดด่าน = โชว์แล้วบอกเหตุ) · อยู่รายการอื่นของใบ = แค่บอก ติ๊กได้
@@ -52,7 +52,7 @@ export default function ZonesBulkModal({
   open, onClose, lineLabel = "", lineNo = null, registrySites = [], loading = false, loadError = "", onRetry,
   taken = EMPTY_TAKEN, existingCount = 0, cap = 500, onAdd,
   title = `เพิ่มหลายโซน — ${lineLabel}`,
-  subtitle = "ติ๊กโซนแล้วใส่ว่าแต่ละครั้งกี่แพ็คทีเดียว — ได้หนึ่งแถวต่อโซนใต้รายการนี้ · แก้ทีละแถวต่อได้ในตาราง · แถวที่มีอยู่แล้วไม่ถูกแตะ",
+  subtitle = "ติ๊กโซนแล้วใส่รอบละกี่แพ็คทีเดียว — ได้หนึ่งแถวต่อโซนใต้รายการนี้ · แก้ทีละแถวต่อได้ในตาราง · แถวที่มีอยู่แล้วไม่ถูกแตะ",
   lead, packsLabel = ZONES_BULK_PACKS_LABEL, renderFields = null, extraError = null,
   consequence = zonesBulkConsequence, confirmLabel = countLabel,
   emptyRegistryText = "ลูกค้ารายนี้ยังไม่มีไซต์ในทะเบียน — เลือกโซนไม่ได้",
@@ -143,7 +143,7 @@ export default function ZonesBulkModal({
 
       <div className={styles.packs}>
         <span className={styles.packsLabel}>{packsLabel}<span className={styles.req} aria-hidden="true">*</span></span>
-        <Segmented options={MODE_OPTIONS} value={mode} onChange={setMode} ariaLabel={`วิธีใส่ว่า${packsLabel}`} />
+        <Segmented options={MODE_OPTIONS} value={mode} onChange={setMode} ariaLabel={`วิธีใส่${packsLabel}`} />
         {mode === "equal" ? (
           <span className={styles.equal}>
             <Input

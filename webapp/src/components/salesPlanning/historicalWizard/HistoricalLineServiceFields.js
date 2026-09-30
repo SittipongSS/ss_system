@@ -62,7 +62,7 @@ export default function HistoricalLineServiceFields({ value, onChange, view = nu
   );
 }
 
-/** "รวมทั้งรายการ n แพ็ค" (จำนวนรอบบริการ × แต่ละครั้งกี่แพ็ค) — อ่านอย่างเดียว · ขึ้นเมื่อสองช่องถูกทั้งคู่ (ตัวอ่านตัวเดียวกับแผน) */
+/** "รวมทั้งรายการ n แพ็ค" (จำนวนรอบบริการ × รอบละกี่แพ็ค) — อ่านอย่างเดียว · ขึ้นเมื่อสองช่องถูกทั้งคู่ (ตัวอ่านตัวเดียวกับแผน) */
 export function HistoricalLineServiceTotal({ view = null }) {
   return view?.totalText ? <span className={styles.lineBindTotal}>{view.totalText}</span> : null;
 }

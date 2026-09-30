@@ -45,9 +45,9 @@ const LINE_ZONES = [
   return { ...zone, fgCode, qty, unit, unitPrice, discountAmount, lineTotal, rounds: 12 };
 });
 /* ⭐ มติเจ้าของ 29/09 ("ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง"): จำนวนรอบบริการ ก่อน แล้วค่อย แต่ละครั้งกี่แพ็ค */
-const PACKS_ROW = 'จำนวนรอบบริการ · แต่ละครั้งกี่แพ็ค: 12 รอบ/โซน · รวม 6 แพ็ค/รอบ — ชั้น G ล็อบบี้ 12 รอบ × 2 แพ็ค/รอบ'
+const PACKS_ROW = 'จำนวนรอบบริการ · รอบละกี่แพ็ค: 12 รอบ/โซน · รวม 6 แพ็ค/รอบ — ชั้น G ล็อบบี้ 12 รอบ × 2 แพ็ค/รอบ'
   + ' · ชั้น M ทางเชื่อม BTS 12 รอบ × 1 แพ็ค/รอบ · ห้องน้ำหญิง ชั้น 1 12 รอบ × 1 แพ็ค/รอบ · ทางเข้าหลัก 12 รอบ × 2 แพ็ค/รอบ';
-const PACKS_WARN = /^⚠️ ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค/;
+const PACKS_WARN = /^⚠️ ยังไม่ใส่รอบละกี่แพ็ค/;
 /* คำที่ยอมให้มี "แพ็ค" (มติ 26/09 — IMPL_PLAN_D §0.2 ข้อ 14 · ป้ายตามมติ 29/09): แพ็คเกจ · แต่ละครั้งกี่แพ็ค · แพ็ค/รอบ เท่านั้นในไฟล์นี้
    · "แพ็คต่อรอบ" (ป้ายเดิมก่อนมติ 29/09) ไม่ยอมแล้ว */
 const LOOSE_PACK = /(?<!กี่)แพ็ค(?!เกจ|\/รอบ)/;
@@ -297,20 +297,20 @@ test('🔴 โมดัลอนุมัติ: ของเสริมโห�
   assert.ok(fromZones.checklist.some((l) => l.startsWith('รายการ: FG-SNS-02-001-0012 72 แพ็คเกจ')));
   assert.ok(facts.checklist.some((l) => /ช่วงสัญญาโหลดไม่ขึ้น/.test(l)));
   /* แพ็คต่อรอบมากับของเสริม — โหลดไม่ขึ้น = บอกว่าโหลดไม่ขึ้น ไม่ใช่ ⚠️ "คีย์ก่อนมีช่อง" (ไม่รู้ ≠ ไม่มี) · ผลลัพธ์ถอยไปประโยคเดิม */
-  assert.equal(facts.checklist[facts.checklist.indexOf('โซน: 4 โซน') + 1], 'จำนวนรอบบริการ · แต่ละครั้งกี่แพ็ค: โหลดไม่ขึ้น — ระบบตรวจซ้ำตอนกดอนุมัติ');
+  assert.equal(facts.checklist[facts.checklist.indexOf('โซน: 4 โซน') + 1], 'จำนวนรอบบริการ · รอบละกี่แพ็ค: โหลดไม่ขึ้น — ระบบตรวจซ้ำตอนกดอนุมัติ');
   assert.ok(!facts.checklist.some((l) => PACKS_WARN.test(l)));
   assert.equal(facts.effects.at(-1), '4 โซนขึ้นคิว TS งานเข้าใหม่ › รอตั้งรอบ — นัดขึ้นตารางได้เมื่อบัญชีรับรองงวดยกมา');
 });
 
-/* ⭐ PR-D (mig 0394/P3): รอบขายของโซนเปิดผ่านตัวกลาง — term.packageQty = แพ็คต่อรอบของโซน ⇒ โมดัลต้องพูดจำนวนรอบบริการ · แต่ละครั้งกี่แพ็ค
-   และบอกก่อนกดว่าใบที่ยังไม่ได้ใส่ว่าแต่ละครั้งกี่แพ็ค (คีย์ก่อนมีช่อง) อนุมัติไม่ผ่าน
+/* ⭐ PR-D (mig 0394/P3): รอบขายของโซนเปิดผ่านตัวกลาง — term.packageQty = แพ็คต่อรอบของโซน ⇒ โมดัลต้องพูดจำนวนรอบบริการ · รอบละกี่แพ็ค
+   และบอกก่อนกดว่าใบที่ยังไม่ได้ใส่รอบละกี่แพ็ค (คีย์ก่อนมีช่อง) อนุมัติไม่ผ่าน
    ⭐ มติเจ้าของ 29/09 ("ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง"): รอบก่อน แล้วค่อยแพ็ค — ทั้งหัวแถว ค่ารวม และรายโซน */
-test('โมดัลอนุมัติ: จำนวนรอบบริการ · แต่ละครั้งกี่แพ็ค — รอบต่างกันเป็นช่วง · เกิน 5 โซนชี้การ์ดโซน · ขาดแพ็ค = ⚠️ + ประโยคผลลัพธ์เดิม', () => {
+test('โมดัลอนุมัติ: จำนวนรอบบริการ · รอบละกี่แพ็ค — รอบต่างกันเป็นช่วง · เกิน 5 โซนชี้การ์ดโซน · ขาดแพ็ค = ⚠️ + ประโยคผลลัพธ์เดิม', () => {
   /* หัวแถว = ค่าคงที่ตัวเดียวกับแถวของขั้น ④ (historicalReviewView) · คำเดียวกับแคตตาล็อกของใบใหม่ (SERVICE_SETUP_LINE_TEXT) */
-  assert.equal(PACKS_ROUNDS_HEAD, 'จำนวนรอบบริการ · แต่ละครั้งกี่แพ็ค');
+  assert.equal(PACKS_ROUNDS_HEAD, 'จำนวนรอบบริการ · รอบละกี่แพ็ค');
   const mixed = LINE_ZONES.map((zone, i) => ({ ...zone, rounds: [12, 12, 6, 12][i] }));
   const facts = collect(historicalApprovalFacts(ORDER, { ...EXTRAS, lineZones: mixed }));
-  assert.ok(facts.checklist.includes('จำนวนรอบบริการ · แต่ละครั้งกี่แพ็ค: 6–12 รอบ/โซน · รวม 6 แพ็ค/รอบ — ชั้น G ล็อบบี้ 12 รอบ × 2 แพ็ค/รอบ'
+  assert.ok(facts.checklist.includes('จำนวนรอบบริการ · รอบละกี่แพ็ค: 6–12 รอบ/โซน · รวม 6 แพ็ค/รอบ — ชั้น G ล็อบบี้ 12 รอบ × 2 แพ็ค/รอบ'
     + ' · ชั้น M ทางเชื่อม BTS 12 รอบ × 1 แพ็ค/รอบ · ห้องน้ำหญิง ชั้น 1 6 รอบ × 1 แพ็ค/รอบ · ทางเข้าหลัก 12 รอบ × 2 แพ็ค/รอบ'),
   facts.checklist.join('\n'));
   assert.equal(facts.effects.at(-1),
@@ -318,33 +318,33 @@ test('โมดัลอนุมัติ: จำนวนรอบบริก
 
   const six = [...LINE_ZONES, ...LINE_ZONES.slice(0, 2).map((zone, i) => ({ ...zone, zoneId: `Z-X${i}`, zoneName: `โซนเสริม ${i + 1}` }))];
   const many = collect(historicalApprovalFacts(ORDER, { ...EXTRAS, lineZones: six }));
-  assert.ok(many.checklist.includes('จำนวนรอบบริการ · แต่ละครั้งกี่แพ็ค: 12 รอบ/โซน · รวม 9 แพ็ค/รอบ — ดูการ์ดโซนในหน้าใบ'), many.checklist.join('\n'));
+  assert.ok(many.checklist.includes('จำนวนรอบบริการ · รอบละกี่แพ็ค: 12 รอบ/โซน · รวม 9 แพ็ค/รอบ — ดูการ์ดโซนในหน้าใบ'), many.checklist.join('\n'));
 
   /* ใบที่คีย์ก่อนมีช่อง (ไม่มีแถว sales_order_line_zones) — ของเสริมคืน packsPerRound: null */
   const blank = LINE_ZONES.map((zone, i) => ({ ...zone, packsPerRound: i === 1 ? null : zone.packsPerRound }));
   const missing = collect(historicalApprovalFacts(ORDER, { ...EXTRAS, lineZones: blank }));
-  const at = missing.checklist.findIndex((l) => l.startsWith('จำนวนรอบบริการ · แต่ละครั้งกี่แพ็ค:'));
-  assert.equal(missing.checklist[at], 'จำนวนรอบบริการ · แต่ละครั้งกี่แพ็ค: 12 รอบ/โซน · รวม 5 แพ็ค/รอบ (ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค 1 โซน)'
-    + ' — ชั้น G ล็อบบี้ 12 รอบ × 2 แพ็ค/รอบ · ชั้น M ทางเชื่อม BTS 12 รอบ · ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค · ห้องน้ำหญิง ชั้น 1 12 รอบ × 1 แพ็ค/รอบ'
+  const at = missing.checklist.findIndex((l) => l.startsWith('จำนวนรอบบริการ · รอบละกี่แพ็ค:'));
+  assert.equal(missing.checklist[at], 'จำนวนรอบบริการ · รอบละกี่แพ็ค: 12 รอบ/โซน · รวม 5 แพ็ค/รอบ (ยังไม่ใส่รอบละกี่แพ็ค 1 โซน)'
+    + ' — ชั้น G ล็อบบี้ 12 รอบ × 2 แพ็ค/รอบ · ชั้น M ทางเชื่อม BTS 12 รอบ · ยังไม่ใส่รอบละกี่แพ็ค · ห้องน้ำหญิง ชั้น 1 12 รอบ × 1 แพ็ค/รอบ'
     + ' · ทางเข้าหลัก 12 รอบ × 2 แพ็ค/รอบ');
   assert.equal(missing.checklist[at + 1],
-    '⚠️ ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค 1 รายการ (ใบนี้คีย์ก่อนมีช่องนี้) — ระบบจะไม่ยอมให้อนุมัติ ตีกลับให้ผู้คีย์บันทึกขั้น ② ใหม่');
+    '⚠️ ยังไม่ใส่รอบละกี่แพ็ค 1 รายการ (ใบนี้คีย์ก่อนมีช่องนี้) — ระบบจะไม่ยอมให้อนุมัติ ตีกลับให้ผู้คีย์บันทึกขั้น ② ใหม่');
   assert.equal(missing.effects.at(-1), '4 โซนขึ้นคิว TS งานเข้าใหม่ › รอตั้งรอบ — นัดขึ้นตารางได้เมื่อบัญชีรับรองงวดยกมา', 'แพ็คไม่ครบ = ประโยคเดิม');
   const none = collect(historicalApprovalFacts(ORDER, { ...EXTRAS, lineZones: LINE_ZONES.map((zone) => ({ ...zone, packsPerRound: null })) }));
-  assert.ok(none.checklist.includes('จำนวนรอบบริการ · แต่ละครั้งกี่แพ็ค: 12 รอบ/โซน · ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค'
-    + ' — ชั้น G ล็อบบี้ 12 รอบ · ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค · ชั้น M ทางเชื่อม BTS 12 รอบ · ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค'
-    + ' · ห้องน้ำหญิง ชั้น 1 12 รอบ · ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค · ทางเข้าหลัก 12 รอบ · ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค'),
+  assert.ok(none.checklist.includes('จำนวนรอบบริการ · รอบละกี่แพ็ค: 12 รอบ/โซน · ยังไม่ใส่รอบละกี่แพ็ค'
+    + ' — ชั้น G ล็อบบี้ 12 รอบ · ยังไม่ใส่รอบละกี่แพ็ค · ชั้น M ทางเชื่อม BTS 12 รอบ · ยังไม่ใส่รอบละกี่แพ็ค'
+    + ' · ห้องน้ำหญิง ชั้น 1 12 รอบ · ยังไม่ใส่รอบละกี่แพ็ค · ทางเข้าหลัก 12 รอบ · ยังไม่ใส่รอบละกี่แพ็ค'),
   none.checklist.join('\n'));
-  assert.ok(none.checklist.some((l) => l.startsWith('⚠️ ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค 4 รายการ')));
+  assert.ok(none.checklist.some((l) => l.startsWith('⚠️ ยังไม่ใส่รอบละกี่แพ็ค 4 รายการ')));
 
   /* ไม่มีแถวโซนของเสริม (แต่ไม่ได้โหลดพัง) = "ไม่พบ" แบบแถวอื่น ไม่เดาว่าคีย์ก่อนมีช่อง · ใบไม่มีโซนเลย = ไม่มีแถวนี้ (แถวโซนบอกแล้ว) */
   const bare = collect(historicalApprovalFacts(ORDER, { ...EXTRAS, lineZones: [] }));
-  assert.ok(bare.checklist.includes('จำนวนรอบบริการ · แต่ละครั้งกี่แพ็ค: ไม่พบ — ระบบตรวจซ้ำตอนกดอนุมัติ'));
+  assert.ok(bare.checklist.includes('จำนวนรอบบริการ · รอบละกี่แพ็ค: ไม่พบ — ระบบตรวจซ้ำตอนกดอนุมัติ'));
   assert.ok(!bare.checklist.some((l) => PACKS_WARN.test(l)));
   const zoneless = collect(historicalApprovalFacts({ ...ORDER, lines: [] }, { ...EXTRAS, lineZones: [] }));
   assert.ok(!zoneless.checklist.some((l) => l.startsWith(PACKS_ROUNDS_HEAD)), zoneless.checklist.join('\n'));
   for (const facts2 of [facts, many, missing, none, bare]) {
-    assert.ok(!facts2.checklist.concat(facts2.effects).some((l) => LOOSE_PACK.test(l)), 'แพ็คมีได้แค่ "แต่ละครั้งกี่แพ็ค" / "แพ็ค/รอบ"');
+    assert.ok(!facts2.checklist.concat(facts2.effects).some((l) => LOOSE_PACK.test(l)), 'แพ็คมีได้แค่ "รอบละกี่แพ็ค" / "แพ็ค/รอบ"');
   }
 });
 
@@ -409,20 +409,20 @@ test('ตัวกลางตีกลับการอนุมัติ: ท
   const head = 'อนุมัติไม่ได้ — งานบริการของใบนี้ไม่ครบ: ';
   const tail = ' — ตีกลับให้ผู้คีย์บันทึกขั้น ② ใหม่';
   const one = (code) => historicalSetupIncompleteMessage([code], lines).slice(head.length, -tail.length);
-  assert.equal(one('zones_missing:SOL-b'), 'รายการ 2: ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค (ใบนี้คีย์ก่อนมีช่องนี้)');
-  assert.equal(one('packs_missing:SOL-a:ZN-1'), 'รายการ 1: ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค', 'ท้ายเดียวกับ packs_missing ของใบใหม่');
+  assert.equal(one('zones_missing:SOL-b'), 'รายการ 2: ยังไม่ใส่รอบละกี่แพ็ค (ใบนี้คีย์ก่อนมีช่องนี้)');
+  assert.equal(one('packs_missing:SOL-a:ZN-1'), 'รายการ 1: ยังไม่ใส่รอบละกี่แพ็ค', 'ท้ายเดียวกับ packs_missing ของใบใหม่');
   assert.equal(one('rounds_missing:SOL-c'), 'รายการ 3: ยังไม่ใส่จำนวนรอบบริการ');
   assert.equal(one('zone_invalid:SOL-a:ZN-1'), 'รายการ 1: โซนถูกปิดใช้งานหรือไม่ใช่ไซต์ของลูกค้าแล้ว');
   assert.equal(one('historical_zone_mismatch:SOL-b'), 'รายการ 2: โซนของงานบริการไม่ตรงกับโซนของรายการ');
   assert.equal(one('kind_missing:SOL-c'), 'รายการ 3: งานบริการไม่ครบ (kind_missing)', 'รหัสอื่น = บอกรหัส ไม่หายเงียบ');
   assert.equal(one('period_missing'), 'งานบริการไม่ครบ (period_missing)', 'ไม่มีบรรทัด = ไม่มีเลขรายการ');
-  assert.equal(one('packs_missing:SOL-zzz:ZN-1'), 'ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค', 'บรรทัดที่ไม่อยู่ในใบ = ไม่เดาเลขรายการ');
+  assert.equal(one('packs_missing:SOL-zzz:ZN-1'), 'ยังไม่ใส่รอบละกี่แพ็ค', 'บรรทัดที่ไม่อยู่ในใบ = ไม่เดาเลขรายการ');
   assert.deepEqual(Object.keys(HISTORICAL_SETUP_ISSUE_TEXT).sort(),
     ['historical_zone_mismatch', 'packs_missing', 'rounds_missing', 'zone_invalid', 'zones_missing']);
 
   /* DETAIL ดิบ (CSV) ก็รับ · เรียงตามเลขรายการ (ไม่มีบรรทัดไปท้าย) · ข้อความเดียวกันซ้ำนับครั้งเดียว */
   assert.equal(collect(historicalSetupIncompleteMessage('period_missing,zones_missing:SOL-c, zones_missing:SOL-a,zones_missing:SOL-a', lines)),
-    `${head}รายการ 1: ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค (ใบนี้คีย์ก่อนมีช่องนี้) · รายการ 3: ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค (ใบนี้คีย์ก่อนมีช่องนี้)`
+    `${head}รายการ 1: ยังไม่ใส่รอบละกี่แพ็ค (ใบนี้คีย์ก่อนมีช่องนี้) · รายการ 3: ยังไม่ใส่รอบละกี่แพ็ค (ใบนี้คีย์ก่อนมีช่องนี้)`
       + ` · งานบริการไม่ครบ (period_missing)${tail}`);
   const seven = Array.from({ length: 7 }, (_, i) => ({ id: `SOL-${i}`, sortOrder: i }));
   const capped = historicalSetupIncompleteMessage(seven.map((line) => `rounds_missing:${line.id}`), seven);
@@ -504,7 +504,7 @@ test('โมดัลอนุมัติ: ตัวอย่างเจ้า
      "N แพ็ค" เปล่า ๆ (อ่านได้สองความหมาย · มติ 23/09) ยังห้าม */
   for (const facts of [owner, discounted, many]) {
     assert.ok(!facts.checklist.some((l) => LOOSE_PACK.test(l)), 'ไม่มีคำว่า "แพ็ค" ที่อ่านได้สองความหมายแล้ว');
-    assert.ok(facts.checklist.some((l) => l.startsWith('จำนวนรอบบริการ · แต่ละครั้งกี่แพ็ค:')), 'แถวจำนวนรอบบริการ · แต่ละครั้งกี่แพ็ค ขึ้นทุกใบที่มีโซน');
+    assert.ok(facts.checklist.some((l) => l.startsWith('จำนวนรอบบริการ · รอบละกี่แพ็ค:')), 'แถวจำนวนรอบบริการ · รอบละกี่แพ็ค ขึ้นทุกใบที่มีโซน');
   }
 });
 
@@ -761,12 +761,12 @@ test('โมดัลอนุมัติ: ใบที่อาจซ้ำ �
 });
 
 /* 🔴 ยามรวมของคำว่า "แพ็ค" (มติ 23/09 + 26/09 A3/O9 · IMPL_PLAN_D §0.2 ข้อ 14) — ต้องอยู่ท้ายไฟล์: อ่านทุกสตริงที่เทสต์ข้างบนเก็บไว้
-   ⭐ ยอมแค่ "แพ็คเกจ" (หน่วยของบรรทัด) · "แต่ละครั้งกี่แพ็ค" (ป้าย มติ 29/09) · "แพ็ค/รอบ" — "N แพ็ค" เปล่า ๆ อ่านได้สองความหมาย (1 ชุด × 12 เดือน) */
-test('🔴 ทุกประโยคที่ไฟล์ถ้อยคำคืน: "แพ็ค" มีได้แค่ แพ็คเกจ · แต่ละครั้งกี่แพ็ค · แพ็ค/รอบ', () => {
+   ⭐ ยอมแค่ "แพ็คเกจ" (หน่วยของบรรทัด) · "รอบละกี่แพ็ค" (ป้าย มติ 29/09) · "แพ็ค/รอบ" — "N แพ็ค" เปล่า ๆ อ่านได้สองความหมาย (1 ชุด × 12 เดือน) */
+test('🔴 ทุกประโยคที่ไฟล์ถ้อยคำคืน: "แพ็ค" มีได้แค่ แพ็คเกจ · รอบละกี่แพ็ค · แพ็ค/รอบ', () => {
   assert.ok(OUTPUTS.some((s) => s.includes('แพ็ค/รอบ')), 'ต้องเก็บประโยคแพ็คต่อรอบมาตรวจด้วย');
-  assert.ok(OUTPUTS.some((s) => s.includes('แต่ละครั้งกี่แพ็ค')), 'ต้องเก็บประโยคที่มีป้ายมาตรวจด้วย');
+  assert.ok(OUTPUTS.some((s) => s.includes('รอบละกี่แพ็ค')), 'ต้องเก็บประโยคที่มีป้ายมาตรวจด้วย');
   assert.deepEqual(OUTPUTS.filter((s) => LOOSE_PACK.test(s)), []);
   assert.ok(LOOSE_PACK.test('12 แพ็ค'), 'ตัวจับต้องจับ "N แพ็ค" เปล่า ๆ ได้');
   assert.ok(LOOSE_PACK.test('ยังไม่ใส่แพ็คต่อรอบ'), 'ป้ายเดิมก่อนมติ 29/09 ต้องไม่กลับมา');
-  assert.ok(!LOOSE_PACK.test('ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค'));
+  assert.ok(!LOOSE_PACK.test('ยังไม่ใส่รอบละกี่แพ็ค'));
 });

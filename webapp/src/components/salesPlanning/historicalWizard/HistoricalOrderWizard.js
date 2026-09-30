@@ -203,7 +203,7 @@ export default function HistoricalOrderWizard({ orderId = null }) {
            ⇒ hydrate ต่อ = แพ็คต่อรอบที่บันทึกไว้กลายเป็นช่องว่าง (แดงหลังกดถัดไป ชวนคีย์ใหม่จากความจำ) และไฟล์สัญญานับเป็น 0
            ⇒ หยุดก่อนตั้ง state พร้อมเหตุ (ยังไม่มีอะไรให้เสีย — โหลดหน้าใหม่ได้เลย) */
         if (order.extrasError) {
-          setReadOnly(`โหลดข้อมูลประกอบของใบไม่ขึ้น (แต่ละครั้งกี่แพ็ค · ไฟล์เอกสาร · งวด) — โหลดหน้าใหม่ก่อนแก้ · ${order.extrasError}`);
+          setReadOnly(`โหลดข้อมูลประกอบของใบไม่ขึ้น (รอบละกี่แพ็ค · ไฟล์เอกสาร · งวด) — โหลดหน้าใหม่ก่อนแก้ · ${order.extrasError}`);
           return;
         }
         setState(wizardStateFromOrder(order));

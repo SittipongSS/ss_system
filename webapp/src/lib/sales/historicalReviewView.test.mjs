@@ -83,7 +83,7 @@ test('⭐ แถวตรวจ: ข้อเดียวกับหน้า�
   assert.equal(rowOf(rows, 'refs').value, 'QT-OLD-1 · IV-2601-0412');
   assert.equal(rowOf(rows, 'zones').value, '2 โซน — ST-01 อาคาร A 2 โซน');
   assert.deepEqual(rowOf(rows, 'packs'), {
-    key: 'packs', label: 'จำนวนรอบบริการ · แต่ละครั้งกี่แพ็ค', value: '12 รอบ/โซน · รวม 3 แพ็ค/รอบ',
+    key: 'packs', label: 'จำนวนรอบบริการ · รอบละกี่แพ็ค', value: '12 รอบ/โซน · รวม 3 แพ็ค/รอบ',
     sub: 'Lobby 12 รอบ × 2 แพ็ค/รอบ · ทางเดิน 12 รอบ × 1 แพ็ค/รอบ', tone: null, step: 'zones', field: 'zones',
   });
   assert.equal(rowOf(rows, 'remaining').sub, null, 'ไม่มีวันวางบิลสักงวด = ไม่พูด');
@@ -139,7 +139,7 @@ test('⭐ แถวรอบ · แพ็ค: ช่วงรอบ · เกิ
   assert.deepEqual([six.value, six.sub, six.tone], ['12 รอบ/โซน · รวม 12 แพ็ค/รอบ', 'ดูรายการด้านล่าง', null]);
   const missing = packs([PLAN.lines[0], { ...PLAN.lines[1], packsPerRound: null }]);
   assert.deepEqual([missing.value, missing.tone, missing.step, missing.field], ['ยังไม่ครบ 1 รายการ — กลับไปขั้น ②', 'warn', 'zones', 'zones']);
-  assert.equal(missing.sub, 'Lobby 12 รอบ × 2 แพ็ค/รอบ · ทางเดิน 12 รอบ · ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค', 'บอกว่าโซนไหนยังขาด');
+  assert.equal(missing.sub, 'Lobby 12 รอบ × 2 แพ็ค/รอบ · ทางเดิน 12 รอบ · ยังไม่ใส่รอบละกี่แพ็ค', 'บอกว่าโซนไหนยังขาด');
   const empty = packs([]);
   assert.deepEqual([empty.value, empty.sub, empty.tone], ['—', null, null]);
   for (const row of [mixed, six, missing]) assert.doesNotMatch(`${row.value} ${row.sub}`, /(?<!กี่)แพ็ค(?!เกจ|\/รอบ)/);

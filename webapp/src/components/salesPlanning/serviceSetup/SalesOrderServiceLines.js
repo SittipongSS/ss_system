@@ -1,11 +1,12 @@
 "use client";
-// ── การ์ด "รายการสินค้าและบริการ" ของใบสั่งขายสาย SERVICE — ตาราง + งานบริการรายบรรทัด (mig 0392 · PR-A) ─────────
+// ── ใบสั่งขายสาย SERVICE: การ์ด "รายการสินค้าและบริการ" + การ์ด "งานบริการ" (mig 0392 · PR-A · รื้อหน้าตา 01/10) ─────────
 //
-// ⭐ **ตารางคือตัวเดียวกับใบเสนอราคา** (`QuotationReadOnlyLineItems`) — คอลัมน์ · รหัส FG · หมวด (#1844) · หมายเหตุ · หน่วย
-//   · การ์ดบนจอแคบ · กล่องยอด ทุกอย่างเหมือนเดิมเป๊ะ · ไฟล์นี้เพิ่มแค่กล่อง "งานบริการของรายการนี้" ใต้แต่ละบรรทัด
-//   ผ่าน `renderAfterRow` (ห้ามเขียนเซลล์ของตารางซ้ำ — มติ critic 2 ข้อ 18)
-// ⭐ ของบนการ์ด: หัว (ORDER LINES · งานบริการ + ชิป "งานบริการครบ x/n รายการ") · แถบช่วงบริการ · ตาราง · ท้ายตาราง
-//   (สรุปทั้งใบ · ทางเพิ่มไซต์ D19 · ประกาศลูกค้าไม่มีไซต์) · แถบบันทึกลอย **นอกการ์ด** (ดูคอมเมนต์ที่แถบ)
+// ⭐ การ์ดราคา = **ตารางตัวเดียวกับใบเสนอราคา** (`QuotationReadOnlyLineItems`) อ่านอย่างเดียว ไม่มีอะไรของงานบริการแทรก
+//   (ท้ายการ์ดมีแค่บรรทัดชี้ไปการ์ดงานบริการ)
+// ⭐ การ์ดงานบริการ = ตาราง `ServiceSetupGrid` หนึ่งแถวต่อรายการ ①→⑥ ตามมติเจ้าของ 30/09 (เลือกทาง A 01/10 · ม็อก BindGridEdit):
+//   งานบริการ? → แพ็คเกจ FG → ไซต์ · โซน → จำนวนรอบบริการ → รอบละกี่แพ็ค → รวมแพ็ค + แถวรวมทุกรายการ
+//   ของบนการ์ด: หัว (ชิป "งานบริการครบ x/n รายการ") · แถบช่วงบริการ · ตาราง · ทางเพิ่มไซต์ D19 · ประกาศลูกค้าไม่มีไซต์
+//   · แถบบันทึกลอย **นอกการ์ด** (ดูคอมเมนต์ที่แถบ) · id ของหน้า (`#service-setup`) อยู่ที่การ์ดนี้
 // ⭐ ร่างการแก้อยู่ที่ `useServiceSetup` (อยู่กับหน้า ไม่หายตอนสลับแท็บ) · บันทึก = PATCH ก้อนที่ต่างจากฐานเท่านั้น (ไม่ลองซ้ำ)
 //   · 409 ใบถูกแก้จากอีกหน้าต่าง → โหลดใหม่ + บอก (ร่างที่ยังต่างจากของใหม่ยังค้างให้บันทึกต่อ)
 //   · 400 fieldErrors → ช่องนั้นขึ้นแดง (การกดบันทึกคือการกด ⇒ แดงได้ตามกฎ 3)
@@ -14,7 +15,7 @@
 // ⚠️ ไม่มีแถบเลือกหลายรายการ/หน้าต่าง "เติมจากข้อความ" ใน PR-A (D24)
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ExternalLink, Lock, Package, Save } from "lucide-react";
+import { ArrowDown, ExternalLink, Lock, Package, Repeat, Save } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { DetailCard } from "@/components/ui/DetailPage";
 import SaveStatus from "@/components/ui/SaveStatus";
@@ -25,17 +26,17 @@ import ZonesBulkModal from "@/components/service/ZonesBulkModal";
 import { apiJson } from "@/lib/apiFetch";
 import { fmtNumber } from "@/lib/format";
 import {
-  SERVICE_SETUP_EDIT_TEXT, SERVICE_SETUP_LIMITS, SERVICE_SETUP_SQL_MESSAGES, serviceLineLabel, serviceSetupFooterText, serviceSetupTotals,
+  SERVICE_SETUP_EDIT_TEXT, SERVICE_SETUP_GRID_TEXT, SERVICE_SETUP_LIMITS, SERVICE_SETUP_LINE_TEXT, SERVICE_SETUP_SQL_MESSAGES,
+  serviceLineLabel, serviceSetupTotals,
 } from "@/lib/sales/serviceSetup";
 import { registryIndex, zoneTakenMap } from "@/lib/service/zonePickerOptions";
-import ServiceLineSetupBlock from "./ServiceLineSetupBlock";
 import ServicePeriodField from "./ServicePeriodField";
 import ServiceRegistryPaths from "./ServiceRegistryPaths";
-import { newZoneRowKey } from "./ServiceZoneRows";
+import ServiceSetupGrid, { newZoneRowKey } from "./ServiceSetupGrid";
 import { SERVICE_REGISTRY_LOAD_FAILED } from "./useServiceSetup";
 import {
   EMPTY_DRAFT, PERIOD_FIELD_ID, SAVE_FIELD_ID, SERVICE_SETUP_REVEAL_EVENT, ctxLineOf, fieldErrorsView, lineFieldId, linesCardMeta,
-  localSetupCtx, mergedLines, patchDraftLine, periodLabel, setupPayload,
+  localSetupCtx, mergedLines, patchDraftLine, serviceCardMeta, setupPayload,
 } from "./serviceSetupDraft";
 import styles from "./SalesOrderServiceLines.module.css";
 
@@ -247,64 +248,65 @@ export default function SalesOrderServiceLines({
     setBulkLineId(null);
   };
 
-  const renderAfterRow = (tableLine) => {
-    const line = mergedById.get(tableLine?.id);
-    if (!line) return null;
-    return (
-      <ServiceLineSetupBlock
-        line={line}
-        editable={editable}
-        period={period}
-        ctx={ctx}
-        fgOptions={view?.fgOptions || []}
-        zonesById={zonesById}
-        sitesById={sitesById}
-        registry={registry}
-        takenLines={takenLines}
-        liveTerms={liveTerms}
-        zoneErrors={zoneErrors}
-        noSites={noSites}
-        highlightOf={highlightOf}
-        onLineChange={(patch, touchedIds) => changeLine(line.lineId, patch, touchedIds)}
-        onLineReplace={(next, touchedIds) => replaceLine(line.lineId, next, touchedIds)}
-        onOpenBulk={() => setBulkLineId(line.lineId)}
-        canEditRounds={canEditRounds && flow === "stamped"}
-        onRoundsSave={onRoundsSave}
-        roundsLowStage={editable ? "submit" : flow === "stamped" ? "approved" : "read"}
-      />
-    );
-  };
-
   const arCode = order?.customer?.arCode || null;
   const customerText = arCode ? `ลูกค้า ${arCode}` : "ลูกค้ารายนี้";
   const siblings = Array.isArray(view?.siblingSites) ? view.siblingSites : [];
   const lock = lockLabel(view, editable);
   const retry = <Button size="sm" onClick={reloadQuietly}>ลองโหลดอีกครั้ง</Button>;
 
-  const actions = (
+  const linesActions = order?.quotationId ? (
+    <Button as={Link} href={`/sa/quotations/${order.quotationId}`} size="sm" variant="quiet" icon={<ExternalLink size={13} aria-hidden="true" />}>
+      เปิด QT ต้นทาง
+    </Button>
+  ) : null;
+  const serviceActions = (
     <div className={styles.headActions}>
       {view && serviceLines > 0 ? <Tag>{`งานบริการครบ ${fmtNumber(totals.completeLines)}/${fmtNumber(totals.lineCount)} รายการ`}</Tag> : null}
       {lock ? <Tag icon={Lock}>{lock}</Tag> : null}
-      {order?.quotationId ? (
-        <Button as={Link} href={`/sa/quotations/${order.quotationId}`} size="sm" variant="quiet" icon={<ExternalLink size={13} aria-hidden="true" />}>
-          เปิด QT ต้นทาง
-        </Button>
-      ) : null}
     </div>
   );
-
-  const notServiceText = totals.notServiceLines ? `ไม่ใช่งานบริการรายรอบ ${fmtNumber(totals.notServiceLines)} รายการ` : "";
-  const summarySub = [notServiceText, totals.packageLines ? `ช่วงบริการ ${periodLabel(period)}` : ""].filter(Boolean).join(" · ");
+  /* ท้ายการ์ดงานบริการมีของเมื่อไร — ไม่มีอะไร = ไม่วาดกล่อง (เส้นคั่นลอยเปล่า ๆ ใต้ตารางของใบที่รอตรวจ) */
+  const footerHasContent = serviceLines === 0 || (flow === "stamped" && serviceLines > 0) || (editable && serviceLines > 0);
+  const pointerSub = view && totals.packageLines
+    ? `${fmtNumber(totals.packageLines)} รายการเป็นงานบริการ · รวม ${fmtNumber(totals.packsTotal || 0)} แพ็ค`
+    : null;
 
   return (
     <>
     <DetailCard
-      id={id}
       icon={Package}
-      eyebrow="ORDER LINES · งานบริการ"
+      eyebrow="ORDER LINES"
       title="รายการสินค้าและบริการ"
-      meta={linesCardMeta({ order, view, flow, editable, lineCount: tableLines.length, totals })}
-      actions={actions}
+      meta={linesCardMeta({ order, lineCount: tableLines.length })}
+      actions={linesActions}
+    >
+      <div className={styles.body}>
+        <QuotationReadOnlyLineItems
+          lines={tableLines}
+          summaryRows={summaryRows}
+          grandTotal={grandTotal}
+          highlightRows={highlightRows}
+        />
+        {view ? (
+          <p className={styles.pointer}>
+            <Repeat size={14} aria-hidden="true" className={styles.pointerIcon} />
+            <span className={styles.pointerText}>
+              {SERVICE_SETUP_GRID_TEXT.pointer}
+              {pointerSub ? <span className={styles.pointerSub}>{pointerSub}</span> : null}
+            </span>
+            <Button as="a" href={`#${id}`} size="sm" variant="quiet" icon={<ArrowDown size={13} aria-hidden="true" />}>ไปที่งานบริการ</Button>
+          </p>
+        ) : null}
+      </div>
+    </DetailCard>
+
+    <DetailCard
+      id={id}
+      icon={Repeat}
+      eyebrow="SERVICE SETUP · งานบริการ"
+      title="งานบริการ"
+      meta={serviceCardMeta({ view, flow, editable, totals })}
+      actions={serviceActions}
     >
       <div className={styles.body}>
         {view?.revisedFrom && flow === "pipeline" ? (
@@ -337,31 +339,45 @@ export default function SalesOrderServiceLines({
           </StatusNotice>
         ) : null}
 
-        <QuotationReadOnlyLineItems
-          lines={tableLines}
-          renderAfterRow={view ? renderAfterRow : undefined}
-          summaryRows={summaryRows}
-          grandTotal={grandTotal}
-          highlightRows={highlightRows}
-        />
-
         {view ? (
+          <ServiceSetupGrid
+            lines={merged}
+            editable={editable}
+            period={period}
+            ctx={ctx}
+            totals={totals}
+            fgOptions={view.fgOptions || []}
+            zonesById={zonesById}
+            sitesById={sitesById}
+            registry={registry}
+            takenLines={takenLines}
+            liveTerms={liveTerms}
+            zoneErrors={zoneErrors}
+            noSites={noSites}
+            highlightOf={highlightOf}
+            onLineChange={changeLine}
+            onLineReplace={replaceLine}
+            onOpenBulk={setBulkLineId}
+            canEditRounds={canEditRounds && flow === "stamped"}
+            onRoundsSave={onRoundsSave}
+            roundsLowStage={flow === "stamped" ? "approved" : "read"}
+          />
+        ) : null}
+
+        {view && footerHasContent ? (
           <div className={styles.footer}>
             {serviceLines === 0 ? (
               <p className={styles.noPackage}>
                 {flow === "pipeline"
-                  ? "ใบนี้ไม่มีแพ็คเกจบริการ — ยื่นอนุมัติได้ตามปกติ (ไม่มีอะไรส่งให้ TS)"
-                  : "ใบนี้ไม่มีแพ็คเกจบริการ — ไม่มีอะไรส่งให้ TS"}
+                  ? "ใบนี้ไม่มีรายการที่เป็นงานบริการ — ยื่นอนุมัติได้ตามปกติ (ไม่มีอะไรส่งให้ TS)"
+                  : "ใบนี้ไม่มีรายการที่เป็นงานบริการ — ไม่มีอะไรส่งให้ TS"}
               </p>
-            ) : (
-              <p className={styles.summary}>
-                <span>{serviceSetupFooterText(totals)}</span>
-                {summarySub ? <span className={styles.summarySub}>{summarySub}</span> : null}
-                {flow === "stamped" ? (
-                  <span className={styles.summarySub}>หลังอนุมัติ แก้แพ็คเกจ/โซน/แต่ละครั้งกี่แพ็ค = ย้อนการอนุมัติแล้วออก Rev.</span>
-                ) : null}
+            ) : null}
+            {flow === "stamped" && serviceLines > 0 ? (
+              <p className={styles.summarySub}>
+                {`หลังอนุมัติ แก้แพ็คเกจ/โซน/${SERVICE_SETUP_LINE_TEXT.packsLabel} = ย้อนการอนุมัติแล้วออก Rev. (${SERVICE_SETUP_LINE_TEXT.roundsLabel}แก้ได้ที่ดินสอ)`}
               </p>
-            )}
+            ) : null}
             {editable && serviceLines > 0 ? <ServiceRegistryPaths dealId={order?.dealId} orderId={orderId} /> : null}
             {editable && serviceLines > 0 && noSites ? (
               <StatusNotice tone="warning">
@@ -376,7 +392,6 @@ export default function SalesOrderServiceLines({
             ) : null}
           </div>
         ) : null}
-
       </div>
 
       {editable && bulkLine ? (

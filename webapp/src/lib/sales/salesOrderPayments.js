@@ -1028,9 +1028,9 @@ export function salesOrderMoneyOutcome(order, rows = [], action, { serviceRounds
       /* มติ D2: ใบที่บัญชีปิดแล้วย้อนได้ · ใบ Rev. ไม่สืบสถานะปิดจากใบเดิม (financeStatus เกิดเป็น NULL) */
       order?.financeStatus === 'approved' ? 'บัญชีปิดใบนี้แล้ว — ใบ Rev. จะกลับเข้าคิวให้บัญชีปิดใหม่' : null,
       /* รอบขายของโซนนับเฉพาะใบ approved ที่ยังไม่ถูกแทน (lib/service/terms.js)
-         · คำเรียกช่อง "จำนวนรอบบริการ" / "แต่ละครั้งกี่แพ็ค" = SERVICE_SETUP_LINE_TEXT (มติ 29/09) — เขียน literal เพราะ serviceSetup.js
+         · คำเรียกช่อง "จำนวนรอบบริการ" / "รอบละกี่แพ็ค" = SERVICE_SETUP_LINE_TEXT (มติ 29/09) — เขียน literal เพราะ serviceSetup.js
            import ไฟล์นี้ (import กลับ = วง · serviceSetupImports.test.mjs) · เทสต์ของข้อความนี้เทียบกับแคตตาล็อกให้ */
-      serviceRounds ? 'ระหว่างรอ Rev. อนุมัติ นัดบริการของโซนในใบนี้ติดด่าน · ใบ Rev. คัดลอกแพ็คเกจ/จำนวนรอบบริการ/โซน/แต่ละครั้งกี่แพ็ค/ช่วงบริการไปให้ แก้ได้ก่อนยื่น · อนุมัติ Rev. แล้วรอบบริการของไซต์ที่ยังอยู่ย้ายตามไป' : null,
+      serviceRounds ? 'ระหว่างรอ Rev. อนุมัติ นัดบริการของโซนในใบนี้ติดด่าน · ใบ Rev. คัดลอกแพ็คเกจ/จำนวนรอบบริการ/โซน/รอบละกี่แพ็ค/ช่วงบริการไปให้ แก้ได้ก่อนยื่น · อนุมัติ Rev. แล้วรอบบริการของไซต์ที่ยังอยู่ย้ายตามไป' : null,
     ].filter(Boolean);
   }
   if (action === 'cancel') {

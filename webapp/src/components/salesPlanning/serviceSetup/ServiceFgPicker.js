@@ -1,5 +1,5 @@
 "use client";
-// ── ช่อง "แพ็คเกจ (FG)" ของบรรทัดพิมพ์เองที่เป็นแพ็คเกจบริการรายรอบ (mig 0392 · PR-A) ─────────────────────────
+// ── ช่อง ② "แพ็คเกจ FG" ของบรรทัดพิมพ์เองที่ตอบว่าเป็นงานบริการ (mig 0392 · PR-A · อยู่ในตาราง ServiceSetupGrid ตั้งแต่ 01/10) ──
 //
 // ⭐ ตัวเลือก = FG หมวด 02-001 ที่อนุมัติแล้วและยังใช้งาน ของลูกค้าในใบ **และนิติบุคคลเดียวกัน** (ก้อน GET `fgOptions`)
 //   ตัวที่เป็นของใบลูกค้าอื่นในนิติบุคคลเดียวกันพกป้าย "ของ AR-xxxx" (ร่องรอยเดียวว่าหยิบข้ามใบมา)
@@ -9,7 +9,7 @@
 import Link from "next/link";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { lineFieldId } from "./serviceSetupDraft";
-import styles from "./ServiceLineSetupBlock.module.css";
+import styles from "./ServiceSetupFields.module.css";
 
 const optionSearch = (option) => [option.fgCode, option.name, option.ownerArCode].filter(Boolean).join(" ").toLowerCase();
 
@@ -17,6 +17,7 @@ const optionSearch = (option) => [option.fgCode, option.name, option.ownerArCode
  * @param lineId · @param lineNo เลขรายการ (ป้ายสำหรับโปรแกรมอ่านหน้าจอ)
  * @param value serviceProductId ที่ถืออยู่ · @param fgCode รหัสของตัวที่ถืออยู่ (ใช้บอกเหตุเมื่อหลุดจากตัวเลือก)
  * @param options `view.fgOptions` · @param error ข้อความหลังกด (null = ไม่แดง) · @param onChange `(productId|null) => void`
+ * ⚠️ ไม่มีป้ายเหนือช่อง — ตารางงานบริการมีหัวคอลัมน์ ② "แพ็คเกจ FG" (และป้ายของการ์ดตอนพับ) แล้ว
  */
 export default function ServiceFgPicker({ lineId, lineNo, value = null, fgCode = null, options = [], error = null, onChange }) {
   const list = Array.isArray(options) ? options : [];
@@ -44,14 +45,13 @@ export default function ServiceFgPicker({ lineId, lineNo, value = null, fgCode =
 
   return (
     <div className={styles.field} id={lineFieldId(lineId, "fg")} data-invalid={error ? "" : undefined}>
-      <span className={styles.label}>แพ็คเกจ (FG)<span className={styles.req} aria-hidden="true">*</span></span>
       {selectOptions.length ? (
         <SearchableSelect
           size="sm"
           value={value || ""}
           onChange={(next) => onChange?.(next || null)}
           options={selectOptions}
-          placeholder="เลือกแพ็คเกจหมวด 02-001 ของลูกค้า"
+          placeholder="เลือกแพ็คเกจ"
           searchPlaceholder="ค้นหารหัส FG หรือชื่อแพ็คเกจ"
           ariaLabel={`แพ็คเกจ (FG) รายการ ${lineNo}`}
           emptyText={(query) => (query ? `ไม่พบแพ็คเกจที่ตรง “${query}”` : "ไม่มีแพ็คเกจให้เลือก")}
