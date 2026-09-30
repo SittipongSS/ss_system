@@ -58,7 +58,7 @@ function filledState(extra = {}) {
       zoneId: 'ZN-1', siteId: 'ST-1', productId: 'PRD-1', fgCode: 'FG-SNS-02-001-0012', unit: 'แพ็คเกจ',
       /* ⭐ 25/09 (รื้อขั้น ③): 204 × 1,200 = 244,800 + VAT 7% = 261,936 = งวดยกมา 196,452 + งวดที่เหลือ 65,484 —
          ยอดใบต้องเท่างวดรวมจริง เพราะงวดสุดท้ายรับ "ยอดที่เหลือ" ที่ห่วงโซ่คิดจากยอดใบ (ของเดิม 72 × 1,200 ไม่ตรงงวด) */
-      unitPrice: 1200, qty: '204', rounds: '12',
+      unitPrice: 1200, qty: '204', rounds: '12', packsPerRound: '2',
     })],
     hasOpening: true,
     opening: { amount: '196452', coversTo: '2026-09-30', paidOn: '2026-09-22', note: 'เก็บผ่าน Express แล้ว ม.ค.–ก.ย.' },
@@ -95,13 +95,18 @@ test('🪤 ตัวประกอบสร้างคีย์เองจา
     assert.ok(!json.includes(forbidden), `body ต้องไม่มี ${forbidden}`);
   }
   /* ⭐ บรรทัดโซน = บรรทัดใบเสนอราคา: สินค้า · จำนวน · ส่วนลดรายการ (+ โซน · รอบ) — **ไม่ส่งราคา/ยอด/หน่วย**
-     (ราคาเป็นของทะเบียน server อ่านเอง · ยอดเป็นของสูตร) · ไม่มี packs/lineAmount ของรุ่น 0374 แล้ว */
-  assert.deepEqual(Object.keys(body.zones[0]).sort(), ['discountType', 'discountValue', 'productId', 'qty', 'rounds', 'zoneId']);
+     (ราคาเป็นของทะเบียน server อ่านเอง · ยอดเป็นของสูตร) · ไม่มี packs/lineAmount ของรุ่น 0374 แล้ว
+     ⭐ PR-D (mig 0394): + `packsPerRound` (แพ็คต่อรอบ — คนละช่องกับจำนวน) · งวด + `billingDate` (วันวางบิล ไม่บังคับ) */
+  assert.deepEqual(Object.keys(body.zones[0]).sort(),
+    ['discountType', 'discountValue', 'packsPerRound', 'productId', 'qty', 'rounds', 'zoneId']);
+  assert.equal(body.zones[0].packsPerRound, '2');
   assert.ok(!('amountsIncludeVat' in body), 'โหมด VAT ที่สามถูกถอด (มติ 23/09)');
   assert.deepEqual(
     Object.keys(body.installments[0]).sort(),
-    ['amount', 'coversFrom', 'coversTo', 'dueDate', 'label', 'note'],
+    ['amount', 'billingDate', 'coversFrom', 'coversTo', 'dueDate', 'label', 'note'],
   );
+  assert.equal(body.installments[0].billingDate, null, 'ไม่ได้ตั้ง = null (ไม่ใช่สตริงว่าง)');
+  assert.ok(!('billingDate' in body.opening), 'งวดยกมาไม่มีวันวางบิล (CHECK ของ 0389)');
 });
 
 test('⭐ "ยังไม่เคยเก็บเงิน" และ "ยังไม่เลือก" ส่ง opening = null ไม่ใช่ก้อนว่าง', () => {
@@ -1649,8 +1654,10 @@ test('⭐ บรรทัดใหม่จาก "เพิ่มรายก�
   assert.notEqual(a.key, b.key);
   /* บรรทัดว่างต้องไม่หายเงียบ ๆ ก่อนถึงด่าน — แผนเป็นคนบอกว่าขาดช่องไหน (ดูเทสต์ historicalLineIssues) */
   assert.deepEqual(historicalWizardBody({ ...emptyHistoricalWizard(), zones: [a] }, {}).zones, [{
-    zoneId: null, productId: null, qty: '', discountType: null, discountValue: '', rounds: '',
+    zoneId: null, productId: null, qty: '', discountType: null, discountValue: '', rounds: '', packsPerRound: '',
   }]);
+  /* ⭐ PR-D: แพ็คต่อรอบเริ่มว่าง (ไม่เดาจากผลประเมิน — ชิป "ประเมินไว้ n แพ็ค [ใช้]" ให้ผู้คีย์เลือกเอง) */
+  assert.equal(a.packsPerRound, '');
 });
 
 /* 🐞 อาการเดียวกับ UAT 23/09 (จอพูดถึงของที่ไม่มีอยู่จริง): VAT ย้ายลงขั้น ② แล้ว แต่ป้ายรองของรางยังบอกว่าขั้น ① ถาม VAT
@@ -2176,15 +2183,18 @@ test('⭐ historicalLineIssues: ข้อความใต้ช่องขอ
    🔴 สัญญาระหว่างแผนกับจอ: `field` ชี้ช่อง · `detail` ไม่มีป้าย · `message` = "รายการ N (ชื่อโซน): detail" (เลขในคอลัมน์ "#") */
 test('⭐ error รายช่องของแผนตัวจริง → ใต้ช่องของแถวนั้น (ผ่าน historicalIssuesWithRowKeys + historicalLineIssues)', () => {
   const state = filledState({
-    zones: [emptyHistoricalZone(), zoneFromProduct({ zoneId: 'ZN-1', productId: 'PRD-1', qty: '1.5', rounds: 'x' })],
+    zones: [emptyHistoricalZone(), zoneFromProduct({ zoneId: 'ZN-1', productId: 'PRD-1', qty: '1.5', rounds: 'x', packsPerRound: '2' })],
   });
   const plan = planHistoricalServiceOrder(historicalWizardBody(state, {}), planCtx);
   const lineErrors = plan.errors.filter((issue) => /^zones\./.test(issue.field));
-  assert.deepEqual(lineErrors.map((issue) => issue.field),
-    ['zones.0.zoneId', 'zones.0.productId', 'zones.0.qty', 'zones.1.qty', 'zones.1.rounds']);
+  /* ⭐ PR-D: บรรทัดเปล่าได้สองช่องบังคับใหม่ — ลำดับเดียวกับช่องบนจอ (มติ 29/09: จำนวนรอบบริการ → แต่ละครั้งกี่แพ็ค) */
+  assert.deepEqual(lineErrors.map((issue) => issue.field), [
+    'zones.0.zoneId', 'zones.0.productId', 'zones.0.qty', 'zones.0.rounds', 'zones.0.packsPerRound',
+    'zones.1.qty', 'zones.1.rounds',
+  ]);
   for (const issue of lineErrors) assert.ok(issue.message.endsWith(`: ${issue.detail}`), issue.field);
   assert.equal(lineErrors[0].message, 'รายการ 1: ต้องเลือกไซต์ · โซนจากทะเบียนไซต์ของลูกค้า — ห้ามพิมพ์ชื่อจุดเอง');
-  assert.equal(lineErrors[3].message, `รายการ 2 (ล็อบบี้): ${HISTORICAL_LINE_MESSAGES.qty}`);
+  assert.equal(lineErrors[5].message, `รายการ 2 (ล็อบบี้): ${HISTORICAL_LINE_MESSAGES.qty}`);
   assert.ok(lineErrors.every((issue) => stepOfField(issue.field) === 'zones'));
 
   const byRow = historicalLineIssues(historicalIssuesWithRowKeys(plan.errors, state.zones));
@@ -2192,6 +2202,8 @@ test('⭐ error รายช่องของแผนตัวจริง →
     zoneId: 'ต้องเลือกไซต์ · โซนจากทะเบียนไซต์ของลูกค้า — ห้ามพิมพ์ชื่อจุดเอง',
     productId: 'ต้องเลือกแพ็คเกจบริการ',
     qty: HISTORICAL_LINE_MESSAGES.qty,
+    packsPerRound: HISTORICAL_LINE_MESSAGES.packsMissing,
+    rounds: HISTORICAL_LINE_MESSAGES.roundsMissing,
   });
   assert.deepEqual(byRow.get(state.zones[1].key), { qty: HISTORICAL_LINE_MESSAGES.qty, rounds: HISTORICAL_LINE_MESSAGES.rounds });
 });
@@ -2528,4 +2540,369 @@ test('⭐ ป้ายจำนวนเดือนตัวเดียวข�
   const by = Object.fromEntries(historicalAsideRows(filledState({ contract: { ...CONTRACT, startDate: '2025-09-25', endDate: '2026-09-25' } }), {})
     .map((row) => [row.id, row.value]));
   assert.match(by.span, /12 เดือน · จบวันครบรอบ$/);
+});
+
+// ══ PR-D · ใบย้อนหลังงานบริการ: แพ็คต่อรอบ + รอบบังคับ + วันวางบิลขั้น ③ (mig 0394 · r2 S12 · IMPL_PLAN_D §3–§4.2) ══════════
+
+/* ⭐ แถวใหม่ทุกทาง (เพิ่มรายการ · เพิ่มหลายโซน · โหลดใบมาแก้) มีช่องแพ็คต่อรอบ · งวดมีช่องวันวางบิล — เริ่มว่างเสมอ
+   (ไม่มีค่าตั้งต้นให้การตัดสินใจ: ผลประเมินเป็นชิปให้กดใช้ ไม่ใช่ค่าที่เติมให้เงียบ ๆ) */
+test('PR-D ⭐ แถวว่างมี packsPerRound = "" · งวดว่างมี billingDate = "" · defaults เติมได้', () => {
+  assert.equal(emptyHistoricalZone().packsPerRound, '');
+  assert.equal(emptyHistoricalZone({ packsPerRound: 3 }).packsPerRound, '3');
+  assert.equal(emptyHistoricalZone({ packsPerRound: null }).packsPerRound, '');
+  assert.equal(emptyHistoricalInstallment().billingDate, '');
+  assert.equal(emptyHistoricalInstallment({ billingDate: '2026-10-05' }).billingDate, '2026-10-05');
+  assert.equal(intakeForm.historicalAddInstallment(filledState()).at(-1).billingDate, '', 'งวดใหม่จากปุ่ม "เพิ่มงวด" ยังไม่มีวันวางบิล');
+  const split = intakeForm.historicalSplitRows(intakeForm.historicalSplitPreview({
+    from: '2026-01-01', to: '2026-03-31', amount: 300, period: '1', dueRule: 'start',
+  }));
+  assert.deepEqual(split.map((row) => row.billingDate), ['', '', ''], 'แผ่นแบ่งงวดตั้งกำหนดชำระอย่างเดียว (DD5)');
+});
+
+/* ⭐ โหลดใบมาแก้: แพ็คต่อรอบมาจาก `order.lineZones` (GET ใบ — แถวโซนของงานบริการ · D3) จับคู่ด้วย id บรรทัด
+   · วันวางบิลมาจากงวดจริง (select('*')) · งวดยกมาไม่มีวันวางบิลเสมอ
+   🔴 เติมผิด/ไม่เติม = เปิดใบมาแก้แล้วแพ็คว่างทั้งใบ ⇒ กดถัดไปแดงทุกบรรทัด ชวนคีย์ใหม่จากความจำ (DD17) */
+const PRD_ORDER = {
+  ...ORDER,
+  lineZones: [
+    { lineId: 'SOL-1', zoneId: 'ZN-1', packsPerRound: 2, rounds: 12 },
+    { lineId: 'SOL-2', zoneId: 'ZN-2', packsPerRound: 1, rounds: 12 },
+  ],
+  installments: ORDER.installments.map((row) => (row.kind === 'opening'
+    ? { ...row, billingDate: null }
+    : { ...row, billingDate: '2026-10-05' })),
+};
+
+test('PR-D ⭐ wizardStateFromOrder: แพ็คต่อรอบจาก lineZones (ตาม id บรรทัด) · วันวางบิลของงวดที่ยังต้องเก็บ', () => {
+  const state = wizardStateFromOrder(PRD_ORDER);
+  assert.deepEqual(state.zones.map((z) => [z.zoneId, z.packsPerRound]), [['ZN-1', '2'], ['ZN-2', '1']], 'เรียงตามบรรทัด ไม่ใช่ตาม lineZones');
+  assert.deepEqual(state.installments.map((r) => r.billingDate), ['2026-10-05']);
+  assert.ok(!('billingDate' in state.opening), 'งวดยกมาไม่มีช่องวันวางบิล');
+
+  /* ไม่มี lineZones (ใบก่อน 0394 · GET รุ่นก่อน) / ไม่มีแถวของบรรทัดนั้น / ค่า null = ว่าง ไม่ใช่เดา */
+  assert.deepEqual(wizardStateFromOrder(ORDER).zones.map((z) => z.packsPerRound), ['', '']);
+  const partial = wizardStateFromOrder({ ...PRD_ORDER, lineZones: [{ lineId: 'SOL-2', zoneId: 'ZN-2', packsPerRound: null }] });
+  assert.deepEqual(partial.zones.map((z) => z.packsPerRound), ['', '']);
+  const other = wizardStateFromOrder({ ...PRD_ORDER, lineZones: [{ lineId: 'SOL-OTHER', zoneId: 'ZN-1', packsPerRound: 9 }] });
+  assert.deepEqual(other.zones.map((z) => z.packsPerRound), ['', ''], 'แถวของบรรทัดอื่นไม่ถูกยืม');
+  assert.deepEqual(wizardStateFromOrder(ORDER).installments.map((r) => r.billingDate), [''], 'ไม่มีวันวางบิล = ว่าง');
+});
+
+test('PR-D ⭐ ไป-กลับ: ใบ → ฟอร์ม → body → แผน ได้แพ็คต่อรอบและวันวางบิลชุดเดิม (ตัวเลขใน RPC)', () => {
+  const state = wizardStateFromOrder(PRD_ORDER);
+  const body = historicalWizardBody(state, { totalAmount: 261936 });
+  assert.deepEqual(body.zones.map((z) => [z.packsPerRound, z.rounds]), [['2', '12'], ['1', '12']]);
+  assert.deepEqual(body.installments.map((r) => r.billingDate), ['2026-10-05']);
+  assert.ok(!('billingDate' in body.opening));
+  const plan = planHistoricalServiceOrder(body, planCtx);
+  assert.deepEqual(plan.errors.filter((e) => /^zones\.|billingDate/.test(e.field)), []);
+  assert.deepEqual(plan.lines.map((l) => l.packsPerRound), [2, 1]);
+  assert.deepEqual(plan.installments.map((r) => r.billingDate), ['2026-10-05']);
+  const args = historicalServiceRpcArgs(plan, 'update');
+  assert.deepEqual(args.p_lines.map((l) => l.packsPerRound), [2, 1]);
+  assert.deepEqual(args.p_installments.map((r) => r.billingDate ?? 'ไม่มีคีย์'), ['ไม่มีคีย์', '2026-10-05']);
+});
+
+/* ⭐ body ของงวดส่งวันวางบิลตามห่วงโซ่ — งวดที่ยังต้องเก็บทุกงวด (ว่าง = null) · จ่ายครบทั้งใบ = ไม่มีงวดให้ส่ง */
+test('PR-D ⭐ ห่วงโซ่งวดพกวันวางบิล · body ส่ง text หรือ null · ช่องว่างล้วน = null', () => {
+  const state = filledState({
+    installments: [
+      emptyHistoricalInstallment({ label: 'ต.ค.', amount: '20000', dueDate: '2026-10-01', coversTo: '2026-10-31', billingDate: ' 2026-09-25 ' }),
+      emptyHistoricalInstallment({ label: 'พ.ย.–ธ.ค.', dueDate: '2026-11-01', billingDate: '   ' }),
+    ],
+  });
+  const chain = intakeForm.historicalInstallmentChain(state, { totalAmount: 261936 });
+  assert.deepEqual(chain.rows.map((row) => row.billingDate), ['2026-09-25', '']);
+  const body = historicalWizardBody(state, { totalAmount: 261936 });
+  assert.deepEqual(body.installments.map((row) => row.billingDate), ['2026-09-25', null]);
+  assert.deepEqual(historicalWizardBody(filledState({ openingFull: true }), { totalAmount: 261936 }).installments, []);
+});
+
+/* ⭐ ช่องใหม่ของบรรทัดได้ที่วางใต้ช่องของตัวเอง (`zones.<i>.packsPerRound`) · แก้ช่องนั้นแล้วข้อความหาย ·
+   ข้อระดับแถว (ผูกช่องไม่ได้) ดับเมื่อช่องไหนของแถวเปลี่ยน — รวมแพ็คต่อรอบ */
+test('PR-D ⭐ LINE_SLOT_KEYS: zones.<i>.packsPerRound ลงใต้ช่องแพ็คต่อรอบ · prune เมื่อแก้แพ็คต่อรอบ', () => {
+  const A = emptyHistoricalZone({ zoneId: 'Z-1', productId: 'PRD-1', qty: '3', rounds: '12', packsPerRound: '0' });
+  const B = emptyHistoricalZone({ zoneId: 'Z-2', productId: 'PRD-1', qty: '3', rounds: '12', packsPerRound: '' });
+  const zones = [A, B];
+  const issues = historicalIssuesWithRowKeys([
+    { field: 'zones.0.packsPerRound', message: 'รายการ 1: p', detail: HISTORICAL_LINE_MESSAGES.packs },
+    { field: 'zones.1.packsPerRound', message: 'รายการ 2: m', detail: HISTORICAL_LINE_MESSAGES.packsMissing },
+    { field: 'zones.1', message: 'รายการ 2: แถว', detail: 'แถว' },
+  ], zones);
+  const byRow = historicalLineIssues(issues);
+  assert.deepEqual(byRow.get(A.key), { packsPerRound: HISTORICAL_LINE_MESSAGES.packs });
+  assert.deepEqual(byRow.get(B.key), { packsPerRound: HISTORICAL_LINE_MESSAGES.packsMissing, row: 'แถว' });
+  const prev = { ...filledState(), zones };
+  const edit = (next) => historicalPruneIssues(issues, prev, { ...prev, zones: next }).map((issue) => issue.field);
+  assert.deepEqual(edit([{ ...A, packsPerRound: '2' }, B]), ['zones.1.packsPerRound', 'zones.1'], 'แก้แพ็คของแถว A = ข้อของ A หาย');
+  assert.deepEqual(edit([{ ...A, rounds: '6' }, B]), ['zones.0.packsPerRound', 'zones.1.packsPerRound', 'zones.1'],
+    'แก้ช่องอื่น = ข้อของช่องแพ็คยังจริงอยู่');
+  assert.deepEqual(edit([A, { ...B, packsPerRound: '1' }]), ['zones.0.packsPerRound'], 'ข้อระดับแถวดับเมื่อช่องไหนของแถวเปลี่ยน');
+  assert.equal(historicalIssueText({ ...issues[0] }, historicalZoneLines({ zones })), `รายการ 1: ${HISTORICAL_LINE_MESSAGES.packs}`);
+  assert.equal(stepOfField('zones.0.packsPerRound'), 'zones');
+  assert.equal(historicalFieldAnchorId('zones.0.packsPerRound'), 'hist-f-zones-0-packsperround');
+});
+
+/* ⭐ วันวางบิลผิดรูป = ข้อของช่องนั้น (แดงหลังกด "ถัดไป" — ไม่ live) · ว่างได้ · ตัวตรวจเดียวกับแผน (normalizeInstallmentBilling) */
+test('PR-D ⭐ historicalMoneyIssues: วันวางบิลผิดรูป/ปีผิด = installments.<i>.billingDate (ไม่ live) · ว่างผ่าน · prune เมื่อแก้', () => {
+  const rows = [
+    emptyHistoricalInstallment({ label: 'ต.ค.', amount: '20000', dueDate: '2026-10-01', coversTo: '2026-10-31', billingDate: '2026-02-30' }),
+    emptyHistoricalInstallment({ label: 'พ.ย.–ธ.ค.', dueDate: '2026-11-01', billingDate: '2200-01-01' }),
+  ];
+  const state = filledState({ installments: rows });
+  const issues = intakeForm.historicalMoneyIssues(state, { evidenceFileCount: 1, todayIso: '2026-09-25', totalAmount: 261936 })
+    .filter((issue) => issue.field.endsWith('.billingDate'));
+  assert.deepEqual(issues, [
+    { field: 'installments.0.billingDate', message: 'งวดที่ 2: วันวางบิลไม่ถูกต้อง', detail: 'วันวางบิลไม่ถูกต้อง', rowKey: rows[0].key },
+    { field: 'installments.1.billingDate', message: 'งวดที่ 3: ปีของวันวางบิลผิด', detail: 'ปีของวันวางบิลผิด', rowKey: rows[1].key },
+  ]);
+  assert.ok(issues.every((issue) => issue.live !== true), 'แดงหลังกดเท่านั้น (กฎบ้าน)');
+  assert.deepEqual(intakeForm.historicalVisibleIssues(issues, { revealed: false }), { issues: [], summary: false });
+  assert.equal(intakeForm.historicalVisibleIssues(issues, { revealed: true }).issues.length, 2);
+  /* ข้อความเดียวกับแผน — ขั้น ③ ของจอกับพรีวิวของ server พูดคำเดียว */
+  const plan = planHistoricalServiceOrder(historicalWizardBody(state, { totalAmount: 261936 }), planCtx);
+  assert.deepEqual(plan.errors.filter((e) => e.field.endsWith('.billingDate')).map((e) => e.message), issues.map((i) => i.message));
+  /* ผ่าน: ว่าง / วันที่ถูก */
+  const fine = filledState({ installments: [emptyHistoricalInstallment({ ...rows[0], billingDate: '' }), emptyHistoricalInstallment({ ...rows[1], billingDate: '2026-11-25' })] });
+  assert.ok(!intakeForm.historicalMoneyIssues(fine, { evidenceFileCount: 1, totalAmount: 261936 }).some((i) => i.field.endsWith('.billingDate')));
+  /* ใต้ช่องของแถว · prune เมื่อช่องนั้นเปลี่ยน */
+  const byRow = intakeForm.historicalInstallmentIssues(issues);
+  assert.equal(byRow.get(rows[0].key).billingDate, 'วันวางบิลไม่ถูกต้อง');
+  const prev = state;
+  const next = { ...state, installments: [{ ...rows[0], billingDate: '2026-09-25' }, rows[1]] };
+  assert.deepEqual(historicalPruneIssues(issues, prev, next).map((issue) => issue.field), ['installments.1.billingDate']);
+  assert.equal(stepOfField('installments.0.billingDate'), 'money');
+  assert.equal(historicalFieldAnchorId('installments.0.billingDate'), 'hist-f-installments-0-billingdate');
+});
+
+/* ⭐ รหัสของ 0394 (P4/P5) พาไปขั้น ② ที่มีช่องให้แก้ — ไม่ใช่ "รหัสที่ระบบไม่รู้จัก" */
+test('PR-D ⭐ historicalSaveExit: historical_so_line_rounds_required / _packs_invalid → ขั้น ②', () => {
+  for (const code of ['historical_so_line_rounds_required', 'historical_so_line_packs_invalid']) {
+    const bad = historicalSaveExit({ status: 400, data: { code, error: 'x' } });
+    assert.deepEqual([bad.kind, bad.goToStep, bad.canEdit], ['invalid', 'zones', true], code);
+    const blocked = historicalSaveExit({ status: 409, data: { code, error: 'x' } });
+    assert.deepEqual([blocked.kind, blocked.goToStep, blocked.unmapped], ['blocked', 'zones', false], code);
+  }
+});
+
+test('PR-D ⭐ HISTORICAL_SERVICE_TEXT: คำของขั้น ② และหน้าต่างเพิ่มหลายโซน (§3.1–§3.2) — ที่เดียวของคำว่า "แพ็ค"', () => {
+  const T = intakeForm.HISTORICAL_SERVICE_TEXT;
+  assert.ok(Object.isFrozen(T) && Object.isFrozen(T.bulk));
+  /* ⭐ มติเจ้าของ 29/09 (ใบใหม่และใบย้อนหลัง): ป้ายช่อง = "แต่ละครั้งกี่แพ็ค" (SERVICE_PACKS_LABEL) */
+  assert.equal(T.packsLabel, 'แต่ละครั้งกี่แพ็ค');
+  assert.equal(T.packsUnit, 'แพ็ค');
+  assert.equal(T.packsAria('รายการ 2'), 'แต่ละครั้งกี่แพ็ค รายการ 2');
+  assert.equal(T.roundsNote, 'บังคับ · จำนวนครั้งที่ต้องเข้าโซนนี้ตลอดสัญญา');
+  assert.equal(T.assessed(12), 'ประเมินไว้ 12 แพ็ค');
+  assert.equal(T.assessed(1200), 'ประเมินไว้ 1,200 แพ็ค');
+  assert.equal(T.useAssessed, 'ใช้');
+  assert.equal(T.useAssessedAria(3, 'รายการ 1'), 'ใช้ผลประเมิน 3 แพ็คในช่องแต่ละครั้งกี่แพ็คของรายการ 1');
+  assert.equal(T.lineTotal(24), 'รวมทั้งรายการ 24 แพ็ค', 'คำเดียวกับท้ายบรรทัดของใบใหม่');
+  assert.equal(T.assessFailed, 'อ่านผลประเมินของโซนไม่สำเร็จ — ใส่แต่ละครั้งกี่แพ็คเองได้ (ไม่กระทบการเลือกโซน)');
+  assert.equal(T.assessRetry, 'ลองอ่านผลประเมินอีกครั้ง');
+  assert.equal(T.bulk.title, 'เพิ่มหลายโซน');
+  assert.equal(T.bulk.subtitle,
+    'ติ๊กโซนแล้วใส่แพ็คเกจ · จำนวน · จำนวนรอบบริการ · แต่ละครั้งกี่แพ็คทีเดียว — ได้หนึ่งบรรทัดต่อโซน แก้ทีละบรรทัดต่อได้ในตาราง · บรรทัดที่มีอยู่แล้วไม่ถูกแตะ');
+  /* ช่องเดิมของหน้าต่าง (คำคงเดิม — ย้ายมาอยู่ที่นี่ให้ตัวห่อใช้) */
+  assert.deepEqual([T.bulk.packageLabel, T.bulk.qtyLabel, T.bulk.priceLabel, T.bulk.priceHint],
+    ['แพ็คเกจ', 'จำนวน (ต่อบรรทัด)', 'ราคา/หน่วย', 'จากฐานข้อมูลสินค้า']);
+  assert.equal(T.bulk.qtyHint('แพ็คเกจ'), 'หน่วย: แพ็คเกจ · เว้นว่างได้ — ใส่ทีละบรรทัดทีหลัง');
+  assert.equal(T.bulk.qtyHint(null), 'หน่วย: — · เว้นว่างได้ — ใส่ทีละบรรทัดทีหลัง');
+  assert.equal(T.bulk.packsLabel, 'แต่ละครั้งกี่แพ็ค (ทุกบรรทัด)');
+  /* ⭐ มติเจ้าของ 29/09: คำเรียกรอบ = "จำนวนรอบบริการ" (SERVICE_ROUNDS_LABEL) — ป้าย + aria ของช่องรอบทุกบรรทัด */
+  assert.equal(T.bulk.roundsLabel, 'จำนวนรอบบริการ (ทุกบรรทัด)');
+  assert.equal(T.bulk.roundsAria, 'จำนวนรอบบริการของทุกบรรทัดที่จะเพิ่ม');
+  assert.equal(T.bulk.roundsUnit, 'รอบ');
+  assert.equal(T.bulk.noPackage, 'เลือกแพ็คเกจก่อน');
+  assert.equal(T.bulk.assessLoading, 'กำลังอ่านผลประเมินของโซน… — “ตามผลประเมินของแต่ละโซน” ยังไม่มีตัวเลขให้');
+  assert.equal(T.bulk.assessFailed,
+    'ยังอ่านผลประเมินไม่ได้ — “ตามผลประเมินของแต่ละโซน” จะได้ช่องว่างทุกโซน · ใช้ “เท่ากันทุกโซน” หรือใส่ทีละบรรทัด');
+  assert.equal(T.bulk.emptyRegistry, 'ลูกค้ารายนี้ยังไม่มีไซต์ที่ใช้งานอยู่ในทะเบียน — แจ้งฝ่าย TS เพิ่มไซต์ก่อน');
+  assert.deepEqual([T.bulk.confirm(0), T.bulk.confirm(3), T.bulk.confirm(1200)], ['เพิ่มบรรทัด', 'เพิ่ม 3 บรรทัด', 'เพิ่ม 1,200 บรรทัด']);
+  assert.equal(T.bulk.taken(4), 'อยู่ในใบแล้ว (รายการ 4)');
+  assert.equal(T.bulk.siteError('อ่านโซนไม่สำเร็จ'), 'อ่านโซนไม่สำเร็จ — ปิดหน้าต่างแล้วกด “ลองอ่านไซต์ที่พังอีกครั้ง”');
+  /* §0.2 ข้อ 14: รูปของ "แพ็ค" ที่อนุญาตในข้อความของใบย้อนหลัง */
+  const strings = [];
+  const walk = (value) => {
+    if (typeof value === 'string') strings.push(value);
+    else if (typeof value === 'function') strings.push(String(value(7, 'รายการ 1')));
+    else if (value && typeof value === 'object') Object.values(value).forEach(walk);
+  };
+  walk(T);
+  const allowed = /แต่ละครั้งกี่แพ็ค|แพ็ค\/รอบ|ประเมินไว้ 7 แพ็ค|ทั้งรายการ 7 แพ็ค|ผลประเมิน 7 แพ็คใน|^แพ็ค$|แพ็คเกจ/g;
+  for (const text of strings) assert.doesNotMatch(text.replace(allowed, ''), /แพ็ค/, text);
+  for (const text of strings) assert.doesNotMatch(text, /แพ็คต่อรอบ/, `คำเดิมก่อนมติ 29/09: ${text}`);
+});
+
+/* ⭐ ผลประเมินของโซนมาจาก `GET /api/service/customers/[id]/zones` (ทะเบียนของ PR-A · อ่านแยกจากตัวโหลดรายไซต์ — V9)
+   · จำนวนเต็ม 1–9999 เท่านั้น (ขอบเดียวกับหน้าต่างเพิ่มหลายโซนของงานบริการ) · อย่างอื่น = ไม่มีชิป ไม่ใช่ 0 */
+test('PR-D ⭐ historicalAssessedByZone: sites[].zones[].assessedPackages → Map · ค่าที่ใช้ไม่ได้ถูกข้าม', () => {
+  const map = intakeForm.historicalAssessedByZone({
+    sites: [
+      { id: 'ST-1', zones: [
+        { id: 'Z-1', assessedPackages: 3 }, { id: 'Z-2', assessedPackages: null }, { id: 'Z-3', assessedPackages: 0 },
+        { id: 'Z-4', assessedPackages: '5' }, { id: 'Z-5', assessedPackages: 2.5 }, { id: 'Z-6', assessedPackages: -1 },
+        { id: 'Z-7', assessedPackages: 10000 }, { id: 'Z-8', assessedPackages: 'สาม' }, { id: '', assessedPackages: 4 },
+        { id: 'Z-9', assessedPackages: true }, { id: 'Z-10' },
+      ] },
+      { id: 'ST-2', zones: [{ id: 'Z-11', assessedPackages: 9999 }, { id: 'Z-1', assessedPackages: 8 }] },
+      { id: 'ST-3' },
+      null,
+    ],
+  });
+  assert.ok(map instanceof Map);
+  assert.deepEqual([...map.entries()], [['Z-1', 3], ['Z-4', 5], ['Z-11', 9999]], 'โซนซ้ำ = ตัวแรกชนะ (ลำดับเดียวกับ registryIndex)');
+  for (const junk of [null, undefined, {}, { sites: 'x' }, [], 'x']) assert.equal(intakeForm.historicalAssessedByZone(junk).size, 0);
+});
+
+test('PR-D ⭐ historicalLineServiceView: ชิปประเมิน · ปุ่ม "ใช้" เฉพาะเมื่อค่าต่างจากช่อง · ทั้งรายการ = แพ็ค × รอบ เมื่อถูกทั้งคู่', () => {
+  const assessed = new Map([['Z-1', 3]]);
+  const view = (row) => intakeForm.historicalLineServiceView(emptyHistoricalZone(row), assessed);
+  assert.deepEqual(view({ zoneId: 'Z-1', packsPerRound: '', rounds: '12' }),
+    { assessed: 3, canUse: true, total: null, totalText: null });
+  assert.deepEqual(view({ zoneId: 'Z-1', packsPerRound: '3', rounds: '12' }),
+    { assessed: 3, canUse: false, total: 36, totalText: 'รวมทั้งรายการ 36 แพ็ค' });
+  assert.deepEqual(view({ zoneId: 'Z-1', packsPerRound: '2', rounds: '12' }),
+    { assessed: 3, canUse: true, total: 24, totalText: 'รวมทั้งรายการ 24 แพ็ค' });
+  assert.deepEqual(view({ zoneId: 'Z-2', packsPerRound: '2', rounds: '1000' }),
+    { assessed: null, canUse: false, total: 2000, totalText: 'รวมทั้งรายการ 2,000 แพ็ค' });
+  for (const [packs, rounds] of [['0', '12'], ['10000', '12'], ['1.5', '12'], ['2', ''], ['2', '0'], ['2', '2.5'], ['', '']]) {
+    const v = view({ zoneId: 'Z-2', packsPerRound: packs, rounds });
+    assert.deepEqual([v.total, v.totalText], [null, null], `${packs} × ${rounds}`);
+  }
+  assert.deepEqual(view({ zoneId: '', packsPerRound: '2', rounds: '3' }).assessed, null, 'ยังไม่เลือกโซน = ไม่มีชิป');
+  assert.deepEqual(intakeForm.historicalLineServiceView(emptyHistoricalZone({ zoneId: 'Z-1' }), null),
+    { assessed: null, canUse: false, total: null, totalText: null }, 'ยังโหลด/โหลดพัง = ไม่มีชิป');
+  assert.equal(intakeForm.historicalLineServiceView(emptyHistoricalZone({ zoneId: 'Z-1' }), { 'Z-1': 4 }).assessed, 4, 'object ธรรมดาก็ได้');
+});
+
+/* ⭐ หน้าต่าง "เพิ่มหลายโซน" ของใบย้อนหลัง = ตัวห่อของ ZonesBulkModal (D27) — ตัวแปลงทะเบียนรายไซต์ของขั้น ② เป็นรูปของตัวกลาง
+   · ไซต์ที่อ่านโซนไม่สำเร็จ = `zones: []` + `loadError` (ทางออกด้วยชื่อปุ่มที่มีอยู่จริงบนขั้น ②)
+   · โซนพกผลประเมินจากทะเบียนของลูกค้า (ตัวโหลดรายไซต์ไม่มีตัวเลขนี้ — V9) */
+test('PR-D ⭐ historicalBulkRegistrySites: รูปของ ZonesBulkModal · ไซต์ที่พังพก loadError · โซนพก assessedPackages', () => {
+  const registry = intakeForm.historicalBulkRegistrySites({
+    sites: [site('ST-1', 'ST-1002', 'สยามพารากอน'), { ...site('ST-2', 'ST-1044', 'สยามดิสคัฟเวอรี่'), isActive: false }, site('ST-3', 'ST-2050', 'ลาดพร้าว')],
+    zonesBySite: {
+      'ST-1': [zone('Z-1', 'Z-1002-01', 'ล็อบบี้'), zone('Z-2', 'Z-1002-02', 'ทางเชื่อม', { isActive: false })],
+      'ST-2': [zone('Z-3', 'Z-1044-01', 'ทางเข้า')],
+      'ST-3': [zone('Z-4', 'Z-2050-01', 'ชั้น 1')],
+    },
+    siteErrors: { 'ST-3': 'อ่านโซนไม่สำเร็จ (500)' },
+    assessedByZone: new Map([['Z-1', 3], ['Z-4', 9]]),
+  });
+  assert.deepEqual(registry.map((s) => [s.id, s.code, s.name, s.isActive, s.loadError]), [
+    ['ST-1', 'ST-1002', 'สยามพารากอน', true, null],
+    ['ST-2', 'ST-1044', 'สยามดิสคัฟเวอรี่', false, null],
+    ['ST-3', 'ST-2050', 'ลาดพร้าว', true, 'อ่านโซนไม่สำเร็จ (500) — ปิดหน้าต่างแล้วกด “ลองอ่านไซต์ที่พังอีกครั้ง”'],
+  ]);
+  assert.deepEqual(registry[0].zones.map((z) => [z.id, z.siteId, z.isActive, z.assessedPackages]),
+    [['Z-1', 'ST-1', undefined, 3], ['Z-2', 'ST-1', false, null]]);
+  assert.deepEqual(registry[2].zones, [], 'ไซต์ที่พัง = ไม่มีโซนให้ติ๊ก (ยังไม่รู้ว่าข้างในมีอะไร)');
+  /* ทางออกของไซต์ที่พังชี้ปุ่มที่มีอยู่จริงบนขั้น ② (pin ของ historicalRegisterUi ตามข้อความนี้) */
+  assert.match(registry[2].loadError, /ปิดหน้าต่างแล้วกด “ลองอ่านไซต์ที่พังอีกครั้ง”$/);
+  /* ยังไม่มีผลประเมิน (โหลด/พัง) = ทุกโซน null · ไม่มีอะไรเลย = [] */
+  const noAssess = intakeForm.historicalBulkRegistrySites({ sites: BROWSE.sites, zonesBySite: BROWSE.zonesBySite });
+  assert.ok(noAssess.flatMap((s) => s.zones).every((z) => z.assessedPackages === null));
+  assert.equal(noAssess.length, BROWSE.sites.length);
+  assert.deepEqual(intakeForm.historicalBulkRegistrySites(), []);
+});
+
+test('PR-D ⭐ historicalBulkTaken: โซนที่อยู่ในใบแล้ว → "อยู่ในใบแล้ว (รายการ n)" (เลขในคอลัมน์ "#" · ตัวแรกชนะ) = ติดด่าน', () => {
+  const rows = [emptyHistoricalZone({ zoneId: 'Z-1' }), emptyHistoricalZone(), emptyHistoricalZone({ zoneId: 'Z-3' }), emptyHistoricalZone({ zoneId: 'Z-1' })];
+  const taken = intakeForm.historicalBulkTaken(rows);
+  assert.ok(taken instanceof Map);
+  assert.deepEqual([...taken.entries()], [['Z-1', 'อยู่ในใบแล้ว (รายการ 1)'], ['Z-3', 'อยู่ในใบแล้ว (รายการ 3)']]);
+  assert.equal(typeof taken.get('Z-1'), 'string', 'สตริง = ติด (zonePickerOptions.takenOf)');
+  assert.equal(intakeForm.historicalBulkTaken().size, 0);
+});
+
+test('PR-D ⭐ ด่านช่องของหน้าต่างเพิ่มหลายโซน: แพ็คเกจ → จำนวน → รอบ (ข้อแรกที่ติด) · รอบบังคับ', () => {
+  const R = intakeForm.historicalBulkRoundsIssue;
+  for (const blank of ['', '  ', null, undefined]) assert.equal(R(blank), HISTORICAL_LINE_MESSAGES.roundsMissing, JSON.stringify(blank));
+  for (const bad of ['0', '2.5', '-1', 'x', 0, 3e9]) assert.equal(R(bad), HISTORICAL_LINE_MESSAGES.rounds, JSON.stringify(bad));
+  for (const ok of ['12', 12, ' 6 ']) assert.equal(R(ok), null, JSON.stringify(ok));
+  const F = intakeForm.historicalBulkFieldsIssue;
+  assert.equal(F({ productId: '', qty: '1.5', rounds: '' }), 'เลือกแพ็คเกจก่อน');
+  assert.equal(F({ productId: 'PRD-1', qty: '1.5', rounds: '' }), HISTORICAL_LINE_MESSAGES.qty);
+  assert.equal(F({ productId: 'PRD-1', qty: '', rounds: '' }), HISTORICAL_LINE_MESSAGES.roundsMissing, 'จำนวนว่างได้ · รอบว่างไม่ได้');
+  assert.equal(F({ productId: 'PRD-1', qty: '12', rounds: '0' }), HISTORICAL_LINE_MESSAGES.rounds);
+  assert.equal(F({ productId: 'PRD-1', qty: '12', rounds: '12' }), null);
+  assert.equal(F(), 'เลือกแพ็คเกจก่อน');
+});
+
+test('PR-D ⭐ historicalBulkAddRows: พกรอบ + แพ็คต่อรอบรายโซน (Map · null = ว่าง) · ไม่ส่งสองค่าใหม่ = ผลเดิมทุกช่อง', () => {
+  const added = historicalBulkAddRows({
+    ...BROWSE, rows: [], zoneIds: ['Z-4', 'Z-1', 'Z-2'], qty: '12', rounds: ' 12 ',
+    packsByZone: new Map([['Z-1', 3], ['Z-2', null], ['Z-4', 1]]),
+  });
+  assert.deepEqual(added.map((row) => [row.zoneId, row.qty, row.rounds, row.packsPerRound]), [
+    ['Z-1', '12', '12', '3'], ['Z-2', '12', '12', ''], ['Z-4', '12', '12', '1'],
+  ], 'ลำดับตามทะเบียน · ผลประเมินที่ไม่มี = ว่าง (ใส่ทีหลังในตาราง)');
+  const old = historicalBulkAddRows({ ...BROWSE, rows: [], zoneIds: ['Z-1', 'Z-2'], qty: '5' });
+  const strip = (row) => { const { key, ...rest } = row; return rest; };
+  const same = historicalBulkAddRows({ ...BROWSE, rows: [], zoneIds: ['Z-1', 'Z-2'], qty: '5', rounds: undefined, packsByZone: undefined });
+  assert.deepEqual(old.map(strip), same.map(strip));
+  assert.deepEqual(old.map((row) => [row.rounds, row.packsPerRound]), [['', ''], ['', '']]);
+  const plain = historicalBulkAddRows({ ...BROWSE, rows: [], zoneIds: ['Z-1'], packsByZone: { 'Z-1': 7 } });
+  assert.equal(plain[0].packsPerRound, '7', 'object ธรรมดาก็ได้');
+});
+
+/* ⭐ บอกผลก่อนกด (กฎบ้าน) — ต่อท้ายด้วย จำนวนรอบบริการ → แต่ละครั้งกี่แพ็ค (มติ 29/09 · ลำดับเดียวกับใบใหม่ · ประโยคแพ็คตาม
+   zonesBulkConsequence ของหน้าต่างกลาง แต่พูด "บรรทัด") เมื่อตัวห่อส่งโหมดมา · ไม่ส่งโหมด = ประโยคเดิมทุกตัวอักษร */
+test('PR-D ⭐ historicalBulkConsequence + โหมดรอบ/แพ็ค · ไม่ส่งโหมด = ข้อความเดิม', () => {
+  const C = historicalBulkConsequence;
+  assert.equal(C({ count: 3, qty: '12', unitPrice: 1200, mode: 'assessed', assessed: 2, blank: 1, rounds: '12' }),
+    'จะเพิ่ม 3 บรรทัด · บรรทัดละ 12 × ฿1,200.00 = ฿14,400.00 · รวม ฿43,200.00 · จำนวนรอบบริการ 12 รอบ · แต่ละครั้งกี่แพ็ค: ตามผลประเมิน 2 โซน · ยังว่าง 1 โซน');
+  assert.equal(C({ count: 3, qty: '', unitPrice: 1200, mode: 'equal', packs: 2, rounds: '12' }),
+    'จะเพิ่ม 3 บรรทัด · จำนวนใส่ทีละบรรทัดในตาราง · จำนวนรอบบริการ 12 รอบ · แต่ละครั้งเท่ากันทุกบรรทัด ครั้งละ 2 แพ็ค');
+  assert.equal(C({ count: 3, qty: '', unitPrice: 1200, mode: 'equal', packs: null, rounds: '' }),
+    'จะเพิ่ม 3 บรรทัด · จำนวนใส่ทีละบรรทัดในตาราง · แต่ละครั้งเท่ากันทุกบรรทัด ครั้งละ — แพ็ค', 'รอบยังผิด = ไม่พูดรอบ · แพ็คยังผิด = ขีด');
+  assert.equal(C({ count: 3, qty: '12', unitPrice: 0, mode: 'assessed', assessed: 0, blank: 3, rounds: '6' }),
+    'จะเพิ่ม 3 บรรทัด · บรรทัดละจำนวน 12 · จำนวนรอบบริการ 6 รอบ · แต่ละครั้งกี่แพ็ค: ตามผลประเมิน 0 โซน · ยังว่าง 3 โซน — แพ็คเกจนี้ยังไม่ตั้งราคาในฐานข้อมูลสินค้า จึงยังไม่มียอด');
+  assert.equal(C({ count: 0, qty: '12', unitPrice: 1200, mode: 'assessed', rounds: '12' }), 'ยังไม่ได้เลือกโซน');
+  assert.equal(C({ count: 1200, qty: '1', unitPrice: 10, mode: 'assessed', assessed: 1000, blank: 200, rounds: '1' }),
+    'จะเพิ่ม 1,200 บรรทัด · บรรทัดละ 1 × ฿10.00 = ฿10.00 · รวม ฿12,000.00 · จำนวนรอบบริการ 1 รอบ · แต่ละครั้งกี่แพ็ค: ตามผลประเมิน 1,000 โซน · ยังว่าง 200 โซน');
+  /* ไม่ส่งโหมด = ข้อความเดิมเป๊ะ (pin ของ historicalRegisterUi ยังเขียวที่คลื่น W1) */
+  assert.equal(C({ count: 3, qty: '12', unitPrice: 1200, rounds: '12', assessed: 1 }),
+    'จะเพิ่ม 3 บรรทัด · บรรทัดละ 12 × ฿1,200.00 = ฿14,400.00 · รวม ฿43,200.00');
+  assert.equal(C({ count: 43, qty: '', unitPrice: 1200 }), 'จะเพิ่ม 43 บรรทัด — จำนวนใส่ทีละบรรทัดในตาราง');
+  assert.equal(C({ count: 3, qty: '12', unitPrice: null }),
+    'จะเพิ่ม 3 บรรทัด · บรรทัดละจำนวน 12 — แพ็คเกจนี้ยังไม่ตั้งราคาในฐานข้อมูลสินค้า จึงยังไม่มียอด');
+});
+
+/* ⭐ ขั้น ③ คอลัมน์ "วันวางบิล" (DD5 · กำหนดวางบิลรุ่นสี่): ขึ้นเมื่อรู้กติกาลูกค้าและไม่ใช่ "ไม่ต้องวางบิล"
+   · วันที่เก็บอยู่แล้ว **ไม่ถูกซ่อน** ไม่ว่ากติกาเป็นอะไร (installmentNeed ของรุ่นสี่) · อ่านกติกาไม่ได้ = ซ่อน + บอกทางออก */
+test('PR-D ⭐ historicalBillingColumn: need none/required/unknown · legacy {credit:false} · อ่านไม่ได้ · มีวันเดิม = โชว์เสมอ', () => {
+  const B = intakeForm.historicalBillingColumn;
+  const ready = (rule, extra = {}) => ({ status: 'ready', supported: true, rule, ...extra });
+  const empty = [emptyHistoricalInstallment(), emptyHistoricalInstallment({ billingDate: '  ' })];
+  const dated = [emptyHistoricalInstallment(), emptyHistoricalInstallment({ billingDate: '2026-10-05' })];
+  /* review 29/09: + `readOnly` / `readOnlyNote` — ขึ้นเพราะวันเดิมเท่านั้น = วันเดิมอ่านอย่างเดียว + ล้าง (server ตีกลับวันใหม่) */
+  const T0 = intakeForm.HISTORICAL_BILLING_TEXT;
+  const col = (show, { readOnly = false, failedNote = null, readOnlyNote = null } = {}) => ({ show, readOnly, failedNote, readOnlyNote });
+  assert.deepEqual(B(ready({ v: 4, need: 'none' }), empty), col(false), 'ไม่ต้องวางบิล = ไม่มีคอลัมน์');
+  assert.deepEqual(B(ready({ v: 4, need: 'required' }), empty), col(true));
+  assert.deepEqual(B(ready({ v: 4, need: 'unknown' }), empty), col(true), 'ยังไม่ระบุ = ให้กรอกได้ (ไม่บังคับ)');
+  assert.deepEqual(B(ready(null), empty), col(true), 'ยังไม่ตั้งกติกา = ยังไม่ระบุ');
+  assert.deepEqual(B(ready({ credit: false }), empty), col(true), 'รูปเดิม (0390) = ต้องวางบิล');
+  assert.deepEqual(B(ready({ credit: false }, { supported: false }), empty), col(false), 'ฐานยังไม่มีคอลัมน์กติกา');
+  assert.deepEqual(B(ready({ v: 4, need: 'none' }), dated), col(true, { readOnly: true, readOnlyNote: T0.lockedNone }),
+    'วันที่เก็บอยู่ไม่ถูกซ่อน — แต่แก้ไม่ได้ (ล้างได้)');
+  assert.deepEqual(B(ready({ v: 4, need: 'required' }), dated), col(true), 'ต้องวางบิล = แก้ได้');
+  assert.deepEqual(B({ status: 'error', detail: 'x' }, empty), col(false, { failedNote: T0.ruleFailed }));
+  assert.deepEqual(B({ status: 'error', detail: 'x' }, dated), col(true, { readOnly: true, readOnlyNote: T0.lockedFailed }),
+    'มีวันเดิม = คอลัมน์อยู่ (อ่านอย่างเดียว) ไม่ต้องบอกว่าซ่อน');
+  assert.deepEqual(B(null, empty), col(false), 'ยังโหลดกติกา = ยังไม่มีคอลัมน์ ไม่มีเหตุ');
+  assert.deepEqual(B(null, dated), col(true, { readOnly: true }), 'ยังโหลดกติกา + วันเดิม = อ่านอย่างเดียวชั่วครู่ ไม่มีบรรทัดเหตุ');
+  assert.deepEqual(B(), col(false));
+  /* งวดยกมาไม่นับ — วันวางบิลเป็นของงวดที่ยังต้องเก็บเท่านั้น */
+  assert.deepEqual(B(ready({ v: 4, need: 'none' }), [{ kind: 'opening', billingDate: '2026-10-05' }]), col(false));
+  const T = intakeForm.HISTORICAL_BILLING_TEXT;
+  assert.ok(Object.isFrozen(T));
+  assert.equal(T.head, 'วันวางบิล');
+  assert.equal(T.sub, 'ไม่บังคับ · วันที่ส่งใบวางบิลของงวด');
+  assert.equal(T.aria('งวดที่ 2'), 'วันวางบิลงวดที่ 2');
+  assert.equal(T.ruleFailed,
+    'อ่านกติกาวางบิลของลูกค้าไม่ได้ — ช่องวันวางบิลซ่อนไว้ · ตั้งวันวางบิลทีหลังที่แท็บการชำระของใบ (ปุ่ม ‘ตั้งวันงวด’)');
+  assert.doesNotMatch(JSON.stringify(Object.values(T).filter((v) => typeof v === 'string')), /รอเหตุการณ์/, 'ใบย้อนหลังไม่มี "รอเหตุการณ์" (V16)');
 });

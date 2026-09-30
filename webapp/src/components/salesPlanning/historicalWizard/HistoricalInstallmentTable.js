@@ -10,6 +10,9 @@
 //   ขัดมติ "แดงหลังกดถัดไป" ของฟอร์มนี้ (4) ยอด ±1 สตางค์ ≥ 0 ของ 0374 ไม่ใช่กฎ < 0.005 ของตัวนั้น
 //   ⇒ หน้าปรับงวดหลังอนุมัติของใบสั่งขายไม่ถูกแตะเลย
 // ⚠️ ข้อความใต้ช่องมาจากผู้เรียก (`historicalInstallmentIssues` — ผูกกับ key ของงวด ไม่ใช่ลำดับ)
+// ⚠️ วันวางบิลเป็นช่องวันเฉย ๆ (ไม่ยืม InstallmentDateEditor — ต้องมี hook โหมดตั้งวัน + id งวด · ไม่มี 'รอเหตุการณ์'
+//   เพราะงวดของใบย้อนหลังต้องมีวันครบกำหนด) · PR-D (mig 0394/P7) · คอลัมน์ขึ้นตามธง `billingColumn` ของผู้เรียก
+//   (`historicalBillingColumn` — ตัวตัดสินเดียว) · ไม่บังคับ ⇒ หัวไม่มีดาว · งวดยกมา = ขีด (CHECK ของ 0389)
 import { useState } from "react";
 import { Lock, MessageSquarePlus, Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
@@ -21,7 +24,7 @@ import Textarea from "@/components/ui/Textarea";
 import { TableScroll } from "@/components/ui/Table";
 import { NA, fmtDate, fmtNumber } from "@/lib/format";
 import { DOC_DATE_MAX, DOC_DATE_MIN, INSTALLMENT_NOTE_MAX, OPENING_INSTALLMENT_LABEL } from "@/lib/sales/historicalOrders";
-import { INSTALLMENT_LABEL_MAX, historicalFieldAnchorId } from "@/lib/sales/historicalIntakeForm";
+import { HISTORICAL_BILLING_TEXT, INSTALLMENT_LABEL_MAX, historicalFieldAnchorId } from "@/lib/sales/historicalIntakeForm";
 import styles from "./HistoricalOrderWizard.module.css";
 
 /* ยอดในตาราง = ตัวเลขล้วนแบบช่องกรอก (ไม่มี ฿) ⇒ ค่าล็อก/งวดยกมาอ่านเป็นคอลัมน์เดียวกับช่องที่พิมพ์ได้ */
@@ -31,13 +34,16 @@ const pctText = (value) => (value === null || value === undefined
 
 /**
  * @param chain      ผลของ `historicalInstallmentChain` (ตัวเดียวกับที่ body ส่งขึ้น API)
- * @param rowIssues  `Map<rowKey, { label?, amount?, dueDate?, coversTo?, coverage?, note?, row? }>`
+ * @param rowIssues  `Map<rowKey, { label?, amount?, dueDate?, coversTo?, coverage?, note?, billingDate?, row? }>`
  * @param onPatch    `(key, patch)` แก้ค่าที่พิมพ์ของงวดหนึ่ง
  * @param onRemove   `(key)` ลบงวด (ไม่ถาม — ห่วงโซ่คิดใหม่เอง · งวดบนกลายเป็นงวดสุดท้ายที่คิดให้)
  * @param emptyText  ข้อความของตารางว่าง
+ * @param billingColumn วาดคอลัมน์ "วันวางบิล" (ไม่บังคับ) ต่อจากครบกำหนด — ปิด = ตารางเดิมทุกช่อง
+ * @param billingReadOnly คอลัมน์ขึ้นเพราะวันเดิมเท่านั้น (ลูกค้าไม่ต้องวางบิล / อ่านกติกาไม่ได้ — `historicalBillingColumn().readOnly`)
+ *   ⇒ วันเดิมเป็นข้อความ + ปุ่ม "ล้าง" (review 29/09 — server ตีกลับวันใหม่ของกรณีนี้ · ล้างผ่านเสมอ)
  */
 export default function HistoricalInstallmentTable({
-  chain, rowIssues = new Map(), onPatch, onRemove, busy = false, emptyText = "ยังไม่มีงวด",
+  chain, rowIssues = new Map(), onPatch, onRemove, busy = false, emptyText = "ยังไม่มีงวด", billingColumn = false, billingReadOnly = false,
 }) {
   /* หมายเหตุรายงวดเปิดด้วยปุ่มท้ายแถว — ไม่ใช่คอลัมน์ถาวร (ม็อก: คอลัมน์หมายเหตุว่างเกือบทุกแถวแต่กินที่ทั้งตาราง) */
   const [notesOpen, setNotesOpen] = useState(() => new Set());
@@ -51,14 +57,22 @@ export default function HistoricalInstallmentTable({
 
   return (
     /* ⚠️ 960 = คอลัมน์คงที่ ~47rem + รายละเอียดอย่างน้อย ~13rem · จอแคบกว่านั้นเลื่อนข้าง (แบบตัวแก้งวดของหน้าใบสั่งขาย)
-       🐞 UAT 25/09 จอ 390: ที่ 860 ช่องรายละเอียดถูกบีบเหลือ "งวด :" */
-    <TableScroll family="editable" surface="embedded" cells="stacked" minWidth={960}>
-      <table className={`w-full text-sm ${styles.instTable}`}>
+       🐞 UAT 25/09 จอ 390: ที่ 860 ช่องรายละเอียดถูกบีบเหลือ "งวด :" · คอลัมน์วันวางบิล (PR-D) = 1064 = ผลรวมจริงของคอลัมน์
+       🐞 review 29/09: 1100 ล้นตัวเลื่อนของการ์ดที่ 1440 (1070) ⇒ ปุ่มลบงวดถูกตัดครึ่ง · ใต้ `data-billing` คอลัมน์แคบลง
+          (จำนวนเงิน/ครบกำหนด 9.5 · วันวางบิล 11 · ครอบคลุม 14.5rem — CSS) รวม 66.5rem */
+    <TableScroll family="editable" surface="embedded" cells="stacked" minWidth={billingColumn ? 1064 : 960}>
+      <table className={`w-full text-sm ${styles.instTable}`} data-billing={billingColumn ? "yes" : undefined}>
         <thead><tr>
           <th className={styles.instSeq}>งวด</th>
           <th className={styles.instLabel}>รายละเอียด <b className={styles.req}>*</b></th>
           <th className={`num ${styles.instAmount}`}>จำนวนเงิน <b className={styles.req}>*</b></th>
           <th className={styles.instDue}>ครบกำหนด <b className={styles.req}>*</b></th>
+          {billingColumn ? (
+            <th className={`${styles.instBill} ${styles.instBillHead}`}>
+              {HISTORICAL_BILLING_TEXT.head}
+              <small>{HISTORICAL_BILLING_TEXT.sub}</small>
+            </th>
+          ) : null}
           <th className={styles.instCover}>ครอบคลุมบริการ <b className={styles.req}>*</b></th>
           <th className={styles.instActions}><span className="sr-only">จัดการงวด</span></th>
         </tr></thead>
@@ -78,6 +92,7 @@ export default function HistoricalInstallmentTable({
                 {pctText(opening.percent) ? <small className={styles.instSub}>{pctText(opening.percent)}</small> : null}
               </td>
               <td><span className={styles.instTag}>{NA}</span></td>
+              {billingColumn ? <td><span className={styles.instTag}>{NA}</span></td> : null}
               <td>
                 <span className={styles.instTag}>
                   {opening.coversFrom ? fmtDate(opening.coversFrom) : NA} – {opening.coversTo ? fmtDate(opening.coversTo) : NA}
@@ -161,6 +176,37 @@ export default function HistoricalInstallmentTable({
                   {row.overdue ? <small className={styles.instOverdue}>เลยกำหนดแล้ว</small> : null}
                   {bad.dueDate ? <span className={styles.cellBad}>{bad.dueDate}</span> : null}
                 </td>
+                {billingColumn ? (
+                  <td id={anchor("billingDate")}>
+                    {billingReadOnly ? (
+                      /* review 29/09: วันเดิมของลูกค้าที่ตั้งวันใหม่ไม่ได้ — ข้อความ + ล้าง (ไม่ใช่ช่องที่พิมพ์แล้วโดนตีกลับ) */
+                      <span className={styles.instBillLocked}>
+                        <span className={styles.instTag}>{row.billingDate ? fmtDate(row.billingDate) : NA}</span>
+                        {row.billingDate ? (
+                          <Button
+                            size="sm" variant="quiet" disabled={busy}
+                            onClick={() => onPatch?.(row.key, { billingDate: "" })}
+                            aria-label={HISTORICAL_BILLING_TEXT.clearAria(name)}
+                          >
+                            {HISTORICAL_BILLING_TEXT.clear}
+                          </Button>
+                        ) : null}
+                      </span>
+                    ) : (
+                      <DateInput
+                        compact
+                        value={row.billingDate}
+                        invalid={Boolean(bad.billingDate)}
+                        onChange={(value) => onPatch?.(row.key, { billingDate: value })}
+                        min={DOC_DATE_MIN}
+                        max={DOC_DATE_MAX}
+                        disabled={busy}
+                        ariaLabel={HISTORICAL_BILLING_TEXT.aria(name)}
+                      />
+                    )}
+                    {bad.billingDate ? <span className={styles.cellBad}>{bad.billingDate}</span> : null}
+                  </td>
+                ) : null}
                 <td id={anchor("coversTo")}>
                   <div className={styles.instCoverLine}>
                     <span className={styles.instFrom}>{row.coversFrom ? `${fmtDate(row.coversFrom)} –` : `${NA} –`}</span>
@@ -215,7 +261,7 @@ export default function HistoricalInstallmentTable({
             );
           })}
           {rows.length === 0 ? (
-            <tr><td colSpan={6} className={styles.instEmpty}>{emptyText}</td></tr>
+            <tr><td colSpan={billingColumn ? 7 : 6} className={styles.instEmpty}>{emptyText}</td></tr>
           ) : null}
         </tbody>
       </table>

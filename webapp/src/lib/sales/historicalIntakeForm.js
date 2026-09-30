@@ -28,13 +28,14 @@
 //      · ใบยอด 0 บาท (`zeroValue`) — ขั้น ③ ซ่อนทั้งแผ่นเลือกงวดยกมา ตารางงวด และช่องหลักฐาน
 //      · ทีมของดีล — `TeamPickerField` คืน `null` เมื่อเหลือตัวเลือก < 2
 //    ⇒ ฝั่งคำถามกับฝั่งช่องต้องอ่าน **ธง/ชุดตัวเลือกตัวเดียวกัน** เสมอ
-import { NA, fmtDate, fmtMoney, fmtNumber } from '@/lib/format';
+import { NA, fmtDate, fmtMoney, fmtNumber, naText } from '@/lib/format';
 import { QUOTE_DISCOUNT_TYPES, QUOTE_VAT_OPTIONS, quoteLineMoney } from '@/lib/salesPlanning';
 import { ownerLockedToSelf } from '@/lib/sales/dealOwner';
 import { externalDocKindLabel } from '@/lib/sales/contracts';
 import { addDays, dueDateByRule, monthEdge, splitCoverageByMonths } from '@/lib/sales/paymentCoverage';
 import {
   MONTH_END_DAY, NO_BILLING_TEXT, billingNeed, billingRoundCount, describeBillingRule, describeRule, effectiveBillingRule, hasTiming,
+  normalizeInstallmentBilling,
 } from '@/lib/sales/billingRule';
 import {
   HISTORICAL_APPROVER_LABEL, HISTORICAL_REF_MAX, INSTALLMENT_LABEL_MAX, INSTALLMENT_NOTE_MAX, OPENING_INSTALLMENT_LABEL,
@@ -42,13 +43,14 @@ import {
 } from '@/lib/sales/historicalOrders';
 import {
   CONTRACT_DATE_MESSAGES, HISTORICAL_DISCOUNT_MESSAGES, HISTORICAL_LINE_MESSAGES, HISTORICAL_REQUIRED_MESSAGES,
-  HISTORICAL_VAT_RATES, historicalLinesMoney, historicalZonePoint,
+  HISTORICAL_SERVICE_LIMITS, HISTORICAL_VAT_RATES, historicalLinesMoney, historicalPacksValue, historicalRoundsValue, historicalZonePoint,
 } from '@/lib/sales/historicalOrderPlan';
 import { DEFAULT_SALE_UNIT } from '@/lib/master/units';
+import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL } from '@/lib/sales/serviceOrders';
 
 export {
   HISTORICAL_REF_MAX, INSTALLMENT_LABEL_MAX, INSTALLMENT_NOTE_MAX, HISTORICAL_VAT_RATES,
-  CONTRACT_DATE_MESSAGES, HISTORICAL_DISCOUNT_MESSAGES, HISTORICAL_LINE_MESSAGES, charLength,
+  CONTRACT_DATE_MESSAGES, HISTORICAL_DISCOUNT_MESSAGES, HISTORICAL_LINE_MESSAGES, HISTORICAL_SERVICE_LIMITS, charLength,
 };
 
 /* ── ขั้นของฟอร์ม (ม็อก Step1–Step4 · REVISION 2) ────────────────────────────────────
@@ -78,12 +80,14 @@ const nextKey = (prefix) => { seq += 1; return `${prefix}-${seq}`; };
 /**
  * แถวโซน = หนึ่งบรรทัดของใบ = **หนึ่งบรรทัดของใบเสนอราคา** (มติเจ้าของ 23/09)
  * ช่องเดียวกับตารางรายการของใบเสนอราคา: สินค้า (รหัส · คำอธิบาย · หน่วย · ราคา/หน่วยจากทะเบียน) ·
- * จำนวน · ส่วนลดรายการ — บวกของที่ใบย้อนหลังมีเพิ่มสองอย่างเท่านั้น: โซนที่ผูก และรอบบริการที่ขายไว้
+ * จำนวน · ส่วนลดรายการ — บวกของที่ใบย้อนหลังมีเพิ่มสองอย่างเท่านั้น: โซนที่ผูก และจำนวนรอบบริการ
  * ⭐ มติเจ้าของ 25/09: บรรทัดเกิดจากปุ่ม "เพิ่มรายการ" แบบใบเสนอราคา (ยังไม่มีโซน — เลือกในบรรทัด) หรือ
  *   "เพิ่มหลายโซน" · **`key` คือตัวตนของแถว** ไม่ใช่ `zoneId` (แถวใหม่ยังไม่มีโซน และเปลี่ยนโซนในบรรทัดได้)
  * ⚠️ จำนวนเริ่มที่ **ว่าง** (ใบเสนอราคาเริ่มที่ 1) — จำนวนที่เดาให้คือบั๊กที่มติ 23/09 แก้ · ว่าง = แผนตีกลับ
  * ⚠️ `fgCode` · `description` · `unit` · `unitPrice` มีไว้ **โชว์** อย่างเดียว (มาจาก `quoteLineFromProduct`)
  *   ไม่ถูกส่งขึ้น API — server อ่านราคา/หน่วยจากทะเบียนเอง · `key` มีไว้ให้ React เท่านั้น
+ * ⭐ PR-D (mig 0394 · มติ 26/09 A3/O9): `packsPerRound` "แพ็คต่อรอบ" ของโซน — **เริ่มว่าง** (ผลประเมินเป็นชิปให้กดใช้
+ *   `historicalLineServiceView` ไม่ใช่ค่าที่เติมให้เงียบ ๆ) · คนละช่องกับ `qty` (จำนวน = เงิน) · `rounds` บังคับแล้ว
  * ⭐ `_lineKind: 'product'` + หน่วยตั้งต้น `DEFAULT_SALE_UNIT` = **บรรทัดสินค้าใหม่ของใบเสนอราคา** (`newProductLine`)
  *   🐞 รีวิว 23/09: แถวที่ติ๊กโซนแล้วแต่ยังไม่เลือกแพ็คเกจ (ทางปกติของบรรทัดใหม่ที่ยังไม่เลือกแพ็คเกจ)
  *      ไม่มี `_lineKind` ⇒ เซลล์เปิดดรอปดาวน์หน่วยให้เลือก ทั้งที่ใบเสนอราคาล็อกเป็น "หน่วย: ชิ้น" ตั้งแต่ยังไม่เลือก
@@ -103,9 +107,11 @@ export const emptyHistoricalZone = (defaults = {}) => ({
   discountType: QUOTE_DISCOUNT_TYPES.includes(defaults.discountType) ? defaults.discountType : null,
   discountValue: QUOTE_DISCOUNT_TYPES.includes(defaults.discountType) ? (defaults.discountValue ?? 0) : 0,
   rounds: text(defaults.rounds),
+  packsPerRound: text(defaults.packsPerRound),
 });
 
-/** งวดที่ยังต้องเก็บ — ไม่มีช่อง `status`/`kind` โดยเจตนา (ดู `historicalWizardBody`) */
+/** งวดที่ยังต้องเก็บ — ไม่มีช่อง `status`/`kind` โดยเจตนา (ดู `historicalWizardBody`)
+ *  ⭐ PR-D (DD5 · mig 0394/P7): `billingDate` วันวางบิล **ไม่บังคับ** — งวดยกมาไม่มีช่องนี้ (CHECK ของ 0389) */
 export const emptyHistoricalInstallment = (defaults = {}) => ({
   key: nextKey('inst'),
   label: text(defaults.label),
@@ -114,6 +120,7 @@ export const emptyHistoricalInstallment = (defaults = {}) => ({
   coversFrom: text(defaults.coversFrom),
   coversTo: text(defaults.coversTo),
   note: text(defaults.note),
+  billingDate: text(defaults.billingDate),
 });
 
 /**
@@ -154,6 +161,10 @@ export function emptyHistoricalWizard(defaults = {}) {
  * ⚠️ ตัวเลือก VAT เก็บไม่ได้ในคอลัมน์ ⇒ อยู่ใน `metadata.historicalIntake` (RPC เขียนให้)
  * ⭐ บรรทัดโซนเติมกลับ **ช่องต่อช่องแบบใบเสนอราคา** — จำนวน · หน่วย · ราคา/หน่วย · ส่วนลด (ชนิด/ค่า) · รอบ
  *   (ไม่มี "ยอดที่พิมพ์เอง" ให้เติมกลับอีกแล้ว — `metadata.grossAmount` ของรุ่น 0374 ไม่ถูกอ่าน)
+ * ⭐ PR-D: แพ็คต่อรอบมาจาก `order.lineZones` (GET ใบ — แถวโซนของงานบริการที่ `loadHistoricalOrderExtras` อ่าน) จับคู่ด้วย
+ *   **id บรรทัด** (ไม่ใช่โซน — แถวของบรรทัดอื่นบนโซนเดียวกันต้องไม่ถูกยืม) · ไม่มี = ว่าง (ใบก่อน 0394 → ขั้น ② ถามใหม่)
+ *   ⚠️ GET ที่อ่านของเสริมไม่ขึ้นคืน `lineZones: []` + `extrasError` — ผู้เรียกต้องไม่ hydrate จากก้อนนั้น (DD17 · D4)
+ *   วันวางบิลของงวดที่ยังต้องเก็บมาจากแถวงวดตรง ๆ (select('*')) · งวดยกมาไม่มีวันวางบิลเสมอ
  * 🪤 ใบที่คีย์ในโหมด "ราคารวม VAT แล้ว — ถอด VAT" ของรุ่นก่อน (`intake.amountsIncludeVat === true`) โหลดมาเป็น
  *   **ยังไม่เลือก VAT** — โหมดนั้นถูกถอด (มติ 23/09) และตัวเลือกที่เหลือไม่มีตัวไหนแปลว่าเงินก้อนเดียวกัน
  *   ⇒ ผู้คีย์ต้องเลือกใหม่เอง ไม่ใช่ระบบเดาให้
@@ -168,6 +179,11 @@ export function wizardStateFromOrder(order = {}, { contract = null, installments
     .slice()
     .sort((a, b) => text(a.coversFrom).localeCompare(text(b.coversFrom)) || (Number(a.seq) || 0) - (Number(b.seq) || 0));
   const lines = list(order?.lines).slice().sort((a, b) => (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0));
+  const packsByLine = new Map();
+  for (const row of list(order?.lineZones)) {
+    const lineId = text(row?.lineId);
+    if (lineId && !packsByLine.has(lineId)) packsByLine.set(lineId, row?.packsPerRound);
+  }
   const zoneRows = lines.filter((line) => line.serviceZoneId).map((line) => emptyHistoricalZone({
     zoneId: line.serviceZoneId,
     productId: line.productId,
@@ -179,6 +195,7 @@ export function wizardStateFromOrder(order = {}, { contract = null, installments
     discountType: line.discountType,
     discountValue: line.discountValue,
     rounds: line.serviceRounds,
+    packsPerRound: packsByLine.get(text(line.id)),
   }));
   const legacyGrossVat = intake.amountsIncludeVat === true;
   /* ส่วนลดท้ายใบ (มติ 25/09) — ชนิด/ค่าอยู่ใน `metadata.historicalIntake` (คอลัมน์เก็บแค่ยอด)
@@ -235,7 +252,7 @@ export function wizardStateFromOrder(order = {}, { contract = null, installments
     openingEvidence: list(opening?.evidence),
     installments: regular.map((row) => emptyHistoricalInstallment({
       label: row.label, amount: row.amount, dueDate: row.dueDate,
-      coversFrom: row.coversFrom, coversTo: row.coversTo, note: row.note,
+      coversFrom: row.coversFrom, coversTo: row.coversTo, note: row.note, billingDate: row.billingDate,
     })),
   };
 }
@@ -372,8 +389,9 @@ export function historicalWizardBody(state = {}, options = {}) {
     discountType: QUOTE_DISCOUNT_TYPES.includes(state.discountType) ? state.discountType : null,
     discountValue: QUOTE_DISCOUNT_TYPES.includes(state.discountType) ? text(state.discountValue) : '',
     notes: text(state.notes) || null,
-    /* บรรทัดโซน = บรรทัดใบเสนอราคา: สินค้า · จำนวน · ส่วนลดรายการ (+ โซน · รอบ) — **ไม่ส่งราคา/ยอด**
-       ราคา/หน่วยเป็นของทะเบียนสินค้า (server อ่านเอง) · ยอดบรรทัดเป็นของสูตร ไม่ใช่ของที่จอคิด */
+    /* บรรทัดโซน = บรรทัดใบเสนอราคา: สินค้า · จำนวน · ส่วนลดรายการ (+ โซน · รอบ · แพ็คต่อรอบ) — **ไม่ส่งราคา/ยอด**
+       ราคา/หน่วยเป็นของทะเบียนสินค้า (server อ่านเอง) · ยอดบรรทัดเป็นของสูตร ไม่ใช่ของที่จอคิด
+       ⭐ PR-D: `packsPerRound` ส่ง **เสมอ** (ว่าง = "") — แผนแยก "ยังไม่ใส่" ออกจาก "ฟอร์มรุ่นก่อน" ด้วยการมี/ไม่มีคีย์ */
     zones: list(state.zones).map((row) => ({
       zoneId: text(row?.zoneId) || null,
       productId: text(row?.productId) || null,
@@ -381,6 +399,7 @@ export function historicalWizardBody(state = {}, options = {}) {
       discountType: QUOTE_DISCOUNT_TYPES.includes(row?.discountType) ? row.discountType : null,
       discountValue: QUOTE_DISCOUNT_TYPES.includes(row?.discountType) ? text(row?.discountValue) : '',
       rounds: text(row?.rounds),
+      packsPerRound: text(row?.packsPerRound),
     })),
     opening: state.hasOpening === true && !zeroTotal
       ? {
@@ -400,6 +419,7 @@ export function historicalWizardBody(state = {}, options = {}) {
       coversFrom: row.coversFrom || null,
       coversTo: row.coversTo || null,
       note: text(row.note) || null,
+      billingDate: text(row.billingDate) || null,        // PR-D (0394/P7) — ว่าง = null · งวดยกมาไม่มีคีย์นี้
     })),
   };
   /* รหัสการคีย์: บังคับเฉพาะตอนสร้างจริง แต่ส่งตั้งแต่พรีวิวด้วย — มันคือตัวที่ทำให้ใบของ
@@ -1494,22 +1514,168 @@ export function historicalLinesSummary(zones = []) {
   return `${fmtNumber(rows.length)} บรรทัด · ${fmtNumber(bound)} โซน`;
 }
 
+/* ── ขั้น ② งานบริการของบรรทัด: จำนวนรอบบริการ + แต่ละครั้งกี่แพ็ค (PR-D · mig 0394 · r2 S12 · IMPL_PLAN_D §3.1–§3.2) ──────────
+   ⭐ **ที่เดียวของคำว่า "แพ็ค" ในฟอร์มใบย้อนหลัง** (§0.2 ข้อ 14 — มติ 23/09 "จำนวนของบรรทัดไม่ใช่แพ็ค" ยังจริง ·
+     มติ 26/09 A3/O9 นำแพ็คต่อรอบกลับมาเป็นช่องของตัวเอง) ⇒ component ไม่สะกดคำนี้เอง อ่านจากก้อนนี้เท่านั้น
+     รูปที่อนุญาต: "แต่ละครั้งกี่แพ็ค" · "แพ็ค/รอบ" · "ประเมินไว้ n แพ็ค" · "รวมทั้งรายการ n แพ็ค" (+ หน่วยท้ายช่อง "แพ็ค")
+   ⚠️ `bulk` = คำของหน้าต่าง "เพิ่มหลายโซน" ของใบย้อนหลัง (ตัวห่อของ components/service/ZonesBulkModal — D27)
+   ⭐ มติเจ้าของ 29/09 ("ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง"): คำ + ลำดับเดียวกับใบใหม่ — `SERVICE_ROUNDS_LABEL`
+     "จำนวนรอบบริการ" ก่อน แล้วค่อย `SERVICE_PACKS_LABEL` "แต่ละครั้งกี่แพ็ค" แล้ว "รวมทั้งรายการ n แพ็ค" (serviceOrders.js) */
+export const HISTORICAL_SERVICE_TEXT = Object.freeze({
+  packsLabel: SERVICE_PACKS_LABEL,
+  packsUnit: 'แพ็ค',
+  packsAria: (name) => `${SERVICE_PACKS_LABEL} ${name}`,
+  roundsNote: 'บังคับ · จำนวนครั้งที่ต้องเข้าโซนนี้ตลอดสัญญา',
+  assessed: (n) => `ประเมินไว้ ${fmtNumber(n)} แพ็ค`,
+  useAssessed: 'ใช้',
+  useAssessedAria: (n, name) => `ใช้ผลประเมิน ${fmtNumber(n)} แพ็คในช่อง${SERVICE_PACKS_LABEL}ของ${name}`,
+  /* คำเดียวกับท้ายบรรทัดของใบใหม่ (serviceSetup.js · lineTotalText) */
+  lineTotal: (n) => `รวมทั้งรายการ ${fmtNumber(n)} แพ็ค`,
+  assessFailed: `อ่านผลประเมินของโซนไม่สำเร็จ — ใส่${SERVICE_PACKS_LABEL}เองได้ (ไม่กระทบการเลือกโซน)`,
+  assessRetry: 'ลองอ่านผลประเมินอีกครั้ง',
+  bulk: Object.freeze({
+    title: 'เพิ่มหลายโซน',
+    subtitle: `ติ๊กโซนแล้วใส่แพ็คเกจ · จำนวน · ${SERVICE_ROUNDS_LABEL} · ${SERVICE_PACKS_LABEL}ทีเดียว — ได้หนึ่งบรรทัดต่อโซน แก้ทีละบรรทัดต่อได้ในตาราง · บรรทัดที่มีอยู่แล้วไม่ถูกแตะ`,
+    packageLabel: 'แพ็คเกจ',
+    qtyLabel: 'จำนวน (ต่อบรรทัด)',
+    qtyHint: (unit) => `หน่วย: ${naText(unit)} · เว้นว่างได้ — ใส่ทีละบรรทัดทีหลัง`,
+    priceLabel: 'ราคา/หน่วย',
+    priceHint: 'จากฐานข้อมูลสินค้า',
+    packsLabel: `${SERVICE_PACKS_LABEL} (ทุกบรรทัด)`,
+    roundsLabel: `${SERVICE_ROUNDS_LABEL} (ทุกบรรทัด)`,
+    roundsAria: `${SERVICE_ROUNDS_LABEL}ของทุกบรรทัดที่จะเพิ่ม`,
+    roundsUnit: 'รอบ',
+    noPackage: 'เลือกแพ็คเกจก่อน',
+    assessLoading: 'กำลังอ่านผลประเมินของโซน… — “ตามผลประเมินของแต่ละโซน” ยังไม่มีตัวเลขให้',
+    assessFailed: 'ยังอ่านผลประเมินไม่ได้ — “ตามผลประเมินของแต่ละโซน” จะได้ช่องว่างทุกโซน · ใช้ “เท่ากันทุกโซน” หรือใส่ทีละบรรทัด',
+    /* ข้างโหมด "ตามผลประเมิน" เมื่ออ่านผลประเมินได้แล้ว (`assessedHint` ของตัวกลาง) — คำของใบย้อนหลัง = บรรทัด */
+    assessedHint: 'โซนที่ยังไม่เคยประเมินเว้นว่างไว้ — ใส่ทีละบรรทัดในตาราง',
+    emptyRegistry: 'ลูกค้ารายนี้ยังไม่มีไซต์ที่ใช้งานอยู่ในทะเบียน — แจ้งฝ่าย TS เพิ่มไซต์ก่อน',
+    confirm: (n) => (n ? `เพิ่ม ${fmtNumber(n)} บรรทัด` : 'เพิ่มบรรทัด'),
+    taken: (n) => `อยู่ในใบแล้ว (รายการ ${n})`,
+    /* ทางออกของไซต์ที่อ่านโซนไม่สำเร็จ = ชื่อปุ่มที่มีอยู่จริงบนขั้น ② (pin ของ historicalRegisterUi ตามชื่อปุ่มนี้) */
+    siteError: (error) => `${error} — ปิดหน้าต่างแล้วกด “ลองอ่านไซต์ที่พังอีกครั้ง”`,
+  }),
+});
+
+/* ผลประเมินของโซนหนึ่งตัว — จำนวนเต็ม 1–9999 (ขอบเดียวกับแพ็คต่อรอบ · ตัวเลขที่ใช้ไม่ได้ = ไม่มีชิป ไม่ใช่ 0) */
+const assessedValue = (value) => {
+  if (typeof value === 'number') return historicalPacksValue(value);
+  if (typeof value === 'string' && /^\s*\d+\s*$/.test(value)) return historicalPacksValue(value);
+  return null;
+};
+
+/**
+ * ผลประเมินรายโซนจากทะเบียนของลูกค้า (`GET /api/service/customers/[customerId]/zones` — `sites[].zones[].assessedPackages`)
+ * ⭐ PR-D (DD3): ขั้น ② อ่านเส้นนี้ **แยก** จากตัวโหลดรายไซต์ (ตัวนั้นไม่มีผลประเมิน — V9) · อ่านไม่ขึ้นไม่บล็อกการเลือกโซน
+ * @returns `Map<zoneId, n>` — โซนซ้ำ = ตัวแรกชนะ (ลำดับเดียวกับ registryIndex ของตัวกลาง) · ของที่ใช้ไม่ได้ถูกข้าม
+ */
+export function historicalAssessedByZone(payload) {
+  const out = new Map();
+  const sites = payload && typeof payload === 'object' && Array.isArray(payload.sites) ? payload.sites : [];
+  for (const site of sites) {
+    for (const zone of list(site?.zones)) {
+      const id = text(zone?.id);
+      if (!id || out.has(id)) continue;
+      const n = assessedValue(zone?.assessedPackages);
+      if (n !== null) out.set(id, n);
+    }
+  }
+  return out;
+}
+
+const assessedOf = (assessedByZone, zoneId) => {
+  const id = text(zoneId);
+  if (!id || !assessedByZone) return null;
+  const value = assessedByZone instanceof Map ? assessedByZone.get(id) : assessedByZone[id];
+  return value === undefined ? null : assessedValue(value);
+};
+
+/**
+ * ของที่ช่อง "แต่ละครั้งกี่แพ็ค" ของบรรทัดหนึ่งวาด (ชิปประเมิน · ปุ่ม "ใช้" · รวมทั้งรายการ)
+ * @param assessedByZone ผลของ `historicalAssessedByZone` (Map หรือ object) · null = ยังโหลด/โหลดพัง ⇒ ไม่มีชิป
+ * @returns `{ assessed: n|null, canUse, total: n|null, totalText: string|null }`
+ *   · canUse = มีผลประเมิน และค่าในช่องยังไม่ใช่ตัวนั้น (ปุ่มเติมค่าอย่างเดียว — ไม่ใช่ด่าน ไม่มีสีแดง)
+ *   · total = แพ็คต่อรอบ × รอบ เมื่อ **ถูกทั้งคู่** (ตัวอ่านตัวเดียวกับแผน) — ยังไม่ครบ = ไม่พูดตัวเลข
+ */
+export function historicalLineServiceView(row = {}, assessedByZone = null) {
+  const assessed = assessedOf(assessedByZone, row?.zoneId);
+  const packs = historicalPacksValue(row?.packsPerRound);
+  const rounds = historicalRoundsValue(row?.rounds);
+  const total = packs !== null && rounds !== null ? packs * rounds : null;
+  return {
+    assessed,
+    canUse: assessed !== null && String(assessed) !== text(row?.packsPerRound),
+    total,
+    totalText: total === null ? null : HISTORICAL_SERVICE_TEXT.lineTotal(total),
+  };
+}
+
 /* ── "เพิ่มหลายโซน" (มติ 25/09 — แทนช่อง "ใช้แพ็คเกจเดียวกันทุกโซน") ─────────────────────────────
    ⭐ หนึ่งโซนที่ติ๊ก = หนึ่งบรรทัดใหม่ต่อท้ายตาราง · ลำดับตามทะเบียน (ไซต์ → โซน) ไม่ใช่ลำดับที่ติ๊ก
    ⚠️ ข้ามเงียบไม่ได้: โซนที่อยู่ในใบแล้ว/ปิดใช้งาน ถูกปิดไว้ในหน้าต่างตั้งแต่ต้น (เห็นเหตุ) · ที่นี่กันซ้ำอีกชั้น
-   ⚠️ แพ็คเกจเติมที่จอด้วย `quoteLineFromProduct` ตัวเดียวกับช่องเลือกในบรรทัด (ไฟล์นี้ไม่ลากทะเบียนสินค้ามา) */
-export function historicalBulkAddRows({ zoneIds = [], sites = [], zonesBySite = {}, rows = [], qty = '' } = {}) {
+   ⚠️ แพ็คเกจเติมที่จอด้วย `quoteLineFromProduct` ตัวเดียวกับช่องเลือกในบรรทัด (ไฟล์นี้ไม่ลากทะเบียนสินค้ามา)
+   ⭐ PR-D (D27 · DD4): หน้าต่างเป็นตัวห่อของ `components/service/ZonesBulkModal` — ตัวกลางถือ ค้น/ติ๊ก/แพ็คต่อรอบ
+     [ตามผลประเมิน | เท่ากันทุกโซน] · ตัวห่อถือ แพ็คเกจ · จำนวน · จำนวนรอบบริการ (ทุกบรรทัด) ⇒ ตัวแปลงข้างล่างคือสะพานสองฝั่ง
+     `rounds` + `packsByZone` (Map zoneId → แพ็คต่อรอบ|null จากแถวของตัวกลาง) ไม่ส่ง = ผลเท่าเดิมทุกช่อง (W1) */
+export function historicalBulkAddRows({
+  zoneIds = [], sites = [], zonesBySite = {}, rows = [], qty = '', rounds = '', packsByZone = null,
+} = {}) {
   const picked = new Set(list(zoneIds).map(text).filter(Boolean));
   const taken = new Set(list(rows).map((row) => text(row?.zoneId)).filter(Boolean));
+  const packsOf = (id) => {
+    if (!packsByZone) return '';
+    const value = packsByZone instanceof Map ? packsByZone.get(id) : packsByZone[id];
+    return value === null || value === undefined ? '' : text(value);
+  };
   const out = [];
   for (const site of list(sites)) {
     for (const zone of list(zonesBySite?.[site?.id])) {
       const id = text(zone?.id);
       if (!picked.has(id) || taken.has(id) || zone?.isActive === false) continue;
       taken.add(id);
-      out.push(emptyHistoricalZone({ zoneId: id, siteId: site?.id, qty: text(qty) }));
+      out.push(emptyHistoricalZone({ zoneId: id, siteId: site?.id, qty: text(qty), rounds: text(rounds), packsPerRound: packsOf(id) }));
     }
   }
+  return out;
+}
+
+/**
+ * ทะเบียนรายไซต์ของขั้น ② → รูปของ `ZonesBulkModal` (`registrySites` — รูปของ GET …/customers/[id]/zones)
+ * ⭐ ไซต์ที่อ่านโซนไม่สำเร็จ = `zones: []` + `loadError` (ประโยคพร้อมทางออก — ตัวกลางวาดแทนชิปโซน) · ยังไม่รู้ว่าข้างในมีอะไร
+ *   ⇒ ห้ามให้ติ๊ก (N1 ของใบย้อนหลัง: คำขอที่พังชั่วคราวต้องไม่กลายเป็นคำตอบ)
+ * ⭐ โซนพก `assessedPackages` จาก `historicalAssessedByZone` (ไม่มี/ยังโหลด = null ⇒ โหมด "ตามผลประเมิน" ได้ช่องว่าง)
+ * @returns `[{ id, code, name, isActive, loadError, zones: [{ ...zone, siteId, assessedPackages }] }]`
+ */
+export function historicalBulkRegistrySites({ sites = [], zonesBySite = {}, siteErrors = {}, assessedByZone = null } = {}) {
+  return list(sites).filter((site) => text(site?.id)).map((site) => {
+    const id = text(site.id);
+    const error = text(siteErrors?.[id]);
+    return {
+      id,
+      code: text(site.code) || null,
+      name: text(site.name) || null,
+      isActive: site.isActive !== false,
+      loadError: error ? HISTORICAL_SERVICE_TEXT.bulk.siteError(error) : null,
+      zones: error ? [] : list(zonesBySite?.[id]).map((zone) => ({
+        ...zone,
+        siteId: text(zone?.siteId) || id,
+        assessedPackages: assessedOf(assessedByZone, zone?.id),
+      })),
+    };
+  });
+}
+
+/**
+ * โซนที่อยู่ในใบแล้ว → เหตุที่ติ๊กไม่ได้ (`taken` ของ ZonesBulkModal — **สตริง = ติดด่าน** ตาม zonePickerOptions)
+ * ⚠️ เลขรายการ = เลขในคอลัมน์ "#" ของตาราง (index + 1) · โซนซ้ำในใบ (แผนตีกลับอยู่แล้ว) = บรรทัดแรกชนะ
+ */
+export function historicalBulkTaken(rows = []) {
+  const out = new Map();
+  list(rows).forEach((row, index) => {
+    const id = text(row?.zoneId);
+    if (id && !out.has(id)) out.set(id, HISTORICAL_SERVICE_TEXT.bulk.taken(index + 1));
+  });
   return out;
 }
 
@@ -1521,20 +1687,56 @@ export function historicalBulkQtyIssue(qty = '') {
   return Number.isInteger(value) && value > 0 ? null : HISTORICAL_LINE_MESSAGES.qty;
 }
 
-/** ผลของปุ่ม "เพิ่ม N บรรทัด" ก่อนกด (กฎบ้าน: บอกผลลัพธ์ก่อนคลิก) */
-export function historicalBulkConsequence({ count = 0, qty = '', unitPrice = null } = {}) {
+/** จำนวนรอบบริการ (ทุกบรรทัด) ของหน้าต่างเพิ่มหลายโซน — **บังคับ** (PR-D) · ข้อความเดียวกับแผน */
+export function historicalBulkRoundsIssue(rounds = '') {
+  if (!text(rounds)) return HISTORICAL_LINE_MESSAGES.roundsMissing;
+  return historicalRoundsValue(rounds) === null ? HISTORICAL_LINE_MESSAGES.rounds : null;
+}
+
+/**
+ * ด่านช่องของตัวห่อ (ข้อแรกที่ติด ตามลำดับช่องบนจอ): แพ็คเกจ → จำนวน → รอบ — ผู้เรียกส่งเป็น `extraError` ของตัวกลาง
+ * ⚠️ ข้อความขึ้นหลังกด "เพิ่ม n บรรทัด" เท่านั้น (กฎบ้าน: แดงหลังกด — ตัวกลางถือ `pressed`) · null = ช่องของตัวห่อผ่าน
+ */
+export function historicalBulkFieldsIssue({ productId = '', qty = '', rounds = '' } = {}) {
+  if (!text(productId)) return HISTORICAL_SERVICE_TEXT.bulk.noPackage;
+  return historicalBulkQtyIssue(qty) || historicalBulkRoundsIssue(rounds);
+}
+
+/**
+ * ผลของปุ่ม "เพิ่ม N บรรทัด" ก่อนกด (กฎบ้าน: บอกผลลัพธ์ก่อนคลิก)
+ * ⭐ PR-D: ตัวห่อส่ง `mode` ('assessed' | 'equal') + ตัวเลขจากแผนของตัวกลาง (`packs` · `assessed` · `blank`) + `rounds`
+ *   ⇒ ต่อท้ายด้วย จำนวนรอบบริการ → แต่ละครั้งกี่แพ็ค (มติ 29/09 · ลำดับและประโยคแพ็คแบบ `zonesBulkConsequence` ของหน้าต่างกลาง
+ *   แต่พูด "บรรทัด") · ไม่ส่ง `mode` = ประโยคเดิมทุกตัวอักษร (pin ของ historicalRegisterUi ยังเขียวที่คลื่น W1)
+ */
+export function historicalBulkConsequence({
+  count = 0, qty = '', unitPrice = null, mode = null, packs = null, assessed = 0, blank = 0, rounds = '',
+} = {}) {
   if (!count) return 'ยังไม่ได้เลือกโซน';
   const q = Number(text(qty));
   const price = Number(unitPrice);
   const qtyOk = text(qty) !== '' && Number.isInteger(q) && q > 0;
-  if (qtyOk && Number.isFinite(price) && price > 0) {
-    const each = quoteLineMoney({ qty: q, unitPrice: price }).lineTotal;
-    return `จะเพิ่ม ${fmtNumber(count)} บรรทัด · บรรทัดละ ${fmtNumber(q)} × ${fmtMoney(price)} = ${fmtMoney(each)} · รวม ${fmtMoney((toSatang(each) * count) / 100)}`;
+  const priced = qtyOk && Number.isFinite(price) && price > 0;
+  const each = priced ? quoteLineMoney({ qty: q, unitPrice: price }).lineTotal : null;
+  const head = `จะเพิ่ม ${fmtNumber(count)} บรรทัด`;
+  const unpricedNote = 'แพ็คเกจนี้ยังไม่ตั้งราคาในฐานข้อมูลสินค้า จึงยังไม่มียอด';
+  if (mode === 'assessed' || mode === 'equal') {
+    const money = priced
+      ? `บรรทัดละ ${fmtNumber(q)} × ${fmtMoney(price)} = ${fmtMoney(each)} · รวม ${fmtMoney((toSatang(each) * count) / 100)}`
+      : (qtyOk ? `บรรทัดละจำนวน ${fmtNumber(q)}` : 'จำนวนใส่ทีละบรรทัดในตาราง');
+    const packsText = mode === 'equal'
+      ? `แต่ละครั้งเท่ากันทุกบรรทัด ครั้งละ ${naText(packs === null || packs === undefined ? null : fmtNumber(packs))} แพ็ค`
+      : `${SERVICE_PACKS_LABEL}: ตามผลประเมิน ${fmtNumber(Number(assessed) || 0)} โซน · ยังว่าง ${fmtNumber(Number(blank) || 0)} โซน`;
+    const roundsValue = historicalRoundsValue(rounds);
+    const parts = [head, money, ...(roundsValue === null ? [] : [`${SERVICE_ROUNDS_LABEL} ${fmtNumber(roundsValue)} รอบ`]), packsText];
+    return `${parts.join(' · ')}${qtyOk && !priced ? ` — ${unpricedNote}` : ''}`;
+  }
+  if (priced) {
+    return `${head} · บรรทัดละ ${fmtNumber(q)} × ${fmtMoney(price)} = ${fmtMoney(each)} · รวม ${fmtMoney((toSatang(each) * count) / 100)}`;
   }
   /* 🐞 รีวิว 25/09: จำนวนใส่แล้วแต่แพ็คเกจยังไม่ตั้งราคา เคยพูด "จำนวนใส่ทีละบรรทัด" ทั้งที่ทุกบรรทัดได้จำนวนนั้นไปจริง
      ⇒ บอกจำนวนที่แต่ละบรรทัดได้ + เหตุที่ยังไม่มียอด (แผนตีกลับแพ็คเกจที่ยังไม่ตั้งราคาอยู่แล้ว) */
-  if (qtyOk) return `จะเพิ่ม ${fmtNumber(count)} บรรทัด · บรรทัดละจำนวน ${fmtNumber(q)} — แพ็คเกจนี้ยังไม่ตั้งราคาในฐานข้อมูลสินค้า จึงยังไม่มียอด`;
-  return `จะเพิ่ม ${fmtNumber(count)} บรรทัด — จำนวนใส่ทีละบรรทัดในตาราง`;
+  if (qtyOk) return `${head} · บรรทัดละจำนวน ${fmtNumber(q)} — ${unpricedNote}`;
+  return `${head} — จำนวนใส่ทีละบรรทัดในตาราง`;
 }
 
 /* ── error รายช่องของบรรทัด → ใต้ช่องของแถวนั้น (มติ 25/09 — "error ขึ้นที่เดียว") ────────────────────
@@ -1544,10 +1746,11 @@ export function historicalBulkConsequence({ count = 0, qty = '', unitPrice = nul
    ⇒ แผนชี้ช่อง (`zones.<i>.<ช่อง>` + `detail` ไม่มีป้ายบรรทัด) · จอผูกข้อความกับ `key` ของแถว **ตอนได้คำตอบ**
      (ลำดับของ body = ลำดับของ state ตอนส่ง — ช่องถูกปิดระหว่างตรวจ) · แก้ช่องไหน ข้อความของช่องนั้นหายทันที */
 const LINE_FIELD = /^zones\.(\d+)(?:\.([A-Za-z]+))?$/;
+/* ⭐ PR-D: `packsPerRound` เป็นช่องของตัวเอง (ข้อความใต้ช่องแต่ละครั้งกี่แพ็ค · แก้ช่องนั้นแล้วข้อหาย) และอยู่ในชุด "ทั้งแถว" */
 const LINE_SLOT_KEYS = Object.freeze({
-  zoneId: ['zoneId'], productId: ['productId'], qty: ['qty'], rounds: ['rounds'],
+  zoneId: ['zoneId'], productId: ['productId'], qty: ['qty'], rounds: ['rounds'], packsPerRound: ['packsPerRound'],
 });
-const LINE_ALL_KEYS = ['zoneId', 'productId', 'qty', 'rounds', 'discountType', 'discountValue'];
+const LINE_ALL_KEYS = ['zoneId', 'productId', 'qty', 'rounds', 'packsPerRound', 'discountType', 'discountValue'];
 const INSTALLMENT_FIELD = /^installments\.(\d+)(?:\.([A-Za-z]+))?$/;
 
 /** issue ของ server → ผูก `rowKey` ของแถวที่มันชี้ (เรียกทันทีที่ได้คำตอบ ด้วย `state.zones` / `state.installments` ชุดที่ส่งไปตรวจ)
@@ -1564,7 +1767,7 @@ export function historicalIssuesWithRowKeys(issues = [], zones = [], installment
   });
 }
 
-/** ข้อความรายแถวสำหรับวาดใต้ช่อง — `Map<rowKey, { zoneId?, productId?, qty?, rounds?, row? }>` (ข้อแรกของแต่ละช่อง) */
+/** ข้อความรายแถวสำหรับวาดใต้ช่อง — `Map<rowKey, { zoneId?, productId?, qty?, rounds?, packsPerRound?, row? }>` (ข้อแรกของแต่ละช่อง) */
 export function historicalLineIssues(issues = []) {
   const byRow = new Map();
   for (const issue of list(issues)) {
@@ -1674,7 +1877,8 @@ export function historicalZeroValue(plan = null, money = null) {
  * @returns `{ mode, contractOk, opening, chainStart, startReason, remaining, rows, overflow, missingTo }`
  *   - opening: `{ seq, amount, coversFrom, coversTo, derived }` หรือ null · derived = "จ่ายครบทั้งใบ" (คิดให้ทั้งก้อน)
  *   - rows: `{ key, seq, index, last, label, amount, amountText, amountDerived, percent, dueDate, overdue,
- *             coversFrom, coversTo, coversToText, coversToDerived, note }`
+ *             coversFrom, coversTo, coversToText, coversToDerived, note, billingDate }`
+ *     · billingDate (PR-D) = ค่าที่พิมพ์ของงวดนั้นตรง ๆ (ไม่คิดตามห่วงโซ่ — วันวางบิลไม่ต่อกันระหว่างงวด)
  *   - remaining: ยอดที่งวดต้องเก็บรวมกัน (บาท) หรือ null · overflow: งวดอื่นรวมกันเกินยอดที่ต้องเก็บ
  */
 export function historicalInstallmentChain(state = {}, { totalAmount = null, todayIso = null } = {}) {
@@ -1755,6 +1959,7 @@ export function historicalInstallmentChain(state = {}, { totalAmount = null, tod
       coversToText: typedTo,
       coversToDerived: last,
       note: text(row?.note),
+      billingDate: text(row?.billingDate),
     };
   });
   const lastRow = rows[rows.length - 1] || null;
@@ -1842,6 +2047,10 @@ export function historicalMoneyIssues(state = {}, { evidenceFileCount = 0, today
         }
       }
       if (charLength(row.note) > INSTALLMENT_NOTE_MAX) slot('note', `หมายเหตุยาวเกิน ${fmtNumber(INSTALLMENT_NOTE_MAX)} ตัวอักษร`, { live: true });
+      /* ⭐ PR-D (DD5): วันวางบิลไม่บังคับ — ตัวตรวจตัวเดียวกับแผน (normalizeInstallmentBilling) ⇒ ข้อความเดียวกับที่พรีวิวตีกลับ
+         ⚠️ ไม่ live: แดงหลังกด "ถัดไป" เท่านั้น (กฎบ้าน) — DateInput ส่งค่าระหว่างพิมพ์ ขึ้นแดงกลางคำไม่ได้ */
+      const billing = normalizeInstallmentBilling({ billingDate: row.billingDate });
+      if (billing.error) slot('billingDate', billing.error);
     }
   }
   return issues;
@@ -1871,14 +2080,15 @@ export function historicalOverdueWarningText(count = 0, todayIso = null) {
     + ` — หลัง${HISTORICAL_APPROVER_LABEL}อนุมัติจะขึ้นเลยกำหนดทันที และนัดบริการรอจนบัญชีรับรอง`;
 }
 
-/** ข้อความรายช่องของงวด — `Map<rowKey, { label?, amount?, dueDate?, coversTo?, coverage?, note?, row? }>` */
+/** ข้อความรายช่องของงวด — `Map<rowKey, { label?, amount?, dueDate?, coversTo?, coverage?, note?, billingDate?, row? }>`
+ *  ⭐ PR-D: `billingDate` = ช่องวันวางบิลของตารางงวด (คอลัมน์ที่ขึ้นตาม `historicalBillingColumn`) */
 export function historicalInstallmentIssues(issues = []) {
   const byRow = new Map();
   for (const issue of list(issues)) {
     const match = INSTALLMENT_FIELD.exec(text(issue?.field));
     const key = text(issue?.rowKey);
     if (!match || !key) continue;
-    const slot = ['label', 'amount', 'dueDate', 'coversTo', 'coverage', 'note'].includes(match[2]) ? match[2] : 'row';
+    const slot = ['label', 'amount', 'dueDate', 'coversTo', 'coverage', 'note', 'billingDate'].includes(match[2]) ? match[2] : 'row';
     const entry = byRow.get(key) || {};
     if (!entry[slot]) entry[slot] = text(issue?.detail) || text(issue?.message);
     byRow.set(key, entry);
@@ -1992,7 +2202,8 @@ export const HISTORICAL_DUE_RULES = Object.freeze([
      · **หลายรอบต่อเดือน** = ไม่มีชิป พร้อมเหตุ — แต่ละรอบมีวันเงินเข้าของตัวเอง ใบย้อนหลังไม่มีวันวางบิลบอกว่างวดไหน
        อยู่รอบไหน (เลือกรอบแรกให้ = เดาวัน · ขัดมติ 3) · ห้ามอ่าน `rule.payment.day`/`.monthOffset` รุ่นแรก — อ่าน `rounds[0]`
    ⚠️ งวดยกมาไม่เกี่ยว — หน้าต่างนี้สร้างเฉพาะงวดที่ยังต้องเก็บ (งวดยกมาไม่มีวันวางบิลเสมอ · CHECK ของ 0389)
-   ⭐ รุ่นสี่ (มติเจ้าของ 29/09 · "ต้องวางบิลไหม"): ใบย้อนหลังยังตั้ง **กำหนดชำระอย่างเดียว** (ไม่มีวันวางบิล) —
+   ⭐ รุ่นสี่ (มติเจ้าของ 29/09 · "ต้องวางบิลไหม"): แผ่นแบ่งงวดตั้งกำหนดชำระอย่างเดียว · วันวางบิลใส่รายงวดในตาราง
+     (PR-D · mig 0394/P7 · `historicalBillingColumn`) — ชิปของแผ่นนี้ยังคิดจากรอบที่ไม่ต้องรู้วันวางบิลเท่านั้น (ข้อข้างล่างคงเดิม):
      · **ไม่ต้องวางบิล** = ประโยค "ไม่ต้องวางบิล" + ตัวเลือกวันครบกำหนดเดิมเท่านั้น (ชิปกำหนดชำระตรงตัว — ไม่มีวันวางบิลให้คิด ไม่มีชิปลูกค้า)
      · ต้องวางบิลแต่ยังไม่ตั้งรอบ = ประโยค + เหตุ · รูปรุ่นสี่ที่เขียนเป็นรุ่นสองตรงเป๊ะไม่ได้ (รอบจ่าย/เครดิตแล้วเข้ารอบ/ปฏิทิน) = ประโยค + เหตุ
        (ชิปต้องมาจากรูปรุ่นสองที่ตรงเป๊ะเท่านั้น — `effectiveBillingRule` ไม่ประมาณ · มติ 3 ไม่เดาวัน) */
@@ -2099,6 +2310,51 @@ export function historicalCustomerTermsError(detail) {
     head = reason.includes('รอบวางบิล') ? reason : `${HISTORICAL_TERMS_LOAD_FAILED} (${reason})`;
   }
   return `${head} · เลือกวันครบกำหนดเองได้ตามเดิม`;
+}
+
+/* ── ขั้น ③ คอลัมน์ "วันวางบิล" (PR-D · DD5 · mig 0394/P7 · IMPL_PLAN_D §3.3) ─────────────────────────────
+   ⭐ ปิดช่อง "ยังไม่ทำ" ของกำหนดวางบิลรุ่นสี่ (docs/billing-cycle.md — ใบย้อนหลังยังไม่เก็บวันวางบิล) · **ไม่บังคับ**
+   ⚠️ เป็นช่องวันเฉย ๆ ไม่ยืม InstallmentDateEditor (ต้องมี hook โหมดตั้งวัน + id งวด + แดงสด) · **ไม่มี "รอเหตุการณ์"**
+      (งวดของใบย้อนหลังต้องมีวันครบกำหนด — 0374 · รุ่นสี่ห้ามเหตุการณ์คู่วันครบกำหนด) · งวดยกมา = ขีด (CHECK ของ 0389) */
+export const HISTORICAL_BILLING_TEXT = Object.freeze({
+  head: 'วันวางบิล',
+  sub: 'ไม่บังคับ · วันที่ส่งใบวางบิลของงวด',
+  aria: (name) => `วันวางบิล${name}`,
+  ruleFailed: 'อ่านกติกาวางบิลของลูกค้าไม่ได้ — ช่องวันวางบิลซ่อนไว้ · ตั้งวันวางบิลทีหลังที่แท็บการชำระของใบ (ปุ่ม ‘ตั้งวันงวด’)',
+  /* review 29/09: คอลัมน์ที่ขึ้นเพราะวันเดิมเท่านั้น = อ่านอย่างเดียว + ปุ่มล้าง (server ตีกลับวันใหม่ของกรณีนี้ — ด่านรุ่นสี่ในแผน) */
+  lockedNone: 'ลูกค้ารายนี้ไม่ต้องวางบิล — วันวางบิลที่บันทึกไว้แก้ไม่ได้ ล้างได้อย่างเดียว · ถ้าลูกค้าขอใบวางบิลงวดไหน ตั้งที่แท็บการชำระของใบหลังอนุมัติ',
+  lockedFailed: 'อ่านกติกาวางบิลของลูกค้าไม่ได้ — วันวางบิลที่บันทึกไว้แก้ไม่ได้ชั่วคราว ล้างได้อย่างเดียว · โหลดหน้าใหม่แล้วลองอีกครั้ง',
+  clear: 'ล้าง',
+  clearAria: (name) => `ล้างวันวางบิล${name}`,
+});
+
+/**
+ * ขั้น ③ วาดคอลัมน์วันวางบิลไหม — ตัวตัดสินเดียว (ตาราง + บรรทัดบอกเหตุ อ่านธงเดียวกัน)
+ * · ขึ้นเมื่ออ่านกติกาของลูกค้าได้ (`customerTerms` ของวิซาร์ด — `createFormTermsState`) และคำตอบไม่ใช่ "ไม่ต้องวางบิล"
+ *   (ยังไม่ระบุ / รูปเดิม `{ credit:false }` = ขึ้น — ให้กรอกได้ ไม่บังคับ)
+ * · 🔴 **งวดที่มีวันวางบิลอยู่แล้วไม่ถูกซ่อน** ไม่ว่ากติกาเป็นอะไร (กติกาของรุ่นสี่ — `installmentNeed`: ไม่มีอะไรเปลี่ยนเงียบ)
+ * · อ่านกติกาไม่ได้ + ไม่มีวันเดิม = ซ่อน พร้อมบรรทัดบอกทางออก (`failedNote`) · ยังโหลด (null) = ซ่อนเงียบ ๆ ชั่วครู่
+ * · 🔴 review 29/09: ขึ้น **เพราะวันเดิมเท่านั้น** (ไม่ต้องวางบิล · อ่านกติกาไม่ได้ · ยังโหลด) = `readOnly` — วันเดิมอ่านอย่างเดียว
+ *   + ปุ่มล้าง พร้อมบรรทัดบอกเหตุ (`readOnlyNote` — ยังโหลดไม่มีบรรทัด) · server ตีกลับวันใหม่ของกรณีนี้อยู่แล้ว
+ *   (`validateInstallmentDates` ในแผน) ⇒ จอไม่ชวนพิมพ์วันที่บันทึกไม่ได้ · คงวันเดิม/ล้าง ผ่านด่านเสมอ
+ * @param rows งวดที่ยังต้องเก็บของ state (`state.installments`) — งวดยกมาไม่นับ
+ * @returns `{ show, readOnly, failedNote, readOnlyNote }`
+ */
+export function historicalBillingColumn(customerTerms = null, rows = []) {
+  const stored = list(rows).some((row) => !isOpeningInstallment(row) && Boolean(text(row?.billingDate)));
+  const loaded = customerTerms?.status === 'ready' && customerTerms.supported !== false;
+  const ready = loaded && billingNeed(customerTerms.rule) !== 'none';
+  const show = stored || ready;
+  const readOnly = show && !ready;
+  let readOnlyNote = null;
+  if (readOnly && loaded) readOnlyNote = HISTORICAL_BILLING_TEXT.lockedNone;
+  else if (readOnly && customerTerms) readOnlyNote = HISTORICAL_BILLING_TEXT.lockedFailed;
+  return {
+    show,
+    readOnly,
+    failedNote: !show && customerTerms?.status === 'error' ? HISTORICAL_BILLING_TEXT.ruleFailed : null,
+    readOnlyNote,
+  };
 }
 
 /**
@@ -2299,6 +2555,8 @@ const HISTORICAL_LINE_CODES = new Set([
   'historical_so_line_invalid', 'historical_so_line_money_mismatch', 'historical_so_line_not_package',
   'historical_so_line_price_not_registry', 'historical_so_line_unpriced', 'historical_so_lines_required',
   'historical_so_check_lines', 'historical_so_header_invalid',
+  /* PR-D (mig 0394/P4–P5): รอบบริการบังคับ · แพ็คต่อรอบ 1–9999 ทุกบรรทัด — ช่องอยู่ขั้น ② */
+  'historical_so_line_rounds_required', 'historical_so_line_packs_invalid',
 ]);
 
 const HISTORICAL_MONEY_CODES = new Set([

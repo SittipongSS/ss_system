@@ -221,6 +221,62 @@ test('ขวางทั้งสองทางพร้อมกัน — ข
   assert.match(manifest.notes[0], /^โซนนี้อยู่ในใบสั่งขายย้อนหลัง SO-26090051-0, SO-26090052-0 — .* · โซนนี้อยู่ในรายการงานบริการของ SO-26080077-0 \(อนุมัติแล้ว\) — ถอดโซนออกจากใบก่อน หรือปิดใช้งานโซนแทน$/);
 });
 
+/* ⭐ DD14 (PR-D · mig 0394/P6): ใบย้อนหลังที่บันทึกหลัง 0394 ถือโซนสองทางพร้อมกัน — บรรทัด (`serviceZoneId`) **และ**
+   แถวโซนของงานบริการ (โซนเดียวกัน · แพ็คต่อรอบ) ⇒ ใบเดียวกันต้องถูกบอกครั้งเดียวในส่วน "ลบใบนั้นก่อน"
+   (ถอดโซนออกจากใบย้อนหลังไม่ได้ — แถวเกิดจากบรรทัด) · ยังขวางเท่าเดิม · ใบ pipeline บนโซนเดียวกันยังถูกบอก */
+const historicalBoth = (base = seed()) => ({
+  ...withAllocations(base),
+  sales_order_line_zones: [
+    { id: 'SLZ-H1', salesOrderId: 'SOR-H1', salesOrderLineId: 'SOL-1', zoneId: 'Z1', packsPerRound: 2 },
+    { id: 'SLZ-H2', salesOrderId: 'SOR-H2', salesOrderLineId: 'SOL-2', zoneId: 'Z1', packsPerRound: 1 },
+  ],
+});
+
+test('🔴 ใบย้อนหลังที่มีทั้งบรรทัดและแถวโซนบนโซนเดียวกัน — บอกครั้งเดียว "ลบใบนั้นก่อน" · ไม่มีส่วน "ถอดโซนออกจากใบ"', async () => {
+  const db = fakeSupabase(historicalBoth());
+  const manifest = await zoneForceManifest(db, 'Z1');
+  assert.equal(manifest.blocked, true);
+  assert.deepEqual(manifest.cascade, []);
+  assert.equal(manifest.notes[0], 'โซนนี้อยู่ในใบสั่งขายย้อนหลัง SO-26090051-0, SO-26090052-0 — ลบถาวรไม่ได้แม้ใช้สิทธิ์ผู้ดูแลระบบ'
+    + 'จนกว่าจะลบใบนั้นก่อน (ยกเลิกใบอย่างเดียวบรรทัดยังชี้โซนอยู่) · ถ้าแค่เลิกใช้ ให้ปิดใช้งานแทน');
+  assert.doesNotMatch(manifest.notes[0], /รายการงานบริการ|ถอดโซนออกจากใบ/);
+  assert.deepEqual(writes(db.calls), []);
+
+  const run = fakeSupabase(historicalBoth());
+  await assert.rejects(() => deleteZoneDeep(run, 'Z1'), (error) => error.message === manifest.notes[0]);
+  assert.deepEqual(writes(run.calls), [], 'ยังขวางก่อนขั้นแรก');
+
+  const site = await siteForceManifest(fakeSupabase(historicalBoth()), 'S1');
+  assert.equal(site.blocked, true);
+  assert.doesNotMatch(site.notes[0], /รายการงานบริการ/);
+});
+
+test('ใบย้อนหลังซ้ำกับแถวโซนถูกตัดเฉพาะใบนั้น — ใบ pipeline บนโซนเดียวกันยังอยู่ในส่วน "รายการงานบริการ" · แถวโซนยังขวาง', async () => {
+  const base = historicalBoth();
+  const db = fakeSupabase({
+    ...base,
+    sales_order_line_zones: [
+      ...base.sales_order_line_zones,
+      { id: 'SLZ-P', salesOrderId: 'SOR-P', salesOrderLineId: 'SOL-9', zoneId: 'Z1', packsPerRound: 3 },
+    ],
+  });
+  const manifest = await zoneForceManifest(db, 'Z1');
+  assert.equal(manifest.blocked, true);
+  assert.match(manifest.notes[0], /^โซนนี้อยู่ในใบสั่งขายย้อนหลัง SO-26090051-0, SO-26090052-0 — .* · โซนนี้อยู่ในรายการงานบริการของ SO-26080077-0 \(อนุมัติแล้ว\) — ถอดโซนออกจากใบก่อน หรือปิดใช้งานโซนแทน$/);
+  assert.doesNotMatch(manifest.notes[0], /SO-26090051-0 \(/, 'ใบย้อนหลังไม่ถูกพิมพ์ซ้ำในส่วนรายการงานบริการ');
+
+  /* แถวโซนของใบย้อนหลังที่บรรทัดชี้ **อีกโซน** (โซนไม่ตรง) = ตัวขวางตัวเดียวบนโซนนี้ ⇒ ยังต้องบอกว่าให้ถอดโซนออก */
+  const mismatch = fakeSupabase({
+    ...seed({ withLines: false }),
+    sales_order_lines: [{ id: 'SOL-1', salesOrderId: 'SOR-H1', serviceZoneId: 'Z2' }],
+    sales_order_line_zones: [{ id: 'SLZ-H1', salesOrderId: 'SOR-H1', salesOrderLineId: 'SOL-1', zoneId: 'Z1', packsPerRound: 2 }],
+    sales_orders: [{ id: 'SOR-H1', orderNumber: 'SO-26090051-0', status: 'draft' }],
+  });
+  const only = await zoneForceManifest(mismatch, 'Z1');
+  assert.equal(only.blocked, true);
+  assert.equal(only.notes[0], 'โซนนี้อยู่ในรายการงานบริการของ SO-26090051-0 (ฉบับร่าง) — ถอดโซนออกจากใบก่อน หรือปิดใช้งานโซนแทน');
+});
+
 test('🔴 อ่านรายการงานบริการไม่ขึ้น = โยน ไม่ใช่ "ไม่มี" (ด่านหน้างานทำลาย) — ตัวลบจริงไม่ยิงคำสั่งเขียน', async () => {
   const preview = fakeSupabase(withAllocations(), { failTable: 'sales_order_line_zones' });
   await assert.rejects(() => zoneForceManifest(preview, 'Z1'), /ตรวจรายการงานบริการของใบสั่งขายที่เลือกโซนไม่สำเร็จ/);

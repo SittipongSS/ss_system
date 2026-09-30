@@ -155,6 +155,15 @@
   font-size: var(--fs-5);
 }
 
+/* ไซต์ที่ผู้เรียกอ่านโซนไม่สำเร็จ (`site.loadError` — ประโยคพร้อมทางออก) แทนชิปโซน · สีเตือน ไม่ใช่สีผิดของช่องกรอก
+   (อ่านไม่ขึ้น ≠ กรอกผิด · ขึ้นทันทีไม่ต้องรอกด เพราะไม่ใช่ด่านของปุ่ม) */
+.siteError {
+  color: var(--amber);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+}
+
 .foot {
   display: flex;
   flex-wrap: wrap;

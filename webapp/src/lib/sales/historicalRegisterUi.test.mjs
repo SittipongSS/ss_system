@@ -23,6 +23,7 @@ import * as orderCopy from './historicalOrderCopy.js';
 import * as reviewView from './historicalReviewView.js';
 import * as duplicatesLib from './historicalDuplicates.js';
 import { HISTORICAL_NEW_PATH } from './historicalOrders.js';
+import { zoneBrowserRows } from '../service/zonePickerOptions.js';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const read = (rel) => readFileSync(join(SRC, rel), 'utf8');
@@ -40,6 +41,11 @@ const STEP_ZONES = 'components/salesPlanning/historicalWizard/WizardZonesStep.js
 const STEP_MONEY = 'components/salesPlanning/historicalWizard/WizardMoneyStep.js';
 const STEP_REVIEW = 'components/salesPlanning/historicalWizard/WizardReviewStep.js';
 const BULK = 'components/salesPlanning/historicalWizard/HistoricalBulkZonesModal.js';
+/* ⭐ PR-D (D27 · DD4): หน้าต่างเพิ่มหลายโซนของใบย้อนหลังเป็น **ตัวห่อ** ของหน้าต่างกลางของงานบริการ — ค้น/ติ๊ก/แพ็คต่อรอบ/
+   ท้ายหน้าต่างอยู่ที่ตัวกลาง · ตัวห่อถือ แพ็คเกจ · จำนวน · รอบบริการ ⇒ ยามของ "ค้น/ติ๊ก/ท้ายหน้าต่าง" ย้ายไปอ่านตัวกลาง */
+const SHARED_BULK = 'components/service/ZonesBulkModal.js';
+/* ⭐ PR-D (mig 0394 · r2 S12): ช่อง "แพ็คต่อรอบ *" + ชิปผลประเมิน + "ทั้งรายการ n แพ็ค" ของบรรทัดขั้น ② */
+const LINE_SERVICE = 'components/salesPlanning/historicalWizard/HistoricalLineServiceFields.js';
 /* ⭐ มติ 25/09 (รื้อขั้น ③): ตารางงวด + หน้าต่างแบ่งงวด + หัวการ์ด เป็นไฟล์ของตัวเอง — ยามที่ไล่ "ทุกขั้น" ต้องไล่ไฟล์พวกนี้ด้วย */
 const INST_TABLE = 'components/salesPlanning/historicalWizard/HistoricalInstallmentTable.js';
 const SPLIT = 'components/salesPlanning/historicalWizard/HistoricalSplitModal.js';
@@ -473,18 +479,24 @@ test('⭐ ขั้นโซนโหลดทีละไซต์แบบพ�
    ตาเห็นบนแถว = ต้องค้นเจอ (search haystack) ⭐ มติ 25/09: ช่องค้นของขั้นย้ายไปอยู่ในหน้าต่าง "เพิ่มหลายโซน"
    (ตัวค้นตัวเดิม historicalZoneBrowser) · ช่อง "ไซต์ · โซน" ในบรรทัดค้นด้วยช่องค้นของ SearchableSelect เอง */
 test('⭐ ช่องค้นไซต์/โซนปิด autoComplete และค้นได้ทุกอย่างที่ตาเห็น — ทั้งหน้าต่างเพิ่มหลายโซนและช่องโซนในบรรทัด', () => {
+  /* ⭐ PR-D (D27): ช่องค้นของหน้าต่างอยู่ที่ตัวกลาง (ตัวห่อไม่มีช่องค้นของตัวเอง) · ค้น/ซ่อนมาจาก `zoneBrowserRows` ของตัวกลาง
+     ส่วนทะเบียนที่ส่งให้มาจากตัวแปลงที่ตรึงไว้ (`historicalBulkRegistrySites` — ทะเบียนรายไซต์ชุดเดียวกับขั้น ②) */
   const bulk = code(BULK);
-  const searchField = slice(bulk, 'type="search"', '/>');
+  const shared = code(SHARED_BULK);
+  assert.doesNotMatch(bulk, /type="search"|setQuery|historicalZoneBrowser/, 'ช่องค้นมีที่เดียว (ตัวกลาง) — สองช่องค้น = สองกติกา');
+  const searchField = slice(shared, 'type="search"', '/>');
   assert.match(searchField, /autoComplete="off"/, 'กฎบ้าน: ช่องค้นทุกช่องปิด autoComplete');
   assert.match(searchField, /value=\{query\}/);
   assert.match(searchField, /aria-label="ค้นหาไซต์หรือโซนของลูกค้ารายนี้"/);
-  assert.match(bulk, /historicalZoneBrowser\(\{\s*sites, zonesBySite, siteErrors, query, pickedZoneIds: \[\.\.\.selected\],\s*\}\)/,
+  assert.match(shared, /zoneBrowserRows\(\{ registrySites, query, taken, picked: pickedSet \}\)/,
     'ค้น/ซ่อน ต้องมาจากตัวตัดสินที่ตรึงไว้ ไม่ใช่ filter ใน JSX');
+  assert.match(bulk, /historicalBulkRegistrySites\(\{\s*sites, zonesBySite, siteErrors, assessedByZone: assessed,?\s*\}\)/,
+    'ทะเบียนของหน้าต่าง = ทะเบียนรายไซต์ชุดเดียวกับขั้น ② (ไม่โหลดเอง)');
   /* ช่องโซนในบรรทัด: ช่องค้นของ primitive ปิด autoComplete · คำค้นกินรหัส/ชื่อไซต์ + ชื่อ/รหัสโซน */
   assert.match(code(SEARCHABLE), /<input autoComplete="off"/);
   const hint = 'ค้นหารหัส/ชื่อไซต์ หรือชื่อ/รหัสโซน';
   assert.ok(slice(code(STEP_ZONES), '<SearchableSelect', '/>').includes(`searchPlaceholder="${hint}"`));
-  assert.ok(bulk.includes(`placeholder="${hint}"`), 'สองช่องค้นของขั้นเดียวกันพูดคำเดียวกัน');
+  assert.ok(shared.includes(`placeholder="${hint}"`), 'สองช่องค้นของขั้นเดียวกันพูดคำเดียวกัน');
   const option = pickerOption([{ key: 'r1', zoneId: '' }], 'r1', 'ZN-3');
   for (const seen of ['SB-02', 'สาขาบางนา', 'ทางเข้า', 'Z-GATE']) {
     assert.ok(option.search.includes(seen.toLowerCase()), `ค้น "${seen}" ต้องเจอโซนนี้ (ตาเห็นบนแถว)`);
@@ -679,6 +691,7 @@ const HISTORICAL_COMPONENTS = [
   STEP_MONEY,
   STEP_REVIEW,
   BULK,
+  LINE_SERVICE,
   INST_TABLE,
   SPLIT,
   CARD_HEADING,
@@ -919,8 +932,15 @@ test('⭐ R9: โหลดทะเบียนไม่สำเร็จต้
   const loadNotice = slice(zones, '{loadError ? (', ') : null}');
   assert.match(loadNotice, /title="โหลดทะเบียนไซต์ไม่สำเร็จ"/);
   assert.match(loadNotice, /\{loadError\} — บรรทัดที่ผูกโซนไว้ยังลบไม่ได้จนกว่าจะโหลดสำเร็จ/);
-  /* หน้าต่างเพิ่มหลายโซน: "ยังไม่มีไซต์" ขึ้นเฉพาะตอนโหลดสำเร็จจริง */
-  assert.match(code(BULK), /\{!loading && !loadError && !sites\.length \? \(/);
+  /* หน้าต่างเพิ่มหลายโซน: "ยังไม่มีไซต์" ขึ้นเฉพาะตอนโหลดสำเร็จจริง
+     ⭐ PR-D (D27): ประโยคนี้วาดที่ตัวกลาง (`emptyRegistryText`) · ตัวห่อส่งคำของใบย้อนหลัง (ไซต์ที่ใช้งานอยู่ · แจ้ง TS) และ
+     ส่งสถานะโหลดของขั้น ② ต่อไปครบ — ไม่งั้นตัวกลางพูด "ยังไม่มีไซต์" ระหว่างที่ทะเบียนยังโหลด/โหลดพัง */
+  assert.match(code(SHARED_BULK), /\{!loading && !loadError && !index\.sites\.length \? \(\s*<p className=\{styles\.hint\}>\{emptyRegistryText\}<\/p>/);
+  assert.match(code(SHARED_BULK), /emptyRegistryText = "ลูกค้ารายนี้ยังไม่มีไซต์ในทะเบียน — เลือกโซนไม่ได้",/, 'ค่าตั้งต้นของตารางงานบริการคงเดิม');
+  assert.match(code(BULK), /emptyRegistryText=\{T\.emptyRegistry\}/);
+  assert.equal(intakeForm.HISTORICAL_SERVICE_TEXT.bulk.emptyRegistry, 'ลูกค้ารายนี้ยังไม่มีไซต์ที่ใช้งานอยู่ในทะเบียน — แจ้งฝ่าย TS เพิ่มไซต์ก่อน');
+  assert.match(code(BULK), /loading=\{loading\}/);
+  assert.match(code(BULK), /loadError=\{loadError\}/);
   /* โหมดแก้ใบ: ชื่อลูกค้าโหลดไม่ขึ้น ≠ ใบนี้ไม่มีลูกค้า */
   assert.match(code(STEP_CONTRACT), /customersError \? `โหลดชื่อลูกค้าไม่ขึ้น/);
 });
@@ -982,11 +1002,131 @@ test('⭐ คำเตือนวันสัญญาของใบที่�
 
 const LINE_ITEMS = 'components/salesPlanning/QuotationLineItems.js';
 
-test('⭐ 23/09: ขั้น ② ไม่เหลือ "แพ็ค" · ยอดที่พิมพ์เอง · รอบในสัญญา — ช่องเงินทุกช่องมาจากเซลล์กลาง', () => {
+/* ⭐ มติ 26/09 (A3/O9 · PR-D mig 0394): "แพ็คต่อรอบ" กลับมาเป็น **ช่องของตัวเองต่อโซน** — ไม่ใช่จำนวนของบรรทัด (มติ 23/09 ยังจริง:
+   จำนวน = เงิน 1 ชุด × 12 เดือน) ⇒ คำว่า "แพ็ค" บนขั้น ② มาจาก `HISTORICAL_SERVICE_TEXT` ที่เดียว (§0.2 ข้อ 14) · ไฟล์จอ
+   ของขั้นไม่สะกดคำนี้เอง (เหลือได้แค่ "แพ็คเกจ") · รูปที่อนุญาตตรึงที่ตัวข้อความ */
+test('⭐ 23/09 → 26/09: ขั้น ② ไม่เหลือ "แพ็ค" ที่สะกดเอง · ยอดที่พิมพ์เอง · รอบในสัญญา — ช่องเงินทุกช่องมาจากเซลล์กลาง', () => {
   const src = code(STEP_ZONES);
   assert.doesNotMatch(src, /lineAmount|\bpacks\b|grossAmount|totalPacks/);
   assert.doesNotMatch(src, />แพ็ค<|>ยอด<|รอบในสัญญา|ก่อน VAT/);
   assert.doesNotMatch(src, /import MoneyInput/, 'ช่องเงินทุกช่องมาจากเซลล์กลาง ไม่ใช่ช่องของขั้นนี้เอง');
+  for (const file of [STEP_ZONES, LINE_SERVICE, BULK]) {
+    assert.doesNotMatch(code(file), /แพ็ค(?!เกจ)/, `${file}: คำว่า "แพ็ค…" ต้องมาจาก HISTORICAL_SERVICE_TEXT`);
+  }
+  const T = intakeForm.HISTORICAL_SERVICE_TEXT;
+  assert.equal(T.packsUnit, 'แพ็ค', 'หน่วยท้ายช่องแพ็คต่อรอบ');
+  const said = [T.packsLabel, T.packsAria('รายการ 1'), T.assessed(2), T.useAssessedAria(2, 'รายการ 1'), T.lineTotal(24),
+    T.assessFailed, T.bulk.subtitle, T.bulk.packsLabel, T.bulk.assessLoading, T.bulk.assessFailed].join(' | ');
+  const allowed = /แต่ละครั้งกี่แพ็ค|แพ็ค\/รอบ|ประเมินไว้ \d+ แพ็ค|ผลประเมิน \d+ แพ็ค|ทั้งรายการ \d+ แพ็ค/g;
+  assert.doesNotMatch(said.replace(allowed, ''), /แพ็ค(?!เกจ)/,
+    'รูปที่อนุญาต: แต่ละครั้งกี่แพ็ค · แพ็ค/รอบ · ประเมินไว้ n แพ็ค · รวมทั้งรายการ n แพ็ค (+ หน่วยท้ายช่อง)');
+  assert.doesNotMatch(said, /แพ็คต่อรอบ/, 'มติ 29/09: ป้ายเดียวกับใบใหม่ — "แต่ละครั้งกี่แพ็ค"');
+});
+
+/* ⭐ PR-D (mig 0394 · r2 S12 · IMPL_PLAN_D DD1–DD2): แถบผูกของบรรทัด = ไซต์ · โซน * | จำนวนรอบบริการ * (บังคับ — เลิก "เว้นว่างได้")
+   | แต่ละครั้งกี่แพ็ค * (ชิป "ประเมินไว้ n แพ็ค" [ใช้]) | รวมทั้งรายการ n แพ็ค (อ่านอย่างเดียว เมื่อสองช่องถูก)
+   — คำและลำดับตามมติเจ้าของ 29/09 ("ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง")
+   🔴 แดงหลังกด "ถัดไป" เท่านั้น — ข้อความใต้ช่องมาจาก `bad` (issues ที่เปิดเผยแล้ว) ช่องเดียวกับช่องอื่นของบรรทัด */
+test('PR-D ⭐ ขั้น ②: "จำนวนรอบบริการ *" บังคับ → "แต่ละครั้งกี่แพ็ค *" + ชิปผลประเมิน → "รวมทั้งรายการ n แพ็ค" — แดงหลังกด ถัดไป', () => {
+  const src = code(STEP_ZONES);
+  assert.match(src, /import HistoricalLineServiceFields, \{ HistoricalLineServiceTotal \} from "\.\/HistoricalLineServiceFields";/);
+  const bind = slice(src, '<div className={styles.lineBind}>', '{warn ? (');
+  let at = -1;
+  /* ⭐ มติเจ้าของ 29/09 (ใบใหม่และใบย้อนหลัง): ไซต์ · โซน → จำนวนรอบบริการ → แต่ละครั้งกี่แพ็ค → รวมทั้งรายการ n แพ็ค */
+  for (const piece of ['className={styles.lineBindZone}', '<QuoteLineServiceRounds', '<HistoricalLineServiceFields', '<HistoricalLineServiceTotal view={service} />']) {
+    const next = bind.indexOf(piece);
+    assert.ok(next > at, `ลำดับในแถบผูกผิดที่ ${piece}`);
+    at = next;
+  }
+  assert.match(src, /const assessedReady = assessState === "ok" \? assessedByZone : null;/, 'ยังโหลด/อ่านไม่ได้ = ไม่มีชิป (ไม่ใช่ตัวเลขค้าง)');
+  assert.match(src, /const service = historicalLineServiceView\(row, assessedReady\);/);
+  const fields = slice(bind, '<HistoricalLineServiceFields', '/>');
+  assert.match(fields, /value=\{row\.packsPerRound\}/);
+  assert.match(fields, /view=\{service\}/);
+  assert.match(fields, /error=\{bad\.packsPerRound \|\| null\}/);
+  assert.match(fields, /disabled=\{busy\}/);
+  assert.match(fields, /onChange=\{\(value\) => patchRow\(row\.key, \{ packsPerRound: value \}\)\}/, 'ผูกแถวด้วย key');
+  const rounds = slice(bind, '<QuoteLineServiceRounds', '/>');
+  assert.match(rounds, /\n\s*required\n/);
+  assert.match(rounds, /invalid=\{!!bad\.rounds\}/);
+  assert.match(rounds, /note=\{HISTORICAL_SERVICE_TEXT\.roundsNote\}/);
+  assert.doesNotMatch(src, /เว้นว่างได้ · TS ตั้งวันนัดเอง/, 'รอบบริการบังคับแล้ว (r2 S12)');
+  assert.equal(intakeForm.HISTORICAL_SERVICE_TEXT.roundsNote, 'บังคับ · จำนวนครั้งที่ต้องเข้าโซนนี้ตลอดสัญญา');
+
+  /* ช่องใหม่: ตัวเลข 1–9999 · หน่วย · ชิป + ปุ่ม "ใช้" (เติมค่า ไม่ใช่ด่าน — สีกลาง) · ข้อความผิดใต้ช่อง */
+  const line = code(LINE_SERVICE);
+  const input = slice(line, '<Input', '/>');
+  assert.match(input, /type="number" min="1" max="9999" step="1" inputMode="numeric" placeholder="—" autoComplete="off"/);
+  assert.match(input, /invalid=\{!!error\}/, 'แดงเมื่อมีข้อความของแผนเท่านั้น (หลังกด ถัดไป)');
+  assert.match(input, /aria-required="true"/);
+  assert.match(input, /aria-label=\{T\.packsAria\(name\)\}/);
+  assert.match(line, /<span className=\{styles\.lineBindLabel\}>\{T\.packsLabel\} <b className=\{styles\.req\}>\*<\/b><\/span>/);
+  assert.match(line, /\{error \? <span className=\{styles\.cellBad\}>\{error\}<\/span> : null\}/);
+  assert.match(line, /\{view\?\.assessed \? \(/);
+  assert.match(line, /\{view\.canUse \? \(/);
+  assert.match(line, /onClick=\{\(\) => onChange\?\.\(String\(view\.assessed\)\)\}/);
+  assert.doesNotMatch(slice(line, '{view.canUse ? (', ') : null}'), /tone="danger"|invalid/, 'ปุ่ม "ใช้" เป็นตัวช่วย ไม่ใช่ด่าน');
+  assert.match(line, /view\?\.totalText \? <span className=\{styles\.lineBindTotal\}>\{view\.totalText\}<\/span> : null/);
+  /* 🔴 review 29/09: แพ็คต่อรอบกับรอบบริการอยู่แถวเดียวกันในแถบผูก ⇒ หัวช่องต้องหน้าตาเดียวกันและช่องกรอกต้องตรงแนว
+     (ช่องรอบคือเซลล์กลาง QuoteLineServiceRounds — ปรับเฉพาะในแถบผูกด้วย CSS ไม่แตะตัวกลาง/เทสต์ของมัน) ·
+     "ทั้งรายการ n แพ็ค" เป็นบรรทัดสรุปของตัวเอง ไม่ใช่กล่องสูงเท่าช่องกรอกที่ทิ้งช่องว่าง */
+  const css = read('components/salesPlanning/historicalWizard/HistoricalOrderWizard.module.css');
+  assert.match(css, /\.lineBindRounds > div \{ margin-top: 0; \}/, 'ช่องรอบไม่ต่ำกว่าช่องแพ็ค (margin-top ของ .serviceRounds)');
+  const label = slice(css, '.lineBindRounds > div > span:first-child {', '}');
+  const own = slice(css, '.lineBindLabel {', '}');
+  for (const prop of ['font-size', 'font-weight', 'line-height', 'color']) {
+    const pick = (block) => (block.match(new RegExp(`${prop}:\\s*([^;]+);`)) || [])[1];
+    assert.ok(pick(label), `หัวช่องรอบต้องตั้ง ${prop}`);
+    assert.equal(pick(label), pick(own), `หัวช่องรอบ ${prop} = หัวช่องแต่ละครั้งกี่แพ็ค`);
+  }
+  const total = slice(css, '.lineBindTotal {', '}');
+  assert.doesNotMatch(total, /min-height|align-self/, 'ไม่มีกล่องสูงเท่าช่องกรอก');
+  assert.match(total, /flex-basis: 100%;/);
+  assert.doesNotMatch(line, /lineIsServicePackage|hasServicePackageLine|effectiveServiceFgCode|orderHasServiceRounds/,
+    'ไม่มีตัวตัดสินเงินในช่องนี้ (§0.2 ข้อ 13)');
+  assert.doesNotMatch(line, /style=\{\{/);
+
+  /* ของจริงของตัวตัดสินที่ช่องวาด */
+  const view = intakeForm.historicalLineServiceView({ zoneId: 'ZN-1', packsPerRound: '2', rounds: '12' }, new Map([['ZN-1', 3]]));
+  assert.deepEqual(view, { assessed: 3, canUse: true, total: 24, totalText: 'รวมทั้งรายการ 24 แพ็ค' });
+  assert.equal(intakeForm.historicalLineServiceView({ zoneId: 'ZN-1', packsPerRound: '3' }, new Map([['ZN-1', 3]])).canUse, false,
+    'ค่าเท่าผลประเมินแล้ว = ไม่มีปุ่ม');
+  assert.equal(intakeForm.historicalLineServiceView({ zoneId: 'ZN-1', packsPerRound: '2', rounds: '' }, null).totalText, null,
+    'รอบยังว่าง = ไม่พูดตัวเลขทั้งรายการ');
+  assert.equal(intakeForm.historicalLineServiceView({ zoneId: 'ZN-1' }, null).assessed, null, 'ยังโหลด/พัง = ไม่มีชิป');
+});
+
+/* ⭐ PR-D (DD3): ผลประเมินรายโซนไม่มากับตัวโหลดรายไซต์ (V9) ⇒ อ่านเส้นทะเบียนของลูกค้า **แยก** ครั้งเดียวต่อการเปลี่ยนลูกค้า
+   🔴 อ่านไม่ได้ต้องไม่บล็อกการเลือกโซน (ไม่แตะ state ของตัวโหลดรายไซต์) · บอกหนึ่งบรรทัดเทา + ปุ่มลองอ่านใหม่ (ไม่ใช่รีโหลดหน้า — N4) */
+test('PR-D ⭐ DD3: ผลประเมินอ่านจากเส้นทะเบียนลูกค้าแยกจากตัวโหลดรายไซต์ · อ่านไม่ได้ = บรรทัดเทา + ปุ่มลองใหม่ ไม่บล็อก', () => {
+  const src = code(STEP_ZONES);
+  assert.match(src, /const ASSESS_PATH = \(customerId\) => `\/api\/service\/customers\/\$\{encodeURIComponent\(customerId\)\}\/zones`;/);
+  const effect = slice(src, 'const data = await apiJson(ASSESS_PATH(customerId)', '}, [customerId, assessRound]);');
+  assert.match(effect, /fallbackError: HISTORICAL_SERVICE_TEXT\.assessFailed/);
+  assert.match(effect, /setAssessedByZone\(historicalAssessedByZone\(data\)\);/);
+  assert.match(effect, /setAssessState\("ok"\);/);
+  assert.match(effect, /setAssessState\("error"\);/);
+  assert.doesNotMatch(effect, /setSites|setZonesBySite|setSiteErrors|setLoadError|setLoading\(/, 'ผลประเมินพังต้องไม่ลากตัวเลือกโซนลงไปด้วย');
+  assert.match(src, /\}, \[customerId, loadSiteZones, sitesRound\]\);/, 'ตัวโหลดรายไซต์คงเดิม (N1/R9/R10)');
+  const failed = slice(src, '{assessState === "error" ? (', ') : null}');
+  assert.match(failed, /\{HISTORICAL_SERVICE_TEXT\.assessFailed\}/);
+  assert.match(failed, /onClick=\{\(\) => setAssessRound\(\(round\) => round \+ 1\)\}/);
+  assert.match(failed, /\{HISTORICAL_SERVICE_TEXT\.assessRetry\}/);
+  assert.doesNotMatch(failed, /window\.location|StatusNotice/, 'เรื่องเสริมที่ไม่บล็อก = บรรทัดเทา ไม่ใช่ก้อนแดง');
+  /* ของจริงของตัวแปลง: อ่านเฉพาะ assessedPackages ที่เป็นจำนวนเต็ม 1–9999 */
+  const map = intakeForm.historicalAssessedByZone({ sites: [{ zones: [{ id: 'Z1', assessedPackages: 2 }, { id: 'Z2', assessedPackages: 0 }, { id: 'Z3' }] }] });
+  assert.deepEqual([...map], [['Z1', 2]]);
+});
+
+/* 🔴 DD17 (critique M4): เส้นใบคืน `lineZones: []` + `serviceContractFiles: []` + `extrasError` เมื่ออ่านของเสริมพัง ⇒ hydrate ต่อ =
+   แพ็คต่อรอบที่บันทึกไว้กลายเป็นช่องว่าง (แดงหลังกดถัดไป ชวนคีย์ใหม่จากความจำ) และจำนวนไฟล์สัญญากลายเป็น 0
+   ⇒ ฟอร์มหยุดที่ "แก้ในฟอร์มไม่ได้" พร้อมเหตุ ก่อนตั้ง state (โหลดหน้าใหม่ได้ — ยังไม่มีอะไรให้เสีย) */
+test('PR-D 🔴 DD17: เปิดแก้ใบที่อ่านของเสริมไม่ขึ้น (extrasError) = หยุดก่อน hydrate พร้อมเหตุ', () => {
+  const wizard = code(WIZARD);
+  const hydrate = slice(wizard, 'if (!HISTORICAL_EDITABLE_STATUSES.includes(order.status)) {', 'setState(wizardStateFromOrder(order));');
+  assert.match(hydrate,
+    /if \(order\.extrasError\) \{\s*setReadOnly\(`โหลดข้อมูลประกอบของใบไม่ขึ้น \(แต่ละครั้งกี่แพ็ค · ไฟล์เอกสาร · งวด\) — โหลดหน้าใหม่ก่อนแก้ · \$\{order\.extrasError\}`\);\s*return;\s*\}/);
+  assert.ok(hydrate.indexOf('if (order.extrasError)') > hydrate.indexOf('return;'), 'หลังด่านสถานะ (ใบที่แก้ไม่ได้อยู่แล้วพูดเหตุของตัวเองก่อน)');
 });
 
 /* 🐞 รีวิว/UAT 23/09 (วัดด้วย puppeteer): ตารางซ้อนในการ์ดไซต์ + คอลัมน์ "โซน" แทน "#" ⇒ กล่อง 726–766px
@@ -1061,7 +1201,7 @@ test('⭐ 23/09: ทุกทางที่ใส่แพ็คเกจให
   assert.equal((src.match(/withPackage\(/g) || []).length, 2, 'ทางใส่แพ็คเกจมีสองทางพอดี — ทางที่สามต้องมาพร้อมยามของมัน');
   const bulk = code(BULK);
   assert.doesNotMatch(bulk, /quoteLineFromProduct/, 'หน้าต่างส่งรหัสแพ็คเกจกลับ ผู้เรียกเติมผ่าน withPackage');
-  assert.match(bulk, /onAdd\?\.\(newRows, productId\);/);
+  assert.match(bulk, /onAdd\?\.\(historicalBulkAddRows\(\{[^}]*\}\), productId\)/);
   assert.match(code(LINE_ITEMS), /quoteLineFromProduct\(line, product\)/, 'ใบเสนอราคาเองก็ต้องเรียกตัวเดียวกัน');
   assert.doesNotMatch(code(LINE_ITEMS), /fgLineNoteMeta|fgLineCategoryMeta/, 'ตรรกะเลือกสินค้าแบบก๊อปต้องไม่เหลือในใบเสนอราคา');
 });
@@ -1082,7 +1222,7 @@ test('⭐ 23/09: ช่องเลือกแพ็คเกจกรองด
   const defaultPlaceholder = slice(code(CELLS), 'export function QuoteLineProductPicker', ') {').match(/placeholder = "([^"]+)"/)?.[1];
   assert.ok(defaultPlaceholder);
   assert.ok(bulkPicker.includes(`placeholder="${defaultPlaceholder}"`));
-  /* ของเพิ่มอย่างที่สองของใบย้อนหลัง — รอบบริการที่ขายไว้ (ช่องของบรรทัดใบสั่งขาย) · ผูกแถวด้วย key */
+  /* ของเพิ่มอย่างที่สองของใบย้อนหลัง — จำนวนรอบบริการ (ช่องของบรรทัดใบสั่งขาย) · ผูกแถวด้วย key */
   assert.match(src, /<QuoteLineServiceRounds\s*\n\s*value=\{row\.rounds\}/);
   assert.match(src, /onChange=\{\(value\) => patchRow\(row\.key, \{ rounds: value \}\)\}/);
 });
@@ -1233,18 +1373,36 @@ test('⭐ 25/09: error ของ server ผูกกับ key ของแถ�
 
 /* ⭐ มติเจ้าของ 25/09: หน้าต่าง "เพิ่มหลายโซน" แทนช่อง "ใช้แพ็คเกจเดียวกันทุกโซน" — ลูกค้าโซนเยอะ (AWC 247 โซน) ไม่ต้อง
    เลือกแพ็คเกจ 43 ครั้ง · ใช้ Modal กลาง (หัวนิ่ง · เนื้อเลื่อน · ปุ่มนิ่ง) · เปิดใหม่ = เริ่มใหม่ทั้งหน้าต่าง
-   (ติ๊กค้างจากรอบก่อนซึ่งเพิ่มไปแล้ว = บรรทัดซ้ำที่รอเกิด) · อ่านทะเบียนชุดเดียวกับขั้น ② ไม่โหลดเอง */
-test('⭐ 25/09: หน้าต่างเพิ่มหลายโซนใช้ Modal กลาง · เริ่มใหม่ทุกครั้งที่เปิด · อ่านทะเบียนชุดเดียวกับขั้น ②', () => {
+   (ติ๊กค้างจากรอบก่อนซึ่งเพิ่มไปแล้ว = บรรทัดซ้ำที่รอเกิด) · อ่านทะเบียนชุดเดียวกับขั้น ② ไม่โหลดเอง
+   ⭐ PR-D (D27 · DD4 — เขียนยามใหม่โดยตั้งใจ): ตัวห่อของหน้าต่างกลาง `ZonesBulkModal` ⇒ Modal/ค้น/ติ๊ก/การล้างตอนเปิด
+      ของส่วนที่ตัวกลางถือ อยู่ที่ตัวกลาง · ตัวห่อล้างช่องของตัวเอง (แพ็คเกจ · จำนวน · รอบ) ตอนเปิดใหม่ */
+test('⭐ 25/09 → PR-D: หน้าต่างเพิ่มหลายโซน = ตัวห่อของ ZonesBulkModal · เริ่มใหม่ทุกครั้งที่เปิด · อ่านทะเบียนชุดเดียวกับขั้น ②', () => {
   const bulk = code(BULK);
-  assert.match(bulk, /import Modal from "@\/components\/Modal"/);
-  assert.match(bulk, /<Modal\s*\n\s*open=\{open\}\s*\n\s*onClose=\{onClose\}/);
-  assert.match(bulk, /footer=\{\(/, 'ปุ่มอยู่ในแถบท้ายของ Modal — ไม่จมไปกับลิสต์โซนยาว ๆ');
+  assert.match(bulk, /import ZonesBulkModal from "@\/components\/service\/ZonesBulkModal"/);
+  assert.doesNotMatch(bulk, /import Modal from/, 'Modal ตัวที่สอง = หน้าต่างสองชุดที่เพี้ยนหากัน (D27)');
+  assert.equal((bulk.match(/<ZonesBulkModal\b/g) || []).length, 1);
+  const shared = code(SHARED_BULK);
+  assert.match(shared, /import Modal from "@\/components\/Modal"/);
+  assert.match(shared, /<Modal\s*\n\s*open=\{open\}\s*\n\s*onClose=\{onClose\}/);
+  assert.match(shared, /footer=\{\(/, 'ปุ่มอยู่ในแถบท้ายของ Modal — ไม่จมไปกับลิสต์โซนยาว ๆ');
+  /* ตัวกลางล้าง ค้น/ติ๊ก/แพ็คต่อรอบ/pressed · ตัวห่อล้างช่องของตัวเอง */
+  const sharedReset = slice(shared, 'useEffect(() => {', '}, [open]);');
+  for (const call of ['setQuery("")', 'setPicked([])', 'setPressed(false)']) assert.ok(sharedReset.includes(call), `ตัวกลางเปิดใหม่ต้องล้าง ${call}`);
   const reset = slice(bulk, 'useEffect(() => {', '}, [open]);');
   assert.match(reset, /if \(!open\) return;/);
-  for (const call of ['setProductId("")', 'setQty("")', 'setQuery("")', 'setSelected(new Set())']) {
+  for (const call of ['setProductId("")', 'setQty("")', 'setRounds("")']) {
     assert.ok(reset.includes(call), `เปิดใหม่ต้องล้าง ${call}`);
   }
   assert.doesNotMatch(bulk, /apiJson|apiFetch|fetch\(/, 'หน้าต่างไม่โหลดทะเบียนเอง — สองชุดข้อมูล = สองคำตอบ');
+  assert.doesNotMatch(shared, /apiJson|apiFetch|fetch\(/, 'ตัวกลางก็ไม่โหลดเอง (ผู้เรียกส่งทะเบียนมา)');
+  /* ของที่ตัวห่อไม่ส่ง = ค่าตั้งต้นของตารางงานบริการ ซึ่งไม่ใช่ของใบย้อนหลัง */
+  const mountModal = slice(bulk, '<ZonesBulkModal', '/>\n  );');
+  for (const prop of ['lead={null}', 'existingCount={0}', 'cap={Number.POSITIVE_INFINITY}', 'title={T.title}', 'subtitle={T.subtitle}',
+    'packsLabel={T.packsLabel}', 'registrySites={registrySites}', 'taken={taken}', 'extraError={extraError}', 'confirmLabel={T.confirm}']) {
+    assert.ok(mountModal.includes(prop), `ตัวห่อต้องส่ง ${prop}`);
+  }
+  assert.equal(intakeForm.HISTORICAL_SERVICE_TEXT.bulk.confirm(3), 'เพิ่ม 3 บรรทัด', 'ปุ่มนับบรรทัด (หนึ่งโซน = หนึ่งบรรทัด) ไม่ใช่ "โซน"');
+  assert.equal(intakeForm.HISTORICAL_SERVICE_TEXT.bulk.confirm(0), 'เพิ่มบรรทัด');
 
   const zones = code(STEP_ZONES);
   assert.match(zones, /import HistoricalBulkZonesModal from "\.\/HistoricalBulkZonesModal"/);
@@ -1252,76 +1410,163 @@ test('⭐ 25/09: หน้าต่างเพิ่มหลายโซนใ
   const mount = slice(zones, '<HistoricalBulkZonesModal', '/>');
   for (const prop of ['open={bulkOpen}', 'onClose={() => setBulkOpen(false)}', 'sites={sites}', 'zonesBySite={zonesBySite}',
     'siteErrors={siteErrors}', 'loading={loading}', 'loadError={loadError}', 'rows={rows}', 'productsById={productsById}',
-    'productsError={productsError}']) {
+    'productsError={productsError}', 'assessedByZone={assessedByZone}', 'assessState={assessState}']) {
     assert.ok(mount.includes(prop), `หน้าต่างต้องได้ ${prop}`);
   }
 });
 
 /* กฎบ้าน: ติดด่าน = **โชว์แล้วบอกเหตุ** — โซนที่อยู่ในใบแล้ว (หนึ่งโซนหนึ่งบรรทัด) / ปิดใช้งาน เห็นแต่ติ๊กไม่ได้
-   🔴 ปุ่ม "ทั้งไซต์" / "เลือกทุกโซนที่เห็น" ต้องข้ามโซนพวกนี้ด้วย — ไม่งั้นติ๊กรวดแล้วได้บรรทัดซ้ำ/โซนปิด */
-test('⭐ 25/09: หน้าต่างเพิ่มหลายโซน — โซนที่อยู่ในใบแล้ว/ปิดใช้งานเห็นแต่ติ๊กไม่ได้ พร้อมเหตุบนจอ', () => {
+   🔴 ปุ่ม "ทั้งไซต์" / "เลือกทุกโซนที่เห็น" ต้องข้ามโซนพวกนี้ด้วย — ไม่งั้นติ๊กรวดแล้วได้บรรทัดซ้ำ/โซนปิด
+   ⭐ PR-D (D27): เหตุมาจาก `historicalBulkTaken` (สตริง = ติดด่าน) → `zoneBrowserRows` ของตัวกลาง (ปิดใช้งาน = คำเดียวกับเดิม) ·
+      โซนที่อยู่ในใบแล้ววาดแบบกดไม่ได้ **ไม่ติ๊ก** (ตัวกลางติ๊กให้เฉพาะโซนของรายการเดียวกัน — DD4 ยอมรับ) */
+test('⭐ 25/09 → PR-D: หน้าต่างเพิ่มหลายโซน — โซนที่อยู่ในใบแล้ว/ปิดใช้งานเห็นแต่ติ๊กไม่ได้ พร้อมเหตุบนจอ', () => {
   const bulk = code(BULK);
-  const whyNot = slice(bulk, 'const whyNot = (zone) => {', '};');
-  assert.match(whyNot, /if \(taken\.has\(zone\.id\)\) return `อยู่ในใบแล้ว \(รายการ \$\{taken\.get\(zone\.id\)\}\)`;/);
-  assert.match(whyNot, /if \(zone\.isActive === false\) return "ปิดใช้งานในทะเบียน";/);
-  assert.match(bulk, /rows\.forEach\(\(row, index\) => \{ if \(row\?\.zoneId && !map\.has\(row\.zoneId\)\) map\.set\(row\.zoneId, index \+ 1\); \}\);/,
-    'เลขในเหตุ = เลขคอลัมน์ "#" ของตาราง');
-  assert.match(bulk, /disabled=\{Boolean\(why\)\}/);
-  assert.match(bulk, /\{why \? <small>· \{why\}<\/small> : null\}/, 'เหตุเป็นตัวหนังสือบนจอ ไม่ใช่แค่ title');
-  assert.match(bulk, /title=\{why \|\| undefined\}/);
-  assert.match(bulk, /const visible = browser\.rows\.flatMap\(\(row\) => row\.zones\.filter\(\(zone\) => !whyNot\(zone\)\)\.map\(\(zone\) => zone\.id\)\);/);
-  assert.match(bulk, /const choosable = zones\.filter\(\(zone\) => !whyNot\(zone\)\)\.map\(\(zone\) => zone\.id\);/);
-  /* ไซต์ที่อ่านโซนไม่ได้: บอกทางออกด้วยชื่อปุ่มที่มีอยู่จริงบนขั้น ② */
-  const exit = bulk.match(/ปิดหน้าต่างแล้วกด “([^”]+)”/)?.[1];
+  assert.match(bulk, /const taken = useMemo\(\(\) => historicalBulkTaken\(rows\), \[rows\]\);/, 'เลขในเหตุ = เลขคอลัมน์ "#" ของตาราง');
+  assert.doesNotMatch(bulk, /whyNot|isActive/, 'ตัวห่อไม่ตัดสินการติดด่านเอง — ตัวตัดสินอยู่ที่ lib');
+  const shared = code(SHARED_BULK);
+  assert.match(shared, /disabled=\{zone\.disabled\}/);
+  assert.match(shared, /\{zone\.why \? <span className=\{styles\.zoneNote\}>· \{zone\.why\}<\/span> : null\}/, 'เหตุเป็นตัวหนังสือบนจอ ไม่ใช่แค่ title');
+  assert.match(shared, /title=\{zone\.why \|\| undefined\}/);
+  assert.match(shared, /const selectable = rows\.flatMap\(\(row\) => row\.selectableIds\);/, '"เลือกทุกโซนที่เห็น" นับเฉพาะโซนที่ติ๊กได้');
+  /* ของจริงของตัวตัดสิน: โซนที่อยู่ในใบแล้ว = ติด (สตริง) พร้อมเลขบรรทัด · ปิดใช้งาน = ติด · ที่เหลือติ๊กได้ */
+  const reg = intakeForm.historicalBulkRegistrySites({ ...REG });
+  const taken = intakeForm.historicalBulkTaken([intakeForm.emptyHistoricalZone({ zoneId: 'ZN-1', siteId: 'ST-A' })]);
+  assert.equal(taken.get('ZN-1'), 'อยู่ในใบแล้ว (รายการ 1)');
+  const shown = zoneBrowserRows({ registrySites: reg, taken });
+  const zone = (id) => shown.flatMap((row) => row.zones).find((z) => z.id === id);
+  assert.deepEqual([zone('ZN-1').disabled, zone('ZN-1').why], [true, 'อยู่ในใบแล้ว (รายการ 1)']);
+  assert.deepEqual([zone('ZN-2').disabled, zone('ZN-2').why], [true, 'ปิดใช้งานในทะเบียน']);
+  assert.deepEqual(shown.flatMap((row) => row.selectableIds), ['ZN-3']);
+  /* ไซต์ที่อ่านโซนไม่ได้: ตัวกลางวาดประโยคของตัวแปลงแทนชิปโซน · ประโยคบอกทางออกด้วยชื่อปุ่มที่มีอยู่จริงบนขั้น ② */
+  assert.match(shared, /\{site\.loadError \? \(\s*<span className=\{styles\.siteError\}>\{site\.loadError\}<\/span>/);
+  const blind = intakeForm.historicalBulkRegistrySites({ ...REG, zonesBySite: { 'ST-A': REG.zonesBySite['ST-A'] }, siteErrors: { 'ST-B': 'หมดเวลา' } });
+  const failed = blind.find((site) => site.id === 'ST-B');
+  assert.deepEqual(failed.zones, [], 'ไซต์ที่พังติ๊กอะไรไม่ได้ (ยังไม่รู้ว่าข้างในมีอะไร)');
+  const exit = failed.loadError.match(/ปิดหน้าต่างแล้วกด “([^”]+)”/)?.[1];
   assert.ok(exit, 'ไซต์ที่พังต้องบอกทางออก');
   assert.ok(code(STEP_ZONES).includes(`"${exit}"`), `ปุ่ม “${exit}” ต้องยังอยู่บนขั้น ②`);
+  /* 🐞 (D2a ส่งต่อ): `zoneBrowserRows` ซ่อนไซต์ที่คำค้นไม่ตรงชื่อ ⇒ ไซต์ที่พังหายจากสายตาตอนค้นหาโซนที่อาจอยู่ในไซต์นั้น
+     ⇒ ตัวกลางดึงไซต์ที่พังกลับมาเสมอ (ตารางงานบริการไม่มีไซต์พัง ⇒ ผลเท่าเดิม) */
+  assert.match(shared, /if \(!index\.sites\.some\(\(site\) => site\.loadError\)\) return shown;/);
   /* ชั้นที่สอง (ตัวตัดสิน): กันซ้ำ/ปิดใช้งานอีกชั้น แม้จอจะปล่อยหลุดมา */
   const rows = [intakeForm.emptyHistoricalZone({ zoneId: 'ZN-1', siteId: 'ST-A' })];
   const added = intakeForm.historicalBulkAddRows({ ...REG, zoneIds: ['ZN-1', 'ZN-2', 'ZN-3'], rows, qty: '' });
   assert.deepEqual(added.map((row) => row.zoneId), ['ZN-3']);
 });
 
-/* กฎบ้าน: บอกผลลัพธ์ก่อนคลิก + ติดด่าน = ปุ่มปิดพร้อมเหตุข้างปุ่ม (form-design-rules) */
-test('⭐ 25/09: ปุ่มยืนยันของหน้าต่างเพิ่มหลายโซนบอกผลก่อนกด · ติดด่าน = ปุ่มปิดพร้อมเหตุข้างปุ่ม', () => {
+/* กฎบ้าน: บอกผลลัพธ์ก่อนคลิก · ⭐ PR-D (กฎบ้าน 3 — แดงหลังกด): ปุ่มยืนยันกดได้เสมอ ข้อความติดด่านขึ้น **หลังกด** (ตัวกลางถือ
+   `pressed`) — ⚠️ ถอยจาก 25/09 ที่ปุ่มปิด + เหตุขึ้นทันที **โดยตั้งใจ** (IMPL_PLAN_D §0.2 ข้อ 3) · ลำดับเหตุ (M1): ช่องของตัวห่อ
+   (แพ็คเกจ → จำนวน → รอบ) ก่อน แล้วค่อยของตัวกลาง (ยังไม่เลือกโซน / แพ็คต่อรอบผิด) · ท้ายหน้าต่างไม่เคยพิมพ์ "null" */
+test('⭐ 25/09 → PR-D: ปุ่มยืนยันของหน้าต่างเพิ่มหลายโซนบอกผลก่อนกด · ติดด่าน = เหตุท้ายหน้าต่างหลังกด (ช่องของตัวห่อก่อน)', () => {
   const bulk = code(BULK);
-  const foot = slice(bulk, 'footer={(', 'className={styles.bulkFields}');
-  assert.match(foot, /\{blocked \? `ยังเพิ่มไม่ได้ — \$\{blocked\}` : historicalBulkConsequence\(\{ count, qty, unitPrice \}\)\}/);
-  assert.match(foot, /data-blocked=\{blocked \? "yes" : undefined\}/);
-  assert.match(foot, /<Button tone="primary" disabled=\{Boolean\(blocked\)\} onClick=\{confirm\}>/);
-  assert.match(foot, /\{count \? `เพิ่ม \$\{fmtNumber\(count\)\} บรรทัด` : "เพิ่มบรรทัด"\}/);
-  assert.match(bulk, /const blocked = !productId\s*\n\s*\? "เลือกแพ็คเกจก่อน"\s*\n\s*: \(qtyIssue \|\| \(count \? null : "ยังไม่ได้เลือกโซน"\)\);/);
+  assert.match(bulk, /const extraError = historicalBulkFieldsIssue\(\{ productId, qty, rounds \}\);/);
   assert.match(bulk, /const qtyIssue = historicalBulkQtyIssue\(qty\);/, 'ด่านจำนวนตัวเดียวกับแผน (จำนวนเต็ม > 0 · ว่างได้)');
-  assert.match(slice(bulk, 'const confirm = () => {', '};'), /if \(blocked\) return;/, 'ปุ่มปิดแล้วยังต้องกันซ้ำที่ตัวกด');
+  assert.match(bulk, /const roundsIssue = historicalBulkRoundsIssue\(rounds\);/);
+  const consequence = slice(bulk, 'consequence={(plan, { mode }) => historicalBulkConsequence({', '})}');
+  assert.match(consequence, /count: plan\.count, qty, unitPrice, mode, packs: plan\.packs, assessed: plan\.assessed, blank: plan\.blank, rounds,/);
+  assert.doesNotMatch(bulk, /disabled=\{Boolean\(blocked\)\}|const blocked =/, 'ปุ่มปิดก่อนกด = เหตุขึ้นก่อนกด (ถอดแล้ว)');
+
+  const shared = code(SHARED_BULK);
+  assert.match(shared, /const reason = pressed \? \(extraError \|\| plan\.error\) : null;/);
+  assert.match(shared, /const blocked = Boolean\(reason\);/);
+  const foot = slice(shared, 'footer={(', '{leadText ?');
+  assert.match(foot, /\{blocked \? `ยังเพิ่มไม่ได้ — \$\{reason\}` : consequence\(plan, \{ lineNo, mode \}\)\}/);
+  assert.match(foot, /<Button tone="primary" onClick=\{confirm\}>\{confirmLabel\(plan\.count\)\}<\/Button>/);
+  assert.doesNotMatch(shared, /\$\{plan\.error\}/, 'plan.error เดี่ยว ๆ ใต้ extraError = ข้อความ "null"/ข้อของตัวกลางทับข้อของตัวห่อ');
+  const confirmFn = slice(shared, 'const confirm = () => {', '};');
+  assert.match(confirmFn, /setPressed\(true\);\s*if \(extraError \|\| plan\.error\) return;\s*onAdd\?\.\(plan\.rows\);/,
+    'กดแล้วติด = ไม่เพิ่มอะไร (ด่านของตัวห่อกันที่ตัวกดด้วย)');
+
+  /* ของจริง: ลำดับเหตุ · ประโยคผลก่อนกด */
+  assert.equal(intakeForm.historicalBulkFieldsIssue({ productId: '', qty: '1.5', rounds: '' }), 'เลือกแพ็คเกจก่อน');
+  assert.equal(intakeForm.historicalBulkFieldsIssue({ productId: 'P', qty: '1.5', rounds: '' }), intakeForm.HISTORICAL_LINE_MESSAGES.qty);
+  assert.equal(intakeForm.historicalBulkFieldsIssue({ productId: 'P', qty: '', rounds: '' }), 'ยังไม่ใส่จำนวนรอบบริการ');
+  assert.equal(intakeForm.historicalBulkFieldsIssue({ productId: 'P', qty: '', rounds: '12' }), null);
   assert.equal(intakeForm.historicalBulkQtyIssue('1.5'), intakeForm.HISTORICAL_LINE_MESSAGES.qty);
   assert.equal(intakeForm.historicalBulkQtyIssue(''), null);
-  assert.match(intakeForm.historicalBulkConsequence({ count: 3, qty: '12', unitPrice: 3500 }), /^จะเพิ่ม 3 บรรทัด · บรรทัดละ 12 × /);
-  assert.match(intakeForm.historicalBulkConsequence({ count: 3, qty: '', unitPrice: 3500 }), /จำนวนใส่ทีละบรรทัดในตาราง/);
+  assert.equal(intakeForm.historicalBulkConsequence({ count: 3, qty: '12', unitPrice: 3500, mode: 'equal', packs: 2, rounds: '12' }),
+    'จะเพิ่ม 3 บรรทัด · บรรทัดละ 12 × ฿3,500.00 = ฿42,000.00 · รวม ฿126,000.00 · จำนวนรอบบริการ 12 รอบ · แต่ละครั้งเท่ากันทุกบรรทัด ครั้งละ 2 แพ็ค');
+  assert.match(intakeForm.historicalBulkConsequence({ count: 3, qty: '', unitPrice: 3500, mode: 'assessed', assessed: 2, blank: 1, rounds: '' }),
+    /จำนวนใส่ทีละบรรทัดในตาราง · แต่ละครั้งกี่แพ็ค: ตามผลประเมิน 2 โซน · ยังว่าง 1 โซน$/);
+});
+
+/* 🔴 กฎบ้าน 3 ที่ตัวห่อ (L8): ช่องของตัวห่อแดงหลังกดเท่านั้น — ของเดิมช่องจำนวนแดงทันทีที่พิมพ์ 1.5 */
+test('PR-D 🔴 หน้าต่างเพิ่มหลายโซน: ทุก invalid/data-bad/aria-invalid ของตัวห่ออ้าง pressed · ช่องรอบบังคับพร้อมหน่วย', () => {
+  const bulk = code(BULK);
+  const marks = [...bulk.matchAll(/(?:\binvalid|data-bad)=\{([^}]*)\}/g)];
+  assert.ok(marks.length >= 4, `ต้องเจอเครื่องหมายผิดของช่อง (เจอ ${marks.length})`);
+  for (const match of marks) assert.match(match[1], /\bpressed\b/, `${match[0]} ต้องรอหลังกด`);
+  assert.match(bulk, /data-bad=\{pressed && qtyIssue \? "yes" : undefined\}/);
+  assert.match(bulk, /aria-invalid=\{pressed && qtyIssue \? "true" : undefined\}/);
+  /* review 29/09: MoneyInput ไม่มีกรอบแดงจาก aria-invalid (ไม่มีกฎ CSS [aria-invalid]) — กรอบแดงของทั้งระบบคือคลาส is-invalid
+     (แพตเทิร์น HistoricalInstallmentTable) ⇒ ช่องจำนวนแดงพร้อมช่องรอบข้าง ๆ หลังกด */
+  assert.match(bulk, /<MoneyInput min="0" autoComplete="off" className=\{pressed && qtyIssue \? "is-invalid" : ""\}/);
+  assert.match(bulk, /invalid=\{pressed && Boolean\(roundsIssue\)\}/);
+  assert.match(bulk, /renderFields=\{\(\{ pressed \}\) => \(/, 'ตัวห่อรู้ว่ากดแล้วจากตัวกลาง (ไม่ถือ pressed ของตัวเองซ้อน)');
+  assert.doesNotMatch(bulk, /useState\(false\)|setPressed/, 'pressed มีเจ้าของคนเดียว (ตัวกลาง)');
+  /* ช่องรอบ: จำนวนเต็ม ≥ 1 · หน่วย "รอบ" · ปิด autoComplete (กฎบ้าน) · ช่องจำนวนก็ปิด */
+  const roundsField = slice(bulk, '<Input', '/>');
+  assert.match(roundsField, /type="number" min="1" step="1" inputMode="numeric" placeholder="—" autoComplete="off"/);
+  assert.match(bulk, /<MoneyInput min="0" autoComplete="off"/);
+  assert.match(bulk, /\{T\.roundsLabel\} <b className=\{styles\.req\}>\*<\/b>/);
+  assert.match(bulk, /\{T\.packageLabel\} <b className=\{styles\.req\}>\*<\/b>/);
+});
+
+/* 🔴 review 29/09: ประโยคข้างโหมด "ตามผลประเมินของแต่ละโซน" ของตัวกลาง ("โซนที่ยังไม่เคยประเมินเว้นว่างไว้") ขัดกับบรรทัด M6
+   ของตัวห่อตอนผลประเมินยังโหลด/อ่านไม่ได้ (ทุกโซนจะว่าง ไม่ใช่เฉพาะโซนที่ไม่เคยประเมิน) ⇒ prop เสริม `assessedHint`
+   (ไม่ส่ง = ประโยคเดิมทุกตัวอักษรของใบ pipeline · null = ซ่อน) · ตัวห่อส่ง null เมื่อยังไม่ ok ⇒ บรรทัด M6 พูดคนเดียว */
+test('PR-D 🔴 review 29/09 หน้าต่างเพิ่มหลายโซน: ผลประเมินยังไม่ ok = ไม่มีประโยค "โซนที่ยังไม่เคยประเมินเว้นว่างไว้" มาขัดบรรทัด M6', () => {
+  const shared = code(SHARED_BULK);
+  const props = slice(shared, 'export default function ZonesBulkModal({', '}) {');
+  assert.match(props, /assessedHint = "โซนที่ยังไม่เคยประเมินเว้นว่างไว้ — ใส่ทีละแถวในตาราง",/, 'ค่าตั้งต้น = ประโยคเดิมของใบ pipeline');
+  assert.match(shared, /\) : assessedHint \? \(\n\s*<span className=\{styles\.count\}>\{assessedHint\}<\/span>\n\s*\) : null\}/);
+  assert.equal((shared.match(/โซนที่ยังไม่เคยประเมินเว้นว่างไว้/g) || []).length, 1, 'ประโยคอยู่ที่ค่าตั้งต้นที่เดียว');
+  const mount = slice(code(BULK), '<ZonesBulkModal', '/>\n  );');
+  assert.match(mount, /assessedHint=\{assessState === "ok" \? T\.assessedHint : null\}/);
+  assert.equal(intakeForm.HISTORICAL_SERVICE_TEXT.bulk.assessedHint, 'โซนที่ยังไม่เคยประเมินเว้นว่างไว้ — ใส่ทีละบรรทัดในตาราง',
+    'คำของใบย้อนหลัง = บรรทัด (ไม่ใช่แถว)');
+});
+
+/* ⭐ M6: ผลประเมินยังโหลด/อ่านไม่ได้ = "ตามผลประเมิน" จะได้ช่องว่างทุกโซน ⇒ บอกหนึ่งบรรทัดเหนือแถวแพ็คต่อรอบ (ไม่เงียบ)
+   ⚠️ ไม่สลับโหมดให้เอง — ผลประเมินมาถึงตอนหน้าต่างเปิดอยู่ แล้วโหมดเปลี่ยน = ตัวกลางล้างที่ติ๊กไว้ (IMPL_PLAN_D M6) */
+test('PR-D ⭐ M6: หน้าต่างเพิ่มหลายโซนบอกเมื่อผลประเมินยังโหลด/อ่านไม่ได้ · อ่านได้แล้ว = ไม่มีบรรทัดนี้', () => {
+  const bulk = code(BULK);
+  assert.match(bulk, /const assessNote = assessState === "loading" \? T\.assessLoading : \(assessState === "error" \? T\.assessFailed : null\);/);
+  assert.match(bulk, /\{assessNote \? <p className=\{styles\.assessNote\}>\{assessNote\}<\/p> : null\}/);
+  assert.match(bulk, /const assessed = assessState === "ok" \? assessedByZone : null;/, 'ยังไม่ ok = ไม่ส่งตัวเลขประเมินค้างรอบก่อน');
+  assert.doesNotMatch(code(SHARED_BULK), /initialMode/, 'ไม่มีทางสลับโหมดตั้งต้นจากผู้เรียก (M6 — ตัวเลือกที่ถูกปัด)');
+  assert.match(intakeForm.HISTORICAL_SERVICE_TEXT.bulk.assessFailed, /ใช้ “เท่ากันทุกโซน” หรือใส่ทีละบรรทัด/);
 });
 
 /* 🔴 ช่องที่ถูกแทน ("ใช้แพ็คเกจเดียวกันทุกโซน") เททับแพ็คเกจของ **ทุกบรรทัดที่มีอยู่** เงียบ ๆ ⇒ หน้าต่างนี้ต้อง
-   **ต่อท้ายเท่านั้น** — ได้ `rows` ไว้อ่าน (กันซ้ำ · บอกเลขบรรทัด) แต่ไม่มีทางเขียน · บรรทัดที่คีย์ไว้แล้วไม่ถูกแตะ */
-test('🔴 25/09: หน้าต่างเพิ่มหลายโซนต่อท้ายเท่านั้น — ไม่มีทางเขียนทับบรรทัดที่คีย์ไว้แล้ว', () => {
+   **ต่อท้ายเท่านั้น** — ได้ `rows` ไว้อ่าน (กันซ้ำ · บอกเลขบรรทัด) แต่ไม่มีทางเขียน · บรรทัดที่คีย์ไว้แล้วไม่ถูกแตะ
+   ⭐ PR-D: แถวของตัวกลาง (`{ zoneId, packsPerRound }`) → บรรทัดใหม่ผ่าน `historicalBulkAddRows` (พกรอบ + แพ็คต่อรอบรายโซน) */
+test('🔴 25/09 → PR-D: หน้าต่างเพิ่มหลายโซนต่อท้ายเท่านั้น — ไม่มีทางเขียนทับบรรทัดที่คีย์ไว้แล้ว', () => {
   const bulk = code(BULK);
   const props = slice(bulk, 'export default function HistoricalBulkZonesModal({', '}) {');
   assert.match(props, /\bonAdd\b/);
   assert.doesNotMatch(props, /\bonChange\b|\bsetRows\b|\bonRowsChange\b/, 'หน้าต่างได้ rows ไว้อ่าน ห้ามได้ทางเขียน');
-  const confirmFn = slice(bulk, 'const confirm = () => {', '};');
-  assert.match(confirmFn, /const newRows = historicalBulkAddRows\(\{ zoneIds: \[\.\.\.selected\], sites, zonesBySite, rows, qty \}\);/);
-  assert.match(confirmFn, /onAdd\?\.\(newRows, productId\);/);
+  const add = slice(bulk, 'onAdd={(planRows) => onAdd?.(historicalBulkAddRows({', '}), productId)}');
+  assert.match(add, /zoneIds: planRows\.map\(\(row\) => row\.zoneId\), sites, zonesBySite, rows, qty, rounds,/);
+  assert.match(add, /packsByZone: new Map\(planRows\.map\(\(row\) => \[row\.zoneId, row\.packsPerRound\]\)\),/);
   const zones = code(STEP_ZONES);
   assert.match(slice(zones, '<HistoricalBulkZonesModal', '/>'),
     /onAdd=\{\(newRows, productId\) => \{ addBulk\(newRows, productId\); setBulkOpen\(false\); \}\}/);
   assert.match(zones, /setRows\(\[\.\.\.rows, \.\.\.newRows\.map\(/, 'บรรทัดเดิมทั้งชุดนำหน้าตามเดิม ไม่ถูก map/แก้');
-  /* ของจริง: บรรทัดเดิมไม่ถูกแตะ · บรรทัดใหม่ key ใหม่ · ยังไม่มีแพ็คเกจ (ผู้เรียกเติมผ่าน withPackage) */
+  /* ของจริง: บรรทัดเดิมไม่ถูกแตะ · บรรทัดใหม่ key ใหม่ · ยังไม่มีแพ็คเกจ (ผู้เรียกเติมผ่าน withPackage) · พกรอบ + แพ็คต่อรอบ */
   const rows = [intakeForm.emptyHistoricalZone({ zoneId: 'ZN-1', siteId: 'ST-A', productId: 'PRD-1', qty: '3' })];
   const snapshot = JSON.stringify(rows);
-  const added = intakeForm.historicalBulkAddRows({ ...REG, zoneIds: ['ZN-3'], rows, qty: '' });
+  const added = intakeForm.historicalBulkAddRows({
+    ...REG, zoneIds: ['ZN-3'], rows, qty: '', rounds: '12', packsByZone: new Map([['ZN-3', 2]]),
+  });
   assert.equal(JSON.stringify(rows), snapshot, 'บรรทัดที่คีย์ไว้แล้วไม่ถูกแตะ');
   assert.equal(added.length, 1);
   assert.notEqual(added[0].key, rows[0].key);
   assert.deepEqual([added[0].zoneId, added[0].siteId, added[0].productId, added[0].qty], ['ZN-3', 'ST-B', '', '']);
+  assert.deepEqual([added[0].rounds, added[0].packsPerRound], ['12', '2']);
+  const blank = intakeForm.historicalBulkAddRows({ ...REG, zoneIds: ['ZN-3'], rows, rounds: '12', packsByZone: new Map([['ZN-3', null]]) });
+  assert.equal(blank[0].packsPerRound, '', 'โซนที่ยังไม่เคยประเมิน (โหมดตามผลประเมิน) = ช่องว่าง ใส่ทีละบรรทัด');
 });
-
 /* ⭐ ช่อง "ไซต์ · โซน" ปิดตัวเลือก (อยู่ในรายการอื่นแล้ว · ปิดใช้งาน · โซนที่หายของแถวนี้) ผ่าน `option.disabled` ของ SearchableSelect
    🔴 primitive ไม่เคารพ = ตัวเลือกที่จอบอกว่า "เลือกไม่ได้" ถูกเลือกได้ด้วยคลิกหรือ Enter ⇒ สองบรรทัดผูกโซนเดียว แล้วแผน
       ตีกลับ historical_so_zone_duplicate ทีหลัง (หรือแถวที่ผูกโซนหายถูกชี้กลับไปหาโซนที่ไม่มีในทะเบียน) */
@@ -1384,8 +1629,12 @@ test('🐞 รีวิว 25/09: เส้นทะเบียนไซต์�
 /* 🔴 R9 (#1817 แบบเดียวกับ /database): หน้าต่างเพิ่มหลายโซนเคยพิมพ์ "0 ไซต์ · 0 โซนในทะเบียน" ระหว่างโหลด/โหลดพัง
    ⇒ ยังไม่รู้จำนวน = บอกว่ายังอ่านไม่ได้ ไม่ใช่เลขศูนย์ที่อ่านเป็นทะเบียนว่าง (รีวิว 25/09) */
 test('🐞 รีวิว 25/09: หน้าต่างเพิ่มหลายโซนไม่พิมพ์จำนวนตอนทะเบียนยังโหลด/โหลดพัง', () => {
-  const count = slice(code(BULK), '<span className={styles.bulkCount}>', '</span>');
-  assert.match(count, /loading \|\| loadError \? "ยังอ่านทะเบียนไซต์ไม่ได้"/);
+  /* ⭐ PR-D (D27): ตัวนับอยู่ที่ตัวกลาง (`countText`) · ตัวห่อต้องส่งสถานะโหลดของขั้น ② ต่อไปครบ ไม่งั้นตัวกลางนับทะเบียนว่าง */
+  const count = slice(code(SHARED_BULK), 'const countText = ', ';');
+  assert.match(count, /loading \|\| loadError\s*\n?\s*\? "ยังอ่านทะเบียนไซต์ไม่ได้"/);
+  assert.match(code(SHARED_BULK), /<span className=\{styles\.count\}>\{countText\}<\/span>/);
+  const mount = slice(code(BULK), '<ZonesBulkModal', '/>\n  );');
+  assert.ok(mount.includes('loading={loading}') && mount.includes('loadError={loadError}'), 'ตัวห่อส่งสถานะโหลดต่อ');
 });
 
 /* ⭐ สลับชนิดส่วนลดท้ายใบเป็น % ต้องตัดค่าที่ค้างไว้ที่ 100 (รีวิว 25/09) — ช่องค่าตัดตอนพิมพ์อยู่แล้ว แต่การสลับชนิด
