@@ -17,12 +17,17 @@ import { requireService, loadSites } from '@/lib/service/sitesRepo';
 import { loadPlans, loadVisits } from '@/lib/service/visitsRepo';
 import { loadAllZones, loadTerms } from '@/lib/service/termsRepo';
 import { intakeCounts, planQueue, visitQueue } from '@/lib/service/intake';
+import { MAX_ORPHAN_HOPS, decoratePlanRows, orphanOrderIdsToLoad, orphanPlanRows } from '@/lib/service/intakePlanFacts';
 import { legacySetupQueue } from '@/lib/service/legacySetupQueue';
 import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
 import { isLiveVisit } from '@/lib/service/visitStatus';
 import { businessDate } from '@/lib/businessDate';
 
 export const dynamic = 'force-dynamic';
+
+/* รอบกำพร้า (PR-C · C-D11): โหลดใบในโซ่ `supersededById` ทีละทอด — ทอดละหนึ่งคำสั่ง (ซอยก้อน) ·
+   เพดานเท่าที่ตัวคำนวณเดินได้ (`MAX_ORPHAN_HOPS` ทอด + ทอดแรก) ⇒ โซ่ยาวเกินเพดาน = ไม่ใช่กำพร้า (ไม่เดา) */
+const ORPHAN_CHAIN_ROUNDS = MAX_ORPHAN_HOPS + 1;
 
 export const GET = withUser(async ({ user, supabase }) => {
   const access = requireService({ user });
@@ -42,10 +47,12 @@ export const GET = withUser(async ({ user, supabase }) => {
        🪤 **คอมเมนต์อยู่เหนือคำสั่ง ไม่แทรกระหว่าง `.from()` กับ `.select()`** — `check:columns` มองหา select
           ไม่เกิน 200 ตัวอักษรหลัง `.from()` · คอมเมนต์ที่เคยคั่นตรงนั้น (261 ตัวอักษร) ทำให้ select นี้หลุดจากด่านมาตลอด
        ⭐ mig 0392: คอลัมน์ตั้งงานบริการของใบเดิม — `serviceTermsOpenedAt` (ประทับแล้ว = ไม่อยู่ในถังใบเดิม · ขาด = ตัวถังโยน)
-          · สถานะ/ผู้ยื่น/ผู้ตีกลับ/เหตุผล · `servicePeriodFrom` (เริ่มตั้งแล้ว) · `updatedAt` (แก้ล่าสุด — RPC บันทึกขยับให้) */
+          · สถานะ/ผู้ยื่น/ผู้ตีกลับ/เหตุผล · `servicePeriodFrom` (เริ่มตั้งแล้ว) · `updatedAt` (แก้ล่าสุด — RPC บันทึกขยับให้)
+       ⭐ PR-C (C7): `servicePeriodTo` — ช่วงบริการของแถวรอตั้งรอบ (`servicePeriodOf` · หัวใบของใบที่ตั้งแล้ว) ⇒ ค่าเติมวันของโมดัล
+          + รอบที่แนะนำ · ต่อท้าย select ตัวเดิม (ไม่เพิ่มคำสั่งอ่านใบ — ยามเงินนับคำสั่ง) */
     const { data: orders, error: orderError } = await fetchAllResult(() => supabase
       .from('sales_orders')
-      .select('id, "orderNumber", status, supersededById, customerId, customerName, projectId, dealId, orderDate, approvedAt, "serviceContractId", origin, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef", "totalAmount", "serviceTermsOpenedAt", "serviceSetupState", "serviceSetupSubmittedAt", "serviceSetupSubmittedByName", "serviceSetupRejectedAt", "serviceSetupRejectedByName", "serviceSetupRejectedReason", "servicePeriodFrom", "updatedAt"')
+      .select('id, "orderNumber", status, supersededById, customerId, customerName, projectId, dealId, orderDate, approvedAt, "serviceContractId", origin, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef", "totalAmount", "serviceTermsOpenedAt", "serviceSetupState", "serviceSetupSubmittedAt", "serviceSetupSubmittedByName", "serviceSetupRejectedAt", "serviceSetupRejectedByName", "serviceSetupRejectedReason", "servicePeriodFrom", "servicePeriodTo", "updatedAt"')
       .eq('status', 'approved')
       .is('supersededById', null)
       .order('approvedAt', { ascending: false })
@@ -115,8 +122,9 @@ export const GET = withUser(async ({ user, supabase }) => {
         .select('"salesOrderId", status, "dueDate", "coversFrom", "coversTo", id')
         .in('salesOrderId', chunk)
         .order('salesOrderId', { ascending: true }).order('id', { ascending: true })),
+      /* ⭐ PR-C (C7): วันเริ่ม/สิ้นสุดของสัญญา = ช่วงบริการของใบย้อนหลัง (`servicePeriodOf` · C-D4) */
       fetchAllInChunks(contractIds, (chunk) => supabase.from('sales_contracts')
-        .select('id, "contractNo", status').in('id', chunk).order('id', { ascending: true })),
+        .select('id, "contractNo", status, "effectiveDate", "expiryDate"').in('id', chunk).order('id', { ascending: true })),
     ]);
     const installmentsByOrderId = new Map();
     for (const r of instRows) {
@@ -140,14 +148,41 @@ export const GET = withUser(async ({ user, supabase }) => {
     // "ขายไว้กี่รอบ" ได้ (ไม่ส่ง = ตอบ null ซึ่งอ่านว่า "ยังไม่ระบุ" ไม่ใช่ศูนย์)
     // ⭐ งวดของใบ ⇒ แถวรอตั้งรอบบอก "เงินครอบถึง" ได้ (มติ 22/09 · ม็อก TsIntake)
     const linesById = new Map((lines || []).map((row) => [row.id, row]));
-    const plan = planQueue({ zones, terms, plans, sites, ordersById, linesById, installmentsByOrderId, todayIso });
     const visit = visitQueue({ plans, visits, sites, ordersById, isLive: isLiveVisit, todayIso });
+
+    /* ⭐ รอบกำพร้า (PR-C · C-D11 · [owner]) — รอบที่ยังเดินแต่ชี้ใบที่ไม่มีผลแล้ว (Rev. ถอดไซต์ · Rev. ของ Rev. ·
+       ใบถูกยกเลิก) ⇒ แถบเตือนบนแท็บตั้งรอบ · ระบบไม่ปิด/ย้ายรอบเอง
+       · `ordersById` ของคิวมีเฉพาะใบที่มีผล ⇒ ใบที่รอบชี้แต่ไม่อยู่ในนั้นต้องโหลดเพิ่ม ทีละทอดของโซ่ `supersededById`
+         (ทอดละหนึ่งคำสั่ง · ซอยก้อน · มีเพดาน) จนไม่มีใบใหม่ให้โหลด
+       · 🔒 กฎ 18 (ยามเงินของใบย้อนหลัง): เลือกคอลัมน์ที่ตั้งชื่อ ค้นด้วย id ล้วน กรองสถานะใน JS (`intakePlanFacts`)
+       · id ที่ขอแล้วแต่ไม่ได้แถวกลับ (ใบถูกลบ) จำไว้ ⇒ ไม่ขอซ้ำทุกทอด
+       · ใบที่โหลดเพิ่มใช้เดินโซ่อย่างเดียว — ไม่ปนเข้า `ordersById` ของคิว (คิวยังเห็นเฉพาะใบที่มีผล) และไม่ออกไปกับ response */
+    const chainById = new Map();
+    const requested = new Set();
+    for (let hop = 0; hop < ORPHAN_CHAIN_ROUNDS; hop += 1) {
+      const known = new Map([...ordersById, ...chainById]);
+      const missing = orphanOrderIdsToLoad({ plans, ordersById: known, todayIso }).filter((id) => !requested.has(id));
+      if (!missing.length) break;
+      for (const id of missing) requested.add(id);
+      const chainRows = await fetchAllInChunks(missing, (chunk) => supabase.from('sales_orders')
+        .select('id, "orderNumber", status, "supersededById"')
+        .in('id', chunk).order('id', { ascending: true }));
+      for (const row of chainRows) chainById.set(row.id, row);
+    }
+    const allOrdersById = new Map([...ordersById, ...chainById]);
+    const orphans = orphanPlanRows({ plans, ordersById: allOrdersById, terms, zones, sites, todayIso });
+
+    /* ⭐ PR-C (C7 · C-D2): ข้อเท็จจริงของแถว (แพ็คต่อรอบ · ช่วงบริการ · รอบที่แนะนำ · สัญญา · รายการรอบขาย · ค่าเติมโมดัล)
+       มาจากตัวคำนวณ `decoratePlanRows` ตัวเดียว — ครอบ `planQueue` ตัวเดิม ⇒ จำนวน/ลำดับแถว (= ตัวนับบนเมนู) ไม่เปลี่ยน
+       ⭐ review 29/09: ส่งรอบกำพร้าเข้าไปด้วย — รอบ stale ที่ใบปลายโซ่คือใบของแถว ติดแถวเป็น "ย้ายรอบเดิมมาใบนี้" (ไม่ใช่ตั้งรอบซ้อน) */
+    const plan = decoratePlanRows(planQueue({ zones, terms, plans, sites, ordersById, linesById, installmentsByOrderId, todayIso }), { ordersById, contractsById, linesById, todayIso, orphans });
 
     return ok({
       bind: legacy.rows,
       unknownLine: legacy.unknownLine,
       plan,
       visit,
+      orphans,
       counts: intakeCounts({ legacy, plan, visit }),
       todayIso,
     });

@@ -262,3 +262,148 @@ test('route สรุปงานบริการเลือกช่อง�
   }
   assert.doesNotMatch(select, /unitPrice|lineTotal|discount/);
 });
+
+/* ── C8 (PR-C): รอบขายรายไซต์ในทรงเดียวกับรายละเอียดโซนของคิว TS (IMPL_PLAN_C §3.8 · §4.3) ─────────────
+   ⭐ แท็บงานบริการของใบส่งรายการนี้ให้ช่องมาตรฐาน มล./เดือน (`TermStandardMlCell`) ตรง ๆ ไม่แปลงทรง
+   ⚠️ รายการต้องเท่ากับ `termDetails` ของคิว TS (C1) สำหรับรอบขายเดียวกัน — ไม่งั้นสองจอเสนอมาตรฐานคนละเลข */
+const officeZones = new Map([['SZN-office', { id: 'SZN-office', siteId: 'ST1', name: 'Office', code: 'ZN-1120-10210' }]]);
+const asanSites = new Map([['ST1', { id: 'ST1', code: 'ST-0364-01-BKK-1120', name: 'Asan Service' }]]);
+/* รูปของ SO-26090247-0 (อ่านจากฐานจริง 29/09): 2 บรรทัด FG เดียวกัน 1 รอบ · ลงโซน Office ทั้งคู่ บรรทัดละ 2 แพ็ค */
+const soStamped = {
+  id: 'SOR-mum2x0ms1fti', orderNumber: 'SO-26090247-0', status: 'approved', supersededById: null, origin: 'pipeline',
+  serviceTermsOpenedAt: '2026-09-29T04:08:11Z', servicePeriodFrom: '2026-10-22', servicePeriodTo: '2027-10-21',
+};
+const soLines = [
+  { id: 'SOL-a', sortOrder: 0, fgCode: 'FG-364-02-001-1061', description: 'ระบบกระจายกลิ่น · 2 package', qty: 12, unit: 'เดือน', serviceRounds: 1 },
+  { id: 'SOL-b', sortOrder: 1, fgCode: 'FG-364-02-001-1061', description: 'ระบบกระจายกลิ่น · 2 package', qty: 12, unit: 'เดือน', serviceRounds: 1 },
+];
+const soTerm = (over = {}) => ({
+  id: 'SZT-2', zoneId: 'SZN-office', salesOrderId: 'SOR-mum2x0ms1fti', salesOrderLineId: 'SOL-b',
+  fgCode: 'FG-364-02-001-1061', description: 'ระบบกระจายกลิ่น · 2 package', packageQty: 2, unit: 'แพ็ค', standardMlPerMonth: null, ...over,
+});
+const soTerms = [soTerm(), soTerm({ id: 'SZT-1', salesOrderLineId: 'SOL-a' })];
+const soSummary = (over = {}) => salesOrderServiceSummary({
+  order: soStamped, lines: soLines, terms: soTerms, zonesById: officeZones, sitesById: asanSites, todayIso: '2026-09-29', ...over,
+});
+
+test('C8: แถวไซต์พารอบขายในทรง §4.3 (id · โซน · FG · แพ็ค/รอบ · หน่วย · รอบ · เดือน · มาตรฐาน)', () => {
+  const out = soSummary();
+  assert.equal(out.stamped, true, 'ช่องมาตรฐานเสนอค่าเฉพาะใบที่ประทับ — จอต้องรู้จากตัวสรุป');
+  const [row] = out.allocation.sites;
+  assert.deepEqual(row.terms, [
+    { id: 'SZT-1', zoneId: 'SZN-office', zoneCode: 'ZN-1120-10210', zoneName: 'Office', fgCode: 'FG-364-02-001-1061', description: 'ระบบกระจายกลิ่น · 2 package', packageQty: 2, unit: 'แพ็ค', rounds: 1, periodMonths: 12, standardMlPerMonth: null },
+    { id: 'SZT-2', zoneId: 'SZN-office', zoneCode: 'ZN-1120-10210', zoneName: 'Office', fgCode: 'FG-364-02-001-1061', description: 'ระบบกระจายกลิ่น · 2 package', packageQty: 2, unit: 'แพ็ค', rounds: 1, periodMonths: 12, standardMlPerMonth: null },
+  ], 'เรียงตามโซน แล้วตามลำดับบรรทัดในใบ (รายการ 1 ก่อน 2)');
+  // ช่องเดิมของแถวไม่เปลี่ยน (ผู้อ่านเดิม: หน้าใบย้อนหลัง historicalServiceProgress)
+  assert.deepEqual(row.zones, [{ id: 'SZN-office', name: 'Office' }]);
+  assert.equal(row.packageQty, 4);
+});
+
+test('C8: รายการเดียวกับ termDetails ของคิว TS (C1) สำหรับรอบขายเดียวกัน — ใบประทับ และใบเดิมที่ยังไม่ประทับ', async () => {
+  const { planRowFacts } = await import('../service/intakePlanFacts.js');
+  const byId = (a, b) => a.id.localeCompare(b.id);
+  const intakeItems = (order, terms, zones) => planRowFacts(
+    { stamped: !!order.serviceTermsOpenedAt, zones, terms, roundsSold: 1, site: asanSites.get('ST1'), orderNumber: order.orderNumber, salesOrderId: order.id },
+    { order, linesById: new Map(soLines.map((l) => [l.id, l])), todayIso: '2026-09-29' },
+  ).termDetails;
+  const zones = [...officeZones.values()];
+
+  assert.deepEqual(
+    [...soSummary().allocation.sites[0].terms].sort(byId),
+    [...intakeItems(soStamped, soTerms, zones)].sort(byId),
+  );
+  /* ใบเดิม (ยังไม่ประทับ) ที่มีช่วงร่างของงานตั้งย้อนหลัง: packageQty = จำนวนที่จัดสรร (ไม่ใช่แพ็ค/รอบ) และช่วงร่างยังไม่ผ่านผู้จัดการ
+     ⇒ ทั้งสองจอให้ packageQty/periodMonths = null (ไม่มีข้อเสนอ มล. · แก้ค่าได้ตามเดิม) */
+  const legacy = { ...soStamped, serviceTermsOpenedAt: null };
+  const legacyTerms = soTerms.map((t) => ({ ...t, packageQty: 3, unit: 'เครื่อง', standardMlPerMonth: 1500 }));
+  const mine = [...soSummary({ order: legacy, terms: legacyTerms }).allocation.sites[0].terms].sort(byId);
+  assert.deepEqual(mine, [...intakeItems(legacy, legacyTerms, zones)].sort(byId));
+  assert.equal(mine[0].packageQty, null);
+  assert.equal(mine[0].periodMonths, null);
+  assert.equal(mine[0].standardMlPerMonth, 1500, 'ค่าที่ตั้งไว้แล้วต้องโชว์ แม้ใบยังไม่ประทับ');
+  assert.equal(soSummary({ order: legacy, terms: legacyTerms }).stamped, false);
+});
+
+test('C8: ใบย้อนหลังที่ได้ตรา (PR-D · 0394) — รายการตรงกับคิว TS แม้คิวรู้ช่วงจากสัญญา · ไม่มีข้อเสนอ มล. ทั้งสองจอ', async () => {
+  const { planRowFacts } = await import('../service/intakePlanFacts.js');
+  const { standardMlSuggestion } = await import('../service/termStandardMl.js');
+  const { ORIGIN_HISTORICAL } = await import('./historicalOrders.js');
+  const byId = (a, b) => a.id.localeCompare(b.id);
+  const order = { ...soStamped, origin: ORIGIN_HISTORICAL, servicePeriodFrom: null, servicePeriodTo: null, serviceContractId: 'CT-1' };
+  const contract = { id: 'CT-1', contractNo: 'CT-2601-0001', status: 'signed', effectiveDate: '2026-01-01', expiryDate: '2026-12-31' };
+  const mine = [...soSummary({ order }).allocation.sites[0].terms].sort(byId);
+  const intake = [...planRowFacts(
+    { stamped: true, zones: [...officeZones.values()], terms: soTerms, roundsSold: 1, site: asanSites.get('ST1'), orderNumber: order.orderNumber, salesOrderId: order.id },
+    { order, contract, linesById: new Map(soLines.map((l) => [l.id, l])), todayIso: '2026-09-29' },
+  ).termDetails].sort(byId);
+  assert.deepEqual(mine, intake);
+  assert.ok(mine.every((t) => standardMlSuggestion(t, { stamped: true }) === null));
+});
+
+test('C8: ข้อเสนอ มล. จากรายการของแท็บ = เลขเดียวกับจอคิว (167 มล. · 2 แพ็ค/รอบ × 1 รอบ ÷ 12 เดือน)', async () => {
+  const { standardMlSuggestion } = await import('../service/termStandardMl.js');
+  const out = soSummary();
+  const suggestion = standardMlSuggestion(out.allocation.sites[0].terms[0], { stamped: out.stamped });
+  assert.equal(suggestion?.value, 167);
+  assert.equal(suggestion?.label, '167 มล. (2 แพ็ค/รอบ × 1 รอบ ÷ 12 เดือน × 1 ลิตร)');
+});
+
+test('C8: ใบที่ไม่มีผลแล้ว = ไม่มีรอบขายให้ตั้งมาตรฐาน · โซนที่หาไม่เจอไม่โผล่', () => {
+  for (const order of [{ ...soStamped, supersededById: 'SOR-rev' }, { ...soStamped, status: 'cancelled' }, { ...soStamped, status: 'approval_revoked' }]) {
+    const out = soSummary({ order });
+    assert.deepEqual(out.allocation.sites, [], order.status);
+  }
+  const ghost = soSummary({ terms: [...soTerms, soTerm({ id: 'SZT-9', zoneId: 'SZN-gone' })] });
+  assert.deepEqual(ghost.allocation.sites[0].terms.map((t) => t.id), ['SZT-1', 'SZT-2']);
+});
+
+test('C8: ค่าที่ขาด = null ไม่ใช่ 0 (ไม่มีบรรทัด/รอบ/ช่วง/ค่ามาตรฐานไม่ใช่บวก)', () => {
+  const out = soSummary({
+    order: { ...soStamped, servicePeriodFrom: null, servicePeriodTo: null },
+    lines: [{ ...soLines[0], serviceRounds: null }],
+    terms: [soTerm({ id: 'SZT-1', salesOrderLineId: 'SOL-a', standardMlPerMonth: 0 }), soTerm({ id: 'SZT-2', salesOrderLineId: 'SOL-x', packageQty: null, unit: null, fgCode: null, description: null })],
+  });
+  const [a, b] = out.allocation.sites[0].terms;
+  assert.equal(a.rounds, null);
+  assert.equal(a.periodMonths, null);
+  assert.equal(a.standardMlPerMonth, null);
+  assert.deepEqual([b.rounds, b.packageQty, b.unit, b.fgCode, b.description], [null, null, null, null, null]);
+});
+
+test('C8: ป้ายของรอบขายในเซลล์ — โซนเดียวรอบเดียว = ชื่อโซน · โซนเดียวหลายรอบ = บอก "รายการ n" (ตรงคอลัมน์ # ของตารางรายการ) + FG', () => {
+  const lobby = new Map([...officeZones, ['SZN-lobby', { id: 'SZN-lobby', siteId: 'ST1', name: 'Lobby', code: 'ZN-1120-10211' }]]);
+  const out = soSummary({
+    zonesById: lobby,
+    lines: [...soLines, { id: 'SOL-c', sortOrder: 2, fgCode: 'FG-9', serviceRounds: 1 }],
+    terms: [...soTerms, soTerm({ id: 'SZT-3', zoneId: 'SZN-lobby', salesOrderLineId: 'SOL-c', fgCode: 'FG-9' })],
+  });
+  const [row] = out.allocation.sites;
+  assert.deepEqual(row.terms.map((t) => t.id), ['SZT-3', 'SZT-1', 'SZT-2'], 'Lobby ก่อน Office (เรียงตามชื่อโซน)');
+  assert.deepEqual(row.termLabels, {
+    'SZT-3': { zone: 'Lobby', detail: null },
+    'SZT-1': { zone: 'Office', detail: 'รายการ 1 · FG-364-02-001-1061' },
+    'SZT-2': { zone: 'Office', detail: 'รายการ 2 · FG-364-02-001-1061' },
+  });
+});
+
+test('C8: ตัวสรุปไม่ดึงไฟล์ของคิว TS (intakePlanFacts) · route เลือกรหัสโซนมาด้วย', () => {
+  const lib = readFileSync(new URL('./salesOrderServiceSummary.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(lib, /(from|import\()\s*['"][^'"]*intakePlanFacts/, 'ห้าม import ไฟล์ของคิว TS (แผน §3.8)');
+  assert.match(lib, /import \{[^}]*\bperiodSpan\b[^}]*\} from '@\/lib\/sales\/serviceSetup'/);
+  assert.match(lib, /import \{[^}]*\bservicePeriodOf\b[^}]*\} from '@\/lib\/sales\/serviceSetup'/);
+  const route = readFileSync(new URL('../../app/api/sales-planning/sales-orders/[id]/service/route.js', import.meta.url), 'utf8');
+  assert.match(route, /from\('service_zones'\)\.select\('id, "siteId", name, code'\)/);
+});
+
+/* review 29/09: ป้าย "รายการ n · FG" ของสองจอต้องเท่ากันสำหรับรอบขายชุดเดียวกัน (ตัวช่วยเดียว `termLineLabels`) */
+test('🔴 C8: termLabels ของแท็บงานบริการ = termLabels ของแถวคิว TS (SO-26090247-0: รายการ 1/2 บนโซน Office)', async () => {
+  const { planRowFacts } = await import('../service/intakePlanFacts.js');
+  const out = soSummary();
+  const intake = planRowFacts(
+    { stamped: true, zones: [...officeZones.values()], terms: soTerms, roundsSold: 1, site: asanSites.get('ST1'), orderNumber: soStamped.orderNumber, salesOrderId: soStamped.id },
+    { order: soStamped, linesById: new Map(soLines.map((l) => [l.id, { ...l, salesOrderId: soStamped.id }])), todayIso: '2026-09-29' },
+  );
+  assert.deepEqual(intake.termLabels, out.allocation.sites[0].termLabels);
+  assert.deepEqual(out.allocation.sites[0].termLabels['SZT-1'], { zone: 'Office', detail: 'รายการ 1 · FG-364-02-001-1061' });
+  assert.deepEqual(intake.termDetails.map((t) => t.id), out.allocation.sites[0].terms.map((t) => t.id), 'ลำดับเดียวกัน');
+});

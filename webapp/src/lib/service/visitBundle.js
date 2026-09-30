@@ -18,6 +18,7 @@ import { termIsActive } from './terms';
  *                     ⚠️ ได้ไซต์ + ภาระ แต่ **ไม่ได้บริบทด่าน** — คำร้องยังไม่มีนัดให้ตรวจด่าน
  *                     (นัดประเมินข้ามด่าน ①② อยู่แล้ว · ยิงด่านให้ = โหลดโซน/สัญญาฟรี ๆ)
  * @returns `{ sites, workload, gateContext }` — `sites` เป็น array รูปเดียวกับที่ response ส่ง
+ *          · `gateContext` มีก้อนที่หก `setupOrdersByZone` (ชิปใบสั่งขาย D15 · ว่าง = `{}`)
  * @throws  error ของ query ตัวแรกที่พัง — ผู้เรียกตอบ 500 ใน catch ของ route
  */
 export async function visitBundle(supabase, visits = [], { gateSiteIds, extraSiteIds = [] } = {}) {
@@ -70,8 +71,10 @@ export async function visitBundle(supabase, visits = [], { gateSiteIds, extraSit
      ผู้รับผิดชอบในโมดัล จึงส่งข้อมูลไป ไม่ใช่ส่งผลสำเร็จรูปมาก้อนเดียว
      🪤 **ซ้อนกับการโหลด zones/terms/orders ข้างบนที่ใช้คำนวณภาระ** — ของข้างบน
         เลือกมาไม่ครบสำหรับด่าน (ไม่มีวันของ term · ไม่มี serviceContractId)
-        ⇒ รอบนี้ยอมยิงซ้ำเพื่อให้ด่านถูกก่อน · ยุบเป็นก้อนเดียวได้ถ้าเจอว่าหน้านี้หนัก */
-  const gateContext = await loadVisitGateContext(supabase, gateSiteIds ?? siteIds.filter((id) => visitSiteIds.has(id)));
+        ⇒ รอบนี้ยอมยิงซ้ำเพื่อให้ด่านถูกก่อน · ยุบเป็นก้อนเดียวได้ถ้าเจอว่าหน้านี้หนัก
+     ⭐ D15 (PR-C · C9 · C-D19): **ที่นี่ที่เดียวที่ขอชิปใบสั่งขาย** (`withSetupOrders`) — การ์ด/แผงด่านของจอจัดคิวบอกได้ว่า
+        โซนที่ยังไม่มีรอบขายกำลังรอใบไหน (เลขที่ · ขั้น · AE) · ทางตรวจด่านฝั่ง server ไม่ขอ (ชิปไม่เปลี่ยนผลด่าน) */
+  const gateContext = await loadVisitGateContext(supabase, gateSiteIds ?? siteIds.filter((id) => visitSiteIds.has(id)), { withSetupOrders: true });
 
   return { sites: [...sites.values()], workload, gateContext };
 }

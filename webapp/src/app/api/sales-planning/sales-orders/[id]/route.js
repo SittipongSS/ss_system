@@ -86,6 +86,7 @@ import {
 } from '@/lib/sales/historicalOrderWorkflow';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
+import { serviceTermZoneCount, termOrderActive } from '@/lib/service/terms';
 import {
   activeDocumentsForOrder, moveDocumentsToRevisedOrder, voidDocumentsByIds, voidDocumentsForOrder,
 } from '@/lib/sales/productSpecStore';
@@ -400,6 +401,26 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
     }
   }
 
+  /* ── โซนของรอบขายที่มีผลของใบ (PR-C C5 · C-D15) — บรรทัด "เปิดด่านเงินของนัดบริการของใบนี้ถึง … (n โซน)" ในโมดัล FN รับรองงวด
+     (โมดัลรับรอง + "บันทึกการรับชำระ" ของบัญชีบนแผงงวด) · ทะเบียนการชำระนับชุดเดียวกันใน route ของมันเอง
+     ⭐ เฉพาะใบที่เปิดงานบริการแล้ว (`serviceTermsOpenedAt` · mig 0392) และยังมีผล (`termOrderActive`) — ใบ pipeline ที่ยังไม่ประทับ
+       ไม่มีรอบขาย (ทางผูกของ TS ปิด 409) · ใบย้อนหลังใช้บรรทัดของตัวเอง ⇒ ใบอื่นไม่ยิง query
+     ⚠️ อ่านไม่ขึ้นไม่บล็อกหน้าใบ แต่ต้องบอก (`serviceTermZonesError`) · จำนวน = null (ไม่รู้) ⇒ โมดัลไม่มีบรรทัดนั้น ไม่ใช่ "0 โซน"
+     ⚠️ เฉพาะ GET (`extras`) · ก้อนแยกจากของเสริมของใบย้อนหลังข้างล่าง (historicalOrderWorkflow แก้คนละสาย) */
+  let serviceTermZones = 0;
+  let serviceTermZonesError = null;
+  if (extras && termOrderActive(order) && order.serviceTermsOpenedAt) {
+    const { data: termRows, error: termError } = await fetchAllResult(() => supabase.from('service_zone_terms')
+      .select('id, "zoneId"').eq('salesOrderId', order.id).order('id', { ascending: true }));
+    if (termError) {
+      console.error('[sales-order] โหลดรอบขายของใบไม่สำเร็จ:', id, termError);
+      serviceTermZones = null;
+      serviceTermZonesError = `อ่านรอบขายของใบไม่สำเร็จ: ${termError.message || termError}`;
+    } else {
+      serviceTermZones = serviceTermZoneCount(termRows || [], order);
+    }
+  }
+
   /* ── ของเสริมของใบย้อนหลัง (historicalOrderWorkflow) — อ่านไม่ขึ้นไม่บล็อกหน้าใบ แต่ต้องบอก (`extrasError`)
      ⚠️ ห้ามกลืนเป็นรายการว่าง — โมดัลอนุมัติที่แถวหายเงียบ ๆ อ่านเหมือน "ไม่มีเรื่องต้องตรวจ"
      ⚠️ งวดอ่านไม่ขึ้นก็นับ — หลักฐานงวดยกมาอ่านจากแถวงวด ⇒ ว่างเพราะอ่านพัง ≠ "ไม่มีหลักฐาน" */
@@ -438,6 +459,10 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
     carrySources,
     carriedAway,
     moneyLinksError,
+    /* บรรทัดด่านเงินของนัดบริการในโมดัล FN รับรองงวด (PR-C C5) — ผูกสัญญาแล้วไหมมาจากช่องของใบเอง */
+    serviceTermZones,
+    serviceTermZonesError,
+    serviceContractLinked: !!order.serviceContractId,
     installments: historical
       ? installmentRows
       : withLiveAmounts(installmentRows, quotation?.paymentPlan, order.totalAmount),

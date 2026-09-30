@@ -1,6 +1,6 @@
 // ── API ทะเบียนติดตามต่อสัญญาบริการ (mig 0327 · แผน §PR-E) ──────────────────
 //
-// ⭐ **รายชื่อ "ใกล้หมด" คำนวณสดทุกครั้ง** จาก `service_zone_terms."endDate"` —
+// ⭐ **รายชื่อ "ใกล้หมด" คำนวณสดทุกครั้ง** จากสัญญาของใบ (mig 0324) หรือช่วงบริการของใบที่เปิดงานบริการแล้ว (PR-C) —
 //   ตาราง `service_renewal_followups` เก็บแค่ผลการติดตาม ไม่ได้เก็บว่าใครใกล้หมด
 //   (กติกาเดียวกับ `termIsActive`: สถานะที่ขึ้นกับวันที่ห้ามเก็บลงฐาน)
 //
@@ -17,7 +17,7 @@ import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/h
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
 import { loadSites } from '@/lib/service/sitesRepo';
 import { loadAllZones, loadTerms } from '@/lib/service/termsRepo';
-import { followupPatch, followupSaveError, renewalCounts, renewalRows } from '@/lib/service/renewals';
+import { followupPatch, followupSaveError, renewalCounts, renewalLeadTerm, renewalRows } from '@/lib/service/renewals';
 import { ensureRetrieveVisit } from '@/lib/service/renewalRetrieveVisit';
 import { sweepRenewalNotices } from '@/lib/service/renewalNotify';
 import { businessDate } from '@/lib/businessDate';
@@ -37,8 +37,10 @@ async function loadRenewalContext(supabase, user) {
   const { data: orders, error: orderError } = orderIds.length
     ? await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase.from('sales_orders')
       /* ⚠️ **`serviceContractId` คือทางไปหาวันหมด** (mig 0324) — ลืมคอลัมน์นี้เมื่อไร
-         ทะเบียนกลับไปว่างเปล่าเงียบ ๆ เหมือนก่อนแก้ 06/09/2026 */
-      .select('id, "orderNumber", status, "supersededById", "dealId", "customerId", "serviceContractId"')
+         ทะเบียนกลับไปว่างเปล่าเงียบ ๆ เหมือนก่อนแก้ 06/09/2026
+         ⭐ `servicePeriodTo` + `serviceTermsOpenedAt` (PR-C) — ใบที่เปิดงานบริการแล้วแต่ยังไม่ผูกสัญญา
+           ถอยไปใช้วันจบช่วงบริการของใบ (`termEndInfo`) · ลืมสองคอลัมน์นี้ = ทางถอยเงียบทั้งที่เทสต์ lib เขียว */
+      .select('id, "orderNumber", status, "supersededById", "dealId", "customerId", "serviceContractId", "servicePeriodTo", "serviceTermsOpenedAt"')
       .in('id', chunk).order('id', { ascending: true })))
     : { data: [], error: null };
   if (orderError) throw new Error(orderError.message);
@@ -116,7 +118,7 @@ export const GET = withUser(async ({ user, supabase }) => {
     /* แนบดีล/ใบของรอบที่เร็วที่สุดไปด้วย — จอต้องลิงก์กลับไปที่ใบและรู้ว่าใครเป็นเจ้าของ
        (ไม่ส่งราคา/ยอดไปด้วย: ทะเบียนนี้ตอบว่า "ต้องโทรใครก่อน" ไม่ใช่เรื่องเงิน) */
     const enriched = rows.map((row) => {
-      const term = row.terms.find((t) => t.endDate === row.endDate) || row.terms[0];
+      const term = renewalLeadTerm(row);
       const order = ctx.ordersById.get(term?.salesOrderId) || null;
       const deal = order?.dealId ? ctx.dealById.get(order.dealId) || null : null;
       const { terms: _terms, ...rest } = row;
@@ -159,7 +161,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
     /* สิทธิ์แก้เดินตามดีลของรอบนั้น (เหมือนขอบเขตการมองเห็น) — ไม่ใช่ cap ลอย ๆ
        ⚠️ ไม่มีดีล = แก้ไม่ได้ ไม่ใช่ปล่อยผ่าน (ใบที่ไม่มีดีลคือใบที่หลุดขอบเขตทุกด่าน) */
-    const term = row.terms.find((t) => t.endDate === row.endDate) || row.terms[0];
+    const term = renewalLeadTerm(row);
     const order = ctx.ordersById.get(term?.salesOrderId) || null;
     const deal = order?.dealId ? ctx.dealById.get(order.dealId) || null : null;
     const canEdit = canEditSalesPlanning(user) && !!deal && inSalesEditScope(user, deal);

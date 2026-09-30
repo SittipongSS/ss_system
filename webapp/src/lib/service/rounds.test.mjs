@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import {
   dayLoad,
   ensureVisits,
+  estimateVisitCount,
   nextAfterDone,
   normalizePlanInput,
   normalizeVisitInput,
@@ -16,6 +17,7 @@ import {
   visitTimeText,
   visitWarnings,
   routeZoneSplit,
+  suggestEveryDays,
   windowsOverlap,
 } from './rounds.js';
 
@@ -399,4 +401,70 @@ test('รอบเดิมยัง idempotent — gen ซ้ำไม่ได
   const first = ensureVisits(plan, [], opts);
   const again = ensureVisits(plan, first.map((v) => ({ ...v, id: 'x' })), opts);
   assert.deepEqual(again, [], 'นัดของรอบเดียวกันที่มีอยู่แล้วต้องไม่ถูก gen ซ้ำ');
+});
+
+/* ── ความถี่ที่แนะนำจากรอบที่ขาย (PR-C · C-D7) — ตัวกลับของ estimateVisitCount ─────────────────────────
+   ⭐ ข้อเสนอให้คนกด ไม่ใช่ค่าตั้งต้นเงียบ ๆ · ห้ามให้นัดน้อยกว่าที่ขาย (visits ≥ rounds เมื่อช่วงพอ)
+   ⚠️ ความถี่ของรอบตั้งได้ 1–365 วัน (normalizePlanInput) ⇒ เกินเพดาน = บอกว่าโดนตัด (`clamped`) ไม่ใช่เงียบ */
+test('suggestEveryDays: 12 รอบใน 1 ปี = ทุก 33 วัน ได้ 12 นัด · 13 รอบ = ทุก 30 วัน ได้ 13 นัด', () => {
+  assert.deepEqual(
+    suggestEveryDays({ startDate: '2026-10-01', endDate: '2027-09-30', rounds: 12 }),
+    { everyDays: 33, visits: 12, clamped: false },
+  );
+  assert.deepEqual(
+    suggestEveryDays({ startDate: '2026-10-01', endDate: '2027-09-30', rounds: 13 }),
+    { everyDays: 30, visits: 13, clamped: false },
+  );
+});
+
+test('suggestEveryDays: รอบเดียว = ช่วงทั้งช่วง + 1 วัน (นัดเดียว) · เกิน 365 วัน = ตัดที่ 365 และบอกว่าตัด', () => {
+  // 364 วัน → 365 ยังไม่เกินเพดาน
+  assert.deepEqual(
+    suggestEveryDays({ startDate: '2026-10-01', endDate: '2027-09-30', rounds: 1 }),
+    { everyDays: 365, visits: 1, clamped: false },
+  );
+  // 400 วัน → 401 เกินเพดาน ⇒ 365 วัน = ได้ 2 นัด
+  assert.deepEqual(
+    suggestEveryDays({ startDate: '2026-10-01', endDate: '2027-11-05', rounds: 1 }),
+    { everyDays: 365, visits: 2, clamped: true },
+  );
+  // 2 รอบใน 2 ปี (730 วัน) → 730 เกินเพดาน ⇒ ทุก 365 วัน ≈ 3 นัด (ได้เกินที่ขาย)
+  assert.deepEqual(
+    suggestEveryDays({ startDate: '2026-01-01', endDate: '2028-01-01', rounds: 2 }),
+    { everyDays: 365, visits: 3, clamped: true },
+  );
+});
+
+test('suggestEveryDays: รอบมากกว่าจำนวนวัน = ทุก 1 วัน (พื้น) และบอกว่าตัด', () => {
+  assert.deepEqual(
+    suggestEveryDays({ startDate: '2026-10-01', endDate: '2027-09-30', rounds: 400 }),
+    { everyDays: 1, visits: 365, clamped: true },
+  );
+});
+
+test('suggestEveryDays: ไม่มีวัน · รอบไม่ใช่จำนวนเต็มบวก · วันกลับด้าน = null (ไม่เดา)', () => {
+  const span = { startDate: '2026-10-01', endDate: '2027-09-30' };
+  assert.equal(suggestEveryDays(), null);
+  assert.equal(suggestEveryDays({ ...span }), null);
+  assert.equal(suggestEveryDays({ ...span, rounds: 0 }), null);
+  assert.equal(suggestEveryDays({ ...span, rounds: -3 }), null);
+  assert.equal(suggestEveryDays({ ...span, rounds: 1.5 }), null);
+  assert.equal(suggestEveryDays({ ...span, rounds: null }), null);
+  assert.equal(suggestEveryDays({ ...span, rounds: '12' }), null, 'ตัวเลขเป็นสตริง = ไม่ใช่จำนวนรอบ');
+  assert.equal(suggestEveryDays({ startDate: null, endDate: '2027-09-30', rounds: 12 }), null);
+  assert.equal(suggestEveryDays({ startDate: '2026-10-01', endDate: null, rounds: 12 }), null);
+  assert.equal(suggestEveryDays({ startDate: '2027-09-30', endDate: '2026-10-01', rounds: 12 }), null);
+  assert.equal(suggestEveryDays({ startDate: 'x', endDate: '2027-09-30', rounds: 12 }), null);
+});
+
+test('⭐ suggestEveryDays ไม่ทำให้นัดน้อยกว่าที่ขาย — รอบ 1…60 ในช่วง 364 วัน · visits ตรงกับ estimateVisitCount เสมอ', () => {
+  const span = { startDate: '2026-10-01', endDate: '2027-09-30' };
+  for (let rounds = 1; rounds <= 60; rounds += 1) {
+    const s = suggestEveryDays({ ...span, rounds });
+    assert.ok(s, `รอบ ${rounds}`);
+    assert.ok(s.visits >= rounds, `รอบ ${rounds}: ได้ ${s.visits} นัด (ทุก ${s.everyDays} วัน)`);
+    assert.ok(s.everyDays >= 1 && s.everyDays <= 365);
+    assert.equal(s.clamped, false);
+    assert.equal(s.visits, estimateVisitCount({ ...span, everyDays: s.everyDays }));
+  }
 });

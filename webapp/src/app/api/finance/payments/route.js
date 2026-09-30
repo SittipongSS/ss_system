@@ -21,6 +21,7 @@ import { reportToXlsxBuffer } from '@/lib/tax/exportExcel';
 import { businessDate } from '@/lib/businessDate';
 import { paymentNotRequired } from '@/lib/sales/salesOrderPayments';
 import { orderHasServiceRounds } from '@/lib/sales/serviceOrders';
+import { serviceTermZoneCount, termOrderActive } from '@/lib/service/terms';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { customerNameIn } from '@/lib/master/customerName';
 import { billingCutoffOnIndex, billingDueCandidates, dueSoonCandidates } from '@/lib/sales/billingDueNotify';
@@ -80,10 +81,12 @@ async function loadLedger(supabase, todayIso) {
      ใบย้อนหลัง (มติ 22/09 · mock FnConfirm) — บัญชีต้องเห็นว่าใบผ่าน AE Sup แล้วก่อนรับรองเงินก้อนแรก */
   /* `serviceTermsOpenedAt` (mig 0392 · D13) = ตราเปิดงานบริการ — ตัวตัดสินด่านเงินนับแพ็คเกจที่ฝ่ายขายเลือกให้บรรทัดพิมพ์เอง
      (`serviceFgCode`) เฉพาะใบที่ประทับแล้ว ⇒ ขาดช่องนี้ = ใบแพ็คเกจพิมพ์เองหลุดจากตัวกรอง/คอลัมน์ "ใบมีรอบบริการ" ของบัญชี */
+  /* `supersededById` + `serviceContractId` (PR-C C5) = ใบยังมีผลไหม (`termOrderActive` ตัวเดียวของระบบ) + ผูกสัญญาแล้วไหม
+     — บรรทัดด่านเงินของนัดบริการในโมดัลรับรองบนทะเบียน (ข้างล่าง `serviceTermZonesByOrder`) */
   const { data: orders, error: orderError } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
     .from('sales_orders')
     /* money-decider feed */
-    .select('id, "orderNumber", "quotationId", "referenceDoc", "dealId", "projectId", "customerId", "customerName", status, "financeStatus", "totalAmount", "approvedAt", "approvedByName", origin, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef", "serviceTermsOpenedAt"')
+    .select('id, "orderNumber", "quotationId", "referenceDoc", "dealId", "projectId", "customerId", "customerName", status, "financeStatus", "totalAmount", "approvedAt", "approvedByName", origin, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef", "serviceTermsOpenedAt", "supersededById", "serviceContractId"')
     .in('id', chunk)
     .order('id', { ascending: true })));
   if (orderError) throw orderError;
@@ -137,6 +140,25 @@ async function loadLedger(supabase, todayIso) {
     o.id,
     orderHasServiceRounds(o, linesByOrder.get(o.id) || [], { projectsById, dealsById }),
   ]));
+
+  /* ── โซนของรอบขายที่มีผลต่อใบ (PR-C C5 · C-D15) — บรรทัด "เปิดด่านเงินของนัดบริการของใบนี้ถึง … (n โซน)" ในโมดัลรับรอง ──
+     ⭐ ข้อเท็จจริงชุดเดียวกับ GET ใบ (หน้าใบ) ⇒ สองจอพูดประโยคเดียวกันกับงวดเดียวกัน · นับที่ server ไม่ใช่จอ
+     ⭐ เฉพาะใบที่เปิดงานบริการแล้ว (`serviceTermsOpenedAt` · mig 0392) และยังมีผล — ใบ pipeline ที่ยังไม่ประทับไม่มีรอบขาย
+       (ทางผูกของ TS ปิด 409) · ใบย้อนหลังใช้บรรทัดของตัวเอง ⇒ ไม่ต้องถามใบอื่น
+     ⚠️ service_zone_terms อยู่ใน check:rowcap (เพดาน 0) ⇒ ซอยก้อน + ไล่หน้า · อ่านไม่ขึ้น = โยน (แบบทุกก้อนของทะเบียน) */
+  const liveServiceOrderIds = (orders || []).filter((o) => termOrderActive(o) && o.serviceTermsOpenedAt).map((o) => o.id);
+  const termsByOrder = new Map();
+  if (liveServiceOrderIds.length) {
+    const { data: termRows, error: termError } = await fetchInChunks(liveServiceOrderIds, (chunk) => fetchAllResult(() => supabase
+      .from('service_zone_terms').select('id, "salesOrderId", "zoneId"').in('salesOrderId', chunk).order('id', { ascending: true })));
+    if (termError) throw termError;
+    for (const term of termRows || []) {
+      const list = termsByOrder.get(term.salesOrderId) || [];
+      list.push(term);
+      termsByOrder.set(term.salesOrderId, list);
+    }
+  }
+  const serviceTermZonesByOrder = new Map((orders || []).map((o) => [o.id, serviceTermZoneCount(termsByOrder.get(o.id) || [], o)]));
 
   /* `paymentPlan` = แผนของ QT — ป้าย "ปรับแผนหลังอนุมัติ" (0377 · มติ D5) เทียบงวดจริงกับแผนนี้ (ไม่เก็บข้อมูลเพิ่ม) */
   const quoteIds = [...new Set((orders || []).map((o) => o.quotationId).filter(Boolean))];
@@ -238,6 +260,8 @@ async function loadLedger(supabase, todayIso) {
         billingRemind: remindIds.has(installment.id),
         dueRemind: dueRemindIds.has(installment.id),
         cutoffOn: cutoffOnById.get(installment.id) || null,
+        serviceTermZones: serviceTermZonesByOrder.get(order.id) || 0,
+        serviceContractLinked: !!order.serviceContractId,
       });
     })
     .filter(Boolean);

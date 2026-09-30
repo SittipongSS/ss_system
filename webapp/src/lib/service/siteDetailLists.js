@@ -36,12 +36,14 @@ export function matchesQuery(haystack, query) {
 
 const zoneStatusLabel = (zone) => (zone?.isActive === false ? 'ปิดใช้งาน' : 'ใช้งาน');
 
-/** ทุกอย่างที่แถวโซนวาด: รหัส · ชื่อ · อาคาร · ชั้น · หมายเหตุ · สถานะ + ชื่อ/หมายเหตุของจุดในโซน */
+/** ทุกอย่างที่แถวโซนวาด: รหัส · ชื่อ · อาคาร · ชั้น · หมายเหตุ · สถานะ + ชื่อ/หมายเหตุของจุดในโซน
+ *  + ป้าย "ขายแล้ว n แพ็ค/รอบ (SO-…)" และป้ายใบที่ยังถือโซนไว้ (`zone.sale` จาก GET ไซต์ · PR-C R1) */
 export function zoneHaystack(zone) {
   const spots = Array.isArray(zone?.spots) ? zone.spots : [];
   return [
     zone?.code, zone?.name, zone?.building, floorLabel(zone?.floor), zone?.floor, zone?.note, zoneStatusLabel(zone),
     ...spots.flatMap((spot) => [spot?.label, spot?.note]),
+    zone?.sale?.soldLabel, zone?.sale?.pendingLabel,
   ].filter(Boolean).join(' ');
 }
 

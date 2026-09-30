@@ -1,0 +1,89 @@
+/* รายละเอียดโซนใต้แถว "รอตั้งรอบ" — กล่องรองพื้นอ่อน (ม็อก TsIntakePlan `.zdet`) */
+.box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-2-5) var(--space-3) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+}
+
+/* หัว: ชื่อกล่อง + คำใบ้ (ตัดบรรทัดได้บนจอแคบ) */
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  min-width: 0;
+}
+
+.title {
+  color: var(--text);
+  font-size: var(--fs-7);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-thai);
+}
+
+.hint {
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}
+
+/* ── ทรงรายการ (การ์ด · จอแคบ) ──────────────────────────────────────────── */
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: var(--space-2) var(--space-2-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-solid);
+}
+
+.itemHead,
+.itemMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+  line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+}
+
+.itemHead {
+  color: var(--text);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+}
+
+.itemMeta {
+  color: var(--text-2);
+  font-size: var(--fs-5);
+}
+
+.itemMl {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  margin-top: var(--space-1);
+}
+
+.mlLabel {
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  font-weight: var(--fw-semibold);
+}

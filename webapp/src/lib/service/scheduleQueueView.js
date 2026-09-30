@@ -12,6 +12,8 @@
 import { VISIT_KIND_LABELS, VISIT_STATUS_LABELS, overlappingVisitIds, visitTimeText, visitWarnings } from './rounds';
 import { evaluateVisitGate, gateBlockedItems, GATE_OWNERS, visitSkipsContractGates } from './visitGate';
 import { gateContextForSite } from './gateContext';
+/* D15 (PR-C · C9): ข้อความชิปใบสั่งขาย — ไฟล์ข้อความไม่มี import (critique L9 · ห้ามดึง `zoneSetupOrders.js` เข้าจอนี้) */
+import { setupOrderChipText } from './zoneSetupOrderText';
 import { isDraftVisit, isLiveVisit, isShortfallVisit } from './visitStatus';
 import { isRenewalRetrieveVisit, visitDeleteButton } from './visitDelete';
 import { NO_TEAM } from './crewTeams';
@@ -68,6 +70,9 @@ export function gateItemView(item) {
     key: item.key, owner: item.owner, ownerTone: ownerTone(item.owner),
     reason: item.fix ? String(item.reason).split(' — ')[0] : item.reason,
     fix: item.fix || null,
+    /* D15 (PR-C · C9 · C-D19) — ชิปใบสั่งขายของข้อ (`GateOrderChips`) **เฉพาะตอนมี** ⇒ ข้อที่ไม่มีชิปรูปเดิมทุกไบต์
+       (critique L3 · deepEqual ของเทสต์เดิมต้องเขียวโดยไม่แก้) */
+    ...(item.orders?.length ? { orders: item.orders } : {}),
   };
 }
 
@@ -458,6 +463,8 @@ export function buildScheduleQueue({
       row.code, kindLabel, row.siteCode, row.siteName, row.customer, dateLine, timeLine, rel.text,
       who.text, who.sub, status?.label, status?.text, origin,
       ...gateItems.map((g) => `${g.owner || ''} ${g.reason}`), ...warns,
+      /* D15 — ชิปใบสั่งขายบนข้อด่าน (ตาเห็นบนแถว = ต้องค้นเจอ: เลขที่ใบ · สถานะ · AE) */
+      ...gateItems.flatMap((g) => (g.orders || []).map(setupOrderChipText)),
       dayLoad?.text, row.siteLoadText, tag?.label, readyText,
     ]);
     rows.push(row);

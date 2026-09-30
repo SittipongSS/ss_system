@@ -16,9 +16,11 @@
 //   ที่หน้าใบสั่งขาย อนุมัติแล้วรอบขายของโซนเกิดเอง ⇒ งานแรกของ TS คือ "รอตั้งรอบ" (แท็บตั้งต้น)
 //   · วิซาร์ดผูกโซน (`IntakeWizard`) ถูกถอดทั้งไฟล์ · `POST /api/service/intake/bind` ตอบ 409
 //   · แท็บ `bind` (คีย์เดิม) = ใบเดิมที่อนุมัติก่อน 0392 รอฝ่ายขายตั้งงานบริการ — **ดูอย่างเดียว** ไม่มีปุ่ม
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowDownToLine, CalendarPlus, ClipboardList, Info, LayoutGrid, Link2, MapPin, Search } from "lucide-react";
+import {
+  AlertTriangle, ArrowDownToLine, CalendarPlus, ChevronDown, ChevronRight, ClipboardList, Info, LayoutGrid, Link2, MapPin, Search,
+} from "lucide-react";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { useResponsiveView } from "@/lib/useResponsiveView";
@@ -34,7 +36,7 @@ import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
 import EmptyState from "@/components/ui/EmptyState";
 import StatusBadge from "@/components/ui/StatusBadge";
-import { VISIT_KIND_LABELS } from "@/lib/service/rounds";
+import { ROUNDS_SOLD_LABEL, VISIT_KIND_LABELS } from "@/lib/service/rounds";
 import { INTAKE_TABS, INTAKE_TAB_HINTS, INTAKE_TAB_LABELS, planRoundsSoldText } from "@/lib/service/intake";
 import {
   LEGACY_SETUP_FILTERS, LEGACY_SETUP_FILTER_LABELS, legacySetupFilterCounts, legacySetupHaystack, legacySetupStatusView,
@@ -43,7 +45,18 @@ import { isHistoricalOrder } from "@/lib/sales/historicalOrders";
 import { SERVICE_SETUP_LINE_TEXT } from "@/lib/sales/serviceSetup";
 import { fmtDate, fmtNumber, naText } from "@/lib/format";
 import styles from "./page.module.css";
-import { apiFetch } from "@/lib/apiFetch";
+import { apiFetch, apiJson } from "@/lib/apiFetch";
+/* ⭐ แท็บรอตั้งรอบ (PR-C · C7) — ข้อเท็จจริงของแถวคำนวณที่ route (`intakePlanFacts`) · หน้าวาด + ตั้งรอบจากแถว */
+import ServicePlanModal from "@/components/service/ServicePlanModal";
+import OrphanPlanStrip from "@/components/service/intakePlan/OrphanPlanStrip";
+import PlanZoneDetail from "@/components/service/intakePlan/PlanZoneDetail";
+import { CadenceCell, ContractChip, PeriodCell } from "@/components/service/intakePlan/PlanFactCells";
+import {
+  OTHER_PLAN_TEXT, PLAN_EMPTY_TEXT, PLAN_TAB_STAMPED_NOTE, STAMPED_BADGE_LABEL, planCountLabel, planTotals, planTotalsLine,
+} from "@/lib/service/intakePlanFacts";
+import { canBeServiceAssignee, canEditService } from "@/lib/permissions";
+import { useCan, useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
+import { notifyToast } from "@/lib/feedback";
 
 const LOAD_ERROR_TITLE = "โหลดคิวงานเข้าใหม่ไม่สำเร็จ";
 
@@ -55,6 +68,13 @@ const CARD_PAGE_SIZE = 10;
    คำเรียกช่อง (จำนวนรอบบริการ · แต่ละครั้งกี่แพ็ค — มติ 29/09) มาจากแคตตาล็อกเดียวกับหน้าใบสั่งขาย */
 const LEGACY_PANEL_TITLE = "รายการรอฝ่ายขายตั้งงานบริการ";
 const LEGACY_PANEL_SUB = `ดูอย่างเดียว — แพ็คเกจ · ${SERVICE_SETUP_LINE_TEXT.roundsLabel} · โซน · ${SERVICE_SETUP_LINE_TEXT.packsLabel} · ช่วงบริการ ฝ่ายขายตั้งที่หน้าใบสั่งขาย`;
+
+/* ตารางแท็บรอตั้งรอบ (PR-C · ม็อก TsIntakePlan) — 8 คอลัมน์ข้อมูล + คอลัมน์ปุ่ม · แถวรายละเอียดโซนกินเต็มแถว */
+const PLAN_COLUMNS = 9;
+/* ชื่อโซนของแถว — ใบเดิม/ย้อนหลังไม่มี "แพ็คต่อรอบ" (C-D3) ⇒ เหลือชื่อโซนอย่างเดียว */
+const zoneNames = (row) => (row.zones || []).map((z) => z.name).filter(Boolean).join(" · ") || naText(null);
+/* id ของกล่องรายละเอียดโซน (aria-controls) — คีย์แถวมีอักขระ \u0000 คั่นไซต์กับใบ ⇒ แปลงให้เป็น id ที่ใช้ได้ */
+const zoneDetailId = (row) => `plan-zones-${String(row.key || row.siteId).replace(/[^A-Za-z0-9_-]/g, "-")}`;
 
 /* 🐞 เดิมตัดสตริง ISO ตรง ๆ — ขึ้น "2026-08-14" ข้างป้าย "จ่ายถึง 14/08/2026" ในแถวเดียวกัน
    และอนุมัติหลังเที่ยงคืนเวลาไทยจะขึ้นวันก่อนหน้า · fmtDate คิดวันไทยให้ */
@@ -137,6 +157,28 @@ export default function ServiceIntakePage() {
   const [legacyFilter, setLegacyFilter] = useState("all");
   const [search, setSearch] = useState("");
 
+  /* ⭐ ตั้งรอบจากแถว (PR-C · C-D12) — ปุ่มเป็นของฝ่ายบริการ (`POST /api/service/plans` บังคับ `canEditService`)
+     ⇒ ถามด่านตัวเดียวกันที่จอ · ไม่มีสิทธิ์ = ไม่มีปุ่ม (กติกา "ไม่มีสิทธิ์ = ไม่โชว์")
+     ⚠️ ประกอบ user จากสี่ context ให้ครบ — `canEditService` อ่าน department (ท่าเดียวกับแท็บงานบริการของใบ)
+     ⚠️ hook ทุกตัวอยู่บนสุดของหน้า ไม่อยู่ใน `.map` ของแถว (กฎ 19) */
+  const role = useRole();
+  const team = useTeam();
+  const teams = useTeams();
+  const department = useDepartment();
+  const canEdit = useMemo(
+    () => canEditService({ role, team, teams, department }),
+    [role, team, teams, department],
+  );
+  /* ลิงก์ "เปิดใบสั่งขาย" — เฉพาะคนที่เปิดสายขายได้ (ไม่มีสิทธิ์ = กดแล้วเด้ง ⇒ ไม่โชว์) */
+  const canOpenSo = useCan("salesplan:view");
+  /* แถวที่กำลังตั้งรอบ = **ภาพถ่ายตอนกด** ไม่ใช่ค่าที่อ่านจาก `data` ใหม่ทุกครั้ง — กลับมามองแท็บแล้วหน้าโหลดใหม่
+     (`useRevalidateOnFocus`) ต้องไม่เปลี่ยน props ของโมดัลระหว่างพิมพ์ (critique M6) · ตั้งที่ openPlan/closePlan เท่านั้น */
+  const [planRow, setPlanRow] = useState(null);
+  const [technicians, setTechnicians] = useState([]);
+  const techniciansAsked = useRef(false);
+  /* แถวที่กางรายละเอียดโซนอยู่ (คีย์แถว) — โหลดใหม่แล้วยังกางค้างตามเดิม */
+  const [openZones, setOpenZones] = useState(() => new Set());
+
   const startRun = useLatestRun();
   // ของที่โหลดสำเร็จล่าสุด — ให้รอบเบื้องหลังรู้ว่ามีของเดิมยืนอยู่บนจอไหม (อ่านใน callback เท่านั้น)
   const dataRef = useRef(null);
@@ -167,6 +209,50 @@ export default function ServiceIntakePage() {
   }, [startRun]);
   useEffect(() => { load(); }, [load]);
   useRevalidateOnFocus(load);
+
+  /* ── ตั้งรอบจากแถว (PR-C · C7) ─────────────────────────────────────────────────────────────
+     รายชื่อเจ้าหน้าที่โหลดตอนเปิดครั้งแรก (ท่าเดียวกับหน้าไซต์/แท็บงานบริการ) · โหลดพัง = ลองใหม่ได้ตอนเปิดครั้งหน้า */
+  const openPlan = useCallback((row) => {
+    setPlanRow(row);
+    if (techniciansAsked.current) return;
+    techniciansAsked.current = true;
+    apiJson("/api/pm/assignable-users", { fallbackError: "โหลดรายชื่อเจ้าหน้าที่บริการไม่สำเร็จ" })
+      .then((rows) => setTechnicians((Array.isArray(rows) ? rows : []).filter(canBeServiceAssignee)))
+      .catch((e) => {
+        techniciansAsked.current = false;
+        notifyToast.error(e.message || "โหลดรายชื่อเจ้าหน้าที่บริการไม่สำเร็จ");
+      });
+  }, []);
+  const closePlan = useCallback(() => setPlanRow(null), []);
+  /* บันทึก = สร้างรอบ + สร้างนัดทันที (route gen ให้เอง) แล้วโหลดคิวใหม่ ⇒ แถวหลุดจากคิว (มีรอบของใบนี้แล้ว)
+     ⚠️ พังแล้วโยนต่อ — โมดัลโชว์ข้อความผิดพลาดในตัวเองและไม่ปิด (ServicePlanModal.submit) */
+  const savePlan = useCallback(async (form) => {
+    const body = await apiJson("/api/service/plans", { method: "POST", json: form, fallbackError: "ตั้งรอบไม่สำเร็จ" });
+    const generated = Array.isArray(body?.generated) ? body.generated.length : 0;
+    notifyToast.success(generated ? `ตั้งรอบแล้ว · สร้างนัดให้ ${fmtNumber(generated)} ครั้ง` : "ตั้งรอบแล้ว · ยังไม่มีนัดที่ต้องสร้าง");
+    await load({ background: true });
+  }, [load]);
+  /* บันทึกมาตรฐาน มล. ในรายละเอียดโซนแล้ว — แก้ค่าในแถวบนจอ (ไม่โหลดทั้งคิวใหม่เพื่อช่องเดียว) */
+  const patchTerm = useCallback((term) => {
+    if (!term?.id) return;
+    setData((prev) => (prev?.plan ? {
+      ...prev,
+      plan: prev.plan.map((row) => (row.termDetails?.some((t) => t.id === term.id)
+        ? {
+          ...row,
+          termDetails: row.termDetails.map((t) => (t.id === term.id ? { ...t, standardMlPerMonth: term.standardMlPerMonth ?? null } : t)),
+        }
+        : row)),
+    } : prev));
+  }, []);
+  const toggleZones = useCallback((key) => {
+    setOpenZones((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
 
   const counts = data?.counts || { bind: 0, plan: 0, visit: 0, unknownLine: 0 };
 
@@ -220,6 +306,9 @@ export default function ServiceIntakePage() {
     () => [...new Set((data?.plan || []).filter(isHistoricalOrder).map((row) => row.orderNumber || row.salesOrderId))],
     [data],
   );
+  /* ยอดของแท็บรอตั้งรอบ (C-D21 · [owner]) — ป้ายจำนวน "{n} แถว" (แถว = ไซต์ × ใบ = ตัวนับบนเมนู = ยอดของ Pager)
+     + บรรทัดรวม "ทั้งหมด s ไซต์ · o ใบ · z โซน · p แพ็ค/รอบ" เหนือ Pager */
+  const planSum = useMemo(() => planTotals(data?.plan || []), [data]);
 
   return (
     <Workspace
@@ -275,6 +364,17 @@ export default function ServiceIntakePage() {
         </StatusNotice>
       )}
 
+      {/* ⭐ PR-C (C7): ใบที่ฝ่ายขายตั้งโซนแล้ว (ตรา 0392) มาพร้อมโซน · แพ็คต่อรอบ · รอบที่ขาย — โซนผิดแก้ที่ใบ (Rev.) ไม่ใช่ที่นี่
+          🪤 ขึ้นต้นด้วย `showCounts &&` เสมอ (L1) — ยาม slice ของ historicalServiceSide ตัดก้อนใบเดิมถึงก้อนแท็บตั้งรอบ
+             ก้อนแรกของไฟล์ (เงื่อนไขแท็บเปล่า ๆ ตามด้วยวงเล็บ) ⇒ ขึ้นต้นแบบนั้นเหนือก้อนใบเดิมเมื่อไร ก้อนที่ยามอ่านว่างทันที */}
+      {showCounts && tab === "plan" && planSum.anyStamped && (
+        <StatusNotice tone="info">
+          {PLAN_TAB_STAMPED_NOTE}
+        </StatusNotice>
+      )}
+      {/* รอบกำพร้า (C-D11) — รอบที่ยังเดินแต่ใบของมันไม่มีผลแล้ว · ไม่มี = ไม่วาดอะไร */}
+      {showCounts && tab === "plan" && <OrphanPlanStrip orphans={data?.orphans} />}
+
       {/* ⭐ รายการ = ListPanel ใบเดียว ชื่อ · คำอธิบาย · จำนวน เดินตามแท็บ (มติผู้ใช้ 2026-09-15)
           · ป้ายจำนวน = แถวของแท็บนั้นทั้งหมด = ยอดของ Pager · ยังไม่รู้ (โหลด/พัง) = ขีด ไม่ใช่ 0
           · `loading` แทนที่เฉพาะเนื้อ — แท็บกับตัวสลับมุมมองยืนอยู่ระหว่างโหลด */}
@@ -298,7 +398,8 @@ export default function ServiceIntakePage() {
         title={tab === "bind" ? LEGACY_PANEL_TITLE : `รายการ${INTAKE_TAB_LABELS[tab]}`}
         /* คำอธิบายพูดถึง "ของที่อยู่ในคิว" — โหลดพังแล้วยังขึ้นคำอธิบาย อ่านเหมือนคิวว่างปกติ */
         subtitle={loadError ? null : (tab === "bind" ? LEGACY_PANEL_SUB : INTAKE_TAB_HINTS[tab])}
-        count={showCounts ? `${tabRows.length} ${tab === "visit" ? "รอบ" : "ใบ"}` : null}
+        /* แท็บรอตั้งรอบนับ "แถว" (ไซต์ × ใบ · C-D21) — ใบเดียวลงหลายไซต์ = หลายแถว ⇒ "ใบ" ผิดหน่วย */
+        count={showCounts ? (tab === "plan" ? planCountLabel(planSum) : `${tabRows.length} ${tab === "visit" ? "รอบ" : "ใบ"}`) : null}
         loading={loading}
         toolbar={(
           <>
@@ -434,94 +535,225 @@ export default function ServiceIntakePage() {
             {tab === "plan" && (
               (data?.plan || []).length === 0 ? (
                 <EmptyState plain icon={CalendarPlus}>
-                  ทุกไซต์ที่ขายแล้วมีรอบครบ — โซนที่ผูกใบสั่งขายแล้วแต่ยังไม่มีรอบจะมาอยู่ที่นี่
+                  {PLAN_EMPTY_TEXT}
                 </EmptyState>
               ) : view === "cards" ? (
+                /* การ์ด (จอตั้ง/จอแคบ) — ข้อเท็จจริงชุดเดียวกับตาราง · ปุ่มท้ายการ์ด · รายละเอียดโซนเป็นรายการ (ไม่ใช่ตารางในการ์ด) */
                 <ul className={styles.cardList} aria-label="ไซต์ที่รอตั้งรอบ">
-                  {pageRows.map((row) => (
-                    <li key={row.key || row.siteId} className={styles.card}>
-                      <div className={styles.cardHead}>
-                        <strong className={styles.cardTitle}>{naText(row.site?.name)}</strong>
-                        <span className={styles.cardSub}>{naText(row.site?.customerName)}</span>
-                      </div>
-                      {row.unboundPlans > 0 && (
+                  {pageRows.map((row) => {
+                    const zonesOpen = openZones.has(row.key);
+                    const detailId = zoneDetailId(row);
+                    return (
+                      <li key={row.key || row.siteId} className={styles.card}>
+                        {/* รหัสบน · ชื่อล่าง — รหัสไซต์พาไปหน้าไซต์ (แทนลิงก์ "ตั้งรอบที่หน้าไซต์" เดิม · C-D12) */}
+                        <div className={styles.cardHead}>
+                          <Link href={`/database/sites/${row.siteId}`} className={`mono linklike ${styles.cardSiteCode}`}>
+                            {naText(row.site?.code)}
+                          </Link>
+                          <strong className={styles.cardTitle}>{naText(row.site?.name)}</strong>
+                          <span className={styles.cardSub}>{naText(row.site?.customerName)}</span>
+                        </div>
+                        {row.unboundPlans > 0 && (
+                          <p className={styles.cardMeta}>
+                            {OTHER_PLAN_TEXT.unbound(row.unboundPlans)}
+                          </p>
+                        )}
+                        {/* รอบของใบอื่น/รอบเดิมที่ต้องย้ายมาใบนี้ (review 29/09) — ตั้งรอบซ้ำ = นัดซ้อนที่ไซต์เดียวกัน */}
+                        {row.otherPlanNote && (
+                          <p className={styles.cardMeta}>{row.otherPlanNote}</p>
+                        )}
                         <p className={styles.cardMeta}>
-                          มีรอบที่ยังไม่ผูกใบ {fmtNumber(row.unboundPlans)} รอบ — ผูกใบให้รอบเดิมก่อนสร้างใหม่
+                          <span className="mono">{naText(row.orderNumber)}</span>
+                          {row.stamped && <> <StatusBadge tone="success" size="sm" label={STAMPED_BADGE_LABEL} /></>}
+                          {/* ใบย้อนหลัง — ป้ายชุดเดียวกับถังผูกโซน (มติ 22/09 · ม็อก TsIntake) */}
+                          {isHistoricalOrder(row) && <> <StatusBadge tone="info" size="sm" label="ย้อนหลัง" /></>}
                         </p>
-                      )}
-                      <p className={styles.cardMeta}>
-                        <span className="mono">{naText(row.orderNumber)}</span>
-                        {/* ใบย้อนหลัง — ป้ายชุดเดียวกับถังผูกโซน (มติ 22/09 · ม็อก TsIntake) */}
-                        {isHistoricalOrder(row) && <> <StatusBadge tone="info" size="sm" label="ย้อนหลัง" /></>}
-                        {" · "}ขายไว้ {planRoundsSoldText(row)?.value || naText(null)}
-                      </p>
-                      {/* รอบไม่เท่ากันระหว่างรายการในไซต์เดียว — บอกทุกค่า + คำแนะนำ (ไม่โชว์แค่ตัวมากสุดเงียบ ๆ) */}
-                      {planRoundsSoldText(row)?.hint ? <p className={styles.cardMeta}>{planRoundsSoldText(row).hint}</p> : null}
-                      <p className={styles.cardMeta}>โซน: {row.zones.map((z) => z.name).join(" · ")}</p>
-                      {/* ⭐ เงินครอบถึง (มติ 22/09 · ม็อก TsIntake) — นัดหลังวันนั้นจะจอดเป็นร่างรอบัญชีรับรองงวดถัดไป */}
-                      <p className={styles.cardMeta}><PaidBadge readiness={row} label="เงินครอบถึง" /></p>
-                      <Link href={`/database/sites/${row.siteId}`} className={`linklike ${styles.cardLink}`}>
-                        ตั้งรอบที่หน้าไซต์
-                      </Link>
-                    </li>
-                  ))}
+                        <dl className={styles.cardFacts}>
+                          <div className={styles.cardFact}>
+                            <dt>โซน · แพ็ค/รอบ</dt>
+                            <dd>
+                              {row.zonePacksText ?? zoneNames(row)}
+                              {row.termDetails?.length ? (
+                                <button
+                                  type="button"
+                                  className={`text-action ${styles.zoneToggle}`}
+                                  aria-expanded={zonesOpen}
+                                  aria-controls={zonesOpen ? detailId : undefined}
+                                  onClick={() => toggleZones(row.key)}
+                                >
+                                  {zonesOpen ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
+                                  {zonesOpen ? "ซ่อนรายละเอียดโซน" : "รายละเอียดโซน"}
+                                </button>
+                              ) : null}
+                            </dd>
+                          </div>
+                          <div className={styles.cardFact}>
+                            <dt>{ROUNDS_SOLD_LABEL}</dt>
+                            <dd>
+                              {planRoundsSoldText(row)?.value || naText(null)}
+                              {/* รอบไม่เท่ากันระหว่างรายการในไซต์เดียว — บอกทุกค่า + คำแนะนำ (ไม่โชว์แค่ตัวมากสุดเงียบ ๆ) */}
+                              {planRoundsSoldText(row)?.hint ? <span className="cell-sub">{planRoundsSoldText(row).hint}</span> : null}
+                            </dd>
+                          </div>
+                          <div className={styles.cardFact}>
+                            <dt>ช่วงบริการ</dt>
+                            <dd><PeriodCell row={row} /></dd>
+                          </div>
+                          <div className={styles.cardFact}>
+                            <dt>รอบที่แนะนำ</dt>
+                            <dd><CadenceCell row={row} /></dd>
+                          </div>
+                        </dl>
+                        {/* ชิปสัญญา + เงินครอบถึง แถวเดียว — ป้ายพูดตัวเองครบ ("CT-…" / "ยังไม่ผูก — …" · "เงินครอบถึง dd/mm/yyyy")
+                            ⭐ เงินครอบถึง (มติ 22/09 · ม็อก TsIntake) — นัดหลังวันนั้นจะจอดเป็นร่างรอบัญชีรับรองงวดถัดไป */}
+                        <div className={styles.cardBadges}>
+                          <ContractChip row={row} />
+                          <PaidBadge readiness={row} label="เงินครอบถึง" />
+                        </div>
+                        {zonesOpen && (
+                          <PlanZoneDetail id={detailId} row={row} canEdit={canEdit} onSaved={patchTerm} layout="list" />
+                        )}
+                        {(canEdit || (canOpenSo && row.salesOrderId)) && (
+                          <div className={styles.cardActions}>
+                            {/* รอบเดิมของไซต์ยังผูกใบก่อน Rev. (stale) — ทางหลักคือย้ายรอบนั้นมาใบนี้ที่หน้าไซต์ (ไม่ใช่สร้างซ้อน) */}
+                            {canEdit && row.stalePlanToMove && (
+                              <Button as={Link} href={`/database/sites/${row.siteId}`} tone="primary" size="sm">
+                                {OTHER_PLAN_TEXT.moveAction}
+                              </Button>
+                            )}
+                            {/* ปุ่มซ้ำทุกแถว = navy (ม็อก .btn.primary) — accent มีได้หน้าละปุ่มเดียว (UI_DESIGN_SYSTEM ข้อ 8 · review 29/09) */}
+                            {canEdit && (
+                              <Button tone={row.stalePlanToMove ? "neutral" : "primary"} size="sm" onClick={() => openPlan(row)}>
+                                ตั้งรอบ
+                              </Button>
+                            )}
+                            {canOpenSo && row.salesOrderId && (
+                              <Link href={`/sa/sales-orders/${row.salesOrderId}`} className={`linklike ${styles.cardFootLink}`}>
+                                เปิดใบสั่งขาย
+                              </Link>
+                            )}
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               ) : (
                 /* 🔴 **หนึ่งแถว = (ไซต์, ใบสั่งขาย)** ไม่ใช่หนึ่งไซต์ — ไซต์เดียวโผล่ได้
                     หลายแถวเมื่อมีหลายใบ (ขายเพิ่ม/ออก Rev.) ⇒ ต้องมีคอลัมน์ใบ ไม่งั้น
                     สองแถวพิมพ์ข้อความเหมือนกันเป๊ะ · และคีย์ต้องเป็น `row.key`
                     (เดิมเป็น `row.siteId` ซึ่งซ้ำทันทีที่มีสองใบ) */
-                /* 🔄 +คอลัมน์ "เงินครอบถึง" (มติ 22/09 · ม็อก TsIntake) — ป้ายวันที่ nowrap ~150px ⇒ minWidth 860 → 1000 */
-                <TableScroll family="list" minWidth={1000} cells="stacked">
+                /* 🔄 PR-C (C7 · ม็อก TsIntakePlan): คอลัมน์ "ลูกค้า" ย้ายเป็นบรรทัดรองใต้เลขใบ · +ช่วงบริการ · รอบที่แนะนำ ·
+                    สัญญา · ปุ่มตั้งรอบ ⇒ minWidth 1000 → 1240 · แถวรายละเอียดโซน (กางได้) ตามหลังแถวของมัน */
+                <TableScroll family="list" minWidth={1240} cells="stacked">
                   <table>
                     <thead>
                       <tr>
                         <th scope="col">ไซต์</th>
-                        <th scope="col">ลูกค้า</th>
                         <th scope="col">ใบสั่งขาย</th>
-                        <th scope="col">โซนที่ขายแล้ว</th>
-                        <th scope="col">ขายไว้</th>
+                        <th scope="col">โซน · แพ็ค/รอบ</th>
+                        <th scope="col">{ROUNDS_SOLD_LABEL}</th>
+                        <th scope="col">ช่วงบริการ</th>
+                        <th scope="col">รอบที่แนะนำ</th>
+                        <th scope="col">สัญญา</th>
                         <th scope="col">เงินครอบถึง</th>
                         <th scope="col" className={styles.actionCell} aria-label="การกระทำ" />
                       </tr>
                     </thead>
                     <tbody>
-                      {pageRows.map((row) => (
-                        <tr key={row.key || row.siteId}>
-                          <th scope="row">
-                            {naText(row.site?.name)}
-                            {/* ⚠️ คำเตือนพิมพ์ทุกแถวที่เข้าเงื่อนไข ไม่ใช่แถวแรกแถวเดียว —
-                                รอบที่ยังไม่ผูกใบเดินอยู่จริงที่ไซต์นี้ กดสร้างทับ = นัดซ้อน */}
-                            {row.unboundPlans > 0 && (
-                              <span className={`cell-sub ${styles.rowHeadSub}`}>
-                                มีรอบที่ยังไม่ผูกใบ {fmtNumber(row.unboundPlans)} รอบ — ผูกใบให้รอบเดิมก่อนสร้างใหม่
-                              </span>
+                      {pageRows.map((row) => {
+                        const zonesOpen = openZones.has(row.key);
+                        const detailId = zoneDetailId(row);
+                        return (
+                          <Fragment key={row.key || row.siteId}>
+                            <tr>
+                              {/* รหัสบน · ชื่อล่าง — รหัสไซต์พาไปหน้าไซต์ (แทนลิงก์ "ตั้งรอบที่หน้าไซต์" เดิม · C-D12) */}
+                              <th scope="row">
+                                {/* คอลัมน์ระบุตัวตน ⇒ .table-row-link ไม่ใช่ .linklike (UI_DESIGN_SYSTEM "อย่าเพิ่มจุดใหม่" · ท่าเดียวกับ /service) */}
+                                <Link href={`/database/sites/${row.siteId}`} className="table-row-link mono">
+                                  {naText(row.site?.code)}
+                                </Link>
+                                <span className={`cell-sub ${styles.rowHeadSub}`}>{naText(row.site?.name)}</span>
+                                {/* ⚠️ คำเตือนพิมพ์ทุกแถวที่เข้าเงื่อนไข ไม่ใช่แถวแรกแถวเดียว —
+                                    รอบที่ยังไม่ผูกใบเดินอยู่จริงที่ไซต์นี้ กดสร้างทับ = นัดซ้อน */}
+                                {row.unboundPlans > 0 && (
+                                  <span className={`cell-sub ${styles.rowHeadSub}`}>
+                                    {OTHER_PLAN_TEXT.unbound(row.unboundPlans)}
+                                  </span>
+                                )}
+                                {/* รอบของใบอื่น/รอบเดิมที่ต้องย้ายมาใบนี้ (review 29/09) — ทรงเดียวกับคำเตือนรอบไม่ผูกใบ */}
+                                {row.otherPlanNote && (
+                                  <span className={`cell-sub ${styles.rowHeadSub}`}>{row.otherPlanNote}</span>
+                                )}
+                              </th>
+                              <td>
+                                <span className="mono">{naText(row.orderNumber)}</span>
+                                <span className="cell-sub">{naText(row.site?.customerName)}</span>
+                                {row.stamped && (
+                                  <span className="cell-sub"><StatusBadge tone="success" size="sm" label={STAMPED_BADGE_LABEL} /></span>
+                                )}
+                                {/* ใบย้อนหลัง — ป้ายชุดเดียวกับถังผูกโซน (มติ 22/09 · ม็อก TsIntake) */}
+                                {isHistoricalOrder(row) && (
+                                  <span className="cell-sub"><StatusBadge tone="info" size="sm" label="ย้อนหลัง" /></span>
+                                )}
+                              </td>
+                              <td>
+                                {row.zonePacksText ?? zoneNames(row)}
+                                {row.termDetails?.length ? (
+                                  <span className="cell-sub">
+                                    <button
+                                      type="button"
+                                      className={`text-action ${styles.zoneToggle}`}
+                                      aria-expanded={zonesOpen}
+                                      aria-controls={zonesOpen ? detailId : undefined}
+                                      onClick={() => toggleZones(row.key)}
+                                    >
+                                      {zonesOpen ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
+                                      {zonesOpen ? "ซ่อนรายละเอียดโซน" : "รายละเอียดโซน"}
+                                    </button>
+                                  </span>
+                                ) : null}
+                              </td>
+                              <td>
+                                {planRoundsSoldText(row)?.value || naText(null)}
+                                {planRoundsSoldText(row)?.hint ? <span className="cell-sub">{planRoundsSoldText(row).hint}</span> : null}
+                              </td>
+                              <td className={styles.nowrap}><PeriodCell row={row} /></td>
+                              <td className={styles.nowrap}><CadenceCell row={row} /></td>
+                              <td className={`ui-badge-cell ${styles.contractCell}`}><ContractChip row={row} /></td>
+                              {/* ⭐ เงินครอบถึง — นัดหลังวันนั้นจอดเป็นร่าง "SA → FN" จนบัญชีรับรองงวดถัดไป (visitGate ข้อ②) */}
+                              <td className="ui-badge-cell ui-badge-w-paid"><PaidBadge readiness={row} label="เงินครอบถึง" /></td>
+                              <td className={styles.actionCell}>
+                                <div className={styles.rowActions}>
+                                  {canEdit && row.stalePlanToMove && (
+                                    <Button as={Link} href={`/database/sites/${row.siteId}`} tone="primary" size="sm">
+                                      {OTHER_PLAN_TEXT.moveAction}
+                                    </Button>
+                                  )}
+                                  {canEdit && (
+                                    <Button tone={row.stalePlanToMove ? "neutral" : "primary"} size="sm" onClick={() => openPlan(row)}>
+                                      ตั้งรอบ
+                                    </Button>
+                                  )}
+                                  {canOpenSo && row.salesOrderId && (
+                                    <Link href={`/sa/sales-orders/${row.salesOrderId}`} className="linklike">
+                                      เปิดใบสั่งขาย
+                                    </Link>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                            {/* รายละเอียดโซน — เต็มแถว · `ui-cell-wide` ถอดเพดาน 220px ของเซลล์ลิสต์ (ช่อง มล. กว้างกว่านั้น) */}
+                            {zonesOpen && (
+                              <tr>
+                                <td colSpan={PLAN_COLUMNS} className="ui-cell-wide">
+                                  <PlanZoneDetail id={detailId} row={row} canEdit={canEdit} onSaved={patchTerm} />
+                                </td>
+                              </tr>
                             )}
-                          </th>
-                          <td>{naText(row.site?.customerName)}</td>
-                          <td>
-                            <span className="mono">{naText(row.orderNumber)}</span>
-                            {/* ใบย้อนหลัง — ป้ายชุดเดียวกับถังผูกโซน (มติ 22/09 · ม็อก TsIntake) */}
-                            {isHistoricalOrder(row) && (
-                              <span className="cell-sub"><StatusBadge tone="info" size="sm" label="ย้อนหลัง" /></span>
-                            )}
-                          </td>
-                          <td>{row.zones.map((z) => z.name).join(" · ")}</td>
-                          <td>
-                            {planRoundsSoldText(row)?.value || naText(null)}
-                            {planRoundsSoldText(row)?.hint ? <span className="cell-sub">{planRoundsSoldText(row).hint}</span> : null}
-                          </td>
-                          {/* ⭐ เงินครอบถึง — นัดหลังวันนั้นจอดเป็นร่าง "SA → FN" จนบัญชีรับรองงวดถัดไป (visitGate ข้อ②) */}
-                          <td className="ui-badge-cell ui-badge-w-paid"><PaidBadge readiness={row} label="เงินครอบถึง" /></td>
-                          <td className={styles.actionCell}>
-                            <div className={styles.rowAction}>
-                              <Link href={`/database/sites/${row.siteId}`} className="linklike">
-                                ตั้งรอบที่หน้าไซต์
-                              </Link>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                          </Fragment>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </TableScroll>
@@ -594,6 +826,10 @@ export default function ServiceIntakePage() {
 
             {/* คิวยาวขึ้นทุกครั้งที่มีใบอนุมัติใหม่ — แบ่งหน้าแทนการปักหัวตาราง
                 (ของเหนือตารางสูง ปักแล้วได้สกรอลล์สองชั้น ดู `pinned` ใน Table.js) */}
+            {/* บรรทัดรวมของแท็บรอตั้งรอบ (C-D21) — ป้ายจำนวนนับแถว ส่วนนี้บอกว่าแถวทั้งหมดครอบกี่ไซต์/ใบ/โซน/แพ็ค */}
+            {tab === "plan" && tabRows.length > 0 ? (
+              <p className={styles.planTotals}>{planTotalsLine(planSum)}</p>
+            ) : null}
             {tabRows.length > 0 && (
               <Pager
                 page={page}
@@ -602,13 +838,32 @@ export default function ServiceIntakePage() {
                 onPage={setPage}
                 pageSize={pageSize}
                 onPageSize={pickPageSize}
-                itemLabel={tab === "visit" ? "รอบ" : "ใบ"}
+                itemLabel={tab === "plan" ? "แถว" : tab === "visit" ? "รอบ" : "ใบ"}
               />
             )}
           </>
         )}
       </ListPanel>
 
+      {/* ⭐ **โมดัลตัวเดียวกับหน้าไซต์/แท็บงานบริการของใบ** — ห้ามก๊อปฟอร์มที่สอง (AGENTS.md)
+          · ใบของรอบตรึงจากแถว: `salesOrderId` ของแถว + `salesOrders={null}` (ไม่มีช่องเลือกใบ ⇒ TS เผลอเลือก
+            "ไม่ผูกใบ" ไม่ได้ · critique L2) · แถบบริบทของโมดัลบอกเลขใบ
+          · `context`/`prefill` มาจากตัวคำนวณของแถว (ช่วงบริการ · ข้อเสนอความถี่แบบกด "ใช้" — ไม่เติมเงียบ · C-D6)
+          · `roundsSold` = รอบที่ขายของไซต์ × ใบนี้ (ไม่ใช่ของทั้งใบ) */}
+      {canEdit && (
+        <ServicePlanModal
+          open={!!planRow}
+          siteId={planRow?.siteId}
+          technicians={technicians}
+          roundsSold={planRow?.roundsSold ?? null}
+          salesOrderId={planRow?.salesOrderId}
+          salesOrders={null}
+          context={planRow?.context}
+          prefill={planRow?.prefill}
+          onClose={closePlan}
+          onSave={savePlan}
+        />
+      )}
     </Workspace>
   );
 }

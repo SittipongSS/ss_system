@@ -27,7 +27,7 @@ import Button from "@/components/ui/Button";
 import StatusNotice from "@/components/ui/StatusNotice";
 import ReadableText from "@/components/ui/ReadableText";
 import { fmtDate, fmtMoney, fmtPercent, naText, NA } from "@/lib/format";
-import { paymentConfirmPrompt } from "@/lib/approvalPrompt";
+import { FN_SERVICE_GATE_UNREAD_MODAL, paymentConfirmPrompt } from "@/lib/approvalPrompt";
 import { OPENING_INSTALLMENT_LABEL, isOpeningInstallment } from "@/lib/sales/historicalOrders";
 import { openingInvoiceNote } from "@/lib/sales/taxInvoice";
 import styles from "./InstallmentConfirmDialog.module.css";
@@ -39,13 +39,19 @@ import styles from "./InstallmentConfirmDialog.module.css";
  * @param historical งวดของใบสั่งขายย้อนหลัง · @param opening งวดยกมา (ตั้งต้นอ่านจากแถว)
  * @param outlook    ภาพหลังรับรองจาก `installmentConfirmOutlook` (ไม่ส่ง = ถอยไปใช้ช่วงครอบของแถวนี้)
  * @param orderStatus สถานะใบ — ไม่ส่ง = คำของใบที่อนุมัติอยู่ (ภาพนิ่งเดิม) · ผู้เรียกทุกทางส่ง (แผงงวด · คิวบนทะเบียน)
+ * @param serviceZones จำนวนโซนของรอบขายที่มีผลของใบ (server นับ — GET ใบ `serviceTermZones` / แถวทะเบียน · PR-C C5)
+ *                     0/ไม่รู้ = ไม่มีบรรทัดด่านเงินของนัดบริการ
+ * @param serviceContractLinked ใบผูกสัญญาแล้วไหม — ไม่ส่ง = true (ไม่รู้ ⇒ ไม่พูดเรื่องสัญญา)
  */
 export function installmentConfirmPrompt({
   row, multi = false, historical = false, opening = isOpeningInstallment(row), outlook = null, orderStatus = null,
+  serviceZones = 0, serviceContractLinked = true,
 } = {}) {
   const label = opening ? OPENING_INSTALLMENT_LABEL : multi ? `งวดที่ ${row?.seq}` : (row?.label || "ชำระเต็มจำนวน");
   /* "จ่ายถึง" หลังรับรอง — ไม่มีภาพจากงวดทั้งใบก็ถอยไปปลายช่วงครอบของงวดนี้ (ค่าปกติของมันอยู่แล้ว) */
   const through = outlook?.paidThrough || row?.coversTo || null;
+  /* วันที่ด่านเงินของนัดเปิดจริง (review 29/09) — งวดอื่นที่ค้างและครบกำหนดก่อน "จ่ายถึง" กดไว้ได้ (`gateOpenThrough`) */
+  const gateThrough = outlook?.gateOpenThrough || through;
   const next = outlook?.next || null;
   return paymentConfirmPrompt({
     label,
@@ -56,6 +62,14 @@ export function installmentConfirmPrompt({
     nextInstallmentLabel: next
       ? [next.label, fmtMoney(next.amount), next.dueDate ? `ครบกำหนด ${fmtDate(next.dueDate)}` : ""].filter(Boolean).join(" ")
       : null,
+    /* บรรทัดด่านเงินของนัดบริการของใบนี้ (PR-C C5 · FN_SERVICE_GATE_LINE) — ใบย้อนหลังไม่ใช้ (มีบรรทัดของตัวเอง)
+       ⭐ วันที่พูด = วันที่ด่านเปิดจริง + งวดที่ค้างกดไว้ (review 29/09) — ไม่ใช่ "จ่ายถึง" ตรง ๆ */
+    serviceGateThroughLabel: gateThrough ? fmtDate(gateThrough) : null,
+    serviceGateHeld: outlook?.gateHeldBy
+      ? { seq: outlook.gateHeldBy.seq, dueLabel: fmtDate(outlook.gateHeldBy.dueDate) }
+      : null,
+    serviceZoneCount: serviceZones,
+    serviceContractLinked,
     /* สถานะใบ (review UI-1) — ใบยกเลิก/ย้อนการอนุมัติ/Rev. ที่ยังไม่อนุมัติ พูดผลคนละชุดกับใบที่อนุมัติอยู่ (เงินค้าง · Actual) */
     orderStatus,
   });
@@ -77,7 +91,14 @@ export default function InstallmentConfirmDialog({
   historical = false, opening = isOpeningInstallment(row), outlook = null,
 }) {
   if (!open || !row) return null;
-  const prompt = installmentConfirmPrompt({ row, multi, historical, opening, outlook, orderStatus: order?.status ?? row.orderStatus ?? null });
+  /* จำนวนโซน/ธงสัญญาของบรรทัดด่านเงิน (PR-C C5): ใบจาก GET ใบ (หน้าใบ) ก่อน แถวทะเบียนรอง (หน้าทะเบียนส่งทั้งสองทาง)
+     ⚠️ GET อ่านรอบขายไม่ขึ้น = `serviceTermZones: null` ⇒ 0 ⇒ ไม่มีบรรทัด (ไม่ใช่ "0 โซน") — แต่โมดัลบอกว่าไม่รู้
+        (`serviceTermZonesError` → แถบเหลืองใต้คำนำ · review 29/09) ไม่ปล่อยให้หน้าตาเหมือนใบที่ไม่มีโซน */
+  const prompt = installmentConfirmPrompt({
+    row, multi, historical, opening, outlook, orderStatus: order?.status ?? row.orderStatus ?? null,
+    serviceZones: Number(order?.serviceTermZones ?? row.serviceTermZones) || 0,
+    serviceContractLinked: order?.serviceContractLinked ?? row.serviceContractLinked ?? true,
+  });
   const orderTotal = order?.totalAmount ?? row.orderTotal ?? null;
   const collected = outlook ? outlook.collected : Number(row.amount) || 0;
   const invoiceRef = String(order?.historicalInvoiceRef || row.historicalInvoiceRef || "").trim();
@@ -94,6 +115,9 @@ export default function InstallmentConfirmDialog({
     <Modal open={open} onClose={busy ? undefined : onClose} title={prompt.title} size="sm">
       <div className={styles.body}>
         <p className={styles.lead}>{prompt.description}</p>
+        {/* อ่านรอบขายของใบไม่ขึ้น (หน้าใบ · `serviceTermZonesError`) — รายการผลลัพธ์จะขาดบรรทัดด่านเงินของนัดบริการ ⇒ บอก ไม่เงียบ
+            (review 29/09) · ใบย้อนหลังมีบรรทัดของตัวเอง ไม่อ่านจำนวนโซนนี้ · ทะเบียนการชำระโยนเมื่ออ่านไม่ขึ้น ⇒ ไม่มีช่องนี้ */}
+        {order?.serviceTermZonesError && !historical ? <StatusNotice tone="warning">{FN_SERVICE_GATE_UNREAD_MODAL}</StatusNotice> : null}
 
         {/* สิ่งที่กำลังรับรอง — ข้อมูลพอให้ตัดสินได้โดยไม่ต้องเปิดใบ */}
         <dl className={styles.facts}>

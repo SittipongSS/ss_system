@@ -16,7 +16,9 @@ import { customerSnapshotName } from '@/lib/master/customerName';
 import { loadVisits, siteScheduleContext } from '@/lib/service/visitsRepo';
 import { loadTerms } from '@/lib/service/termsRepo';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
-import { termOrderActive } from '@/lib/service/terms';
+import { termOrderActive, termsByZone } from '@/lib/service/terms';
+import { loadZoneSaleContext } from '@/lib/service/zoneSalesRepo';
+import { zoneSaleFacts } from '@/lib/service/zoneRegistry';
 import { siteRoundsSoldOf } from '@/lib/sales/serviceOrders';
 import { businessDate } from '@/lib/businessDate';
 
@@ -33,10 +35,12 @@ export const dynamic = 'force-dynamic';
 /* ใบสั่งขายที่ยังมีผลและลงของไว้ที่ไซต์นี้ — ใช้เป็นตัวเลือกตอนผูก/ย้ายรอบ
    ⚠️ อ่านสดทุกครั้ง ไม่แคช: ใบถูก Rev. ระหว่างวันได้ และตัวเลือกที่ล้าจะพาคนไปผูก
    รอบกับใบที่ตายแล้ว */
-async function siteSalesOrders(supabase, zones = []) {
+/* `terms` (ไม่บังคับ) = term ของไซต์ที่ผู้เรียกโหลดไว้แล้ว (GET อ่านครั้งเดียวผ่าน `loadZoneSaleContext` · critique L8)
+   · ไม่ส่งมา = โหลดเองเหมือนเดิม */
+async function siteSalesOrders(supabase, zones = [], { terms: preloaded = null } = {}) {
   const zoneIds = zones.map((z) => z.id);
   if (!zoneIds.length) return [];
-  const terms = await loadTerms(supabase, { zoneIds });
+  const terms = preloaded ?? await loadTerms(supabase, { zoneIds });
   const orderIds = [...new Set(terms.map((t) => t.salesOrderId).filter(Boolean))];
   if (!orderIds.length) return [];
   const { data: orders, error } = await fetchAllResult(() => supabase.from('sales_orders')
@@ -48,10 +52,10 @@ async function siteSalesOrders(supabase, zones = []) {
     .sort((a, b) => String(a.orderNumber || '').localeCompare(String(b.orderNumber || '')));
 }
 
-async function siteRoundsSold(supabase, zones = []) {
+async function siteRoundsSold(supabase, zones = [], { terms: preloaded = null } = {}) {
   const zoneIds = zones.map((z) => z.id);
   if (!zoneIds.length) return null;
-  const terms = await loadTerms(supabase, { zoneIds });
+  const terms = preloaded ?? await loadTerms(supabase, { zoneIds });
   if (!terms.length) return null;
   const orderIds = [...new Set(terms.map((t) => t.salesOrderId).filter(Boolean))];
   if (!orderIds.length) return null;
@@ -86,19 +90,34 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     const todayIso = businessDate();
     const schedule = await siteScheduleContext(supabase, [id], todayIso);
     const zones = await loadZones(supabase, id);
+    /* ⭐ การขายของแต่ละโซน (PR-C · r2 R1) — "ขายแล้ว n แพ็ค/รอบ (SO-…)" + ใบที่ยังถือโซนไว้โดยยังไม่เปิดงานบริการ
+       ⚠️ อ่าน term **ครั้งเดียว** แล้วส่งก้อนเดียวกันให้ตัวช่วยเดิมทั้งสองตัว (critique L8 — เดิมต่างคนต่างอ่าน)
+       ⚠️ ตัวช่วยเดิมรับโซน **ดิบ** (ไม่มีก้อน sale) — ห้ามส่ง `zonesOut` เข้าไป
+       ⚠️ อ่านไม่ขึ้น = 500 เหมือน term/ใบของรอบขายที่อ่านอยู่แล้วในเส้นนี้ (ไม่ใช่ตอบว่า "ไม่มีใบถือโซน") */
+    const sale = await loadZoneSaleContext(supabase, zones);
+    const termsOfZone = termsByZone(sale.terms);
+    const zonesOut = zones.map((zone) => ({
+      ...zone,
+      sale: zoneSaleFacts(zone.id, {
+        terms: termsOfZone.get(zone.id) || [],
+        ordersById: sale.ordersById,
+        todayIso,
+        pendingOrders: sale.pendingOrdersByZone.get(zone.id) || [],
+      }),
+    }));
     return ok({
       site: access.site,
-      zones,
+      zones: zonesOut,
       assets: await loadAssets(supabase, id),
       schedule: schedule.get(id) || { lastRefillDate: null, nextVisitDate: null },
       // ข้อผูกพันจำนวนรอบที่ฝ่ายขายระบุไว้ — ฟอร์มวางรอบเอาไปเทียบกับความถี่ที่กำลังตั้ง
-      roundsSold: await siteRoundsSold(supabase, zones),
+      roundsSold: await siteRoundsSold(supabase, zones, { terms: sale.terms }),
       /* ⭐ **ใบสั่งขายที่ลงของไว้ที่ไซต์นี้** — ตัวเลือกของช่อง "ใบที่ครอบรอบนี้"
          ⚠️ รายการต้องมาจาก term ของไซต์นี้เท่านั้น ไม่ใช่ทะเบียนใบทั้งระบบ:
             รอบที่ผูกใบที่ไม่เคยลงของที่ไซต์นี้คือข้อผูกพันที่อ้างไม่ได้
          ⚠️ กรองด้วย `termOrderActive` — ใบที่ถูก Rev./ยกเลิกแล้วต้องไม่อยู่ในตัวเลือก
             (ย้ายรอบไปใบที่ตายแล้ว = รอบกำพร้าอีกใบ) */
-      salesOrders: await siteSalesOrders(supabase, zones),
+      salesOrders: await siteSalesOrders(supabase, zones, { terms: sale.terms }),
     });
   } catch (e) {
     return fail(e.message, 500);

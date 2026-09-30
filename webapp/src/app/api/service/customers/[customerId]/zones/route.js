@@ -20,6 +20,7 @@ import { fetchAll } from '@/lib/supabaseFetchAll';
 import { fetchAllInChunks, byColumns } from '@/lib/supabaseInChunks';
 import { loadSites, requireService } from '@/lib/service/sitesRepo';
 import { customerZoneRegistry } from '@/lib/service/zoneRegistry';
+import { loadSetupOrdersByZone } from '@/lib/service/zoneSalesRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,12 +73,18 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       : [[], []];
 
     /* ใบสั่งขายแม่ — ตัวตัดสิน "ขายแล้ว/ยังไม่ขาย" (`termOrderActive`)
-       ⚠️ อ่านมาเท่าที่ term อ้างถึงเท่านั้น · ดึงทั้งตารางคือดึงใบขายทั้งบริษัท */
+       ⚠️ อ่านมาเท่าที่ term อ้างถึงเท่านั้น · ดึงทั้งตารางคือดึงใบขายทั้งบริษัท
+       ⭐ `serviceTermsOpenedAt` (PR-C · R1) — ใบที่ประทับแล้ว `packageQty` ของ term = แพ็คต่อรอบ ⇒ ป้าย "ขาย n แพ็ค/รอบ"
+       ⭐ ช่วงบริการ (review 29/09 · `termsSoldNow`) — ใบเก่าที่ช่วงจบแล้วไม่รวมกับใบต่อสัญญาบนโซนเดียวกัน */
     const orderIds = [...new Set(terms.map((t) => t.salesOrderId).filter(Boolean))];
     const orders = await fetchAllInChunks(orderIds, (chunk) => supabase
-      .from('sales_orders').select('id, status, "supersededById", "orderNumber"')
+      .from('sales_orders').select('id, status, "supersededById", "orderNumber", "serviceTermsOpenedAt", "servicePeriodFrom", "servicePeriodTo"')
       .in('id', chunk)
       .order('id', { ascending: true }), { sort: byColumns('id') });
+
+    /* ใบที่ยังถือโซนไว้โดยยังไม่เปิดงานบริการ (ร่าง/รออนุมัติ/ตีกลับ/ย้อนอนุมัติ · ตั้งย้อนหลัง · PR-C R1)
+       — ป้ายเหลืองบนแถวพื้นที่ · อ่านไม่ขึ้น = 500 ไม่ใช่ "ไม่มีใบ" */
+    const pendingOrdersByZone = await loadSetupOrdersByZone(supabase, zoneIds);
 
     /* ใบประเมินที่แตะโซนพวกนี้ — ใช้สองที่:
        ① 🔒 "โซนนี้มีใบอื่นสั่งวัดไว้แล้ว" (ฟอร์มเปิดใบต้องล็อกไม่ให้ติ๊กซ้ำ)
@@ -93,7 +100,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     /* ⚠️ อ่านนาฬิกาที่ server ครั้งเดียวแล้วส่งลงไป — ห้ามให้ตัวคำนวณอ่านเอง
        (กติกา "วันนี้มาจากนาฬิกาไทยเสมอ" + ด่าน check:thaitime) */
     return ok({
-      ...customerZoneRegistry({ sites, zones, surveys, terms, orders, requests, todayIso: businessDate() }),
+      ...customerZoneRegistry({ sites, zones, surveys, terms, orders, requests, todayIso: businessDate(), pendingOrdersByZone }),
       canOpenSiteRegistry,
     });
   } catch (e) {

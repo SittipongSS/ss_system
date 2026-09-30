@@ -522,3 +522,45 @@ test('ภาระวันนั้น: วรรคหน้า-หลัง�
   assert.equal(scheduled.find((r) => r.id === 'L-live').dayLoad.text, 'วันนั้นของ Veerachai 6/12 จุด');
   assert.equal(scheduled.find((r) => r.id === 'L-noname').dayLoad.text, 'วันนั้นของ เจ้าหน้าที่ 6/12 จุด');
 });
+
+/* ══ D15 · ชิปใบสั่งขายบนร่างที่ติดด่าน (PR-C · C9 · C-D19) ══════════════════════════════════════════
+   ⭐ แถวรายการงานพกชิปของข้อสัญญามาจากด่าน (`gateBlockedItems`) — **เฉพาะตอนมี** (critique L3: deepEqual เดิมยังเขียว)
+   ⭐ ตาเห็นบนแถว = ต้องค้นเจอ: ข้อความชิป ("ใบสั่งขาย SO-… · ฉบับร่าง · AE") อยู่ใน haystack ของแถว */
+const d15Chip = { orderId: 'SOR-D', orderNumber: 'SO-26100011-0', status: 'draft', group: 'unapproved', stateLabel: 'ฉบับร่าง', ownerName: 'สมหญิง รักงาน' };
+
+test('D15 gateItemView พกชิปเฉพาะตอนมี — ว่าง/ไม่มี = รูปเดิมทุกไบต์', () => {
+  const base = { key: 'contract', owner: 'SA', reason: 'ก — ข', fix: null };
+  const plain = { key: 'contract', owner: 'SA', ownerTone: 'accent', reason: 'ก — ข', fix: null };
+  assert.deepEqual(gateItemView({ ...base, orders: [d15Chip] }), { ...plain, orders: [d15Chip] });
+  assert.deepEqual(gateItemView({ ...base, orders: [] }), plain);
+  assert.deepEqual(gateItemView({ ...base, orders: null }), plain);
+  assert.deepEqual(gateItemView(base), plain);
+});
+
+test('D15 ร่างของไซต์ที่โซนยังไม่มีรอบขาย: แถวพกชิป · ค้นเจอด้วยเลขที่ใบ/สถานะ/AE · กลุ่มเดิม', () => {
+  const ctx = {
+    ...gateContext,
+    zonesBySite: { ...gateContext.zonesBySite, 'S-NEW': [{ id: 'Z-NEW', siteId: 'S-NEW', name: 'ชั้น 1' }] },
+    setupOrdersByZone: { 'Z-NEW': [d15Chip] },
+  };
+  const siteNew = { id: 'S-NEW', code: 'ST-1003', name: 'ไซต์ใหม่', routeZone: 'BKK-N', customerName: 'บจก. ใหม่' };
+  const extra = v({ id: 'D-new', code: 'SV-15', status: 'draft', scheduledDate: '2026-09-24', siteId: 'S-NEW', assigneeId: 'U1', assigneeName: 'สมชาย ใจดี' });
+  const run = (over = {}) => buildScheduleQueue({
+    visits: [...visits, extra], sitesById: new Map([...sitesById, ['S-NEW', siteNew]]), gateContext: ctx, workload,
+    todayIso: TODAY, teamFilter: ALL_TEAMS, crewByUser, crewPeople, teamNames, bucket: 'waiting', ...over,
+  });
+  const row = run().rows.find((r) => r.id === 'D-new');
+  assert.equal(row.group, 'others', 'ชิปไม่ย้ายกลุ่ม — ยังรอฝ่ายขาย');
+  const contract = row.gateItems.find((g) => g.key === 'contract');
+  assert.deepEqual(contract.orders, [d15Chip]);
+  assert.equal(contract.owner, 'SA');
+  assert.ok(row.haystack.includes('ใบสั่งขาย so-26100011-0 · ฉบับร่าง · สมหญิง รักงาน'), row.haystack);
+  for (const search of ['SO-26100011-0', 'ฉบับร่าง', 'สมหญิง']) {
+    const view = run({ search });
+    assert.ok(view.rows.filter((r) => r.bucket === 'waiting').some((r) => r.id === 'D-new'), search);
+    assert.ok(view.listedCount >= 1, search);
+  }
+  // ร่างของไซต์เดิม (โซนมีรอบขาย ใบยังไม่ผูกสัญญา) ไม่พกชิป
+  const bad = run().rows.find((r) => r.id === 'D-sa');
+  assert.equal(bad.gateItems.some((g) => 'orders' in g), false);
+});
