@@ -201,8 +201,9 @@ export function legacySetupStatusView(row) {
     return {
       tone,
       label: base,
+      /* คำของมติ 29/09 ("แต่ละครั้งกี่แพ็ค") — ความหมายเดิม: Σ แพ็คของทุกโซนในหนึ่งครั้งที่ไป */
       sub: `ยื่นเมื่อ ${s.at ? fmtDate(s.at) : '—'} · ${fmtNumber(s.zones || 0)} โซนใน ${fmtNumber(s.sites || 0)} ไซต์`
-        + ` · ${fmtNumber(s.packsPerRound || 0)} แพ็ค/รอบ`,
+        + ` · ครั้งละ ${fmtNumber(s.packsPerRound || 0)} แพ็ค`,
     };
   }
   if (state === 'rejected') {

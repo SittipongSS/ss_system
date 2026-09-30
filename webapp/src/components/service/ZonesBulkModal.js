@@ -3,7 +3,7 @@
 //
 // ⭐ **generic** — ไม่รู้จักใบสั่งขาย: รับทะเบียนไซต์ของลูกค้า + โซนที่ติดอยู่แล้ว แล้วคืนแถว `{ zoneId, packsPerRound }`
 //   ⇒ ตารางงานบริการของใบสั่งขายใช้วันนี้ · PR-D ห่อให้ฟอร์มใบย้อนหลังใช้ต่อ (HistoricalBulkZonesModal ยังไม่แปลงใน PR-A)
-// ⭐ แพ็คต่อรอบ [ตามผลประเมินของแต่ละโซน | เท่ากันทุกโซน: __] → ค้น (รหัส/ชื่อไซต์ + ชื่อ/รหัสโซน) → ติ๊กทีละโซน/ทั้งไซต์/
+// ⭐ แต่ละครั้งกี่แพ็ค [ตามผลประเมินของแต่ละโซน | เท่ากันทุกโซน: __] → ค้น (รหัส/ชื่อไซต์ + ชื่อ/รหัสโซน) → ติ๊กทีละโซน/ทั้งไซต์/
 //   ทุกโซนที่เห็น → ท้ายหน้าต่างบอกผลก่อนกด ("จะเพิ่ม n โซนใต้รายการ k · …")
 // ⭐ แถวแสดงผลมาจาก `zoneBrowserRows` ตัวเดียวกับช่องเลือกโซน — ไซต์/โซนปิดใช้งาน และโซนที่อยู่ในรายการนี้แล้ว
 //   **เห็นแต่ติ๊กไม่ได้ พร้อมเหตุ** (กฎบ้าน: ติดด่าน = โชว์แล้วบอกเหตุ) · อยู่รายการอื่นของใบ = แค่บอก ติ๊กได้
@@ -17,7 +17,7 @@ import Input from "@/components/ui/Input";
 import Segmented from "@/components/ui/Segmented";
 import { fmtNumber } from "@/lib/format";
 import { ZONE_TAKEN_SAME_LINE, registryIndex, zoneBrowserRows } from "@/lib/service/zonePickerOptions";
-import { ZONES_BULK_PACKS_INVALID, zonesBulkConsequence, zonesBulkPlan } from "./zonesBulkPlan";
+import { ZONES_BULK_PACKS_INVALID, ZONES_BULK_PACKS_LABEL, zonesBulkConsequence, zonesBulkPlan } from "./zonesBulkPlan";
 import styles from "./ZonesBulkModal.module.css";
 
 const MODE_OPTIONS = [
@@ -98,7 +98,7 @@ export default function ZonesBulkModal({
       size="lg"
       sheetOnPhone
       title={`เพิ่มหลายโซน — ${lineLabel}`}
-      subtitle="ติ๊กโซนแล้วใส่แพ็คต่อรอบครั้งเดียว — ได้หนึ่งแถวต่อโซนใต้รายการนี้ · แก้ทีละแถวต่อได้ในตาราง · แถวที่มีอยู่แล้วไม่ถูกแตะ"
+      subtitle="ติ๊กโซนแล้วใส่ว่าแต่ละครั้งกี่แพ็คทีเดียว — ได้หนึ่งแถวต่อโซนใต้รายการนี้ · แก้ทีละแถวต่อได้ในตาราง · แถวที่มีอยู่แล้วไม่ถูกแตะ"
       footer={(
         <div className={styles.foot}>
           <span className={styles.consequence} data-blocked={blocked ? "" : undefined} role={blocked ? "alert" : undefined}>
@@ -112,8 +112,8 @@ export default function ZonesBulkModal({
       <p className={styles.lead}>{`ในรายการตอนนี้ ${fmtNumber(existingCount)} โซน · เพิ่มได้อีก ${fmtNumber(Math.max(0, cap - existingCount))} โซน`}</p>
 
       <div className={styles.packs}>
-        <span className={styles.packsLabel}>แพ็คต่อรอบ<span className={styles.req} aria-hidden="true">*</span></span>
-        <Segmented options={MODE_OPTIONS} value={mode} onChange={setMode} ariaLabel="วิธีใส่แพ็คต่อรอบ" />
+        <span className={styles.packsLabel}>{ZONES_BULK_PACKS_LABEL}<span className={styles.req} aria-hidden="true">*</span></span>
+        <Segmented options={MODE_OPTIONS} value={mode} onChange={setMode} ariaLabel={`วิธีใส่ว่า${ZONES_BULK_PACKS_LABEL}`} />
         {mode === "equal" ? (
           <span className={styles.equal}>
             <Input
@@ -121,7 +121,7 @@ export default function ZonesBulkModal({
               value={equalPacks}
               invalid={blocked && plan.error === ZONES_BULK_PACKS_INVALID}
               onChange={(event) => setEqualPacks(event.target.value)}
-              aria-label="แพ็คต่อรอบเท่ากันทุกโซน"
+              aria-label={`${ZONES_BULK_PACKS_LABEL} เท่ากันทุกโซน`}
             />
             แพ็ค
           </span>

@@ -1,19 +1,21 @@
 "use client";
-// ── ตารางโซนของบรรทัดแพ็คเกจ: "ไซต์ · โซน" | "แพ็คต่อรอบ" | "ผลประเมิน" | ลบ (ม็อก SoMultiZoneLine · D1) ─────────────
+// ── ตารางโซนของบรรทัดแพ็คเกจ: "ไซต์ · โซน" | "แต่ละครั้งกี่แพ็ค" | "ผลประเมิน" | ลบ (ม็อก SoMultiZoneLine · D1) ─────────
 //
-// ⭐ หนึ่งบรรทัดของใบ → หลายโซน · แต่ละโซนมี "แพ็คต่อรอบ" ของตัวเอง (จำนวนเต็ม 1–9999)
+// ⭐ หนึ่งบรรทัดของใบ → หลายโซน · แต่ละโซนบอกว่า "แต่ละครั้งกี่แพ็ค" ของตัวเอง (`packsPerRound` · จำนวนเต็ม 1–9999)
+// ⭐ มติเจ้าของ 29/09: ตารางนี้คือท่อน "แต่ละครั้ง" ที่ตามหลัง "จำนวนรอบบริการ" ของบรรทัด — โหมดอ่านเป็น "แต่ละครั้ง: • ไซต์ · โซน — 2 แพ็ค"
+//   คำทั้งหมดมาจาก `SERVICE_SETUP_LINE_TEXT` (serviceSetup.js) ที่เดียว
 // ⭐ ตัวเลือกโซนมาจากทะเบียนของลูกค้าผ่าน `zonePickerOptions` ตัวเดียว (หัวกลุ่ม = ไซต์) — ไซต์/โซนที่ปิดใช้งาน และโซนที่
 //   อยู่ในบรรทัดนี้แล้ว **ยังอยู่ในลิสต์แต่เลือกไม่ได้ พร้อมเหตุ** · อยู่บรรทัดอื่นของใบ = แค่บอก เลือกได้
 // ⭐ เกิน 8 แถวย่อเป็น "แสดงอีก n โซน" — **กางเองเมื่อมีช่องที่ขึ้นแดง/ถูกพาไป** ในแถวที่ซ่อน (ปุ่ม "ไปแก้" โฟกัสได้เสมอ)
 // ⚠️ ข้อความข้อมูล (รอบขายของใบอื่นที่ยังมีผล · อยู่รายการอื่นด้วย) ไม่เคยแดง — แดงเฉพาะหลังกดเท่านั้น
-// ⚠️ ไม่เติมแพ็คต่อรอบจากผลประเมินให้เอง — ปุ่ม "ใช้" ข้างผลประเมินคือการเลือกของคน (ไม่มีค่าตั้งต้นเงียบ ๆ)
+// ⚠️ ไม่เติมจำนวนแพ็คจากผลประเมินให้เอง — ปุ่ม "ใช้" ข้างผลประเมินคือการเลือกของคน (ไม่มีค่าตั้งต้นเงียบ ๆ)
 import { useEffect, useMemo, useState } from "react";
 import { ListPlus, Plus, Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { NA, fmtNumber } from "@/lib/format";
-import { SERVICE_SETUP_LIMITS } from "@/lib/sales/serviceSetup";
+import { SERVICE_SETUP_LIMITS, SERVICE_SETUP_LINE_TEXT } from "@/lib/sales/serviceSetup";
 import { zonePickerOptions, zoneTakenMap } from "@/lib/service/zonePickerOptions";
 import { zonesBulkCapText } from "@/components/service/zonesBulkPlan";
 import { SERVICE_SETUP_REVEAL_EVENT, lineFieldId, positiveIntOrNull, zonePacksFieldId } from "./serviceSetupDraft";
@@ -93,9 +95,9 @@ function ZoneRow({
           value={row.packsPerRound}
           invalid={!!packsError}
           onChange={(event) => onPacks(index, event.target.value)}
-          aria-label={`แพ็คต่อรอบ ${zoneName || `แถว ${index + 1}`} รายการ ${line.lineNo}`}
+          aria-label={`${SERVICE_SETUP_LINE_TEXT.packsLabel} ${zoneName || `แถว ${index + 1}`} รายการ ${line.lineNo}`}
         />
-        <span className={styles.numUnit}>แพ็ค</span>
+        <span className={styles.numUnit}>{SERVICE_SETUP_LINE_TEXT.packUnit}</span>
       </span>
       <span className={styles.assessed} data-empty={assessed === null ? "" : undefined}>
         {assessed === null ? "—" : (
@@ -185,7 +187,7 @@ export default function ServiceZoneRows({
   if (!editable) {
     return (
       <div className={styles.field} id={zonesFieldId}>
-        <span className={styles.label}>ไซต์ · โซน · แพ็คต่อรอบ</span>
+        <span className={styles.label}>{SERVICE_SETUP_LINE_TEXT.eachTime}:</span>
         {rows.length ? (
           <ul className={styles.readZones}>
             {visible.map((row) => {
@@ -193,7 +195,7 @@ export default function ServiceZoneRows({
               const packs = positiveIntOrNull(row.packsPerRound);
               return (
                 <li key={row.key}>
-                  {zoneReadLabel(zone, sitesById.get(zone?.siteId), row.zoneId)} — {packs ? `${fmtNumber(packs)} แพ็ค/รอบ` : "ยังไม่ใส่แพ็คต่อรอบ"}
+                  {zoneReadLabel(zone, sitesById.get(zone?.siteId), row.zoneId)} — {packs ? SERVICE_SETUP_LINE_TEXT.zonePacks(packs) : SERVICE_SETUP_LINE_TEXT.noPacks}
                 </li>
               );
             })}
@@ -247,7 +249,7 @@ export default function ServiceZoneRows({
     <div className={styles.zones} id={zonesFieldId} data-invalid={zonesError ? "" : undefined}>
       <div className={styles.zoneHead} aria-hidden="true">
         <span>ไซต์ · โซน<span className={styles.req}>*</span></span>
-        <span>แพ็คต่อรอบ<span className={styles.req}>*</span></span>
+        <span>{SERVICE_SETUP_LINE_TEXT.packsLabel}<span className={styles.req}>*</span></span>
         <span>ผลประเมิน</span>
         <span />
       </div>

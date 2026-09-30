@@ -184,7 +184,7 @@ test('F19: ลูกค้าไม่มีไซต์ในทะเบีย
   assert.equal(run({ orders, lines }).rows.every((row) => row.noSite === false), true);
 });
 
-test('⭐ สรุปของใบที่ยื่นแล้ว: 6 โซนใน 5 ไซต์ · 7 แพ็ค/รอบ (นับเฉพาะบรรทัดแพ็คเกจ)', () => {
+test('⭐ สรุปของใบที่ยื่นแล้ว: 6 โซนใน 5 ไซต์ · ครั้งละ 7 แพ็ค (นับเฉพาะบรรทัดแพ็คเกจ · คำของมติ 29/09)', () => {
   const zonesById = new Map([
     ['Z1', { id: 'Z1', siteId: 'S1' }], ['Z2', { id: 'Z2', siteId: 'S1' }], ['Z3', { id: 'Z3', siteId: 'S2' }],
     ['Z4', { id: 'Z4', siteId: 'S3' }], ['Z5', { id: 'Z5', siteId: 'S4' }], ['Z6', { id: 'Z6', siteId: 'S5' }],
@@ -206,7 +206,7 @@ test('⭐ สรุปของใบที่ยื่นแล้ว: 6 โซ
   const [row] = q.rows;
   assert.deepEqual(row.submitted, { at: '2026-09-28T02:00:00Z', byName: 'Lalida Chaiwanna', zones: 6, sites: 5, packsPerRound: 7 });
   assert.deepEqual(row.progress, { done: 2, total: 2 });
-  assert.equal(legacySetupStatusView(row).sub, 'ยื่นเมื่อ 28/09/2026 · 6 โซนใน 5 ไซต์ · 7 แพ็ค/รอบ');
+  assert.equal(legacySetupStatusView(row).sub, 'ยื่นเมื่อ 28/09/2026 · 6 โซนใน 5 ไซต์ · ครั้งละ 7 แพ็ค');
 });
 
 test('แถวพกผู้ดูแลฝ่ายขาย (เจ้าของดีลปัจจุบัน) · ชิปสัญญา · ไม่มียอดเงิน', () => {

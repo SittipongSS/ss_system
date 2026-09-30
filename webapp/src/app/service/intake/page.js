@@ -40,6 +40,7 @@ import {
   LEGACY_SETUP_FILTERS, LEGACY_SETUP_FILTER_LABELS, legacySetupFilterCounts, legacySetupHaystack, legacySetupStatusView,
 } from "@/lib/service/legacySetupQueue";
 import { isHistoricalOrder } from "@/lib/sales/historicalOrders";
+import { SERVICE_SETUP_LINE_TEXT } from "@/lib/sales/serviceSetup";
 import { fmtDate, fmtNumber, naText } from "@/lib/format";
 import styles from "./page.module.css";
 import { apiFetch } from "@/lib/apiFetch";
@@ -50,9 +51,10 @@ const LOAD_ERROR_TITLE = "โหลดคิวงานเข้าใหม่
    ลึก 5,000px บนมือถือ ⇒ มุมมองการ์ดเริ่มที่ 10 ใบ (ตัวเลือกเดิมของ Pager) */
 const CARD_PAGE_SIZE = 10;
 
-/* แท็บใบเดิม (mig 0392 · D14) — หัวแผงและคำอธิบายของตัวเอง (ม็อก TsIntakeLegacy) · ดูอย่างเดียว */
+/* แท็บใบเดิม (mig 0392 · D14) — หัวแผงและคำอธิบายของตัวเอง (ม็อก TsIntakeLegacy) · ดูอย่างเดียว
+   คำเรียกช่อง (จำนวนรอบบริการ · แต่ละครั้งกี่แพ็ค — มติ 29/09) มาจากแคตตาล็อกเดียวกับหน้าใบสั่งขาย */
 const LEGACY_PANEL_TITLE = "รายการรอฝ่ายขายตั้งงานบริการ";
-const LEGACY_PANEL_SUB = "ดูอย่างเดียว — แพ็คเกจ · โซน · แพ็คต่อรอบ · รอบ · ช่วงบริการ ฝ่ายขายตั้งที่หน้าใบสั่งขาย";
+const LEGACY_PANEL_SUB = `ดูอย่างเดียว — แพ็คเกจ · ${SERVICE_SETUP_LINE_TEXT.roundsLabel} · โซน · ${SERVICE_SETUP_LINE_TEXT.packsLabel} · ช่วงบริการ ฝ่ายขายตั้งที่หน้าใบสั่งขาย`;
 
 /* 🐞 เดิมตัดสตริง ISO ตรง ๆ — ขึ้น "2026-08-14" ข้างป้าย "จ่ายถึง 14/08/2026" ในแถวเดียวกัน
    และอนุมัติหลังเที่ยงคืนเวลาไทยจะขึ้นวันก่อนหน้า · fmtDate คิดวันไทยให้ */

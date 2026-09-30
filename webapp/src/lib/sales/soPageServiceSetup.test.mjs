@@ -10,6 +10,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { serviceSetupApprovalChecklist, serviceSetupWarnings } from './serviceSetup.js';
 
 const SRC = path.resolve(process.cwd(), 'src');
 const PAGE = 'app/sales-planning/sales-orders/[id]/page.js';
@@ -45,7 +46,7 @@ test('D25/D28: แถบและการ์ดงานบริการย�
   assert.equal(count(page, /<ServiceBackfillBanner\b/g), 1);
   assert.match(page, /\{setupFlow === "backfill" \? <ServiceBackfillBanner setup=\{setup\} \/> : null\}/);
   assert.equal(count(page, /<ServiceBackfillRailCard\b/g), 1);
-  assert.match(page, /\{showBackfillPanel \? \(\s*<ServiceBackfillRailCard/);
+  assert.match(page, /const backfillRail = showBackfillPanel \? \(\s*<ServiceBackfillRailCard/);
 
   /* ตัวตัดสินตัวเดียว — ห้ามอ่านสถานะดิบเอง (ค่า 'submitted' ค้างบนใบที่ย้อน/ยกเลิก/ถูก Rev. ทับต้องไม่มีผล) */
   assert.doesNotMatch(page, /serviceSetupState/);
@@ -81,8 +82,8 @@ test('ยื่นอนุมัติ (pipeline): ยังไม่บัน�
   const gate = slice(page, 'async function serviceGateBeforeSubmit(flow) {', '\n  }\n');
   assert.ok(gate.indexOf('if (setup.dirty)') >= 0 && gate.indexOf('if (setup.dirty)') < gate.indexOf('freshServiceView()'),
     'ต้องเช็คร่างที่ยังไม่บันทึกก่อนโหลดก้อนสด');
-  assert.match(gate, /showSubmitIssues\(serviceSetupIssues\(\{ unsaved: true \}\), \[\], flow\);/);
-  assert.match(gate, /if \(Array\.isArray\(fresh\.issues\) && fresh\.issues\.length\) \{\s*showSubmitIssues\(fresh\.issues, fresh\.warnings, flow\);\s*return null;/);
+  assert.match(gate, /showSubmitIssues\(serviceSetupIssues\(\{ unsaved: true \}\), \[\], flow, "client"\);/);
+  assert.match(gate, /if \(Array\.isArray\(fresh\.issues\) && fresh\.issues\.length\) \{\s*showSubmitIssues\(fresh\.issues, fresh\.warnings, flow, "server"\);\s*return null;/);
   assert.doesNotMatch(gate, /setConfirmState/, 'ด่านไม่เปิดโมดัลเอง');
 
   const press = slice(page, 'async function pressSubmit() {', '\n  }\n');
@@ -95,7 +96,7 @@ test('ยื่นอนุมัติ (pipeline): ยังไม่บัน�
   assert.match(page, /onClick: pressSubmit,/);
 
   const request = slice(page, 'async function requestAction(action, payload = {}) {', '\n  async function save()');
-  assert.match(request, /if \(issues && action === "submit"\) \{\s*setConfirmState\(null\);\s*setError\(""\);\s*showSubmitIssues\(issues, data\.warnings, "pipeline"\);/);
+  assert.match(request, /if \(issues && action === "submit"\) \{\s*setConfirmState\(null\);\s*setError\(""\);\s*showSubmitIssues\(issues, data\.warnings, "pipeline", "server"\);/);
   assert.match(request, /if \(action === "submit"\) setSubmitIssues\(null\);/, 'ยื่นผ่าน = ล้างแผงแดง');
 });
 
@@ -132,7 +133,7 @@ test('D12: ยื่นตรวจงานบริการย้อนหล
   assert.match(run, /if \(failure\?\.status === 409 && !issues\) setConfirmState\(null\);/);
   assert.doesNotMatch(run, /retry/);
   assert.doesNotMatch(run, /new Date\(/);
-  assert.match(run, /if \(issues && action === "submit"\) \{\s*setConfirmState\(null\);\s*showSubmitIssues\(issues, failure\.data\.warnings, "backfill"\);/);
+  assert.match(run, /if \(issues && action === "submit"\) \{\s*setConfirmState\(null\);\s*showSubmitIssues\(issues, failure\.data\.warnings, "backfill", "server"\);/);
 });
 
 test('D12: อนุมัติงานบริการส่ง overrideReason เฉพาะเมื่อ server บอกว่าต้องใช้', () => {
@@ -252,8 +253,8 @@ test('#1846: "ไปแก้" ของข้อวันงวดที่ร�
 
 test('ก้อนงานบริการตามเวอร์ชันของใบ — ยิงซ้ำไม่เกินครั้งเดียวต่อเวอร์ชัน (กันวน)', () => {
   assert.match(page, /if \(setup\.data\.updatedAt === order\.updatedAt \|\| setupSyncedFor\.current === order\.updatedAt\) return;\s*setupSyncedFor\.current = order\.updatedAt;/);
-  /* บันทึกงานบริการ: ก้อน GET ก่อน แล้วค่อยตัวใบ */
-  assert.match(page, /const afterServiceSaved = async \(\) => \{\s*await setup\.reload\(\);\s*await refreshOrder\(\);/);
+  /* บันทึกงานบริการ: ก้อน GET ก่อน แล้วค่อยตัวใบ (บรรทัดแรกล้างแผง "ยังไม่บันทึก" — UAT 29/09 ข้อ 1) */
+  assert.match(page, /const afterServiceSaved = async \(\) => \{\s*setSubmitIssues\(\(current\) => submitIssuesAfterSave\(current\)\);\s*await setup\.reload\(\);\s*await refreshOrder\(\);/);
 });
 
 test('หน้าใบไม่มี fetch ดิบ และไม่มี inline style ใหม่ในส่วนงานบริการ', () => {
@@ -261,7 +262,7 @@ test('หน้าใบไม่มี fetch ดิบ และไม่มี
   const service = [
     slice(page, '{setupFlow === "backfill" ? <ServiceBackfillBanner', '<Tabs'),
     slice(page, '{setupRequired && !historical ? (', ') : ('),
-    slice(page, '{showBackfillPanel ? (', ') : null}'),
+    slice(page, 'const backfillRail = showBackfillPanel ? (', ') : null;'),
     slice(page, '<ReasonDialog\n        open={!!serviceRejectForm}', '\n      />'),
   ].join('\n');
   assert.doesNotMatch(service, /style=\{\{/);
@@ -276,4 +277,57 @@ test('F14: คำเตือนของฝ่ายขาย (ครอบซ�
   assert.match(confirm, /submitLine,\s*\.\.\.warningLines,/);
   const backfill = slice(page, 'async function pressBackfillSubmit() {', '\n  }\n');
   assert.match(backfill, /checklist: \[\.\.\.\(fresh\.backfillSubmitPrompt\.checklist \|\| \[\]\), \.\.\.saWarningLines\(fresh\.warnings\)\]/);
+});
+
+test('UAT 29/09 ข้อ 1: แผงแดงพกที่มา (client/server) · การ์ดรางแดงจากด่านของ server เท่านั้น · บันทึกสำเร็จล้างแผง "ยังไม่บันทึก"', () => {
+  assert.match(page, /const showSubmitIssues = \(issues, warnings, flow, source\) => setSubmitIssues\(\{[^}]*\n\s*source,\n[^}]*\}\);/);
+  /* ทุกที่ที่วาดแผงบอกที่มาตรง ๆ — ลืมบอก = การ์ดรางไม่แดง (ปลอดภัยไว้ก่อน) แต่ยามนี้จับได้ */
+  const calls = page.match(/showSubmitIssues\([^;]*\);/g) || [];
+  assert.equal(calls.length, 4, calls.join('\n'));
+  for (const call of calls) assert.match(call, /, "(client|server)"\);$/, call);
+  const gate = slice(page, 'async function serviceGateBeforeSubmit(flow) {', '\n  }\n');
+  assert.match(gate, /showSubmitIssues\(serviceSetupIssues\(\{ unsaved: true \}\), \[\], flow, "client"\);/,
+    'ด่าน "ยังไม่บันทึก" เป็นของจอ — ยังไม่ได้ถาม server');
+  /* การ์ดรางแดงจากตัวตัดสินกลาง (flow backfill + ที่มา server) — ไม่ใช่แค่ flow แบบเดิม */
+  assert.match(page, /pressed=\{backfillRailPressed\(submitIssues\)\}/);
+  assert.doesNotMatch(page, /pressed=\{submitIssues\?\.flow/);
+  /* บันทึกสำเร็จ = แผงที่มีแต่ "ยังไม่บันทึก" หมดความหมาย — ไม่ต้องรอกดยื่นอีกครั้ง */
+  const saved = slice(page, 'const afterServiceSaved = async () => {', '\n  };');
+  assert.match(saved, /setSubmitIssues\(\(current\) => submitIssuesAfterSave\(current\)\);/);
+});
+
+test('UAT 29/09 ข้อ 3 (มติเจ้าของ): การ์ดราง "งานบริการ (ใบเดิม)" บนสุดของรางขวาระหว่างยังไม่ยื่นตรวจ · ยื่นแล้วกลับใต้การ์ดจัดการเอกสาร', () => {
+  assert.match(page, /const backfillRailFirst = backfillRailOnTop\(setupView\);/);
+  assert.equal(count(page, /<ServiceBackfillRailCard\b/g), 1, 'การ์ดตัวเดียว — วางได้สองที่ตามขั้น');
+  const aside = slice(page, 'aside={<>', '<Tabs');
+  const top = aside.indexOf('{backfillRailFirst ? backfillRail : null}');
+  const summary = aside.indexOf('<DocumentSummaryCard');
+  const control = aside.indexOf('<DocumentControlCard');
+  const bottom = aside.indexOf('{backfillRailFirst ? null : backfillRail}');
+  assert.ok(top >= 0 && summary > top, 'ยังไม่ยื่นตรวจ = เหนือการ์ดยอดสุทธิ (ปุ่ม "ยื่นตรวจงานบริการ" อยู่ในกรอบรางที่ปักหมุดที่ 1440)');
+  assert.ok(control > summary && bottom > control, 'ยื่นแล้ว/รอตรวจ = ใต้การ์ดจัดการเอกสาร (ที่เดิม)');
+  assert.equal(count(aside, /\bbackfillRail\b/g), 2, 'วางสองที่ ขึ้นทีละที่');
+});
+
+/* ── มติ 29/09: คำเตือน "จำนวนรอบบริการ n รอบ ในช่วงบริการ m เดือน" (ไม่บล็อก) ถึงทั้งผู้ยื่นและผู้อนุมัติ ───────────────────────────── */
+test('29/09 คำเตือนรอบน้อย: โมดัลยืนยันยื่น (คำเตือนของฝ่ายขาย) + โมดัลอนุมัติทั้งสองสาย (สิ่งที่ต้องตรวจก่อนกดจากก้อนสด)', () => {
+  const line = (i, rounds) => ({
+    id: `L${i}`, lineNo: i, fgCode: 'FG-364-02-001-1061', productId: `P${i}`, qty: 12, unit: 'เดือน', serviceRounds: rounds, metadata: {},
+  });
+  const ctx = {
+    order: { id: 'SO1', status: 'draft', origin: 'pipeline', servicePeriodFrom: '2026-10-22', servicePeriodTo: '2027-10-21', totalAmount: 0 },
+    lines: [line(1, 1), line(2, 12)],
+    allocations: [{ salesOrderLineId: 'L1', zoneId: 'Z1', packsPerRound: 2 }, { salesOrderLineId: 'L2', zoneId: 'Z1', packsPerRound: 2 }],
+    zonesById: new Map([['Z1', { id: 'Z1', siteId: 'S1', name: 'Office' }]]),
+    installments: [],
+  };
+  const [warning] = serviceSetupWarnings(ctx);
+  assert.equal(warning.owner, 'SA', 'ของฝ่ายขาย ⇒ saWarningLines ใส่ในโมดัลยืนยันยื่น');
+  assert.equal(warning.message, 'รายการ 1: จำนวนรอบบริการ 1 รอบ ในช่วงบริการ 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็ยื่นได้)');
+  assert.ok(serviceSetupApprovalChecklist(ctx).includes('รายการ 1: จำนวนรอบบริการ 1 รอบ ในช่วงบริการ 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็อนุมัติได้)'));
+  /* หน้าใบส่งต่อตรง ๆ — ไม่กรอง/ไม่เขียนคำเอง */
+  assert.match(page, /\.filter\(\(w\) => w\?\.owner === "SA" && w\?\.message\)/);
+  assert.match(slice(page, 'if (action === "approve") {', '\n      return;'), /checklist: service\?\.approvalChecklist \|\| \[\],/);
+  assert.match(slice(page, 'async function openBackfillApprove() {', '\n  }\n'), /checklist: fresh\.approvalChecklist,/);
+  assert.doesNotMatch(page, /ถ้าตั้งใจก็/, 'คำเตือนมาจาก serviceSetup.js ที่เดียว');
 });

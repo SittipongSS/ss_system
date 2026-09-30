@@ -427,7 +427,7 @@ test('POST submit — ฐานบอกว่ายังไม่ครบ (�
   const res = await serviceSetupPost({ supabase: f.client, user: AE, id: 'SO1', body: { action: 'submit', expectedUpdatedAt: UPDATED_AT }, audit: f.audit });
   assert.equal(res.status, 409);
   assert.equal(res.body.code, 'sales_order_service_setup_incomplete');
-  assert.deepEqual(res.body.issues.map((i) => i.message), ['รายการ 2 · ห้องประชุม: ยังไม่ใส่แพ็คต่อรอบ', 'ยังไม่ใส่ช่วงบริการ (วันเริ่ม–วันสิ้นสุด)']);
+  assert.deepEqual(res.body.issues.map((i) => i.message), ['รายการ 2 · ห้องประชุม: ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค', 'ยังไม่ใส่ช่วงบริการ (วันเริ่ม–วันสิ้นสุด)']);
   assert.equal(f.audits.length, 0);
 });
 
