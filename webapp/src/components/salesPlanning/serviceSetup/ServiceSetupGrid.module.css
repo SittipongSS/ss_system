@@ -1,0 +1,797 @@
+/* ── ตาราง "งานบริการ" หนึ่งแถวต่อรายการ (ServiceSetupGrid · ม็อก BindGridEdit / BindGridMulti · มติเจ้าของ 30/09–01/10) ─────
+   ผัง: หัว 8 คอลัมน์ (# · รายการ · ①…⑥) · แถวรายการ 6 ช่อง (# · รายการ · ① · ② · ก้อนโซน · ⑥)
+   ก้อนโซนกินคอลัมน์ ③④⑤ ของหัว และเป็น grid ของตัวเอง `โซน | รอบ | แพ็ค` — แถวโซน (`.zoneRow`) เป็น display: contents
+   ⇒ ช่องทั้งสามของโซนเดียวกันอยู่แถวเดียวกันเสมอ ไม่ต้องใช้ rowspan/inline style
+   ⚠️ ไม่มี column-gap ทุกชั้น — ความกว้างคอลัมน์ ③ ของหัว = ก้อนโซน − รอบ − แพ็ค ต้องลงตัวพอดี (ระยะห่างอยู่ใน padding ของช่อง)
+   ⭐ เป็น container ของตัวเอง — คอลัมน์เอกสารแคบกว่า 900px (รางขวาไม่พับ · แท็บเล็ต · มือถือ) แถวพับเป็นการ์ดเรียง ①→⑥ */
+
+.wrap {
+  --c-idx: 30px;
+  --c-item: 128px;
+  --c-kind: 92px;
+  --c-fg: 160px;
+  --c-rounds: 128px;
+  --c-packs: 88px;
+  --c-total: 84px;
+  container-type: inline-size;
+  min-width: 0;
+}
+
+.grid {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel-solid);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--lh-thai);
+}
+
+/* ── หัว ── */
+.head {
+  display: grid;
+  grid-template-columns:
+    var(--c-idx) var(--c-item) var(--c-kind) var(--c-fg) minmax(0, 1fr)
+    var(--c-rounds) var(--c-packs) var(--c-total);
+  align-items: end;
+  border-bottom: 1px solid var(--border);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: var(--panel-2);
+}
+
+.headIdx,
+.headCell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding: var(--space-2) var(--space-2) var(--space-2);
+  color: var(--text-2);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-table-head);
+}
+
+.headIdx {
+  padding-left: var(--space-3);
+}
+
+.headCell[data-step="total"] {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.headLabel {
+  white-space: nowrap;
+}
+
+.headHint {
+  color: var(--text-3);
+  font-size: var(--fs-2);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0;
+}
+
+/* เลขขั้น ①→⑥ + เส้นต่อไปขั้นถัดไป (ลำดับที่เจ้าของกำหนด) */
+.stepRow {
+  position: relative;
+  display: flex;
+  width: 100%;
+  margin-bottom: var(--space-1);
+}
+
+.headCell[data-step="total"] .stepRow {
+  justify-content: flex-end;
+}
+
+.stepRow::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 26px;
+  right: 0;
+  border-top: 1px solid var(--border-strong);
+}
+
+.headCell[data-step="total"] .stepRow::after {
+  display: none;
+}
+
+.step {
+  position: relative;
+  z-index: 1;
+  display: inline-grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: var(--radius-full);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-flat);
+}
+
+.req {
+  margin-left: var(--space-0-5);
+  color: var(--red);
+}
+
+/* ── แถวรายการ ── */
+.line {
+  display: grid;
+  grid-template-columns: var(--c-idx) var(--c-item) var(--c-kind) var(--c-fg) minmax(0, 1fr) var(--c-total);
+  align-items: start;
+  border-bottom: 1px solid var(--border);
+}
+
+.line[data-kind="not_service"],
+.line[data-kind="unset"] {
+  background: color-mix(in srgb, var(--panel-2) 55%, transparent);
+}
+
+.idx,
+.item,
+.kind,
+.fg,
+.total {
+  min-width: 0;
+  padding: var(--space-3) var(--space-2);
+}
+
+.idx {
+  padding-left: var(--space-3);
+  color: var(--text-3);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+}
+
+/* ── รายการ (อ่านอย่างเดียว) ── */
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+}
+
+.itemTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-1-5);
+}
+
+.idxInline {
+  display: none;
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-bold);
+}
+
+.itemTag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-1-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--text-3);
+  font-size: var(--fs-2);
+  font-weight: var(--fw-semibold);
+}
+
+.itemQty {
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  white-space: nowrap;
+}
+
+.itemDesc {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+}
+
+.itemSub {
+  color: var(--text-2);
+  font-size: var(--fs-4);
+}
+
+/* หมายเหตุบรรทัด (เช่น "สาขา Emquartier - พื้นที่ 1,409 ลบม.") — ยาวได้หลายบรรทัด ตัดที่ 4 บรรทัด (ข้อความเต็มที่ title) */
+.itemNote {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  color: var(--text-3);
+  font-size: var(--fs-3);
+}
+
+/* ป้ายสถานะของรายการ (โหมดแก้) — กลางก่อนกดยื่น · แดงหลังกดเท่านั้น */
+.status {
+  width: fit-content;
+  white-space: nowrap;
+  margin-top: var(--space-1);
+  padding: 0 var(--space-1-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--text-3);
+  font-size: var(--fs-2);
+  font-weight: var(--fw-semibold);
+}
+
+.status[data-tone="ok"] {
+  border-color: color-mix(in srgb, var(--green) 40%, transparent);
+  color: var(--green);
+}
+
+.status[data-tone="error"] {
+  border-color: color-mix(in srgb, var(--red) 45%, transparent);
+  color: var(--red);
+}
+
+/* ── ① งานบริการ? ── */
+.kind {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.kind[data-invalid] :global(.segmented) {
+  border-color: var(--red);
+}
+
+.kindRead {
+  display: inline-flex;
+  flex-direction: column;
+}
+
+.kindRead b {
+  color: var(--text);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-bold);
+}
+
+.kindRead[data-unset] b {
+  color: var(--text-3);
+}
+
+.kindRead small {
+  color: var(--text-3);
+  font-size: var(--fs-3);
+}
+
+.yn {
+  max-width: 100%;
+}
+
+/* ── ② แพ็คเกจ FG ── */
+.fg {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.fgBox {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding: var(--space-1-5) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-solid);
+}
+
+/* ค่าที่ระบบตัดสินจากใบเสนอราคา — เส้นประ ไม่มีพื้น (แก้ไม่ได้) */
+.fgBox[data-locked] {
+  border-style: dashed;
+  border-color: var(--border-strong);
+  background: transparent;
+}
+
+/* รหัส FG ห้ามตัดกลางรหัส ("FG-364-02-001-" / "1061") — ตัวเล็กลงหนึ่งขั้นให้พอดีคอลัมน์ ② */
+.fgCode {
+  overflow: hidden;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-bold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fgName {
+  color: var(--text-2);
+  font-size: var(--fs-3);
+}
+
+.fgSource {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-3);
+  font-size: var(--fs-2);
+}
+
+/* ── ก้อนโซน ③④⑤ ── */
+.zoneBlock {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) var(--c-rounds) var(--c-packs);
+  align-content: start;
+}
+
+.zoneBlock[data-invalid] {
+  box-shadow: inset 0 0 0 1px var(--red);
+}
+
+.zoneRow {
+  display: contents;
+}
+
+.zoneCell,
+.roundsCell,
+.packsCell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-2);
+}
+
+/* เส้นประคั่นระหว่างแถวโซน — เฉพาะช่องโซนกับช่องแพ็ค (ช่องรอบเป็นของทั้งรายการ ไม่คั่น) */
+.zoneCell:not([data-first]),
+.packsCell:not([data-first]) {
+  border-top: 1px dashed var(--border);
+}
+
+.zoneCell:not([data-first]),
+.roundsCell:not([data-first]),
+.packsCell:not([data-first]) {
+  padding-top: var(--space-2);
+}
+
+.zonePick {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.zoneSelect {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-0-5);
+}
+
+.zoneSelect[data-invalid] :global(.ui-select) {
+  border-color: var(--red);
+}
+
+.zoneCodes {
+  overflow: hidden;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ตัวเลือกในเมนูโซน — ชื่อโซนนำ รหัสรอง เหตุ (ติดด่าน/อยู่รายการอื่น) ต่อท้าย */
+.zoneOption {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1-5);
+}
+
+.zoneOptionCode {
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-2);
+}
+
+.zoneOptionWhy {
+  color: var(--text-3);
+  font-size: var(--fs-3);
+}
+
+.zoneEmpty {
+  color: var(--text-3);
+  font-size: var(--fs-5);
+}
+
+/* โหมดอ่าน: รหัสไซต์ · ชื่อไซต์ · โซน (รหัสโซนต่อท้าย) */
+.zoneRead {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.zoneRead > small {
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-2);
+}
+
+.zoneReadSite {
+  color: var(--text-2);
+  font-size: var(--fs-4);
+}
+
+.zoneRead b {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1);
+  color: var(--text);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+}
+
+.zoneRead b small {
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-2);
+  font-weight: var(--fw-normal);
+}
+
+/* ชื่อโซนของช่องแพ็ค — โชว์เฉพาะตอนพับเป็นการ์ด (จอกว้างอยู่แถวเดียวกับช่องโซนแล้ว) */
+.packsZone {
+  display: none;
+}
+
+.zoneFoot {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1-5);
+  padding: 0 var(--space-2) var(--space-3);
+}
+
+.zoneMore {
+  align-self: stretch;
+}
+
+.zoneAdd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1-5) var(--space-2);
+}
+
+.zoneCount {
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  white-space: nowrap;
+}
+
+/* ── ④ ⑤ ตัวเลข ── */
+.num {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.num input {
+  width: 60px;
+  text-align: right;
+}
+
+.unit {
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  white-space: nowrap;
+}
+
+.chips {
+  display: flex;
+}
+
+.roundsRead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.roundsEdit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1-5);
+}
+
+.readValue {
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  white-space: nowrap;
+}
+
+.readValue b {
+  color: var(--text);
+  font-size: var(--fs-7);
+  font-weight: var(--fw-bold);
+}
+
+/* ── ⑥ รวมแพ็คของรายการ ── */
+.total {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+}
+
+.totalNum {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+}
+
+.totalNum b {
+  color: var(--text);
+  font-size: var(--fs-10);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-flat);
+}
+
+.totalFormula {
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  white-space: nowrap;
+}
+
+.cross {
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
+  border-top: 1px dashed var(--border);
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-semibold);
+}
+
+.cross[data-tone="ok"] { color: var(--green); }
+.cross[data-tone="warn"] { color: var(--amber); }
+.cross[data-tone="info"] { color: var(--blue); font-weight: var(--fw-medium); }
+
+/* ── แถบของรายการที่ไม่ใช่งานบริการ / ยังไม่ตอบ (กินคอลัมน์ ② ถึง ⑥) ── */
+.strip {
+  display: flex;
+  min-width: 0;
+  grid-column: 4 / -1;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: var(--space-3) var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  color: var(--text-3);
+  font-size: var(--fs-5);
+}
+
+.strip[data-unset] {
+  border-color: var(--border-strong);
+  color: var(--text-2);
+}
+
+/* ── ข้อความเล็ก ── */
+.hint,
+.note {
+  color: var(--text-3);
+  font-size: var(--fs-3);
+}
+
+.note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.error {
+  color: var(--red);
+  font-size: var(--fs-3);
+}
+
+.muted {
+  color: var(--text-3);
+  font-size: var(--fs-4);
+}
+
+/* ป้ายของช่องตอนพับเป็นการ์ด — จอกว้างซ่อน (หัวคอลัมน์บอกแล้ว) */
+.stackLabel {
+  display: none;
+}
+
+/* ── แถวท้าย "รวมทุกรายการ" ── */
+.foot {
+  display: grid;
+  grid-template-columns:
+    var(--c-idx) var(--c-item) var(--c-kind) var(--c-fg) minmax(0, 1fr)
+    var(--c-rounds) var(--c-packs) var(--c-total);
+  align-items: end;
+  border-top: 1px solid var(--border-strong);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  background: var(--panel-2);
+}
+
+.footLabel {
+  display: flex;
+  min-width: 0;
+  grid-column: 1 / span 5;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-3);
+  color: var(--text-2);
+  font-size: var(--fs-5);
+}
+
+.footLabel b {
+  color: var(--text);
+  font-weight: var(--fw-bold);
+}
+
+.footIcon {
+  flex: none;
+  color: var(--accent-ink);
+}
+
+.sep {
+  color: var(--text-3);
+}
+
+.footExtra {
+  color: var(--text-3);
+  font-size: var(--fs-4);
+}
+
+.footNum {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding: var(--space-3) var(--space-2);
+  color: var(--text-2);
+  font-size: var(--fs-4);
+  white-space: nowrap;
+}
+
+.footNum small {
+  color: var(--text-3);
+  font-size: var(--fs-2);
+}
+
+.footNum b {
+  color: var(--text);
+  font-size: var(--fs-8);
+  font-weight: var(--fw-bold);
+}
+
+.footNum[data-col="total"] {
+  align-items: flex-end;
+}
+
+.footNum[data-col="total"] b {
+  font-size: var(--fs-10);
+}
+
+/* ── คอลัมน์เอกสารแคบ: แถวพับเป็นการ์ดเรียง ①→⑥ ──────────────────────────────────────────────────
+   ก้อนโซนเป็น flex คอลัมน์ + แถวโซน display: contents ⇒ order จัด ③ โซนทั้งหมด (+ ปุ่มเพิ่มโซน) → ④ รอบ → ⑤ แพ็ครายโซน */
+@container (max-width: 900px) {
+  .head { display: none; }
+
+  .line {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2-5);
+    padding: var(--space-3);
+  }
+
+  .idx { display: none; }
+  .idxInline { display: inline; }
+
+  .idx,
+  .item,
+  .kind,
+  .fg,
+  .total,
+  .zoneCell,
+  .roundsCell,
+  .packsCell {
+    padding: 0;
+  }
+
+  .stackLabel {
+    display: block;
+    color: var(--text-2);
+    font-size: var(--fs-4);
+    font-weight: var(--fw-bold);
+  }
+
+  .zoneBlock {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .zoneCell,
+  .zoneFoot { order: 1; }
+
+  .roundsCell { order: 2; }
+
+  .roundsCell:not([data-first]) { display: none; }
+
+  .packsCell { order: 3; }
+
+  .zoneCell:not([data-first]),
+  .packsCell:not([data-first]) {
+    padding-top: var(--space-2);
+  }
+
+  .packsCell {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .packsCell[data-first] .stackLabel {
+    flex-basis: 100%;
+  }
+
+  .packsZone {
+    display: block;
+    min-width: 0;
+    flex: 1;
+    color: var(--text-2);
+    font-size: var(--fs-5);
+  }
+
+  .zoneFoot {
+    padding: 0;
+  }
+
+  .total {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-1) var(--space-2);
+    text-align: left;
+  }
+
+  .total .stackLabel {
+    flex-basis: 100%;
+  }
+
+  .cross {
+    flex-basis: 100%;
+    margin-top: 0;
+  }
+
+  .strip {
+    margin: 0;
+  }
+
+  .foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--space-2) var(--space-4);
+    padding: var(--space-3);
+  }
+
+  .footLabel {
+    flex-basis: 100%;
+    padding: 0;
+  }
+
+  .footNum {
+    padding: 0;
+  }
+
+  .footNum[data-col="total"] {
+    margin-left: auto;
+  }
+}

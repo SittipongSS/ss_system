@@ -322,9 +322,9 @@ export function historicalBillingDatesText(installments = []) {
    ⭐ แพ็คต่อรอบเป็นช่องของ **โซน** (sales_order_line_zones.packsPerRound) คนละช่องกับจำนวนของบรรทัด (เงิน: 1 ชุด × 12 เดือน)
      — อนุมัติแล้วเป็น packageQty ของรอบขาย (0394/P3 เปิดผ่าน sales_order_open_service_terms) ⇒ ผู้คีย์ (ขั้น ④)
      ผู้อนุมัติ (โมดัล) และการ์ดโซนหน้าใบอ่านตัวเลขชุดเดียวกันจากตัวนี้
-   ⭐ มติเจ้าของ 29/09 ("ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง"): ป้าย = `SERVICE_PACKS_LABEL` "แต่ละครั้งกี่แพ็ค" ·
+   ⭐ มติเจ้าของ 29/09 ("ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง"): ป้าย = `SERVICE_PACKS_LABEL` "รอบละกี่แพ็ค" ·
      พูดรอบก่อนแพ็คทุกที่ (หัวแถว · ค่ารวม · รายโซน · ผลลัพธ์ของ TS)
-   🔴 คำที่ยอม: "แต่ละครั้งกี่แพ็ค" · "แพ็ค/รอบ" เท่านั้น — "N แพ็ค" เปล่า ๆ อ่านได้สองความหมาย (มติ 23/09 · เทสต์ไล่ทุกสตริง)
+   🔴 คำที่ยอม: "รอบละกี่แพ็ค" · "แพ็ค/รอบ" เท่านั้น — "N แพ็ค" เปล่า ๆ อ่านได้สองความหมาย (มติ 23/09 · เทสต์ไล่ทุกสตริง)
    ⚠️ ค่าที่ไม่ใช่จำนวนเต็มบวก = **ไม่รู้** (null) ไม่ใช่ 0 — ใบที่คีย์ก่อนมีช่องไม่มีแถวโซนของงานบริการ */
 const positiveInt = (value) => {
   if (value === null || value === undefined || typeof value === 'boolean' || text(value) === '') return null;
@@ -336,8 +336,8 @@ const ZONE_CARD_META_TAIL = 'โซนผูกจากทะเบียนไ
    (`SERVICE_ROUNDS_LABEL` · `SERVICE_PACKS_LABEL`) · ค่าตามหลังเป็นตัวเลขล้วน เรียงเดียวกับหัว "12 รอบ/โซน · รวม 6 แพ็ค/รอบ"
    (ป้ายบอกแล้วว่าตัวไหนคืออะไร) */
 export const PACKS_ROUNDS_HEAD = `${SERVICE_ROUNDS_LABEL} · ${SERVICE_PACKS_LABEL}`;
-/* "ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค" — ท้ายเดียวกับ packs_missing ของใบใหม่ (SERVICE_SETUP_ISSUE_TEXT) */
-const PACKS_MISSING_TEXT = `ยังไม่ใส่ว่า${SERVICE_PACKS_LABEL}`;
+/* "ยังไม่ใส่รอบละกี่แพ็ค" — ท้ายเดียวกับ packs_missing ของใบใหม่ (SERVICE_SETUP_ISSUE_TEXT) */
+const PACKS_MISSING_TEXT = `ยังไม่ใส่${SERVICE_PACKS_LABEL}`;
 
 /**
  * ตัวเลขรวมของแพ็คต่อรอบ · รอบ — รับได้ทั้งแถวโซนของเสริม (`packsPerRound` · `rounds`) และบรรทัดของแผน (`packsPerRound` · `serviceRounds`)
@@ -407,7 +407,7 @@ export function historicalPacksRoundsText(zones = [], { maxZones = 5 } = {}) {
   };
 }
 
-/** เซลล์ "แต่ละครั้งกี่แพ็ค" ของการ์ดโซน — "2 แพ็ค/รอบ" · ไม่รู้ = ขีด (การ์ดไม่ประกอบคำว่าแพ็คเอง · M3) */
+/** เซลล์ "รอบละกี่แพ็ค" ของการ์ดโซน — "2 แพ็ค/รอบ" · ไม่รู้ = ขีด (การ์ดไม่ประกอบคำว่าแพ็คเอง · M3) */
 export function historicalPacksCellText(value) {
   const packs = positiveInt(value);
   return packs === null ? NA : `${fmtNumber(packs)} แพ็ค/รอบ`;

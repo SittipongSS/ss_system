@@ -1017,17 +1017,17 @@ test('⭐ 23/09 → 26/09: ขั้น ② ไม่เหลือ "แพ็�
   assert.equal(T.packsUnit, 'แพ็ค', 'หน่วยท้ายช่องแพ็คต่อรอบ');
   const said = [T.packsLabel, T.packsAria('รายการ 1'), T.assessed(2), T.useAssessedAria(2, 'รายการ 1'), T.lineTotal(24),
     T.assessFailed, T.bulk.subtitle, T.bulk.packsLabel, T.bulk.assessLoading, T.bulk.assessFailed].join(' | ');
-  const allowed = /แต่ละครั้งกี่แพ็ค|แพ็ค\/รอบ|ประเมินไว้ \d+ แพ็ค|ผลประเมิน \d+ แพ็ค|ทั้งรายการ \d+ แพ็ค/g;
+  const allowed = /รอบละกี่แพ็ค|แพ็ค\/รอบ|ประเมินไว้ \d+ แพ็ค|ผลประเมิน \d+ แพ็ค|ทั้งรายการ \d+ แพ็ค/g;
   assert.doesNotMatch(said.replace(allowed, ''), /แพ็ค(?!เกจ)/,
-    'รูปที่อนุญาต: แต่ละครั้งกี่แพ็ค · แพ็ค/รอบ · ประเมินไว้ n แพ็ค · รวมทั้งรายการ n แพ็ค (+ หน่วยท้ายช่อง)');
-  assert.doesNotMatch(said, /แพ็คต่อรอบ/, 'มติ 29/09: ป้ายเดียวกับใบใหม่ — "แต่ละครั้งกี่แพ็ค"');
+    'รูปที่อนุญาต: รอบละกี่แพ็ค · แพ็ค/รอบ · ประเมินไว้ n แพ็ค · รวมทั้งรายการ n แพ็ค (+ หน่วยท้ายช่อง)');
+  assert.doesNotMatch(said, /แพ็คต่อรอบ/, 'มติ 29/09: ป้ายเดียวกับใบใหม่ — "รอบละกี่แพ็ค"');
 });
 
 /* ⭐ PR-D (mig 0394 · r2 S12 · IMPL_PLAN_D DD1–DD2): แถบผูกของบรรทัด = ไซต์ · โซน * | จำนวนรอบบริการ * (บังคับ — เลิก "เว้นว่างได้")
-   | แต่ละครั้งกี่แพ็ค * (ชิป "ประเมินไว้ n แพ็ค" [ใช้]) | รวมทั้งรายการ n แพ็ค (อ่านอย่างเดียว เมื่อสองช่องถูก)
+   | รอบละกี่แพ็ค * (ชิป "ประเมินไว้ n แพ็ค" [ใช้]) | รวมทั้งรายการ n แพ็ค (อ่านอย่างเดียว เมื่อสองช่องถูก)
    — คำและลำดับตามมติเจ้าของ 29/09 ("ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง")
    🔴 แดงหลังกด "ถัดไป" เท่านั้น — ข้อความใต้ช่องมาจาก `bad` (issues ที่เปิดเผยแล้ว) ช่องเดียวกับช่องอื่นของบรรทัด */
-test('PR-D ⭐ ขั้น ②: "จำนวนรอบบริการ *" บังคับ → "แต่ละครั้งกี่แพ็ค *" + ชิปผลประเมิน → "รวมทั้งรายการ n แพ็ค" — แดงหลังกด ถัดไป', () => {
+test('PR-D ⭐ ขั้น ②: "จำนวนรอบบริการ *" บังคับ → "รอบละกี่แพ็ค *" + ชิปผลประเมิน → "รวมทั้งรายการ n แพ็ค" — แดงหลังกด ถัดไป', () => {
   const src = code(STEP_ZONES);
   assert.match(src, /import HistoricalLineServiceFields, \{ HistoricalLineServiceTotal \} from "\.\/HistoricalLineServiceFields";/);
   const bind = slice(src, '<div className={styles.lineBind}>', '{warn ? (');
@@ -1077,7 +1077,7 @@ test('PR-D ⭐ ขั้น ②: "จำนวนรอบบริการ *" 
   for (const prop of ['font-size', 'font-weight', 'line-height', 'color']) {
     const pick = (block) => (block.match(new RegExp(`${prop}:\\s*([^;]+);`)) || [])[1];
     assert.ok(pick(label), `หัวช่องรอบต้องตั้ง ${prop}`);
-    assert.equal(pick(label), pick(own), `หัวช่องรอบ ${prop} = หัวช่องแต่ละครั้งกี่แพ็ค`);
+    assert.equal(pick(label), pick(own), `หัวช่องรอบ ${prop} = หัวช่องรอบละกี่แพ็ค`);
   }
   const total = slice(css, '.lineBindTotal {', '}');
   assert.doesNotMatch(total, /min-height|align-self/, 'ไม่มีกล่องสูงเท่าช่องกรอก');
@@ -1125,7 +1125,7 @@ test('PR-D 🔴 DD17: เปิดแก้ใบที่อ่านของ�
   const wizard = code(WIZARD);
   const hydrate = slice(wizard, 'if (!HISTORICAL_EDITABLE_STATUSES.includes(order.status)) {', 'setState(wizardStateFromOrder(order));');
   assert.match(hydrate,
-    /if \(order\.extrasError\) \{\s*setReadOnly\(`โหลดข้อมูลประกอบของใบไม่ขึ้น \(แต่ละครั้งกี่แพ็ค · ไฟล์เอกสาร · งวด\) — โหลดหน้าใหม่ก่อนแก้ · \$\{order\.extrasError\}`\);\s*return;\s*\}/);
+    /if \(order\.extrasError\) \{\s*setReadOnly\(`โหลดข้อมูลประกอบของใบไม่ขึ้น \(รอบละกี่แพ็ค · ไฟล์เอกสาร · งวด\) — โหลดหน้าใหม่ก่อนแก้ · \$\{order\.extrasError\}`\);\s*return;\s*\}/);
   assert.ok(hydrate.indexOf('if (order.extrasError)') > hydrate.indexOf('return;'), 'หลังด่านสถานะ (ใบที่แก้ไม่ได้อยู่แล้วพูดเหตุของตัวเองก่อน)');
 });
 
@@ -1487,7 +1487,7 @@ test('⭐ 25/09 → PR-D: ปุ่มยืนยันของหน้าต
   assert.equal(intakeForm.historicalBulkConsequence({ count: 3, qty: '12', unitPrice: 3500, mode: 'equal', packs: 2, rounds: '12' }),
     'จะเพิ่ม 3 บรรทัด · บรรทัดละ 12 × ฿3,500.00 = ฿42,000.00 · รวม ฿126,000.00 · จำนวนรอบบริการ 12 รอบ · แต่ละครั้งเท่ากันทุกบรรทัด ครั้งละ 2 แพ็ค');
   assert.match(intakeForm.historicalBulkConsequence({ count: 3, qty: '', unitPrice: 3500, mode: 'assessed', assessed: 2, blank: 1, rounds: '' }),
-    /จำนวนใส่ทีละบรรทัดในตาราง · แต่ละครั้งกี่แพ็ค: ตามผลประเมิน 2 โซน · ยังว่าง 1 โซน$/);
+    /จำนวนใส่ทีละบรรทัดในตาราง · รอบละกี่แพ็ค: ตามผลประเมิน 2 โซน · ยังว่าง 1 โซน$/);
 });
 
 /* 🔴 กฎบ้าน 3 ที่ตัวห่อ (L8): ช่องของตัวห่อแดงหลังกดเท่านั้น — ของเดิมช่องจำนวนแดงทันทีที่พิมพ์ 1.5 */

@@ -222,13 +222,13 @@ export function localSetupCtx(merged = [], zonesById = new Map()) {
 }
 
 /**
- * ป้ายสถานะของบรรทัด (หัวกล่อง "งานบริการของรายการนี้") — นับเฉพาะของที่ยังว่าง (โครงสร้าง)
+ * ป้ายสถานะของบรรทัด (ช่อง "รายการ" ของตารางงานบริการ) — นับเฉพาะของที่ยังว่าง (โครงสร้าง)
  * ความถูกต้องของแพ็คเกจ/โซน (ปิดใช้งาน · ของลูกค้าอื่น) เป็นข้อที่ยังขาดจาก server หลังกดยื่น
  * → `{ state: 'unset'|'missing'|'complete'|'none', count, label }`
  */
 export function lineMissing(line) {
   if (!line) return { state: 'none', count: 0, label: null };
-  if (line.role === SERVICE_ROLE_UNSET) return { state: 'unset', count: 1, label: 'ยังไม่เลือกชนิด' };
+  if (line.role === SERVICE_ROLE_UNSET) return { state: 'unset', count: 1, label: 'ยังไม่ตอบ' };
   const zones = list(line.zones).filter((row) => row.zoneId);
   if (line.role === SERVICE_KIND_NOT_SERVICE) {
     return zones.length ? { state: 'missing', count: 1, label: 'ยังขาด 1 ข้อ' } : { state: 'none', count: 0, label: null };
@@ -463,33 +463,40 @@ export function backfillBannerText(view) {
     const who = state.submittedByName ? ` โดย ${state.submittedByName}` : '';
     return `${SERVICE_SETUP_EDIT_TEXT.backfillSubmitted}${when}${who} · ${BANNER_UNCHANGED}`;
   }
-  /* มติ 29/09: จำนวนรอบบริการก่อน แล้วค่อยบอกว่าแต่ละครั้งกี่แพ็ค (คำจากแคตตาล็อก `SERVICE_SETUP_LINE_TEXT`) */
-  return `ตั้งแพ็คเกจ · ${SERVICE_SETUP_LINE_TEXT.roundsLabel} · โซน · ${SERVICE_SETUP_LINE_TEXT.packsLabel} · ช่วงบริการ แล้วยื่นให้ผู้จัดการฝ่ายขายตรวจ · ${BANNER_UNCHANGED}`;
+  /* มติ 30/09: ลำดับเดียวกับการ์ดงานบริการ (แพ็คเกจ → ไซต์ · โซน → จำนวนรอบบริการ → รอบละกี่แพ็ค) · คำจากแคตตาล็อก `SERVICE_SETUP_LINE_TEXT` */
+  return `ตั้งงานบริการ (แพ็คเกจ · ไซต์ · โซน · ${SERVICE_SETUP_LINE_TEXT.roundsLabel} · ${SERVICE_SETUP_LINE_TEXT.packsLabel} · ช่วงบริการ)`
+    + ` แล้วยื่นให้ผู้จัดการฝ่ายขายตรวจ · ${BANNER_UNCHANGED}`;
 }
 
-/** บรรทัดรองบนหัวการ์ด "รายการสินค้าและบริการ" ของใบสาย SERVICE (ที่มาของราคา · ขั้นของงานบริการ) */
-export function linesCardMeta({ order, view, flow, editable, lineCount, totals } = {}) {
+/** บรรทัดรองบนหัวการ์ด "รายการสินค้าและบริการ" ของใบสาย SERVICE — ที่มาของราคา (งานบริการอยู่การ์ดของตัวเองแล้ว · 01/10) */
+export function linesCardMeta({ order, lineCount } = {}) {
   const n = `${fmtNumber(lineCount || 0)} รายการ`;
   const source = order?.quotationId ? `ราคา/จำนวนจาก ${order?.quotation?.quoteNumber || 'QT ต้นทาง'} แก้ไม่ได้` : 'คีย์จากเอกสารเดิม';
-  if (flow === 'stamped') {
-    const opened = view?.state?.termsOpenedAt;
-    return `${n} · อนุมัติแล้ว · เปิด ${fmtNumber(totals?.zones || 0)} โซนให้ TS${opened ? ` เมื่อ ${fmtDateTime(opened)}` : ''}`;
-  }
-  if (editable && flow === 'pipeline') return `${n} · ${source} · งานบริการตั้งได้จนกว่าจะยื่นอนุมัติ`;
-  if (editable && flow === 'backfill') return `${n} · ${source} · งานบริการตั้งได้จนกว่าจะยื่นตรวจ`;
-  /* ม็อก BackfillApproveModal: ใบเดิมที่ยื่นตรวจแล้วบอกวันยื่นบนหัวการ์ด */
-  if (flow === 'backfill' && view?.state?.setupState === 'submitted' && view?.state?.submittedAt) {
-    return `${n} · ${source} · งานบริการตั้งย้อนหลัง ยื่นตรวจ ${fmtDate(view.state.submittedAt)}`;
-  }
   return `${n} · ${source}`;
 }
 
+/** บรรทัดรองบนหัวการ์ด "งานบริการ" — ขั้นของงานบริการ (ม็อก BindGridEdit / BindGridMulti) */
+export function serviceCardMeta({ view, flow, editable, totals } = {}) {
+  const ask = 'ทุกรายการต้องตอบว่าเป็นงานบริการไหม · ถ้าใช่ เลือกแพ็คเกจ → ไซต์ · โซน → จำนวนรอบบริการ → รอบละกี่แพ็ค';
+  if (flow === 'stamped') {
+    const opened = view?.state?.termsOpenedAt;
+    return `อนุมัติแล้ว · เปิด ${fmtNumber(totals?.zones || 0)} โซนให้ TS${opened ? ` เมื่อ ${fmtDateTime(opened)}` : ''}`;
+  }
+  if (editable && flow === 'pipeline') return `${ask} · แก้ได้จนกว่าจะยื่นอนุมัติ`;
+  if (editable && flow === 'backfill') return `${ask} · แก้ได้จนกว่าจะยื่นตรวจ`;
+  /* ม็อก BackfillApproveModal: ใบเดิมที่ยื่นตรวจแล้วบอกวันยื่นบนหัวการ์ด */
+  if (flow === 'backfill' && view?.state?.setupState === 'submitted' && view?.state?.submittedAt) {
+    return `ตั้งย้อนหลัง · ยื่นตรวจ ${fmtDate(view.state.submittedAt)}`;
+  }
+  return null;
+}
+
 const LINE_SHORT = Object.freeze({
-  kind_missing: 'ยังไม่เลือกชนิด', fg_missing: 'ยังไม่เลือกแพ็คเกจ', fg_invalid: 'แพ็คเกจใช้ไม่ได้แล้ว',
+  kind_missing: 'ยังไม่ตอบ ‘งานบริการ?’', fg_missing: 'ยังไม่เลือกแพ็คเกจ', fg_invalid: 'แพ็คเกจใช้ไม่ได้แล้ว',
   fg_foreign: 'แพ็คเกจของนิติบุคคลอื่น', rounds_missing: SERVICE_SETUP_LINE_TEXT.noRounds,
 });
 const ZONE_SHORT = Object.freeze({
-  zones_missing: 'ยังไม่เลือกโซน', packs_missing: 'ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค', zone_invalid: 'โซนใช้ไม่ได้', zones_on_not_service: 'มีโซนค้าง',
+  zones_missing: 'ยังไม่เลือกโซน', packs_missing: SERVICE_SETUP_LINE_TEXT.noPacks, zone_invalid: 'โซนใช้ไม่ได้', zones_on_not_service: 'มีโซนค้าง',
 });
 const LINE_KEYS = new Set(Object.keys(LINE_SHORT));
 const ZONE_KEYS = new Set(Object.keys(ZONE_SHORT));
@@ -521,7 +528,7 @@ export function backfillRailChecks(view) {
   const moneyRow = (key, label, keys) => {
     const found = issues.filter((issue) => keys.has(issue?.key));
     if (found.length) return { key, label, value: `ยังขาด ${fmtNumber(found.length)} ข้อ`, sub: 'เติมที่แท็บการชำระ', ok: false };
-    if (unset) return { key, label, value: 'รอเลือกชนิดรายการ', sub: null, ok: false };
+    if (unset) return { key, label, value: 'รอตอบ ‘งานบริการ?’', sub: null, ok: false };
     if (!packageLines) return { key, label, value: NA, sub: 'ไม่มีแพ็คเกจ — ไม่ต้องใส่', ok: true };
     return { key, label, value: 'ครบ', sub: null, ok: true };
   };
@@ -535,12 +542,12 @@ export function backfillRailChecks(view) {
 
   return [
     {
-      key: 'lines', label: `ชนิด · แพ็คเกจ · ${SERVICE_SETUP_LINE_TEXT.roundsLabel}`,
+      key: 'lines', label: `งานบริการ? · แพ็คเกจ · ${SERVICE_SETUP_LINE_TEXT.roundsLabel}`,
       value: `${fmtNumber(lines.length - lineBad.size)}/${fmtNumber(lines.length)} รายการ`,
       sub: shortSub(LINE_KEYS, LINE_SHORT, lineBad.size), ok: lineBad.size === 0,
     },
     {
-      key: 'zones', label: 'ไซต์ · โซน · แต่ละครั้งกี่แพ็ค',
+      key: 'zones', label: `ไซต์ · โซน · ${SERVICE_SETUP_LINE_TEXT.packsLabel}`,
       value: zoneLines.length ? `${fmtNumber(zoneDone)}/${fmtNumber(zoneLines.length)} รายการ` : 'ไม่มีแพ็คเกจ',
       sub: unset ? SERVICE_BACKFILL_RAIL_TEXT.waitKind(fmtNumber(unset)) : shortSub(ZONE_KEYS, ZONE_SHORT, zoneBad.size),
       ok: zoneBad.size === 0 && !unset,

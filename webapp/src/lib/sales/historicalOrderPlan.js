@@ -60,7 +60,7 @@ export const HISTORICAL_REQUIRED_MESSAGES = Object.freeze({
    ⭐ PR-D (mig 0394 · r2 S12 · มติ 26/09 A3/O9): จำนวนรอบบริการบังคับ (`roundsMissing`) + ช่องแพ็คต่อรอบ (`packsPerRound`) ของแต่ละบรรทัด
      (`packsMissing` · `packs` · `packsStaleForm`) — จำนวนแพ็คที่ TS ใช้ต่อการเข้าโซนหนึ่งครั้ง
      **คนละช่องกับ "จำนวน"** (จำนวน = เงิน: 1 ชุด × 12 เดือน · มติ 23/09) ⇒ ไม่แตะยอดใดเลย
-   ⭐ มติเจ้าของ 29/09 (ใบใหม่และใบย้อนหลัง): ป้ายช่อง = `SERVICE_PACKS_LABEL` "แต่ละครั้งกี่แพ็ค" (คำของใบใหม่)
+   ⭐ มติเจ้าของ 29/09 (ใบใหม่และใบย้อนหลัง): ป้ายช่อง = `SERVICE_PACKS_LABEL` "รอบละกี่แพ็ค" (คำของใบใหม่)
    ⚠️ `packs` = คำเดียวกับ ZONES_BULK_PACKS_INVALID ของหน้าต่างเพิ่มหลายโซน และ service_setup_packs_invalid ของใบใหม่
      (เทสต์ยึด — lib ไม่ import components) */
 export const HISTORICAL_LINE_MESSAGES = Object.freeze({
@@ -70,7 +70,7 @@ export const HISTORICAL_LINE_MESSAGES = Object.freeze({
   priceUnknown: 'อ่านราคาของแพ็คเกจจากฐานข้อมูลสินค้าไม่ได้ — ลองใหม่อีกครั้ง (ถ้ายังไม่ได้ แจ้งผู้ดูแลระบบ)',
   rounds: `${SERVICE_ROUNDS_LABEL}ต้องเป็นจำนวนเต็มมากกว่า 0`,
   roundsMissing: `ยังไม่ใส่${SERVICE_ROUNDS_LABEL}`,
-  packsMissing: `ยังไม่ใส่ว่า${SERVICE_PACKS_LABEL} (จำนวนเต็ม 1–9999)`,
+  packsMissing: `ยังไม่ใส่${SERVICE_PACKS_LABEL} (จำนวนเต็ม 1–9999)`,
   packs: `${SERVICE_PACKS_LABEL} ต้องเป็นจำนวนเต็ม 1–9999`,
   packsStaleForm: `ฟอร์มรุ่นก่อน (ยังไม่มีช่อง${SERVICE_PACKS_LABEL}) — โหลดหน้าใหม่ แล้วใส่${SERVICE_PACKS_LABEL}ให้ครบทุกรายการ`,
 });
@@ -467,7 +467,7 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
     }
     if (!priceOk) linesMoneyOk = false;
     /* ── งานบริการของบรรทัด (PR-D · mig 0394): รอบบริการ + แพ็คต่อรอบ — **ไม่แตะเงิน** (linesMoneyOk ไม่ขยับ) ──
-       ลำดับข้อ = ลำดับช่องบนจอ (โซน · จำนวนรอบบริการ · แต่ละครั้งกี่แพ็ค — มติ 29/09) ⇒ ข้อแรกที่ปุ่มพาไปคือช่องแรกที่ตาเห็น
+       ลำดับข้อ = ลำดับช่องบนจอ (โซน · จำนวนรอบบริการ · รอบละกี่แพ็ค — มติ 29/09) ⇒ ข้อแรกที่ปุ่มพาไปคือช่องแรกที่ตาเห็น
        🪤 ไม่มีคีย์ `packsPerRound` = แท็บที่เปิดค้างจากก่อน deploy (จอของเขาไม่มีช่องนี้) ⇒ บอกให้โหลดหน้าใหม่ (DD13)
           ไม่ใช่ "ยังไม่ใส่" ที่ส่งเขาไปหาช่องที่ไม่มี · แถวรุ่น 0374 (`staleForm` ข้างบน) ได้ข้อความเดียวของมันพอ
        ⚠️ ฐานตรวจซ้ำ: 0394/P4 (ตัวตรวจบรรทัด — รอบว่าง = historical_so_line_rounds_required) · P5 (ตัวเขียน — ทุกบรรทัดต้องพก
