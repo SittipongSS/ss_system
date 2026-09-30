@@ -8,6 +8,7 @@ export const dynamic = 'force-dynamic';
    GET   ก้อนของตาราง/โมดัล/แถบผู้อนุมัติ — ทุกคนที่อ่านใบได้ (loadScoped โหมด view)
    PATCH บันทึกงานบริการ (ชนิด · แพ็คเกจ · รอบ · โซน/แพ็คต่อรอบ · ช่วงบริการ) — ฝ่ายขายที่แก้ใบนี้ได้
    POST  งานบริการย้อนหลังของใบที่อนุมัติแล้ว — action: submit (ยื่นตรวจ) · approve / reject (ผู้จัดการฝ่ายขาย)
+         · reopen (เปิดแก้งานบริการหลังอนุมัติ ก่อน TS เริ่มงาน — mig 0396 · ฐานลง audit เอง)
    ⭐ ตรรกะทั้งหมดอยู่ที่ `lib/sales/serviceSetupRoute.js` (ทดสอบด้วย supabase ปลอมได้) · ที่นี่แค่ส่งต่อ
    ⚠️ proxy: เส้นนี้อยู่ใต้ /api/sales-planning ⇒ เขียนได้เฉพาะคนที่ถือ salesplan:edit (ไม่ต้องแก้ proxy)
    ⚠️ จอห้ามส่ง retry: true — PATCH/POST เทียบเวลาของใบ (expectedUpdatedAt) ยิงซ้ำ = workflow_stale */

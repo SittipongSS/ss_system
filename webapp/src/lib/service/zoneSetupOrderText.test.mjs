@@ -23,9 +23,24 @@ test('ไฟล์ข้อความไม่มี import เลย', () => 
   assert.doesNotMatch(src, /\brequire\(/);
 });
 
-test('กลุ่มมีสองค่า และแช่แข็ง', () => {
-  assert.deepEqual({ ...SETUP_ORDER_GROUP }, { unapproved: 'unapproved', backfill: 'backfill' });
+test('กลุ่มมีสามค่า (ยังไม่อนุมัติ · ตั้งย้อนหลัง · แก้หลังอนุมัติของ 0396) และแช่แข็ง', () => {
+  assert.deepEqual({ ...SETUP_ORDER_GROUP }, { unapproved: 'unapproved', backfill: 'backfill', reopened: 'reopened' });
   assert.equal(Object.isFrozen(SETUP_ORDER_GROUP), true);
+});
+
+/* ตรวจทาน ui-zone-chip-reopened-label: ใบที่เปิดแก้หลังอนุมัติ (mig 0396) ไม่ใช่ "ตั้งย้อนหลัง" — คำเดียวกับแท็บ TS "ฝ่ายขายกำลังแก้ (หลังอนุมัติ)" */
+const reopened = { orderId: 'SOR-5', orderNumber: 'SO-26090247-0', status: 'approved', group: 'reopened', stateLabel: 'ฝ่ายขายกำลังแก้', ownerName: 'สมหญิง' };
+test('ใบที่เปิดแก้หลังอนุมัติ — ป้ายแถวโซน/คำเตือน/ชิปด่านนัด พูด "แก้หลังอนุมัติ" ไม่ใช่ "ตั้งย้อนหลัง"', () => {
+  assert.equal(pendingOrderTagText([reopened]), 'อยู่ในใบที่กำลังแก้งานบริการหลังอนุมัติ: SO-26090247-0 (ฝ่ายขายกำลังแก้)');
+  assert.equal(pendingOrderTagText([reopened, draft, backfill]),
+    'อยู่ในใบที่ยังไม่อนุมัติ: SO-26100011-0 (ฉบับร่าง)'
+    + ' · อยู่ในใบที่กำลังตั้งงานบริการย้อนหลัง: SO-26080036-0 (ฝ่ายขายกำลังตั้ง)'
+    + ' · อยู่ในใบที่กำลังแก้งานบริการหลังอนุมัติ: SO-26090247-0 (ฝ่ายขายกำลังแก้)');
+  assert.equal(setupOrderChipText(reopened), 'ใบสั่งขาย SO-26090247-0 · แก้หลังอนุมัติ · ฝ่ายขายกำลังแก้ · สมหญิง');
+  assert.match(zoneDeactivateWarning([reopened]), /SO-26090247-0 \(แก้หลังอนุมัติ · ฝ่ายขายกำลังแก้\)/);
+  for (const t of [pendingOrderTagText([reopened]), setupOrderChipText(reopened), zoneDeactivateWarning([reopened])]) {
+    assert.doesNotMatch(t, /ตั้งย้อนหลัง/, t);
+  }
 });
 
 test('ป้ายบนแถวโซน — กลุ่มใบที่ยังไม่อนุมัติ', () => {

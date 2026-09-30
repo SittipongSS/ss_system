@@ -38,6 +38,8 @@ const SETUP_STATE_COLUMNS = [
   'serviceTermsOpenedAt', 'serviceSetupState', 'serviceSetupSubmittedAt', 'serviceSetupSubmittedById',
   'serviceSetupSubmittedByName', 'serviceSetupRejectedAt', 'serviceSetupRejectedById', 'serviceSetupRejectedByName',
   'serviceSetupRejectedReason', 'serviceSetupApprovedAt', 'serviceSetupApprovedById', 'serviceSetupApprovedByName',
+  /* ผู้/เวลา/เหตุที่เปิดแก้หลังอนุมัติ (mig 0396) — ประวัติของใบเดิม ใบ Rev. ไม่ยก (serviceRoundsCopyPaths REVISION_RESETS) */
+  'serviceSetupReopenedAt', 'serviceSetupReopenedById', 'serviceSetupReopenedByName', 'serviceSetupReopenedReason',
 ];
 
 test('P2 ของ 0392 เรียก sales_order_copy_service_setup(v_source.id, v_revision.id) ในฟังก์ชันออก Rev.', () => {

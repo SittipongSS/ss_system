@@ -49,10 +49,12 @@ export const GET = withUser(async ({ user, supabase }) => {
        ⭐ mig 0392: คอลัมน์ตั้งงานบริการของใบเดิม — `serviceTermsOpenedAt` (ประทับแล้ว = ไม่อยู่ในถังใบเดิม · ขาด = ตัวถังโยน)
           · สถานะ/ผู้ยื่น/ผู้ตีกลับ/เหตุผล · `servicePeriodFrom` (เริ่มตั้งแล้ว) · `updatedAt` (แก้ล่าสุด — RPC บันทึกขยับให้)
        ⭐ PR-C (C7): `servicePeriodTo` — ช่วงบริการของแถวรอตั้งรอบ (`servicePeriodOf` · หัวใบของใบที่ตั้งแล้ว) ⇒ ค่าเติมวันของโมดัล
-          + รอบที่แนะนำ · ต่อท้าย select ตัวเดิม (ไม่เพิ่มคำสั่งอ่านใบ — ยามเงินนับคำสั่ง) */
+          + รอบที่แนะนำ · ต่อท้าย select ตัวเดิม (ไม่เพิ่มคำสั่งอ่านใบ — ยามเงินนับคำสั่ง)
+       ⭐ mig 0396: ผู้เปิดแก้/เวลา/เหตุผลของใบที่ฝ่ายขายเปิดแก้งานบริการหลังอนุมัติ — ถังใบเดิมขึ้นป้าย "ฝ่ายขายกำลังแก้ (หลังอนุมัติ)"
+          (`serviceSetupReopened`) · ⚠️ ต้องรัน 0396 ก่อน deploy (ไม่มีคอลัมน์ = select 500 ทั้งหน้างานเข้าใหม่ · check:columns แดงจนกว่ารัน) */
     const { data: orders, error: orderError } = await fetchAllResult(() => supabase
       .from('sales_orders')
-      .select('id, "orderNumber", status, supersededById, customerId, customerName, projectId, dealId, orderDate, approvedAt, "serviceContractId", origin, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef", "totalAmount", "serviceTermsOpenedAt", "serviceSetupState", "serviceSetupSubmittedAt", "serviceSetupSubmittedByName", "serviceSetupRejectedAt", "serviceSetupRejectedByName", "serviceSetupRejectedReason", "servicePeriodFrom", "servicePeriodTo", "updatedAt"')
+      .select('id, "orderNumber", status, supersededById, customerId, customerName, projectId, dealId, orderDate, approvedAt, "serviceContractId", origin, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef", "totalAmount", "serviceTermsOpenedAt", "serviceSetupState", "serviceSetupSubmittedAt", "serviceSetupSubmittedByName", "serviceSetupRejectedAt", "serviceSetupRejectedByName", "serviceSetupRejectedReason", "servicePeriodFrom", "servicePeriodTo", "updatedAt", "serviceSetupReopenedAt", "serviceSetupReopenedByName", "serviceSetupReopenedReason"')
       .eq('status', 'approved')
       .is('supersededById', null)
       .order('approvedAt', { ascending: false })

@@ -22,7 +22,7 @@
 //     (วงของ ESM: ถ้าวันหนึ่งมีใครพาไฟล์นี้เข้าวง ชื่อที่ import อาจยังไม่ถูกผูกตอนโมดูลนี้รันบรรทัดบนสุด)
 //   ยาม: serviceSetupImports.test.mjs
 import { categoryOf } from '@/lib/master/categoryOf';
-import { orderBusinessLineOf } from '@/lib/sales/serviceOrders';
+import { hasServicePackageLine, orderBusinessLineOf } from '@/lib/sales/serviceOrders';
 import { addDays, daysBetween, isConfirmed, monthEdge, pipelineCoverageIssues, wholeMonthsIn } from '@/lib/sales/paymentCoverage';
 import { NEED_NONE, billingRuleMonthly, billingRuleNeedsBillingDate, installmentNeed } from '@/lib/sales/billingRule';
 import { fillInputRows, fillKindOf, fillTargetsOf } from '@/lib/sales/installmentDateDrafts';
@@ -89,7 +89,8 @@ export const SERVICE_SETUP_SQL_MESSAGES = Object.freeze({
   service_setup_zone_duplicate: { message: 'เลือกโซนเดียวกันซ้ำในรายการเดียว', status: 400 },
   service_setup_zone_invalid: { message: 'โซนที่เลือกใช้ไม่ได้ (ไม่พบ · ปิดใช้งาน · ไม่ใช่ไซต์ลูกค้าของใบนี้)', status: 400 },
   service_setup_packs_invalid: { message: `${PACKS_TERM} ต้องเป็นจำนวนเต็ม 1–9999`, status: 400 },
-  sales_order_service_setup_locked: { message: `งานบริการของใบนี้ล็อกแล้ว — รออนุมัติ/อนุมัติแล้ว · แก้ด้วยการดึงกลับ หรือย้อนการอนุมัติแล้วออก Rev. (${ROUNDS_TERM}ยังแก้ได้หลังอนุมัติ)`, status: 409 },
+  /* มติเจ้าของ 29–30/09 (mig 0396): อนุมัติแล้วเปิดแก้ได้ด้วยปุ่ม 'แก้งานบริการ' ก่อน TS เริ่มงาน — ท้ายประโยคคงเดิม (เทสต์ยึดไว้) */
+  sales_order_service_setup_locked: { message: `งานบริการของใบนี้ล็อกแล้ว — รออนุมัติ: ดึงกลับก่อน · อนุมัติแล้ว: กด ‘แก้งานบริการ’ (ก่อน TS เริ่มงาน) หรือย้อนการอนุมัติแล้วออก Rev. (${ROUNDS_TERM}ยังแก้ได้หลังอนุมัติ)`, status: 409 },
   sales_order_service_setup_incomplete: { message: 'งานบริการยังไม่ครบ — ตรวจรายการที่ขึ้นสีแดง', status: 409 },
   service_setup_review_forbidden: { message: 'อนุมัติ/ตีกลับงานบริการได้เฉพาะผู้จัดการฝ่ายขาย', status: 403 },
   service_setup_review_state_invalid: { message: 'งานบริการของใบนี้ไม่ได้รอตรวจ — โหลดหน้าใหม่', status: 409 },
@@ -97,6 +98,11 @@ export const SERVICE_SETUP_SQL_MESSAGES = Object.freeze({
   workflow_reason_invalid: { message: 'กรุณาระบุเหตุผล 10–500 ตัวอักษร', status: 400 },
   service_setup_legacy_terms_exist: { message: 'ใบนี้มีรอบขายที่ TS ผูกไว้ด้วยทางเดิม — เปิดงานบริการทับไม่ได้ · แจ้งผู้ดูแลระบบ', status: 409 },
   service_setup_override_reason_required: { message: 'Admin Override ต้องระบุเหตุผล 10–500 ตัวอักษร', status: 400 },
+  /* ── เปิดแก้งานบริการหลังอนุมัติ (mig 0396 · `reopen_sales_order_service_setup`) ──
+     `service_setup_reopen_blocked` ถูก route แทนด้วยข้อความเจาะจงจาก DETAIL (`serviceReopenBlockedText`) — ตัวนี้คือข้อความสำรองเมื่อ DETAIL ว่าง */
+  service_setup_reopen_state_invalid: { message: 'แก้งานบริการได้เฉพาะใบที่อนุมัติแล้วและส่งงานให้ TS แล้ว (ยังไม่ถูกย้อน/ออก Rev./ยกเลิก) — โหลดหน้าใหม่', status: 409 },
+  service_setup_reopen_blocked: { message: 'แก้งานบริการไม่ได้แล้ว — TS เริ่มงานของใบนี้แล้ว · ทางแก้: ย้อนการอนุมัติแล้วออก Rev.', status: 409 },
+  service_setup_reopen_busy: { message: 'ระบบกำลังบันทึกงานของ TS อยู่ — รอสักครู่แล้วกด ‘แก้งานบริการ’ อีกครั้ง', status: 409 },
 });
 
 /** error ดิบจาก RPC → `{ code, message, status }` หรือ null (รหัสที่ไม่รู้จัก — ผู้เรียกตอบข้อความกลาง/500 เอง) */
@@ -249,11 +255,97 @@ export const SERVICE_SETUP_EDIT_TEXT = Object.freeze({
   notService: 'ใบนี้ไม่ใช่ใบสายบริการ — ไม่มีงานบริการให้ตั้ง',
   pending: 'รออนุมัติ — ดึงกลับก่อนแก้',
   revoked: 'ย้อนการอนุมัติแล้ว — ออก Rev. แล้วแก้ที่ใบ Rev.',
-  stamped: `อนุมัติแล้ว — แพ็คเกจ/โซน/${PACKS_TERM}/ช่วงบริการล็อก · แก้ด้วยย้อนการอนุมัติแล้วออก Rev. (${ROUNDS_TERM}ยังแก้ได้)`,
+  /* mig 0396: ทางแรกคือปุ่ม 'แก้งานบริการ' (ก่อน TS เริ่มงาน) · ทางที่สองคือย้อนการอนุมัติแล้วออก Rev. (ภาคผนวก A.5 ของแผนเปิดแก้) */
+  stamped: `อนุมัติแล้ว — แพ็คเกจ/โซน/${PACKS_TERM}/ช่วงบริการล็อก · เปิดแก้ด้วย ‘แก้งานบริการ’ (ก่อน TS เริ่มงาน) หรือย้อนการอนุมัติแล้วออก Rev. (${ROUNDS_TERM}ยังแก้ได้)`,
   backfillSubmitted: 'ยื่นตรวจงานบริการแล้ว — รอผู้จัดการฝ่ายขายตรวจ (ตีกลับก่อนจึงแก้ได้)',
   /* ยื่นตรวจแล้วแต่สายของโครงการ/ดีลเปลี่ยนเป็นอย่างอื่นระหว่างรอตรวจ — RPC อนุมัติปฏิเสธ (ไม่เปิดอะไรให้ TS) ⇒ บอกทางออก */
   reviewNotService: 'ใบนี้ไม่ใช่ใบสายบริการแล้ว (สายของโครงการ/ดีลเปลี่ยน) — อนุมัติงานบริการไม่ได้ · ตีกลับเพื่อล้างคำขอตรวจ',
   closed: 'ใบนี้ปิดไปแล้ว — แก้งานบริการไม่ได้',
+});
+
+/* ══ เปิดแก้งานบริการหลังอนุมัติ (mig 0396 · มติเจ้าของ 29–30/09 · แผน IMPL_PLAN_REOPEN) ════════════════════════════
+   ⭐ ใบ pipeline ที่อนุมัติแล้วและส่งงานให้ TS แล้ว (`flow === 'stamped'`) — ฝ่ายขายกด 'แก้งานบริการ' + ใส่เหตุผล 10–500 ตัวอักษร
+     ⇒ RPC `reopen_sales_order_service_setup` ถอนรอบขาย (SZT-S) ของใบนี้จาก TS · ล้างตรา + รอบตั้งย้อนหลังเดิม · บันทึกผู้เปิด/เวลา/เหตุ
+     ⇒ ใบตกกลับเข้าเส้น "ตั้งย้อนหลัง" เดิมทั้งเส้น (flow 'backfill' → ยื่นตรวจ → ผู้จัดการฝ่ายขายอนุมัติ → เปิดรอบขายใหม่)
+     · ไม่แตะยอด/Actual/เอกสาร/งวด/สถานะใบ
+   ⭐ TS เริ่มงานแล้ว (รอบ · นัด · มล.) = ปุ่มยังโชว์ กดแล้วบอกเหตุ (GatedAction) · ทางแก้คือย้อนการอนุมัติแล้วออก Rev.
+   ⚠️ literal ล้วน (กฎ 16) · คำ "จำนวนรอบบริการ" / "รอบละกี่แพ็ค" อ่านจาก ROUNDS_TERM / PACKS_TERM เท่านั้น */
+export const SERVICE_REOPEN_TEXT = Object.freeze({
+  button: 'แก้งานบริการ',
+  /* ท้ายการ์ด "งานบริการ" ของใบที่ประทับแล้ว — ปุ่มโชว์ (`view.reopen.visible`) / ไม่มีสิทธิ์ */
+  stampedFooter: `หลังอนุมัติ แพ็คเกจ/โซน/${PACKS_TERM}/ช่วงบริการล็อก — กด ‘แก้งานบริการ’ เพื่อเปิดแก้ได้ก่อน TS เริ่มงาน`
+    + ` · หลังจากนั้นย้อนการอนุมัติแล้วออก Rev. · ${ROUNDS_TERM}แก้ที่ดินสอได้เสมอ`,
+  stampedFooterNoRight: `หลังอนุมัติ แพ็คเกจ/โซน/${PACKS_TERM}/ช่วงบริการล็อก — ฝ่ายขายที่ดูแลใบเปิดแก้ได้ก่อน TS เริ่มงาน`
+    + ' · หลังจากนั้นย้อนการอนุมัติแล้วออก Rev.',
+  /* โมดัล (ReasonDialog · tone warning) — หัว/คำถาม/ผลมาจาก `view.reopen.prompt` ผ่าน approvalPrompt() */
+  title: 'แก้งานบริการหลังอนุมัติ',
+  verb: 'เปิดแก้',
+  confirmLabel: 'เปิดแก้งานบริการ',
+  reasonLabel: 'เหตุที่ต้องแก้',
+  reasonPlaceholder: 'เช่น SA คีย์โซนผิด — รายการ 2 ต้องอยู่โซน Lobby ไม่ใช่ Office (อย่างน้อย 10 ตัวอักษร)',
+  reasonHelp: 'ผู้จัดการฝ่ายขายเห็นเหตุผลนี้ตอนตรวจ · TS เห็นในแท็บรอฝ่ายขายตั้งงานบริการ',
+  /* เพดานเดียวกับ CHECK/RPC ของ 0396 (นับหลัง btrim) */
+  reasonMin: 10,
+  reasonMax: 500,
+  /* หลังกด — n = รอบขายที่ถอนจาก TS (`termsRemoved`) */
+  toast: (n) => `เปิดแก้งานบริการแล้ว${Number(n) > 0 ? ` (ถอนจาก TS ${fmtNumber(Number(n))} รอบขาย)` : ''}`
+    + ' — แก้ในการ์ด ‘งานบริการ’ แล้วกด ‘ยื่นตรวจงานบริการ’',
+  failed: 'เปิดแก้งานบริการไม่สำเร็จ',
+  /* กดแล้ว GET ใหม่บอกว่าปุ่มไม่มีแล้ว (มีคนอนุมัติ/ย้อน/เปิดแก้ไปก่อน) */
+  gone: 'ใบนี้เปิดแก้งานบริการไม่ได้แล้ว — โหลดหน้าใหม่',
+  /* ข้อความบล็อก (`serviceReopenBlockedText`) = หัว — ข้อ · ข้อ · ท้าย */
+  blockedHead: 'แก้งานบริการไม่ได้',
+  tailRevise: 'ทางแก้: ย้อนการอนุมัติแล้วออก Rev. (Rev. พารอบบริการและมาตรฐาน มล. ไปด้วย)',
+  tailFn: 'ให้ฝ่ายบัญชีแก้ช่วงครอบของงวดที่รับรองแล้วที่แท็บการชำระ แล้วกด ‘แก้งานบริการ’ อีกครั้ง',
+  unknownBlocker: (code) => `ตรวจพบเงื่อนไขที่ระบบไม่รู้จัก (${code || '—'}) — แจ้งผู้ดูแลระบบ`,
+});
+
+/* เหตุที่เปิดแก้ไม่ได้ — รหัสจาก `sales_order_service_reopen_blockers` ของฐาน ('<code>:<n>' หรือ 'nothing_to_edit')
+   + รหัสฝั่ง JS เท่านั้น: `money_fn:n` (ด่านงวดของบัญชีที่ฝ่ายขายแก้ไม่ได้ — R4 g) · `unread` (อ่านรหัสจากฐานไม่ขึ้น → ปิดไว้ก่อน)
+   ⚠️ เทสต์คู่ขนาน: ทุกรหัสที่ 0396 ปล่อยต้องมีข้อความที่นี่ (serviceSetupSqlParity.test.mjs) */
+export const SERVICE_REOPEN_BLOCKER_TEXT = Object.freeze({
+  plans_active: (n) => `TS ตั้งรอบบริการของใบนี้แล้ว ${fmtNumber(n)} รอบ`,
+  visits_live: (n) => `มีนัดบริการจากรอบของใบนี้ ${fmtNumber(n)} นัด`,
+  site_visits_open: (n) => `มีนัดอื่นที่ไซต์ของใบนี้ ${fmtNumber(n)} นัด (สร้างหรือผ่านด่านหลังส่ง TS)`,
+  ml_set: (n) => `TS ตั้งมาตรฐาน มล./เดือนไว้แล้ว ${fmtNumber(n)} รอบขาย (ถอนแล้วค่าหาย)`,
+  legacy_terms: (n) => `มีรอบขายที่ไม่ได้เกิดจากการตั้งงานบริการ ${fmtNumber(n)} แถว — แจ้งผู้ดูแลระบบ`,
+  nothing_to_edit: () => 'ใบนี้ไม่มีรายการที่ตั้งงานบริการได้',
+  money_fn: (n) => `งวดชำระมี ${fmtNumber(n)} ข้อที่ฝ่ายบัญชีต้องแก้ก่อน — เปิดแก้ตอนนี้แล้วจะยื่นตรวจกลับไม่ได้ และ TS จะไม่มีงานของใบนี้ระหว่างรอ`,
+  unread: () => 'ตรวจไม่ได้ว่า TS เริ่มงานของใบนี้หรือยัง — โหลดหน้าใหม่แล้วลองอีกครั้ง',
+});
+
+/* รหัสที่แปลว่า "TS เริ่มงานของใบนี้แล้ว" — ทางแก้เดียวคือออก Rev. (ท้ายข้อความบล็อก) */
+const REOPEN_TS_WORK_CODES = Object.freeze(['plans_active', 'visits_live', 'site_visits_open', 'ml_set']);
+
+/* ป้าย/ประโยคของใบที่เปิดแก้หลังอนุมัติ (ภาคผนวก A.4) — ขึ้นเฉพาะตอน `serviceSetupReopened(order)` ไม่ใช่ null
+   (อนุมัติแล้ว · ยังไม่ประทับ · ไม่ถูก Rev. ทับ) · อาร์กิวเมนต์ `r` = ก้อน `view.reopened` / `serviceSetupReopened(order)`
+   ⚠️ จอ/คิว TS ห้ามพิมพ์คำเหล่านี้เอง — เรียกจากที่นี่ */
+export const SERVICE_REOPENED_TEXT = Object.freeze({
+  bannerTitle: 'เปิดแก้งานบริการหลังอนุมัติ',
+  /* แบนเนอร์ขั้นแก้/ถูกตีกลับ · `fields` = ช่องที่แก้ได้ของใบนี้ (`view.reopened.fields` — ตามชนิดบรรทัด R20) */
+  bannerLine: (r = {}) => `เปิดแก้โดย ${r?.byName || '—'} ${dayText(r?.at)} · เหตุผล: ${r?.reason || '—'}`
+    + ` — แก้ ${r?.fields || 'งานบริการ'} แล้วยื่นให้ผู้จัดการฝ่ายขายตรวจ · ยอด/Actual/เอกสารไม่เปลี่ยน`,
+  railEyebrow: 'Service setup · แก้หลังอนุมัติ',
+  railTitle: 'แก้งานบริการ (หลังอนุมัติ)',
+  railMeta: 'เปิดแก้หลังอนุมัติ — ผู้จัดการฝ่ายขายตรวจก่อนส่งให้ TS อีกครั้ง',
+  railLine: (r = {}) => `เปิดแก้ ${dayText(r?.at)} โดย ${r?.byName || '—'} · ${r?.reason || '—'}`,
+  /* คำอธิบายใต้สถานะใบ (หน้า SO) — วันอนุมัติใบ ไม่ใช่วันเปิดแก้ */
+  actualNote: (approvedAt) => `ยอดถูกนับเป็น Actual แล้ว (อนุมัติ ${dayText(approvedAt)}) — การแก้งานบริการไม่เปลี่ยนยอดนี้`,
+  cardMeta: 'เปิดแก้หลังอนุมัติ — แก้ได้จนกว่าจะยื่นตรวจ',
+  heroSuffix: ' · เปิดแก้ — ยังไม่ส่ง TS',
+  queueLabel: 'แก้งานบริการ (หลังอนุมัติ)',
+  /* ป้ายสถานะของใบที่เปิดแก้ (การ์ดราง · ป้ายโซน/ชิปด่านนัดของ TS) — ขั้นแก้พูด "กำลังแก้" (ใบนี้เคยตั้งครบแล้ว) · ขั้นอื่นใช้ป้ายกลาง */
+  editingLabel: 'ฝ่ายขายกำลังแก้',
+  stateLabel: (state) => (state === 'editing' || state === 'not_started' ? SERVICE_REOPENED_TEXT.editingLabel
+    : SERVICE_BACKFILL_STATE_LABELS[state] ?? null),
+  /* วงเล็บท้ายสรุป audit ของการยื่น/อนุมัติ/ตีกลับ แทน "(ใบเดิม)" */
+  auditTag: '(แก้หลังอนุมัติ)',
+  checklistLine: (r = {}) => `เหตุที่เปิดแก้: ${r?.reason || '—'} (${r?.byName || '—'} ${dayText(r?.at)})`,
+  moneyLine: (n) => `ด่านเงินของบัญชีใช้กับใบนี้ตามเดิม: งวดที่ยังไม่รับรองต้องมีช่วงครอบก่อนรับรอง (ครบแล้ว ${fmtNumber(n)} งวด)`,
+  /* แท็บ TS "รอฝ่ายขายตั้งงานบริการ (ใบเดิม)" — ขั้นแก้ / บรรทัดรอง / หน้าบรรทัดรองของขั้นรอตรวจ */
+  tsEditing: ({ done = 0, total = 0 } = {}) => `ฝ่ายขายกำลังแก้ (หลังอนุมัติ) · ${fmtNumber(done)}/${fmtNumber(total)} รายการ`,
+  tsEditingSub: (r = {}) => `เปิดแก้ ${dayText(r?.at)} · ${r?.reason || '—'}`,
+  tsSubmittedPrefix: 'แก้หลังอนุมัติ · ',
 });
 
 /* ══ บรรทัด: ชนิดของงาน ════════════════════════════════════════════════════════════════════════════════ */
@@ -1188,7 +1280,19 @@ const siteIdsOfSetup = (ctx) => {
   return sites;
 };
 
-/** ผลของการอนุมัติ (บรรทัด "สิ่งที่จะเกิดขึ้นทันที") — flow: 'pipeline' (อนุมัติใบ) | 'backfill' (อนุมัติงานบริการย้อนหลัง) */
+/* บรรทัด "ย้ายรอบบริการ n ไซต์จากใบเดิม" ของใบ Rev. — อนุมัติ (ใบ หรืองานบริการย้อนหลัง/เปิดแก้) เรียก `sales_order_open_service_terms`
+   ตัวเดียวกัน ซึ่งย้ายรอบบริการที่ยังเดินของใบเดิมบนไซต์ที่ใบนี้ครอบมาใบนี้ (0392 · R13 ของแผนเปิดแก้) · ไม่มีใบเดิม/ไม่มีรอบ = null */
+function predecessorMoveLine(ctx) {
+  const planSites = [...new Set(Array.isArray(ctx?.predecessor?.activePlanSiteIds) ? ctx.predecessor.activePlanSiteIds : [])];
+  if (!ctx?.predecessor || !planSites.length) return null;
+  const sites = siteIdsOfSetup(ctx);
+  const moved = planSites.filter((siteId) => sites.has(siteId)).length;
+  const left = planSites.length - moved;
+  return `ย้ายรอบบริการ ${moved} ไซต์จาก ${ctx.predecessor.orderNumber || '—'} มาใบนี้`
+    + (left ? ` · ไซต์ที่ใบนี้ไม่มีแล้ว ${left} ไซต์ TS จะเห็นเป็นรอบของใบเดิมให้ตัดสิน` : '');
+}
+
+/** ผลของการอนุมัติ (บรรทัด "สิ่งที่จะเกิดขึ้นทันที") — flow: 'pipeline' (อนุมัติใบ) | 'backfill' (อนุมัติงานบริการย้อนหลัง/เปิดแก้หลังอนุมัติ) */
 export function serviceSetupApprovalEffects(ctx = {}, { flow = 'pipeline' } = {}) {
   const totals = serviceSetupTotals(ctx);
   const money = installmentFindings(ctx, totals);
@@ -1203,16 +1307,20 @@ export function serviceSetupApprovalEffects(ctx = {}, { flow = 'pipeline' } = {}
     /* ฝ่ายขายตัดสินว่าไม่มีแพ็คเกจเลย (D25 · เลือก "ไม่ใช่งานบริการ" ครบ) — อนุมัติ = ยืนยันว่าไม่มีงานบริการ (ประทับ 0 โซน)
        ⇒ ไม่พูดว่า "เปิด 0 โซนให้ TS ขึ้นรอตั้งรอบทันที" และด่านเงินไม่ขยาย (ไม่มีรหัสแพ็คเกจให้ตัวตัดสินเงินอ่าน) */
     const none = !totals.packageLines;
+    /* ใบที่เปิดแก้หลังอนุมัติ (0396) — ด่านเงินเคยใช้กับใบนี้แล้วตอนประทับครั้งแรก ⇒ "ใช้ตามเดิม" ไม่ใช่ "เริ่มใช้" (ภาคผนวก A.4) */
+    const reopened = !!serviceSetupReopened(order);
     return [
       none ? `ไม่มีแพ็คเกจบริการรายรอบ — ไม่เปิดโซนให้ TS (ยืนยันว่าใบนี้ไม่มีงานบริการ) · ไม่ใช่งานบริการรายรอบ ${totals.notServiceLines} รายการ`
         : handoffLine(totals),
       'ไม่แตะยอด Actual · ยอดใบ · เอกสารที่ออกแล้ว · สถานะใบ (อนุมัติแล้วเหมือนเดิม)'
         + ` — Actual ${month} ${fmtMoney(order.actualAmount)} · ยอดรวม ${fmtMoney(order.totalAmount)} · งวดชำระ ${live.length} งวด เท่าเดิม`,
       none ? null
-        : `ด่านเงินของบัญชีเริ่มใช้กับใบนี้: งวดที่ยังไม่รับรองต้องมีช่วงครอบก่อนรับรอง (ครบแล้ว ${money.unconfirmedCovered} งวด)`,
+        : reopened ? SERVICE_REOPENED_TEXT.moneyLine(money.unconfirmedCovered)
+          : `ด่านเงินของบัญชีเริ่มใช้กับใบนี้: งวดที่ยังไม่รับรองต้องมีช่วงครอบก่อนรับรอง (ครบแล้ว ${money.unconfirmedCovered} งวด)`,
+      none ? null : predecessorMoveLine(ctx),
       fnLine,
       contractSigned(ctx) ? null : CONTRACT_WARNING,
-      `หลังอนุมัติล็อก — แก้ด้วยย้อนการอนุมัติใบแล้วออก Rev. (${ROUNDS_TERM}ยังแก้ได้)`,
+      `หลังอนุมัติล็อก — เปิดแก้ด้วย ‘แก้งานบริการ’ ได้ก่อน TS เริ่มงาน · หลังจากนั้นย้อนการอนุมัติใบแล้วออก Rev. (${ROUNDS_TERM}ยังแก้ได้)`,
     ].filter(Boolean);
   }
 
@@ -1224,15 +1332,7 @@ export function serviceSetupApprovalEffects(ctx = {}, { flow = 'pipeline' } = {}
     .map(({ line }) => clip(line?.description, 24) || text(line?.fgCode) || 'ไม่มีคำอธิบาย');
   const renewals = liveTermsOnSetup(ctx);
   const renewalOrders = [...new Set([...renewals.values()].flat())];
-  let moveLine = null;
-  const planSites = [...new Set(Array.isArray(ctx?.predecessor?.activePlanSiteIds) ? ctx.predecessor.activePlanSiteIds : [])];
-  if (ctx?.predecessor && planSites.length) {
-    const sites = siteIdsOfSetup(ctx);
-    const moved = planSites.filter((siteId) => sites.has(siteId)).length;
-    const left = planSites.length - moved;
-    moveLine = `ย้ายรอบบริการ ${moved} ไซต์จาก ${ctx.predecessor.orderNumber || '—'} มาใบนี้`
-      + (left ? ` · ไซต์ที่ใบนี้ไม่มีแล้ว ${left} ไซต์ TS จะเห็นเป็นรอบของใบเดิมให้ตัดสิน` : '');
-  }
+  const moveLine = predecessorMoveLine(ctx);
   return [
     handoffLine(totals),
     zeroTotal
@@ -1243,7 +1343,8 @@ export function serviceSetupApprovalEffects(ctx = {}, { flow = 'pipeline' } = {}
     renewals.size ? `${renewals.size} โซนมีรอบขายของ ${firstFew(renewalOrders)} ที่ยังมีผล (ต่ออายุ)` : null,
     moveLine,
     fnLine,
-    `หลังอนุมัติ แพ็คเกจ/โซน/${PACKS_TERM}/ช่วงบริการล็อก — แก้ด้วยย้อนการอนุมัติแล้วออก Rev. (${ROUNDS_TERM}ยังแก้ได้)`,
+    `หลังอนุมัติ แพ็คเกจ/โซน/${PACKS_TERM}/ช่วงบริการล็อก — เปิดแก้ด้วย ‘แก้งานบริการ’ ได้ก่อน TS เริ่มงาน (ผู้จัดการฝ่ายขายอนุมัติอีกครั้ง)`
+      + ` · หลังจากนั้นย้อนการอนุมัติแล้วออก Rev. (${ROUNDS_TERM}ยังแก้ได้)`,
   ].filter(Boolean);
 }
 
@@ -1254,10 +1355,13 @@ export function serviceSetupApprovalChecklist(ctx = {}, { flow = 'pipeline' } = 
     n: lineNo, rounds, months, stage: 'approve',
   }));
   if (flow === 'backfill') {
+    /* ใบที่เปิดแก้หลังอนุมัติ (0396) — ผู้จัดการเห็นเหตุที่เปิดแก้เป็นข้อแรก (มติเจ้าของ 30/09 ข้อ 4.3) */
+    const reopened = serviceSetupReopened(ctx?.order);
+    const reason = reopened ? [SERVICE_REOPENED_TEXT.checklistLine(reopened)] : [];
     const totals = serviceSetupTotals(ctx);
-    if (!totals.packageLines) return ['ตรวจว่าทุกรายการไม่ใช่งานบริการรายรอบจริง (ดูคำอธิบาย/หมายเหตุของแต่ละรายการ)'];
+    if (!totals.packageLines) return [...reason, 'ตรวจว่าทุกรายการไม่ใช่งานบริการรายรอบจริง (ดูคำอธิบาย/หมายเหตุของแต่ละรายการ)'];
     const { unconfirmedCovered } = installmentFindings(ctx, totals);
-    return [tableCheck, 'ช่วงบริการตรงกับหมายเหตุของแต่ละสาขา', `งวดที่ยังไม่รับรองมีช่วงครอบครบ ${unconfirmedCovered} งวด`, ...roundsLow];
+    return [...reason, tableCheck, 'ช่วงบริการตรงกับหมายเหตุของแต่ละสาขา', `งวดที่ยังไม่รับรองมีช่วงครอบครบ ${unconfirmedCovered} งวด`, ...roundsLow];
   }
   return serviceSetupTotals(ctx).packageLines ? [tableCheck, ...roundsLow] : [];
 }
@@ -1312,12 +1416,16 @@ export function serviceSetupHeroFact(ctx = {}, { flow = null } = {}) {
   const order = ctx?.order || {};
   const totals = serviceSetupTotals(ctx);
   const awaiting = serviceBackfillAwaitingReview(order);
+  /* เปิดแก้หลังอนุมัติแล้วยังไม่ยื่นตรวจ (0396) — บอกว่างานยังไม่อยู่ที่ TS (ภาคผนวก A.4) · รอตรวจใช้ป้าย "รอตรวจ" เดิม */
+  const reopenTail = serviceSetupReopened(order) && !awaiting ? SERVICE_REOPENED_TEXT.heroSuffix : '';
   if (!totals.packageLines && !totals.unsetLines) return { label, value: '—', sub: 'ใบนี้ไม่มีแพ็คเกจบริการ', tone: 'muted' };
   const complete = !!order.serviceTermsOpenedAt
     || (totals.completeLines === totals.lineCount && !!validPeriod(servicePeriodOf(order)));
   if (!complete) {
     const backfill = flow === 'backfill' || awaiting;
-    return { label, value: 'ยังไม่ตั้ง', sub: backfill ? 'ตั้งที่ตารางรายการ แล้วยื่นตรวจ' : 'ตั้งที่ตารางรายการ แล้วยื่นอนุมัติ', tone: 'muted' };
+    return {
+      label, value: 'ยังไม่ตั้ง', sub: `${backfill ? 'ตั้งที่ตารางรายการ แล้วยื่นตรวจ' : 'ตั้งที่ตารางรายการ แล้วยื่นอนุมัติ'}${reopenTail}`, tone: 'muted',
+    };
   }
   /* มติ 29/09: รอบก่อน แล้วค่อยบอกว่าแต่ละครั้งกี่โซน/กี่แพ็ค · ช่องนี้ป้ายบอกแล้วว่า "รอบบริการที่ขาย" ⇒ ค่าเป็นตัวเลขล้วน "12 รอบ"
      (ไม่ซ้ำคำ "จำนวนรอบบริการ" ใต้ป้าย · รูปเดียวกับใบที่ไม่ต้องตั้งงานบริการ `${roundsSold} รอบ`) */
@@ -1325,7 +1433,7 @@ export function serviceSetupHeroFact(ctx = {}, { flow = null } = {}) {
     label,
     value: totals.roundsMin === null || totals.roundsMin === undefined
       ? '—' : SERVICE_SETUP_LINE_TEXT.roundsCount(totals.roundsMin, totals.roundsMax),
-    sub: `${SERVICE_SETUP_LINE_TEXT.eachTime} ${fmtNumber(totals.zones)} โซน · ครั้งละ ${fmtNumber(totals.packsPerRound)} แพ็ค${awaiting ? ' · รอตรวจ' : ''}`,
+    sub: `${SERVICE_SETUP_LINE_TEXT.eachTime} ${fmtNumber(totals.zones)} โซน · ครั้งละ ${fmtNumber(totals.packsPerRound)} แพ็ค${awaiting ? ' · รอตรวจ' : ''}${reopenTail}`,
     tone: null,
   };
 }
@@ -1345,15 +1453,210 @@ export function serviceSetupAuditSnapshot(ctx = {}) {
   };
 }
 
+/* ══ เปิดแก้งานบริการหลังอนุมัติ: ตัวตัดสิน (mig 0396 · แผน IMPL_PLAN_REOPEN §5) ════════════════════════════════════ */
+
+const hasReopenableLine = (order, ctx) => linesFrom(order, ctx).some((line) => serviceLineNeedsBackfill(line));
+
+/**
+ * ⭐ ปุ่ม 'แก้งานบริการ' โชว์ไหม (R2) — มีสิทธิ์แก้ใบ (`canEditSalesPlanning && inSalesEditScope` · ผู้เรียกคิด)
+ *   · ใบประทับแล้ว (`flow === 'stamped'`: pipeline · สาย SERVICE · อนุมัติแล้ว · ไม่ถูก Rev. ทับ · ไม่ใช่ใบย้อนหลัง)
+ *   · มีอย่างน้อยหนึ่งบรรทัดที่ตั้งงานบริการได้ (`serviceLineNeedsBackfill` — คู่กับ `nothing_to_edit` ของฐาน)
+ * ⚠️ ไม่ตอบว่า "กดแล้วผ่านไหม" — TS เริ่มงานแล้วหรือยังมาจากฐาน (`view.reopen.blockedReason`) · ปุ่มยังโชว์แล้วบอกเหตุตอนกด
+ */
+export function serviceReopenAvailable(order, ctx = {}, { canEdit = false } = {}) {
+  return !!canEdit && !!order && serviceSetupFlow(order, ctx) === 'stamped' && hasReopenableLine(order, ctx);
+}
+
+/** ด่านของ POST reopen ก่อนยิง RPC — ข้อความไทย หรือ null · กติกาเดียวกับการโชว์ปุ่ม (ไม่มีสิทธิ์ · ไม่ใช่ใบประทับ · ไม่มีอะไรให้แก้) */
+export function serviceReopenStateError(order, ctx = {}, { canEdit = false } = {}) {
+  if (!canEdit) return SERVICE_SETUP_EDIT_TEXT.noRight;
+  if (!order || serviceSetupFlow(order, ctx) !== 'stamped') return SERVICE_SETUP_SQL_MESSAGES.service_setup_reopen_state_invalid.message;
+  if (!hasReopenableLine(order, ctx)) return SERVICE_REOPEN_BLOCKER_TEXT.nothing_to_edit();
+  return null;
+}
+
+/* ข้อของด่านเงิน (งวด · ช่วงครอบ) — รวมข้อขอบช่วงที่ชี้ช่องช่วงบริการ (`coverage_start/end` ของงวดที่รับรองแล้ว · area 'period') */
+const isMoneyIssue = (issue) => issue?.area === 'installments' || String(issue?.key || '').startsWith('coverage_');
+
+/**
+ * ด่านเงินที่การยื่นตรวจกลับต้องผ่านอีกรอบ (R4 g) — ฐานมองไม่เห็นด่านนี้ ⇒ ตัดสินที่ JS จากตัวเดียวกับที่ยื่น/อนุมัติใช้ (`serviceSetupIssues`)
+ * → `{ fn: Issue[], sa: Issue[] }` · fn = ของฝ่ายบัญชี (ช่องโหว่ระหว่างงวดที่รับรองแล้ว — ฝ่ายขายแก้ไม่ได้ ⇒ บล็อกการเปิดแก้)
+ *   · sa = ของฝ่ายขาย (แก้ที่แท็บการชำระ/ช่วงบริการก่อนยื่นได้ ⇒ แค่บรรทัดเตือนในโมดัล)
+ * @param issues ข้อที่คิดไว้แล้ว (ไม่ส่ง = คิดใหม่จาก ctx · ctx ต้องมี fgOptionIds — fail-closed เหมือน serviceSetupIssues)
+ */
+export function serviceReopenMoneyIssues(ctx = {}, issues = null) {
+  const money = (Array.isArray(issues) ? issues : serviceSetupIssues(ctx)).filter(isMoneyIssue);
+  return {
+    fn: [...money.filter((issue) => issue?.owner === 'FN'), ...fnCoverageBehindUncovered(ctx)],
+    sa: money.filter((issue) => issue?.owner !== 'FN'),
+  };
+}
+
+/**
+ * 🐞 ตรวจทาน lib-01: ด่านเทียบช่วงบริการของ `installmentFindings` **หยุด** เมื่อมีงวดที่ยังไม่รับรองขาดช่วงครอบ (ไม่มีช่องโหว่ปลอม · D7)
+ *   ⇒ ช่องโหว่ระหว่างงวดที่บัญชีรับรองแล้ว (ของฝ่ายบัญชี) ถูกซ่อนไว้ข้างหลัง `coverage_missing` ของฝ่ายขาย — เปิดแก้ผ่าน
+ *   แล้วพอฝ่ายขายเติมช่วงครอบครบ การยื่นกลับเจอ `coverage_gap` ของบัญชีที่ฝ่ายขายแก้ไม่ได้ (term ถูกถอนแล้ว = ทางตันที่ R4 g กัน)
+ * ⇒ เทียบซ้ำ **เฉพาะตอนนั้น** โดยไม่นับงวดที่ยังไม่รับรองและขาดช่วงครอบ · ช่องที่งวดขาดช่วงครอบอธิบายได้ (อยู่ระหว่างสองงวดที่ขนาบตามลำดับงวด —
+ *   `explainedByUncovered` ตัวเดียวกับ D8) ไม่นับ เพราะฝ่ายขายเติมงวดนั้นปิดช่องได้เอง · เก็บเฉพาะข้อของฝ่ายบัญชี
+ * ไม่มีงวดที่ยังไม่รับรองขาดช่วงครอบ = [] (ด่านหลักเทียบครบแล้ว — ข้อของบัญชีอยู่ใน `serviceSetupIssues` อยู่แล้ว ไม่นับซ้ำ)
+ */
+function fnCoverageBehindUncovered(ctx) {
+  const totals = serviceSetupTotals(ctx);
+  if (!totals.packageLines || paymentNotRequired(ctx?.order?.totalAmount)) return [];
+  const period = validPeriod(servicePeriodOf(ctx?.order));
+  const live = liveInstallments(ctx);
+  if (!period || !live.some((row) => !isConfirmed(row) && !hasCover(row))) return [];
+  const kept = live.filter((row) => isConfirmed(row) || hasCover(row));
+  const covered = kept.filter(hasCover).sort(byCoverSpan);
+  const uncovered = live.filter((row) => !hasCover(row)).map(seqNo).filter(Number.isFinite);
+  return pipelineCoverageIssues(kept, period).blocking
+    .filter((item) => !explainedByUncovered(item, { live: kept, covered, uncovered, period }))
+    .map((item) => coverageIssue(item, { live: kept, covered }))
+    .filter((issue) => issue?.owner === 'FN');
+}
+
+/** รหัสบล็อกฝั่ง JS — `['money_fn:<n>']` เมื่อมีข้อของฝ่ายบัญชี · ไม่มี = [] (ต่อท้ายรหัสของฐานเสมอ) */
+export function serviceReopenMoneyCodes(ctx = {}, issues = null) {
+  const { fn } = serviceReopenMoneyIssues(ctx, issues);
+  return fn.length ? [`money_fn:${fn.length}`] : [];
+}
+
+/**
+ * รหัสบล็อก ('plans_active:2' · 'nothing_to_edit' · 'money_fn:1' · 'unread') → `[{ code, count, text }]` ตามลำดับที่ได้ · ตัดซ้ำ
+ * ⚠️ รหัสที่ไม่รู้จัก = ข้อความ "ตรวจพบเงื่อนไขที่ระบบไม่รู้จัก" (ยังบล็อก — ไม่ปล่อยผ่านเงียบ)
+ * @param codes array หรือสตริงคั่นจุลภาค (DETAIL ของฐาน)
+ */
+export function serviceReopenBlockers(codes = []) {
+  const raw = (Array.isArray(codes) ? codes : String(codes || '').split(',')).map((code) => text(code)).filter(Boolean);
+  const out = [];
+  for (const entry of [...new Set(raw)]) {
+    const at = entry.indexOf(':');
+    const code = at >= 0 ? entry.slice(0, at) : entry;
+    const n = at >= 0 ? Number(entry.slice(at + 1)) : NaN;
+    const count = Number.isInteger(n) && n >= 0 ? n : null;
+    const textOf = hasOwn(SERVICE_REOPEN_BLOCKER_TEXT, code) ? SERVICE_REOPEN_BLOCKER_TEXT[code] : null;
+    out.push({ code, count, text: textOf ? textOf(count ?? 0) : SERVICE_REOPEN_TEXT.unknownBlocker(entry) });
+  }
+  return out;
+}
+
+/**
+ * ข้อความเดียวของปุ่มที่ถูกบล็อก (toast ของ GatedAction · 409 ของ POST) — ไม่มีรหัส = null
+ * "แก้งานบริการไม่ได้ — <ข้อ> · <ข้อ> · <ท้าย>" · ท้าย: มีงานของ TS (รอบ/นัด/มล.) = ทางออก Rev. · มีแต่ข้อของบัญชี = ให้บัญชีแก้ก่อน
+ */
+export function serviceReopenBlockedText(codes = []) {
+  const blockers = serviceReopenBlockers(codes);
+  if (!blockers.length) return null;
+  const has = (code) => blockers.some((blocker) => blocker.code === code);
+  const tail = REOPEN_TS_WORK_CODES.some(has) ? SERVICE_REOPEN_TEXT.tailRevise
+    : has('money_fn') ? SERVICE_REOPEN_TEXT.tailFn : null;
+  return `${SERVICE_REOPEN_TEXT.blockedHead} — ${[...blockers.map((blocker) => blocker.text), ...(tail ? [tail] : [])].join(' · ')}`;
+}
+
+/**
+ * ช่องที่แก้ได้หลังเปิดแก้ (R20 · ลำดับหัวตาราง ①→⑥) — บรรทัดพิมพ์เองเปลี่ยนคำตอบ/แพ็คเกจได้
+ *   · บรรทัด FG แพ็คเกจคือ FG ของใบเสนอราคา (ฐานตีกลับ `service_setup_kind_on_fg_line`) ⇒ บอกว่าแก้ FG = ออก Rev.
+ */
+export function serviceReopenFieldsText(ctx = {}) {
+  const lines = orderedLines(ctx).map(({ line }) => line).filter((line) => serviceLineNeedsBackfill(line));
+  const manual = lines.some((line) => isManualSalesLine(line));
+  const fgPackage = lines.some((line) => !isManualSalesLine(line) && serviceLineRole(line) === SERVICE_KIND_PACKAGE);
+  const fields = [manual ? 'แพ็คเกจ (รายการพิมพ์เอง)' : null, 'ไซต์ · โซน', ROUNDS_TERM, PACKS_TERM, 'ช่วงบริการ'].filter(Boolean).join(' · ');
+  return fgPackage ? `${fields} — แพ็คเกจของรายการที่มีรหัส FG แก้ไม่ได้ (ต้องออก Rev.)` : fields;
+}
+
+/**
+ * โมดัลยืนยัน 'แก้งานบริการ' (ภาคผนวก A.3) — ส่งเข้า `approvalPrompt()` ได้ตรง ๆ แล้วป้อน ReasonDialog (title/description/detail)
+ * ผล: ① ถอนจาก TS กี่โซน/ไซต์ ② แก้อะไรได้ + ต้องยื่นตรวจใหม่ ③ ไม่แตะเงิน/เอกสาร/สถานะ
+ *   ④ (มีแพ็คเกจของบรรทัดพิมพ์เอง) ด่านช่วงครอบหลวมชั่วคราว ⑤ (มีข้อด่านเงินของฝ่ายขาย) ต้องแก้ก่อนยื่นกลับ
+ * @param issues ข้อที่คิดไว้แล้ว (ไม่ส่ง = คิดใหม่)
+ */
+export function serviceReopenPrompt(ctx = {}, { issues = null } = {}) {
+  const order = ctx?.order || {};
+  const totals = serviceSetupTotals(ctx);
+  const month = order.approvedAt ? formatMonthLabel(fmtYearMonth(order.approvedAt)) || '—' : '—';
+  /* เงินของบรรทัดพิมพ์เองอ่านรหัสแพ็คเกจเฉพาะตอนใบประทับ (`effectiveServiceFgCode`) ⇒ ระหว่างเปิดแก้บรรทัดพวกนี้ไม่นับ
+     แต่ด่านช่วงครอบเป็นสวิตช์ **ระดับใบ** (`orderHasServiceRounds` = มีบรรทัด 02-001 สักบรรทัด) ⇒ ข้อ ④ พูดเฉพาะตอนสวิตช์พลิกจริง:
+     ประทับอยู่ = เปิด · ล้างตรา = ปิด (ตรวจทาน lib-02 — ใบที่มีบรรทัด FG 02-001 ปนอยู่ ด่านยังเปิดตลอด ห้ามบอกว่าหลวมลง) */
+  const lines = orderedLines(ctx).map(({ line }) => line);
+  const manualPackages = lines.filter((line) => isManualSalesLine(line)
+    && serviceLineRole(line) === SERVICE_KIND_PACKAGE && !!text(line?.serviceFgCode)).length;
+  const moneyGateRelaxes = manualPackages > 0
+    && hasServicePackageLine(lines, { ...order, serviceTermsOpenedAt: order.serviceTermsOpenedAt || 'stamped' })
+    && !hasServicePackageLine(lines, { ...order, serviceTermsOpenedAt: null });
+  const { sa } = serviceReopenMoneyIssues(ctx, issues);
+  return {
+    title: SERVICE_REOPEN_TEXT.title,
+    verb: SERVICE_REOPEN_TEXT.verb,
+    subject: `งานบริการของ ${order.orderNumber || 'ใบสั่งขายนี้'}`,
+    effects: [
+      totals.zones
+        ? `ถอนงานบริการที่ส่ง TS แล้ว ${fmtNumber(totals.zones)} โซนใน ${fmtNumber(totals.sites)} ไซต์ (TS ยังไม่เริ่มงาน) — หายจาก “งานเข้าใหม่ › รอตั้งรอบ” ทันที`
+        : 'ใบนี้ยังไม่มีโซนที่ส่งให้ TS — ไม่มีอะไรหายจาก “งานเข้าใหม่ › รอตั้งรอบ”',
+      `ตารางงานบริการกลับมาแก้ได้ (${serviceReopenFieldsText(ctx)}) แล้วต้องกด ‘ยื่นตรวจงานบริการ’ ให้ผู้จัดการฝ่ายขายอนุมัติอีกครั้ง จึงส่ง TS`,
+      'ไม่แตะ Actual · ยอดใบ · เอกสาร · งวดชำระ · สถานะใบ (อนุมัติแล้วเหมือนเดิม)'
+        + ` — Actual ${month} ${fmtMoney(order.actualAmount)} · ยอดรวม ${fmtMoney(order.totalAmount)} · งวดชำระ ${fmtNumber(liveInstallments(ctx).length)} งวด เท่าเดิม`,
+      moneyGateRelaxes
+        ? `ระหว่างแก้ ด่านช่วงครอบของบัญชีหลวมลงชั่วคราว — แพ็คเกจที่ตั้งให้รายการพิมพ์เอง ${fmtNumber(manualPackages)} รายการยังไม่นับจนผู้จัดการอนุมัติงานบริการอีกครั้ง`
+        : null,
+      sa.length
+        ? `ยื่นตรวจกลับได้เมื่อด่านงวดชำระผ่านด้วย — ตอนนี้ยังขาด ${fmtNumber(sa.length)} ข้อ (${firstFew(sa.map((issue) => issue.message))})`
+        : null,
+    ].filter(Boolean),
+    confirmLabel: SERVICE_REOPEN_TEXT.confirmLabel,
+  };
+}
+
+/**
+ * ⭐ "ใบนี้ถูกเปิดแก้หลังอนุมัติ" — ตัวเดียวที่ทุกป้ายถาม (แบนเนอร์ · ราง · คิว · แท็บ TS · สรุป audit) → `{ at, byId, byName, reason }` หรือ null
+ * มีค่าเฉพาะตอนใบอยู่ในเส้นตั้งย้อนหลัง (อนุมัติแล้ว · ยังไม่ประทับ · ไม่ถูก Rev. ทับ · ไม่ใช่ใบย้อนหลัง) — หลังผู้จัดการอนุมัติใหม่
+ * ค่าในคอลัมน์ยังอยู่ (ประวัติ "แก้ล่าสุด") แต่ป้ายไม่ขึ้นแล้ว · ดูแค่แถวใบ ไม่ต้องใช้บรรทัด (คิวหลายใบเรียกได้)
+ */
+export function serviceSetupReopened(order) {
+  if (!order?.serviceSetupReopenedAt || isHistoricalOrder(order)) return null;
+  if (order.status !== 'approved' || order.supersededById || order.serviceTermsOpenedAt) return null;
+  return {
+    at: order.serviceSetupReopenedAt,
+    byId: order.serviceSetupReopenedById ?? null,
+    byName: order.serviceSetupReopenedByName ?? null,
+    reason: order.serviceSetupReopenedReason ?? null,
+  };
+}
+
+/* ก้อน `view.reopen` — ปุ่มไม่โชว์ = ทุกช่องว่าง · โชว์ = เหตุบล็อก (รหัสฐาน + รหัส JS) หรือโมดัล
+   ⚠️ ไม่ได้รับรหัสของฐาน (ผู้เรียกไม่ได้อ่าน/อ่านพัง) = 'unread' — ปิดไว้ก่อน ไม่เดาว่า TS ยังไม่เริ่มงาน */
+function reopenViewOf(ctx, { canEdit, reopenBlockers, issues }) {
+  const order = ctx?.order || {};
+  if (!serviceReopenAvailable(order, ctx, { canEdit })) {
+    return { visible: false, canReopen: false, blockedReason: null, blockers: [], prompt: null };
+  }
+  const sqlCodes = Array.isArray(reopenBlockers)
+    ? reopenBlockers.map((code) => text(code)).filter((code) => code && code.split(':')[0] !== 'money_fn')
+    : ['unread'];
+  const codes = [...sqlCodes, ...serviceReopenMoneyCodes(ctx, issues)];
+  const blockedReason = serviceReopenBlockedText(codes);
+  return {
+    visible: true,
+    canReopen: true,
+    blockedReason,
+    blockers: serviceReopenBlockers(codes),
+    prompt: blockedReason ? null : serviceReopenPrompt(ctx, { issues }),
+  };
+}
+
 /* ══ ก้อน GET ของ /service-setup (pure — เทสต์ได้โดยไม่แตะฐาน) ═══════════════════════════════════════════ */
 
 /**
  * ประกอบก้อนตอบของ `GET …/service-setup` (§2.4 ของแผน) จากบริบทที่ serviceSetupRepo โหลด (`withFgOptions: true`)
  * @param canEdit ผู้ขอแก้ใบนี้ได้ไหม (`canEditSalesPlanning && inSalesEditScope`) · role/userId = ผู้ขอ
+ * @param reopenBlockers รหัสจาก `sales_order_service_reopen_blockers` ของฐาน (route อ่านเฉพาะตอนปุ่มโชว์ · อ่านพัง = ['unread'])
+ *   ไม่ส่ง = 'unread' เมื่อปุ่มโชว์ (ปิดไว้ก่อน) · รหัส JS (`money_fn`) คิดที่นี่เสมอ — ส่งมาแล้วก็ถูกคิดใหม่ ไม่ซ้ำ
  */
-export function serviceSetupView(ctx = {}, { canEdit = false, userId = null, role = null } = {}) {
+export function serviceSetupView(ctx = {}, { canEdit = false, userId = null, role = null, reopenBlockers = null } = {}) {
   const order = ctx?.order || {};
   const flow = serviceSetupFlow(order, ctx);
+  const issues = serviceSetupIssues(ctx);
+  const reopenedInfo = serviceSetupReopened(order);
   const editBlockedReason = serviceSetupEditError(order, { canEdit });
   const mode = (flow === 'pipeline' || flow === 'backfill') && !editBlockedReason ? 'edit' : 'read';
   const awaiting = serviceBackfillAwaitingReview(order);
@@ -1384,6 +1687,10 @@ export function serviceSetupView(ctx = {}, { canEdit = false, userId = null, rol
       approvedAt: order.serviceSetupApprovedAt ?? null,
       approvedByName: order.serviceSetupApprovedByName ?? null,
       termsOpenedAt: order.serviceTermsOpenedAt ?? null,
+      /* ค่าดิบของการเปิดแก้ล่าสุด (mig 0396) — คงอยู่หลังอนุมัติใหม่ · ป้าย "แก้หลังอนุมัติ" ถาม `reopened` ข้างล่าง ไม่ใช่ช่องนี้ */
+      reopenedAt: order.serviceSetupReopenedAt ?? null,
+      reopenedByName: order.serviceSetupReopenedByName ?? null,
+      reopenedReason: order.serviceSetupReopenedReason ?? null,
     },
     lines: orderedLines(ctx).map(({ line, lineNo }) => ({
       lineId: line?.id ?? null,
@@ -1421,7 +1728,7 @@ export function serviceSetupView(ctx = {}, { canEdit = false, userId = null, rol
       id: option?.id ?? null, fgCode: option?.fgCode ?? null, name: option?.name ?? null, ownerArCode: option?.ownerArCode ?? null,
     })),
     siblingSites: Array.isArray(ctx?.siblingSites) ? ctx.siblingSites : [],
-    issues: serviceSetupIssues(ctx),
+    issues,
     warnings: serviceSetupWarnings(ctx),
     totals: serviceSetupTotals(ctx),
     approvalEffects: serviceSetupApprovalEffects(ctx, { flow: playFlow }),
@@ -1441,5 +1748,10 @@ export function serviceSetupView(ctx = {}, { canEdit = false, userId = null, rol
       needsOverrideReason: canReview && role === 'admin' && selfSubmitted,
     },
     liveTermsInfo: [...liveTermsOnSetup(ctx)].map(([zoneId, orderNumbers]) => ({ zoneId, orderNumbers })),
+    /* ปุ่ม 'แก้งานบริการ' บนหัวการ์ดงานบริการ (mig 0396) — `{ visible, canReopen, blockedReason, blockers, prompt }`
+       visible = canReopen (มีสิทธิ์ · ใบประทับ · มีอะไรให้แก้) · blockedReason = toast ตอนกด (GatedAction) · prompt = ป้อน approvalPrompt() */
+    reopen: reopenViewOf(ctx, { canEdit, reopenBlockers, issues }),
+    /* ใบที่เปิดแก้หลังอนุมัติอยู่ (flow 'backfill') — `{ at, byId, byName, reason, fields }` หรือ null · ป้าย A.4 อ่านจากตัวนี้ */
+    reopened: reopenedInfo ? { ...reopenedInfo, fields: serviceReopenFieldsText(ctx) } : null,
   };
 }

@@ -32,10 +32,17 @@ export default function ReasonDialog({
   busy = false,
   // ช่องเหตุผลบนจอที่คนพิมพ์ด้วยมือถือ (จอหน้างาน) — ส่งต่อให้ Textarea: 16px กัน iOS ซูม
   touch = false,
+  // โชว์ตัวนับ "n/เพดาน" ต่อท้าย helpText (ปกติ helpText แทนที่ตัวนับ) + บอกขั้นต่ำเมื่อยังพิมพ์ไม่ถึง
+  // 🐞 เหตุผลที่มีขั้นต่ำ > 1 (เช่นเปิดแก้งานบริการ 10–500) — ส่ง helpText แล้วตัวนับหาย ขั้นต่ำอยู่แค่ใน placeholder
+  //    ซึ่งหายตั้งแต่ตัวอักษรแรก ⇒ ปุ่มยืนยันเทาค้างโดยไม่มีอะไรบอกว่าทำไม (ตรวจทาน ui-reason-no-min-feedback)
+  showCount = false,
 }) {
   const normalized = String(value || "").trim();
   const invalid = normalized.length < minLength || normalized.length > maxLength || !!error;
   const helpId = "reason-dialog-help";
+  const count = `${normalized.length}/${maxLength}`;
+  const countText = minLength > 1 && normalized.length < minLength ? `${count} · อย่างน้อย ${minLength} ตัวอักษร` : count;
+  const hint = showCount ? (helpText ? `${helpText} · ${countText}` : countText) : (helpText || count);
   return (
     <Modal open={open} onClose={onClose} title={title} size="sm" dismissible={!busy}>
       <div className={styles.body}>
@@ -57,7 +64,7 @@ export default function ReasonDialog({
             autoFocus
           />
           <small id={helpId} className={error ? styles.error : styles.help}>
-            {error || helpText || `${normalized.length}/${maxLength}`}
+            {error || hint}
           </small>
         </label>
         {submitError ? (

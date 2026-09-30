@@ -6,8 +6,10 @@
 //      2) ชนิดของบรรทัด: ค่า '02-001' ของฐาน = SERVICE_ROUND_CATEGORY · ตารางอินพุต → ผลที่ PGlite ยืนยันแล้ว
 //         (ฮาร์เนสเคส 9a) ต้องได้ผลเดียวกันจาก serviceLineRole
 //      3) รหัสทุกตัวที่ sales_order_service_setup_errors ปล่อย มีข้อความไทยใน SERVICE_SETUP_ISSUE_TEXT
-//      4) RAISE ทุกรหัสในฟังก์ชันของ 0392 มีข้อความไทย/สถานะใน SERVICE_SETUP_SQL_MESSAGES
+//      4) RAISE ทุกรหัสในฟังก์ชันของ 0392 + 0396 มีข้อความไทย/สถานะใน SERVICE_SETUP_SQL_MESSAGES
 //         (ยกเว้น service_setup_copy_line_mismatch ซึ่งยิงจากทางออก Rev. ⇒ อยู่ใน documentWorkflowErrors)
+//      5) รหัสบล็อกทุกตัวที่ sales_order_service_reopen_blockers (0396) ปล่อย มีข้อความไทยใน SERVICE_REOPEN_BLOCKER_TEXT
+//         และแคตตาล็อกไม่มีรหัสที่ฐานไม่เคยปล่อย (ยกเว้นรหัสฝั่ง JS: money_fn · unread)
 // ⚠️ ส่วน 2–4 import serviceSetup.js ของงาน U2a แบบ dynamic — ไม่มีไฟล์ = แดงพร้อมบอกเหตุ (ส่วน 1 ยังรันได้)
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -19,14 +21,19 @@ import { WORKFLOW_ERROR_CODES } from './documentWorkflowErrors.js';
 const MIGRATIONS = new URL('../../../supabase/migrations/', import.meta.url);
 const stripComments = (sql) => sql.replace(/--[^\n]*/g, '');
 const CODE = stripComments(readFileSync(new URL('0392_so_service_setup.sql', MIGRATIONS), 'utf8'));
+/* เปิดแก้งานบริการหลังอนุมัติ (mig 0396) — ฟังก์ชันใหม่สองตัว ไม่ปะของ 0392 */
+const REOPEN_CODE = stripComments(readFileSync(new URL('0396_so_service_reopen.sql', MIGRATIONS), 'utf8'));
 
-function fnBody(name) {
-  const from = CODE.indexOf(`CREATE OR REPLACE FUNCTION public.${name}(`);
-  assert.ok(from >= 0, `0392 ต้องนิยาม ${name}`);
-  return CODE.slice(CODE.indexOf('AS $$', from) + 5, CODE.indexOf('\n$$;', from));
+function fnBodyIn(code, label, name) {
+  const from = code.indexOf(`CREATE OR REPLACE FUNCTION public.${name}(`);
+  assert.ok(from >= 0, `${label} ต้องนิยาม ${name}`);
+  return code.slice(code.indexOf('AS $$', from) + 5, code.indexOf('\n$$;', from));
 }
-/* ตัวฟังก์ชันทั้งหมดของ 0392 (ไม่รวมบล็อก DO ของด่านก่อนรัน/ปะ/ตรวจท้าย — รหัส mig_0392_* เป็นของคนรัน migration) */
-const allFunctionBodies = () => [...CODE.matchAll(/CREATE OR REPLACE FUNCTION public\.([a-z0-9_]+)\(/g)].map((m) => fnBody(m[1])).join('\n');
+const fnBody = (name) => fnBodyIn(CODE, '0392', name);
+/* ตัวฟังก์ชันทั้งหมดของไฟล์ (ไม่รวมบล็อก DO ของด่านก่อนรัน/ปะ/ตรวจท้าย — รหัส mig_039x_* เป็นของคนรัน migration) */
+const functionBodiesOf = (code, label) => [...code.matchAll(/CREATE OR REPLACE FUNCTION public\.([a-z0-9_]+)\(/g)]
+  .map((m) => fnBodyIn(code, label, m[1])).join('\n');
+const allFunctionBodies = () => `${functionBodiesOf(CODE, '0392')}\n${functionBodiesOf(REOPEN_CODE, '0396')}`;
 
 async function serviceSetupModule() {
   try {
@@ -102,7 +109,7 @@ test('🔴 ทุกรหัสที่ sales_order_service_setup_errors ป�
   }
 });
 
-test('🔴 RAISE ทุกรหัสในฟังก์ชันของ 0392 มีข้อความ/สถานะใน SERVICE_SETUP_SQL_MESSAGES (หรือ documentWorkflowErrors)', async () => {
+test('🔴 RAISE ทุกรหัสในฟังก์ชันของ 0392 + 0396 มีข้อความ/สถานะใน SERVICE_SETUP_SQL_MESSAGES (หรือ documentWorkflowErrors)', async () => {
   const { SERVICE_SETUP_SQL_MESSAGES } = await serviceSetupModule();
   const codes = new Set([...allFunctionBodies().matchAll(/RAISE EXCEPTION '([a-z_]+)'/g)].map((m) => m[1]));
   assert.ok(codes.size >= 20, `เจอแค่ ${codes.size} รหัส — ตัวไล่น่าจะพัง`);
@@ -119,5 +126,34 @@ test('🔴 RAISE ทุกรหัสในฟังก์ชันของ 03
   }
   // รหัสที่ JS ถือไว้แต่ฐานไม่เคยยิง = ข้อความที่ไม่มีทางเห็น (ไม่ผิด แต่บอกว่าสองบ้านเลื่อนกัน)
   const ghost = Object.keys(SERVICE_SETUP_SQL_MESSAGES).filter((code) => !codes.has(code));
-  assert.deepEqual(ghost, [], 'SERVICE_SETUP_SQL_MESSAGES มีรหัสที่ 0392 ไม่ได้ยิง');
+  assert.deepEqual(ghost, [], 'SERVICE_SETUP_SQL_MESSAGES มีรหัสที่ 0392/0396 ไม่ได้ยิง');
+  // 0396 ยิงรหัสใหม่สามตัว (สถานะ · บล็อก · ระบบยุ่ง) — สถานะ HTTP ตามสัญญา §3.8 ของแผน
+  const reopenCodes = new Set([...functionBodiesOf(REOPEN_CODE, '0396').matchAll(/RAISE EXCEPTION '([a-z_]+)'/g)].map((m) => m[1]));
+  for (const code of ['service_setup_reopen_state_invalid', 'service_setup_reopen_blocked', 'service_setup_reopen_busy']) {
+    assert.ok(reopenCodes.has(code), `0396 ต้องยิง ${code}`);
+    assert.equal(SERVICE_SETUP_SQL_MESSAGES[code].status, 409, code);
+  }
+});
+
+test('🔴 รหัสบล็อกทุกตัวของ sales_order_service_reopen_blockers (0396) มีข้อความไทยใน SERVICE_REOPEN_BLOCKER_TEXT', async () => {
+  const { SERVICE_REOPEN_BLOCKER_TEXT, serviceReopenBlockers } = await serviceSetupModule();
+  const body = fnBodyIn(REOPEN_CODE, '0396', 'sales_order_service_reopen_blockers');
+  const codes = new Set([...body.matchAll(/'([a-z_]+):'/g)].map((m) => m[1]));
+  if (body.includes("'nothing_to_edit'")) codes.add('nothing_to_edit');
+  assert.deepEqual([...codes].sort(), ['legacy_terms', 'ml_set', 'nothing_to_edit', 'plans_active', 'site_visits_open', 'visits_live']);
+  for (const code of codes) {
+    assert.equal(typeof SERVICE_REOPEN_BLOCKER_TEXT[code], 'function', `SERVICE_REOPEN_BLOCKER_TEXT.${code}`);
+    const [parsed] = serviceReopenBlockers([code === 'nothing_to_edit' ? code : `${code}:2`]);
+    assert.equal(parsed.code, code);
+    assert.doesNotMatch(parsed.text, /ไม่รู้จัก/, `${code} ต้องไม่ตกเป็นรหัสที่ไม่รู้จัก`);
+  }
+  // รหัสฝั่ง JS เท่านั้น — ฐานห้ามปล่อยชื่อซ้ำ (ไม่งั้นสองบ้านพูดคนละเรื่องด้วยรหัสเดียว)
+  const JS_ONLY = ['money_fn', 'unread'];
+  for (const code of JS_ONLY) assert.equal(codes.has(code), false, `${code} เป็นรหัสฝั่ง JS`);
+  const ghost = Object.keys(SERVICE_REOPEN_BLOCKER_TEXT).filter((code) => !codes.has(code) && !JS_ONLY.includes(code));
+  assert.deepEqual(ghost, [], 'SERVICE_REOPEN_BLOCKER_TEXT มีรหัสที่ฐานไม่ได้ปล่อย');
+  // RPC ตีกลับด้วยรหัสบล็อกจากฟังก์ชันตัวเดียวกัน (GET กับ POST ถามที่เดียว)
+  const reopen = fnBodyIn(REOPEN_CODE, '0396', 'reopen_sales_order_service_setup');
+  assert.match(reopen, /public\.sales_order_service_reopen_blockers\(v_order\.id\)/);
+  assert.match(reopen, /RAISE EXCEPTION 'service_setup_reopen_blocked' USING DETAIL = array_to_string\(v_blockers, ','\)/);
 });

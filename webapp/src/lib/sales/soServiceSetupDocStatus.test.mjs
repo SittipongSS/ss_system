@@ -65,3 +65,24 @@ test('หัวข้อ "เก็บผล UAT 29/09" อ้างชื่อ
   assert.equal(typeof serviceSetup.SERVICE_BACKFILL_RAIL_TEXT?.periodWaitKind, 'function');
   assert.ok(section.includes(serviceSetup.SERVICE_BACKFILL_RAIL_TEXT.periodWaitKind('{n}')), 'ข้อความในเอกสารตรงกับแคตตาล็อก');
 });
+
+test('หัวข้อปุ่ม "แก้งานบริการ" (mig 0396): สถานะจาก 5 คำ · บอกว่าเจ้าของต้องรัน 0396 ก่อน deploy · อ้างชื่อที่มีจริงในโค้ด', () => {
+  const start = DOC.indexOf('### ปุ่ม "แก้งานบริการ" หลังอนุมัติ (mig 0396');
+  assert.ok(start >= 0, 'หาหัวข้อปุ่มแก้งานบริการไม่เจอ');
+  const section = DOC.slice(start, DOC.indexOf('\n## ', start));
+  assert.match(section, new RegExp(`> สถานะ: ${STATUS_WORDS.source}`));
+  assert.match(section, /เจ้าของต้องรัน `0396_so_service_reopen\.sql`/);
+  for (const name of ['SERVICE_REOPEN_TEXT', 'SERVICE_REOPEN_BLOCKER_TEXT', 'SERVICE_REOPENED_TEXT']) {
+    assert.ok(section.includes(`\`${name}\``), `เอกสารต้องอ้าง ${name}`);
+    assert.equal(typeof serviceSetup[name], 'object', `${name} ต้องมีจริงใน serviceSetup.js`);
+  }
+  assert.equal(typeof serviceSetup.serviceSetupReopened, 'function');
+  /* ทุกรหัสเหตุที่เอกสารเล่ามีข้อความจริงในแคตตาล็อก (เพิ่ม/ถอดรหัสแล้วลืมเอกสาร = แดง) */
+  for (const code of ['plans_active', 'visits_live', 'site_visits_open', 'ml_set', 'legacy_terms', 'nothing_to_edit', 'money_fn', 'unread']) {
+    assert.ok(section.includes(`\`${code}\``), `เอกสารต้องเล่ารหัส ${code}`);
+    assert.equal(typeof serviceSetup.SERVICE_REOPEN_BLOCKER_TEXT[code], 'function', code);
+  }
+  assert.ok(section.includes(serviceSetup.SERVICE_REOPENED_TEXT.bannerTitle));
+  assert.ok(section.includes(serviceSetup.SERVICE_REOPENED_TEXT.railTitle));
+  assert.equal(typeof draft.backfillCopyOfView, 'function');
+});
