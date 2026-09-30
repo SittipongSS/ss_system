@@ -104,6 +104,20 @@
   color: var(--text-1);
   font-weight: var(--fw-semibold);
 }
+/* ป้ายการขายของโซนในบรรทัดรองของแถว (PR-C · r2 R1) — ขาย n แพ็ค/รอบ · ใบที่ยังถือโซน
+   ⚠️ อยู่ในเซลล์แรก ไม่ใช่คอลัมน์ใหม่ ⇒ เห็นทุกความกว้างและไม่ดันตารางกว้างขึ้น (minWidth 560 · พับที่ 680 เท่าเดิม) */
+.saleTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+/* ป้ายกลางตัดข้อความเป็น … บรรทัดเดียว — ป้ายนี้คือเนื้อหา (เลขที่ใบหลายใบ) ⇒ ให้ขึ้นบรรทัดได้ ชิดซ้าย
+   (จอ 375 ป้าย "อยู่ในใบที่ยังไม่อนุมัติ: SO-… (ฉบับร่าง)" ยาวเกินเซลล์) */
+/* สองชั้นคลาส — ชนะ `.base` ของ Badge.module.css โดยไม่พึ่งลำดับโหลด CSS */
+.saleTags > .saleTag { justify-content: flex-start; text-align: start; }
+.saleTag > span { white-space: normal; overflow-wrap: anywhere; }
+
 .serial { color: var(--text-3); }
 .inactive td { opacity: var(--op-muted); }
 

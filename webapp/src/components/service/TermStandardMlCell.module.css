@@ -1,0 +1,94 @@
+/* ช่องมาตรฐาน มล./เดือนของรอบขาย — ทุกกล่องเป็น span (วางในเซลล์ตาราง/บรรทัดข้อความได้) จึงตั้ง display เอง */
+
+.value {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cell {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.row {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1-5) var(--space-2);
+  min-width: 0;
+}
+
+.field {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+}
+
+/* กว้างพอเจ็ดหลัก (1,000,000) — ช่องเต็มแถวในเซลล์ตารางดันคอลัมน์อื่นจนล้น */
+.input {
+  width: 9.5em;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.unit {
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  white-space: nowrap;
+}
+
+.actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+}
+
+/* ข้อเสนอ = ชิปอ่อน + ปุ่ม "ใช้" ข้างใน — สีกลาง (ไม่ใช่เตือน) เพราะเป็นแค่ตัวช่วยคิด */
+.suggestion {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  max-width: 100%;
+  padding: var(--space-0-5) var(--space-0-5) var(--space-0-5) var(--space-2-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--panel-2);
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+}
+
+.suggestionText {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ปุ่ม "ใช้" สูง 24px ขึ้นไป (WCAG 2.5.8 ขนาดเป้า) */
+.use {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--space-6);
+  padding: 0 var(--space-2-5);
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--accent-ink);
+  font: inherit;
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+}
+.use:hover { background: var(--accent-soft); }
+.use:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 1px; }
+.use:disabled { cursor: default; opacity: var(--op-disabled); }
+
+/* แดงหลังกดเท่านั้น — ข้อความนี้เกิดจากการกดบันทึก */
+.error {
+  color: var(--red);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+}

@@ -190,6 +190,7 @@ export function gatePanelView(items = [], {
     let state = item.state === 'ok' ? 'pass' : item.state === 'blocked' ? 'fail' : 'parked';
     let detail = item.detail || '';
     let fix = null;
+    let orders = null;
     if (exemptKind && (item.key === 'contract' || item.key === 'payment')) {
       state = 'exempt';
       detail = exemptDetail(visit);
@@ -199,9 +200,10 @@ export function gatePanelView(items = [], {
       detail = ACCESS_UNKNOWN_GATE_TEXT;
     } else if (state === 'fail') {
       /* ⭐ คำชุดเดียวกับการ์ด — ข้อที่มีลิงก์แก้ตัดครึ่งหลังของเหตุที่เป็นคำสั่งซ้ำ (`gateItemView`) */
-      const view = gateItemView({ key: item.key, owner: item.owner, reason: item.detail || item.label, fix: item.fix });
+      const view = gateItemView({ key: item.key, owner: item.owner, reason: item.detail || item.label, fix: item.fix, orders: item.orders });
       detail = view.reason;
       fix = view.fix && GATE_FIX[view.fix] ? { key: view.fix, ...GATE_FIX[view.fix] } : null;
+      orders = view.orders || null;
       if (item.key === 'access' && advisoryAccess) {
         state = 'warn';
         detail = `${detail} · ${ACCESS_ADVISORY_SUFFIX}`;
@@ -218,6 +220,9 @@ export function gatePanelView(items = [], {
       ownerTone: ownerTone(item.owner),
       detail,
       fix,
+      /* D15 (PR-C · C9) — แผงวาด **แถว** ⇒ ชิปใบสั่งขายของข้อที่ไม่ผ่านติดไปกับแถว (`GatePanel` → `GateOrderChips`)
+         ⚠️ เฉพาะแถวที่ไม่ผ่านและมีชิป — แถวอื่นรูปเดิมทุกไบต์ */
+      ...(state === 'fail' && orders ? { orders } : {}),
     };
   });
   const passed = rows.filter((r) => r.state === 'pass' || r.state === 'exempt').length;

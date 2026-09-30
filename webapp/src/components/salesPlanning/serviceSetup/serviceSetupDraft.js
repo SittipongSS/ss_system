@@ -9,7 +9,8 @@
 // ⚠️ ไฟล์นี้ถูกเทสต์ใต้ node (serviceSetupUi.test.mjs) — ห้าม import คอมโพเนนต์/ของฝั่ง browser
 import { categoryOf } from '@/lib/master/categoryOf';
 import {
-  SERVICE_KIND_NOT_SERVICE, SERVICE_KIND_PACKAGE, SERVICE_ROLE_UNSET, SERVICE_SETUP_EDIT_TEXT, SERVICE_SETUP_PANEL_TEXT, periodSpan,
+  SERVICE_BACKFILL_RAIL_TEXT, SERVICE_KIND_NOT_SERVICE, SERVICE_KIND_PACKAGE, SERVICE_ROLE_UNSET, SERVICE_SETUP_EDIT_TEXT, SERVICE_SETUP_LINE_TEXT,
+  SERVICE_SETUP_PANEL_TEXT, periodSpan,
 } from '@/lib/sales/serviceSetup';
 import { NA, fmtDate, fmtDateTime, fmtNumber } from '@/lib/format';
 
@@ -298,7 +299,7 @@ export const periodReadout = (period) => periodSpan(period).label;
 
 /* ══ แผงแดงหลังกดยื่น (SubmitGateNotice) ══════════════════════════════════════════════════════════════ */
 
-/** "รายการ 3: ยังไม่ใส่รอบบริการ" → `{ head: 'รายการ 3', rest: ': ยังไม่ใส่รอบบริการ' }` (หัวตัวหนาตามม็อก) */
+/** "รายการ 3: ยังไม่ใส่จำนวนรอบบริการ" → `{ head: 'รายการ 3', rest: ': ยังไม่ใส่จำนวนรอบบริการ' }` (หัวตัวหนาตามม็อก) */
 export function issueHeadTail(message) {
   const value = String(message ?? '');
   const match = value.match(/^((?:รายการ|งวด) [^:]{1,80}?):\s/);
@@ -426,6 +427,29 @@ export function backfillStateOfView(view) {
   return started ? 'editing' : 'not_started';
 }
 
+/** การ์ดราง "งานบริการ (ใบเดิม)" อยู่ **บนสุดของรางขวา** (เหนือการ์ดยอดสุทธิ/จัดการเอกสาร) ระหว่างที่ยังต้องตั้ง/ยื่น — มติเจ้าของ 29/09
+ *  ⇒ ปุ่ม "ยื่นตรวจงานบริการ" อยู่ในกรอบรางขวาที่ปักหมุดที่ 1440 (รางสูงไม่เกินจอ · ไม่ต้องเลื่อนในราง) · ยื่นตรวจแล้ว (รอผู้จัดการตรวจ) = กลับใต้การ์ดจัดการเอกสาร
+ *  · ขั้นอื่น (pipeline · ประทับแล้ว · ก้อน GET ยังไม่มา) = false (การ์ดไม่ขึ้นอยู่แล้ว) */
+export function backfillRailOnTop(view) {
+  const state = backfillStateOfView(view);
+  return !!state && state !== 'submitted';
+}
+
+/** แถวตรวจของการ์ดรางแดงเมื่อไร — กด "ยื่นตรวจงานบริการ" แล้วไม่ผ่าน **ด่านของ server** (ก้อน GET สด · 400 ของการยื่น) เท่านั้น
+ *  ⚠️ ด่าน "ยังไม่บันทึก" ของจอ (`source: 'client'`) ไม่นับ — แถวคิดจากของที่บันทึกแล้ว ⇒ แดงจากของเก่าที่คนแก้ไปแล้ว
+ *    ("รายการ 1: ยังไม่เลือกชนิด" ทั้งที่ร่างเลือกแล้ว · UAT 29/09 ข้อ 1) · ไม่บอกที่มา = ไม่แดง (กฎ 3 ปลอดภัยไว้ก่อน) */
+export function backfillRailPressed(submitIssues) {
+  return submitIssues?.flow === 'backfill' && submitIssues?.source === 'server';
+}
+
+/** บันทึกงานบริการสำเร็จ → แผงแดงที่มีแต่ข้อ "ยังไม่บันทึก" หมดความหมาย = null · แผงอื่นคืน **ตัวเดิม** (ภาพ ณ ตอนกด · r2 S9)
+ *  ⚠️ ตัวเดิมเท่านั้น — Map ช่องแดงของหน้า memo ตามตัวตนของแผง ตัวใหม่ = ตารางลืมว่าแก้ช่องไหนไปแล้ว */
+export function submitIssuesAfterSave(submitIssues) {
+  const issues = list(submitIssues?.issues);
+  if (issues.length && issues.every((issue) => issue?.key === 'unsaved')) return null;
+  return submitIssues ?? null;
+}
+
 /* ข้อของแถวตรวจแต่ละแถว → คำสั้นของบรรทัดรอง (ข้อความเต็มพกคำอธิบายบรรทัด ยาวจนดันคอลัมน์ป้ายหดเหลือคำละบรรทัด ·
    ข้อความเต็มอยู่ที่แผงแดงหลังกดยื่นแล้ว) */
 const BANNER_UNCHANGED = 'ยอด/Actual/เอกสารไม่เปลี่ยน';
@@ -439,7 +463,8 @@ export function backfillBannerText(view) {
     const who = state.submittedByName ? ` โดย ${state.submittedByName}` : '';
     return `${SERVICE_SETUP_EDIT_TEXT.backfillSubmitted}${when}${who} · ${BANNER_UNCHANGED}`;
   }
-  return `ตั้งแพ็คเกจ · โซน · แพ็คต่อรอบ · รอบ · ช่วงบริการ แล้วยื่นให้ผู้จัดการฝ่ายขายตรวจ · ${BANNER_UNCHANGED}`;
+  /* มติ 29/09: จำนวนรอบบริการก่อน แล้วค่อยบอกว่าแต่ละครั้งกี่แพ็ค (คำจากแคตตาล็อก `SERVICE_SETUP_LINE_TEXT`) */
+  return `ตั้งแพ็คเกจ · ${SERVICE_SETUP_LINE_TEXT.roundsLabel} · โซน · ${SERVICE_SETUP_LINE_TEXT.packsLabel} · ช่วงบริการ แล้วยื่นให้ผู้จัดการฝ่ายขายตรวจ · ${BANNER_UNCHANGED}`;
 }
 
 /** บรรทัดรองบนหัวการ์ด "รายการสินค้าและบริการ" ของใบสาย SERVICE (ที่มาของราคา · ขั้นของงานบริการ) */
@@ -461,10 +486,10 @@ export function linesCardMeta({ order, view, flow, editable, lineCount, totals }
 
 const LINE_SHORT = Object.freeze({
   kind_missing: 'ยังไม่เลือกชนิด', fg_missing: 'ยังไม่เลือกแพ็คเกจ', fg_invalid: 'แพ็คเกจใช้ไม่ได้แล้ว',
-  fg_foreign: 'แพ็คเกจของนิติบุคคลอื่น', rounds_missing: 'ยังไม่ใส่รอบบริการ',
+  fg_foreign: 'แพ็คเกจของนิติบุคคลอื่น', rounds_missing: SERVICE_SETUP_LINE_TEXT.noRounds,
 });
 const ZONE_SHORT = Object.freeze({
-  zones_missing: 'ยังไม่เลือกโซน', packs_missing: 'ยังไม่ใส่แพ็คต่อรอบ', zone_invalid: 'โซนใช้ไม่ได้', zones_on_not_service: 'มีโซนค้าง',
+  zones_missing: 'ยังไม่เลือกโซน', packs_missing: 'ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค', zone_invalid: 'โซนใช้ไม่ได้', zones_on_not_service: 'มีโซนค้าง',
 });
 const LINE_KEYS = new Set(Object.keys(LINE_SHORT));
 const ZONE_KEYS = new Set(Object.keys(ZONE_SHORT));
@@ -485,7 +510,7 @@ export function backfillRailChecks(view) {
   const unset = Number(view.totals?.unsetLines || 0);
   const packageLines = Number(view.totals?.packageLines || 0);
   const linesWith = (keys) => new Set(issues.filter((issue) => keys.has(issue?.key)).map((issue) => issue.lineId));
-  /* "รายการ 3: ยังไม่ใส่รอบบริการ · อีก 2 รายการ" — ข้อแรกของแถว + จำนวนบรรทัดที่เหลือ */
+  /* "รายการ 3: ยังไม่ใส่จำนวนรอบบริการ · อีก 2 รายการ" — ข้อแรกของแถว + จำนวนบรรทัดที่เหลือ */
   const shortSub = (keys, labels, badCount) => {
     const first = issues.find((issue) => keys.has(issue?.key));
     if (!first) return null;
@@ -510,20 +535,24 @@ export function backfillRailChecks(view) {
 
   return [
     {
-      key: 'lines', label: 'ชนิด · แพ็คเกจ · รอบบริการ',
+      key: 'lines', label: `ชนิด · แพ็คเกจ · ${SERVICE_SETUP_LINE_TEXT.roundsLabel}`,
       value: `${fmtNumber(lines.length - lineBad.size)}/${fmtNumber(lines.length)} รายการ`,
       sub: shortSub(LINE_KEYS, LINE_SHORT, lineBad.size), ok: lineBad.size === 0,
     },
     {
-      key: 'zones', label: 'ไซต์ · โซน · แพ็คต่อรอบ',
+      key: 'zones', label: 'ไซต์ · โซน · แต่ละครั้งกี่แพ็ค',
       value: zoneLines.length ? `${fmtNumber(zoneDone)}/${fmtNumber(zoneLines.length)} รายการ` : 'ไม่มีแพ็คเกจ',
-      sub: unset ? `รอเลือกชนิด ${fmtNumber(unset)} รายการ` : shortSub(ZONE_KEYS, ZONE_SHORT, zoneBad.size),
+      sub: unset ? SERVICE_BACKFILL_RAIL_TEXT.waitKind(fmtNumber(unset)) : shortSub(ZONE_KEYS, ZONE_SHORT, zoneBad.size),
       ok: zoneBad.size === 0 && !unset,
     },
     {
       key: 'period', label: 'ช่วงบริการ',
       value: view.period ? periodLabel(view.period) : (mayNeedPeriod ? 'ยังไม่ใส่' : NA),
-      sub: view.period ? periodReadout(view.period) || null : (mayNeedPeriod ? null : 'ไม่มีแพ็คเกจ — ไม่ต้องใส่'),
+      /* ยังไม่ใส่ + รอเลือกชนิด + server ไม่ขึ้นข้อช่วงบริการ (ยังไม่มีแพ็คเกจที่บันทึกแล้ว) = บอกเหตุแบบแถวโซน (UAT 29/09 ข้อ 2)
+         · มีข้อ period_missing แล้ว = แผงแดงบอกเอง ไม่พูดว่า "ถ้ามีแพ็คเกจ" ทั้งที่มีแล้ว */
+      sub: view.period ? periodReadout(view.period) || null
+        : !mayNeedPeriod ? 'ไม่มีแพ็คเกจ — ไม่ต้องใส่'
+          : unset && !periodMissing ? SERVICE_BACKFILL_RAIL_TEXT.periodWaitKind(fmtNumber(unset)) : null,
       ok: !periodMissing && (!!view.period || !unset),
     },
     moneyRow('installments', 'ช่วงครอบของงวดที่ยังไม่รับรอง', COVER_KEYS),

@@ -173,6 +173,12 @@ export function historicalApprovalPrompt({ subject, checklist = [], effects, ove
  * @param opening             งวดยกมา (เงินที่เก็บก่อนเข้าระบบ)
  * @param paidThroughLabel    "จ่ายถึง" หลังรับรอง (ข้อความจัดรูปมาแล้ว) — ปกติ = ปลายช่วงครอบของงวดนี้
  * @param nextInstallmentLabel งวดที่ต้องเก็บถัดไป (ข้อความจัดรูปมาแล้ว) · ไม่มี = ไม่พูด
+ * @param serviceZoneCount    ใบ pipeline: จำนวนโซนของรอบขายที่มีผลของใบ (server นับ — GET ใบ / แถวทะเบียน · PR-C C5) ·
+ *                            0/ไม่รู้ = ไม่มีบรรทัดด่านเงินของนัดบริการ (ภาพนิ่งเดิม)
+ * @param serviceContractLinked ใบ pipeline: ใบผูกสัญญาแล้วไหม — ค่าตั้งต้น true = ไม่รู้ ⇒ ไม่พูดเรื่องสัญญา (ไม่อ้างสิ่งที่ไม่ได้ตรวจ)
+ * @param serviceGateThroughLabel ใบ pipeline: วันที่ด่านเงินของนัดเปิดจริงหลังรับรอง (`installmentConfirmOutlook.gateOpenThrough`
+ *                            ข้อความจัดรูปแล้ว) · ไม่ส่ง = ใช้ "จ่ายถึง"
+ * @param serviceGateHeld     งวดที่ค้างซึ่งกดวันนั้นไว้ `{ seq, dueLabel }` · ไม่มี = null
  */
 /* สองบรรทัดของใบ pipeline ตามสถานะใบ (review UI-1 / F2) — PR0/PR3 เปิดให้บัญชีรับรองงวดบนใบยกเลิก · มติ D3 บนใบที่ย้อนการอนุมัติ
    และใบ Rev. ที่ยังไม่อนุมัติ ⇒ คำของใบที่อนุมัติอยู่ ("ถ้าถูกย้อน… ย้ายไปกับใบ Rev." · "Actual เต็มตั้งแต่ใบอนุมัติ") เป็นเท็จกับใบเหล่านั้น
@@ -202,9 +208,34 @@ function pipelineConfirmEffects(orderStatus) {
   ];
 }
 
+/**
+ * บรรทัดด่านเงินของนัดบริการของใบ pipeline ที่เปิดงานบริการแล้ว (PR-C C5 · C-D14 · r2 F1 · critique M3) — ที่เดียวที่ประกอบประโยค
+ * ⭐ "เปิด**ด่านเงิน**ของนัดบริการ" ไม่ใช่ "เปิดนัดบริการ" ของสเปก/ม็อก: ด่าน① สัญญายังบล็อกทุกนัดของใบที่ไม่มีสัญญาที่มีผล
+ *   (lib/service/visitGate.js) ⇒ "เปิดนัด" เป็นคำเท็จ · คำเดียวกับบรรทัดของใบย้อนหลัง ("เปิดด่านเงินของนัดบริการถึง …")
+ * ⭐ ใบยังไม่ผูกสัญญา ⇒ ต่อท้ายว่านัดยังติดด่านสัญญา · ผูกแล้วแต่ยังไม่ลงนาม = ไม่ต่อท้าย (ประโยคเรื่องเงินยังจริง ไม่อ้างสิ่งที่ไม่ได้ตรวจ)
+ * @param through        วันที่ด่านเงินของนัดเปิดถึงหลังรับรอง (ข้อความจัดรูปมาแล้ว) — ปกติ = "จ่ายถึง" · ถูกงวดอื่นที่ค้างกดไว้ = วันครบกำหนดของงวดนั้น
+ * @param zones          จำนวนโซนของรอบขายที่มีผลของใบ
+ * @param contractLinked ใบผูกสัญญาแล้วไหม (ไม่ส่ง = ผูกแล้ว/ไม่รู้ ⇒ ไม่มีท่อนสัญญา)
+ * @param heldBy         งวดที่ยังไม่รับรองซึ่งกดวันเปิดด่านไว้ `{ seq, dueLabel }` (review 29/09) — บอกงวดนั้นแทน "งวดถัดไป"
+ */
+export function FN_SERVICE_GATE_LINE({ through, zones, contractLinked = true, heldBy = null } = {}) {
+  const until = heldBy?.seq
+    ? `งวดที่ ${heldBy.seq}${heldBy.dueLabel ? ` (ครบกำหนด ${heldBy.dueLabel})` : ''}`
+    : 'งวดถัดไป';
+  return `เปิดด่านเงินของนัดบริการของใบนี้ถึง ${through} (${zones} โซน) — นัดหลังจากนั้นยังติดด่านเงินจนกว่าจะรับรอง${until}`
+    + (contractLinked === false ? ' · นัดยังติดด่านสัญญาจนกว่าฝ่ายขาย (SA) ผูกสัญญา' : '');
+}
+
+/* อ่านรอบขายของใบไม่ขึ้น (GET ใบ `serviceTermZonesError` · review 29/09) — บอกว่าไม่รู้ ไม่ใช่เงียบเหมือนใบที่ไม่มีโซนบริการ
+   ⚠️ ไม่อ้างว่าไม่มีผล: ถ้าใบมีรอบขาย การรับรองยังเปิดด่านเงินของนัดตามปกติ · แผง = ก่อนเปิดโมดัล · โมดัล = ข้างบรรทัดผลลัพธ์ */
+export const FN_SERVICE_GATE_UNREAD_PANEL = 'โมดัลรับรองงวดของใบนี้จะไม่บอกผลต่อด่านเงินของนัดบริการ — เปิดหน้าใหม่อีกครั้ง';
+export const FN_SERVICE_GATE_UNREAD_MODAL = 'อ่านรอบขายของใบไม่สำเร็จ — รายการข้างล่างไม่ได้บอกผลต่อด่านเงินของนัดบริการ '
+  + '(ถ้าใบมีรอบขาย การรับรองยังเปิดด่านเงินของนัดตามปกติ) · เปิดหน้าใหม่อีกครั้ง';
+
 export function paymentConfirmPrompt({
   label, amount, historical = false, opening = false, paidThroughLabel = null, nextInstallmentLabel = null,
-  orderStatus = null,
+  orderStatus = null, serviceZoneCount = 0, serviceContractLinked = true,
+  serviceGateThroughLabel = null, serviceGateHeld = null,
 } = {}) {
   if (historical) {
     const through = String(paidThroughLabel || '').trim();
@@ -229,6 +260,7 @@ export function paymentConfirmPrompt({
       confirmLabel: 'ยืนยันว่าเงินเข้าแล้ว',
     });
   }
+  const through = String(paidThroughLabel || '').trim();
   return approvalPrompt({
     title: 'บัญชีคอนเฟิร์มการชำระ',
     verb: 'การรับชำระ',
@@ -237,6 +269,17 @@ export function paymentConfirmPrompt({
        ⇒ "ย้อนกลับเองไม่ได้" เป็นเท็จ — บอกทางถอนเป็นผลลัพธ์บรรทัดท้ายแทน (ใบย้อนหลังข้างบนคงคำเดิมตามม็อกที่เจ้าของผ่าน) */
     effects: [
       'บันทึกว่าเงินงวดนี้เข้าบัญชีบริษัทแล้วจริง',
+      /* PR-C C5: ใบที่มีรอบขายที่มีผล (server นับให้เฉพาะใบอนุมัติที่เปิดงานบริการแล้ว) + รู้ "จ่ายถึง" + ใบอนุมัติอยู่/ไม่รู้สถานะ
+         ⚠️ ใบที่ไม่อยู่ในสถานะอนุมัติ รอบขายของใบไม่มีผล (termOrderActive) ⇒ ไม่พูด แม้ผู้เรียกส่งจำนวนค้างมา */
+      /* review 29/09: วันที่พูด = วันที่ด่านเปิดจริง (`serviceGateThroughLabel` · งวดอื่นที่ค้างกดไว้ได้) · ไม่ส่ง = "จ่ายถึง" (ผู้เรียกเดิม) */
+      ...(serviceZoneCount > 0 && through && (!orderStatus || orderStatus === 'approved')
+        ? [FN_SERVICE_GATE_LINE({
+          through: String(serviceGateThroughLabel || '').trim() || through,
+          zones: serviceZoneCount,
+          contractLinked: serviceContractLinked,
+          heldBy: serviceGateHeld,
+        })]
+        : []),
       ...pipelineConfirmEffects(orderStatus),
       'ถ้ารับรองผิด บัญชีถอนได้ที่เมนู “ถอนคำรับรอง” ของงวดนี้ (ต้องใส่เหตุผล)',
     ],

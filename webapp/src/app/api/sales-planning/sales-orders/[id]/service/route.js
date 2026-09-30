@@ -42,8 +42,9 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     /* รอบขายของใบนี้ → โซน → ไซต์ · ยิงเฉพาะของใบเดียว ไม่กวาดทั้งตาราง */
     const terms = await loadTerms(supabase, { salesOrderId: id });
     const zoneIds = [...new Set(terms.map((t) => t.zoneId).filter(Boolean))];
+    /* `code` = รหัสโซนของรายการรอบขาย (ทรงเดียวกับคิว TS · C8) ให้ช่องมาตรฐาน มล./เดือน */
     const { data: zones, error: zoneError } = zoneIds.length
-      ? await supabase.from('service_zones').select('id, "siteId", name').in('id', zoneIds)
+      ? await supabase.from('service_zones').select('id, "siteId", name, code').in('id', zoneIds)
       : { data: [], error: null };
     if (zoneError) return fail(zoneError.message, 500);
 

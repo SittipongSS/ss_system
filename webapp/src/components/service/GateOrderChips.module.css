@@ -1,0 +1,53 @@
+/* ชิปใบสั่งขายบนข้อด่านที่ติด (D15) — อยู่ท้ายก้อนเหตุบนการ์ดรายการงานและแผงด่านในโมดัลจัดคิว
+   ⭐ ก้อนชิปขึ้นบรรทัดใหม่ใต้เหตุ (flex = กล่องระดับบล็อกในก้อนเหตุ) · หลายใบห่อบรรทัดได้ ไม่ล้นการ์ดแคบ (~24rem · 375px) */
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin-top: var(--space-1);
+  min-width: 0;
+}
+
+/* ชิปหนึ่งใบ + ลิงก์ของมัน ไปด้วยกันเสมอ (ห่อทั้งคู่ ไม่แยกลิงก์ไปอยู่ต้นบรรทัดถัดไป) */
+.item {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-0-5) var(--space-2);
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* มุมมน md ไม่ใช่เม็ดยา — การ์ดแคบห่อชิปเป็นสองบรรทัดได้ (เม็ดยาสองบรรทัดกลายเป็นวงรี) */
+.chip {
+  min-width: 0;
+  max-width: 100%;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--panel-solid);
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-thai);
+}
+
+/* ท่อนละก้อน (เลขที่ใบ · ขั้น · AE) — ห่อบรรทัดที่รอยต่อระหว่างท่อน ไม่หั่นกลางชื่อ · ท่อนยาวเกินบรรทัดห่อข้างใน */
+.run {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+/* ลิงก์ "เปิดใบสั่งขาย" = เป้านิ้ว 44px โดยไม่ดันบรรทัด (ทรงเดียวกับลิงก์แก้ของแผงด่าน · GatePanel.module.css .fix) */
+.open {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  min-block-size: var(--ctl-h-touch);
+  margin-block: calc((var(--ctl-h-touch) - 1lh) / -2);
+  font-size: var(--fs-6);
+  white-space: nowrap;
+}

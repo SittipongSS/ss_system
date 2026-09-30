@@ -164,9 +164,13 @@ const bundleTables = () => ({
   sales_orders: [
     { id: 'SO1', status: 'approved', supersededById: null },
     { id: 'SO2', status: 'approved', supersededById: 'SO3' },   // ถูก Rev. แล้ว ⇒ รอบตาย
+    { id: 'SO4', orderNumber: 'SO-26100011-0', status: 'draft', supersededById: null, dealId: 'D4' },
   ],
   sales_order_installments: [],
   sales_contracts: [],
+  /* D15 (PR-C · C9): ใบร่างที่เลือกโซน Z2 ไว้แล้ว — ชิปใบสั่งขายบนร่างที่ติดด่าน */
+  sales_order_line_zones: [{ id: 'L1', salesOrderId: 'SO4', zoneId: 'Z2' }],
+  sales_deals: [{ id: 'D4', ownerName: 'สมหญิง รักงาน' }],
 });
 
 const visits = [
@@ -189,7 +193,7 @@ test('⭐ รูปผลลัพธ์ = รูปที่ตารางส�
   // ภาระ = จุดที่อยู่หน้างาน (qty) + แพ็คของรอบที่ยังมีผลเท่านั้น
   assert.deepEqual(got.workload, { S1: { assets: 3, packs: 2 }, S2: { assets: 0, packs: 0 } });
   assert.deepEqual(Object.keys(got.gateContext).sort(),
-    ['contractsById', 'installmentsByOrderId', 'ordersById', 'termsBySite', 'zonesBySite']);
+    ['contractsById', 'installmentsByOrderId', 'ordersById', 'setupOrdersByZone', 'termsBySite', 'zonesBySite']);
   // ไม่ส่ง gateSiteIds = ทุกไซต์ของชุด (พฤติกรรมเดิมของตารางสัปดาห์)
   assert.deepEqual(gateZoneSiteIds(db).sort(), ['S1', 'S2']);
   assert.deepEqual(Object.keys(got.gateContext.zonesBySite).sort(), ['S1', 'S2']);
@@ -227,8 +231,44 @@ test('ไม่มีร่างเลย (gateSiteIds ว่าง) = ไม�
   const got = await visitBundle(db, visits, { gateSiteIds: [] });
   assert.deepEqual(gateZoneSiteIds(db), []);
   assert.deepEqual(got.gateContext, {
-    zonesBySite: {}, termsBySite: {}, ordersById: {}, installmentsByOrderId: {}, contractsById: {},
+    zonesBySite: {}, termsBySite: {}, ordersById: {}, installmentsByOrderId: {}, contractsById: {}, setupOrdersByZone: {},
   });
+  assert.equal(db.log.some((q) => q.table === 'sales_order_line_zones'), false);
+});
+
+/* ⭐ D15 (PR-C · C9 · C-D19): จอจัดคิว (ตารางสัปดาห์ + รายการงาน) ขอชิปใบสั่งขายของโซนที่ติดด่าน — ที่นี่ที่เดียวที่ขอ
+   ⚠️ ทางตรวจด่านฝั่ง server (สร้าง/แก้นัด · planGen · ถอนเครื่อง · แท็บงานบริการของใบ) ไม่ขอ ⇒ เบาเท่าเดิม */
+test('⭐ D15 visitBundle ขอชิปใบสั่งขาย (withSetupOrders) — ได้ชิปรายโซนพร้อมชื่อ AE เฉพาะไซต์ที่โหลดด่าน', async () => {
+  const db = fakeDb(bundleTables());
+  const got = await visitBundle(db, visits);
+  assert.deepEqual(got.gateContext.setupOrdersByZone, {
+    Z2: [{ orderId: 'SO4', orderNumber: 'SO-26100011-0', status: 'draft', group: 'unapproved', stateLabel: 'ฉบับร่าง', ownerName: 'สมหญิง รักงาน' }],
+  });
+  const allocations = db.log.filter((q) => q.table === 'sales_order_line_zones');
+  assert.equal(allocations.length, 1);
+  assert.deepEqual(allocations[0].filters.map(([op, col, ids]) => [op, col, [...ids].sort()]), [['in', 'zoneId', ['Z1', 'Z2']]]);
+  // gateSiteIds จำกัด ⇒ ชิปก็จำกัดตาม (โซนของไซต์ที่ไม่ได้โหลดด่านไม่ถูกถาม)
+  const only = fakeDb(bundleTables());
+  const s1 = await visitBundle(only, visits, { gateSiteIds: ['S1'] });
+  assert.deepEqual(s1.gateContext.setupOrdersByZone, {});
+  assert.deepEqual(only.log.filter((q) => q.table === 'sales_order_line_zones').map((q) => q.filters), [[['in', 'zoneId', ['Z1']]]]);
+  // source: ขอที่จุดเดียวของไฟล์ · ด้วยแฟล็กตรง ๆ
+  const src = code('./visitBundle.js');
+  assert.match(src, /loadVisitGateContext\(supabase, gateSiteIds \?\? siteIds\.filter\(\(id\) => visitSiteIds\.has\(id\)\), \{ withSetupOrders: true \}\)/);
+});
+
+test('D15 ทางตรวจด่านฝั่ง server ไม่ขอชิป — ผู้เรียกอื่นของ loadVisitGateContext ไม่มี withSetupOrders', () => {
+  for (const file of [
+    '../../app/api/service/visits/route.js',
+    '../../app/api/service/visits/[id]/route.js',
+    '../../app/api/sales-planning/sales-orders/[id]/service/route.js',
+    './planGen.js',
+    './renewalRetrieveVisit.js',
+  ]) {
+    const src = code(file);
+    assert.match(src, /loadVisitGateContext\(/, file);
+    assert.doesNotMatch(src, /withSetupOrders/, file);
+  }
 });
 
 test('ไม่มีนัดเลย = ก้อนว่างโดยไม่แตะฐาน', async () => {

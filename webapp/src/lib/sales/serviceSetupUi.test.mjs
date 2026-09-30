@@ -11,14 +11,18 @@ import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 
 import {
-  EMPTY_DRAFT, PERIOD_FIELD_ID, SAVE_FIELD_ID, backfillBannerText, backfillRailChecks, linesCardMeta, backfillStateOfView, derivedRoleOf, draftDirty, fieldErrorsView,
-  intOrRaw, issueHeadTail, lineFieldId, lineFieldIds, lineMissing, localSetupCtx, mergedLines, patchDraftLine, rebaseDraft,
-  setupPayload, stripParts, submitGateGroups, surveyRequestHref, zonePacksFieldId,
+  EMPTY_DRAFT, PERIOD_FIELD_ID, SAVE_FIELD_ID, backfillBannerText, backfillRailChecks, backfillRailOnTop, backfillRailPressed, linesCardMeta, backfillStateOfView,
+  derivedRoleOf, draftDirty, fieldErrorsView, intOrRaw, issueHeadTail, lineFieldId, lineFieldIds, lineMissing, localSetupCtx, mergedLines, patchDraftLine,
+  rebaseDraft, setupPayload, stripParts, submitGateGroups, submitIssuesAfterSave, surveyRequestHref, zonePacksFieldId,
 } from '../../components/salesPlanning/serviceSetup/serviceSetupDraft.js';
 import {
   ZONES_BULK_NONE_PICKED, ZONES_BULK_PACKS_INVALID, zonesBulkCapText, zonesBulkConsequence, zonesBulkPlan,
 } from '../../components/service/zonesBulkPlan.js';
-import { SERVICE_SETUP_LIMITS, SERVICE_SETUP_PANEL_TEXT, serviceSetupFieldId, serviceSetupTotals } from './serviceSetup.js';
+import {
+  SERVICE_BACKFILL_RAIL_TEXT, SERVICE_SETUP_LIMITS, SERVICE_SETUP_LINE_TEXT, SERVICE_SETUP_PANEL_TEXT, serviceSetupFieldId, serviceSetupIssues,
+  serviceSetupTotals,
+} from './serviceSetup.js';
+import { salesOrderMoneyOutcome } from './salesOrderPayments.js';
 
 const SRC = path.resolve(process.cwd(), 'src');
 const read = (rel) => readFileSync(path.join(SRC, rel), 'utf8');
@@ -238,7 +242,7 @@ test('fieldErrorsView — 400 ของการบันทึก → ช่อ
 test('submitGateGroups — จัดตามแท็บ · "n ข้อ" นับเฉพาะข้อที่บล็อก · คำเตือนบัญชีไม่มี "ไปแก้"', () => {
   const groups = submitGateGroups(
     [
-      { key: 'rounds_missing', tab: 'overview', lineId: 'L3', message: 'รายการ 3: ยังไม่ใส่รอบบริการ' },
+      { key: 'rounds_missing', tab: 'overview', lineId: 'L3', message: 'รายการ 3: ยังไม่ใส่จำนวนรอบบริการ' },
       { key: 'due_missing', tab: 'payment', installmentId: 'I7', message: 'งวด 7: ยังไม่ใส่กำหนดชำระ' },
     ],
     [
@@ -257,8 +261,10 @@ test('submitGateGroups — จัดตามแท็บ · "n ข้อ" น�
 });
 
 test('issueHeadTail — หัวตัวหนาเฉพาะ "รายการ n …" / "งวด n …"', () => {
-  assert.deepEqual(issueHeadTail('รายการ 3: ยังไม่ใส่รอบบริการ'), { head: 'รายการ 3', rest: ': ยังไม่ใส่รอบบริการ' });
-  assert.deepEqual(issueHeadTail('รายการ 5 · Floor 2: ยังไม่ใส่แพ็คต่อรอบ'), { head: 'รายการ 5 · Floor 2', rest: ': ยังไม่ใส่แพ็คต่อรอบ' });
+  assert.deepEqual(issueHeadTail('รายการ 3: ยังไม่ใส่จำนวนรอบบริการ'), { head: 'รายการ 3', rest: ': ยังไม่ใส่จำนวนรอบบริการ' });
+  assert.deepEqual(issueHeadTail('รายการ 5 · Floor 2: ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค'), { head: 'รายการ 5 · Floor 2', rest: ': ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค' });
+  assert.deepEqual(issueHeadTail('รายการ 1: จำนวนรอบบริการ 1 รอบ ในช่วงบริการ 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็ยื่นได้)'),
+    { head: 'รายการ 1', rest: ': จำนวนรอบบริการ 1 รอบ ในช่วงบริการ 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็ยื่นได้)' });
   assert.deepEqual(issueHeadTail('ช่วงครอบขาด 01/04/2027–30/04/2027'), { head: '', rest: 'ช่วงครอบขาด 01/04/2027–30/04/2027' });
 });
 
@@ -337,6 +343,78 @@ test('F9: ใบเดิมที่ยังไม่เริ่ม (ทุ�
   })).map((row) => [row.key, row]));
   assert.deepEqual([none.period.sub, none.period.ok], ['ไม่มีแพ็คเกจ — ไม่ต้องใส่', true]);
   assert.equal(none.installments.ok, true);
+});
+
+test('UAT 29/09 ข้อ 2: แถว "ช่วงบริการ" ที่ยังไม่ใส่ระหว่างรอเลือกชนิด บอกเหตุบนบรรทัดรองแบบแถวโซน (แผงแดงไม่มีข้อช่วงบริการ)', () => {
+  const unsetLine = (n) => ({ lineId: `U${n}`, lineNo: n, role: 'unset', roleSource: 'none', kind: null, serviceProductId: null, serviceFgCode: null, rounds: null, fgCode: null, productId: null, description: `สาขา ${n}`, categoryCode: null });
+  const kindIssues = (lines) => lines.map((l) => ({ key: 'kind_missing', tab: 'overview', lineId: l.lineId, lineNo: l.lineNo, message: `รายการ ${l.lineNo} · …` }));
+  /* ยังไม่มีแพ็คเกจที่บันทึกแล้ว ⇒ server ไม่ขึ้น period_missing (serviceSetupIssues: เฉพาะ packageLines > 0)
+     แต่แถวยังไม่ยอมบอกว่าครบ (บรรทัดที่ยังไม่เลือกชนิดอาจเป็นแพ็คเกจ) ⇒ หลังกดยื่นแถวแดงโดยไม่มีข้อในแผง — บรรทัดรองต้องบอกเหตุ */
+  const lines = [unsetLine(1), unsetLine(2), viewFixture().lines[3]];
+  const waiting = Object.fromEntries(backfillRailChecks(viewFixture({
+    flow: 'backfill', period: null, allocations: [], lines, totals: { packageLines: 0, unsetLines: 2 }, issues: kindIssues(lines.slice(0, 2)),
+  })).map((row) => [row.key, row]));
+  assert.deepEqual([waiting.period.value, waiting.period.ok, waiting.period.sub],
+    ['ยังไม่ใส่', false, 'รอเลือกชนิด 2 รายการ · ต้องใส่ถ้ามีแพ็คเกจ']);
+  assert.equal(waiting.zones.sub, 'รอเลือกชนิด 2 รายการ', 'แถวโซนพูดแบบเดิม');
+
+  /* มีแพ็คเกจที่บันทึกแล้ว ⇒ server ขึ้น period_missing (อยู่ในแผงแดงแล้ว) — ไม่พูดว่า "ถ้ามีแพ็คเกจ" ทั้งที่มีแล้ว */
+  const withPackage = Object.fromEntries(backfillRailChecks(viewFixture({
+    flow: 'backfill', period: null, totals: { packageLines: 1, unsetLines: 1 }, issues: [{ key: 'period_missing', tab: 'overview' }],
+  })).map((row) => [row.key, row]));
+  assert.deepEqual([withPackage.period.value, withPackage.period.ok, withPackage.period.sub], ['ยังไม่ใส่', false, null]);
+
+  /* ใส่ช่วงแล้ว = บรรทัดรองเป็นคำอ่านช่วงเหมือนเดิม (ไม่ใช่คำรอเลือกชนิด) */
+  const withPeriod = Object.fromEntries(backfillRailChecks(viewFixture({
+    flow: 'backfill', lines, totals: { packageLines: 0, unsetLines: 2 }, issues: kindIssues(lines.slice(0, 2)),
+  })).map((row) => [row.key, row]));
+  assert.equal(withPeriod.period.value, '01/10/2026–30/09/2027');
+  assert.doesNotMatch(String(withPeriod.period.sub), /รอเลือกชนิด/);
+
+  /* ข้อความอยู่ในแคตตาล็อก (ภาคผนวก A.7) — ตัวคิดแถวไม่เขียนภาษาไทยของบรรทัดรองเอง */
+  assert.equal(SERVICE_BACKFILL_RAIL_TEXT.waitKind('2'), 'รอเลือกชนิด 2 รายการ');
+  assert.equal(SERVICE_BACKFILL_RAIL_TEXT.periodWaitKind('2'), 'รอเลือกชนิด 2 รายการ · ต้องใส่ถ้ามีแพ็คเกจ');
+  const draft = code(`${FOLDER}/serviceSetupDraft.js`);
+  assert.match(draft, /SERVICE_BACKFILL_RAIL_TEXT\.waitKind\(fmtNumber\(unset\)\)/);
+  assert.match(draft, /SERVICE_BACKFILL_RAIL_TEXT\.periodWaitKind\(fmtNumber\(unset\)\)/);
+  assert.doesNotMatch(draft, /`รอเลือกชนิด \$\{/, 'บรรทัดรองรอเลือกชนิดมาจากแคตตาล็อกเท่านั้น');
+});
+
+test('UAT 29/09 ข้อ 1: การ์ดรางแดงจากด่านของ server เท่านั้น · ด่าน "ยังไม่บันทึก" ของจอไม่ทำให้แถว (คิดจากของที่บันทึกแล้ว) แดง', () => {
+  const checkedAt = '2026-09-29T03:00:00.000Z';
+  const unsaved = { issues: serviceSetupIssues({ unsaved: true }), warnings: [], flow: 'backfill', source: 'client', checkedAt };
+  const server = { issues: [{ key: 'kind_missing', tab: 'overview', lineId: 'L1', message: 'รายการ 1 · …' }], warnings: [], flow: 'backfill', source: 'server', checkedAt };
+  assert.equal(backfillRailPressed(unsaved), false, 'ตรวจของที่ยังไม่บันทึกไม่ได้ — แถวของการ์ดคิดจากของเก่าที่คนแก้ไปแล้ว');
+  assert.equal(backfillRailPressed(server), true);
+  assert.equal(backfillRailPressed({ ...server, flow: 'pipeline' }), false, 'การ์ดรางเป็นของใบเดิม (backfill) เท่านั้น');
+  assert.equal(backfillRailPressed({ ...server, source: undefined }), false, 'ไม่บอกที่มา = ไม่แดง (กฎ 3 — ปลอดภัยไว้ก่อน)');
+  assert.equal(backfillRailPressed(null), false);
+});
+
+test('UAT 29/09 ข้อ 1: บันทึกงานบริการสำเร็จ = ล้างแผงแดงที่มีแต่ข้อ "ยังไม่บันทึก" · แผงของ server คงไว้ตัวเดิม (ภาพ ณ ตอนกด)', () => {
+  const checkedAt = '2026-09-29T03:00:00.000Z';
+  const unsaved = { issues: serviceSetupIssues({ unsaved: true }), warnings: [], flow: 'backfill', source: 'client', checkedAt };
+  assert.equal(unsaved.issues[0].key, 'unsaved');
+  assert.equal(submitIssuesAfterSave(unsaved), null);
+  assert.equal(submitIssuesAfterSave({ ...unsaved, flow: 'pipeline' }), null, 'ยื่นอนุมัติก็เหมือนกัน');
+  const server = { issues: [{ key: 'kind_missing', tab: 'overview', lineId: 'L1', message: 'รายการ 1 · …' }], warnings: [], flow: 'backfill', source: 'server', checkedAt };
+  assert.equal(submitIssuesAfterSave(server), server, 'ตัวเดิม — memo ของช่องแดงไม่ขยับ (ตารางไม่ลืมว่าแก้ช่องไหนไปแล้ว)');
+  const mixed = { ...server, issues: [...unsaved.issues, ...server.issues] };
+  assert.equal(submitIssuesAfterSave(mixed), mixed, 'มีข้ออื่นปน = ไม่ใช่ของ "ยังไม่บันทึก" ล้วน — ไม่ล้าง');
+  assert.equal(submitIssuesAfterSave(null), null);
+});
+
+test('UAT 29/09 ข้อ 3 (มติเจ้าของ): การ์ดราง "งานบริการ (ใบเดิม)" อยู่บนสุดของรางขวาระหว่างยังไม่ยื่นตรวจ · ยื่นแล้ว/รอตรวจกลับที่เดิม', () => {
+  const backfill = (state, extra = {}) => viewFixture({ flow: 'backfill', state: { setupState: state }, ...extra });
+  assert.equal(backfillRailOnTop(backfill(null)), true, 'กำลังตั้ง');
+  assert.equal(backfillRailOnTop(backfill('rejected')), true, 'ตีกลับ — แก้แล้วยื่นใหม่');
+  assert.equal(backfillRailOnTop(backfill(null, {
+    period: null, allocations: [], lines: viewFixture().lines.map((line) => ({ ...line, kind: null, serviceProductId: null })),
+  })), true, 'ยังไม่เริ่ม');
+  assert.equal(backfillRailOnTop(backfill('submitted')), false, 'ยื่นตรวจแล้ว (รอผู้จัดการตรวจ) = ใต้การ์ดจัดการเอกสาร');
+  assert.equal(backfillRailOnTop(viewFixture()), false, 'ใบร่าง (pipeline) ไม่มีการ์ดนี้');
+  assert.equal(backfillRailOnTop(viewFixture({ flow: 'stamped' })), false, 'อนุมัติงานบริการแล้ว');
+  assert.equal(backfillRailOnTop(null), false, 'ก้อน GET ยังไม่มา');
 });
 
 test('F10: แผงแดงรวมข้อซ้ำรายงวด (12× วันวางบิล) เป็นแถวเดียว "งวด 1–12 … · 12 งวด" · นับข้อยังเท่าเดิม · ไปแก้ที่งวดแรก', () => {
@@ -438,7 +516,7 @@ test('backfill ลูกค้าเครดิต (SO-26090206-0 · AR-015): �
 test('F4/F14: ข้อบล็อกของบัญชี (FN) ไม่มี "ไปแก้" + ป้ายรอฝ่ายบัญชี · กลุ่มที่มีแต่คำเตือนนับเป็น "เตือน n ข้อ"', () => {
   const groups = submitGateGroups(
     [
-      { key: 'rounds_missing', tab: 'overview', lineId: 'L3', message: 'รายการ 3: ยังไม่ใส่รอบบริการ' },
+      { key: 'rounds_missing', tab: 'overview', lineId: 'L3', message: 'รายการ 3: ยังไม่ใส่จำนวนรอบบริการ' },
       { key: 'coverage_gap', tab: 'payment', owner: 'FN', tag: 'รอฝ่ายบัญชี', installmentId: 'I2', message: 'ช่วงครอบขาด … ที่บัญชีรับรองแล้ว — ฝ่ายบัญชีแก้ที่แผงงวด' },
     ],
     [],
@@ -446,7 +524,7 @@ test('F4/F14: ข้อบล็อกของบัญชี (FN) ไม่ม
   const fn = groups[1].items[0];
   assert.deepEqual([fn.kind, fn.tag, fn.jump], ['issue', 'รอฝ่ายบัญชี', false]);
   const warnOnly = submitGateGroups(
-    [{ key: 'rounds_missing', tab: 'overview', lineId: 'L3', message: 'รายการ 3: ยังไม่ใส่รอบบริการ' }],
+    [{ key: 'rounds_missing', tab: 'overview', lineId: 'L3', message: 'รายการ 3: ยังไม่ใส่จำนวนรอบบริการ' }],
     [{ key: 'fn_coverage_missing', tab: 'payment', owner: 'FN', tag: 'รอฝ่ายบัญชี', message: 'งวด 1 (บัญชีรับรองแล้ว): ยังไม่มีช่วงครอบ' }],
   );
   assert.deepEqual(warnOnly.map((g) => [g.key, g.count, g.warnCount]), [['overview', 1, 0], ['payment', 0, 1]]);
@@ -485,12 +563,119 @@ test('zonesBulkPlan — ติ๊กศูนย์/เกินเพดาน/
   assert.equal(assessed.error, null);
   assert.deepEqual(assessed.rows, [{ zoneId: 'Z1', packsPerRound: 2 }, { zoneId: 'Z2', packsPerRound: null }, { zoneId: 'Z3', packsPerRound: null }]);
   assert.deepEqual([assessed.count, assessed.assessed, assessed.blank], [3, 1, 2]);
-  assert.equal(zonesBulkConsequence(assessed, { lineNo: 1 }), 'จะเพิ่ม 3 โซนใต้รายการ 1 · แพ็คต่อรอบตามผลประเมิน 1 โซน · ยังว่าง 2 โซน');
+  assert.equal(zonesBulkConsequence(assessed, { lineNo: 1 }), 'จะเพิ่ม 3 โซนใต้รายการ 1 · แต่ละครั้งกี่แพ็ค: ตามผลประเมิน 1 โซน · ยังว่าง 2 โซน');
 
   const equal = zonesBulkPlan({ selectedIds: ['Z1', 'Z2'], zonesById, mode: 'equal', equalPacks: ' 3 ' });
   assert.deepEqual(equal.rows, [{ zoneId: 'Z1', packsPerRound: 3 }, { zoneId: 'Z2', packsPerRound: 3 }]);
-  assert.equal(zonesBulkConsequence(equal, { lineNo: 2, mode: 'equal' }), 'จะเพิ่ม 2 โซนใต้รายการ 2 · แพ็คต่อรอบเท่ากันทุกโซน 3 แพ็ค');
+  assert.equal(zonesBulkConsequence(equal, { lineNo: 2, mode: 'equal' }), 'จะเพิ่ม 2 โซนใต้รายการ 2 · แต่ละครั้งเท่ากันทุกโซน ครั้งละ 3 แพ็ค');
   assert.equal(zonesBulkPlan({ selectedIds: ['Z1'], zonesById, existingCount: 499, cap: 500 }).error, null, 'เต็มพอดี 500 ยังเพิ่มได้');
+});
+
+/* ══ มติเจ้าของ 29/09: "จำนวนรอบบริการ" ก่อน แล้วค่อยบอกว่า "แต่ละครั้งกี่แพ็ค" (ทั้งโหมดแก้และโหมดอ่าน) ═════════════════ */
+
+test('29/09 จำนวนรอบบริการก่อน: ไม่มีคำเก่า (แพ็คต่อรอบ · แพ็ค/รอบ · รอบ/โซน · รอบบริการ (ต่อโซน)) บนจองานบริการ', () => {
+  for (const rel of UI_FILES) {
+    assert.doesNotMatch(code(rel), /แพ็คต่อรอบ|แพ็ค\/รอบ|รอบ\/โซน|รอบบริการ \(ต่อโซน\)|ต่อรอบ <b>/, rel);
+  }
+  assert.equal(ZONES_BULK_PACKS_INVALID, 'แต่ละครั้งกี่แพ็ค ต้องเป็นจำนวนเต็ม 1–9999');
+});
+
+test('29/09 จำนวนรอบบริการก่อน: โหมดแก้เรียง จำนวนรอบบริการ → แต่ละครั้ง (ตารางโซน) → รวมทั้งรายการ · ป้ายจากแคตตาล็อกเดียว', () => {
+  const block = code(`${FOLDER}/ServiceLineSetupBlock.js`);
+  const edit = block.slice(block.indexOf('const missing = lineMissing(line);'));
+  const at = (needle) => {
+    const index = edit.indexOf(needle);
+    assert.ok(index > 0, `โหมดแก้ขาด ${needle}`);
+    return index;
+  };
+  assert.ok(at('<RoundsField') < at('<ServiceZoneRows'), 'จำนวนรอบบริการมาก่อนตารางโซน');
+  assert.ok(at('<ServiceZoneRows') < at('<LineTotal'), 'รวมทั้งรายการอยู่ท้าย');
+  assert.ok(at('SERVICE_SETUP_LINE_TEXT.eachTime') < at('<ServiceZoneRows'), 'ป้าย "แต่ละครั้ง" อยู่เหนือตารางโซน');
+  const rounds = block.slice(block.indexOf('function RoundsField('), block.indexOf('function LineTotal('));
+  assert.match(rounds, /\{SERVICE_SETUP_LINE_TEXT\.roundsLabel\}<span className=\{styles\.req\} aria-hidden="true">\*<\/span>/);
+  assert.match(rounds, /\{lineRoundsSpan\(period\)\}/, 'บอกช่วงบริการข้างช่อง (ยังไม่ใส่ = บอกว่ายังไม่ใส่)');
+  assert.match(rounds, /roundChipsFromPeriod\(period\)/, 'ชิป ทุกเดือน ≈ n ยังอยู่กับช่องจำนวนรอบบริการ');
+  const total = block.slice(block.indexOf('function LineTotal('), block.indexOf('function StampedRoundsEdit('));
+  assert.match(total, /lineTotalText\(totals\)/);
+  assert.match(total, /lineQtyCrossCheck\(ctxLine, totals\)/, 'ยังเทียบกับจำนวนในใบ');
+  const rows = code(`${FOLDER}/ServiceZoneRows.js`);
+  assert.match(rows, /<span>\{SERVICE_SETUP_LINE_TEXT\.packsLabel\}<span className=\{styles\.req\}>\*<\/span><\/span>/, 'หัวคอลัมน์ "แต่ละครั้งกี่แพ็ค *"');
+  assert.match(rows, /aria-label=\{`\$\{SERVICE_SETUP_LINE_TEXT\.packsLabel\} /);
+  assert.match(rows, /<span className=\{styles\.numUnit\}>\{SERVICE_SETUP_LINE_TEXT\.packUnit\}<\/span>/);
+});
+
+test('29/09 จำนวนรอบบริการก่อน: โหมดอ่านเป็นประโยคเดียว แพ็คเกจ → จำนวนรอบบริการ n รอบ (ช่วง) → แต่ละครั้ง: • โซน — p แพ็ค → รวมทั้งรายการ', () => {
+  const block = code(`${FOLDER}/ServiceLineSetupBlock.js`);
+  const read = block.slice(block.indexOf('const fg = naText('), block.indexOf('const derivedHint'));
+  const at = (needle) => {
+    const index = read.indexOf(needle);
+    assert.ok(index >= 0, `โหมดอ่านขาด ${needle}`);
+    return index;
+  };
+  assert.ok(at('แพ็คเกจ <b>{fg}</b>') < at('lineRoundsSentence(rounds, period)'));
+  assert.ok(at('lineRoundsSentence(rounds, period)') < at('<ServiceZoneRows'));
+  assert.ok(at('<ServiceZoneRows') < at('lineTotalText('));
+  assert.ok(at('lineRoundsSentence(rounds, period)') < at('<StampedRoundsEdit'), 'ดินสอแก้รอบอยู่บรรทัด "จำนวนรอบบริการ n รอบ"');
+  const rows = code(`${FOLDER}/ServiceZoneRows.js`);
+  const readRows = rows.slice(rows.indexOf('if (!editable) {'), rows.indexOf('const cap = SERVICE_SETUP_LIMITS.zonesPerLine;'));
+  assert.match(readRows, /\{SERVICE_SETUP_LINE_TEXT\.eachTime\}:/);
+  assert.match(readRows, /packs \? SERVICE_SETUP_LINE_TEXT\.zonePacks\(packs\) : SERVICE_SETUP_LINE_TEXT\.noPacks/);
+});
+
+test('29/09 คำเตือนรอบน้อย: เทาบนบรรทัดทั้งโหมดแก้และโหมดอ่าน (ใบอนุมัติแล้วด้วย) · ไม่แดง · คำตามขั้นของใบ', () => {
+  const block = code(`${FOLDER}/ServiceLineSetupBlock.js`);
+  const warn = block.slice(block.indexOf('function RoundsLowNote('), block.indexOf('function RoundsField('));
+  assert.match(warn, /lineRoundsLowText\(positiveIntOrNull\(rounds\), period, \{ stage \}\)/);
+  assert.match(warn, /<span className=\{styles\.roundsWarn\} role="status">/);
+  assert.doesNotMatch(warn, /invalid|fieldError|danger/, 'คำเตือนไม่ใช่ข้อผิด — ไม่แดง');
+  const read = block.slice(block.indexOf('const fg = naText('), block.indexOf('const derivedHint'));
+  assert.match(read, /<RoundsLowNote rounds=\{line\.rounds\} period=\{period\} stage=\{roundsLowStage\} \/>/);
+  const rounds = block.slice(block.indexOf('function RoundsField('), block.indexOf('function LineTotal('));
+  assert.match(rounds, /<RoundsLowNote rounds=\{line\.rounds\} period=\{period\} stage="submit" \/>/);
+  const lines = code(`${FOLDER}/SalesOrderServiceLines.js`);
+  assert.match(lines, /roundsLowStage=\{editable \? "submit" : flow === "stamped" \? "approved" : "read"\}/);
+  const css = read.length && readFileSync(path.join(SRC, `${FOLDER}/ServiceLineSetupBlock.module.css`), 'utf8');
+  assert.match(css, /\.roundsWarn \{[^}]*color: var\(--text-3\);/, 'เทา ไม่ใช่แดง/เหลือง');
+});
+
+/* มติเจ้าของ 29/09 รอบสอง: "ไปกี่รอบ เปลี่ยน เป็น คำว่า จำนวนรอบบริการ" — ทุกผิวอ่านคำจากแคตตาล็อก ห้ามเหลือคำเก่าในโค้ด
+   (คอมเมนต์ที่เล่าที่มาไม่นับ) · `ไป ${…} รอบ` แบบเดิม = ประโยครอบที่ไม่ผ่านแคตตาล็อก ("ยกไป ${…}" ของคำอื่นไม่ใช่ — มีสระ/พยัญชนะนำ) */
+test('29/09 รอบสอง: ไม่มี "ไปกี่รอบ" / "ไป n รอบ" เหลือบนผิวงานบริการ — คำมาจาก SERVICE_SETUP_LINE_TEXT', () => {
+  const surfaces = [
+    ...UI_FILES,
+    'lib/sales/serviceSetup.js',
+    'lib/sales/salesOrderPayments.js',
+    'lib/service/legacySetupQueue.js',
+    'app/service/intake/page.js',
+    'app/sales-planning/sales-orders/page.js',
+    'app/sales-planning/sales-orders/[id]/page.js',
+    'app/api/sales-planning/sales-orders/route.js',
+  ];
+  for (const rel of surfaces) {
+    const src = code(rel);
+    assert.doesNotMatch(src, /ไปกี่รอบ/, rel);
+    assert.doesNotMatch(src, /(?<![฀-๿])ไป (?:\$\{[^}]*\}|\d+)(?:–(?:\$\{[^}]*\}|\d+))? รอบ/, rel);
+  }
+  assert.match(code('components/salesPlanning/serviceSetup/ServiceLineSetupBlock.js'),
+    /aria-label=\{`แก้\$\{SERVICE_SETUP_LINE_TEXT\.roundsLabel\} รายการ \$\{line\.lineNo\}`\}/, 'ดินสอ: "แก้จำนวนรอบบริการ รายการ n"');
+  /* salesOrderPayments.js import serviceSetup.js ไม่ได้ (วง) ⇒ เขียน literal เอง — ยึดให้ตรงกับแคตตาล็อก */
+  const revoke = salesOrderMoneyOutcome({ id: 'SO1', status: 'approved' }, [], 'revoke', { serviceRounds: true }).at(-1);
+  assert.ok(revoke.includes(`/${SERVICE_SETUP_LINE_TEXT.roundsLabel}/โซน/${SERVICE_SETUP_LINE_TEXT.packsLabel}/`), revoke);
+});
+
+test('29/09 การ์ดราง/ข้อสั้นพูดคำใหม่ — แถวบรรทัด "จำนวนรอบบริการ" · แถวโซน "แต่ละครั้งกี่แพ็ค"', () => {
+  const view = viewFixture({
+    flow: 'backfill',
+    issues: [
+      { key: 'rounds_missing', lineId: 'L3', tab: 'overview', message: 'รายการ 3: ยังไม่ใส่จำนวนรอบบริการ' },
+      { key: 'packs_missing', lineId: 'L2', zoneId: 'Z1', tab: 'overview', message: 'รายการ 2 · Floor 1: ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค' },
+    ],
+  });
+  const rows = Object.fromEntries(backfillRailChecks(view).map((row) => [row.key, row]));
+  assert.equal(rows.lines.label, 'ชนิด · แพ็คเกจ · จำนวนรอบบริการ');
+  assert.equal(rows.lines.sub, 'รายการ 3: ยังไม่ใส่จำนวนรอบบริการ');
+  assert.equal(rows.zones.label, 'ไซต์ · โซน · แต่ละครั้งกี่แพ็ค');
+  assert.equal(rows.zones.sub, 'รายการ 2: ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค');
 });
 
 /* ══ ส่วนที่ 2: ยามซอร์ส (แผน §2.7) ═══════════════════════════════════════════════════════════════════ */
@@ -649,7 +834,7 @@ test('F14/F16: หัวกลุ่มที่มีแต่คำเตื�
 test('F12: แบนเนอร์ของใบที่ยื่นตรวจแล้วบอกว่ารอผู้จัดการ (ไม่ใช่สั่งให้ตั้งแล้วยื่นซ้ำ) · หัวการ์ดบอกวันยื่นตรวจ', () => {
   const view = (state, extra = {}) => viewFixture({ flow: 'backfill', state: { setupState: state, ...extra } });
   assert.equal(backfillBannerText(view(null)),
-    'ตั้งแพ็คเกจ · โซน · แพ็คต่อรอบ · รอบ · ช่วงบริการ แล้วยื่นให้ผู้จัดการฝ่ายขายตรวจ · ยอด/Actual/เอกสารไม่เปลี่ยน');
+    'ตั้งแพ็คเกจ · จำนวนรอบบริการ · โซน · แต่ละครั้งกี่แพ็ค · ช่วงบริการ แล้วยื่นให้ผู้จัดการฝ่ายขายตรวจ · ยอด/Actual/เอกสารไม่เปลี่ยน');
   assert.equal(backfillBannerText(view('submitted', { submittedAt: '2026-09-28T03:00:00Z', submittedByName: 'Lalida Chaiwanna' })),
     'ยื่นตรวจงานบริการแล้ว — รอผู้จัดการฝ่ายขายตรวจ (ตีกลับก่อนจึงแก้ได้) · ยื่นเมื่อ 28/09/2026 โดย Lalida Chaiwanna · ยอด/Actual/เอกสารไม่เปลี่ยน');
   const panel = code(`${FOLDER}/ServiceBackfillPanel.js`);

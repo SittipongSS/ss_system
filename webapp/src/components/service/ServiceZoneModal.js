@@ -10,6 +10,8 @@ import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
 import ServiceZoneFields, { ZONE_FORM_EMPTY, zoneFormFromRow } from "./ServiceZoneFields";
 import { normalizeZoneInput } from "@/lib/service/zones";
+/* ⚠️ ไฟล์ข้อความ (ไม่มี import) ไม่ใช่ตัวติดป้าย `zoneSetupOrders.js` — ตัวนั้นดึงกราฟ serviceSetup.js ทั้งก้อนเข้า bundle */
+import { zoneDeactivateWarning } from "@/lib/service/zoneSetupOrderText";
 
 /* `knownFloors` = ชั้นของโซนอื่นในไซต์เดียวกัน — ขึ้นเป็นชิปลัดในช่องชั้น (ชั้นที่พิมพ์เองครั้งแรก
    กดซ้ำได้ในโซนถัดไป · มติผู้ใช้ 2026-09-24) */
@@ -24,6 +26,11 @@ export default function ServiceZoneModal({ open, zone = null, knownFloors = [], 
     setError("");
     setForm(zone ? zoneFormFromRow(zone) : ZONE_FORM_EMPTY);
   }, [open, zone]);
+
+  /* ⭐ คำเตือนตอนติ๊ก "ใช้งานอยู่" ออก (PR-C · C-D18) — โซนที่ใบร่าง/รออนุมัติ/ตั้งย้อนหลังเลือกไว้ ปิดแล้วใบนั้นจะ
+     ยื่น/อนุมัติ/ตรวจไม่ผ่าน (0392 ปฏิเสธโซนที่ปิดใช้งาน) · เตือนอย่างเดียว ไม่ขวาง (ทะเบียนเป็นของ TS)
+     · รายการใบมาจาก GET ไซต์ (`zone.sale.pendingOrders`) · โซนที่ปิดอยู่แล้วไม่ต้องเตือน (ไม่ได้กำลังปิด) */
+  const deactivateWarning = zone?.isActive !== false ? zoneDeactivateWarning(zone?.sale?.pendingOrders || []) : null;
 
   const submit = async () => {
     const { error: invalid } = normalizeZoneInput(form);
@@ -42,7 +49,7 @@ export default function ServiceZoneModal({ open, zone = null, knownFloors = [], 
 
   return (
     <Modal open={open} onClose={onClose} title={editing ? `แก้ไขโซน ${zone.name}` : "เพิ่มโซน"} size="md">
-      <ServiceZoneFields form={form} setForm={setForm} editing={editing} knownFloors={knownFloors} />
+      <ServiceZoneFields form={form} setForm={setForm} editing={editing} knownFloors={knownFloors} deactivateWarning={deactivateWarning} />
 
       {error && <p className="form-error" role="alert">{error}</p>}
 

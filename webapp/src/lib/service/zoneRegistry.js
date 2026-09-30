@@ -10,8 +10,12 @@
 //   ฟอร์มเปิดใบประเมิน (ให้ติ๊กว่ารอบนี้วัดพื้นที่เดิมโซนไหนซ้ำ) · สองจอต้องเห็น
 //   ตัวเลขชุดเดียวกัน ไม่งั้น AE เปิดแท็บเห็น 8 โซน แต่ฟอร์มให้ติ๊กได้ 6
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
-import { zoneTermState } from '@/lib/service/terms';
+import { termsSoldNow, zoneTermState } from '@/lib/service/terms';
 import { spotCounts, suggestedPackages, surveyZoneSize } from '@/lib/service/survey';
+import { fmtNumber } from '@/lib/format';
+/* ⚠️ ไฟล์ข้อความ (ไม่มี import) ไม่ใช่ตัวติดป้าย `zoneSetupOrders.js` — ป้ายสถานะมากับชิปจาก server แล้ว
+   และไฟล์นี้ต้องไม่ดึงกราฟของ serviceSetup.js ตามมา */
+import { pendingOrderTagText } from '@/lib/service/zoneSetupOrderText';
 
 /* ── ผลวัดล่าสุดของโซน ────────────────────────────────────────────────────
  * 🔑 **ประเมินซ้ำไม่ทับของเดิม** (มติข้อ 8) — โซนเดียวมีแถวผลวัดได้หลายรอบ
@@ -53,7 +57,7 @@ function beats(row, best) {
  *   ซื้อน้อยกว่าที่ประเมินเป็นเรื่องปกติ และ **ส่วนต่างคือของที่ฝ่ายขายต้องเห็น**
  */
 export function zoneRegistryRow(zone = {}, {
-  surveys = [], terms = [], ordersById = new Map(), requestsById, todayIso,
+  surveys = [], terms = [], ordersById = new Map(), requestsById, todayIso, pendingOrders = [],
 } = {}) {
   const requestOf = (id) => (requestsById instanceof Map ? requestsById.get(id) : requestsById?.[id]);
   const latest = latestSurveyRow(surveys, {
@@ -61,21 +65,6 @@ export function zoneRegistryRow(zone = {}, {
   });
   const size = surveyZoneSize(latest?.parts);
   const spots = spotCounts(latest?.spots);
-
-  /* ขายแล้ว/ยังไม่ขาย — **ถาม `zoneTermState` ตัวเดียว** ห้ามเขียน
-     `status === 'approved' && !supersededById` ซ้ำที่นี่ (กติกาหัวไฟล์ terms.js:
-     "เงื่อนไขนี้ต้องอยู่ที่ไฟล์นั้นที่เดียว" — เคยมีนิยาม live 5 ชุดใน 5 ไฟล์)
-     ⭐ **สามค่า ไม่ใช่สองค่า** — `ended` (เคยขาย รอบจบแล้ว) ไม่เหมือน `none`
-       (ไม่เคยขายเลย) · ม็อกวาดป้ายไว้แค่สองแบบ แต่ยุบรวมแล้ว AE จะมองไม่เห็น
-       ของที่ต่ออายุได้ ซึ่งเป็นงานขายคนละชนิดกับของที่ต้องเสนอครั้งแรก */
-  const zoneTerms = (Array.isArray(terms) ? terms : []).filter((t) => t?.zoneId === zone.id);
-  const { state, term } = zoneTermState(zone.id, zoneTerms, asMap(ordersById), todayIso);
-  const orderOf = (id) => (ordersById instanceof Map ? ordersById.get(id) : ordersById?.[id]);
-  const live = state === 'active' ? zoneTerms.filter((t) => t === term || sameOrder(t, term)) : [];
-  const soldPackages = live.reduce((sum, t) => {
-    const qty = Number(t.packageQty);
-    return sum + (Number.isFinite(qty) && qty > 0 ? qty : 0);
-  }, 0);
 
   return {
     id: zone.id,
@@ -107,20 +96,77 @@ export function zoneRegistryRow(zone = {}, {
        ⚠️ "เปิดอยู่" ใช้ชุดเดียวกับระบบคำร้อง (`REQUEST_OPEN_STATUSES`) ห้ามเขียนเอง */
     pendingRequest: pendingRequestOf(surveys, requestsById),
 
-    // ── การขาย ───────────────────────────────────────────────────────────
+    // ── การขาย (หน้าไซต์ใช้ก้อนเดียวกันผ่าน `zoneSaleFacts` · PR-C) ─────────
+    ...zoneSaleFacts(zone.id, { terms, ordersById, todayIso, pendingOrders }),
+  };
+}
+
+/* ── การขายของโซนหนึ่งโซน — ก้อนเดียวที่ทะเบียนลูกค้าและหน้าไซต์ใช้ร่วมกัน (PR-C · C-D16) ─────────────
+ * ⚠️ **ฟิลด์เดิมห้ามขยับ** (`termState, sold, soldPackages, salesOrders, termEndDate`) — ยกมาจาก `zoneRegistryRow`
+ *   ทั้งก้อน · แท็บพื้นที่บริการของลูกค้าและตัวเลือกโซนของการตั้งงานบริการ (PR-A) อ่านมันอยู่ ⇒ ยังเป็นกติกา
+ *   "ใบแรกที่มีผล" ของ `zoneTermState` ตามเดิม (เทสต์ deepEqual ยึดไว้)
+ * ⭐ **ฟิลด์ใหม่อ่านทุกใบที่มีผลของโซน** (critique L6) — โซนเดียวมีรอบขายที่มีผลพร้อมกันได้หลายใบ (ต่อสัญญาซ้อนช่วง ·
+ *   ขายเพิ่มอีกใบ) ⇒ ป้าย "ขายแล้ว n แพ็ค/รอบ" ต้องรวมทุกใบ ไม่ใช่ใบแรกใบเดียว
+ *   · "แพ็ค/รอบ" เฉพาะเมื่อ **ทุก** รอบขายที่มีผลมาจากใบที่ประทับแล้ว (mig 0392: `packageQty` = แพ็คต่อรอบ หน่วย 'แพ็ค')
+ *     — ใบเดิม `packageQty` คือจำนวนที่ขายทั้งใบ บวกปนกันแล้วเลขไม่มีความหมาย ⇒ ป้ายเหลือแค่เลขที่ใบ
+ * @param pendingOrders ชิปใบที่ยังถือโซนไว้ (`pendingSetupOrdersByZone`) — ส่งต่อให้คำเตือนตอนปิดใช้งานโซน
+ */
+export function zoneSaleFacts(zoneId, { terms = [], ordersById = new Map(), todayIso, pendingOrders = [] } = {}) {
+  /* ขายแล้ว/ยังไม่ขาย — **ถาม `zoneTermState` ตัวเดียว** ห้ามเขียน
+     `status === 'approved' && !supersededById` ซ้ำที่นี่ (กติกาหัวไฟล์ terms.js:
+     "เงื่อนไขนี้ต้องอยู่ที่ไฟล์นั้นที่เดียว" — เคยมีนิยาม live 5 ชุดใน 5 ไฟล์)
+     ⭐ **สามค่า ไม่ใช่สองค่า** — `ended` (เคยขาย รอบจบแล้ว) ไม่เหมือน `none`
+       (ไม่เคยขายเลย) · ม็อกวาดป้ายไว้แค่สองแบบ แต่ยุบรวมแล้ว AE จะมองไม่เห็น
+       ของที่ต่ออายุได้ ซึ่งเป็นงานขายคนละชนิดกับของที่ต้องเสนอครั้งแรก */
+  const orders = asMap(ordersById);
+  const zoneTerms = (Array.isArray(terms) ? terms : []).filter((t) => t?.zoneId === zoneId);
+  const { state, term } = zoneTermState(zoneId, zoneTerms, orders, todayIso);
+  const live = state === 'active' ? zoneTerms.filter((t) => t === term || sameOrder(t, term)) : [];
+  const soldPackages = sumPackages(live);
+
+  /* ทุกรอบขายที่ "ขายอยู่ตอนนี้" ของโซน (ทุกใบ) — `termsSoldNow` (terms.js) ไม่หยุดที่ใบแรก
+     🐞 review 29/09: เดิมกรองด้วย `termIsActive` อย่างเดียว — term ของใบที่ประทับไม่มีวัน (mig 0392) ⇒ ใบเก่าที่ช่วงบริการ
+        จบแล้วกับใบต่อสัญญา (ใบใหม่ผูกโซนเดิม) รวมกันเป็นสองเท่า · ใบต่อสัญญาที่ยังไม่เริ่มก็ยังไม่รวม */
+  const liveAll = termsSoldNow(zoneTerms, orders, todayIso);
+  const soldPerRound = liveAll.length > 0
+    && liveAll.every((t) => !!orders.get(t.salesOrderId)?.serviceTermsOpenedAt && t.unit === 'แพ็ค');
+  const soldPerRoundPackages = soldPerRound ? sumPackages(liveAll) : null;
+  const numbers = [...new Set(liveAll.map((t) => orders.get(t.salesOrderId)?.orderNumber).filter(Boolean))]
+    .sort().join(' · ');
+  const ofOrders = numbers ? ` (${numbers})` : '';
+  const soldLabel = liveAll.length
+    ? (soldPerRound ? `ขายแล้ว ${fmtNumber(soldPerRoundPackages)} แพ็ค/รอบ${ofOrders}` : `ขายแล้ว${ofOrders}`)
+    : null;
+  const pending = Array.isArray(pendingOrders) ? pendingOrders : [];
+
+  return {
     termState: state,                       // 'none' | 'active' | 'ended'
     sold: state === 'active',
     soldPackages: live.length ? soldPackages : null,
     /* เลขที่ใบ ไม่ใช่แค่ id — ม็อกโชว์ `SO-26040022` ใต้ป้าย "ขายแล้ว"
        และ id ดิบไม่มีความหมายกับคนอ่าน (กติกา "ห้ามถอยไปโชว์ id ดิบ") */
     salesOrders: (live.length ? live : (term ? [term] : [])).map((t) => {
-      const o = orderOf(t.salesOrderId);
+      const o = orders.get(t.salesOrderId);
       return { id: t.salesOrderId, orderNumber: o?.orderNumber || null };
     }).filter((o) => o.id),
     // รอบล่าสุดจบเมื่อไร — ของที่ต่ออายุได้ต้องบอกวันหมด ไม่ใช่แค่บอกว่าจบแล้ว
     termEndDate: state === 'ended' ? (term?.endDate || null) : null,
+
+    // ── PR-C (R1) ──────────────────────────────────────────────────────
+    soldPerRound,
+    soldPerRoundPackages,
+    soldLabel,
+    /* ใบที่ยังถือโซนไว้แต่ยังไม่เปิดงานบริการ (ร่าง/รออนุมัติ/ตีกลับ/ย้อนอนุมัติ · ตั้งย้อนหลัง) — ป้ายเตือนบนแถว
+       ⚠️ ข้อความจากไฟล์ข้อความตัวเดียว (`zoneSetupOrderText.js`) — ชิปด่านนัดและคำเตือนตอนปิดใช้งานใช้ตัวเดียวกัน */
+    pendingOrders: pending,
+    pendingLabel: pendingOrderTagText(pending),
   };
 }
+
+const sumPackages = (list) => list.reduce((sum, t) => {
+  const qty = Number(t.packageQty);
+  return sum + (Number.isFinite(qty) && qty > 0 ? qty : 0);
+}, 0);
 
 const asMap = (v) => (v instanceof Map ? v : new Map(Object.entries(v || {})));
 // term สองแถวที่มาจากใบสั่งขายใบเดียวกัน = รอบขายเดียวกัน (ใบหนึ่งจัดสรรลงโซนได้หลายบรรทัด)
@@ -144,6 +190,7 @@ function pendingRequestOf(surveys = [], requestsById) {
  */
 export function customerZoneRegistry({
   sites = [], zones = [], surveys = [], terms = [], orders = [], requests = [], todayIso,
+  pendingOrdersByZone = new Map(),
 } = {}) {
   const ordersById = new Map((Array.isArray(orders) ? orders : []).map((o) => [o.id, o]));
   const requestsById = new Map((Array.isArray(requests) ? requests : []).map((r) => [r.id, r]));
@@ -173,6 +220,8 @@ export function customerZoneRegistry({
       ordersById,
       requestsById,
       todayIso,
+      // ใบที่ยังถือโซนไว้ (PR-C · `loadSetupOrdersByZone`) — ไม่ส่งมา = ไม่มีป้าย
+      pendingOrders: (pendingOrdersByZone instanceof Map ? pendingOrdersByZone.get(zone.id) : null) || [],
     }));
     zonesBySite.set(zone.siteId, list);
   }

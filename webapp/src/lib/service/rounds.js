@@ -8,6 +8,7 @@ import { isBusinessDay, toLocalISODate } from '@/lib/pm/dateHelpers';
 import { daysBetween } from '@/lib/sales/paymentCoverage';
 import { accessConflict, minutesOf, toHHMM } from './sites';
 import { businessDate } from '@/lib/businessDate';
+import { fmtNumber } from '@/lib/format';
 import { VISIT_STATUSES, canRescheduleVisit, isClosedVisit, isLiveVisit } from './visitStatus';
 
 export const PLAN_KINDS = ['refill', 'maintenance', 'inspect'];
@@ -131,6 +132,45 @@ export function estimateVisitCount({ startDate, endDate, everyDays } = {}) {
   const span = daysBetween(startDate, endDate);   // ตัวนับวันกลางของระบบ (paymentCoverage)
   if (span == null || span < 0) return null;
   return Math.floor(span / every) + 1;
+}
+
+/* ── คำเรียกจำนวนรอบที่ขาย (มติเจ้าของ 29/09: "ไปกี่รอบ" → "จำนวนรอบบริการ") ─────────────────────────
+   ⭐ คำเดียวกับฝั่งใบสั่งขาย · ฝั่ง TS อ่านจากที่นี่ที่เดียว: หัวคอลัมน์/การ์ด "จำนวนรอบบริการ" ของแถวรอตั้งรอบ ·
+      แถบบริบท + ชิปความถี่ + บรรทัดประมาณนัดของโมดัลรอบบริการ · สรุปไซต์
+   ⚠️ เปลี่ยนแค่คำเรียกจำนวนรอบ — คำบอกความถี่ ("ทุก 33 วัน") และคำ "แต่ละครั้ง" คงเดิม */
+export const ROUNDS_SOLD_LABEL = 'จำนวนรอบบริการ';
+
+/** "จำนวนรอบบริการ 12 รอบ" */
+export const roundsSoldSentence = (rounds) => `${ROUNDS_SOLD_LABEL} ${fmtNumber(rounds)} รอบ`;
+
+/* บรรทัดประมาณนัดของโมดัลรอบบริการ — เปิดจากใบ/แถวคิว = ตัวเลขของใบนั้น · เปิดจากหน้าไซต์ = ของทั้งไซต์ (คำต้องบอกให้ตรง) */
+export const PLAN_ROUNDS_SOLD_HINT = Object.freeze({
+  ofOrder: `${ROUNDS_SOLD_LABEL}ของใบนี้`,
+  ofSite: `${ROUNDS_SOLD_LABEL}ที่ฝ่ายขายระบุ`,
+  diff: (n) => `ต่างจาก${ROUNDS_SOLD_LABEL} ${fmtNumber(n)} นัด (ตั้งต่อได้ ไม่ใช่ข้อห้าม)`,
+});
+
+/* ── "จำนวนรอบบริการ n รอบ ⇒ ทุกกี่วัน" (PR-C · C-D7) — ตัวกลับของ estimateVisitCount ─────────────────────
+   ⭐ **ข้อเสนอให้คนกด ไม่ใช่ค่าตั้งต้นเงียบ ๆ** — แถว "รอตั้งรอบ" กับชิปในโมดัลรอบบริการอ่านตัวนี้ตัวเดียว
+   สูตร: รอบ ≥ 2 → floor(ช่วง ÷ (รอบ − 1)) · รอบเดียว → ช่วง + 1 (นัดเดียวพอดีทั้งช่วง)
+   ⇒ ช่วงพอ (ช่วง ≥ รอบ − 1) ได้นัด ≥ ที่ขายเสมอ (ปัดลง = ถี่ขึ้น ไม่ขาด) · `visits` = estimateVisitCount ตัวเดียวกับโมดัล
+   ⚠️ ความถี่ตั้งได้ 1–365 วัน (normalizePlanInput) ⇒ เกินเพดาน/ต่ำกว่าพื้น = ตัดแล้วบอก `clamped`
+      (2 รอบใน 2 ปี → ทุก 365 วัน ≈ 3 นัด · ได้เกินที่ขาย — จอต้องพูดตรง ๆ ไม่ใช่ทำเป็นพอดี)
+   ⚠️ ไม่มีวัน · รอบไม่ใช่จำนวนเต็มบวก · วันกลับด้าน = null (ไม่เดา — กติกาเดียวกับ estimateVisitCount) */
+const MAX_EVERY_DAYS = 365;
+
+export function suggestEveryDays({ startDate, endDate, rounds } = {}) {
+  if (!Number.isInteger(rounds) || rounds < 1) return null;
+  if (!startDate || !endDate) return null;
+  const span = daysBetween(startDate, endDate);
+  if (span == null || span < 0) return null;
+  const raw = rounds === 1 ? span + 1 : Math.floor(span / (rounds - 1));
+  const everyDays = Math.min(MAX_EVERY_DAYS, Math.max(1, raw));
+  return {
+    everyDays,
+    visits: estimateVisitCount({ startDate, endDate, everyDays }),
+    clamped: everyDays !== raw,
+  };
 }
 
 export function isReschedule(before, after) {

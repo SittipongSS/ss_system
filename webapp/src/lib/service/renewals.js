@@ -29,16 +29,50 @@ import { termOrderActive } from './terms';
 /* วันหมดของรอบขายหนึ่ง — **ถามที่สัญญาของใบแม่** (mig 0324)
    ⚠️ ไม่มีสัญญาผูก = ไม่มีวันหมด = ไม่ใช่ของที่ต้องตาม (รอบปลายเปิด) ⇒ คืน null
      ไม่ใช่เดาว่าหมดวันนี้ · ใบที่ยังไม่ผูกสัญญาเป็นเรื่องของ SA คนละคิวกัน
+     ⭐ ยกเว้น (PR-C · 29/09/2026): ใบที่เปิดงานบริการแล้วถอยไปที่ช่วงบริการของใบ — ดู `termEndInfo` ข้างล่าง
    ⚠️ อ่านวันหมดตรง ๆ ไม่ผ่าน `contractSpanAt` — ตัวนั้นตอบว่า "วันนี้อยู่ในช่วงไหม"
      ส่วนที่นี่ต้องการ *ตัววัน* เพื่อเอาไปนับถอยหลัง คนละคำถาม
    ⭐ 24/09/2026: สัญญาที่ถูกยกเลิกหลังลงนามจบ **วันที่ยกเลิก** (หรือวันหมดอายุถ้ามาก่อน · `contractEndDate`)
      ⇒ ไซต์ขึ้นทะเบียนให้ตามต่อ/ถอนเครื่องทันที · ใบอื่นทุกสถานะยังเป็นวันหมดอายุเหมือนเดิม
      🪤 เรื่องที่ปิดไปแล้วเทียบด้วยวันหมดเดิม (`coveredEndDate`) ⇒ ไซต์นั้นจะโผล่ใหม่หนึ่งครั้งด้วยวันจบใหม่ (ตั้งใจ) */
 export function termEndDate(term, ordersById, contractsById) {
+  return termEndInfo(term, ordersById, contractsById)?.date ?? null;
+}
+
+/* ── ใบที่เปิดงานบริการแล้วแต่ยังไม่ผูกสัญญา: ถอยไปที่ช่วงบริการของใบ (PR-C · C-D13) ──────
+   ⭐ ตั้งแต่ 0392 ใบบริการขาย "ช่วงบริการ" ไว้ที่หัวใบ (`servicePeriodFrom/To`) ⇒ ใบที่เปิดงานบริการแล้ว
+     (`serviceTermsOpenedAt`) รู้วันจบแม้ยังไม่ผูกสัญญา · เงียบต่อไปคือปล่อยให้ช่วงบริการหมดโดยไม่มีใครตาม
+   ⚠️ **สัญญาชนะเสมอ** — ใบผูกสัญญาแล้ว (แม้สัญญาปลายเปิด หรือหาสัญญาไม่เจอ) ไม่ถอยข้ามสัญญามาที่ช่วงของใบ
+   🪤 ใบที่ยังไม่มีตรา = ช่วงร่างของการตั้งย้อนหลัง (0392 บันทึกช่วงก่อนผู้จัดการตรวจ) ⇒ ห้ามอ่าน
+   🪤 **[owner]** ถอยให้เฉพาะช่วงที่จบตั้งแต่วันที่ 0392 รัน — ใบย้อนหลังที่ช่วงจบไปก่อนหน้านั้นจะท่วม
+     แถว "หมดแล้ว" และกระดิ่งของเจ้าของดีล (ทะเบียนนี้ป้อน `sweepRenewalNotices` ด้วย) */
+export const ORDER_PERIOD_END_NOTE = 'ครบช่วงบริการของใบ · ยังไม่ผูกสัญญา';
+export const ORDER_PERIOD_FALLBACK_SINCE = '2026-09-29';
+
+/** วันจบของรอบขายหนึ่ง + แหล่งของวัน — `{ date, source: 'contract' | 'order_period' }` หรือ null (ไม่ต้องตาม) */
+export function termEndInfo(term, ordersById, contractsById) {
   const at = (map, key) => (map instanceof Map ? map.get(key) : map?.[key]) || null;
   const order = at(ordersById, term?.salesOrderId);
-  const contract = order?.serviceContractId ? at(contractsById, order.serviceContractId) : null;
-  return contract ? contractEndDate(contract) : null;
+  if (!order) return null;
+  if (order.serviceContractId) {
+    const contract = at(contractsById, order.serviceContractId);
+    const date = contract ? contractEndDate(contract) : null;
+    return date ? { date, source: 'contract' } : null;
+  }
+  const periodTo = /^\d{4}-\d{2}-\d{2}/.test(String(order.servicePeriodTo || ''))
+    ? String(order.servicePeriodTo).slice(0, 10) : null;
+  if (!order.serviceTermsOpenedAt || !periodTo || periodTo < ORDER_PERIOD_FALLBACK_SINCE) return null;
+  return { date: periodTo, source: 'order_period' };
+}
+
+/* รอบนำของแถว = รอบที่วัน **และแหล่ง** ตรงกับแถว — ใบที่ลิงก์บนจอ/เจ้าของดีลที่ได้กระดิ่ง/สิทธิ์บันทึกผลเดินตามตัวนี้
+   ⚠️ เทียบแหล่งด้วย: วันชนกันแถวบอกว่า "สัญญา" ⇒ ใบที่ลิงก์ต้องเป็นใบที่มีสัญญา ไม่ใช่ใบที่ถอยมาใช้ช่วงของใบ */
+export function renewalLeadTerm(row) {
+  const terms = row?.terms || [];
+  return terms.find((t) => t.endDate === row.endDate && t.endSource === row.endSource)
+    || terms.find((t) => t.endDate === row.endDate)
+    || terms[0]
+    || null;
 }
 
 /* หน้าต่างเตือน — 90 วันตามแผน §PR-E
@@ -88,7 +122,9 @@ export function renewalRows({
     if (!termOrderActive(ordersById.get(term.salesOrderId))) continue;
     const siteId = siteOfZone.get(term.zoneId);
     if (!siteId || !sitesById.has(siteId)) continue;
-    const endDate = termEndDate(term, ordersById, contractsById);
+    const end = termEndInfo(term, ordersById, contractsById);
+    const endDate = end?.date ?? null;
+    const endSource = end?.source ?? null;
     const state = renewalState(endDate, todayIso);
     if (!state) continue;
     /* ปิดเรื่องของรอบนี้ไปแล้ว = ไม่ต้องตามซ้ำ (เก็บวันหมดที่ปิดไปแล้วต่อไซต์)
@@ -100,14 +136,21 @@ export function renewalRows({
       siteId,
       site: sitesById.get(siteId),
       endDate,
+      endSource,
       terms: [],
       followup: openBySite.get(siteId) || null,
     };
-    /* ⚠️ แปะวันหมดไว้กับ term ที่ผู้เรียกหยิบไปใช้ต่อ — route หา "รอบที่หมดเร็วที่สุด"
-       ด้วยการเทียบ `t.endDate === row.endDate` ซึ่งคอลัมน์จริงเป็น NULL เสมอ */
-    row.terms.push({ ...term, endDate });
-    // วันหมดของแถว = วันที่เร็วที่สุดในบรรดารอบที่เข้าเขต (เตือนตามของที่จะหมดก่อน)
-    if (String(endDate) < String(row.endDate)) row.endDate = endDate;
+    /* ⚠️ แปะวันหมด + แหล่งไว้กับ term ที่ผู้เรียกหยิบไปใช้ต่อ — route หา "รอบที่หมดเร็วที่สุด"
+       ผ่าน `renewalLeadTerm` ซึ่งเทียบวันกับแหล่ง (คอลัมน์ endDate จริงของ term เป็น NULL เสมอ) */
+    row.terms.push({ ...term, endDate, endSource });
+    /* วันหมดของแถว = วันที่เร็วที่สุดในบรรดารอบที่เข้าเขต (เตือนตามของที่จะหมดก่อน)
+       แหล่งของแถวตามรอบที่ตั้งวันนั้น · วันชนกัน = สัญญา (ข้อความ "ยังไม่ผูกสัญญา" ใต้วันจะได้ไม่โกหก) */
+    if (String(endDate) < String(row.endDate)) {
+      row.endDate = endDate;
+      row.endSource = endSource;
+    } else if (endDate === row.endDate && endSource === 'contract') {
+      row.endSource = 'contract';
+    }
     bySite.set(siteId, row);
   }
 

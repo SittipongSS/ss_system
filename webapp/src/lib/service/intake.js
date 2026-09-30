@@ -41,8 +41,10 @@ export const INTAKE_TAB_HINTS = {
 };
 
 /**
- * ช่อง "ขายไว้" ของแถวรอตั้งรอบ (การ์ด · ตาราง ใช้ตัวเดียว) → `{ value, hint }` · ยังไม่ระบุ = null (จอขีด)
+ * ช่อง "จำนวนรอบบริการ" ของแถวรอตั้งรอบ (การ์ด · ตาราง ใช้ตัวเดียว · หัวช่อง = `ROUNDS_SOLD_LABEL` ของ rounds.js) → `{ value, hint }` · ยังไม่ระบุ = null (จอขีด)
  *   บรรทัดในไซต์เดียวกันขายรอบไม่เท่ากัน (`roundsMixed`) = บอกทุกค่า + คำแนะนำ ไม่ใช่โชว์แค่ตัวมากสุดเงียบ ๆ (r2 §TS plan row)
+ *   ⭐ มติเจ้าของ 29/09 ("ไปกี่รอบ" → "จำนวนรอบบริการ"): ค่าเป็น "12 รอบ" ทั้งใบที่ฝ่ายขายตั้งโซนแล้วและใบเดิม/ย้อนหลัง
+ *      (เดิม PR-C C1 ใบที่ตั้งแล้วเขียน "12 รอบ/โซน" — รอบหนึ่ง = ไปไซต์หนึ่งครั้ง ครอบทุกโซนของบรรทัด ไม่ใช่รอบรายโซน)
  */
 export function planRoundsSoldText(row) {
   if (!row?.roundsSold) return null;
@@ -162,6 +164,18 @@ export function planQueue({ zones = [], terms = [], plans = [], sites = [], orde
     if (plan.salesOrderId) continue;
     unboundBySite.set(plan.siteId, (unboundBySite.get(plan.siteId) || 0) + 1);
   }
+  /* ⭐ รอบของใบ **อื่น** ที่ยังเดินอยู่ที่ไซต์ (PR-C · review 29/09) — ใบที่ยกเลิก/ถูกแทน (รอบกำพร้า) หรือใบอื่นที่ยังมีผล
+     ปุ่มตั้งรอบบนแถวสร้างรอบที่สองได้ในคลิกเดียว ⇒ แถวต้องบอกก่อน (กติกาเดียวกับ `hasForeignPlan` ของแท็บงานบริการของใบ)
+     ⚠️ นับเฉพาะรอบที่ยังเปิดและยังไม่จบ (endDate ≥ วันนี้) · ไม่ตัด/ไม่รวมแถว (ตัวนับบนเมนูอ่านจำนวนแถว)
+     ⚠️ แถวมีได้เฉพาะคู่ (ไซต์, ใบ) ที่ยังไม่มีรอบ ⇒ รอบที่ผูกใบทุกรอบของไซต์เป็น "ของใบอื่น" ของแถวนั้นเสมอ */
+  const foreignBySite = new Map();
+  for (const plan of livePlans) {
+    if (!plan.salesOrderId) continue;
+    if (plan.endDate && String(plan.endDate) < todayIso) continue;
+    const list = foreignBySite.get(plan.siteId) || [];
+    list.push(plan.salesOrderId);
+    foreignBySite.set(plan.siteId, list);
+  }
   const sitesById = new Map(sites.map((s) => [s.id, s]));
   const zonesById = new Map(zones.map((z) => [z.id, z]));
 
@@ -183,9 +197,13 @@ export function planQueue({ zones = [], terms = [], plans = [], sites = [], orde
       orderNumber: order?.orderNumber || null,
       /* ป้าย "ย้อนหลัง" + โน้ต "โซนผูกจากฝ่ายขายตอนคีย์ใบแล้ว" บนแท็บนี้ · ไม่ส่ง origin มา = pipeline */
       origin: order?.origin || ORIGIN_PIPELINE,
+      /* ป้าย "ฝ่ายขายตั้งโซนแล้ว" (PR-C · C1) — ใบมีตรา `serviceTermsOpenedAt` (mig 0392) = term เป็นแพ็คต่อรอบรายโซน
+         ⚠️ ไม่ส่งคอลัมน์มา (ตัวนับบนเมนู) = false · ไม่กระทบจำนวนแถว */
+      stamped: !!order?.serviceTermsOpenedAt,
       /* ชื่อช่องชุดเดียวกับ `orderReadiness` ⇒ จอใช้ชิปตัวเดียวกันได้ */
       ...moneyReadiness(order, pickFrom(installmentsByOrderId, term.salesOrderId) || [], todayIso),
       unboundPlans: unboundBySite.get(zone.siteId) || 0,
+      foreignPlans: (foreignBySite.get(zone.siteId) || []).filter((id) => id !== term.salesOrderId).length,
       zones: [],
       terms: [],
     };

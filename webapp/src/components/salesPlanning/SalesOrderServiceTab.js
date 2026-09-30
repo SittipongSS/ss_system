@@ -19,6 +19,7 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import SkeletonRows from "@/components/ui/Skeleton";
 import { TableScroll } from "@/components/ui/Table";
 import ServicePlanModal from "@/components/service/ServicePlanModal";
+import TermStandardMlCell from "@/components/service/TermStandardMlCell";
 import { canBeServiceAssignee, canEditService } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { notifyToast } from "@/lib/feedback";
@@ -63,6 +64,24 @@ export default function SalesOrderServiceTab({ orderId }) {
   }, [orderId]);
   useEffect(() => { load(); }, [load]);
 
+  /* C8: บันทึกมาตรฐาน มล. แล้วปรับค่าของรอบขายนั้นในที่ — ไม่โหลดทั้งแท็บใหม่
+     (โหลดใหม่ = ทั้งแท็บกลายเป็นโครงโหลด และร่างที่พิมพ์ค้างในช่องอื่นหายไปกับการ unmount) */
+  const patchTerm = useCallback((saved) => {
+    if (!saved?.id) return;
+    setData((prev) => (prev ? {
+      ...prev,
+      allocation: {
+        ...prev.allocation,
+        sites: prev.allocation.sites.map((row) => ({
+          ...row,
+          terms: (row.terms || []).map((term) => (term.id === saved.id
+            ? { ...term, standardMlPerMonth: saved.standardMlPerMonth ?? null }
+            : term)),
+        })),
+      },
+    } : prev));
+  }, []);
+
   // รายชื่อเจ้าหน้าที่โหลดเมื่อจะ "เลือก" เท่านั้น (ท่าเดียวกับหน้าไซต์)
   useEffect(() => {
     if (!planSite || technicians.length) return;
@@ -98,7 +117,7 @@ export default function SalesOrderServiceTab({ orderId }) {
   if (error) return <StatusNotice tone="error" title="โหลดสรุปงานบริการไม่สำเร็จ">{error}</StatusNotice>;
   if (!data) return null;
 
-  const { allocation, plans, visits, rounds } = data;
+  const { allocation, plans, visits, rounds, stamped } = data;
 
   return (
     <>
@@ -150,12 +169,13 @@ export default function SalesOrderServiceTab({ orderId }) {
           ? `${plans.sitesWithoutPlan} ไซต์ยังไม่มีรอบบริการ — ฝ่ายบริการต้องวางรอบก่อนถึงจะมีนัด`
           : `วางรอบครบแล้ว ${plans.total} รอบ`}
       >
-        <TableScroll surface="embedded" cells="stacked" minWidth={640}>
+        <TableScroll surface="embedded" cells="stacked" minWidth={760}>
           <table className="w-full text-sm">
             <thead><tr>
               <th>ไซต์ / ลูกค้า</th>
               <th>โซนที่ผูก</th>
               <th className="num">จำนวนที่ลง</th>
+              <th>มาตรฐาน (มล./เดือน)</th>
               <th>รอบบริการ</th>
               <th aria-label="การกระทำ" />
             </tr></thead>
@@ -168,6 +188,31 @@ export default function SalesOrderServiceTab({ orderId }) {
                   </td>
                   <td className="cell-ellipsis">{row.zones.map((z) => z.name).join(" · ") || NA}</td>
                   <td className="num mono">{row.packageQty ? fmtNumber(row.packageQty) : NA}</td>
+                  {/* ⭐ C8: มาตรฐาน มล./เดือน รายรอบขาย — ช่องเดียวกับรายละเอียดโซนของคิว TS (ทรงรายการ §4.3 ส่งตรง ๆ)
+                      แก้ได้เฉพาะคนที่วางรอบได้ (canPlan = canEditService) · คนอื่นเห็นค่าอย่างเดียว · ไม่มีบันทึกเอง
+                      ⚠️ ป้าย "รายการ n · FG" มาจากตัวสรุป — โซนเดียวมีหลายรอบขายแล้วช่องหน้าตาเหมือนกันแยกไม่ออก */}
+                  <td>
+                    {(row.terms || []).length ? (
+                      <div className="flex flex-col gap-2">
+                        {(row.terms || []).map((term) => {
+                          const label = row.termLabels?.[term.id];
+                          const name = [label?.zone || term.zoneName || term.zoneCode, label?.detail].filter(Boolean).join(" · ") || NA;
+                          return (
+                            <div key={term.id}>
+                              <span className="cell-sub">{name}</span>
+                              <TermStandardMlCell
+                                term={term}
+                                canEdit={canPlan}
+                                stamped={stamped}
+                                onSaved={patchTerm}
+                                ariaLabel={`มาตรฐาน มล./เดือน · ${name}`}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : NA}
+                  </td>
                   {/* ⭐ **ยอดรวมบนหัวการ์ดตอบไม่ได้ว่าไซต์ไหนคือไซต์ที่ค้าง** — เดิมบอกแค่
                       "N ไซต์ยังไม่มีรอบ" แล้วปล่อยให้ไล่เปิดทีละไซต์เอง */}
                   {/* 🔴 **สามสภาพ ไม่ใช่สอง** — ไซต์ที่มีรอบของ *ใบอื่น* อยู่ ไม่ใช่
@@ -207,7 +252,7 @@ export default function SalesOrderServiceTab({ orderId }) {
               {!allocation.sites.length && (
                 <tr>
                   {/* 🔄 mig 0392 (D14): TS ผูกโซนไม่ได้แล้ว — ฝ่ายขายเลือกโซนในตารางรายการของใบ รอบขายเกิดตอนอนุมัติ */}
-                  <td colSpan={5} className="cell-num-idle">
+                  <td colSpan={6} className="cell-num-idle">
                     ยังไม่มีไซต์ — ฝ่ายขายเลือกโซนในตารางรายการของใบ แล้วรอบขายของโซนเกิดตอนอนุมัติ
                   </td>
                 </tr>

@@ -196,6 +196,12 @@ test('⭐ คิวบนหัวทะเบียนใบสั่งขา�
     'ยื่นโดย ${submitted}',
   ]) assert.ok(line.includes(piece), `บรรทัดรองขาด ${piece}`);
   assert.match(line, /review\.submittedAt \? fmtDate\(review\.submittedAt\) : null/, 'วันที่ยื่นผ่าน fmtDate (เวลาไทย)');
+  /* มติ 29/09: "จำนวนรอบบริการ" ก่อน แล้วค่อยบอกว่าแต่ละครั้งไปกี่โซน · คำ "จำนวนรอบบริการ n รอบ" มาจากตัวเดียวกับหน้าใบ (serviceRoundsText) */
+  assert.ok(line.indexOf('${naText(review.roundsLabel)}') < line.indexOf('${naText(review.zones)} โซนใน'), 'จำนวนรอบบริการมาก่อนจำนวนโซน');
+  assert.match(line, /แต่ละครั้ง \$\{naText\(review\.zones\)\} โซนใน/);
+  const route = read('app/api/sales-planning/sales-orders/route.js');
+  assert.match(route, /roundsLabel: serviceRoundsText\(totals\),/, 'ยังไม่มีรอบ = null — จอขึ้นขีดผ่าน naText (ห้ามขีดดิบ · audit:ui)');
+  assert.doesNotMatch(route, /รอบ\/โซน/);
   assert.doesNotMatch(line, /fmtMoney|actualAmount|totalAmount/, 'แถวงานบริการไม่พูดยอด — การอนุมัตินี้ไม่แตะยอด');
 
   // ปุ่มท้ายแถวยังเป็น "เปิดใบเพื่ออนุมัติ" — ตัดสินที่หน้าใบที่เดียว (ด่านเดียว ไม่ใช่จอเดียว)

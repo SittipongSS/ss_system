@@ -827,6 +827,9 @@ test('⭐ ภาพหลังรับรองประทับจากง�
     paidThrough: '2026-09-30',
     collected: 196452,
     next: { label: 'งวด ต.ค.–ธ.ค.', amount: 65484, dueDate: '2026-10-01' },
+    /* PR-C (review 29/09): งวดถัดไปครบกำหนดหลัง "จ่ายถึง" ⇒ ด่านเงินของนัดเปิดถึงวันเดียวกัน · ไม่มีงวดกดไว้ */
+    gateOpenThrough: '2026-09-30',
+    gateHeldBy: null,
   });
   // ประทับเฉพาะงวดที่กดรับรองได้ (reported) · ใบอื่นไม่ปนเข้าก้อนของใบนี้
   assert.equal(all[1].confirmOutlook, undefined);
@@ -1095,4 +1098,22 @@ test('ledgerRow พกสถานะ QT · ledgerRowLock ถามล็อก�
   assert.equal(ledgerRowLock({ ...dead, origin: 'historical' }, 'confirm'), null);
   // แถวเก่าที่ไม่มีสถานะ QT = ไม่ตัดสิน (route ต้องโหลดมาเสมอ — ยามต้นทาง)
   assert.equal(ledgerRowLock({ ...dead, quotationStatus: null }, 'confirm'), null);
+});
+
+/* ── PR-C C5 (C-D15): บรรทัดด่านเงินในโมดัลรับรองบนทะเบียน — ข้อเท็จจริงระดับใบมาจาก route (โซนของรอบขายที่มีผล · ผูกสัญญาไหม)
+   ⚠️ ledgerRow เป็น whitelist — ลืมเติม = โมดัลบนทะเบียนไม่มีบรรทัด ทั้งที่โมดัลบนใบมี (สองจอพูดไม่ตรงกันเงียบ ๆ)
+   ⚠️ ไม่ส่ง = 0 โซน / "ผูกแล้ว" (ไม่รู้ ⇒ ไม่พูดเรื่องสัญญา — ไม่อ้างสิ่งที่ไม่ได้ตรวจ) */
+test('ledgerRow พกจำนวนโซนของรอบขายที่มีผล + ธงผูกสัญญาของใบ (โมดัลรับรองบนทะเบียนพูดเท่าโมดัลบนใบ)', () => {
+  const row = ledgerRow({
+    installment: { id: 'SOI-1', seq: 1, amount: 100, status: 'reported' },
+    order: { id: 'SOR-1', orderNumber: 'SO-26090247-0', status: 'approved' },
+    serviceTermZones: 1,
+    serviceContractLinked: false,
+  });
+  assert.equal(row.serviceTermZones, 1);
+  assert.equal(row.serviceContractLinked, false);
+  const bare = make();
+  assert.equal(bare.serviceTermZones, 0);
+  assert.equal(bare.serviceContractLinked, true);
+  assert.equal(ledgerRow({ installment: { id: 'i', seq: 1 }, order: { id: 'o' }, serviceTermZones: null }).serviceTermZones, 0);
 });

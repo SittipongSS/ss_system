@@ -20,7 +20,7 @@
 import { fmtDate, fmtMoney } from '@/lib/format';
 import { canConfirmPayment, canUser } from '@/lib/permissions';
 import { computeInstallments, paymentScheduleRows } from '@/lib/sales/paymentPlan';
-import { paidThrough } from '@/lib/sales/paymentCoverage';
+import { isConfirmed, paidThrough } from '@/lib/sales/paymentCoverage';
 import { taxInvoiceActionError } from '@/lib/sales/taxInvoice';
 // งวดยกมาของใบสั่งขายย้อนหลัง (mig 0374) — ไฟล์ตัวตัดสิน import แค่ permissions.js ซึ่งไม่ import อะไร (ไม่มีวงวน · ฝั่ง client ใช้ได้)
 import {
@@ -378,10 +378,15 @@ export function installmentsNextDue(rows = []) {
  * ⚠️ ส่ง **งวดทั้งหมดของใบ** มาเสมอ — ทะเบียนการชำระต้องคิดจากงวดก่อนกรอง (กติกาเดียวกับ orderPaidThrough)
  *   ไม่งั้นกรอง "รอบัญชีตรวจ" แล้วงวดถัดไป/งวดที่รับรองแล้วหลุด ตัวเลขในโมดัลจะเพี้ยนตามตัวกรอง
  * ⚠️ ไม่มียอด Actual ในนี้ — งวดชำระคนละแกนกับ Actual (หัวไฟล์)
- * @returns `{ paidThrough, collected, next }` — next = งวดถัดไป (seq มากกว่า) ที่ยังไม่รับรอง หรือ null
+ * ⭐ `gateOpenThrough` (PR-C · review 29/09) — วันสุดท้ายที่ **ด่านเงินของนัด** เปิดจริงหลังรับรอง ≠ "จ่ายถึง":
+ *   ด่าน (visitGate ข้อ②) = `coversDate(rows, วันนัด) && !hasOverdueUnconfirmed(rows, วันนัด)` ⇒ งวดอื่นที่ยังไม่รับรองและ
+ *   ครบกำหนดก่อน "จ่ายถึง" บล็อกนัดหลังวันครบกำหนดนั้น (รับรองข้ามลำดับได้ · ใบจ่ายล่วงหน้าที่งวดถัดไปครบกำหนดก่อนปลายช่วง)
+ *   · เพดาน = วันครบกำหนด **เอง** (due < วันนัด เท่านั้นที่บล็อก — นัดวันครบกำหนดพอดียังผ่าน)
+ *   · `gateHeldBy` = งวดที่กดเพดานไว้ `{ seq, dueDate }` · ไม่ลด = null · "จ่ายถึง" ไม่เปลี่ยนความหมาย (ป้ายจ่ายถึงเดิมทุกจุด)
+ * @returns `{ paidThrough, collected, next, gateOpenThrough, gateHeldBy }` — next = งวดถัดไป (seq มากกว่า) ที่ยังไม่รับรอง หรือ null
  */
 export function installmentConfirmOutlook(row, rows = []) {
-  if (!row) return { paidThrough: null, collected: 0, next: null };
+  if (!row) return { paidThrough: null, collected: 0, next: null, gateOpenThrough: null, gateHeldBy: null };
   const others = (Array.isArray(rows) ? rows : []).filter((r) => r && r.id !== row.id);
   const collected = money(others.filter((r) => r.status === 'confirmed')
     .reduce((sum, r) => sum + (Number(r.amount) || 0), 0) + (Number(row.amount) || 0));
@@ -389,10 +394,19 @@ export function installmentConfirmOutlook(row, rows = []) {
   const next = others
     .filter((r) => (Number(r.seq) || 0) > seq && r.status !== 'confirmed')
     .sort((a, b) => (Number(a.seq) || 0) - (Number(b.seq) || 0))[0] || null;
+  const through = paidThrough([...others, { ...row, status: 'confirmed' }]);
+  /* งวดอื่นที่ยังไม่รับรองซึ่งครบกำหนดก่อนสุด — ชุดเดียวกับ `overdueUnconfirmed` (ไม่ใช่ confirmed + มีวันครบกำหนด) */
+  const held = through
+    ? others
+      .filter((r) => !isConfirmed(r) && /^\d{4}-\d{2}-\d{2}$/.test(String(r.dueDate || '')) && String(r.dueDate) < through)
+      .sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)) || (Number(a.seq) || 0) - (Number(b.seq) || 0))[0] || null
+    : null;
   return {
-    paidThrough: paidThrough([...others, { ...row, status: 'confirmed' }]),
+    paidThrough: through,
     collected,
     next: next ? { label: next.label || '', amount: Number(next.amount) || 0, dueDate: next.dueDate || null } : null,
+    gateOpenThrough: held ? String(held.dueDate) : through,
+    gateHeldBy: held ? { seq: Number(held.seq) || null, dueDate: String(held.dueDate) } : null,
   };
 }
 
@@ -1013,8 +1027,10 @@ export function salesOrderMoneyOutcome(order, rows = [], action, { serviceRounds
       reported.length ? `สลิปรอบัญชีตรวจ ${reported.length} งวดยังอยู่ในคิวบัญชีตามปกติ` : null,
       /* มติ D2: ใบที่บัญชีปิดแล้วย้อนได้ · ใบ Rev. ไม่สืบสถานะปิดจากใบเดิม (financeStatus เกิดเป็น NULL) */
       order?.financeStatus === 'approved' ? 'บัญชีปิดใบนี้แล้ว — ใบ Rev. จะกลับเข้าคิวให้บัญชีปิดใหม่' : null,
-      /* รอบขายของโซนนับเฉพาะใบ approved ที่ยังไม่ถูกแทน (lib/service/terms.js) */
-      serviceRounds ? 'ระหว่างรอ Rev. อนุมัติ นัดบริการของโซนในใบนี้ติดด่าน · ใบ Rev. คัดลอกแพ็คเกจ/โซน/แพ็ค/รอบ/ช่วงบริการไปให้ แก้ได้ก่อนยื่น · อนุมัติ Rev. แล้วรอบบริการของไซต์ที่ยังอยู่ย้ายตามไป' : null,
+      /* รอบขายของโซนนับเฉพาะใบ approved ที่ยังไม่ถูกแทน (lib/service/terms.js)
+         · คำเรียกช่อง "จำนวนรอบบริการ" / "แต่ละครั้งกี่แพ็ค" = SERVICE_SETUP_LINE_TEXT (มติ 29/09) — เขียน literal เพราะ serviceSetup.js
+           import ไฟล์นี้ (import กลับ = วง · serviceSetupImports.test.mjs) · เทสต์ของข้อความนี้เทียบกับแคตตาล็อกให้ */
+      serviceRounds ? 'ระหว่างรอ Rev. อนุมัติ นัดบริการของโซนในใบนี้ติดด่าน · ใบ Rev. คัดลอกแพ็คเกจ/จำนวนรอบบริการ/โซน/แต่ละครั้งกี่แพ็ค/ช่วงบริการไปให้ แก้ได้ก่อนยื่น · อนุมัติ Rev. แล้วรอบบริการของไซต์ที่ยังอยู่ย้ายตามไป' : null,
     ].filter(Boolean);
   }
   if (action === 'cancel') {
