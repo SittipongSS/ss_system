@@ -15,7 +15,7 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import { TableScroll } from "@/components/ui/Table";
 import { fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
 import { historicalPacksCellText, historicalPacksRoundsText, historicalZoneState } from "@/lib/sales/historicalOrderCopy";
-import { SERVICE_ROUNDS_LABEL } from "@/lib/sales/serviceOrders";
+import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL } from "@/lib/sales/serviceOrders";
 
 /**
  * @param order          ใบ (อ่าน `status` · `lines` เป็นตัวถอยเมื่อของเสริมไม่มา)
@@ -29,7 +29,9 @@ import { SERVICE_ROUNDS_LABEL } from "@/lib/sales/serviceOrders";
  * ⭐ มติเจ้าของ 23/09: บรรทัดของใบย้อนหลังคือบรรทัดของใบเสนอราคา ⇒ การ์ดพูด **รายการ · จำนวน + หน่วย**
  *   ของบรรทัดนั้น (12 แพ็คเกจ) ไม่ใช่ "N แพ็ค" ที่อ่านได้สองความหมาย (1 ชุด × 12 เดือน เคยถูกคีย์ทั้ง 1 และ 12)
  *   ราคาต่อหน่วย/ส่วนลดอยู่ที่ตารางรายการข้างบน — การ์ดนี้ตอบ "ของลงโซนไหน · TS ตั้งรอบหรือยัง"
- * ⭐ PR-D (มติเจ้าของ 26/09 A3/O9 · mig 0394): คอลัมน์ "แพ็คต่อรอบ" = ช่องของ **โซน** คนละช่องกับจำนวนของบรรทัด
+ * ⭐ PR-D (มติเจ้าของ 26/09 A3/O9 · mig 0394): คอลัมน์แพ็คต่อรอบ = ช่องของ **โซน** คนละช่องกับจำนวนของบรรทัด
+ *   · มติเจ้าของ 29/09 ("ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง"): หัว = `SERVICE_ROUNDS_LABEL` "จำนวนรอบบริการ" ก่อน
+ *     `SERVICE_PACKS_LABEL` "แต่ละครั้งกี่แพ็ค" (คำของใบใหม่ · การ์ดไม่สะกดเอง)
  *   (อนุมัติแล้วเป็น packageQty ของรอบขาย) · เซลล์และหัวการ์ดประกอบที่ lib (`historicalPacksCellText` /
  *   `historicalPacksRoundsText`) — การ์ดไม่ประกอบคำว่าแพ็คเอง (M3 · "N แพ็ค" เปล่า ๆ ห้ามกลับมา)
  *   ใบที่คีย์ก่อนมีช่อง = ขีดในเซลล์ + หัวการ์ดแบบเดิม (ไม่ใช่ "รวม 0 แพ็ค/รอบ")
@@ -56,15 +58,15 @@ export default function HistoricalZonesCard({
   return (
     <DetailCard icon={MapPin} eyebrow="SERVICE ZONES" title="โซนในใบนี้" meta={meta}>
       {zones.length ? (
-        /* 760 = เจ็ดคอลัมน์ (PR-D เพิ่ม "แพ็คต่อรอบ") · จอแคบกว่านั้นเลื่อนข้าง */
+        /* 760 = เจ็ดคอลัมน์ (PR-D เพิ่ม "แต่ละครั้งกี่แพ็ค") · จอแคบกว่านั้นเลื่อนข้าง */
         <TableScroll family="editable" surface="embedded" cells="stacked" minWidth={760}>
           <table className="w-full text-sm">
             <thead><tr>
               <th>ไซต์ · โซน</th>
               <th>รายการ</th>
               <th className="num">จำนวน</th>
-              <th className="num">แพ็คต่อรอบ</th>
               <th className="num">{SERVICE_ROUNDS_LABEL}</th>
+              <th className="num">{SERVICE_PACKS_LABEL}</th>
               <th className="num">จำนวนเงิน</th>
               <th>สถานะรอบ</th>
             </tr></thead>
@@ -79,8 +81,8 @@ export default function HistoricalZonesCard({
                   </td>
                   <td className="mono">{naText(zone.fgCode || lineOf(zone)?.fgCode)}</td>
                   <td className="num">{qtyText(zone)}</td>
-                  <td className="num">{historicalPacksCellText(zone.packsPerRound)}</td>
                   <td className="num">{zone.rounds == null ? NA : `${fmtNumber(zone.rounds)} รอบ`}</td>
+                  <td className="num">{historicalPacksCellText(zone.packsPerRound)}</td>
                   <td className="num">{zone.lineTotal == null ? NA : fmtMoney(zone.lineTotal)}</td>
                   <td>{historicalZoneState(order, zone, { plannedSiteIds, loading: loadingPlans })}</td>
                 </tr>

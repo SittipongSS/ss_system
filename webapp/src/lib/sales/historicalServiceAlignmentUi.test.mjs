@@ -51,8 +51,10 @@ test('PR-D ⭐ QuotationReadOnlyLineItems: showPacksPerRound ปิดเป็�
   assert.match(ro, /\n\s*showPacksPerRound = false,\n/, 'ปิดเป็นค่าตั้งต้น — ใบเสนอราคา/หน้าใบสั่งขายไม่ได้ขีดค้างทุกบรรทัด');
   const tag = slice(ro, '{showPacksPerRound && lineIsServicePackage(line) ? (', ') : null}');
   assert.match(tag, /<span className=\{styles\.serviceRoundsTag\}>/, 'หน้าตาเดียวกับป้ายรอบบริการ (ไม่มีคลาสใหม่)');
-  assert.match(tag, /แพ็คต่อรอบ: <strong>\{packsPerRoundText\(line\.packsPerRound\)\}<\/strong>/);
-  /* ลำดับ: ไซต์ · โซน → จำนวนรอบบริการ → แพ็คต่อรอบ → หมายเหตุ */
+  /* ⭐ มติเจ้าของ 29/09: ป้าย = ค่าคงที่ `SERVICE_PACKS_LABEL` "แต่ละครั้งกี่แพ็ค" (คำเดียวกับใบใหม่ · ไม่สะกดเอง) */
+  assert.match(tag, /\{SERVICE_PACKS_LABEL\}: <strong>\{packsPerRoundText\(line\.packsPerRound\)\}<\/strong>/);
+  assert.match(code(LINE_ITEMS), /import \{ SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL, lineIsServicePackage \} from "@\/lib\/sales\/serviceOrders";/);
+  /* ลำดับ: ไซต์ · โซน → จำนวนรอบบริการ → แต่ละครั้งกี่แพ็ค → หมายเหตุ */
   const rounds = ro.indexOf('{showServiceRounds && lineIsServicePackage(line) ? (');
   const packs = ro.indexOf('{showPacksPerRound && lineIsServicePackage(line) ? (');
   const note = ro.indexOf('{line.metadata?.note ? (');
@@ -66,9 +68,9 @@ test('PR-D ⭐ ค่าในป้ายแพ็คต่อรอบ: จำ
   const fn = slice(file, 'const packsPerRoundText = (value) => {', '\n};');
   assert.match(fn, /Number\.isInteger\(packs\) && packs > 0 \? `\$\{fmtNumber\(packs\)\} แพ็ค` : NA/);
   assert.match(fn, /value === null \|\| value === undefined \|\| value === ""/, 'ว่าง ≠ 0 (`Number(null)` = 0)');
-  /* ถ้อยคำที่ยอม (IMPL_PLAN_D §0.2 ข้อ 14): "แพ็คต่อรอบ" + ค่า "n แพ็ค" ในป้ายเท่านั้น */
+  /* ถ้อยคำที่ยอม (IMPL_PLAN_D §0.2 ข้อ 14): ค่า "n แพ็ค" ในป้ายเท่านั้น — ป้ายเป็นค่าคงที่ (มติ 29/09) */
   const words = [...file.matchAll(/แพ็ค[^\s<`:]*/g)].map((m) => m[0]);
-  assert.deepEqual(words.sort(), ['แพ็ค', 'แพ็คต่อรอบ'].sort(), `คำว่าแพ็คในไฟล์: ${words.join(', ')}`);
+  assert.deepEqual(words, ['แพ็ค'], `คำว่าแพ็คในไฟล์: ${words.join(', ')}`);
 });
 
 test('PR-D ⭐ ขั้น ④ เปิด showPacksPerRound ที่ตารางรายการ · ไฟล์ขั้น ④ ไม่ประกอบคำว่าแพ็คเอง', () => {
@@ -88,12 +90,15 @@ test('PR-D ⭐ การ์ดโซน: เซลล์แพ็คต่อร
   assert.match(card, /historicalPacksRoundsText\(zones\)\.meta\s*\n?\s*\?\? `\$\{fmtNumber\(zones\.length\)\} โซน — /,
     'ไม่รู้แพ็คสักโซน (ใบที่คีย์ก่อนมีช่อง) = หัวเดิม ไม่ใช่ "รวม 0 แพ็ค/รอบ"');
   assert.match(card, /minWidth=\{760\}/, 'คอลัมน์เพิ่ม ⇒ ตารางกว้างขึ้น (จอแคบเลื่อนข้าง)');
-  /* ลำดับเซลล์ตรงกับหัว: จำนวน → แพ็คต่อรอบ → จำนวนรอบบริการ */
+  /* ลำดับเซลล์ตรงกับหัว (มติ 29/09 — ใบใหม่และใบย้อนหลัง): จำนวน → จำนวนรอบบริการ → แต่ละครั้งกี่แพ็ค → จำนวนเงิน */
   const row = slice(card, '<tr key={zone.lineId || zone.zoneId}>', '</tr>');
   const qty = row.indexOf('{qtyText(zone)}');
-  const packs = row.indexOf('historicalPacksCellText(');
   const rounds = row.indexOf('zone.rounds == null');
-  assert.ok(qty > 0 && packs > qty && rounds > packs, 'เซลล์แพ็คต่อรอบต้องอยู่ระหว่างจำนวนกับรอบบริการ');
+  const packs = row.indexOf('historicalPacksCellText(');
+  const money = row.indexOf('zone.lineTotal == null');
+  assert.ok(qty > 0 && rounds > qty && packs > rounds && money > packs, 'เซลล์แต่ละครั้งกี่แพ็คต้องอยู่ระหว่างจำนวนรอบบริการกับจำนวนเงิน');
+  const head = slice(card, '<thead>', '</thead>');
+  assert.ok(head.indexOf('{SERVICE_ROUNDS_LABEL}') < head.indexOf('{SERVICE_PACKS_LABEL}'), 'หัวคอลัมน์เรียงเหมือนเซลล์');
 });
 
 test('PR-D ⭐ ของจริงของ lib ที่การ์ดเรียก: "2 แพ็ค/รอบ" · ไม่รู้ = ขีด · หัวรวมขึ้นเมื่อรู้อย่างน้อยหนึ่งโซน', () => {

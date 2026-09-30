@@ -20,7 +20,7 @@ import { DEFAULT_SALE_UNIT } from "@/lib/master/units";
 import { productSelectOptions } from "@/components/master/productOption";
 import styles from "./QuotationLineItems.module.css";
 import Textarea from "@/components/ui/Textarea";
-import { SERVICE_ROUNDS_LABEL, lineIsServicePackage } from "@/lib/sales/serviceOrders";
+import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL, lineIsServicePackage } from "@/lib/sales/serviceOrders";
 import {
   QuoteLineActionsHead, QuoteLineFgInfo, QuoteLineHeadCells, QuoteLineIndexCell, QuoteLineIndexHead,
   QuoteLineInstallationPoint, QuoteLineItemCell, QuoteLineMoneyCells, QuoteLineProductPicker, QuoteLineRemoveCell,
@@ -47,7 +47,7 @@ const HIGHLIGHT_TONE = {
   neutral: styles.neutralTotal,
 };
 
-/* ค่าของป้าย "แพ็คต่อรอบ" (PR-D) — จำนวนเต็มบวกเท่านั้น · ไม่รู้ = ขีด
+/* ค่าของป้าย "แต่ละครั้งกี่แพ็ค" (PR-D · ป้าย = SERVICE_PACKS_LABEL ตามมติ 29/09) — จำนวนเต็มบวกเท่านั้น · ไม่รู้ = ขีด
    ⚠️ ว่าง ≠ 0 (`Number(null)` = 0) · ค่าที่ไม่ใช่จำนวนเต็มบวกห้ามขึ้นเป็น "0 แพ็ค" */
 const packsPerRoundText = (value) => {
   if (value === null || value === undefined || value === "") return NA;
@@ -67,7 +67,7 @@ export function QuotationReadOnlyLineItems({
      (บรรทัด "12 แพ็คเกจ × 3,500" สี่บรรทัดที่เหมือนกันทุกตัวอักษรอ่านไม่ออกว่าต่างกันตรงไหน — มติ 23/09)
      ⚠️ ปิดเป็นค่าตั้งต้น เหตุผลเดียวกับ showServiceRounds: บรรทัดของใบเสนอราคาไม่มีโซน */
   showInstallationPoint = false,
-  /* ⭐ `showPacksPerRound` — ป้ายที่สอง "แพ็คต่อรอบ" ต่อจากรอบบริการ (บรรทัดหมวด 02-001 · `line.packsPerRound`)
+  /* ⭐ `showPacksPerRound` — ป้ายที่สอง "แต่ละครั้งกี่แพ็ค" (`SERVICE_PACKS_LABEL` · มติ 29/09) ต่อจากรอบบริการ (บรรทัดหมวด 02-001 · `line.packsPerRound`)
      ของขั้น ④ ของฟอร์มคีย์ใบย้อนหลัง (PR-D · มติเจ้าของ 26/09 A3/O9 · mig 0394) — แพ็คต่อรอบเป็นช่องของ **โซน**
      คนละช่องกับจำนวนของบรรทัด (เงิน: 1 ชุด × 12 เดือน) ⇒ ต้องอ่านแยกจากคอลัมน์ "จำนวน"
      ⚠️ ปิดเป็นค่าตั้งต้น เหตุผลเดียวกับ showServiceRounds: บรรทัดของใบเสนอราคา/หน้าใบสั่งขายไม่พกช่องนี้ */
@@ -122,7 +122,7 @@ export function QuotationReadOnlyLineItems({
                         ) : null}
                         {showPacksPerRound && lineIsServicePackage(line) ? (
                           <span className={styles.serviceRoundsTag}>
-                            แพ็คต่อรอบ: <strong>{packsPerRoundText(line.packsPerRound)}</strong>
+                            {SERVICE_PACKS_LABEL}: <strong>{packsPerRoundText(line.packsPerRound)}</strong>
                           </span>
                         ) : null}
                         {line.metadata?.note ? (

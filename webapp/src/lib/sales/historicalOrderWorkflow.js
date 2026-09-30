@@ -41,6 +41,7 @@ import {
   HISTORICAL_ALIGNMENT_HINT, historicalPacksRoundsText, historicalSetupIncompleteMessage,
 } from '@/lib/sales/historicalOrderCopy';
 import { loadLiveTermsByZone, sanitizeHistoricalEvidence } from '@/lib/sales/historicalOrderCommit';
+import { SERVICE_PACKS_LABEL } from '@/lib/sales/serviceOrders';
 
 const text = (value) => (value === null || value === undefined ? '' : String(value)).trim();
 const reply = (status, body) => ({ status, body });
@@ -101,7 +102,7 @@ async function serviceAllocationGate(supabase, order) {
     .eq('salesOrderId', order.id).order('id', { ascending: true }));
   if (error) {
     if (historicalSchemaMissing(error)) return reply(503, { error: HISTORICAL_FLOW_SCHEMA_MISSING_MESSAGE });
-    return reply(500, { error: `อ่านแพ็คต่อรอบของใบไม่สำเร็จ: ${error.message || error.code} — ยังไม่ได้อนุมัติ` });
+    return reply(500, { error: `อ่านค่า${SERVICE_PACKS_LABEL}ของใบไม่สำเร็จ: ${error.message || error.code} — ยังไม่ได้อนุมัติ` });
   }
   const have = new Set((data || [])
     .filter((row) => packsOf(row.packsPerRound) !== null)

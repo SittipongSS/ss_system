@@ -16,7 +16,7 @@ import {
 import { addDays, coverageContinuityErrors, isConfirmed, paidThrough } from '@/lib/sales/paymentCoverage';
 import { historicalDuplicateApprovalRows, historicalDuplicateReviewOf } from '@/lib/sales/historicalDuplicates';
 import { paymentNotRequired, salesOrderMoneyOutcome } from '@/lib/sales/salesOrderPayments';
-import { SERVICE_ROUNDS_LABEL } from '@/lib/sales/serviceOrders';
+import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL } from '@/lib/sales/serviceOrders';
 
 const text = (value) => (value === null || value === undefined ? '' : String(value)).trim();
 const list = (value) => (Array.isArray(value) ? value.filter(Boolean) : []);
@@ -318,11 +318,13 @@ export function historicalBillingDatesText(installments = []) {
   return billed ? `มีวันวางบิล ${fmtNumber(billed)} จาก ${fmtNumber(rows.length)} งวด` : null;
 }
 
-/* ── แพ็คต่อรอบ · รอบบริการของโซน (PR-D · มติเจ้าของ 26/09 A3/O9 · mig 0394) ─────────────────────────────
-   ⭐ "แพ็คต่อรอบ" เป็นช่องของ **โซน** (sales_order_line_zones.packsPerRound) คนละช่องกับจำนวนของบรรทัด (เงิน: 1 ชุด × 12 เดือน)
+/* ── รอบบริการ · แพ็คต่อรอบของโซน (PR-D · มติเจ้าของ 26/09 A3/O9 · mig 0394) ─────────────────────────────
+   ⭐ แพ็คต่อรอบเป็นช่องของ **โซน** (sales_order_line_zones.packsPerRound) คนละช่องกับจำนวนของบรรทัด (เงิน: 1 ชุด × 12 เดือน)
      — อนุมัติแล้วเป็น packageQty ของรอบขาย (0394/P3 เปิดผ่าน sales_order_open_service_terms) ⇒ ผู้คีย์ (ขั้น ④)
      ผู้อนุมัติ (โมดัล) และการ์ดโซนหน้าใบอ่านตัวเลขชุดเดียวกันจากตัวนี้
-   🔴 คำที่ยอม: "แพ็คต่อรอบ" · "แพ็ค/รอบ" เท่านั้น — "N แพ็ค" เปล่า ๆ อ่านได้สองความหมาย (มติ 23/09 · เทสต์ไล่ทุกสตริง)
+   ⭐ มติเจ้าของ 29/09 ("ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง"): ป้าย = `SERVICE_PACKS_LABEL` "แต่ละครั้งกี่แพ็ค" ·
+     พูดรอบก่อนแพ็คทุกที่ (หัวแถว · ค่ารวม · รายโซน · ผลลัพธ์ของ TS)
+   🔴 คำที่ยอม: "แต่ละครั้งกี่แพ็ค" · "แพ็ค/รอบ" เท่านั้น — "N แพ็ค" เปล่า ๆ อ่านได้สองความหมาย (มติ 23/09 · เทสต์ไล่ทุกสตริง)
    ⚠️ ค่าที่ไม่ใช่จำนวนเต็มบวก = **ไม่รู้** (null) ไม่ใช่ 0 — ใบที่คีย์ก่อนมีช่องไม่มีแถวโซนของงานบริการ */
 const positiveInt = (value) => {
   if (value === null || value === undefined || typeof value === 'boolean' || text(value) === '') return null;
@@ -330,9 +332,12 @@ const positiveInt = (value) => {
   return Number.isInteger(n) && n > 0 ? n : null;
 };
 const ZONE_CARD_META_TAIL = 'โซนผูกจากทะเบียนไซต์ตอนคีย์ใบแล้ว ฝ่าย TS ตั้งรอบต่อได้เลย';
-/* หัวแถว "แพ็คต่อรอบ · จำนวนรอบบริการ" ของขั้น ④ (historicalReviewView) และโมดัลอนุมัติ — คำเรียกรอบตามมติเจ้าของ 29/09
-   (`SERVICE_ROUNDS_LABEL`) · ค่าตามหลังเป็นตัวเลขล้วน "รวม 6 แพ็ค/รอบ · 12 รอบ/โซน" (ป้ายบอกแล้วว่าตัวไหนคืออะไร) */
-export const PACKS_ROUNDS_HEAD = `แพ็คต่อรอบ · ${SERVICE_ROUNDS_LABEL}`;
+/* หัวแถว "จำนวนรอบบริการ · แต่ละครั้งกี่แพ็ค" ของขั้น ④ (historicalReviewView) และโมดัลอนุมัติ — คำและลำดับตามมติเจ้าของ 29/09
+   (`SERVICE_ROUNDS_LABEL` · `SERVICE_PACKS_LABEL`) · ค่าตามหลังเป็นตัวเลขล้วน เรียงเดียวกับหัว "12 รอบ/โซน · รวม 6 แพ็ค/รอบ"
+   (ป้ายบอกแล้วว่าตัวไหนคืออะไร) */
+export const PACKS_ROUNDS_HEAD = `${SERVICE_ROUNDS_LABEL} · ${SERVICE_PACKS_LABEL}`;
+/* "ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค" — ท้ายเดียวกับ packs_missing ของใบใหม่ (SERVICE_SETUP_ISSUE_TEXT) */
+const PACKS_MISSING_TEXT = `ยังไม่ใส่ว่า${SERVICE_PACKS_LABEL}`;
 
 /**
  * ตัวเลขรวมของแพ็คต่อรอบ · รอบ — รับได้ทั้งแถวโซนของเสริม (`packsPerRound` · `rounds`) และบรรทัดของแผน (`packsPerRound` · `serviceRounds`)
@@ -371,17 +376,19 @@ function roundsPerZoneText(totals) {
     : `${fmtNumber(totals.roundsMin)}–${fmtNumber(totals.roundsMax)} รอบ/โซน`;
 }
 
-/* "Lobby 2 แพ็ค/รอบ × 12 รอบ" · ยังไม่มีแพ็ค = "Lobby ยังไม่มีแพ็คต่อรอบ · 12 รอบ" (บอกว่าโซนไหนขาด) */
+/* "Lobby 12 รอบ × 2 แพ็ค/รอบ" (รอบก่อนแพ็ค — มติ 29/09) · ยังไม่มีแพ็ค = "Lobby 12 รอบ · ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค"
+   (บอกว่าโซนไหนขาด) */
 function zonePacksText({ label, packs, rounds }) {
-  if (packs === null) return `${label} ยังไม่มีแพ็คต่อรอบ${rounds !== null ? ` · ${fmtNumber(rounds)} รอบ` : ''}`;
-  return `${label} ${fmtNumber(packs)} แพ็ค/รอบ${rounds !== null ? ` × ${fmtNumber(rounds)} รอบ` : ''}`;
+  const roundsText = rounds !== null ? `${fmtNumber(rounds)} รอบ` : '';
+  if (packs === null) return `${label} ${[roundsText, PACKS_MISSING_TEXT].filter(Boolean).join(' · ')}`;
+  return `${label} ${[roundsText, `${fmtNumber(packs)} แพ็ค/รอบ`].filter(Boolean).join(' × ')}`;
 }
 
 /**
- * ประโยคของแพ็คต่อรอบ · รอบ (IMPL_PLAN_D §3.4)
+ * ประโยคของรอบ · แพ็คต่อรอบ (IMPL_PLAN_D §3.4 · ลำดับตามมติ 29/09)
  * @returns `{ total, perZone, meta, overflow, totals }`
- *   · total "รวม 9 แพ็ค/รอบ · 12 รอบ/โซน" (ขาดบางโซน = บอกจำนวนที่ขาดในวงเล็บ) · ไม่รู้แพ็คสักโซน = null
- *   · perZone "Lobby 2 แพ็ค/รอบ × 12 รอบ · …" · เกิน `maxZones` = null + `overflow: true` (ผู้เรียกชี้ที่ของตัวเอง)
+ *   · total "12 รอบ/โซน · รวม 9 แพ็ค/รอบ" (ขาดบางโซน = บอกจำนวนที่ขาดในวงเล็บ) · ไม่รู้แพ็คสักโซน = null
+ *   · perZone "Lobby 12 รอบ × 2 แพ็ค/รอบ · …" · เกิน `maxZones` = null + `overflow: true` (ผู้เรียกชี้ที่ของตัวเอง)
  *   · meta = บรรทัดหัวของการ์ด "โซนในใบนี้" · ไม่รู้แพ็คสักโซน = null (การ์ดใช้ meta เดิม)
  */
 export function historicalPacksRoundsText(zones = [], { maxZones = 5 } = {}) {
@@ -389,10 +396,10 @@ export function historicalPacksRoundsText(zones = [], { maxZones = 5 } = {}) {
   if (!totals.zoneCount) return { total: null, perZone: null, meta: null, overflow: false, totals };
   const overflow = totals.zoneCount > maxZones;
   const packs = totals.packsKnown
-    ? `รวม ${fmtNumber(totals.packsTotal)} แพ็ค/รอบ${totals.packsMissing ? ` (ยังไม่มีแพ็คต่อรอบ ${fmtNumber(totals.packsMissing)} โซน)` : ''}`
+    ? `รวม ${fmtNumber(totals.packsTotal)} แพ็ค/รอบ${totals.packsMissing ? ` (${PACKS_MISSING_TEXT} ${fmtNumber(totals.packsMissing)} โซน)` : ''}`
     : null;
   return {
-    total: packs ? [packs, roundsPerZoneText(totals)].filter(Boolean).join(' · ') : null,
+    total: packs ? [roundsPerZoneText(totals), packs].filter(Boolean).join(' · ') : null,
     perZone: overflow ? null : totals.perZone.map(zonePacksText).join(' · '),
     meta: packs ? `${fmtNumber(totals.zoneCount)} โซน · ${packs} — ${ZONE_CARD_META_TAIL}` : null,
     overflow,
@@ -400,7 +407,7 @@ export function historicalPacksRoundsText(zones = [], { maxZones = 5 } = {}) {
   };
 }
 
-/** เซลล์ "แพ็คต่อรอบ" ของการ์ดโซน — "2 แพ็ค/รอบ" · ไม่รู้ = ขีด (การ์ดไม่ประกอบคำว่าแพ็คเอง · M3) */
+/** เซลล์ "แต่ละครั้งกี่แพ็ค" ของการ์ดโซน — "2 แพ็ค/รอบ" · ไม่รู้ = ขีด (การ์ดไม่ประกอบคำว่าแพ็คเอง · M3) */
 export function historicalPacksCellText(value) {
   const packs = positiveInt(value);
   return packs === null ? NA : `${fmtNumber(packs)} แพ็ค/รอบ`;
@@ -412,8 +419,8 @@ export function historicalPacksCellText(value) {
      (ขั้นส่ง/อนุมัติสร้างแถวโซนเองไม่ได้ — แถวเกิดตอนบันทึกฟอร์มเท่านั้น 0394/P6)
    · ชนิดที่ไม่อยู่ในตาราง = "งานบริการไม่ครบ (ชนิด)" — ไม่มีข้อไหนหายเงียบ */
 export const HISTORICAL_SETUP_ISSUE_TEXT = Object.freeze({
-  zones_missing: 'ยังไม่มีแพ็คต่อรอบ (ใบนี้คีย์ก่อนมีช่องแพ็คต่อรอบ)',
-  packs_missing: 'ยังไม่ใส่แพ็คต่อรอบ',
+  zones_missing: `${PACKS_MISSING_TEXT} (ใบนี้คีย์ก่อนมีช่องนี้)`,
+  packs_missing: PACKS_MISSING_TEXT,
   rounds_missing: `ยังไม่ใส่${SERVICE_ROUNDS_LABEL}`,
   zone_invalid: 'โซนถูกปิดใช้งานหรือไม่ใช่ไซต์ของลูกค้าแล้ว',
   historical_zone_mismatch: 'โซนของงานบริการไม่ตรงกับโซนของรายการ',
@@ -425,8 +432,8 @@ const SETUP_ISSUES_SHOWN = 5;
    ⇒ โค้ดขึ้นก่อนมิกได้: ตัวเขียนรุ่นเก่ารับคีย์ packsPerRound เงียบ ๆ แล้วไม่สร้างแถวแพ็คต่อรอบ · อนุมัติรุ่นเก่าเขียนรอบขาย
    packageQty = จำนวนของบรรทัด (กับดักที่ PR-D มาแก้) ⇒ เข็มขัดฝั่ง JS สองจุด: บันทึก → 503 (ประโยคแรก) · อนุมัติ → 409 (ต่อท้ายด้วยประโยคสอง)
    ⚠️ ประโยคของการบันทึกต้องบอกว่า "บันทึกแล้ว" — ใบร่างลงฐานไปแล้ว ห้ามอ่านเหมือนไม่ได้บันทึก */
-export const HISTORICAL_ALIGNMENT_MISSING_SAVED = 'บันทึกใบร่างแล้ว แต่ฐานข้อมูลยังไม่ได้รัน migration 0394 (แพ็คต่อรอบของใบย้อนหลัง)'
-  + ' — แพ็คต่อรอบของใบนี้ยังไม่ถูกเก็บ · แจ้งผู้ดูแลระบบ แล้วเปิดใบร่างบันทึกขั้น ② ใหม่หลังรันแล้ว';
+export const HISTORICAL_ALIGNMENT_MISSING_SAVED = `บันทึกใบร่างแล้ว แต่ฐานข้อมูลยังไม่ได้รัน migration 0394 (ช่อง${SERVICE_PACKS_LABEL}ของใบย้อนหลัง)`
+  + ` — ค่า${SERVICE_PACKS_LABEL}ของใบนี้ยังไม่ถูกเก็บ · แจ้งผู้ดูแลระบบ แล้วเปิดใบร่างบันทึกขั้น ② ใหม่หลังรันแล้ว`;
 export const HISTORICAL_ALIGNMENT_HINT = 'หากเพิ่งอัปเดตระบบ ฐานข้อมูลอาจยังไม่ได้รัน migration 0394 — แจ้งผู้ดูแลระบบก่อนตีกลับ';
 
 /**
@@ -499,7 +506,7 @@ export function historicalApprovalFacts(order, {
   checklist.push(zones.length
     ? `โซน: ${historicalZoneSitesText(zones)}`
     : `โซน: ${missing} — ใบย้อนหลังต้องมีอย่างน้อย 1 โซน`);
-  /* ── แพ็คต่อรอบ · รอบ (PR-D · มติ 26/09 A3/O9) — แพ็คมากับแถวโซนของเสริมเท่านั้น (บรรทัดของใบไม่พก)
+  /* ── รอบ · แพ็คต่อรอบ (PR-D · มติ 26/09 A3/O9 · ลำดับตามมติ 29/09) — แพ็คมากับแถวโซนของเสริมเท่านั้น (บรรทัดของใบไม่พก)
      ⇒ ของเสริมโหลดไม่ขึ้น / ไม่มีแถวโซน = บอกว่าไม่รู้ ("โหลดไม่ขึ้น"/"ไม่พบ") ไม่ใช่ ⚠️ "คีย์ก่อนมีช่อง" (ไม่รู้ ≠ ไม่มี)
      · ตัวกลางของ 0392 ตรวจซ้ำตอนกด (0394/P3) — แพ็คไม่ครบ = การอนุมัติทั้งก้อนถอย */
   const service = historicalPacksRoundsText(list(lineZones));
@@ -508,10 +515,10 @@ export function historicalApprovalFacts(order, {
   } else if (!service.totals.zoneCount) {
     if (zones.length) checklist.push(`${PACKS_ROUNDS_HEAD}: ${missing} — ระบบตรวจซ้ำตอนกดอนุมัติ`);
   } else {
-    const head = service.total || ['ยังไม่มีแพ็คต่อรอบ', roundsPerZoneText(service.totals)].filter(Boolean).join(' · ');
+    const head = service.total || [roundsPerZoneText(service.totals), PACKS_MISSING_TEXT].filter(Boolean).join(' · ');
     checklist.push(`${PACKS_ROUNDS_HEAD}: ${head} — ${service.perZone || 'ดูการ์ดโซนในหน้าใบ'}`);
     if (service.totals.packsMissing) {
-      checklist.push(`⚠️ แพ็คต่อรอบยังไม่ครบ ${fmtNumber(service.totals.packsMissing)} รายการ (ใบนี้คีย์ก่อนมีช่องแพ็คต่อรอบ)`
+      checklist.push(`⚠️ ${PACKS_MISSING_TEXT} ${fmtNumber(service.totals.packsMissing)} รายการ (ใบนี้คีย์ก่อนมีช่องนี้)`
         + ' — ระบบจะไม่ยอมให้อนุมัติ ตีกลับให้ผู้คีย์บันทึกขั้น ② ใหม่');
     }
   }
@@ -588,12 +595,13 @@ export function historicalApprovalFacts(order, {
   const gate = zeroValue ? 'นัดขึ้นตารางได้ทันที (ใบยอด 0 ไม่มีด่านเงิน)'
     : opening ? `นัดขึ้นตารางได้เมื่อบัญชีรับรอง${OPENING_INSTALLMENT_LABEL}`
       : 'นัดขึ้นตารางได้เมื่อบัญชีรับรองงวดแรก';
-  /* ⭐ PR-D: แพ็คครบทุกโซน = บอกสิ่งที่ TS จะเห็นในคิว (โซน · ไซต์ · แพ็ค/รอบ · จำนวนรอบบริการ) · ไม่รู้/ไม่ครบ = ประโยคเดิม */
+  /* ⭐ PR-D: แพ็คครบทุกโซน = บอกสิ่งที่ TS จะเห็นในคิว (โซน · ไซต์ · จำนวนรอบบริการ · แพ็ค/รอบ — รอบก่อนตามมติ 29/09)
+     · ไม่รู้/ไม่ครบ = ประโยคเดิม */
   const totals = service.totals;
   const rounds = roundsPerZoneText(totals);
   effects.push(!extrasError && totals.zoneCount && !totals.packsMissing
     ? `${fmtNumber(totals.zoneCount)} โซน${totals.siteCount ? `ใน ${fmtNumber(totals.siteCount)} ไซต์` : ''}`
-      + ` · รวม ${fmtNumber(totals.packsTotal)} แพ็ค/รอบ${rounds ? ` · ${SERVICE_ROUNDS_LABEL} ${rounds}` : ''} ขึ้นคิว TS งานเข้าใหม่ › รอตั้งรอบ — ${gate}`
+      + `${rounds ? ` · ${SERVICE_ROUNDS_LABEL} ${rounds}` : ''} · รวม ${fmtNumber(totals.packsTotal)} แพ็ค/รอบ ขึ้นคิว TS งานเข้าใหม่ › รอตั้งรอบ — ${gate}`
     : `${fmtNumber(zones.length)} โซนขึ้นคิว TS งานเข้าใหม่ › รอตั้งรอบ — ${gate}`);
 
   return { subject: `ใบสั่งขาย ${text(order?.orderNumber) || '—'}`, checklist, effects };

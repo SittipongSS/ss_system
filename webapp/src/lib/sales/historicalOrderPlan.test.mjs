@@ -9,13 +9,14 @@ import {
   isCalendarDate, planHistoricalServiceOrder,
 } from './historicalOrderPlan.js';
 import {
-  ZONES_BULK_PACKS_INVALID, ZONES_BULK_PACKS_MAX, ZONES_BULK_PACKS_MIN,
+  ZONES_BULK_PACKS_INVALID, ZONES_BULK_PACKS_LABEL, ZONES_BULK_PACKS_MAX, ZONES_BULK_PACKS_MIN,
 } from '../../components/service/zonesBulkPlan.js';
+import { SERVICE_SETUP_LINE_TEXT, SERVICE_SETUP_SQL_MESSAGES } from './serviceSetup.js';
 import {
   emptyHistoricalZone, historicalIssuesWithRowKeys, historicalLineIssues, historicalWizardBody, stepOfField,
   wizardStateFromOrder,
 } from './historicalIntakeForm.js';
-import { SERVICE_ROUND_CATEGORY } from './serviceOrders.js';
+import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL, SERVICE_ROUND_CATEGORY } from './serviceOrders.js';
 import { OPENING_INSTALLMENT_LABEL } from './historicalOrders.js';
 import { QUOTE_VAT_OPTIONS, quoteLineMoney, quoteTotals } from '../salesPlanning.js';
 import { normalizeManualLines } from './quoteLines.js';
@@ -544,6 +545,12 @@ test('v2 PR-D แพ็คต่อรอบ: ไม่มีคีย์ = ฟ�
   }
   /* ข้อความเท่ากับหน้าต่าง "เพิ่มหลายโซน" ของงานบริการ (คำเดียวทั้งระบบ) · ขอบเท่ากับ CHECK ของ 0392 */
   assert.equal(HISTORICAL_LINE_MESSAGES.packs, ZONES_BULK_PACKS_INVALID);
+  /* ⭐ มติเจ้าของ 29/09 (ใช้กับใบใหม่และใบย้อนหลัง): ป้ายช่อง = "แต่ละครั้งกี่แพ็ค" — ข้อความว่าง/ฟอร์มรุ่นก่อนพูดคำเดียวกัน */
+  assert.equal(HISTORICAL_LINE_MESSAGES.packs, SERVICE_SETUP_SQL_MESSAGES.service_setup_packs_invalid.message, 'คำเดียวกับ 400 ของใบใหม่');
+  assert.equal(HISTORICAL_LINE_MESSAGES.packsMissing, 'ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค (จำนวนเต็ม 1–9999)');
+  assert.equal(HISTORICAL_LINE_MESSAGES.packsStaleForm,
+    'ฟอร์มรุ่นก่อน (ยังไม่มีช่องแต่ละครั้งกี่แพ็ค) — โหลดหน้าใหม่ แล้วใส่แต่ละครั้งกี่แพ็คให้ครบทุกรายการ');
+  for (const message of Object.values(HISTORICAL_LINE_MESSAGES)) assert.doesNotMatch(message, /แพ็คต่อรอบ/, message);
   assert.deepEqual({ ...HISTORICAL_SERVICE_LIMITS }, { packsMin: ZONES_BULK_PACKS_MIN, packsMax: ZONES_BULK_PACKS_MAX });
   assert.deepEqual({ ...HISTORICAL_SERVICE_LIMITS }, { packsMin: 1, packsMax: 9999 });
   assert.ok(Object.isFrozen(HISTORICAL_SERVICE_LIMITS));
@@ -560,6 +567,17 @@ test('v2 PR-D แพ็คต่อรอบ: ไม่มีคีย์ = ฟ�
     );
   }
   assert.deepEqual(base.lines.map((l) => l.packsPerRound), [2, 2, 2, 2]);
+});
+
+/* ⭐ มติเจ้าของ 29/09: "ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง" — ป้ายของใบย้อนหลัง (SERVICE_*_LABEL ของ serviceOrders.js)
+   = แคตตาล็อกของใบใหม่ (SERVICE_SETUP_LINE_TEXT ของ serviceSetup.js · ZONES_BULK_PACKS_LABEL ของหน้าต่างกลาง)
+   ⚠️ serviceOrders.js import serviceSetup.js ไม่ได้ (กฎ 16 — serviceSetupImports.test.mjs) ⇒ literal สองที่ ยึดด้วยเทสต์นี้ */
+test('มติ 29/09: คำของใบย้อนหลัง = คำของใบใหม่ — จำนวนรอบบริการ · แต่ละครั้งกี่แพ็ค', () => {
+  assert.equal(SERVICE_ROUNDS_LABEL, SERVICE_SETUP_LINE_TEXT.roundsLabel);
+  assert.equal(SERVICE_PACKS_LABEL, SERVICE_SETUP_LINE_TEXT.packsLabel);
+  assert.equal(SERVICE_PACKS_LABEL, ZONES_BULK_PACKS_LABEL);
+  assert.deepEqual([SERVICE_ROUNDS_LABEL, SERVICE_PACKS_LABEL], ['จำนวนรอบบริการ', 'แต่ละครั้งกี่แพ็ค']);
+  assert.equal(ZONES_BULK_PACKS_INVALID, SERVICE_SETUP_SQL_MESSAGES.service_setup_packs_invalid.message);
 });
 
 test('v2 PR-D 🪤 แท็บรุ่น 0374 (แพ็ค + ยอดที่พิมพ์เอง) ได้ข้อความเดียวต่อแถว — ไม่ซ้อน "ไม่มีช่องแพ็คต่อรอบ"', () => {
@@ -592,15 +610,15 @@ test('v2 ราคา: แพ็คเกจยังไม่ตั้งรา
 const MISSING_ZONE = 'ต้องเลือกไซต์ · โซนจากทะเบียนไซต์ของลูกค้า — ห้ามพิมพ์ชื่อจุดเอง';
 test('v2 ⭐ error ของบรรทัดชี้ช่อง (zones.<i>.<ช่อง>) + detail ไม่มีป้าย · ป้าย "รายการ N (โซน)" · ทุกช่องพาไปขั้น ②', () => {
   // หนึ่งบรรทัดผิดครบห้าช่อง (บรรทัดใหม่จาก "เพิ่มรายการ" ที่ยังไม่ได้เลือกอะไร + รอบผิด) = ห้าข้อ คนละช่อง
-  // ⭐ PR-D: แพ็คต่อรอบอยู่ระหว่างจำนวนกับรอบ — ลำดับเดียวกับช่องบนจอ (โซน · แพ็คต่อรอบ · รอบ)
+  // ⭐ มติ 29/09: รอบก่อนแพ็ค — ลำดับเดียวกับช่องบนจอ (โซน · จำนวนรอบบริการ · แต่ละครั้งกี่แพ็ค)
   const blank = planV2({ zones: [{ zoneId: '', productId: '', qty: '', discountType: null, discountValue: 0, rounds: '2.5', packsPerRound: '' }] });
   const lineErrors = blank.errors.filter((e) => /^zones\./.test(e.field));
   assert.deepEqual(lineErrors, [
     { field: 'zones.0.zoneId', message: `รายการ 1: ${MISSING_ZONE}`, detail: MISSING_ZONE },
     { field: 'zones.0.productId', message: 'รายการ 1: ต้องเลือกแพ็คเกจบริการ', detail: 'ต้องเลือกแพ็คเกจบริการ' },
     { field: 'zones.0.qty', message: `รายการ 1: ${HISTORICAL_LINE_MESSAGES.qty}`, detail: HISTORICAL_LINE_MESSAGES.qty },
-    { field: 'zones.0.packsPerRound', message: `รายการ 1: ${HISTORICAL_LINE_MESSAGES.packsMissing}`, detail: HISTORICAL_LINE_MESSAGES.packsMissing },
     { field: 'zones.0.rounds', message: `รายการ 1: ${HISTORICAL_LINE_MESSAGES.rounds}`, detail: HISTORICAL_LINE_MESSAGES.rounds },
+    { field: 'zones.0.packsPerRound', message: `รายการ 1: ${HISTORICAL_LINE_MESSAGES.packsMissing}`, detail: HISTORICAL_LINE_MESSAGES.packsMissing },
   ], 'ยังไม่รู้โซน = ป้ายเลขบรรทัดล้วน ไม่มีวงเล็บ');
 
   // รู้โซนแล้ว = ป้ายพกชื่อโซน · เลขบรรทัด = ลำดับในตาราง (index + 1) ไม่ใช่ลำดับของโซน

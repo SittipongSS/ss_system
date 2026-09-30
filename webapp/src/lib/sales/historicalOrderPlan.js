@@ -21,7 +21,7 @@ import {
 import { QUOTE_PRICE_FIELD } from '@/lib/sales/quoteLines';
 import { ownerLockedToSelf } from '@/lib/sales/dealOwner';
 import { EXTERNAL_DOC_KINDS } from '@/lib/sales/contracts';
-import { SERVICE_ROUNDS_LABEL, SERVICE_ROUND_CATEGORY, lineIsServicePackage } from '@/lib/sales/serviceOrders';
+import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL, SERVICE_ROUND_CATEGORY, lineIsServicePackage } from '@/lib/sales/serviceOrders';
 import { bindTargetError } from '@/lib/service/intake';
 import { termIsActive } from '@/lib/service/terms';
 import { coverageContinuityErrors } from '@/lib/sales/paymentCoverage';
@@ -57,10 +57,12 @@ export const HISTORICAL_REQUIRED_MESSAGES = Object.freeze({
 });
 
 /* ข้อความรายช่องของบรรทัดโซน — ก้อนเดียวที่แผนตีกลับ และเทสต์อ้าง
-   ⭐ PR-D (mig 0394 · r2 S12 · มติ 26/09 A3/O9): จำนวนรอบบริการบังคับ (`roundsMissing`) + ช่อง "แพ็คต่อรอบ" ของแต่ละบรรทัด
-     (`packsMissing` · `packs` · `packsStaleForm`) — แพ็คต่อรอบคือจำนวนแพ็คที่ TS ใช้ต่อการเข้าโซนหนึ่งครั้ง
+   ⭐ PR-D (mig 0394 · r2 S12 · มติ 26/09 A3/O9): จำนวนรอบบริการบังคับ (`roundsMissing`) + ช่องแพ็คต่อรอบ (`packsPerRound`) ของแต่ละบรรทัด
+     (`packsMissing` · `packs` · `packsStaleForm`) — จำนวนแพ็คที่ TS ใช้ต่อการเข้าโซนหนึ่งครั้ง
      **คนละช่องกับ "จำนวน"** (จำนวน = เงิน: 1 ชุด × 12 เดือน · มติ 23/09) ⇒ ไม่แตะยอดใดเลย
-   ⚠️ `packs` = คำเดียวกับ ZONES_BULK_PACKS_INVALID ของหน้าต่างเพิ่มหลายโซนงานบริการ (เทสต์ยึด — lib ไม่ import components) */
+   ⭐ มติเจ้าของ 29/09 (ใบใหม่และใบย้อนหลัง): ป้ายช่อง = `SERVICE_PACKS_LABEL` "แต่ละครั้งกี่แพ็ค" (คำของใบใหม่)
+   ⚠️ `packs` = คำเดียวกับ ZONES_BULK_PACKS_INVALID ของหน้าต่างเพิ่มหลายโซน และ service_setup_packs_invalid ของใบใหม่
+     (เทสต์ยึด — lib ไม่ import components) */
 export const HISTORICAL_LINE_MESSAGES = Object.freeze({
   staleForm: 'ฟอร์มรุ่นก่อน (แพ็ค · ยอดที่พิมพ์เอง) — โหลดหน้าใหม่ แล้วคีย์โซนนี้เป็น จำนวน × ราคา/หน่วย แบบใบเสนอราคา',
   qty: 'จำนวนต้องเป็นจำนวนเต็มมากกว่า 0',
@@ -68,9 +70,9 @@ export const HISTORICAL_LINE_MESSAGES = Object.freeze({
   priceUnknown: 'อ่านราคาของแพ็คเกจจากฐานข้อมูลสินค้าไม่ได้ — ลองใหม่อีกครั้ง (ถ้ายังไม่ได้ แจ้งผู้ดูแลระบบ)',
   rounds: `${SERVICE_ROUNDS_LABEL}ต้องเป็นจำนวนเต็มมากกว่า 0`,
   roundsMissing: `ยังไม่ใส่${SERVICE_ROUNDS_LABEL}`,
-  packsMissing: 'ยังไม่ใส่แพ็คต่อรอบ (จำนวนเต็ม 1–9999)',
-  packs: 'แพ็คต่อรอบต้องเป็นจำนวนเต็ม 1–9999',
-  packsStaleForm: 'ฟอร์มรุ่นก่อน (ยังไม่มีช่องแพ็คต่อรอบ) — โหลดหน้าใหม่ แล้วใส่แพ็คต่อรอบของทุกรายการ',
+  packsMissing: `ยังไม่ใส่ว่า${SERVICE_PACKS_LABEL} (จำนวนเต็ม 1–9999)`,
+  packs: `${SERVICE_PACKS_LABEL} ต้องเป็นจำนวนเต็ม 1–9999`,
+  packsStaleForm: `ฟอร์มรุ่นก่อน (ยังไม่มีช่อง${SERVICE_PACKS_LABEL}) — โหลดหน้าใหม่ แล้วใส่${SERVICE_PACKS_LABEL}ให้ครบทุกรายการ`,
 });
 
 /* ลูกค้า "ไม่ต้องวางบิล" ตั้งวันวางบิลใหม่ในวิซาร์ด (review 29/09) — ประโยคของด่านรุ่นสี่ชี้เมนู "งวดนี้ต้องวางบิล…" ที่วิซาร์ด
@@ -464,12 +466,19 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
       else { unitPrice = toMoney(product[QUOTE_PRICE_FIELD]); priceOk = true; }
     }
     if (!priceOk) linesMoneyOk = false;
-    /* ── งานบริการของบรรทัด (PR-D · mig 0394): แพ็คต่อรอบ + รอบบริการ — **ไม่แตะเงิน** (linesMoneyOk ไม่ขยับ) ──
-       ลำดับข้อ = ลำดับช่องบนจอ (โซน · แพ็คต่อรอบ · รอบ) ⇒ ข้อแรกที่ปุ่มพาไปคือช่องแรกที่ตาเห็น
+    /* ── งานบริการของบรรทัด (PR-D · mig 0394): รอบบริการ + แพ็คต่อรอบ — **ไม่แตะเงิน** (linesMoneyOk ไม่ขยับ) ──
+       ลำดับข้อ = ลำดับช่องบนจอ (โซน · จำนวนรอบบริการ · แต่ละครั้งกี่แพ็ค — มติ 29/09) ⇒ ข้อแรกที่ปุ่มพาไปคือช่องแรกที่ตาเห็น
        🪤 ไม่มีคีย์ `packsPerRound` = แท็บที่เปิดค้างจากก่อน deploy (จอของเขาไม่มีช่องนี้) ⇒ บอกให้โหลดหน้าใหม่ (DD13)
           ไม่ใช่ "ยังไม่ใส่" ที่ส่งเขาไปหาช่องที่ไม่มี · แถวรุ่น 0374 (`staleForm` ข้างบน) ได้ข้อความเดียวของมันพอ
        ⚠️ ฐานตรวจซ้ำ: 0394/P4 (ตัวตรวจบรรทัด — รอบว่าง = historical_so_line_rounds_required) · P5 (ตัวเขียน — ทุกบรรทัดต้องพก
           แพ็คต่อรอบเป็นตัวเลข 1–9999 ⇒ ค่าที่ส่งเข้า RPC เป็น **ตัวเลข** เสมอ ไม่ใช่สตริงของช่องกรอก) */
+    /* ⭐ รอบบริการบังคับ (r2 S12) — ของเดิม "เว้นว่างได้ · TS ตั้งวันนัดเอง" ถูกถอด: ตัวกลางเปิดรอบขายของ 0392 ต้องรู้จำนวนรอบ */
+    let serviceRounds = null;
+    if (!text(row.rounds)) push(HISTORICAL_LINE_MESSAGES.roundsMissing, 'rounds');
+    else {
+      serviceRounds = historicalRoundsValue(row.rounds);
+      if (serviceRounds === null) push(HISTORICAL_LINE_MESSAGES.rounds, 'rounds');
+    }
     let packsPerRound = null;
     if (!staleForm) {
       if (!has(row, 'packsPerRound')) push(HISTORICAL_LINE_MESSAGES.packsStaleForm, 'packsPerRound');
@@ -478,13 +487,6 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
         packsPerRound = historicalPacksValue(row.packsPerRound);
         if (packsPerRound === null) push(HISTORICAL_LINE_MESSAGES.packs, 'packsPerRound');
       }
-    }
-    /* ⭐ รอบบริการบังคับ (r2 S12) — ของเดิม "เว้นว่างได้ · TS ตั้งวันนัดเอง" ถูกถอด: ตัวกลางเปิดรอบขายของ 0392 ต้องรู้จำนวนรอบ */
-    let serviceRounds = null;
-    if (!text(row.rounds)) push(HISTORICAL_LINE_MESSAGES.roundsMissing, 'rounds');
-    else {
-      serviceRounds = historicalRoundsValue(row.rounds);
-      if (serviceRounds === null) push(HISTORICAL_LINE_MESSAGES.rounds, 'rounds');
     }
 
     // รอบขายที่ยังมีผลของใบอื่นบนโซนเดียวกัน — เตือน ไม่บล็อก (ต่อสัญญาช่วงคาบเกี่ยวเป็นเรื่องปกติ · AE Sup ตัดสิน)

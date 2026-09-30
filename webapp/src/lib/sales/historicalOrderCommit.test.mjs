@@ -281,7 +281,7 @@ test('แผนมี error = 400 พร้อมรายช่อง · ไม
 test('PR-D: บรรทัดไม่มีแพ็คต่อรอบ/รอบว่าง/วันวางบิลผิดรูป = 400 รายช่อง · ไม่เรียก RPC', async () => {
   const noPacks = body().zones.map(({ packsPerRound, ...zone }) => zone);
   const cases = [
-    [{ zones: noPacks }, 'zones.0.packsPerRound', /ฟอร์มรุ่นก่อน.*แพ็คต่อรอบ/],
+    [{ zones: noPacks }, 'zones.0.packsPerRound', /ฟอร์มรุ่นก่อน.*แต่ละครั้งกี่แพ็ค/],
     [{ zones: body().zones.map((zone, i) => (i ? zone : { ...zone, rounds: '' })) }, 'zones.0.rounds', /ยังไม่ใส่จำนวนรอบบริการ/],
     [{ installments: [{ ...body().installments[0], billingDate: '2026-02-30' }] }, 'installments.0.billingDate', /วันวางบิลไม่ถูกต้อง/],
   ];

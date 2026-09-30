@@ -15,7 +15,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { HISTORICAL_BILLING_TEXT, HISTORICAL_SERVICE_TEXT } from './historicalIntakeForm.js';
-import { HISTORICAL_SETUP_ISSUE_TEXT } from './historicalOrderCopy.js';
+import { HISTORICAL_SETUP_ISSUE_TEXT, PACKS_ROUNDS_HEAD } from './historicalOrderCopy.js';
 import { WORKFLOW_ERROR_CODES } from './documentWorkflowErrors.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -129,9 +129,13 @@ test('§8E: คำบนจอที่เอกสารยกมาตรง�
     HISTORICAL_SERVICE_TEXT.roundsNote,
     HISTORICAL_SERVICE_TEXT.bulk.packsLabel,
     HISTORICAL_BILLING_TEXT.sub,
+    /* ⭐ มติเจ้าของ 29/09 (ใบใหม่และใบย้อนหลัง): ป้ายช่อง + หัวแถวของขั้น ④/โมดัลอนุมัติ = คำของใบใหม่ */
+    HISTORICAL_SERVICE_TEXT.packsLabel,
+    PACKS_ROUNDS_HEAD,
   ]) assert.ok(prd().includes(`"${quoted}"`), `§8E ต้องยกคำตามจอ: "${quoted}"`);
+  assert.doesNotMatch(prd(), /"แพ็คต่อรอบ[^"]*"/, '§8E ห้ามยกป้ายเดิมก่อนมติ 29/09 เป็นคำบนจอ');
   const wizard = src('components/salesPlanning/historicalWizard/HistoricalOrderWizard.js');
-  const notice = 'โหลดข้อมูลประกอบของใบไม่ขึ้น (แพ็คต่อรอบ · ไฟล์เอกสาร · งวด)';
+  const notice = 'โหลดข้อมูลประกอบของใบไม่ขึ้น (แต่ละครั้งกี่แพ็ค · ไฟล์เอกสาร · งวด)';
   assert.ok(wizard.includes(notice), 'ด่าน DD17 ของโหมดแก้ต้องมีจริงในวิซาร์ด');
   assert.ok(prd().includes(notice), '§8E ต้องบอกด่าน DD17 ด้วยคำเดียวกับจอ');
 });

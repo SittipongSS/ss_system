@@ -1017,20 +1017,23 @@ test('⭐ 23/09 → 26/09: ขั้น ② ไม่เหลือ "แพ็�
   assert.equal(T.packsUnit, 'แพ็ค', 'หน่วยท้ายช่องแพ็คต่อรอบ');
   const said = [T.packsLabel, T.packsAria('รายการ 1'), T.assessed(2), T.useAssessedAria(2, 'รายการ 1'), T.lineTotal(24),
     T.assessFailed, T.bulk.subtitle, T.bulk.packsLabel, T.bulk.assessLoading, T.bulk.assessFailed].join(' | ');
-  const allowed = /แพ็คต่อรอบ|แพ็ค\/รอบ|ประเมินไว้ \d+ แพ็ค|ผลประเมิน \d+ แพ็ค|ทั้งรายการ \d+ แพ็ค/g;
+  const allowed = /แต่ละครั้งกี่แพ็ค|แพ็ค\/รอบ|ประเมินไว้ \d+ แพ็ค|ผลประเมิน \d+ แพ็ค|ทั้งรายการ \d+ แพ็ค/g;
   assert.doesNotMatch(said.replace(allowed, ''), /แพ็ค(?!เกจ)/,
-    'รูปที่อนุญาต: แพ็คต่อรอบ · แพ็ค/รอบ · ประเมินไว้ n แพ็ค · ทั้งรายการ n แพ็ค (+ หน่วยท้ายช่อง)');
+    'รูปที่อนุญาต: แต่ละครั้งกี่แพ็ค · แพ็ค/รอบ · ประเมินไว้ n แพ็ค · รวมทั้งรายการ n แพ็ค (+ หน่วยท้ายช่อง)');
+  assert.doesNotMatch(said, /แพ็คต่อรอบ/, 'มติ 29/09: ป้ายเดียวกับใบใหม่ — "แต่ละครั้งกี่แพ็ค"');
 });
 
-/* ⭐ PR-D (mig 0394 · r2 S12 · IMPL_PLAN_D DD1–DD2): แถบผูกของบรรทัด = ไซต์ · โซน * | แพ็คต่อรอบ * (ชิป "ประเมินไว้ n แพ็ค" [ใช้])
-   | จำนวนรอบบริการ * (บังคับ — เลิก "เว้นว่างได้" · คำตามมติ 29/09) | ทั้งรายการ n แพ็ค (อ่านอย่างเดียว เมื่อสองช่องถูก)
+/* ⭐ PR-D (mig 0394 · r2 S12 · IMPL_PLAN_D DD1–DD2): แถบผูกของบรรทัด = ไซต์ · โซน * | จำนวนรอบบริการ * (บังคับ — เลิก "เว้นว่างได้")
+   | แต่ละครั้งกี่แพ็ค * (ชิป "ประเมินไว้ n แพ็ค" [ใช้]) | รวมทั้งรายการ n แพ็ค (อ่านอย่างเดียว เมื่อสองช่องถูก)
+   — คำและลำดับตามมติเจ้าของ 29/09 ("ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง")
    🔴 แดงหลังกด "ถัดไป" เท่านั้น — ข้อความใต้ช่องมาจาก `bad` (issues ที่เปิดเผยแล้ว) ช่องเดียวกับช่องอื่นของบรรทัด */
-test('PR-D ⭐ ขั้น ②: "แพ็คต่อรอบ *" + ชิปผลประเมิน · "รอบบริการ" บังคับ · "ทั้งรายการ n แพ็ค" — แดงหลังกด ถัดไป', () => {
+test('PR-D ⭐ ขั้น ②: "จำนวนรอบบริการ *" บังคับ → "แต่ละครั้งกี่แพ็ค *" + ชิปผลประเมิน → "รวมทั้งรายการ n แพ็ค" — แดงหลังกด ถัดไป', () => {
   const src = code(STEP_ZONES);
   assert.match(src, /import HistoricalLineServiceFields, \{ HistoricalLineServiceTotal \} from "\.\/HistoricalLineServiceFields";/);
   const bind = slice(src, '<div className={styles.lineBind}>', '{warn ? (');
   let at = -1;
-  for (const piece of ['className={styles.lineBindZone}', '<HistoricalLineServiceFields', '<QuoteLineServiceRounds', '<HistoricalLineServiceTotal view={service} />']) {
+  /* ⭐ มติเจ้าของ 29/09 (ใบใหม่และใบย้อนหลัง): ไซต์ · โซน → จำนวนรอบบริการ → แต่ละครั้งกี่แพ็ค → รวมทั้งรายการ n แพ็ค */
+  for (const piece of ['className={styles.lineBindZone}', '<QuoteLineServiceRounds', '<HistoricalLineServiceFields', '<HistoricalLineServiceTotal view={service} />']) {
     const next = bind.indexOf(piece);
     assert.ok(next > at, `ลำดับในแถบผูกผิดที่ ${piece}`);
     at = next;
@@ -1074,7 +1077,7 @@ test('PR-D ⭐ ขั้น ②: "แพ็คต่อรอบ *" + ชิป�
   for (const prop of ['font-size', 'font-weight', 'line-height', 'color']) {
     const pick = (block) => (block.match(new RegExp(`${prop}:\\s*([^;]+);`)) || [])[1];
     assert.ok(pick(label), `หัวช่องรอบต้องตั้ง ${prop}`);
-    assert.equal(pick(label), pick(own), `หัวช่องรอบ ${prop} = หัวช่องแพ็คต่อรอบ`);
+    assert.equal(pick(label), pick(own), `หัวช่องรอบ ${prop} = หัวช่องแต่ละครั้งกี่แพ็ค`);
   }
   const total = slice(css, '.lineBindTotal {', '}');
   assert.doesNotMatch(total, /min-height|align-self/, 'ไม่มีกล่องสูงเท่าช่องกรอก');
@@ -1085,7 +1088,7 @@ test('PR-D ⭐ ขั้น ②: "แพ็คต่อรอบ *" + ชิป�
 
   /* ของจริงของตัวตัดสินที่ช่องวาด */
   const view = intakeForm.historicalLineServiceView({ zoneId: 'ZN-1', packsPerRound: '2', rounds: '12' }, new Map([['ZN-1', 3]]));
-  assert.deepEqual(view, { assessed: 3, canUse: true, total: 24, totalText: 'ทั้งรายการ 24 แพ็ค' });
+  assert.deepEqual(view, { assessed: 3, canUse: true, total: 24, totalText: 'รวมทั้งรายการ 24 แพ็ค' });
   assert.equal(intakeForm.historicalLineServiceView({ zoneId: 'ZN-1', packsPerRound: '3' }, new Map([['ZN-1', 3]])).canUse, false,
     'ค่าเท่าผลประเมินแล้ว = ไม่มีปุ่ม');
   assert.equal(intakeForm.historicalLineServiceView({ zoneId: 'ZN-1', packsPerRound: '2', rounds: '' }, null).totalText, null,
@@ -1122,7 +1125,7 @@ test('PR-D 🔴 DD17: เปิดแก้ใบที่อ่านของ�
   const wizard = code(WIZARD);
   const hydrate = slice(wizard, 'if (!HISTORICAL_EDITABLE_STATUSES.includes(order.status)) {', 'setState(wizardStateFromOrder(order));');
   assert.match(hydrate,
-    /if \(order\.extrasError\) \{\s*setReadOnly\(`โหลดข้อมูลประกอบของใบไม่ขึ้น \(แพ็คต่อรอบ · ไฟล์เอกสาร · งวด\) — โหลดหน้าใหม่ก่อนแก้ · \$\{order\.extrasError\}`\);\s*return;\s*\}/);
+    /if \(order\.extrasError\) \{\s*setReadOnly\(`โหลดข้อมูลประกอบของใบไม่ขึ้น \(แต่ละครั้งกี่แพ็ค · ไฟล์เอกสาร · งวด\) — โหลดหน้าใหม่ก่อนแก้ · \$\{order\.extrasError\}`\);\s*return;\s*\}/);
   assert.ok(hydrate.indexOf('if (order.extrasError)') > hydrate.indexOf('return;'), 'หลังด่านสถานะ (ใบที่แก้ไม่ได้อยู่แล้วพูดเหตุของตัวเองก่อน)');
 });
 
@@ -1482,9 +1485,9 @@ test('⭐ 25/09 → PR-D: ปุ่มยืนยันของหน้าต
   assert.equal(intakeForm.historicalBulkQtyIssue('1.5'), intakeForm.HISTORICAL_LINE_MESSAGES.qty);
   assert.equal(intakeForm.historicalBulkQtyIssue(''), null);
   assert.equal(intakeForm.historicalBulkConsequence({ count: 3, qty: '12', unitPrice: 3500, mode: 'equal', packs: 2, rounds: '12' }),
-    'จะเพิ่ม 3 บรรทัด · บรรทัดละ 12 × ฿3,500.00 = ฿42,000.00 · รวม ฿126,000.00 · แพ็คต่อรอบ 2 แพ็คทุกบรรทัด · จำนวนรอบบริการ 12 รอบ');
+    'จะเพิ่ม 3 บรรทัด · บรรทัดละ 12 × ฿3,500.00 = ฿42,000.00 · รวม ฿126,000.00 · จำนวนรอบบริการ 12 รอบ · แต่ละครั้งเท่ากันทุกบรรทัด ครั้งละ 2 แพ็ค');
   assert.match(intakeForm.historicalBulkConsequence({ count: 3, qty: '', unitPrice: 3500, mode: 'assessed', assessed: 2, blank: 1, rounds: '' }),
-    /จำนวนใส่ทีละบรรทัดในตาราง · แพ็คต่อรอบตามผลประเมิน 2 โซน · ยังว่าง 1 โซน$/);
+    /จำนวนใส่ทีละบรรทัดในตาราง · แต่ละครั้งกี่แพ็ค: ตามผลประเมิน 2 โซน · ยังว่าง 1 โซน$/);
 });
 
 /* 🔴 กฎบ้าน 3 ที่ตัวห่อ (L8): ช่องของตัวห่อแดงหลังกดเท่านั้น — ของเดิมช่องจำนวนแดงทันทีที่พิมพ์ 1.5 */

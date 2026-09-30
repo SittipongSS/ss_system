@@ -25,7 +25,7 @@ import { fileURLToPath } from 'node:url';
 
 import { historicalApprovalPrompt } from '../approvalPrompt.js';
 import { historicalOverrideNote } from './historicalOrderCopy.js';
-import { SERVICE_ROUNDS_LABEL } from './serviceOrders.js';
+import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL } from './serviceOrders.js';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '../..');
 /* ตัดคอมเมนต์โดยคงจำนวนบรรทัด — ตัวอย่างในคอมเมนต์ต้องไม่ทำให้ยามผ่านเอง */
@@ -311,17 +311,19 @@ test('การ์ดโซนไม่คิดสถานะเอง · ไ�
    ⭐ PR-D (มติเจ้าของ 26/09 A3/O9 · mig 0394): "แพ็คต่อรอบ" กลับมาเป็น **ช่องของโซน** (sales_order_line_zones) คนละช่องกับ
    จำนวนของบรรทัด ⇒ คอลัมน์ใหม่ "แพ็คต่อรอบ" · ข้อห้ามแคบลงโดยตั้งใจ: ห้าม "แพ็ค" ที่ไม่ใช่ แพ็คเกจ/แพ็คต่อรอบ/แพ็ค/รอบ
    และ (M3) ตัวการ์ดเองมีคำว่าแพ็คได้ที่หัวคอลัมน์ที่เดียว — ค่าในเซลล์/หัวการ์ดประกอบที่ lib (historicalOrderCopy) */
-test('⭐ 23/09 + PR-D: การ์ดโซนพูดรายการ · จำนวน + หน่วย · แพ็คต่อรอบ · จำนวนรอบบริการ · จำนวนเงิน — ไม่มี "N แพ็ค" เปล่า', () => {
+test('⭐ 23/09 + PR-D: การ์ดโซนพูดรายการ · จำนวน + หน่วย · จำนวนรอบบริการ · แต่ละครั้งกี่แพ็ค · จำนวนเงิน — ไม่มี "N แพ็ค" เปล่า', () => {
   const card = code(ZONES_CARD);
   const heads = [...slice(card, '<thead>', '</thead>').matchAll(/<th\b[^>]*>([^<]+)<\/th>/g)].map((m) => m[1].trim());
-  /* ⭐ มติเจ้าของ 29/09: หัวคอลัมน์รอบ = ค่าคงที่ `SERVICE_ROUNDS_LABEL` "จำนวนรอบบริการ" (ไม่สะกดเองในการ์ด) */
-  assert.deepEqual(heads, ['ไซต์ · โซน', 'รายการ', 'จำนวน', 'แพ็คต่อรอบ', '{SERVICE_ROUNDS_LABEL}', 'จำนวนเงิน', 'สถานะรอบ']);
+  /* ⭐ มติเจ้าของ 29/09 (ใบใหม่และใบย้อนหลัง): หัวคอลัมน์ = ค่าคงที่ `SERVICE_ROUNDS_LABEL` "จำนวนรอบบริการ" ก่อน
+     `SERVICE_PACKS_LABEL` "แต่ละครั้งกี่แพ็ค" (ไม่สะกดเองในการ์ด) */
+  assert.deepEqual(heads, ['ไซต์ · โซน', 'รายการ', 'จำนวน', '{SERVICE_ROUNDS_LABEL}', '{SERVICE_PACKS_LABEL}', 'จำนวนเงิน', 'สถานะรอบ']);
   assert.equal(SERVICE_ROUNDS_LABEL, 'จำนวนรอบบริการ');
-  assert.match(card, /import \{ SERVICE_ROUNDS_LABEL \} from "@\/lib\/sales\/serviceOrders";/);
-  assert.doesNotMatch(card, /รอบบริการที่ขายไว้|ไปกี่รอบ/, 'คำเก่าห้ามกลับมา (มติ 29/09)');
-  assert.doesNotMatch(card, /\bpacks\b|แพ็ค(?!เกจ|ต่อรอบ|\/รอบ)/);
-  assert.deepEqual([...card.matchAll(/แพ็ค[^\s<]*/g)].map((m) => m[0]), ['แพ็คต่อรอบ'],
-    'M3: คำว่าแพ็คในการ์ดมีแค่หัวคอลัมน์ — เซลล์เรียก historicalPacksCellText');
+  assert.equal(SERVICE_PACKS_LABEL, 'แต่ละครั้งกี่แพ็ค');
+  assert.match(card, /import \{ SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL \} from "@\/lib\/sales\/serviceOrders";/);
+  assert.doesNotMatch(card, /รอบบริการที่ขายไว้|ไปกี่รอบ|แพ็คต่อรอบ/, 'คำเก่าห้ามกลับมา (มติ 29/09)');
+  assert.doesNotMatch(card, /\bpacks\b|แพ็ค(?!เกจ|\/รอบ)/);
+  assert.deepEqual([...card.matchAll(/แพ็ค[^\s<]*/g)].map((m) => m[0]), [],
+    'M3: การ์ดไม่สะกดคำว่าแพ็คเอง — หัวคอลัมน์เป็นค่าคงที่ · เซลล์เรียก historicalPacksCellText');
   assert.match(card, /historicalPacksCellText\(zone\.packsPerRound\)/);
   assert.match(card, /const unit = zone\.unit \|\| line\?\.unit \|\| "";/, 'หน่วยมาจากบรรทัด (ของเสริมก่อน แล้วถอยไปที่บรรทัดของใบ)');
   assert.match(card, /`\$\{fmtNumber\(zones\.length\)\} โซน — /, 'บรรทัดหัวนับโซน ไม่นับแพ็ค');

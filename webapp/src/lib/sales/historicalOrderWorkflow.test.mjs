@@ -371,7 +371,7 @@ test('อนุมัติ: audit รอบขาย — แพ็คต่อ�
     { id: 'SZT-S2', zoneId: 'Z-2', salesOrderLineId: 'SOL-2', packageQty: null, unit: 'แพ็ค' },
   ] })] }));
   assert.equal(partial.audits[2].summary,
-    'เปิดโซนให้ TS จากการอนุมัติใบสั่งขายย้อนหลัง SO-26090191-0 — 2 โซน · รวม 2 แพ็ค/รอบ (ยังไม่มีแพ็คต่อรอบ 1 โซน) (รอตั้งรอบ)');
+    'เปิดโซนให้ TS จากการอนุมัติใบสั่งขายย้อนหลัง SO-26090191-0 — 2 โซน · รวม 2 แพ็ค/รอบ (ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค 1 โซน) (รอตั้งรอบ)');
   const unknown = await runApprove(fakeDb({ rpc: [approved({ terms: [
     { id: 'SZT-S1', zoneId: 'Z-1', salesOrderLineId: 'SOL-1', packageQty: null },
   ] })] }));
@@ -401,8 +401,8 @@ test('อนุมัติ: ตัวกลางตีกลับ (งาน�
   assert.equal(res.status, 409);
   assert.equal(res.body.code, 'historical_service_setup_incomplete');
   assert.deepEqual(res.body.setupErrors, ['zones_missing:SOL-2', 'packs_missing:SOL-1:Z-1']);
-  assert.equal(res.body.error, 'อนุมัติไม่ได้ — งานบริการของใบนี้ไม่ครบ: รายการ 1: ยังไม่ใส่แพ็คต่อรอบ'
-    + ' · รายการ 2: ยังไม่มีแพ็คต่อรอบ (ใบนี้คีย์ก่อนมีช่องแพ็คต่อรอบ) — ตีกลับให้ผู้คีย์บันทึกขั้น ② ใหม่');
+  assert.equal(res.body.error, 'อนุมัติไม่ได้ — งานบริการของใบนี้ไม่ครบ: รายการ 1: ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค'
+    + ' · รายการ 2: ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค (ใบนี้คีย์ก่อนมีช่องนี้) — ตีกลับให้ผู้คีย์บันทึกขั้น ② ใหม่');
   assert.equal(res.audits.length, 0);
   assert.equal(res.threads.length, 0);
 
@@ -430,7 +430,7 @@ test('อนุมัติ 🔴 เข็มขัดก่อน RPC: บร�
   assert.equal(res.status, 409);
   assert.equal(res.body.code, 'historical_service_setup_incomplete');
   assert.deepEqual(res.body.setupErrors, ['zones_missing:SOL-1', 'zones_missing:SOL-2']);
-  assert.match(res.body.error, /^อนุมัติไม่ได้ — งานบริการของใบนี้ไม่ครบ: รายการ 1: ยังไม่มีแพ็คต่อรอบ .* · รายการ 2: ยังไม่มีแพ็คต่อรอบ/);
+  assert.match(res.body.error, /^อนุมัติไม่ได้ — งานบริการของใบนี้ไม่ครบ: รายการ 1: ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค .* · รายการ 2: ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค/);
   assert.match(res.body.error, / · หากเพิ่งอัปเดตระบบ ฐานข้อมูลอาจยังไม่ได้รัน migration 0394 — แจ้งผู้ดูแลระบบก่อนตีกลับ$/);
   assert.equal(none.calls.rpc.length, 0);
   assert.equal(res.audits.length, 0);

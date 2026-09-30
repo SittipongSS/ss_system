@@ -114,7 +114,8 @@ export function historicalReviewChecklist(plan, { contractFiles = {}, evidenceFi
     key: 'zones', label: 'โซน', value: historicalZoneSitesText(plan.lines) || '—',
     warn: warnOf('liveTerm'), step: 'zones', field: 'zones',
   });
-  /* ⭐ PR-D (มติ 26/09 A3/O9 · mig 0394): แพ็คต่อรอบ · จำนวนรอบบริการ — หัว + ประโยคเดียวกับหน้าต่างอนุมัติ (PACKS_ROUNDS_HEAD · historicalPacksRoundsText)
+  /* ⭐ PR-D (มติ 26/09 A3/O9 · mig 0394): จำนวนรอบบริการ · แต่ละครั้งกี่แพ็ค (ลำดับ/คำตามมติ 29/09) — หัว + ประโยคเดียวกับหน้าต่างอนุมัติ
+     (PACKS_ROUNDS_HEAD · historicalPacksRoundsText)
      · ยังไม่ครบ = เหลือง ชี้ขั้น ② (แผนที่ผ่านด่านของฟอร์มครบเสมอ — แถวนี้กันแผนรุ่นเก่า/ข้อมูลเพี้ยน ไม่ให้ผ่านเงียบ)
      ⚠️ ช่อง = 'zones' (จุดยึดที่ขั้น ② วาดอยู่แล้ว — ยามจุดยึดของ historicalRegisterUi) ไม่ใช่ zones.<i>.packsPerRound */
   const packs = historicalPacksRoundsText(plan.lines);

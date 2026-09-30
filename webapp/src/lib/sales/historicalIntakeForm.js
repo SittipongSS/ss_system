@@ -46,7 +46,7 @@ import {
   HISTORICAL_SERVICE_LIMITS, HISTORICAL_VAT_RATES, historicalLinesMoney, historicalPacksValue, historicalRoundsValue, historicalZonePoint,
 } from '@/lib/sales/historicalOrderPlan';
 import { DEFAULT_SALE_UNIT } from '@/lib/master/units';
-import { SERVICE_ROUNDS_LABEL } from '@/lib/sales/serviceOrders';
+import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL } from '@/lib/sales/serviceOrders';
 
 export {
   HISTORICAL_REF_MAX, INSTALLMENT_LABEL_MAX, INSTALLMENT_NOTE_MAX, HISTORICAL_VAT_RATES,
@@ -1514,32 +1514,34 @@ export function historicalLinesSummary(zones = []) {
   return `${fmtNumber(rows.length)} บรรทัด · ${fmtNumber(bound)} โซน`;
 }
 
-/* ── ขั้น ② งานบริการของบรรทัด: แพ็คต่อรอบ + จำนวนรอบบริการ (PR-D · mig 0394 · r2 S12 · IMPL_PLAN_D §3.1–§3.2) ──────────
+/* ── ขั้น ② งานบริการของบรรทัด: จำนวนรอบบริการ + แต่ละครั้งกี่แพ็ค (PR-D · mig 0394 · r2 S12 · IMPL_PLAN_D §3.1–§3.2) ──────────
    ⭐ **ที่เดียวของคำว่า "แพ็ค" ในฟอร์มใบย้อนหลัง** (§0.2 ข้อ 14 — มติ 23/09 "จำนวนของบรรทัดไม่ใช่แพ็ค" ยังจริง ·
-     มติ 26/09 A3/O9 นำ "แพ็คต่อรอบ" กลับมาเป็นช่องของตัวเอง) ⇒ component ไม่สะกดคำนี้เอง อ่านจากก้อนนี้เท่านั้น
-     รูปที่อนุญาต: "แพ็คต่อรอบ" · "แพ็ค/รอบ" · "ประเมินไว้ n แพ็ค" · "ทั้งรายการ n แพ็ค" (+ หน่วยท้ายช่อง "แพ็ค")
+     มติ 26/09 A3/O9 นำแพ็คต่อรอบกลับมาเป็นช่องของตัวเอง) ⇒ component ไม่สะกดคำนี้เอง อ่านจากก้อนนี้เท่านั้น
+     รูปที่อนุญาต: "แต่ละครั้งกี่แพ็ค" · "แพ็ค/รอบ" · "ประเมินไว้ n แพ็ค" · "รวมทั้งรายการ n แพ็ค" (+ หน่วยท้ายช่อง "แพ็ค")
    ⚠️ `bulk` = คำของหน้าต่าง "เพิ่มหลายโซน" ของใบย้อนหลัง (ตัวห่อของ components/service/ZonesBulkModal — D27)
-   ⭐ คำเรียกรอบ = `SERVICE_ROUNDS_LABEL` "จำนวนรอบบริการ" (serviceOrders.js · มติเจ้าของ 29/09) */
+   ⭐ มติเจ้าของ 29/09 ("ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง"): คำ + ลำดับเดียวกับใบใหม่ — `SERVICE_ROUNDS_LABEL`
+     "จำนวนรอบบริการ" ก่อน แล้วค่อย `SERVICE_PACKS_LABEL` "แต่ละครั้งกี่แพ็ค" แล้ว "รวมทั้งรายการ n แพ็ค" (serviceOrders.js) */
 export const HISTORICAL_SERVICE_TEXT = Object.freeze({
-  packsLabel: 'แพ็คต่อรอบ',
+  packsLabel: SERVICE_PACKS_LABEL,
   packsUnit: 'แพ็ค',
-  packsAria: (name) => `แพ็คต่อรอบ ${name}`,
+  packsAria: (name) => `${SERVICE_PACKS_LABEL} ${name}`,
   roundsNote: 'บังคับ · จำนวนครั้งที่ต้องเข้าโซนนี้ตลอดสัญญา',
   assessed: (n) => `ประเมินไว้ ${fmtNumber(n)} แพ็ค`,
   useAssessed: 'ใช้',
-  useAssessedAria: (n, name) => `ใช้ผลประเมิน ${fmtNumber(n)} แพ็คเป็นแพ็คต่อรอบของ${name}`,
-  lineTotal: (n) => `ทั้งรายการ ${fmtNumber(n)} แพ็ค`,
-  assessFailed: 'อ่านผลประเมินของโซนไม่สำเร็จ — ใส่แพ็คต่อรอบเองได้ (ไม่กระทบการเลือกโซน)',
+  useAssessedAria: (n, name) => `ใช้ผลประเมิน ${fmtNumber(n)} แพ็คในช่อง${SERVICE_PACKS_LABEL}ของ${name}`,
+  /* คำเดียวกับท้ายบรรทัดของใบใหม่ (serviceSetup.js · lineTotalText) */
+  lineTotal: (n) => `รวมทั้งรายการ ${fmtNumber(n)} แพ็ค`,
+  assessFailed: `อ่านผลประเมินของโซนไม่สำเร็จ — ใส่${SERVICE_PACKS_LABEL}เองได้ (ไม่กระทบการเลือกโซน)`,
   assessRetry: 'ลองอ่านผลประเมินอีกครั้ง',
   bulk: Object.freeze({
     title: 'เพิ่มหลายโซน',
-    subtitle: `ติ๊กโซนแล้วใส่แพ็คเกจ · จำนวน · แพ็คต่อรอบ · ${SERVICE_ROUNDS_LABEL}ครั้งเดียว — ได้หนึ่งบรรทัดต่อโซน แก้ทีละบรรทัดต่อได้ในตาราง · บรรทัดที่มีอยู่แล้วไม่ถูกแตะ`,
+    subtitle: `ติ๊กโซนแล้วใส่แพ็คเกจ · จำนวน · ${SERVICE_ROUNDS_LABEL} · ${SERVICE_PACKS_LABEL}ทีเดียว — ได้หนึ่งบรรทัดต่อโซน แก้ทีละบรรทัดต่อได้ในตาราง · บรรทัดที่มีอยู่แล้วไม่ถูกแตะ`,
     packageLabel: 'แพ็คเกจ',
     qtyLabel: 'จำนวน (ต่อบรรทัด)',
     qtyHint: (unit) => `หน่วย: ${naText(unit)} · เว้นว่างได้ — ใส่ทีละบรรทัดทีหลัง`,
     priceLabel: 'ราคา/หน่วย',
     priceHint: 'จากฐานข้อมูลสินค้า',
-    packsLabel: 'แพ็คต่อรอบ (ทุกบรรทัด)',
+    packsLabel: `${SERVICE_PACKS_LABEL} (ทุกบรรทัด)`,
     roundsLabel: `${SERVICE_ROUNDS_LABEL} (ทุกบรรทัด)`,
     roundsAria: `${SERVICE_ROUNDS_LABEL}ของทุกบรรทัดที่จะเพิ่ม`,
     roundsUnit: 'รอบ',
@@ -1590,7 +1592,7 @@ const assessedOf = (assessedByZone, zoneId) => {
 };
 
 /**
- * ของที่ช่อง "แพ็คต่อรอบ" ของบรรทัดหนึ่งวาด (ชิปประเมิน · ปุ่ม "ใช้" · ทั้งรายการ)
+ * ของที่ช่อง "แต่ละครั้งกี่แพ็ค" ของบรรทัดหนึ่งวาด (ชิปประเมิน · ปุ่ม "ใช้" · รวมทั้งรายการ)
  * @param assessedByZone ผลของ `historicalAssessedByZone` (Map หรือ object) · null = ยังโหลด/โหลดพัง ⇒ ไม่มีชิป
  * @returns `{ assessed: n|null, canUse, total: n|null, totalText: string|null }`
  *   · canUse = มีผลประเมิน และค่าในช่องยังไม่ใช่ตัวนั้น (ปุ่มเติมค่าอย่างเดียว — ไม่ใช่ด่าน ไม่มีสีแดง)
@@ -1703,7 +1705,8 @@ export function historicalBulkFieldsIssue({ productId = '', qty = '', rounds = '
 /**
  * ผลของปุ่ม "เพิ่ม N บรรทัด" ก่อนกด (กฎบ้าน: บอกผลลัพธ์ก่อนคลิก)
  * ⭐ PR-D: ตัวห่อส่ง `mode` ('assessed' | 'equal') + ตัวเลขจากแผนของตัวกลาง (`packs` · `assessed` · `blank`) + `rounds`
- *   ⇒ ต่อท้ายด้วยแพ็คต่อรอบและจำนวนรอบบริการ · ไม่ส่ง `mode` = ประโยคเดิมทุกตัวอักษร (pin ของ historicalRegisterUi ยังเขียวที่คลื่น W1)
+ *   ⇒ ต่อท้ายด้วย จำนวนรอบบริการ → แต่ละครั้งกี่แพ็ค (มติ 29/09 · ลำดับและประโยคแพ็คแบบ `zonesBulkConsequence` ของหน้าต่างกลาง
+ *   แต่พูด "บรรทัด") · ไม่ส่ง `mode` = ประโยคเดิมทุกตัวอักษร (pin ของ historicalRegisterUi ยังเขียวที่คลื่น W1)
  */
 export function historicalBulkConsequence({
   count = 0, qty = '', unitPrice = null, mode = null, packs = null, assessed = 0, blank = 0, rounds = '',
@@ -1721,10 +1724,10 @@ export function historicalBulkConsequence({
       ? `บรรทัดละ ${fmtNumber(q)} × ${fmtMoney(price)} = ${fmtMoney(each)} · รวม ${fmtMoney((toSatang(each) * count) / 100)}`
       : (qtyOk ? `บรรทัดละจำนวน ${fmtNumber(q)}` : 'จำนวนใส่ทีละบรรทัดในตาราง');
     const packsText = mode === 'equal'
-      ? `แพ็คต่อรอบ ${naText(packs === null || packs === undefined ? null : fmtNumber(packs))} แพ็คทุกบรรทัด`
-      : `แพ็คต่อรอบตามผลประเมิน ${fmtNumber(Number(assessed) || 0)} โซน · ยังว่าง ${fmtNumber(Number(blank) || 0)} โซน`;
+      ? `แต่ละครั้งเท่ากันทุกบรรทัด ครั้งละ ${naText(packs === null || packs === undefined ? null : fmtNumber(packs))} แพ็ค`
+      : `${SERVICE_PACKS_LABEL}: ตามผลประเมิน ${fmtNumber(Number(assessed) || 0)} โซน · ยังว่าง ${fmtNumber(Number(blank) || 0)} โซน`;
     const roundsValue = historicalRoundsValue(rounds);
-    const parts = [head, money, packsText, ...(roundsValue === null ? [] : [`${SERVICE_ROUNDS_LABEL} ${fmtNumber(roundsValue)} รอบ`])];
+    const parts = [head, money, ...(roundsValue === null ? [] : [`${SERVICE_ROUNDS_LABEL} ${fmtNumber(roundsValue)} รอบ`]), packsText];
     return `${parts.join(' · ')}${qtyOk && !priced ? ` — ${unpricedNote}` : ''}`;
   }
   if (priced) {
@@ -1743,7 +1746,7 @@ export function historicalBulkConsequence({
    ⇒ แผนชี้ช่อง (`zones.<i>.<ช่อง>` + `detail` ไม่มีป้ายบรรทัด) · จอผูกข้อความกับ `key` ของแถว **ตอนได้คำตอบ**
      (ลำดับของ body = ลำดับของ state ตอนส่ง — ช่องถูกปิดระหว่างตรวจ) · แก้ช่องไหน ข้อความของช่องนั้นหายทันที */
 const LINE_FIELD = /^zones\.(\d+)(?:\.([A-Za-z]+))?$/;
-/* ⭐ PR-D: `packsPerRound` เป็นช่องของตัวเอง (ข้อความใต้ช่องแพ็คต่อรอบ · แก้ช่องนั้นแล้วข้อหาย) และอยู่ในชุด "ทั้งแถว" */
+/* ⭐ PR-D: `packsPerRound` เป็นช่องของตัวเอง (ข้อความใต้ช่องแต่ละครั้งกี่แพ็ค · แก้ช่องนั้นแล้วข้อหาย) และอยู่ในชุด "ทั้งแถว" */
 const LINE_SLOT_KEYS = Object.freeze({
   zoneId: ['zoneId'], productId: ['productId'], qty: ['qty'], rounds: ['rounds'], packsPerRound: ['packsPerRound'],
 });

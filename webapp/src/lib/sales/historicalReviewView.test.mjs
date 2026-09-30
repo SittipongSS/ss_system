@@ -76,15 +76,15 @@ test('⭐ แถวตรวจ: ข้อเดียวกับหน้า�
   const rows = historicalReviewChecklist(plan(), {
     contractFiles: { count: 1, names: ['PO-7781.pdf'], pending: [] }, evidenceFileCount: 2, todayIso: '2026-09-25',
   });
-  /* ⭐ PR-D: แถว "แพ็คต่อรอบ · จำนวนรอบบริการ" (มติ 29/09) ต่อจากโซน — ข้อเดียวกับหน้าต่างอนุมัติ (historicalPacksRoundsText) */
+  /* ⭐ PR-D: แถว "จำนวนรอบบริการ · แต่ละครั้งกี่แพ็ค" (มติ 29/09 — รอบก่อนแพ็คเหมือนใบใหม่) ต่อจากโซน — ข้อเดียวกับหน้าต่างอนุมัติ (historicalPacksRoundsText) */
   assert.deepEqual(rows.map((r) => r.key), ['contract', 'signedFile', 'refs', 'zones', 'packs', 'opening', 'remaining', 'verdict']);
   assert.equal(rowOf(rows, 'contract').value, 'ใบสั่งซื้อของลูกค้า (PO) PO-7781 · 01/01/2026–31/12/2026 · 12 เดือน');
   assert.equal(rowOf(rows, 'signedFile').value, 'PO-7781.pdf');
   assert.equal(rowOf(rows, 'refs').value, 'QT-OLD-1 · IV-2601-0412');
   assert.equal(rowOf(rows, 'zones').value, '2 โซน — ST-01 อาคาร A 2 โซน');
   assert.deepEqual(rowOf(rows, 'packs'), {
-    key: 'packs', label: 'แพ็คต่อรอบ · จำนวนรอบบริการ', value: 'รวม 3 แพ็ค/รอบ · 12 รอบ/โซน',
-    sub: 'Lobby 2 แพ็ค/รอบ × 12 รอบ · ทางเดิน 1 แพ็ค/รอบ × 12 รอบ', tone: null, step: 'zones', field: 'zones',
+    key: 'packs', label: 'จำนวนรอบบริการ · แต่ละครั้งกี่แพ็ค', value: '12 รอบ/โซน · รวม 3 แพ็ค/รอบ',
+    sub: 'Lobby 12 รอบ × 2 แพ็ค/รอบ · ทางเดิน 12 รอบ × 1 แพ็ค/รอบ', tone: null, step: 'zones', field: 'zones',
   });
   assert.equal(rowOf(rows, 'remaining').sub, null, 'ไม่มีวันวางบิลสักงวด = ไม่พูด');
   assert.match(rowOf(rows, 'opening').value, /หลักฐาน 2 ไฟล์/);
@@ -130,19 +130,19 @@ test('⭐ ใบ ฿0: แถวยอดใบแทนงวด · หมา�
 
 /* ⭐ PR-D (มติ 26/09 A3/O9 · IMPL_PLAN_D §3.4): แพ็คต่อรอบ · รอบ — รอบต่างกันเป็นช่วง · เกิน 5 โซนชี้ตารางด้านล่าง
    · ยังไม่ครบ = เหลือง ชี้ขั้น ② (ช่อง 'zones' มีจุดยึดบนขั้น ② อยู่แล้ว — ยามจุดยึดของ historicalRegisterUi) */
-test('⭐ แถวแพ็คต่อรอบ · รอบ: ช่วงรอบ · เกิน 5 โซน = ดูรายการด้านล่าง · ขาดแพ็ค = เหลือง ชี้ขั้น ② · ไม่มีบรรทัด = ขีด', () => {
+test('⭐ แถวรอบ · แพ็ค: ช่วงรอบ · เกิน 5 โซน = ดูรายการด้านล่าง · ขาดแพ็ค = เหลือง ชี้ขั้น ② · ไม่มีบรรทัด = ขีด', () => {
   const packs = (lines) => rowOf(historicalReviewChecklist(plan({ lines })), 'packs');
   const mixed = packs([{ ...PLAN.lines[0], serviceRounds: 6 }, PLAN.lines[1]]);
-  assert.equal(mixed.value, 'รวม 3 แพ็ค/รอบ · 6–12 รอบ/โซน');
-  assert.equal(mixed.sub, 'Lobby 2 แพ็ค/รอบ × 6 รอบ · ทางเดิน 1 แพ็ค/รอบ × 12 รอบ');
+  assert.equal(mixed.value, '6–12 รอบ/โซน · รวม 3 แพ็ค/รอบ');
+  assert.equal(mixed.sub, 'Lobby 6 รอบ × 2 แพ็ค/รอบ · ทางเดิน 12 รอบ × 1 แพ็ค/รอบ');
   const six = packs(Array.from({ length: 6 }, (_, i) => ({ ...PLAN.lines[0], zoneId: `Z-${i}`, zoneName: `โซน ${i + 1}` })));
-  assert.deepEqual([six.value, six.sub, six.tone], ['รวม 12 แพ็ค/รอบ · 12 รอบ/โซน', 'ดูรายการด้านล่าง', null]);
+  assert.deepEqual([six.value, six.sub, six.tone], ['12 รอบ/โซน · รวม 12 แพ็ค/รอบ', 'ดูรายการด้านล่าง', null]);
   const missing = packs([PLAN.lines[0], { ...PLAN.lines[1], packsPerRound: null }]);
   assert.deepEqual([missing.value, missing.tone, missing.step, missing.field], ['ยังไม่ครบ 1 รายการ — กลับไปขั้น ②', 'warn', 'zones', 'zones']);
-  assert.equal(missing.sub, 'Lobby 2 แพ็ค/รอบ × 12 รอบ · ทางเดิน ยังไม่มีแพ็คต่อรอบ · 12 รอบ', 'บอกว่าโซนไหนยังขาด');
+  assert.equal(missing.sub, 'Lobby 12 รอบ × 2 แพ็ค/รอบ · ทางเดิน 12 รอบ · ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค', 'บอกว่าโซนไหนยังขาด');
   const empty = packs([]);
   assert.deepEqual([empty.value, empty.sub, empty.tone], ['—', null, null]);
-  for (const row of [mixed, six, missing]) assert.doesNotMatch(`${row.value} ${row.sub}`, /แพ็ค(?!เกจ|ต่อรอบ|\/รอบ)/);
+  for (const row of [mixed, six, missing]) assert.doesNotMatch(`${row.value} ${row.sub}`, /(?<!กี่)แพ็ค(?!เกจ|\/รอบ)/);
 });
 
 /* ⭐ H1 (IMPL_PLAN_D §3.3): วันวางบิลไม่บังคับ — แถวงวดที่ยังต้องเก็บบอกว่าตั้งไว้กี่งวด (คำเดียวกับหน้าต่างอนุมัติ) */
