@@ -6,7 +6,8 @@
 //   · ปุ่มมาจาก `setup.data.backfill` ที่ server คิด (ยื่น = คนแก้ใบนี้ได้ · อนุมัติ/ตีกลับ = ผู้จัดการฝ่ายขาย) — จอไม่คิดสิทธิ์เอง
 //   · **หน้าเป็นเจ้าของโมดัล** (ยืนยันยื่น · อนุมัติ + เหตุผล Admin Override · ตีกลับ) — การ์ดแค่เรียก callback
 // 🔴 ทั้งสองชิ้นขึ้นเฉพาะขั้น 'backfill' ของก้อน GET (D25: ใบที่อนุมัติแล้วแต่ไม่มีอะไรให้ตั้ง = ไม่ขึ้นที่ไหนเลย)
-// 🔴 แถวตรวจ **เป็นกลางก่อนกด** (ตัวเลข x/n เฉย ๆ ไม่มีแดง ไม่มี ✗ — กฎ 3) · แดงเมื่อ `pressed` (กดยื่นแล้วไม่ผ่าน) เท่านั้น
+// 🔴 แถวตรวจ **เป็นกลางก่อนกด** (ตัวเลข x/n เฉย ๆ ไม่มีแดง ไม่มี ✗ — กฎ 3) · แดงเมื่อ `pressed` (กดยื่นแล้วไม่ผ่านด่านของ server) เท่านั้น
+//    · หน้าคิด `pressed` ด้วย `backfillRailPressed` — ด่าน "ยังไม่บันทึก" ของจอไม่นับ (แถวคิดจากของที่บันทึกแล้ว · UAT 29/09)
 import { Repeat } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { DetailCard } from "@/components/ui/DetailPage";
@@ -46,7 +47,7 @@ export function ServiceBackfillBanner({ setup }) {
 
 /**
  * การ์ดราง "งานบริการ (ใบเดิม)"
- * @param setup ผลของ `useServiceSetup` · @param pressed กด "ยื่นตรวจงานบริการ" แล้วไม่ผ่าน (แถวที่ยังไม่ครบเป็นแดง)
+ * @param setup ผลของ `useServiceSetup` · @param pressed กด "ยื่นตรวจงานบริการ" แล้วไม่ผ่านด่านของ server (แถวที่ยังไม่ครบเป็นแดง · `backfillRailPressed`)
  * @param busy กำลังยิงคำสั่ง (ปุ่มดับ) · @param onSubmit / onApprove / onReject — หน้าเปิดโมดัลของตัวเอง
  */
 export function ServiceBackfillRailCard({ setup, pressed = false, busy = false, onSubmit, onApprove, onReject }) {

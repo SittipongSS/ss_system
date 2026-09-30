@@ -270,6 +270,7 @@ export default function SalesOrderServiceLines({
         onOpenBulk={() => setBulkLineId(line.lineId)}
         canEditRounds={canEditRounds && flow === "stamped"}
         onRoundsSave={onRoundsSave}
+        roundsLowStage={editable ? "submit" : flow === "stamped" ? "approved" : "read"}
       />
     );
   };
@@ -357,7 +358,7 @@ export default function SalesOrderServiceLines({
                 <span>{serviceSetupFooterText(totals)}</span>
                 {summarySub ? <span className={styles.summarySub}>{summarySub}</span> : null}
                 {flow === "stamped" ? (
-                  <span className={styles.summarySub}>แก้โซน/แพ็ค/แพ็คเกจหลังอนุมัติ = ย้อนการอนุมัติแล้วออก Rev.</span>
+                  <span className={styles.summarySub}>หลังอนุมัติ แก้แพ็คเกจ/โซน/แต่ละครั้งกี่แพ็ค = ย้อนการอนุมัติแล้วออก Rev.</span>
                 ) : null}
               </p>
             )}

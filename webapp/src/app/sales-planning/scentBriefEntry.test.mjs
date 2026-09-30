@@ -38,6 +38,17 @@ test('⭐ route ของ SO ถามหาคำร้องด้วยเง
   assert.match(ORDER_ROUTE, /scentRequest/);
 });
 
+/* 🐞 ด่านตอนกดส่ง (POST /api/sa/requests) เคยนับคำร้อง **ทุกหัวข้อ** ที่อ้าง SO —
+   SO ที่มีใบขอเอกสาร FN อยู่แล้วเปิด PDR ไม่ได้ ทั้งที่ index 0219 กับหน้า SO นับแค่ scent_dev */
+test('🐞 ด่าน 1 SO : 1 PDR ตอนกดส่งนับเฉพาะ scent_dev — ใบหัวข้ออื่นที่อ้าง SO ไม่ล็อก', () => {
+  const CREATE_ROUTE = read('../api/sa/requests/route.js');
+  const taken = CREATE_ROUTE.match(/const \{ data: taken[\s\S]*?\.maybeSingle\(\)/);
+  assert.ok(taken, 'หา query ของด่าน 1 SO : 1 PDR ไม่เจอ');
+  assert.match(taken[0], /\.eq\('salesOrderId', soRow\.id\)/);
+  assert.match(taken[0], /\.eq\('kind', 'scent_dev'\)/);
+  assert.match(taken[0], /\.neq\('status', 'cancelled'\)/);
+});
+
 test('⭐ หน้า SO ตัดสินด้วย scentDesignOrderError ตัวเดียวกับ server — ปุ่มกับ API ขัดกันไม่ได้', () => {
   assert.match(ORDER_PAGE, /scentDesignOrderError/);
   // ต้องส่งใบที่เปิดไปแล้วเข้าไปด้วย ไม่งั้นด่าน "1 SO : 1 PDR" (ม-37) ไม่ทำงานฝั่งจอ

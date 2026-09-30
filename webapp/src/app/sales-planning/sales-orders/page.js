@@ -161,7 +161,8 @@ function serviceReviewLine(order) {
   const review = order.serviceReview || {};
   const submitted = [naText(review.submittedByName), review.submittedAt ? fmtDate(review.submittedAt) : null]
     .filter(Boolean).join(" ");
-  return `${naText(order.customerName)} · ${naText(review.zones)} โซนใน ${naText(review.sites)} ไซต์ · ${naText(review.roundsLabel)} · ไม่นับ Actual · ยื่นโดย ${submitted}`;
+  /* มติ 29/09: "จำนวนรอบบริการ n รอบ" ก่อน แล้วค่อยบอกว่าแต่ละครั้งไปกี่โซน (คำจาก `serviceRoundsText` ของ route) */
+  return `${naText(order.customerName)} · ${naText(review.roundsLabel)} · แต่ละครั้ง ${naText(review.zones)} โซนใน ${naText(review.sites)} ไซต์ · ไม่นับ Actual · ยื่นโดย ${submitted}`;
 }
 
 /* ── มุมมองของตาราง: เรียง · จัดกลุ่ม (มติผู้ใช้ 2026-08-15) ────────────────
