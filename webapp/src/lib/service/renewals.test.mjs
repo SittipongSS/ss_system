@@ -373,3 +373,57 @@ test('รอบนำของแถว (ใบที่ลิงก์/ตั�
   assert.equal(renewalLeadTerm({ endDate: 'x', endSource: 'contract', terms: [{ id: 'T9', endDate: 'y' }] }).id, 'T9');
   assert.equal(renewalLeadTerm({ terms: [] }), null);
 });
+
+/* ── ใบแยกรายรายการ (mig 0400): วันจบ = วันจบของรายการที่รอบขายนั้นมาจาก ไม่ใช่วันจบของช่วงรวมของใบ ─────────────────
+   ตัวโหลดแนบช่วงของบรรทัดให้ term (`withLinePeriods` · route ทะเบียนเรียก `attachLinePeriods`) — ตัวตัดสินอ่าน `termPeriodOf` */
+test('0400 ใบแยกรายรายการ ไม่มีสัญญา: แต่ละไซต์ขึ้นทะเบียนตามวันจบของรายการของตัวเอง (สาขาที่จบก่อนไม่รอช่วงรวม)', async () => {
+  const { withLinePeriods } = await import('./terms.js');
+  const { LINE_PERIOD_END_NOTE, ORDER_PERIOD_END_NOTE, renewalLeadTerm, termEndInfo } = await import('./renewals.js');
+  const order = openedOrder('SO-JT', '2027-01-25', { servicePeriodFrom: '2026-01-02', servicePeriodMode: 'line' });
+  const ordersById = new Map([['SO-JT', order]]);
+  const lines = new Map([
+    ['L1', { servicePeriodFrom: '2026-01-02', servicePeriodTo: '2026-11-01' }],
+    ['L2', { servicePeriodFrom: '2026-01-26', servicePeriodTo: '2027-01-25' }],
+  ]);
+  const raw = [{ ...term('T1', 'ZN1', 'SO-JT'), salesOrderLineId: 'L1' }, { ...term('T2', 'ZN9', 'SO-JT'), salesOrderLineId: 'L2' }];
+  const terms = withLinePeriods(raw, ordersById, lines);
+  const two = { sites: [site('ST1', 'สาขา A'), site('ST2', 'สาขา B')], zones: [zone('ZN1', 'ST1'), zone('ZN9', 'ST2')] };
+  const rows = renewalRows({ ...two, terms, ordersById, contractsById: new Map(), todayIso: '2026-11-10' });
+  assert.deepEqual(rows.map((r) => [r.siteId, r.endDate, r.state, r.endSource]), [
+    ['ST1', '2026-11-01', 'expired', 'line_period'],
+    ['ST2', '2027-01-25', 'due_soon', 'line_period'],
+  ], 'สาขา A จบ 01/11 — ช่วงรวมของใบ (25/01/2027) ยังไม่จบ');
+  /* 🐞 ตรวจทาน lib-03: แหล่งของวัน = ช่วงของ **รายการ** ('line_period') — ทะเบียนเคยบอก "ครบช่วงบริการของใบ" ใต้วันที่ไม่ใช่วันจบของใบ
+     (หน้าใบโชว์วันจบของช่วงรวม 25/01/2027) · รอบนำของแถว/term ที่แปะแหล่งไปด้วยตามแหล่งใหม่ */
+  assert.deepEqual(termEndInfo(terms[0], ordersById, new Map()), { date: '2026-11-01', source: 'line_period' });
+  assert.deepEqual(rows.map((r) => [r.terms[0].endSource, renewalLeadTerm(r).id]), [['line_period', 'T1'], ['line_period', 'T2']]);
+  assert.equal(LINE_PERIOD_END_NOTE, 'ครบช่วงบริการของรายการ · ยังไม่ผูกสัญญา');
+  assert.equal(ORDER_PERIOD_END_NOTE, 'ครบช่วงบริการของใบ · ยังไม่ผูกสัญญา');
+
+  /* ตัวโหลดลืมแนบ = ถอยไปวันจบของช่วงรวม (ช้ากว่าจริง ไม่เร็วกว่า) — ยาม termPeriodLoaders กันฝั่ง route */
+  const fallback = renewalRows({ ...two, terms: raw, ordersById, contractsById: new Map(), todayIso: '2026-11-10' });
+  assert.deepEqual(fallback.map((r) => [r.siteId, r.endDate, r.endSource]), [['ST1', '2027-01-25', 'order_period'], ['ST2', '2027-01-25', 'order_period']],
+    'วันของช่วงรวม = แหล่งยังเป็นช่วงของใบ (คำใต้วันพูดถูก)');
+
+  /* วันจบของรายการก่อนวันที่ทางถอยเริ่มใช้ (29/09/2026) ไม่ขึ้น — กติกาเดิมใช้กับวันของรายการ */
+  const old = withLinePeriods(raw, ordersById, new Map([['L1', { servicePeriodFrom: '2025-09-01', servicePeriodTo: '2026-08-31' }], ['L2', lines.get('L2')]]));
+  assert.deepEqual(renewalRows({ ...two, terms: old, ordersById, contractsById: new Map(), todayIso: '2026-11-10' }).map((r) => r.siteId), ['ST2']);
+
+  /* ผูกสัญญาแล้ว = สัญญาชนะเสมอ (ไม่อ่านช่วงของรายการ) · ใบไม่ประทับ = ไม่ขึ้น */
+  const withContract = new Map([['SO-JT', { ...order, serviceContractId: 'CT1' }]]);
+  const contracts = new Map([['CT1', { id: 'CT1', status: 'signed', expiryDate: '2026-12-31' }]]);
+  assert.deepEqual(renewalRows({ ...two, terms, ordersById: withContract, contractsById: contracts, todayIso: '2026-11-10' })
+    .map((r) => [r.siteId, r.endDate, r.endSource]), [['ST1', '2026-12-31', 'contract'], ['ST2', '2026-12-31', 'contract']]);
+  const unstamped = new Map([['SO-JT', { ...order, serviceTermsOpenedAt: null }]]);
+  assert.deepEqual(renewalRows({ ...two, terms, ordersById: unstamped, contractsById: new Map(), todayIso: '2026-11-10' }), []);
+});
+
+test('0400 ใบโหมดทั้งใบ: วันจบของใบเหมือนเดิม แม้ select พกโหมด/term มีช่วงแนบค้าง', async () => {
+  const { termEndInfo } = await import('./renewals.js');
+  const ordersById = new Map([['SO1', openedOrder('SO1', '2026-11-28', { servicePeriodMode: 'whole' })]]);
+  const stray = { ...term('T1', 'ZN1', 'SO1'), linePeriodFrom: '2025-10-01', linePeriodTo: '2026-10-15' };
+  assert.deepEqual(termEndInfo(stray, ordersById, new Map()), { date: '2026-11-28', source: 'order_period' });
+  assert.deepEqual(termEndInfo(term('T1', 'ZN1', 'SO1'), new Map([['SO1', openedOrder('SO1', '2026-11-28T00:00:00+07:00')]]), new Map()),
+    { date: '2026-11-28', source: 'order_period' }, 'ค่าที่มาเป็น timestamp ตัดเหลือวัน (เหมือนเดิม)');
+  assert.equal(termEndInfo(term('T1', 'ZN1', 'SO1'), new Map([['SO1', openedOrder('SO1', 'ไม่ใช่วัน')]]), new Map()), null);
+});

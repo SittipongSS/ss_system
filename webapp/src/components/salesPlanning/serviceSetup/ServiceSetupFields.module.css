@@ -1,4 +1,5 @@
-/* ── ช่องของงานบริการที่ใช้ร่วมกัน: แพ็คเกจ (ServiceFgPicker) · แถบช่วงบริการ (ServicePeriodField) ─────────────────────
+/* ── ช่องของงานบริการที่ใช้ร่วมกัน: แพ็คเกจ (ServiceFgPicker) · แถบช่วงบริการ (ServicePeriodField) ·
+      ช่วงบริการของรายการในคอลัมน์ ① (ServiceLinePeriod) · โมดัล "ใช้ช่วงเดียวกันทุกรายการ" (ServicePeriodApplyAllModal) ──────
    (เดิมเป็นส่วนหนึ่งของกล่อง "งานบริการของรายการนี้" ใต้บรรทัด — ถูกแทนด้วยตาราง ServiceSetupGrid ตามมติ 30/09)
    ทุกคลาสมีเจ้าของอย่างน้อยหนึ่งไฟล์ (ด่าน CSS กำพร้า) */
 
@@ -101,4 +102,266 @@
   color: var(--text-2);
   font-size: var(--fs-6);
   font-weight: var(--fw-semibold);
+}
+
+/* ── สวิตช์ "ทั้งใบช่วงเดียว | แยกรายรายการ" (mig 0400 · มติเจ้าของ 01/10 · ม็อก PeriodSwitchWhole / PeriodSwitchPerLine รอบสอง) ──
+   แถวบน = ป้าย + สวิตช์โหมด · แถวล่าง = เนื้อของโหมด (ทั้งใบ: ช่องวัน + ชิปเดือน · แยกรายรายการ: ช่วงรวมอ่านอย่างเดียว) */
+.periodTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.periodTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  color: var(--text);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-bold);
+}
+
+.periodTitle svg {
+  flex: none;
+  color: var(--accent-ink);
+}
+
+/* แถบสวิตช์บนพื้นของแถบช่วงบริการ (--panel-2 เท่ากับพื้นตั้งต้นของ .segmented) — เข้มขึ้นหนึ่งขั้นให้เห็นเป็นราง */
+.periodTop .periodMode {
+  max-width: 100%;
+  flex-wrap: wrap;
+  background: var(--panel-3);
+}
+
+.periodNote {
+  color: var(--text-3);
+  font-size: var(--fs-4);
+}
+
+.periodGrow {
+  flex: 1;
+}
+
+/* ปุ่มเงียบ "ใช้ช่วงเดียวกันทุกรายการ…" — สีเดียวกับปุ่ม "เหมือนรายการ n" ในคอลัมน์ ① (ทางลัดของช่วง ไม่ใช่การกระทำหลัก) */
+.periodRow .periodSame {
+  color: var(--accent-ink);
+  font-weight: var(--fw-semibold);
+}
+
+/* ช่วงรวมของใบ (โหมดแยกรายรายการ) — เส้นประ ไม่ใช่ช่องกรอก (คิดจากรายการ) · จอแคบตัดบรรทัดในกล่องได้ */
+.periodEnvelope {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 38px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--space-1-5);
+  padding: var(--space-1) var(--space-3);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--panel-solid);
+  color: var(--text-2);
+  font-size: var(--fs-6);
+}
+
+.periodEnvelope > svg {
+  flex: none;
+  color: var(--text-3);
+}
+
+.periodEnvelope[data-invalid] {
+  border-color: var(--red);
+}
+
+.periodEnvelopeLabel {
+  color: var(--text-2);
+  font-size: var(--fs-4);
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
+}
+
+.periodEnvelopeValue {
+  color: var(--text);
+  font-size: var(--fs-8);
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.periodEnvelopeValue[data-empty] {
+  color: var(--text-3);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-medium);
+}
+
+.periodEnvelopeHow {
+  color: var(--text-3);
+  font-size: var(--fs-4);
+}
+
+/* ── ช่วงบริการของรายการ — ใต้คำตอบ ‘งานบริการ?’ ในคอลัมน์ ① (ServiceLinePeriod) ──────────────────────────
+   open = ใช่ + แยกรายรายการ (กรอกได้: เริ่ม / ถึง ซ้อนกัน + ชิป 12 ด. / 24 ด. + ตัวอ่าน)
+   ro   = ใช่ + ทั้งใบช่วงเดียว หรือโหมดอ่าน (ตัวหนังสือ ไม่มีกล่อง)
+   ไม่ใช่งานบริการ = บรรทัดเดียว (.linePeriodNone) · ยังไม่ตอบ = ไม่วาดอะไร */
+.linePeriod {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+
+.linePeriod[data-state="open"] {
+  padding-top: var(--space-1-5);
+  border-top: 1px solid var(--border);
+}
+
+.linePeriod[data-state="ro"] {
+  gap: 0;
+}
+
+/* แถวพับเป็นการ์ด (คอลัมน์เอกสารแคบ — container ของ ServiceSetupGrid): บล็อกอยู่ใต้ปุ่มคำตอบ ไม่ยืดเต็มการ์ด */
+@container (max-width: 900px) {
+  .linePeriod {
+    max-width: 220px;
+  }
+}
+
+.linePeriodLabel {
+  color: var(--text-2);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-bold);
+}
+
+/* ป้าย "เริ่ม" / "ถึง" หน้าช่องวัน — ช่องวันกินที่เหลือของคอลัมน์ ① (ห่างขอบคอลัมน์ข้างละ 8px ตาม padding ของช่อง) */
+.linePeriodDate {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 26px minmax(0, 1fr);
+  align-items: center;
+}
+
+.linePeriodKey {
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-medium);
+}
+
+.linePeriodDate :global(.date-input-wrap) {
+  width: 100%;
+  min-width: 0;
+}
+
+.linePeriodDate :global(.date-input-text) {
+  height: 30px;
+}
+
+.linePeriodChips {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.linePeriodChips :global(.choice-chips) {
+  flex-wrap: nowrap;
+  gap: var(--space-1);
+}
+
+.linePeriodChips :global(.choice-chip) {
+  min-height: 24px;
+  padding: 0 var(--space-1-5);
+  font-size: var(--fs-3);
+  white-space: nowrap;
+}
+
+.linePeriodReadout {
+  margin-left: auto;
+  color: var(--text-2);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
+}
+
+/* ยังไม่ใส่ช่วง — คำชวน ไม่ใช่ข้อผิด (ไม่แดงก่อนกด · กฎ 3) */
+.linePeriodReadout[data-wait] {
+  color: var(--accent-ink);
+}
+
+/* ปุ่ม "เหมือนรายการ n" — ปุ่มเงียบแบบลิงก์ (สูง 24px = ขั้นต่ำของเป้ากด) */
+.linePeriodSame {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  align-self: flex-start;
+  gap: var(--space-1);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-ink);
+  font: inherit;
+  font-size: var(--fs-3);
+  font-weight: var(--fw-semibold);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
+  text-underline-offset: 3px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.linePeriodSame:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 1px;
+}
+
+.linePeriodSame svg {
+  flex: none;
+}
+
+/* ช่วงแบบอ่าน: "dd/mm/yyyy–" กับ "dd/mm/yyyy" เป็นสองก้อนที่ไม่ตัดกลางวัน (คอลัมน์แคบตัดหลังขีดได้) */
+.linePeriodRead {
+  display: flex;
+  flex-wrap: wrap;
+  color: var(--text-2);
+  font-size: var(--fs-4);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--fw-semibold);
+}
+
+.linePeriodRead > span {
+  white-space: nowrap;
+}
+
+.linePeriodCaption {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-3);
+  font-size: var(--fs-2);
+}
+
+.linePeriodCaption svg {
+  flex: none;
+}
+
+.linePeriodNone {
+  color: var(--text-3);
+  font-size: var(--fs-3);
+}
+
+/* ── โมดัล "ใช้ช่วงเดียวกันทุกรายการ" ── */
+.applyAll {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  line-height: var(--lh-thai);
+}
+
+.applyAllBody {
+  color: var(--text-2);
+  font-size: var(--fs-6);
 }

@@ -182,6 +182,9 @@ export default function DateInput({ value = "", onChange, className = "", style,
         name={name}
         type="text"
         inputMode="numeric"
+        /* ช่องพิมพ์วันที่ (ข้อความ DD/MM/YYYY) — ปิดรายการที่เบราว์เซอร์จำไว้/เติมให้ (กฎโปรเจกต์: input ทุกช่อง · แบบเดียวกับ TimeInput /
+           MaskedNumberInput) · รายการนั้นทับปฏิทินของช่องเอง และในคอลัมน์แคบ (ช่วงบริการรายรายการ 156px) บังช่องข้าง ๆ */
+        autoComplete="off"
         className={`premium-input date-input-text${invalid ? " is-invalid" : ""}`}
         aria-invalid={invalid ? "true" : undefined}
         value={text}

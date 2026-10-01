@@ -24,7 +24,7 @@
 import { businessDate } from '@/lib/businessDate';
 import { addDays, daysBetween } from '@/lib/sales/paymentCoverage';
 import { contractEndDate } from '@/lib/sales/contracts';
-import { termOrderActive } from './terms';
+import { termHasLinePeriod, termOrderActive, termPeriodOf } from './terms';
 
 /* วันหมดของรอบขายหนึ่ง — **ถามที่สัญญาของใบแม่** (mig 0324)
    ⚠️ ไม่มีสัญญาผูก = ไม่มีวันหมด = ไม่ใช่ของที่ต้องตาม (รอบปลายเปิด) ⇒ คืน null
@@ -45,11 +45,18 @@ export function termEndDate(term, ordersById, contractsById) {
    ⚠️ **สัญญาชนะเสมอ** — ใบผูกสัญญาแล้ว (แม้สัญญาปลายเปิด หรือหาสัญญาไม่เจอ) ไม่ถอยข้ามสัญญามาที่ช่วงของใบ
    🪤 ใบที่ยังไม่มีตรา = ช่วงร่างของการตั้งย้อนหลัง (0392 บันทึกช่วงก่อนผู้จัดการตรวจ) ⇒ ห้ามอ่าน
    🪤 **[owner]** ถอยให้เฉพาะช่วงที่จบตั้งแต่วันที่ 0392 รัน — ใบย้อนหลังที่ช่วงจบไปก่อนหน้านั้นจะท่วม
-     แถว "หมดแล้ว" และกระดิ่งของเจ้าของดีล (ทะเบียนนี้ป้อน `sweepRenewalNotices` ด้วย) */
+     แถว "หมดแล้ว" และกระดิ่งของเจ้าของดีล (ทะเบียนนี้ป้อน `sweepRenewalNotices` ด้วย)
+   ⭐ mig 0400 (ช่วงบริการแยกรายรายการ): วันจบ = วันจบของ **รายการที่รอบขายนั้นมาจาก** (`termPeriodOf` — ตัวโหลดแนบช่วงของบรรทัดให้ term)
+     ไม่ใช่วันจบของช่วงรวมของใบ ⇒ สาขาที่จบก่อนขึ้นทะเบียนตามวันของตัวเอง · ใบโหมดทั้งใบ = วันจบของใบเหมือนเดิม */
 export const ORDER_PERIOD_END_NOTE = 'ครบช่วงบริการของใบ · ยังไม่ผูกสัญญา';
+/* ใบแยกรายรายการ (mig 0400): วันที่ขึ้นทะเบียนคือวันจบของ **รายการ** ที่ลงไซต์นั้น ซึ่งมาก่อนวันจบของช่วงรวมที่หน้าใบโชว์
+   ("…–25/09/2027 (ช่วงรวม · แยกรายรายการ)") ⇒ คำใต้วันต้องบอกว่าเป็นของรายการ ไม่งั้น AE เปิดใบแล้วเห็นวันจบคนละวันกับที่ทะเบียน
+   บอกว่าเป็น "ของใบ" (ตรวจทาน lib-03) · แหล่ง 'line_period' = วันมาจากช่วงของรายการที่ตัวโหลดแนบให้ term */
+export const LINE_PERIOD_END_NOTE = 'ครบช่วงบริการของรายการ · ยังไม่ผูกสัญญา';
 export const ORDER_PERIOD_FALLBACK_SINCE = '2026-09-29';
 
-/** วันจบของรอบขายหนึ่ง + แหล่งของวัน — `{ date, source: 'contract' | 'order_period' }` หรือ null (ไม่ต้องตาม) */
+/** วันจบของรอบขายหนึ่ง + แหล่งของวัน — `{ date, source: 'contract' | 'order_period' | 'line_period' }` หรือ null (ไม่ต้องตาม)
+ *  · 'line_period' = ใบแยกรายรายการที่ยังไม่ผูกสัญญา วันมาจากช่วงของรายการ · 'order_period' = ช่วงของใบ (โหมดทั้งใบ · ตัวโหลดไม่ได้แนบ) */
 export function termEndInfo(term, ordersById, contractsById) {
   const at = (map, key) => (map instanceof Map ? map.get(key) : map?.[key]) || null;
   const order = at(ordersById, term?.salesOrderId);
@@ -59,10 +66,9 @@ export function termEndInfo(term, ordersById, contractsById) {
     const date = contract ? contractEndDate(contract) : null;
     return date ? { date, source: 'contract' } : null;
   }
-  const periodTo = /^\d{4}-\d{2}-\d{2}/.test(String(order.servicePeriodTo || ''))
-    ? String(order.servicePeriodTo).slice(0, 10) : null;
+  const periodTo = termPeriodOf(term, order).to;
   if (!order.serviceTermsOpenedAt || !periodTo || periodTo < ORDER_PERIOD_FALLBACK_SINCE) return null;
-  return { date: periodTo, source: 'order_period' };
+  return { date: periodTo, source: termHasLinePeriod(term, order) ? 'line_period' : 'order_period' };
 }
 
 /* รอบนำของแถว = รอบที่วัน **และแหล่ง** ตรงกับแถว — ใบที่ลิงก์บนจอ/เจ้าของดีลที่ได้กระดิ่ง/สิทธิ์บันทึกผลเดินตามตัวนี้

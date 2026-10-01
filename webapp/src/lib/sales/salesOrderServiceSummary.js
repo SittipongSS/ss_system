@@ -21,7 +21,9 @@ import { serviceRoundsSold, serviceVisitsSold } from '@/lib/sales/serviceOrders'
 /* ชนิดของบรรทัด (D2) — ถาม "มีแพ็คเกจให้ลงโซนไหม" ด้วยตัวตัดสินงานบริการ ไม่ใช่ตัวตัดสินด่านเงิน
    (`hasServicePackageLine` เป็นสวิตช์ของด่านรับรองงวด · serviceMoneySelectGuard คุมผู้เรียกของมัน) ·
    ไฟล์นี้ไม่อยู่ในวง intake ↔ serviceOrders (กฎ 16 ห้ามเฉพาะสองไฟล์นั้น import serviceSetup) */
-import { SERVICE_KIND_PACKAGE, periodSpan, serviceLineRole, servicePeriodOf } from '@/lib/sales/serviceSetup';
+import {
+  SERVICE_KIND_PACKAGE, SERVICE_PERIOD_MODE_LINE, linePeriodOf, periodSpan, serviceLineRole, servicePeriodModeOf, servicePeriodOf,
+} from '@/lib/sales/serviceSetup';
 /* ป้าย "รายการ n · FG" + ลำดับรอบขาย — ไฟล์ไม่มี import (ไม่ดึงไฟล์คิว TS ตามมา · §3.8) */
 import { termLineLabels } from '@/lib/service/termLabels';
 
@@ -86,6 +88,10 @@ export function salesOrderServiceSummary({
   /* C8: บรรทัดของรอบขาย (รอบที่ขาย) + เดือนของช่วงบริการ — ใช้กับทุก term ของใบ · ลำดับ "รายการ n" อยู่ที่ `termLineLabels` */
   const lineById = new Map((Array.isArray(lines) ? lines : []).filter((line) => line?.id).map((line) => [line.id, line]));
   const periodMonths = stamped ? (periodSpan(servicePeriodOf(order)).months || null) : null;
+  /* ⭐ ใบแยกรายรายการ (mig 0400): เดือนของรอบขาย = เดือนเต็มของช่วงของ **รายการที่รอบขายนั้นมาจาก** ไม่ใช่ช่วงรวมของใบ
+       (ทรงเดียวกับ `termDetails` ของคิว TS — สองจอเสนอมาตรฐาน มล. เลขเดียวกัน) · บรรทัดมาจาก `lineById` (ไม่ต้องอ่านเพิ่ม) */
+  const lineMode = stamped && servicePeriodModeOf(order) === SERVICE_PERIOD_MODE_LINE;
+  const monthsOfLine = (line) => (lineMode ? (periodSpan(linePeriodOf(line)).months || null) : periodMonths);
 
   /* ไซต์/โซนที่ใบนี้ลงไปแล้ว — หน่วยที่คนอ่านคือ "ไซต์" (คนเข้าไซต์ทีเดียวทำทุกโซน) */
   const bySite = new Map();
@@ -102,7 +108,8 @@ export function salesOrderServiceSummary({
     if (!row.zones.some((z) => z.id === zone.id)) row.zones.push({ id: zone.id, name: zone.name });
     const qty = Number(term.packageQty);
     if (Number.isFinite(qty) && qty > 0) row.packageQty += qty;
-    row.terms.push(termItem(term, { zone, line: lineById.get(term.salesOrderLineId), stamped, periodMonths }));
+    const termLine = lineById.get(term.salesOrderLineId);
+    row.terms.push(termItem(term, { zone, line: termLine, stamped, periodMonths: monthsOfLine(termLine) }));
     bySite.set(zone.siteId, row);
   }
   /* เรียง: ชื่อโซน → ลำดับบรรทัดในใบ · ป้าย: โซนที่มีหลายรอบขายบอก "รายการ n · FG" ไม่งั้นช่องหน้าตาเหมือนกันแยกไม่ออก

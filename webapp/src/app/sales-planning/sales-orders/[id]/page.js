@@ -1714,13 +1714,16 @@ export default function SalesOrderDetailPage() {
     setDateFillAsk(null);
     if (!opened && ask?.issue) revealServiceSetupField(serviceSetupFieldId(ask.issue));
   };
-  /* บรรทัดของโมดัลออก Rev. — ตั้งค่างานบริการที่ใบ Rev. ยกไป (P2 ของ 0392) · ใบที่ยังไม่ได้ตั้งอะไร = null */
+  /* บรรทัดของโมดัลออก Rev. — ตั้งค่างานบริการที่ใบ Rev. ยกไป (P2 ของ 0392) · ใบที่ยังไม่ได้ตั้งอะไร = null
+     ⭐ mig 0400: Rev. ยกโหมดช่วงบริการ + ช่วงของรายการไปด้วย ⇒ ส่งโหมดของก้อน GET (ใบแยกรายรายการ: ท้ายช่วงบอกว่าเป็นช่วงรวม) */
   const serviceRevisionLine = (view) => {
     if (!view) return null;
     const zonesById = new Map((view.zones || []).map((zone) => [zone.id, zone]));
     return serviceSetupRevisionLine({
-      order: { ...order, servicePeriodFrom: view.period?.from ?? null, servicePeriodTo: view.period?.to ?? null },
-      ...localSetupCtx(mergedLines(view), zonesById),
+      order: {
+        ...order, servicePeriodMode: view.periodMode, servicePeriodFrom: view.period?.from ?? null, servicePeriodTo: view.period?.to ?? null,
+      },
+      ...localSetupCtx(mergedLines(view), zonesById, { periodMode: view.periodMode }),
     });
   };
   /* หลังบันทึกงานบริการ: ก้อน GET ก่อน แล้วค่อยตัวใบ (เวอร์ชันของใบตรงกันแล้ว ⇒ ตัวตามไม่ยิงซ้ำ)

@@ -504,3 +504,50 @@ test('0396 รหัสบล็อกของฐาน — { codes } (ว่�
     console.error = original;
   }
 });
+
+/* ══ ช่วงบริการแยกรายรายการ (mig 0400) ═══════════════════════════════════════════════════════════════════ */
+
+test('0400 select ของบรรทัดพกช่วงของรายการ ("servicePeriodFrom"/"servicePeriodTo") — บริบทป้อนตัวตัดสินได้ทั้งสองโหมด', async () => {
+  const tables = world();
+  tables.sales_order_lines = tables.sales_order_lines.map((row) => (row.id === 'L2'
+    ? { ...row, servicePeriodFrom: '2026-09-02', servicePeriodTo: '2027-09-01' } : { ...row, servicePeriodFrom: null, servicePeriodTo: null }));
+  const { client, calls } = fakeSupabase(tables);
+  const order = baseOrder({ servicePeriodMode: 'line', servicePeriodFrom: '2026-09-02', servicePeriodTo: '2027-09-01' });
+  const ctx = await loadServiceSetupContext(client, order, { withFgOptions: true, todayIso: TODAY });
+  const read = calls.find((c) => c.table === 'sales_order_lines');
+  for (const column of ['"servicePeriodFrom"', '"servicePeriodTo"', '"serviceKind"', '"serviceProductId"', '"serviceFgCode"', '"serviceRounds"']) {
+    assert.ok(read.select.includes(column), `select ของบรรทัดต้องมี ${column}`);
+  }
+  assert.doesNotMatch(read.select, /^\s*\*/, 'เลือกคอลัมน์ตามชื่อ ไม่ใช่ *');
+  assert.equal(ctx.order.servicePeriodMode, 'line', 'โหมดมากับแถวใบ (ผู้เรียกอ่าน *)');
+  assert.deepEqual(ctx.lines.map((l) => [l.id, l.servicePeriodFrom ?? null]), [['L1', null], ['L2', '2026-09-02'], ['L3', null]]);
+  const view = serviceSetupView(ctx, { canEdit: true, userId: 'U1', role: 'ae' });
+  assert.equal(view.periodMode, 'line');
+  assert.deepEqual(view.linePeriods, { total: 1, filled: 1 });
+  assert.deepEqual(view.lines.find((l) => l.lineId === 'L2').period, { from: '2026-09-02', to: '2027-09-01' });
+  assert.equal(serviceSetupIssues(ctx).some((i) => i.key === 'line_period_missing' || i.key === 'period_missing'), false);
+  /* ใบเดิม (ไม่มีโหมด/ช่วงของรายการ) ผ่านตัวโหลดเดียวกัน = ทั้งใบ */
+  const plain = await loadServiceSetupContext(fakeSupabase(world()).client, baseOrder(), { withFgOptions: true, todayIso: TODAY });
+  assert.equal(serviceSetupView(plain, { canEdit: true, userId: 'U1', role: 'ae' }).periodMode, 'whole');
+});
+
+test('0400 ตัวห่อ RPC บันทึก — ก้อนที่มี periodMode + ช่วงของรายการส่งถึงฐานตามตัวอักษร · รหัสใหม่ของฐาน → ข้อความ/สถานะ', async () => {
+  const payload = { periodMode: 'line', lines: [{ lineId: 'L2', period: { from: '2026-09-02', to: '2027-09-01' } }, { lineId: 'L3', period: null }] };
+  const { client, rpcCalls } = fakeSupabase({}, { rpc: { save_sales_order_service_setup: () => ({ data: { updatedAt: 'T1', lines: 2, zones: 0, periodMode: 'line' }, error: null }) } });
+  const out = await saveServiceSetup(client, { orderId: 'SO1', expectedUpdatedAt: '2026-09-28T03:00:00.123456+00:00', payload, user: { id: 'U1', name: 'สมชาย', role: 'ae' } });
+  assert.deepEqual(out, { data: { updatedAt: 'T1', lines: 2, zones: 0, periodMode: 'line' } });
+  assert.equal(rpcCalls[0].params.p_payload, payload, 'ก้อนเดียวกัน ไม่แปลงรูป');
+  assert.equal(rpcCalls[0].params.p_expected_updated_at, '2026-09-28T03:00:00.123456+00:00');
+
+  for (const [code, status] of [['service_setup_period_mode_invalid', 400], ['service_setup_period_derived', 409],
+    ['service_setup_line_period_mode', 400], ['service_setup_line_period_invalid', 400]]) {
+    const raised = fakeSupabase({}, { rpc: { save_sales_order_service_setup: () => ({ data: null, error: { message: code, code: 'P0001' } }) } });
+    const { error } = await rpcServiceSetup(raised.client, 'save_sales_order_service_setup', {});
+    assert.deepEqual([error.code, error.status], [code, status]);
+    assert.ok(error.message.length > 0 && !error.message.includes(code), 'ข้อความไทย ไม่ใช่รหัสดิบ');
+  }
+  /* ฐานบอกว่ายังไม่ครบด้วยรหัสรายรายการ (ยื่น/อนุมัติ) — DETAIL แยกเป็น detailCodes ให้ serviceSetupSqlIssues */
+  const incomplete = fakeSupabase({}, { rpc: { submit_sales_order_service_setup: () => ({ data: null, error: { message: 'sales_order_service_setup_incomplete', details: 'line_period_missing:L2,rounds_missing:L2', code: 'P0001' } }) } });
+  const { error } = await rpcServiceSetup(incomplete.client, 'submit_sales_order_service_setup', {});
+  assert.deepEqual([error.status, error.detailCodes], [409, ['line_period_missing:L2', 'rounds_missing:L2']]);
+});

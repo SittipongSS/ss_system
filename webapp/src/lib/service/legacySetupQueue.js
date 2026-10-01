@@ -26,6 +26,7 @@ import {
   serviceBackfillState,
   serviceLineNeedsBackfill,
   serviceLineRole,
+  servicePeriodModeOf,
   serviceSetupReopened,
   serviceSetupTotals,
 } from '@/lib/sales/serviceSetup';
@@ -74,15 +75,19 @@ const lineNeedsDecision = (line) => derivedRole(line) !== SERVICE_KIND_NOT_SERVI
   || serviceLineRole(line) !== SERVICE_KIND_NOT_SERVICE;
 
 /* บรรทัดตั้งครบ — ถามตัวรวมกลาง (`serviceSetupTotals.completeLines`) ด้วยบริบทของบรรทัดเดียว
-   ⇒ นิยาม "ครบ" (FG · รอบ · ≥1 โซน · แพ็คต่อรอบทุกโซน · ไม่ใช่งานบริการ = ไม่มีโซนค้าง) เป็นตัวเดียวกับชิปบนหน้าใบ */
-const lineComplete = (line, allocations, zonesById) =>
-  serviceSetupTotals({ lines: [line], allocations, zonesById }).completeLines === 1;
+   ⇒ นิยาม "ครบ" (FG · รอบ · ≥1 โซน · แพ็คต่อรอบทุกโซน · ไม่ใช่งานบริการ = ไม่มีโซนค้าง) เป็นตัวเดียวกับชิปบนหน้าใบ
+   ⭐ mig 0400: ส่งโหมดช่วงบริการของใบไปด้วย — ใบแยกรายรายการ บรรทัดแพ็คเกจต้องมีช่วงของตัวเองจึง "ครบ" (บรรทัดพกสองคอลัมน์ช่วงมาจาก select) */
+const lineComplete = (line, allocations, zonesById, periodMode) =>
+  serviceSetupTotals({ lines: [line], allocations, zonesById, periodMode }).completeLines === 1;
 
 /* ฝ่ายขายเริ่มตั้งแล้วหรือยัง — ช่วงบริการ · ชนิดที่เลือกเอง · แพ็คเกจ · โซน อย่างใดอย่างหนึ่งที่บันทึกแล้ว
    ⚠️ **ไม่นับจำนวนรอบ** — ใบเดิมกรอกรอบได้ตั้งแต่ mig 0326 (ตารางรอบบนการ์ดสัญญา) ⇒ นับรอบ = ใบเดิมจำนวนมาก
-      ขึ้นเป็น "ฝ่ายขายกำลังตั้ง" ทั้งที่ยังไม่มีใครแตะงานบริการเลย */
+      ขึ้นเป็น "ฝ่ายขายกำลังตั้ง" ทั้งที่ยังไม่มีใครแตะงานบริการเลย
+   ⭐ mig 0400: ใบที่สลับเป็น "แยกรายรายการ" แล้ว = เริ่มตั้งแล้ว — ช่วงของใบว่างจนกว่ารายการจะมีช่วงครบ (ไม่เก็บช่วงรวมครึ่งเดียว)
+      ⇒ ถามแค่ `servicePeriodFrom` ไม่พอ */
 function hasDraftData(order, lines, allocations) {
   if (order?.servicePeriodFrom) return true;
+  if (servicePeriodModeOf(order) === 'line') return true;
   if (allocations.length) return true;
   return lines.some((line) => !!line?.serviceKind || !!line?.serviceProductId || !!line?.serviceFgCode);
 }
@@ -90,10 +95,11 @@ function hasDraftData(order, lines, allocations) {
 function buildRow(order, orderLines, orderAllocations, { zonesById, dealsById, contractsById, line, customersWithSite }) {
   const relevant = orderLines.filter(lineNeedsDecision);
   const allocationsByLine = groupBy(orderAllocations, 'salesOrderLineId');
-  const done = relevant.filter((l) => lineComplete(l, allocationsByLine.get(l.id) || [], zonesById)).length;
+  const periodMode = servicePeriodModeOf(order);
+  const done = relevant.filter((l) => lineComplete(l, allocationsByLine.get(l.id) || [], zonesById, periodMode)).length;
   const state = serviceBackfillState(order, { hasDraftData: hasDraftData(order, orderLines, orderAllocations) });
   const totals = state === 'submitted'
-    ? serviceSetupTotals({ lines: orderLines, allocations: orderAllocations, zonesById })
+    ? serviceSetupTotals({ lines: orderLines, allocations: orderAllocations, zonesById, periodMode })
     : null;
   const readiness = orderReadiness(order, { contractsById });
   return {

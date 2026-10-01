@@ -51,32 +51,77 @@ export function termIsActive(term, order, todayIso = businessDate()) {
       ไม่รู้วัน = ไม่รู้ ไม่ใช่ "จบแล้ว" (กติกาเดียวกับ `termInWindow`)
    ⚠️ ไม่แตะ `termIsActive` — ด่านนัด/คิว/ฟิลด์เดิมของทะเบียนยังถามชั้น 1+2 ตามเดิม · ตัวนี้ใช้กับ "ผลรวมข้ามใบ" เท่านั้น */
 const isoDay = (value) => (/^\d{4}-\d{2}-\d{2}/.test(String(value ?? '')) ? String(value).slice(0, 10) : null);
+const pick = (map, key) => (key == null ? null : (map instanceof Map ? map.get(key) : map?.[key]) || null);
 
-/** ช่วงบริการของใบ ณ วันนี้ — 'future' | 'current' | 'ended' */
-export function orderPeriodPhase(order, todayIso = businessDate()) {
+/* ── ช่วงบริการของ **รอบขาย** (mig 0400 · ช่วงบริการแยกรายรายการ) ────────────────────────────────────────
+   ⭐ ใบโหมด 'line' (`servicePeriodMode`): แต่ละรายการมีช่วงของตัวเอง (`sales_order_lines."servicePeriodFrom"/"servicePeriodTo"`)
+      และช่วงของใบเป็นแค่ **ช่วงรวม** (เริ่มแรกสุด → จบสุดท้าย) ⇒ รอบขายของสาขาที่จบก่อน ถ้าอ่านช่วงรวมจะ "ยังไม่จบ" ผิดไปเป็นเดือน
+   ⭐ term ไม่มีวันของตัวเอง (0392/0400 ไม่เขียน startDate/endDate — สองช่องนั้นเป็นหน้าต่างของ `termInWindow`: ใส่แล้วรายการที่ยังไม่ถึง
+      วันเริ่มจะหายจากคิว "รอตั้งรอบ") ⇒ **ตัวโหลดแนบช่วงของบรรทัดให้ term** (`withLinePeriods` · `termPeriodRepo.attachLinePeriods`)
+      แล้วตัวตัดสินล้วนอ่านจาก term
+   ⚠️ ทางถอย: ใบโหมด 'line' ที่ term ไม่มีช่วงแนบมา (ตัวโหลดลืมแนบ) = ช่วงรวมของใบ — ประมาณเกินอย่างปลอดภัย (ไม่มีวัน "จบแล้ว" ก่อนจริง)
+      ใบที่ประทับแล้วมีช่วงครบทุกรายการแพ็คเกจ (ด่านของ 0400) ⇒ ทางถอยทำงานเฉพาะตอนตัวโหลดลืม · ยาม: termPeriodLoaders.test.mjs */
+
+/** ช่วงของรอบขายหนึ่ง → `{ from: iso|null, to: iso|null }` — ใบโหมด 'line' + ตัวโหลดแนบช่วงของบรรทัดมา = ช่วงของบรรทัด
+ *  · อย่างอื่น (โหมดทั้งใบ · ใบย้อนหลัง · ตัวโหลดไม่ได้แนบ · ไม่ส่ง term) = ช่วงของใบ */
+export function termPeriodOf(term, order) {
+  if (termHasLinePeriod(term, order)) return { from: isoDay(term.linePeriodFrom), to: isoDay(term.linePeriodTo) };
+  return { from: isoDay(order?.servicePeriodFrom), to: isoDay(order?.servicePeriodTo) };
+}
+
+/** ช่วงของรอบขายนี้มาจาก **ช่วงของรายการ** ไหม (ใบโหมด 'line' + ตัวโหลดแนบช่วงของบรรทัดมาครบคู่) — false = `termPeriodOf` ตอบช่วงของใบ
+ *  ⭐ ผู้เรียกที่ต้องบอกผู้ใช้ว่าวันที่เห็นเป็นของรายการหรือของใบ (ทะเบียนต่อสัญญา) ถามที่นี่ — กติกาเดียวกับ `termPeriodOf` */
+export function termHasLinePeriod(term, order) {
+  return order?.servicePeriodMode === 'line' && !!isoDay(term?.linePeriodFrom) && !!isoDay(term?.linePeriodTo);
+}
+
+/** ช่วงบริการของรอบขาย ณ วันนี้ — 'future' | 'current' | 'ended' (กติกาเดียวกับ `orderPeriodPhase`:
+ *  ใบไม่ประทับ = 'current' เสมอ · ไม่รู้วัน = ไม่รู้ ไม่ใช่ "จบแล้ว") */
+export function termPeriodPhase(term, order, todayIso = businessDate()) {
   if (!order?.serviceTermsOpenedAt) return 'current';
-  const from = isoDay(order.servicePeriodFrom);
-  const to = isoDay(order.servicePeriodTo);
+  const { from, to } = termPeriodOf(term, order);
   if (from && todayIso < from) return 'future';
   if (to && todayIso > to) return 'ended';
   return 'current';
 }
 
+/** ช่วงบริการของใบ ณ วันนี้ — 'future' | 'current' | 'ended' (= `termPeriodPhase` แบบไม่มี term: ช่วงของใบเสมอ) */
+export function orderPeriodPhase(order, todayIso = businessDate()) {
+  return termPeriodPhase(null, order, todayIso);
+}
+
+/**
+ * แนบช่วงของบรรทัดให้รอบขาย (mig 0400) → อาร์เรย์ใหม่ · term ของใบโหมด 'line' ที่รู้ช่วงของบรรทัด = `{ ...term, linePeriodFrom, linePeriodTo }`
+ *   · term อื่นทุกตัวคืน **ออบเจ็กต์เดิม** (ใบโหมดทั้งใบ = ไม่มีอะไรเปลี่ยน)
+ * @param ordersById      Map/ออบเจ็กต์ ใบสั่งขาย (ต้องพก `servicePeriodMode`)
+ * @param linePeriodsById Map/ออบเจ็กต์ lineId → แถวที่มี `servicePeriodFrom`/`servicePeriodTo` (แถว `sales_order_lines` ส่งมาได้ตรง ๆ)
+ */
+export function withLinePeriods(terms = [], ordersById = new Map(), linePeriodsById = new Map()) {
+  return (Array.isArray(terms) ? terms : []).map((term) => {
+    if (!term || pick(ordersById, term.salesOrderId)?.servicePeriodMode !== 'line') return term;
+    const row = pick(linePeriodsById, term.salesOrderLineId);
+    const from = isoDay(row?.servicePeriodFrom);
+    const to = isoDay(row?.servicePeriodTo);
+    return from && to ? { ...term, linePeriodFrom: from, linePeriodTo: to } : term;
+  });
+}
+
 /* รอบขายที่ "ขายอยู่ตอนนี้" ของชุด term (โซนหนึ่ง) — ตัวรวมข้ามใบทุกตัวถามที่นี่ ห้ามกรองซ้ำที่จอ
-   · ตัดใบที่ช่วงจบแล้ว (ใบเก่าก่อนต่อสัญญา) เสมอ
-   · มีใบที่อยู่ในช่วง ⇒ นับเฉพาะใบในช่วง (ใบขายเพิ่มที่ซ้อนช่วงนับรวม · ใบต่อสัญญาที่ยังไม่เริ่มรอก่อน)
-   · ไม่มีใบในช่วงเลย ⇒ ใบที่เริ่มก่อนสุด (ใบแรกของโซนที่รอวันเริ่ม — "ขายแล้ว" ต้องไม่หายระหว่างรอ) */
+   · ตัดรอบที่ช่วงจบแล้ว (ใบเก่าก่อนต่อสัญญา) เสมอ
+   · มีรอบที่อยู่ในช่วง ⇒ นับเฉพาะรอบในช่วง (ใบขายเพิ่มที่ซ้อนช่วงนับรวม · ใบต่อสัญญาที่ยังไม่เริ่มรอก่อน)
+   · ไม่มีรอบในช่วงเลย ⇒ รอบที่เริ่มก่อนสุด (ใบแรกของโซนที่รอวันเริ่ม — "ขายแล้ว" ต้องไม่หายระหว่างรอ)
+   ⭐ mig 0400: ช่วง = ช่วงของ **รอบขาย** (`termPeriodPhase` — ใบแยกรายรายการใช้ช่วงของบรรทัดที่ตัวโหลดแนบมา · ใบอื่นใช้ช่วงของใบเหมือนเดิม) */
 export function termsSoldNow(terms = [], ordersById = new Map(), todayIso = businessDate()) {
   const orderOf = (id) => (ordersById instanceof Map ? ordersById.get(id) : ordersById?.[id]) || null;
   const live = (Array.isArray(terms) ? terms : [])
     .filter((t) => t && termIsActive(t, orderOf(t.salesOrderId), todayIso))
     .map((t) => ({ term: t, order: orderOf(t.salesOrderId) }));
-  const current = live.filter(({ order }) => orderPeriodPhase(order, todayIso) === 'current');
+  const current = live.filter(({ term, order }) => termPeriodPhase(term, order, todayIso) === 'current');
   if (current.length) return current.map(({ term }) => term);
-  const future = live.filter(({ order }) => orderPeriodPhase(order, todayIso) === 'future');
+  const future = live.filter(({ term, order }) => termPeriodPhase(term, order, todayIso) === 'future');
   if (!future.length) return [];
-  const first = future.map(({ order }) => isoDay(order.servicePeriodFrom)).sort()[0];
-  return future.filter(({ order }) => isoDay(order.servicePeriodFrom) === first).map(({ term }) => term);
+  const first = future.map(({ term, order }) => termPeriodOf(term, order).from).sort()[0];
+  return future.filter(({ term, order }) => termPeriodOf(term, order).from === first).map(({ term }) => term);
 }
 
 /* จำนวน **โซนไม่ซ้ำ** ของรอบขายของใบ เมื่อใบยังมีผล — บรรทัดด่านเงินในโมดัล FN รับรองงวด (PR-C C5 · C-D15)

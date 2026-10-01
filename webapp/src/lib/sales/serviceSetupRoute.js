@@ -98,6 +98,24 @@ function rpcFailure(error, ctx = null) {
   return failWith(error?.status || 500, error?.message, extra);
 }
 
+/* ── แท็บที่เปิดค้างข้ามการสลับโหมดช่วงบริการ (mig 0400 · ตรวจทาน ui-stale-mode-dead-end) ─────────────────────────────
+   ตัวตรวจก้อนบันทึกวิ่ง **ก่อน** RPC (ซึ่งเป็นคนเทียบ `expectedUpdatedAt`) และตรวจกับโหมดสดของฐาน ⇒ แท็บที่ยังเห็นโหมดเก่า
+   (อีกหน้าต่างสลับแล้วบันทึก) ได้ 400 "ใบนี้ใช้ช่วงเดียวทั้งใบ — สลับเป็นแยกรายรายการก่อน…" ทั้งที่สวิตช์บนจอของตัวเองอยู่ที่แยกรายรายการ
+   ไม่มีการโหลดใหม่ และกดซ้ำก็ตายแบบเดิมจนกด F5 · ทางที่ถูกคือทางเดียวกับ `workflow_stale` ของฐาน (409 → จอโหลดใหม่ + บอก)
+   ⭐ เข้าทางนี้เมื่อ **ทั้งสองอย่าง** จริง: (1) ผลตรวจมีข้อ "โหมดไม่ตรง" (ช่วงของใบในโหมดแยกรายรายการ · ช่วงของรายการในโหมดทั้งใบ)
+      (2) เวลาของใบในคำขอไม่เท่าเวลาของใบที่เพิ่งอ่าน (เทียบ **ตัวอักษร** — ทั้งคู่เป็นค่าดิบจาก PostgREST · ห้ามผ่าน Date)
+      ก้อนที่เวลาตรง (จอรุ่นเก่า/ยิงตรง) ยังได้ 400 รายช่องเหมือนเดิม · ถ้ารูปตัวอักษรต่างกันทั้งที่ใบไม่เปลี่ยน ผลคือ 409 + โหลดใหม่
+      เฉพาะก้อนที่จอรุ่นนี้ไม่มีวันส่ง (จอส่ง `period`/`lines[].period` ตามโหมดที่ตัวเองเห็นเท่านั้น) */
+const MODE_CONFLICT_MESSAGES = new Set([
+  SERVICE_SETUP_SQL_MESSAGES.service_setup_period_derived.message,
+  SERVICE_SETUP_SQL_MESSAGES.service_setup_line_period_mode.message,
+]);
+function staleModeConflict(errors, expectedUpdatedAt, order) {
+  const current = order?.updatedAt;
+  if (typeof current !== 'string' || !current || expectedUpdatedAt === current) return false;
+  return errors.some((item) => item?.field === 'period' && MODE_CONFLICT_MESSAGES.has(item?.message));
+}
+
 /* ══ GET ══════════════════════════════════════════════════════════════════════════════════════════ */
 
 /** ก้อนงานบริการของใบ (`serviceSetupView`) — ทุกคนที่อ่านใบได้ · canEdit มาจาก server เสมอ */
@@ -127,8 +145,12 @@ export async function serviceSetupGet({ supabase, user, id }) {
 /* ══ PATCH — บันทึกงานบริการ ═══════════════════════════════════════════════════════════════════════ */
 
 /**
- * body: `{ expectedUpdatedAt, period?: {from,to}|null, lines?: [{ lineId, kind?, serviceProductId?, rounds?, zones?: [...] }] }`
+ * body: `{ expectedUpdatedAt, periodMode?: 'whole'|'line', period?: {from,to}|null,
+ *          lines?: [{ lineId, kind?, serviceProductId?, rounds?, zones?: [...], period?: {from,to}|null }] }`
+ *   ⭐ mig 0400: `periodMode` (ไม่ส่ง = ไม่เปลี่ยน) · `period` ของใบส่งได้เฉพาะโหมดผลลัพธ์ 'whole' · `lines[].period` = ช่วงของรายการ
+ *     (โหมด 'line' · รายการแพ็คเกจ · null = ล้าง) — กติกาทั้งหมดอยู่ที่ `validateServiceSetupPatch` (คู่กับ RPC รุ่น 0400/F1)
  * → 200 `{ updatedAt, issues, warnings, totals }` · 400 `{ error, fieldErrors }` · 403 · 409 (ล็อก/เก่า) · 500
+ *   · 409 `{ error, code: 'workflow_stale' }` มาได้สองทาง: RPC (เวลาของใบไม่ตรง) และตัวตรวจที่นี่เมื่อแท็บค้างข้ามการสลับโหมด (`staleModeConflict`)
  */
 export async function serviceSetupPatch({ supabase, user, id, body, request = null, audit = recordAudit }) {
   if (!user) return failWith(401, 'unauthorized');
@@ -154,7 +176,12 @@ export async function serviceSetupPatch({ supabase, user, id, body, request = nu
   if (locked) return failWith(409, locked);
 
   const { value, errors } = validateServiceSetupPatch(body, before);
-  if (errors.length) return failWith(400, 'บันทึกงานบริการไม่ได้ — ตรวจช่องที่ขึ้นสีแดง', { fieldErrors: errors });
+  if (errors.length) {
+    if (staleModeConflict(errors, expected.value, before.order)) {
+      return failWith(409, SERVICE_SETUP_SQL_MESSAGES.workflow_stale.message, { code: 'workflow_stale' });
+    }
+    return failWith(400, 'บันทึกงานบริการไม่ได้ — ตรวจช่องที่ขึ้นสีแดง', { fieldErrors: errors });
+  }
 
   const { data, error } = await saveServiceSetup(supabase, {
     orderId: order.id, expectedUpdatedAt: expected.value, payload: value, user,

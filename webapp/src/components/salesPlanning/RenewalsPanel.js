@@ -30,7 +30,7 @@ import { useCan } from "@/lib/roleContext";
 import { fmtDate, fmtName, naText, NA } from "@/lib/format";
 import { usePagination } from "@/lib/usePagination";
 import { apiJson } from "@/lib/apiFetch";
-import { ORDER_PERIOD_END_NOTE } from "@/lib/service/renewals";
+import { LINE_PERIOD_END_NOTE, ORDER_PERIOD_END_NOTE } from "@/lib/service/renewals";
 
 export const EMPTY_RENEWAL_COUNTS = { expired: 0, dueIn30: 0, dueSoon: 0, following: 0 };
 
@@ -47,6 +47,8 @@ function dueCell(row) {
       </span>
       {/* PR-C: ใบเปิดงานบริการแล้วแต่ยังไม่ผูกสัญญา — วันนี้คือวันจบช่วงบริการของใบ ไม่ใช่ของสัญญา */}
       {row.endSource === "order_period" && <span className="cell-sub">{ORDER_PERIOD_END_NOTE}</span>}
+      {/* mig 0400: ใบแยกรายรายการ — วันนี้คือวันจบช่วงของรายการที่ลงไซต์นี้ (มาก่อนวันจบของช่วงรวมที่หน้าใบโชว์) */}
+      {row.endSource === "line_period" && <span className="cell-sub">{LINE_PERIOD_END_NOTE}</span>}
     </>
   );
 }
@@ -79,6 +81,7 @@ export default function RenewalsPanel({ data, loading = false, error = "", reloa
       row.site?.name, row.site?.customerName, row.order?.orderNumber, row.deal?.title, row.deal?.ownerName,
       // ตาเห็นบนแถว = ต้องค้นเจอ (ข้อความใต้วันของแถวที่ถอยมาใช้ช่วงบริการของใบ)
       row.endSource === "order_period" ? ORDER_PERIOD_END_NOTE : null,
+      row.endSource === "line_period" ? LINE_PERIOD_END_NOTE : null,
     ].some((v) => String(v || "").toLowerCase().includes(q)));
   }, [rows, query]);
 

@@ -761,6 +761,163 @@ test('POST — คำสั่งที่ไม่รู้จัก = 400 ก�
   assert.equal(f.calls.length, 0);
 });
 
+/* ══ ช่วงบริการ "ทั้งใบช่วงเดียว | แยกรายรายการ" (mig 0400) ═══════════════════════════════════════════════════ */
+
+/* ใบที่มีแพ็คเกจสองรายการ (L2 · L4) — โซนละไซต์ · งวดครอบ 01/10/2026–30/09/2027 */
+const twoPackageWorld = (order = soRow(), linePeriods = {}) => world({
+  order,
+  lines: [
+    line('L1', 1, { fgCode: 'FG-0100-03-002-00009', productId: 'P9', description: 'ค่าขนส่ง' }),
+    line('L2', 2, { serviceKind: 'package', serviceProductId: 'P1', serviceFgCode: 'FG-0100-02-001-00001', serviceRounds: 12, ...(linePeriods.L2 || {}) }),
+    line('L3', 3, { serviceKind: 'not_service', description: 'ค่าออกแบบ' }),
+    line('L4', 4, { serviceKind: 'package', serviceProductId: 'P1', serviceFgCode: 'FG-0100-02-001-00001', serviceRounds: 12, ...(linePeriods.L4 || {}) }),
+  ],
+  over: {
+    sales_order_line_zones: [
+      { id: 'A1', salesOrderId: 'SO1', salesOrderLineId: 'L2', zoneId: 'Z1', packsPerRound: 1, sortOrder: 0 },
+      { id: 'A4', salesOrderId: 'SO1', salesOrderLineId: 'L4', zoneId: 'Z3', packsPerRound: 1, sortOrder: 0 },
+    ],
+  },
+});
+const H1 = { from: '2026-10-01', to: '2027-03-31' };
+const H2 = { from: '2027-04-01', to: '2027-09-30' };
+const asLine = (p) => ({ servicePeriodFrom: p.from, servicePeriodTo: p.to });
+
+test('0400 PATCH — สลับเป็นแยกรายรายการ: RPC ได้ periodMode + ช่วงของรายการตามตัวอักษร · เวลาดิบ · audit ก่อน/หลังพกโหมด + ช่วงรายรายการ', async () => {
+  const tables = twoPackageWorld();
+  const f = fakeSupabase(tables, {
+    rpc: {
+      save_sales_order_service_setup: (params) => {
+        /* จำลองฐาน (0400/F1): เขียนช่วงของรายการ · โหมด · ช่วงรวมของใบ (ครบทุกรายการ) · เวลาใหม่ */
+        const byId = new Map(params.p_payload.lines.map((entry) => [entry.lineId, entry.period]));
+        tables.sales_order_lines = tables.sales_order_lines.map((l) => (byId.has(l.id) ? { ...l, ...asLine(byId.get(l.id)) } : l));
+        tables.sales_orders[0] = {
+          ...tables.sales_orders[0], servicePeriodMode: params.p_payload.periodMode,
+          servicePeriodFrom: '2026-10-01', servicePeriodTo: '2027-09-30', updatedAt: '2026-09-28T05:00:00.777777+00:00',
+        };
+        return { data: { updatedAt: '2026-09-28T05:00:00.777777+00:00', lines: 2, zones: 2, periodMode: 'line' }, error: null };
+      },
+    },
+  });
+  const body = { expectedUpdatedAt: UPDATED_AT, periodMode: 'line', lines: [{ lineId: 'L2', period: H1 }, { lineId: 'L4', period: H2 }] };
+  const res = await serviceSetupPatch({ supabase: f.client, user: AE, id: 'SO1', body, audit: f.audit });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  const { params } = f.rpcCalls[0];
+  assert.equal(params.p_expected_updated_at, UPDATED_AT, 'ห้ามแปลงผ่าน Date — ไมโครวินาทีต้องอยู่ครบ');
+  assert.deepEqual(params.p_payload, { periodMode: 'line', lines: [{ lineId: 'L2', period: H1 }, { lineId: 'L4', period: H2 }] },
+    'ไม่มี `period` ของใบในก้อน (โหมด line = ช่วงของใบคิดจากรายการ)');
+  assert.deepEqual(Object.keys(res.body).sort(), ['issues', 'totals', 'updatedAt', 'warnings'], 'รูปของคำตอบไม่เปลี่ยน');
+  assert.equal(res.body.updatedAt, '2026-09-28T05:00:00.777777+00:00');
+  assert.deepEqual(res.body.issues, []);
+  assert.deepEqual([res.body.totals.periodLines, res.body.totals.periodFilled, res.body.totals.completeLines], [2, 2, 4]);
+
+  const entry = f.audits[0];
+  assert.equal(entry.summary, 'บันทึกงานบริการ SO-26090001-0 — 2 รายการ · 2 โซน');
+  assert.equal(entry.before.serviceSetup.periodMode, 'whole');
+  assert.deepEqual(entry.before.serviceSetup.lines.map((l) => l.period), [null, null, null, null]);
+  assert.equal(entry.after.serviceSetup.periodMode, 'line');
+  assert.deepEqual(entry.after.serviceSetup.period, { from: '2026-10-01', to: '2027-09-30' });
+  assert.deepEqual(entry.after.serviceSetup.lines.map((l) => [l.lineId, l.period]), [['L1', null], ['L2', H1], ['L3', null], ['L4', H2]]);
+});
+
+test('0400 PATCH — ใบแยกรายรายการที่ยังใส่ช่วงไม่ครบ: บันทึกได้ (ร่าง) · คำตอบบอกข้อ line_period_missing ของรายการที่ขาด ไม่มี period_missing', async () => {
+  const tables = twoPackageWorld(soRow({ servicePeriodMode: 'line', servicePeriodFrom: null, servicePeriodTo: null }), { L2: asLine(H1) });
+  const f = fakeSupabase(tables, { rpc: { save_sales_order_service_setup: rpcOk({ updatedAt: 'T1', lines: 1, zones: 2, periodMode: 'line' }) } });
+  const res = await serviceSetupPatch({ supabase: f.client, user: AE, id: 'SO1', body: { expectedUpdatedAt: UPDATED_AT, lines: [{ lineId: 'L4', rounds: 6 }] }, audit: f.audit });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.deepEqual(f.rpcCalls[0].params.p_payload, { lines: [{ lineId: 'L4', rounds: 6 }] }, 'ไม่ส่งโหมด = ไม่เปลี่ยนโหมด');
+  assert.deepEqual(res.body.issues.map((i) => [i.key, i.lineId, i.field]), [['line_period_missing', 'L4', 'period']]);
+  assert.deepEqual([res.body.totals.periodLines, res.body.totals.periodFilled], [2, 1]);
+});
+
+test('0400 PATCH — ข้อผิดใหม่ทุกข้อ = 400 fieldErrors ก่อนถึง RPC (ช่อง periodMode · period ของใบ · period ของรายการ)', async () => {
+  const cases = [
+    ['โหมดผิดค่า', soRow(), { periodMode: 'x' }, [[null, 'periodMode', MSG.service_setup_period_mode_invalid.message]]],
+    ['ช่วงของใบในโหมด line (จอรุ่นเก่า)', soRow({ servicePeriodMode: 'line' }), { period: { from: '2026-10-01', to: '2027-09-30' } },
+      [[null, 'period', MSG.service_setup_period_derived.message]]],
+    ['ช่วงของรายการในโหมด whole', soRow(), { lines: [{ lineId: 'L2', period: H1 }] }, [['L2', 'period', MSG.service_setup_line_period_mode.message]]],
+    ['ช่วงของรายการกลับหัว', soRow({ servicePeriodMode: 'line' }), { lines: [{ lineId: 'L2', period: { from: '2027-01-01', to: '2026-01-01' } }] },
+      [['L2', 'period', MSG.service_setup_line_period_invalid.message]]],
+    ['ช่วงบนรายการที่ไม่ใช่งานบริการ', soRow({ servicePeriodMode: 'line' }), { lines: [{ lineId: 'L3', period: H1 }] },
+      [['L3', 'period', MSG.service_setup_not_package.message]]],
+  ];
+  for (const [name, order, body, expected] of cases) {
+    const f = fakeSupabase(twoPackageWorld(order));
+    const res = await serviceSetupPatch({ supabase: f.client, user: AE, id: 'SO1', body: { expectedUpdatedAt: UPDATED_AT, ...body }, audit: f.audit });
+    assert.equal(res.status, 400, `${name}: ${JSON.stringify(res.body)}`);
+    assert.equal(res.body.error, 'บันทึกงานบริการไม่ได้ — ตรวจช่องที่ขึ้นสีแดง', name);
+    assert.deepEqual(res.body.fieldErrors.map((e) => [e.lineId, e.field, e.message]), expected, name);
+    assert.equal(f.rpcCalls.length, 0, `${name}: ไม่ยิง RPC`);
+    assert.equal(f.audits.length, 0, `${name}: ไม่ลง audit`);
+  }
+});
+
+/* 🐞 ตรวจทาน ui-stale-mode-dead-end: ตัวตรวจวิ่งก่อน RPC (ที่เทียบ expectedUpdatedAt) และตรวจกับโหมดสด ⇒ แท็บที่เปิดค้างข้ามการสลับโหมด
+   เคยได้ 400 "สลับเป็นแยกรายรายการก่อน…" ทั้งที่จอตัวเองอยู่ที่แยกรายรายการ ไม่มีการโหลดใหม่ กดซ้ำก็ตายเหมือนเดิม
+   ⇒ ข้อ "โหมดไม่ตรง" + เวลาของใบในคำขอไม่เท่าของที่เพิ่งอ่าน = ทางเดียวกับ workflow_stale (409 → จอโหลดใหม่ + บอก) */
+test('0400 PATCH — แท็บค้างข้ามการสลับโหมด (เวลาของใบไม่ตรง + ข้อโหมดไม่ตรง) = 409 workflow_stale ทั้งสองทิศ · ไม่ยิง RPC · ไม่ลง audit', async () => {
+  const STALE = '2026-09-28T02:00:00.000001+00:00';
+  assert.notEqual(STALE, UPDATED_AT);
+  const cases = [
+    ['(ก) แท็บเห็นแยกรายรายการ · ฐานเป็นทั้งใบแล้ว · ส่งช่วงของรายการ', soRow(), { lines: [{ lineId: 'L2', period: H1 }] }],
+    ['(ข) แท็บเห็นทั้งใบ · ฐานเป็นแยกรายรายการแล้ว · ส่งช่วงของใบ', soRow({ servicePeriodMode: 'line' }), { period: { from: '2026-10-01', to: '2027-09-30' } }],
+    ['(ข) ล้างช่วงของใบ (null) ก็เป็นข้อเดียวกัน', soRow({ servicePeriodMode: 'line' }), { period: null }],
+    ['ข้อโหมดไม่ตรงปนกับข้ออื่น = เก่าก่อน (ข้ออื่นตรวจกับของที่แท็บไม่เคยเห็น)', soRow(), { lines: [{ lineId: 'L2', period: H1, rounds: 0 }] }],
+  ];
+  for (const [name, order, body] of cases) {
+    const f = fakeSupabase(twoPackageWorld(order));
+    const res = await serviceSetupPatch({ supabase: f.client, user: AE, id: 'SO1', body: { expectedUpdatedAt: STALE, ...body }, audit: f.audit });
+    assert.equal(res.status, 409, `${name}: ${JSON.stringify(res.body)}`);
+    assert.deepEqual(res.body, { error: MSG.workflow_stale.message, code: 'workflow_stale' }, name);
+    assert.equal(Object.prototype.hasOwnProperty.call(res.body, 'fieldErrors'), false, `${name}: ไม่มีช่องแดง — จอเดินทางโหลดใหม่`);
+    assert.equal(f.rpcCalls.length, 0, `${name}: ไม่ยิง RPC`);
+    assert.equal(f.audits.length, 0, `${name}: ไม่ลง audit`);
+  }
+  /* เวลาตรง (จอรุ่นเก่า/ยิงตรง) = 400 รายช่องเหมือนเดิม — เทสต์ "ข้อผิดใหม่ทุกข้อ" ข้างบนล็อกไว้ · ข้ออื่นที่ไม่ใช่เรื่องโหมด แม้เวลาไม่ตรง
+     ก็ยัง 400 รายช่อง (ก้อนนั้นผิดไม่ว่าฐานจะเป็นรุ่นไหน · RPC จะตอบ workflow_stale เองเมื่อผ่านตัวตรวจ) */
+  const bad = fakeSupabase(twoPackageWorld(soRow({ servicePeriodMode: 'line' })));
+  const res = await serviceSetupPatch({
+    supabase: bad.client, user: AE, id: 'SO1', audit: bad.audit,
+    body: { expectedUpdatedAt: STALE, lines: [{ lineId: 'L2', period: { from: '2027-01-01', to: '2026-01-01' } }] },
+  });
+  assert.equal(res.status, 400, JSON.stringify(res.body));
+  assert.deepEqual(res.body.fieldErrors.map((e) => [e.lineId, e.field, e.message]), [['L2', 'period', MSG.service_setup_line_period_invalid.message]]);
+  /* รูปโค้ด: เทียบเวลาเป็นตัวอักษร (ห้ามผ่าน Date) และถามหลังตัวตรวจ ก่อนตอบ 400 */
+  const src = fs.readFileSync(new URL('./serviceSetupRoute.js', import.meta.url), 'utf8');
+  const fn = src.slice(src.indexOf('function staleModeConflict'), src.indexOf('/* ══ GET'));
+  assert.match(fn, /expectedUpdatedAt === current/);
+  assert.doesNotMatch(fn, /new Date|Date\.parse/);
+  assert.match(src, /if \(errors\.length\) \{\s*if \(staleModeConflict\(errors, expected\.value, before\.order\)\) \{\s*return failWith\(409, SERVICE_SETUP_SQL_MESSAGES\.workflow_stale\.message, \{ code: 'workflow_stale' \}\);/);
+});
+
+test('0400 PATCH — ฐานตีกลับรหัสใหม่เอง (แข่งกัน: อีกหน้าต่างสลับโหมดระหว่างทาง) = ข้อความไทย + สถานะตามแคตตาล็อก · ไม่ลง audit', async () => {
+  for (const [code, status] of [['service_setup_period_derived', 409], ['service_setup_line_period_mode', 400],
+    ['service_setup_period_mode_invalid', 400], ['service_setup_line_period_invalid', 400]]) {
+    const f = fakeSupabase(twoPackageWorld(), { rpc: { save_sales_order_service_setup: rpcRaise(code) } });
+    const res = await serviceSetupPatch({ supabase: f.client, user: AE, id: 'SO1', body: patchBody({ lines: [] }), audit: f.audit });
+    assert.equal(res.status, status, code);
+    assert.equal(res.body.code, code);
+    assert.equal(res.body.error, MSG[code].message, code);
+    assert.equal(f.audits.length, 0, code);
+  }
+});
+
+test('0400 GET — ใบแยกรายรายการ: โหมด · ตัวนับ · ช่วงของรายการ · ช่วงของใบว่างจนกว่าจะครบ · select ของบรรทัดพกสองคอลัมน์ช่วง', async () => {
+  const f = fakeSupabase(twoPackageWorld(soRow({ servicePeriodMode: 'line', servicePeriodFrom: null, servicePeriodTo: null }), { L2: asLine(H1) }));
+  const res = await serviceSetupGet({ supabase: f.client, user: AE, id: 'SO1' });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.equal(res.body.periodMode, 'line');
+  assert.equal(res.body.period, null);
+  assert.deepEqual(res.body.linePeriods, { total: 2, filled: 1 });
+  assert.deepEqual(res.body.lines.map((l) => [l.lineId, l.period]), [['L1', null], ['L2', H1], ['L3', null], ['L4', null]]);
+  assert.deepEqual(res.body.issues.map((i) => i.key), ['line_period_missing']);
+  const linesRead = f.calls.find((c) => c.table === 'sales_order_lines');
+  assert.match(linesRead.select, /"servicePeriodFrom", "servicePeriodTo"/);
+  /* ใบโหมดทั้งใบ (ทุกใบที่มีอยู่วันนี้) — คีย์ใหม่มีค่าตั้งต้น ไม่มีอะไรอื่นเปลี่ยน */
+  const whole = await serviceSetupGet({ supabase: fakeSupabase(world()).client, user: AE, id: 'SO1' });
+  assert.deepEqual([whole.body.periodMode, whole.body.period, whole.body.linePeriods], ['whole', { from: '2026-10-01', to: '2027-09-30' }, { total: 1, filled: 0 }]);
+});
+
 /* ══ proxy: เส้นนี้อยู่ใต้กฎ /api/sales-planning เดิม (ไม่แก้ proxy) ═════════════════════════════════════════════ */
 
 test('proxy — ฝ่ายขายเขียนเส้นนี้ได้ · บัญชี/ผู้สังเกตการณ์เขียนไม่ได้ · อ่านได้ทุกคนที่ผ่านด่านหน้า', () => {
