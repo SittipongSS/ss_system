@@ -12,11 +12,13 @@ import { readdirSync, readFileSync } from 'node:fs';
 //    `surveyRepo` แกะแถวเดียวกันตอนตอบ GET ⇒ ชั้นต้องไหลทางเดียว จอ → กฎ ไม่ใช่ repo → จอ
 import { surveyRecallRecord } from './survey.js';
 import {
+  SURVEY_UNKNOWN_LABELS,
   SURVEY_UNKNOWN_TEXT,
   surveyControlView,
   surveyDraftSync,
   surveyZoneChangedSections,
   surveyNameList,
+  surveyResultSpotCell,
   surveyResultZoneCell,
   surveySendBackAskText,
   surveyTotalsText,
@@ -28,11 +30,14 @@ import {
 const part = (w, l, h) => ({ widthM: w, lengthM: l, heightM: h, label: null });
 const WIDE = { docType: 'survey_wide' };
 const PLAN = { docType: 'survey_plan' };
+/* 🔄 มติ 01/10 (ด่านรูปจุด): ช่าง "ครบ" = ทุกจุดมีรูปที่ผูกแล้ว ⇒ ชุดไฟล์ตั้งต้นมีรูปของจุด `s1` (id จุดซ้ำข้ามพื้นที่ได้ —
+   รูปผูกกับจุดภายในพื้นที่ของมันเท่านั้น) · เทสต์ด่านรูปจุดเองอยู่ `surveySpotGates.test.mjs` */
+const SPOT = { docType: 'survey_spot', fileName: 'spot.jpg', metadata: { spotId: 's1' } };
 
 /** พื้นที่ที่ครบทั้งหกข้อ — 4×5×3 = 60 ลบ.ม. ⇒ สูตรบอก 1 แพ็คเกจ ⇒ เคาะ 1 ไม่ต้องมีเหตุผล */
 const readyZone = (id, name, extra = {}) => ({
   id, zoneId: `SZN-${id}`, zoneName: name, floor: '02', status: 'ok',
-  parts: [part(4, 5, 3)], spots: [{ id: `${id}-s1`, label: 'มุมโซฟา', selected: true }],
+  parts: [part(4, 5, 3)], spots: [{ id: 's1', label: 'มุมโซฟา', selected: true }],
   packageQty: 1, packageNote: '', note: '', ...extra,
 });
 /** พื้นที่ที่ช่างยังไม่ได้แตะเลย */
@@ -43,14 +48,14 @@ const emptyZone = (id, name, extra = {}) => ({
 /** พื้นที่ที่ช่างวัดครบแล้ว แต่หัวหน้ายังไม่เคาะ (ไม่มีผัง · ไม่ได้เลือกจุด · ไม่มีแพ็คเกจ) */
 const measuredZone = (id, name, extra = {}) => ({
   id, zoneId: `SZN-${id}`, zoneName: name, floor: '02', status: 'ok',
-  parts: [part(4, 5, 3)], spots: [{ id: `${id}-s1`, label: 'มุมโซฟา', selected: false }],
+  parts: [part(4, 5, 3)], spots: [{ id: 's1', label: 'มุมโซฟา', selected: false }],
   packageQty: null, packageNote: '', note: '', ...extra,
 });
 
-const readyFiles = [WIDE, PLAN];
-const measuredFiles = [WIDE];
+const readyFiles = [WIDE, PLAN, SPOT];
+const measuredFiles = [WIDE, SPOT];
 /** ช่างครบ + ผังมาแล้ว เหลือของหัวหน้าที่เคาะบนแท็บสรุป (เลือกจุด · แพ็คเกจ) */
-const plannedFiles = [WIDE, PLAN];
+const plannedFiles = [WIDE, PLAN, SPOT];
 
 const request = (extra = {}) => ({
   id: 'DR-1', docNo: 'RQ-AS-26090106', title: 'S&S ประเมินพื้นที่',
@@ -105,7 +110,7 @@ test('หัวที่พับตอบได้โดยไม่ต้อ�
   assert.equal(done.packageQty, 1);
   assert.equal(done.spotsTotal, 1);
   assert.equal(done.spotsSelected, 1);
-  assert.deepEqual(done.photos, { wide: 1, plan: 1, spot: 0, total: 2 });
+  assert.deepEqual(done.photos, { wide: 1, plan: 1, spot: 1, total: 3 });
   assert.equal(done.missingText, null);
   assert.equal(done.ready, true);
 
@@ -155,7 +160,9 @@ test('🐞 ช่องขนาดที่ยังว่างต้องเ
   assert.equal(none.figures, null);
 });
 
-test('รูปจากช่างบนช่องพื้นที่: ภาพกว้างก่อน แล้วภาพจุด · ไม่เอาผัง ไม่เอาไฟล์ที่ไม่ใช่รูป · นับครบทุกไฟล์', () => {
+/* 🔄 PR-S (30/09) — ภาพจุดย้ายไปอยู่ใต้จุดของมันในคอลัมน์เลือกจุด (`surveyResultSpotCell` ข้างล่าง) ⇒ ช่องพื้นที่เหลือภาพกว้าง
+   (รูปเดียวกันสองที่ในแถวเดียว = เทียบไม่ออกว่ารูปไหนของจุดไหน) · ตัวนับยังนับครบทุกหัวข้อเหมือนด่าน */
+test('รูปจากช่างบนช่องพื้นที่: ภาพกว้างเท่านั้น (ภาพจุดอยู่ใต้จุด) · ไม่เอาผัง ไม่เอาไฟล์ที่ไม่ใช่รูป · นับครบทุกไฟล์', () => {
   const img = (id, docType, fileName = `${id}.jpg`) => ({ id, docType, fileName, mimeType: 'image/jpeg', driveFileId: `d-${id}` });
   const files = [
     img('s1', 'survey_spot'), img('w1', 'survey_wide'), img('p1', 'survey_plan'),
@@ -164,8 +171,8 @@ test('รูปจากช่างบนช่องพื้นที่: ภ
   ];
   const cell = surveyResultZoneCell(readyZone('z1', 'Reception'), files);
   assert.deepEqual(cell.thumbs.map((t) => [t.file.id, t.kind, t.startsGroup]),
-    [['w1', 'wide', false], ['w3', 'wide', false], ['s1', 'spot', true]]);
-  assert.deepEqual(cell.thumbs.map((t) => t.label), ['ภาพกว้าง', 'ภาพกว้าง', 'ภาพจุด']);
+    [['w1', 'wide', false], ['w3', 'wide', false]]);
+  assert.deepEqual(cell.thumbs.map((t) => t.label), ['ภาพกว้าง', 'ภาพกว้าง']);
   assert.equal(cell.thumbs[0].href, '/api/master/attachments/w1/file', 'เปิดผ่าน proxy ที่ตรวจสิทธิ์ ตัวเดียวกับแผงไฟล์แนบ');
   assert.deepEqual(cell.photos, { wide: 3, plan: 1, spot: 1 }, 'ตัวนับนับไฟล์จริงทุกใบ ไม่ใช่เฉพาะที่มีภาพย่อ');
   assert.equal(cell.moreThumbs, 0);
@@ -178,6 +185,36 @@ test('รูปจากช่างบนช่องพื้นที่: ภ
   // แถวที่ไม่มีที่อยู่ไฟล์ = ไม่มีภาพย่อ (ลิงก์ที่ไม่มีปลายทาง) แต่ยังนับ
   const lost = surveyResultZoneCell(readyZone('z1', 'R'), [{ id: 'x', docType: 'survey_wide', mimeType: 'image/png' }]);
   assert.deepEqual([lost.thumbs.length, lost.photos.wide], [0, 1]);
+});
+
+/* ══ คอลัมน์เลือกจุด: รูปของแต่ละจุดอยู่ใต้จุดนั้น (PR-S) ══════════════════════════════════ */
+test('🔑 ช่องเลือกจุด: รูปผูกด้วย spotId ไปอยู่ใต้จุด · ไม่ผูก/ชี้จุดที่ลบแล้ว = บรรทัด "ยังไม่ได้ผูกจุด" · ไม่เดาจากลำดับอัป', () => {
+  const img = (id, spotId, createdAt) => ({
+    id, docType: 'survey_spot', fileName: `${id}.jpg`, mimeType: 'image/jpeg', driveFileId: `d-${id}`, createdAt,
+    metadata: spotId ? { spotId } : {},
+  });
+  const zone = readyZone('z1', 'Reception', {
+    spots: [{ id: 'SPT-1', label: 'มุมโซฟา' }, { id: 'SPT-2', label: 'ข้างเคาน์เตอร์' }],
+  });
+  const files = [
+    img('b', 'SPT-1', '2026-09-28T03:40:00.000Z'), img('a', 'SPT-1', '2026-09-28T03:30:00.000Z'),
+    img('old', null, '2026-09-27T03:30:00.000Z'), img('gone', 'SPT-9', '2026-09-28T03:31:00.000Z'),
+    { id: 'w1', docType: 'survey_wide', fileName: 'w1.jpg', mimeType: 'image/jpeg', driveFileId: 'd-w1', metadata: { spotId: 'SPT-2' } },
+    { id: 'pdf', docType: 'survey_spot', fileName: 'แบบ.pdf', mimeType: 'application/pdf', driveFileId: 'd-pdf', metadata: {} },
+  ];
+  const cell = surveyResultSpotCell(zone, files);
+  assert.deepEqual(cell.rows.map((r) => [r.spot.id, r.thumbs.map((t) => t.file.id)]),
+    [['SPT-1', ['a', 'b']], ['SPT-2', []]], 'ลำดับจุดตามแถว · รูปเก่าก่อน · ภาพกว้างที่มี spotId ไม่ใช่รูปของจุด');
+  assert.equal(cell.rows[0].thumbs[0].href, '/api/master/attachments/a/file', 'เปิดผ่าน proxy ที่ตรวจสิทธิ์');
+  assert.deepEqual(cell.unlinked.map((t) => t.file.id), ['old', 'gone'], 'ไม่มี spotId · ชี้จุดที่ลบไปแล้ว = ยังไม่ผูก');
+  /* 🔄 review 30/09 — PDF ที่ลากมาวางไม่ใช่ "รูปของจุด": ถาดบนจอหน้างานไม่มีมัน ⇒ บรรทัด "ผูกที่แท็บหน้างาน" ต้องไม่นับ
+     (นับ = ชี้ไปที่ถาดที่ไม่มีไฟล์ให้ผูก · ด่านรูปไม่ผูกของเอกสารประเมินจะไม่มีทางออก) */
+  assert.equal(cell.unlinkedCount, 2, 'นับรูปชุดเดียวกับถาดบนจอหน้างาน — PDF ไม่นับ');
+  assert.ok(!cell.unlinked.some((t) => t.file.id === 'pdf'));
+
+  const none = surveyResultSpotCell(readyZone('z2', 'MD', { spots: [] }), []);
+  assert.deepEqual([none.rows, none.unlinked, none.unlinkedCount], [[], [], 0]);
+  assert.deepEqual(surveyResultSpotCell().rows, [], 'เรียกเปล่าต้องไม่ระเบิด');
 });
 
 test('🔴 "ยังไม่มีรหัส ZN" กับ "อ่านรหัสไม่สำเร็จ" ต้องแยกกันบนหัวพื้นที่', () => {
@@ -398,7 +435,9 @@ test('คนดูอย่างเดียว — ไม่มีปุ่ม
 test('ช่าง — เห็นเฉพาะสามข้อของตัวเอง หัวข้อ "ของที่ช่างต้องเก็บ" · เนื้อมาก่อนการ์ด', () => {
   const zones = [readyZone('z1', 'Studio 01'), emptyZone('z2', 'Studio 02')];
   const v = surveyControlView({ request: request(), zones, filesByZone: { z1: readyFiles }, viewer: CREW });
-  assert.deepEqual(v.gates.map((g) => g.key), ['size', 'wide', 'spots']);
+  /* 🔄 มติ 01/10: ต่อท้ายด้วยสองแถวของด่านรูปจุดก่อนส่งงาน (ทุกจุดมีรูป · ผูกครบ) — ของช่างทั้งคู่ */
+  assert.deepEqual(v.gates.map((g) => g.key), ['size', 'wide', 'spots', 'spotPhotos', 'spotLinked']);
+  assert.ok(v.gates.every((g) => g.owner === 'crew'));
   assert.equal(v.gatesTitle, 'ของที่ช่างต้องเก็บ');
   assert.equal(v.send.show, false, 'ช่างไม่มีสิทธิ์ส่ง = ไม่โชว์ปุ่ม');
   assert.equal(v.flags.controlFirst, false, 'ช่างที่ยังกรอกได้ต้องเห็นพื้นที่ก่อนการ์ด');
@@ -558,7 +597,8 @@ test('หัวหน้า — เห็นครบหกข้อ และ�
     request: request(), zones, filesByZone: { z1: readyFiles }, viewer: HEAD,
     visit: { id: 'SVV-1', assigneeId: 'U-9' },
   });
-  assert.equal(v.gates.length, 6);
+  /* 🔄 มติ 01/10: หกข้อ + แถว "รูปจุดผูกครบ" (G2) · นัดนี้ไม่ได้เปิด ⇒ ไม่มีแถว "ทุกจุดมีรูป" */
+  assert.deepEqual(v.gates.map((g) => g.key), ['size', 'wide', 'spots', 'plan', 'picked', 'package', 'spotLinked']);
   assert.equal(v.gatesTitle, 'ด่านก่อนส่งผล');
   assert.equal(v.zoneGaps.crewPending, true);
   assert.deepEqual(v.zoneGaps.crewIds, ['U-9']);
@@ -835,6 +875,33 @@ test('🔴 อ่านแถวดึงกลับไม่สำเร็จ
   assert.equal(v.flags.recallPending, false);
   assert.equal(v.flags.recallKnown, false, 'จอต้องรู้ว่าคำตอบนี้เชื่อไม่ได้');
   assert.match(v.notices.find((n) => n.key === 'unknown').text, /ประวัติการดึงผลกลับ/);
+});
+
+/* 🐞 UAT 01/10 (s5u) — ไฟล์แนบของคำร้องอ่านไม่สำเร็จ: กล่องแจ้งเขียนคีย์อังกฤษดิบ "requestFiles" และบอกว่า
+   'แสดงเป็น "ไม่ทราบ"' ทั้งที่แถวไฟล์เขียน "อ่านไม่สำเร็จ — ลองโหลดหน้าใหม่" */
+test('🐞 ไฟล์แนบของคำร้องอ่านไม่สำเร็จ: ป้ายไทย · ไม่อ้างว่าแสดงเป็น "ไม่ทราบ" (แถวของมันบอกเหตุเอง)', () => {
+  const zones = [readyZone('z1', 'Studio 01')];
+  const only = surveyControlView({
+    request: request(), zones, filesByZone: { z1: readyFiles }, viewer: HEAD, unknown: { requestFiles: true },
+  }).notices.find((n) => n.key === 'unknown');
+  assert.equal(only.text, 'อ่านข้อมูลบางส่วนไม่สำเร็จ — ไฟล์แนบของคำร้อง · ลองโหลดหน้าใหม่');
+  assert.doesNotMatch(only.text, /requestFiles|ไม่ทราบ/);
+  assert.deepEqual(only.keys, ['requestFiles']);
+
+  // ปนกับชิ้นที่เขียนเป็น "ไม่ทราบ" จริง — คำนั้นเกาะเฉพาะชิ้นของมัน ไฟล์แนบตามหลัง
+  const mixed = surveyControlView({
+    request: request(), zones, filesByZone: { z1: readyFiles }, viewer: HEAD,
+    unknown: { requestFiles: true, site: true },
+  }).notices.find((n) => n.key === 'unknown');
+  assert.equal(mixed.text, 'อ่านข้อมูลบางส่วนไม่สำเร็จ — ข้อมูลไซต์ แสดงเป็น "ไม่ทราบ" · ไฟล์แนบของคำร้อง · ลองโหลดหน้าใหม่');
+  assert.deepEqual(mixed.keys, ['requestFiles', 'site']);
+});
+
+test('ทุกคีย์ของ unknown ที่ GET ใบประเมินตอบได้ มีป้ายไทย (ไม่หลุดคีย์อังกฤษดิบขึ้นจอ)', () => {
+  const route = readFileSync(new URL('../../app/api/service/surveys/[id]/route.js', import.meta.url), 'utf8');
+  const keys = [...route.matchAll(/unknown\.([A-Za-z]+) = true/g)].map((m) => m[1]);
+  assert.ok(keys.includes('requestFiles'), 'ตัวจับคีย์ยังเจอคีย์ของ PR-S');
+  for (const k of keys) assert.ok(SURVEY_UNKNOWN_LABELS[k], `ไม่มีป้ายของ unknown.${k}`);
 });
 
 test('ไม่มีอะไรอ่านพลาด = ไม่มีกล่องแจ้ง (ไม่ใช่กล่องเปล่า)', () => {

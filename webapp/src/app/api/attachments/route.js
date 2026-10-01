@@ -18,6 +18,7 @@ import { appendUpdate as appendMgmtUpdate } from '@/lib/mgmt/repo';
 import { SALES_ATTACHMENT_TABLE } from '@/lib/sales/salesAttachmentAccess';
 import { SALES_ORDER_ATTACHMENT_TABLE, salesOrderAttachBlock } from '@/lib/sales/salesOrderAttachmentAccess';
 import { historicalContractFilesFrozenGate } from '@/lib/sales/historicalContractLock';
+import { surveySpotUploadMetadata } from '@/lib/service/surveySpotPhotos';
 
 export const dynamic = 'force-dynamic';
 // สาขา "เอกสารมีชีวิต" โหลด googleapis (หนัก + อ่าน OIDC token) — ต้อง Node runtime
@@ -217,6 +218,12 @@ export async function POST(request) {
     if (ruleError) return Response.json({ error: ruleError }, { status: 400 });
   }
 
+  /* ⭐ รูปจุดติดตั้งที่ถ่ายจากแถวของจุด (PR-S) — `metadata.spotId` ตรวจรูปร่าง + ต้องเป็นภาพจุดเท่านั้น
+     ⚠️ ไม่เทียบกับจุดที่บันทึกแล้ว: ช่างถ่ายจากแถวที่ยังไม่กดบันทึกได้ (id ร่างคงเดิมตอนบันทึก) · entity อื่นไม่ถูกแตะ
+     ⚠️ มาก่อนคุยกับ Drive ด้วยเหตุผลเดียวกับด่านข้างบน */
+  const spotUpload = surveySpotUploadMetadata(entityType, safeDocType, metadata);
+  if (spotUpload.error) return Response.json({ error: spotUpload.error }, { status: 400 });
+
   // เอกสารมีชีวิต: คุยกับ Drive **หลังผ่านด่านสิทธิ์แล้วเท่านั้น** — ไม่งั้นคนที่แนบ
   // ไม่ได้ยังสร้างไฟล์ค้างไว้บน Shared Drive ได้ทุกครั้งที่กด
   let googleFile = null;
@@ -261,7 +268,7 @@ export async function POST(request) {
     // แล้วแถวไฟล์ธรรมดากลายเป็น "เอกสารมีชีวิต" ปลอมที่พาให้ระบบไปแชร์ไฟล์ Drive
     // ตาม id ที่ client เลือก ⇒ ตัดทิ้งก่อนเสมอ ไม่พึ่งการวางทับ
     metadata: {
-      ...stripDriveMetadata(metadata),
+      ...stripDriveMetadata(spotUpload.metadata),
       ...(googleFile ? googleFile.metadata : {}),
     },
   };

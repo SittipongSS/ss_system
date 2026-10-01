@@ -91,3 +91,33 @@ test('คำร้องที่ปิด/ยกเลิกแล้วยั�
     assert.equal(await canAttachToCosting(fnDb, 'dept_request', closed, FN), false, status);
   }
 });
+
+// ── ไฟล์แนบของคำร้องประเมินพื้นที่ — ช่างอ่านได้บนจอใบประเมิน (PR-S · แผน crew Q6) ──────
+//
+// 🐞 ก่อนนี้จอประเมินให้ช่างแค่ "รายละเอียดคำร้อง" · ไฟล์ที่ SA แนบมา (ผังอาคาร · รูปหน้าร้าน) เปิดไม่ได้เพราะ
+//   proxy ถามบันไดคำร้อง (`canViewRequests`) ซึ่ง role `ts` ไม่ผ่าน ⇒ ลิสต์ไฟล์อย่างเดียว = ลิงก์ตายทุกอัน
+// ⭐ เปิด **เฉพาะคำร้องประเมินพื้นที่** ด้วยด่านอ่านของใบประเมินตัวเดียวกับ GET/รูปของพื้นที่ (`surveyReadError`)
+// 🔴 ด่านแนบ/ลบไม่ขยับ — ช่างอ่านอย่างเดียว
+const CREW = { id: 'U-TS1', role: 'ts', department: 'TS' };
+const SURVEY_REQ = { id: 'DR-S1', status: 'acknowledged', kind: 'site_survey', dept: 'TS', requestedById: 'U-AE' };
+
+test('⭐ ช่าง (ts) เปิดไฟล์แนบของคำร้องประเมินพื้นที่ที่ส่งถึงฝ่าย TS ได้ · แนบ/ลบไม่ได้', async () => {
+  assert.equal(await canViewCostingAttachment(db, 'dept_request', SURVEY_REQ, CREW), true);
+  assert.equal(await canAttachToCosting(db, 'dept_request', SURVEY_REQ, CREW), false, 'อ่านอย่างเดียว');
+});
+
+test('🔴 ช่องที่เปิดให้ช่างแคบแค่คำร้องประเมินพื้นที่ของฝ่าย TS', async () => {
+  // คำร้องของฝ่ายอื่น (RD) — ช่างต้องเปิดไม่ได้ แม้จะส่งมาในรูป kind เดียวกัน
+  assert.equal(await canViewCostingAttachment(db, 'dept_request', { ...SURVEY_REQ, dept: 'RD', kind: 'scent_dev' }, CREW), false);
+  assert.equal(await canViewCostingAttachment(db, 'dept_request', { ...SURVEY_REQ, dept: 'RD' }, CREW), false);
+  // คำร้องชนิดอื่นของ TS (วันหน้า) — ไม่ใช่ใบประเมิน ไม่ได้ช่องนี้
+  assert.equal(await canViewCostingAttachment(db, 'dept_request', { ...SURVEY_REQ, kind: 'install' }, CREW), false);
+  // คนนอกโมดูลที่ไม่เกี่ยวกับใบ ยังตกเหมือนเดิม
+  assert.equal(await canViewCostingAttachment(db, 'dept_request', SURVEY_REQ, MARKETING), false);
+  // รายบรรทัดไม่ได้เปิดตาม (ใบประเมินไม่มีบรรทัด — hasItems false)
+  assert.equal(await canViewCostingAttachment(db, 'dept_request_item', { id: 'x', requestId: 'DR-S1' }, CREW), false);
+});
+
+test('ผู้ขอ (SA) ยังเปิดไฟล์ของใบประเมินตัวเองได้เหมือนเดิม', async () => {
+  assert.equal(await canViewCostingAttachment(db, 'dept_request', SURVEY_REQ, OWNER), true);
+});

@@ -195,9 +195,13 @@ export default function SurveyControlCard({
               <b>{gate.label}</b>
               <small>{gate.done}/{gate.total}</small>
             </span>
-            {!gate.ok && gate.zones?.length
-              ? <small>{`ขาด ${gate.zones.join(" · ")}`}</small>
-              : null}
+            {/* แถวรูปจุด (มติ 01/10) มีเหตุเต็มของ server ในตัว ("มีรูปจุดที่ยังไม่ได้ผูก n รูป — ผูกก่อนส่งผล (…)")
+                — ชื่อพื้นที่อยู่ในเหตุแล้ว ⇒ ไม่ต่อ "ขาด …" ซ้ำ */}
+            {!gate.ok && gate.reason
+              ? <small>{gate.reason}</small>
+              : !gate.ok && gate.zones?.length
+                ? <small>{`ขาด ${gate.zones.join(" · ")}`}</small>
+                : null}
           </span>
         </li>
       ))}

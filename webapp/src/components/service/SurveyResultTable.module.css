@@ -109,7 +109,7 @@
 
 .figures b { color: var(--text); font-weight: var(--fw-semibold); }
 
-/* ภาพย่อที่ช่างถ่าย — ขนาดนิ้ว (44px) เพราะแต่ละรูปคือลิงก์ที่แตะได้ · ภาพกว้างก่อน | ภาพจุด */
+/* ภาพย่อที่ช่างถ่าย — ขนาดนิ้ว (44px) เพราะแต่ละรูปคือลิงก์ที่แตะได้ · ช่องพื้นที่ = ภาพกว้าง · ใต้ชิปของจุด = รูปของจุดนั้น (PR-S) */
 .thumbs {
   display: flex;
   flex-wrap: wrap;
@@ -231,6 +231,33 @@ button.spotChip[data-on] > svg { color: var(--accent-ink); }
 /* จางเฉพาะตอนกำลังบันทึก — ดูอย่างเดียวไม่ใช่ปุ่มแล้ว */
 .spotChip:disabled { cursor: not-allowed; opacity: var(--op-disabled); }
 .spotChip:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+
+/* ── รูปของแต่ละจุด (PR-S) — ชิปบน ภาพย่อขนาดนิ้วใต้ชิป · จุดหนึ่งจุด = ก้อนเดียว ──────────────── */
+.spotItem {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.spotThumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* รูปจุดที่ยังไม่ผูก — บรรทัดอำพัน + ภาพย่อ ท้ายช่อง (ของที่ต้องมีคนจัดการ ไม่ใช่ error) */
+.spotLoose {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+  line-height: var(--lh-thai);
+}
+/* "ไปผูกจุด" — ชิดซ้ายใต้ภาพย่อ ไม่ยืดเต็มช่อง (คอลัมน์เป็น flex แนวตั้ง) */
+.looseJump { align-self: flex-start; }
 
 /* ── ตัวเพิ่ม/ลดแพ็คเกจ ───────────────────────────────────────────────── */
 /* ตัวเลข + สูตรแถวเดียว (AW-3) · ช่องแคบให้สูตรตกลงใต้ตัวเลขเอง ไม่ดันคอลัมน์ให้กว้าง */

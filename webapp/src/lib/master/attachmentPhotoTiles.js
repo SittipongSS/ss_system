@@ -40,14 +40,24 @@ export function photoUploadPercent(fraction) {
 /**
  * ต่อรูปชุดใหม่ท้ายกองกำลังส่ง — ตามลำดับที่ผู้ใช้เลือก
  * `fraction: null` = ยังไม่ถึงคิว (ลูปอัปทีละไฟล์ ⇒ รูปที่สองรอรูปแรก) — ต่างจาก 0 ที่แปลว่าเริ่มส่งแล้ว
+ * `group` = แถวที่รูปนี้ถูกถ่ายจาก (โหมด `photoGroups` — จุดติดตั้ง · PR-S) · `null` = ไม่มีแถว (ลากวาง/Ctrl+V ⇒ ลงถาด)
  * @param {Array} uploads กองเดิม
- * @param {Array<{key: string, name?: string}>} batch
+ * @param {Array<{key: string, name?: string, group?: string|null}>} batch
  */
 export function photoUploadsAdd(uploads = [], batch = []) {
   return [
     ...uploads,
-    ...batch.map(({ key, name }) => ({ key, name: String(name || ''), fraction: null })),
+    ...batch.map(({ key, name, group = null }) => ({ key, name: String(name || ''), group: group ?? null, fraction: null })),
   ];
+}
+
+/**
+ * รูปที่กำลังส่งของแถวหนึ่งแถว (โหมด `photoGroups`) — แผ่น % ต้องขึ้นใต้แถวที่ช่างกดถ่าย ไม่ใช่ทุกแถว
+ * ⚠️ `null` = ไม่มีแถว (ลากวาง · Ctrl+V) ⇒ ขึ้นที่ถาด · รายการที่ไม่มีคีย์ `group` (โหมดเดิม) นับเป็น `null`
+ */
+export function photoUploadsOf(uploads = [], group = null) {
+  const want = group ?? null;
+  return (Array.isArray(uploads) ? uploads : []).filter((u) => (u?.group ?? null) === want);
 }
 
 /**

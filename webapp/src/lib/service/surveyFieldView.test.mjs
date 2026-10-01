@@ -50,6 +50,8 @@ const part = (id, w, l, h, label = null) => ({ id, label, widthM: w, lengthM: l,
 const file = (docType, fileName, createdAt = '2026-09-28T03:30:00.000Z') => ({ id: fileName, docType, fileName, createdAt });
 const wide = (name, at) => file('survey_wide', name, at);
 const spotPhoto = (name, at) => file('survey_spot', name, at);
+/* รูปจุดที่ผูกกับจุดแล้ว (`metadata.spotId` · PR-S) — 🔄 มติ 01/10 ด่านรูปจุด: ใบ "ครบ" ต้องมีรูปทุกจุด ไม่เหลือในถาด */
+const linkedSpot = (name, spotId, at) => ({ ...spotPhoto(name, at), metadata: { spotId } });
 
 const reception = (extra = {}) => ({
   id: 'z1', zoneId: 'SZN-1', zoneCode: 'ZN-1160-10254', zoneName: 'Reception', floor: '01', status: 'ok',
@@ -81,9 +83,12 @@ const treatment = (extra = {}) => ({
 const treatmentEmpty = () => treatment({ parts: [], spots: [], surveyedAt: null, surveyedByName: null });
 
 const filesAll = () => ({
-  z1: [wide('IMG_2031.jpg'), wide('IMG_2032.jpg'), spotPhoto('IMG_2033.jpg')],
-  z2: [wide('IMG_2040.jpg')],
-  z3: [wide('IMG_2046.jpg'), wide('IMG_2047.jpg')],
+  z1: [
+    wide('IMG_2031.jpg'), wide('IMG_2032.jpg'),
+    linkedSpot('IMG_2033.jpg', 's1'), linkedSpot('IMG_2034.jpg', 's2'), linkedSpot('IMG_2035.jpg', 's3'),
+  ],
+  z2: [wide('IMG_2040.jpg'), linkedSpot('IMG_2041.jpg', 's4'), linkedSpot('IMG_2042.jpg', 's5')],
+  z3: [wide('IMG_2046.jpg'), wide('IMG_2047.jpg'), linkedSpot('IMG_2048.jpg', 's6'), linkedSpot('IMG_2049.jpg', 's7')],
 });
 const filesMidWork = () => ({ ...filesAll(), z3: [] });
 const allZones = () => [reception(), md(), treatment()];
@@ -386,7 +391,9 @@ test('ของค้างเป็นคำสั้น: "ขนาด 2 ส�
   assert.equal(ask.confirmLabel, 'ทิ้งแล้วไปต่อ');
 });
 
-test('ป้ายรายหัวข้อ (A-3): ขนาด/จุดยังไม่บันทึก · ภาพกว้างขึ้นแล้ว 1 รูป · ภาพจุดยังไม่มี · หมายเหตุไม่มีป้าย', () => {
+/* 🔄 PR-S (มติ 28–30/09) — หัวข้อ "ภาพจุดติดตั้ง" รวมเข้าแถวของจุด ⇒ ไม่มีป้าย `spotPhotos` แล้ว ·
+   ป้ายของหัวข้อจุดบอกทั้งจำนวนจุดและจำนวนรูปเมื่อบันทึกแล้ว ("3 จุด · 1 รูป") */
+test('ป้ายรายหัวข้อ (A-3): ขนาด/จุดยังไม่บันทึก · ภาพกว้างขึ้นแล้ว 1 รูป · หมายเหตุไม่มีป้าย · ไม่มีหัวข้อภาพจุดแยก', () => {
   const draft = {
     parts: [{ widthM: '7.5', lengthM: '4', heightM: '3' }, { widthM: '3', lengthM: '2', heightM: '3' }],
     spots: [{ label: 'มุมเตียงที่ 1', note: '' }],
@@ -396,14 +403,25 @@ test('ป้ายรายหัวข้อ (A-3): ขนาด/จุดย�
   assert.deepEqual([s.size.mark, s.size.chip.text], ['dirty', 'ยังไม่บันทึก']);
   assert.deepEqual([s.wide.mark, s.wide.chip.text, s.wide.chip.check], ['done', 'ขึ้นแล้ว 1 รูป', true]);
   assert.deepEqual([s.spots.mark, s.spots.chip.text], ['dirty', 'ยังไม่บันทึก']);
-  assert.deepEqual([s.spotPhotos.mark, s.spotPhotos.chip.text], ['todo', 'ยังไม่มี']);
+  assert.equal(s.spotPhotos, undefined, 'รูปของจุดอยู่ในแถวของจุดแล้ว — ไม่มีหัวข้อ/ป้ายแยก');
+  assert.deepEqual(Object.keys(s), ['size', 'wide', 'spots', 'note']);
   assert.deepEqual([s.note.mark, s.note.chip], ['todo', null]);
 });
 
 test('ป้ายรายหัวข้อ: บันทึกแล้ว = ติ๊กเขียว · ธงรวมบอกไม่ค้าง = ไม่มีหัวข้อค้าง แม้ลายเซ็นยังต่าง', () => {
-  const saved = surveyZoneSections({ zone: reception(), files: filesAll().z1, draft: null, dirty: false });
-  assert.deepEqual([saved.size.chip.text, saved.spots.chip.text, saved.wide.chip.text, saved.spotPhotos.chip.text],
-    ['บันทึกแล้ว', 'บันทึกแล้ว', 'ขึ้นแล้ว 2 รูป', 'ขึ้นแล้ว 1 รูป']);
+  /* 🔄 ไฟล์เขียนเอง (ไม่ใช่ `filesAll()` ที่ตอนนี้มีรูปทุกจุด) — ป้ายนับรูปของจุดตามจริง */
+  const saved = surveyZoneSections({
+    zone: reception(), files: [wide('IMG_2031.jpg'), wide('IMG_2032.jpg'), spotPhoto('IMG_2033.jpg')], draft: null, dirty: false,
+  });
+  assert.deepEqual([saved.size.chip.text, saved.spots.chip.text, saved.wide.chip.text],
+    ['บันทึกแล้ว', '3 จุด · 1 รูป', 'ขึ้นแล้ว 2 รูป']);
+  assert.deepEqual([saved.spots.mark, saved.spots.chip.tone, saved.spots.chip.check], ['done', 'success', true]);
+  const noPhoto = surveyZoneSections({ zone: md(), files: [wide('IMG_2040.jpg')], draft: null, dirty: false });
+  assert.equal(noPhoto.spots.chip.text, '2 จุด',
+    'ไม่มีรูปไม่ต้องเขียน "0 รูป" — ด่าน "ทุกจุดมีรูป" (มติ 01/10) อยู่ที่ส่งงาน (แถวของจุดที่ไม่มีรูปเห็นเองบนจอ)');
+  const trayOnly = surveyZoneSections({ zone: treatmentEmpty(), files: [spotPhoto('IMG_2050.jpg')], draft: null, dirty: false });
+  assert.deepEqual([trayOnly.spots.mark, trayOnly.spots.chip.text], ['todo', 'ยังไม่มี'],
+    'มีแต่รูปในถาด ไม่มีจุดที่บันทึก = หัวข้อจุดยังไม่ครบ');
   const justSaved = surveyZoneSections({
     zone: treatmentEmpty(), files: [], dirty: false,
     draft: { parts: [{ widthM: '4', lengthM: '5', heightM: '3' }], spots: [], note: '' },
@@ -1053,6 +1071,48 @@ test('เกี่ยวกับคำร้อง (หัวหน้า): แ
   assert.deepEqual(lost.line, { title: null, customer: null }, 'ไม่รู้ = ไม่ต่อท้ายรหัสบนแถวย้อน');
   assert.equal(lost.detail.facts[1].value, '—');
   assert.equal(lost.detail.sub, 'ไม่ทราบ', 'ในรายละเอียดยังบอกว่าอ่านไม่สำเร็จ');
+});
+
+/* ══ ไฟล์แนบของคำร้อง (PR-S · แผน crew Q6) — ช่างอ่านอย่างเดียว ไม่มีลิงก์ไปหน้าคำร้อง ══════════════ */
+test('เกี่ยวกับคำร้อง: ไฟล์แนบของคำร้อง — รูปเป็นภาพย่อ · ไฟล์อื่นเป็นแถว · เปิดผ่าน proxy · เอกสาร Google เปิดลิงก์ของมันเอง', () => {
+  const requestFiles = [
+    { id: 'A1', fileName: 'หน้าร้าน.jpg', mimeType: 'image/jpeg', driveFileId: 'd1' },
+    { id: 'A2', fileName: 'ผังอาคาร.pdf', mimeType: 'application/pdf', driveFileId: 'd2' },
+    { id: 'A3', fileName: 'บรีฟลูกค้า', driveFileId: 'g3', fileUrl: 'https://docs.google.com/document/d/g3/edit', kind: 'gdoc' },
+    { id: 'A4', fileName: 'ไม่มีที่อยู่.png', mimeType: 'image/png' },
+    { id: 'A5', fileName: 'ชีตเก่า', kind: 'gsheet', fileUrl: '' },
+  ];
+  const crew = surveyAboutView({ header: HEADER_REQ, requestId: 'DR-1', canWrite: true, requestFiles });
+  assert.equal(crew.link, null, 'ช่างยังไม่มีลิงก์ไปหน้าคำร้อง — ไฟล์อยู่ในที่');
+  assert.equal(crew.files.label, 'ไฟล์แนบของคำร้อง');
+  assert.equal(crew.files.sub, '3 ไฟล์ · ดูอย่างเดียว', 'นับเฉพาะที่เปิดได้ (แถวที่ไม่มีที่อยู่ = ไม่ลิสต์)');
+  assert.deepEqual(crew.files.photos.map((p) => [p.id, p.href]), [['A1', '/api/master/attachments/A1/file']]);
+  assert.equal(crew.files.photos[0].ariaLabel, 'ดูรูป หน้าร้าน.jpg (เปิดแท็บใหม่)');
+  assert.deepEqual(crew.files.docs.map((d) => [d.id, d.href, d.sub]), [
+    ['A2', '/api/master/attachments/A2/file', null],
+    ['A3', 'https://docs.google.com/document/d/g3/edit', 'Google Doc'],
+  ], 'เอกสาร Google ไม่มีไบต์ให้ proxy สตรีม — เปิดที่ลิงก์ของมัน');
+  assert.equal(crew.files.unknown, false);
+
+  const none = surveyAboutView({ header: HEADER_REQ, requestId: 'DR-1', canWrite: true, requestFiles: [] });
+  assert.equal(none.files, null, 'ไม่มีไฟล์ = ไม่มีแถว');
+  assert.equal(surveyAboutView({ header: HEADER_REQ }).files, null, 'ไม่ส่ง = ไม่มีแถว');
+
+  const lost = surveyAboutView({ header: HEADER_REQ, requestId: 'DR-1', requestFiles: [], filesUnknown: true });
+  assert.deepEqual([lost.files.unknown, lost.files.sub], [true, 'อ่านไม่สำเร็จ — ลองโหลดหน้าใหม่'],
+    'อ่านไม่สำเร็จ ≠ ไม่มีไฟล์ — ต้องพูดออกมา');
+});
+
+test('หน้า: ส่งไฟล์แนบของคำร้อง + ธงผูกรูปจุดจาก GET ลงจอ (server ตัดสิน · จอไม่เดาจาก role)', () => {
+  const page = readFileSync(new URL('../../app/service/surveys/[id]/page.js', import.meta.url), 'utf8');
+  assert.match(page, /requestFiles: data\?\.requestFiles \|\| \[\], filesUnknown: data\?\.unknown\?\.requestFiles === true/);
+  assert.match(page, /const canLinkSpots = data\?\.canLinkSpotPhotos === true;/);
+  assert.equal((page.match(/canLinkSpots=\{canLinkSpots\}/g) || []).length, 2, 'หน้าพื้นที่ (ถาด) + ตารางสรุป (บรรทัดยังไม่ผูก)');
+  const about = readFileSync(new URL('../../components/service/SurveyAboutRequest.js', import.meta.url), 'utf8');
+  assert.match(about, /aria-expanded=\{filesOpen\} aria-controls=\{filesId\}/, 'กางในที่แบบรายละเอียดคำร้อง');
+  assert.match(about, /target="_blank" rel="noreferrer"/, 'เปิดแท็บใหม่ — ใบนี้กับค่าที่พิมพ์ค้างอยู่ที่เดิม');
+  assert.doesNotMatch(about, /\/requests\/\$\{/, 'ไม่มีลิงก์ไปหน้าคำร้องจากแถวไฟล์');
+  assert.doesNotMatch(about, /AttachmentsPanel|DELETE|method:/, 'ดูอย่างเดียว — ไม่มีทางแนบ/ลบ');
 });
 
 test('กำหนดส่งผลบนการ์ด (AW-2): "ส่งผลให้ฝ่ายขายภายใน พ. 30 ก.ย. · อีก 2 วัน" · เลยกำหนด = อำพัน · ล็อกแล้ว/ไม่มีวัน = ไม่มีบรรทัด', () => {

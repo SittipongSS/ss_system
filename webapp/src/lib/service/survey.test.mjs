@@ -554,7 +554,9 @@ test('🐞 route ส่งผล: หานัดที่ค้าง · ปิ
   assert.match(route, /findSurveyVisit\(supabase, id, \{ openOnly: true \}\)/, 'นัดที่ปิดคือนัดที่ยังกินสิทธิ์ใบ');
   assert.match(route, /surveySendWrites\(supabase, \{/, 'ลำดับปิดนัด → ตอบใบอยู่ที่ lib ตัวเดียว (เทสต์ลำดับอยู่ที่ surveySendClose.test)');
   assert.match(route, /closeVisitId: body\?\.closeVisitId \?\? null/, 'ต้องส่งรหัสนัดที่โมดัลบอกผู้ใช้ไปยืนยัน');
-  assert.match(route, /today: businessDate\(nowIso\)/, 'วันเข้าจริงของนัดที่ไม่เคยเริ่มคิดจากวันไทย');
+  /* 🔄 มติ 01/10 (ด่านรูปจุด): `today` คำนวณครั้งเดียว — ด่าน "ส่งผลนี้ปิดนัดไหม" กับการปิดจริงใช้วันเดียวกัน */
+  assert.match(route, /const today = businessDate\(nowIso\)/, 'วันเข้าจริงของนัดที่ไม่เคยเริ่มคิดจากวันไทย');
+  assert.match(route, /answerPatch: patch,\s*today,/, 'ลำดับกลางได้วันไทยตัวเดียวกับด่าน');
   assert.doesNotMatch(route, /from\('dept_requests'\)\.update\(/,
     'route ห้ามตอบใบเอง — ต้องผ่านลำดับกลาง ไม่งั้นตอบใบได้ก่อนปิดนัด');
   // ⭐ ปิดทางนี้ต้องลงเธรดของนัด (ไม่งั้นนัดที่ไม่มีเวลาจบดูเหมือนระบบทำหาย) — และลงก่อนตอบใบ (ใน onVisitClosed)

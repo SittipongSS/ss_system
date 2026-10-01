@@ -17,6 +17,7 @@ import {
   SEND_BACK_DONE_KIND, surveyEditLockError, surveyFieldProgress, surveyFieldSubmitError, surveySendBackDoneBody,
 } from '@/lib/service/survey';
 import { loadSurveyFieldState, loadSurveySendBackState } from '@/lib/service/surveyRepo';
+import { surveySpotSubmitError } from '@/lib/service/surveySpotPhotos';
 import { notifySurveyFieldDone } from '@/lib/service/surveyFieldDoneNotify';
 import {
   findPlan, loadVisitCrew, loadVisitItems, requireVisit, visitCrewRole, visitFieldRecordCount,
@@ -200,7 +201,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       && value.status === 'done' && before.status !== 'done') {
       surveyField = await loadSurveyFieldState(supabase, before.requestId);
       if (surveyField.request && !surveyEditLockError(surveyField.request)) {
-        const blocked = surveyFieldSubmitError(surveyField.zones, surveyField.filesByZone);
+        /* ⭐ ด่านรูปจุด (G1 · มติ 01/10) ต่อจากด่านหกข้อ — ทุกจุดมีรูป + ถาด "ยังไม่ได้ผูกจุด" ว่าง
+           (ตัวเดียวกับกล่องส่งงาน/แถบบนจอ · ไฟล์จากฐาน `listAttachments` มี metadata.spotId ครบ) */
+        const blocked = surveyFieldSubmitError(surveyField.zones, surveyField.filesByZone)
+          || surveySpotSubmitError(surveyField.zones, surveyField.filesByZone);
         if (blocked) return conflict(blocked);
       }
     }

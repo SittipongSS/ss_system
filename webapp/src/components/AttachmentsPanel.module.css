@@ -193,15 +193,91 @@ button.tile:focus-visible { outline: 2px solid var(--accent-ink); outline-offset
 }
 
 /* แถบท้ายกล่องดูรูปเต็ม (โหมดแผ่นรูป) — ที่เดียวที่ลบรูปได้ · ปุ่มสูงระดับนิ้ว */
+/* แถบท้ายของกล่องดูรูปเต็ม (โหมดแผ่นรูป) — ตัวเลือกย้ายกลุ่ม (ถ้ามี) ซ้าย · ปุ่มเปิดไฟล์/ลบ ขวา
+   ที่ไม่พอ = ตัวเลือกย้ายขึ้นแถวบนเต็มกว้าง ปุ่มลงแถวล่าง (ตัดแถวเองด้วย flex-wrap ไม่มีเส้นจอ) */
+.lightboxFoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3) var(--space-4);
+  width: 100%;
+}
 .lightboxActions {
+  flex: 1 1 auto;
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--space-2);
-  width: 100%;
 }
 .lightboxBtn { min-height: var(--ctl-h-touch); justify-content: center; }
 /* จอแคบ: สองปุ่มแบ่งแถวกันเท่า ๆ — นิ้วโป้งเอื้อมถึงทั้งคู่ */
 @media (max-width: 680px) {
   .lightboxBtn { flex: 1 1 0; }
+}
+/* ปุ่มปิด (×) เป็นเป้านิ้ว ≥44px (ของกลาง 28px) — ขอบลบกินระยะในหัว หัวไม่สูงขึ้น (ท่าเดียวกับ ScheduleModalShell) */
+.lightbox :global(.drawer-close) {
+  flex: none;
+  width: var(--ctl-h-touch);
+  height: var(--ctl-h-touch);
+  margin-block: calc(-1 * var(--space-2));
+  margin-inline-end: calc(-1 * var(--space-2));
+}
+
+/* ── แถวรายกลุ่ม (prop `photoGroups` — จุดติดตั้ง · PR-S) ─────────────────────────────────
+   หนึ่งกลุ่ม = กรอบเดียว: ของที่ผู้เรียกวาด (เลข · ชื่อ · รายละเอียด) บน · แผ่นรูปของกลุ่มล่าง
+   ⭐ มติเจ้าของ 28/09 "จุดหนึ่งจุด = หนึ่งแถว" ⇒ กรอบต้องบอกว่ารูปกับชื่ออยู่ด้วยกัน ไม่ใช่สองกองที่วางติดกัน */
+.groups { display: grid; gap: var(--space-2); }
+.group {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-solid);
+}
+
+/* ถาด "ยังไม่ได้ผูกจุด" — พื้นอำพันอ่อน: ของที่ยังต้องมีคนจัดการ (ไม่ใช่ error) */
+.group[data-kind="loose"] {
+  border-style: dashed;
+  border-color: var(--amber);
+  background: var(--amber-soft);
+}
+.group[data-kind="loose"]:focus { outline: none; }
+.group[data-kind="loose"]:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+.looseTitle {
+  margin: 0;
+  color: var(--text-1);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+.looseNote {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}
+.looseList {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* รูปหนึ่งรูปในถาด = แผ่นเดียว (ซ้าย) + ตัวเลือกย้ายเข้ากลุ่ม (ขวา) — `--attach-tile-cols: 1` ให้ตะแกรงของแผ่นเหลือช่องเดียว */
+.looseItem {
+  --attach-tile-cols: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 7.5rem) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-2);
+}
+.looseAct { min-width: 0; }
+
+/* ตัวเลือกย้ายกลุ่มในกล่องดูรูปเต็ม — แถบท้าย ชิดซ้าย · กว้างตั้งต้น 18rem: ที่เหลือพอ = อยู่แถวเดียวกับปุ่ม */
+.lightboxRelink {
+  flex: 1 1 18rem;
+  min-width: 0;
+  text-align: start;
 }
