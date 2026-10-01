@@ -274,3 +274,24 @@ test('⭐ หัวข้อ breakBefore (ภาพประกอบ) ขึ้
   assert.ok(pages.every((entries, index) => index === 0 || entries.length > 0), 'ไม่มีแผ่นต่อที่ว่าง');
   assert.equal(shape(pages).at(-1), '[fig fig0');
 });
+
+test('thaiSlackScale: ค่าตั้งต้น = พฤติกรรมเดิมทุกตัวอักษร · ค่าน้อยลงไม่เคยได้บรรทัดมากขึ้น (ผู้เรียกที่สอบเทียบช่องของตัวเองแล้ว)', () => {
+  const texts = [
+    'พื้นที่โซนต้อนรับลูกค้าและสนามเทนนิส · ชั้น GF',
+    'ห้องทำงานฝ่ายขายและพื้นที่ส่วนกลางหน้าลิฟต์ฝั่งทิศตะวันออก',
+    'Meeting Room Executive Lounge 12',
+    'ขวดแก้วใส50mlพร้อมหัวสเปรย์FEA15',
+  ];
+  for (const text of texts) {
+    for (const width of [34, 48, 75, 186]) {
+      const base = estimateTextLines(text, width, 9.375);
+      assert.equal(estimateTextLines(text, width, 9.375, { thaiSlackScale: 1 }), base);
+      assert.equal(estimateTextLines(text, width, 9.375, {}), base);
+      const half = estimateTextLines(text, width, 9.375, { thaiSlackScale: 0.5 });
+      const none = estimateTextLines(text, width, 9.375, { thaiSlackScale: 0 });
+      assert.ok(none <= half && half <= base, `${text} @${width}: ${none} ≤ ${half} ≤ ${base}`);
+    }
+  }
+  // ข้อความละตินล้วนไม่มีขอบคำไทย — ตัวคูณไม่มีผล
+  assert.equal(estimateTextLines(texts[2], 34, 9.375, { thaiSlackScale: 0 }), estimateTextLines(texts[2], 34, 9.375));
+});

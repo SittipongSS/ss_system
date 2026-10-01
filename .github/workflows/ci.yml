@@ -141,3 +141,13 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      # ด่าน trace ของ route เอกสารประเมิน (SU-…) — อ่าน `route.js.nft.json` ที่ build เพิ่งเขียน จึงต้องอยู่หลัง Build
+      # 🪤 chromium (`@sparticuz/chromium/bin/*.br`) กับไบนารีของ sharp ถูกอ่าน/require ด้วย path ที่ประกอบตอนรัน ⇒
+      # file tracing มองไม่เห็น: build เขียว แต่ไฟล์ไม่ถูกก๊อปไป deploy แล้วไปตายบน production ("input directory does not
+      # exist" · sharp โหลดไม่ขึ้น) — ต้องมี `outputFileTracingIncludes` ใน next.config.mjs และ key เป็น glob ที่ escape `[id]`
+      # 🪤 กลับด้าน: static import ผิดบรรทัดเดียวทำให้ GET ใบประเมิน (ช่างเปิดหน้างาน) · GET/PATCH คำร้อง · ดึงผลกลับ ·
+      # เส้นส่งผล พก chromium ~70 MB ไปด้วย — เทสต์ซอร์สเดินได้แค่ static import ของซอร์ส ไม่เห็นผลของ bundler
+      # runner เป็น linux-x64 แบบเดียวกับ build ของ Vercel ⇒ ไบนารีที่ตรวจคือตัวที่ production ใช้ · ไม่ต้องมี secret
+      - name: Survey document routes trace the right binaries
+        run: node scripts/check-doc-tracing.mjs

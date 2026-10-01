@@ -17,6 +17,17 @@
 //      ซึ่งเท่ากับหลังช่างกดส่งงานตามปกติ และกดส่งผลซ้ำก็จบ · สภาพ "ตอบแล้วแต่นัดยังเปิด" ไปไม่ถึงอีกแล้ว
 //   ⚠️ ไม่ทำเป็น RPC: ด่านต้องอ่านไฟล์ใน JS อยู่ดี (`listAttachments`) · RPC จะห่อแค่ UPDATE สองคำสั่ง
 //      แต่ต้องเขียน `closureStatus` ซ้ำใน SQL และเพิ่ม RPC ที่ anon เรียกได้อีกตัว
+//
+// ⭐ **ส่งผล = ออกเอกสารประเมิน (เลข SU) ด้วย** (มติเจ้าของ 01/10 ข้อ 1 · สเปก PR-2 §2 · S1–S9)
+//   🔑 เปิดด้วยสวิตช์ `SURVEY_REPORT_ISSUE_AT_SEND=on` **บน production เท่านั้น** (`surveyReportIssueAtSend`) —
+//      ปิดอยู่ = เส้นนี้เดินเหมือนเดิมทุกก้าว: ไม่ตรวจรูป ไม่ตรวจเอกสาร ไม่ออกเลข ไม่อ่านแถวเอกสาร และ **ไม่โหลดของหนัก**
+//      (ตัวย่อรูป · ตัวเรนเดอร์ เข้ามาทาง `await import()` ในกิ่งที่เปิดสวิตช์เท่านั้น)
+//   🔴 **เรื่องของเอกสารตีกลับได้เฉพาะก่อนเขียน** (S2 · S3 · S5) — นัดถูกปิดก่อนตอบใบ ⇒ หลังจุดนั้นห้ามมีอะไรตีกลับอีก ·
+//      ขั้นออกเลข (S8) อยู่หลังกระดิ่งและ audit ใน try/catch ของตัวเอง: ล้มยังไงการส่งผลก็ตอบ 200 พร้อมเหตุใน `report`
+//   🔴 **ปัญหาของใบตีกลับ · ปัญหาของระบบไม่ตีกลับ** (มติข้อ 2) — ผลประเมินต้องถึงฝ่ายขายเสมอ เอกสารออกตามทีหลังได้
+//      (ปุ่ม "ออกเอกสาร" ของ route เอกสาร)
+//   ⚠️ ของในไฟล์นี้ที่มีผลไม่ว่าสวิตช์เปิดหรือปิด (§0): ฐานของส่วนต่างรอบก่อน + `meta.totals` บนแถวคำตอบ (S7) ·
+//      `meta.closedBySend` บนบรรทัดเธรดของนัด (S6)
 import { recordAudit } from '@/lib/audit';
 import { appendRequestEvent } from '@/lib/sales/documentThread';
 import { appendUpdate } from '@/lib/master/updates';
@@ -31,13 +42,119 @@ import { surveyPackageSizeSendError } from '@/lib/service/packageSizes';
 import { loadPackageSizesOrNull } from '@/lib/service/packageSizesRepo';
 import { loadSurveyZones } from '@/lib/service/surveyRepo';
 import { findSurveyVisit } from '@/lib/service/surveyVisit';
-import { surveySendCloseBody, surveySendVisitStep, surveySendWrites } from '@/lib/service/surveySendClose';
+import { surveyReportIssueAtSend } from '@/lib/service/surveyReportRows';
+import {
+  SURVEY_SEND_OLD_PAGE_ERROR, SURVEY_SEND_PREFLIGHT_MS, SURVEY_SEND_REPORT_FAILED, SURVEY_SEND_REPORT_OFF,
+  SURVEY_SEND_WARNINGS_CHANGED_ERROR, surveySendCloseBody, surveySendDiffBaseline, surveySendDocumentRefusal,
+  surveySendImageRefusal, surveySendReport, surveySendUnseenWarnings, surveySendVisitStep, surveySendWrites,
+} from '@/lib/service/surveySendClose';
 import {
   surveyChangeCounts, surveyChangeText, surveyPackagesText, surveySendError, surveyTotals, surveyTotalsDiff,
 } from '@/lib/service/survey';
 import { surveySpotSendError } from '@/lib/service/surveySpotPhotos';
 
 export const dynamic = 'force-dynamic';
+/* ตัวย่อรูป (sharp) กับตัวต่อ Drive เป็นของ Node · รอบตรวจรูป 60 วิ + รอบเติมหลังล็อก 20 วิ + RPC ⇒ เพดานเท่า cron ที่เดินนานที่สุด */
+export const runtime = 'nodejs';
+export const maxDuration = 300;
+
+const message = (e) => String(e?.message || e || '').trim();
+
+/**
+ * S3 — **รอบตรวจรูปก่อนเขียนอะไรทั้งสิ้น** · คืน `{ refusal, prepared }`
+ *
+ * 🔴 รูปที่ **ตัวไฟล์เองเปิดไม่ได้** (HEIC ที่ตั้งชื่อ .jpg · JPEG ขาดท้าย · หายจาก Drive) ต้องเจอตอนที่ใบยังแก้ได้ —
+ *    หลังตอบใบแล้วหัวหน้าเปลี่ยนไฟล์ไม่ได้ ทางออกเดียวคือดึงผลกลับ ⇒ `refusal` (409 พร้อมชื่อไฟล์)
+ * 🔴 Drive ช้า/ล่ม · อัปไม่ขึ้น · หมดงบเวลา · โหลดตัวย่อรูปไม่ได้ · อ่านไฟล์ไม่สำเร็จ = **ไม่ตีกลับ** (ลง log แล้วส่งผลต่อ ·
+ *    ขั้นออกเลขเติมรูปที่ขาดเอง ไม่ทันก็กด "ออกเอกสาร" ทีหลัง)
+ * ⭐ อ่านผลวัดกับไฟล์ของตัวเองแบบเบา แล้วรอบด่านหกข้ออ่านใหม่อีกครั้ง **หลัง** รอบนี้ — ช่วง "อ่านด่าน → ล็อก" จึงสั้นเท่าเดิม
+ *    (ถ้าใช้แถวชุดเดียวกัน ด่านจะตัดสินบนข้อมูลที่เก่าไปได้ถึง 60 วินาที)
+ * ⚠️ `prepared` ส่งต่อให้ขั้นออกเลข — ไฟล์ที่เตรียมแล้วไม่ถูกดึงจาก Drive ซ้ำ · เขียนได้อย่างเดียวคือรูป `img/<sha>.jpg`
+ *    (อ้างด้วยเนื้อไฟล์ ส่งผลไม่สำเร็จก็ไม่เสียอะไร รอบหน้าใช้ซ้ำ)
+ */
+async function surveySendPreflight(supabase, requestId) {
+  try {
+    const zones = await loadSurveyZones(supabase, requestId);
+    const lists = await Promise.all(zones.map((z) => listAttachments('service_survey_zone', z.id, supabase)));
+    const filesByZone = Object.fromEntries(zones.map((z, i) => [z.id, lists[i] || []]));
+    const [{ surveyReportImageFiles }, { prepareSurveyReportImages }] = await Promise.all([
+      import('@/lib/service/surveyReportSnapshot'),
+      import('@/lib/service/surveyReportImages'),
+    ]);
+    const prepared = await prepareSurveyReportImages(
+      supabase, surveyReportImageFiles({ zones, filesByZone }), { deadline: SURVEY_SEND_PREFLIGHT_MS },
+    );
+    const failed = Array.isArray(prepared?.failed) ? prepared.failed : [];
+    const refusal = surveySendImageRefusal(failed);
+    if (refusal) return { refusal, prepared: null };
+    if (failed.length) {
+      console.warn('[survey-report] รอบตรวจรูปก่อนส่งผลเตรียมไม่ครบ — ส่งผลต่อ ขั้นออกเลขจะเติมให้', requestId,
+        failed.map((f) => `${f.fileName || f.attId}: ${f.reason}`).join(' · '));
+    }
+    return { refusal: null, prepared: prepared || null };
+  } catch (e) {
+    console.error('[survey-report] รอบตรวจรูปก่อนส่งผลล้ม — ส่งผลต่อ', requestId, message(e));
+    return { refusal: null, prepared: null };
+  }
+}
+
+/**
+ * S5 — **เหตุที่เอกสารออกไม่ได้เพราะเนื้อของใบ** · คืนประโยค 409 หรือ `null` (ส่งผลต่อได้)
+ *
+ * 1. นัดที่ค้างยังเป็นร่าง → ประโยคของ `surveySendVisitStep` เอง (ประโยคเดียวกับที่ลำดับการเขียนตอบ — ถ้าไม่ดักตรงนี้
+ *    ตัวตรวจข้างล่างจะแทนด้วย "ไม่พบนัดประเมิน" ซึ่งชี้ผิดทาง)
+ * 2. server เจอคำเตือนที่จอไม่ได้ส่งมาใน `seenWarnings` → ให้โหลดหน้าใหม่ (หัวหน้าต้องได้อ่านก่อนเอกสารถูกตรึง)
+ * 3. เหตุชนิด `content` ของตัวตรวจ (ผังเป็น PDF/HEIC/BMP · ไม่มีนัดที่ปิด/ไม่มีวัน/ไม่มีผู้ประเมิน · หน้าล้น) → ตีกลับ
+ * 🔴 ตัวตรวจอ่านไม่ครบ (`unknown`) หรือโยน = **ข้ามข้อ 2 กับ 3** แล้วลง log — ปัญหาของระบบไม่ขวางการส่งผล
+ */
+async function surveySendDocumentError(supabase, {
+  request, user, zones, filesByZone, open, today, nowIso, seenWarnings,
+}) {
+  const step = surveySendVisitStep(open, { today });
+  if (step.action === 'block') return step.error;
+  try {
+    const { surveyReportPrecheck } = await import('@/lib/service/surveyReportInputs');
+    /* ทะเบียนขนาดไม่ได้ส่งต่อ (ตัวตรวจอ่านเอง) — ด่าน "ขนาดถูกลบ" ข้างบนอ่านแล้วส่งเข้าด่านในคำสั่งเดียว (ยามซอร์สล็อกบรรทัดนั้นไว้) */
+    const check = await surveyReportPrecheck(supabase, { request, user, zones, filesByZone, open, today, nowIso });
+    const unknown = Array.isArray(check?.unknown) ? check.unknown : ['precheck'];
+    if (unknown.length) {
+      console.error('[survey-report] ตรวจเอกสารก่อนส่งผลอ่านไม่ครบ — ส่งผลต่อ', request?.docNo || request?.id, unknown.join(' · '));
+      return null;
+    }
+    if (surveySendUnseenWarnings(check.warnings, seenWarnings).length) return SURVEY_SEND_WARNINGS_CHANGED_ERROR;
+    return surveySendDocumentRefusal(check.blockers);
+  } catch (e) {
+    console.error('[survey-report] ตรวจเอกสารก่อนส่งผลล้ม — ส่งผลต่อ', request?.docNo || request?.id, message(e));
+    return null;
+  }
+}
+
+/**
+ * S8 — **ออกเลขเอกสารหลังส่งผลสำเร็จ** · คืนคีย์ `report` ของคำตอบ (S9) · ไม่โยน ไม่ทำให้การส่งผลล้ม
+ *
+ * ⚠️ ขั้นออกเลขสัญญาว่าไม่โยน และเขียน audit ของการล้มเอง — try/catch ตรงนี้กันสิ่งที่อยู่นอกสัญญานั้น
+ *    (โหลดโมดูลไม่ได้ · บั๊ก) ซึ่งไม่มีใครเขียน audit ให้ ⇒ เขียนที่นี่ (§12 "ออกเอกสารไม่สำเร็จหลังส่งผล")
+ * ⚠️ ไม่เขียนบรรทัดเธรดของเอกสาร — แถวคำตอบของการส่งผลครั้งนี้ยิงกระดิ่งถึงผู้ขอไปแล้ว (มติเจ้าของ 01/10 ข้อ 4)
+ */
+async function surveySendIssue(supabase, { request, user, closedVisit, prepared, req }) {
+  try {
+    const { issueSurveyReport, SURVEY_REPORT_IMAGE_BUDGET_MS } = await import('@/lib/service/surveyReportIssue');
+    const result = await issueSurveyReport(supabase, {
+      request, user, closedVisit: closedVisit || null, via: 'send', prepared,
+      deadline: SURVEY_REPORT_IMAGE_BUDGET_MS.send, req,
+    });
+    return surveySendReport(result);
+  } catch (e) {
+    const label = request?.docNo || request?.id;
+    console.error('[survey-report] ขั้นออกเลขหลังส่งผลล้มนอกสัญญา', label, e?.stack || message(e));
+    await recordAudit({
+      user, action: 'update', entityType: 'dept_request', entityId: request?.id,
+      summary: `ออกเอกสารประเมินไม่สำเร็จหลังส่งผล ${label} — ${SURVEY_SEND_REPORT_FAILED}`,
+      request: req,
+    });
+    return surveySendReport(null);
+  }
+}
 
 export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const { id } = await ctx.params;
@@ -54,6 +171,22 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     const stageError = answerRequestError(request);
     if (stageError) return conflict(stageError);
 
+    const body = await req.json().catch(() => ({}));
+    /* 🔑 ถามสวิตช์ครั้งเดียวต่อคำขอ — ทุกกิ่งของเอกสารข้างล่างอ่านค่านี้ (ปิด = เส้นเดิมทุกก้าว) */
+    const issueAtSend = surveyReportIssueAtSend();
+
+    /* S2 — จอรุ่นเก่า (ไม่รู้ว่าการส่งผลออกเอกสารด้วย) ไม่ส่ง `seenWarnings` มา ⇒ ตีกลับ **ก่อนอ่านอะไรเพิ่ม**
+       จอรุ่นเก่าจึงไม่ต้องรอรอบตรวจรูปเพื่อมาเจอคำตอบเดียวกัน */
+    if (issueAtSend && !Array.isArray(body?.seenWarnings)) return conflict(SURVEY_SEND_OLD_PAGE_ERROR);
+
+    /* S3 — รอบตรวจรูป **ก่อน** อ่านด่านหกข้อ: รูปที่เปิดไม่ได้ตีกลับตรงนี้ (ยังไม่ได้เขียนอะไร นัดยังเปิด) */
+    let prepared = null;
+    if (issueAtSend) {
+      const preflight = await surveySendPreflight(supabase, id);
+      if (preflight.refusal) return conflict(preflight.refusal);
+      prepared = preflight.prepared;
+    }
+
     /* 🔑 **ด่านหกข้อ — ตัวเดียวกับที่ปุ่มบนจอใช้** · ต้องอ่านไฟล์จริงมานับ
        ⚠️ ไม่มีไฟล์ = ยังไม่มีรูป ⇒ ปฏิเสธ (fail-closed) ไม่ใช่ปล่อยผ่านตอนไม่รู้ */
     const zones = await loadSurveyZones(supabase, id);
@@ -69,7 +202,6 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     const sizeGate = surveyPackageSizeSendError(zones, await loadPackageSizesOrNull(supabase));
     if (sizeGate) return conflict(sizeGate);
 
-    const body = await req.json().catch(() => ({}));
     const nowIso = new Date().toISOString();
     const today = businessDate(nowIso);
 
@@ -81,6 +213,14 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     const closesVisit = surveySendVisitStep(open, { today }).action === 'close';
     const spotGate = surveySpotSendError(zones, filesByZone, { closesVisit });
     if (spotGate) return conflict(spotGate);
+
+    /* S5 — เรื่องของเอกสารที่ตีกลับได้ ต้องตีกลับ **ตรงนี้** (ก่อนปิดนัด/ตอบใบ) · หลังบรรทัดนี้ไม่มีอะไรของเอกสารตีกลับอีก */
+    if (issueAtSend) {
+      const documentError = await surveySendDocumentError(supabase, {
+        request, user, zones, filesByZone, open, today, nowIso, seenWarnings: body.seenWarnings,
+      });
+      if (documentError) return conflict(documentError);
+    }
 
     const patch = {
       answeredAt: nowIso,
@@ -108,7 +248,11 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       onVisitClosed: async (closedVisit, beforeVisit) => {
         await appendUpdate(supabase, {
           entityType: 'service_visit', entityId: closedVisit.id, kind: 'done',
-          body: surveySendCloseBody(closedVisit, user), user,
+          body: surveySendCloseBody(closedVisit, user),
+          /* ⭐ ตราว่านัดนี้ปิดพร้อมการส่งผล (S6) — เอกสารประเมินอ่านตรานี้เพื่อพิมพ์ว่าเวลาจบที่ไม่มี = "ไม่ได้กดส่งงาน"
+             ไม่ใช่ระบบทำหาย · นัดที่ปิดก่อน PR-2 ไม่มีตรา ⇒ ตัวอ่านถอยไปดูคำขึ้นต้นของข้อความ (`surveySendCloseBody`) */
+          meta: { closedBySend: true },
+          user,
         });
         await recordAudit({
           user, action: 'update', entityType: 'service_visit', entityId: closedVisit.id,
@@ -137,19 +281,31 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
          มาตัดสินว่า "ปิดครบสองฝั่ง" หรือ "รอผู้ขอปิดเรื่อง" · ส่งแถวเก่าไปจะบอกผิด
        ⚠️ วางไว้ **หลัง** update สำเร็จ และไม่ให้ล้มลากปุ่มส่งล้มตาม — ทั้ง `appendUpdate`
          และ `notifyThreadUpdate` กลืน error เองอยู่แล้ว (fire-and-forget ทั้งสาย) */
-    /* 🔴 **ส่งรอบใหม่หลังดึงกลับ ต้องบอกส่วนต่างเก่า→ใหม่** (§5E ④)
+    /* 🔴 **ส่งรอบใหม่ ต้องบอกส่วนต่างเก่า→ใหม่** (§5E ④)
        จุดอันตรายที่สุดของทั้งแผน: SA อาจเอาตัวเลขผิดไปเสนอราคาไปแล้ว ⇒ ข้อความว่า
-       "ใบถูกแก้" เฉย ๆ ไม่พอ · ตัวเลขที่ส่งไปรอบก่อนถูกตรึงไว้ใน meta ของแถว `recall`
-       ⚠️ ไม่มีแถว `recall` = ส่งรอบแรก ⇒ ไม่มีอะไรให้เทียบ (ปกติ ไม่ใช่ข้อผิดพลาด) */
+       "ใบถูกแก้" เฉย ๆ ไม่พอ
+       ⭐ **ฐาน = ยอดของรอบที่ตอบล่าสุด** (สเปก PR-2 §2 S7 · `surveySendDiffBaseline`) — แถว `answer` พกยอดที่ส่งออกไป
+          (ข้างล่าง) · แถว `recall` พกยอด ณ ตอนดึงกลับ ⇒ อ่านสองชนิดใหม่ก่อน แล้วใช้แถวแรกที่มียอด
+          🐞 เดิมอ่านแถว `recall` แถวเดียว ⇒ รอบที่ถูกเปิดกลับด้วย "ยังไม่จบ" (ไม่เขียนยอดไว้) เทียบกับรอบที่เก่ากว่านั้น
+             หรือไม่เทียบเลย — ฝ่ายขายได้ส่วนต่างจากตัวเลขที่เขาไม่ได้ถืออยู่แล้ว
+       ⚠️ ไม่มีแถวที่มียอด = ส่งรอบแรก ⇒ ไม่มีอะไรให้เทียบ (ปกติ ไม่ใช่ข้อผิดพลาด)
+       ⚠️ supabase ไม่ throw — ต้องอ่าน `{ error }` เอง (try/catch เดิมไม่เคยทำงานสักครั้ง) · อ่านไม่ได้ = ส่งโดยไม่มีส่วนต่าง
+          และลง log · try/catch ที่เหลือกันเฉพาะ client ที่โยนเอง: ใบตอบไปแล้ว ห้ามลากปุ่มส่งล้มเพราะเรื่องข้อความ */
     let diff = [];
     try {
-      const { data: recalls } = await supabase
+      const { data: rounds, error: roundsError } = await supabase
         .from('entity_updates')
-        .select('meta, "createdAt"')
-        .eq('entityType', 'dept_request').eq('entityId', id).eq('kind', 'recall')
-        .order('createdAt', { ascending: false }).limit(1);
-      diff = surveyTotalsDiff(recalls?.[0]?.meta?.totals || null, totals);
-    } catch { /* เทียบไม่ได้ = ส่งตามปกติ · ห้ามลากปุ่มส่งล้มเพราะเรื่องข้อความ */ }
+        .select('kind, meta, "createdAt"')
+        .eq('entityType', 'dept_request').eq('entityId', id).in('kind', ['answer', 'recall'])
+        .order('createdAt', { ascending: false }).limit(20);
+      if (roundsError) {
+        console.error('[survey] อ่านยอดของรอบก่อนไม่สำเร็จ — ส่งผลโดยไม่มีส่วนต่าง', request.docNo || id, roundsError.message);
+      } else {
+        diff = surveyTotalsDiff(surveySendDiffBaseline(rounds), totals);
+      }
+    } catch (e) {
+      console.error('[survey] อ่านยอดของรอบก่อนไม่สำเร็จ — ส่งผลโดยไม่มีส่วนต่าง', request.docNo || id, message(e));
+    }
 
     await appendRequestEvent(supabase, {
       request: data,
@@ -166,6 +322,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
         summary: `${totals.zones} พื้นที่ · ${totals.areaSqm} ตร.ม. · ${surveyPackagesText(totals)}`
           + (change.cut || change.added ? ` — ${surveyChangeText(change, { actor: 'TS' })}` : '')
           + (diff.length ? ` · ⚠️ แก้จากรอบก่อน: ${diff.join(' · ')}` : ''),
+        /* ⭐ ยอดที่ส่งออกไปรอบนี้ → `meta.totals` ของแถวคำตอบ (S7) — ฐานของส่วนต่างรอบถัดไป แม้รอบนี้จะจบด้วย "ยังไม่จบ" */
+        totals,
       },
     });
 
@@ -179,8 +337,13 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
         + (closedVisit ? ` · ปิดนัด ${closedVisit.code || closedVisit.id}` : ''),
       request: req,
     });
-    // จอบอกผลที่เกิดกับนัดด้วย — "ส่งผลแล้ว" เฉย ๆ ไม่บอกว่านัดบนตารางช่างปิดแล้ว
-    return ok({ request: data, totals, closedVisit: closedVisit || null });
+    /* S8 — ออกเลขเอกสาร **หลัง** กระดิ่งและ audit (มติเจ้าของ 01/10 ข้อ 1) · ฝ่ายขายได้ผลไปแล้ว ⇒ ตรงนี้ล้มยังไงก็ตอบ 200
+       ⚠️ ไม่มีอะไรใหม่คั่นระหว่าง "ตอบใบ" กับ "กระดิ่ง" — รูปที่เตรียมไว้ (`prepared`) มาจากรอบตรวจก่อนเขียน */
+    const report = issueAtSend
+      ? await surveySendIssue(supabase, { request: data, user, closedVisit, prepared, req })
+      : SURVEY_SEND_REPORT_OFF;
+    // จอบอกผลที่เกิดกับนัดด้วย — "ส่งผลแล้ว" เฉย ๆ ไม่บอกว่านัดบนตารางช่างปิดแล้ว · `report` = ผลของเอกสาร (S9 · จอรุ่นเก่าไม่อ่าน)
+    return ok({ request: data, totals, closedVisit: closedVisit || null, report });
   } catch (e) {
     return fail(e.message, 500);
   }

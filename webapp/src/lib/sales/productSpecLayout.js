@@ -182,10 +182,10 @@ function fitPrefix(text, room, pt) {
 /* บรรทัดของข้อความหนึ่งท่อน (ไม่มีขึ้นบรรทัดใหม่) — วางอะตอมทีละตัวแบบที่เบราว์เซอร์ทำ
    🪤 อะตอมที่ไม่พอที่เหลือ **ขึ้นบรรทัดใหม่ทั้งอะตอม** (ท้ายบรรทัดเดิมเสียเปล่า) — ตัดฉุกเฉินเฉพาะอะตอมที่ยาวกว่า
       บรรทัดเปล่า (`overflow-wrap: anywhere` ใช้เมื่อบรรทัดไม่มีจุดตัดอื่นเท่านั้น) */
-function partLines(part, widthMm, pt) {
+function partLines(part, widthMm, pt, slackScale = 1) {
   if (textWidthMm(part, pt) <= widthMm) return 1; // ลงบรรทัดเดียวได้ = ไม่มีการตัด ไม่มีท้ายบรรทัดที่เสีย
   const cutRoom = Math.max(4, widthMm - UNKNOWN_EM * pt * PT_MM);
-  const slack = thaiSlack(widthMm);
+  const slack = thaiSlack(widthMm) * slackScale;
   const space = ASCII_EM[0] * pt * PT_MM * WIDTH_MARGIN;
   let lines = 1;
   let used = 0;
@@ -232,14 +232,17 @@ function partLines(part, widthMm, pt) {
  *
  * @param opts.preWrap `true` = กล่องเป็น `white-space: pre-wrap` (กล่องผู้ซื้อ/อ้างอิงของเปลือก) —
  *   ขึ้นบรรทัดใหม่ของผู้ใช้เป็นบรรทัดจริง บรรทัดว่างก็กินที่ · `false` (ตาราง) = เว้นวรรค/แท็บ/ขึ้นบรรทัดยุบเป็นหนึ่ง
+ * @param opts.thaiSlackScale ตัวคูณของที่เว้นท้ายบรรทัดตรงขอบคำไทย (`thaiSlack`) — ค่าตั้งต้น 1 = ของ FM-SA-04 ตามที่สอบเทียบไว้
+ *   ผู้เรียกที่สอบเทียบช่องของตัวเองกับ Chrome แล้วส่งค่าน้อยลงได้ (รายงานการประเมินพื้นที่: ชื่อพื้นที่ในช่องตาราง 128–285px ใช้ 0.5
+ *   — `surveyReportLayout.js` · ในช่องแคบ 5% + 1.5mm คิดเป็น 9% ของช่อง) · ⚠️ ห้ามเปลี่ยนค่าตั้งต้น
  * ⚠️ ว่าง = 1 บรรทัด — ช่องว่างพิมพ์ขีด/N/A ซึ่งกินหนึ่งบรรทัดเสมอ
  * 🪤 ยุบเฉพาะช่องว่างที่ HTML ยุบจริง (space · tab · ขึ้นบรรทัด) — **ห้าม `\s`** ซึ่งกิน NBSP ด้วย แล้ว NBSP (ตัดไม่ได้)
  *    กลายเป็นเว้นวรรคที่ตัดได้ ⇒ ประเมินต่ำ (ผลตรวจรอบสอง)
  */
-export function estimateTextLines(text, widthMm, pt, { preWrap = false } = {}) {
+export function estimateTextLines(text, widthMm, pt, { preWrap = false, thaiSlackScale = 1 } = {}) {
   const source = String(text ?? '');
   const parts = preWrap ? source.split(/\r?\n/) : [source.replace(/[ \t\n\r\f]+/g, ' ').trim()];
-  return parts.reduce((sum, part) => sum + partLines(part.trimEnd(), widthMm, pt), 0);
+  return parts.reduce((sum, part) => sum + partLines(part.trimEnd(), widthMm, pt, thaiSlackScale), 0);
 }
 
 /* ── ค่าคงที่ของแผ่น (วัด 2026-09-22) ─────────────────────────────────────────── */
