@@ -114,7 +114,7 @@ const PER_ID_GUARDED = new Map([
    🐞 ของเดิมยกเว้นทั้งไฟล์ ⇒ เพิ่มยอด "ใบอนุมัติทั้งทะเบียน" ใหม่ในทะเบียนการชำระ/ทะเบียน SO แล้วเขียวต่อ
    (ใบย้อนหลัง approvedAt = เวลาคีย์ ⇒ ~220 ใบโผล่เป็นยอดเดือนนี้) · เลขตรึงไว้ ⇒ คำสั่งใหม่ต้องจัดชั้นใหม่เสมอ */
 const SEES_HISTORICAL = new Map([
-  ['app/api/nav/counts/route.js', { count: 5, reason: 'เลนอนุมัติ = รออนุมัติ/ตีกลับ รวมใบย้อนหลังโดยตั้งใจ (AE Sup อนุมัติ · ตีกลับให้ผู้คีย์ · 0374) — นับจำนวนใบ ไม่รวมยอด · เลนร่างของใบย้อนหลัง (ผู้คีย์บันทึกค้าง · historicalRowsOnly) · เลนย้อนการอนุมัติรอเจ้าของดีลออก Rev. (มติ 24/09 · pipelineRowsOnly — ใบย้อนหลังย้อนอนุมัติไม่ได้) นับจำนวนใบ ไม่รวมยอด · เลนบัญชีต้อง financeStatus pending (ใบย้อนหลัง NULL) · ป้ายงานเข้าใหม่ของ TS นับถังผูกโซน + ถังตั้งรอบ (ใบย้อนหลังผูกโซนตอน AE Sup อนุมัติ ⇒ มาเข้าถังตั้งรอบตรง ๆ · มติ 22/09) — นับแถว ไม่รวมยอด' }],
+  ['app/api/nav/counts/route.js', { count: 7, reason: 'เลนอนุมัติ = รออนุมัติ/ตีกลับ รวมใบย้อนหลังโดยตั้งใจ (AE Sup อนุมัติ · ตีกลับให้ผู้คีย์ · 0374) — นับจำนวนใบ ไม่รวมยอด · เลนร่างของใบย้อนหลัง (ผู้คีย์บันทึกค้าง · historicalRowsOnly) · เลนย้อนการอนุมัติรอเจ้าของดีลออก Rev. (มติ 24/09 · pipelineRowsOnly — ใบย้อนหลังย้อนอนุมัติไม่ได้) นับจำนวนใบ ไม่รวมยอด · เลนบัญชีต้อง financeStatus pending (ใบย้อนหลัง NULL) · ป้ายงานเข้าใหม่ของ TS นับถังตั้งรอบ (ใบย้อนหลังผูกโซนตอน AE Sup อนุมัติ ⇒ มาเข้าถังตั้งรอบตรง ๆ · มติ 22/09 · ถังผูกโซนถอดแล้วใน 0392) — นับแถว ไม่รวมยอด · เลนตั้งงานบริการย้อนหลัง (เจ้าของดีล · ผู้จัดการตรวจ) ผ่าน pipelineRowsOnly — นับจำนวนใบ ไม่รวมยอด' }],
   ['app/api/service/intake/route.js', { count: 1, reason: 'คิวงานเข้าใหม่ของ TS — ใบย้อนหลังที่อนุมัติแล้วมาพร้อมโซนที่ผูกตอนอนุมัติ (ถังตั้งรอบ · มติ 22/09) · ยอดใช้ตัดสินใบ ฿0 เท่านั้น (paymentNotRequired) ไม่ออกไปกับ response' }],
   ['lib/service/gateContext.js', { count: 1, reason: 'บริบทด่านเข้าไซต์ — ใบของรอบขาย (ใบย้อนหลังที่อนุมัติแล้วด้วยโดยตั้งใจ) · ยอดใช้ตัดสินใบ ฿0 ของข้อ② เท่านั้น (paymentNotRequired) ส่งออกเป็น 0/null ไม่รวมยอด (มติ 22/09)' }],
   ['app/api/finance/payments/route.js', { count: 1, reason: 'ทะเบียนการชำระ — งวดที่ยังต้องเก็บของใบย้อนหลังเป็นเงินจริง (คำตอบข้อ 2) · แถวพก origin' }],
@@ -124,6 +124,10 @@ const SEES_HISTORICAL = new Map([
   ['app/api/sales-planning/sales-orders/route.js', { count: 1, reason: 'ทะเบียนใบสั่งขาย — แถวโชว์ได้ ยอดผ่าน salesOrderAmountKind (ใบย้อนหลัง = excluded)' }],
   ['app/api/sales-planning/deals/[id]/overview/route.js', { count: 1, reason: 'ใบของดีลใบเดียว — ยอดผ่าน splitSalesOrderAmounts/salesOrderAmountKind' }],
   ['app/api/sales-planning/deals/[id]/route.js', { count: 1, reason: 'ด่านย้ายเจ้าของดีลภาชนะ (0374) — หาใบย้อนหลังที่ยังไม่อนุมัติของดีลเดียวผ่าน historicalRowsOnly · ไม่รวมยอด' }],
+  /* รุ่นสี่ "ต้องวางบิลไหม" (mig 0393 · system-design §7.1–7.2): จอ "งวดที่วันจะเปลี่ยน" เมื่อกติกาลูกค้าเปลี่ยน —
+     งวดเปิดของใบย้อนหลังที่อนุมัติแล้วเป็นเงินจริงที่ต้องวางบิล/เก็บตามกติกาใหม่เหมือนใบปกติ (เหตุผลเดียวกับทะเบียนการชำระ) ·
+     ใบย้อนหลังที่ยังไม่อนุมัติถูกด่าน historicalInstallmentLock ย้ายไป kept 'locked' (customerRuleChange) · ยอดใช้แค่ withLiveAmounts ของงวดร่าง ไม่รวมยอด */
+  ['lib/sales/installmentScheduleServer.js', { count: 2, reason: 'ใบที่ยังมีชีวิตของลูกค้า (ruleChange) + ใบของงวดที่ส่งมาจัดวันใหม่ (redate) — งวดของใบย้อนหลังที่อนุมัติแล้วต้องตามกติกาใหม่ด้วย · ล็อกทั้งใบตัดใบที่ยังไม่อนุมัติ · ไม่รวมยอด' }],
 ]);
 /* ขอบเขตของคำสั่งทำให้ใบย้อนหลังเข้ามาไม่ได้ · count ความหมายเดียวกับข้างบน */
 const SCOPED_SAFE = new Map([
@@ -382,11 +386,16 @@ test('ใบสั่งขาย [id] DELETE: ใบย้อนหลังล
   const del = slice(code('app/api/sales-planning/sales-orders/[id]/route.js'), 'export const DELETE');
   for (const needle of [
     "from('service_zone_terms')", "from('service_plans')", "from('sales_order_installments')", 'historicalDeleteBlock(',
-    'fetchAllResult(', '{ ...before, installments: installmentRows, zoneTerms, servicePlans }', "update({ salesOrderId: null",
+    'fetchAllResult(', '{ ...before, installments: installmentRows, zoneTerms, servicePlans, lineZones }', "update({ salesOrderId: null",
     'installmentsResult.error',
   ]) {
     assert.ok(del.includes(needle), `ขาด ${needle}`);
   }
+  /* 🔴 review 29/09 (PR-D · mig 0394/P6): แพ็คต่อรอบของใบย้อนหลังอยู่ใน sales_order_line_zones ที่เดียวก่อนอนุมัติ และหายตาม
+     CASCADE ตอนลบใบ ⇒ อ่านก่อนลบ (พลาด = 500 ยังไม่ลบ) แล้วเก็บลง audit.before — ระบบไม่มีถังขยะ กู้ได้จาก audit_logs.before เท่านั้น */
+  assert.match(del, /fetchAllResult\(\(\) => supabase\.from\('sales_order_line_zones'\)\.select\('\*'\)\.eq\('salesOrderId', id\)\.order\('id', \{ ascending: true \}\)\)/);
+  assert.match(del, /const loadError = termsResult\.error \|\| plansResult\.error \|\| installmentsResult\.error \|\| lineZonesResult\.error;/);
+  assert.ok(del.indexOf("from('sales_order_line_zones')") < del.indexOf("supabase.from('sales_orders').delete()"), 'อ่านก่อนลบ');
   /* 🐞 before.installments มาจาก loadOrder ที่กลืน error งวดเป็น [] ⇒ ด่านต้องได้งวดที่อ่านใหม่ (error = 500) */
   assert.match(del, /historicalDeleteBlock\(\{\s*order: \{ \.\.\.before, installments: installmentRows \},/);
   assert.doesNotMatch(del, /historicalDeleteBlock\(\{\s*order: before\b/);

@@ -282,3 +282,50 @@ test('ยกเงินเกินยอดใบ / ยกซ้ำกับ�
   assert.match(dup.message, /เงินก้อนเดียวกัน/);
   assert.ok(dup.message.endsWith(CARRY_DUPLICATE_WAY_OUT), dup.message);
 });
+
+/* mig 0392 (P2): ออก Rev. ยกงานบริการไปใบใหม่ — บรรทัดไม่ตรงกับใบเดิม = 409 ภาษาไทย ไม่ใช่ข้อความกลาง 500 */
+test('ยกงานบริการไปใบ Rev. ไม่ได้ (0392) แปลเป็นไทยพร้อมทางออก', () => {
+  assert.deepEqual(documentWorkflowError({ message: 'P0001: service_setup_copy_line_mismatch' }), {
+    code: 'service_setup_copy_line_mismatch',
+    message: 'ออก Rev. ไม่ได้ — บรรทัดของใบ Rev. ไม่ตรงกับใบเดิม (ยกงานบริการไม่ได้) · แจ้งผู้ดูแลระบบ',
+    status: 409,
+  });
+  assert.equal(workflowErrorMessage('service_setup_copy_line_mismatch'),
+    'ออก Rev. ไม่ได้ — บรรทัดของใบ Rev. ไม่ตรงกับใบเดิม (ยกงานบริการไม่ได้) · แจ้งผู้ดูแลระบบ');
+});
+
+/* PR-D (mig 0394 · IMPL_PLAN_D §3.5): ใบย้อนหลัง — รอบบริการบังคับ · แพ็คต่อรอบ 1–9999 · เปิดรอบขายผ่านตัวกลางของ 0392
+   + รหัสด่านของไฟล์ (L3: ทุก RAISE ของ migration ใบย้อนหลังมีข้อความไทย เหมือน mig_0374_* / mig_0379_*)
+   ⚠️ ไม่อ่านไฟล์ 0394 ที่นี่ — ยาม "ทุกรหัสที่ 0394 โยนมีในตาราง" อยู่ที่ historicalServiceAlignmentMigration.test.mjs */
+test('รหัสของ 0394 (ใบย้อนหลัง · งานบริการ) แปลเป็นไทยพร้อมสถานะและทางออก', () => {
+  const RECHECK = 'กลับไปขั้น ② ใส่ให้ครบแล้วบันทึกอีกครั้ง';
+  const PATCH_DRIFT = 'ฟังก์ชันใบย้อนหลังบนฐานไม่ตรงกับที่ migration 0394 คาด — แจ้งผู้ดูแลระบบ';
+  const expected = {
+    historical_so_line_rounds_required: [`ทุกรายการต้องใส่จำนวนรอบบริการ (จำนวนครั้งที่เข้าโซนตลอดสัญญา) — ${RECHECK}`, 400],
+    historical_so_line_packs_invalid: [
+      `ทุกรายการต้องใส่รอบละกี่แพ็ค (จำนวนเต็ม 1–9999) — ${RECHECK} (หน้าที่เปิดค้างจากก่อนมีช่องนี้ ให้โหลดหน้าใหม่)`, 400,
+    ],
+    service_setup_legacy_terms_exist: ['ใบนี้มีรอบขายของโซนอยู่แล้ว — เปิดทับไม่ได้ · แจ้งผู้ดูแลระบบ', 409],
+    mig_0394_needs_0392: ['ต้องรัน migration 0392 ก่อน 0394', 409],
+    mig_0394_historical_in_flight: [
+      'ยังมีใบสั่งขายย้อนหลังที่ยังไม่อนุมัติค้างอยู่ — อนุมัติ/ยกเลิกให้จบก่อนรัน migration 0394', 409,
+    ],
+    mig_0394_patch_overload: [PATCH_DRIFT, 409],
+    mig_0394_patch_anchor: [PATCH_DRIFT, 409],
+    mig_0394_verify: [PATCH_DRIFT, 409],
+  };
+  for (const [code, [message, status]] of Object.entries(expected)) {
+    assert.deepEqual(documentWorkflowError({ message: `P0001: ${code}` }), { code, message, status }, code);
+    assert.equal(workflowErrorMessage(code), message, code);
+  }
+  /* RAISE ของไฟล์ต่อคำอธิบาย/ชื่อฟังก์ชันท้ายรหัส — ตัวแปลหาด้วย includes จึงยังจับได้ */
+  assert.equal(documentWorkflowError({ message: 'mig_0394_historical_in_flight — ใบย้อนหลังที่ยังไม่อนุมัติ 2 ใบ' }).code, 'mig_0394_historical_in_flight');
+  assert.equal(documentWorkflowError({ message: 'mig_0394_patch_anchor: historical_so_write_children 0394/P6 (0)' }).code, 'mig_0394_patch_anchor');
+  assert.equal(documentWorkflowError({ message: 'mig_0394_verify 0394/P3' }).status, 409);
+  /* แพ็คต่อรอบผิด ≠ ข้อมูลรายการผิดแบบอื่น (historical_so_line_invalid ชี้ไปโหลดหน้าใหม่ทั้งฟอร์ม) */
+  assert.equal(documentWorkflowError({ message: 'historical_so_line_packs_invalid' }).code, 'historical_so_line_packs_invalid');
+  assert.equal(documentWorkflowError({ message: 'historical_so_line_invalid' }).code, 'historical_so_line_invalid');
+  /* ⚠️ ตัวกลางตีกลับการอนุมัติ (sales_order_service_setup_incomplete) ไม่อยู่ในตารางนี้ — ข้อความต้องมีเลขรายการจาก DETAIL
+     (historicalSetupIncompleteMessage · route อนุมัติแยกกิ่งก่อนถึงตารางนี้) */
+  assert.ok(!WORKFLOW_ERROR_CODES.includes('sales_order_service_setup_incomplete'));
+});

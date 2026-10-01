@@ -100,7 +100,7 @@ const liveRow = (over = {}) => ({
   id: 'SOI-1', salesOrderId: 'SOR-50', amount: 51385.68, status: 'pending', kind: 'regular', refundedAt: null,
   billingDate: '2026-10-05', billingRequestId: null, ...over,
 });
-const liveOrder = (over = {}) => ({ id: 'SOR-50', status: 'approved', origin: 'pipeline', quotationId: 'QT-50', ...over });
+const liveOrder = (over = {}) => ({ id: 'SOR-50', status: 'approved', origin: 'pipeline', quotationId: 'QT-50', customerId: 'CUS-1', ...over });
 const QT = { id: 'QT-50', status: 'accepted', quoteNumber: 'QT-26080050-1' };
 const notif = (id, installment, over = {}) => ({
   id, kind: BILLING_DUE_KIND, ...billingDueNotice({ installment, order: order() }), ...over,
@@ -133,20 +133,21 @@ test('🔴 แกะลิงก์ออกทุกแถว · ปุ่ม�
   assert.deepEqual(out[0].action, { href: billingRequestHref(liveOrder(), liveRow()), label: 'ขอใบวางบิลงวดนี้' });
   // สาม query ตามลำดับ · เฉพาะช่องที่ตัวตัดสิน/ตัวประกอบลิงก์อ่าน · เพดานเท่าจำนวน id
   assert.deepEqual(calls.filter(([op]) => op === 'from').map(([, table]) => table),
-    ['sales_order_installments', 'sales_orders', 'quotations']);
+    ['sales_order_installments', 'sales_orders', 'quotations', 'customers']);
   assert.deepEqual(calls.filter(([op]) => op === 'in').map(([, table, col, ids]) => [table, col, ids]), [
     ['sales_order_installments', 'id', ['SOI-1', 'SOI-2', 'SOI-3', 'SOI-4']],
     ['sales_orders', 'id', ['SOR-50']],
     ['quotations', 'id', ['QT-50']],
+    ['customers', 'id', ['CUS-1']],
   ]);
   assert.deepEqual(calls.filter(([op]) => op === 'limit').map(([, table, n]) => [table, n]),
-    [['sales_order_installments', 4], ['sales_orders', 1], ['quotations', 1]]);
+    [['sales_order_installments', 4], ['sales_orders', 1], ['quotations', 1], ['customers', 1]]);
   const select = Object.fromEntries(calls.filter(([op]) => op === 'select').map(([, table, cols]) => [table, cols]));
-  for (const col of ['"salesOrderId"', 'amount', '"billingDate"', '"billingRequestId"']) {
-    assert.ok(select.sales_order_installments.includes(col), col);
-  }
-  assert.equal(select.sales_orders, 'id, status, origin, "quotationId"');
+  /* งวด = `*` — ติ๊ก billingSkip (0393) มากับแถวเมื่อฐานมีคอลัมน์ โดยไม่ต้องถามฐานก่อน */
+  assert.equal(select.sales_order_installments, '*');
+  assert.equal(select.sales_orders, 'id, status, origin, "quotationId", "customerId"');
   assert.equal(select.quotations, 'id, status, "quoteNumber"');
+  assert.equal(select.customers, 'id, "billingRule"');
 });
 
 test('🔴 งวดย้ายไปร่าง Rev. หลังกระดิ่งยิง (0376 · id เดิม) — ปุ่มชี้ร่าง Rev. ไม่ใช่ใบที่ถูกทับ', async () => {
@@ -207,6 +208,32 @@ test('🔴 จัดวันใหม่/ปรับแผนหลังก�
   });
   const [noDate] = await attachNotificationActions(cleared.supabase, [notif('N1', inst())]);
   assert.equal(new URL(noDate.action.href, 'http://x').searchParams.has('requiredDate'), false);
+});
+
+test('🔴 review 29/09: ปุ่ม "ขอใบวางบิลงวดนี้" ถามกติกาของลูกค้า + ติ๊กของงวด (สด) — ไม่ชวนขอใบงวดที่ไม่ต้องวางบิล', async () => {
+  const run = async (row, customers) => {
+    const { supabase } = stub({
+      sales_order_installments: ok([row]), sales_orders: ok([liveOrder()]), quotations: ok([QT]), customers: ok(customers),
+    });
+    const [out] = await attachNotificationActions(supabase, [notif('N1', inst())]);
+    return out.action;
+  };
+  const NONE = [{ id: 'CUS-1', billingRule: { v: 4, need: 'none' } }];
+  // ลูกค้าไม่ต้องวางบิล + วันวางบิล (ข้อยกเว้น) ถูกล้างหลังกระดิ่งยิง = ไม่มีปุ่ม
+  assert.equal(await run(liveRow({ billingDate: null }), NONE), null);
+  // งวดยกเว้นที่ยังมีวันวางบิล = ขอได้
+  assert.ok(await run(liveRow(), NONE));
+  // ติ๊ก "งวดนี้ไม่ต้องวางบิล" (ลูกค้าต้องวางบิล) = ไม่มีปุ่ม
+  assert.equal(await run(liveRow({ billingDate: null, billingSkip: true }), [{ id: 'CUS-1', billingRule: null }]), null);
+  // ยังไม่ระบุ / อ่านกติกาไม่เจอแถว = ตามเดิม (ยังขอได้)
+  assert.ok(await run(liveRow({ billingDate: null }), []));
+  // อ่านทะเบียนลูกค้าพลาด = ไม่มีปุ่ม (ไม่รู้ = ไม่ชวน · แถวยังพาไปแผงงวด)
+  const { supabase } = stub({
+    sales_order_installments: ok([liveRow()]), sales_orders: ok([liveOrder()]), quotations: ok([QT]),
+    customers: { data: null, error: { message: 'boom' } },
+  });
+  const [broken] = await attachNotificationActions(supabase, [notif('N1', inst())]);
+  assert.equal(broken.action, null);
 });
 
 test('ไม่มีแถวที่มีปุ่ม = ไม่แตะฐาน · แถวเดิมไม่เปลี่ยน href', async () => {

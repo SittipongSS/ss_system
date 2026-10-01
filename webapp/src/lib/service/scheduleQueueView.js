@@ -12,6 +12,8 @@
 import { VISIT_KIND_LABELS, VISIT_STATUS_LABELS, overlappingVisitIds, visitTimeText, visitWarnings } from './rounds';
 import { evaluateVisitGate, gateBlockedItems, GATE_OWNERS, visitSkipsContractGates } from './visitGate';
 import { gateContextForSite } from './gateContext';
+/* D15 (PR-C · C9): ข้อความชิปใบสั่งขาย — ไฟล์ข้อความไม่มี import (critique L9 · ห้ามดึง `zoneSetupOrders.js` เข้าจอนี้) */
+import { setupOrderChipText } from './zoneSetupOrderText';
 import { isDraftVisit, isLiveVisit, isShortfallVisit } from './visitStatus';
 import { isRenewalRetrieveVisit, visitDeleteButton } from './visitDelete';
 import { NO_TEAM } from './crewTeams';
@@ -68,6 +70,9 @@ export function gateItemView(item) {
     key: item.key, owner: item.owner, ownerTone: ownerTone(item.owner),
     reason: item.fix ? String(item.reason).split(' — ')[0] : item.reason,
     fix: item.fix || null,
+    /* D15 (PR-C · C9 · C-D19) — ชิปใบสั่งขายของข้อ (`GateOrderChips`) **เฉพาะตอนมี** ⇒ ข้อที่ไม่มีชิปรูปเดิมทุกไบต์
+       (critique L3 · deepEqual ของเทสต์เดิมต้องเขียวโดยไม่แก้) */
+    ...(item.orders?.length ? { orders: item.orders } : {}),
   };
 }
 
@@ -92,11 +97,11 @@ export function originText(visit) {
   return 'งานนอกรอบ';
 }
 
-/* ป้ายตัวเลข "งานเข้าใหม่" บนแถบต้นทางงาน — ตัวเลขนั้นนับ **สองแท็บรวมกัน** (รอตั้งไซต์/โซน +
-   รอตั้งรอบ · `api/nav/counts` ส่ง `bind.rows.length + plan.length`) ⇒ ป้ายต้องบอกทั้งสองแท็บ
-   🐞 ของเดิมป้ายบอกแค่แท็บแรก ⇒ ตัวเลขอ่านว่า "รอตั้งไซต์ 12" ทั้งที่ 9 ใบในนั้นคือรอตั้งรอบ
+/* ป้ายตัวเลข "งานเข้าใหม่" บนแถบต้นทางงาน — ป้ายต้องบอกว่าตัวเลขนับแท็บไหน
+   🔄 mig 0392 (D14): ตัวเลขนับ **แท็บรอตั้งรอบแท็บเดียว** (`api/nav/counts` ส่ง `plan.length`) — ถังผูกโซนของ TS
+      ถอดแล้ว และแท็บใบเดิมเป็นงานของฝ่ายขาย (TS ดูอย่างเดียว) ⇒ ป้ายเหลือชื่อแท็บเดียว
    ⚠️ แท็บ "ครบรอบยังไม่มีนัด" ไม่อยู่ในตัวเลขนั้น จึงไม่อยู่ในป้าย */
-export const INTAKE_UPSTREAM_LABEL = `${INTAKE_TAB_LABELS.bind} + ${INTAKE_TAB_LABELS.plan}`;
+export const INTAKE_UPSTREAM_LABEL = INTAKE_TAB_LABELS.plan;
 
 /* ── การ์ด "คำร้องรอลงคิว" (มติเจ้าของ 23/09) ───────────────────────────────
    ⭐ ใช้การ์ดตัวเดียวกับนัด (`ScheduleQueueCard`) ลำดับช่องเดิม: รหัส · ไซต์ · วัน · คน · ภาระ ·
@@ -458,6 +463,8 @@ export function buildScheduleQueue({
       row.code, kindLabel, row.siteCode, row.siteName, row.customer, dateLine, timeLine, rel.text,
       who.text, who.sub, status?.label, status?.text, origin,
       ...gateItems.map((g) => `${g.owner || ''} ${g.reason}`), ...warns,
+      /* D15 — ชิปใบสั่งขายบนข้อด่าน (ตาเห็นบนแถว = ต้องค้นเจอ: เลขที่ใบ · สถานะ · AE) */
+      ...gateItems.flatMap((g) => (g.orders || []).map(setupOrderChipText)),
       dayLoad?.text, row.siteLoadText, tag?.label, readyText,
     ]);
     rows.push(row);
@@ -530,11 +537,12 @@ export function buildScheduleQueue({
       }
       if (key === 'ready') sub = 'ผ่านด่านครบ — ปล่อยขึ้นตารางได้เลย';
       if (key === 'ts') {
-        /* ⭐ โซนที่ยังไม่จัดสรรจากใบสั่งขาย = งานของ TS ที่หน้า "งานเข้าใหม่" (ข้อสัญญาเจ้าของ TS)
-           ⇒ ในกลุ่มนี้ข้อ `contract` ที่ติดมีได้แค่เหตุนั้น (ข้อสัญญาเหตุอื่นเป็นของ SA ไปอยู่ "รอฝ่ายอื่น") */
-        const unallocated = tallyKeys(items, 'contract');
+        /* ⭐ ข้อสัญญาที่เป็นของ TS เหลือเหตุเดียว: **ไซต์ยังไม่มีโซนในทะเบียน** (งานทะเบียน · เพิ่มโซนที่หน้าไซต์)
+           🔄 mig 0392 (D15): โซนที่ไม่มีรอบขายย้ายเป็นของ SA (ฝ่ายขายเลือกโซนในใบ · TS ผูกไม่ได้แล้ว) ⇒ ไปอยู่ "รอฝ่ายอื่น"
+           ⇒ ในกลุ่มนี้ข้อ `contract` ที่ติดมีได้แค่เหตุนั้น (ข้อสัญญาเหตุอื่นเป็นของ SA) */
+        const noZoneSites = tallyKeys(items, 'contract');
         sub = `ขาดเจ้าหน้าที่ ${tallyKeys(items, 'assignee')} · นอกช่วงเข้าไซต์ ${tallyKeys(items, 'access')}`
-          + (unallocated ? ` · ยังไม่จัดสรรโซน ${unallocated}` : '');
+          + (noZoneSites ? ` · ไซต์ยังไม่มีโซน ${noZoneSites}` : '');
       }
       if (key === 'others') {
         const owners = new Map();

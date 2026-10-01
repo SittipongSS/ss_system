@@ -15,7 +15,7 @@
 //      ไม่ส่งล็อกทั้งใบเข้าด่าน ⇒ ปุ่มเปิดให้กดแล้ว API ตีกลับ
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -29,6 +29,7 @@ const code = (rel) => read(rel)
 const DIALOG = 'components/salesPlanning/InstallmentConfirmDialog.js';
 const PAGE = 'app/finance/payments/page.js';
 const PANEL = 'components/salesPlanning/SalesOrderPaymentPanel.js';
+const DATE_MODE_DIR = 'components/salesPlanning/installmentDates';
 const ROUTE = 'app/api/finance/payments/route.js';
 
 function slice(text, from, to) {
@@ -133,8 +134,10 @@ test('แผงงวด: ใบย้อนหลังไม่มี preview/
 test('เซลล์ช่วงครอบ: ถามด่านแบบไม่ส่งค่า · ตรวจร่างด้วยด่านตัวเดียวกัน · ล็อกบอกเหตุตอนกด · วันเริ่มของงวดยกมาไม่ใช่ช่องกรอก', () => {
   const panel = code(PANEL);
   // 1. ถามสิทธิ์แบบไม่ส่งค่า — ห้ามมี argument ที่สามใน probe ของเซลล์
-  assert.match(panel, /const lock = row\.preview \? "[^"]*" : gate\(row, "coverage"\);/,
+  /* `coverModeLock` = อยู่ในโหมดตั้งวันงวด (ร่างสองชุดไม่ซ้อนกัน · มติ 28/09) — เหตุคงที่ ไม่ขึ้นกับค่าในเซลล์ */
+  assert.match(panel, /const lock = row\.preview \? "[^"]*" : coverModeLock \|\| gate\(row, "coverage"\);/,
     'probe ของเซลล์ต้องไม่ส่ง coversFrom/coversTo — ส่งเมื่อไรเซลล์ยุบเป็นข้อความตามค่าที่ไม่ผ่าน');
+  assert.match(panel, /const coverModeLock = dateMode\.active \? "[^"]+" : "";/, 'ล็อกของโหมดตั้งวันต้องเป็นเหตุคงที่ (ไม่อ่านค่าร่าง)');
   // 2. ร่างถูกตรวจด้วยด่านตัวเดียวกัน ด้วยค่าที่จะส่งจริง (`|| null` เหมือน saveCoverDrafts)
   const draftCheck = slice(panel, 'const coverDraftErrors =', 'const coverInvalid');
   assert.match(draftCheck, /gate\(row, "coverage", \{/);
@@ -176,7 +179,10 @@ test('⭐ เซลล์ช่วงครอบไม่มีขอบที�
   const panel = code(PANEL);
 
   // 1. ทุก <DateInput ในแผงนี้ต้องไม่มี min/max เลยสักตัว (ขอบ = ค่าหายเงียบ)
-  const inputs = [...panel.matchAll(/<DateInput\b([\s\S]*?)\/>/g)];
+  //    ⭐ รวมตัวแก้ของโหมดตั้งวัน (installmentDates/ · มติ 28/09) — ช่องกำหนดชำระย้ายจากโมดัลในแผงไปอยู่ที่นั่น
+  const dateModeFiles = readdirSync(join(SRC, DATE_MODE_DIR)).filter((name) => name.endsWith('.js'))
+    .map((name) => code(`${DATE_MODE_DIR}/${name}`));
+  const inputs = [panel, ...dateModeFiles].flatMap((text) => [...text.matchAll(/<DateInput\b([\s\S]*?)\/>/g)]);
   assert.ok(inputs.length >= 4, `ยามต้องเจอช่องวันจริง ๆ ในแผงงวด (เจอ ${inputs.length})`);
   for (const [, attrs] of inputs) {
     assert.doesNotMatch(attrs, /\b(min|max)=/,

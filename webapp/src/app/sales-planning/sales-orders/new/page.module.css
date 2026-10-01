@@ -53,18 +53,10 @@
   margin-bottom: var(--space-3);
 }
 
-.termsLine,
 .termsSub {
   display: block;
-}
-
-.termsLine b {
-  color: var(--text);
-  font-weight: var(--fw-bold);
-}
-
-.termsSub {
-  margin-top: var(--space-0-5);
+  margin: var(--space-1-5) 0 0;
+  color: var(--text-2);
   font-size: var(--fs-5);
 }
 
@@ -187,6 +179,19 @@
     margin-top: var(--space-2-5);
   }
 
+  /* วันวางบิล (ไม่บังคับ) ของลูกค้าที่ยังไม่ตั้งกำหนดวางบิล — แถวของตัวเอง **เหนือ** กำหนดชำระ (มติ 28/09 ข้อ 17 ·
+     เรียงวันวางบิล → กำหนดชำระ เสมอ) · มีช่องนี้ = กำหนดชำระเลื่อนลงไปแถว 4 */
+  .cellBill {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    margin-top: var(--space-2-5);
+  }
+
+  .cellBill + .cellPick {
+    grid-row: 4;
+    margin-top: var(--space-2);
+  }
+
   .cardOnly { display: inline; }
 
   .cardLabel {
@@ -201,3 +206,9 @@
 
 /* ป้ายบอกสถานะความพร้อมบนการ์ดจัดการเอกสาร — คำขยาย ไม่ใช่สถานะของใบ */
 .hintBadge { color: var(--text-3); }
+
+/* ตัวแก้วันงวดที่กางใต้แถว (InstallmentDateExpandRow · ตัวเดียวกับแผงงวดของใบ) — ตอนตารางเป็นการ์ดต่องวด แถวนี้เต็มการ์ด */
+@container (max-width: 760px) {
+  .planTable tbody tr.expandPlan { display: block; padding: 0 var(--space-3-5) var(--space-3); }
+  .planTable tbody tr.expandPlan > td { width: 100%; }
+}

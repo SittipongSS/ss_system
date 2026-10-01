@@ -16,8 +16,10 @@ import { customerSnapshotName } from '@/lib/master/customerName';
 import { loadVisits, siteScheduleContext } from '@/lib/service/visitsRepo';
 import { loadTerms } from '@/lib/service/termsRepo';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
-import { termOrderActive } from '@/lib/service/terms';
-import { serviceRoundsSold } from '@/lib/sales/serviceOrders';
+import { termOrderActive, termsByZone } from '@/lib/service/terms';
+import { loadZoneSaleContext } from '@/lib/service/zoneSalesRepo';
+import { zoneSaleFacts } from '@/lib/service/zoneRegistry';
+import { siteRoundsSoldOf } from '@/lib/sales/serviceOrders';
 import { businessDate } from '@/lib/businessDate';
 
 export const dynamic = 'force-dynamic';
@@ -33,10 +35,12 @@ export const dynamic = 'force-dynamic';
 /* ใบสั่งขายที่ยังมีผลและลงของไว้ที่ไซต์นี้ — ใช้เป็นตัวเลือกตอนผูก/ย้ายรอบ
    ⚠️ อ่านสดทุกครั้ง ไม่แคช: ใบถูก Rev. ระหว่างวันได้ และตัวเลือกที่ล้าจะพาคนไปผูก
    รอบกับใบที่ตายแล้ว */
-async function siteSalesOrders(supabase, zones = []) {
+/* `terms` (ไม่บังคับ) = term ของไซต์ที่ผู้เรียกโหลดไว้แล้ว (GET อ่านครั้งเดียวผ่าน `loadZoneSaleContext` · critique L8)
+   · ไม่ส่งมา = โหลดเองเหมือนเดิม */
+async function siteSalesOrders(supabase, zones = [], { terms: preloaded = null } = {}) {
   const zoneIds = zones.map((z) => z.id);
   if (!zoneIds.length) return [];
-  const terms = await loadTerms(supabase, { zoneIds });
+  const terms = preloaded ?? await loadTerms(supabase, { zoneIds });
   const orderIds = [...new Set(terms.map((t) => t.salesOrderId).filter(Boolean))];
   if (!orderIds.length) return [];
   const { data: orders, error } = await fetchAllResult(() => supabase.from('sales_orders')
@@ -48,28 +52,32 @@ async function siteSalesOrders(supabase, zones = []) {
     .sort((a, b) => String(a.orderNumber || '').localeCompare(String(b.orderNumber || '')));
 }
 
-async function siteRoundsSold(supabase, zones = []) {
+async function siteRoundsSold(supabase, zones = [], { terms: preloaded = null } = {}) {
   const zoneIds = zones.map((z) => z.id);
   if (!zoneIds.length) return null;
-  const terms = await loadTerms(supabase, { zoneIds });
+  const terms = preloaded ?? await loadTerms(supabase, { zoneIds });
   if (!terms.length) return null;
   const orderIds = [...new Set(terms.map((t) => t.salesOrderId).filter(Boolean))];
   if (!orderIds.length) return null;
   /* ⚠️ ไล่ทีละหน้าแม้จะกรองด้วย id ชุดเดียว — ไซต์ที่ต่อสัญญามาหลายปีสะสม term ได้เกิน
      พันแถว และเพดาน PostgREST ตัดเงียบ ๆ ⇒ ใบที่หลุดจะถูกนับเป็น "ไม่มีผล" แล้ว
      จำนวนรอบที่ขายหายไปดื้อ ๆ (ด่าน check:rowcap ใน CI คุมไว้) */
+  /* ⭐ "serviceTermsOpenedAt" — ใบที่ประทับแล้ว (mig 0392) นับรอบสูงสุดของบรรทัดที่ลงไซต์นี้ ตัวเดียวกับแถว "รอตั้งรอบ"
+     (D23 · `siteRoundsSoldOf`) · ใบเดิมนับรายบรรทัดตามเดิม */
   const { data: orders, error: orderError } = await fetchAllResult(() => supabase.from('sales_orders')
-    .select('id, status, "supersededById"').in('id', orderIds).order('id', { ascending: true }));
+    .select('id, status, "supersededById", "serviceTermsOpenedAt"').in('id', orderIds).order('id', { ascending: true }));
   if (orderError) throw orderError;
-  const activeIds = new Set((orders || []).filter(termOrderActive).map((o) => o.id));
-  const lineIds = terms
-    .filter((t) => activeIds.has(t.salesOrderId))
-    .map((t) => t.salesOrderLineId).filter(Boolean);
+  const activeOrders = (orders || []).filter(termOrderActive);
+  const activeIds = new Set(activeOrders.map((o) => o.id));
+  const activeTerms = terms.filter((t) => activeIds.has(t.salesOrderId));
+  const lineIds = [...new Set(activeTerms.map((t) => t.salesOrderLineId).filter(Boolean))];
   if (!lineIds.length) return null;
   const { data: lines, error: lineError } = await fetchAllResult(() => supabase.from('sales_order_lines')
     .select('id, "serviceRounds"').in('id', lineIds).order('id', { ascending: true }));
   if (lineError) throw lineError;
-  return serviceRoundsSold(lines || []);
+  return siteRoundsSoldOf({
+    orders: activeOrders, terms: activeTerms, lines: lines || [], zonesById: new Map(zones.map((z) => [z.id, z])),
+  });
 }
 
 export const GET = withUser(async ({ user, supabase, ctx }) => {
@@ -82,19 +90,34 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     const todayIso = businessDate();
     const schedule = await siteScheduleContext(supabase, [id], todayIso);
     const zones = await loadZones(supabase, id);
+    /* ⭐ การขายของแต่ละโซน (PR-C · r2 R1) — "ขายแล้ว n แพ็ค/รอบ (SO-…)" + ใบที่ยังถือโซนไว้โดยยังไม่เปิดงานบริการ
+       ⚠️ อ่าน term **ครั้งเดียว** แล้วส่งก้อนเดียวกันให้ตัวช่วยเดิมทั้งสองตัว (critique L8 — เดิมต่างคนต่างอ่าน)
+       ⚠️ ตัวช่วยเดิมรับโซน **ดิบ** (ไม่มีก้อน sale) — ห้ามส่ง `zonesOut` เข้าไป
+       ⚠️ อ่านไม่ขึ้น = 500 เหมือน term/ใบของรอบขายที่อ่านอยู่แล้วในเส้นนี้ (ไม่ใช่ตอบว่า "ไม่มีใบถือโซน") */
+    const sale = await loadZoneSaleContext(supabase, zones);
+    const termsOfZone = termsByZone(sale.terms);
+    const zonesOut = zones.map((zone) => ({
+      ...zone,
+      sale: zoneSaleFacts(zone.id, {
+        terms: termsOfZone.get(zone.id) || [],
+        ordersById: sale.ordersById,
+        todayIso,
+        pendingOrders: sale.pendingOrdersByZone.get(zone.id) || [],
+      }),
+    }));
     return ok({
       site: access.site,
-      zones,
+      zones: zonesOut,
       assets: await loadAssets(supabase, id),
       schedule: schedule.get(id) || { lastRefillDate: null, nextVisitDate: null },
       // ข้อผูกพันจำนวนรอบที่ฝ่ายขายระบุไว้ — ฟอร์มวางรอบเอาไปเทียบกับความถี่ที่กำลังตั้ง
-      roundsSold: await siteRoundsSold(supabase, zones),
+      roundsSold: await siteRoundsSold(supabase, zones, { terms: sale.terms }),
       /* ⭐ **ใบสั่งขายที่ลงของไว้ที่ไซต์นี้** — ตัวเลือกของช่อง "ใบที่ครอบรอบนี้"
          ⚠️ รายการต้องมาจาก term ของไซต์นี้เท่านั้น ไม่ใช่ทะเบียนใบทั้งระบบ:
             รอบที่ผูกใบที่ไม่เคยลงของที่ไซต์นี้คือข้อผูกพันที่อ้างไม่ได้
          ⚠️ กรองด้วย `termOrderActive` — ใบที่ถูก Rev./ยกเลิกแล้วต้องไม่อยู่ในตัวเลือก
             (ย้ายรอบไปใบที่ตายแล้ว = รอบกำพร้าอีกใบ) */
-      salesOrders: await siteSalesOrders(supabase, zones),
+      salesOrders: await siteSalesOrders(supabase, zones, { terms: sale.terms }),
     });
   } catch (e) {
     return fail(e.message, 500);

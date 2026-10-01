@@ -296,7 +296,9 @@ test('🔴 โมดัลรับรอง/บันทึกการรั�
   const dialog = code(CONFIRM_DIALOG);
   assert.match(dialog, /row, multi = false, historical = false, opening = isOpeningInstallment\(row\), outlook = null, orderStatus = null,/);
   assert.match(dialog, /orderStatus,\s*\}\);/);
-  assert.match(dialog, /installmentConfirmPrompt\(\{ row, multi, historical, opening, outlook, orderStatus: order\?\.status \?\? row\.orderStatus \?\? null \}\)/);
+  /* PR-C C5 (ย้ายโดยตั้งใจ · critique H2): ต่อท้ายได้สองคีย์ของบรรทัดด่านเงินของใบบริการ (serviceZones · serviceContractLinked)
+     — ตัวคุมสองคีย์นั้นอยู่ที่ fnConfirmServiceLine.test.mjs · ที่นี่คุมสถานะใบตามเดิมทุกตัวอักษร */
+  assert.match(dialog, /installmentConfirmPrompt\(\{\s*row, multi, historical, opening, outlook, orderStatus: order\?\.status \?\? row\.orderStatus \?\? null(?:,\s*serviceZones: [^,{}]+,\s*serviceContractLinked: [^,{}]+,?)?\s*\}\)/);
   assert.match(code(PANEL), /row, multi: rows\.length > 1, historical, outlook: installmentConfirmOutlook\(row, saved\), orderStatus: order\?\.status,/);
   const fn = code(FN_PAGE);
   assert.match(fn, /approvedAt: confirmFor\.orderApprovedAt, historicalInvoiceRef: confirmFor\.historicalInvoiceRef,\s*status: confirmFor\.orderStatus,/);

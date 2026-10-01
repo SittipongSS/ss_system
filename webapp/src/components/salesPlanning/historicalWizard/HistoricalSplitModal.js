@@ -25,7 +25,7 @@ import {
   HISTORICAL_CUSTOMER_DUE_RULE, HISTORICAL_DUE_RULES, historicalCustomerDueOption, historicalCustomerTermsError,
   historicalEffectiveDueRule, historicalSplitConsequence, historicalSplitOptions, historicalSplitPreview, historicalSplitRows,
 } from "@/lib/sales/historicalIntakeForm";
-import { billingRuleNoCredit } from "@/lib/sales/billingRule";
+import { billingNeed, billingRuleNoCredit } from "@/lib/sales/billingRule";
 import styles from "./HistoricalOrderWizard.module.css";
 
 const PREVIEW_HEAD = 3;
@@ -117,9 +117,13 @@ export default function HistoricalSplitModal({
             value={dueRule}
             onChange={setDueRule}
           />
-          {/* ไม่มีเครดิต (mig 0390 · มติ 26/09) ตั้งไว้ที่ช่องเดียวกับรอบ — ป้ายต้องบอกว่าเป็นเรื่องเครดิต ไม่ใช่ "รอบ: ไม่มีเครดิต" */}
+          {/* ไม่มีเครดิต (mig 0390 · มติ 26/09) ตั้งไว้ที่ช่องเดียวกับรอบ — ป้ายต้องบอกว่าเป็นเรื่องเครดิต ไม่ใช่ "รอบ: ไม่มีเครดิต"
+              · รุ่นสี่: ไม่ต้องวางบิล = "การวางบิลของลูกค้า: ไม่ต้องวางบิล" (ไม่ใช่ "รอบวางบิลของลูกค้า: ไม่ต้องวางบิล") — ตัวเลือกวันครบกำหนดเดิมตรงตัว */}
           {customerDue.hint ? (
-            <small>{billingRuleNoCredit(customerRule) ? "เครดิตของลูกค้า" : "รอบวางบิลของลูกค้า"}: <b>{customerDue.hint}</b></small>
+            <small>
+              {billingNeed(customerRule) === "none" ? "การวางบิลของลูกค้า"
+                : billingRuleNoCredit(customerRule) ? "เครดิตของลูกค้า" : "รอบวางบิลของลูกค้า"}: <b>{customerDue.hint}</b>
+            </small>
           ) : null}
           {customerDue.hint && !customerDue.option ? <small>{customerDue.note}</small> : null}
           {customerTerms?.status === "error" ? (

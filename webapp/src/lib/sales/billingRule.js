@@ -5,6 +5,8 @@
 //     + กำหนดชำระ ที่คิดจากรอบนั้น แก้รายงวดได้
 //   · "คิดให้" = SA แตะเลือกรอบ ระบบคิดต่อ — **ไม่เดาวันให้งวดที่ผูกเหตุการณ์** (รอเหตุการณ์)
 //   · ไม่บังคับเลือกรอบทุกงวด (บางที่ไม่มีรอบวาง) · วันวางบิลตรงเสาร์/อาทิตย์ = เตือนอย่างเดียว ไม่เลื่อน
+// มติเจ้าของ 28/09 (ข้อ 17): **ใช้เหมือนกันทุกลูกค้า ทุก SO ทุกประเภท** — ทุกใบมีวันวางบิล + กำหนดชำระ · ไม่มีเครดิต =
+//   วางบิลได้ทุกวัน + ชำระวันวางบิล (`effectiveBillingRule` ตัวเดียว) · ลูกค้าที่ยังไม่ตั้ง = กรอกได้ทั้งสองช่อง ไม่มีอะไรคิดให้
 //
 // ⭐ **สองช่องแยกกัน ห้ามรวม**
 //   `billingDate` = วันที่นำใบวางบิลไปวางที่ลูกค้า (ช่องใหม่)
@@ -14,19 +16,32 @@
 // ⚠️ ไม่อ่านนาฬิกาในไฟล์นี้ — ผู้เรียกส่ง `todayIso` จาก `businessDate()` (นาฬิกาไทย) เสมอ
 // ⚠️ เลขคณิตปฏิทินล้วน (สตริง YYYY-MM-DD) ไม่มีโซนเวลา — แบบเดียวกับ paymentCoverage.js
 // ⚠️ ห้ามตั้งชื่อ `billingCycle` — จองไว้ให้ความถี่งวดของสัญญาบริการ
+//
+// ── รุ่นสี่ (มติเจ้าของ 28–29/09 · "ต้องวางบิลไหม" · mig 0393) ────────────────────────────────────────────
+// ⭐ ตัวคิดรุ่นสี่อยู่ที่ `billingRuleV4.js` — ไฟล์นี้ **re-export ชื่อรุ่นสี่ทั้งหมด** (ท้ายไฟล์) ⇒ จอ/API/cron import จากที่นี่ที่เดียว
+// ⭐ ชื่อเดิมยังใช้ได้ (ตัวห่อ) · กติกาของค่าที่ส่งเข้า:
+//   · รูปเดิม (null · { credit:false } · รุ่นหนึ่ง/สอง) = **พฤติกรรมเดิมทุกตัวอักษร** (เทสต์เดิมทั้งชุด)
+//   · รูปรุ่นสี่ (`v: 4` — ทั้งค่าที่เก็บและผลการอ่านของ `ruleOf`):
+//       ตัวคิด (dueDateForBilling · billingRounds · planMonthlyFill · planRedate · planCreditCadence · billingRoundCount/Labels ·
+//       billingRuleMonthly · billingRuleNeedsBillingDate · describeBillingRule) **ส่งต่อให้ตัวคิดรุ่นสี่** (รูปคืนเท่าเดิม + ช่องเพิ่ม)
+//       ตัวอ่านรูปที่เก็บรุ่นเดิม (normalizeBillingRule · billingRuleOf) **ไม่รับรุ่นสี่** (error / null) — ใช้ normalizeRule · ruleOf
+//       effectiveBillingRule = ภาพรุ่นสองที่ **ตรงเป๊ะ** (legacyViewOf) หรือ null เมื่อรุ่นสองเขียนแทนไม่ได้
+//   · billingState รับได้สองแบบ: (row, { todayIso, requested }) เดิม · (row, rule, { todayIso, requested }) รุ่นสี่ (มี 'notNeeded')
 
 import { addDays, daysBetween } from './paymentCoverage.js';
 import { isOpeningInstallment } from './historicalOrders.js';
+import {
+  MONTH_END_DAY, NO_CREDIT_TEXT, NO_BILLING_TEXT, RULE_VERSION,
+  billingState as billingStateV4, dueDateForBilling as dueDateForBillingV4, planRedate as planRedateV4,
+  billingChoices, describeRule, installmentBillingFillable, installmentBillingRedatable, installmentLabelMonth,
+  nagsMissingBilling, planDueCadence, planFill, ruleOf, slotCount, slotLabels,
+} from './billingRuleV4.js';
 
-/* เตือนก่อนถึงวันวางบิลกี่วัน (ปฏิทิน · หน้าต่าง 0..N — cron ไม่วิ่งเสาร์อาทิตย์ จับวันตรงเป๊ะจะหลุด) */
-export const BILLING_REMIND_DAYS = 3;
 export const BILLING_EVENT_MAX = 120;
 export const BILLING_NOTE_MAX = 1000;
 export const BILLING_CREDIT_MAX = 365;
 /* ตัวเลือกเหตุการณ์ที่ใช้บ่อย — ชิปแตะครั้งเดียว (พิมพ์เองได้) */
 export const BILLING_EVENT_PRESETS = Object.freeze(['ก่อนผลิต', 'ก่อนส่งสินค้า', 'หลังส่งสินค้า', 'หลังติดตั้ง']);
-/* วันที่ 31 = "สิ้นเดือน" (เดือนที่ไม่มีวันนั้นใช้วันสุดท้าย — กติกาเดียวกันทั้งสองความหมาย) */
-export const MONTH_END_DAY = 31;
 
 const MONTHS_TH = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
 const WEEKDAYS_TH = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
@@ -59,7 +74,7 @@ const partsOf = (dateIso) => dateIso.split('-').map(Number);
 /* ── ตรวจ + ทำรูปมาตรฐาน ──────────────────────────────────────────────────
    รูปมาตรฐาน (รุ่นสอง · mig 0390 · มติเจ้าของ 26/09: สวิตช์เครดิต + หลายรอบวางบิลต่อเดือน):
      null                                            ยังไม่ระบุ
-     { credit: false, note? }                        ไม่มีเครดิต (ชำระก่อน/พร้อมสั่ง)
+     { credit: false, note? }                        ไม่มีเครดิต — อ่านเป็น "วางบิลได้ทุกวัน + ชำระวันวางบิล" (effectiveBillingRule)
      { billing, payment, note? }                     มีเครดิต
        billing: { mode: 'anyday' } | { mode: 'monthly', days: [1..31 เรียงน้อยไปมาก ไม่ซ้ำ · 1–4 รอบ] }
        payment: { mode: 'credit', days: 0..365 }     เครดิต n วันนับจากวันวางบิล (ทุกรอบเหมือนกัน)
@@ -83,10 +98,13 @@ function normalizeNote(input) {
 export function normalizeBillingRule(input) {
   if (input === null || input === undefined) return { rule: null, error: null };
   if (typeof input !== 'object' || Array.isArray(input)) return { rule: null, error: 'รูปแบบรอบวางบิลไม่ถูกต้อง' };
+  /* รุ่นสี่ (มี `v`) ไม่ใช่งานของตัวตรวจรุ่นเดิม — ตีกลับ (ไม่แปลงเงียบ ๆ: รุ่นสองเขียน "ไม่ต้องวางบิล" แทนไม่ได้ ⇒ แปลงแล้วกลายเป็นล้างรอบ)
+     ⇒ ตัวอ่านรูปที่เก็บรุ่นเดิม (`billingRuleOf`) เห็นรุ่นสี่เป็น "ยังไม่ตั้ง" · ตัวตรวจรุ่นสี่คือ `normalizeRule` */
+  if (Object.prototype.hasOwnProperty.call(input, 'v')) return { rule: null, error: 'กำหนดวางบิลรุ่นใหม่ — ตรวจด้วย normalizeRule' };
   const { note, error: noteError } = normalizeNote(input);
   if (noteError) return { rule: null, error: noteError };
 
-  /* ไม่มีเครดิต — ไม่มีรอบ ไม่มีกำหนด · ข้ามส่วนที่เหลือทั้งหมด */
+  /* ไม่มีเครดิต — เก็บแค่สวิตช์ (+หมายเหตุ) · ข้ามส่วนที่เหลือทั้งหมด (ตอนคิดวันอ่านเป็นเครดิต 0 ที่ `effectiveBillingRule`) */
   if (input.credit === false) return { rule: note ? { credit: false, note } : { credit: false }, error: null };
 
   const billingMode = input.billing?.mode;
@@ -148,22 +166,95 @@ export function normalizeBillingRule(input) {
   return { rule, error: null };
 }
 
-/* อ่านรอบจากแถวลูกค้า/ค่าที่ไม่รู้ที่มา — รูปผิด = ถือว่ายังไม่ตั้ง (ไม่ throw บนจอ) */
+/* อ่านรอบจากแถวลูกค้า/ค่าที่ไม่รู้ที่มา — รูปผิด = ถือว่ายังไม่ตั้ง (ไม่ throw บนจอ)
+   ⚠️ นี่คือ **รูปที่เก็บ** (ไม่มีเครดิต = `{ credit:false }`) — ตัวคิดวัน/ตัวถามรูปของรอบอ่านผ่าน `effectiveBillingRule` */
 export const billingRuleOf = (value) => normalizeBillingRule(value ?? null).rule;
 
-/* ── ตัวถามรูปของรอบ (จอใช้แทนการอ่านช่องข้างในตรง ๆ) ─────────────────────── */
-/* ไม่มีเครดิต — จอ SO/ทะเบียนทำเหมือน "ไม่มีรอบ" (กรอกกำหนดชำระเอง ไม่มีวันวางบิล) */
-export const billingRuleNoCredit = (value) => billingRuleOf(value)?.credit === false;
+/* ── กติกาที่ใช้คิดวันจริง (มติเจ้าของ 28/09 ข้อ 17: "กำหนดวางบิลใช้กับทุกลูกค้า ทุก SO ทุกประเภทให้เหมือนกัน") ──
+   ⭐ **ที่เดียวที่ตัดสินว่า "ไม่มีเครดิต" คิดวันอย่างไร** — ไม่มีเครดิต = วางบิลได้ทุกวัน + **ชำระวันวางบิล** (กำหนดชำระ = วันวางบิล)
+     ⇒ ตัวคิดทุกตัว (กำหนดชำระ · ตัวเติม · ตัวแก้ในโหมดตั้งวัน · ตัวเลือกบนหน้าสร้าง SO) เดินทางเดียวกับลูกค้าวางบิลได้ทุกวัน + เครดิต
+       ไม่มีสาขา "ไม่มีเครดิต" แยกอีก (แทนมติ 26/09 "ไม่มีเครดิต = ทำเหมือนไม่มีรอบ" — ต้นเหตุที่ใบสินค้าเกือบทั้งหมดไม่มีวันวางบิล)
+   ⚠️ ค่าที่เก็บที่ทะเบียนยังเป็น `{ credit:false }` (ไม่มี migration) — รูปนี้เป็น "ผลการอ่าน" ห้ามส่งกลับไปบันทึก
+   ⚠️ `noCredit: true` = ธงเลือกคำ ("ไม่มีเครดิต · ชำระวันวางบิล") — **ห้ามพูด "เครดิต 0 วัน" / "ตามเครดิต 0 วัน"** ที่ไหนเลย
+   · ส่งผลของตัวนี้กลับเข้ามาอีกรอบได้ (ได้รูปเดิม) — ผู้เรียกไม่ต้องจำว่าถือค่าดิบหรือค่าที่อ่านแล้ว
+   @returns null (ยังไม่ตั้ง · รูปผิด) · รอบรูปมาตรฐาน (มีเครดิต) ·
+            `{ billing:{ mode:'anyday' }, payment:{ mode:'credit', days:0 }, noCredit:true, note? }` (ไม่มีเครดิต) */
+export function effectiveBillingRule(value) {
+  if (isV4Rule(value)) {
+    const view = legacyViewOf(value);
+    return view ? effectiveBillingRule(view) : null;
+  }
+  const rule = billingRuleOf(value);
+  if (!rule) return null;
+  const again = value?.noCredit === true && rule.billing?.mode === 'anyday'
+    && rule.payment?.mode === 'credit' && rule.payment.days === 0;
+  if (rule.credit !== false && !again) return rule;
+  const out = { billing: { mode: 'anyday' }, payment: { mode: 'credit', days: 0 }, noCredit: true };
+  if (rule.note) out.note = rule.note;
+  return out;
+}
+
+/* ค่านี้เป็นรูปรุ่นสี่ไหม (ค่าที่เก็บ `{ v:4, … }` หรือผลการอ่านของ `ruleOf` รวมรูปเดิมที่อ่านแล้ว `legacyNoCredit`) */
+export const isV4Rule = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value) && value.v === RULE_VERSION;
+
+/**
+ * ภาพรุ่นสองของกติการุ่นสี่ — **เฉพาะที่ตรงเป๊ะ** (ตัวคิดรุ่นเดิมได้วันเท่ากับรุ่นสี่ทุกวัน) ไม่งั้น null ("ยังไม่ตั้ง" ของจอรุ่นเดิม)
+ * ใช้กับตัวอ่านรุ่นเดิมที่ต้องการ `{ billing, payment }` (effectiveBillingRule) ระหว่างที่จอยังไม่ย้ายไปรุ่นสี่ — จอใหม่ใช้ `ruleOf`
+ *   ผลการอ่านรูปเดิม (legacyNoCredit)                        → { credit:false, note? }
+ *   ต้องวางบิล · วันรับวางบิล + เครดิต N · ไม่มีรอบจ่าย         → { billing, payment:{ mode:'credit', days:N } }
+ *   ต้องวางบิล · เครดิต 0 · รอบจ่ายรอบเดียวรูปที่ toV4 สร้าง      → { billing, payment:{ mode:'monthly', rounds:[{ day, monthOffset }] } }
+ *     (ตัด = จ่าย เดือนเดียวกัน · หรือ ตัดสิ้นเดือน → จ่ายเดือนถัดไป — แปลงไปกลับได้ผลเดิม)
+ *   ที่เหลือ (ไม่ต้องวางบิล · ยังไม่ตั้งรอบ · หลายรอบจ่าย · เครดิต + รอบจ่าย · วันจ่ายรายสัปดาห์ · ปฏิทิน) → null
+ *   ⚠️ หลายรอบจ่ายไม่แปลง: รุ่นสองคิดวันวางบิลนอกรอบด้วย "รอบล่าสุดที่วันวางบิลไม่เกินวันนั้น" รุ่นสี่คิดด้วยวันตัดรอบ — ได้คนละวัน
+ * รูปที่ไม่ใช่รุ่นสี่ คืนค่าเดิม
+ */
+export function legacyViewOf(value) {
+  if (!isV4Rule(value)) return value ?? null;
+  const rule = ruleOf(value);
+  if (!rule) return null;
+  const withNote = (out) => (rule.note ? { ...out, note: rule.note } : out);
+  if (rule.legacyNoCredit) return withNote({ credit: false });
+  if (rule.need !== 'required' || !rule.billing) return null;
+  const billing = rule.billing.mode === 'monthly' ? { mode: 'monthly', days: [...rule.billing.days] } : { mode: 'anyday' };
+  if (!rule.runs) return withNote({ billing, payment: { mode: 'credit', days: rule.creditDays } });
+  if (rule.runs.kind !== 'monthly' || rule.creditDays !== 0 || rule.runs.rounds.length !== 1 || rule.runs.cutoffTime) return null;
+  if (billing.mode === 'monthly' && billing.days.length !== 1) return null;
+  const [r] = rule.runs.rounds;
+  if (r.cutoffDay !== (r.payMonthOffset === 0 ? r.payDay : MONTH_END_DAY)) return null;
+  return withNote({ billing, payment: { mode: 'monthly', rounds: [{ day: r.payDay, monthOffset: r.payMonthOffset }] } });
+}
+
+/* คำของ "ไม่มีเครดิต" ทุกจอ (ประโยครอบ · แถบบนการ์ด · ทะเบียน FN) และป้ายที่มาของกำหนดชำระ — ตัวเดียว ห้ามพิมพ์เอง */
+export const PAY_ON_BILLING_TEXT = 'ชำระวันวางบิล';
+/* จำนวนวันเครดิตเป็นคำ — **0 = "ชำระวันวางบิล"** (มติ 28/09: ห้ามพูด "เครดิต 0 วัน") · ตัวเดียวของประโยครอบ · การ์ด/โมดัลทะเบียนลูกค้า
+   🐞 review 28/09: การ์ด ("เงินเข้า / กำหนดชำระ") และหัวขั้นของโมดัลยังพิมพ์ "เครดิต 0 วัน" เอง ทั้งที่โมดัลรับ 0 ได้
+     และบรรทัดหัวของรอบเดียวกันพูด "ชำระวันวางบิล" ⇒ จอเดียวพูดสองแบบ */
+export const creditDaysText = (days) => (days === 0 ? PAY_ON_BILLING_TEXT : `เครดิต ${days} วัน`);
+
+/* ── ตัวถามรูปของรอบ (จอใช้แทนการอ่านช่องข้างในตรง ๆ) — อ่านผ่าน `effectiveBillingRule` ทุกตัว ─────────── 
+   ⭐ รุ่นสี่: ส่งต่อให้ตัวถามรุ่นสี่ (slotCount · slotLabels · nagsMissingBilling) — "มีรอบ" ของรุ่นสี่รวมรอบจ่าย/วันจ่ายประจำ */
+/* ไม่มีเครดิต — ใช้เลือก **คำ** เท่านั้น ("ไม่มีเครดิต · ชำระวันวางบิล") ห้ามใช้แยกทางคิดวัน (คิดผ่านรอบที่อ่านแล้วตัวเดียว) */
+export const billingRuleNoCredit = (value) => effectiveBillingRule(value)?.noCredit === true;
 /* มีรอบรายเดือนให้แตะ (ชิปรอบ · เติมเดือนละงวด · จัดวันใหม่) */
-export const billingRuleMonthly = (value) => billingRuleOf(value)?.billing?.mode === 'monthly';
+export const billingRuleMonthly = (value) => (isV4Rule(value) ? slotCount(value) > 0 : effectiveBillingRule(value)?.billing?.mode === 'monthly');
+/* งวดที่ "ควรมีวันวางบิลแต่ยังไม่มี" นับว่าขาดไหม — เฉพาะรอบรายเดือน/เครดิต (ตั้งแล้วและมีเครดิต)
+   ⭐ ไม่มีเครดิต = ไม่นับ (มติ 28/09 · ทะเบียน FN เลือกทางที่เงียบที่สุดที่ยังพูดจริง): กำหนดชำระของลูกค้าไม่มีเครดิต = วันวางบิล
+     ใบเก่าที่มีแต่กำหนดชำระจึงไม่ได้ขาดอะไร · ยังไม่ตั้ง = ไม่นับ (ไม่มีกติกาให้ขาด) */
+export const billingRuleNeedsBillingDate = (value) => {
+  if (isV4Rule(value)) return nagsMissingBilling(value);
+  const rule = effectiveBillingRule(value);
+  return Boolean(rule) && !rule.noCredit;
+};
 /* จำนวนรอบต่อเดือน — 0 = ไม่มีรอบ (ไม่ตั้ง · ไม่มีเครดิต · วางบิลได้ทุกวัน) */
 export const billingRoundCount = (value) => {
-  const rule = billingRuleOf(value);
+  if (isV4Rule(value)) return slotCount(value);
+  const rule = effectiveBillingRule(value);
   return rule?.billing?.mode === 'monthly' ? rule.billing.days.length : 0;
 };
 /* ป้ายของแต่ละรอบ ["วันที่ 10", "สิ้นเดือน"] — ปุ่มเลือกรอบของ "เติมตามรอบ"/"จัดวันใหม่" */
 export function billingRoundLabels(value) {
-  const rule = billingRuleOf(value);
+  if (isV4Rule(value)) return slotLabels(value);
+  const rule = effectiveBillingRule(value);
   if (rule?.billing?.mode !== 'monthly') return [];
   return rule.billing.days.map((day) => (day === MONTH_END_DAY ? 'สิ้นเดือน' : `วันที่ ${day}`));
 }
@@ -180,12 +271,14 @@ const payWhen = (round, { short }) => {
 /**
  * ประโยครอบวางบิล
  * @param short true = แบบย่อในตาราง ("วางบิลทุกวันที่ 5 · เงินเข้า 25")
- * @returns '' เมื่อยังไม่ตั้ง (ผู้เรียกเลือกคำว่างเอง)
+ * @returns '' เมื่อยังไม่ตั้ง (ผู้เรียกเลือกคำว่างเอง) · ไม่มีเครดิต = "ไม่มีเครดิต · ชำระวันวางบิล" (มติ 28/09 · ทั้งรูปเต็มและย่อ)
  */
 export function describeBillingRule(value, { short = false } = {}) {
-  const rule = billingRuleOf(value);
+  /* รุ่นสี่ = ประโยคของรุ่นสี่ตัวเดียว (ไม่ต้องวางบิล · ยังไม่ตั้งรอบ · รอบจ่าย · ปฏิทิน) — ไม่มีรูปย่อ */
+  if (isV4Rule(value)) return describeRule(value);
+  const rule = effectiveBillingRule(value);
   if (!rule) return '';
-  if (rule.credit === false) return 'ไม่มีเครดิต';
+  if (rule.noCredit) return NO_CREDIT_TEXT;
   const days = rule.billing.mode === 'monthly' ? rule.billing.days : [];
   let billing;
   if (rule.billing.mode === 'anyday') billing = 'วางบิลได้ทุกวัน';
@@ -193,7 +286,7 @@ export function describeBillingRule(value, { short = false } = {}) {
   else billing = `วางบิล${joinThai(days.map(dayWord))}`;
 
   if (rule.payment.mode === 'credit') {
-    return `${billing} · ${rule.payment.days === 0 ? 'ชำระวันวางบิล' : `เครดิต ${rule.payment.days} วัน`}`;
+    return `${billing} · ${creditDaysText(rule.payment.days)}`;
   }
   const { rounds } = rule.payment;
   if (sameRounds(rounds)) return `${billing} · เงินเข้า${short ? ' ' : ''}${payWhen(rounds[0], { short })}`;
@@ -201,10 +294,13 @@ export function describeBillingRule(value, { short = false } = {}) {
   return days.map((day, i) => `วางบิล ${day === MONTH_END_DAY ? 'สิ้นเดือน' : day} → เงินเข้า ${payWhen(rounds[i], { short: true })}`).join(' · ');
 }
 
-/* บรรทัดขยายของเงินเข้า — "เงินเข้าเดือนเดียวกับวางบิล" / "เดือนถัดไป" · เครดิต = "นับจากวันวางบิล" · หลายรอบต่างกัน = '' */
+/* บรรทัดขยายของเงินเข้า — "เงินเข้าเดือนเดียวกับวางบิล" / "เดือนถัดไป" · เครดิต = "นับจากวันวางบิล" · หลายรอบต่างกัน = ''
+   · ไม่มีเครดิต = '' (ประโยคหลักบอก "ชำระวันวางบิล" ครบแล้ว — ต่อซ้ำ = คำเดียวกันสองครั้งในบรรทัดเดียว) */
 export function describeBillingRuleDetail(value) {
-  const rule = billingRuleOf(value);
-  if (!rule || rule.credit === false) return '';
+  /* รุ่นสี่: ประโยคหลัก (describeRule) พูดครบแล้ว — ไม่มีบรรทัดขยาย */
+  if (isV4Rule(value)) return '';
+  const rule = effectiveBillingRule(value);
+  if (!rule || rule.noCredit) return '';
   if (rule.payment.mode === 'credit') {
     return rule.payment.days === 0 ? 'เงินเข้าวันเดียวกับวันวางบิล' : `นับ ${rule.payment.days} วันจากวันวางบิล`;
   }
@@ -237,12 +333,15 @@ function roundIndexForDate(rule, bill) {
 
 /**
  * กำหนดชำระ ของงวดที่วางบิลวันนั้น ตามรอบของลูกค้า
- * เครดิต = วันวางบิล + n วัน · รายเดือน = เงินเข้าของรอบที่วันนั้นตกอยู่ · ไม่มีรอบ/ไม่มีเครดิต/วันผิด = ''
+ * เครดิต = วันวางบิล + n วัน · **ไม่มีเครดิต = วันวางบิลเอง** (ชำระวันวางบิล · มติ 28/09) · รายเดือน = เงินเข้าของรอบที่วันนั้นตกอยู่ ·
+ * ยังไม่ตั้ง/วันผิด = '' (ไม่มีอะไรให้คิด — คนกรอกกำหนดชำระเอง)
  */
-export function dueDateForBilling(value, billingDate) {
-  const rule = billingRuleOf(value);
+export function dueDateForBilling(value, billingDate, opts) {
+  /* รุ่นสี่ = ตัวคิดรุ่นสี่ (รอบจ่าย/วันจ่ายประจำ/ปฏิทิน · ไม่ต้องวางบิล = '') — รูปเดิมคิดแบบเดิมทุกตัวอักษร */
+  if (isV4Rule(value)) return dueDateForBillingV4(value, billingDate, opts);
+  const rule = effectiveBillingRule(value);
   const bill = dateOf(billingDate);
-  if (!rule || rule.credit === false || !bill) return '';
+  if (!rule || !bill) return '';
   if (rule.payment.mode === 'credit') return addDays(bill, rule.payment.days) || '';
   return payDateFor(rule.payment.rounds[roundIndexForDate(rule, bill)], bill);
 }
@@ -254,7 +353,12 @@ export function dueDateForBilling(value, billingDate) {
  * @returns `[{ billingDate, dueDate, roundIndex }]`
  */
 export function billingRounds(value, fromIso, count = 3, { roundIndex = null } = {}) {
-  const rule = billingRuleOf(value);
+  /* รุ่นสี่ = ชิปของ billingChoices (รอบที่ = slot) — ลูกค้ารอบจ่าย/วันจ่ายประจำได้ชิปด้วย */
+  if (isV4Rule(value)) {
+    return billingChoices(value, fromIso, count, { slot: roundIndex })
+      .map((c) => ({ billingDate: c.billingDate, dueDate: c.dueDate, roundIndex: c.slot }));
+  }
+  const rule = effectiveBillingRule(value);
   const from = dateOf(fromIso);
   if (!rule || !from || rule.billing?.mode !== 'monthly') return [];
   const [year, month] = partsOf(from);
@@ -287,14 +391,9 @@ function monthlyRoundError(rule, roundIndex) {
   return Number.isInteger(roundIndex) && roundIndex >= 0 && roundIndex < count ? null : 'รอบที่เลือกไม่มีในรอบวางบิลของลูกค้า';
 }
 
-/* งวดที่ "ยังเติมรอบได้" — ยังไม่รับเงิน · ไม่ใช่งวดยกมา · ยังไม่มีวันวางบิลและไม่ได้รอเหตุการณ์ */
-const OPEN_STATUSES = new Set(['pending', 'rejected']);
-export function installmentBillingFillable(row) {
-  if (!row || isOpeningInstallment(row)) return false;
-  if (!OPEN_STATUSES.has(String(row.status || 'pending'))) return false;
-  if (row.refundedAt) return false;
-  return !dateOf(row.billingDate) && !String(row.billingEvent || '').trim();
-}
+/* งวดที่ "ยังเติมรอบได้" (installmentBillingFillable) และ "จัดวันใหม่ได้" (installmentBillingRedatable) ย้ายไป billingRuleV4.js
+   (ตัวเดียวกันทุกตัวอักษร · re-export ท้ายไฟล์) — ยังไม่รับเงิน · ไม่ใช่งวดยกมา · ไม่รอเหตุการณ์ · จัดใหม่ = ยังไม่ขอใบวางบิล
+   (ขอใบแล้ว = บัญชีออกใบตามวันเดิมไปแล้ว ย้ายวันเงียบ ๆ = ใบวางบิลกับงวดบอกคนละวัน → ถอดคำร้องหรือแก้รายงวดเอง) */
 
 /**
  * ปุ่ม "เติมตามรอบ เดือนละงวด" — วางงวดที่ยังเติมได้ลงรอบทีละเดือนตามลำดับงวด
@@ -305,11 +404,14 @@ export function installmentBillingFillable(row) {
  * · ลูกค้าวางบิลได้ทุกวัน = ไม่มีรอบให้เติม → `{ rows: [], error }`
  * @returns `{ rows: [{ id, seq, billingDate, dueDate, keptDue }], error }`
  */
-export function planMonthlyFill(value, installments = [], todayIso, { roundIndex = null } = {}) {
-  const rule = billingRuleOf(value);
+export function planMonthlyFill(value, installments = [], todayIso, { roundIndex = null, holidays = null } = {}) {
+  /* รุ่นสี่ = planFill (แถวเพิ่ม `source` · งวดติ๊ก "ไม่ต้องวางบิล" ไม่ถูกเติม) · holidays = วันทำงานสุดท้ายที่ยังทันรอบ (เครดิต N) */
+  if (isV4Rule(value)) return planFill(value, installments, todayIso, { slot: roundIndex, holidays });
+  const rule = effectiveBillingRule(value);
   const today = dateOf(todayIso);
   if (!rule) return { rows: [], error: 'ลูกค้ายังไม่ตั้งรอบวางบิล' };
-  if (rule.credit === false) return { rows: [], error: 'ลูกค้าไม่มีเครดิต — ไม่มีรอบวางบิลให้เติม' };
+  /* ไม่มีเครดิต = วางบิลได้ทุกวัน (มติ 28/09) — ไม่มีรอบให้เติมเหมือนลูกค้าวางบิลได้ทุกวัน ต่างแค่คำ */
+  if (rule.noCredit) return { rows: [], error: 'ลูกค้าไม่มีเครดิต (ชำระวันวางบิล) — ไม่มีรอบให้เติม เลือกวันวางบิลทีละงวด' };
   if (rule.billing.mode !== 'monthly') return { rows: [], error: 'ลูกค้าวางบิลได้ทุกวัน — ไม่มีรอบให้เติม เลือกวันวางบิลทีละงวด' };
   const roundError = monthlyRoundError(rule, roundIndex);
   if (roundError) return { rows: [], error: roundError };
@@ -343,16 +445,6 @@ export function planMonthlyFill(value, installments = [], todayIso, { roundIndex
   return { rows, error: null };
 }
 
-/* งวดที่ "จัดวันใหม่ได้" ตอนลูกค้าเปลี่ยนรอบ — ยังไม่รับเงิน · ไม่ใช่งวดยกมา · ไม่ได้รอเหตุการณ์ · **ยังไม่ขอใบวางบิล**
-   (ขอใบแล้ว = บัญชีออกใบตามวันเดิมไปแล้ว ย้ายวันเงียบ ๆ = ใบวางบิลกับงวดบอกคนละวัน → ถอดคำร้องหรือแก้รายงวดเอง) */
-export function installmentBillingRedatable(row, { requested = false } = {}) {
-  if (!row || isOpeningInstallment(row)) return false;
-  if (!OPEN_STATUSES.has(String(row.status || 'pending'))) return false;
-  if (row.refundedAt) return false;
-  if (String(row.billingEvent || '').trim()) return false;
-  return !requested;
-}
-
 /**
  * ลูกค้าเปลี่ยนรอบ (มติ 26/09: "ลูกค้าเปลี่ยนฉุกเฉิน หรือเปลี่ยนรอบเลย") — จัดวันวางบิล **และ** กำหนดชำระใหม่
  * ให้งวดที่ยังเปิดอยู่ตามรอบปัจจุบัน เดือนละงวดตั้งแต่วันนี้
@@ -363,11 +455,13 @@ export function installmentBillingRedatable(row, { requested = false } = {}) {
  * @param requestedIds Set ของ id งวดที่ขอใบวางบิลแล้ว (ผู้เรียกตัดสินด้วย billingRequestLive)
  * @returns `{ rows: [{ id, seq, billingDate, dueDate, prevBillingDate, prevDueDate }], error }`
  */
-export function planRedate(value, installments = [], todayIso, { requestedIds = new Set(), roundIndex = null } = {}) {
-  const rule = billingRuleOf(value);
+export function planRedate(value, installments = [], todayIso, { requestedIds = new Set(), roundIndex = null, ...more } = {}) {
+  /* รุ่นสี่ = planRedate ของรุ่นสี่ (รับ `slot` หรือ `roundIndex` · แถวเพิ่ม `source` · งวดติ๊ก "ไม่ต้องวางบิล" ไม่ถูกจัด) */
+  if (isV4Rule(value)) return planRedateV4(value, installments, todayIso, { requestedIds, ...more, slot: more.slot ?? roundIndex });
+  const rule = effectiveBillingRule(value);
   const today = dateOf(todayIso);
   if (!rule) return { rows: [], error: 'ลูกค้ายังไม่ตั้งรอบวางบิล' };
-  if (rule.credit === false) return { rows: [], error: 'ลูกค้าไม่มีเครดิต — ไม่มีรอบวางบิลให้จัด' };
+  if (rule.noCredit) return { rows: [], error: 'ลูกค้าไม่มีเครดิต (ชำระวันวางบิล) — ไม่มีรอบให้จัด เลือกวันวางบิลทีละงวด' };
   if (rule.billing.mode !== 'monthly') return { rows: [], error: 'ลูกค้าวางบิลได้ทุกวัน — ไม่มีรอบให้จัด เลือกวันวางบิลทีละงวด' };
   const roundError = monthlyRoundError(rule, roundIndex);
   if (roundError) return { rows: [], error: roundError };
@@ -395,6 +489,97 @@ export function planRedate(value, installments = [], todayIso, { requestedIds = 
   return { rows: out, error: null };
 }
 
+/* ── ตัวช่วยเติมวันงวดในโหมดตั้งวัน (แผงงวดแบบ C · มติเจ้าของ 28/09) ─────────────────────────────
+   ร่างวันให้หลายงวดพร้อมกัน แล้วคนดูในตารางก่อนกดบันทึกครั้งเดียว — ไม่มีอะไรลงฐานจากตัวช่วยเหล่านี้ */
+
+/* `installmentLabelMonth` (เดือนที่ชื่องวดบอก · AR-622) และ `creditCadenceSuggestion` ("ต่อจากงวดก่อน" · AR-015) ย้ายไป
+   billingRuleV4.js ทุกตัวอักษร (re-export ท้ายไฟล์) — ตัวเติมรุ่นเดิมข้างล่างเรียกตัวเดียวกัน */
+
+/* งวดที่ตัวช่วยเติมแตะได้ — เติมเฉพาะที่ว่าง หรือรวมงวดที่มีวันแล้ว (จัดใหม่) แต่ยังไม่ขอใบ/ไม่รอเหตุการณ์/ยังไม่รับเงิน */
+function fillTargets(installments, { includeDated = false, requestedIds = new Set() } = {}) {
+  const sorted = [...(installments || [])].sort((a, b) => Number(a.seq) - Number(b.seq));
+  const pick = includeDated
+    ? (row) => installmentBillingRedatable(row, { requested: requestedIds.has(row.id) })
+    : (row) => installmentBillingFillable(row) && !dateOf(row.dueDate);
+  return { sorted, targets: sorted.filter(pick) };
+}
+
+/* วันที่ `day` ของเดือนของแต่ละงวด — `startMonth` 'YYYY-MM' = เดือนละงวดเรียงต่อกัน · `null` = เดือนจากชื่องวด
+   ("1st Installment: October 2026" · AR-622) — งวดที่ชื่อไม่บอกเดือนถูกข้ามพร้อมบอก (`skipped`) ไม่เดาเดือนให้
+   ⭐ ตัวเดียวของตัวเติมรายเดือนที่ยึดกำหนดชำระ (planCreditCadence · planNoCreditDates) — เดือนในชื่องวดไม่คิดซ้ำสองที่
+   @returns `{ picks: [{ row, dueDate }], skipped: [seq], error }` */
+function monthlyDueDates(targets, { day, startMonth }) {
+  if (startMonth !== null && !/^\d{4}-\d{2}$/.test(String(startMonth ?? ''))) return { picks: [], skipped: [], error: 'เลือกเดือนเริ่ม' };
+  const [sy, sm] = startMonth ? startMonth.split('-').map(Number) : [0, 0];
+  const picks = [];
+  const skipped = [];
+  targets.forEach((row, k) => {
+    if (startMonth) { picks.push({ row, dueDate: dayInMonth(sy, sm + k, day) }); return; }
+    const month = installmentLabelMonth(row.label);
+    if (!month) { skipped.push(row.seq); return; }
+    const [y, m] = month.split('-').map(Number);
+    picks.push({ row, dueDate: dayInMonth(y, m, day) });
+  });
+  if (!picks.length) return { picks, skipped, error: 'ชื่องวดไม่บอกเดือน — เลือกเดือนเริ่มแทน' };
+  return { picks, skipped, error: null };
+}
+
+/**
+ * เติมวันแบบเดือนละงวด สำหรับลูกค้า **วางบิลได้ทุกวัน + เครดิต N วัน** — ยึดกำหนดชำระ แล้วคิดวันวางบิลย้อนกลับ N วัน
+ * ⭐ **ไม่มีเครดิตเดินทางนี้ด้วย** (มติ 28/09 · `effectiveBillingRule` = เครดิต 0) ⇒ วันวางบิล = กำหนดชำระ วันเดียวกัน
+ * @param dueDay 1–31 (31 = สิ้นเดือน)
+ * @param startMonth 'YYYY-MM' ของงวดแรกที่เติม (เดือนละงวดเรียงต่อกัน) · **`null` = เดือนจากชื่องวด** ("ตามเดือนในชื่องวด" ·
+ *   AR-622: "1st Installment: October 2026" → ตุลาคม) — งวดที่ชื่อไม่บอกเดือน = ข้าม พร้อมบอกใน `skipped`
+ *   ⚠️ ไม่ส่ง (undefined) = ยังไม่เลือก ⇒ error (ต้องเลือกเองว่าเรียงเดือนหรือตามชื่องวด — ไม่มีค่าตั้งต้นให้การตัดสินใจ)
+ * @returns `{ rows: [{ id, seq, billingDate, dueDate, prevBillingDate, prevDueDate }], skipped: [seq], error }`
+ */
+export function planCreditCadence(value, installments = [], { dueDay, startMonth, includeDated = false, requestedIds = new Set() } = {}) {
+  /* รุ่นสี่ = planDueCadence ตัวเดียวที่ยึดกำหนดชำระ (ไม่ต้องวางบิล/ยังไม่ตั้งรอบ = คงวันวางบิลเดิม · มีรอบ = error ให้ใช้ตัวเติมตามรอบ) */
+  if (isV4Rule(value)) return planDueCadence(value, installments, { dueDay, startMonth, includeDated, requestedIds });
+  const rule = effectiveBillingRule(value);
+  if (!rule || rule.payment?.mode !== 'credit') return { rows: [], skipped: [], error: 'ใช้กับลูกค้าที่มีเครดิตเป็นจำนวนวันหรือไม่มีเครดิตเท่านั้น' };
+  const day = intIn(dueDay, 1, 31);
+  if (day === null) return { rows: [], skipped: [], error: 'เลือกวันที่ของกำหนดชำระ' };
+  if (startMonth !== null && !/^\d{4}-\d{2}$/.test(String(startMonth ?? ''))) return { rows: [], skipped: [], error: 'เลือกเดือนเริ่ม' };
+  const { targets } = fillTargets(installments, { includeDated, requestedIds });
+  if (!targets.length) return { rows: [], skipped: [], error: includeDated ? 'ไม่มีงวดที่จัดวันใหม่ได้' : 'ไม่มีงวดที่ว่าง' };
+  const { picks, skipped, error } = monthlyDueDates(targets, { day, startMonth });
+  if (error) return { rows: [], skipped, error };
+  const rows = picks.map(({ row, dueDate }) => ({
+    id: row.id,
+    seq: row.seq,
+    billingDate: addDays(dueDate, -rule.payment.days),
+    dueDate,
+    prevBillingDate: dateOf(row.billingDate),
+    prevDueDate: dateOf(row.dueDate),
+  }));
+  return { rows, skipped, error: null };
+}
+
+/**
+ * เติมกำหนดชำระให้ลูกค้า **ที่ยังไม่ตั้งกำหนดวางบิล** (ไม่มีอะไรให้คิดวันวางบิล) — วันที่ `day` ของแต่ละเดือน (31 = สิ้นเดือน)
+ * ⚠️ ชื่อเดิมจากรอบที่ "ไม่มีเครดิต" ยังใช้ทางนี้ (ก่อนมติ 28/09) — วันนี้ไม่มีเครดิตไปทาง `planCreditCadence` แล้ว
+ *    ที่นี่เหลือแค่ลูกค้าที่ยังไม่ตั้ง: เขียนกำหนดชำระอย่างเดียว วันวางบิลคงเดิม (ไม่บังคับ · คนเลือกเองในตัวแก้)
+ * @param startMonth 'YYYY-MM' = เดือนละงวดเรียงต่อกัน · null = ใช้เดือนจากชื่องวด (งวดที่ชื่อไม่บอกเดือน = ข้าม พร้อมบอก)
+ * @returns `{ rows: [{ id, seq, billingDate (วันเดิมของงวด · ว่าง = null), dueDate, prevDueDate }], skipped: [seq], error }`
+ */
+export function planNoCreditDates(installments = [], { day, startMonth = null, includeDated = false, requestedIds = new Set() } = {}) {
+  const d = intIn(day, 1, 31);
+  if (d === null) return { rows: [], skipped: [], error: 'เลือกวันที่ของกำหนดชำระ' };
+  const { targets } = fillTargets(installments, { includeDated, requestedIds });
+  if (!targets.length) return { rows: [], skipped: [], error: includeDated ? 'ไม่มีงวดที่จัดวันใหม่ได้' : 'ไม่มีงวดที่ว่าง' };
+  const { picks, skipped, error } = monthlyDueDates(targets, { day: d, startMonth });
+  if (error) return { rows: [], skipped, error };
+  return {
+    /* วันวางบิลที่คนเลือกไว้เอง (ไม่บังคับ) คงเดิม — ตัวเติมนี้เขียนกำหนดชำระอย่างเดียว */
+    rows: picks.map(({ row, dueDate }) => ({
+      id: row.id, seq: row.seq, billingDate: dateOf(row.billingDate), dueDate, prevDueDate: dateOf(row.dueDate),
+    })),
+    skipped,
+    error: null,
+  };
+}
+
 /* ── ค่าที่ส่งเข้า action 'schedule' ของงวด ──────────────────────────────────
    เลือกได้อย่างเดียว: วันวางบิล หรือ รอเหตุการณ์ (CHECK ของ mig 0389) · ว่างทั้งคู่ = ยังไม่กำหนด */
 export function normalizeInstallmentBilling({ billingDate = null, billingEvent = null } = {}) {
@@ -410,24 +595,18 @@ export function normalizeInstallmentBilling({ billingDate = null, billingEvent =
 
 /* ── สถานะการวางบิลของงวด (แผงงวด · ทะเบียน FN · กระดิ่ง ใช้ตัวเดียวกัน) ─────
    @param requested มีคำร้องขอใบวางบิลที่ยังไม่ถูกยกเลิกผูกกับงวดนี้ (ผู้เรียกตัดสิน)
-   key: 'carried' (งวดยกมา) | 'settled' | 'requested' | 'waiting' | 'none' | 'late' | 'today' | 'soon' | 'upcoming'
-   ⚠️ 'late' = "เลยรอบวางบิล" = วันวางบิลผ่านแล้ว + ยังไม่ขอใบวางบิล + ยังไม่แจ้งชำระ — **ไม่ใช่ "เลยกำหนด"** */
-export function billingState(row, { todayIso, requested = false } = {}) {
-  if (!row) return { key: 'none', days: null };
-  if (isOpeningInstallment(row)) return { key: 'carried', days: null };
-  const status = String(row.status || 'pending');
-  if (row.refundedAt || status === 'reported' || status === 'confirmed' || status === 'refunded') {
-    return { key: 'settled', days: null };
-  }
-  const bill = dateOf(row.billingDate);
-  if (requested) return { key: 'requested', days: bill && dateOf(todayIso) ? daysBetween(todayIso, bill) : null };
-  if (!bill) return String(row.billingEvent || '').trim() ? { key: 'waiting', days: null } : { key: 'none', days: null };
-  const days = daysBetween(todayIso, bill);
-  if (days === null) return { key: 'upcoming', days: null };
-  if (days < 0) return { key: 'late', days };
-  if (days === 0) return { key: 'today', days };
-  if (days <= BILLING_REMIND_DAYS) return { key: 'soon', days };
-  return { key: 'upcoming', days };
+   key: 'carried' (งวดยกมา) | 'settled' | 'requested' | 'notNeeded' | 'waiting' | 'none' | 'late' | 'today' | 'soon' | 'upcoming'
+   ⚠️ 'late' = "เลยรอบวางบิล" = วันวางบิลผ่านแล้ว + ยังไม่ขอใบวางบิล + ยังไม่แจ้งชำระ — **ไม่ใช่ "เลยกำหนด"**
+   ⭐ รุ่นสี่ (ตัวคิดอยู่ที่ billingRuleV4.js): เรียกได้สองแบบ
+     `billingState(row, rule, { todayIso, requested })` — รู้กติกาลูกค้า ⇒ ลูกค้า/งวดที่ไม่ต้องวางบิลได้ 'notNeeded' (ไม่มี late/soon)
+     `billingState(row, { todayIso, requested })`       — แบบเดิม (ไม่รู้กติกา = ถือว่ายังไม่ระบุ) ผลเท่าเดิมทุกงวด ·
+                                                          ต่างเดียว: งวดที่ติ๊ก billingSkip (0393) ได้ 'notNeeded' แทน 'none' */
+const isStateOptions = (x) => Boolean(x) && typeof x === 'object' && !Array.isArray(x)
+  && (Object.hasOwn(x, 'todayIso') || Object.hasOwn(x, 'requested'))
+  && !['v', 'need', 'credit', 'billing', 'payment'].some((key) => Object.hasOwn(x, key));
+export function billingState(row, ruleOrOptions, options) {
+  if (options === undefined && isStateOptions(ruleOrOptions)) return billingStateV4(row, null, ruleOrOptions);
+  return billingStateV4(row, ruleOrOptions ?? null, options || {});
 }
 
 /* ── "ขอใบวางบิลแล้ว" — ตัวตัดสินเดียวของทุกจอ (แผงงวด · ทะเบียน FN · กระดิ่ง · ตัวผูกคำร้องอัตโนมัติ) ──
@@ -468,16 +647,7 @@ export function formatRoundChip(value) {
   return `${d} ${MONTHS_TH[month - 1]}`;
 }
 
-/* วันหยุดสุดสัปดาห์ — เตือนอย่างเดียว ไม่เลื่อนวัน (มติ 26/09) */
-export function weekendNote(value) {
-  const day = dateOf(value);
-  if (!day) return '';
-  const [year, month, d] = partsOf(day);
-  const dow = new Date(Date.UTC(year, month - 1, d)).getUTCDay();
-  if (dow === 6) return 'ตรงวันเสาร์';
-  if (dow === 0) return 'ตรงวันอาทิตย์';
-  return '';
-}
+/* วันหยุดสุดสัปดาห์ (`weekendNote`) ย้ายไป billingRuleV4.js ทุกตัวอักษร — เตือนอย่างเดียว ไม่เลื่อนวัน (มติ 26/09) */
 
 /* ข้อความสั้นของสถานะ — ใช้ตรงกันทุกจอ */
 export function billingStateLabel(state, { billingEvent = '' } = {}) {
@@ -487,6 +657,7 @@ export function billingStateLabel(state, { billingEvent = '' } = {}) {
     case 'soon': return `ถึงรอบวางบิลใน ${state.days} วัน`;
     case 'upcoming': return state.days === null ? '' : `อีก ${state.days} วัน`;
     case 'requested': return 'ขอใบวางบิลแล้ว';
+    case 'notNeeded': return NO_BILLING_TEXT;
     case 'waiting': return billingEvent ? `รอเหตุการณ์ (${billingEvent})` : 'รอเหตุการณ์';
     default: return '';
   }
@@ -502,3 +673,27 @@ export function billingStateTone(state) {
     default: return 'neutral';
   }
 }
+
+/* ── ชื่อรุ่นสี่ (billingRuleV4.js) — จอ/API/cron import จากไฟล์นี้ที่เดียว ─────────────────────────────────────
+   ⚠️ สามชื่อที่ชนกับชื่อเดิม (billingState · dueDateForBilling · planRedate) เป็นตัวห่อข้างบน (รับรุ่นสี่ได้) — ไม่ re-export ซ้ำ
+   ⚠️ ตัวช่วยวันที่ทั่วไป (dateOf · addDays · daysBetween · iso …) ไม่ re-export — ใช้ของ paymentCoverage.js / import จาก billingRuleV4.js ตรง
+   รอบห้า (29/09 ปฏิทินรายปี · ปีที่ขาด = หยุด ไม่ประมาณ): roundChoices · calendarGapFor/Text · calendarReminder · cutoffDigest ·
+   calendarDiffSummary · nextRunInfo · matchesCutoffFilter — ตัวช่วยจอแก้ปฏิทิน (ตาราง · ร่าง · ตรงกับรูป) import จาก billingCalendarEdit.js ตรง */
+export {
+  RULE_VERSION, NEED_NONE, NEED_REQUIRED, NEED_UNKNOWN, MONTH_END_DAY, ROUNDS_MAX, CREDIT_MAX, NOTE_MAX, EVENT_MAX,
+  CALENDAR_RUNS_MAX_PER_YEAR, PAY_GAP_MAX_DAYS, BILLING_REMIND_DAYS, DUE_REMIND_DAYS, REMIND_CALENDAR_FROM_MMDD,
+  REMIND_CALENDAR_LEAD_DAYS, CALENDAR_FALLBACK, CALENDAR_FALLBACK_DEFAULT, CALENDAR_MANUAL_HINT, CALENDAR_ESTIMATE_ERROR,
+  NO_CREDIT_TEXT, NO_BILLING_TEXT, NO_TIMING_TEXT, UNKNOWN_TEXT, NO_BILLING_WRITE_ERROR, RULE_UNAVAILABLE_ERROR, SKIP_TEXT,
+  weekendNote, isWorkday, firstWorkdayOnOrAfter, lastWorkdayOnOrBefore, fmtDate, weekStartOf,
+  toV4, validateCalendarYear, normalizeRule, ruleOf, sameRule,
+  billingNeed, hasTiming, nagsMissingBilling, asksNeed, installmentNeed, needOverrideOf, canRequestBilling, needExceptionActions,
+  payRuns, deriveFormula, dueFor, calendarGapFor, calendarGapText, slotCount, slotLabels, billingChoices, roundChoices, billingForDue,
+  datesOf, validateInstallmentDates, dueSourceOf, dueState,
+  installmentBillingFillable, installmentBillingRedatable,
+  fillKindOf, planFill, installmentLabelMonth, creditCadenceSuggestion, planDueCadence, planRuleChange,
+  draftCalendarYear, calendarDiff, calendarDiffSummary, calendarStatus, calendarReminder, cutoffInfo, cutoffBell, cutoffDigest,
+  BELL, LEDGER_HREF, bellsFor, reminderKinds, ledgerFlags, matchesCutoffFilter, nextRunInfo,
+  noteDateHints, dueSeriesGaps,
+  NEED_BACKFILL_OPTIONS, backfillRuleFor, backfillPlan, backfillGate,
+  formOf, ruleFromForm, describeRule, sourceLabel, billingCellText, dueCellText, dateModeOf, policyPreview,
+} from './billingRuleV4.js';

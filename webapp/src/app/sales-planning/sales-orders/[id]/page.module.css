@@ -61,3 +61,9 @@
 @media (max-width: 900px) {
   .docGrid { grid-template-columns: 1fr; }
 }
+
+/* ⭐ งานบริการรายบรรทัด (mig 0392 · PR-A) ─────────────────────────────────────────────────────────
+   แผงแดงหลังกดยื่น — เลื่อนมาหยุดใต้แถบหัวลอย (ไม่จมใต้แถบ) */
+.submitGate { scroll-margin-top: var(--scroll-anchor-top); }
+/* "ครบ x/n" บนหัวแท็บภาพรวมก่อนกดยื่น — เป็นกลาง (กฎ 3: ไม่มีแดงก่อนกด) */
+.tabProgress { color: var(--text-3); font-size: var(--fs-4); font-weight: var(--fw-medium); font-variant-numeric: tabular-nums; }

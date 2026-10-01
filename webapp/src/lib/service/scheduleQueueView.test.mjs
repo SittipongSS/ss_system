@@ -22,8 +22,8 @@ const TODAY = '2026-09-22'; // อังคาร
 
 /* บริบทด่าน: ไซต์ S-BAD มีโซนที่ผูกใบสั่งขายแล้ว แต่ใบยังไม่ผูกสัญญา ⇒ ติดด่านสัญญาของ SA
    (รอฝ่ายอื่น) · งานถอนเครื่อง/ประเมินพื้นที่ข้ามด่าน ①② (GATE_EXEMPT_KINDS) จึงเหลือแค่ด่านของ TS
-   ⚠️ เดิมใช้บริบทว่าง (= ไซต์ไม่มีโซน) แทน "ติด SA" — ตั้งแต่มติ 23/09 ไซต์ที่ไม่มีโซน/โซนที่ยังไม่จัดสรร
-      เป็นงานของ TS ที่หน้า "งานเข้าใหม่" ⇒ ต้องใช้เหตุที่เป็นของ SA จริง ๆ */
+   ⚠️ เดิมใช้บริบทว่าง (= ไซต์ไม่มีโซน) แทน "ติด SA" — ไซต์ที่ไม่มีโซนเป็นงานทะเบียนของ TS (มติ 23/09 · ยังเป็น
+      ของ TS หลัง mig 0392) ⇒ ต้องใช้เหตุที่เป็นของ SA จริง ๆ */
 const sites = [
   { id: 'S1', code: 'ST-1001', name: 'เซ็นทรัลเวิลด์', routeZone: 'BKK-C', customerName: 'บจก. เซ็นทรัล' },
   { id: 'S-BAD', code: 'ST-1002', name: 'ไซต์ไม่มีสัญญา', routeZone: 'BKK-E', customerName: 'บจก. ทดสอบ' },
@@ -417,30 +417,36 @@ test('⭐ ค้นหาเจอทุกอย่างที่ตาเห�
   assert.deepEqual(find('คำร้องประเมินพื้นที่'), ['R-requeue', 'R-ack', 'R-queue']);
 });
 
-/* ⭐ โซนที่ยังไม่จัดสรร = งานของ TS (มติเจ้าของ 23/09) — ร่างย้ายจาก "รอฝ่ายอื่น" มาอยู่ "TS แก้ได้เอง"
-   และบรรทัดย่อยของกลุ่มบอกว่ากี่ใบติดเพราะเหตุนี้ */
-test('⭐ ร่างที่โซนยังไม่จัดสรรอยู่กลุ่ม TS แก้ได้เอง · บรรทัดย่อยบอก "ยังไม่จัดสรรโซน n"', () => {
+/* ⭐ mig 0392 (D15): โซนที่ไม่มีรอบขายเป็นงานของ SA (ฝ่ายขายเลือกโซนในใบ · TS ผูกไม่ได้แล้ว) ⇒ ร่างไปอยู่ "รอฝ่ายอื่น"
+   · ข้อสัญญาที่ยังเป็นของ TS เหลือ "ไซต์ยังไม่มีโซน" (งานทะเบียน) — บรรทัดย่อยของกลุ่ม TS บอกจำนวนนั้น */
+test('⭐ ร่างที่โซนไม่มีรอบขายอยู่กลุ่มรอฝ่ายอื่น (SA) · ไซต์ที่ยังไม่มีโซนอยู่กลุ่ม TS · บรรทัดย่อยบอก "ไซต์ยังไม่มีโซน n"', () => {
   const unalloc = v({ id: 'D-zone', code: 'SV-20', status: 'draft', siteId: 'S-ZONE', scheduledDate: '2026-09-24', assigneeId: 'U1', assigneeName: 'สมชาย ใจดี' });
+  const noZone = v({ id: 'D-nozone', code: 'SV-21', status: 'draft', siteId: 'S-EMPTY', scheduledDate: '2026-09-24', assigneeId: 'U1', assigneeName: 'สมชาย ใจดี' });
   const ctx = {
     ...gateContext,
     zonesBySite: { ...gateContext.zonesBySite, 'S-ZONE': [{ id: 'Z-NEW', siteId: 'S-ZONE', name: 'โซนใหม่' }] },
   };
-  const view = build({ bucket: 'waiting', visits: [...visits, unalloc], gateContext: ctx });
+  const view = build({ bucket: 'waiting', visits: [...visits, unalloc, noZone], gateContext: ctx });
   const ts = view.groups.find((g) => g.key === 'ts');
-  assert.deepEqual(ts.rows.map((r) => r.id).sort(), ['D-ts', 'D-zone']);
-  assert.equal(ts.sub, 'ขาดเจ้าหน้าที่ 1 · นอกช่วงเข้าไซต์ 0 · ยังไม่จัดสรรโซน 1');
-  const item = ts.rows.find((r) => r.id === 'D-zone').gateItems[0];
-  assert.equal(item.owner, 'TS');
-  assert.equal(item.ownerTone, 'info');
+  const others = view.groups.find((g) => g.key === 'others');
+  assert.deepEqual(ts.rows.map((r) => r.id).sort(), ['D-nozone', 'D-ts']);
+  assert.equal(ts.sub, 'ขาดเจ้าหน้าที่ 1 · นอกช่วงเข้าไซต์ 0 · ไซต์ยังไม่มีโซน 1');
+  const noZoneItem = ts.rows.find((r) => r.id === 'D-nozone').gateItems[0];
+  assert.equal(noZoneItem.owner, 'TS');
+  assert.equal(noZoneItem.reason, 'ไซต์นี้ยังไม่มีโซนในทะเบียน — TS เพิ่มโซนที่หน้าไซต์ แล้วให้ฝ่ายขายเลือกโซนในใบสั่งขาย');
+  assert.ok(others.rows.some((r) => r.id === 'D-zone'), 'โซนไม่มีรอบขาย ⇒ รอฝ่ายขาย');
+  const item = others.rows.find((r) => r.id === 'D-zone').gateItems[0];
+  assert.equal(item.owner, 'SA');
   assert.equal(item.fix, null, 'ไม่มีช่องในโมดัลนัดให้แก้ ⇒ เหตุเต็มประโยค');
-  assert.match(item.reason, /TS ผูกใบสั่งขายเข้าโซนที่หน้า "งานเข้าใหม่"/);
+  assert.equal(item.reason, 'ยังไม่มีใบสั่งขายที่ตั้งงานบริการแล้วสำหรับโซนนี้ — ฝ่ายขายตั้งค่าที่หน้าใบสั่งขายแล้วยื่นให้ผู้จัดการตรวจ');
+  assert.doesNotMatch(item.reason, /งานเข้าใหม่/, 'TS ผูกโซนไม่ได้แล้ว — ห้ามชี้ไปหาทางที่ปิด');
   // ไม่มีร่างแบบนี้ = บรรทัดย่อยเดิม (ไม่มีท่อนต่อท้าย)
   assert.equal(build({ bucket: 'waiting' }).groups.find((g) => g.key === 'ts').sub, 'ขาดเจ้าหน้าที่ 1 · นอกช่วงเข้าไซต์ 0');
 });
 
-test('แถวนัดติดชนิด "visit" · ป้ายตัวเลขงานเข้าใหม่บอกทั้งสองแท็บที่นับรวม', () => {
+test('แถวนัดติดชนิด "visit" · ป้ายตัวเลขงานเข้าใหม่ = แท็บรอตั้งรอบแท็บเดียว (ตัวเลขบนเมนูนับแท็บนี้)', () => {
   assert.ok(build({ bucket: 'waiting' }).rows.every((r) => r.type === 'visit'));
-  assert.equal(INTAKE_UPSTREAM_LABEL, 'รอตั้งไซต์/โซน + รอตั้งรอบ');
+  assert.equal(INTAKE_UPSTREAM_LABEL, 'รอตั้งรอบ');
 });
 
 /* 🐞 UAT 24/09: การ์ดคำร้องบอก "วันนั้นว่าง 5 จาก 5 คน" (นับแค่คนหน้างาน `crewPeople` — Operation/Senior)
@@ -515,4 +521,46 @@ test('ภาระวันนั้น: วรรคหน้า-หลัง�
   const scheduled = view('scheduled').rows;
   assert.equal(scheduled.find((r) => r.id === 'L-live').dayLoad.text, 'วันนั้นของ Veerachai 6/12 จุด');
   assert.equal(scheduled.find((r) => r.id === 'L-noname').dayLoad.text, 'วันนั้นของ เจ้าหน้าที่ 6/12 จุด');
+});
+
+/* ══ D15 · ชิปใบสั่งขายบนร่างที่ติดด่าน (PR-C · C9 · C-D19) ══════════════════════════════════════════
+   ⭐ แถวรายการงานพกชิปของข้อสัญญามาจากด่าน (`gateBlockedItems`) — **เฉพาะตอนมี** (critique L3: deepEqual เดิมยังเขียว)
+   ⭐ ตาเห็นบนแถว = ต้องค้นเจอ: ข้อความชิป ("ใบสั่งขาย SO-… · ฉบับร่าง · AE") อยู่ใน haystack ของแถว */
+const d15Chip = { orderId: 'SOR-D', orderNumber: 'SO-26100011-0', status: 'draft', group: 'unapproved', stateLabel: 'ฉบับร่าง', ownerName: 'สมหญิง รักงาน' };
+
+test('D15 gateItemView พกชิปเฉพาะตอนมี — ว่าง/ไม่มี = รูปเดิมทุกไบต์', () => {
+  const base = { key: 'contract', owner: 'SA', reason: 'ก — ข', fix: null };
+  const plain = { key: 'contract', owner: 'SA', ownerTone: 'accent', reason: 'ก — ข', fix: null };
+  assert.deepEqual(gateItemView({ ...base, orders: [d15Chip] }), { ...plain, orders: [d15Chip] });
+  assert.deepEqual(gateItemView({ ...base, orders: [] }), plain);
+  assert.deepEqual(gateItemView({ ...base, orders: null }), plain);
+  assert.deepEqual(gateItemView(base), plain);
+});
+
+test('D15 ร่างของไซต์ที่โซนยังไม่มีรอบขาย: แถวพกชิป · ค้นเจอด้วยเลขที่ใบ/สถานะ/AE · กลุ่มเดิม', () => {
+  const ctx = {
+    ...gateContext,
+    zonesBySite: { ...gateContext.zonesBySite, 'S-NEW': [{ id: 'Z-NEW', siteId: 'S-NEW', name: 'ชั้น 1' }] },
+    setupOrdersByZone: { 'Z-NEW': [d15Chip] },
+  };
+  const siteNew = { id: 'S-NEW', code: 'ST-1003', name: 'ไซต์ใหม่', routeZone: 'BKK-N', customerName: 'บจก. ใหม่' };
+  const extra = v({ id: 'D-new', code: 'SV-15', status: 'draft', scheduledDate: '2026-09-24', siteId: 'S-NEW', assigneeId: 'U1', assigneeName: 'สมชาย ใจดี' });
+  const run = (over = {}) => buildScheduleQueue({
+    visits: [...visits, extra], sitesById: new Map([...sitesById, ['S-NEW', siteNew]]), gateContext: ctx, workload,
+    todayIso: TODAY, teamFilter: ALL_TEAMS, crewByUser, crewPeople, teamNames, bucket: 'waiting', ...over,
+  });
+  const row = run().rows.find((r) => r.id === 'D-new');
+  assert.equal(row.group, 'others', 'ชิปไม่ย้ายกลุ่ม — ยังรอฝ่ายขาย');
+  const contract = row.gateItems.find((g) => g.key === 'contract');
+  assert.deepEqual(contract.orders, [d15Chip]);
+  assert.equal(contract.owner, 'SA');
+  assert.ok(row.haystack.includes('ใบสั่งขาย so-26100011-0 · ฉบับร่าง · สมหญิง รักงาน'), row.haystack);
+  for (const search of ['SO-26100011-0', 'ฉบับร่าง', 'สมหญิง']) {
+    const view = run({ search });
+    assert.ok(view.rows.filter((r) => r.bucket === 'waiting').some((r) => r.id === 'D-new'), search);
+    assert.ok(view.listedCount >= 1, search);
+  }
+  // ร่างของไซต์เดิม (โซนมีรอบขาย ใบยังไม่ผูกสัญญา) ไม่พกชิป
+  const bad = run().rows.find((r) => r.id === 'D-sa');
+  assert.equal(bad.gateItems.some((g) => 'orders' in g), false);
 });

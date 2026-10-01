@@ -4,7 +4,7 @@
 // เพื่อให้ด่าน/การคำนวณทดสอบได้โดยไม่ต้องมีฐานข้อมูล
 import { genId } from '@/lib/id';
 import {
-  billingFillPatch, buildInstallmentsForOrder, installmentPrepaid, installmentsFromPaymentPlan, isInstallmentFrozen,
+  buildInstallmentsForOrder, installmentPrepaid, installmentsFromPaymentPlan, isInstallmentFrozen,
 } from '@/lib/sales/salesOrderPayments';
 import { orderConfirmationOf } from '@/lib/sales/orderConfirmationDocs';
 import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
@@ -137,7 +137,8 @@ export async function ensureInstallments(supabase, {
  * ⚠️ **จำนวนงวดต่างกันแก้ด้วยการทับยอดไม่ได้** — QT ถูกแก้หลังกด "เริ่มติดตาม" ได้
  * ⇒ ตั้งใหม่ทั้งชุด (ลบของเดิมแล้วสร้างจากแผนล่าสุด)
  * ⭐ **แต่ของที่คนกรอกเองถูกอุ้มข้ามการตั้งใหม่ตาม `seq`** (แก้ 07/09/2026):
- *   `coversFrom`/`coversTo` · `dueDate` · หมายเหตุ · `billingDate`/`billingEvent` (mig 0389) · เดิมหายทั้งหมด และหัวข้อนี้เคยเขียนว่า
+ *   `coversFrom`/`coversTo` · `dueDate` · หมายเหตุ · `billingDate`/`billingEvent` (mig 0389) · ติ๊ก `billingSkip` (0393)
+ *   · เดิมหายทั้งหมด และหัวข้อนี้เคยเขียนว่า
  *   "แลกกับ `dueDate` ที่ SA กรอกไว้ — จอเตือนไว้ก่อนแล้ว" ซึ่งใช้ได้ตอนที่ยังไม่มีช่วงครอบ
  *   ⇒ วันนี้ช่วงครอบหายเมื่อไร `paidThrough` เป็น null และด่านเงินบล็อกนัดทั้งไซต์
  *     (ดูรายละเอียดที่จุดลบข้างล่าง)
@@ -220,10 +221,14 @@ export async function freezeInstallments(supabase, { order, user, now = null, bo
          แผนใน QT ผ่าน installmentsFromPaymentPlan · หมายเหตุสลิปที่ยืม) แล้วถูก null ของแถวเก่าลบทิ้งทุกครั้งที่แถวนั้นมี
          ช่วงครอบ/กำหนดชำระให้อุ้ม ⇒ **พฤติกรรมเปลี่ยน**: หมายเหตุจากแผนรอดแล้ว (หมายเหตุที่คนพิมพ์ไว้ในแถวเก่ายังชนะเหมือนเดิม)
          · และก่อนรัน 0389 ชื่อคอลัมน์ `billingDate` ใน payload = PostgREST ตอบ PGRST204 ⇒ แถวนั้น **ไม่ได้อุ้มอะไรเลย**
-         รวมช่วงครอบ (ด่านเงินของนัดช่าง) — ตัดค่าว่างทิ้ง ทำให้ใบที่ยังไม่มีวันวางบิลไม่เอ่ยชื่อคอลัมน์ใหม่เลย */
-    const CARRIED = ['coversFrom', 'coversTo', 'dueDate', 'note', 'billingDate', 'billingEvent'];
+         รวมช่วงครอบ (ด่านเงินของนัดช่าง) — ตัดค่าว่างทิ้ง ทำให้ใบที่ยังไม่มีวันวางบิลไม่เอ่ยชื่อคอลัมน์ใหม่เลย
+       ⭐ **ติ๊ก "งวดนี้ไม่ต้องวางบิล" (`billingSkip` · mig 0393) อุ้มด้วย** — ติ๊กบนใบร่างแล้วอนุมัติ = ติ๊กต้องไม่หาย
+         (ไม่งั้นกระดิ่ง/ทะเบียน FN กลับมาชวนวางบิลงวดมัดจำที่ลูกค้าโอนก่อน) · อุ้มเฉพาะ `true` — ค่าที่เก็บมีแค่ true/null
+         (`false` ไม่ใช่ค่าของคอลัมน์นี้) ⇒ **ก่อนรัน 0393 ไม่มีแถวไหนมีคีย์นี้ ⇒ payload ไม่เอ่ยคอลัมน์ (ไม่ชน PGRST204)** */
+    const CARRIED = ['coversFrom', 'coversTo', 'dueDate', 'note', 'billingDate', 'billingEvent', 'billingSkip'];
     const carried = new Map(draft.map((row) => [row.seq, Object.fromEntries(
-      CARRIED.map((field) => [field, row[field] ?? null]).filter(([, value]) => value !== null && value !== ''),
+      CARRIED.map((field) => [field, row[field] ?? null])
+        .filter(([field, value]) => (field === 'billingSkip' ? value === true : value !== null && value !== '')),
     )]));
 
     const { error } = await supabase.from(TABLE).delete().in('id', draft.map((r) => r.id));
@@ -336,16 +341,27 @@ export async function updateInstallment(supabase, id, patch, { expectedUpdatedAt
 }
 
 /**
- * เขียนวันของ "เติมตามรอบ เดือนละงวด" ทีละงวด (กำหนดวางบิล · mig 0389) — route เรียกหลังด่านผ่าน **ครบทุกงวด** แล้ว
- * ⭐ เขียนแบบมีเงื่อนไข `updatedAt` ของแถวที่ด่านเพิ่งตัดสิน (ไม่มี RPC ⇒ ไม่มีทรานแซกชัน) ⇒ อีกหน้าต่างเขียนแทรก = หยุดที่งวดนั้น
- *   งวดที่ลงไปแล้วคงอยู่ (กดซ้ำเติมต่อเฉพาะงวดที่ยังว่าง — installmentBillingFillable) · **ไม่ย้อนงวดที่ลงแล้ว** (ย้อนเองก็แข่งได้อีกชั้น)
- * ⚠️ พังตั้งแต่งวดแรก = ยังไม่มีอะไรลงฐาน ⇒ **โยน error เดิม** ให้ผู้เรียกแปลแบบเขียนงวดเดียว (0389 ยังไม่รัน · รหัสของฐาน)
+ * เขียนช่วงครอบของ "แบ่งช่วงครอบตามช่วงบริการ…" ทีละงวด (mig 0392 · PR-A · แผน §2.5 ข้อ 3) — route เรียกหลังด่านผ่าน **ครบทุกงวด** แล้ว
+ * ⭐ route คิดชุดเองด้วย `splitCoverageByPeriod` แล้วเทียบกับพรีวิวที่จอส่งมาก่อน · ผ่านด่านรายงวด (`coverage`) ครบทุกงวดแล้วจึงเรียก
+ * ⭐ เขียนแค่ `coversFrom`/`coversTo` แบบมีเงื่อนไข `updatedAt` ของแถวที่ด่านเพิ่งตัดสิน (ไม่มี RPC ⇒ ไม่มีทรานแซกชัน)
+ *   ⇒ อีกหน้าต่างเขียนแทรก = หยุดที่งวดนั้น · งวดที่ลงแล้วคงอยู่ · กดใหม่ได้ชุดเดิม (การแบ่งไม่ขึ้นกับช่วงครอบเดิมของงวดที่ยังไม่รับรอง)
+ *   ⇒ ปลอดภัยที่จะกดซ้ำ
+ * ⚠️ พังตั้งแต่งวดแรก = ยังไม่มีอะไรลงฐาน ⇒ **โยน error เดิม** ให้ผู้เรียกแปลแบบเขียนงวดเดียว (รหัสของฐาน)
+ * ⭐ ตัวเติมวันวางบิล `writeBillingFill` (fill-billing) ถอดแล้วในรุ่นสี่ (system-design §7.5 · route ตอบ 410) — แกน `writePlannedFill`
+ *   เหลือผู้เรียกตัวเดียว แต่คงไว้เป็นแกนของ "แผนทั้งใบทีละงวด" (สัญญา before/after/stopped ข้างล่าง)
  * @param rows     งวดสดทั้งใบ (ตัวล็อก updatedAt มาจากชุดนี้)
- * @param planned  แถวของ `billingFillCheck().rows` (id · seq · billingDate · dueDate · keptDue)
+ * @param planned  แถวของ `splitCoverageByPeriod().rows` (id · seq · coversFrom · coversTo)
  * @returns `{ before, after, stopped }` — before/after = **เฉพาะงวดที่เขียนจริง** (ป้อน audit ตรง ๆ) ·
  *   `stopped` = null (ครบ) | `{ seq, error }` (`error` null = แถวเปลี่ยนไปแล้ว · ไม่ null = ฐานตีกลับ)
  */
-export async function writeBillingFill(supabase, rows, planned) {
+export async function writeCoverageFill(supabase, rows, planned) {
+  return writePlannedFill(rows, planned, (row, plan) => updateInstallment(supabase, row.id,
+    { coversFrom: plan.coversFrom, coversTo: plan.coversTo }, { expectedUpdatedAt: row.updatedAt }));
+}
+
+/* ตัวเขียนแผนทั้งใบทีละงวด — แกนของ writeCoverageFill (ต่างกันแค่ patch ต่องวด)
+   `write(row, plan)` = updateInstallment แบบมีเงื่อนไข updatedAt · คืน null เมื่อแถวเปลี่ยนไปแล้ว */
+async function writePlannedFill(rows, planned, write) {
   const byId = new Map((rows || []).map((row) => [row.id, row]));
   const before = [];
   const after = [];
@@ -354,7 +370,7 @@ export async function writeBillingFill(supabase, rows, planned) {
     if (!row) return { before, after, stopped: { seq: plan.seq, error: null } };
     let updated;
     try {
-      updated = await updateInstallment(supabase, row.id, billingFillPatch(plan), { expectedUpdatedAt: row.updatedAt });
+      updated = await write(row, plan);
     } catch (error) {
       if (!after.length) throw error;
       return { before, after, stopped: { seq: plan.seq, error } };

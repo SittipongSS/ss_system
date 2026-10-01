@@ -12,6 +12,7 @@ import { useId } from "react";
 import { AlertTriangle, Check, CircleHelp, Minus, ShieldCheck, X } from "lucide-react";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { KeepTogether } from "./ScheduleModalParts";
+import GateOrderChips from "./GateOrderChips";
 import styles from "./GatePanel.module.css";
 
 /* `warn` = ข้อที่ไม่ผ่านแต่ไม่บล็อก (ข้อ ④ ของลงคิวเข้าพื้นที่ — server ไม่ได้ตรวจ · รีวิว UAT 24/09) */
@@ -47,8 +48,8 @@ export default function GatePanel({ view, onFix = null, children = null }) {
                 <p className={styles.label}>{row.n} {row.label}</p>
                 <p className={styles.detail}>
                   <StatusBadge size="sm" tone={row.ownerTone} label={row.owner} className={styles.owner} />
-                  {/* เหตุ + ลิงก์แก้เป็นก้อนเดียว — ตัดบรรทัดข้างในก้อน ไม่ตกลงไปใต้ป้ายเจ้าของ */}
-                  {row.detail || (row.fix && onFix) ? (
+                  {/* เหตุ + ลิงก์แก้ + ชิปใบสั่งขาย (D15) เป็นก้อนเดียว — ตัดบรรทัดข้างในก้อน ไม่ตกลงไปใต้ป้ายเจ้าของ */}
+                  {row.detail || row.orders?.length || (row.fix && onFix) ? (
                     <span className={styles.reason}>
                       <KeepTogether text={row.detail} />
                       {row.fix && onFix ? (
@@ -59,6 +60,8 @@ export default function GatePanel({ view, onFix = null, children = null }) {
                           </button>
                         </>
                       ) : null}
+                      {/* ใบสั่งขายที่กำลังตั้งโซนที่ติด (inline ล้วน — อยู่ใน <p> · hook อยู่ในตัวชิปเอง ไม่ใช่ใน .map นี้) */}
+                      <GateOrderChips orders={row.orders} />
                     </span>
                   ) : null}
                 </p>

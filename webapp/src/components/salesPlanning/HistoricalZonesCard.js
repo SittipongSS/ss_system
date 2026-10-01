@@ -14,12 +14,14 @@ import { DetailCard } from "@/components/ui/DetailPage";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { TableScroll } from "@/components/ui/Table";
 import { fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
-import { historicalZoneState } from "@/lib/sales/historicalOrderCopy";
+import { historicalPacksCellText, historicalPacksRoundsText, historicalZoneState } from "@/lib/sales/historicalOrderCopy";
+import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL } from "@/lib/sales/serviceOrders";
 
 /**
  * @param order          ใบ (อ่าน `status` · `lines` เป็นตัวถอยเมื่อของเสริมไม่มา)
  * @param lineZones      ของเสริมจาก GET ของใบ — `[{ lineId, zoneId, zoneCode, zoneName, siteCode, siteName, siteId,
- *                       fgCode, qty, unit, unitPrice, discountAmount, rounds, lineTotal }]` (loadHistoricalOrderExtras)
+ *                       fgCode, qty, unit, unitPrice, discountAmount, rounds, packsPerRound, lineTotal }]` (loadHistoricalOrderExtras)
+ *                       · `packsPerRound` (PR-D · mig 0394) = แพ็คต่อรอบของโซน จาก `sales_order_line_zones` · null = ไม่รู้
  * @param plannedSiteIds ไซต์ที่ฝ่าย TS ตั้งรอบแล้ว (historicalServiceProgress) · `null` = ยังไม่รู้
  * @param loadingPlans   กำลังยิงเส้นสรุปงานบริการอยู่ — สถานะรายโซนพูดว่า "กำลังตรวจ" ไม่ใช่ "ยังไม่ตั้ง"
  * @param extrasError    ของเสริมของใบโหลดไม่ขึ้น (หน้าใบส่งมาให้) — ต้องดัง ไม่ใช่การ์ดว่าง
@@ -27,6 +29,12 @@ import { historicalZoneState } from "@/lib/sales/historicalOrderCopy";
  * ⭐ มติเจ้าของ 23/09: บรรทัดของใบย้อนหลังคือบรรทัดของใบเสนอราคา ⇒ การ์ดพูด **รายการ · จำนวน + หน่วย**
  *   ของบรรทัดนั้น (12 แพ็คเกจ) ไม่ใช่ "N แพ็ค" ที่อ่านได้สองความหมาย (1 ชุด × 12 เดือน เคยถูกคีย์ทั้ง 1 และ 12)
  *   ราคาต่อหน่วย/ส่วนลดอยู่ที่ตารางรายการข้างบน — การ์ดนี้ตอบ "ของลงโซนไหน · TS ตั้งรอบหรือยัง"
+ * ⭐ PR-D (มติเจ้าของ 26/09 A3/O9 · mig 0394): คอลัมน์แพ็คต่อรอบ = ช่องของ **โซน** คนละช่องกับจำนวนของบรรทัด
+ *   · มติเจ้าของ 29/09 ("ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง"): หัว = `SERVICE_ROUNDS_LABEL` "จำนวนรอบบริการ" ก่อน
+ *     `SERVICE_PACKS_LABEL` "รอบละกี่แพ็ค" (คำของใบใหม่ · การ์ดไม่สะกดเอง)
+ *   (อนุมัติแล้วเป็น packageQty ของรอบขาย) · เซลล์และหัวการ์ดประกอบที่ lib (`historicalPacksCellText` /
+ *   `historicalPacksRoundsText`) — การ์ดไม่ประกอบคำว่าแพ็คเอง (M3 · "N แพ็ค" เปล่า ๆ ห้ามกลับมา)
+ *   ใบที่คีย์ก่อนมีช่อง = ขีดในเซลล์ + หัวการ์ดแบบเดิม (ไม่ใช่ "รวม 0 แพ็ค/รอบ")
  */
 export default function HistoricalZonesCard({
   order, lineZones = [], plannedSiteIds = null, loadingPlans = false, extrasError = null,
@@ -43,19 +51,22 @@ export default function HistoricalZonesCard({
     return `${fmtNumber(Number(qty))}${unit ? ` ${unit}` : ""}`;
   };
   const meta = zones.length
-    ? `${fmtNumber(zones.length)} โซน — โซนผูกจากทะเบียนไซต์ตอนคีย์ใบแล้ว ฝ่าย TS ตั้งรอบต่อได้เลย`
+    ? historicalPacksRoundsText(zones).meta
+      ?? `${fmtNumber(zones.length)} โซน — โซนผูกจากทะเบียนไซต์ตอนคีย์ใบแล้ว ฝ่าย TS ตั้งรอบต่อได้เลย`
     : "โซนของใบนี้";
 
   return (
     <DetailCard icon={MapPin} eyebrow="SERVICE ZONES" title="โซนในใบนี้" meta={meta}>
       {zones.length ? (
-        <TableScroll family="editable" surface="embedded" cells="stacked" minWidth={680}>
+        /* 760 = เจ็ดคอลัมน์ (PR-D เพิ่ม "รอบละกี่แพ็ค") · จอแคบกว่านั้นเลื่อนข้าง */
+        <TableScroll family="editable" surface="embedded" cells="stacked" minWidth={760}>
           <table className="w-full text-sm">
             <thead><tr>
               <th>ไซต์ · โซน</th>
               <th>รายการ</th>
               <th className="num">จำนวน</th>
-              <th className="num">รอบบริการที่ขายไว้</th>
+              <th className="num">{SERVICE_ROUNDS_LABEL}</th>
+              <th className="num">{SERVICE_PACKS_LABEL}</th>
               <th className="num">จำนวนเงิน</th>
               <th>สถานะรอบ</th>
             </tr></thead>
@@ -71,6 +82,7 @@ export default function HistoricalZonesCard({
                   <td className="mono">{naText(zone.fgCode || lineOf(zone)?.fgCode)}</td>
                   <td className="num">{qtyText(zone)}</td>
                   <td className="num">{zone.rounds == null ? NA : `${fmtNumber(zone.rounds)} รอบ`}</td>
+                  <td className="num">{historicalPacksCellText(zone.packsPerRound)}</td>
                   <td className="num">{zone.lineTotal == null ? NA : fmtMoney(zone.lineTotal)}</td>
                   <td>{historicalZoneState(order, zone, { plannedSiteIds, loading: loadingPlans })}</td>
                 </tr>

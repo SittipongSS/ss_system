@@ -20,6 +20,7 @@ import {
   canAnswerRequest, canManageRequest, canReadRequestRow,
 } from '@/lib/deptRequests';
 import { requestRowsClosurePatch } from '@/lib/requests/stages';
+import { requestActorSide } from '@/lib/requests/replyTurn';
 import {
   HOP_OWNER, followUpRowFrom, hopLabel, hopLabelFor, hopPatch, hopStageError, hopUpdateKind,
   hopValuesError,
@@ -476,7 +477,9 @@ export async function PATCH(request, { params }) {
     /* ตอบครบทุกแถว → ใบได้ **ตราปิดฝั่งฝ่าย** (`answeredAt`) เอง · ไม่ครบเมื่อไรตรา
        ทั้งสองฝั่งหลุด (มติผู้ใช้ 2026-08-20 · ปิดสองฝั่ง — ดู `closure.js`) */
     const after = await findRequest(supabase, id);
-    Object.assign(headPatch, requestRowsClosurePatch(after, after.items || [], nowIso));
+    Object.assign(headPatch, requestRowsClosurePatch(after, after.items || [], nowIso, {
+      actorSide: requestActorSide(user, after),
+    }));
     if (Object.keys(headPatch).length) {
       const { error: headError } = await supabase
         .from('dept_requests').update({ ...headPatch, updatedAt: nowIso }).eq('id', id);
@@ -643,7 +646,9 @@ export async function DELETE(request, { params }) {
        ไม่มี (ใบตอบรายแถว) ปิดก็ไม่จบ = ทางออกเดียวคือยกเลิก · ตัวคิดตัวเดียวกับก้าวรายแถว */
     const remaining = (before.items || []).filter((i) => i.id !== itemId);
     const nowIso = new Date().toISOString();
-    const headPatch = requestRowsClosurePatch(before, remaining, nowIso);
+    const headPatch = requestRowsClosurePatch(before, remaining, nowIso, {
+      actorSide: requestActorSide(user, before),
+    });
     let closureWarning = null;
     if (Object.keys(headPatch).length) {
       const { error: headError } = await supabase.from('dept_requests')

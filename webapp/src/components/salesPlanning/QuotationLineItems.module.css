@@ -156,7 +156,7 @@
   font-size: var(--fs-6);
 }
 
-/* ช่อง "รอบบริการที่ขายไว้" ของบรรทัดใบสั่งขาย (QuoteLineServiceRounds · มติ 23/09) — ป้ายบน ช่องล่าง
+/* ช่อง "จำนวนรอบบริการ" ของบรรทัดใบสั่งขาย (QuoteLineServiceRounds · มติ 23/09) — ป้ายบน ช่องล่าง
    วางใต้คำอธิบายในเซลล์ "รายการ" ตรงที่ฝั่งอ่านโชว์ .serviceRoundsTag */
 .serviceRounds {
   display: flex;
@@ -186,7 +186,14 @@
   font-size: var(--fs-5);
 }
 
-/* ฝั่งอ่านอย่างเดียว (หน้าใบสั่งขาย) — บรรทัดเล็กใต้คำอธิบาย: รอบบริการที่ขายไว้ · ไซต์ · โซนของใบย้อนหลัง
+/* ดอกจันของช่องรอบเมื่อผู้เรียกบังคับ (ใบย้อนหลัง · PR-D) — อยู่ใน span เดียวกับป้าย (flex column ไม่แตกบรรทัด) */
+.roundsReq {
+  margin-left: var(--space-1);
+  color: var(--red);
+  font-weight: var(--fw-semibold);
+}
+
+/* ฝั่งอ่านอย่างเดียว (หน้าใบสั่งขาย) — บรรทัดเล็กใต้คำอธิบาย: จำนวนรอบบริการ · ไซต์ · โซนของใบย้อนหลัง
    ⚠️ ช่องของ `.premium-table` เป็น nowrap (!important ที่ td — ลูกยังตั้งของตัวเองได้) ⇒ ชื่อไซต์ · โซนที่ยาว
    ต้องขึ้นบรรทัดใหม่ในช่องของมันเอง ไม่ใช่ถูกเพดานช่องตัดทิ้งเงียบ ๆ */
 .serviceRoundsTag {
@@ -450,6 +457,7 @@
 
   .linesTable tbody tr:has(td.emptyRows),
   .readOnlyTable tbody tr:has(td.emptyRows) { border: 0; padding: 0; }
+
 }
 
 @media (max-width: 640px) {

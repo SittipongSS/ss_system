@@ -179,7 +179,7 @@ test('(b) ลบแถวที่ค้างตัวสุดท้าย ⇒
     { answeredAt: NOW, status: 'closed' },
   );
   const src = readFileSync(new URL('../../app/api/sa/requests/[id]/items/[itemId]/route.js', import.meta.url), 'utf8');
-  assert.match(src, /requestRowsClosurePatch\(before, remaining, nowIso\)/);
+  assert.match(src, /requestRowsClosurePatch\(before, remaining, nowIso, \{/);
 });
 
 test('(a)(c) ผู้ขอปิดไม่ประทับแทนฝ่าย · ฝ่ายประทับคืนเองได้เมื่อแถวจบครบ', () => {

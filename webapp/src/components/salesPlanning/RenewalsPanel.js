@@ -30,6 +30,7 @@ import { useCan } from "@/lib/roleContext";
 import { fmtDate, fmtName, naText, NA } from "@/lib/format";
 import { usePagination } from "@/lib/usePagination";
 import { apiJson } from "@/lib/apiFetch";
+import { ORDER_PERIOD_END_NOTE } from "@/lib/service/renewals";
 
 export const EMPTY_RENEWAL_COUNTS = { expired: 0, dueIn30: 0, dueSoon: 0, following: 0 };
 
@@ -44,6 +45,8 @@ function dueCell(row) {
       <span className={`cell-sub ${expired ? "cell-num-bad" : ""}`.trim()}>
         {expired ? `เลยมาแล้ว ${Math.abs(row.daysLeft)} วัน` : `อีก ${row.daysLeft} วัน`}
       </span>
+      {/* PR-C: ใบเปิดงานบริการแล้วแต่ยังไม่ผูกสัญญา — วันนี้คือวันจบช่วงบริการของใบ ไม่ใช่ของสัญญา */}
+      {row.endSource === "order_period" && <span className="cell-sub">{ORDER_PERIOD_END_NOTE}</span>}
     </>
   );
 }
@@ -74,6 +77,8 @@ export default function RenewalsPanel({ data, loading = false, error = "", reloa
     if (!q) return rows;
     return rows.filter((row) => [
       row.site?.name, row.site?.customerName, row.order?.orderNumber, row.deal?.title, row.deal?.ownerName,
+      // ตาเห็นบนแถว = ต้องค้นเจอ (ข้อความใต้วันของแถวที่ถอยมาใช้ช่วงบริการของใบ)
+      row.endSource === "order_period" ? ORDER_PERIOD_END_NOTE : null,
     ].some((v) => String(v || "").toLowerCase().includes(q)));
   }, [rows, query]);
 
@@ -206,7 +211,7 @@ export default function RenewalsPanel({ data, loading = false, error = "", reloa
                 <TableEmpty
                   colSpan={6}
                   title="ยังไม่มีไซต์ที่ใกล้หมดรอบ"
-                  description="ไซต์จะขึ้นที่นี่เมื่อสัญญาที่ครอบงานบริการเหลืออายุไม่ถึง 90 วัน หรือหมดไปแล้วโดยยังไม่มีใครปิดเรื่อง"
+                  description="ไซต์จะขึ้นที่นี่เมื่อสัญญาที่ครอบงานบริการ หรือช่วงบริการของใบที่เปิดงานบริการแล้วแต่ยังไม่ผูกสัญญา เหลืออายุไม่ถึง 90 วัน หรือหมดไปแล้วโดยยังไม่มีใครปิดเรื่อง"
                 />
               )}
             </tbody>

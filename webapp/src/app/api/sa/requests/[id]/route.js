@@ -53,8 +53,10 @@ import {
   requestVariantKey, requestVariantLabel,
   requestShapeError,
 } from '@/lib/master/requestTypes';
-import { closureStatus, reopenRequestError, requestClosure } from '@/lib/requests/closure';
-import { requestSideText } from '@/lib/requests/replyTurn';
+import {
+  closureStatus, reopenRequestError, reopenWaitClearPatch, reopenWaitSideError, requestClosure,
+} from '@/lib/requests/closure';
+import { requestActorSide, requestSideText, requestWaitLabel } from '@/lib/requests/replyTurn';
 import { genericAnswerError } from '@/lib/requests/answerVia';
 import { requestEditError, requestEditPatch } from '@/lib/requests/requestEdit';
 import {
@@ -1229,6 +1231,11 @@ export async function PATCH(request, { params }) {
       const reason = String(body.reason ?? '').trim();
       const err = reopenRequestError(before, { reason });
       if (err) return Response.json({ error: err }, { status: /ต้องบอก|ยาวเกิน/.test(err) ? 400 : 409 });
+      /* ⭐ **คนกดบอกว่าใครทำต่อ** (มติผู้ใช้ 2026-09-29 · mig 0391) — คิวไปอยู่ฝั่งนั้นพร้อมป้าย
+         "ยังไม่จบ" จนกว่าฝั่งนั้นจะขยับ · ดูเหตุผลที่ `reopenWaitClearPatch` */
+      const waitSide = body.waitSide;
+      const waitErr = reopenWaitSideError(waitSide);
+      if (waitErr) return Response.json({ error: waitErr }, { status: 400 });
       const closure = requestClosure(before);
       patch.answeredAt = null;
       patch.answeredById = null;
@@ -1237,9 +1244,11 @@ export async function PATCH(request, { params }) {
       patch.closedById = null;
       patch.closedByName = null;
       patch.status = 'acknowledged';
+      patch.reopenWaitSide = waitSide;
+      patch.reopenedAt = nowIso;
       eventReason = reason;
       summary = `ยังไม่จบ — ถอนการปิดของ${closure.deptDone ? before.dept || 'ฝ่ายผู้รับ' : 'ผู้ขอ'}`
-        + ` ${before.docNo || id} — ${reason}`;
+        + ` ${before.docNo || id} — ${requestWaitLabel(before, waitSide, 'ทำต่อ')} — ${reason}`;
     } else if (action === 'close-unassessed') {
       /* ⭐ **ฝ่ายปิดใบโดยไม่ได้ผล** (§5E ③) — ทางออกคู่กับด่าน "ยกเลิกได้ก่อนรับเรื่อง"
          ใบที่ดีลล่มหลังฝ่ายรับเรื่องแล้ว ต้องมีประตูออก ไม่งั้นค้างตลอดกาล
@@ -1311,6 +1320,15 @@ export async function PATCH(request, { params }) {
         : `กรอกเลขที่เอกสาร PDR ${patch.pdrRefNo}`;
     } else {
       return Response.json({ error: 'action ไม่ถูกต้อง' }, { status: 400 });
+    }
+
+    /* ⭐ **ป้าย "ยังไม่จบ" หลุดเมื่อฝั่งที่ถูกรอกดอะไรก็ได้บนใบ หรือมีตราปิดใหม่** (mig 0391) —
+       ที่เดียวของทุก action ในไฟล์นี้ · ปุ่ม "ยังไม่จบ" เองตั้งค่าใหม่ข้างบน ห้ามล้างทิ้ง */
+    if (action !== 'reopen') {
+      Object.assign(patch, reopenWaitClearPatch(before, {
+        side: requestActorSide(user, before),
+        stamps: ['answer', 'close', 'close-unassessed', 'cancel'].includes(action),
+      }));
     }
 
     let saved = null;

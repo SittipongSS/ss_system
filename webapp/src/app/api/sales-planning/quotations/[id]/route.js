@@ -156,7 +156,7 @@ export const GET = withUser(async ({ user, supabase, req, ctx }) => {
      ผ่านด่านดู/ขอบเขตของใบข้างบนแล้ว (รอบของลูกค้าเป็นข้อมูลเปิดอ่านอยู่แล้วที่ทะเบียนลูกค้า)
      ⚠️ อ่านไม่ขึ้น = `{ error }` ในก้อนนี้ ไม่ทำใบล้ม — ดู loadCreateFormBillingTerms */
   const withBillingTerms = new URL(req.url).searchParams.get('include') === 'billingTerms';
-  const billingTerms = withBillingTerms ? await loadCreateFormBillingTerms(supabase, filledQuote.customerId) : undefined;
+  const billingTerms = withBillingTerms ? await loadCreateFormBillingTerms(supabase, filledQuote.customerId, { user }) : undefined;
   const canApprove = canApproveQuotation(user, filledQuote.deal);
   // canApprove: ผู้ใช้ปัจจุบันเป็นเจ้าของดีล/superuser (ผู้อนุมัติ) — UI ใช้แสดงปุ่มอนุมัติ
   return ok({

@@ -3,7 +3,9 @@
 //    และชนิดนี้ **ไม่เด้งกระดิ่ง** · ค่าเดิมรูปรุ่นแรก (0389) เทียบกับรุ่นสองได้ ไม่ขึ้นแถวปลอม
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { billingRuleChangeUpdate, logBillingRuleActivity } from './customerBillingRuleUpdate.js';
+import {
+  billingRuleChangeUpdate, calendarChangeLines, calendarFileIdsToCheck, checkCalendarFiles, logBillingRuleActivity,
+} from './customerBillingRuleUpdate.js';
 import {
   isAuthorableKind, isKnownUpdateKind, isNarrativeUpdateItem, isQuietUpdateKind, isSystemUpdateItem, updateKindMeta,
 } from './updateTypes.js';
@@ -31,9 +33,9 @@ test('แก้ = ประโยคเดิม → ประโยคใหม
   assert.equal(got.meta.action, 'change');
 });
 
-test('⭐ สวิตช์เครดิต: ไม่มีเครดิต ↔ มีเครดิต อ่านออกในเธรด', () => {
-  assert.equal(billingRuleChangeUpdate(null, NO_CREDIT).body, 'ตั้งเครดิตและรอบวางบิล: — → ไม่มีเครดิต');
-  assert.equal(billingRuleChangeUpdate(NO_CREDIT, CREDIT).body, 'แก้เครดิตและรอบวางบิล: ไม่มีเครดิต → วางบิลสิ้นเดือน · เครดิต 30 วัน');
+test('⭐ สวิตช์เครดิต: ไม่มีเครดิต ↔ มีเครดิต อ่านออกในเธรด (ไม่มีเครดิต = "ไม่มีเครดิต · ชำระวันวางบิล" · มติ 28/09)', () => {
+  assert.equal(billingRuleChangeUpdate(null, NO_CREDIT).body, 'ตั้งเครดิตและรอบวางบิล: — → ไม่มีเครดิต · ชำระวันวางบิล');
+  assert.equal(billingRuleChangeUpdate(NO_CREDIT, CREDIT).body, 'แก้เครดิตและรอบวางบิล: ไม่มีเครดิต · ชำระวันวางบิล → วางบิลสิ้นเดือน · เครดิต 30 วัน');
   assert.deepEqual(billingRuleChangeUpdate(null, NO_CREDIT).meta.billingRuleAfter, { credit: false });
 });
 
@@ -70,7 +72,7 @@ test('⭐ หลายรอบ → ไม่มีเครดิต / ล้�
   assert.deepEqual(toNone, {
     head: 'แก้เครดิตและรอบวางบิล',
     old: 'วางบิล 10 → เงินเข้า 25 · วางบิล 25 → เงินเข้า 10 เดือนถัดไป',
-    new: 'ไม่มีเครดิต',
+    new: 'ไม่มีเครดิต · ชำระวันวางบิล',
   });
   const cleared = oldNew(billingRuleChangeUpdate(TWO_ROUNDS, null).body);
   assert.deepEqual(cleared, {
@@ -81,7 +83,7 @@ test('⭐ หลายรอบ → ไม่มีเครดิต / ล้�
 });
 
 test('รอบเดียวทั้งสองฝั่ง (ไม่มีลูกศรในประโยค) ยังเป็นบรรทัดเดียว "เดิม → ใหม่" แบบเดิม', () => {
-  assert.equal(billingRuleChangeUpdate(MONTHLY, NO_CREDIT).body, 'แก้เครดิตและรอบวางบิล: วางบิลทุกวันที่ 5 · เงินเข้าทุกวันที่ 25 → ไม่มีเครดิต');
+  assert.equal(billingRuleChangeUpdate(MONTHLY, NO_CREDIT).body, 'แก้เครดิตและรอบวางบิล: วางบิลทุกวันที่ 5 · เงินเข้าทุกวันที่ 25 → ไม่มีเครดิต · ชำระวันวางบิล');
 });
 
 test('⭐ ค่าเดิมรูปรุ่นแรก (0389) = รุ่นสองตัวเดียวกัน ⇒ ไม่มีอะไรเปลี่ยน (เปิดโมดัลแล้วกดบันทึกเฉย ๆ ต้องไม่ขึ้นแถว)', () => {
@@ -112,6 +114,29 @@ test('ไม่มีอะไรเปลี่ยน = null (route ตอบ u
   assert.equal(billingRuleChangeUpdate(null, null), null);
   assert.equal(billingRuleChangeUpdate({ billing: 'garbage' }, null), null);
   assert.equal(billingRuleChangeUpdate({ billing: 'garbage' }, MONTHLY).meta.action, 'set');
+});
+
+/* ── รุ่นสี่ "ต้องวางบิลไหม" (mig 0393) — ค่าใหม่เป็นรุ่นสี่เสมอ · ค่าเดิมเป็นรูปไหนก็ได้ ─────────────────────────────── */
+const NONE = { v: 4, need: 'none' };
+const NO_TIMING = { v: 4, need: 'required', billing: null };
+test('⭐ รุ่นสี่: ตอบ "ต้องวางบิลไหม" อ่านออกในเธรด (หัว "กำหนดวางบิล") · ค่าเดิมรูปเก่าพูดแบบเดิม · meta เก็บรูปมาตรฐานของรุ่นตัวเอง', () => {
+  const first = billingRuleChangeUpdate(null, NONE);
+  assert.equal(first.body, 'ตั้งกำหนดวางบิล: — → ไม่ต้องวางบิล');
+  assert.deepEqual(first.meta.billingRuleAfter, { v: 4, need: 'none' });
+  assert.equal(billingRuleChangeUpdate(NO_CREDIT, NONE).body, 'แก้กำหนดวางบิล: ไม่มีเครดิต · ชำระวันวางบิล → ไม่ต้องวางบิล',
+    'รูปเดิม { credit:false } ≠ รุ่นสี่ — ตอบคำถามแล้วต้องขึ้นแถวเสมอ');
+  assert.equal(billingRuleChangeUpdate(NONE, NO_TIMING).body, 'แก้กำหนดวางบิล: ไม่ต้องวางบิล → ต้องวางบิล · ยังไม่ตั้งรอบ');
+  assert.equal(billingRuleChangeUpdate(NONE, null).body, 'ล้างกำหนดวางบิล: ไม่ต้องวางบิล → —');
+  assert.deepEqual(billingRuleChangeUpdate(MONTHLY, NONE).meta.billingRuleBefore.billing, { mode: 'monthly', days: [5] },
+    'ค่าเดิมรุ่นสองเก็บรูปรุ่นสองตามเดิม (ย้อนอ่านด้วยเครื่องได้)');
+});
+
+test('⭐ รุ่นสี่: ความหมายเท่ากับค่าเดิมรุ่นสอง = ไม่ขึ้นแถว · แก้แค่หมายเหตุ = บรรทัดหมายเหตุ (ตัวอ่านรุ่นเดิมเห็นรุ่นสี่เป็น null — ห้ามกลับไปใช้)', () => {
+  const credit30 = { v: 4, need: 'required', billing: { mode: 'monthly', days: [31] }, creditDays: 30, runs: null };
+  assert.equal(billingRuleChangeUpdate(CREDIT, credit30), null);
+  const got = billingRuleChangeUpdate({ ...NONE, note: 'โอนก่อนทุกงวด' }, { ...NONE, note: 'โอนก่อน · ส่งสลิปทางไลน์' });
+  assert.equal(got.body, ['แก้หมายเหตุการวางบิล · ค่าอื่นคงเดิม: ไม่ต้องวางบิล', 'หมายเหตุ: โอนก่อนทุกงวด → โอนก่อน · ส่งสลิปทางไลน์'].join('\n'));
+  assert.equal(got.meta.action, 'change');
 });
 
 test('ชนิด billing_rule: ลงทะเบียนเฉพาะลูกค้า · ระบบเขียนเท่านั้น · เป็น log ไม่ใช่บทสนทนา', () => {
@@ -215,4 +240,74 @@ test('ไม่มีอะไรเปลี่ยน = false โดยไม�
   const supabase = fakeSupabase();
   assert.equal(await logBillingRuleActivity(supabase, { customerId: 'CUS-1', before: MONTHLY, after: { ...MONTHLY }, user: USER }), false);
   assert.deepEqual(supabase.touched, []);
+});
+
+/* ── รุ่นห้า: ปฏิทินรายปีของลูกค้า (มติ 29/09 · contracts v5 §6) ─────────────────────────────────────────────── */
+const d26 = (m, d) => `2026-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+const RUNS_2026 = Array.from({ length: 12 }, (_, i) => [{ cutoff: d26(i + 1, 8), pay: d26(i + 1, 15) }, { cutoff: d26(i + 1, 21), pay: d26(i + 1, i === 1 ? 27 : 30) }]).flat();
+const FILE_A = '6f1c2d3e-4a5b-4c6d-8e7f-901234567890';
+const FILE_B = '0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d';
+const cal = ({ credit = 0, runs = RUNS_2026, fileId = '', cutoffTime = '16:00', extra = {} } = {}) => ({
+  v: 4, need: 'required', billing: { mode: 'anyday' }, creditDays: credit,
+  runs: { kind: 'calendar', years: { 2026: { runs, ...(fileId ? { fileId } : {}) }, ...extra }, ...(cutoffTime ? { cutoffTime } : {}) },
+});
+
+test('⭐ ปฏิทิน: แก้วันเดียว = ประโยคกติกาเท่าเดิม ⇒ หัว "แก้ปฏิทินวางบิล" + บรรทัดสรุปการแก้ (ตัวเดียวกับ audit)', () => {
+  const moved = RUNS_2026.map((r) => (r.cutoff === '2026-10-21' ? { ...r, cutoff: '2026-10-22' } : r));
+  const got = billingRuleChangeUpdate(cal(), cal({ runs: moved }));
+  const lines = got.body.split('\n');
+  assert.match(lines[0], /^แก้ปฏิทินวางบิล · ตามปฏิทินลูกค้า ปี 2026 \(24 รอบ\)/);
+  assert.equal(lines[1], 'ปฏิทิน 2026: แก้ 1 รอบ — ต.ค. รอบ 2: ตัด พ. 21 ต.ค. → พฤ. 22 ต.ค.');
+  assert.deepEqual(calendarChangeLines(cal(), cal({ runs: moved })), [lines[1]]);
+  assert.equal(got.meta.action, 'change');
+  /* แก้วัน + หมายเหตุพร้อมกัน — หัวบรรทัดยังเป็น "แก้ปฏิทินวางบิล" ห้ามขึ้น "ค่าอื่นคงเดิม" */
+  const both = billingRuleChangeUpdate(cal(), { ...cal({ runs: moved }), note: 'แนบ PO ทุกครั้ง' }).body.split('\n');
+  assert.match(both[0], /^แก้ปฏิทินวางบิล · /);
+  assert.doesNotMatch(both.join('\n'), /ค่าอื่นคงเดิม/);
+  assert.deepEqual(both.slice(1), ['หมายเหตุ: — → แนบ PO ทุกครั้ง', 'ปฏิทิน 2026: แก้ 1 รอบ — ต.ค. รอบ 2: ตัด พ. 21 ต.ค. → พฤ. 22 ต.ค.']);
+});
+
+test('⭐ ปฏิทิน: แนบรูป · ใส่ปีหน้า · เวลาตัดรอบ — อ่านออกในเธรดทุกแบบ (ไม่ขึ้น "X → X")', () => {
+  assert.deepEqual(calendarChangeLines(cal(), cal({ fileId: FILE_A })), ['แนบรูปปฏิทิน 2026']);
+  const pic = billingRuleChangeUpdate(cal(), cal({ fileId: FILE_A })).body.split('\n');
+  assert.deepEqual([pic[0].startsWith('แก้ปฏิทินวางบิล'), pic[1]], [true, 'แนบรูปปฏิทิน 2026']);
+  const next = RUNS_2026.map((r) => ({ cutoff: r.cutoff.replace('2026', '2027'), pay: r.pay.replace('2026', '2027') }));
+  const year = billingRuleChangeUpdate(cal(), cal({ extra: { 2027: { runs: next } } })).body;
+  assert.match(year, /เพิ่มปฏิทิน 2027 \(24 รอบ\)$/);
+  const time = billingRuleChangeUpdate(cal(), cal({ cutoffTime: null })).body;
+  assert.match(time, /\nเวลาตัดรอบ 16:00 → —$/);
+  assert.equal(billingRuleChangeUpdate(cal(), cal()), null, 'ไม่เปลี่ยน = ไม่มีแถว');
+  assert.deepEqual(calendarChangeLines({ v: 4, need: 'none' }, cal()), [], 'ฝั่งเดียวเป็นปฏิทิน = ประโยคกติกาบอกอยู่แล้ว');
+  assert.deepEqual(calendarChangeLines('พัง', { x: 1 }), []);
+});
+
+test('⭐ รูปปฏิทิน: ตรวจเฉพาะ fileId ที่เพิ่งผูก · ต้องเป็นไฟล์แนบของลูกค้ารายนี้ · อ่านพลาด = 503 ไม่ผ่านเงียบ', async () => {
+  assert.deepEqual(calendarFileIdsToCheck(cal({ fileId: FILE_A }), cal({ fileId: FILE_A })), [], 'รูปเดิม (อาจถูกลบไปแล้ว) ไม่ขวางการแก้');
+  assert.deepEqual(calendarFileIdsToCheck(cal(), cal({ fileId: FILE_B })), [{ year: '2026', fileId: FILE_B }]);
+  assert.deepEqual(calendarFileIdsToCheck(null, { v: 4, need: 'none' }), []);
+
+  const calls = [];
+  const fake = (result) => ({
+    from(table) {
+      const q = {
+        select: () => q,
+        eq: (col, val) => { calls.push(['eq', table, col, val]); return q; },
+        in: (col, vals) => { calls.push(['in', table, col, vals]); return q; },
+        limit: (n) => { calls.push(['limit', table, n]); return Promise.resolve(result); },
+      };
+      return q;
+    },
+  });
+  assert.equal(await checkCalendarFiles(fake({ data: [] }), 'CUS-1', []), null, 'ไม่มีอะไรต้องตรวจ = ไม่แตะฐาน');
+  assert.equal(calls.length, 0);
+  assert.equal(await checkCalendarFiles(fake({ data: [{ id: FILE_B }], error: null }), 'CUS-1', [{ year: '2026', fileId: FILE_B }]), null);
+  assert.deepEqual(calls.map((c) => c.slice(0, 3)), [['eq', 'attachments', 'entityType'], ['eq', 'attachments', 'entityId'], ['in', 'attachments', 'id'], ['limit', 'attachments', 1]]);
+  assert.equal(calls[1][3], 'CUS-1');
+  const other = await checkCalendarFiles(fake({ data: [], error: null }), 'CUS-1', [{ year: '2026', fileId: FILE_B }]);
+  assert.equal(other.status, 400);
+  assert.match(other.error, /ไม่ใช่ไฟล์ของลูกค้ารายนี้/);
+  const down = await checkCalendarFiles(fake({ data: null, error: { message: 'boom' } }), 'CUS-1', [{ year: '2026', fileId: FILE_B }]);
+  assert.equal(down.status, 503);
+  const junk = await checkCalendarFiles(fake({ data: [] }), 'CUS-1', [{ year: '2026', fileId: 'not-a-uuid' }]);
+  assert.equal(junk.status, 400, 'id ที่ไม่ใช่ uuid ตีกลับก่อนถึงฐาน (ไม่ให้ฐานตอบ 22P02 เป็น 500)');
 });

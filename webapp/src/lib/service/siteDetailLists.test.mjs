@@ -56,6 +56,26 @@ test('haystack โซน = ทุกอย่างที่แถววาด +
   assert.ok(zoneHaystack({ ...ZONES[0], isActive: false }).includes('ปิดใช้งาน'));
 });
 
+/* PR-C (R1): ป้ายขายแล้ว/ใบที่ยังถือโซนอยู่บนแถว ⇒ ต้องค้นเจอ (กติกา "ตาเห็นบนแถว = ต้องค้นเจอ") */
+test('haystack โซน = ป้าย "ขายแล้ว n แพ็ค/รอบ" + ป้ายใบที่ยังถือโซนไว้', () => {
+  const sold = zoneHaystack({ ...ZONES[0], sale: { soldLabel: 'ขายแล้ว 4 แพ็ค/รอบ (SO-26090247-0)', pendingLabel: null } });
+  assert.ok(sold.includes('แพ็ค/รอบ'));
+  assert.ok(sold.includes('SO-26090247-0'));
+  assert.equal(matchesQuery(sold, 'แพ็ค/รอบ'), true);
+  const pending = zoneHaystack({
+    ...ZONES[0],
+    sale: {
+      soldLabel: null,
+      pendingLabel: 'อยู่ในใบที่ยังไม่อนุมัติ: SO-26100011-0 (ฉบับร่าง) · อยู่ในใบที่กำลังตั้งงานบริการย้อนหลัง: SO-26080036-0 (ฝ่ายขายกำลังตั้ง)',
+    },
+  });
+  for (const piece of ['ฉบับร่าง', 'กำลังตั้งงานบริการย้อนหลัง', 'SO-26100011-0', 'SO-26080036-0']) {
+    assert.ok(pending.includes(piece), `ค้นไม่เจอ "${piece}"`);
+  }
+  // โซนที่ไม่มีก้อนการขาย (ผู้เรียกเก่า) ต้องไม่พัง
+  assert.doesNotMatch(zoneHaystack(ZONES[0]), /undefined|null/);
+});
+
 test('haystack เครื่อง = รหัส · รุ่น · สี · จุด · โซน · สถานะ · ชนิด · Serial · กลิ่น', () => {
   const a = asset('APM1-260901073', '10278', 'M240', 'ขาว', { kind: 'soap', spot: 'MEN TOILET', serial: 'SN-9', productName: 'กลิ่นลาเวนเดอร์' });
   const hay = assetHaystack(a, BY_ID.get('10278'));

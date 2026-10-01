@@ -1,130 +1,180 @@
-/* เครดิตและรอบวางบิลของลูกค้า — การ์ดบนหน้าลูกค้า + โมดัล (รุ่นสอง · mig 0390 · ม็อก modal-v2/recommended.html)
-   สีจากโทเคนเท่านั้น (สองธีม) · ตรงเสาร์/อาทิตย์เป็นโทน warning — แดงสงวนให้ "เลยกำหนด" (dueDate) กับเหตุข้ามช่องในฟอร์ม
-   ความหมายสี/รูปทรงผูกกันทั้งใบ: วางบิล = --blue + วงกลวง ○ · เงินเข้า = --green + วงทึบ ● · เครดิต = --navy-ink
-   ทึบสีเดียวในโมดัล = ปุ่มบันทึก navy · ตัวที่เลือก = พื้น soft + ขอบสี (แบบ ChoiceChips data-on) */
+/* วางบิลและกำหนดชำระของลูกค้า — การ์ด · โมดัลตั้งค่า · จอ "งวดที่วันจะเปลี่ยน" (รุ่นสี่ · แบบ A "ประโยคนโยบาย" · ม็อก rework-v4/recommended.html)
+   สีจากโทเคนเท่านั้น (สองธีม) · ตรงเสาร์/อาทิตย์เป็นโทน warning — แดงสงวนให้ "เลยกำหนด" (dueDate) กับเหตุบันทึกไม่ได้
+   ความหมายสี/รูปทรงผูกกันทุกจอ: ① ต้องวางบิล = --navy-ink · ไม่ต้องวางบิล = --teal · ② วันวางบิล = --blue + วงกลวง ○ ·
+   ③ กำหนดชำระ = --green + วงทึบ ● · ลำดับ วันวางบิล → กำหนดชำระ เสมอ (เจ้าของ 28/09)
+   ⚠️ ตารางวันที่ (.days) ถูกยืมโดย InstallmentDateFill ด้วย — สีมาจาก --tone ของกล่องแม่ (ไม่มี = น้ำเงิน) */
 
 .nowrap { white-space: nowrap; }
+.muted { color: var(--text-3); font-weight: var(--fw-medium); }
 
-/* ── การ์ด: สถานะเครดิต / ประโยครอบ ─────────────────────────────────── */
-.ruleBox {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2-5);
-  margin: 0 0 var(--space-4);
-  padding: var(--space-3) var(--space-3-5);
-  border: 1px solid color-mix(in srgb, var(--navy-ink) 22%, var(--border));
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--navy-ink) 6%, var(--panel-solid));
-}
-.ruleBox > svg { flex: none; margin-top: var(--space-0-5); color: var(--navy-ink); }
-.ruleBox[data-tone="none"] { border-color: var(--border); background: var(--panel-2); }
-.ruleBox[data-tone="none"] > svg { color: var(--text-2); }
-.ruleKicker {
-  display: block;
-  color: var(--navy-ink);
-  font-size: var(--fs-4);
-  font-weight: var(--fw-semibold);
-  line-height: var(--lh-thai);
-}
-.ruleBox strong {
-  display: block;
-  color: var(--text);
-  font-size: var(--fs-10);
-  font-weight: var(--fw-bold);
-  line-height: var(--lh-thai);
-}
-.ruleBox small {
-  display: block;
-  color: var(--text-3);
-  font-size: var(--fs-4);
-  line-height: var(--lh-thai);
-}
+/* โทนของช่องในประโยค (CSS modules ต้องมีคลาสท้องถิ่นในทุก selector — ผูกกับ .slot) */
+.slot[data-tone="need"] { --tone: var(--navy-ink); }
+.slot[data-tone="none"] { --tone: var(--teal); }
+.slot[data-tone="bill"] { --tone: var(--blue); }
+.slot[data-tone="pay"] { --tone: var(--green); }
 
-.split {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
-  gap: var(--space-4) var(--space-6);
-  align-items: start;
-}
-@media (max-width: 900px) { .split { grid-template-columns: minmax(0, 1fr); } }
-
-.facts { display: flex; flex-direction: column; gap: var(--space-3); margin: 0; }
-.facts > div {
-  display: grid;
-  grid-template-columns: 8.25rem minmax(0, 1fr);
-  gap: var(--space-3);
-  align-items: baseline;
-}
-.facts dt { color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-thai); }
-.facts dd {
-  min-width: 0;
-  margin: 0;
-  color: var(--text);
-  font-size: var(--fs-7);
-  font-weight: var(--fw-semibold);
-  line-height: var(--lh-thai);
-  overflow-wrap: anywhere;
-}
-.facts dd[data-muted] { color: var(--text-3); font-weight: var(--fw-medium); }
-.factSub {
-  display: block;
-  color: var(--text-3);
-  font-size: var(--fs-4);
-  font-weight: var(--fw-medium);
-}
-.factLine {
-  display: block;
-  color: var(--text-2);
-  font-size: var(--fs-6);
-  font-weight: var(--fw-medium);
-}
-@media (max-width: 480px) {
-  .facts > div { grid-template-columns: minmax(0, 1fr); gap: var(--space-0-5); }
-}
-
-/* ── การ์ด: รอบถัดไป ─────────────────────────────────────────────── */
-.next { min-width: 0; }
-.next h3 {
+/* ── ประโยคนโยบาย ① → ② → ③ ─────────────────────────────────────── */
+.sentence {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-1) var(--space-2);
-  margin: 0 0 var(--space-2);
-  color: var(--text-2);
-  font-size: var(--fs-5);
+  gap: var(--space-1-5) var(--space-1);
+  margin: 0;
+  color: var(--text);
+  font-size: var(--fs-9);
+  line-height: var(--lh-thai);
+}
+.sentenceLead { margin-right: var(--space-1); color: var(--text-2); font-size: var(--fs-5); font-weight: var(--fw-semibold); }
+.tx { color: var(--text-2); font-size: var(--fs-6); line-height: var(--lh-thai); }
+.slot {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  max-width: 100%;
+  min-height: 32px;
+  padding: var(--space-0-5) var(--space-2-5);
+  border: 1.5px solid color-mix(in srgb, var(--tone) 50%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--tone) 11%, var(--panel-solid));
+  color: var(--tone);
+  font: inherit;
+  font-size: var(--fs-8);
   font-weight: var(--fw-bold);
   line-height: var(--lh-thai);
+  text-align: left;
+  overflow-wrap: anywhere;
 }
-.next h3 > svg { color: var(--accent-ink); }
-.nextLead,
-.nextFoot {
-  margin: 0 0 var(--space-2);
-  color: var(--text-3);
-  font-size: var(--fs-4);
-  line-height: var(--lh-thai);
-}
-.nextFoot { margin: var(--space-2) 0 0; }
-
-.roundsTable table { width: 100%; font-variant-numeric: tabular-nums; }
-.roundsTable td { white-space: nowrap; }
-.roundNo { color: var(--text-3); font-weight: var(--fw-bold); }
-.roundNoTag {
-  display: block;
-  color: var(--text-3);
+.slot[data-empty] { border-style: dashed; border-color: var(--border-strong); background: var(--panel-solid); color: var(--text-3); font-weight: var(--fw-semibold); }
+button.slot { padding-left: var(--space-1); border-radius: var(--radius-full); cursor: pointer; }
+button.slot:hover { background: color-mix(in srgb, var(--tone) 18%, var(--panel-solid)); }
+button.slot:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+.slotNo {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-full);
+  background: var(--tone);
+  color: var(--panel-solid);
   font-size: var(--fs-3);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-flat);
+}
+.slot[data-empty] .slotNo { background: var(--panel-3); color: var(--text-2); }
+
+/* ── คู่ ○ วันวางบิล → ● กำหนดชำระ ──────────────────────────────── */
+.pairs { display: grid; gap: var(--space-1-5); margin: 0; padding: 0; list-style: none; }
+.pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-2) var(--space-2-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-solid);
+}
+.pair[data-tone="old"] { opacity: var(--op-muted); }
+.pair[data-tone="new"] { border-color: color-mix(in srgb, var(--green) 55%, var(--border)); box-shadow: inset 3px 0 0 var(--green); }
+.pairLead { grid-column: 1 / -1; color: var(--text-2); font-size: var(--fs-4); font-weight: var(--fw-semibold); line-height: var(--lh-thai); }
+.pairSide { display: flex; align-items: flex-start; gap: var(--space-2); min-width: 0; }
+.pairText { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-0-5); min-width: 0; }
+.pairText small { color: var(--text-3); font-size: var(--fs-2); font-weight: var(--fw-semibold); line-height: var(--lh-thai); }
+.pairText b { font-size: var(--fs-6); font-weight: var(--fw-semibold); line-height: var(--lh-thai); font-variant-numeric: tabular-nums lining-nums; }
+.pairText em { color: var(--text-2); font-size: var(--fs-3); font-style: normal; line-height: var(--lh-thai); }
+.pairArrow { align-self: center; color: var(--text-3); text-align: center; }
+.pairs[data-compact] .pair { padding: var(--space-1-5) var(--space-2); }
+.dotBill,
+.dotDue {
+  display: inline-block;
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin-top: var(--space-1-5);
+  border: 2px solid var(--blue);
+  border-radius: var(--radius-full);
+  background: var(--panel-solid);
+}
+.dotDue { border-color: var(--green); background: var(--green); }
+.dotBill[data-off],
+.dotDue[data-off] { border-color: var(--border-strong); background: var(--panel-3); }
+@media (max-width: 480px) {
+  .pair { grid-template-columns: minmax(0, 1fr); }
+  .pairArrow { display: none; }
+}
+
+/* ── ชิปการเตือน ─────────────────────────────────────────────────── */
+.remind { display: flex; flex-wrap: wrap; gap: var(--space-1-5); margin: 0; padding: 0; list-style: none; }
+.remind li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 26px;
+  padding: 0 var(--space-2);
+  border: 1px solid color-mix(in srgb, var(--green) 35%, transparent);
+  border-radius: var(--radius-full);
+  background: var(--green-soft);
+  color: var(--green);
+  font-size: var(--fs-4);
   font-weight: var(--fw-semibold);
   line-height: var(--lh-thai);
 }
-.dateCell { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-1-5); }
-.gap { color: var(--text-3); }
+.remind li[data-off] {
+  border-color: var(--border);
+  background: transparent;
+  color: var(--text-3);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--text-3) 60%, transparent);
+}
 
-/* ── การ์ด: แก้ล่าสุด ────────────────────────────────────────────── */
+/* ═══ การ์ด ═══════════════════════════════════════════════════════ */
+.card { display: grid; gap: var(--space-3-5); min-width: 0; }
+.card .sentence { font-size: var(--fs-10); }
+.legacyNote {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1-5);
+  margin: 0;
+  padding: var(--space-1-5) var(--space-3);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: var(--fs-6);
+  line-height: var(--lh-text);
+  overflow-wrap: anywhere;
+}
+.legacyNote > svg { flex: none; margin-top: var(--space-1); color: var(--text-2); }
+.legacyNote b { color: var(--text-2); font-weight: var(--fw-semibold); }
+.facts { display: grid; gap: var(--space-1-5); margin: 0; padding: 0 0 0 1.2em; color: var(--text); font-size: var(--fs-6); line-height: var(--lh-text); }
+.facts[data-tone="warn"] { color: var(--text); }
+.facts[data-tone="warn"] li::marker { color: var(--amber); }
+.cardHint { margin: 0; color: var(--text-3); font-size: var(--fs-5); line-height: var(--lh-thai); }
+.cardRounds { display: grid; gap: var(--space-2); min-width: 0; }
+.cardRounds .pairs { max-width: 44rem; }
+.cardRounds h3 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  color: var(--text);
+  font-size: var(--fs-7);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-thai);
+}
+.cardRounds h3 small { color: var(--text-3); font-size: var(--fs-3); font-weight: var(--fw-semibold); }
+.cardRemind { display: grid; gap: var(--space-1-5); }
+.cardRemind > small { color: var(--text-3); font-size: var(--fs-3); font-weight: var(--fw-semibold); line-height: var(--lh-thai); }
+.cardNote { display: flex; align-items: flex-start; gap: var(--space-1-5); margin: 0; color: var(--text-2); font-size: var(--fs-6); line-height: var(--lh-text); }
+.cardNote > svg { flex: none; margin-top: var(--space-1); }
 .meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-1) var(--space-3);
-  margin: var(--space-4) calc(-1 * var(--panel-inset)) calc(-1 * var(--space-4));
+  margin: var(--space-1) calc(-1 * var(--panel-inset)) calc(-1 * var(--space-4));
   padding: var(--space-3) var(--panel-inset);
   border-top: 1px solid var(--border);
   background: color-mix(in srgb, var(--panel-2) 55%, transparent);
@@ -134,58 +184,9 @@
 }
 .metaItem { display: inline-flex; align-items: center; gap: var(--space-1-5); }
 .metaItem b { color: var(--text-2); font-weight: var(--fw-semibold); }
-.metaOk {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  color: var(--green);
-  font-weight: var(--fw-semibold);
-}
+.metaOk { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--green); font-weight: var(--fw-semibold); }
 
-/* ── การ์ด: ยังไม่ระบุ ────────────────────────────────────────────── */
-.empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-5) var(--space-4) var(--space-4);
-  text-align: center;
-}
-.emptyIcon {
-  display: grid;
-  place-items: center;
-  width: 2.75rem;
-  height: 2.75rem;
-  border-radius: var(--radius-full);
-  background: var(--panel-2);
-  color: var(--text-3);
-}
-.empty strong { color: var(--text); font-size: var(--fs-9); line-height: var(--lh-thai); }
-.empty p {
-  max-width: 35rem;
-  margin: 0;
-  color: var(--text-3);
-  font-size: var(--fs-6);
-  line-height: var(--lh-text);
-}
-.empty > :last-child:not(p):not(strong) { margin-top: var(--space-2); }
-/* ข้อความเครดิตเดิม (อ่านอย่างเดียว) — ช่องเส้นประแบบ "ค่าที่ระบบรู้แล้ว" */
-.empty .legacyNote {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-1-5);
-  padding: var(--space-1-5) var(--space-3);
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--radius);
-  background: var(--panel-2);
-  color: var(--text);
-  text-align: left;
-  overflow-wrap: anywhere;
-}
-.legacyNote > svg { flex: none; margin-top: var(--space-1); color: var(--text-2); }
-.legacyNote b { color: var(--text-2); font-weight: var(--fw-semibold); }
-
-/* ═══ โมดัล ═══════════════════════════════════════════════════════════ */
+/* ═══ โมดัล ═══════════════════════════════════════════════════════ */
 
 /* แถบบน: เงื่อนไขเครดิตเดิม (อ่านอย่างเดียว · สองบรรทัด · ดูทั้งหมดเมื่อยาวกว่านั้น) */
 .legacy { display: flex; align-items: flex-start; gap: var(--space-2-5); width: 100%; padding: var(--space-1) 0; }
@@ -193,7 +194,6 @@
   flex: none;
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1-5);
   min-height: 26px;
   color: var(--text-2);
   font-size: var(--fs-4);
@@ -220,60 +220,64 @@
 .legacyText[data-open] { display: block; -webkit-line-clamp: unset; line-clamp: none; }
 .legacyMore { flex: none; }
 
-/* เนื้อ: สองคอลัมน์ · ขวา (ผล) ตรึงในโซนเลื่อน */
+/* แถบประโยคบนสุดของเนื้อ — แตะช่องไหน = เลื่อนไปข้อนั้น */
+.sentBar {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-2-5) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+}
+
+/* เนื้อ: สองคอลัมน์ · ขวา (ผลก่อนบันทึก) ตรึงในโซนเลื่อน */
 .layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 0.94fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 20rem);
   grid-template-rows: auto 1fr;
-  grid-template-areas: "steps aside" "extra aside";
-  column-gap: var(--space-6);
-  row-gap: var(--space-2-5);
+  grid-template-areas: "qs aside" "extra aside";
+  gap: var(--space-5) var(--space-6);
   align-items: start;
 }
-.steps { grid-area: steps; display: grid; gap: var(--space-3-5); min-width: 0; }
+.qs { grid-area: qs; display: grid; gap: var(--space-5); min-width: 0; }
 .extra { grid-area: extra; display: grid; gap: var(--space-3); min-width: 0; }
-
-/* ขั้น — --tone ผูกสีของขั้น (เครดิต navy · ① วางบิล น้ำเงิน · ② เงินเข้า เขียว) */
-.step { display: grid; gap: var(--space-2); min-width: 0; --tone: var(--blue); --tone-soft: var(--blue-soft); }
-.stepCredit { --tone: var(--navy-ink); --tone-soft: color-mix(in srgb, var(--navy-ink) 10%, var(--panel-solid)); }
-.stepPay { --tone: var(--green); --tone-soft: var(--green-soft); }
-.stepHead { display: flex; align-items: center; gap: var(--space-2); min-height: 26px; }
-.stepHead h4 { margin: 0; color: var(--text); font-size: var(--fs-9); font-weight: var(--fw-semibold); line-height: var(--lh-thai); }
-.stepNo,
-.stepIcon {
+.q { display: grid; gap: var(--space-2-5); min-width: 0; --tone: var(--navy-ink); --tone-soft: color-mix(in srgb, var(--navy-ink) 10%, var(--panel-solid)); }
+.qBill { --tone: var(--blue); --tone-soft: var(--blue-soft); }
+.qPay { --tone: var(--green); --tone-soft: var(--green-soft); }
+.q[data-skip] { opacity: var(--op-muted); }
+.q[data-flag] { padding: var(--space-2); margin: calc(-1 * var(--space-2)); border-radius: var(--radius-md); box-shadow: 0 0 0 2px color-mix(in srgb, var(--amber) 45%, transparent); }
+.qHead { display: flex; align-items: flex-start; gap: var(--space-2-5); }
+.qHead h3 { margin: 0; color: var(--text); font-size: var(--fs-10); font-weight: var(--fw-bold); line-height: var(--lh-thai); }
+.qHead p { margin: 0; color: var(--text-2); font-size: var(--fs-5); line-height: var(--lh-thai); }
+.qNo {
   display: grid;
   place-items: center;
   flex: none;
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   border: 2px solid var(--tone);
   border-radius: var(--radius-full);
-  background: var(--panel-solid);
-  color: var(--tone);
-  font-size: var(--fs-4);
-  font-weight: var(--fw-bold);
-  line-height: var(--lh-flat);
-  font-variant-numeric: tabular-nums;
-}
-.stepPay .stepNo { background: var(--tone); color: var(--panel-solid); }
-.stepState {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  min-width: 0;
-  margin-left: auto;
   color: var(--tone);
   font-size: var(--fs-5);
-  font-weight: var(--fw-semibold);
-  line-height: var(--lh-thai);
-  text-align: right;
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-flat);
 }
-.stepState > svg { flex: none; }
-.stepState[data-tone="muted"] { color: var(--text-2); font-weight: var(--fw-medium); }
-.stepState[data-tone="warn"] { color: var(--amber); }
-.stepState[data-tone="danger"] { color: var(--red); }
+.qNo[data-done] { border-color: var(--green); background: var(--green); color: var(--panel-solid); }
+.clue {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1-5);
+  margin: 0;
+  padding: var(--space-2) var(--space-2-5);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-text);
+  overflow-wrap: anywhere;
+}
+.clue > svg { flex: none; margin-top: var(--space-1); }
 
-/* Segmented + className (ไม่แก้ component): สองบรรทัด · ตัวที่เลือก = วงขอบสีของขั้น ไม่เติมส้ม */
+/* Segmented + className (ไม่แก้ component): สองบรรทัด · ตัวที่เลือก = วงขอบสีของข้อ */
 .seg:global(.segmented) {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -286,7 +290,7 @@
   align-items: flex-start;
   justify-content: center;
   min-width: 0;
-  min-height: 42px;
+  min-height: 46px;
   padding: var(--space-1) var(--space-3);
   color: var(--text);
   text-align: left;
@@ -300,38 +304,10 @@
   box-shadow: var(--shadow-sm), inset 0 0 0 1.5px var(--tone);
 }
 .seg:global(.segmented) > button[aria-pressed="true"] .segMain { color: var(--tone); }
-.seg:global(.segmented) > button:disabled { opacity: 1; cursor: not-allowed; }
-.seg:global(.segmented) > button:disabled .segMain { color: var(--text-3); }
-.segBadM0:global(.segmented) > button:nth-child(2) { box-shadow: var(--shadow-sm), inset 0 0 0 1.5px var(--red); }
-.segBadM0:global(.segmented) > button:nth-child(2) .segMain,
-.segBadM0:global(.segmented) > button:nth-child(2) .segSub { color: var(--red); }
-.segFlag:global(.segmented) { box-shadow: 0 0 0 2px color-mix(in srgb, var(--amber) 40%, transparent); }
 .segText { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
 .segMain { color: var(--text); font-size: var(--fs-7); font-weight: var(--fw-semibold); line-height: var(--lh-thai); }
 .segSub { color: var(--text-2); font-size: var(--fs-3); font-weight: var(--fw-medium); line-height: var(--lh-thai); }
-
-/* ทางลัด (ม็อก B): ชิปเส้นประ แตะเองได้ = ไม่ใช่ค่าตั้งต้น */
-.quick {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-1-5) var(--space-2);
-  padding-bottom: var(--space-3);
-  border-bottom: 1px solid var(--border);
-}
-.quickKey {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  color: var(--text-2);
-  font-size: var(--fs-4);
-  font-weight: var(--fw-semibold);
-  line-height: var(--lh-thai);
-}
-.quick .quickChip:global(.choice-chip) { color: var(--text-2); font-weight: var(--fw-semibold); }
-.quick .quickChip:global(.choice-chip):hover:not(:disabled) { border-color: var(--text-2); }
-.quick .quickChip:global(.choice-chip)[data-on] { border-style: solid; border-color: var(--text-2); background: var(--panel-3); color: var(--text); }
-.quickNote { color: var(--text-2); font-size: var(--fs-4); line-height: var(--lh-thai); }
+.skipBtn { justify-self: start; }
 
 /* ตารางวันที่ = .choice-chip ของระบบ ห่อด้วย .days (primitive ไม่แก้) · 1–30 + "31 · สิ้นเดือน"
    ⭐ ไม่ใช่ปฏิทินรายสัปดาห์ (มติเจ้าของ 26/09) — จอกว้าง 8 คอลัมน์ · มือถือ 6 · ห้าม 7 (อ่านเป็นสัปดาห์) */
@@ -350,12 +326,12 @@
   font-variant-numeric: tabular-nums lining-nums;
 }
 .days > .dayEnd:global(.choice-chip) { grid-column: span 2; font-size: var(--fs-5); }
-.days > :global(.choice-chip):hover:not([aria-disabled="true"]) { border-color: var(--tone); background: var(--panel-solid); }
+.days > :global(.choice-chip):hover:not([aria-disabled="true"]) { border-color: var(--tone, var(--blue)); background: var(--panel-solid); }
 .days > :global(.choice-chip)[data-on] {
-  border-color: var(--tone);
-  background: var(--tone-soft);
-  color: var(--tone);
-  box-shadow: inset 0 0 0 1px var(--tone);
+  border-color: var(--tone, var(--blue));
+  background: var(--tone-soft, var(--blue-soft));
+  color: var(--tone, var(--blue));
+  box-shadow: inset 0 0 0 1px var(--tone, var(--blue));
 }
 .days > .dayBill:global(.choice-chip)::after {
   content: "";
@@ -395,41 +371,16 @@
 .hint > svg { flex: none; margin-top: var(--space-1); }
 .hint[data-tone="warn"] { color: var(--amber); font-weight: var(--fw-semibold); }
 
-/* เหตุข้ามช่อง — ที่เดียว ใต้ข้อ ② พร้อมปุ่มแก้แตะเดียว (ม็อก A) */
-.crossError {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2) var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid color-mix(in srgb, var(--red) 35%, var(--border));
-  border-radius: var(--radius-md);
-  background: var(--red-soft);
-}
-.crossError > svg { flex: none; align-self: flex-start; margin-top: var(--space-1); color: var(--red); }
-.crossError p { flex: 1 1 200px; min-width: 0; margin: 0; color: var(--text); font-size: var(--fs-6); line-height: var(--lh-text); }
-.crossError b { color: var(--red); font-weight: var(--fw-semibold); }
-.crossError > :global(.btn) { flex: none; margin-left: auto; background: var(--panel-solid); }
-
-/* เครดิต: ชิปที่ใช้บ่อย + ช่องพิมพ์ */
+/* ③ เครดิต: ชิปที่ใช้บ่อย + ช่องพิมพ์ */
 .creditPay { display: grid; gap: var(--space-2); }
-.creditChips :global(.choice-chip) { font-weight: var(--fw-semibold); }
-.creditChips :global(.choice-chip):hover:not(:disabled) { border-color: var(--green); }
-.creditChips :global(.choice-chip)[data-on] { border-color: var(--green); background: var(--green-soft); color: var(--green); }
-.creditRow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--text-2);
-  font-size: var(--fs-6);
-  line-height: var(--lh-thai);
-}
+.creditPay :global(.choice-chip) { font-weight: var(--fw-semibold); }
+.creditPay :global(.choice-chip)[data-on] { border-color: var(--green); background: var(--green-soft); color: var(--green); }
+.creditRow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); color: var(--text-2); font-size: var(--fs-6); line-height: var(--lh-thai); }
 .num { width: 4.5rem; text-align: center; font-variant-numeric: tabular-nums; }
 
-/* หลายรอบ: แถวละรอบ "รอบวันที่ 10 → เงินเข้า [วันที่] [เดือนเดียวกัน|ถัดไป]" · ตารางวันด้านล่างแก้รอบที่เลือกอยู่ */
-.payRows { display: grid; gap: var(--space-1-5); margin: 0; padding: 0; list-style: none; }
-.payRows li {
+/* ③ ตามรอบจ่าย: แถวละรอบ "○ วางบิลวันที่ 5 → [● วันจ่าย] [เดือนเดียวกัน|เดือนถัดไป]" · ตารางด้านล่างแก้รอบที่เลือกอยู่ */
+.runRows { display: grid; gap: var(--space-1-5); margin: 0; padding: 0; list-style: none; }
+.runRows li {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -442,25 +393,17 @@
   font-size: var(--fs-6);
   line-height: var(--lh-thai);
 }
-.payRows li[data-active] {
-  border-color: color-mix(in srgb, var(--green) 55%, var(--border));
-  box-shadow: inset 3px 0 0 var(--green);
-}
-.payRows li[data-bad] { border-color: color-mix(in srgb, var(--red) 45%, var(--border)); background: var(--red-soft); }
-.payRowName { display: inline-flex; align-items: center; gap: var(--space-1-5); color: var(--text); font-weight: var(--fw-semibold); }
-.payRowArrow { flex: none; color: var(--text-3); }
-.payRows .payRowDay:global(.choice-chip) { min-height: 28px; color: var(--text); font-weight: var(--fw-semibold); }
-.payRows .payRowDay:global(.choice-chip)[data-on] { border-color: var(--green); background: var(--green-soft); color: var(--green); }
+.runRows li[data-active] { border-color: color-mix(in srgb, var(--green) 55%, var(--border)); box-shadow: inset 3px 0 0 var(--green); }
+.runName { display: inline-flex; align-items: center; gap: var(--space-1-5); color: var(--text); font-weight: var(--fw-semibold); }
+.runName .dotBill,
+.runDay .dotDue { margin-top: 0; }
+.runArrow { color: var(--text-3); }
+.runRows .runDay:global(.choice-chip) { gap: var(--space-1-5); min-height: 28px; color: var(--text); font-weight: var(--fw-semibold); }
+.runRows .runDay:global(.choice-chip)[data-on] { border-color: var(--green); background: var(--green-soft); color: var(--green); }
 .miniSeg:global(.segmented) { margin-left: auto; padding: var(--space-0-5); }
 .miniSeg:global(.segmented) > button { min-height: 26px; padding: var(--space-0-5) var(--space-2); font-size: var(--fs-4); color: var(--text-2); }
-.miniSeg:global(.segmented) > button[aria-pressed="true"] {
-  background: var(--panel-solid);
-  color: var(--green);
-  box-shadow: var(--shadow-sm), inset 0 0 0 1.5px var(--green);
-}
-.payRows li[data-m0-blocked] .miniSeg:global(.segmented) > button:first-child { color: var(--text-3); cursor: help; }
-/* เหตุของ "เดือนเดียวกัน" ที่ใช้ไม่ได้ — ขึ้นใต้แถวเมื่อกดเท่านั้น (ปุ่มจางแต่กดได้ = บอกเหตุตอนกด) */
-.payRowWhy {
+.miniSeg:global(.segmented) > button[aria-pressed="true"] { background: var(--panel-solid); color: var(--green); box-shadow: var(--shadow-sm), inset 0 0 0 1.5px var(--green); }
+.runWhy {
   display: flex;
   flex-basis: 100%;
   align-items: flex-start;
@@ -471,337 +414,163 @@
   font-weight: var(--fw-semibold);
   line-height: var(--lh-thai);
 }
-.payRowWhy > svg { flex: none; margin-top: var(--space-1); }
+.runWhy > svg { flex: none; margin-top: var(--space-1); }
 .gridCaption { margin: 0; color: var(--text-2); font-size: var(--fs-4); line-height: var(--lh-thai); }
 .gridCaption b { color: var(--text); font-weight: var(--fw-semibold); }
 
-/* หมายเหตุ (ไม่บังคับ) — พับไว้ */
-.noteAdd { justify-self: start; color: var(--navy-ink); }
-.opt { color: var(--text-2); font-weight: var(--fw-medium); }
-.noteField { display: grid; gap: var(--space-1-5); }
-.noteKey { color: var(--text-2); font-size: var(--fs-4); font-weight: var(--fw-semibold); line-height: var(--lh-thai); }
+/* ② ตามปฏิทินลูกค้า (รุ่นห้า) — โมดัลกว้างขึ้น (ตาราง | รูปของลูกค้า) · ผลก่อนบันทึกลงใต้ข้อ ③ (ข้างตารางเป็นที่ของรูป) */
+.calModal:global(.drawer.xl) { max-width: min(1240px, 100%); }
+.layout[data-wide] { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-template-areas: "qs" "aside" "extra"; }
+.layout[data-wide] .aside { position: static; }
 
-/* ── ขวา: ผลของสิ่งที่เลือก (กล่องเดียว ไม่ซ้อนกล่อง) ── */
-.aside {
-  grid-area: aside;
-  position: sticky;
-  top: 0;
-  min-width: 0;
-  container-type: inline-size;
-  display: grid;
-  gap: var(--space-3);
-  padding: var(--space-3-5) var(--space-4) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--panel-2);
-}
-.node {
-  display: inline-block;
-  flex: none;
-  width: 10px;
-  height: 10px;
-  border: 2px solid var(--blue);
-  border-radius: var(--radius-full);
-  background: var(--panel-solid);
-}
-.nodeFill { border-color: var(--green); background: var(--green); }
-.nodeGhost { border-color: var(--border-strong); background: var(--panel-3); }
-.dash { color: var(--text-3); font-weight: var(--fw-medium); }
-
-/* ประโยคกติกา ○ วางบิล … / ● เงินเข้า … */
-.sent { display: grid; gap: var(--space-1); }
-.sentLine { position: relative; display: grid; grid-template-columns: 10px auto minmax(0, 1fr); column-gap: var(--space-2); align-items: start; }
-.sentLine > .node { margin-top: var(--space-2); }
-.sentBill::after {
-  content: "";
-  position: absolute;
-  left: 4px;
-  top: 21px;
-  width: 2px;
-  height: calc(100% - 17px + var(--space-1));
-  border-radius: var(--radius-full);
-  background: var(--border-strong);
-}
-.sentKey { min-width: 3.4em; padding-top: var(--space-0-5); color: var(--text-2); font-size: var(--fs-6); font-weight: var(--fw-medium); line-height: var(--lh-thai); }
-.sentValue { min-width: 0; color: var(--text); font-size: var(--fs-10); font-weight: var(--fw-semibold); line-height: var(--lh-thai); }
-.sentValue small { color: var(--text-2); font-size: var(--fs-5); font-weight: var(--fw-medium); }
-.sentRounds { display: grid; gap: var(--space-0-5); font-size: var(--fs-8); }
-
-.rhead {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0 var(--space-3);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
-}
-.rhead h4 {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1-5);
-  margin: 0;
-  color: var(--text);
-  font-size: var(--fs-7);
-  font-weight: var(--fw-bold);
-  line-height: var(--lh-thai);
-}
-.rhead h4 > svg { align-self: center; color: var(--navy-ink); }
-.today { color: var(--text-2); font-size: var(--fs-4); line-height: var(--lh-thai); }
-.lead { margin: calc(var(--space-2) * -1) 0 0; color: var(--text-2); font-size: var(--fs-5); line-height: var(--lh-thai); }
-.lead b { color: var(--text); font-weight: var(--fw-semibold); }
-
-/* เส้นเวลา (ม็อก C) — SVG พิกัดเปอร์เซ็นต์ · ○ วางบิล → ● เงินเข้า บนแกนเดือน */
-.strip { display: block; overflow: visible; }
-.svgMonth { fill: var(--text-2); font-size: var(--fs-3); font-weight: var(--fw-semibold); }
-.svgEdge { stroke: var(--border-strong); stroke-width: 1; stroke-dasharray: 3 3; }
-.svgTrack { fill: var(--panel-3); }
-.svgTrackAlt { fill: color-mix(in srgb, var(--text) 7%, var(--panel-3)); }
-.svgSpan { stroke: var(--green); stroke-width: 2; }
-.svgSpanBack { stroke: var(--red); stroke-width: 2; stroke-dasharray: 4 3; }
-.svgSpanPending { stroke: var(--text-3); stroke-width: 2; stroke-dasharray: 4 3; }
-.svgSpanGhost { stroke: var(--border-strong); stroke-width: 2; stroke-dasharray: 4 3; }
-.svgHead { fill: var(--green); }
-.svgHeadBack { fill: var(--red); }
-.svgSpanLabel {
-  fill: var(--green);
-  font-size: var(--fs-4);
-  font-weight: var(--fw-bold);
-  paint-order: stroke;
-  stroke: var(--panel-2);
-  stroke-width: 6px;
-  stroke-linejoin: round;
-}
-.svgSpanLabelMuted { fill: var(--text-2); font-weight: var(--fw-semibold); }
-.svgSpanLabelBack { fill: var(--red); }
-.svgNode { fill: var(--panel-solid); stroke: var(--blue); stroke-width: 2.5; }
-.svgNodeFill { fill: var(--green); stroke: var(--green); stroke-width: 2.5; }
-.svgNodeBad { fill: var(--red); stroke: var(--red); stroke-width: 2.5; }
-.svgNodeGhost { fill: var(--panel-3); stroke: var(--border-strong); stroke-width: 2; }
-.svgMark { fill: var(--text-2); font-size: var(--fs-4); }
-.svgMarkKey { fill: var(--text); font-weight: var(--fw-semibold); }
-
-/* รอบถัดไป — แถว ○ วันวางบิล ──ห่าง── ● วันเงินเข้า · กล่องแคบ = ซ้อนสองบรรทัด */
-.rounds { margin: 0; padding: 0; list-style: none; }
-.rounds li {
-  display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) auto;
-  grid-template-areas: "n b g" "n p p";
-  column-gap: var(--space-2);
-  row-gap: var(--space-0-5);
-  padding: var(--space-2) 0;
-  border-top: 1px solid var(--border);
-}
-.rounds li:first-child { padding-top: var(--space-1); border-top: 0; }
-.rn {
-  grid-area: n;
-  padding-top: var(--space-0-5);
-  color: var(--text-2);
-  font-size: var(--fs-4);
-  font-weight: var(--fw-bold);
-  line-height: var(--lh-thai);
-  font-variant-numeric: tabular-nums;
-}
-.rb { grid-area: b; position: relative; }
-.rp { grid-area: p; }
-.rg {
-  grid-area: g;
-  align-self: center;
-  color: var(--text-2);
-  font-size: var(--fs-4);
-  line-height: var(--lh-thai);
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-.arr { display: none; }
-.rline {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-0-5) var(--space-1-5);
-  min-width: 0;
-  color: var(--text);
-  font-size: var(--fs-7);
-  line-height: var(--lh-thai);
-}
-.rline b { font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums lining-nums; }
-.rb::after {
-  content: "";
-  position: absolute;
-  left: 4px;
-  top: calc(50% + 5px);
-  width: 2px;
-  height: calc(100% - 8px);
-  border-radius: var(--radius-full);
-  background: var(--border-strong);
-}
-.sk { display: inline-block; width: 96px; height: 10px; border-radius: var(--radius-full); background: var(--panel-3); }
-.skWide { width: 110px; }
-@container (min-width: 520px) {
-  .rounds li {
-    grid-template-columns: 16px 13.5em minmax(72px, 1fr) minmax(0, 13.5em);
-    grid-template-areas: "n b g p";
-    align-items: center;
-  }
-  .rb::after { display: none; }
-  .rg { position: relative; display: flex; justify-content: center; align-items: center; padding-right: var(--space-2); }
-  .rg::before { content: ""; position: absolute; left: 0; right: 14px; top: 50%; border-top: 1.5px solid var(--border-strong); }
-  .arr {
-    display: block;
-    position: absolute;
-    right: 6px;
-    top: 50%;
-    width: 7px;
-    height: 7px;
-    border-top: 1.5px solid var(--text-3);
-    border-right: 1.5px solid var(--text-3);
-    transform: translateY(-50%) rotate(45deg);
-  }
-  .rg span { position: relative; padding: 0 var(--space-1-5); background: var(--panel-2); }
-}
-.fix {
-  margin: 0;
-  padding: var(--space-2) var(--space-3);
-  border: 1px dashed color-mix(in srgb, var(--green) 55%, var(--border));
-  border-radius: var(--radius-md);
-  background: var(--panel-solid);
-  color: var(--text-2);
-  font-size: var(--fs-5);
-  line-height: var(--lh-text);
-}
-.fix b { color: var(--text); font-weight: var(--fw-semibold); }
-.visFoot { margin: 0; color: var(--text-2); font-size: var(--fs-4); line-height: var(--lh-thai); }
-
-/* ไม่มีเครดิต — กล่องผลบอกว่าอะไรเกิดขึ้นบนใบสั่งขาย */
-.noneBox { display: grid; gap: var(--space-2); }
-.noneTitle {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0;
-  color: var(--text);
-  font-size: var(--fs-10);
-  font-weight: var(--fw-bold);
-  line-height: var(--lh-thai);
-}
-.noneTitle > svg { flex: none; color: var(--text-2); }
-.noneBox ul {
-  display: grid;
-  gap: var(--space-0-5);
-  margin: 0;
-  padding-left: 1.2em;
-  color: var(--text-2);
-  font-size: var(--fs-6);
-  line-height: var(--lh-text);
-}
-
-/* ── ท้าย: เหตุ/เหลือ + คำรับประกัน · ปุ่ม ── */
-.foot { display: flex; align-items: center; gap: var(--space-3); width: 100%; }
-.footInfo { display: grid; gap: var(--space-0-5); min-width: 0; margin-right: auto; }
-.status {
+/* ผลก่อนบันทึกของปฏิทิน: ปฏิทินหมด (หยุด ไม่เดา) · ตัวอย่างกระดิ่งวันตัดรอบ */
+.pvGap {
   display: flex;
   align-items: flex-start;
   gap: var(--space-1-5);
   margin: 0;
+  padding: var(--space-1-5) var(--space-2-5);
+  border: 1px dashed var(--amber);
+  border-radius: var(--radius);
+  background: var(--amber-soft);
+  color: var(--text);
   font-size: var(--fs-5);
   font-weight: var(--fw-semibold);
   line-height: var(--lh-thai);
 }
+.pvGap > svg { flex: none; margin-top: var(--space-1); color: var(--amber); }
+.bellPv { display: grid; gap: var(--space-1); padding: var(--space-2) var(--space-2-5); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--panel-solid); }
+.bellPv p { margin: 0; color: var(--text); font-size: var(--fs-5); line-height: var(--lh-text); }
+.bellPv small { color: var(--text-3); font-size: var(--fs-3); line-height: var(--lh-thai); }
+.bellAt { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--navy-ink); font-size: var(--fs-3); font-weight: var(--fw-bold); line-height: var(--lh-thai); }
+
+/* ═══ การ์ด: ปฏิทินรายปี (ครอบถึง · แถบขอปฏิทิน · เวลาตัดรอบ · รูปต่อปี) ═══ */
+.calBox { display: grid; gap: var(--space-2); min-width: 0; }
+.calLine { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); margin: 0; color: var(--text); font-size: var(--fs-6); line-height: var(--lh-thai); }
+.calLine > svg { flex: none; color: var(--text-2); }
+.calLine b { font-weight: var(--fw-semibold); }
+.calLine small { color: var(--text-2); font-size: var(--fs-4); }
+.calFile { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--accent-ink); font-size: var(--fs-4); line-height: var(--lh-thai); text-decoration: none; }
+.calFile:hover { text-decoration: underline; }
+.calAsk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2-5) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--amber) 45%, var(--border));
+  border-radius: var(--radius-md);
+  background: var(--amber-soft);
+}
+.calAsk > svg { flex: none; margin-top: var(--space-1); color: var(--amber); }
+.calAskText { flex: 1 1 16rem; min-width: 0; }
+.calAskText b { display: block; color: var(--text); font-size: var(--fs-7); line-height: var(--lh-thai); }
+.calAskText p { margin: 0; color: var(--text-2); font-size: var(--fs-5); line-height: var(--lh-text); }
+
+/* หมายเหตุ (ไม่บังคับ) */
+.noteField { display: grid; gap: var(--space-1-5); }
+.noteKey { color: var(--text-2); font-size: var(--fs-5); font-weight: var(--fw-semibold); line-height: var(--lh-thai); }
+.opt { color: var(--text-3); font-weight: var(--fw-medium); }
+
+/* ── ขวา: ผลก่อนบันทึก (กล่องเดียว ไม่ซ้อนกล่อง) ── */
+.aside {
+  grid-area: aside;
+  position: sticky;
+  top: 0;
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel-2);
+}
+.pvHead { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-0-5) var(--space-2); margin: 0; color: var(--text); font-size: var(--fs-8); font-weight: var(--fw-bold); line-height: var(--lh-thai); }
+.pvHead small { flex-basis: 100%; color: var(--text-3); font-size: var(--fs-3); font-weight: var(--fw-semibold); }
+.pvText { display: flex; align-items: flex-start; gap: var(--space-1-5); margin: 0; color: var(--text-2); font-size: var(--fs-5); line-height: var(--lh-text); }
+.pvText > svg { flex: none; margin-top: var(--space-1); }
+.pvFoot { margin: 0; color: var(--text-3); font-size: var(--fs-3); line-height: var(--lh-thai); }
+.pvEmpty { display: grid; justify-items: center; gap: var(--space-1-5); padding: var(--space-5) var(--space-3); color: var(--text-3); text-align: center; }
+.pvEmpty p { margin: 0; font-size: var(--fs-5); line-height: var(--lh-text); }
+.pvEmpty b { display: block; color: var(--text-2); font-size: var(--fs-7); }
+.pvBlock { display: grid; gap: var(--space-1-5); padding-top: var(--space-2); border-top: 1px solid var(--border); }
+.pvBlock h5 { display: flex; align-items: center; gap: var(--space-1-5); margin: 0; color: var(--text); font-size: var(--fs-6); font-weight: var(--fw-semibold); line-height: var(--lh-thai); }
+.pvBlock p { margin: 0; color: var(--text-2); font-size: var(--fs-4); line-height: var(--lh-text); }
+.aside .facts { font-size: var(--fs-5); }
+
+/* ── ท้าย: เหตุ/409 (เต็มแถว) · สรุป + ใครแก้ล่าสุด · ปุ่ม ── */
+.foot { display: grid; gap: var(--space-2); width: 100%; }
+.footRow { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
+.footInfo { display: grid; gap: var(--space-0-5); min-width: 0; margin-right: auto; }
+.footSum { display: flex; align-items: flex-start; gap: var(--space-1-5); margin: 0; color: var(--text); font-size: var(--fs-5); font-weight: var(--fw-semibold); line-height: var(--lh-thai); }
+.footSum[data-tone="muted"] { color: var(--text-2); font-weight: var(--fw-medium); }
+.footSum > svg { flex: none; margin-top: var(--space-1); }
+.status { display: flex; align-items: flex-start; gap: var(--space-1-5); margin: 0; font-size: var(--fs-5); font-weight: var(--fw-semibold); line-height: var(--lh-thai); }
 .status > svg { flex: none; margin-top: var(--space-1); }
 .status[data-tone="warn"] { color: var(--amber); }
 .status[data-tone="danger"] { color: var(--red); }
-.status[data-tone="muted"] { color: var(--text-2); font-weight: var(--fw-medium); }
-.shield {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1-5);
-  margin: 0;
-  color: var(--text-2);
-  font-size: var(--fs-4);
-  line-height: var(--lh-thai);
-}
-.shield > svg { flex: none; color: var(--green); }
+.shield { display: flex; align-items: flex-start; gap: var(--space-1-5); margin: 0; color: var(--text-2); font-size: var(--fs-4); line-height: var(--lh-thai); }
+.shield > svg { flex: none; margin-top: var(--space-0-5); color: var(--green); }
 .shieldBody { display: none; }
 .footActions { display: flex; flex: none; align-items: center; gap: var(--space-2); }
-.clearShort { display: none; }
-.sum { display: none; }
+.conflict {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--amber) 45%, var(--border));
+  border-radius: var(--radius-md);
+  background: var(--amber-soft);
+}
+.conflict > svg { flex: none; margin-top: var(--space-1); color: var(--amber); }
+.conflictText { flex: 1 1 260px; min-width: 0; }
+.conflictText b { display: block; color: var(--text); font-size: var(--fs-6); line-height: var(--lh-thai); }
+.conflictText p { margin: 0; color: var(--text-2); font-size: var(--fs-5); line-height: var(--lh-text); overflow-wrap: anywhere; }
+.conflictActions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-left: auto; }
 
-/* ═══ ≤900px: คอลัมน์เดียว · ผลต่อใต้ข้อ ② · ท้ายเหลือแถบสรุปบรรทัดเดียว + ปุ่ม ═══ */
+/* ═══ จอ "งวดที่วันจะเปลี่ยน" ══════════════════════════════════════ */
+.rdHead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-2); }
+.rdHead p { margin: 0; color: var(--text-2); font-size: var(--fs-5); line-height: var(--lh-text); }
+.rdList { display: grid; gap: var(--space-2); margin: 0 0 var(--space-3); padding: 0; list-style: none; }
+.rdRow {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-solid);
+}
+.rdRow[data-on] { border-color: color-mix(in srgb, var(--navy-ink) 45%, var(--border)); }
+.rdRow[data-blocked] { background: var(--panel-2); }
+.rdCheck { display: grid; place-items: center; width: 44px; height: 44px; cursor: pointer; }
+.rdCheck input { width: 20px; height: 20px; accent-color: var(--navy-ink); cursor: pointer; }
+.rdBody { display: grid; gap: var(--space-1-5); min-width: 0; }
+.rdTitleRow { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-1) var(--space-3); min-height: 44px; }
+.rdTitle { display: grid; gap: var(--space-0-5); min-width: 0; color: var(--text); font-size: var(--fs-6); font-weight: var(--fw-semibold); line-height: var(--lh-thai); cursor: pointer; }
+.rdTitle small { color: var(--text-2); font-size: var(--fs-4); font-weight: var(--fw-medium); }
+.rdPairs { display: grid; gap: var(--space-1); }
+.rdArrow { display: grid; place-items: center; color: var(--text-3); }
+.soLink { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--accent-ink); font-size: var(--fs-4); line-height: var(--lh-thai); text-decoration: none; }
+.soLink:hover { text-decoration: underline; }
+.rdKept { display: grid; gap: var(--space-1-5); }
+.rdKept h5 { display: flex; align-items: center; gap: var(--space-1-5); margin: 0; color: var(--text); font-size: var(--fs-6); font-weight: var(--fw-semibold); line-height: var(--lh-thai); }
+.rdKept ul { display: grid; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
+.rdKept li { display: grid; grid-template-columns: minmax(8rem, auto) minmax(0, 1fr); gap: var(--space-2); font-size: var(--fs-4); line-height: var(--lh-thai); }
+.rdKept li > span { color: var(--text-2); }
+.rdKept + .rdKept,
+.rdNote + .rdKept { margin-top: var(--space-3); }
+.rdNote { display: flex; align-items: flex-start; gap: var(--space-1-5); margin: var(--space-3) 0 0; color: var(--text-2); font-size: var(--fs-4); line-height: var(--lh-thai); }
+.rdNote > svg { flex: none; margin-top: var(--space-1); }
+
+/* ═══ ≤900px: คอลัมน์เดียว · ผลต่อใต้ข้อ ③ · ใครแก้ล่าสุดย้ายเข้าเนื้อ ═══ */
 @media (max-width: 900px) {
-  .layout {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: none;
-    grid-template-areas: "steps" "aside" "extra";
-    row-gap: var(--space-4);
-  }
+  .layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-template-areas: "qs" "aside" "extra"; gap: var(--space-4); }
   .aside { position: static; }
   .shieldBody { display: flex; }
-  .foot { flex-direction: column; align-items: stretch; gap: var(--space-1-5); }
-  .footInfo { display: none; }
-  .footActions { justify-content: flex-end; }
-  .sum {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    min-width: 0;
-    min-height: 32px;
-    padding: var(--space-0-5) var(--space-0-5) var(--space-0-5) var(--space-3);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    background: var(--panel-2);
-    color: var(--text);
-    font-size: var(--fs-6);
-    line-height: var(--lh-thai);
-  }
-  .sum[data-tone="warn"] {
-    border-color: color-mix(in srgb, var(--amber) 40%, var(--border));
-    background: var(--amber-soft);
-    color: var(--amber);
-    font-weight: var(--fw-semibold);
-  }
-  .sum[data-tone="muted"] { color: var(--text-2); }
-  .sum[data-tone="danger"] {
-    border-color: color-mix(in srgb, var(--red) 40%, var(--border));
-    background: var(--red-soft);
-    color: var(--red);
-    font-weight: var(--fw-semibold);
-  }
-  .sum > svg { flex: none; }
-  .sumKey { flex: none; color: var(--text-2); font-size: var(--fs-4); font-weight: var(--fw-semibold); }
-  .sumValue {
-    display: flex;
-    flex: 1 1 auto;
-    align-items: center;
-    gap: var(--space-1);
-    min-width: 0;
-    overflow: hidden;
-    color: var(--text);
-    font-weight: var(--fw-semibold);
-    font-variant-numeric: tabular-nums lining-nums;
-    white-space: nowrap;
-  }
-  .sumValue .node { width: 9px; height: 9px; }
-  .sumTo { color: var(--text-3); font-weight: var(--fw-medium); }
-  .sumText { flex: 1 1 auto; min-width: 0; }
-  .sumGo {
-    display: inline-flex;
-    flex: none;
-    align-items: center;
-    gap: var(--space-1);
-    min-height: 28px;
-    padding: 0 var(--space-2);
-    border: 0;
-    border-radius: var(--radius);
-    background: transparent;
-    color: var(--navy-ink);
-    font: inherit;
-    font-size: var(--fs-4);
-    font-weight: var(--fw-semibold);
-    line-height: var(--lh-thai);
-    cursor: pointer;
-  }
-  .sumGo:hover { background: var(--panel-3); }
-  .sumGo:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 1px; }
+  .footInfo .shield { display: none; }
 }
 
 /* แผ่นเต็มจอ (Modal sheetOnPhone) · เป้าแตะ 44px · ตารางวัน 6 คอลัมน์ (ไม่ใช่ 7 = ไม่อ่านเป็นสัปดาห์) */
@@ -810,21 +579,26 @@
   .legacyKey { order: 1; }
   .legacyMore { order: 2; margin-left: auto; }
   .legacyText { order: 3; flex-basis: 100%; }
+  .sentBar { padding: var(--space-2); }
+  .sentence { font-size: var(--fs-7); }
+  .slot { font-size: var(--fs-6); }
+  button.slot { min-height: var(--ctl-h-touch); }
   .days { --cols: 6; }
   .days > :global(.choice-chip) { min-height: var(--ctl-h-touch); }
-  .quick .quickChip:global(.choice-chip),
-  .creditChips :global(.choice-chip) { min-height: var(--ctl-h-touch); padding: 0 var(--space-3-5); }
-  .payRows .payRowDay:global(.choice-chip) { min-height: var(--ctl-h-touch); }
+  .creditPay :global(.choice-chip) { min-height: var(--ctl-h-touch); padding: 0 var(--space-3-5); }
+  .runRows .runDay:global(.choice-chip) { min-height: var(--ctl-h-touch); }
   .num { height: var(--ctl-h-touch); }
-  .seg:global(.segmented) > button { min-height: 48px; padding: var(--space-1) var(--space-2); }
+  .seg:global(.segmented) > button { min-height: 52px; padding: var(--space-1) var(--space-2); }
   .seg:global(.segmented) .segMain { font-size: var(--fs-6); }
+  .seg3:global(.segmented) { grid-template-columns: minmax(0, 1fr); }
   .miniSeg:global(.segmented) { margin-left: 0; }
   .miniSeg:global(.segmented) > button { min-height: 36px; }
+  .footRow { flex-direction: column; align-items: stretch; gap: var(--space-2); }
   .footActions :global(.btn) { min-height: var(--ctl-h-touch); }
   .footActions .saveBtn { flex: 1; min-width: 0; }
-  .clearLong { display: none; }
-  .clearShort { display: inline; }
-  .aside { padding: var(--space-3) var(--space-3-5); }
-  .crossError > :global(.btn),
-  .noteAdd { min-height: var(--ctl-h-touch); }
+  .conflictActions { width: 100%; }
+  .conflictActions :global(.btn) { flex: 1; min-height: var(--ctl-h-touch); }
+  .skipBtn { min-height: var(--ctl-h-touch); }
+  .aside { padding: var(--space-3); }
+  .rdKept li { grid-template-columns: minmax(0, 1fr); }
 }

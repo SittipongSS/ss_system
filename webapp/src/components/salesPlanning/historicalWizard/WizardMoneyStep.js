@@ -11,6 +11,8 @@
 // 🔴 สองข้อที่ฐานบังคับทั้งใบ (historical_so_check_installments) — ผลรวม = ยอดใบ ±1 สตางค์ · ช่วงครอบต่อเนื่องเต็มสัญญา
 //   ⇒ ห่วงโซ่ทำให้ทั้งสองข้อเป็นจริงเองเมื่อกรอกครบ (งวดสุดท้ายรับยอดที่เหลือ · ช่วงต่อจากงวดก่อน) เหลือกรณีที่พิมพ์ผิดได้
 //     ซึ่งขึ้นใต้ช่องทันที (`live`) · ตัวตัดสินจริงยังเป็นพรีวิวของ server
+// ⭐ PR-D (mig 0394/P7 · IMPL_PLAN_D DD5): คอลัมน์ "วันวางบิล" ไม่บังคับในตารางงวด — ขึ้นตาม `historicalBillingColumn`
+//   (กติกาวางบิลของลูกค้า `customerTerms` + งวดที่มีวันเดิมไม่ถูกซ่อน) · อ่านกติกาไม่ได้ = บรรทัดบอกทางออกเหนือตาราง
 import { useMemo, useState } from "react";
 import { CalendarClock, CalendarRange, CheckCircle2, Lock, Paperclip, Plus, SplitSquareHorizontal, Wallet } from "lucide-react";
 import GatedAction from "@/components/ui/GatedAction";
@@ -26,8 +28,8 @@ import { DOC_DATE_MAX, DOC_DATE_MIN, HISTORICAL_APPROVER_LABEL, OPENING_INSTALLM
 import { addDays } from "@/lib/sales/paymentCoverage";
 import { QuoteLineTotals } from "@/components/salesPlanning/QuoteLineCells";
 import {
-  historicalAddInstallment, historicalFieldAnchorId, historicalInstallmentChain, historicalInstallmentIssueText,
-  historicalOverdueWarningText,
+  historicalAddInstallment, historicalBillingColumn, historicalFieldAnchorId, historicalInstallmentChain,
+  historicalInstallmentIssueText, historicalOverdueWarningText,
   contractSpan, historicalInstallmentIssues, historicalMoneyView, historicalOpeningModeChange, historicalStepIssueNotice,
   historicalZeroValue, serviceMonthSpan,
 } from "@/lib/sales/historicalIntakeForm";
@@ -57,6 +59,8 @@ export default function WizardMoneyStep({
   const rows = state.installments || [];
   const opening = state.opening || {};
   const rowIssues = useMemo(() => historicalInstallmentIssues(issues), [issues]);
+  /* คอลัมน์วันวางบิล — ตัวตัดสินเดียว (ตาราง + บรรทัดบอกเหตุอ่านธงเดียวกัน) · งวดที่มีวันอยู่แล้ว/มีข้อผิดของช่องนี้ = ขึ้นเสมอ */
+  const billing = historicalBillingColumn(customerTerms, rows);
   const notice = historicalStepIssueNotice(issues.length);
 
   const setOpening = (next) => onChange({ opening: { ...opening, ...next } });
@@ -391,9 +395,14 @@ export default function WizardMoneyStep({
                 </StatusNotice>
               ) : null}
 
+              {billing.failedNote ? <p className={styles.hint}>{billing.failedNote}</p> : null}
+              {billing.readOnlyNote ? <p className={styles.hint}>{billing.readOnlyNote}</p> : null}
+
               <HistoricalInstallmentTable
                 chain={chain}
                 rowIssues={rowIssues}
+                billingColumn={billing.show}
+                billingReadOnly={billing.readOnly}
                 busy={busy}
                 onPatch={patchRow}
                 onRemove={(key) => setRows(rows.filter((row) => row.key !== key))}

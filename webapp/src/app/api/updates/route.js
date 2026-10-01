@@ -15,7 +15,10 @@ import {
 import { quoteTargetError } from '@/lib/master/updateQuote';
 import { sanitizeMentions } from '@/lib/master/mentions';
 import { appendUpdate, findUpdate, listUpdates } from '@/lib/master/updates';
-import { closureClearedUpdate, replyClearsClosure, threadIsTheWork } from '@/lib/requests/closure';
+import {
+  closureClearedUpdate, reopenWaitClearPatch, replyClearsClosure, threadIsTheWork,
+} from '@/lib/requests/closure';
+import { requestActorSide } from '@/lib/requests/replyTurn';
 import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -131,8 +134,13 @@ export async function POST(request) {
        ต้องไม่ทำให้ข้อความที่บันทึกสำเร็จแล้วตอบ 500 · และรีโปที่ยังไม่ได้รัน mig 0270
        ต้องยังโพสต์ได้ตามปกติ */
     if (entityType === 'dept_request' && kind === 'comment') {
-      const side = user?.department && user.department === parent?.dept ? 'dept' : 'requester';
-      const turnPatch = { lastReplySide: side, lastReplyAt: row.createdAt };
+      const side = requestActorSide(user, parent);
+      const turnPatch = {
+        lastReplySide: side,
+        lastReplyAt: row.createdAt,
+        // ⭐ ฝั่งที่ถูกรอหลัง "ยังไม่จบ" พิมพ์ตอบแล้ว = ป้าย "ยังไม่จบ" หลุด (mig 0391 · `reopenWaitClearPatch`)
+        ...reopenWaitClearPatch(parent, { side }),
+      };
 
       /* ⭐ **ถูกถามกลับ = ตราปิดของอีกฝั่งหลุดเอง** (มติผู้ใช้ 2026-08-20 · ปิดสองฝั่ง)
          *"แล้วถ้าตอบ แต่ต้องถามกลับล่ะ แบบโต้ตอบไปมา"* — ใบสอบถามไม่มีแถว เธรดคือ

@@ -10,8 +10,10 @@ import { readFileSync } from 'node:fs';
 import {
   GATE_EXEMPT_KINDS,
   GATE_OWNERS,
+  NOT_IN_HISTORICAL_ORDER_ZONE_REASON,
+  NOT_IN_ORDER_ZONE_REASON,
   NO_ZONE_SITE_REASON,
-  UNALLOCATED_ZONE_REASON,
+  UNSET_SERVICE_ORDER_REASON,
   evaluateVisitGate,
   gateBlockedItems,
   gateBlocker,
@@ -23,7 +25,7 @@ import {
   initialVisitStatus,
 } from './visitGate.js';
 import { visitClosedAtKey } from './visitStatus.js';
-import { ORIGIN_HISTORICAL, ORIGIN_PIPELINE } from '../sales/historicalOrders.js';
+import { HISTORICAL_CORRECTION_PATH, ORIGIN_HISTORICAL, ORIGIN_PIPELINE } from '../sales/historicalOrders.js';
 import { installmentActionError, installmentReportOutcome } from '../sales/salesOrderPayments.js';
 import { waitingGroupOf } from './scheduleQueue.js';
 
@@ -416,32 +418,68 @@ test('งานสำรวจ/ถอนเครื่องที่ขาด�
 });
 
 /* ═══════════════════════════════════════════════════════════════════════
-   "ยังไม่จัดสรรโซน" เป็นงานของ TS (มติเจ้าของ 23/09 · แผนหน้าจัดคิว §7)
-   ⭐ คนผูกใบสั่งขายเข้าโซนคือ TS ที่หน้า "งานเข้าใหม่" — ป้ายเดิม "SA · ฝ่ายขายต้อง…" ส่งเรื่อง
-      ไปหาคนที่แก้ไม่ได้ และทำให้ร่างจมกลุ่ม "รอฝ่ายอื่น" ที่พับไว้
-   🔴 เปลี่ยน **เจ้าของ** เท่านั้น — ผ่าน/ไม่ผ่านของทุกข้อต้องเท่าเดิมทุกบริบท
+   โซนที่ไม่มีรอบขาย = งานของ SA (mig 0392 · PR-A · D15)
+   🔄 ช่วง 23/09 → 0392 เป็นของ TS (ผูกใบสั่งขายเข้าโซนที่หน้า "งานเข้าใหม่") — ตั้งแต่ 0392 TS ผูกโซนไม่ได้แล้ว
+      (ทางผูกตอบ 409) ⇒ ฝ่ายขายเลือกโซนในใบเอง · เหตุแยกตามรอบขายที่มีผลของไซต์ (ระดับไซต์ · [owner])
+   ⭐ ไซต์ที่ยังไม่มีโซนในทะเบียนยังเป็นของ TS (งานทะเบียน · เพิ่มโซนที่หน้าไซต์)
+   🔴 เปลี่ยน **เจ้าของ/เหตุ** เท่านั้น — ผ่าน/ไม่ผ่านของทุกข้อต้องเท่าเดิมทุกบริบท (ตารางข้างล่าง)
    ═══════════════════════════════════════════════════════════════════════ */
-test('⭐ โซนที่ยังไม่จัดสรรจากใบสั่งขาย = ติดข้อสัญญา เจ้าของ TS · บอกหน้าที่ไปแก้', () => {
+test('⭐ ข้อความของสี่เหตุ (ตรึงทั้งประโยค — จอโชว์เต็มประโยค ไม่มีช่องให้แก้ในโมดัลนัด)', () => {
+  assert.equal(NOT_IN_ORDER_ZONE_REASON, 'โซนนี้ไม่อยู่ในใบสั่งขายที่มีผล — ข้ามโซนนี้ในใบส่งงาน หรือให้ฝ่ายขายเพิ่มโซนด้วยการออก Rev.');
+  assert.equal(NOT_IN_HISTORICAL_ORDER_ZONE_REASON, `โซนนี้ไม่อยู่ในใบสั่งขายย้อนหลังที่มีผล — ข้ามโซนนี้ในใบส่งงาน · ต้องเพิ่มโซน: ${HISTORICAL_CORRECTION_PATH}`);
+  assert.equal(UNSET_SERVICE_ORDER_REASON, 'ยังไม่มีใบสั่งขายที่ตั้งงานบริการแล้วสำหรับโซนนี้ — ฝ่ายขายตั้งค่าที่หน้าใบสั่งขายแล้วยื่นให้ผู้จัดการตรวจ');
+  assert.equal(NO_ZONE_SITE_REASON, 'ไซต์นี้ยังไม่มีโซนในทะเบียน — TS เพิ่มโซนที่หน้าไซต์ แล้วให้ฝ่ายขายเลือกโซนในใบสั่งขาย');
+  for (const reason of [NOT_IN_ORDER_ZONE_REASON, NOT_IN_HISTORICAL_ORDER_ZONE_REASON, UNSET_SERVICE_ORDER_REASON, NO_ZONE_SITE_REASON]) {
+    assert.doesNotMatch(reason, /งานเข้าใหม่|TS ผูก/, 'TS ผูกโซนไม่ได้แล้ว — ห้ามชี้ไปหาทางที่ปิดแล้ว');
+  }
+});
+
+test('⭐ ไซต์ที่ไม่มีรอบขายที่มีผลเลย = ยังไม่มีใบที่ตั้งงานบริการ · เจ้าของ SA · ติดรอฝ่ายอื่น', () => {
   const items = evaluateVisitGate(ok, { ...full, terms: [] });
   const c = items.find((i) => i.key === 'contract');
   assert.equal(c.state, 'blocked');
-  assert.equal(c.owner, GATE_OWNERS.TS);
-  assert.equal(c.detail, UNALLOCATED_ZONE_REASON);
-  assert.equal(UNALLOCATED_ZONE_REASON, 'โซนนี้ยังไม่ถูกจัดสรรจากใบสั่งขาย — TS ผูกใบสั่งขายเข้าโซนที่หน้า "งานเข้าใหม่" ก่อน');
-  assert.doesNotMatch(c.detail, /ฝ่ายขาย/);
+  assert.equal(c.owner, GATE_OWNERS.SA);
+  assert.equal(c.detail, UNSET_SERVICE_ORDER_REASON);
   assert.equal(c.fix ?? null, null, 'ไม่มีช่องในโมดัลนัดให้แก้ — การ์ดโชว์เหตุเต็มประโยค');
-  assert.deepEqual(items.zoneGates.map((z) => [z.zoneId, z.owner, z.gate]), [['Z1', GATE_OWNERS.TS, 'contract']]);
+  assert.deepEqual(items.zoneGates.map((z) => [z.zoneId, z.owner, z.gate, z.unallocated]), [['Z1', GATE_OWNERS.SA, 'contract', true]]);
   assert.equal(gatePassed(items), false);
-  assert.equal(gateNeedsOthers(items), false, 'ติดแค่ข้อของ TS ⇒ กลุ่ม "ฝ่าย TS แก้ได้เอง"');
+  assert.equal(gateNeedsOthers(items), true, 'TS แก้เองไม่ได้แล้ว ⇒ กลุ่ม "รอฝ่ายอื่น"');
 });
 
-test('⭐ ไซต์ที่ไม่มีโซนเลย = ติดข้อสัญญา เจ้าของ TS (ยังติดเหมือนเดิม ไม่ใช่ผ่าน)', () => {
+test('⭐ โซนที่ไม่อยู่ในใบ: ไซต์มีรอบขายของใบ pipeline = ทาง Rev. · ของใบย้อนหลังล้วน = ทางแก้ของใบย้อนหลัง', () => {
+  const zonesAB = [{ id: 'Z1', name: 'โซน A' }, { id: 'Z9', name: 'โซนใหม่' }];
+  const reasonOf = (orders, date = '2026-11-10') => {
+    const items = evaluateVisitGate({ ...ok, scheduledDate: date }, { ...full, zones: zonesAB, ordersById: orders });
+    return items.zoneGates.find((z) => z.zoneId === 'Z9');
+  };
+  const pipeline = reasonOf({ SO1: { ...ordersById.SO1, origin: ORIGIN_PIPELINE } });
+  assert.equal(pipeline.reason, NOT_IN_ORDER_ZONE_REASON);
+  assert.equal(pipeline.owner, GATE_OWNERS.SA);
+  assert.equal(pipeline.unallocated, true);
+  const historical = reasonOf({ SO1: { ...ordersById.SO1, origin: ORIGIN_HISTORICAL } });
+  assert.equal(historical.reason, NOT_IN_HISTORICAL_ORDER_ZONE_REASON);
+  assert.equal(historical.owner, GATE_OWNERS.SA);
+  // ไม่ส่ง origin มา = ใบ pipeline (ค่าที่ปลอดภัย · gateContext เลือก origin มาอยู่แล้ว)
+  assert.equal(reasonOf(ordersById).reason, NOT_IN_ORDER_ZONE_REASON);
+  // ปนกัน (ย้อนหลัง + pipeline ที่ไซต์เดียว) = มีใบที่ออก Rev. ได้ ⇒ ทาง Rev.
+  const mixedCtx = {
+    ...full,
+    zones: [...zonesAB, { id: 'Z2', name: 'โซน B' }],
+    terms: [...terms, { id: 'T2', zoneId: 'Z2', salesOrderId: 'SO2', startDate: '2026-01-01', endDate: '2027-12-31' }],
+    ordersById: { SO1: { ...ordersById.SO1, origin: ORIGIN_HISTORICAL }, SO2: { id: 'SO2', status: 'approved', origin: ORIGIN_PIPELINE } },
+  };
+  assert.equal(evaluateVisitGate(ok, mixedCtx).zoneGates.find((z) => z.zoneId === 'Z9').reason, NOT_IN_ORDER_ZONE_REASON);
+  // รอบขายที่ **ไม่มีผล ณ วันนัด** ไม่นับ — ใบถูก Rev. ทับแล้ว = ไซต์ไม่มีรอบที่มีผล ⇒ ยังไม่มีใบที่ตั้ง
+  const dead = reasonOf({ SO1: { ...ordersById.SO1, supersededById: 'SO2' } });
+  assert.equal(dead.reason, UNSET_SERVICE_ORDER_REASON);
+});
+
+test('⭐ ไซต์ที่ไม่มีโซนเลย = ติดข้อสัญญา เจ้าของ TS (งานทะเบียน · ยังติดเหมือนเดิม ไม่ใช่ผ่าน)', () => {
   const items = evaluateVisitGate(ok, { site });
   const c = items.find((i) => i.key === 'contract');
   assert.equal(c.state, 'blocked');
   assert.equal(c.owner, GATE_OWNERS.TS);
   assert.equal(c.detail, NO_ZONE_SITE_REASON);
-  assert.equal(NO_ZONE_SITE_REASON, 'ไซต์นี้ยังไม่มีโซนที่ผูกกับใบสั่งขาย — TS ผูกใบสั่งขายเข้าโซนที่หน้า "งานเข้าใหม่" ก่อน');
   assert.equal(gatePassed(items), false);
   assert.equal(gateNeedsOthers(items), false);
 });
@@ -458,11 +496,12 @@ test('เหตุฝั่งสัญญาอื่นยังเป็น�
   assert.equal(money.owner, GATE_OWNERS.FN);
 });
 
-test('ปน: โซนหนึ่งยังไม่จัดสรร + อีกโซนติดเงิน = ติดสองข้อ · ข้อเงินเป็นของฝ่ายอื่น ⇒ รอฝ่ายอื่น', () => {
+test('ปน: โซนหนึ่งไม่อยู่ในใบ + อีกโซนติดเงิน = ติดสองข้อ · ทั้งสองข้อเป็นของฝ่ายอื่น ⇒ รอฝ่ายอื่น', () => {
   const items = evaluateVisitGate({ ...ok, scheduledDate: '2026-11-10' }, { ...full, zones: [{ id: 'Z0', name: 'ใหม่' }, ...zones] });
   const byKey = Object.fromEntries(items.map((i) => [i.key, i]));
   assert.equal(byKey.contract.state, 'blocked');
-  assert.equal(byKey.contract.owner, GATE_OWNERS.TS);
+  assert.equal(byKey.contract.owner, GATE_OWNERS.SA);
+  assert.equal(byKey.contract.detail, NOT_IN_ORDER_ZONE_REASON, 'ไซต์มีรอบขายของใบ pipeline ⇒ ทาง Rev.');
   assert.equal(byKey.payment.state, 'blocked');
   assert.equal(byKey.payment.owner, GATE_OWNERS.FN);
   assert.equal(gateNeedsOthers(items), true);
@@ -498,13 +537,10 @@ test('🔴 ผลผ่าน/ไม่ผ่านของทุกข้อ�
   }
 });
 
-/* 🐞 รีวิวรอบสอง (24/09): เจ้าของข้อสัญญาเคยมาจาก **โซนแรกที่ติดตามลำดับโซน** ⇒ ไซต์ที่ทุกโซนติด
-   โดยโซนหนึ่งยังไม่จัดสรร (TS) อีกโซนติดเหตุของ SA (ใบสั่งขายยังไม่ผูกสัญญา) ได้เจ้าของ/กลุ่ม
-   พลิกตามลำดับ id ในฐานข้อมูล: [ยังไม่จัดสรร, ไม่ผูกสัญญา] = TS · กลุ่ม "TS แก้ได้เอง" (ปัญหาของ SA
-   หายจากการ์ด) · สลับลำดับ = SA · กลุ่ม "รอฝ่ายอื่น"
-   ⭐ กติกา: มีเหตุของ SA ปนอยู่แม้โซนเดียว = เจ้าของ SA (ต้องรอฝ่ายอื่น) · TS เฉพาะเมื่อทุกโซนที่ติด
-      ข้อสัญญาเป็นของ TS · เหตุบอกทั้งสองฝ่าย ไม่ทิ้งเรื่องที่ TS ทำได้ */
-test('🐞 ข้อสัญญาปน TS+SA: เจ้าของ/กลุ่ม/เหตุไม่พลิกตามลำดับโซน', () => {
+/* 🐞 รีวิวรอบสอง (24/09): เหตุ/เจ้าของข้อสัญญาเคยมาจาก **โซนแรกที่ติดตามลำดับโซน** ⇒ พลิกตามลำดับ id ในฐานข้อมูล
+   ⭐ mig 0392 (D15): โซนที่ไม่อยู่ในใบ (`unallocated`) เป็นของ SA และข้ามได้ในใบส่งงาน ⇒ เหตุหลัก = โซนที่ติดเหตุอื่น
+      (ใบยังไม่ผูกสัญญา) + ต่อท้ายจำนวนโซนที่ไม่อยู่ในใบ · ลำดับโซนต้องไม่ขยับอะไรเลย */
+test('🐞 ข้อสัญญาปน "ไม่อยู่ในใบ" + "ใบยังไม่ผูกสัญญา": เจ้าของ/กลุ่ม/เหตุไม่พลิกตามลำดับโซน', () => {
   const za = { id: 'ZA', name: 'ใหม่' };
   const zb = { id: 'ZB', name: 'ล็อบบี้' };
   const ctxOf = (order) => ({
@@ -528,22 +564,22 @@ test('🐞 ข้อสัญญาปน TS+SA: เจ้าของ/กลุ
   const [r] = results;
   assert.equal(r.state, 'blocked');
   assert.equal(r.passed, false);
-  assert.equal(r.owner, GATE_OWNERS.SA, 'มีเหตุของ SA ปน ⇒ TS ปลดเองคนเดียวไม่ได้แน่นอน');
+  assert.equal(r.owner, GATE_OWNERS.SA);
   assert.equal(r.needsOthers, true);
   assert.equal(r.group, 'others');
-  assert.match(r.detail, /ใบสั่งขายที่ครอบโซนนี้ยังไม่ผูกสัญญาที่มีผล/, 'เหตุของ SA ต้องขึ้นบนการ์ด');
-  assert.match(r.detail, /อีก 1 โซนยังไม่ถูกจัดสรร/, 'เรื่องที่ TS ทำได้ต้องไม่หายไปด้วย');
-  assert.match(r.detail, /งานเข้าใหม่/);
+  assert.match(r.detail, /^ใบสั่งขายที่ครอบโซนนี้ยังไม่ผูกสัญญาที่มีผล/, 'เหตุหลักคือเหตุที่ข้ามไม่ได้');
+  assert.match(r.detail, / · อีก 1 โซนไม่อยู่ในใบสั่งขายที่มีผล \(ข้ามในใบส่งงาน\)$/, 'โซนที่ไม่อยู่ในใบต้องไม่หายไปด้วย');
+  assert.doesNotMatch(r.detail, /งานเข้าใหม่/);
 });
 
-test('ข้อสัญญาที่ทุกโซนติดเพราะยังไม่จัดสรร = TS ทุกลำดับ · ไม่มีหมายเหตุ "อีก N โซน"', () => {
+test('ข้อสัญญาที่ทุกโซนไม่มีรอบขาย = SA ทุกลำดับ · เหตุระดับไซต์ตัวเดียว ไม่มีหมายเหตุ "อีก N โซน"', () => {
   const zs = [{ id: 'ZA', name: 'ก' }, { id: 'ZB', name: 'ข' }];
   for (const order of [zs, [...zs].reverse()]) {
     const items = evaluateVisitGate(ok, { site, zones: order, terms: [], ordersById: {}, contractsById: {}, installmentsByOrderId: {} });
     const c = items.find((i) => i.key === 'contract');
-    assert.equal(c.owner, GATE_OWNERS.TS);
-    assert.equal(c.detail, UNALLOCATED_ZONE_REASON);
-    assert.equal(gateNeedsOthers(items), false);
+    assert.equal(c.owner, GATE_OWNERS.SA);
+    assert.equal(c.detail, UNSET_SERVICE_ORDER_REASON);
+    assert.equal(gateNeedsOthers(items), true);
   }
 });
 
@@ -697,4 +733,102 @@ test('ไซต์ที่อีกใบสั่งขายยังผู�
     installmentsByOrderId: { ...installmentsByOrderId, SO2: installmentsByOrderId.SO1 },
   };
   assert.equal(contractItem({ ...ok, scheduledDate: '2026-09-03' }, both).state, 'ok');
+});
+
+/* ══ D15 · ชิปใบสั่งขายบนร่างที่ติดด่าน (PR-C · C9 · C-D19) ══════════════════════════════════════════
+   ⭐ โซนที่ **ไม่มีรอบขายที่มีผล ณ วันนัด** — ทั้งโซนที่ไม่มีรอบขายเลย (`unallocated`) และโซนที่รอบขายตายหมด
+      (ใบถูกย้อนอนุมัติแล้วร่าง Rev. ถือโซนไว้ · critique L4) — พกใบที่ฝ่ายขายกำลังตั้งโซนนั้นอยู่ (`orders`)
+      ⇒ การ์ด/แผงด่านบอกได้ว่า "ใบไหน · อยู่ขั้นไหน · AE คนไหน" แทนเหตุระดับไซต์ลอย ๆ
+   🔴 **ผลผ่าน/ไม่ผ่าน เหตุ เจ้าของ ไม่ขยับ** — ชิปเป็นป้ายบอกทางล้วน · ไม่มีชิป = อ็อบเจกต์เท่าของเดิมทุกไบต์ */
+const draftChip = { orderId: 'SOR-D', orderNumber: 'SO-26100011-0', status: 'draft', group: 'unapproved', stateLabel: 'ฉบับร่าง', ownerName: 'สมชาย ใจดี' };
+const backfillChip = { orderId: 'SOR-B', orderNumber: 'SO-26080036-0', status: 'approved', group: 'backfill', stateLabel: 'ฝ่ายขายกำลังตั้ง', ownerName: null };
+const DEAD_TERM_REASON = 'รอบขายของโซนนี้ไม่มีผล ณ วันนัด — ตรวจใบสั่งขายและช่วงวันของรอบ';
+const contractOf = (items) => items.find((i) => i.key === 'contract');
+
+test('D15 โซนที่ไม่มีรอบขายเลย + มีใบกำลังตั้ง = ข้อสัญญาพกชิป · เหตุ/เจ้าของ/กลุ่มเดิม', () => {
+  const base = { ...full, terms: [] };
+  const plain = evaluateVisitGate(ok, base);
+  const items = evaluateVisitGate(ok, { ...base, setupOrdersByZone: { Z1: [draftChip] } });
+  const c = contractOf(items);
+  assert.deepEqual(c.orders, [draftChip]);
+  assert.equal(c.detail, UNSET_SERVICE_ORDER_REASON, 'เหตุไม่เปลี่ยน');
+  assert.equal(c.owner, GATE_OWNERS.SA);
+  assert.deepEqual(items.zoneGates[0].orders, [draftChip], 'ผลรายโซนพกชิปของโซนนั้น');
+  assert.equal(items.zoneGates[0].unallocated, true);
+  // ตัดชิปออกแล้วเท่าของเดิมทุกข้อ
+  const strip = (list) => list.map(({ orders, ...rest }) => rest);
+  assert.deepEqual(strip(items), strip(plain));
+  assert.deepEqual(strip(items.zoneGates), plain.zoneGates);
+  assert.equal(gatePassed(items), false);
+  assert.equal(gateNeedsOthers(items), gateNeedsOthers(plain));
+  // รายการเหตุของการ์ดพกชิปไปด้วย เฉพาะข้อที่มี (ร่างที่ยังไม่มีคน = ติดสองข้อ)
+  const blocked = gateBlockedItems(evaluateVisitGate({ ...ok, assigneeId: null }, { ...base, setupOrdersByZone: { Z1: [draftChip] } }));
+  assert.deepEqual(blocked.map((b) => b.key), ['contract', 'assignee']);
+  assert.deepEqual(blocked.find((b) => b.key === 'contract').orders, [draftChip]);
+  for (const b of blocked.filter((x) => x.key !== 'contract')) assert.equal('orders' in b, false, b.key);
+});
+
+test('D15 โซนที่รอบขายตายหมด (ใบย้อนอนุมัติ · Rev. ร่างถือโซน) ก็พกชิป — เหตุ "รอบขายไม่มีผล ณ วันนัด" เดิม', () => {
+  const revoked = { ...full, ordersById: { SO1: { ...ordersById.SO1, status: 'approval_revoked' } } };
+  const items = evaluateVisitGate(ok, { ...revoked, setupOrdersByZone: { Z1: [draftChip] } });
+  const c = contractOf(items);
+  assert.equal(c.state, 'blocked');
+  assert.equal(c.detail, DEAD_TERM_REASON);
+  assert.deepEqual(c.orders, [draftChip]);
+  assert.equal(items.zoneGates[0].unallocated, undefined, 'ยังเป็นโซนที่มีรอบขาย (ตาย) ไม่ใช่ไม่อยู่ในใบ');
+  assert.deepEqual(items.zoneGates[0].orders, [draftChip]);
+});
+
+test('D15 ไม่มีชิป (ไม่ส่ง · ว่าง · ชิปของโซนอื่น · ชิปบนโซนที่รอบยังมีผล) = อ็อบเจกต์เท่าของเดิมทุกไบต์', () => {
+  const contexts = {
+    full, unallocated: { ...full, terms: [] },
+    deadTerm: { ...full, ordersById: { SO1: { ...ordersById.SO1, supersededById: 'SO2' } } },
+    unlinked: { ...full, ordersById: { SO1: { id: 'SO1', status: 'approved' } } },
+    noZones: { site },
+  };
+  for (const [name, ctx] of Object.entries(contexts)) {
+    const plain = evaluateVisitGate(ok, ctx);
+    for (const setupOrdersByZone of [undefined, {}, new Map(), { ZX: [draftChip] }, { Z1: [] }]) {
+      const got = evaluateVisitGate(ok, { ...ctx, setupOrdersByZone });
+      assert.deepEqual(got, plain, `${name} ${JSON.stringify(setupOrdersByZone)}`);
+      assert.deepEqual(got.zoneGates, plain.zoneGates, name);
+    }
+  }
+  // โซนที่รอบขายยังมีผล (ติดสัญญา/เงิน/ผ่าน) ไม่พกชิป แม้จะมีใบร่างถือโซนเดียวกันอยู่
+  for (const ctx of [full, contexts.unlinked]) {
+    const got = evaluateVisitGate(ok, { ...ctx, setupOrdersByZone: { Z1: [draftChip] } });
+    assert.deepEqual(got, evaluateVisitGate(ok, ctx));
+  }
+});
+
+test('D15 ไซต์ปน: เหตุหลักจากโซนที่ยังไม่ผูกสัญญา + โซนที่ไม่อยู่ในใบพกชิป ⇒ คำต่อท้ายเดิม · ชิปรวมไม่ซ้ำใบ', () => {
+  const ctx = {
+    site,
+    zones: [{ id: 'ZA', name: 'ใหม่ A' }, { id: 'ZB', name: 'ล็อบบี้' }, { id: 'ZC', name: 'ใหม่ C' }],
+    terms: [{ id: 'TB', zoneId: 'ZB', salesOrderId: 'SO9', startDate: '2026-01-01', endDate: '2027-12-31' }],
+    ordersById: { SO9: { id: 'SO9', status: 'approved' } },
+    contractsById: {},
+    installmentsByOrderId: {},
+  };
+  const plain = contractOf(evaluateVisitGate(ok, ctx));
+  const c = contractOf(evaluateVisitGate(ok, { ...ctx, setupOrdersByZone: { ZA: [draftChip, backfillChip], ZC: [draftChip] } }));
+  assert.equal(c.detail, plain.detail);
+  assert.match(c.detail, / · อีก 2 โซนไม่อยู่ในใบสั่งขายที่มีผล \(ข้ามในใบส่งงาน\)$/);
+  assert.deepEqual(c.orders, [draftChip, backfillChip], 'ใบเดียวกันสองโซน = ชิปเดียว · ลำดับตามที่เจอก่อน');
+  // ลำดับโซนไม่ขยับชุดชิป
+  const reversed = contractOf(evaluateVisitGate(ok, { ...ctx, zones: [...ctx.zones].reverse(), setupOrdersByZone: { ZA: [draftChip, backfillChip], ZC: [draftChip] } }));
+  assert.deepEqual(reversed.orders.map((o) => o.orderId).sort(), ['SOR-B', 'SOR-D']);
+  assert.equal(reversed.detail, c.detail);
+});
+
+test('D15 ติดบางโซน (ใบยังผ่าน) / งานสำรวจ-ถอนเครื่อง = ข้อสัญญาไม่ติด ⇒ ไม่มีชิปบนข้อ (ผลรายโซนยังพก)', () => {
+  const partial = { ...full, zones: [...zones, { id: 'Z2', name: 'B' }], setupOrdersByZone: { Z2: [draftChip] } };
+  const items = evaluateVisitGate(ok, partial);
+  assert.equal(contractOf(items).state, 'ok');
+  assert.equal('orders' in contractOf(items), false);
+  assert.deepEqual(items.zoneGates.find((z) => z.zoneId === 'Z2').orders, [draftChip]);
+  assert.equal(gatePassed(items), true);
+  const survey = evaluateVisitGate({ ...ok, kind: 'survey' }, { ...full, terms: [], setupOrdersByZone: { Z1: [draftChip] } });
+  assert.equal(contractOf(survey).state, 'ok');
+  assert.equal('orders' in contractOf(survey), false);
 });

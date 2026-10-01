@@ -27,10 +27,12 @@ import { documentWorkflowError, workflowErrorMessage } from '@/lib/sales/documen
 import { externalDocKindLabel } from '@/lib/sales/contracts';
 import { sanitizeEvidenceAttachments } from '@/lib/sales/orderConfirmationDocs';
 import { PRIVATE_EVIDENCE_BUCKET, missingStoredEvidence, privateEvidencePrefix } from '@/lib/upload/privateEvidence';
-import { historicalDuplicateReviewRecord } from '@/lib/sales/historicalDuplicates';
+import { historicalDuplicateMatches, historicalDuplicateReviewRecord } from '@/lib/sales/historicalDuplicates';
+import { loadScheduleRule } from '@/lib/sales/installmentScheduleServer';
+import { HISTORICAL_ALIGNMENT_MISSING_SAVED } from '@/lib/sales/historicalOrderCopy';
 import {
   HISTORICAL_DEAL_TITLE, HISTORICAL_FLOW_SCHEMA_MISSING_MESSAGE, canKeyHistoricalSalesOrder, historicalOrderEditable,
-  historicalOrderIdOf, historicalRefsOf, historicalRowsOnly, historicalSchemaMissing, isHistoricalOrder,
+  historicalOrderIdOf, historicalRefsOf, historicalRowsOnly, historicalSchemaMissing, isHistoricalOrder, isOpeningInstallment,
 } from '@/lib/sales/historicalOrders';
 import {
   historicalServiceFingerprintSource, historicalServiceRpcArgs, planHistoricalServiceOrder,
@@ -68,10 +70,41 @@ export function previewPlanMoney(plan) {
   };
 }
 
+/* ── แพ็คต่อรอบใน audit (review 29/09) ─────────────────────────────────────────────────────────────────
+   แพ็คต่อรอบอยู่ใน `sales_order_line_zones` ที่เดียว (0394/P6 — หนึ่งแถวต่อบรรทัด · โซน = serviceZoneId · แพ็คจากคำขอ) และถูกลบ-
+   สร้างใหม่ทุกครั้งที่บันทึก (CASCADE จากบรรทัดที่ตัวเขียนลบทิ้ง) ⇒ audit ต้องพกทั้งค่าเดิม (อ่านก่อนเขียน) และค่าใหม่
+   ⭐ ค่าใหม่คิดจากบรรทัดที่ RPC คืน (เรียง sortOrder — 0374:723/940) × บรรทัดของแผนตามลำดับ = สิ่งที่ P6 เขียนทุกตัว
+     ⇒ ไม่ต้องอ่านกลับ (อ่านพลาดหลังเขียนสำเร็จต้องไม่กลายเป็น 500) */
+const lineZonesAfter = (lines, plan) => lines.map((line, index) => ({
+  salesOrderLineId: line?.id ?? null,
+  zoneId: line?.serviceZoneId ?? null,
+  packsPerRound: plan?.lines?.[index]?.packsPerRound ?? null,
+}));
+
+/* ── ฐานรัน 0394 แล้วหรือยัง (review 29/09) — อ่านกลับหลังบันทึกสำเร็จ ────────────────────────────────────
+   0394 ไม่เพิ่มคอลัมน์ ⇒ CI/check:columns ไม่รู้ · ตัวเขียนรุ่นก่อน 0394 รับคีย์ packsPerRound เงียบ ๆ แล้วไม่สร้างแถว
+   ⇒ มีบรรทัดแต่ไม่มีแถวแพ็คต่อรอบสักแถว = ฐานยังไม่รัน 0394 → 503 บอกผู้คีย์ทันที (ไม่ใช่รอไปเจอตอนอนุมัติ)
+   ⚠️ อ่านกลับไม่ขึ้น = ไม่รู้ ≠ ยังไม่รัน — การเขียนสำเร็จไปแล้ว ห้ามกลายเป็น error (log แล้วตอบผลเดิม ·
+      ด่านอนุมัติตรวจซ้ำก่อนเปิดรอบขาย — historicalOrderWorkflow) */
+async function serviceAlignmentMissing(supabase, orderId, lines) {
+  if (!lines.length) return false;
+  const { data, error } = await fetchAllResult(() => supabase.from('sales_order_line_zones').select('id')
+    .eq('salesOrderId', orderId).order('id', { ascending: true }));
+  if (error) {
+    console.error('[historical-so] อ่านแพ็คต่อรอบหลังบันทึกไม่สำเร็จ', orderId, error.message || error.code);
+    return false;
+  }
+  return !(data || []).length;
+}
+const alignmentMissingReply = (orderId) => reply(503, {
+  error: HISTORICAL_ALIGNMENT_MISSING_SAVED, code: 'historical_service_alignment_missing', orderId,
+});
+
 /* 23505 ของ primary key ใบสั่งขาย = สองคำขอรหัสเดียวกันชนกันพอดี ⇒ ยิงซ้ำหนึ่งครั้งได้ใบเดิม/ชนกัน */
 const isOrderPkeyCollision = (error) => String(error?.code || '') === '23505'
   && /sales_orders_pkey/.test(`${error?.message || ''} ${error?.details || ''}`);
 const errorText = (error) => `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`;
+const DUPLICATE_UNACKNOWLEDGED_MESSAGE = 'พบใบสั่งขายย้อนหลังของลูกค้านี้ที่วันเริ่มสัญญาหรือเลขเอกสารเดิมตรงกัน — ตรวจรายการแล้วยืนยันว่าไม่ซ้ำก่อนบันทึก';
 /* แถวจาก loadScoped พกดีลที่ join มาด้วย — audit เก็บเฉพาะตัวใบ (ดีลมี audit ของมันเอง) */
 const withoutJoin = (row) => (row ? Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'deal')) : null);
 
@@ -190,6 +223,13 @@ export async function commitHistoricalOrder({
   let liveTermsByZone = new Map();
   let containerDeals = [];
   let existingHistorical = [];
+  /* วันวางบิลของงวด (review 29/09): มีสักงวด = อ่านกติกาของลูกค้าเอง (ไม่เชื่อจอ) + วันเดิมของใบ (แก้ใบ) ⇒ แผนตรวจด้วยด่านรุ่นสี่
+     ตัวเดียวกับทุกทางเขียนวันงวด · ไม่มีวันวางบิล = ไม่ต้องรู้กติกา (พรีวิวยิงถี่ — ไม่อ่านเปล่า ๆ)
+     ⚠️ อ่านกติกาพลาด = `ruleUnavailable` (ไม่โยน — ตีกลับเฉพาะการเปลี่ยนวันวางบิล) · อ่านงวดเดิมพลาด = โยน (→ 500)
+        ไม่ถือว่า "ไม่มีวันเดิม" แล้วตีกลับวันที่ผู้คีย์ไม่ได้แตะ */
+  const billingKeyed = (Array.isArray(input.installments) ? input.installments : [])
+    .some((row) => row && typeof row === 'object' && Boolean(text(row.billingDate)));
+  let billingGate = null;
   try {
     if (customerId) {
       const { data, error } = await supabase.from('customers')
@@ -237,6 +277,20 @@ export async function commitHistoricalOrder({
       containerDeals = deals.data || [];
       existingHistorical = orders.data || [];
     }
+    if (billingKeyed) {
+      const { rule, ruleUnavailable } = await loadScheduleRule(supabase, customerId);
+      const storedBySeq = new Map();
+      if (editing) {
+        const { data, error } = await fetchAllResult(() => supabase.from('sales_order_installments')
+          .select('id, seq, kind, "billingDate"').eq('salesOrderId', existing.id)
+          .order('seq', { ascending: true }).order('id', { ascending: true }));
+        if (error) throw error;
+        for (const row of data || []) {
+          if (!isOpeningInstallment(row) && text(row.billingDate)) storedBySeq.set(Number(row.seq), text(row.billingDate));
+        }
+      }
+      billingGate = { rule, ruleUnavailable, storedBySeq };
+    }
   } catch (loadError) {
     if (historicalSchemaMissing(loadError)) return reply(503, { error: HISTORICAL_FLOW_SCHEMA_MISSING_MESSAGE });
     return reply(500, { error: `โหลดข้อมูลประกอบการคีย์ไม่สำเร็จ: ${loadError?.message || loadError}` });
@@ -248,7 +302,7 @@ export async function commitHistoricalOrder({
   const selfOrderId = editing ? existing.id : (intakeKey ? historicalOrderIdOf(md5(intakeKey)) : null);
   const plan = planHistoricalServiceOrder(input, {
     actor: user, customer, owner, products, zones, sites, containerDeals, existingHistorical, liveTermsByZone,
-    todayIso: businessDate(now), selfOrderId, editing,
+    todayIso: businessDate(now), selfOrderId, editing, billingGate,
   });
   if (plan.errors.length) {
     /* พรีวิวได้ `money` ติดไปด้วย (null = ยังคิดยอดไม่ได้ — ดู `previewPlanMoney`)
@@ -260,11 +314,23 @@ export async function commitHistoricalOrder({
   if (preview) return reply(200, { preview: true, plan });
   if (plan.duplicates.length && !plan.acknowledgeDuplicates) {
     return reply(409, {
-      error: 'พบใบสั่งขายย้อนหลังของลูกค้านี้ที่วันเริ่มสัญญาหรือเลขเอกสารเดิมตรงกัน — ตรวจรายการแล้วยืนยันว่าไม่ซ้ำก่อนบันทึก',
+      error: DUPLICATE_UNACKNOWLEDGED_MESSAGE,
       code: 'historical_so_duplicate_unacknowledged',
       duplicates: plan.duplicates,
     });
   }
+  /* ⭐ 0395 (มติ 26/09 "ปิดขาดใบซ้ำ"): RPC ตรวจใบซ้ำซ้ำใต้ล็อกรายลูกค้าในทรานแซกชันของการบันทึก — ใบที่อีกคำขอเพิ่งลงฐาน
+     (แข่งกันบันทึก) = RPC โยน `historical_so_duplicate_unacknowledged` ⇒ อ่านใบย้อนหลังของลูกค้าใหม่แล้วตอบ 409 รูปเดียวกับด่านข้างบน
+     (ฟอร์มรีเฟรชการ์ดใบที่อาจซ้ำ ปิดสวิตช์ ให้ผู้คีย์ยืนยันใบใหม่) · อ่านไม่ขึ้น = ยังตอบ 409 ด้วยรายการเดิม (ไม่กลืนเป็นบันทึกผ่าน) */
+  const duplicateRaceReply = async () => {
+    const { data, error: readError } = await fetchAllResult(() => historicalRowsOnly(supabase.from('sales_orders')
+      .select('id, "orderNumber", "orderDate", status, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef"')
+      .eq('customerId', customerId)).order('id', { ascending: true }));
+    const duplicates = readError
+      ? plan.duplicates
+      : historicalDuplicateMatches({ rows: data || [], selfOrderId, startDate: plan.contract.startDate, refs: plan.header.refs });
+    return reply(409, { error: DUPLICATE_UNACKNOWLEDGED_MESSAGE, code: 'historical_so_duplicate_unacknowledged', duplicates });
+  };
 
   const actor = { p_actor_id: user.id, p_actor_name: user.name || user.email || null, p_actor_role: user.role };
   /* ⭐ มติ 26/09 "บันทึกใบซ้ำที่ผู้คีย์ยืนยัน" — ใบไหน · ใคร · เมื่อไร · เหตุผล ลง `metadata.historicalIntake.duplicateReview`
@@ -275,7 +341,7 @@ export async function commitHistoricalOrder({
   const withDuplicateReview = (args) => ({
     ...args, p_header: { ...args.p_header, intake: { ...(args.p_header?.intake || {}), duplicateReview } },
   });
-  if (editing) return updateOrder({ supabase, user, existing, plan, expected, actor, audit, request, withDuplicateReview });
+  if (editing) return updateOrder({ supabase, user, existing, plan, expected, actor, audit, request, withDuplicateReview, duplicateRaceReply });
 
   // ⑥ สร้าง — ดีลภาชนะ + เลขใบ + เอกสารแทนสัญญา (ร่าง) + หัวใบ (ร่าง) + บรรทัด + งวด ในทรานแซกชันเดียว
   //   ตอนสร้างยังไม่มีหลักฐานงวดยกมา (ไฟล์ต้องอยู่ใต้โฟลเดอร์ของใบ ซึ่งยังไม่เกิด) — ฟอร์มอัปแล้วแก้ใบเก็บทีหลัง
@@ -299,6 +365,7 @@ export async function commitHistoricalOrder({
   if (error) {
     if (historicalSchemaMissing(error)) return reply(503, { error: HISTORICAL_FLOW_SCHEMA_MISSING_MESSAGE });
     const raw = errorText(error);
+    if (raw.includes('historical_so_duplicate_unacknowledged')) return duplicateRaceReply();
     if (raw.includes('historical_so_intake_key_conflict')) {
       /* ใบของรหัสการคีย์นี้มีอยู่แล้วแต่เนื้อต่างกัน (เช่น กดสร้างแล้วเน็ตหลุด กลับมาแก้ช่องแล้วกดใหม่)
          ⇒ ส่ง id ที่คำนวณฝั่ง server ไปให้ฟอร์มเสนอ "เปิดใบที่สร้างไว้ในฟอร์มแก้ไข" */
@@ -328,7 +395,10 @@ export async function commitHistoricalOrder({
       action: 'create',
       entityType: 'sales_order',
       entityId: order.id,
-      after: { order, lines, installments, contract, dealId: deal?.id || order.dealId || null, dealCreated },
+      after: {
+        order, lines, installments, contract, lineZones: lineZonesAfter(lines, plan),
+        dealId: deal?.id || order.dealId || null, dealCreated,
+      },
       summary: `สร้างใบสั่งขายย้อนหลัง (ร่าง) ${order.orderNumber} (${refsLabel})${suffix}`,
       request,
     });
@@ -366,11 +436,14 @@ export async function commitHistoricalOrder({
     if (logError || !logged) await writeCreateAudits(' (บันทึกจากการส่งซ้ำ)');
   }
 
+  if (await serviceAlignmentMissing(supabase, order.id, lines)) return alignmentMissingReply(order.id);
   return reply(replayed ? 200 : 201, { order, lines, installments, contract, deal, dealCreated, replayed });
 }
 
 /* ⑥' แก้ใบร่าง/ใบที่ถูกตีกลับ — RPC เขียนบรรทัด+งวดใหม่ทั้งชุด · ใบที่ถูกตีกลับพลิกเป็นร่าง (ด่านอัปหลักฐานไม่รับใบตีกลับ) */
-async function updateOrder({ supabase, user, existing, plan, expected, actor, audit, request, withDuplicateReview = (args) => args }) {
+async function updateOrder({
+  supabase, user, existing, plan, expected, actor, audit, request, withDuplicateReview = (args) => args, duplicateRaceReply = null,
+}) {
   const orderId = existing.id;
 
   // หลักฐานงวดยกมา: ตัวเขียนของฐานเขียนงวดใหม่ทั้งชุด ⇒ ส่งครบทุกไฟล์เสมอ · กรองให้เหลือไฟล์ของใบนี้จริง
@@ -384,7 +457,8 @@ async function updateOrder({ supabase, user, existing, plan, expected, actor, au
   }
 
   // ของเดิมทั้งชุดก่อนเขียนทับ — ระบบไม่มีถังขยะ กู้ได้จาก audit_logs.before เท่านั้น
-  const [beforeLines, beforeInstallments, beforeContract] = await Promise.all([
+  //   ⭐ review 29/09: + แพ็คต่อรอบเดิม (sales_order_line_zones — หายตาม CASCADE ตอนตัวเขียนลบบรรทัด) · อ่านพลาด = หยุดก่อนเขียน
+  const [beforeLines, beforeInstallments, beforeContract, beforeLineZones] = await Promise.all([
     fetchAllResult(() => supabase.from('sales_order_lines').select('*')
       .eq('salesOrderId', orderId).order('sortOrder', { ascending: true }).order('id', { ascending: true })),
     fetchAllResult(() => supabase.from('sales_order_installments').select('*')
@@ -392,8 +466,10 @@ async function updateOrder({ supabase, user, existing, plan, expected, actor, au
     existing.serviceContractId
       ? supabase.from('sales_contracts').select('*').eq('id', existing.serviceContractId).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
+    fetchAllResult(() => supabase.from('sales_order_line_zones').select('*')
+      .eq('salesOrderId', orderId).order('id', { ascending: true })),
   ]);
-  const beforeError = beforeLines.error || beforeInstallments.error || beforeContract.error;
+  const beforeError = beforeLines.error || beforeInstallments.error || beforeContract.error || beforeLineZones.error;
   if (beforeError) {
     if (historicalSchemaMissing(beforeError)) return reply(503, { error: HISTORICAL_FLOW_SCHEMA_MISSING_MESSAGE });
     return reply(500, { error: `อ่านใบเดิมก่อนแก้ไม่สำเร็จ: ${beforeError.message}` });
@@ -408,6 +484,8 @@ async function updateOrder({ supabase, user, existing, plan, expected, actor, au
   }));
   if (error) {
     if (historicalSchemaMissing(error)) return reply(503, { error: HISTORICAL_FLOW_SCHEMA_MISSING_MESSAGE });
+    /* 0395: ใบที่อาจซ้ำที่อีกคำขอเพิ่งลงฐานระหว่างการแก้ใบนี้ = 409 พร้อมรายการใหม่ (ดู duplicateRaceReply) */
+    if (duplicateRaceReply && errorText(error).includes('historical_so_duplicate_unacknowledged')) return duplicateRaceReply();
     const mapped = documentWorkflowError(error, { context: `historical sales order update ${orderId}` });
     return reply(mapped.status, { error: mapped.message, ...(mapped.code ? { code: mapped.code } : {}) });
   }
@@ -425,13 +503,14 @@ async function updateOrder({ supabase, user, existing, plan, expected, actor, au
     entityId: orderId,
     before: {
       order: withoutJoin(existing), lines: beforeLines.data || [], installments: beforeInstallments.data || [],
-      contract: beforeContract.data || null,
+      contract: beforeContract.data || null, lineZones: beforeLineZones.data || [],
     },
-    after: { order, lines, installments, contract },
+    after: { order, lines, installments, contract, lineZones: lineZonesAfter(lines, plan) },
     summary: `แก้ใบสั่งขายย้อนหลัง ${order.orderNumber}${fromRejected ? ' ที่ถูกตีกลับ — กลับเป็นร่าง' : ' (ร่าง)'}`,
     request,
   });
 
+  if (await serviceAlignmentMissing(supabase, orderId, lines)) return alignmentMissingReply(orderId);
   return reply(200, {
     order, lines, installments, contract, deal: existing.deal || null, dealCreated: false, replayed: false,
   });

@@ -4,6 +4,8 @@
 // โค้ดของใบปกติเสมอ แล้วส่งต่อมาที่นี่ (ตรรกะอยู่ไฟล์เดียว เทสต์ยิงด้วย supabase ปลอมได้ · แพตเทิร์น historicalOrderCommit)
 //   · ส่งอนุมัติ = RPC submit_historical_sales_order — ตรวจไฟล์เอกสารแทนสัญญา · งวด · หลักฐานงวดยกมา (ไม่เก็บลายเซ็น)
 //   · อนุมัติ   = RPC approve_historical_sales_order — สัญญา (ออกเลข CT) + ใบ + หยุดยอดงวด + รอบขายของโซน ในทรานแซกชันเดียว
+//     (mig 0394/P3: รอบขายเปิดผ่านตัวกลาง sales_order_open_service_terms ตัวเดียวกับใบ pipeline — term = แพ็คต่อรอบของโซน
+//      · งานบริการไม่ครบ = ฐานถอยทั้งก้อน `sales_order_service_setup_incomplete` ⇒ 409 บอกเลขรายการ ไม่ใช่ข้อความกลาง)
 //   · ตีกลับ · ดึงกลับ · ยกเลิก ใช้กิ่งเดิมของ route — ยกเลิก/ลบใบ ฐานยกเลิกเอกสารแทนสัญญาตามเอง
 //     (trigger sales_orders_historical_void_contract_* ของ 0374) ⇒ **ไม่มีตัวยกเลิกสัญญาฝั่ง JS** ที่นี่อ่านผลอย่างเดียว
 // ⭐ ไม่นับ Actual: ไม่แตะ actualAmount / financeStatus / หลักฐานลายเซ็น · cache ของดีลกรอง origin = 'pipeline' (0360)
@@ -35,7 +37,11 @@ import {
   historicalRefsOf, historicalRowsOnly, historicalSchemaMissing, isHistoricalOrder, isOpeningInstallment,
 } from '@/lib/sales/historicalOrders';
 import { historicalDuplicateMatches } from '@/lib/sales/historicalDuplicates';
+import {
+  HISTORICAL_ALIGNMENT_HINT, historicalPacksRoundsText, historicalSetupIncompleteMessage,
+} from '@/lib/sales/historicalOrderCopy';
 import { loadLiveTermsByZone, sanitizeHistoricalEvidence } from '@/lib/sales/historicalOrderCommit';
+import { SERVICE_PACKS_LABEL } from '@/lib/sales/serviceOrders';
 
 const text = (value) => (value === null || value === undefined ? '' : String(value)).trim();
 const reply = (status, body) => ({ status, body });
@@ -47,6 +53,12 @@ const list = (value) => (Array.isArray(value) ? value : []);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /* ไฟล์แนบของเอกสารแทนสัญญาที่หน้าใบโหลดมาโชว์ — ของจริงมีหลักหน่วย · ครบเพดานก็ยังเห็นไฟล์แรก ๆ (ตัวเลือกอยู่ต้นรายการ) */
 const CONTRACT_FILES_MAX = 50;
+/* แพ็คต่อรอบที่อ่านได้ = จำนวนเต็มบวก · อย่างอื่น (ว่าง · 0 · เศษ) = ไม่รู้ (null) ไม่ใช่ 0 — ใบที่คีย์ก่อนมีช่องไม่มีแถว */
+const packsOf = (value) => {
+  if (value === null || value === undefined || typeof value === 'boolean' || text(value) === '') return null;
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 ? n : null;
+};
 
 /* เธรดของดีลแม่ — route ส่ง logThread ของมันมา (ตัวเดียวกับทุก action) · ไม่ส่ง = ใช้ตัวเขียนกลางตรง ๆ */
 const threadOf = (supabase, user, order) => (action, opts = {}) => appendDocumentEvent(supabase, {
@@ -58,6 +70,51 @@ function rpcFailure(error, context) {
   if (historicalSchemaMissing(error)) return reply(503, { error: HISTORICAL_FLOW_SCHEMA_MISSING_MESSAGE });
   const mapped = documentWorkflowError(error, { context });
   return reply(mapped.status, { error: mapped.message, ...(mapped.code ? { code: mapped.code } : {}) });
+}
+
+/* ตัวกลางของ 0392 ตีกลับการอนุมัติ (0394/P3) — DETAIL = '<ชนิด>:<บรรทัด>[:<โซน>]' คั่นจุลภาค
+   ⭐ ต้องจับก่อน rpcFailure: รหัสนี้จงใจไม่อยู่ในตารางกลาง (ข้อความต้องมี "รายการ n" จากบรรทัดของใบ) ⇒ ปล่อยไปได้ 500 กลาง
+   · `setupErrors` = รหัสดิบรายข้อ (แพตเทิร์นเดียวกับทาง pipeline ใน signatureEvidence) */
+const SETUP_INCOMPLETE = 'sales_order_service_setup_incomplete';
+function setupIncompleteFailure(error, order) {
+  const setupErrors = String(error?.details || '').split(',').map((code) => code.trim()).filter(Boolean);
+  return reply(409, {
+    error: historicalSetupIncompleteMessage(setupErrors, order?.lines),
+    code: 'historical_service_setup_incomplete',
+    setupErrors,
+  });
+}
+
+/* ── เข็มขัดก่อนอนุมัติ (review 29/09) ──────────────────────────────────────────────────────────────────
+   0394 ไม่เพิ่มคอลัมน์ ⇒ check:columns/CI ไม่รู้ว่ารันแล้วหรือยัง · โค้ดขึ้น prod ก่อนมิกได้ (deploy อัตโนมัติวันละ 3 รอบ —
+   แพตเทิร์นเดียวกับด่านพร้อมของ 0387 ใน historicalOrders.js) · อนุมัติรุ่นก่อน 0394 เปิดรอบขาย 'SZT-H' ด้วย packageQty = จำนวน
+   ของบรรทัด แล้วรัน 0394 ทีหลังก็ไม่ซ่อม ⇒ ตรวจเองก่อน RPC: ทุกบรรทัดที่มีโซนต้องมีแถวแพ็คต่อรอบของ (บรรทัด, โซนของบรรทัด)
+   ที่อ่านได้ — คู่เดียวกับ loadHistoricalOrderExtras และ 0394/P9c
+   ⭐ หลัง 0394 เข็มขัดไม่เปลี่ยนผล: ตัวเขียน P6 เขียนครบทุกบรรทัด · ตัวกลางตรวจซ้ำด้วยรหัสเดียวกัน (zones_missing)
+   ⚠️ อ่านไม่ขึ้น = 500 (ไม่ใช่ "ไม่มีแถว" และไม่ใช่ "ผ่าน") · ข้อความพูดทั้งสองเหตุ (ใบคีย์ก่อนมีช่อง / ฐานยังไม่รันมิก)
+   @returns reply | null */
+async function serviceAllocationGate(supabase, order) {
+  const zoned = list(order?.lines).filter((line) => text(line.serviceZoneId))
+    .sort((a, b) => (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0));
+  if (!zoned.length) return null;
+  const { data, error } = await fetchAllResult(() => supabase
+    .from('sales_order_line_zones').select('id, "salesOrderLineId", "zoneId", "packsPerRound"')
+    .eq('salesOrderId', order.id).order('id', { ascending: true }));
+  if (error) {
+    if (historicalSchemaMissing(error)) return reply(503, { error: HISTORICAL_FLOW_SCHEMA_MISSING_MESSAGE });
+    return reply(500, { error: `อ่านค่า${SERVICE_PACKS_LABEL}ของใบไม่สำเร็จ: ${error.message || error.code} — ยังไม่ได้อนุมัติ` });
+  }
+  const have = new Set((data || [])
+    .filter((row) => packsOf(row.packsPerRound) !== null)
+    .map((row) => `${row.salesOrderLineId}\u0000${row.zoneId}`));
+  const missing = zoned.filter((line) => !have.has(`${line.id}\u0000${line.serviceZoneId}`));
+  if (!missing.length) return null;
+  const setupErrors = missing.map((line) => `zones_missing:${line.id}`);
+  return reply(409, {
+    error: `${historicalSetupIncompleteMessage(setupErrors, order.lines)} · ${HISTORICAL_ALIGNMENT_HINT}`,
+    code: 'historical_service_setup_incomplete',
+    setupErrors,
+  });
 }
 
 /* ── ส่งอนุมัติ ───────────────────────────────────────────────────────────────────────────────────
@@ -179,6 +236,12 @@ export async function approveHistoricalOrder({
   if (!pattern) return reply(409, { error: 'ชนิดสัญญาของใบนี้ไม่รู้จัก — ออกเลขที่ไม่ได้' });
   const { prefix, width } = documentNumberSlots(pattern, { date: now });
 
+  /* ส่งซ้ำหลังสำเร็จ = ใบอนุมัติแล้ว (RPC ตอบผลเดิม) ⇒ ไม่ต้องตรวจ */
+  if (!replay) {
+    const blocked = await serviceAllocationGate(supabase, order);
+    if (blocked) return blocked;
+  }
+
   const { data: result, error } = await supabase.rpc('approve_historical_sales_order', {
     p_order_id: order.id,
     p_expected_updated_at: expected.value,
@@ -192,6 +255,7 @@ export async function approveHistoricalOrder({
     p_contract_prefix: prefix,
     p_contract_width: width,
   });
+  if (error && text(error.message).includes(SETUP_INCOMPLETE)) return setupIncompleteFailure(error, order);
   if (error) return rpcFailure(error, `historical sales order approve ${order.id}`);
   const data = result?.order || null;
   if (!data?.id) return reply(500, { error: 'อนุมัติใบสั่งขายย้อนหลังไม่สำเร็จ — ฐานข้อมูลไม่คืนใบ' });
@@ -231,6 +295,9 @@ export async function approveHistoricalOrder({
     });
   }
   if (terms.length) {
+    /* term หลัง 0394 = แพ็คต่อรอบของโซน (packageQty) — ยอดรวมต่อรอบใช้ประโยคชุดเดียวกับโมดัลอนุมัติ (ขาดบางโซน = บอกจำนวนที่ขาด)
+       · ไม่รู้สักโซน = ประโยคเดิม ไม่พิมพ์ "รวม 0" · term ไม่มีรอบ ⇒ ประโยครวมไม่มีส่วนรอบ/โซน */
+    const packs = historicalPacksRoundsText(terms.map((term) => ({ zoneId: term.zoneId, packsPerRound: term.packageQty }))).total;
     await audit({
       user,
       action: 'create',
@@ -244,7 +311,7 @@ export async function approveHistoricalOrder({
           id: term.id, salesOrderLineId: term.salesOrderLineId, zoneId: term.zoneId, packageQty: term.packageQty,
         })),
       },
-      summary: `เปิดโซนให้ TS จากการอนุมัติใบสั่งขายย้อนหลัง ${order.orderNumber} — ${terms.length} โซน (รอตั้งรอบ)`,
+      summary: `เปิดโซนให้ TS จากการอนุมัติใบสั่งขายย้อนหลัง ${order.orderNumber} — ${terms.length} โซน${packs ? ` · ${packs}` : ''} (รอตั้งรอบ)`,
       request,
     });
   }
@@ -259,6 +326,7 @@ export async function approveHistoricalOrder({
  *   (แถวที่หายเงียบ ๆ อ่านเหมือน "ไม่มีเรื่องต้องตรวจ")
  * @param order  แถวใบพร้อม `lines` · `installments` (ดิบ) · `serviceContract` (ถ้าโหลดมาแล้ว)
  * @returns {Promise<{ lineZones, serviceContract, serviceContractFiles, openingEvidence, liveTermWarnings, duplicateCheck }>}
+ *   `lineZones[].packsPerRound` = แพ็คต่อรอบของโซน (sales_order_line_zones · mig 0394/P6) — ไม่มีแถว/โซนไม่ตรงบรรทัด = null
  *   `duplicateCheck` = `{ candidates, statusById }` — ใบที่อาจซ้ำ **ตอนนี้** + สถานะปัจจุบันของใบย้อนหลังทุกใบของลูกค้า
  *   (มติ 26/09 ข้อ 1: ใบที่เกิดหลังผู้คีย์ยืนยัน = เตือนผู้อนุมัติ ไม่บล็อก · ใบที่ผู้คีย์ยืนยันไว้แล้วถูกยกเลิก/ลบไป = บอกด้วย)
  */
@@ -283,7 +351,21 @@ export async function loadHistoricalOrderExtras(supabase, order, { todayIso = bu
     .in('id', chunk).order('id', { ascending: true })));
   if (siteError) throw siteError;
   const sitesById = new Map((siteRows || []).map((site) => [site.id, site]));
-  const lineZones = lines.filter((line) => line.serviceZoneId).map((line) => {
+  /* แพ็คต่อรอบ (PR-D · mig 0394/P6) — แถวโซนของงานบริการเกิดตอนบันทึกฟอร์ม หนึ่งแถวต่อบรรทัด (โซน = serviceZoneId)
+     ⭐ จับคู่ด้วย **บรรทัด + โซน** — แถวของโซนอื่นบนบรรทัดเดียวกันไม่ใช่ตัวเลขของบรรทัดนี้ (ตัวกลางตีกลับ historical_zone_mismatch)
+     ⚠️ อ่านไม่ขึ้น = โยน (ผู้เรียกตั้ง extrasError) — ว่างเพราะอ่านพังอ่านเหมือน "ใบนี้คีย์ก่อนมีช่องแพ็คต่อรอบ" */
+  const zonedLines = lines.filter((line) => line.serviceZoneId);
+  const packsByLineZone = new Map();
+  if (zonedLines.length) {
+    const { data: allocationRows, error: allocationError } = await fetchAllResult(() => supabase
+      .from('sales_order_line_zones').select('id, "salesOrderLineId", "zoneId", "packsPerRound"')
+      .eq('salesOrderId', order.id).order('id', { ascending: true }));
+    if (allocationError) throw allocationError;
+    for (const row of allocationRows || []) {
+      packsByLineZone.set(`${row.salesOrderLineId}\u0000${row.zoneId}`, packsOf(row.packsPerRound));
+    }
+  }
+  const lineZones = zonedLines.map((line) => {
     const zone = zonesById.get(line.serviceZoneId) || null;
     const site = zone ? sitesById.get(zone.siteId) || null : null;
     return {
@@ -297,14 +379,15 @@ export async function loadHistoricalOrderExtras(supabase, order, { todayIso = bu
       siteName: site?.name || null,
       siteActive: site ? site.isActive !== false : null,
       productId: line.productId || null,
-      /* บรรทัดแบบใบเสนอราคา (มติ 23/09): จำนวน · หน่วย · ราคา/หน่วย · ส่วนลด · จำนวนเงิน — ไม่มี "แพ็ค" แล้ว
-         (จำนวนมีหน่วยของสินค้าตัวเอง · 12 แพ็คเกจ = 1 ชุด × 12 เดือน ไม่ใช่ 12 ชุด) */
+      /* บรรทัดแบบใบเสนอราคา (มติ 23/09): จำนวน · หน่วย · ราคา/หน่วย · ส่วนลด · จำนวนเงิน — จำนวน/หน่วยของบรรทัดเป็นเงิน
+         (1 ชุด × 12 เดือน) · แพ็คต่อรอบของโซนมาจาก `sales_order_line_zones` (`packsPerRound`, mig 0394) — คนละช่องกับจำนวน */
       fgCode: line.fgCode || null,
       qty: line.qty ?? null,
       unit: line.unit || null,
       unitPrice: line.unitPrice ?? null,
       discountAmount: line.discountAmount ?? null,
       rounds: line.serviceRounds ?? null,
+      packsPerRound: packsByLineZone.get(`${line.id}\u0000${line.serviceZoneId}`) ?? null,
       lineTotal: line.lineTotal ?? null,
       installationPoint: line.installationPoint || null,
     };

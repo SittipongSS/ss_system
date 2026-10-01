@@ -24,6 +24,7 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import { gateBlocker } from "@/lib/service/visitGate";
 import { GATE_FIX } from "@/lib/service/scheduleQueueView";
 import { naText } from "@/lib/format";
+import GateOrderChips from "./GateOrderChips";
 import styles from "./ScheduleQueueCard.module.css";
 
 const TONE_CLASS = { warn: "warn", bad: "bad", ok: "ok" };
@@ -116,6 +117,8 @@ export default function ScheduleQueueCard({
                   </button>
                 </>
               )}
+              {/* D15 — ใบสั่งขายที่กำลังตั้งโซนนี้ (เลขที่ · ขั้น · AE + ลิงก์) · ปิดท้ายก้อนเหตุ (inline ล้วน · hook อยู่ในตัวชิปเอง) */}
+              <GateOrderChips orders={item.orders} />
             </span>
           </p>
         ))}

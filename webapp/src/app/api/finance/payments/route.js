@@ -12,16 +12,19 @@ import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { canAccessFinance } from '@/lib/permissions';
 import {
-  filterLedger, ledgerBillingTally, ledgerReport, ledgerRow, ledgerSummary, ledgerVoidInstallment, orderStateIndex,
-  sortLedger, stampConfirmOutlook, stampOrderInstallmentCount, stampOrderPaidThrough, stampOrderReplanned, undatedHiddenBy,
+  filterLedger, ledgerBillingTally, ledgerCustomerOutlook, ledgerDueTally, ledgerReport, ledgerRow, ledgerSummary,
+  ledgerVoidInstallment, orderStateIndex, sortLedger, stampConfirmOutlook, stampOrderInstallmentCount, stampOrderPaidThrough,
+  stampOrderReplanned, undatedHiddenBy,
 } from '@/lib/finance/paymentLedger';
+import { holidaySet } from '@/lib/master/holidays';
 import { reportToXlsxBuffer } from '@/lib/tax/exportExcel';
 import { businessDate } from '@/lib/businessDate';
 import { paymentNotRequired } from '@/lib/sales/salesOrderPayments';
 import { orderHasServiceRounds } from '@/lib/sales/serviceOrders';
+import { serviceTermZoneCount, termOrderActive } from '@/lib/service/terms';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { customerNameIn } from '@/lib/master/customerName';
-import { billingDueCandidates } from '@/lib/sales/billingDueNotify';
+import { billingCutoffOnIndex, billingDueCandidates, dueSoonCandidates } from '@/lib/sales/billingDueNotify';
 import { SAHAMIT_AR_CODE } from '@/lib/sahamit/server';
 
 export const runtime = 'nodejs';
@@ -76,9 +79,14 @@ async function loadLedger(supabase, todayIso) {
      ⇒ ไม่ใช่ข้อบังคับอีก แต่ยังอ่านง่ายกว่า จึงคงรูปนี้ไว้ */
   /* `approvedAt` + `approvedByName` = บรรทัด "อนุมัติใบ: <AE Sup> · <วัน> · ไม่นับ Actual" ในโมดัลรับรองงวดของ
      ใบย้อนหลัง (มติ 22/09 · mock FnConfirm) — บัญชีต้องเห็นว่าใบผ่าน AE Sup แล้วก่อนรับรองเงินก้อนแรก */
+  /* `serviceTermsOpenedAt` (mig 0392 · D13) = ตราเปิดงานบริการ — ตัวตัดสินด่านเงินนับแพ็คเกจที่ฝ่ายขายเลือกให้บรรทัดพิมพ์เอง
+     (`serviceFgCode`) เฉพาะใบที่ประทับแล้ว ⇒ ขาดช่องนี้ = ใบแพ็คเกจพิมพ์เองหลุดจากตัวกรอง/คอลัมน์ "ใบมีรอบบริการ" ของบัญชี */
+  /* `supersededById` + `serviceContractId` (PR-C C5) = ใบยังมีผลไหม (`termOrderActive` ตัวเดียวของระบบ) + ผูกสัญญาแล้วไหม
+     — บรรทัดด่านเงินของนัดบริการในโมดัลรับรองบนทะเบียน (ข้างล่าง `serviceTermZonesByOrder`) */
   const { data: orders, error: orderError } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
     .from('sales_orders')
-    .select('id, "orderNumber", "quotationId", "referenceDoc", "dealId", "projectId", "customerId", "customerName", status, "financeStatus", "totalAmount", "approvedAt", "approvedByName", origin, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef"')
+    /* money-decider feed */
+    .select('id, "orderNumber", "quotationId", "referenceDoc", "dealId", "projectId", "customerId", "customerName", status, "financeStatus", "totalAmount", "approvedAt", "approvedByName", origin, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef", "serviceTermsOpenedAt", "supersededById", "serviceContractId"')
     .in('id', chunk)
     .order('id', { ascending: true })));
   if (orderError) throw orderError;
@@ -116,9 +124,11 @@ async function loadLedger(supabase, todayIso) {
 
   /* ⚠️ ก้อนนี้ใหญ่แน่ — ใบจริงมีได้ถึง 10 บรรทัดต่อใบ คูณทุกใบที่มีงวดตรึงแล้วทั้งระบบ
      ⇒ เกิน 1,000 แถวเป็นเรื่องปกติ ต้องมี `.order()` ที่นิ่ง ไม่งั้นบรรทัดหมวด 02-001
-     ของบางใบจะหายไปในหน้าที่สอง แล้วใบนั้นกลายเป็น "ไม่ใช่ใบบริการ" แบบสุ่มทุกครั้งที่รีเฟรช */
+     ของบางใบจะหายไปในหน้าที่สอง แล้วใบนั้นกลายเป็น "ไม่ใช่ใบบริการ" แบบสุ่มทุกครั้งที่รีเฟรช
+     ⭐ `"serviceFgCode"` (mig 0392 · D13) — แพ็คเกจของบรรทัดพิมพ์เอง · นับเมื่อใบประทับ `serviceTermsOpenedAt` แล้วเท่านั้น */
   const { data: orderLines, error: lineError } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
-    .from('sales_order_lines').select('id, "salesOrderId", "fgCode"').in('salesOrderId', chunk).order('id')));
+    /* money-decider feed */
+    .from('sales_order_lines').select('id, "salesOrderId", "fgCode", "serviceFgCode"').in('salesOrderId', chunk).order('id')));
   if (lineError) throw lineError;
   const linesByOrder = new Map();
   for (const line of orderLines || []) {
@@ -130,6 +140,25 @@ async function loadLedger(supabase, todayIso) {
     o.id,
     orderHasServiceRounds(o, linesByOrder.get(o.id) || [], { projectsById, dealsById }),
   ]));
+
+  /* ── โซนของรอบขายที่มีผลต่อใบ (PR-C C5 · C-D15) — บรรทัด "เปิดด่านเงินของนัดบริการของใบนี้ถึง … (n โซน)" ในโมดัลรับรอง ──
+     ⭐ ข้อเท็จจริงชุดเดียวกับ GET ใบ (หน้าใบ) ⇒ สองจอพูดประโยคเดียวกันกับงวดเดียวกัน · นับที่ server ไม่ใช่จอ
+     ⭐ เฉพาะใบที่เปิดงานบริการแล้ว (`serviceTermsOpenedAt` · mig 0392) และยังมีผล — ใบ pipeline ที่ยังไม่ประทับไม่มีรอบขาย
+       (ทางผูกของ TS ปิด 409) · ใบย้อนหลังใช้บรรทัดของตัวเอง ⇒ ไม่ต้องถามใบอื่น
+     ⚠️ service_zone_terms อยู่ใน check:rowcap (เพดาน 0) ⇒ ซอยก้อน + ไล่หน้า · อ่านไม่ขึ้น = โยน (แบบทุกก้อนของทะเบียน) */
+  const liveServiceOrderIds = (orders || []).filter((o) => termOrderActive(o) && o.serviceTermsOpenedAt).map((o) => o.id);
+  const termsByOrder = new Map();
+  if (liveServiceOrderIds.length) {
+    const { data: termRows, error: termError } = await fetchInChunks(liveServiceOrderIds, (chunk) => fetchAllResult(() => supabase
+      .from('service_zone_terms').select('id, "salesOrderId", "zoneId"').in('salesOrderId', chunk).order('id', { ascending: true })));
+    if (termError) throw termError;
+    for (const term of termRows || []) {
+      const list = termsByOrder.get(term.salesOrderId) || [];
+      list.push(term);
+      termsByOrder.set(term.salesOrderId, list);
+    }
+  }
+  const serviceTermZonesByOrder = new Map((orders || []).map((o) => [o.id, serviceTermZoneCount(termsByOrder.get(o.id) || [], o)]));
 
   /* `paymentPlan` = แผนของ QT — ป้าย "ปรับแผนหลังอนุมัติ" (0377 · มติ D5) เทียบงวดจริงกับแผนนี้ (ไม่เก็บข้อมูลเพิ่ม) */
   const quoteIds = [...new Set((orders || []).map((o) => o.quotationId).filter(Boolean))];
@@ -145,11 +174,17 @@ async function loadLedger(supabase, todayIso) {
   const customerIds = [...new Set((orders || []).map((o) => o.customerId).filter(Boolean))];
   const customerById = new Map();
   if (customerIds.length) {
-    const { data: customers, error: customerError } = await loadLedgerCustomers(supabase, customerIds);
+    /* วันหยุดของเรา (v5) — ชิป "รอบถัดไป" ของเครดิต N เสนอวันทำงาน · `holidaySet` ถอยไปรายการที่ฝังไว้เองเมื่ออ่านไม่ขึ้น (ไม่ throw) */
+    const [{ data: customers, error: customerError }, holidays] = await Promise.all([
+      loadLedgerCustomers(supabase, customerIds), holidaySet(),
+    ]);
     if (customerError) throw customerError;
     /* 🐞 ลูกค้าที่มีแต่ชื่ออังกฤษเคยได้แถวไร้ชื่อทั้งบนจอและในไฟล์ Excel ที่บัญชีโหลดไป
-       ⇒ ตัดสินชื่อที่จะวาดตั้งแต่ตรงนี้ ทางเดียวกันทั้งสองปลายทาง */
-    (customers || []).forEach((c) => customerById.set(c.id, { ...c, name: customerNameIn(c) }));
+       ⇒ ตัดสินชื่อที่จะวาดตั้งแต่ตรงนี้ ทางเดียวกันทั้งสองปลายทาง
+       ⭐ v5 · รอบถัดไป + แถบ "ขอปฏิทิน YYYY" ของลูกค้า (`ledgerCustomerOutlook`) คิด **ครั้งเดียวต่อลูกค้า** ที่นี่ ไม่ใช่ทุกงวดใน ledgerRow */
+    (customers || []).forEach((c) => customerById.set(c.id, {
+      ...c, name: customerNameIn(c), billingOutlook: ledgerCustomerOutlook(c.billingRule ?? null, todayIso, { holidays }),
+    }));
   }
 
   /* ── คำร้องขอใบวางบิลที่งวดผูกอยู่ (0260) — ตัดสิน "ขอใบแล้ว" ของรอบวางบิล (0389) ─────────────────
@@ -179,6 +214,27 @@ async function loadLedger(supabase, todayIso) {
     requestsById: billingRequestById,
     skipArCodes: [SAHAMIT_AR_CODE],
   }).map(({ installment }) => installment.id));
+  /* ── ตัวกรอง `?due=soon` = ชุดของกระดิ่ง "ครบกำหนดชำระ" เป๊ะ (รุ่นสี่ · system-design §6 ช่วง 4a) ─────────────────────
+     ⭐ ถาม `dueSoonCandidates` ตัวเดียวกับ cron ด้วยวัตถุดิบชุดเดียวกับข้างบน ⇒ หัวข้อ "N งวด" ของแถว FN = แถวที่ลิงก์เปิดมาเจอ
+     ⚠️ ลูกค้าต้องพก `billingRule` (loadLedgerCustomers เลือกมาแล้ว) — ตัวคิดต้องรู้ว่างวดไหนรวมเข้ากระดิ่งวางบิลวันเดียวกัน */
+  const dueRemindIds = new Set(dueSoonCandidates(rows, {
+    todayIso,
+    ordersById: new Map([...orderById.values()].map((o) => [o.id, { ...o, quotation: quoteById.get(o.quotationId) || null }])),
+    customersById: customerById,
+    requestsById: billingRequestById,
+    skipArCodes: [SAHAMIT_AR_CODE],
+  }).map(({ installment }) => installment.id));
+  /* ── ตัวกรอง `?billing=cutoff&on=` = ชุดของกระดิ่ง "วันตัดรอบ" เป๊ะ (v5 · มติเจ้าของ 29/09) ─────────────────────────────
+     ⭐ ถาม `billingCutoffOnIndex` ด้วยวัตถุดิบชุดเดียวกับ cron (ด่านใบ `collectibleOf` + `ledgerFlags().cutoffOn` ของตัวคิด)
+       ⇒ เช้าที่กระดิ่งยิง หัวข้อ "N งวด" ของแถว FN = แถวที่ลิงก์เปิดมาเจอ · ไม่ขึ้นกับวันนี้ (เปิดลิงก์วันหลังได้ชุดสดของเส้นตายนั้น)
+     ⚠️ ลูกค้าต้องพก `billingRule` (loadLedgerCustomers เลือกมาแล้ว) — รอบจ่าย/ปฏิทินอยู่ในนั้น */
+  const cutoffOnById = billingCutoffOnIndex(rows, {
+    todayIso,
+    ordersById: new Map([...orderById.values()].map((o) => [o.id, { ...o, quotation: quoteById.get(o.quotationId) || null }])),
+    customersById: customerById,
+    requestsById: billingRequestById,
+    skipArCodes: [SAHAMIT_AR_CODE],
+  });
 
   const ledger = rows
     .map((installment) => {
@@ -202,6 +258,10 @@ async function loadLedger(supabase, todayIso) {
         serviceRounds: serviceRoundsByOrder.get(order.id) || false,
         billingRequest: billingRequestById.get(installment.billingRequestId) || null,
         billingRemind: remindIds.has(installment.id),
+        dueRemind: dueRemindIds.has(installment.id),
+        cutoffOn: cutoffOnById.get(installment.id) || null,
+        serviceTermZones: serviceTermZonesByOrder.get(order.id) || 0,
+        serviceContractLinked: !!order.serviceContractId,
       });
     })
     .filter(Boolean);
@@ -248,6 +308,12 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       /* soon | 7d | month | late — รอบวางบิล (mig 0389 · ม็อก D) · กระดิ่งฝั่ง FN ลิงก์มาที่ `?billing=soon` (ชุดของกระดิ่ง)
          ⚠️ เหตุผลเดียวกับ taxInvoice ข้างบน: ไม่อยู่ใน literal นี้ = API เมินเงียบทั้งจอและไฟล์ */
       billing: url.searchParams.get('billing') || '',
+      /* soon — ครบกำหนดชำระ 0..3 วัน (รุ่นสี่ · §6) · กระดิ่ง "ครบกำหนดชำระ" ฝั่ง FN ลิงก์มาที่ `?due=soon` (ชุดของกระดิ่ง)
+         ⚠️ เหตุผลเดียวกับ taxInvoice/billing: ไม่อยู่ใน literal นี้ = API เมินเงียบทั้งจอและไฟล์ */
+      due: url.searchParams.get('due') || '',
+      /* YYYY-MM-DD — เส้นตายของตัวกรอง `billing=cutoff` (v5 · ลิงก์ของกระดิ่งวันตัดรอบ) · ไม่มี/ผิดรูป = `cutoff` ไม่กรอง
+         ⚠️ เหตุผลเดียวกับ taxInvoice/billing/due: ไม่อยู่ใน literal นี้ = API เมินเงียบทั้งจอและไฟล์ */
+      on: url.searchParams.get('on') || '',
       orderStates,
     };
     const filtered = sortLedger(filterLedger(all, filters));
@@ -257,6 +323,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     const undatedHidden = undatedHiddenBy(all, filters);
     /* ตัวนับบนตัวเลือกของกลุ่ม "รอบวางบิล" + งวดที่ยังไม่มีวันวางบิลซึ่งตัวกรองนั้นซ่อน — กติกาเดียวกับ undatedHidden */
     const billingTally = ledgerBillingTally(all, filters);
+    // ตัวนับบนตัวเลือกของกลุ่ม "ครบกำหนดชำระ" — ถอดตัวกรองนี้เองออกก่อนนับ (กติกาเดียวกับ billingTally)
+    const dueTally = ledgerDueTally(all, filters);
 
     if (url.searchParams.get('format') === 'xlsx') {
       /* ⚠️ ไฟล์ที่ดาวน์โหลด = **สิ่งที่กรองไว้บนจอ** ไม่ใช่ทั้งทะเบียนเสมอ —
@@ -280,6 +348,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       totalRows: all.length,
       undatedHidden,
       billingTally,
+      dueTally,
       todayIso,
     });
   } catch (loadError) {

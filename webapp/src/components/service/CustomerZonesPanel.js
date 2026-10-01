@@ -195,19 +195,31 @@ export default function CustomerZonesPanel({
                             {/* ⚠️ สองเลขคนละความหมาย ห้ามยุบรวม (mig 0314 เขียนกำกับ) —
                                 บนคือที่ TS ประเมิน ล่างคือที่ลูกค้าซื้อจริง */}
                             <b>{naText(zone.assessedPackages)}</b>
-                            {zone.soldPackages !== null && zone.soldPackages !== zone.assessedPackages && (
+                            {/* ⭐ ใบที่ประทับแล้ว (mig 0392) ขายเป็น "แพ็คต่อรอบ" — เทียบกับเลขประเมินได้ตรง ๆ ⇒ บอกเสมอ
+                                (PR-C · r2 R1) · ใบเดิม `packageQty` คือจำนวนที่ขายทั้งใบ ⇒ คง "ซื้อจริง n" แบบเดิม */}
+                            {zone.soldPerRound ? (
+                              <small className={styles.sub}>ขาย {fmtNumber(zone.soldPerRoundPackages)} แพ็ค/รอบ</small>
+                            ) : zone.soldPackages !== null && zone.soldPackages !== zone.assessedPackages && (
                               <small className={styles.sub}>ซื้อจริง {zone.soldPackages}</small>
                             )}
                           </td>
                           <td>
                             <RegistryBadge tone={badge.tone} label={badge.label} />
-                            {zone.salesOrders?.length > 0 && (
+                            {/* ป้ายที่รวม **ทุกใบที่มีผล** ของพื้นที่ (PR-C · critique L6) — ของเดิมโชว์เลขที่ของใบแรกใบเดียว
+                                · ไม่มีใบที่มีผล (รอบจบแล้ว) = ถอยไปเลขที่ใบของรอบล่าสุดตามเดิม */}
+                            {zone.soldLabel ? (
+                              <small className={styles.sub}>{zone.soldLabel}</small>
+                            ) : zone.salesOrders?.length > 0 && (
                               <small className={`${styles.sub} mono`}>
                                 {zone.salesOrders.map((o) => o.orderNumber).filter(Boolean).join(" · ")}
                               </small>
                             )}
                             {zone.termEndDate && (
                               <small className={styles.sub}>จบรอบ {fmtDate(zone.termEndDate)}</small>
+                            )}
+                            {/* ใบที่ยังถือพื้นที่นี้ไว้โดยยังไม่เปิดงานบริการ (ร่าง/รออนุมัติ/ตั้งย้อนหลัง) — AE เห็นว่ามีใบค้างอยู่ */}
+                            {zone.pendingLabel && (
+                              <small className={styles.pending}>{zone.pendingLabel}</small>
                             )}
                           </td>
                           <td>

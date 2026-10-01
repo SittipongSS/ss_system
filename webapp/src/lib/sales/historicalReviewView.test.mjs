@@ -19,9 +19,10 @@ const PLAN = Object.freeze({
     refs: { quote: 'QT-OLD-1', express: '', invoice: 'IV-2601-0412' }, notes: '',
   },
   contract: { docKind: 'customer_po', ref: 'PO-7781', startDate: '2026-01-01', endDate: '2026-12-31' },
+  /* บรรทัดของแผนพก packsPerRound (จำนวนเต็ม 1–9999) + serviceRounds — PR-D · มติ 26/09 A3/O9 */
   lines: [
-    { zoneId: 'Z-1', siteId: 'S-1', siteCode: 'ST-01', siteName: 'อาคาร A' },
-    { zoneId: 'Z-2', siteId: 'S-1', siteCode: 'ST-01', siteName: 'อาคาร A' },
+    { zoneId: 'Z-1', zoneName: 'Lobby', siteId: 'S-1', siteCode: 'ST-01', siteName: 'อาคาร A', packsPerRound: 2, serviceRounds: 12 },
+    { zoneId: 'Z-2', zoneName: 'ทางเดิน', siteId: 'S-1', siteCode: 'ST-01', siteName: 'อาคาร A', packsPerRound: 1, serviceRounds: 12 },
   ],
   opening: { amount: 196452, coversFrom: '2026-01-01', coversTo: '2026-09-30', paidOn: '2026-01-10', note: '' },
   installments: [{ label: 'งวด 2', amount: 65484, dueDate: '2026-10-01', coversFrom: '2026-10-01', coversTo: '2026-12-31' }],
@@ -75,11 +76,17 @@ test('⭐ แถวตรวจ: ข้อเดียวกับหน้า�
   const rows = historicalReviewChecklist(plan(), {
     contractFiles: { count: 1, names: ['PO-7781.pdf'], pending: [] }, evidenceFileCount: 2, todayIso: '2026-09-25',
   });
-  assert.deepEqual(rows.map((r) => r.key), ['contract', 'signedFile', 'refs', 'zones', 'opening', 'remaining', 'verdict']);
+  /* ⭐ PR-D: แถว "จำนวนรอบบริการ · แต่ละครั้งกี่แพ็ค" (มติ 29/09 — รอบก่อนแพ็คเหมือนใบใหม่) ต่อจากโซน — ข้อเดียวกับหน้าต่างอนุมัติ (historicalPacksRoundsText) */
+  assert.deepEqual(rows.map((r) => r.key), ['contract', 'signedFile', 'refs', 'zones', 'packs', 'opening', 'remaining', 'verdict']);
   assert.equal(rowOf(rows, 'contract').value, 'ใบสั่งซื้อของลูกค้า (PO) PO-7781 · 01/01/2026–31/12/2026 · 12 เดือน');
   assert.equal(rowOf(rows, 'signedFile').value, 'PO-7781.pdf');
   assert.equal(rowOf(rows, 'refs').value, 'QT-OLD-1 · IV-2601-0412');
   assert.equal(rowOf(rows, 'zones').value, '2 โซน — ST-01 อาคาร A 2 โซน');
+  assert.deepEqual(rowOf(rows, 'packs'), {
+    key: 'packs', label: 'จำนวนรอบบริการ · รอบละกี่แพ็ค', value: '12 รอบ/โซน · รวม 3 แพ็ค/รอบ',
+    sub: 'Lobby 12 รอบ × 2 แพ็ค/รอบ · ทางเดิน 12 รอบ × 1 แพ็ค/รอบ', tone: null, step: 'zones', field: 'zones',
+  });
+  assert.equal(rowOf(rows, 'remaining').sub, null, 'ไม่มีวันวางบิลสักงวด = ไม่พูด');
   assert.match(rowOf(rows, 'opening').value, /หลักฐาน 2 ไฟล์/);
   assert.match(rowOf(rows, 'remaining').value, /^งวด 2 ฿?65,484/);
   assert.equal(rowOf(rows, 'verdict').tone, 'ok');
@@ -115,10 +122,38 @@ test('⭐ คำเตือนอยู่ในแถวของมัน: �
 
 test('⭐ ใบ ฿0: แถวยอดใบแทนงวด · หมายเหตุขึ้นเสมอ (มติข้อ 11) · ไม่มีแถวตรวจยอด/ช่วง', () => {
   const rows = historicalReviewChecklist(plan({ zeroValue: true, opening: null, installments: [], header: { ...PLAN.header, totalAmount: 0 } }));
-  assert.deepEqual(rows.map((r) => r.key), ['contract', 'signedFile', 'refs', 'notes', 'zones', 'zero']);
+  assert.deepEqual(rows.map((r) => r.key), ['contract', 'signedFile', 'refs', 'notes', 'zones', 'packs', 'zero']);
   assert.match(rowOf(rows, 'zero').value, /ด่านเงินของนัดบริการผ่านเอง/);
   /* ยอดใบเปลี่ยนที่รายการ — ขั้น ③ ของใบ ฿0 ไม่มีช่อง (และไม่มีจุดยึด) ให้พาไป */
   assert.deepEqual([rowOf(rows, 'zero').step, rowOf(rows, 'zero').field], ['zones', 'zones']);
+});
+
+/* ⭐ PR-D (มติ 26/09 A3/O9 · IMPL_PLAN_D §3.4): แพ็คต่อรอบ · รอบ — รอบต่างกันเป็นช่วง · เกิน 5 โซนชี้ตารางด้านล่าง
+   · ยังไม่ครบ = เหลือง ชี้ขั้น ② (ช่อง 'zones' มีจุดยึดบนขั้น ② อยู่แล้ว — ยามจุดยึดของ historicalRegisterUi) */
+test('⭐ แถวรอบ · แพ็ค: ช่วงรอบ · เกิน 5 โซน = ดูรายการด้านล่าง · ขาดแพ็ค = เหลือง ชี้ขั้น ② · ไม่มีบรรทัด = ขีด', () => {
+  const packs = (lines) => rowOf(historicalReviewChecklist(plan({ lines })), 'packs');
+  const mixed = packs([{ ...PLAN.lines[0], serviceRounds: 6 }, PLAN.lines[1]]);
+  assert.equal(mixed.value, '6–12 รอบ/โซน · รวม 3 แพ็ค/รอบ');
+  assert.equal(mixed.sub, 'Lobby 6 รอบ × 2 แพ็ค/รอบ · ทางเดิน 12 รอบ × 1 แพ็ค/รอบ');
+  const six = packs(Array.from({ length: 6 }, (_, i) => ({ ...PLAN.lines[0], zoneId: `Z-${i}`, zoneName: `โซน ${i + 1}` })));
+  assert.deepEqual([six.value, six.sub, six.tone], ['12 รอบ/โซน · รวม 12 แพ็ค/รอบ', 'ดูรายการด้านล่าง', null]);
+  const missing = packs([PLAN.lines[0], { ...PLAN.lines[1], packsPerRound: null }]);
+  assert.deepEqual([missing.value, missing.tone, missing.step, missing.field], ['ยังไม่ครบ 1 รายการ — กลับไปขั้น ②', 'warn', 'zones', 'zones']);
+  assert.equal(missing.sub, 'Lobby 12 รอบ × 2 แพ็ค/รอบ · ทางเดิน 12 รอบ · ยังไม่ใส่รอบละกี่แพ็ค', 'บอกว่าโซนไหนยังขาด');
+  const empty = packs([]);
+  assert.deepEqual([empty.value, empty.sub, empty.tone], ['—', null, null]);
+  for (const row of [mixed, six, missing]) assert.doesNotMatch(`${row.value} ${row.sub}`, /(?<!กี่)แพ็ค(?!เกจ|\/รอบ)/);
+});
+
+/* ⭐ H1 (IMPL_PLAN_D §3.3): วันวางบิลไม่บังคับ — แถวงวดที่ยังต้องเก็บบอกว่าตั้งไว้กี่งวด (คำเดียวกับหน้าต่างอนุมัติ) */
+test('แถวงวดที่ยังต้องเก็บ: มีวันวางบิล k จาก m งวด เป็นบรรทัดรอง · ไม่มีสักงวด = ไม่มีบรรทัดรอง', () => {
+  const rows = historicalReviewChecklist(plan({
+    installments: [
+      { label: 'งวด 2', amount: 32742, dueDate: '2026-10-01', coversFrom: '2026-10-01', coversTo: '2026-11-15', billingDate: '2026-09-25' },
+      { label: 'งวด 3', amount: 32742, dueDate: '2026-11-16', coversFrom: '2026-11-16', coversTo: '2026-12-31', billingDate: null },
+    ],
+  }));
+  assert.equal(rowOf(rows, 'remaining').sub, 'มีวันวางบิล 1 จาก 2 งวด');
 });
 
 test('ยอด/ช่วงยังไม่ผ่านการตรวจของแผน = เหลือง ชี้ขั้น ③ (ไม่พูดว่า "ไม่มีช่องโหว่")', () => {

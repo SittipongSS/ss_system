@@ -220,9 +220,13 @@ export async function POST(request) {
     if (soLineError) return Response.json({ error: soLineError.message }, { status: 500 });
 
     // ⭐ 1 SO : 1 PDR ตายตัว (มติผู้ใช้) — อยากได้เพิ่มต้องออกใบสั่งขายใหม่
+    // 🐞 **ต้องกรอง `kind = 'scent_dev'` ตรงกับ `dept_requests_pdr_so_uk` (mig 0219)** —
+    // หัวข้ออื่นอ้าง SO ได้ไม่จำกัด (ขอเอกสาร/ขอใบวางบิล · optionalRefs ม-88) · เดิมไม่กรอง
+    // ⇒ SO ที่เคยขอเอกสาร FN ไว้เปิด PDR ไม่ได้ ("เปิดคำร้องไปแล้ว (เลขใบขอเอกสาร)")
+    // ทั้งที่หน้า SO (กรอง kind แล้ว) บอกว่าเปิดได้ · อ้างสองใบขึ้นไป `maybeSingle` ยัง 500 อีกชั้น
     const { data: taken, error: takenError } = await supabase
       .from('dept_requests').select('docNo, id')
-      .eq('salesOrderId', soRow.id).neq('status', 'cancelled').maybeSingle();
+      .eq('salesOrderId', soRow.id).eq('kind', 'scent_dev').neq('status', 'cancelled').maybeSingle();
     if (takenError) return Response.json({ error: takenError.message }, { status: 500 });
 
     const gate = scentDesignOrderError({ ...soRow }, soLines || [], {

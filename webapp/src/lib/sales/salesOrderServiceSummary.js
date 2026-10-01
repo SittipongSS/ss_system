@@ -9,10 +9,53 @@
 //   ⇒ เทสต์ได้โดยไม่ต้องมีฐานข้อมูล และตรรกะไม่ไปซ้ำอยู่ใน route
 //
 // ⚠️ ทุกเกณฑ์ยืมตัวตัดสินกลางทั้งหมด — `allocatedByLine`/`fgSummary` (การจัดสรร) ·
-//   `termOrderActive` (รอบยังมีผลไหม) · `serviceRoundsSold` (ขายไว้กี่รอบ) ·
-//   `evaluateVisitGate` (นัดผ่านด่านไหม) · ห้ามเขียนเงื่อนไขซ้ำที่นี่
+//   `termOrderActive` (รอบยังมีผลไหม) · `serviceRoundsSold`/`serviceVisitsSold` (ขายไว้กี่รอบ) ·
+//   `serviceLineRole` (บรรทัดเป็นแพ็คเกจไหม) · `evaluateVisitGate` (นัดผ่านด่านไหม) · ห้ามเขียนเงื่อนไขซ้ำที่นี่
+//
+// ⭐ **ใบที่ประทับแล้ว (`serviceTermsOpenedAt` · mig 0392)** — ฝ่ายขายตั้งโซน/แพ็คต่อรอบ/รอบในใบ แล้วรอบขายเกิดตอน
+//   อนุมัติครบทุกโซนที่เลือก ⇒ ไม่มี "ของค้างรอลงโซน" อีก (จำนวนในใบ = ระยะเวลา/แพ็คเกจ ไม่ใช่หน่วยที่ต้องจัดสรร)
+//   และ "ขายไว้กี่รอบ" = จำนวนครั้งที่ต้องไปไซต์ (`serviceVisitsSold` · D23 n/N) ไม่ใช่ผลบวกรอบรายบรรทัด
+//   ใบเดิมที่ยังไม่ประทับ (TS ผูกโซนก่อน 0392 · ใบย้อนหลัง) คงตัวนับเดิมทุกตัว
 import { allocatedByLine, fgSummary, termOrderActive } from '@/lib/service/terms';
-import { serviceRoundsSold } from '@/lib/sales/serviceOrders';
+import { serviceRoundsSold, serviceVisitsSold } from '@/lib/sales/serviceOrders';
+/* ชนิดของบรรทัด (D2) — ถาม "มีแพ็คเกจให้ลงโซนไหม" ด้วยตัวตัดสินงานบริการ ไม่ใช่ตัวตัดสินด่านเงิน
+   (`hasServicePackageLine` เป็นสวิตช์ของด่านรับรองงวด · serviceMoneySelectGuard คุมผู้เรียกของมัน) ·
+   ไฟล์นี้ไม่อยู่ในวง intake ↔ serviceOrders (กฎ 16 ห้ามเฉพาะสองไฟล์นั้น import serviceSetup) */
+import { SERVICE_KIND_PACKAGE, periodSpan, serviceLineRole, servicePeriodOf } from '@/lib/sales/serviceSetup';
+/* ป้าย "รายการ n · FG" + ลำดับรอบขาย — ไฟล์ไม่มี import (ไม่ดึงไฟล์คิว TS ตามมา · §3.8) */
+import { termLineLabels } from '@/lib/service/termLabels';
+
+/* ── รอบขายรายไซต์ให้ช่องมาตรฐาน มล./เดือน (PR-C · C8 · IMPL_PLAN_C §4.3) ─────────────────────────
+   ⭐ **ทรงเดียวกับ `termDetails` ของคิว TS** (`intakePlanFacts.planRowFacts`) — `TermStandardMlCell` รับไปตรง ๆ
+     สองจอต้องเสนอมาตรฐานเลขเดียวกันสำหรับรอบขายเดียวกัน (เทสต์ C8 เทียบกันตรง ๆ)
+   ⚠️ ห้าม import ไฟล์ของคิว TS มาใช้ที่นี่ (แผน §3.8) ⇒ กติกาทุกข้อเขียนซ้ำให้ตรงกัน:
+     packageQty = แพ็คต่อรอบเฉพาะใบที่ประทับ (ใบเดิม = จำนวนที่จัดสรร ห้ามเรียกว่าแพ็ค/รอบ) ·
+     periodMonths เฉพาะใบที่ประทับ (ช่วงร่างของงานตั้งย้อนหลังยังไม่ผ่านผู้จัดการ) · ไม่รู้ = null ไม่ใช่ 0 */
+const positiveNumber = (value) => {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+const positiveInt = (value) => {
+  const n = positiveNumber(value);
+  return n != null && Number.isInteger(n) ? n : null;
+};
+
+function termItem(term, { zone, line, stamped, periodMonths }) {
+  return {
+    id: term.id,
+    zoneId: term.zoneId || null,
+    zoneCode: zone?.code || null,
+    zoneName: zone?.name || null,
+    fgCode: term.fgCode || null,
+    description: term.description || null,
+    packageQty: stamped ? positiveNumber(term.packageQty) : null,
+    unit: term.unit || null,
+    rounds: line ? positiveInt(line.serviceRounds) : null,
+    periodMonths,
+    standardMlPerMonth: positiveNumber(term.standardMlPerMonth),
+  };
+}
 
 /**
  * @param order      ใบสั่งขาย
@@ -32,9 +75,17 @@ export function salesOrderServiceSummary({
   /* ⚠️ นับเฉพาะรอบขายที่ **ใบแม่ยังมีผล** — ใบถูก Rev./ยกเลิกแล้ว term ยังค้างในฐาน
      (ตารางไม่มีคอลัมน์สถานะโดยเจตนา) ⇒ ไม่กรอง = จัดสรรซ้ำสองเท่าหลังออก Rev. */
   const liveTerms = termOrderActive(order) ? terms : [];
+  /* ใบที่ประทับแล้ว: รอบขายเกิดครบทุกโซนที่ฝ่ายขายเลือกในทรานแซกชันเดียวกับการอนุมัติ ⇒ ไม่มีของค้างให้ TS ลงโซน
+     ⚠️ ถามจากตราประทับบนใบ ไม่ใช่เดาจาก term — ใบเดิมมี term ที่ TS ผูกไว้ก็ได้ (ยังนับแบบเดิม) */
+  const stamped = !!order?.serviceTermsOpenedAt;
   const allocated = allocatedByLine(liveTerms);
-  const fg = fgSummary(lines, allocated);
+  const fgRows = fgSummary(lines, allocated);
+  const fg = stamped ? fgRows.map((g) => ({ ...g, remaining: 0 })) : fgRows;
   const remaining = fg.reduce((sum, g) => sum + g.remaining, 0);
+
+  /* C8: บรรทัดของรอบขาย (รอบที่ขาย) + เดือนของช่วงบริการ — ใช้กับทุก term ของใบ · ลำดับ "รายการ n" อยู่ที่ `termLineLabels` */
+  const lineById = new Map((Array.isArray(lines) ? lines : []).filter((line) => line?.id).map((line) => [line.id, line]));
+  const periodMonths = stamped ? (periodSpan(servicePeriodOf(order)).months || null) : null;
 
   /* ไซต์/โซนที่ใบนี้ลงไปแล้ว — หน่วยที่คนอ่านคือ "ไซต์" (คนเข้าไซต์ทีเดียวทำทุกโซน) */
   const bySite = new Map();
@@ -46,11 +97,21 @@ export function salesOrderServiceSummary({
       site: sitesById.get(zone.siteId) || null,
       zones: [],
       packageQty: 0,
+      terms: [],
     };
     if (!row.zones.some((z) => z.id === zone.id)) row.zones.push({ id: zone.id, name: zone.name });
     const qty = Number(term.packageQty);
     if (Number.isFinite(qty) && qty > 0) row.packageQty += qty;
+    row.terms.push(termItem(term, { zone, line: lineById.get(term.salesOrderLineId), stamped, periodMonths }));
     bySite.set(zone.siteId, row);
+  }
+  /* เรียง: ชื่อโซน → ลำดับบรรทัดในใบ · ป้าย: โซนที่มีหลายรอบขายบอก "รายการ n · FG" ไม่งั้นช่องหน้าตาเหมือนกันแยกไม่ออก
+     (ใบจริง SO-26090247-0: สองบรรทัด FG เดียวกันลงโซน Office ทั้งคู่)
+     ⭐ ตัวช่วยเดียวกับแถวคิว TS (`termLineLabels` · review 29/09) — สองจอติดป้ายรอบขายเดียวกันเหมือนกันทุกตัวอักษร */
+  for (const row of bySite.values()) {
+    const { items, labels } = termLineLabels(row.terms, { terms: liveTerms, lines });
+    row.terms = items;
+    row.termLabels = labels;
   }
 
   /* ── รอบของ "ใบนี้" กับรอบของ "ไซต์นี้" เป็นคนละชุด ────────────────────────
@@ -111,14 +172,23 @@ export function salesOrderServiceSummary({
        ส่วน `hasPlan` ถามคนละคำถาม ("ยังต้องวางรอบอีกไหม") จึงดูเฉพาะรอบที่ยังเปิด
        ⇒ เกณฑ์ตรงกับคอลัมน์ "รอบที่เดิน" บนทะเบียน ซึ่งก็ไม่กรอง `isActive` เช่นกัน */
   const done = visits.filter((v) => v.status === 'done' && ownVisit(v)).length;
-  const sold = serviceRoundsSold(lines);
+  /* ⭐ ใบที่ประทับแล้ว: ขายไว้ = จำนวนครั้งที่ต้องไปไซต์ (Σ ไซต์ของรอบสูงสุดของบรรทัดที่ลงไซต์นั้น · D23)
+     ⚠️ ผลบวกรายบรรทัดของเดิมนับบรรทัดเดียวที่ลงหลายไซต์/หลายโซนผิด (ไปไซต์ละครั้งต่อรอบ ไม่ใช่บรรทัดละครั้ง) */
+  const sold = stamped
+    ? serviceVisitsSold({ lines, links: liveTerms, zonesById }).total
+    : serviceRoundsSold(lines);
 
   return {
+    /* C8: ช่องมาตรฐาน มล. เสนอค่าเฉพาะใบที่ประทับ (แพ็คต่อรอบมีความหมายเฉพาะใบนั้น) */
+    stamped,
     allocation: {
       fg,
       remaining,
       // ⚠️ "จัดสรรครบ" = ไม่เหลือของค้าง **และ** มีอย่างน้อยหนึ่งโซนจริง
-      complete: remaining === 0 && bySite.size > 0,
+      /* ใบที่ประทับแล้ว: มีไซต์ = ครบ · ไม่มีบรรทัดแพ็คเกจเลย (ใบที่ตั้งทุกบรรทัดเป็น "ไม่ใช่งานบริการ") = ไม่มีอะไรต้องลง = ครบ */
+      complete: stamped
+        ? bySite.size > 0 || !lines.some((l) => serviceLineRole(l) === SERVICE_KIND_PACKAGE)
+        : remaining === 0 && bySite.size > 0,
       /* ⭐ **ธง `hasPlan` รายแถว** — `planSites` คำนวณอยู่แล้วสองบรรทัดข้างบน แต่ถูกใช้
          ครั้งเดียวเพื่อ *นับ* ไซต์ที่ยังไม่วางรอบ ⇒ ตารางบอกได้แค่ยอดรวม คนอ่านต้อง
          ไล่เปิดทีละไซต์เพื่อหาว่าไซต์ไหนคือไซต์ที่ค้าง · ผูกกลับเข้าแถวได้ฟรี ไม่มีคิวรีเพิ่ม

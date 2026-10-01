@@ -13,14 +13,30 @@ import { paymentNotRequired } from '@/lib/sales/salesOrderPayments';
 import { loadTerms, loadZonesForSites } from './termsRepo';
 
 /** โหลดบริบทด่านของ "หลายไซต์" ทีเดียว — จอตารางมีนัดหลายไซต์ในหน้าเดียว
- *  ⚠️ ยิงเป็นก้อน ห้ามยิงรายไซต์ในลูป (N+1 · กติกาเดียวกับคิวงวดชำระ) */
-export async function loadVisitGateContext(supabase, siteIds = []) {
+ *  ⚠️ ยิงเป็นก้อน ห้ามยิงรายไซต์ในลูป (N+1 · กติกาเดียวกับคิวงวดชำระ)
+ *
+ *  @param withSetupOrders ⭐ D15 (PR-C · C9 · C-D19) — ขอ **ชิปใบสั่งขาย** ของโซน (`setupOrdersByZone`): ใบที่ฝ่ายขาย
+ *    เลือกโซนนั้นไว้แล้วแต่ยังไม่เปิดงานบริการ (ร่าง · รออนุมัติ · ตีกลับ · ย้อนอนุมัติ · ตั้งย้อนหลัง) + ชื่อ AE
+ *    ⇒ ร่างที่ติดด่าน "โซนนี้ยังไม่มีรอบขายที่มีผล" บอกได้ว่าใบไหนกำลังมา
+ *    ⚠️ **opt-in เฉพาะจอจัดคิว** (`visitBundle`) — ทางตรวจด่านฝั่ง server ไม่ขอ (ชิปไม่เปลี่ยนผลผ่าน/ไม่ผ่านเลย
+ *       จึงไม่ต้องจ่ายสามคำขอเพิ่มทุกครั้งที่สร้าง/แก้นัด) · ไม่ขอ = `{}` เสมอ (คีย์อยู่ทุกกรณี รูปเดียวกันทุกผู้เรียก)
+ *    ⚠️ อ่านไม่ขึ้น = **โยน** (ตัวโหลดของ C2) ไม่ใช่ `{}` — ชิปที่หายเพราะ query พังหน้าตาเหมือน "ไม่มีใบ" */
+export async function loadVisitGateContext(supabase, siteIds = [], { withSetupOrders = false } = {}) {
   const ids = [...new Set((siteIds || []).filter(Boolean))];
-  if (!ids.length) return { zonesBySite: {}, termsBySite: {}, ordersById: {}, installmentsByOrderId: {}, contractsById: {} };
+  if (!ids.length) return { zonesBySite: {}, termsBySite: {}, ordersById: {}, installmentsByOrderId: {}, contractsById: {}, setupOrdersByZone: {} };
 
   const zones = await loadZonesForSites(supabase, ids);
   const zoneIds = zones.map((z) => z.id);
   const terms = zoneIds.length ? await loadTerms(supabase, { zoneIds }) : [];
+
+  let setupOrdersByZone = {};
+  if (withSetupOrders && zoneIds.length) {
+    /* 🪤 **dynamic import โดยตั้งใจ** (critique L9) — ไฟล์นี้ถูก import ฝั่งจอด้วย (หน้าจัดคิวใช้ `mergeGateContext` ·
+       `gateContextForSite`) ⇒ import แบบ static จะลาก `zoneSetupOrders.js` → `serviceSetup.js` (บิล/งวด/สิทธิ์) เข้า bundle
+       ของหน้าจัดคิวทั้งกราฟ ทั้งที่จอใช้แค่ข้อความชิป (`zoneSetupOrderText.js`) · ยาม: gateOrderChipsUi.test.mjs */
+    const { loadSetupOrdersByZone } = await import('./zoneSalesRepo');
+    setupOrdersByZone = Object.fromEntries(await loadSetupOrdersByZone(supabase, zoneIds, { withOwners: true }));
+  }
 
   const zoneSite = new Map(zones.map((z) => [z.id, z.siteId]));
   const zonesBySite = {};
@@ -82,11 +98,12 @@ export async function loadVisitGateContext(supabase, siteIds = []) {
     }
   }
 
-  return { zonesBySite, termsBySite, ordersById, installmentsByOrderId, contractsById };
+  return { zonesBySite, termsBySite, ordersById, installmentsByOrderId, contractsById, setupOrdersByZone };
 }
 
-/* ห้าก้อนของบริบทด่าน — ลำดับเดียวกับที่ `loadVisitGateContext` คืน */
-const GATE_CONTEXT_MAPS = ['zonesBySite', 'termsBySite', 'ordersById', 'installmentsByOrderId', 'contractsById'];
+/* หกก้อนของบริบทด่าน — ลำดับเดียวกับที่ `loadVisitGateContext` คืน
+   ⭐ `setupOrdersByZone` (D15) รวมรายโซนเหมือนก้อนอื่น — ก้อนสัปดาห์กับก้อนรายการงานต่างก็มีชิปของโซนที่ตัวเองโหลด */
+const GATE_CONTEXT_MAPS = ['zonesBySite', 'termsBySite', 'ordersById', 'installmentsByOrderId', 'contractsById', 'setupOrdersByZone'];
 
 /** รวมบริบทด่านหลายก้อนเป็นก้อนเดียว — **ตัวหลังชนะรายคีย์** · ก้อนที่เป็น null ข้ามไป
  *
@@ -118,6 +135,8 @@ export function gateContextForSite(ctx, siteId, extra = {}) {
     ordersById: ctx?.ordersById || {},
     installmentsByOrderId: ctx?.installmentsByOrderId || {},
     contractsById: ctx?.contractsById || {},
+    /* D15 — ชิปใบสั่งขายรายโซน (คีย์ = zoneId ⇒ ส่งทั้งก้อน · ด่านหยิบเฉพาะโซนของไซต์นี้เอง) */
+    setupOrdersByZone: ctx?.setupOrdersByZone || {},
     ...extra,
   };
 }

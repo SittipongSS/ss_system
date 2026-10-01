@@ -17,6 +17,8 @@
 //
 // ⚠️ เลขคณิตวันในไฟล์นี้เป็น **ปฏิทินล้วน** (สตริงวัน `YYYY-MM-DD` ตรึง T00:00:00Z)
 //   ไม่มีโซนเวลาเข้ามาเกี่ยว — เป็นรูปแบบที่ด่าน `check:thaitime` อนุญาตไว้ชัดเจน
+// ⚠️ import ได้แค่ไฟล์ที่ไม่ import ไฟล์นี้กลับ — historicalOrders.js import แค่ permissions.js (ไม่มีวงวน · ฝั่ง client ใช้ได้)
+import { isOpeningInstallment } from './historicalOrders.js';
 
 /* งวดที่ "รับเงินแล้วจริง" — ที่เดียวที่นิยามคำนี้ */
 export const isConfirmed = (row) => String(row?.status || '') === 'confirmed';
@@ -350,4 +352,207 @@ export function dueDateByRule(coversFrom, rule, day = null, anchor = null) {
     return isoOfUtc(new Date(Date.UTC(ny, nm - 1, inMonth(ny, nm))));
   }
   return '';
+}
+
+/* ══ ใบสั่งขายบริการ: ช่วงครอบของงวด เทียบ "ช่วงบริการ" ของใบ (mig 0392 · PR-A) ══════════════════════════════
+   ⭐ ช่วงบริการ (`sales_orders.servicePeriodFrom/To`) คือกรอบของทั้งใบ — งวดที่ยังไม่รับรองต้องครอบต่อกันพอดีกรอบนั้น
+     (ด่านยื่นอนุมัติ/ยื่นตรวจงานบริการ · ตัวตัดสินอยู่ที่ serviceSetup.js) · ที่นี่เป็นแค่เลขคณิตปฏิทิน ไม่รู้จักใบ */
+
+/** แถวที่มีช่วงครอบใช้ได้ (วันมีจริง · เริ่มไม่เกินสิ้นสุด) */
+const coverSpanOf = (row) => {
+  const from = calendarDay(row?.coversFrom);
+  const to = calendarDay(row?.coversTo);
+  return from && to && !isBefore(to, from) ? { from, to } : null;
+};
+
+/**
+ * ช่วงครอบของงวด (ที่มีช่วงครอบแล้ว — ผู้เรียกคัดมา) เทียบช่วงบริการของใบ
+ * → `{ blocking: [{ kind: 'start'|'gap'|'end', seq, index, since, until }],
+ *      warnings: [{ kind: 'overlap', seq, index, since, until, prevSeq, prevIndex }] }`
+ * ⭐ ห่อ `coverageContinuityErrors` ตัวเดียวกับใบย้อนหลัง — ต่างกันแค่ "ซ้อน" เป็นคำเตือน (แผนชำระจริงมีมัดจำ/ก้อนท้ายซ้อนได้)
+ * ⚠️ ไม่คืน 'missing' เด็ดขาด — งวดที่ไม่มีช่วงครอบเป็นคำถามของผู้เรียก (บอก "ยังไม่ใส่ช่วงครอบ" รายงวดแทนช่องโหว่ปลอม)
+ *   ⇒ แถวครึ่งช่วง/ไม่มีช่วงที่หลุดมาถูกตัดทิ้งก่อนเทียบ · `index` ยังชี้ตำแหน่งในอาเรย์ที่ส่งมา
+ * ⚠️ ไม่มีช่วงบริการ = ไม่ตัดสิน (ผู้เรียกบอก "ยังไม่ใส่ช่วงบริการ" เอง)
+ * `prevSeq/prevIndex` = งวดที่ครอบล้ำเข้ามา (งวดก่อนหน้าที่ไปไกลที่สุด) — ข้อความ "งวด a กับ งวด b ครอบซ้อน"
+ */
+export function pipelineCoverageIssues(rows = [], period = null) {
+  const start = calendarDay(period?.from);
+  const end = calendarDay(period?.to);
+  const empty = { blocking: [], warnings: [] };
+  if (!start || !end || isBefore(end, start)) return empty;
+  const list = (Array.isArray(rows) ? rows : [])
+    .map((row, index) => ({ row, index, span: coverSpanOf(row) }))
+    .filter((item) => item.span);
+  if (!list.length) return empty;
+
+  /* ส่งแถวแบบย่อเข้าไป แล้วแปลง index กลับเป็นตำแหน่งในอาเรย์ของผู้เรียก */
+  const errors = coverageContinuityErrors(list.map((item) => item.row), { start, end });
+  const blocking = [];
+  const warnings = [];
+  const sorted = [...list].sort((a, b) => (a.span.from === b.span.from
+    ? (a.span.to < b.span.to ? -1 : a.span.to > b.span.to ? 1 : 0)
+    : (a.span.from < b.span.from ? -1 : 1)));
+  for (const error of errors) {
+    if (error.kind === 'missing') continue;
+    const item = list[error.index] || null;
+    const at = { kind: error.kind, seq: error.seq, index: item ? item.index : null, since: error.since, until: error.until };
+    if (error.kind !== 'overlap') { blocking.push(at); continue; }
+    /* งวดที่ถูกซ้อน = งวดก่อนหน้า (ตามลำดับที่เทียบ) ที่จบไกลที่สุด */
+    const position = sorted.indexOf(item);
+    let prev = null;
+    for (let i = 0; i < position; i += 1) {
+      if (!prev || isBefore(prev.span.to, sorted[i].span.to)) prev = sorted[i];
+    }
+    warnings.push({ ...at, prevSeq: prev ? (prev.row?.seq ?? null) : null, prevIndex: prev ? prev.index : null });
+  }
+  return { blocking, warnings };
+}
+
+/** จำนวนเดือนเต็ม (ปฏิทิน) ในช่วง + เศษวัน — m ที่มากที่สุดที่ `monthEdge(from, m) <= to + 1`
+ *  `wholeMonthsIn('2026-09-02', '2027-09-25')` = `{ months: 12, remainderDays: 24 }` */
+export function wholeMonthsIn(fromIso, toIso) {
+  const from = calendarDay(fromIso);
+  const to = calendarDay(toIso);
+  if (!from || !to || isBefore(to, from)) return { months: 0, remainderDays: 0 };
+  const stop = addDays(to, 1);
+  let months = 0;
+  /* เพดาน 1,200 เดือน (100 ปี) — ช่วงของฐานอยู่ในปี 2000–2100 อยู่แล้ว กันลูปไม่รู้จบเมื่อข้อมูลเพี้ยน */
+  while (months < 1200) {
+    const next = monthEdge(from, months + 1);
+    if (!next || isBefore(stop, next)) break;
+    months += 1;
+  }
+  return { months, remainderDays: daysBetween(monthEdge(from, months), stop) };
+}
+
+export const COVERAGE_SPLIT_ERRORS = Object.freeze({
+  uneven: 'แบ่งอัตโนมัติไม่ลงตัว — กรอกช่วงครอบรายงวดเอง',
+  noPeriod: 'ใส่ช่วงบริการก่อน',
+  noRows: 'ไม่มีงวดที่ยังไม่รับรองให้แบ่ง',
+});
+
+/* งวดที่ยังเป็นเงินของใบนี้ — ตัดงวดคืนเงินแล้ว (0378 · เงื่อนไขเดียวกับ `installmentRefunded` ของ salesOrderPayments.js
+   ซึ่ง import ไฟล์นี้อยู่ ⇒ import กลับไม่ได้ จึงเขียนตรง ๆ) กับงวดยกมาของใบย้อนหลัง (ตัวตัดสินกลาง `isOpeningInstallment`) */
+const liveInstallment = (row) => !!row
+  && !String(row?.refundedAt ?? '').trim()
+  && !isOpeningInstallment(row);
+
+/* ยอดเป็นสตางค์ (จำนวนเต็ม) — เทียบเศษด้วยจำนวนเต็ม ไม่ให้ทศนิยมลอยตัดสินว่างวดไหนได้เดือนเพิ่ม */
+const satangOf = (row) => {
+  const n = Number(row?.amount);
+  return Number.isFinite(n) && n > 0 ? Math.round(n * 100) : 0;
+};
+
+/* แบ่ง m เดือนตามสัดส่วนยอด (เศษมากสุดได้ก่อน · เสมอกันงวดก่อนได้ก่อน) แล้วดันให้ทุกงวด ≥ 1 เดือน */
+function monthsByShare(weights, m) {
+  const n = weights.length;
+  if (m < n) return null;
+  const total = weights.reduce((sum, w) => sum + w, 0);
+  const w = total > 0 ? weights : weights.map(() => 1);
+  const sum = total > 0 ? total : n;
+  const parts = w.map((value, i) => ({ i, base: Math.floor((m * value) / sum), rest: (m * value) % sum }));
+  let left = m - parts.reduce((acc, part) => acc + part.base, 0);
+  [...parts].sort((a, b) => (b.rest - a.rest) || (a.i - b.i)).forEach((part) => {
+    if (left > 0) { part.base += 1; left -= 1; }
+  });
+  const months = parts.map((part) => part.base);
+  for (let i = 0; i < n; i += 1) {
+    while (months[i] < 1) {
+      let donor = -1;
+      for (let j = 0; j < n; j += 1) if (months[j] > 1 && (donor < 0 || months[j] > months[donor])) donor = j;
+      if (donor < 0) return null;
+      months[donor] -= 1;
+      months[i] += 1;
+    }
+  }
+  return months;
+}
+
+/**
+ * ปุ่ม "แบ่งช่วงครอบตามช่วงบริการ…" — **พรีวิว** ช่วงครอบใหม่ของงวดที่ยังไม่รับรอง (ไม่เขียนอะไร · จอโชว์ก่อนกดใช้)
+ * @param period `{ from, to }` ช่วงบริการของใบ
+ * @param rows   งวดทั้งหมดของใบ (ที่ `loadInstallments` คืน)
+ * @param mode   'monthly' = เท่ากันรายเดือน (เดือนต้องหารจำนวนงวดลงตัว) · 'proportional' = ตามสัดส่วนยอดงวด
+ * → `{ rows: [{ id, seq, coversFrom, coversTo, prevFrom, prevTo, share }], error: string|null }`
+ * ⭐ งวดที่บัญชีรับรองแล้วไม่ถูกแตะ — ถ้ามีช่วงครอบ การแบ่งเริ่มวันถัดจากวันสิ้นสุดล่าสุดของงวดพวกนั้น
+ *   · งวดรับรองแล้วที่ไม่มีช่วงครอบ หรืออยู่หลังงวดที่ยังไม่รับรอง = ไม่รู้ว่าเงินก้อนนั้นครอบช่วงไหน ⇒ ไม่เดา
+ * ⭐ แบ่งเป็นเดือนปฏิทินบนตารางเดือนของ "วันเริ่มบริการ" (splitCoverageByMonths) · งวดสุดท้ายยืดถึงวันสิ้นสุดบริการเสมอ
+ * `share` = สัดส่วนยอดของงวดในชุดที่แบ่ง (0–1) — คอลัมน์ "สัดส่วน" ของพรีวิว
+ * ⚠️ route คิดซ้ำด้วยตัวเดียวกันแล้วเทียบกับพรีวิวที่จอส่งมา — ต่างกัน = 409 (งวด/ช่วงบริการเพิ่งเปลี่ยน)
+ */
+export function splitCoverageByPeriod(period, rows = [], mode = 'monthly') {
+  const fail = (error) => ({ rows: [], error });
+  const from = calendarDay(period?.from);
+  const end = calendarDay(period?.to);
+  if (!from || !end || isBefore(end, from)) return fail(COVERAGE_SPLIT_ERRORS.noPeriod);
+
+  const live = (Array.isArray(rows) ? rows : []).filter(liveInstallment)
+    .sort((a, b) => Number(a?.seq || 0) - Number(b?.seq || 0));
+  const targets = live.filter((row) => !isConfirmed(row));
+  if (!targets.length) return fail(COVERAGE_SPLIT_ERRORS.noRows);
+  if (mode !== 'monthly' && mode !== 'proportional') return fail(COVERAGE_SPLIT_ERRORS.uneven);
+
+  const confirmed = live.filter(isConfirmed);
+  const firstTargetSeq = Number(targets[0]?.seq || 0);
+  let start = from;
+  for (const row of confirmed) {
+    const span = coverSpanOf(row);
+    if (!span || Number(row?.seq || 0) > firstTargetSeq) return fail(COVERAGE_SPLIT_ERRORS.uneven);
+    const next = addDays(span.to, 1);
+    if (isBefore(start, next)) start = next;
+  }
+  if (isBefore(end, start)) return fail(COVERAGE_SPLIT_ERRORS.uneven);
+
+  const n = targets.length;
+  const weights = targets.map(satangOf);
+  const weightSum = weights.reduce((sum, w) => sum + w, 0);
+  const shareOf = (i) => (weightSum > 0 ? weights[i] / weightSum : 1 / n);
+  const out = (spans) => ({
+    rows: targets.map((row, i) => ({
+      id: row?.id ?? null,
+      seq: row?.seq ?? null,
+      coversFrom: spans[i].coversFrom,
+      coversTo: spans[i].coversTo,
+      prevFrom: dateOf(row?.coversFrom),
+      prevTo: dateOf(row?.coversTo),
+      share: shareOf(i),
+    })),
+    error: null,
+  });
+
+  if (n === 1) return out([{ coversFrom: start, coversTo: end }]);
+
+  /* ตารางเดือนของวันเริ่มบริการ — ช่วงที่เหลือหลังงวดรับรองแล้วเริ่มบนขอบเดือนของตารางนั้นเมื่อทำได้
+     (สัญญาเริ่มวันที่ 31: ขอบเดือนถัดไปคือวันที่ 1 · นับเดือนใหม่จากวันที่ 1 จะได้ "ไม่ลงตัว" ทั้งที่ตรงตาราง) */
+  const gridMonths = wholeMonthsIn(from, end).months;
+  let grid = start;
+  let offset = 0;
+  let months = wholeMonthsIn(start, end).months;
+  for (let k = 0; k <= gridMonths; k += 1) {
+    if (monthEdge(from, k) === start) { grid = from; offset = k; months = gridMonths - k; break; }
+  }
+  if (months < 1) return fail(COVERAGE_SPLIT_ERRORS.uneven);
+
+  const chunk = (monthsPerRow) => {
+    const spans = [];
+    let at = 0;
+    for (let i = 0; i < monthsPerRow.length; i += 1) {
+      const coversFrom = monthEdge(grid, offset + at);
+      at += monthsPerRow[i];
+      const coversTo = i === monthsPerRow.length - 1 ? end : addDays(monthEdge(grid, offset + at), -1);
+      if (!coversFrom || !coversTo || isBefore(coversTo, coversFrom)) return null;
+      spans.push({ coversFrom, coversTo });
+    }
+    return spans;
+  };
+
+  if (mode === 'monthly') {
+    if (months % n !== 0) return fail(COVERAGE_SPLIT_ERRORS.uneven);
+    const spans = splitCoverageByMonths({ startDate: start, endDate: end, months, stepMonths: months / n, gridStart: grid, offset });
+    if (spans.length !== n) return fail(COVERAGE_SPLIT_ERRORS.uneven);
+    return out(spans);
+  }
+  const perRow = monthsByShare(weights, months);
+  const spans = perRow ? chunk(perRow) : null;
+  return spans ? out(spans) : fail(COVERAGE_SPLIT_ERRORS.uneven);
 }

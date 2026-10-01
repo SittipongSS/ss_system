@@ -153,6 +153,7 @@ test('🔒 ผู้เขียนงวดยกมามีแค่ใบย
     '0379_historical_so_quote_lines.sql', // ตัวเขียนใบย้อนหลัง (บรรทัดแบบใบเสนอราคา)
     FILE,
     '0389_customer_billing_rule.sql', // CHECK ห้ามงวดยกมามีวันวางบิล/รอเหตุการณ์ (ห้ามอย่างเดียว ไม่เขียนงวดยกมา)
+    '0394_historical_so_service_alignment.sql', // ปะตัวเขียนใบย้อนหลัง (0379): งวดยกมาห้ามมีวันวางบิล — ไม่เขียนงวดยกมาเพิ่ม
   ]);
   const SRC = new URL('../../', import.meta.url);
   const walk = (dir) => readdirSync(dir).flatMap((name) => {

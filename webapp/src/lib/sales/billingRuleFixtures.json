@@ -1,0 +1,1768 @@
+{
+  "_about": "ตัวอย่างกติกาวางบิล ถูก/ผิด ชุดเดียวของสองฝั่ง — billingRuleV4.test.mjs (normalizeRule) + เทสต์ PGlite ของ mig 0393 (customer_billing_rule_ok) · valid: ฐานรับรูปที่ตัวตรวจทำแล้ว (รุ่นสี่) / รูปดิบ (รุ่นหนึ่ง–สอง) · invalid: ตัวตรวจตีกลับรูปดิบ และฐานตีกลับด้วย เว้นแต่ sqlAccepts (กติกาข้ามช่องของรุ่นสองอยู่ที่โค้ดเท่านั้น)",
+  "valid": [
+    {
+      "name": "ยังไม่ระบุ (null)",
+      "rule": null
+    },
+    {
+      "name": "รุ่นหนึ่ง 0389 · วันที่ 5 → เงินเข้า 25",
+      "rule": {
+        "billing": {
+          "mode": "monthly",
+          "day": 5
+        },
+        "payment": {
+          "mode": "monthly",
+          "day": 25,
+          "monthOffset": 0
+        }
+      }
+    },
+    {
+      "name": "รุ่นหนึ่ง 0389 · ทุกวัน + เครดิต 30",
+      "rule": {
+        "billing": {
+          "mode": "anyday"
+        },
+        "payment": {
+          "mode": "credit",
+          "days": 30
+        }
+      }
+    },
+    {
+      "name": "รุ่นสอง · ไม่มีเครดิต (449 แถว)",
+      "rule": {
+        "credit": false
+      }
+    },
+    {
+      "name": "รุ่นสอง · ไม่มีเครดิต + หมายเหตุ",
+      "rule": {
+        "credit": false,
+        "note": "โอนก่อนส่งของ"
+      }
+    },
+    {
+      "name": "รุ่นสอง · AR-281 วันที่ 21 → 30 เดือนถัดไป",
+      "rule": {
+        "billing": {
+          "mode": "monthly",
+          "days": [
+            21
+          ]
+        },
+        "payment": {
+          "mode": "monthly",
+          "rounds": [
+            {
+              "day": 30,
+              "monthOffset": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "รุ่นสอง · AR-015 เครดิต 30 + หมายเหตุ",
+      "rule": {
+        "note": "นับเครดิตหลังจัดส่งสินค้า",
+        "billing": {
+          "mode": "anyday"
+        },
+        "payment": {
+          "mode": "credit",
+          "days": 30
+        }
+      }
+    },
+    {
+      "name": "รุ่นสอง · AR-428 เครดิต 14",
+      "rule": {
+        "billing": {
+          "mode": "anyday"
+        },
+        "payment": {
+          "mode": "credit",
+          "days": 14
+        }
+      }
+    },
+    {
+      "name": "รุ่นสอง · สองรอบ 10 → 25 / 25 → 10 เดือนถัดไป",
+      "rule": {
+        "billing": {
+          "mode": "monthly",
+          "days": [
+            10,
+            25
+          ]
+        },
+        "payment": {
+          "mode": "monthly",
+          "rounds": [
+            {
+              "day": 25,
+              "monthOffset": 0
+            },
+            {
+              "day": 10,
+              "monthOffset": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "รุ่นสี่ · ไม่ต้องวางบิล",
+      "rule": {
+        "v": 4,
+        "need": "none"
+      }
+    },
+    {
+      "name": "รุ่นสี่ · ไม่ต้องวางบิล + หมายเหตุ",
+      "rule": {
+        "v": 4,
+        "need": "none",
+        "note": "โอนก่อนส่งของทุกใบ"
+      }
+    },
+    {
+      "name": "รุ่นสี่ · ต้องวางบิล ยังไม่ตั้งรอบ",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": null
+      }
+    },
+    {
+      "name": "รุ่นสี่ · ต้องวางบิล ยังไม่ตั้งรอบ + หมายเหตุ",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": null,
+        "note": "ขอใบวางบิลงวดมัดจำ"
+      }
+    },
+    {
+      "name": "รุ่นสี่ · วางบิลได้ทุกวัน ชำระวันวางบิล",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 0,
+        "runs": null
+      }
+    },
+    {
+      "name": "รุ่นสี่ · วางบิลได้ทุกวัน เครดิต 30",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 30,
+        "runs": null
+      }
+    },
+    {
+      "name": "รุ่นสี่ · เครดิตสูงสุด 365",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 365,
+        "runs": null
+      }
+    },
+    {
+      "name": "รุ่นสี่ · วางบิลวันที่ 10 และ 25 เครดิต 30",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "monthly",
+          "days": [
+            10,
+            25
+          ]
+        },
+        "creditDays": 30,
+        "runs": null
+      }
+    },
+    {
+      "name": "รุ่นสี่ · วางบิลสี่รอบ รวมสิ้นเดือน",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "monthly",
+          "days": [
+            5,
+            12,
+            20,
+            31
+          ]
+        },
+        "creditDays": 0,
+        "runs": null
+      }
+    },
+    {
+      "name": "รุ่นสี่ · B AR-267 วันที่ 5 → 25",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 0,
+        "runs": {
+          "kind": "monthly",
+          "rounds": [
+            {
+              "cutoffDay": 5,
+              "payDay": 25,
+              "payMonthOffset": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "รุ่นสี่ · C สองรอบตัด 10 → 25 / 25 → 10 เดือนถัดไป",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 0,
+        "runs": {
+          "kind": "monthly",
+          "rounds": [
+            {
+              "cutoffDay": 10,
+              "payDay": 25,
+              "payMonthOffset": 0
+            },
+            {
+              "cutoffDay": 25,
+              "payDay": 10,
+              "payMonthOffset": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "รุ่นสี่ · H สิ้นเดือน → 15 เดือนถัดไป + เวลาตัดรอบ",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 0,
+        "runs": {
+          "kind": "monthly",
+          "rounds": [
+            {
+              "cutoffDay": 31,
+              "payDay": 15,
+              "payMonthOffset": 1
+            }
+          ],
+          "cutoffTime": "16:00"
+        }
+      }
+    },
+    {
+      "name": "รุ่นสี่ · วางบิลวันที่ 5 เครดิต 30 แล้วจ่ายทุกวันที่ 25",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "monthly",
+          "days": [
+            5
+          ]
+        },
+        "creditDays": 30,
+        "runs": {
+          "kind": "monthly",
+          "rounds": [
+            {
+              "cutoffDay": 25,
+              "payDay": 25,
+              "payMonthOffset": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "รุ่นสี่ · I AR-035 เครดิต 30 + พุธที่ 2,4 (รูปรับได้ · ยังไม่มีจอ)",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 30,
+        "runs": {
+          "kind": "weekday",
+          "weekday": 3,
+          "nths": [
+            2,
+            4
+          ]
+        }
+      }
+    },
+    {
+      "name": "รุ่นสี่ · วันจ่ายศุกร์สุดท้าย",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 0,
+        "runs": {
+          "kind": "weekday",
+          "weekday": 5,
+          "nths": [
+            5
+          ]
+        }
+      }
+    },
+    {
+      "name": "รุ่นสี่ · A มีเมตตา ปฏิทิน 2026 เครดิต 0 + เวลาตัดรอบ",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 0,
+        "runs": {
+          "kind": "calendar",
+          "cutoffTime": "16:00",
+          "years": {
+            "2026": {
+              "runs": [
+                {
+                  "cutoff": "2026-01-09",
+                  "pay": "2026-01-15"
+                },
+                {
+                  "cutoff": "2026-01-22",
+                  "pay": "2026-01-30"
+                },
+                {
+                  "cutoff": "2026-02-06",
+                  "pay": "2026-02-16"
+                },
+                {
+                  "cutoff": "2026-02-19",
+                  "pay": "2026-02-27"
+                },
+                {
+                  "cutoff": "2026-03-06",
+                  "pay": "2026-03-16"
+                },
+                {
+                  "cutoff": "2026-03-23",
+                  "pay": "2026-03-31"
+                },
+                {
+                  "cutoff": "2026-04-02",
+                  "pay": "2026-04-16"
+                },
+                {
+                  "cutoff": "2026-04-22",
+                  "pay": "2026-04-30"
+                },
+                {
+                  "cutoff": "2026-05-08",
+                  "pay": "2026-05-15"
+                },
+                {
+                  "cutoff": "2026-05-21",
+                  "pay": "2026-05-29"
+                },
+                {
+                  "cutoff": "2026-06-08",
+                  "pay": "2026-06-15"
+                },
+                {
+                  "cutoff": "2026-06-22",
+                  "pay": "2026-06-30"
+                },
+                {
+                  "cutoff": "2026-07-08",
+                  "pay": "2026-07-15"
+                },
+                {
+                  "cutoff": "2026-07-23",
+                  "pay": "2026-07-30"
+                },
+                {
+                  "cutoff": "2026-08-10",
+                  "pay": "2026-08-17"
+                },
+                {
+                  "cutoff": "2026-08-21",
+                  "pay": "2026-08-31"
+                },
+                {
+                  "cutoff": "2026-09-08",
+                  "pay": "2026-09-15"
+                },
+                {
+                  "cutoff": "2026-09-22",
+                  "pay": "2026-09-30"
+                },
+                {
+                  "cutoff": "2026-10-08",
+                  "pay": "2026-10-15"
+                },
+                {
+                  "cutoff": "2026-10-21",
+                  "pay": "2026-10-30"
+                },
+                {
+                  "cutoff": "2026-11-09",
+                  "pay": "2026-11-16"
+                },
+                {
+                  "cutoff": "2026-11-20",
+                  "pay": "2026-11-30"
+                },
+                {
+                  "cutoff": "2026-12-08",
+                  "pay": "2026-12-15"
+                },
+                {
+                  "cutoff": "2026-12-22",
+                  "pay": "2026-12-30"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "รุ่นสี่ · A มีเมตตา ปฏิทิน 2026 เครดิต 30 + ไฟล์รูปปฏิทิน",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 30,
+        "runs": {
+          "kind": "calendar",
+          "cutoffTime": "16:00",
+          "years": {
+            "2026": {
+              "runs": [
+                {
+                  "cutoff": "2026-01-09",
+                  "pay": "2026-01-15"
+                },
+                {
+                  "cutoff": "2026-01-22",
+                  "pay": "2026-01-30"
+                },
+                {
+                  "cutoff": "2026-02-06",
+                  "pay": "2026-02-16"
+                },
+                {
+                  "cutoff": "2026-02-19",
+                  "pay": "2026-02-27"
+                },
+                {
+                  "cutoff": "2026-03-06",
+                  "pay": "2026-03-16"
+                },
+                {
+                  "cutoff": "2026-03-23",
+                  "pay": "2026-03-31"
+                },
+                {
+                  "cutoff": "2026-04-02",
+                  "pay": "2026-04-16"
+                },
+                {
+                  "cutoff": "2026-04-22",
+                  "pay": "2026-04-30"
+                },
+                {
+                  "cutoff": "2026-05-08",
+                  "pay": "2026-05-15"
+                },
+                {
+                  "cutoff": "2026-05-21",
+                  "pay": "2026-05-29"
+                },
+                {
+                  "cutoff": "2026-06-08",
+                  "pay": "2026-06-15"
+                },
+                {
+                  "cutoff": "2026-06-22",
+                  "pay": "2026-06-30"
+                },
+                {
+                  "cutoff": "2026-07-08",
+                  "pay": "2026-07-15"
+                },
+                {
+                  "cutoff": "2026-07-23",
+                  "pay": "2026-07-30"
+                },
+                {
+                  "cutoff": "2026-08-10",
+                  "pay": "2026-08-17"
+                },
+                {
+                  "cutoff": "2026-08-21",
+                  "pay": "2026-08-31"
+                },
+                {
+                  "cutoff": "2026-09-08",
+                  "pay": "2026-09-15"
+                },
+                {
+                  "cutoff": "2026-09-22",
+                  "pay": "2026-09-30"
+                },
+                {
+                  "cutoff": "2026-10-08",
+                  "pay": "2026-10-15"
+                },
+                {
+                  "cutoff": "2026-10-21",
+                  "pay": "2026-10-30"
+                },
+                {
+                  "cutoff": "2026-11-09",
+                  "pay": "2026-11-16"
+                },
+                {
+                  "cutoff": "2026-11-20",
+                  "pay": "2026-11-30"
+                },
+                {
+                  "cutoff": "2026-12-08",
+                  "pay": "2026-12-15"
+                },
+                {
+                  "cutoff": "2026-12-22",
+                  "pay": "2026-12-30"
+                }
+              ],
+              "fileId": "drive-abc123"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "รุ่นสี่ · ปฏิทินตัด 22 ธ.ค. จ่าย 5 ม.ค. ปีถัดไป",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 0,
+        "runs": {
+          "kind": "calendar",
+          "years": {
+            "2026": {
+              "runs": [
+                {
+                  "cutoff": "2026-12-22",
+                  "pay": "2027-01-05"
+                }
+              ],
+              "fileId": "file-2026"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "รุ่นสี่ไม่มี need",
+      "rule": {
+        "v": 4
+      },
+      "jsError": "ต้องวางบิล"
+    },
+    {
+      "name": "need แปลก",
+      "rule": {
+        "v": 4,
+        "need": "maybe"
+      },
+      "jsError": "ต้องวางบิล"
+    },
+    {
+      "name": "v เป็นสตริง",
+      "rule": {
+        "v": "4",
+        "need": "none"
+      },
+      "jsError": "ไม่ถูกต้อง"
+    },
+    {
+      "name": "รุ่นสาม (ไม่เคยลงฐาน)",
+      "rule": {
+        "v": 3,
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 0,
+        "runs": null
+      },
+      "jsError": "ไม่ถูกต้อง"
+    },
+    {
+      "name": "ไม่ต้องวางบิลแต่มีวันวางบิล",
+      "rule": {
+        "v": 4,
+        "need": "none",
+        "billing": {
+          "mode": "anyday"
+        }
+      },
+      "jsError": "ไม่มีวันวางบิล"
+    },
+    {
+      "name": "ไม่ต้องวางบิลแต่มีเครดิต",
+      "rule": {
+        "v": 4,
+        "need": "none",
+        "creditDays": 30
+      },
+      "jsError": "ไม่มีวันวางบิล"
+    },
+    {
+      "name": "ไม่ต้องวางบิลแต่มีรอบจ่าย",
+      "rule": {
+        "v": 4,
+        "need": "none",
+        "runs": {
+          "kind": "monthly",
+          "rounds": [
+            {
+              "cutoffDay": 5,
+              "payDay": 25,
+              "payMonthOffset": 0
+            }
+          ]
+        }
+      },
+      "jsError": "ไม่มีวันวางบิล"
+    },
+    {
+      "name": "ยังไม่ตั้งรอบแต่มีเครดิต",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": null,
+        "creditDays": 30
+      },
+      "jsError": "ตั้งวันวางบิลก่อน"
+    },
+    {
+      "name": "ไม่ส่งเครดิต (ไม่มีค่าตั้งต้น)",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "runs": null
+      },
+      "jsError": "เครดิต"
+    },
+    {
+      "name": "เครดิตเกิน 365",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 366,
+        "runs": null
+      },
+      "jsError": "เครดิต"
+    },
+    {
+      "name": "เครดิตมีทศนิยม",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 1.5,
+        "runs": null
+      },
+      "jsError": "เครดิต"
+    },
+    {
+      "name": "ช่องที่ไม่รู้จัก (payment ของรุ่นสอง)",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 0,
+        "runs": null,
+        "payment": {}
+      },
+      "jsError": "ช่องที่ไม่รู้จัก"
+    },
+    {
+      "name": "ธงผลการอ่าน legacyNoCredit ห้ามบันทึก",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 0,
+        "runs": null,
+        "legacyNoCredit": true
+      },
+      "jsError": "เลิกบันทึก",
+      "allowLegacy": false
+    },
+    {
+      "name": "วางบิลแบบแปลก",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "weekly"
+        },
+        "creditDays": 0,
+        "runs": null
+      },
+      "jsError": "วางบิลได้ทุกวัน"
+    },
+    {
+      "name": "วันรับวางบิลว่าง",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "monthly",
+          "days": []
+        },
+        "creditDays": 0,
+        "runs": null
+      },
+      "jsError": "วันรับวางบิล"
+    },
+    {
+      "name": "วันรับวางบิล 32",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "monthly",
+          "days": [
+            32
+          ]
+        },
+        "creditDays": 0,
+        "runs": null
+      },
+      "jsError": "วันรับวางบิล"
+    },
+    {
+      "name": "วันรับวางบิลซ้ำ",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "monthly",
+          "days": [
+            5,
+            5
+          ]
+        },
+        "creditDays": 0,
+        "runs": null
+      },
+      "jsError": "ซ้ำ"
+    },
+    {
+      "name": "วันรับวางบิลเกินสี่รอบ",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "monthly",
+          "days": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ]
+        },
+        "creditDays": 0,
+        "runs": null
+      },
+      "jsError": "ไม่เกิน"
+    },
+    {
+      "name": "รอบจ่ายเกินสี่รอบ",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 0,
+        "runs": {
+          "kind": "monthly",
+          "rounds": [
+            {
+              "cutoffDay": 1,
+              "payDay": 28,
+              "payMonthOffset": 0
+            },
+            {
+              "cutoffDay": 2,
+              "payDay": 28,
+              "payMonthOffset": 0
+            },
+            {
+              "cutoffDay": 3,
+              "payDay": 28,
+              "payMonthOffset": 0
+            },
+            {
+              "cutoffDay": 4,
+              "payDay": 28,
+              "payMonthOffset": 0
+            },
+            {
+              "cutoffDay": 5,
+              "payDay": 28,
+              "payMonthOffset": 0
+            }
+          ]
+        }
+      },
+      "jsError": "ไม่เกิน"
+    },
+    {
+      "name": "วันตัดรอบ 0",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 0,
+        "runs": {
+          "kind": "monthly",
+          "rounds": [
+            {
+              "cutoffDay": 0,
+              "payDay": 25,
+              "payMonthOffset": 0
+            }
+          ]
+        }
+      },
+      "jsError": "วันตัดรอบ"
+    },
+    {
+      "name": "จ่ายเดือนที่สอง (offset 2)",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 0,
+        "runs": {
+          "kind": "monthly",
+          "rounds": [
+            {
+              "cutoffDay": 5,
+              "payDay": 25,
+              "payMonthOffset": 2
+            }
+          ]
+        }
+      },
+      "jsError": "เดือนถัดไป"
+    },
+    {
+      "name": "จ่ายก่อนตัดรอบในเดือนเดียวกัน",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 0,
+        "runs": {
+          "kind": "monthly",
+          "rounds": [
+            {
+              "cutoffDay": 25,
+              "payDay": 10,
+              "payMonthOffset": 0
+            }
+          ]
+        }
+      },
+      "jsError": "ก่อนวันตัดรอบ"
+    },
+    {
+      "name": "วันตัดรอบซ้ำ",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 0,
+        "runs": {
+          "kind": "monthly",
+          "rounds": [
+            {
+              "cutoffDay": 5,
+              "payDay": 25,
+              "payMonthOffset": 0
+            },
+            {
+              "cutoffDay": 5,
+              "payDay": 10,
+              "payMonthOffset": 1
+            }
+          ]
+        }
+      },
+      "jsError": "ซ้ำ"
+    },
+    {
+      "name": "เวลาตัดรอบผิดรูป",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 0,
+        "runs": {
+          "kind": "monthly",
+          "rounds": [
+            {
+              "cutoffDay": 5,
+              "payDay": 25,
+              "payMonthOffset": 0
+            }
+          ],
+          "cutoffTime": "4pm"
+        }
+      },
+      "jsError": "HH:MM"
+    },
+    {
+      "name": "รอบจ่ายชนิดแปลก",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 0,
+        "runs": {
+          "kind": "yearly"
+        }
+      },
+      "jsError": "รอบจ่าย"
+    },
+    {
+      "name": "วันในสัปดาห์ 7",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 30,
+        "runs": {
+          "kind": "weekday",
+          "weekday": 7,
+          "nths": [
+            2
+          ]
+        }
+      },
+      "jsError": "วันในสัปดาห์"
+    },
+    {
+      "name": "สัปดาห์ซ้ำ",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 30,
+        "runs": {
+          "kind": "weekday",
+          "weekday": 3,
+          "nths": [
+            2,
+            2
+          ]
+        }
+      },
+      "jsError": "ซ้ำ"
+    },
+    {
+      "name": "สัปดาห์ที่ 6",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 30,
+        "runs": {
+          "kind": "weekday",
+          "weekday": 3,
+          "nths": [
+            6
+          ]
+        }
+      },
+      "jsError": "สัปดาห์"
+    },
+    {
+      "name": "วันจ่ายประจำมีเวลาตัดรอบ",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 30,
+        "runs": {
+          "kind": "weekday",
+          "weekday": 3,
+          "nths": [
+            2
+          ],
+          "cutoffTime": "16:00"
+        }
+      },
+      "jsError": "เวลาตัดรอบ"
+    },
+    {
+      "name": "ปฏิทินกับวันรับวางบิลรายเดือน",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "monthly",
+          "days": [
+            21
+          ]
+        },
+        "creditDays": 0,
+        "runs": {
+          "kind": "calendar",
+          "years": {
+            "2026": {
+              "runs": [
+                {
+                  "cutoff": "2026-01-09",
+                  "pay": "2026-01-15"
+                },
+                {
+                  "cutoff": "2026-01-22",
+                  "pay": "2026-01-30"
+                },
+                {
+                  "cutoff": "2026-02-06",
+                  "pay": "2026-02-16"
+                },
+                {
+                  "cutoff": "2026-02-19",
+                  "pay": "2026-02-27"
+                },
+                {
+                  "cutoff": "2026-03-06",
+                  "pay": "2026-03-16"
+                },
+                {
+                  "cutoff": "2026-03-23",
+                  "pay": "2026-03-31"
+                },
+                {
+                  "cutoff": "2026-04-02",
+                  "pay": "2026-04-16"
+                },
+                {
+                  "cutoff": "2026-04-22",
+                  "pay": "2026-04-30"
+                },
+                {
+                  "cutoff": "2026-05-08",
+                  "pay": "2026-05-15"
+                },
+                {
+                  "cutoff": "2026-05-21",
+                  "pay": "2026-05-29"
+                },
+                {
+                  "cutoff": "2026-06-08",
+                  "pay": "2026-06-15"
+                },
+                {
+                  "cutoff": "2026-06-22",
+                  "pay": "2026-06-30"
+                },
+                {
+                  "cutoff": "2026-07-08",
+                  "pay": "2026-07-15"
+                },
+                {
+                  "cutoff": "2026-07-23",
+                  "pay": "2026-07-30"
+                },
+                {
+                  "cutoff": "2026-08-10",
+                  "pay": "2026-08-17"
+                },
+                {
+                  "cutoff": "2026-08-21",
+                  "pay": "2026-08-31"
+                },
+                {
+                  "cutoff": "2026-09-08",
+                  "pay": "2026-09-15"
+                },
+                {
+                  "cutoff": "2026-09-22",
+                  "pay": "2026-09-30"
+                },
+                {
+                  "cutoff": "2026-10-08",
+                  "pay": "2026-10-15"
+                },
+                {
+                  "cutoff": "2026-10-21",
+                  "pay": "2026-10-30"
+                },
+                {
+                  "cutoff": "2026-11-09",
+                  "pay": "2026-11-16"
+                },
+                {
+                  "cutoff": "2026-11-20",
+                  "pay": "2026-11-30"
+                },
+                {
+                  "cutoff": "2026-12-08",
+                  "pay": "2026-12-15"
+                },
+                {
+                  "cutoff": "2026-12-22",
+                  "pay": "2026-12-30"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "jsError": "วางบิลได้ทุกวัน"
+    },
+    {
+      "name": "ปฏิทินไม่มีปี",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 0,
+        "runs": {
+          "kind": "calendar",
+          "years": {}
+        }
+      },
+      "jsError": "ยังไม่มีปี"
+    },
+    {
+      "name": "ปฏิทินคีย์ปีผิด",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 0,
+        "runs": {
+          "kind": "calendar",
+          "years": {
+            "26": {
+              "runs": [
+                {
+                  "cutoff": "2026-10-08",
+                  "pay": "2026-10-15"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "jsError": "ไม่ถูกต้อง"
+    },
+    {
+      "name": "ปฏิทินวันที่ไม่มีจริง",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 0,
+        "runs": {
+          "kind": "calendar",
+          "years": {
+            "2026": {
+              "runs": [
+                {
+                  "cutoff": "2026-02-30",
+                  "pay": "2026-03-05"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "jsError": "ไม่ถูกต้อง"
+    },
+    {
+      "name": "ปฏิทินวันตัดรอบไม่อยู่ในปี",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 0,
+        "runs": {
+          "kind": "calendar",
+          "years": {
+            "2026": {
+              "runs": [
+                {
+                  "cutoff": "2027-01-08",
+                  "pay": "2027-01-15"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "jsError": "ไม่อยู่ในปี"
+    },
+    {
+      "name": "ปฏิทินจ่ายก่อนตัดรอบ",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 0,
+        "runs": {
+          "kind": "calendar",
+          "years": {
+            "2026": {
+              "runs": [
+                {
+                  "cutoff": "2026-10-08",
+                  "pay": "2026-10-01"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "jsError": "อยู่ก่อนวันตัดรอบ"
+    },
+    {
+      "name": "ปฏิทินจ่ายห่างเกิน 120 วัน",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 0,
+        "runs": {
+          "kind": "calendar",
+          "years": {
+            "2026": {
+              "runs": [
+                {
+                  "cutoff": "2026-01-08",
+                  "pay": "2026-06-15"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "jsError": "เกิน 120"
+    },
+    {
+      "name": "ปฏิทินวันตัดรอบซ้ำ",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 0,
+        "runs": {
+          "kind": "calendar",
+          "years": {
+            "2026": {
+              "runs": [
+                {
+                  "cutoff": "2026-10-08",
+                  "pay": "2026-10-15"
+                },
+                {
+                  "cutoff": "2026-10-08",
+                  "pay": "2026-10-30"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "jsError": "ซ้ำ"
+    },
+    {
+      "name": "ปฏิทินเดือนละห้ารอบ",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 0,
+        "runs": {
+          "kind": "calendar",
+          "years": {
+            "2026": {
+              "runs": [
+                {
+                  "cutoff": "2026-10-01",
+                  "pay": "2026-10-28"
+                },
+                {
+                  "cutoff": "2026-10-05",
+                  "pay": "2026-10-28"
+                },
+                {
+                  "cutoff": "2026-10-09",
+                  "pay": "2026-10-28"
+                },
+                {
+                  "cutoff": "2026-10-13",
+                  "pay": "2026-10-28"
+                },
+                {
+                  "cutoff": "2026-10-17",
+                  "pay": "2026-10-28"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "jsError": "ไม่เกิน"
+    },
+    {
+      "name": "หมายเหตุยาวเกิน 1000",
+      "rule": {
+        "v": 4,
+        "need": "none",
+        "note": "กกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกกก"
+      },
+      "jsError": "ยาวเกิน"
+    },
+    {
+      "name": "หมายเหตุไม่ใช่ข้อความ",
+      "rule": {
+        "v": 4,
+        "need": "none",
+        "note": 5
+      },
+      "jsError": "ข้อความ"
+    },
+    {
+      "name": "ไม่ใช่ออบเจกต์",
+      "rule": [
+        1,
+        2
+      ],
+      "jsError": "ไม่ถูกต้อง"
+    },
+    {
+      "name": "รุ่นสอง · เงินเข้าก่อนวางบิลในเดือนเดียวกัน (กติกาข้ามช่อง — ฐานรุ่นสองไม่ตรวจ)",
+      "rule": {
+        "billing": {
+          "mode": "monthly",
+          "days": [
+            10
+          ]
+        },
+        "payment": {
+          "mode": "monthly",
+          "rounds": [
+            {
+              "day": 5,
+              "monthOffset": 0
+            }
+          ]
+        }
+      },
+      "jsError": "ก่อนวันวางบิล",
+      "sqlAccepts": true
+    },
+    {
+      "name": "รุ่นสอง · รอบเงินเข้าไม่ครบคู่ (ความยาวคู่ — ฐานรุ่นสองไม่ตรวจ)",
+      "rule": {
+        "billing": {
+          "mode": "monthly",
+          "days": [
+            10,
+            25
+          ]
+        },
+        "payment": {
+          "mode": "monthly",
+          "rounds": [
+            {
+              "day": 25,
+              "monthOffset": 0
+            }
+          ]
+        }
+      },
+      "jsError": "ครบทุกรอบ",
+      "sqlAccepts": true
+    },
+    {
+      "name": "รุ่นสอง · วันวางบิลเกินสี่รอบ",
+      "rule": {
+        "billing": {
+          "mode": "monthly",
+          "days": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ]
+        },
+        "payment": {
+          "mode": "credit",
+          "days": 30
+        }
+      },
+      "jsError": "ไม่ถูกต้อง"
+    },
+    {
+      "name": "รุ่นสอง · credit:true",
+      "rule": {
+        "credit": true
+      },
+      "jsError": "ไม่ถูกต้อง"
+    },
+    {
+      "name": "ปฏิทินมีสูตรประมาณการ (เลิกแล้ว · มติ 29/09 ปีที่ขาด = หยุด) — โหมดบันทึกตีกลับ",
+      "rule": {
+        "v": 4,
+        "need": "required",
+        "billing": {
+          "mode": "anyday"
+        },
+        "creditDays": 30,
+        "runs": {
+          "kind": "calendar",
+          "cutoffTime": "16:00",
+          "years": {
+            "2026": {
+              "runs": [
+                {
+                  "cutoff": "2026-01-09",
+                  "pay": "2026-01-15"
+                },
+                {
+                  "cutoff": "2026-01-22",
+                  "pay": "2026-01-30"
+                },
+                {
+                  "cutoff": "2026-02-06",
+                  "pay": "2026-02-16"
+                },
+                {
+                  "cutoff": "2026-02-19",
+                  "pay": "2026-02-27"
+                },
+                {
+                  "cutoff": "2026-03-06",
+                  "pay": "2026-03-16"
+                },
+                {
+                  "cutoff": "2026-03-23",
+                  "pay": "2026-03-31"
+                },
+                {
+                  "cutoff": "2026-04-02",
+                  "pay": "2026-04-16"
+                },
+                {
+                  "cutoff": "2026-04-22",
+                  "pay": "2026-04-30"
+                },
+                {
+                  "cutoff": "2026-05-08",
+                  "pay": "2026-05-15"
+                },
+                {
+                  "cutoff": "2026-05-21",
+                  "pay": "2026-05-29"
+                },
+                {
+                  "cutoff": "2026-06-08",
+                  "pay": "2026-06-15"
+                },
+                {
+                  "cutoff": "2026-06-22",
+                  "pay": "2026-06-30"
+                },
+                {
+                  "cutoff": "2026-07-08",
+                  "pay": "2026-07-15"
+                },
+                {
+                  "cutoff": "2026-07-23",
+                  "pay": "2026-07-30"
+                },
+                {
+                  "cutoff": "2026-08-10",
+                  "pay": "2026-08-17"
+                },
+                {
+                  "cutoff": "2026-08-21",
+                  "pay": "2026-08-31"
+                },
+                {
+                  "cutoff": "2026-09-08",
+                  "pay": "2026-09-15"
+                },
+                {
+                  "cutoff": "2026-09-22",
+                  "pay": "2026-09-30"
+                },
+                {
+                  "cutoff": "2026-10-08",
+                  "pay": "2026-10-15"
+                },
+                {
+                  "cutoff": "2026-10-21",
+                  "pay": "2026-10-30"
+                },
+                {
+                  "cutoff": "2026-11-09",
+                  "pay": "2026-11-16"
+                },
+                {
+                  "cutoff": "2026-11-20",
+                  "pay": "2026-11-30"
+                },
+                {
+                  "cutoff": "2026-12-08",
+                  "pay": "2026-12-15"
+                },
+                {
+                  "cutoff": "2026-12-22",
+                  "pay": "2026-12-30"
+                }
+              ],
+              "fileId": "drive-abc123"
+            }
+          },
+          "estimate": [
+            {
+              "cutoffDay": 8,
+              "payDay": 15,
+              "payMonthOffset": 0
+            },
+            {
+              "cutoffDay": 22,
+              "payDay": 30,
+              "payMonthOffset": 0
+            }
+          ]
+        }
+      },
+      "jsError": "ประมาณการ",
+      "allowLegacy": false,
+      "sqlAccepts": true
+    }
+  ],
+  "backfill": {
+    "_about": "รายชื่อตรงตัวจาก data survey (ไม่ใช่เงื่อนไขเดาใน SQL) · noCredit = แถว { credit:false } · unset = แถว null · ข้าม AR-109 สหมิตร (เงินนอกระบบ)",
+    "option": 3,
+    "skipArCodes": [
+      "AR-109"
+    ],
+    "billed": {
+      "noCredit": [
+        "AR-035",
+        "AR-112",
+        "AR-354",
+        "AR-364",
+        "AR-386",
+        "AR-413",
+        "AR-425",
+        "AR-622",
+        "AR-726",
+        "AR-730"
+      ],
+      "unset": [
+        "AR-108",
+        "AR-109",
+        "AR-267",
+        "AR-637"
+      ]
+    },
+    "prepaid": {
+      "noCredit": [
+        "AR-018",
+        "AR-047",
+        "AR-056",
+        "AR-088",
+        "AR-1021",
+        "AR-1026",
+        "AR-1034",
+        "AR-129",
+        "AR-140",
+        "AR-147",
+        "AR-148",
+        "AR-152",
+        "AR-158",
+        "AR-166",
+        "AR-254",
+        "AR-284",
+        "AR-321",
+        "AR-336",
+        "AR-337",
+        "AR-388",
+        "AR-600",
+        "AR-792",
+        "AR-840",
+        "AR-858",
+        "AR-859",
+        "AR-862",
+        "AR-887",
+        "AR-892"
+      ],
+      "unset": [
+        "AR-1014",
+        "AR-491",
+        "AR-659",
+        "AR-732",
+        "AR-796",
+        "AR-802",
+        "AR-812",
+        "AR-835",
+        "AR-871",
+        "AR-898"
+      ]
+    },
+    "invoiceOnly": {
+      "noCredit": [
+        "AR-105",
+        "AR-352",
+        "AR-510"
+      ],
+      "unset": [
+        "AR-160",
+        "AR-635",
+        "AR-830"
+      ]
+    },
+    "review": [
+      "AR-035",
+      "AR-622",
+      "AR-105",
+      "AR-352",
+      "AR-510",
+      "AR-160",
+      "AR-635",
+      "AR-830"
+    ],
+    "expectedCounts": {
+      "1": {
+        "none": 541,
+        "required": 0,
+        "unknown": 1,
+        "untouched": 11
+      },
+      "3": {
+        "none": 38,
+        "required": 13,
+        "unknown": 491,
+        "untouched": 11
+      }
+    },
+    "population": {
+      "customers": 553,
+      "noCredit": 449,
+      "unset": 93,
+      "set": 11
+    }
+  }
+}

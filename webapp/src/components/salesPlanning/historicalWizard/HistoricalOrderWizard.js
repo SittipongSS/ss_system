@@ -199,6 +199,13 @@ export default function HistoricalOrderWizard({ orderId = null }) {
             : "ใบนี้แก้ในฟอร์มคีย์ใบไม่ได้แล้ว — ดูสถานะที่หน้าใบสั่งขาย");
           return;
         }
+        /* 🔴 PR-D (DD17 · critique M4): ของเสริมอ่านไม่ขึ้น = เส้นใบคืน `lineZones: []` + `serviceContractFiles: []` + `extrasError`
+           ⇒ hydrate ต่อ = แพ็คต่อรอบที่บันทึกไว้กลายเป็นช่องว่าง (แดงหลังกดถัดไป ชวนคีย์ใหม่จากความจำ) และไฟล์สัญญานับเป็น 0
+           ⇒ หยุดก่อนตั้ง state พร้อมเหตุ (ยังไม่มีอะไรให้เสีย — โหลดหน้าใหม่ได้เลย) */
+        if (order.extrasError) {
+          setReadOnly(`โหลดข้อมูลประกอบของใบไม่ขึ้น (รอบละกี่แพ็ค · ไฟล์เอกสาร · งวด) — โหลดหน้าใหม่ก่อนแก้ · ${order.extrasError}`);
+          return;
+        }
         setState(wizardStateFromOrder(order));
         const previous = historicalDuplicateReviewOf(order);
         setPreviousReview(previous);

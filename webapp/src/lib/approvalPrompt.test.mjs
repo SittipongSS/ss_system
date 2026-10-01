@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { IRREVERSIBLE_NOTE, approvalPrompt, paymentConfirmPrompt, costingPriceApprovalEffects, costingPriceApprovalPrompt,
   historicalApprovalPrompt, paymentPlanEditPrompt, paymentCarryPrompt, paymentRefundPrompt, paymentRefundClearPrompt,
+  FN_SERVICE_GATE_LINE,
 } from './approvalPrompt.js';
 import { applyCarryIn, carryPromptFacts } from './sales/installmentCarry.js';
 import { HISTORICAL_STATUS_NOTE } from './sales/historicalOrders.js';
@@ -370,4 +371,55 @@ test('paymentCarryPrompt: คำเตือนสลิปชื่อซ้ำ
     warnings: ['งวดที่ 1 ของใบนี้แนบสลิปชื่อเดียวกับงวดที่ 1 ของใบที่ยกเลิก (slip.jpg) — ตรวจว่าไม่ใช่เงินก้อนเดียวกันก่อนยก'],
   });
   assert.match(p.detail, /⚠ งวดที่ 1 ของใบนี้แนบสลิปชื่อเดียวกับงวดที่ 1 ของใบที่ยกเลิก \(slip\.jpg\)/);
+});
+
+/* ══ PR-C C5 (C-D14 · r2 F1 · critique M3): FN รับรองงวดของใบบริการที่เปิดงานแล้ว (mig 0392 · ใบมีรอบขายที่มีผล) ══
+   ⭐ บอกก่อนกดว่า "จ่ายถึง" ขยับด่านเงินของนัดบริการ **ของใบนี้** ถึงวันไหน กี่โซน — คำเดียวกับบรรทัดของใบย้อนหลัง
+     ("เปิดด่านเงินของนัดบริการ…") ไม่ใช่ "เปิดนัดบริการ…" ของสเปก: ด่าน① สัญญายังบล็อกทุกนัดของใบที่ไม่ผูกสัญญา
+     (visitGate) ⇒ "เปิดนัด" เป็นคำเท็จ (กติกาไฟล์: ผลลัพธ์ต้องตรวจได้) · ไม่ผูกสัญญา = ต่อท้ายว่านัดยังติดด่านสัญญา
+   ⚠️ ไม่รู้จำนวนโซน/จ่ายถึง · ใบไม่อยู่ในสถานะอนุมัติ · ใบย้อนหลัง = ภาพนิ่งเดิมทุกตัวอักษร */
+test('🔴 FN รับรองงวดของใบบริการ: ข้อที่สองบอกด่านเงินของนัดบริการของใบนี้ (จ่ายถึง · จำนวนโซน) · ไม่ผูกสัญญาต่อท้ายด่านสัญญา', () => {
+  const base = { label: 'งวดที่ 1', amount: '฿16,050.00', paidThroughLabel: '31/10/2026' };
+  const line = 'เปิดด่านเงินของนัดบริการของใบนี้ถึง 31/10/2026 (6 โซน) — นัดหลังจากนั้นยังติดด่านเงินจนกว่าจะรับรองงวดถัดไป';
+  const contractClause = ' · นัดยังติดด่านสัญญาจนกว่าฝ่ายขาย (SA) ผูกสัญญา';
+  const bullets = (p) => p.detail.split('\n').filter((l) => l.startsWith('· '));
+
+  assert.equal(FN_SERVICE_GATE_LINE({ through: '31/10/2026', zones: 6 }), line);
+  assert.equal(FN_SERVICE_GATE_LINE({ through: '31/10/2026', zones: 6, contractLinked: true }), line);
+  assert.equal(FN_SERVICE_GATE_LINE({ through: '31/10/2026', zones: 6, contractLinked: false }), line + contractClause);
+
+  const linked = paymentConfirmPrompt({ ...base, serviceZoneCount: 6 });
+  assert.equal(bullets(linked)[0], '· บันทึกว่าเงินงวดนี้เข้าบัญชีบริษัทแล้วจริง');
+  assert.equal(bullets(linked)[1], `· ${line}`);
+  assert.equal(bullets(linked).length, 5, 'เพิ่มหนึ่งข้อ — บรรทัดเดิมของใบที่อนุมัติอยู่ครบทุกข้อ');
+  assert.deepEqual(bullets(linked).filter((_, i) => i !== 1), bullets(paymentConfirmPrompt(base)));
+  // สถานะอนุมัติ = ไม่รู้สถานะ (ผู้เรียกทุกทางส่งสถานะมา)
+  assert.deepEqual(paymentConfirmPrompt({ ...base, serviceZoneCount: 6, orderStatus: 'approved' }), linked);
+
+  const unlinked = paymentConfirmPrompt({ ...base, serviceZoneCount: 6, serviceContractLinked: false });
+  assert.equal(bullets(unlinked)[1], `· ${line}${contractClause}`);
+
+  // ไม่มีโซน (ใบสินค้า · ใบบริการที่ยังไม่เปิดงาน · อ่านรอบขายไม่ขึ้น) = ภาพนิ่งเดิม · ธงสัญญาไม่มีผลเมื่อไม่มีบรรทัด
+  const today = paymentConfirmPrompt({ label: 'งวดที่ 1', amount: '฿16,050.00' });
+  assert.deepEqual(paymentConfirmPrompt(base), today, 'จ่ายถึงอย่างเดียวไม่เปลี่ยนคำของใบปกติ');
+  assert.deepEqual(paymentConfirmPrompt({ ...base, serviceZoneCount: 0, serviceContractLinked: false }), today);
+  assert.deepEqual(paymentConfirmPrompt({ ...base, serviceZoneCount: null }), today);
+  // ไม่รู้ "จ่ายถึง" = ไม่พูดวันที่ไม่รู้
+  assert.deepEqual(paymentConfirmPrompt({ label: 'งวดที่ 1', amount: '฿16,050.00', serviceZoneCount: 6, serviceContractLinked: false }), today);
+
+  // ใบที่ไม่อยู่ในสถานะอนุมัติ: รอบขายของใบไม่มีผล ⇒ ไม่มีบรรทัด (คำของสถานะนั้นเท่าเดิม)
+  for (const orderStatus of ['approval_revoked', 'cancelled', 'revised', 'draft', 'pending_approval', 'rejected']) {
+    assert.deepEqual(
+      paymentConfirmPrompt({ ...base, serviceZoneCount: 6, serviceContractLinked: false, orderStatus }),
+      paymentConfirmPrompt({ ...base, orderStatus }),
+      orderStatus,
+    );
+  }
+  // ใบย้อนหลังคงบรรทัดของตัวเอง ("เปิดด่านเงินของนัดบริการถึง …") ไม่ได้บรรทัดของใบปกติซ้อน
+  assert.deepEqual(
+    paymentConfirmPrompt({ ...base, historical: true, serviceZoneCount: 6, serviceContractLinked: false }),
+    paymentConfirmPrompt({ ...base, historical: true }),
+  );
+
+  for (const p of [linked, unlinked, today]) assert.doesNotMatch(p.detail, /เปิดนัดบริการของใบนี้/, 'ด่านสัญญายังบล็อก — ห้ามอ้างว่าเปิดนัด');
 });

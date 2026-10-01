@@ -1035,7 +1035,8 @@ test('ภาพหลังรับรอง: งวดที่รับรอ
   assert.equal(outlook.next, null, 'งวด 1 ที่ยังไม่จ่ายอยู่ก่อนงวดนี้ — ไม่ใช่งวดถัดไป');
   // ไม่มีช่วงครอบเลย = จ่ายถึงยังว่าง (ไม่ใช่เดาเอง) · ไม่มีแถว = ค่าว่างที่ปลอดภัย
   assert.equal(installmentConfirmOutlook({ id: 'x', seq: 1, amount: 50 }, []).paidThrough, null);
-  assert.deepEqual(installmentConfirmOutlook(null, rows), { paidThrough: null, collected: 0, next: null });
+  /* PR-C (review 29/09): สองช่องใหม่ของวันเปิดด่านเงินของนัด — ไม่มีแถว = ว่างทั้งคู่ */
+  assert.deepEqual(installmentConfirmOutlook(null, rows), { paidThrough: null, collected: 0, next: null, gateOpenThrough: null, gateHeldBy: null });
 });
 
 /* ══ PR0 · วางพื้นกันพัง (แผน so-payment-unlock-replan · มติเจ้าของ 23/09) ══════════════════════
@@ -1270,13 +1271,15 @@ test('โมดัลย้อนการอนุมัติ: เงินร
   assert.deepEqual(salesOrderMoneyOutcome(APPROVED_SO, [], 'revoke'), []);
 });
 
-test('โมดัลย้อนการอนุมัติ: ใบที่บัญชีปิดแล้ว (มติ D2) · ใบบริการ (ด่านนัดช่าง + ผูกโซนใหม่)', () => {
+test('โมดัลย้อนการอนุมัติ: ใบที่บัญชีปิดแล้ว (มติ D2) · ใบบริการ (ด่านนัดช่าง + ยกงานบริการไปใบ Rev.)', () => {
   const closed = salesOrderMoneyOutcome({ ...APPROVED_SO, financeStatus: 'approved' },
     MONEY_ROWS.map((r) => ({ ...r, status: 'confirmed' })), 'revoke');
   assert.ok(closed.includes('บัญชีปิดใบนี้แล้ว — ใบ Rev. จะกลับเข้าคิวให้บัญชีปิดใหม่'));
   assert.ok(!closed.some((l) => l.startsWith('สลิปรอบัญชีตรวจ')), 'ไม่มีงวดรอตรวจ = ไม่พูด');
   const service = salesOrderMoneyOutcome(APPROVED_SO, [], 'revoke', { serviceRounds: true });
-  assert.deepEqual(service, ['ระหว่างรอ Rev. อนุมัติ ด่านเงินของนัดช่างปิด และต้องผูกโซนกับใบ Rev. ใหม่']);
+  // mig 0392: ใบ Rev. ยกงานบริการ (แพ็คเกจ/จำนวนรอบบริการ/โซน/แต่ละครั้งกี่แพ็ค/ช่วงบริการ · คำตามมติ 29/09) ไปให้เอง — ไม่มีขั้น "ผูกโซนใหม่" ของ TS อีก
+  assert.deepEqual(service, ['ระหว่างรอ Rev. อนุมัติ นัดบริการของโซนในใบนี้ติดด่าน · ใบ Rev. คัดลอกแพ็คเกจ/จำนวนรอบบริการ/โซน/รอบละกี่แพ็ค/ช่วงบริการไปให้ แก้ได้ก่อนยื่น · อนุมัติ Rev. แล้วรอบบริการของไซต์ที่ยังอยู่ย้ายตามไป']);
+  assert.ok(!service[0].includes('ผูกโซน'));
 });
 
 test('โมดัลออก Rev.: บอกว่างวดทั้งชุดย้ายไป (แยกยอดรับแล้ว/รอตรวจ/รอชำระ) · ใบที่ไม่มีงวด = ไม่พูด', () => {

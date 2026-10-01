@@ -4,7 +4,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { apiWriteAllowed, bypassesSessionGate, lockedOut } from './proxy.js';
-import { RD_ROLES, ROLES, can, canAnswerServiceRequests } from '@/lib/permissions';
+import { RD_ROLES, ROLES, can, canAnswerServiceRequests, canEditService } from '@/lib/permissions';
 
 /* 🐞 ของจริงที่หลุด prod: proxy ตอบ 401 ให้ทุก request ที่ไม่มี cookie session รวม
    Vercel Cron ซึ่งยืนยันตัวด้วย `Authorization: Bearer $CRON_SECRET` เท่านั้น
@@ -505,6 +505,30 @@ test('ฝ่ายขายต้องผ่านด่าน proxy ของ 
   }
 });
 
+/* ── มาตรฐาน มล./เดือนของรอบขาย (PR-C · PATCH /api/service/terms/[id]) — สองด่านของ proxy คู่กันเสมอ ──
+   ⭐ ด่าน 1 `lockedOut`: `/api/service` อยู่ใน OPEN_WRITE_APIS ⇒ ผ่าน · ด่าน 2 `apiWriteAllowed`: service:edit
+   หรือ service:work ⇒ ผ่าน · **ด่านจริงคือ handler** `requireService({ user, edit: true })` = `canEditService`
+   (ถือ service:edit **และ** เป็นคนในโมดูล) ซึ่ง proxy มองไม่เห็นฝ่าย
+   ⚠️ ts (Operation · service:work) กับฝ่ายขาย (ถือ service:edit เพื่อสร้างไซต์ได้ — เทสต์ข้างบน) ผ่าน proxy ทั้งคู่
+      แล้วได้ 403 จาก handler — ไม่ใช่ช่องโหว่ แต่ห้ามมีใครย้ายด่านจริงมาไว้ที่ proxy แล้วคิดว่าพอ */
+test('⭐ PATCH /api/service/terms/[id] — TS Planner ผ่านทั้งสองด่านของ proxy · ด่านจริงคือ canEditService ใน handler', () => {
+  const path = '/api/service/terms/SZT-S1';
+  const planner = { role: 'ts_planner', extraCaps: [] };
+  assert.equal(lockedOut(planner, path, 'PATCH', true), false, 'ด่าน 1 (lockdown) ต้องไม่ตัด TS Planner');
+  assert.equal(apiWriteAllowed('PATCH', path, 'ts_planner', []), true, 'ด่าน 2 (cap) ต้องไม่ตัด TS Planner');
+  assert.equal(canEditService({ ...planner, department: 'TS' }), true, 'handler ปล่อย TS Planner');
+  // ts ถือแค่ service:work — proxy ปล่อย (ต้องปิดงานของตัวเองได้) แต่ handler ตอบ 403
+  assert.equal(apiWriteAllowed('PATCH', path, 'ts', []), true);
+  assert.equal(canEditService({ role: 'ts', department: 'TS' }), false, 'ts แก้มาตรฐานไม่ได้');
+  // ฝ่ายขายผ่าน proxy (service:edit ของการสร้างไซต์) — handler ตัดเพราะไม่ใช่คนในโมดูล
+  assert.equal(apiWriteAllowed('PATCH', path, 'ae', []), true);
+  assert.equal(canEditService({ role: 'ae', department: 'SA' }), false, 'ฝ่ายขายแก้มาตรฐานไม่ได้');
+  // ฝ่ายที่ไม่เกี่ยวกับงานบริการถูกตัดตั้งแต่ proxy
+  for (const role of ['wh', 'qc', 'pc', 'rd', 'finance', 'secretary', 'viewer']) {
+    assert.equal(apiWriteAllowed('PATCH', path, role, []), false, `${role} ต้องไม่ผ่าน`);
+  }
+});
+
 /* ── จัดทีม (mig 0310) ต้องผ่าน **ทั้งสองด่าน** ไม่ใช่แค่ด่านหลัง ────────────────
    🐞 บั๊กจริงที่ผู้ใช้แจ้ง 2026-09-04 ("ธุรกิจบริการ จัดทีมไม่ได้"): กด "สร้างทีม" ที่
    /service/teams แล้วขึ้น toast คำว่า `forbidden` เปล่า ๆ · `apiWriteAllowed` มีกฎ
@@ -750,6 +774,34 @@ test('⭐ ฝ่ายบัญชีผ่านทั้ง lockedOut แล�
       assert.equal(lockedOut({ role, extraCaps: [] }, path, 'PATCH', true), false, `${role} lockedOut ${path}`);
       assert.equal(apiWriteAllowed('PATCH', path, role, []), true, `${role} ${path}`);
     }
+  }
+});
+
+/* ── จัดวันงวดตามกำหนดวางบิลใหม่ (รุ่นสี่ · system-design §7.2) — จอ "งวดที่วันจะเปลี่ยน" หลังบันทึกกติกา ─────────
+   ⭐ FN แก้กติกาได้ ⇒ ต้องกด "ใช้วันใหม่" ได้ด้วย (ไม่งั้นบันทึกกติกาแล้วติดทางตัน) · ช่องแคบเดียวกับ PATCH /billing-rule */
+const REDATE_PATHS = ['/api/customers/C1/billing-rule/redate', '/api/master/customers/C1/billing-rule/redate'];
+
+test('⭐ ฝ่ายบัญชีผ่านทั้ง lockedOut และ apiWriteAllowed ของ POST จัดวันใหม่ตามกติกาลูกค้า · ฝ่ายขายผ่านเหมือนเดิม', () => {
+  const fn = { role: 'finance', extraCaps: [] };
+  for (const path of REDATE_PATHS) {
+    assert.equal(lockedOut(fn, path, 'POST', true), false, `lockedOut ${path}`);
+    assert.equal(apiWriteAllowed('POST', path, fn.role, fn.extraCaps), true, `apiWriteAllowed ${path}`);
+    for (const role of ['ae', 'ac', 'senior_ae', 'ae_supervisor']) {
+      assert.equal(apiWriteAllowed('POST', path, role, []), true, `${role} ${path}`);
+    }
+  }
+  // แคบเป๊ะ: เมธอดอื่น / ชื่อคล้าย / เส้นลูก ไม่ได้ช่องนี้ · ฝ่ายที่ไม่ถือทั้งสอง cap ไม่ได้อะไร
+  for (const [method, path] of [
+    ['PATCH', '/api/customers/C1/billing-rule/redate'],
+    ['DELETE', '/api/customers/C1/billing-rule/redate'],
+    ['POST', '/api/customers/C1/billing-rule/redate/x'],
+    ['POST', '/api/customers/C1/billing-rule/redates'],
+    ['POST', '/api/customers/billing-rule/redate'],
+  ]) {
+    assert.equal(apiWriteAllowed(method, path, 'finance', []), false, `บัญชีต้อง ${method} ${path} ไม่ได้`);
+  }
+  for (const role of ['marketing', 'viewer', 'executive', 'rd', 'ra', 'pc', 'ts']) {
+    assert.equal(apiWriteAllowed('POST', '/api/customers/C1/billing-rule/redate', role, []), false, role);
   }
 });
 

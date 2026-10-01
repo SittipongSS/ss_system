@@ -240,7 +240,9 @@ export function applyCarryIn(order, rows = [], carried = [], { requestById = nul
        — **ไม่ได้แก้ RPC 0377/0378 โดยตั้งใจ**: แกน `_so_installments_write_plan` อ่านเฉพาะคีย์ที่รู้จัก (คีย์เกินถูกข้าม)
        และ ④ UPDATE ไม่เอ่ยสองคอลัมน์นี้ ⇒ แถวเดิม (ทั้งแถวที่ยก = ย้ายทั้งแถว และงวดเปิดที่ถูกหัก) **คงวันวางบิลเดิม**
        · แถวใหม่ของ ⑤ INSERT ไม่มีในเส้นยกเงิน (ยกแถวเดิมเท่านั้น) · แก้ RPC จากไฟล์เมื่อไร = ย้อนสิทธิ์ที่ 0382/0385
-       ปะแก้ไว้ในฐาน (ดู installmentReplanMigration.test.mjs) */
+       ปะแก้ไว้ในฐาน (ดู installmentReplanMigration.test.mjs)
+     ⭐ ติ๊ก "งวดนี้ไม่ต้องวางบิล" (`billingSkip` · mig 0393) พกไปด้วยเหตุผลเดียวกัน — RPC ไม่เอ่ยคอลัมน์ ⇒ แถวเดิมคงติ๊กเดิม
+       · ใส่คีย์เฉพาะงวดที่ติ๊ก (ค่าที่เก็บมีแค่ true/null) ⇒ ก่อนรัน 0393 ไม่มีแถวไหนมีคีย์นี้ แผน/audit รูปเดิมทุกตัวอักษร */
   const payload = (r) => ({
     id: r.id,
     seq: Number(r.seq),
@@ -253,6 +255,7 @@ export function applyCarryIn(order, rows = [], carried = [], { requestById = nul
     note: text(r.note) || null,
     billingDate: r.billingDate || null,
     billingEvent: text(r.billingEvent) || null,
+    ...(r.billingSkip === true ? { billingSkip: true } : {}),
   });
   const movedRows = moving.map((r) => {
     const seq = nextSeq();

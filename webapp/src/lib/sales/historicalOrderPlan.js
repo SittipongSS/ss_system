@@ -21,10 +21,12 @@ import {
 import { QUOTE_PRICE_FIELD } from '@/lib/sales/quoteLines';
 import { ownerLockedToSelf } from '@/lib/sales/dealOwner';
 import { EXTERNAL_DOC_KINDS } from '@/lib/sales/contracts';
-import { SERVICE_ROUND_CATEGORY, lineIsServicePackage } from '@/lib/sales/serviceOrders';
+import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL, SERVICE_ROUND_CATEGORY, lineIsServicePackage } from '@/lib/sales/serviceOrders';
 import { bindTargetError } from '@/lib/service/intake';
 import { termIsActive } from '@/lib/service/terms';
 import { coverageContinuityErrors } from '@/lib/sales/paymentCoverage';
+import { normalizeInstallmentBilling } from '@/lib/sales/billingRule';
+import { NO_BILLING_WRITE_ERROR, validateInstallmentDates } from '@/lib/sales/billingRuleV4';
 import {
   historicalDuplicateAckIssue, historicalDuplicateAckOf, historicalDuplicateMatches, historicalDuplicatesAcknowledged,
 } from '@/lib/sales/historicalDuplicates';
@@ -54,14 +56,32 @@ export const HISTORICAL_REQUIRED_MESSAGES = Object.freeze({
   endDate: 'ต้องระบุวันสิ้นสุดสัญญา (ปี ค.ศ. 2000–2100)',
 });
 
-/* ข้อความรายช่องของบรรทัดโซน — ก้อนเดียวที่แผนตีกลับ และเทสต์อ้าง */
+/* ข้อความรายช่องของบรรทัดโซน — ก้อนเดียวที่แผนตีกลับ และเทสต์อ้าง
+   ⭐ PR-D (mig 0394 · r2 S12 · มติ 26/09 A3/O9): จำนวนรอบบริการบังคับ (`roundsMissing`) + ช่องแพ็คต่อรอบ (`packsPerRound`) ของแต่ละบรรทัด
+     (`packsMissing` · `packs` · `packsStaleForm`) — จำนวนแพ็คที่ TS ใช้ต่อการเข้าโซนหนึ่งครั้ง
+     **คนละช่องกับ "จำนวน"** (จำนวน = เงิน: 1 ชุด × 12 เดือน · มติ 23/09) ⇒ ไม่แตะยอดใดเลย
+   ⭐ มติเจ้าของ 29/09 (ใบใหม่และใบย้อนหลัง): ป้ายช่อง = `SERVICE_PACKS_LABEL` "รอบละกี่แพ็ค" (คำของใบใหม่)
+   ⚠️ `packs` = คำเดียวกับ ZONES_BULK_PACKS_INVALID ของหน้าต่างเพิ่มหลายโซน และ service_setup_packs_invalid ของใบใหม่
+     (เทสต์ยึด — lib ไม่ import components) */
 export const HISTORICAL_LINE_MESSAGES = Object.freeze({
   staleForm: 'ฟอร์มรุ่นก่อน (แพ็ค · ยอดที่พิมพ์เอง) — โหลดหน้าใหม่ แล้วคีย์โซนนี้เป็น จำนวน × ราคา/หน่วย แบบใบเสนอราคา',
   qty: 'จำนวนต้องเป็นจำนวนเต็มมากกว่า 0',
   unpriced: 'แพ็คเกจนี้ยังไม่ตั้งราคาในฐานข้อมูลสินค้า — ตั้งราคาที่ทะเบียนสินค้าก่อน แล้วค่อยบันทึก',
   priceUnknown: 'อ่านราคาของแพ็คเกจจากฐานข้อมูลสินค้าไม่ได้ — ลองใหม่อีกครั้ง (ถ้ายังไม่ได้ แจ้งผู้ดูแลระบบ)',
-  rounds: 'รอบบริการที่ขายไว้ต้องเป็นจำนวนเต็มมากกว่า 0',
+  rounds: `${SERVICE_ROUNDS_LABEL}ต้องเป็นจำนวนเต็มมากกว่า 0`,
+  roundsMissing: `ยังไม่ใส่${SERVICE_ROUNDS_LABEL}`,
+  packsMissing: `ยังไม่ใส่${SERVICE_PACKS_LABEL} (จำนวนเต็ม 1–9999)`,
+  packs: `${SERVICE_PACKS_LABEL} ต้องเป็นจำนวนเต็ม 1–9999`,
+  packsStaleForm: `ฟอร์มรุ่นก่อน (ยังไม่มีช่อง${SERVICE_PACKS_LABEL}) — โหลดหน้าใหม่ แล้วใส่${SERVICE_PACKS_LABEL}ให้ครบทุกรายการ`,
 });
+
+/* ลูกค้า "ไม่ต้องวางบิล" ตั้งวันวางบิลใหม่ในวิซาร์ด (review 29/09) — ประโยคของด่านรุ่นสี่ชี้เมนู "งวดนี้ต้องวางบิล…" ที่วิซาร์ด
+   ไม่มี (= ทางตัน) ⇒ บอกทางที่ทำได้จริงแทน (แพตเทิร์น CREATE_NO_BILLING_ERROR ของหน้าสร้าง SO) · ใบที่อนุมัติแล้วตั้งวันงวด
+   ที่แท็บการชำระได้ (historicalInstallmentLock = null หลังอนุมัติ) */
+export const HISTORICAL_NO_BILLING_ERROR = 'ลูกค้ารายนี้ไม่ต้องวางบิล — ล้างวันวางบิลของงวดนี้ (ถ้าลูกค้าขอใบวางบิลงวดนี้ ตั้ง "งวดนี้ต้องวางบิล…" ที่แท็บการชำระของใบหลังอนุมัติ)';
+
+/* ขอบของ "แพ็คต่อรอบ" — เท่ากับ CHECK ของ sales_order_line_zones (mig 0392) และตัวตรวจของ 0394 (P4/P5) · เทสต์ของ 0394 อ่านตัวนี้ */
+export const HISTORICAL_SERVICE_LIMITS = Object.freeze({ packsMin: 1, packsMax: 9999 });
 
 /**
  * เงินของทั้งใบจากบรรทัดโซน — **สูตรของใบเสนอราคาทุกตัวอักษร** (quoteLineMoney ต่อบรรทัด · quoteTotals ทั้งใบ)
@@ -142,6 +162,8 @@ function stableStringify(value) {
         เอกสารแทนสัญญา  ↔ historical_so_check_contract     (ชนิด · เลขอ้างอิง ≤200 · วันเริ่ม ≤ วันสิ้นสุด · เริ่มไม่เกินวันนี้)
         โซน × แพ็คเกจ   ↔ historical_so_check_lines (0379)  (โซนของลูกค้าในใบ ยังใช้งาน · ไม่ซ้ำ · สินค้าหมวด 02-001 · จำนวนเต็ม
                                                           · ยอดบรรทัด = จำนวน × ราคา/หน่วย − ส่วนลด ตามสูตรใบเสนอราคา)
+                         + 0394/P4–P5 (PR-D)               (รอบบริการบังคับ · แพ็คต่อรอบจำนวนเต็ม 1–9999 ทุกบรรทัด)
+        วันวางบิลของงวด ↔ historical_so_write_children (0394/P7c) (รูปวันที่ · ปี 2000–2100 · งวดยกมาห้ามมี)
         ราคา/หน่วย     ↔ historical_so_write_children (0379) (ราคา = ราคาผลิตในทะเบียน ณ ตอนบันทึก · ยังไม่ตั้งราคา = ตีกลับ)
         งวด            ↔ historical_so_check_installments (งวดยกมา ≤1 · ผลรวม = ยอดใบ · ช่วงครอบต่อเนื่องเต็มสัญญา)
         ใบ ฿0          ↔ zero_value_note_required / zero_value_has_installments
@@ -166,6 +188,24 @@ function stableStringify(value) {
 
 const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const MAX_INT4 = 2147483647; // serviceRounds เป็น integer ในฐาน — เกินนี้ cast แล้ว error
+
+/* ── ตัวอ่านสองช่องงานบริการของบรรทัด — **ตัวเดียว** ที่แผน · ฟอร์ม (ทั้งรายการ n แพ็ค) · หน้าต่างเพิ่มหลายโซนใช้ ──
+   ⭐ PR-D: คืนจำนวนเต็มที่บันทึกได้ หรือ null (ว่าง/ผิดรูป — ผู้เรียกแยกสองกรณีเองด้วย `text(value)`)
+   ⚠️ แพ็คต่อรอบ 1–9999 (HISTORICAL_SERVICE_LIMITS) · รอบ > 0 และไม่เกิน int4 (กฎของ 0374 — ไม่บีบเป็น 1–999 แบบใบ pipeline · DD15) */
+const integerOf = (value) => {
+  const raw = text(value);
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isInteger(n) ? n : null;
+};
+export function historicalPacksValue(value) {
+  const n = integerOf(value);
+  return n !== null && n >= HISTORICAL_SERVICE_LIMITS.packsMin && n <= HISTORICAL_SERVICE_LIMITS.packsMax ? n : null;
+}
+export function historicalRoundsValue(value) {
+  const n = integerOf(value);
+  return n !== null && n > 0 && n <= MAX_INT4 ? n : null;
+}
 const dateText = (iso) => fmtDate(iso);
 /* ยอดเงินที่จะส่งเข้าฐาน = ปัดสองตำแหน่งแล้ว ⇒ ตรวจ "มากกว่า 0 / ไม่ติดลบ" กับค่าหลังปัดเสมอ
    (ตรวจค่าดิบ = 0.004 ผ่านที่นี่แต่ฐานได้ 0 แล้วตีกลับ) · ตัวเลขไม่ได้ = NaN ให้ด่านจับ */
@@ -186,14 +226,20 @@ const pick = (source, key) => (source instanceof Map ? source.get(key) : source?
 
 /**
  * @param input `{ customerId, ownerId, team, contract: { docKind, ref, startDate, endDate }, refs,
- *   vatRate, discountType, discountValue (ส่วนลดท้ายใบ), notes, zones: [{ zoneId, productId, qty, discountType, discountValue, rounds }],
+ *   vatRate, discountType, discountValue (ส่วนลดท้ายใบ), notes,
+ *   zones: [{ zoneId, productId, qty, discountType, discountValue, rounds, packsPerRound }],
  *   opening: null | { amount, coversTo, paidOn, note, evidence? },
- *   installments: [{ label, amount, dueDate, coversFrom, coversTo, note? }], acknowledgeDuplicates }`
- *   - โซนหนึ่งแถว = บรรทัดใบเสนอราคาหนึ่งบรรทัด: จำนวน · ส่วนลดรายการ (ไม่ลด/percent/amount) · รอบบริการที่ขายไว้
+ *   installments: [{ label, amount, dueDate, coversFrom, coversTo, note?, billingDate? }], acknowledgeDuplicates }`
+ *   - โซนหนึ่งแถว = บรรทัดใบเสนอราคาหนึ่งบรรทัด: จำนวน · ส่วนลดรายการ (ไม่ลด/percent/amount) · จำนวนรอบบริการ (บังคับ)
+ *     + แพ็คต่อรอบ (PR-D · บังคับ · 1–9999 · คนละช่องกับจำนวน) — ไม่มีคีย์ = ฟอร์มรุ่นก่อน
+ *   - งวดที่ยังต้องเก็บ: `billingDate` วันวางบิล ไม่บังคับ (PR-D · mig 0394/P7) · งวดยกมาไม่มีวันวางบิล
  *     ⚠️ **ไม่มีราคา/ยอดจากจอ** — ราคา/หน่วยอ่านจาก `ctx.products[].costPrice` (QUOTE_PRICE_FIELD) เสมอ
  *   - vatRate = ตัวเลือกของใบเสนอราคา (0 "รวม VAT แล้ว" · 7 "+ VAT 7% ท้ายใบ") · opening.coversFrom = วันเริ่มสัญญาเสมอ
  * @param ctx `{ actor, customer, owner, products, zones, sites, containerDeals, existingHistorical, liveTermsByZone,
- *   todayIso, selfOrderId, editing }`
+ *   todayIso, selfOrderId, editing, billingGate }`
+ *   - billingGate (review 29/09): `{ rule, ruleUnavailable, storedBySeq }` — กติกาวางบิลของลูกค้าที่ server อ่านเอง
+ *     (`loadScheduleRule`) + วันวางบิลที่ใบเก็บไว้ต่อเลขงวด (แก้ใบ) ⇒ วันวางบิลผ่าน `validateInstallmentDates` ตัวเดียวกับ
+ *     ทุกทางเขียนวันงวด · ไม่ส่ง = ตรวจรูปอย่างเดียว (ผู้เรียกที่ไม่มีวันวางบิลให้ตรวจ)
  *   - products: สินค้าที่เลือก — ต้อง select `costPrice` มาด้วย (ไม่มีคีย์ = "อ่านราคาไม่ได้" ไม่ใช่ราคา 0)
  *   - actor: ผู้คีย์ `{ id, role, team, teams }` (user ของ route) · owner: ผลของ validateDealOwner
  *   - zones: แถว service_zones ของโซนที่เลือก (`id, siteId, name, code, isActive`) · sites: ไซต์ของโซนเหล่านั้น
@@ -212,7 +258,7 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
   const body = isPlainObject(input) ? input : {};
   const {
     actor = null, customer = null, owner = null, products = [], zones = [], sites = [], containerDeals = [],
-    existingHistorical = [], liveTermsByZone = null, todayIso = null, selfOrderId = null, editing = false,
+    existingHistorical = [], liveTermsByZone = null, todayIso = null, selfOrderId = null, editing = false, billingGate = null,
   } = ctx || {};
   const errors = [];
   const warnings = [];
@@ -420,11 +466,27 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
       else { unitPrice = toMoney(product[QUOTE_PRICE_FIELD]); priceOk = true; }
     }
     if (!priceOk) linesMoneyOk = false;
+    /* ── งานบริการของบรรทัด (PR-D · mig 0394): รอบบริการ + แพ็คต่อรอบ — **ไม่แตะเงิน** (linesMoneyOk ไม่ขยับ) ──
+       ลำดับข้อ = ลำดับช่องบนจอ (โซน · จำนวนรอบบริการ · รอบละกี่แพ็ค — มติ 29/09) ⇒ ข้อแรกที่ปุ่มพาไปคือช่องแรกที่ตาเห็น
+       🪤 ไม่มีคีย์ `packsPerRound` = แท็บที่เปิดค้างจากก่อน deploy (จอของเขาไม่มีช่องนี้) ⇒ บอกให้โหลดหน้าใหม่ (DD13)
+          ไม่ใช่ "ยังไม่ใส่" ที่ส่งเขาไปหาช่องที่ไม่มี · แถวรุ่น 0374 (`staleForm` ข้างบน) ได้ข้อความเดียวของมันพอ
+       ⚠️ ฐานตรวจซ้ำ: 0394/P4 (ตัวตรวจบรรทัด — รอบว่าง = historical_so_line_rounds_required) · P5 (ตัวเขียน — ทุกบรรทัดต้องพก
+          แพ็คต่อรอบเป็นตัวเลข 1–9999 ⇒ ค่าที่ส่งเข้า RPC เป็น **ตัวเลข** เสมอ ไม่ใช่สตริงของช่องกรอก) */
+    /* ⭐ รอบบริการบังคับ (r2 S12) — ของเดิม "เว้นว่างได้ · TS ตั้งวันนัดเอง" ถูกถอด: ตัวกลางเปิดรอบขายของ 0392 ต้องรู้จำนวนรอบ */
     let serviceRounds = null;
-    if (text(row.rounds)) {
-      const rounds = Number(row.rounds);
-      if (!Number.isInteger(rounds) || rounds <= 0 || rounds > MAX_INT4) push(HISTORICAL_LINE_MESSAGES.rounds, 'rounds');
-      else serviceRounds = rounds;
+    if (!text(row.rounds)) push(HISTORICAL_LINE_MESSAGES.roundsMissing, 'rounds');
+    else {
+      serviceRounds = historicalRoundsValue(row.rounds);
+      if (serviceRounds === null) push(HISTORICAL_LINE_MESSAGES.rounds, 'rounds');
+    }
+    let packsPerRound = null;
+    if (!staleForm) {
+      if (!has(row, 'packsPerRound')) push(HISTORICAL_LINE_MESSAGES.packsStaleForm, 'packsPerRound');
+      else if (!text(row.packsPerRound)) push(HISTORICAL_LINE_MESSAGES.packsMissing, 'packsPerRound');
+      else {
+        packsPerRound = historicalPacksValue(row.packsPerRound);
+        if (packsPerRound === null) push(HISTORICAL_LINE_MESSAGES.packs, 'packsPerRound');
+      }
     }
 
     // รอบขายที่ยังมีผลของใบอื่นบนโซนเดียวกัน — เตือน ไม่บล็อก (ต่อสัญญาช่วงคาบเกี่ยวเป็นเรื่องปกติ · AE Sup ตัดสิน)
@@ -460,6 +522,7 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
       rawDiscountType: row.discountType ?? null,
       rawDiscountValue: row.discountValue ?? 0,
       serviceRounds,
+      packsPerRound,
     });
   });
 
@@ -577,6 +640,25 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
     else if (coversFrom > coversTo) { push('coversTo', 'วันเริ่มช่วงครอบต้องไม่เกินวันสิ้นสุด'); rowDatesOk = false; }
     const note = text(row.note) || null;
     if (note && charLength(note) > INSTALLMENT_NOTE_MAX) push('note', `หมายเหตุยาวเกิน ${INSTALLMENT_NOTE_MAX} ตัวอักษร`);
+    /* ⭐ PR-D (DD5 · mig 0394/P7): วันวางบิลของงวด **ไม่บังคับ** — ตัวตรวจตัวเดียวกับ action 'schedule' ของงวด (รูปวันที่ ·
+       ปี 2000–2100 = CHECK ของ 0389) · ไม่มี "รอเหตุการณ์": งวดของใบย้อนหลังต้องมีวันครบกำหนด (0374) และรุ่นสี่ห้าม
+       เหตุการณ์คู่วันครบกำหนด · งวดยกมาไม่มีวันวางบิลเสมอ (แผนประกอบแถวของมันเอง — คีย์ที่ติดมาจากจอไม่ถูกอ่าน) */
+    const billing = normalizeInstallmentBilling({ billingDate: row.billingDate });
+    if (billing.error) push('billingDate', billing.error);
+    /* 🔴 review 29/09: ด่านรุ่นสี่ตัวเดียวกับทุกทางเขียนวันงวด (installmentScheduleMany.js:19 · หน้าสร้าง SO) — ลูกค้า
+       "ไม่ต้องวางบิล" ตั้งวันใหม่ไม่ได้ (วิซาร์ดไม่มีทางยืนยันข้อยกเว้น ⇒ ไม่ส่ง billingException) · อ่านกติกาไม่ได้ = เปลี่ยนไม่ได้
+       · คงวันเดิมของงวดเลขเดียวกัน / ล้างวัน = ผ่านเสมอ (`billChanged` ของด่าน) · ตัวเขียนของฐานเขียนงวดใหม่ทั้งชุด
+       ⇒ "วันเดิม" = วันที่ใบเก็บไว้ที่งวดเลขเดียวกัน (`storedBySeq` — ลำดับงวดของใบ 0379) */
+    else if (billingGate && billing.value?.billingDate) {
+      const storedDate = billingGate.storedBySeq instanceof Map ? billingGate.storedBySeq.get(n) ?? null : null;
+      const problem = validateInstallmentDates(
+        { billingDate: storedDate },
+        { billingDate: billing.value.billingDate, dueDate: isCalendarDate(dueDate) ? dueDate : null },
+        billingGate.rule ?? null,
+        { ruleUnavailable: Boolean(billingGate.ruleUnavailable) },
+      );
+      if (problem) push('billingDate', problem === NO_BILLING_WRITE_ERROR ? HISTORICAL_NO_BILLING_ERROR : problem);
+    }
     if (today && isCalendarDate(dueDate) && dueDate < today) {
       warn('overdue', `งวดที่ ${n} (${label || '—'}) ครบกำหนดแล้ว (${dateText(dueDate)}) — หลัง${HISTORICAL_APPROVER_LABEL}อนุมัติจะขึ้นเลยกำหนดในทะเบียนบัญชีทันที และนัดบริการติดด่านเงินจนกว่าบัญชีรับรอง`, { seq: n, dueDate });
     }
@@ -589,6 +671,7 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
       coversTo: coversTo || null,
       paidOn: null,
       note,
+      billingDate: billing.value ? billing.value.billingDate : null,
     });
   });
 
@@ -723,6 +806,8 @@ export function historicalServiceRpcArgs(plan, mode = 'create') {
       coversTo: row.coversTo,
       paidOn: null,
       note: row.note,
+      /* PR-D (0394/P7a–c): วันวางบิลของงวดที่ยังต้องเก็บ — ว่าง = null · งวดยกมา **ไม่มีคีย์นี้** (CHECK ของ 0389) */
+      billingDate: row.billingDate ?? null,
     })),
   ];
   return {
@@ -752,6 +837,8 @@ export function historicalServiceRpcArgs(plan, mode = 'create') {
       discountAmount: line.discountAmount,
       lineTotal: line.lineTotal,
       serviceRounds: line.serviceRounds,
+      /* PR-D (0394/P5–P6): แพ็คต่อรอบเป็นตัวเลข — ตัวเขียนของฐานสร้างแถวโซนของงานบริการหนึ่งแถวต่อบรรทัดจากคีย์นี้ */
+      packsPerRound: line.packsPerRound,
     })),
     p_installments: rows,
     p_contract: {

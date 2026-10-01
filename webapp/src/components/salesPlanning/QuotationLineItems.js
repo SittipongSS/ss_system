@@ -10,7 +10,7 @@ import { TableScroll } from "@/components/ui/Table";
 import { useEffect, useMemo, useState } from "react";
 import ReadableText from "@/components/ui/ReadableText";
 import { quoteTotals } from "@/lib/salesPlanning";
-import { fmtMoney, naText, NA } from "@/lib/format";
+import { fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
 import { lineNoteEdit, manualLineCategoryEdit, quoteLineFromProduct } from "@/lib/sales/quoteLines";
 import { cachedFetchJson } from "@/lib/apiCache";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
@@ -20,7 +20,7 @@ import { DEFAULT_SALE_UNIT } from "@/lib/master/units";
 import { productSelectOptions } from "@/components/master/productOption";
 import styles from "./QuotationLineItems.module.css";
 import Textarea from "@/components/ui/Textarea";
-import { lineIsServicePackage } from "@/lib/sales/serviceOrders";
+import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL, lineIsServicePackage } from "@/lib/sales/serviceOrders";
 import {
   QuoteLineActionsHead, QuoteLineFgInfo, QuoteLineHeadCells, QuoteLineIndexCell, QuoteLineIndexHead,
   QuoteLineInstallationPoint, QuoteLineItemCell, QuoteLineMoneyCells, QuoteLineProductPicker, QuoteLineRemoveCell,
@@ -47,9 +47,17 @@ const HIGHLIGHT_TONE = {
   neutral: styles.neutralTotal,
 };
 
+/* ค่าของป้าย "แต่ละครั้งกี่แพ็ค" (PR-D · ป้าย = SERVICE_PACKS_LABEL ตามมติ 29/09) — จำนวนเต็มบวกเท่านั้น · ไม่รู้ = ขีด
+   ⚠️ ว่าง ≠ 0 (`Number(null)` = 0) · ค่าที่ไม่ใช่จำนวนเต็มบวกห้ามขึ้นเป็น "0 แพ็ค" */
+const packsPerRoundText = (value) => {
+  if (value === null || value === undefined || value === "") return NA;
+  const packs = Number(value);
+  return Number.isInteger(packs) && packs > 0 ? `${fmtNumber(packs)} แพ็ค` : NA;
+};
+
 export function QuotationReadOnlyLineItems({
   lines = [],
-  /* ⭐ `showServiceRounds` — โชว์ "รอบบริการที่ขายไว้" ใต้คำอธิบายของบรรทัดหมวด 02-001
+  /* ⭐ `showServiceRounds` — โชว์ "จำนวนรอบบริการ" (`SERVICE_ROUNDS_LABEL` · มติ 29/09) ใต้คำอธิบายของบรรทัดหมวด 02-001
      ⚠️ ปิดไว้เป็นค่าตั้งต้นโดยตั้งใจ: คอมโพเนนต์นี้ใช้ทั้งใบเสนอราคาและใบสั่งขาย
      แต่จำนวนรอบเป็นของ **ใบสั่งขาย** ที่เดียว (มติผู้ใช้ 2026-08-31 รอบสอง)
      ⇒ เปิดทั่วไป = ใบเสนอราคาโชว์ขีดค้างไว้ทุกใบตลอดกาล */
@@ -59,6 +67,11 @@ export function QuotationReadOnlyLineItems({
      (บรรทัด "12 แพ็คเกจ × 3,500" สี่บรรทัดที่เหมือนกันทุกตัวอักษรอ่านไม่ออกว่าต่างกันตรงไหน — มติ 23/09)
      ⚠️ ปิดเป็นค่าตั้งต้น เหตุผลเดียวกับ showServiceRounds: บรรทัดของใบเสนอราคาไม่มีโซน */
   showInstallationPoint = false,
+  /* ⭐ `showPacksPerRound` — ป้ายที่สอง "แต่ละครั้งกี่แพ็ค" (`SERVICE_PACKS_LABEL` · มติ 29/09) ต่อจากรอบบริการ (บรรทัดหมวด 02-001 · `line.packsPerRound`)
+     ของขั้น ④ ของฟอร์มคีย์ใบย้อนหลัง (PR-D · มติเจ้าของ 26/09 A3/O9 · mig 0394) — แพ็คต่อรอบเป็นช่องของ **โซน**
+     คนละช่องกับจำนวนของบรรทัด (เงิน: 1 ชุด × 12 เดือน) ⇒ ต้องอ่านแยกจากคอลัมน์ "จำนวน"
+     ⚠️ ปิดเป็นค่าตั้งต้น เหตุผลเดียวกับ showServiceRounds: บรรทัดของใบเสนอราคา/หน้าใบสั่งขายไม่พกช่องนี้ */
+  showPacksPerRound = false,
   summaryRows = [],
   grandTotal,
   grandTotalLabel = "ยอดรวมทั้งสิ้น",
@@ -82,38 +95,43 @@ export function QuotationReadOnlyLineItems({
           </thead>
           <tbody>
             {lines.map((line, index) => (
-              <tr key={line.id || index}>
-                <td className={styles.rowNumber}>{index + 1}</td>
-                <td>
-                  <div className={styles.readOnlyDescription}>
-                    {/* รหัส FG · ชื่อหมวดสินค้า (มติผู้ใช้ 2026-09-22) — หมวดเป็น snapshot ในบรรทัด
-                        ใบเก่าที่ยังไม่มี server เติมให้ตอนเปิดใบ (fillMissingLineCategories) */}
-                    {/* บรรทัดเพิ่มเองไม่มีรหัส FG แต่มีหมวดที่คนออกใบเลือกไว้ได้ (มติผู้ใช้ 2026-09-27) */}
-                    {(line.fgCode || productCategoryName(line)) ? (
-                      <small>{[line.fgCode, productCategoryName(line)].filter(Boolean).join(" · ")}</small>
-                    ) : null}
-                    <ReadableText text={line.description} lines={3} />
-                    {showInstallationPoint ? <QuoteLineInstallationPoint point={line.installationPoint} /> : null}
-                    {showServiceRounds && lineIsServicePackage(line) ? (
-                      <span className={styles.serviceRoundsTag}>
-                        รอบบริการที่ขายไว้: <strong>{line.serviceRounds ? `${line.serviceRounds} รอบ` : NA}</strong>
-                      </span>
-                    ) : null}
-                    {line.metadata?.note ? (
-                      <span className={styles.noteReadonly}>
-                        <strong>หมายเหตุ:</strong>
-                        <ReadableText text={line.metadata.note} lines={2} />
-                      </span>
-                    ) : null}
-                  </div>
-                </td>
-                {/* data-label = ป้ายที่ใช้ตอนตารางแปลงเป็นการ์ดบนจอแคบ (หัวตารางถูกซ่อน) */}
-                <td className="num mono" data-label="จำนวน">{naText(line.qty)}</td>
-                <td data-label="หน่วย">{naText(line.unit)}</td>
-                <td className="num mono" data-label="ราคาต่อหน่วย">{fmtMoney(line.unitPrice)}</td>
-                <td className="num mono" data-label="ส่วนลด">{Number(line.discountAmount || 0) > 0 ? fmtMoney(line.discountAmount) : NA}</td>
-                <td className={`num mono ${styles.lineAmount}`} data-label="รวม">{fmtMoney(line.lineTotal)}</td>
-              </tr>
+                  <tr key={line.id || index}>
+                    <td className={styles.rowNumber}>{index + 1}</td>
+                    <td>
+                      <div className={styles.readOnlyDescription}>
+                        {/* รหัส FG · ชื่อหมวดสินค้า (มติผู้ใช้ 2026-09-22) — หมวดเป็น snapshot ในบรรทัด
+                            ใบเก่าที่ยังไม่มี server เติมให้ตอนเปิดใบ (fillMissingLineCategories) */}
+                        {/* บรรทัดเพิ่มเองไม่มีรหัส FG แต่มีหมวดที่คนออกใบเลือกไว้ได้ (มติผู้ใช้ 2026-09-27) */}
+                        {(line.fgCode || productCategoryName(line)) ? (
+                          <small>{[line.fgCode, productCategoryName(line)].filter(Boolean).join(" · ")}</small>
+                        ) : null}
+                        <ReadableText text={line.description} lines={3} />
+                        {showInstallationPoint ? <QuoteLineInstallationPoint point={line.installationPoint} /> : null}
+                        {showServiceRounds && lineIsServicePackage(line) ? (
+                          <span className={styles.serviceRoundsTag}>
+                            {SERVICE_ROUNDS_LABEL}: <strong>{line.serviceRounds ? `${line.serviceRounds} รอบ` : NA}</strong>
+                          </span>
+                        ) : null}
+                        {showPacksPerRound && lineIsServicePackage(line) ? (
+                          <span className={styles.serviceRoundsTag}>
+                            {SERVICE_PACKS_LABEL}: <strong>{packsPerRoundText(line.packsPerRound)}</strong>
+                          </span>
+                        ) : null}
+                        {line.metadata?.note ? (
+                          <span className={styles.noteReadonly}>
+                            <strong>หมายเหตุ:</strong>
+                            <ReadableText text={line.metadata.note} lines={2} />
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
+                    {/* data-label = ป้ายที่ใช้ตอนตารางแปลงเป็นการ์ดบนจอแคบ (หัวตารางถูกซ่อน) */}
+                    <td className="num mono" data-label="จำนวน">{naText(line.qty)}</td>
+                    <td data-label="หน่วย">{naText(line.unit)}</td>
+                    <td className="num mono" data-label="ราคาต่อหน่วย">{fmtMoney(line.unitPrice)}</td>
+                    <td className="num mono" data-label="ส่วนลด">{Number(line.discountAmount || 0) > 0 ? fmtMoney(line.discountAmount) : NA}</td>
+                    <td className={`num mono ${styles.lineAmount}`} data-label="รวม">{fmtMoney(line.lineTotal)}</td>
+                  </tr>
             ))}
             {!lines.length ? <tr><td colSpan={7} className={styles.emptyRows}>{emptyText}</td></tr> : null}
           </tbody>

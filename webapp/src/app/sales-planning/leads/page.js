@@ -37,6 +37,7 @@ import {
   LEAD_CHANNELS, LEAD_CHANNEL_LABELS, channelGroupOf, LEAD_STATUSES, LEAD_STATUS_LABELS,
   LEAD_SLA_STAGES, leadSlaNote, leadBudgetText, SERVICE_INTEREST_LABELS,
   canEditLead, canDeleteLead, canCreateLead, canCreateDealFromLead, slaPendingTone, leadFollowUpState,
+  LEAD_SORT_DEFAULT, leadSortDefaultDir, sortLeads,
 } from "@/lib/sales/leads";
 import { canExportLeadReport } from "@/lib/sales/leadReport";
 import { SCOPE_LABELS, yearOfMonth } from "@/components/salesPlanning/ui";
@@ -164,18 +165,19 @@ export default function LeadsPage() {
   const [teamFilter, setTeamFilter] = useStickyState("teamFilter", EMPTY);
   const [assigneeFilter, setAssigneeFilter] = useStickyState("assigneeFilter", EMPTY);
   const [channelFilter, setChannelFilter] = useStickyState("channelFilter", EMPTY);
-  const [sortKey, setSortKey] = useStickyState("sortKey", "created");
-  const [sortDir, setSortDir] = useStickyState("sortDir", "desc");
+  // ตั้งต้น = "ติดตามต่อ" (มติผู้ใช้ 2026-09-29) — ตารางเป็นคิวงาน · คนที่เคยเลือกเองยังได้ค่าที่จำไว้
+  const [sortKey, setSortKey] = useStickyState("sortKey", LEAD_SORT_DEFAULT);
+  const [sortDir, setSortDir] = useStickyState("sortDir", leadSortDefaultDir(LEAD_SORT_DEFAULT));
 
   const SORT_OPTIONS = [
+    { key: "followup", label: "ติดตามต่อ" },
     { key: "created", label: "รับล่าสุด" },
     { key: "name", label: CUSTOMER_NAME_LABEL },
     { key: "status", label: "สถานะ" },
     { key: "budget", label: "Budget" },
   ];
 
-  // ทิศตั้งต้นต่อคีย์: ตัวหนังสือ/สถานะอ่าน ก→ฮ (asc), วันที่/ยอดเอาใหม่/มากก่อน (desc)
-  const defaultDir = (key) => (key === "name" || key === "status" ? "asc" : "desc");
+  const defaultDir = leadSortDefaultDir;
   const handleSort = (key) => {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     else { setSortKey(key); setSortDir(defaultDir(key)); }
@@ -326,24 +328,8 @@ export default function LeadsPage() {
       // ค้นด้วยชื่อ *ปัจจุบัน* — ไม่งั้นพิมพ์ชื่อใหม่ของ AE แล้วหาลีดของเขาไม่เจอ
       return [l.contactName, l.company, l.phone, l.email, l.details, assigneeNameOf(l)].some((v) => (v || "").toLowerCase().includes(q));
     });
-    
-    const mul = sortDir === "desc" ? -1 : 1;
-    /* ลำดับของสถานะบนเส้นทาง — สถานะแปลกหน้าไปท้ายสุด
-       🐞 เดิมเขียน `LEAD_STATUSES.indexOf(s) || 99` ซึ่ง **พังกับตัวแรกของลิสต์**:
-       `indexOf('new')` = 0 แล้ว `0 || 99` = 99 ⇒ "รอคัดกรอง" (คิวกลางที่ต้องคัดก่อนใคร)
-       ตกไปอยู่ท้ายสุดตอนเรียง ก→ฮ ส่วนสถานะที่ไม่รู้จักได้ -1 แล้วไปโผล่หัวแทน
-       ตรวจจริงบน prod: กดเรียงสถานะแล้วใบรอคัดกรองที่ค้าง 12 วันทำการไปอยู่หน้าสุดท้าย */
-    const statusRank = (status) => {
-      const i = LEAD_STATUSES.indexOf(status);
-      return i < 0 ? 99 : i;
-    };
-    return result.sort((a, b) => {
-      if (sortKey === "name") return (a.contactName || "").localeCompare(b.contactName || "", "th") * mul;
-      if (sortKey === "status") return (statusRank(a.status) - statusRank(b.status)) * mul;
-      if (sortKey === "budget") return ((a.budget || 0) - (b.budget || 0)) * mul;
-      // asc = เก่า→ใหม่ ให้ desc (ค่าตั้งต้น) โชว์ล่าสุดก่อน — เดิมกลับทิศ ทำให้เปิดหน้ามาเจอลีดเก่าสุด
-      return ((a.createdAt || "") < (b.createdAt || "") ? -1 : 1) * mul;
-    });
+
+    return sortLeads(result, sortKey, sortDir);
   }, [leads, query, activeScope, meId, teams, myTeams, statusFilter, teamFilter, assigneeFilter, channelFilter, sortKey, sortDir, assigneeNameOf]);
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
@@ -708,7 +694,7 @@ export default function LeadsPage() {
                       ตารางโดยไม่ต้องเปิดใบ · รวมช่องเดียวกับ "รับเมื่อ" เพราะตารางนี้มี 8
                       คอลัมน์อยู่แล้ว เพิ่มช่องใหม่จะดันให้เลื่อนแนวนอนบนจอ 1280
                       ใบที่ยังไม่มีวันติดตามยังโชว์ "รับเมื่อ" เหมือนเดิมทุกประการ */}
-                  <SortTh label="ติดตามต่อ / รับเมื่อ" sortKey="created" sort={sort} />
+                  <SortTh label="ติดตามต่อ / รับเมื่อ" sortKey="followup" sort={sort} />
                   <th></th>
                 </tr>
               </thead>
