@@ -853,13 +853,14 @@ export default function ServiceIntakePage() {
           · ใบของรอบตรึงจากแถว: `salesOrderId` ของแถว + `salesOrders={null}` (ไม่มีช่องเลือกใบ ⇒ TS เผลอเลือก
             "ไม่ผูกใบ" ไม่ได้ · critique L2) · แถบบริบทของโมดัลบอกเลขใบ
           · `context`/`prefill` มาจากตัวคำนวณของแถว (ช่วงบริการ · ข้อเสนอความถี่แบบกด "ใช้" — ไม่เติมเงียบ · C-D6)
-          · `roundsSold` = รอบที่ขายของไซต์ × ใบนี้ (ไม่ใช่ของทั้งใบ) */}
+          · `roundsSold` = รอบที่ขายของไซต์ × ใบนี้ (ไม่ใช่ของทั้งใบ) — `planRoundsSold` ของตัวคำนวณแถว: แถวที่ช่วงบริการต่างกัน
+            รายรายการ (ใบแยกรายรายการ · mig 0400) = null ⇒ โมดัลไม่เทียบจำนวนนัดกับตัวเลขที่อ้างคนละช่วง */}
       {canEdit && (
         <ServicePlanModal
           open={!!planRow}
           siteId={planRow?.siteId}
           technicians={technicians}
-          roundsSold={planRow?.roundsSold ?? null}
+          roundsSold={planRow?.planRoundsSold ?? null}
           salesOrderId={planRow?.salesOrderId}
           salesOrders={null}
           context={planRow?.context}

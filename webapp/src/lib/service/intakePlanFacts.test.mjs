@@ -6,11 +6,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   CONTRACT_MISSING_CHIP, CONTRACT_MISSING_WARNING, ORPHAN_ITEM_TEXT, ORPHAN_TITLES, PLAN_EMPTY_TEXT,
-  PLAN_START_HINT_PERIOD, PLAN_TAB_STAMPED_NOTE, STAMPED_BADGE_LABEL,
+  PERIOD_MIXED_TEXT, PLAN_START_HINT_LINE_PERIOD, PLAN_START_HINT_PERIOD, PLAN_TAB_STAMPED_NOTE, STAMPED_BADGE_LABEL,
   MAX_ORPHAN_HOPS, OTHER_PLAN_TEXT, decoratePlanRows, orphanOrderIdsToLoad, orphanPlanRows, planCountLabel, planRowFacts,
   planSuggestionLabel, planTotals, planTotalsLine, planWindow,
 } from './intakePlanFacts.js';
 import { planQueue } from './intake.js';
+import { withLinePeriods } from './terms.js';
 import { suggestEveryDays } from './rounds.js';
 import { suggestCadence } from './cadence.js';
 import { ORIGIN_HISTORICAL, ORIGIN_PIPELINE } from '../sales/historicalOrders.js';
@@ -498,4 +499,129 @@ test('🔴 termLabels: สองบรรทัดโซนเดียว = "�
   // ลำดับรายการ = โซน → ลำดับบรรทัดในใบ (ไม่ใช่ FG) — ตรงกับแท็บงานบริการของใบ
   const swapped = rowFor({ terms: [TERMS[1], TERMS[0]] });
   assert.deepEqual(planRowFacts(swapped.row, { order: stampedOrder(), linesById: swapped.linesById, todayIso: '2026-09-29' }).termDetails.map((t) => t.id), ['SZT-S1', 'SZT-S2']);
+});
+
+/* ══ ช่วงบริการแยกรายรายการ (mig 0400) — แถวรอตั้งรอบใช้ช่วงของ **รายการที่ลงไซต์นั้น** ไม่ใช่ช่วงรวมของใบ ════════════════════
+   ของจริงย่อส่วน: SO-26090206-0 (Jim Thompson) สาขาละรายการ · ช่วงไม่เท่ากัน · route แนบช่วงของบรรทัดให้ term ด้วย `withLinePeriods`
+   (บรรทัดของใบที่อนุมัติโหลดอยู่แล้ว — ไม่ยิงเพิ่ม) แล้วส่งเข้า planQueue → decoratePlanRows เหมือนเดิม */
+const JT = 'SOR-jt';
+const jtOrder = (over = {}) => stampedOrder({
+  id: JT, orderNumber: 'SO-26090206-0', servicePeriodMode: 'line', servicePeriodFrom: '2026-10-02', servicePeriodTo: '2027-10-25', ...over,
+});
+const SITE_B = { id: 'SVS-b', code: 'ST-0015-02-BKK-2200', name: 'Jim Thompson สาขา B', customerId: 'CUS-1' };
+const ZONE_A = { id: 'Z-A', siteId: SITE.id, code: 'ZN-A', name: 'Lobby A' };
+const ZONE_A2 = { id: 'Z-A2', siteId: SITE.id, code: 'ZN-A2', name: 'Shop A' };
+const ZONE_B = { id: 'Z-B', siteId: SITE_B.id, code: 'ZN-B', name: 'Lobby B' };
+const jtLine = (id, from, to, over = {}) => ({ id, salesOrderId: JT, serviceRounds: 12, fgCode: FG, servicePeriodFrom: from, servicePeriodTo: to, ...over });
+const jtTerm = (id, zoneId, lineId, over = {}) => ({
+  id, zoneId, salesOrderId: JT, salesOrderLineId: lineId, fgCode: FG, description: 'บริการน้ำหอมรายเดือน', packageQty: 1, unit: 'แพ็ค', standardMlPerMonth: null, ...over,
+});
+/* เส้นเดียวกับ route คิวงานเข้าใหม่: แนบช่วง → planQueue → decoratePlanRows */
+function jtRows({ order = jtOrder(), lines, terms, zones = [ZONE_A, ZONE_A2, ZONE_B], attach = true, todayIso = '2026-09-29' }) {
+  const ordersById = new Map([[order.id, order]]);
+  const linesById = new Map(lines.map((l) => [l.id, l]));
+  const withPeriods = attach ? withLinePeriods(terms, ordersById, linesById) : terms;
+  const rows = planQueue({ zones, terms: withPeriods, plans: [], sites: [SITE, SITE_B], ordersById, linesById, todayIso });
+  return decoratePlanRows(rows, { ordersById, linesById, todayIso });
+}
+const bySite = (rows, siteId) => rows.find((r) => r.siteId === siteId);
+
+test('0400 ใบแยกรายรายการ สาขาละรายการ: ช่วง · หน้าต่าง · ค่าเติมโมดัล · รอบที่แนะนำ · เดือนของรอบขาย มาจากช่วงของรายการนั้น', () => {
+  const lines = [jtLine('L-A', '2026-10-02', '2027-10-01'), jtLine('L-B', '2026-10-26', '2027-10-25')];
+  const rows = jtRows({ lines, terms: [jtTerm('T-A', ZONE_A.id, 'L-A'), jtTerm('T-B', ZONE_B.id, 'L-B')] });
+  assert.equal(rows.length, 2, 'หน่วยของแถวยังเป็น (ไซต์ × ใบ)');
+  const a = bySite(rows, SITE.id);
+  const b = bySite(rows, SITE_B.id);
+
+  assert.deepEqual(a.period, { from: '2026-10-02', to: '2027-10-01' }, 'ไม่ใช่ช่วงรวมของใบ 02/10/2026–25/10/2027');
+  assert.deepEqual(b.period, { from: '2026-10-26', to: '2027-10-25' });
+  assert.deepEqual([a.periodText, a.periodSpanText], ['02/10/2026 – 01/10/2027', '12 เดือน']);
+  assert.deepEqual([a.periodMode, a.periodMixed, b.periodMode, b.periodMixed], ['line', false, 'line', false]);
+  assert.deepEqual(a.linePeriods, [{ lineId: 'L-A', from: '2026-10-02', to: '2027-10-01' }]);
+  assert.deepEqual(b.linePeriods, [{ lineId: 'L-B', from: '2026-10-26', to: '2027-10-25' }]);
+
+  assert.equal(PLAN_START_HINT_LINE_PERIOD, 'ตามวันเริ่มช่วงบริการของรายการ');
+  assert.deepEqual(a.window, { startDate: '2026-10-02', endDate: '2027-10-01', startHint: 'ตามวันเริ่มช่วงบริการของรายการ' });
+  assert.deepEqual(b.prefill, { kind: 'refill', startDate: '2026-10-26', endDate: '2027-10-25', startHint: 'ตามวันเริ่มช่วงบริการของรายการ' });
+  /* 12 รอบในช่วง 12 เดือนของรายการเอง = ทุกเดือนวันที่ของวันเริ่ม (ช่วงรวม 12 เดือน 24 วันจะให้ความถี่อื่น) */
+  assert.deepEqual(a.cadence, suggestCadence({ startDate: '2026-10-02', endDate: '2027-10-01', rounds: 12 }));
+  assert.equal(a.cadenceText, 'ทุกเดือน วันที่ 2');
+  assert.equal(b.cadenceText, 'ทุกเดือน วันที่ 26');
+  assert.equal(a.cadenceSub, '12 นัด');
+  assert.equal(a.context.roundsSold, 12);
+  assert.deepEqual([a.termDetails[0].periodMonths, b.termDetails[0].periodMonths], [12, 12]);
+  assert.equal(a.context.strip, 'งานนี้ · SO-26090206-0 · Asan Service · 1 โซน · 1 แพ็ค/รอบ · จำนวนรอบบริการ 12 รอบ · ช่วงบริการ 02/10/2026–01/10/2027');
+  /* คีย์ของ context ไม่เปลี่ยน (โมดัลอ่านครบทุกช่อง — servicePlanModalPrefill.test) */
+  assert.deepEqual(Object.keys(a.context).sort(), ['contractWarning', 'roundsSold', 'strip', 'subtitle']);
+
+  /* ช่วงของรายการเริ่มไปแล้ว = เริ่มวันนี้ + คำบอกเดิม · ช่วงของรายการจบแล้ว = ไม่เติม ไม่แนะนำ (สาขาอื่นของใบยังเดิน) */
+  const late = jtRows({ lines, terms: [jtTerm('T-A', ZONE_A.id, 'L-A'), jtTerm('T-B', ZONE_B.id, 'L-B')], todayIso: '2026-10-10' });
+  assert.deepEqual(bySite(late, SITE.id).window, { startDate: '2026-10-10', endDate: '2027-10-01', startHint: 'ช่วงบริการเริ่ม 02/10/2026 ไปแล้ว — เริ่มวันนี้' });
+  assert.equal(bySite(late, SITE_B.id).window.startHint, 'ตามวันเริ่มช่วงบริการของรายการ');
+  const ended = jtRows({ lines, terms: [jtTerm('T-A', ZONE_A.id, 'L-A'), jtTerm('T-B', ZONE_B.id, 'L-B')], todayIso: '2027-10-10' });
+  assert.equal(bySite(ended, SITE.id).window, null);
+  assert.equal(bySite(ended, SITE.id).cadence, null);
+  assert.match(bySite(ended, SITE.id).context.strip, /ช่วงบริการจบแล้ว 01\/10\/2027$/);
+  assert.ok(bySite(ended, SITE_B.id).window, 'สาขา B ยังอยู่ในช่วงของตัวเอง');
+});
+
+test('0400 ไซต์เดียวมีสองรายการที่ช่วงไม่เท่ากัน: ช่วงรวมของไซต์ + "ช่วงต่างกันรายรายการ" · ไม่แนะนำความถี่ · roundsSold ของโมดัล = null', () => {
+  const lines = [jtLine('L-A', '2026-10-02', '2027-10-01'), jtLine('L-A2', '2026-11-01', '2027-04-30', { serviceRounds: 6 }), jtLine('L-B', '2026-10-26', '2027-10-25')];
+  const terms = [jtTerm('T-A', ZONE_A.id, 'L-A'), jtTerm('T-A2', ZONE_A2.id, 'L-A2'), jtTerm('T-B', ZONE_B.id, 'L-B')];
+  const a = bySite(jtRows({ lines, terms }), SITE.id);
+  assert.equal(PERIOD_MIXED_TEXT, 'ช่วงต่างกันรายรายการ');
+  assert.deepEqual(a.period, { from: '2026-10-02', to: '2027-10-01' }, 'ช่วงรวมของไซต์ (เริ่มแรกสุด → จบสุดท้ายของรายการที่ลงไซต์นี้)');
+  assert.deepEqual([a.periodMode, a.periodMixed, a.periodSpanText], ['line', true, 'ช่วงต่างกันรายรายการ']);
+  assert.deepEqual(a.linePeriods, [
+    { lineId: 'L-A', from: '2026-10-02', to: '2027-10-01' }, { lineId: 'L-A2', from: '2026-11-01', to: '2027-04-30' },
+  ], 'เรียงตามวันเริ่ม');
+  assert.deepEqual(a.prefill, { kind: 'refill', startDate: '2026-10-02', endDate: '2027-10-01', startHint: 'ตามวันเริ่มช่วงบริการของรายการ' });
+  assert.deepEqual([a.cadence, a.cadenceText, a.cadenceSub], [null, null, null], 'รอบของสองรายการอ้างคนละหน้าต่าง — ไม่เดาความถี่');
+  assert.equal(a.context.roundsSold, null, 'ชิปข้อเสนอของโมดัลตามกติกาเดียวกับแถว');
+  assert.equal(a.roundsSold, 12, 'ช่องเดิมของแถว (n/N) ไม่ถูกแตะ');
+  assert.match(a.context.strip, / · ช่วงบริการ 02\/10\/2026–01\/10\/2027 \(ต่างกันรายรายการ\)$/);
+  const months = Object.fromEntries(a.termDetails.map((t) => [t.id, t.periodMonths]));
+  assert.deepEqual(months, { 'T-A': 12, 'T-A2': 6 }, 'เดือนของรอบขายแต่ละตัว = ช่วงของรายการของมันเอง');
+
+  /* สองรายการช่วงเดียวกันบนไซต์เดียว = ไม่ผสม · แนะนำตามปกติ */
+  const same = [jtLine('L-A', '2026-10-02', '2027-10-01'), jtLine('L-A2', '2026-10-02', '2027-10-01')];
+  const s = bySite(jtRows({ lines: same, terms: [jtTerm('T-A', ZONE_A.id, 'L-A'), jtTerm('T-A2', ZONE_A2.id, 'L-A2')] }), SITE.id);
+  assert.deepEqual([s.periodMixed, s.periodSpanText, s.cadenceText, s.context.roundsSold], [false, '12 เดือน', 'ทุกเดือน วันที่ 2', 12]);
+  assert.equal(s.linePeriods.length, 2);
+  /* รายการเดียวลงสองโซนของไซต์เดียว = รายการเดียวใน linePeriods */
+  const two = bySite(jtRows({ lines: [same[0]], terms: [jtTerm('T-A', ZONE_A.id, 'L-A'), jtTerm('T-A2', ZONE_A2.id, 'L-A')] }), SITE.id);
+  assert.deepEqual(two.linePeriods, [{ lineId: 'L-A', from: '2026-10-02', to: '2027-10-01' }]);
+});
+
+test('0400 ตัวโหลดไม่ได้แนบช่วง (ทางถอย) = ช่วงรวมของใบ · ใบ line ที่ยังไม่ประทับ = ไม่มีช่วง (ช่วงร่างไม่ใช่ข้อเท็จจริง)', () => {
+  const lines = [jtLine('L-A', '2026-10-02', '2027-10-01'), jtLine('L-B', '2026-10-26', '2027-10-25')];
+  const terms = [jtTerm('T-A', ZONE_A.id, 'L-A'), jtTerm('T-B', ZONE_B.id, 'L-B')];
+  const fallback = bySite(jtRows({ lines, terms, attach: false }), SITE.id);
+  assert.deepEqual(fallback.period, { from: '2026-10-02', to: '2027-10-25' }, 'ประมาณเกินอย่างปลอดภัย — ไม่จบก่อนจริง');
+  assert.deepEqual([fallback.periodMode, fallback.periodMixed], ['line', false]);
+  const draft = bySite(jtRows({ order: jtOrder({ serviceTermsOpenedAt: null }), lines, terms }), SITE.id);
+  assert.deepEqual([draft.period, draft.window, draft.cadence, draft.periodMode, draft.linePeriods], [null, null, null, 'whole', []]);
+});
+
+test('0400 ใบโหมดทั้งใบเหมือนเดิมทุกตัวอักษร: คอลัมน์ใหม่ใน select (โหมด whole · ช่วงของรายการว่าง) ไม่เปลี่ยนข้อเท็จจริงของแถว', () => {
+  const before = (() => { const { row, linesById } = rowFor(); return planRowFacts(row, { order: stampedOrder(), linesById, todayIso: '2026-09-29' }); })();
+  const order = stampedOrder({ servicePeriodMode: 'whole' });
+  const lines = LINES.map((l) => ({ ...l, servicePeriodFrom: null, servicePeriodTo: null }));
+  const ordersById = new Map([[order.id, order]]);
+  const linesById = new Map(lines.map((l) => [l.id, l]));
+  const terms = withLinePeriods(TERMS, ordersById, linesById);
+  assert.deepEqual(terms.map((t, i) => t === TERMS[i]), [true, true], 'ไม่แนบอะไรให้ term ของใบทั้งใบ');
+  const [row] = planQueue({ zones: [OFFICE], terms, plans: [], sites: [SITE], ordersById, linesById, todayIso: '2026-09-29' });
+  const after = planRowFacts(row, { order, linesById, todayIso: '2026-09-29' });
+  assert.deepEqual(after, before);
+  assert.deepEqual([before.periodMode, before.periodMixed, before.linePeriods], ['whole', false, []]);
+  /* ใบย้อนหลังไม่มีวันเป็น line (CHECK ของ 0400) — ถึงมีค่าหลุดมาก็อ่านช่วงของสัญญาเหมือนเดิม */
+  const historical = stampedOrder({ origin: ORIGIN_HISTORICAL, servicePeriodMode: 'line', serviceContractId: 'CT-1', servicePeriodFrom: null, servicePeriodTo: null });
+  const contract = { id: 'CT-1', contractNo: 'CT-1', status: 'signed', effectiveDate: '2026-01-01', expiryDate: '2026-12-31' };
+  const hRow = planQueue({ zones: [OFFICE], terms: TERMS, plans: [], sites: [SITE], ordersById: new Map([[historical.id, historical]]), linesById, todayIso: '2026-09-29' })[0];
+  const hFacts = planRowFacts(hRow, { order: historical, contract, linesById, todayIso: '2026-09-29' });
+  assert.deepEqual([hFacts.period, hFacts.periodMode], [{ from: '2026-01-01', to: '2026-12-31' }, 'whole']);
+  /* planWindow: ค่าตั้งต้นของคำบอกวันเริ่มไม่เปลี่ยน */
+  assert.equal(planWindow({ from: '2026-10-01', to: '2026-12-31' }, '2026-09-29').startHint, PLAN_START_HINT_PERIOD);
+  assert.equal(planWindow({ from: '2026-10-01', to: '2026-12-31' }, '2026-09-29', { startHint: 'x' }).startHint, 'x');
 });

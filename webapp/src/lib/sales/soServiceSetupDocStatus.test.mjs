@@ -86,3 +86,42 @@ test('หัวข้อปุ่ม "แก้งานบริการ" (mig
   assert.ok(section.includes(serviceSetup.SERVICE_REOPENED_TEXT.railTitle));
   assert.equal(typeof draft.backfillCopyOfView, 'function');
 });
+
+test('หัวข้อ "ช่วงบริการรายรายการ" (mig 0400): สถานะจาก 5 คำ · บอกว่าเจ้าของต้องรัน 0400 ก่อน merge/deploy · อยู่ก่อนหัวข้อปุ่มแก้งานบริการ · อ้างชื่อที่มีจริงในโค้ด', () => {
+  const start = DOC.indexOf('### ช่วงบริการรายรายการ — สวิตช์ ‘ทั้งใบช่วงเดียว | แยกรายรายการ’ (mig 0400 · มติเจ้าของ 01/10)');
+  assert.ok(start >= 0, 'หาหัวข้อช่วงบริการรายรายการไม่เจอ');
+  const end = DOC.indexOf('### ปุ่ม "แก้งานบริการ" หลังอนุมัติ (mig 0396', start);
+  assert.ok(end > start, 'หัวข้อนี้ต้องอยู่ก่อนหัวข้อปุ่มแก้งานบริการ');
+  const section = DOC.slice(start, end);
+  assert.match(section, new RegExp(`\\n> สถานะ: ${STATUS_WORDS.source}`));
+  assert.match(section, /เจ้าของต้องรัน `0400_so_service_line_period\.sql`/);
+  assert.ok(readFileSync(new URL('../../../supabase/migrations/0400_so_service_line_period.sql', import.meta.url), 'utf8').length > 0, 'ไฟล์ migration ที่เอกสารอ้างต้องมีจริง');
+  for (const name of ['SERVICE_PERIOD_TEXT', 'servicePeriodModeOf', 'serviceLinePeriod', 'periodEnvelope', 'servicePeriodCounters', 'validateServiceSetupPatch']) {
+    assert.ok(section.includes(`\`${name}\``), `เอกสารต้องอ้าง ${name}`);
+    assert.ok(serviceSetup[name] !== undefined, `${name} ต้องมีจริงใน serviceSetup.js`);
+  }
+  for (const name of ['switchPeriodMode', 'applyPeriodToAllLines', 'sameSourceOf', 'localEnvelope', 'backfillRailChecks', 'lineMissing', 'setupPayload']) {
+    assert.ok(section.includes(`\`${name}\``), `เอกสารต้องอ้าง ${name}`);
+    assert.equal(typeof draft[name], 'function', `${name} ต้องมีจริงใน serviceSetupDraft.js`);
+  }
+  /* รหัส/ข้อที่เอกสารเล่ามีข้อความจริงในแคตตาล็อก (เปลี่ยนชื่อแล้วลืมเอกสาร = แดง) */
+  for (const code of ['service_setup_period_mode_invalid', 'service_setup_period_derived', 'service_setup_line_period_mode', 'service_setup_line_period_invalid']) {
+    assert.ok(section.includes(`\`${code}\``), `เอกสารต้องเล่ารหัส ${code}`);
+    assert.equal(typeof serviceSetup.SERVICE_SETUP_SQL_MESSAGES[code]?.message, 'string', code);
+  }
+  assert.ok(section.includes('`line_period_missing`'));
+  assert.equal(typeof serviceSetup.SERVICE_SETUP_ISSUE_TEXT.line_period_missing, 'function');
+  /* คำบนจอที่เอกสารยกมาตรงกับแคตตาล็อก */
+  for (const text of [
+    serviceSetup.SERVICE_PERIOD_TEXT.wholeNote, serviceSetup.SERVICE_PERIOD_TEXT.envelopeLabel, serviceSetup.SERVICE_PERIOD_TEXT.sameForAll,
+    serviceSetup.SERVICE_PERIOD_TEXT.none, serviceSetup.SERVICE_PERIOD_TEXT.followsOrder, serviceSetup.SERVICE_PERIOD_TEXT.lineEmpty,
+    serviceSetup.SERVICE_PERIOD_TEXT.railLabelLine, serviceSetup.SERVICE_SETUP_GRID_TEXT.steps[0].label, serviceSetup.SERVICE_SETUP_GRID_TEXT.steps[0].hint,
+  ]) {
+    assert.ok(section.includes(text), `เอกสารต้องยกคำ "${text}" ตามแคตตาล็อก`);
+  }
+  /* "งานต่อ" ของหัวข้อ 30/09 ถูกปิดแล้ว (ไม่เหลือสถานะรอดำเนินการค้าง) · แถวสารบัญบอกว่าต้องรัน 0400 */
+  assert.doesNotMatch(DOC, /ต้องมี migration · สถานะ \*\*รอดำเนินการ\*\*/);
+  const row = INDEX.split('\n').find((line) => line.startsWith('| [so-service-setup.md](so-service-setup.md) |'));
+  assert.match(row, /mig 0400/);
+  assert.match(row, /เจ้าของรัน 0400 ก่อน merge\/deploy/);
+});

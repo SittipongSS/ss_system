@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { CONTRACT_MISSING_WARNING, planRowFacts, planSuggestionLabel, planWindow } from './intakePlanFacts.js';
 import { planQueue } from './intake.js';
+import { withLinePeriods } from './terms.js';
 import { suggestEveryDays } from './rounds.js';
 import { defaultCadenceFor, sameCadence, suggestCadence } from './cadence.js';
 import { EMPTY_PLAN_FORM, planFormCadence } from '../../components/service/servicePlanForm.js';
@@ -132,6 +133,51 @@ test('ช่วงเริ่มไปแล้ว = เริ่มวัน�
   const ended = liveFacts('2027-10-22');
   assert.equal(ended.prefill, null);
   assert.match(ended.context.strip, /ช่วงบริการจบแล้ว 21\/10\/2027$/);
+});
+
+/* mig 0400: ใบแยกรายรายการ — ค่าเติม/ชิปของโมดัลมาจากช่วงของรายการที่ลงไซต์นั้น · ทรงของ context/prefill ไม่เปลี่ยน (โมดัลไม่ต้องแก้) */
+test('0400 ใบแยกรายรายการ: โมดัลเปิดด้วยช่วงของรายการ (ไม่ใช่ช่วงรวมของใบ) · ไซต์ที่ช่วงต่างกันรายรายการ = ไม่มีชิปข้อเสนอ · คีย์เดิมครบ', () => {
+  const order = { ...ORDER, id: 'SOR-jt', orderNumber: 'SO-26090206-0', servicePeriodMode: 'line', servicePeriodFrom: '2026-10-02', servicePeriodTo: '2027-10-25' };
+  const HALL = { id: 'Z-HALL', siteId: SITE.id, code: 'ZN-HALL', name: 'Hall' };
+  const factsOf = (lines) => {
+    const ordersById = new Map([[order.id, order]]);
+    const linesById = new Map(lines.map((l) => [l.id, l]));
+    const terms = withLinePeriods(lines.map((l, i) => ({
+      id: `T${i + 1}`, zoneId: i ? HALL.id : OFFICE.id, salesOrderId: order.id, salesOrderLineId: l.id, fgCode: l.fgCode, packageQty: 1, unit: 'แพ็ค',
+    })), ordersById, linesById);
+    const [row] = planQueue({ zones: [OFFICE, HALL], terms, plans: [], sites: [SITE], ordersById, linesById, todayIso: '2026-09-29' });
+    return planRowFacts(row, { order, contract: null, linesById, todayIso: '2026-09-29' });
+  };
+  const line = (id, from, to, rounds = 12) => ({ id, salesOrderId: order.id, serviceRounds: rounds, fgCode: 'FG-364-02-001-1061', servicePeriodFrom: from, servicePeriodTo: to });
+
+  const one = factsOf([line('L1', '2026-10-26', '2027-10-25')]);
+  assert.deepEqual(one.prefill, { kind: 'refill', startDate: '2026-10-26', endDate: '2027-10-25', startHint: 'ตามวันเริ่มช่วงบริการของรายการ' });
+  const s = suggestCadence({ startDate: one.prefill.startDate, endDate: one.prefill.endDate, rounds: one.context.roundsSold });
+  assert.equal(planSuggestionLabel(one.context.roundsSold, s), 'จำนวนรอบบริการ 12 รอบ → ทุกเดือน วันที่ 26');
+  assert.equal(sameCadence(s, planFormCadence({ ...EMPTY_PLAN_FORM, startDate: one.prefill.startDate, endDate: one.prefill.endDate })), true,
+    'ค่าเริ่มของฟอร์ม (ทุกเดือนวันที่ของวันเริ่ม) ตรงกับข้อเสนอของช่วงของรายการ');
+
+  const mixed = factsOf([line('L1', '2026-10-02', '2027-10-01'), line('L2', '2026-11-01', '2027-04-30', 6)]);
+  assert.deepEqual(mixed.prefill, { kind: 'refill', startDate: '2026-10-02', endDate: '2027-10-01', startHint: 'ตามวันเริ่มช่วงบริการของรายการ' });
+  assert.equal(mixed.context.roundsSold, null, 'ไม่มีชิป "จำนวนรอบบริการ → …" (ผู้ใช้เลือกความถี่เอง)');
+  assert.match(mixed.context.strip, /\(ต่างกันรายรายการ\)$/);
+  /* 🐞 ตรวจทาน lib-02: รอบที่ขายของแถว = ค่ามากสุดของรายการที่ลงไซต์ — สองรายการคนละช่วงเทียบกับจำนวนนัดของช่วงรวมไม่ได้
+     ⇒ โมดัลไม่ได้ตัวเลข "ขายไว้ n รอบ" (ทั้ง prop `roundsSold` ของหน้า และประโยคในแถบ "งานนี้ · …") · แถวช่วงเดียวได้ตามเดิม */
+  assert.equal(mixed.planRoundsSold, null);
+  assert.doesNotMatch(mixed.context.strip, /จำนวนรอบบริการ/);
+  assert.equal(one.planRoundsSold, 12);
+  assert.match(one.context.strip, /จำนวนรอบบริการ 12 รอบ/);
+  /* สองรายการต่อกันคนละปี (12 + 12 รอบ): แถวยังถือค่ามากสุด 12 ไว้ที่ `roundsSold` เดิม แต่โมดัลไม่ได้ตัวเลขนั้น */
+  const backToBack = factsOf([line('L1', '2026-10-02', '2027-10-01'), line('L2', '2027-10-02', '2028-10-01')]);
+  assert.deepEqual([backToBack.periodMixed, backToBack.planRoundsSold, backToBack.prefill.endDate], [true, null, '2028-10-01']);
+  assert.equal(liveFacts().planRoundsSold, liveFacts().context.roundsSold, 'โหมดทั้งใบ: ตัวเลขของโมดัล = รอบที่ขายของแถวเหมือนเดิม');
+  const PAGE_SRC = readFileSync(new URL('../../app/service/intake/page.js', import.meta.url), 'utf8');
+  assert.match(PAGE_SRC, /roundsSold=\{planRow\?\.planRoundsSold \?\? null\}/);
+  assert.doesNotMatch(PAGE_SRC, /roundsSold=\{planRow\?\.roundsSold/, 'ห้ามส่งค่ามากสุดของแถวให้โมดัลตรง ๆ');
+  /* ทรงที่โมดัลอ่าน = ทรงเดิม */
+  const base = liveFacts();
+  assert.deepEqual(Object.keys(mixed.context).sort(), Object.keys(base.context).sort());
+  assert.deepEqual(Object.keys(mixed.prefill).sort(), Object.keys(base.prefill).sort());
 });
 
 /* ═══ ห้ามล้างฟอร์มกลางทาง (critique M6) + เติมเฉพาะโหมดสร้าง ═════════════════════════════════ */

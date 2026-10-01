@@ -7,6 +7,11 @@
 //     (`SERVICE_SETUP_GRID_TEXT`) · คำ "แต่ละครั้งกี่แพ็ค" ของ 29/09 เปลี่ยนเป็น "รอบละกี่แพ็ค" (`PACKS_TERM`)
 //     (ค่าที่เก็บยังเป็น `serviceRounds` + `packsPerRound` เหมือนเดิม — เปลี่ยนแค่คำและลำดับบนจอ)
 //     · คำเรียกรอบเดิม "ไปกี่รอบ" → "จำนวนรอบบริการ" (มติเจ้าของ 29/09 รอบสอง) — คำนี้อยู่ที่ `ROUNDS_TERM` ที่เดียว
+//   ⭐ มติเจ้าของ 01/10 (mig 0400): ช่วงบริการมีสองโหมด — "ทั้งใบช่วงเดียว" (ค่าตั้งต้น · เหมือนเดิมทุกอย่าง) | "แยกรายรายการ"
+//     (รายการแพ็คเกจแต่ละบรรทัดมีช่วงของตัวเอง · ช่วงของใบ = ช่วงรวมที่ RPC บันทึกคิดให้ **เมื่อรายการครบทุกรายการ** ยังไม่ครบ = ว่าง)
+//     ตัวตัดสินเดียวของโหมด = `servicePeriodModeOf(order)` · ช่วงที่ใช้กับบรรทัด = `serviceLinePeriod(line, ctx)` · คำ = `SERVICE_PERIOD_TEXT`
+//     🔴 ตัวอ่านช่วงของใบ (ด่านช่วงครอบของงวด · หัวใบ · สัญญา · ตัวตัดสินเงิน) **ไม่รู้โหมด** — อ่าน `servicePeriodOf(order)` เหมือนเดิม
+//        แล้วเห็นช่วงรวมที่ครบ หรือ "ยังไม่มีช่วง" · ห้ามคิดช่วงรวมที่เก็บซ้ำใน JS
 //   ⇒ อนุมัติแล้วรอบขายของโซน (service_zone_terms) เกิดทันทีในทรานแซกชันเดียวกัน TS ไม่ต้องผูกโซนอีก
 //   ใบที่อนุมัติไปก่อนมีเรื่องนี้ = "ตั้งงานบริการย้อนหลัง" (ยื่นตรวจ → ผู้จัดการฝ่ายขายอนุมัติ · ไม่แตะยอด/Actual)
 //
@@ -38,6 +43,12 @@ import { isSalesManager } from '@/lib/permissions';
 export const SERVICE_KIND_PACKAGE = 'package';
 export const SERVICE_KIND_NOT_SERVICE = 'not_service';
 export const SERVICE_ROLE_UNSET = 'unset';
+
+/* โหมดของช่วงบริการ (mig 0400 · มติเจ้าของ 01/10) — `sales_orders."servicePeriodMode"`
+   'whole' = ทั้งใบช่วงเดียว (ค่าตั้งต้น · เหมือนเดิมทุกอย่าง) · 'line' = แยกรายรายการ (รายการแพ็คเกจแต่ละบรรทัดมีช่วงของตัวเอง
+   · ช่วงของใบ = ช่วงรวมที่ RPC บันทึกคิดให้ และมีค่าเมื่อรายการแพ็คเกจครบทุกรายการเท่านั้น) */
+export const SERVICE_PERIOD_MODE_WHOLE = 'whole';
+export const SERVICE_PERIOD_MODE_LINE = 'line';
 
 /* หมวดของแพ็คเกจบริการรายรอบ — ⚠️ ต้องเท่ากับ SERVICE_ROUND_CATEGORY ของ serviceOrders.js (เทสต์ยึดไว้)
    เขียน literal ซ้ำโดยตั้งใจ: ค่าคงที่ระดับบนสุดห้ามอ่านชื่อที่ import มา (กฎ 16) */
@@ -79,6 +90,12 @@ export const SERVICE_SETUP_SQL_MESSAGES = Object.freeze({
   workflow_stale: { message: 'ใบนี้ถูกแก้จากอีกหน้าต่าง — โหลดข้อมูลล่าสุดแล้ว', status: 409 },
   service_setup_payload_invalid: { message: 'ข้อมูลงานบริการที่ส่งมาไม่ถูกรูป — โหลดหน้าใหม่แล้วลองอีกครั้ง', status: 400 },
   service_setup_period_invalid: { message: 'ช่วงบริการไม่ถูกต้อง — ต้องมีทั้งวันเริ่มและวันสิ้นสุด วันเริ่มไม่เกินวันสิ้นสุด (ปี ค.ศ. 2000–2100)', status: 400 },
+  /* ── ช่วงบริการแยกรายรายการ (mig 0400) — สี่รหัสของ `save_sales_order_service_setup` รุ่น 0400/F1
+     ⚠️ ตัวตรวจฝั่ง JS (`validateServiceSetupPatch`) ตอบ 400 fieldErrors ก่อนถึงฐานเสมอ · สถานะในนี้ใช้เมื่อฐานตีกลับเอง (แข่งกัน/เรียกตรง) */
+  service_setup_period_mode_invalid: { message: 'โหมดช่วงบริการไม่ถูกต้อง — โหลดหน้าใหม่แล้วลองอีกครั้ง', status: 400 },
+  service_setup_period_derived: { message: 'ใบนี้ตั้งช่วงบริการแยกรายรายการ — ช่วงของใบคิดจากรายการ แก้ที่ช่วงของแต่ละรายการ (โหลดหน้าใหม่)', status: 409 },
+  service_setup_line_period_mode: { message: 'ใบนี้ใช้ช่วงบริการช่วงเดียวทั้งใบ — สลับเป็น ‘แยกรายรายการ’ ก่อนจึงใส่ช่วงของรายการได้', status: 400 },
+  service_setup_line_period_invalid: { message: 'ช่วงบริการของรายการไม่ถูกต้อง — ต้องมีทั้งวันเริ่มและวันสิ้นสุด วันเริ่มไม่เกินวันสิ้นสุด (ปี ค.ศ. 2000–2100)', status: 400 },
   service_setup_line_unknown: { message: 'มีรายการที่ไม่ได้อยู่ในใบนี้ — โหลดหน้าใหม่แล้วลองอีกครั้ง', status: 409 },
   service_setup_kind_on_fg_line: { message: 'รายการที่มีรหัส FG ตอบ ‘งานบริการ?’ เองไม่ได้ — ระบบตัดสินจากหมวดของ FG', status: 400 },
   service_setup_kind_invalid: { message: 'คำตอบ ‘งานบริการ?’ ไม่ถูกต้อง', status: 400 },
@@ -133,6 +150,8 @@ export const SERVICE_SETUP_ISSUE_TEXT = Object.freeze({
   zones_on_not_service: ({ n } = {}) => `รายการ ${n}: ตอบว่าไม่ใช่งานบริการแต่ยังมีโซนค้าง — บันทึกงานบริการใหม่`,
   rounds_missing: ({ n } = {}) => `รายการ ${n}: ${SERVICE_SETUP_LINE_TEXT.noRounds}`,
   period_missing: () => 'ยังไม่ใส่ช่วงบริการ (วันเริ่ม–วันสิ้นสุด)',
+  /* โหมดแยกรายรายการ (mig 0400 · L1): รายการแพ็คเกจที่ยังไม่มีช่วงของตัวเอง — ข้อแรกของรายการนั้น ("ไปแก้" → ช่อง "เริ่ม" ของรายการ) */
+  line_period_missing: ({ n } = {}) => `รายการ ${n}: ยังไม่ใส่ช่วงบริการของรายการ (วันเริ่ม–วันสิ้นสุด)`,
   installments_missing: () => 'ยังไม่มีงวดชำระ — กด ‘เริ่มติดตามการชำระ’ ที่แท็บการชำระ',
   /* สองข้อของวันงวดเรียง วันวางบิล → กำหนดชำระ (ลำดับคอลัมน์ · #1846) · วันวางบิลขึ้นเฉพาะลูกค้าเครดิต (D7/B3)
      ลูกค้าวางบิลได้ทุกวัน (ไม่มีรอบ) — ตัวแก้ของโหมดตั้งวันไม่มีไทล์ "ตามรอบ" ⇒ ห้ามพูดว่า "เลือกรอบ" */
@@ -230,7 +249,8 @@ export const SERVICE_SETUP_LINE_TEXT = Object.freeze({
    ⚠️ literal ล้วน (กฎ 16) */
 export const SERVICE_SETUP_GRID_TEXT = Object.freeze({
   steps: Object.freeze([
-    Object.freeze({ key: 'kind', label: 'งานบริการ?', hint: 'ใช่ = ส่ง TS', required: true }),
+    /* mig 0400 (มติเจ้าของ 01/10): ช่วงบริการของรายการอยู่ใต้คำตอบในคอลัมน์ ① — หัวคอลัมน์บอกทั้งสองเรื่อง (ม็อก PeriodSwitch รอบสอง) */
+    Object.freeze({ key: 'kind', label: 'งานบริการ? · ช่วงบริการ', hint: 'ใช่ = ส่ง TS + ใส่ช่วง', required: true }),
     Object.freeze({ key: 'fg', label: 'แพ็คเกจ FG', hint: 'หมวด 02-001 ของลูกค้า', required: true }),
     Object.freeze({ key: 'zones', label: 'ไซต์ · โซน', hint: 'รายการเดียวเลือกได้หลายโซน', required: true }),
     Object.freeze({ key: 'rounds', label: ROUNDS_TERM, hint: 'ตลอดช่วงบริการ', required: true }),
@@ -248,6 +268,67 @@ export const SERVICE_SETUP_GRID_TEXT = Object.freeze({
   allLines: 'รวมทุกรายการ',
   /* การ์ดราคาชี้มาที่การ์ดงานบริการ (ราคา/จำนวนอยู่การ์ดบน · งานบริการตั้งที่การ์ดล่าง) */
   pointer: 'งานบริการของรายการเหล่านี้ตั้งที่การ์ด ‘งานบริการ’ ด้านล่าง',
+});
+
+/* ── ช่วงบริการ "ทั้งใบช่วงเดียว | แยกรายรายการ" (mig 0400 · มติเจ้าของ 01/10 · ม็อก PeriodSwitchWhole / PeriodSwitchPerLine รอบสอง) ──
+   เจ้าของ: "ช่วงบริการตามสัญญา ตอนนี้ SO บาง SO แต่ละรายการจะช่วงไม่เหมือนกัน บางใบทั้งใบ บางใบรายรายการ ทำสวิตซ์"
+   แล้วรอบสอง: "ช่วงบริการ เอาไว้ คอลัมน์ 1 งานบริการดีกว่า ถ้าใช่ก็ให้กรอก ไม่ใช่ก็ปิด" ⇒ แถบช่วงบริการมีสวิตช์สองทาง ·
+   โหมดแยกรายรายการ: ช่วงของรายการอยู่ใต้คำตอบ ‘ใช่’ ในคอลัมน์ ① · แถบโชว์ "ช่วงรวมของใบ" อ่านอย่างเดียว
+   ที่เดียวของคำบนแถบ/บล็อกช่วงของรายการ/โมดัล "ใช้ช่วงเดียวกันทุกรายการ"/แถวตรวจของการ์ดราง — จอห้ามพิมพ์คำเหล่านี้เอง
+   ⚠️ literal ล้วน (กฎ 16) — ตัวที่จัดรูปตัวเลขอ่าน `fmtNumber` ในฟังก์ชันเท่านั้น
+   ⚠️ คำตั้งแต่ `clearNotice` ลงไป (ยกเว้นแถวตรวจ `rail*`) ไม่อยู่ในม็อกที่เจ้าของอนุมัติ — แจ้งใน PR ให้เจ้าของดู */
+export const SERVICE_PERIOD_TEXT = Object.freeze({
+  label: 'ช่วงบริการ (ตามสัญญา)',
+  modeAria: 'ช่วงบริการใช้กับทั้งใบหรือแยกรายรายการ',
+  modes: Object.freeze([
+    Object.freeze({ value: 'whole', label: 'ทั้งใบช่วงเดียว' }),
+    Object.freeze({ value: 'line', label: 'แยกรายรายการ' }),
+  ]),
+  startLabel: 'วันเริ่มบริการ',
+  endLabel: 'วันสิ้นสุดบริการ',
+  monthChip: (n) => `${n} เดือน`,
+  monthChipShort: (n) => `${n} ด.`,
+  readout: (label) => `= ${label}`,
+  wholeNote: 'ทุกรายการในใบใช้ช่วงนี้',
+  wholeHint: 'ใช้ตรวจช่วงครอบของงวด และเป็นค่าตั้งต้นของรอบที่ TS วาง · สัญญาผูกทีหลังได้ แต่ช่างเข้าไซต์ไม่ได้จนกว่าจะผูกสัญญาที่ครอบวันนัด',
+  /* ใบเดิม (ตั้งย้อนหลัง): แทนคำแนะนำเดิม "สาขาแรกเริ่ม → สาขาสุดท้ายจบ …" — ทางอ้อมที่สวิตช์นี้มาแทน */
+  backfillHint: 'ถ้าแต่ละสาขาเริ่มไม่พร้อมกัน สลับเป็น ‘แยกรายรายการ’ แล้วใส่ช่วงของแต่ละรายการ',
+  envelopeLabel: 'ช่วงรวมของใบ',
+  envelopeHow: '· คิดจากรายการ (เริ่มแรกสุด → จบสุดท้าย)',
+  envelopeAria: 'ช่วงรวมของใบ (อ่านอย่างเดียว)',
+  envelopeEmpty: 'ยังไม่มีรายการที่ใส่ช่วง',
+  counter: (filled, total) => `ใส่ช่วงแล้ว ${fmtNumber(filled)}/${fmtNumber(total)} รายการ`,
+  sameForAll: 'ใช้ช่วงเดียวกันทุกรายการ…',
+  lineHint: 'ใส่ช่วงของแต่ละรายการที่คอลัมน์ ① ใต้คำตอบ ‘ใช่’ · ด่านช่วงครอบของงวดชำระตรวจกับช่วงรวมของใบ · TS เริ่มตั้งรอบของแต่ละไซต์จากช่วงของรายการนั้น',
+  lineLabel: 'ช่วงบริการ',
+  from: 'เริ่ม',
+  to: 'ถึง',
+  lineGroupAria: (n) => `ช่วงบริการของรายการ ${n}`,
+  lineStartAria: (n) => `วันเริ่มบริการ รายการ ${n}`,
+  lineEndAria: (n) => `วันสิ้นสุดบริการ รายการ ${n}`,
+  lineEmpty: 'ยังไม่ใส่ช่วง',
+  followsOrder: 'ตามช่วงของทั้งใบ',
+  none: 'ไม่มีช่วงบริการ',
+  sameAs: (n) => `เหมือนรายการ ${n}`,
+  sameAsTitle: (n) => `คัดลอกช่วงบริการของรายการ ${n} มาใส่`,
+  roundsChipWait: 'ทุกเดือน ≈ —',
+  roundsChipWaitTitle: 'ใส่ช่วงบริการของรายการนี้ก่อน จึงคิดจำนวนรอบรายเดือนได้',
+  /* ── ไม่อยู่ในม็อก ── */
+  clearNotice: (n) => `บันทึกแล้วช่วงของ ${fmtNumber(n)} รายการจะถูกแทนด้วยช่วงของทั้งใบ — ยังไม่บันทึก สลับกลับเป็น ‘แยกรายรายการ’ ได้`,
+  applyAllTitle: 'ใช้ช่วงเดียวกันทุกรายการ',
+  applyAllBody: (n) => `แทนช่วงของรายการที่เป็นงานบริการทั้ง ${fmtNumber(n)} รายการ — ยังไม่บันทึกจนกด ‘บันทึกงานบริการ’`,
+  applyAllConfirm: 'ใช้กับทุกรายการ',
+  readModeWhole: 'ทั้งใบช่วงเดียว',
+  readModeLine: 'แยกรายรายการ',
+  /* ท้ายช่วงของใบในทุกประโยคที่พิมพ์ช่วง (โมดัลอนุมัติ · ยื่น · แถบ · บรรทัดออก Rev.) เมื่อใบแยกรายรายการ — บอกว่าที่เห็นคือช่วงรวม */
+  envelopeSuffix: ' (ช่วงรวม · แยกรายรายการ)',
+  checklistLine: (n) => `ตรวจช่วงบริการของแต่ละรายการในคอลัมน์ ① (แยกรายรายการ ${fmtNumber(n)} รายการ)`,
+  /* ── แถวตรวจ "ช่วงบริการ" ของการ์ดรางใบเดิม ในโหมดแยกรายรายการ (ม็อก "สิ่งที่ตรวจตอนยื่น": ป้าย / ค่า / บรรทัดรอง) ── */
+  railLabelLine: 'ช่วงบริการ · แยกรายรายการ',
+  railCount: (filled, total) => `${fmtNumber(filled)}/${fmtNumber(total)} รายการ`,
+  railMissing: (n) => `รายการ ${n} ยังไม่ใส่`,
+  railMore: (n) => `อีก ${fmtNumber(n)} รายการ`,
+  railEnvelope: (label) => `ช่วงรวม ${label}`,
 });
 
 /* ── ข้อความล็อกการแก้ (ภาคผนวก A.3) — ตัวเดียวกับที่ปุ่ม/ช่องบนจอบอกเหตุ และที่ API ตอบ 409 ─────────── */
@@ -530,6 +611,21 @@ export function servicePeriodOf(order, contract = null) {
   return order?.servicePeriodFrom && order?.servicePeriodTo ? { from: order.servicePeriodFrom, to: order.servicePeriodTo } : null;
 }
 
+/**
+ * ⭐ โหมดช่วงบริการของใบ (mig 0400) — 'line' เฉพาะใบ pipeline ที่ `servicePeriodMode === 'line'` · อย่างอื่นทั้งหมด = 'whole'
+ *   (ใบย้อนหลัง — CHECK ของฐานห้าม 'line' อยู่แล้ว · ไม่มีคอลัมน์ใน select · null · ไม่ส่งใบ)
+ * ⚠️ รับ **ใบ** เท่านั้น — ตัวตัดสินที่รับ ctx ถามโหมดด้วย `periodModeOfCtx` (`ctx.periodMode ?? servicePeriodModeOf(ctx.order)`)
+ */
+export function servicePeriodModeOf(order) {
+  return !!order && !isHistoricalOrder(order) && order.servicePeriodMode === SERVICE_PERIOD_MODE_LINE
+    ? SERVICE_PERIOD_MODE_LINE : SERVICE_PERIOD_MODE_WHOLE;
+}
+
+/* โหมดของบริบท — จอ (`localSetupCtx`) และถังใบเดิมของ TS ส่ง `ctx.periodMode` มาเอง · บริบทฝั่ง server พก `ctx.order`
+   · ไม่มีทั้งคู่ (คิวรายการใบ — อ่านแค่โซน/ไซต์/รอบ) = 'whole' */
+const periodModeOfCtx = (ctx) => ((ctx?.periodMode ?? servicePeriodModeOf(ctx?.order)) === SERVICE_PERIOD_MODE_LINE
+  ? SERVICE_PERIOD_MODE_LINE : SERVICE_PERIOD_MODE_WHOLE);
+
 /* ══ ช่วงบริการ: ตัวช่วยของช่อง/ชิป ═══════════════════════════════════════════════════════════════════ */
 
 const isoDay = (value) => {
@@ -541,6 +637,44 @@ const validPeriod = (period) => {
   const to = isoDay(period?.to);
   return from && to && from <= to ? { from, to } : null;
 };
+
+/** `{ from, to }` เมื่อครบสองวัน เป็นวันจริง และเริ่มไม่หลังจบ · อย่างอื่น = null (ตัวเดียวกับที่ทุกตัวตัดสินในไฟล์นี้ใช้) */
+export function validServicePeriod(period) {
+  return validPeriod(period);
+}
+
+/** ช่วงที่เก็บบนบรรทัด (mig 0400 · `sales_order_lines."servicePeriodFrom"/"servicePeriodTo"`) — ว่างทั้งคู่ = null
+ *  (โหมดทั้งใบ / บรรทัดที่ไม่ใช่แพ็คเกจ ฐานล้างให้ว่างเสมอ) */
+export function linePeriodOf(line) {
+  const from = line?.servicePeriodFrom ?? null;
+  const to = line?.servicePeriodTo ?? null;
+  return from || to ? { from: from || null, to: to || null } : null;
+}
+
+/**
+ * ⭐ ช่วงที่ใช้กับบรรทัดนี้ (ชิป "ทุกเดือน ≈ n" · คำเตือนรอบน้อย) — โหมดแยกรายรายการ = ช่วงของบรรทัดเอง · โหมดทั้งใบ = ช่วงของใบ
+ *   ใช้ไม่ได้ (ยังไม่ใส่ · ครึ่งเดียว · กลับหัว) = null
+ */
+export function serviceLinePeriod(line, ctx = {}) {
+  return periodModeOfCtx(ctx) === SERVICE_PERIOD_MODE_LINE
+    ? validPeriod(linePeriodOf(line))
+    : validPeriod(servicePeriodOf(ctx?.order));
+}
+
+/** ช่วงรวม — `{ from: เริ่มแรกสุด, to: จบสุดท้าย }` ของช่วงที่ใช้ได้ · ไม่มีสักช่วง = null
+ *  ⚠️ จอใช้วาดแถบ "ช่วงรวมของใบ" จากช่วงของรายการบนจอ (ครบหรือไม่ครบก็ได้) — ค่าที่ **เก็บ** บนใบมาจาก RPC บันทึกเท่านั้น
+ *     (เก็บเมื่อรายการแพ็คเกจครบทุกรายการ · ห้ามคิดค่าที่เก็บซ้ำใน JS) */
+export function periodEnvelope(periods) {
+  let from = null;
+  let to = null;
+  for (const item of Array.isArray(periods) ? periods : []) {
+    const p = validPeriod(item);
+    if (!p) continue;
+    if (from === null || p.from < from) from = p.from;
+    if (to === null || p.to > to) to = p.to;
+  }
+  return from && to ? { from, to } : null;
+}
 
 /** ความยาวของช่วง — `{ months, days, label }` เช่น '12 เดือน' · '12 เดือน 24 วัน' · ช่วงใช้ไม่ได้ = 0/0/'' */
 export function periodSpan(period) {
@@ -577,6 +711,13 @@ export function roundChipsFromPeriod(period) {
 const periodText = (period) => {
   const p = validPeriod(period);
   return p ? `${fmtDate(p.from)}–${fmtDate(p.to)}` : '—';
+};
+
+/* ช่วงของใบในประโยคของโมดัล/แถบ/บรรทัดออก Rev. — ที่เดียว (mig 0400): โหมดทั้งใบ = "dd/mm/yyyy–dd/mm/yyyy" (เหมือนเดิม)
+   · แยกรายรายการ = ตัวเดียวกัน + ท้าย "(ช่วงรวม · แยกรายรายการ)" (ช่วงของใบคือช่วงรวมที่คิดจากรายการ · ยังไม่ครบ = "—") */
+const orderPeriodText = (ctx) => {
+  const base = periodText(servicePeriodOf(ctx?.order));
+  return periodModeOfCtx(ctx) === SERVICE_PERIOD_MODE_LINE ? `${base}${SERVICE_PERIOD_TEXT.envelopeSuffix}` : base;
 };
 
 /* ══ ประโยค "จำนวนรอบบริการ → แต่ละครั้งกี่แพ็ค" ของบรรทัด (มติ 29/09 · SERVICE_SETUP_LINE_TEXT) ══════════════ */
@@ -686,34 +827,56 @@ export function lineSetupTotals(line, ctx = {}) {
   };
 }
 
-/* บรรทัด "ตั้งครบ" ในเชิงโครงสร้าง (ไม่ถามความถูกต้องของสินค้า/โซน — นั่นคือข้อที่ยังขาด) */
-function lineStructurallyComplete(line, allocs) {
+/* บรรทัด "ตั้งครบ" ในเชิงโครงสร้าง (ไม่ถามความถูกต้องของสินค้า/โซน — นั่นคือข้อที่ยังขาด)
+   ⭐ โหมดแยกรายรายการ (mig 0400): บรรทัดแพ็คเกจต้องมีช่วงของตัวเองด้วย (คู่กับข้อ `line_period_missing`) */
+function lineStructurallyComplete(line, allocs, lineMode = false) {
   const role = serviceLineRole(line);
   if (role === SERVICE_KIND_NOT_SERVICE) return allocs.length === 0;
   if (role !== SERVICE_KIND_PACKAGE) return false;
   const hasFg = !isManualSalesLine(line) || (!!text(line?.serviceFgCode) && !!text(line?.serviceProductId));
+  if (lineMode && !validPeriod(linePeriodOf(line))) return false;
   return hasFg && roundsOf(line) !== null && allocs.length > 0 && allocs.every((row) => packsOf(row) !== null);
 }
 
+/** ตัวนับ "ใส่ช่วงแล้ว x/y รายการ" (mig 0400) — `{ total, filled }`: รายการแพ็คเกจ / รายการแพ็คเกจที่มีช่วงของตัวเองที่ใช้ได้
+ *  (มีความหมายในโหมดแยกรายรายการ · โหมดทั้งใบ filled = 0 เพราะช่วงของรายการว่างทุกแถว) */
+export function servicePeriodCounters(ctx = {}) {
+  let total = 0;
+  let filled = 0;
+  for (const { line } of orderedLines(ctx)) {
+    if (serviceLineRole(line) !== SERVICE_KIND_PACKAGE) continue;
+    total += 1;
+    if (validPeriod(linePeriodOf(line))) filled += 1;
+  }
+  return { total, filled };
+}
+
 /** ตัวเลขทั้งใบ — ชิป "งานบริการครบ x/n รายการ" · ท้ายตาราง · หัวใบ · แถบผู้อนุมัติ
- *  zones/sites = นับไม่ซ้ำเฉพาะบรรทัดแพ็คเกจ · packsPerRound = Σ แพ็คต่อรอบทุกแถว · packsTotal = Σ (แพ็คต่อรอบของบรรทัด × รอบ) */
+ *  zones/sites = นับไม่ซ้ำเฉพาะบรรทัดแพ็คเกจ · packsPerRound = Σ แพ็คต่อรอบทุกแถว · packsTotal = Σ (แพ็คต่อรอบของบรรทัด × รอบ)
+ *  ⭐ mig 0400: `periodLines` (= รายการแพ็คเกจ) · `periodFilled` (รายการแพ็คเกจที่มีช่วงของตัวเอง) — ตัวนับ "ใส่ช่วงแล้ว x/y"
+ *    · โหมดแยกรายรายการ: `completeLines` นับบรรทัดแพ็คเกจที่มีช่วงของตัวเองด้วย · โหมดทั้งใบ: ทุกคีย์เดิมค่าเดิม
+ *    (โหมด = `ctx.periodMode ?? servicePeriodModeOf(ctx.order)` — ไม่มีทั้งคู่ = ทั้งใบ) */
 export function serviceSetupTotals(ctx = {}) {
   const byLine = allocationsByLine(ctx);
+  const lineMode = periodModeOfCtx(ctx) === SERVICE_PERIOD_MODE_LINE;
   const zones = new Set();
   const sites = new Set();
   const rounds = [];
   const out = {
     lineCount: 0, packageLines: 0, notServiceLines: 0, unsetLines: 0, completeLines: 0,
     zones: 0, sites: 0, packsPerRound: 0, packsTotal: 0, roundsMin: null, roundsMax: null, roundsMixed: false,
+    periodLines: 0, periodFilled: 0,
   };
   for (const { line } of orderedLines(ctx)) {
     out.lineCount += 1;
     const role = serviceLineRole(line);
     const allocs = byLine.get(line?.id) || [];
-    if (lineStructurallyComplete(line, allocs)) out.completeLines += 1;
+    if (lineStructurallyComplete(line, allocs, lineMode)) out.completeLines += 1;
     if (role === SERVICE_KIND_NOT_SERVICE) { out.notServiceLines += 1; continue; }
     if (role !== SERVICE_KIND_PACKAGE) { out.unsetLines += 1; continue; }
     out.packageLines += 1;
+    out.periodLines += 1;
+    if (validPeriod(linePeriodOf(line))) out.periodFilled += 1;
     let linePacks = 0;
     for (const row of allocs) {
       zones.add(row?.zoneId);
@@ -796,6 +959,8 @@ const ISSUE_PLACE = Object.freeze({
   zones_on_not_service: ['lines', 'overview', 'zones'],
   rounds_missing: ['lines', 'overview', 'rounds'],
   period_missing: ['period', 'overview', 'period'],
+  /* ช่วงของรายการ (mig 0400) — ช่อง "เริ่ม" ของบล็อกช่วงในคอลัมน์ ① ของรายการนั้น (`svc-line-<lineId>-period`) */
+  line_period_missing: ['lines', 'overview', 'period'],
   installments_missing: ['installments', 'payment', null],
   billing_missing: ['installments', 'payment', 'billingDate'],
   due_missing: ['installments', 'payment', 'dueDate'],
@@ -836,6 +1001,10 @@ function lineIssues(line, lineNo, allocs, ctx) {
   if (role === SERVICE_ROLE_UNSET) return [makeIssue('kind_missing', base, args)];
   if (role === SERVICE_KIND_NOT_SERVICE) {
     return allocs.length ? [makeIssue('zones_on_not_service', base, args)] : [];
+  }
+  /* โหมดแยกรายรายการ (mig 0400 · L1 ของฐาน): รายการแพ็คเกจที่ยังไม่มีช่วงของตัวเอง — **ข้อแรกของรายการ** (ก่อนข้อ FG) */
+  if (periodModeOfCtx(ctx) === SERVICE_PERIOD_MODE_LINE && !validPeriod(linePeriodOf(line))) {
+    out.push(makeIssue('line_period_missing', base, args));
   }
   if (isManualSalesLine(line)) {
     const fg = text(line?.serviceFgCode);
@@ -1036,7 +1205,13 @@ export function serviceSetupIssues(ctx = {}) {
     issues.push(...lineIssues(line, lineNo, byLine.get(line?.id) || [], ctx));
   }
   const totals = serviceSetupTotals(ctx);
-  if (totals.packageLines && !validPeriod(servicePeriodOf(ctx?.order))) issues.push(makeIssue('period_missing'));
+  /* ⭐ กติกาเดียวกับ L2 ของฐาน (mig 0400): มีแพ็คเกจแต่ใบไม่มีช่วง = `period_missing` — **ยกเว้น** โหมดแยกรายรายการระหว่างที่ยังมีข้อ
+     `line_period_missing` (ข้อรายรายการบอกแล้วว่าต้องแก้ที่ไหน · ช่วงของใบว่างเพราะรายการยังไม่ครบ)
+     🔴 fail-closed: รายการครบแต่ช่วงของใบว่าง (ไม่ควรเกิด — RPC บันทึกคิดช่วงรวมให้) ยังได้ `period_missing` ⇒ ใบที่มีแพ็คเกจ
+        อนุมัติไม่ได้ถ้าไม่มีช่วงของใบ ทั้งสองโหมด (ด่านช่วงครอบของงวดเทียบกับช่วงของใบ) */
+  const linePeriodPending = periodModeOfCtx(ctx) === SERVICE_PERIOD_MODE_LINE
+    && issues.some((issue) => issue.key === 'line_period_missing');
+  if (totals.packageLines && !validPeriod(servicePeriodOf(ctx?.order)) && !linePeriodPending) issues.push(makeIssue('period_missing'));
   issues.push(...installmentFindings(ctx, totals).issues);
   return issues;
 }
@@ -1052,13 +1227,14 @@ export function serviceSetupWarnings(ctx = {}) {
   return [...rounds, ...installmentFindings(ctx, serviceSetupTotals(ctx)).warnings];
 }
 
-/* บรรทัดแพ็คเกจที่ไปน้อยกว่าครึ่งหนึ่งของเดือนเต็มในช่วงบริการของใบ (มติ 29/09 · `roundsLowOf`) — คำเตือนของแผงแดง/โมดัล */
+/* บรรทัดแพ็คเกจที่ไปน้อยกว่าครึ่งหนึ่งของเดือนเต็มในช่วงบริการ (มติ 29/09 · `roundsLowOf`) — คำเตือนของแผงแดง/โมดัล
+   ⭐ ช่วงของ **บรรทัดนั้น** (`serviceLinePeriod` · mig 0400): โหมดทั้งใบ = ช่วงของใบ (เหมือนเดิม) · แยกรายรายการ = ช่วงของรายการเอง */
 function roundsLowLines(ctx) {
-  const period = servicePeriodOf(ctx?.order);
-  if (!validPeriod(period)) return [];
   const out = [];
   for (const { line, lineNo } of orderedLines(ctx)) {
     if (serviceLineRole(line) !== SERVICE_KIND_PACKAGE) continue;
+    const period = serviceLinePeriod(line, ctx);
+    if (!period) continue;
     const low = roundsLowOf(roundsOf(line), period);
     if (low) out.push({ line, lineNo, ...low });
   }
@@ -1093,7 +1269,9 @@ export function serviceSetupSqlIssues(detailCodes = [], ctx = {}) {
 
 /** id ของช่องบนจอที่ข้อนั้นชี้ — `svc-period` · `svc-save` (ปุ่มบันทึก) · `svc-line-<lineId>-<field>`
  *  · `svc-zone-<lineId>-<zoneId>-packs` · `inst-<id>-<field>`
- *  ข้อที่ไม่มีช่อง (ยังไม่มีงวด) = null (จอแค่สลับแท็บ) */
+ *  ข้อที่ไม่มีช่อง (ยังไม่มีงวด) = null (จอแค่สลับแท็บ)
+ *  ⭐ mig 0400: ช่อง 'period' **ที่มี lineId** = ช่วงของรายการ (`svc-line-<lineId>-period`) · ไม่มี lineId = ช่วงของใบ (`svc-period`
+ *    — `period_missing` และข้อช่วงครอบที่ชี้ช่วงของใบ) ⚠️ กรณีมี lineId ต้องถามก่อนกรณีทั่วไป */
 export function serviceSetupFieldId(issueOrKey) {
   if (typeof issueOrKey === 'string') {
     if (issueOrKey === 'unsaved' || issueOrKey === 'save') return 'svc-save';
@@ -1102,6 +1280,7 @@ export function serviceSetupFieldId(issueOrKey) {
   const issue = issueOrKey || {};
   if (issue.key === 'unsaved' || issue.field === 'save') return 'svc-save';
   if (!issue.field) return null;
+  if (issue.field === 'period' && issue.lineId) return `svc-line-${issue.lineId}-period`;
   if (issue.field === 'period') return 'svc-period';
   if (issue.installmentId) return `inst-${issue.installmentId}-${issue.field}`;
   if (!issue.lineId) return null;
@@ -1126,18 +1305,34 @@ const intIn = (value, lo, hi) => {
   const n = typeof value === 'number' ? value : Number(text(value));
   return Number.isInteger(n) && n >= lo && n <= hi ? { ok: true, value: n } : { ok: false, value: null };
 };
-const DATE_MIN = '2000-01-01';
-const DATE_MAX = '2100-12-31';
 
 /** ข้อความของแพ็คเกจที่ไม่อยู่ในตัวเลือก (ไม่ใช่ FG 02-001 ที่ใช้ได้ของลูกค้าในใบ/นิติบุคคลเดียวกัน) */
 export const SERVICE_SETUP_FG_NOT_OFFERED = 'แพ็คเกจที่เลือกใช้ไม่ได้ — ต้องเป็น FG หมวด 02-001 ของลูกค้าในใบ (หรือนิติบุคคลเดียวกัน) ที่อนุมัติแล้วและยังใช้งาน';
 
+/* ช่วงที่ส่งมาบันทึก (ของใบ · ของรายการ) → `{ from, to }` หรือ null เมื่อไม่ถูกรูป — กติกาเดียวกับฐาน:
+   ครบสองวัน เป็นวันจริง เริ่มไม่หลังจบ ในปี ค.ศ. 2000–2100 */
+const DATE_MIN = '2000-01-01';
+const DATE_MAX = '2100-12-31';
+const savablePeriod = (period) => {
+  const from = isoDay(period?.from);
+  const to = isoDay(period?.to);
+  return !from || !to || to < from || from < DATE_MIN || to > DATE_MAX ? null : { from, to };
+};
+
 /**
- * ตรวจก้อนบันทึกงานบริการก่อนยิง RPC — กติกาเดียวกับ `save_sales_order_service_setup` ของฐาน + ข้อ "FG ของนิติบุคคลอื่น"
- * body: `{ expectedUpdatedAt, period?: {from,to}|null, lines?: [{ lineId, kind?, serviceProductId?, rounds?, zones?: [{zoneId, packsPerRound}] }] }`
- *   คีย์ที่ไม่ส่ง = ไม่เปลี่ยน · `zones` ที่ส่ง = แทนทั้งชุดของบรรทัดนั้น · `period: null` = ล้าง
+ * ตรวจก้อนบันทึกงานบริการก่อนยิง RPC — กติกาเดียวกับ `save_sales_order_service_setup` ของฐาน (รุ่น 0400/F1) + ข้อ "FG ของนิติบุคคลอื่น"
+ * body: `{ expectedUpdatedAt, periodMode?: 'whole'|'line', period?: {from,to}|null,
+ *          lines?: [{ lineId, kind?, serviceProductId?, rounds?, zones?: [{zoneId, packsPerRound}], period?: {from,to}|null }] }`
+ *   คีย์ที่ไม่ส่ง = ไม่เปลี่ยน · `zones` ที่ส่ง = แทนทั้งชุดของบรรทัดนั้น · `period: null` = ล้าง · คีย์ที่ไม่รู้จัก = ไม่สนใจ (เหมือนฐาน —
+ *   จอรุ่นเก่ายังบันทึกได้)
+ * ⭐ โหมดช่วงบริการ (mig 0400): โหมดผลลัพธ์ `M` = `body.periodMode` (ถ้าส่งมาถูกค่า) ไม่งั้นโหมดที่เก็บบนใบ
+ *   · `periodMode` ไม่ใช่ 'whole'/'line' ⇒ ข้อ `{ lineId: null, field: 'periodMode' }` (ที่เหลือตรวจต่อด้วยโหมดที่เก็บ)
+ *   · ส่ง `period` ของใบมาขณะ `M === 'line'` (รวม null) ⇒ ข้อ `{ lineId: null, field: 'period' }` — ช่วงของใบคิดจากรายการ
+ *   · `period` ของรายการ: null รับทั้งสองโหมด (ล้าง) · ไม่ใช่ null ต้องเป็นรายการแพ็คเกจ (หลังคิด `kind` ของก้อนเดียวกัน) ·
+ *     `M === 'line'` · และถูกรูป ⇒ ไม่งั้นข้อ `{ lineId, field: 'period' }`
  * → `{ value: rpcPayload | null, errors: [{ lineId, zoneId?, field, message }] }` — มี error = value null
- *   rpcPayload = ก้อนเดียวกันแบบทำรูปแล้ว (ตัวเลขเป็นจำนวนเต็ม · โซนพก sortOrder ตามลำดับที่ส่งมา) ไม่มี expectedUpdatedAt
+ *   rpcPayload = ก้อนเดียวกันแบบทำรูปแล้ว (ตัวเลขเป็นจำนวนเต็ม · โซนพก sortOrder ตามลำดับที่ส่งมา · ช่วงเป็น `{from,to}` ISO หรือ null)
+ *   ไม่มี expectedUpdatedAt
  * 🔴 ส่ง serviceProductId มาแต่ ctx ไม่มี fgOptionIds = throw (fail-closed เหมือน serviceSetupIssues)
  */
 export function validateServiceSetupPatch(body, ctx = {}) {
@@ -1151,14 +1346,26 @@ export function validateServiceSetupPatch(body, ctx = {}) {
   }
   const value = {};
 
+  /* โหมดผลลัพธ์ — ลำดับเดียวกับฐาน: โหมด → ช่วงของใบ → รายการ */
+  let periodMode = servicePeriodModeOf(ctx?.order);
+  if (hasOwn(body, 'periodMode')) {
+    if (body.periodMode === SERVICE_PERIOD_MODE_WHOLE || body.periodMode === SERVICE_PERIOD_MODE_LINE) {
+      periodMode = body.periodMode;
+      value.periodMode = body.periodMode;
+    } else {
+      errors.push({ lineId: null, field: 'periodMode', message: SERVICE_SETUP_SQL_MESSAGES.service_setup_period_mode_invalid.message });
+    }
+  }
+
   if (hasOwn(body, 'period')) {
-    if (body.period === null) value.period = null;
+    if (periodMode === SERVICE_PERIOD_MODE_LINE) {
+      errors.push({ lineId: null, field: 'period', message: SERVICE_SETUP_SQL_MESSAGES.service_setup_period_derived.message });
+    } else if (body.period === null) value.period = null;
     else {
-      const from = isoDay(body.period?.from);
-      const to = isoDay(body.period?.to);
-      if (!from || !to || to < from || from < DATE_MIN || to > DATE_MAX) {
+      const period = savablePeriod(body.period);
+      if (!period) {
         errors.push({ lineId: null, field: 'period', message: SERVICE_SETUP_SQL_MESSAGES.service_setup_period_invalid.message });
-      } else value.period = { from, to };
+      } else value.period = period;
     }
   }
 
@@ -1214,6 +1421,18 @@ export function validateServiceSetupPatch(body, ctx = {}) {
       if (!rounds.ok) fail('rounds', SERVICE_SETUP_SQL_MESSAGES.service_setup_rounds_invalid.message);
       else if (rounds.value !== null && role !== SERVICE_KIND_PACKAGE) fail('rounds', notPackage);
       out.rounds = rounds.value;
+    }
+
+    /* ช่วงของรายการ (mig 0400) — ลำดับเดียวกับฐาน: null = ล้าง (ทั้งสองโหมด) → ไม่ใช่แพ็คเกจ → โหมดทั้งใบ → รูปของช่วง */
+    if (hasOwn(entry, 'period')) {
+      if (entry.period === null) out.period = null;
+      else if (role !== SERVICE_KIND_PACKAGE) fail('period', notPackage);
+      else if (periodMode !== SERVICE_PERIOD_MODE_LINE) fail('period', SERVICE_SETUP_SQL_MESSAGES.service_setup_line_period_mode.message);
+      else {
+        const period = savablePeriod(entry.period);
+        if (!period) fail('period', SERVICE_SETUP_SQL_MESSAGES.service_setup_line_period_invalid.message);
+        else out.period = period;
+      }
     }
 
     if (hasOwn(entry, 'zones')) {
@@ -1327,7 +1546,7 @@ export function serviceSetupApprovalEffects(ctx = {}, { flow = 'pipeline' } = {}
 
   if (!totals.packageLines) return ['ใบนี้ไม่มีแพ็คเกจบริการ — ไม่มีอะไรส่งให้ TS'];
 
-  const period = periodText(servicePeriodOf(order));
+  const period = orderPeriodText(ctx);
   const zeroTotal = paymentNotRequired(order.totalAmount);
   const notService = orderedLines(ctx).filter(({ line }) => serviceLineRole(line) === SERVICE_KIND_NOT_SERVICE)
     .map(({ line }) => clip(line?.description, 24) || text(line?.fgCode) || 'ไม่มีคำอธิบาย');
@@ -1355,6 +1574,9 @@ export function serviceSetupApprovalChecklist(ctx = {}, { flow = 'pipeline' } = 
   const roundsLow = roundsLowLines(ctx).map(({ lineNo, rounds, months }) => SERVICE_SETUP_ISSUE_TEXT.rounds_low({
     n: lineNo, rounds, months, stage: 'approve',
   }));
+  /* โหมดแยกรายรายการ (mig 0400): ผู้อนุมัติต้องดูช่วงของแต่ละรายการในคอลัมน์ ① — ต่อจากข้อตรวจตารางทั้งสองเส้น */
+  const linePeriodCheck = (totals) => (periodModeOfCtx(ctx) === SERVICE_PERIOD_MODE_LINE
+    ? [SERVICE_PERIOD_TEXT.checklistLine(totals.packageLines)] : []);
   if (flow === 'backfill') {
     /* ใบที่เปิดแก้หลังอนุมัติ (0396) — ผู้จัดการเห็นเหตุที่เปิดแก้เป็นข้อแรก (มติเจ้าของ 30/09 ข้อ 4.3) */
     const reopened = serviceSetupReopened(ctx?.order);
@@ -1362,16 +1584,17 @@ export function serviceSetupApprovalChecklist(ctx = {}, { flow = 'pipeline' } = 
     const totals = serviceSetupTotals(ctx);
     if (!totals.packageLines) return [...reason, 'ตรวจว่าทุกรายการไม่ใช่งานบริการรายรอบจริง (ดูคำอธิบาย/หมายเหตุของแต่ละรายการ)'];
     const { unconfirmedCovered } = installmentFindings(ctx, totals);
-    return [...reason, tableCheck, 'ช่วงบริการตรงกับหมายเหตุของแต่ละสาขา', `งวดที่ยังไม่รับรองมีช่วงครอบครบ ${unconfirmedCovered} งวด`, ...roundsLow];
+    return [...reason, tableCheck, ...linePeriodCheck(totals), 'ช่วงบริการตรงกับหมายเหตุของแต่ละสาขา', `งวดที่ยังไม่รับรองมีช่วงครอบครบ ${unconfirmedCovered} งวด`, ...roundsLow];
   }
-  return serviceSetupTotals(ctx).packageLines ? [tableCheck, ...roundsLow] : [];
+  const totals = serviceSetupTotals(ctx);
+  return totals.packageLines ? [tableCheck, ...linePeriodCheck(totals), ...roundsLow] : [];
 }
 
 /** บรรทัดเสริมของโมดัลยืนยัน "ยื่นอนุมัติ" (ใบ pipeline) — ไม่มีแพ็คเกจ = null */
 export function serviceSetupSubmitLine(ctx = {}) {
   const totals = serviceSetupTotals(ctx);
   if (!totals.packageLines) return null;
-  return `ส่งการตั้งค่างานบริการ (${fmtNumber(totals.zones)} โซนใน ${fmtNumber(totals.sites)} ไซต์ · ช่วงบริการ ${periodText(servicePeriodOf(ctx?.order))})`
+  return `ส่งการตั้งค่างานบริการ (${fmtNumber(totals.zones)} โซนใน ${fmtNumber(totals.sites)} ไซต์ · ช่วงบริการ ${orderPeriodText(ctx)})`
     + ' ให้ผู้อนุมัติตรวจ — ระหว่างรออนุมัติแก้ไม่ได้ ดึงกลับได้';
 }
 
@@ -1383,7 +1606,7 @@ export function serviceBackfillSubmitPrompt(ctx = {}) {
     subject: `งานบริการของ ${ctx?.order?.orderNumber || 'ใบสั่งขายนี้'}`,
     effects: [
       totals.packageLines
-        ? `ส่งการตั้งค่างานบริการ (${fmtNumber(totals.zones)} โซนใน ${fmtNumber(totals.sites)} ไซต์ · ช่วงบริการ ${periodText(servicePeriodOf(ctx?.order))}) ให้ผู้จัดการฝ่ายขายตรวจ`
+        ? `ส่งการตั้งค่างานบริการ (${fmtNumber(totals.zones)} โซนใน ${fmtNumber(totals.sites)} ไซต์ · ช่วงบริการ ${orderPeriodText(ctx)}) ให้ผู้จัดการฝ่ายขายตรวจ`
         : `ส่งการตัดสินว่าใบนี้ไม่มีแพ็คเกจบริการรายรอบ (ไม่ใช่งานบริการรายรอบ ${fmtNumber(totals.notServiceLines)} รายการ) ให้ผู้จัดการฝ่ายขายตรวจ`,
       'ระหว่างรอตรวจแก้ไม่ได้ และถอนเองไม่ได้ — ต้องให้ผู้จัดการตีกลับ',
       'ยอดใบ · Actual · เอกสาร · งวดชำระ ไม่เปลี่ยน',
@@ -1397,18 +1620,19 @@ export function serviceSetupStripText(ctx = {}) {
   const totals = serviceSetupTotals(ctx);
   if (!totals.packageLines) return 'งานบริการ: ใบนี้ไม่มีแพ็คเกจบริการ';
   const contract = text(ctx?.contract?.contractNo) || 'ยังไม่ผูก';
-  return `งานบริการ: ${roundsFirstParts(totals).join(' · ')} · ช่วง ${periodText(servicePeriodOf(ctx?.order))} · สัญญา: ${contract}`;
+  return `งานบริการ: ${roundsFirstParts(totals).join(' · ')} · ช่วง ${orderPeriodText(ctx)} · สัญญา: ${contract}`;
 }
 
-/** บรรทัดของโมดัลออก Rev. — ไม่มีอะไรตั้งไว้ = null */
+/** บรรทัดของโมดัลออก Rev. — ไม่มีอะไรตั้งไว้ = null
+ *  ⭐ mig 0400: Rev. พาโหมด + ช่วงของรายการไปด้วย (`sales_order_copy_service_setup` รุ่น 0400/F2) ⇒ รายการที่มีแต่ช่วงของตัวเองก็นับ */
 export function serviceSetupRevisionLine(ctx = {}) {
   const byLine = allocationsByLine(ctx);
   const count = orderedLines(ctx).filter(({ line }) => storedKindOf(line) || text(line?.serviceFgCode)
-    || (byLine.get(line?.id) || []).length).length;
+    || (byLine.get(line?.id) || []).length || linePeriodOf(line)).length;
   const period = validPeriod(servicePeriodOf(ctx?.order));
   if (!count && !period) return null;
   const totals = serviceSetupTotals(ctx);
-  return `คัดลอกงานบริการ ${fmtNumber(count)} รายการ · ${fmtNumber(totals.zones)} โซน · ช่วงบริการ ${periodText(period)} ไปใบ Rev.`;
+  return `คัดลอกงานบริการ ${fmtNumber(count)} รายการ · ${fmtNumber(totals.zones)} โซน · ช่วงบริการ ${orderPeriodText(ctx)} ไปใบ Rev.`;
 }
 
 /** ช่อง "รอบบริการที่ขาย" ของหัวใบ → `{ label, value, sub, tone }` */
@@ -1439,16 +1663,18 @@ export function serviceSetupHeroFact(ctx = {}, { flow = null } = {}) {
   };
 }
 
-/** ก้อนก่อน/หลังของ audit log — ช่วงบริการ + ชนิด/แพ็คเกจ/รอบ/โซนรายบรรทัด */
+/** ก้อนก่อน/หลังของ audit log — โหมดช่วงบริการ + ช่วงของใบ + ชนิด/แพ็คเกจ/รอบ/ช่วง/โซนรายบรรทัด (mig 0400: `periodMode` · `lines[].period`) */
 export function serviceSetupAuditSnapshot(ctx = {}) {
   const byLine = allocationsByLine(ctx);
   return {
+    periodMode: periodModeOfCtx(ctx),
     period: servicePeriodOf(ctx?.order),
     lines: orderedLines(ctx).map(({ line }) => ({
       lineId: line?.id ?? null,
       kind: storedKindOf(line),
       serviceFgCode: text(line?.serviceFgCode) || null,
       rounds: roundsOf(line),
+      period: linePeriodOf(line),
       zones: (byLine.get(line?.id) || []).map((row) => ({ zoneId: row?.zoneId ?? null, packsPerRound: packsOf(row) })),
     })),
   };
@@ -1676,7 +1902,12 @@ export function serviceSetupView(ctx = {}, { canEdit = false, userId = null, rol
     flow,
     mode,
     editBlockedReason: mode === 'edit' ? null : editBlockedReason,
+    /* mig 0400: โหมดช่วงบริการ · `period` คีย์เดิม — ทั้งใบ = ช่วงที่กรอก · แยกรายรายการ = ช่วงรวมที่ RPC เก็บ
+       (**null จนกว่ารายการแพ็คเกจจะมีช่วงครบทุกรายการ** — แถบของการ์ดงานบริการวาดช่วงรวมจากช่วงของรายการบนจอ ไม่ใช่จากคีย์นี้)
+       · `linePeriods` = ตัวนับ "ใส่ช่วงแล้ว x/y รายการ" */
+    periodMode: periodModeOfCtx(ctx),
     period: servicePeriodOf(order),
+    linePeriods: servicePeriodCounters(ctx),
     state: {
       setupState: order.serviceSetupState ?? null,
       submittedAt: order.serviceSetupSubmittedAt ?? null,
@@ -1702,6 +1933,8 @@ export function serviceSetupView(ctx = {}, { canEdit = false, userId = null, rol
       serviceProductId: line?.serviceProductId ?? null,
       serviceFgCode: line?.serviceFgCode ?? null,
       rounds: line?.serviceRounds ?? null,
+      /* ช่วงของรายการ (mig 0400) — `{ from, to }` หรือ null (โหมดทั้งใบ / ไม่ใช่แพ็คเกจ ฐานเก็บว่างเสมอ) */
+      period: linePeriodOf(line),
       fgCode: line?.fgCode ?? null,
       productId: line?.productId ?? null,
       description: line?.description ?? null,

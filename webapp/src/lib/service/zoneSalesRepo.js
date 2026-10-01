@@ -14,6 +14,7 @@
 //     ห้าม select('*') ห้ามแตะยอดเงิน (ยามเงินของใบย้อนหลัง `historicalMoneyGuards.test.mjs` จะนับเป็นผู้ต้องสงสัย)
 import { byColumns, fetchAllInChunks } from '@/lib/supabaseInChunks';
 import { loadTerms } from '@/lib/service/termsRepo';
+import { attachLinePeriods } from '@/lib/service/termPeriodRepo';
 import { pendingSetupOrdersByZone, setupOrderState } from '@/lib/service/zoneSetupOrders';
 
 const uniqueIds = (list) => [...new Set((Array.isArray(list) ? list : []).filter(Boolean))];
@@ -61,15 +62,20 @@ export async function loadZoneSaleContext(supabase, zones = []) {
   const zoneIds = uniqueIds((Array.isArray(zones) ? zones : []).map((z) => z?.id));
   if (!zoneIds.length) return { terms: [], ordersById: new Map(), pendingOrdersByZone: new Map() };
 
-  const [terms, pendingOrdersByZone] = await Promise.all([
+  const [rawTerms, pendingOrdersByZone] = await Promise.all([
     loadTerms(supabase, { zoneIds }),
     loadSetupOrdersByZone(supabase, zoneIds),
   ]);
   /* ใบแม่ของรอบขาย — ตัวตัดสิน "มีผลไหม" (`termIsActive`) + ตราประทับ (แพ็คต่อรอบ) + เลขที่ใบบนป้าย
-     + ช่วงบริการ (review 29/09 · `termsSoldNow`: ใบที่ช่วงจบแล้วไม่รวมกับใบต่อสัญญา) */
-  const orders = await fetchAllInChunks(uniqueIds(terms.map((t) => t.salesOrderId)), (chunk) => supabase
-    .from('sales_orders').select('id, "orderNumber", status, "supersededById", "serviceTermsOpenedAt", "servicePeriodFrom", "servicePeriodTo"')
+     + ช่วงบริการ (review 29/09 · `termsSoldNow`: ใบที่ช่วงจบแล้วไม่รวมกับใบต่อสัญญา)
+     ⭐ mig 0400: `servicePeriodMode` — ใบแยกรายรายการใช้ช่วงของ **รายการ** ที่รอบขายมาจาก (แนบให้ term ข้างล่าง) ไม่ใช่ช่วงรวมของใบ
+        ⚠️ ต้องรัน 0400 ก่อน deploy (check:columns แดงชื่อนี้จนกว่าจะรัน) */
+  const orders = await fetchAllInChunks(uniqueIds(rawTerms.map((t) => t.salesOrderId)), (chunk) => supabase
+    .from('sales_orders').select('id, "orderNumber", status, "supersededById", "serviceTermsOpenedAt", "servicePeriodFrom", "servicePeriodTo", "servicePeriodMode"')
     .in('id', chunk).order('id', { ascending: true }));
+  const ordersById = new Map(orders.map((o) => [o.id, o]));
+  /* ไม่มีใบโหมด 'line' = ไม่ยิงเพิ่ม (termPeriodRepo) · อ่านไม่ขึ้น = โยน เหมือนทุกก้อนของไฟล์นี้ */
+  const terms = await attachLinePeriods(supabase, rawTerms, ordersById);
 
-  return { terms, ordersById: new Map(orders.map((o) => [o.id, o])), pendingOrdersByZone };
+  return { terms, ordersById, pendingOrdersByZone };
 }

@@ -6,6 +6,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   SERVICE_KIND_OPTIONS,
+  SERVICE_PERIOD_MODE_LINE,
+  SERVICE_PERIOD_MODE_WHOLE,
+  SERVICE_PERIOD_TEXT,
+  SERVICE_SETUP_GRID_TEXT,
   SERVICE_REOPEN_BLOCKER_TEXT,
   SERVICE_REOPEN_TEXT,
   SERVICE_REOPENED_TEXT,
@@ -17,6 +21,7 @@ import {
   isManualSalesLine,
   issuesByTab,
   lineCategoryCode,
+  linePeriodOf,
   lineDerivedText,
   lineQtyCrossCheck,
   lineRoundsLowText,
@@ -24,6 +29,7 @@ import {
   lineSetupTotals,
   lineTotalText,
   periodEndFromMonths,
+  periodEnvelope,
   periodSpan,
   roundChipsFromPeriod,
   roundsLowOf,
@@ -34,6 +40,9 @@ import {
   serviceLineLabel,
   serviceLineRole,
   serviceLineRoleSource,
+  serviceLinePeriod,
+  servicePeriodCounters,
+  servicePeriodModeOf,
   servicePeriodOf,
   serviceSetupApprovalChecklist,
   serviceSetupApprovalEffects,
@@ -63,6 +72,7 @@ import {
   serviceReopenPrompt,
   serviceReopenStateError,
   serviceSetupReopened,
+  validServicePeriod,
   validateServiceSetupPatch,
 } from './serviceSetup.js';
 import { approvalPrompt } from '../approvalPrompt.js';
@@ -912,7 +922,9 @@ test('29/09 คำเตือนรอบน้อย: รอบ < ครึ่
 test('ก้อน audit ก่อน/หลัง', () => {
   const snap = serviceSetupAuditSnapshot(completeCtx());
   assert.deepEqual(snap.period, { from: '2026-10-01', to: '2027-09-30' });
-  assert.deepEqual(snap.lines[0], { lineId: 'SOL-1', kind: 'package', serviceFgCode: 'FG-0521-02-001-00012', rounds: 12, zones: [{ zoneId: 'Z1', packsPerRound: 1 }] });
+  /* mig 0400: ก้อน audit พกโหมด + ช่วงของรายการ (โหมดทั้งใบ = 'whole' · ช่วงของรายการว่าง) */
+  assert.equal(snap.periodMode, 'whole');
+  assert.deepEqual(snap.lines[0], { lineId: 'SOL-1', kind: 'package', serviceFgCode: 'FG-0521-02-001-00012', rounds: 12, period: null, zones: [{ zoneId: 'Z1', packsPerRound: 1 }] });
 });
 
 /* ══ ก้อน GET ══════════════════════════════════════════════════════════════════════════════════════ */
@@ -931,7 +943,7 @@ test('serviceSetupView — ร่าง: โหมดแก้ · ทุกช�
   assert.equal(view.editBlockedReason, null);
   assert.deepEqual(view.lines[0], {
     lineId: 'SOL-1', lineNo: 1, role: 'package', roleSource: 'category', kind: null, serviceProductId: 'P1',
-    serviceFgCode: 'FG-0521-02-001-00012', rounds: 12, fgCode: null, productId: null, description: '02-001 : ระบบกระจายกลิ่น',
+    serviceFgCode: 'FG-0521-02-001-00012', rounds: 12, period: null, fgCode: null, productId: null, description: '02-001 : ระบบกระจายกลิ่น',
     note: 'สาขาบางนา', qty: 12, unit: 'แพ็คเกจ', categoryCode: '02-001', categoryName: 'ระบบกระจายกลิ่น',
   });
   assert.deepEqual(view.allocations[0], { id: 'SLZ-SOL-1-Z1', lineId: 'SOL-1', zoneId: 'Z1', packsPerRound: 1, sortOrder: 0 });
@@ -1541,4 +1553,428 @@ test('0396 คำ: ท้ายการ์ดใบประทับ · toast 
     assert.doesNotMatch(t, /ไปกี่รอบ|แต่ละครั้งกี่แพ็ค/, t);
     assert.doesNotMatch(t, /(?<![฀-๿])ไป \d+ รอบ/, t);
   }
+});
+
+/* ══ ช่วงบริการ "ทั้งใบช่วงเดียว | แยกรายรายการ" (mig 0400 · มติเจ้าของ 01/10) ═════════════════════════════════════
+   ของจริงย่อส่วน: SO-26090206-0 (Jim Thompson) 5 สาขา 4 ช่วง — แต่ละรายการมีช่วงของตัวเอง · ช่วงของใบ = ช่วงรวม
+   (RPC เก็บเมื่อรายการแพ็คเกจครบทุกรายการ · ยังไม่ครบ = ว่าง) */
+
+const LINE = { servicePeriodMode: 'line' };
+const lp = (from, to) => ({ servicePeriodFrom: from, servicePeriodTo: to });
+const P12 = lp('2026-10-01', '2027-09-30');           // 12 เดือน — ตรงกับ 12 งวดของ monthlyRows()
+const codesOf = (issues) => issues.map((i) => [i.key, i.lineId, i.zoneId].filter((v) => v !== null && v !== undefined).join(':'));
+
+/* n รายการแพ็คเกจที่ตั้งครบ (FG · 12 รอบ · โซนละไซต์) · `periods[k]` = ช่วงของรายการ k+1 (null = ยังไม่ใส่) */
+function lineModeCtx(periods, { order = {}, ...over } = {}) {
+  const lines = periods.map((period, k) => done(k + 1, period || {}));
+  const sites = lines.map((_, k) => site(`S${k + 1}`));
+  const zones = lines.map((_, k) => zone(`Z${k + 1}`, `S${k + 1}`));
+  const allocations = lines.map((line, k) => alloc(line.id, `Z${k + 1}`));
+  return ctxOf({ order: orderOf({ ...LINE, ...order }), lines, sites, zones, allocations, ...over });
+}
+
+test('0400 โหมดช่วงบริการของใบ: line เฉพาะใบ pipeline ที่เก็บ line · ใบย้อนหลัง/ไม่มีคอลัมน์/ค่าอื่น = whole', () => {
+  assert.equal(SERVICE_PERIOD_MODE_WHOLE, 'whole');
+  assert.equal(SERVICE_PERIOD_MODE_LINE, 'line');
+  assert.equal(servicePeriodModeOf(orderOf(LINE)), 'line');
+  assert.equal(servicePeriodModeOf(orderOf({ servicePeriodMode: 'whole' })), 'whole');
+  assert.equal(servicePeriodModeOf(orderOf()), 'whole', 'select ที่ไม่พกคอลัมน์ = ทั้งใบ');
+  assert.equal(servicePeriodModeOf(orderOf({ origin: 'historical', servicePeriodMode: 'line' })), 'whole', 'ใบย้อนหลังช่วงเดียวเสมอ');
+  for (const bad of [null, undefined, {}, { servicePeriodMode: 'LINE' }, { servicePeriodMode: 1 }, { servicePeriodMode: null }]) {
+    assert.equal(servicePeriodModeOf(bad), 'whole', JSON.stringify(bad));
+  }
+});
+
+test('0400 ตัวช่วยช่วง: ช่วงที่ใช้ได้ · ช่วงของบรรทัด · ช่วงรวม · ช่วงที่ใช้กับบรรทัดตามโหมด', () => {
+  assert.deepEqual(validServicePeriod({ from: '2026-10-01', to: '2027-09-30' }), { from: '2026-10-01', to: '2027-09-30' });
+  for (const bad of [null, {}, { from: '2026-10-01' }, { from: '2026-10-02', to: '2026-10-01' }, { from: '2026-02-30', to: '2026-03-01' }, { from: 'x', to: 'y' }]) {
+    assert.equal(validServicePeriod(bad), null, JSON.stringify(bad));
+  }
+  assert.deepEqual(linePeriodOf(done(1, P12)), { from: '2026-10-01', to: '2027-09-30' });
+  assert.equal(linePeriodOf(done(1)), null, 'บรรทัดจาก select เดิม (ไม่มีคอลัมน์) = ไม่มีช่วง');
+  assert.equal(linePeriodOf({ servicePeriodFrom: null, servicePeriodTo: null }), null);
+  assert.equal(linePeriodOf({ servicePeriodFrom: '', servicePeriodTo: '' }), null, 'ช่องว่างจากจอ = ไม่มีช่วง');
+  assert.deepEqual(linePeriodOf({ servicePeriodFrom: '2026-10-01', servicePeriodTo: null }), { from: '2026-10-01', to: null }, 'ครึ่งเดียวคืนตามที่มี (ตัวตรวจตัดสินว่าใช้ไม่ได้)');
+
+  assert.deepEqual(periodEnvelope([
+    { from: '2026-09-25', to: '2027-09-24' }, { from: '2026-09-02', to: '2027-09-01' }, null,
+    { from: '2026-09-26', to: '2027-09-25' }, { from: '2026-10-01', to: '' }, { from: '2028-01-01', to: '2027-01-01' },
+  ]), { from: '2026-09-02', to: '2027-09-25' }, 'เริ่มแรกสุด → จบสุดท้าย · ข้ามช่วงที่ใช้ไม่ได้');
+  assert.equal(periodEnvelope([]), null);
+  assert.equal(periodEnvelope([null, { from: '2026-10-01', to: null }]), null);
+  assert.equal(periodEnvelope(null), null);
+
+  const line = done(1, lp('2026-11-01', '2026-11-30'));
+  const whole = { order: orderOf(PERIOD) };
+  assert.deepEqual(serviceLinePeriod(line, whole), { from: '2026-10-01', to: '2027-09-30' }, 'โหมดทั้งใบ = ช่วงของใบ (ไม่อ่านช่วงของบรรทัด)');
+  assert.deepEqual(serviceLinePeriod(line, { order: orderOf({ ...PERIOD, ...LINE }) }), { from: '2026-11-01', to: '2026-11-30' });
+  assert.equal(serviceLinePeriod(done(2), { order: orderOf({ ...PERIOD, ...LINE }) }), null, 'แยกรายรายการ: ยังไม่ใส่ = null ไม่ถอยไปช่วงรวม');
+  assert.deepEqual(serviceLinePeriod(line, { periodMode: 'line' }), { from: '2026-11-01', to: '2026-11-30' }, 'จอส่งโหมดมาเอง (ไม่มีใบ)');
+  assert.equal(serviceLinePeriod(line, {}), null, 'ไม่มีทั้งใบและโหมด = ทั้งใบ ซึ่งไม่มีช่วง');
+  assert.deepEqual(serviceLinePeriod(line, { order: orderOf({ ...PERIOD, ...LINE }), periodMode: 'whole' }), { from: '2026-10-01', to: '2027-09-30' },
+    'ctx.periodMode ชนะโหมดของใบ');
+});
+
+test('0400 ข้อที่ยังขาด โหมดแยกรายรายการ: line_period_missing เป็นข้อแรกของรายการ · ไม่มี period_missing คู่กัน (ลำดับเดียวกับฐาน · PL1 ของฮาร์เนส)', () => {
+  /* ฮาร์เนส PL1: a = ครบ+ช่วง · b = โซนแล้วไม่มีรอบไม่มีช่วง · c = ตอบใช่อย่างเดียว · d = ยังไม่ตอบ */
+  const lines = [
+    done(1, P12),
+    done(2, { serviceRounds: null }),
+    manual(3, { serviceKind: 'package' }),
+    manual(4),
+  ];
+  const ctx = ctxOf({
+    order: orderOf(LINE), lines,
+    sites: [site('S1'), site('S2')], zones: [zone('Z1', 'S1'), zone('Z2', 'S2')],
+    allocations: [alloc('SOL-1', 'Z1'), alloc('SOL-2', 'Z2')],
+  });
+  const issues = serviceSetupIssues(ctx);
+  assert.deepEqual(codesOf(issues), [
+    'line_period_missing:SOL-2', 'rounds_missing:SOL-2',
+    'line_period_missing:SOL-3', 'fg_missing:SOL-3', 'rounds_missing:SOL-3', 'zones_missing:SOL-3',
+    'kind_missing:SOL-4',
+  ]);
+  const first = issues[0];
+  assert.equal(first.message, 'รายการ 2: ยังไม่ใส่ช่วงบริการของรายการ (วันเริ่ม–วันสิ้นสุด)');
+  assert.deepEqual({ area: first.area, tab: first.tab, owner: first.owner, field: first.field, lineId: first.lineId, lineNo: first.lineNo },
+    { area: 'lines', tab: 'overview', owner: 'SA', field: 'period', lineId: 'SOL-2', lineNo: 2 });
+  assert.equal(serviceSetupFieldId(first), 'svc-line-SOL-2-period', '"ไปแก้" ลงที่ช่อง "เริ่ม" ของรายการ ไม่ใช่ช่วงของใบ');
+  assert.deepEqual(issuesByTab(issues), { overview: 7, payment: 0 });
+
+  /* ฮาร์เนส PL4: สองรายการไม่มีช่วง */
+  const pl4 = ctxOf({
+    order: orderOf(LINE), lines: [done(1, { serviceRounds: 12 }), done(2, { serviceRounds: null })],
+    sites: [site('S1')], zones: [zone('Z2', 'S1')], allocations: [alloc('SOL-2', 'Z2')],
+  });
+  assert.deepEqual(codesOf(serviceSetupIssues(pl4)),
+    ['line_period_missing:SOL-1', 'zones_missing:SOL-1', 'line_period_missing:SOL-2', 'rounds_missing:SOL-2']);
+  /* ช่วงของรายการครึ่งเดียว/กลับหัว (ฐานกันด้วย CHECK — จอส่งมาได้) = ยังไม่มีช่วง */
+  for (const bad of [lp('2026-10-01', null), lp('2027-01-01', '2026-01-01')]) {
+    assert.equal(codesOf(serviceSetupIssues(lineModeCtx([P12, bad])))[0], 'line_period_missing:SOL-2', JSON.stringify(bad));
+  }
+});
+
+test('0400 🔴 period_missing ปิดเมื่อพลาด (L2): รายการครบแต่ช่วงของใบว่าง = period_missing · ครบ + ช่วงรวม = ผ่าน (PL3 ของฮาร์เนส)', () => {
+  const two = [lp('2026-10-01', '2027-03-31'), lp('2027-04-01', '2027-09-30')];
+  /* ไม่ควรเกิดผ่าน RPC (ทุกการบันทึกคิดช่วงรวมให้) — แก้ข้อมูลนอกทางแล้วช่วงของใบหาย: ด่านต้องไม่ปล่อยผ่านเงียบ */
+  const emptied = lineModeCtx(two);
+  assert.deepEqual(codesOf(serviceSetupIssues(emptied)), ['period_missing']);
+  assert.equal(serviceSetupFieldId(serviceSetupIssues(emptied)[0]), 'svc-period');
+  /* ครบ + ช่วงรวมที่ RPC เก็บ (01/10/2026–30/09/2027) + 12 งวดครอบต่อเนื่อง = ผ่าน */
+  assert.deepEqual(serviceSetupIssues(lineModeCtx(two, { order: PERIOD })), []);
+  /* ใบที่ไม่มีแพ็คเกจเลย (โหมด line) = ผ่าน ไม่ถามช่วง */
+  assert.deepEqual(serviceSetupIssues(ctxOf({ order: orderOf(LINE), lines: [manual(1, { serviceKind: 'not_service' })], installments: [] })), []);
+});
+
+test('0400 โหมดทั้งใบเหมือนเดิมทุกตัวอักษร: ไม่มีคอลัมน์ใหม่ = มีคอลัมน์แต่เป็น whole · ช่วงของรายการที่ค้าง (ไม่ควรมี) ไม่ถูกอ่าน', () => {
+  const base = completeCtx();
+  base.lines[1] = { ...base.lines[1], serviceRounds: null };
+  base.allocations[2] = { ...base.allocations[2], packsPerRound: null };
+  const withCols = {
+    ...base,
+    order: { ...base.order, servicePeriodMode: 'whole' },
+    lines: base.lines.map((line, k) => ({ ...line, ...(k === 0 ? lp('2026-11-01', '2026-11-30') : lp(null, null)) })),
+  };
+  const noPeriod = (ctx) => ({ ...ctx, order: { ...ctx.order, servicePeriodFrom: null, servicePeriodTo: null } });
+  for (const [a, b] of [[base, withCols], [noPeriod(base), noPeriod(withCols)]]) {
+    assert.deepEqual(serviceSetupIssues(b), serviceSetupIssues(a));
+    assert.deepEqual(serviceSetupWarnings(b), serviceSetupWarnings(a));
+    assert.equal(serviceSetupStripText(b), serviceSetupStripText(a));
+    assert.equal(serviceSetupSubmitLine(b), serviceSetupSubmitLine(a));
+    assert.equal(serviceSetupRevisionLine(b), serviceSetupRevisionLine(a));
+    assert.deepEqual(serviceSetupApprovalEffects(b), serviceSetupApprovalEffects(a));
+    assert.deepEqual(serviceSetupApprovalChecklist(b), serviceSetupApprovalChecklist(a));
+    assert.deepEqual(serviceSetupHeroFact(b, { flow: 'pipeline' }), serviceSetupHeroFact(a, { flow: 'pipeline' }));
+  }
+  assert.equal(keys(serviceSetupIssues(noPeriod(withCols))).includes('line_period_missing'), false);
+  assert.equal(keys(serviceSetupIssues(noPeriod(withCols))).at(-1), 'period_missing', 'ทั้งใบ: period_missing ข้อท้ายของงานบริการเหมือนเดิม');
+  /* ตัวเลขทั้งใบ: คีย์เดิมทุกตัวค่าเดิม (คีย์ใหม่ต่อท้าย) */
+  const { periodLines, periodFilled, ...rest } = serviceSetupTotals(withCols);
+  const { periodLines: p0, periodFilled: f0, ...rest0 } = serviceSetupTotals(base);
+  assert.deepEqual(rest, rest0);
+  assert.deepEqual([periodLines, p0, f0], [10, 10, 0]);
+  assert.equal(periodFilled, 1, 'นับช่วงของบรรทัดที่มีอยู่จริง (โหมดทั้งใบฐานล้างให้เป็น 0)');
+});
+
+test('0400 ด่านช่วงครอบของงวดเทียบกับช่วงรวมของใบ: รายการครบ = เทียบ · ยังไม่ครบ (ช่วงของใบว่าง) = ไม่มีข้อช่วงครอบ มีแต่ข้อรายรายการ', () => {
+  const two = [lp('2026-10-01', '2027-03-31'), lp('2027-04-01', '2027-09-30')];
+  /* ครบ: ช่วงรวม 01/10/2026–31/10/2027 (รายการ 2 จบช้ากว่างวด) ⇒ งวดครอบจบสั้น */
+  const longer = lineModeCtx([two[0], lp('2027-04-01', '2027-10-31')], { order: { servicePeriodFrom: '2026-10-01', servicePeriodTo: '2027-10-31' } });
+  const end = serviceSetupIssues(longer);
+  assert.deepEqual(keys(end), ['coverage_end']);
+  assert.match(end[0].message, /^ช่วงครอบไม่ตรงวันสิ้นสุดบริการ \(01\/10\/2027–31\/10\/2027\)$/);
+  /* ครบ: ช่วงรวมเริ่มก่อนงวดแรก ⇒ เริ่มช้า */
+  const earlier = lineModeCtx([lp('2026-09-02', '2027-03-31'), two[1]], { order: { servicePeriodFrom: '2026-09-02', servicePeriodTo: '2027-09-30' } });
+  assert.deepEqual(keys(serviceSetupIssues(earlier)), ['coverage_start']);
+  /* ยังไม่ครบ: RPC ไม่เก็บช่วงรวมครึ่งเดียว ⇒ ช่วงของใบว่าง ⇒ ไม่มี coverage_start/gap/end (ไม่เทียบกับช่วงที่ยังขยับ) */
+  const partial = lineModeCtx([two[0], null]);
+  assert.deepEqual(codesOf(serviceSetupIssues(partial)), ['line_period_missing:SOL-2']);
+  assert.deepEqual(serviceSetupWarnings(partial).filter((w) => w.key.startsWith('coverage')), []);
+  /* ด่านเงินของการเปิดแก้ (0396) อ่านช่วงของใบตัวเดียวกัน — ยังไม่ครบ = ไม่มีข้อของบัญชี */
+  assert.deepEqual(serviceReopenMoneyIssues(partial), { fn: [], sa: [] });
+  assert.deepEqual(serviceReopenMoneyCodes(partial), []);
+});
+
+test('0400 ตัวเลขทั้งใบ: ตัวนับช่วง · "ครบ" ของโหมดแยกรายรายการต้องมีช่วงของรายการ · บริบทที่ไม่มีใบ/โหมด (คิวรายการใบ) = ทั้งใบ', () => {
+  const ctx = lineModeCtx([P12, null, lp('2026-12-01', '2027-11-30')]);
+  const totals = serviceSetupTotals(ctx);
+  assert.deepEqual([totals.lineCount, totals.packageLines, totals.completeLines, totals.periodLines, totals.periodFilled], [3, 3, 2, 3, 2]);
+  assert.deepEqual(servicePeriodCounters(ctx), { total: 3, filled: 2 });
+  /* รูปของคิวรายการใบ (`serviceSetupTotals({ lines, allocations, zonesById })`) — ไม่มีใบ ไม่มีโหมด = ทั้งใบ: "ครบ" ไม่ถามช่วง */
+  const bare = { lines: ctx.lines, allocations: ctx.allocations, zonesById: ctx.zonesById };
+  assert.equal(serviceSetupTotals(bare).completeLines, 3);
+  assert.equal(serviceSetupTotals({ ...bare, order: orderOf() }).completeLines, 3);
+  /* จอ/ถังใบเดิมของ TS ส่งโหมดมาเอง */
+  assert.equal(serviceSetupTotals({ ...bare, periodMode: 'line' }).completeLines, 2);
+  assert.equal(serviceSetupTotals({ ...bare, periodMode: 'whole', order: orderOf(LINE) }).completeLines, 3, 'ctx.periodMode ชนะโหมดของใบ');
+  /* รายการไม่ใช่งานบริการ/ยังไม่ตอบ ไม่อยู่ในตัวนับช่วง */
+  const mixed = ctxOf({ order: orderOf(LINE), lines: [done(1, P12), manual(2, { serviceKind: 'not_service' }), manual(3)] });
+  assert.deepEqual(servicePeriodCounters(mixed), { total: 1, filled: 1 });
+  assert.deepEqual(servicePeriodCounters({}), { total: 0, filled: 0 });
+});
+
+test('0400 คำเตือนรอบน้อยคิดจากช่วงของรายการนั้น (ไม่ใช่ช่วงรวมของใบ)', () => {
+  /* รายการ 1: 1 รอบใน 12 เดือน = เตือน · รายการ 2: 1 รอบในช่วง 1 เดือน = ไม่เตือน (ช่วงรวมของใบ 13 เดือนไม่เกี่ยว) · รายการ 3 ไม่มีช่วง = ไม่เตือน */
+  const ctx = lineModeCtx([P12, lp('2027-10-01', '2027-10-31'), null], { order: { servicePeriodFrom: '2026-10-01', servicePeriodTo: '2027-10-31' } });
+  ctx.lines = ctx.lines.map((line) => ({ ...line, serviceRounds: 1 }));
+  const low = serviceSetupWarnings(ctx).filter((w) => w.key === 'rounds_low');
+  assert.deepEqual(low.map((w) => [w.lineId, w.message]), [
+    ['SOL-1', 'รายการ 1: จำนวนรอบบริการ 1 รอบ ในช่วงบริการ 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็ยื่นได้)'],
+  ]);
+  assert.deepEqual(serviceSetupApprovalChecklist(ctx).filter((line) => line.includes('ตรวจอีกครั้ง')),
+    ['รายการ 1: จำนวนรอบบริการ 1 รอบ ในช่วงบริการ 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็อนุมัติได้)']);
+  /* ใบเดียวกันโหมดทั้งใบ: ทุกรายการเทียบกับช่วงของใบ 13 เดือน */
+  const whole = { ...ctx, order: { ...ctx.order, servicePeriodMode: 'whole' } };
+  assert.deepEqual(serviceSetupWarnings(whole).filter((w) => w.key === 'rounds_low').map((w) => w.lineId), ['SOL-1', 'SOL-2', 'SOL-3']);
+});
+
+test('0400 validateServiceSetupPatch — โหมด + ช่วงของรายการ: ก้อนดีได้ payload ตามตัวอักษร · คีย์ที่ไม่รู้จักไม่ถูกตีกลับ', () => {
+  const whole = completeCtx();
+  const line = lineModeCtx([P12, null, null]);
+  /* สลับเป็นแยกรายรายการ + ใส่ช่วงรายรายการในก้อนเดียว (ใบยังเป็น whole) */
+  const body = {
+    expectedUpdatedAt: whole.order.updatedAt, periodMode: 'line', somethingNew: 1,
+    lines: [
+      { lineId: 'SOL-1', period: { from: ' 2026-09-02 ', to: '2027-09-01' }, futureKey: true },
+      { lineId: 'SOL-2', period: null },
+      { lineId: 'SOL-3', rounds: '12' },
+    ],
+  };
+  assert.deepEqual(validateServiceSetupPatch(body, whole), {
+    value: {
+      periodMode: 'line',
+      lines: [
+        { lineId: 'SOL-1', period: { from: '2026-09-02', to: '2027-09-01' } },
+        { lineId: 'SOL-2', period: null },
+        { lineId: 'SOL-3', rounds: 12 },
+      ],
+    },
+    errors: [],
+  });
+  /* ใบเป็น line อยู่แล้ว: ไม่ต้องส่งโหมด (จอส่งเฉพาะที่ต่าง) · รายการที่มีแต่ `period` ใช้ได้กับรายการ FG ด้วย */
+  assert.deepEqual(validateServiceSetupPatch({ lines: [{ lineId: 'SOL-2', period: { from: '2026-09-25', to: '2027-09-24' } }] }, line), {
+    value: { lines: [{ lineId: 'SOL-2', period: { from: '2026-09-25', to: '2027-09-24' } }] }, errors: [],
+  });
+  const fgCtx = ctxOf({ order: orderOf(LINE), lines: [fgLine(1, 'FG-0233-02-001-00001')] });
+  assert.deepEqual(validateServiceSetupPatch({ lines: [{ lineId: 'SOL-1', period: { from: '2026-10-01', to: '2026-10-01' } }] }, fgCtx).errors, []);
+  /* โหมดอย่างเดียว (ใบไม่มีแพ็คเกจ / สลับกลับ) = ก้อนที่ใช้ได้ */
+  assert.deepEqual(validateServiceSetupPatch({ periodMode: 'whole' }, line), { value: { periodMode: 'whole' }, errors: [] });
+  assert.deepEqual(validateServiceSetupPatch({ periodMode: 'line' }, whole), { value: { periodMode: 'line' }, errors: [] });
+  /* สลับกลับเป็นทั้งใบพร้อมช่วงของใบ · ช่วงของรายการ null รับทั้งสองโหมด */
+  assert.deepEqual(validateServiceSetupPatch({ periodMode: 'whole', period: { from: '2026-09-02', to: '2027-09-25' }, lines: [{ lineId: 'SOL-1', period: null }] }, line), {
+    value: { periodMode: 'whole', period: { from: '2026-09-02', to: '2027-09-25' }, lines: [{ lineId: 'SOL-1', period: null }] }, errors: [],
+  });
+  assert.deepEqual(validateServiceSetupPatch({ lines: [{ lineId: 'SOL-1', period: null }] }, whole).errors, [], 'ล้างช่วงของรายการได้ในโหมดทั้งใบ');
+});
+
+test('0400 validateServiceSetupPatch — ข้อผิดใหม่ทุกข้อ (กติกา/ลำดับเดียวกับ RPC รุ่น 0400/F1)', () => {
+  const whole = completeCtx();
+  const line = lineModeCtx([P12, null]);
+  const err = (body, c) => validateServiceSetupPatch(body, c).errors;
+  const T = SERVICE_SETUP_SQL_MESSAGES;
+
+  /* โหมดผิดค่า — ฐานรับเฉพาะสตริง 'whole' / 'line' */
+  for (const bad of ['x', 'LINE', '', 1, null, true, [], {}]) {
+    assert.deepEqual(err({ periodMode: bad }, whole), [{ lineId: null, field: 'periodMode', message: 'โหมดช่วงบริการไม่ถูกต้อง — โหลดหน้าใหม่แล้วลองอีกครั้ง' }], JSON.stringify(bad));
+    assert.equal(validateServiceSetupPatch({ periodMode: bad }, whole).value, null);
+  }
+  /* โหมดผิดค่า ⇒ ที่เหลือตรวจด้วยโหมดที่เก็บ: ใบ line + ช่วงของใบ = สองข้อ */
+  assert.deepEqual(err({ periodMode: 'x', period: null }, line).map((e) => e.field), ['periodMode', 'period']);
+
+  /* ช่วงของใบในโหมด (ผลลัพธ์) line = ช่วงของใบคิดจากรายการ — รวม null · จอรุ่นเก่าที่ยังเห็นช่องวันของใบ */
+  const derived = [{ lineId: null, field: 'period', message: T.service_setup_period_derived.message }];
+  assert.deepEqual(err({ period: { from: '2026-10-01', to: '2027-09-30' } }, line), derived);
+  assert.deepEqual(err({ period: null }, line), derived);
+  assert.deepEqual(err({ periodMode: 'line', period: { from: '2026-10-01', to: '2027-09-30' } }, whole), derived, 'สลับเป็น line ในก้อนเดียวกัน');
+  assert.deepEqual(err({ periodMode: 'whole', period: { from: '2026-10-01', to: '2027-09-30' } }, line), [], 'สลับกลับเป็น whole แล้วส่งช่วงของใบได้');
+  assert.equal(derived[0].message, 'ใบนี้ตั้งช่วงบริการแยกรายรายการ — ช่วงของใบคิดจากรายการ แก้ที่ช่วงของแต่ละรายการ (โหลดหน้าใหม่)');
+
+  /* ช่วงของรายการในโหมด (ผลลัพธ์) whole */
+  const p = { from: '2026-10-01', to: '2027-09-30' };
+  assert.deepEqual(err({ lines: [{ lineId: 'SOL-1', period: p }] }, whole),
+    [{ lineId: 'SOL-1', field: 'period', message: 'ใบนี้ใช้ช่วงบริการช่วงเดียวทั้งใบ — สลับเป็น ‘แยกรายรายการ’ ก่อนจึงใส่ช่วงของรายการได้' }]);
+  assert.deepEqual(err({ periodMode: 'whole', lines: [{ lineId: 'SOL-1', period: p }] }, line).map((e) => e.message), [T.service_setup_line_period_mode.message]);
+
+  /* รูปของช่วงของรายการ */
+  for (const bad of [{ from: '2027-01-01', to: '2026-01-01' }, { from: '1999-12-31', to: '2026-01-01' }, { from: '2026-01-01', to: '2101-01-01' },
+    { from: '2026-02-30', to: '2026-03-01' }, { from: '2026-10-01' }, { from: '2026-10-01', to: '' }, {}, 'x', 5, [], { from: 20261001, to: 20270930 }]) {
+    assert.deepEqual(err({ lines: [{ lineId: 'SOL-1', period: bad }] }, line),
+      [{ lineId: 'SOL-1', field: 'period', message: 'ช่วงบริการของรายการไม่ถูกต้อง — ต้องมีทั้งวันเริ่มและวันสิ้นสุด วันเริ่มไม่เกินวันสิ้นสุด (ปี ค.ศ. 2000–2100)' }], JSON.stringify(bad));
+  }
+
+  /* ช่วงบนรายการที่ไม่ใช่แพ็คเกจ (ไม่ใช่งานบริการ · ยังไม่ตอบ · ตอบ "ไม่ใช่" ในก้อนเดียวกัน) = ตัวเดิม service_setup_not_package — ก่อนข้อโหมด */
+  const roles = ctxOf({ order: orderOf(LINE), lines: [manual(1, { serviceKind: 'not_service' }), manual(2), done(3)] });
+  const notPackage = 'รายการนี้ยังไม่ได้ตอบว่าเป็นงานบริการ — ตอบ ‘ใช่’ ก่อน แล้วจึงเลือก FG/โซน/รอบ';
+  for (const lineId of ['SOL-1', 'SOL-2']) {
+    assert.deepEqual(err({ lines: [{ lineId, period: p }] }, roles), [{ lineId, field: 'period', message: notPackage }], lineId);
+    assert.deepEqual(err({ lines: [{ lineId, period: null }] }, roles), [], `${lineId}: null ล้างได้เสมอ`);
+  }
+  assert.deepEqual(err({ lines: [{ lineId: 'SOL-3', kind: 'not_service', period: p }] }, roles), [{ lineId: 'SOL-3', field: 'period', message: notPackage }]);
+  assert.deepEqual(err({ lines: [{ lineId: 'SOL-2', kind: 'package', period: p }] }, roles), [], 'ตอบ "ใช่" ในก้อนเดียวกันแล้วใส่ช่วงได้');
+  assert.deepEqual(err({ periodMode: 'whole', lines: [{ lineId: 'SOL-1', period: p }] }, roles), [{ lineId: 'SOL-1', field: 'period', message: notPackage }],
+    'ไม่ใช่แพ็คเกจมาก่อนข้อโหมด (ลำดับของฐาน)');
+
+  /* รายการเดียวผิด = ทั้งก้อนไม่ไปถึงฐาน */
+  assert.equal(validateServiceSetupPatch({ lines: [{ lineId: 'SOL-1', period: p }, { lineId: 'SOL-2', period: 'x' }] }, line).value, null);
+});
+
+test('0400 id ของช่อง: period ที่มี lineId = ช่วงของรายการ · ไม่มี = ช่วงของใบ (period_missing · ข้อช่วงครอบที่ชี้ช่วงของใบ)', () => {
+  assert.equal(serviceSetupFieldId({ key: 'line_period_missing', field: 'period', lineId: 'SOL-3' }), 'svc-line-SOL-3-period');
+  assert.equal(serviceSetupFieldId({ lineId: 'SOL-3', field: 'period', message: 'x' }), 'svc-line-SOL-3-period', 'fieldErrors ของ PATCH (ไม่มี key)');
+  assert.equal(serviceSetupFieldId({ key: 'period_missing', field: 'period' }), 'svc-period');
+  assert.equal(serviceSetupFieldId({ lineId: null, field: 'period' }), 'svc-period');
+  assert.equal(serviceSetupFieldId({ key: 'coverage_start', field: 'period', installmentId: null, seq: 1 }), 'svc-period');
+  assert.equal(serviceSetupFieldId('period'), 'svc-period');
+  assert.equal(serviceSetupFieldId('period_missing'), 'svc-period');
+  /* F4 เดิม: ข้อขอบช่วงของงวดที่รับรองแล้วยังชี้ช่วงของใบ (โหมด line = กล่องช่วงรวม) */
+  const rows = monthlyRows();
+  rows[0] = { ...rows[0], status: 'confirmed', coversFrom: '2026-10-05' };
+  const ctx = lineModeCtx([lp('2026-10-01', '2027-03-31'), lp('2027-04-01', '2027-09-30')], { order: PERIOD, installments: rows });
+  const start = serviceSetupIssues(ctx).find((i) => i.key === 'coverage_start');
+  assert.ok(start, 'ต้องมีข้อ coverage_start');
+  assert.equal(serviceSetupFieldId(start), 'svc-period');
+});
+
+test('0400 รหัสจากฐาน line_period_missing:<บรรทัด> → ข้อภาษาไทยพร้อมเลขรายการ + ช่องของรายการ', () => {
+  const ctx = lineModeCtx([P12, null, null]);
+  const issues = serviceSetupSqlIssues('line_period_missing:SOL-2,rounds_missing:SOL-2,line_period_missing:SOL-9', ctx);
+  assert.deepEqual(issues.map((i) => [i.key, i.lineId, i.lineNo, i.field]), [
+    ['line_period_missing', 'SOL-2', 2, 'period'], ['rounds_missing', 'SOL-2', 2, 'rounds'], ['line_period_missing', 'SOL-9', '?', 'period'],
+  ]);
+  assert.equal(issues[0].message, 'รายการ 2: ยังไม่ใส่ช่วงบริการของรายการ (วันเริ่ม–วันสิ้นสุด)');
+  assert.equal(serviceSetupFieldId(issues[0]), 'svc-line-SOL-2-period');
+  assert.equal(typeof SERVICE_SETUP_ISSUE_TEXT.line_period_missing, 'function');
+});
+
+test('0400 ก้อน GET + ก้อน audit: โหมด · ช่วงรวมที่เก็บ (null จนกว่าจะครบ) · ตัวนับ · ช่วงรายรายการ', () => {
+  const partial = lineModeCtx([lp('2026-09-02', '2027-09-01'), null, lp('2026-09-26', '2027-09-25')]);
+  const view = serviceSetupView(partial, { canEdit: true, userId: 'U1', role: 'ae' });
+  assert.equal(view.periodMode, 'line');
+  assert.equal(view.period, null, 'ยังไม่ครบ = ช่วงของใบว่าง (แถบวาดช่วงรวมจากรายการบนจอ ไม่ใช่จากคีย์นี้)');
+  assert.deepEqual(view.linePeriods, { total: 3, filled: 2 });
+  assert.deepEqual(view.lines.map((l) => l.period), [{ from: '2026-09-02', to: '2027-09-01' }, null, { from: '2026-09-26', to: '2027-09-25' }]);
+  assert.deepEqual(view.totals.periodLines, 3);
+  assert.equal(view.hero.value, 'ยังไม่ตั้ง', 'หัวใบ: ยังไม่ครบ = ยังไม่ตั้ง');
+  assert.deepEqual(view.issues.map((i) => i.key), ['line_period_missing']);
+
+  const full = lineModeCtx([lp('2026-10-01', '2027-03-31'), lp('2027-04-01', '2027-09-30')], { order: PERIOD });
+  const done2 = serviceSetupView(full, { canEdit: true, userId: 'U1', role: 'ae' });
+  assert.deepEqual([done2.periodMode, done2.period, done2.linePeriods], ['line', { from: '2026-10-01', to: '2027-09-30' }, { total: 2, filled: 2 }]);
+  assert.equal(done2.hero.value, '12 รอบ');
+  assert.deepEqual(done2.issues, []);
+
+  const whole = serviceSetupView(completeCtx(), { canEdit: true, userId: 'U1', role: 'ae' });
+  assert.deepEqual([whole.periodMode, whole.period, whole.linePeriods], ['whole', { from: '2026-10-01', to: '2027-09-30' }, { total: 10, filled: 0 }]);
+  assert.ok(whole.lines.every((l) => l.period === null));
+
+  const snap = serviceSetupAuditSnapshot(partial);
+  assert.equal(snap.periodMode, 'line');
+  assert.equal(snap.period, null);
+  assert.deepEqual(snap.lines.map((l) => l.period), [{ from: '2026-09-02', to: '2027-09-01' }, null, { from: '2026-09-26', to: '2027-09-25' }]);
+});
+
+test('0400 ประโยคที่พิมพ์ช่วงของใบ: โหมดแยกรายรายการต่อท้าย "(ช่วงรวม · แยกรายรายการ)" · ผู้อนุมัติได้ข้อ "ตรวจช่วงของแต่ละรายการ"', () => {
+  const full = lineModeCtx([lp('2026-10-01', '2027-03-31'), lp('2027-04-01', '2027-09-30')], { order: PERIOD });
+  const tail = '01/10/2026–30/09/2027 (ช่วงรวม · แยกรายรายการ)';
+  assert.equal(SERVICE_PERIOD_TEXT.envelopeSuffix, ' (ช่วงรวม · แยกรายรายการ)');
+  assert.equal(serviceSetupSubmitLine(full),
+    `ส่งการตั้งค่างานบริการ (2 โซนใน 2 ไซต์ · ช่วงบริการ ${tail}) ให้ผู้อนุมัติตรวจ — ระหว่างรออนุมัติแก้ไม่ได้ ดึงกลับได้`);
+  assert.equal(serviceSetupStripText(full),
+    `งานบริการ: จำนวนรอบบริการ 12 รอบ · แต่ละครั้ง 2 โซนใน 2 ไซต์ · ครั้งละ 2 แพ็ค · รวมทั้งใบ 24 แพ็ค · ช่วง ${tail} · สัญญา: ยังไม่ผูก`);
+  assert.equal(serviceSetupRevisionLine(full), `คัดลอกงานบริการ 2 รายการ · 2 โซน · ช่วงบริการ ${tail} ไปใบ Rev.`);
+  assert.equal(serviceSetupApprovalEffects(full)[1], `ช่วงบริการ ${tail} · งวด 12 งวดครอบต่อเนื่อง — ช่างเข้าไซต์ได้เฉพาะวันที่บัญชีรับรองงวดที่ครอบแล้ว`);
+  assert.equal(serviceBackfillSubmitPrompt(full).effects[0],
+    `ส่งการตั้งค่างานบริการ (2 โซนใน 2 ไซต์ · ช่วงบริการ ${tail}) ให้ผู้จัดการฝ่ายขายตรวจ`);
+  /* ยังไม่ครบ: ช่วงของใบว่าง = ขีด + ท้ายเดิม (บอกว่าใบนี้แยกรายรายการ) */
+  const partial = lineModeCtx([P12, null]);
+  assert.match(serviceSetupStripText(partial), / · ช่วง — \(ช่วงรวม · แยกรายรายการ\) · สัญญา: ยังไม่ผูก$/);
+  /* บรรทัดออก Rev.: รายการ FG ที่มีแต่ช่วงของตัวเองก็นับ (Rev. พาโหมด + ช่วงของรายการไปด้วย) */
+  const onlyPeriod = ctxOf({ order: orderOf(LINE), lines: [fgLine(1, 'FG-0233-02-001-00001', P12)] });
+  assert.equal(serviceSetupRevisionLine(onlyPeriod), 'คัดลอกงานบริการ 1 รายการ · 0 โซน · ช่วงบริการ — (ช่วงรวม · แยกรายรายการ) ไปใบ Rev.');
+  assert.equal(serviceSetupRevisionLine(ctxOf({ order: orderOf(LINE), lines: [fgLine(1, 'FG-0233-02-001-00001')] })), null, 'ไม่มีอะไรตั้งไว้เลย = ไม่มีบรรทัด');
+  /* จอของหน้าใบ (page.js) ส่งโหมดผ่าน ctx.periodMode — ใบที่จอประกอบเองไม่จำเป็นต้องพก servicePeriodMode */
+  const local = { order: { ...orderOf(PERIOD) }, lines: full.lines, allocations: full.allocations, zonesById: full.zonesById, periodMode: 'line' };
+  assert.equal(serviceSetupRevisionLine(local), `คัดลอกงานบริการ 2 รายการ · 2 โซน · ช่วงบริการ ${tail} ไปใบ Rev.`);
+
+  /* ข้อตรวจของผู้อนุมัติ — ต่อจากข้อตรวจตาราง ทั้งเส้นอนุมัติใบและเส้นงานบริการย้อนหลัง */
+  const check = 'ตรวจช่วงบริการของแต่ละรายการในคอลัมน์ ① (แยกรายรายการ 2 รายการ)';
+  assert.deepEqual(serviceSetupApprovalChecklist(full), ['ตรวจแพ็คเกจ · ไซต์ · โซน · จำนวนรอบบริการ · รอบละกี่แพ็ค ในการ์ดงานบริการ', check]);
+  const backfill = serviceSetupApprovalChecklist({ ...full, order: { ...full.order, status: 'approved' } }, { flow: 'backfill' });
+  assert.deepEqual(backfill.slice(0, 3), ['ตรวจแพ็คเกจ · ไซต์ · โซน · จำนวนรอบบริการ · รอบละกี่แพ็ค ในการ์ดงานบริการ', check, 'ช่วงบริการตรงกับหมายเหตุของแต่ละสาขา']);
+  assert.equal(serviceSetupApprovalChecklist(completeCtx()).some((line) => line.includes('แยกรายรายการ')), false, 'โหมดทั้งใบไม่มีข้อนี้');
+  assert.deepEqual(serviceSetupApprovalChecklist(ctxOf({ order: orderOf(LINE), lines: [manual(1, { serviceKind: 'not_service' })] })), [], 'ไม่มีแพ็คเกจ = ไม่มีข้อตรวจ');
+});
+
+test('0400 แคตตาล็อก: หัวคอลัมน์ ① · คำของม็อกที่เจ้าของอนุมัติ (ตามตัวอักษร) · รหัสฐานใหม่สี่ตัว · ไม่มีคำต้องห้าม', () => {
+  assert.deepEqual({ ...SERVICE_SETUP_GRID_TEXT.steps[0] }, { key: 'kind', label: 'งานบริการ? · ช่วงบริการ', hint: 'ใช่ = ส่ง TS + ใส่ช่วง', required: true });
+  assert.deepEqual(SERVICE_SETUP_GRID_TEXT.steps.map((step) => step.key), ['kind', 'fg', 'zones', 'rounds', 'packs', 'total'], 'ลำดับ ①→⑥ ไม่เปลี่ยน');
+  assert.deepEqual(SERVICE_SETUP_GRID_TEXT.steps.slice(1).map((step) => step.label), ['แพ็คเกจ FG', 'ไซต์ · โซน', 'จำนวนรอบบริการ', 'รอบละกี่แพ็ค', 'รวมแพ็ค']);
+
+  const T = SERVICE_PERIOD_TEXT;
+  /* คำจากม็อก PeriodSwitchWhole / PeriodSwitchPerLine รอบสอง */
+  assert.deepEqual([T.label, T.modeAria, T.startLabel, T.endLabel, T.wholeNote], [
+    'ช่วงบริการ (ตามสัญญา)', 'ช่วงบริการใช้กับทั้งใบหรือแยกรายรายการ', 'วันเริ่มบริการ', 'วันสิ้นสุดบริการ', 'ทุกรายการในใบใช้ช่วงนี้',
+  ]);
+  assert.deepEqual(T.modes.map((mode) => ({ ...mode })), [{ value: 'whole', label: 'ทั้งใบช่วงเดียว' }, { value: 'line', label: 'แยกรายรายการ' }]);
+  assert.deepEqual([T.monthChip(12), T.monthChip(24), T.monthChipShort(12), T.monthChipShort(24), T.readout('12 เดือน')],
+    ['12 เดือน', '24 เดือน', '12 ด.', '24 ด.', '= 12 เดือน']);
+  assert.deepEqual([T.envelopeLabel, T.envelopeHow, T.envelopeAria, T.counter(4, 5), T.sameForAll], [
+    'ช่วงรวมของใบ', '· คิดจากรายการ (เริ่มแรกสุด → จบสุดท้าย)', 'ช่วงรวมของใบ (อ่านอย่างเดียว)', 'ใส่ช่วงแล้ว 4/5 รายการ', 'ใช้ช่วงเดียวกันทุกรายการ…',
+  ]);
+  assert.equal(T.lineHint, 'ใส่ช่วงของแต่ละรายการที่คอลัมน์ ① ใต้คำตอบ ‘ใช่’ · ด่านช่วงครอบของงวดชำระตรวจกับช่วงรวมของใบ · TS เริ่มตั้งรอบของแต่ละไซต์จากช่วงของรายการนั้น');
+  assert.deepEqual([T.lineLabel, T.from, T.to, T.lineEmpty, T.followsOrder, T.none], ['ช่วงบริการ', 'เริ่ม', 'ถึง', 'ยังไม่ใส่ช่วง', 'ตามช่วงของทั้งใบ', 'ไม่มีช่วงบริการ']);
+  assert.deepEqual([T.lineGroupAria(3), T.lineStartAria(3), T.lineEndAria(3), T.sameAs(1), T.sameAsTitle(1)], [
+    'ช่วงบริการของรายการ 3', 'วันเริ่มบริการ รายการ 3', 'วันสิ้นสุดบริการ รายการ 3', 'เหมือนรายการ 1', 'คัดลอกช่วงบริการของรายการ 1 มาใส่',
+  ]);
+  assert.deepEqual([T.roundsChipWait, T.roundsChipWaitTitle], ['ทุกเดือน ≈ —', 'ใส่ช่วงบริการของรายการนี้ก่อน จึงคิดจำนวนรอบรายเดือนได้']);
+  assert.deepEqual([T.railLabelLine, T.railCount(4, 5), T.railMissing(3), T.railMore(1), T.railEnvelope('02/09/2026–25/09/2027')], [
+    'ช่วงบริการ · แยกรายรายการ', '4/5 รายการ', 'รายการ 3 ยังไม่ใส่', 'อีก 1 รายการ', 'ช่วงรวม 02/09/2026–25/09/2027',
+  ]);
+  /* คำที่ไม่อยู่ในม็อก (แจ้งเจ้าของใน PR) — ยึดไว้ให้จอกับเอกสารพูดตรงกัน */
+  assert.equal(T.clearNotice(4), 'บันทึกแล้วช่วงของ 4 รายการจะถูกแทนด้วยช่วงของทั้งใบ — ยังไม่บันทึก สลับกลับเป็น ‘แยกรายรายการ’ ได้');
+  assert.deepEqual([T.applyAllTitle, T.applyAllBody(5), T.applyAllConfirm, T.readModeWhole, T.readModeLine, T.envelopeEmpty], [
+    'ใช้ช่วงเดียวกันทุกรายการ', 'แทนช่วงของรายการที่เป็นงานบริการทั้ง 5 รายการ — ยังไม่บันทึกจนกด ‘บันทึกงานบริการ’', 'ใช้กับทุกรายการ',
+    'ทั้งใบช่วงเดียว', 'แยกรายรายการ', 'ยังไม่มีรายการที่ใส่ช่วง',
+  ]);
+  assert.equal(T.backfillHint, 'ถ้าแต่ละสาขาเริ่มไม่พร้อมกัน สลับเป็น ‘แยกรายรายการ’ แล้วใส่ช่วงของแต่ละรายการ');
+  assert.equal(T.checklistLine(5), 'ตรวจช่วงบริการของแต่ละรายการในคอลัมน์ ① (แยกรายรายการ 5 รายการ)');
+  assert.ok(Object.isFrozen(T) && Object.isFrozen(T.modes) && T.modes.every(Object.isFrozen));
+
+  /* รหัสของ RPC รุ่น 0400/F1 — สถานะตามสัญญา (400 · 409 · 400 · 400) · ไม่มีคีย์ไหนเป็นสตริงย่อยของอีกคีย์ */
+  const M = SERVICE_SETUP_SQL_MESSAGES;
+  assert.deepEqual(['service_setup_period_mode_invalid', 'service_setup_period_derived', 'service_setup_line_period_mode', 'service_setup_line_period_invalid']
+    .map((code) => M[code]?.status), [400, 409, 400, 400]);
+  const codes = Object.keys(M);
+  for (const a of codes) for (const b of codes) if (a !== b) assert.ok(!b.includes(a), `${a} อยู่ใน ${b}`);
+  assert.deepEqual(serviceSetupSqlMessage({ message: 'P0001: service_setup_line_period_invalid' })?.code, 'service_setup_line_period_invalid');
+  assert.deepEqual(serviceSetupSqlMessage({ message: 'service_setup_period_invalid' })?.code, 'service_setup_period_invalid', 'รหัสเดิมยังถูกแปลเป็นตัวเอง');
+  assert.deepEqual(serviceSetupSqlMessage({ message: 'service_setup_period_mode_invalid' })?.code, 'service_setup_period_mode_invalid');
+
+  /* คำต้องห้าม (มติ 29/09) ไม่กลับมากับคำใหม่ */
+  const all = JSON.stringify([
+    ...Object.values(T).map((v) => (typeof v === 'function' ? v(1, 2) : v)),
+    ...Object.values(M).map((m) => m.message), SERVICE_SETUP_ISSUE_TEXT.line_period_missing({ n: 1 }),
+    ...SERVICE_SETUP_GRID_TEXT.steps.map((step) => `${step.label} ${step.hint}`),
+  ]);
+  assert.doesNotMatch(all, /ไปกี่รอบ/);
 });

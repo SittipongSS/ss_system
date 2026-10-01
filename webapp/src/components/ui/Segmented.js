@@ -22,6 +22,10 @@ function countLabel(count) {
   return count > 99 ? "99+" : String(count);
 }
 
+// `selection="radio"` — แถบเป็น "เลือกหนึ่งจากชุด" ที่เป็นค่าของฟอร์ม (ไม่ใช่ตัวกรอง/มุมมอง): กล่องห่อเป็น radiogroup · ปุ่มเป็น radio +
+// aria-checked ⇒ โปรแกรมอ่านจอบอก "ปุ่มตัวเลือก 1 จาก 2" ผู้ใช้คีย์บอร์ดรู้ว่าลูกศรไปตัวเลือกถัดไป (Tab ลงตัวที่เลือกอยู่ตัวเดียวตามแบบ
+// radiogroup · WAI-ARIA APG) · ไม่ส่ง = รูปเดิมทุกตัวอักษร (role="group" + aria-pressed) ⇒ แถบที่มีอยู่ทั้งระบบได้ DOM เดิม
+// ใช้คู่กับ `activationMode="manual"` ได้ (ลูกศรย้ายโฟกัสอย่างเดียว เลือกด้วย Space/Enter/คลิก — ค่าที่เปลี่ยนสิ่งที่จะบันทึก)
 export default function Segmented({
   options = [],
   value,
@@ -30,7 +34,9 @@ export default function Segmented({
   className = "",
   showLabels = true,
   activationMode = "automatic",
+  selection = "toggle",
 }) {
+  const radio = selection === "radio";
   const buttonsRef = useRef([]);
   const items = options.map(descriptorOf).filter((option) => option?.value !== undefined);
   const hasSelectedOption = items.some((option) => option.value === value && !option.disabled);
@@ -45,7 +51,7 @@ export default function Segmented({
   };
 
   return (
-    <div className={`segmented ${className}`.trim()} role="group" aria-label={ariaLabel}>
+    <div className={`segmented ${className}`.trim()} role={radio ? "radiogroup" : "group"} aria-label={ariaLabel}>
       {items.map((option, index) => {
         const Icon = option.icon;
         const active = option.value === value;
@@ -57,7 +63,9 @@ export default function Segmented({
             className={`${active ? "active" : ""} ${!showLabels ? "icon" : ""}`.trim()}
             onClick={() => onChange?.(option.value)}
             onKeyDown={(event) => moveFocus(event, index)}
-            aria-pressed={active}
+            role={radio ? "radio" : undefined}
+            aria-checked={radio ? active : undefined}
+            aria-pressed={radio ? undefined : active}
             /* โทนของตัวเลือกเดี่ยว (เช่น "danger" = ค่าที่เลือกไว้แต่ใช้ไม่ได้แล้ว) — ส่งเป็น data attribute ให้ผู้เรียกแต่งใน
                CSS module ของตัวเอง · ไม่ส่ง = ไม่มี attribute ⇒ ทุกแถบเดิมได้ DOM เดิม */
             data-tone={option.tone}

@@ -16,6 +16,7 @@ import { fetchAllInChunks } from '@/lib/supabaseInChunks';
 import { requireService, loadSites } from '@/lib/service/sitesRepo';
 import { loadPlans, loadVisits } from '@/lib/service/visitsRepo';
 import { loadAllZones, loadTerms } from '@/lib/service/termsRepo';
+import { withLinePeriods } from '@/lib/service/terms';
 import { intakeCounts, planQueue, visitQueue } from '@/lib/service/intake';
 import { MAX_ORPHAN_HOPS, decoratePlanRows, orphanOrderIdsToLoad, orphanPlanRows } from '@/lib/service/intakePlanFacts';
 import { legacySetupQueue } from '@/lib/service/legacySetupQueue';
@@ -51,10 +52,13 @@ export const GET = withUser(async ({ user, supabase }) => {
        ⭐ PR-C (C7): `servicePeriodTo` — ช่วงบริการของแถวรอตั้งรอบ (`servicePeriodOf` · หัวใบของใบที่ตั้งแล้ว) ⇒ ค่าเติมวันของโมดัล
           + รอบที่แนะนำ · ต่อท้าย select ตัวเดิม (ไม่เพิ่มคำสั่งอ่านใบ — ยามเงินนับคำสั่ง)
        ⭐ mig 0396: ผู้เปิดแก้/เวลา/เหตุผลของใบที่ฝ่ายขายเปิดแก้งานบริการหลังอนุมัติ — ถังใบเดิมขึ้นป้าย "ฝ่ายขายกำลังแก้ (หลังอนุมัติ)"
-          (`serviceSetupReopened`) · ⚠️ ต้องรัน 0396 ก่อน deploy (ไม่มีคอลัมน์ = select 500 ทั้งหน้างานเข้าใหม่ · check:columns แดงจนกว่ารัน) */
+          (`serviceSetupReopened`) · ⚠️ ต้องรัน 0396 ก่อน deploy (ไม่มีคอลัมน์ = select 500 ทั้งหน้างานเข้าใหม่ · check:columns แดงจนกว่ารัน)
+       ⭐ mig 0400: `servicePeriodMode` — ใบแยกรายรายการ ('line') ช่วงของแถวรอตั้งรอบ = ช่วงของรายการที่ลงไซต์นั้น (แนบให้ term ข้างล่าง)
+          ไม่ใช่ช่วงรวมของใบ · ถังใบเดิมใช้ตัดสิน "เริ่มตั้งแล้ว/ครบกี่รายการ" · ต่อท้าย select ตัวเดิม (ไม่เพิ่มคำสั่งอ่านใบ — ยามเงินนับคำสั่ง)
+          ⚠️ ต้องรัน 0400 ก่อน deploy (ไม่มีคอลัมน์ = select 500 ทั้งหน้างานเข้าใหม่ · check:columns แดงจนกว่ารัน) */
     const { data: orders, error: orderError } = await fetchAllResult(() => supabase
       .from('sales_orders')
-      .select('id, "orderNumber", status, supersededById, customerId, customerName, projectId, dealId, orderDate, approvedAt, "serviceContractId", origin, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef", "totalAmount", "serviceTermsOpenedAt", "serviceSetupState", "serviceSetupSubmittedAt", "serviceSetupSubmittedByName", "serviceSetupRejectedAt", "serviceSetupRejectedByName", "serviceSetupRejectedReason", "servicePeriodFrom", "servicePeriodTo", "updatedAt", "serviceSetupReopenedAt", "serviceSetupReopenedByName", "serviceSetupReopenedReason"')
+      .select('id, "orderNumber", status, supersededById, customerId, customerName, projectId, dealId, orderDate, approvedAt, "serviceContractId", origin, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef", "totalAmount", "serviceTermsOpenedAt", "serviceSetupState", "serviceSetupSubmittedAt", "serviceSetupSubmittedByName", "serviceSetupRejectedAt", "serviceSetupRejectedByName", "serviceSetupRejectedReason", "servicePeriodFrom", "servicePeriodTo", "updatedAt", "serviceSetupReopenedAt", "serviceSetupReopenedByName", "serviceSetupReopenedReason", "servicePeriodMode"')
       .eq('status', 'approved')
       .is('supersededById', null)
       .order('approvedAt', { ascending: false })
@@ -70,7 +74,7 @@ export const GET = withUser(async ({ user, supabase }) => {
       .filter((o) => !o.serviceTermsOpenedAt && !isHistoricalOrder(o))
       .map((o) => o.id);
 
-    const [lines, terms, projects, deals, zones, sites, plans, visits, allocations] = await Promise.all([
+    const [lines, rawTerms, projects, deals, zones, sites, plans, visits, allocations] = await Promise.all([
       /* ⚠️ ซอยลิสต์ข้างนอก ไล่หน้าข้างใน — `fetchAllResult` แก้เพดานแถว ไม่ได้แก้
          URL ยาว (มันส่งตัวกรองก้อนเดิมไปทุกหน้า) · ซอยตาม `salesOrderId` ⇒ บรรทัด
          ของใบเดียวกันอยู่ก้อนเดียวเสมอ ลำดับ sortOrder ภายในใบจึงไม่เสีย
@@ -81,9 +85,11 @@ export const GET = withUser(async ({ user, supabase }) => {
          หายทั้งเส้นพร้อมแผง "ถอนการแจ้ง" · บรรทัดของใบย้อนหลังผูกโซนตั้งแต่ตอนคีย์ใบ ⇒ ไม่เข้าถังนี้อีก
          ⭐ mig 0392: ชนิด/แพ็คเกจ/หมวดของบรรทัด (`metadata.categoryCode` #1844) — ตัวตัดสิน "ใบเดิมต้องตั้งไหม ·
          ตั้งไปกี่รายการ" (serviceSetup.js) อ่านสามช่องนี้ · ยังไม่ดึงราคา/ส่วนลดเหมือนเดิม
+         ⭐ mig 0400: "servicePeriodFrom"/"servicePeriodTo" = ช่วงบริการของรายการ (ใบแยกรายรายการ) — แนบให้รอบขายด้วย `withLinePeriods`
+         (ไม่ยิงเพิ่ม — บรรทัดของใบที่อนุมัติโหลดอยู่แล้ว) · ถังใบเดิมอ่านจากบรรทัดตรง ๆ (ครบกี่รายการ)
          🪤 คอมเมนต์อยู่เหนือคำสั่ง — แทรกระหว่าง `.from()` กับ `.select()` แล้ว check:columns มองไม่เห็น select นี้ */
       fetchAllInChunks(orderIds, (chunk) => supabase.from('sales_order_lines')
-          .select('id, salesOrderId, quotationLineId, productId, fgCode, description, qty, unit, sortOrder, "serviceRounds", "installationPoint", "serviceKind", "serviceProductId", "serviceFgCode", metadata')
+          .select('id, salesOrderId, quotationLineId, productId, fgCode, description, qty, unit, sortOrder, "serviceRounds", "installationPoint", "serviceKind", "serviceProductId", "serviceFgCode", metadata, "servicePeriodFrom", "servicePeriodTo"')
           .in('salesOrderId', chunk)
           .order('salesOrderId', { ascending: true })
           .order('sortOrder', { ascending: true })
@@ -150,6 +156,9 @@ export const GET = withUser(async ({ user, supabase }) => {
     // "ขายไว้กี่รอบ" ได้ (ไม่ส่ง = ตอบ null ซึ่งอ่านว่า "ยังไม่ระบุ" ไม่ใช่ศูนย์)
     // ⭐ งวดของใบ ⇒ แถวรอตั้งรอบบอก "เงินครอบถึง" ได้ (มติ 22/09 · ม็อก TsIntake)
     const linesById = new Map((lines || []).map((row) => [row.id, row]));
+    /* ⭐ mig 0400: รอบขายของใบแยกรายรายการได้ช่วงของบรรทัดตัวเองติดไปด้วย (`linePeriodFrom/To`) — แถวรอตั้งรอบ (`planRowFacts`)
+       คิดช่วง/ค่าเติมโมดัล/รอบที่แนะนำจากช่วงนี้ · term ของใบโหมดทั้งใบเป็นออบเจ็กต์เดิม (ไม่มีอะไรเปลี่ยน) */
+    const terms = withLinePeriods(rawTerms, ordersById, linesById);
     const visit = visitQueue({ plans, visits, sites, ordersById, isLive: isLiveVisit, todayIso });
 
     /* ⭐ รอบกำพร้า (PR-C · C-D11 · [owner]) — รอบที่ยังเดินแต่ชี้ใบที่ไม่มีผลแล้ว (Rev. ถอดไซต์ · Rev. ของ Rev. ·

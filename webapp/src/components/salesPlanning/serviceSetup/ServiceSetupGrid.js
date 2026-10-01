@@ -4,6 +4,9 @@
 // ⭐ เจ้าของ 30/09: "มันต้องเลือกว่า รายการ เป็นงานบริการมั้ย ถ้าเป็น ก็มาเลือกว่า FG ไหน / Site Zone อะไร / ต้องไปกี่รอบ
 //   รอบละกี่แพ็ค ผลรวมแพ็คที่ใช้ทั้งหมด รายบรรทัด รวมทุกบรรทัด" ⇒ คอลัมน์ ①→⑥ ตามลำดับนี้เท่านั้น (`SERVICE_SETUP_GRID_TEXT.steps`)
 //     ① งานบริการ? (ใช่/ไม่ใช่) → ② แพ็คเกจ FG → ③ ไซต์ · โซน → ④ จำนวนรอบบริการ → ⑤ รอบละกี่แพ็ค (ต่อโซน) → ⑥ รวมแพ็ค
+// ⭐ ช่วงบริการของรายการอยู่ **ใต้คำตอบในคอลัมน์ ①** (mig 0400 · มติเจ้าของ 01/10: "ช่วงบริการ เอาไว้ คอลัมน์ 1 งานบริการดีกว่า
+//   ถ้าใช่ก็ให้กรอก ไม่ใช่ก็ปิด") — หน้าตาอยู่ที่ `ServiceLinePeriod` · โหมดแยกรายรายการ: ชิป "ทุกเดือน ≈ n" และคำเตือนรอบน้อย
+//   คิดจาก **ช่วงของรายการนั้น** (ก้อนโซนรับ `period={linePeriod}`) · โหมดทั้งใบ: ช่วงของใบเหมือนเดิม
 //   + แถวท้าย "รวมทุกรายการ" (โซน · ไซต์ · รอบ · รอบละ · รวมแพ็คทั้งใบ) — 01/10 เจ้าของเลือกทาง A (ตารางแยกใต้ตารางราคา)
 // ⭐ หน้าตาตามชนิดของบรรทัด:
 //   · พิมพ์เอง — ① ปุ่มสองทาง **ไม่มีค่าตั้งต้น** (หมวดของบรรทัดตอบให้ได้ พร้อมบอก "ตามหมวด …") · ใช่ = ② เลือก FG 02-001 ของลูกค้า
@@ -25,16 +28,18 @@ import Input from "@/components/ui/Input";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { NA, fmtNumber, naText } from "@/lib/format";
 import {
-  SERVICE_KIND_NOT_SERVICE, SERVICE_KIND_OPTIONS, SERVICE_KIND_PACKAGE, SERVICE_ROLE_UNSET, SERVICE_SETUP_GRID_TEXT, SERVICE_SETUP_LIMITS,
-  SERVICE_SETUP_LINE_TEXT, lineQtyCrossCheck, lineRoundsLowText, lineSetupTotals, roundChipsFromPeriod, serviceRoundsText,
+  SERVICE_KIND_NOT_SERVICE, SERVICE_KIND_OPTIONS, SERVICE_KIND_PACKAGE, SERVICE_PERIOD_MODE_LINE, SERVICE_PERIOD_TEXT, SERVICE_ROLE_UNSET,
+  SERVICE_SETUP_GRID_TEXT, SERVICE_SETUP_LIMITS, SERVICE_SETUP_LINE_TEXT, lineQtyCrossCheck, lineRoundsLowText, lineSetupTotals,
+  roundChipsFromPeriod, serviceRoundsText, validServicePeriod,
 } from "@/lib/sales/serviceSetup";
 import { SERVICE_ROUNDS_EDIT_TEXT, normalizeServiceRounds } from "@/lib/sales/serviceRoundsEntry";
 import { zonePickerOptions, zoneTakenMap } from "@/lib/service/zonePickerOptions";
 import { nextEnabledIndex } from "@/lib/ui/selectionNavigation";
 import { zonesBulkCapText } from "@/components/service/zonesBulkPlan";
 import ServiceFgPicker from "./ServiceFgPicker";
+import ServiceLinePeriod from "./ServiceLinePeriod";
 import {
-  SERVICE_SETUP_REVEAL_EVENT, ctxLineOf, lineFieldId, lineFieldIds, lineMissing, positiveIntOrNull, zonePacksFieldId,
+  SERVICE_SETUP_REVEAL_EVENT, ctxLineOf, lineFieldId, lineFieldIds, lineMissing, positiveIntOrNull, sameSourceOf, zonePacksFieldId,
 } from "./serviceSetupDraft";
 import styles from "./ServiceSetupGrid.module.css";
 
@@ -177,8 +182,10 @@ function AnswerButtons({ line, onPick }) {
 }
 
 /* ── ① งานบริการ? ── */
-function KindCell({ line, editable, error, onPick }) {
+/* ใต้คำตอบทุกแบบ (FG · อ่าน · แก้) = ช่วงบริการของรายการ (`period` — props ของ ServiceLinePeriod ที่แถวรายการประกอบให้) */
+function KindCell({ line, editable, error, onPick, period }) {
   const category = line.categoryCode || null;
+  const periodBlock = <ServiceLinePeriod line={line} editable={editable} {...period} />;
   /* FG: ระบบตัดสินจากหมวดของรหัส (แก้ไม่ได้) */
   if (!line.manual) {
     const yes = line.role === SERVICE_KIND_PACKAGE;
@@ -189,6 +196,7 @@ function KindCell({ line, editable, error, onPick }) {
           <b>{yes ? SERVICE_SETUP_GRID_TEXT.yes : SERVICE_SETUP_GRID_TEXT.no}</b>
           <small>{category ? `หมวด ${category}` : "ตามหมวดของ FG"}</small>
         </span>
+        {periodBlock}
       </div>
     );
   }
@@ -202,6 +210,7 @@ function KindCell({ line, editable, error, onPick }) {
           <b>{answer}</b>
           <small>พิมพ์เอง</small>
         </span>
+        {periodBlock}
       </div>
     );
   }
@@ -212,6 +221,7 @@ function KindCell({ line, editable, error, onPick }) {
       <AnswerButtons line={line} onPick={onPick} />
       {derivedHint ? <span className={styles.hint}>{derivedHint}</span> : null}
       {error ? <span className={styles.error} role="alert">{error}</span> : null}
+      {periodBlock}
     </div>
   );
 }
@@ -252,8 +262,9 @@ function FgCell({ line, editable, fgOptions, error, onChange }) {
 }
 
 /* ── ④ จำนวนรอบบริการ — ช่อง + ชิป "ทุกเดือน ≈ n" จากช่วงบริการ (แตะแล้วใส่ค่า · ไม่มีค่าตั้งต้นเงียบ ๆ)
-   ⚠️ ชิปเดียว (รายเดือน) ตามม็อก — คอลัมน์ ④ แคบ ชิปราย 2 สัปดาห์/ไตรมาสตัดบรรทัดกลางคำ · ความถี่อื่นพิมพ์เลขเอง ── */
-function RoundsEdit({ line, period, error, onChange }) {
+   ⚠️ ชิปเดียว (รายเดือน) ตามม็อก — คอลัมน์ ④ แคบ ชิปราย 2 สัปดาห์/ไตรมาสตัดบรรทัดกลางคำ · ความถี่อื่นพิมพ์เลขเอง
+   ⭐ โหมดแยกรายรายการที่รายการยังไม่มีช่วง (`periodWait`): ชิปเส้นประ "ทุกเดือน ≈ —" กดไม่ได้ + บอกเหตุที่ title (ม็อก PeriodSwitchPerLine) ── */
+function RoundsEdit({ line, period, periodWait, error, onChange }) {
   const chips = roundChipsFromPeriod(period).filter((chip) => chip.key === "monthly");
   const current = positiveIntOrNull(line.rounds);
   const chipValue = chips.find((chip) => chip.rounds === current)?.key ?? null;
@@ -281,6 +292,10 @@ function RoundsEdit({ line, period, error, onChange }) {
             options={chips.map((chip) => ({ value: chip.key, label: chip.label }))}
             ariaLabel={`ตั้งจำนวนรอบจากช่วงบริการ รายการ ${line.lineNo}`}
           />
+        </span>
+      ) : periodWait ? (
+        <span className={styles.chips}>
+          <span className={styles.chipWait} title={SERVICE_PERIOD_TEXT.roundsChipWaitTitle}>{SERVICE_PERIOD_TEXT.roundsChipWait}</span>
         </span>
       ) : null}
       {error ? <span className={styles.error} role="alert">{error}</span> : null}
@@ -439,7 +454,7 @@ function ZonePick({
 
 /* ── ก้อนโซน ③④⑤ ของรายการที่เป็นงานบริการ ── */
 function ZoneBlock({
-  line, editable, period, zonesById, sitesById, registry, takenLines, liveTerms, zoneErrors, noSites,
+  line, editable, period, periodWait, zonesById, sitesById, registry, takenLines, liveTerms, zoneErrors, noSites,
   highlightOf, onChange, onRoundsChange, onOpenBulk, canEditRounds, onRoundsSave, roundsLowStage,
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -525,7 +540,13 @@ function ZoneBlock({
   const roundsLow = lineRoundsLowText(positiveIntOrNull(line.rounds), period, { stage: editable ? "submit" : roundsLowStage });
 
   const roundsCell = editable ? (
-    <RoundsEdit line={line} period={period} error={highlightOf(lineFieldId(lineId, "rounds"))} onChange={onRoundsChange} />
+    <RoundsEdit
+      line={line}
+      period={period}
+      periodWait={periodWait}
+      error={highlightOf(lineFieldId(lineId, "rounds"))}
+      onChange={onRoundsChange}
+    />
   ) : (
     <RoundsRead line={line} canEditRounds={canEditRounds} onRoundsSave={onRoundsSave} />
   );
@@ -637,12 +658,23 @@ function ZoneBlock({
 
 /* ── แถวของรายการหนึ่ง ── */
 function GridLine({
-  line, editable, period, ctx, fgOptions, zonesById, sitesById, registry, takenLines, liveTerms, zoneErrors, noSites,
+  line, editable, period, periodMode, sameSource, ctx, fgOptions, zonesById, sitesById, registry, takenLines, liveTerms, zoneErrors, noSites,
   highlightOf, onLineChange, onLineReplace, onOpenBulk, canEditRounds, onRoundsSave, roundsLowStage,
 }) {
   const kindError = highlightOf(lineFieldId(line.lineId, "kind"));
   const zonesError = highlightOf(lineFieldId(line.lineId, "zones"));
   const isPackage = line.role === SERVICE_KIND_PACKAGE;
+  /* ช่วงที่ใช้กับรายการนี้ (ชิป "ทุกเดือน ≈ n" · คำเตือนรอบน้อย) — แยกรายรายการ = ช่วงของรายการเอง · ทั้งใบ = ช่วงของใบ */
+  const byLine = periodMode === SERVICE_PERIOD_MODE_LINE;
+  const linePeriod = periodMode === "line" ? line.period : period;
+  const periodField = lineFieldId(line.lineId, "period");
+  const periodProps = {
+    periodMode,
+    orderPeriod: period,
+    sameSource,
+    error: highlightOf(periodField),
+    onChange: (next) => onLineChange?.({ period: next }, [periodField]),
+  };
 
   const pickKind = (value) => {
     if (value === line.role) return;
@@ -672,7 +704,8 @@ function GridLine({
         <ZoneBlock
           line={line}
           editable={editable}
-          period={period}
+          period={linePeriod}
+          periodWait={byLine && !validServicePeriod(linePeriod)}
           zonesById={zonesById}
           sitesById={sitesById}
           registry={registry}
@@ -716,13 +749,13 @@ function GridLine({
   /* ป้ายสถานะเฉพาะโหมดแก้ของบรรทัดที่ต้องตอบ/ตั้ง (FG หมวดอื่นไม่มีอะไรให้ตั้ง) */
   const needsSetup = line.manual || isPackage;
   const pressed = lineFieldIds(line).some((fieldId) => highlightOf(fieldId));
-  const status = editable && needsSetup ? <LineStatus missing={lineMissing(line)} pressed={pressed} /> : null;
+  const status = editable && needsSetup ? <LineStatus missing={lineMissing(line, { periodMode })} pressed={pressed} /> : null;
 
   return (
     <div className={styles.line} data-kind={line.role}>
       <span className={styles.idx}>{line.lineNo}</span>
       <ItemCell line={line} status={status} />
-      <KindCell line={line} editable={editable} error={kindError} onPick={pickKind} />
+      <KindCell line={line} editable={editable} error={kindError} onPick={pickKind} period={periodProps} />
       {rest}
     </div>
   );
@@ -765,7 +798,9 @@ function GridFoot({ totals }) {
 }
 
 /**
- * @param lines บรรทัดที่จอวาด (`mergedLines` — ฐาน + ร่าง) · @param editable โหมดแก้ · @param period ช่วงบริการบนจอ (ชิปจำนวนรอบ)
+ * @param lines บรรทัดที่จอวาด (`mergedLines` — ฐาน + ร่าง) · @param editable โหมดแก้
+ * @param period ช่วงบริการของทั้งใบบนจอ (โหมดทั้งใบ: ชิปจำนวนรอบ + ช่วงอ่านอย่างเดียวใต้คำตอบ ‘ใช่’)
+ * @param periodMode โหมดช่วงบริการบนจอ ('whole' | 'line') — 'line' = ช่วงของรายการกรอกใต้คำตอบ ‘ใช่’ (`lines[i].period`)
  * @param ctx บริบทบนจอ (`localSetupCtx`) · @param totals `serviceSetupTotals(ctx)` · @param fgOptions `view.fgOptions`
  * @param zonesById / sitesById / registry / takenLines / liveTerms / zoneErrors / noSites — ของก้อนโซน
  * @param highlightOf `(fieldId) => ข้อความ|null` — ช่องที่แดง (หลังกดเท่านั้น)
@@ -774,10 +809,12 @@ function GridFoot({ totals }) {
  * @param roundsLowStage ท้ายคำเตือนรอบน้อยในโหมดอ่าน — 'approved' | 'read' · โหมดแก้ใช้ 'submit' เสมอ
  */
 export default function ServiceSetupGrid({
-  lines = [], editable = false, period = null, ctx, totals, fgOptions = [],
+  lines = [], editable = false, period = null, periodMode = "whole", ctx, totals, fgOptions = [],
   zonesById = new Map(), sitesById = new Map(), registry, takenLines = [], liveTerms = new Map(), zoneErrors = new Map(), noSites = false,
   highlightOf = () => null, onLineChange, onLineReplace, onOpenBulk, canEditRounds = false, onRoundsSave, roundsLowStage = "read",
 }) {
+  /* ต้นทางของปุ่ม "เหมือนรายการ n" — รายการงานบริการแรกที่มีช่วงแล้ว (คิดครั้งเดียวทั้งตาราง) */
+  const sameSource = useMemo(() => (periodMode === SERVICE_PERIOD_MODE_LINE && editable ? sameSourceOf(lines) : null), [periodMode, editable, lines]);
   return (
     <div className={styles.wrap}>
       <div className={styles.grid} role="group" aria-label="งานบริการรายรายการ">
@@ -788,6 +825,8 @@ export default function ServiceSetupGrid({
               line={line}
               editable={editable}
               period={period}
+              periodMode={periodMode}
+              sameSource={sameSource}
               ctx={ctx}
               fgOptions={fgOptions}
               zonesById={zonesById}

@@ -6,6 +6,11 @@
 // ⭐ การ์ดงานบริการ = ตาราง `ServiceSetupGrid` หนึ่งแถวต่อรายการ ①→⑥ ตามมติเจ้าของ 30/09 (เลือกทาง A 01/10 · ม็อก BindGridEdit):
 //   งานบริการ? → แพ็คเกจ FG → ไซต์ · โซน → จำนวนรอบบริการ → รอบละกี่แพ็ค → รวมแพ็ค + แถวรวมทุกรายการ
 //   ของบนการ์ด: หัว (ชิป "งานบริการครบ x/n รายการ") · แถบช่วงบริการ · ตาราง · ทางเพิ่มไซต์ D19 · ประกาศลูกค้าไม่มีไซต์
+// ⭐ ช่วงบริการสองโหมด (mig 0400 · มติเจ้าของ 01/10): สวิตช์ "ทั้งใบช่วงเดียว | แยกรายรายการ" บนแถบช่วงบริการ
+//   · โหมดบนจอ = `periodModeOfDraft` (ร่างถ้าสลับไว้ ไม่งั้นค่าที่บันทึก) · สลับ = `switchPeriodMode` (ยังไม่บันทึกจนกดบันทึก)
+//     🔴 สวิตช์ไม่เขียนช่วงใดลงร่าง — ค่าตั้งต้นหลังสลับคิดตอนวาด (`mergedLines` · `wholePeriodOfDraft`) ⇒ ร่างมีแต่ของที่คนแตะ
+//   · แยกรายรายการ: ช่วงของรายการกรอกในคอลัมน์ ① ของตาราง · แถบโชว์ช่วงรวม **จากรายการบนจอ** (`localEnvelope` — ไม่ใช่ `view.period`
+//     ซึ่งว่างจนกว่ารายการจะมีช่วงครบ) + ตัวนับ + โมดัล "ใช้ช่วงเดียวกันทุกรายการ"
 //   · แถบบันทึกลอย **นอกการ์ด** (ดูคอมเมนต์ที่แถบ) · id ของหน้า (`#service-setup`) อยู่ที่การ์ดนี้
 // ⭐ ร่างการแก้อยู่ที่ `useServiceSetup` (อยู่กับหน้า ไม่หายตอนสลับแท็บ) · บันทึก = PATCH ก้อนที่ต่างจากฐานเท่านั้น (ไม่ลองซ้ำ)
 //   · 409 ใบถูกแก้จากอีกหน้าต่าง → โหลดใหม่ + บอก (ร่างที่ยังต่างจากของใหม่ยังค้างให้บันทึกต่อ)
@@ -33,17 +38,19 @@ import ZonesBulkModal from "@/components/service/ZonesBulkModal";
 import { apiJson } from "@/lib/apiFetch";
 import { fmtNumber } from "@/lib/format";
 import {
-  SERVICE_REOPEN_TEXT, SERVICE_SETUP_EDIT_TEXT, SERVICE_SETUP_GRID_TEXT, SERVICE_SETUP_LIMITS, SERVICE_SETUP_SQL_MESSAGES,
-  serviceLineLabel, serviceSetupTotals,
+  SERVICE_KIND_PACKAGE, SERVICE_PERIOD_MODE_LINE, SERVICE_REOPEN_TEXT, SERVICE_SETUP_EDIT_TEXT, SERVICE_SETUP_GRID_TEXT, SERVICE_SETUP_LIMITS,
+  SERVICE_SETUP_SQL_MESSAGES, serviceLineLabel, serviceSetupTotals,
 } from "@/lib/sales/serviceSetup";
 import { registryIndex, zoneTakenMap } from "@/lib/service/zonePickerOptions";
+import ServicePeriodApplyAllModal from "./ServicePeriodApplyAllModal";
 import ServicePeriodField from "./ServicePeriodField";
 import ServiceRegistryPaths from "./ServiceRegistryPaths";
 import ServiceSetupGrid, { newZoneRowKey } from "./ServiceSetupGrid";
 import { SERVICE_REGISTRY_LOAD_FAILED } from "./useServiceSetup";
 import {
-  EMPTY_DRAFT, PERIOD_FIELD_ID, SAVE_FIELD_ID, SERVICE_SETUP_REVEAL_EVENT, ctxLineOf, fieldErrorsView, lineFieldId, linesCardMeta,
-  localSetupCtx, mergedLines, patchDraftLine, serviceCardMeta, setupPayload,
+  EMPTY_DRAFT, PERIOD_FIELD_ID, SAVE_FIELD_ID, SERVICE_SETUP_REVEAL_EVENT, applyPeriodToAllLines, ctxLineOf, fieldErrorsView, lineFieldId,
+  linePeriodCounters, linesCardMeta, localEnvelope, localSetupCtx, mergedLines, patchDraftLine, periodModeOfDraft, sameSourceOf,
+  serviceCardMeta, setupPayload, switchPeriodMode, wholePeriodOfDraft,
 } from "./serviceSetupDraft";
 import styles from "./SalesOrderServiceLines.module.css";
 
@@ -116,6 +123,7 @@ export default function SalesOrderServiceLines({
   const [notice, setNotice] = useState(null);
   const [touched, setTouched] = useState(() => new Set());
   const [bulkLineId, setBulkLineId] = useState(null);
+  const [applyAllOpen, setApplyAllOpen] = useState(false);
 
   /* แผงแดงชุดใหม่ = ช่องที่แก้ไปแล้วนับใหม่หมด */
   const pageHighlight = highlight instanceof Map ? highlight : EMPTY_MAP;
@@ -145,14 +153,27 @@ export default function SalesOrderServiceLines({
 
   const merged = useMemo(() => (view ? mergedLines(view, draft, { fgById }) : []), [view, draft, fgById]);
   const mergedById = useMemo(() => new Map(merged.map((line) => [line.lineId, line])), [merged]);
-  const ctx = useMemo(() => localSetupCtx(merged, zonesById), [merged, zonesById]);
+  /* โหมดช่วงบริการบนจอ — ตัวรวม (ชิป "งานบริการครบ x/n" · ป้ายรายการ) ถามโหมดจาก ctx: แยกรายรายการ = รายการต้องมีช่วงของตัวเองด้วย */
+  const periodMode = periodModeOfDraft(view, draft);
+  const byLine = periodMode === SERVICE_PERIOD_MODE_LINE;
+  const ctx = useMemo(() => localSetupCtx(merged, zonesById, { periodMode }), [merged, zonesById, periodMode]);
   const totals = useMemo(() => serviceSetupTotals(ctx), [ctx]);
   const takenLines = useMemo(() => merged.map((line) => ({ lineId: line.lineId, lineNo: line.lineNo, zones: line.zones })), [merged]);
   const liveTerms = useMemo(
     () => new Map((view?.liveTermsInfo || []).map((row) => [row.zoneId, row.orderNumbers || []])),
     [view?.liveTermsInfo],
   );
-  const period = Object.prototype.hasOwnProperty.call(draft, "period") ? draft.period : (view?.period || null);
+  /* ช่วงของทั้งใบบนจอ (โหมดทั้งใบ — ร่างถ้าพิมพ์ · ใบที่บันทึกเป็นแยกรายรายการแล้วร่างสลับมา = ช่วงรวมของรายการ · ไม่งั้นค่าที่บันทึก)
+     · ช่วงรวม + ตัวนับของรายการบนจอ (โหมดแยกรายรายการ — คิดจากช่วงของรายการ ครบหรือไม่ครบก็ได้) */
+  const period = useMemo(() => wholePeriodOfDraft(view, draft), [view, draft]);
+  const envelope = useMemo(() => localEnvelope(merged), [merged]);
+  const periodCounter = useMemo(() => linePeriodCounters(merged), [merged]);
+  /* ใบที่บันทึกเป็นแยกรายรายการ แล้วร่างสลับกลับทั้งใบ — บันทึกแล้วช่วงของรายการที่บันทึกไว้ถูกแทน (เตือน ไม่ใช่ข้อผิด) */
+  const pendingClear = view?.periodMode === SERVICE_PERIOD_MODE_LINE && !byLine ? Number(view?.linePeriods?.filled || 0) : 0;
+  const periodFieldIds = useMemo(
+    () => merged.filter((line) => line.role === SERVICE_KIND_PACKAGE).map((line) => lineFieldId(line.lineId, "period")),
+    [merged],
+  );
   const serviceLines = totals.packageLines + totals.unsetLines;
   const noSites = registry.loaded && !(registry.sites || []).some((site) => site?.isActive !== false);
 
@@ -190,6 +211,16 @@ export default function SalesOrderServiceLines({
   const changePeriod = (next) => {
     setDraft((current) => ({ ...current, period: next }));
     touch([PERIOD_FIELD_ID]);
+  };
+  /* สลับโหมด / ใช้ช่วงเดียวกันทุกรายการ = เติมช่วงให้หลายช่อง ⇒ ช่องที่ถูกเติมหายแดง (กฎ 3: แดงจากการกด หายเมื่อช่องถูกแก้) */
+  const changeMode = (next) => {
+    setDraft((current) => switchPeriodMode(view, current, next));
+    touch([PERIOD_FIELD_ID, ...periodFieldIds]);
+  };
+  const applyAll = (next) => {
+    setDraft((current) => applyPeriodToAllLines(view, current, next));
+    touch(periodFieldIds);
+    setApplyAllOpen(false);
   };
 
   const reloadQuietly = async () => {
@@ -343,11 +374,16 @@ export default function SalesOrderServiceLines({
 
         {view && serviceLines > 0 ? (
           <ServicePeriodField
-            period={period}
+            mode={periodMode}
+            period={byLine ? envelope : period}
             editable={editable}
             backfill={flow === "backfill"}
             error={highlightOf(PERIOD_FIELD_ID)}
+            counter={periodCounter}
+            pendingClear={pendingClear}
+            onModeChange={changeMode}
             onChange={changePeriod}
+            onApplyAll={() => setApplyAllOpen(true)}
           />
         ) : null}
 
@@ -367,6 +403,7 @@ export default function SalesOrderServiceLines({
             lines={merged}
             editable={editable}
             period={period}
+            periodMode={periodMode}
             ctx={ctx}
             totals={totals}
             fgOptions={view.fgOptions || []}
@@ -433,6 +470,14 @@ export default function SalesOrderServiceLines({
           existingCount={bulkLine.zones.filter((row) => row.zoneId).length}
           cap={SERVICE_SETUP_LIMITS.zonesPerLine}
           onAdd={addBulk}
+        />
+      ) : null}
+      {editable && byLine && applyAllOpen ? (
+        <ServicePeriodApplyAllModal
+          initial={sameSourceOf(merged)?.period || null}
+          count={periodCounter.total}
+          onApply={applyAll}
+          onClose={() => setApplyAllOpen(false)}
         />
       ) : null}
     </DetailCard>

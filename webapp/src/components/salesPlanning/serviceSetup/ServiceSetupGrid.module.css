@@ -3,12 +3,14 @@
    ก้อนโซนกินคอลัมน์ ③④⑤ ของหัว และเป็น grid ของตัวเอง `โซน | รอบ | แพ็ค` — แถวโซน (`.zoneRow`) เป็น display: contents
    ⇒ ช่องทั้งสามของโซนเดียวกันอยู่แถวเดียวกันเสมอ ไม่ต้องใช้ rowspan/inline style
    ⚠️ ไม่มี column-gap ทุกชั้น — ความกว้างคอลัมน์ ③ ของหัว = ก้อนโซน − รอบ − แพ็ค ต้องลงตัวพอดี (ระยะห่างอยู่ใน padding ของช่อง)
-   ⭐ เป็น container ของตัวเอง — คอลัมน์เอกสารแคบกว่า 900px (รางขวาไม่พับ · แท็บเล็ต · มือถือ) แถวพับเป็นการ์ดเรียง ①→⑥ */
+   ⭐ เป็น container ของตัวเอง — คอลัมน์เอกสารแคบกว่า 900px (รางขวาไม่พับ · แท็บเล็ต · มือถือ) แถวพับเป็นการ์ดเรียง ①→⑥
+   ⭐ คอลัมน์ ① กว้าง 156px (เดิม 132px · mig 0400) — ใต้คำตอบมีช่วงบริการของรายการ: ช่องวันเต็ม + ไอคอนปฏิทิน ต้องพอดีคอลัมน์
+     ส่วนที่เพิ่มเอาจากคอลัมน์ ③ (minmax(0, 1fr)) คอลัมน์อื่นไม่ขยับ */
 
 .wrap {
   --c-idx: 30px;
   --c-item: 130px;
-  --c-kind: 132px;
+  --c-kind: 156px;
   --c-fg: 152px;
   --c-rounds: 124px;
   --c-packs: 88px;
@@ -552,6 +554,13 @@
   text-align: right;
 }
 
+/* ช่อง ⑤ แคบกว่าช่อง ④ (ม็อก) — คอลัมน์ ⑤ กว้าง 88px: ช่อง 60px + "แพ็ค" ล้นขอบคอลัมน์ไปทับระยะของคอลัมน์ ⑥ 6px
+   (วัดจากจอจริง 01/10) · 48px = เลข 4 หลัก (สูงสุด 9999) พอดี และหน่วยอยู่ในคอลัมน์ */
+.packsCell .num input {
+  width: 48px;
+  padding-inline: var(--space-1-5);
+}
+
 .unit {
   color: var(--text-3);
   font-size: var(--fs-4);
@@ -560,6 +569,21 @@
 
 .chips {
   display: flex;
+}
+
+/* ชิป "ทุกเดือน ≈ —" — รายการยังไม่มีช่วงบริการ (โหมดแยกรายรายการ) คิดจำนวนรอบรายเดือนยังไม่ได้: เส้นประ กดไม่ได้ ไม่ใช่ข้อผิด
+   (ขนาดเท่า .choice-chip ที่จะมาแทนเมื่อใส่ช่วงแล้ว — แถวไม่ขยับ) */
+.chipWait {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  padding: var(--space-0-5) var(--space-2-5);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  color: var(--text-3);
+  font-size: var(--fs-6);
+  white-space: nowrap;
+  cursor: default;
 }
 
 .roundsRead {
@@ -754,9 +778,12 @@
 @container (max-width: 900px) {
   .head { display: none; }
 
+  /* ⚠️ align-items ต้องเป็น stretch — ค่า `start` ของผังตารางตามมาด้วย ทำให้ก้อนโซนกว้างตามเนื้อ (ชื่อไซต์ยาว)
+     แล้วล้นขอบการ์ดบนมือถือ (วัดจากจอจริง 01/10: 390px ล้น 6px พร้อมปุ่มลบโซน) */
   .line {
     display: flex;
     flex-direction: column;
+    align-items: stretch;
     gap: var(--space-2-5);
     padding: var(--space-3);
   }

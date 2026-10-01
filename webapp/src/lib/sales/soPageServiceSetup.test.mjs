@@ -10,7 +10,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { SERVICE_REOPEN_TEXT, SERVICE_REOPENED_TEXT, serviceSetupApprovalChecklist, serviceSetupWarnings } from './serviceSetup.js';
+import {
+  SERVICE_PERIOD_TEXT, SERVICE_REOPEN_TEXT, SERVICE_REOPENED_TEXT, serviceSetupApprovalChecklist, serviceSetupRevisionLine, serviceSetupWarnings,
+} from './serviceSetup.js';
+import { localSetupCtx, mergedLines } from '../../components/salesPlanning/serviceSetup/serviceSetupDraft.js';
 
 const SRC = path.resolve(process.cwd(), 'src');
 const PAGE = 'app/sales-planning/sales-orders/[id]/page.js';
@@ -448,4 +451,34 @@ test('0396: หลังเปิดแก้ — คำใต้สถานะ
   };
   const [first] = serviceSetupApprovalChecklist(ctx, { flow: 'backfill' });
   assert.equal(first, 'เหตุที่เปิดแก้: SA คีย์โซนผิด — รายการ 2 ต้องเป็นอีกโซน (Kamonrat Pipattanapong 30/09/2026)');
+});
+
+/* mig 0400 (มติเจ้าของ 01/10): ใบ Rev. ยกโหมดช่วงบริการ + ช่วงของรายการไปด้วย (`sales_order_copy_service_setup` รุ่น 0400/F2)
+   ⇒ บรรทัดของโมดัลออก Rev. ต้องรู้โหมดของก้อน GET — ใบแยกรายรายการ: ช่วงที่พิมพ์คือ "ช่วงรวม" (ท้ายคำบอกไว้) และรายการที่มีแต่
+   ช่วงของตัวเองก็นับ · หน้าใบแตะแค่ตรงนี้ (ช่วงของใบที่การ์ดชำระ/สัญญา/หัวใบอ่านยังเป็น `view.period` ตัวเดิม) */
+test('0400: บรรทัดของโมดัลออก Rev. ส่งโหมดช่วงบริการของก้อน GET (ใบและบริบทบนจอ) · ที่อื่นของหน้ายังอ่าน setupView.period ตัวเดิม', () => {
+  const fn = slice(page, 'const serviceRevisionLine = (view) => {', 'const afterServiceSaved');
+  assert.match(fn, /servicePeriodMode: view\.periodMode,/);
+  assert.match(fn, /servicePeriodFrom: view\.period\?\.from \?\? null, servicePeriodTo: view\.period\?\.to \?\? null,/);
+  assert.match(fn, /\.\.\.localSetupCtx\(mergedLines\(view\), zonesById, \{ periodMode: view\.periodMode \}\),/);
+  assert.equal(count(page, /periodMode/g), 3, 'หน้าใบรู้จักโหมดแค่ในบรรทัดออก Rev. — ตัวอ่านช่วงของใบตัวอื่นไม่ต้องรู้โหมด');
+
+  /* ของจริงผ่านตัวตัดสิน: ใบแยกรายรายการที่ช่วงครบ → ช่วงรวม + ท้ายคำ · ยังไม่ครบ (ช่วงของใบว่าง) → ขีด */
+  const view = {
+    periodMode: 'line', period: { from: '2026-09-02', to: '2027-09-25' },
+    zones: [{ id: 'Z1', siteId: 'S1' }],
+    lines: [
+      { lineId: 'L1', lineNo: 1, role: 'package', kind: 'package', serviceProductId: 'P1', serviceFgCode: 'FG-015-02-001-0908', rounds: 12, period: { from: '2026-09-02', to: '2027-09-01' } },
+      { lineId: 'L2', lineNo: 2, role: 'package', kind: 'package', serviceProductId: 'P1', serviceFgCode: 'FG-015-02-001-0908', rounds: 12, period: { from: '2026-09-26', to: '2027-09-25' } },
+    ],
+    allocations: [{ lineId: 'L1', zoneId: 'Z1', packsPerRound: 1, sortOrder: 0 }],
+  };
+  const lineOf = (v) => serviceSetupRevisionLine({
+    order: { id: 'SO1', origin: 'pipeline', servicePeriodMode: v.periodMode, servicePeriodFrom: v.period?.from ?? null, servicePeriodTo: v.period?.to ?? null },
+    ...localSetupCtx(mergedLines(v), new Map(v.zones.map((zone) => [zone.id, zone])), { periodMode: v.periodMode }),
+  });
+  assert.equal(lineOf(view), `คัดลอกงานบริการ 2 รายการ · 1 โซน · ช่วงบริการ 02/09/2026–25/09/2027${SERVICE_PERIOD_TEXT.envelopeSuffix} ไปใบ Rev.`);
+  assert.equal(lineOf({ ...view, period: null }), `คัดลอกงานบริการ 2 รายการ · 1 โซน · ช่วงบริการ —${SERVICE_PERIOD_TEXT.envelopeSuffix} ไปใบ Rev.`);
+  assert.equal(lineOf({ ...view, periodMode: 'whole', lines: view.lines.map((line) => ({ ...line, period: null })) }),
+    'คัดลอกงานบริการ 2 รายการ · 1 โซน · ช่วงบริการ 02/09/2026–25/09/2027 ไปใบ Rev.', 'โหมดทั้งใบ = ประโยคเดิมทุกตัวอักษร');
 });

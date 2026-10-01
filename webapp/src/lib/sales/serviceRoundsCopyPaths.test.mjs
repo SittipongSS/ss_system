@@ -100,6 +100,9 @@ const REVISION_RESETS = new Set([
   /* ช่วงบริการ (mig 0392) — ก๊อปไปใบ Rev. โดย sales_order_copy_service_setup (0392 P2) — ยามนี้อ่านแค่ INSERT
      จึงมองไม่เห็น · soServiceSetupCopyPaths.test.mjs ยืนยันแทน */
   'servicePeriodFrom', 'servicePeriodTo',
+  /* โหมดของช่วงบริการ (mig 0400 · 'whole' | 'line') — ก๊อปไปใบ Rev. โดย sales_order_copy_service_setup ตัวเดียวกัน (0400 เขียนทับ
+     ให้ยกโหมด + ช่วงของรายการไปด้วย) ไม่ใช่ INSERT ของฟังก์ชันออก Rev. · soServiceSetupCopyPaths.test.mjs ยืนยันแทน */
+  'servicePeriodMode',
   /* ตราเปิดงาน + สถานะตั้งงานบริการย้อนหลัง (mig 0392) — ตั้งใจไม่ก๊อป — ใบ Rev. เปิดงานบริการใหม่ตอนอนุมัติของตัวเอง
      · สถานะตั้งย้อนหลังเป็นของใบเดิม */
   'serviceTermsOpenedAt', 'serviceSetupState',
@@ -197,6 +200,9 @@ const DRAFT_OWNED = new Set([
   'serviceSetupSubmittedAt', 'serviceSetupSubmittedById', 'serviceSetupSubmittedByName',
   'serviceSetupRejectedAt', 'serviceSetupRejectedById', 'serviceSetupRejectedByName', 'serviceSetupRejectedReason',
   'serviceSetupApprovedAt', 'serviceSetupApprovedById', 'serviceSetupApprovedByName',
+  /* โหมดของช่วงบริการ (mig 0400) — ใบใหม่จากใบเสนอราคาเริ่มที่ค่าตั้งต้นของคอลัมน์ 'whole' (ทั้งใบช่วงเดียว) ·
+     ฝ่ายขายสลับเป็น "แยกรายรายการ" ที่การ์ดงานบริการของใบสั่งขาย (ไม่มีอะไรบนใบเสนอราคาให้ยก) */
+  'servicePeriodMode',
   /* การเปิดแก้งานบริการหลังอนุมัติ (mig 0396) — มีได้เฉพาะใบ pipeline ที่อนุมัติแล้ว (CHECK `sales_orders_service_setup_reopen_shape`)
      ใบใหม่จากใบเสนอราคายังไม่เคยอนุมัติ ⇒ ว่างโดยนิยาม */
   'serviceSetupReopenedAt', 'serviceSetupReopenedById', 'serviceSetupReopenedByName', 'serviceSetupReopenedReason',
