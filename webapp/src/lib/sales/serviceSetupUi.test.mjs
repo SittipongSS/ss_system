@@ -753,13 +753,26 @@ test('ช่องค้นหา/ช่องกรอกทุกช่อง�
   assert.match(code('components/service/ZonesBulkModal.js'), /type="search"\s*autoComplete="off"/);
 });
 
-test('① งานบริการ? ไม่มีค่าตั้งต้น — ค่ามาจากชนิดของบรรทัด (ยังไม่รู้ = null) · ตัวเลือกจาก SERVICE_KIND_OPTIONS · ลูกศรไม่เปลี่ยนคำตอบเอง', () => {
+test('① งานบริการ? ไม่มีค่าตั้งต้น — ปุ่มแยก ✓ ใช่ / ✕ ไม่ใช่ จาก SERVICE_KIND_OPTIONS · ยังไม่ตอบ = ไม่มีปุ่มไหนถูกเลือก + คำชวน · ลูกศรไม่เปลี่ยนคำตอบเอง', () => {
   const grid = code(`${FOLDER}/ServiceSetupGrid.js`);
-  const seg = grid.slice(grid.indexOf('<Segmented'), grid.indexOf('/>', grid.indexOf('<Segmented')));
-  assert.match(seg, /value=\{line\.role === SERVICE_ROLE_UNSET \? null : line\.role\}/);
-  assert.match(seg, /options=\{SERVICE_KIND_OPTIONS\.map\(/);
-  assert.match(seg, /activationMode="manual"/, 'ตอบ "ไม่ใช่" ล้างแพ็คเกจ/โซน — ห้ามเปลี่ยนตอนกดลูกศรผ่าน');
+  const answer = grid.slice(grid.indexOf('function AnswerButtons('), grid.indexOf('/* ── ① งานบริการ? ── */'));
+  assert.match(answer, /const value = line\.role === SERVICE_ROLE_UNSET \? null : line\.role;/, 'ยังไม่รู้ = null (ไม่มีค่าตั้งต้น)');
+  assert.match(answer, /\{SERVICE_KIND_OPTIONS\.map\(\(option, index\) => \{/);
+  assert.match(answer, /role="radiogroup"/);
+  assert.match(answer, /role="radio"\s+aria-checked=\{on\}/);
+  assert.match(answer, /onClick=\{\(\) => onPick\(option\.value\)\}/);
+  /* ตอบ "ไม่ใช่" ล้างแพ็คเกจ/โซน — ลูกศรย้ายโฟกัสอย่างเดียว ห้ามเรียก onPick */
+  const move = answer.slice(answer.indexOf('const moveFocus'), answer.indexOf('return ('));
+  assert.match(move, /buttons\.current\[next\]\?\.focus\(\);/);
+  assert.doesNotMatch(move, /onPick/);
+  assert.match(answer, /\{answered \? null : <span className=\{styles\.answerAsk\}>\{SERVICE_SETUP_GRID_TEXT\.pickAnswer\}<\/span>\}/);
+  assert.equal(SERVICE_SETUP_GRID_TEXT.pickAnswer, 'เลือกคำตอบ');
+  assert.doesNotMatch(grid, /Segmented/, 'แถบสองช่องในกรอบเดียวดูเป็นแถบเทาแถบเดียวตอนยังไม่ตอบ (ภาพของเจ้าของ 01/10)');
   assert.match(grid, /id=\{lineFieldId\(line\.lineId, "kind"\)\} data-invalid=\{error \? "" : undefined\}/);
+  const css = read(`${FOLDER}/ServiceSetupGrid.module.css`);
+  assert.match(css, /--c-kind: 132px;/, 'คอลัมน์ ① กว้างพอสองปุ่ม — "ไม่ใช่" ไม่ชนขอบ');
+  assert.match(css, /\.kind\[data-invalid\] \.answerButton \{\s*border-color: var\(--red\);/);
+  assert.match(css, /\.answerAsk \{[^}]*color: var\(--accent-ink\);/, 'คำชวนไม่ใช่สีแดง (กฎ 3)');
 });
 
 test('กฎ 3: สีแดงมาหลังกดเท่านั้น — ทุก invalid/data-invalid/data-bad อ้างผลหลังกด (highlight · error · pressed · blocked)', () => {

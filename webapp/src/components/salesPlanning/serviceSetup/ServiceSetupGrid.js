@@ -17,13 +17,12 @@
 // 🔴 กฎ 3: ไม่มีสีแดงก่อนกด — แดงมาจาก `highlightOf` (แผงแดงหลังกดยื่น · บันทึกไม่ผ่าน) เท่านั้น
 // ⚠️ ข้อความข้อมูล (รอบขายของใบอื่นที่ยังมีผล · อยู่รายการอื่นด้วย · ผลประเมิน) ไม่เคยแดง
 // ⚠️ ไม่เติมจำนวนแพ็คจากผลประเมินให้เอง — ปุ่ม "ใช้" ข้างผลประเมินคือการเลือกของคน (ไม่มีค่าตั้งต้นเงียบ ๆ)
-import { useEffect, useMemo, useState } from "react";
-import { ListPlus, Lock, Pencil, Plus, Sigma, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, ListPlus, Lock, Pencil, Plus, Sigma, Trash2, X } from "lucide-react";
 import Button from "@/components/ui/Button";
 import ChoiceChips from "@/components/ui/ChoiceChips";
 import Input from "@/components/ui/Input";
 import SearchableSelect from "@/components/ui/SearchableSelect";
-import Segmented from "@/components/ui/Segmented";
 import { NA, fmtNumber, naText } from "@/lib/format";
 import {
   SERVICE_KIND_NOT_SERVICE, SERVICE_KIND_OPTIONS, SERVICE_KIND_PACKAGE, SERVICE_ROLE_UNSET, SERVICE_SETUP_GRID_TEXT, SERVICE_SETUP_LIMITS,
@@ -31,6 +30,7 @@ import {
 } from "@/lib/sales/serviceSetup";
 import { SERVICE_ROUNDS_EDIT_TEXT, normalizeServiceRounds } from "@/lib/sales/serviceRoundsEntry";
 import { zonePickerOptions, zoneTakenMap } from "@/lib/service/zonePickerOptions";
+import { nextEnabledIndex } from "@/lib/ui/selectionNavigation";
 import { zonesBulkCapText } from "@/components/service/zonesBulkPlan";
 import ServiceFgPicker from "./ServiceFgPicker";
 import {
@@ -126,6 +126,56 @@ function ItemCell({ line, status }) {
   );
 }
 
+/* ── ปุ่มคำตอบของ ① — สองปุ่มแยก ✓ ใช่ / ✕ ไม่ใช่ (ม็อก PeriodSwitch · เจ้าของ 01/10) ──
+   🐞 เดิมเป็นแถบสองช่องในกรอบเดียว (Segmented): ตอนยังไม่ตอบดูเป็นแถบเทาแถบเดียวเหมือนกดไม่ได้ และ "ไม่ใช่" ชนขอบคอลัมน์
+   ⭐ ยังไม่ตอบ = ทั้งสองปุ่มขอบชัดพื้นขาว + คำชวน "เลือกคำตอบ" · ตอบแล้ว = ปุ่มที่เลือกเติมสี อีกปุ่มจางลง (ยังกดเปลี่ยนได้)
+   ⚠️ ลูกศรย้ายโฟกัสอย่างเดียว ไม่เปลี่ยนคำตอบ — ตอบ "ไม่ใช่" ล้างแพ็คเกจ/โซนของบรรทัด ห้ามเปลี่ยนตอนกดลูกศรผ่าน */
+function AnswerButtons({ line, onPick }) {
+  const buttons = useRef([]);
+  const value = line.role === SERVICE_ROLE_UNSET ? null : line.role;
+  const answered = value !== null;
+  const moveFocus = (event, index) => {
+    const next = nextEnabledIndex(SERVICE_KIND_OPTIONS, index, event.key);
+    if (next < 0) return;
+    event.preventDefault();
+    buttons.current[next]?.focus();
+  };
+  return (
+    <>
+      <div
+        className={styles.answer}
+        role="radiogroup"
+        aria-label={`${SERVICE_SETUP_GRID_TEXT.kindQuestion} รายการ ${line.lineNo}`}
+        data-answered={answered ? "" : undefined}
+      >
+        {SERVICE_KIND_OPTIONS.map((option, index) => {
+          const on = option.value === value;
+          const Icon = option.value === SERVICE_KIND_PACKAGE ? Check : X;
+          return (
+            <button
+              key={option.value}
+              ref={(node) => { buttons.current[index] = node; }}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              className={styles.answerButton}
+              data-answer={option.value}
+              title={option.description}
+              tabIndex={on || (!answered && index === 0) ? 0 : -1}
+              onClick={() => onPick(option.value)}
+              onKeyDown={(event) => moveFocus(event, index)}
+            >
+              <Icon size={13} aria-hidden="true" />
+              <span>{option.label}</span>
+            </button>
+          );
+        })}
+      </div>
+      {answered ? null : <span className={styles.answerAsk}>{SERVICE_SETUP_GRID_TEXT.pickAnswer}</span>}
+    </>
+  );
+}
+
 /* ── ① งานบริการ? ── */
 function KindCell({ line, editable, error, onPick }) {
   const category = line.categoryCode || null;
@@ -159,14 +209,7 @@ function KindCell({ line, editable, error, onPick }) {
   return (
     <div className={styles.kind} id={lineFieldId(line.lineId, "kind")} data-invalid={error ? "" : undefined}>
       <StackLabel step="kind" />
-      <Segmented
-        className={styles.yn}
-        value={line.role === SERVICE_ROLE_UNSET ? null : line.role}
-        onChange={onPick}
-        options={SERVICE_KIND_OPTIONS.map((option) => ({ value: option.value, label: option.label, title: option.description }))}
-        ariaLabel={`${SERVICE_SETUP_GRID_TEXT.kindQuestion} รายการ ${line.lineNo}`}
-        activationMode="manual"
-      />
+      <AnswerButtons line={line} onPick={onPick} />
       {derivedHint ? <span className={styles.hint}>{derivedHint}</span> : null}
       {error ? <span className={styles.error} role="alert">{error}</span> : null}
     </div>
