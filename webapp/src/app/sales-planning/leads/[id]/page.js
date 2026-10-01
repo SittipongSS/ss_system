@@ -48,7 +48,7 @@ import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmo
 /* ⭐ `link_deal`/`unlink_deal` (mig 0371 · มติผู้ใช้ 2026-09-22) = ผูก/ถอดดีลย้อนหลัง — แยกจาก create_deal
    เพราะเวลาที่บันทึกคือเวลาผูก ไม่ใช่เวลาเปิดดีลจริง · ป้าย followup/reassign/auto_bounce เคยตกหล่น
    (อยู่ใน CHECK ตั้งแต่ mig 0291 แต่ขึ้นเป็นชื่อ kind ดิบบนไทม์ไลน์) — เติมพร้อมกันในรอบนี้ */
-const EVENT_LABELS = { create: "รับลีดเข้าระบบ", screen: "คัดกรองและส่งทีม", assign: "มอบหมายผู้รับผิดชอบ", reassign: "เปลี่ยนผู้รับผิดชอบ", contact: "ติดต่อลูกค้า", followup: "ติดตามต่อ", meeting: "นัดหมาย", qualify: "สร้างดีล", create_deal: "สร้างดีลจากลีดนี้", link_deal: "ผูกดีลย้อนหลัง", unlink_deal: "ถอดดีลออกจากลีด", bounce: "ส่งกลับคิวคัดกรอง", auto_bounce: "ระบบส่งกลับคิวคัดกรองอัตโนมัติ", disqualify: "ปิดลีด — ไม่ไปต่อ", update: "แก้ไขข้อมูลลีด" };
+const EVENT_LABELS = { create: "รับลีดเข้าระบบ", screen: "คัดกรองและส่งทีม", assign: "มอบหมายผู้รับผิดชอบ", reassign: "เปลี่ยนผู้รับผิดชอบ", contact: "ติดต่อลูกค้า", followup: "ติดตามต่อ", meeting: "นัดหมาย", qualify: "สร้างดีล", create_deal: "สร้างดีลจากลีดนี้", link_deal: "ผูกดีลย้อนหลัง", unlink_deal: "ถอดดีลออกจากลีด", bounce: "ส่งกลับคิวคัดกรอง", auto_bounce: "ระบบส่งกลับคิวคัดกรองอัตโนมัติ", disqualify: "ปิดลีด — ไม่ไปต่อ", reopen: "ลูกค้ากลับมา — เปิดลีดใหม่", update: "แก้ไขข้อมูลลีด" };
 
 /* เนื้อของเหตุการณ์ระบบบนไทม์ไลน์
    🐞 ของเดิมโชว์แค่ `reason` กับ `assigneeName` ⇒ **เวลานัดและรูปแบบนัดที่ AE กรอกทุกครั้ง
@@ -352,6 +352,18 @@ export default function LeadDetailPage() {
           ]}
         />
 
+        {/* ⭐ เหตุผลที่ไม่ไปต่อ — **บนสุดของใบ** (มติผู้ใช้ 2026-10-01) · เดิมเป็นบรรทัดท้ายการ์ดสรุป
+            ต้องเลื่อนลงไปหา ทั้งที่คำถามแรกของคนเปิดใบที่ปิดแล้วคือ "ทำไมไม่ไปต่อ"
+            (และเป็นข้อมูลที่ใช้ตัดสินว่าจะกด "ลูกค้ากลับมา" ไหม) · ย้าย ไม่ใช่เพิ่ม — ที่เดียวบนจอ
+            ⚠️ `leadLostText` อ่านออกทั้งใบใหม่ (รหัส + ข้อความ) และใบเก่าที่มีแต่ข้อความ */}
+        {lead.status === "disqualified" && (
+          <div className={styles.lostBanner} role="note">
+            <span>ไม่ไปต่อเพราะ</span>
+            <strong>{leadLostText(lead)}</strong>
+            {lead.revisitAt && <em>นัดกลับมาถามใหม่ {fmtDate(lead.revisitAt)}</em>}
+          </div>
+        )}
+
         {/* จุดจัดการเดียวของลีด — เดินหน้า (คัดกรอง/มอบหมาย/ติดต่อ) และจัดการตัว
             ระเบียน (แก้ไข/ลบ) อยู่การ์ดเดียวกัน แยกด้วยช่องตามน้ำหนักของ action */}
         <DetailPageLayout aside={<>
@@ -613,13 +625,6 @@ function LeadSummary({ lead }) {
         <span>ติดตามต่อ</span>
         <strong className={styles.followUpValue} data-tone={leadFollowUpState(lead.followUpAt)}>{fmtDate(lead.followUpAt)}</strong>
       </div>
-    )}
-    {/* ⭐ เหตุผลที่ไม่ไปต่อ (mig 0290) — เดิม `disqualifiedReason` ถูกเขียนลง DB ทุกใบ
-        แต่ **ไม่มีจอไหนอ่านเลย** อ่านได้ทางเดียวคือไล่ดูไทม์ไลน์ด้านซ้าย · ใบที่ปิดแล้ว
-        คำถามแรกของคนเปิดดูคือ "ทำไมไม่ไปต่อ" จึงควรอยู่ตรงนี้
-        ⚠️ `leadLostText` อ่านออกทั้งใบใหม่ (รหัส + ข้อความ) และใบเก่าที่มีแต่ข้อความ */}
-    {lead.status === "disqualified" && (
-      <div className={styles.summaryRow}><span>ไม่ไปต่อเพราะ</span><strong>{leadLostText(lead)}</strong></div>
     )}
   </DetailCard>;
 }

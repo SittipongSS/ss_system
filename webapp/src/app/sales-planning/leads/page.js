@@ -34,7 +34,7 @@ import RecordActionMenu from "@/components/ui/RecordActionMenu";
 import { buildLeadTransitionPayload, createLeadLifecycle, leadDealAction, LEAD_TRANSITION_ACTIONS } from "@/lib/sales/leadLifecycle";
 import useLeadWorkload from "@/lib/sales/useLeadWorkload";
 import {
-  LEAD_CHANNELS, LEAD_CHANNEL_LABELS, channelGroupOf, LEAD_STATUSES, LEAD_STATUS_LABELS,
+  LEAD_CHANNELS, LEAD_CHANNEL_LABELS, channelGroupOf, LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_LOST_LABELS, leadLostText,
   LEAD_SLA_STAGES, leadSlaNote, leadBudgetText, SERVICE_INTEREST_LABELS,
   canEditLead, canDeleteLead, canCreateLead, canCreateDealFromLead, slaPendingTone, leadFollowUpState,
   LEAD_SORT_DEFAULT, leadSortDefaultDir, sortLeads,
@@ -326,7 +326,8 @@ export default function LeadsPage() {
       if (channelFilter.length && !channelFilter.includes(l.channel)) return false;
       if (!q) return true;
       // ค้นด้วยชื่อ *ปัจจุบัน* — ไม่งั้นพิมพ์ชื่อใหม่ของ AE แล้วหาลีดของเขาไม่เจอ
-      return [l.contactName, l.company, l.phone, l.email, l.details, assigneeNameOf(l)].some((v) => (v || "").toLowerCase().includes(q));
+      // เหตุผลไม่ไปต่อโชว์บนแถวแล้ว ⇒ ต้องค้นเจอ (กฎ: ตาเห็นบนแถว = ค้นเจอ)
+      return [l.contactName, l.company, l.phone, l.email, l.details, assigneeNameOf(l), l.status === "disqualified" ? leadLostText(l, "") : ""].some((v) => (v || "").toLowerCase().includes(q));
     });
 
     return sortLeads(result, sortKey, sortDir);
@@ -740,6 +741,15 @@ export default function LeadsPage() {
                     </td>
                     <td style={{ textAlign: "center" }}>
                         {statusBadge(lead.status)}
+                        {/* ⭐ เหตุผลที่ไม่ไปต่อ (มติผู้ใช้ 2026-10-01) — กวาดตาลงคอลัมน์แล้วต้องรู้ว่า
+                            ใบไหนแค่เงียบ/ยังไม่พร้อม (ลูกค้ากลับมาได้) ใบไหนแพ้จริง ไม่ต้องเปิดทีละใบ
+                            ป้ายสั้น = หัวข้อ · ข้อความเต็มอยู่ใน title · ใบเก่าก่อน mig 0290 ไม่มีรหัส
+                            ขึ้นข้อความที่พิมพ์ไว้แทน (ตัดด้วย ellipsis) */}
+                        {lead.status === "disqualified" && (
+                          <span className={styles.lostWhy} title={leadLostText(lead)}>
+                            {LEAD_LOST_LABELS[lead.disqualifiedCode] || leadLostText(lead)}
+                          </span>
+                        )}
                         {/* ⭐ ใบที่ถูกส่งกลับโผล่ในคิวคัดกรอง **เหมือนลีดใหม่ทุกประการ**
                             (bounce ล้าง team/assignee ทิ้ง) ⇒ ผู้ดูแลคัดเข้าทีมเดิม
                             มอบคนเดิม แล้ววนรอบใหม่ · เพดาน 2 รอบกันได้แค่รอบที่ 3

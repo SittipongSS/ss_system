@@ -28,7 +28,12 @@ import {
   LEAD_FOLLOW_UP_ACTIONS,
   LEAD_LOST_REASONS,
   LEAD_LOST_REVISIT_CODES,
+  LEAD_REOPEN_FOLLOW_UP_STATUSES,
   canWorkLead,
+  canReopenLead,
+  leadReopenStatus,
+  leadReopenBlockedReason,
+  leadLostText,
 } from "@/lib/sales/leads";
 import { LEAD_ASSIGNEE_ROLES } from "@/lib/sales/leadAssignee";
 import { AUTO_BOUNCE_MAX_ROUNDS } from "@/lib/sales/leadAutoBounce";
@@ -38,7 +43,7 @@ import { withWorkload } from "@/lib/sales/leadWorkload";
    — ไม่ใช่ความชอบของฝั่งหน้าจอ แต่เป็นข้อบังคับของ API
    🐞 เคยประกาศ contact เป็น "optional" (#864) → กดยืนยันโดยไม่พิมพ์ได้ แล้วโดน 400
    เทสต์ `leadLifecycle.test.mjs` อ่าน route.js จริงมาเทียบกับลิสต์นี้ ดริฟต์แล้วแดง */
-export const LEAD_REASON_REQUIRED = ["contact", "followup", "bounce", "disqualify"];
+export const LEAD_REASON_REQUIRED = ["contact", "followup", "bounce", "disqualify", "reopen"];
 
 const reasonRule = (action) => (LEAD_REASON_REQUIRED.includes(action) ? "required" : "none");
 
@@ -61,7 +66,7 @@ const STATUS_DESCRIPTION = {
   contacted: "ติดต่อลูกค้าแล้ว นัดประชุมหรือเปิดดีลต่อได้",
   meeting: "นัดประชุมแล้ว — เปิดดีลต่อได้ · นัดเพิ่มหรือเลื่อนนัดได้อีกจากที่นี่",
   qualified: "เปิดดีลจากลีดนี้แล้ว งานย้ายไปติดตามที่ดีล",
-  disqualified: "ปิดลีด ไม่ไปต่อ — เหตุผลอยู่ในประวัติ",
+  disqualified: "ปิดลีด ไม่ไปต่อ — ลูกค้ากลับมาเมื่อไร ดึงใบนี้กลับมาทำต่อได้",
 };
 
 /* แถบเส้นทางบนการ์ด — ยุบ contacted/meeting เป็นขั้นเดียว ("ติดต่อ/นัดหมาย")
@@ -534,12 +539,54 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
           },
         ],
       },
+      {
+        /* ⭐ ลูกค้ากลับมา (มติผู้ใช้ 2026-10-01) — ทางออกเดียวของใบที่ปิด "ไม่ไปต่อ"
+           กลับไป **สถานะก่อนปิด** (`leadReopenStatus`) เจ้าของเดิม ประวัติเดิม
+           ⚠️ `to: null` — ปลายทางขึ้นกับใบ · handler เขียนสถานะเอง
+           ⚠️ visible = สิทธิ์ (เจ้าของลีด + ผู้มีอำนาจเหนือกว่า) · allow = ติดด่าน (ลีดซ้ำ)
+              ⇒ คนมีสิทธิ์เห็นปุ่มเสมอ กดไม่ได้ก็บอกเหตุ (กฎ ui-visibility) */
+        id: "reopen",
+        label: "ลูกค้ากลับมา — เปิดลีดใหม่",
+        rowLabel: "ลูกค้ากลับ",
+        rowTone: "green",
+        kind: "reopen",
+        slot: "primary",
+        from: allowedFrom("reopen"),
+        to: null,
+        reason: reasonRule("reopen"),
+        visible: (lead, user) => canReopenLead(user, lead),
+        allow: (lead) => leadReopenBlockedReason(lead) || true,
+        context: (lead) => [
+          { label: "ปิดไว้เพราะ", value: leadLostText(lead) },
+          lead?.revisitAt && { label: "นัดกลับมาถามใหม่", value: fmtDate(lead.revisitAt) },
+          { label: "กลับไปที่ขั้น", value: LEAD_STATUS_LABELS[leadReopenStatus(lead)] },
+          lead?.assigneeName && { label: "ผู้รับผิดชอบ", value: lead.assigneeName },
+        ].filter(Boolean),
+        reasonPolicy: {
+          title: "ลูกค้ากลับมา — เปิดลีดใหม่",
+          description: "ลีดกลับไปขั้นก่อนปิด ผู้รับผิดชอบและประวัติเดิมอยู่ครบ",
+          label: "ลูกค้ากลับมาอย่างไร",
+          placeholder: "เช่น ลูกค้าทัก LINE กลับมาขอใบเสนอราคา หลังเงียบไปสองสัปดาห์",
+        },
+        fields: [
+          {
+            name: "followUpAt",
+            label: "วันติดตามต่อ",
+            type: "date",
+            required: true,
+            /* เฉพาะใบที่กลับไปขั้นติดต่อ/นัด — ขั้นก่อนหน้านั้นยังไม่มีใครรับปากลูกค้าไว้
+               (นาฬิกาของขั้นนั้นเริ่มนับใหม่เองที่ handler) */
+            visible: (lead) => LEAD_REOPEN_FOLLOW_UP_STATUSES.includes(leadReopenStatus(lead)),
+            hint: "วันติดตามเดิมหมดอายุไปแล้ว — ใส่วันที่จะกลับไปหาลูกค้ารอบนี้",
+          },
+        ],
+      },
     ],
   });
 }
 
 /* transition ที่ต้องส่งไป `POST /transition` (ที่เหลือหน้าจัดการเอง) */
-export const LEAD_TRANSITION_ACTIONS = ["screen", "assign", "reassign", "contact", "followup", "meeting", "bounce", "disqualify"];
+export const LEAD_TRANSITION_ACTIONS = ["screen", "assign", "reassign", "contact", "followup", "meeting", "bounce", "disqualify", "reopen"];
 
 /* ── "เปิดดีลจากลีดนี้" = action เดี่ยว ไม่ใช่ขั้นในเส้นทาง ────────────────────
    มติผู้ใช้ 2026-08-04: **เปิดดีลได้ตั้งแต่ติดต่อแล้ว หรือจะรอนัดประชุมก่อนก็ได้**
@@ -602,10 +649,10 @@ export function buildLeadTransitionPayload({ action, values = {}, users = [] } =
     revisitAt: action === "disqualify" ? values.revisitAt || undefined : undefined,
     meetingMode: action === "meeting" ? values.meetingMode || undefined : undefined,
     eventAt: eventAt && !Number.isNaN(eventAt.getTime()) ? eventAt.toISOString() : undefined,
-    /* ⚠️ ส่งเฉพาะ action ที่ API รับ (LEAD_FOLLOW_UP_ACTIONS) — ส่งไปกับ action อื่น
+    /* ⚠️ ส่งเฉพาะ action ที่ API รับ (LEAD_FOLLOW_UP_ACTIONS + reopen) — ส่งไปกับ action อื่น
        ไม่พังวันนี้เพราะ handler ไม่อ่าน แต่เป็นทางที่ payload จะเริ่มโกหกว่า
        "ทุก action มีวันติดตาม" · ค่ามาจาก DateInput เป็น ISO วันล้วน (YYYY-MM-DD)
        handler แปลงเป็น timestamptz เอง */
-    followUpAt: LEAD_FOLLOW_UP_ACTIONS.includes(action) ? values.followUpAt || undefined : undefined,
+    followUpAt: LEAD_FOLLOW_UP_ACTIONS.includes(action) || action === "reopen" ? values.followUpAt || undefined : undefined,
   };
 }
