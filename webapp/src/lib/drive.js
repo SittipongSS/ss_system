@@ -638,11 +638,14 @@ async function clearFolderCache(entityType, entityId) {
 }
 
 // ดึงไฟล์เป็น stream (ใช้ใน proxy ดาวน์โหลด + ZIP export).
-export async function getFileStream(driveFileId) {
+// `signal` (ไม่บังคับ) = AbortSignal ของผู้เรียก ส่งต่อเป็นตัวเลือกของคำขอ — ตัดได้ทั้งตอนรอหัวคำตอบและตอน
+//   เนื้อไฟล์ไหลค้าง (stream จะ error) · ตัวเตรียมรูปของรายงานประเมินพื้นที่ใช้ตั้งเพดาน 30 วินาทีต่อไฟล์
+//   (`lib/service/surveyReportImages.js`) · ไม่ส่ง = พฤติกรรมเดิมทุกอย่าง ไม่มีเพดานเวลา
+export async function getFileStream(driveFileId, { signal } = {}) {
   const drive = getDrive();
   const res = await drive.files.get(
     { fileId: driveFileId, alt: 'media', supportsAllDrives: true },
-    { responseType: 'stream' },
+    signal ? { responseType: 'stream', signal } : { responseType: 'stream' },
   );
   return res.data; // Node Readable stream
 }

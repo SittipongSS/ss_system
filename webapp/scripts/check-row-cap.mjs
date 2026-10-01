@@ -106,6 +106,10 @@ const CAPS = {
   material_prices: 1, // 2026-09-22 ม-148: attachRowPrice ซอย .in() เป็นก้อน (คิวทั้งหน้าอ่านราคา) 2 → 1
   audit_logs: 0,
   document_updates: 0,
+  /* 2026-10-01 — mig 0401 (เอกสารประเมินพื้นที่ SU-…): ตารางใหม่ ขึ้นทะเบียนตั้งแต่ยังว่าง (แพตเทิร์นเดียวกับ service_assets) ·
+     หนึ่งแถวต่อฉบับ (Rev) ของทุกใบที่ส่งผล ⇒ โตตามธุรกรรมไม่มีวันหยุด · ทุกจุดอ่านวันนี้มีขอบเขตครบ (`.limit()` ใน
+     lib/service/surveyReportRows.js · ที่เหลือค้นด้วย id แถวเดียว) — จุดอ่านใหม่ที่ไม่มีขอบเขตจะแดงตั้งแต่วันแรก */
+  service_survey_reports: 0,
 };
 const GROWING_TABLES = Object.keys(CAPS);
 

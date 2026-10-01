@@ -7,10 +7,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   SEND_CLOSABLE_VISIT_STATES,
+  SURVEY_SEND_OLD_PAGE_ERROR,
+  SURVEY_SEND_PREFLIGHT_MS,
+  SURVEY_SEND_REPORT_FAILED,
+  SURVEY_SEND_REPORT_OFF,
+  SURVEY_SEND_WARNINGS_CHANGED_ERROR,
   closeSurveyVisitForSend,
   surveySendCloseBody,
   surveySendConfirm,
+  surveySendDiffBaseline,
+  surveySendDocumentRefusal,
   surveySendDoneText,
+  surveySendImageRefusal,
+  surveySendReport,
+  surveySendUnseenWarnings,
   surveySendVisitStep,
   surveySendWrites,
 } from './surveySendClose.js';
@@ -366,4 +376,145 @@ test('🐞 ส่งกลับค้างอยู่ = โมดัลบอ
     assert.equal(plain.effects.length, 3);
     assert.ok(plain.effects.every((line) => !/ส่งกลับ/.test(line)));
   }
+});
+
+/* ══ ส่งผล = ออกเอกสารประเมินด้วย (สเปก PR-2 §2 · §8) ═══════════════════════════════════════
+ * ตรรกะล้วนของ route ส่งผล — เทสต์ระดับ route (ของปลอมทั้งเส้น) อยู่ที่ surveySendRoute.test.mjs */
+
+test('⭐ โมดัลยืนยัน: ไม่ส่งสามตัวใหม่ (issuesDocument · replacesDocNo · warnings) = ผลเท่าเดิมทุกตัวอักษร', () => {
+  const base = { docNo: 'AS-26090001', closesVisit: closes(), sendBackPending: { itemCount: 2 }, sizeReview: { text: 'พื้นที่ 1 ยังไม่ได้เทียบขนาด' } };
+  const before = surveySendConfirm(base);
+  for (const extra of [
+    {}, { issuesDocument: false }, { issuesDocument: false, replacesDocNo: 'SU-26100001-0' },
+    { warnings: null }, { warnings: [] }, { warnings: ['', '   ', null, 7] }, { issuesDocument: undefined, replacesDocNo: null, warnings: undefined },
+  ]) {
+    assert.deepEqual(surveySendConfirm({ ...base, ...extra }), before, JSON.stringify(extra));
+  }
+  assert.deepEqual(Object.keys(before), ['effects', 'confirmLabel']);
+  assert.ok(before.effects.every((line) => !/เอกสารประเมิน|ฉบับลูกค้า/.test(line)));
+});
+
+test('โมดัลยืนยัน: ส่งผลที่ออกเอกสารด้วยบอกก่อนกด — ข้อออกเอกสารต่อจากข้อปิดนัด · คำเตือนทีละข้อ · ป้ายปุ่มไม่เปลี่ยน', () => {
+  const warnings = [
+    'หมายเหตุพื้นที่ 1 มีคำว่า "เครื่อง" — ฉบับลูกค้าไม่ควรเอ่ยถึงเครื่อง ตรวจข้อความก่อนส่ง',
+    'ชื่อพื้นที่ 2 มีอักขระที่เอกสารพิมพ์ไม่ได้ (😀 U+1F600) — จะขึ้นเป็นกล่องสี่เหลี่ยม',
+  ];
+  const c = surveySendConfirm({ docNo: 'AS-26090001', closesVisit: closes(), issuesDocument: true, warnings });
+  assert.equal(c.confirmLabel, 'ส่งผลและปิดนัด');
+  assert.equal(c.effects.length, 7);
+  assert.match(c.effects[2], /^ปิดนัด SV-2609001/);
+  assert.equal(c.effects[3],
+    'ออกเอกสารประเมิน (เลข SU) ไปพร้อมกัน — ฝ่ายขายดาวน์โหลดฉบับลูกค้าได้ที่หน้าคำร้อง · เอกสารที่ออกแล้วแก้ไม่ได้ (แก้ = ดึงผลกลับแล้วส่งใหม่เป็น Rev ถัดไป)');
+  // คำเตือนพิมพ์ตามที่ server ให้มา ไม่ตัด ไม่แก้ — จอส่งสตริงชุดเดียวกันนี้กลับเป็น seenWarnings
+  assert.equal(c.effects[4], `ฉบับลูกค้าจะพิมพ์ตามที่กรอกไว้ — ${warnings[0]}`);
+  assert.equal(c.effects[5], `ฉบับลูกค้าจะพิมพ์ตามที่กรอกไว้ — ${warnings[1]}`);
+  assert.equal(c.effects[6], 'ใบจะจบเมื่อฝ่ายขายกด “ปิดเรื่อง”', 'ข้อปิดท้ายยังเป็นข้อสุดท้าย');
+
+  // ส่งรอบใหม่หลังดึงกลับ — บอกเลขฉบับที่ถูกแทนที่ · ไม่มีนัดต้องปิด = ป้าย "ส่งผล"
+  const again = surveySendConfirm({ docNo: 'AS-26090001', issuesDocument: true, replacesDocNo: ' SU-26100001-0 ' });
+  assert.equal(again.confirmLabel, 'ส่งผล');
+  assert.equal(again.effects.length, 4);
+  assert.match(again.effects[2], /^ออกเอกสารประเมินฉบับใหม่ \(Rev ถัดไป\) แทน SU-26100001-0 ที่ใช้ไม่ได้แล้ว — /);
+});
+
+test('ค่าคงที่ของเส้นส่งผล: งบรอบตรวจรูป 60 วิ · ประโยคตีกลับตรงตามสเปก · report ตอนสวิตช์ปิด', () => {
+  assert.equal(SURVEY_SEND_PREFLIGHT_MS, 60_000);
+  assert.equal(SURVEY_SEND_OLD_PAGE_ERROR, 'หน้านี้เป็นรุ่นเก่า — โหลดหน้าใหม่ก่อนส่งผล (การส่งผลจะออกเอกสาร SU ด้วย)');
+  assert.equal(SURVEY_SEND_WARNINGS_CHANGED_ERROR, 'ข้อความบนเอกสารเปลี่ยนไปหลังเปิดหน้า — โหลดหน้าใหม่แล้วอ่านคำเตือนก่อนส่งอีกครั้ง');
+  assert.deepEqual(SURVEY_SEND_REPORT_OFF, { state: 'off' });
+  assert.ok(Object.isFrozen(SURVEY_SEND_REPORT_OFF));
+});
+
+test('คำเตือนที่จอยังไม่เห็น: เทียบสตริงตรงตัว · ข้อที่จอส่งมาเกินไม่นับ · ของที่ไม่ใช่สตริงถูกข้าม', () => {
+  const w = ['หมายเหตุพื้นที่ 1 มีคำว่า "เครื่อง"', 'ที่อยู่ มีอักขระที่เอกสารพิมพ์ไม่ได้'];
+  assert.deepEqual(surveySendUnseenWarnings(w, [...w]), []);
+  assert.deepEqual(surveySendUnseenWarnings(w, [w[1], 'ข้อที่หายไปแล้ว', w[0]]), []);
+  assert.deepEqual(surveySendUnseenWarnings(w, [w[0]]), [w[1]]);
+  assert.deepEqual(surveySendUnseenWarnings(w, []), w);
+  assert.deepEqual(surveySendUnseenWarnings(w, [`${w[0]} `, w[1].slice(0, 10)]), w, 'ช่องว่างเกิน/ตรงบางส่วน = ยังไม่เห็น');
+  assert.deepEqual(surveySendUnseenWarnings(w, [{ text: w[0] }, 1, null]), w);
+  assert.deepEqual(surveySendUnseenWarnings(w, null), w);
+  assert.deepEqual(surveySendUnseenWarnings([], ['อะไรก็ได้']), []);
+  assert.deepEqual(surveySendUnseenWarnings(null, null), []);
+});
+
+test('🔴 รูปเปิดไม่ได้: ตีกลับเฉพาะไฟล์ที่เสียถาวร พร้อมชื่อไฟล์ · ล้มชั่วคราว (Drive · เวลา · sharp) ไม่ตีกลับ', () => {
+  const transient = [
+    { attId: 'A1', fileName: 'a.jpg', reason: 'drive_timeout', permanent: false },
+    { attId: 'A2', fileName: 'b.jpg', reason: 'timeout', permanent: false },
+    { attId: 'A3', fileName: 'c.jpg', reason: 'sharp_unavailable', permanent: false },
+    { attId: 'A4', fileName: 'd.jpg', reason: 'upload_failed', permanent: false },
+    { attId: 'A5', fileName: 'e.jpg', reason: 'drive_error' }, // ไม่บอกชนิด = ไม่ใช่ถาวร
+  ];
+  assert.equal(surveySendImageRefusal(transient), null);
+  assert.equal(surveySendImageRefusal([]), null);
+  assert.equal(surveySendImageRefusal(null), null);
+
+  const broken = [
+    ...transient,
+    { attId: 'B1', fileName: 'IMG_0001.jpg', reason: 'undecodable', permanent: true },
+    { attId: 'B2', fileName: 'ผัง ชั้น 2.png', reason: 'drive_not_found', permanent: true },
+  ];
+  assert.equal(surveySendImageRefusal(broken),
+    'รูป 2 รูปเปิดไม่ได้ — อัปใหม่เป็น JPG แล้วส่งอีกครั้ง (ชื่อไฟล์ IMG_0001.jpg · ผัง ชั้น 2.png) · ยังไม่ได้ส่งผล');
+  // ชื่อซ้ำ (ไฟล์เดียวกันอัปสองที่) พิมพ์ครั้งเดียว แต่จำนวนนับตามไฟล์ · ไม่มีชื่อ = รหัสไฟล์แนบ
+  assert.equal(surveySendImageRefusal([
+    { attId: 'B1', fileName: 'S__1.jpg', permanent: true }, { attId: 'B2', fileName: 'S__1.jpg', permanent: true },
+    { attId: 'B3', fileName: '', permanent: true },
+  ]), 'รูป 3 รูปเปิดไม่ได้ — อัปใหม่เป็น JPG แล้วส่งอีกครั้ง (ชื่อไฟล์ S__1.jpg · B3) · ยังไม่ได้ส่งผล');
+});
+
+test('🔴 เอกสารออกไม่ได้: ตีกลับเฉพาะเหตุของใบ (content) · เหตุของระบบ (system) ไม่ขวางการส่งผล', () => {
+  assert.equal(surveySendDocumentRefusal([]), null);
+  assert.equal(surveySendDocumentRefusal(null), null);
+  assert.equal(surveySendDocumentRefusal([
+    { kind: 'system', text: 'ยังไม่มีข้อมูลบริษัทที่เผยแพร่' }, { kind: 'system', text: 'อ่านนัดไม่สำเร็จ' },
+    { kind: 'อื่น', text: 'ชนิดที่ไม่รู้จัก' }, { text: 'ไม่มีชนิด' },
+  ]), null);
+  assert.equal(surveySendDocumentRefusal([
+    { kind: 'system', text: 'ยังไม่มีแบบฟอร์มที่เผยแพร่' },
+    { kind: 'content', text: 'ภาพผังของพื้นที่ 1 เป็น PDF' },
+    { kind: 'content', text: 'ฉบับลูกค้า: หน้า 2 ล้น' },
+    { kind: 'content', text: 'ภาพผังของพื้นที่ 1 เป็น PDF' },
+    { kind: 'content', text: '  ' },
+  ]), 'ออกเอกสารไม่ได้ — ภาพผังของพื้นที่ 1 เป็น PDF | ฉบับลูกค้า: หน้า 2 ล้น · ยังไม่ได้ส่งผล');
+});
+
+test('🔴 ฐานของส่วนต่าง = แถวแรก (ใหม่ก่อน) ที่พก meta.totals — แถวคำตอบรุ่นก่อนที่ไม่มียอดถูกข้าม', () => {
+  const t = (n) => ({ zones: n, areaSqm: n * 10, packageQty: n });
+  assert.equal(surveySendDiffBaseline([]), null);
+  assert.equal(surveySendDiffBaseline(null), null);
+  assert.equal(surveySendDiffBaseline([{ kind: 'answer', meta: { dept: 'TS' } }, { kind: 'answer', meta: null }, { kind: 'answer' }]), null);
+  // ส่ง → "ยังไม่จบ" → ส่ง: ไม่มีแถวดึงกลับ ฐานคือแถวคำตอบของรอบก่อน
+  assert.deepEqual(surveySendDiffBaseline([{ kind: 'answer', meta: { dept: 'TS', totals: t(2) } }]), t(2));
+  // ดึงกลับ → ส่ง → ดึงกลับ: แถวดึงกลับล่าสุดมาก่อน (ยอดเท่ากับการส่งรอบนั้น)
+  assert.deepEqual(surveySendDiffBaseline([
+    { kind: 'recall', meta: { totals: t(3) } }, { kind: 'answer', meta: { dept: 'TS', totals: t(3) } },
+    { kind: 'recall', meta: { totals: t(2) } },
+  ]), t(3));
+  // แถวคำตอบก่อน PR-2 ไม่มียอด ⇒ ถอยไปแถวดึงกลับ (พฤติกรรมเดิม)
+  assert.deepEqual(surveySendDiffBaseline([{ kind: 'answer', meta: { dept: 'TS' } }, { kind: 'recall', meta: { totals: t(1) } }]), t(1));
+  // ยอดที่ไม่ใช่ object ไม่นับ
+  assert.deepEqual(surveySendDiffBaseline([{ meta: { totals: 'x' } }, { meta: { totals: [1] } }, { meta: { totals: t(4) } }]), t(4));
+});
+
+test('🔴 report ของคำตอบ: หยิบทีละคีย์ (id ของแถวเอกสารไม่ออก) · ผลที่อ่านไม่ออก = failed ที่กดซ้ำได้', () => {
+  const issued = {
+    state: 'issued', code: null, docNo: 'SU-26100001-0', rev: 0, reused: false, reasons: [], reason: null, retry: false,
+    warnings: ['คำเตือน 1', '', null], reportId: 'SVR-ลับ', snapshot: { v: 1 },
+  };
+  assert.deepEqual(surveySendReport(issued), { state: 'issued', docNo: 'SU-26100001-0', rev: 0, reused: false, warnings: ['คำเตือน 1'] });
+  assert.deepEqual(surveySendReport({ ...issued, rev: 2, reused: true, warnings: undefined }),
+    { state: 'issued', docNo: 'SU-26100001-0', rev: 2, reused: true, warnings: [] });
+
+  const failed = { state: 'failed', code: 'images_failed', docNo: null, rev: null, reused: false, reasons: ['a.jpg'], reason: 'ดึงรูปจาก Drive ไม่สำเร็จ 1 รูป', retry: true, warnings: [], reportId: null };
+  assert.deepEqual(surveySendReport(failed), { state: 'failed', code: 'images_failed', reason: 'ดึงรูปจาก Drive ไม่สำเร็จ 1 รูป', retry: true });
+  assert.deepEqual(surveySendReport({ ...failed, code: 'undecodable', retry: false }).retry, false);
+  assert.equal(surveySendReport({ ...failed, retry: 'yes' }).retry, false, 'retry ต้องเป็น true ตรงตัว');
+
+  const fallback = { state: 'failed', code: 'internal', reason: SURVEY_SEND_REPORT_FAILED, retry: true };
+  for (const odd of [null, undefined, {}, 'issued', { state: 'issued' }, { state: 'issued', docNo: '  ' }, { state: 'อื่น', docNo: 'SU-1' }]) {
+    assert.deepEqual(surveySendReport(odd), fallback, JSON.stringify(odd));
+  }
+  assert.deepEqual(surveySendReport({ state: 'failed' }), { state: 'failed', code: 'internal', reason: SURVEY_SEND_REPORT_FAILED, retry: false });
 });

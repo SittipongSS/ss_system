@@ -214,3 +214,27 @@ test('🔴 ลงคิวใหม่หลังนัดปิด/หาย �
   const rework = askActionUpdate('commit-due', ask, { dept: 'TS', previousDueDate: '2026-10-08' });
   assert.match(rework.body, /รอบแก้ 14\/10\/2026 \(รอบก่อน 08\/10\/2026\)/);
 });
+
+/* ⭐ ยอดที่ส่งออกไปกับคำตอบ (ใบประเมินพื้นที่) ต้องอยู่ใน meta ของแถว `answer` — การส่งรอบถัดไปหยิบมาเทียบ "เก่า → ใหม่"
+   (สเปกเอกสารประเมิน PR-2 §2 S7) · ใบที่ถูกเปิดกลับด้วย "ยังไม่จบ" ไม่มีแถวอื่นเก็บยอดไว้ให้ */
+test('⭐ ตอบเรื่อง: ส่ง totals มา = meta พกยอด · ไม่ส่ง = meta เท่าเดิมทุกตัว (หัวข้ออื่นไม่กระทบ)', () => {
+  const ask = { dept: 'TS', docNo: 'RQ-AS-26090186' };
+  const totals = { zones: 2, areaSqm: 173.31, packageQty: 2, packagesBySize: { SM: 1, ST: 1 } };
+
+  const plain = askActionUpdate('answer', ask, { summary: '2 พื้นที่' });
+  assert.deepEqual(plain.meta, { dept: 'TS' });
+
+  const withTotals = askActionUpdate('answer', ask, { summary: '2 พื้นที่', totals });
+  assert.deepEqual(withTotals.meta, { dept: 'TS', totals });
+  assert.equal(withTotals.kind, 'answer');
+  assert.equal(withTotals.body, plain.body, 'ยอดอยู่ใน meta ไม่ใช่ในข้อความ (ข้อความถูกตัดที่ 200 ตัวอักษร)');
+
+  // ของที่ไม่ใช่ object = ไม่เขียนคีย์ (ตัวอ่านฝั่งส่งผลข้ามแถวที่ไม่มียอด)
+  for (const odd of [null, undefined, 0, 'x', [1, 2]]) {
+    assert.deepEqual(askActionUpdate('answer', ask, { totals: odd }).meta, { dept: 'TS' });
+  }
+  // action อื่นไม่พกยอด แม้ผู้เรียกส่งมา
+  for (const action of ['close', 'reopen', 'acknowledge', 'cancel']) {
+    assert.equal('totals' in askActionUpdate(action, ask, { totals, reason: 'เหตุผล' }).meta, false, action);
+  }
+});

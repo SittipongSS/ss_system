@@ -574,11 +574,15 @@ test('🔴 route ดึงกลับต้องล้างตราปิด
   assert.doesNotMatch(code, /committedDueDate/);
 });
 
-test('🔴 ส่งผลรอบใหม่ต้องหยิบตัวเลขเดิมจากแถว recall มาเทียบ', () => {
+/* 🔄 PR-2 §2 S7 (มติ 14): ฐานของส่วนต่าง = ยอดของ **รอบที่ตอบล่าสุด** บนแถว `answer` · แถว `recall` เป็นทางสำรอง
+   (แถว `answer` ก่อน PR-2 ไม่มียอด) — เดิมอ่านแค่ `.eq('kind', 'recall')` ซึ่งเทียบผิดรอบเมื่อใบถูกเปิดกลับด้วย "ยังไม่จบ"
+   พฤติกรรมทั้งสามสถานการณ์ทดสอบที่ระดับ route ใน `surveySendRoute.test.mjs` */
+test('🔴 ส่งผลรอบใหม่ต้องหยิบตัวเลขของรอบที่ตอบล่าสุดมาเทียบ — แถว answer ก่อน แถว recall เป็นทางสำรอง', () => {
   const send = readFileSync(
     new URL('../../app/api/service/surveys/[id]/send/route.js', import.meta.url), 'utf8');
   assert.match(send, /surveyTotalsDiff\(/);
-  assert.match(send, /\.eq\('kind', 'recall'\)/, 'ต้องอ่านแถวดึงกลับล่าสุด');
+  assert.match(send, /\.in\('kind', \['answer', 'recall'\]\)/, 'ต้องอ่านทั้งแถวคำตอบและแถวดึงกลับ');
+  assert.match(send, /surveySendDiffBaseline\(/, 'ฐานของส่วนต่างต้องมาจากตัวเลือกแถวตัวเดียว');
 });
 
 /* ══ ส่งผลปิดนัดให้ด้วย (มติเจ้าของ 24/09 ข้อ 2) ═══════════════════════════
