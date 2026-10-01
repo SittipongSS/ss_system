@@ -34,7 +34,7 @@ import {
   salesOrderRevisionChainDeleteBlock,
 } from '@/lib/sales/salesOrderWorkflow';
 import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
-import { parseDeliveryDueDate } from '@/lib/sales/salesOrderDeliveryDue';
+import { DELIVERY_DUE_AMEND_TEXT, deliveryDueAmendError, parseDeliveryDueDate } from '@/lib/sales/salesOrderDeliveryDue';
 import {
   freezeInstallments, historicalCancelSettleReady, installmentMoveColumnError, loadCarrySources, loadInstallments, loadMovedOut,
 } from '@/lib/sales/salesOrderInstallmentsStore';
@@ -792,6 +792,39 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     return ok(before);
   }
 
+  /* ── แก้กำหนดส่งสินค้าบนใบที่อนุมัติแล้ว (มติผู้ใช้ 2026-09-29) ──────────────
+     ⭐ วันส่งไม่ใช่เงินและไม่อยู่ในสิ่งที่ผู้อนุมัติเซ็น ⇒ แก้ได้โดยไม่ต้องออก Rev. (เหตุผลเต็มที่
+       `deliveryDueAmendError`) · ด่านตัวเดียวกับดินสอบนจอ · ใบร่าง/ตีกลับแก้ที่ action `save` ตามเดิม
+     ⚠️ FM-SA-04 ที่ยื่นแล้วถ่ายวันส่งไว้ในภาพนิ่ง — ที่นี่ไม่แตะเอกสารเหล่านั้น (ร่างอ่านสดจาก SO) */
+  if (action === 'set_delivery_due') {
+    const canEdit = canEditSalesPlanning(user) && inSalesEditScope(user, before.deal);
+    const gate = deliveryDueAmendError(before, { canEdit });
+    if (gate) return fail(gate, 409);
+    const deliveryDue = parseDeliveryDueDate(body.deliveryDueDate);
+    if (!deliveryDue.ok) return badRequest(deliveryDue.error);
+    /* ⚠️ ทางนี้ **ตั้ง/เลื่อน** วันส่งเท่านั้น ไม่ล้าง — ช่องวันที่ที่ถูกลบจนว่าง (หรือพิมพ์ค้างครึ่งทาง) ส่ง '' มา
+       ⇒ ถ้ารับ = วันส่งของใบที่อนุมัติแล้วหายเงียบพร้อมข้อความ "บันทึกแล้ว" · ไม่มีคีย์มาเลยก็ตีกลับด้วยเหตุเดียวกัน */
+    if (!deliveryDue.value) return badRequest(DELIVERY_DUE_AMEND_TEXT.empty);
+    if ((before.deliveryDueDate || null) === deliveryDue.value) return ok(before);
+
+    /* `.eq('status', 'approved')` = ด่านซ้ำที่แถวจริง — อีกหน้าต่างย้อนอนุมัติ/ยกเลิกระหว่างด่านกับการเขียน ⇒ 409 */
+    const { data, error } = await supabase.from('sales_orders')
+      .update({ deliveryDueDate: deliveryDue.value, updatedAt: new Date().toISOString() })
+      .eq('id', id).eq('status', 'approved').select().maybeSingle();
+    if (error) return fail(`บันทึกกำหนดส่งไม่สำเร็จ: ${error.message}`, 500);
+    if (!data) return fail('สถานะใบสั่งขายเปลี่ยนแล้ว กรุณาโหลดใหม่', 409);
+
+    const dateText = (value) => value || 'ยังไม่ตกลงวันส่ง';
+    await recordAudit({
+      user, action: 'update', entityType: 'sales_order', entityId: id,
+      before: { deliveryDueDate: before.deliveryDueDate || null },
+      after: { deliveryDueDate: deliveryDue.value },
+      summary: `แก้กำหนดส่งสินค้าใบสั่งขาย ${before.orderNumber} (อนุมัติแล้ว): ${dateText(before.deliveryDueDate)} → ${dateText(deliveryDue.value)}`,
+      request: req,
+    });
+    return ok(data);
+  }
+
   if (action === 'set-doc-language') {
     const language = body.language === 'en' ? 'en' : (body.language === 'th' ? 'th' : null);
     if (!language) return badRequest('ภาษาเอกสารต้องเป็น "th" หรือ "en" เท่านั้น');
@@ -1002,8 +1035,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
        แก้ได้เหลือ **หมายเหตุ + เอกสารอ้างอิง + กำหนดส่งสินค้า** เท่านั้น
        ⭐ `deliveryDueDate` (0363) แก้ได้ตอนใบยังเป็นร่าง — วันส่งมักตกลงหลังตั้งใบร่าง
           ⚠️ ส่งคีย์มาเมื่อไร = ทับค่าเดิม (ส่ง '' = ล้างค่า) · ไม่ส่งมาเลย = ไม่แตะของเดิม
-          ⚠️ ใบที่อนุมัติแล้วแก้ที่นี่ไม่ได้ (ติดด่านสถานะบรรทัดบน) — เลื่อนวันส่งของใบที่
-             อนุมัติแล้วต้องออก Rev. ตามกติกาเดิมของเอกสาร */
+          ⚠️ ใบที่อนุมัติแล้วแก้ที่นี่ไม่ได้ (ติดด่านสถานะบรรทัดบน) — ใบที่อนุมัติแล้วแก้วันส่งผ่าน
+             action `set_delivery_due` (มติ 2026-09-29 · ไม่ต้องออก Rev. · ด่าน `deliveryDueAmendError`) */
     // ⚠️ เพดาน 200 = ด่านเดียวกับ CHECK ของ mig 0235 — ตัดที่นี่ก่อนถึง DB เพื่อไม่ให้
     // คนกรอกเจอ error ภาษาอังกฤษของ Postgres · ยาวกว่านี้แปลว่ากำลังใช้ช่องนี้เป็น
     // ช่องหมายเหตุ ซึ่งมี `notes` อยู่แล้วข้างล่าง
