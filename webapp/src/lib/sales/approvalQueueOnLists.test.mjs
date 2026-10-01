@@ -182,7 +182,8 @@ test('⭐ คิวบนหัวทะเบียนใบสั่งขา�
   // แถวชนิดนี้มีเฉพาะเปลือกงานขาย — เปลือกบัญชีเป็นคิวปิดใบ
   assert.match(page, /const serviceReviewRow = \(o\) => !financeShell && !!o\._awaitingMyServiceReview;/);
   const queue = slice(page, '<ApprovalQueue', 'renderAction=');
-  assert.match(queue, /primary=\{\(o\) => \(serviceReviewRow\(o\) \? `\$\{SERVICE_REVIEW_LABEL\} · \$\{o\.orderNumber\}` : o\.orderNumber\)\}/);
+  /* ใบที่เปิดแก้หลังอนุมัติ (mig 0396) ป้าย "แก้งานบริการ (หลังอนุมัติ)" มากับแถว (`serviceReview.label` ของ server) · ไม่มี = "งานบริการ (ใบเดิม)" */
+  assert.match(queue, /primary=\{\(o\) => \(serviceReviewRow\(o\) \? `\$\{o\.serviceReview\?\.label \|\| SERVICE_REVIEW_LABEL\} · \$\{o\.orderNumber\}` : o\.orderNumber\)\}/);
   assert.match(queue, /: serviceReviewRow\(o\)\s*\? serviceReviewLine\(o\)/, 'บรรทัดรองของแถวงานบริการเป็นของมันเอง ไม่ใช่ยอดเงิน');
   assert.match(page, /const SERVICE_REVIEW_LABEL = "งานบริการ \(ใบเดิม\)";/);
 
@@ -201,6 +202,10 @@ test('⭐ คิวบนหัวทะเบียนใบสั่งขา�
   assert.match(line, /แต่ละครั้ง \$\{naText\(review\.zones\)\} โซนใน/);
   const route = read('app/api/sales-planning/sales-orders/route.js');
   assert.match(route, /roundsLabel: serviceRoundsText\(totals\),/, 'ยังไม่มีรอบ = null — จอขึ้นขีดผ่าน naText (ห้ามขีดดิบ · audit:ui)');
+  /* ป้ายของใบที่เปิดแก้ = ตัวตัดสินกลาง `serviceSetupReopened` + คำจากแคตตาล็อก (ภาคผนวก A.4) — จอ/route ไม่พิมพ์คำเอง */
+  assert.match(route, /reopened: !!serviceSetupReopened\(row\),/);
+  assert.match(route, /label: serviceSetupReopened\(row\) \? SERVICE_REOPENED_TEXT\.queueLabel : null,/);
+  assert.doesNotMatch(page, /แก้งานบริการ \(หลังอนุมัติ\)/, 'คำอยู่ที่ SERVICE_REOPENED_TEXT.queueLabel ที่เดียว');
   assert.doesNotMatch(route, /รอบ\/โซน/);
   assert.doesNotMatch(line, /fmtMoney|actualAmount|totalAmount/, 'แถวงานบริการไม่พูดยอด — การอนุมัตินี้ไม่แตะยอด');
 

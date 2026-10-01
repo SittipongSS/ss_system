@@ -8,9 +8,11 @@
 //   ทั้งที่โซนยังถูกใบนั้นถืออยู่และจะยื่นใหม่ได้
 //   (1) ร่าง · รออนุมัติ · ตีกลับ · ย้อนการอนุมัติแล้ว → กลุ่ม "ยังไม่อนุมัติ" (ป้ายสถานะของระบบ `SALES_ORDER_STATUS_LABELS`)
 //   (2) อนุมัติแล้ว · ไม่ถูก Rev. ทับ · ยังไม่ประทับ · ไม่ใช่ใบย้อนหลัง → กลุ่ม "ตั้งย้อนหลัง" (สถานะการตั้งย้อนหลัง)
+//       · ใบที่เปิดแก้งานบริการหลังอนุมัติ (mig 0396 · `serviceSetupReopened`) → กลุ่ม "แก้หลังอนุมัติ" (ป้าย "ฝ่ายขายกำลังแก้" ฯลฯ)
+//         คำเดียวกับแท็บ TS "รอฝ่ายขายตั้งงานบริการ (ใบเดิม)" — ใบเดียวกันต้องไม่ถูกเล่าสองแบบ (ตรวจทาน ui-zone-chip-reopened-label)
 //   (3) ที่เหลือ (ยกเลิก · ออก Rev. แล้ว · ประทับแล้ว · ใบย้อนหลังที่อนุมัติแล้ว) → ไม่มีป้าย
 import { SALES_ORDER_STATUS_LABELS } from '@/lib/sales/salesOrderWorkflow';
-import { SERVICE_BACKFILL_STATE_LABELS, serviceBackfillState } from '@/lib/sales/serviceSetup';
+import { SERVICE_BACKFILL_STATE_LABELS, SERVICE_REOPENED_TEXT, serviceBackfillState, serviceSetupReopened } from '@/lib/sales/serviceSetup';
 import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
 import { SETUP_ORDER_GROUP } from '@/lib/service/zoneSetupOrderText';
 
@@ -21,7 +23,7 @@ const UNAPPROVED_STATUSES = ['draft', 'pending_approval', 'rejected', 'approval_
 
 /**
  * สถานะการตั้งงานบริการของใบที่ถือโซนไว้ — `{ group, key, label } | null`
- * @param order แถว sales_orders ที่มี `status, supersededById, serviceTermsOpenedAt, serviceSetupState, origin`
+ * @param order แถว sales_orders ที่มี `status, supersededById, serviceTermsOpenedAt, serviceSetupState, origin, serviceSetupReopenedAt`
  */
 export function setupOrderState(order) {
   if (!order) return null;
@@ -31,12 +33,13 @@ export function setupOrderState(order) {
   if (order.status === 'approved' && !order.supersededById && !order.serviceTermsOpenedAt && !isHistoricalOrder(order)) {
     /* มีรายการโซนของใบนี้อยู่แล้ว (เราเจอมันจาก sales_order_line_zones) = ฝ่ายขายเริ่มตั้งแล้ว ⇒ ไม่มีวัน "ยังไม่เริ่ม" */
     const key = serviceBackfillState(order, { hasDraftData: true });
+    if (serviceSetupReopened(order)) return { group: SETUP_ORDER_GROUP.reopened, key, label: SERVICE_REOPENED_TEXT.stateLabel(key) };
     return { group: SETUP_ORDER_GROUP.backfill, key, label: SERVICE_BACKFILL_STATE_LABELS[key] };
   }
   return null;
 }
 
-const GROUP_RANK = { [SETUP_ORDER_GROUP.unapproved]: 0, [SETUP_ORDER_GROUP.backfill]: 1 };
+const GROUP_RANK = { [SETUP_ORDER_GROUP.unapproved]: 0, [SETUP_ORDER_GROUP.backfill]: 1, [SETUP_ORDER_GROUP.reopened]: 2 };
 const lookup = (source, id) => (source instanceof Map ? source.get(id) : source?.[id]);
 
 /**

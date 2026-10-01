@@ -315,7 +315,7 @@ export async function loadSiblingSiteCounts(supabase, customerId) {
   return siblingSiteCountsOf(supabase, id, await taxSiblingsOf(supabase, id));
 }
 
-/* ── RPC ของ 0392 ─────────────────────────────────────────────────────────────────────────────────────── */
+/* ── RPC ของ 0392 (+ 0396 ท้ายไฟล์) ───────────────────────────────────────────────────────────────────────── */
 
 const UNKNOWN_RPC_MESSAGE = 'ดำเนินการกับงานบริการไม่สำเร็จ กรุณาลองใหม่ หากยังไม่ได้แจ้งผู้ดูแลระบบ';
 
@@ -381,4 +381,33 @@ export function rejectServiceBackfill(supabase, { orderId, expectedUpdatedAt, re
     p_reason: text(reason),
     ...actorOf(user),
   });
+}
+
+/* ── RPC ของ 0396 — เปิดแก้งานบริการหลังอนุมัติ ─────────────────────────────────────────────────────────── */
+
+/**
+ * เปิดแก้งานบริการของใบที่อนุมัติแล้ว = ถอนรอบขาย (SZT-S) จาก TS · ล้างตรา + รอบตั้งย้อนหลังเดิม · บันทึกผู้เปิด/เวลา/เหตุ
+ * → `{ data: { order, termsRemoved } }` หรือ `{ error }` (`service_setup_reopen_blocked` พก `detailCodes` = รหัสบล็อกของฐาน)
+ * ⚠️ ฐานลง audit เองในทรานแซกชันเดียวกัน (ต่อ term ที่ถอน + แถวใบ) — ผู้เรียกห้ามลงซ้ำ (serviceSetupRoute.js)
+ * @param reason ตัดช่องว่างหัวท้ายก่อนส่ง (ฐานนับ 10–500 หลัง btrim) · expectedUpdatedAt = ค่าดิบที่จอได้จาก GET
+ */
+export function reopenServiceSetup(supabase, { orderId, expectedUpdatedAt, reason, user }) {
+  return rpcServiceSetup(supabase, 'reopen_sales_order_service_setup', {
+    p_order_id: orderId,
+    p_expected_updated_at: expectedUpdatedAt,
+    p_reason: text(reason),
+    ...actorOf(user),
+  });
+}
+
+/**
+ * รหัสที่กันการเปิดแก้ของใบนี้ (`sales_order_service_reopen_blockers` — ตัวเดียวกับที่ RPC เปิดแก้ตรวจ)
+ * → `{ codes: string[] }` (ว่าง = เปิดแก้ได้) หรือ `{ error }` — 🔴 ผู้เรียกแปลง error เป็น 'unread' (ปิดไว้ก่อน) ห้ามเดาว่าว่าง
+ */
+export async function loadServiceReopenBlockers(supabase, orderId) {
+  const { data, error } = await rpcServiceSetup(supabase, 'sales_order_service_reopen_blockers', { p_order_id: orderId });
+  if (error) return { error };
+  /* ฐานคืน text[] เสมอ ('{}' = ว่าง) — รูปอื่น = อ่านไม่ออก ไม่ใช่ "ไม่มีอะไรกัน" */
+  if (!Array.isArray(data)) return { error: { status: 500, message: UNKNOWN_RPC_MESSAGE, code: null, detailCodes: [] } };
+  return { codes: data.map((code) => text(code)).filter(Boolean) };
 }

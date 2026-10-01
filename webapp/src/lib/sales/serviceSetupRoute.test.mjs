@@ -12,7 +12,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { serviceSetupGet, serviceSetupPatch, serviceSetupPost } from './serviceSetupRoute.js';
-import { SERVICE_SETUP_EDIT_TEXT, SERVICE_SETUP_SQL_MESSAGES } from './serviceSetup.js';
+import {
+  SERVICE_REOPEN_BLOCKER_TEXT, SERVICE_SETUP_EDIT_TEXT, SERVICE_SETUP_SQL_MESSAGES, serviceReopenBlockedText,
+} from './serviceSetup.js';
 import { apiWriteAllowed, lockedOut } from '../../proxy.js';
 
 const WEBAPP = process.cwd();
@@ -570,6 +572,188 @@ test('POST reject — เหตุผลตัดช่องว่างก่�
   assert.ok(f.events.indexOf('audit') > f.events.indexOf('rpc:reject_sales_order_service_setup'));
 });
 
+/* ══ เปิดแก้งานบริการหลังอนุมัติ (mig 0396 · แผน IMPL_PLAN_REOPEN §4) ═══════════════════════════════════════════════ */
+
+const STAMP_AT = '2026-09-29T04:08:11.170722+00:00';
+const stampedRow = (over = {}) => backfillRow({ serviceTermsOpenedAt: STAMP_AT, ...over });
+const reopenBody = (over = {}) => ({ action: 'reopen', expectedUpdatedAt: UPDATED_AT, reason: 'SA คีย์โซนผิด รายการ 2 ต้องเป็นอีกโซน', ...over });
+const reopenedResult = rpcOk({
+  order: { id: 'SO1', serviceTermsOpenedAt: null, serviceSetupReopenedAt: '2026-09-30T08:15:00+00:00', updatedAt: '2026-09-30T08:15:00.654321+00:00' },
+  termsRemoved: 2,
+});
+/* งวดสองงวดที่บัญชีรับรองแล้วครอบขาดกลาง — ข้อ coverage_gap ของฝ่ายบัญชี (R4 g) */
+const fnGapInstallments = () => [
+  { id: 'I1', salesOrderId: 'SO1', seq: 1, status: 'confirmed', amount: 60000, dueDate: '2026-10-25', billingDate: '2026-10-25', coversFrom: '2026-10-01', coversTo: '2027-02-28' },
+  { id: 'I2', salesOrderId: 'SO1', seq: 2, status: 'confirmed', amount: 60000, dueDate: '2027-04-25', billingDate: '2027-04-25', coversFrom: '2027-04-01', coversTo: '2027-09-30' },
+];
+const reopenRpcCalls = (f) => f.rpcCalls.filter((c) => c.fn === 'reopen_sales_order_service_setup');
+const quietly = async (run) => {
+  const original = console.error;
+  console.error = () => {};
+  try { return await run(); } finally { console.error = original; }
+};
+
+test('GET ใบประทับ — ผู้แก้ได้: ถามรหัสบล็อกของฐานครั้งเดียว · ไม่มีรหัส = ปุ่มโชว์พร้อมโมดัล', async () => {
+  const f = fakeSupabase(world({ order: stampedRow() }), { rpc: { sales_order_service_reopen_blockers: rpcOk([]) } });
+  const res = await serviceSetupGet({ supabase: f.client, user: AE, id: 'SO1' });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.equal(res.body.flow, 'stamped');
+  assert.deepEqual(f.rpcCalls, [{ fn: 'sales_order_service_reopen_blockers', params: { p_order_id: 'SO1' } }], 'อ่านอย่างเดียว ไม่เขียนอะไร');
+  assert.equal(res.body.reopen.visible, true);
+  assert.equal(res.body.reopen.canReopen, true);
+  assert.equal(res.body.reopen.blockedReason, null);
+  assert.equal(res.body.reopen.prompt.confirmLabel, 'เปิดแก้งานบริการ');
+  assert.equal(res.body.reopened, null);
+});
+
+test('GET ใบประทับ — ฐานบอกว่า TS เริ่มงานแล้ว = ปุ่มยังโชว์พร้อมเหตุ · อ่านรหัสพัง = unread (200 ตารางยังขึ้น)', async () => {
+  const f = fakeSupabase(world({ order: stampedRow() }), { rpc: { sales_order_service_reopen_blockers: rpcOk(['plans_active:1', 'visits_live:3']) } });
+  const res = await serviceSetupGet({ supabase: f.client, user: AE, id: 'SO1' });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.reopen.visible, true);
+  assert.equal(res.body.reopen.blockedReason, serviceReopenBlockedText(['plans_active:1', 'visits_live:3']));
+  assert.equal(res.body.reopen.prompt, null);
+
+  const broken = fakeSupabase(world({ order: stampedRow() }), {
+    rpc: { sales_order_service_reopen_blockers: () => ({ data: null, error: { message: 'Could not find the function', code: 'PGRST202' } }) },
+  });
+  const res2 = await quietly(() => serviceSetupGet({ supabase: broken.client, user: AE, id: 'SO1' }));
+  assert.equal(res2.status, 200, 'ตารางต้องขึ้นแม้อ่านรหัสบล็อกไม่ได้');
+  assert.equal(res2.body.reopen.blockedReason, `แก้งานบริการไม่ได้ — ${SERVICE_REOPEN_BLOCKER_TEXT.unread()}`);
+  assert.ok(res2.body.lines.length > 0);
+
+  const odd = fakeSupabase(world({ order: stampedRow() }), { rpc: { sales_order_service_reopen_blockers: rpcOk(null) } });
+  const res3 = await serviceSetupGet({ supabase: odd.client, user: AE, id: 'SO1' });
+  assert.equal(res3.body.reopen.blockedReason, `แก้งานบริการไม่ได้ — ${SERVICE_REOPEN_BLOCKER_TEXT.unread()}`, 'รูปที่อ่านไม่ออก ≠ ไม่มีอะไรกัน');
+});
+
+test('GET ใบประทับ — รหัสฝั่ง JS (money_fn) ต่อท้ายรหัสของฐาน · ไม่มีสิทธิ์แก้ = ไม่ถามฐานและปุ่มไม่โชว์', async () => {
+  const f = fakeSupabase(world({ order: stampedRow(), over: { sales_order_installments: fnGapInstallments() } }), {
+    rpc: { sales_order_service_reopen_blockers: rpcOk(['site_visits_open:1']) },
+  });
+  const res = await serviceSetupGet({ supabase: f.client, user: AE, id: 'SO1' });
+  assert.deepEqual(res.body.reopen.blockers.map((b) => [b.code, b.count]), [['site_visits_open', 1], ['money_fn', 1]]);
+
+  const fn = fakeSupabase(world({ order: stampedRow() }), { rpc: { sales_order_service_reopen_blockers: rpcOk([]) } });
+  const read = await serviceSetupGet({ supabase: fn.client, user: FN, id: 'SO1' });
+  assert.equal(read.status, 200);
+  assert.equal(read.body.reopen.visible, false);
+  assert.equal(fn.rpcCalls.length, 0, 'คนที่แค่อ่านไม่ต้องถามฐาน');
+
+  // ไม่มีอะไรให้แก้ (FG 03 ล้วน) = ไม่ถามฐาน
+  const nothing = fakeSupabase(world({ order: stampedRow(), lines: [line('L1', 1, { fgCode: 'FG-0100-03-002-00009', productId: 'P9' })] }));
+  const none = await serviceSetupGet({ supabase: nothing.client, user: AE, id: 'SO1' });
+  assert.equal(none.body.reopen.visible, false);
+  assert.equal(nothing.rpcCalls.length, 0);
+});
+
+test('POST reopen — สำเร็จ: RPC ได้เวลาดิบ + เหตุผลที่ตัดแล้ว + ผู้ทำ · ตอบ { order, termsRemoved } · 🔴 ไม่ลง audit ซ้ำ (ฐานลงเอง)', async () => {
+  const f = fakeSupabase(world({ order: stampedRow() }), { rpc: { reopen_sales_order_service_setup: reopenedResult } });
+  const res = await serviceSetupPost({
+    supabase: f.client, user: AE, id: 'SO1', body: reopenBody({ reason: '   SA คีย์โซนผิด รายการ 2 ต้องเป็นอีกโซน   ' }), audit: f.audit,
+  });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.deepEqual(res.body, { order: reopenedResult().data.order, termsRemoved: 2 });
+  assert.deepEqual(f.rpcCalls, [{
+    fn: 'reopen_sales_order_service_setup',
+    params: {
+      p_order_id: 'SO1', p_expected_updated_at: UPDATED_AT, p_reason: 'SA คีย์โซนผิด รายการ 2 ต้องเป็นอีกโซน',
+      p_actor_id: 'U-AE', p_actor_name: 'เอ ขายดี', p_actor_role: 'ae',
+    },
+  }]);
+  assert.equal(f.audits.length, 0, 'RPC ลง audit ในทรานแซกชันเดียวกันแล้ว (R12)');
+  // ผู้จัดการที่ดูแลใบก็เปิดแก้ได้ (สิทธิ์เดียวกับการแก้ใบ — มติ 30/09 ข้อ 4.1)
+  const sup = fakeSupabase(world({ order: stampedRow() }), { rpc: { reopen_sales_order_service_setup: reopenedResult } });
+  assert.equal((await serviceSetupPost({ supabase: sup.client, user: SUP, id: 'SO1', body: reopenBody(), audit: sup.audit })).status, 200);
+});
+
+test('POST reopen — ด่านก่อนยิง RPC: ไม่มีสิทธิ์ 403 · เหตุผลสั้น/ยาว/ช่องว่าง 400 · ไม่มีเวลาของใบ 400 · ขั้นผิด/ไม่มีอะไรให้แก้ 409', async () => {
+  const cases = [
+    [FN, stampedRow(), reopenBody(), 403, SERVICE_SETUP_EDIT_TEXT.noRight],
+    [AE, stampedRow(), reopenBody({ reason: '   short   ' }), 400, MSG.workflow_reason_invalid.message],
+    [AE, stampedRow(), reopenBody({ reason: 'ก'.repeat(501) }), 400, MSG.workflow_reason_invalid.message],
+    [AE, stampedRow(), reopenBody({ reason: undefined }), 400, MSG.workflow_reason_invalid.message],
+    [AE, stampedRow(), reopenBody({ expectedUpdatedAt: undefined }), 400, null],
+    [AE, backfillRow(), reopenBody(), 409, MSG.service_setup_reopen_state_invalid.message],
+    [AE, soRow(), reopenBody(), 409, MSG.service_setup_reopen_state_invalid.message],
+    [AE, stampedRow({ supersededById: 'SO-A' }), reopenBody(), 409, MSG.service_setup_reopen_state_invalid.message],
+  ];
+  for (const [user, order, body, status, message] of cases) {
+    const f = fakeSupabase(world({ order }), { rpc: { reopen_sales_order_service_setup: reopenedResult } });
+    const res = await serviceSetupPost({ supabase: f.client, user, id: 'SO1', body, audit: f.audit });
+    assert.equal(res.status, status, `${user.id} ${JSON.stringify(body).slice(0, 60)} → ${JSON.stringify(res.body)}`);
+    if (message) assert.equal(res.body.error, message);
+    assert.equal(reopenRpcCalls(f).length, 0, 'ไม่ยิง RPC');
+    assert.equal(f.audits.length, 0);
+  }
+  const nothing = fakeSupabase(world({ order: stampedRow(), lines: [line('L1', 1, { fgCode: 'FG-0100-03-002-00009', productId: 'P9' })] }));
+  const res = await serviceSetupPost({ supabase: nothing.client, user: AE, id: 'SO1', body: reopenBody(), audit: nothing.audit });
+  assert.equal(res.status, 409);
+  assert.equal(res.body.error, SERVICE_REOPEN_BLOCKER_TEXT.nothing_to_edit());
+  assert.equal(nothing.rpcCalls.length, 0);
+});
+
+test('POST reopen — ข้อด่านเงินของฝ่ายบัญชี (R4 g) = 409 service_setup_reopen_blocked + money_fn · 🔴 ไม่ยิง RPC', async () => {
+  const f = fakeSupabase(world({ order: stampedRow(), over: { sales_order_installments: fnGapInstallments() } }), {
+    rpc: { reopen_sales_order_service_setup: reopenedResult },
+  });
+  const res = await serviceSetupPost({ supabase: f.client, user: AE, id: 'SO1', body: reopenBody(), audit: f.audit });
+  assert.equal(res.status, 409);
+  assert.equal(res.body.code, 'service_setup_reopen_blocked');
+  assert.deepEqual(res.body.blockers.map((b) => [b.code, b.count]), [['money_fn', 1]]);
+  assert.equal(res.body.error, serviceReopenBlockedText(['money_fn:1']));
+  assert.equal(reopenRpcCalls(f).length, 0, 'ฐานไม่เห็นด่านงวด — JS ต้องกันก่อนยิง');
+});
+
+test('POST reopen — ฐานตีกลับ: บล็อก (DETAIL) = 409 ข้อความเจาะจง + รายการรหัส · ระบบยุ่ง/เก่า = 409 · ไม่ใช่ฝ่ายขาย = 403 · ไม่รู้จัก = 500', async () => {
+  const run = async (rpc) => {
+    const f = fakeSupabase(world({ order: stampedRow() }), { rpc: { reopen_sales_order_service_setup: rpc } });
+    const res = await quietly(() => serviceSetupPost({ supabase: f.client, user: AE, id: 'SO1', body: reopenBody(), audit: f.audit }));
+    assert.equal(f.audits.length, 0);
+    return res;
+  };
+  const blocked = await run(rpcRaise('service_setup_reopen_blocked', 'plans_active:1,visits_live:3'));
+  assert.equal(blocked.status, 409);
+  assert.equal(blocked.body.code, 'service_setup_reopen_blocked');
+  assert.equal(blocked.body.error, serviceReopenBlockedText(['plans_active:1', 'visits_live:3']));
+  assert.deepEqual(blocked.body.blockers.map((b) => b.code), ['plans_active', 'visits_live']);
+
+  const bare = await run(rpcRaise('service_setup_reopen_blocked'));
+  assert.equal(bare.body.error, MSG.service_setup_reopen_blocked.message, 'DETAIL ว่าง = ข้อความสำรองของฐาน');
+
+  const busy = await run(rpcRaise('service_setup_reopen_busy'));
+  assert.deepEqual([busy.status, busy.body.error, busy.body.code], [409, MSG.service_setup_reopen_busy.message, 'service_setup_reopen_busy']);
+  const stale = await run(rpcRaise('workflow_stale'));
+  assert.deepEqual([stale.status, stale.body.error], [409, MSG.workflow_stale.message]);
+  const state = await run(rpcRaise('service_setup_reopen_state_invalid'));
+  assert.deepEqual([state.status, state.body.error], [409, MSG.service_setup_reopen_state_invalid.message]);
+  const forbidden = await run(rpcRaise('service_setup_forbidden'));
+  assert.equal(forbidden.status, 403);
+  const weird = await run(() => ({ data: null, error: { message: 'canceling statement due to lock timeout', code: '55P03' } }));
+  assert.equal(weird.status, 500);
+  assert.doesNotMatch(weird.body.error, /lock timeout/);
+});
+
+test('POST ย้อนหลังของใบที่เปิดแก้แล้ว — สรุป audit ของยื่น/อนุมัติ/ตีกลับบอก "(แก้หลังอนุมัติ)" แทน "(ใบเดิม)"', async () => {
+  const reopenedCols = {
+    serviceSetupReopenedAt: '2026-09-30T08:15:00+00:00', serviceSetupReopenedById: 'U-AE',
+    serviceSetupReopenedByName: 'เอ ขายดี', serviceSetupReopenedReason: 'SA คีย์โซนผิด รายการ 2 ต้องเป็นอีกโซน',
+  };
+  const sub = fakeSupabase(world({ order: backfillRow(reopenedCols) }), {
+    rpc: { submit_sales_order_service_setup: rpcOk({ id: 'SO1', serviceSetupState: 'submitted' }) },
+  });
+  await serviceSetupPost({ supabase: sub.client, user: AE, id: 'SO1', body: { action: 'submit', expectedUpdatedAt: UPDATED_AT }, audit: sub.audit });
+  assert.equal(sub.audits[0].summary, 'ยื่นตรวจงานบริการ (แก้หลังอนุมัติ) SO-26090001-0 — 2 โซนใน 1 ไซต์');
+
+  const app = fakeSupabase(world({ order: submittedRow(reopenedCols) }), { rpc: { approve_sales_order_service_setup: approvedResult } });
+  await serviceSetupPost({ supabase: app.client, user: SUP, id: 'SO1', body: approveBody(), audit: app.audit });
+  assert.equal(app.audits[0].summary, 'อนุมัติงานบริการ (แก้หลังอนุมัติ) SO-26090001-0 — เปิดรอบขาย 2 โซนให้ TS');
+
+  const rej = fakeSupabase(world({ order: submittedRow(reopenedCols) }), { rpc: { reject_sales_order_service_setup: rpcOk({ id: 'SO1' }) } });
+  await serviceSetupPost({ supabase: rej.client, user: SUP, id: 'SO1', body: { action: 'reject', expectedUpdatedAt: UPDATED_AT, reason: 'โซนยังผิดอยู่ ตรวจอีกครั้ง' }, audit: rej.audit });
+  assert.equal(rej.audits[0].summary, 'ตีกลับงานบริการ (แก้หลังอนุมัติ) SO-26090001-0: โซนยังผิดอยู่ ตรวจอีกครั้ง');
+});
+
 test('POST — คำสั่งที่ไม่รู้จัก = 400 ก่อนอ่านอะไร', async () => {
   const f = fakeSupabase(world());
   const res = await serviceSetupPost({ supabase: f.client, user: AE, id: 'SO1', body: { action: 'withdraw' }, audit: f.audit });
@@ -655,6 +839,26 @@ test('รูปซอร์ส: GET อ่านใบด้วย loadScoped �
     assert.match(body, new RegExp(`const \\{ data, error \\} = await ${rpc.replace('(', '\\(')}`), `${name}: ต้องรับ error ของ RPC`);
     assert.match(body.slice(at), /if \(error\) return rpcFailure\(error/, `${name}: RPC พังต้องตอบก่อนลง audit`);
   }
+});
+
+test('รูปซอร์ส: reopen — ด่านขั้น + ด่านเงินของบัญชีก่อน RPC · ไม่ลง audit (ฐานลงเอง · มีเหตุผลกำกับ) · อยู่ในแผนที่ action', () => {
+  const src = code(LIB_FILE);
+  const raw = fs.readFileSync(path.join(WEBAPP, LIB_FILE), 'utf8');
+  const body = fnBody(src, 'reopenSetup');
+  const rpcAt = body.indexOf('reopenServiceSetup(');
+  assert.ok(rpcAt > 0);
+  for (const gate of ['if (!canEdit)', 'charCount(reason) < REASON_MIN', 'resolveExpectedUpdatedAt(body)', 'contextOf(supabase, order)',
+    'serviceReopenStateError(ctx.order, ctx, { canEdit })', 'serviceReopenMoneyCodes(ctx)']) {
+    const at = body.indexOf(gate);
+    assert.ok(at >= 0 && at < rpcAt, `${gate} ต้องมาก่อน RPC`);
+  }
+  assert.doesNotMatch(body, /auditOrder\(|audit\(/, 'reopen ห้ามลง audit ซ้ำ — RPC ลงในทรานแซกชันเดียวกันแล้ว');
+  assert.match(raw, /ไม่ลง audit ที่นี่/, 'ต้องมีคอมเมนต์บอกเหตุที่ต่างจาก action อื่น');
+  assert.match(src, /const SERVICE_SETUP_ACTIONS = \{ submit: submitBackfill, approve: approveBackfill, reject: rejectBackfill, reopen: reopenSetup \};/);
+  // GET ถามรหัสบล็อกเฉพาะตอนปุ่มโชว์
+  const get = fnBody(src, 'serviceSetupGet');
+  assert.ok(get.indexOf('serviceReopenAvailable(ctx.order, ctx, { canEdit })') < get.indexOf('loadServiceReopenBlockers('));
+  assert.match(get, /reopenBlockers = blockersError \? \['unread'\] : codes;/);
 });
 
 test('รูปซอร์ส: ไม่มี .in() / supabase.rpc / .from ดิบในเส้นนี้ — อ่านผ่าน loadScoped + ตัวโหลดบริบท เขียนผ่าน RPC wrapper', () => {

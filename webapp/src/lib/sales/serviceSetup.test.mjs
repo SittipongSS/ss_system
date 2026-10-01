@@ -6,6 +6,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   SERVICE_KIND_OPTIONS,
+  SERVICE_REOPEN_BLOCKER_TEXT,
+  SERVICE_REOPEN_TEXT,
+  SERVICE_REOPENED_TEXT,
+  SERVICE_SETUP_EDIT_TEXT,
   SERVICE_SETUP_ISSUE_TEXT,
   SERVICE_SETUP_LINE_TEXT,
   SERVICE_SETUP_LIMITS,
@@ -50,9 +54,19 @@ import {
   serviceSetupView,
   serviceSetupWarnings,
   serviceRoundsText,
+  serviceReopenAvailable,
+  serviceReopenBlockedText,
+  serviceReopenBlockers,
+  serviceReopenFieldsText,
+  serviceReopenMoneyCodes,
+  serviceReopenMoneyIssues,
+  serviceReopenPrompt,
+  serviceReopenStateError,
+  serviceSetupReopened,
   validateServiceSetupPatch,
 } from './serviceSetup.js';
-import { SERVICE_ROUND_CATEGORY } from './serviceOrders.js';
+import { approvalPrompt } from '../approvalPrompt.js';
+import { SERVICE_ROUND_CATEGORY, orderHasServiceRounds } from './serviceOrders.js';
 import { effectiveBillingRule } from './billingRule.js';
 import { bindTargetError } from '../service/intake.js';
 
@@ -552,7 +566,7 @@ test('แก้ได้ไหม (ภาคผนวก A.3) — กติก�
   assert.equal(serviceSetupEditError(orderOf({ status: 'approved', serviceSetupState: 'submitted' }), can),
     'ยื่นตรวจงานบริการแล้ว — รอผู้จัดการฝ่ายขายตรวจ (ตีกลับก่อนจึงแก้ได้)');
   assert.equal(serviceSetupEditError(orderOf({ status: 'approved', serviceTermsOpenedAt: STAMP }), can),
-    'อนุมัติแล้ว — แพ็คเกจ/โซน/รอบละกี่แพ็ค/ช่วงบริการล็อก · แก้ด้วยย้อนการอนุมัติแล้วออก Rev. (จำนวนรอบบริการยังแก้ได้)');
+    'อนุมัติแล้ว — แพ็คเกจ/โซน/รอบละกี่แพ็ค/ช่วงบริการล็อก · เปิดแก้ด้วย ‘แก้งานบริการ’ (ก่อน TS เริ่มงาน) หรือย้อนการอนุมัติแล้วออก Rev. (จำนวนรอบบริการยังแก้ได้)');
   for (const status of ['revised', 'cancelled']) {
     assert.equal(serviceSetupEditError(orderOf({ status }), can), 'ใบนี้ปิดไปแล้ว — แก้งานบริการไม่ได้');
   }
@@ -710,7 +724,8 @@ test('ผลของการอนุมัติใบ (pipeline) ตาม�
     'ยังไม่ผูกสัญญา — นัดบริการติดด่านสัญญาจนกว่าจะผูกสัญญาที่ลงนามแล้วที่แท็บ “สัญญา”',
     'ไม่ใช่งานบริการรายรอบ 1 รายการ (ค่าขนส่ง) — ไม่ส่งให้ TS',
     '1 โซนมีรอบขายของ SO-26080073-0 ที่ยังมีผล (ต่ออายุ)',
-    'หลังอนุมัติ แพ็คเกจ/โซน/รอบละกี่แพ็ค/ช่วงบริการล็อก — แก้ด้วยย้อนการอนุมัติแล้วออก Rev. (จำนวนรอบบริการยังแก้ได้)',
+    'หลังอนุมัติ แพ็คเกจ/โซน/รอบละกี่แพ็ค/ช่วงบริการล็อก — เปิดแก้ด้วย ‘แก้งานบริการ’ ได้ก่อน TS เริ่มงาน (ผู้จัดการฝ่ายขายอนุมัติอีกครั้ง)'
+      + ' · หลังจากนั้นย้อนการอนุมัติแล้วออก Rev. (จำนวนรอบบริการยังแก้ได้)',
   ]);
   // สัญญาลงนามแล้ว = ไม่มีคำเตือนสัญญา · ใบยอด 0 · ใบ Rev. ย้ายรอบ · งวดรับรองแล้วไม่มีช่วงครอบ
   const rows = monthlyRows();
@@ -747,7 +762,8 @@ test('ผลของการอนุมัติงานบริการ�
   assert.equal(effects[1], 'ไม่แตะยอด Actual · ยอดใบ · เอกสารที่ออกแล้ว · สถานะใบ (อนุมัติแล้วเหมือนเดิม) — Actual ก.ย. 2026 ฿250,380.00 · ยอดรวม ฿250,380.00 · งวดชำระ 12 งวด เท่าเดิม');
   assert.equal(effects[2], 'ด่านเงินของบัญชีเริ่มใช้กับใบนี้: งวดที่ยังไม่รับรองต้องมีช่วงครอบก่อนรับรอง (ครบแล้ว 12 งวด)');
   assert.equal(effects[3], 'ยังไม่ผูกสัญญา — นัดบริการติดด่านสัญญาจนกว่าจะผูกสัญญาที่ลงนามแล้วที่แท็บ “สัญญา”');
-  assert.equal(effects.at(-1), 'หลังอนุมัติล็อก — แก้ด้วยย้อนการอนุมัติใบแล้วออก Rev. (จำนวนรอบบริการยังแก้ได้)');
+  assert.equal(effects.at(-1),
+    'หลังอนุมัติล็อก — เปิดแก้ด้วย ‘แก้งานบริการ’ ได้ก่อน TS เริ่มงาน · หลังจากนั้นย้อนการอนุมัติใบแล้วออก Rev. (จำนวนรอบบริการยังแก้ได้)');
   assert.ok(effects.every((e) => !e.includes('นับ Actual')));
   assert.deepEqual(serviceSetupApprovalChecklist(ctx, { flow: 'backfill' }), [
     'ตรวจแพ็คเกจ · ไซต์ · โซน · จำนวนรอบบริการ · รอบละกี่แพ็ค ในการ์ดงานบริการ', 'ช่วงบริการตรงกับหมายเหตุของแต่ละสาขา', 'งวดที่ยังไม่รับรองมีช่วงครอบครบ 12 งวด',
@@ -1185,4 +1201,344 @@ test('F5: ใบเดิมที่ฝ่ายขายตัดสินว�
   assert.equal(effects[0], 'ไม่มีแพ็คเกจบริการรายรอบ — ไม่เปิดโซนให้ TS (ยืนยันว่าใบนี้ไม่มีงานบริการ) · ไม่ใช่งานบริการรายรอบ 1 รายการ');
   assert.ok(effects.every((e) => !e.startsWith('ด่านเงินของบัญชีเริ่มใช้')), 'ไม่มีแพ็คเกจ = ด่านเงินไม่ขยาย');
   assert.deepEqual(serviceSetupApprovalChecklist(ctx, { flow: 'backfill' }), ['ตรวจว่าทุกรายการไม่ใช่งานบริการรายรอบจริง (ดูคำอธิบาย/หมายเหตุของแต่ละรายการ)']);
+});
+
+/* ══ เปิดแก้งานบริการหลังอนุมัติ (mig 0396 · มติเจ้าของ 29–30/09 · แผน IMPL_PLAN_REOPEN §5) ═══════════════════════ */
+
+const S247_FG = 'FG-364-02-001-1061';
+const REOPEN_AT = '2026-09-30T08:15:00Z';
+/* ใบที่อนุมัติแล้วและส่งงานให้ TS แล้ว (ทรง SO-26090247-0: 2 บรรทัด FG 02-001 · โซนเดียว 2 แพ็ค · 12 รอบ · งวดเดียวแจ้งชำระแล้ว) */
+const stampedOrder = (over = {}) => orderOf({
+  orderNumber: 'SO-26090247-0', status: 'approved', approvedAt: '2026-09-29T04:00:00Z', serviceTermsOpenedAt: STAMP,
+  servicePeriodFrom: '2026-10-22', servicePeriodTo: '2027-10-21', actualAmount: 84000, totalAmount: 84000, ...over,
+});
+function s247Ctx({ order = stampedOrder(), ...over } = {}) {
+  return ctxOf({
+    order,
+    lines: [fgLine(1, S247_FG, { serviceRounds: 12 }), fgLine(2, S247_FG, { serviceRounds: 12 })],
+    zones: [zone('Z1', 'S1', { name: 'Office' })],
+    allocations: [alloc('SOL-1', 'Z1', 2, 0), alloc('SOL-2', 'Z1', 2, 0)],
+    installments: [{ id: 'I1', seq: 1, status: 'reported', amount: 84000, dueDate: '2026-09-28', billingDate: null, billingEvent: null,
+      coversFrom: '2026-10-22', coversTo: '2027-10-21' }],
+    ...over,
+  });
+}
+/* ใบที่เปิดแก้แล้ว (0396): ตราถูกล้าง + คอลัมน์เปิดแก้ */
+const reopenedOrder = (over = {}) => stampedOrder({
+  serviceTermsOpenedAt: null, serviceSetupReopenedAt: REOPEN_AT, serviceSetupReopenedById: 'U-AE',
+  serviceSetupReopenedByName: 'Kamonrat P.', serviceSetupReopenedReason: 'SA คีย์โซนผิด — รายการ 2 ต้องเป็นอีกโซน', ...over,
+});
+
+test('0396 ปุ่มแก้งานบริการโชว์ไหม: มีสิทธิ์ × ใบประทับ × มีอะไรให้แก้ — ขั้นอื่น/ไม่มีสิทธิ์/ไม่มีของ = ไม่โชว์', () => {
+  const can = { canEdit: true };
+  const ctx = s247Ctx();
+  assert.equal(serviceSetupFlow(ctx.order, ctx), 'stamped');
+  assert.equal(serviceReopenAvailable(ctx.order, ctx, can), true);
+  assert.equal(serviceReopenAvailable(ctx.order, ctx, { canEdit: false }), false, 'ไม่มีสิทธิ์ = ไม่โชว์');
+  assert.equal(serviceReopenAvailable(ctx.order, ctx), false, 'ค่าตั้งต้นไม่มีสิทธิ์');
+  const at = (order, lines = ctx.lines) => serviceReopenAvailable(order, { ...ctx, order, lines }, can);
+  assert.equal(at(stampedOrder({ serviceTermsOpenedAt: null })), false, 'ยังไม่ประทับ (ขั้นตั้งย้อนหลัง) — ปุ่มยื่นตรวจเดิมทำงาน');
+  assert.equal(at(stampedOrder({ status: 'draft', serviceTermsOpenedAt: null })), false, 'ร่าง');
+  assert.equal(at(stampedOrder({ status: 'pending_approval' })), false, 'รออนุมัติ');
+  assert.equal(at(stampedOrder({ status: 'approval_revoked' })), false, 'ย้อนการอนุมัติแล้ว');
+  assert.equal(at(stampedOrder({ supersededById: 'SO2' })), false, 'ถูก Rev. ทับ');
+  assert.equal(at(stampedOrder({ origin: 'historical' })), false, 'ใบย้อนหลังไม่อยู่ในเส้นนี้');
+  assert.equal(at(stampedOrder({ deal: PRODUCT_DEAL })), false, 'สายสินค้า');
+  assert.equal(at(stampedOrder(), [fgLine(1, 'FG-0233-03-002-00001')]), false, 'ไม่มีอะไรให้แก้ (FG 03 ล้วน)');
+  assert.equal(at(stampedOrder(), [manual(1, { serviceKind: 'not_service' })]), true, 'บรรทัดพิมพ์เองที่ตอบว่าไม่ใช่ = แก้คำตอบได้');
+});
+
+test('0396 ด่านของ POST: ไม่มีสิทธิ์ → ขั้นผิด → ไม่มีอะไรให้แก้ → ผ่าน (กติกาเดียวกับการโชว์ปุ่ม)', () => {
+  const ctx = s247Ctx();
+  assert.equal(serviceReopenStateError(ctx.order, ctx, { canEdit: false }), SERVICE_SETUP_EDIT_TEXT.noRight);
+  const backfill = s247Ctx({ order: reopenedOrder() });
+  assert.equal(serviceReopenStateError(backfill.order, backfill, { canEdit: true }),
+    'แก้งานบริการได้เฉพาะใบที่อนุมัติแล้วและส่งงานให้ TS แล้ว (ยังไม่ถูกย้อน/ออก Rev./ยกเลิก) — โหลดหน้าใหม่');
+  const nothing = { ...ctx, lines: [fgLine(1, 'FG-0233-03-002-00001')] };
+  assert.equal(serviceReopenStateError(nothing.order, nothing, { canEdit: true }), 'ใบนี้ไม่มีรายการที่ตั้งงานบริการได้');
+  assert.equal(serviceReopenStateError(ctx.order, ctx, { canEdit: true }), null);
+});
+
+test('0396 รหัสบล็อก → ข้อความ: แยกจำนวน · ตัดซ้ำ · สตริงคั่นจุลภาค · รหัสไม่รู้จักยังบล็อก', () => {
+  assert.deepEqual(serviceReopenBlockers(['plans_active:1', 'visits_live:3', 'nothing_to_edit', 'plans_active:1']), [
+    { code: 'plans_active', count: 1, text: 'TS ตั้งรอบบริการของใบนี้แล้ว 1 รอบ' },
+    { code: 'visits_live', count: 3, text: 'มีนัดบริการจากรอบของใบนี้ 3 นัด' },
+    { code: 'nothing_to_edit', count: null, text: 'ใบนี้ไม่มีรายการที่ตั้งงานบริการได้' },
+  ]);
+  assert.deepEqual(serviceReopenBlockers('site_visits_open:2, ml_set:1,,legacy_terms:1').map((b) => b.text), [
+    'มีนัดอื่นที่ไซต์ของใบนี้ 2 นัด (สร้างหรือผ่านด่านหลังส่ง TS)',
+    'TS ตั้งมาตรฐาน มล./เดือนไว้แล้ว 1 รอบขาย (ถอนแล้วค่าหาย)',
+    'มีรอบขายที่ไม่ได้เกิดจากการตั้งงานบริการ 1 แถว — แจ้งผู้ดูแลระบบ',
+  ]);
+  assert.deepEqual(serviceReopenBlockers(['unread', 'money_fn:2']).map((b) => [b.code, b.count]), [['unread', null], ['money_fn', 2]]);
+  assert.deepEqual(serviceReopenBlockers(['plans_paused:4']),
+    [{ code: 'plans_paused', count: 4, text: 'ตรวจพบเงื่อนไขที่ระบบไม่รู้จัก (plans_paused:4) — แจ้งผู้ดูแลระบบ' }]);
+  assert.deepEqual(serviceReopenBlockers([]), []);
+  assert.deepEqual(serviceReopenBlockers(null), []);
+  assert.deepEqual(Object.keys(SERVICE_REOPEN_BLOCKER_TEXT).sort(),
+    ['legacy_terms', 'ml_set', 'money_fn', 'nothing_to_edit', 'plans_active', 'site_visits_open', 'unread', 'visits_live']);
+});
+
+test('0396 ข้อความบล็อกรวม (toast ของ GatedAction / 409): งานของ TS = ทางออก Rev. · บัญชีล้วน = ให้บัญชีแก้ · ไม่มีรหัส = null', () => {
+  assert.equal(serviceReopenBlockedText([]), null);
+  assert.equal(serviceReopenBlockedText(['plans_active:1', 'visits_live:3']),
+    'แก้งานบริการไม่ได้ — TS ตั้งรอบบริการของใบนี้แล้ว 1 รอบ · มีนัดบริการจากรอบของใบนี้ 3 นัด'
+    + ' · ทางแก้: ย้อนการอนุมัติแล้วออก Rev. (Rev. พารอบบริการและมาตรฐาน มล. ไปด้วย)');
+  // งานของ TS ชนะ — ท้ายเดียวเสมอ
+  const both = serviceReopenBlockedText(['ml_set:1', 'money_fn:1']);
+  assert.ok(both.endsWith(SERVICE_REOPEN_TEXT.tailRevise), both);
+  assert.ok(!both.includes(SERVICE_REOPEN_TEXT.tailFn));
+  assert.equal(serviceReopenBlockedText(['money_fn:2']),
+    'แก้งานบริการไม่ได้ — งวดชำระมี 2 ข้อที่ฝ่ายบัญชีต้องแก้ก่อน — เปิดแก้ตอนนี้แล้วจะยื่นตรวจกลับไม่ได้ และ TS จะไม่มีงานของใบนี้ระหว่างรอ'
+    + ' · ให้ฝ่ายบัญชีแก้ช่วงครอบของงวดที่รับรองแล้วที่แท็บการชำระ แล้วกด ‘แก้งานบริการ’ อีกครั้ง');
+  assert.equal(serviceReopenBlockedText(['unread']), 'แก้งานบริการไม่ได้ — ตรวจไม่ได้ว่า TS เริ่มงานของใบนี้หรือยัง — โหลดหน้าใหม่แล้วลองอีกครั้ง');
+  assert.equal(serviceReopenBlockedText(['legacy_terms:1']), 'แก้งานบริการไม่ได้ — มีรอบขายที่ไม่ได้เกิดจากการตั้งงานบริการ 1 แถว — แจ้งผู้ดูแลระบบ');
+});
+
+test('0396 ด่านเงินของการยื่นกลับ (R4 g): ช่องโหว่ระหว่างงวดที่บัญชีรับรองแล้ว = money_fn · ข้อของฝ่ายขาย = แค่เตือน · ไม่มีแพ็คเกจ = ว่าง', () => {
+  const fnRows = [inst(1, 'confirmed', '2026-01-01', '2026-04-30'), inst(2, 'confirmed', '2026-06-01', '2026-12-31')];
+  const fnCtx = year2026(fnRows);
+  const fn = serviceReopenMoneyIssues(fnCtx);
+  assert.deepEqual(fn.fn.map((i) => [i.key, i.owner]), [['coverage_gap', 'FN']]);
+  assert.deepEqual(fn.sa, []);
+  assert.deepEqual(serviceReopenMoneyCodes(fnCtx), ['money_fn:1']);
+  // ส่งข้อที่คิดไว้แล้วมาได้ (ไม่คิดซ้ำ)
+  assert.deepEqual(serviceReopenMoneyCodes({}, serviceSetupIssues(fnCtx)), ['money_fn:1']);
+
+  const saCtx = year2026([inst(1, 'pending', '2026-01-01', '2026-12-31', { dueDate: null })]);
+  assert.deepEqual(serviceReopenMoneyCodes(saCtx), [], 'ข้อของฝ่ายขายไม่บล็อก');
+  assert.deepEqual(serviceReopenMoneyIssues(saCtx).sa.map((i) => i.key), ['due_missing']);
+
+  // ขอบช่วงเป็นงวดที่รับรองแล้ว — ชี้ช่องช่วงบริการ (area 'period') แต่ยังเป็นด่านเงินของฝ่ายขาย
+  const edge = year2026([inst(1, 'confirmed', '2026-02-01', '2026-12-31')]);
+  assert.deepEqual(serviceReopenMoneyIssues(edge).sa.map((i) => [i.key, i.area]), [['coverage_start', 'period']]);
+
+  const none = ctxOf({ order: stampedOrder(), lines: [manual(1, { serviceKind: 'not_service' })], installments: [] });
+  assert.deepEqual(serviceReopenMoneyIssues(none), { fn: [], sa: [] });
+  assert.deepEqual(serviceReopenMoneyCodes(none), []);
+  // fail-closed เหมือน serviceSetupIssues — ไม่มีตัวเลือก FG = throw
+  assert.throws(() => serviceReopenMoneyCodes({ ...fnCtx, fgOptionIds: null }), /fgOptionIds/);
+});
+
+test('0396 ด่านเงิน (ตรวจทาน lib-01): ช่องโหว่ของบัญชีที่ซ่อนหลังงวดยังไม่รับรองที่ขาดช่วงครอบ = money_fn · งวดขาดที่ปิดช่องเองได้ = ไม่บล็อก', () => {
+  // งวด 1–2 บัญชีรับรองแล้ว (ช่อง เม.ย. ระหว่างกัน) · งวด 3 ยังไม่รับรองและยังไม่มีช่วงครอบ ⇒ ด่านหลักหยุดเทียบ เห็นแค่ข้อของฝ่ายขาย
+  const masked = year2026([
+    inst(1, 'confirmed', '2026-01-01', '2026-03-31'),
+    inst(2, 'confirmed', '2026-05-01', '2026-11-30'),
+    inst(3, 'pending', null, null),
+  ]);
+  const main = serviceSetupIssues(masked);
+  assert.ok(main.some((i) => i.key === 'coverage_missing' && i.owner === 'SA'));
+  assert.ok(main.every((i) => i.owner !== 'FN'), 'ด่านหลักไม่เห็นช่องของบัญชี (ต้นเหตุของทางตัน)');
+  // …แต่เปิดแก้ต้องเห็น: ฝ่ายขายเติมงวด 3 แล้ว ยื่นกลับจะเจอ coverage_gap ของบัญชี
+  assert.deepEqual(serviceReopenMoneyIssues(masked).fn.map((i) => [i.key, i.owner, i.installmentId]), [['coverage_gap', 'FN', 'I2']]);
+  assert.deepEqual(serviceReopenMoneyCodes(masked), ['money_fn:1']);
+  assert.deepEqual(serviceReopenMoneyCodes(masked, main), ['money_fn:1'], 'ส่งข้อที่คิดไว้แล้วมาก็ยังเห็น (อ่านงวดจาก ctx)');
+  // ใบเดียวกันที่งวด 3 ครอบ ธ.ค. แล้ว — ด่านหลักเห็นเอง · นับครั้งเดียว
+  const unmasked = year2026([
+    inst(1, 'confirmed', '2026-01-01', '2026-03-31'),
+    inst(2, 'confirmed', '2026-05-01', '2026-11-30'),
+    inst(3, 'pending', '2026-12-01', '2026-12-31'),
+  ]);
+  assert.deepEqual(serviceReopenMoneyCodes(unmasked), ['money_fn:1']);
+  // งวดที่ยังไม่รับรองและขาดช่วงครอบอยู่ระหว่างสองงวดที่ขนาบช่อง (ตามลำดับงวด) = ฝ่ายขายเติมปิดช่องได้เอง ⇒ ไม่บล็อก
+  const fillable = year2026([
+    inst(1, 'confirmed', '2026-01-01', '2026-03-31'),
+    inst(2, 'pending', null, null),
+    inst(3, 'confirmed', '2026-05-01', '2026-12-31'),
+  ]);
+  assert.deepEqual(serviceReopenMoneyCodes(fillable), []);
+  assert.deepEqual(serviceReopenMoneyIssues(fillable).sa.map((i) => i.key), ['coverage_missing']);
+});
+
+test('0396 โมดัลเปิดแก้ (ตรวจทาน lib-02): ข้อ ④ "ด่านช่วงครอบหลวม" ขึ้นเฉพาะเมื่อสวิตช์ระดับใบพลิกจริง — มีบรรทัด FG 02-001 ปน = ไม่ขึ้น', () => {
+  const relaxLine = (effects) => effects.find((e) => e.startsWith('ระหว่างแก้ ด่านช่วงครอบของบัญชีหลวมลงชั่วคราว')) || null;
+  // บรรทัดพิมพ์เองล้วน: ประทับ = ด่านเปิด · ล้างตรา = ปิด ⇒ บอก
+  const manualOnly = completeCtx({ order: stampedOrder({ ...PERIOD }) });
+  assert.equal(orderHasServiceRounds(manualOnly.order, manualOnly.lines), true);
+  assert.equal(orderHasServiceRounds({ ...manualOnly.order, serviceTermsOpenedAt: null }, manualOnly.lines), false);
+  assert.ok(relaxLine(serviceReopenPrompt(manualOnly).effects));
+  // ปนบรรทัด FG 02-001: ด่านเปิดทั้งก่อนและหลังล้างตรา ⇒ ห้ามบอกว่าหลวม
+  const mixed = completeCtx({ order: stampedOrder({ ...PERIOD }) });
+  mixed.lines.push(fgLine(11, S247_FG, { serviceRounds: 12 }));
+  mixed.allocations.push(alloc('SOL-11', 'Z1'));
+  assert.equal(orderHasServiceRounds({ ...mixed.order, serviceTermsOpenedAt: null }, mixed.lines), true);
+  assert.equal(relaxLine(serviceReopenPrompt(mixed).effects), null);
+  // บรรทัด FG ที่ไม่ใช่แพ็คเกจ (03) ไม่เปิดด่าน ⇒ ยังบอก
+  const freight = completeCtx({ order: stampedOrder({ ...PERIOD }) });
+  freight.lines.push(fgLine(11, 'FG-0233-03-002-00001'));
+  assert.ok(relaxLine(serviceReopenPrompt(freight).effects));
+});
+
+test('0396 ช่องที่แก้ได้หลังเปิดแก้ (R20): บรรทัด FG = แก้แพ็คเกจไม่ได้ · มีบรรทัดพิมพ์เอง = แก้แพ็คเกจได้ · คำจากแคตตาล็อก', () => {
+  const { roundsLabel, packsLabel } = SERVICE_SETUP_LINE_TEXT;
+  assert.equal(serviceReopenFieldsText(s247Ctx()),
+    `ไซต์ · โซน · ${roundsLabel} · ${packsLabel} · ช่วงบริการ — แพ็คเกจของรายการที่มีรหัส FG แก้ไม่ได้ (ต้องออก Rev.)`);
+  assert.equal(serviceReopenFieldsText(completeCtx()),
+    `แพ็คเกจ (รายการพิมพ์เอง) · ไซต์ · โซน · ${roundsLabel} · ${packsLabel} · ช่วงบริการ`);
+  const mixed = completeCtx();
+  mixed.lines.push(fgLine(11, S247_FG));
+  assert.ok(serviceReopenFieldsText(mixed).startsWith('แพ็คเกจ (รายการพิมพ์เอง) · '));
+  assert.ok(serviceReopenFieldsText(mixed).endsWith('— แพ็คเกจของรายการที่มีรหัส FG แก้ไม่ได้ (ต้องออก Rev.)'));
+  // บรรทัด FG ที่ไม่ใช่งานบริการ (03) ไม่นับเป็น "แพ็คเกจ FG"
+  const withFreight = completeCtx();
+  withFreight.lines.push(fgLine(11, 'FG-0233-03-002-00001'));
+  assert.ok(!serviceReopenFieldsText(withFreight).includes('รหัส FG'));
+});
+
+test('0396 โมดัลเปิดแก้ (ภาคผนวก A.3): ใบ FG ล้วน = 3 ข้อ · แพ็คเกจของบรรทัดพิมพ์เอง = +ด่านช่วงครอบหลวม · ข้อด่านเงินของฝ่ายขาย = +ข้อ 5', () => {
+  const prompt = serviceReopenPrompt(s247Ctx());
+  assert.equal(prompt.title, 'แก้งานบริการหลังอนุมัติ');
+  assert.equal(prompt.confirmLabel, 'เปิดแก้งานบริการ');
+  assert.deepEqual(prompt.effects, [
+    'ถอนงานบริการที่ส่ง TS แล้ว 1 โซนใน 1 ไซต์ (TS ยังไม่เริ่มงาน) — หายจาก “งานเข้าใหม่ › รอตั้งรอบ” ทันที',
+    `ตารางงานบริการกลับมาแก้ได้ (${serviceReopenFieldsText(s247Ctx())}) แล้วต้องกด ‘ยื่นตรวจงานบริการ’ ให้ผู้จัดการฝ่ายขายอนุมัติอีกครั้ง จึงส่ง TS`,
+    'ไม่แตะ Actual · ยอดใบ · เอกสาร · งวดชำระ · สถานะใบ (อนุมัติแล้วเหมือนเดิม) — Actual ก.ย. 2026 ฿84,000.00 · ยอดรวม ฿84,000.00 · งวดชำระ 1 งวด เท่าเดิม',
+  ]);
+  // ป้อน approvalPrompt → ReasonDialog ได้ตรง ๆ
+  const dialog = approvalPrompt(prompt);
+  assert.equal(dialog.title, 'แก้งานบริการหลังอนุมัติ');
+  assert.equal(dialog.description, 'ยืนยันเปิดแก้ งานบริการของ SO-26090247-0 หรือไม่');
+  assert.equal(dialog.confirmLabel, 'เปิดแก้งานบริการ');
+  assert.ok(dialog.detail.startsWith('สิ่งที่จะเกิดขึ้นทันที:\n· ถอนงานบริการที่ส่ง TS แล้ว'));
+
+  const manualCtx = completeCtx({ order: stampedOrder({ ...PERIOD }) });
+  const manualPrompt = serviceReopenPrompt(manualCtx);
+  assert.equal(manualPrompt.effects.length, 4);
+  assert.equal(manualPrompt.effects[3],
+    'ระหว่างแก้ ด่านช่วงครอบของบัญชีหลวมลงชั่วคราว — แพ็คเกจที่ตั้งให้รายการพิมพ์เอง 10 รายการยังไม่นับจนผู้จัดการอนุมัติงานบริการอีกครั้ง');
+
+  const saMoney = completeCtx({ order: stampedOrder({ ...PERIOD }), installments: monthlyRows({ dueDate: null }) });
+  const withMoney = serviceReopenPrompt(saMoney);
+  assert.equal(withMoney.effects.length, 5);
+  assert.match(withMoney.effects[4], /^ยื่นตรวจกลับได้เมื่อด่านงวดชำระผ่านด้วย — ตอนนี้ยังขาด 12 ข้อ \(งวด 1: ยังไม่ใส่กำหนดชำระ .* ฯลฯ\)$/);
+
+  // ใบประทับที่ไม่มีโซน (ตอบว่าไม่ใช่งานบริการครบ) — ไม่พูดว่า "ถอน 0 โซน"
+  const zero = serviceReopenPrompt(ctxOf({ order: stampedOrder(), lines: [manual(1, { serviceKind: 'not_service' })], installments: [] }));
+  assert.equal(zero.effects[0], 'ใบนี้ยังไม่มีโซนที่ส่งให้ TS — ไม่มีอะไรหายจาก “งานเข้าใหม่ › รอตั้งรอบ”');
+});
+
+test('0396 "ใบนี้ถูกเปิดแก้หลังอนุมัติ" มีค่าเฉพาะตอนอยู่ในเส้นตั้งย้อนหลัง — อนุมัติใหม่แล้ว/ถูก Rev. ทับ/ย้อนการอนุมัติ = null', () => {
+  assert.deepEqual(serviceSetupReopened(reopenedOrder()), {
+    at: REOPEN_AT, byId: 'U-AE', byName: 'Kamonrat P.', reason: 'SA คีย์โซนผิด — รายการ 2 ต้องเป็นอีกโซน',
+  });
+  assert.deepEqual(serviceSetupReopened(reopenedOrder({ serviceSetupState: 'submitted' }))?.byName, 'Kamonrat P.', 'รอตรวจยังเป็นใบที่เปิดแก้');
+  assert.equal(serviceSetupReopened(reopenedOrder({ serviceTermsOpenedAt: STAMP })), null, 'อนุมัติใหม่แล้ว — คอลัมน์ค้างเป็นประวัติ');
+  assert.equal(serviceSetupReopened(reopenedOrder({ supersededById: 'SO2' })), null);
+  assert.equal(serviceSetupReopened(reopenedOrder({ status: 'approval_revoked' })), null);
+  assert.equal(serviceSetupReopened(reopenedOrder({ origin: 'historical' })), null);
+  assert.equal(serviceSetupReopened(stampedOrder({ serviceTermsOpenedAt: null })), null, 'ใบเดิมที่ไม่เคยเปิดแก้');
+  assert.equal(serviceSetupReopened(null), null);
+});
+
+test('0396 view.reopen: ปุ่มโชว์ + ไม่มีรหัส = โมดัล · รหัสของฐาน = เหตุบล็อก · ไม่ได้อ่านรหัส = unread · ไม่มีสิทธิ์ = ไม่โชว์', () => {
+  const ctx = s247Ctx();
+  const open = serviceSetupView(ctx, { canEdit: true, userId: 'U-AE', role: 'ae', reopenBlockers: [] });
+  assert.equal(open.flow, 'stamped');
+  assert.equal(open.mode, 'read');
+  assert.deepEqual(Object.keys(open.reopen).sort(), ['blockedReason', 'blockers', 'canReopen', 'prompt', 'visible']);
+  assert.equal(open.reopen.visible, true);
+  assert.equal(open.reopen.canReopen, true);
+  assert.equal(open.reopen.blockedReason, null);
+  assert.deepEqual(open.reopen.blockers, []);
+  assert.deepEqual(open.reopen.prompt, serviceReopenPrompt(ctx));
+  assert.equal(open.reopened, null, 'ใบประทับ = ยังไม่ได้เปิดแก้');
+
+  const blocked = serviceSetupView(ctx, { canEdit: true, userId: 'U-AE', role: 'ae', reopenBlockers: ['plans_active:1'] });
+  assert.equal(blocked.reopen.visible, true, 'บล็อก = ยังโชว์ (บอกเหตุตอนกด)');
+  assert.equal(blocked.reopen.blockedReason, serviceReopenBlockedText(['plans_active:1']));
+  assert.equal(blocked.reopen.prompt, null);
+  assert.deepEqual(blocked.reopen.blockers.map((b) => b.code), ['plans_active']);
+
+  const unread = serviceSetupView(ctx, { canEdit: true, userId: 'U-AE', role: 'ae' });
+  assert.equal(unread.reopen.blockedReason, serviceReopenBlockedText(['unread']), 'ไม่ได้อ่านรหัสของฐาน = ปิดไว้ก่อน');
+
+  const reader = serviceSetupView(ctx, { canEdit: false, userId: 'U-FN', role: 'finance', reopenBlockers: [] });
+  assert.deepEqual(reader.reopen, { visible: false, canReopen: false, blockedReason: null, blockers: [], prompt: null });
+
+  // รหัส JS (money_fn) ต่อท้ายรหัสของฐานเสมอ · ส่งมาเองแล้วก็ไม่ซ้ำ
+  const fnRows = [
+    { ...monthlyRows()[0], id: 'I1', seq: 1, status: 'confirmed', coversFrom: '2026-10-22', coversTo: '2027-01-21' },
+    { ...monthlyRows()[1], id: 'I2', seq: 2, status: 'confirmed', coversFrom: '2027-03-01', coversTo: '2027-10-21' },
+  ];
+  const money = s247Ctx({ installments: fnRows });
+  const moneyView = serviceSetupView(money, { canEdit: true, userId: 'U-AE', role: 'ae', reopenBlockers: ['visits_live:2', 'money_fn:9'] });
+  assert.deepEqual(moneyView.reopen.blockers.map((b) => [b.code, b.count]), [['visits_live', 2], ['money_fn', 1]]);
+  assert.ok(moneyView.reopen.blockedReason.endsWith(SERVICE_REOPEN_TEXT.tailRevise));
+});
+
+test('0396 ใบที่เปิดแก้แล้ว: flow backfill · view.reopened (ผู้/เวลา/เหตุ/ช่องที่แก้ได้) · หัวใบ · ผู้จัดการเห็นเหตุผล · ด่านเงิน "ใช้ตามเดิม"', () => {
+  const ctx = s247Ctx({ order: reopenedOrder() });
+  const view = serviceSetupView(ctx, { canEdit: true, userId: 'U-AE', role: 'ae', reopenBlockers: ['plans_active:1'] });
+  assert.equal(view.flow, 'backfill');
+  assert.equal(view.mode, 'edit');
+  assert.equal(view.backfill.canSubmit, true);
+  assert.equal(view.reopen.visible, false, 'เปิดแก้แล้ว — ปุ่มยื่นตรวจทำงานแทน');
+  assert.deepEqual(view.reopened, {
+    at: REOPEN_AT, byId: 'U-AE', byName: 'Kamonrat P.', reason: 'SA คีย์โซนผิด — รายการ 2 ต้องเป็นอีกโซน',
+    fields: serviceReopenFieldsText(ctx),
+  });
+  assert.deepEqual([view.state.reopenedAt, view.state.reopenedByName, view.state.reopenedReason],
+    [REOPEN_AT, 'Kamonrat P.', 'SA คีย์โซนผิด — รายการ 2 ต้องเป็นอีกโซน']);
+  assert.ok(view.hero.sub.endsWith(' · เปิดแก้ — ยังไม่ส่ง TS'), view.hero.sub);
+  assert.equal(SERVICE_REOPENED_TEXT.bannerLine(view.reopened),
+    `เปิดแก้โดย Kamonrat P. 30/09/2026 · เหตุผล: SA คีย์โซนผิด — รายการ 2 ต้องเป็นอีกโซน — แก้ ${view.reopened.fields}`
+    + ' แล้วยื่นให้ผู้จัดการฝ่ายขายตรวจ · ยอด/Actual/เอกสารไม่เปลี่ยน');
+  assert.equal(SERVICE_REOPENED_TEXT.railLine(view.reopened), 'เปิดแก้ 30/09/2026 โดย Kamonrat P. · SA คีย์โซนผิด — รายการ 2 ต้องเป็นอีกโซน');
+
+  // ยื่นตรวจแล้ว → ผู้จัดการ: เหตุผลขึ้นเป็นข้อแรกของสิ่งที่ต้องตรวจ · ด่านเงิน "ใช้ตามเดิม" · หัวใบกลับเป็น "รอตรวจ"
+  const sent = s247Ctx({ order: reopenedOrder({ serviceSetupState: 'submitted', serviceSetupSubmittedById: 'U-AE', serviceSetupSubmittedByName: 'Kamonrat P.' }) });
+  const review = serviceSetupView(sent, { canEdit: true, userId: 'U-SUP', role: 'ae_supervisor' });
+  assert.equal(review.backfill.canReview, true);
+  assert.equal(review.approvalChecklist[0], 'เหตุที่เปิดแก้: SA คีย์โซนผิด — รายการ 2 ต้องเป็นอีกโซน (Kamonrat P. 30/09/2026)');
+  assert.ok(review.approvalEffects.includes('ด่านเงินของบัญชีใช้กับใบนี้ตามเดิม: งวดที่ยังไม่รับรองต้องมีช่วงครอบก่อนรับรอง (ครบแล้ว 1 งวด)'));
+  assert.ok(!review.approvalEffects.some((e) => e.startsWith('ด่านเงินของบัญชีเริ่มใช้')));
+  assert.ok(review.hero.sub.endsWith(' · รอตรวจ'), review.hero.sub);
+
+  // ใบเดิมที่ไม่เคยเปิดแก้ — ไม่มีข้อเหตุผล · ด่านเงิน "เริ่มใช้" เหมือนเดิม
+  const legacy = s247Ctx({ order: stampedOrder({ serviceTermsOpenedAt: null, serviceSetupState: 'submitted' }) });
+  assert.equal(serviceSetupView(legacy, { canEdit: true, userId: 'U-SUP', role: 'ae_supervisor' }).reopened, null);
+  assert.ok(serviceSetupApprovalChecklist(legacy, { flow: 'backfill' })[0].startsWith('ตรวจแพ็คเกจ'));
+  assert.ok(serviceSetupApprovalEffects(legacy, { flow: 'backfill' }).some((e) => e.startsWith('ด่านเงินของบัญชีเริ่มใช้')));
+});
+
+test('0396 อนุมัติงานบริการย้อนหลังของใบ Rev. ย้ายรอบบริการของใบเดิมเหมือนอนุมัติใบ (R13)', () => {
+  const ctx = s247Ctx({
+    order: reopenedOrder({ serviceSetupState: 'submitted', revisedFromId: 'SO0' }),
+    predecessor: { id: 'SO0', orderNumber: 'SO-26090001-0', activePlanSiteIds: ['S1', 'S9'] },
+  });
+  assert.ok(serviceSetupApprovalEffects(ctx, { flow: 'backfill' })
+    .includes('ย้ายรอบบริการ 1 ไซต์จาก SO-26090001-0 มาใบนี้ · ไซต์ที่ใบนี้ไม่มีแล้ว 1 ไซต์ TS จะเห็นเป็นรอบของใบเดิมให้ตัดสิน'));
+});
+
+test('0396 คำ: ท้ายการ์ดใบประทับ · toast · ข้อความฐานใหม่ — อ่านคำรอบ/แพ็คจากแคตตาล็อก ไม่มีคำเก่า', () => {
+  const { roundsLabel, packsLabel } = SERVICE_SETUP_LINE_TEXT;
+  assert.equal(SERVICE_REOPEN_TEXT.button, 'แก้งานบริการ');
+  assert.equal(SERVICE_REOPEN_TEXT.stampedFooter,
+    `หลังอนุมัติ แพ็คเกจ/โซน/${packsLabel}/ช่วงบริการล็อก — กด ‘แก้งานบริการ’ เพื่อเปิดแก้ได้ก่อน TS เริ่มงาน`
+    + ` · หลังจากนั้นย้อนการอนุมัติแล้วออก Rev. · ${roundsLabel}แก้ที่ดินสอได้เสมอ`);
+  assert.ok(SERVICE_REOPEN_TEXT.stampedFooterNoRight.includes(packsLabel));
+  assert.ok(!SERVICE_REOPEN_TEXT.stampedFooterNoRight.includes('‘แก้งานบริการ’'), 'ไม่มีสิทธิ์ = ไม่ชี้ปุ่มที่ตัวเองไม่เห็น');
+  assert.equal(SERVICE_REOPEN_TEXT.toast(2), 'เปิดแก้งานบริการแล้ว (ถอนจาก TS 2 รอบขาย) — แก้ในการ์ด ‘งานบริการ’ แล้วกด ‘ยื่นตรวจงานบริการ’');
+  assert.equal(SERVICE_REOPEN_TEXT.toast(0), 'เปิดแก้งานบริการแล้ว — แก้ในการ์ด ‘งานบริการ’ แล้วกด ‘ยื่นตรวจงานบริการ’');
+  assert.deepEqual([SERVICE_REOPEN_TEXT.reasonMin, SERVICE_REOPEN_TEXT.reasonMax], [10, 500]);
+  for (const code of ['service_setup_reopen_state_invalid', 'service_setup_reopen_blocked', 'service_setup_reopen_busy']) {
+    assert.equal(SERVICE_SETUP_SQL_MESSAGES[code].status, 409, code);
+    assert.equal(serviceSetupSqlMessage({ message: code }).code, code, 'แปลรหัสได้ตรงตัว (ไม่ชนคีย์อื่น)');
+  }
+  assert.equal(serviceSetupSqlMessage({ message: 'service_setup_state_invalid' }).code, 'service_setup_state_invalid');
+  assert.match(SERVICE_SETUP_SQL_MESSAGES.sales_order_service_setup_locked.message, /กด ‘แก้งานบริการ’ \(ก่อน TS เริ่มงาน\)/);
+  const texts = [
+    ...Object.values(SERVICE_REOPEN_TEXT).map((v) => (typeof v === 'function' ? v(3) : String(v))),
+    ...Object.values(SERVICE_REOPEN_BLOCKER_TEXT).map((fn) => fn(3)),
+    ...Object.values(SERVICE_REOPENED_TEXT).map((v) => (typeof v === 'function' ? String(v({ at: REOPEN_AT, byName: 'x', reason: 'y', fields: 'z' }) ?? '') : String(v))),
+    ...['not_started', 'editing', 'submitted', 'rejected'].map((state) => SERVICE_REOPENED_TEXT.stateLabel(state)),
+    SERVICE_SETUP_EDIT_TEXT.stamped,
+    SERVICE_SETUP_SQL_MESSAGES.service_setup_reopen_blocked.message,
+    ...serviceReopenPrompt(completeCtx({ order: stampedOrder({ ...PERIOD }) })).effects,
+  ];
+  for (const t of texts) {
+    assert.doesNotMatch(t, /ไปกี่รอบ|แต่ละครั้งกี่แพ็ค/, t);
+    assert.doesNotMatch(t, /(?<![฀-๿])ไป \d+ รอบ/, t);
+  }
 });

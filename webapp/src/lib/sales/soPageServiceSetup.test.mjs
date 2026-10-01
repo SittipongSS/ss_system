@@ -10,7 +10,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { serviceSetupApprovalChecklist, serviceSetupWarnings } from './serviceSetup.js';
+import { SERVICE_REOPEN_TEXT, SERVICE_REOPENED_TEXT, serviceSetupApprovalChecklist, serviceSetupWarnings } from './serviceSetup.js';
 
 const SRC = path.resolve(process.cwd(), 'src');
 const PAGE = 'app/sales-planning/sales-orders/[id]/page.js';
@@ -264,6 +264,7 @@ test('หน้าใบไม่มี fetch ดิบ และไม่มี
     slice(page, '{setupRequired && !historical ? (', ') : ('),
     slice(page, 'const backfillRail = showBackfillPanel ? (', ') : null;'),
     slice(page, '<ReasonDialog\n        open={!!serviceRejectForm}', '\n      />'),
+    slice(page, '<ReasonDialog\n        open={!!serviceReopenForm}', '\n      />'),
   ].join('\n');
   assert.doesNotMatch(service, /style=\{\{/);
 });
@@ -330,4 +331,121 @@ test('29/09 คำเตือนรอบน้อย: โมดัลยืน
   assert.match(slice(page, 'if (action === "approve") {', '\n      return;'), /checklist: service\?\.approvalChecklist \|\| \[\],/);
   assert.match(slice(page, 'async function openBackfillApprove() {', '\n  }\n'), /checklist: fresh\.approvalChecklist,/);
   assert.doesNotMatch(page, /ถ้าตั้งใจก็/, 'คำเตือนมาจาก serviceSetup.js ที่เดียว');
+});
+
+/* ══ ปุ่ม "แก้งานบริการ" หลังอนุมัติ (mig 0396 · แผน IMPL_PLAN_REOPEN §6.2 · มติเจ้าของ 30/09) ═══════════════════════════════════ */
+
+test('0396: กดปุ่ม "แก้งานบริการ" = โหลดก้อนสดก่อนเสมอ · ปุ่มหาย/ติดด่านบนก้อนสด = บอกเหตุ ไม่เปิดโมดัล · ผ่าน = โมดัลจาก view.reopen.prompt', () => {
+  const open = slice(page, 'async function openServiceReopen() {', '\n  }\n');
+  const freshAt = open.indexOf('await freshServiceView()');
+  const formAt = open.indexOf('setServiceReopenForm(');
+  assert.ok(freshAt >= 0 && formAt > freshAt, 'ต้องอ่านก้อนสดก่อนเปิดโมดัล (TS อาจตั้งรอบไปแล้วระหว่างเปิดหน้าทิ้งไว้)');
+  assert.match(open, /if \(!fresh\) return;/, 'โหลดไม่ขึ้น = ไม่เปิด (freshServiceView บอกเหตุแล้ว) — ห้ามถือว่าผ่าน');
+  assert.match(open, /const reopen = fresh\.reopen \|\| null;/);
+  assert.match(open, /if \(!reopen\?\.canReopen \|\| \(!reopen\.blockedReason && !reopen\.prompt\)\) \{\s*notifyToast\.error\(SERVICE_REOPEN_TEXT\.gone\);\s*return;/);
+  assert.match(open, /if \(reopen\.blockedReason\) \{\s*notifyToast\.error\(reopen\.blockedReason\);\s*return;/,
+    'ติดด่านบนก้อนสด = ช่องทางเดียวกับ GatedAction (toast) · เหตุจาก server');
+  assert.ok(open.indexOf('reopen.blockedReason) {') < formAt, 'ด่านก่อนเปิดโมดัล');
+  /* เวอร์ชัน = ก้อนสดที่โมดัลโชว์ (ตามตัวอักษร) · หัว/คำถาม/ผลจาก approvalPrompt (ผลบังคับ) */
+  assert.match(open, /setServiceReopenForm\(\{ reason: "", version: fresh\.updatedAt \?\? null, prompt: approvalPrompt\(reopen\.prompt\) \}\);/);
+  assert.doesNotMatch(open, /new Date\(/);
+  /* การ์ดได้ callback + สถานะกำลังยิง (ปุ่มดับ) — หน้าไม่ตัดสินว่าปุ่มโชว์ไหม (ก้อน view.reopen ของ server) */
+  const lines = slice(page, '<SalesOrderServiceLines', '\n            />');
+  assert.match(lines, /onReopen=\{openServiceReopen\}/);
+  assert.match(lines, /reopenBusy=\{!!busy\}/);
+  assert.doesNotMatch(page, /reopen\.canReopen &&|reopen\?\.visible &&/, 'หน้าไม่มีเงื่อนไขโชว์ปุ่มของตัวเอง');
+});
+
+test('0396: ยืนยันเปิดแก้ = POST { action: "reopen", expectedUpdatedAt, reason } ผ่าน apiJson ไม่ลองซ้ำ · ไม่สำเร็จ = โมดัลค้าง + ก้อนสดเลื่อนเวอร์ชัน (ไม่มีทางตัน 409)', () => {
+  const submit = slice(page, 'async function submitServiceReopen() {', '\n  }\n');
+  assert.match(submit, /const reason = String\(form\?\.reason \|\| ""\)\.trim\(\);/);
+  assert.match(submit, /if \(!form \|\| reason\.length < SERVICE_REOPEN_TEXT\.reasonMin\) return;/);
+  assert.match(submit, /const ok = await runServiceBackfill\("reopen", \{ reason \}, form\.version\);/, 'เวอร์ชันของก้อนสดที่โมดัลโชว์');
+  assert.match(submit, /if \(ok\) \{\s*setServiceReopenForm\(null\);\s*return;\s*\}/);
+  /* ใบขยับระหว่างเปิดโมดัล: เหตุผลที่พิมพ์ไม่หาย · ผล/เวอร์ชันตามก้อนสด · สดบอกว่าติดด่าน/ปุ่มหาย = คงโมดัลไว้กับเหตุของ server */
+  assert.match(submit, /const fresh = await setup\.reload\(\)\.catch\(\(\) => null\);/);
+  assert.match(submit, /if \(!reopen\?\.canReopen \|\| reopen\.blockedReason \|\| !reopen\.prompt\) return;/);
+  assert.match(submit, /\{ \.\.\.current, version: fresh\.updatedAt \?\? null, prompt: approvalPrompt\(reopen\.prompt\) \}/);
+  /* ตัวยิงตัวเดียวกับยื่น/อนุมัติ/ตีกลับ — POST ของ …/service-setup · เวลาตามตัวอักษร · ไม่ retry */
+  const run = slice(page, 'async function runServiceBackfill(action, extra = {}, expectedUpdatedAt = setup.data?.updatedAt ?? null) {', '\n  }\n');
+  assert.match(run, /json: \{ action, expectedUpdatedAt, \.\.\.extra \},/);
+  assert.doesNotMatch(run, /retry/);
+  /* ทัก/ล้มเหลวจากแคตตาล็อก — จำนวนรอบขายที่ถอนจาก TS */
+  assert.match(page, /reopen: \(data\) => SERVICE_REOPEN_TEXT\.toast\(Number\(data\?\.termsRemoved\) \|\| 0\),/);
+  assert.match(page, /reopen: SERVICE_REOPEN_TEXT\.failed,/);
+  assert.equal(SERVICE_REOPEN_TEXT.toast(2), 'เปิดแก้งานบริการแล้ว (ถอนจาก TS 2 รอบขาย) — แก้ในการ์ด ‘งานบริการ’ แล้วกด ‘ยื่นตรวจงานบริการ’');
+});
+
+test('0396 (ตรวจทาน ui-reopen-lost-response): POST ล้มแต่ก้อนสดบอกว่าเปิดแก้ด้วยเหตุผลของเรา = สำเร็จจริง — ปิดโมดัล ล้างเหตุ โหลดใบ ทักสำเร็จ', () => {
+  const submit = slice(page, 'async function submitServiceReopen() {', '\n  }\n');
+  const reloadAt = submit.indexOf('const fresh = await setup.reload().catch(() => null);');
+  const doneAt = submit.indexOf('if (fresh?.reopened && String(fresh.reopened.reason || "").trim() === reason) {');
+  const versionAt = submit.indexOf('const reopen = fresh?.reopen || null;');
+  assert.ok(reloadAt >= 0 && doneAt > reloadAt && versionAt > doneAt, 'ตรวจ "ทำไปแล้ว" จากก้อนสดก่อนทางเลื่อนเวอร์ชัน');
+  const done = submit.slice(doneAt, versionAt);
+  assert.match(done, /setServiceReopenForm\(null\);/);
+  assert.match(done, /setError\(""\);/, 'ไม่ค้างข้อความ "เชื่อมต่อไม่ได้ ลองอีกครั้ง" ของงานที่สำเร็จแล้ว');
+  assert.match(done, /await refreshOrder\(\);/, 'runServiceBackfill ข้ามการโหลดใบตอนต่อไม่ติด');
+  assert.match(done, /setToast\(\{ kind: "success", msg: SERVICE_BACKFILL_TOAST\.reopen\(null\) \}\);/);
+  /* ไม่รู้จำนวนรอบขายที่ถอน (คำตอบหาย) — ทักไม่พูดจำนวน */
+  assert.equal(SERVICE_REOPEN_TEXT.toast(0), 'เปิดแก้งานบริการแล้ว — แก้ในการ์ด ‘งานบริการ’ แล้วกด ‘ยื่นตรวจงานบริการ’');
+});
+
+test('0396 (ตรวจทาน ui-reason-no-min-feedback): โมดัลเปิดแก้โชว์ตัวนับ n/500 ต่อท้ายคำอธิบาย + บอกขั้นต่ำ 10 ตัวอักษรจนกว่าจะถึง', () => {
+  const dialog = slice(page, '<ReasonDialog\n        open={!!serviceReopenForm}', '\n      />');
+  assert.match(dialog, /\n\s+showCount\n/);
+  const reason = code('components/ui/ReasonDialog.js');
+  assert.match(reason, /showCount = false,/, 'ค่าตั้งต้นปิด — โมดัลเหตุผลตัวอื่นหน้าตาเดิม');
+  assert.match(reason, /const countText = minLength > 1 && normalized\.length < minLength \? `\$\{count\} · อย่างน้อย \$\{minLength\} ตัวอักษร` : count;/);
+  assert.match(reason, /const hint = showCount \? \(helpText \? `\$\{helpText\} · \$\{countText\}` : countText\) : \(helpText \|\| count\);/);
+  assert.match(reason, /\{error \|\| hint\}/);
+});
+
+test('0396: โมดัลเหตุผล = ReasonDialog (เหตุผลบังคับ ห้ามอยู่ใน ConfirmDialog) · 10–500 ตัวอักษร · เหตุที่ API ตีกลับขึ้นในโมดัล · คำจากแคตตาล็อก', () => {
+  const dialog = slice(page, '<ReasonDialog\n        open={!!serviceReopenForm}', '\n      />');
+  for (const prop of [
+    'title={serviceReopenForm?.prompt?.title}',
+    'description={serviceReopenForm?.prompt?.description}',
+    'detail={serviceReopenForm?.prompt?.detail}',
+    'confirmLabel={serviceReopenForm?.prompt?.confirmLabel}',
+    'label={SERVICE_REOPEN_TEXT.reasonLabel}',
+    'helpText={SERVICE_REOPEN_TEXT.reasonHelp}',
+    'placeholder={SERVICE_REOPEN_TEXT.reasonPlaceholder}',
+    'minLength={SERVICE_REOPEN_TEXT.reasonMin}',
+    'maxLength={SERVICE_REOPEN_TEXT.reasonMax}',
+    'tone="warning"',
+    'busy={busy === "service-reopen"}',
+    'submitError={error}',
+    'onConfirm={submitServiceReopen}',
+  ]) assert.ok(dialog.includes(prop), `โมดัลเปิดแก้ขาด ${prop}`);
+  /* เพดานเดียวกับ CHECK/RPC ของ 0396 (นับหลัง btrim) */
+  assert.equal(SERVICE_REOPEN_TEXT.reasonMin, 10);
+  assert.equal(SERVICE_REOPEN_TEXT.reasonMax, 500);
+  assert.equal(count(page, /open=\{!!serviceReopenForm\}/g), 1);
+  const flow = slice(page, 'async function openServiceReopen() {', '\n  }\n') + slice(page, 'async function submitServiceReopen() {', '\n  }\n');
+  assert.doesNotMatch(flow, /setConfirmState|confirmAction\(/, 'ไม่ผ่าน ConfirmDialog');
+  assert.doesNotMatch(dialog, /นับ Actual|นับเป็น Actual/);
+});
+
+test('0396: หลังเปิดแก้ — คำใต้สถานะใบพูด "การแก้งานบริการ" · โมดัลอนุมัติของผู้จัดการมีเหตุที่เปิดแก้เป็นข้อแรก (มติ 30/09 ข้อ 4.3)', () => {
+  assert.match(page, /\? \(setupView\?\.reopened\s*\? SERVICE_REOPENED_TEXT\.actualNote\(order\.approvedAt\)\s*: `ยอดถูกนับเป็น Actual แล้ว/);
+  assert.equal(SERVICE_REOPENED_TEXT.actualNote('2026-09-29T04:08:11Z'), 'ยอดถูกนับเป็น Actual แล้ว (อนุมัติ 29/09/2026) — การแก้งานบริการไม่เปลี่ยนยอดนี้');
+  /* หน้าไม่อ่านคอลัมน์ 0396 เอง — ถาม `view.reopened` ของก้อน GET (ตัวตัดสินกลาง serviceSetupReopened) */
+  assert.doesNotMatch(page, /serviceSetupReopened/);
+  /* โมดัลอนุมัติส่ง checklist ของก้อนสดตรง ๆ — ข้อแรกของใบที่เปิดแก้คือเหตุผล + ผู้เปิด */
+  assert.match(slice(page, 'async function openBackfillApprove() {', '\n  }\n'), /checklist: fresh\.approvalChecklist,/);
+  const ctx = {
+    order: {
+      id: 'SO1', orderNumber: 'SO-26090247-0', status: 'approved', origin: 'pipeline', supersededById: null, serviceTermsOpenedAt: null,
+      serviceSetupState: 'submitted', servicePeriodFrom: '2026-10-22', servicePeriodTo: '2027-10-21', totalAmount: 0,
+      serviceSetupReopenedAt: '2026-09-30T03:15:00Z', serviceSetupReopenedByName: 'Kamonrat Pipattanapong',
+      serviceSetupReopenedReason: 'SA คีย์โซนผิด — รายการ 2 ต้องเป็นอีกโซน',
+    },
+    lines: [{ id: 'L1', lineNo: 1, fgCode: 'FG-364-02-001-1061', productId: 'P1', qty: 12, unit: 'เดือน', serviceRounds: 12, metadata: {} }],
+    allocations: [{ salesOrderLineId: 'L1', zoneId: 'Z1', packsPerRound: 2 }],
+    zonesById: new Map([['Z1', { id: 'Z1', siteId: 'S1', name: 'Office' }]]),
+    installments: [],
+  };
+  const [first] = serviceSetupApprovalChecklist(ctx, { flow: 'backfill' });
+  assert.equal(first, 'เหตุที่เปิดแก้: SA คีย์โซนผิด — รายการ 2 ต้องเป็นอีกโซน (Kamonrat Pipattanapong 30/09/2026)');
 });

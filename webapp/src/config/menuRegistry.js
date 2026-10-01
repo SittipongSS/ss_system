@@ -10,7 +10,7 @@
 // ⚠️ **หนึ่งเมนูหนึ่งบรรทัด** และคงการย่อหน้าเดิมไว้ — เทสต์หลายตัวอ่านไฟล์นี้ด้วย
 // regex รายบรรทัด (navMenuNames · navCounts · systems · entityIcon · fieldWorkAccess ·
 // issueRouting) จัดรูปใหม่เมื่อไร ด่านพวกนั้นกลายเป็นชุดว่างแล้วผ่านทุกอย่างเงียบ ๆ
-import { AirVent, ArrowDownToLine, Beaker, Boxes, Building2, Calculator, CalendarDays, CalendarRange, ClipboardCheck, ClipboardList, Factory, FileSignature, FileText, FlaskConical, FolderKanban, Hammer, Handshake, Inbox, LayoutDashboard, LifeBuoy, LineChart, ListTodo, MapPin, MessageCircleQuestion, Package, ReceiptText, Ruler, ShoppingCart, SprayCan, Tags, Target, Trash2, Users, Wallet, Wrench } from 'lucide-react';
+import { AirVent, ArrowDownToLine, Beaker, Boxes, Building2, Calculator, CalendarDays, CalendarRange, ClipboardCheck, ClipboardList, Coins, Factory, FileSignature, FileText, FlaskConical, FolderKanban, Hammer, Handshake, Inbox, LayoutDashboard, LifeBuoy, LineChart, ListTodo, MapPin, MessageCircleQuestion, Package, ReceiptText, Ruler, ShoppingCart, SprayCan, Tags, Target, Trash2, Users, Wallet, Wrench } from 'lucide-react';
 import {
   canAccessFinance, canAccessRd, canAnswerServiceRequests, canDoFieldWork, canEditProduction,
   canEditService, canManagePackageSizes, canManageProductCategories, canManageTeams, canUser, canViewCosting,
@@ -216,14 +216,21 @@ export const MENU_GROUPS = [
            เมนูจะทำให้คนที่งานอยู่ในมือมองไม่เห็นงานตัวเอง
            ⚠️ `shortName` เพราะชื่อเต็มล้นช่องแถบล่างของจอมือถือ (~71px ที่ 375px) */
         { href: '/rd/perfumers', name: 'งานผู้ปรุงกลิ่น', shortName: 'ผู้ปรุง', icon: SprayCan, caps: ['requests:answer'], visible: canAccessRd, match: (p) => p.startsWith('/rd/perfumers') },
+        /* ⭐ **รอใส่ราคา** (ม-153 · มติผู้ใช้ 2026-10-01) — ขั้นสุดท้ายของสายพัฒนาอยู่ที่ **แถว** (ลูกค้าคอนเฟิร์มแล้ว
+           รอ RD ใส่ราคา F · B · FB) ⇒ เดิมต้องเปิดใบทีละใบถึงจะเจอ · หน้านี้รวมทุกแถวของฝ่าย จัดกลุ่มตามใบ
+           ⚠️ ด่านชุดเดียวกับเมนูอื่นของโมดูล · ป้ายตัวเลขนับเป็น **รายการ** (`rdPricing`)
+           ⚠️ `Coins` = ไอคอนของการกระทำ "ใส่ราคา" บนทะเบียนกลิ่น/สูตรอยู่แล้ว (ราคาไม่ใช่ entity ในตารางไอคอน) */
+        { href: '/rd/prices', name: 'รอใส่ราคา', icon: Coins, caps: ['requests:answer'], visible: canAccessRd, match: (p) => p.startsWith('/rd/prices') },
         /* ⭐ **ใบสั่งขายที่เกี่ยวข้อง** (มติผู้ใช้ 2026-08-29) — บรีฟกลิ่นเกิดจากใบสั่งขาย
            ฝ่ายจึงต้องเห็นว่าออร์เดอร์นั้นสั่ง FG อะไร · มาคู่กับการปิดเมนู "บริหารงานขาย"
            ของฝ่ายนี้ (แพตเทิร์นเดียวกับที่ฝ่าย FN ได้เอกสารของตัวเองไปไว้ในโมดูลตัวเอง)
            ⚠️ **เอกสารไม่ได้ย้ายบ้าน** — กดแล้วไปที่ `/sa/sales-orders/[id]` ตามเดิม
            (กฎสามชั้น ชั้น 2) · เปลือกเดินตามคนดู ⇒ RD ยังยืนอยู่ในโมดูลตัวเอง
            ⚠️ `match` กินหน้าใบสั่งขายด้วย เพราะนั่นคือทางเดียวที่ฝ่ายเข้าถึงใบได้จริง
-           (กฎข้อ 8 — ไฮไลต์ที่เมนูที่พาเขาไป ไม่ใช่เมนูที่เขากดไม่ได้) */
-        { href: '/rd/sales-orders', name: 'ใบสั่งขายที่เกี่ยวข้อง', icon: FileText, caps: ['requests:answer'], visible: canAccessRd, match: (p) => p.startsWith('/rd/sales-orders') || p.startsWith('/sa/sales-orders') || p.startsWith('/sales-planning/sales-orders') },
+           (กฎข้อ 8 — ไฮไลต์ที่เมนูที่พาเขาไป ไม่ใช่เมนูที่เขากดไม่ได้)
+           ⚠️ `shortName` ตั้งแต่ ม-153 — เมนู "รอใส่ราคา" ทำให้แถบล่างมี 5 ช่อง (71px) ชื่อเต็มวัดได้ 85px ถูกตัด "…"
+           · "ใบสั่งขาย" เฉย ๆ ใช้ไม่ได้ (ซ้ำชื่อเมนูของระบบขาย) */
+        { href: '/rd/sales-orders', name: 'ใบสั่งขายที่เกี่ยวข้อง', shortName: 'SO ที่เกี่ยวข้อง', icon: FileText, caps: ['requests:answer'], visible: canAccessRd, match: (p) => p.startsWith('/rd/sales-orders') || p.startsWith('/sa/sales-orders') || p.startsWith('/sales-planning/sales-orders') },
       ],
     },
     {

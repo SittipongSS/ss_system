@@ -21,7 +21,9 @@ import { applyCreateFormPayments } from '@/lib/sales/salesOrderCreatePayments';
 import { missingStoredEvidence } from '@/lib/upload/privateEvidence';
 import { businessDate } from '@/lib/businessDate';
 import { orderBusinessLineOf, orderHasServiceRounds, serviceVisitsSold } from '@/lib/sales/serviceOrders';
-import { serviceBackfillAwaitingReview, serviceBackfillNeeded, serviceRoundsText, serviceSetupTotals } from '@/lib/sales/serviceSetup';
+import {
+  SERVICE_REOPENED_TEXT, serviceBackfillAwaitingReview, serviceBackfillNeeded, serviceRoundsText, serviceSetupReopened, serviceSetupTotals,
+} from '@/lib/sales/serviceSetup';
 import { paidThrough } from '@/lib/sales/paymentCoverage';
 
 export const dynamic = 'force-dynamic';
@@ -243,6 +245,10 @@ export const GET = withUser(async ({ user, supabase }) => {
       roundsLabel: serviceRoundsText(totals),
       submittedByName: row.serviceSetupSubmittedByName || null,
       submittedAt: row.serviceSetupSubmittedAt || null,
+      /* ใบที่ฝ่ายขายเปิดแก้หลังอนุมัติ (mig 0396 · ภาคผนวก A.4) — ป้ายแถวคิว "แก้งานบริการ (หลังอนุมัติ)" แทน "งานบริการ (ใบเดิม)"
+         · ป้ายมาจากแคตตาล็อกที่ server (จอทะเบียนไม่ต้องดึง serviceSetup.js ทั้งก้อน) · ไม่ใช่ใบที่เปิดแก้ = null (จอใช้ป้ายเดิม) */
+      reopened: !!serviceSetupReopened(row),
+      label: serviceSetupReopened(row) ? SERVICE_REOPENED_TEXT.queueLabel : null,
     };
   };
   /* ใบที่อนุมัติแล้วแต่ยังต้องตั้งงานบริการย้อนหลัง (D25) — คิดครั้งเดียว ใช้ทั้งชิปและเลนเจ้าของดีลของ "รอฉันลงมือ" */

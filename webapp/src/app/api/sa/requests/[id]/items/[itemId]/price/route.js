@@ -1,6 +1,7 @@
 // ── ขั้นใส่ราคาของแถวสายพัฒนา — ขั้นสุดท้ายในใบเดิม (P3c) ─────────────────
 //
 // POST { prices: { F?, B?, FB? }, validUntil?, note? }   (ทางเข้าเก่า `{ price }` = ช่องหลัก)
+// POST { useCurrent: { revisionId } }   ใช้ราคาที่มีอยู่แล้วในทะเบียน ไม่ออก rev ใหม่ (ม-153 · ดู `linkCurrentPrice` ท้ายไฟล์)
 //
 // ⭐ **สูตรใส่ได้สามช่อง F · B · FB · กลิ่นใส่ได้ F ช่องเดียว** (ม-148 · มติผู้ใช้ 2026-09-22) —
 // ช่องที่เปิดมาจาก `rowPriceSlots` ตัวเดียวกับโมดัลบนจอ · ใส่อย่างน้อยหนึ่งช่อง
@@ -23,9 +24,9 @@ import { canAnswerRequest, canReadRequestRow } from '@/lib/deptRequests';
 import { requestRowsClosurePatch } from '@/lib/requests/stages';
 import { requestActorSide } from '@/lib/requests/replyTurn';
 import { canPriceRow } from '@/lib/requests/rowStage';
-import { mainPriceEntry, normalizeSlotPrices } from '@/lib/master/priceSlots';
+import { currentPriceToUse, mainPriceEntry, normalizeSlotPrices } from '@/lib/master/priceSlots';
 import { findRequest, priceRegistrySlots } from '@/lib/materialPricesAdmin';
-import { loadPriceSlotSource, rowPriceSlotsLive } from '@/lib/master/scentFormulaAdmin';
+import { loadPriceSlotSource, rowPriceSlotsLive, rowsSlotPricesLive } from '@/lib/master/scentFormulaAdmin';
 import { appendUpdate } from '@/lib/master/updates';
 import { recordAudit } from '@/lib/audit';
 import { fmtNumber } from '@/lib/format';
@@ -98,6 +99,12 @@ export async function POST(request, { params }) {
     return Response.json({ error: `อ่านทะเบียนกลิ่น/สูตรไม่สำเร็จ: ${e.message}` }, { status: 500 });
   }
   const body = await request.json().catch(() => ({}));
+  /* ⭐ **"ใช้ราคานี้" — ผูกราคาที่มีอยู่แล้วในทะเบียน ไม่ออก rev ใหม่** (ม-153 · มติผู้ใช้ 2026-10-01) — RD ใส่ราคาที่หน้า
+     สูตร/กลิ่นไปก่อนลูกค้าคอนเฟิร์มเป็นเรื่องปกติ (วัด prod 01/10: 5 จาก 7 แถวที่รอราคา) · เดิมต้องพิมพ์เลขเดิมซ้ำ
+     ได้ rev ซ้ำในประวัติราคา · ผ่านด่านชุดเดียวกับทางใส่ราคาทั้งหมดข้างบนก่อนถึงตรงนี้ */
+  if (body?.useCurrent) {
+    return linkCurrentPrice({ supabase, request, user, id, itemId, before, row, body });
+  }
   // ⚠️ F/B/FB **ไม่มีชั้นจำนวน** (มติผู้ใช้ 2026-08-03) — ราคาต่อกิโลเดียวต่อช่อง ไม่ลดตามจำนวน
   const { entries, error: priceError } = normalizeSlotPrices(slots, body);
   if (priceError) return Response.json({ error: priceError }, { status: 400 });
@@ -126,27 +133,7 @@ export async function POST(request, { params }) {
     const main = mainPriceEntry(written);
     const revision = main.revision;
 
-    const { error } = await supabase.from('dept_request_items').update({
-      answerStatus: 'done',
-      answeredRevisionId: revision.id,
-      declineReason: null,
-      answeredById: user?.id ?? null,
-      answeredByName: user?.name ?? null,
-      answeredAt: nowIso,
-      updatedAt: nowIso,
-    }).eq('id', itemId);
-    if (error) throw error;
-
-    // ตอบครบทุกแถว → ใบได้ตราปิดฝั่งฝ่าย (`answeredAt`) เอง — ดู `closure.js`
-    const after = await findRequest(supabase, id);
-    const closurePatch = requestRowsClosurePatch(after, after.items || [], nowIso, {
-      actorSide: requestActorSide(user, after),
-    });
-    if (Object.keys(closurePatch).length) {
-      const { error: headError } = await supabase.from('dept_requests')
-        .update({ ...closurePatch, updatedAt: nowIso }).eq('id', id);
-      if (headError) throw headError;
-    }
+    await settleRow(supabase, { id, itemId, revisionId: revision.id, user, nowIso });
 
     // หนึ่งเหตุการณ์ต่อการใส่ราคาหนึ่งครั้ง — ทุกช่องในบรรทัดเดียว (ช่องไหนลงทะเบียนตัวไหนบอกด้วยรหัส)
     const lines = written.map((w) => `${w.slot.short} ${fmtNumber(w.price)}`
@@ -164,6 +151,82 @@ export async function POST(request, { params }) {
       user, action: 'update', entityType: 'dept_request', entityId: id,
       before: row, after: { ...row, answerStatus: 'done', answeredRevisionId: revision.id },
       summary: `ใส่ราคา ${written.map((w) => w.slot.short).join('/')} ${target} (${before.docNo || id})`,
+      request,
+    });
+
+    return Response.json(await findRequest(supabase, id));
+  } catch (e) {
+    return Response.json({ error: e.message }, { status: 400 });
+  }
+}
+
+/* ── ปิดแถวด้วย rev ราคา + ตราปิดฝั่งฝ่ายของใบ — ทางใส่ราคาใหม่กับทาง "ใช้ราคานี้" ต้องจบแถวแบบเดียวกันทุกช่อง ── */
+async function settleRow(supabase, { id, itemId, revisionId, user, nowIso }) {
+  const { error } = await supabase.from('dept_request_items').update({
+    answerStatus: 'done',
+    answeredRevisionId: revisionId,
+    declineReason: null,
+    answeredById: user?.id ?? null,
+    answeredByName: user?.name ?? null,
+    answeredAt: nowIso,
+    updatedAt: nowIso,
+  }).eq('id', itemId);
+  if (error) throw error;
+
+  // ตอบครบทุกแถว → ใบได้ตราปิดฝั่งฝ่าย (`answeredAt`) เอง — ดู `closure.js`
+  const after = await findRequest(supabase, id);
+  const closurePatch = requestRowsClosurePatch(after, after.items || [], nowIso, {
+    actorSide: requestActorSide(user, after),
+  });
+  if (Object.keys(closurePatch).length) {
+    const { error: headError } = await supabase.from('dept_requests')
+      .update({ ...closurePatch, updatedAt: nowIso }).eq('id', id);
+    if (headError) throw headError;
+  }
+}
+
+/* ── "ใช้ราคานี้" (ม-153) — body `{ useCurrent: { revisionId } }` ─────────────────────────────────────────────
+   ⭐ server คิดเองว่าราคาไหนคือ "ราคานี้" (`currentPriceToUse` ตัวเดียวกับหน้า "รอใส่ราคา") แล้วเทียบกับ rev ที่จอเห็น
+   ⇒ มีคนออกราคาใหม่ระหว่างที่จอเปิดค้าง = 409 ให้โหลดใหม่ ไม่ใช่ผูกเลขที่ RD ไม่เคยเห็น
+   ⚠️ **ไม่แตะทะเบียนวัสดุเลย** — rev เป็น immutable · แถวชี้ rev เดิมผ่าน `answeredRevisionId` เท่านั้น (ราคาบนใบอ่าน
+   ตาม pointer นี้อยู่แล้ว — `attachRowPrice`) · ช่องอื่นของแถวไม่ถูกผูก (อยู่ในทะเบียนตามเดิม) */
+async function linkCurrentPrice({ supabase, request, user, id, itemId, before, row, body }) {
+  let live;
+  try {
+    [live] = await rowsSlotPricesLive(supabase, [row]);
+  } catch (e) {
+    return Response.json({ error: `อ่านราคาในทะเบียนไม่สำเร็จ: ${e.message}` }, { status: 500 });
+  }
+  const { entry, blocker } = currentPriceToUse(live?.current || []);
+  if (!entry) {
+    return Response.json({ error: 'ยังไม่มีราคาในทะเบียนให้ใช้ — กด "ใส่ราคา" แทน' }, { status: 409 });
+  }
+  if (blocker) return Response.json({ error: blocker }, { status: 409 });
+  const expected = body.useCurrent?.revisionId || null;
+  if (!expected || expected !== entry.price.revisionId) {
+    return Response.json({
+      error: 'ราคาในทะเบียนเปลี่ยนไปแล้วระหว่างที่หน้าเปิดอยู่ — โหลดใหม่แล้วตรวจราคาอีกครั้ง',
+    }, { status: 409 });
+  }
+
+  const nowIso = new Date().toISOString();
+  try {
+    await settleRow(supabase, { id, itemId, revisionId: entry.price.revisionId, user, nowIso });
+
+    const target = entry.source?.code || entry.source?.name || 'ทะเบียน';
+    const rev = entry.price.revisionNo != null ? ` (rev ${entry.price.revisionNo})` : '';
+    await appendUpdate(supabase, {
+      entityType: 'dept_request',
+      entityId: id,
+      kind: 'quoted',
+      body: `ใช้ราคาในทะเบียน ${target} — ${entry.short} ${fmtNumber(entry.price.unitPrice)} ฿/กก.${rev}`,
+      user,
+    }).catch(() => {});
+
+    await recordAudit({
+      user, action: 'update', entityType: 'dept_request', entityId: id,
+      before: row, after: { ...row, answerStatus: 'done', answeredRevisionId: entry.price.revisionId },
+      summary: `ใช้ราคา ${entry.short} ในทะเบียน ${target} (${before.docNo || id})`,
       request,
     });
 

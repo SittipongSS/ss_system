@@ -73,6 +73,8 @@ const PRODUCT_CALLERS = new Map([
 /* ไลบรารีที่ส่ง `order` ต่อให้ตัวตัดสินรายบรรทัด — ผู้เรียกของมันถูกคุมที่ต้นทางของ order อีกชั้น */
 const LIB_CALLERS = new Map([
   ['lib/sales/serviceRoundsEntry.js', 'lineTakesServiceRounds(line, order) — ช่องจำนวนรอบ (ใบที่ประทับแล้วถามชนิดบรรทัด)'],
+  ['lib/sales/serviceSetup.js', 'serviceReopenPrompt (mig 0396) — ข้อ ④ ของโมดัลเปิดแก้: สวิตช์ด่านช่วงครอบพลิกไหม (ประทับ vs ล้างตรา) · '
+    + 'order/บรรทัดจาก loadServiceSetupContext (ใบ `*` ผ่าน loadScoped · บรรทัดพก "serviceFgCode") · ไม่ตัดสินด่านเงินเอง แค่ข้อความ'],
 ]);
 
 const ORDER_DECIDER = /\borderHasServiceRounds\(/;

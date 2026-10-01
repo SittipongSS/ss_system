@@ -9,8 +9,8 @@
 // ⚠️ ไฟล์นี้ถูกเทสต์ใต้ node (serviceSetupUi.test.mjs) — ห้าม import คอมโพเนนต์/ของฝั่ง browser
 import { categoryOf } from '@/lib/master/categoryOf';
 import {
-  SERVICE_BACKFILL_RAIL_TEXT, SERVICE_KIND_NOT_SERVICE, SERVICE_KIND_PACKAGE, SERVICE_ROLE_UNSET, SERVICE_SETUP_EDIT_TEXT, SERVICE_SETUP_LINE_TEXT,
-  SERVICE_SETUP_PANEL_TEXT, periodSpan,
+  SERVICE_BACKFILL_RAIL_TEXT, SERVICE_BACKFILL_STATE_LABELS, SERVICE_KIND_NOT_SERVICE, SERVICE_KIND_PACKAGE, SERVICE_REOPENED_TEXT, SERVICE_ROLE_UNSET,
+  SERVICE_SETUP_EDIT_TEXT, SERVICE_SETUP_LINE_TEXT, SERVICE_SETUP_PANEL_TEXT, periodSpan,
 } from '@/lib/sales/serviceSetup';
 import { NA, fmtDate, fmtDateTime, fmtNumber } from '@/lib/format';
 
@@ -463,9 +463,51 @@ export function backfillBannerText(view) {
     const who = state.submittedByName ? ` โดย ${state.submittedByName}` : '';
     return `${SERVICE_SETUP_EDIT_TEXT.backfillSubmitted}${when}${who} · ${BANNER_UNCHANGED}`;
   }
+  /* เปิดแก้หลังอนุมัติ (mig 0396 · ภาคผนวก A.4) — ใคร/เมื่อไร/ทำไม + ช่องที่แก้ได้ของใบนี้ (`view.reopened.fields` ตามชนิดบรรทัด R20) */
+  if (view?.reopened) return SERVICE_REOPENED_TEXT.bannerLine(view.reopened);
   /* มติ 30/09: ลำดับเดียวกับการ์ดงานบริการ (แพ็คเกจ → ไซต์ · โซน → จำนวนรอบบริการ → รอบละกี่แพ็ค) · คำจากแคตตาล็อก `SERVICE_SETUP_LINE_TEXT` */
   return `ตั้งงานบริการ (แพ็คเกจ · ไซต์ · โซน · ${SERVICE_SETUP_LINE_TEXT.roundsLabel} · ${SERVICE_SETUP_LINE_TEXT.packsLabel} · ช่วงบริการ)`
     + ` แล้วยื่นให้ผู้จัดการฝ่ายขายตรวจ · ${BANNER_UNCHANGED}`;
+}
+
+/* หัว/ป้ายของแบนเนอร์และการ์ดรางงานบริการย้อนหลัง — "ใบเดิม" (อนุมัติก่อนมีการตั้งงานบริการ) กับ "แก้หลังอนุมัติ" (mig 0396)
+   ⭐ ตัวตัดสินเดียวคือ `view.reopened` ของก้อน GET (`serviceSetupReopened` — มีค่าเฉพาะตอนใบอยู่ในเส้นตั้งย้อนหลัง) · ขั้น (`flow`) ยัง 'backfill'
+   ⚠️ คำของใบที่เปิดแก้มาจาก `SERVICE_REOPENED_TEXT` ที่เดียว (ภาคผนวก A.4) · ขั้นแรกของรางเปลี่ยนชื่อเป็น "เปิดแก้" (ม็อก ReopenEditing) */
+const LEGACY_BACKFILL_COPY = Object.freeze({
+  bannerTitle: 'ใบนี้อนุมัติก่อนมีการตั้งงานบริการ',
+  eyebrow: 'Service setup · ใบเดิม',
+  title: 'งานบริการ (ใบเดิม)',
+  meta: 'ตั้งย้อนหลังบนใบที่อนุมัติแล้ว — ผู้จัดการฝ่ายขายตรวจก่อนส่งให้ TS',
+  firstStep: 'ตั้งค่า',
+});
+
+/**
+ * → `{ reopened, bannerTitle, bannerLead, eyebrow, title, meta, firstStep, stateLabel, reopenLine }`
+ *   · `bannerLead` = บรรทัด "เปิดแก้ … โดย … · เหตุผล" เหนือบรรทัดรอตรวจ (ขั้นรอตรวจ — บรรทัดหลักเป็นของการยื่นแล้ว · ม็อก ReopenReview)
+ *   · `reopenLine` = บรรทัดเดียวกันบนการ์ดราง (ทุกขั้น) · ใบเดิม = null ทั้งสอง
+ */
+export function backfillCopyOfView(view) {
+  const state = backfillStateOfView(view);
+  const reopened = view?.reopened || null;
+  if (!reopened) {
+    return {
+      ...LEGACY_BACKFILL_COPY, reopened: null, bannerLead: null, reopenLine: null,
+      stateLabel: state ? SERVICE_BACKFILL_STATE_LABELS[state] : null,
+    };
+  }
+  const reopenLine = SERVICE_REOPENED_TEXT.railLine(reopened);
+  return {
+    reopened,
+    bannerTitle: SERVICE_REOPENED_TEXT.bannerTitle,
+    bannerLead: state === 'submitted' ? reopenLine : null,
+    eyebrow: SERVICE_REOPENED_TEXT.railEyebrow,
+    title: SERVICE_REOPENED_TEXT.railTitle,
+    meta: SERVICE_REOPENED_TEXT.railMeta,
+    firstStep: 'เปิดแก้',
+    /* ขั้นแก้พูด "กำลังแก้" (ใบนี้เคยตั้งครบแล้ว) · คำเดียวกับป้ายโซน/ชิปด่านนัดของ TS (`SERVICE_REOPENED_TEXT.stateLabel`) */
+    stateLabel: state ? SERVICE_REOPENED_TEXT.stateLabel(state) : null,
+    reopenLine,
+  };
 }
 
 /** บรรทัดรองบนหัวการ์ด "รายการสินค้าและบริการ" ของใบสาย SERVICE — ที่มาของราคา (งานบริการอยู่การ์ดของตัวเองแล้ว · 01/10) */
@@ -483,10 +525,11 @@ export function serviceCardMeta({ view, flow, editable, totals } = {}) {
     return `อนุมัติแล้ว · เปิด ${fmtNumber(totals?.zones || 0)} โซนให้ TS${opened ? ` เมื่อ ${fmtDateTime(opened)}` : ''}`;
   }
   if (editable && flow === 'pipeline') return `${ask} · แก้ได้จนกว่าจะยื่นอนุมัติ`;
-  if (editable && flow === 'backfill') return `${ask} · แก้ได้จนกว่าจะยื่นตรวจ`;
-  /* ม็อก BackfillApproveModal: ใบเดิมที่ยื่นตรวจแล้วบอกวันยื่นบนหัวการ์ด */
+  /* เปิดแก้หลังอนุมัติ (mig 0396 · ภาคผนวก A.4) — บอกว่าเป็นการแก้ใบที่ส่ง TS ไปแล้ว ไม่ใช่ใบเดิมที่ยังไม่เคยตั้ง */
+  if (editable && flow === 'backfill') return `${ask} · ${view?.reopened ? SERVICE_REOPENED_TEXT.cardMeta : 'แก้ได้จนกว่าจะยื่นตรวจ'}`;
+  /* ม็อก BackfillApproveModal: ใบเดิมที่ยื่นตรวจแล้วบอกวันยื่นบนหัวการ์ด · ใบที่เปิดแก้บอกว่าเป็นรอบแก้ (ม็อก ReopenReview) */
   if (flow === 'backfill' && view?.state?.setupState === 'submitted' && view?.state?.submittedAt) {
-    return `ตั้งย้อนหลัง · ยื่นตรวจ ${fmtDate(view.state.submittedAt)}`;
+    return `${view?.reopened ? 'เปิดแก้หลังอนุมัติ' : 'ตั้งย้อนหลัง'} · ยื่นตรวจ ${fmtDate(view.state.submittedAt)}`;
   }
   return null;
 }

@@ -156,6 +156,7 @@ const NOTE_TONE = { danger: "cell-num-bad", success: "cell-num-ok", warning: "",
    ⭐ "ไม่นับ Actual" = การอนุมัติงานบริการไม่แตะยอด (ใบนับ Actual ไปแล้วตอนอนุมัติใบ) ⇒ ผู้จัดการรู้ก่อนเปิดว่า
      ไม่ใช่การอนุมัติใบซ้ำ · ⚠️ บรรทัดนี้ไม่พูดยอดเงินโดยเจตนา
    ⚠️ ชื่อผู้ยื่นเต็มตัวเดียวกับหัวโมดัลอนุมัติบนหน้าใบ (`approvalSubject`) — ไม่ย่อ */
+/* ใบที่เปิดแก้หลังอนุมัติ (mig 0396) — ป้ายของมันมากับแถว (`serviceReview.label` = SERVICE_REOPENED_TEXT.queueLabel ของ server) · ไม่มี = ป้ายนี้ */
 const SERVICE_REVIEW_LABEL = "งานบริการ (ใบเดิม)";
 function serviceReviewLine(order) {
   const review = order.serviceReview || {};
@@ -604,7 +605,7 @@ export default function SalesOrdersPage() {
           items={approvalQueue}
           unit="ใบ"
           title={financeShell ? "ต้องทำตอนนี้ — ใบที่เก็บครบแล้ว รอปิด" : "ต้องทำตอนนี้ — รออนุมัติจากคุณ"}
-          primary={(o) => (serviceReviewRow(o) ? `${SERVICE_REVIEW_LABEL} · ${o.orderNumber}` : o.orderNumber)}
+          primary={(o) => (serviceReviewRow(o) ? `${o.serviceReview?.label || SERVICE_REVIEW_LABEL} · ${o.orderNumber}` : o.orderNumber)}
           /* ⭐ คิวรออนุมัติโชว์ **ยอดก่อน VAT** ตัวเดียวกับการ์ด "รอตรวจอนุมัติ" (มติ 2026-09-11)
              — เดิมเป็น totalAmount รวม VAT ⇒ ใบเดียวกันมีสองยอด "รออนุมัติ" บนหน้าเดียว
              ⚠️ คิวของเปลือกบัญชี (ใบเก็บครบรอปิด) ยังเป็นยอดรวม VAT = เงินที่เก็บจริง */

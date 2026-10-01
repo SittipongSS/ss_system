@@ -82,3 +82,14 @@ test('F19: route คิวงานเข้าใหม่ส่งชุดล
   assert.match(call, /\bcustomersWithSite\b/);
   assert.match(route, /const customersWithSite = new Set\(\(sites \|\| \[\]\)\.filter\(\(s\) => s\?\.isActive !== false\)/);
 });
+
+test('0396: select ใบของ route งานเข้าใหม่พกคอลัมน์ผู้เปิดแก้/เวลา/เหตุผล — ไม่มี = ป้าย "แก้หลังอนุมัติ" บนแท็บ TS หายเงียบ (serviceSetupReopened ได้ undefined)', () => {
+  const route = code('app/api/service/intake/route.js');
+  const selects = [...route.matchAll(/from\(\s*['"]sales_orders['"]\s*\)\s*\.select\(\s*'([^']*)'/g)].map((m) => m[1]);
+  const legacy = selects.find((cols) => cols.includes('"serviceTermsOpenedAt"'));
+  assert.ok(legacy, 'ต้องเจอ select ของถังใบเดิม');
+  for (const col of ['"serviceSetupReopenedAt"', '"serviceSetupReopenedByName"', '"serviceSetupReopenedReason"']) {
+    assert.ok(legacy.includes(col), `select ขาด ${col}`);
+  }
+  assert.match(code('lib/service/legacySetupQueue.js'), /reopened: serviceSetupReopened\(order\),/, 'ถามตัวตัดสินกลาง ไม่อ่านคอลัมน์เอง');
+});

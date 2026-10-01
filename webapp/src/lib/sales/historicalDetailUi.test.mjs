@@ -242,7 +242,8 @@ test('🔴 โมดัลยกเลิก SO โชว์เหตุที�
 test('🔴 โมดัลอื่นของใบย้อนหลัง (ตีกลับ · ดึงกลับ · ลบ/บังคับลบ) ก็ต้องโชว์เหตุที่ API ตีกลับในโมดัล', () => {
   const page = code(PAGE);
   const dialogs = page.match(/<ReasonDialog[\s\S]*?\n {6}\/>/g) || [];
-  assert.equal(dialogs.length, 3, 'หน้านี้มีโมดัลเหตุผลสามตัว (ตีกลับ · ดึงกลับ/ย้อนการอนุมัติ · ตีกลับงานบริการย้อนหลัง — mig 0392)');
+  assert.equal(dialogs.length, 4,
+    'หน้านี้มีโมดัลเหตุผลสี่ตัว (ตีกลับ · ดึงกลับ/ย้อนการอนุมัติ · ตีกลับงานบริการย้อนหลัง — mig 0392 · เปิดแก้งานบริการหลังอนุมัติ — mig 0396)');
   for (const dialog of dialogs) assert.match(dialog, /submitError=\{error\}/);
   // โมดัลลบใช้ ConfirmDialog ตัวเดียวกับโมดัลอนุมัติ ⇒ ต้องเปิดธง showsError เองรายใบ
   const remove = slice(page, 'function remove() {', '\n  }');

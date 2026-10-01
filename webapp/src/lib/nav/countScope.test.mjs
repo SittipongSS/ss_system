@@ -26,7 +26,7 @@ test('แอดมินได้ขอบเขตของทุกคีย�
 
 /* 🔴 ข้อห้ามของ ADR 0016: ยอดของทั้งฝ่าย/ทั้งบริษัท ห้ามอ่านว่า "รอคุณ" */
 test('⭐ คีย์ที่เป็นงานของฝ่าย/บริษัท ต้องไม่ได้ขอบเขต mine กับใครเลย', () => {
-  const shared = ['rdRequests', 'financeRequests', 'serviceRequests', 'customers', 'products',
+  const shared = ['rdRequests', 'rdPricing', 'financeRequests', 'serviceRequests', 'customers', 'products',
     'serviceIntake', 'payments', 'productionJobs', 'taxRegistrations', 'taxFilings'];
   for (const role of [...ROLES, 'user']) {
     for (const dept of [null, 'RD', 'FN', 'TS']) {

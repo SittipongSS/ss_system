@@ -442,3 +442,18 @@ test('ใบที่จบแล้วใช้คำและโทนขอ�
   assert.equal(requestQueueStatus({ status: 'ไม่รู้จัก' }).label, 'จบแล้ว');
   assert.equal(requestQueueStatus(null).label, 'จบแล้ว');
 });
+
+/* ── ม-153 · ใบที่งานของฝ่ายเหลือแค่ใส่ราคา (มติผู้ใช้ 2026-10-01) ─────────────────────────────────
+   🐞 เดิมขึ้น "รอ RD ทำต่อ" เหมือนใบที่ยังพัฒนาอยู่ ⇒ RD มองไม่ออกว่าใบไหนเหลือแค่ราคา */
+const confirmedRow = { ackAt: '2026-08-01', readyAt: '2026-08-02', pickedUpAt: '2026-08-03', sentAt: '2026-08-04', outcome: 'confirmed', answerStatus: 'pending' };
+
+test('⭐ ม-153 งานของฝ่ายเหลือแค่ใส่ราคา = "รอ RD ใส่ราคา" · ปนงานที่ยังทำ = "รอ RD ทำต่อ"', () => {
+  const priceOnly = requestNextStep(req({ committedDueDate: '2026-08-10', items: [confirmedRow, done] }));
+  assert.deepEqual(priceOnly, { owner: 'dept', label: 'รอ RD ใส่ราคา' });
+  const mixed = requestNextStep(req({ committedDueDate: '2026-08-10', items: [confirmedRow, waitDept] }));
+  assert.deepEqual(mixed, { owner: 'dept', label: 'รอ RD ทำต่อ' });
+  // แถวรอผู้ขอไม่เปลี่ยนคำ — ฝ่ายยังเป็นคอขวด (ราคา) และงานเดียวของฝ่ายคือราคา
+  assert.equal(requestNextStep(req({ committedDueDate: '2026-08-10', items: [confirmedRow, waitRequester] })).label, 'รอ RD ใส่ราคา');
+  // โทนเดิม (ฟ้า = ตาฝ่าย) — ไม่มีสีใหม่
+  assert.equal(requestQueueStatus(req({ committedDueDate: '2026-08-10', items: [confirmedRow] })).tone, 'info');
+});

@@ -19,6 +19,7 @@ const GUARDED = [
   "app/database/package-sizes/page.js",
   "app/requests/page.js",
   "app/rd/perfumers/page.js",
+  "app/rd/prices/page.js",
   "app/notifications/page.js",
   "app/finance/payments/page.js",
   "app/sa/calendar/page.js",

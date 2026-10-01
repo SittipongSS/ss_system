@@ -48,6 +48,10 @@ const SCOPE_RULES = {
     (user) => (canUser(user, 'requests:answer')
       && answerableDepts(user).filter(deptHasOwnModule).includes(dept) ? 'dept' : null)])),
 
+  /* รอใส่ราคา (ม-153) — งานของทั้งฝ่าย RD · ด่านเดียวกับคิวคำร้องของ RD (route ยิงสองตัวนี้คู่กันจากโหลดเดียว) */
+  rdPricing: (user) => (canUser(user, 'requests:answer')
+    && answerableDepts(user).filter(deptHasOwnModule).includes('RD') ? 'dept' : null),
+
   leads: (user) => {
     if (!canViewLeads(user)) return null;
     const role = user?.role;
