@@ -9,7 +9,7 @@ import ChoiceChips from "@/components/ui/ChoiceChips";
 import DateInput from "@/components/ui/DateInput";
 import { periodEndFromMonths } from "@/lib/sales/serviceSetup";
 import { PERIOD_FIELD_ID, periodLabel, periodReadout } from "./serviceSetupDraft";
-import styles from "./ServiceLineSetupBlock.module.css";
+import styles from "./ServiceSetupFields.module.css";
 
 const MONTH_CHIPS = [12, 24];
 

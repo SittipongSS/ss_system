@@ -327,9 +327,10 @@ export const FIELD_CREW_ROLES = ['ts', 'ts_senior'];
 export const isFieldCrewRole = (role) => FIELD_CREW_ROLES.includes(normalizeRole(role));
 
 /** ⭐ **ส่งผลประเมินพื้นที่ให้ฝ่ายขายได้ไหม** — หัวหน้าฝ่าย TS เท่านั้น (แผน §5.4)
- *  🔴 **ไม่ใช่ `canEditService`** ซึ่งช่างทุกคนผ่าน — การกดส่งผลคือการรับรองว่า
+ *  🔴 **ไม่ใช่ `canEditService`** ซึ่ง Planner ก็ผ่าน — การกดส่งผลคือการรับรองว่า
  *    ตัวเลขแพ็คเกจกับจุดติดตั้งที่ SA จะเอาไปเสนอราคานั้นถูกต้อง เป็นการตัดสินใจ
  *    เชิงพาณิชย์ ไม่ใช่การรายงานข้อเท็จจริงหน้างาน
+ *    (ช่าง Operation `ts` ไม่ผ่าน `canEditService` ตั้งแต่ 2026-08-30 — ถือ `service:work` แทน)
  *  ⚠️ แอดมินผ่าน — เก็บกวาด/แก้ให้ตอนหัวหน้าไม่อยู่
  *  ⭐ CD/CM ผ่านด้วย (SERVICE_OVERSEER_ROLES · มติ 2026-09-24 "สิทธิ์ TS manager") */
 export const canSendSurveyResult = (user) => user?.role === 'admin'
@@ -1142,6 +1143,16 @@ export function canEditService(user) {
 export function canDoFieldWork(user) {
   if (canEditService(user)) return true;
   return canUser(user, 'service:work') && departmentOf(user) === SERVICE_DEPARTMENT;
+}
+
+/* ⭐ **ใช้เปลือกของช่าง** ("งานของฉัน" · มติ 2026-09-26 จอ Operation ง่ายที่สุด) — มีงานหน้างานของตัวเอง
+   **แต่** แก้ตารางทั้งฝ่ายไม่ได้ ⇒ วันนี้คือตำแหน่ง Operation (`ts`) ล้วน ๆ
+   ⚠️ Senior ออกหน้างานประจำ (`FIELD_CREW_ROLES`) แต่ถือ `service:edit` ⇒ ได้เปลือกเต็มเหมือนหัวหน้า
+      เช่นเดียวกับ Planner · Audit · ผู้จัดการ · แอดมิน · CD/CM
+   ⚠️ ตัดสินจาก cap ไม่ใช่ `role === 'ts'` — ตำแหน่งใหม่ที่ถือแค่ `service:work` วันหน้าได้เปลือกนี้เอง
+      และเป็นชุดเดียวกับที่ `visitWriteAccess` ติดธง `ownWorkOnly` (ด่านเขียนรายใบของ server) */
+export function usesCrewShell(user) {
+  return canDoFieldWork(user) && !canEditService(user);
 }
 
 /** ทำงานบนนัดใบนี้ได้ไหม — ใช้ตัวนี้ที่ handler ทุกจุดที่ *เขียน* นัด */

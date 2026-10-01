@@ -54,7 +54,7 @@ test('PR-D ⭐ QuotationReadOnlyLineItems: showPacksPerRound ปิดเป็�
   /* ⭐ มติเจ้าของ 29/09: ป้าย = ค่าคงที่ `SERVICE_PACKS_LABEL` "แต่ละครั้งกี่แพ็ค" (คำเดียวกับใบใหม่ · ไม่สะกดเอง) */
   assert.match(tag, /\{SERVICE_PACKS_LABEL\}: <strong>\{packsPerRoundText\(line\.packsPerRound\)\}<\/strong>/);
   assert.match(code(LINE_ITEMS), /import \{ SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL, lineIsServicePackage \} from "@\/lib\/sales\/serviceOrders";/);
-  /* ลำดับ: ไซต์ · โซน → จำนวนรอบบริการ → แต่ละครั้งกี่แพ็ค → หมายเหตุ */
+  /* ลำดับ: ไซต์ · โซน → จำนวนรอบบริการ → รอบละกี่แพ็ค → หมายเหตุ */
   const rounds = ro.indexOf('{showServiceRounds && lineIsServicePackage(line) ? (');
   const packs = ro.indexOf('{showPacksPerRound && lineIsServicePackage(line) ? (');
   const note = ro.indexOf('{line.metadata?.note ? (');
@@ -96,7 +96,7 @@ test('PR-D ⭐ การ์ดโซน: เซลล์แพ็คต่อร
   const rounds = row.indexOf('zone.rounds == null');
   const packs = row.indexOf('historicalPacksCellText(');
   const money = row.indexOf('zone.lineTotal == null');
-  assert.ok(qty > 0 && rounds > qty && packs > rounds && money > packs, 'เซลล์แต่ละครั้งกี่แพ็คต้องอยู่ระหว่างจำนวนรอบบริการกับจำนวนเงิน');
+  assert.ok(qty > 0 && rounds > qty && packs > rounds && money > packs, 'เซลล์รอบละกี่แพ็คต้องอยู่ระหว่างจำนวนรอบบริการกับจำนวนเงิน');
   const head = slice(card, '<thead>', '</thead>');
   assert.ok(head.indexOf('{SERVICE_ROUNDS_LABEL}') < head.indexOf('{SERVICE_PACKS_LABEL}'), 'หัวคอลัมน์เรียงเหมือนเซลล์');
 });

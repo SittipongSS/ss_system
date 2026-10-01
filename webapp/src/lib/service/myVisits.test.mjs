@@ -130,3 +130,144 @@ test('⭐ "รอฉันลงมือ" = นัดค้าง + นัด�
   assert.equal(waitingOnMeVisitCount(visits, today), 2);
   assert.equal(waitingOnMeVisitCount([], today), 0);
 });
+
+/* ══ GET /api/service/my-visits — สองแบบ (แผน operation-crew §5 · S2 · R3) ══════════════════════════
+ *
+ * ⚠️ เรียก handler ตัวจริงผ่าน supabase ปลอม — ถอดตัวอ่านผู้ใช้กับ client จริงออกด้วย hook และลบ env ของ
+ *    Supabase ทิ้งก่อน import ⇒ ต่อให้ hook พลาด ก็สร้าง client จริงไม่ได้ (dev DB = prod DB)
+ * ⚠️ hook ต่อหลัง import ข้างบน (ไฟล์กฎล้วน) — มีผลกับ import ข้างล่างเท่านั้น */
+const { register } = await import('node:module');
+const { mock } = await import('node:test');
+const { businessDate } = await import('../businessDate.js');
+const { addDays } = await import('../datePeriods.js');
+
+for (const key of ['SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']) delete process.env[key];
+register('data:text/javascript,' + encodeURIComponent(`
+  const mod = (src) => 'data:text/javascript,' + encodeURIComponent(src);
+  const AUTH = mod("export async function getCurrentUser() { return globalThis.__myVisitsRouteTest?.user ?? null; }");
+  const ADMIN = mod("export function getSupabaseAdmin() { const s = globalThis.__myVisitsRouteTest?.supabase; if (!s) throw new Error('fake supabase missing'); return s; }");
+  export async function resolve(s, c, n) {
+    if (s === '@/lib/authUser') return { url: AUTH, shortCircuit: true };
+    if (s === '@/lib/supabaseAdmin') return { url: ADMIN, shortCircuit: true };
+    return n(s === 'next/headers' ? 'next/headers.js' : s, c);
+  }
+`));
+const { GET: getMyVisits } = await import('../../app/api/service/my-visits/route.js');
+
+/* supabase ปลอม: จดทุก query · `reply(q)` ตอบแถวของนัด · ตารางอื่นว่าง */
+function routeSupabase(reply = () => []) {
+  const calls = [];
+  const from = (table) => {
+    const q = { table, ops: [] };
+    calls.push(q);
+    const builder = new Proxy({}, {
+      get(_, prop) {
+        if (prop === 'then') {
+          return (resolve, reject) => Promise.resolve({ data: table === 'service_visits' ? reply(q) : [], error: null })
+            .then(resolve, reject);
+        }
+        return (...args) => { q.ops.push([prop, ...args]); return builder; };
+      },
+    });
+    return builder;
+  };
+  const opsOf = (q, name) => q.ops.filter(([n]) => n === name).map(([, ...args]) => args);
+  return { from, calls, opsOf, visitQueries: () => calls.filter((c) => c.table === 'service_visits') };
+}
+
+async function myVisitsAs(user, query, reply) {
+  const supabase = routeSupabase(reply);
+  globalThis.__myVisitsRouteTest = { user, supabase };
+  const res = await getMyVisits(new Request(`http://localhost/api/service/my-visits?${query}`));
+  return { status: res.status, json: await res.json(), supabase };
+}
+
+const tech = { id: 'U-TECH', name: 'ช่างเอ', role: 'ts', department: 'TS' };
+const planner = { id: 'U-PLAN', name: 'ผู้จัดคิว', role: 'ts_planner', department: 'TS' };
+const routeVisit = (id, o = {}) => ({
+  id, siteId: 'S1', kind: 'refill', scheduledDate: businessDate(), startTime: '09:00',
+  status: 'scheduled', assigneeId: 'U-TECH', assistantIds: [], ...o,
+});
+
+test('🔴 ไม่ส่ง from/to = ทรงคำตอบเดิมทุกอย่าง (หน้างานวันนี้ตัวเก่าอ่านแค่ data.visits — R3)', async () => {
+  const day = businessDate();
+  const late = routeVisit('V-LATE', { scheduledDate: addDays(day, -3) });
+  const { status, json, supabase } = await myVisitsAs(tech, 'scope=mine', () => [late, routeVisit('V-TODAY')]);
+  assert.equal(status, 200);
+  assert.deepEqual(Object.keys(json).sort(), ['scope', 'sites', 'visits'], 'ไม่มีคีย์ overdue/sentBack');
+  assert.deepEqual(json.visits.map((x) => x.id), ['V-LATE', 'V-TODAY'], 'นัดค้างยังปนอยู่ใน visits');
+  const queries = supabase.visitQueries();
+  assert.equal(queries.length, 1, 'คำขอเดียว ไม่มีตัวโหลดนัดค้าง/ส่งกลับ');
+  // ไม่ส่ง back/ahead = วันนี้วันเดียว เหมือนของที่ใช้อยู่จริง (คงไว้จนจอใหม่ขึ้น — การ์ดวันหน้าจะมีปุ่มเริ่มงานที่โดน 409)
+  assert.deepEqual(supabase.opsOf(queries[0], 'gte'), [['scheduledDate', day]]);
+  assert.deepEqual(supabase.opsOf(queries[0], 'lte'), [['scheduledDate', day]]);
+  assert.equal(supabase.opsOf(queries[0], 'in').length, 0, 'แบบเดิมไม่กรองสถานะที่ server (groupVisits ตัดเอง)');
+});
+
+test('🔴 "วันนี้" มาจากนาฬิกาไทย — 00:30 ไทย (17:30 UTC ของเมื่อวาน) ช่วงวันต้องไม่ถอยไปหนึ่งวัน', async () => {
+  mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-09-27T17:30:00.000Z') });
+  try {
+    const legacy = await myVisitsAs(tech, 'scope=mine');
+    const [q] = legacy.supabase.visitQueries();
+    assert.deepEqual(legacy.supabase.opsOf(q, 'gte'), [['scheduledDate', '2026-09-28']]);
+    assert.deepEqual(legacy.supabase.opsOf(q, 'lte'), [['scheduledDate', '2026-09-28']]);
+    const ranged = await myVisitsAs(tech, 'from=2026-09-28&to=2026-10-11');
+    assert.equal(ranged.json.today, '2026-09-28');
+    const overdue = ranged.supabase.visitQueries().find((x) => ranged.supabase.opsOf(x, 'lt').length);
+    assert.deepEqual(ranged.supabase.opsOf(overdue, 'lt'), [['scheduledDate', '2026-09-28']]);
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('⭐ แบบช่วงวัน: นัดค้างเกิน 14 วันยังอยู่ (ไม่มีขอบล่าง) · ช่วงวันตัดร่าง/ยกเลิก/เลื่อนที่ query', async () => {
+  const day = businessDate();
+  const ancient = routeVisit('V-40', { scheduledDate: addDays(day, -40) });
+  const reply = (q) => (q.ops.some(([n]) => n === 'lt') ? [ancient] : []);
+  const { status, json, supabase } = await myVisitsAs(tech, `from=${day}&to=${addDays(day, 13)}`, reply);
+  assert.equal(status, 200);
+  assert.deepEqual(json.overdue.map((x) => x.id), ['V-40']);
+  assert.deepEqual(json.sentBack, []);
+  assert.equal(json.from, day);
+  assert.equal(json.to, addDays(day, 13));
+  const [windowQuery, overdueQuery] = supabase.visitQueries();
+  assert.deepEqual(supabase.opsOf(windowQuery, 'in'), [['status', ['scheduled', 'in_progress', 'done', 'partial', 'unable']]]);
+  assert.equal(supabase.opsOf(overdueQuery, 'gte').length, 0);
+});
+
+test('แบบช่วงวัน: ผิดรูป/วันที่ไม่มีจริง/กลับหัว/ยาวเกิน 62 วัน = 400 ภาษาไทย · ล้นขอบ (ย้อน 31 · ล่วง 90) ถูกบีบ', async () => {
+  const day = businessDate();
+  // วันที่ไม่มีจริงผ่าน regex ของ isDayValue ได้ — ปล่อยถึงคอลัมน์ `date` = 500 ภาษาอังกฤษ (review S2 28/09)
+  for (const query of [
+    'from=2026-9-1&to=2026-09-30', `from=${day}`, `from=${addDays(day, 5)}&to=${day}`, `from=${day}&to=${addDays(day, 63)}`,
+    'from=2026-02-30&to=2026-03-05', 'from=2026-09-01&to=2026-09-31',
+  ]) {
+    const { status, json, supabase } = await myVisitsAs(tech, query);
+    assert.equal(status, 400, query);
+    assert.match(json.error, /ช่วงวัน/, query);
+    assert.equal(supabase.calls.length, 0, `${query}: ไม่ยิง query`);
+  }
+  const past = await myVisitsAs(tech, `from=${addDays(day, -60)}&to=${addDays(day, -10)}`);
+  assert.equal(past.json.from, addDays(day, -31));
+  assert.deepEqual(past.supabase.opsOf(past.supabase.visitQueries()[0], 'gte'), [['scheduledDate', addDays(day, -31)]]);
+  const future = await myVisitsAs(tech, `from=${addDays(day, 60)}&to=${addDays(day, 100)}`);
+  assert.equal(future.json.to, addDays(day, 90));
+});
+
+test('🔴 ช่างขอคิวคนอื่น/ทั้งฝ่ายไม่ได้ — server บังคับเป็นตัวเอง · ผู้จัดคิวยังดูแทนได้ (?user=)', async () => {
+  const day = businessDate();
+  for (const query of ['scope=team&assignee=U-X', `scope=team&assignee=U-X&from=${day}&to=${day}`]) {
+    const { json, supabase } = await myVisitsAs(tech, query);
+    assert.equal(json.scope, 'mine', query);
+    for (const q of supabase.visitQueries()) {
+      assert.deepEqual(supabase.opsOf(q, 'or'), [['assigneeId.eq.U-TECH,assistantIds.cs.["U-TECH"]']], query);
+    }
+  }
+  const cover = await myVisitsAs(planner, `scope=mine&assignee=U-X&from=${day}&to=${day}`);
+  for (const q of cover.supabase.visitQueries()) {
+    assert.deepEqual(cover.supabase.opsOf(q, 'or'), [['assigneeId.eq.U-X,assistantIds.cs.["U-X"]']]);
+  }
+  const team = await myVisitsAs(planner, 'scope=team');
+  assert.equal(team.json.scope, 'team');
+  assert.equal(team.supabase.opsOf(team.supabase.visitQueries()[0], 'or').length, 0);
+});

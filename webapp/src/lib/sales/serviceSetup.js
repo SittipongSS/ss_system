@@ -1,8 +1,10 @@
 // ── งานบริการรายบรรทัดของใบสั่งขาย: ตัวตัดสินล้วน (mig 0392 · PR-A · มติเจ้าของ 26–28/09) ─────────────
 //
 // ⭐ **ฝ่ายขายตั้งงานบริการที่ใบสั่งขายเอง** — ทุกบรรทัดของใบสาย SERVICE ต้องตอบว่า "เป็นแพ็คเกจบริการรายรอบไหม"
-//   แพ็คเกจต้องมี FG หมวด 02-001 · จำนวนรอบบริการ · โซน (หลายโซนได้ แต่ละโซนบอกว่า "แต่ละครั้งกี่แพ็ค") · และใบมีช่วงบริการหนึ่งช่วง
-//   ⭐ มติเจ้าของ 29/09: ทุกผิวเรียง **"จำนวนรอบบริการ" ก่อน แล้วค่อยบอกว่า "แต่ละครั้งกี่แพ็ค"** — คำอยู่ที่ `SERVICE_SETUP_LINE_TEXT`
+//   แพ็คเกจต้องมี FG หมวด 02-001 · จำนวนรอบบริการ · โซน (หลายโซนได้ แต่ละโซนบอกว่า "รอบละกี่แพ็ค") · และใบมีช่วงบริการหนึ่งช่วง
+//   ⭐ มติเจ้าของ 29/09: ทุกผิวเรียง **"จำนวนรอบบริการ" ก่อน แล้วค่อยบอกว่ากี่แพ็ค** — คำอยู่ที่ `SERVICE_SETUP_LINE_TEXT`
+//   ⭐ มติเจ้าของ 30/09: การ์ด "งานบริการ" เป็นตาราง ① งานบริการ? → ② FG → ③ ไซต์ · โซน → ④ จำนวนรอบบริการ → ⑤ รอบละกี่แพ็ค → ⑥ รวม
+//     (`SERVICE_SETUP_GRID_TEXT`) · คำ "แต่ละครั้งกี่แพ็ค" ของ 29/09 เปลี่ยนเป็น "รอบละกี่แพ็ค" (`PACKS_TERM`)
 //     (ค่าที่เก็บยังเป็น `serviceRounds` + `packsPerRound` เหมือนเดิม — เปลี่ยนแค่คำและลำดับบนจอ)
 //     · คำเรียกรอบเดิม "ไปกี่รอบ" → "จำนวนรอบบริการ" (มติเจ้าของ 29/09 รอบสอง) — คำนี้อยู่ที่ `ROUNDS_TERM` ที่เดียว
 //   ⇒ อนุมัติแล้วรอบขายของโซน (service_zone_terms) เกิดทันทีในทรานแซกชันเดียวกัน TS ไม่ต้องผูกโซนอีก
@@ -49,10 +51,15 @@ const ROUNDS_TERM = 'จำนวนรอบบริการ';
 /* เพดานเดียวกับ CHECK/RPC ของ 0392 */
 export const SERVICE_SETUP_LIMITS = Object.freeze({ zonesPerLine: 500, packsMin: 1, packsMax: 9999, roundsMin: 1, roundsMax: 999 });
 
-/* ตัวเลือกชนิดบรรทัด (OptionTiles · ไม่มีค่าตั้งต้น) */
+/* คำเรียก "รอบหนึ่งไปกี่แพ็ค" ของโซน (`packsPerRound`) — มติเจ้าของ 30/09 ("ต้องไปกี่รอบ รอบละกี่แพ็ค") แทน "แต่ละครั้งกี่แพ็ค" ของ 29/09
+   ที่เดียวของคำนี้ในไฟล์ · literal ของไฟล์เอง (กฎ 16) */
+const PACKS_TERM = 'รอบละกี่แพ็ค';
+
+/* คำตอบข้อ ① "งานบริการ?" ของบรรทัดพิมพ์เอง (ปุ่มสองทาง · ไม่มีค่าตั้งต้น) — มติเจ้าของ 30/09
+   "มันต้องเลือกว่า รายการ เป็นงานบริการมั้ย" ⇒ คำถามเป็น ใช่/ไม่ใช่ · คำอธิบายขึ้นเป็น title ของปุ่ม */
 export const SERVICE_KIND_OPTIONS = Object.freeze([
-  { value: 'package', label: 'แพ็คเกจบริการรายรอบ', description: `เลือก FG หมวด 02-001 แล้วใส่${ROUNDS_TERM} แต่ละครั้งไปโซนไหนกี่แพ็ค` },
-  { value: 'not_service', label: 'ไม่ใช่งานบริการรายรอบ', description: 'ค่าขนส่ง ค่าออกแบบ สินค้าส่งครั้งเดียว รายได้อื่นๆ — ไม่ส่งให้ TS' },
+  { value: 'package', label: 'ใช่', description: `แพ็คเกจที่ TS ต้องไปบริการตามรอบ — เลือก FG หมวด 02-001 → ไซต์ · โซน → ${ROUNDS_TERM} → ${PACKS_TERM}` },
+  { value: 'not_service', label: 'ไม่ใช่', description: 'ค่าขนส่ง ค่าออกแบบ สินค้าส่งครั้งเดียว รายได้อื่นๆ — ไม่ส่งให้ TS' },
 ]);
 
 export const SERVICE_BACKFILL_STATE_LABELS = Object.freeze({
@@ -73,15 +80,15 @@ export const SERVICE_SETUP_SQL_MESSAGES = Object.freeze({
   service_setup_payload_invalid: { message: 'ข้อมูลงานบริการที่ส่งมาไม่ถูกรูป — โหลดหน้าใหม่แล้วลองอีกครั้ง', status: 400 },
   service_setup_period_invalid: { message: 'ช่วงบริการไม่ถูกต้อง — ต้องมีทั้งวันเริ่มและวันสิ้นสุด วันเริ่มไม่เกินวันสิ้นสุด (ปี ค.ศ. 2000–2100)', status: 400 },
   service_setup_line_unknown: { message: 'มีรายการที่ไม่ได้อยู่ในใบนี้ — โหลดหน้าใหม่แล้วลองอีกครั้ง', status: 409 },
-  service_setup_kind_on_fg_line: { message: 'รายการที่มีรหัส FG ตั้งชนิดเองไม่ได้ — ระบบตัดสินจากหมวดของ FG', status: 400 },
-  service_setup_kind_invalid: { message: 'ชนิดรายการไม่ถูกต้อง', status: 400 },
-  service_setup_not_package: { message: 'รายการนี้ไม่ใช่แพ็คเกจบริการรายรอบ — เลือกชนิดเป็นแพ็คเกจก่อน แล้วจึงเลือก FG/รอบ/โซน', status: 400 },
+  service_setup_kind_on_fg_line: { message: 'รายการที่มีรหัส FG ตอบ ‘งานบริการ?’ เองไม่ได้ — ระบบตัดสินจากหมวดของ FG', status: 400 },
+  service_setup_kind_invalid: { message: 'คำตอบ ‘งานบริการ?’ ไม่ถูกต้อง', status: 400 },
+  service_setup_not_package: { message: 'รายการนี้ยังไม่ได้ตอบว่าเป็นงานบริการ — ตอบ ‘ใช่’ ก่อน แล้วจึงเลือก FG/โซน/รอบ', status: 400 },
   service_setup_product_invalid: { message: 'แพ็คเกจที่เลือกใช้ไม่ได้ — ต้องเป็น FG หมวด 02-001 ที่อนุมัติแล้วและยังใช้งาน', status: 400 },
   service_setup_rounds_invalid: { message: `${ROUNDS_TERM} ต้องเป็นจำนวนเต็ม 1–999`, status: 400 },
   service_setup_zones_too_many: { message: 'เกิน 500 โซนต่อรายการ — แยกรายการที่ใบเสนอราคา', status: 400 },
   service_setup_zone_duplicate: { message: 'เลือกโซนเดียวกันซ้ำในรายการเดียว', status: 400 },
   service_setup_zone_invalid: { message: 'โซนที่เลือกใช้ไม่ได้ (ไม่พบ · ปิดใช้งาน · ไม่ใช่ไซต์ลูกค้าของใบนี้)', status: 400 },
-  service_setup_packs_invalid: { message: 'แต่ละครั้งกี่แพ็ค ต้องเป็นจำนวนเต็ม 1–9999', status: 400 },
+  service_setup_packs_invalid: { message: `${PACKS_TERM} ต้องเป็นจำนวนเต็ม 1–9999`, status: 400 },
   sales_order_service_setup_locked: { message: `งานบริการของใบนี้ล็อกแล้ว — รออนุมัติ/อนุมัติแล้ว · แก้ด้วยการดึงกลับ หรือย้อนการอนุมัติแล้วออก Rev. (${ROUNDS_TERM}ยังแก้ได้หลังอนุมัติ)`, status: 409 },
   sales_order_service_setup_incomplete: { message: 'งานบริการยังไม่ครบ — ตรวจรายการที่ขึ้นสีแดง', status: 409 },
   service_setup_review_forbidden: { message: 'อนุมัติ/ตีกลับงานบริการได้เฉพาะผู้จัดการฝ่ายขาย', status: 403 },
@@ -110,14 +117,14 @@ const ROUNDS_LOW_TAIL = Object.freeze({
   submit: 'ถ้าตั้งใจก็ยื่นได้', approve: 'ถ้าตั้งใจก็อนุมัติได้', approved: `${ROUNDS_TERM}ยังแก้ได้หลังอนุมัติ`, read: '',
 });
 export const SERVICE_SETUP_ISSUE_TEXT = Object.freeze({
-  kind_missing: ({ n, label } = {}) => `รายการ ${n} · ${label}: ยังไม่เลือกว่าเป็น แพ็คเกจบริการรายรอบ หรือ ไม่ใช่งานบริการรายรอบ`,
+  kind_missing: ({ n, label } = {}) => `รายการ ${n} · ${label}: ยังไม่ตอบว่าเป็นงานบริการไหม (ใช่ / ไม่ใช่)`,
   fg_missing: ({ n } = {}) => `รายการ ${n}: ยังไม่เลือกแพ็คเกจ (FG หมวด 02-001)`,
   fg_invalid: ({ n, fg } = {}) => `รายการ ${n}: แพ็คเกจ ${fg || '—'} ใช้ไม่ได้แล้ว (ปิดใช้งาน/ยังไม่อนุมัติ/ไม่ใช่หมวด 02-001) — เลือกใหม่`,
   fg_foreign: ({ n, fg } = {}) => `รายการ ${n}: แพ็คเกจ ${fg || '—'} เป็นของนิติบุคคลอื่น — เลือก FG ของลูกค้าในใบ`,
   zones_missing: ({ n } = {}) => `รายการ ${n}: ยังไม่เลือกไซต์ · โซน`,
-  packs_missing: ({ n, zone } = {}) => `รายการ ${n} · ${zone || '—'}: ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค`,
+  packs_missing: ({ n, zone } = {}) => `รายการ ${n} · ${zone || '—'}: ยังไม่ใส่${PACKS_TERM}`,
   zone_invalid: ({ n, text } = {}) => `รายการ ${n}: ${text || 'โซนที่เลือกใช้ไม่ได้ (ไม่พบ · ปิดใช้งาน · ไม่ใช่ไซต์ลูกค้าของใบนี้)'}`,
-  zones_on_not_service: ({ n } = {}) => `รายการ ${n}: ตั้งเป็นไม่ใช่งานบริการรายรอบแต่ยังมีโซนค้าง — บันทึกงานบริการใหม่`,
+  zones_on_not_service: ({ n } = {}) => `รายการ ${n}: ตอบว่าไม่ใช่งานบริการแต่ยังมีโซนค้าง — บันทึกงานบริการใหม่`,
   rounds_missing: ({ n } = {}) => `รายการ ${n}: ${SERVICE_SETUP_LINE_TEXT.noRounds}`,
   period_missing: () => 'ยังไม่ใส่ช่วงบริการ (วันเริ่ม–วันสิ้นสุด)',
   installments_missing: () => 'ยังไม่มีงวดชำระ — กด ‘เริ่มติดตามการชำระ’ ที่แท็บการชำระ',
@@ -184,31 +191,56 @@ export const SERVICE_SETUP_PANEL_TEXT = Object.freeze({
    `n` = จำนวนที่จัดรูปแล้ว (fmtNumber) · แถวโซน/ช่วงบริการยังไม่ยอมบอกว่าครบระหว่างที่มีบรรทัดยังไม่รู้ชนิด (อาจเป็นแพ็คเกจ)
    แต่ server ไม่ขึ้นข้อโซน/ช่วงบริการให้บรรทัดพวกนั้น ⇒ หลังกดยื่นแถวแดงโดยไม่มีข้อในแผง — บรรทัดรองต้องบอกว่าแดงเพราะอะไร */
 export const SERVICE_BACKFILL_RAIL_TEXT = Object.freeze({
-  waitKind: (n) => `รอเลือกชนิด ${n} รายการ`,
+  waitKind: (n) => `รอตอบ ‘งานบริการ?’ ${n} รายการ`,
   /* ช่วงบริการบังคับเมื่อมีแพ็คเกจ (D6) — ยังไม่มีแพ็คเกจที่บันทึกแล้ว ⇒ แผงไม่มีข้อ "ยังไม่ใส่ช่วงบริการ" */
-  periodWaitKind: (n) => `รอเลือกชนิด ${n} รายการ · ต้องใส่ถ้ามีแพ็คเกจ`,
+  periodWaitKind: (n) => `รอตอบ ‘งานบริการ?’ ${n} รายการ · ต้องใส่ถ้ามีงานบริการ`,
 });
 
 /* ── คำของ "จำนวนรอบบริการ → แต่ละครั้งกี่แพ็ค" (มติเจ้าของ 29/09 · ภาคผนวก A.8) ───────────────────────────
-   เจ้าของ: "ตั้ง แพ็ค รอบ รายบรรทัด ยังเข้าใจยาก — เรียงว่าไปกี่รอบก่อน แล้วค่อยบอกว่าแต่ละครั้งกี่แพ็ค"
+   เจ้าของ: "ตั้ง แพ็ค รอบ รายบรรทัด ยังเข้าใจยาก — เรียงว่าไปกี่รอบก่อน แล้วค่อยบอกรอบละกี่แพ็ค"
    แล้วรอบสอง (29/09): "ไปกี่รอบ เปลี่ยน เป็น คำว่า จำนวนรอบบริการ" (`ROUNDS_TERM`)
    ⇒ ทุกผิวพูดเป็นประโยคเดียวกัน ทั้งโหมดแก้และโหมดอ่าน:
        แพ็คเกจ FG-… → จำนวนรอบบริการ 12 รอบ (ตลอดช่วงบริการ …) → แต่ละครั้ง: • ไซต์ · โซน — 2 แพ็ค → รวมทั้งรายการ 24 แพ็ค
-   ⚠️ ค่าที่เก็บไม่เปลี่ยน (`serviceRounds` = จำนวนรอบบริการ · `packsPerRound` = แต่ละครั้งกี่แพ็ค) — เปลี่ยนแค่คำและลำดับ
+   ⚠️ ค่าที่เก็บไม่เปลี่ยน (`serviceRounds` = จำนวนรอบบริการ · `packsPerRound` = รอบละกี่แพ็ค) — เปลี่ยนแค่คำและลำดับ
    ⚠️ literal ล้วน (กฎ 16) — ตัวที่ต้องจัดรูปตัวเลขอ่าน `fmtNumber` ในฟังก์ชันเท่านั้น */
 export const SERVICE_SETUP_LINE_TEXT = Object.freeze({
   roundsLabel: ROUNDS_TERM,
-  packsLabel: 'แต่ละครั้งกี่แพ็ค',
+  packsLabel: PACKS_TERM,
   eachTime: 'แต่ละครั้ง',
   roundUnit: 'รอบ',
   packUnit: 'แพ็ค',
   noRounds: `ยังไม่ใส่${ROUNDS_TERM}`,
-  noPacks: 'ยังไม่ใส่ว่ากี่แพ็ค',
+  noPacks: `ยังไม่ใส่${PACKS_TERM}`,
   zonePacks: (packs) => `${fmtNumber(packs)} แพ็ค`,
   /* "12 รอบ" · "8–12 รอบ" — ตัวเลขล้วน (ช่องหัวใบที่ป้ายบอกแล้วว่า "รอบบริการที่ขาย") */
   roundsCount: (min, max = min) => `${min === max ? fmtNumber(min) : `${fmtNumber(min)}–${fmtNumber(max)}`} รอบ`,
   /* "จำนวนรอบบริการ 12 รอบ" · "จำนวนรอบบริการ 8–12 รอบ" — ประโยครอบของทุกผิว (บรรทัด · ท้ายตาราง · แถบ · คิว · คำเตือน) */
   roundsText: (min, max = min) => `${ROUNDS_TERM} ${SERVICE_SETUP_LINE_TEXT.roundsCount(min, max)}`,
+});
+
+/* ── การ์ด "งานบริการ" แบบตาราง (ServiceSetupGrid · มติเจ้าของ 30/09 · 01/10 เลือกทาง A — ม็อก BindGridEdit) ─────────────
+   เจ้าของ 30/09: "มันต้องเลือกว่า รายการ เป็นงานบริการมั้ย ถ้าเป็น ก็มาเลือกว่า FG ไหน / Site Zone อะไร / ต้องไปกี่รอบ
+   รอบละกี่แพ็ค ผลรวมแพ็คที่ใช้ทั้งหมด รายบรรทัด รวมทุกบรรทัด" ⇒ `steps` คือหัวคอลัมน์ ①→⑥ **ตามลำดับนี้เท่านั้น** (เทสต์ยึดไว้)
+   ⚠️ literal ล้วน (กฎ 16) */
+export const SERVICE_SETUP_GRID_TEXT = Object.freeze({
+  steps: Object.freeze([
+    Object.freeze({ key: 'kind', label: 'งานบริการ?', hint: 'ใช่ = ส่ง TS', required: true }),
+    Object.freeze({ key: 'fg', label: 'แพ็คเกจ FG', hint: 'หมวด 02-001 ของลูกค้า', required: true }),
+    Object.freeze({ key: 'zones', label: 'ไซต์ · โซน', hint: 'รายการเดียวเลือกได้หลายโซน', required: true }),
+    Object.freeze({ key: 'rounds', label: ROUNDS_TERM, hint: 'ตลอดช่วงบริการ', required: true }),
+    Object.freeze({ key: 'packs', label: PACKS_TERM, hint: 'ต่อโซน', required: true }),
+    Object.freeze({ key: 'total', label: 'รวมแพ็ค', hint: 'รอบละ × รอบ', required: false }),
+  ]),
+  kindQuestion: 'เป็นงานบริการไหม',
+  yes: 'ใช่',
+  no: 'ไม่ใช่',
+  unanswered: 'ยังไม่ตอบ',
+  notService: 'ไม่ใช่งานบริการ — ไม่ส่ง TS',
+  unsetHint: 'ตอบ ‘ใช่’ ถ้ารายการนี้คือแพ็คเกจที่ TS ต้องไปบริการตามรอบ · ‘ไม่ใช่’ สำหรับค่าขนส่ง ค่าออกแบบ สินค้าส่งครั้งเดียว',
+  unsetRead: 'ยังไม่ตอบว่าเป็นงานบริการไหม',
+  allLines: 'รวมทุกรายการ',
+  /* การ์ดราคาชี้มาที่การ์ดงานบริการ (ราคา/จำนวนอยู่การ์ดบน · งานบริการตั้งที่การ์ดล่าง) */
+  pointer: 'งานบริการของรายการเหล่านี้ตั้งที่การ์ด ‘งานบริการ’ ด้านล่าง',
 });
 
 /* ── ข้อความล็อกการแก้ (ภาคผนวก A.3) — ตัวเดียวกับที่ปุ่ม/ช่องบนจอบอกเหตุ และที่ API ตอบ 409 ─────────── */
@@ -217,7 +249,7 @@ export const SERVICE_SETUP_EDIT_TEXT = Object.freeze({
   notService: 'ใบนี้ไม่ใช่ใบสายบริการ — ไม่มีงานบริการให้ตั้ง',
   pending: 'รออนุมัติ — ดึงกลับก่อนแก้',
   revoked: 'ย้อนการอนุมัติแล้ว — ออก Rev. แล้วแก้ที่ใบ Rev.',
-  stamped: `อนุมัติแล้ว — แพ็คเกจ/โซน/แต่ละครั้งกี่แพ็ค/ช่วงบริการล็อก · แก้ด้วยย้อนการอนุมัติแล้วออก Rev. (${ROUNDS_TERM}ยังแก้ได้)`,
+  stamped: `อนุมัติแล้ว — แพ็คเกจ/โซน/${PACKS_TERM}/ช่วงบริการล็อก · แก้ด้วยย้อนการอนุมัติแล้วออก Rev. (${ROUNDS_TERM}ยังแก้ได้)`,
   backfillSubmitted: 'ยื่นตรวจงานบริการแล้ว — รอผู้จัดการฝ่ายขายตรวจ (ตีกลับก่อนจึงแก้ได้)',
   /* ยื่นตรวจแล้วแต่สายของโครงการ/ดีลเปลี่ยนเป็นอย่างอื่นระหว่างรอตรวจ — RPC อนุมัติปฏิเสธ (ไม่เปิดอะไรให้ TS) ⇒ บอกทางออก */
   reviewNotService: 'ใบนี้ไม่ใช่ใบสายบริการแล้ว (สายของโครงการ/ดีลเปลี่ยน) — อนุมัติงานบริการไม่ได้ · ตีกลับเพื่อล้างคำขอตรวจ',
@@ -469,7 +501,7 @@ export function lineRoundsSentence(rounds, period) {
   return `${SERVICE_SETUP_LINE_TEXT.roundsText(n)} (${lineRoundsSpan(period)})`;
 }
 
-/** "รวมทั้งรายการ 24 แพ็ค" (= จำนวนรอบบริการ × Σ แต่ละครั้งกี่แพ็คของโซนในบรรทัด · `lineSetupTotals().packsTotal`)
+/** "รวมทั้งรายการ 24 แพ็ค" (= จำนวนรอบบริการ × Σ รอบละกี่แพ็คของโซนในบรรทัด · `lineSetupTotals().packsTotal`)
  *  ยังคิดไม่ได้ (ยังไม่มีรอบ · ยังไม่มีโซนที่ใส่แพ็ค) = "—" — ไม่ขึ้น "0 แพ็ค" ให้อ่านเหมือนตั้งไว้ศูนย์ (จอ 29/09) */
 export function lineTotalText(lineTotals) {
   const total = lineTotals?.packsTotal;
@@ -650,7 +682,7 @@ export function lineQtyCrossCheck(line, lineTotals) {
   if (unit.includes('เดือน')) return { tone: 'info', text: `จำนวนในใบ ${qty} เดือน = ระยะเวลา ไม่ได้นับเป็นแพ็ค` };
   if (!lineTotals?.zones) return { tone: 'none', text: `จำนวนในใบ ${qtyUnit} — ตรวจได้เมื่อเลือกโซนแล้ว` };
   if (lineTotals.packsTotal === null || lineTotals.packsTotal === undefined) {
-    return { tone: 'none', text: `จำนวนในใบ ${qtyUnit} — ตรวจได้เมื่อใส่${SERVICE_SETUP_LINE_TEXT.roundsLabel}และแต่ละครั้งกี่แพ็คแล้ว` };
+    return { tone: 'none', text: `จำนวนในใบ ${qtyUnit} — ตรวจได้เมื่อใส่${SERVICE_SETUP_LINE_TEXT.roundsLabel}และ${PACKS_TERM}แล้ว` };
   }
   if (Number.isFinite(qtyNumber) && qtyNumber === lineTotals.packsTotal) {
     return { tone: 'ok', text: `จำนวนในใบ ${qtyUnit} · ตรงกับทั้งรายการ ✓` };
@@ -1211,13 +1243,13 @@ export function serviceSetupApprovalEffects(ctx = {}, { flow = 'pipeline' } = {}
     renewals.size ? `${renewals.size} โซนมีรอบขายของ ${firstFew(renewalOrders)} ที่ยังมีผล (ต่ออายุ)` : null,
     moveLine,
     fnLine,
-    `หลังอนุมัติ แพ็คเกจ/โซน/แต่ละครั้งกี่แพ็ค/ช่วงบริการล็อก — แก้ด้วยย้อนการอนุมัติแล้วออก Rev. (${ROUNDS_TERM}ยังแก้ได้)`,
+    `หลังอนุมัติ แพ็คเกจ/โซน/${PACKS_TERM}/ช่วงบริการล็อก — แก้ด้วยย้อนการอนุมัติแล้วออก Rev. (${ROUNDS_TERM}ยังแก้ได้)`,
   ].filter(Boolean);
 }
 
 /** สิ่งที่ผู้อนุมัติควรตรวจก่อนกด — ⭐ คำเตือนรอบน้อย (มติ 29/09) ต่อท้าย: ผู้อนุมัติเห็นก่อนกดทั้งใบ pipeline และงานบริการย้อนหลัง */
 export function serviceSetupApprovalChecklist(ctx = {}, { flow = 'pipeline' } = {}) {
-  const tableCheck = `ตรวจแพ็คเกจ · ${ROUNDS_TERM} · โซน · แต่ละครั้งกี่แพ็ค ในตารางรายการ`;
+  const tableCheck = `ตรวจแพ็คเกจ · ไซต์ · โซน · ${ROUNDS_TERM} · ${PACKS_TERM} ในการ์ดงานบริการ`;
   const roundsLow = roundsLowLines(ctx).map(({ lineNo, rounds, months }) => SERVICE_SETUP_ISSUE_TEXT.rounds_low({
     n: lineNo, rounds, months, stage: 'approve',
   }));

@@ -1,0 +1,104 @@
+/* ── ช่องของงานบริการที่ใช้ร่วมกัน: แพ็คเกจ (ServiceFgPicker) · แถบช่วงบริการ (ServicePeriodField) ─────────────────────
+   (เดิมเป็นส่วนหนึ่งของกล่อง "งานบริการของรายการนี้" ใต้บรรทัด — ถูกแทนด้วยตาราง ServiceSetupGrid ตามมติ 30/09)
+   ทุกคลาสมีเจ้าของอย่างน้อยหนึ่งไฟล์ (ด่าน CSS กำพร้า) */
+
+.field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* ช่องที่ขึ้นแดง (หลังกดยื่น/บันทึกไม่ผ่านเท่านั้น) — ขอบแดงของดรอปดาวน์ค้นหา (SearchableSelect ไม่มี prop invalid) */
+.field[data-invalid] :global(.ui-select) {
+  border-color: var(--red);
+}
+
+.label {
+  color: var(--text-2);
+  font-size: var(--fs-4);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+.req {
+  margin-left: var(--space-0-5);
+  color: var(--red);
+}
+
+.hint {
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}
+
+.fieldError {
+  color: var(--red);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}
+
+/* ── ช่องแพ็คเกจ (ServiceFgPicker) ───────────────────────────────────────────────────── */
+.fgOption {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  white-space: normal;
+}
+
+.fgCode {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+}
+
+.fgName {
+  color: var(--text-2);
+  font-size: var(--fs-5);
+}
+
+.fgOwner {
+  color: var(--amber);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-semibold);
+}
+
+/* ── แถบช่วงบริการ (ServicePeriodField) — อยู่เหนือตาราง ของทั้งใบ ─────────────────────────── */
+.period {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  padding: var(--space-3) var(--space-3-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+  line-height: var(--lh-thai);
+}
+
+.periodRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.periodDates {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* ขีดคั่นช่วงวัน (ตกแต่ง — ไม่ใช่ค่าว่าง) */
+.periodDash::before {
+  content: "\2013";
+  color: var(--text-3);
+}
+
+.periodReadout {
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+}

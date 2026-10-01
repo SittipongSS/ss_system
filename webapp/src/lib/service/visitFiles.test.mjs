@@ -7,7 +7,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  VISIT_SIGNATURE_FILE_NAME, pickVisitFile, savedVisitFileHref, visitFileHref, visitFileTarget,
+  VISIT_FILE_GONE_ERROR, VISIT_SIGNATURE_FILE_NAME, cleanVisitFileKey, pickVisitFile, savedVisitFileHref,
+  visitFileHref, visitFileKey, visitFileTarget,
 } from './visitFiles.js';
 import { buildVisitReport } from './visitReport.js';
 import { parseDriveId } from '../driveId.js';
@@ -74,15 +75,53 @@ test('🔴 URL ที่ไม่ใช่ Drive = ไม่พบ — ไม่
   assert.doesNotMatch(route, /Response\.redirect|redirect\(/);
 });
 
-test('แผ่นปิดงาน: ไฟล์ที่บันทึกแล้ว → ลิงก์ของระบบตามลำดับในแถวล่าสุด · ไฟล์ที่ยังไม่บันทึก = null', () => {
-  assert.equal(savedVisitFileHref('SVV-abc', visit, visit.attachments[1].url), '/api/service/visits/SVV-abc/file?i=1');
+test('แผ่นปิดงาน: ไฟล์ที่บันทึกแล้ว → ลิงก์กุญแจของระบบ · ไฟล์ที่ยังไม่บันทึก = null', () => {
+  const key = (att) => visitFileKey(att.url);
+  assert.equal(savedVisitFileHref('SVV-abc', visit, visit.attachments[1].url), `/api/service/visits/SVV-abc/file?h=${key(visit.attachments[1])}`);
   assert.equal(savedVisitFileHref('SVV-abc', visit, ` ${visit.customerSignatureUrl} `), '/api/service/visits/SVV-abc/file?sig=1');
   assert.equal(savedVisitFileHref('SVV-abc', visit, drive('1JustUploadedEEEEEE')), null);
   assert.equal(savedVisitFileHref('SVV-abc', null, visit.attachments[0].url), null);
   assert.equal(savedVisitFileHref('SVV-abc', visit, ''), null);
-  // แถวเรียงใหม่ (อีกเครื่องบันทึกทับ) — ลำดับตามแถวล่าสุด ไม่ใช่ตามฟอร์ม
+  // แถวเรียงใหม่ (อีกเครื่องบันทึกทับ) — ลิงก์เดิมยังชี้รูปเดิม ไม่ขึ้นกับลำดับ (R14)
   const reordered = { ...visit, attachments: [visit.attachments[1], visit.attachments[0]] };
-  assert.equal(savedVisitFileHref('SVV-abc', reordered, visit.attachments[0].url), '/api/service/visits/SVV-abc/file?i=1');
+  const href = savedVisitFileHref('SVV-abc', reordered, visit.attachments[0].url);
+  assert.equal(href, `/api/service/visits/SVV-abc/file?h=${key(visit.attachments[0])}`);
+  assert.equal(visitFileTarget(reordered, new URL(href, 'http://x').searchParams).driveFileId, '1PhotoBeforeAAAAAAA');
+});
+
+/* ═══ กุญแจคงที่ `?h=` (แผน operation-crew C5 · R14) — ลบรูปทีละรูปได้แล้ว ลำดับ `?i=` เลื่อนได้ ═══ */
+test('🔑 กุญแจของ URL: คงที่ · ไม่ชนกันในนัด · ตัดช่องว่าง · URL ว่าง = null · ลิงก์ใช้กุญแจเมื่อมี URL', () => {
+  const [a, b] = visit.attachments;
+  assert.equal(visitFileKey(a.url), visitFileKey(` ${a.url} `));
+  assert.notEqual(visitFileKey(a.url), visitFileKey(b.url));
+  assert.match(visitFileKey(a.url), /^[0-9a-z]{1,11}$/);
+  for (const empty of ['', '   ', null, undefined]) assert.equal(visitFileKey(empty), null);
+  assert.equal(visitFileHref('SVV-abc', { url: a.url }), `/api/service/visits/SVV-abc/file?h=${visitFileKey(a.url)}`);
+  // มีทั้ง url และ index = ใช้กุญแจ · url ว่าง = ถอยไปใช้ลำดับ (ลิงก์เก่า)
+  assert.equal(visitFileHref('SVV-abc', { url: a.url, index: 1 }), `/api/service/visits/SVV-abc/file?h=${visitFileKey(a.url)}`);
+  assert.equal(visitFileHref('SVV-abc', { url: '', index: 1 }), '/api/service/visits/SVV-abc/file?i=1');
+  assert.equal(visitFileHref('SVV-abc', { url: a.url, signature: true }), '/api/service/visits/SVV-abc/file?sig=1');
+  assert.equal(cleanVisitFileKey(visitFileKey(a.url)), visitFileKey(a.url));
+  for (const bad of ['', 'ABC', 'a-b', '1'.repeat(17), null, '../x']) assert.equal(cleanVisitFileKey(bad), null, String(bad));
+});
+
+test('🔴 `?h=` เปิดรูปเดิมหลังรูปก่อนหน้าถูกลบ · กุญแจที่หายไปแล้ว = 404 "รูปนี้ถูกลบแล้ว" (ไม่ถอยไปใช้ `?i=`)', () => {
+  const [a, b] = visit.attachments;
+  const hrefB = visitFileHref(visit.id, { url: b.url });
+  const hrefA = visitFileHref(visit.id, { url: a.url });
+  // ลบรูปแรก — รูปที่สองเลื่อนขึ้นมาเป็นลำดับ 0
+  const afterDelete = { ...visit, attachments: [b] };
+  const params = (href) => new URL(href, 'http://x').searchParams;
+  assert.equal(visitFileTarget(afterDelete, params(hrefB)).driveFileId, '1PhotoAfterBBBBBBBB');
+  // ลิงก์ของรูปที่ถูกลบ = 404 บอกตรง ๆ · ลิงก์ลำดับเก่า `?i=0` จะเปิดอีกรูป (เหตุผลที่ต้องมีกุญแจ)
+  assert.deepEqual(visitFileTarget(afterDelete, params(hrefA)), { status: 404, error: VISIT_FILE_GONE_ERROR });
+  assert.equal(visitFileTarget(afterDelete, q('i=0')).driveFileId, '1PhotoAfterBBBBBBBB');
+  // กุญแจรูปร่างผิด / มี i แนบมาด้วย = ยัง 404 ไม่ใช่รูปตามลำดับ
+  for (const query of ['h=', 'h=ZZZ', 'h=zzzz&i=0', `h=${visitFileKey(a.url)}&i=0`]) {
+    assert.deepEqual(visitFileTarget(afterDelete, q(query)), { status: 404, error: VISIT_FILE_GONE_ERROR }, query);
+  }
+  // sig=1 ยังมาก่อนทุกอย่าง
+  assert.equal(visitFileTarget(afterDelete, q(`sig=1&h=${visitFileKey(b.url)}`)).driveFileId, '1SignatureCCCCCCCC');
 });
 
 test('parseDriveId ย้ายไป lib/driveId.js — lib/drive.js ยังส่งต่อชื่อเดิม (lib/master/googleDocs เรียกผ่านมัน)', () => {
@@ -121,7 +160,9 @@ test('🔴 จอไม่ลิงก์ URL ของ Drive ที่เก็
     assert.doesNotMatch(src, /href=\{(att\.url|report\.signatureUrl|form\.customerSignatureUrl)\}/, rel);
     assert.doesNotMatch(src, /href=\{[^}]*(?:\.url|Url)\}/, `${rel}: href ที่เป็น url ดิบจากแถว`);
   }
-  assert.match(page, /href=\{visitFileHref\(visit\.id, \{ index \}\)\}/);
+  // R14: ลิงก์รูปชี้ด้วยกุญแจ (`url` → `?h=`) — `index` เหลือเป็นทางสำรองของแถวที่ไม่มี url เท่านั้น
+  assert.match(page, /href=\{visitFileHref\(visit\.id, \{ url: att\.url, index \}\)\}/);
+  assert.doesNotMatch(page, /visitFileHref\(visit\.id, \{ index \}\)/);
   assert.match(page, /href=\{visitFileHref\(visit\.id, \{ signature: true \}\)\}/);
   assert.match(sheet, /savedVisitFileHref\(visit\.id, savedFiles \|\| visit, url\)/);
   // ไฟล์ที่เพิ่งอัป (ยังไม่อยู่ในแถว) เปิดจากไบต์ในเครื่อง — และต้องคืนหน่วยความจำ

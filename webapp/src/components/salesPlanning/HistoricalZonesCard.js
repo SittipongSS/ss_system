@@ -31,7 +31,7 @@ import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL } from "@/lib/sales/serviceOr
  *   ราคาต่อหน่วย/ส่วนลดอยู่ที่ตารางรายการข้างบน — การ์ดนี้ตอบ "ของลงโซนไหน · TS ตั้งรอบหรือยัง"
  * ⭐ PR-D (มติเจ้าของ 26/09 A3/O9 · mig 0394): คอลัมน์แพ็คต่อรอบ = ช่องของ **โซน** คนละช่องกับจำนวนของบรรทัด
  *   · มติเจ้าของ 29/09 ("ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง"): หัว = `SERVICE_ROUNDS_LABEL` "จำนวนรอบบริการ" ก่อน
- *     `SERVICE_PACKS_LABEL` "แต่ละครั้งกี่แพ็ค" (คำของใบใหม่ · การ์ดไม่สะกดเอง)
+ *     `SERVICE_PACKS_LABEL` "รอบละกี่แพ็ค" (คำของใบใหม่ · การ์ดไม่สะกดเอง)
  *   (อนุมัติแล้วเป็น packageQty ของรอบขาย) · เซลล์และหัวการ์ดประกอบที่ lib (`historicalPacksCellText` /
  *   `historicalPacksRoundsText`) — การ์ดไม่ประกอบคำว่าแพ็คเอง (M3 · "N แพ็ค" เปล่า ๆ ห้ามกลับมา)
  *   ใบที่คีย์ก่อนมีช่อง = ขีดในเซลล์ + หัวการ์ดแบบเดิม (ไม่ใช่ "รวม 0 แพ็ค/รอบ")
@@ -58,7 +58,7 @@ export default function HistoricalZonesCard({
   return (
     <DetailCard icon={MapPin} eyebrow="SERVICE ZONES" title="โซนในใบนี้" meta={meta}>
       {zones.length ? (
-        /* 760 = เจ็ดคอลัมน์ (PR-D เพิ่ม "แต่ละครั้งกี่แพ็ค") · จอแคบกว่านั้นเลื่อนข้าง */
+        /* 760 = เจ็ดคอลัมน์ (PR-D เพิ่ม "รอบละกี่แพ็ค") · จอแคบกว่านั้นเลื่อนข้าง */
         <TableScroll family="editable" surface="embedded" cells="stacked" minWidth={760}>
           <table className="w-full text-sm">
             <thead><tr>

@@ -10,8 +10,8 @@ import { naText } from '@/lib/format';
 export const ZONES_BULK_PACKS_MIN = 1;
 export const ZONES_BULK_PACKS_MAX = 9999;
 /* คำเดียวกับ SERVICE_SETUP_LINE_TEXT.packsLabel ของใบสั่งขาย (มติ 29/09) — ตัวนี้ generic ของงานบริการ จึงเขียน literal เอง */
-export const ZONES_BULK_PACKS_LABEL = 'แต่ละครั้งกี่แพ็ค';
-export const ZONES_BULK_PACKS_INVALID = 'แต่ละครั้งกี่แพ็ค ต้องเป็นจำนวนเต็ม 1–9999';
+export const ZONES_BULK_PACKS_LABEL = 'รอบละกี่แพ็ค';
+export const ZONES_BULK_PACKS_INVALID = 'รอบละกี่แพ็ค ต้องเป็นจำนวนเต็ม 1–9999';
 export const ZONES_BULK_NONE_PICKED = 'ยังไม่ได้เลือกโซน';
 export const zonesBulkCapText = (cap) => `เกิน ${cap} โซนต่อรายการ — แยกรายการที่ใบเสนอราคา`;
 
