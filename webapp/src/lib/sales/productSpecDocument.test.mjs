@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   PRODUCT_SPEC_RENDERER_VERSION, PRODUCT_SPEC_WATERMARKS,
@@ -6,7 +7,12 @@ import {
   productSpecSignedSteps, productSpecWatermark, renderProductSpecDocument, supersededWatermark,
 } from './productSpecDocument.js';
 import {
-  PRODUCT_SPEC_COST_MM, PRODUCT_SPEC_LAYOUT_MM, productSpecPageBudgets, textWidthMm,
+  PRODUCT_SPEC_FORMULA_ROW_LABEL, PRODUCT_SPEC_SCENT_ROW_LABEL, productSpecDateText as formulaRowDateText,
+  productSpecFormulaRow,
+} from './productSpecFormulaRow.js';
+import {
+  PRODUCT_SPEC_COST_MM, PRODUCT_SPEC_LAYOUT_MM, estimateTextLines, kvRowMm, productSpecPageBudgets, tableRowMm,
+  textWidthMm,
 } from './productSpecLayout.js';
 import { productSpecCertSeed, productSpecChecklistSeed } from './productSpecChecklist.js';
 import { buildQuotationMasterPreview, quotationDocLabels } from './quotationMasterTemplate.js';
@@ -386,6 +392,209 @@ test('⭐ ปริมาตรบรรจุใบอังกฤษแปล�
   assert.match(en, /<th>จำนวนผลิต \(Quantity\)<\/th><td>1,500 Bottle<\/td>/);
   const th = renderProductSpecDocument(baseInput({ snapshot: snapshotOf({ product }) }));
   assert.match(th, /<th>ปริมาตรบรรจุ \(Size\)<\/th><td>6 ขวด<\/td>/);
+});
+
+/* ── แถว "สูตร / รหัสสูตร / วันที่" (มติเจ้าของ 01/10/2569 · เดิม "กลิ่น / รหัสกลิ่น") ─────────────────────────
+   ของจริงบน prod วันตัดสิน (4 FG ที่ผูกสูตร): THE MOMENT OF TEA TIME #3.1 REV1 / PF85901010301 / 2026-09-10 (กลิ่นแม่
+   "THE MOMENT OF TEA TIME #3 | PF859010103" ที่กระดาษเคยพิมพ์) · CHOUI FONG … #2.1 REV1.1 / PF002010102010101 / 2026-07-24 ·
+   Secret Valley #1 / ไม่มีรหัส / 2026-08-21 */
+// หัวข้อ 1 ทั้งก้อน — ใบไทย "1. ข้อมูลผลิตภัณฑ์ / PRODUCT OVERVIEW" · ใบอังกฤษ "1. PRODUCT OVERVIEW" (หัวข้อตามภาษาของใบ)
+const overviewOf = (html) => {
+  const english = html.includes('<h3>1. PRODUCT OVERVIEW</h3>');
+  return html.slice(html.indexOf(english ? '1. PRODUCT OVERVIEW' : '1. ข้อมูลผลิตภัณฑ์'), html.indexOf(english ? '2. MARKET POSITIONING' : '2. ตำแหน่งทางการตลาด'));
+};
+const overviewRows = (html) => [...overviewOf(html).matchAll(/<tr><th>([^<]*)<\/th><td>(.*?)<\/td><\/tr>/g)].map((m) => [m[1], m[2]]);
+const withProduct = (over, make = snapshotOf) => make({ product: { ...snapshotOf().product, ...over } });
+const TEA_SCENT = { scentName: 'THE MOMENT OF TEA TIME #3', scentCode: 'PF859010103', scentText: 'THE MOMENT OF TEA TIME #3 | PF859010103' };
+const TEA_FORMULA = {
+  ...TEA_SCENT, formulaId: 'FML-mtwdrupw17w6', formulaName: 'THE MOMENT OF TEA TIME #3.1 REV1', formulaCode: 'PF85901010301', formulaDate: '2026-09-10',
+};
+const CHOUI_FORMULA = {
+  scentText: 'CHOUI FONG | CHOUI FONG TENDER LEAF GARDEN #2.1 REV1.1 EDP 5 ml/1pcs. | PF002010102010101',
+  formulaId: 'FML-msqxnsjh26om', formulaName: 'CHOUI FONG | CHOUI FONG TENDER LEAF GARDEN #2.1 REV1.1',
+  formulaCode: 'PF002010102010101', formulaDate: '2026-07-24',
+};
+const SECRET_FORMULA = {
+  scentText: 'Secret Valley #1 | PF0020401', formulaId: 'FML-mtl4hq1x1unu', formulaName: 'Secret Valley #1', formulaCode: null, formulaDate: '2026-08-21',
+};
+
+test('⭐ FG ที่ผูกสูตร: แถวเป็น "สูตร / รหัสสูตร / วันที่" ของสูตรที่ผูกจริง — ไม่ใช่กลิ่นแม่ (มติเจ้าของ 01/10/2569)', () => {
+  const html = renderProductSpecDocument(baseInput({ snapshot: withProduct(TEA_FORMULA) }));
+  const rows = overviewRows(html);
+  assert.deepEqual(rows.map(([label]) => label), [
+    'ชื่อผลิตภัณฑ์', 'ชื่อแบรนด์', 'รหัสสินค้า', 'ประเภทผลิตภัณฑ์', 'สูตร / รหัสสูตร / วันที่',
+    'ปริมาตรบรรจุ (Size)', 'จำนวนผลิต (Quantity)', 'ลักษณะเนื้อสาร', 'บรรจุภัณฑ์มาตรฐาน',
+  ], 'แถวอยู่ตำแหน่งเดิม เปลี่ยนแค่ป้าย');
+  assert.deepEqual(rows[4], ['สูตร / รหัสสูตร / วันที่', 'THE MOMENT OF TEA TIME #3.1 REV1 | PF85901010301 | 10/09/2569']);
+  assert.doesNotMatch(html, /กลิ่น \/ รหัสกลิ่น/, 'ป้ายกลิ่นต้องไม่เหลือเมื่อพิมพ์สูตร');
+  assert.doesNotMatch(html, /PF859010103</, '🐞 รหัสกลิ่นแม่ต้องไม่ถูกพิมพ์แทนรหัสสูตร');
+  assert.doesNotMatch(html, /\/2026</, 'วันที่ของสูตรบนใบไทยเป็น พ.ศ. เหมือนทั้งใบ');
+});
+
+test('⭐ ใบอังกฤษ: วันที่ของสูตรเป็น ค.ศ. · ป้ายแถวชุดเดียวทั้งสองภาษา (เนื้อในตารางไม่แปล)', () => {
+  const html = renderProductSpecDocument(baseInput({ snapshot: withProduct(TEA_FORMULA, englishSnapshot) }));
+  assert.equal(overviewRows(html).length, 9, 'อ่านตารางหัวข้อ 1 ของใบอังกฤษได้ครบเก้าแถว');
+  assert.deepEqual(overviewRows(html)[4], ['สูตร / รหัสสูตร / วันที่', 'THE MOMENT OF TEA TIME #3.1 REV1 | PF85901010301 | 10/09/2026']);
+  assert.doesNotMatch(html, /\/2569</, 'ใบอังกฤษต้องไม่มีปี พ.ศ. แม้ในแถวสูตร');
+});
+
+test('สูตรที่ยังไม่มีรหัส/วันที่ = ขีดตรงชิ้นนั้น — ครบสามชิ้นเสมอ ไม่มีตัวคั่นลอย', () => {
+  const rowOf = (over) => overviewRows(renderProductSpecDocument(baseInput({ snapshot: withProduct(over) })))[4];
+  // ของจริงบน prod: "Secret Valley #1" สูตรสถานะร่าง ยังไม่มีรหัส
+  assert.deepEqual(rowOf(SECRET_FORMULA), ['สูตร / รหัสสูตร / วันที่', 'Secret Valley #1 | - | 21/08/2569']);
+  assert.deepEqual(rowOf({ ...TEA_FORMULA, formulaDate: null }), ['สูตร / รหัสสูตร / วันที่', 'THE MOMENT OF TEA TIME #3.1 REV1 | PF85901010301 | -']);
+  assert.deepEqual(rowOf({ ...TEA_FORMULA, formulaCode: '  ', formulaDate: '' }), ['สูตร / รหัสสูตร / วันที่', 'THE MOMENT OF TEA TIME #3.1 REV1 | - | -']);
+  assert.deepEqual(rowOf({ ...TEA_FORMULA, formulaName: null }), ['สูตร / รหัสสูตร / วันที่', '- | PF85901010301 | 10/09/2569']);
+  for (const over of [SECRET_FORMULA, { ...TEA_FORMULA, formulaDate: null }, { ...TEA_FORMULA, formulaName: null }]) {
+    const [, value] = rowOf(over);
+    assert.equal(value.split(' | ').length, 3, value);
+    assert.doesNotMatch(value, /^\s*\||\|\s*$|\|\s*\|/, `ตัวคั่นลอย: ${value}`);
+  }
+});
+
+test('FG ที่ไม่ผูกสูตรแต่มีกลิ่น = แถวกลิ่นเดิมทั้งแถว (ป้าย "กลิ่น / รหัสกลิ่น" + ชื่อ | รหัส)', () => {
+  const noFormula = { ...TEA_SCENT, formulaId: null, formulaName: null, formulaCode: null, formulaDate: null };
+  const html = renderProductSpecDocument(baseInput({ snapshot: withProduct(noFormula) }));
+  assert.deepEqual(overviewRows(html)[4], ['กลิ่น / รหัสกลิ่น', 'THE MOMENT OF TEA TIME #3 | PF859010103']);
+  assert.doesNotMatch(html, /สูตร \/ รหัสสูตร \/ วันที่/, 'ไม่พิมพ์รหัสกลิ่นใต้ป้าย "รหัสสูตร"');
+});
+
+/* 🐞 ของจริงบน prod 01/10/2569 (อ่านด้วย GET): สินค้า 593 · ผูกสูตร 4 · FG ที่ไม่ผูกสูตร **ไม่มีตัวไหนมีกลิ่น** · สินค้าที่มีสเปค
+   ทั้ง 8 ตัว (ตัวที่ออก FM-SA-04 ได้จริง รวมใบเดียวที่มี FM-SA-04-280969-001) ไม่มีทั้งสูตรและกลิ่น
+   ⇒ รอบแรกที่คงป้ายกลิ่นไว้ทุกครั้งที่ไม่ผูกสูตร = ทุกใบที่พิมพ์ได้จริงยังขึ้น "กลิ่น / รหัสกลิ่น · N/A" มติมองไม่เห็นเลย */
+test('🔴 FG ที่ไม่มีทั้งสูตรและกลิ่น (ทุกใบที่ออกได้จริงบน prod วันนี้) = ป้ายใหม่ "สูตร / รหัสสูตร / วันที่" + N/A — ไม่ใช่ป้ายกลิ่นเดิม', () => {
+  const NONE = { scentName: null, scentCode: null, scentText: null, formulaId: null, formulaName: null, formulaCode: null, formulaDate: null };
+  for (const make of [snapshotOf, englishSnapshot]) {
+    const html = renderProductSpecDocument(baseInput({ snapshot: withProduct(NONE, make) }));
+    assert.deepEqual(overviewRows(html)[4], ['สูตร / รหัสสูตร / วันที่', '<span class="na">N/A</span>']);
+    assert.doesNotMatch(html, /กลิ่น \/ รหัสกลิ่น/, 'ป้ายกลิ่นต้องไม่เหลือเมื่อไม่มีกลิ่นให้พิมพ์');
+    assert.doesNotMatch(overviewOf(html), /- \| - \| -/, 'ช่องว่างทั้งช่อง = N/A ไม่ใช่ขีดสามตัว');
+  }
+  // สัญญาณ "ของใหม่" คือคีย์ formulaId (loadProductPrintFields ใส่ครบเสมอ) — มีคีย์เดียวก็พอ
+  const keyed = renderProductSpecDocument(baseInput({ snapshot: withProduct({ scentText: null, formulaId: null }) }));
+  assert.deepEqual(overviewRows(keyed)[4], ['สูตร / รหัสสูตร / วันที่', '<span class="na">N/A</span>']);
+  // แถวป้ายใหม่ที่ว่างยังเป็นแถวบรรทัดเดียว — ตารางหัวข้อ 1 ไม่สูงขึ้น
+  const row = planProductSpecPaper(baseInput({ snapshot: withProduct(NONE) })).sections.find((section) => section.key === 'overview').rows[4];
+  assert.equal(row.cost, tableRowMm(1));
+});
+
+test('🪤 ภาพนิ่งที่ยื่นก่อน 01/10/2569 (ไม่มีช่องสูตรเลย · รออนุมัติ/ถูกตีกลับ) ยังพิมพ์แถวกลิ่นของมันเอง — ไม่ใช่ขีดสามตัว', () => {
+  const old = withProduct(TEA_SCENT);
+  for (const key of ['formulaId', 'formulaName', 'formulaCode', 'formulaDate']) assert.equal(key in old.product, false, key);
+  // ภาพนิ่งเก่าที่กลิ่นว่าง = หน้าตาเดิมทุกตัวอักษร (ป้ายกลิ่น + N/A) — ใบที่ยื่นไปแล้วป้ายไม่เปลี่ยนใต้มือผู้อนุมัติ
+  const oldBare = withProduct({ scentText: null });
+  assert.equal('formulaId' in oldBare.product, false);
+  assert.deepEqual(
+    overviewRows(renderProductSpecDocument(baseInput({ snapshot: oldBare, revision: revisionOf({ status: 'pending_ae' }), watermark: 'ฉบับร่าง' })))[4],
+    ['กลิ่น / รหัสกลิ่น', '<span class="na">N/A</span>'],
+  );
+  for (const status of ['pending_ae', 'pending_ae_supervisor', 'rejected']) {
+    const html = renderProductSpecDocument(baseInput({ snapshot: old, revision: revisionOf({ status }), watermark: 'ฉบับร่าง' }));
+    assert.deepEqual(overviewRows(html)[4], ['กลิ่น / รหัสกลิ่น', 'THE MOMENT OF TEA TIME #3 | PF859010103'], status);
+    assert.doesNotMatch(overviewOf(html), /- \| - \| -/, status);
+  }
+});
+
+test('ตัวประกอบแถวสูตร (ตัวเดียวของกระดาษและจอ) — ผูกสูตรต้องมี formulaId · ชื่อสูตรลอย ๆ ไม่นับ · วันที่ตามภาษา', () => {
+  assert.deepEqual(productSpecFormulaRow(TEA_FORMULA), {
+    kind: 'formula', label: PRODUCT_SPEC_FORMULA_ROW_LABEL, value: 'THE MOMENT OF TEA TIME #3.1 REV1 | PF85901010301 | 10/09/2569',
+  });
+  assert.equal(productSpecFormulaRow(TEA_FORMULA, 'th').value, productSpecFormulaRow(TEA_FORMULA).value, 'ไม่ระบุภาษา = ไทย');
+  assert.equal(productSpecFormulaRow(TEA_FORMULA, 'en').value, 'THE MOMENT OF TEA TIME #3.1 REV1 | PF85901010301 | 10/09/2026');
+  assert.equal(productSpecFormulaRow(TEA_FORMULA, 'en').label, PRODUCT_SPEC_FORMULA_ROW_LABEL, 'ป้ายไม่แปล');
+  assert.equal(PRODUCT_SPEC_FORMULA_ROW_LABEL, 'สูตร / รหัสสูตร / วันที่');
+  assert.equal(PRODUCT_SPEC_SCENT_ROW_LABEL, 'กลิ่น / รหัสกลิ่น');
+  /* 🪤 สินค้ารุ่นก่อนทะเบียนสูตรพิมพ์ *ชื่อกลิ่น* ไว้ในช่อง formulaName (กอง "รอจัดระเบียบ") — ไม่มี formulaId = ไม่ใช่สูตรที่ผูก */
+  assert.deepEqual(productSpecFormulaRow({ formulaName: 'ROSE', formulaCode: 'R-1', scentText: 'ROSE | R-1' }), {
+    kind: 'scent', label: PRODUCT_SPEC_SCENT_ROW_LABEL, value: 'ROSE | R-1',
+  });
+  // ผูกสูตรแต่ไม่มีชิ้นให้พิมพ์เลย (ไม่ควรเกิด) = ถอยไปกลิ่น ดีกว่าขีดสามตัว
+  assert.deepEqual(productSpecFormulaRow({ formulaId: 'FML-1', scentText: 'ROSE | R-1' }), {
+    kind: 'scent', label: PRODUCT_SPEC_SCENT_ROW_LABEL, value: 'ROSE | R-1',
+  });
+  // ของใหม่ (มีคีย์ formulaId) ที่ไม่มีทั้งสูตรและกลิ่น · ยังไม่มีก้อนสินค้า (จอกำลังโหลด) = ป้ายใหม่ ช่องว่าง
+  for (const empty of [undefined, null, { formulaId: null }, { formulaId: null, scentText: '  ' }, { formulaId: 'FML-1', scentText: null }]) {
+    assert.deepEqual(productSpecFormulaRow(empty), { kind: 'formula', label: PRODUCT_SPEC_FORMULA_ROW_LABEL, value: null });
+  }
+  // ก้อนที่ไม่มีคีย์ formulaId = ภาพนิ่งที่ยื่นก่อน 01/10/2569 ⇒ ป้ายกลิ่นเดิมแม้กลิ่นว่าง
+  for (const old of [{}, { scentText: null }, { fgCode: 'FG-1', scentText: '' }]) {
+    assert.deepEqual(productSpecFormulaRow(old), { kind: 'scent', label: PRODUCT_SPEC_SCENT_ROW_LABEL, value: null });
+  }
+  // ตัวจัดวันที่คือตัวเดียวกับของทั้งใบ (กระดาษ export ต่อจากไฟล์นี้)
+  assert.equal(formulaRowDateText, productSpecDateText);
+  assert.equal(productSpecFormulaRow({ formulaId: 'F', formulaName: 'X', formulaDate: 'ไม่ใช่วันที่' }).value, 'X | - | -', 'วันที่เพี้ยน = ขีด ไม่ใช่ข้อความดิบ');
+});
+
+test('escape ชื่อ/รหัสสูตรที่ RD พิมพ์ — < > ต้องไม่กลายเป็นแท็ก', () => {
+  const html = renderProductSpecDocument(baseInput({ snapshot: withProduct({ ...TEA_FORMULA, formulaName: '<b>X</b>', formulaCode: '"><i>' }) }));
+  assert.doesNotMatch(overviewOf(html), /<b>X<\/b>|<i>/);
+  assert.match(overviewOf(html), /&lt;b&gt;X&lt;\/b&gt; \| &quot;&gt;&lt;i&gt; \| 10\/09\/2569/);
+});
+
+/* จอที่โชว์แถวนี้ของ FM-SA-04 มีที่เดียว: การ์ด "ข้อมูลผลิตภัณฑ์" บนหน้าสเปคสินค้า (`ProductSpecForm`) — กระดาษตัวอย่างพิมพ์
+   จากหน้าเดียวกัน ⇒ ป้าย/ค่าต้องมาจากตัวประกอบตัวเดียวกับกระดาษ ไม่ใช่ข้อความที่พิมพ์ซ้ำในคอมโพเนนต์
+   (หน้าเอกสาร/หน้าออกเอกสารไม่มีแถวนี้ — การ์ดเนื้อของสองหน้านั้นโชว์ช่องสเปค ไม่ใช่ช่องจากทะเบียนสินค้า) */
+test('🔴 จอหน้าสเปคประกอบแถวสูตรด้วยตัวเดียวกับกระดาษ — ไม่ฝังป้าย/ช่องกลิ่นไว้เอง · ตัวประกอบไม่ลากเปลือกเอกสารเข้า bundle', () => {
+  const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
+  const form = read('../../components/database/ProductSpecForm.js');
+  assert.match(form, /import \{ productSpecFormulaRow \} from "@\/lib\/sales\/productSpecFormulaRow";/);
+  // ⚠️ ส่ง product ตรง ๆ — `product || {}` ทำให้จอที่ยังไม่มีก้อนสินค้าถูกอ่านเป็น "ภาพนิ่งเก่า" (ป้ายกลิ่น) แล้วป้ายกระพริบตอนโหลดเสร็จ
+  assert.match(form, /const formulaRow = productSpecFormulaRow\(product, "th"\);/, 'ตัวอย่างจากหน้าสินค้าเป็นใบไทยเสมอ');
+  assert.match(form, /\{derived\(formulaRow\.label, formulaRow\.value\)\}/);
+  assert.doesNotMatch(form, /derived\("กลิ่น \/ รหัสกลิ่น"|product\?\.scentText/, 'ต้องไม่เหลือแถวกลิ่นที่ฝังไว้ในจอ');
+  // กระดาษเรียกตัวเดียวกัน และไม่เหลือป้ายที่พิมพ์ตรง ๆ
+  const paper = read('./productSpecDocument.js');
+  assert.match(paper, /const formula = productSpecFormulaRow\(product, language\);/);
+  assert.match(paper, /\[formula\.label, formula\.value\],/);
+  assert.doesNotMatch(paper, /\['กลิ่น \/ รหัสกลิ่น', product\.scentText\]/);
+  // ตัวประกอบต้องเบา (จอเป็น client component) — import ได้แค่ตัวจัดรูปกลาง
+  const row = read('./productSpecFormulaRow.js');
+  assert.deepEqual([...row.matchAll(/^import .* from '([^']+)';$/gm)].map((m) => m[1]), ['@/lib/format']);
+  // เส้นของหน้าสเปคส่งช่องสินค้าชุดเดียวกับกระดาษ (รวมช่องสูตร) ให้จอ
+  const route = read('../../app/api/products/[id]/spec/route.js');
+  assert.match(route, /product: \{ \.\.\.product, \.\.\.printed\.product, team: product\.team, ownerId: product\.ownerId \}/);
+});
+
+/* แถวสูตรยาวกว่าแถวกลิ่นเดิม (ชื่อสูตร + รหัส + วันที่) ⇒ ตกสองบรรทัดได้ — ตัวจองแถวต้องคิดจากข้อความชุดเดียวกับที่วาด
+   วัดด้วย Chrome 01/10/2569 (วิธีที่หัว productSpecLayout.js · ช่องค่า kv วาดกว้าง 110.83 · 8.4pt · จอ = พิมพ์ · ไทย = อังกฤษ):
+     แถว CHOUI FONG วาด 2 บรรทัด (แถวสูง 12.44 · ตารางหัวข้อ 1 วาด 73.03 คิด 73.90) · แถว TEA TIME / Secret Valley 1 บรรทัด
+     (ตารางวาด 68.26 คิด 69.02) · ไม่มีแผ่นล้น ใบมาตรฐานยังสองแผ่น
+   สวีป 432 กรณี (ชื่อสูตร 108 แบบ: ของจริง 3 + ละตินตัวใหญ่/เล็ก · ไทย · ไทยติดละติน · ไม่มีจุดตัด ไล่ความยาวข้ามขอบ 1→3 บรรทัด
+     × รหัส 4 ความยาวรวมไม่มีรหัส × มี/ไม่มีวันที่ × ไทย/อังกฤษ × จอ/พิมพ์): บรรทัดที่คิดต่ำกว่าที่วาด 0 กรณี (คิดเกิน 50) ·
+     ตารางที่คิด ≥ ที่วาดทุกกรณี · ไม่มีช่องล้นแนวนอน · ไม่มีแผ่นล้น · จำนวนแผ่นที่วาด = ที่แผนคิด */
+test('🔴 แถวสูตรที่ยาว (CHOUI FONG … #2.1 REV1.1) ถูกจองสองบรรทัด — ไม่ถูกคิดเป็นแถวบรรทัดเดียว', () => {
+  for (const [make, date] of [[snapshotOf, '24/07/2569'], [englishSnapshot, '24/07/2026']]) {
+    const plan = planProductSpecPaper(baseInput({ snapshot: withProduct(CHOUI_FORMULA, make) }));
+    const text = `CHOUI FONG | CHOUI FONG TENDER LEAF GARDEN #2.1 REV1.1 | PF002010102010101 | ${date}`;
+    const row = plan.sections.find((section) => section.key === 'overview').rows[4];
+    assert.ok(row.html.includes(`<td>${text}</td>`), row.html);
+    assert.equal(estimateTextLines(text, 110.82, 8.4), 2);
+    assert.equal(row.cost, kvRowMm('สูตร / รหัสสูตร / วันที่', text));
+    assert.equal(row.cost, tableRowMm(2), 'ต้นทุนของแถว = สองบรรทัด');
+    assert.ok(row.cost >= 12.44, 'ไม่ต่ำกว่าระยะแถวสองบรรทัดที่วัดได้');
+  }
+  // ป้ายใหม่ยังบรรทัดเดียวในช่องป้าย (66.37) — แถวสั้นไม่สูงขึ้นเพราะป้าย
+  assert.equal(estimateTextLines('สูตร / รหัสสูตร / วันที่', 66.37, 8.4), 1);
+  const short = planProductSpecPaper(baseInput({ snapshot: withProduct(TEA_FORMULA) })).sections[0].rows[4];
+  assert.equal(short.cost, tableRowMm(1));
+});
+
+test('🔴 แถวสูตรยาวไม่ทำให้ใบมาตรฐานล้น/ขึ้นแผ่นเพิ่ม — ทุกแผ่นยังอยู่ในงบ ลายเซ็นยังอยู่หน้า 2', () => {
+  for (const make of [snapshotOf, englishSnapshot]) {
+    for (const formula of [TEA_FORMULA, CHOUI_FORMULA, SECRET_FORMULA]) {
+      const plan = planProductSpecPaper(baseInput({ snapshot: withProduct(formula, make) }));
+      assert.deepEqual(plan.pages.map((entries) => entries.filter((e) => e.kind !== 'row')
+        .map((e) => (e.kind === 'tail' ? 'SIG' : `${e.section.number}`)).join(',')), ['1,2,3', '4,5,SIG'], formula.formulaName);
+      plan.pages.forEach((entries, index) => {
+        const cost = entries.reduce((sum, entry) => {
+          if (entry.kind === 'row') return sum + entry.row.cost;
+          return sum + (entry.kind === 'tail' ? plan.tailCost : entry.section.openCost);
+        }, 0);
+        const budget = index === 0 ? plan.budgets.first : plan.budgets.rest;
+        assert.ok(cost <= budget + plan.budgets.reserve + 1e-9, `${formula.formulaName} แผ่น ${index + 1}: ${cost.toFixed(2)} > ความจุ`);
+      });
+    }
+  }
 });
 
 test('แบรนด์อยู่ใน Product Overview (ย้ายจากกล่องลูกค้า)', () => {
@@ -973,6 +1182,9 @@ test('🪤 ข้อความผู้ใช้ปลอมช่องลา
 
 test('รุ่นตัวเรนเดอร์พอดีคอลัมน์ rendererVersion (≤ 40 ตัวอักษร)', () => {
   assert.ok(PRODUCT_SPEC_RENDERER_VERSION.length > 0 && PRODUCT_SPEC_RENDERER_VERSION.length <= 40);
+  // แถว "สูตร / รหัสสูตร / วันที่" (01/10/2569) เปลี่ยนช่องบนกระดาษ ⇒ รุ่นต้องขยับจาก @2026-09-22g
+  assert.match(PRODUCT_SPEC_RENDERER_VERSION, /^fm-sa-04@\d{4}-\d{2}-\d{2}[a-z]$/);
+  assert.ok(PRODUCT_SPEC_RENDERER_VERSION >= 'fm-sa-04@2026-10-01a', PRODUCT_SPEC_RENDERER_VERSION);
 });
 
 /* ── ภาพประกอบ (แผ่นท้าย) — มาจากภาพนิ่ง ───────────────────────────────── */

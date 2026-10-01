@@ -89,9 +89,12 @@ const QUOTATION_PARTY_COLUMNS = [
   'contactName', 'contactPhone',
 ].join(', ');
 
+/* สินค้าที่กระดาษพิมพ์ · `formulaId` = ตัวชี้สูตรที่ FG ผูก (แถว "สูตร / รหัสสูตร / วันที่" · มติ 01/10/2569) ·
+   `formulaName/Code/Date` = สำเนาของสูตรบนแถวสินค้า (ใช้เป็นทางถอยเท่านั้น — ดู `loadProductPrintFields`) */
 const PRODUCT_PRINT_COLUMNS = [
   'id', 'fgCode', 'productDescription', 'productDescriptionEn', 'brandName', 'brandNameEn',
-  'customerName', 'categoryCode', 'volume', 'volumeUnit', 'scentId', 'formulaCode', 'formulaName',
+  'customerName', 'categoryCode', 'volume', 'volumeUnit', 'scentId',
+  'formulaId', 'formulaCode', 'formulaName', 'formulaDate',
 ].join(', ');
 
 /**
@@ -351,12 +354,31 @@ export async function deleteProductSpec(supabase, { spec }) {
 /* ── ภาพนิ่งของเอกสาร ──────────────────────────────────────────────────── */
 
 /**
- * ช่องสินค้าที่กระดาษพิมพ์ — ประกอบเสร็จแล้ว (หมวด · กลิ่น · ขนาด เป็นข้อความพร้อมพิมพ์)
+ * ช่องสินค้าที่กระดาษพิมพ์ — ประกอบเสร็จแล้ว (หมวด · กลิ่น · ขนาด เป็นข้อความพร้อมพิมพ์) + ชิ้นดิบของสูตรที่ FG ผูก
  *
  * ⚠️ ที่เดียวที่รู้ว่ากระดาษพิมพ์อะไรของสินค้า — ภาพนิ่งตอนยื่น กับร่างที่พิมพ์สด ต้องได้
  *    ก้อนเดียวกัน ไม่งั้นร่างกับฉบับที่อนุมัติแล้วพิมพ์คนละหน้าตา
- * ⚠️ query ย่อย (หมวด/กลิ่น) ล้ม = คืน error ไม่ใช่ข้ามไป — ภาพนิ่งที่ตกช่องไปเงียบ ๆ
+ * ⚠️ query ย่อย (หมวด/กลิ่น/สูตร) ล้ม = คืน error ไม่ใช่ข้ามไป — ภาพนิ่งที่ตกช่องไปเงียบ ๆ
  *    คือกระดาษที่ลูกค้าเซ็นแล้วมีช่องว่างที่ไม่ควรว่าง
+ *
+ * ⭐ **สูตร: แหล่งจริง = แถวสดในทะเบียนสูตร (`formulas`) ไม่ใช่สำเนาบนแถวสินค้า** (มติเจ้าของ 01/10/2569 —
+ *    แถว "สูตร / รหัสสูตร / วันที่" ของกระดาษ · ตัวประกอบแถวอยู่ที่ `productSpecFormulaRow.js`)
+ *    · `products.formulaName/Code/Date` เป็นสำเนาที่ `productFormulaSnapshot` เขียน **เฉพาะตอนมีคนบันทึก FG** —
+ *      RD แก้ชื่อ/ออกรหัส/แก้วันที่ที่ทะเบียนสูตรทีหลัง สำเนาไม่ตาม (`updateFormula` ไม่แตะ products) ⇒ อ่านสำเนา =
+ *      กระดาษพิมพ์ของเก่าเงียบ ๆ จนกว่าจะมีใครเปิด FG มากดบันทึก · ของจริงบน prod วันนี้: "Secret Valley #1" ยังไม่มีรหัส
+ *      (สูตรสถานะร่าง) — วันที่ RD ออกรหัส กระดาษร่าง/ใบที่ยื่นถัดไปต้องได้รหัสนั้นเอง
+ *    · กลิ่นในแถวเดียวกันก็อ่านสดจากทะเบียนกลิ่นอยู่แล้ว — แถวเดียวกันต้องไม่มาจากแหล่งสองแบบ
+ *    · ความนิ่งของกระดาษ **ไม่ได้** มาจากสำเนาบนสินค้า แต่มาจากภาพนิ่งของ Rev ที่ถ่ายตอนยื่น (สูตรถูกแก้ทีหลัง
+ *      ใบที่ยื่นไปแล้วไม่เปลี่ยน) ⇒ อ่านสดที่นี่ไม่ทำให้เอกสารที่ยื่นแล้วขยับ
+ *    · ทางถอย: `formulaId` ชี้อยู่แต่หาแถวสูตรไม่เจอ (ไม่ควรเกิด — FK ลบสูตรแล้ว formulaId เป็น NULL เอง) ⇒ ใช้สำเนา
+ *      บนแถวสินค้า ดีกว่าทิ้งแถวไปกลิ่นทั้งที่ FG บอกว่าผูกสูตร · อ่านทะเบียนสูตร **ล้ม** = error (ไม่ถอยเงียบ)
+ *    · FG ไม่ผูกสูตร (`formulaId` ว่าง) ⇒ ช่องสูตรทั้งสี่เป็น `null` — กระดาษถอยไปแถวกลิ่นเดิมเมื่อมีกลิ่น ·
+ *      ไม่มีกลิ่นด้วย = ป้ายใหม่ + N/A · **ไม่** ยก `products.formulaName` ลอย ๆ มาเป็นสูตร (สินค้ารุ่นก่อนทะเบียนสูตร
+ *      พิมพ์ชื่อกลิ่นไว้ในช่องนั้น)
+ *    · ⚠️ **คีย์ช่องสูตรทั้งสี่ต้องอยู่ในก้อนเสมอ แม้เป็น `null`** — `productSpecFormulaRow` ใช้ "มีคีย์ `formulaId`" แยกของใหม่
+ *      ออกจากภาพนิ่งที่ยื่นก่อน 01/10/2569 (ซึ่งต้องคงป้ายกลิ่นเดิม) · ตัดคีย์ทิ้งตอนว่าง = ใบใหม่ถูกอ่านเป็นใบเก่า
+ * ⚠️ ช่องกลิ่น (`scentName` · `scentCode` · `scentText`) คงไว้ทุกตัว ความหมายเดิม — แถวกลิ่นของ FG ที่ไม่ผูกสูตร
+ *    และภาพนิ่ง/ผู้อ่านเดิมยังใช้
  */
 export async function loadProductPrintFields(supabase, productId) {
   const { data: product, error } = await supabase
@@ -381,6 +403,14 @@ export async function loadProductPrintFields(supabase, productId) {
     if (res.error) return { error: messageOf(res.error) };
     scent = res.data || null;
   }
+  // สูตรที่ FG ผูก — แถวสดจากทะเบียนสูตร (เหตุผลที่หัวฟังก์ชัน) · หาไม่เจอ = สำเนาบนแถวสินค้า
+  let formula = null;
+  if (product.formulaId) {
+    const res = await supabase.from('formulas').select('id, code, name, formulaDate').eq('id', product.formulaId).maybeSingle();
+    if (res.error) return { error: `อ่านสูตรของสินค้าไม่สำเร็จ: ${messageOf(res.error)}` };
+    formula = res.data
+      || { id: product.formulaId, code: product.formulaCode, name: product.formulaName, formulaDate: product.formulaDate };
+  }
 
   return {
     product: {
@@ -399,6 +429,11 @@ export async function loadProductPrintFields(supabase, productId) {
       scentCode: scent?.code || product.formulaCode || null,
       scentText: [scent?.name || product.formulaName, scent?.code || product.formulaCode]
         .filter(Boolean).join(' | ') || null,
+      // ⭐ ชิ้นดิบของสูตรที่ผูก (ไม่ผูก = null ทั้งสี่) — ไม่ประกอบเป็นข้อความที่นี่ เพราะวันที่พิมพ์ตามภาษาของใบ
+      formulaId: formula?.id || null,
+      formulaName: formula?.name || null,
+      formulaCode: formula?.code || null,
+      formulaDate: formula?.formulaDate || null,
       volume: product.volume ?? null,
       volumeUnit: product.volumeUnit || null,
       volumeText: [product.volume, product.volumeUnit].filter((part) => part !== null && part !== undefined && part !== '')
@@ -549,7 +584,8 @@ export async function loadDocumentQuantity(supabase, { order = null, line = null
  * ภาพนิ่งของเอกสาร — ถ่ายตอนยื่นทุกครั้ง และใช้พิมพ์ร่าง/ตัวอย่างสดด้วยก้อนเดียวกัน
  *
  * `{ schemaVersion, capturedAt, spec: {ช่องเนื้อหา..., certifications}, items: [...],
- *    product: {ช่องที่กระดาษพิมพ์}, order: {orderNumber, quotationNumber, confirmDocType, confirmDocNo,
+ *    product: {ช่องที่กระดาษพิมพ์ — รวม formulaId/formulaName/formulaCode/formulaDate ของสูตรที่ FG ผูก (01/10/2569)},
+ *    order: {orderNumber, quotationNumber, confirmDocType, confirmDocNo,
  *    confirmDocDate, qty, unit, qtySource, deliveryDueDate, customerName, docLanguage, dealOwner*...},
  *    customer: {name, nameEn, taxId, branchCode, billingAddress(En), shippingAddress(En), contactName,
  *    contactPhone}, illustrations: [{attachmentId, caption, sortOrder, fileName}] }`
@@ -557,6 +593,8 @@ export async function loadDocumentQuantity(supabase, { order = null, line = null
  * ⭐ schemaVersion 2 (2026-09-22) = เพิ่ม `order.docLanguage` · `order.confirmDocType` · ก้อน `customer`
  *    (กระดาษตามภาษาของ SO + กล่องผู้ซื้อแบบใบเสนอราคา) · ภาพนิ่ง v1 ไม่มีคีย์เหล่านี้ ⇒ ตัวพิมพ์ต้อง
  *    ถอยเป็นไทย/ขีดเอง (ไม่มีใบจริงบนฐานตอนเปลี่ยน แต่กติกาภาพนิ่งคือห้ามเขียนทับ ⇒ ต้องอ่านของเก่าได้เสมอ)
+ * ⭐ 01/10/2569 เพิ่มช่องสูตรในก้อน `product` (คีย์เพิ่มแบบไม่บังคับ ⇒ schemaVersion ยัง 2 — กติกาเดียวกับ `order.qty`) ·
+ *    ภาพนิ่งที่ยื่นก่อนวันนั้นไม่มีคีย์เหล่านี้ ⇒ ตัวพิมพ์ถอยไปแถวกลิ่นจาก `scentText` ของภาพนิ่งเอง
  * ⚠️ `order`/`line` ว่างได้ (ตัวอย่างจากหน้าสเปคที่ยังไม่มี SO) — ก้อน `order`/`customer` ยังมีทุกคีย์
  *    เป็น null ให้ตัวพิมพ์อ่านรูปเดียวกันเสมอ · ภาษาเป็น null = ไทย
  * @returns {{ snapshot: object, illustrationIds: string[] } | { error: string, status?: number }}

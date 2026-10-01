@@ -34,6 +34,13 @@
 //     ใบอังกฤษอังกฤษล้วน) · คู่คำอยู่ `DOC_LABEL_PAIRS` (spec* ของ quotationMasterTemplate)
 //   ⚠️ **ป้ายแถว/หัวคอลัมน์/สถานะในตารางยังชุดเดียวทั้งสองภาษา** (มติเจ้าของ — ไม่แปลเนื้อ) · เปลี่ยนเฉพาะหัวข้อ
 //
+// ⭐ **มติเจ้าของ 01/10/2569 — แถว "สูตร / รหัสสูตร / วันที่"** (เดิม "กลิ่น / รหัสกลิ่น") ใน Product Overview
+//   · พิมพ์สูตรที่ FG ผูกอยู่จริง (ชื่อ | รหัส | วันที่ของสูตร — วันที่ตามภาษาของใบ) · FG ไม่ผูกสูตรแต่มีกลิ่น = แถวกลิ่นเดิม ·
+//     ไม่มีทั้งสูตรและกลิ่น = ป้ายใหม่ + N/A · ชิ้นที่ไม่มีเป็นขีด · ภาพนิ่งที่ยื่นก่อนวันนั้น (ไม่มีช่องสูตร) ยังพิมพ์แถวกลิ่น
+//     ของมันเอง · ฉบับที่อนุมัติแล้ว (frozenHtml) ไม่ถูกแตะ
+//   · ตัวประกอบแถว + เหตุผลอยู่ที่ `productSpecFormulaRow.js` (จอหน้าสเปคเรียกตัวเดียวกัน) · ที่มาของข้อมูลอยู่ที่
+//     `loadProductPrintFields` (productSpecStore)
+//
 // ⚠️ ฉบับที่ออกจริงเป็น **HTML ไม่ใช่ PDF** เหมือน QT/SO ⇒ ปุ่มเขียนว่า "พิมพ์" ไม่ใช่ "ดาวน์โหลด"
 //
 // ── สามเลขบนกระดาษ อย่าสลับกัน ──────────────────────────────────────────
@@ -84,6 +91,11 @@
 //     (" (cont.)" ท้ายภาษารอง) ยังบรรทัดเดียว (h3 5.03 ทุกตัว) · สวีปเดิม 442 กรณี × จอ/พิมพ์ = 2,045 แผ่นต่อสื่อ ไม่มีแผ่นไหนล้น ·
 //     ไม่มีก้อนไหนประเมินต่ำ · ที่แผนคิด ≥ ที่วาดทุกแผ่น (เผื่อต่ำสุด 0.54) · ไม่มีหัวข้อที่ลงแผ่นเปล่าได้ถูกตัด ·
 //     ใบมาตรฐานแผ่นสองเหลือ 13.26 พิมพ์ / 13.46 จอ
+//   รอบ 01/10/2569 (แถว "สูตร / รหัสสูตร / วันที่" · ค่าคงที่/CSS ไม่ขยับ — ข้อความในแถวเดียวยาวขึ้นเท่านั้น): วัดเฉพาะแถวนี้ด้วยวิธีเดิม
+//     ป้ายใหม่บรรทัดเดียวในช่องป้าย · ค่าของจริงบน prod: TEA TIME / Secret Valley 1 บรรทัด · CHOUI FONG 2 บรรทัด (ตารางหัวข้อ 1
+//     วาด 73.03 คิด 73.90) · สวีป 432 กรณี (ชื่อสูตร 108 แบบ — ละติน/ไทย/ไทยติดละติน/ไม่มีจุดตัด ไล่ข้ามขอบ 1→3 บรรทัด × รหัส 4
+//     ความยาวรวมไม่มีรหัส × มี/ไม่มีวันที่ × ไทย/อังกฤษ × จอ/พิมพ์): บรรทัดที่คิดต่ำกว่าที่วาด 0 (คิดเกิน 50) · ตารางที่คิด ≥ ที่วาด
+//     ทุกกรณี · ไม่มีช่องล้นแนวนอน · ไม่มีแผ่นล้น · จำนวนแผ่น = ที่แผนคิด · ใบมาตรฐานยัง 2 แผ่น
 import {
   documentFileName, documentFooter, documentHeader, esc, headerText, partyGrid, renderDocumentHTML, signatureBoxText,
   signatureSection, watermarkBlock, watermarkSheets,
@@ -92,10 +104,11 @@ import { positionTitle } from '@/lib/documents/positionTitles';
 import {
   resolveDocumentAccentKey, resolveDocumentForm, resolveDocumentTitleTh,
 } from '@/lib/documentStandards';
-import { BUDDHIST_YEAR_OFFSET, fmtDateNumeric, fmtNumber, fmtPhone } from '@/lib/format';
+import { fmtNumber, fmtPhone } from '@/lib/format';
 import { saleUnitLabel, volumeUnitLabel } from '@/lib/master/units';
 import { PRODUCT_SPEC_CERT_STATUS_LABELS, productSpecCertPendingLabel } from '@/lib/sales/productSpecChecklist';
 import { formatSpecDocNo } from '@/lib/sales/productSpecDocNo';
+import { productSpecDateText, productSpecFormulaRow } from '@/lib/sales/productSpecFormulaRow';
 import {
   illustrationCaption, snapshotIllustrationRows, sortIllustrations,
 } from '@/lib/sales/productSpecIllustrations';
@@ -124,8 +137,12 @@ const SPEC_KEY = 'productSpec';
    · `@2026-09-22g` = accent เหลือที่ชื่อเอกสารที่เดียวแบบใบเสนอราคา (หัวตาราง navy · ป้ายแถว/กรอบภาพ neutral · เลขลำดับสีเนื้อ) +
      หัวข้อตามภาษาของใบ ("ข้อมูลผลิตภัณฑ์ / PRODUCT OVERVIEW" · ใบอังกฤษอังกฤษล้วน) หน้าตาหัวข้อของใบเสนอราคา (8.7pt)
      ⇒ หัวข้อเตี้ยลง งบหน้าวัดใหม่ · (ผลตรวจรอบสี่ ยังไม่ขึ้น prod จึงรวมในรุ่นเดียวกัน) หัวข้อต่อแผ่นมีป้าย "ต่อ" ทั้งสองภาษา
-     ("(ต่อ) / CHECKLIST (cont.)") · หัวคอลัมน์ "ลำดับ" บรรทัดเดียว (หัวตาราง checklist 12.44 → 7.67) */
-export const PRODUCT_SPEC_RENDERER_VERSION = 'fm-sa-04@2026-09-22g';
+     ("(ต่อ) / CHECKLIST (cont.)") · หัวคอลัมน์ "ลำดับ" บรรทัดเดียว (หัวตาราง checklist 12.44 → 7.67)
+   · `@2026-10-01a` = แถว "กลิ่น / รหัสกลิ่น" ของ Product Overview เป็น "สูตร / รหัสสูตร / วันที่" ของสูตรที่ FG ผูกอยู่จริง
+     (มติเจ้าของ 01/10/2569 · FG ไม่ผูกสูตรที่มีกลิ่นและภาพนิ่งที่ยื่นก่อนวันนั้น = แถวกลิ่นเดิม · ไม่มีทั้งสูตรและกลิ่น =
+     ป้ายใหม่ + N/A · ชิ้นที่ไม่มีเป็นขีด) —
+     ช่องเปลี่ยน + แถวสูงขึ้นได้ (สองบรรทัดเมื่อชื่อสูตรยาว) · ตารางอื่น/ค่าคงที่งบหน้าไม่ขยับ */
+export const PRODUCT_SPEC_RENDERER_VERSION = 'fm-sa-04@2026-10-01a';
 
 const TICK_ON = '☑';
 const TICK_OFF = '☐';
@@ -200,21 +217,9 @@ export function applyProductSpecWatermark(html, text) {
   return watermarkSheets(source, text);
 }
 
-/**
- * วันที่บนกระดาษ — DD/MM/YYYY ตามนาฬิกาไทย · **ใบไทย = พ.ศ. · ใบอังกฤษ = ค.ศ.** (มติ 22/09)
- *
- * ⚠️ ผ่าน `fmtDateNumeric` (วันไทยของจุดเวลา · วันในปฏิทินไม่ขยับโซน) แล้วค่อยบวกปี —
- *    ห้ามตัด `slice(0, 10)` จากจุดเวลาเอง ไม่งั้นกระดาษที่ยื่นช่วงตี 0–7 ได้วันที่ของเมื่อวาน
- * @param language ภาษาของใบ (`'th'` ตั้งต้น — ใบเดิมทุกใบเป็นไทย)
- * @returns {string|null} `null` = ไม่มีวันที่ (ช่องนั้นพิมพ์ขีด/ว่างตามบล็อก)
- */
-export function productSpecDateText(value, language = 'th') {
-  if (value === null || value === undefined || value === '') return null;
-  const match = String(fmtDateNumeric(value)).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (!match) return null;
-  const year = docLanguageOf(language) === 'en' ? Number(match[3]) : Number(match[3]) + BUDDHIST_YEAR_OFFSET;
-  return `${match[1]}/${match[2]}/${year}`;
-}
+/* วันที่บนกระดาษ (ใบไทย พ.ศ. · ใบอังกฤษ ค.ศ.) — ตัวจริงอยู่ที่ `productSpecFormulaRow.js` (ย้าย 01/10/2569 ให้จอประกอบ
+   แถวสูตรด้วยตัวจัดวันที่ตัวเดียวกับกระดาษ โดยไม่ลากเปลือกเอกสารเข้า bundle) · export ต่อให้ผู้เรียกเดิม */
+export { productSpecDateText };
 
 /** Rev ของเอกสารสองหลัก (`00`) · ไม่มี = `null` */
 export function productSpecRevText(revNo) {
@@ -457,6 +462,7 @@ function buildSections({ spec, product, order, checkItems, certs, figures, langu
     rows: pairs.map(([label, value]) => ({ html: kvRow(label, value), cost: kvRowMm(label, value) })),
   });
 
+  const formula = productSpecFormulaRow(product, language);
   kvSection('overview', 'specOverview', [
     // ใบอังกฤษ = ชื่ออังกฤษก่อน ถอยไปไทย · ใบไทย = ไทยก่อน (สินค้าหมวด 01/02 ราวครึ่งหนึ่งมีแต่ชื่ออังกฤษ)
     ['ชื่อผลิตภัณฑ์', productDisplayNameFor(product, language)],
@@ -465,7 +471,11 @@ function buildSections({ spec, product, order, checkItems, certs, figures, langu
     ['ชื่อแบรนด์', productBrandName(product)],
     ['รหัสสินค้า', product.fgCode],
     ['ประเภทผลิตภัณฑ์', product.categoryName],
-    ['กลิ่น / รหัสกลิ่น', product.scentText],
+    /* ⭐ มติเจ้าของ 01/10/2569 — แถวนี้คือ "สูตร / รหัสสูตร / วันที่" ของ **สูตรที่ FG ผูกอยู่จริง** (เดิมพิมพ์กลิ่นแม่
+       ซึ่งมีได้หลายสูตร ฝ่ายผลิตแยกไม่ออกว่าใช้ตัวไหน) · FG ไม่ผูกสูตรแต่มีกลิ่น/ภาพนิ่งที่ยื่นก่อนวันนั้น = แถวกลิ่นเดิม
+       ทั้งแถว (ป้ายกลิ่นอยู่เฉพาะแถวที่พิมพ์กลิ่นจริง) · ไม่มีทั้งสูตรและกลิ่น = ป้ายใหม่ + N/A · ชิ้นที่ไม่มีเป็นขีด · วันที่ของสูตรตามภาษาของใบ — ตัวประกอบตัวเดียวกับจอ (productSpecFormulaRow)
+       ⚠️ แถวยาวขึ้น (ชื่อสูตรยาว + รหัส + วันที่ = สองบรรทัดได้) — ความสูงคิดจากข้อความชุดเดียวกันที่ `kvRowMm` ในตัวจองแถว */
+    [formula.label, formula.value],
     /* ⭐ มติผู้ใช้ 2026-09-22 "ปริมาตรบรรจุ และ จำนวนผลิต ดึงมาจาก ข้อมูล FG และ QT SO"
        · ปริมาตรบรรจุ = ปริมาตร + หน่วยของสินค้า FG ในทะเบียน (`products.volume/volumeUnit` ที่ภาพนิ่งถ่ายไว้)
        · จำนวนผลิต = จำนวน + หน่วยของบรรทัด SO (ไม่มี = บรรทัดใบเสนอราคาของสินค้าเดียวกัน) ที่ภาพนิ่งถ่ายไว้

@@ -810,6 +810,12 @@ test('store: ภาพนิ่งเก็บทุกช่องที่ก�
   assert.deepEqual(snapshot.items, [{ sortOrder: 0, itemKey: 'cap', itemLabel: 'ฝา', detail: 'เงิน', preparedByS: true, preparedByCustomer: false, note: null }]);
   assert.equal(snapshot.product.categoryName, 'SPRAY · สเปรย์');
   assert.equal(snapshot.product.scentText, 'FIRST PLATE | PF9010103');
+  // FG นี้ไม่ผูกสูตร ⇒ ช่องสูตรมีครบคีย์แต่เป็น null ทั้งสี่ (กระดาษถอยไปแถวกลิ่น · มติ 01/10/2569)
+  // 🔴 "มีคีย์" คือสัญญาณที่ตัวประกอบแถวใช้แยกของใหม่จากภาพนิ่งเก่า — ตัดคีย์ทิ้งตอนว่าง = ใบใหม่ได้ป้ายกลิ่นเดิม
+  assert.deepEqual(
+    ['formulaId', 'formulaName', 'formulaCode', 'formulaDate'].map((key) => [key in snapshot.product, snapshot.product[key]]),
+    Array(4).fill([true, null]),
+  );
   assert.equal(snapshot.product.volumeText, '50 ml');
   assert.equal(snapshot.product.fgCode, 'FG-0903-01-002-10043');
   assert.equal(snapshot.order.quotationNumber, 'QT-26090001-0');
@@ -821,6 +827,83 @@ test('store: ภาพนิ่งเก็บทุกช่องที่ก�
     { attachmentId: 'A2', caption: 'ด้านข้าง', sortOrder: 1, fileName: 'b.png' },
   ]);
   assert.deepEqual(res.illustrationIds, ['A1', 'A2'], 'รูปที่ปลดระวางแล้ว/ไม่ใช่รูป ไม่เข้าภาพนิ่ง');
+});
+
+/* ⭐ มติเจ้าของ 01/10/2569 — แถว "สูตร / รหัสสูตร / วันที่" ของกระดาษ: ภาพนิ่งเก็บชิ้นดิบของ **สูตรที่ FG ผูกอยู่จริง**
+   แหล่งจริง = แถวสดในทะเบียนสูตร (เหตุผลที่หัว `loadProductPrintFields`) · ของจริงบน prod: FG-0510-02-020-10067 ผูกสูตร
+   "THE MOMENT OF TEA TIME #3.1 REV1" ขณะที่กลิ่นแม่คือ "THE MOMENT OF TEA TIME #3 | PF859010103" */
+const formulaSeed = (over = {}) => ({
+  product_specs: [{ id: 'PSP1', productId: 'PRD1', certifications: [] }],
+  products: [{
+    id: 'PRD1', fgCode: 'FG-0510-02-020-10067', customerName: 'ลูกค้าในทะเบียน', scentId: 'SCT1',
+    formulaId: 'FML1', formulaName: 'THE MOMENT OF TEA TIME #3.1 REV1', formulaCode: 'PF85901010301', formulaDate: '2026-09-10',
+  }],
+  scents: [{ id: 'SCT1', code: 'PF859010103', name: 'THE MOMENT OF TEA TIME #3' }],
+  formulas: [{ id: 'FML1', code: 'PF85901010301', name: 'THE MOMENT OF TEA TIME #3.1 REV1', formulaDate: '2026-09-10', scentId: 'SCT1' }],
+  ...over,
+});
+const formulaOf = ({ formulaId, formulaName, formulaCode, formulaDate }) => ({ formulaId, formulaName, formulaCode, formulaDate });
+
+test('⭐ store: ภาพนิ่งถ่ายสูตรที่ FG ผูก (ชื่อ · รหัส · วันที่) · ช่องกลิ่นคงเดิมทุกตัว', async () => {
+  const { snapshot, error } = await buildDocumentSnapshot(fakeDb(formulaSeed()), { productId: 'PRD1', now: NOW });
+  assert.equal(error, undefined, error);
+  assert.equal(snapshot.schemaVersion, 2, 'คีย์เพิ่มแบบไม่บังคับ — ไม่ขยับ schemaVersion');
+  assert.deepEqual(formulaOf(snapshot.product), {
+    formulaId: 'FML1', formulaName: 'THE MOMENT OF TEA TIME #3.1 REV1', formulaCode: 'PF85901010301', formulaDate: '2026-09-10',
+  });
+  // ช่องกลิ่นยังเป็นกลิ่นแม่ (ผู้อ่านเดิม/ทางถอย) — ไม่ถูกทับด้วยสูตร
+  assert.equal(snapshot.product.scentName, 'THE MOMENT OF TEA TIME #3');
+  assert.equal(snapshot.product.scentCode, 'PF859010103');
+  assert.equal(snapshot.product.scentText, 'THE MOMENT OF TEA TIME #3 | PF859010103');
+});
+
+test('⭐ store: สูตรอ่านสดจากทะเบียนสูตร — สำเนาบนแถวสินค้าที่ค้างของเก่าไม่ถูกพิมพ์', async () => {
+  // RD ออกรหัส/แก้ชื่อ/แก้วันที่ที่ทะเบียนสูตรทีหลัง — สำเนาบน products ยังเป็นของวันที่บันทึก FG (ไม่มีรหัส)
+  const seed = formulaSeed();
+  seed.products[0] = { ...seed.products[0], formulaName: 'Secret Valley #1', formulaCode: null, formulaDate: '2026-08-21' };
+  seed.formulas = [{ id: 'FML1', code: 'PF0020401-01', name: 'Secret Valley #1 REV1', formulaDate: '2026-10-01' }];
+  const { snapshot } = await buildDocumentSnapshot(fakeDb(seed), { productId: 'PRD1', now: NOW });
+  assert.deepEqual(formulaOf(snapshot.product), {
+    formulaId: 'FML1', formulaName: 'Secret Valley #1 REV1', formulaCode: 'PF0020401-01', formulaDate: '2026-10-01',
+  });
+  // สูตรที่ยังไม่มีรหัส/วันที่ในทะเบียน = null (กระดาษพิมพ์ขีดตรงชิ้นนั้น) — ไม่ยืมสำเนาบนสินค้ามาเติม
+  seed.formulas = [{ id: 'FML1', code: null, name: 'Secret Valley #1', formulaDate: null }];
+  seed.products[0] = { ...seed.products[0], formulaCode: 'รหัสเก่าที่ถูกถอน', formulaDate: '2026-08-21' };
+  const bare = await buildDocumentSnapshot(fakeDb(seed), { productId: 'PRD1', now: NOW });
+  assert.deepEqual(formulaOf(bare.snapshot.product), { formulaId: 'FML1', formulaName: 'Secret Valley #1', formulaCode: null, formulaDate: null });
+});
+
+test('🔴 store: อ่านทะเบียนสูตรไม่ได้ = error ไม่ใช่ถอยไปกลิ่นเงียบ ๆ (กระดาษที่ลูกค้าเซ็นจะพิมพ์ผิดตัว)', async () => {
+  const db = fakeDb(formulaSeed(), { fail: (table) => (table === 'formulas' ? { message: 'timeout' } : null) });
+  const res = await buildDocumentSnapshot(db, { productId: 'PRD1', now: NOW });
+  assert.match(res.error, /อ่านสูตรของสินค้าไม่สำเร็จ: timeout/);
+  assert.equal(res.snapshot, undefined);
+  // FG ที่ไม่ผูกสูตรไม่แตะทะเบียนสูตรเลย — ทะเบียนสูตรล่มไม่พาใบที่ไม่เกี่ยวล้มด้วย
+  const seed = formulaSeed();
+  seed.products[0] = { ...seed.products[0], formulaId: null, formulaName: null, formulaCode: null, formulaDate: null };
+  const unlinked = await buildDocumentSnapshot(fakeDb(seed, { fail: (table) => (table === 'formulas' ? { message: 'timeout' } : null) }), { productId: 'PRD1', now: NOW });
+  assert.equal(unlinked.error, undefined, unlinked.error);
+});
+
+test('store: FG ไม่ผูกสูตร = ช่องสูตร null ทั้งสี่ · ชื่อสูตรที่พิมพ์ลอย ๆ บนสินค้ารุ่นเก่าไม่ถูกยกเป็นสูตร (ยังเป็นทางถอยของกลิ่นแบบเดิม)', async () => {
+  const seed = formulaSeed();
+  seed.products[0] = { ...seed.products[0], formulaId: null, formulaName: null, formulaCode: null, formulaDate: null };
+  const scentOnly = await buildDocumentSnapshot(fakeDb(seed), { productId: 'PRD1', now: NOW });
+  assert.deepEqual(formulaOf(scentOnly.snapshot.product), { formulaId: null, formulaName: null, formulaCode: null, formulaDate: null });
+  assert.equal(scentOnly.snapshot.product.scentText, 'THE MOMENT OF TEA TIME #3 | PF859010103');
+  // กอง "รอจัดระเบียบ": ไม่มี formulaId/scentId แต่มีชื่อพิมพ์ไว้ในช่องสูตร (ส่วนใหญ่คือชื่อกลิ่น) — แถวกลิ่นแบบเดิม
+  seed.products[0] = { ...seed.products[0], scentId: null, formulaName: 'ROSE GARDEN', formulaCode: 'RG-01', formulaDate: '2025-01-05' };
+  const legacy = await buildDocumentSnapshot(fakeDb(seed), { productId: 'PRD1', now: NOW });
+  assert.deepEqual(formulaOf(legacy.snapshot.product), { formulaId: null, formulaName: null, formulaCode: null, formulaDate: null });
+  assert.equal(legacy.snapshot.product.scentText, 'ROSE GARDEN | RG-01');
+});
+
+test('store: formulaId ชี้อยู่แต่ไม่พบแถวสูตร (ไม่ควรเกิด) = สำเนาบนแถวสินค้า — ไม่ทิ้งแถวไปกลิ่นทั้งที่ FG บอกว่าผูกสูตร', async () => {
+  const { snapshot, error } = await buildDocumentSnapshot(fakeDb(formulaSeed({ formulas: [] })), { productId: 'PRD1', now: NOW });
+  assert.equal(error, undefined, error);
+  assert.deepEqual(formulaOf(snapshot.product), {
+    formulaId: 'FML1', formulaName: 'THE MOMENT OF TEA TIME #3.1 REV1', formulaCode: 'PF85901010301', formulaDate: '2026-09-10',
+  });
 });
 
 /* ⭐ มติผู้ใช้ 2026-09-22 — กระดาษตามภาษาของ SO + กล่อง "ผู้ซื้อ / CUSTOMER" แบบใบเสนอราคา ⇒ ภาพนิ่ง v2
