@@ -11,11 +11,12 @@
 //   `intake.js` เองห้าม import `serviceSetup.js` (กฎ 16 · serviceSetupImports.test.mjs) ⇒ ตัวที่ต้องใช้สองฝั่งมาอยู่ที่นี่
 import { businessDate } from '@/lib/businessDate';
 import { fmtDate, fmtNumber } from '@/lib/format';
-import { periodSpan, servicePeriodOf } from '@/lib/sales/serviceSetup';
+import { SERVICE_PERIOD_MODE_LINE, SERVICE_PERIOD_MODE_WHOLE, periodEnvelope, periodSpan, servicePeriodModeOf, servicePeriodOf } from '@/lib/sales/serviceSetup';
 import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
 import { orderReadiness } from './intake';
-import { ROUNDS_SOLD_LABEL, roundsSoldSentence, suggestEveryDays } from './rounds';
-import { termOrderActive } from './terms';
+import { cadenceText, suggestCadence } from './cadence';
+import { ROUNDS_SOLD_LABEL, roundsSoldSentence } from './rounds';
+import { termOrderActive, termPeriodOf } from './terms';
 import { termLineLabels } from './termLabels';
 
 /* ── ข้อความ (แคตตาล็อก §5 ของแผน PR-C) ─────────────────────────────────────────────────── */
@@ -26,6 +27,11 @@ export const PLAN_EMPTY_TEXT = 'ไม่มีไซต์ที่รอตั
 export const CONTRACT_MISSING_CHIP = 'ยังไม่ผูก — นัดติดด่านสัญญา (SA)';
 export const CONTRACT_MISSING_WARNING = 'ใบนี้ยังไม่ผูกสัญญา — สร้างรอบและนัดได้ แต่นัดจะติดด่านสัญญาจนกว่าฝ่ายขาย (SA) ผูกสัญญาที่ครอบวันนัด';
 export const PLAN_START_HINT_PERIOD = 'ตามวันเริ่มช่วงบริการของใบ';
+/* ใบแยกรายรายการ (mig 0400): ช่วงของแถว = ช่วงของรายการที่ลงไซต์นั้น (ตัวโหลดแนบให้ term — `withLinePeriods`) ไม่ใช่ช่วงรวมของใบ */
+export const PLAN_START_HINT_LINE_PERIOD = 'ตามวันเริ่มช่วงบริการของรายการ';
+/* ไซต์เดียวมีหลายรายการที่ช่วงไม่เท่ากัน (รอบบริการยังเป็นหนึ่งรอบต่อไซต์ × ใบ) — แถวโชว์ช่วงรวมของไซต์ + คำนี้ · ไม่แนะนำความถี่ */
+export const PERIOD_MIXED_TEXT = 'ช่วงต่างกันรายรายการ';
+const PERIOD_MIXED_STRIP = ' (ต่างกันรายรายการ)';
 const CONTRACT_SIGNED_FALLBACK = 'ผูกสัญญาแล้ว';
 
 /* ── รอบอื่นที่เดินอยู่ที่ไซต์ (review 29/09) — ปุ่มตั้งรอบบนแถวสร้างรอบซ้อนได้ในคลิกเดียว ⇒ บอกบนแถว + ในโมดัลก่อนกด ──
@@ -60,18 +66,25 @@ const usablePeriod = (period) => (period && periodSpan(period).label ? { from: p
 /* ── ช่วงที่ใช้ตั้งรอบ (C-D5 · [owner]) ──────────────────────────────────────────────────────
    เริ่ม = วันเริ่มช่วงบริการ หรือวันนี้ถ้าช่วงเริ่มไปแล้ว · จบ = วันจบช่วงบริการ · ช่วงจบแล้ว = null (ไม่เติมวัน ไม่แนะนำ)
    ⭐ แถว ("รอบที่แนะนำ") กับชิปในโมดัลใช้ช่วงนี้ช่วงเดียว ⇒ ข้อเสนอพอดีกับเวลาที่เหลือเสมอ */
-export function planWindow(period, todayIso = businessDate()) {
+export function planWindow(period, todayIso = businessDate(), { startHint = PLAN_START_HINT_PERIOD } = {}) {
   const p = usablePeriod(period);
   if (!p || p.to < todayIso) return null;
-  if (p.from >= todayIso) return { startDate: p.from, endDate: p.to, startHint: PLAN_START_HINT_PERIOD };
+  if (p.from >= todayIso) return { startDate: p.from, endDate: p.to, startHint };
   return { startDate: todayIso, endDate: p.to, startHint: `ช่วงบริการเริ่ม ${fmtDate(p.from)} ไปแล้ว — เริ่มวันนี้` };
 }
 
-/** ชิป "จำนวนรอบบริการ 12 รอบ → ทุก 33 วัน" (+ หมายเหตุเมื่อโดนเพดาน 365 วัน · C-D7 · คำตามมติ 29/09) · ไม่มีข้อเสนอ = null */
+/** ชิป "จำนวนรอบบริการ 12 รอบ → ทุกเดือน วันที่ 22" (C-D7 · คำตามมติ 29/09 · ความถี่ทุกชนิดตั้งแต่ mig 0397) · ไม่มีข้อเสนอ = null
+ *  รับได้สองรูป: ผลของ `suggestCadence` (หกช่อง + `visits` · `exact` · `clamped`) และรูปเดิม `{ everyDays, visits, clamped }`
+ *   · โดนเพดาน 365 วัน      → "… (สูงสุดที่ตั้งได้ · ได้ราว n นัด)"
+ *   · ไม่มีความถี่ไหนได้พอดี → "… (ได้ราว n นัด)" (เฉพาะรูปที่มีคีย์ `exact` — รูปเดิมไม่บอก จึงไม่ต่อท้าย)
+ *  ⚠️ ข้อเสนอที่อ่านความถี่ไม่ออก = null (ไม่พิมพ์ "→ —") */
 export function planSuggestionLabel(rounds, suggestion) {
   if (!suggestion) return null;
-  const base = `${roundsSoldSentence(rounds)} → ทุก ${fmtNumber(suggestion.everyDays)} วัน`;
-  return suggestion.clamped ? `${base} (สูงสุดที่ตั้งได้ · ได้ราว ${fmtNumber(suggestion.visits)} นัด)` : base;
+  const text = cadenceText(suggestion);
+  if (text === '—') return null;
+  const base = `${roundsSoldSentence(rounds)} → ${text}`;
+  if (suggestion.clamped) return `${base} (สูงสุดที่ตั้งได้ · ได้ราว ${fmtNumber(suggestion.visits)} นัด)`;
+  return suggestion.exact === false ? `${base} (ได้ราว ${fmtNumber(suggestion.visits)} นัด)` : base;
 }
 
 /* แพ็คต่อรอบของโซน = Σ packageQty ของ term ในแถว · term ไหนไม่มีค่า = ไม่รู้ทั้งโซน (null) ไม่ใช่บวกเท่าที่มี */
@@ -120,14 +133,32 @@ export function planRowFacts(row, { order = null, contract = null, linesById = n
         ช่วงร่างที่ผู้จัดการยังไม่ตรวจห้ามโผล่เป็นข้อเท็จจริงของ TS */
   /* ⚠️ ข้ามเลน (PR-D · mig 0394): ใบย้อนหลังที่อนุมัติหลังไฟล์นั้นได้ตราด้วย ⇒ "มีตรา" ≠ "ใบ pipeline" — ถามแหล่งที่มาตรง ๆ */
   const historical = isHistoricalOrder(order) || isHistoricalOrder(row);
-  const period = stamped || historical ? usablePeriod(servicePeriodOf(order, contract)) : null;
+  /* ⭐ ใบแยกรายรายการ (mig 0400): ช่วงของแถว = ช่วงรวมของ **รอบขายในแถวนี้** (ช่วงของรายการที่ตัวโหลดแนบให้ term · `termPeriodOf`)
+       — ไม่ใช่ช่วงรวมของทั้งใบ (สาขาอื่นของใบเริ่ม/จบคนละวัน) · กรณีปกติ หนึ่งรายการต่อไซต์ = ช่วงของรายการนั้นพอดี
+     ⚠️ ไซต์เดียวมีหลายรายการที่ช่วงไม่เท่ากัน (`periodMixed`) = ช่วงรวมของไซต์ + "ช่วงต่างกันรายรายการ" · ไม่แนะนำความถี่
+        (รอบของสองรายการอ้างถึงคนละหน้าต่าง — ข้อเสนอจะเป็นการเดา) · รอบบริการยังเป็นหนึ่งรอบต่อ (ไซต์ × ใบ) เท่าเดิม */
+  const lineMode = stamped && !historical && servicePeriodModeOf(order) === SERVICE_PERIOD_MODE_LINE;
+  const termPeriods = lineMode ? terms.map((term) => usablePeriod(termPeriodOf(term, order))) : [];
+  const periodMixed = lineMode && new Set(termPeriods.filter(Boolean).map((p) => `${p.from}|${p.to}`)).size > 1;
+  const period = lineMode
+    ? periodEnvelope(termPeriods)
+    : (stamped || historical ? usablePeriod(servicePeriodOf(order, contract)) : null);
   const span = period ? periodSpan(period) : null;
-  const window = planWindow(period, todayIso);
+  const window = planWindow(period, todayIso, lineMode ? { startHint: PLAN_START_HINT_LINE_PERIOD } : undefined);
   /* รอบที่แนะนำเฉพาะใบที่ตั้งแล้ว — ใบย้อนหลังส่งไปแล้วบางรอบก่อนเข้าระบบ ⇒ ยัดรอบทั้งสัญญาลงเวลาที่เหลือ = ถี่เกินจริง
      (C-D3: แถวใบเดิม/ย้อนหลัง "—") · แถวกับชิปของโมดัลต้องตรงกัน ⇒ `context.roundsSold` ตามกติกาเดียวกัน */
-  const suggestRounds = stamped && !historical ? (row?.roundsSold ?? null) : null;
+  const suggestRounds = stamped && !historical && !periodMixed ? (row?.roundsSold ?? null) : null;
+  /* ⭐ รอบที่ขายที่ **โมดัลตั้งรอบ** ใช้ (บรรทัด "ขายไว้ n รอบ" + ส่วนต่างกับจำนวนนัดที่ประมาณ) — แถวที่ช่วงต่างกันรายรายการ = null
+     🐞 ตรวจทาน lib-02: `row.roundsSold` ของแถว = **ค่ามากสุด** ของรายการที่ลงไซต์นี้ (`serviceVisitsSold`) · สองรายการคนละช่วง
+        (02/09/2026–01/09/2027 12 รอบ ต่อด้วย 02/09/2027–01/09/2028 12 รอบ) ⇒ โมดัลเปิดช่วงรวม 24 เดือน แล้วบอก "ขายไว้ 12 รอบ"
+        TS ตั้งรายเดือน (24 นัด — ตรงกับที่ขาย) โมดัลกลับบอกว่าต่างจากที่ขาย 12 · ทำตามคำบอก = 12 นัดใน 24 เดือน = ครึ่งเดียวของที่ขาย
+        ⇒ ไม่มีตัวเลขให้เทียบ (ผู้ใช้ดูช่วงของแต่ละรายการแล้วเลือกความถี่เอง) · แถวอื่นทุกแบบ = `row.roundsSold` เท่าเดิม
+     ⚠️ ไม่ทับ `roundsSold` ของแถว (ช่องเดิมของ planQueue ไม่ถูกแตะ — คอลัมน์ของตาราง/ตัวรวมอื่นอ่านอยู่) */
+  const planRoundsSold = periodMixed ? null : (row?.roundsSold ?? null);
+  /* ⭐ ความถี่ตัวแรกที่ได้นัด **เท่าจำนวนรอบบริการพอดี** (`suggestCadence` · mig 0397): รายเดือนวันที่ของวันเริ่ม →
+        รายสัปดาห์ จ.–ศ. → ทุก N วัน (`exact` บอกว่าพอดีไหม) · ตัวเดียวกับชิปของโมดัลรอบบริการ ⇒ แถวกับโมดัลพูดตรงกัน */
   const cadence = window && suggestRounds
-    ? suggestEveryDays({ startDate: window.startDate, endDate: window.endDate, rounds: suggestRounds })
+    ? suggestCadence({ startDate: window.startDate, endDate: window.endDate, rounds: suggestRounds })
     : null;
 
   /* สัญญา: ตัวตัดสินเดียวกับชิปเดิม (`orderReadiness` — signed เท่านั้น) */
@@ -142,7 +173,25 @@ export function planRowFacts(row, { order = null, contract = null, linesById = n
   /* เดือนของรายการ = ช่วงหัวใบของใบ pipeline ที่มีตราเท่านั้น (C-D9: ใบย้อนหลังไม่มีข้อเสนอ มล.) — ตรงกับแท็บงานบริการของ SO
      ที่ไม่มีสัญญาให้อ่าน ⇒ รายการเดียวกันให้ชิปเดียวกันทั้งสองจอ (§7 ข้อ 5) */
   const periodMonths = span && stamped && !historical ? (span.months || null) : null;
-  const termItems = terms.map((term) => {
+  /* ใบแยกรายรายการ: เดือนของรายการ = เดือนเต็มของช่วงของ **รายการนั้นเอง** (ข้อเสนอ มล. ต่อรอบขาย · ตรงกับแท็บงานบริการของ SO) */
+  const termMonths = (index) => (lineMode
+    ? (termPeriods[index] ? (periodSpan(termPeriods[index]).months || null) : null)
+    : periodMonths);
+  /* ช่วงของแต่ละรายการในแถว (ใบแยกรายรายการ) — ไม่ซ้ำรายการ · เรียงตามวันเริ่ม · โหมดทั้งใบ = [] */
+  const linePeriods = [];
+  if (lineMode) {
+    const seen = new Set();
+    terms.forEach((term, index) => {
+      const lineId = term?.salesOrderLineId || null;
+      const p = termPeriods[index];
+      if (!lineId || !p || seen.has(lineId)) return;
+      seen.add(lineId);
+      linePeriods.push({ lineId, from: p.from, to: p.to });
+    });
+    linePeriods.sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0)
+      || (a.to < b.to ? -1 : a.to > b.to ? 1 : 0) || naturalCompare(a.lineId, b.lineId));
+  }
+  const termItems = terms.map((term, index) => {
     const zone = zonesById.get(term.zoneId) || null;
     const line = pick(linesById, term.salesOrderLineId);
     return {
@@ -155,7 +204,7 @@ export function planRowFacts(row, { order = null, contract = null, linesById = n
       packageQty: stamped ? positiveNumber(term.packageQty) : null,
       unit: term.unit || null,
       rounds: line ? positiveInt(line.serviceRounds) : null,
-      periodMonths,
+      periodMonths: termMonths(index),
       standardMlPerMonth: positiveNumber(term.standardMlPerMonth),
     };
   });
@@ -180,8 +229,8 @@ export function planRowFacts(row, { order = null, contract = null, linesById = n
     site?.name || null,
     `${fmtNumber(zones.length)} โซน`,
     stamped && packsPerRound != null ? `${fmtNumber(packsPerRound)} แพ็ค/รอบ` : null,
-    row?.roundsSold ? roundsSoldSentence(row.roundsSold) : null,
-    period ? `ช่วงบริการ ${fmtDate(period.from)}–${fmtDate(period.to)}` : null,
+    planRoundsSold ? roundsSoldSentence(planRoundsSold) : null,
+    period ? `ช่วงบริการ ${fmtDate(period.from)}–${fmtDate(period.to)}${periodMixed ? PERIOD_MIXED_STRIP : ''}` : null,
     ended ? `ช่วงบริการจบแล้ว ${fmtDate(period.to)}` : null,
   ].filter(Boolean).join(' · ')}`;
 
@@ -192,11 +241,21 @@ export function planRowFacts(row, { order = null, contract = null, linesById = n
     zonePacksText,
     period,
     periodText: period ? `${fmtDate(period.from)} – ${fmtDate(period.to)}` : null,
-    periodSpanText: span?.label || null,
+    periodSpanText: periodMixed ? PERIOD_MIXED_TEXT : (span?.label || null),
+    /* mig 0400: โหมดช่วงบริการของใบของแถว · `periodMixed` = ไซต์นี้มีรายการที่ช่วงไม่เท่ากัน · `linePeriods` = ช่วงรายรายการ ([] ในโหมดทั้งใบ) */
+    periodMode: lineMode ? SERVICE_PERIOD_MODE_LINE : SERVICE_PERIOD_MODE_WHOLE,
+    periodMixed,
+    linePeriods,
+    planRoundsSold,
     window,
     cadence,
-    cadenceText: cadence ? `ทุก ${fmtNumber(cadence.everyDays)} วัน` : null,
-    cadenceSub: cadence ? `≈ ${fmtNumber(cadence.visits)} นัด${cadence.clamped ? ' · สูงสุดที่ตั้งได้' : ''}` : null,
+    cadenceText: cadence ? cadenceText(cadence) : null,
+    // พอดี = "12 นัด" · ไม่พอดี = "≈ 25 นัด" (+ "สูงสุดที่ตั้งได้" เมื่อโดนเพดาน 365 วัน)
+    cadenceSub: cadence
+      ? (cadence.exact
+        ? `${fmtNumber(cadence.visits)} นัด`
+        : `≈ ${fmtNumber(cadence.visits)} นัด${cadence.clamped ? ' · สูงสุดที่ตั้งได้' : ''}`)
+      : null,
     contract: { hasContract, contractNo },
     contractChip: hasContract
       ? { tone: 'success', label: contractNo || CONTRACT_SIGNED_FALLBACK }
@@ -351,6 +410,8 @@ export function orphanPlanRows({ plans = [], ordersById = new Map(), terms = [],
       toOrderId: to?.id || null,
       toOrderNumber: to?.orderNumber || null,
       everyDays: plan.everyDays ?? null,
+      // คำบอกความถี่ของรอบทุกชนิด (mig 0397) — แถบรอบกำพร้าพิมพ์ช่องนี้ (รอบตามปฏิทินไม่มี everyDays)
+      cadenceText: cadenceText(plan),
       kind,
     });
   }
@@ -389,11 +450,14 @@ export const ORPHAN_TITLES = Object.freeze({
   cancelled: (n) => `รอบของใบที่ยกเลิกแล้ว ${fmtNumber(n)} รอบ — ปิดรอบ หรือนัดถอนเครื่อง`,
 });
 
-/** บรรทัดของแถบรอบกำพร้า: "{รหัสไซต์} {ชื่อ} · {ใบเดิม} → {ใบปลายโซ่} · ทุก {d} วัน" (ไม่มีใบปลายโซ่ = ไม่มีลูกศร) */
+/** บรรทัดของแถบรอบกำพร้า: "{รหัสไซต์} {ชื่อ} · {ใบเดิม} → {ใบปลายโซ่} · {ความถี่}" (ไม่มีใบปลายโซ่ = ไม่มีลูกศร)
+ *  ความถี่ = `row.cadenceText` (ทุกชนิด · mig 0397) · แถวรูปเดิมที่มีแค่ `everyDays` ยังได้ "ทุก N วัน" ผ่าน `cadenceText` ตัวเดียวกัน
+ *  อ่านความถี่ไม่ออก = ไม่ต่อท้าย */
 export function ORPHAN_ITEM_TEXT(row) {
   const site = [row?.site?.code, row?.site?.name].filter(Boolean).join(' ') || row?.siteId || '—';
   const from = row?.fromOrderNumber || row?.fromOrderId || '—';
   const to = row?.toOrderNumber || row?.toOrderId || null;
-  const every = row?.everyDays ? ` · ทุก ${fmtNumber(row.everyDays)} วัน` : '';
+  const text = row?.cadenceText || cadenceText(row);
+  const every = text && text !== '—' ? ` · ${text}` : '';
   return `${site} · ${from}${to ? ` → ${to}` : ''}${every}`;
 }

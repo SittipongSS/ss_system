@@ -5,12 +5,21 @@
 //   ⇒ โหลดฐานใหม่ (บันทึกแล้ว · ถูกแก้จากอีกหน้าต่าง) = `rebaseDraft` ทิ้งคีย์ที่เท่าฐานใหม่แล้ว ที่เหลือคือสิ่งที่ยังค้าง
 // ⭐ ช่องตัวเลขเก็บเป็น "ข้อความที่พิมพ์" — ตัวตรวจของ server เป็นคนตัดสินว่าใช้ได้ไหม (400 fieldErrors ขึ้นแดงรายช่อง)
 //   จอไม่เดา/ไม่ตัดทิ้งเอง ยกเว้นแถวโซนที่ยังไม่ได้เลือกโซน (แถวว่าง = ยังไม่มีอะไรให้บันทึก ไม่ใช่ข้อผิด)
+// ⭐ ช่วงบริการ (mig 0400 · มติเจ้าของ 01/10): ร่างมีคีย์ `periodMode` ('whole' | 'line') · `period` (ช่วงของทั้งใบ — ใช้ตอนโหมดทั้งใบ)
+//   · `lines[id].period` (`{ from, to }` ตามที่พิมพ์ — ใช้ตอนโหมดแยกรายรายการ และเฉพาะบรรทัดที่เป็นงานบริการ)
+//   คีย์ของโหมดที่ไม่ได้ใช้อยู่ **ค้างในร่างได้แต่ไม่ถูกส่ง** ⇒ สลับโหมดไปมาก่อนบันทึกไม่มีอะไรหาย (`switchPeriodMode`)
+//   🔴 **ค่าที่สวิตช์เติมให้ ไม่ใช่ของที่คนพิมพ์ — ห้ามเขียนลงร่าง** (ตรวจทาน ui-leftover-seeded-periods): ช่วงตั้งต้นของรายการตอนสลับ
+//      ทั้งใบ → แยกรายรายการ และช่วงรวมตอนสลับ แยกรายรายการ → ทั้งใบ **คิดตอนวาด** จากของบนจอ (`mergedLines` · `wholePeriodOfDraft`)
+//      ⇒ ร่างมีแต่ของที่คนแตะ · แก้ช่วงของใบแล้วสลับใหม่ = รายการตามช่วงใหม่ · โหลดฐานใหม่ไม่มีค่าที่ไม่มีใครพิมพ์โผล่มาทับของอีกหน้าต่าง
+//   · ของที่คนพิมพ์ระหว่างสลับไปอีกโหมด แล้วสลับกลับโดยยังไม่บันทึก พักไว้ที่ `parked` (ตัววาด/ก้อนบันทึกไม่อ่าน) — สลับไปอีกรอบได้คืน ·
+//     ฐานเปลี่ยน (`rebaseDraft`) = ทิ้ง
 // ⚠️ `expectedUpdatedAt` = `updatedAt` ของก้อน GET **ตามตัวอักษร** — ห้ามแปลงผ่าน Date (ไมโครวินาทีหาย ⇒ ทุกการบันทึกตายด้วย stale)
 // ⚠️ ไฟล์นี้ถูกเทสต์ใต้ node (serviceSetupUi.test.mjs) — ห้าม import คอมโพเนนต์/ของฝั่ง browser
 import { categoryOf } from '@/lib/master/categoryOf';
 import {
-  SERVICE_BACKFILL_RAIL_TEXT, SERVICE_BACKFILL_STATE_LABELS, SERVICE_KIND_NOT_SERVICE, SERVICE_KIND_PACKAGE, SERVICE_REOPENED_TEXT, SERVICE_ROLE_UNSET,
-  SERVICE_SETUP_EDIT_TEXT, SERVICE_SETUP_LINE_TEXT, SERVICE_SETUP_PANEL_TEXT, periodSpan,
+  SERVICE_BACKFILL_RAIL_TEXT, SERVICE_BACKFILL_STATE_LABELS, SERVICE_KIND_NOT_SERVICE, SERVICE_KIND_PACKAGE, SERVICE_PERIOD_MODE_LINE,
+  SERVICE_PERIOD_MODE_WHOLE, SERVICE_PERIOD_TEXT, SERVICE_REOPENED_TEXT, SERVICE_ROLE_UNSET,
+  SERVICE_SETUP_EDIT_TEXT, SERVICE_SETUP_LINE_TEXT, SERVICE_SETUP_PANEL_TEXT, periodEnvelope, periodSpan, validServicePeriod,
 } from '@/lib/sales/serviceSetup';
 import { NA, fmtDate, fmtDateTime, fmtNumber } from '@/lib/format';
 
@@ -57,7 +66,8 @@ function allocationsOf(view, lineId) {
       || (String(a?.zoneId) < String(b?.zoneId) ? -1 : String(a?.zoneId) > String(b?.zoneId) ? 1 : 0));
 }
 
-/** ค่าที่ฐานถือของบรรทัดหนึ่ง — `{ kind, serviceProductId, serviceFgCode, rounds, zones:[{zoneId, packsPerRound}] }` */
+/** ค่าที่ฐานถือของบรรทัดหนึ่ง — `{ kind, serviceProductId, serviceFgCode, rounds, period, zones:[{zoneId, packsPerRound}] }`
+ *  · `period` = ช่วงของรายการที่บันทึกไว้ (`{ from, to }` · โหมดทั้งใบ/ไม่ใช่งานบริการ = null — ฐานเก็บว่างเสมอ) */
 export function baseLineOf(view, lineId) {
   const line = list(view?.lines).find((row) => row?.lineId === lineId) || {};
   return {
@@ -65,6 +75,7 @@ export function baseLineOf(view, lineId) {
     serviceProductId: line.serviceProductId ?? null,
     serviceFgCode: line.serviceFgCode ?? null,
     rounds: line.rounds ?? null,
+    period: line.period ?? null,
     zones: allocationsOf(view, lineId).map((row) => ({ zoneId: row.zoneId, packsPerRound: row.packsPerRound ?? null })),
   };
 }
@@ -75,6 +86,18 @@ const periodOrNull = (period) => {
   const to = text(period?.to);
   return !from && !to ? null : { from, to };
 };
+const samePeriodOrNull = (a, b) => {
+  const left = periodOrNull(a);
+  const right = periodOrNull(b);
+  return (left === null && right === null) || (!!left && !!right && samePeriod(left, right));
+};
+const lineMode = (mode) => (mode === SERVICE_PERIOD_MODE_LINE ? SERVICE_PERIOD_MODE_LINE : SERVICE_PERIOD_MODE_WHOLE);
+
+/** โหมดช่วงบริการบนจอ = ร่าง (ถ้าสลับไว้) ไม่งั้นค่าที่บันทึก · ไม่รู้ = 'whole' (ใบเดิมทุกใบ) */
+export function periodModeOfDraft(view, draft = EMPTY_DRAFT) {
+  return lineMode(hasOwn(draft, 'periodMode') ? draft.periodMode : view?.periodMode);
+}
+
 const sameZones = (a, b) => a.length === b.length
   && a.every((row, index) => row.zoneId === b[index].zoneId && (row.packsPerRound ?? null) === (b[index].packsPerRound ?? null));
 const zonesForPayload = (rows) => list(rows)
@@ -87,10 +110,27 @@ const zonesForPayload = (rows) => list(rows)
  * บรรทัดที่จอวาด = ฐาน + ร่าง — เรียงตาม `lineNo` ของก้อน GET
  * @param fgById Map id → ตัวเลือก FG (`view.fgOptions`) — ใช้เติมรหัส FG ของแพ็คเกจที่เพิ่งเลือก
  * @returns `[{ ...viewLine, manual, derivedRole, baseKind, kind, role, roleSource, serviceProductId, serviceFgCode,
- *             rounds (ข้อความ), zones:[{ key, zoneId, packsPerRound (ข้อความ) }] }]`
+ *             rounds (ข้อความ), period, zones:[{ key, zoneId, packsPerRound (ข้อความ) }] }]`
+ *   · `period` (mig 0400) = ช่วงของรายการ `{ from, to }` (ข้อความ ISO ตามที่พิมพ์ · ว่างทั้งคู่ = null) — มีค่า **เฉพาะโหมด
+ *     แยกรายรายการ และบรรทัดที่เป็นงานบริการ** (ร่างถ้าแตะ ไม่งั้นฐาน) · โหมดทั้งใบ/ไม่ใช่งานบริการ/ยังไม่ตอบ = null เสมอ
  */
 export function mergedLines(view, draft = EMPTY_DRAFT, { fgById = new Map() } = {}) {
+  const byLine = periodModeOfDraft(view, draft) === SERVICE_PERIOD_MODE_LINE;
+  /* ทั้งใบ (บันทึกไว้) → แยกรายรายการ (ร่าง): รายการงานบริการที่คนยังไม่แตะช่วง ได้ช่วงของทั้งใบที่เห็นบนจอเป็นค่าตั้งต้น (เมื่อครบและเรียงถูก)
+     — คิดตอนวาด ไม่เขียนลงร่าง · ใบที่บันทึกเป็นแยกรายรายการแล้วไม่มีค่าตั้งต้น (รายการที่ว่าง = ว่าง) */
+  const seed = byLine && lineMode(view?.periodMode) !== SERVICE_PERIOD_MODE_LINE
+    ? validServicePeriod(wholePeriodOfDraft(view, draft))
+    : null;
+  return mergeWith(view, draft, { fgById, byLine, seed });
+}
+
+/* ตัวรวมฐาน + ร่าง — `byLine` = วาดช่วงของรายการไหม · `seed` = ช่วงตั้งต้นของรายการที่ยังไม่มีทั้งในร่างและในฐาน (null = ไม่เติม) */
+function mergeWith(view, draft, { fgById = new Map(), byLine = false, seed = null } = {}) {
   const lines = [...list(view?.lines)].sort((a, b) => Number(a?.lineNo ?? 0) - Number(b?.lineNo ?? 0));
+  const linePeriod = (edit, base) => {
+    if (hasOwn(edit, 'period')) return periodOrNull(edit.period);
+    return periodOrNull(base.period) ?? (seed ? { from: seed.from, to: seed.to } : null);
+  };
   return lines.map((line) => {
     const lineId = line.lineId;
     const edit = draft?.lines?.[lineId] || {};
@@ -119,31 +159,168 @@ export function mergedLines(view, draft = EMPTY_DRAFT, { fgById = new Map() } = 
       serviceProductId,
       serviceFgCode,
       rounds: hasOwn(edit, 'rounds') ? rawOf(edit.rounds) : rawOf(base.rounds),
+      period: byLine && role === SERVICE_KIND_PACKAGE ? linePeriod(edit, base) : null,
       zones,
     };
   });
 }
 
+/**
+ * ช่วงของทั้งใบที่เห็นบนจอ (โหมดทั้งใบ) → `{ from, to }` ตามที่พิมพ์ หรือ null
+ *   · ร่างมีคีย์ `period` (คนพิมพ์) = ตัวนั้น
+ *   · ใบที่บันทึกเป็นแยกรายรายการ (ร่างสลับมาทั้งใบ) = **ช่วงรวมของรายการ** (ร่างถ้าแตะ ไม่งั้นฐาน · เฉพาะช่วงที่ใช้ได้) — คิดตอนวาด
+ *     ⇒ สลับกลับไปแก้ช่วงของรายการแล้วสลับมาใหม่ ได้ช่วงรวมใหม่ (ไม่ค้างค่าของรอบแรก)
+ *   · อย่างอื่น = ช่วงที่บันทึกไว้ (`view.period`)
+ */
+export function wholePeriodOfDraft(view, draft = EMPTY_DRAFT) {
+  if (hasOwn(draft, 'period')) return draft.period ?? null;
+  if (lineMode(view?.periodMode) !== SERVICE_PERIOD_MODE_LINE) return view?.period ?? null;
+  return localEnvelope(mergeWith(view, draft, { byLine: true }));
+}
+
+/* ══ ช่วงบริการ: สวิตช์ "ทั้งใบช่วงเดียว | แยกรายรายการ" (mig 0400 · แผน IMPL_PLAN_PERIOD §1 D-P4) ═══════════════════ */
+
+/** ช่วงรวมบนจอ (เริ่มแรกสุด → จบสุดท้าย) ของรายการที่เป็นงานบริการ — คิดจากช่วงที่ใช้ได้เท่านั้น ครบหรือไม่ครบก็ได้ · ไม่มีสักช่วง = null
+ *  ⚠️ ใช้วาดแถบ "ช่วงรวมของใบ" เท่านั้น — ค่าที่เก็บบนใบมาจาก RPC บันทึก (เก็บเมื่อครบทุกรายการ) */
+export function localEnvelope(merged = []) {
+  return periodEnvelope(list(merged).filter((line) => line?.role === SERVICE_KIND_PACKAGE).map((line) => line.period));
+}
+
+/** ตัวนับ "ใส่ช่วงแล้ว x/y รายการ" บนจอ — `{ total, filled }` (รายการที่เป็นงานบริการ / ที่มีช่วงใช้ได้) */
+export function linePeriodCounters(merged = []) {
+  const packages = list(merged).filter((line) => line?.role === SERVICE_KIND_PACKAGE);
+  return { total: packages.length, filled: packages.filter((line) => validServicePeriod(line.period)).length };
+}
+
+/** ต้นทางของปุ่ม "เหมือนรายการ n" — รายการงานบริการแรก (ตามเลขรายการ) ที่มีช่วงใช้ได้ → `{ lineId, lineNo, period }` · ไม่มี = null */
+export function sameSourceOf(merged = []) {
+  const source = [...list(merged)]
+    .sort((a, b) => Number(a?.lineNo ?? 0) - Number(b?.lineNo ?? 0))
+    .find((line) => line?.role === SERVICE_KIND_PACKAGE && validServicePeriod(line.period));
+  return source ? { lineId: source.lineId, lineNo: source.lineNo, period: validServicePeriod(source.period) } : null;
+}
+
+/* ของที่คนพิมพ์ระหว่างสลับไปอีกโหมด (ยังไม่บันทึก) — ย้ายเข้า/ออกจาก `parked` ตอนสลับกลับ/สลับไปอีกรอบ
+   · ใบที่บันทึกเป็นทั้งใบ: ช่วงของรายการที่พิมพ์ตอนอยู่แยกรายรายการ (`lines[id].period`) → `parked.lines`
+   · ใบที่บันทึกเป็นแยกรายรายการ: ช่วงของใบที่พิมพ์ตอนอยู่ทั้งใบ (`period`) → `parked.period` */
+function parkExcursion(draft, saved) {
+  const out = { ...draft };
+  delete out.periodMode;
+  delete out.parked;
+  if (saved === SERVICE_PERIOD_MODE_LINE) {
+    if (!hasOwn(draft, 'period')) return out;
+    delete out.period;
+    return { ...out, parked: { period: draft.period } };
+  }
+  const lines = {};
+  const parkedLines = {};
+  for (const [lineId, edit] of Object.entries(draft.lines || {})) {
+    if (!hasOwn(edit, 'period')) { lines[lineId] = edit; continue; }
+    const rest = { ...edit };
+    delete rest.period;
+    parkedLines[lineId] = edit.period;
+    if (Object.keys(rest).length) lines[lineId] = rest;
+  }
+  out.lines = lines;
+  return Object.keys(parkedLines).length ? { ...out, parked: { lines: parkedLines } } : out;
+}
+function unparkExcursion(draft, saved, target) {
+  const out = { ...draft, periodMode: target };
+  const parked = draft.parked || null;
+  delete out.parked;
+  if (!parked) return out;
+  if (saved === SERVICE_PERIOD_MODE_LINE) {
+    if (hasOwn(parked, 'period') && !hasOwn(out, 'period')) out.period = parked.period;
+    return out;
+  }
+  const lines = { ...(out.lines || {}) };
+  for (const [lineId, period] of Object.entries(parked.lines || {})) {
+    if (!hasOwn(lines[lineId], 'period')) lines[lineId] = { ...(lines[lineId] || {}), period };
+  }
+  out.lines = lines;
+  return out;
+}
+
+/**
+ * สลับโหมดช่วงบริการในร่าง — ตัดสินจาก **โหมดที่บันทึกไว้** (`view.periodMode`) · ร่างได้แค่คีย์ `periodMode`:
+ *   · ไปโหมดที่ต่างจากที่บันทึก = ตั้ง `periodMode` (+ คืนของที่พักไว้จากการสลับรอบก่อน) — **ไม่เขียนช่วงใดลงร่าง**
+ *     ค่าตั้งต้นที่เห็นหลังสลับคิดตอนวาด: ทั้งใบ → แยกรายรายการ = รายการงานบริการที่ยังไม่มีช่วงได้ช่วงของทั้งใบบนจอ (`mergedLines`) ·
+ *     แยกรายรายการ → ทั้งใบ = ช่องของใบได้ช่วงรวมของรายการบนจอ (`wholePeriodOfDraft`)
+ *   · กลับไปโหมดที่บันทึกไว้ = ถอดคีย์ `periodMode` + พักของที่พิมพ์ระหว่างสลับไว้ที่ `parked` ⇒ ไม่มีอะไรค้างให้บันทึกเพราะสวิตช์
+ *     และไม่มีคีย์ของอีกโหมดซ่อนอยู่ในร่างที่ "ไม่มีอะไรค้าง"
+ * 🐞 ตรวจทาน ui-leftover-seeded-periods: เดิมสวิตช์เขียนค่าตั้งต้นลงร่างเหมือนคนพิมพ์ แล้วสลับกลับถอดแค่คีย์โหมด ⇒
+ *    (1) แก้ช่วงของใบแล้วสลับใหม่ รายการยังเป็นช่วงเก่า · (2) อีกหน้าต่างบันทึกเป็นแยกรายรายการ → โหลดใหม่หลัง 409 →
+ *    ค่าที่ซ่อนอยู่โผล่เป็น "ยังไม่บันทึก" แล้วทับช่วงห้ารายการของอีกหน้าต่างด้วยวันที่ไม่มีใครพิมพ์ · (3) ฝั่งช่วงของใบแบบเดียวกัน
+ * 🐞 กติกาเดิมของแผน ("กลับทั้งใบ = ใส่ช่วงรวมเมื่อไม่เท่าฐาน") ยิงตอนเลิกการสลับของใบที่ไม่เคยแยกรายรายการด้วย
+ *    ⇒ ช่วงของทั้งใบเปลี่ยนเงียบ ๆ หลังแก้ช่วงของรายการไปหนึ่งช่อง — จึงตัดสินจากโหมดที่บันทึกไว้
+ */
+export function switchPeriodMode(view, draft = EMPTY_DRAFT, next) {
+  const current = draft || EMPTY_DRAFT;
+  const saved = lineMode(view?.periodMode);
+  const target = lineMode(next);
+  const away = hasOwn(current, 'periodMode') && lineMode(current.periodMode) !== saved;
+  if (target === saved) {
+    if (!hasOwn(current, 'periodMode')) return current;
+    if (away) return parkExcursion(current, saved);
+    const rest = { ...current };
+    delete rest.periodMode;
+    return rest;
+  }
+  if (away) return current;
+  return unparkExcursion(current, saved, target);
+}
+
+/** "ใช้ช่วงเดียวกันทุกรายการ…" — ใส่ช่วงเดียวกันให้ทุกรายการที่เป็นงานบริการ (เฉพาะโหมดแยกรายรายการ · ยังไม่บันทึก) */
+export function applyPeriodToAllLines(view, draft = EMPTY_DRAFT, period) {
+  const current = draft || EMPTY_DRAFT;
+  if (periodModeOfDraft(view, current) !== SERVICE_PERIOD_MODE_LINE) return current;
+  const value = { from: text(period?.from), to: text(period?.to) };
+  const lines = { ...(current.lines || {}) };
+  for (const line of mergedLines(view, current)) {
+    if (line.role === SERVICE_KIND_PACKAGE) lines[line.lineId] = { ...(lines[line.lineId] || {}), period: { ...value } };
+  }
+  return { ...current, lines };
+}
+
+/** ปุ่ม "เหมือนรายการ n" — คัดลอกช่วงมาใส่รายการเดียว */
+export function copyLinePeriod(draft = EMPTY_DRAFT, lineId, period) {
+  return patchDraftLine(draft, lineId, { period: { from: text(period?.from), to: text(period?.to) } });
+}
+
 /* ══ ก้อนบันทึก ═══════════════════════════════════════════════════════════════════════════════════ */
 
 /**
- * ร่าง → ก้อน PATCH (`{ expectedUpdatedAt, period?, lines? }`) · ไม่มีอะไรต่างจากฐาน = null
+ * ร่าง → ก้อน PATCH (`{ expectedUpdatedAt, periodMode?, period?, lines? }`) · ไม่มีอะไรต่างจากฐาน = null
  * ⚠️ บรรทัด FG ไม่ส่ง `kind`/`serviceProductId` เด็ดขาด (server ตีกลับ `service_setup_kind_on_fg_line`)
+ * ⭐ ช่วงบริการ (mig 0400):
+ *   · `periodMode` ส่งเมื่อต่างจากที่บันทึกไว้เท่านั้น · **สลับโหมดอย่างเดียวก็เป็นก้อนบันทึก** (ใบที่ยังไม่มีงานบริการ = `{ expectedUpdatedAt, periodMode }`)
+ *   · `period` (ช่วงของใบ) ส่งเฉพาะเมื่อโหมดหลังบันทึกเป็นทั้งใบ — โหมดแยกรายรายการ server ตีกลับ (`service_setup_period_derived`)
+ *     🔴 ตอนสลับ แยกรายรายการ → ทั้งใบ ส่ง `period` **เสมอ** ตามที่เห็นบนจอ (ล้างสองช่อง = null ชัด ๆ) — ไม่ส่ง = RPC เก็บช่วงรวมของ
+ *     รายการเดิมให้เอง ⇒ ช่องที่จอโชว์ว่าว่างกลับมามีช่วงหลังบันทึก (ตรวจทาน ui-line-to-whole-cleared-period)
+ *   · `lines[].period` ส่งเฉพาะเมื่อโหมดหลังบันทึกเป็นแยกรายรายการ + บรรทัดเป็นงานบริการ + ต่างจากฐาน
+ *     (`{ from, to }` ตามที่พิมพ์ · ว่างทั้งคู่ = null · ครึ่งเดียว/กลับหัวส่งตามที่พิมพ์ให้ server ตีกลับรายช่อง)
+ *     บรรทัดที่มีแต่ `period` ส่งได้ทั้งบรรทัด FG และพิมพ์เอง — ไม่พ่วง `kind`/`serviceProductId`
+ *   · 🔴 ตอนสลับ ทั้งใบ → แยกรายรายการ ส่งช่วงของ **ทุก** รายการงานบริการตามที่เห็นบนจอ (ว่าง = null ชัด ๆ) — RPC เติมช่วงของใบ
+ *     ให้รายการที่ก้อนบันทึกไม่เอ่ยถึง ⇒ ไม่ส่ง = รายการที่จอโชว์ว่าว่าง (ล้างเอง · เพิ่งตอบ ‘ใช่’) ได้ช่วงของใบมาเองหลังบันทึก
  */
 export function setupPayload(view, draft = EMPTY_DRAFT) {
   if (!view) return null;
   const out = { expectedUpdatedAt: view.updatedAt ?? null };
-  if (hasOwn(draft, 'period')) {
-    const next = periodOrNull(draft.period);
-    const base = periodOrNull(view.period);
-    if (!(next === null && base === null) && !(next && base && samePeriod(next, base))) out.period = next;
+  const savedMode = lineMode(view.periodMode);
+  const mode = periodModeOfDraft(view, draft);
+  const byLine = mode === SERVICE_PERIOD_MODE_LINE;
+  if (mode !== savedMode) out.periodMode = mode;
+  if (!byLine) {
+    const next = periodOrNull(wholePeriodOfDraft(view, draft));
+    if (mode !== savedMode) out.period = next;
+    else if (hasOwn(draft, 'period') && !samePeriodOrNull(next, view.period)) out.period = next;
   }
+  const switchedToLine = byLine && savedMode !== SERVICE_PERIOD_MODE_LINE;
   const lines = [];
-  for (const line of [...list(view.lines)].sort((a, b) => Number(a?.lineNo ?? 0) - Number(b?.lineNo ?? 0))) {
-    const edit = draft?.lines?.[line.lineId];
-    if (!edit) continue;
+  for (const line of mergedLines(view, draft)) {
+    const edit = draft?.lines?.[line.lineId] || null;
     const base = baseLineOf(view, line.lineId);
-    const manual = isManualViewLine(line);
+    const manual = line.manual;
     const entry = { lineId: line.lineId };
     if (manual && hasOwn(edit, 'kind') && (edit.kind ?? null) !== base.kind) entry.kind = edit.kind ?? null;
     if (manual && hasOwn(edit, 'serviceProductId') && (edit.serviceProductId || null) !== (base.serviceProductId || null)) {
@@ -157,29 +334,36 @@ export function setupPayload(view, draft = EMPTY_DRAFT) {
       const zones = zonesForPayload(edit.zones);
       if (!sameZones(zones, base.zones)) entry.zones = zones;
     }
+    if (byLine && line.role === SERVICE_KIND_PACKAGE && (switchedToLine || !samePeriodOrNull(line.period, base.period))) {
+      entry.period = periodOrNull(line.period);
+    }
     if (Object.keys(entry).length > 1) lines.push(entry);
   }
   if (lines.length) out.lines = lines;
-  return hasOwn(out, 'period') || lines.length ? out : null;
+  return hasOwn(out, 'periodMode') || hasOwn(out, 'period') || lines.length ? out : null;
 }
 
 /** มีอะไรที่ยังไม่บันทึกไหม — นิยามเดียวกับก้อนบันทึก (แถวโซนว่างอย่างเดียวไม่นับ) */
 export const draftDirty = (view, draft) => setupPayload(view, draft) !== null;
 
-/** ฐานเปลี่ยน (บันทึกแล้ว · โหลดใหม่หลังถูกแก้จากอีกหน้าต่าง) → ทิ้งคีย์ของร่างที่เท่าฐานใหม่แล้ว ที่เหลือคือที่ยังค้าง */
+/** ฐานเปลี่ยน (บันทึกแล้ว · โหลดใหม่หลังถูกแก้จากอีกหน้าต่าง) → ทิ้งคีย์ของร่างที่เท่าฐานใหม่แล้ว ที่เหลือคือที่ยังค้าง
+ *  (คีย์โหมด/ช่วงที่ยังอยู่ในก้อนบันทึกคงไว้ · คีย์ช่วงของโหมดที่ไม่ได้ใช้อยู่ + ของที่พักไว้ `parked` ถูกทิ้ง — ฐานใหม่มาแล้ว
+ *   ไม่ใช่การสลับไปมาบนฐานเดิม · ค่าตั้งต้นของสวิตช์ไม่เคยอยู่ในร่าง ⇒ คิดใหม่จากฐานใหม่เอง) */
 export function rebaseDraft(view, draft = EMPTY_DRAFT) {
   if (!view || !draft) return EMPTY_DRAFT;
   const payload = setupPayload(view, draft);
   if (!payload) return EMPTY_DRAFT;
   const next = { lines: {} };
-  if (hasOwn(payload, 'period')) next.period = draft.period;
+  if (hasOwn(payload, 'periodMode')) next.periodMode = draft.periodMode;
+  if (hasOwn(payload, 'period') && hasOwn(draft, 'period')) next.period = draft.period;
   for (const entry of list(payload.lines)) {
-    const edit = draft.lines[entry.lineId];
+    const edit = draft.lines?.[entry.lineId];
+    if (!edit) continue;
     const kept = {};
-    for (const key of ['kind', 'serviceProductId', 'rounds', 'zones']) {
-      if (hasOwn(entry, key)) kept[key] = edit[key];
+    for (const key of ['kind', 'serviceProductId', 'rounds', 'zones', 'period']) {
+      if (hasOwn(entry, key) && hasOwn(edit, key)) kept[key] = edit[key];
     }
-    next.lines[entry.lineId] = kept;
+    if (Object.keys(kept).length) next.lines[entry.lineId] = kept;
   }
   return next;
 }
@@ -206,11 +390,16 @@ export const ctxLineOf = (line) => ({
   serviceProductId: line.serviceProductId ?? null,
   serviceFgCode: line.serviceFgCode ?? null,
   serviceRounds: positiveIntOrNull(line.rounds),
+  /* ช่วงของรายการ (mig 0400) — ชื่อคอลัมน์เดียวกับฐาน ให้ตัวรวม/ตัวนับของ serviceSetup.js อ่านได้ (`linePeriodOf`) */
+  servicePeriodFrom: text(line.period?.from) || null,
+  servicePeriodTo: text(line.period?.to) || null,
 });
 
-/** `{ lines, allocations, zonesById }` จากบรรทัดที่จอวาด — ตัวเลขบนชิป/ท้ายตาราง/เส้นประใต้บรรทัดตามร่างทันที */
-export function localSetupCtx(merged = [], zonesById = new Map()) {
+/** `{ lines, allocations, zonesById, periodMode? }` จากบรรทัดที่จอวาด — ตัวเลขบนชิป/ท้ายตาราง/เส้นประใต้บรรทัดตามร่างทันที
+ *  · `periodMode` (โหมดบนจอ) — ตัวรวมของ serviceSetup.js ถามโหมดจาก `ctx.periodMode` (จอไม่มี `ctx.order`) · ไม่ส่ง = ทั้งใบ */
+export function localSetupCtx(merged = [], zonesById = new Map(), { periodMode = null } = {}) {
   return {
+    ...(periodMode ? { periodMode: lineMode(periodMode) } : {}),
     lines: merged.map(ctxLineOf),
     allocations: merged.flatMap((line) => line.zones
       .filter((row) => row.zoneId)
@@ -225,8 +414,9 @@ export function localSetupCtx(merged = [], zonesById = new Map()) {
  * ป้ายสถานะของบรรทัด (ช่อง "รายการ" ของตารางงานบริการ) — นับเฉพาะของที่ยังว่าง (โครงสร้าง)
  * ความถูกต้องของแพ็คเกจ/โซน (ปิดใช้งาน · ของลูกค้าอื่น) เป็นข้อที่ยังขาดจาก server หลังกดยื่น
  * → `{ state: 'unset'|'missing'|'complete'|'none', count, label }`
+ * · โหมดแยกรายรายการ (`periodMode: 'line'`): รายการงานบริการที่ยังไม่มีช่วงใช้ได้ = ขาดอีกหนึ่งข้อ (คู่กับข้อ `line_period_missing`)
  */
-export function lineMissing(line) {
+export function lineMissing(line, { periodMode = null } = {}) {
   if (!line) return { state: 'none', count: 0, label: null };
   if (line.role === SERVICE_ROLE_UNSET) return { state: 'unset', count: 1, label: 'ยังไม่ตอบ' };
   const zones = list(line.zones).filter((row) => row.zoneId);
@@ -234,6 +424,7 @@ export function lineMissing(line) {
     return zones.length ? { state: 'missing', count: 1, label: 'ยังขาด 1 ข้อ' } : { state: 'none', count: 0, label: null };
   }
   let count = 0;
+  if (periodMode === SERVICE_PERIOD_MODE_LINE && !validServicePeriod(line.period)) count += 1;
   if (line.manual && !(text(line.serviceProductId) && text(line.serviceFgCode))) count += 1;
   if (positiveIntOrNull(line.rounds) === null) count += 1;
   if (!zones.length) count += 1;
@@ -256,7 +447,7 @@ export const SERVICE_SETUP_REVEAL_EVENT = 'service-setup:reveal';
 
 /** id ทุกช่องของบรรทัดนั้น (ใช้ถามว่า "แผงแดง/การกระโดดชี้เข้าบรรทัดนี้ไหม" แบบตรงตัว ไม่ใช่เดาจากคำนำหน้า) */
 export function lineFieldIds(line) {
-  const ids = ['kind', 'fg', 'zones', 'rounds'].map((field) => lineFieldId(line.lineId, field));
+  const ids = ['kind', 'period', 'fg', 'zones', 'rounds'].map((field) => lineFieldId(line.lineId, field));
   for (const row of list(line.zones)) if (row.zoneId) ids.push(zonePacksFieldId(line.lineId, row.zoneId));
   return ids;
 }
@@ -265,6 +456,7 @@ export function lineFieldIds(line) {
  * ผลตีกลับ 400 ของการบันทึก (`fieldErrors:[{lineId, zoneId?, field, message}]`) → ช่องที่ขึ้นแดง
  * → `{ byField: Map fieldId → ข้อความ, byZone: Map "lineId:zoneId" → ข้อความ, general: string[] }`
  *   (field 'payload'/'line' ไม่มีช่อง ⇒ ขึ้นเป็นข้อความรวมที่แถบบันทึก)
+ *   · 'period' ที่มี lineId = ช่วงของรายการ (`svc-line-<id>-period`) · ไม่มี lineId / 'periodMode' = แถบช่วงของใบ (`svc-period`)
  */
 export function fieldErrorsView(fieldErrors = []) {
   const byField = new Map();
@@ -275,7 +467,9 @@ export function fieldErrorsView(fieldErrors = []) {
     const message = text(item?.message);
     if (!message) continue;
     const { lineId, zoneId, field } = item;
-    if (field === 'period') add(byField, PERIOD_FIELD_ID, message);
+    /* ⚠️ ช่วงของรายการ (มี lineId) ต้องถามก่อนช่วงของใบ — ไม่งั้นแดงของรายการไปขึ้นที่แถบช่วงของใบ (mig 0400) */
+    if (field === 'period' && lineId) add(byField, lineFieldId(lineId, 'period'), message);
+    else if (field === 'period' || field === 'periodMode') add(byField, PERIOD_FIELD_ID, message);
     else if (field === 'packs' && lineId && zoneId) add(byField, zonePacksFieldId(lineId, zoneId), message);
     else if (['kind', 'fg', 'rounds', 'zones'].includes(field) && lineId) {
       add(byField, lineFieldId(lineId, field), message);
@@ -422,7 +616,8 @@ export function backfillStateOfView(view) {
   const state = view.state?.setupState ?? null;
   if (state === 'submitted') return 'submitted';
   if (state === 'rejected') return 'rejected';
-  const started = !!view.period || list(view.allocations).length > 0
+  /* สลับเป็นแยกรายรายการแล้วบันทึก = เริ่มตั้งแล้ว (ช่วงของใบว่างจนกว่ารายการจะมีช่วงครบ — ดูจากช่วงของใบอย่างเดียวไม่พอ) */
+  const started = !!view.period || view.periodMode === SERVICE_PERIOD_MODE_LINE || list(view.allocations).length > 0
     || list(view.lines).some((line) => line?.kind || line?.serviceProductId);
   return started ? 'editing' : 'not_started';
 }
@@ -582,6 +777,54 @@ export function backfillRailChecks(view) {
   const zoneDone = zoneLines.filter((line) => line.role === SERVICE_KIND_PACKAGE && !zoneBad.has(line.lineId)).length;
   const periodMissing = issues.some((issue) => issue?.key === 'period_missing');
   const mayNeedPeriod = packageLines + unset > 0;
+  /* แถว "ช่วงบริการ" — โหมดทั้งใบ = แถวเดิมทุกตัวอักษร · แยกรายรายการ (mig 0400 · ม็อก "สิ่งที่ตรวจตอนยื่น"):
+     ป้าย "ช่วงบริการ · แยกรายรายการ" / ค่า "4/5 รายการ" / บรรทัดรอง "รายการ 3 ยังไม่ใส่ · อีก n รายการ · ช่วงรวม …"
+     ⚠️ ช่วงรวมคิดจากช่วงของรายการที่บันทึกแล้ว (`view.lines[].period`) — `view.period` ว่างจนกว่ารายการจะมีช่วงครบ */
+  const periodRow = () => {
+    if (view.periodMode !== SERVICE_PERIOD_MODE_LINE) {
+      return {
+        key: 'period', label: 'ช่วงบริการ',
+        value: view.period ? periodLabel(view.period) : (mayNeedPeriod ? 'ยังไม่ใส่' : NA),
+        /* ยังไม่ใส่ + รอเลือกชนิด + server ไม่ขึ้นข้อช่วงบริการ (ยังไม่มีแพ็คเกจที่บันทึกแล้ว) = บอกเหตุแบบแถวโซน (UAT 29/09 ข้อ 2)
+           · มีข้อ period_missing แล้ว = แผงแดงบอกเอง ไม่พูดว่า "ถ้ามีแพ็คเกจ" ทั้งที่มีแล้ว */
+        sub: view.period ? periodReadout(view.period) || null
+          : !mayNeedPeriod ? 'ไม่มีแพ็คเกจ — ไม่ต้องใส่'
+            : unset && !periodMissing ? SERVICE_BACKFILL_RAIL_TEXT.periodWaitKind(fmtNumber(unset)) : null,
+        ok: !periodMissing && (!!view.period || !unset),
+      };
+    }
+    const total = Number(view.linePeriods?.total || 0);
+    const filled = Number(view.linePeriods?.filled || 0);
+    const label = SERVICE_PERIOD_TEXT.railLabelLine;
+    /* ยังไม่มีรายการงานบริการที่บันทึกแล้ว = คำเดิมของแถวทั้งใบ (รอตอบ ‘งานบริการ?’ / ไม่มีแพ็คเกจ) */
+    if (!total) {
+      return {
+        key: 'period', label,
+        value: mayNeedPeriod ? 'ยังไม่ใส่' : NA,
+        sub: !mayNeedPeriod ? 'ไม่มีแพ็คเกจ — ไม่ต้องใส่'
+          : unset && !periodMissing ? SERVICE_BACKFILL_RAIL_TEXT.periodWaitKind(fmtNumber(unset)) : null,
+        ok: !periodMissing && !unset,
+      };
+    }
+    const missing = issues.filter((issue) => issue?.key === 'line_period_missing');
+    const first = missing[0] || null;
+    const firstNo = first ? (first.lineNo ?? lines.find((line) => line?.lineId === first.lineId)?.lineNo ?? null) : null;
+    const envelope = periodEnvelope(lines.map((line) => line?.period));
+    /* รายการที่ยังไม่ตอบ ‘งานบริการ?’ อาจเป็นงานบริการ (ต้องมีช่วงของตัวเอง) ⇒ แถวยังไม่ผ่าน แม้ตัวนับอ่านว่าครบ ("2/2 รายการ")
+       — ต้องบอกเหตุในบรรทัดรอง (คำเดียวกับแถวทั้งใบ) ไม่งั้นหลังกดยื่นแถวแดงโดยไม่มีอะไรบอกว่าทำไม (ตรวจทาน ui-rail-period-row-red-no-reason)
+       · มีข้อช่วงของรายการ/ช่วงของใบอยู่แล้ว = ข้อนั้นบอกเหตุเอง ไม่ซ้อนคำ */
+    const waitKind = unset && !missing.length && !periodMissing ? SERVICE_BACKFILL_RAIL_TEXT.periodWaitKind(fmtNumber(unset)) : '';
+    const sub = [
+      firstNo !== null ? SERVICE_PERIOD_TEXT.railMissing(firstNo) : '',
+      missing.length > 1 ? SERVICE_PERIOD_TEXT.railMore(missing.length - 1) : '',
+      waitKind,
+      envelope ? SERVICE_PERIOD_TEXT.railEnvelope(periodLabel(envelope)) : '',
+    ].filter(Boolean).join(' · ') || null;
+    return {
+      key: 'period', label, value: SERVICE_PERIOD_TEXT.railCount(filled, total), sub,
+      ok: !periodMissing && !missing.length && !unset,
+    };
+  };
 
   return [
     {
@@ -595,16 +838,7 @@ export function backfillRailChecks(view) {
       sub: unset ? SERVICE_BACKFILL_RAIL_TEXT.waitKind(fmtNumber(unset)) : shortSub(ZONE_KEYS, ZONE_SHORT, zoneBad.size),
       ok: zoneBad.size === 0 && !unset,
     },
-    {
-      key: 'period', label: 'ช่วงบริการ',
-      value: view.period ? periodLabel(view.period) : (mayNeedPeriod ? 'ยังไม่ใส่' : NA),
-      /* ยังไม่ใส่ + รอเลือกชนิด + server ไม่ขึ้นข้อช่วงบริการ (ยังไม่มีแพ็คเกจที่บันทึกแล้ว) = บอกเหตุแบบแถวโซน (UAT 29/09 ข้อ 2)
-         · มีข้อ period_missing แล้ว = แผงแดงบอกเอง ไม่พูดว่า "ถ้ามีแพ็คเกจ" ทั้งที่มีแล้ว */
-      sub: view.period ? periodReadout(view.period) || null
-        : !mayNeedPeriod ? 'ไม่มีแพ็คเกจ — ไม่ต้องใส่'
-          : unset && !periodMissing ? SERVICE_BACKFILL_RAIL_TEXT.periodWaitKind(fmtNumber(unset)) : null,
-      ok: !periodMissing && (!!view.period || !unset),
-    },
+    periodRow(),
     moneyRow('installments', 'ช่วงครอบของงวดที่ยังไม่รับรอง', COVER_KEYS),
     moneyRow('billing', 'วันวางบิล · กำหนดชำระ', BILL_KEYS),
   ];

@@ -33,7 +33,9 @@ test('transition map: ทุก action ชี้สถานะปลายท�
   }
   // qualified ไม่ปิดตาย: สร้างดีลซ้ำได้ (1 ลีด → หลายดีล, mig 0093 floating deals)
   assert.deepEqual(LEAD_TRANSITIONS.qualified, ['create_deal']);
-  assert.deepEqual(LEAD_TRANSITIONS.disqualified, []);
+  // ปิดแล้วไม่ตาย: ลูกค้ากลับมา (มติผู้ใช้ 2026-10-01) — ปลายทางขึ้นกับใบ จึงเป็น null ในแมป
+  assert.deepEqual(LEAD_TRANSITIONS.disqualified, ['reopen']);
+  assert.equal(TRANSITION_TO_STATUS.reopen, null);
   assert.equal(TRANSITION_TO_STATUS.bounce, 'new'); // ตีกลับ → คิวคัดกรอง
   assert.equal(TRANSITION_TO_STATUS.reassign, null,
     'เปลี่ยนผู้รับผิดชอบต้องคงสถานะเดิม — ปลายทางตายตัวเมื่อไหร่ ใบที่ติดต่อ/นัดแล้วจะถอยขั้น');
@@ -646,4 +648,34 @@ test('หน้าคิวลีดกับแท็บ KPI อ่านป้
     assert.doesNotMatch(src, /"SLA คัดกรอง ≤1 วันทำการ"/,
       `${name} สะกดป้ายด่านเอง = จุดที่สองจอเริ่มพูดไม่ตรงกัน`);
   }
+});
+
+/* ── ลูกค้ากลับมา (มติผู้ใช้ 2026-10-01) ─────────────────────────────── */
+test('leadReopenStatus: กลับไปขั้นก่อนปิด อ่านจากแถว', async () => {
+  const { leadReopenStatus } = await import('./leads.js');
+  assert.equal(leadReopenStatus({}), 'new');
+  assert.equal(leadReopenStatus({ team: 'A' }), 'screened');
+  assert.equal(leadReopenStatus({ team: 'A', assigneeId: 'u1' }), 'assigned');
+  assert.equal(leadReopenStatus({ team: 'A', assigneeId: 'u1', firstContactAt: '2026-09-18T03:00:00Z' }), 'contacted');
+  assert.equal(leadReopenStatus({ team: 'A', assigneeId: 'u1', firstContactAt: 'x', meetingAt: '2026-09-20T03:00:00Z' }), 'meeting');
+  // ปลายทางต้องเป็นสถานะที่เดินต่อได้เสมอ — ไม่งั้นดึงกลับมาแล้วเป็นทางตันอีกรอบ
+  for (const lead of [{}, { team: 'A' }, { team: 'A', assigneeId: 'u1' }]) {
+    assert.ok(LEAD_TRANSITIONS[leadReopenStatus(lead)].length > 0);
+  }
+});
+
+test('canReopenLead: เจ้าของลีด + ผู้มีอำนาจเหนือกว่า', async () => {
+  const { canReopenLead, leadReopenBlockedReason } = await import('./leads.js');
+  const lead = { team: 'A', assigneeId: 'u-ae' };
+  assert.equal(canReopenLead({ role: 'ae', id: 'u-ae', team: 'A' }, lead), true);
+  assert.equal(canReopenLead({ role: 'ae', id: 'u-x', team: 'A' }, lead), false);
+  assert.equal(canReopenLead({ role: 'senior_ae', id: 's', team: 'A' }, lead), true);
+  assert.equal(canReopenLead({ role: 'senior_ae', id: 's', team: 'B' }, lead), false);
+  assert.equal(canReopenLead({ role: 'ac', id: 'c', team: 'A' }, lead), false);
+  assert.equal(canReopenLead({ role: 'ae_supervisor', id: 'v' }, lead), true);
+  assert.equal(canReopenLead({ role: 'admin', id: 'a' }, lead), true);
+  assert.equal(canReopenLead({ role: 'marketing', id: 'm' }, lead), false);
+  assert.equal(canReopenLead({ role: 'ae' }, { team: 'A', assigneeId: undefined }), false, 'ไม่มี id ทั้งคู่ต้องไม่เท่ากัน');
+  assert.equal(leadReopenBlockedReason({ disqualifiedCode: 'no_response' }), '');
+  assert.match(leadReopenBlockedReason({ disqualifiedCode: 'duplicate' }), /ลีดซ้ำ/);
 });

@@ -176,14 +176,30 @@ test('⛔ ข้อความบนจอไม่ชี้ไปหาปุ�
 test('⭐ toast รอบถัดไปของงานวันนี้ไม่สัญญานัด "วันนั้น" — ชี้รายการงาน + แท็บครบรอบยังไม่มีนัด', async () => {
   const { INTAKE_TAB_LABELS } = await import('./intake.js');
   const src = live(todaySrc);
-  const toast = src.match(/: suggestion\s*\? \{ kind: "success", msg: `([^`]*)` \}/)?.[1];
-  assert.ok(toast, 'หา toast รอบถัดไปไม่เจอ');
+  /* mig 0397: สองประโยค — รอบตามปฏิทิน (ข้อเสนอมี `planSlotDate`) บอกวันถัดไปตรง ๆ · รอบ "ทุก N วัน" เป็นประโยคเดิมทุกตัวอักษร */
+  const both = src.match(/: suggestion\s*\? \{ kind: "success", msg: suggestion\.planSlotDate\s*\? `([^`]*)`\s*: `([^`]*)` \}/);
+  assert.ok(both, 'หา toast รอบถัดไป (สองประโยค) ไม่เจอ');
+  const [, calendar, toast] = both;
+
+  // ── รอบ "ทุก N วัน": วันแนะนำนับจากวันเข้าจริง ⇒ เป็นค่าประมาณ ห้ามสัญญาว่ามีนัดวันนั้น ──
   assert.doesNotMatch(toast, /วันนั้น/, 'ห้ามชี้ "วันนั้น" — นัดของรอบอยู่คนละวันกับวันแนะนำได้เสมอ');
   assert.doesNotMatch(toast, /ระบบจะเติมนัดให้/);
   assert.match(toast, /ราว \$\{suggestion\.scheduledDate\}/, 'วันแนะนำเป็นค่าประมาณ');
   assert.match(toast, /ผู้จัดคิวดูนัดรอบถัดไปของรอบนี้ได้ในรายการงาน/);
   // ชื่อแท็บต้องตรงของจริง (ชื่อเปลี่ยน = ข้อความชี้ไปแท็บที่ไม่มี)
   assert.ok(toast.includes(`“${INTAKE_TAB_LABELS.visit}”`), `ต้องเรียกแท็บ "${INTAKE_TAB_LABELS.visit}" ตามชื่อจริง`);
+  assert.equal(toast, '${closedAs} · ตามรอบควรเข้าครั้งถัดไปราว ${suggestion.scheduledDate} — ผู้จัดคิวดูนัดรอบถัดไปของรอบนี้ได้ในรายการงาน · ถ้ารอบนี้ไม่มีนัดข้างหน้าเลย จะขึ้นที่งานเข้าใหม่ แท็บ “ครบรอบยังไม่มีนัด” ให้เติมนัดตามรอบ',
+    'ประโยคของรอบ "ทุก N วัน" ต้องคงเดิมทุกตัวอักษร');
+
+  // ── รอบตามปฏิทิน: วันถัดไป = วันที่ตัวเติมนัดสร้างให้ช่องถัดไปจริง ⇒ บอกวันได้ตรง ๆ (ไม่ใช่ "ราว") ──
+  assert.ok(calendar.includes('ครั้งถัดไปคือ ${fmtDate(suggestion.scheduledDate)}'), 'รอบตามปฏิทินบอกวันถัดไปเป็นวันที่อ่านได้');
+  assert.doesNotMatch(calendar, /ราว/, 'วันของรอบตามปฏิทินไม่ใช่ค่าประมาณ');
+  assert.doesNotMatch(calendar, /วันนั้น/);
+  assert.doesNotMatch(calendar, /ระบบจะเติมนัดให้/);
+  assert.match(calendar, /ผู้จัดคิวดูนัดรอบถัดไปของรอบนี้ได้ในรายการงาน/);
+  assert.match(calendar, /ถ้ารอบนี้ไม่มีนัดข้างหน้าเลย จะขึ้นที่งานเข้าใหม่/);
+  assert.ok(calendar.includes(`“${INTAKE_TAB_LABELS.visit}”`), `ต้องเรียกแท็บ "${INTAKE_TAB_LABELS.visit}" ตามชื่อจริง`);
+  assert.match(src, /import \{ fmtDate, fmtDayMonth, naText \} from "@\/lib\/format";/);
 });
 
 test('⭐ การ์ดรายการงาน: ปุ่ม "ลบนัด" = GatedAction สีแดงเส้นขอบ · เฉพาะคนแก้งานบริการได้ · เหตุจากด่านตัวเดียวกับ API', () => {

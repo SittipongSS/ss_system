@@ -306,3 +306,34 @@ test('0396: คอลัมน์เปิดแก้ค้างหลัง�
   /* ใบย้อนหลังไม่มีทางเปิดแก้ (CHECK ของ 0396: origin = 'pipeline') — ตัวตัดสินกลางตอบ null อยู่แล้ว */
   assert.equal(run({ orders: [so({ ...reopenedCols, origin: 'historical' })], lines: [manual()] }).rows.length, 0);
 });
+
+/* ── ใบแยกรายรายการ (mig 0400) — select ของ route พก `servicePeriodMode` + ช่วงของรายการ ────────────────────────────── */
+test('0400: ใบที่สลับเป็น "แยกรายรายการ" = ฝ่ายขายเริ่มตั้งแล้ว แม้ช่วงของใบยังว่าง (ไม่เก็บช่วงรวมครึ่งเดียว) · ความคืบหน้านับช่วงของรายการ', () => {
+  const zonesById = new Map([['Z1', { id: 'Z1', siteId: 'S1' }], ['Z2', { id: 'Z2', siteId: 'S2' }]]);
+  const alloc = (id, lineId, zoneId) => ({ id, salesOrderId: 'SO1', salesOrderLineId: lineId, zoneId, packsPerRound: 1 });
+  /* สลับโหมดอย่างเดียว ยังไม่ได้แตะอะไรอื่น */
+  const switched = run({ orders: [so({ servicePeriodMode: 'line' })], lines: [fgPackage()] }).rows[0];
+  assert.equal(switched.state, 'editing');
+  assert.equal(run({ orders: [so({ servicePeriodMode: 'whole' })], lines: [fgPackage()] }).rows[0].state, 'not_started', 'โหมดทั้งใบ = เหมือนเดิม');
+  assert.equal(run({ orders: [so()], lines: [fgPackage()] }).rows[0].state, 'not_started', 'select เก่าไม่มีคอลัมน์ = ทั้งใบ');
+
+  /* สองรายการตั้ง FG/รอบ/โซนครบ — รายการเดียวมีช่วง ⇒ ครบ 1/2 (ใบทั้งใบที่ข้อมูลเดียวกัน = 2/2) */
+  const lines = [
+    fgPackage({ id: 'LA', serviceRounds: 12, servicePeriodFrom: '2026-09-02', servicePeriodTo: '2027-09-01' }),
+    fgPackage({ id: 'LB', serviceRounds: 12, servicePeriodFrom: null, servicePeriodTo: null }),
+  ];
+  const allocations = [alloc('A1', 'LA', 'Z1'), alloc('A2', 'LB', 'Z2')];
+  const line = run({ orders: [so({ servicePeriodMode: 'line' })], lines, allocations, zonesById }).rows[0];
+  assert.deepEqual(line.progress, { done: 1, total: 2 });
+  assert.equal(legacySetupStatusView(line).label, 'ฝ่ายขายกำลังตั้ง · 1/2 รายการ');
+  const whole = run({ orders: [so({ servicePeriodFrom: '2026-10-01' })], lines, allocations, zonesById }).rows[0];
+  assert.deepEqual(whole.progress, { done: 2, total: 2 });
+  /* ใส่ช่วงครบ = 2/2 · ยื่นแล้ว: สรุปโซน/ไซต์/แพ็คเท่าเดิม */
+  const filled = lines.map((l) => ({ ...l, servicePeriodFrom: '2026-09-26', servicePeriodTo: '2027-09-25' }));
+  const submitted = run({
+    orders: [so({ servicePeriodMode: 'line', servicePeriodFrom: '2026-09-26', servicePeriodTo: '2027-09-25', serviceSetupState: 'submitted', serviceSetupSubmittedAt: '2026-09-28T02:00:00Z', serviceSetupSubmittedByName: 'Lalida Chaiwanna' })],
+    lines: filled, allocations, zonesById,
+  }).rows[0];
+  assert.deepEqual(submitted.progress, { done: 2, total: 2 });
+  assert.deepEqual(submitted.submitted, { at: '2026-09-28T02:00:00Z', byName: 'Lalida Chaiwanna', zones: 2, sites: 2, packsPerRound: 2 });
+});

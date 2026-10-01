@@ -17,7 +17,10 @@ import {
   termInWindow,
   termIsActive,
   termOrderActive,
+  termPeriodOf,
+  termPeriodPhase,
   termsSoldNow,
+  withLinePeriods,
   zoneTermState,
 } from './terms.js';
 
@@ -277,4 +280,98 @@ test('termsSoldNow: ทุกใบยังไม่เริ่ม (ใบแ�
   assert.deepEqual(termsSoldNow([term({ id: 'X', zoneId: 'Z1', salesOrderId: 'SO-CUR', endDate: '2026-01-01' })], orders, '2026-09-29'), []);
   assert.deepEqual(termsSoldNow([], orders, '2026-09-29'), []);
   assert.deepEqual(termsSoldNow(undefined, orders, '2026-09-29'), []);
+});
+
+/* ── ช่วงบริการของรอบขาย (mig 0400 · ใบแยกรายรายการ) ──────────────────────────────────────────────────────
+   ใบโหมด 'line': ช่วงของใบ = ช่วงรวม (เริ่มแรกสุด → จบสุดท้าย) · แต่ละรอบขายใช้ช่วงของรายการที่ตัวโหลดแนบมา
+   (`linePeriodFrom/To` · `withLinePeriods`) — ไม่แนบ = ถอยไปช่วงรวม (ประมาณเกินอย่างปลอดภัย: ไม่ "จบแล้ว" ก่อนจริง) */
+const lineOrder = (over = {}) => stampedOrder({
+  id: 'SO-JT', orderNumber: 'SO-26090206-0', servicePeriodMode: 'line', servicePeriodFrom: '2026-09-02', servicePeriodTo: '2027-09-25', ...over,
+});
+
+test('0400 termPeriodOf: ใบ line + ช่วงที่แนบมา = ช่วงของรายการ · ไม่แนบ/ใบทั้งใบ/ไม่มีใบ = ช่วงของใบ', () => {
+  const order = lineOrder();
+  const attached = term({ id: 'T1', salesOrderId: 'SO-JT', linePeriodFrom: '2026-09-02', linePeriodTo: '2027-09-01' });
+  assert.deepEqual(termPeriodOf(attached, order), { from: '2026-09-02', to: '2027-09-01' });
+  assert.deepEqual(termPeriodOf(term({ id: 'T2', salesOrderId: 'SO-JT' }), order), { from: '2026-09-02', to: '2027-09-25' }, 'ตัวโหลดไม่ได้แนบ = ช่วงรวมของใบ');
+  assert.deepEqual(termPeriodOf(term({ id: 'T3', linePeriodFrom: '2026-09-02', linePeriodTo: null }), order), { from: '2026-09-02', to: '2027-09-25' },
+    'ช่วงที่แนบมาครึ่งเดียว = ไม่ใช้ (ถอยไปช่วงรวม)');
+  assert.deepEqual(termPeriodOf(attached, stampedOrder()), { from: '2026-10-22', to: '2027-10-21' }, 'ใบโหมดทั้งใบไม่อ่านช่วงที่แนบ');
+  assert.deepEqual(termPeriodOf(attached, { ...order, servicePeriodMode: 'whole' }), { from: '2026-09-02', to: '2027-09-25' });
+  assert.deepEqual(termPeriodOf(null, order), { from: '2026-09-02', to: '2027-09-25' });
+  assert.deepEqual(termPeriodOf(attached, null), { from: null, to: null });
+  assert.deepEqual(termPeriodOf({ linePeriodFrom: '2026-09-02T00:00:00+07:00', linePeriodTo: '2027-09-01T00:00:00+07:00' }, order),
+    { from: '2026-09-02', to: '2027-09-01' }, 'ค่าที่มาเป็น timestamp ตัดเหลือวัน');
+});
+
+test('0400 termPeriodPhase: ช่วงของรอบขายเอง (ใบ line) · ใบไม่ประทับ = current · orderPeriodPhase = แบบไม่มี term', () => {
+  const order = lineOrder();
+  const early = term({ id: 'T1', salesOrderId: 'SO-JT', linePeriodFrom: '2026-09-02', linePeriodTo: '2027-09-01' });
+  const late = term({ id: 'T2', salesOrderId: 'SO-JT', linePeriodFrom: '2026-09-26', linePeriodTo: '2027-09-25' });
+  assert.equal(termPeriodPhase(early, order, '2027-09-10'), 'ended', 'สาขานี้จบ 01/09 แม้ช่วงรวมของใบยังไม่จบ');
+  assert.equal(termPeriodPhase(late, order, '2027-09-10'), 'current');
+  assert.equal(orderPeriodPhase(order, '2027-09-10'), 'current', 'ช่วงรวมของใบ');
+  assert.equal(termPeriodPhase(late, order, '2026-09-10'), 'future', 'สาขานี้ยังไม่เริ่ม แม้ช่วงรวมเริ่มแล้ว');
+  assert.equal(termPeriodPhase(early, order, '2026-09-10'), 'current');
+  assert.equal(termPeriodPhase(early, { ...order, serviceTermsOpenedAt: null }, '2030-01-01'), 'current', 'ใบไม่ประทับ: ช่วงร่างไม่ใช่ข้อเท็จจริง');
+  assert.equal(termPeriodPhase(null, order, '2027-09-26'), 'ended');
+  for (const day of ['2026-10-21', '2026-10-22', '2027-10-21', '2027-10-22']) {
+    assert.equal(termPeriodPhase(early, stampedOrder(), day), orderPeriodPhase(stampedOrder(), day), `ใบทั้งใบ: เท่าของเดิม (${day})`);
+  }
+});
+
+test('0400 withLinePeriods: แนบเฉพาะ term ของใบ line ที่รู้ช่วงของบรรทัด · term อื่นเป็นออบเจ็กต์เดิม · ไม่แก้ของผู้เรียก', () => {
+  const orders = new Map([['SO-JT', lineOrder()], ['SO-CUR', stampedOrder()]]);
+  const lines = new Map([
+    ['L1', { id: 'L1', servicePeriodFrom: '2026-09-02', servicePeriodTo: '2027-09-01' }],
+    ['L2', { id: 'L2', servicePeriodFrom: null, servicePeriodTo: null }],
+    ['LW', { id: 'LW', servicePeriodFrom: '2026-01-01', servicePeriodTo: '2026-12-31' }],
+  ]);
+  const terms = [
+    term({ id: 'A', salesOrderId: 'SO-JT', salesOrderLineId: 'L1' }),
+    term({ id: 'B', salesOrderId: 'SO-JT', salesOrderLineId: 'L2' }),
+    term({ id: 'C', salesOrderId: 'SO-JT', salesOrderLineId: 'L-MISSING' }),
+    term({ id: 'D', salesOrderId: 'SO-CUR', salesOrderLineId: 'LW' }),
+    term({ id: 'E', salesOrderId: 'SO-GONE', salesOrderLineId: 'L1' }),
+  ];
+  const out = withLinePeriods(terms, orders, lines);
+  assert.notEqual(out, terms, 'อาร์เรย์ใหม่');
+  assert.deepEqual(out.map((t) => [t.id, t.linePeriodFrom ?? null, t.linePeriodTo ?? null]), [
+    ['A', '2026-09-02', '2027-09-01'], ['B', null, null], ['C', null, null], ['D', null, null], ['E', null, null],
+  ]);
+  assert.equal(terms[0].linePeriodFrom, undefined, 'ไม่แก้ term ของผู้เรียก');
+  for (const index of [1, 2, 3, 4]) assert.equal(out[index], terms[index], `term ${terms[index].id} = ออบเจ็กต์เดิม`);
+  /* รับออบเจ็กต์ธรรมดาได้เหมือน Map · ค่าว่าง = [] */
+  assert.equal(withLinePeriods(terms, Object.fromEntries(orders), Object.fromEntries(lines))[0].linePeriodTo, '2027-09-01');
+  assert.deepEqual(withLinePeriods(undefined, orders, lines), []);
+  assert.deepEqual(withLinePeriods(terms).map((t) => t.id), ['A', 'B', 'C', 'D', 'E']);
+  /* ใบทั้งใบล้วน = ทุกตัวเป็นออบเจ็กต์เดิม */
+  const whole = [term({ id: 'W1', salesOrderId: 'SO-CUR', salesOrderLineId: 'LW' })];
+  assert.equal(withLinePeriods(whole, orders, lines)[0], whole[0]);
+});
+
+test('🔴 0400 termsSoldNow: ต่อสัญญาสาขาเดียว — รายการของใบเก่าจบแล้วแม้ช่วงรวมของใบเก่ายังไม่จบ ⇒ ไม่นับซ้ำกับใบต่อสัญญา', () => {
+  /* ใบเก่า (line): สาขา A จบ 01/09/2027 · ช่วงรวมของใบจบ 25/09/2027 · ใบต่อสัญญาของสาขา A เริ่ม 02/09/2027 */
+  const orders = new Map([
+    ['SO-JT', lineOrder()],
+    ['SO-REN', stampedOrder({ id: 'SO-REN', servicePeriodFrom: '2027-09-02', servicePeriodTo: '2028-09-01' })],
+  ]);
+  const raw = [
+    term({ id: 'OLD', zoneId: 'Z1', salesOrderId: 'SO-JT', salesOrderLineId: 'L1' }),
+    term({ id: 'REN', zoneId: 'Z1', salesOrderId: 'SO-REN', salesOrderLineId: 'R1' }),
+  ];
+  const lines = new Map([['L1', { servicePeriodFrom: '2026-09-02', servicePeriodTo: '2027-09-01' }]]);
+  const attached = withLinePeriods(raw, orders, lines);
+  const ids = (list, day) => termsSoldNow(list, orders, day).map((t) => t.id);
+  assert.deepEqual(ids(attached, '2027-09-10'), ['REN'], 'ช่วงของรายการ: ใบเก่าจบ 01/09 ⇒ เหลือใบต่อสัญญา');
+  assert.deepEqual(ids(raw, '2027-09-10'), ['OLD', 'REN'], 'ตัวโหลดลืมแนบ = ถอยไปช่วงรวม (นับซ้อนจนช่วงรวมจบ — ยามตัวโหลดกันไว้)');
+  assert.deepEqual(ids(attached, '2027-09-01'), ['OLD'], 'วันจบของรายการยังนับ · ใบต่อสัญญายังไม่เริ่ม');
+  /* ทุกรอบยังไม่เริ่ม: เลือกรอบที่ "ช่วงของรายการ" เริ่มก่อนสุด ไม่ใช่ช่วงรวมของใบ */
+  const future = withLinePeriods([
+    term({ id: 'F-LATE', zoneId: 'Z1', salesOrderId: 'SO-JT', salesOrderLineId: 'L9' }),
+    term({ id: 'F-CUR', zoneId: 'Z1', salesOrderId: 'SO-NEXT', salesOrderLineId: 'N1' }),
+  ], new Map([['SO-JT', lineOrder()], ['SO-NEXT', stampedOrder({ id: 'SO-NEXT', servicePeriodFrom: '2026-09-10', servicePeriodTo: '2027-09-09' })]]),
+  new Map([['L9', { servicePeriodFrom: '2026-09-26', servicePeriodTo: '2027-09-25' }]]));
+  assert.deepEqual(termsSoldNow(future, new Map([['SO-JT', lineOrder()], ['SO-NEXT', stampedOrder({ id: 'SO-NEXT', servicePeriodFrom: '2026-09-10', servicePeriodTo: '2027-09-09' })]]), '2026-09-05').map((t) => t.id),
+    ['F-CUR'], 'ช่วงรวมของ SO-JT เริ่ม 02/09 แต่รายการนี้เริ่ม 26/09 ⇒ ใบที่เริ่ม 10/09 มาก่อน');
 });

@@ -15,13 +15,15 @@ import {
   backfillStateOfView,
   derivedRoleOf, draftDirty, fieldErrorsView, intOrRaw, issueHeadTail, lineFieldId, lineFieldIds, lineMissing, localSetupCtx, mergedLines, patchDraftLine,
   rebaseDraft, serviceCardMeta, setupPayload, stripParts, submitGateGroups, submitIssuesAfterSave, surveyRequestHref, zonePacksFieldId,
+  applyPeriodToAllLines, baseLineOf, copyLinePeriod, ctxLineOf, linePeriodCounters, localEnvelope, periodModeOfDraft, sameSourceOf, switchPeriodMode,
+  wholePeriodOfDraft,
 } from '../../components/salesPlanning/serviceSetup/serviceSetupDraft.js';
 import {
   ZONES_BULK_NONE_PICKED, ZONES_BULK_PACKS_INVALID, zonesBulkCapText, zonesBulkConsequence, zonesBulkPlan,
 } from '../../components/service/zonesBulkPlan.js';
 import {
-  SERVICE_BACKFILL_RAIL_TEXT, SERVICE_BACKFILL_STATE_LABELS, SERVICE_REOPEN_TEXT, SERVICE_REOPENED_TEXT, SERVICE_SETUP_GRID_TEXT, SERVICE_SETUP_LIMITS,
-  SERVICE_SETUP_LINE_TEXT, SERVICE_SETUP_PANEL_TEXT, serviceSetupFieldId, serviceSetupIssues, serviceSetupTotals,
+  SERVICE_BACKFILL_RAIL_TEXT, SERVICE_BACKFILL_STATE_LABELS, SERVICE_PERIOD_TEXT, SERVICE_REOPEN_TEXT, SERVICE_REOPENED_TEXT, SERVICE_SETUP_GRID_TEXT,
+  SERVICE_SETUP_LIMITS, SERVICE_SETUP_LINE_TEXT, SERVICE_SETUP_PANEL_TEXT, serviceLinePeriod, serviceSetupFieldId, serviceSetupIssues, serviceSetupTotals,
 } from './serviceSetup.js';
 import { salesOrderMoneyOutcome } from './salesOrderPayments.js';
 
@@ -208,14 +210,15 @@ test('lineMissing — ยังไม่ตอบ ‘งานบริการ
 });
 
 test('id ของช่องบนจอ = `serviceSetupFieldId` ของตัวตัดสิน (ปุ่ม "ไปแก้" ต้องหาช่องเจอ)', () => {
-  for (const field of ['kind', 'fg', 'zones', 'rounds']) {
+  for (const field of ['kind', 'period', 'fg', 'zones', 'rounds']) {
     assert.equal(lineFieldId('SOL-a', field), serviceSetupFieldId({ lineId: 'SOL-a', field }));
   }
   assert.equal(zonePacksFieldId('SOL-a', 'ZN-1'), serviceSetupFieldId({ lineId: 'SOL-a', zoneId: 'ZN-1', field: 'packs' }));
   assert.equal(PERIOD_FIELD_ID, serviceSetupFieldId({ field: 'period' }));
   const view = viewFixture();
   const [, l2] = mergedLines(view, EMPTY_DRAFT, { fgById: fgById(view) });
-  assert.deepEqual(lineFieldIds(l2), ['svc-line-L2-kind', 'svc-line-L2-fg', 'svc-line-L2-zones', 'svc-line-L2-rounds', 'svc-zone-L2-Z1-packs']);
+  assert.deepEqual(lineFieldIds(l2),
+    ['svc-line-L2-kind', 'svc-line-L2-period', 'svc-line-L2-fg', 'svc-line-L2-zones', 'svc-line-L2-rounds', 'svc-zone-L2-Z1-packs']);
   /* zones_on_not_service ชี้ `svc-line-<id>-zones` บนบรรทัดที่ไม่มีก้อนโซน — id ต้องอยู่ที่แถบ "ไม่ใช่งานบริการ" ของบรรทัดนั้น
      (เฉพาะตอนมีข้อความแดง) · บรรทัดที่เป็นงานบริการ id อยู่ท้ายก้อนโซน (โหมดแก้ — ปุ่มเพิ่มโซน) / ช่องโซนแรก (โหมดอ่าน) */
   const grid = code(`${FOLDER}/ServiceSetupGrid.js`);
@@ -594,7 +597,9 @@ test('29/09 จำนวนรอบบริการก่อน: ไม่ม
 test('30/09 หัวคอลัมน์ ①→⑥ ตามลำดับของเจ้าของ — มาจากแคตตาล็อกเดียว (SERVICE_SETUP_GRID_TEXT.steps)', () => {
   assert.deepEqual(SERVICE_SETUP_GRID_TEXT.steps.map((step) => step.key), ['kind', 'fg', 'zones', 'rounds', 'packs', 'total']);
   assert.deepEqual(SERVICE_SETUP_GRID_TEXT.steps.map((step) => step.label),
-    ['งานบริการ?', 'แพ็คเกจ FG', 'ไซต์ · โซน', 'จำนวนรอบบริการ', 'รอบละกี่แพ็ค', 'รวมแพ็ค']);
+    ['งานบริการ? · ช่วงบริการ', 'แพ็คเกจ FG', 'ไซต์ · โซน', 'จำนวนรอบบริการ', 'รอบละกี่แพ็ค', 'รวมแพ็ค']);
+  /* mig 0400 (มติเจ้าของ 01/10 รอบสอง): ช่วงบริการของรายการอยู่ใต้คำตอบในคอลัมน์ ① — หัวคอลัมน์บอกทั้งสองเรื่อง */
+  assert.equal(SERVICE_SETUP_GRID_TEXT.steps[0].hint, 'ใช่ = ส่ง TS + ใส่ช่วง');
   assert.equal(SERVICE_SETUP_GRID_TEXT.steps.find((step) => step.key === 'rounds').label, SERVICE_SETUP_LINE_TEXT.roundsLabel);
   assert.equal(SERVICE_SETUP_GRID_TEXT.steps.find((step) => step.key === 'packs').label, SERVICE_SETUP_LINE_TEXT.packsLabel);
   assert.deepEqual(SERVICE_SETUP_GRID_TEXT.steps.map((step) => step.required), [true, true, true, true, true, false]);
@@ -753,13 +758,26 @@ test('ช่องค้นหา/ช่องกรอกทุกช่อง�
   assert.match(code('components/service/ZonesBulkModal.js'), /type="search"\s*autoComplete="off"/);
 });
 
-test('① งานบริการ? ไม่มีค่าตั้งต้น — ค่ามาจากชนิดของบรรทัด (ยังไม่รู้ = null) · ตัวเลือกจาก SERVICE_KIND_OPTIONS · ลูกศรไม่เปลี่ยนคำตอบเอง', () => {
+test('① งานบริการ? ไม่มีค่าตั้งต้น — ปุ่มแยก ✓ ใช่ / ✕ ไม่ใช่ จาก SERVICE_KIND_OPTIONS · ยังไม่ตอบ = ไม่มีปุ่มไหนถูกเลือก + คำชวน · ลูกศรไม่เปลี่ยนคำตอบเอง', () => {
   const grid = code(`${FOLDER}/ServiceSetupGrid.js`);
-  const seg = grid.slice(grid.indexOf('<Segmented'), grid.indexOf('/>', grid.indexOf('<Segmented')));
-  assert.match(seg, /value=\{line\.role === SERVICE_ROLE_UNSET \? null : line\.role\}/);
-  assert.match(seg, /options=\{SERVICE_KIND_OPTIONS\.map\(/);
-  assert.match(seg, /activationMode="manual"/, 'ตอบ "ไม่ใช่" ล้างแพ็คเกจ/โซน — ห้ามเปลี่ยนตอนกดลูกศรผ่าน');
+  const answer = grid.slice(grid.indexOf('function AnswerButtons('), grid.indexOf('/* ── ① งานบริการ? ── */'));
+  assert.match(answer, /const value = line\.role === SERVICE_ROLE_UNSET \? null : line\.role;/, 'ยังไม่รู้ = null (ไม่มีค่าตั้งต้น)');
+  assert.match(answer, /\{SERVICE_KIND_OPTIONS\.map\(\(option, index\) => \{/);
+  assert.match(answer, /role="radiogroup"/);
+  assert.match(answer, /role="radio"\s+aria-checked=\{on\}/);
+  assert.match(answer, /onClick=\{\(\) => onPick\(option\.value\)\}/);
+  /* ตอบ "ไม่ใช่" ล้างแพ็คเกจ/โซน — ลูกศรย้ายโฟกัสอย่างเดียว ห้ามเรียก onPick */
+  const move = answer.slice(answer.indexOf('const moveFocus'), answer.indexOf('return ('));
+  assert.match(move, /buttons\.current\[next\]\?\.focus\(\);/);
+  assert.doesNotMatch(move, /onPick/);
+  assert.match(answer, /\{answered \? null : <span className=\{styles\.answerAsk\}>\{SERVICE_SETUP_GRID_TEXT\.pickAnswer\}<\/span>\}/);
+  assert.equal(SERVICE_SETUP_GRID_TEXT.pickAnswer, 'เลือกคำตอบ');
+  assert.doesNotMatch(grid, /Segmented/, 'แถบสองช่องในกรอบเดียวดูเป็นแถบเทาแถบเดียวตอนยังไม่ตอบ (ภาพของเจ้าของ 01/10)');
   assert.match(grid, /id=\{lineFieldId\(line\.lineId, "kind"\)\} data-invalid=\{error \? "" : undefined\}/);
+  const css = read(`${FOLDER}/ServiceSetupGrid.module.css`);
+  assert.match(css, /--c-kind: 156px;/, 'คอลัมน์ ① กว้างพอสองปุ่ม + ช่องวันของช่วงบริการ (เดิม 132px · mig 0400) — "ไม่ใช่" ไม่ชนขอบ');
+  assert.match(css, /\.kind\[data-invalid\] \.answerButton \{\s*border-color: var\(--red\);/);
+  assert.match(css, /\.answerAsk \{[^}]*color: var\(--accent-ink\);/, 'คำชวนไม่ใช่สีแดง (กฎ 3)');
 });
 
 test('กฎ 3: สีแดงมาหลังกดเท่านั้น — ทุก invalid/data-invalid/data-bad อ้างผลหลังกด (highlight · error · pressed · blocked)', () => {
@@ -998,4 +1016,505 @@ test('0396: การ์ดราง/แบนเนอร์อ่านคำ�
   const css = read(`${FOLDER}/ServiceBackfillPanel.module.css`);
   const rule = css.slice(css.indexOf('.railReopen {'), css.indexOf('}', css.indexOf('.railReopen {')));
   assert.doesNotMatch(rule, /--red|--amber/, 'เปิดแก้ไม่ใช่ข้อผิด — โทนข้อมูล (กฎ 3)');
+});
+
+/* ══ mig 0400 (มติเจ้าของ 01/10): ช่วงบริการ "ทั้งใบช่วงเดียว | แยกรายรายการ" — ร่าง + จอ ══════════════════════════════════
+   เจ้าของ: "ช่วงบริการตามสัญญา ตอนนี้ SO บาง SO แต่ละรายการจะช่วงไม่เหมือนกัน บางใบทั้งใบ บางใบรายรายการ ทำสวิตซ์"
+   รอบสอง: "ช่วงบริการ เอาไว้ คอลัมน์ 1 งานบริการดีกว่า ถ้าใช่ก็ให้กรอก ไม่ใช่ก็ปิดหรือเทาไป" → อนุมัติ "ไม่ใช่ = ปิดช่วง"
+   ฐานของเทสต์: `viewFixture()` = ใบโหมดทั้งใบ (L2 พิมพ์เอง + L3 FG เป็นงานบริการ · L1 ยังไม่ตอบ · L4 FG หมวดอื่น)
+                `lineView()` = ใบที่บันทึกเป็นแยกรายรายการ (L2 มีช่วง · L3 ยังไม่ใส่ ⇒ ช่วงของใบว่าง) */
+const P = Object.freeze({ from: '2026-09-02', to: '2027-09-01' });
+const WHOLE = Object.freeze({ from: '2026-10-01', to: '2027-09-30' });
+function lineView(overrides = {}) {
+  return viewFixture({
+    periodMode: 'line', period: null, linePeriods: { total: 2, filled: 1 },
+    lines: viewFixture().lines.map((line) => ({ ...line, period: line.lineId === 'L2' ? { ...P } : null })),
+    ...overrides,
+  });
+}
+const periodsOf = (view, draft) => Object.fromEntries(mergedLines(view, draft, { fgById: fgById(view) }).map((line) => [line.lineId, line.period]));
+
+test('0400 mergedLines — ช่วงของรายการมีค่าเฉพาะโหมดแยกรายรายการ + บรรทัดงานบริการ (ร่างถ้าแตะ ไม่งั้นฐาน) · โหมดทั้งใบ = null ทุกบรรทัด', () => {
+  const whole = viewFixture();
+  assert.equal(periodModeOfDraft(whole, EMPTY_DRAFT), 'whole', 'ก้อน GET ไม่มี periodMode (ใบเดิม) = ทั้งใบ');
+  assert.equal(periodModeOfDraft(null, EMPTY_DRAFT), 'whole');
+  assert.deepEqual(periodsOf(whole, EMPTY_DRAFT), { L1: null, L2: null, L3: null, L4: null });
+  assert.deepEqual(periodsOf(whole, patchDraftLine(EMPTY_DRAFT, 'L2', { period: P })), { L1: null, L2: null, L3: null, L4: null },
+    'คีย์ช่วงของรายการค้างในร่างได้ แต่โหมดทั้งใบไม่ใช้');
+
+  const view = lineView();
+  assert.equal(periodModeOfDraft(view, EMPTY_DRAFT), 'line');
+  assert.equal(periodModeOfDraft(view, { ...EMPTY_DRAFT, periodMode: 'whole' }), 'whole', 'ร่างที่สลับไว้ชนะค่าที่บันทึก');
+  assert.deepEqual(baseLineOf(view, 'L2').period, P);
+  assert.deepEqual(periodsOf(view, EMPTY_DRAFT), { L1: null, L2: P, L3: null, L4: null });
+  const typed = patchDraftLine(patchDraftLine(EMPTY_DRAFT, 'L3', { period: { from: '2026-09-26', to: '' } }), 'L4', { period: P });
+  assert.deepEqual(periodsOf(view, typed), { L1: null, L2: P, L3: { from: '2026-09-26', to: '' }, L4: null },
+    'ครึ่งเดียวเก็บตามที่พิมพ์ · บรรทัดที่ไม่ใช่งานบริการไม่มีช่วงแม้ร่างมีคีย์');
+  assert.equal(periodsOf(view, patchDraftLine(EMPTY_DRAFT, 'L2', { period: { from: '', to: '' } })).L2, null, 'ล้างสองช่อง = null');
+  /* ตอบ "ไม่ใช่" (ร่างของบรรทัดถูกแทนทั้งก้อน) = ปิดช่วง · ตอบ "ใช่" ทีหลัง = ช่วงว่าง (ไม่เติมให้เอง) */
+  const answeredNo = { ...EMPTY_DRAFT, lines: { L2: { kind: 'not_service', serviceProductId: null, rounds: '', zones: [] } } };
+  assert.equal(periodsOf(view, answeredNo).L2, null);
+  assert.equal(periodsOf(view, { ...EMPTY_DRAFT, lines: { L1: { kind: 'package' } } }).L1, null);
+  /* บริบทบนจอ: ชื่อคอลัมน์เดียวกับฐาน + โหมด ⇒ ตัวรวม/ชิป/คำเตือนรอบน้อยของ serviceSetup.js ตามร่างทันที */
+  const merged = mergedLines(view, EMPTY_DRAFT, { fgById: fgById(view) });
+  assert.deepEqual([ctxLineOf(merged[1]).servicePeriodFrom, ctxLineOf(merged[1]).servicePeriodTo], [P.from, P.to]);
+  assert.deepEqual([ctxLineOf(merged[2]).servicePeriodFrom, ctxLineOf(merged[2]).servicePeriodTo], [null, null]);
+  const zonesById = new Map([['Z1', { id: 'Z1', siteId: 'S1' }]]);
+  const ctx = localSetupCtx(merged, zonesById, { periodMode: 'line' });
+  assert.equal(ctx.periodMode, 'line');
+  assert.equal(Object.prototype.hasOwnProperty.call(localSetupCtx(merged, zonesById), 'periodMode'), false, 'ไม่ส่งโหมด = รูปเดิม (ตัวรวมถือว่าทั้งใบ)');
+  assert.deepEqual(serviceLinePeriod(ctx.lines[1], ctx), P);
+  assert.equal(serviceLinePeriod(ctx.lines[2], ctx), null);
+  assert.deepEqual([serviceSetupTotals(ctx).completeLines, serviceSetupTotals(ctx).periodFilled, serviceSetupTotals(ctx).periodLines], [2, 1, 2]);
+  const cleared = localSetupCtx(mergedLines(view, patchDraftLine(EMPTY_DRAFT, 'L2', { period: { from: '', to: '' } }), { fgById: fgById(view) }), zonesById, { periodMode: 'line' });
+  assert.equal(serviceSetupTotals(cleared).completeLines, 1, 'โหมดแยกรายรายการ: รายการที่ไม่มีช่วงของตัวเองยังไม่ครบ (ชิป "งานบริการครบ x/n")');
+});
+
+test('0400 switchPeriodMode — ทั้งใบ → แยกรายรายการ: ร่างได้แค่คีย์โหมด · รายการงานบริการที่ยังว่างเห็นช่วงของใบบนจอเป็นค่าตั้งต้น (คิดตอนวาด) · กลับทั้งใบ = ไม่มีอะไรค้าง', () => {
+  const view = viewFixture();
+  const toLine = switchPeriodMode(view, EMPTY_DRAFT, 'line');
+  assert.deepEqual(toLine, { lines: {}, periodMode: 'line' }, '🔴 สวิตช์ไม่เขียนช่วงใดลงร่าง (ค่าที่ไม่มีใครพิมพ์ห้ามอยู่ในร่าง)');
+  assert.deepEqual(periodsOf(view, toLine), { L1: null, L2: { ...WHOLE }, L3: { ...WHOLE }, L4: null },
+    'เติมเฉพาะรายการที่เป็นงานบริการ (L1 ยังไม่ตอบ · L4 ไม่ใช่งานบริการ ไม่ถูกแตะ)');
+  assert.deepEqual(EMPTY_DRAFT, { lines: {} }, 'ไม่แตะของเดิม');
+  assert.deepEqual(setupPayload(view, toLine), {
+    expectedUpdatedAt: view.updatedAt, periodMode: 'line',
+    lines: [{ lineId: 'L2', period: { ...WHOLE } }, { lineId: 'L3', period: { ...WHOLE } }],
+  }, 'ก้อนบันทึก = สิ่งที่เห็นบนจอ (ทุกรายการงานบริการ)');
+  assert.equal(Object.prototype.hasOwnProperty.call(setupPayload(view, toLine), 'period'), false, 'โหมดแยกรายรายการไม่ส่งช่วงของใบ (server ตีกลับ period_derived)');
+  assert.equal(switchPeriodMode(view, toLine, 'line'), toLine, 'กดโหมดที่อยู่แล้ว = ร่างตัวเดิม');
+
+  /* ช่วงของใบที่พิมพ์ไว้แต่ยังไม่บันทึก = ตัวที่เห็นบนจอ ⇒ ใช้ตัวนั้น · รายการที่มีช่วงในร่างแล้วไม่ถูกทับ */
+  const typed = { from: '2026-11-01', to: '2027-10-31' };
+  const own = { from: '2026-12-01', to: '2027-11-30' };
+  const seeded = switchPeriodMode(view, { ...patchDraftLine(EMPTY_DRAFT, 'L3', { period: own }), period: typed }, 'line');
+  assert.deepEqual([periodsOf(view, seeded).L2, periodsOf(view, seeded).L3], [typed, own]);
+  assert.equal(Object.prototype.hasOwnProperty.call(setupPayload(view, seeded), 'period'), false);
+  /* ช่วงของใบยังไม่ครบ/กลับหัว = ไม่เติม — ก้อนบันทึกส่ง null ชัด ๆ ให้ทุกรายการงานบริการ (RPC เติมช่วงของใบให้รายการที่ไม่เอ่ยถึง) */
+  for (const bad of [{ from: '2026-11-01', to: '' }, { from: '2027-11-01', to: '2026-10-31' }, { from: '', to: '' }]) {
+    const none = switchPeriodMode(view, { ...EMPTY_DRAFT, period: bad }, 'line');
+    assert.deepEqual(none.lines, {}, JSON.stringify(bad));
+    assert.deepEqual(periodsOf(view, none), { L1: null, L2: null, L3: null, L4: null }, JSON.stringify(bad));
+    assert.deepEqual(setupPayload(view, none).lines, [{ lineId: 'L2', period: null }, { lineId: 'L3', period: null }]);
+  }
+  /* ล้างช่วงที่ถูกเติมของรายการหนึ่ง = บันทึกแล้วต้องว่างตามจอ (ไม่ใช่ได้ช่วงของใบกลับมา) */
+  const clearedOne = patchDraftLine(toLine, 'L3', { period: { from: '', to: '' } });
+  assert.equal(periodsOf(view, clearedOne).L3, null);
+  assert.deepEqual(setupPayload(view, clearedOne).lines, [{ lineId: 'L2', period: { ...WHOLE } }, { lineId: 'L3', period: null }]);
+  /* ตอบ ‘ใช่’ ระหว่างที่สลับไว้ = รายการใหม่ได้ช่วงของใบบนจอเหมือนรายการอื่น (RPC เติมให้แบบเดียวกันตอนบันทึก) */
+  const answeredYes = { ...toLine, lines: { L1: { kind: 'package' } } };
+  assert.deepEqual(periodsOf(view, answeredYes).L1, { ...WHOLE });
+  assert.deepEqual(setupPayload(view, answeredYes).lines.find((entry) => entry.lineId === 'L1'), { lineId: 'L1', kind: 'package', period: { ...WHOLE } });
+
+  /* เลิกการสลับ (ใบที่บันทึกเป็นทั้งใบ): คีย์โหมดหาย · `period` ของร่างไม่ถูกแตะ · ไม่มีคีย์ช่วงของรายการซ่อนอยู่ในร่าง */
+  const edited = patchDraftLine(toLine, 'L2', { period: own });
+  const back = switchPeriodMode(view, edited, 'whole');
+  assert.equal(Object.prototype.hasOwnProperty.call(back, 'periodMode'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(back, 'period'), false, '🐞 ห้ามเติมช่วงรวมลงช่วงของใบที่ไม่เคยแยกรายรายการ');
+  assert.deepEqual(back.lines, {}, '🔴 ช่วงของรายการที่พิมพ์ระหว่างสลับไม่ค้างในร่าง (พักไว้ที่ parked)');
+  assert.deepEqual(back.parked, { lines: { L2: own } });
+  assert.equal(setupPayload(view, back), null);
+  assert.equal(draftDirty(view, back), false);
+  assert.deepEqual(periodsOf(view, back), { L1: null, L2: null, L3: null, L4: null });
+  const typedBack = switchPeriodMode(view, patchDraftLine(seeded, 'L2', { period: own }), 'whole');
+  assert.deepEqual(typedBack.period, typed, 'ช่วงของใบที่พิมพ์ไว้ก่อนสลับยังอยู่');
+  assert.deepEqual(setupPayload(view, typedBack), { expectedUpdatedAt: view.updatedAt, period: typed });
+  /* สลับอีกรอบ = ช่วงของรายการที่พิมพ์ไว้กลับมา (ไม่ถูกเติมทับ) · รายการที่ไม่ได้แตะตามช่วงของใบบนจอ · ของที่พักไว้ถูกหยิบออก */
+  const again = switchPeriodMode(view, back, 'line');
+  assert.deepEqual(again, { lines: { L2: { period: own } }, periodMode: 'line' });
+  assert.deepEqual(periodsOf(view, again), { L1: null, L2: own, L3: { ...WHOLE }, L4: null });
+  /* คีย์อื่นของบรรทัด (รอบ) อยู่ครบทั้งขาไปและขากลับ */
+  const withRounds = patchDraftLine(patchDraftLine(toLine, 'L2', { rounds: '6' }), 'L2', { period: own });
+  const parkedRounds = switchPeriodMode(view, withRounds, 'whole');
+  assert.deepEqual([parkedRounds.lines, parkedRounds.parked], [{ L2: { rounds: '6' } }, { lines: { L2: own } }]);
+  assert.deepEqual(switchPeriodMode(view, parkedRounds, 'line').lines, { L2: { rounds: '6', period: own } });
+  assert.equal(switchPeriodMode(view, EMPTY_DRAFT, 'whole'), EMPTY_DRAFT, 'กดโหมดที่ใช้อยู่ = ร่างตัวเดิม');
+});
+
+test('0400 switchPeriodMode — แยกรายรายการ (บันทึกแล้ว) → ทั้งใบ: ช่องของใบเห็นช่วงรวมของรายการบนจอ (คิดตอนวาด) · ก้อนบันทึกส่งช่วงของใบเสมอ · สลับกลับได้ครบ', () => {
+  const view = lineView();
+  const toWhole = switchPeriodMode(view, EMPTY_DRAFT, 'whole');
+  assert.deepEqual(toWhole, { lines: {}, periodMode: 'whole' }, '🔴 สวิตช์ไม่เขียนช่วงรวมลงร่าง');
+  assert.deepEqual(wholePeriodOfDraft(view, toWhole), { ...P }, 'ช่วงรวมของรายการที่มีช่วง (L2) — L3 ยังว่าง');
+  assert.deepEqual(setupPayload(view, toWhole), { expectedUpdatedAt: view.updatedAt, periodMode: 'whole', period: { ...P } });
+  assert.deepEqual(periodsOf(view, toWhole), { L1: null, L2: null, L3: null, L4: null }, 'โหมดทั้งใบ: คอลัมน์ ① ไม่มีช่วงของรายการ');
+  /* ใบที่ช่วงของรายการครบ (ช่วงของใบที่เก็บ = ช่วงรวม): ก้อนบันทึกยังส่งช่วงของใบชัด ๆ — สิ่งที่เห็นคือสิ่งที่บันทึก */
+  const own = { from: '2026-09-26', to: '2027-09-25' };
+  const complete = lineView({
+    period: { from: P.from, to: own.to }, linePeriods: { total: 2, filled: 2 },
+    lines: lineView().lines.map((line) => (line.lineId === 'L3' ? { ...line, period: own } : line)),
+  });
+  assert.deepEqual(setupPayload(complete, switchPeriodMode(complete, EMPTY_DRAFT, 'whole')),
+    { expectedUpdatedAt: complete.updatedAt, periodMode: 'whole', period: { from: P.from, to: own.to } });
+  assert.equal(draftDirty(complete, switchPeriodMode(complete, EMPTY_DRAFT, 'whole')), true);
+  /* 🐞 ตรวจทาน ui-line-to-whole-cleared-period: ล้างสองช่องของใบแล้วบันทึก = ต้องส่ง null ชัด ๆ (ไม่ส่ง = RPC เก็บช่วงรวมเดิมให้เอง
+     ⇒ ช่องที่จอโชว์ว่าว่างกลับมามีช่วงหลังบันทึก) · ใบที่ช่วงของใบที่เก็บว่างอยู่แล้ว (รายการยังไม่ครบ) ก็ต้องส่ง */
+  for (const base of [view, complete]) {
+    const cleared = { ...switchPeriodMode(base, EMPTY_DRAFT, 'whole'), period: { from: '', to: '' } };
+    const payload = setupPayload(base, cleared);
+    assert.equal(Object.prototype.hasOwnProperty.call(payload, 'period'), true);
+    assert.equal(payload.period, null);
+    assert.equal(payload.periodMode, 'whole');
+  }
+  /* ช่วงรวมคิดจากรายการบนจอ (รวมที่แก้ในร่าง) · ช่วงของใบที่พิมพ์ไว้แล้วไม่ถูกทับ */
+  const edited = patchDraftLine(EMPTY_DRAFT, 'L3', { period: own });
+  const editedWhole = switchPeriodMode(view, edited, 'whole');
+  assert.deepEqual(wholePeriodOfDraft(view, editedWhole), { from: P.from, to: own.to });
+  assert.equal(Object.prototype.hasOwnProperty.call(editedWhole, 'period'), false);
+  assert.deepEqual(editedWhole.lines, { L3: { period: own } }, 'คีย์ช่วงของรายการ (ของโหมดที่บันทึกไว้) ค้างในร่าง');
+  assert.equal(Object.prototype.hasOwnProperty.call(setupPayload(view, editedWhole), 'lines'), false, 'โหมดทั้งใบไม่ส่งช่วงของรายการ');
+  const typed = { from: '2026-08-01', to: '2027-07-31' };
+  assert.deepEqual(wholePeriodOfDraft(view, switchPeriodMode(view, { ...edited, period: typed }, 'whole')), typed);
+  /* ไม่มีรายการไหนมีช่วง = ช่องของใบว่าง · ก้อนบันทึกส่ง null */
+  const empty = lineView({ lines: lineView().lines.map((line) => ({ ...line, period: null })) });
+  assert.equal(wholePeriodOfDraft(empty, switchPeriodMode(empty, EMPTY_DRAFT, 'whole')), null);
+  assert.equal(setupPayload(empty, switchPeriodMode(empty, EMPTY_DRAFT, 'whole')).period, null);
+  /* สลับกลับ = คีย์โหมดหาย · ช่วงของรายการ (ฐาน + ร่าง) กลับมาครบ */
+  const backToLine = switchPeriodMode(view, editedWhole, 'line');
+  assert.equal(Object.prototype.hasOwnProperty.call(backToLine, 'periodMode'), false);
+  assert.deepEqual(periodsOf(view, backToLine), { L1: null, L2: P, L3: own, L4: null });
+  assert.deepEqual(setupPayload(view, backToLine), { expectedUpdatedAt: view.updatedAt, lines: [{ lineId: 'L3', period: own }] });
+  assert.equal(setupPayload(view, switchPeriodMode(view, toWhole, 'line')), null);
+  assert.deepEqual(switchPeriodMode(view, toWhole, 'line'), { lines: {} }, 'ดูแล้วสลับกลับ = ร่างว่าง ไม่มีคีย์ `period`/`parked` ค้าง');
+  /* ช่วงของใบที่พิมพ์ระหว่างสลับ: สลับกลับ = พักไว้ (ไม่ค้างเป็นคีย์ `period` ในร่างของใบแยกรายรายการ) · สลับมาอีกรอบ = ได้คืน */
+  const typedWhole = { ...toWhole, period: typed };
+  const parked = switchPeriodMode(view, typedWhole, 'line');
+  assert.equal(Object.prototype.hasOwnProperty.call(parked, 'period'), false, '🔴 ช่วงของใบที่พิมพ์ระหว่างสลับไม่ค้างในร่าง');
+  assert.deepEqual(parked.parked, { period: typed });
+  assert.equal(setupPayload(view, parked), null);
+  assert.deepEqual(switchPeriodMode(view, parked, 'whole'), { lines: {}, periodMode: 'whole', period: typed });
+});
+
+/* ══ ตรวจทาน ui-leftover-seeded-periods (สามเส้น) — ค่าที่สวิตช์เติมให้ห้ามค้างในร่างเหมือนคนพิมพ์ ══════════════════════════════ */
+test('🔴 0400 สวิตช์ (1): สลับไป-กลับ แก้ช่วงของใบ แล้วสลับใหม่ = รายการได้ช่วงของใบที่เห็นบนจอ **ตอนนี้** (ไม่ใช่ช่วงของรอบแรก)', () => {
+  const view = viewFixture();
+  const peek = switchPeriodMode(view, switchPeriodMode(view, EMPTY_DRAFT, 'line'), 'whole');
+  assert.equal(peek.parked, undefined);
+  assert.deepEqual(peek, { lines: {} }, 'ดูแล้วสลับกลับ = ร่างว่าง ไม่มีอะไรซ่อน');
+  const NEW = { from: '2027-01-01', to: '2027-12-31' };
+  const again = switchPeriodMode(view, { ...peek, period: NEW }, 'line');
+  assert.deepEqual(periodsOf(view, again), { L1: null, L2: NEW, L3: NEW, L4: null });
+  assert.deepEqual(setupPayload(view, again), {
+    expectedUpdatedAt: view.updatedAt, periodMode: 'line', lines: [{ lineId: 'L2', period: NEW }, { lineId: 'L3', period: NEW }],
+  });
+  /* รายการที่คนพิมพ์เองระหว่างรอบแรกยังเป็นของคนพิมพ์ · รายการที่ไม่ได้แตะตามช่วงใหม่ */
+  const own = { from: '2026-12-01', to: '2027-11-30' };
+  const typedOne = switchPeriodMode(view, patchDraftLine(switchPeriodMode(view, EMPTY_DRAFT, 'line'), 'L3', { period: own }), 'whole');
+  assert.deepEqual(periodsOf(view, switchPeriodMode(view, { ...typedOne, period: NEW }, 'line')), { L1: null, L2: NEW, L3: own, L4: null });
+});
+
+test('🔴 0400 สวิตช์ (2): แค่สลับไปดูแล้วสลับกลับ → อีกหน้าต่างบันทึกเป็นแยกรายรายการ → โหลดใหม่หลัง 409 = ไม่มีช่วงที่ไม่มีใครพิมพ์โผล่มาทับ', () => {
+  const view = viewFixture();
+  const other = { L2: { from: '2026-09-02', to: '2027-09-01' }, L3: { from: '2026-09-26', to: '2027-09-25' } };
+  const fresh = viewFixture({
+    updatedAt: '2026-09-28T11:00:00.000001+00:00', periodMode: 'line', period: { from: '2026-09-02', to: '2027-09-25' },
+    linePeriods: { total: 2, filled: 2 }, lines: view.lines.map((line) => ({ ...line, period: other[line.lineId] || null })),
+  });
+  /* (ก) ดูแล้วสลับกลับ แล้วแก้รอบของรายการเดียว */
+  const peeked = patchDraftLine(switchPeriodMode(view, switchPeriodMode(view, EMPTY_DRAFT, 'line'), 'whole'), 'L2', { rounds: '6' });
+  assert.deepEqual(setupPayload(view, peeked), { expectedUpdatedAt: view.updatedAt, lines: [{ lineId: 'L2', rounds: 6 }] });
+  const rebased = rebaseDraft(fresh, peeked);
+  assert.deepEqual(rebased, { lines: { L2: { rounds: '6' } } }, 'ค้างแค่รอบที่คนแก้');
+  assert.deepEqual(periodsOf(fresh, rebased), { L1: null, ...other, L4: null }, 'ช่วงของอีกหน้าต่างอยู่ครบบนจอ');
+  assert.deepEqual(setupPayload(fresh, rebased), { expectedUpdatedAt: fresh.updatedAt, lines: [{ lineId: 'L2', rounds: 6 }] }, '🔴 ก้อนบันทึกไม่มีช่วงของรายการ');
+  /* (ข) พิมพ์ช่วงของรายการระหว่างดู แล้วสลับกลับ (พักไว้) — ฐานใหม่มา = ของที่พักไว้ถูกทิ้ง ไม่กลายเป็นของค้าง */
+  const own = { from: '2026-12-01', to: '2027-11-30' };
+  const parked = patchDraftLine(switchPeriodMode(view, patchDraftLine(switchPeriodMode(view, EMPTY_DRAFT, 'line'), 'L3', { period: own }), 'whole'), 'L2', { rounds: '6' });
+  assert.deepEqual(parked.parked, { lines: { L3: own } });
+  assert.deepEqual(rebaseDraft(fresh, parked), { lines: { L2: { rounds: '6' } } });
+  assert.equal(rebaseDraft(view, switchPeriodMode(view, patchDraftLine(switchPeriodMode(view, EMPTY_DRAFT, 'line'), 'L3', { period: own }), 'whole')), EMPTY_DRAFT,
+    'ร่างที่เหลือแต่ของที่พักไว้ = ร่างว่างเมื่อฐานมาใหม่');
+  /* (ค) ยังสลับค้างอยู่ (เห็นค่าตั้งต้นห้ารายการ) แล้วอีกหน้าต่างบันทึกเป็นแยกรายรายการ: ค่าตั้งต้นไม่ใช่ของค้าง ⇒ ร่างว่าง */
+  assert.equal(rebaseDraft(fresh, switchPeriodMode(view, EMPTY_DRAFT, 'line')), EMPTY_DRAFT);
+  /* ที่คนพิมพ์จริงระหว่างสลับค้างอยู่ยังเป็นของค้าง (ต่างจากฐานใหม่) */
+  assert.deepEqual(rebaseDraft(fresh, patchDraftLine(switchPeriodMode(view, EMPTY_DRAFT, 'line'), 'L3', { period: own })), { lines: { L3: { period: own } } });
+});
+
+test('🔴 0400 สวิตช์ (3): ใบแยกรายรายการ สลับทั้งใบ → กลับ → แก้ช่วงของรายการ → สลับทั้งใบอีกครั้ง = ช่องของใบเป็นช่วงรวมใหม่ · ฐานใหม่ไม่ถูกช่วงของใบที่ค้างทับ', () => {
+  const view = lineView();
+  const first = switchPeriodMode(view, EMPTY_DRAFT, 'whole');
+  assert.deepEqual(wholePeriodOfDraft(view, first), { ...P });
+  const back = switchPeriodMode(view, first, 'line');
+  assert.deepEqual(back, { lines: {} }, 'ไม่มีคีย์ `period` ซ่อนอยู่');
+  const own = { from: '2026-09-26', to: '2027-09-25' };
+  const second = switchPeriodMode(view, patchDraftLine(back, 'L3', { period: own }), 'whole');
+  assert.deepEqual(wholePeriodOfDraft(view, second), { from: P.from, to: own.to }, 'ช่วงรวมใหม่ (รวมรายการที่เพิ่งแก้)');
+  assert.deepEqual(setupPayload(view, second), { expectedUpdatedAt: view.updatedAt, periodMode: 'whole', period: { from: P.from, to: own.to } });
+  /* อีกหน้าต่างสลับใบเป็นทั้งใบแล้วบันทึกช่วงของตัวเอง → แท็บนี้ (ดูทั้งใบแล้วสลับกลับ) โหลดใหม่: ไม่มีช่วงของใบค้างไปทับ */
+  const savedWhole = viewFixture({ updatedAt: '2026-09-28T11:00:00.000001+00:00', period: { from: '2026-10-15', to: '2027-10-14' } });
+  assert.equal(rebaseDraft(savedWhole, back), EMPTY_DRAFT);
+  const typed = { from: '2026-08-01', to: '2027-07-31' };
+  const parked = switchPeriodMode(view, { ...first, period: typed }, 'line');
+  assert.equal(rebaseDraft(savedWhole, parked), EMPTY_DRAFT, 'ช่วงของใบที่พิมพ์ระหว่างสลับแล้วสลับกลับ (พักไว้) ไม่ทับช่วงที่อีกหน้าต่างบันทึก');
+  assert.equal(setupPayload(savedWhole, parked), null);
+});
+
+test('0400 setupPayload — โหมดส่งเมื่อเปลี่ยน · ช่วงของใบเฉพาะโหมดทั้งใบ · ช่วงของรายการเฉพาะแยกรายรายการ + งานบริการ + ต่างจากฐาน', () => {
+  const view = lineView();
+  assert.equal(setupPayload(view, EMPTY_DRAFT), null);
+  assert.equal(setupPayload(view, { ...EMPTY_DRAFT, periodMode: 'line' }), null, 'โหมดเท่าที่บันทึก = ไม่ส่ง');
+  assert.equal(setupPayload(view, { ...EMPTY_DRAFT, period: { ...WHOLE } }), null, 'โหมดแยกรายรายการไม่ส่งช่วงของใบ แม้ร่างมีคีย์');
+  assert.equal(setupPayload(view, patchDraftLine(EMPTY_DRAFT, 'L2', { period: { ...P } })), null, 'เท่าฐาน = ไม่มีอะไรบันทึก');
+  assert.deepEqual(setupPayload(view, patchDraftLine(EMPTY_DRAFT, 'L2', { period: { from: '', to: '' } })).lines, [{ lineId: 'L2', period: null }], 'ล้าง = null');
+  assert.deepEqual(setupPayload(view, patchDraftLine(EMPTY_DRAFT, 'L2', { period: { from: P.from, to: '' } })).lines,
+    [{ lineId: 'L2', period: { from: P.from, to: '' } }], 'ครึ่งเดียวส่งตามที่พิมพ์ (server ตีกลับที่ช่องของรายการ)');
+  /* บรรทัด FG ที่เป็นงานบริการ: บรรทัดมีแต่ period — ไม่พ่วง kind/serviceProductId */
+  assert.deepEqual(setupPayload(view, patchDraftLine(EMPTY_DRAFT, 'L3', { period: { ...P } })).lines, [{ lineId: 'L3', period: { ...P } }]);
+  /* บรรทัดที่ไม่ใช่งานบริการ/ยังไม่ตอบ ไม่ส่งช่วง */
+  assert.equal(setupPayload(view, patchDraftLine(patchDraftLine(EMPTY_DRAFT, 'L4', { period: { ...P } }), 'L1', { period: { ...P } })), null);
+  /* ตอบ "ไม่ใช่" = ไม่ส่งช่วง (RPC ล้างช่วงของบรรทัดที่ไม่ใช่แพ็คเกจเอง) */
+  const answeredNo = { ...EMPTY_DRAFT, lines: { L2: { kind: 'not_service', serviceProductId: null, rounds: '', zones: [] } } };
+  assert.deepEqual(setupPayload(view, answeredNo).lines, [{ lineId: 'L2', kind: 'not_service', serviceProductId: null, rounds: null, zones: [] }]);
+  /* ตอบ "ใช่" พร้อมใส่ช่วง = ส่งทั้งคำตอบและช่วงในบรรทัดเดียว */
+  const answeredYes = { ...EMPTY_DRAFT, lines: { L1: { kind: 'package', period: { ...P } } } };
+  assert.deepEqual(setupPayload(view, answeredYes).lines, [{ lineId: 'L1', kind: 'package', period: { ...P } }]);
+  /* โหมดทั้งใบ: คีย์ช่วงของรายการในร่างไม่ถูกส่ง */
+  assert.equal(setupPayload(viewFixture(), patchDraftLine(EMPTY_DRAFT, 'L2', { period: { ...P } })), null);
+  /* เวลาของใบไปตามตัวอักษรทุกแบบของก้อน */
+  assert.equal(setupPayload(view, { ...EMPTY_DRAFT, periodMode: 'whole' }).expectedUpdatedAt, '2026-09-28T10:11:12.345678+00:00');
+});
+
+test('0400 rebaseDraft — คีย์โหมด/ช่วงของรายการที่ยังอยู่ในก้อนบันทึกคงไว้ · ฐานใหม่เท่าร่างแล้ว = ร่างว่าง · ค่าตั้งต้นของสวิตช์ไม่เคยอยู่ในร่าง', () => {
+  const view = viewFixture();
+  const toLine = switchPeriodMode(view, EMPTY_DRAFT, 'line');
+  assert.deepEqual(rebaseDraft(view, toLine), { lines: {}, periodMode: 'line' }, 'ฐานยังเป็นทั้งใบ (เช่นโหลดใหม่หลัง 409) = โหมดยังค้าง · ค่าตั้งต้นคิดใหม่จากฐานใหม่');
+  assert.deepEqual(periodsOf(view, rebaseDraft(view, toLine)), { L1: null, L2: { ...WHOLE }, L3: { ...WHOLE }, L4: null });
+  /* ฐานใหม่เปลี่ยนช่วงของใบ (อีกหน้าต่างแก้) ระหว่างที่ยังสลับค้าง = ค่าตั้งต้นตามช่วงของใบใหม่ */
+  const moved = viewFixture({ period: { from: '2026-11-01', to: '2027-10-31' } });
+  assert.deepEqual(periodsOf(moved, rebaseDraft(moved, toLine)).L2, { from: '2026-11-01', to: '2027-10-31' });
+  const own = { from: '2026-12-01', to: '2027-11-30' };
+  const typed = patchDraftLine(toLine, 'L3', { period: own });
+  assert.deepEqual(rebaseDraft(view, typed), { lines: { L3: { period: own } }, periodMode: 'line' }, 'ช่วงที่คนพิมพ์ค้างครบ');
+  const saved = viewFixture({
+    periodMode: 'line', linePeriods: { total: 2, filled: 2 },
+    lines: view.lines.map((line) => ({ ...line, period: ['L2', 'L3'].includes(line.lineId) ? { ...WHOLE } : null })),
+  });
+  assert.equal(rebaseDraft(saved, toLine), EMPTY_DRAFT);
+  const half = viewFixture({ periodMode: 'line', period: null, lines: view.lines.map((line) => ({ ...line, period: line.lineId === 'L2' ? { ...WHOLE } : null })) });
+  assert.equal(rebaseDraft(half, toLine), EMPTY_DRAFT, 'โหมดเท่าฐานแล้ว · ไม่มีช่วงที่คนพิมพ์ = ไม่มีอะไรค้าง (L3 ว่างตามฐานใหม่)');
+  assert.deepEqual(rebaseDraft(half, typed), { lines: { L3: { period: own } } }, 'ที่คนพิมพ์และยังต่างค้างไว้ · โหมดเท่าฐานแล้วไม่ค้าง');
+  /* สลับโหมดบนใบที่รายการไม่มีร่าง: ก้อนบันทึกมี null ของทุกรายการงานบริการ แต่ร่างไม่มีคีย์ให้เก็บ — ต้องไม่พัง */
+  const noPeriod = viewFixture({ period: null });
+  assert.deepEqual(rebaseDraft(noPeriod, { ...EMPTY_DRAFT, periodMode: 'line' }), { lines: {}, periodMode: 'line' });
+  /* แยกรายรายการ → ทั้งใบ ที่ยังไม่บันทึก: โหมดคงไว้ · ช่วงของใบค้างเฉพาะที่คนพิมพ์ (ช่วงรวมคิดตอนวาด) */
+  const lineSaved = lineView();
+  assert.deepEqual(rebaseDraft(lineSaved, switchPeriodMode(lineSaved, EMPTY_DRAFT, 'whole')), { lines: {}, periodMode: 'whole' });
+  const typedWhole = { from: '2026-08-01', to: '2027-07-31' };
+  assert.deepEqual(rebaseDraft(lineSaved, { ...switchPeriodMode(lineSaved, EMPTY_DRAFT, 'whole'), period: typedWhole }),
+    { lines: {}, periodMode: 'whole', period: typedWhole });
+});
+
+test('0400 ตัวช่วยของจอ — ใช้ช่วงเดียวกันทุกรายการ · เหมือนรายการ n · ช่วงรวม/ตัวนับบนจอ · ป้ายรายการนับช่วงที่ยังขาด', () => {
+  const view = lineView();
+  const all = applyPeriodToAllLines(view, patchDraftLine(EMPTY_DRAFT, 'L3', { rounds: '12' }), WHOLE);
+  assert.deepEqual(all.lines, { L2: { period: { ...WHOLE } }, L3: { rounds: '12', period: { ...WHOLE } } }, 'ทุกรายการงานบริการ · คีย์อื่นของร่างอยู่ครบ');
+  assert.deepEqual(setupPayload(view, all).lines, [{ lineId: 'L2', period: { ...WHOLE } }, { lineId: 'L3', rounds: 12, period: { ...WHOLE } }]);
+  assert.equal(applyPeriodToAllLines(viewFixture(), EMPTY_DRAFT, WHOLE), EMPTY_DRAFT, 'โหมดทั้งใบ = ไม่ทำอะไร');
+
+  const merged = mergedLines(view, EMPTY_DRAFT, { fgById: fgById(view) });
+  assert.deepEqual(sameSourceOf(merged), { lineId: 'L2', lineNo: 2, period: { ...P } }, 'รายการงานบริการแรกที่มีช่วงใช้ได้');
+  assert.equal(sameSourceOf(mergedLines(view, patchDraftLine(EMPTY_DRAFT, 'L2', { period: { from: P.from, to: '' } }))), null, 'ครึ่งเดียวไม่ใช่ต้นทาง');
+  assert.equal(sameSourceOf(mergedLines(viewFixture(), EMPTY_DRAFT)), null, 'โหมดทั้งใบไม่มีต้นทาง');
+  assert.deepEqual(copyLinePeriod(EMPTY_DRAFT, 'L3', P).lines, { L3: { period: { ...P } } });
+
+  assert.deepEqual(localEnvelope(merged), { ...P });
+  assert.deepEqual(linePeriodCounters(merged), { total: 2, filled: 1 });
+  const both = mergedLines(view, copyLinePeriod(EMPTY_DRAFT, 'L3', { from: '2026-09-26', to: '2027-09-25' }));
+  assert.deepEqual(localEnvelope(both), { from: '2026-09-02', to: '2027-09-25' }, 'เริ่มแรกสุด → จบสุดท้าย');
+  assert.deepEqual(linePeriodCounters(both), { total: 2, filled: 2 });
+  assert.equal(localEnvelope(mergedLines(viewFixture(), EMPTY_DRAFT)), null);
+
+  const [, l2, l3] = merged;
+  assert.deepEqual(lineMissing(l2, { periodMode: 'line' }), { state: 'complete', count: 0, label: 'ตั้งครบ' });
+  assert.equal(lineMissing({ ...l2, period: null }, { periodMode: 'line' }).label, 'ยังขาด 1 ข้อ', 'ม็อก: รายการที่ยังไม่ใส่ช่วง = ยังขาด 1 ข้อ');
+  assert.equal(lineMissing({ ...l2, period: { from: P.from, to: '' } }, { periodMode: 'line' }).count, 1, 'ครึ่งเดียว = ยังขาด');
+  assert.equal(lineMissing(l3, { periodMode: 'line' }).count, 3, 'FG 02-001: ช่วง + รอบ + โซน');
+  assert.equal(lineMissing({ ...l2, period: null }, { periodMode: 'whole' }).state, 'complete', 'โหมดทั้งใบไม่นับช่วงของรายการ');
+  assert.equal(lineMissing({ ...l2, period: null }).state, 'complete');
+});
+
+test('0400 fieldErrorsView — ช่วงของรายการ (มี lineId) ขึ้นที่ช่องของรายการ · ช่วงของใบ/โหมด ขึ้นที่แถบช่วงบริการ', () => {
+  const view = fieldErrorsView([
+    { lineId: 'L2', field: 'period', message: 'ช่วงของรายการผิด' },
+    { lineId: null, field: 'period', message: 'ช่วงของใบคิดจากรายการ' },
+    { lineId: null, field: 'periodMode', message: 'โหมดผิด' },
+  ]);
+  assert.equal(view.byField.get('svc-line-L2-period'), 'ช่วงของรายการผิด');
+  assert.equal(view.byField.get(lineFieldId('L2', 'period')), 'ช่วงของรายการผิด');
+  assert.equal(view.byField.get(PERIOD_FIELD_ID), 'ช่วงของใบคิดจากรายการ · โหมดผิด');
+  assert.deepEqual(view.general, []);
+  assert.equal(serviceSetupFieldId({ key: 'line_period_missing', field: 'period', lineId: 'L2' }), lineFieldId('L2', 'period'));
+  assert.equal(serviceSetupFieldId({ key: 'period_missing', field: 'period' }), PERIOD_FIELD_ID);
+});
+
+test('0400 การ์ดรางใบเดิม — แถว "ช่วงบริการ" ของใบแยกรายรายการ = ม็อก (ป้าย / x/y รายการ / รายการ n ยังไม่ใส่ · ช่วงรวม …) · เริ่มตั้งแล้วเมื่อสลับโหมด', () => {
+  const periods = [['2026-09-02', '2027-09-01'], ['2026-09-22', '2027-09-21'], null, ['2026-09-26', '2027-09-25'], ['2026-09-11', '2027-09-10']];
+  const railView = (missing = [3]) => viewFixture({
+    flow: 'backfill', periodMode: 'line', period: null,
+    lines: periods.map((p, i) => ({
+      lineId: `L${i + 1}`, lineNo: i + 1, role: 'package', roleSource: 'stored', kind: 'package', serviceProductId: 'P1', serviceFgCode: 'FG-015-02-001-0908',
+      rounds: 12, period: p && !missing.includes(i + 1) ? { from: p[0], to: p[1] } : null, fgCode: null, productId: null,
+    })),
+    linePeriods: { total: 5, filled: 5 - missing.length },
+    totals: { packageLines: 5, unsetLines: 0 },
+    issues: missing.map((n) => ({ key: 'line_period_missing', tab: 'overview', field: 'period', lineId: `L${n}`, lineNo: n })),
+  });
+  const row = (view) => backfillRailChecks(view).find((item) => item.key === 'period');
+  assert.deepEqual(row(railView()), {
+    key: 'period', label: 'ช่วงบริการ · แยกรายรายการ', value: '4/5 รายการ',
+    sub: 'รายการ 3 ยังไม่ใส่ · ช่วงรวม 02/09/2026–25/09/2027', ok: false,
+  });
+  assert.deepEqual([row(railView([3, 5])).value, row(railView([3, 5])).sub],
+    ['3/5 รายการ', 'รายการ 3 ยังไม่ใส่ · อีก 1 รายการ · ช่วงรวม 02/09/2026–25/09/2027']);
+  assert.deepEqual(row(railView([])), {
+    key: 'period', label: 'ช่วงบริการ · แยกรายรายการ', value: '5/5 รายการ', sub: 'ช่วงรวม 02/09/2026–25/09/2027', ok: true,
+  });
+  assert.equal(row({ ...railView([]), issues: [{ key: 'period_missing', tab: 'overview' }] }).ok, false, 'ช่วงของใบว่างทั้งที่รายการครบ (ด่านกันพลาด) = ยังไม่ผ่าน');
+  /* 🐞 ตรวจทาน ui-rail-period-row-red-no-reason: รายการงานบริการใส่ช่วงครบ แต่ยังมีรายการที่ไม่ตอบ ‘งานบริการ?’ = แถวยังไม่ผ่าน
+     (รายการนั้นอาจเป็นงานบริการ) และ **บรรทัดรองต้องบอกเหตุ** — เดิม "5/5 รายการ · ช่วงรวม …" แดงหลังกดยื่นโดยไม่มีคำอธิบาย */
+  const withUnset = { ...railView([]), totals: { packageLines: 5, unsetLines: 1 }, issues: [{ key: 'kind_missing', tab: 'overview', lineId: 'L9', lineNo: 6 }] };
+  assert.deepEqual(row(withUnset), {
+    key: 'period', label: 'ช่วงบริการ · แยกรายรายการ', value: '5/5 รายการ',
+    sub: `${SERVICE_BACKFILL_RAIL_TEXT.periodWaitKind('1')} · ช่วงรวม 02/09/2026–25/09/2027`, ok: false,
+  });
+  assert.match(row(withUnset).sub, /^รอตอบ ‘งานบริการ\?’ 1 รายการ/);
+  /* มีข้อช่วงของรายการอยู่แล้ว = ข้อนั้นบอกเหตุเอง (ไม่ซ้อนคำรอตอบ) */
+  const unsetAndMissing = { ...railView([3]), totals: { packageLines: 5, unsetLines: 1 } };
+  assert.equal(row(unsetAndMissing).sub, 'รายการ 3 ยังไม่ใส่ · ช่วงรวม 02/09/2026–25/09/2027');
+  /* ยังไม่มีรายการงานบริการที่บันทึกแล้ว = คำเดิมของแถวทั้งใบ */
+  const waiting = viewFixture({
+    flow: 'backfill', periodMode: 'line', period: null, linePeriods: { total: 0, filled: 0 }, totals: { packageLines: 0, unsetLines: 2 }, issues: [],
+  });
+  assert.deepEqual([row(waiting).label, row(waiting).value, row(waiting).sub, row(waiting).ok],
+    ['ช่วงบริการ · แยกรายรายการ', 'ยังไม่ใส่', SERVICE_BACKFILL_RAIL_TEXT.periodWaitKind('2'), false]);
+  /* โหมดทั้งใบ: แถวเดิมทุกตัวอักษร */
+  assert.deepEqual(row(viewFixture({ flow: 'backfill' })), { key: 'period', label: 'ช่วงบริการ', value: '01/10/2026–30/09/2027', sub: '12 เดือน', ok: true });
+  assert.deepEqual(backfillRailChecks(railView()).map((item) => item.key), ['lines', 'zones', 'period', 'installments', 'billing']);
+
+  const blank = { flow: 'backfill', state: { setupState: null }, period: null, allocations: [], lines: viewFixture().lines.map((line) => ({ ...line, kind: null, serviceProductId: null })) };
+  assert.equal(backfillStateOfView(blank), 'not_started');
+  assert.equal(backfillStateOfView({ ...blank, periodMode: 'line' }), 'editing', 'สลับเป็นแยกรายรายการแล้วบันทึก = เริ่มตั้งแล้ว (ช่วงของใบว่างจนกว่ารายการจะครบ)');
+});
+
+test('0400 จอ: สวิตช์บนแถบช่วงบริการ · ช่วงของรายการใต้คำตอบในคอลัมน์ ① · ชิป/คำเตือนรอบจากช่วงของรายการ · คำจาก SERVICE_PERIOD_TEXT', () => {
+  const strip = code(`${FOLDER}/ServicePeriodField.js`);
+  const block = code(`${FOLDER}/ServiceLinePeriod.js`);
+  const modal = code(`${FOLDER}/ServicePeriodApplyAllModal.js`);
+  const grid = code(`${FOLDER}/ServiceSetupGrid.js`);
+  const lines = code(`${FOLDER}/SalesOrderServiceLines.js`);
+
+  /* แถบ: สวิตช์สองทางจากแคตตาล็อก · ลูกศรไม่สลับโหมดเอง · โหมดอ่านไม่มีสวิตช์ */
+  assert.deepEqual(SERVICE_PERIOD_TEXT.modes.map((option) => [option.value, option.label]), [['whole', 'ทั้งใบช่วงเดียว'], ['line', 'แยกรายรายการ']]);
+  assert.match(strip, /const MODE_OPTIONS = SERVICE_PERIOD_TEXT\.modes\.map\(/);
+  assert.match(strip, /<Segmented[\s\S]*?options=\{MODE_OPTIONS\}[\s\S]*?ariaLabel=\{SERVICE_PERIOD_TEXT\.modeAria\}[\s\S]*?selection="radio"\s*activationMode="manual"\s*\/>/);
+  /* ตรวจทาน ui-switch-not-radiogroup: สวิตช์ต้องเป็น radiogroup / radio + aria-checked ตามม็อก (เดิม role="group" + aria-pressed) —
+     โหมดนี้เป็นทางเลือกของ Segmented: ไม่ส่ง `selection` = DOM เดิม (แถบอื่นทั้งระบบไม่เปลี่ยน) */
+  /* ตรวจทาน ui-date-inputs-no-autocomplete-off: ช่องวันของแถบ · ของรายการ · ของโมดัล "ใช้ช่วงเดียวกันทุกรายการ" ล้วนเป็น DateInput
+     (ไม่มี prop autoComplete ให้ส่ง) ⇒ กฎ "input ทุกช่อง autoComplete="off"" ต้องอยู่ที่ตัว DateInput เอง */
+  const dateInput = code('components/ui/DateInput.js');
+  assert.match(dateInput, /<input\s+id=\{id\}\s+name=\{name\}\s+type="text"\s+inputMode="numeric"\s+autoComplete="off"/);
+  assert.equal((dateInput.match(/<input\b/g) || []).length, 1, 'DateInput มี input ตัวเดียว');
+  for (const file of ['ServicePeriodField.js', 'ServiceLinePeriod.js', 'ServicePeriodApplyAllModal.js']) {
+    const src = code(`${FOLDER}/${file}`);
+    assert.match(src, /<DateInput\b/, `${file} ใช้ DateInput`);
+    assert.doesNotMatch(src, /<input\b/, `${file}: ไม่มี input ดิบ (ช่องวันต้องผ่าน DateInput)`);
+  }
+  /* ช่องของทั้งใบบนจอ = `wholePeriodOfDraft` (ร่างถ้าพิมพ์ · ใบแยกรายรายการที่ร่างสลับมา = ช่วงรวมของรายการ) — ไม่อ่าน `draft.period` ตรง ๆ */
+  const card = code(`${FOLDER}/SalesOrderServiceLines.js`);
+  assert.match(card, /const period = useMemo\(\(\) => wholePeriodOfDraft\(view, draft\), \[view, draft\]\);/);
+  assert.doesNotMatch(card, /hasOwnProperty\.call\(draft, "period"\)/);
+  const segmented = code('components/ui/Segmented.js');
+  assert.match(segmented, /selection = "toggle",/);
+  assert.match(segmented, /const radio = selection === "radio";/);
+  assert.match(segmented, /role=\{radio \? "radiogroup" : "group"\}/);
+  assert.match(segmented, /role=\{radio \? "radio" : undefined\}\s*aria-checked=\{radio \? active : undefined\}\s*aria-pressed=\{radio \? undefined : active\}/);
+  assert.match(segmented, /tabIndex=\{active \|\| \(!hasSelectedOption && index === firstEnabledIndex\) \? 0 : -1\}/, 'roving tabindex เดิม');
+  assert.match(segmented, /if \(activationMode === "automatic"\) onChange\?\.\(items\[nextIndex\]\.value\);/, 'manual = ลูกศรย้ายโฟกัสอย่างเดียว');
+  const readOnly = strip.slice(strip.indexOf('if (!editable) {'), strip.indexOf('const chipValue'));
+  assert.doesNotMatch(readOnly, /Segmented|DateInput/, 'ไม่มีสิทธิ์/ใบล็อก = ไม่มีสวิตช์ ไม่มีช่องกรอก');
+  assert.match(readOnly, /SERVICE_PERIOD_TEXT\.readModeLine : SERVICE_PERIOD_TEXT\.readModeWhole/);
+  /* แยกรายรายการ: กล่องช่วงรวมอ่านอย่างเดียวคือที่หมายของข้อช่วงของใบ (svc-period · tabIndex -1) */
+  assert.match(strip, /id=\{PERIOD_FIELD_ID\}\s+tabIndex=\{-1\}\s+className=\{styles\.periodEnvelope\}\s+role="group"\s+aria-label=\{SERVICE_PERIOD_TEXT\.envelopeAria\}/);
+  assert.match(strip, /\{total \? \(\s*<Button[\s\S]{0,200}?onClick=\{\(\) => onApplyAll\?\.\(\)\}>\s*\{SERVICE_PERIOD_TEXT\.sameForAll\}/, 'ไม่มีรายการงานบริการ = ไม่มีปุ่มใช้ช่วงเดียวกัน');
+  assert.match(strip, /\{!byLine && pendingClear > 0 \? \(\s*<StatusNotice tone="warning">\{SERVICE_PERIOD_TEXT\.clearNotice\(pendingClear\)\}<\/StatusNotice>/);
+  assert.match(strip, /<DateInput\s+id=\{PERIOD_FIELD_ID\}/, 'โหมดทั้งใบ: id อยู่ที่ช่องวันเริ่มบริการเหมือนเดิม');
+
+  /* การ์ด: โหมดบนจอจากร่าง · แถบโหมดแยกรายรายการวาดช่วงรวมจากรายการบนจอ (ไม่ใช่ view.period) · สลับ/ใช้ทุกรายการล้างแดงของช่องที่เติม */
+  assert.match(lines, /const periodMode = periodModeOfDraft\(view, draft\);/);
+  assert.match(lines, /const ctx = useMemo\(\(\) => localSetupCtx\(merged, zonesById, \{ periodMode \}\), \[merged, zonesById, periodMode\]\);/);
+  assert.match(lines, /const envelope = useMemo\(\(\) => localEnvelope\(merged\), \[merged\]\);/);
+  assert.match(lines, /period=\{byLine \? envelope : period\}/);
+  assert.match(lines, /const pendingClear = view\?\.periodMode === SERVICE_PERIOD_MODE_LINE && !byLine \? Number\(view\?\.linePeriods\?\.filled \|\| 0\) : 0;/);
+  assert.match(lines, /setDraft\(\(current\) => switchPeriodMode\(view, current, next\)\);\s*touch\(\[PERIOD_FIELD_ID, \.\.\.periodFieldIds\]\);/);
+  assert.match(lines, /setDraft\(\(current\) => applyPeriodToAllLines\(view, current, next\)\);\s*touch\(periodFieldIds\);/);
+  assert.match(lines, /<ServiceSetupGrid\s+lines=\{merged\}\s+editable=\{editable\}\s+period=\{period\}\s+periodMode=\{periodMode\}/);
+  assert.match(lines, /\{editable && byLine && applyAllOpen \? \(\s*<ServicePeriodApplyAllModal/);
+
+  /* ตาราง: บล็อกช่วงอยู่ใต้คำตอบทั้งสามแบบ (FG · อ่าน · แก้) · ก้อนโซนได้ช่วงของรายการ */
+  const kind = grid.slice(grid.indexOf('function KindCell('), grid.indexOf('function FgCell('));
+  assert.match(kind, /const periodBlock = <ServiceLinePeriod line=\{line\} editable=\{editable\} \{\.\.\.period\} \/>;/);
+  assert.equal(kind.split('{periodBlock}').length - 1, 3, 'ใต้คำตอบของบรรทัด FG · โหมดอ่าน · โหมดแก้');
+  assert.ok(kind.indexOf('<AnswerButtons') < kind.lastIndexOf('{periodBlock}'), 'บล็อกช่วงอยู่ใต้ปุ่มคำตอบ (ตอนพับเป็นการ์ดจึงอยู่ก่อน ②)');
+  assert.match(grid, /const linePeriod = periodMode === "line" \? line\.period : period;/);
+  assert.match(grid, /<ZoneBlock\s+line=\{line\}\s+editable=\{editable\}\s+period=\{linePeriod\}\s+periodWait=\{byLine && !validServicePeriod\(linePeriod\)\}/);
+  assert.match(grid, /onChange: \(next\) => onLineChange\?\.\(\{ period: next \}, \[periodField\]\),/);
+  assert.match(grid, /error: highlightOf\(periodField\),/, 'แดงของช่วงของรายการมาจาก highlightOf เท่านั้น (กฎ 3)');
+  assert.match(grid, /<LineStatus missing=\{lineMissing\(line, \{ periodMode \}\)\} pressed=\{pressed\} \/>/);
+  assert.match(grid, /sameSourceOf\(lines\)/, 'ต้นทางของ "เหมือนรายการ n" คิดครั้งเดียวทั้งตาราง');
+  assert.match(grid, /\) : periodWait \? \(\s*<span className=\{styles\.chips\}>\s*<span className=\{styles\.chipWait\} title=\{SERVICE_PERIOD_TEXT\.roundsChipWaitTitle\}>\{SERVICE_PERIOD_TEXT\.roundsChipWait\}<\/span>/);
+
+  /* บล็อกช่วงของรายการ: id ของช่อง "เริ่ม" · ไม่ใช่งานบริการ = บรรทัดเดียว · ยังไม่ตอบ = ไม่วาด · ช่องกรอกเฉพาะโหมดแก้ */
+  assert.match(block, /id=\{lineFieldId\(line\.lineId, "period"\)\}/);
+  assert.match(block, /if \(line\.role === SERVICE_KIND_NOT_SERVICE\) return <span className=\{styles\.linePeriodNone\}>\{SERVICE_PERIOD_TEXT\.none\}<\/span>;/);
+  assert.match(block, /if \(line\.role !== SERVICE_KIND_PACKAGE\) return null;/);
+  assert.ok(block.indexOf('if (!editable) {') < block.indexOf('<DateInput'), 'โหมดอ่านออกก่อนถึงช่องกรอก');
+  assert.equal((block.match(/<DateInput\b/g) || []).length, 2);
+  assert.equal((block.match(/invalid=\{!!error\}/g) || []).length, 2);
+  assert.match(block, /sameSource\.lineId !== line\.lineId/);
+  assert.match(block, /SERVICE_PERIOD_TEXT\.sameAs\(source\.lineNo\)/);
+  assert.match(block, /label: SERVICE_PERIOD_TEXT\.monthChipShort\(months\), disabled: !from/, 'ชิป 12 ด. / 24 ด. กดได้เมื่อมีวันเริ่ม');
+  assert.match(block, /data-wait=\{readout \? undefined : ""\}/);
+  /* โมดัล: ยืนยันกดได้เสมอ บอกเหตุตอนกด (แดงหลังกด) */
+  assert.match(modal, /setError\(SERVICE_SETUP_SQL_MESSAGES\.service_setup_line_period_invalid\.message\);\s*return;/);
+  assert.match(modal, /onApply\?\.\(valid\);/);
+  assert.doesNotMatch(modal, /disabled=\{/, 'ปุ่มโชว์เสมอ บอกเหตุตอนกด');
+
+  /* คำของม็อกมาจากแคตตาล็อกที่เดียว — สามไฟล์นี้ไม่พิมพ์เอง */
+  const mockStrings = Object.values(SERVICE_PERIOD_TEXT).filter((value) => typeof value === 'string' && value.length >= 6);
+  assert.ok(mockStrings.length >= 14);
+  for (const [name, source] of [['ServicePeriodField.js', strip], ['ServiceLinePeriod.js', block], ['ServicePeriodApplyAllModal.js', modal]]) {
+    for (const value of [...mockStrings, 'ทั้งใบช่วงเดียว', 'แยกรายรายการ', 'เหมือนรายการ', 'ใส่ช่วงแล้ว']) {
+      assert.equal(source.includes(value), false, `${name}: "${value}" ต้องอ่านจาก SERVICE_PERIOD_TEXT`);
+    }
+    assert.match(source, /SERVICE_PERIOD_TEXT\./, name);
+    assert.doesNotMatch(source, /สาขาแรกเริ่ม/, `${name}: คำแนะนำเก่า (ทางอ้อมที่สวิตช์นี้มาแทน)`);
+  }
+  assert.match(strip, /\{backfill && !byLine \? <p className=\{styles\.hint\}>\{SERVICE_PERIOD_TEXT\.backfillHint\}<\/p> : null\}/);
+});
+
+test('0400 CSS: คอลัมน์ ① 156px · บล็อกช่วงไม่แดงก่อนกด · ตอนพับเป็นการ์ดไม่ยืดเต็มการ์ดและไม่ล้นขอบ · ลำดับ ①→⑥ เดิม', () => {
+  const gridCss = read(`${FOLDER}/ServiceSetupGrid.module.css`);
+  const fieldsCss = read(`${FOLDER}/ServiceSetupFields.module.css`);
+  assert.match(gridCss, /--c-kind: 156px;/);
+  for (const name of ['idx: 30px', 'item: 130px', 'fg: 152px', 'rounds: 124px', 'packs: 88px', 'total: 84px']) {
+    assert.ok(gridCss.includes(`--c-${name};`), `คอลัมน์อื่นไม่ขยับ (${name}) — ส่วนที่เพิ่มเอาจากคอลัมน์ ③`);
+  }
+  assert.match(gridCss, /\.chipWait \{[^}]*border: 1px dashed var\(--border-strong\);[^}]*color: var\(--text-3\);/);
+  assert.match(gridCss, /\.zoneRow \{\s*display: contents;\s*\}/);
+  const stacked = gridCss.slice(gridCss.indexOf('@container (max-width: 900px)'));
+  assert.match(stacked, /\.zoneCell,\s*\.zoneFoot \{ order: 1; \}/);
+  assert.match(stacked, /\.roundsCell \{ order: 2; \}/);
+  assert.match(stacked, /\.packsCell \{ order: 3; \}/);
+  assert.match(stacked, /\.line \{\s*display: flex;\s*flex-direction: column;\s*align-items: stretch;/, 'ก้อนโซนไม่กว้างตามเนื้อจนล้นขอบการ์ดบนมือถือ');
+  assert.match(gridCss, /\.packsCell \.num input \{\s*width: 48px;/, 'ช่อง ⑤ + หน่วย อยู่ในคอลัมน์ 88px');
+  /* บล็อกช่วง: ช่องวันกินที่เหลือของคอลัมน์ · คำชวน "ยังไม่ใส่ช่วง" ไม่แดง · ตอนพับไม่ยืดเต็มการ์ด */
+  assert.match(fieldsCss, /\.linePeriodDate \{[^}]*grid-template-columns: 26px minmax\(0, 1fr\);/);
+  assert.match(fieldsCss, /\.linePeriodDate :global\(\.date-input-wrap\) \{\s*width: 100%;\s*min-width: 0;\s*\}/);
+  assert.match(fieldsCss, /\.linePeriodReadout\[data-wait\] \{\s*color: var\(--accent-ink\);\s*\}/);
+  assert.match(fieldsCss, /@container \(max-width: 900px\) \{\s*\.linePeriod \{\s*max-width: 220px;\s*\}\s*\}/);
+  assert.match(fieldsCss, /\.linePeriodChips :global\(\.choice-chip\) \{\s*min-height: 24px;/, 'เป้ากดไม่ต่ำกว่า 24px');
+  assert.match(fieldsCss, /\.linePeriodSame \{[^}]*min-height: 24px;/);
+  const periodRules = fieldsCss.slice(fieldsCss.indexOf('.periodTop {'));
+  const reds = [...periodRules.matchAll(/([^{}]+)\{[^}]*var\(--red\)[^}]*\}/g)].map((match) => match[1].trim());
+  assert.deepEqual(reds, ['.periodEnvelope[data-invalid]'], 'สีแดงของส่วนใหม่มีที่เดียว: กล่องช่วงรวมหลังกด (data-invalid จาก error)');
 });

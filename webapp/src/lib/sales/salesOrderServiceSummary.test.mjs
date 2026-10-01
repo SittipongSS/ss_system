@@ -407,3 +407,43 @@ test('🔴 C8: termLabels ของแท็บงานบริการ = ter
   assert.deepEqual(out.allocation.sites[0].termLabels['SZT-1'], { zone: 'Office', detail: 'รายการ 1 · FG-364-02-001-1061' });
   assert.deepEqual(intake.termDetails.map((t) => t.id), out.allocation.sites[0].terms.map((t) => t.id), 'ลำดับเดียวกัน');
 });
+
+/* ── ใบแยกรายรายการ (mig 0400): เดือนของรอบขาย = ช่วงของรายการที่รอบขายนั้นมาจาก ─────────────────────────────── */
+test('0400: ใบแยกรายรายการ — periodMonths ของแต่ละรอบขายคิดจากช่วงของรายการเอง (ไม่ใช่ช่วงรวมของใบ) · ตรงกับ termDetails ของคิว TS', async () => {
+  const { planRowFacts } = await import('../service/intakePlanFacts.js');
+  const { withLinePeriods } = await import('../service/terms.js');
+  /* ช่วงรวมของใบ 22/10/2026–21/10/2027 (12 เดือน) · รายการ a = 12 เดือน · รายการ b = 6 เดือน */
+  const order = { ...soStamped, servicePeriodMode: 'line' };
+  const lines = [
+    { ...soLines[0], servicePeriodFrom: '2026-10-22', servicePeriodTo: '2027-10-21' },
+    { ...soLines[1], servicePeriodFrom: '2026-11-01', servicePeriodTo: '2027-04-30' },
+  ];
+  const out = soSummary({ order, lines });
+  const months = Object.fromEntries(out.allocation.sites[0].terms.map((t) => [t.id, t.periodMonths]));
+  assert.deepEqual(months, { 'SZT-1': 12, 'SZT-2': 6 });
+
+  const linesById = new Map(lines.map((l) => [l.id, l]));
+  const attached = withLinePeriods(soTerms, new Map([[order.id, order]]), linesById);
+  const intake = planRowFacts(
+    { stamped: true, zones: [...officeZones.values()], terms: attached, roundsSold: 1, site: asanSites.get('ST1'), orderNumber: order.orderNumber, salesOrderId: order.id },
+    { order, linesById, todayIso: '2026-09-29' },
+  ).termDetails;
+  const byId = (a, b) => a.id.localeCompare(b.id);
+  assert.deepEqual([...out.allocation.sites[0].terms].sort(byId), [...intake].sort(byId), 'สองจอเสนอมาตรฐาน มล. จากเดือนเดียวกัน');
+
+  /* รายการที่ยังไม่มีช่วง (ไม่ควรเกิดบนใบประทับ — ด่านของ 0400) = null ไม่ใช่เดือนของช่วงรวม */
+  const gap = soSummary({ order, lines: [lines[0], { ...lines[1], servicePeriodFrom: null, servicePeriodTo: null }] });
+  assert.deepEqual(Object.fromEntries(gap.allocation.sites[0].terms.map((t) => [t.id, t.periodMonths])), { 'SZT-1': 12, 'SZT-2': null });
+  /* ใบโหมดทั้งใบ: เดือนของช่วงของใบทุกรายการเหมือนเดิม แม้บรรทัดพกคอลัมน์ช่วง (ว่าง/ค้าง) · ใบ line ที่ยังไม่ประทับ = null */
+  assert.deepEqual(soSummary({ order: { ...soStamped, servicePeriodMode: 'whole' }, lines }).allocation.sites[0].terms.map((t) => t.periodMonths), [12, 12]);
+  assert.deepEqual(soSummary({ lines }).allocation.sites[0].terms, soSummary().allocation.sites[0].terms);
+  assert.deepEqual(soSummary({ order: { ...order, serviceTermsOpenedAt: null }, lines }).allocation.sites[0].terms.map((t) => t.periodMonths), [null, null]);
+});
+
+test('0400: route สรุปงานบริการเลือกช่วงของรายการมาด้วย ("servicePeriodFrom"/"servicePeriodTo") — ไม่มี = เดือนของรอบขายเป็น null เงียบ ๆ', () => {
+  const route = readFileSync(new URL('../../app/api/sales-planning/sales-orders/[id]/service/route.js', import.meta.url), 'utf8');
+  const select = route.match(/from\('sales_order_lines'\)\s*\.select\('([^']*)'\)/)?.[1] || '';
+  for (const col of ['"servicePeriodFrom"', '"servicePeriodTo"']) assert.ok(select.includes(col), col);
+  assert.doesNotMatch(select, /unitPrice|lineTotal|discount/);
+  assert.match(route, /loadScoped\(supabase, 'sales_orders', id, user, 'view'\)/, 'โหมดของใบมากับแถวใบ (อ่าน *) — ไม่เพิ่มคำสั่งอ่านใบ');
+});

@@ -6,7 +6,8 @@
 //      2) ชนิดของบรรทัด: ค่า '02-001' ของฐาน = SERVICE_ROUND_CATEGORY · ตารางอินพุต → ผลที่ PGlite ยืนยันแล้ว
 //         (ฮาร์เนสเคส 9a) ต้องได้ผลเดียวกันจาก serviceLineRole
 //      3) รหัสทุกตัวที่ sales_order_service_setup_errors ปล่อย มีข้อความไทยใน SERVICE_SETUP_ISSUE_TEXT
-//      4) RAISE ทุกรหัสในฟังก์ชันของ 0392 + 0396 มีข้อความไทย/สถานะใน SERVICE_SETUP_SQL_MESSAGES
+//         (ตัวของ 0392 + รหัสที่แพตช์ L1 ของ 0400 เติมเข้าไปในตัวที่รันอยู่: line_period_missing)
+//      4) RAISE ทุกรหัสในฟังก์ชันของ 0392 + 0396 + 0400 มีข้อความไทย/สถานะใน SERVICE_SETUP_SQL_MESSAGES
 //         (ยกเว้น service_setup_copy_line_mismatch ซึ่งยิงจากทางออก Rev. ⇒ อยู่ใน documentWorkflowErrors)
 //      5) รหัสบล็อกทุกตัวที่ sales_order_service_reopen_blockers (0396) ปล่อย มีข้อความไทยใน SERVICE_REOPEN_BLOCKER_TEXT
 //         และแคตตาล็อกไม่มีรหัสที่ฐานไม่เคยปล่อย (ยกเว้นรหัสฝั่ง JS: money_fn · unread)
@@ -23,6 +24,10 @@ const stripComments = (sql) => sql.replace(/--[^\n]*/g, '');
 const CODE = stripComments(readFileSync(new URL('0392_so_service_setup.sql', MIGRATIONS), 'utf8'));
 /* เปิดแก้งานบริการหลังอนุมัติ (mig 0396) — ฟังก์ชันใหม่สองตัว ไม่ปะของ 0392 */
 const REOPEN_CODE = stripComments(readFileSync(new URL('0396_so_service_reopen.sql', MIGRATIONS), 'utf8'));
+/* ช่วงบริการรายรายการ (mig 0400) — เขียนทับ save / copy / guard ของ 0392 ทั้งตัว (นิยามที่รันอยู่ = ตัวของ 0400) + ปะตัวตรวจสองจุด (L1 · L2)
+   ตัวดิบเก็บไว้ด้วย: ข้อความที่ปะ (replacement) มีบรรทัดป้ายเป็นคอมเมนต์ */
+const PERIOD_RAW = readFileSync(new URL('0400_so_service_line_period.sql', MIGRATIONS), 'utf8');
+const PERIOD_CODE = stripComments(PERIOD_RAW);
 
 function fnBodyIn(code, label, name) {
   const from = code.indexOf(`CREATE OR REPLACE FUNCTION public.${name}(`);
@@ -33,7 +38,10 @@ const fnBody = (name) => fnBodyIn(CODE, '0392', name);
 /* ตัวฟังก์ชันทั้งหมดของไฟล์ (ไม่รวมบล็อก DO ของด่านก่อนรัน/ปะ/ตรวจท้าย — รหัส mig_039x_* เป็นของคนรัน migration) */
 const functionBodiesOf = (code, label) => [...code.matchAll(/CREATE OR REPLACE FUNCTION public\.([a-z0-9_]+)\(/g)]
   .map((m) => fnBodyIn(code, label, m[1])).join('\n');
-const allFunctionBodies = () => `${functionBodiesOf(CODE, '0392')}\n${functionBodiesOf(REOPEN_CODE, '0396')}`;
+const allFunctionBodies = () => `${functionBodiesOf(CODE, '0392')}\n${functionBodiesOf(REOPEN_CODE, '0396')}\n${functionBodiesOf(PERIOD_CODE, '0400')}`;
+/* ข้อความที่ 0400 ปะเข้าตัวตรวจรายการที่ยังขาด — แถว VALUES ของ DO $patch$: [ป้าย, ข้อความใหม่] */
+const periodPatchRows = () => [...PERIOD_RAW.matchAll(/\('sales_order_service_setup_errors',\s*\$re\$[\s\S]*?\$re\$,\s*\$rp\$([\s\S]*?)\$rp\$,\s*'([^']+)'\)/g)]
+  .map((m) => ({ marker: m[2], replacement: m[1] }));
 
 async function serviceSetupModule() {
   try {
@@ -66,6 +74,10 @@ test("ชนิดของบรรทัด: หมวดแพ็คเกจ
   for (const name of ['sales_order_service_setup_errors', 'save_sales_order_service_setup']) {
     for (const m of fnBody(name).matchAll(/fg_category_of\([^)]*\) = '([^']+)'/g)) assert.equal(m[1], SERVICE_ROUND_CATEGORY, name);
   }
+  /* ตัวบันทึกที่รันอยู่ = ตัวของ 0400 (เขียนทับทั้งตัว) — หมวดของแพ็คเกจต้องยังเป็นค่าเดียวกัน และต้องยังตรวจอยู่ */
+  const saveNow = [...fnBodyIn(PERIOD_CODE, '0400', 'save_sales_order_service_setup').matchAll(/fg_category_of\([^)]*\) = '([^']+)'/g)];
+  assert.equal(saveNow.length, 1, '0400: ตัวบันทึกตรวจหมวดของแพ็คเกจที่เลือกหนึ่งจุด (เท่า 0392)');
+  for (const m of saveNow) assert.equal(m[1], SERVICE_ROUND_CATEGORY, '0400 save_sales_order_service_setup');
 });
 
 /* ตารางเดียวกับฮาร์เนส PGlite เคส 9a — ผลฝั่งฐานยืนยันบน PGlite แล้ว (null = ยังไม่เลือก ↔ 'unset' ของ JS) */
@@ -109,7 +121,20 @@ test('🔴 ทุกรหัสที่ sales_order_service_setup_errors ป�
   }
 });
 
-test('🔴 RAISE ทุกรหัสในฟังก์ชันของ 0392 + 0396 มีข้อความ/สถานะใน SERVICE_SETUP_SQL_MESSAGES (หรือ documentWorkflowErrors)', async () => {
+test('🔴 0400: รหัสที่แพตช์ L1 เติมเข้าตัวตรวจ (line_period_missing) มีข้อความไทยใน SERVICE_SETUP_ISSUE_TEXT · L2 ไม่เพิ่มรหัสใหม่', async () => {
+  const { SERVICE_SETUP_ISSUE_TEXT } = await serviceSetupModule();
+  const rows = periodPatchRows();
+  assert.deepEqual(rows.map((r) => r.marker), ['0400/L1', '0400/L2'], 'ปะตัวตรวจสองแถว: L1 แล้ว L2');
+  const [l1, l2] = rows;
+  const codes = [...new Set([...l1.replacement.matchAll(/'([a-z_]+):'/g)].map((m) => m[1]))];
+  assert.deepEqual(codes, ['line_period_missing'], 'L1 ปล่อยรหัสเดียว');
+  for (const code of codes) assert.equal(typeof SERVICE_SETUP_ISSUE_TEXT[code], 'function', `SERVICE_SETUP_ISSUE_TEXT.${code}`);
+  /* L2 แค่เปลี่ยนเงื่อนไขของ period_missing (อ่านรหัสของ L1 เป็นข้อความ ไม่ได้ปล่อย) — ไม่มี v_errors := … ใหม่ */
+  assert.doesNotMatch(l2.replacement, /v_errors\s*:=/);
+  assert.ok(l2.replacement.includes(`position('line_period_missing:' in array_to_string(v_errors, ',')) = 0`));
+});
+
+test('🔴 RAISE ทุกรหัสในฟังก์ชันของ 0392 + 0396 + 0400 มีข้อความ/สถานะใน SERVICE_SETUP_SQL_MESSAGES (หรือ documentWorkflowErrors)', async () => {
   const { SERVICE_SETUP_SQL_MESSAGES } = await serviceSetupModule();
   const codes = new Set([...allFunctionBodies().matchAll(/RAISE EXCEPTION '([a-z_]+)'/g)].map((m) => m[1]));
   assert.ok(codes.size >= 20, `เจอแค่ ${codes.size} รหัส — ตัวไล่น่าจะพัง`);
@@ -126,7 +151,24 @@ test('🔴 RAISE ทุกรหัสในฟังก์ชันของ 03
   }
   // รหัสที่ JS ถือไว้แต่ฐานไม่เคยยิง = ข้อความที่ไม่มีทางเห็น (ไม่ผิด แต่บอกว่าสองบ้านเลื่อนกัน)
   const ghost = Object.keys(SERVICE_SETUP_SQL_MESSAGES).filter((code) => !codes.has(code));
-  assert.deepEqual(ghost, [], 'SERVICE_SETUP_SQL_MESSAGES มีรหัสที่ 0392/0396 ไม่ได้ยิง');
+  assert.deepEqual(ghost, [], 'SERVICE_SETUP_SQL_MESSAGES มีรหัสที่ 0392/0396/0400 ไม่ได้ยิง');
+  /* 0400 ยิงรหัสใหม่สี่ตัวจากตัวบันทึก — สถานะ HTTP ตามสัญญา (แผน IMPL_PLAN_PERIOD §1 D-P5): โหมดผิดรูป 400 · ส่งช่วงของใบมาขณะ
+     โหมดแยกรายรายการ 409 (จอค้างรุ่นเก่า — โหลดใหม่) · ส่งช่วงของรายการมาขณะโหมดทั้งใบ 400 · ช่วงของรายการผิดรูป 400 */
+  const periodCodes = new Set([...functionBodiesOf(PERIOD_CODE, '0400').matchAll(/RAISE EXCEPTION '([a-z_]+)'/g)].map((m) => m[1]));
+  const NEW_PERIOD_CODES = { service_setup_period_mode_invalid: 400, service_setup_period_derived: 409,
+    service_setup_line_period_mode: 400, service_setup_line_period_invalid: 400 };
+  for (const [code, status] of Object.entries(NEW_PERIOD_CODES)) {
+    assert.ok(periodCodes.has(code), `0400 ต้องยิง ${code}`);
+    assert.ok(!functionBodiesOf(CODE, '0392').includes(`'${code}'`), `${code} เป็นรหัสใหม่ของ 0400`);
+    assert.equal(SERVICE_SETUP_SQL_MESSAGES[code].status, status, code);
+  }
+  /* ผู้แปลหาด้วย message.includes(code) ⇒ รหัสใหม่ต้องไม่เป็นสตริงย่อยของรหัสอื่น และรหัสอื่นต้องไม่เป็นสตริงย่อยของรหัสใหม่ */
+  for (const code of Object.keys(NEW_PERIOD_CODES)) {
+    for (const other of codes) {
+      if (other === code) continue;
+      assert.ok(!other.includes(code) && !code.includes(other), `${code} ↔ ${other}: เป็นสตริงย่อยของกัน`);
+    }
+  }
   // 0396 ยิงรหัสใหม่สามตัว (สถานะ · บล็อก · ระบบยุ่ง) — สถานะ HTTP ตามสัญญา §3.8 ของแผน
   const reopenCodes = new Set([...functionBodiesOf(REOPEN_CODE, '0396').matchAll(/RAISE EXCEPTION '([a-z_]+)'/g)].map((m) => m[1]));
   for (const code of ['service_setup_reopen_state_invalid', 'service_setup_reopen_blocked', 'service_setup_reopen_busy']) {

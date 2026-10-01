@@ -52,10 +52,13 @@ function numberLines(rows) {
     .map((line, index) => ({ ...line, lineNo: index + 1 }));
 }
 
+/* ⭐ mig 0400: "servicePeriodFrom"/"servicePeriodTo" = ช่วงบริการของรายการ (โหมดแยกรายรายการ) — ตัวตัดสินอ่านผ่าน `linePeriodOf`
+   ⚠️ ต้องรัน 0400 ก่อน deploy (ไม่มีคอลัมน์ = select 500 ทุกใบสายบริการ · check:columns แดงสองชื่อนี้จนกว่าจะรัน)
+   🪤 คอมเมนต์อยู่เหนือฟังก์ชัน ไม่แทรกระหว่าง `.from()` กับ `.select()` (check:columns มองหา select ไม่เกิน 200 ตัวอักษรหลัง `.from()`) */
 async function loadLines(supabase, orderId) {
   const { data, error } = await fetchAllResult(() => supabase
     .from('sales_order_lines')
-    .select('id, "salesOrderId", "quotationLineId", "productId", "fgCode", description, qty, unit, "sortOrder", metadata, "serviceKind", "serviceProductId", "serviceFgCode", "serviceRounds"')
+    .select('id, "salesOrderId", "quotationLineId", "productId", "fgCode", description, qty, unit, "sortOrder", metadata, "serviceKind", "serviceProductId", "serviceFgCode", "serviceRounds", "servicePeriodFrom", "servicePeriodTo"')
     .eq('salesOrderId', orderId)
     .order('sortOrder', { ascending: true })
     .order('id', { ascending: true }));

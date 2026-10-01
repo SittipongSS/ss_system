@@ -1,4 +1,4 @@
-/* โมดัลรอบบริการ — ส่วนที่มีเฉพาะตอนเปิดจากแถว "รอตั้งรอบ" (PR-C · C6)
+/* โมดัลรอบบริการ — แถบบริบท/ชิปของแถว "รอตั้งรอบ" (PR-C · C6) + กล่องความถี่ตามปฏิทิน (mig 0397)
    ฟิลด์/กริดยังใช้ ServiceSiteModal.module.css ร่วมกับฟอร์มไซต์ (ไฟล์นั้นไม่ถูกแตะ)
    ⚠️ ห้าม style={{…}} · โทเคนเท่านั้น (audit:ui) */
 
@@ -38,8 +38,8 @@
   font-weight: var(--fw-bold);
 }
 
-/* ชิป "จำนวนรอบบริการ R รอบ → ทุก D วัน [ใช้]" — ข้อเสนอ ไม่ใช่ค่าที่ตั้งแล้ว ⇒ กรอบประ + โทน accent อ่อน
-   อยู่ใน <label> ของช่องรอบ (วัน) ⇒ ตัวมันเป็น span (inline) · display ทำให้จัดแถวได้โดยไม่เป็นบล็อกใน HTML
+/* ชิป "จำนวนรอบบริการ R รอบ → ทุกเดือน วันที่ 22 [ใช้]" — ข้อเสนอ ไม่ใช่ค่าที่ตั้งแล้ว ⇒ กรอบประ + โทน accent อ่อน
+   อยู่ในกล่องความถี่ (mig 0397 · เดิมอยู่ใน <label> ของช่องรอบ (วัน)) · ตัวมันยังเป็น span + ปุ่ม จัดแถวด้วย display
    ข้อความโดนเพดานยาวสองบรรทัดได้ ⇒ ขึ้นบรรทัดได้ ไม่ตัด … และมุมไม่เป็นแคปซูล (แคปซูลสองบรรทัดดูแตก) */
 .suggestion {
   display: inline-flex;
@@ -61,4 +61,107 @@
 /* ข้อความยาว (โดนเพดาน) ตัดในตัวเองได้ · ปุ่ม "ใช้" ไปบรรทัดใหม่เมื่อไม่พอ ไม่บีบจนอ่านไม่ออก */
 .suggestion > span {
   min-width: 0;
+}
+
+/* ── ความถี่ของรอบ (mig 0397) — กล่อง <fieldset> เต็มแถวของกริด: แผ่นชนิด → ช่องของชนิดนั้น → ชิปข้อเสนอ → สรุป ──
+   ⚠️ fieldset มี min-inline-size: min-content ในตัว ⇒ ต้อง min-width: 0 ไม่งั้นตารางวันดันกริดล้นจอแคบ
+   --tone / --tone-soft = สีของตารางวันที่ยืมมาจากโมดัลรอบวางบิล (ตารางนั้นอ่านสีจากกล่องแม่ ไม่ส่ง = น้ำเงิน)
+   ให้ตรงกับชิป/แผ่นเลือกอื่นในกล่องเดียวกัน */
+.cadence {
+  --tone: var(--accent-ink);
+  --tone-soft: var(--accent-soft);
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.cadence > legend {
+  padding-inline: var(--space-2);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-bold);
+}
+
+/* เนื้อในกล่อง — เรียงลงทีละชั้น (ใส่ที่ div ข้างใน ไม่ใช่ที่ fieldset: flex บน fieldset ยังเพี้ยนในบางเบราว์เซอร์) */
+.cadenceBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2-5);
+  min-width: 0;
+}
+
+/* "ทุก  [1 เดือน] [2 เดือน] …" · "วันที่  [วันเดียว] [ช่วงวัน]" — ป้ายสั้นนำหน้าแถวชิป ขึ้นบรรทัดใหม่ได้เมื่อจอแคบ */
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1-5) var(--space-2-5);
+  min-width: 0;
+}
+
+.rowLabel {
+  flex: none;
+  min-width: 2.5em;
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+/* ชิปวันเสาร์–อาทิตย์ของรอบรายสัปดาห์: โฟกัสได้ กดแล้วบอกเหตุ แต่เลือกไม่ได้ (aria-disabled) — ทรงเดียวกับวันที่กดไม่ได้ของตารางวัน */
+.weekdays > :global(.choice-chip)[aria-disabled="true"] {
+  border-style: dashed;
+  background: transparent;
+  color: var(--text-3);
+  opacity: var(--op-muted);
+  cursor: not-allowed;
+}
+
+/* บรรทัดบอกเหตุใต้ชิปวัน (role="status") — ว่าง = ไม่กินที่ */
+.note {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
+
+.note:empty {
+  display: none;
+}
+
+/* คำเตือนไม่บล็อก (วันที่ไซต์ไม่เปิดให้เข้า) — เหลือง ไม่ใช่แดง */
+.warn {
+  margin: 0;
+  color: var(--amber);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+/* ── กล่องยืนยันเปลี่ยนรอบ: รายการนัดตามรอบเดิมที่จะถูกยกเลิก — ยาวได้ (รอบรายสัปดาห์) ⇒ เลื่อนในตัว ─────────── */
+.visits {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  list-style: none;
+  max-height: 14rem;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
+
+.visits > li {
+  overflow-wrap: anywhere;
+}
+
+/* "นัดตามรอบเดิมที่ไม่ถูกแตะ: …" */
+.kept {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
 }

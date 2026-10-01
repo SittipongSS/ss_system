@@ -22,7 +22,7 @@ const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
 
 // ⚠️ ต้องชี้ migration **ล่าสุด** ที่นิยาม CHECK นี้ — ชี้ไฟล์เก่าเมื่อไหร่เทสต์จะเขียว
 // ทั้งที่ของจริงบน DB เป็นอีกชุด (บทเรียนเดียวกับ deal_probability_for_stage)
-const KIND_CHECK_MIGRATION = 'supabase/migrations/0371_lead_events_link_deal_kinds.sql';
+const KIND_CHECK_MIGRATION = 'supabase/migrations/0399_lead_events_reopen_kind.sql';
 
 function allowedKinds() {
   const sql = read(KIND_CHECK_MIGRATION);

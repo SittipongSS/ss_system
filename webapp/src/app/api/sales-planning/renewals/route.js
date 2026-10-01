@@ -17,6 +17,7 @@ import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/h
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
 import { loadSites } from '@/lib/service/sitesRepo';
 import { loadAllZones, loadTerms } from '@/lib/service/termsRepo';
+import { attachLinePeriods } from '@/lib/service/termPeriodRepo';
 import { followupPatch, followupSaveError, renewalCounts, renewalLeadTerm, renewalRows } from '@/lib/service/renewals';
 import { ensureRetrieveVisit } from '@/lib/service/renewalRetrieveVisit';
 import { sweepRenewalNotices } from '@/lib/service/renewalNotify';
@@ -27,11 +28,11 @@ export const dynamic = 'force-dynamic';
 /* โหลดของทั้งหมดที่ทะเบียนต้องใช้ — ก้อนเดียวใช้ทั้ง GET และ POST
    (POST ต้องรู้ว่าไซต์นั้นเข้าเขตจริงไหมก่อนเปิดเรื่อง ไม่งั้นเปิดเรื่องให้ไซต์อะไรก็ได้) */
 async function loadRenewalContext(supabase, user) {
-  const [zones, sites, terms] = await Promise.all([
+  const [zones, sites, rawTerms] = await Promise.all([
     loadAllZones(supabase), loadSites(supabase), loadTerms(supabase),
   ]);
 
-  const orderIds = [...new Set(terms.map((t) => t.salesOrderId).filter(Boolean))];
+  const orderIds = [...new Set(rawTerms.map((t) => t.salesOrderId).filter(Boolean))];
   /* ⚠️ ไล่ทีละหน้า — จำนวนรอบขายโตตามงานที่ขายได้ · เพดาน 1,000 ตัดเงียบแล้ว
      ไซต์ที่หลุดจะ "ไม่ใกล้หมด" ทั้งที่หมดพรุ่งนี้ (check:rowcap คุมไว้) */
   const { data: orders, error: orderError } = orderIds.length
@@ -39,8 +40,10 @@ async function loadRenewalContext(supabase, user) {
       /* ⚠️ **`serviceContractId` คือทางไปหาวันหมด** (mig 0324) — ลืมคอลัมน์นี้เมื่อไร
          ทะเบียนกลับไปว่างเปล่าเงียบ ๆ เหมือนก่อนแก้ 06/09/2026
          ⭐ `servicePeriodTo` + `serviceTermsOpenedAt` (PR-C) — ใบที่เปิดงานบริการแล้วแต่ยังไม่ผูกสัญญา
-           ถอยไปใช้วันจบช่วงบริการของใบ (`termEndInfo`) · ลืมสองคอลัมน์นี้ = ทางถอยเงียบทั้งที่เทสต์ lib เขียว */
-      .select('id, "orderNumber", status, "supersededById", "dealId", "customerId", "serviceContractId", "servicePeriodTo", "serviceTermsOpenedAt"')
+           ถอยไปใช้วันจบช่วงบริการของใบ (`termEndInfo`) · ลืมสองคอลัมน์นี้ = ทางถอยเงียบทั้งที่เทสต์ lib เขียว
+         ⭐ `servicePeriodMode` (mig 0400) — ใบแยกรายรายการ: วันจบ = วันจบของรายการที่รอบขายมาจาก (แนบให้ term ข้างล่าง)
+           ไม่ใช่วันจบของช่วงรวมของใบ · ⚠️ ต้องรัน 0400 ก่อน deploy (check:columns แดงชื่อนี้จนกว่าจะรัน) */
+      .select('id, "orderNumber", status, "supersededById", "dealId", "customerId", "serviceContractId", "servicePeriodTo", "serviceTermsOpenedAt", "servicePeriodMode"')
       .in('id', chunk).order('id', { ascending: true })))
     : { data: [], error: null };
   if (orderError) throw new Error(orderError.message);
@@ -59,6 +62,9 @@ async function loadRenewalContext(supabase, user) {
 
   const dealById = new Map((deals || []).map((d) => [d.id, d]));
   const ordersById = new Map((orders || []).map((o) => [o.id, o]));
+  /* รอบขายของใบแยกรายรายการได้ช่วงของบรรทัดตัวเอง (`linePeriodFrom/To` · mig 0400) — ไม่มีใบโหมดนั้น = ไม่ยิงเพิ่ม
+     · อ่านไม่ขึ้น = โยน (GET/POST ตอบ 500 — ไม่ถอยไปใช้วันจบของช่วงรวมเงียบ ๆ) */
+  const terms = await attachLinePeriods(supabase, rawTerms, ordersById);
 
   /* ขอบเขต: ตัด term ที่ใบแม่อยู่นอกขอบเขตของผู้ใช้ทิ้งตั้งแต่ต้นทาง
      ⚠️ ตัดที่ term ไม่ใช่ที่แถวสุดท้าย — ไซต์เดียวมีรอบจากหลายดีลได้ ถ้าตัดทีหลัง

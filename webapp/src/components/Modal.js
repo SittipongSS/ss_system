@@ -13,6 +13,14 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(",");
 
+/* โมดัลที่เปิดอยู่ตอนนี้ เรียงตามลำดับที่เปิด — **ตัวบนสุดตัวเดียวที่รับปุ่ม** (Esc · Tab)
+   🐞 โมดัลซ้อนกัน (กล่องยืนยันบนฟอร์ม) ต่างคนต่างผูก keydown ที่ document และตัวล่างรันก่อน:
+      · Shift+Tab ในกล่องยืนยัน → ตัวล่างเห็นโฟกัส "อยู่นอกตัวเอง" ดึงไปปุ่มสุดท้ายของมัน แล้วตัวบนดึงกลับมาที่ปุ่มสุดท้ายของ
+        ตัวเอง ⇒ โฟกัสไปตกที่ปุ่มยืนยันเสมอ ถอยไปหา "ยกเลิก" / กากบาทไม่ได้เลย (Enter ถัดมาคือกดยืนยัน)
+      · Esc ปิดทั้งสองชั้นพร้อมกัน — ตั้งใจปิดกล่องยืนยัน ฟอร์มที่กรอกไว้ข้างล่างหายไปด้วย
+   ⇒ ตัวที่ไม่ได้อยู่บนสุดต้องไม่ทำอะไรกับปุ่มเลย */
+const openModals = [];
+
 // Reusable centered modal built on the design system's .overlay/.drawer classes.
 //
 // `dismissible` (default true): when false the modal can't be closed via the
@@ -82,7 +90,11 @@ export default function Modal({
       dialog ? [...dialog.querySelectorAll(FOCUSABLE_SELECTOR)] : []
     );
 
+    const token = {};
+    openModals.push(token);
+
     const onKey = (e) => {
+      if (openModals[openModals.length - 1] !== token) return;   // มีโมดัลอื่นเปิดทับอยู่ — ปุ่มเป็นของตัวบนสุด
       if (e.key === "Escape" && dismissibleRef.current) {
         onCloseRef.current?.();
         return;
@@ -118,6 +130,8 @@ export default function Modal({
     }
 
     return () => {
+      const at = openModals.indexOf(token);
+      if (at !== -1) openModals.splice(at, 1);
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = previousOverflow;
       if (previousActiveElement instanceof HTMLElement && document.contains(previousActiveElement)) {

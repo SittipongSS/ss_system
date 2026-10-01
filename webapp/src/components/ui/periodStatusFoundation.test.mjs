@@ -27,7 +27,12 @@ test("Tabs and Segmented share roving keyboard navigation", () => {
   assert.match(TABS, /role="tablist"/);
   assert.match(TABS, /aria-controls=\{tab\.panelId\}/);
   assert.match(SEGMENTED, /nextEnabledIndex/);
-  assert.match(SEGMENTED, /aria-pressed=\{active\}/);
+  /* ค่าตั้งต้น (ตัวกรอง/สลับมุมมอง) = ปุ่มกดค้าง aria-pressed เหมือนเดิม · `selection="radio"` (mig 0400 · สวิตช์ช่วงบริการของ SO) =
+     radiogroup / radio + aria-checked แทน — aria-pressed ใช้กับ role="radio" ไม่ได้ จึงเป็นอย่างใดอย่างหนึ่ง */
+  assert.match(SEGMENTED, /selection = "toggle",/);
+  assert.match(SEGMENTED, /aria-pressed=\{radio \? undefined : active\}/);
+  assert.match(SEGMENTED, /aria-checked=\{radio \? active : undefined\}/);
+  assert.match(SEGMENTED, /role=\{radio \? "radiogroup" : "group"\}/);
 });
 
 test("Pager and Excise status use shared UI foundations", () => {

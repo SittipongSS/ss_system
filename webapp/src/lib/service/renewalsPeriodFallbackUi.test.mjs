@@ -40,6 +40,10 @@ test('จอบอกใต้วันว่าวันหมดมาจา�
   const hay = PANEL.slice(PANEL.indexOf('const filtered'), PANEL.indexOf('usePagination('));
   assert.match(hay, /ORDER_PERIOD_END_NOTE/, 'ตาเห็นบนแถว = ต้องค้นเจอ');
   assert.match(hay, /endSource === "order_period"/);
+  /* mig 0400 (ตรวจทาน lib-03): ใบแยกรายรายการ — วันมาจากช่วงของรายการ ⇒ คำใต้วันของตัวเอง ("…ของรายการ") และค้นเจอด้วยคำเดียวกัน */
+  assert.match(due, /row\.endSource === "line_period" && <span className="cell-sub">\{LINE_PERIOD_END_NOTE\}<\/span>/);
+  assert.match(hay, /row\.endSource === "line_period" \? LINE_PERIOD_END_NOTE : null/);
+  assert.match(PANEL, /import \{ LINE_PERIOD_END_NOTE, ORDER_PERIOD_END_NOTE \} from "@\/lib\/service\/renewals";/);
 });
 
 /* review 29/09: ช่องว่างของทะเบียนเคยพูดว่าขึ้นเฉพาะจากสัญญา — ทางถอยไปช่วงบริการของใบก็เอาไซต์ขึ้นทะเบียนได้ ⇒ ต้องพูดด้วย */

@@ -38,6 +38,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { ROUNDS_SOLD_LABEL, VISIT_KIND_LABELS } from "@/lib/service/rounds";
 import { INTAKE_TABS, INTAKE_TAB_HINTS, INTAKE_TAB_LABELS, planRoundsSoldText } from "@/lib/service/intake";
+import { holidayGapText } from "@/lib/service/cadence";
 import {
   LEGACY_SETUP_FILTERS, LEGACY_SETUP_FILTER_LABELS, legacySetupFilterCounts, legacySetupHaystack, legacySetupStatusView,
 } from "@/lib/service/legacySetupQueue";
@@ -229,7 +230,10 @@ export default function ServiceIntakePage() {
   const savePlan = useCallback(async (form) => {
     const body = await apiJson("/api/service/plans", { method: "POST", json: form, fallbackError: "ตั้งรอบไม่สำเร็จ" });
     const generated = Array.isArray(body?.generated) ? body.generated.length : 0;
-    notifyToast.success(generated ? `ตั้งรอบแล้ว · สร้างนัดให้ ${fmtNumber(generated)} ครั้ง` : "ตั้งรอบแล้ว · ยังไม่มีนัดที่ต้องสร้าง");
+    const saved = generated ? `ตั้งรอบแล้ว · สร้างนัดให้ ${fmtNumber(generated)} ครั้ง` : "ตั้งรอบแล้ว · ยังไม่มีนัดที่ต้องสร้าง";
+    /* ปีที่รอบนี้ไปถึงแต่ยังไม่มีวันหยุดในระบบ (mig 0397) — นัดของปีนั้นเลื่อนหนีได้แค่เสาร์–อาทิตย์ · เตือนต่อท้าย ไม่บล็อก */
+    const holidayGap = holidayGapText(body?.holidayGapYears);
+    notifyToast.success(holidayGap ? `${saved} · ${holidayGap}` : saved);
     await load({ background: true });
   }, [load]);
   /* บันทึกมาตรฐาน มล. ในรายละเอียดโซนแล้ว — แก้ค่าในแถวบนจอ (ไม่โหลดทั้งคิวใหม่เพื่อช่องเดียว) */
@@ -772,7 +776,7 @@ export default function ServiceIntakePage() {
                       <div className={styles.cardHead}>
                         <strong className={styles.cardTitle}>{naText(row.site?.name)}</strong>
                         <span className={styles.cardSub}>
-                          {VISIT_KIND_LABELS[row.kind] || row.kind} · ทุก {fmtNumber(row.everyDays)} วัน
+                          {VISIT_KIND_LABELS[row.kind] || row.kind} · {naText(row.cadenceText)}
                         </span>
                       </div>
                       <p className={styles.cardMeta}>
@@ -791,7 +795,7 @@ export default function ServiceIntakePage() {
                     <thead>
                       <tr>
                         <th scope="col">ไซต์</th>
-                        {/* ⚠️ ไซต์เดียวมีได้หลายรอบ (คนละใบ/คนละชนิดงาน) ⇒ "ทุก N วัน"
+                        {/* ⚠️ ไซต์เดียวมีได้หลายรอบ (คนละใบ/คนละชนิดงาน) ⇒ ความถี่ ("ทุกเดือน วันที่ 22" · "ทุก N วัน")
                             อย่างเดียวแยกแถวไม่ออก · ค่าพวกนี้ `visitQueue` คืนมาอยู่แล้ว
                             แต่จอไม่เคยวาด */}
                         <th scope="col">ชนิดงาน</th>
@@ -806,7 +810,7 @@ export default function ServiceIntakePage() {
                         <tr key={row.planId}>
                           <th scope="row">{naText(row.site?.name)}</th>
                           <td>{VISIT_KIND_LABELS[row.kind] || row.kind}</td>
-                          <td>ทุก {fmtNumber(row.everyDays)} วัน</td>
+                          <td>{naText(row.cadenceText)}</td>
                           <td className="mono">{naText(row.salesOrderNumber)}</td>
                           <td>{naText(row.assigneeName)}</td>
                           <td className={styles.actionCell}>
@@ -849,17 +853,19 @@ export default function ServiceIntakePage() {
           · ใบของรอบตรึงจากแถว: `salesOrderId` ของแถว + `salesOrders={null}` (ไม่มีช่องเลือกใบ ⇒ TS เผลอเลือก
             "ไม่ผูกใบ" ไม่ได้ · critique L2) · แถบบริบทของโมดัลบอกเลขใบ
           · `context`/`prefill` มาจากตัวคำนวณของแถว (ช่วงบริการ · ข้อเสนอความถี่แบบกด "ใช้" — ไม่เติมเงียบ · C-D6)
-          · `roundsSold` = รอบที่ขายของไซต์ × ใบนี้ (ไม่ใช่ของทั้งใบ) */}
+          · `roundsSold` = รอบที่ขายของไซต์ × ใบนี้ (ไม่ใช่ของทั้งใบ) — `planRoundsSold` ของตัวคำนวณแถว: แถวที่ช่วงบริการต่างกัน
+            รายรายการ (ใบแยกรายรายการ · mig 0400) = null ⇒ โมดัลไม่เทียบจำนวนนัดกับตัวเลขที่อ้างคนละช่วง */}
       {canEdit && (
         <ServicePlanModal
           open={!!planRow}
           siteId={planRow?.siteId}
           technicians={technicians}
-          roundsSold={planRow?.roundsSold ?? null}
+          roundsSold={planRow?.planRoundsSold ?? null}
           salesOrderId={planRow?.salesOrderId}
           salesOrders={null}
           context={planRow?.context}
           prefill={planRow?.prefill}
+          accessDays={planRow?.site?.accessDays}
           onClose={closePlan}
           onSave={savePlan}
         />

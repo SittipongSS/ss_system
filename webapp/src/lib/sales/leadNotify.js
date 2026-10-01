@@ -44,7 +44,7 @@ const teamOf = (lead, teamNames) => teamNameOf(teamNames, lead?.team) || '-';
 /**
  * ใครต้องรู้ + ข้อความว่าอะไร สำหรับจุดส่งมอบหนึ่งจุด — ฟังก์ชันบริสุทธิ์ เทสต์ได้
  *
- * @param action    create | screen | assign | reassign | bounce
+ * @param action    create | screen | assign | reassign | bounce | reopen
  * @param lead      แถวลีด **หลัง** ทำรายการแล้ว (ยกเว้น bounce ดู previousAssigneeId)
  * @param directory Map ของผู้ใช้จาก loadUserDirectory
  * @param actorId   คนที่กดปุ่ม — ไม่ต้องแจ้งตัวเอง
@@ -95,6 +95,17 @@ export function leadHandoffNotice({ action, lead, directory, actorId, previousAs
     userIds = [...(screeners.length ? screeners : usersWhere(directory, (u) => SCREENER_FALLBACK.includes(u.role))), previousAssigneeId];
     title = `ลีดถูกตีกลับคิวคัดกรอง · ${who}`;
     body = reason ? `เหตุผล: ${reason}` : 'กลับไปรอคัดกรองใหม่';
+  } else if (action === 'reopen') {
+    /* ลูกค้ากลับมา (มติผู้ใช้ 2026-10-01) — แจ้ง **คนที่ต้องลงมือกับสถานะที่ใบกลับไป**
+       ส่วนใหญ่คือเจ้าของลีดที่ถูกหัวหน้าดึงใบกลับมาให้ (เจ้าของกดเอง = ถูกตัดออกเป็น actor) */
+    if (lead.assigneeId) userIds = [lead.assigneeId];
+    else if (lead.team) userIds = usersWhere(directory, (u) => SPREADERS.includes(u.role) && hasTeam(u, lead.team));
+    else {
+      userIds = usersWhere(directory, (u) => SCREENERS.includes(u.role));
+      if (!userIds.length) userIds = usersWhere(directory, (u) => SCREENER_FALLBACK.includes(u.role));
+    }
+    title = `ลูกค้ากลับมา — ลีดถูกเปิดใหม่ · ${who}`;
+    body = reason || 'ลีดที่เคยปิดไม่ไปต่อถูกดึงกลับมาทำงานต่อ';
   } else {
     return null;
   }

@@ -21,6 +21,7 @@ import { fetchAllInChunks, byColumns } from '@/lib/supabaseInChunks';
 import { loadSites, requireService } from '@/lib/service/sitesRepo';
 import { customerZoneRegistry } from '@/lib/service/zoneRegistry';
 import { loadSetupOrdersByZone } from '@/lib/service/zoneSalesRepo';
+import { attachLinePeriods } from '@/lib/service/termPeriodRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,7 +60,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       .order('id', { ascending: true }), { sort: byColumns('siteId', 'name', 'id') });
 
     const zoneIds = zones.map((z) => z.id);
-    const [surveys, terms] = zoneIds.length
+    const [surveys, rawTerms] = zoneIds.length
       ? await Promise.all([
         fetchAllInChunks(zoneIds, (chunk) => supabase
           .from('service_survey_zones').select('*').in('zoneId', chunk)
@@ -75,12 +76,16 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     /* ใบสั่งขายแม่ — ตัวตัดสิน "ขายแล้ว/ยังไม่ขาย" (`termOrderActive`)
        ⚠️ อ่านมาเท่าที่ term อ้างถึงเท่านั้น · ดึงทั้งตารางคือดึงใบขายทั้งบริษัท
        ⭐ `serviceTermsOpenedAt` (PR-C · R1) — ใบที่ประทับแล้ว `packageQty` ของ term = แพ็คต่อรอบ ⇒ ป้าย "ขาย n แพ็ค/รอบ"
-       ⭐ ช่วงบริการ (review 29/09 · `termsSoldNow`) — ใบเก่าที่ช่วงจบแล้วไม่รวมกับใบต่อสัญญาบนโซนเดียวกัน */
-    const orderIds = [...new Set(terms.map((t) => t.salesOrderId).filter(Boolean))];
+       ⭐ ช่วงบริการ (review 29/09 · `termsSoldNow`) — ใบเก่าที่ช่วงจบแล้วไม่รวมกับใบต่อสัญญาบนโซนเดียวกัน
+       ⭐ mig 0400: `servicePeriodMode` — ใบแยกรายรายการใช้ช่วงของรายการที่รอบขายมาจาก (แนบให้ term ข้างล่าง) ไม่ใช่ช่วงรวมของใบ
+          ⚠️ ต้องรัน 0400 ก่อน deploy (check:columns แดงชื่อนี้จนกว่าจะรัน) */
+    const orderIds = [...new Set(rawTerms.map((t) => t.salesOrderId).filter(Boolean))];
     const orders = await fetchAllInChunks(orderIds, (chunk) => supabase
-      .from('sales_orders').select('id, status, "supersededById", "orderNumber", "serviceTermsOpenedAt", "servicePeriodFrom", "servicePeriodTo"')
+      .from('sales_orders').select('id, status, "supersededById", "orderNumber", "serviceTermsOpenedAt", "servicePeriodFrom", "servicePeriodTo", "servicePeriodMode"')
       .in('id', chunk)
       .order('id', { ascending: true }), { sort: byColumns('id') });
+    /* รอบขายของใบแยกรายรายการได้ช่วงของบรรทัดตัวเอง (`linePeriodFrom/To`) — ไม่มีใบโหมดนั้น = ไม่ยิงเพิ่ม · อ่านไม่ขึ้น = 500 */
+    const terms = await attachLinePeriods(supabase, rawTerms, new Map(orders.map((o) => [o.id, o])));
 
     /* ใบที่ยังถือโซนไว้โดยยังไม่เปิดงานบริการ (ร่าง/รออนุมัติ/ตีกลับ/ย้อนอนุมัติ · ตั้งย้อนหลัง · PR-C R1)
        — ป้ายเหลืองบนแถวพื้นที่ · อ่านไม่ขึ้น = 500 ไม่ใช่ "ไม่มีใบ" */

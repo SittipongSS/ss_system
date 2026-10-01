@@ -144,7 +144,7 @@ test('หน้า: โมดัลตั้งรอบ — ตัวเดี�
   const src = code(PAGE);
   const modal = src.slice(src.indexOf('<ServicePlanModal'), src.indexOf('/>', src.indexOf('<ServicePlanModal')));
   assert.ok(modal.length > 0, 'หาโมดัลไม่เจอ');
-  for (const prop of ['open={!!planRow}', 'siteId={planRow?.siteId}', 'technicians={technicians}', 'roundsSold={planRow?.roundsSold ?? null}',
+  for (const prop of ['open={!!planRow}', 'siteId={planRow?.siteId}', 'technicians={technicians}', 'roundsSold={planRow?.planRoundsSold ?? null}',
     'salesOrderId={planRow?.salesOrderId}', 'salesOrders={null}', 'context={planRow?.context}', 'prefill={planRow?.prefill}',
     'onClose={closePlan}', 'onSave={savePlan}']) {
     assert.ok(modal.includes(prop), `โมดัลต้องได้ ${prop}`);

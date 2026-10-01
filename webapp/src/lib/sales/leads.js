@@ -528,7 +528,11 @@ export const LEAD_TRANSITIONS = {
   contacted: ['followup', 'meeting', 'create_deal', 'reassign', 'bounce', 'disqualify'],
   meeting: ['followup', 'meeting', 'create_deal', 'reassign', 'bounce', 'disqualify'],
   qualified: ['create_deal'],
-  disqualified: [],
+  /* ⭐ `reopen` = **ลูกค้ากลับมา** (มติผู้ใช้ 2026-10-01) — ใบที่ปิด "ไม่ไปต่อ" เคยเป็นทางตัน
+     ทางเดียวที่กลับได้คือผูกดีลย้อนหลัง (dealLeadLink) ซึ่งใช้ได้เฉพาะตอนลูกค้าพร้อมเปิดดีลแล้ว
+     ลูกค้าที่เงียบไปแล้วทักกลับมา / "ยังไม่พร้อม" ที่ถึงเวลาแล้ว ต้องสร้างลีดใบใหม่ = ประวัติขาด
+     และยอดลีดของ MKT นับซ้ำ · ปลายทางไม่ตายตัว ดู `leadReopenStatus` */
+  disqualified: ['reopen'],
 };
 export const TRANSITION_TO_STATUS = {
   screen: 'screened',
@@ -547,7 +551,52 @@ export const TRANSITION_TO_STATUS = {
      ⚠️ แมปเป็น 'assigned' เมื่อไร = ลีดที่ติดต่อ/นัดไปแล้วถอยกลับไป "รอติดต่อกลับ"
      ทุกครั้งที่ย้ายเจ้าของ ⇒ งานที่ทำไปแล้วหายจากผัง Funnel และปุ่มก้าวถัดไปเพี้ยน */
   reassign: null,
+  /* ⭐ `reopen` = กลับไป **สถานะก่อนปิด** ซึ่งขึ้นกับใบ (`leadReopenStatus`) — null ที่นี่
+     ⚠️ ผู้เรียกห้ามใช้ `?? lead.status` กับ action นี้ (จะได้ 'disqualified' กลับมาเหมือนเดิม) */
+  reopen: null,
 };
+
+/* ══ ดึงลีดที่ปิดแล้วกลับมา — "ลูกค้ากลับมา" (มติผู้ใช้ 2026-10-01) ═══════════════
+ *
+ * ⭐ **สถานะปลายทางอ่านจากแถว ไม่ใช่จากประวัติ** — `disqualify` ไม่ล้างคอลัมน์ไหนเลย
+ * (มีแต่ bounce ที่ล้าง) ⇒ แถวยังบอกครบว่าใบนี้เดินไปถึงไหนในรอบปัจจุบันก่อนถูกปิด
+ * จอ (ไม่มี events ในมือตอนวาดปุ่ม) กับ API จึงตอบตรงกันได้จากฟังก์ชันตัวเดียว
+ */
+export function leadReopenStatus(lead = {}) {
+  if (lead?.assigneeId) {
+    if (lead.meetingAt) return 'meeting';
+    return lead.firstContactAt ? 'contacted' : 'assigned';
+  }
+  return lead?.team ? 'screened' : 'new';
+}
+
+/* กลับไปสถานะพวกนี้ = **ต้องมีวันติดตามต่อใหม่** — `followUpAt` ของรอบก่อนค้างอยู่บนแถว
+   (การปิดไม่ล้าง) ปล่อยไว้แล้วใบจะขึ้น "เลยกำหนด" ทันทีที่เปิด และนาฬิกาตีกลับอัตโนมัติ
+   (`SINCE_OF.contacted` = followUpAt) จะนับจากวันเก่า ⇒ cron ดึงใบออกจากมือในเช้าวันถัดไป */
+export const LEAD_REOPEN_FOLLOW_UP_STATUSES = ['contacted', 'meeting'];
+
+/* เหตุผลปิดที่ดึงกลับไม่ได้ — "ลีดซ้ำ" มีใบตัวจริงของลูกค้ารายนี้อยู่แล้ว เปิดใบนี้กลับมา
+   = ลูกค้าคนเดียวสองใบในคิว · ให้ไปทำงานต่อที่ใบตัวจริง */
+export const LEAD_REOPEN_BLOCKED_CODES = ['duplicate'];
+
+/** @returns ข้อความว่าทำไมดึงกลับไม่ได้ หรือ '' ถ้าได้ — ด่านเดียวใช้ทั้งปุ่มและ API */
+export function leadReopenBlockedReason(lead = {}) {
+  return LEAD_REOPEN_BLOCKED_CODES.includes(lead?.disqualifiedCode)
+    ? 'ใบนี้ปิดเพราะเป็นลีดซ้ำ — ทำงานต่อที่ใบตัวจริงของลูกค้ารายนี้'
+    : '';
+}
+
+/* ใครดึงกลับได้ (มติผู้ใช้ 2026-10-01): **เจ้าของลีด และผู้มีอำนาจเหนือกว่า**
+ *   เจ้าของ   = ผู้รับผิดชอบบนใบ (assigneeId)
+ *   เหนือกว่า = หัวหน้าทีมของลีด (Senior AE / Senior AC) · ผู้ดูแลฝ่ายขาย · แอดมิน
+ * ⚠️ แคบกว่า `disqualify` โดยเจตนา — AC ปิดลีดของทีมได้ (ขั้นกำกับดูแล) แต่ไม่ใช่ทั้งเจ้าของ
+ *    และไม่ใช่ผู้บังคับบัญชาของ AE จึงดึงกลับไม่ได้ */
+export function canReopenLead(user, lead) {
+  const role = user?.role;
+  if (isSuperuser(role)) return true;
+  if (isTeamLead(role) && hasTeam(user, lead?.team)) return true;
+  return !!user?.id && lead?.assigneeId === user.id;
+}
 
 // ลีดต้นทางของดีล — ตัวตัดสินช่องเดียวที่ POST /deals ต้องใช้ทั้งตอน "ตรวจสิทธิ์" และ
 // ตอน "เขียนคอลัมน์ sales_deals.leadId"
@@ -792,7 +841,8 @@ const hasKind = (events, test) => (events || []).some((e) => test(e?.kind));
 export function leadOutcome(lead = {}, events = null) {
   const status = lead?.status || null;
   /* ชนะ/แพ้อ่านจากสถานะเสมอ แม้จะมีประวัติ — ปุ่มบนหน้าลีดไม่มีทางถอยจากสองสถานะนี้
-     (`LEAD_TRANSITIONS.qualified` เหลือแค่ `create_deal` · `disqualified` ว่าง)
+     (`LEAD_TRANSITIONS.qualified` เหลือแค่ `create_deal` · `disqualified` มีแค่ `reopen`
+     ซึ่งย้ายสถานะบนแถวจริง ⇒ ใบที่ดึงกลับหลุดจากกอง "แพ้" ของทุกงวดย้อนหลังด้วย)
      ⚠️ ยกเว้นการผูก/ถอดดีลย้อนหลัง (lib/sales/dealLeadLink · มติ 2026-09-22): ผูก = ไม่ไปต่อ → เปิดลูกค้าแล้ว
         · ถอด/ลบดีลใบสุดท้าย = เปิดลูกค้าแล้ว → สถานะก่อนเปิดดีล ⇒ ยิ่งต้องอ่านสถานะปัจจุบัน ไม่ใช่ประวัติ */
   const won = status === 'qualified';
