@@ -444,6 +444,7 @@ test('เส้น API ของโมดูล R&D ต้องอ่านไ�
     const user = { role, extraCaps: [] };
     assert.equal(lockedOut(user, '/api/rd/sales-orders', 'GET', true), false, `${role} GET /api/rd/sales-orders`);
     assert.equal(lockedOut(user, '/api/rd/perfumer-board', 'GET', true), false, `${role} GET /api/rd/perfumer-board`);
+    assert.equal(lockedOut(user, '/api/rd/price-board', 'GET', true), false, `${role} GET /api/rd/price-board`);
   }
 });
 

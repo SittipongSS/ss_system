@@ -1,5 +1,5 @@
 // ── API ตัวเลขบนเมนูหลัก ─────────────────────────────────────────────────
-// GET /api/nav/counts → { requests?, tasks?, rdRequests?, financeRequests?,
+// GET /api/nav/counts → { requests?, tasks?, rdRequests?, rdPricing?, financeRequests?,
 //                         serviceRequests?, leads?, quotations?, salesOrders?,
 //                         contracts?, projectCloses?, scents?, formulas?, customers?,
 //                         products?, visits?, serviceIntake?, mgmtTasks?,
@@ -29,6 +29,7 @@ import {
 } from '@/lib/permissions';
 import { canViewLeads, applyLeadScope } from '@/lib/sales/leads';
 import { loadRequests } from '@/lib/materialPricesAdmin';
+import { awaitingPriceCount } from '@/lib/rd/priceBoard';
 import { loadVisibleRequests, answerableDepts } from '@/lib/requests/visibleRows';
 import { deptHasOwnModule, deptsInSharedQueue } from '@/lib/requests/modules';
 import {
@@ -139,12 +140,20 @@ export const GET = withUser(async ({ user, supabase }) => {
   const moduleDepts = canUser(user, 'requests:answer')
     ? answerableDepts(user).filter(deptHasOwnModule)
     : [];
+  /* ⚠️ โหลดของฝ่ายครั้งเดียวแล้วแจกให้ทุกตัวนับของฝ่ายนั้น — เส้นนี้ยิงทุก 2 นาทีทุกคน · RD มีสองป้ายจากชุดเดียวกัน
+     (คิวคำร้อง + รอใส่ราคา ม-153) ⇒ แยกโหลด = อ่านทั้งประวัติของ RD สองรอบเพื่อตอบเรื่องเดียวกัน */
+  const deptLoads = new Map();
+  const loadDept = (dept) => {
+    if (!deptLoads.has(dept)) deptLoads.set(dept, loadRequests(supabase, { dept, lean: true }));
+    return deptLoads.get(dept);
+  };
   for (const dept of moduleDepts) {
     const key = DEPT_QUEUE_COUNT_KEYS[dept];
     if (!key) continue;
-    jobs.push(attempt(key, async () => deptRequestsTodoCount(
-      await loadRequests(supabase, { dept, lean: true }), dept,
-    )));
+    jobs.push(attempt(key, async () => deptRequestsTodoCount(await loadDept(dept), dept)));
+    /* รอใส่ราคา — ด่านเดียวกับคิวของ RD (เมนูทั้งสองกั้น `requests:answer` + `canAccessRd`) · ตัวนับเดียวกับหน้า
+       (`awaitingPriceCount` กรองใบเปิด + `canPriceRow` เอง) ⇒ โหลด lean ไม่กรองสถานะใช้ร่วมได้ */
+    if (dept === 'RD') jobs.push(attempt('rdPricing', async () => awaitingPriceCount(await loadDept(dept))));
   }
 
   if (canViewLeads(user)) {

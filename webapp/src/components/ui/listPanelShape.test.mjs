@@ -69,6 +69,7 @@ const LIST_PANEL_ADOPTERS = Object.freeze([
   ["src/app/production/page.js", 1],
   ["src/app/rd/page.js", 0],
   ["src/app/rd/perfumers/page.js", 1],
+  ["src/app/rd/prices/page.js", 1],
   ["src/app/rd/requests/page.js", 0],
   ["src/app/rd/sales-orders/page.js", 1],
   ["src/app/requests/page.js", 0],

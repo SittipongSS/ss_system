@@ -117,3 +117,33 @@ export function mainPriceEntry(entries = []) {
   }
   return null;
 }
+
+/**
+ * "ใช้ราคานี้" ผูกราคาตัวไหน — ราคาที่มีอยู่แล้วในทะเบียน แทนการพิมพ์ซ้ำ (ม-153 · มติผู้ใช้ 2026-10-01)
+ *
+ * `current` = `[{ key, price }]` ต่อช่องของแถว (`price` = ผลของ `attachRegistryPrice` หรือ null)
+ * คืน `{ entry, blocker }` · `entry === null` = ไม่มีราคาในทะเบียนสักช่อง (ไม่มีอะไรให้ใช้ — ไม่ต้องโชว์ปุ่ม)
+ * · `blocker` ไม่ว่าง = มีราคาแต่ใช้ไม่ได้ (โชว์ปุ่มแล้วบอกเหตุตอนกด — กฎ UI ของระบบ)
+ *
+ * ⭐ **เลือกช่องหลักที่มีราคา (FB > B > F) แล้วต้องพร้อมใช้ — ไม่ข้ามไปช่องรอง** — FB หมดอายุแต่ F ยังดี
+ * ถ้ายอมผูก F แทน แถวสินค้าจะปิดด้วยราคาหัวน้ำหอมล้วน แล้วไม่มีใครถูกเตือนให้ต่ออายุ FB อีกเลย
+ * ⇒ ช่องหลักหมดอายุ = ต้องใส่ราคาใหม่ (ช่องรองยังอยู่ในทะเบียนตามเดิม)
+ * ⚠️ หน้าจอกับ API ถามตัวนี้ตัวเดียว — ปุ่มกับด่านพูดคนละเรื่องไม่ได้
+ */
+export function currentPriceToUse(current = []) {
+  const priced = (current || []).filter((c) => c?.price && c.price.unitPrice != null);
+  let entry = null;
+  for (const key of MAIN_PRIORITY) {
+    entry = priced.find((c) => c.key === key) || null;
+    if (entry) break;
+  }
+  if (!entry) return { entry: null, blocker: '' };
+  const label = PRICE_SLOTS[entry.key]?.text || entry.key;
+  const state = entry.price.state;
+  if (state === 'ready') return { entry, blocker: '' };
+  if (state === 'expired') return { entry, blocker: `${label} ในทะเบียนหมดอายุแล้ว — กด "ใส่ราคา" เพื่อออกราคาใหม่` };
+  /* ⚠️ วัสดุเก็บเข้ากรุ/ยังเป็นร่าง **ห้ามพาไป "ใส่ราคา"** (รีวิว ม-153) — ตัวเขียนราคาเลือกวัสดุตัวเดิม (`pickStampedMaterial`)
+     แล้วต่อ rev บนตัวนั้น สถานะไม่เปลี่ยน ⇒ ได้ rev ซ้ำ และแถวปิดบนวัสดุที่ยังใช้ไม่ได้อยู่ดี · ต้องเปิดใช้วัสดุก่อน */
+  const material = state === 'archived' ? 'เก็บเข้ากรุแล้ว' : 'ยังเป็นร่าง';
+  return { entry, blocker: `${label} อยู่บนวัสดุที่${material} — ใส่ราคาใหม่ก็ยังใช้ไม่ได้ · แจ้งผู้ดูแลระบบให้เปิดใช้วัสดุในทะเบียนราคาก่อน` };
+}
