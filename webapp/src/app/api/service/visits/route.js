@@ -6,6 +6,7 @@ import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { insertRowWithEntityCode } from '@/lib/entityCode';
 import { withUser, ok, fail, badRequest } from '@/lib/http';
+import { isCadenceSlot } from '@/lib/service/cadence';
 import { normalizeVisitInput } from '@/lib/service/rounds';
 import { initialVisitStatus } from '@/lib/service/visitGate';
 import { gateContextForSite, loadVisitGateContext } from '@/lib/service/gateContext';
@@ -61,10 +62,16 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     // ⚠️ รอบที่ผูกต้องเป็นรอบ**ของไซต์เดียวกัน** — ผูกข้ามไซต์ได้เมื่อไหร่
     // `nextAfterDone` จะสร้างนัดรอบถัดไปให้ไซต์ของ *รอบ* ไม่ใช่ไซต์ที่เพิ่งเข้า
     // = นัดโผล่ผิดที่โดยไม่มีใครสังเกต จนกว่าเจ้าหน้าที่จะขับไปถึงหน้างานผิดแห่ง
+    /* ⭐ **ช่องของรอบ** (`planSlotDate` · mig 0397) — นัดที่คนกดยืนยันจากแถบ "ตั้งนัดรอบถัดไป" ของรอบตามปฏิทิน
+       พกช่องมากับข้อเสนอ (`nextAfterDone`) ⇒ เก็บไว้ให้ตัวเติมนัดรู้ว่าช่องนั้นมีนัดแล้ว แม้วันนัดจะถูกย้ายทีหลัง
+       ⚠️ รับเฉพาะวันที่เป็น **ช่องจริงของรอบนั้น** (`isCadenceSlot`) — ค่าอื่นทิ้ง ไม่ใส่คีย์เลย
+          (ช่องปลอมจะกันตัวเติมนัดไม่ได้ และจะถูกนับเป็น "นัดตามรอบเดิม" ตอนเปลี่ยนรอบ) */
+    let planSlotDate = null;
     if (value.planId) {
       const plan = await findPlan(supabase, value.planId);
       if (!plan) return badRequest('ไม่พบรอบบริการที่ระบุ');
       if (plan.siteId !== value.siteId) return badRequest('รอบบริการที่เลือกเป็นของไซต์อื่น');
+      if (isCadenceSlot(plan, body.planSlotDate)) planSlotDate = String(body.planSlotDate).slice(0, 10);
     }
 
     /* ⭐ **ทุกใบเกิดผ่านด่าน** (มติผู้ใช้ 2026-08-28: TS ไม่ใช่ต้นทางของงาน)
@@ -76,6 +83,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     const row = {
       id: genId('SVV'),
       ...value,
+      ...(planSlotDate ? { planSlotDate } : {}),
       /* ⭐ ด่าน ①② ตรวจจริงตั้งแต่ PR-C ⇒ ต้องป้อนบริบท ไม่งั้นทุกใบเกิดเป็นร่าง */
       status: initialVisitStatus(value, gateContextForSite(gateCtx, value.siteId, { site })),
       createdById: user.id ? String(user.id) : null,

@@ -30,6 +30,22 @@ test("ยังคงล็อกโฟกัสและปิดด้วย E
   assert.match(MODAL, /document\.body\.style\.overflow = "hidden"/);
 });
 
+/* 🐞 โมดัลซ้อนกัน (กล่องยืนยันบนฟอร์ม — เช่นกล่อง "ยกเลิกนัดตามรอบเดิม n นัด" บนโมดัลรอบบริการ · รีวิว 01/10):
+   ทุกตัวผูก keydown ที่ document และตัวล่างรันก่อน ⇒ Shift+Tab ในกล่องยืนยันถูกตัวล่างดึงโฟกัสออก แล้วตัวบนดึงกลับไปที่
+   ปุ่มสุดท้ายของตัวเอง = ปุ่มยืนยันเสมอ (ถอยไปหา "ยกเลิก"/กากบาทไม่ได้) และ Esc ปิดทั้งสองชั้น ⇒ ตัวบนสุดตัวเดียวที่รับปุ่ม */
+test("โมดัลซ้อนกัน: ตัวบนสุดตัวเดียวที่รับ Esc/Tab — ตัวที่ถูกเปิดทับไม่ทำอะไรกับปุ่ม", () => {
+  const src = MODAL.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  assert.match(src, /^const openModals = \[\];$/m, "ลำดับโมดัลที่เปิดอยู่เก็บระดับโมดูล (ตัวเดียวทั้งแอป)");
+  const effect = src.slice(src.indexOf("const previousActiveElement"), src.indexOf("if (!open || !mounted) return null;"));
+  assert.match(effect, /const token = \{\};\s*openModals\.push\(token\);/, "เปิด = ขึ้นไปอยู่บนสุด");
+  const onKey = effect.slice(effect.indexOf("const onKey = (e) => {"), effect.indexOf('document.addEventListener("keydown", onKey);'));
+  assert.match(onKey, /^const onKey = \(e\) => \{\s*if \(openModals\[openModals\.length - 1\] !== token\) return;/,
+    "ด่านแรกของตัวรับปุ่ม: ไม่ใช่ตัวบนสุด = ไม่ทำอะไร (ก่อน Esc และก่อนกับดักโฟกัส)");
+  assert.ok(onKey.indexOf("openModals[openModals.length - 1] !== token") < onKey.indexOf('"Escape"'));
+  const cleanup = effect.slice(effect.indexOf("return () => {"));
+  assert.match(cleanup, /const at = openModals\.indexOf\(token\);\s*if \(at !== -1\) openModals\.splice\(at, 1\);/, "ปิด = ออกจากลำดับ (ตัวล่างกลับมารับปุ่ม)");
+});
+
 /* แผงลอยทุกตัวของระบบต้องหนีออกจากที่ที่มันไปเกิด — ไม่งั้นเจอบั๊กเดียวกันซ้ำ */
 test("แผงลอยตัวอื่นก็ portal เหมือนกัน", () => {
   for (const file of ["ui/RowActionMenu.js", "ui/FilterPopover.js"]) {

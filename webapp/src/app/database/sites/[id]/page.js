@@ -25,6 +25,7 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import ServiceSiteModal from "@/components/service/ServiceSiteModal";
 import ServiceAssetModal from "@/components/service/ServiceAssetModal";
 import ServicePlanModal from "@/components/service/ServicePlanModal";
+import { planSavedMessage } from "@/components/service/servicePlanForm";
 import ServiceZoneModal from "@/components/service/ServiceZoneModal";
 import {
   ASSET_STATUS_LABELS,
@@ -32,6 +33,7 @@ import {
   assetRollup,
 } from "@/lib/service/sites";
 import { ASSET_KIND_LABELS } from "@/lib/service/assetKinds";
+import { cadenceText } from "@/lib/service/cadence";
 import { refillStatus } from "@/lib/service/refill";
 import {
   ALL_BUILDINGS,
@@ -57,7 +59,7 @@ import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canBeServiceAssignee, canEditService, canViewVisitReport } from "@/lib/permissions";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
-import { apiFetch } from "@/lib/apiFetch";
+import { apiFetch, apiJson } from "@/lib/apiFetch";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 
 export default function ServiceSiteDetailPage({ params }) {
@@ -258,20 +260,18 @@ export default function ServiceSiteDetailPage({ params }) {
 
   const savePlan = async (form) => {
     const editing = !!formPlan;
-    // ⚠️ แก้รอบ **ไม่ลบนัดที่ gen ไปแล้ว** — เติมเพิ่มอย่างเดียว (generate=1)
-    // นัดที่คนย้ายวัน/มอบหมายไปแล้วต้องไม่ถูก gen ทับ
-    const res = await apiFetch(editing ? `/api/service/plans/${formPlan.id}?generate=1` : "/api/service/plans", {
+    // ⚠️ แก้รอบ **ไม่ลบนัดที่ gen ไปแล้ว** — เติมเพิ่ม (generate=1) · นัดที่คนย้ายวัน/มอบหมายไปแล้วต้องไม่ถูก gen ทับ
+    // ⭐ เปลี่ยนความถี่/ช่วงของรอบที่มีนัดอยู่แล้ว (mig 0397): API ตอบ 409 `plan_schedule_confirm` พร้อมรายการนัดตามรอบเดิม
+    //    ที่จะถูกยกเลิก — โมดัลถามยืนยันแล้วเรียกฟังก์ชันนี้ซ้ำพร้อม `cancelVisitIds`
+    // 🔴 ต้องเป็น `apiJson` — error ที่โยนต่อให้โมดัลต้องพก `status` + `data` (รายการของ 409) · apiFetch ดิบ + `new Error`
+    //    เหลือแค่ข้อความ โมดัลจะไม่มีรายการให้ยืนยัน แล้วการเปลี่ยนรอบทำต่อไม่ได้เลย
+    const data = await apiJson(editing ? `/api/service/plans/${formPlan.id}?generate=1` : "/api/service/plans", {
       method: editing ? "PATCH" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
+      json: form,
+      fallbackError: "บันทึกไม่สำเร็จ",
     });
-    const data = await res.json().catch(() => null);
-    if (!res.ok) throw new Error(data?.error || "บันทึกไม่สำเร็จ");
-    const count = Array.isArray(data?.generated) ? data.generated.length : 0;
-    setToast({
-      kind: "success",
-      msg: count ? `บันทึกรอบแล้ว · สร้างนัดให้ ${count} ครั้ง` : "บันทึกรอบแล้ว · ยังไม่มีนัดใหม่ที่ต้องสร้าง",
-    });
+    // ยกเลิกกี่นัด · คงไว้กี่นัด · สร้างให้กี่ครั้ง · ปีที่ยังไม่มีวันหยุด — แต่ละท่อนขึ้นเฉพาะเมื่อเกิดจริง
+    setToast({ kind: "success", msg: planSavedMessage(data) });
     await load();
   };
 
@@ -494,7 +494,7 @@ export default function ServiceSiteDetailPage({ params }) {
   const DELETE_COPY = {
     plan: {
       title: "ลบรอบบริการ",
-      message: (row) => `ลบรอบทุก ${row.everyDays} วัน?`,
+      message: (row) => `ลบรอบ${cadenceText(row)}?`,
       /* ⚠️ ข้อความเดิมบอกครึ่งเดียว — นัดอยู่ต่อจริง แต่มัน **ขาดจากรอบ** ซึ่งทำให้
          จำนวนรอบที่เดินตามข้อผูกพันของใบสั่งขายกลายเป็นศูนย์ · ตอนนี้รอบที่มีนัด
          ปิดงานแล้วถูกกันไว้ ⇒ คำต้องบอกทางออกที่ถูก ไม่ใช่แค่ผลข้างเคียง */
@@ -910,7 +910,7 @@ export default function ServiceSiteDetailPage({ params }) {
         icon={RefreshCw}
         eyebrow="Service rounds"
         title="รอบบริการ"
-        meta="ระบบสร้างนัดล่วงหน้า 90 วันตามรอบ แล้วต่อรอบให้เมื่อปิดงานจริง"
+        meta="ระบบสร้างนัดล่วงหน้าอย่างน้อย 90 วันตามรอบ แล้วเสนอรอบถัดไปเมื่อปิดงานจริง"
         actions={canEdit ? (
           <Button tone="neutral" onClick={() => setFormPlan(null)} icon={<Plus size={15} aria-hidden="true" />}>
             สร้างรอบ
@@ -949,7 +949,7 @@ export default function ServiceSiteDetailPage({ params }) {
                 {plans.map((plan) => (
                   <tr key={plan.id} className={plan.isActive === false ? styles.inactive : undefined}>
                     <td>{VISIT_KIND_LABELS[plan.kind] || plan.kind}</td>
-                    <td>ทุก {plan.everyDays} วัน</td>
+                    <td>{cadenceText(plan)}</td>
                     <td className="mono">
                       {plan.salesOrderNumber || (
                         <span className={styles.muted}>ไม่ผูกใบ</span>
@@ -1152,6 +1152,7 @@ export default function ServiceSiteDetailPage({ params }) {
         technicians={technicians}
         roundsSold={roundsSold}
         salesOrders={siteOrders}
+        accessDays={site?.accessDays}
         onClose={() => setFormPlan(undefined)}
         onSave={savePlan}
       />

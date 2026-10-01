@@ -30,7 +30,7 @@ import { closeVisitPayload, groupVisits, openCount, overdueDays } from "@/lib/se
 import { accessWindowText } from "@/lib/service/sites";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
-import { fmtDayMonth, naText } from "@/lib/format";
+import { fmtDate, fmtDayMonth, naText } from "@/lib/format";
 import { SURVEY_VISIT_KIND } from "@/lib/service/surveyVisit";
 import { apiFetch } from "@/lib/apiFetch";
 
@@ -244,11 +244,15 @@ export default function TodayPage() {
        🐞 (รีวิว 24/09) **ห้ามสัญญาว่าจะมีนัด "วันนั้น"** — วันแนะนำนับจากวันเข้าจริง + ทุก N วัน (`nextAfterDone`)
           แต่การเติมนัดเดินตามวันเริ่มของรอบ (`plannedDates` จาก `startDate` · ภายใน 90 วัน) และวันที่มีนัดยกเลิก
           ไม่เติมซ้ำ ⇒ เข้าช้า/เร็วเมื่อไร นัดรอบถัดไปอยู่คนละวันกับวันแนะนำเสมอ · คนอ่านหานัด "วันนั้น" ไม่เจอ
-          ไปบันทึกรอบ แล้วได้ "ยังไม่มีนัดใหม่ที่ต้องสร้าง" (หน้าจัดคิวเลี่ยงกับดักเดียวกันที่ `suggestionExisting`) */
+          ไปบันทึกรอบ แล้วได้ "ยังไม่มีนัดใหม่ที่ต้องสร้าง" (หน้าจัดคิวเลี่ยงกับดักเดียวกันที่ `suggestionExisting`)
+       ⭐ รอบตามปฏิทิน (mig 0397 · ข้อเสนอมี `planSlotDate`): วันถัดไป = วันที่ตัวเติมนัดสร้างให้ช่องถัดไปของรอบจริง ๆ
+          ("ทุกเดือน วันที่ 22" ไม่ขึ้นกับวันที่เข้าจริง) ⇒ บอกวันได้ตรง ๆ ไม่ใช่ "ราว" · รอบ "ทุก N วัน" ยังเป็นประโยคเดิมทุกตัวอักษร */
     setToast(data?.steppedBackRequest
       ? { kind: "success", msg: `${closedAs} · ใบประเมินกลับไปขั้นลงคิวแล้ว — TS จะลงวันใหม่ และฝ่ายขายได้รับแจ้งพร้อมเหตุผล` }
       : suggestion
-      ? { kind: "success", msg: `${closedAs} · ตามรอบควรเข้าครั้งถัดไปราว ${suggestion.scheduledDate} — ผู้จัดคิวดูนัดรอบถัดไปของรอบนี้ได้ในรายการงาน · ถ้ารอบนี้ไม่มีนัดข้างหน้าเลย จะขึ้นที่งานเข้าใหม่ แท็บ “ครบรอบยังไม่มีนัด” ให้เติมนัดตามรอบ` }
+      ? { kind: "success", msg: suggestion.planSlotDate
+        ? `${closedAs} · ตามรอบ ครั้งถัดไปคือ ${fmtDate(suggestion.scheduledDate)} — ผู้จัดคิวดูนัดรอบถัดไปของรอบนี้ได้ในรายการงาน · ถ้ารอบนี้ไม่มีนัดข้างหน้าเลย จะขึ้นที่งานเข้าใหม่ แท็บ “ครบรอบยังไม่มีนัด” ให้เติมนัดตามรอบ`
+        : `${closedAs} · ตามรอบควรเข้าครั้งถัดไปราว ${suggestion.scheduledDate} — ผู้จัดคิวดูนัดรอบถัดไปของรอบนี้ได้ในรายการงาน · ถ้ารอบนี้ไม่มีนัดข้างหน้าเลย จะขึ้นที่งานเข้าใหม่ แท็บ “ครบรอบยังไม่มีนัด” ให้เติมนัดตามรอบ` }
       : { kind: "success", msg: `ปิดงานแล้ว · ${closedAs}${retrievalText}` });
     setClosing(null);
     await load();

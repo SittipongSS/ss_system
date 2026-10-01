@@ -12,6 +12,7 @@ import {
 } from './intakePlanFacts.js';
 import { planQueue } from './intake.js';
 import { suggestEveryDays } from './rounds.js';
+import { suggestCadence } from './cadence.js';
 import { ORIGIN_HISTORICAL, ORIGIN_PIPELINE } from '../sales/historicalOrders.js';
 
 /* ── ใบจริง SO-26090247-0 ─────────────────────────────────────────────────────────────── */
@@ -64,9 +65,15 @@ test('⭐ SO-26090247-0: แพ็ครายโซน · ช่วงบริ
   assert.equal(facts.periodSpanText, '12 เดือน');
 
   assert.deepEqual(facts.window, { startDate: '2026-10-22', endDate: '2027-10-21', startHint: 'ตามวันเริ่มช่วงบริการของใบ' });
-  assert.deepEqual(facts.cadence, { everyDays: 365, visits: 1, clamped: false });
-  assert.equal(facts.cadenceText, 'ทุก 365 วัน');
-  assert.equal(facts.cadenceSub, '≈ 1 นัด');
+  /* ⭐ ข้อเสนอเดินตามปฏิทิน (mig 0397 · คำตอบเจ้าของข้อ 3): ความถี่ตัวแรกที่ได้นัด **เท่าจำนวนรอบบริการพอดี**
+        1 รอบใน 12 เดือนที่เริ่มวันที่ 22 = ทุก 12 เดือน วันที่ 22 (เดิม "ทุก 365 วัน" — วันของเดือนไหลเมื่อข้ามปีอธิกสุรทิน)
+     ⚠️ ใบจริงนี้บรรทัดเขียน 12 เดือนแต่ `serviceRounds = 1` (ข้อมูล ไม่ใช่โค้ด) — ฝ่ายขายต้องแก้จำนวนรอบก่อน TS ตั้งรอบ */
+  assert.deepEqual(facts.cadence, {
+    cadenceKind: 'monthly', everyDays: null, cadenceEvery: 12, cadenceWeekday: null, cadenceMonthDay: 22, cadenceMonthDayTo: null,
+    visits: 1, exact: true, clamped: false,
+  });
+  assert.equal(facts.cadenceText, 'ทุก 12 เดือน วันที่ 22');
+  assert.equal(facts.cadenceSub, '1 นัด', 'ได้พอดีจำนวนรอบ = ไม่มีเครื่องหมาย ≈');
 
   assert.deepEqual(facts.contract, { hasContract: false, contractNo: null });
   assert.deepEqual(facts.contractChip, { tone: 'warning', label: 'ยังไม่ผูก — นัดติดด่านสัญญา (SA)' });
@@ -106,8 +113,8 @@ test('ช่วงบริการเริ่มไปแล้ว → เร
   const facts = planRowFacts(row, { order: stampedOrder(), linesById, todayIso: '2026-12-01' });
   assert.deepEqual(facts.window, { startDate: '2026-12-01', endDate: '2027-10-21', startHint: 'ช่วงบริการเริ่ม 22/10/2026 ไปแล้ว — เริ่มวันนี้' });
   assert.deepEqual(facts.prefill, { kind: 'refill', startDate: '2026-12-01', endDate: '2027-10-21', startHint: 'ช่วงบริการเริ่ม 22/10/2026 ไปแล้ว — เริ่มวันนี้' });
-  assert.deepEqual(facts.cadence, suggestEveryDays({ startDate: '2026-12-01', endDate: '2027-10-21', rounds: 1 }));
-  assert.equal(facts.cadenceText, 'ทุก 325 วัน');
+  assert.deepEqual(facts.cadence, suggestCadence({ startDate: '2026-12-01', endDate: '2027-10-21', rounds: 1 }));
+  assert.equal(facts.cadenceText, 'ทุก 12 เดือน วันที่ 1', 'วันที่ของเดือน = วันที่ของวันเริ่มที่เหลือ (วันนี้ 1 ธ.ค.)');
   assert.equal(facts.periodText, '22/10/2026 – 21/10/2027', 'ช่วงบริการของใบไม่เปลี่ยนตามวันนี้');
 });
 
@@ -234,15 +241,38 @@ test('planSuggestionLabel: ชิป "จำนวนรอบบริการ
   assert.equal(planSuggestionLabel(2, suggestEveryDays({ startDate: '2026-01-01', endDate: '2028-01-01', rounds: 2 })),
     'จำนวนรอบบริการ 2 รอบ → ทุก 365 วัน (สูงสุดที่ตั้งได้ · ได้ราว 3 นัด)');
   assert.equal(planSuggestionLabel(12, null), null);
+  /* รูปใหม่ของข้อเสนอ (`suggestCadence` · mig 0397) — ชิปพิมพ์ความถี่ทุกชนิดจาก `cadenceText` ตัวเดียว */
+  const so247 = { startDate: '2026-10-22', endDate: '2027-10-21' };
+  assert.equal(planSuggestionLabel(12, suggestCadence({ ...so247, rounds: 12 })), 'จำนวนรอบบริการ 12 รอบ → ทุกเดือน วันที่ 22');
+  assert.equal(planSuggestionLabel(26, suggestCadence({ ...so247, rounds: 26 })), 'จำนวนรอบบริการ 26 รอบ → ทุก 2 สัปดาห์ วันศุกร์');
+  assert.equal(planSuggestionLabel(13, suggestCadence({ ...so247, rounds: 13 })), 'จำนวนรอบบริการ 13 รอบ → ทุก 30 วัน');
+  // ไม่มีความถี่ไหนได้พอดี = บอกว่าได้ราวกี่นัด (24 รอบ → ทุก 15 วัน ได้ 25 นัด)
+  assert.equal(planSuggestionLabel(24, suggestCadence({ ...so247, rounds: 24 })), 'จำนวนรอบบริการ 24 รอบ → ทุก 15 วัน (ได้ราว 25 นัด)');
+  assert.equal(planSuggestionLabel(2, suggestCadence({ startDate: '2026-01-01', endDate: '2028-01-01', rounds: 2 })),
+    'จำนวนรอบบริการ 2 รอบ → ทุก 365 วัน (สูงสุดที่ตั้งได้ · ได้ราว 3 นัด)');
+  // ข้อเสนอที่อ่านความถี่ไม่ออก = ไม่มีชิป (ไม่พิมพ์ "→ —")
+  assert.equal(planSuggestionLabel(12, {}), null);
+  assert.equal(planSuggestionLabel(12, { cadenceKind: 'monthly', cadenceEvery: 1 }), null);
 });
 
 test('รอบที่แนะนำโดนเพดาน → ใต้ค่าบอก "สูงสุดที่ตั้งได้"', () => {
-  const order = stampedOrder({ servicePeriodFrom: '2026-10-01', servicePeriodTo: '2028-09-30' });
+  /* ช่วงที่ยังโดนเพดาน: 1 ม.ค. 2026 – 1 ม.ค. 2028 (24 เดือน + 1 วัน) ขาย 2 รอบ — ทุก 12 เดือนได้ 3 ช่อง ไม่มีความถี่ตามปฏิทิน
+     ไหนได้ 2 พอดี ⇒ ตกไปที่ทุก N วัน: 730 วันเกินเพดาน ⇒ ทุก 365 วัน ได้ราว 3 นัด (วันนี้ก่อนวันเริ่ม ⇒ ช่วงทั้งช่วง) */
+  const clampOrder = stampedOrder({ servicePeriodFrom: '2026-01-01', servicePeriodTo: '2028-01-01' });
   const lines = LINES.map((l) => ({ ...l, serviceRounds: 2 }));
+  const clamp = rowFor({ order: clampOrder, lines, todayIso: '2025-12-15' });
+  const clamped = planRowFacts(clamp.row, { order: clampOrder, linesById: clamp.linesById, todayIso: '2025-12-15' });
+  assert.equal(clamped.cadence.clamped, true);
+  assert.equal(clamped.cadence.exact, false);
+  assert.equal(clamped.cadenceText, 'ทุก 365 วัน');
+  assert.equal(clamped.cadenceSub, '≈ 3 นัด · สูงสุดที่ตั้งได้');
+
+  /* ใบเดิมของเทสต์นี้ (24 เดือนพอดี ขาย 2 รอบ) ไม่โดนเพดานอีกแล้ว — ตามปฏิทินได้ "ทุก 12 เดือน" 2 นัดพอดี (mig 0397) */
+  const order = stampedOrder({ servicePeriodFrom: '2026-10-01', servicePeriodTo: '2028-09-30' });
   const { row, linesById } = rowFor({ order, lines });
   const facts = planRowFacts(row, { order, linesById, todayIso: '2026-09-29' });
-  assert.equal(facts.cadenceText, 'ทุก 365 วัน');
-  assert.equal(facts.cadenceSub, '≈ 3 นัด · สูงสุดที่ตั้งได้');
+  assert.equal(facts.cadenceText, 'ทุก 12 เดือน วันที่ 1');
+  assert.equal(facts.cadenceSub, '2 นัด');
   assert.equal(facts.periodSpanText, '24 เดือน');
   assert.ok(facts.termDetails.every((t) => t.periodMonths === 24 && t.rounds === 2));
 });
@@ -309,9 +339,9 @@ test('⭐ รอบกำพร้า: Rev. ที่อนุมัติไม
     { id: 'T-E', zoneId: 'Z1', salesOrderId: 'E' },
   ];
   const out = orphanCtx([livePlan('P1', 'A'), livePlan('P2', 'C', { everyDays: 14 }), livePlan('P3', 'F')], orders, terms);
-  assert.deepEqual(out.dropped, [{ planId: 'P1', siteId: 'S1', site: OS1, fromOrderId: 'A', fromOrderNumber: 'SO-A', toOrderId: 'B', toOrderNumber: 'SO-B', everyDays: 30, kind: 'dropped' }]);
-  assert.deepEqual(out.stale, [{ planId: 'P2', siteId: 'S1', site: OS1, fromOrderId: 'C', fromOrderNumber: 'SO-C', toOrderId: 'E', toOrderNumber: 'SO-E', everyDays: 14, kind: 'stale' }]);
-  assert.deepEqual(out.cancelled, [{ planId: 'P3', siteId: 'S1', site: OS1, fromOrderId: 'F', fromOrderNumber: 'SO-F', toOrderId: null, toOrderNumber: null, everyDays: 30, kind: 'cancelled' }]);
+  assert.deepEqual(out.dropped, [{ planId: 'P1', siteId: 'S1', site: OS1, fromOrderId: 'A', fromOrderNumber: 'SO-A', toOrderId: 'B', toOrderNumber: 'SO-B', everyDays: 30, cadenceText: 'ทุก 30 วัน', kind: 'dropped' }]);
+  assert.deepEqual(out.stale, [{ planId: 'P2', siteId: 'S1', site: OS1, fromOrderId: 'C', fromOrderNumber: 'SO-C', toOrderId: 'E', toOrderNumber: 'SO-E', everyDays: 14, cadenceText: 'ทุก 14 วัน', kind: 'stale' }]);
+  assert.deepEqual(out.cancelled, [{ planId: 'P3', siteId: 'S1', site: OS1, fromOrderId: 'F', fromOrderNumber: 'SO-F', toOrderId: null, toOrderNumber: null, everyDays: 30, cadenceText: 'ทุก 30 วัน', kind: 'cancelled' }]);
 });
 
 test('รอบกำพร้า: Rev. ยังไม่อนุมัติ · ย้อนการอนุมัติ · ใบยังมีผล = ไม่ใช่กำพร้า (0392 ย้ายให้ตอนอนุมัติ)', () => {
@@ -383,6 +413,16 @@ test('ข้อความแถบรอบกำพร้า (แคตตา
     'ST-1 ไซต์ A · SO-26090001-0 · ทุก 14 วัน',
   );
   assert.equal(ORPHAN_ITEM_TEXT({ site: null, siteId: 'S-GONE', fromOrderId: 'SOR-x', everyDays: 7 }), 'S-GONE · SOR-x · ทุก 7 วัน');
+  // รอบตามปฏิทิน (mig 0397) — แถวพก `cadenceText` มาจาก orphanPlanRows · ไม่มี everyDays ก็ต้องพิมพ์ความถี่ได้
+  assert.equal(
+    ORPHAN_ITEM_TEXT({ site: OS1, siteId: 'S1', fromOrderNumber: 'SO-A', toOrderNumber: 'SO-B', everyDays: null, cadenceText: 'ทุกเดือน วันที่ 22' }),
+    'ST-1 ไซต์ A · SO-A → SO-B · ทุกเดือน วันที่ 22',
+  );
+  assert.equal(
+    ORPHAN_ITEM_TEXT({ site: OS1, siteId: 'S1', fromOrderNumber: 'SO-A', cadenceKind: 'weekly', cadenceEvery: 2, cadenceWeekday: 5 }),
+    'ST-1 ไซต์ A · SO-A · ทุก 2 สัปดาห์ วันศุกร์',
+  );
+  assert.equal(ORPHAN_ITEM_TEXT({ site: OS1, siteId: 'S1', fromOrderNumber: 'SO-A', cadenceText: '—' }), 'ST-1 ไซต์ A · SO-A', 'อ่านความถี่ไม่ออก = ไม่ต่อท้าย');
 });
 
 test('orphanOrderIdsToLoad: บอก route ว่าต้องโหลดใบไหนเพิ่มเพื่อเดินโซ่ Rev. (ทีละทอด · ไม่ซ้ำ · หยุดที่ใบมีผล/ยกเลิก)', () => {
