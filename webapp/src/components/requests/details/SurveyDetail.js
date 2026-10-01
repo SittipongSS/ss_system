@@ -6,8 +6,10 @@
 // เนื้อทั้งหมดอยู่ที่ `service_survey_zones` ซึ่งเป็นตารางลูกของใบ
 //
 // ⚠️ **ตัวเลขทุกตัวคำนวณสด ไม่มีคอลัมน์เก็บ** (`lib/service/survey.js`) — พื้นที่
-// ปริมาตร แพ็คเกจตามสูตร ล้วน derive จาก `parts` · เก็บลงคอลัมน์เมื่อไรก็จะมีวัน
+// ปริมาตร ล้วน derive จาก `parts` · เก็บลงคอลัมน์เมื่อไรก็จะมีวัน
 // ที่ตัวเลขบนจอกับของจริงไม่ตรงกัน (กติกาเดิมของรีโปเรื่องค่าที่คำนวณได้)
+// ⭐ แพ็คเกจ = ขนาด + จำนวนที่หัวหน้าเคาะ (mig 0398) — ขนาดกับ "ที่ระบบเสนอตอนเคาะ" เป็น **ภาพนิ่งบนแถว**
+//   (ทะเบียนขนาดแก้/ลบได้ทีหลัง ⇒ คำนวณสดจากทะเบียนวันนี้จะเล่าคนละเรื่องกับตอนที่หัวหน้าตัดสิน)
 //
 // ⚠️ พื้นที่ที่ถูก **ตัด** (`status='cut'`) ยังอยู่ในตาราง แต่ไม่เข้ายอดรวม — หายไป
 // เฉย ๆ แปลว่าคนอ่านไม่มีทางรู้ว่าเคยขอให้วัดแล้วเจ้าหน้าที่ตัดทิ้งเพราะอะไร
@@ -17,7 +19,10 @@ import { DetailCard } from "@/components/ui/DetailPage";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { TableScroll } from "@/components/ui/Table";
 import { fmtDate, fmtDateTime, fmtNumber, naText } from "@/lib/format";
-import { surveyChangeCounts, surveyChangeText, surveyTotals, surveyZoneSummary } from "@/lib/service/survey";
+import {
+  surveyChangeCounts, surveyChangeText, surveyPackageMixText, surveyTotals, surveyZonePackageText,
+  surveyZoneSuggestedDiffText, surveyZoneSummary,
+} from "@/lib/service/survey";
 import styles from "./details.module.css";
 
 const STATUS_LABEL = { ok: "", cut: "ตัดออก", added: "เจ้าหน้าที่เพิ่มหน้างาน" };
@@ -179,13 +184,13 @@ export default function SurveyDetail({ request, canWorkSurvey = false }) {
                   </td>
                   {measured && <td className="num">{naText(num(s.areaSqm))}</td>}
                   {measured && <td className="num">{naText(num(s.volumeCbm))}</td>}
-                  {/* ⭐ โชว์ทั้งเลขที่หัวหน้าเคาะและเลขที่สูตรบอก — ต่างกันได้ (มติข้อ 6)
-                      แต่ต้องเห็นว่าต่าง ไม่ใช่ทับกันเงียบ ๆ */}
+                  {/* ⭐ โชว์ขนาด + จำนวนที่หัวหน้าเคาะ ("SM · 1") และที่ระบบเสนอเมื่อ **ต่างกัน** — ต่างได้ (มติข้อ 6)
+                      แต่ต้องเห็นว่าต่าง ไม่ใช่ทับกันเงียบ ๆ · 🔄 แทน "สูตร N" (สูตร ÷ 2,400 ถอดแล้ว · mig 0398) */}
                   {measured && (
                     <td className="num">
-                      {naText(s.packageQty)}
-                      {s.suggestedPackages ? (
-                        <span className="cell-sub">สูตร {s.suggestedPackages}</span>
+                      {naText(surveyZonePackageText(s, { unit: false }))}
+                      {surveyZoneSuggestedDiffText(s, { unit: false }) ? (
+                        <span className="cell-sub">{surveyZoneSuggestedDiffText(s, { unit: false })}</span>
                       ) : null}
                     </td>
                   )}
@@ -220,8 +225,9 @@ export default function SurveyDetail({ request, canWorkSurvey = false }) {
                 <td className="num">{naText(num(totals.volumeCbm))}</td>
                 <td className="num">
                   {naText(totals.packageQty)}
-                  {totals.suggestedPackages ? (
-                    <span className="cell-sub">สูตร {totals.suggestedPackages}</span>
+                  {/* สัดส่วนขนาดของทั้งใบ ("SM 1 · ST 1") */}
+                  {surveyPackageMixText(totals.packagesBySize) ? (
+                    <span className="cell-sub">{surveyPackageMixText(totals.packagesBySize)}</span>
                   ) : null}
                 </td>
                 <td className="num">

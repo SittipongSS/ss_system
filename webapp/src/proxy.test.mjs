@@ -4,7 +4,9 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { apiWriteAllowed, bypassesSessionGate, lockedOut } from './proxy.js';
-import { RD_ROLES, ROLES, can, canAnswerServiceRequests, canEditService } from '@/lib/permissions';
+import {
+  RD_ROLES, ROLES, can, canAnswerServiceRequests, canEditService, canManagePackageSizes, canViewServiceRegistry,
+} from '@/lib/permissions';
 
 /* 🐞 ของจริงที่หลุด prod: proxy ตอบ 401 ให้ทุก request ที่ไม่มี cookie session รวม
    Vercel Cron ซึ่งยืนยันตัวด้วย `Authorization: Bearer $CRON_SECRET` เท่านั้น
@@ -527,6 +529,41 @@ test('⭐ PATCH /api/service/terms/[id] — TS Planner ผ่านทั้ง�
   // ฝ่ายที่ไม่เกี่ยวกับงานบริการถูกตัดตั้งแต่ proxy
   for (const role of ['wh', 'qc', 'pc', 'rd', 'finance', 'secretary', 'viewer']) {
     assert.equal(apiWriteAllowed('PATCH', path, role, []), false, `${role} ต้องไม่ผ่าน`);
+  }
+});
+
+/* ── ทะเบียนขนาดแพ็คเกจ (mig 0398 · /api/service/package-sizes) — โมดูลใหม่ต้องผ่าน proxy ทั้งสองด่าน ──────────
+   🪤 บทเรียน `/api/rd` (#perfumer-brief): หน้าใหม่ลงทะเบียนเมนูแล้ว แต่ API ไม่ได้ลงทะเบียน ⇒ ทุก role ที่ไม่ใช่แอดมิน
+      โดน 403 เปล่า ๆ · เส้นนี้ **ไม่ต้องเพิ่มรายการ** เพราะอยู่ใต้ `/api/service` (OPEN_WRITE_APIS + กฎ service:edit/work)
+      และหน้าอยู่ใต้ `/database` (OPEN_PAGES) — เทสต์นี้ตรึงข้อเท็จจริงนั้นไว้ ถ้ามีคนย้าย path วันไหนจะแดงทันที
+   ⭐ คนแก้ทะเบียน (แอดมิน · หัวหน้าฝ่ายบริการ · CD/CM) ต้องผ่านทั้งสามเมธอด · ด่านจริงคือ `canManagePackageSizes` ใน handler
+   ⚠️ ช่าง (`ts` · service:work) กับ Planner/ฝ่ายขาย (service:edit) ผ่าน proxy ได้ แล้วได้ 403 จาก handler — ไม่ใช่ช่องโหว่
+      แต่ห้ามมีใครถอดด่านใน handler เพราะคิดว่า proxy กันให้แล้ว */
+test('⭐ ทะเบียนขนาดแพ็คเกจ: คนแก้ทะเบียนผ่าน proxy ทั้งสองด่านทุกเมธอด · หน้า /database เปิด · ด่านจริงอยู่ใน handler', () => {
+  const writes = [
+    ['POST', '/api/service/package-sizes'],
+    ['PATCH', '/api/service/package-sizes/ST'],
+    ['DELETE', '/api/service/package-sizes/ST'],
+  ];
+  const editors = ROLES.filter((role) => role !== 'admin' && canManagePackageSizes({ role, department: 'TS' }));
+  assert.deepEqual([...editors].sort(), ['commercial_director', 'commercial_manager', 'ts_audit', 'ts_manager', 'ts_senior']);
+  for (const role of editors) {
+    for (const [method, path] of writes) {
+      assert.equal(lockedOut({ role, extraCaps: [] }, path, method, true), false, `${role} ${method}: ด่าน lockdown`);
+      assert.equal(apiWriteAllowed(method, path, role, []), true, `${role} ${method}: ด่าน cap`);
+    }
+  }
+  // ช่างและ Planner ถึง handler ได้ — handler ต้องเป็นคนตัด
+  for (const role of ['ts', 'ts_planner', 'ae']) {
+    assert.equal(apiWriteAllowed('DELETE', '/api/service/package-sizes/ST', role, []), true, role);
+    assert.equal(canManagePackageSizes({ role, department: role === 'ae' ? 'SA' : 'TS' }), false, `${role} ลบขนาดไม่ได้`);
+  }
+  // อ่าน: ทุกคนที่เข้าฐานข้อมูลได้ — GET ของ /api/service และหน้า /database ต้องไม่ถูก lockdown ตัด
+  for (const role of ['ae', 'ac', 'ts', 'ts_planner', 'ts_manager', 'finance']) {
+    const me = { role, extraCaps: [] };
+    assert.equal(lockedOut(me, '/api/service/package-sizes', 'GET', true), false, `${role} GET`);
+    assert.equal(lockedOut(me, '/database/package-sizes', 'GET', false), false, `${role} เปิดหน้าทะเบียน`);
+    assert.equal(canViewServiceRegistry({ role }), true, `${role} อ่านทะเบียน`);
   }
 });
 

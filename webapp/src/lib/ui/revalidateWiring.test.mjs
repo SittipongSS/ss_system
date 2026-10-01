@@ -12,6 +12,8 @@ import { fileURLToPath } from "node:url";
  */
 const WIRED = [
   "app/database/assets/page.js",
+  // ทะเบียนขนาดแพ็คเกจ (mig 0398) — จำนวนใบที่ใช้ขนาด (กล่องยืนยันลบ) เปลี่ยนตามที่หัวหน้าคนอื่นเคาะระหว่างแท็บเปิดค้าง
+  "app/database/package-sizes/page.js",
   "app/requests/page.js",
   // ตารางงานผู้ปรุงกลิ่น (mig 0350) — หัวหน้าเปิดค้างไว้ทั้งวันเพื่อดูว่าเหลืออะไรให้แจก
   "app/rd/perfumers/page.js",

@@ -74,6 +74,38 @@ test('สิทธิ์รายคน (extraCaps) เปิดระบบเ�
   assert.ok(extra.some((g) => g.system === 'mgmt'), 'สิทธิ์รายคนต้องเปิดกลุ่มงานบริหาร');
 });
 
+/* ── ทะเบียนขนาดแพ็คเกจ (mig 0398 · มติเจ้าของ 01/10 "เพิ่ม ลบ ได้") ───────────────────────────────
+   บ้านอยู่ฐานข้อมูล (อ่านได้ทุกคนที่เข้าฐานข้อมูลได้ — ฝ่ายขายต้องรู้ว่า SM/ST/XL บนผลประเมินคือพื้นที่ขนาดไหน)
+   · ทางลัดในเมนูบริการขึ้นเฉพาะคนที่แก้ทะเบียนได้ (= คนที่เคาะขนาดบนผลประเมิน) */
+const PKG = '/database/package-sizes';
+
+test('⭐ ขนาดแพ็คเกจอยู่ในเมนูฐานข้อมูลของทุกคนที่เข้าฐานข้อมูลได้ — ถัดจากทะเบียนเครื่อง', () => {
+  for (const role of ['ae', 'ac', 'finance', 'rd', 'admin', 'commercial_manager']) {
+    assert.ok(hrefs(menuGroupsForUser(user({ role })), 'master').includes(PKG), `${role} ต้องเห็นเมนูขนาดแพ็คเกจใต้ฐานข้อมูล`);
+  }
+  const master = MENU_GROUPS.find((g) => g.system === 'master').items.map((i) => i.href);
+  assert.equal(master.indexOf(PKG), master.indexOf('/database/assets') + 1, 'ก้อนข้อมูลหลักของงานบริการอยู่ติดกัน');
+  const item = MENU_GROUPS.find((g) => g.system === 'master').items.find((i) => i.href === PKG);
+  assert.equal(item.name, 'ขนาดแพ็คเกจ');
+  assert.equal(item.cap, 'products:view', 'อ่านได้ = สิทธิ์เดียวกับเมนูอื่นของฐานข้อมูล · สิทธิ์แก้ถามที่หน้า/API เอง');
+  assert.ok(item.match('/database/package-sizes') && !item.match('/database/assets'));
+});
+
+test('⭐ ทางลัดในเมนูบริการ: หัวหน้าฝ่ายบริการ + แอดมินเห็น · ช่าง/Planner ไม่เห็น · หน้าเดียวกัน ไอคอนเดียวกัน', () => {
+  const service = (role) => hrefs(menuGroupsForUser(user({ role, department: 'TS' })), 'service');
+  for (const role of ['ts_manager', 'ts_audit', 'ts_senior', 'admin']) {
+    assert.ok(service(role).includes(PKG), `${role} แก้ทะเบียนขนาดได้ ⇒ ต้องมีทางลัด`);
+  }
+  for (const role of ['ts', 'ts_planner']) {
+    assert.ok(!service(role).includes(PKG), `${role} แก้ทะเบียนไม่ได้ ⇒ ไม่มีทางลัด (ไม่มีสิทธิ์ = ไม่โชว์)`);
+  }
+  const entries = MENU_GROUPS.flatMap((g) => g.items).filter((i) => i.href === PKG);
+  assert.equal(entries.length, 2, 'บ้านที่ฐานข้อมูล + ทางลัดที่บริการ — ไม่มีที่ที่สาม');
+  assert.equal(new Set(entries.map((i) => i.icon)).size, 1, 'หนึ่ง entity หนึ่งไอคอน');
+  assert.equal(new Set(entries.map((i) => i.name)).size, 1, 'ชื่อเมนูเดียวกันทั้งสองที่');
+  assert.equal(entries.find((i) => i.cap === 'service:view').utility, true, 'ตั้งค่านาน ๆ ครั้ง ไม่ใช่งานรายวัน');
+});
+
 test('ด่านทะเบียนเดียว — AppLayout ต้องไม่ประกาศเมนูเองอีก', async () => {
   const { readFileSync } = await import('node:fs');
   const shell = readFileSync(new URL('../components/AppLayout.js', import.meta.url), 'utf8');

@@ -3103,6 +3103,12 @@ h1, h2, h3, h4, h5, h6 {
   background: var(--panel-2);
   color: var(--text);
 }
+/* จอสัมผัส: ปุ่มปิดหน้าตา 28px เท่าเดิม แต่ **รับนิ้วได้ 44px** (ขยายพื้นที่กดด้วย ::after — ไม่ขยับหัวโมดัลของจอไหนเลย)
+   UAT PR-P 01/10: เป้ากด 28×28 บนมือถือ/แท็บเล็ต */
+@media (pointer: coarse) {
+  .drawer-close { position: relative; }
+  .drawer-close::after { content: ""; position: absolute; inset: calc(-1 * var(--space-2)); }
+}
 
 .drawer-section {
   margin-bottom: var(--space-5);
@@ -5436,11 +5442,14 @@ button.empty-state { width: 100%; font: inherit; }
   min-width: 1100px;
 }
 
-/* Responsive drawer */
+/* Responsive drawer
+   🐞 UAT PR-P 01/10 (จอ 390): เดิม `max-height: 94vh` คิดจากทั้งจอ แต่ `.overlay` ของจอ ≤480 เว้นขอบล่างเท่าแถบเมนูมือถือ
+      (`--mobile-nav-h`) ⇒ โมดัลที่สูงเต็มเพดานสูงกว่าช่องที่มันถูกจัดกึ่งกลาง ล้นออกสองฝั่ง: ขอบบนขึ้นไปเหนือจอ 14px หัวเรื่องกับ
+      ปุ่มปิดถูกตัด · `100%` = สูงได้เท่าช่องเนื้อของ overlay พอดี (overlay สูงตายตัว จึงคิดเปอร์เซ็นต์ได้) — โมดัลเตี้ยไม่เปลี่ยนอะไร */
 @media (max-width: 480px) {
   .drawer {
     max-width: 100%;
-    max-height: 94vh;
+    max-height: 100%;
   }
 }
 

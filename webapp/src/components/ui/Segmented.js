@@ -58,6 +58,9 @@ export default function Segmented({
             onClick={() => onChange?.(option.value)}
             onKeyDown={(event) => moveFocus(event, index)}
             aria-pressed={active}
+            /* โทนของตัวเลือกเดี่ยว (เช่น "danger" = ค่าที่เลือกไว้แต่ใช้ไม่ได้แล้ว) — ส่งเป็น data attribute ให้ผู้เรียกแต่งใน
+               CSS module ของตัวเอง · ไม่ส่ง = ไม่มี attribute ⇒ ทุกแถบเดิมได้ DOM เดิม */
+            data-tone={option.tone}
             aria-label={option.ariaLabel
               || (!showLabels ? option.label : undefined)
               || (option.count != null && typeof option.label === "string"

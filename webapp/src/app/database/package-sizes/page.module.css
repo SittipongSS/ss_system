@@ -1,0 +1,122 @@
+/* ทะเบียนขนาดแพ็คเกจ (mig 0398)
+   ⚠️ ห้าม style={{…}} · ห้ามเขียนคลาส btn เอง (ใช้ <Button> กลาง) — ratchet
+   ⚠️ ห้ามประกาศ `.toolbar` ของตัวเองที่นี่ — ใช้คลาสกลางใน globals.css */
+
+/* บรรทัด "แก้ได้: …" ท้ายแถบเครื่องมือ — ดันไปขวาบนจอกว้าง ตกลงมาเป็นแถวของตัวเองบนจอแคบ
+   `text-wrap: balance` — ห่อเมื่อไรสองบรรทัดยาวพอกัน ไม่ทิ้งคำเดียวไว้บรรทัดล่าง (UAT 01/10: "ได้" ค้างบรรทัดเดียวที่ 390) */
+.who {
+  margin-inline-start: auto;
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  line-height: var(--lh-thai);
+  text-wrap: balance;
+}
+.who b { color: var(--text-2); font-weight: var(--fw-semibold); }
+
+/* รหัสคือสิ่งที่คนกวาดตาหา (ตัวเดียวกับที่ขึ้นบนแถบเลือกของหัวหน้า) — เด่นกว่าชื่อเต็ม */
+.code { font-size: var(--fs-6); font-weight: var(--fw-bold); }
+
+.band { display: block; font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; }
+
+/* หมายเหตุยาวได้ 500 ตัวอักษร — ห่อบรรทัด ไม่ดันตารางให้กว้าง */
+.note { max-width: 28ch; white-space: normal; line-height: var(--lh-thai); }
+
+/* ปุ่มก้าวถัดไป + เมนู "…" — ไม่ห่อบรรทัด เพราะเมนูเป็น portal ที่ต้องอยู่ท้ายแถวเสมอ
+   ⚠️ คลาสนี้อยู่ที่ **<div> ในเซลล์** ไม่ใช่ที่ <td> (td ที่เป็น flex เลิกเป็นเซลล์ตาราง ⇒ เส้นคั่นแถวขาดใต้คอลัมน์นี้) */
+.actions {
+  display: flex;
+  gap: var(--space-1-5);
+  align-items: center;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
+/* ── เป้านิ้ว 44px บนจอสัมผัส (UAT PR-P 01/10) ────────────────────────────────
+   ผูกกับ **ชนิดตัวชี้** ไม่ใช่ความกว้างจอ (แท็บเล็ตแนวนอนกว้างเท่าจอคอมแต่ใช้นิ้ว) · จอเมาส์คงขนาดเดิมของระบบ
+   ⚠️ สองคลาสขึ้นไป (`.touch.btn`) ชนะ `.btn` / `.btn.sm` ของ globals โดยไม่พึ่งลำดับไฟล์ */
+@media (pointer: coarse) {
+  .touch:global(.btn),
+  .touch:global(.btn.sm) { min-height: var(--ctl-h-touch); }
+  .touchMenu :global(.btn-icon) { width: var(--ctl-h-touch); height: var(--ctl-h-touch); }
+  .filterSeg:global(.segmented) > button { min-height: var(--ctl-h-touch); }
+}
+
+/* ตัวกรองสามตัว — จอแคบมากห่อบรรทัดได้ ไม่เลื่อนข้างจนตัวเลือกถูกตัดที่ขอบ (UAT 01/10 ที่ 390: "หัวหน้าเลือกเอง" ขาด ป้ายจำนวนหาย) */
+.filterSeg:global(.segmented) { flex-wrap: wrap; max-inline-size: 100%; }
+
+/* ── กล่องแคบกว่าตาราง: แถวเรียงเป็นป้าย/ค่า (ท่าเดียวกับตารางสรุปผลประเมิน) ─────────
+   กล่องเลื่อนของตาราง (TableScroll ที่ถือคลาสนี้) เป็น container ⇒ ตัดสินจาก **ความกว้างของกล่อง** ไม่ใช่ของจอ
+   (แถบข้าง/ระยะขอบของหน้ากินไปเท่าไรไม่ต้องรู้) · 760px = `minWidth` ของตารางตอนมีคอลัมน์จัดการ
+   ⚠️ `[data-surface][data-family]` = (0,3,0) — ต้องหนักกว่ากฎเซลล์ของ Table.module.css (0,2,1) โดยไม่พึ่งลำดับไฟล์
+   ⚠️ ไม่ใส่ `role` ทับ <table> — หัวตารางยังอยู่ในโค้ด (ด่าน audit:ui นับ role บนแท็กตารางเป็นหนี้) */
+.shell { container-type: inline-size; }
+
+@container (max-width: 759px) {
+  .shell[data-surface][data-family] table { display: block; min-width: 0; }
+  .shell[data-surface][data-family] thead { display: none; }
+  .shell[data-surface][data-family] tbody { display: block; }
+
+  .shell[data-surface][data-family] tbody tr {
+    display: block;
+    padding: var(--space-3) var(--space-3-5);
+    border-bottom: 1px solid var(--border);
+  }
+  .shell[data-surface][data-family] tbody tr:last-child { border-bottom: 0; }
+
+  /* เซลล์ = ป้ายซ้าย ค่าขวา */
+  .shell[data-surface][data-family] tbody td {
+    display: grid;
+    grid-template-columns: 6rem minmax(0, 1fr);
+    align-items: start;
+    gap: var(--space-2);
+    height: auto;
+    min-height: 0;
+    max-width: none;
+    overflow: visible;
+    padding: var(--space-1) 0;
+    border: 0;
+    white-space: normal;
+  }
+  .shell[data-surface][data-family] tbody td::before {
+    content: attr(data-label);
+    color: var(--text-3);
+    font-size: var(--fs-3);
+    line-height: var(--lh-thai);
+  }
+  .shell[data-surface][data-family] tbody td > * { grid-column: 2; }
+
+  /* รหัสคือหัวของแถว — เต็มกว้าง ไม่มีป้าย */
+  .shell[data-surface][data-family] tbody td:first-child { display: block; padding-bottom: var(--space-1); }
+  .shell[data-surface][data-family] tbody td:first-child::before { content: none; }
+
+  /* ค่าที่เป็นข้อความล้วน (ชื่อเต็ม · หมายเหตุ · ผู้แก้) ไม่มีลูกให้กริดวาง ⇒ ตัวหนังสืออยู่คอลัมน์ค่าเองอยู่แล้ว
+     ส่วนบรรทัดรอง (`cell-sub`) ต้องไม่ถูกตัดกลางคำที่ขอบ */
+  .shell[data-surface][data-family] tbody td :global(.cell-sub) { white-space: normal; }
+  .note { max-width: none; }
+
+  /* ปุ่มจัดการ — แถวของตัวเองท้ายการ์ด ชิดซ้ายใต้ค่า (เมนู "…" เป็น portal ติดกับปุ่มของมัน) */
+  .shell[data-surface][data-family] tbody td[data-actions] { display: block; padding-top: var(--space-2); }
+  .shell[data-surface][data-family] tbody td[data-actions]::before { content: none; }
+  .actions { justify-content: flex-start; }
+}
+
+/* คำอธิบายใต้ตาราง — กติกาที่ทะเบียนนี้ป้อนให้จอเคาะ */
+.notes {
+  margin-top: var(--space-3);
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  line-height: var(--lh-thai);
+}
+.notes p { margin: 0; }
+.notes p + p { margin-top: var(--space-1); }
+.notes b { color: var(--text-2); font-weight: var(--fw-semibold); }
+
+/* เลขที่ใบในกล่องยืนยันลบ — เลขเอกสารห่อระหว่างใบได้ ไม่ตัดกลางเลข */
+.removeDocs {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}

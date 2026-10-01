@@ -71,11 +71,14 @@ export function surveySendVisitStep(visit, { today = null } = {}) {
  * @param sendBackPending  `view.send.sendBackPending` (`{ itemCount }` | null) — 🐞 review 26/09: ส่งกลับให้ช่างแก้ค้างอยู่
  *                     ⇒ ข้อเตือนต่อท้ายข้อ "ล็อก" (ผลของการล็อกเอง: ช่างแก้ต่อไม่ได้ · ไม่เขียนอะไรลงเธรด — ใบที่ล็อกซ่อนเรื่องค้างที่ `surveySendBackOnSheet` ของ GET · ดึงกลับ = ค้างตามจริง) · ไม่เปลี่ยนป้ายปุ่ม
  */
-export function surveySendConfirm({ docNo = null, closesVisit = null, sendBackPending = null } = {}) {
+export function surveySendConfirm({ docNo = null, closesVisit = null, sendBackPending = null, sizeReview = null } = {}) {
   const effects = [
     `${docNo ? `ใบ ${docNo}` : 'ใบนี้'} เป็น “ตอบแล้ว” — ฝ่ายขายได้แจ้งเตือนและเอาตัวเลขไปตั้งราคาได้ทันที`,
     'ผลประเมินล็อก แก้ไม่ได้ จนกว่าหัวหน้าจะกด “ดึงผลกลับมาแก้”',
   ];
+  /* ⭐ ขนาดที่ตั้งไว้ก่อนมีข้อเสนอของระบบ (back-fill ST ของ mig 0398 · UAT PR-P 01/10) — ฝ่ายขายจะได้ขนาดนี้ไปตั้งราคา
+     ⇒ บอกก่อนกดว่าพื้นที่ไหนยังไม่มีใครเทียบกับข้อเสนอ (เตือน ไม่บล็อก · ข้อความจาก `surveyPackageReviewText` ตัวเดียวกับการ์ด) */
+  if (sizeReview?.text) effects.push(`${sizeReview.text} — ฝ่ายขายจะได้ขนาดตามนี้ · ถ้ายังไม่ได้ตรวจ ปิดกล่องนี้แล้วตรวจที่แท็บสรุปส่งผลก่อน`);
   if (sendBackPending) {
     const n = Number.isInteger(sendBackPending.itemCount) && sendBackPending.itemCount > 0 ? ` ${sendBackPending.itemCount} ข้อ` : '';
     effects.push(`เรื่องที่ส่งกลับให้ช่างแก้${n} ยังรอช่างแจ้งว่าแก้แล้ว — ส่งผลแล้วช่างแก้ต่อไม่ได้ (ดึงผลกลับมาแก้ = เรื่องนี้กลับมารอช่างอีกครั้ง)`);

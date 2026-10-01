@@ -11,7 +11,7 @@
 //   ตัวเลขชุดเดียวกัน ไม่งั้น AE เปิดแท็บเห็น 8 โซน แต่ฟอร์มให้ติ๊กได้ 6
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { termsSoldNow, zoneTermState } from '@/lib/service/terms';
-import { spotCounts, suggestedPackages, surveyZoneSize } from '@/lib/service/survey';
+import { spotCounts, surveyZoneSize } from '@/lib/service/survey';
 import { fmtNumber } from '@/lib/format';
 /* ⚠️ ไฟล์ข้อความ (ไม่มี import) ไม่ใช่ตัวติดป้าย `zoneSetupOrders.js` — ป้ายสถานะมากับชิปจาก server แล้ว
    และไฟล์นี้ต้องไม่ดึงกราฟของ serviceSetup.js ตามมา */
@@ -87,8 +87,10 @@ export function zoneRegistryRow(zone = {}, {
        ⇒ จอโชว์เลขนี้เฉพาะโซนที่ไม่มีผลประเมิน (ของเก่าที่ไม่เคยประเมิน) ไม่รวมเข้ากัน */
     registeredSpots: Array.isArray(zone.spots) ? zone.spots.length : 0,
     assessedPackages: latest?.packageQty ?? null,
-    // สูตรเสนอไว้เท่าไร — ไว้ให้จอเทียบกับที่หัวหน้าเคาะจริง (ไม่ใช่คำเตือน)
-    suggestedPackages: latest ? suggestedPackages(size.volumeCbm) : null,
+    /* ขนาดแพ็คเกจที่หัวหน้าเคาะ (ภาพนิ่งบนแถวผลวัด · mig 0398) — คู่กับ `assessedPackages` ("ST · 2 แพ็ค")
+       ⚠️ `null` = ยังไม่ประเมิน หรือผลวัดก่อนมีขนาดที่ยังไม่ถูก back-fill · ไม่ใช่ "ไม่มีขนาด"
+       🔄 `suggestedPackages` (สูตร ÷ 2,400) ถอดแล้ว — ไม่มีจอไหนอ่าน และสูตรนั้นไม่มีแล้ว (มติ 01/10) */
+    assessedPackageSize: String(latest?.packageSize ?? '').trim().toUpperCase() || null,
     surveyCount: (Array.isArray(surveys) ? surveys : []).filter((r) => r && r.status !== 'cut').length,
 
     /* 🔒 **"มีใบอื่นสั่งวัดไว้แล้ว" เป็นสถานะของตัวเอง ไม่ใช่ "ยังไม่วัด"** (ม็อก §เจ็ดกรณี)
