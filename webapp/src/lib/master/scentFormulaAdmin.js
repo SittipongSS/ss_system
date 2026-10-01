@@ -8,7 +8,7 @@ import { businessDate } from '@/lib/businessDate';
 import { registryRefTargets } from '@/lib/master/registryRefs';
 import { loadMaterials } from '@/lib/materialPricesAdmin';
 import {
-  latestRevision, materialPriceState, pickStampedMaterial, revisionPriceRange, revisionUnitPrice,
+  latestRevision, materialPriceState, pickStampedMaterial, revisionPriceRange, revisionUnitPrice, revisionValidUntil,
 } from '@/lib/materialPrices';
 import {
   SCENT_STATUS_LABELS, derivedFromError, isScentUsable, newScentStatus, normalizeScentInput, proposedScentStatus,
@@ -546,17 +546,76 @@ export async function loadPriceSlotSource(supabase, slot) {
    · แถวผูกสูตร: F ลงกลิ่นของ **สูตร** · หมวดของสูตร (02-020 = F อย่างเดียว) · กลิ่นใช้ไม่ได้ = ไม่มีช่อง F
    · แถวกลิ่นอย่างเดียว / สูตรหาไม่เจอ: ถอยไปตัวคิดจากแถว (`rowPriceSlots`) */
 export async function rowPriceSlotsLive(supabase, row) {
-  if (!row?.producedFormulaId) return rowPriceSlots(row);
-  const formula = await findFormula(supabase, row.producedFormulaId);
-  if (!formula) return rowPriceSlots(row);
+  return (await rowPriceSourceLive(supabase, row)).slots;
+}
+
+/* ตัวคิดเดียวของ `rowPriceSlotsLive` — คืนสูตร/กลิ่นสดที่ใช้คิดด้วย (`formula` · `scent`) ให้ผู้ที่ต้องโชว์ชื่อ/ราคา
+   ของทะเบียน (หน้า "รอใส่ราคา" ม-153) ไม่ต้องอ่านซ้ำ · ⚠️ ห้ามแยกตัวคิดช่องออกไปอีกที่ — จอกับ POST ต้องเปิดช่องชุดเดียวกัน */
+async function rowPriceSourceLive(supabase, row) {
+  const formula = row?.producedFormulaId ? await findFormula(supabase, row.producedFormulaId) : null;
+  if (!formula) return { slots: rowPriceSlots(row), formula: null, scent: null };
   const scent = formula.scentId ? await findScent(supabase, formula.scentId) : null;
-  return priceSlotsFor({
-    scentId: formula.scentId || null,
-    formulaId: formula.id,
-    // หมวดของ **สูตร** อย่างเดียว — กติกาเดียวกับปุ่มราคาหน้าทะเบียนสูตรและ withFragranceOilPrice (รีวิวรอบสี่)
-    categoryCode: formula.categoryCode || null,
-    scentUsable: scent ? isScentUsable(scent) : true,
-  });
+  return {
+    slots: priceSlotsFor({
+      scentId: formula.scentId || null,
+      formulaId: formula.id,
+      // หมวดของ **สูตร** อย่างเดียว — กติกาเดียวกับปุ่มราคาหน้าทะเบียนสูตรและ withFragranceOilPrice (รีวิวรอบสี่)
+      categoryCode: formula.categoryCode || null,
+      scentUsable: scent ? isScentUsable(scent) : true,
+    }),
+    formula,
+    scent,
+  };
+}
+
+/* ── ราคาที่มีอยู่แล้วในทะเบียน ของทุกช่องของแถวคำร้อง (ม-153 · มติผู้ใช้ 2026-10-01) ────────────────────────
+   ⭐ หน้า "รอใส่ราคา" โชว์ราคาปัจจุบันข้างแถว + ปุ่ม "ใช้ราคานี้" ผูกราคาเดิมแทนการพิมพ์ซ้ำ · POST ของปุ่มนั้นถาม
+   ตัวนี้ซ้ำอีกรอบก่อนเขียน (จอเห็นอะไร ด่านเห็นอย่างนั้น) · วัด prod 01/10: 5 จาก 7 แถวที่รอราคามีราคา FB อยู่แล้ว
+   (RD ใส่ที่หน้าสูตรก่อนลูกค้าคอนเฟิร์ม) แต่แถวไม่รู้ ⇒ ค้าง
+   คืนต่อแถว (ลำดับเดียวกับ `rows`) `{ slots, formula, scent, current: [{ key, short, text, kind, source, price }] }`
+   · `price` = รูปเดียวกับ `attachRegistryPrice` (null = ยังไม่ผูกวัสดุ) · `source` = กลิ่น/สูตรที่ช่องนั้นลง
+   ⚠️ อ่านราคาผ่าน `attachRegistryPrice` ตัวเดียวกับหน้าทะเบียน — วัสดุตัวไหน/หมดอายุไหม ต้องตอบเหมือนกันทุกจอ
+   ⚠️ ยิงต่อแถวสำหรับสูตร/กลิ่น (ชุดเดียวกับ `rowPriceSlotsLive`) — แถวที่รอราคามีหลักหน่วย · ราคาอ่านรวบตามชนิด (≤ 3 รอบ) */
+export async function rowsSlotPricesLive(supabase, rows = [], { today = businessDate() } = {}) {
+  const contexts = await Promise.all((rows || []).map((row) => rowPriceSourceLive(supabase, row)));
+  // ช่อง F ของแถวกลิ่นล้วนไม่ได้โหลดกลิ่นมาด้วย — ต้องใช้ชื่อเลือกวัสดุ (`pickStampedMaterial`) และโชว์บนจอ
+  const scentIds = [...new Set(contexts.flatMap((c) => (c.scent ? [] : c.slots
+    .filter((s) => s.stampColumn === 'scentId').map((s) => s.id))))];
+  const looseScents = new Map((await Promise.all(scentIds.map((id) => findScent(supabase, id))))
+    .filter(Boolean).map((s) => [s.id, s]));
+  const sourceOf = (ctx, slot) => {
+    if (slot.stampColumn === 'formulaId') return ctx.formula?.id === slot.id ? ctx.formula : null;
+    return ctx.scent?.id === slot.id ? ctx.scent : (looseScents.get(slot.id) || null);
+  };
+
+  const byKind = new Map();
+  contexts.forEach((ctx) => ctx.slots.forEach((slot) => {
+    const group = byKind.get(slot.kind) || { column: slot.stampColumn, names: new Map() };
+    group.names.set(slot.id, sourceOf(ctx, slot)?.name || null);
+    byKind.set(slot.kind, group);
+  }));
+  const prices = new Map();
+  for (const [kind, { column, names }] of byKind) {
+    const priced = await attachRegistryPrice(
+      supabase, [...names].map(([id, name]) => ({ id, name })), { column, kind, today },
+    );
+    for (const r of priced) prices.set(`${kind}:${r.id}`, r.price);
+  }
+
+  return contexts.map((ctx) => ({
+    ...ctx,
+    current: ctx.slots.map((slot) => {
+      const source = sourceOf(ctx, slot);
+      return {
+        key: slot.key,
+        short: slot.short,
+        text: slot.text,
+        kind: slot.kind,
+        source: source ? { id: source.id, code: source.code || null, name: source.name || null } : { id: slot.id, code: null, name: null },
+        price: prices.get(`${slot.kind}:${slot.id}`) || null,
+      };
+    }),
+  }));
 }
 
 /* ของที่ชี้เข้ากลิ่น/สูตรด้วย FK แบบ SET NULL (ไม่อยู่ใน `countRegistryRefs`) — ด่านก่อนลบ (ม-148 · รีวิว 2026-09-22)
@@ -655,7 +714,11 @@ export async function attachRegistryPrice(supabase, rows, { column, kind, as = '
       unitPrice: revisionUnitPrice(rev),
       range: revisionPriceRange(rev),
       validUntil: rev?.validUntil || null,
+      // วันที่ราคาใช้ได้ถึงจริง — `validUntil` ว่าง = quotedAt + อายุมาตรฐาน (ตัวเดียวกับที่ `materialPriceState` ใช้ตัดสินหมดอายุ)
+      validThrough: revisionValidUntil(rev),
       revisionNo: rev?.revisionNo ?? null,
+      // rev ที่ "ใช้ราคานี้" ผูกเข้าแถวคำร้อง (ม-153) — POST ตรวจว่ายังเป็นตัวล่าสุดก่อนเขียน
+      revisionId: rev?.id ?? null,
     });
   }
   return rows.map((r) => ({ ...r, [as]: byRow.get(r.id) || null }));

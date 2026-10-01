@@ -137,5 +137,6 @@ test('สรุปทั้งใบ — แยกงานที่ค้าง
     at('done'),            // จบ
     at('revised'),         // จบ (ไปต่อที่แถวใหม่)
   ]);
-  assert.deepEqual(s, { total: 7, waitingDept: 3, waitingRequester: 2, settled: 2 });
+  // `awaitingPrice` ⊆ `waitingDept` (ม-153) — คิวใช้แยก "รอ RD ใส่ราคา" ออกจาก "รอ RD ทำต่อ"
+  assert.deepEqual(s, { total: 7, waitingDept: 3, waitingRequester: 2, settled: 2, awaitingPrice: 1 });
 });

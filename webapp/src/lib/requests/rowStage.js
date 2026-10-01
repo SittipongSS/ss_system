@@ -213,14 +213,17 @@ export function nextStepForRow(row, request, user) {
 // สรุปทั้งใบ — ใช้ทำแถบตัวเลขบนคิว ("รอฝ่ายขายทำต่อ" คือตัวที่ไม่มีในระบบวันนี้)
 //
 // ⚠️ `waitingRequester` คือตัวเลขที่ทำให้ฝ่ายปลายทางเลิกถูกนับงานที่ไม่ใช่ของตัวเอง
+// `awaitingPrice` ⊆ `waitingDept` — แถวที่งานของฝ่ายเหลือแค่ใส่ราคา (คิวเรียก "รอ RD ใส่ราคา" เมื่อเท่ากันทั้งใบ · ม-153)
 export function requestRowSummary(items = []) {
-  const out = { total: items.length, waitingDept: 0, waitingRequester: 0, settled: 0 };
+  const out = { total: items.length, waitingDept: 0, waitingRequester: 0, settled: 0, awaitingPrice: 0 };
   for (const row of items) {
     const stage = rowStage(row);
     if (SETTLED.has(stage)) { out.settled += 1; continue; }
     const next = nextByStageFor(row)[stage];
-    if (next?.owner === 'dept') out.waitingDept += 1;
-    else if (next?.owner === 'requester') out.waitingRequester += 1;
+    if (next?.owner === 'dept') {
+      out.waitingDept += 1;
+      if (stage === 'awaiting_price') out.awaitingPrice += 1;
+    } else if (next?.owner === 'requester') out.waitingRequester += 1;
   }
   return out;
 }

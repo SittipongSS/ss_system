@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  PRICE_SLOTS, mainPriceEntry, normalizeSlotPrices, primaryPriceSlot, priceSlotsFor,
+  PRICE_SLOTS, currentPriceToUse, mainPriceEntry, normalizeSlotPrices, primaryPriceSlot, priceSlotsFor,
 } from './priceSlots.js';
 
 const formulaSlots = priceSlotsFor({ scentId: 'SCT-1', formulaId: 'FML-1' });
@@ -72,4 +72,35 @@ test('⭐ สูตรหมวดหัวน้ำหอม 02-020 (พัฒ�
     priceSlotsFor({ scentId: 'S1', formulaId: 'F1', categoryCode: '01-002' }).map((s) => s.key),
     ['F', 'B', 'FB'],
   );
+});
+
+// ── ม-153 · "ใช้ราคานี้" บนหน้ารอใส่ราคา (มติผู้ใช้ 2026-10-01) ─────────────────────────────────────────
+const priced = (key, state = 'ready', unitPrice = 400) => ({
+  key, price: { state, unitPrice, revisionId: `REV-${key}`, revisionNo: 1 },
+});
+
+test('ม-153 ใช้ราคานี้: ช่องหลักที่มีราคา (FB > B > F) · ไม่มีราคาสักช่อง = ไม่มีอะไรให้ใช้', () => {
+  assert.deepEqual(currentPriceToUse([]), { entry: null, blocker: '' });
+  // ช่องที่ผูกวัสดุแต่ยังไม่มีราคา ไม่นับเป็นราคา
+  assert.equal(currentPriceToUse([{ key: 'FB', price: { state: 'no_price', unitPrice: null } }]).entry, null);
+  assert.equal(currentPriceToUse([{ key: 'F', price: null }]).entry, null);
+  assert.equal(currentPriceToUse([priced('F'), priced('FB')]).entry.key, 'FB');
+  assert.equal(currentPriceToUse([priced('F'), priced('B')]).entry.key, 'B');
+  // SDS (สูตร 02-001 ที่มีแค่ราคา F ของกลิ่น) — ใช้ F ได้
+  assert.equal(currentPriceToUse([priced('F'), { key: 'B', price: null }, { key: 'FB', price: null }]).entry.key, 'F');
+});
+
+test('🔴 ม-153 ช่องหลักหมดอายุ = บอกเหตุ ไม่ข้ามไปผูกช่องรองที่ยังดี', () => {
+  /* FB หมดอายุแต่ F ยังดี — ผูก F แทน = แถวสินค้าปิดด้วยราคาหัวน้ำหอมล้วน และไม่มีใครถูกเตือนให้ต่ออายุ FB */
+  const { entry, blocker } = currentPriceToUse([priced('F'), priced('FB', 'expired')]);
+  assert.equal(entry.key, 'FB');
+  assert.match(blocker, /หมดอายุ/);
+  assert.match(currentPriceToUse([priced('FB', 'expired')]).blocker, /ใส่ราคา/);
+  /* วัสดุเก็บเข้ากรุ/ร่าง: "ใส่ราคา" จะต่อ rev บนวัสดุตัวเดิม (สถานะไม่เปลี่ยน) ⇒ ห้ามพาไปทางนั้น */
+  for (const state of ['archived', 'draft']) {
+    const { blocker } = currentPriceToUse([priced('FB', state)]);
+    assert.match(blocker, /เปิดใช้วัสดุ/);
+    assert.doesNotMatch(blocker, /กด "ใส่ราคา"/);
+  }
+  assert.equal(currentPriceToUse([priced('FB')]).blocker, '');
 });
