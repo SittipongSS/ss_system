@@ -105,3 +105,52 @@ test('🔴 CHECK เวลาเข้าจริงตัวล่าสุด
   assert.match(sql, /IF NOT EXISTS \(\s*SELECT 1 FROM pg_constraint/);
   assert.match(sql, /DROP CONSTRAINT IF EXISTS service_visits_actual_time_window/);
 });
+
+/* ⭐ **ทะเบียนขนาดแพ็คเกจ** (mig 0398 · มติเจ้าของ 01/10 "เพิ่ม ลบ ได้") — สี่ข้อที่พังเงียบได้เมื่อมีคนแก้ไฟล์ทีหลัง:
+   ① ทะเบียนใหม่ต้องปิด anon/authenticated (API-gated เหมือนทะเบียนรุ่นเครื่อง 0344 — 🔴 ตารางใหม่ใน public เปิด anon ตั้งต้น)
+   ② seed เฉพาะทะเบียนว่าง — รันซ้ำแล้วขนาดที่เจ้าของลบไปต้องไม่กลับมา
+   ③ พื้นที่เก็บรหัสเป็น **ภาพนิ่ง ไม่มี FK** — FK = ลบขนาดไม่ได้ (หรือ cascade ทับผลที่ส่งไปแล้ว)
+   ④ แถวที่เคาะก่อนมีขนาด = ST คงจำนวนเดิม และรันก่อน deploy ได้ (เพิ่มอย่างเดียว · รันซ้ำได้) */
+test('🔴 mig 0398 ทะเบียนขนาดแพ็คเกจ: RLS สามบรรทัด · seed เฉพาะทะเบียนว่าง · ภาพนิ่งไม่มี FK · back-fill ST', () => {
+  const sql = stripSqlComments(readFileSync(join(MIGRATIONS_DIR, '0398_service_package_sizes.sql'), 'utf8'));
+
+  // ① ทะเบียน + RLS
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS public\.service_package_sizes \(/);
+  assert.match(sql, /code\s+text PRIMARY KEY CHECK \(code ~ '\^\[A-Z0-9\]\{2,4\}\$'\)/);
+  assert.match(sql, /ALTER TABLE public\.service_package_sizes ENABLE ROW LEVEL SECURITY;/);
+  assert.match(sql, /REVOKE ALL ON public\.service_package_sizes FROM anon, authenticated;/);
+  assert.match(sql, /GRANT ALL ON public\.service_package_sizes TO service_role;/);
+  assert.doesNotMatch(sql, /CREATE POLICY/i, 'service_role เท่านั้น — ไม่มี policy ให้ anon/authenticated');
+  // ระบบต้องเสนอได้คำตอบเดียว: ช่วงไม่ซ้ำ · ไม่มีเพดานได้ตัวเดียว · ขนาดเลือกเองไม่มีช่วง
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS service_package_sizes_band_uk\s+ON public\.service_package_sizes \("maxCbm"\) WHERE "autoSuggest" AND "maxCbm" IS NOT NULL;/);
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS service_package_sizes_open_uk\s+ON public\.service_package_sizes \("autoSuggest"\) WHERE "autoSuggest" AND "maxCbm" IS NULL;/);
+  assert.match(sql, /CONSTRAINT service_package_sizes_manual_no_band CHECK \("autoSuggest" OR "maxCbm" IS NULL\)/);
+  assert.doesNotMatch(sql, /"sortOrder"/, 'ลำดับมาจากข้อมูล (sortPackageSizes) ไม่มีคอลัมน์เรียง');
+
+  // ② seed สี่ขนาดของมติ — เฉพาะทะเบียนว่าง
+  assert.match(sql, /\('XS', 'Extra Small', NULL::numeric, false, 'ห้องน้ำ'\)/);
+  assert.match(sql, /\('SM', 'Small',\s+300,\s+true,\s+NULL\)/);
+  assert.match(sql, /\('ST', 'Standard',\s+2400,\s+true,\s+NULL\)/);
+  assert.match(sql, /\('XL', 'Extra Large', NULL,\s+true,\s+NULL\)/);
+  assert.match(sql, /WHERE NOT EXISTS \(SELECT 1 FROM public\.service_package_sizes\);/);
+  assert.doesNotMatch(sql, /ON CONFLICT/i, 'ON CONFLICT DO NOTHING จะปลุกขนาดที่ถูกลบกลับมาตอนรันซ้ำ');
+
+  // ③ ภาพนิ่งบนแถวผลวัด — ไม่มี FK
+  const zoneDdl = sql.slice(sql.indexOf('ALTER TABLE public.service_survey_zones'));
+  assert.match(zoneDdl, /ADD COLUMN IF NOT EXISTS "packageSize" text,/);
+  assert.match(zoneDdl, /ADD COLUMN IF NOT EXISTS "packageSizeSuggested" text,/);
+  assert.match(zoneDdl, /ADD COLUMN IF NOT EXISTS "packageSizeManual" boolean NOT NULL DEFAULT false;/);
+  assert.doesNotMatch(sql, /REFERENCES/i, 'ห้ามมี FK ไปทะเบียน — ลบขนาดต้องไม่พังใบที่เคาะ/ส่งผลไปแล้ว');
+  assert.match(zoneDdl, /DROP CONSTRAINT IF EXISTS service_survey_zones_package_size_fmt;/);
+  assert.match(zoneDdl, /ADD CONSTRAINT service_survey_zones_package_size_fmt CHECK \(/);
+
+  // ④ back-fill — ST คงจำนวนเดิม · ไม่แตะแถวที่มีขนาดแล้ว (รันซ้ำหลัง deploy ได้) · ไม่แตะ updatedAt (ด่านแถวค้างของช่าง)
+  const backfill = sql.match(/UPDATE public\.service_survey_zones SET ([\s\S]*?);/);
+  assert.ok(backfill, 'ต้องมี back-fill');
+  assert.match(backfill[0], /SET "packageSize" = 'ST'\s+WHERE "packageQty" IS NOT NULL AND "packageSize" IS NULL;/);
+  assert.doesNotMatch(backfill[0], /packageQty"\s*=|updatedAt|packageSizeSuggested/);
+
+  // เพิ่มอย่างเดียว — ไม่มีอะไรที่โค้ดเก่าพังเมื่อรันก่อน deploy
+  assert.doesNotMatch(sql, /DROP (TABLE|COLUMN)|ALTER COLUMN|RENAME/i);
+  assert.match(sql, /BEGIN;[\s\S]*COMMIT;\s*NOTIFY pgrst, 'reload schema';/);
+});

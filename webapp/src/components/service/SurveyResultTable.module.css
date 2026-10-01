@@ -34,7 +34,7 @@
   gap: var(--space-2);
 }
 
-/* ปุ่มเล็กของการเคาะ (ยกเลิก · บันทึกการเคาะ · ใช้ที่สูตรบอก) — บนจอสัมผัสเป็นเป้านิ้ว 44px เท่าทุกปุ่มของจอหน้างาน
+/* ปุ่มเล็กของการเคาะ (ยกเลิก · บันทึกการเคาะ · ใช้ที่ระบบเสนอ) — บนจอสัมผัสเป็นเป้านิ้ว 44px เท่าทุกปุ่มของจอหน้างาน
    (หัวหน้าเคาะจากแท็บเล็ต · review 26/09) · จอเมาส์คงขนาดเล็กตามแถวหัวการ์ด
    ⚠️ ผูกกับชนิดตัวชี้ ไม่ใช่ความกว้างจอ — แท็บเล็ตแนวนอนกว้างเท่าจอคอมแต่ใช้นิ้ว
    ⚠️ สามคลาส (.coarseTouch.btn.sm) ชนะ `.btn.sm { min-height: 30px }` ของ globals โดยไม่พึ่งลำดับไฟล์ */
@@ -56,6 +56,9 @@
 
 .saveBlocked > svg { flex: none; margin-block-start: var(--space-0-5); }
 
+/* กล่องแจ้ง "อ่านทะเบียนขนาดแพ็คเกจไม่สำเร็จ" เหนือตาราง — เว้นจากหัวตารางเท่าระยะของบรรทัดเหตุข้างบน */
+.registryNotice { margin-bottom: var(--space-3); }
+
 /* ป้ายบนแถวที่มีการเคาะค้าง — แถบข้างบนบอกจำนวน ป้ายนี้บอกว่า *แถวไหน*
    ⭐ อยู่บรรทัดเดียวกับรหัสพื้นที่ ชิดขวา (AW-3) — ไม่กินบรรทัดของตัวเองในช่องที่แน่นอยู่แล้ว */
 .rowDirty {
@@ -73,7 +76,18 @@
       ไหลไปคอลัมน์ที่ไม่ได้ตั้ง (เลือกจุด) ซึ่งเป็นคอลัมน์เดียวที่ห่อบรรทัดได้ไม่เสียอะไร */
 .colZone { width: 13rem; }
 .colPlan { width: 9rem; }
-.colPackage { width: 12rem; }
+.colPackage { width: 13rem; }
+
+/* ⭐ **กล่องตารางกว้างพอ (≥ 900px) = คอลัมน์แพ็คเกจ 23rem** (UAT PR-P 01/10 · ม็อก S-3 วาดป้ายกับตัวควบคุมบรรทัดเดียวกัน)
+   🐞 เดิม 13rem ทุกความกว้าง ⇒ ที่ 1440/1024 คอลัมน์ "เลือกจุด" ว่างอยู่ ~430px ขณะที่ช่องแพ็คเกจเบียดจนบรรทัดข้อเสนอห่อทุกแถว
+      (ทิ้ง "แพ็ค" ไว้บรรทัดเดียว) · ช่องเหตุผลเหลือ 182px ตัดทั้งตัวอย่างและเหตุผลที่บันทึกไว้ · แผ่น "(ถูกลบ)" ตกแถวที่สอง
+   ที่มาของ 23rem (368px): เนื้อเซลล์ 368 − ระยะขอบ 26 = 342 · ป้าย 2.75rem + ช่องไฟ 8 ⇒ ตัวควบคุม ~290px
+      = สี่ขนาด × 44px + แผ่น "XX (ถูกลบ)" ในแถวเดียว · ทะเบียนเกิน ~6 ขนาดยังห่อเป็นสองแถว (แถบห่อเองได้)
+   เลือกจุดเหลือ ≥ 180px ที่กล่อง 900 (900 − 208 − 144 − 368) — กว้างกว่าที่มันมีในกล่องแคบ (136px) อยู่แล้ว
+   ⚠️ ถามจาก **กล่องเลื่อนของตาราง** (`.shell` เป็น container) ไม่ใช่ความกว้างจอ — ที่สองบาน/มีรางขวา กล่องแคบกว่าจอมาก */
+@container (min-width: 900px) {
+  .colPackage { width: 23rem; }
+}
 
 /* ดอกจันบนหัวคอลัมน์ที่ต้องมีก่อนส่งผล (เฉพาะคนที่เคาะได้) */
 .star { margin-inline-start: var(--space-0-5); color: var(--red); }
@@ -259,8 +273,138 @@ button.spotChip[data-on] > svg { color: var(--accent-ink); }
 /* "ไปผูกจุด" — ชิดซ้ายใต้ภาพย่อ ไม่ยืดเต็มช่อง (คอลัมน์เป็น flex แนวตั้ง) */
 .looseJump { align-self: flex-start; }
 
+/* ── ช่องแพ็คเกจ: ขนาด + จำนวน (mig 0398 · มติเจ้าของ 01/10) ───────────────────── */
+/* สองช่องย่อย "ขนาด" / "จำนวน" ซ้อนกัน · ป้ายอยู่ **เหนือ** ตัวควบคุมเมื่อคอลัมน์แคบ (13rem: ป้ายข้างกิน ~3rem ⇒ แถบสี่ขนาด
+   ห่อเป็นสองแถวทุกใบ) และ **ข้าง** ตัวควบคุมเมื่อกล่องตารางกว้างพอ (ม็อก S-3 · ดู `@container` ข้างล่าง)
+   ข้อความใต้ตัวควบคุม (ขนาดถูกลบ · ที่ระบบเสนอ) อยู่ใน `.pkgControl` ⇒ เยื้องตรงกับตัวควบคุมเองทั้งสองทรง */
+.packageCell { line-height: var(--lh-thai); }
+
+.pkgField {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-0-5);
+}
+
+.pkgField + .pkgField { margin-top: var(--space-2); }
+
+.pkgLabel {
+  color: var(--text-3);
+  font-size: var(--fs-2);
+  font-weight: var(--fw-semibold);
+}
+
+.pkgControl {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-inline-size: 0;
+}
+
+/* ปุ่มรับข้อเสนอ · ปุ่มถอยเฉพาะพื้นที่นี้ — แถวเดียวใต้ตัวควบคุม ห่อบรรทัดได้ */
+.pkgActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  margin-top: var(--space-1-5);
+}
+
+@container (min-width: 900px) {
+  .pkgField {
+    grid-template-columns: 2.75rem minmax(0, 1fr);
+    column-gap: var(--space-2);
+    align-items: start;
+  }
+  /* ป้ายอยู่กึ่งกลางแนวตั้งของตัวควบคุมแถวแรก (สูงเท่าเป้านิ้ว) — ไม่ลอยชิดบนข้างแถบที่สูง 44px */
+  .pkgLabel {
+    display: flex;
+    align-items: center;
+    min-block-size: var(--ctl-h-touch);
+  }
+  /* แถบขนาดมีขอบใน 4px รอบแผ่น ⇒ ป้าย "ขนาด" ลงมาเท่ากัน ให้ตรงกลางแผ่นจริง */
+  .pkgField:first-child > .pkgLabel { margin-block-start: var(--space-1); }
+  /* ทะเบียนว่าง: ช่องนี้เป็นตัวหนังสือ ไม่ใช่แถบสูง 44px ⇒ บรรทัดแรกลงมาอยู่ระดับเดียวกับป้ายที่จัดกึ่งกลางไว้ */
+  .pkgControl > .warnText { padding-block-start: calc((var(--ctl-h-touch) - 1lh) / 2 + var(--space-1)); }
+  /* ปุ่มใต้ตัวควบคุมและช่องเหตุผล เยื้องตรงกับตัวควบคุม — เฉพาะตอนมีป้ายข้าง (ช่องที่วาดเป็นตัวหนังสือไม่มีป้าย ไม่เยื้อง) */
+  .pkgActions,
+  .pkgField ~ .noteBox { margin-inline-start: calc(2.75rem + var(--space-2)); }
+}
+
+/* ⭐ **แถบขนาด = `.segmented` ตัวกลาง** (สี active/โฟกัสมาจาก globals) — ที่นี่เพิ่มแค่สามอย่างที่ช่องนี้ต้องการ:
+   ปุ่มขนาดนิ้ว (สูง 44px เท่าปุ่ม −/+ ข้างล่าง) · ห่อบรรทัดเมื่อทะเบียนมีขนาดเยอะ (ทะเบียนเพิ่ม/ลบได้) ·
+   แผ่นแดงของขนาดที่ถูกลบ
+   ⚠️ ปุ่มกว้างขั้นต่ำ 2.5rem ไม่ใช่ 44px — สี่ขนาด × 40px + ขอบ = 174px พอดีเนื้อคอลัมน์ 13rem (182px) ในแถวเดียว
+      (44px = 190px ⇒ ขนาดที่สี่ตกบรรทัดทุกใบ) · เป้านิ้วแนวตั้งยัง 44px
+   ⚠️ `.sizeSeg:global(.segmented)` (สองคลาส) — ชนะกฎ `.segmented > button` ของ globals โดยไม่พึ่งลำดับไฟล์ */
+.sizeSeg:global(.segmented) {
+  flex-wrap: wrap;
+  max-inline-size: 100%;
+}
+
+.sizeSeg:global(.segmented) > button {
+  min-height: var(--ctl-h-touch);
+  min-width: 2.5rem;
+  padding-inline: var(--space-2);
+  font-size: var(--fs-6);
+}
+
+/* ⭐ **มีที่เมื่อไร แผ่นขนาดกว้างเต็มเป้านิ้ว 44px** (UAT PR-P 01/10) — 2.5rem ข้างบนเป็นของคอลัมน์ 13rem เท่านั้น
+   (กล่องตารางแคบ 681–899px) · คอลัมน์กว้าง (กล่อง ≥ 900px) และจอแคบที่แถวเรียงเป็นป้าย/ค่า (เซลล์กว้าง 238px ขึ้นไป) ไม่มีเหตุให้ลด */
+@container (min-width: 900px) {
+  .sizeSeg:global(.segmented) > button { min-width: var(--ctl-h-touch); }
+}
+@media (max-width: 680px) {
+  .sizeSeg:global(.segmented) > button { min-width: var(--ctl-h-touch); }
+}
+
+/* ขนาดที่เคาะไว้แต่ถูกลบจากทะเบียน — กดไม่ได้ และต้องไม่จางเหมือนปุ่มที่แค่ปิดอยู่ (มันคือสิ่งที่ต้องแก้ก่อนส่งผล)
+   ⚠️ บอกด้วยคำ "(ถูกลบ)" บนแผ่น + บรรทัดเหตุข้างล่างด้วย ไม่ใช่สีอย่างเดียว (WCAG 1.4.1) */
+.sizeSeg:global(.segmented) > button[data-tone="danger"],
+.sizeSeg:global(.segmented) > button[data-tone="danger"][aria-pressed="true"] {
+  background: var(--red-soft);
+  color: var(--red);
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+/* "ระบบเสนอ SM (≤ 300 ลบ.ม.) · 1 แพ็ค" — ข้อเสนอ ไม่ใช่คำเตือน ⇒ สีรอง · ห่อบรรทัดในกรอบคอลัมน์ ไม่ดันคอลัมน์ให้กว้าง */
+.suggest {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+  max-inline-size: 100%;
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  line-height: var(--lh-thai);
+  white-space: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+.suggest > svg { flex: none; margin-block-start: var(--space-0-5); }
+.suggest b { color: var(--text-2); font-weight: var(--fw-semibold); }
+/* แต่ละท่อน ("ระบบเสนอ SM (≤ 300 ลบ.ม.) · 1 แพ็ค" / "หัวหน้าเลือก ST แทน" / "ทะเบียนตอนนี้เสนอ …") เป็นบรรทัดของตัวเอง
+   ⇒ ไม่ทิ้ง "แพ็ค" ไว้บรรทัดเดียว (UAT 01/10) · ท่อนที่ยาวกว่าช่อง (คอลัมน์ 13rem ของกล่องแคบ) ห่อข้างในตัวเองแบบ
+   สองบรรทัดยาวพอกัน (`text-wrap: balance`) — ไม่เหลือคำเดียวค้างบรรทัดล่าง */
+.suggestText > * { display: block; text-wrap: balance; }
+
+/* ขนาดถูกลบ / อ่านทะเบียนไม่สำเร็จ — เหตุที่ขวางการส่งผล ⇒ แดง (คู่กับไอคอน ไม่ใช่สีอย่างเดียว) */
+.goneText {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+  max-inline-size: 100%;
+  color: var(--red);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  white-space: normal;
+}
+
+.goneText > svg { flex: none; margin-block-start: var(--space-0-5); }
+
 /* ── ตัวเพิ่ม/ลดแพ็คเกจ ───────────────────────────────────────────────── */
-/* ตัวเลข + สูตรแถวเดียว (AW-3) · ช่องแคบให้สูตรตกลงใต้ตัวเลขเอง ไม่ดันคอลัมน์ให้กว้าง */
+/* ตัวเลข + "เสนอ 1 แพ็ค" แถวเดียว (AW-3) · ช่องแคบให้ข้อเสนอตกลงใต้ตัวเลขเอง ไม่ดันคอลัมน์ให้กว้าง */
 .packageRow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1-5) var(--space-2); }
 
 /* ⭐ **ปุ่ม −/+ ขนาดนิ้ว (44px) ติดกันเป็นก้อนเดียวกับตัวเลข** (AW-3) — 🐞 เดิมปุ่ม 24px ลอยห่าง
@@ -296,10 +440,8 @@ button.spotChip[data-on] > svg { color: var(--accent-ink); }
   font-variant-numeric: tabular-nums;
 }
 
-/* "สูตร N" เหนือป้ายต่างจากสูตร — สองบรรทัดข้างตัวเลข */
-.formula {
-  display: flex;
-  flex-direction: column;
+/* "เสนอ 1 แพ็ค" ข้างตัวเลข — ⚠️ **ไม่ใช่คำเตือน** ที่ระบบเสนอเป็นข้อเสนอ ไม่ใช่คำสั่ง */
+.qtyHint {
   color: var(--text-3);
   font-size: var(--fs-3);
   line-height: var(--lh-thai);
@@ -307,16 +449,10 @@ button.spotChip[data-on] > svg { color: var(--accent-ink); }
   font-variant-numeric: tabular-nums;
 }
 
-.formula b { color: var(--text-2); font-weight: var(--fw-semibold); }
+/* ดูอย่างเดียว: "SM · 1 แพ็ค" — ผลที่ฝ่ายขายอ่าน ต้องชัดที่สุดในช่อง */
+.qty { font-size: var(--fs-6); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
-.qty { font-size: var(--fs-6); font-variant-numeric: tabular-nums; }
-
-/* ⚠️ ป้ายนี้ **ไม่ใช่คำเตือน** — สูตรเป็นข้อเสนอ ไม่ใช่คำสั่ง · ต่อท้ายบรรทัด "สูตร N" */
-.delta { font-size: var(--fs-3); }
-.delta[data-tone="ok"] { color: var(--green); }
-.delta[data-tone="warn"] { color: var(--amber); }
-
-/* เหตุผลที่ทับสูตร (ดูอย่างเดียว) — ข้อมูลที่ SA ต้องอ่าน จึงเข้มกว่าบรรทัดรอง */
+/* เหตุผลที่ต่างจากที่ระบบเสนอ (ดูอย่างเดียว) — ข้อมูลที่ SA ต้องอ่าน จึงเข้มกว่าบรรทัดรอง */
 .note {
   display: block;
   margin-top: var(--space-1);
@@ -327,7 +463,7 @@ button.spotChip[data-on] > svg { color: var(--accent-ink); }
   white-space: normal;
 }
 
-/* 🐞 ช่องเหตุผลเคยเหลือ ~117px ⇒ placeholder "ทำไมถึงต่างจากสูตร" ขาดท้าย */
+/* 🐞 ช่องเหตุผลเคยเหลือ ~117px ⇒ placeholder ("ทำไมถึงต่างจากที่ระบบเสนอ") ขาดท้าย */
 .noteBox { display: flex; flex-direction: column; gap: var(--space-0-5); margin-top: var(--space-1-5); min-inline-size: 10rem; }
 
 .req {
@@ -347,6 +483,12 @@ button.spotChip[data-on] > svg { color: var(--accent-ink); }
   font-size: var(--fs-3);
   line-height: var(--lh-thai);
 }
+
+.footnote + .footnote { margin-top: var(--space-1); }
+
+/* ลิงก์ไปทะเบียนขนาดแพ็คเกจ — ลิงก์ในบรรทัดข้อความ ต้องเห็นว่ากดได้ (ขีดเส้นใต้ ไม่ใช่สีอย่างเดียว) */
+.footLink { color: var(--accent-ink); text-decoration: underline; text-underline-offset: 2px; }
+.footLink:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
 
 /* ── บรรทัด "ยังขาดอะไร" — แถวย่อยเต็มกว้างใต้แถวของพื้นที่ ─────────────────
    🐞 เดิมอยู่ท้ายคอลัมน์ "รูป" ซึ่งแคบที่สุด ⇒ ห่อ 5–6 บรรทัด แถวสูง ~150px ที่ 768
@@ -476,4 +618,5 @@ button.spotChip[data-on] > svg { color: var(--accent-ink); }
   .body tr[data-dirty] { box-shadow: inset 2px 0 0 var(--blue); padding-inline-start: var(--space-2-5); }
 
   .rowMiss { max-inline-size: none; }
+
 }

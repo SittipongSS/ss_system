@@ -10,10 +10,10 @@
 // ⚠️ **หนึ่งเมนูหนึ่งบรรทัด** และคงการย่อหน้าเดิมไว้ — เทสต์หลายตัวอ่านไฟล์นี้ด้วย
 // regex รายบรรทัด (navMenuNames · navCounts · systems · entityIcon · fieldWorkAccess ·
 // issueRouting) จัดรูปใหม่เมื่อไร ด่านพวกนั้นกลายเป็นชุดว่างแล้วผ่านทุกอย่างเงียบ ๆ
-import { AirVent, ArrowDownToLine, Beaker, Boxes, Building2, Calculator, CalendarDays, CalendarRange, ClipboardCheck, ClipboardList, Coins, Factory, FileSignature, FileText, FlaskConical, FolderKanban, Hammer, Handshake, Inbox, LayoutDashboard, LifeBuoy, LineChart, ListTodo, MapPin, MessageCircleQuestion, Package, ReceiptText, ShoppingCart, SprayCan, Tags, Target, Trash2, Users, Wallet, Wrench } from 'lucide-react';
+import { AirVent, ArrowDownToLine, Beaker, Boxes, Building2, Calculator, CalendarDays, CalendarRange, ClipboardCheck, ClipboardList, Coins, Factory, FileSignature, FileText, FlaskConical, FolderKanban, Hammer, Handshake, Inbox, LayoutDashboard, LifeBuoy, LineChart, ListTodo, MapPin, MessageCircleQuestion, Package, ReceiptText, Ruler, ShoppingCart, SprayCan, Tags, Target, Trash2, Users, Wallet, Wrench } from 'lucide-react';
 import {
   canAccessFinance, canAccessRd, canAnswerServiceRequests, canDoFieldWork, canEditProduction,
-  canEditService, canManageProductCategories, canManageTeams, canUser, canViewCosting,
+  canEditService, canManagePackageSizes, canManageProductCategories, canManageTeams, canUser, canViewCosting,
   canViewProduction, canViewRequests, canViewService, worksInSalesPipeline,
 } from '@/lib/permissions';
 import { sharedItemBelongsInGroup } from '@/config/navigation';
@@ -82,6 +82,12 @@ export const MENU_GROUPS = [
               (คนที่บุ๊กมาร์กไว้จะได้ไม่เจอแถบเมนูที่ไม่ไฮไลต์อะไรเลยระหว่างเด้ง) */
         { href: '/database/sites', name: 'ไซต์บริการ', icon: MapPin, cap: 'products:view', match: (p) => p.startsWith('/database/sites') || p.startsWith('/service/sites') },
         { href: '/database/assets', name: 'ทะเบียนเครื่อง', icon: AirVent, cap: 'products:view', match: (p) => p.startsWith('/database/assets') || p.startsWith('/service/assets') || p.startsWith('/service/models') },
+        /* ⭐ ขนาดแพ็คเกจ (mig 0398 · มติเจ้าของ 01/10 "เพิ่ม ลบ ได้") — ทะเบียนขนาดที่หัวหน้าฝ่ายบริการเคาะบนผลประเมิน
+           พื้นที่ และช่วง ลบ.ม. ที่ระบบใช้เสนอขนาด · อยู่ใต้ฐานข้อมูลตามกฎสามชั้นข้อ 3 (ฝ่ายขายอ่านผลประเมินแล้ว
+           ต้องรู้ว่า SM/ST/XL หมายถึงพื้นที่ขนาดไหน) · วางถัดจากทะเบียนเครื่อง = ก้อนข้อมูลหลักของงานบริการ
+           ⚠️ cap `products:view` = อ่านได้ทุกคนที่เข้าฐานข้อมูล · **แก้เป็นของแอดมิน + หัวหน้าฝ่ายบริการ**
+              (`canManagePackageSizes` — ปุ่มในหน้าและ API ถามตัวนี้เอง เมนูเปิดทางอ่านอย่างเดียว) */
+        { href: '/database/package-sizes', name: 'ขนาดแพ็คเกจ', icon: Ruler, cap: 'products:view', match: (p) => p.startsWith('/database/package-sizes') },
         { href: '/database/product-categories', name: 'หมวดสินค้า', icon: Tags, cap: 'products:view', managerOnly: true, match: (p) => p.startsWith('/database/product-categories') },
       ],
     },
@@ -353,6 +359,11 @@ export const MENU_GROUPS = [
            ⚠️ `match` ต้องครอบหน้าเครื่องรายตัวด้วย — URL ย้ายออกมาจากใต้ไซต์แล้ว
               ถ้าไม่ครอบ เปิดหน้าเครื่องแล้วจะไม่มีเมนูไหนไฮไลต์เลย */
         { href: '/database/assets', name: 'ทะเบียนเครื่อง', icon: AirVent, cap: 'service:view', visible: canViewService, match: (p) => p.startsWith('/database/assets') || p.startsWith('/service/assets') || p.startsWith('/service/models') },
+        /* ⭐ ทางลัดไปทะเบียนขนาดแพ็คเกจ (บ้านอยู่ฐานข้อมูล · mig 0398) — **เฉพาะคนที่แก้ทะเบียนได้** (แอดมิน · หัวหน้าฝ่าย
+           บริการ · CD/CM) ซึ่งคือคนชุดเดียวกับที่เคาะขนาดบนผลประเมิน · ช่าง/Planner ไม่เห็น (อ่านได้จากฐานข้อมูลถ้ามีสิทธิ์เข้า)
+           ⚠️ **หน้าเดียวกัน URL เดียวกัน** ไม่ใช่สำเนา — ต้องคู่กับ `ADOPTED_SHARED_PATHS.service` เสมอ (เหตุเดียวกับสองบรรทัดบน)
+           ⚠️ `utility: true` — ตั้งค่านาน ๆ ครั้ง ไม่ใช่งานรายวัน (ทรงเดียวกับ "จัดทีม") */
+        { href: '/database/package-sizes', name: 'ขนาดแพ็คเกจ', icon: Ruler, cap: 'service:view', visible: canManagePackageSizes, utility: true, match: (p) => p.startsWith('/database/package-sizes') },
         // จัดทีมเจ้าหน้าที่บริการ (mig 0310 · มติผู้ใช้ 2026-08-28 "TS ก็มีแยกทีม") — ทีมปฏิบัติงาน
         // จัดคนอย่างเดียว ไม่แตะสิทธิ์ · เป็น utility เพราะไม่ใช่งานรายวันของเจ้าหน้าที่
         /* ⚠️ แคบด้วย `canManageTeams(u,'TS')` เหมือนฝาแฝดที่ /sa/teams ไม่ใช่ `canEditService` —

@@ -14,7 +14,7 @@ import { surveyRecallRecord } from './survey.js';
 import {
   SURVEY_UNKNOWN_LABELS,
   SURVEY_UNKNOWN_TEXT,
-  surveyControlView,
+  surveyControlView as controlView,
   surveyDraftSync,
   surveyZoneChangedSections,
   surveyNameList,
@@ -25,8 +25,20 @@ import {
   surveyZoneDraftSignature,
   surveyZoneFacts,
 } from './surveyControl.js';
+import { surveySendConfirm } from './surveySendClose.js';
 
 // ── ของตั้งต้น ───────────────────────────────────────────────────────────
+/* ทะเบียนขนาดแพ็คเกจชุดตั้งต้นของ 0398 — จอได้มาจาก GET ใบประเมิน (`packageSizes`) แล้วส่งให้การ์ดทุกครั้ง
+   ⭐ เทสต์ทุกตัวในไฟล์นี้จำลอง "จออ่านทะเบียนได้" ผ่านตัวห่อข้างล่าง · กรณีอ่านไม่ได้/ขนาดถูกลบ มีเทสต์ของตัวเองท้ายไฟล์
+     (เรียก `controlView` ตรง ๆ) */
+const SIZES = [
+  { code: 'XS', nameEn: 'Extra Small', maxCbm: null, autoSuggest: false },
+  { code: 'SM', nameEn: 'Small', maxCbm: 300, autoSuggest: true },
+  { code: 'ST', nameEn: 'Standard', maxCbm: 2400, autoSuggest: true },
+  { code: 'XL', nameEn: 'Extra Large', maxCbm: null, autoSuggest: true },
+];
+const surveyControlView = (args = {}) => controlView({ packageSizes: SIZES, ...args });
+
 const part = (w, l, h) => ({ widthM: w, lengthM: l, heightM: h, label: null });
 const WIDE = { docType: 'survey_wide' };
 const PLAN = { docType: 'survey_plan' };
@@ -34,11 +46,11 @@ const PLAN = { docType: 'survey_plan' };
    รูปผูกกับจุดภายในพื้นที่ของมันเท่านั้น) · เทสต์ด่านรูปจุดเองอยู่ `surveySpotGates.test.mjs` */
 const SPOT = { docType: 'survey_spot', fileName: 'spot.jpg', metadata: { spotId: 's1' } };
 
-/** พื้นที่ที่ครบทั้งหกข้อ — 4×5×3 = 60 ลบ.ม. ⇒ สูตรบอก 1 แพ็คเกจ ⇒ เคาะ 1 ไม่ต้องมีเหตุผล */
+/** พื้นที่ที่ครบทั้งหกข้อ — 4×5×3 = 60 ลบ.ม. ⇒ ระบบเสนอ SM · 1 แพ็ค ⇒ เคาะตามนั้นไม่ต้องมีเหตุผล */
 const readyZone = (id, name, extra = {}) => ({
   id, zoneId: `SZN-${id}`, zoneName: name, floor: '02', status: 'ok',
   parts: [part(4, 5, 3)], spots: [{ id: 's1', label: 'มุมโซฟา', selected: true }],
-  packageQty: 1, packageNote: '', note: '', ...extra,
+  packageQty: 1, packageSize: 'SM', packageSizeSuggested: 'SM', packageNote: '', note: '', ...extra,
 });
 /** พื้นที่ที่ช่างยังไม่ได้แตะเลย */
 const emptyZone = (id, name, extra = {}) => ({
@@ -71,7 +83,7 @@ const VIEWER = { canWrite: false, canDecide: false };
 const recallRow = {
   id: 'EUP-1',
   body: 'TS ดึงผลประเมินกลับมาแก้ — ลูกค้าแจ้งว่า Studio 03 รีโนเวทเสร็จแล้ว'
-    + ' · ตัวเลขที่ส่งไปแล้ว 2 พื้นที่ · 40 ตร.ม. · 2 แพ็คเกจ (อย่าเพิ่งใช้ตั้งราคา)',
+    + ' · ตัวเลขที่ส่งไปแล้ว 2 พื้นที่ · 40 ตร.ม. · 2 แพ็คเกจ (SM 1 · ST 1) — อย่าเพิ่งใช้ตั้งราคา',
   meta: { totals: { zones: 2, areaSqm: 40, packageQty: 2 } },
   authorId: 'U-1', authorName: 'Local D.', createdAt: '2026-09-15T02:12:00.000Z',
 };
@@ -106,7 +118,9 @@ test('หัวที่พับตอบได้โดยไม่ต้อ�
   assert.equal(done.tone, 'done');
   assert.equal(done.areaSqm, 20);
   assert.equal(done.volumeCbm, 60);
-  assert.equal(done.suggestedPackages, 1);
+  assert.equal(done.packageSize, 'SM');
+  assert.equal(done.suggestedSize, 'SM', 'ภาพนิ่งที่ประทับตอนเคาะ ไม่ใช่ข้อเสนอสด');
+  assert.equal('suggestedPackages' in done, false, 'สูตร ÷ 2,400 ถอดแล้ว');
   assert.equal(done.packageQty, 1);
   assert.equal(done.spotsTotal, 1);
   assert.equal(done.spotsSelected, 1);
@@ -273,7 +287,7 @@ test('ผ่านครบหกข้อ — "พร้อมส่งผล�
   const files = { z1: readyFiles, z2: readyFiles };
   const v = surveyControlView({ request: request(), zones, filesByZone: files, viewer: HEAD });
   assert.equal(v.status.key, 'ready');
-  assert.equal(v.status.sub, '2 พื้นที่ · 40 ตร.ม. · 2 แพ็คเกจ');
+  assert.equal(v.status.sub, '2 พื้นที่ · 40 ตร.ม. · 2 แพ็คเกจ (SM 2)');
   assert.equal(v.send.show, true);
   assert.equal(v.send.allowed, true);
   assert.equal(v.send.reason, null);
@@ -1062,8 +1076,11 @@ test('🐞 ร่างของหัวหน้าต้องอยู่ท
     'ร่างเป็นของหน้า ไม่ใช่ของตารางที่ถูก unmount');
   assert.match(page, /drafts=\{decisionDrafts\}/);
   assert.match(page, /onDraftsChange=\{setDecisionDrafts\}/);
-  assert.match(page, /surveyPendingDecisions\(zones, decisionDrafts\)\.ids/,
+  /* 🔄 mig 0398: ตัวตัดสินร่างรับทะเบียนขนาดด้วย (ด่าน "เลือกขนาด" / "ขนาดถูกลบ") — ตัวเดียวกับที่ตารางใช้ */
+  assert.match(page, /surveyPendingDecisions\(zones, decisionDrafts, \{ sizes: packageSizes \}\)\.ids/,
     'ของค้างเป็นค่าที่คำนวณได้ ไม่ใช่ธงที่ต้องรอตารางยิงมา');
+  assert.match(table, /surveyPendingDecisions\(zones, drafts, \{ sizes: packageSizes \}\)/,
+    'ตารางกับหน้าต้องถามด้วยทะเบียนชุดเดียวกัน — ไม่งั้นแถบ "ยังไม่บันทึก" กับด่านส่งผลเถียงกัน');
   assert.doesNotMatch(table, /useState\(\{\}\)/, 'ตารางต้องไม่ถือร่างเป็น state ของตัวเอง');
   assert.doesNotMatch(table, /onPendingChange/, 'ไม่มีธงให้ค้างอีกแล้ว');
   assert.doesNotMatch(page, /pendingDecisionZoneIds\] = useState/,
@@ -1162,8 +1179,8 @@ test('⭐ ปุ่มส่งผลส่งรหัสนัดที่โ�
 
 test('⭐ โมดัลส่งผลวาดผลทุกข้อจาก `surveySendConfirm` · ป้ายปุ่มพูดตามผล · ส่งไม่ได้แล้ว = ปุ่มเดียว "ปิด"', () => {
   const page = surveyPageCode();
-  assert.match(page, /surveySendConfirm\(\{\s*docNo: data\?\.request\?\.docNo, closesVisit: view\.send\.closesVisit,[\s\S]{0,160}sendBackPending: view\.send\.sendBackPending,\s*\}\)/,
-    '🐞 review 26/09: ส่งกลับค้าง = โมดัลบอกก่อนกด');
+  assert.match(page, /surveySendConfirm\(\{\s*docNo: data\?\.request\?\.docNo, closesVisit: view\.send\.closesVisit,[\s\S]{0,160}sendBackPending: view\.send\.sendBackPending,[\s\S]{0,200}sizeReview: view\.send\.sizeReview,\s*\}\)/,
+    '🐞 review 26/09: ส่งกลับค้าง = โมดัลบอกก่อนกด · UAT PR-P 01/10: ขนาดที่ยังไม่เคยเทียบกับข้อเสนอ = โมดัลบอกก่อนกด');
   const at = page.indexOf('title="ส่งผลประเมินให้ฝ่ายขาย"');
   const dialog = page.slice(at, page.indexOf('</ConfirmDialog>', at));
   assert.match(dialog, /confirmLabel=\{view\.send\.allowed \? sendConfirm\.confirmLabel : "ปิด"\}/);
@@ -1210,4 +1227,174 @@ test('🐞 review 26/09 รอบสอง: บันทึกส่งเฉพ
   assert.match(zone, /const changed = surveyZoneChangedSections\(baseSig, draft\);/);
   assert.match(zone, /let payload = pick\(baseRef\.current\?\.sig\);/);
   assert.match(zone, /await onSave\(\{ \.\.\.payload, baseUpdatedAt: base \?\? undefined \}\);/);
+});
+
+// ══ ขนาดแพ็คเกจถูกลบจากทะเบียน (mig 0398 · มติเจ้าของ 01/10 "เพิ่ม ลบ ได้") ═══════════════════════════
+/* พื้นที่เก็บรหัสขนาดเป็นภาพนิ่ง ⇒ ลบขนาดในทะเบียนแล้วใบที่ยังไม่ส่งผลต้องเลือกใหม่ก่อนส่ง · การ์ดถามตัวเดียวกับ route */
+test('🔴 ขนาดที่เคาะไว้ถูกลบจากทะเบียน: ปุ่มส่งผลโชว์แต่กดไม่ได้ · เหตุ = ข้อความของ server · พาไปเลือกใหม่ที่แท็บสรุป', () => {
+  const zones = [readyZone('z1', 'Studio 01', { packageSize: 'ST', packageSizeSuggested: 'ST' }), readyZone('z2', 'Studio 02')];
+  const files = { z1: readyFiles, z2: readyFiles };
+  const gone = SIZES.filter((s) => s.code !== 'ST');
+  const v = controlView({ request: request(), zones, filesByZone: files, viewer: HEAD, packageSizes: gone, tab: 'field' });
+  const reason = 'ขนาดแพ็คเกจ ST ถูกลบจากทะเบียนแล้ว — เลือกใหม่ (Studio 01)';
+
+  assert.equal(v.send.show, true);
+  assert.equal(v.send.allowed, false);
+  assert.equal(v.send.reason.key, 'head-gaps');
+  assert.equal(v.send.reason.text, reason, 'ติดแค่ข้อนี้ = เหตุเต็ม ไม่ใช่ "ติด 1 ข้อ ที่ …"');
+  assert.equal(v.send.reason.detail, reason);
+  assert.deepEqual(v.send.reason.target, { kind: 'tab', tab: 'result', label: 'ไปเคาะที่แท็บสรุปส่งผล' });
+  assert.equal(v.status.key, 'awaiting-decision');
+  assert.match(v.status.sub, /เหลือเลือกขนาดแพ็คเกจใหม่/);
+
+  /* ⭐ ขนาดถูกลบพับอยู่ในแถว "แพ็คเกจ" — ไม่เป็นแถวด่านที่แปด (UAT PR-P 01/10: ตัวหารของป้ายเปลี่ยนตามสถานะ) */
+  assert.equal(v.gates.some((g) => g.key === 'packageSizeGone'), false);
+  const gate = v.gates.find((g) => g.key === 'package');
+  assert.equal(gate.ok, false);
+  assert.equal(gate.reason, reason);
+  assert.deepEqual([gate.done, gate.total, gate.zones], [1, 2, ['Studio 01']]);
+  assert.equal(v.gatesFailed, 1);
+  // บรรทัดของพื้นที่บอก **สิ่งที่ต้องทำ** ไม่ใช่สภาพ ("ขนาดถูกลบ")
+  assert.deepEqual(v.zoneGaps.rows.map((r) => [r.zoneName, r.headText]), [['Studio 01', 'หัวหน้าต้องทำ: เลือกขนาดใหม่']]);
+  // อยู่แท็บสรุปแล้ว = ไม่มีปุ่มพาไป (ของที่ต้องทำอยู่ในตารางตรงหน้า)
+  const onResult = controlView({ request: request(), zones, filesByZone: files, viewer: HEAD, packageSizes: gone, tab: 'result' });
+  assert.equal(onResult.send.reason.target, null);
+});
+
+/* 🐞 UAT PR-P 01/10 — แถว "ขนาดยังอยู่ในทะเบียน" เคยต่อเป็นข้อที่แปดเฉพาะตอนติด ⇒ ป้ายขึ้น "ติด 1 / 8 ข้อ" แล้วกลายเป็น "ผ่านครบ 7 ข้อ" */
+test('⭐ จำนวนข้อของด่านคงที่ทุกสถานะ — ขนาดถูกลบ/ทะเบียนอ่านไม่ขึ้น พับอยู่ในแถวแพ็คเกจ · ช่างไม่เห็นด่านนี้เลย', () => {
+  const zones = [readyZone('z1', 'Studio 01', { packageSize: 'ST', packageSizeSuggested: 'ST' })];
+  const files = { z1: readyFiles };
+  const gone = SIZES.filter((s) => s.code !== 'ST');
+  const ok = controlView({ request: request(), zones, filesByZone: files, viewer: HEAD, packageSizes: SIZES });
+  assert.equal(ok.send.allowed, true);
+  assert.equal(ok.gatesFailed, 0);
+  const sentReq = request({ status: 'answered', answeredAt: '2026-09-14T10:20:00.000Z', answeredByName: 'Local D.' });
+  const views = [
+    ok,
+    controlView({ request: request(), zones, filesByZone: files, viewer: HEAD, packageSizes: gone }),
+    controlView({ request: request(), zones, filesByZone: files, viewer: HEAD, packageSizes: null }),
+    controlView({ request: sentReq, zones, filesByZone: files, viewer: HEAD, packageSizes: gone }),
+  ];
+  for (const v of views) {
+    assert.equal(v.gates.length, ok.gates.length);
+    assert.deepEqual(v.gates.map((g) => g.key), ok.gates.map((g) => g.key));
+    assert.equal(v.gates.some((g) => g.key === 'packageSizeGone'), false);
+  }
+  assert.equal(views[1].gatesFailed, 1);
+  // ขนาดถูกลบ **และ** อีกพื้นที่ยังไม่เคาะ = ยังเป็นข้อเดียว (แถวแพ็คเกจ) · เหตุบอกทั้งสองเรื่อง · "ติด n ข้อ" ตรงกับป้าย
+  const both = controlView({
+    request: request(), viewer: HEAD, packageSizes: gone, tab: 'result',
+    zones: [...zones, readyZone('z2', 'Studio 02', { packageQty: null, packageSize: null, packageSizeSuggested: null })],
+    filesByZone: { z1: readyFiles, z2: readyFiles },
+  });
+  const pkg = both.gates.find((g) => g.key === 'package');
+  assert.deepEqual([pkg.ok, pkg.done, pkg.total, pkg.zones], [false, 0, 2, ['Studio 01', 'Studio 02']]);
+  assert.equal(pkg.reason, 'ขาด Studio 02 | ขนาดแพ็คเกจ ST ถูกลบจากทะเบียนแล้ว — เลือกใหม่ (Studio 01)');
+  assert.equal(both.gatesFailed, 1);
+  assert.match(both.send.reason.text, /^ยังส่งไม่ได้ — ติด 1 ข้อ ที่ /);
+  const crew = controlView({ request: request(), zones, filesByZone: files, viewer: CREW, packageSizes: [] });
+  assert.equal(crew.gates.some((g) => g.key === 'packageSizeGone' || g.key === 'package'), false);
+});
+
+/* 🐞 UAT PR-P 01/10 — การ์ดเคยขึ้น "… — ลองใหม่" สามที่โดยไม่มีอะไรให้กด (ทะเบียนมากับ GET ใบประเมิน) */
+test('⚠️ อ่านทะเบียนขนาดไม่สำเร็จ (null) หรือจอลืมส่งมา = ส่งผลไม่ได้ (fail-closed) — ทางออกคือปุ่ม "โหลดใหม่" ไม่ใช่คำว่า "ลองใหม่"', () => {
+  const zones = [readyZone('z1', 'Studio 01')];
+  const files = { z1: readyFiles };
+  for (const extra of [{ packageSizes: null }, {}]) {
+    const v = controlView({ request: request(), zones, filesByZone: files, viewer: HEAD, ...extra });
+    assert.equal(v.send.allowed, false);
+    assert.equal(v.send.reason.key, 'registry-unread');
+    assert.equal(v.send.reason.text, 'อ่านทะเบียนขนาดแพ็คเกจไม่สำเร็จ');
+    assert.deepEqual(v.send.reason.target, { kind: 'reload', label: 'โหลดใหม่' });
+    assert.equal(v.send.reason.detail, 'อ่านทะเบียนขนาดแพ็คเกจไม่สำเร็จ — ลองใหม่', 'เหตุเต็ม = ข้อความของ route ส่งผล');
+    assert.deepEqual(v.zoneGaps.rows, [], 'ไม่มีพื้นที่ไหนให้ไปแก้ — ทางออกคือโหลดใหม่');
+    assert.match(v.status.sub, /อ่านทะเบียนขนาดแพ็คเกจไม่สำเร็จ/);
+    const pkg = v.gates.find((g) => g.key === 'package');
+    assert.deepEqual([pkg.ok, pkg.done, pkg.total, pkg.reason], [false, 0, 1, 'อ่านทะเบียนขนาดแพ็คเกจไม่สำเร็จ']);
+    for (const text of [v.send.reason.text, v.status.sub, pkg.reason]) assert.doesNotMatch(text, /ลองใหม่/);
+  }
+});
+
+/* 🐞 UAT PR-P 01/10 — แถว back-fill ST (0398 · ไม่มีภาพนิ่ง "ที่ระบบเสนอ") ทักเฉพาะในแถวของตาราง ⇒ การ์ดขึ้น "ผ่านครบ" ปุ่มส่งเป็น
+   กรมท่า โมดัลบอกแค่ "2 แพ็คเกจ (SM 1 · ST 1)" — ใบที่ค้างตอน deploy ไปถึงฝ่ายขายเป็น ST ได้ในแตะเดียว */
+test('🔴 ขนาดที่ตั้งไว้ก่อนมีข้อเสนอของระบบ: การ์ดเตือนเหนือปุ่มส่ง + โมดัลบอกก่อนกด — เตือน ไม่บล็อก (คำถามเปิดของเจ้าของ)', () => {
+  // readyZone = 60 ลบ.ม. ⇒ ระบบเสนอ SM · แถวที่สองถือ ST โดยไม่มีภาพนิ่ง (back-fill)
+  const zones = [
+    readyZone('z1', 'Reception'),
+    readyZone('z2', 'MeetingRoom1', { packageSize: 'ST', packageSizeSuggested: null }),
+  ];
+  const files = { z1: readyFiles, z2: readyFiles };
+  const v = controlView({ request: request(), zones, filesByZone: files, viewer: HEAD, packageSizes: SIZES });
+  const text = 'ขนาดที่ตั้งไว้ก่อนมีข้อเสนอของระบบ 1 พื้นที่ — MeetingRoom1 ยังเป็น ST (ระบบเสนอ SM)';
+  assert.equal(v.send.allowed, true, 'ไม่บล็อก — บังคับเลือกใหม่หรือไม่เป็นเรื่องของเจ้าของ');
+  assert.equal(v.gatesFailed, 0);
+  assert.deepEqual(v.send.sizeReview, { rows: [{ zoneId: 'z2', zoneName: 'MeetingRoom1', size: 'ST', suggested: 'SM' }], text });
+  assert.deepEqual(v.notices.find((n) => n.key === 'size-review'), { key: 'size-review', tone: 'warning', title: 'ตรวจขนาดก่อนส่งผล', text });
+  const confirm = surveySendConfirm({ docNo: 'RQ-AS-1', sizeReview: v.send.sizeReview });
+  assert.equal(confirm.effects.filter((line) => line.startsWith(text)).length, 1);
+  assert.match(confirm.effects.find((line) => line.startsWith(text)), /ฝ่ายขายจะได้ขนาดตามนี้/);
+  assert.equal(surveySendConfirm({ docNo: 'RQ-AS-1' }).effects.some((line) => /ตั้งไว้ก่อนมีข้อเสนอ/.test(line)), false);
+
+  // ไม่ทัก: ทุกแถวมีภาพนิ่ง · ใบที่ล็อกแล้ว · ช่าง · ทะเบียนอ่านไม่ขึ้น · หน้าคำร้องของฝ่ายขาย (ไม่มีทะเบียน)
+  const quiet = (over) => {
+    const view = controlView({ request: request(), zones, filesByZone: files, viewer: HEAD, packageSizes: SIZES, ...over });
+    return [view.send.sizeReview, view.notices.some((n) => n.key === 'size-review')];
+  };
+  assert.deepEqual(quiet({ zones: [zones[0]] }), [null, false]);
+  assert.deepEqual(quiet({ request: request({ status: 'answered', answeredAt: '2026-09-14T10:20:00.000Z' }) }), [null, false]);
+  assert.deepEqual(quiet({ viewer: CREW }), [null, false]);
+  assert.deepEqual(quiet({ packageSizes: null }), [null, false]);
+  assert.deepEqual(quiet({ skipPackageRegistry: true, packageSizes: undefined }), [null, false]);
+});
+
+/* 🐞 review PR-P — ด่านนี้เคยถูกถามบนใบที่ส่งผลไปแล้ว ⇒ แถวแดง "เลือกใหม่" บนใบที่แก้ไม่ได้ + ป้าย "ผ่านครบ N ข้อ" นับเกิน
+   มติเจ้าของ: ลบขนาดในทะเบียน **ไม่กระทบใบที่ส่งผลแล้ว** (ใบถือรหัสเป็นภาพนิ่ง) */
+test('🔴 ใบที่ล็อกแล้ว (ส่งผล · ยกเลิก · ปิด) ไม่ถามด่าน "ขนาดถูกลบ" — ทั้งขนาดที่ถูกลบและทะเบียนที่อ่านไม่ขึ้น', () => {
+  const zones = [readyZone('z1', 'Studio 01', { packageSize: 'ST', packageSizeSuggested: 'ST' })];
+  const files = { z1: readyFiles };
+  const gone = SIZES.filter((s) => s.code !== 'ST');
+  const sentReq = request({ status: 'answered', answeredAt: '2026-09-14T10:20:00.000Z', answeredByName: 'Local D.' });
+  const total = controlView({ request: sentReq, zones, filesByZone: files, viewer: HEAD, packageSizes: SIZES }).gates.length;
+
+  for (const packageSizes of [gone, null, undefined]) {
+    const v = controlView({ request: sentReq, zones, filesByZone: files, viewer: HEAD, packageSizes });
+    assert.equal(v.status.key, 'sent');
+    assert.equal(v.gates.some((g) => g.key === 'packageSizeGone'), false);
+    assert.equal(v.gatesFailed, 0);
+    assert.equal(v.gates.length, total, 'ป้าย "ผ่านครบ N ข้อตอนส่ง" ต้องนับเท่ากับใบที่ทะเบียนครบ');
+    assert.deepEqual(v.zoneGaps.rows, []);
+  }
+  // ยกเลิก / ปิดโดยไม่ส่งผล ก็ล็อกเหมือนกัน — ไม่มีใครเลือกขนาดใหม่บนใบพวกนี้ได้
+  for (const extra of [{ cancelledAt: '2026-09-14T10:20:00.000Z' }, { status: 'closed', closedAt: '2026-09-14T10:20:00.000Z' }]) {
+    const v = controlView({ request: request(extra), zones, filesByZone: files, viewer: HEAD, packageSizes: gone });
+    assert.equal(v.gates.some((g) => g.key === 'packageSizeGone'), false);
+    assert.deepEqual(v.zoneGaps.rows, []);
+  }
+  // ⚠️ ใบที่ถูกดึงกลับ/ยังไม่ส่ง = ไม่ล็อก ⇒ ด่านยังทำงาน (ต้องเลือกใหม่ก่อนส่งซ้ำ) — พับอยู่ในแถวแพ็คเกจ
+  const open = controlView({ request: request(), zones, filesByZone: files, viewer: HEAD, packageSizes: gone });
+  assert.equal(open.gates.some((g) => g.key === 'package' && !g.ok && /ถูกลบจากทะเบียน/.test(g.reason)), true);
+  assert.equal(open.send.allowed, false);
+});
+
+test('หน้าคำร้องของฝ่ายขาย (ไม่มีทะเบียน · ไม่มีปุ่มส่งผล) ขอออกจากด่านทะเบียนเองชัด ๆ — ข้ออื่นอ่านจากแถวล้วน', () => {
+  const zones = [readyZone('z1', 'Studio 01')];
+  const v = controlView({ request: request(), zones, filesByZone: { z1: readyFiles }, viewer: HEAD, skipPackageRegistry: true });
+  assert.equal(v.status.key, 'ready');
+  const job = readFileSync(new URL('./surveyJob.js', import.meta.url), 'utf8');
+  assert.match(job, /skipPackageRegistry: true/);
+  // จอใบประเมิน (มีปุ่มส่งผล) ต้องส่งทะเบียนจาก GET — ห้ามขอออก
+  const page = readFileSync(new URL('../../app/service/surveys/[id]/page.js', import.meta.url), 'utf8');
+  /* ทะเบียนชุดเดียว (`null` = server อ่านไม่สำเร็จ) ไปสามที่: การ์ดควบคุม · ตัวตัดสินร่าง · ตารางเคาะ */
+  assert.match(page, /const packageSizes = data\?\.packageSizes \?\? null;/);
+  assert.match(page, /today: businessDate\(\),[\s\S]{0,260}?\n    packageSizes,\n  \}\), \[[^\]]*packageSizes\]\);/,
+    'การ์ดควบคุมต้องได้ทะเบียน และ useMemo ต้องคิดใหม่เมื่อทะเบียนเปลี่ยน');
+  assert.match(page, /packageSizes=\{packageSizes\}/, 'ตารางเคาะได้ทะเบียนชุดเดียวกับการ์ดควบคุม');
+  assert.doesNotMatch(page, /skipPackageRegistry/);
+});
+
+test('ยอดแพ็คเกจบนการ์ด/แถวดึงกลับ: จำนวนรวม + สัดส่วนขนาดตามลำดับทะเบียน · ยอดเก่าไม่มีขนาด = ตัวเลขล้วน', () => {
+  const totals = { zones: 2, areaSqm: 88, packageQty: 3, packagesBySize: { ST: 2, SM: 1 } };
+  assert.equal(surveyTotalsText(totals, SIZES), '2 พื้นที่ · 88 ตร.ม. · 3 แพ็คเกจ (SM 1 · ST 2)');
+  assert.equal(surveyTotalsText({ zones: 2, areaSqm: 88, packageQty: 3 }, SIZES), '2 พื้นที่ · 88 ตร.ม. · 3 แพ็คเกจ');
 });

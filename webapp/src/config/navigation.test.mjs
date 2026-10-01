@@ -201,6 +201,19 @@ test('บ้านของตัวเองยังชนะเสมอ — 
   assert.equal(systemForPathname('/database/scents', RD), 'master');
 });
 
+/* ทะเบียนขนาดแพ็คเกจ (mig 0398) — บ้านอยู่ฐานข้อมูล แต่หัวหน้าฝ่ายบริการมีทางลัดในเมนูบริการ ⇒ ฝ่ายบริการต้องรับเส้นทางนี้
+   ไม่งั้นกดทางลัดแล้วเปลือกสลับไป "ฐานข้อมูล" ซึ่ง TS ไม่มีกลุ่มเมนู = แถบว่าง (เหตุเดียวกับไซต์/ทะเบียนเครื่อง) */
+test('⭐ ทะเบียนขนาดแพ็คเกจ: ฝ่ายบริการรับเส้นทางไว้ในบ้านตัวเอง · ฝ่ายอื่นยังอยู่ใต้ฐานข้อมูล', () => {
+  const path = '/database/package-sizes';
+  assert.ok(ADOPTED_SHARED_PATHS.service.includes(path));
+  assert.ok(adoptsPathname('service', path));
+  assert.equal(systemForPathname(path, { role: 'ts_manager', department: 'TS', team: null, extraCaps: [] }),
+    systemForPathname('/database/assets', { role: 'ts_manager', department: 'TS', team: null, extraCaps: [] }),
+    'ตามบ้านเดียวกับทะเบียนเครื่อง');
+  for (const u of [AE, FN, RD, ADMIN]) assert.equal(systemForPathname(path, u), 'master');
+  assert.equal(systemForPathname(path), 'master');
+});
+
 /* 🔴 **ratchet คู่ของกฎข้อ 8** — เส้นทางที่ฝ่ายหนึ่งรับไปแล้วต้องมีเมนูคู่กันในกลุ่ม
    ของฝ่ายนั้น ไม่งั้นเขายืนอยู่บนหน้าที่แถบเมนูไม่ไฮไลต์อะไรเลย · บั๊กแบบนี้
    build/eslint จับไม่ได้เลยเพราะหน้าเรนเดอร์ปกติ ผิดแค่เปลือกที่ครอบมัน

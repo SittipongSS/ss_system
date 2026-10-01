@@ -80,6 +80,8 @@ function base(zone, { picked, surveyState, soldState }) {
     surveyedAt: zone.surveyedAt || null,
     areaSqm: zone.areaSqm ?? null,
     assessedPackages: zone.assessedPackages ?? null,
+    /* ขนาดแพ็คเกจที่หัวหน้าเคาะในผลประเมินล่าสุด (mig 0398) — คู่กับจำนวน ("ST · 2 แพ็ค") · ยังไม่มี = null */
+    assessedPackageSize: zone.assessedPackageSize ?? null,
     surveyCount: zone.surveyCount || 0,
   };
 }

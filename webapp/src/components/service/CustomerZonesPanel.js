@@ -28,6 +28,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import { TableScroll } from "@/components/ui/Table";
 import { REQUEST_STATUS_LABELS, REQUEST_STATUS_TONES } from "@/lib/requests/statuses";
 import { siteRefillBadge } from "@/lib/service/refill";
+import { surveyZonePackageText } from "@/lib/service/survey";
 import { floorLabel } from "@/lib/service/zoneCode";
 import { fmtDate, fmtNumber, naText } from "@/lib/format";
 import styles from "./CustomerZonesPanel.module.css";
@@ -194,7 +195,11 @@ export default function CustomerZonesPanel({
                           <td className="num">
                             {/* ⚠️ สองเลขคนละความหมาย ห้ามยุบรวม (mig 0314 เขียนกำกับ) —
                                 บนคือที่ TS ประเมิน ล่างคือที่ลูกค้าซื้อจริง */}
-                            <b>{naText(zone.assessedPackages)}</b>
+                            {/* ⭐ ขนาด + จำนวนที่ TS ประเมิน ("ST · 2" · mig 0398) — ผลเก่าที่ยังไม่มีขนาด = จำนวนล้วน
+                                ⚠️ ขนาดเป็นของผลประเมินเท่านั้น — บรรทัด "ขาย/ซื้อจริง" ข้างล่างยังเป็นจำนวน (SO ยังไม่ถือขนาด) */}
+                            <b>{naText(surveyZonePackageText(
+                              { packageSize: zone.assessedPackageSize, packageQty: zone.assessedPackages }, { unit: false },
+                            ))}</b>
                             {/* ⭐ ใบที่ประทับแล้ว (mig 0392) ขายเป็น "แพ็คต่อรอบ" — เทียบกับเลขประเมินได้ตรง ๆ ⇒ บอกเสมอ
                                 (PR-C · r2 R1) · ใบเดิม `packageQty` คือจำนวนที่ขายทั้งใบ ⇒ คง "ซื้อจริง n" แบบเดิม */}
                             {zone.soldPerRound ? (

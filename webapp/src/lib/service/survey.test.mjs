@@ -3,14 +3,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  CBM_PER_PACKAGE,
   SURVEY_DOC_PLAN,
   SURVEY_DOC_WIDE,
   normalizeSurveyPart,
   packageNeedsNote,
   parseSurveyMeters,
   spotCounts,
-  suggestedPackages,
   surveyEditLockError,
   surveyRecallError,
   surveyTotalsDiff,
@@ -18,12 +16,16 @@ import {
   surveyFieldProgress,
   surveyFieldSubmitError,
   surveyGateChecklist,
+  surveyPackageMixText,
+  surveyPackagesText,
   surveyPartLetter,
   surveyResultMissing,
   surveySendError,
   surveyTotals,
   surveyZoneName,
+  surveyZonePackageText,
   surveyZoneSize,
+  surveyZoneSuggestedDiffText,
   surveyZoneSummary,
   surveyZoneSavePayload,
 } from './survey.js';
@@ -131,36 +133,73 @@ test('ส่วนที่ยังไม่ได้วัดถูกข้�
   assert.equal(s.complete, false);
 });
 
-// ── ⭐ สูตร 2,400 ลบ.ม. = 1 แพ็คเกจ ─────────────────────────────────────
-test('สูตรปัดขึ้น อย่างน้อย 1 แพ็คเกจ', () => {
-  assert.equal(CBM_PER_PACKAGE, 2400);
-  assert.equal(suggestedPackages(70.56), 1);
-  assert.equal(suggestedPackages(2400), 1);
-  assert.equal(suggestedPackages(2400.01), 2);   // ขั้นบันได
-  assert.equal(suggestedPackages(7200), 3);
-  assert.equal(suggestedPackages(0), null);
-  assert.equal(suggestedPackages(null), null);
+// ── 🔄 สูตร 2,400 ลบ.ม. = 1 แพ็คเกจ ถอดแล้ว (มติเจ้าของ 01/10 · mig 0398) ─────────────
+/* พื้นที่หนึ่งมี **ขนาดเดียว + จำนวน** — ขนาดเสนอจากช่วง ลบ.ม. ของทะเบียน (`suggestedPackageSize` · packageSizes.js)
+   ⇒ ไฟล์กฎของใบประเมินต้องไม่เหลือสูตรหารและต้องไม่รู้จักทะเบียน (ทุกด่านที่นี่อ่านจากแถวล้วน) */
+test('🔄 สูตร ceil(ลบ.ม. ÷ 2,400) ไม่มีแล้ว — survey.js ไม่ส่งออกสูตรและไม่ import ทะเบียนขนาด', async () => {
+  const mod = await import('./survey.js');
+  assert.equal(mod.suggestedPackages, undefined);
+  assert.equal(mod.CBM_PER_PACKAGE, undefined);
+  const src = readFileSync(new URL('./survey.js', import.meta.url), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.doesNotMatch(src, /2400|Math\.ceil\(/, 'ห้ามมีสูตรหารปริมาตรกลับมา');
+  assert.doesNotMatch(src, /^import [^;]*packageSizes/m, 'survey.js ต้องไม่ import ทะเบียนขนาด — packageSizes.js เป็นฝ่าย import ไฟล์นี้ (กันวงวน)');
 });
 
-test('🔴 ปัดเศษครั้งเดียวที่ระดับพื้นที่ ห้ามปัดรายส่วน', () => {
-  // สองส่วนส่วนละ 100 ลบ.ม. รวม 200 ⇒ 1 แพ็คเกจ · ปัดรายส่วนจะได้ 2 ซึ่งผิดเท่าตัว
+test('🔴 ปริมาตรของพื้นที่ = ผลรวมทุกส่วน — ขนาดเสนอจากยอดรวมของพื้นที่ ไม่ใช่รายส่วน', () => {
   const s = surveyZoneSize([part(10, 10, 1), part(10, 10, 1)]);
   assert.equal(s.volumeCbm, 200);
-  assert.equal(suggestedPackages(s.volumeCbm), 1);
-  assert.equal(suggestedPackages(100) + suggestedPackages(100), 2);
 });
 
-test('🔴 คิดรายพื้นที่ ห้ามเอาปริมาตรรวมทั้งใบมาหาร — กลิ่นไม่ข้ามผนัง', () => {
+test('⭐ ยอดรวมแยกตามขนาด — คิดรายพื้นที่ (กลิ่นไม่ข้ามผนัง) · แถวที่ยังไม่มีขนาดไม่เข้าสัดส่วน', () => {
   const rows = [
-    { parts: [part(12.4, 18, 2.8), part(8, 15.5, 2.8)] },   // 972.16 → 1
-    { parts: [part(9, 14, 2.8)] },                          // 352.8  → 1
-    { parts: [part(4.2, 6, 2.8)] },                         // 70.56  → 1
-    { parts: [part(18, 20, 6.5), part(18, 4, 2.6)] },       // 2527.2 → 2
-    { parts: [part(30, 40, 6)] },                           // 7200   → 3
+    { parts: [part(12.4, 18, 2.8), part(8, 15.5, 2.8)], packageQty: 1, packageSize: 'ST' },
+    { parts: [part(9, 14, 2.8)], packageQty: 1, packageSize: 'ST' },
+    { parts: [part(4.2, 6, 2.8)], packageQty: 1, packageSize: 'sm' },
+    { parts: [part(30, 40, 6)], packageQty: 2, packageSize: 'XL' },
+    { parts: [part(3, 3, 3)], packageQty: 1 },                       // เคาะจำนวนด้วยโค้ดเก่า ยังไม่มีขนาด
+    { parts: [part(3, 3, 3)], packageQty: 9, packageSize: 'ST', status: 'cut' },
   ];
   const t = surveyTotals(rows);
-  assert.equal(t.suggestedPackages, 8);                      // หารรายพื้นที่
-  assert.equal(suggestedPackages(t.volumeCbm), 5);           // รวมก่อนหาร — ผิด
+  assert.equal(t.packageQty, 6);
+  assert.deepEqual(t.packagesBySize, { ST: 2, SM: 1, XL: 2 });
+  assert.equal(t.suggestedPackages, undefined, 'ยอด "สูตรบอก" ไม่มีแล้ว');
+  assert.equal(surveyPackageMixText(t.packagesBySize), 'SM 1 · ST 2 · XL 2', 'ไม่มีลำดับทะเบียน = เรียงตามรหัส');
+  assert.equal(surveyPackageMixText(t.packagesBySize, ['XL', 'ST']), 'XL 2 · ST 2 · SM 1', 'รหัสนอกลำดับต่อท้าย');
+  assert.equal(surveyPackagesText(t), '6 แพ็คเกจ (SM 1 · ST 2 · XL 2)');
+  // ยอดที่ตรึงไว้ก่อนมีขนาด (meta ของแถวดึงกลับรุ่นเก่า) = ตัวเลขล้วนเหมือนเดิม
+  assert.equal(surveyPackagesText({ packageQty: 3 }), '3 แพ็คเกจ');
+  assert.equal(surveyPackagesText(null), '0 แพ็คเกจ');
+});
+
+/* ── ถ้อยคำของช่องแพ็คเกจบนทุกจอที่ **อ่าน** ผล (หน้าคำร้องฝ่ายขาย · ทะเบียนโซน · ตัวเลือกพื้นที่ · ตารางดูอย่างเดียว) ── */
+test('⭐ "SM · 1 แพ็ค" — ขนาด + จำนวนที่หัวหน้าเคาะ · ยังไม่เคาะ = null · แถวก่อนมีขนาด = จำนวนล้วน', () => {
+  assert.equal(surveyZonePackageText({ packageSize: 'sm', packageQty: 1 }), 'SM · 1 แพ็ค');
+  assert.equal(surveyZonePackageText({ packageSize: 'ST', packageQty: 2 }, { unit: false }), 'ST · 2', 'หัวคอลัมน์บอกหน่วยแล้ว');
+  // เคาะด้วยโค้ดเก่า (ยังไม่ back-fill) — จำนวนต้องยังอ่านได้ ไม่ใช่ขีด
+  assert.equal(surveyZonePackageText({ packageQty: 3 }), '3 แพ็ค');
+  assert.equal(surveyZonePackageText({ packageQty: 3 }, { unit: false }), '3');
+  // ยังไม่เคาะ = null ให้จอใส่ขีดเอง · ขนาดที่ไม่มีจำนวนไม่ใช่การเคาะ
+  for (const row of [null, {}, { packageQty: null }, { packageQty: 0 }, { packageSize: 'SM' }, { packageSize: 'SM', packageQty: '' }]) {
+    assert.equal(surveyZonePackageText(row), null, JSON.stringify(row));
+  }
+});
+
+test('⭐ "ระบบเสนอ SM · 1 แพ็ค" ขึ้นเฉพาะเมื่อที่เคาะต่างจากที่ระบบเสนอ — ตรงกัน/ไม่มีภาพนิ่ง = null', () => {
+  // ตรงกับที่เสนอทั้งขนาดและจำนวน = ไม่มีบรรทัด (บรรทัดที่พูดซ้ำค่าหลักคือเสียงรบกวน)
+  assert.equal(surveyZoneSuggestedDiffText({ packageSize: 'SM', packageQty: 1, packageSizeSuggested: 'SM' }), null);
+  // ขนาดต่าง
+  assert.equal(surveyZoneSuggestedDiffText({ packageSize: 'ST', packageQty: 1, packageSizeSuggested: 'SM' }), 'ระบบเสนอ SM · 1 แพ็ค');
+  // ขนาดตรง แต่จำนวนไม่ใช่ 1 — ระบบเสนอ 1 แพ็คเสมอ
+  assert.equal(surveyZoneSuggestedDiffText({ packageSize: 'SM', packageQty: 2, packageSizeSuggested: 'sm' }, { unit: false }), 'ระบบเสนอ SM · 1');
+  // XS ที่หัวหน้าเลือกเองก็ยังบอกว่าระบบเสนออะไร (ต่างได้ ไม่ต้องมีเหตุผล แต่ต้องเห็นว่าต่าง)
+  assert.equal(surveyZoneSuggestedDiffText({ packageSize: 'XS', packageQty: 1, packageSizeSuggested: 'SM', packageSizeManual: true }), 'ระบบเสนอ SM · 1 แพ็ค');
+  // แถวของหน้าคำร้อง (`surveyZoneFacts`) เรียกภาพนิ่งว่า `suggestedSize` — รับทั้งสองชื่อ
+  assert.equal(surveyZoneSuggestedDiffText({ packageSize: 'ST', packageQty: 1, suggestedSize: 'SM' }), 'ระบบเสนอ SM · 1 แพ็ค');
+  // ไม่มีภาพนิ่ง (back-fill ST · ระบบเสนอไม่ได้ตอนเคาะ) หรือยังไม่เคาะ = ไม่มีบรรทัด — ห้ามคำนวณสดจากทะเบียนวันนี้
+  assert.equal(surveyZoneSuggestedDiffText({ packageSize: 'ST', packageQty: 2 }), null);
+  assert.equal(surveyZoneSuggestedDiffText({ packageSizeSuggested: 'SM' }), null);
+  assert.equal(surveyZoneSuggestedDiffText(null), null);
 });
 
 // ── จุดติดตั้ง ──────────────────────────────────────────────────────────
@@ -170,18 +209,24 @@ test('จุดที่ติดตั้งได้ vs จุดที่เ�
 });
 
 // ── สรุปรายแถว ─────────────────────────────────────────────────────────
-test('ส่วนต่างจากสูตร: บวก = สูงกว่า · ลบ = ต่ำกว่า', () => {
-  const row = { parts: [part(18, 20, 6.5), part(18, 4, 2.6)], packageQty: 3, spots: [{ selected: true }] };
+test('สรุปรายแถวพกภาพนิ่งตอนเคาะ: ขนาดที่เลือก + ขนาดที่ระบบเสนอ (ไม่มีส่วนต่างจากสูตรแล้ว)', () => {
+  const row = {
+    parts: [part(18, 20, 6.5), part(18, 4, 2.6)], packageQty: 1, packageSize: 'ST', packageSizeSuggested: 'XL',
+    spots: [{ selected: true }],
+  };
   const s = surveyZoneSummary(row);
-  assert.equal(s.suggestedPackages, 2);
-  assert.equal(s.packageDelta, 1);
-  assert.equal(surveyZoneSummary({ parts: [part(30, 40, 6)], packageQty: 1 }).packageDelta, -2);
+  assert.equal(s.packageQty, 1);
+  assert.equal(s.packageSize, 'ST');
+  assert.equal(s.packageSizeSuggested, 'XL');
+  assert.equal('suggestedPackages' in s, false);
+  assert.equal('packageDelta' in s, false);
 });
 
 test('ยังไม่กรอกแพ็คเกจ = null ไม่ใช่ 0 (0 แปลว่าตัดสินใจแล้วว่าไม่ใส่)', () => {
   const s = surveyZoneSummary({ parts: [part(3, 4, 2.8)] });
   assert.equal(s.packageQty, null);
-  assert.equal(s.packageDelta, null);
+  assert.equal(s.packageSize, null);
+  assert.equal(s.packageSizeSuggested, null);
 });
 
 // ── ยอดรวมทั้งใบ ───────────────────────────────────────────────────────
@@ -205,7 +250,6 @@ test('ยอดรวมของตัวอย่างจริงในม�
   ]);
   assert.equal(t.areaSqm, 1454);
   assert.equal(t.volumeCbm, 6327.6);
-  assert.equal(t.suggestedPackages, 6);
   assert.equal(t.packageQty, 7);
   assert.equal(t.spotsTotal, 12);
   assert.equal(t.spotsSelected, 9);
@@ -217,6 +261,8 @@ const wide = { docType: SURVEY_DOC_WIDE };
 const plan = { docType: SURVEY_DOC_PLAN };
 const goodParts = [{ widthM: 10, lengthM: 10, heightM: 3 }];
 const zone = (over = {}) => ({ id: 'SVZ1', zoneName: 'ล็อบบี้', parts: goodParts, spots: [{ id: 's1', label: 'เสากลาง' }], ...over });
+/* การเคาะที่ผ่านด่านแพ็คเกจ — ขนาด + จำนวน ตรงกับที่ระบบเสนอ (10×10×3 = 300 ลบ.ม. ⇒ SM · 1 แพ็ค) */
+const pkg = { packageQty: 1, packageSize: 'SM', packageSizeSuggested: 'SM' };
 
 test('⭐ จอหน้างานบล็อกสามอย่าง: ขนาด · ภาพกว้าง · จุดที่ติดตั้งได้', () => {
   assert.deepEqual(surveyFieldMissing(zone(), [wide]), [], 'ครบสามอย่าง = ผ่าน');
@@ -241,13 +287,15 @@ test('⭐ ผังไม่บล็อกที่หน้างาน แต
 });
 
 test('⭐ จอส่งผลบล็อกสามอย่าง: ผัง · จุดที่เลือก · แพ็คเกจ', () => {
-  // 10×10×3 = 300 ลบ.ม. ⇒ สูตรได้ 1 — ใส่ตรงสูตรเพื่อไม่ให้ไปติดด่านเหตุผล (คนละข้อ)
-  const full = zone({ spots: [{ id: 's1', label: 'เสากลาง', selected: true }], packageQty: 1 });
+  // เคาะตรงกับที่ระบบเสนอ (SM · 1) เพื่อไม่ให้ไปติดด่านเหตุผล (คนละข้อ)
+  const full = zone({ spots: [{ id: 's1', label: 'เสากลาง', selected: true }], ...pkg });
   assert.deepEqual(surveyResultMissing(full, [wide, plan]).result, []);
 
   assert.match(surveyResultMissing(full, [wide]).result.join(' '), /ภาพผัง/);
-  assert.match(surveyResultMissing(zone({ packageQty: 1 }), [wide, plan]).result.join(' '), /เลือกจุด/);
-  assert.match(surveyResultMissing({ ...full, packageQty: null }, [wide, plan]).result.join(' '), /แพ็คเกจ/);
+  assert.match(surveyResultMissing(zone({ ...pkg }), [wide, plan]).result.join(' '), /เลือกจุด/);
+  assert.deepEqual(surveyResultMissing({ ...full, packageQty: null }, [wide, plan]).result, ['ยังไม่ได้เคาะแพ็คเกจ']);
+  // 🔴 จำนวนมีแต่ขนาดไม่มี (เคาะด้วยโค้ดเก่าระหว่างรัน 0398 กับ deploy) = ส่งผลไม่ได้
+  assert.deepEqual(surveyResultMissing({ ...full, packageSize: null }, [wide, plan]).result, ['ยังไม่ได้เลือกขนาดแพ็คเกจ']);
 });
 
 /* ⚠️ พื้นที่ที่ถูกตัดไม่ต้องผ่านด่านไหนเลย — บังคับให้วัดของที่จะไม่ขายคือบังคับงานเปล่า */
@@ -263,14 +311,14 @@ test('fail-closed — ไม่ใช่หัวหน้า ส่งผลไ
 
 /* ⚠️ ยังไม่โหลดไฟล์ = ยังไม่มีรูป ⇒ ด่านต้องปฏิเสธ ไม่ใช่ปล่อยผ่าน */
 test('⚠️ ไม่ส่งไฟล์มาให้ = ถือว่ายังไม่มีรูป (fail-closed)', () => {
-  const full = zone({ spots: [{ id: 's1', selected: true }], packageQty: 1 });
+  const full = zone({ spots: [{ id: 's1', selected: true }], ...pkg });
   assert.match(surveySendError([full], {}, { canSend: true }), /ภาพ/);
 });
 
 /* ⚠️ ใบหนึ่งมีได้สิบพื้นที่ — ข้อความที่ไม่บอกว่าพื้นที่ไหน แปลว่าหัวหน้าต้องไล่เปิดเอง */
 test('ข้อความบอกชื่อพื้นที่ที่ติด ไม่ใช่แค่ "ยังไม่ครบ"', () => {
-  const ok = zone({ id: 'A', zoneName: 'ล็อบบี้', spots: [{ id: 's', selected: true }], packageQty: 1 });
-  const bad = zone({ id: 'B', zoneName: 'โถงลิฟต์', spots: [{ id: 's', selected: true }], packageQty: 1 });
+  const ok = zone({ id: 'A', zoneName: 'ล็อบบี้', spots: [{ id: 's', selected: true }], ...pkg });
+  const bad = zone({ id: 'B', zoneName: 'โถงลิฟต์', spots: [{ id: 's', selected: true }], ...pkg });
   const err = surveySendError([ok, bad], { A: [wide, plan], B: [wide] }, { canSend: true });
   assert.match(err, /โถงลิฟต์/);
   assert.doesNotMatch(err, /ล็อบบี้/, 'พื้นที่ที่ครบแล้วต้องไม่ถูกเอ่ยถึง');
@@ -282,7 +330,7 @@ test('ชื่อพื้นที่ที่คนอ่าน: ว่าง
     assert.equal(surveyZoneName(blank), 'พื้นที่ไม่มีชื่อ');
   }
   /* 🐞 ด่านส่งผลเคยถอยไปที่ "พื้นที่" เฉย ๆ (และไม่ตัดช่องว่าง) ขณะที่รายการด่าน/ตารางเรียก "พื้นที่ไม่มีชื่อ" */
-  const nameless = zone({ id: 'B', zoneName: '  ', spots: [{ id: 's', selected: true }], packageQty: 1 });
+  const nameless = zone({ id: 'B', zoneName: '  ', spots: [{ id: 's', selected: true }], ...pkg });
   const err = surveySendError([nameless], { B: [wide] }, { canSend: true });
   assert.match(err, /ยังส่งผลไม่ได้ — พื้นที่ไม่มีชื่อ: /);
   const gate = surveyGateChecklist([nameless], { B: [wide] }).find((g) => !g.ok);
@@ -304,7 +352,7 @@ test('คำว่า "พื้นที่ไม่มีชื่อ" มี�
 });
 
 test('ครบทุกพื้นที่ = ส่งผลได้', () => {
-  const a = zone({ id: 'A', spots: [{ id: 's', selected: true }], packageQty: 1 });
+  const a = zone({ id: 'A', spots: [{ id: 's', selected: true }], ...pkg });
   assert.equal(surveySendError([a], { A: [wide, plan] }, { canSend: true }), null);
 });
 
@@ -362,21 +410,39 @@ test('🔴 ป้ายปุ่มที่ข้อความส่งงา
   assert.match(sheet, /label: "ไปแล้วเข้าไม่ได้"/);
 });
 
-/* 🔴 ทับสูตรแล้วต้องบอกเหตุผล (mig 0345) — กติกาเดียวกับการตัดพื้นที่ออก */
-test('🔴 แพ็คเกจต่างจากสูตรต้องมีเหตุผล · ตรงกับสูตรไม่ต้อง', () => {
-  // 10×10×3 = 300 ลบ.ม. ⇒ สูตรได้ 1
+/* 🔴 ต่างจากที่ระบบเสนอต้องบอกเหตุผล (mig 0345 · กติกาเดิม เปลี่ยนจาก "สูตร" เป็น "ที่ระบบเสนอ" ใน 0398)
+   🔑 ด่านอ่านจาก **ภาพนิ่งบนแถว** ที่ route ประทับตอนเคาะ — ไม่ถามทะเบียน */
+test('🔴 แพ็คเกจต่างจากที่ระบบเสนอต้องมีเหตุผล · ตรงกับที่เสนอไม่ต้อง', () => {
   const base = zone({ spots: [{ id: 's', selected: true }] });
-  assert.equal(packageNeedsNote({ ...base, packageQty: 1 }), false, 'ตรงสูตร = ไม่ต้องมีเหตุผล');
-  assert.equal(packageNeedsNote({ ...base, packageQty: 3 }), true);
-  assert.equal(packageNeedsNote({ ...base, packageQty: null }), false, 'ยังไม่เคาะ = ยังไม่ถึงข้อนี้');
+  const sm = { packageSize: 'SM', packageSizeSuggested: 'SM' };
+  assert.equal(packageNeedsNote({ ...base, ...sm, packageQty: 1 }), false, 'ตรงที่เสนอ (SM · 1) = ไม่ต้องมีเหตุผล');
+  assert.equal(packageNeedsNote({ ...base, ...sm, packageQty: 3 }), true, 'ระบบเสนอจำนวน 1 เสมอ — 3 = ต่าง');
+  assert.equal(packageNeedsNote({ ...base, ...sm, packageSize: 'ST', packageQty: 1 }), true, 'ขนาดไม่ตรงที่เสนอ');
+  assert.equal(packageNeedsNote({ ...base, ...sm, packageQty: null }), false, 'ยังไม่เคาะ = ยังไม่ถึงข้อนี้');
 
   const files = [wide, plan];
-  assert.deepEqual(surveyResultMissing({ ...base, packageQty: 1 }, files).result, []);
-  assert.match(surveyResultMissing({ ...base, packageQty: 3 }, files).result.join(' '), /ต้องบอกเหตุผล/);
+  assert.deepEqual(surveyResultMissing({ ...base, ...sm, packageQty: 1 }, files).result, []);
+  assert.deepEqual(surveyResultMissing({ ...base, ...sm, packageQty: 3 }, files).result,
+    ['แพ็คเกจต่างจากที่ระบบเสนอ — ต้องบอกเหตุผล']);
   assert.deepEqual(
-    surveyResultMissing({ ...base, packageQty: 3, packageNote: 'กึ่งกลางแจ้ง ลมโกรก' }, files).result,
+    surveyResultMissing({ ...base, ...sm, packageQty: 3, packageNote: 'กึ่งกลางแจ้ง ลมโกรก' }, files).result,
     [],
   );
+});
+
+test('⭐ ขนาดที่หัวหน้าเลือกเอง (XS ห้องน้ำ) ไม่ต้องมีเหตุผล — แต่จำนวนที่ไม่ใช่ 1 ยังต้องบอก', () => {
+  const xs = { packageSize: 'XS', packageSizeSuggested: 'SM', packageSizeManual: true };
+  assert.equal(packageNeedsNote({ ...xs, packageQty: 1 }), false);
+  assert.equal(packageNeedsNote({ ...xs, packageQty: 2 }), true);
+  assert.equal(packageNeedsNote({ ...xs, packageSizeManual: false, packageQty: 1 }), true);
+});
+
+test('⚠️ แถวก่อนมีขนาด (back-fill ST · ไม่มีที่ระบบเสนอ) ไม่ถูกย้อนบังคับเหตุผล — และด่านไม่ถามทะเบียน', () => {
+  const legacy = zone({ spots: [{ id: 's', selected: true }], packageQty: 3, packageSize: 'ST' });
+  assert.equal(packageNeedsNote(legacy), false);
+  assert.deepEqual(surveyResultMissing(legacy, [wide, plan]).result, []);
+  // รหัสที่ทะเบียนไม่มีแล้วก็ยังผ่านด่านแถวล้วน — "ขนาดถูกลบ" เป็นด่านแยกของใบที่ยังไม่ส่ง (packageSizes.js)
+  assert.deepEqual(surveyResultMissing({ ...legacy, packageSize: 'ZZ' }, [wide, plan]).result, []);
 });
 
 /* 🐞 **รูที่เทสต์ฟังก์ชันมองไม่เห็น** — ด่านถูกหมด แต่ถ้า route ไม่เรียกก็ไม่มีผล
@@ -472,10 +538,17 @@ test('🔑 ดึงผลกลับ: สิทธิ์ · สถานะ ·
    ⇒ ต้องบอกส่วนต่างตรง ๆ ไม่ใช่แค่ "ใบถูกแก้" */
 test('🔴 ส่วนต่างต้องบอกเป็นเลขเก่า→ใหม่ เฉพาะตัวที่ใช้ตั้งราคา', () => {
   const before = { zones: 3, areaSqm: 320, packageQty: 6, spotsSelected: 4 };
-  const after = { zones: 3, areaSqm: 300, packageQty: 5, spotsSelected: 9 };
+  const after = { zones: 3, areaSqm: 300, packageQty: 5, spotsSelected: 9, packagesBySize: { ST: 5 } };
   const diff = surveyTotalsDiff(before, after);
 
+  // ยอดเดิมตรึงไว้ก่อนมีขนาด (ไม่มี packagesBySize) ⇒ ไม่มีบรรทัด "ขนาด" — ไม่ใช่ "— → ST 5"
   assert.deepEqual(diff, ['ตร.ม. 320 → 300', 'แพ็คเกจ 6 → 5']);
+  /* ⭐ ขนาดเปลี่ยนทั้งที่จำนวนรวมเท่าเดิม = ราคาเปลี่ยน ⇒ ต้องบอก */
+  assert.deepEqual(
+    surveyTotalsDiff({ ...after, packagesBySize: { ST: 5 } }, { ...after, packagesBySize: { SM: 1, ST: 4 } }),
+    ['ขนาด ST 5 → SM 1 · ST 4'],
+  );
+  assert.deepEqual(surveyTotalsDiff(after, { ...after, packagesBySize: { ST: 5 } }), []);
   // จุดติดตั้งเป็นของหน้างาน ไม่ใช่ตัวคูณราคา ⇒ ไม่ต้องรบกวน SA
   assert.ok(!diff.join(' ').includes('9'));
   // ไม่มีอะไรเปลี่ยน / ไม่มีของเทียบ = เงียบ (ส่งรอบแรกก็เข้าทางนี้)
@@ -513,7 +586,7 @@ test('🔴 ส่งผลรอบใหม่ต้องหยิบตัว
  * 🔑 ด่านของการปิดทางนี้คือด่านส่งผลตัวเดียว — มันต้อง **ครอบ** ด่านส่งงานของช่างทุกกรณี
  *   ไม่งั้นส่งผลจะปิดนัดเป็น "เข้าแล้ว" ทั้งที่ของช่างยังไม่ครบ (สิ่งที่ช่างเองทำไม่ได้) */
 test('🔑 ด่านส่งผลปฏิเสธทุกกรณีที่ด่านส่งงานของช่างปฏิเสธ — ไม่ต้องมีด่านที่สองตอนส่งผลปิดนัด', () => {
-  const decided = (over = {}) => zone({ spots: [{ id: 's1', label: 'เสากลาง', selected: true }], packageQty: 1, ...over });
+  const decided = (over = {}) => zone({ spots: [{ id: 's1', label: 'เสากลาง', selected: true }], ...pkg, ...over });
   const zoneVariants = [
     decided(),
     decided({ parts: [] }),
@@ -543,9 +616,11 @@ test('🔑 ด่านส่งผลปฏิเสธทุกกรณีท
   const allCut = [{ id: 'C', zoneName: 'x', status: 'cut', cutReason: 'ลูกค้าไม่เอา' }];
   assert.equal(surveyFieldSubmitError(allCut, {}), null);
   assert.match(surveySendError(allCut, {}, { canSend: true }), /ไม่มีพื้นที่/);
-  // "แพ็คที่ตกลงไว้" — ยังไม่เคาะ หรือทับสูตรโดยไม่มีเหตุผล = ส่งผลไม่ได้
-  assert.match(surveySendError([decided({ packageQty: null })], { SVZ1: [wide, plan] }, { canSend: true }), /แพ็คเกจ/);
+  // "แพ็คที่ตกลงไว้" — ยังไม่เคาะ · ยังไม่เลือกขนาด · ต่างจากที่ระบบเสนอโดยไม่มีเหตุผล = ส่งผลไม่ได้
+  assert.match(surveySendError([decided({ packageQty: null })], { SVZ1: [wide, plan] }, { canSend: true }), /ยังไม่ได้เคาะแพ็คเกจ/);
+  assert.match(surveySendError([decided({ packageSize: null })], { SVZ1: [wide, plan] }, { canSend: true }), /ยังไม่ได้เลือกขนาดแพ็คเกจ/);
   assert.match(surveySendError([decided({ packageQty: 3 })], { SVZ1: [wide, plan] }, { canSend: true }), /เหตุผล/);
+  assert.equal(surveySendError([decided()], { SVZ1: [wide, plan] }, { canSend: true }), null);
 });
 
 test('🐞 route ส่งผล: หานัดที่ค้าง · ปิดก่อนตอบใบ ผ่านลำดับกลางตัวเดียว · ผูกนัดกับโมดัล', () => {

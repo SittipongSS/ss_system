@@ -26,11 +26,13 @@ import styles from "./SurveyControlCard.module.css";
 
 /* ปุ่มพาไปจุดที่แก้ได้จริง — `target` มาจากตัวตัดสิน ไม่ได้คิดที่นี่ (กฎ "ไปไหนถึงจะ
    แก้ข้อนี้ได้" มีชุดเดียว อยู่ใน `surveyControl.js`) · การ์ดแค่แปลงเป็นปุ่ม */
-function JumpButton({ target, onOpenZone, onGoTab, className }) {
+function JumpButton({ target, onOpenZone, onGoTab, onReload, className }) {
   if (!target) return null;
   const go = () => {
     if (target.kind === "zone") onOpenZone?.(target.zoneId);
     else if (target.kind === "tab") onGoTab?.(target.tab);
+    /* `reload` = อ่านใบใหม่ (ทะเบียนขนาดแพ็คเกจมากับ GET ใบประเมิน) — ทางออกเดียวของเหตุ "อ่านทะเบียนไม่สำเร็จ" */
+    else if (target.kind === "reload") onReload?.();
   };
   return (
     <button type="button" className={`text-action ${className || ""}`.trim()} onClick={go}>
@@ -50,6 +52,7 @@ export default function SurveyControlCard({
   onSendBack,
   onOpenZone,
   onGoTab,
+  onReload,
   requestDocNo = null,
   requestHref = null,
   visitCode = null,
@@ -133,6 +136,7 @@ export default function SurveyControlCard({
               target={sendReason.target}
               onOpenZone={onOpenZone}
               onGoTab={onGoTab}
+              onReload={onReload}
               className={styles.reasonJump}
             />
           </span>

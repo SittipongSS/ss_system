@@ -20,9 +20,10 @@ import { requestSideLabel, requestWaitLabel } from '@/lib/requests/replyTurn';
 import { accessWindowText } from './sites';
 import { dayText, daysBetween, relDayText, thaiDayOf } from './queueWords';
 import {
-  surveyChangeCounts, surveyChangeText, surveyGateChecklist, surveyTotals,
+  surveyChangeCounts, surveyChangeText, surveyGateChecklist, surveyPackageMixText, surveyTotals,
+  surveyZonePackageText, surveyZoneSuggestedDiffText,
 } from './survey';
-import { surveyControlView, surveySendBackAskText, surveyZoneFacts } from './surveyControl';
+import { surveyControlView, surveyPackagesLabel, surveySendBackAskText, surveyZoneFacts } from './surveyControl';
 import { VISIT_STATUS_LABELS, holdsRequestSlot, isClosedVisit } from './visitStatus';
 
 const join = (...parts) => parts.flat().filter(Boolean).join(' · ');
@@ -203,8 +204,14 @@ function zoneRows(zones, filesByZone, { sent, filesUnknown = false }) {
       photosPlan: filesUnknown ? null : facts.photos.plan,
       spotsTotal: facts.spotsTotal,
       spotsSelected: facts.spotsSelected,
-      suggested: facts.measuredParts ? facts.suggestedPackages : null,
+      /* ขนาดที่หัวหน้าเคาะ + ขนาดที่ระบบเสนอตอนเคาะ (ภาพนิ่งบนแถว · mig 0398) — 🔄 แทน `suggested` (สูตร ÷ 2,400 ถอดแล้ว) */
+      packageSize: facts.packageSize,
+      suggestedSize: facts.suggestedSize,
       packageQty: facts.packageQty,
+      /* ⭐ ถ้อยคำของช่องแพ็คเกจ (จอแค่วาด) — "SM · 1" คือของที่ฝ่ายขายเอาไปตั้งราคา · บรรทัดรอง "ระบบเสนอ ST · 1"
+         ขึ้นเฉพาะเมื่อที่เคาะต่างจากที่ระบบเสนอ (ต่างได้ แต่ต้องเห็นว่าต่าง) · หัวคอลัมน์บอกหน่วยแล้ว ⇒ ไม่ต่อ "แพ็ค" */
+      packageText: surveyZonePackageText(facts, { unit: false }),
+      suggestedText: surveyZoneSuggestedDiffText(facts, { unit: false }),
       packageNote: String(zone.packageNote || '').trim() || null,
       state,
       missingText: facts.cut || filesUnknown ? null : facts.missingText,
@@ -328,6 +335,8 @@ export function surveyJobView({
     sendBack: request.surveySendBack ?? null,
     unknown: { recall: unknown.recall, sendBack: unknown.sendBack },
     viewer: { canWrite: false, canDecide: viewer.canDecide === true, canOpenRequest: true },
+    /* หน้าคำร้องไม่มีทะเบียนขนาดแพ็คเกจและไม่มีปุ่มส่งผล — ด่าน "ขนาดถูกลบ" ถามที่จอใบประเมินกับ route ส่งผล (PR-P §1) */
+    skipPackageRegistry: true,
     tab: 'result',
     today,
   });
@@ -350,7 +359,7 @@ export function surveyJobView({
   const totalsText = join(
     `${fmtNumber(totals.zones)} พื้นที่`,
     `${num(totals.areaSqm)} ตร.ม.`,
-    `${fmtNumber(totals.packageQty)} แพ็คเกจ`,
+    surveyPackagesLabel(totals),
   );
   const visitWhen = visit ? dayTime(visit.scheduledDate, visit.startTime) : '';
   const lateBy = stage === 'overdue' ? daysBetween(visit.scheduledDate, today) : 0;
@@ -750,6 +759,8 @@ export function surveyJobView({
       rows,
       sent,
       totals,
+      /* สัดส่วนขนาดของทั้งใบ ("SM 1 · ST 1") — จำนวนรวมเท่ากันแต่ขนาดต่าง = ราคาต่าง · ยังไม่เคาะสักพื้นที่ = '' */
+      packageMixText: surveyPackageMixText(totals.packagesBySize),
       photos,
       measured: { done: progress.done, total: progress.total },
       progressText: join(measuredText, !sent && totals.areaSqm ? `รวมตอนนี้ ${num(totals.areaSqm)} ตร.ม. · ${num(totals.volumeCbm)} ลบ.ม.` : ''),
@@ -773,7 +784,7 @@ export function surveyJobView({
         text: filesUnknown ? 'อ่านรูปรายพื้นที่ไม่สำเร็จ — ไม่ทราบว่าครบไหม'
           : reachedSite(visit) || head.ok
             ? head.items.map((g) => `${g.label} ${g.done}/${g.total}`).join(' · ')
-            : `เริ่มได้เมื่อช่างส่งงาน${totals.suggestedPackages ? ` — ตอนนี้สูตรให้ ${fmtNumber(totals.suggestedPackages)} แพ็คเกจ` : ''}`,
+            : 'เริ่มได้เมื่อช่างส่งงาน',
       },
       unknownFiles: unknown.files === true,
     },

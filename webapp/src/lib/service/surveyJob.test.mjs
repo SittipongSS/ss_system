@@ -90,7 +90,9 @@ test('S2 ส่งผลแล้ว — ตาฝ่ายขายปิดเ
       parts: i === 2 ? [{ id: 'a', label: 'ส่วน A', widthM: 7.5, lengthM: 4, heightM: 3 }, { id: 'b', label: 'ส่วน B', widthM: 3, lengthM: 2, heightM: 3 }] : z.parts,
       spots: i === 2 ? [{ id: 'a', selected: true }, { id: 'b' }] : z.spots.map((s, j) => ({ ...s, selected: i === 0 ? j < 2 : j === 0 })),
       packageQty: i === 0 ? 2 : 1,
-      packageNote: i === 0 ? 'หัวหน้าเพิ่ม · เป็นทางเข้า' : null,
+      /* ขนาด + ที่ระบบเสนอ = ภาพนิ่งที่ route ประทับตอนเคาะ (mig 0398) */
+      packageSize: i === 1 ? 'ST' : 'SM', packageSizeSuggested: 'SM',
+      packageNote: i === 1 ? null : (i === 0 ? 'หัวหน้าเพิ่ม · เป็นทางเข้า' : null),
     })),
     surveyFilesByZone: {
       z1: [{ docType: 'survey_wide' }, { docType: 'survey_wide' }, { docType: 'survey_plan' }],
@@ -106,9 +108,9 @@ test('S2 ส่งผลแล้ว — ตาฝ่ายขายปิดเ
   assert.deepEqual(v.steps.map((s) => s.state), ['done', 'done', 'done', 'done', 'done', 'current']);
   assert.equal(v.steps[3].when, 'จ. 28 ก.ย. 10:12–11:48');
   assert.equal(v.steps[4].people[0].name, 'Arnon Aunsapwilai');
-  assert.equal(v.steps[4].lines[0].text, '3 พื้นที่ · 114 ตร.ม. · 4 แพ็คเกจ');
+  assert.equal(v.steps[4].lines[0].text, '3 พื้นที่ · 114 ตร.ม. · 4 แพ็คเกจ (SM 3 · ST 1)');
   assert.equal(v.steps[5].badge.label, 'ปิดแล้ว 1/2');
-  assert.equal(v.now.headline, 'ได้รับผลแล้ว — 3 พื้นที่ · 114 ตร.ม. · 4 แพ็คเกจ');
+  assert.equal(v.now.headline, 'ได้รับผลแล้ว — 3 พื้นที่ · 114 ตร.ม. · 4 แพ็คเกจ (SM 3 · ST 1)');
   assert.equal(v.now.turn.side, 'SA');
   assert.equal(v.now.turn.who, 'คุณ', 'คนเปิดใบเองอ่านว่า "คุณ"');
   assert.deepEqual(v.now.due.badge, { text: 'ส่งแล้ว ก่อนกำหนด 1 วัน', tone: 'success' });
@@ -117,6 +119,24 @@ test('S2 ส่งผลแล้ว — ตาฝ่ายขายปิดเ
   assert.equal(v.zones.rows[2].size, 'ส่วน A 7.5 × 4 × 3 ม. + ส่วน B 3 × 2 × 3 ม.');
   assert.equal(v.zones.totals.spotsSelected, 4);
   assert.equal(v.zones.unchanged, true);
+  /* ⭐ ช่องแพ็คเกจของหน้าคำร้อง (mig 0398) — ขนาด + จำนวนที่หัวหน้าเคาะคือของที่ฝ่ายขายเอาไปตั้งราคา
+     · บรรทัดรอง "ระบบเสนอ …" ขึ้นเฉพาะแถวที่เคาะต่างจากที่ระบบเสนอ (จำนวนไม่ใช่ 1 · ขนาดไม่ตรง) — ตรงกัน = ไม่มีบรรทัด
+     · หัวคอลัมน์บอกหน่วยแล้ว ⇒ ไม่ต่อ "แพ็ค" · 🔄 แทน "สูตร N" เดิม */
+  assert.deepEqual(v.zones.rows.map((r) => r.packageText), ['SM · 2', 'ST · 1', 'SM · 1']);
+  assert.deepEqual(v.zones.rows.map((r) => r.suggestedText), ['ระบบเสนอ SM · 1', 'ระบบเสนอ SM · 1', null]);
+  assert.equal(v.zones.packageMixText, 'SM 3 · ST 1', 'สัดส่วนขนาดของทั้งใบ — จำนวนรวมเท่ากันแต่ขนาดต่าง = ราคาต่าง');
+  assert.ok(v.zones.rows.every((r) => !('suggested' in r)), 'ช่อง "สูตร N" เดิมต้องไม่เหลือ');
+});
+
+test('ผลที่เคาะก่อนมีขนาด (ยังไม่ back-fill) — ช่องแพ็คเกจเป็นจำนวนล้วน ไม่มีบรรทัดระบบเสนอ ไม่มีสัดส่วนขนาด', () => {
+  const old = request({
+    status: 'answered', answeredAt: '2026-09-29T07:20:00Z',
+    surveyVisit: visit({ status: 'done' }),
+    surveyZones: zones().map((z) => ({ ...z, packageQty: 2, spots: z.spots.map((s2, j) => ({ ...s2, selected: j === 0 })) })),
+  });
+  const v = surveyJobView({ request: old, today: '2026-09-29', viewer: {} });
+  assert.ok(v.zones.rows.every((r) => r.packageText === '2' && r.suggestedText === null));
+  assert.equal(v.zones.packageMixText, '');
 });
 
 test('🐞 นัดเลยวันแล้วยังไม่เริ่ม — ต้องขึ้น "เลยวันนัด" ไม่ใช่เขียว "ตรงกับที่ขอ" (RQ-AS-26090190)', () => {
@@ -312,7 +332,7 @@ test('🐞 ช่างครบแล้วแต่หัวหน้าส่
   // หัวหน้าเคาะครบหกข้อแล้วก็เช่นกัน — ค้างส่งกลับอยู่ = ยังไม่ "พร้อมส่งผล"
   const decided = {
     ...crewDone,
-    surveyZones: measured.map((z) => ({ ...z, packageQty: 1, spots: z.spots.map((s, j) => ({ ...s, selected: j === 0 })) })),
+    surveyZones: measured.map((z) => ({ ...z, packageQty: 1, packageSize: 'SM', packageSizeSuggested: 'SM', spots: z.spots.map((s, j) => ({ ...s, selected: j === 0 })) })),
     surveyFilesByZone: Object.fromEntries(Object.entries(crewDone.surveyFilesByZone)
       .map(([id, files]) => [id, [...files, { docType: 'survey_plan' }]])),
   };

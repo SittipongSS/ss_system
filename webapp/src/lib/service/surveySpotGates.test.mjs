@@ -13,8 +13,12 @@ import {
   surveySpotSubmitError, surveySpotSubmitReason,
 } from './surveySpotPhotos.js';
 import { surveyFieldSubmitError, surveySendError } from './survey.js';
-import { surveyControlView } from './surveyControl.js';
+import { surveyControlView as controlView } from './surveyControl.js';
 import { surveyFieldBarView, surveySubmitView, surveyZoneListView } from './surveyFieldView.js';
+
+/* การ์ดได้ทะเบียนขนาดแพ็คเกจจาก GET ใบประเมินเสมอ (mig 0398) — ด่าน "ขนาดถูกลบ" มีเทสต์ของตัวเองใน surveyControl.test */
+const SIZES = [{ code: 'ST', nameEn: 'Standard', maxCbm: null, autoSuggest: true }];
+const surveyControlView = (args = {}) => controlView({ packageSizes: SIZES, ...args });
 
 const part = (w, l, h) => ({ widthM: w, lengthM: l, heightM: h, label: null });
 const WIDE = { id: 'W', docType: 'survey_wide', fileName: 'wide.jpg' };
@@ -29,7 +33,7 @@ const spots = (zoneId, n, selected = true) => Array.from({ length: n }, (_, i) =
 /** พื้นที่ที่ครบทั้งหกข้อของ `SURVEY_GATES` — เหลือแค่เรื่องรูปจุด */
 const zone = (id, name, extra = {}) => ({
   id, zoneId: `SZN-${id}`, zoneName: name, floor: null, status: 'ok',
-  parts: [part(4, 5, 3)], spots: spots(id, 1), packageQty: 1, packageNote: '', note: '', ...extra,
+  parts: [part(4, 5, 3)], spots: spots(id, 1), packageQty: 1, packageSize: 'ST', packageNote: '', note: '', ...extra,
 });
 /** ไฟล์ที่ทำให้ทุกจุดของพื้นที่มีรูป */
 const allLinked = (z) => [WIDE, PLAN, ...z.spots.map((s) => spotPhoto(`F-${s.id}`, s.id))];

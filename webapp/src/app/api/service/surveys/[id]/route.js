@@ -10,6 +10,7 @@ import { withUser, ok, fail, forbidden, notFound } from '@/lib/http';
 import { canDoFieldWork, canEditService, canSendSurveyResult } from '@/lib/permissions';
 import { canOpenRequestPage, canOpenSurveySheet, surveyReadError } from '@/lib/service/surveyAccess';
 import { listAttachments } from '@/lib/master/attachments';
+import { loadPackageSizesOrNull } from '@/lib/service/packageSizesRepo';
 import { loadSurveyCrew, loadSurveySheetContext, loadSurveyZones } from '@/lib/service/surveyRepo';
 import { surveySendBackOnSheet } from '@/lib/service/survey';
 import { loadSurveyRequestFiles } from '@/lib/service/surveyRequestFiles';
@@ -63,18 +64,21 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
           (ใบที่ไม่มีผู้ช่วยไม่ยิงอะไรเพิ่มเลย) · ล้มรายคน = `unknown.crew` ไม่ใช่ 500
        ⑤ ไฟล์แนบของคำร้อง (PR-S · แผน crew Q6) — ช่างอ่านอย่างเดียว เปิดผ่าน proxy เดิม ไม่มีลิงก์ไปหน้าคำร้อง
           ⭐ ตัวโหลดถามด่านอ่านตัวเดียวกับ proxy ก่อน ⇒ ลิสต์เท่ากับที่เปิดได้ · พัง = `unknown.requestFiles`
+       ⑥ ทะเบียนขนาดแพ็คเกจ (mig 0398) — แถบ "ขนาด" ของแท็บสรุปส่งผล · ที่ระบบเสนอ · ด่าน "ขนาดถูกลบ" ของการ์ด
+          ⚠️ อ่านไม่สำเร็จ = `null` (ไม่ใช่ `[]`) ⇒ การ์ดบล็อกส่งผลด้วยเหตุเดียวกับ route ส่งผล ไม่ใช่บอกว่าขนาดถูกลบ
 
        ⭐ **ไม่มีก้อนไหนรอผลของอีกก้อน ⇒ ยิงขนานกัน** — จอนี้ถูกโหลดใหม่ทุกครั้ง
           ที่บันทึก/ส่ง/ดึงกลับ และทุกครั้งที่สลับกลับมาที่แท็บ (`useRevalidateOnFocus`)
           ⇒ รอบเดินทางที่เพิ่มมาหนึ่งรอบ คือรอบที่ช่างรอทุกครั้งที่กดบันทึกหน้างาน
        ⚠️ `findSurveyVisit` ยัง throw ได้เหมือนเดิม ⇒ ทั้งเส้นยังเป็น 500 เท่าเดิม
           (ตั้งใจ: มันเป็นด่านตัดสิน `canWrite` — เดาแทนไม่ได้ ต้อง fail-closed) */
-    const [files, [visit, crewRes], context, requestFiles] = await Promise.all([
+    const [files, [visit, crewRes], context, requestFiles, packageSizes] = await Promise.all([
       Promise.all(zones.map((z) => listAttachments('service_survey_zone', z.id, supabase))),
       findSurveyVisit(supabase, id, { preferOpen: true })
         .then(async (found) => [found, await loadSurveyCrew(supabase, found, { viewerId: user?.id })]),
       loadSurveySheetContext(supabase, request, zones),
       loadSurveyRequestFiles(supabase, request, user),
+      loadPackageSizesOrNull(supabase),
     ]);
     const filesByZone = Object.fromEntries(zones.map((z, i) => [z.id, files[i] || []]));
     if (crewRes.unknown) context.unknown.crew = true;
@@ -119,6 +123,9 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       }).ok,
       /* ไฟล์แนบของคำร้อง — อ่านอย่างเดียว (`surveyRequestFileRows` · ไม่มี metadata ดิบ) */
       requestFiles: requestFiles.files,
+      /* ⭐ ทะเบียนขนาดแพ็คเกจ เรียงตามที่แถบเลือกแสดง (mig 0398) · `null` = อ่านไม่สำเร็จ — จอส่งต่อให้
+         `surveyControlView({ packageSizes })` และตัวตัดสินร่าง (`surveyDecisionError(…, { sizes })`) ซึ่ง fail-closed ทั้งคู่ */
+      packageSizes,
       // เหตุผลที่เขียนไม่ได้ — จอต้องบอกเหตุ ไม่ใช่ซ่อนปุ่มเงียบ ๆ
       writeBlockedReason: access.ok ? null : (access.error || 'ไม่มีสิทธิ์บันทึกผลของใบนี้'),
       /* ⭐ **เปิดหน้าคำร้องได้ไหม** — จอเอาไปตัดสินว่าจะโชว์ลิงก์ "คำร้อง RQ-…" หรือไม่

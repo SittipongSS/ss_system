@@ -65,7 +65,7 @@ import {
   surveyAddZoneError, surveyChangeCounts, surveyChangeText, surveyCrewGaps,
   surveySendBackDoneError, surveySendBackError, surveySendBackItems, surveyTotals,
 } from "@/lib/service/survey";
-import { surveyControlView } from "@/lib/service/surveyControl";
+import { surveyControlView, surveyPackagesLabel } from "@/lib/service/surveyControl";
 import {
   SURVEY_RAIL_QUERY, SURVEY_SPLIT_QUERY, surveyAboutView, surveyDefaultZoneId, surveyDiscardConfirm, surveyDueLine,
   surveyEscapeView, surveyFieldBarView, surveyJobHeaderView, surveyLeaveConfirm, surveyNextStep, surveySendBackItemsView,
@@ -197,6 +197,8 @@ export default function SurveySheetPage({ params }) {
   }, [id, startRun]);
   useEffect(() => { load(); }, [load]);
   useRevalidateOnFocus(load);
+  /* อ่านใบใหม่เบื้องหลังตามที่คนกด (ปุ่ม "โหลดใหม่" ตอนทะเบียนขนาดแพ็คเกจอ่านไม่ขึ้น) — ไม่ล้างจอ ไม่ทิ้งร่างการเคาะ */
+  const reloadSheet = useCallback(() => load({ background: true }), [load]);
 
   /* รูปชุดสุดท้ายขึ้นเสร็จ = อ่านใบใหม่ (§3.7) — พื้นที่ที่ช่างออกไปแล้วระหว่างรูปยังส่ง ตัวนับต้องขยับด้วย
      (แผงของพื้นที่นั้นถูกถอดไปแล้ว ไม่มีใครรายงานรายการสดของมันขึ้นมา) */
@@ -481,9 +483,12 @@ export default function SurveySheetPage({ params }) {
   /* 🔑 **ของค้างเป็นค่าที่คำนวณได้ ไม่ใช่ธงที่ต้องมีใครยิงมา** — ตัวตัดสินตัวเดียวกับ
      ที่ตารางใช้วาดแถบ "ยังไม่บันทึก" และที่ route `PUT` ใช้เป็นด่าน
      ⇒ ไม่มี effect ไม่มี state คู่ขนาน ⇒ ไม่มีสภาพ "ธงค้างหลังตาราง unmount" ให้เกิด */
+  /* ทะเบียนขนาดแพ็คเกจ (mig 0398) — `null` = server อ่านไม่สำเร็จ · ส่งให้ทั้งตารางเคาะ ตัวตัดสินร่าง และการ์ดควบคุม
+     (ทุกตัว fail-closed: ไม่มีทะเบียน = เคาะขนาดไม่ได้ · ใบที่เคาะขนาดแล้วส่งผลไม่ได้) */
+  const packageSizes = data?.packageSizes ?? null;
   const pendingDecisionZoneIds = useMemo(
-    () => surveyPendingDecisions(zones, decisionDrafts).ids,
-    [zones, decisionDrafts],
+    () => surveyPendingDecisions(zones, decisionDrafts, { sizes: packageSizes }).ids,
+    [zones, decisionDrafts, packageSizes],
   );
   const totals = surveyTotals(zones);
   /* "ที่ขอไป" เทียบ "ที่ได้กลับมา" (แผน §9 ข้อ 2) — บนจอของ TS เองใส่ชื่อพื้นที่ในวงเล็บ
@@ -517,7 +522,9 @@ export default function SurveySheetPage({ params }) {
     pendingDecisionZoneIds,
     tab,
     today: businessDate(),
-  }), [data, zones, filesByZone, dirtyZoneIds, pendingDecisionZoneIds, tab]);
+    /* ทะเบียนขนาดแพ็คเกจ (mig 0398) — `null` = server อ่านไม่สำเร็จ ⇒ การ์ดบล็อกส่งผลด้วยเหตุเดียวกับ route */
+    packageSizes,
+  }), [data, zones, filesByZone, dirtyZoneIds, pendingDecisionZoneIds, tab, packageSizes]);
 
   const canDecide = data?.canDecide === true;
 
@@ -636,6 +643,8 @@ export default function SurveySheetPage({ params }) {
     docNo: data?.request?.docNo, closesVisit: view.send.closesVisit,
     // ส่งกลับให้ช่างแก้ค้างอยู่ = บอกก่อนกดว่าส่งแล้วช่างแก้ต่อไม่ได้ (review 26/09 · เตือน ไม่บล็อก)
     sendBackPending: view.send.sendBackPending,
+    // ขนาดที่ตั้งไว้ก่อนมีข้อเสนอของระบบ (back-fill ST) = บอกก่อนกดว่าพื้นที่ไหนยังไม่ได้เทียบ (UAT PR-P 01/10 · เตือน ไม่บล็อก)
+    sizeReview: view.send.sizeReview,
   });
   /* 🔑 ด่านตัวเดียวกับ server — ปุ่มในโมดัลปิดตามนี้ และเหตุขึ้นเป็นตัวหนังสือ
      ⚠️ รายชื่อช่างมาจาก **นัด** ไม่ใช่จากใบ — ตัวตัดสินอ่านให้แล้ว (`zoneGaps.crewIds`)
@@ -830,6 +839,8 @@ export default function SurveySheetPage({ params }) {
       onSendBack={() => { setSendingBack(true); setSendBackNote(""); }}
       onOpenZone={openZone}
       onGoTab={goTab}
+      /* "โหลดใหม่" ข้างเหตุ "อ่านทะเบียนขนาดแพ็คเกจไม่สำเร็จ" — ทะเบียนมากับ GET ใบประเมิน ⇒ อ่านใบใหม่เบื้องหลัง (ร่างการเคาะไม่หาย) */
+      onReload={reloadSheet}
       requestDocNo={req.docNo}
       requestHref={`/requests/${id}`}
       visitCode={visit?.code || null}
@@ -934,6 +945,9 @@ export default function SurveySheetPage({ params }) {
           canLinkSpots={canLinkSpots}
           onOpenSpotTray={openSpotTray}
           showFormula={canDecide}
+          /* แถบ "ขนาด" ของช่องแพ็คเกจ + ที่ระบบเสนอ + ด่านร่าง ใช้ทะเบียนเดียวกับการ์ดควบคุม */
+          packageSizes={packageSizes}
+          onReload={reloadSheet}
           busyZone={busyZone}
           onSaveDecisions={saveDecisions}
           drafts={decisionDrafts}
@@ -1198,7 +1212,7 @@ export default function SurveySheetPage({ params }) {
         /* ⚠️ ใบถูกล็อกระหว่างที่กล่องเปิด (หัวหน้าอีกคนส่งไปก่อน) = บอกสถานะล่าสุด ไม่ใช่ตัวเลขชวนส่ง */
         message={!view.send.show ? `${view.status.headline} — ${view.status.sub}`
           : view.send.reason?.detail || view.send.reason?.text
-          || `ส่งผล ${totals.zones} พื้นที่ · ${totals.areaSqm} ตร.ม. · ${totals.packageQty} แพ็คเกจ`}
+          || `ส่งผล ${totals.zones} พื้นที่ · ${totals.areaSqm} ตร.ม. · ${surveyPackagesLabel(totals, packageSizes)}`}
         /* ส่งไม่ได้แล้ว = ปุ่มเดียว "ปิด" — ปุ่มที่เขียนว่า "ส่งผล" แต่กดแล้วแค่ปิดกล่อง คือปุ่มที่โกหก */
         confirmLabel={view.send.allowed ? sendConfirm.confirmLabel : "ปิด"}
         hideCancel={!view.send.allowed}
@@ -1254,7 +1268,7 @@ export default function SurveySheetPage({ params }) {
       <ConfirmDialog
         open={recalling}
         title="ดึงผลประเมินกลับมาแก้"
-        message={`ตัวเลขที่ส่งไปแล้ว (${totals.zones} พื้นที่ · ${totals.areaSqm} ตร.ม. · ${totals.packageQty} แพ็คเกจ) จะถูกถอนออกจากมือฝ่ายขาย`}
+        message={`ตัวเลขที่ส่งไปแล้ว (${totals.zones} พื้นที่ · ${totals.areaSqm} ตร.ม. · ${surveyPackagesLabel(totals, packageSizes)}) จะถูกถอนออกจากมือฝ่ายขาย`}
         detail="ฝ่ายขายได้รับแจ้งทันทีพร้อมตัวเลขเดิม · ตอนส่งรอบใหม่ ระบบจะบอกส่วนต่างให้เขาเห็น"
         confirmLabel="ดึงกลับมาแก้"
         busy={recallBusy}

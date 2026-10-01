@@ -1,0 +1,78 @@
+/* โมดัลขนาดแพ็คเกจ (mig 0398)
+   ⚠️ `.form-hint` / `.req` ไม่มี selector จริงใน globals.css ⇒ ประกาศเอง (ท่าเดียวกับ AssetModelModal) */
+
+.req {
+  font-style: normal;
+  font-size: var(--fs-2);
+  font-weight: var(--fw-bold);
+  color: var(--red);
+  background: var(--red-soft);
+  border-radius: var(--radius);
+  padding: 0 var(--space-1);
+  margin-inline-start: var(--space-1);
+}
+
+.hintSm {
+  display: block;
+  margin-top: var(--space-0-5);
+  font-size: var(--fs-3);
+  color: var(--text-3);
+  line-height: var(--lh-thai);
+}
+
+/* "ไม่เกิน [ 2,400 ] ลบ.ม." — ช่องตัวเลขเป็นตัวยืด คำหน้า/หน่วยคงที่ ไม่ตัดบรรทัด */
+.bandRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  color: var(--text-2);
+  font-size: var(--fs-5);
+}
+.bandRow > span { flex: none; white-space: nowrap; }
+.bandRow > :not(span) { flex: 0 1 12rem; min-width: 0; }
+
+/* ผลของการแก้ — บรรทัดบอกขอบเขต ไม่ใช่คำเตือน */
+.effect {
+  margin: var(--space-3) 0 0;
+  font-size: var(--fs-3);
+  color: var(--text-3);
+  line-height: var(--lh-thai);
+}
+
+/* ── แถบท้ายที่นิ่ง (`footer` ของ Modal): ข้อความเหนือปุ่ม ─────────────────────────
+   `.drawer-footer` เป็น flex แถวเดียว ⇒ ก้อนนี้กินเต็มกว้างแล้วเรียงเองเป็นคอลัมน์ (ข้อความ → ปุ่มชิดขวา) */
+.foot {
+  flex: 1 1 100%;
+  min-inline-size: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+/* กล่อง error ของระบบมีระยะนอกของตัวเอง — ในแถบนี้ระยะมาจาก gap */
+.foot > * { margin: 0; }
+
+.footBtns {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* จอแคบ: ปุ่มสองปุ่มกว้างเท่ากันเต็มแถว สูงเต็มนิ้ว (เท่าที่ `.form-action-bar` เดิมให้) */
+@media (max-width: 680px) {
+  .footBtns :global(.btn) { flex: 1; min-width: 0; min-height: var(--ctl-h-touch); }
+}
+@media (pointer: coarse) {
+  .footBtns :global(.btn) { min-height: var(--ctl-h-touch); }
+}
+
+/* เหตุผลที่กดไม่ได้ต้องเป็นตัวหนังสือ ไม่ใช่ tooltip — จอสัมผัสไม่มีทางเห็น */
+.gate {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--amber-soft);
+  color: var(--amber);
+  border-radius: var(--radius);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}

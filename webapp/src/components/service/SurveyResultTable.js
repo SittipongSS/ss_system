@@ -2,7 +2,7 @@
 // ── ตารางสรุปผลประเมินของหัวหน้า TS (เฟส 3 · จอ 07) ─────────────────────
 //
 // ⭐ **ช่างส่งข้อเท็จจริงมาจากหน้างาน หัวหน้าตัดสินสองอย่าง**: จะติดตั้งจุดไหนบ้าง
-//   และแต่ละพื้นที่ใช้กี่แพ็คเกจ (มติผู้ใช้ 2026-08-29)
+//   และแต่ละพื้นที่ใช้แพ็คเกจ **ขนาดไหน กี่แพ็ค** (มติผู้ใช้ 2026-08-29 · ขนาดจากทะเบียน: มติเจ้าของ 01/10 · mig 0398)
 //   ⇒ ตารางนี้มี **สองคอลัมน์ที่ต้องกรอก ไม่ใช่คอลัมน์เดียว** · ที่เหลืออ่านอย่างเดียว
 //   🔄 **+ คอลัมน์ "ภาพผังที่มาร์กจุดแล้ว"** (มติเจ้าของ 25/09 · แบบ AW-3 · แผน §10.5 S2) —
 //      ผังเดิมอัปในการ์ดพื้นที่ของช่าง ทั้งที่มันคือ **ผลของการเลือกจุด** (มาร์กจุดที่เลือกลงผัง)
@@ -25,39 +25,54 @@
 //
 // ⭐ **คอลัมน์ที่ต้องตัดสินอยู่ถัดจากชื่อพื้นที่** — 🐞 เดิมแพ็คเกจกับจุดติดตั้งอยู่หลังสี่
 //   คอลัมน์อ่านอย่างเดียว (ตาราง 960px) ⇒ มือถือเปิดมาเห็นแต่ของที่อ่าน ปุ่ม +/− หลุดจอ
-//   แม้บนแท็บเล็ต · ลบ.ม. กับสูตรจึงยุบเป็นบรรทัดรองของเซลล์ที่มันอธิบาย
+//   แม้บนแท็บเล็ต · ลบ.ม. กับที่ระบบเสนอจึงยุบเป็นบรรทัดรองของเซลล์ที่มันอธิบาย
+// ⭐ **แพ็คเกจ = ขนาดเดียว + จำนวน ต่อพื้นที่** (มติเจ้าของ 01/10) — ขนาดเป็น **แถบเลือกที่เห็นครบทุกขนาดในทะเบียน**
+//   (ไม่ใช่ดรอปดาวน์ · ทะเบียนเพิ่ม/ลบได้ ⇒ แถบห่อบรรทัดเองเมื่อขนาดเยอะ) · ระบบ **เสนอ** ขนาดจากช่วง ลบ.ม. + จำนวน 1
+//   แต่ไม่เลือกให้ — หัวหน้ากดรับ ("ใช้ที่ระบบเสนอ") หรือเลือกเอง · 🔄 สูตร ceil(ลบ.ม. ÷ 2,400) ถอดแล้ว
+//   ⚠️ **ข้อความทุกบรรทัดของช่องแพ็คเกจมาจาก `surveyPackageCell`** (`surveyDecision.js`) — จอไม่ประกอบเอง
+//      และช่องเหตุผลโผล่ตามตัวตัดสินเดียวกับด่านบันทึกของ server
 // ⭐ **ดูอย่างเดียว = ตัวหนังสือ ไม่ใช่ปุ่มจาง** — จุดที่เลือกคือผลที่ฝ่ายขายอ่าน ต้องชัดที่สุด
 //   ในแถว และบอกด้วยไอคอน ไม่ใช่สีขอบอย่างเดียว (WCAG 1.4.1)
 // ⭐ **รูปของแต่ละจุดอยู่ใต้จุดนั้น** (PR-S · มติเจ้าของ 28–30/09) — หัวหน้าเลือกจุดจากรูปของจุด ไม่ใช่เทียบกองรูปรวมเอง
 //   (`surveyResultSpotCell` · ผูกด้วย `metadata.spotId`) · รูปจุดที่ยังไม่ผูกขึ้นเป็นบรรทัดอำพันท้ายช่อง ไม่หายเงียบ
 import { Fragment, useCallback, useMemo, useState } from "react";
-import { AlertTriangle, Check, Circle, CircleCheck, ClipboardList, Link2, Minus, Pencil, Plus } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, Check, Circle, CircleCheck, ClipboardList, Lightbulb, Link2, Minus, Pencil, Plus, Undo2 } from "lucide-react";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import Button from "@/components/ui/Button";
 import { DetailCard } from "@/components/ui/DetailPage";
-import Input from "@/components/ui/Input";
 import PhotoThumb from "@/components/ui/PhotoThumb";
+import Segmented from "@/components/ui/Segmented";
 import StatusBadge from "@/components/ui/StatusBadge";
+import StatusNotice from "@/components/ui/StatusNotice";
 import { TableScroll } from "@/components/ui/Table";
+import Textarea from "@/components/ui/Textarea";
 import { SURVEY_DOC_PLAN, surveyResultMissing, surveyZoneName } from "@/lib/service/survey";
 import { SURVEY_UNKNOWN_TEXT, surveyResultSpotCell, surveyResultZoneCell } from "@/lib/service/surveyControl";
 import { surveyZoneTitle } from "@/lib/service/surveyFieldView";
 import {
   surveyDecisionDraft, surveyDecisionDirty, surveyDecisionError, surveyDecisionPayload,
-  surveyPendingDecisions, surveySuggestedFor,
+  surveyPackageCell, surveyPendingDecisions,
 } from "@/lib/service/surveyDecision";
+import { packageSizeLegendText } from "@/lib/service/packageSizeForm";
+import { PACKAGE_QTY_MAX, PACKAGE_SIZE_REGISTRY_UNREAD } from "@/lib/service/packageSizes";
 import { fmtNumber, naText } from "@/lib/format";
 import styles from "./SurveyResultTable.module.css";
 
-/* วัดโหมดเคาะ (2026-09-15 · มีช่องเหตุผล + ปุ่มใช้สูตร + บรรทัดขาดอะไร): ดูอย่างเดียวรวม 573px
+/* วัดโหมดเคาะ (2026-09-15 · มีช่องเหตุผล + ปุ่มรับข้อเสนอ + บรรทัดขาดอะไร): ดูอย่างเดียวรวม 573px
    แต่ตอนเคาะช่องเหตุผลกิน 160px · 🐞 640 เดิมคิดจากโหมดดูอย่างเดียว ⇒ แถวสูง 175px
    บรรทัด "ขาด…" ห่อ 6 บรรทัด · 680 ⇒ 138px และยังไม่เกินกรอบแท็บเล็ต (696px)
    🔄 AW-3 (§10.5 S2): ห้าคอลัมน์ → สี่ · สามคอลัมน์มีความกว้างขั้นต่ำของตัวเอง (`<col>` ใน CSS:
       พื้นที่ 13rem · ผัง 9rem · แพ็คเกจ 12rem = 544px) ⇒ เลือกจุดได้ส่วนที่เหลือ ≥136px ที่ 680
       และยังไม่เกินกรอบแท็บเล็ต · ⚠️ ตัวเลขชุดนี้ **คิดจากเนื้อ ยังไม่ได้วัดบนจอจริง** (ชุดนี้ห้ามเปิด
       dev server) — ชุดตรวจจอ (แผนลงมือ §9) ต้องวัด scrollWidth ที่ 768/1024/1440 แล้วแก้ตรงนี้ถ้าล้น
+   🔄 mig 0398 (01/10): ช่องแพ็คเกจมีแถบขนาดเพิ่ม (4 ขนาด × ปุ่ม 44px ≈ 190px) ⇒ คอลัมน์แพ็คเกจ 12rem → 13rem และ
+      ตาราง 680 → 696 (เต็มกรอบแท็บเล็ตพอดี) ⇒ เลือกจุดยังได้ ≥136px เท่าเดิม · ขนาดในทะเบียนเกินสี่ตัว = แถบห่อบรรทัดเอง
+      ⚠️ ชุดนี้ก็ **คิดจากเนื้อ ยังไม่ได้วัดบนจอจริง** เช่นกัน (ห้ามรันแอปกับฐานจริง) — ต้องวัดตอน UAT
+   🔄 UAT PR-P 01/10 (วัดบนจอจริงแล้ว): กล่องตาราง ≥ 900px (จอ 1024/1440) คอลัมน์แพ็คเกจขยายเป็น 23rem และป้ายย้ายไปอยู่ข้างตัวควบคุม
+      (`@container` ใน CSS) — 696 นี้ยังเป็นขั้นต่ำของกล่องแคบ (681–899px) ซึ่งคอลัมน์แพ็คเกจยัง 13rem ตามที่คิดไว้ข้างบน
    ⚠️ ที่ ≤680px ตารางเลิกเป็นตาราง (แถวเรียงเป็นป้าย/ค่า) ⇒ ตัวเลขนี้ใช้กับ 681px ขึ้นไป */
-const TABLE_MIN_WIDTH = 680;
+const TABLE_MIN_WIDTH = 696;
 
 /* ชนิดไฟล์ของช่องผัง — ค่าคงที่ระดับไฟล์ (ส่งอาร์เรย์ใหม่ทุกครั้งที่วาด = แผงคิดชุดชนิดใหม่ทุกรอบ) */
 const PLAN_DOC_TYPES = [{ key: SURVEY_DOC_PLAN, label: "ภาพผังที่มาร์กจุดแล้ว" }];
@@ -102,14 +117,6 @@ function PlanPhotos({ zoneId, count, canUploadPlan, onFiles, intakeFirst }) {
   );
 }
 
-/* ป้ายบอกว่าเคาะต่างจากสูตรแค่ไหน — **ไม่ใช่คำเตือน** สูตรเป็นข้อเสนอ ไม่ใช่คำสั่ง */
-function deltaText(qty, suggested) {
-  if (!suggested || !(qty > 0)) return null;
-  if (qty === suggested) return { tone: "ok", text: "ตรงกับสูตร" };
-  const diff = qty - suggested;
-  return { tone: "warn", text: diff > 0 ? `สูงกว่าสูตร ${diff}` : `ต่ำกว่าสูตร ${-diff}` };
-}
-
 /* ⭐ `caption` — บรรทัด "ขอไป N พื้นที่ · …" ที่เดิมเป็น <p> ลอยอยู่ *ข้าง* การ์ด
    (เขียนไว้ก่อนตารางย้ายเข้าการ์ดเมื่อ 2026-09-15) ⇒ คำบรรยายแยกจากตารางที่มันอธิบาย
    ⚠️ ข้อความมาจาก `surveyChangeText` ตัวเดิม ตารางไม่ได้นับเอง — จอ TS · จอ SA ·
@@ -122,12 +129,19 @@ export default function SurveyResultTable({
   canUploadPlan = false,
   /* `(zoneId, items, meta)` — แผงผังรายงานรายการขึ้นไปที่ก้อนรวมของหน้า (`useLiveZoneFiles`) */
   onFiles,
-  /* โชว์บรรทัด "สูตร N" ไหม — แพ็คเกจเป็นงานของหัวหน้า (มติผู้ใช้ 2026-09-21) ⇒ ช่างเห็น
-     เฉพาะเลขที่หัวหน้าเคาะแล้ว ไม่เห็นตัวเลขสูตร (กติกาเดียวกับการ์ดพื้นที่ `showPackage`)
-     ⚠️ แยกจาก `canDecide` — หัวหน้าที่เปิดใบที่ส่งไปแล้ว (ล็อก) ยังต้องเห็นสูตรเทียบ */
+  /* โชว์บรรทัด "ระบบเสนอ …" ไหม — แพ็คเกจเป็นงานของหัวหน้า (มติผู้ใช้ 2026-09-21) ⇒ ช่างเห็น
+     เฉพาะขนาด/จำนวนที่หัวหน้าเคาะแล้ว ไม่เห็นข้อเสนอของระบบ (กติกาเดียวกับการ์ดพื้นที่ `showPackage`)
+     ⚠️ แยกจาก `canDecide` — หัวหน้าที่เปิดใบที่ส่งไปแล้ว (ล็อก) ยังต้องเห็นที่ระบบเสนอเทียบ
+     ⚠️ ชื่อ prop คงเดิม (`showFormula`) — สูตร ÷ 2,400 ถอดแล้ว แต่ความหมาย "โชว์ข้อเสนอของระบบไหม" ยังเป็นตัวเดิม */
   showFormula = true,
+  /* ทะเบียนขนาดแพ็คเกจจาก GET ใบประเมิน (`packageSizes` · mig 0398) — `null` = server อ่านไม่สำเร็จ ⇒ เคาะขนาดไม่ได้
+     (fail-closed · ตัวตัดสินเดียวกับ route `PUT`) · ⚠️ ลืมส่ง = ทุกแถวขึ้น "อ่านทะเบียนขนาดแพ็คเกจไม่สำเร็จ" */
+  packageSizes = null,
   /* ผูกรูปจุดกับจุดได้ไหม (`canLinkSpotPhotos` ของ server) — บรรทัด "ยังไม่ได้ผูกจุด" บอกทางไปแท็บหน้างานเฉพาะคนที่ทำได้ */
   canLinkSpots = false,
+  /* `()` — อ่านใบใหม่ (ทะเบียนขนาดมากับ GET ใบประเมิน) · ปุ่ม "โหลดใหม่" ของกล่องแจ้ง "อ่านทะเบียนขนาดแพ็คเกจไม่สำเร็จ"
+     ไม่ส่ง = กล่องแจ้งไม่มีปุ่ม (บอกเหตุอย่างเดียว) */
+  onReload,
   /* `(zoneId)` — ไปถาด "ยังไม่ได้ผูกจุด" ของพื้นที่นั้นบนแท็บหน้างาน (หน้าสลับแท็บ · เปิดพื้นที่ · เลื่อนถึงถาด)
      🐞 UAT 01/10: เดิมเป็นตัวหนังสือเฉย ๆ ⇒ หัวหน้าต้องสลับแท็บ เปิดพื้นที่ แล้วเลื่อนหาถาดเอง · ไม่ส่ง = บอกทางเป็นตัวหนังสือ */
   onOpenSpotTray,
@@ -147,7 +161,15 @@ export default function SurveyResultTable({
     setDrafts?.((d) => ({ ...d, [id]: { ...(d[id] || {}), ...patch } }));
   }, [setDrafts]);
 
-  const pending = useMemo(() => surveyPendingDecisions(zones, drafts), [zones, drafts]);
+  const pending = useMemo(
+    () => surveyPendingDecisions(zones, drafts, { sizes: packageSizes }),
+    [zones, drafts, packageSizes],
+  );
+  /* "SM ≤ 300 ลบ.ม. · ST ≤ 2,400 ลบ.ม. · …" — ช่วงของทุกขนาดในบรรทัดเดียวใต้ตาราง (ป้ายบนแถบมีแค่รหัส) */
+  const sizeLegend = useMemo(
+    () => (Array.isArray(packageSizes) ? packageSizeLegendText(packageSizes) : ""),
+    [packageSizes],
+  );
 
   const saveAll = async () => {
     setSaveError("");
@@ -215,6 +237,16 @@ export default function SurveyResultTable({
         </p>
       ) : null}
       {saveError ? <p className={styles.saveBlocked}><AlertTriangle size={13} aria-hidden="true" />{saveError}</p> : null}
+      {/* 🔴 อ่านทะเบียนขนาดไม่สำเร็จ — บอกครั้งเดียวเหนือตาราง พร้อมปุ่มที่ลองใหม่ได้จริง (อ่านใบใหม่ · ร่างการเคาะไม่หาย)
+          🐞 UAT 01/10: เดิมทุกแถวเขียน "… — ลองใหม่ (โหลดหน้าใหม่)" โดยไม่มีอะไรให้กด */}
+      {canDecide && !Array.isArray(packageSizes) ? (
+        <div className={styles.registryNotice}>
+          <StatusNotice tone="error" title={PACKAGE_SIZE_REGISTRY_UNREAD}
+            action={onReload ? <Button size="sm" variant="ghost" className={styles.coarseTouch} onClick={onReload}>โหลดใหม่</Button> : undefined}>
+            ช่องขนาดและจำนวนปิดไว้จนกว่าจะอ่านทะเบียนได้ — ค่าที่เคาะไว้แล้วยังอยู่ครบ
+          </StatusNotice>
+        </div>
+      ) : null}
 
       <TableScroll surface="embedded" minWidth={TABLE_MIN_WIDTH} cells="stacked" className={styles.shell}>
         <table>
@@ -236,13 +268,15 @@ export default function SurveyResultTable({
                 เลือกจุดที่จะติดตั้ง{canDecide ? <span className={styles.star} aria-hidden="true">*</span> : null}
                 <span className={styles.thNote}> · จากจุดที่ช่างแจ้ง</span>
               </th>
-              <th>แพ็คเกจ/เดือน{canDecide ? <span className={styles.star} aria-hidden="true">*</span> : null}</th>
+              <th>
+                แพ็คเกจ{canDecide ? <span className={styles.star} aria-hidden="true">*</span> : null}
+                <span className={styles.thNote}> · ขนาด และจำนวนต่อเดือน</span>
+              </th>
             </tr>
           </thead>
           <tbody className={styles.body}>
             {zones.map((zone) => {
               const cut = zone.status === "cut";
-              const suggested = surveySuggestedFor(zone);
               const files = filesByZone[zone.id] || [];
               /* 🔑 ผลวัดของช่างทั้งช่อง (ตัวเลข · ขนาดรายส่วน · ภาพย่อ · ตัวนับ) มาจากตัวตัดสินตัวเดียว */
               const cell = surveyResultZoneCell(zone, files);
@@ -262,17 +296,20 @@ export default function SurveyResultTable({
                  จนกว่าจะบันทึก ซึ่งคือจอที่ดูเหมือนปุ่มเสีย */
               const draft = surveyDecisionDraft(zone, drafts[zone.id]);
               const dirty = surveyDecisionDirty(zone, drafts[zone.id]);
-              const rowError = dirty ? surveyDecisionError(zone, drafts[zone.id]) : null;
+              const rowError = dirty ? surveyDecisionError(zone, drafts[zone.id], { sizes: packageSizes }) : null;
               const picked = draft.spotIds.length;
-              const delta = deltaText(draft.packageQty, suggested);
-              /* ต้องบอกเหตุผลไหม — อ่านจาก **ร่าง** เพื่อให้ช่องเหตุผลโผล่ทันทีที่กดจนต่างจากสูตร
-                 ไม่ใช่หลังบันทึกแล้วถึงรู้ว่าต้องกรอก */
-              const needNote = draft.packageQty !== null && !!suggested && draft.packageQty !== suggested;
+              /* 🔑 ช่องแพ็คเกจทั้งช่อง (แถบขนาด · ที่ระบบเสนอ · ปุ่มรับข้อเสนอ · ต้องบอกเหตุผลไหม) จากตัวตัดสินเดียว
+                 — อ่านจาก **ร่าง** ⇒ ช่องเหตุผลโผล่ทันทีที่เคาะจนต่างจากที่ระบบเสนอ ไม่ใช่หลังบันทึกแล้วถึงรู้ว่าต้องกรอก */
+              const pkg = surveyPackageCell(zone, drafts[zone.id], { sizes: packageSizes, canDecide });
+              const needNote = pkg.needNote;
               const noteId = `package-note-${zone.id}`;
+              /* อ่านทะเบียนไม่สำเร็จ = เคาะขนาด/จำนวนไม่ได้ (server ตีกลับเหมือนกัน) ⇒ วาดค่าเดิมเป็นตัวหนังสือ + เหตุ */
+              const canPick = canDecide && !pkg.registryDown;
 
+              /* ยังว่าง = กดครั้งแรกได้ 1 (จำนวนที่ระบบเสนอ) ไม่ว่ากดฝั่งไหน — แล้วค่อยขยับทีละหนึ่ง */
               const bump = (by) => {
-                const base = draft.packageQty || suggested || 1;
-                patchDraft(zone.id, { packageQty: Math.min(99, Math.max(1, base + by)) });
+                const next = pkg.qty === null ? 1 : pkg.qty + by;
+                patchDraft(zone.id, { packageQty: Math.min(PACKAGE_QTY_MAX, Math.max(1, next)) });
               };
               const toggleSpot = (spotId) => {
                 const id = String(spotId);
@@ -439,61 +476,150 @@ export default function SurveyResultTable({
                         ) : null}
                       </td>
 
-                      {/* ── แพ็คเกจ — สูตรเสนอ หัวหน้าเคาะ ─────────────────────────── */}
-                      <td data-label="แพ็คเกจ/เดือน">
-                        <div className={styles.packageRow}>
-                          {canDecide ? (
-                            <div className={styles.stepper} role="group" aria-label={`แพ็คเกจต่อเดือน ${surveyZoneName(zone)}`}>
-                              <button type="button" aria-label="ลดแพ็คเกจ" disabled={busy} onClick={() => bump(-1)}>
-                                <Minus size={15} aria-hidden="true" />
-                              </button>
-                              <b>{naText(draft.packageQty)}</b>
-                              <button type="button" aria-label="เพิ่มแพ็คเกจ" disabled={busy} onClick={() => bump(1)}>
-                                <Plus size={15} aria-hidden="true" />
-                              </button>
+                      {/* ── แพ็คเกจ — ระบบเสนอ หัวหน้าเคาะขนาด + จำนวน ───────────────────
+                          ⚠️ `ui-cell-wide` — ใบที่ล็อก/คนดูอย่างเดียว ช่องนี้เป็นตัวหนังสือล้วน ⇒ เพดาน 220px ของเซลล์ตารางตัดบรรทัด
+                             "ระบบเสนอ … · หัวหน้าเลือก … แทน" (ท่าเดียวกับช่องเลือกจุด) */}
+                      <td data-label="แพ็คเกจ/เดือน" className={`ui-cell-wide ${styles.packageCell}`}>
+                        {canPick ? (
+                          <>
+                            {/* ⭐ ป้ายอยู่ **ข้าง** ตัวควบคุมเมื่อคอลัมน์กว้างพอ (ม็อก S-3) · คอลัมน์แคบ/จอแคบ ป้ายอยู่เหนือ — CSS ตัดสินจาก
+                                ความกว้างของกล่องตาราง (`@container`) · ข้อความใต้ตัวควบคุมอยู่ในช่องเดียวกับตัวควบคุม (เยื้องตรงกัน) */}
+                            <div className={styles.pkgField}>
+                              <span className={styles.pkgLabel}>ขนาด</span>
+                              <div className={styles.pkgControl}>
+                                {/* ⭐ **ทุกขนาดในทะเบียนกางให้เห็น** (มติเจ้าของ 01/10 · กติกาคอนโทรล: ไม่ใช่ดรอปดาวน์) — ห่อบรรทัดเองเมื่อขนาดเยอะ
+                                    · `manual` = ลูกศรแค่ย้ายโฟกัส ไม่เปลี่ยนขนาดให้ (ขนาดคือการตัดสินใจ ไม่ใช่ตัวกรองที่ลองเลื่อนดูได้)
+                                    · ขนาดที่เคาะไว้แต่ถูกลบจากทะเบียน = แผ่นแดงกดไม่ได้ท้ายแถบ ("ST (ถูกลบ)") — ต้องเห็นว่าแถวถืออะไรอยู่ */}
+                                {pkg.options.length ? (
+                                  <Segmented
+                                    className={styles.sizeSeg}
+                                    ariaLabel={`ขนาดแพ็คเกจ ${surveyZoneName(zone)}`}
+                                    activationMode="manual"
+                                    value={pkg.size}
+                                    onChange={(code) => patchDraft(zone.id, { packageSize: code })}
+                                    options={busy ? pkg.options.map((o) => ({ ...o, disabled: true })) : pkg.options}
+                                  />
+                                ) : (
+                                  /* ทะเบียนว่าง — บอกครั้งเดียว พร้อมลิงก์ไปที่ที่เพิ่มขนาดได้ (คนเคาะคือคนเดียวกับคนแก้ทะเบียน)
+                                     🐞 UAT 01/10: เดิมเป็นตัวหนังสือเฉย ๆ และประโยคเดียวกันขึ้นซ้ำในบรรทัดข้อเสนอ */
+                                  <span className={styles.warnText}>
+                                    {pkg.emptyText} —{" "}
+                                    <Link href="/database/package-sizes" className={styles.footLink}>เพิ่มที่ ฐานข้อมูล › ขนาดแพ็คเกจ</Link>
+                                  </span>
+                                )}
+                                {pkg.goneText ? (
+                                  <span className={styles.goneText}>
+                                    <AlertTriangle size={12} aria-hidden="true" />{pkg.goneText}
+                                  </span>
+                                ) : null}
+                                {/* ที่ระบบเสนอ = ข้อเสนอ ไม่ใช่คำสั่ง (ไม่ใช่คำเตือน) · เลือกต่าง = บรรทัดถัดไปบอกว่าหัวหน้าเลือกอะไรแทน
+                                    ⚠️ แต่ละท่อนเป็นบรรทัดของตัวเอง (`.suggestText > *`) — ไม่ต่อกันด้วย " · " แล้วปล่อยให้ห่อกลางท่อน
+                                       (🐞 UAT 01/10: ทุกแถวทิ้ง "แพ็ค" ไว้บรรทัดเดียว) */}
+                                {showFormula && (pkg.hint || pkg.registryText) ? (
+                                  <span className={styles.suggest}>
+                                    <Lightbulb size={12} aria-hidden="true" />
+                                    <span className={styles.suggestText}>
+                                      {pkg.hint ? <span>{pkg.hint}</span> : null}
+                                      {pkg.overrideText ? <b>{pkg.overrideText}</b> : null}
+                                      {/* แถวที่ขนาดไม่เคยถูกเทียบกับข้อเสนอ (back-fill ST ของ 0398) — ทักให้ตรวจ ไม่ใช่ "หัวหน้าเลือกแทน" */}
+                                      {pkg.reviewText ? <b>{pkg.reviewText}</b> : null}
+                                      {/* ทะเบียนถูกแก้หลังเคาะ — ข้อเท็จจริงกลาง ๆ (แถวที่เคาะแล้วไม่ถูกเปิดใหม่เพราะทะเบียนเปลี่ยน) */}
+                                      {pkg.registryText ? <span>{pkg.registryText}</span> : null}
+                                    </span>
+                                  </span>
+                                ) : null}
+                              </div>
                             </div>
-                          ) : (
-                            <b className={styles.qty}>{naText(draft.packageQty)}</b>
-                          )}
-                          {showFormula ? (
-                            <span className={styles.formula}>
-                              <b>สูตร {suggested ?? naText(null)}</b>
-                              {delta ? <span className={styles.delta} data-tone={delta.tone}>{delta.text}</span> : null}
-                            </span>
-                          ) : null}
-                        </div>
-                        {draft.packageQty === null && suggested && canDecide ? (
-                          <Button size="sm" variant="quiet" className={styles.coarseTouch} disabled={busy}
-                            onClick={() => patchDraft(zone.id, { packageQty: suggested })}>
-                            ใช้ {suggested} ที่สูตรบอก
-                          </Button>
-                        ) : null}
-                        {/* 🔴 ทับสูตรแล้วต้องบอกเหตุผล — ของที่ต่างจากที่ SA จะเสนอราคา
+                            <div className={styles.pkgField}>
+                              <span className={styles.pkgLabel}>จำนวน</span>
+                              <div className={styles.pkgControl}>
+                                <div className={styles.packageRow}>
+                                  {/* ทะเบียนว่าง = ไม่มีขนาดให้คู่กับจำนวน ⇒ −/+ ปิด (เหตุอยู่บรรทัดบน) */}
+                                  <div className={styles.stepper} role="group" aria-label={`จำนวนแพ็คเกจต่อเดือน ${surveyZoneName(zone)}`}>
+                                    <button type="button" aria-label="ลดแพ็คเกจ" disabled={busy || !pkg.canStep} onClick={() => bump(-1)}>
+                                      <Minus size={15} aria-hidden="true" />
+                                    </button>
+                                    <b>{naText(pkg.qty)}</b>
+                                    <button type="button" aria-label="เพิ่มแพ็คเกจ" disabled={busy || !pkg.canStep} onClick={() => bump(1)}>
+                                      <Plus size={15} aria-hidden="true" />
+                                    </button>
+                                  </div>
+                                  {showFormula && pkg.qtyHint ? <span className={styles.qtyHint}>{pkg.qtyHint}</span> : null}
+                                </div>
+                              </div>
+                            </div>
+                            {/* ⭐ ยังไม่เคาะ = ปุ่มรับข้อเสนอทีเดียวจบ (ขนาด + จำนวน) — ระบบไม่เติมให้เอง (ร่างที่เติมเอง = "ยังไม่บันทึก" ทั้งใบ)
+                                · แถวที่ `reviewText` ทักไว้ได้ปุ่มเดียวกัน (ตัวตัดสินเป็นคนบอกว่ามีปุ่มไหม)
+                                ⭐ `reset` = ถอยเฉพาะพื้นที่นี้ (แตะพลาดแล้วไม่ต้องกด "ยกเลิก" ที่ทิ้งการเคาะของทุกพื้นที่ · UAT 01/10) */}
+                            {pkg.accept || pkg.reset ? (
+                              <div className={styles.pkgActions}>
+                                {pkg.accept ? (
+                                  <Button size="sm" variant="quiet" className={styles.coarseTouch} disabled={busy}
+                                    onClick={() => patchDraft(zone.id, pkg.accept.patch)}>
+                                    {pkg.accept.label}
+                                  </Button>
+                                ) : null}
+                                {pkg.reset ? (
+                                  <Button size="sm" variant="quiet" className={styles.coarseTouch} disabled={busy}
+                                    icon={<Undo2 size={14} aria-hidden="true" />}
+                                    aria-label={`${pkg.reset.label} — แพ็คเกจของ ${surveyZoneName(zone)}`}
+                                    onClick={() => patchDraft(zone.id, pkg.reset.patch)}>
+                                    {pkg.reset.label}
+                                  </Button>
+                                ) : null}
+                              </div>
+                            ) : null}
+                          </>
+                        ) : (
+                          <>
+                            <b className={styles.qty}>{naText(pkg.valueText)}</b>
+                            {showFormula && pkg.hint ? (
+                              <span className={styles.suggest}>
+                                <span>{pkg.hint}{pkg.overrideText ? ` · ${pkg.overrideText}` : ""}</span>
+                              </span>
+                            ) : null}
+                            {/* คนเคาะที่ทะเบียนอ่านไม่ขึ้น — บอกเหตุที่แถบเลือกหายไป ไม่ใช่ปล่อยให้เดาว่าใบล็อก
+                                (ปุ่ม "โหลดใหม่" อยู่ที่กล่องแจ้งเหนือตาราง — ที่เดียว ไม่ซ้ำทุกแถว) */}
+                            {canDecide && pkg.registryDown ? (
+                              <span className={styles.goneText}>
+                                <AlertTriangle size={12} aria-hidden="true" />เคาะขนาดไม่ได้ — {pkg.registryDown}
+                              </span>
+                            ) : null}
+                          </>
+                        )}
+                        {/* 🔴 ต่างจากที่ระบบเสนอแล้วต้องบอกเหตุผล — ของที่ต่างจากที่ SA จะเสนอราคา
                             คือของที่ลูกค้าจะถาม และ SA ไม่ได้ไปหน้างาน
                             🐞 **ช่องต้องอยู่ต่อตราบใดที่ยังมีข้อความอยู่ในนั้น** แม้จะกดกลับมา
-                              ตรงกับสูตรแล้ว — ของเดิมผูกช่องไว้กับ `needNote` อย่างเดียว ⇒ พิมพ์
+                              ตรงกับที่ระบบเสนอแล้ว — ของเดิมผูกช่องไว้กับ `needNote` อย่างเดียว ⇒ พิมพ์
                               เหตุผล แล้วกดลดกลับเป็นเลขเดิม: ช่องหายไปพร้อมข้อความที่ยังค้างอยู่
                               ในร่าง ⇒ แถบยังขึ้น "ยังไม่บันทึก 1 พื้นที่" โดยที่ **ไม่มีอะไรบนจอ
                               ให้แก้หรือให้ลบเลย** (วัดจริงทั้ง 1440/1024/390) */}
                         {canDecide && (needNote || draft.packageNote) ? (
                           <div className={styles.noteBox}>
-                            {/* ป้ายผูกกับช่อง (`htmlFor`) — ช่องที่ไม่มีชื่อ screen reader อ่านว่า "ช่องแก้ไข" เฉย ๆ */}
+                            {/* ป้ายผูกกับช่อง (`htmlFor`) — ช่องที่ไม่มีชื่อ screen reader อ่านว่า "ช่องแก้ไข" เฉย ๆ
+                                ⭐ ป้ายแดง "ต้องบอกเหตุผล" ขึ้นเฉพาะตอน **ยังไม่ได้พิมพ์** (`noteMissing`) — กรอกแล้วเป็นป้ายปกติ
+                                   (🐞 UAT 01/10: ป้ายแดงค้างเหนือช่องที่กรอกแล้ว แถวที่ผ่านยังดูเหมือนติด) */}
                             <label htmlFor={noteId}>
-                              {needNote
+                              {pkg.noteMissing
                                 ? <span className={styles.req}>ต้องบอกเหตุผล</span>
-                                : <span className={styles.sub}>เหตุผลที่ต่างจากสูตร (ตอนนี้ตรงกับสูตรแล้ว — ลบทิ้งได้)</span>}
+                                : needNote
+                                  ? <span className={styles.sub}>เหตุผลที่ต่างจากที่ระบบเสนอ</span>
+                                  : <span className={styles.sub}>เหตุผลที่ต่างจากที่ระบบเสนอ (ตอนนี้ไม่ต้องมีแล้ว — ลบทิ้งได้)</span>}
                             </label>
-                            <Input
+                            {/* ⚠️ `value` = ข้อความดิบของร่าง (เว้นวรรคครบตามที่พิมพ์) — ตัดช่องว่างหัวท้ายตอนส่งเท่านั้น (`surveyDecision.js`)
+                                ⭐ ช่องข้อความยาวทรงเดียวของระบบ (`Textarea`: พื้นสามบรรทัด โตตามที่พิมพ์) — เหตุผลยาวได้ 500 ตัวอักษร
+                                   🐞 UAT 01/10: ช่องบรรทัดเดียวตัดเหตุผลที่บันทึกไว้ ("ลูกค้าขอกลิ่นเข้มเป็นพิเศษ เปิดประตูทิ…") อ่านไม่ครบโดยไม่กดเข้าไป */}
+                            <Textarea
                               id={noteId}
                               touch
                               value={draft.packageNote} disabled={busy} maxLength={500} autoComplete="off"
-                              placeholder="ทำไมถึงต่างจากสูตร"
+                              placeholder="ทำไมถึงต่างจากที่ระบบเสนอ"
                               onChange={(e) => patchDraft(zone.id, { packageNote: e.target.value })}
                             />
                           </div>
                         ) : null}
                         {!canDecide && zone.packageNote ? (
-                          <span className={styles.note}>เหตุผลที่ต่างจากสูตร: {naText(zone.packageNote)}</span>
+                          <span className={styles.note}>เหตุผลที่ต่างจากที่ระบบเสนอ: {naText(zone.packageNote)}</span>
                         ) : null}
                       </td>
                     </>
@@ -545,6 +671,14 @@ export default function SurveyResultTable({
         <p className={styles.footnote}>
           {canUploadPlan ? "ภาพผังขึ้นระบบทันที ไม่ต้องบันทึก · " : ""}
           การเคาะต้องกด “บันทึกการเคาะ” · กดลิงก์ออก รีเฟรช หรือปิดแท็บก่อนบันทึก ระบบจะถามก่อนทิ้ง
+        </p>
+      ) : null}
+      {/* ช่วง ลบ.ม. ของทุกขนาด + ที่มาของข้อเสนอ — ป้ายบนแถบมีแค่รหัส คนเคาะต้องรู้ว่า SM/ST/XL คือพื้นที่ขนาดไหน
+          และแก้ช่วงได้ที่ไหน · ขึ้นเฉพาะคนที่เห็นข้อเสนอของระบบ (หัวหน้า) — ช่างไม่มีแถบนี้ให้ใช้ */}
+      {showFormula && sizeLegend ? (
+        <p className={styles.footnote}>
+          ขนาดที่ระบบเสนอ จากทะเบียน <Link href="/database/package-sizes" className={styles.footLink}>ฐานข้อมูล › ขนาดแพ็คเกจ</Link>
+          : {sizeLegend} · จำนวนเสนอ 1 แพ็คทุกพื้นที่
         </p>
       ) : null}
     </DetailCard>
