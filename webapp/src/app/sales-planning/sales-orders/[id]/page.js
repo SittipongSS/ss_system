@@ -104,6 +104,7 @@ import SalesOrderServiceTab from "@/components/salesPlanning/SalesOrderServiceTa
 import SalesOrderDocumentsPanel, { installmentFilesKey, useSalesOrderDocuments } from "@/components/salesPlanning/SalesOrderDocumentsPanel";
 import { orderHasServiceRounds, orderOnServiceLine, serviceRoundsSold } from "@/lib/sales/serviceOrders";
 import { serviceRoundsEditError } from "@/lib/sales/serviceRoundsEntry";
+import { deliveryDueAmendError } from "@/lib/sales/salesOrderDeliveryDue";
 /* ⭐ งานบริการรายบรรทัด (mig 0392 · PR-A) — ตัวตัดสินทุกตัวอยู่ที่ serviceSetup.js · ก้อน GET `…/service-setup`
    (useServiceSetup) คือความจริงเดียวของตาราง/แผงแดง/การ์ดราง/แถบผู้อนุมัติ/หัวใบ — หน้านี้แค่ต่อสาย */
 import {
@@ -193,6 +194,7 @@ const ACTION_MESSAGE = {
   // ⚠️ ข้อความเดียวใช้ได้ทั้งผูกและถอด — ตัวการ์ดโชว์ผลลัพธ์จริงอยู่แล้วหลังโหลดใหม่
   set_service_contract: "อัปเดตสัญญาของใบแล้ว",
   set_service_rounds: "บันทึกจำนวนรอบบริการแล้ว",
+  set_delivery_due: "บันทึกกำหนดส่งสินค้าแล้ว",
 };
 
 /* ── งานบริการย้อนหลังของใบที่อนุมัติแล้ว (ภาคผนวก A.5) — ข้อความทักหลังทำรายการสำเร็จ ── */
@@ -1659,6 +1661,19 @@ export default function SalesOrderDetailPage() {
     : null;
   /* ดินสอจำนวนรอบของใบที่อนุมัติแล้ว (D9: รอบยังแก้ได้หลังประทับ) — ด่านตัวเดียวกับ route `set_service_rounds` */
   const canEditServiceRounds = canEdit && !serviceRoundsEditError(order, { canEdit });
+  /* ดินสอกำหนดส่งของใบที่อนุมัติแล้ว (มติ 2026-09-29) — ด่านตัวเดียวกับ route `set_delivery_due` · ใบร่างแก้ในโหมดแก้ของใบตามเดิม */
+  const canAmendDeliveryDue = canEdit && !editMode && !deliveryDueAmendError(order, { canEdit });
+  /* ⚠️ `requestAction` ไม่จับ throw — เน็ตหลุด (ApiNetworkError · PATCH ไม่ลองซ้ำ) ค้าง `busy` ไว้ ⇒ ปุ่มจัดการใบทั้งการ์ดจางค้าง
+     จนกด F5 · คืน `busy` + ขึ้นแถบ error ที่นี่ แล้วส่ง throw ต่อให้ช่องบอกเหตุใต้ตัวเอง */
+  const amendDeliveryDue = async (next) => {
+    try {
+      return Boolean(await requestAction("set_delivery_due", { deliveryDueDate: next }));
+    } catch (err) {
+      setBusy("");
+      setError(err?.message || "บันทึกกำหนดส่งไม่สำเร็จ");
+      throw err;
+    }
+  };
   /* ช่อง "รอบบริการที่ขาย" บนหัวใบ — ใบที่ต้องตั้งงานบริการใช้ของก้อน GET (`serviceSetupHeroFact`) · ใบอื่นเหมือนเดิมทุกตัวอักษร */
   const serviceHeroFact = setupRequired && (setupFlow !== "none" || hasServiceRounds)
     ? (setupView?.hero
@@ -2359,6 +2374,8 @@ export default function SalesOrderDetailPage() {
                   mode={editable ? "edit" : "read"}
                   value={form.deliveryDueDate}
                   onChange={(next) => updateField("deliveryDueDate", next)}
+                  onAmend={canAmendDeliveryDue ? amendDeliveryDue : undefined}
+                  amendError={error}
                   readonlyClassName={styles.readonlyFormField}
                 />
                 {/* ⭐ เอกสารอ้างอิงฝั่งลูกค้า (IS-26080017 · mig 0235) — PO/สัญญา/เลขในระบบ
