@@ -6,6 +6,7 @@ import {
   LEAD_TRANSITIONS, TRANSITION_TO_STATUS, MEETING_MODES, canWorkLead,
   meetingTimesSinceBounce, pickNextMeetingAt, leadFollowUpError, leadLostReasonError, LEAD_LOST_REVISIT_CODES,
   leadBouncePatch, LEAD_BOUNCE_KINDS,
+  canReopenLead, leadReopenStatus, leadReopenBlockedReason, LEAD_REOPEN_FOLLOW_UP_STATUSES, LEAD_LOST_LABELS,
 } from '@/lib/sales/leads';
 import { validateLeadAssignee } from '@/lib/sales/leadAssignee';
 import { loadSalesTeamCodes } from '@/lib/master/teamsRepo';
@@ -33,7 +34,7 @@ async function nextMeetingAt(supabase, leadId, addedAt, now) {
 }
 
 // POST /api/sales-planning/leads/[id]/transition
-// { action: screen|assign|reassign|contact|followup|meeting|disqualify|bounce,
+// { action: screen|assign|reassign|contact|followup|meeting|disqualify|bounce|reopen,
 //   team?, assigneeId?, assigneeName?, reason?, meetingMode?, eventAt?, followUpAt? }
 //
 // กติกา role ต่อ action (เฟส C — ตามเส้นชีวิตในแผน):
@@ -55,6 +56,9 @@ async function nextMeetingAt(supabase, leadId, addedAt, now) {
 //     ต้องมี **ทั้งรหัสเหตุผล** (disqualifiedCode · mig 0290) **และข้อความ** —
 //     รหัสไว้ทำรายงาน "แพ้เพราะอะไร" ข้อความไว้อ่านย้อนหลัง
 //   bounce     = ทีมไม่ตรง → กลับคิวคัดกรอง (ล้างทีม/ผู้รับ) — ต้องมีเหตุผล
+//   reopen     = ลูกค้ากลับมา (มติผู้ใช้ 2026-10-01): เจ้าของลีด + ผู้มีอำนาจเหนือกว่า
+//     (`canReopenLead`) ดึงใบที่ปิด "ไม่ไปต่อ" กลับไปสถานะก่อนปิด — ต้องมีเหตุผล
+//     และวันติดตามต่อใหม่เมื่อกลับไปขั้นติดต่อ/นัด
 export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
   if (!can(user.role, 'salesplan:lead')) return forbidden();
@@ -82,6 +86,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   const now = new Date().toISOString();
   const patch = { updatedAt: now };
+  // ปลายทางของ `reopen` ขึ้นกับใบ (TRANSITION_TO_STATUS.reopen เป็น null) — สาขาอื่นไม่แตะ
+  let reopenedTo = null;
   const event = {
     id: genId('LEV'),
     leadId: lead.id,
@@ -247,9 +253,40 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     event.assigneeName = lead.assigneeName || null;
     Object.assign(patch, leadBouncePatch(now));
     event.reason = body.reason.trim();
+  } else if (action === 'reopen') {
+    if (!canReopenLead(user, lead)) return forbidden('ดึงลีดกลับได้เฉพาะเจ้าของลีด หัวหน้าทีม หรือผู้ดูแลฝ่ายขาย');
+    if (!body.reason?.trim()) return badRequest('ต้องระบุว่าลูกค้ากลับมาอย่างไร');
+    // ด่านเดียวกับที่ปุ่มใช้ (`allow` ของ lifecycle)
+    const blocked = leadReopenBlockedReason(lead);
+    if (blocked) return badRequest(blocked);
+    reopenedTo = leadReopenStatus(lead);
+    if (LEAD_REOPEN_FOLLOW_UP_STATUSES.includes(reopenedTo)) {
+      /* ⚠️ วันติดตามของรอบก่อนค้างอยู่บนแถว — ไม่บังคับวันใหม่ = ใบขึ้น "เลยกำหนด" ทันที
+         และ cron ตีกลับอัตโนมัตินับจากวันเก่า ดึงใบออกจากมือคนที่เพิ่งดึงกลับมา */
+      const followUpError = leadFollowUpError(body.followUpAt);
+      if (followUpError) return badRequest(followUpError);
+      patch.followUpAt = new Date(body.followUpAt).toISOString();
+    } else {
+      patch.followUpAt = null;
+      /* นาฬิกาของขั้นที่กลับไปเริ่มนับตอนนี้ ไม่ใช่วันที่เคยมอบ/คัดกรองก่อนปิด — ไม่งั้น SLA
+         กินเวลาที่ใบนอนปิดอยู่ทั้งช่วง และ `assigned` เข้าเกณฑ์ตีกลับอัตโนมัติทันที
+         (`new` ไม่มีคอลัมน์ต้นรอบให้ขยับ — นับจาก createdAt ตามเดิม) */
+      if (reopenedTo === 'assigned') patch.assignedAt = now;
+      if (reopenedTo === 'screened') patch.screenedAt = now;
+    }
+    /* ล้างผลการปิดออกจากแถว — ค้างไว้แล้วรายงาน "ถึงเวลากลับไปถาม" (revisitAt) กับ
+       "แพ้เพราะอะไร" จะอ่านค่าของรอบที่ถูกยกเลิกไปแล้วเมื่อใบถูกปิดซ้ำโดยไม่ครบช่อง
+       ⚠️ เหตุผลปิดเดิมไม่หาย: ข้อความอยู่ในเหตุการณ์ `disqualify` · หัวข้อพ่วงลงบรรทัดนี้ */
+    patch.disqualifiedCode = null;
+    patch.disqualifiedReason = null;
+    patch.revisitAt = null;
+    patch.closedAt = null;
+    event.toStatus = reopenedTo;
+    const closedAs = LEAD_LOST_LABELS[lead.disqualifiedCode];
+    event.reason = closedAs ? `${body.reason.trim()} (เดิมปิดว่า: ${closedAs})` : body.reason.trim();
   }
 
-  patch.status = TRANSITION_TO_STATUS[action] ?? lead.status;
+  patch.status = reopenedTo || (TRANSITION_TO_STATUS[action] ?? lead.status);
 
   const { data, error } = await supabase.from('sales_leads').update(patch).eq('id', id).select().single();
   if (error) return fail(error.message, 500);
@@ -290,10 +327,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   /* กล่องแจ้งเตือนรายคน — แจ้ง **คนที่ต้องลงมือต่อ** ไม่ใช่ทั้งห้อง
      ครอบ 3 จังหวะ: คัดกรองเข้าทีม (→ Senior AE/AC ของทีม) · มอบหมาย (→ AE ผู้รับ) ·
-     ตีกลับ (→ ผู้คัดกรอง + คนที่เพิ่งถูกดึงลีดออกจากมือ)
+     ตีกลับ (→ ผู้คัดกรอง + คนที่เพิ่งถูกดึงลีดออกจากมือ) · ดึงกลับ (→ คนที่ต้องลงมือกับสถานะที่กลับไป)
      ⚠️ `bounce` ล้าง assigneeId ไปแล้วใน patch — ผู้รับเดิมต้องอ่านจาก `lead` (ก่อนแก้)
      โหลดทะเบียนผู้ใช้เฉพาะจังหวะที่ต้องใช้ ไม่ใช่ทุก transition (contact/meeting ไม่ส่งมอบใคร) */
-  if (['screen', 'assign', 'reassign', 'bounce'].includes(action)) {
+  if (['screen', 'assign', 'reassign', 'bounce', 'reopen'].includes(action)) {
     notifyLeadHandoff(supabase, {
       action,
       lead: data,

@@ -168,8 +168,44 @@ test("เปลี่ยนผู้รับผิดชอบ = เปลี�
     "รายชื่อต้องกรองด้วยทีมของ *ลีดใบนั้น* เหมือน assign (ดู assignableFor)");
 });
 
-test("ลีดที่ปิดแล้วไม่เหลือปุ่มอะไรเลย", () => {
-  assert.deepEqual(idsFor(lead({ status: "disqualified" }), ADMIN), []);
+/* ── ลูกค้ากลับมา (มติผู้ใช้ 2026-10-01) — เดิมใบปิดคือทางตัน ไม่มีปุ่มอะไรเลย ── */
+const closed = (over = {}) => lead({
+  status: "disqualified", team: "A", assigneeId: "u-ae", firstContactAt: "2026-09-18T03:00:00Z",
+  disqualifiedCode: "no_response", ...over,
+});
+
+test("ลีดที่ปิดแล้วเหลือทางออกเดียวคือ ลูกค้ากลับมา", () => {
+  assert.deepEqual(idsFor(closed(), ADMIN), ["reopen"]);
+  assert.equal(lifecycle.get("reopen").reason, "required");
+});
+
+test("ลูกค้ากลับมา: เจ้าของลีดและผู้มีอำนาจเหนือกว่าเท่านั้น", () => {
+  assert.deepEqual(idsFor(closed(), AE_A), ["reopen"], "เจ้าของลีดกดเองได้");
+  assert.deepEqual(idsFor(closed(), SENIOR_A), ["reopen"], "หัวหน้าทีมของลีด");
+  assert.deepEqual(idsFor(closed(), SUPERVISOR), ["reopen"], "ผู้ดูแลฝ่ายขาย");
+  assert.deepEqual(idsFor(closed(), { role: "ae", id: "u-other", team: "A" }), [], "AE คนอื่นในทีม");
+  assert.deepEqual(idsFor(closed(), { role: "senior_ae", id: "u-b", team: "B" }), [], "หัวหน้าทีมอื่น");
+  assert.deepEqual(idsFor(closed(), { role: "ac", id: "u-ac", team: "A" }), [],
+    "AC ปิดลีดของทีมได้ แต่ไม่ใช่เจ้าของและไม่ใช่ผู้บังคับบัญชา — ดึงกลับไม่ได้");
+});
+
+test("ลูกค้ากลับมา: ใบที่ปิดเพราะลีดซ้ำ เห็นปุ่มแต่กดไม่ได้พร้อมเหตุผล", () => {
+  const entry = lifecycle.available(closed({ disqualifiedCode: "duplicate" }), ADMIN).find((e) => e.id === "reopen");
+  assert.ok(entry, "มีสิทธิ์ = ปุ่มต้องโชว์ (กฎ ui-visibility)");
+  assert.equal(entry.disabled, true);
+  assert.match(entry.disabledReason, /ลีดซ้ำ/);
+});
+
+test("ลูกค้ากลับมา: บังคับวันติดตามใหม่เฉพาะใบที่กลับไปขั้นติดต่อ/นัด", () => {
+  const field = lifecycle.get("reopen").fields.find((f) => f.name === "followUpAt");
+  assert.equal(field.required, true);
+  assert.equal(fieldVisible(field, closed(), ADMIN, {}), true, "เคยติดต่อแล้ว → กลับไป contacted");
+  assert.equal(fieldVisible(field, closed({ meetingAt: "2026-09-20T03:00:00Z" }), ADMIN, {}), true);
+  assert.equal(fieldVisible(field, closed({ firstContactAt: null }), ADMIN, {}), false, "กลับไป assigned");
+  assert.equal(fieldVisible(field, closed({ assigneeId: null, team: null, firstContactAt: null }), ADMIN, {}), false);
+  const payload = buildLeadTransitionPayload({ action: "reopen", values: { reason: " ลูกค้าทักกลับมา ", followUpAt: "2026-10-05" } });
+  assert.equal(payload.followUpAt, "2026-10-05");
+  assert.equal(payload.reason, "ลูกค้าทักกลับมา");
 });
 
 /* ── กติกาของชั้นกลาง ─────────────────────────────────────────────── */

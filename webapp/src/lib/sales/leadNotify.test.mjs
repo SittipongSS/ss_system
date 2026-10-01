@@ -100,7 +100,7 @@ test('route ต่อสายครบทั้งรับลีดและ 4
   const transition = readFileSync(
     new URL("../../app/api/sales-planning/leads/[id]/transition/route.js", import.meta.url), 'utf8',
   );
-  assert.match(transition, /\['screen', 'assign', 'reassign', 'bounce'\]\.includes\(action\)/);
+  assert.match(transition, /\['screen', 'assign', 'reassign', 'bounce', 'reopen'\]\.includes\(action\)/);
   assert.match(transition, /previousAssigneeId: lead\.assigneeId/,
     'ตีกลับล้าง assigneeId ไปแล้ว ต้องอ่านจากแถวก่อนแก้');
   // 🪦 เดิมต้องอยู่คู่กับ Chat webhook (คนละหน้าที่ตาม mig 0185) · ท่อ Chat ถูกถอด
@@ -208,4 +208,14 @@ test('cron ต้องยิงการทวงเข้ากล่องแ
   assert.match(src, /dedupeKey: notice\.dedupeKey/);
   assert.match(src, /href: '\/sa\/leads'/, 'สรุปหลายใบต้องพาไปที่คิว ไม่ใช่ใบใดใบหนึ่ง');
   assert.doesNotMatch(src, /sendChat|chatCard/, 'ท่อ Chat ถูกถอดออกแล้ว (2026-08-12)');
+});
+
+test('ลูกค้ากลับมา: แจ้งเจ้าของลีดเมื่อคนอื่นดึงใบกลับมาให้ · เจ้าของกดเองไม่แจ้งตัวเอง', () => {
+  const directory = new Map([['u-ae', { id: 'u-ae', role: 'ae', team: 'A' }], ['u-s', { id: 'u-s', role: 'senior_ae', team: 'A' }]]);
+  const lead = { id: 'L1', contactName: 'คุณเอ', team: 'A', assigneeId: 'u-ae', status: 'contacted' };
+  const byLead = leadHandoffNotice({ action: 'reopen', lead, directory, actorId: 'u-s', reason: 'ลูกค้าทักกลับมา' });
+  assert.deepEqual(byLead.userIds, ['u-ae']);
+  assert.match(byLead.title, /ลูกค้ากลับมา/);
+  assert.equal(byLead.body, 'ลูกค้าทักกลับมา');
+  assert.equal(leadHandoffNotice({ action: 'reopen', lead, directory, actorId: 'u-ae', reason: 'x' }), null);
 });

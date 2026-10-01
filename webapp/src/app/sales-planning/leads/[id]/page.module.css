@@ -48,3 +48,16 @@
   font-weight: var(--fw-normal);
   white-space: normal;
 }
+
+/* เหตุผลที่ไม่ไปต่อ บนสุดของใบที่ปิดแล้ว */
+.lostBanner {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid color-mix(in srgb, var(--red) 35%, var(--border));
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--red) 7%, var(--panel));
+  font-size: var(--fs-6); line-height: var(--lh-text);
+}
+.lostBanner span { color: var(--red); font-weight: var(--fw-bold); white-space: nowrap; }
+.lostBanner strong { color: var(--text); font-weight: var(--fw-semibold); overflow-wrap: anywhere; }
+.lostBanner em { margin-left: auto; color: var(--text-3); font-style: normal; white-space: nowrap; }

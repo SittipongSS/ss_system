@@ -52,3 +52,10 @@
   display: block; margin-top: var(--space-0-5); color: var(--text-3);
   font-size: var(--fs-4); line-height: var(--lh-thai);
 }
+
+/* เหตุผลที่ไม่ไปต่อ ใต้ป้ายสถานะ — บรรทัดเดียว ตัดด้วย ellipsis (ข้อความเต็มอยู่ใน title) */
+.lostWhy {
+  display: block; max-width: 132px; margin: var(--space-1) auto 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--text-3); font-size: var(--fs-label); line-height: var(--lh-text);
+}
