@@ -1,12 +1,15 @@
 // ── API รอบบริการ (mig 0188) ─────────────────────────────────────────────
 // GET  ?siteId= : รอบของไซต์ (ระบุไซต์ = อ่านแบบทะเบียน — ดูด่านใน GET)
-// POST : สร้างรอบ + gen นัดล่วงหน้าตาม horizon (ค่าตั้งต้น 90 วัน)
+// POST : สร้างรอบ + gen นัดล่วงหน้าตาม horizon (`horizonDaysFor` — days 90 วัน · รอบตามปฏิทินอย่างน้อยหนึ่งงวดเต็ม)
+//        ความถี่ของรอบ (mig 0397): `cadenceKind` days | weekly | monthly + ช่องของชนิดนั้น — ตรวจที่ normalizePlanInput
+//        ตอบ `{ plan, generated, holidayGapYears }` · `holidayGapYears` = ปีในช่วงของรอบที่ตาราง holidays ยังไม่มีแถว
 import { genId } from '@/lib/id';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest } from '@/lib/http';
-import { generateVisitsForPlan } from '@/lib/service/planGen';
+import { cadenceText } from '@/lib/service/cadence';
+import { generateVisitsForPlan, loadPlanHolidays, planHolidayGapYears } from '@/lib/service/planGen';
 import { normalizePlanInput } from '@/lib/service/rounds';
 import { findSite, requireService, requireSite } from '@/lib/service/sitesRepo';
 import { loadPlans } from '@/lib/service/visitsRepo';
@@ -70,6 +73,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
       if (!order) return badRequest('ไม่พบใบสั่งขายที่อ้างถึง');
     }
 
+    /* 🔴 **อ่านวันหยุดก่อนเขียนรอบ** (mig 0397 · D27) — ตัวเติมนัดเลื่อนหนีวันหยุดจากตาราง `holidays`
+       อ่านไม่ได้หลัง insert = รอบค้างอยู่ในฐานโดยไม่มีนัดสักใบ (รอบที่ไม่มีใครเห็นบนตาราง) ⇒ ล้มตรงนี้ ยังไม่เขียนอะไร
+       (`loadPlanHolidays` โยน error เป็นข้อความไทย → catch ข้างล่างตอบ 500) */
+    const holidays = await loadPlanHolidays(supabase);
+
     const row = {
       id: genId('SVP'),
       ...value,
@@ -81,14 +89,14 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     if (insertError) return fail(insertError.message, 500);
 
     // gen นัดล่วงหน้าทันที — รอบที่ยังไม่มีนัดสักใบคือรอบที่ไม่มีใครเห็นบนตาราง
-    const generated = await generateVisitsForPlan({ supabase, plan, user, req });
+    const generated = await generateVisitsForPlan({ supabase, plan, user, req, holidays });
 
     await recordAudit({
       user, action: 'create', entityType: 'service_plan', entityId: plan.id, after: plan,
-      summary: `สร้างรอบบริการทุก ${plan.everyDays} วัน ที่ ${site.name} · gen นัด ${generated.length} ครั้ง`,
+      summary: `สร้างรอบบริการ${cadenceText(plan)} ที่ ${site.name} · gen นัด ${generated.length} ครั้ง`,
       request: req,
     });
-    return ok({ plan, generated }, 201);
+    return ok({ plan, generated, holidayGapYears: planHolidayGapYears(plan, holidays) }, 201);
   } catch (e) {
     return fail(e.message, 500);
   }

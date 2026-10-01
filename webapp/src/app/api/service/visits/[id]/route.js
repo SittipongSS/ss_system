@@ -6,6 +6,7 @@ import { recordAudit } from '@/lib/audit';
 import { canForceDelete, isForceRequest } from '@/lib/forceDelete';
 import { withUser, ok, fail, badRequest, conflict, forbidden } from '@/lib/http';
 import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
+import { holidaySet } from '@/lib/master/holidays';
 import { isReschedule, nextAfterDone, normalizeVisitInput, rescheduleSummary } from '@/lib/service/rounds';
 import {
   VISIT_STATUS_LABELS, holdsRequestSlot, isClosedVisit, isLiveVisit,
@@ -282,6 +283,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
           ⚠️ ส่ง `hasEndDateColumn` จากแถวจริง — ฐานที่ยังไม่รัน 0386 ไม่มีคอลัมน์ ⇒ ไม่ใส่คีย์ = พฤติกรรมเดิม */
     const nowIso = new Date().toISOString();
     let patch = { ...value };
+    /* ช่องของรอบ (`planSlotDate` · mig 0397) เป็นของรอบเดียว — คำขอที่ย้ายนัดไปรอบอื่น/ถอดออกจากรอบ ต้องล้างช่องทิ้ง
+       ไม่งั้นนัดถือช่องของรอบเดิมไปอยู่ใต้รอบใหม่ แล้วตัวเติมนัดของรอบใหม่เข้าใจว่าช่องนั้นมีนัดแล้ว
+       ⚠️ ถามจากแถวจริง — ฐานที่ยังไม่รัน 0397 ไม่มีคอลัมน์ ⇒ ไม่ใส่คีย์ */
+    if ('planSlotDate' in before && (patch.planId || null) !== (before.planId || null)) patch.planSlotDate = null;
     /* 🐞 **รูปหน้างาน/ลายเซ็นไม่ได้ส่งมา = ไม่แตะคอลัมน์** (แผน operation-crew C5 · R5) — `value` มาจาก
        `{...before, ...body}` ⇒ `normalizeVisitInput` คืนสองคีย์นี้เสมอ เป็นค่าที่อ่านไว้ **ตอนต้นคำขอ**
        ⇒ กดรับงาน/ส่งงานเขียนรูปชุดเก่ากลับลงแถว รูปที่ผู้ช่วยอัปขึ้นระหว่างนั้นหายเงียบ (และช่องที่ normalize
@@ -576,7 +581,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     let suggestion = null;
     if (isClosedVisit(data) && !isClosedVisit(before) && data.planId) {
       const plan = await findPlan(supabase, data.planId);
-      if (plan) suggestion = nextAfterDone(plan, data);
+      /* วันหยุดจากตาราง `holidays` ส่งเป็นอาร์กิวเมนต์ (mig 0397) — ไม่พึ่งชุดกลางของ pm/dateHelpers ที่ route อื่นเขียนทับ
+         ⚠️ `holidaySet` ไม่ throw (อ่านไม่ได้ = รายการตั้งต้น) — การปิดงานต้องไม่ล้มเพราะตารางวันหยุด นี่เป็นแค่ข้อเสนอ
+         รอบตามปฏิทิน: ข้อเสนอพก `planSlotDate` (ช่องของรอบ) ไปด้วย · รอบทุก N วัน: รูปเดิม */
+      if (plan) suggestion = nextAfterDone(plan, data, { holidays: await holidaySet(supabase) });
     }
     return ok({
       visit: data, nextVisitSuggestion: suggestion, steppedBackRequest,

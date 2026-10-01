@@ -14,7 +14,8 @@ import { fmtDate, fmtNumber } from '@/lib/format';
 import { periodSpan, servicePeriodOf } from '@/lib/sales/serviceSetup';
 import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
 import { orderReadiness } from './intake';
-import { ROUNDS_SOLD_LABEL, roundsSoldSentence, suggestEveryDays } from './rounds';
+import { cadenceText, suggestCadence } from './cadence';
+import { ROUNDS_SOLD_LABEL, roundsSoldSentence } from './rounds';
 import { termOrderActive } from './terms';
 import { termLineLabels } from './termLabels';
 
@@ -67,11 +68,18 @@ export function planWindow(period, todayIso = businessDate()) {
   return { startDate: todayIso, endDate: p.to, startHint: `ช่วงบริการเริ่ม ${fmtDate(p.from)} ไปแล้ว — เริ่มวันนี้` };
 }
 
-/** ชิป "จำนวนรอบบริการ 12 รอบ → ทุก 33 วัน" (+ หมายเหตุเมื่อโดนเพดาน 365 วัน · C-D7 · คำตามมติ 29/09) · ไม่มีข้อเสนอ = null */
+/** ชิป "จำนวนรอบบริการ 12 รอบ → ทุกเดือน วันที่ 22" (C-D7 · คำตามมติ 29/09 · ความถี่ทุกชนิดตั้งแต่ mig 0397) · ไม่มีข้อเสนอ = null
+ *  รับได้สองรูป: ผลของ `suggestCadence` (หกช่อง + `visits` · `exact` · `clamped`) และรูปเดิม `{ everyDays, visits, clamped }`
+ *   · โดนเพดาน 365 วัน      → "… (สูงสุดที่ตั้งได้ · ได้ราว n นัด)"
+ *   · ไม่มีความถี่ไหนได้พอดี → "… (ได้ราว n นัด)" (เฉพาะรูปที่มีคีย์ `exact` — รูปเดิมไม่บอก จึงไม่ต่อท้าย)
+ *  ⚠️ ข้อเสนอที่อ่านความถี่ไม่ออก = null (ไม่พิมพ์ "→ —") */
 export function planSuggestionLabel(rounds, suggestion) {
   if (!suggestion) return null;
-  const base = `${roundsSoldSentence(rounds)} → ทุก ${fmtNumber(suggestion.everyDays)} วัน`;
-  return suggestion.clamped ? `${base} (สูงสุดที่ตั้งได้ · ได้ราว ${fmtNumber(suggestion.visits)} นัด)` : base;
+  const text = cadenceText(suggestion);
+  if (text === '—') return null;
+  const base = `${roundsSoldSentence(rounds)} → ${text}`;
+  if (suggestion.clamped) return `${base} (สูงสุดที่ตั้งได้ · ได้ราว ${fmtNumber(suggestion.visits)} นัด)`;
+  return suggestion.exact === false ? `${base} (ได้ราว ${fmtNumber(suggestion.visits)} นัด)` : base;
 }
 
 /* แพ็คต่อรอบของโซน = Σ packageQty ของ term ในแถว · term ไหนไม่มีค่า = ไม่รู้ทั้งโซน (null) ไม่ใช่บวกเท่าที่มี */
@@ -126,8 +134,10 @@ export function planRowFacts(row, { order = null, contract = null, linesById = n
   /* รอบที่แนะนำเฉพาะใบที่ตั้งแล้ว — ใบย้อนหลังส่งไปแล้วบางรอบก่อนเข้าระบบ ⇒ ยัดรอบทั้งสัญญาลงเวลาที่เหลือ = ถี่เกินจริง
      (C-D3: แถวใบเดิม/ย้อนหลัง "—") · แถวกับชิปของโมดัลต้องตรงกัน ⇒ `context.roundsSold` ตามกติกาเดียวกัน */
   const suggestRounds = stamped && !historical ? (row?.roundsSold ?? null) : null;
+  /* ⭐ ความถี่ตัวแรกที่ได้นัด **เท่าจำนวนรอบบริการพอดี** (`suggestCadence` · mig 0397): รายเดือนวันที่ของวันเริ่ม →
+        รายสัปดาห์ จ.–ศ. → ทุก N วัน (`exact` บอกว่าพอดีไหม) · ตัวเดียวกับชิปของโมดัลรอบบริการ ⇒ แถวกับโมดัลพูดตรงกัน */
   const cadence = window && suggestRounds
-    ? suggestEveryDays({ startDate: window.startDate, endDate: window.endDate, rounds: suggestRounds })
+    ? suggestCadence({ startDate: window.startDate, endDate: window.endDate, rounds: suggestRounds })
     : null;
 
   /* สัญญา: ตัวตัดสินเดียวกับชิปเดิม (`orderReadiness` — signed เท่านั้น) */
@@ -195,8 +205,13 @@ export function planRowFacts(row, { order = null, contract = null, linesById = n
     periodSpanText: span?.label || null,
     window,
     cadence,
-    cadenceText: cadence ? `ทุก ${fmtNumber(cadence.everyDays)} วัน` : null,
-    cadenceSub: cadence ? `≈ ${fmtNumber(cadence.visits)} นัด${cadence.clamped ? ' · สูงสุดที่ตั้งได้' : ''}` : null,
+    cadenceText: cadence ? cadenceText(cadence) : null,
+    // พอดี = "12 นัด" · ไม่พอดี = "≈ 25 นัด" (+ "สูงสุดที่ตั้งได้" เมื่อโดนเพดาน 365 วัน)
+    cadenceSub: cadence
+      ? (cadence.exact
+        ? `${fmtNumber(cadence.visits)} นัด`
+        : `≈ ${fmtNumber(cadence.visits)} นัด${cadence.clamped ? ' · สูงสุดที่ตั้งได้' : ''}`)
+      : null,
     contract: { hasContract, contractNo },
     contractChip: hasContract
       ? { tone: 'success', label: contractNo || CONTRACT_SIGNED_FALLBACK }
@@ -351,6 +366,8 @@ export function orphanPlanRows({ plans = [], ordersById = new Map(), terms = [],
       toOrderId: to?.id || null,
       toOrderNumber: to?.orderNumber || null,
       everyDays: plan.everyDays ?? null,
+      // คำบอกความถี่ของรอบทุกชนิด (mig 0397) — แถบรอบกำพร้าพิมพ์ช่องนี้ (รอบตามปฏิทินไม่มี everyDays)
+      cadenceText: cadenceText(plan),
       kind,
     });
   }
@@ -389,11 +406,14 @@ export const ORPHAN_TITLES = Object.freeze({
   cancelled: (n) => `รอบของใบที่ยกเลิกแล้ว ${fmtNumber(n)} รอบ — ปิดรอบ หรือนัดถอนเครื่อง`,
 });
 
-/** บรรทัดของแถบรอบกำพร้า: "{รหัสไซต์} {ชื่อ} · {ใบเดิม} → {ใบปลายโซ่} · ทุก {d} วัน" (ไม่มีใบปลายโซ่ = ไม่มีลูกศร) */
+/** บรรทัดของแถบรอบกำพร้า: "{รหัสไซต์} {ชื่อ} · {ใบเดิม} → {ใบปลายโซ่} · {ความถี่}" (ไม่มีใบปลายโซ่ = ไม่มีลูกศร)
+ *  ความถี่ = `row.cadenceText` (ทุกชนิด · mig 0397) · แถวรูปเดิมที่มีแค่ `everyDays` ยังได้ "ทุก N วัน" ผ่าน `cadenceText` ตัวเดียวกัน
+ *  อ่านความถี่ไม่ออก = ไม่ต่อท้าย */
 export function ORPHAN_ITEM_TEXT(row) {
   const site = [row?.site?.code, row?.site?.name].filter(Boolean).join(' ') || row?.siteId || '—';
   const from = row?.fromOrderNumber || row?.fromOrderId || '—';
   const to = row?.toOrderNumber || row?.toOrderId || null;
-  const every = row?.everyDays ? ` · ทุก ${fmtNumber(row.everyDays)} วัน` : '';
+  const text = row?.cadenceText || cadenceText(row);
+  const every = text && text !== '—' ? ` · ${text}` : '';
   return `${site} · ${from}${to ? ` → ${to}` : ''}${every}`;
 }

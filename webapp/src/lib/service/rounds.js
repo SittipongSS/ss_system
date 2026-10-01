@@ -4,12 +4,16 @@
 // gen นัดตามรอบ · เตือนเวลาทับกัน · เตือนวิ่งข้ามเขต · เตือนนอกช่วงที่ไซต์ให้เข้า
 //
 // ไฟล์นี้ไม่แตะ DB — ใช้ได้ทั้ง client (ปฏิทิน/ฟอร์ม) และ server (validate + gen)
-import { isBusinessDay, toLocalISODate } from '@/lib/pm/dateHelpers';
-import { daysBetween } from '@/lib/sales/paymentCoverage';
+import { getHolidays } from '@/lib/pm/dateHelpers';
+import { addDays } from '@/lib/datePeriods';
 import { accessConflict, minutesOf, toHHMM } from './sites';
 import { businessDate } from '@/lib/businessDate';
 import { fmtNumber } from '@/lib/format';
 import { VISIT_STATUSES, canRescheduleVisit, isClosedVisit, isLiveVisit } from './visitStatus';
+import {
+  CADENCE_ERRORS, cadenceOf, cadenceSlots, countSlots, horizonEndFor, isIsoDay,
+  nextPlannedAfter, normalizeCadence, plannedDateOfSlot, plannedVisits, sameCadence, slotPeriod,
+} from './cadence';
 
 export const PLAN_KINDS = ['refill', 'maintenance', 'inspect'];
 export const VISIT_KINDS = ['install', 'refill', 'maintenance', 'repair', 'inspect', 'remove', 'survey'];
@@ -59,30 +63,33 @@ export const TIME_PRESETS = [
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-const parseDate = (iso) => {
-  if (!ISO_DATE.test(String(iso ?? ''))) return null;
-  const d = new Date(`${iso}T00:00:00`);
-  return Number.isNaN(d.getTime()) ? null : d;
-};
+/* วันของแถว/ฟอร์ม → สิบตัวแรก ('YYYY-MM-DD' · คอลัมน์ date ของฐานคืนรูปนี้อยู่แล้ว) · ว่าง = null
+   ⚠️ เลขคณิตวันของรอบทั้งหมดอยู่ที่ cadence.js + datePeriods (สตริงล้วน ไม่มีโซนเวลา) — ไฟล์นี้ไม่สร้าง Date เอง */
+const dayOf = (value) => (value === null || value === undefined || value === '' ? null : String(value).slice(0, 10));
+const blank = (value) => value === null || value === undefined || value === '';
 
+/* ⚠️ ต้องเป็น **วันที่มีจริงในปฏิทิน** ไม่ใช่แค่รูป 'YYYY-MM-DD' — '2027-02-31' ผ่านรูปได้ แต่คอลัมน์ date ของฐานตีกลับ
+      เส้นแก้รอบยกเลิกนัดตามรอบเดิม **ก่อน** บันทึกรอบ ⇒ วันที่ฐานไม่รับต้องตกตั้งแต่ตัวตรวจ ไม่งั้นนัดถูกยกเลิกไปแล้วรอบบันทึกไม่ได้ */
 function dateError(value, label) {
   if (!value) return null;
   if (!ISO_DATE.test(String(value))) return `${label}ไม่ถูกต้อง`;
   const year = Number(String(value).slice(0, 4));
   if (year < 2000 || year > 2100) return `${label}อยู่นอกช่วงปีที่เป็นไปได้ (${year})`;
+  if (!isIsoDay(String(value))) return `${label}ไม่ถูกต้อง`;
   return null;
 }
 
 // ── ตรวจข้อมูลรอบบริการ ──────────────────────────────────────────────────
+/* ⭐ ความถี่ของรอบ (mig 0397) ตรวจที่ `normalizeCadence` ตัวเดียว — `value` ได้ **ครบหกช่องเสมอ**
+      (`cadenceKind` · `everyDays` · `cadenceEvery` · `cadenceWeekday` · `cadenceMonthDay` · `cadenceMonthDayTo`
+      ช่องที่ชนิดนั้นไม่ใช้เป็น null) ⇒ PATCH ที่ผสม `{...before, ...body}` ไม่มีทางเหลือ `everyDays` ของรอบเดิมค้าง
+      (CHECK service_plans_cadence_shape จะตีแถวแบบนั้นกลับ)
+   ⚠️ ลำดับตรวจ: ไซต์ → ชนิดงาน → วัน → ความถี่ → หมายเหตุ · body ที่ไม่มี `cadenceKind` แต่มี `everyDays` = รอบชนิด days
+      (ผู้เรียกรุ่นก่อน 0397 · ข้อความผิดของชนิด days คือข้อความเดิมทุกตัวอักษร) */
 export function normalizePlanInput(body = {}) {
   const siteId = String(body.siteId ?? '').trim();
   if (!siteId) return { value: null, error: 'ต้องระบุไซต์' };
   if (!PLAN_KINDS.includes(body.kind)) return { value: null, error: 'ชนิดรอบบริการไม่ถูกต้อง' };
-
-  const everyDays = Number(body.everyDays);
-  if (!Number.isInteger(everyDays) || everyDays < 1 || everyDays > 365) {
-    return { value: null, error: 'รอบต้องเป็นจำนวนวันระหว่าง 1–365' };
-  }
 
   for (const [field, label] of [['startDate', 'วันเริ่มรอบ'], ['endDate', 'วันสิ้นสุดรอบ']]) {
     const err = dateError(body[field], label);
@@ -93,6 +100,9 @@ export function normalizePlanInput(body = {}) {
     return { value: null, error: 'วันสิ้นสุดต้องไม่ก่อนวันเริ่มรอบ' };
   }
 
+  const cadence = normalizeCadence(body);
+  if (cadence.error) return { value: null, error: cadence.error };
+
   const note = String(body.note ?? '').trim();
   if (note.length > 1000) return { value: null, error: 'หมายเหตุยาวเกิน 1000 ตัวอักษร' };
 
@@ -101,7 +111,7 @@ export function normalizePlanInput(body = {}) {
       siteId,
       salesOrderId: body.salesOrderId || null,
       kind: body.kind,
-      everyDays,
+      ...cadence.value,
       startDate: body.startDate,
       endDate: body.endDate || null,
       assigneeId: body.assigneeId || null,
@@ -111,6 +121,23 @@ export function normalizePlanInput(body = {}) {
     },
     error: null,
   };
+}
+
+/* ── ผสม body ของ PATCH เข้ากับรอบเดิม (mig 0397 · D12) → `{ merged, error }` ─────────────────────────
+   `merged = {...before, ...body}` แล้วส่งต่อให้ `normalizePlanInput` (ซึ่งคืนหกช่องของความถี่ครบเสมอ)
+   🔴 body ที่มี `everyDays` แต่ **ไม่บอกชนิด** มาจากหน้าจอรุ่นก่อน 0397 (ฟอร์มเดิมส่ง `everyDays` ทุกครั้ง ค่าตั้งต้น 30):
+      · รอบเดิมเป็น days (หรือแถวก่อน 0397) → ยังเป็น days ตามที่ส่งมา — ฟอร์มเดิมพูดได้แค่เรื่องนี้ จึงถูกต้อง
+      · รอบเดิมตั้งตามปฏิทินแล้ว → **ปฏิเสธ** (`CADENCE_ERRORS.staleClient`) — ไม่งั้นแท็บเก่าที่แก้แค่ชื่อเจ้าหน้าที่
+        จะเปลี่ยน "ทุกเดือน วันที่ 22" เป็น "ทุก 30 วัน" เงียบ ๆ
+   ⚠️ `cadenceKind` ที่ส่งมาเป็นค่าว่าง (null / '') นับว่า "ไม่บอกชนิด" เหมือนไม่ส่ง — กติกาเดียวกับ normalizeCadence */
+export function mergePlanPatch(before = {}, body = {}) {
+  const merged = { ...(before || {}), ...(body || {}) };
+  if (blank(body?.cadenceKind) && !blank(body?.everyDays)) {
+    const kind = cadenceOf(before)?.kind || 'days';
+    if (kind !== 'days') return { merged: null, error: CADENCE_ERRORS.staleClient };
+    merged.cadenceKind = 'days';
+  }
+  return { merged, error: null };
 }
 
 // ── การเลื่อนนัด (S-5) ───────────────────────────────────────────────────
@@ -126,12 +153,10 @@ export function normalizePlanInput(body = {}) {
    ไม่มีข้อผูกพันปลายทาง การเดาให้เลขจะกลายเป็น "ตัวเลขที่ดูเหมือนจริง" ทันที
    ⚠️ นับแบบรวมวันเริ่ม: เริ่ม 1 ม.ค. จบ 31 ธ.ค. ทุก 30 วัน = 13 นัด (ไม่ใช่ 12)
    เพราะนัดแรกเกิดวันเริ่มรอบเสมอ */
-export function estimateVisitCount({ startDate, endDate, everyDays } = {}) {
-  const every = Number(everyDays);
-  if (!startDate || !endDate || !Number.isFinite(every) || every < 1) return null;
-  const span = daysBetween(startDate, endDate);   // ตัวนับวันกลางของระบบ (paymentCoverage)
-  if (span == null || span < 0) return null;
-  return Math.floor(span / every) + 1;
+/* ⭐ ตัวนับเป็นของ cadence.js (`countSlots`) ตั้งแต่ mig 0397 — รับ "ของหน้าตาเหมือนรอบ" ทุกชนิด
+      (`{ startDate, endDate, everyDays }` แบบเดิม = ชนิด days ได้เลขเดิมทุกกรณี · รอบตามปฏิทิน = จำนวนช่องของรอบ) */
+export function estimateVisitCount(args = {}) {
+  return countSlots(args);
 }
 
 /* ── คำเรียกจำนวนรอบที่ขาย (มติเจ้าของ 29/09: "ไปกี่รอบ" → "จำนวนรอบบริการ") ─────────────────────────
@@ -157,21 +182,9 @@ export const PLAN_ROUNDS_SOLD_HINT = Object.freeze({
    ⚠️ ความถี่ตั้งได้ 1–365 วัน (normalizePlanInput) ⇒ เกินเพดาน/ต่ำกว่าพื้น = ตัดแล้วบอก `clamped`
       (2 รอบใน 2 ปี → ทุก 365 วัน ≈ 3 นัด · ได้เกินที่ขาย — จอต้องพูดตรง ๆ ไม่ใช่ทำเป็นพอดี)
    ⚠️ ไม่มีวัน · รอบไม่ใช่จำนวนเต็มบวก · วันกลับด้าน = null (ไม่เดา — กติกาเดียวกับ estimateVisitCount) */
-const MAX_EVERY_DAYS = 365;
-
-export function suggestEveryDays({ startDate, endDate, rounds } = {}) {
-  if (!Number.isInteger(rounds) || rounds < 1) return null;
-  if (!startDate || !endDate) return null;
-  const span = daysBetween(startDate, endDate);
-  if (span == null || span < 0) return null;
-  const raw = rounds === 1 ? span + 1 : Math.floor(span / (rounds - 1));
-  const everyDays = Math.min(MAX_EVERY_DAYS, Math.max(1, raw));
-  return {
-    everyDays,
-    visits: estimateVisitCount({ startDate, endDate, everyDays }),
-    clamped: everyDays !== raw,
-  };
-}
+/* ⭐ ตัวจริงย้ายไปอยู่ที่ cadence.js (mig 0397 — คู่กับ `suggestCadence` ที่เสนอได้ทั้งรายเดือน/รายสัปดาห์/ทุก N วัน)
+      re-export ไว้ให้ผู้เรียกเดิมไม่ต้องแก้ import · ผลของวันแบบ 'YYYY-MM-DD' เท่าเดิมทุกกรณี */
+export { suggestEveryDays } from './cadence';
 
 export function isReschedule(before, after) {
   if (!before || !after) return false;
@@ -375,56 +388,41 @@ export function sortByTime(visits = []) {
 }
 
 // ── วันที่ควรเข้าตามรอบ ──────────────────────────────────────────────────
-// วันที่ตกวันหยุด/เสาร์-อาทิตย์ **เลื่อนไปวันทำการถัดไป** — เจ้าหน้าที่ไม่ได้เข้าไซต์วันหยุด
+// วันที่ตกวันหยุด/เสาร์-อาทิตย์ **เลื่อนหนี** — เจ้าหน้าที่ไม่ได้เข้าไซต์วันหยุด
+//   ชนิด days      เลื่อนไปวันทำการถัดไป (ข้ามเดือนได้ — กติกาเดิม ไม่เปลี่ยน)
+//   ตามปฏิทิน      ไปข้างหน้าโดยไม่ข้ามเดือน/สัปดาห์/ช่วงวัน ไปไม่ได้จึงถอยหลัง (มติเจ้าของ 29/09 · mig 0397)
 // ⚠️ การเลื่อนไม่สะสม: รอบถัดไปนับจากวันตามรอบ (ก่อนเลื่อน) ไม่ใช่วันที่เลื่อนแล้ว
 //    ไม่งั้นรอบ "ทุก 30 วัน" จะค่อย ๆ ถอยไปเรื่อย ๆ จนกลายเป็นทุก 35 วันภายในปีเดียว
-export function plannedDates(plan, { from, to } = {}) {
-  if (!plan?.startDate || !plan?.everyDays) return [];
-  const every = Number(plan.everyDays);
-  if (!Number.isFinite(every) || every < 1) return [];
-
-  const start = parseDate(plan.startDate);
-  const rangeFrom = parseDate(from) || start;
-  const rangeTo = parseDate(to);
-  if (!start || !rangeTo) return [];
-
-  const planEnd = parseDate(plan.endDate);
-  const out = [];
-  const cursor = new Date(start);
-  let guard = 0;
-  while (cursor <= rangeTo && guard < 2000) {
-    guard += 1;
-    if (planEnd && cursor > planEnd) break;
-
-    // เลื่อนหนีวันหยุดแบบ "ชั่วคราว" — ไม่แตะ cursor ที่เดินตามรอบจริง
-    const shifted = new Date(cursor);
-    let shiftGuard = 0;
-    while (!isBusinessDay(shifted) && shiftGuard < 14) {
-      shifted.setDate(shifted.getDate() + 1);
-      shiftGuard += 1;
-    }
-    if (shifted >= rangeFrom && shifted <= rangeTo && (!planEnd || shifted <= planEnd || cursor <= planEnd)) {
-      out.push(toLocalISODate(shifted));
-    }
-    cursor.setDate(cursor.getDate() + every);
-  }
-  return out;
+/* ⭐ ตัวเดินรอบอยู่ที่ cadence.js (`plannedVisits`) — ไฟล์นี้แค่ส่งต่อ ⇒ รอบทุกชนิดได้วันจากตัวเดียวกับโมดัลและตัวเติมนัด
+   ⚠️ `holidays` = Set ของ 'YYYY-MM-DD' · ไม่ส่ง = ชุดกลางของ pm/dateHelpers (เทสต์เดิม + ฝั่ง client เดินเหมือนเดิม)
+      🔴 **โค้ดฝั่ง server ของโมดูลบริการต้องส่งเองเสมอ** (`planGen.loadPlanHolidays` · `holidaySet`) — ชุดกลางนั้น
+         ถูก route อื่นเขียนทับรายคำขอ (`setHolidays`) จึงไม่ใช่ของที่ฝั่ง server พึ่งได้ */
+export function plannedDates(plan, { from, to, holidays = getHolidays() } = {}) {
+  return plannedVisits(plan, { from, to, holidays }).map((visit) => visit.date);
 }
 
 // ── นัดที่ต้อง gen เพิ่ม ─────────────────────────────────────────────────
-// ⭐ horizon 90 วัน ไม่ gen ทั้งปี: นัดที่ gen ล่วงหน้า 12 เดือนคือ 12 แถวที่จะถูก
+// ⭐ gen สั้น ไม่ gen ทั้งปี: นัดที่ gen ล่วงหน้า 12 เดือนคือ 12 แถวที่จะถูก
 // เลื่อนทุกเดือนแล้วไม่มีใครกล้าลบ · gen สั้น + ต่อรอบตอนปิดงานจริง ทำให้ตาราง
 // สะท้อนของจริงเสมอ
-export function ensureVisits(plan, existing = [], { from = null, horizonDays = 90 } = {}) {
+// ⚠️ ระยะมองล่วงหน้า = `horizonDaysFor(plan)` เมื่อผู้เรียกไม่ส่ง: days 90 วันเท่าเดิม · รอบตามปฏิทินอย่างน้อยหนึ่งงวดเต็ม
+//    (รอบทุก 3 เดือนที่มองแค่ 90 วันอาจไม่มีนัดข้างหน้าเลย)
+// ⚠️ ปลายช่วง = `horizonEndFor`: รอบตามปฏิทินที่ **ยังไม่เริ่ม** นับระยะจากวันเริ่มรอบ (ไม่ใช่จากวันนี้) ⇒ ได้นัดแรกเสมอ
+//    และตรงกับ "นัดถัดไป" ที่โมดัลโชว์ (ตัวเดียวกัน) · days นับจากวันนี้เท่าเดิม
+export function ensureVisits(plan, existing = [], { from = null, horizonDays = null, holidays = getHolidays() } = {}) {
   if (!plan?.isActive) return [];
-  const startIso = from || businessDate();
-  const start = parseDate(startIso);
-  if (!start) return [];
-  const end = new Date(start);
-  end.setDate(end.getDate() + horizonDays);
+  const startIso = dayOf(from) || businessDate();
+  if (!isIsoDay(startIso)) return [];
 
-  /* นัดที่มีอยู่แล้วของรอบนี้ — เทียบด้วยวัน · นัดที่ถูกยกเลิก **ยังนับว่ามี**
+  /* นัดที่มีอยู่แล้วของรอบนี้ — นัดที่ถูกยกเลิก **ยังนับว่ามี**
      ไม่งั้นยกเลิกแล้วระบบ gen กลับมาให้ใหม่ทุกครั้งที่เปิดหน้า
+
+     ⭐ **กันซ้ำด้วย "ช่องของรอบ" ไม่ใช่ด้วยวันนัด** (mig 0397 · `planSlotDate`) — ช่องถือว่ามีนัดแล้วเมื่อนัดของรอบนี้
+        (a) จำช่องนั้นไว้ (`planSlotDate === ช่อง`) — ย้ายวันนัดไปไหนก็ยังเป็นนัดของช่องเดิม ⇒ ไม่ถูกสร้างซ้ำที่วันเดิม
+            และวันหยุดที่เพิ่มทีหลังก็ไม่ทำให้ช่องเดิมได้นัดใบที่สอง
+        (b) ไม่มีช่อง (นัดก่อน 0397 · นัดที่คนผูกรอบเอง) และ **วันนัดตรงกับวันที่ระบบจะนัดให้ช่องนั้น** — กติกาเดิม
+     ⚠️ นัดที่ถูกยกเลิก **เพราะเปลี่ยนรอบ** ไม่อยู่ในชุดนี้ — เส้น PATCH ถอดมันออกจากรอบแล้ว (`planId` ว่าง)
+        ⇒ เปลี่ยนรอบแล้วเปลี่ยนกลับ ช่องเดิมยังสร้างนัดได้ (ไม่งั้นรอบจะไม่มีนัดเปิดอีกเลย)
 
      🔴 **`v.planId === plan.id` คือกฎ ไม่ใช่ความหละหลวม — ห้าม dedup ข้ามรอบ**
      (มติผู้ใช้ 2026-09-02: *"2 SO ก็ต้อง 2 รอบ"*)
@@ -435,15 +433,18 @@ export function ensureVisits(plan, existing = [], { from = null, horizonDays = 9
        ของใบส่งงาน (2026-08-27): ใบหนึ่งครอบเฉพาะโซนที่ SO ของมันครอบ (`zoneGates`)
        ⇒ ช่างไปเที่ยวเดียวปิดสองใบได้ แต่ *เอกสาร* ต้องแยกตามข้อผูกพัน
      🪤 ถ้าจะ "แก้นัดซ้อน" ให้แก้ที่จอ (บอกให้ชัดว่าคนละใบ) ไม่ใช่ที่นี่ */
-  const taken = new Set(existing.filter((v) => v.planId === plan.id).map((v) => v.scheduledDate));
+  const mine = existing.filter((v) => v.planId === plan.id);
+  const takenSlots = new Set(mine.filter((v) => v.planSlotDate).map((v) => dayOf(v.planSlotDate)));
+  const takenDates = new Set(mine.filter((v) => !v.planSlotDate).map((v) => dayOf(v.scheduledDate)));
 
-  return plannedDates(plan, { from: startIso, to: toLocalISODate(end) })
-    .filter((date) => !taken.has(date))
-    .map((date) => ({
+  return plannedVisits(plan, { from: startIso, to: horizonEndFor(plan, startIso, horizonDays), holidays })
+    .filter((visit) => !takenSlots.has(visit.slot) && !takenDates.has(visit.date))
+    .map((visit) => ({
       siteId: plan.siteId,
       planId: plan.id,
       kind: plan.kind,
-      scheduledDate: date,
+      scheduledDate: visit.date,
+      planSlotDate: visit.slot,
       assigneeId: plan.assigneeId || null,
       assigneeName: plan.assigneeName || null,
       /* ⚠️ ไม่ใส่ status ที่นี่ — **ด่านเป็นคนตัดสิน** (`initialVisitStatus` ที่ planGen)
@@ -452,30 +453,216 @@ export function ensureVisits(plan, existing = [], { from = null, horizonDays = 9
 }
 
 // ── นัดถัดไปหลังปิดงาน ───────────────────────────────────────────────────
-// ⭐ นับจาก **วันที่ทำจริง** ไม่ใช่วันที่นัดไว้ — เข้าช้า 5 วัน รอบถัดไปต้องขยับตาม
+// ⭐ ชนิด days: นับจาก **วันที่ทำจริง** ไม่ใช่วันที่นัดไว้ — เข้าช้า 5 วัน รอบถัดไปต้องขยับตาม
 // ไม่งั้นนัดถัดไปจะมาเร็วกว่าที่ควรทุกครั้งที่เข้าช้า แล้วรอบก็รวนสะสม
-export function nextAfterDone(plan, visit) {
-  if (!plan?.isActive || !plan?.everyDays) return null;
-  const anchor = parseDate(visit?.actualDate || visit?.scheduledDate);
-  if (!anchor) return null;
-
-  const next = new Date(anchor);
-  next.setDate(next.getDate() + Number(plan.everyDays));
-  const planEnd = parseDate(plan.endDate);
-  if (planEnd && next > planEnd) return null;
-
-  let guard = 0;
-  while (!isBusinessDay(next) && guard < 14) { next.setDate(next.getDate() + 1); guard += 1; }
-
-  return {
+/* ⭐ รอบตามปฏิทิน (mig 0397): ข้อเสนอ = **นัดตามรอบตัวถัดไป** หลัง max(วันที่ทำจริง, วันที่นัด) — วันของรอบไม่ไหลตามวันที่ทำ
+      ("วันที่ 22" เข้าช้าไป 28 รอบหน้ายังเป็น 22 ของเดือนถัดไป) · ถ้านัดที่เพิ่งปิดจำช่องของตัวเองไว้ ข้อเสนอต้องเป็นช่อง
+      ที่ **หลังช่องนั้น** (นัดของช่อง 22 พ.ย. ที่ย้ายมาทำ 10 พ.ย. ไม่ถูกเสนอ 23 พ.ย. ซึ่งคือช่องของมันเอง)
+      ข้อเสนอของรอบตามปฏิทินพก `planSlotDate` ไปด้วย ⇒ นัดที่คนกดยืนยันจากแถบ "ตั้งนัดรอบถัดไป" จำช่องได้เหมือนนัดที่ระบบเติม
+   ⚠️ ข้อเสนอของชนิด days **ไม่มี** `planSlotDate` (วันที่เสนอนับจากวันที่ทำจริง ไม่ใช่ช่องของรอบ) — รูปเดิมทุกคีย์
+   ⚠️ `holidays` ไม่ส่ง = ชุดกลางของ pm/dateHelpers · เส้น PATCH ของนัดส่งชุดจากตาราง holidays เอง */
+export function nextAfterDone(plan, visit, { holidays = getHolidays() } = {}) {
+  const cadence = plan?.isActive ? cadenceOf(plan) : null;
+  if (!cadence) return null;
+  const suggestion = (scheduledDate, slot) => ({
     siteId: plan.siteId,
     planId: plan.id,
     kind: plan.kind,
-    scheduledDate: toLocalISODate(next),
+    scheduledDate,
+    ...(slot ? { planSlotDate: slot } : {}),
     assigneeId: plan.assigneeId || visit?.assigneeId || null,
     assigneeName: plan.assigneeName || visit?.assigneeName || null,
     status: 'scheduled',
+  });
+
+  const actual = dayOf(visit?.actualDate);
+  const scheduled = dayOf(visit?.scheduledDate);
+  if (cadence.kind === 'days') {
+    const anchor = actual || scheduled;
+    if (!isIsoDay(anchor)) return null;
+    const next = addDays(anchor, cadence.everyDays);
+    const planEnd = dayOf(plan.endDate);
+    if (planEnd && next > planEnd) return null;
+    return suggestion(plannedDateOfSlot(plan, next, holidays), null);
+  }
+
+  const after = [actual, scheduled].filter(isIsoDay).sort().pop();
+  if (!after) return null;
+  const next = nextPlannedAfter(plan, after, holidays, { afterSlot: visit?.planSlotDate || null });
+  return next ? suggestion(next.date, next.slot) : null;
+}
+
+/* ── เปลี่ยนตารางของรอบที่มีนัดอยู่แล้ว (mig 0397 · คำตอบเจ้าของข้อ 2 + 4) ────────────────────────────
+   แก้ความถี่/ช่วงวันของรอบ → นัดที่ระบบสร้างไว้ตามรอบเดิมและ **ยังไม่ได้เข้า · ไม่มีใครย้ายวัน** ต้องถูกยกเลิก
+   หลังคนยืนยันในโมดัลที่บอกผลก่อน ("ยกเลิกนัดตามรอบเดิม n นัด") · ตัวนี้ตอบว่านัดใบไหนตกกลุ่มไหน — เส้น PATCH เป็นคนเขียน
+
+   `after` = รอบตามที่จะบันทึก (มี `id`) · `visits` = นัดของรอบ (ทุกสถานะ) · คืน
+     cancel       นัดตามรอบเดิมที่จะถูกยกเลิก + ถอดออกจากรอบ (ต้องได้คำยืนยันครบทุกใบก่อน — `cancelConfirmation`)
+     reslot       นัดที่ยังไม่ได้เข้าซึ่ง **อยู่ต่อเป็นนัดของรอบใหม่** — เก็บนัดไว้ ย้ายแค่ช่องที่มันถือ · มีสองเหตุ
+                  (1) วันนัดตรงกับวันที่รอบใหม่นัดให้ช่องที่ยังว่าง ไม่ว่าคนย้ายมาหรือระบบวางไว้
+                      (ทุก 30 วัน → ทุกเดือน วันที่ 22: นัดวันจันทร์ 23 พ.ย. ของช่องเดิม 21 พ.ย. คือวันเดียวกับที่ช่องใหม่ 22 พ.ย.
+                      ซึ่งตรงวันอาทิตย์จะถูกนัด ⇒ ไม่ยกเลิกแล้วสร้างใหม่ให้คนจัดคิวเสียของที่จัดไว้)
+                  (2) ช่องของรอบใหม่ในงวดนี้ (เดือน/สัปดาห์) **เลยวันไปแล้ว** ตัวเติมนัดจึงสร้างให้ไม่ได้อีก — ยกเลิกนัดใบนี้
+                      งวดนี้จะไม่มีนัดเลย (วันที่ 22 → 15 ตอนวันที่ 20: นัด 22 ต้องอยู่ต่อ ไม่งั้นเดือนนี้หายทั้งรอบ)
+     keptMoved    คนย้ายวันเองแล้ว (วันนัด ≠ วันที่รอบ **เดิม** นัดให้ช่องนั้น) — ไม่ยกเลิก
+     keptStarted  กำลังทำ — ไม่ยกเลิก
+     keptPast     เลยวันนัดแล้ว (งานค้าง คนจัดคิวตัดสินเอง) — ไม่ยกเลิก
+     keptManual   นัดของรอบที่ยังไม่ได้เข้าและ **ไม่มีช่อง** (คนตั้งเอง · ยืนยันจากแถบ "ตั้งนัดรอบถัดไป" ของรอบทุก N วัน)
+                  — ไม่เคยถูกแตะ แค่นับให้จอบอก และนับเฉพาะตอนตารางของรอบเปลี่ยนจริง (ความถี่ · วันเริ่ม · วันสิ้นสุด)
+     hold         `{ visit, slot }` นัดที่ **ไม่ถูกยกเลิก** (สามกลุ่ม kept ข้างบน + นัดที่จบไปแล้ว: เข้าแล้ว · ทำไม่ครบ · ทำไม่ได้ ·
+                  คนยกเลิกเอง · เลื่อนแล้ว) ซึ่งวันนัดอยู่ในงวดของช่องใหม่ที่ยังว่าง ⇒ ถือช่องนั้น ตัวเติมนัดจึงไม่สร้างนัดใบที่สอง
+                  ลงงวดเดียวกัน (คำตอบเจ้าของข้อ 2: หนึ่งงวดหนึ่งนัด) — วันที่ 15 → 22 หลังนัดวันที่ 15 ปิดงานแล้ว ไม่ได้นัด 22 ซ้อน
+     release      นัดในสามกลุ่ม kept ที่ไม่มีช่องใหม่ให้ถือ ⇒ ล้างช่องเดิมทิ้ง กลายเป็นนัดของรอบที่ไม่มีช่อง
+                  🔴 ห้ามปล่อยให้ถือช่องของรอบเดิมค้าง — บันทึกรอบครั้งถัดไป (แก้แค่หมายเหตุ) จะตัดสิน "ย้ายเอง" ใหม่กับรอบที่
+                     ไม่ได้สร้างนัดใบนั้น แล้วเสนอยกเลิกนัดที่คนย้ายด้วยมือ (เจอจริงตอนรีวิว 01/10)
+   กติกา:
+     · รอบถูกปิด (`isActive` false) · ความถี่ใหม่อ่านไม่ออก · วันเริ่ม/สิ้นสุดใหม่ไม่ใช่วันจริง = ว่างทุกกลุ่ม (ไม่แตะนัด)
+     · นัดที่ถือช่องซึ่งยังเป็นช่องของรอบใหม่ = นัดตามรอบใหม่อยู่แล้ว ไม่อยู่ในกลุ่มไหน (วันนัดเป็นวันไหนก็ตาม)
+     · ยกเลิกได้เฉพาะนัดที่ **ช่องเป็นช่องของรอบเดิมจริง** — ช่องที่ไม่ได้มาจากรอบเดิม (กดบันทึกซ้ำหลังบันทึกรอบไปแล้วแต่
+       ย้ายช่องไม่ครบ) ไม่รู้ที่มา จึงเก็บไว้เสมอ แล้วให้ถือช่องใหม่/ล้างช่องตามกติกาเดียวกัน ⇒ กดซ้ำแล้วจบที่เดิม
+     · "ย้ายเอง" เทียบกับรอบเดิมด้วยวันหยุดชุดปัจจุบัน — สงสัยเมื่อไร **เก็บไว้** ไม่ยกเลิก
+     · งวด = เดือนของช่อง (รายเดือน รวมแบบช่วงวัน) / สัปดาห์ อาทิตย์–เสาร์ ของช่อง (รายสัปดาห์) · ทุก N วันไม่มีงวด
+       ⇒ ถือช่องได้ทางเดียวคือวันนัดตรงกัน · งวดที่จบไปแล้วทั้งงวดไม่ถูกแตะ (ไม่เขียนย้อนประวัติ)
+     · ช่องหนึ่งรับได้นัดเดียว: วันนัดตรงกันก่อน → นัดที่ไม่ถูกยกเลิก → นัดที่รอยกเลิก (เฉพาะช่องที่เลยวันแล้ว)
+     · ทุกกลุ่มเรียงตามวันนัด แล้วตาม id */
+const OPEN_VISIT_STATUSES = ['draft', 'scheduled', 'in_progress'];
+
+/** ตารางของรอบเปลี่ยนไหม — ความถี่ · วันเริ่ม · วันสิ้นสุด (เจ้าหน้าที่ · หมายเหตุ · ใบสั่งขาย ไม่ใช่ตาราง) */
+function planScheduleChanged(before, after) {
+  return !sameCadence(before, after)
+    || dayOf(before?.startDate) !== dayOf(after?.startDate)
+    || dayOf(before?.endDate) !== dayOf(after?.endDate);
+}
+
+export function planScheduleDiff({
+  before = null, after = null, visits = [], todayIso = businessDate(), holidays = getHolidays(),
+} = {}) {
+  const out = {
+    cancel: [], reslot: [], keptMoved: [], keptStarted: [], keptPast: [], keptManual: [], hold: [], release: [],
   };
+  if (!after?.isActive || !cadenceOf(after)) return out;
+  const today = dayOf(todayIso);
+  const afterEnd = dayOf(after.endDate);
+  if (!isIsoDay(today) || !isIsoDay(dayOf(after.startDate)) || (afterEnd !== null && !isIsoDay(afterEnd))) return out;
+
+  const mine = (visits || []).filter((v) => v.planId === after.id);
+  const dateOf = (v) => dayOf(v.scheduledDate) || '';
+  const byDateThenId = (a, b) => {
+    const x = dateOf(a);
+    const y = dateOf(b);
+    return x < y ? -1 : x > y ? 1 : String(a.id).localeCompare(String(b.id));
+  };
+  const isOpen = (v) => OPEN_VISIT_STATUSES.includes(v.status);
+
+  if (planScheduleChanged(before, after)) {
+    out.keptManual = mine.filter((v) => !v.planSlotDate && isOpen(v) && dateOf(v) >= today).sort(byDateThenId);
+  }
+
+  const slotted = mine.filter((v) => v.planSlotDate);
+  if (!slotted.length) return out;
+  const heldSlots = slotted.map((v) => dayOf(v.planSlotDate)).sort();
+  const heldRange = { from: heldSlots[0], to: heldSlots[heldSlots.length - 1] };
+  const live = new Set(cadenceSlots(after, heldRange));
+  const stale = slotted.filter((v) => !live.has(dayOf(v.planSlotDate))).sort(byDateThenId);   // ช่องไม่ใช่ช่องของรอบใหม่
+  if (!stale.length) return out;
+
+  /* นัดใบนี้เป็นอะไร: settled จบไปแล้ว · started กำลังทำ · past เลยวันนัด · unknown ช่องไม่ได้มาจากรอบเดิม ·
+     moved คนย้ายวัน · due ระบบวางไว้ตามรอบเดิมและยังไม่มีใครแตะ (ใบเดียวที่ยกเลิกได้) */
+  const origin = cadenceOf(before) ? new Set(cadenceSlots(before, heldRange)) : new Set();
+  const classOf = (visit) => {
+    if (!isOpen(visit)) return 'settled';
+    if (visit.status === 'in_progress') return 'started';
+    if (dateOf(visit) < today) return 'past';
+    const slot = dayOf(visit.planSlotDate);
+    if (!origin.has(slot)) return 'unknown';
+    return dateOf(visit) !== plannedDateOfSlot(before, slot, holidays) ? 'moved' : 'due';
+  };
+  const kinds = new Map(stale.map((visit) => [visit, classOf(visit)]));
+
+  /* ช่องของรอบใหม่ที่ยังว่าง (ไม่มีนัดของรอบนี้ถือ — ทุกสถานะ) รอบ ๆ นัดพวกนี้ · `span` = งวดของช่อง (ทุก N วัน = null) */
+  const dates = stale.map(dateOf).filter(isIsoDay);
+  const lo = dates.length && dates[0] < today ? dates[0] : today;
+  const hi = dates.length && dates[dates.length - 1] > today ? dates[dates.length - 1] : today;
+  const held = new Set(heldSlots);
+  const free = cadenceSlots(after, { from: addDays(lo, -31), to: addDays(hi, 31) })
+    .filter((slot) => !held.has(slot))
+    .map((slot) => {
+      const period = slotPeriod(after, slot);
+      return { slot, date: plannedDateOfSlot(after, slot, holidays), span: period ? (period.fallback || period) : null };
+    })
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.slot < b.slot ? -1 : 1)));
+  const taken = new Set();
+  const placed = new Set();
+  const keep = (visit) => {
+    const kind = kinds.get(visit);
+    if (kind === 'moved') out.keptMoved.push(visit);
+    else if (kind === 'started') out.keptStarted.push(visit);
+    else if (kind === 'past') out.keptPast.push(visit);
+  };
+
+  /* ① วันนัดตรงกับวันที่รอบใหม่นัดให้ช่องที่ตัวเติมนัดยังสร้างได้ (วันนัด ≥ วันนี้) — วันเดียวมีหลายช่อง = ช่องแรก ใบแรก */
+  const exact = new Map();
+  for (const item of free) if (item.date >= today && !exact.has(item.date)) exact.set(item.date, item);
+  for (const visit of stale) {
+    const hit = exact.get(dateOf(visit));
+    if (!hit) continue;
+    exact.delete(hit.date);
+    taken.add(hit.slot);
+    placed.add(visit);
+    const kind = kinds.get(visit);
+    if (kind === 'settled' || kind === 'started') {
+      out.hold.push({ visit, slot: hit.slot });
+      keep(visit);
+    } else {
+      out.reslot.push({ visit, slot: hit.slot });
+    }
+  }
+
+  /* ช่องว่างของงวดที่วันนั้นอยู่ — เฉพาะงวดที่ยังไม่จบ (วันสุดท้ายของงวด ≥ วันนี้) */
+  const slotOfPeriod = (date) => free.find((item) => item.span && !taken.has(item.slot)
+    && item.span.to >= today && date >= item.span.from && date <= item.span.to) || null;
+
+  /* ② นัดที่ไม่ถูกยกเลิก ถือช่องของงวดที่มันอยู่ · ไม่มีช่องให้ถือ = ล้างช่องเดิม (นัดที่จบไปแล้วไม่แตะ) */
+  for (const visit of stale) {
+    const kind = kinds.get(visit);
+    if (placed.has(visit) || kind === 'due') continue;
+    const item = slotOfPeriod(dateOf(visit));
+    if (item) {
+      taken.add(item.slot);
+      out.hold.push({ visit, slot: item.slot });
+    } else if (kind !== 'settled') {
+      out.release.push(visit);
+    }
+    keep(visit);
+  }
+
+  /* ③ นัดที่รอยกเลิก: งวดของมันยังไม่มีนัดใบไหนถือช่อง และช่องนั้นเลยวันไปแล้ว = อยู่ต่อ · นอกนั้นยกเลิก */
+  for (const visit of stale) {
+    if (placed.has(visit) || kinds.get(visit) !== 'due') continue;
+    const item = slotOfPeriod(dateOf(visit));
+    if (item && item.date < today) {
+      taken.add(item.slot);
+      out.reslot.push({ visit, slot: item.slot });
+    } else {
+      out.cancel.push(visit);
+    }
+  }
+
+  const byVisit = (a, b) => byDateThenId(a.visit, b.visit);
+  out.reslot.sort(byVisit);
+  out.hold.sort(byVisit);
+  for (const group of [out.keptMoved, out.keptStarted, out.keptPast]) group.sort(byDateThenId);
+  return out;
+}
+
+/* คำยืนยันจากจอครอบนัดที่ server จะยกเลิกครบไหม (D13) → `{ ok, stale }`
+   ok    = **ทุกใบ** ที่จะถูกยกเลิกอยู่ในรายการที่จอยืนยันมา (ยืนยันมาเกินได้ — นัดที่ปิด/เริ่ม/ย้ายไประหว่างนั้นหลุดออกเอง
+           ⇒ กดบันทึกซ้ำหลังยกเลิกไปครึ่งทางไม่ถูกถามใหม่)
+   stale = ยืนยันมาแล้วแต่ไม่ครบ (มีนัดใหม่ที่เข้าข่ายหลังจอเปิดรายการ) — จอต้องโชว์รายการใหม่ให้ดูอีกรอบ */
+export function cancelConfirmation(diff, cancelVisitIds) {
+  const confirmed = new Set(Array.isArray(cancelVisitIds) ? cancelVisitIds.map(String) : []);
+  const missing = (diff?.cancel || []).filter((visit) => !confirmed.has(String(visit.id)));
+  return { ok: missing.length === 0, stale: missing.length > 0 && confirmed.size > 0 };
 }
 
 // "อยู่บนตาราง" มีนิยามเดียวอยู่ที่ visitStatus.js — ห้ามเขียนซ้ำที่นี่

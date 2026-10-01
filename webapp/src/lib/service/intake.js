@@ -22,6 +22,7 @@ import { coversDate, paidThrough } from '@/lib/sales/paymentCoverage';
 import { paymentNotRequired } from '@/lib/sales/salesOrderPayments';
 import { ORIGIN_PIPELINE } from '@/lib/sales/historicalOrders';
 import { fmtNumber } from '@/lib/format';
+import { cadenceText } from './cadence';
 
 /* แท็บของหน้างานเข้าใหม่ (mig 0392 · D14) — งานแรกของ TS คือ "รอตั้งรอบ" (ค่าตั้งต้นของหน้า)
    ⚠️ **คีย์ `bind` คงไว้** เพื่อ URL/ลิงก์เดิม แต่ความหมายเปลี่ยนเป็น "ใบเดิมที่รอฝ่ายขายตั้งงานบริการ" (ดูอย่างเดียว)
@@ -266,6 +267,9 @@ export function visitQueue({ plans = [], visits = [], sites = [], ordersById = n
       site: sitesById.get(plan.siteId) || null,
       kind: plan.kind,
       everyDays: plan.everyDays,
+      /* คำบอกความถี่ของรอบทุกชนิด (mig 0397) — "ทุก 30 วัน" · "ทุกเดือน วันที่ 22" · "ทุก 2 สัปดาห์ วันศุกร์"
+         ⭐ จอพิมพ์ช่องนี้ ไม่ประกอบ "ทุก N วัน" จาก `everyDays` เอง (รอบตามปฏิทินไม่มี `everyDays` ⇒ ได้ "ทุก วัน" เปล่า ๆ) */
+      cadenceText: cadenceText(plan),
       assigneeName: plan.assigneeName || null,
       startDate: plan.startDate || null,
       /* ⚠️ ไซต์เดียวโผล่ได้หลายแถวแล้ว ⇒ จอต้องมีอะไรแยกแถวออกจากกัน
