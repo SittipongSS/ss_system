@@ -130,14 +130,14 @@
 .error b { margin-inline-end: var(--space-1); color: var(--red); }
 
 /* ── เนื้อ: สองคอลัมน์ (ของที่วัด | ของที่ถ่าย) · ≤680 คอลัมน์เดียวตามลำดับงานในห้อง ──────────────────
-   ⚠️ ลำดับใน DOM = ลำดับบนมือถือ (ขนาด → ภาพกว้าง → จุด → ภาพจุด → หมายเหตุ → ทางออก) · พื้นที่กริดจัดสองคอลัมน์
+   ⚠️ ลำดับใน DOM = ลำดับบนมือถือ (ขนาด → ภาพกว้าง → จุด (+ รูปของจุด) → หมายเหตุ → ทางออก) · พื้นที่กริดจัดสองคอลัมน์
+   🔄 PR-S — หัวข้อ "ภาพจุดติดตั้ง" ถูกรวมเข้าแถวของจุดแล้ว ⇒ ไม่มีช่อง `spotphotos` ในกริด
    ⚠️ `align-items: start` — การ์ดไม่ยืดตามเพื่อนแถวเดียวกัน (ขนาดสูงกว่ารูปเสมอ) */
 .body {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-template-areas:
     "size wide"
-    "size spotphotos"
     "spots note"
     "spots cut";
   align-items: start;
@@ -150,7 +150,6 @@
 .body > [data-area="size"] { grid-area: size; }
 .body > [data-area="wide"] { grid-area: wide; }
 .body > [data-area="spots"] { grid-area: spots; }
-.body > [data-area="spotphotos"] { grid-area: spotphotos; }
 .body > [data-area="note"] { grid-area: note; }
 .body > [data-area="cut"] { grid-area: cut; }
 
@@ -387,7 +386,7 @@
 /* ── แผ่นรูป — สามแผ่นต่อแถว (ค่าตั้งต้นของแผง) ────────────────────────────── */
 .photos { min-width: 0; }
 
-/* ── ③ จุด: เลข · ชื่อ (+ บันทึก) · เมนู ⋯ ─────────────────────────────── */
+/* ── ③ จุด: เลข · ชื่อ (+ บันทึก) · เมนู ⋯ — อยู่บนแผ่นรูปของจุดนั้นในกรอบเดียวกัน (แถวรายกลุ่มของแผงไฟล์แนบ) ── */
 .spot {
   display: flex;
   align-items: flex-start;
@@ -395,17 +394,24 @@
 }
 
 .spotNo {
+  --spot-no-size: 24px;
   flex: none;
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
+  width: var(--spot-no-size);
+  height: var(--spot-no-size);
   margin-top: var(--space-2-5);
   border-radius: var(--radius-full);
   background: var(--panel-2);
   color: var(--text-2);
   font-size: var(--fs-4);
   font-weight: var(--fw-semibold);
+}
+
+/* ดูอย่างเดียว: ชื่อจุดเป็นตัวหนังสือ (ไม่ใช่ช่องกรอก 44px) ⇒ วงเลขวางกลางบรรทัดแรกของชื่อ
+   🐞 UAT 01/10: ระยะ 10px ของโหมดแก้ (กลางช่องกรอก) ทำให้วงเลขต่ำกว่าชื่อ ~10px ในแถวที่ไม่มีบันทึก/รูป */
+.spot[data-mode="read"] .spotNo {
+  margin-top: calc((var(--fs-7) * var(--lh-thai) - var(--spot-no-size)) / 2);
 }
 
 .spotMain {
@@ -441,6 +447,55 @@
   line-height: var(--lh-thai);
   white-space: nowrap;
 }
+
+/* ── ผูกรูปกับจุด (ถาด "ยังไม่ได้ผูกจุด" · กล่องดูรูปเต็ม) — ชิปทุกจุดกางให้เห็น สูงระดับนิ้ว ─────────────
+   ⚠️ ชื่อจุดยาวได้ถึง 100 ตัวอักษร ⇒ ชิปห่อบรรทัดได้ ไม่ตัดท้าย (ชื่อที่ถูกตัดคือจุดที่เลือกผิด) */
+.link {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.linkLabel {
+  color: var(--text-2);
+  font-size: var(--fs-4);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+.linkChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1-5);
+}
+
+.linkChip {
+  max-width: 100%;
+  min-height: var(--ctl-h-touch);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  background: var(--panel-solid);
+  color: var(--text-1);
+  font-family: inherit;
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  text-align: start;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+/* "ไม่ผูกจุด" (ถอดกลับถาด) — เส้นประแบบกรอบถาด · ตัวหนังสือรอง: ไม่ใช่จุด ตาต้องแยกออกจากชื่อจุด */
+.linkChip[data-kind="unlink"] {
+  border-style: dashed;
+  color: var(--text-2);
+  font-weight: var(--fw-medium);
+}
+
+.linkChip:hover:not(:disabled) { background: var(--panel-2); }
+.linkChip:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+.linkChip:disabled { color: var(--text-3); cursor: progress; }
 
 .readValue {
   min-width: 0;
@@ -551,6 +606,12 @@
    ⇒ ย้ายพื้นที่แล้วบานจอดต่ำไป ~130px (🐞 review 26/09 รอบสาม) · กันที่ช่อง/ปุ่มในเนื้อของบานเองแทน (ระยะจอด = แถบบนของแอป + หัวบาน) */
 .page[data-layout="pane"] :is(.body, .cutBody) :is(input, textarea, select, button, a) {
   scroll-margin-top: calc(var(--scroll-anchor-top) + var(--survey-zone-head-h));
+}
+
+/* ถาด "ยังไม่ได้ผูกจุด" — ปลายทางของ "ไปผูกจุด" จากแท็บสรุป (`scrollIntoView`) ต้องจอดใต้หัวที่ติดบน ไม่จมใต้มัน
+   (หน้าเดียวมี scroll-padding ที่ <html> แล้ว · บานขวากันเองท่าเดียวกับช่อง/ปุ่มข้างบน) */
+.page[data-layout="pane"] .body :global([data-kind="loose"]) {
+  scroll-margin-top: calc(var(--scroll-anchor-top) + var(--survey-zone-head-h) + var(--space-2));
 }
 
 /* ปุ่มของหัวเองไม่นับแถบกัน — Tab มาที่ ‹ › / ⋮ แล้วหน้าไม่เลื่อนหนีหัวที่ติดบนอยู่แล้ว */

@@ -28,8 +28,10 @@
 //   แม้บนแท็บเล็ต · ลบ.ม. กับสูตรจึงยุบเป็นบรรทัดรองของเซลล์ที่มันอธิบาย
 // ⭐ **ดูอย่างเดียว = ตัวหนังสือ ไม่ใช่ปุ่มจาง** — จุดที่เลือกคือผลที่ฝ่ายขายอ่าน ต้องชัดที่สุด
 //   ในแถว และบอกด้วยไอคอน ไม่ใช่สีขอบอย่างเดียว (WCAG 1.4.1)
+// ⭐ **รูปของแต่ละจุดอยู่ใต้จุดนั้น** (PR-S · มติเจ้าของ 28–30/09) — หัวหน้าเลือกจุดจากรูปของจุด ไม่ใช่เทียบกองรูปรวมเอง
+//   (`surveyResultSpotCell` · ผูกด้วย `metadata.spotId`) · รูปจุดที่ยังไม่ผูกขึ้นเป็นบรรทัดอำพันท้ายช่อง ไม่หายเงียบ
 import { Fragment, useCallback, useMemo, useState } from "react";
-import { AlertTriangle, Check, Circle, CircleCheck, ClipboardList, Minus, Pencil, Plus } from "lucide-react";
+import { AlertTriangle, Check, Circle, CircleCheck, ClipboardList, Link2, Minus, Pencil, Plus } from "lucide-react";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import Button from "@/components/ui/Button";
 import { DetailCard } from "@/components/ui/DetailPage";
@@ -38,7 +40,7 @@ import PhotoThumb from "@/components/ui/PhotoThumb";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { TableScroll } from "@/components/ui/Table";
 import { SURVEY_DOC_PLAN, surveyResultMissing, surveyZoneName } from "@/lib/service/survey";
-import { SURVEY_UNKNOWN_TEXT, surveyResultZoneCell } from "@/lib/service/surveyControl";
+import { SURVEY_UNKNOWN_TEXT, surveyResultSpotCell, surveyResultZoneCell } from "@/lib/service/surveyControl";
 import { surveyZoneTitle } from "@/lib/service/surveyFieldView";
 import {
   surveyDecisionDraft, surveyDecisionDirty, surveyDecisionError, surveyDecisionPayload,
@@ -59,6 +61,9 @@ const TABLE_MIN_WIDTH = 680;
 
 /* ชนิดไฟล์ของช่องผัง — ค่าคงที่ระดับไฟล์ (ส่งอาร์เรย์ใหม่ทุกครั้งที่วาด = แผงคิดชุดชนิดใหม่ทุกรอบ) */
 const PLAN_DOC_TYPES = [{ key: SURVEY_DOC_PLAN, label: "ภาพผังที่มาร์กจุดแล้ว" }];
+
+/* ภาพย่อใต้ชิปของจุด — ช่องเลือกจุดแคบ ⇒ สามรูปต่อจุด ที่เหลือบอกด้วย "+n" (ท่าเดียวกับช่องพื้นที่) */
+const SPOT_THUMBS = 3;
 
 /* ── ช่องภาพผังของพื้นที่หนึ่งแถว ────────────────────────────────────────────
    ⭐ **component ระดับไฟล์ ไม่ใช่ฟังก์ชันในลูป** — แผงไฟล์แนบยิง `onItemsChange` ใน effect ที่ขึ้นกับ
@@ -121,6 +126,11 @@ export default function SurveyResultTable({
      เฉพาะเลขที่หัวหน้าเคาะแล้ว ไม่เห็นตัวเลขสูตร (กติกาเดียวกับการ์ดพื้นที่ `showPackage`)
      ⚠️ แยกจาก `canDecide` — หัวหน้าที่เปิดใบที่ส่งไปแล้ว (ล็อก) ยังต้องเห็นสูตรเทียบ */
   showFormula = true,
+  /* ผูกรูปจุดกับจุดได้ไหม (`canLinkSpotPhotos` ของ server) — บรรทัด "ยังไม่ได้ผูกจุด" บอกทางไปแท็บหน้างานเฉพาะคนที่ทำได้ */
+  canLinkSpots = false,
+  /* `(zoneId)` — ไปถาด "ยังไม่ได้ผูกจุด" ของพื้นที่นั้นบนแท็บหน้างาน (หน้าสลับแท็บ · เปิดพื้นที่ · เลื่อนถึงถาด)
+     🐞 UAT 01/10: เดิมเป็นตัวหนังสือเฉย ๆ ⇒ หัวหน้าต้องสลับแท็บ เปิดพื้นที่ แล้วเลื่อนหาถาดเอง · ไม่ส่ง = บอกทางเป็นตัวหนังสือ */
+  onOpenSpotTray,
 }) {
   /* ร่างของหัวหน้า — key = id ของพื้นที่ · ค่าที่ไม่มีในนี้แปลว่า "ยังไม่ถูกแตะ"
      ⚠️ ห้ามเติมค่าตั้งต้นลงไปตอนเปิดจอ — ของที่เติมไว้ล่วงหน้าแยกไม่ออกจากของที่คนพิมพ์
@@ -239,6 +249,8 @@ export default function SurveyResultTable({
               const miss = surveyResultMissing(zone, files);
               const missText = cut ? "" : [...miss.field, ...miss.result].join(" · ");
               const spots = Array.isArray(zone.spots) ? zone.spots : [];
+              /* รูปของแต่ละจุด + รูปที่ยังไม่ผูก — ตัวจัดกลุ่มเดียวกับจอหน้างาน */
+              const spotCell = surveyResultSpotCell(zone, files);
               const busy = busyZone === zone.id || saving;
               const zoneCode = zone.zoneCodeUnknown === true ? SURVEY_UNKNOWN_TEXT : naText(zone.zoneCode);
               /* ⚠️ "เพิ่มหน้างาน" ต้องอ่านออกจาก `status` ไม่ใช่จาก `!zoneId` — พื้นที่ที่
@@ -336,8 +348,10 @@ export default function SurveyResultTable({
                         />
                       </td>
 
-                      {/* ── เลือกจุดที่จะติดตั้ง — ติ๊กจากที่ช่างแจ้งมา ──────────────── */}
-                      <td data-label="เลือกจุด">
+                      {/* ── เลือกจุดที่จะติดตั้ง — ติ๊กจากที่ช่างแจ้งมา ────────────────
+                          ⚠️ `ui-cell-wide` — 🐞 UAT 01/10: ใบที่ล็อก/คนดูอย่างเดียว ชิปเป็นตัวหนังสือ (ไม่มีปุ่ม) ⇒ ข้อยกเว้น
+                             "เซลล์ที่มีคอนโทรล" ของ Table.module.css ไม่โดน ⇒ เพดาน 220px ตัดชื่อจุด + ภาพย่อของจุด (ท่าเดียวกับช่องพื้นที่) */}
+                      <td data-label="เลือกจุด" className="ui-cell-wide">
                         {spots.length === 0 ? (
                           <span className={styles.warnText}>ช่างยังไม่แจ้งจุดสักจุด</span>
                         ) : (
@@ -346,36 +360,83 @@ export default function SurveyResultTable({
                                 ไม่มีสิทธิ์เคาะ = ไม่โชว์ปุ่ม ⇒ ชิปเป็นตัวหนังสือ
                                 ⭐ ชิปที่กดได้สูง 44px (ขนาดนิ้ว · AW-3) — หัวหน้าเคาะบนแท็บเล็ตด้วย */}
                             <div className={styles.spots}>
-                              {spots.map((s) => {
+                              {spotCell.rows.map(({ spot: s, thumbs }) => {
                                 const on = draft.spotIds.includes(String(s.id));
                                 /* บันทึกของช่างต่อท้ายชื่อจุด ("ปลั๊กอยู่ใต้โซฟา") — ข้อมูลที่ใช้ตัดสินว่าจะเลือกจุดไหน
                                    ⚠️ ตัดยาวด้วยจุดไข่ปลา ข้อความเต็มอยู่ในการ์ดพื้นที่ของแท็บหน้างาน */
                                 const note = String(s.note || "").trim();
-                                return canDecide ? (
-                                  <button
-                                    key={s.id} type="button" className={styles.spotChip}
-                                    data-on={on ? "1" : undefined}
-                                    disabled={busy}
-                                    aria-pressed={on ? "true" : "false"}
-                                    onClick={() => toggleSpot(s.id)}
-                                  >
-                                    {on
-                                      ? <CircleCheck size={15} aria-hidden="true" />
-                                      : <Circle size={15} aria-hidden="true" />}
-                                    {s.label}
-                                    {note ? <span className={styles.spotNote} title={note}>· {note}</span> : null}
-                                  </button>
-                                ) : (
-                                  <span key={s.id} className={styles.spotChip} data-on={on ? "1" : undefined}>
-                                    {on && <Check size={12} role="img" aria-label="เลือกติดตั้ง" />}
-                                    {s.label}
-                                  </span>
+                                return (
+                                  <div key={s.id} className={styles.spotItem}>
+                                    {canDecide ? (
+                                      <button
+                                        type="button" className={styles.spotChip}
+                                        data-on={on ? "1" : undefined}
+                                        disabled={busy}
+                                        aria-pressed={on ? "true" : "false"}
+                                        onClick={() => toggleSpot(s.id)}
+                                      >
+                                        {on
+                                          ? <CircleCheck size={15} aria-hidden="true" />
+                                          : <Circle size={15} aria-hidden="true" />}
+                                        {s.label}
+                                        {note ? <span className={styles.spotNote} title={note}>· {note}</span> : null}
+                                      </button>
+                                    ) : (
+                                      <span className={styles.spotChip} data-on={on ? "1" : undefined}>
+                                        {on && <Check size={12} role="img" aria-label="เลือกติดตั้ง" />}
+                                        {s.label}
+                                      </span>
+                                    )}
+                                    {thumbs.length ? (
+                                      <div className={styles.spotThumbs} role="group" aria-label={`รูปของจุด ${s.label || ""}`.trim()}>
+                                        {thumbs.slice(0, SPOT_THUMBS).map((t) => (
+                                          <a key={t.file.id} className={styles.thumb} href={t.href} target="_blank" rel="noreferrer"
+                                            aria-label={`ดูรูปจุด ${s.label || ""} ${t.file.fileName || ""} (เปิดแท็บใหม่)`.replace(/\s+/g, " ")}>
+                                            <PhotoThumb src={t.href} alt="" label="เปิดไม่ได้" className={styles.thumbImg} />
+                                          </a>
+                                        ))}
+                                        {thumbs.length > SPOT_THUMBS
+                                          ? <span className={styles.thumbMore}>+{fmtNumber(thumbs.length - SPOT_THUMBS)}</span>
+                                          : null}
+                                      </div>
+                                    ) : null}
+                                  </div>
                                 );
                               })}
                             </div>
                             <span className={styles.sub}>เลือก {picked} / {spots.length}</span>
                           </>
                         )}
+                        {/* รูปจุดที่ยังไม่ผูก (ถ่ายก่อนมีแถวของจุด · จุดถูกลบ) — ต้องเห็น ไม่ใช่หายเงียบ · ผูกได้ที่หน้าพื้นที่ */}
+                        {spotCell.unlinkedCount ? (
+                          <div className={styles.spotLoose}>
+                            <span className={styles.warnText}>
+                              ยังไม่ได้ผูกจุด {fmtNumber(spotCell.unlinkedCount)} รูป{canLinkSpots && !onOpenSpotTray ? " — ผูกที่แท็บหน้างาน" : ""}
+                            </span>
+                            {spotCell.unlinked.length ? (
+                              <div className={styles.spotThumbs} role="group" aria-label="รูปจุดที่ยังไม่ได้ผูกจุด">
+                                {spotCell.unlinked.slice(0, SPOT_THUMBS).map((t) => (
+                                  <a key={t.file.id} className={styles.thumb} href={t.href} target="_blank" rel="noreferrer"
+                                    aria-label={`ดูรูปจุดที่ยังไม่ได้ผูก ${t.file.fileName || ""} (เปิดแท็บใหม่)`.replace(/\s+/g, " ")}>
+                                    <PhotoThumb src={t.href} alt="" label="เปิดไม่ได้" className={styles.thumbImg} />
+                                  </a>
+                                ))}
+                                {spotCell.unlinked.length > SPOT_THUMBS
+                                  ? <span className={styles.thumbMore}>+{fmtNumber(spotCell.unlinked.length - SPOT_THUMBS)}</span>
+                                  : null}
+                              </div>
+                            ) : null}
+                            {/* ทางไปผูก = ปุ่มเดียวถึงถาดของพื้นที่นี้ · เฉพาะคนที่ผูกได้ (กติกา ui-visibility) */}
+                            {canLinkSpots && onOpenSpotTray ? (
+                              <Button size="sm" variant="outline" className={`${styles.coarseTouch} ${styles.looseJump}`}
+                                icon={<Link2 size={14} aria-hidden="true" />}
+                                aria-label={`ไปผูกจุด — ${surveyZoneName(zone)} (แท็บหน้างาน)`}
+                                onClick={() => onOpenSpotTray(zone.id)}>
+                                ไปผูกจุด
+                              </Button>
+                            ) : null}
+                          </div>
+                        ) : null}
                       </td>
 
                       {/* ── แพ็คเกจ — สูตรเสนอ หัวหน้าเคาะ ─────────────────────────── */}

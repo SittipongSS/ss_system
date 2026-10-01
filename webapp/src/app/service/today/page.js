@@ -22,7 +22,7 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import Workspace from "@/components/ui/Workspace";
 import CloseVisitSheet from "@/components/service/CloseVisitSheet";
-import { canDoFieldWork } from "@/lib/permissions";
+import { canDoFieldWork, usesCrewShell } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { VISIT_KIND_LABELS, visitTimeText, visitWarnings } from "@/lib/service/rounds";
 import { VISIT_STATUS_LABELS, isClosedVisit } from "@/lib/service/visitStatus";
@@ -88,6 +88,13 @@ export default function TodayPage() {
      ⚠️ ด่านจริงยังอยู่ที่ server รายใบ (`canWorkOwnVisit`) — หน้านี้แสดงเฉพาะงานของคนคนนั้น */
   const canEdit = useMemo(
     () => canDoFieldWork({ role, team, teams, department }),
+    [role, team, teams, department],
+  );
+  /* 🔴 **ส่งงานแล้ว ช่างแก้ไม่ได้** (มติเจ้าของ 28/09 Q3) — server ตอบ 409 ทุกครั้งที่ช่างเขียนนัดงานเครื่อง
+     ที่ปิดแล้ว (`crewClosedEditError` ที่ requireVisit) ⇒ ปุ่ม "แก้ผลการเข้า" ที่กดแล้วพังทุกครั้งต้องไม่โชว์
+     ให้ช่าง (ไม่มีสิทธิ์ = ไม่โชว์) · หัวหน้า/ผู้จัดคิวที่ดูแทนผ่าน ?user= ยังเห็นตามเดิม */
+  const crewShell = useMemo(
+    () => usesCrewShell({ role, team, teams, department }),
     [role, team, teams, department],
   );
 
@@ -370,7 +377,7 @@ export default function TodayPage() {
 
                     <div className={styles.actions}>
                       {/* ⭐ สองปุ่มคนละจังหวะ: ยังไม่เริ่ม = "เริ่มงาน" (ประทับเวลาเริ่มที่ server)
-                          · กำลังทำอยู่ = "ปิดงาน" · ปิดแล้ว = "แก้ผลการเข้า"
+                          · กำลังทำอยู่ = "ปิดงาน" · ปิดแล้ว = "แก้ผลการเข้า" (ไม่ใช่ของช่าง — 28/09 Q3)
                           ไม่มีปุ่มไหนให้พิมพ์เวลาเอง — นั่นคือทั้งเหตุผลของการมีปุ่มเริ่มงาน
                           ⚠️ ลำดับตามจังหวะงาน เริ่มงาน → บันทึกหน้างาน → ปิดงาน · ปุ่ม primary ใบละปุ่ม
                           🐞 เดิมนัดประเมินมี primary สองปุ่มเท่ากัน และ "ปิดงาน" มาก่อน "บันทึกหน้างาน" */}
@@ -401,7 +408,7 @@ export default function TodayPage() {
                           ส่งงาน
                         </Button>
                       )}
-                      {canEdit && !surveyLink && (running || done) && (
+                      {canEdit && !surveyLink && (running || (done && !crewShell)) && (
                         <Button tone={done ? "neutral" : "primary"} variant={done ? "quiet" : undefined} size="sm"
                           onClick={() => setClosing(visit)}>
                           {done ? "แก้ผลการเข้า" : "ปิดงาน"}

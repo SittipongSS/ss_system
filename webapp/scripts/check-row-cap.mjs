@@ -97,7 +97,7 @@ const CAPS = {
   sales_contracts: 6,
   service_zones: 5,             // 2026-09-28 mig 0392: เส้น bind เดียวกัน 6 → 5
   service_plans: 1,
-  service_visits: 3,
+  service_visits: 2, // 2026-09-28 แผน operation-crew S2: `loadVisits` ไล่หน้าด้วย fetchAll (คิวงานช่าง/ตารางทั้งฝ่าย/ประวัติไซต์) 3 → 2
   sales_order_installments: 1,
   /* 2026-09-28 — mig 0392 (งานบริการรายบรรทัดของใบสั่งขาย): ตารางใหม่ ขึ้นทะเบียนตั้งแต่ยังว่าง (แพตเทิร์นเดียวกับ
      service_assets) · หนึ่งบรรทัดจัดสรรได้ถึง 500 โซน และตั้งย้อนหลังทีเดียว ~59 ใบ ⇒ ทุกจุดอ่านต้องห่อ fetchAll ตั้งแต่ต้น */

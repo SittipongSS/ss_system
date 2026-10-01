@@ -19,6 +19,8 @@ import {
   SALES_ATTACHMENT_TABLE, canAttachToSalesEntity, isSalesAttachment,
 } from '@/lib/sales/salesAttachmentAccess';
 import { historicalContractFilesFrozenGate } from '@/lib/sales/historicalContractLock';
+import { isSpotLinkPatch } from '@/lib/service/surveySpotPhotos';
+import { runSurveySpotLink } from '@/lib/service/surveySpotLink';
 import {
   SALES_ORDER_ATTACHMENT_TABLE, canAttachToSalesOrder, canRemoveSalesOrderFile, isSalesOrderAttachment,
   salesOrderAttachBlock,
@@ -253,13 +255,30 @@ export async function PATCH(request, { params }) {
   const att = await getAttachment(id);
   if (!att) return Response.json({ error: 'ไม่พบเอกสารแนบ' }, { status: 404 });
 
+  /* อ่านคำขอก่อนด่าน — ต้องรู้ว่าเป็น "ผูกรูปกับจุด" ไหม เพื่อเลือกด่าน · JSON เสีย = ก้อนว่าง (ตกด่านเขียน
+     ตามเดิมก่อน แล้วค่อย 400 ข้างล่าง ⇒ คนไม่มีสิทธิ์ยังได้ 403 เหมือนเดิม ไม่ใช่ 500) */
+  const body = await request.json().catch(() => ({}));
+  const metadata = body?.metadata;
+
+  /* ⭐ **ผูก/ย้าย/ถอดรูปจุดติดตั้งกับจุด (`spotId` คีย์เดียว)** — PR-S · มติเจ้าของ Q1(a)
+     ด่านของตัวเอง (`surveySpotLinkAccess`): ใบเปิด = ด่านเขียนไฟล์ของพื้นที่ตัวเดิม · ใบที่ส่งผลแล้ว = หัวหน้าฝ่าย
+     ยังผูกได้ (metadata อย่างเดียว · ลง audit) · ตรวจว่าจุดมีอยู่จริงในพื้นที่
+     🔴 **รับเฉพาะคำขอที่มีแค่ `spotId`** — ข้อยกเว้นของใบที่ส่งแล้วต้องไม่พาคีย์อื่นติดไปด้วย */
+  if (att.entityType === 'service_survey_zone' && isSpotLinkPatch(metadata)) {
+    const { status, body: out } = await runSurveySpotLink({ supabase, att, spotId: metadata.spotId, user, request });
+    return Response.json(out, { status });
+  }
+
   const denied = await guardAttachmentWrite(supabase, att, user, 'แก้รายละเอียดเอกสาร');
   if (denied) return denied;
 
-  const body = await request.json();
-  const { metadata } = body;
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
     return Response.json({ error: 'metadata ไม่ถูกต้อง' }, { status: 400 });
+  }
+  /* 🔴 spotId ปนมากับคีย์อื่น = ไม่ใช่คำขอผูกจุด ⇒ ห้ามไหลไป merge ข้างล่าง (จะเขียน spotId โดยไม่ผ่าน
+     ด่านจุดมีจริง/ชนิดรูป) · จอส่งการผูกจุดเป็นคำขอเดี่ยวเสมอ */
+  if (att.entityType === 'service_survey_zone' && 'spotId' in metadata) {
+    return Response.json({ error: 'แก้การผูกจุดต้องส่งมาเป็นคำขอเดี่ยว (spotId อย่างเดียว)' }, { status: 400 });
   }
   // วันที่ต้องเป็น ISO 'YYYY-MM-DD' และเป็นวันที่มีอยู่จริง — ค่ามั่วจะทำให้การคำนวณ
   // วันหมดอายุเงียบ ๆ ผิด แล้วเอกสารที่หมดอายุจริงกลับผ่านด่านอนุมัติไปได้

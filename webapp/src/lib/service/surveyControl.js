@@ -19,7 +19,6 @@ import { attachmentHref } from '@/lib/master/attachmentStorage';
 import { isPreviewableImage } from '@/lib/master/attachmentTypes';
 import { requestRailSteps } from '@/lib/requests/requestRail';
 import {
-  SURVEY_DOC_SPOT,
   SURVEY_DOC_WIDE,
   SURVEY_GATES,
   parseSurveyMeters,
@@ -38,6 +37,7 @@ import {
   surveyZoneSize,
 } from '@/lib/service/survey';
 import { surveySendVisitStep } from '@/lib/service/surveySendClose';
+import { spotPhotoGroups, surveySpotGates } from '@/lib/service/surveySpotPhotos';
 import { VISIT_STATUS_LABELS } from '@/lib/service/visitStatus';
 
 /** ค่าที่จอต้องเขียนเมื่ออ่านข้อมูลชิ้นนั้นไม่สำเร็จ — ไม่ใช่ขีด ไม่ใช่ 0 */
@@ -53,7 +53,13 @@ export const SURVEY_UNKNOWN_LABELS = {
   sendBack: 'ประวัติการส่งกลับให้ช่างแก้',
   /* ชื่อผู้ช่วยบนนัด (GET `crew` · แผน §10.5 S5) — อ่านจากบัญชีรายคน ล้มได้ทีละคน */
   crew: 'ชื่อทีมบนนัด',
+  /* ไฟล์แนบของคำร้อง (GET `requestFiles` · PR-S) — 🐞 UAT 01/10 เดิมไม่มีป้าย กล่องแจ้งเขียนคีย์อังกฤษดิบ */
+  requestFiles: 'ไฟล์แนบของคำร้อง',
 };
+
+/* ชิ้นที่จอ **ไม่ได้** เขียนค่าเป็น "ไม่ทราบ" แต่บอกเหตุในแถวของมันเอง — แถวไฟล์แนบของคำร้องเขียน
+   "อ่านไม่สำเร็จ — ลองโหลดหน้าใหม่" (`surveyRequestFilesView`) ⇒ กล่องแจ้งต้องไม่บอกว่ามัน 'แสดงเป็น "ไม่ทราบ"' */
+const SURVEY_UNKNOWN_OWN_ROW = new Set(['requestFiles']);
 
 const isCut = (row) => (row?.status || 'ok') === 'cut';
 const activeZones = (rows) => (Array.isArray(rows) ? rows : []).filter((r) => !isCut(r));
@@ -146,11 +152,12 @@ export function surveyZoneFacts(zone = {}, files = []) {
 }
 
 /* ภาพย่อบนช่องพื้นที่ของตารางสรุป — ช่องกว้าง ~13rem ⇒ สามช่องขนาดนิ้ว (44px) คือที่ที่มี
-   ที่เหลือบอกด้วยตัวนับ "ภาพกว้าง n · ภาพจุด n" ข้างล่าง ไม่ใช่ภาพย่อแถวที่สอง */
+   ที่เหลือบอกด้วยตัวนับ "ภาพกว้าง n · ภาพจุด n" ข้างล่าง ไม่ใช่ภาพย่อแถวที่สอง
+   🔄 PR-S (30/09) — ภาพจุดย้ายไปอยู่ใต้จุดของมันในคอลัมน์เลือกจุด (`surveyResultSpotCell`) ⇒ ช่องนี้เหลือภาพกว้าง
+      (รูปเดียวกันสองที่ในแถวเดียว = หัวหน้าเทียบไม่ออกว่ารูปไหนของจุดไหน) · ตัวนับยังนับครบทุกหัวข้อเหมือนด่าน */
 const RESULT_THUMBS = 3;
 const RESULT_PHOTO_KINDS = [
   { kind: 'wide', docType: SURVEY_DOC_WIDE, label: 'ภาพกว้าง' },
-  { kind: 'spot', docType: SURVEY_DOC_SPOT, label: 'ภาพจุด' },
 ];
 /* ช่องขนาดหนึ่งช่อง — ยังว่าง/ไม่ใช่เลขบวก = ขีด
    🐞 ตารางเดิมเขียน `fmtNumber(p.heightM)` ตรง ๆ ⇒ `fmtNumber('')` = "0" ⇒ ส่วนที่ยังวัดไม่ครบ
@@ -175,6 +182,7 @@ const dimText = (value) => {
  * @param zone  แถว `service_survey_zones`
  * @param files ไฟล์ของแถวนั้น (ชุดสดจาก `useLiveZoneFiles`)
  * @returns `{ figures, dims, partsText, photos:{wide,plan,spot}, thumbs:[{file,href,kind,label,startsGroup}], moreThumbs }`
+ *   🔄 PR-S — `thumbs` เหลือภาพกว้าง (ภาพจุดอยู่ใต้จุดของมัน: `surveyResultSpotCell`) · `photos` ยังนับครบทุกหัวข้อ
  */
 export function surveyResultZoneCell(zone = {}, files = []) {
   const parts = Array.isArray(zone?.parts) ? zone.parts : [];
@@ -205,6 +213,31 @@ export function surveyResultZoneCell(zone = {}, files = []) {
   };
 }
 
+/**
+ * 🔑 **คอลัมน์ "เลือกจุด" ของตารางสรุปส่งผล: รูปของแต่ละจุดอยู่ใต้จุดนั้น** (PR-S · มติเจ้าของ 28–30/09)
+ *
+ * ⭐ ตัวจัดกลุ่มตัวเดียวกับจอหน้างานและเอกสารประเมิน (`spotPhotoGroups` — ผูกด้วย `metadata.spotId` เท่านั้น
+ *   ไม่เดาจากลำดับการอัป) · ภาพย่อเปิดไฟล์ผ่าน proxy ตัวเดียวกับแผงไฟล์แนบ (`attachmentHref`)
+ * ⚠️ `unlinked` = รูปจุดที่ยังไม่ได้ผูก (ไม่มี spotId / ชี้จุดที่ลบไปแล้ว) — ต้องเห็นบนตาราง ไม่ใช่หายเงียบ
+ *   (เอกสารประเมินจะไม่ยอมออกจนกว่าจะผูกครบ · แผน survey-report-doc §8.1)
+ *   🔄 review 30/09 — `unlinkedCount` นับ **รูปชุดเดียวกับถาดบนจอหน้างาน** (`isSpotPhoto` ใน `spotPhotoGroups`) ⇒ บรรทัด
+ *   "ผูกที่แท็บหน้างาน" ชี้ไปที่ถาดที่มีรูปเท่ากันเสมอ · เดิมนับ PDF ที่ลากมาวางด้วย ซึ่งถาดไม่มี = ชี้ทางที่ไม่มีทางไป
+ *   (`unlinked` อาจน้อยกว่า `unlinkedCount` ได้เฉพาะรูปที่ยังไม่มีลิงก์เปิด)
+ * @param zone แถวพื้นที่ (จุดที่บันทึกแล้ว) · @param files ไฟล์ของพื้นที่ (ชุดสด)
+ * @returns `{ rows: [{ spot, thumbs:[{file,href}] }], unlinked:[{file,href}], unlinkedCount }`
+ */
+export function surveyResultSpotCell(zone = {}, files = []) {
+  const { rows, unlinked } = spotPhotoGroups({ spots: zone?.spots, files });
+  const thumbsOf = (photos) => photos
+    .map((file) => ({ file, href: attachmentHref(file) }))
+    .filter((t) => t.href);
+  return {
+    rows: rows.map(({ spot, photos }) => ({ spot, thumbs: thumbsOf(photos) })),
+    unlinked: thumbsOf(unlinked),
+    unlinkedCount: unlinked.length,
+  };
+}
+
 /* ตัวเลขที่พิมพ์คนละรูปแต่เป็นค่าเดียวกัน — "8.00" กับ 8 ต้องเท่ากัน
    (server ปรับรูปให้ตอนบันทึก ⇒ เทียบเป็นสตริงดิบจะได้ "ต่าง" ทุกครั้งหลังบันทึก)
    🐞 UAT 25/09 — เดิมใช้ `Number()` ⇒ '7,5' ได้ NaN แล้วเก็บข้อความดิบ ทั้งที่ตัวบันทึกอ่านเป็น 7.5 ⇒ ช่างแป้นจุลภาค
@@ -225,8 +258,12 @@ const sigNumber = (value) => {
  *   ถ้านับ พื้นที่ที่ไม่มีใครแตะจะขึ้น "ยังไม่บันทึก" ทั้งใบตั้งแต่เปิดหน้า
  * ⚠️ **ไม่รวม `id` ของแถว** — id ของแถวที่เพิ่มบนจอเป็นค่าสุ่ม และ id ที่กลับมาจาก
  *   server เป็นคนละตัว · เทียบ id = ทุกพื้นที่ "ค้าง" ตลอดกาลหลังบันทึกสำเร็จ
+ * 🐞 review 30/09 — **แถวจุดว่างที่มีรูปแล้วนับ** (`photoSpotIds` ของร่าง · `spotDraftPhotos`) — รูปขึ้นพร้อม spotId ของแถวนั้นแล้ว
+ *   ⇒ ไม่นับ = ออกจากพื้นที่ไม่ถาม · แถวใหม่ที่โหลดมาถูกรับทับ ("adopt") ⇒ แถวหาย รูปตกถาดเงียบ
+ *   แถวที่ลงฐานไม่เคยว่าง (ตัวจัดแถวตัดทิ้ง) ⇒ ลายเซ็นของแถวในฐานไม่ขยับ
  */
-export function surveyZoneDraftSignature({ parts = [], spots = [], note = '' } = {}) {
+export function surveyZoneDraftSignature({ parts = [], spots = [], note = '', photoSpotIds = null } = {}) {
+  const withPhotos = new Set(Array.isArray(photoSpotIds) ? photoSpotIds.map(String) : []);
   const partRows = (Array.isArray(parts) ? parts : [])
     .map((p) => [
       String(p?.label ?? '').trim(),
@@ -234,8 +271,9 @@ export function surveyZoneDraftSignature({ parts = [], spots = [], note = '' } =
     ])
     .filter((row) => row.some(Boolean));
   const spotRows = (Array.isArray(spots) ? spots : [])
-    .map((s) => [String(s?.label ?? '').trim(), String(s?.note ?? '').trim()])
-    .filter((row) => row.some(Boolean));
+    .map((s) => ({ row: [String(s?.label ?? '').trim(), String(s?.note ?? '').trim()], id: s?.id }))
+    .filter(({ row, id }) => row.some(Boolean) || (id != null && withPhotos.has(String(id))))
+    .map(({ row }) => row);
   return JSON.stringify([partRows, spotRows, String(note ?? '').trim()]);
 }
 
@@ -440,10 +478,23 @@ export function surveyControlView({
   const leftZones = active.filter((r) => surveyFieldMissing(r, files[r.id] || []).length > 0);
   const totals = surveyTotals(rows);
   const allGates = surveyGateChecklist(rows, files);
+  /* ⭐ **ส่งผลแล้วนัดจะเป็นยังไง** — ตัวตัดสินตัวเดียวกับที่ route ส่งผลใช้ปิดนัดจริง (มติ 24/09 ข้อ 2)
+     ⚠️ `visit` ต้องเป็นนัดที่ยังค้างถ้ามี (GET ใช้ `preferOpen`) — ไม่งั้นโมดัลบอกคนละนัดกับที่ปิดจริง
+     🔄 คำนวณก่อนด่าน — ด่านรูปจุดของการส่งผลขึ้นกับว่าส่งผลนี้ปิดนัดที่ยังเปิดไหม (`surveySpotGates`) */
+  const visitStep = surveySendVisitStep(visit, { today });
+  /* 🔑 **ด่านรูปจุด (มติ 01/10)** — ถามตัวเดียวกับ route: ส่งผล = G2 (ถาด · + G1 เมื่อส่งผลปิดนัด) · ส่งงาน = G1
+     `spotSendGates` ตัดสินปุ่มส่งผล/สถานะของใบ (ไม่ขึ้นกับคนดู) · `spotCrewGates` = ของที่ช่างต้องเก็บก่อนส่งงาน */
+  const spotSendGates = surveySpotGates(rows, files, { mode: 'send', closesVisit: visitStep.action === 'close' });
+  const spotCrewGates = surveySpotGates(rows, files, { mode: 'submit' });
+  const spotCrewFailed = spotCrewGates.some((g) => !g.ok);
   /* ช่างเห็นเฉพาะสามข้อของตัวเอง — ข้อของหัวหน้าเขาแก้ไม่ได้ (แบบที่อนุมัติ: หัวข้อ
-     "ของที่ช่างต้องเก็บ") ⇒ เอามาโชว์ = กำแพงที่บอกว่าเขาทำงานไม่เสร็จทั้งที่เสร็จแล้ว */
-  const gates = canDecide ? allGates : allGates.filter((g) => g.owner === 'crew');
+     "ของที่ช่างต้องเก็บ") ⇒ เอามาโชว์ = กำแพงที่บอกว่าเขาทำงานไม่เสร็จทั้งที่เสร็จแล้ว
+     ⭐ ต่อท้ายด้วยแถวรูปจุดของฝั่งนั้น — หัวหน้า = ด่านก่อนส่งผล · ช่าง = ด่านก่อนส่งงาน (แถวมี `reason` ของ server) */
+  const gates = canDecide
+    ? [...allGates, ...spotSendGates]
+    : [...allGates.filter((g) => g.owner === 'crew'), ...spotCrewGates];
   const gatesFailed = gates.filter((g) => !g.ok);
+  const sendGatesFailed = allGates.some((g) => !g.ok) || spotSendGates.some((g) => !g.ok);
 
   /* ── ค่าที่ยังอยู่บนจอ ยังไม่ลงฐาน (จอส่ง id มา) ─────────────────────────
      🔴 **ตัดสินจากลิสต์ที่รับมา ไม่ใช่จากผลกรองแถว** — ของเดิมกรอง id ผ่าน `rows` ก่อน
@@ -520,7 +571,7 @@ export function surveyControlView({
       key: 'recalled', tone: 'warning', headline: 'ดึงผลกลับมาแก้',
       sub: progress.complete ? 'วัดครบแล้ว · รอหัวหน้าส่งผลอีกครั้ง' : measuredSub,
     };
-  } else if (visitNotStarted && allGates.some((g) => !g.ok)) {
+  } else if (visitNotStarted && (allGates.some((g) => !g.ok) || spotCrewFailed)) {
     /* ยังไม่กดเริ่มงาน = ยังไม่มีใครไปหน้างาน **ไม่ว่าจะกรอกล่วงหน้าไปแล้วเท่าไร** · 🐞 เดิมขึ้น
        "กำลังวัดหน้างาน"/"กด ส่งงาน" ข้างแถบที่มีแค่ปุ่ม "เริ่มงาน" บนจอเดียวกัน
        ⚠️ ใบที่ผ่านครบหกข้อแล้ว (หัวหน้าเคาะแล้ว) ยังขึ้น "พร้อมส่งผล" — การส่งผลไม่รอนัด และส่งแล้ว
@@ -530,12 +581,21 @@ export function surveyControlView({
     status = { key: 'not-started', tone: 'neutral', headline: 'ยังไม่เริ่มงานหน้างาน', sub: measuredSub };
   } else if (!progress.complete) {
     status = { key: 'measuring', tone: 'warning', headline: 'กำลังวัดหน้างาน', sub: measuredSub };
-  } else if (allGates.some((g) => !g.ok)) {
+  } else if (crewNotSubmitted && spotCrewFailed) {
+    /* ⭐ ด่านรูปจุดของช่าง (G1) ยังติด = ช่างยังส่งงานไม่ได้ ⇒ ยังเป็นงานหน้างาน ไม่ใช่ "วัดครบ — กด ส่งงาน"
+       (แถบส่งงานบอก "ยังส่งไม่ได้" ด้วยเหตุเดียวกัน — สองข้อความต้องไม่เถียงกันบนจอเดียว) */
+    const spotText = spotCrewGates.filter((g) => !g.ok).map((g) => g.reason).join(' | ');
+    status = { key: 'measuring', tone: 'warning', headline: 'กำลังวัดหน้างาน', sub: `${measuredSub} · ${spotText}` };
+  } else if (sendGatesFailed) {
     const measured = `วัดแล้ว ${progress.done} / ${progress.total} พื้นที่`;
+    /* เหลือแค่ผูกรูปในถาด (G2) = บอกตรง ๆ — "เหลือเคาะจุดและแพ็คเกจ" ทั้งที่เคาะครบแล้วคือชี้ผิดงาน */
+    const headLeft = allGates.some((g) => g.owner === 'head' && !g.ok)
+      ? 'เหลือเคาะจุดและแพ็คเกจ'
+      : 'เหลือผูกรูปจุดที่ยังไม่ได้ผูก';
     status = !crewNotSubmitted
       ? {
         key: 'awaiting-decision', tone: 'info', headline: 'วัดครบแล้ว — รอหัวหน้าเคาะ',
-        sub: `${measured} · เหลือเคาะจุดและแพ็คเกจ`,
+        sub: `${measured} · ${headLeft}`,
       }
       : actsAsCrew
         ? {
@@ -564,12 +624,17 @@ export function surveyControlView({
      🔑 **คำนวณก่อนบรรทัดเหตุผลใต้ปุ่มส่ง เพราะบรรทัดนั้นหยิบปุ่มพาไปจากที่นี่** —
         "ไปไหนถึงจะแก้ข้อนี้ได้" ต้องมีคำตอบชุดเดียวทั้งจอ (ดูกฎในลูป) */
   const gateKeys = new Set(gates.map((g) => g.key));
+  /* ด่านรูปจุดที่ติดในพื้นที่นี้ (แถวของ `gates` ที่ไม่ผ่าน · ชื่อพื้นที่อยู่ใน `zones`) — แก้ที่หน้าพื้นที่ (แถวจุด · ถาด) */
+  const spotFailed = gates.filter((g) => !g.ok && (g.key === 'spotPhotos' || g.key === 'spotLinked'));
   const gapRows = [];
   for (const row of active) {
     const facts = surveyZoneFacts(row, files[row.id] || []);
-    const crew = facts.missingCrew.filter((g) => gateKeys.has(g.key));
+    const name = surveyZoneName(row);
+    const spotHere = spotFailed.filter((g) => g.zoneIds.includes(row.id));
+    const crew = [...facts.missingCrew.filter((g) => gateKeys.has(g.key)), ...spotHere.filter((g) => g.owner === 'crew')];
     const head = facts.missingHead.filter((g) => gateKeys.has(g.key));
-    if (!crew.length && !head.length) continue;
+    const headSpot = spotHere.filter((g) => g.owner === 'head');
+    if (!crew.length && !head.length && !headSpot.length) continue;
     const targets = [];
     /* 🔑 **กฎ "ไปไหนถึงจะแก้ข้อนี้ได้" มีชุดเดียว และอยู่ตรงนี้ที่เดียว** —
        ขนาด/ภาพกว้าง/จุดหน้างาน (ของช่าง) แก้ในพื้นที่ · **ภาพผัง** เลือกจุด แพ็คเกจ (ของหัวหน้า)
@@ -579,21 +644,23 @@ export function surveyControlView({
           · ตอนนี้ปุ่มนั้นพาไปหน้าที่ไม่มีช่องผังแล้ว = ทางตัน ⇒ ของหัวหน้าทั้งสามข้อไปทางเดียวกัน
        🐞 บรรทัดเหตุผลใต้ปุ่มส่งเคยมีกฎของตัวเองที่ลืมข้อ "ภาพผัง" ⇒ ปุ่มพาไปทางตัน
           ⇒ บรรทัดนั้นหยิบ `targets` ของแถวนี้ไปใช้ ไม่คิดเอง (ยามคือเทสต์ "กฎไปไหนต้องมีชุดเดียว") */
-    if (crew.length) {
-      targets.push({ kind: 'zone', zoneId: row.id, label: `เปิด ${surveyZoneName(row)}` });
+    /* ⭐ รูปจุด (ถาด · แถวจุด) อยู่ในหน้าพื้นที่ ⇒ ผูกรูปของหัวหน้าก็พาไปพื้นที่ ไม่ใช่แท็บสรุป */
+    if (crew.length || headSpot.length) {
+      targets.push({ kind: 'zone', zoneId: row.id, label: `เปิด ${name}` });
     }
     if (canDecide && !crew.length && head.length && tab !== 'result') {
       targets.push({ kind: 'tab', tab: 'result', label: 'เคาะที่สรุปส่งผล' });
     }
+    const headAll = [...head, ...headSpot];
     gapRows.push({
       zoneId: row.id,
-      zoneName: surveyZoneName(row),
+      zoneName: name,
       zoneCode: row.zoneCode ?? null,
       zoneCodeUnknown: row.zoneCodeUnknown === true,
       crew: crew.map((g) => g.short),
-      head: head.map((g) => g.short),
+      head: headAll.map((g) => g.short),
       crewText: crew.length ? `ช่างต้องเก็บ: ${crew.map((g) => g.short).join(' · ')}` : null,
-      headText: head.length ? `หัวหน้าต้องทำ: ${head.map((g) => g.short).join(' · ')}` : null,
+      headText: headAll.length ? `หัวหน้าต้องทำ: ${headAll.map((g) => g.short).join(' · ')}` : null,
       targets,
     });
   }
@@ -627,10 +694,9 @@ export function surveyControlView({
   // ── เหตุผลที่ยังกดส่งไม่ได้ + จุดที่พาไปแก้ ───────────────────────────────
   /* 🔑 ด่านตัวเดียวกับ server เป็นตัวตัดสิน `allowed` เสมอ · สองข้อแรกเป็นของที่ server
      มองไม่เห็น (ค่าที่ยังอยู่บนจอ) ⇒ มันเพิ่มด่านได้ แต่ **ลดไม่ได้** */
-  const serverSendReason = surveySendError(rows, files, { canSend: canDecide });
-  /* ⭐ **ส่งผลแล้วนัดจะเป็นยังไง** — ตัวตัดสินตัวเดียวกับที่ route ส่งผลใช้ปิดนัดจริง (มติ 24/09 ข้อ 2)
-     ⚠️ `visit` ต้องเป็นนัดที่ยังค้างถ้ามี (GET ใช้ `preferOpen`) — ไม่งั้นโมดัลบอกคนละนัดกับที่ปิดจริง */
-  const visitStep = surveySendVisitStep(visit, { today });
+  /* 🔑 ลำดับเดียวกับ route ส่งผล: ด่านหกข้อ → ด่านรูปจุด (ถาด · + ทุกจุดมีรูปเมื่อส่งผลปิดนัด) — เหตุคือข้อความของ server เป๊ะ */
+  const serverSendReason = surveySendError(rows, files, { canSend: canDecide })
+    || (spotSendGates.some((g) => !g.ok) ? spotSendGates.filter((g) => !g.ok).map((g) => g.reason).join(' | ') : null);
   let sendReason = null;
   if (!locked) {
     /* 🐞 **ไม่มีสิทธิ์ส่ง = เหตุผลเดียว ห้ามประกอบบรรทัดด่านหกข้อทับ** — ของเดิมเขียน
@@ -656,7 +722,9 @@ export function surveyControlView({
           : null,
       };
     } else if (serverSendReason) {
-      const failed = allGates.filter((g) => !g.ok);
+      /* ด่านที่ติดทั้งหมดของการส่งผล (หกข้อ + รูปจุด) — ติดแค่รูปจุด = เหตุเต็มของ server (มติ: "มีรูปจุดที่ยังไม่ได้ผูก n รูป …") */
+      const failed = [...allGates, ...spotSendGates].filter((g) => !g.ok);
+      const spotOnly = failed.every((g) => g.key === 'spotPhotos' || g.key === 'spotLinked');
       const stuckNames = [...new Set(failed.flatMap((g) => g.zones))];
       const crewStuck = failed.some((g) => g.owner === 'crew');
       /* พาไปที่พื้นที่ที่ **ช่างยังค้าง** ก่อน ถ้าไม่มีก็พื้นที่แรกที่ติดอะไรก็ได้
@@ -668,7 +736,7 @@ export function surveyControlView({
       const stuckTarget = firstStuck?.targets?.[0] || null;
       sendReason = {
         key: crewStuck ? 'crew-gaps' : 'head-gaps',
-        text: failed.length
+        text: failed.length && !spotOnly
           ? `ยังส่งไม่ได้ — ติด ${failed.length} ข้อ ที่ ${surveyNameList(stuckNames)}${crewStuck ? ' · รอช่างเก็บงาน' : ''}`
           : serverSendReason,
         /* 🔑 ข้อความเต็มของด่าน server — โมดัลยืนยันใช้ตัวนี้ ไม่ใช่บรรทัดย่อของราง
@@ -794,10 +862,16 @@ export function surveyControlView({
      ซึ่งเป็นคนละเรื่องกันคนละทาง (ไซต์ไม่มีที่อยู่ ≠ อ่านที่อยู่ไม่สำเร็จ) */
   const unknownKeys = Object.keys(unknown || {}).filter((k) => unknown[k]);
   if (unknownKeys.length) {
+    const label = (k) => SURVEY_UNKNOWN_LABELS[k] || k;
+    const shown = unknownKeys.filter((k) => !SURVEY_UNKNOWN_OWN_ROW.has(k));
+    const ownRow = unknownKeys.filter((k) => SURVEY_UNKNOWN_OWN_ROW.has(k));
+    const parts = [
+      shown.length ? `${shown.map(label).join(' · ')} แสดงเป็น "${SURVEY_UNKNOWN_TEXT}"` : null,
+      ...ownRow.map(label),
+    ].filter(Boolean);
     notices.push({
       key: 'unknown', tone: 'warning',
-      text: `อ่านข้อมูลบางส่วนไม่สำเร็จ — ${unknownKeys.map((k) => SURVEY_UNKNOWN_LABELS[k] || k).join(' · ')}`
-        + ` แสดงเป็น "${SURVEY_UNKNOWN_TEXT}" · ลองโหลดหน้าใหม่`,
+      text: `อ่านข้อมูลบางส่วนไม่สำเร็จ — ${parts.join(' · ')} · ลองโหลดหน้าใหม่`,
       keys: unknownKeys,
     });
   }

@@ -29,10 +29,11 @@ import { listAttachments } from '@/lib/master/attachments';
 import { businessDate } from '@/lib/businessDate';
 import { loadSurveyZones } from '@/lib/service/surveyRepo';
 import { findSurveyVisit } from '@/lib/service/surveyVisit';
-import { surveySendCloseBody, surveySendWrites } from '@/lib/service/surveySendClose';
+import { surveySendCloseBody, surveySendVisitStep, surveySendWrites } from '@/lib/service/surveySendClose';
 import {
   surveyChangeCounts, surveyChangeText, surveySendError, surveyTotals, surveyTotalsDiff,
 } from '@/lib/service/survey';
+import { surveySpotSendError } from '@/lib/service/surveySpotPhotos';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,6 +64,17 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
     const body = await req.json().catch(() => ({}));
     const nowIso = new Date().toISOString();
+    const today = businessDate(nowIso);
+
+    /* 🔑 **ด่านรูปจุด (มติ 01/10 · G2)** — รูปในถาด "ยังไม่ได้ผูกจุด" = ส่งผลไม่ได้ · ตัวเดียวกับแถวด่านบนการ์ด
+       ⭐ ส่งผลที่ปิดนัดที่ยังเปิด (มติ 24/09 ข้อ 2) = ส่งงานแทนช่าง ⇒ G1 "ทุกจุดมีรูป" มาด้วย — ปิดนัดหรือไม่ถาม
+          `surveySendVisitStep` ตัวเดียวกับที่ `surveySendWrites` ใช้ปิดจริงและที่การ์ดใช้บอกโมดัล
+       ⚠️ ก่อนเขียนอะไรทั้งนั้น — ตีกลับหลังปิดนัดแล้ว = นัด "เข้าแล้ว" ทั้งที่ใบยังไม่ได้ส่ง */
+    const open = await findSurveyVisit(supabase, id, { openOnly: true });
+    const closesVisit = surveySendVisitStep(open, { today }).action === 'close';
+    const spotGate = surveySpotSendError(zones, filesByZone, { closesVisit });
+    if (spotGate) return conflict(spotGate);
+
     const patch = {
       answeredAt: nowIso,
       answeredById: user?.id ?? null,
@@ -75,14 +87,13 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
     /* ── ปิดนัดที่ยังเปิด (มติ 24/09 ข้อ 2) → ตอบใบ · ลำดับอยู่ใน `surveySendWrites` ที่เดียว ──────────
        ⭐ นัดที่ส่งผลจะปิด = นัดที่ยังกินสิทธิ์ของใบ (ร่าง = ตีกลับพร้อมทางออก) · ต้องตรงกับที่โมดัลบอกผู้ใช้
-          (`closeVisitId` · ไม่ตรง = 409 ให้โหลดใหม่) */
-    const open = await findSurveyVisit(supabase, id, { openOnly: true });
+          (`closeVisitId` · ไม่ตรง = 409 ให้โหลดใหม่) · `open` อ่านไว้แล้วตอนด่านรูปจุด (ตัวเดียวกัน ไม่อ่านซ้ำ) */
     const written = await surveySendWrites(supabase, {
       requestId: id,
       open,
       closeVisitId: body?.closeVisitId ?? null,
       answerPatch: patch,
-      today: businessDate(nowIso),
+      today,
       nowIso,
       /* ⭐ ปิดทางนี้ต้องอ่านออกจากเธรดของนัด — ไม่งั้นนัดที่ไม่มีเวลาจบดูเหมือนระบบทำหาย
          ⚠️ ไม่ยิงกระดิ่ง "ช่างส่งงานแล้ว" — คนกดคือหัวหน้าเอง · ไม่ซิงก์วันกลับใบ — นัดที่ปิดไม่กินสิทธิ์ใบแล้ว

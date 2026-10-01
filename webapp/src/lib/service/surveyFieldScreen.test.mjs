@@ -231,8 +231,11 @@ test('ช่าง: กล่องแจ้งบนสุดของราย
     'หัวหน้าเห็นเรื่องเดียวกันในการ์ดแล้ว — ไม่วาดซ้ำ');
   assert.match(PAGE, /<StatusNotice key=\{notice\.key\} tone=\{notice\.tone\}/);
   assert.match(PAGE, /onResult=\{canDecide \? undefined : \(\) => goTab\("result"\)\}/);
-  assert.match(PAGE, /canWrite: view\.flags\.canWrite, canOpenRequest/, 'ตัวตัดสินแถวสรุปรู้ว่าใครคือช่าง');
-  assert.match(PAGE, /const crewOnly = !!data && view\.flags\.canWrite && !canDecide;/);
+  /* 🐞 UAT 01/10 — ถามธงดิบของ server (ช่างของนัดใบนี้ · ไม่ดูการล็อก) · `view.flags.canWrite` หักล็อกแล้ว ⇒ ใบที่ส่งผลแล้ว
+     ช่างเคยเปิด ?tab=result ได้ และได้แถว "สรุปส่งผล · ดูอย่างเดียว" (ขัดมติ 26/09) */
+  assert.match(PAGE, /canWrite: data\?\.canWrite === true, canOpenRequest/, 'ตัวตัดสินแถวสรุปรู้ว่าใครคือช่าง — แม้ใบล็อกแล้ว');
+  assert.match(PAGE, /const crewOnly = !!data && data\.canWrite === true && !canDecide;/);
+  assert.doesNotMatch(PAGE, /crewOnly = [^;]*view\.flags\.canWrite/, 'ธงที่หักล็อกแล้วแยกช่างออกจากคนดูอย่างเดียวไม่ได้');
   assert.match(PAGE, /if \(crewOnly && tab === "result"\) applyTab\("field"\);/, 'ลิงก์เก่า ?tab=result ของช่างพากลับหน้างาน');
   assert.match(PAGE, /\{tab === "result" && !crewOnly \? resultMain : fieldMain\}/);
   assert.match(PAGE, /if \(tab === "result" && !crewOnly\) router\.replace/);
@@ -428,4 +431,115 @@ test('🐞 review 26/09: หัวพื้นที่ที่ติดบน�
   // รอบสาม: บานขวาไม่ใส่ scroll-padding ที่ <html> (ซ้อนกับ scroll-margin ของบาน ⇒ ย้ายพื้นที่แล้วบานจอดต่ำ) — กันที่ช่องในบานแทน
   assert.doesNotMatch(zoneCss, /:global\(html\):has\(\.page\[data-layout="pane"\]/);
   assert.match(zoneCss, /\.page\[data-layout="pane"\] :is\(\.body, \.cutBody\) :is\(input, textarea, select, button, a\) \{\s*scroll-margin-top: calc\(var\(--scroll-anchor-top\) \+ var\(--survey-zone-head-h\)\);/);
+});
+
+/* ══ PR-S — จุดหนึ่งจุด = หนึ่งแถว (รูป + ชื่อ + รายละเอียด) · มติเจ้าของ 28/09 · 30/09 ═══════════════════════════ */
+test('🔑 หน้าพื้นที่: หัวข้อจุดเป็นแผงไฟล์แนบตัวเดียว (photoGroups) · กองรูป "ภาพจุดติดตั้ง" แยกหายไป · แถวถ่ายรูปผูก spotId เอง', () => {
+  assert.doesNotMatch(ZONE, /area="spotphotos"|title="ภาพจุดติดตั้ง"|photoPanel\(SURVEY_DOC_SPOT/,
+    'ไม่มีหัวข้อรูปจุดแยกจากรายการจุดแล้ว — สองกองที่ตาต้องจับคู่เอง');
+  const tag = jsxOpenTags(ZONE, /<AttachmentsPanel\b/g).find((t) => /photoGroups=/.test(t));
+  assert.ok(tag, 'หัวข้อจุดต้องใช้แผงไฟล์แนบตัวเดียวกับรูปอื่น (ลูปอัป · Ctrl+V · กล่องดูรูปชุดเดียว)');
+  assert.match(tag, /docTypes=\{SPOT_DOC_TYPES\}/, 'ชนิดไฟล์เป็นค่าคงที่ระดับไฟล์ (อาร์เรย์ใหม่ทุกรอบ = ตัวรับ Ctrl+V ผูกใหม่ทุกรอบ)');
+  assert.match(tag, /canEdit=\{edit\}/, 'แนบ/ลบ = ด่านเดิม (ใบล็อก = แนบ/ลบไม่ได้ แม้หัวหน้า)');
+  assert.match(tag, /intakeWeight=\{1\}/, 'Ctrl+V ลอย ๆ ตกที่ภาพกว้างก่อน');
+  const groups = ZONE.slice(ZONE.indexOf('const spotGroups = '), ZONE.indexOf('const photoPanel = '));
+  assert.match(groups, /spotPhotoGroups\(\{ spots, files: photos \}\)/, 'จัดกลุ่มด้วยตัวกลางตัวเดียว (ไม่เดาจากลำดับการอัป) · แถวตามร่างบนจอ');
+  assert.match(groups, /meta: \{ spotId: String\(spot\.id\) \}/, 'แผ่นถ่ายรูปของแถว = รูปได้ spotId ของแถวนั้น');
+  assert.match(groups, /loose: \{ title: tray\.title, note: tray\.note, photos: unlinked \}/);
+});
+
+test('🔑 ถาด "ยังไม่ได้ผูกจุด": ผูกตามธงของ server (หัวหน้าบนใบที่ส่งแล้วด้วย) · ชิปกางให้เห็น ไม่ใช่ดรอปดาวน์ · ลบจุดที่มีรูปถามก่อน', () => {
+  const relink = ZONE.slice(ZONE.indexOf('const spotRelink = '), ZONE.indexOf('const spotGroups = '));
+  assert.match(relink, /if \(!canLinkSpots\) return null;/, 'ไม่มีสิทธิ์ผูก = ไม่มีตัวเลือก (กติกา ui-visibility)');
+  assert.match(relink, /spotLinkChoices\(\{ draftSpots: spots, savedSpots: zone\.spots, file: item \}\)/,
+    'ผูกได้เฉพาะจุดที่บันทึกแล้ว — PATCH ตอบ 409 กับจุดร่าง');
+  assert.match(relink, /relink\(\{ spotId: t\.id \}\)/, 'metadata คีย์เดียว — เข้าข้อยกเว้นของใบที่ส่งผลแล้ว (isSpotLinkPatch)');
+  assert.doesNotMatch(relink, /<Select|<select|Dropdown/, 'ชุดตัวเลือกเล็กกางให้เห็น (กติกาคอนโทรล)');
+  assert.doesNotMatch(relink, /edit &&|canWrite/, 'ธงผูกแยกจากธงเขียน — หัวหน้าบนใบล็อกผูกได้แม้แนบ/ลบไม่ได้');
+  const zoneCss = css('../../components/service/SurveyZonePage.module.css');
+  assert.match(zoneCss, /\.linkChip \{[^}]*min-height: var\(--ctl-h-touch\);/, 'ชิปสูงระดับนิ้ว');
+  assert.match(zoneCss, /grid-template-areas:\s*"size wide"\s*"spots note"\s*"spots cut";/, 'กริดไม่มีช่องรูปจุดแยก');
+  assert.doesNotMatch(zoneCss, /spotphotos/);
+
+  const remove = ZONE.slice(ZONE.indexOf('const removeSpot = '), ZONE.indexOf('const spotRow = '));
+  assert.match(remove, /spotRemovalNotice\(\{ spot, files: shownFiles \}\)/);
+  assert.match(remove, /confirmAction\(\{/);
+  assert.match(ZONE, /onClick: \(\) => removeSpot\(spot\)/, 'เมนู "ลบจุดนี้" ผ่านด่านถามก่อน');
+  assert.match(PAGE, /canLinkSpots=\{canLinkSpots\}/);
+});
+
+/* 🐞 review 30/09 — แผ่นถ่ายรูปอยู่บนแถวใหม่ที่ยังว่าง ⇒ แถวที่มีรูปแล้วต้องเป็นแถวจริงในทุกตัวตัดสินของร่าง */
+test('🔴 แถวจุดว่างที่มีรูปแล้ว: ร่างพก photoSpotIds ไปทุกตัวตัดสิน (ค้าง · ด่านบันทึก · หัวข้อ) · กล่องถามก่อนทิ้งบอกรูปที่จะหลุดจุด', () => {
+  assert.match(ZONE, /spotDraftPhotos\(\{ draftSpots: spots, savedSpots: zone\.spots, files: shownFiles \}\)/);
+  assert.match(ZONE, /const draft = \{ parts, spots, note, photoSpotIds: spotDraft\.ownerIds \};/);
+  assert.match(ZONE, /const draftSig = surveyZoneDraftSignature\(draft\);/);
+  assert.match(ZONE, /surveyDraftSummary\(draft, zone\)/);
+  assert.match(ZONE, /surveyZoneSections\(\{ zone, files: shownFiles, draft, dirty \}\)/);
+  assert.match(ZONE, /const saveBlocker = dirty \? surveyZoneSavePayload\(draft\)\.blocker : null;/);
+  const save = ZONE.slice(ZONE.indexOf('const save = async'), ZONE.indexOf('const pick = '));
+  assert.match(save, /surveyZoneSavePayload\(draft\)/);
+  assert.doesNotMatch(save, /\{ parts, spots, note \}/, 'ร่างของปุ่มบันทึกต้องเป็นชุดเดียวกับ dirty (ไม่งั้นแถวที่มีรูปถูกข้ามเงียบ)');
+  assert.doesNotMatch(ZONE, /\{ parts, spots, note \}/, 'ไม่มีร่างชุดที่สองที่ไม่รู้จักแถวที่มีรูป');
+  assert.match(ZONE, /onDirtyChange\?\.\(zone\.id, dirty, draftSummary, unlinkPhotos\)/);
+  const ask = PAGE.slice(PAGE.indexOf('const askDiscard'), PAGE.indexOf('const resetDraft'));
+  assert.match(ask, /surveyDiscardConfirm\(\{ zone, summary: held\?\.summary \|\| "", unlinkPhotos: held\?\.unlinkPhotos \|\| 0 \}\)/);
+  assert.match(ask, /unlinkPhotos: held\?\.unlinkPhotos \|\| 0,\s*\}\);/, 'ออกจากหน้า (สองบาน) บอกเหมือนกัน');
+  assert.match(PAGE, /unlinkPhotos: dirtyZoneId \? dirtyZones\[dirtyZoneId\]\?\.unlinkPhotos \|\| 0 : 0,/, 'ลิงก์/รีเฟรชบอกเหมือนกัน');
+});
+
+test('🔑 ตารางสรุปส่งผล: รูปของแต่ละจุดอยู่ใต้จุดนั้น · รูปที่ยังไม่ผูกขึ้นเป็นบรรทัดอำพัน (ไม่หายเงียบ)', () => {
+  const table = code(read('../../components/service/SurveyResultTable.js'));
+  assert.match(table, /const spotCell = surveyResultSpotCell\(zone, files\);/, 'ตัวจัดกลุ่มเดียวกับจอหน้างาน');
+  assert.match(table, /spotCell\.rows\.map\(\(\{ spot: s, thumbs \}\) =>/);
+  assert.match(table, /spotCell\.unlinkedCount \?/);
+  assert.match(table, /canLinkSpots && !onOpenSpotTray \? " — ผูกที่แท็บหน้างาน" : ""/, 'บอกทางเฉพาะคนที่ผูกได้ · มีปุ่ม = ไม่พูดซ้ำ');
+  const tableCss = css('../../components/service/SurveyResultTable.module.css');
+  assert.match(tableCss, /\.thumb \{[^}]*width: var\(--ctl-h-touch\);/, 'ภาพย่อเป็นลิงก์ที่แตะได้ — ขนาดนิ้ว');
+  /* 🐞 UAT 01/10 — ใบล็อก/ดูอย่างเดียว ชิปเป็นตัวหนังสือ ⇒ ข้อยกเว้นเซลล์ที่มีคอนโทรลไม่โดน · เพดาน 220px ตัดชื่อจุด */
+  assert.match(table, /<td data-label="เลือกจุด" className="ui-cell-wide">/, 'ช่องเลือกจุดไม่โดนเพดานข้อความ 220px');
+});
+
+/* 🐞 UAT 01/10 — บรรทัด "ยังไม่ได้ผูกจุด n รูป" บนแท็บสรุปเป็นตัวหนังสือ ⇒ หัวหน้าต้องสลับแท็บ เปิดพื้นที่ เลื่อนหาถาดเอง */
+test('🐞 แท็บสรุป → ถาด: "ไปผูกจุด" ปุ่มเดียวถึงถาดของพื้นที่นั้น (สลับแท็บ · เปิดพื้นที่ · เลื่อน · โฟกัสถาด)', () => {
+  const table = code(read('../../components/service/SurveyResultTable.js'));
+  assert.match(table, /\{canLinkSpots && onOpenSpotTray \? \(\s*<Button[\s\S]*?onClick=\{\(\) => onOpenSpotTray\(zone\.id\)\}>\s*ไปผูกจุด/,
+    'ปุ่มเฉพาะคนที่ผูกได้ (กติกา ui-visibility)');
+  assert.match(table, /className=\{`\$\{styles\.coarseTouch\} \$\{styles\.looseJump\}`\}/, 'จอสัมผัสสูง 44px');
+
+  assert.match(PAGE, /const openSpotTray = useCallback\(\(zoneId\) => \{\s*setTrayJump\(String\(zoneId\)\);\s*openZone\(zoneId\);/,
+    'ทางเดียวกับ "เปิด X" (ตัวต่อสายสลับแท็บ/ถามก่อนทิ้ง) + จองการเลื่อนถึงถาด');
+  assert.match(PAGE, /onOpenSpotTray=\{openSpotTray\}/);
+  assert.match(PAGE, /jumpToTray=\{trayJump === String\(shownZone\.id\)\}/);
+  assert.match(PAGE, /if \(tab === "result"\) setTrayJump\(null\);/, 'กลับแท็บสรุปก่อนถาดขึ้น = คำขอตกไป');
+
+  const jump = ZONE.slice(ZONE.indexOf('if (!jumpToTray) return undefined;'), ZONE.indexOf('const saveBlocker = '));
+  assert.match(jump, /querySelector\('\[data-kind="loose"\]'\)/, 'ปลายทางคือถาดของหัวข้อจุด');
+  assert.match(jump, /frames < 180/, 'ถาดเกิดหลังแผงโหลดเสร็จ — รอแบบมีเพดาน ไม่วนตลอดกาล');
+  assert.match(jump, /const target = tray \|\| section;/, 'ไม่มีถาดแล้ว (ผูกครบจากเครื่องอื่น) = จอดที่หัวข้อจุด');
+  assert.match(jump, /tray\?\.focus\(\{ preventScroll: true \}\);/);
+  assert.match(jump, /onTrayShown\?\.\(\);/);
+  assert.match(jump, /cancelAnimationFrame\(raf\)/, 'ออกจากพื้นที่ระหว่างรอ = หยุดรอ');
+  const panel = code(read('../../components/AttachmentsPanel.js'));
+  assert.match(panel, /data-kind="loose" role="group" aria-label=\{loose\.title\} tabIndex=\{-1\}/, 'ถาดรับโฟกัสได้ แต่ไม่อยู่ในลำดับ Tab');
+  const zoneCss = css('../../components/service/SurveyZonePage.module.css');
+  assert.match(zoneCss, /\.page\[data-layout="pane"\] \.body :global\(\[data-kind="loose"\]\) \{\s*scroll-margin-top: calc\(var\(--scroll-anchor-top\) \+ var\(--survey-zone-head-h\)/,
+    'บานขวา: ถาดจอดใต้หัวที่ติดบน');
+});
+
+/* 🐞 UAT 01/10 — หัวข้อจุดแบบดูอย่างเดียว: วงเลขต่ำกว่าชื่อ ~10px · นับจำนวนจุดซ้ำสองที่ในหัวเดียว · ถอดรูปกลับถาดไม่ได้ */
+test('🐞 จุดแบบดูอย่างเดียว: วงเลขกลางบรรทัดชื่อ · หัวไม่นับจุดซ้ำกับป้าย · ชิป "ไม่ผูกจุด" ถอดรูปกลับถาด', () => {
+  assert.match(ZONE, /<div className=\{styles\.spot\} data-mode=\{edit \? undefined : "read"\}>/);
+  const zoneCss = css('../../components/service/SurveyZonePage.module.css');
+  assert.match(zoneCss, /\.spot\[data-mode="read"\] \.spotNo \{\s*margin-top: calc\(\(var\(--fs-7\) \* var\(--lh-thai\) - var\(--spot-no-size\)\) \/ 2\);/,
+    'ระยะของโหมดแก้ (กลางช่องกรอก 44px) ไม่ใช้กับตัวหนังสือ');
+  assert.match(ZONE, /title="จุดที่ติดตั้งได้"\s*hint=\{edit \? "อย่างน้อย 1 จุด · ทุกจุดต้องมีรูป" : null\}/,
+    'ดูอย่างเดียว: ป้ายขวาบอกจำนวนแล้ว ("3 จุด · 3 รูป") · โหมดแก้บอกด่าน G1 (มติ 01/10) ไม่ใช่ "รูปไม่บังคับ"');
+  assert.doesNotMatch(ZONE, /รูปไม่บังคับ/, 'G1: ทุกจุดต้องมีรูปก่อนส่งงาน — คำกำกับห้ามบอกว่ารูปไม่บังคับ');
+
+  const relink = ZONE.slice(ZONE.indexOf('const spotRelink = '), ZONE.indexOf('const spotGroups = '));
+  assert.match(relink, /const \{ targets, linked \} = spotLinkChoices\(/);
+  assert.match(relink, /if \(!targets\.length && !linked\)/, 'จุดเดียวในพื้นที่ = ย้ายไม่ได้ แต่ยังถอดได้');
+  assert.match(relink, /\{linked \? \(\s*<button[^>]*data-kind="unlink"[^>]*onClick=\{\(\) => relink\(\{ spotId: null \}\)\}>\s*ไม่ผูกจุด/,
+    'ถอด = spotId null คีย์เดียว (ข้อยกเว้นใบล็อกของหัวหน้ารับ)');
+  assert.match(zoneCss, /\.linkChip\[data-kind="unlink"\] \{[^}]*border-style: dashed;/, 'ตาแยกชิปถอดออกจากชื่อจุด');
 });

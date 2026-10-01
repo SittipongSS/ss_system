@@ -37,6 +37,7 @@ import {
   photoTilesView,
   photoUploadPercent,
   photoUploadsAdd,
+  photoUploadsOf,
   photoUploadsProgress,
   photoUploadsRemove,
   runAttachmentUploads,
@@ -224,7 +225,8 @@ test('แผง: โหมดแผ่นรูปวาดจากตัวต
   assert.doesNotMatch(tiles, /handleDelete|Trash2|width: 22/, 'ห้ามมีปุ่มลบบนแผ่นรูป');
   assert.doesNotMatch(tiles, /style=\{/, 'ห้ามเพิ่ม inline style (audit:ui นับเพดานไว้)');
   assert.match(tiles, /<progress/, '% มาทาง attribute ของ <progress> ไม่ใช่ style={{ width }}');
-  assert.match(tiles, /onClick=\{\(\) => pickForType\(addType\)\}/, 'แผ่นสุดท้ายเปิดตัวเลือกรูปของแผงเอง');
+  assert.match(tiles, /onClick=\{\(\) => pickForType\(addType, group\)\}/,
+    'แผ่นสุดท้ายเปิดตัวเลือกรูปของแผงเอง (โหมด photoGroups: จองแถวที่กดไว้ด้วย · โหมดเดิม group = null)');
   assert.match(source, /renderPhotoTiles\(\{ photos: tilePhotos, canAdd: canEdit && fileUploads, addType: inlineType \}\)/,
     'แผ่นถ่ายรูปเคารพ `fileUploads` เหมือนปุ่มเดิม (ปิดทางอัป = ไม่มีแผ่น) · อัปเข้าหัวข้อของแผงเอง');
 
@@ -251,8 +253,82 @@ test('แผง: onBusyChange ยิงจากลูปอัปเอง ไ�
     'effect ไม่ยิงหลังแผงถูกถอด ⇒ ตัวนับของหน้าค้างที่ "กำลังอัป" ตลอดไป');
   assert.match(source, /onBusyChangeRef\.current\?\.\(busy\)/);
   // ทางเข้าไฟล์ทั้งสอง (ปุ่ม/แผ่นถ่ายรูป · ลากวาง/Ctrl+V) ผ่านลูปตัวเดียว
-  assert.equal((source.match(/await uploadBatch\(typeKey, ok\)/g) || []).length, 2,
-    'ปุ่ม/แผ่นถ่ายรูป (handleCardFile) + ลากวาง/Ctrl+V (acceptFiles) — ไม่มีลูปอัปตัวที่สอง');
+  assert.equal((source.match(/await uploadBatch\(typeKey, ok(?:, group)?\)/g) || []).length, 2,
+    'ปุ่ม/แผ่นถ่ายรูป (handleCardFile · พกแถวที่กดไว้) + ลากวาง/Ctrl+V (acceptFiles · ไม่รู้แถว) — ไม่มีลูปอัปตัวที่สอง');
+  assert.match(source, /await uploadBatch\(typeKey, ok, group\)/, 'แผ่นถ่ายรูปของแถวอัปพร้อมแถวนั้น');
   assert.doesNotMatch(source, /for \(const f of (ok|files)\)/, 'ลูปอัปเขียนเองในแผง = ทางที่ไม่ยิง onBusyChange');
   assert.match(source, /runAttachmentUploads\(/);
+});
+
+/* ══ โหมดแถวรายกลุ่ม `photoGroups` (PR-S · จุดติดตั้ง: จุดหนึ่งจุด = หนึ่งแถว รูป + ชื่อ + รายละเอียด) ═══════════════
+   ⭐ ยังเป็นแผงตัวเดียว: ดึงรายการครั้งเดียว · ลูปอัปตัวเดียว · แผ่นถ่ายรูปของแถวอัปพร้อม meta ของแถว (`{ spotId }`)
+   ⭐ ถาดของรูปที่ไม่เข้ากลุ่ม · ย้ายเข้ากลุ่ม = PATCH metadata แล้วโหลดรายการใหม่ (ไม่แก้ในมือ — ดูเหตุในแผง) */
+test('แถวรายกลุ่ม: แผ่นกำลังส่งติดแถวที่กดถ่าย · ไม่มีแถว (ลากวาง/Ctrl+V) = ขึ้นที่ถาด · โหมดเดิมเห็นครบทุกแผ่น', () => {
+  const uploads = photoUploadsAdd(
+    photoUploadsAdd([], [{ key: 'a', name: 'a.jpg', group: 'SPT-1' }, { key: 'b', name: 'b.jpg', group: 'SPT-2' }]),
+    [{ key: 'c', name: 'c.jpg' }],
+  );
+  assert.deepEqual(uploads.map((u) => [u.key, u.group]), [['a', 'SPT-1'], ['b', 'SPT-2'], ['c', null]]);
+  assert.deepEqual(photoUploadsOf(uploads, 'SPT-1').map((u) => u.key), ['a']);
+  assert.deepEqual(photoUploadsOf(uploads, null).map((u) => u.key), ['c'], 'ไม่รู้แถว = ถาด');
+  assert.deepEqual(photoUploadsOf(uploads, undefined).map((u) => u.key), ['c']);
+  // โหมดเดิมไม่มีคีย์ group เลย ⇒ ทุกแผ่นเป็น null = เห็นครบเหมือนเดิม
+  const plain = photoUploadsAdd([], [{ key: 'x', name: 'x.jpg' }, { key: 'y', name: 'y.jpg' }]);
+  assert.deepEqual(photoUploadsOf(plain).map((u) => u.key), ['x', 'y']);
+  assert.deepEqual(photoUploadsOf(null), []);
+  // ความคืบหน้า/ถอดแผ่นยังเป็นตัวเดิม (ไม่ทำคีย์ group หาย)
+  assert.equal(photoUploadsProgress(uploads, 'a', 0.5)[0].group, 'SPT-1');
+});
+
+test('แผง: photoGroups — แถวละกรอบ (ของผู้เรียก + แผ่นรูปของกลุ่ม) · ถาดไม่มีแผ่นถ่ายรูป · meta ของแถวไปกับรูป', () => {
+  const source = code(fs.readFileSync(FILE, 'utf8'));
+  const css = code(fs.readFileSync(CSS, 'utf8'));
+  assert.match(source, /photoGroups,/, 'opt-in — ไม่ส่ง = แผ่นรูปแบบเดิม');
+  assert.match(source, /const groupsView = tilesMode && typeof photoGroups === "function"/, 'มีความหมายเฉพาะโหมดแผ่นรูป');
+  assert.match(source, /\{tilesMode && !groupsView && renderPhotoTiles\(\{ photos: tilePhotos/, 'ไม่มีกลุ่ม = แผ่นรูปตัวเดิมเป๊ะ');
+
+  const groups = renderBody(source, 'renderPhotoGroups');
+  assert.match(groups, /\{row\.content\}/);
+  assert.match(groups, /group: \{ key: row\.key, meta: row\.meta \|\| null, label: row\.label \|\| "" \}/);
+  assert.match(groups, /renderPhotoTiles\(\{ photos: \[it\], canAdd: false, addType, pending: \[\] \}\)/,
+    'รูปในถาด: ไม่มีแผ่นถ่ายรูป · ไม่วาดแผ่น % ซ้ำทุกรูป');
+  assert.match(groups, /view\.relinkControl\?\.\(it, relinkArgs\(it\)\)/, 'ตัวเลือกย้ายเข้ากลุ่มอยู่ข้างรูปในถาด');
+  assert.doesNotMatch(groups, /style=\{/, 'ห้ามเพิ่ม inline style (audit:ui นับเพดานไว้)');
+
+  const tiles = renderBody(source, 'renderPhotoTiles');
+  assert.match(tiles, /pending = photoUploadsOf\(uploads, group\?\.key\)/, 'แผ่น % เฉพาะของแถวนั้น');
+  assert.match(tiles, /aria-label=\{group\?\.label \? `\$\{tile\.label\} · \$\{group\.label\}` : undefined\}/,
+    'แผ่นถ่ายรูปทุกแถวตาเห็นคำเดียวกัน — โปรแกรมอ่านจอต้องได้ยินว่าของจุดไหน');
+
+  // อัป: แถวที่กด → metadata ของรูป · ลากวาง/Ctrl+V ไม่รู้แถว = `{}`
+  assert.match(source, /pendingGroupRef\.current = group;/);
+  assert.match(source, /upload\(file, typeKey, group\?\.meta \? \{ \.\.\.group\.meta \} : \{\}, onProgress\)/);
+  assert.match(source, /group: group\?\.key \?\? null/);
+
+  // กล่องดูรูปเต็ม: ย้ายกลุ่มได้ (ผู้เรียกวาดตัวเลือก) · ผ่านแล้วปิดกล่อง
+  assert.match(source, /if \(await relinkPhoto\(preview, patch\)\) setPreview\(null\);/);
+  /* 🐞 UAT 01/10 — ตัวเลือกย้ายเคยอยู่ใต้รูป 70vh ⇒ ตกใต้ขอบกล่องที่ 1024×768/1280×720/1366×768 (รูปที่ผูกแล้วย้ายจุด
+     ได้ทางเดียวคือกล่องนี้) ⇒ ต้องอยู่แถบท้ายที่ไม่เลื่อนตามเนื้อ */
+  const box = source.slice(source.indexOf('const lightbox = ('), source.indexOf('const docViewer = ('));
+  const foot = box.slice(box.indexOf('footer={'), box.indexOf(') : undefined}'));
+  assert.match(foot, /\{previewRelink \? <div className=\{styles\.lightboxRelink\}>\{previewRelink\}<\/div> : null\}/,
+    'ตัวเลือกย้ายอยู่ในแถบท้าย');
+  assert.equal((box.match(/previewRelink/g) || []).length, 2, 'ไม่มีตัวเลือกย้ายชุดที่สองใต้รูป');
+  assert.match(box, /className=\{tilesMode \? styles\.lightbox : ""\}/, 'ปุ่มปิดขนาดนิ้วเฉพาะโหมดแผ่นรูป (โหมดอื่นหน้าตาเดิม)');
+  assert.match(cssRule(css, '.lightbox :global(.drawer-close)'), /width: var\(--ctl-h-touch\);[^}]*height: var\(--ctl-h-touch\);/);
+  assert.match(cssRule(css, '.lightboxFoot'), /flex-wrap: wrap;/, 'ที่ไม่พอ = ตัวเลือกย้ายขึ้นแถวบน ปุ่มลงแถวล่าง');
+
+  assert.match(cssRule(css, '.looseItem'), /--attach-tile-cols: 1;/);
+  assert.match(cssRule(css, '.group[data-kind="loose"]'), /border-style: dashed;/);
+});
+
+test('🐞 แผง: ย้ายรูปเข้ากลุ่ม = PATCH metadata แล้วโหลดรายการใหม่ — ไม่แก้รายการในมือ (รายการเก่าของแผงนี้จะทับภาพกว้างที่เพิ่งอัป)', () => {
+  const source = code(fs.readFileSync(FILE, 'utf8'));
+  const body = source.slice(source.indexOf('const relinkPhoto = async'), source.indexOf('const relinkArgs = '));
+  assert.match(body, /await apiJson\(`\/api\/master\/attachments\/\$\{it\.id\}`, \{\s*method: "PATCH", json: \{ metadata: patch \}/,
+    'ผ่าน apiJson (json ถูกแกะเป็น body ที่ตัวห่อ) — ไม่ใช่ fetch ดิบ');
+  assert.match(body, /await fetchItems\(\);/);
+  assert.doesNotMatch(body, /setItems\(/, 'แก้ในมือ = แผงรายงานรายการเก่าขึ้นไปทับก้อนรวมของหน้า');
+  assert.match(body, /notifyToast\.error\(/, 'ผูกไม่สำเร็จต้องพูดออกมา (409 จุดยังไม่บันทึก · 403 ใบล็อก)');
+  assert.doesNotMatch(body, /retry: true/, 'PATCH ไม่ลองใหม่เอง');
 });

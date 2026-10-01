@@ -6,6 +6,7 @@ import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest } from '@/lib/http';
 import { loadVisitItems, requireVisit } from '@/lib/service/visitsRepo';
+import { normalizeVisitItem } from '@/lib/service/visitItems';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,37 +25,15 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
 export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const { id } = await ctx.params;
   try {
-    const access = await requireVisit({ user, supabase, id, edit: true });
+    const access = await requireVisit({ user, supabase, id, edit: true, running: true });
     if (access.response) return access.response;
 
     const body = await req.json().catch(() => ({}));
-    const label = String(body.label ?? '').trim().replace(/\s+/g, ' ');
-    if (!label) return badRequest('ต้องระบุชื่อของที่ใช้');
-    if (label.length > 200) return badRequest('ชื่อของที่ใช้ยาวเกิน 200 ตัวอักษร');
+    // ⭐ ตัวตรวจตัวเดียวกับ PATCH ของบรรทัด (`items/[itemId]`) — เพิ่ม/แก้ต้องได้กติกาเดียวกัน (R9)
+    const { value, error: invalid } = normalizeVisitItem(body);
+    if (invalid) return badRequest(invalid);
 
-    // ⚠️ จำนวนเว้นว่างได้ — "เติมน้ำหอมขวดนึง" ที่ยังไม่ได้ชั่งจริงมีอยู่จริง
-    // ห้ามแปลงค่าว่างเป็น 0 (0 อ่านว่า "ไม่ได้ใช้เลย" ซึ่งคนละความหมาย)
-    let qty = null;
-    if (body.qty !== undefined && body.qty !== null && String(body.qty).trim() !== '') {
-      qty = Number(body.qty);
-      if (!Number.isFinite(qty) || qty <= 0) return badRequest('จำนวนต้องเป็นตัวเลขมากกว่า 0');
-    }
-
-    const unit = String(body.unit ?? '').trim();
-    if (unit.length > 30) return badRequest('หน่วยยาวเกิน 30 ตัวอักษร');
-    const note = String(body.note ?? '').trim();
-    if (note.length > 500) return badRequest('หมายเหตุยาวเกิน 500 ตัวอักษร');
-
-    const row = {
-      id: genId('SVI'),
-      visitId: id,
-      assetId: body.assetId || null,
-      productId: body.productId || null,
-      label,
-      qty,
-      unit: unit || null,
-      note: note || null,
-    };
+    const row = { id: genId('SVI'), visitId: id, ...value };
     const { data, error } = await supabase.from('service_visit_items').insert(row).select().single();
     if (error) return fail(error.message, 500);
 

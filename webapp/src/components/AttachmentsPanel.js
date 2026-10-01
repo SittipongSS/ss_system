@@ -29,6 +29,7 @@ import {
   PHOTO_DELETE_LABEL,
   photoDeleteConfirm,
   photoTilesView,
+  photoUploadsOf,
   runAttachmentUploads,
 } from "@/lib/master/attachmentPhotoTiles";
 import Button from "@/components/ui/Button";
@@ -55,7 +56,7 @@ import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import { useFileIntake } from "@/lib/ui/useFileIntake";
 import { businessDate } from "@/lib/businessDate";
 import PhotoThumb from "@/components/ui/PhotoThumb";
-import { apiFetch } from "@/lib/apiFetch";
+import { apiFetch, apiJson } from "@/lib/apiFetch";
 import styles from "./AttachmentsPanel.module.css";
 
 // เช็คขนาดก่อนอัป (กันเสียแบนด์วิดท์อัปแล้วโดน server ปฏิเสธ). server บังคับซ้ำเสมอ.
@@ -152,6 +153,19 @@ export default function AttachmentsPanel({
         ต่างตามจอ ตอบได้ใน media query เท่านั้น) · ใช้ `photoRows` ไม่ได้
      ตรรกะอยู่ที่ `lib/master/attachmentPhotoTiles.js` — ที่นี่วาดอย่างเดียว */
   photoTiles = false,
+  /* โหมดแผ่นรูป: `(photos) => ({ rows, loose, relinkControl })` — แผ่นรูปแยกเป็น **แถวรายกลุ่ม**
+     (จุดติดตั้ง · PR-S · มติเจ้าของ 28/09 "จุดหนึ่งจุด = หนึ่งแถว: รูป + ชื่อ + รายละเอียด")
+     · `rows: [{ key, meta, label, content, photos }]` — ลำดับของผู้เรียก · `content` = ของที่ผู้เรียกวาดกำกับกลุ่ม
+       (เลข · ชื่อ · รายละเอียด · เมนู) · แผ่นถ่ายรูปของแถวอัปพร้อม `meta` ⇒ รูปผูกกลุ่มตั้งแต่ตอนถ่าย
+     · `loose: { title, note, photos } | null` — แถวท้ายของรูปที่ไม่เข้ากลุ่มไหน (ถาด) · ไม่มีรูป = ไม่มีแถว
+     · `relinkControl(item, { relink, busy, locked })` — ตัวเลือกย้ายรูปเข้ากลุ่ม (ผู้เรียกวาด · `null` = ย้ายไม่ได้)
+       ขึ้นข้างรูปในถาด และในกล่องดูรูปเต็ม · `relink(metaPatch)` = PATCH metadata ของรูปนั้น ·
+       `busy` = รูปนี้กำลังย้าย · `locked` = มีรูปใดกำลังย้ายอยู่ (ทีละรูป — กดรัวแล้วคำขอสลับลำดับกันไม่ได้)
+     · `row.label` = ชื่อแถวที่โปรแกรมอ่านจอได้ยินบนแผ่นถ่ายรูป ("ถ่าย / เลือกรูป · จุดที่ 2 มุมเตียง")
+     ⚠️ **กติกาจัดกลุ่มเป็นของผู้เรียก** (`spotPhotoGroups`) — แผงไม่รู้ว่า "จุด" คืออะไร
+     ⚠️ ยังเป็นแผงตัวเดียว: ดึงรายการครั้งเดียว · ลูปอัปตัวเดียว · ลากวาง/Ctrl+V ตัวเดียว (ไม่รู้แถว ⇒ รูปลงถาด)
+     ⚠️ ผูก/ย้ายไม่ขึ้นกับ `canEdit` — หัวหน้าบนใบที่ส่งผลแล้วแนบ/ลบไม่ได้ แต่ผูกรูปกับจุดได้ (Q1a) ⇒ ผู้เรียกตัดสินใน `relinkControl` */
+  photoGroups,
   /* `(busy: boolean) => void` — มีรูป/ไฟล์กำลังอัปอยู่ไหม (แผนลงมือ §3.7: หน้านับเองแล้วโหลดตัวนับใหม่เมื่อจบ ·
      ถามก่อนออกจากหน้าระหว่างรูปยังขึ้นไม่เสร็จ)
      ⚠️ **ยิงจากลูปอัปเอง ไม่ใช่จาก effect** — ช่างปิดหน้าพื้นที่ระหว่างอัป (กด "ถัดไป") ลูปยังวิ่งต่อจนจบ
@@ -190,6 +204,8 @@ export default function AttachmentsPanel({
   // ไฟล์อินพุตร่วม (card mode) — จำว่ากำลังอัปประเภทไหน
   const cardFileRef = useRef(null);
   const pendingTypeRef = useRef(null);
+  /* โหมด `photoGroups`: แถวที่กดแผ่นถ่ายรูป (`{ key, meta }`) — จองคู่กับประเภท ปล่อยพร้อมกัน (ดู `handleCardFile`) */
+  const pendingGroupRef = useRef(null);
 
   // ── โหมดแผ่นรูป: กองรูปที่กำลังส่ง (ชื่อ + %) · คีย์นับเองไม่ซ้ำตลอดอายุแผง ──
   const [uploads, setUploads] = useState([]);
@@ -286,13 +302,15 @@ export default function AttachmentsPanel({
   /* ── ลูปอัปตัวเดียวของทุกทางเข้าไฟล์ (ปุ่ม · แผ่นถ่ายรูป · ลากวาง · Ctrl+V) ──
      ลำดับ busy → ทีละไฟล์ → โหลดรายการใหม่ → ปิด busy อยู่ที่ `runAttachmentUploads` (เทสต์ได้)
      ⚠️ นับ % เฉพาะโหมดแผ่นรูป — โหมดเดิมไม่มีที่วาด % ⇒ ไม่ต้องวาดแผงใหม่ทุกจังหวะของ xhr
-     ⚠️ อ่านแค่ ref/ค่าที่คงที่ตลอดอายุแผง — `acceptFiles` ข้างล่างเก็บฟังก์ชันนี้ไว้ข้ามรอบวาด */
-  const uploadBatch = (typeKey, files) => runAttachmentUploads({
+     ⚠️ อ่านแค่ ref/ค่าที่คงที่ตลอดอายุแผง — `acceptFiles` ข้างล่างเก็บฟังก์ชันนี้ไว้ข้ามรอบวาด
+     ⭐ `group` (โหมด `photoGroups`) = แถวที่ช่างกดถ่าย — metadata ของรูปได้ `group.meta` (`{ spotId }`) ·
+        แผ่น % ขึ้นใต้แถวนั้น · ไม่มีแถว (ลากวาง/Ctrl+V) = `{}` เหมือนเดิม ⇒ รูปลงถาด */
+  const uploadBatch = (typeKey, files, group = null) => runAttachmentUploads({
     batch: files.map((file) => {
       uploadSeqRef.current += 1;
-      return { key: `up-${uploadSeqRef.current}`, name: file.name, file };
+      return { key: `up-${uploadSeqRef.current}`, name: file.name, file, group: group?.key ?? null };
     }),
-    upload: (file, onProgress) => upload(file, typeKey, {}, onProgress),
+    upload: (file, onProgress) => upload(file, typeKey, group?.meta ? { ...group.meta } : {}, onProgress),
     setUploads: tilesMode ? setUploads : null,
     setBusy: (busy) => {
       setUploadingType(busy ? typeKey : null);
@@ -312,8 +330,9 @@ export default function AttachmentsPanel({
   const defaultAccept = photoCapture ? PHOTO_ACCEPT_ATTR : UPLOAD_ACCEPT_ATTR;
   const acceptFor = (typeKey) => docTypeFileRule(typeKey)?.accept || defaultAccept;
   const cardAccept = acceptFor(types.length === 1 ? types[0]?.key : null);
-  const pickForType = (typeKey) => {
+  const pickForType = (typeKey, group = null) => {
     pendingTypeRef.current = typeKey;
+    pendingGroupRef.current = group;
     if (cardFileRef.current) cardFileRef.current.accept = acceptFor(typeKey);
     cardFileRef.current?.click();
   };
@@ -321,17 +340,19 @@ export default function AttachmentsPanel({
     /* หลายไฟล์ต่อครั้งมาได้เฉพาะโหมด `photoCapture` (input มี `multiple`) — ไฟล์ที่ใหญ่เกิน
        ข้ามทีละไฟล์ ไม่ทิ้งทั้งชุด (ช่างเลือกมาห้ารูป ใหญ่รูปเดียว ต้องได้อีกสี่) */
     const typeKey = pendingTypeRef.current;
+    const group = pendingGroupRef.current;
     const picked = Array.from(e.target.files || []);
     /* ⚠️ ปล่อยช่องเลือกไฟล์ **ทันทีที่อ่านแล้ว** ไม่ใช่ตอนอัปจบ — โหมดแผ่นรูปแตะ "ถ่าย / เลือกรูป"
        ซ้ำได้ระหว่างชุดแรกยังส่ง · 🐞 ถ้าล้างตอนจบ ชุดแรกที่จบระหว่างตัวเลือกไฟล์ของชุดสองเปิดอยู่จะลบ
        ประเภทที่ชุดสองจองไว้ ⇒ รูปที่เลือกมาหายเงียบ (ไฟล์ที่ copy ออกมาแล้วยังใช้ได้หลังล้างช่อง) */
     pendingTypeRef.current = null;
+    pendingGroupRef.current = null;
     if (cardFileRef.current) cardFileRef.current.value = "";
     const files = splitByFileRule(typeKey, picked);
     if (!files.length || !typeKey) return;
     const ok = files.filter((f) => !tooLarge(f));
     if (!ok.length) return;
-    await uploadBatch(typeKey, ok);
+    await uploadBatch(typeKey, ok, group);
   };
 
   // ── ลากมาวาง / วางจากคลิปบอร์ด ──
@@ -441,6 +462,30 @@ export default function AttachmentsPanel({
       notifyToast.error("บันทึกวันที่ออกเอกสารไม่สำเร็จ — เครือข่ายขัดข้อง");
     }
   };
+
+  /* ── โหมด `photoGroups`: ย้ายรูปเข้ากลุ่ม (ถาด → จุด · จุด → จุด) ──────────────────────────
+     ⚠️ **ไม่แก้รายการในมือก่อน แล้วโหลดรายการใหม่หลังผ่าน** — แผงรายงานรายการของ entity ทั้งก้อนขึ้นไปที่หน้า
+        (`onItemsChange`) · 🐞 ถ้าแก้ในมือ รายการของแผงนี้ (ที่อาจเก่ากว่าแผงภาพกว้างซึ่งเพิ่งอัป) จะทับก้อนรวมของหน้า
+        ⇒ ภาพกว้างที่เพิ่งขึ้นหายจากตัวนับ ปุ่มส่งติดด่าน · โหลดใหม่ = ก้อนที่รายงานเป็นของสดจากฐาน
+     ⚠️ PATCH ไม่ลองใหม่เอง (ค่าตั้งต้นของ `apiJson`) — ผูกซ้ำจุดเดิมไม่มีผลเสีย แต่คำตอบที่หายต้องให้คนกดเองอีกครั้ง */
+  const [relinkingId, setRelinkingId] = useState(null);
+  const relinkPhoto = async (it, patch) => {
+    if (!it?.id || relinkingId) return false;
+    setRelinkingId(it.id);
+    try {
+      await apiJson(`/api/master/attachments/${it.id}`, {
+        method: "PATCH", json: { metadata: patch }, fallbackError: "ผูกรูปกับจุดไม่สำเร็จ",
+      });
+      await fetchItems();
+      return true;
+    } catch (err) {
+      notifyToast.error(err?.message || "ผูกรูปกับจุดไม่สำเร็จ");
+      return false;
+    } finally {
+      setRelinkingId(null);
+    }
+  };
+  const relinkArgs = (it) => ({ relink: (patch) => relinkPhoto(it, patch), busy: relinkingId === it?.id, locked: !!relinkingId });
 
   // จัดกลุ่มไฟล์ตามประเภท (docType ที่ไม่รู้จัก → 'other')
   const knownKeys = new Set(types.map((t) => t.key));
@@ -692,9 +737,11 @@ export default function AttachmentsPanel({
      ⚠️ % มาทาง attribute ของ `<progress>` ไม่ใช่ `style={{ width }}` — ชั้น inline style ของ audit:ui
         เป็นเพดานที่ขึ้นไม่ได้ (ท่าเดียวกับแถบเก็บเงินของ /finance/payments)
      ⚠️ แผ่นกำลังส่งไม่ใช่ live region — % ขยับทุกจังหวะของ xhr ถ้าประกาศทุกครั้งโปรแกรมอ่านจอพูดไม่หยุด
-        (ค่าอยู่ที่ `<progress>` ให้ถามเองได้) */
-  const renderPhotoTiles = ({ photos, canAdd, addType }) => {
-    const { tiles } = photoTilesView({ photos, uploads, canAdd, canDelete: mayDelete });
+        (ค่าอยู่ที่ `<progress>` ให้ถามเองได้)
+     ⭐ `group` (โหมด `photoGroups`) = แถวที่แผ่นชุดนี้อยู่ — แผ่นถ่ายรูปอัปเข้าแถวนั้น · แผ่น % เฉพาะของแถวนั้น (`pending`)
+        · คำใบ้ "ลากไฟล์มาวาง" ไม่ขึ้นในแถว (ของที่ลากมาไม่รู้แถว ⇒ ลงถาด — คำใบ้จะโกหก) */
+  const renderPhotoTiles = ({ photos, canAdd, addType, group = null, pending = photoUploadsOf(uploads, group?.key) }) => {
+    const { tiles } = photoTilesView({ photos, uploads: pending, canAdd, canDelete: mayDelete });
     if (!tiles.length) return null;
     return (
       <div className={styles.tiles}>
@@ -731,11 +778,12 @@ export default function AttachmentsPanel({
               type="button"
               className={styles.tile}
               data-kind="add"
-              onClick={() => pickForType(addType)}
+              onClick={() => pickForType(addType, group)}
+              aria-label={group?.label ? `${tile.label} · ${group.label}` : undefined}
             >
               <Camera size={22} aria-hidden="true" />
               {tile.label}
-              <small className={`${styles.tileHint} ${styles.pointerOnly}`}>{tile.hint}</small>
+              {group ? null : <small className={`${styles.tileHint} ${styles.pointerOnly}`}>{tile.hint}</small>}
             </button>
           );
         })}
@@ -743,10 +791,73 @@ export default function AttachmentsPanel({
     );
   };
 
+  /* ── แถวรายกลุ่ม (โหมด `photoGroups` — จุดติดตั้ง · PR-S) ────────────────────────────────
+     หนึ่งแถว = ของที่ผู้เรียกวาดกำกับกลุ่ม (เลข · ชื่อ · รายละเอียด · เมนู) + แผ่นรูปของกลุ่ม + แผ่นถ่ายรูปที่ผูกกลุ่มให้เอง
+     ถาดท้าย = รูปที่ไม่เข้ากลุ่มไหน · ตัวเลือกย้ายเข้ากลุ่มอยู่ข้างรูปแต่ละรูป (ไม่ต้องเปิดกล่องดูรูปก่อน)
+     ⚠️ ถาดไม่มีแผ่นถ่ายรูป — รูปใหม่เกิดจากแถวของกลุ่มเท่านั้น (มติ 30/09: กองรูปแยกหายไป) · ลากวาง/Ctrl+V ยังลงถาด
+     ⚠️ แผ่นรูปในถาดใช้ `renderPhotoTiles` ตัวเดิม (แตะ = กล่องดูรูปเต็ม · ลบในนั้น) — `pending: []` กันแผ่น % ซ้ำทุกรูป */
+  const renderPhotoGroups = ({ view, canAdd, addType }) => {
+    const rows = Array.isArray(view?.rows) ? view.rows : [];
+    const loose = view?.loose || null;
+    const loosePhotos = Array.isArray(loose?.photos) ? loose.photos : [];
+    const looseUploads = photoUploadsOf(uploads, null);
+    return (
+      <div className={styles.groups}>
+        {rows.map((row) => (
+          <div key={row.key} className={styles.group}>
+            {row.content}
+            {renderPhotoTiles({
+              photos: Array.isArray(row.photos) ? row.photos : [], canAdd, addType,
+              group: { key: row.key, meta: row.meta || null, label: row.label || "" },
+            })}
+          </div>
+        ))}
+        {loose && (loosePhotos.length > 0 || looseUploads.length > 0) ? (
+          /* `tabIndex={-1}` — ปลายทางโฟกัสของ "ไปผูกจุด" (ผู้เรียกเลื่อนมาแล้วโฟกัสถาด) · ไม่อยู่ในลำดับ Tab */
+          <div className={styles.group} data-kind="loose" role="group" aria-label={loose.title} tabIndex={-1}>
+            <p className={styles.looseTitle}>{loose.title}</p>
+            {loose.note ? <p className={styles.looseNote}>{loose.note}</p> : null}
+            {loosePhotos.length > 0 ? (
+              <ul className={styles.looseList}>
+                {loosePhotos.map((it) => (
+                  <li key={it.id} className={styles.looseItem}>
+                    {renderPhotoTiles({ photos: [it], canAdd: false, addType, pending: [] })}
+                    <div className={styles.looseAct}>{view.relinkControl?.(it, relinkArgs(it)) ?? null}</div>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {looseUploads.length > 0 ? renderPhotoTiles({ photos: [], canAdd: false, addType, pending: looseUploads }) : null}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
+  /* โหมด `photoGroups`: กลุ่มของรูปคิดครั้งเดียวต่อการวาด — แถวรายกลุ่มกับกล่องดูรูปเต็มอ่านก้อนเดียวกัน
+     ⚠️ หยิบเฉพาะรูปของหัวข้อแผง (docType ตัวแรก) — โหมดนี้มีความหมายกับแผงที่ประกาศหัวข้อเดียวเท่านั้น */
+  const groupType = types[0]?.key || "other";
+  const groupsView = tilesMode && typeof photoGroups === "function"
+    ? photoGroups(loading ? [] : items.filter((it) => it.docType === groupType && isPreviewableImage(it)))
+    : null;
+  /* ย้ายรูปจากกล่องดูรูปเต็ม — ผ่านแล้วปิดกล่อง (รูปไปอยู่แถวอื่นแล้ว ตัวเลือกในกล่องเป็นของตำแหน่งเก่า) */
+  const previewRelink = groupsView && preview
+    ? groupsView.relinkControl?.(preview, {
+      ...relinkArgs(preview),
+      relink: async (patch) => {
+        if (await relinkPhoto(preview, patch)) setPreview(null);
+      },
+    }) ?? null
+    : null;
+
   /* กล่องดูรูปขนาดเต็ม — ใช้ Modal ของระบบ (จัดการ Escape/โฟกัสให้แล้ว)
      ⭐ โหมดแผ่นรูป: **ที่เดียวที่ลบรูปได้** — ปุ่มแถบท้ายสูง 44px (แผ่นรูปไม่มี × 22px) · ด่านรายไฟล์
         `mayDelete` ตัวเดียวกับโหมดอื่น · ปุ่มเปิดไฟล์ต้นฉบับย้ายลงแถบท้ายคู่กัน (นิ้วเดียวกันกดได้ทั้งคู่)
-     โหมดอื่นหน้าตาเดิมเป๊ะ (ลิงก์เล็กใต้รูป ไม่มีแถบท้าย) */
+        · ปุ่มปิด (×) ขนาดนิ้ว (`styles.lightbox` — ของกลาง 28px) · 🐞 UAT 01/10: กล่องนี้คือทางหลักของช่างบนมือถือ
+     ⭐ โหมด `photoGroups`: ตัวเลือกย้ายกลุ่ม ("ย้ายไปจุด" / "ผูกกับจุด") **อยู่ในแถบท้าย ไม่ใช่ใต้รูป**
+        🐞 UAT 01/10: ใต้รูปที่สูง 70vh = ตกใต้ขอบกล่องที่ 1024×768 · 1280×720 · 1366×768 โดยไม่มีอะไรบอกว่ามีต่อ
+        ⇒ รูปที่ผูกแล้วย้ายจุดได้ทางเดียวคือกล่องนี้ = หัวหน้าบนแล็ปท็อปไม่เห็นทางย้าย · แถบท้ายไม่เลื่อนตามเนื้อ เห็นเสมอ
+     โหมดอื่นหน้าตาเดิมเป๊ะ (ลิงก์เล็กใต้รูป ไม่มีแถบท้าย · ปุ่มปิดของกลาง) */
   const lightbox = (
     <Modal
       open={!!preview}
@@ -754,22 +865,27 @@ export default function AttachmentsPanel({
       title={preview?.fileName || "รูปแนบ"}
       size="lg"
       closeOnOverlay
+      className={tilesMode ? styles.lightbox : ""}
       footer={tilesMode && preview ? (
-        <div className={styles.lightboxActions}>
-          <Button
-            as="a" href={fileHref(preview)} target="_blank" rel="noreferrer"
-            className={styles.lightboxBtn} icon={<Download size={16} aria-hidden="true" />}
-          >
-            เปิดไฟล์ต้นฉบับ
-          </Button>
-          {tilesMode && preview && mayDelete(preview) && (
+        <div className={styles.lightboxFoot}>
+          {/* ย้ายรูปไปกลุ่มอื่น (ผู้เรียกวาดตัวเลือก · ย้ายไม่ได้ = ไม่มีแถบ) */}
+          {previewRelink ? <div className={styles.lightboxRelink}>{previewRelink}</div> : null}
+          <div className={styles.lightboxActions}>
             <Button
-              tone="danger" variant="outline" className={styles.lightboxBtn}
-              icon={<Trash2 size={16} aria-hidden="true" />} onClick={deletePreview}
+              as="a" href={fileHref(preview)} target="_blank" rel="noreferrer"
+              className={styles.lightboxBtn} icon={<Download size={16} aria-hidden="true" />}
             >
-              {PHOTO_DELETE_LABEL}
+              เปิดไฟล์ต้นฉบับ
             </Button>
-          )}
+            {tilesMode && preview && mayDelete(preview) && (
+              <Button
+                tone="danger" variant="outline" className={styles.lightboxBtn}
+                icon={<Trash2 size={16} aria-hidden="true" />} onClick={deletePreview}
+              >
+                {PHOTO_DELETE_LABEL}
+              </Button>
+            )}
+          </div>
         </div>
       ) : undefined}
     >
@@ -944,7 +1060,10 @@ export default function AttachmentsPanel({
 
         {/* โหมดแผ่นรูป: แผ่นถ่ายรูปขึ้นตั้งแต่ก่อนรายการโหลดจบ — ถ่ายได้โดยไม่ต้องรอรายการ
             (ไฟล์ที่ไม่ใช่รูป ซึ่งมาทางลากวาง/Ctrl+V ได้ ยังเป็นแถวรายชื่อข้างล่างเหมือนเดิม) */}
-        {tilesMode && renderPhotoTiles({ photos: tilePhotos, canAdd: canEdit && fileUploads, addType: inlineType })}
+        {tilesMode && groupsView
+          ? renderPhotoGroups({ view: groupsView, canAdd: canEdit && fileUploads, addType: inlineType })
+          : null}
+        {tilesMode && !groupsView && renderPhotoTiles({ photos: tilePhotos, canAdd: canEdit && fileUploads, addType: inlineType })}
 
         {!loading && shown.length > 0 && (() => {
           const photos = shown.filter(isPreviewableImage);
