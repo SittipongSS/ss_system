@@ -7,10 +7,10 @@
 
 .wrap {
   --c-idx: 30px;
-  --c-item: 128px;
-  --c-kind: 92px;
-  --c-fg: 160px;
-  --c-rounds: 128px;
+  --c-item: 130px;
+  --c-kind: 132px;
+  --c-fg: 152px;
+  --c-rounds: 124px;
   --c-packs: 88px;
   --c-total: 84px;
   container-type: inline-size;
@@ -236,7 +236,7 @@
   gap: var(--space-1);
 }
 
-.kind[data-invalid] :global(.segmented) {
+.kind[data-invalid] .answerButton {
   border-color: var(--red);
 }
 
@@ -260,8 +260,80 @@
   font-size: var(--fs-3);
 }
 
-.yn {
-  max-width: 100%;
+/* ปุ่มคำตอบสองปุ่มแยก ✓ ใช่ / ✕ ไม่ใช่ — ยังไม่ตอบ: ขอบชัด พื้นขาว (เห็นว่ากดได้) · ตอบแล้ว: ปุ่มที่เลือกเติมสี อีกปุ่มจาง
+   คอลัมน์ ① กว้างพอสองปุ่ม + ระยะขอบ (เดิม 92px "ไม่ใช่" ชนขอบคอลัมน์ — ภาพของเจ้าของ 01/10) */
+.answer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1-5);
+}
+
+.answerButton {
+  display: inline-flex;
+  min-width: 44px;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--panel-solid);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.answerButton:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 1px;
+}
+
+.answerButton[data-answer="package"] svg {
+  color: var(--accent-ink);
+}
+
+.answerButton[data-answer="not_service"] svg {
+  color: var(--text-2);
+}
+
+.answerButton[data-answer="package"][aria-checked="true"] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.answerButton[data-answer="not_service"][aria-checked="true"] {
+  --answer-dark: color-mix(in srgb, var(--text) 80%, var(--panel-solid));
+  border-color: var(--answer-dark);
+  background: var(--answer-dark);
+  color: var(--panel-solid);
+}
+
+.answerButton[aria-checked="true"] svg {
+  color: currentColor;
+}
+
+.answer[data-answered] .answerButton[aria-checked="false"] {
+  border-color: var(--border);
+  background: transparent;
+  color: var(--text-3);
+  font-weight: var(--fw-medium);
+}
+
+.answer[data-answered] .answerButton[aria-checked="false"] svg {
+  color: currentColor;
+}
+
+/* คำชวนตอนยังไม่ตอบ — ไม่ใช่ข้อผิด (ไม่แดงก่อนกด · กฎ 3) */
+.answerAsk {
+  color: var(--accent-ink);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-semibold);
 }
 
 /* ── ② แพ็คเกจ FG ── */

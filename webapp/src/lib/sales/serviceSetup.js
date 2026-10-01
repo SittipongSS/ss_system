@@ -241,6 +241,7 @@ export const SERVICE_SETUP_GRID_TEXT = Object.freeze({
   yes: 'ใช่',
   no: 'ไม่ใช่',
   unanswered: 'ยังไม่ตอบ',
+  pickAnswer: 'เลือกคำตอบ',
   notService: 'ไม่ใช่งานบริการ — ไม่ส่ง TS',
   unsetHint: 'ตอบ ‘ใช่’ ถ้ารายการนี้คือแพ็คเกจที่ TS ต้องไปบริการตามรอบ · ‘ไม่ใช่’ สำหรับค่าขนส่ง ค่าออกแบบ สินค้าส่งครั้งเดียว',
   unsetRead: 'ยังไม่ตอบว่าเป็นงานบริการไหม',
