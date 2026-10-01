@@ -16,7 +16,7 @@ import { withUser, ok, fail, badRequest, forbidden, notFound, conflict } from '@
 import { canSendSurveyResult } from '@/lib/permissions';
 import { appendUpdate } from '@/lib/master/updates';
 import { loadSurveyZones } from '@/lib/service/surveyRepo';
-import { surveyRecallError, surveyTotals } from '@/lib/service/survey';
+import { surveyPackagesText, surveyRecallError, surveyTotals } from '@/lib/service/survey';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,7 +66,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       entityType: 'dept_request', entityId: id, kind: 'recall',
       body: `TS ดึงผลประเมินกลับมาแก้ — ${reason.slice(0, 300)}`
         + ` · ตัวเลขที่ส่งไปแล้ว ${totals.zones} พื้นที่ · ${totals.areaSqm} ตร.ม.`
-        + ` · ${totals.packageQty} แพ็คเกจ (อย่าเพิ่งใช้ตั้งราคา)`,
+        + ` · ${surveyPackagesText(totals)} — อย่าเพิ่งใช้ตั้งราคา`,
       meta: { totals },
       user,
     });
@@ -75,7 +75,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       user, action: 'update', entityType: 'dept_request', entityId: id,
       before: request, after: data,
       summary: `ดึงผลประเมินกลับมาแก้ ${request.docNo || id} — ${reason}`
-        + ` · ตัวเลขเดิม ${totals.zones} พื้นที่ · ${totals.areaSqm} ตร.ม. · ${totals.packageQty} แพ็คเกจ`,
+        + ` · ตัวเลขเดิม ${totals.zones} พื้นที่ · ${totals.areaSqm} ตร.ม. · ${surveyPackagesText(totals)}`,
       request: req,
     });
     return ok({ request: data, totals });

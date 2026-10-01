@@ -336,6 +336,14 @@ export const isFieldCrewRole = (role) => FIELD_CREW_ROLES.includes(normalizeRole
 export const canSendSurveyResult = (user) => user?.role === 'admin'
   || SERVICE_HEAD_ROLES.includes(normalizeRole(user?.role))
   || isServiceOverseer(normalizeRole(user?.role));
+
+/** ⭐ **เพิ่ม · แก้ · ลบ ขนาดแพ็คเกจในทะเบียน** (`/database/package-sizes` · mig 0398 · มติเจ้าของ 01/10)
+ *  = คนชุดเดียวกับที่เคาะขนาดบนผลประเมิน: แอดมิน + หัวหน้าฝ่ายบริการ (+ CD/CM)
+ *  🔴 **ไม่ใช่ `canEditService`** — Planner ผ่านตัวนั้น และช่าง Operation ผ่าน proxy ของ `/api/service` ด้วย `service:work`
+ *    ⇒ ทุก handler ที่เขียนทะเบียนต้องถามตัวนี้เอง (ขนาดคือของที่ฝ่ายขายเอาไปตั้งราคา ไม่ใช่ข้อมูลหน้างาน)
+ *  ⚠️ **อ่าน** ทะเบียนเป็นของทุกคนที่เข้าฐานข้อมูลได้ (`canViewServiceRegistry`) — ตัวนี้คุมเฉพาะการเขียน
+ *  ⚠️ ผูกกับ `canSendSurveyResult` โดยตั้งใจ (ไม่ก๊อปลิสต์ role) — เพิ่มตำแหน่งหัวหน้าใหม่เมื่อไร สองสิทธิ์เดินไปด้วยกัน */
+export const canManagePackageSizes = (user) => canSendSurveyResult(user);
 export const ROLE_LABELS = {
   admin: 'ผู้ดูแลระบบ (Admin)',
   secretary: 'เลขานุการ (Secretary)',

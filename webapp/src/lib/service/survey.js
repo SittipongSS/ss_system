@@ -10,13 +10,15 @@
 // วาดอะไร (สถานะ/โทน/เหตุผลที่กดส่งไม่ได้/ค่าเปิด-ปิดพื้นที่) แยกไปไฟล์ข้าง ๆ และ
 // **ถามตัวในไฟล์นี้ทั้งหมด** ⇒ กฎใหม่ของใบประเมินเขียนที่นี่เสมอ ไม่ใช่ที่นั่น
 // (เขียนที่นั่นเมื่อไร จะได้กฎที่ server มองไม่เห็น ซึ่งคือบั๊กที่ไฟล์นี้เกิดมาเพื่อกัน)
+import { fmtNumber } from '@/lib/format';
 
-/* ── สูตร: 2,400 ลบ.ม. = 1 แพ็คเกจ (มติผู้ใช้ 2026-08-29) ───────────────
-   ⚠️ ใช้ **ปริมาตร** ไม่ใช่พื้นที่ — เพดาน 6.5 ม. กับ 2.8 ม. ที่พื้นที่เท่ากัน
-      ต้องการไม่เท่ากัน
-   🪤 อย่าสับสนกับ `suggestStandardMl` (1 แพ็คเกจ = 1 ลิตร/เดือน) ซึ่งเป็นความสัมพันธ์
-      **แพ็คเกจ ↔ น้ำหอม** คนละแกนกัน — ตัวนี้ตอบว่า *ต้องใช้กี่แพ็คเกจ* */
-export const CBM_PER_PACKAGE = 2400;
+/* ── ขนาดแพ็คเกจมาจากทะเบียน (mig 0398 · มติเจ้าของ 01/10) ─────────────────
+   🔄 สูตรเดิม "2,400 ลบ.ม. = 1 แพ็คเกจ · ceil(ลบ.ม. ÷ 2,400)" **ถอดแล้ว** — พื้นที่หนึ่งมี **ขนาดเดียว + จำนวน**
+      ระบบเสนอขนาดจากช่วง ลบ.ม. ของทะเบียน และเสนอจำนวน 1 (`suggestedPackageSize` · `packageSizes.js`)
+   ⚠️ ไฟล์นี้ **ไม่รู้จักทะเบียน** — ด่านทุกข้อที่นี่อ่านจากแถวล้วน (ภาพนิ่ง `packageSize` · `packageSizeSuggested` ·
+      `packageSizeManual` ที่ route ประทับตอนเคาะ) ⇒ หน้าคำร้องของฝ่ายขายใช้ด่านเดิมได้โดยไม่ต้องโหลดทะเบียน
+      · ข้อเดียวที่ต้องเทียบทะเบียน ("ขนาดถูกลบ") อยู่ที่ `packageSizes.js` ซึ่ง import ไฟล์นี้ (ห้ามย้อนทาง = วงวน)
+   🪤 อย่าสับสนกับ `suggestStandardMl` (1 แพ็คเกจ = 1 ลิตร/เดือน) ซึ่งเป็นความสัมพันธ์ **แพ็คเกจ ↔ น้ำหอม** คนละแกนกัน */
 
 const num = (value) => {
   const n = Number(value);
@@ -348,15 +350,61 @@ export function surveyZoneSize(parts = []) {
   };
 }
 
-/* ── สูตรแพ็คเกจ ───────────────────────────────────────────────────────
-   🔴 **ปัดเศษครั้งเดียวที่ระดับพื้นที่ ห้ามปัดรายส่วน** — สองส่วนส่วนละ 100 ลบ.ม.
-      รวม 200 ⇒ 1 แพ็คเกจ · ปัดรายส่วนจะได้ ceil(100/2400) สองครั้ง = 2 ซึ่งผิดเป็นเท่าตัว
-   ⭐ กติกาที่ครอบทั้งสองระดับ: **ขอบของการปัดเศษ = ขอบที่กลิ่นข้ามไม่ได้ = ผนังของพื้นที่**
-      รวมข้ามพื้นที่ไม่ได้ (กลิ่นไม่ทะลุผนัง) · แยกในพื้นที่ก็ไม่ได้ (กลิ่นเดินทั่วห้อง) */
-export function suggestedPackages(volumeCbm) {
-  const volume = num(volumeCbm);
-  if (!(volume > 0)) return null;
-  return Math.max(1, Math.ceil(volume / CBM_PER_PACKAGE));
+/* ── แพ็คเกจของพื้นที่หนึ่ง = ขนาดเดียว + จำนวน ───────────────────────────
+   ⭐ กติกาเดิมที่ยังจริง: **ขอบของการตัดสิน = ขอบที่กลิ่นข้ามไม่ได้ = ผนังของพื้นที่** — ขนาดเสนอจากปริมาตรรวมของ
+      พื้นที่ (ทุกส่วนบวกกัน) ไม่เสนอรายส่วน และไม่เอาปริมาตรรวมทั้งใบมาคิด (กลิ่นไม่ทะลุผนัง) */
+const sizeCode = (value) => String(value ?? '').trim().toUpperCase() || null;
+
+/** "SM 1 · ST 1" — สัดส่วนขนาดของทั้งใบ · `order` = รหัสตามลำดับทะเบียน (ไม่ส่ง = เรียงตามรหัส)
+ *  ⚠️ รหัสที่ไม่อยู่ใน `order` (ถูกลบจากทะเบียนแล้ว) ต่อท้ายเสมอ — ใบที่ส่งไปแล้วยังถือรหัสนั้นอยู่ ห้ามทำหาย */
+export function surveyPackageMixText(bySize, order = null) {
+  const entries = Object.entries(bySize && typeof bySize === 'object' ? bySize : {})
+    .filter(([, qty]) => Number(qty) > 0);
+  if (!entries.length) return '';
+  const rank = new Map((Array.isArray(order) ? order : []).map((code, i) => [code, i]));
+  entries.sort(([a], [b]) => {
+    const ra = rank.has(a) ? rank.get(a) : Infinity;
+    const rb = rank.has(b) ? rank.get(b) : Infinity;
+    return ra !== rb ? ra - rb : a.localeCompare(b, 'en');
+  });
+  return entries.map(([code, qty]) => `${code} ${Number(qty)}`).join(' · ');
+}
+
+/** "2 แพ็คเกจ (SM 1 · ST 1)" — ยอดแพ็คเกจที่ฝ่ายขายเอาไปตั้งราคา (กระดิ่ง · เธรด · audit ใช้ตัวเดียวกัน)
+ *  ⚠️ ยอดเก่าที่ตรึงไว้ก่อนมีขนาด (ไม่มี `packagesBySize`) = ตัวเลขล้วนเหมือนเดิม */
+export function surveyPackagesText(totals, order = null) {
+  const mix = surveyPackageMixText(totals?.packagesBySize, order);
+  return `${fmtNumber(Number(totals?.packageQty) || 0)} แพ็คเกจ${mix ? ` (${mix})` : ''}`;
+}
+
+/* ขนาดที่ระบบเสนอตอนเคาะ — แถวดิบ/`surveyZoneSummary` เรียก `packageSizeSuggested` · แถวของหน้าคำร้อง
+   (`surveyJob.zoneRows` · `surveyZoneFacts`) เรียก `suggestedSize` ⇒ รับทั้งสองชื่อ ไม่ให้จอไหนต้องแปลงเอง */
+const suggestedSizeOf = (row) => sizeCode(row?.packageSizeSuggested ?? row?.suggestedSize);
+
+/**
+ * "SM · 1 แพ็ค" — ขนาด + จำนวนที่หัวหน้าเคาะของพื้นที่หนึ่ง (ทุกจอที่ **อ่าน** ผลใช้ตัวนี้ · mig 0398)
+ * ยังไม่เคาะ = `null` (จอใส่ขีดเอง) · แถวที่มีจำนวนแต่ยังไม่มีขนาด (เคาะด้วยโค้ดเก่า รอ back-fill) = จำนวนล้วน
+ * @param opts.unit `false` = ไม่ต่อหน่วย ("SM · 1") สำหรับคอลัมน์ที่หัวตารางบอกหน่วยแล้ว
+ */
+export function surveyZonePackageText(row, { unit = true } = {}) {
+  const qty = Number(row?.packageQty);
+  if (!(qty > 0)) return null;
+  const size = sizeCode(row?.packageSize);
+  const count = `${fmtNumber(qty)}${unit ? ' แพ็ค' : ''}`;
+  return size ? `${size} · ${count}` : count;
+}
+
+/**
+ * "ระบบเสนอ SM · 1 แพ็ค" — ขึ้น **เฉพาะเมื่อที่เคาะต่างจากที่ระบบเสนอ** (ขนาดไม่ตรง หรือจำนวนไม่ใช่ 1)
+ * ⭐ ต่างได้ (หัวหน้าเป็นคนตัดสิน) แต่ต้องเห็นว่าต่าง ไม่ใช่ทับกันเงียบ ๆ — 🔄 แทนบรรทัด "สูตร N" เดิม
+ * ⚠️ ตรงกับที่เสนอ = `null` (บรรทัดที่พูดซ้ำกับค่าหลักคือเสียงรบกวน) · ไม่มีภาพนิ่ง (ยังไม่เคาะ/แถวก่อนมีขนาด) = `null`
+ */
+export function surveyZoneSuggestedDiffText(row, { unit = true } = {}) {
+  const suggested = suggestedSizeOf(row);
+  const qty = Number(row?.packageQty);
+  if (!suggested || !(qty > 0)) return null;
+  if (sizeCode(row?.packageSize) === suggested && qty === 1) return null;
+  return `ระบบเสนอ ${suggested} · 1${unit ? ' แพ็ค' : ''}`;
 }
 
 /* จุดที่ติดตั้งได้ (เจ้าหน้าที่แจ้ง) กับจุดที่เลือกติดตั้ง (หัวหน้าเลือก)
@@ -372,15 +420,14 @@ export function spotCounts(spots = []) {
 export function surveyZoneSummary(row = {}) {
   const size = surveyZoneSize(row.parts);
   const spots = spotCounts(row.spots);
-  const suggested = suggestedPackages(size.volumeCbm);
   const packageQty = Number.isFinite(Number(row.packageQty)) ? Number(row.packageQty) : null;
   return {
     ...size,
     ...{ spotsTotal: spots.total, spotsSelected: spots.selected },
-    suggestedPackages: suggested,
     packageQty,
-    // ต่างจากสูตรกี่แพ็คเกจ — บวก = สูงกว่าสูตร · ลบ = ต่ำกว่า
-    packageDelta: suggested !== null && packageQty !== null ? packageQty - suggested : null,
+    /* ภาพนิ่งตอนเคาะ (mig 0398) — ขนาดที่หัวหน้าเลือก · ขนาดที่ระบบเสนอ ณ ตอนนั้น (null = แถวก่อนมีขนาด/เสนอไม่ได้) */
+    packageSize: sizeCode(row.packageSize),
+    packageSizeSuggested: sizeCode(row.packageSizeSuggested),
     status: row.status || 'ok',
   };
 }
@@ -396,16 +443,19 @@ export function surveyTotals(rows = []) {
        ⚠️ นับจาก `active` ไม่ใช่ `rows` — แถวที่ถูกลบทิ้งไปแล้วไม่มีทางอยู่ในลิสต์
           และแถวที่เพิ่มมาจะถูกตัดออกไม่ได้ (`PATCH` ปฏิเสธ) ⇒ สองชุดนี้ไม่ทับกัน */
     addedZones: active.filter((r) => r?.status === 'added').length,
-    areaSqm: 0, volumeCbm: 0, suggestedPackages: 0, packageQty: 0,
+    areaSqm: 0, volumeCbm: 0, packageQty: 0,
+    /* จำนวนแพ็คเกจแยกตามขนาด `{ SM: 1, ST: 2 }` — แถวที่เคาะจำนวนแล้วแต่ยังไม่มีขนาดไม่เข้า (ด่านส่งผลบล็อกอยู่) */
+    packagesBySize: {},
     spotsTotal: 0, spotsSelected: 0,
   };
   for (const row of active) {
     const s = surveyZoneSummary(row);
     t.areaSqm += s.areaSqm;
     t.volumeCbm += s.volumeCbm;
-    // 🔴 บวก "แพ็คเกจที่สูตรบอก" รายพื้นที่ แล้วค่อยรวม — ห้ามเอาปริมาตรรวมมาหาร
-    if (s.suggestedPackages) t.suggestedPackages += s.suggestedPackages;
     if (s.packageQty) t.packageQty += s.packageQty;
+    if (s.packageQty > 0 && s.packageSize) {
+      t.packagesBySize[s.packageSize] = (t.packagesBySize[s.packageSize] || 0) + s.packageQty;
+    }
     t.spotsTotal += s.spotsTotal;
     t.spotsSelected += s.spotsSelected;
   }
@@ -597,13 +647,15 @@ export const SURVEY_GATES = [
     key: 'package',
     short: 'แพ็คเกจ',
     owner: 'head',
-    label: 'เคาะจำนวนแพ็คเกจแล้ว',
+    label: 'เคาะขนาดและจำนวนแพ็คเกจแล้ว',
     missing: (row) => {
-      if (!(Number(row.packageQty) > 0)) return 'ยังไม่ได้เคาะจำนวนแพ็คเกจ';
-      /* 🔴 **ทับสูตรแล้วต้องบอกเหตุผล** (mig 0345 · กติกาเดียวกับการตัดพื้นที่ออก)
+      if (!(Number(row.packageQty) > 0)) return 'ยังไม่ได้เคาะแพ็คเกจ';
+      /* จำนวนมีแต่ขนาดไม่มี — แถวที่เคาะด้วยโค้ดเก่าระหว่างรัน 0398 กับ deploy (back-fill รอบสองเก็บให้) */
+      if (!sizeCode(row.packageSize)) return 'ยังไม่ได้เลือกขนาดแพ็คเกจ';
+      /* 🔴 **ต่างจากที่ระบบเสนอต้องบอกเหตุผล** (mig 0345 · กติกาเดียวกับการตัดพื้นที่ออก)
          ของที่ต่างไปจากสิ่งที่ SA จะเสนอราคา คือของที่ลูกค้าจะถาม และ SA ไม่ได้ไปหน้างาน */
       if (packageNeedsNote(row) && !String(row.packageNote ?? '').trim()) {
-        return 'แพ็คเกจต่างจากสูตร — ต้องบอกเหตุผล';
+        return 'แพ็คเกจต่างจากที่ระบบเสนอ — ต้องบอกเหตุผล';
       }
       return null;
     },
@@ -674,13 +726,21 @@ export function surveyCrewGaps(rows = [], filesByZone = {}) {
   return surveyGateChecklist(rows, filesByZone).filter((g) => g.owner === 'crew' && !g.ok);
 }
 
-/** เคาะแพ็คเกจต่างจากที่สูตรบอกไหม — `false` เมื่อยังไม่ได้เคาะ หรือคำนวณสูตรไม่ได้
- *  ⚠️ **ตรงกับสูตรไม่ต้องมีเหตุผล** — บังคับเขียนทุกแถวจะได้ข้อความขยะที่ไม่มีใครอ่าน */
+/** เคาะแพ็คเกจต่างจากที่ระบบเสนอไหม — `false` เมื่อยังไม่ได้เคาะ หรือระบบไม่ได้เสนออะไรไว้
+ *  🔑 **อ่านจากแถวล้วน** (ภาพนิ่งที่ route ประทับตอนเคาะ · mig 0398) — ไม่ถามทะเบียน ⇒ แก้/ลบขนาดในทะเบียนทีหลัง
+ *     ไม่ทำให้แถวที่เคาะไปแล้วต้องมีเหตุผลขึ้นมาเอง และหน้าคำร้องของฝ่ายขายใช้ด่านนี้ได้โดยไม่ต้องโหลดทะเบียน
+ *  🔴 ภาพนิ่งถูกประทับ **สองจังหวะ**: หัวหน้าเคาะ (`PUT` · `surveyPackageDecision`) และ **ช่างวัดใหม่จนปริมาตรเปลี่ยนหลังเคาะ**
+ *     (`PATCH` · `surveyRemeasureStamp`) — จังหวะหลังหายเมื่อไร ด่านนี้หลับ: เคาะ SM ไว้แล้ววัดใหม่ได้ 3,600 ลบ.ม. ส่งผลได้เงียบ ๆ
+ *  ⭐ ระบบเสนอ = ขนาดจากช่วง ลบ.ม. + **จำนวน 1** ⇒ ต่าง = จำนวนไม่ใช่ 1 หรือขนาดไม่ตรงที่เสนอ
+ *     · ยกเว้นขนาดที่ **หัวหน้าเลือกเอง** (`packageSizeManual` เช่น XS ห้องน้ำ) — ระบบไม่มีวันเสนอขนาดนั้น
+ *       บังคับเหตุผลทุกห้องน้ำ = ข้อความขยะที่ไม่มีใครอ่าน
+ *  ⚠️ **ตรงกับที่เสนอไม่ต้องมีเหตุผล** · แถวก่อนมีขนาด (back-fill ST · `packageSizeSuggested` ว่าง) ไม่ถูกย้อนบังคับ */
 export function packageNeedsNote(row = {}) {
-  const suggested = suggestedPackages(surveyZoneSize(row.parts).volumeCbm);
   const qty = Number(row.packageQty);
-  if (!suggested || !(qty > 0)) return false;
-  return qty !== suggested;
+  const suggested = sizeCode(row.packageSizeSuggested);
+  if (!(qty > 0) || !suggested) return false;
+  if (qty !== 1) return true;
+  return sizeCode(row.packageSize) !== suggested && row.packageSizeManual !== true;
 }
 
 /* ── ส่งผลไปแล้ว = ตัวเลขออกจากฝ่ายเราไปแล้ว ────────────────────────────────
@@ -1070,6 +1130,13 @@ export function surveyTotalsDiff(before = null, after = null) {
     if (!Number.isFinite(a) || !Number.isFinite(b) || a === b) continue;
     out.push(`${label} ${a} → ${b}`);
   }
+  /* ⭐ ขนาดเปลี่ยนทั้งที่จำนวนรวมเท่าเดิม (ST 2 → SM 1 · ST 1) = ราคาเปลี่ยน ⇒ ต้องบอก
+     ⚠️ เทียบเฉพาะเมื่อ **ทั้งสองฝั่ง** ถือสัดส่วนขนาด — ยอดที่ตรึงไว้ก่อน mig 0398 ไม่มี ⇒ เงียบ ไม่ใช่ "— → ST 2" */
+  if (before.packagesBySize && after.packagesBySize) {
+    const a = surveyPackageMixText(before.packagesBySize);
+    const b = surveyPackageMixText(after.packagesBySize);
+    if (a !== b) out.push(`ขนาด ${a || '—'} → ${b || '—'}`);
+  }
   return out;
 }
 
@@ -1085,7 +1152,7 @@ export function surveyTotalsDiff(before = null, after = null) {
  *
  * 🔑 **ครอบด่านส่งงานของช่าง (`surveyFieldSubmitError`) ทั้งหมด** — ต้องเหลือพื้นที่อย่างน้อยหนึ่ง ("พื้นที่")
  *   และทุกพื้นที่ที่ไม่ถูกตัดผ่านข้อของช่าง (ขนาด · ภาพกว้าง · จุดที่ติดตั้งได้) **และ** ข้อของหัวหน้า
- *   (ภาพผัง · เลือกจุด · แพ็คเกจที่เคาะ พร้อมเหตุผลเมื่อต่างจากสูตร = "แพ็คที่ตกลงไว้") · เข้มกว่าด้วย: ใบที่ตัดออกหมด
+ *   (ภาพผัง · เลือกจุด · ขนาดและจำนวนแพ็คเกจที่เคาะ พร้อมเหตุผลเมื่อต่างจากที่ระบบเสนอ = "แพ็คที่ตกลงไว้") · เข้มกว่าด้วย: ใบที่ตัดออกหมด
  *   ช่างส่งงานได้ แต่ส่งผลไม่ได้
  *   ⇒ **ส่งผลปิดนัดที่ยังเปิดให้ได้โดยไม่ต้องมีด่านที่สอง** (มติเจ้าของ 24/09 ข้อ 2 · `surveySendWrites`)
  *   ⚠️ ถอดข้อไหนของช่างออกจากที่นี่เมื่อไร ส่งผลจะปิดนัดที่ของช่างยังไม่ครบ — เทสต์ตรึงความครอบนี้ไว้

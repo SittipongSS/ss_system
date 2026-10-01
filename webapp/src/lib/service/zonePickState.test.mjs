@@ -17,6 +17,14 @@ test('⭐ วัดแล้วยังไม่ขาย = ไทล์เด�
   assert.match(t.reason, /ไม่ต้องไปวัดใหม่/);
 });
 
+/* ขนาดแพ็คเกจที่หัวหน้าเคาะ (mig 0398) เดินคู่กับจำนวนไปถึงไทล์ — ตัวเลือกพื้นที่ของฝ่ายขายเขียน "ST · 3 แพ็ค" */
+test('ไทล์พกขนาดแพ็คเกจที่ประเมินไว้คู่กับจำนวน — ผลเก่าที่ยังไม่มีขนาด = null (ไม่ใช่ undefined)', () => {
+  const t = zonePickState(zone({ surveyedAt: '2026-08-20', areaSqm: 303, assessedPackages: 3, assessedPackageSize: 'ST' }));
+  assert.equal(t.assessedPackages, 3);
+  assert.equal(t.assessedPackageSize, 'ST');
+  assert.equal(zonePickState(zone({ surveyedAt: '2026-08-20', assessedPackages: 3 })).assessedPackageSize, null);
+});
+
 /* 🔒 กรณี ③⑦ — "มีใบอื่นสั่งวัดไว้แล้ว" เป็นสถานะของตัวเอง ไม่ใช่ "ยังไม่วัด" */
 test('🔒 มีใบสั่งวัดค้าง = ติ๊กไม่ได้ และต้องบอกเลขใบ', () => {
   const t = zonePickState(zone({ pendingRequest: { id: 'R2', docNo: 'AS-2', dueDate: '2026-09-20' } }));

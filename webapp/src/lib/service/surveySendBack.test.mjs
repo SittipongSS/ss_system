@@ -19,7 +19,7 @@ const full = (over = {}) => ({
   id: 'SVZ1', zoneName: 'ล็อบบี้', status: 'ok',
   parts: [{ id: 'p1', widthM: 10, lengthM: 10, heightM: 3 }],
   spots: [{ id: 's1', label: 'เสา', selected: true }],
-  packageQty: 1, packageNote: null, ...over,
+  packageQty: 1, packageSize: 'ST', packageNote: null, ...over,
 });
 const allFiles = [{ docType: 'survey_wide' }, { docType: 'survey_plan' }];
 const request = (over = {}) => ({ id: 'REQ1', answeredAt: null, cancelledAt: null, ...over });
@@ -48,7 +48,7 @@ test('🔴 ยกเป็นทะเบียนแล้วข้อควา
   assert.deepEqual(surveyResultMissing(empty, []).result, [
     'ยังไม่มีภาพผังที่มาร์กจุดแล้ว',
     'ยังไม่ได้เลือกจุดที่จะติดตั้ง',
-    'ยังไม่ได้เคาะจำนวนแพ็คเกจ',
+    'ยังไม่ได้เคาะแพ็คเกจ',
   ]);
   // แถวที่ถูกตัดออกไม่ต้องผ่านด่านไหนเลย
   assert.deepEqual(surveyFieldMissing({ ...empty, status: 'cut' }, []), []);

@@ -23,12 +23,12 @@ import {
   SURVEY_GATES,
   parseSurveyMeters,
   spotCounts,
-  suggestedPackages,
   surveyDocCounts,
   surveyEditLockError,
   surveyFieldMissing,
   surveyFieldProgress,
   surveyGateChecklist,
+  surveyPackagesText,
   surveyRecallError,
   surveySendBackDoneCountText,
   surveySendError,
@@ -36,6 +36,10 @@ import {
   surveyZoneName,
   surveyZoneSize,
 } from '@/lib/service/survey';
+import {
+  PACKAGE_SIZE_REGISTRY_DOWN, PACKAGE_SIZE_REGISTRY_UNREAD, normalizePackageSizeCode, sortPackageSizes,
+  surveyPackageReviewRows, surveyPackageReviewText, surveyPackageSizeGates,
+} from '@/lib/service/packageSizes';
 import { surveySendVisitStep } from '@/lib/service/surveySendClose';
 import { spotPhotoGroups, surveySpotGates } from '@/lib/service/surveySpotPhotos';
 import { VISIT_STATUS_LABELS } from '@/lib/service/visitStatus';
@@ -74,9 +78,16 @@ export function surveyNameList(names = [], max = 3) {
   return `${list.slice(0, max).join(' · ')} อีก ${list.length - max}`;
 }
 
-/** "2 พื้นที่ · 88 ตร.ม. · 3 แพ็คเกจ" — ยอดที่ฝ่ายขายถือไปแล้วตอนดึงกลับ
+/** "2 แพ็คเกจ (SM 1 · ST 1)" — จำนวนรวม + สัดส่วนขนาด (mig 0398) · ยอดเก่าที่ไม่มีขนาด = ตัวเลขล้วนเหมือนเดิม
+ *  @param sizes ทะเบียนขนาด (ลำดับของสัดส่วน) — ไม่ส่ง = เรียงตามรหัส */
+export function surveyPackagesLabel(totals, sizes = null) {
+  const order = Array.isArray(sizes) ? sortPackageSizes(sizes).map((s) => normalizePackageSizeCode(s.code)) : null;
+  return surveyPackagesText(totals, order);
+}
+
+/** "2 พื้นที่ · 88 ตร.ม. · 3 แพ็คเกจ (SM 1 · ST 2)" — ยอดที่ฝ่ายขายถือไปแล้วตอนดึงกลับ
  *  ⚠️ ไม่มี totals ในแถว (แถวเก่าก่อนมี meta) = "ไม่ทราบ" ไม่ใช่ศูนย์ */
-export function surveyTotalsText(totals) {
+export function surveyTotalsText(totals, sizes = null) {
   if (!totals) return SURVEY_UNKNOWN_TEXT;
   const zones = Number(totals.zones);
   const area = Number(totals.areaSqm);
@@ -84,7 +95,7 @@ export function surveyTotalsText(totals) {
   const parts = [];
   if (Number.isFinite(zones)) parts.push(`${fmtNumber(zones)} พื้นที่`);
   if (Number.isFinite(area)) parts.push(`${fmtNumber(area)} ตร.ม.`);
-  if (Number.isFinite(pkg)) parts.push(`${fmtNumber(pkg)} แพ็คเกจ`);
+  if (Number.isFinite(pkg)) parts.push(surveyPackagesLabel(totals, sizes));
   return parts.length ? parts.join(' · ') : SURVEY_UNKNOWN_TEXT;
 }
 
@@ -93,7 +104,7 @@ export function surveyTotalsText(totals) {
  *   การ์ดจัดการผล · หน้าคำร้อง)
  *
  * ⭐ กติกาของแบบที่อนุมัติ: แถวต้องตอบ "ครบไหม ได้เท่าไร" — ครบแล้วโชว์ตัวเลข
- *   (ตร.ม. · ลบ.ม. · สูตรกี่แพ็คเกจ · กี่จุด · กี่รูป) ยังไม่ครบโชว์ "ขาด: …"
+ *   (ตร.ม. · ลบ.ม. · ขนาด/จำนวนแพ็คเกจ · กี่จุด · กี่รูป) ยังไม่ครบโชว์ "ขาด: …"
  *   ⇒ ตัวเลขทุกตัวต้องมาจากที่นี่ ไม่ใช่ให้จอคำนวณเอง (สองจอจะคำนวณไม่เท่ากัน)
  *   🔄 เดิมคือหัวของการ์ดพื้นที่ที่พับอยู่ — การพับถอดแล้ว (§10.5 S7 · ค่าพับตั้งต้นถอดใน S10) กติกาย้ายมาที่แถวรายการ
  *
@@ -134,8 +145,12 @@ export function surveyZoneFacts(zone = {}, files = []) {
     parts: size.parts,
     measuredParts: size.measuredParts,
     sizeComplete: size.complete,
-    suggestedPackages: suggestedPackages(size.volumeCbm),
     packageQty: Number.isFinite(qty) && qty > 0 ? qty : null,
+    /* ภาพนิ่งตอนเคาะ (mig 0398) — ขนาดที่หัวหน้าเลือก · ขนาดที่ระบบเสนอ ณ ตอนนั้น
+       ⚠️ `suggestedSize` คือ **ที่ประทับไว้บนแถว** ไม่ใช่ข้อเสนอสด — แถวที่ยังไม่เคาะ/แถวก่อนมีขนาด = `null`
+          (ข้อเสนอสดของแถวที่ยังไม่เคาะ ถาม `surveySuggestedFor(zone, sizes)` ซึ่งต้องใช้ทะเบียน) */
+    packageSize: normalizePackageSizeCode(zone.packageSize) || null,
+    suggestedSize: normalizePackageSizeCode(zone.packageSizeSuggested) || null,
     spotsTotal: spots.total,
     spotsSelected: spots.selected,
     photos: { ...photos, total: photos.wide + photos.plan + photos.spot },
@@ -416,6 +431,11 @@ export function surveySendBackAskText(sentBack) {
  * @param pendingDecisionZoneIds พื้นที่ที่เคาะแล้วยังไม่กดบันทึก (จอส่งมา · PR5)
  * @param tab            แท็บที่เปิดอยู่ (`field` | `result`) — ใช้เลือกปุ่มพาไป
  * @param today          วันไทยวันนี้ `YYYY-MM-DD` (`businessDate()` ของผู้เรียก) — ไม่ส่ง = ไม่คำนวณวันเลยกำหนด
+ * @param packageSizes   ทะเบียนขนาดแพ็คเกจจาก GET ใบประเมิน (`packageSizes` · mig 0398) — `null`/ไม่ส่ง = อ่านไม่สำเร็จ
+ *                       ⇒ ใบที่เคาะขนาดแล้วส่งผลไม่ได้ (fail-closed · ตัวเดียวกับ route ส่งผล)
+ * @param skipPackageRegistry `true` = ผู้เรียกไม่มีทะเบียนและ **ไม่ใช่จอที่กดส่งผล** (หน้าคำร้องของฝ่ายขาย · `surveyJobView`)
+ *                       ⇒ ไม่ถามด่าน "ขนาดถูกลบ" (ข้ออื่นอ่านจากแถวล้วน) · ⚠️ ห้ามใช้กับจอที่มีปุ่มส่งผล — ต้องขอออกเองชัด ๆ
+ *                       ไม่ใช่ได้มาเพราะลืมส่งทะเบียน (ลืม = fail-closed)
  */
 export function surveyControlView({
   request = null,
@@ -430,6 +450,8 @@ export function surveyControlView({
   pendingDecisionZoneIds = [],
   tab = 'field',
   today = null,
+  packageSizes = null,
+  skipPackageRegistry = false,
 } = {}) {
   const rows = Array.isArray(zones) ? zones : [];
   const files = filesByZone && typeof filesByZone === 'object' ? filesByZone : {};
@@ -490,11 +512,45 @@ export function surveyControlView({
   /* ช่างเห็นเฉพาะสามข้อของตัวเอง — ข้อของหัวหน้าเขาแก้ไม่ได้ (แบบที่อนุมัติ: หัวข้อ
      "ของที่ช่างต้องเก็บ") ⇒ เอามาโชว์ = กำแพงที่บอกว่าเขาทำงานไม่เสร็จทั้งที่เสร็จแล้ว
      ⭐ ต่อท้ายด้วยแถวรูปจุดของฝั่งนั้น — หัวหน้า = ด่านก่อนส่งผล · ช่าง = ด่านก่อนส่งงาน (แถวมี `reason` ของ server) */
+  /* 🔑 **ด่านขนาดถูกลบจากทะเบียน (mig 0398 · มติ 01/10)** — ขนาดเพิ่ม/ลบได้ และพื้นที่เก็บรหัสเป็นภาพนิ่ง ⇒ ใบที่ยังไม่ส่งผล
+     ซึ่งถือขนาดที่ถูกลบไปแล้วต้องเลือกใหม่ก่อนส่ง · ตัวเดียวกับ route ส่งผล (`surveyPackageSizeSendError`)
+     ⚠️ ของหัวหน้าล้วน (แก้ที่แท็บสรุปส่งผล) ⇒ ไม่อยู่ในชุดที่ช่างเห็น
+     ⭐ **ไม่เป็นแถวด่านของตัวเอง — พับเข้าแถว "เคาะขนาดและจำนวนแพ็คเกจแล้ว"** (UAT PR-P 01/10)
+        🐞 เดิมต่อเป็นแถวที่แปดเฉพาะตอนติด ⇒ ตัวหารของป้ายเปลี่ยนตามสถานะ ("ติด 1 / 8 ข้อ" → "ผ่านครบ 7 ข้อ") · ทางกลับกัน
+           (แถวเขียวถาวร "ขนาดยังอยู่ในทะเบียน 2/2" บนใบที่ยังไม่เคาะสักพื้นที่) อ่านแล้วเข้าใจผิดว่าเคาะครบแล้ว
+        ⇒ ขนาดที่ถูกลบ = พื้นที่นั้น **ยังเคาะแพ็คเกจไม่เสร็จ** (ต้องเลือกใหม่) — ความหมายเดียวกับแถวแพ็คเกจอยู่แล้ว · จำนวนข้อคงที่
+           ทุกสถานะ (รวมใบที่ส่งแล้ว) · เหตุเต็มของ server ขึ้นใต้แถว
+        ⚠️ ลำดับด่านของ route ส่งผลไม่เปลี่ยน (หกข้อ → ขนาดถูกลบ → รูปจุด) — พับเฉพาะ **แถวที่การ์ดวาด**
+     🔴 **ใบที่ล็อกแล้ว (ส่งผล · ยกเลิก · ปิด) ไม่ถามด่านนี้** — ใบพวกนั้นถือรหัสเป็นภาพนิ่ง (มติ: ลบขนาดไม่กระทบใบที่ส่งแล้ว)
+        🐞 เดิมถามทุกใบ ⇒ ใบที่ส่งไปแล้วขึ้นแถวแดง "ขนาด ST ถูกลบ — เลือกใหม่" บนใบที่แก้ไม่ได้ และป้าย "ผ่านครบ N ข้อตอนส่ง"
+           นับเกินหนึ่ง · ทะเบียนอ่านไม่ขึ้น = ทุกใบที่ส่งแล้วขึ้นแถวแดงพร้อมกัน ⇒ ชวนให้ดึงผลกลับโดยไม่จำเป็น */
+  const sizeGates = skipPackageRegistry || locked ? [] : surveyPackageSizeGates(rows, packageSizes);
+  const sizeGate = sizeGates.find((g) => !g.ok) || null;
+  /* อ่านทะเบียนไม่สำเร็จ — ไม่มีพื้นที่ไหนให้ไปแก้ ทางออกคือโหลดใบใหม่ (ปุ่ม "โหลดใหม่" ข้างเหตุผลใต้ปุ่มส่ง) */
+  const registryUnread = !!sizeGate && sizeGate.reason === PACKAGE_SIZE_REGISTRY_DOWN;
+  const headGates = !sizeGate ? allGates : allGates.map((g) => {
+    if (g.key !== 'package') return g;
+    const stuckIds = new Set(sizeGate.zoneIds.map(String));
+    const failing = active.filter((r) => stuckIds.has(String(r.id))
+      || surveyZoneFacts(r, files[r.id] || []).missingHead.some((m) => m.key === 'package'));
+    return {
+      ...g,
+      ok: false,
+      done: g.total - failing.length,
+      zones: failing.map(surveyZoneName),
+      /* เหตุใต้แถว: พื้นที่ที่ยังไม่เคาะ (ถ้ามี) แล้วตามด้วยเหตุของขนาด — บนจอไม่มี "ลองใหม่" (ดู `PACKAGE_SIZE_REGISTRY_UNREAD`) */
+      reason: [
+        g.zones.length ? `ขาด ${g.zones.join(' · ')}` : null,
+        registryUnread ? PACKAGE_SIZE_REGISTRY_UNREAD : sizeGate.reason,
+      ].filter(Boolean).join(' | '),
+    };
+  });
   const gates = canDecide
-    ? [...allGates, ...spotSendGates]
+    ? [...headGates, ...spotSendGates]
     : [...allGates.filter((g) => g.owner === 'crew'), ...spotCrewGates];
   const gatesFailed = gates.filter((g) => !g.ok);
-  const sendGatesFailed = allGates.some((g) => !g.ok) || spotSendGates.some((g) => !g.ok);
+  const sendGatesFailed = allGates.some((g) => !g.ok) || sizeGates.some((g) => !g.ok)
+    || spotSendGates.some((g) => !g.ok);
 
   /* ── ค่าที่ยังอยู่บนจอ ยังไม่ลงฐาน (จอส่ง id มา) ─────────────────────────
      🔴 **ตัดสินจากลิสต์ที่รับมา ไม่ใช่จากผลกรองแถว** — ของเดิมกรอง id ผ่าน `rows` ก่อน
@@ -591,7 +647,9 @@ export function surveyControlView({
     /* เหลือแค่ผูกรูปในถาด (G2) = บอกตรง ๆ — "เหลือเคาะจุดและแพ็คเกจ" ทั้งที่เคาะครบแล้วคือชี้ผิดงาน */
     const headLeft = allGates.some((g) => g.owner === 'head' && !g.ok)
       ? 'เหลือเคาะจุดและแพ็คเกจ'
-      : 'เหลือผูกรูปจุดที่ยังไม่ได้ผูก';
+      : sizeGates.some((g) => !g.ok)
+        ? (sizeGates.some((g) => g.reason === PACKAGE_SIZE_REGISTRY_DOWN) ? 'อ่านทะเบียนขนาดแพ็คเกจไม่สำเร็จ' : 'เหลือเลือกขนาดแพ็คเกจใหม่')
+        : 'เหลือผูกรูปจุดที่ยังไม่ได้ผูก';
     status = !crewNotSubmitted
       ? {
         key: 'awaiting-decision', tone: 'info', headline: 'วัดครบแล้ว — รอหัวหน้าเคาะ',
@@ -614,7 +672,7 @@ export function surveyControlView({
   } else {
     status = {
       key: 'ready', tone: 'info', headline: 'พร้อมส่งผลให้ฝ่ายขาย',
-      sub: `${fmtNumber(totals.zones)} พื้นที่ · ${fmtNumber(totals.areaSqm)} ตร.ม. · ${fmtNumber(totals.packageQty)} แพ็คเกจ`,
+      sub: `${fmtNumber(totals.zones)} พื้นที่ · ${fmtNumber(totals.areaSqm)} ตร.ม. · ${surveyPackagesLabel(totals, packageSizes)}`,
     };
   }
 
@@ -626,13 +684,19 @@ export function surveyControlView({
   const gateKeys = new Set(gates.map((g) => g.key));
   /* ด่านรูปจุดที่ติดในพื้นที่นี้ (แถวของ `gates` ที่ไม่ผ่าน · ชื่อพื้นที่อยู่ใน `zones`) — แก้ที่หน้าพื้นที่ (แถวจุด · ถาด) */
   const spotFailed = gates.filter((g) => !g.ok && (g.key === 'spotPhotos' || g.key === 'spotLinked'));
+  /* ขนาดถูกลบจากทะเบียน — ของหัวหน้า แก้ที่แท็บสรุปส่งผล (เลือกขนาดใหม่) เหมือนด่านแพ็คเกจ
+     ⚠️ อ่านทะเบียนไม่สำเร็จ **ไม่ลงเป็นแถวรายพื้นที่** — ไม่มีพื้นที่ไหนให้ไปแก้ (ทางออกคือโหลดใหม่) ปุ่มพาไป = ทางตัน */
+  const sizeGone = canDecide && sizeGate && !registryUnread ? [sizeGate] : [];
   const gapRows = [];
   for (const row of active) {
     const facts = surveyZoneFacts(row, files[row.id] || []);
     const name = surveyZoneName(row);
     const spotHere = spotFailed.filter((g) => g.zoneIds.includes(row.id));
     const crew = [...facts.missingCrew.filter((g) => gateKeys.has(g.key)), ...spotHere.filter((g) => g.owner === 'crew')];
-    const head = facts.missingHead.filter((g) => gateKeys.has(g.key));
+    const head = [
+      ...facts.missingHead.filter((g) => gateKeys.has(g.key)),
+      ...sizeGone.filter((g) => g.zoneIds.includes(row.id)),
+    ];
     const headSpot = spotHere.filter((g) => g.owner === 'head');
     if (!crew.length && !head.length && !headSpot.length) continue;
     const targets = [];
@@ -694,9 +758,12 @@ export function surveyControlView({
   // ── เหตุผลที่ยังกดส่งไม่ได้ + จุดที่พาไปแก้ ───────────────────────────────
   /* 🔑 ด่านตัวเดียวกับ server เป็นตัวตัดสิน `allowed` เสมอ · สองข้อแรกเป็นของที่ server
      มองไม่เห็น (ค่าที่ยังอยู่บนจอ) ⇒ มันเพิ่มด่านได้ แต่ **ลดไม่ได้** */
-  /* 🔑 ลำดับเดียวกับ route ส่งผล: ด่านหกข้อ → ด่านรูปจุด (ถาด · + ทุกจุดมีรูปเมื่อส่งผลปิดนัด) — เหตุคือข้อความของ server เป๊ะ */
+  /* 🔑 ลำดับเดียวกับ route ส่งผล: ด่านหกข้อ → ขนาดถูกลบจากทะเบียน → ด่านรูปจุด (ถาด · + ทุกจุดมีรูปเมื่อส่งผลปิดนัด)
+     — เหตุคือข้อความของ server เป๊ะ */
+  const failedReasons = (list) => (list.some((g) => !g.ok) ? list.filter((g) => !g.ok).map((g) => g.reason).join(' | ') : null);
   const serverSendReason = surveySendError(rows, files, { canSend: canDecide })
-    || (spotSendGates.some((g) => !g.ok) ? spotSendGates.filter((g) => !g.ok).map((g) => g.reason).join(' | ') : null);
+    || failedReasons(sizeGates)
+    || failedReasons(spotSendGates);
   let sendReason = null;
   if (!locked) {
     /* 🐞 **ไม่มีสิทธิ์ส่ง = เหตุผลเดียว ห้ามประกอบบรรทัดด่านหกข้อทับ** — ของเดิมเขียน
@@ -721,10 +788,23 @@ export function surveyControlView({
           ? { kind: 'zone', zoneId: dirtyRows[0].id, label: `ไปที่ ${surveyZoneName(dirtyRows[0])}` }
           : null,
       };
+    } else if (registryUnread && !surveySendError(rows, files, { canSend: canDecide })) {
+      /* ⭐ ติดเพราะอ่านทะเบียนขนาดไม่ได้อย่างเดียว — บอกข้อเท็จจริง + **ปุ่มโหลดใบใหม่** (`kind: 'reload'`)
+         🐞 UAT 01/10: เดิมขึ้น "… — ลองใหม่" โดยไม่มีอะไรให้กด (ทะเบียนมากับ GET ใบประเมิน ⇒ "ลองใหม่" = โหลดใบใหม่)
+         ⚠️ `detail` ยังเป็นเหตุเต็มของ server — ตัวเดียวกับที่ route ส่งผลตอบ */
+      sendReason = {
+        key: 'registry-unread',
+        text: PACKAGE_SIZE_REGISTRY_UNREAD,
+        detail: serverSendReason,
+        target: { kind: 'reload', label: 'โหลดใหม่' },
+      };
     } else if (serverSendReason) {
       /* ด่านที่ติดทั้งหมดของการส่งผล (หกข้อ + รูปจุด) — ติดแค่รูปจุด = เหตุเต็มของ server (มติ: "มีรูปจุดที่ยังไม่ได้ผูก n รูป …") */
-      const failed = [...allGates, ...spotSendGates].filter((g) => !g.ok);
-      const spotOnly = failed.every((g) => g.key === 'spotPhotos' || g.key === 'spotLinked');
+      /* ⚠️ นับจากแถวที่การ์ดวาด (`headGates` — ขนาดถูกลบพับอยู่ในแถวแพ็คเกจ) ⇒ "ติด n ข้อ" ตรงกับป้าย "ติด n / m ข้อ" เสมอ */
+      const failed = [...headGates, ...spotSendGates].filter((g) => !g.ok);
+      /* ติดเฉพาะด่านนอกหกข้อ (รูปจุด · ขนาดถูกลบ) = เหตุเต็มของ server — "ติด 1 ข้อ ที่ …" บอกไม่ได้ว่าต้องทำอะไร */
+      const sizeOnly = !!sizeGate && allGates.every((g) => g.key !== 'package' || g.ok);
+      const spotOnly = failed.every((g) => g.key === 'spotPhotos' || g.key === 'spotLinked' || (g.key === 'package' && sizeOnly));
       const stuckNames = [...new Set(failed.flatMap((g) => g.zones))];
       const crewStuck = failed.some((g) => g.owner === 'crew');
       /* พาไปที่พื้นที่ที่ **ช่างยังค้าง** ก่อน ถ้าไม่มีก็พื้นที่แรกที่ติดอะไรก็ได้
@@ -751,6 +831,8 @@ export function surveyControlView({
       sendReason = { key: 'visit-draft', text: visitStep.error, detail: visitStep.error, target: null };
     }
   }
+  /* แถวที่ขนาดยังไม่เคยถูกเทียบกับข้อเสนอ — เฉพาะคนที่ส่งผลได้ และใบที่ยังไม่ล็อก (ใบที่ส่งแล้วไม่มีใครแก้ได้) */
+  const sizeReview = canDecide && !locked && !skipPackageRegistry ? surveyPackageReviewRows(rows, packageSizes) : [];
   /* ⭐ **นัดที่ส่งผลจะปิดให้** — โมดัลยืนยันต้องบอกผลนี้ก่อนกด (กติกาโมดัลบอกผลลัพธ์) และจอต้องส่ง `id`
      กลับไปกับคำขอ (`closeVisitId`) ให้ route ยืนยันว่าเป็นนัดตัวเดียวกับที่ผู้ใช้เห็น
      ⚠️ ไม่มีเวลาจบเสมอ — ส่งผลไม่ประทับเวลาจบให้ (วันส่งผล ≠ วันเข้าพื้นที่) */
@@ -777,6 +859,10 @@ export function surveyControlView({
     sendBackPending: canDecide && !locked && sendBack?.pending
       ? { itemCount: Array.isArray(sendBack.sentBack?.items) ? sendBack.sentBack.items.length : 0 }
       : null,
+    /* ⭐ **ขนาดที่ตั้งไว้ก่อนมีข้อเสนอของระบบ** (back-fill ST ของ 0398 · UAT PR-P 01/10) — โมดัลยืนยันต้องบอกก่อนกดว่าพื้นที่ไหน
+       ยังเป็นขนาดที่ไม่มีใครเทียบกับข้อเสนอ · **เตือน ไม่บล็อก** (ไม่เข้า `allowed`/`reason` · บังคับหรือไม่เป็นคำถามเปิดของเจ้าของ
+       — ดู `packageSizeUnchecked`) · `null` = ไม่มีแถวแบบนั้น/อ่านทะเบียนไม่ได้ */
+    sizeReview: sizeReview.length ? { rows: sizeReview, text: surveyPackageReviewText(sizeReview) } : null,
   };
 
   /* ⚠️ เหตุผลของการดึงกลับยังไม่ถูกพิมพ์ตอนนี้ (อยู่ในโมดัล) ⇒ ยิงค่ายาวพอผ่านด่าน
@@ -797,7 +883,15 @@ export function surveyControlView({
       key: 'recall', tone: 'warning', title: 'ดึงกลับเพราะ',
       text: recall.reason || SURVEY_UNKNOWN_TEXT,
       meta: `${recall.byName || SURVEY_UNKNOWN_TEXT} · ${recall.at ? fmtDateTime(recall.at) : SURVEY_UNKNOWN_TEXT}`
-        + ` · ผลเดิม ${surveyTotalsText(recall.totals)}`,
+        + ` · ผลเดิม ${surveyTotalsText(recall.totals, packageSizes)}`,
+    });
+  }
+  if (sizeReview.length) {
+    /* คำเตือนบนการ์ด เหนือปุ่มส่งผล — บรรทัดทักในแถวของตารางอย่างเดียวไม่พอ: การ์ดขึ้น "พร้อมส่ง" และปุ่มเป็นกรมท่า
+       ⇒ คนที่กดจากการ์ดไม่เห็นอะไรทักเลย (UAT PR-P 01/10) */
+    notices.push({
+      key: 'size-review', tone: 'warning', title: 'ตรวจขนาดก่อนส่งผล',
+      text: surveyPackageReviewText(sizeReview),
     });
   }
   if (readOnly && !cancelled) {

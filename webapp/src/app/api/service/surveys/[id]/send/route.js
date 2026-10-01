@@ -27,11 +27,13 @@ import { closureStatus } from '@/lib/requests/closure';
 import { answerRequestError } from '@/lib/requests/stages';
 import { listAttachments } from '@/lib/master/attachments';
 import { businessDate } from '@/lib/businessDate';
+import { surveyPackageSizeSendError } from '@/lib/service/packageSizes';
+import { loadPackageSizesOrNull } from '@/lib/service/packageSizesRepo';
 import { loadSurveyZones } from '@/lib/service/surveyRepo';
 import { findSurveyVisit } from '@/lib/service/surveyVisit';
 import { surveySendCloseBody, surveySendVisitStep, surveySendWrites } from '@/lib/service/surveySendClose';
 import {
-  surveyChangeCounts, surveyChangeText, surveySendError, surveyTotals, surveyTotalsDiff,
+  surveyChangeCounts, surveyChangeText, surveyPackagesText, surveySendError, surveyTotals, surveyTotalsDiff,
 } from '@/lib/service/survey';
 import { surveySpotSendError } from '@/lib/service/surveySpotPhotos';
 
@@ -61,6 +63,11 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     const filesByZone = Object.fromEntries(zones.map((z, i) => [z.id, files[i] || []]));
     const gate = surveySendError(zones, filesByZone, { canSend: true });
     if (gate) return conflict(gate);
+    /* 🔑 **ขนาดที่เคาะไว้ยังอยู่ในทะเบียนไหม** (mig 0398 · มติ 01/10 "เพิ่ม ลบ ได้") — พื้นที่เก็บรหัสเป็นภาพนิ่ง ⇒ ขนาดที่ถูกลบ
+       หลังเคาะต้องเลือกใหม่ก่อนส่ง (ฝ่ายขายเอารหัสนี้ไปตั้งราคา) · ตัวเดียวกับแถวด่านบนการ์ด
+       ⚠️ อ่านทะเบียนไม่สำเร็จ = `null` ⇒ ปฏิเสธ (fail-closed) · ก่อนเขียนอะไรทั้งนั้น เหมือนด่านรูปจุดข้างล่าง */
+    const sizeGate = surveyPackageSizeSendError(zones, await loadPackageSizesOrNull(supabase));
+    if (sizeGate) return conflict(sizeGate);
 
     const body = await req.json().catch(() => ({}));
     const nowIso = new Date().toISOString();
@@ -149,14 +156,14 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       action: 'answer',
       user,
       opts: {
-        /* ผู้ขอรอ "ตร.ม. กี่แพ็คเกจ" เพื่อเอาไปตั้งราคา ⇒ ให้อ่านจากกระดิ่งได้เลย
+        /* ผู้ขอรอ "ตร.ม. กี่แพ็คเกจ ขนาดไหน" เพื่อเอาไปตั้งราคา ⇒ ให้อ่านจากกระดิ่งได้เลย ("2 แพ็คเกจ (SM 1 · ST 1)")
            🔴 **สิ่งที่ TS ตัด/เพิ่มเองต้องอยู่ในกระดิ่ง ไม่ใช่ให้ไปเจอเองในตาราง** (แผน §9
              ข้อ 3) — TS ทำได้โดยไม่ต้องขออนุมัติ ⇒ จังหวะที่ SA จะรู้เรื่องมีจังหวะนี้
              จังหวะเดียว และเขาคือคนที่เอาตัวเลขนี้ไปตั้งราคาต่อ
            ⚠️ **ข้อความเดียวกับที่ขึ้นบนจอทั้งสองฝั่ง** (`surveyChangeText`) — เขียนคนละที่
              เมื่อไร กระดิ่งกับจอจะนับคนละแบบ แล้วไม่มีใครรู้ว่าอันไหนจริง
            ⚠️ เงียบเมื่อไม่มีอะไรเปลี่ยน — "ไม่มีตัด ไม่มีเพิ่ม" ซ้ำกับเลขพื้นที่ที่อยู่ต้นบรรทัด */
-        summary: `${totals.zones} พื้นที่ · ${totals.areaSqm} ตร.ม. · ${totals.packageQty} แพ็คเกจ`
+        summary: `${totals.zones} พื้นที่ · ${totals.areaSqm} ตร.ม. · ${surveyPackagesText(totals)}`
           + (change.cut || change.added ? ` — ${surveyChangeText(change, { actor: 'TS' })}` : '')
           + (diff.length ? ` · ⚠️ แก้จากรอบก่อน: ${diff.join(' · ')}` : ''),
       },
@@ -166,7 +173,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       user, action: 'update', entityType: 'dept_request', entityId: id,
       before: request, after: data,
       summary: `ส่งผลประเมิน ${request.docNo || id} — ${totals.zones} พื้นที่ · `
-        + `${totals.areaSqm} ตร.ม. · ${totals.packageQty} แพ็คเกจ`
+        + `${totals.areaSqm} ตร.ม. · ${surveyPackagesText(totals)}`
         + (change.cut || change.added ? ` · ${surveyChangeText(change, { actor: 'TS' })}` : '')
         + (data.status === 'closed' ? ' · ปิดครบสองฝั่ง' : '')
         + (closedVisit ? ` · ปิดนัด ${closedVisit.code || closedVisit.id}` : ''),

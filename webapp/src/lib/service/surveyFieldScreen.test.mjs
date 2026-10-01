@@ -415,7 +415,8 @@ test('🐞 review 26/09: ท้ายหน้าที่ไม่มีปุ�
 
 test('review 26/09: ปุ่มเล็กของการเคาะบนแท็บสรุปเป็นเป้านิ้ว 44px บนจอสัมผัส', () => {
   const table = code(read('../../components/service/SurveyResultTable.js'));
-  assert.equal((table.match(/size="sm"[^>]*className=\{styles\.coarseTouch\}/g) || []).length, 3);
+  /* ยกเลิก · บันทึกการเคาะ · ใช้ที่ระบบเสนอ · คืนค่าที่บันทึกไว้ (ถอยเฉพาะพื้นที่) · โหลดใหม่ (ทะเบียนขนาดอ่านไม่ขึ้น) — UAT PR-P 01/10 */
+  assert.equal((table.match(/size="sm"[^>]*className=\{styles\.coarseTouch\}/g) || []).length, 5);
   assert.match(css('../../components/service/SurveyResultTable.module.css'),
     /@media \(pointer: coarse\) \{\s*\.coarseTouch:global\(\.btn\.sm\) \{ min-height: var\(--ctl-h-touch\); \}/,
     'ต้องชนะ .btn.sm ของ globals ด้วยความจำเพาะ');

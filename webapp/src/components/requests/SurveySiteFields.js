@@ -22,6 +22,7 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import ServiceSiteModal from "@/components/service/ServiceSiteModal";
 import { apiJson } from "@/lib/apiFetch";
 import { naText } from "@/lib/format";
+import { surveyZonePackageText } from "@/lib/service/survey";
 import { zoneNameKey } from "@/lib/service/surveyRequest";
 import { sitePickSummary, zonePickList } from "@/lib/service/zonePickState";
 import { floorLabel, normalizeFloor } from "@/lib/service/zoneCode";
@@ -531,7 +532,8 @@ export default function SurveySiteFields({
                     <small className={styles.hint}>
                       {[
                         tile.areaSqm !== null ? `${tile.areaSqm} ตร.ม.` : null,
-                        tile.assessedPackages ? `${tile.assessedPackages} แพ็คเกจ` : null,
+                        /* ขนาด + จำนวนที่ประเมินไว้ ("ST · 2 แพ็ค" · mig 0398) — ผลเก่าที่ยังไม่มีขนาด = จำนวนล้วน */
+                        surveyZonePackageText({ packageSize: tile.assessedPackageSize, packageQty: tile.assessedPackages }),
                       ].filter(Boolean).join(" · ")}
                     </small>
                   )}

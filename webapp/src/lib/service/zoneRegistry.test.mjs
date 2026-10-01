@@ -57,9 +57,9 @@ test('⚠️ แถวที่ถูกตัดออกไม่นับเ�
   assert.equal(row.surveyCount, 1, 'แถวที่ตัดออกไม่นับเป็นครั้งที่ประเมิน');
 });
 
-test('ขนาด · จุด · สูตร อ่านจากรอบล่าสุดครบ', () => {
+test('ขนาด · จุด · แพ็คเกจที่เคาะ (ขนาด + จำนวน) อ่านจากรอบล่าสุดครบ', () => {
   const row = zoneRegistryRow(zone, {
-    surveys: [{ id: 'A', zoneId: 'ZN1', requestId: 'REQ1', surveyedAt: '2026-08-20', parts: PARTS, spots: SPOTS, packageQty: 3 }],
+    surveys: [{ id: 'A', zoneId: 'ZN1', requestId: 'REQ1', surveyedAt: '2026-08-20', parts: PARTS, spots: SPOTS, packageQty: 3, packageSize: 'st' }],
     requestsById: sentOnly,
   });
   assert.equal(row.volumeCbm, 1197);
@@ -67,7 +67,10 @@ test('ขนาด · จุด · สูตร อ่านจากรอบ�
   assert.equal(row.spotsTotal, 3);
   assert.equal(row.spotsSelected, 2);
   assert.equal(row.assessedPackages, 3);
-  assert.equal(row.suggestedPackages, 1, '1,197 ÷ 2400 ปัดรอบเดียว = 1');
+  assert.equal(row.assessedPackageSize, 'ST', 'ขนาดที่หัวหน้าเคาะ — ภาพนิ่งบนแถวผลวัด (mig 0398)');
+  assert.equal('suggestedPackages' in row, false, 'สูตร ÷ 2,400 ถอดแล้ว (มติ 01/10)');
+  // ยังไม่เคยประเมิน / ผลวัดก่อนมีขนาด = null ไม่ใช่สตริงว่าง
+  assert.equal(zoneRegistryRow(zone, { surveys: [], requestsById: sentOnly }).assessedPackageSize, null);
   assert.equal(row.surveyRequestId, 'REQ1', 'ต้องบอกได้ว่าประเมินโดยใบไหน');
 });
 

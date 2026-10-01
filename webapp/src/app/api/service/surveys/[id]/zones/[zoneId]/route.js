@@ -2,9 +2,11 @@
 //
 // ⭐ **ช่างรายงานข้อเท็จจริง หัวหน้าตัดสินใจ** (มติผู้ใช้ 2026-08-29) — เส้นนี้รับเฉพาะ
 //   ของที่ต้องยืนอยู่หน้างานถึงจะรู้: **ขนาด · จุดที่ติดตั้งได้ · หมายเหตุ · การตัดพื้นที่**
-//   ⚠️ `packageQty` กับ `spots[].selected` **ไม่รับที่นี่** — เป็นการตัดสินใจเชิงพาณิชย์
+//   ⚠️ `packageQty` · `packageSize` กับ `spots[].selected` **ไม่รับที่นี่** — เป็นการตัดสินใจเชิงพาณิชย์
 //     ที่ทำบนโต๊ะ ⇒ อยู่ที่เส้นของหัวหน้า (จอส่งผล) · ปล่อยให้เขียนทั้งสองทางเมื่อไร
 //     ช่างจะทับตัวเลขที่หัวหน้าเคาะไปแล้วโดยไม่มีใครรู้
+//   ⭐ ข้อเดียวที่เส้นนี้แตะฝั่งแพ็คเกจ: **วัดใหม่หลังหัวหน้าเคาะ = ประทับ "ที่ระบบเสนอ" ใหม่** (`surveyRemeasureStamp`)
+//     — ไม่ใช่การเคาะ (ขนาด/จำนวนของหัวหน้าไม่ถูกแตะ) แต่เป็นข้อเท็จจริงที่ตามมาจากปริมาตรใหม่ · ไม่ทำ = ด่านเหตุผลหลับ
 //
 // ⚠️ ด่านสิทธิ์เป็น **ด่านรายใบ** ไม่ใช่ cap ล้วน — เจ้าหน้าที่หน้างานถือ `service:work`
 //   ซึ่งเปิดเฉพาะงานที่ตัวเองถูกมอบหมาย (กติกาเดียวกับ `visitWriteAccess` ของนัด)
@@ -12,8 +14,10 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound } from '@/lib/http';
 import { canDoFieldWork, canEditService, canSendSurveyResult } from '@/lib/permissions';
 import { deleteZoneRow, purgeSurveyZoneRows, zoneReleaseDecision } from '@/lib/service/surveyCancelCleanup';
+import { surveyPackageDecision, surveyRemeasureStamp, surveyRemeasureTouchesSuggestion } from '@/lib/service/packageSizes';
+import { loadPackageSizesOrNull } from '@/lib/service/packageSizesRepo';
 import {
-  normalizeSurveyParts, normalizeSurveySpots, packageNeedsNote, surveyAddZoneError, surveyEditLockError,
+  normalizeSurveyParts, normalizeSurveySpots, surveyAddZoneError, surveyEditLockError,
   surveyZoneStaleBody, surveyZoneStaleError,
   surveyOnlyBlankRows,
 } from '@/lib/service/survey';
@@ -83,6 +87,17 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (parts.error) return badRequest(parts.error);
     if (parts.value !== undefined) patch.parts = parts.value;
 
+    /* 🔴 **วัดใหม่หลังหัวหน้าเคาะ = ประทับ "ที่ระบบเสนอ" ใหม่จากปริมาตรใหม่** (review PR-P · mig 0398) — ด่าน "ต่างจากที่
+       ระบบเสนอต้องบอกเหตุผล" อ่านภาพนิ่งบนแถว ⇒ ไม่ประทับ = เคาะ SM ไว้ แล้ววัดใหม่ได้ 3,600 ลบ.ม. ส่งผลได้โดยไม่มีเหตุผล
+       ⚠️ ทะเบียนอ่านเฉพาะเมื่อแถวเคาะแล้ว **และ** ปริมาตรเปลี่ยน — ช่างบันทึกทั่วไปไม่เสีย query เพิ่ม
+       ⚠️ อ่านทะเบียนไม่สำเร็จ = ไม่บันทึก (500 · กดใหม่) — กติกาและเหตุผลอยู่ที่ตัวตัดสิน ห้ามเขียนซ้ำที่นี่ */
+    let restamp = null;
+    if (surveyRemeasureTouchesSuggestion(row, patch.parts)) {
+      restamp = surveyRemeasureStamp(row, patch.parts, await loadPackageSizesOrNull(supabase));
+      if (restamp.error) return fail(restamp.error, 500);
+      Object.assign(patch, restamp.patch);
+    }
+
     const spots = normalizeSurveySpots(body.spots, row.spots, { newId: () => genId('SPT') });
     if (spots.error) return badRequest(spots.error);
     if (spots.value !== undefined) patch.spots = spots.value;
@@ -144,7 +159,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     await recordAudit({
       user, action: 'update', entityType: 'service_survey_zone', entityId: zoneId,
       before: row, after: data,
-      summary: `บันทึกผลวัด ${data.zoneName}${data.status === 'cut' ? ' (ตัดออก)' : ''}`,
+      summary: `บันทึกผลวัด ${data.zoneName}${data.status === 'cut' ? ' (ตัดออก)' : ''}${restamp?.summary || ''}`,
       request: req,
     });
     return ok(data);
@@ -163,7 +178,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
  * 🔴 ด่านสิทธิ์ **ไม่ใช่ `canEditService`** ซึ่งช่างทุกคนผ่าน — การเคาะแพ็คเกจกับจุด
  *   คือของที่ SA จะเอาไปเสนอราคา ⇒ `canSendSurveyResult` (หัวหน้าฝ่าย TS)
  */
-// PUT { packageQty?, packageNote?, selectedSpotIds? }
+// PUT { packageSize?, packageQty?, packageNote?, selectedSpotIds? }
 export const PUT = withUser(async ({ user, supabase, req, ctx }) => {
   const { id, zoneId } = await ctx.params;
   try {
@@ -181,22 +196,16 @@ export const PUT = withUser(async ({ user, supabase, req, ctx }) => {
     const body = await req.json().catch(() => ({}));
     const patch = {};
 
-    if (body.packageQty !== undefined) {
-      const qty = Number(body.packageQty);
-      if (body.packageQty === null || body.packageQty === '') {
-        patch.packageQty = null;
-      } else {
-        if (!Number.isInteger(qty) || qty < 1) return badRequest('จำนวนแพ็คเกจต้องเป็นจำนวนเต็มอย่างน้อย 1');
-        if (qty > 99) return badRequest('จำนวนแพ็คเกจดูเหมือนพิมพ์ผิดหลัก');
-        patch.packageQty = qty;
-      }
-    }
-
-    if (body.packageNote !== undefined) {
-      const note = String(body.packageNote ?? '').trim();
-      if (note.length > 500) return badRequest('เหตุผลยาวเกิน 500 ตัวอักษร');
-      patch.packageNote = note || null;
-    }
+    /* 🔑 **ขนาด · จำนวน · เหตุผล ผ่านตัวตัดสินกลางตัวเดียวกับร่างบนจอ** (`surveyPackageDecision` · mig 0398)
+       — ตรวจจากค่าหลังรวม · ประทับภาพนิ่ง (`packageSizeSuggested` · `packageSizeManual`) เมื่อขนาด/จำนวนเปลี่ยน ·
+         ล้างจำนวน = ล้างภาพนิ่งทั้งสาม · กติกาทั้งหมดอยู่ที่นั่น ห้ามเขียนซ้ำที่นี่ (สองชุด = เพี้ยนหากัน)
+       ⚠️ ทะเบียนอ่านเฉพาะเมื่อคำขอแตะขนาด/จำนวน — ติ๊กจุดติดตั้งหรือแก้เหตุผลอย่างเดียวไม่ต้องใช้ และไม่ควรล้มเพราะมัน
+       ⚠️ อ่านทะเบียนไม่สำเร็จ = `null` ⇒ ตัวตัดสินปฏิเสธเอง (fail-closed · 500 ไม่ใช่ 400 — ไม่ใช่ความผิดของคำขอ) */
+    const touchesPick = body.packageQty !== undefined || body.packageSize !== undefined;
+    const sizes = touchesPick ? await loadPackageSizesOrNull(supabase) : null;
+    const decision = surveyPackageDecision(row, body, sizes);
+    if (decision.error) return decision.registryDown ? fail(decision.error, 500) : badRequest(decision.error);
+    Object.assign(patch, decision.patch);
 
     /* จุดที่ **เลือกติดตั้งจริง** — หัวหน้าติ๊กจากรายการที่ช่างแจ้งมา
        ⚠️ รับเป็น **id ของจุด** ไม่ใช่ทั้งอาร์เรย์ — ส่งทั้งอาร์เรย์มาแปลว่าหัวหน้า
@@ -212,16 +221,6 @@ export const PUT = withUser(async ({ user, supabase, req, ctx }) => {
 
     if (!Object.keys(patch).length) return badRequest('ไม่มีอะไรให้บันทึก');
 
-    /* ⚠️ ตรวจกฎ "ต่างจากสูตรต้องมีเหตุผล" จาก **ค่าหลังรวม patch** ไม่ใช่จาก body —
-       แก้เฉพาะเหตุผลโดยไม่ส่ง qty มาด้วย ต้องตัดสินจากตัวเลขที่มีอยู่จริง
-       ⚠️ ปล่อยให้ล้างเหตุผลทิ้งได้เมื่อยังไม่เคาะแพ็คเกจ — ด่านตอนกดส่งผลจะจับเอง
-         (บล็อกตรงนี้ด้วยจะแก้ทีละช่องไม่ได้เลย ซึ่งเป็นวิธีกรอกจริงของคน) */
-    const after = { ...row, ...patch };
-    if (Number(after.packageQty) > 0 && packageNeedsNote(after)
-      && !String(after.packageNote ?? '').trim()) {
-      return badRequest('แพ็คเกจต่างจากที่สูตรบอก — ต้องบอกเหตุผลด้วย');
-    }
-
     patch.updatedAt = new Date().toISOString();
     const { data, error } = await supabase
       .from('service_survey_zones').update(patch).eq('id', zoneId).select().single();
@@ -231,8 +230,8 @@ export const PUT = withUser(async ({ user, supabase, req, ctx }) => {
       user, action: 'update', entityType: 'service_survey_zone', entityId: zoneId,
       before: row, after: data,
       summary: `เคาะผลประเมิน ${data.zoneName}`
-        + (patch.packageQty !== undefined
-          ? (data.packageQty ? ` · ${data.packageQty} แพ็คเกจ` : ' · ล้างจำนวนแพ็คเกจ')
+        + (patch.packageQty !== undefined || patch.packageSize !== undefined
+          ? (data.packageQty ? ` · ${data.packageSize} · ${data.packageQty} แพ็คเกจ` : ' · ล้างการเคาะแพ็คเกจ')
           : ''),
       request: req,
     });

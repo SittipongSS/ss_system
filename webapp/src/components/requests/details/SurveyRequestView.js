@@ -197,9 +197,12 @@ function ZonesTable({ zones }) {
                   ? naText(row.spotsTotal ? `${row.spotsSelected} / ${row.spotsTotal}` : null)
                   : naText(row.spotsTotal ? `${row.spotsTotal} จุด` : null)}
               </Cell>
+              {/* ⭐ ขนาด + จำนวนที่หัวหน้าเคาะ ("SM · 1" · mig 0398) — ของที่ฝ่ายขายเอาไปตั้งราคา
+                  · บรรทัดรองขึ้นเฉพาะเมื่อต่างจากที่ระบบเสนอ (ต่างได้ แต่ต้องเห็นว่าต่าง) · 🔄 แทน "สูตร N" เดิม
+                  · ถ้อยคำมาจาก `surveyJobView` (กติกาหัวไฟล์) */}
               <Cell label="แพ็คเกจ" num>
-                {naText(row.packageQty)}
-                {row.suggested ? <span className="cell-sub">สูตร {row.suggested}</span> : null}
+                {naText(row.packageText)}
+                {row.suggestedText ? <span className="cell-sub">{row.suggestedText}</span> : null}
                 {sent && row.packageNote ? <span className="cell-sub">{row.packageNote}</span> : null}
               </Cell>
               <Cell label={sent ? "รูป" : "หน้างาน"}>
@@ -235,7 +238,8 @@ function ZonesTable({ zones }) {
             </Cell>
             <Cell label="แพ็คเกจ" num>
               {naText(totals.packageQty || null)}
-              {totals.suggestedPackages ? <span className="cell-sub">สูตร {totals.suggestedPackages}</span> : null}
+              {/* สัดส่วนขนาดของทั้งใบ ("SM 1 · ST 1") — จำนวนรวมเท่ากันแต่ขนาดต่าง = ราคาต่าง */}
+              {zones.packageMixText ? <span className="cell-sub">{zones.packageMixText}</span> : null}
             </Cell>
             <Cell label={sent ? "รูป" : "หัวหน้า"}>
               {sent
@@ -486,7 +490,7 @@ export default function SurveyRequestView({
               <Metric label="พื้นที่" value={`${fmtNumber(zones.totals.zones)} พื้นที่`} note={zones.unchanged ? "ครบตามที่ขอ" : "มีตัด/เพิ่ม"} />
               <Metric label="พื้นที่รวม" value={`${num(zones.totals.areaSqm)} ตร.ม.`} />
               <Metric label="ปริมาตรรวม" value={`${num(zones.totals.volumeCbm)} ลบ.ม.`} />
-              <Metric label="แพ็คเกจ" value={`${fmtNumber(zones.totals.packageQty)} แพ็คเกจ`} note={zones.totals.suggestedPackages ? `สูตร ${zones.totals.suggestedPackages}` : null} />
+              <Metric label="แพ็คเกจ" value={`${fmtNumber(zones.totals.packageQty)} แพ็คเกจ`} note={zones.packageMixText || null} />
               <Metric label="จุดติดตั้ง" value={`${zones.totals.spotsSelected} / ${zones.totals.spotsTotal}`} note="เลือก / ที่ติดตั้งได้" />
               <Metric label="เอกสารผลประเมิน" value="ยังไม่ออก" note="ภาพและผังจะมาในเอกสารส่งงาน" />
             </MetricStrip>

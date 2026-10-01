@@ -15,6 +15,8 @@ import { fileURLToPath } from "node:url";
  */
 const GUARDED = [
   "app/database/assets/page.js",
+  // ทะเบียนขนาดแพ็คเกจ (mig 0398) — ไม่ได้โหลดตามตัวกรอง แต่ยิงซ้อนกันได้ (เปิดหน้า · กลับมามองแท็บ · หลังบันทึก · เปิดกล่องลบ)
+  "app/database/package-sizes/page.js",
   "app/requests/page.js",
   "app/rd/perfumers/page.js",
   "app/notifications/page.js",
