@@ -151,6 +151,24 @@ export function rescheduleSummary(before, after, reason) {
   return `เลื่อนนัดจาก ${from} → ${to}${reason ? ` · ${reason}` : ''}`;
 }
 
+/* ── รูปหน้างานหนึ่งรูปในช่อง `attachments` ของนัด — คืน `{ value, error }` ─────────────
+   ⭐ ยกออกมาจาก `normalizeVisitInput` (แผน operation-crew C5 · S3) — เส้นรูปทีละรูป (`visits/[id]/photos`)
+      กับ PATCH ของนัด (แผ่นปิดงาน/แก้ผลที่ส่ง) ต้องตรวจรูปด้วยกติกาเดียวกัน · สองชุดเมื่อไรเพี้ยนหากัน
+   ⚠️ URL ว่าง = **ไม่ใช่รูป** → `value: null` ไม่ใช่ error (ช่องว่างจากฟอร์มเก่าข้ามไปเงียบ ๆ ตามเดิม) */
+export function normalizeAttachment(raw) {
+  const url = String(raw?.url ?? '').trim();
+  if (!url) return { value: null, error: null };
+  if (url.length > 1000) return { value: null, error: 'ลิงก์ไฟล์แนบยาวเกินไป' };
+  return {
+    value: {
+      url,
+      name: String(raw?.name ?? '').trim().slice(0, 200) || 'ไฟล์แนบ',
+      kind: ATTACHMENT_KINDS.includes(raw?.kind) ? raw.kind : 'other',
+    },
+    error: null,
+  };
+}
+
 // ── ตรวจข้อมูลนัด ────────────────────────────────────────────────────────
 export function normalizeVisitInput(body = {}, { existingKind = null } = {}) {
   const siteId = String(body.siteId ?? '').trim();
@@ -258,14 +276,9 @@ export function normalizeVisitInput(body = {}, { existingKind = null } = {}) {
   const attachments = [];
   if (Array.isArray(body.attachments)) {
     for (const raw of body.attachments) {
-      const url = String(raw?.url ?? '').trim();
-      if (!url) continue;
-      if (url.length > 1000) return { value: null, error: 'ลิงก์ไฟล์แนบยาวเกินไป' };
-      attachments.push({
-        url,
-        name: String(raw?.name ?? '').trim().slice(0, 200) || 'ไฟล์แนบ',
-        kind: ATTACHMENT_KINDS.includes(raw?.kind) ? raw.kind : 'other',
-      });
+      const { value: att, error: attError } = normalizeAttachment(raw);
+      if (attError) return { value: null, error: attError };
+      if (att) attachments.push(att);
     }
   }
 

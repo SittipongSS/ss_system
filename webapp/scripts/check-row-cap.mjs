@@ -97,7 +97,7 @@ const CAPS = {
   sales_contracts: 6,
   service_zones: 6,
   service_plans: 1,
-  service_visits: 3,
+  service_visits: 2, // 2026-09-28 แผน operation-crew S2: `loadVisits` ไล่หน้าด้วย fetchAll (คิวงานช่าง/ตารางทั้งฝ่าย/ประวัติไซต์) 3 → 2
   sales_order_installments: 1,
   sahamit_fc_flags: 2,
   material_prices: 1, // 2026-09-22 ม-148: attachRowPrice ซอย .in() เป็นก้อน (คิวทั้งหน้าอ่านราคา) 2 → 1

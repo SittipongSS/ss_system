@@ -7,10 +7,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   canCreateServiceSite, canDoFieldWork, canEditService, canPickServiceSite, canUser,
-  canViewService, canViewServiceRegistry, canWorkOwnVisit,
+  canViewService, canViewServiceRegistry, canWorkOwnVisit, usesCrewShell,
 } from '../permissions.js';
 import {
-  PLANNING_FIELD_ERROR, VISIT_PLANNING_FIELDS, planningFieldsIn, visitWriteAccess,
+  CREW_CLOSED_EDIT_ERROR, PLANNING_FIELD_ERROR, VISIT_PLANNING_FIELDS, crewClosedEditError, planningFieldsIn,
+  visitWriteAccess,
 } from './visitAccess.js';
 
 const tech = { id: 'U-TECH', role: 'ts', department: 'TS' };
@@ -67,6 +68,67 @@ test('canDoFieldWork = "มีงานหน้างานของตัว�
   assert.equal(canDoFieldWork(aeSv), false);
   assert.equal(canDoFieldWork({ role: 'wh', department: 'WH' }), false);
   assert.equal(canDoFieldWork(null), false);
+});
+
+/* ── เปลือกของช่าง (แผน operation-crew §3 "Crew detection" · S1) ───────────────────────────
+   ⭐ `usesCrewShell` = มีงานหน้างานของตัวเอง **แต่** แก้ตารางทั้งฝ่ายไม่ได้ = ตำแหน่ง Operation (`ts`) ล้วน ๆ
+   ⚠️ Senior ออกหน้างานประจำ (FIELD_CREW_ROLES) แต่ถือ service:edit ⇒ เปลือกเต็มเหมือนหัวหน้า */
+test('usesCrewShell: `ts` เท่านั้น · Senior/Planner/Audit/ผู้จัดการ/แอดมิน/CD ได้เปลือกเต็ม', () => {
+  assert.equal(usesCrewShell(tech), true);
+  for (const user of [
+    { role: 'ts_senior', department: 'TS' }, planner, { role: 'ts_audit', department: 'TS' }, head,
+    { role: 'admin' }, { role: 'commercial_director', department: 'SA' },
+  ]) {
+    assert.equal(usesCrewShell(user), false, user.role);
+  }
+  // คนนอกฝ่าย / ไม่ล็อกอิน = ไม่มีงานหน้างาน ⇒ ไม่ใช่เปลือกของช่าง
+  assert.equal(usesCrewShell(aeSv), false);
+  assert.equal(usesCrewShell(null), false);
+  /* ⚠️ สิทธิ์เสริมรายคน (extraCaps) แจก `service:edit` ไม่ได้ (ไม่อยู่ใน GRANTABLE_CAPS) ⇒ `ts` ที่ถือ
+     สิทธิ์เสริมอะไรก็ตามยังเป็นช่าง · ตัดสินจาก cap จริงไม่ใช่จากชื่อตำแหน่ง ⇒ นิยามต้องเท่ากับสองด่านเดิมเสมอ */
+  const tsWithGrants = { ...tech, extraCaps: ['team:manage', 'service:edit'] };
+  assert.equal(canEditService(tsWithGrants), false);
+  assert.equal(usesCrewShell(tsWithGrants), true);
+  for (const user of [tech, planner, head, aeSv, tsWithGrants, { role: 'admin' }]) {
+    assert.equal(usesCrewShell(user), canDoFieldWork(user) && !canEditService(user), user.role);
+  }
+});
+
+/* ── ส่งงานแล้ว ช่างแก้ไม่ได้ (มติเจ้าของ 28/09 Q3) ───────────────────────────────────────
+   ⭐ นัดงานเครื่องที่ปิดแล้ว = ช่างอ่านอย่างเดียว · แก้ผลที่ส่งเป็นของหัวหน้า/ผู้จัดคิว
+   ⚠️ นัดประเมินพื้นที่ยกเว้น — จอประเมิน PATCH นัดตอนเริ่ม/ส่งงานเหมือนกัน และแก้หลังปิดมีด่านของตัวเอง
+      (`surveyEditLockError` ที่ route ของใบประเมิน) */
+test('🔴 crewClosedEditError: ช่าง + นัดงานเครื่องที่ปิดแล้ว (เข้าแล้ว/ทำไม่ครบ/ทำไม่ได้) = ข้อความ', () => {
+  for (const status of ['done', 'partial', 'unable']) {
+    const visit = visitOf({ kind: 'refill', status });
+    const access = decide(tech, visit);
+    assert.equal(crewClosedEditError(visit, access), CREW_CLOSED_EDIT_ERROR, status);
+  }
+  assert.equal(CREW_CLOSED_EDIT_ERROR, 'ส่งงานแล้ว — แก้ผลที่ส่งได้เฉพาะหัวหน้าหรือผู้จัดคิว');
+});
+
+test('crewClosedEditError: นัดประเมินที่ปิดแล้ว · นัดที่ยังเปิด · หัวหน้า/ผู้จัดคิว/แอดมิน = ไม่ขวาง', () => {
+  const closedSurvey = visitOf({ kind: 'survey', status: 'done', requestId: 'RQ1' });
+  assert.equal(crewClosedEditError(closedSurvey, decide(tech, closedSurvey)), null, 'นัดประเมินมีด่านของตัวเอง');
+  for (const status of ['scheduled', 'in_progress']) {
+    const open = visitOf({ kind: 'refill', status });
+    assert.equal(crewClosedEditError(open, decide(tech, open)), null, status);
+  }
+  const closed = visitOf({ kind: 'refill', status: 'done' });
+  for (const user of [{ id: 'U-SEN', role: 'ts_senior', department: 'TS' }, planner, { id: 'U-ADM', role: 'admin' }]) {
+    // คนที่ถือ service:edit ผ่านด่านชั้นนอกของ requireVisit ⇒ canEditAll = true
+    assert.equal(crewClosedEditError(closed, decide(user, closed, true)), null, user.role);
+  }
+  assert.equal(crewClosedEditError(closed), null, 'ไม่ส่งธงมา = ไม่ใช่ทางของช่าง');
+});
+
+test('🔴 requireVisit ต้องถามด่านนี้บนทาง edit หลัง visitWriteAccess และตอบ 409', () => {
+  const src = readFileSync(new URL('./visitsRepo.js', import.meta.url), 'utf8');
+  const fn = src.slice(src.indexOf('export async function requireVisit'));
+  const access = fn.indexOf('visitWriteAccess(');
+  const closed = fn.search(/crewClosedEditError\(visit, decision\)/);
+  assert.ok(access > 0 && closed > access, 'ต้องตัดสินหลังรู้ว่าเป็นทางของช่าง (ownWorkOnly)');
+  assert.match(fn, /if \(closedEdit\) return \{ response: conflict\(closedEdit\) \};/);
 });
 
 /* ── ด่านรายใบที่ requireVisit ใช้จริง ─────────────────────────────────── */
@@ -150,6 +212,14 @@ test('🔴 หน้า "งานวันนี้" ต้องเปิด�
   const src = readFileSync(new URL('../../app/service/today/page.js', import.meta.url), 'utf8');
   assert.match(src, /canDoFieldWork\(\{ role, team, teams, department \}\)/);
   assert.doesNotMatch(src, /canEditService\(\{ role/);
+});
+
+test('🔴 หน้า "งานวันนี้" (รายการเดิม) ต้องไม่โชว์ "แก้ผลการเข้า" ให้ช่าง — ส่งไปก็ 409 ทุกครั้ง (28/09 Q3)', () => {
+  const src = readFileSync(new URL('../../app/service/today/page.js', import.meta.url), 'utf8');
+  assert.match(src, /usesCrewShell\(\{ role, team, teams, department \}\)/);
+  // "ปิดงาน" ของใบที่กำลังทำยังอยู่ · "แก้ผลการเข้า" ของใบที่ปิดแล้วเฉพาะคนที่ไม่ใช่เปลือกของช่าง
+  assert.match(src, /\{canEdit && !surveyLink && \(running \|\| \(done && !crewShell\)\) && \(/);
+  assert.match(src, /\{done \? "แก้ผลการเข้า" : "ปิดงาน"\}/);
 });
 
 test('🔴 เมนู "จัดทีม" ของบริหารงานขาย ต้องไม่โผล่ให้หัวหน้าฝ่ายอื่น', () => {

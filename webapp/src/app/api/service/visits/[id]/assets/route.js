@@ -5,6 +5,16 @@
 // ⚠️ เป็น **PUT ทั้งชุด ไม่ใช่ POST ทีละแถว** ต่างจาก `items` โดยตั้งใจ:
 // ของที่ใช้เป็นรายการที่เพิ่มทีละชิ้นตามที่นึกออก แต่ผลรายเครื่องคือ "คำตอบของทั้งใบ"
 // ที่ต้องอ่านพร้อมกันเพื่อสรุปสถานะ · ส่งทีละแถวเมื่อไรจะมีสถานะกลางทางที่ใบสรุปผิด
+//
+// ⭐ **`partial: true` = ลงผลทีละเครื่อง** (หน้างานของช่าง · แผน operation-crew C3 · S3) — ทางเดียวกัน ด่านชุดเดียวกัน
+//    (เครื่องต้องอยู่ไซต์นี้ · แถวแช่แข็ง · นัดถอนไม่มีเปลี่ยนเครื่อง · ติดตั้งหลังวันนัด · ซ้ำ) ต่างกันสามข้อ:
+//    · ได้เฉพาะงานที่ **กำลังทำ** (กดรับงานแล้ว) — ใบที่ปิดแล้วแก้ผ่าน PUT ทั้งชุดของ "แก้ผลที่ส่ง" เท่านั้น
+//    · **ไม่แตะแถวของเครื่องอื่น** — upsert เฉพาะเครื่องที่ส่งมา (ช่างกับผู้ช่วยลงผลคนละเครื่องพร้อมกันได้)
+//    · **ไม่ลงทะเบียนเปลี่ยนเครื่อง** — แถว "เปลี่ยนเครื่อง" บันทึกไว้ก่อน ทะเบียนเปลี่ยนตอนส่งงานด้วย PUT ทั้งชุด
+//      รอบเดียว (หลังเปลี่ยนแล้วตัวเก่าไม่ "ใช้งาน" ⇒ ผลแช่แข็ง ⇒ ส่งซ้ำไม่เปลี่ยนซ้ำ)
+//    แจ้งชำรุดยังทำทันทีทั้งสองโหมด · โหมดนี้รับ `{ assetId, broken: true, symptom }` ที่ยังไม่มีผลได้ (C4)
+// 🔒 **ช่างเขียนได้เฉพาะงานที่กำลังทำ ทั้งสองโหมด** (`requireVisit({ running: true })`) — PUT ทั้งชุดลงทะเบียนเครื่องจริง
+//    (เปลี่ยนเครื่อง · แจ้งชำรุด) ⇒ นัดของวันหน้า/นัดที่ยกเลิกแล้วต้องไม่ผ่าน แม้ด่านจับเวลาจะกันการส่งงานไว้แล้วก็ตาม
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict } from '@/lib/http';
@@ -40,26 +50,43 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   }
 });
 
-// PUT { results: [{ assetId, outcome, reason?, replacedByAssetId? }] }
+/* ⚠️ ข้อความของ 409 ตอนสองคนบันทึกเครื่องเดียวกันพร้อมกัน (R10) — เดิม 23505 หลุดเป็นภาษาอังกฤษดิบ + 500
+   🔴 **สองโหมดบอกทางออกต่างกัน** — ทีละเครื่องไม่ได้ลบอะไร (ผลของอีกคนอยู่ในฐาน โหลดใหม่แล้วดูได้) · แต่ทั้งชุด
+      23505 มา **หลังลบแถวที่แก้ได้ไปแล้ว** และ insert เป็นคำสั่งเดียวทั้งชุด ⇒ ล้มทั้งชุด ใบเหลือแถวของอีกคนแถวเดียว
+      ผลที่เหลืออยู่ที่ไหนสักที่คือ **ฟอร์มที่ยังเปิดอยู่** ⇒ บอกให้โหลดหน้าใหม่ = ทิ้งผลทั้งใบ · กดบันทึกอีกครั้งจากฟอร์มเดิม
+      = อ่าน `before` ใหม่ (มีแถวของอีกคนแล้ว) ลบแล้วใส่ทั้งชุดคืนครบ */
+const SAME_ASSET_RACE_ERROR = 'มีคนบันทึกเครื่องนี้พร้อมกัน — โหลดหน้าใหม่แล้วดูผลล่าสุดก่อนแก้';
+const FULL_SET_RACE_ERROR = 'มีคนบันทึกเครื่องนี้พร้อมกัน — บันทึกไม่สำเร็จ กดบันทึกอีกครั้ง (ผลที่กรอกไว้ยังอยู่ในฟอร์ม)';
+const PARTIAL_NEEDS_START_ERROR = 'กดรับงานก่อน — ลงผลทีละเครื่องได้เฉพาะงานที่กำลังทำ';
+
+// PUT { results: [{ assetId, outcome, reason?, replacedByAssetId?, broken?, symptom? }], partial? }
 export const PUT = withUser(async ({ user, supabase, req, ctx }) => {
   const { id } = await ctx.params;
   try {
-    const access = await requireVisit({ user, supabase, id, edit: true });
+    const access = await requireVisit({ user, supabase, id, edit: true, running: true });
     if (access.response) return access.response;
     const visit = access.visit;
 
     const body = await req.json().catch(() => ({}));
     const raw = Array.isArray(body.results) ? body.results : null;
     if (!raw) return badRequest('ต้องส่งผลรายเครื่องมาเป็นรายการ');
+    // ⚠️ ต้องเป็น `true` จริง ๆ — จอเก่า/ผู้เรียกอื่นที่ไม่ส่งมา = PUT ทั้งชุดตามเดิมทุกอย่าง
+    const partial = body.partial === true;
+    if (partial && visit.status !== 'in_progress') return conflict(PARTIAL_NEEDS_START_ERROR);
 
     const values = [];
     // เครื่องที่ช่างติ๊ก "เครื่องชำรุด" — ไม่ใช่คอลัมน์ของผลรายนัด (ดู normalizeAssetResult)
     const reports = [];
+    // ทุกเครื่องที่ส่งมา รวมแถวแจ้งชำรุดอย่างเดียว (ไม่มีผล) — ใช้ตรวจซ้ำ
+    const entryIds = [];
     for (const row of raw) {
-      const { value, broken, error } = normalizeAssetResult(row);
+      /* ⭐ อาการ (`symptom`) แยกจากเหตุผลของแถว — แจ้งชำรุดอย่างเดียวไม่มีแถวผล (`value: null`) · กด
+         "ทำแล้ว" ทีหลังด้วยเหตุผลว่างจึงไม่ลบอาการ (อาการอยู่ในประวัติเครื่อง ไม่ได้อยู่ในแถวผล · R6) */
+      const { value, assetId, broken, symptom, error } = normalizeAssetResult(row, { allowBrokenOnly: partial });
       if (error) return badRequest(error);
-      values.push(value);
-      if (broken) reports.push({ assetId: value.assetId, reason: value.reason });
+      entryIds.push(assetId);
+      if (value) values.push(value);
+      if (broken) reports.push({ assetId, reason: symptom });
     }
 
     /* ⚠️ นัดถอนเครื่องไม่มี "เปลี่ยนเครื่อง" — เอาเครื่องสำรองมาใส่แทนในวันที่ลูกค้าเลิก
@@ -126,9 +153,9 @@ export const PUT = withUser(async ({ user, supabase, req, ctx }) => {
       }
     }
     const seen = new Set();
-    for (const v of values) {
-      if (seen.has(v.assetId)) return badRequest('มีอุปกรณ์ซ้ำในรายการ — หนึ่งเครื่องมีผลได้ค่าเดียวต่อหนึ่งนัด');
-      seen.add(v.assetId);
+    for (const assetId of entryIds) {
+      if (seen.has(assetId)) return badRequest('มีอุปกรณ์ซ้ำในรายการ — หนึ่งเครื่องมีผลได้ค่าเดียวต่อหนึ่งนัด');
+      seen.add(assetId);
     }
 
     /* ── แจ้งเครื่องชำรุด (ข้อ H) — ตรวจ **ก่อนเขียนอะไรเลย** ─────────────────────
@@ -150,8 +177,9 @@ export const PUT = withUser(async ({ user, supabase, req, ctx }) => {
        ⚠️ ไม่มีทรานแซกชันในชั้นนี้ (ทุก route ของโมดูลยิงทีละคำสั่ง) — ลบก่อนใส่จึงมี
        ช่วงที่ผลว่าง · ยอมรับได้เพราะเป็นข้อมูลที่ผู้ใช้กำลังกรอกอยู่คนเดียวต่อหนึ่งนัด
        และถ้า insert ล้ม เจ้าหน้าที่เห็น error แล้วกดบันทึกใหม่ได้ทันทีจากฟอร์มที่ยังคาอยู่
-       ⚠️ ลบด้วย **id ของแถว** ไม่ใช่ `visitId` ทั้งใบ — ไม่งั้นแถวที่แช่แข็งไว้หายไปด้วย */
-    const editableIds = before.filter((r) => !frozenById.has(r.assetId)).map((r) => r.id);
+       ⚠️ ลบด้วย **id ของแถว** ไม่ใช่ `visitId` ทั้งใบ — ไม่งั้นแถวที่แช่แข็งไว้หายไปด้วย
+       ⭐ `partial` **ไม่ลบอะไรเลย** — แถวของเครื่องอื่นเป็นของคนอื่นที่กำลังลงผลอยู่ (ผู้ช่วยอีกเครื่อง) */
+    const editableIds = partial ? [] : before.filter((r) => !frozenById.has(r.assetId)).map((r) => r.id);
     for (let from = 0; from < editableIds.length; from += IN_CHUNK_SIZE) {
       const { error: delError } = await supabase
         .from('service_visit_assets').delete()
@@ -161,25 +189,43 @@ export const PUT = withUser(async ({ user, supabase, req, ctx }) => {
 
     let saved = [];
     if (incoming.length) {
+      /* ⭐ `partial` = **upsert บน (visitId, assetId)** (`service_visit_assets_once` · mig 0301) ไม่ใช่ลบแล้วใส่ —
+         สองเครื่องกดเครื่องเดียวกันพร้อมกัน คนหลังทับคนแรก ไม่ใช่ 23505 (R10)
+         ⚠️ ใช้ id ของแถวเดิมเมื่อมี — PK ไม่เปลี่ยนไปมาทุกครั้งที่แก้ผล · `updatedAt` ต้องส่งเอง (ไม่มี trigger) */
+      const priorIdByAsset = new Map(before.map((r) => [r.assetId, r.id]));
+      const nowIso = new Date().toISOString();
       const rows = incoming.map((v) => ({
-        id: genId('SVR'),
+        id: (partial && priorIdByAsset.get(v.assetId)) || genId('SVR'),
         visitId: id,
         ...v,
         createdById: user.id ? String(user.id) : null,
         createdByName: user.name || null,
+        ...(partial ? { updatedAt: nowIso } : {}),
       }));
-      const { data, error: insError } = await supabase
-        .from('service_visit_assets').insert(rows).select();
+      const { data, error: insError } = partial
+        ? await supabase.from('service_visit_assets').upsert(rows, { onConflict: 'visitId,assetId' }).select()
+        : await supabase.from('service_visit_assets').insert(rows).select();
       if (insError) {
         if (insError.code === '23503') {
           return conflict('อุปกรณ์บางตัวถูกลบไปแล้วระหว่างที่กรอก — โหลดหน้าใหม่แล้วลองอีกครั้ง');
         }
+        /* 🐞 สองคนบันทึกเครื่องเดียวกันพร้อมกัน (ทั้งชุดสองแท็บ · หรือทั้งชุดชนทีละเครื่อง) — ลบแล้วใส่ของคนหนึ่ง
+             ชน UNIQUE ของอีกคน ⇒ เดิมเป็น 500 ภาษาอังกฤษดิบ
+           ⚠️ **ทั้งชุด: แถวที่แก้ได้ถูกลบไปแล้วตอนมาถึงตรงนี้** (ใบเหลือแถวของอีกคน) — ผลอยู่ในฟอร์มที่เดียว ⇒ บอกให้กดบันทึก
+              อีกครั้ง ไม่ใช่โหลดหน้าใหม่ · ทีละเครื่องไม่ได้ลบอะไร ⇒ โหลดใหม่ดูผลล่าสุดได้ */
+        if (insError.code === '23505') return conflict(partial ? SAME_ASSET_RACE_ERROR : FULL_SET_RACE_ERROR);
         return fail(insError.message, 500);
       }
       saved = data || [];
     }
     // คืนผลทั้งใบ (ที่แก้ได้ + ที่แช่แข็งไว้) — จอใช้นับว่าใบนี้จะปิดเป็นอะไร
-    saved = [...frozen, ...saved];
+    if (partial) {
+      // ทีละเครื่อง: แถวเดิมของเครื่องที่ไม่ได้ส่งมายังอยู่ครบ (รวมที่แช่แข็ง) + แถวที่เพิ่งเขียน
+      const touched = new Set(saved.map((r) => r.assetId));
+      saved = [...before.filter((r) => !touched.has(r.assetId)), ...saved];
+    } else {
+      saved = [...frozen, ...saved];
+    }
 
     /* ⭐ เปลี่ยนเครื่อง = **เข้าทะเบียนจริง** ไม่ใช่ข้อความในหมายเหตุ (มติข้อ 7)
        ตัวเก่าถูกถอด · ตัวใหม่ถูกติดตั้ง ณ วันที่เข้าจริงของนัดนี้
@@ -224,7 +270,8 @@ export const PUT = withUser(async ({ user, supabase, req, ctx }) => {
        ⚠️ **ลงวันติดตั้งตัวใหม่ก่อน แล้วค่อยปลดตัวเก่า** — ตัวเก่าปลดสำเร็จเมื่อไร ผลของมันแช่แข็ง
           (frozenResultRows) แล้วกดซ้ำจะไม่เข้าวงนี้อีก ⇒ ถ้าปลดก่อนแล้วลงวันล้ม ตัวใหม่ไม่มีวันติดตั้งถาวร */
     const swapped = { moved: [], failed: [] };
-    for (const swap of swaps) {
+    // ⭐ ทีละเครื่อง = ยังไม่ลงทะเบียน (หัวไฟล์) — ส่งงานส่ง PUT ทั้งชุดรอบเดียว ซึ่งเปลี่ยนแต่ละเครื่องครั้งเดียว
+    for (const swap of partial ? [] : swaps) {
       /* 🐞 เครื่องที่แจ้งชำรุดล้มในรอบนี้เคยถูกปลดต่อ ⇒ ผลแช่แข็ง ทะเบียนยังไม่ชำรุด ⇒ กดซ้ำตาม 409
            ข้างล่างโดนตีกลับ 400 (แจ้งได้เฉพาะเครื่องที่ติดตั้งอยู่) และประวัติ "เสียก่อนถูกเอาออก" หายถาวร
          ⇒ ยังไม่ปลด ปล่อยให้รอบกดซ้ำทำครบทั้งแจ้งชำรุดและเปลี่ยนเครื่อง */
@@ -249,10 +296,14 @@ export const PUT = withUser(async ({ user, supabase, req, ctx }) => {
       }
     }
 
+    /* ทีละเครื่อง = audit เฉพาะเครื่องที่ส่งมา — ทุกการกดหนึ่งครั้งเป็นหนึ่งแถว audit ⇒ ถ้าเก็บทั้งใบทุกครั้ง
+       นัด 30 เครื่องได้ 30 แถวที่ซ้ำกันเกือบทั้งแถว (audit_logs.before ยังเป็นทางกู้ของเครื่องนั้นครบ) */
+    const auditIds = partial ? new Set(entryIds) : null;
+    const auditRows = (rows) => (auditIds ? rows.filter((r) => auditIds.has(r.assetId)) : rows);
     await recordAudit({
       user, action: 'update', entityType: 'service_visit', entityId: id,
-      before: { results: before }, after: { results: saved },
-      summary: `บันทึกผลรายเครื่องของนัด ${visit.code || id} · ${saved.length} รายการ`
+      before: { results: auditRows(before) }, after: { results: auditRows(saved) },
+      summary: `บันทึกผลรายเครื่องของนัด ${visit.code || id} · ${partial ? `ทีละเครื่อง ${incoming.length} เครื่อง · ทั้งใบ ` : ''}${saved.length} รายการ`
         + (swapped.moved.length ? ` · เปลี่ยนเครื่อง ${swapped.moved.length}` : '')
         + (reported.moved.length ? ` · แจ้งชำรุด ${reported.moved.length}` : ''),
       request: req,
