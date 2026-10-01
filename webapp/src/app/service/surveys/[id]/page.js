@@ -73,6 +73,7 @@ import {
   surveyZoneTitle,
 } from "@/lib/service/surveyFieldView";
 import { surveySendConfirm, surveySendDoneText } from "@/lib/service/surveySendClose";
+import { surveySpotSubmitReason } from "@/lib/service/surveySpotPhotos";
 import { surveyPendingDecisions } from "@/lib/service/surveyDecision";
 import { surveyRowNameClash } from "@/lib/service/surveyRequest";
 import { floorLabel, normalizeFloor } from "@/lib/service/zoneCode";
@@ -458,7 +459,9 @@ export default function SurveySheetPage({ params }) {
   const [filesByZone, reportFiles] = useLiveZoneFiles(data?.filesByZone);
   /* 🔑 ธง dirty เป็น **ของที่ server มองไม่เห็น** — ค่ายังอยู่บนจอ ยังไม่เคยถูกส่งไป
      ⇒ ต้องเดินทางจากหน้าพื้นที่ขึ้นมาที่นี่ แล้วลงไปที่ตัวตัดสิน ไม่ใช่ให้แต่ละที่เดาเอง */
-  const handleDirtyZone = useCallback((zoneId, isDirty, summary = "") => {
+  /* ค่าของแต่ละพื้นที่ = `{ summary, unlinkPhotos }` — `unlinkPhotos` = รูปบนแถวจุดที่ยังไม่บันทึก (ทิ้งร่างแล้วย้ายไปถาด
+     "ยังไม่ได้ผูกจุด" · กล่องถามก่อนทิ้งต้องบอก — review 30/09) */
+  const handleDirtyZone = useCallback((zoneId, isDirty, summary = "", unlinkPhotos = 0) => {
     setDirtyZones((prev) => {
       const key = String(zoneId);
       if (!isDirty) {
@@ -467,7 +470,11 @@ export default function SurveySheetPage({ params }) {
         delete next[key];
         return next;
       }
-      return prev[key] === summary ? prev : { ...prev, [key]: summary };
+      const n = Math.max(0, Number(unlinkPhotos) || 0);
+      const cur = prev[key];
+      return cur && cur.summary === summary && cur.unlinkPhotos === n
+        ? prev
+        : { ...prev, [key]: { summary, unlinkPhotos: n } };
     });
   }, []);
   const dirtyZoneIds = useMemo(() => Object.keys(dirtyZones), [dirtyZones]);
@@ -544,8 +551,9 @@ export default function SurveySheetPage({ params }) {
     const zone = zonesRef.current.find((z) => String(z.id) === String(from)) || {};
     if (via === "leave") {
       const zoneDirty = from != null && String(from) in dirtyZonesRef.current;
+      const held = zoneDirty ? dirtyZonesRef.current[String(from)] : null;
       const box = surveyLeaveConfirm({
-        ...leaveRef.current, zoneDirty, zone, summary: zoneDirty ? dirtyZonesRef.current[String(from)] : "",
+        ...leaveRef.current, zoneDirty, zone, summary: held?.summary || "", unlinkPhotos: held?.unlinkPhotos || 0,
       });
       if (!box) return Promise.resolve(true);
       // ตอบ "ทิ้งแล้วออก" = ตัวต่อสายย้อนออกเอง ⇒ เบราว์เซอร์ต้องไม่ถาม "Leave site?" ซ้ำ (หน้าก่อนหน้าเป็นคนละเอกสาร)
@@ -554,7 +562,8 @@ export default function SurveySheetPage({ params }) {
         return ok;
       });
     }
-    const text = surveyDiscardConfirm({ zone, summary: dirtyZonesRef.current[String(from)] || "" });
+    const held = dirtyZonesRef.current[String(from)];
+    const text = surveyDiscardConfirm({ zone, summary: held?.summary || "", unlinkPhotos: held?.unlinkPhotos || 0 });
     return confirmAction({
       title: text.title, description: text.message, cancelLabel: text.cancelLabel, confirmLabel: text.confirmLabel,
       tone: "danger",
@@ -589,6 +598,18 @@ export default function SurveySheetPage({ params }) {
     if (tab !== "field") goTab("field");
     route.open(zoneId);
   }, [tab, goTab, route]);
+  /* "ไปผูกจุด" บนบรรทัด "ยังไม่ได้ผูกจุด n รูป" ของแท็บสรุป (🐞 UAT 01/10 — เดิมเป็นตัวหนังสือ ต้องสลับแท็บ/เปิดพื้นที่/เลื่อนหาเอง)
+     = "เปิด X" ตัวเดิม + จองให้หน้าพื้นที่นั้นเลื่อนถึงถาดเอง (ถาดเกิดหลังแผงไฟล์โหลดเสร็จ — ตัวต่อสายไม่รู้จักถาด)
+     ⚠️ กลับมาแท็บสรุปก่อนถาดขึ้น = คำขอตกไป (ไม่ไปเลื่อนตอนเปิดพื้นที่นั้นเองทีหลัง) */
+  const [trayJump, setTrayJump] = useState(null);
+  const openSpotTray = useCallback((zoneId) => {
+    setTrayJump(String(zoneId));
+    openZone(zoneId);
+  }, [openZone]);
+  const trayShown = useCallback(() => setTrayJump(null), []);
+  useEffect(() => {
+    if (tab === "result") setTrayJump(null);
+  }, [tab]);
 
   /* ⭐ **ออกจากหน้าตอนมีของค้าง = ถามก่อนทิ้ง** (แผนลงมือ §3.4) — ค่าที่ช่างพิมพ์ค้างในพื้นที่ · การเคาะของหัวหน้า
      (ร่างอยู่ที่หน้า รอดการสลับแท็บแต่ไม่รอดการออกจากหน้า — ตารางสรุปสัญญาว่า "กดลิงก์ออก รีเฟรช หรือปิดแท็บ… ระบบจะถามก่อนทิ้ง"
@@ -603,7 +624,8 @@ export default function SurveySheetPage({ params }) {
       uploads: uploadsBusy,
       zoneDirty: !!dirtyZoneId,
       zone: dirtyZoneId ? zones.find((z) => String(z.id) === dirtyZoneId) : null,
-      summary: dirtyZoneId ? dirtyZones[dirtyZoneId] : "",
+      summary: dirtyZoneId ? dirtyZones[dirtyZoneId]?.summary || "" : "",
+      unlinkPhotos: dirtyZoneId ? dirtyZones[dirtyZoneId]?.unlinkPhotos || 0 : 0,
       decisions: pendingDecisionZoneIds.length,
       fixedNote,
     }),
@@ -666,8 +688,10 @@ export default function SurveySheetPage({ params }) {
      จัดการผลประเมิน · Senior ที่ออกหน้างานเองยังได้แถบ (`onVisit` มาจาก server) */
   const actsAsCrew = !canDecide || data?.onVisit === true;
   /* ⭐ มติเจ้าของ 26/09 "ช่างเห็นแค่งานตัวเอง" — ช่าง (เขียนผลวัดได้ · ไม่ได้เคาะ) ไม่มีจอสรุปส่งผลแล้ว
-     ลิงก์เก่า `?tab=result` พากลับหน้างาน (ชั้นใบใต้พื้นที่ต้องเป็น URL แท็บหน้างานอยู่แล้ว — กับดักประวัติ) */
-  const crewOnly = !!data && view.flags.canWrite && !canDecide;
+     ลิงก์เก่า `?tab=result` พากลับหน้างาน (ชั้นใบใต้พื้นที่ต้องเป็น URL แท็บหน้างานอยู่แล้ว — กับดักประวัติ)
+     🐞 UAT 01/10: ถาม `canWrite` **ดิบของ server** (ช่างของนัดใบนี้ — ไม่ดูการล็อก) ไม่ใช่ `view.flags.canWrite` (หักล็อกแล้ว)
+        ⇒ เดิมใบที่ส่งผลแล้ว ธงเป็น false ช่างเปิด `?tab=result` ได้ (และได้แถว "สรุปส่งผล · ดูอย่างเดียว") */
+  const crewOnly = !!data && data.canWrite === true && !canDecide;
   useEffect(() => {
     if (crewOnly && tab === "result") applyTab("field");
   }, [crewOnly, tab, applyTab]);
@@ -745,8 +769,13 @@ export default function SurveySheetPage({ params }) {
     unknown: data?.unknown || {},
   });
   const aboutView = surveyAboutView({
-    header: headerView.request, requestId: id, canDecide, canWrite: view.flags.canWrite, canOpenRequest: view.flags.canOpenRequest,
+    /* ⚠️ `canWrite` ดิบ (ไม่หักล็อก) — ตัวนี้ถามว่า "เป็นช่างของใบนี้ไหม" (แถว "สรุปส่งผล" เฉพาะคนดูอย่างเดียว) ตัวเดียวกับ `crewOnly` */
+    header: headerView.request, requestId: id, canDecide, canWrite: data?.canWrite === true, canOpenRequest: view.flags.canOpenRequest,
+    /* ไฟล์แนบของคำร้อง — อ่านอย่างเดียว ทุกคนที่เปิดใบนี้ได้ (PR-S · ช่างเปิดหน้าคำร้องไม่ได้) */
+    requestFiles: data?.requestFiles || [], filesUnknown: data?.unknown?.requestFiles === true,
   });
+  /* ⭐ ผูกรูปจุดติดตั้งกับจุดได้ไหม (PR-S · Q1a) — server ตอบ (ด่านเดียวกับ PATCH): ใบเปิด = คนเขียนได้ · ส่งผลแล้ว = หัวหน้าฝ่าย */
+  const canLinkSpots = data?.canLinkSpotPhotos === true;
   /* ⭐ กล่องแจ้งของคนที่ไม่มีการ์ด (ช่าง · คนอ่านอย่างเดียว · แผนลงมือ C15) — ใบล็อก · ดึงกลับ · อ่านอย่างเดียว · อ่านไม่สำเร็จ
      ⚠️ หัวหน้าเห็นเรื่องเดียวกันในการ์ดจัดการผลแล้ว ⇒ ไม่วาดซ้ำ */
   const sheetNotices = canDecide ? [] : surveySheetNotices(view);
@@ -777,7 +806,7 @@ export default function SurveySheetPage({ params }) {
   const viewerKind = !view.flags.canWrite ? "readonly" : !canDecide ? "crew" : data?.onVisit === true ? "senior" : "head";
   const listView = surveyZoneListView({
     zones, filesByZone, selectedZoneId: split ? route.shown : null, dirtyZoneId,
-    sendBack: data?.sendBack || null, canDecide, split, visit,
+    sendBack: data?.sendBack || null, canDecide, split, visit, locked: view.flags.locked,
   });
   const zoneTitles = Object.fromEntries(zones.map((z) => [String(z.id), surveyZoneTitle(z)]));
   const nextStep = shownZone ? surveyNextStep({
@@ -821,6 +850,8 @@ export default function SurveySheetPage({ params }) {
     progress: view.progress,
     leftNames: listView.leftNames,
     crewGaps: surveyCrewGaps(zones, filesByZone),
+    /* ด่านรูปจุดของช่าง (G1 · มติ 01/10) — ตัวเดียวกับ route ปิดนัด · ไฟล์ชุดสด (ถ่าย/ผูกแล้วแถบเปลี่ยนทันที) */
+    spotReason: surveySpotSubmitReason(zones, filesByZone),
     dirtyZoneIds,
     sendBack: data?.sendBack || null,
     ticks: sendBackTicks,
@@ -900,6 +931,8 @@ export default function SurveySheetPage({ params }) {
              ให้ด่านทั้งหน้าเห็นพร้อมกัน */
           canUploadPlan={view.flags.canUploadPlan}
           onFiles={reportFiles}
+          canLinkSpots={canLinkSpots}
+          onOpenSpotTray={openSpotTray}
           showFormula={canDecide}
           busyZone={busyZone}
           onSaveDecisions={saveDecisions}
@@ -987,6 +1020,10 @@ export default function SurveySheetPage({ params }) {
           /* รูปที่อัป/ลบในหน้าพื้นที่รายงานขึ้นมาที่ก้อนรวม — รายการ การ์ดจัดการผล และกล่องส่งงานเห็นทันที */
           onFilesChange={reportFiles}
           onUploadBusy={handleUploadBusy}
+          /* ถาด "ยังไม่ได้ผูกจุด" — หัวหน้าผูกได้แม้ใบส่งผลแล้ว (metadata อย่างเดียว · แนบ/ลบยังล็อก) */
+          canLinkSpots={canLinkSpots}
+          jumpToTray={trayJump === String(shownZone.id)}
+          onTrayShown={trayShown}
         />
       ) : split ? (
         <EmptyState icon={Search}>

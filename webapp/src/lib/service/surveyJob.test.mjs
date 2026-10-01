@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { surveyJobView } from './surveyJob.js';
 import { requestRailSteps } from '../requests/requestRail.js';
 
+const spotFile = (spotId) => ({ docType: 'survey_spot', mimeType: 'image/jpeg', fileName: null, metadata: { spotId } });
 const zones = () => ([
   { id: 'z1', zoneName: 'Reception ชั้น 1', zoneCode: 'ZN-1160-10254', zoneFloor: '01', status: 'ok',
     parts: [{ id: 'p', widthM: 8, lengthM: 6, heightM: 3 }], spots: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] },
@@ -35,9 +36,11 @@ const request = (over = {}) => ({
   },
   surveyVisit: visit(),
   surveyZones: zones(),
+  /* 🔄 มติ 01/10 (ด่านรูปจุด): พื้นที่ที่ช่างวัดครบ = ทุกจุดมีรูปที่ผูกแล้ว (รูปร่างเดียวกับที่ `loadSurveyRequestExtras` ส่ง)
+     ⚠️ ไม่มี ⇒ ส่งผลที่ปิดนัดที่ยังเปิดติด "ทุกจุดมีรูป" แล้ว z1/z2 กลายเป็นพื้นที่ที่ช่างยังค้าง */
   surveyFilesByZone: {
-    z1: [{ docType: 'survey_wide' }, { docType: 'survey_wide' }],
-    z2: [{ docType: 'survey_wide' }],
+    z1: [{ docType: 'survey_wide' }, { docType: 'survey_wide' }, ...['a', 'b', 'c'].map(spotFile)],
+    z2: [{ docType: 'survey_wide' }, ...['a', 'b'].map(spotFile)],
     z3: [],
   },
   ...over,

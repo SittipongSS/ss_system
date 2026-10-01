@@ -193,15 +193,19 @@ const DIM_WORDS = { widthM: 'ความกว้าง', lengthM: 'ควา�
  *   "ส่วนของพื้นที่: ต้องระบุสูง (เมตร)" ที่ไม่บอกว่าส่วนไหน
  * ⚠️ ลำดับบนจอนับแถวว่างด้วย — ช่างเห็น "ส่วน B" ตรงไหน ข้อความต้องชี้ตรงนั้น
  *
+ * 🐞 review 30/09 — **แถวจุดว่างที่มีรูปแล้วไม่ใช่แถวว่าง** (`photoSpotIds` = id ของแถวร่างที่มีรูป · `spotDraftPhotos`)
+ *   ช่างถ่ายจากแถวใหม่ก่อนพิมพ์ชื่อได้ · เดิมแถวนั้นถูกข้ามเงียบ ⇒ บันทึกส่วนอื่นแล้วแถวหาย รูปตกถาด ⇒ บล็อกด้วยชื่อแถวแทน
+ *
  * → `{ payload: { parts, spots, note } | null, blocker: string | null,
  *      issues: [{ section: 'size' | 'spots' | 'note', index, field, text }] }`
  *   `blocker` = ประโยคของแถวแรกที่ติด (ขาดหลายช่องในส่วนเดียว = ประโยคเดียว) ·
  *   `issues` = รายช่อง ไว้ให้จอทำเครื่องหมายที่ช่อง
  */
-export function surveyZoneSavePayload({ parts = [], spots = [], note = '' } = {}) {
+export function surveyZoneSavePayload({ parts = [], spots = [], note = '', photoSpotIds = null } = {}) {
   const issues = [];
   let blocker = null;
   const block = (text) => { blocker = blocker ?? text; };
+  const withPhotos = new Set(Array.isArray(photoSpotIds) ? photoSpotIds.map(String) : []);
 
   (Array.isArray(parts) ? parts : []).forEach((raw, index) => {
     if (isBlankSurveyPart(raw)) return;
@@ -226,7 +230,13 @@ export function surveyZoneSavePayload({ parts = [], spots = [], note = '' } = {}
   });
 
   (Array.isArray(spots) ? spots : []).forEach((raw, index) => {
-    if (isBlankSurveySpot(raw)) return;
+    if (isBlankSurveySpot(raw)) {
+      if (raw?.id == null || !withPhotos.has(String(raw.id))) return;
+      const text = `จุดที่ ${index + 1} มีรูปแล้วแต่ยังไม่มีชื่อ`;
+      issues.push({ section: 'spots', index, field: 'label', text });
+      block(text);
+      return;
+    }
     const { error, field } = normalizeSurveySpot(raw);
     if (!error) return;
     const text = field === 'note' ? `บันทึกของจุดที่ ${index + 1} ยาวเกิน 300 ตัวอักษร`
@@ -1079,6 +1089,9 @@ export function surveyTotalsDiff(before = null, after = null) {
  *   ช่างส่งงานได้ แต่ส่งผลไม่ได้
  *   ⇒ **ส่งผลปิดนัดที่ยังเปิดให้ได้โดยไม่ต้องมีด่านที่สอง** (มติเจ้าของ 24/09 ข้อ 2 · `surveySendWrites`)
  *   ⚠️ ถอดข้อไหนของช่างออกจากที่นี่เมื่อไร ส่งผลจะปิดนัดที่ของช่างยังไม่ครบ — เทสต์ตรึงความครอบนี้ไว้
+ * 🔄 **ด่านรูปจุด (มติ 01/10) ไม่อยู่ที่นี่** — `surveySpotSendError` (`surveySpotPhotos.js` · import ย้อนมาไฟล์นี้ไม่ได้ = วงวน
+ *   กับ `attachmentTypes`) · route ส่งผลและการ์ดถามคู่กันเสมอ: ตัวนี้ก่อน แล้ว `surveySpotSendError(…, { closesVisit })`
+ *   ⇒ ความครอบของด่านส่งงานยังจริงทั้งชุด (เทสต์ใน `surveySpotGates.test.mjs`)
  */
 export function surveySendError(rows = [], filesByZone = {}, { canSend = false } = {}) {
   if (!canSend) return 'ส่งผลประเมินได้เฉพาะหัวหน้าฝ่ายบริการ';
@@ -1126,6 +1139,8 @@ export function surveyFieldProgress(rows = [], filesByZone = {}) {
  *   นัดที่ยังนัดไว้/กำลังทำถูกปิดเป็น "เข้าแล้ว" ไปพร้อมกัน (`surveySendWrites`) · ด่านของการปิดทางนั้นคือ
  *   `surveySendError` ซึ่งครอบด่านนี้ทั้งหมด ⇒ ไม่มีทางไหนปิดนัดเป็น "เข้าแล้ว" ได้โดยของช่างไม่ครบ
  *   ⚠️ ส่งผลไม่ประทับเวลาจบ — ปุ่มนี้ยังเป็นทางเดียวที่ได้เวลาจบจริงและกระดิ่ง "ช่างส่งงานแล้ว" ถึงหัวหน้า
+ * 🔄 **ด่านรูปจุด (G1 · มติ 01/10)** อยู่ที่ `surveySpotSubmitError` (`surveySpotPhotos.js`) — route ปิดนัดและกล่องส่งงาน
+ *   ถามต่อจากตัวนี้เสมอ (ทุกจุดมีรูปที่ผูก ≥ 1 · ถาด "ยังไม่ได้ผูกจุด" ว่าง)
  */
 export function surveyFieldSubmitError(rows = [], filesByZone = {}) {
   const list = Array.isArray(rows) ? rows : [];

@@ -2,7 +2,7 @@
 // ── หน้าพื้นที่หนึ่งพื้นที่ของจอหน้างาน (แผน §10.5 จอหน้างานแบบ A · ม็อก A-2 · A-3 · AT-2 · AT-3 · AW-1/2 · AO-1) ──
 //
 // ⭐ **ช่างยืนหน้างาน ถือมือถือ อีกมือถือตลับเมตร** ⇒ หน้าหนึ่งทำพื้นที่เดียว เรียงตามงานในห้อง:
-//   ① ขนาด (ก × ย × ส รายส่วน) → ② ภาพกว้าง → ③ จุดที่ติดตั้งได้ (+ ภาพจุด ไม่บังคับ) → ④ หมายเหตุพื้นที่
+//   ① ขนาด (ก × ย × ส รายส่วน) → ② ภาพกว้าง → ③ จุดที่ติดตั้งได้ (จุดละแถว: รูป + ชื่อ + รายละเอียด) → ④ หมายเหตุพื้นที่
 //   แล้ว "บันทึกพื้นที่นี้" กับ "ถัดไป" อยู่ที่ท้ายหน้าที่ติดขอบล่าง (หลบเมื่อแป้นพิมพ์บนจอขึ้น — `data-osk-hide`)
 //   🔄 เดิมคือ `SurveyZoneCard` (การ์ดพับได้ในลิสต์ยาว · 1.7 จอต่อพื้นที่ว่าง) — ย้ายชื่อเพราะไม่ใช่การ์ดแล้ว
 //      โค้ดร่าง/ลายเซ็น/รับแถวใหม่/ชนกัน **ยกมาทั้งชุด** (พิสูจน์ในงานจริงแล้ว) · เหลือตัวตัดสินชนกันที่ `surveyDraftSync`
@@ -15,12 +15,19 @@
 //   ตัวเลข/จุด/หมายเหตุรอปุ่ม ("ยังไม่บันทึก" สีอำพันต่อหัวข้อ) · ติ๊กเขียวให้เฉพาะของที่ลงฐานแล้ว (`surveyZoneSections`)
 // ⚠️ **ไม่มีร่างในเครื่อง** (มติเจ้าของ) — ออกจากพื้นที่ที่มีค่าค้าง = หน้าถามก่อนทิ้ง (ธงขึ้นไปทาง `onDirtyChange`)
 // ⚠️ ทุกคำบนจอประกอบที่ `lib/service/surveyFieldView.js` — ที่นี่วาดอย่างเดียว
+//
+// ⭐ **จุดหนึ่งจุด = หนึ่งแถว: รูป + ชื่อ + รายละเอียด** (PR-S · มติเจ้าของ 28/09 · 30/09) — แผงไฟล์แนบตัวเดียวของหัวข้อจุด
+//   (`photoGroups`) วาดแถวของทุกจุด · แผ่นถ่ายรูปของแถวอัปพร้อม `metadata.spotId` ⇒ รูปผูกจุดตั้งแต่ตอนถ่าย
+//   🔄 กองรูป "ภาพจุดติดตั้ง" ที่แยกจากรายการจุดหายไป · รูปเก่าที่ไม่มี spotId (หรือชี้จุดที่ลบไปแล้ว) ลงถาด
+//      "ยังไม่ได้ผูกจุด" ท้ายหัวข้อ — คนที่ผูกได้ (`canLinkSpots` ของ server) แตะชื่อจุดที่ตรงกับรูป
+//   ⚠️ ลบจุดที่มีรูป = ถามก่อน แล้วรูปย้ายลงถาดเอง (ไม่มีไฟล์ถูกลบ · `spotPhotoGroups` จัดให้)
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Ban, Camera, Check, ChevronRight, CircleAlert, MessageSquarePlus, Pencil, Plus, RefreshCw, Save, Scissors,
+  Ban, Check, ChevronRight, CircleAlert, MessageSquarePlus, Pencil, Plus, RefreshCw, Save, Scissors,
   Trash2, Undo2,
 } from "lucide-react";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import ReadableText from "@/components/ui/ReadableText";
@@ -38,6 +45,9 @@ import {
   SURVEY_DIM_FIELDS, surveyDraftSummary, surveyNextDimField, surveyPartsView, surveyZoneActions,
   surveyZoneFooterView, surveyZoneSections, surveyZoneStateBadge, surveyZoneTitle,
 } from "@/lib/service/surveyFieldView";
+import {
+  SPOT_TRAY_LABEL, spotDraftPhotos, spotLinkChoices, spotPhotoGroups, spotRemovalNotice, spotRowLabel, spotTrayView,
+} from "@/lib/service/surveySpotPhotos";
 import { fmtNumber, naText } from "@/lib/format";
 import styles from "./SurveyZonePage.module.css";
 
@@ -48,6 +58,8 @@ const emptySpot = () => ({ id: newId(), label: "", note: "" });
 const dimInputId = (zoneId, partId, field) => `survey-dim-${zoneId}-${partId}-${field}`;
 const spotNoteId = (zoneId, spotId) => `survey-spot-note-${zoneId}-${spotId}`;
 const BADGE_ICONS = { error: CircleAlert, conflict: RefreshCw, dirty: Pencil, done: Check };
+/* ชนิดไฟล์ของหัวข้อจุด — ค่าคงที่ระดับไฟล์ (อาร์เรย์ใหม่ทุกครั้งที่วาด = แผงผูกตัวรับ Ctrl+V ใหม่ทุกรอบ) */
+const SPOT_DOC_TYPES = [{ key: SURVEY_DOC_SPOT, label: "ภาพจุดติดตั้ง" }];
 
 /* หัวข้อหนึ่งหัวข้อ — วงเลข (อำพันเมื่อค้าง · ติ๊กเขียวเมื่อบันทึกแล้ว/รูปขึ้นแล้ว) · ชื่อ · คำกำกับ · ป้ายขวา
    ⚠️ `h3` — h1 = รหัสคำร้อง · h2 = ชื่อพื้นที่ (ผังหัวข้อของหน้าต้องเรียงชั้น) */
@@ -89,6 +101,8 @@ function Section({ area, id, number, icon: Icon, title, hint, state, children })
  * @param onDirtyChange `(zoneId, dirty, summary)` — ด่านถามก่อนทิ้ง + ด่านส่งงาน/ส่งผลอ่านธงนี้
  * @param onFilesChange `(zoneId, items, meta)` — รูปที่อัป/ลบขึ้นไปที่ก้อนรวมของหน้า
  * @param onUploadBusy  `(busy)` — ยิงจากลูปอัปของแผงเอง (ยังยิงแม้หน้านี้ถูกถอดกลางการอัป · หน้านับเอง)
+ * @param canLinkSpots  ผูก/ย้ายรูปจุดกับจุดได้ไหม — `canLinkSpotPhotos` ของ server (ด่านเดียวกับ PATCH):
+ *                      ใบเปิด = คนที่เขียนได้ · ใบที่ส่งผลแล้ว = หัวหน้าฝ่าย (Q1a — metadata อย่างเดียว แนบ/ลบยังล็อก)
  */
 export default function SurveyZonePage({
   zone,
@@ -113,6 +127,9 @@ export default function SurveyZonePage({
   onDirtyChange,
   onFilesChange,
   onUploadBusy,
+  canLinkSpots = false,
+  jumpToTray = false,
+  onTrayShown,
 }) {
   const [parts, setParts] = useState(() => (Array.isArray(zone.parts) && zone.parts.length ? zone.parts : [emptyPart()]));
   const [spots, setSpots] = useState(() => (Array.isArray(zone.spots) ? zone.spots : []));
@@ -149,10 +166,20 @@ export default function SurveyZonePage({
   const edit = canWrite && !isCut;
 
   // ── ค่าที่พิมพ์ค้าง ยังไม่ลงฐาน ──────────────────────────────────────────
+  /* 🐞 review 30/09 — **แถวจุดที่มีรูปแล้วเป็นแถวจริง แม้ยังว่าง** — แผ่นถ่ายรูปอยู่บนแถวใหม่ที่ยังว่าง (ถ่ายก่อน พิมพ์ชื่อทีหลัง)
+     รูปขึ้นพร้อม spotId ของแถวนั้นแล้ว ⇒ ร่างพก `photoSpotIds` ไปให้ทุกตัวตัดสิน: ลายเซ็นนับแถวนั้น (ออกจากพื้นที่ = ถาม ·
+     แถวที่โหลดมาไม่รับทับ) · ตัวส่งบล็อก "จุดที่ n มีรูปแล้วแต่ยังไม่มีชื่อ" แทนการข้ามเงียบ (เดิม: แถวหาย รูปตกถาด)
+     · `unsavedPhotos` = รูปบนแถวที่ยังไม่ลงฐาน — กล่องถามก่อนทิ้งบอกว่ารูปพวกนี้จะย้ายไปถาด */
+  const spotDraft = useMemo(
+    () => spotDraftPhotos({ draftSpots: spots, savedSpots: zone.spots, files: shownFiles }),
+    [spots, zone.spots, shownFiles],
+  );
+  const draft = { parts, spots, note, photoSpotIds: spotDraft.ownerIds };
   const savedSig = useMemo(() => surveyZoneDraftSignature(zone), [zone]);
-  const draftSig = surveyZoneDraftSignature({ parts, spots, note });
+  const draftSig = surveyZoneDraftSignature(draft);
   const dirty = !isCut && draftSig !== savedSig && draftSig !== sentSig;
-  const draftSummary = dirty ? surveyDraftSummary({ parts, spots, note }, zone) : "";
+  const draftSummary = dirty ? surveyDraftSummary(draft, zone) : "";
+  const unlinkPhotos = dirty ? spotDraft.unsavedPhotos : 0;
 
   /* 🔴 **แถวถูกแก้จากที่อื่น ≠ ค่าที่ผู้ใช้พิมพ์ค้าง** — หน้าโหลดซ้ำเองเมื่อกลับมาที่แท็บ และนัดหนึ่งใบมีช่างได้หลายคน
      ⇒ แถวใหม่ไหลเข้ามาเป็น prop · ตัวตัดสิน (`surveyDraftSync`) แยก: ไม่มีของค้าง = รับแถวใหม่ ·
@@ -202,8 +229,8 @@ export default function SurveyZonePage({
 
   /* หน้าต้องรู้ว่าพื้นที่นี้มีค่าค้างไหม (และค้างอะไร — คำในกล่อง "ทิ้งค่าที่ยังไม่บันทึก?")
      ⚠️ ต้องแจ้ง `false` ตอนถูกถอดด้วย ไม่งั้นพื้นที่ที่ย้ายออกไปแล้วล็อกปุ่มส่งค้าง */
-  useEffect(() => { onDirtyChange?.(zone.id, dirty, draftSummary); }, [dirty, draftSummary, zone.id, onDirtyChange]);
-  useEffect(() => () => onDirtyChange?.(zone.id, false, ""), [zone.id, onDirtyChange]);
+  useEffect(() => { onDirtyChange?.(zone.id, dirty, draftSummary, unlinkPhotos); }, [dirty, draftSummary, unlinkPhotos, zone.id, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.(zone.id, false, "", 0), [zone.id, onDirtyChange]);
 
   const patchPart = (pid, field, value) => setParts((rows) => rows.map((p) => (p.id === pid ? { ...p, [field]: value } : p)));
   const patchSpot = (sid, field, value) => setSpots((rows) => rows.map((s) => (s.id === sid ? { ...s, [field]: value } : s)));
@@ -220,7 +247,6 @@ export default function SurveyZonePage({
      ร่างที่ server จะตีกลับไม่ยิงเลย แล้วบอกเหตุด้วยชื่อที่ตาเห็น ("ส่วน B ยังขาดความสูง") */
   const save = async () => {
     setError("");
-    const draft = { parts, spots, note };
     const plan = surveyZoneSavePayload(draft);
     if (!plan.payload) {
       setError(plan.blocker || "บันทึกไม่สำเร็จ");
@@ -293,7 +319,7 @@ export default function SurveyZonePage({
   const title = surveyZoneTitle(zone);
   const zoneCode = zone.zoneCodeUnknown ? SURVEY_UNKNOWN_TEXT : zone.zoneCode || null;
   const partsView = useMemo(() => surveyPartsView(parts), [parts]);
-  const sections = surveyZoneSections({ zone, files: shownFiles, draft: { parts, spots, note }, dirty });
+  const sections = surveyZoneSections({ zone, files: shownFiles, draft, dirty });
   const badge = surveyZoneStateBadge({ zone, files: shownFiles, dirty, error, conflict });
   const actions = surveyZoneActions({ zone, canWrite });
   /* ความสูงหัวที่ติดบน → `--survey-zone-head-h` ของ <html> ให้ `scroll-padding-top` กันช่องที่โฟกัสไม่ให้จมใต้หัว (WCAG 2.4.11)
@@ -311,7 +337,32 @@ export default function SurveyZonePage({
       root.style.removeProperty("--survey-zone-head-h");
     };
   }, []);
-  const saveBlocker = dirty ? surveyZoneSavePayload({ parts, spots, note }).blocker : null;
+  /* ⭐ "ไปผูกจุด" จากแท็บสรุป (`jumpToTray`) — เลื่อนถึงถาด "ยังไม่ได้ผูกจุด" แล้วโฟกัสถาด (โปรแกรมอ่านจอได้ยินหัวถาด)
+     ⚠️ ถาดเกิดหลังแผงไฟล์ของหัวข้อจุดโหลดรายการเสร็จ (แผงภาพกว้างรายงานก่อนได้ ⇒ ถาม DOM ไม่ใช่ `liveFiles`)
+        ⇒ รอทีละเฟรม สูงสุด ~3 วินาที · ไม่มาเลย (ผูกครบจากอีกเครื่องแล้ว · โหลดไม่สำเร็จ) = จอดที่หัวข้อจุดแทน
+     ⚠️ เริ่มหลังเฟรมแรก — ตัวต่อสายเลื่อนต้นบาน/โฟกัสชื่อพื้นที่ในเฟรมของการเปิด ของเราต้องมาทีหลัง */
+  useEffect(() => {
+    if (!jumpToTray) return undefined;
+    let frames = 0;
+    let raf = 0;
+    const step = () => {
+      const section = document.getElementById(`${headingId}-spots`)?.closest("section") || null;
+      const tray = section?.querySelector('[data-kind="loose"]') || null;
+      if (!tray && frames < 180) {
+        frames += 1;
+        raf = requestAnimationFrame(step);
+        return;
+      }
+      const target = tray || section;
+      target?.scrollIntoView({ block: "start" });
+      tray?.focus({ preventScroll: true });
+      onTrayShown?.();
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [jumpToTray, headingId, onTrayShown]);
+
+  const saveBlocker = dirty ? surveyZoneSavePayload(draft).blocker : null;
   const footer = surveyZoneFooterView({
     zone, files: shownFiles, dirty, draftSummary, saveBlocker, busy, error, next, viewerKind, uploading,
   });
@@ -336,6 +387,123 @@ export default function SurveyZonePage({
   };
 
   const sectionId = (key) => `${headingId}-${key}`;
+
+  /* ลบจุด — จุดที่มีรูปถามก่อน ("รูปจะย้ายไปกลุ่มยังไม่ได้ผูกจุด") · ไม่มีรูป = ลบเลย (ยังเป็นร่าง กดบันทึกถึงจะลงฐาน)
+     ⚠️ ไม่มีโค้ดย้ายรูป — id ของจุดหายจากรายการ รูปก็ตกถาดเองที่ `spotPhotoGroups` (ไม่มีไฟล์ไหนถูกลบ) */
+  const removeSpot = async (spot) => {
+    const notice = spotRemovalNotice({ spot, files: shownFiles });
+    if (notice && !(await confirmAction({
+      title: "ลบจุดนี้?", description: notice, confirmLabel: "ลบจุด", cancelLabel: "เก็บไว้",
+    }))) return;
+    setSpots((rows) => rows.filter((s) => s.id !== spot.id));
+  };
+
+  /* ── ③ แถวของจุดหนึ่งจุด (ของที่แผงวาดเหนือแผ่นรูปของจุดนั้น) — เลข · ชื่อ (+ บันทึก) · เมนู ⋯ ─────────── */
+  const spotRow = (spot, i) => {
+    const noteShown = !!String(spot.note || "").trim() || noteOpen.has(spot.id);
+    return (
+      <div className={styles.spot} data-mode={edit ? undefined : "read"}>
+        <span className={styles.spotNo} aria-hidden="true">{i + 1}</span>
+        <div className={styles.spotMain}>
+          {edit ? (
+            <>
+              <Input
+                className={styles.spotInput}
+                value={spot.label || ""}
+                onChange={(e) => patchSpot(spot.id, "label", e.target.value)}
+                placeholder="ชื่อจุด — เช่น มุมเตียงที่ 1" maxLength={100} autoComplete="off"
+                aria-label={`ชื่อจุดที่ ${i + 1}`}
+              />
+              {noteShown ? (
+                <Input
+                  id={spotNoteId(zone.id, spot.id)}
+                  className={styles.spotInput}
+                  value={spot.note || ""}
+                  onChange={(e) => patchSpot(spot.id, "note", e.target.value)}
+                  placeholder="บันทึก — เช่น ปลั๊กอยู่ใต้เสา" maxLength={300} autoComplete="off"
+                  aria-label={`บันทึกของจุดที่ ${i + 1}`}
+                />
+              ) : null}
+            </>
+          ) : (
+            <>
+              <b className={styles.readValue}>{naText(spot.label)}</b>
+              {spot.note ? <span className={styles.hint}>{spot.note}</span> : null}
+            </>
+          )}
+        </div>
+        {edit ? (
+          <RowActionMenu
+            className={styles.spotMenu}
+            label={`จัดการจุดที่ ${i + 1}`}
+            items={[
+              noteShown ? null : {
+                id: "note", label: "เพิ่มบันทึก", icon: MessageSquarePlus,
+                onClick: () => { toggleIn(setNoteOpen, spot.id, true); focusSoon(spotNoteId(zone.id, spot.id)); },
+              },
+              {
+                id: "remove", label: "ลบจุดนี้", icon: Trash2, tone: "danger",
+                onClick: () => removeSpot(spot),
+              },
+            ].filter(Boolean)}
+          />
+        ) : spot.selected ? (
+          <span className={styles.picked}><Check size={12} aria-hidden="true" /> เลือกติดตั้ง</span>
+        ) : null}
+      </div>
+    );
+  };
+
+  /* ตัวเลือก "ผูกกับจุด" (ถาด) / "ย้ายไปจุด" (กล่องดูรูปเต็ม) — ชิปทุกจุดกางให้เห็น ไม่ใช่ดรอปดาวน์ (กติกาคอนโทรล) ·
+     สูงระดับนิ้ว · ผูกได้เฉพาะจุดที่บันทึกแล้ว (`spotLinkChoices`) · ไม่มีสิทธิ์ผูก = ไม่มีตัวเลือก (กติกา ui-visibility)
+     ⭐ รูปใต้แถวของจุด (`linked`) มีชิป "ไม่ผูกจุด" ท้ายชุด = ถอดกลับถาด (`spotId: null`) · 🐞 UAT 01/10: เดิมรูปที่ผูกผิด
+        แต่ไม่ใช่ของจุดไหนเลยไม่มีทางออก (ใบล็อกลบก็ไม่ได้) · จุดเดียวในพื้นที่ = ย้ายไปไหนไม่ได้ แต่ยังถอดได้ */
+  const spotRelink = (item, { relink, busy: linking, locked }) => {
+    if (!canLinkSpots) return null;
+    const { targets, linked } = spotLinkChoices({ draftSpots: spots, savedSpots: zone.spots, file: item });
+    if (!targets.length && !linked) {
+      return <p className={styles.hint}>{edit ? "ยังไม่มีจุดที่บันทึกแล้ว — เพิ่มจุดแล้วกดบันทึกพื้นที่ก่อน" : "ยังไม่มีจุดให้ผูก"}</p>;
+    }
+    const verb = linked ? "ย้ายไปจุด" : "ผูกกับจุด";
+    return (
+      <div className={styles.link} role="group" aria-label={`${verb} — ${item.fileName || "รูป"}`}>
+        <span className={styles.linkLabel} aria-live="polite">{linking ? "กำลังผูก…" : verb}</span>
+        <div className={styles.linkChips}>
+          {targets.map((t) => (
+            <button key={t.id} type="button" className={styles.linkChip} disabled={locked}
+              onClick={() => relink({ spotId: t.id })}>
+              {t.label}
+            </button>
+          ))}
+          {linked ? (
+            <button type="button" className={styles.linkChip} data-kind="unlink" disabled={locked}
+              aria-label={`ไม่ผูกจุด — ย้ายรูปกลับไปถาด ${SPOT_TRAY_LABEL}`}
+              onClick={() => relink({ spotId: null })}>
+              ไม่ผูกจุด
+            </button>
+          ) : null}
+        </div>
+      </div>
+    );
+  };
+
+  /* แผงของหัวข้อจุดถามตัวนี้ทุกครั้งที่วาด — แถวของจุดตามร่างบนจอ (แถวที่ยังไม่บันทึกก็ถ่ายรูปได้ทันที: id ร่างรอดการบันทึก)
+     · ถาด = รูปที่ไม่มี spotId หรือชี้จุดที่ไม่อยู่บนจอแล้ว */
+  const spotGroups = (photos) => {
+    const { rows, unlinked } = spotPhotoGroups({ spots, files: photos });
+    const tray = spotTrayView({
+      count: unlinked.length, canLink: canLinkSpots,
+      unsaved: spotLinkChoices({ draftSpots: spots, savedSpots: zone.spots }).unsaved,
+    });
+    return {
+      rows: rows.map(({ spot, photos: own }, i) => ({
+        key: String(spot.id), meta: { spotId: String(spot.id) }, label: spotRowLabel(i, spot),
+        content: spotRow(spot, i), photos: own,
+      })),
+      loose: { title: tray.title, note: tray.note, photos: unlinked },
+      relinkControl: spotRelink,
+    };
+  };
 
   const photoPanel = (docType, label, weight) => (
     <div className={styles.photos}>
@@ -513,64 +681,24 @@ export default function SurveyZonePage({
             {edit ? <p className={styles.hint}>รูปขึ้นระบบทันที ไม่ต้องกดบันทึก · แตะรูปเพื่อดูหรือลบ</p> : null}
           </Section>
 
-          {/* ── ③ จุดที่ติดตั้งได้ ──────────────────────────────────── */}
+          {/* ── ③ จุดที่ติดตั้งได้ — จุดละแถว: รูป + ชื่อ + รายละเอียด (PR-S) ─────────── */}
+          {/* ⚠️ ดูอย่างเดียว = ไม่มีคำกำกับ — ป้ายขวาบอกจำนวนแล้ว ("3 จุด · 3 รูป" · ไม่มีจุด = "ยังไม่มี")
+              🐞 UAT 01/10: เดิมเขียน "· 3 จุด" คู่กับป้าย "3 จุด · 3 รูป" = นับซ้ำสองที่ในหัวเดียว
+              🔄 มติ 01/10 (G1): ทุกจุดต้องมีรูปก่อนส่งงาน (`surveySpotSubmitError`) — คำกำกับเดิม "รูปไม่บังคับ" ขัดกับด่าน */}
           <Section area="spots" id={sectionId("spots")} number={3} title="จุดที่ติดตั้งได้"
-            hint={edit ? "อย่างน้อย 1 จุด" : `${spots.length} จุด`} state={sections.spots}>
+            hint={edit ? "อย่างน้อย 1 จุด · ทุกจุดต้องมีรูป" : null} state={sections.spots}>
             {spots.length === 0 && !edit ? <p className={styles.empty}>ยังไม่ได้ระบุจุด</p> : null}
-            {spots.map((spot, i) => {
-              const noteShown = !!String(spot.note || "").trim() || noteOpen.has(spot.id);
-              return (
-                <div key={spot.id} className={styles.spot}>
-                  <span className={styles.spotNo} aria-hidden="true">{i + 1}</span>
-                  <div className={styles.spotMain}>
-                    {edit ? (
-                      <>
-                        <Input
-                          className={styles.spotInput}
-                          value={spot.label || ""}
-                          onChange={(e) => patchSpot(spot.id, "label", e.target.value)}
-                          placeholder="ชื่อจุด — เช่น มุมเตียงที่ 1" maxLength={100} autoComplete="off"
-                          aria-label={`ชื่อจุดที่ ${i + 1}`}
-                        />
-                        {noteShown ? (
-                          <Input
-                            id={spotNoteId(zone.id, spot.id)}
-                            className={styles.spotInput}
-                            value={spot.note || ""}
-                            onChange={(e) => patchSpot(spot.id, "note", e.target.value)}
-                            placeholder="บันทึก — เช่น ปลั๊กอยู่ใต้เสา" maxLength={300} autoComplete="off"
-                            aria-label={`บันทึกของจุดที่ ${i + 1}`}
-                          />
-                        ) : null}
-                      </>
-                    ) : (
-                      <>
-                        <b className={styles.readValue}>{naText(spot.label)}</b>
-                        {spot.note ? <span className={styles.hint}>{spot.note}</span> : null}
-                      </>
-                    )}
-                  </div>
-                  {edit ? (
-                    <RowActionMenu
-                      className={styles.spotMenu}
-                      label={`จัดการจุดที่ ${i + 1}`}
-                      items={[
-                        noteShown ? null : {
-                          id: "note", label: "เพิ่มบันทึก", icon: MessageSquarePlus,
-                          onClick: () => { toggleIn(setNoteOpen, spot.id, true); focusSoon(spotNoteId(zone.id, spot.id)); },
-                        },
-                        {
-                          id: "remove", label: "ลบจุดนี้", icon: Trash2, tone: "danger",
-                          onClick: () => setSpots((rows) => rows.filter((s) => s.id !== spot.id)),
-                        },
-                      ].filter(Boolean)}
-                    />
-                  ) : spot.selected ? (
-                    <span className={styles.picked}><Check size={12} aria-hidden="true" /> เลือกติดตั้ง</span>
-                  ) : null}
-                </div>
-              );
-            })}
+            <div className={styles.photos}>
+              {/* ⚠️ `intakeWeight={1}` — Ctrl+V ลอย ๆ ตกที่ภาพกว้างก่อน (ของที่ต้องมี) · ของที่ลากมาวางที่นี่ไม่รู้แถว ⇒ ลงถาด */}
+              <AttachmentsPanel
+                entityType="service_survey_zone" entityId={zone.id} canEdit={edit} showCount={false}
+                title="" inlineUpload docTypes={SPOT_DOC_TYPES}
+                photoCapture photoTiles photoGroups={spotGroups}
+                onItemsChange={handleItems}
+                onBusyChange={handleBusy}
+                intakeWeight={1}
+              />
+            </div>
             {edit ? (
               <>
                 <button type="button" className={styles.addRow} onClick={() => setSpots((rows) => [...rows, emptySpot()])}>
@@ -579,14 +707,10 @@ export default function SurveyZonePage({
                 </button>
                 {/* 🔴 ช่างแจ้ง "ติดตั้งได้ตรงไหนบ้าง" ไม่ใช่ "จะติดตั้งตรงไหน" — คนเลือกจุดจริงคือหัวหน้า TS */}
                 <p className={styles.hint}>ใส่ให้ครบทุกจุดที่ติดตั้งได้ หัวหน้าเป็นคนเลือกว่าจะติดตั้งจริงกี่จุด</p>
+                {/* สองกฎการบันทึกบนแถวเดียวกัน (pain B3) — รูปขึ้นทันที ชื่อ/บันทึกรอปุ่ม */}
+                <p className={styles.hint}>รูปของจุดขึ้นระบบทันที · ชื่อและบันทึกของจุดรอกดบันทึก</p>
               </>
             ) : null}
-          </Section>
-
-          {/* ── ภาพจุดติดตั้ง (ไม่บังคับ) ─────────────────────────────── */}
-          <Section area="spotphotos" id={sectionId("spotphotos")} icon={Camera} title="ภาพจุดติดตั้ง"
-            hint="ไม่บังคับ" state={sections.spotPhotos}>
-            {photoPanel(SURVEY_DOC_SPOT, "ภาพจุดติดตั้ง", 1)}
           </Section>
 
           {/* ── ④ หมายเหตุพื้นที่ ──────────────────────────────────── */}

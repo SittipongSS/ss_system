@@ -14,10 +14,13 @@
 //   5 attachments PARENT_TABLE + สาขา   → proxy /file ตอบ 403 = รูปพรีวิวไม่ขึ้น
 //     ใน .../attachments/[id]/file         ทั้งที่ไฟล์อัปขึ้นไปแล้วจริง
 // costing_item (PR5) โดนข้อ 1–3 มาตั้งแต่ต้น · ทั้งคู่โดนข้อ 4–5 จนถึง 2026-07-26
-import { canDoFieldWork, canEditService, canUser, canViewCosting, canViewRequests } from '@/lib/permissions';
+import {
+  canDoFieldWork, canEditService, canSendSurveyResult, canUser, canViewCosting, canViewRequests,
+} from '@/lib/permissions';
 import { canAnswerRequest, canManageRequest, canReadRequestRow } from '@/lib/deptRequests';
 import { surveyReadError } from '@/lib/service/surveyAccess';
 import { surveyEditLockError } from '@/lib/service/survey';
+import { surveySpotLinkDecision } from '@/lib/service/surveySpotPhotos';
 import { findSurveyVisit } from '@/lib/service/surveyVisit';
 import { visitWriteAccess } from '@/lib/service/visitAccess';
 
@@ -81,7 +84,11 @@ async function canViewSurveyZoneFiles(supabase, parent, user) {
 }
 
 async function canWriteSurveyZoneFiles(supabase, parent, user) {
-  const req = await parentRequest(supabase, parent);
+  return writeSurveyZoneFilesFor(supabase, await parentRequest(supabase, parent), user);
+}
+
+/* ตัวด่านจริงของ canWriteSurveyZoneFiles — รับใบแม่ที่โหลดแล้ว (ด่านผูกจุดข้างล่างใช้ต่อโดยไม่อ่านซ้ำ) */
+async function writeSurveyZoneFilesFor(supabase, req, user) {
   if (!req) return false;
 
   /* 🔴 **ด่านเขียนต้องเป็นเซตย่อยของด่านอ่านเสมอ** — เริ่มจากด่านอ่านตัวเดียวกันก่อน
@@ -106,6 +113,44 @@ async function canWriteSurveyZoneFiles(supabase, parent, user) {
   return visitWriteAccess({ user, visit, canEditAll }).ok === true;
 }
 
+/**
+ * 🔑 **ผูก/ย้าย/ถอดรูปจุดติดตั้งกับจุด (`metadata.spotId`)** — PR-S · มติเจ้าของ Q1(a) 29–30/09
+ *
+ * ⭐ ใบยังเปิด = ด่านเขียนไฟล์ของพื้นที่ตัวเดิมทุกข้อ (`writeSurveyZoneFilesFor`)
+ * ⭐ **ข้อยกเว้นแคบข้อเดียว: ใบที่ส่งผลแล้ว หัวหน้าฝ่าย (`canSendSurveyResult`) ยังผูกได้** — ใบที่ส่งก่อนมี
+ *   เอกสารประเมิน รูปทุกใบไม่มี spotId และหัวหน้าต้องผูกก่อนกด "ออกเอกสาร" · เป็นการแก้ **metadata อย่างเดียว**
+ *   ชุดรูปกับตัวเลขที่ฝ่ายขายได้ไปไม่ขยับ
+ *   🔴 **ไม่ได้อยู่ใน `canWriteSurveyZoneFiles`** — ตัวนั้นคุมแนบ/ลบ/แก้ทุกคีย์ ซึ่งยังต้องตรึงบนใบที่ส่งแล้ว
+ *     ⇒ ผู้เรียก (`PATCH /api/attachments/[id]`) เข้าทางนี้เฉพาะคำขอที่แก้ `spotId` คีย์เดียว (`isSpotLinkPatch`)
+ *   ⚠️ ผ่านด้วยข้อยกเว้น (`locked: true`) = ผู้เรียกต้องลง audit
+ * ⚠️ ด่านอ่านมาก่อนเสมอ (ด่านเขียนเป็นเซตย่อยของด่านอ่าน — บทเรียนของ canWriteSurveyZoneFiles)
+ *
+ * @param parent แถว `service_survey_zones` ของรูป
+ * @returns `{ ok, locked, error, request }` — `request` = ใบแม่ที่โหลดมาแล้ว (ผู้เรียกใช้ทำ audit ต่อ)
+ */
+export async function surveySpotLinkAccess(supabase, parent, user) {
+  const req = await parentRequest(supabase, parent);
+  if (!req || surveyReadError(user, req)) {
+    return { ok: false, locked: false, error: 'ไม่มีสิทธิ์ผูกรูปกับจุดของใบนี้', request: req };
+  }
+  const isAdmin = user?.role === 'admin';
+  // ล็อกแล้ว (ไม่ใช่แอดมิน) = ด่านเขียนไฟล์ตอบ false แน่ ⇒ ไม่ต้องไปอ่านนัด
+  const canWrite = (!surveyEditLockError(req) || isAdmin) ? await writeSurveyZoneFilesFor(supabase, req, user) : false;
+  return {
+    ...surveySpotLinkDecision(req, { canWrite, canDecide: canSendSurveyResult(user), isAdmin }),
+    request: req,
+  };
+}
+
+/* ⭐ **ไฟล์แนบของคำร้องประเมินพื้นที่ = ช่างอ่านได้บนจอใบประเมิน** (PR-S · แผน crew Q6)
+   🐞 ช่าง (role `ts`) ไม่ผ่านบันไดคำร้อง (`canViewRequests`) ⇒ proxy /file ตอบ 403 ⇒ ไฟล์ที่ SA แนบมากับใบ
+     (ผังอาคาร · รูปหน้าร้าน) ลิสต์ให้เห็นได้แต่เปิดไม่ได้สักไฟล์
+   ⭐ ถามด่านอ่านของใบประเมินตัวเดียวกับ GET ใบประเมิน/รูปของพื้นที่ (`surveyReadError` — ตรวจ `dept === 'TS'` ให้ในตัว)
+   ⚠️ **เฉพาะคำร้องประเมินพื้นที่** (`kind`) — คำร้องชนิดอื่นของฝ่าย TS วันหน้าไม่ได้ช่องนี้ตาม
+   ⚠️ อ่านอย่างเดียว — `canAttachToCosting` ไม่ขยับ ⇒ ช่างแนบ/ลบไฟล์ของคำร้องไม่ได้ */
+const SURVEY_REQUEST_KIND = 'site_survey';
+const isSurveyRequestReadable = (user, req) => req?.kind === SURVEY_REQUEST_KIND && surveyReadError(user, req) === null;
+
 // 🐞 เดิมเป็น `canViewCosting(user)` ล้วน ไม่รับ parent เลย ⇒ ใครก็ตามที่ถือ
 // costing:view เปิดดูรูป/สเปกของคำร้องใบไหนก็ได้ ทั้งที่ด่าน **แนบ/ลบ**
 // (canAttachToCosting) ผูกกับแถวมาตั้งแต่ต้น — อ่านกับเขียนคนละมาตรฐานกันเงียบ ๆ
@@ -125,6 +170,8 @@ export async function canViewCostingAttachment(supabase, entityType, parent, use
   // เอกสารที่แนบมากับใบนั้นไม่ได้สักไฟล์ และแนบกลับก็ไม่ได้** — เป็นกับดักเดิมของ R-1
   // เป๊ะ ๆ (REQUEST_ANSWER_DEPARTMENTS มี FN ด้วย, COSTING_SOURCE_DEPARTMENTS ไม่มี)
   // canViewRequests = canViewCosting ∪ ฝ่ายที่รับคำร้องของตัวเอง ⇒ ไม่มีใครเสียสิทธิ์เดิม
+  // ⭐ คำร้องประเมินพื้นที่ — ช่างหน้างานอ่านได้ด้วยด่านของใบประเมิน (ต้องมาก่อนบันได ดูหัวข้อข้างบน)
+  if (entityType === 'dept_request' && isSurveyRequestReadable(user, parent)) return true;
   if (!canViewRequests(user)) return false;
   if (entityType === 'dept_request') return canReadRequestRow(user, parent);
   // แถวลูกไม่รู้จักผู้ขอ/ฝ่าย — ต้องถามหัวคำร้อง (รูปเดียวกับ canAttachToCosting)

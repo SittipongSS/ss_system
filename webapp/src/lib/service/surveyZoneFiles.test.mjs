@@ -158,3 +158,49 @@ test('🔴 พาเนลที่ประกาศหัวข้อของ
   // ผู้เรียกที่ไม่ประกาศ docTypes ต้องไม่โดนกรอง (อีก 11 จุดใช้ทะเบียนของ entity ทั้งชุด)
   assert.doesNotMatch(panel, /const shown = items\.filter/);
 });
+
+/* ══ ผูกรูปกับจุด (PR-S · Q1a) — ด่านแคบของ metadata.spotId ══════════════════
+   ⭐ ใบเปิด = ด่านเขียนไฟล์ของพื้นที่ตัวเดิมทุกข้อ (อ่านได้ + ช่าง/หัวหน้า + นัด)
+   ⭐ ใบส่งผลแล้ว = หัวหน้าฝ่าย (canSendSurveyResult) ผูกได้ต่อ — metadata อย่างเดียว
+   🔴 แนบ/ลบบนใบที่ส่งแล้วยังปิดเหมือนเดิม (ข้อยกเว้นอยู่ที่ตัวนี้ตัวเดียว ไม่ใช่ที่ canAttachToCosting) */
+const SENIOR = { id: 'U-TSS', role: 'ts_senior', department: 'TS' };
+
+test('🔑 ผูกจุดตอนใบเปิด: ใช้ด่านเขียนไฟล์ตัวเดิม — ช่างบนนัดได้ · ช่างนอกนัดไม่ได้', async () => {
+  const { surveySpotLinkAccess } = await import('@/lib/master/costingAttachmentAccess');
+  const db = dbWith();
+  for (const u of [CREW, PLANNER, HEAD, ADMIN]) {
+    const r = await surveySpotLinkAccess(db, ROW, u);
+    assert.equal(r.ok, true, u.role);
+    assert.equal(r.locked, false, u.role);
+    assert.equal(r.request?.id, 'DR-S1', 'คืนใบแม่ให้ผู้เรียกใช้ต่อ (audit) ไม่ต้องอ่านซ้ำ');
+  }
+  assert.equal((await surveySpotLinkAccess(db, ROW, OTHER_CREW)).ok, false);
+  assert.equal((await surveySpotLinkAccess(db, ROW, SA)).ok, false, 'ฝ่ายขายอ่านได้ แต่ไม่ใช่คนผูก');
+});
+
+test('🔑 Q1(a) ใบส่งผลแล้ว: หัวหน้าผูกได้ (locked=true ⇒ ลง audit) · ช่างไม่ได้ · แนบไฟล์ยังปิด', async () => {
+  const { surveySpotLinkAccess } = await import('@/lib/master/costingAttachmentAccess');
+  const sent = dbWith({ ...REQ, answeredAt: '2026-09-10T00:00:00Z', status: 'answered' });
+  for (const u of [HEAD, SENIOR]) {
+    assert.deepEqual(
+      { ...(await surveySpotLinkAccess(sent, ROW, u)), request: undefined },
+      { ok: true, locked: true, error: null, request: undefined }, u.role,
+    );
+    // ⚠️ ข้อยกเว้นไม่รั่วไปที่ด่านแนบ/ลบ — ชุดรูปของใบที่ส่งแล้วยังตรึง
+    assert.equal(await canAttachToCosting(sent, 'service_survey_zone', ROW, u), false, `${u.role} แนบไม่ได้`);
+  }
+  for (const u of [CREW, PLANNER]) {
+    const r = await surveySpotLinkAccess(sent, ROW, u);
+    assert.equal(r.ok, false, u.role);
+    assert.match(r.error, /หัวหน้า/);
+  }
+});
+
+test('🔴 ข้อยกเว้นไม่ข้ามด่านอ่าน — ใบของฝ่ายอื่น/ไม่มีใบแม่ หัวหน้าก็ผูกไม่ได้', async () => {
+  const { surveySpotLinkAccess } = await import('@/lib/master/costingAttachmentAccess');
+  const rd = dbWith({ ...REQ, dept: 'RD', kind: 'scent_dev', answeredAt: 'x' });
+  assert.equal((await surveySpotLinkAccess(rd, ROW, HEAD)).ok, false);
+  assert.equal((await surveySpotLinkAccess(dbWith(null), ROW, HEAD)).ok, false);
+  const cancelled = dbWith({ ...REQ, answeredAt: 'x', cancelledAt: 'y', status: 'cancelled' });
+  assert.equal((await surveySpotLinkAccess(cancelled, ROW, HEAD)).ok, false, 'ใบยกเลิกไม่มีเอกสารให้ออก');
+});

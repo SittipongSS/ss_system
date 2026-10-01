@@ -336,3 +336,15 @@ test('🐞 review 26/09 รอบสาม: บันทึก — ไม่ม�
   assert.match(page, /const saved = await apiJson\(`\/api\/service\/surveys\/\$\{id\}\/zones\/\$\{zoneId\}`/);
   assert.match(page, /return saved;/);
 });
+
+/* 🔑 **รูปผูกจุดด้วย id ของจุด (`metadata.spotId` · PR-S)** — ช่างถ่ายจากแถวที่ยังไม่กดบันทึกได้ รูปจึงถือ id ร่าง
+   (`new-…`) ไปก่อน ⇒ id นั้นต้องรอดทั้งตัวจัดแถวของจอและของ server ไม่ถูกออกใหม่ ไม่งั้นรูปตกถาดทันทีที่กดบันทึก
+   ⚠️ ต่างจากจุดบนโซน (`normalizeZoneSpots` ของ zones.js) ที่ออก id ใหม่ให้ `new-…` — ของสองระบบ ห้ามรวมกัน */
+test('🔑 id ร่าง `new-…` ของจุดรอดการบันทึก — ทั้งตัวจอและ server (รูปที่ถ่ายก่อนบันทึกยังผูกอยู่)', () => {
+  const draft = [{ id: 'new-k3j9x0a', label: 'หน้าลิฟต์', note: '' }, { id: 'SPT-old', label: 'ข้างเคาน์เตอร์', note: '' }];
+  const { payload } = surveyZoneSavePayload({ parts: [], spots: draft, note: '' });
+  assert.deepEqual(payload.spots.map((s) => s.id), ['new-k3j9x0a', 'SPT-old']);
+  const server = normalizeSurveySpots(payload.spots, [], { newId: () => 'SPT-NEW' });
+  assert.deepEqual(server.value.map((s) => s.id), ['new-k3j9x0a', 'SPT-old'], 'newId ใช้เฉพาะแถวที่ไม่มี id');
+  assert.deepEqual(normalizeSurveySpots([{ label: 'ไม่มี id' }], [], { newId: () => 'SPT-NEW' }).value.map((s) => s.id), ['SPT-NEW']);
+});

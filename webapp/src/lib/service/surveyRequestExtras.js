@@ -15,8 +15,10 @@ import { loadRecallRows, loadSendBackRows } from '@/lib/service/surveyRepo';
  *   ได้ก้อนนี้ ⇒ ถ้าส่งไฟล์ว่างไป ทุกพื้นที่จะอ่านว่า "ยังไม่มีภาพกว้าง" แล้วจอบอก "วัดแล้ว 0/3"
  *   ทั้งที่ช่างวัดครบ · SA เปิดจอประเมินไม่ได้ ⇒ ต้องมาที่นี่
  *
- * ⚠️ **ส่งเฉพาะ `docType` ต่อไฟล์** — ตัวตัดสินทุกตัวอ่านแค่ช่องนี้ · ชื่อไฟล์/ลิงก์ไม่ต้องออกไป
- *   (คนอ่านไฟล์พื้นที่ = คนอ่านใบได้อยู่แล้ว `canViewSurveyZoneFiles` แต่ไม่ส่งของที่ไม่ใช้)
+ * ⚠️ **ส่งเฉพาะช่องที่ตัวตัดสินอ่าน** — `docType` (ด่านหกข้อ) · `mimeType`/`fileName` + `metadata.spotId`
+ *   (ด่านรูปจุด มติ 01/10: `isSpotPhoto` ต้องรู้ว่าเป็นรูป · `spotPhotoGroups` ต้องรู้ว่าผูกจุดไหน) · ลิงก์ไม่ต้องออกไป
+ *   🐞 ส่งแค่ docType = ทุกจุด "ยังไม่มีรูป" และถาดว่างเสมอ ⇒ ปุ่มส่งผลบนหน้าคำร้องพูดคนละเรื่องกับ route
+ *   (คนอ่านไฟล์พื้นที่ = คนอ่านใบได้อยู่แล้ว `canViewSurveyZoneFiles` แต่ไม่ส่งของที่ไม่ใช้ — metadata อื่นไม่ออก)
  * ⚠️ **ภาระของไซต์ใช้ `visitBundle` ตัวเดียวกับหน้าจัดคิว** — โมดัลลงคิวบนหน้านี้กับหน้าจัดคิว
  *   ต้องบอก "จุด · แพ็ค" เท่ากันสำหรับไซต์เดียวกัน (สูตรเดียว ไม่ก๊อป)
  * 🔴 **อ่านพลาด = "ไม่ทราบ" ไม่ใช่ "ไม่มี"** (กติกา supabase-never-throws) — ทุกชิ้นเป็นของประกอบ
@@ -39,7 +41,7 @@ export async function loadSurveyRequestExtras(supabase, request) {
     /* ⚠️ ห่อ fetchAllInChunks — ลิสต์พื้นที่โตตามข้อมูล (ช่างเพิ่มหน้างานไม่มีเพดาน) และ
        รูปต่อพื้นที่ไม่มีเพดาน ⇒ ทั้ง `.in()` ยาวเกิน 16 KB และแถวเกิน 1,000 ต้องกันพร้อมกัน */
     settle(fetchAllInChunks(zoneRowIds, (chunk) => supabase.from('attachments')
-      .select('id, "entityId", "docType"')
+      .select('id, "entityId", "docType", "mimeType", "fileName", metadata')
       .eq('entityType', 'service_survey_zone').in('entityId', chunk)
       .order('id', { ascending: true }))),
     request?.id ? loadRecallRows(supabase, request.id) : Promise.resolve({ data: [], error: null }),
@@ -59,7 +61,12 @@ export async function loadSurveyRequestExtras(supabase, request) {
     for (const id of zoneRowIds) filesByZone[id] = [];
     for (const file of filesRes.data || []) {
       if (!filesByZone[file.entityId]) continue;
-      filesByZone[file.entityId].push({ docType: file.docType || null });
+      filesByZone[file.entityId].push({
+        docType: file.docType || null,
+        mimeType: file.mimeType || null,
+        fileName: file.fileName || null,
+        metadata: { spotId: file.metadata?.spotId ?? null },
+      });
     }
   }
   return {
