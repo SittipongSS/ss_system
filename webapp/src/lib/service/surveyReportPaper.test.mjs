@@ -1402,6 +1402,7 @@ test('🔴 chromium โหลดด้วย await import() ข้างใน�
   assert.deepEqual(statics, [
     './surveyReportDocument', './surveyReportImages', './surveyReportLayout', './surveyReportRows',
     './surveyReportState', './surveyReportView', '@/lib/audit', '@/lib/documents/pdfInspect',
+    '@/lib/timeoutSignal', // ตัวจับเวลาเปล่า ๆ ไม่มี import (เทสต์ของมันเองยืนยัน)
   ]);
   assert.deepEqual([...CODE.matchAll(/import\('([^']+)'\)/g)].map((m) => m[1]), ['@/lib/documents/htmlPdf']);
   for (const heavy of ['puppeteer', '@sparticuz/chromium', "'sharp'", '@/lib/drive']) assert.equal(CODE.includes(heavy), false, heavy);

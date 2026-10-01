@@ -30,6 +30,7 @@ import 'server-only';
 import { createHash } from 'node:crypto';
 import { MAX_UPLOAD_BYTES } from '@/lib/master/attachmentTypes';
 import { MAX_BYTES } from '@/lib/upload/limits';
+import { timeoutSignal } from '@/lib/timeoutSignal';
 import { SURVEY_REPORT_BUCKET, surveyReportStoreAllowed } from './surveyReportRows';
 
 /** ด้านยาวสุดของรูปที่เก็บ (px) — ภาพผังต้องอ่านตัวหนังสือบนแบบได้จึงใหญ่กว่า */
@@ -216,7 +217,7 @@ function sharedDriveProbe(driveLib) {
 
 /** ถามหนึ่งครั้ง มีเพดานเวลา ไม่โยน — `{ ok, ms, detail }` · ค้าง/โยน/ตอบอะไรที่ไม่ใช่สำเร็จ = `ok: false` */
 async function askDriveAccess(probe, timeoutMs) {
-  const signal = AbortSignal.timeout(timeoutMs);
+  const { signal, clear } = timeoutSignal(timeoutMs);
   const mark = performance.now();
   try {
     await abortable(Promise.resolve().then(() => probe({ signal })), signal);
@@ -227,12 +228,14 @@ async function askDriveAccess(probe, timeoutMs) {
     const status = driveStatus(err);
     const text = driveErrorText(err).replace(/\s+/g, ' ').trim().slice(0, 200) || String(err);
     return { ok: false, ms: elapsed(mark), detail: `${status ? `HTTP ${status} · ` : ''}${text}` };
+  } finally {
+    clear();
   }
 }
 
 /** ดึงไฟล์ต้นฉบับหนึ่งไฟล์ — เพดานเวลาครอบทั้งการรอหัวคำตอบและการไหลของเนื้อไฟล์ */
 async function fetchOriginal(getFileStream, driveFileId, { timeoutMs, cap }) {
-  const signal = AbortSignal.timeout(timeoutMs);
+  const { signal, clear } = timeoutSignal(timeoutMs);
   let stream = null;
   try {
     const opening = Promise.resolve().then(() => getFileStream(driveFileId, { signal }));
@@ -245,6 +248,7 @@ async function fetchOriginal(getFileStream, driveFileId, { timeoutMs, cap }) {
     if (signal.aborted) throw failure(F.DRIVE_TIMEOUT, false, err);
     throw driveFailure(err);
   } finally {
+    clear();
     destroy(stream);
   }
 }
@@ -255,7 +259,7 @@ async function fetchOriginal(getFileStream, driveFileId, { timeoutMs, cap }) {
 const alreadyStored = (error) => /exists|duplicate|already/i.test(`${error?.message || ''} ${error?.error || ''}`);
 
 async function uploadImage(supabase, bucket, out, timeoutMs) {
-  const signal = AbortSignal.timeout(timeoutMs);
+  const { signal, clear } = timeoutSignal(timeoutMs);
   let result;
   try {
     result = await abortable(
@@ -266,6 +270,8 @@ async function uploadImage(supabase, bucket, out, timeoutMs) {
     );
   } catch (err) {
     throw failure(F.UPLOAD_FAILED, false, err);
+  } finally {
+    clear();
   }
   // supabase ไม่โยน — ต้องอ่าน { error } เอง
   if (result?.error && !alreadyStored(result.error)) throw failure(F.UPLOAD_FAILED, false, result.error);

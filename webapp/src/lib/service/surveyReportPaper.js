@@ -35,6 +35,7 @@
 import 'server-only';
 import { recordAudit } from '@/lib/audit';
 import { pdfInspect } from '@/lib/documents/pdfInspect';
+import { timeoutSignal } from '@/lib/timeoutSignal';
 import {
   SURVEY_REPORT_RENDERER_VERSION, renderSurveyReportHTML, resolveImageTokens, surveyReportImageShas,
 } from './surveyReportDocument';
@@ -144,9 +145,10 @@ export function surveyReportBounded(run, timeoutMs = SURVEY_REPORT_CALL_TIMEOUT_
   if (timeoutMs === Infinity) return Promise.resolve().then(() => run(undefined));
   const wanted = Number(timeoutMs);
   const ms = Number.isFinite(wanted) && wanted >= 0 ? Math.ceil(wanted) : SURVEY_REPORT_CALL_TIMEOUT_MS;
-  const signal = AbortSignal.timeout(ms);
+  const { signal, clear } = timeoutSignal(ms);
   return abortable(Promise.resolve().then(() => run(signal)), signal)
-    .catch((err) => { throw signal.aborted ? new PaperCut(false, ms) : err; });
+    .catch((err) => { throw signal.aborted ? new PaperCut(false, ms) : err; })
+    .finally(clear);
 }
 
 /* ══ ตัวพิมพ์: เบราว์เซอร์เดียวต่อคำขอ ═══════════════════════════════════ */
