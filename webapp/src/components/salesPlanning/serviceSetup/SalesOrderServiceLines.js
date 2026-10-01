@@ -13,9 +13,16 @@
 // 🔴 กฎ 3: ไม่มีสีแดงก่อนกด — แดงมาจาก `highlight` (หน้าส่งหลังกดยื่น) หรือผลบันทึกไม่ผ่านเท่านั้น · ช่องที่แก้แล้วหลังจากนั้นหายแดงเอง
 //   และ **ยังไม่แดงกลับหลังบันทึกสำเร็จ** (แผงแดงเป็นภาพ ณ ตอนกด · `touched` ล้างเมื่อแผงชุดใหม่มาเท่านั้น)
 // ⚠️ ไม่มีแถบเลือกหลายรายการ/หน้าต่าง "เติมจากข้อความ" ใน PR-A (D24)
+// ⭐ ปุ่ม "แก้งานบริการ" (mig 0396 · มติเจ้าของ 30/09 ข้อ 4.4 · ม็อก BindGridMulti กรอบ ข) อยู่หัวการ์ดงานบริการ ต่อจากชิป "งานบริการครบ x/n"
+//   · โชว์ตาม `view.reopen.canReopen` ที่ server คิด (มีสิทธิ์แก้ใบ · ใบประทับแล้ว · มีอะไรให้แก้) — ไม่มีสิทธิ์ = ไม่โชว์
+//   · TS เริ่มงานแล้ว/ด่านเงินของบัญชี = ปุ่มยังโชว์ กดแล้วบอกเหตุ — **ทุกการกดผ่าน `onReopen`** (หน้าโหลดก้อน GET สดก่อนเสมอ
+//     แล้ว toast `blockedReason` ของก้อนสด หรือเปิด ReasonDialog) · การ์ดไม่ตัดสินจากก้อนที่โหลดพร้อมหน้า
+//     🐞 ตรวจทาน ui-stale-reopen-blocker: เดิม `GatedAction blocker={view.reopen.blockedReason}` ตอบจากก้อนเก่าโดยไม่เรียก `onReopen`
+//        ⇒ บัญชีแก้ช่วงครอบ/TS ลบรอบไปแล้ว ปุ่มยังตอบเหตุเดิม ("…แล้วกด ‘แก้งานบริการ’ อีกครั้ง") ทุกครั้งจนกด F5 · เหตุเก่าเหลือแค่ `title` (ชี้เมาส์)
+//   · การ์ดไม่ยิง API เอง — หน้าเป็นเจ้าของ ReasonDialog + POST reopen
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowDown, ExternalLink, Lock, Package, Repeat, Save } from "lucide-react";
+import { ArrowDown, ExternalLink, Lock, Package, Repeat, Save, SquarePen } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { DetailCard } from "@/components/ui/DetailPage";
 import SaveStatus from "@/components/ui/SaveStatus";
@@ -26,7 +33,7 @@ import ZonesBulkModal from "@/components/service/ZonesBulkModal";
 import { apiJson } from "@/lib/apiFetch";
 import { fmtNumber } from "@/lib/format";
 import {
-  SERVICE_SETUP_EDIT_TEXT, SERVICE_SETUP_GRID_TEXT, SERVICE_SETUP_LIMITS, SERVICE_SETUP_LINE_TEXT, SERVICE_SETUP_SQL_MESSAGES,
+  SERVICE_REOPEN_TEXT, SERVICE_SETUP_EDIT_TEXT, SERVICE_SETUP_GRID_TEXT, SERVICE_SETUP_LIMITS, SERVICE_SETUP_SQL_MESSAGES,
   serviceLineLabel, serviceSetupTotals,
 } from "@/lib/sales/serviceSetup";
 import { registryIndex, zoneTakenMap } from "@/lib/service/zonePickerOptions";
@@ -87,10 +94,12 @@ function lockLabel(view, editable) {
  * @param onSaved `() => Promise` หน้าโหลดใบ + งานบริการใหม่หลังบันทึก · @param onDirtyChange `(dirty) => void`
  * @param canEditRounds / onRoundsSave ดินสอจำนวนรอบของใบที่อนุมัติแล้ว (`({ [lineId]: n }) => Promise<boolean>`)
  * @param summaryRows / grandTotal / highlightRows ส่งต่อให้กล่องยอดท้ายตาราง (ตัวเดียวกับใบเสนอราคา)
+ * @param onReopen `() => void` ปุ่ม "แก้งานบริการ" ของใบที่ประทับแล้ว (หน้าเปิดโมดัลเหตุผลเอง) · ไม่ส่ง = ไม่มีปุ่ม
+ * @param reopenBusy หน้ากำลังยิงคำสั่ง/โหลดก้อนสด (ปุ่มดับ — ไม่ใช่ด่านของข้อมูล)
  */
 export default function SalesOrderServiceLines({
   order, setup, mode, highlight = EMPTY_MAP, onSaved, onDirtyChange, canEditRounds = false, onRoundsSave,
-  summaryRows = [], grandTotal, highlightRows = [], id = "service-setup",
+  summaryRows = [], grandTotal, highlightRows = [], id = "service-setup", onReopen, reopenBusy = false,
 }) {
   const view = setup?.data || null;
   const registry = setup?.registry || EMPTY_REGISTRY;
@@ -259,10 +268,24 @@ export default function SalesOrderServiceLines({
       เปิด QT ต้นทาง
     </Button>
   ) : null;
+  /* ปุ่ม "แก้งานบริการ" — โชว์ตาม `view.reopen.canReopen` ของ server · เหตุที่กดไม่ได้ตอบจากก้อนสดตอนกด (หน้า `onReopen`) */
+  const reopen = view?.reopen || null;
+  const showReopen = !!reopen?.canReopen && typeof onReopen === "function";
   const serviceActions = (
     <div className={styles.headActions}>
       {view && serviceLines > 0 ? <Tag>{`งานบริการครบ ${fmtNumber(totals.completeLines)}/${fmtNumber(totals.lineCount)} รายการ`}</Tag> : null}
       {lock ? <Tag icon={Lock}>{lock}</Tag> : null}
+      {showReopen ? (
+        <Button
+          size="sm"
+          icon={<SquarePen size={13} aria-hidden="true" />}
+          title={reopen.blockedReason || undefined}
+          disabled={reopenBusy}
+          onClick={() => onReopen()}
+        >
+          {SERVICE_REOPEN_TEXT.button}
+        </Button>
+      ) : null}
     </div>
   );
   /* ท้ายการ์ดงานบริการมีของเมื่อไร — ไม่มีอะไร = ไม่วาดกล่อง (เส้นคั่นลอยเปล่า ๆ ใต้ตารางของใบที่รอตรวจ) */
@@ -373,9 +396,11 @@ export default function SalesOrderServiceLines({
                   : "ใบนี้ไม่มีรายการที่เป็นงานบริการ — ไม่มีอะไรส่งให้ TS"}
               </p>
             ) : null}
+            {/* ภาคผนวก A.5: หลังอนุมัติมีสองทาง — ปุ่ม 'แก้งานบริการ' (ก่อน TS เริ่มงาน) หรือย้อนการอนุมัติแล้วออก Rev.
+                · ไม่มีสิทธิ์ = บอกว่าใครเปิดแก้ได้ (ไม่มีปุ่มให้ชี้ · ไม่มีดินสอรอบ) */}
             {flow === "stamped" && serviceLines > 0 ? (
               <p className={styles.summarySub}>
-                {`หลังอนุมัติ แก้แพ็คเกจ/โซน/${SERVICE_SETUP_LINE_TEXT.packsLabel} = ย้อนการอนุมัติแล้วออก Rev. (${SERVICE_SETUP_LINE_TEXT.roundsLabel}แก้ได้ที่ดินสอ)`}
+                {reopen?.visible ? SERVICE_REOPEN_TEXT.stampedFooter : SERVICE_REOPEN_TEXT.stampedFooterNoRight}
               </p>
             ) : null}
             {editable && serviceLines > 0 ? <ServiceRegistryPaths dealId={order?.dealId} orderId={orderId} /> : null}

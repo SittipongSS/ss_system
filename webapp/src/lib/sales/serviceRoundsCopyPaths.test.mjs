@@ -106,6 +106,9 @@ const REVISION_RESETS = new Set([
   'serviceSetupSubmittedAt', 'serviceSetupSubmittedById', 'serviceSetupSubmittedByName',
   'serviceSetupRejectedAt', 'serviceSetupRejectedById', 'serviceSetupRejectedByName', 'serviceSetupRejectedReason',
   'serviceSetupApprovedAt', 'serviceSetupApprovedById', 'serviceSetupApprovedByName',
+  /* ผู้/เวลา/เหตุที่เปิดแก้งานบริการหลังอนุมัติ (mig 0396) — ตั้งใจไม่ก๊อป: เป็นประวัติของ *ใบเดิม* · ใบ Rev. เริ่มเส้นงานบริการใหม่
+     ด้วยการอนุมัติของตัวเอง (P2 ยกแค่ชนิด/แพ็คเกจ/โซน/ช่วงบริการ) · ก๊อปมา = ใบ Rev. ขึ้นป้าย "แก้หลังอนุมัติ" ทั้งที่ไม่เคยถูกเปิดแก้ */
+  'serviceSetupReopenedAt', 'serviceSetupReopenedById', 'serviceSetupReopenedByName', 'serviceSetupReopenedReason',
 ]);
 
 test('🪤 Rev. ของใบสั่งขายต้องพาทุกคอลัมน์ที่ยังมีความหมายไปด้วย', () => {
@@ -194,6 +197,9 @@ const DRAFT_OWNED = new Set([
   'serviceSetupSubmittedAt', 'serviceSetupSubmittedById', 'serviceSetupSubmittedByName',
   'serviceSetupRejectedAt', 'serviceSetupRejectedById', 'serviceSetupRejectedByName', 'serviceSetupRejectedReason',
   'serviceSetupApprovedAt', 'serviceSetupApprovedById', 'serviceSetupApprovedByName',
+  /* การเปิดแก้งานบริการหลังอนุมัติ (mig 0396) — มีได้เฉพาะใบ pipeline ที่อนุมัติแล้ว (CHECK `sales_orders_service_setup_reopen_shape`)
+     ใบใหม่จากใบเสนอราคายังไม่เคยอนุมัติ ⇒ ว่างโดยนิยาม */
+  'serviceSetupReopenedAt', 'serviceSetupReopenedById', 'serviceSetupReopenedByName', 'serviceSetupReopenedReason',
 ]);
 
 /* 🪤 **ทะเบียนนี้ต้องไม่มีชื่อที่ไม่ใช่คอลัมน์จริง** — ของที่ประกาศเกินไม่ทำให้เทสต์แดง

@@ -11,7 +11,8 @@ import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 
 import {
-  EMPTY_DRAFT, PERIOD_FIELD_ID, SAVE_FIELD_ID, backfillBannerText, backfillRailChecks, backfillRailOnTop, backfillRailPressed, linesCardMeta, backfillStateOfView,
+  EMPTY_DRAFT, PERIOD_FIELD_ID, SAVE_FIELD_ID, backfillBannerText, backfillCopyOfView, backfillRailChecks, backfillRailOnTop, backfillRailPressed, linesCardMeta,
+  backfillStateOfView,
   derivedRoleOf, draftDirty, fieldErrorsView, intOrRaw, issueHeadTail, lineFieldId, lineFieldIds, lineMissing, localSetupCtx, mergedLines, patchDraftLine,
   rebaseDraft, serviceCardMeta, setupPayload, stripParts, submitGateGroups, submitIssuesAfterSave, surveyRequestHref, zonePacksFieldId,
 } from '../../components/salesPlanning/serviceSetup/serviceSetupDraft.js';
@@ -19,8 +20,8 @@ import {
   ZONES_BULK_NONE_PICKED, ZONES_BULK_PACKS_INVALID, zonesBulkCapText, zonesBulkConsequence, zonesBulkPlan,
 } from '../../components/service/zonesBulkPlan.js';
 import {
-  SERVICE_BACKFILL_RAIL_TEXT, SERVICE_SETUP_GRID_TEXT, SERVICE_SETUP_LIMITS, SERVICE_SETUP_LINE_TEXT, SERVICE_SETUP_PANEL_TEXT, serviceSetupFieldId, serviceSetupIssues,
-  serviceSetupTotals,
+  SERVICE_BACKFILL_RAIL_TEXT, SERVICE_BACKFILL_STATE_LABELS, SERVICE_REOPEN_TEXT, SERVICE_REOPENED_TEXT, SERVICE_SETUP_GRID_TEXT, SERVICE_SETUP_LIMITS,
+  SERVICE_SETUP_LINE_TEXT, SERVICE_SETUP_PANEL_TEXT, serviceSetupFieldId, serviceSetupIssues, serviceSetupTotals,
 } from './serviceSetup.js';
 import { salesOrderMoneyOutcome } from './salesOrderPayments.js';
 
@@ -884,4 +885,117 @@ test('F17: ทะเบียนไซต์โหลดไม่ขึ้น �
   assert.match(rows, /โหลดทะเบียนไซต์ไม่สำเร็จ — กด “ลองโหลดอีกครั้ง” ด้านบนตาราง/);
   assert.match(rows, /const removeBlocked = registry\.error/);
   assert.match(rows, /if \(removeBlocked\) \{/);
+});
+
+/* ══ ปุ่ม "แก้งานบริการ" หลังอนุมัติ (mig 0396 · แผน IMPL_PLAN_REOPEN §6 · มติเจ้าของ 30/09 ข้อ 4.1–4.6) ═══════════════════════════ */
+
+/* ก้อน `view.reopened` ของ GET (serviceSetupView — `{ at, byId, byName, reason, fields }`) */
+const REOPENED = Object.freeze({
+  at: '2026-09-30T03:15:00Z', byId: 'U-KP', byName: 'Kamonrat Pipattanapong', reason: 'SA คีย์โซนผิด — รายการ 2 (ชั้น 1) ต้องเป็นอีกโซน',
+  fields: 'ไซต์ · โซน · จำนวนรอบบริการ · รอบละกี่แพ็ค · ช่วงบริการ — แพ็คเกจของรายการที่มีรหัส FG แก้ไม่ได้ (ต้องออก Rev.)',
+});
+
+test('0396: แบนเนอร์/การ์ดรางของใบที่เปิดแก้ — หัว/ป้าย/บรรทัด "เปิดแก้ … โดย … · เหตุผล" จาก SERVICE_REOPENED_TEXT · ใบเดิมคำเดิมทุกตัวอักษร', () => {
+  const legacy = backfillCopyOfView(viewFixture({ flow: 'backfill', state: { setupState: null } }));
+  assert.equal(legacy.reopened, null);
+  assert.equal(legacy.bannerTitle, 'ใบนี้อนุมัติก่อนมีการตั้งงานบริการ');
+  assert.equal(legacy.eyebrow, 'Service setup · ใบเดิม');
+  assert.equal(legacy.title, 'งานบริการ (ใบเดิม)');
+  assert.equal(legacy.meta, 'ตั้งย้อนหลังบนใบที่อนุมัติแล้ว — ผู้จัดการฝ่ายขายตรวจก่อนส่งให้ TS');
+  assert.equal(legacy.firstStep, 'ตั้งค่า');
+  assert.equal(legacy.stateLabel, SERVICE_BACKFILL_STATE_LABELS.editing);
+  assert.equal(legacy.reopenLine, null);
+  assert.equal(legacy.bannerLead, null);
+
+  const editing = backfillCopyOfView(viewFixture({ flow: 'backfill', state: { setupState: null }, reopened: REOPENED }));
+  assert.equal(editing.bannerTitle, SERVICE_REOPENED_TEXT.bannerTitle);
+  assert.equal(editing.eyebrow, SERVICE_REOPENED_TEXT.railEyebrow);
+  assert.equal(editing.title, SERVICE_REOPENED_TEXT.railTitle);
+  assert.equal(editing.meta, SERVICE_REOPENED_TEXT.railMeta);
+  assert.equal(editing.firstStep, 'เปิดแก้', 'ขั้นแรกของรางตามม็อก ReopenEditing');
+  assert.equal(editing.stateLabel, 'ฝ่ายขายกำลังแก้');
+  assert.equal(editing.reopenLine, `เปิดแก้ 30/09/2026 โดย Kamonrat Pipattanapong · ${REOPENED.reason}`);
+  assert.equal(editing.bannerLead, null, 'ขั้นแก้: บรรทัดหลักของแบนเนอร์บอกใคร/ทำไมอยู่แล้ว');
+  /* บรรทัดหลักของแบนเนอร์ขั้นแก้ = ใคร · เมื่อไร · เหตุผล + ช่องที่แก้ได้ของใบนี้ (R20) */
+  const line = backfillBannerText(viewFixture({ flow: 'backfill', state: { setupState: null }, reopened: REOPENED }));
+  assert.equal(line, SERVICE_REOPENED_TEXT.bannerLine(REOPENED));
+  assert.ok(line.includes(REOPENED.reason) && line.includes(REOPENED.fields) && line.includes('Kamonrat Pipattanapong'), line);
+
+  /* ขั้นรอตรวจ: บรรทัดหลักเป็นของการยื่น (ตัวเดิม) · ใคร/ทำไมขึ้นเป็นบรรทัดนำ (ม็อก ReopenReview) */
+  const submittedView = viewFixture({
+    flow: 'backfill', state: { setupState: 'submitted', submittedAt: '2026-09-30T05:00:00Z', submittedByName: 'Kamonrat Pipattanapong' }, reopened: REOPENED,
+  });
+  const submitted = backfillCopyOfView(submittedView);
+  assert.equal(submitted.stateLabel, SERVICE_BACKFILL_STATE_LABELS.submitted);
+  assert.equal(submitted.bannerLead, submitted.reopenLine);
+  assert.match(backfillBannerText(submittedView), /^ยื่นตรวจงานบริการแล้ว — รอผู้จัดการฝ่ายขายตรวจ/);
+  /* ตีกลับ = ป้ายตีกลับตัวกลาง (เหตุผลของผู้จัดการขึ้นบรรทัดของมันเอง) */
+  assert.equal(backfillCopyOfView(viewFixture({ flow: 'backfill', state: { setupState: 'rejected' }, reopened: REOPENED })).stateLabel,
+    SERVICE_BACKFILL_STATE_LABELS.rejected);
+  /* ไม่ใช่ขั้น backfill (ประทับแล้วอนุมัติใหม่ · คอลัมน์ 0396 ยังอยู่ แต่ GET ไม่ส่ง reopened) = ไม่มีป้าย */
+  assert.equal(backfillCopyOfView(viewFixture({ flow: 'stamped', reopened: null })).stateLabel, null);
+});
+
+test('0396: หัวการ์ดงานบริการของใบที่เปิดแก้ — ขั้นแก้ "เปิดแก้หลังอนุมัติ — แก้ได้จนกว่าจะยื่นตรวจ" · รอตรวจ "เปิดแก้หลังอนุมัติ · ยื่นตรวจ …"', () => {
+  const editing = serviceCardMeta({ view: viewFixture({ flow: 'backfill', reopened: REOPENED }), flow: 'backfill', editable: true, totals: {} });
+  assert.ok(editing.endsWith(` · ${SERVICE_REOPENED_TEXT.cardMeta}`), editing);
+  assert.equal(serviceCardMeta({
+    view: viewFixture({ flow: 'backfill', state: { setupState: 'submitted', submittedAt: '2026-09-30T05:00:00Z' }, reopened: REOPENED }),
+    flow: 'backfill', editable: false, totals: {},
+  }), 'เปิดแก้หลังอนุมัติ · ยื่นตรวจ 30/09/2026');
+  /* ใบเดิมคำเดิม */
+  assert.ok(serviceCardMeta({ view: viewFixture({ flow: 'backfill' }), flow: 'backfill', editable: true, totals: {} }).endsWith(' · แก้ได้จนกว่าจะยื่นตรวจ'));
+});
+
+test('0396: ปุ่ม "แก้งานบริการ" อยู่หัวการ์ดงานบริการ ต่อจากชิป "งานบริการครบ x/n" — โชว์ตาม server (canReopen) · ทุกการกดผ่าน onReopen (ก้อนสดบอกเหตุ)', () => {
+  const lines = code(`${FOLDER}/SalesOrderServiceLines.js`);
+  const actions = lines.slice(lines.indexOf('const serviceActions = ('), lines.indexOf('/* ท้ายการ์ดงานบริการมีของเมื่อไร'));
+  assert.ok(actions.indexOf('งานบริการครบ') >= 0 && actions.indexOf('<Button') > actions.indexOf('งานบริการครบ'), 'ปุ่มต่อท้ายชิป (ม็อก BindGridMulti กรอบ ข)');
+  /* ไม่มีสิทธิ์ = ไม่โชว์ · การ์ดไม่คิดเงื่อนไขเอง (ก้อน view.reopen ของ server เท่านั้น) */
+  assert.match(lines, /const reopen = view\?\.reopen \|\| null;/);
+  assert.match(lines, /const showReopen = !!reopen\?\.canReopen && typeof onReopen === "function";/);
+  assert.match(actions, /\{showReopen \? \(\s*<Button/);
+  const button = actions.slice(actions.indexOf('<Button'), actions.indexOf('</Button>'));
+  /* 🐞 ตรวจทาน ui-stale-reopen-blocker: ห้ามตอบ "ติดด่าน" จากก้อนที่โหลดพร้อมหน้า (GatedAction ไม่เรียก onReopen เลย ⇒ เหตุเก่าค้างจน F5)
+     ⇒ ทุกการกดไปหน้า (`openServiceReopen` อ่านก้อนสดแล้ว toast เหตุ) · เหตุเก่าเหลือแค่ title ชี้เมาส์ */
+  assert.doesNotMatch(lines, /<GatedAction|blocker=\{reopen/, 'การ์ดไม่ตัดสินจากเหตุในก้อนเก่า');
+  assert.match(button, /title=\{reopen\.blockedReason \|\| undefined\}/);
+  assert.match(button, /disabled=\{reopenBusy\}/, 'disabled = กำลังยิงคำสั่งเท่านั้น (ไม่ใช่ด่านของข้อมูล)');
+  assert.match(button, /onClick=\{\(\) => onReopen\(\)\}/);
+  assert.match(button, /icon=\{<SquarePen size=\{13\} aria-hidden="true" \/>\}/);
+  assert.match(button, /\{SERVICE_REOPEN_TEXT\.button\}/);
+  assert.equal(SERVICE_REOPEN_TEXT.button, 'แก้งานบริการ');
+  /* การ์ดไม่ยิงเปิดแก้เอง — หน้าเป็นเจ้าของโมดัลเหตุผล + POST (แบบเดียวกับยื่น/อนุมัติ/ตีกลับ) */
+  assert.doesNotMatch(lines, /reopen['"]\s*[,}]|action:\s*['"]reopen/);
+  assert.doesNotMatch(lines, /"แก้งานบริการ"|>แก้งานบริการ</, 'คำของปุ่มอยู่ที่ SERVICE_REOPEN_TEXT ที่เดียว');
+});
+
+test('0396: ท้ายการ์ดของใบประทับแล้วบอกสองทาง (ภาคผนวก A.5) — มีปุ่ม = กด ‘แก้งานบริการ’ ก่อน TS เริ่มงาน · ไม่มีสิทธิ์ = บอกว่าใครเปิดแก้ได้', () => {
+  const lines = code(`${FOLDER}/SalesOrderServiceLines.js`);
+  assert.match(lines, /\{reopen\?\.visible \? SERVICE_REOPEN_TEXT\.stampedFooter : SERVICE_REOPEN_TEXT\.stampedFooterNoRight\}/);
+  assert.doesNotMatch(lines, /= ย้อนการอนุมัติแล้วออก Rev\./, 'ข้อความเก่า ("แก้ = ย้อนการอนุมัติ" ทางเดียว) ต้องไม่เหลือ');
+  for (const footer of [SERVICE_REOPEN_TEXT.stampedFooter, SERVICE_REOPEN_TEXT.stampedFooterNoRight]) {
+    assert.ok(footer.includes(`/${SERVICE_SETUP_LINE_TEXT.packsLabel}/`), footer);
+    assert.ok(footer.includes('ย้อนการอนุมัติแล้วออก Rev.'), footer);
+    assert.doesNotMatch(footer, /ไปกี่รอบ/);
+  }
+  assert.ok(SERVICE_REOPEN_TEXT.stampedFooter.includes('‘แก้งานบริการ’'));
+  /* ดินสอรอบมีเฉพาะคนที่แก้ใบได้ ⇒ ท้ายของคนไม่มีสิทธิ์ไม่พูดถึงดินสอ */
+  assert.ok(SERVICE_REOPEN_TEXT.stampedFooter.includes(`${SERVICE_SETUP_LINE_TEXT.roundsLabel}แก้ที่ดินสอได้เสมอ`));
+  assert.doesNotMatch(SERVICE_REOPEN_TEXT.stampedFooterNoRight, /ดินสอ/);
+});
+
+test('0396: การ์ดราง/แบนเนอร์อ่านคำจาก backfillCopyOfView — ไม่พิมพ์หัว "ใบเดิม" เองในคอมโพเนนต์ · บรรทัดเปิดแก้ไม่แดง', () => {
+  const panel = code(`${FOLDER}/ServiceBackfillPanel.js`);
+  assert.equal((panel.match(/backfillCopyOfView\(view\)/g) || []).length, 2, 'แบนเนอร์ + การ์ดราง');
+  for (const prop of ['title={copy.bannerTitle}', 'eyebrow={copy.eyebrow}', 'title={copy.title}', 'meta={copy.meta}', 'label: copy.firstStep']) {
+    assert.ok(panel.includes(prop), prop);
+  }
+  assert.equal((panel.match(/\{copy\.stateLabel\}/g) || []).length, 2, 'ป้ายสถานะทั้งสองชิ้นมาจากตัวเดียว');
+  assert.doesNotMatch(panel, /ใบนี้อนุมัติก่อนมีการตั้งงานบริการ|Service setup · ใบเดิม|SERVICE_BACKFILL_STATE_LABELS\[/);
+  assert.match(panel, /\{copy\.reopenLine \? <p className=\{styles\.railReopen\}>\{copy\.reopenLine\}<\/p> : null\}/);
+  assert.match(panel, /\{copy\.bannerLead \? <span className=\{styles\.bannerLine\}>\{copy\.bannerLead\}<\/span> : null\}/);
+  const css = read(`${FOLDER}/ServiceBackfillPanel.module.css`);
+  const rule = css.slice(css.indexOf('.railReopen {'), css.indexOf('}', css.indexOf('.railReopen {')));
+  assert.doesNotMatch(rule, /--red|--amber/, 'เปิดแก้ไม่ใช่ข้อผิด — โทนข้อมูล (กฎ 3)');
 });

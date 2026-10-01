@@ -26,6 +26,17 @@
   font-size: var(--fs-5);
 }
 
+/* ใบที่เปิดแก้หลังอนุมัติ (mig 0396) — "เปิดแก้ … โดย … · เหตุผล" · โทนข้อมูล ไม่ใช่เตือน (ไม่มีอะไรผิด แค่บอกที่มา) */
+.railReopen {
+  margin: 0;
+  padding: var(--space-2) var(--space-2-5);
+  border-radius: var(--radius);
+  background: var(--blue-soft);
+  color: var(--text);
+  font-size: var(--fs-5);
+  overflow-wrap: anywhere;
+}
+
 .railReject {
   margin: 0;
   padding: var(--space-2) var(--space-2-5);

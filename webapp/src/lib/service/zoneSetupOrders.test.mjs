@@ -54,6 +54,23 @@ test('ใบอนุมัติแล้ว ยังไม่ประทั�
   assert.equal(setupOrderState(so('B', { ...approved, serviceSetupState: 'editing' })).key, 'editing');
 });
 
+/* ตรวจทาน ui-zone-chip-reopened-label: ใบที่เปิดแก้หลังอนุมัติ (mig 0396) ตกเข้าเส้นตั้งย้อนหลัง (อนุมัติ · ไม่มีตรา) แต่ป้ายต้องบอกว่า "แก้หลังอนุมัติ"
+   — คำเดียวกับแท็บ TS "ฝ่ายขายกำลังแก้ (หลังอนุมัติ)" · อนุมัติใหม่แล้ว (มีตรา) คอลัมน์ค้างเป็นประวัติ = ไม่มีป้าย */
+test('ใบที่เปิดแก้หลังอนุมัติ → กลุ่ม reopened ป้าย "ฝ่ายขายกำลังแก้" / รอผู้จัดการตรวจ / ตีกลับ · อนุมัติใหม่แล้ว = ไม่มีป้าย', () => {
+  const reopened = { status: 'approved', serviceSetupReopenedAt: '2026-09-30T03:15:00Z' };
+  assert.deepEqual(setupOrderState(so('R', reopened)), { group: 'reopened', key: 'editing', label: 'ฝ่ายขายกำลังแก้' });
+  assert.deepEqual(setupOrderState(so('R', { ...reopened, serviceSetupState: 'submitted' })),
+    { group: 'reopened', key: 'submitted', label: 'รอผู้จัดการตรวจ' });
+  assert.deepEqual(setupOrderState(so('R', { ...reopened, serviceSetupState: 'rejected' })),
+    { group: 'reopened', key: 'rejected', label: 'ตีกลับ' });
+  assert.equal(setupOrderState(so('R', { ...reopened, serviceTermsOpenedAt: STAMP })), null, 'อนุมัติงานบริการใหม่แล้ว');
+  assert.equal(setupOrderState(so('R', { ...reopened, status: 'approval_revoked' })).group, 'unapproved', 'สถานะมาก่อน');
+  // เรียงหลังกลุ่มตั้งย้อนหลัง
+  const orders = new Map([['R', so('R', { ...reopened, orderNumber: 'SO-1' })], ['B', so('B', { status: 'approved', orderNumber: 'SO-9' })]]);
+  const map = pendingSetupOrdersByZone({ allocations: [{ salesOrderId: 'R', zoneId: 'Z' }, { salesOrderId: 'B', zoneId: 'Z' }], ordersById: orders });
+  assert.deepEqual(map.get('Z').map((o) => [o.orderId, o.group]), [['B', 'backfill'], ['R', 'reopened']]);
+});
+
 test('ไม่มีป้าย: ประทับแล้ว · ยกเลิก · ถูก Rev. ทับ · ใบย้อนหลังที่อนุมัติแล้ว · ไม่มีใบ', () => {
   assert.equal(setupOrderState(so('C', { status: 'approved', serviceTermsOpenedAt: STAMP })), null);
   assert.equal(setupOrderState(so('C', { status: 'cancelled' })), null);

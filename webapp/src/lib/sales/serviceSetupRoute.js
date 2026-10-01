@@ -6,6 +6,7 @@
 //   GET   ก้อนของตาราง/โมดัล/แถบ (`serviceSetupView`) — ทุกคนที่อ่านใบได้
 //   PATCH บันทึกงานบริการ (RPC `save_sales_order_service_setup`) — ฝ่ายขายที่แก้ใบนี้ได้
 //   POST  งานบริการย้อนหลังของใบที่อนุมัติแล้ว: `submit` ยื่นตรวจ · `approve` / `reject` ผู้จัดการฝ่ายขาย
+//         · `reopen` เปิดแก้งานบริการหลังอนุมัติ (mig 0396 — ถอนรอบขายจาก TS แล้วกลับเข้าเส้นตั้งย้อนหลัง)
 //
 // 🔴 **ทุกด่านโหลดบริบทด้วย `withFgOptions: true`** — ข้อ fg_foreign ตรวจที่ JS เท่านั้น และ serviceSetupIssues
 //    throw เมื่อไม่มีตัวเลือก FG (fail-closed) · มีจุดโหลดจุดเดียว (`contextOf`) ยามใน serviceSetupRoute.test.mjs
@@ -14,7 +15,7 @@
 // ⚠️ เวลาของใบ (`expectedUpdatedAt`) ส่งค่าดิบที่จอได้จาก GET เข้า RPC ตรง ๆ — ห้ามแปลงผ่าน Date (ไมโครวินาทีหาย
 //    แล้วทุกการบันทึกตายด้วย workflow_stale · lib/sales/documentConcurrency.js)
 // ⚠️ ไม่มีกระดิ่ง/แชต (มติกล่องกระดิ่ง) — ป้ายตัวเลขบนเมนูคือช่องทางแจ้งผู้จัดการ
-// ⚠️ ลง audit **หลัง** RPC สำเร็จเท่านั้น (ของที่ไม่ได้เขียนต้องไม่มีประวัติ)
+// ⚠️ ลง audit **หลัง** RPC สำเร็จเท่านั้น (ของที่ไม่ได้เขียนต้องไม่มีประวัติ) · ยกเว้น `reopen` ที่ฐานลงเอง (ดู reopenSetup)
 import { recordAudit } from '@/lib/audit';
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope } from '@/lib/salesPlanning';
 import { loadScoped } from '@/lib/scopedRow';
@@ -22,12 +23,15 @@ import { resolveExpectedUpdatedAt } from '@/lib/sales/documentConcurrency';
 import { adminOverrideReasonError, normalizeAdminOverrideReason } from '@/lib/sales/salesOrderApprovalOverride';
 import { isSalesOrderReviewer } from '@/lib/sales/salesOrderWorkflow';
 import {
-  SERVICE_SETUP_EDIT_TEXT, SERVICE_SETUP_LIMITS, SERVICE_SETUP_SQL_MESSAGES,
-  serviceBackfillAwaitingReview, serviceSetupAuditSnapshot, serviceSetupEditError, serviceSetupFlow, serviceSetupIssues,
-  serviceSetupSqlIssues, serviceSetupTotals, serviceSetupView, serviceSetupWarnings, validateServiceSetupPatch,
+  SERVICE_REOPENED_TEXT, SERVICE_SETUP_EDIT_TEXT, SERVICE_SETUP_LIMITS, SERVICE_SETUP_SQL_MESSAGES,
+  serviceBackfillAwaitingReview, serviceReopenAvailable, serviceReopenBlockedText, serviceReopenBlockers,
+  serviceReopenMoneyCodes, serviceReopenStateError, serviceSetupAuditSnapshot, serviceSetupEditError, serviceSetupFlow,
+  serviceSetupIssues, serviceSetupReopened, serviceSetupSqlIssues, serviceSetupTotals, serviceSetupView, serviceSetupWarnings,
+  validateServiceSetupPatch,
 } from '@/lib/sales/serviceSetup';
 import {
-  approveServiceBackfill, loadServiceSetupContext, rejectServiceBackfill, saveServiceSetup, submitServiceBackfill,
+  approveServiceBackfill, loadServiceReopenBlockers, loadServiceSetupContext, rejectServiceBackfill, reopenServiceSetup,
+  saveServiceSetup, submitServiceBackfill,
 } from '@/lib/sales/serviceSetupRepo';
 
 const reply = (status, body) => ({ status, body });
@@ -79,6 +83,8 @@ const contextFailed = (error) => failWith(500, `โหลดงานบริ�
 const canEditOrder = (user, order) => canEditSalesPlanning(user) && inSalesEditScope(user, order?.deal);
 
 const orderLabel = (order) => order?.orderNumber || order?.id || '—';
+/* วงเล็บในสรุป audit ของเส้นย้อนหลัง — ใบที่เปิดแก้หลังอนุมัติ (0396) ไม่ใช่ "ใบเดิม" (ภาคผนวก A.4) */
+const backfillTag = (order) => (serviceSetupReopened(order) ? SERVICE_REOPENED_TEXT.auditTag : '(ใบเดิม)');
 const auditOrder = (audit, { user, order, before, after, summary, request }) => audit({
   user, action: 'update', entityType: 'sales_order', entityId: order.id, before, after, summary, request,
 });
@@ -102,8 +108,17 @@ export async function serviceSetupGet({ supabase, user, id }) {
   if (failure) return failure;
   const { ctx, error } = await contextOf(supabase, order);
   if (error) return contextFailed(error);
+  const canEdit = canEditOrder(user, order);
+  /* ปุ่ม 'แก้งานบริการ' (0396) — ถามฐานว่า TS เริ่มงานของใบนี้หรือยัง **เฉพาะตอนปุ่มโชว์** (มีสิทธิ์ · ใบประทับ · มีอะไรให้แก้)
+     ⇒ ไม่ยิงต่อทุกใบ/ทุกคนที่แค่อ่าน · อ่านพัง = 'unread' (ปุ่มบล็อกพร้อมเหตุ) แต่ตารางยังขึ้น — ไม่ตอบ 500 ทั้งก้อน
+     รหัสฝั่ง JS (`money_fn`) serviceSetupView ต่อท้ายเอง */
+  let reopenBlockers = null;
   try {
-    return reply(200, serviceSetupView(ctx, { canEdit: canEditOrder(user, order), userId: user.id ?? null, role: user.role ?? null }));
+    if (serviceReopenAvailable(ctx.order, ctx, { canEdit })) {
+      const { codes, error: blockersError } = await loadServiceReopenBlockers(supabase, order.id);
+      reopenBlockers = blockersError ? ['unread'] : codes;
+    }
+    return reply(200, serviceSetupView(ctx, { canEdit, userId: user.id ?? null, role: user.role ?? null, reopenBlockers }));
   } catch (viewError) {
     return contextFailed(viewError);
   }
@@ -206,7 +221,7 @@ async function submitBackfill({ supabase, user, order, canEdit, body, request, a
     user, order, request,
     before: { serviceSetupState: state, serviceSetup: serviceSetupAuditSnapshot(ctx) },
     after: { serviceSetupState: 'submitted', serviceSetupSubmittedAt: data?.serviceSetupSubmittedAt ?? null },
-    summary: `ยื่นตรวจงานบริการ (ใบเดิม) ${orderLabel(order)} — ${totals.zones} โซนใน ${totals.sites} ไซต์`,
+    summary: `ยื่นตรวจงานบริการ ${backfillTag(ctx.order)} ${orderLabel(order)} — ${totals.zones} โซนใน ${totals.sites} ไซต์`,
   });
   return reply(200, { order: data ?? null });
 }
@@ -261,7 +276,7 @@ async function approveBackfill({ supabase, user, order, canEdit, body, request, 
       termsOpened,
       overrideReason,
     },
-    summary: `อนุมัติงานบริการ (ใบเดิม) ${orderLabel(order)} — เปิดรอบขาย ${termsOpened} โซนให้ TS`
+    summary: `อนุมัติงานบริการ ${backfillTag(ctx.order)} ${orderLabel(order)} — เปิดรอบขาย ${termsOpened} โซนให้ TS`
       + (overrideReason ? ` · Admin Override: ${overrideReason}` : ''),
   });
   return reply(200, { order: data?.order ?? null, termsOpened });
@@ -291,22 +306,67 @@ async function rejectBackfill({ supabase, user, order, canEdit, body, request, a
     user, order, request,
     before: { serviceSetupState: 'submitted' },
     after: { serviceSetupState: 'rejected', serviceSetupRejectedReason: reason },
-    summary: `ตีกลับงานบริการ (ใบเดิม) ${orderLabel(order)}: ${reason}`,
+    summary: `ตีกลับงานบริการ ${backfillTag(order)} ${orderLabel(order)}: ${reason}`,
   });
   return reply(200, { order: data ?? null });
 }
 
-const BACKFILL_ACTIONS = { submit: submitBackfill, approve: approveBackfill, reject: rejectBackfill };
+/* ══ POST reopen — เปิดแก้งานบริการหลังอนุมัติ (mig 0396 · แผน IMPL_PLAN_REOPEN §4) ══════════════════════════════════ */
+
+/* 409 ของการเปิดแก้ที่ถูกบล็อก — ข้อความเจาะจงจากรหัส + รายการรหัสให้จอ (ข้อความรวมว่าง = ข้อความสำรองของฐาน) */
+const reopenBlocked = (codes, fallback = SERVICE_SETUP_SQL_MESSAGES.service_setup_reopen_blocked.message) => failWith(
+  409, serviceReopenBlockedText(codes) || fallback, { code: 'service_setup_reopen_blocked', blockers: serviceReopenBlockers(codes) },
+);
 
 /**
- * body: `{ action: 'submit' | 'approve' | 'reject', expectedUpdatedAt, reason?, overrideReason? }`
- * → submit 200 `{ order }` · approve 200 `{ order, termsOpened }` · reject 200 `{ order }`
+ * body: `{ action: 'reopen', expectedUpdatedAt, reason }` → 200 `{ order, termsRemoved }`
+ * · 400 เหตุผล/เวลาของใบ · 403 ไม่มีสิทธิ์ · 409 ขั้นของใบ / เก่า / ถูกบล็อก `{ error, code, blockers: [{ code, count, text }] }` / ระบบยุ่ง · 500
+ * ลำดับ: สิทธิ์ → เหตุผล → เวลาของใบ → บริบทสด → ขั้นของใบ (กติกาเดียวกับการโชว์ปุ่ม) → ด่านเงินของบัญชี (JS เท่านั้น) → RPC
+ */
+async function reopenSetup({ supabase, order, canEdit, body, user }) {
+  if (!canEdit) return failWith(403, SERVICE_SETUP_EDIT_TEXT.noRight);
+  /* ตัดช่องว่างหัวท้ายก่อนนับ (ฐานนับหลัง btrim · CHECK ของตารางก็เช่นกัน) — ส่งค่าที่ตัดแล้วเข้า RPC */
+  const reason = String(body?.reason ?? '').trim();
+  if (charCount(reason) < REASON_MIN || charCount(reason) > REASON_MAX) {
+    return failWith(400, SERVICE_SETUP_SQL_MESSAGES.workflow_reason_invalid.message);
+  }
+  const expected = resolveExpectedUpdatedAt(body);
+  if (!expected.ok) return failWith(400, expected.error);
+  const { ctx, error: loadError } = await contextOf(supabase, order);
+  if (loadError) return contextFailed(loadError);
+
+  const stateError = serviceReopenStateError(ctx.order, ctx, { canEdit });
+  if (stateError) return failWith(409, stateError);
+  /* R4 (g): ข้อด่านเงินที่ฝ่ายบัญชีต้องแก้ — ยื่นตรวจกลับจะไม่ผ่าน และฝ่ายขายแก้เองไม่ได้ ⇒ เปิดแก้ตอนนี้ = ใบค้างไม่มีงานให้ TS
+     ฐานมองไม่เห็นด่านงวด (อยู่ที่ serviceSetupIssues) ⇒ ตรวจที่นี่ก่อนยิง RPC เสมอ · บัญชีรับรองงวดระหว่างตรวจกับกด = แค่ยื่นกลับช้าลง */
+  const moneyCodes = serviceReopenMoneyCodes(ctx);
+  if (moneyCodes.length) return reopenBlocked(moneyCodes);
+
+  const { data, error } = await reopenServiceSetup(supabase, {
+    orderId: order.id, expectedUpdatedAt: expected.value, reason, user,
+  });
+  if (error) {
+    if (error.code === 'service_setup_reopen_blocked') return reopenBlocked(error.detailCodes, error.message);
+    return rpcFailure(error, ctx);
+  }
+  /* 🔴 **ไม่ลง audit ที่นี่** (ต่างจาก action อื่นของไฟล์นี้โดยตั้งใจ — R12 ของแผน): RPC ลง audit เองในทรานแซกชันเดียวกับที่ถอน
+     รอบขาย — หนึ่งแถวต่อ term ที่ลบ (`before` = ทั้งแถว) + หนึ่งแถวของใบ (เหตุผล · ก่อนแก้ = ทุกช่องที่ถูกล้างรวมหลักฐานผู้อนุมัติเดิม)
+     ⇒ ประวัติไม่มีทางขาดแม้ route ตายหลัง commit และครอบกรณีคนรัน RPC จาก SQL Editor ด้วย · ลงซ้ำที่นี่ = แถวใบซ้อนสองแถว */
+  return reply(200, { order: data?.order ?? null, termsRemoved: Number(data?.termsRemoved) || 0 });
+}
+
+/* ทุก action ของ POST — ย้อนหลัง (submit/approve/reject) + เปิดแก้หลังอนุมัติ (reopen) */
+const SERVICE_SETUP_ACTIONS = { submit: submitBackfill, approve: approveBackfill, reject: rejectBackfill, reopen: reopenSetup };
+
+/**
+ * body: `{ action: 'submit' | 'approve' | 'reject' | 'reopen', expectedUpdatedAt, reason?, overrideReason? }`
+ * → submit 200 `{ order }` · approve 200 `{ order, termsOpened }` · reject 200 `{ order }` · reopen 200 `{ order, termsRemoved }`
  */
 export async function serviceSetupPost({ supabase, user, id, body, request = null, audit = recordAudit }) {
   if (!user) return failWith(401, 'unauthorized');
   if (!canViewSalesPlanning(user)) return failWith(403, 'forbidden');
   const action = String(body?.action ?? '');
-  const handler = Object.prototype.hasOwnProperty.call(BACKFILL_ACTIONS, action) ? BACKFILL_ACTIONS[action] : null;
+  const handler = Object.prototype.hasOwnProperty.call(SERVICE_SETUP_ACTIONS, action) ? SERVICE_SETUP_ACTIONS[action] : null;
   if (!handler) return failWith(400, 'ไม่รู้จักคำสั่งของงานบริการ');
   const { order, failure } = await scopedOrder(supabase, user, id);
   if (failure) return failure;

@@ -263,3 +263,46 @@ test('ตัวนับของตัวกรองสถานะ · คำ�
     assert.ok(hay.includes(needle), needle);
   }
 });
+
+/* ══ ใบที่ฝ่ายขายเปิดแก้งานบริการหลังอนุมัติ (mig 0396 · ภาคผนวก A.4) ════════════════════════════════════════════
+   ใบประทับแล้ว → ปุ่ม "แก้งานบริการ" ถอนรอบขายจาก TS + ล้างตรา ⇒ ใบกลับมาอยู่ถังนี้ (ยังไม่ประทับ · ต้องตั้ง)
+   TS ต้องเห็นว่าใบนี้เคยส่งงานมาแล้ว ใครเปิดแก้ ทำไม (หายจาก "รอตั้งรอบ" เพราะอะไร) */
+const reopenedCols = {
+  serviceSetupReopenedAt: '2026-09-30T03:15:00Z', serviceSetupReopenedById: 'U-KP',
+  serviceSetupReopenedByName: 'Kamonrat Pipattanapong', serviceSetupReopenedReason: 'SA คีย์โซนผิด — รายการ 2 ต้องเป็นอีกโซน',
+};
+
+test('0396: ใบที่เปิดแก้ขึ้น "ฝ่ายขายกำลังแก้ (หลังอนุมัติ)" + วัน/เหตุผลที่เปิดแก้ · รอตรวจนำหน้า "แก้หลังอนุมัติ · " · ค้นเหตุผลเจอ', () => {
+  const alloc = { id: 'A1', salesOrderId: 'SO1', salesOrderLineId: 'L2', zoneId: 'Z1', packsPerRound: 2 };
+  const zonesById = new Map([['Z1', { id: 'Z1', siteId: 'S1' }]]);
+  const [editing] = run({
+    orders: [so({ ...reopenedCols, servicePeriodFrom: '2026-10-22' })], lines: [fgPackage({ serviceRounds: 12 })], allocations: [alloc], zonesById,
+  }).rows;
+  assert.deepEqual(editing.reopened, {
+    at: '2026-09-30T03:15:00Z', byId: 'U-KP', byName: 'Kamonrat Pipattanapong', reason: 'SA คีย์โซนผิด — รายการ 2 ต้องเป็นอีกโซน',
+  });
+  assert.equal(editing.state, 'editing', 'ตัวกรองสถานะเดิม (ขั้นของงานไม่เปลี่ยน)');
+  assert.deepEqual(legacySetupStatusView(editing), {
+    tone: 'info',
+    label: 'ฝ่ายขายกำลังแก้ (หลังอนุมัติ) · 1/1 รายการ',
+    sub: 'เปิดแก้ 30/09/2026 · SA คีย์โซนผิด — รายการ 2 ต้องเป็นอีกโซน · แก้ล่าสุด 27/09/2026',
+  });
+  assert.ok(legacySetupHaystack(editing).includes('sa คีย์โซนผิด'), 'ตาเห็นเหตุผลบนแถว = ค้นเจอ');
+
+  const [submitted] = run({
+    orders: [so({ ...reopenedCols, serviceSetupState: 'submitted', serviceSetupSubmittedAt: '2026-09-30T05:00:00Z', servicePeriodFrom: '2026-10-22' })],
+    lines: [fgPackage({ serviceRounds: 12 })], allocations: [alloc], zonesById,
+  }).rows;
+  assert.equal(legacySetupStatusView(submitted).label, 'รอผู้จัดการตรวจ');
+  assert.equal(legacySetupStatusView(submitted).sub, 'แก้หลังอนุมัติ · ยื่นเมื่อ 30/09/2026 · 1 โซนใน 1 ไซต์ · ครั้งละ 2 แพ็ค');
+  assert.ok(legacySetupHaystack(submitted).includes('sa คีย์โซนผิด'), 'ขั้นรอตรวจไม่มีเหตุผลบนแถว แต่ TS ค้นเจอ');
+});
+
+test('0396: คอลัมน์เปิดแก้ค้างหลังผู้จัดการอนุมัติใหม่ (ประทับแล้ว) = ไม่อยู่ในถัง · ใบเดิมที่ไม่เคยเปิดแก้ = reopened null · select เก่าไม่มีคอลัมน์ = ไม่พัง', () => {
+  assert.equal(run({ orders: [so({ ...reopenedCols, serviceTermsOpenedAt: '2026-10-01T03:00:00Z' })], lines: [manual()] }).rows.length, 0);
+  const [plain] = run({ orders: [so()], lines: [manual()] }).rows;
+  assert.equal(plain.reopened, null);
+  assert.equal(legacySetupStatusView(plain).label, 'ยังไม่เริ่ม');
+  /* ใบย้อนหลังไม่มีทางเปิดแก้ (CHECK ของ 0396: origin = 'pipeline') — ตัวตัดสินกลางตอบ null อยู่แล้ว */
+  assert.equal(run({ orders: [so({ ...reopenedCols, origin: 'historical' })], lines: [manual()] }).rows.length, 0);
+});

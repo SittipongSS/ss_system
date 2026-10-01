@@ -107,8 +107,8 @@ import { serviceRoundsEditError } from "@/lib/sales/serviceRoundsEntry";
 /* ⭐ งานบริการรายบรรทัด (mig 0392 · PR-A) — ตัวตัดสินทุกตัวอยู่ที่ serviceSetup.js · ก้อน GET `…/service-setup`
    (useServiceSetup) คือความจริงเดียวของตาราง/แผงแดง/การ์ดราง/แถบผู้อนุมัติ/หัวใบ — หน้านี้แค่ต่อสาย */
 import {
-  SERVICE_SETUP_PANEL_TEXT, issuesByTab, serviceBackfillAwaitingReview, serviceSetupFieldId, serviceSetupIssues, serviceSetupRequired,
-  serviceSetupRevisionLine,
+  SERVICE_REOPEN_TEXT, SERVICE_REOPENED_TEXT, SERVICE_SETUP_PANEL_TEXT, issuesByTab, serviceBackfillAwaitingReview, serviceSetupFieldId,
+  serviceSetupIssues, serviceSetupRequired, serviceSetupRevisionLine,
 } from "@/lib/sales/serviceSetup";
 import useServiceSetup from "@/components/salesPlanning/serviceSetup/useServiceSetup";
 import SalesOrderServiceLines, { revealServiceSetupField } from "@/components/salesPlanning/serviceSetup/SalesOrderServiceLines";
@@ -200,11 +200,14 @@ const SERVICE_BACKFILL_TOAST = {
   submit: () => "ยื่นตรวจงานบริการแล้ว — รอผู้จัดการฝ่ายขายตรวจ",
   approve: (data) => `อนุมัติงานบริการแล้ว · เปิด ${fmtNumber(Number(data?.termsOpened) || 0)} โซนให้ TS`,
   reject: () => "ตีกลับงานบริการแล้ว",
+  /* เปิดแก้หลังอนุมัติ (mig 0396) — n = รอบขายที่ถอนจาก TS (`termsRemoved`) · คำจากแคตตาล็อก */
+  reopen: (data) => SERVICE_REOPEN_TEXT.toast(Number(data?.termsRemoved) || 0),
 };
 const SERVICE_BACKFILL_FAILED = {
   submit: "ยื่นตรวจงานบริการไม่สำเร็จ",
   approve: "อนุมัติงานบริการไม่สำเร็จ",
   reject: "ตีกลับงานบริการไม่สำเร็จ",
+  reopen: SERVICE_REOPEN_TEXT.failed,
 };
 /* ไม่มีข้อที่ติด = Map ว่างตัวเดิมเสมอ — ตารางนับ "ช่องที่แก้แล้วหลังกด" ใหม่ทุกครั้งที่ตัวตนของ Map เปลี่ยน */
 const NO_HIGHLIGHT = new Map();
@@ -293,6 +296,8 @@ export default function SalesOrderDetailPage() {
   const submitWarningsRef = useRef([]);
   /* ตีกลับงานบริการย้อนหลัง (ผู้จัดการฝ่ายขาย) — ReasonDialog ของตัวเอง ไม่ปนกับตีกลับทั้งใบ */
   const [serviceRejectForm, setServiceRejectForm] = useState(null);
+  /* เปิดแก้งานบริการหลังอนุมัติ (mig 0396) — `{ reason, version, prompt }` · prompt/version มาจากก้อน GET สดตอนกดปุ่ม */
+  const [serviceReopenForm, setServiceReopenForm] = useState(null);
   /* "ไปแก้" ของข้อวันงวดที่รวมหลายงวด (แผงแดง · `dateFill`) = ขอให้แผงงวดเข้าโหมดตั้งวันงวดแล้วเปิด "เติมวันงวดที่ว่าง…" (#1846)
      ⭐ เป็น state ไม่ใช่ ref/อีเวนต์ — แผงงวดเมานต์เฉพาะแท็บการชำระ ⇒ คำขอต้องรอจนแผงเพิ่งเมานต์จากการสลับแท็บอ่านได้
      · `{ issue, includeDated }` ออบเจกต์ใหม่ทุกครั้งที่กด · แผงตอบ `dateFillDone(opened)` แล้วหน้าล้างคำขอ (กลับมาแท็บนี้อีกไม่เปิดซ้ำ) */
@@ -742,6 +747,58 @@ export default function SalesOrderDetailPage() {
     if (reason.length < 10) return;
     const ok = await runServiceBackfill("reject", { reason });
     if (ok) setServiceRejectForm(null);
+  }
+
+  /* ── ปุ่ม "แก้งานบริการ" บนหัวการ์ดงานบริการ (mig 0396 · แผน IMPL_PLAN_REOPEN §6.2) ─────────────────────────────
+     ⭐ **ทุกการกดมาถึงที่นี่** (การ์ดไม่ตอบจากก้อนเก่า — ตรวจทาน ui-stale-reopen-blocker) ⇒ โหลดก้อน GET **สด** ก่อนเสมอ:
+       หน้าเปิดทิ้งไว้ TS อาจตั้งรอบไปแล้ว หรือบัญชี/TS แก้ต้นเหตุที่บล็อกไปแล้ว · สดบอกว่าปุ่มหาย/ติดด่าน = toast บอกเหตุ ไม่เปิดโมดัล
+     ⭐ เหตุผลบังคับ 10–500 ตัวอักษร ⇒ ReasonDialog (กติกาของหน้า: เหตุผลบังคับห้ามอยู่ใน ConfirmDialog) · ผลมาจาก `view.reopen.prompt`
+     ⭐ ส่ง `updatedAt` ของก้อนสด **ตามตัวอักษร** · ไม่ลองซ้ำ (apiJson ไม่ retry POST) */
+  async function openServiceReopen() {
+    setError("");
+    const fresh = await freshServiceView();
+    if (!fresh) return;
+    const reopen = fresh.reopen || null;
+    if (!reopen?.canReopen || (!reopen.blockedReason && !reopen.prompt)) {
+      notifyToast.error(SERVICE_REOPEN_TEXT.gone);
+      return;
+    }
+    if (reopen.blockedReason) {
+      notifyToast.error(reopen.blockedReason);
+      return;
+    }
+    setServiceReopenForm({ reason: "", version: fresh.updatedAt ?? null, prompt: approvalPrompt(reopen.prompt) });
+  }
+
+  /* ยืนยันเปิดแก้ — สำเร็จ = ปิดโมดัล (runServiceBackfill โหลดใบ + งานบริการใหม่ · ทักจำนวนรอบขายที่ถอน)
+     ไม่สำเร็จ = อ่านก้อนสดอีกรอบก่อนตัดสิน:
+       · 🐞 ตรวจทาน ui-reopen-lost-response: POST ไม่ลองซ้ำ ⇒ คำตอบหายกลางทาง (ApiNetworkError ไม่มี status) ทั้งที่ฐานเปิดแก้ไปแล้ว
+         ⇒ ก้อนสดบอก `reopened` ด้วยเหตุผลเดียวกับที่เราส่ง = **สำเร็จจริง** — ปิดโมดัล ล้างเหตุ โหลดใบ ทักสำเร็จ
+         (เดิมโมดัลค้าง "เชื่อมต่อไม่ได้ ลองอีกครั้ง" แล้วกดซ้ำได้ 409 "โหลดหน้าใหม่" — จอบอกล้มเหลวทั้งที่ทำไปแล้ว)
+       · ใบขยับจากอีกหน้าต่าง (409 stale) ⇒ เวอร์ชัน/ผลในโมดัลตามของใหม่ เหตุผลที่พิมพ์ไว้ไม่หาย
+       · สดบอกว่าติดด่าน/ปุ่มหาย ⇒ โมดัลคงเดิม (เหตุของ server อยู่ในโมดัลแล้ว) — ไม่มีทางตันที่กดซ้ำแล้ว 409 ทุกรอบ */
+  async function submitServiceReopen() {
+    const form = serviceReopenForm;
+    const reason = String(form?.reason || "").trim();
+    if (!form || reason.length < SERVICE_REOPEN_TEXT.reasonMin) return;
+    const ok = await runServiceBackfill("reopen", { reason }, form.version);
+    if (ok) {
+      setServiceReopenForm(null);
+      return;
+    }
+    const fresh = await setup.reload().catch(() => null);
+    if (fresh?.reopened && String(fresh.reopened.reason || "").trim() === reason) {
+      setServiceReopenForm(null);
+      setError("");
+      await refreshOrder();
+      setToast({ kind: "success", msg: SERVICE_BACKFILL_TOAST.reopen(null) });
+      return;
+    }
+    const reopen = fresh?.reopen || null;
+    if (!reopen?.canReopen || reopen.blockedReason || !reopen.prompt) return;
+    setServiceReopenForm((current) => (current
+      ? { ...current, version: fresh.updatedAt ?? null, prompt: approvalPrompt(reopen.prompt) }
+      : current));
   }
 
   /* ── งวดชำระ (mig 0245) ────────────────────────────────────────────────
@@ -1615,8 +1672,11 @@ export default function SalesOrderDetailPage() {
       : { icon: Repeat, label: "รอบบริการที่ขาย", value: setup.error ? "โหลดไม่สำเร็จ" : "กำลังโหลด…", tone: "muted" })
     : null;
   /* ยอดของใบย้อนหลังไม่ขยับ (ม็อก BackfillApprovedSo) — แทนคำอธิบายสถานะ "ยอดถูกนับเป็น Actual แล้ว" ในที่เดิม */
+  /* ใบที่เปิดแก้หลังอนุมัติ (mig 0396 · `setupView.reopened` ของก้อน GET) พูดว่า "การแก้งานบริการ" ไม่ใช่ "ตั้งย้อนหลัง" (ภาคผนวก A.4) */
   const backfillActualNote = showBackfillPanel
-    ? `ยอดถูกนับเป็น Actual แล้ว (อนุมัติ ${fmtDate(order.approvedAt)}) — การตั้งงานบริการย้อนหลังไม่เปลี่ยนยอดนี้`
+    ? (setupView?.reopened
+      ? SERVICE_REOPENED_TEXT.actualNote(order.approvedAt)
+      : `ยอดถูกนับเป็น Actual แล้ว (อนุมัติ ${fmtDate(order.approvedAt)}) — การตั้งงานบริการย้อนหลังไม่เปลี่ยนยอดนี้`)
     : null;
   /* "ไปแก้" ของแผงแดง — สลับแท็บแล้วพาไปที่ช่อง (ข้อที่ไม่มีช่อง เช่น "ยังไม่มีงวด" = แค่สลับแท็บ) */
   /* ⚠️ สลับแท็บถามก่อนได้ (ร่างวันงวดค้างในแท็บการชำระ · #1846) ⇒ รอคำตอบ แล้วพาไปที่ช่องเฉพาะเมื่อสลับจริง
@@ -2186,6 +2246,8 @@ export default function SalesOrderDetailPage() {
               onSaved={afterServiceSaved}
               canEditRounds={canEditServiceRounds}
               onRoundsSave={setServiceRounds}
+              onReopen={openServiceReopen}
+              reopenBusy={!!busy}
               summaryRows={[
                 { id: "subtotal", label: "ยอดก่อนส่วนลด", value: fmtMoney(order.subtotal) },
                 discountRow,
@@ -2621,6 +2683,29 @@ export default function SalesOrderDetailPage() {
         minLength={10}
         maxLength={500}
         busy={busy === "service-reject"}
+        submitError={error}
+      />
+
+      {/* ⭐ เปิดแก้งานบริการหลังอนุมัติ (mig 0396 · ภาคผนวก A.3 · ม็อก ReopenDialog) — หัว/คำถาม/ผลมาจาก `view.reopen.prompt`
+          ผ่าน approvalPrompt() (ผลบังคับ) · เหตุผล 10–500 ตัวอักษร (route/RPC ตรวจซ้ำหลังตัดช่องว่าง) · เหตุที่ API ตีกลับขึ้นในโมดัล */}
+      <ReasonDialog
+        open={!!serviceReopenForm}
+        title={serviceReopenForm?.prompt?.title}
+        description={serviceReopenForm?.prompt?.description}
+        detail={serviceReopenForm?.prompt?.detail}
+        label={SERVICE_REOPEN_TEXT.reasonLabel}
+        helpText={SERVICE_REOPEN_TEXT.reasonHelp}
+        showCount
+        placeholder={SERVICE_REOPEN_TEXT.reasonPlaceholder}
+        value={serviceReopenForm?.reason || ""}
+        onChange={(reason) => setServiceReopenForm((current) => (current ? { ...current, reason } : current))}
+        onClose={() => setServiceReopenForm(null)}
+        onConfirm={submitServiceReopen}
+        confirmLabel={serviceReopenForm?.prompt?.confirmLabel}
+        tone="warning"
+        minLength={SERVICE_REOPEN_TEXT.reasonMin}
+        maxLength={SERVICE_REOPEN_TEXT.reasonMax}
+        busy={busy === "service-reopen"}
         submitError={error}
       />
 

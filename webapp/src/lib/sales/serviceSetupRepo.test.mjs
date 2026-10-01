@@ -10,8 +10,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  approveServiceBackfill, loadServiceFgOptions, loadServiceSetupContext, loadSiblingSiteCounts, rejectServiceBackfill,
-  rpcServiceSetup, saveServiceSetup, submitServiceBackfill,
+  approveServiceBackfill, loadServiceFgOptions, loadServiceReopenBlockers, loadServiceSetupContext, loadSiblingSiteCounts,
+  rejectServiceBackfill, reopenServiceSetup, rpcServiceSetup, saveServiceSetup, submitServiceBackfill,
 } from './serviceSetupRepo.js';
 import { serviceSetupFlow, serviceSetupIssues, serviceSetupRequired, serviceSetupView } from './serviceSetup.js';
 import { IN_CHUNK_SIZE } from '../supabaseInChunks.js';
@@ -448,4 +448,59 @@ test('ตัวห่อ RPC — ชื่อฟังก์ชัน/อาร�
     { fn: 'reject_sales_order_service_setup', params: { p_order_id: 'SO1', p_expected_updated_at: 'T4', p_reason: 'ใส่โซนผิดสาขา กรุณาแก้', ...actor } },
     { fn: 'submit_sales_order_service_setup', params: { p_order_id: 'SO1', p_expected_updated_at: 'T5', p_actor_id: 'U2', p_actor_name: 'e@x', p_actor_role: 'ae' } },
   ]);
+});
+
+test('0396 ตัวห่อ RPC เปิดแก้ — ชื่อ/อาร์กิวเมนต์ตามลำดับของ reject · เหตุผลตัดช่องว่าง · เวลาดิบ · บล็อกพก detailCodes', async () => {
+  const { client, rpcCalls } = fakeSupabase({}, {
+    rpc: {
+      reopen_sales_order_service_setup: (params) => (params.p_order_id === 'SO9'
+        ? { data: null, error: { message: 'service_setup_reopen_blocked', details: 'plans_active:1,visits_live:3', code: 'P0001' } }
+        : { data: { order: { id: params.p_order_id }, termsRemoved: 2 }, error: null }),
+    },
+  });
+  const user = { id: 'U1', name: 'สมชาย', email: 's@x', role: 'ae' };
+  const ok = await reopenServiceSetup(client, {
+    orderId: 'SO1', expectedUpdatedAt: '2026-09-29T04:08:11.170722+00:00', reason: '   SA คีย์โซนผิด รายการ 2   ', user,
+  });
+  assert.deepEqual(ok, { data: { order: { id: 'SO1' }, termsRemoved: 2 } });
+  assert.deepEqual(rpcCalls[0], {
+    fn: 'reopen_sales_order_service_setup',
+    params: {
+      p_order_id: 'SO1', p_expected_updated_at: '2026-09-29T04:08:11.170722+00:00', p_reason: 'SA คีย์โซนผิด รายการ 2',
+      p_actor_id: 'U1', p_actor_name: 'สมชาย', p_actor_role: 'ae',
+    },
+  });
+  const blocked = await reopenServiceSetup(client, { orderId: 'SO9', expectedUpdatedAt: 'T', reason: 'x'.repeat(12), user });
+  assert.deepEqual(blocked.error, {
+    status: 409, code: 'service_setup_reopen_blocked', message: 'แก้งานบริการไม่ได้แล้ว — TS เริ่มงานของใบนี้แล้ว · ทางแก้: ย้อนการอนุมัติแล้วออก Rev.',
+    detailCodes: ['plans_active:1', 'visits_live:3'],
+  });
+});
+
+test('0396 รหัสบล็อกของฐาน — { codes } (ว่างได้) · อ่านพัง/รูปแปลก = { error } ห้ามเดาว่าไม่มีอะไรกัน', async () => {
+  const { client, rpcCalls } = fakeSupabase({}, {
+    rpc: {
+      sales_order_service_reopen_blockers: (params) => {
+        if (params.p_order_id === 'SO-EMPTY') return { data: [], error: null };
+        if (params.p_order_id === 'SO-NULL') return { data: null, error: null };
+        if (params.p_order_id === 'SO-GONE') return { data: null, error: { message: 'Could not find the function', code: 'PGRST202' } };
+        return { data: ['plans_active:1', ' nothing_to_edit ', ''], error: null };
+      },
+    },
+  });
+  assert.deepEqual(await loadServiceReopenBlockers(client, 'SO1'), { codes: ['plans_active:1', 'nothing_to_edit'] });
+  assert.deepEqual(rpcCalls[0], { fn: 'sales_order_service_reopen_blockers', params: { p_order_id: 'SO1' } });
+  assert.deepEqual(await loadServiceReopenBlockers(client, 'SO-EMPTY'), { codes: [] });
+  const odd = await loadServiceReopenBlockers(client, 'SO-NULL');
+  assert.equal(odd.codes, undefined);
+  assert.equal(odd.error.status, 500);
+  const original = console.error;
+  console.error = () => {};
+  try {
+    const gone = await loadServiceReopenBlockers(client, 'SO-GONE');
+    assert.equal(gone.codes, undefined);
+    assert.equal(gone.error.status, 500, 'ยังไม่รัน 0396 = อ่านไม่ได้ (ผู้เรียกแปลงเป็น unread)');
+  } finally {
+    console.error = original;
+  }
 });

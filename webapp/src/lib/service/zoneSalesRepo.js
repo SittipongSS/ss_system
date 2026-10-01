@@ -33,9 +33,10 @@ export async function loadSetupOrdersByZone(supabase, zoneIds, { withOwners = fa
     .in('zoneId', chunk).order('id', { ascending: true }), { sort: byColumns('id') });
   if (!allocations.length) return new Map();
 
-  /* คอลัมน์ชุดนี้คือทั้งหมดที่ `setupOrderState` → `serviceBackfillState` อ่าน (serviceSetup.js) + เลขที่ใบ + ดีล */
+  /* คอลัมน์ชุดนี้คือทั้งหมดที่ `setupOrderState` → `serviceBackfillState` / `serviceSetupReopened` อ่าน (serviceSetup.js) + เลขที่ใบ + ดีล
+     ⚠️ "serviceSetupReopenedAt" เกิดที่ mig 0396 — ต้องรันก่อน deploy (check:columns แดงชื่อนี้จนกว่าจะรัน) */
   const orders = await fetchAllInChunks(uniqueIds(allocations.map((a) => a.salesOrderId)), (chunk) => supabase
-    .from('sales_orders').select('id, "orderNumber", status, "supersededById", "serviceTermsOpenedAt", "serviceSetupState", origin, "dealId"')
+    .from('sales_orders').select('id, "orderNumber", status, "supersededById", "serviceTermsOpenedAt", "serviceSetupState", origin, "dealId", "serviceSetupReopenedAt"')
     .in('id', chunk).order('id', { ascending: true }));
   const ordersById = new Map(orders.map((o) => [o.id, o]));
 

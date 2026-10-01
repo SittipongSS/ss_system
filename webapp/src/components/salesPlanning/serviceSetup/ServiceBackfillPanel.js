@@ -8,6 +8,8 @@
 // 🔴 ทั้งสองชิ้นขึ้นเฉพาะขั้น 'backfill' ของก้อน GET (D25: ใบที่อนุมัติแล้วแต่ไม่มีอะไรให้ตั้ง = ไม่ขึ้นที่ไหนเลย)
 // 🔴 แถวตรวจ **เป็นกลางก่อนกด** (ตัวเลข x/n เฉย ๆ ไม่มีแดง ไม่มี ✗ — กฎ 3) · แดงเมื่อ `pressed` (กดยื่นแล้วไม่ผ่านด่านของ server) เท่านั้น
 //    · หน้าคิด `pressed` ด้วย `backfillRailPressed` — ด่าน "ยังไม่บันทึก" ของจอไม่นับ (แถวคิดจากของที่บันทึกแล้ว · UAT 29/09)
+// ⭐ ใบที่เปิดแก้หลังอนุมัติ (mig 0396 · `view.reopened`) ใช้สองชิ้นนี้ตัวเดิม — เปลี่ยนแค่หัว/ป้าย + บรรทัด "เปิดแก้ … โดย … · เหตุผล"
+//   (`backfillCopyOfView` · ภาคผนวก A.4 · ม็อก ReopenEditing/ReopenReview) · ปุ่ม/ด่าน/แถวตรวจเหมือนใบเดิมทุกอย่าง
 import { Repeat } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { DetailCard } from "@/components/ui/DetailPage";
@@ -15,8 +17,7 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import StepTrack from "@/components/ui/StepTrack";
 import Tag from "@/components/ui/Tag";
 import { fmtDate, fmtNumber } from "@/lib/format";
-import { SERVICE_BACKFILL_STATE_LABELS } from "@/lib/sales/serviceSetup";
-import { backfillBannerText, backfillRailChecks, backfillStateOfView } from "./serviceSetupDraft";
+import { backfillBannerText, backfillCopyOfView, backfillRailChecks, backfillStateOfView } from "./serviceSetupDraft";
 import styles from "./ServiceBackfillPanel.module.css";
 
 const STATE_TONE = Object.freeze({ not_started: "neutral", editing: "info", submitted: "warning", rejected: "danger" });
@@ -33,12 +34,14 @@ export function ServiceBackfillBanner({ setup }) {
   const state = backfillStateOfView(view);
   if (!state) return null;
   const rejected = state === "rejected";
+  const copy = backfillCopyOfView(view);
   return (
     <StatusNotice
       tone={rejected ? "warning" : "info"}
-      title="ใบนี้อนุมัติก่อนมีการตั้งงานบริการ"
-      action={<Tag tone={STATE_TONE[state]}>{SERVICE_BACKFILL_STATE_LABELS[state]}</Tag>}
+      title={copy.bannerTitle}
+      action={<Tag tone={STATE_TONE[state]}>{copy.stateLabel}</Tag>}
     >
+      {copy.bannerLead ? <span className={styles.bannerLine}>{copy.bannerLead}</span> : null}
       <span className={styles.bannerLine}>{backfillBannerText(view)}</span>
       {rejected ? <span className={styles.bannerReject}>{rejectedLine(view.state)}</span> : null}
     </StatusNotice>
@@ -46,7 +49,7 @@ export function ServiceBackfillBanner({ setup }) {
 }
 
 /**
- * การ์ดราง "งานบริการ (ใบเดิม)"
+ * การ์ดราง "งานบริการ (ใบเดิม)" / "แก้งานบริการ (หลังอนุมัติ)"
  * @param setup ผลของ `useServiceSetup` · @param pressed กด "ยื่นตรวจงานบริการ" แล้วไม่ผ่านด่านของ server (แถวที่ยังไม่ครบเป็นแดง · `backfillRailPressed`)
  * @param busy กำลังยิงคำสั่ง (ปุ่มดับ) · @param onSubmit / onApprove / onReject — หน้าเปิดโมดัลของตัวเอง
  */
@@ -58,8 +61,9 @@ export function ServiceBackfillRailCard({ setup, pressed = false, busy = false, 
   const rights = view.backfill || {};
   const setupState = view.state || {};
   const totals = view.totals || {};
+  const copy = backfillCopyOfView(view);
   const steps = [
-    { key: "setup", label: "ตั้งค่า", state: submitted ? "done" : "now", note: state === "rejected" ? "ตีกลับ — แก้แล้วยื่นใหม่" : null },
+    { key: "setup", label: copy.firstStep, state: submitted ? "done" : "now", note: state === "rejected" ? "ตีกลับ — แก้แล้วยื่นใหม่" : null },
     { key: "review", label: "ผู้จัดการตรวจ", state: submitted ? "now" : "todo" },
     { key: "ts", label: "ส่ง TS", state: "todo" },
   ];
@@ -68,13 +72,15 @@ export function ServiceBackfillRailCard({ setup, pressed = false, busy = false, 
   return (
     <DetailCard
       icon={Repeat}
-      eyebrow="Service setup · ใบเดิม"
-      title="งานบริการ (ใบเดิม)"
-      meta="ตั้งย้อนหลังบนใบที่อนุมัติแล้ว — ผู้จัดการฝ่ายขายตรวจก่อนส่งให้ TS"
-      actions={<Tag tone={STATE_TONE[state]}>{SERVICE_BACKFILL_STATE_LABELS[state]}</Tag>}
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      meta={copy.meta}
+      actions={<Tag tone={STATE_TONE[state]}>{copy.stateLabel}</Tag>}
     >
       <div className={styles.rail}>
         <StepTrack steps={steps} ariaLabel="ขั้นของงานบริการย้อนหลัง" />
+        {/* ใบที่เปิดแก้หลังอนุมัติ: ใคร · เมื่อไร · ทำไม (มติเจ้าของ 30/09 ข้อ 4.3) — ผู้จัดการอ่านก่อนตรวจ */}
+        {copy.reopenLine ? <p className={styles.railReopen}>{copy.reopenLine}</p> : null}
         {state === "rejected" ? <p className={styles.railReject}>{rejectedLine(setupState)}</p> : null}
 
         {submitted ? (
