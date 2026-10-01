@@ -12,6 +12,7 @@ import {
   PRODUCT_SPEC_CERT_STATUS_LABELS, PRODUCT_SPEC_CHECKLIST, productSpecCertPendingLabel,
   productSpecChecklistMissing, restoreChecklistItem,
 } from "@/lib/sales/productSpecChecklist";
+import { productSpecFormulaRow } from "@/lib/sales/productSpecFormulaRow";
 import styles from "./ProductSpecForm.module.css";
 
 /**
@@ -78,6 +79,12 @@ export default function ProductSpecForm({
     );
   };
 
+  /* ⭐ แถว "สูตร / รหัสสูตร / วันที่" (มติเจ้าของ 01/10/2569) — ป้ายและค่าจากตัวประกอบตัวเดียวกับกระดาษ ⇒ จอนี้กับ
+     กระดาษตัวอย่างที่พิมพ์จากหน้าเดียวกันพูดตรงกันทุกตัวอักษร (FG ไม่ผูกสูตรแต่มีกลิ่น = แถวกลิ่นเดิม · ไม่มีทั้งคู่ =
+     ป้ายใหม่ ช่องขีด · วันที่ พ.ศ. แบบใบไทย เพราะตัวอย่างจากหน้าสินค้าเป็นใบไทยเสมอ)
+     ⚠️ ส่ง `product` ตรง ๆ ห้ามแปลงเป็น `{}` — ก้อนที่ไม่มีคีย์ช่องสูตรคือ "ภาพนิ่งเก่า" ของตัวประกอบ (ได้ป้ายกลิ่น) */
+  const formulaRow = productSpecFormulaRow(product, "th");
+
   const setItem = (index, patch) => onItems(items.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   const addItem = () => onItems([...items, {
     itemKey: null, itemLabel: "", detail: "", preparedByS: false, preparedByCustomer: false, note: "",
@@ -108,7 +115,7 @@ export default function ProductSpecForm({
           {derived("รหัสสินค้า", product?.fgCode)}
           {derived("ชื่อผลิตภัณฑ์", productDisplayName(product))}
           {derived("ประเภทผลิตภัณฑ์", product?.categoryName, product?.categoryCode ? `หมวด ${product.categoryCode}` : "")}
-          {derived("กลิ่น / รหัสกลิ่น", product?.scentText)}
+          {derived(formulaRow.label, formulaRow.value)}
           {/* ป้ายเดียวกับกระดาษ "ปริมาตรบรรจุ (Size)" — ค่ามาจากปริมาตร + หน่วยของสินค้า FG ในทะเบียน */}
           {derived("ปริมาตรบรรจุ", product?.volumeText)}
           {field("texture", "ลักษณะเนื้อสาร", { placeholder: "เช่น เหลว · ครีม · ผง", hint: "บันทึกแล้วซิงก์ลงทะเบียนสินค้า" })}

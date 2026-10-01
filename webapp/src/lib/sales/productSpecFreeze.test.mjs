@@ -535,6 +535,113 @@ test('⭐ ร่าง = ภาษาของ SO ปัจจุบัน + ก
   assert.match(html, /15\/11\/2026/, 'ใบอังกฤษ = ค.ศ.');
 });
 
+/* ── แถว "สูตร / รหัสสูตร / วันที่" (มติเจ้าของ 01/10/2569) — ใครได้แถวใหม่ ใครคงของเดิม ─────────────────────
+   ร่าง = อ่านสด ⇒ ได้สูตรที่ FG ผูกวันนี้ · รออนุมัติ/ตีกลับ = ภาพนิ่งของ Rev (ยื่นก่อนวันนั้น = ไม่มีช่องสูตร ⇒ แถวกลิ่นของมันเอง) ·
+   อนุมัติแล้ว = frozenHtml ทุกไบต์ (ไม่เรนเดอร์ใหม่ ไม่เขียนทับ) */
+const FORMULA_TODAY = {
+  scents: [{ id: 'SCT-1', code: 'PF859010103', name: 'THE MOMENT OF TEA TIME #3' }],
+  formulas: [{ id: 'FML-1', code: 'PF85901010301', name: 'THE MOMENT OF TEA TIME #3.1 REV1', formulaDate: '2026-09-10', scentId: 'SCT-1' }],
+};
+const linkFormula = (base) => {
+  base.products[0] = {
+    ...base.products[0], scentId: 'SCT-1', formulaId: 'FML-1',
+    formulaName: 'THE MOMENT OF TEA TIME #3.1 REV1', formulaCode: 'PF85901010301', formulaDate: '2026-09-10',
+  };
+  return base;
+};
+// ภาพนิ่งที่ยื่นก่อน 01/10/2569 — มีแต่ช่องกลิ่น ไม่มีช่องสูตร
+const oldSnapshotRev = (id, revNo, status, over = {}) => {
+  const row = rev(id, revNo, status, over);
+  return { ...row, snapshot: { ...row.snapshot, product: { ...row.snapshot.product, scentText: 'THE MOMENT OF TEA TIME #3 | PF859010103' } } };
+};
+const SCENT_ROW = /<th>กลิ่น \/ รหัสกลิ่น<\/th><td>THE MOMENT OF TEA TIME #3 \| PF859010103<\/td>/;
+
+test('⭐ ร่าง (พิมพ์สด) ได้แถว "สูตร / รหัสสูตร / วันที่" ของสูตรที่ FG ผูกวันนี้ — ใบไทย พ.ศ. · SO อังกฤษ ค.ศ.', async () => {
+  const th = await paper(fakeDb(linkFormula(seed(FORMULA_TODAY)), { users: USERS }), '2');
+  assert.equal(th.error, undefined, th.error);
+  assert.match(th.html, /<th>สูตร \/ รหัสสูตร \/ วันที่<\/th><td>THE MOMENT OF TEA TIME #3\.1 REV1 \| PF85901010301 \| 10\/09\/2569<\/td>/);
+  assert.doesNotMatch(th.html, /กลิ่น \/ รหัสกลิ่น/);
+  const base = linkFormula(seed(FORMULA_TODAY));
+  base.sales_orders[0] = { ...base.sales_orders[0], docLanguage: 'en' };
+  const en = await paper(fakeDb(base, { users: USERS }), '2');
+  assert.match(en.html, /<th>สูตร \/ รหัสสูตร \/ วันที่<\/th><td>THE MOMENT OF TEA TIME #3\.1 REV1 \| PF85901010301 \| 10\/09\/2026<\/td>/);
+  // ตัวอย่างจากหน้าสินค้า (ใบไทยเสมอ) พูดตรงกับร่าง
+  const sample = await renderProductSpecSample(fakeDb(linkFormula(seed(FORMULA_TODAY)), { users: USERS }), { productId: 'P-1', now: NOW });
+  assert.match(sample.html, /THE MOMENT OF TEA TIME #3\.1 REV1 \| PF85901010301 \| 10\/09\/2569<\/td>/);
+});
+
+/* 🐞 เอกสารจริงใบเดียวบน prod (FM-SA-04-280969-001 · Rev.00 ร่าง · FG-108-01-002-1219) เป็น FG ที่ไม่มีทั้งสูตรและกลิ่น —
+   เหมือนสินค้าที่มีสเปคทั้ง 8 ตัว ⇒ ใบนี้คือใบที่เจ้าของจะเปิดดูผลของมติ: ต้องเห็นป้ายใหม่ ไม่ใช่ "กลิ่น / รหัสกลิ่น · N/A" เดิม */
+test('🔴 ร่าง/ตัวอย่างของ FG ที่ไม่มีทั้งสูตรและกลิ่น (ใบจริงบน prod) = ป้ายใหม่ + N/A · FG ไม่ผูกสูตรแต่มีกลิ่น = แถวกลิ่นเดิม', async () => {
+  const NEW_EMPTY = /<th>สูตร \/ รหัสสูตร \/ วันที่<\/th><td><span class="na">N\/A<\/span><\/td>/;
+  const draft = await paper(fakeDb(seed(), { users: USERS }), '2');
+  assert.equal(draft.error, undefined, draft.error);
+  assert.match(draft.html, NEW_EMPTY);
+  assert.doesNotMatch(draft.html, /กลิ่น \/ รหัสกลิ่น/);
+  const sample = await renderProductSpecSample(fakeDb(seed(), { users: USERS }), { productId: 'P-1', now: NOW });
+  assert.match(sample.html, NEW_EMPTY);
+  assert.doesNotMatch(sample.html, /กลิ่น \/ รหัสกลิ่น/);
+  // มีกลิ่นแต่ไม่ผูกสูตร ⇒ พิมพ์กลิ่นใต้ป้ายกลิ่น (ไม่พิมพ์รหัสกลิ่นใต้คำว่า "รหัสสูตร")
+  const base = seed(FORMULA_TODAY);
+  base.products[0] = { ...base.products[0], scentId: 'SCT-1' };
+  const scented = await paper(fakeDb(base, { users: USERS }), '2');
+  assert.match(scented.html, SCENT_ROW);
+  assert.doesNotMatch(scented.html, /สูตร \/ รหัสสูตร \/ วันที่/);
+});
+
+test('🪤 รออนุมัติ/ตีกลับที่ยื่นก่อน 01/10/2569 = แถวกลิ่นจากภาพนิ่งของมันเอง แม้วันนี้ FG ผูกสูตรแล้ว (ไม่อ่านสด ไม่ใช่ขีดสามตัว)', async () => {
+  for (const status of ['pending_ae', 'pending_ae_supervisor', 'rejected']) {
+    const db = fakeDb(linkFormula(seed({
+      ...FORMULA_TODAY,
+      product_spec_document_revisions: [oldSnapshotRev('R0', 0, status, { rejectionReason: 'แก้ชื่อให้ตรง', rejectedStage: 'ae' })],
+    })), { users: USERS });
+    const res = await paper(db, null);
+    assert.equal(res.error, undefined, res.error);
+    assert.match(res.html, SCENT_ROW, status);
+    assert.doesNotMatch(res.html, /สูตร \/ รหัสสูตร \/ วันที่|#3\.1 REV1|- \| - \| -/, status);
+    assert.equal(revWrites(db).length, 0, status);
+  }
+});
+
+test('🔴 ฉบับที่อนุมัติแล้ว (frozenHtml) ไม่เปลี่ยนตามมติ 01/10/2569 — คืนกระดาษเดิมทุกไบต์ ไม่เรนเดอร์ใหม่ ไม่เขียนทับ', async () => {
+  const FROZEN = '<html>กระดาษที่ตรึงด้วยตัวเรนเดอร์ fm-sa-04@2026-09-22g<article class="sheet explicit-page" aria-label="x"><!--psd:watermark--><!--/psd:watermark--><table class="kv"><tr><th>กลิ่น / รหัสกลิ่น</th><td>THE MOMENT OF TEA TIME #3 | PF859010103</td></tr></table></article></html>';
+  const db = fakeDb(linkFormula(seed({
+    ...FORMULA_TODAY,
+    product_spec_document_revisions: [
+      oldSnapshotRev('R1', 1, 'approved', { frozenHtml: FROZEN, frozenAt: '2026-09-25T03:00:00.000Z', rendererVersion: 'fm-sa-04@2026-09-22g' }),
+    ],
+  })), { users: USERS });
+  const res = await paper(db, null);
+  assert.equal(res.error, undefined, res.error);
+  assert.equal(res.html, FROZEN);
+  assert.equal(revWrites(db).length, 0, 'ของที่ตรึงแล้วห้ามถูกเขียน');
+  assert.equal(frozenOf(db, 'R1').rendererVersion, 'fm-sa-04@2026-09-22g', 'รุ่นตัวเรนเดอร์ของแผ่นที่ตรึงคงเดิม');
+  // ตรึงซ้ำตรง ๆ ก็ได้ของเดิม
+  const again = await freezeProductSpecRevision(db, { documentId: 'PSD-1', revisionId: 'R1', now: NOW });
+  assert.equal(again.frozenHtml, FROZEN);
+  assert.equal(revWrites(db).length, 0);
+});
+
+test('ตรึงตอนอนุมัติ: ภาพนิ่งเก่า (ยื่นก่อน 01/10) = แถวกลิ่น · ภาพนิ่งใหม่ = แถวสูตร — ทั้งคู่ประทับรุ่นตัวเรนเดอร์ปัจจุบัน', async () => {
+  const oldDb = fakeDb(linkFormula(seed({ ...FORMULA_TODAY, product_spec_document_revisions: [oldSnapshotRev('R1', 1, 'approved')] })), { users: USERS });
+  const old = await freezeProductSpecRevision(oldDb, { documentId: 'PSD-1', revisionId: 'R1', now: NOW });
+  assert.equal(old.error, undefined, old.error);
+  assert.match(old.frozenHtml, SCENT_ROW);
+  assert.equal(frozenOf(oldDb, 'R1').rendererVersion, PRODUCT_SPEC_RENDERER_VERSION);
+
+  const fresh = rev('R1', 1, 'approved');
+  fresh.snapshot.product = {
+    ...fresh.snapshot.product, scentText: 'THE MOMENT OF TEA TIME #3 | PF859010103',
+    formulaId: 'FML-1', formulaName: 'THE MOMENT OF TEA TIME #3.1 REV1', formulaCode: null, formulaDate: '2026-09-10',
+  };
+  // 🪤 ทะเบียนสูตรวันนี้มีรหัสแล้ว แต่ภาพนิ่งถ่ายตอนยังไม่มี — กระดาษที่ตรึงพิมพ์ตามภาพนิ่ง (ขีด) ไม่อ่านสด
+  const newDb = fakeDb(linkFormula(seed({ ...FORMULA_TODAY, product_spec_document_revisions: [fresh] })), { users: USERS });
+  const res = await freezeProductSpecRevision(newDb, { documentId: 'PSD-1', revisionId: 'R1', now: NOW });
+  assert.equal(res.error, undefined, res.error);
+  assert.match(res.frozenHtml, /<th>สูตร \/ รหัสสูตร \/ วันที่<\/th><td>THE MOMENT OF TEA TIME #3\.1 REV1 \| - \| 10\/09\/2569<\/td>/);
+  assert.doesNotMatch(res.frozenHtml, /PF85901010301/);
+});
+
 test('🪤 ร่างที่บรรทัดชี้ไปบรรทัดของ SO อื่น = พิมพ์แบบไม่มีบรรทัด ไม่ยืมจำนวนของใบอื่น', async () => {
   const db = fakeDb(seed({
     sales_order_lines: [{ id: 'SOL-1', salesOrderId: 'SOR-อื่น', productId: 'P-1', qty: 9999, unit: 'ลัง' }],
