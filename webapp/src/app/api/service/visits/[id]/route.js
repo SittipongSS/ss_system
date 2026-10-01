@@ -18,7 +18,9 @@ import {
 } from '@/lib/service/survey';
 import { loadSurveyFieldState, loadSurveySendBackState } from '@/lib/service/surveyRepo';
 import { notifySurveyFieldDone } from '@/lib/service/surveyFieldDoneNotify';
-import { findPlan, loadVisitItems, requireVisit, visitFieldRecordCount } from '@/lib/service/visitsRepo';
+import {
+  findPlan, loadVisitCrew, loadVisitItems, requireVisit, visitCrewRole, visitFieldRecordCount,
+} from '@/lib/service/visitsRepo';
 import { findSite, loadAssets, loadAssetsByIds, loadZones } from '@/lib/service/sitesRepo';
 import { evaluateVisitGate, gateBlocker, gatePassed, gateVisitBeforeChange } from '@/lib/service/visitGate';
 import { gateContextForSite, loadVisitGateContext } from '@/lib/service/gateContext';
@@ -33,6 +35,8 @@ import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { commitAssetMove } from '@/lib/service/assetMoveCommit';
 import { fmtDate } from '@/lib/format';
 import { stampVisitInput, stampVisitTimes } from '@/lib/service/visitStamp';
+import { visitMoveDecision } from '@/lib/service/crew/jobStart';
+import { businessDate } from '@/lib/businessDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,12 +51,18 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
        อะไรให้ทำบ้าง · ของเดิมหน้าปิดงานได้แค่ `visit` + `site` จาก /my-visits ซึ่ง
        select แค่ 12 คอลัมน์และไม่มี assets เลย ⇒ ยิงจากที่นี่ทีเดียวดีกว่าให้จอ
        ไปเรียก /sites/[id]/assets เพิ่มอีกใบ */
-    const [items, assets, zones, results] = await Promise.all([
+    /* ⭐ หน้างานของช่าง (แผน operation-crew C9 · A-3) อ่านจาก GET เดียวนี้ — เพิ่ม `site` (ชื่อ/ที่อยู่/หมายเหตุ
+       การเข้าไซต์ของหัวงาน) · `crew` (ทีมของใบ ชื่อผู้ช่วยถามรายคน · `you` = คนเปิดจอ) · `viewerRole`
+       (`'lead'` | `'helper'` | `null` ของ **คนเปิดจอ** — จอช่างเขียน "งานนี้ไม่ได้มอบให้คุณ" เมื่อเป็น null)
+       ⚠️ ไม่มีจำนวนแพ็ก/แผนรายโซนในงวดนี้ (มติ 28/09 Q2 → S9) · ชื่อผู้ช่วยอ่านพลาด = `crewUnknown` ไม่ล้มทั้งใบ */
+    const [items, assets, zones, results, site, crew] = await Promise.all([
       loadVisitItems(supabase, id),
       loadAssets(supabase, access.visit.siteId),
       loadZones(supabase, access.visit.siteId),
       supabase.from('service_visit_assets').select('*').eq('visitId', id)
         .then(({ data, error }) => { if (error) throw error; return data || []; }),
+      findSite(supabase, access.visit.siteId),
+      loadVisitCrew(supabase, access.visit, { viewerId: user?.id ?? null }),
     ]);
     /* ⭐ ผลด่านราย **โซน** (PR-C) — ใบส่งงาน/ปิดงานต้องตัดโซนที่ไม่ได้รับอนุญาต
        เป็น "งดบริการ" พร้อมเหตุ · ไซต์เดียวโดนหลาย SO ครอบ จ่ายใบเดียวไปได้เฉพาะ
@@ -76,6 +86,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     return ok({
       visit: access.visit, items, assets, zones, results, resultAssets,
       zoneGates: gate.zoneGates || [],
+      site, crew: crew.crew, crewUnknown: crew.unknown,
+      viewerRole: visitCrewRole(access.visit, user?.id),
     });
   } catch (e) {
     return fail(e.message, 500);
@@ -126,6 +138,20 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
        ⇒ ตอบให้ชัดว่าต้องไปทางไหนแทน (แก้ย้อนหลังผ่านฟอร์มแก้นัด ซึ่งติดธง actualTimeEdited) */
     if (body.stamp && isClosedVisit(before)) {
       return conflict('ใบนี้ปิดงานแล้ว — แก้เวลาย้อนหลังที่ฟอร์มแก้นัด ปุ่มจับเวลาใช้ได้เฉพาะใบที่ยังไม่ปิด');
+    }
+
+    /* ⭐ **ด่านรับงาน** (แผน operation-crew C7 · ตรรกะเต็มที่ `crew/jobStart.js`) — ยังไม่ถึงวันนัด ·
+       ร่าง/ยกเลิก/เลื่อนแล้ว = 409 ทุกตำแหน่ง · `stamp:'end'` บนนัดของวันข้างหน้าก็ 409 (กัน "ไปแล้ว
+       เข้าไม่ได้" ปิดงานล่วงหน้า) · กดรับงานซ้ำบนใบที่กำลังทำ = 200 พร้อมแถวเดิม **ไม่เขียนอะไรเลย**
+       (ผู้ช่วยที่รายการค้างไว้ต้องได้เข้างาน ไม่ใช่ประทับเวลาเริ่มทับคนแรก)
+       ⚠️ "วันนี้" = นาฬิกาไทย (`businessDate`) — ตี 0:30 ไทยยังเป็นเมื่อวานของ UTC
+       🔴 **ตัดสินจากสถานะปลายทาง ไม่ใช่จาก `body.stamp`** (รีวิว S1 28/09) — เดิมถามเฉพาะคำขอที่มี stamp
+          ⇒ ไม่ส่ง stamp แต่ส่ง `status` ตรง ๆ ข้ามได้ทุกข้อ (กำลังทำของอีกสามวัน · ปิดงานล่วงหน้า ·
+          ช่างยกเลิก/เลื่อนนัดตัวเอง) · ⚠️ อยู่ **หลัง** `closeFromAssets` สรุปสถานะลง `body.status` แล้ว */
+    const startGate = visitMoveDecision(before, body, { ownWorkOnly: access.ownWorkOnly, today: businessDate() });
+    if (startGate?.error) return startGate.forbidden ? forbidden(startGate.error) : conflict(startGate.error);
+    if (startGate?.noop) {
+      return ok({ visit: before, nextVisitSuggestion: null, steppedBackRequest: false, retrieval: null });
     }
 
     /* ⭐ กด "เริ่มงาน" = **server เป็นคนตั้งสถานะ** ไม่ใช่ค่าที่จอส่งมา
@@ -252,6 +278,13 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
           ⚠️ ส่ง `hasEndDateColumn` จากแถวจริง — ฐานที่ยังไม่รัน 0386 ไม่มีคอลัมน์ ⇒ ไม่ใส่คีย์ = พฤติกรรมเดิม */
     const nowIso = new Date().toISOString();
     let patch = { ...value };
+    /* 🐞 **รูปหน้างาน/ลายเซ็นไม่ได้ส่งมา = ไม่แตะคอลัมน์** (แผน operation-crew C5 · R5) — `value` มาจาก
+       `{...before, ...body}` ⇒ `normalizeVisitInput` คืนสองคีย์นี้เสมอ เป็นค่าที่อ่านไว้ **ตอนต้นคำขอ**
+       ⇒ กดรับงาน/ส่งงานเขียนรูปชุดเก่ากลับลงแถว รูปที่ผู้ช่วยอัปขึ้นระหว่างนั้นหายเงียบ (และช่องที่ normalize
+       ไม่รู้จักหลุดทิ้ง) · ⚠️ เทียบ "มีคีย์ใน body" ไม่ใช่ค่าว่าง — ส่ง `''`/`[]` มา = ตั้งใจล้าง
+       แผ่นปิดงานเดิมส่งทั้งสองคีย์มาเสมอ ⇒ พฤติกรรมของแผ่นนั้นไม่เปลี่ยน */
+    if (!('attachments' in body)) delete patch.attachments;
+    if (!('customerSignatureUrl' in body)) delete patch.customerSignatureUrl;
     if (gateTrail) {
       const { skipped, ...cols } = gateTrail;
       Object.assign(patch, cols);

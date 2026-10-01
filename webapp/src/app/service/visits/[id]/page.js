@@ -296,10 +296,12 @@ export default function VisitReportPage({ params }) {
               : "รูปและลายเซ็นไม่บังคับ"}>
           <div className={styles.photos}>
             {/* ⭐ ลิงก์ของระบบ (`visitFileHref`) ไม่ใช่ `webViewLink` ของ Drive ที่อยู่ในแถว — ไฟล์อยู่ใน
-                Shared Drive ที่พนักงานเปิดตรงไม่ได้ (หัวไฟล์ lib/service/visitFiles.js) · `index` = ลำดับในแถว
-                (buildVisitReport ส่งต่อ attachments ทั้งแถว ไม่กรอง ไม่เรียง — เทสต์ปักไว้) */}
+                Shared Drive ที่พนักงานเปิดตรงไม่ได้ (หัวไฟล์ lib/service/visitFiles.js)
+                🔑 ชี้ด้วย **กุญแจของรูป** (`url` → `?h=`) ไม่ใช่ลำดับ — ช่างลบรูปทีละรูปได้แล้ว (`visits/[id]/photos`)
+                ⇒ หน้าที่เปิดค้างของใบที่ยังทำอยู่ ลิงก์ `?i=N` จะเปิดรูปที่เลื่อนขึ้นมาแทน (R14) · `index` เหลือเป็นทางสำรอง
+                ของแถวที่ไม่มี url (buildVisitReport ส่งต่อ attachments ทั้งแถว ไม่กรอง ไม่เรียง — เทสต์ปักไว้) */}
             {report.attachments.map((att, index) => (
-              <a key={att.url} href={visitFileHref(visit.id, { index })} target="_blank" rel="noreferrer noopener"
+              <a key={att.url} href={visitFileHref(visit.id, { url: att.url, index })} target="_blank" rel="noreferrer noopener"
                 className={styles.photo}>
                 {att.kind === "before" ? "ก่อน" : att.kind === "after" ? "หลัง" : "รูป"}
               </a>

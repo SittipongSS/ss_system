@@ -77,15 +77,30 @@ export function deriveVisitStatus(results = []) {
   return 'partial';
 }
 
-/* ตรวจผลรายเครื่องหนึ่งแถว — คืน { value, broken, error }
+/* ตรวจผลรายเครื่องหนึ่งแถว — คืน { value, assetId, broken, symptom, error }
    ⚠️ ตรวจซ้ำที่นี่ทั้งที่ DB มี CHECK อยู่แล้ว เพราะข้อความจาก Postgres เป็นภาษาอังกฤษดิบ
    ที่ไม่บอกว่าต้องทำอะไรต่อ (ผู้ใช้คือเจ้าหน้าที่ที่ยืนอยู่หน้างาน)
    ⭐ `broken` = ช่างแจ้งว่าเครื่องชำรุด (ข้อ H) — **อยู่นอก `value` โดยตั้งใจ**: `value`
      ถูกกางลงแถว `service_visit_assets` ตรง ๆ ซึ่งไม่มีคอลัมน์นี้ · สภาพเครื่องเป็นของ
-     ทะเบียน (`service_assets.condition` + แถวประวัติ) ไม่ใช่ของผลรายนัด */
-export function normalizeAssetResult(raw = {}) {
+     ทะเบียน (`service_assets.condition` + แถวประวัติ) ไม่ใช่ของผลรายนัด
+   ⭐ `symptom` = **อาการที่ติดไปกับคำสั่งแจ้งชำรุด** (แผน operation-crew C4 · R6) — ช่อง `symptom` ที่ส่งมา
+     หรือ (จอเก่าที่ไม่ส่ง) ช่องเหตุผลของแถวเหมือนเดิม · มีเฉพาะตอน `broken` · ⚠️ ไม่ถูกเขียนลงแถวผล
+     ⇒ กด "ทำแล้ว/ทำไม่ได้" ทีหลังเขียนทับอาการไม่ได้ (อาการอยู่ในประวัติเครื่องที่เดียว)
+   ⭐ `allowBrokenOnly` (PUT ทีละเครื่อง `partial:true` เท่านั้น) — รับ `{ assetId, broken: true, symptom }` ที่
+     **ยังไม่มีผล**: แจ้งชำรุดได้ก่อนเลือกผล (บอร์ด A-3) · คืน `value: null` = ไม่มีแถวผลให้เขียน
+     ⚠️ PUT ทั้งชุดไม่รับทรงนี้ — ทั้งชุดคือ "คำตอบของทั้งใบ" เครื่องที่ไม่มีผลจะหลุดจากใบ */
+export function normalizeAssetResult(raw = {}, { allowBrokenOnly = false } = {}) {
   const assetId = String(raw.assetId ?? '').trim();
   if (!assetId) return { value: null, error: 'ต้องระบุอุปกรณ์' };
+
+  // ⚠️ ต้องเป็น `true` จริง ๆ — สตริง "false" จากฟอร์มเก่าต้องไม่กลายเป็นแจ้งชำรุด
+  const broken = raw.broken === true;
+  const symptom = String(raw.symptom ?? '').trim();
+  if (symptom.length > 500) return { value: null, error: 'อาการยาวเกิน 500 ตัวอักษร' };
+  if (allowBrokenOnly && broken && (raw.outcome == null || raw.outcome === '')) {
+    if (symptom.length < 5) return { value: null, error: 'แจ้งเครื่องชำรุดต้องบอกอาการอย่างน้อย 5 ตัวอักษร' };
+    return { value: null, assetId, broken: true, symptom, error: null };
+  }
 
   const outcome = raw.outcome;
   if (!ASSET_OUTCOMES.includes(outcome)) return { value: null, error: 'ผลการทำงานของอุปกรณ์ไม่ถูกต้อง' };
@@ -97,10 +112,10 @@ export function normalizeAssetResult(raw = {}) {
   if (reason.length > 500) return { value: null, error: 'เหตุผลยาวเกิน 500 ตัวอักษร' };
 
   /* แจ้งชำรุดต้องบอก **อาการ** — หัวหน้าที่เปิดหน้าเครื่องทีหลังต้องรู้ว่าเสียยังไง ส่งซ่อม
-     หรือแค่ต้องไปเช็คซ้ำ · ใช้ช่องเหตุผลเดียวกับผลรายเครื่อง (ทำแล้วแต่เครื่องมีปัญหาก็มีจริง)
-     ⚠️ ต้องเป็น `true` จริง ๆ — สตริง "false" จากฟอร์มเก่าต้องไม่กลายเป็นแจ้งชำรุด */
-  const broken = raw.broken === true;
-  if (broken && reason.length < 5) {
+     หรือแค่ต้องไปเช็คซ้ำ · จอเก่าใช้ช่องเหตุผลเดียวกับผลรายเครื่อง (ทำแล้วแต่เครื่องมีปัญหาก็มีจริง)
+     · จอใหม่ส่ง `symptom` แยกมา ⇒ ใช้อันนั้นก่อน */
+  const brokenText = symptom || reason;
+  if (broken && brokenText.length < 5) {
     return { value: null, error: 'แจ้งเครื่องชำรุดต้องบอกอาการอย่างน้อย 5 ตัวอักษร' };
   }
 
@@ -119,7 +134,9 @@ export function normalizeAssetResult(raw = {}) {
       reason: reason || null,
       replacedByAssetId: outcome === 'swapped' ? replacedByAssetId : null,
     },
+    assetId,
     broken,
+    symptom: broken ? brokenText : null,
     error: null,
   };
 }
