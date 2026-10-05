@@ -219,42 +219,13 @@ test('นับถอยหลัง = กลับสมการของ plan
   }
 });
 
-/* ── ลำดับใน cron + สัญญากับระบบเดิม ─────────────────────────────────── */
-
-/* 🔴 ปิดก่อนตีกลับเสมอ — ตีกลับก่อนแล้วใบหลุดไป `new` ซึ่งตัวปิดไม่สแกน */
-test('cron ปิดก่อนแล้วค่อยตีกลับ · ใบที่ปิดไม่ถูกตีกลับซ้ำ · กันแข่งด้วยสถานะ', () => {
+/* ── มติ 2026-10-05 (เย็น): **เลิกให้ระบบปิดเอง** ─────────────────────────────
+   ตัวปิดขึ้น prod แล้ว (#1874) แต่ถูกถอดออกจาก cron ก่อนรอบแรกจะทำงาน — กติกาในไฟล์นี้
+   เก็บไว้ให้ทางเลือกที่ "คนเป็นคนกดปิด" ใช้ต่อ
+   🔴 เทสต์นี้กันไม่ให้ใครเสียบ planAutoLost กลับเข้า cron โดยไม่มีมติใหม่ */
+test('cron ไม่ปิดลีดเอง — ไม่เรียก planAutoLost และไม่เขียนสถานะ disqualified', () => {
   const src = readFileSync(new URL('../../app/api/cron/auto-bounce-leads/route.js', import.meta.url), 'utf8');
-  assert.ok(src.indexOf('planAutoLost(') < src.indexOf('planAutoBounce('), 'ต้องวางแผนปิดก่อนตีกลับ');
-  assert.match(src, /planAutoBounce\(leads\.filter\(\(lead\) => !lostIds\.has\(lead\.id\)\)/);
-  assert.ok(src.indexOf("kind: 'lead_auto_lost'") < src.indexOf("kind: 'lead_auto_bounce'"), 'ต้องเขียนปิดก่อนตีกลับ');
-  // ใบที่เพิ่งถูกกดนัดพอดีต้องไม่ถูกทับ
-  assert.equal((src.match(/\.eq\('status', lead\.status\)/g) || []).length, 2);
-  // ไม่มีถังขยะ — audit คือร่องรอยเดียวว่าระบบปิดอะไรไปบ้าง
-  assert.match(src, /recordAudit\(/);
-});
-
-/* ปิดอัตโนมัติต้องย้อนได้ด้วยปุ่มลูกค้ากลับมา — ไม่ล้างทีม/ผู้รับ (leadReopenStatus อ่านจากแถว) */
-test('ใบที่ระบบปิดดึงกลับได้ และไม่ล้างคอลัมน์ที่ reopen ต้องใช้', () => {
-  assert.deepEqual(LEAD_TRANSITIONS.disqualified, ['reopen']);
-  assert.equal(TRANSITION_TO_STATUS.disqualify, 'disqualified');
-  const src = readFileSync(new URL('../../app/api/cron/auto-bounce-leads/route.js', import.meta.url), 'utf8');
-  const lostBlock = src.slice(src.indexOf('/* ── ① ปิดอัตโนมัติ'), src.indexOf('/* ── ② ตีกลับอัตโนมัติ'));
-  assert.ok(lostBlock.length > 0, 'หาบล็อกปิดอัตโนมัติไม่เจอ');
-  for (const column of ['assigneeId:', 'team:', 'firstContactAt:', 'meetingAt:']) {
-    const update = lostBlock.slice(lostBlock.indexOf('.update({'), lostBlock.indexOf('})', lostBlock.indexOf('.update({')));
-    assert.equal(update.includes(column), false, `ปิดอัตโนมัติไม่ควรแตะ ${column}`);
-  }
-});
-
-/* audit สร้างแถว "ก่อน" จาก `{ ...หลัง, ...ก่อน }` — ช่องที่การปิดเขียนแต่ไม่ได้ select มา
-   จะโผล่ในแถว "ก่อน" เป็นค่าใหม่ ⇒ audit บอกว่าไม่มีอะไรเปลี่ยนตรงช่องนั้น กู้ย้อนไม่ได้ */
-test('ทุกช่องที่การปิดเขียน ต้องอยู่ในคอลัมน์ที่ cron select มา', () => {
-  const src = readFileSync(new URL('../../app/api/cron/auto-bounce-leads/route.js', import.meta.url), 'utf8');
-  const columnsSrc = src.slice(src.indexOf('const COLUMNS ='), src.indexOf(';', src.indexOf('const COLUMNS =')));
-  const selected = new Set([...columnsSrc.matchAll(/'([^']+)'/g)].flatMap(([, part]) => part.split(',')).map((c) => c.trim()).filter(Boolean));
-  const lostBlock = src.slice(src.indexOf('/* ── ① ปิดอัตโนมัติ'), src.indexOf('/* ── ② ตีกลับอัตโนมัติ'));
-  const update = lostBlock.slice(lostBlock.indexOf('.update({'), lostBlock.indexOf('})', lostBlock.indexOf('.update({')));
-  const written = [...update.matchAll(/^\s*(\w+):/gm)].map(([, key]) => key);
-  assert.ok(written.length >= 5, 'อ่านช่องที่เขียนไม่ได้ — เทสต์จะกลายเป็นเทสต์เปล่า');
-  for (const key of written) assert.ok(selected.has(key), `${key} ไม่อยู่ใน COLUMNS`);
+  assert.equal(src.includes('planAutoLost'), false);
+  assert.equal(src.includes('leadAutoLost'), false);
+  assert.equal(/status:\s*'disqualified'/.test(src), false);
 });
