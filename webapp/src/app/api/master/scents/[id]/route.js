@@ -3,7 +3,8 @@
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { recordAudit } from '@/lib/audit';
 import { canDeleteRegistryAnyStatus } from '@/lib/permissions';
-import { saveRegistryShares } from '@/lib/master/registrySharesAdmin';
+import { planRegistryShares, saveRegistryShares } from '@/lib/master/registrySharesAdmin';
+import { canManageRegistryShares, requestedShareIds, shareChangeSummary, SHARE_FORBIDDEN } from '@/lib/master/registryShares';
 import {
   acceptScentCode, acceptScentError, acceptedScentStatus, archiveScentError,
   canEditScent, canOfferScentDelete, canSetScentCode, canViewScents, deleteScentError, isScentRegistrar,
@@ -42,7 +43,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
 //                                           (ไม่ส่งมา = ใช้รหัส/สถานะที่ผู้เสนอกรอกไว้)
 //   { action: 'sent',   sentAt }          — RD บันทึกวันที่ส่งกลิ่นให้ลูกค้า
 //   { action: 'status', status }          — developing ↔ active ↔ archived
-//   { action: 'shares', customerIds }     — RD แชร์ให้ลูกค้ารายอื่น (ม-150)
+//   { action: 'shares', customerIds }     — แชร์ให้ลูกค้ารายอื่น (ม-150 · RD + Sup ขึ้นไป มติ 05/10)
+//   'edit' ส่ง `sharedCustomerIds` มาด้วยได้ = ช่อง "ลูกค้าอื่นที่ใช้ได้" ในฟอร์มแก้ (ผลเดียวกับ 'shares')
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
   const { id } = await ctx.params;
@@ -60,18 +62,17 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   try {
     /* ⭐ แชร์ให้ลูกค้ารายอื่น (ม-150 · mig 0373) — `{ action: 'shares', customerIds: [...] }` ตั้งรายชื่อทั้งชุด
-       · RD เท่านั้น (มติผู้ใช้ 2026-09-22) · เลิกแชร์ลูกค้าที่ใช้อยู่ไม่ได้ (409 พร้อมเหตุ) */
+       · RD + หัวหน้าฝ่ายขาย Sup ขึ้นไป (`canManageRegistryShares` · มติ 2026-10-05) · เลิกแชร์ลูกค้าที่ใช้อยู่ไม่ได้ (409 พร้อมเหตุ) */
     if (action === 'shares') {
-      if (!isScentRegistrar(user)) return forbidden('เฉพาะ RD เท่านั้นที่แชร์กลิ่นให้ลูกค้ารายอื่นได้');
+      if (!canManageRegistryShares(user)) return forbidden(SHARE_FORBIDDEN.scent);
       try {
         const result = await saveRegistryShares(supabase, 'scent', scent, body.customerIds, user);
-        if (result.add.length || result.remove.length) {
+        const summary = shareChangeSummary('scent', scent, result);
+        if (summary) {
           await recordAudit({
             user, action: 'update', entityType: 'scent', entityId: id, request: req,
             before: { ...scent, sharedCustomers: result.before }, after: { ...scent, sharedCustomers: result.after },
-            summary: `แชร์กลิ่น ${scent.code || scent.name}: `
-              + [result.add.length ? `เพิ่ม ${result.add.length} ลูกค้า` : null,
-                result.remove.length ? `เลิกแชร์ ${result.remove.length} ลูกค้า` : null].filter(Boolean).join(' · '),
+            summary,
           });
         }
         return ok({ sharedCustomers: result.after, sharedCustomerIds: result.after.map((s) => s.customerId) });
@@ -82,6 +83,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
     if (action === 'edit') {
       if (!canEditScent(user, scent)) return forbidden('ไม่มีสิทธิ์แก้กลิ่นนี้');
+      // ช่อง "ลูกค้าอื่นที่ใช้ได้" (มติ 05/10) — ไม่ส่งมา = ไม่แตะการแชร์ (ฟอร์มของคนไม่มีสิทธิ์ไม่มีช่องนี้)
+      const shareIds = requestedShareIds(body);
+      if (shareIds && !canManageRegistryShares(user)) return forbidden(SHARE_FORBIDDEN.scent);
       const { value, error } = normalizeScentInput({ ...scent, ...body });
       if (error) return badRequest(error);
       // ⚠️ ส่ง id ไปด้วย — กันกลิ่นอ้างตัวเองเป็นต้นทาง (constraint ของ 0205 กันอยู่
@@ -117,7 +121,16 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         }
         editable.code = code;
       }
-      const data = await updateScent(supabase, id, editable);
+      /* ⚠️ ตรวจรายชื่อแชร์ **ก่อนเขียนตัวกลิ่น** — เลิกแชร์คนที่ใช้อยู่ (409) ต้องตีกลับทั้งใบ
+         ไม่ใช่บันทึกช่องอื่นไปแล้วค่อยบอกว่าแชร์ไม่ผ่าน */
+      if (shareIds) {
+        try {
+          await planRegistryShares(supabase, 'scent', { ...scent, customerId: editable.customerId || scent.customerId }, shareIds);
+        } catch (e) {
+          return fail(e.message, e.status || 500);
+        }
+      }
+      let data = await updateScent(supabase, id, editable);
       await logRegistryChangeToRequests(supabase, {
         kind: 'scent', id, before: scent, after: data, user,
       });
@@ -125,6 +138,22 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         user, action: 'update', entityType: 'scent', entityId: id,
         before: scent, after: data, request: req,
       });
+      if (shareIds) {
+        try {
+          const result = await saveRegistryShares(supabase, 'scent', data, shareIds, user);
+          const summary = shareChangeSummary('scent', data, result);
+          if (summary) {
+            await recordAudit({
+              user, action: 'update', entityType: 'scent', entityId: id, request: req,
+              before: { ...data, sharedCustomers: result.before }, after: { ...data, sharedCustomers: result.after },
+              summary,
+            });
+          }
+          data = { ...data, sharedCustomers: result.after, sharedCustomerIds: result.after.map((c) => c.customerId) };
+        } catch (e) {
+          return fail(`บันทึกข้อมูลกลิ่นแล้ว แต่บันทึกการแชร์ไม่สำเร็จ — ${e.message}`, e.status || 500);
+        }
+      }
       return ok(data);
     }
 

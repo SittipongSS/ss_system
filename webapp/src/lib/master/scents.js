@@ -402,9 +402,11 @@ export function proposedScentStatus(requested) {
  * ⚠️ วันที่/สถานะส่งเฉพาะตอน **สร้างใหม่** — โหมดแก้มี action ของตัวเอง
  * ⭐ ฝ่ายขายส่งวัน/สถานะมาได้แล้ว (มติผู้ใช้ 2026-08-19) — `status` ที่ส่งไปลงเป็น
  * `proposedStatus` ให้เองที่ server (`createScent`) แถวยังเป็นร่างเหมือนเดิม
+ * ⭐ `canShare` (มติ 2026-10-05) = ส่งช่อง "ลูกค้าอื่นที่ใช้ได้" เป็น `sharedCustomerIds` ทั้งชุด (ชุดว่าง = เลิกแชร์ทั้งหมด)
+ *    ⚠️ ไม่มีสิทธิ์ = **ไม่ส่งคีย์นี้เลย** ไม่ใช่ส่ง `[]` — ส่ง `[]` = สั่งเลิกแชร์ทุกราย (server ตีกลับ 403 อยู่ดี)
  */
 export function scentFormPayload(value = {}, {
-  canSetCode = false, mode = 'create', customerName = null,
+  canSetCode = false, mode = 'create', customerName = null, canShare = false,
 } = {}) {
   const payload = {
     name: value.name,
@@ -420,6 +422,10 @@ export function scentFormPayload(value = {}, {
     perfumerName: value.perfumerName ?? null,
   };
   if (canSetCode) payload.code = String(value.code ?? '').trim();
+  // `null` = แถวที่โหลดมาไม่ได้ติดรายชื่อแชร์ (ดู sharesToField) ⇒ ไม่แตะ
+  if (canShare && Array.isArray(value.sharedCustomers)) {
+    payload.sharedCustomerIds = value.sharedCustomers.map((s) => s.customerId);
+  }
   if (mode === 'create') {
     if (value.producedAt) payload.producedAt = value.producedAt;
     if (value.sentAt) payload.sentAt = value.sentAt;

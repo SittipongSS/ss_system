@@ -3,6 +3,7 @@
 // ⚠️ ฟอร์มเดียวใช้ทั้ง "เพิ่มสูตร" และ "แก้ข้อมูลสูตร" (กฎ AGENTS.md)
 //   mode="create" → RD ใส่รหัสได้เลย (= เข้าทะเบียนทันที)
 //   mode="edit"   → ไม่มีช่องรหัส เพราะ "ใส่รหัส = รับเข้าทะเบียน" เป็นคนละ action
+//   canShare      → ช่อง "ลูกค้าอื่นที่ใช้ได้" (`canManageRegistryShares` · มติ 2026-10-05) — ไม่ส่งมา = ไม่มีช่อง
 //
 // จัดระเบียบรอบ 2026-08-12 ตาม docs/form-design-rules.md:
 //   ลำดับ = ตามที่คนคิด: **ลูกค้า → กลิ่น → หมวด** (ตัวกำหนดบริบท + ตัวตนของสูตร
@@ -17,6 +18,7 @@ import { customerSelectOptions } from "@/components/master/customerOption";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import { isScentUsable } from "@/lib/master/scents";
 import { formulaUsableByCustomer, scentUsableByCustomer } from "@/lib/master/registryShares";
+import RegistryShareField, { sharesToField } from "@/components/database/RegistryShareField";
 import styles from "./registryForm.module.css";
 import Textarea from "@/components/ui/Textarea";
 
@@ -30,6 +32,8 @@ export const emptyFormulaForm = () => ({
   customerTradeName: "",
   derivedFromFormulaId: "",
   note: "",
+  // ลูกค้าอื่นที่ใช้ได้ (ม-150 · มติ 05/10) — `[{ customerId, customerName }]`
+  sharedCustomers: [],
 });
 
 export function formulaToForm(formula) {
@@ -43,6 +47,7 @@ export function formulaToForm(formula) {
     customerTradeName: formula.customerTradeName || "",
     derivedFromFormulaId: formula.derivedFromFormulaId || "",
     note: formula.note || "",
+    sharedCustomers: sharesToField(formula),
   };
 }
 
@@ -54,7 +59,7 @@ export function formulaToForm(formula) {
    ⚠️ ค่าที่ถูกล็อกเป็นแค่ของบนจอ — server ยกจากแถวคำร้องเองอยู่แล้ว ไม่เชื่อ client */
 export default function FormulaForm({
   mode = "create", value, onChange, scents = [], formulas = [], customers = [], categories = [],
-  editingId = null, canSetCode = false, disabled = false,
+  editingId = null, canSetCode = false, canShare = false, disabled = false,
   locked = [], lockedNote = "ยกมาจากรายการในคำร้อง — แก้ที่นี่ไม่ได้", codeRequired = false,
 }) {
   const set = (patch) => onChange({ ...value, ...patch });
@@ -74,7 +79,11 @@ export default function FormulaForm({
   const pickCustomer = (customerId) => {
     const keep = !value.scentId
       || scentUsableByCustomer(scents.find((x) => x.id === value.scentId), customerId);
-    set({ customerId, ...(keep ? {} : { scentId: "" }) });
+    /* รายชื่อแชร์ตามเจ้าของ: เจ้าของใหม่หลุดออกจากรายชื่อ (ไม่แชร์ให้ตัวเอง) · ล้างเป็นสูตรฐาน = ล้างรายชื่อ
+       (สูตรฐานใช้ได้ทุกลูกค้าอยู่แล้ว — ค้างไว้แล้วช่องถูกซ่อน = server ตีกลับ "สูตรฐานไม่ต้องแชร์" ทั้งที่จอไม่มีช่องให้แก้) */
+    const sharedCustomers = !customerId ? []
+      : value.sharedCustomers?.filter((s) => s.customerId !== customerId) ?? value.sharedCustomers;
+    set({ customerId, sharedCustomers, ...(keep ? {} : { scentId: "" }) });
   };
   const customerOptions = customerSelectOptions(customers);
 
@@ -112,7 +121,7 @@ export default function FormulaForm({
 
       {/* ลูกค้าอยู่ **ก่อน** กลิ่น และอยู่แถวเดียวกัน — เห็นทันทีว่าทำไมช่องขวายังปิด */}
       <div className="form-group">
-        <label htmlFor="formula-customer">ลูกค้า</label>
+        <label htmlFor="formula-customer">ลูกค้าหลัก (เจ้าของสูตร)</label>
         <SearchableSelect
           id="formula-customer" value={value.customerId || ""} disabled={disabled || isLocked("customerId")}
           onChange={pickCustomer}
@@ -152,6 +161,27 @@ export default function FormulaForm({
         disabled={disabled || isLocked("categoryCode")}
         onChange={(categoryCode) => set({ categoryCode })}
       />
+
+      {/* ⭐ **ลูกค้าอื่นที่ใช้ได้** (ม-150 · มติผู้ใช้ 2026-10-05) — กรอกพร้อมเจ้าของได้เลย ไม่ต้องรอไปกดการ์ดบนหน้ารายละเอียด
+          · วางหลังหมวด ไม่แทรกกลาง "หมวด × กลิ่น" ที่เป็นตัวตนของสูตร
+          · สูตรฐาน (ยังไม่เลือกลูกค้าหลัก) = โชว์ช่องพร้อมเหตุ ไม่ซ่อน (เงื่อนไขของใบ ไม่ใช่สิทธิ์) */}
+      {canShare && (
+        <div className="form-group col-span-2">
+          <label>ลูกค้าอื่นที่ใช้ได้ <span className={styles.hint}>(ไม่บังคับ)</span></label>
+          <RegistryShareField
+            customers={customers} ownerId={value.customerId}
+            value={value.sharedCustomers || []}
+            onChange={(sharedCustomers) => set({ sharedCustomers })}
+            disabled={disabled || !value.customerId} emptyText={null}
+            ariaLabel="เพิ่มลูกค้าอื่นที่ใช้สูตรนี้ได้"
+          />
+          <small className={styles.hint}>
+            {value.customerId
+              ? "ใช้สูตรนี้ได้เหมือนเป็นของตัวเอง · กลิ่นของสูตรแชร์ให้รายใหม่ด้วยอัตโนมัติ · เลิกแชร์ลูกค้าที่ใช้อยู่แล้วไม่ได้"
+              : "ยังไม่ได้เลือกลูกค้าหลัก = สูตรฐาน ใช้ได้ทุกลูกค้าอยู่แล้ว — เลือกลูกค้าหลักก่อนถ้าจะแชร์"}
+          </small>
+        </div>
+      )}
 
       <div className="form-group col-span-2">
         <label htmlFor="formula-name">ชื่อสูตร</label>

@@ -38,6 +38,7 @@ import { scentFPriceNotice } from "@/lib/requests/deliveredCategory";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { emptyScentForm, scentToForm } from "@/components/database/ScentForm";
 import ScentFormModal from "@/components/database/ScentFormModal";
+import { canManageRegistryShares } from "@/lib/master/registryShares";
 import styles from "./page.module.css";
 import { usePagination } from "@/lib/usePagination";
 import { cachedFetchJson } from "@/lib/apiCache";
@@ -62,6 +63,8 @@ export default function ScentsPage() {
   // department ใช้กับด่านใส่ราคา F (canQuoteMaterial — ฝ่าย RD) เท่านั้น
   const me = useMemo(() => ({ role, department }), [role, department]);
   const registrar = isScentRegistrar(me);
+  // ช่อง "ลูกค้าอื่นที่ใช้ได้" ในฟอร์ม (มติ 05/10) — RD + หัวหน้าฝ่ายขาย Sup ขึ้นไป
+  const canShare = canManageRegistryShares(me);
   const canPropose = canProposeScent(me);
   /* ── ใครกรอกรหัส/วันที่/สถานะได้ (มติผู้ใช้ 2026-08-19) ─────────────────────
      ⭐ ฝ่ายขายถือข้อมูลกลิ่นเก่าจากระบบเดิม ⇒ กรอกได้ครบตั้งแต่ตอนเสนอ
@@ -315,6 +318,7 @@ export default function ScentsPage() {
     const payload = scentFormPayload(v, {
       canSetCode: formCanSetCode(form),
       mode: form.mode,
+      canShare,
       /* 🐞 เดิมอ่าน `.name` ดิบ ⇒ ลูกค้าที่มีแต่ชื่ออังกฤษถูกประทับ null ทับทุกครั้ง
          ที่กดบันทึก (ชื่อกลิ่นมาจาก client ล้วน) · `customerSnapshotName` ตกไป
          `nameEn` ให้เอง และคืน null เองเมื่อไม่มีสักภาษา ⇒ ไม่ต้องมี `|| null` */
@@ -764,7 +768,7 @@ export default function ScentsPage() {
       <ScentFormModal
         form={form} saving={saving}
         customers={customers} scents={scents} perfumers={perfumers}
-        canSetCode={formCanSetCode(form)} canSetLegacy={canPropose} proposal={!registrar}
+        canSetCode={formCanSetCode(form)} canSetLegacy={canPropose} proposal={!registrar} canShare={canShare}
         onChange={(value) => setForm({ ...form, value })}
         onClose={() => setForm(null)}
         onSubmit={submitForm}

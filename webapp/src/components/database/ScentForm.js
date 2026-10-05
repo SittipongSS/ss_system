@@ -13,6 +13,8 @@
 //   canSetLegacy = เห็นโซน "ของเดิมก่อนมีระบบ" (วันที่ + สถานะ)
 //   proposal     = คนกรอกไม่ใช่ RD ⇒ ที่กรอกเป็น **คำขอ** รอ RD ยืนยัน
 //                  (คำอธิบายใต้ช่องต้องพูดตรงนี้ ไม่งั้นเข้าใจว่าใช้ได้เลย)
+//   canShare     = เห็นช่อง "ลูกค้าอื่นที่ใช้ได้" (`canManageRegistryShares` — RD + Sup ขึ้นไป · มติ 2026-10-05)
+//                  ไม่ส่งมา = ไม่มีช่อง (ฟอร์มในคำร้อง · ฝ่ายขายที่เสนอร่าง)
 //
 // จัดระเบียบรอบ 2026-08-12 ตาม docs/form-design-rules.md:
 //   ลำดับ = ตามที่คนคิด: **ลูกค้า (ตัวกำหนดบริบท) มาก่อนชื่อ** — กลิ่นเป็นของ
@@ -29,6 +31,7 @@ import FormZone from "@/components/ui/FormZone";
 import { customerSelectOptions } from "@/components/master/customerOption";
 import { SCENT_STATUS_LABELS } from "@/lib/master/scents";
 import { scentUsableByCustomer } from "@/lib/master/registryShares";
+import RegistryShareField, { sharesToField } from "@/components/database/RegistryShareField";
 import styles from "./registryForm.module.css";
 import Textarea from "@/components/ui/Textarea";
 
@@ -43,6 +46,8 @@ export const emptyScentForm = () => ({
   producedAt: "",
   sentAt: "",
   status: "developing",
+  // ลูกค้าอื่นที่ใช้ได้ (ม-150 · มติ 05/10) — `[{ customerId, customerName }]`
+  sharedCustomers: [],
 });
 
 export function scentToForm(scent) {
@@ -61,6 +66,7 @@ export function scentToForm(scent) {
     // ผู้ปรุงกลิ่น (mig 0333) — พา id ไปด้วยเพื่อไม่ให้ค่าที่เคยเลือกกลายเป็น "ชื่อลอย"
     perfumerId: scent.perfumerId || "",
     perfumerName: scent.perfumerName || "",
+    sharedCustomers: sharesToField(scent),
   };
 }
 
@@ -74,7 +80,7 @@ export function scentToForm(scent) {
 export default function ScentForm({
   mode = "create", value, onChange, customers = [], scents = [],
   editingId = null, canSetCode = false, canSetLegacy = false, proposal = false,
-  disabled = false,
+  canShare = false, disabled = false,
   locked = [], lockedNote = "ยกมาจากคำร้อง — แก้ที่นี่ไม่ได้", hide = [],
   codeRequired = false, codeIssue = null, idPrefix = "scent",
   historyTitle = "ของเดิมก่อนมีระบบ",
@@ -112,12 +118,16 @@ export default function ScentForm({
       <FormZone title="ตัวตนกลิ่น" className="col-span-2" />
 
       <div className="form-group col-span-2">
-        <label htmlFor={fid("customer")}>ลูกค้าเจ้าของกลิ่น</label>
+        <label htmlFor={fid("customer")}>ลูกค้าหลัก (เจ้าของกลิ่น)</label>
         <SearchableSelect
           id={fid("customer")}
           value={value.customerId}
           disabled={disabled || mode === "edit" || isLocked("customerId")}
-          onChange={(v) => set({ customerId: v })}
+          // เจ้าของใหม่ที่อยู่ในรายชื่อแชร์ = ไม่ต้องแชร์ให้ตัวเอง (server ตัดทิ้งอยู่แล้ว — จอต้องเห็นตรงกัน)
+          onChange={(v) => set({
+            customerId: v,
+            sharedCustomers: value.sharedCustomers?.filter((s) => s.customerId !== v) ?? value.sharedCustomers,
+          })}
           options={customerSelectOptions(customers)}
           placeholder="เลือกลูกค้า"
         />
@@ -125,10 +135,30 @@ export default function ScentForm({
           <small className={styles.hint}>
             {mode === "edit"
               ? "เปลี่ยนลูกค้าไม่ได้ — ตัวตนของกลิ่นผูกกับลูกค้า"
-              : "กลิ่นที่ออกแบบให้ลูกค้ารายหนึ่ง ใช้กับอีกรายไม่ได้"}
+              : canShare
+                ? "เจ้าของกลิ่นมีรายเดียว — ลูกค้ารายอื่นที่ใช้กลิ่นนี้ด้วย เพิ่มที่ช่องถัดไป"
+                : "กลิ่นที่ออกแบบให้ลูกค้ารายหนึ่ง ใช้กับอีกรายไม่ได้ (เว้นแต่ RD/หัวหน้าฝ่ายขายแชร์ให้)"}
           </small>
         )}
       </div>
+
+      {/* ⭐ **ลูกค้าอื่นที่ใช้ได้** (ม-150 · มติผู้ใช้ 2026-10-05) — เดิมแชร์ได้ทางเดียวคือการ์ดบนหน้ารายละเอียด
+          หลังสร้างเสร็จ · ตอนนี้กรอกพร้อมเจ้าของได้เลย · ลงที่ `saveRegistryShares` ตัวเดียวกับการ์ด */}
+      {canShare && (
+        <div className="form-group col-span-2">
+          <label>ลูกค้าอื่นที่ใช้ได้ <span className={styles.hint}>(ไม่บังคับ)</span></label>
+          <RegistryShareField
+            customers={customers} ownerId={value.customerId}
+            value={value.sharedCustomers || []}
+            onChange={(sharedCustomers) => set({ sharedCustomers })}
+            disabled={disabled} emptyText={null}
+            ariaLabel="เพิ่มลูกค้าอื่นที่ใช้กลิ่นนี้ได้"
+          />
+          <small className={styles.hint}>
+            ใช้กลิ่นนี้ได้เหมือนเป็นของตัวเอง (เลือกในคำร้อง/PDR · ทำสูตร · แตกรอบแก้) · เลิกแชร์ลูกค้าที่ใช้อยู่แล้วไม่ได้
+          </small>
+        </div>
+      )}
 
       <div className={`form-group ${canSetCode ? "" : "col-span-2"}`.trim()}>
         <label htmlFor={fid("name")}>ชื่อกลิ่น</label>
