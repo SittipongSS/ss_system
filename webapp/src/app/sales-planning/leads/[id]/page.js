@@ -21,6 +21,7 @@ import { canLinkLeadRole, dealLinkOptions, leadLinkError, leadLinkEffects, leadL
 import { buildLeadTransitionPayload, createLeadLifecycle, leadDealAction, LEAD_TRANSITION_ACTIONS } from "@/lib/sales/leadLifecycle";
 import useLeadWorkload from "@/lib/sales/useLeadWorkload";
 import { autoBounceCountdown } from "@/lib/sales/leadAutoBounce";
+import { AUTO_LOST_STATUSES, autoLostCountdown, leadOwnedBusinessDays } from "@/lib/sales/leadAutoLost";
 import { businessDaysWaiting } from "@/lib/sales/handoffQueue";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { useRole, useTeam, useTeams } from "@/lib/roleContext";
@@ -548,24 +549,30 @@ export default function LeadDetailPage() {
    แล้วไม่รู้ว่าเหลือเวลาเท่าไร รู้อีกทีคือใบหลุดจากมือไปแล้ว — บทลงโทษที่มองไม่เห็น
    ล่วงหน้าไม่ได้เปลี่ยนพฤติกรรมใคร มันแค่สร้างความงุนงง
 
-   ⚠️ ตัวเลขนับถอยหลังมาจาก `autoBounceCountdown` ซึ่งกลับสมการของ `planAutoBounce`
-   ตัวเดียวกับที่ cron ใช้ — คำนวณเองที่นี่เมื่อไร จอกับระบบจะนับคนละวัน */
+   ⚠️ ตัวเลขนับถอยหลังมาจาก `autoBounceCountdown` / `autoLostCountdown` ซึ่งกลับสมการของ
+   `planAutoBounce` / `planAutoLost` ตัวเดียวกับที่ cron ใช้ — คำนวณเองที่นี่เมื่อไร จอกับระบบจะนับคนละวัน */
 function LeadFollowUpCard({ lead, holidays }) {
-  // นาฬิกาเดินเฉพาะขั้น "ติดต่อแล้ว" — ขั้นอื่นมี SLA ของตัวเองอยู่บนแถบคิวแล้ว
-  if (lead.status !== "contacted") return null;
+  // นาฬิกาเดินเฉพาะขั้นที่ระบบลงมือเองได้ (รอติดต่อ/ติดต่อแล้ว) — ถึงขั้นนัดแล้วไม่มีอะไรมาดึงใบออกจากมือ
+  if (!AUTO_LOST_STATUSES.includes(lead.status)) return null;
 
-  const state = lead.followUpAt ? leadFollowUpState(lead.followUpAt) : null;
-  const daysLate = lead.followUpAt
-    ? businessDaysWaiting(lead.followUpAt, new Date().toISOString(), holidays || new Set())
-    : null;
+  const nowIso = new Date().toISOString();
+  const daysBetween = (from, to) => businessDaysWaiting(from, to, holidays || new Set());
+  const events = lead.events || [];
+  const contacted = lead.status === "contacted";
+  const state = contacted && lead.followUpAt ? leadFollowUpState(lead.followUpAt) : null;
+  const daysLate = contacted && lead.followUpAt ? daysBetween(lead.followUpAt, nowIso) : null;
   const left = autoBounceCountdown(daysLate);
-  const touches = (lead.events || []).filter((e) => LEAD_FOLLOW_UP_ACTIONS.includes(e.kind));
+  /* ⭐ ปิดอัตโนมัติ (มติ 16/09) — นาฬิกาสะสมทุกช่วงที่ใบอยู่ในมือฝ่ายขาย **รวมรอบก่อนถูกตีกลับ**
+     เคยนัดแล้วครั้งเดียว = ไม่ถูกปิด (ไม่ต้องโชว์แถวนี้) */
+  const met = events.some((e) => e.kind === "meeting");
+  const lostLeft = met ? null : autoLostCountdown(leadOwnedBusinessDays(lead, events, { now: nowIso, daysBetween }));
+  const touches = events.filter((e) => LEAD_FOLLOW_UP_ACTIONS.includes(e.kind));
 
   return <DetailCard icon={CalendarClock} eyebrow="Follow-up" title="การติดตาม">
-    {/* 🔴 ไม่มีวันติดตาม = ไม่มีนาฬิกาจับเลย ทั้งการทวงและการส่งกลับข้ามใบนี้ทั้งคู่
-        (ดู `planAutoBounce`: ไม่มีจุดเริ่ม = ไม่แตะ) ⇒ ต้องพูดออกมาตรง ๆ ไม่ใช่
-        ปล่อยการ์ดว่างซึ่งอ่านได้ว่า "ไม่มีอะไรต้องทำ" */}
-    {!lead.followUpAt ? (
+    {/* 🔴 ไม่มีวันติดตาม = การทวงและการส่งกลับข้ามใบนี้ทั้งคู่ (ดู `planAutoBounce`: ไม่มีจุดเริ่ม
+        = ไม่แตะ) ⇒ ต้องพูดออกมาตรง ๆ ไม่ใช่ปล่อยการ์ดว่างซึ่งอ่านได้ว่า "ไม่มีอะไรต้องทำ"
+        ⚠️ แต่การปิดอัตโนมัติยังเดิน (นับจากเวลาที่ถือใบ ไม่ใช่วันติดตาม) — แถวล่างบอกอยู่ */}
+    {!contacted ? null : !lead.followUpAt ? (
       <p className={styles.followUpNote}>
         ใบนี้ยังไม่มีวันติดตาม — ระบบจะไม่ทวงและไม่ส่งกลับคิวคัดกรอง
         กด “ติดตามต่อ” เพื่อกำหนดวันที่จะกลับไปหาลูกค้า
@@ -591,6 +598,14 @@ function LeadFollowUpCard({ lead, holidays }) {
           </strong>
         </div>
       </>
+    )}
+    {lostLeft != null && (
+      <div className={styles.summaryRow}>
+        <span>ปิดลีดอัตโนมัติ</span>
+        <strong className={styles.followUpValue} data-tone={lostLeft === 0 ? "late" : lostLeft <= 3 ? "today" : undefined}>
+          {lostLeft === 0 ? "เข้าเกณฑ์แล้ว รอรอบถัดไปของระบบ" : `อีก ${lostLeft} วันทำการ ถ้ายังไม่ได้นัด`}
+        </strong>
+      </div>
     )}
     <div className={styles.summaryRow}><span>ติดต่อไปแล้ว</span><strong>{touches.length ? `${touches.length} ครั้ง` : NA}</strong></div>
     {/* ⚠️ `fmtDateTime` ไม่ใช่ `fmtDate` — `fmtDate` อ่านตัวอักษรจากสตริง ISO ตรง ๆ
