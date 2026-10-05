@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import { priceRegistryEntry } from '../materialPricesAdmin.js';
 import { makeRegistryPriceHandler } from './registryPriceRoute.js';
 import { SCENT_STATUS_LABELS, isScentUsable } from './scents.js';
-import { priceSlotsFor } from './priceSlots.js';
+import { formulaPriceSlots, priceSlotsFor } from './priceSlots.js';
 
 // fake supabase ครอบสามตาราง + RPC ของสายราคา — บันทึกทุก insert/update/rpc
 function fakeSupabase({ materials = [] } = {}) {
@@ -245,6 +245,27 @@ test('กลิ่นของสูตรใส่ราคาไม่ได�
   assert.match(data.error, /ยังใส่ราคา F ไม่ได้/);
   assert.equal(supabase.calls.rpcs.length, 0);
   assert.equal(materialInserts(supabase).length, 0);
+});
+
+test('🔴 สูตรหัวน้ำหอม 02-020 ที่กลิ่นเลิกใช้: ตีกลับด้วยเหตุจริง ไม่เขียนราคา B/FB ลงสูตร (ผู้ใช้ 2026-10-05)', async () => {
+  // ตัวประกอบเดียวกับ route จริง (`formulaPriceSlots`) — เดิมช่องตกไป B/FB แล้วราคาเบสเข้าทะเบียนของหัวน้ำหอมได้
+  const h = makeRegistryPriceHandler({
+    kind: 'RM_FB',
+    stampColumn: 'formulaId',
+    slotsOf: (f) => formulaPriceSlots(f, { status: 'archived', code: 'PF859010103' }),
+    findOther: async () => ({ source: SCENT }),
+    entityType: 'formula',
+    entityLabel: 'สูตร',
+    find: async () => ({ ...FORMULA, scentId: 'SCT-1', categoryCode: '02-020' }),
+    usableError: () => null,
+  });
+  for (const body of [{ prices: { B: 300, FB: 950 } }, { prices: { F: 2800 } }, { price: 950 }]) {
+    const { res, data, supabase } = await callFormula(h, body);
+    assert.equal(res.status, 400);
+    assert.match(data.error, /สูตรหัวน้ำหอม \(02-020\) ใส่ได้แค่ราคา F .*กลิ่น PF859010103 สถานะ "เลิกใช้"/);
+    assert.equal(supabase.calls.rpcs.length, 0);
+    assert.equal(materialInserts(supabase).length, 0);
+  }
 });
 
 test('หน้าทะเบียนกลิ่นยังเป็นช่องเดียว — ส่ง B มาที่กลิ่น = ตีกลับ', async () => {

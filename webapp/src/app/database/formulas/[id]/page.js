@@ -11,8 +11,7 @@ import RegistryDetailShell, { RegistryFactCard } from "@/components/database/Reg
 import RegistryPriceModal from "@/components/database/RegistryPriceModal";
 import RegistryShareCard from "@/components/database/RegistryShareCard";
 import RegistryPrice from "@/components/database/RegistryPrice";
-import { priceSlotsFor } from "@/lib/master/priceSlots";
-import { isScentUsable } from "@/lib/master/scents";
+import { formulaPriceSlots } from "@/lib/master/priceSlots";
 import FormulaFormModal from "@/components/database/FormulaFormModal";
 import { formulaToForm } from "@/components/database/FormulaForm";
 import Toast from "@/components/ui/Toast";
@@ -138,6 +137,9 @@ export default function FormulaDetailPage() {
   // ปุ่มใส่ราคา (F · B · FB — ม-148) — กติกาเดียวกับราคา F บนหน้ากลิ่น (ดูหมายเหตุที่นั่น)
   const canPrice = canQuoteMaterial(me, "RM_FB") && isFormulaUsable(formula);
   const hasPrice = formula.price?.unitPrice != null;
+  /* ⭐ ม-148 — สูตรใส่ได้ F · B · FB (F ลงกลิ่นของสูตร) · ช่อง + เหตุที่ใส่ไม่ได้มาจากตัวเดียวกับ API
+     (หัวน้ำหอม 02-020 ที่กลิ่นเป็นร่าง/เลิกใช้ = โมดัลบอกเหตุ ไม่เปิดช่อง B/FB ให้) */
+  const pricePlan = formulaPriceSlots(formula, { status: formula.scentStatus, name: scentName });
 
 
   return (
@@ -222,12 +224,8 @@ export default function FormulaDetailPage() {
         onClose={() => setPricing(false)}
         title={`${hasPrice ? "ออกราคาใหม่" : "ใส่ราคา"} — ${formula.name}`}
         endpoint={`/api/master/formulas/${formula.id}/price`}
-        /* ⭐ ม-148 — สูตรใส่ได้ F · B · FB (F ลงกลิ่นของสูตร) · ช่องจากตัวเดียวกับ API */
-        slots={priceSlotsFor({
-          scentId: formula.scentId, formulaId: formula.id, categoryCode: formula.categoryCode,
-          // กลิ่นเลิกใช้/ร่าง = ไม่เปิดช่อง F (server ตัดสินตัวเดียวกัน)
-          scentUsable: formula.scentStatus ? isScentUsable({ status: formula.scentStatus }) : true,
-        })}
+        slots={pricePlan.slots}
+        blocker={pricePlan.blocker}
         onSaved={(msg) => {
           setPricing(false);
           setToast({ kind: "success", msg });

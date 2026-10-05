@@ -70,7 +70,7 @@ import { resolveLineLabels } from '@/lib/requests/lineLabels';
 import { resolveOptionalRefs } from '@/lib/requests/optionalRefs';
 import { resolveBillAmount } from '@/lib/requests/billingQuotations';
 import { isScentRegistrar } from '@/lib/master/scents';
-import { createScent, findScentShared, rowPriceSlotsLive } from '@/lib/master/scentFormulaAdmin';
+import { createScent, findScentShared, rowPricePlanLive } from '@/lib/master/scentFormulaAdmin';
 import { attachShares } from '@/lib/master/registrySharesAdmin';
 import { scentUsableByCustomer } from '@/lib/master/registryShares';
 import { canPriceRow } from '@/lib/requests/rowStage';
@@ -181,12 +181,14 @@ export async function GET(request, { params }) {
         { status: 403 },
       );
     }
-    /* ⭐ ช่องราคาของแถวที่รอใส่ราคา — คิดจากทะเบียนสด ตัวเดียวกับ POST ขั้นราคา (`rowPriceSlotsLive` · รีวิว ม-148 รอบสาม)
+    /* ⭐ ช่องราคาของแถวที่รอใส่ราคา — คิดจากทะเบียนสด ตัวเดียวกับ POST ขั้นราคา (`rowPricePlanLive` · รีวิว ม-148 รอบสาม)
+       · `priceBlocker` = เหตุที่ไม่มีช่องให้ใส่ (หัวน้ำหอมที่กลิ่นใช้ไม่ได้ · ยังไม่ผูก) — โมดัลโชว์แทนช่องราคา
        ⚠️ ด่านชุดเดียวกับ POST (รีวิวรอบสี่): หลังด่านอ่าน · ใบเปิดอยู่ · คนดูตอบราคาได้ — คนอื่นไม่มีวันเปิดโมดัล
        ⚠️ ยิงขนานกัน ไม่ใช่ทีละแถว · อ่านพัง = ไม่ติด (โมดัลถอยไปคิดจากแถว · API ตัดสินจริงอยู่ดี) */
     if (REQUEST_OPEN_STATUSES.includes(row.status) && canAnswerRequest(user, row)) {
       await Promise.all((row.items || []).filter(canPriceRow).map(async (item) => {
-        item.priceSlots = await rowPriceSlotsLive(getSupabaseAdmin(), item).catch(() => undefined);
+        const plan = await rowPricePlanLive(getSupabaseAdmin(), item).catch(() => null);
+        if (plan) { item.priceSlots = plan.slots; item.priceBlocker = plan.blocker; }
       }));
     }
     /* ⭐ **งานประเมินบนหน้าคำร้อง** (หน้าคำร้องแบบไทม์ไลน์ · มติเจ้าของ 25/09) — รูปรายพื้นที่ ·

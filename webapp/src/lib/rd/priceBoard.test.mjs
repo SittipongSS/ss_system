@@ -194,6 +194,35 @@ test('ราคาสด: แถวกลิ่นล้วนโหลดกล
   assert.equal(ctx.current[0].price, null);
 });
 
+test('🔴 แถวพัฒนาสูตรหัวน้ำหอม 02-020 ที่กลิ่นเลิกใช้: ไม่มีช่อง · ปุ่มใส่ราคาบอกเหตุ · ไม่ให้ "ใช้ราคา" F เก่าของกลิ่น', async () => {
+  // ผู้ใช้ 2026-10-05 — เดิมตกไปช่อง B/FB ของสูตร · กลิ่นมีราคา F เก่าที่ยังไม่หมดอายุก็ต้องไม่ถูกผูก
+  const oilTables = (scentStatus) => ({
+    formulas: [{ id: 'FML-1', code: 'PF85901010301', name: 'หัวน้ำหอม A', scentId: 'SCT-1', categoryCode: '02-020' }],
+    scents: [{ id: 'SCT-1', code: 'PF859010103', name: 'Rose', status: scentStatus }],
+    material_prices: [{ id: 'M-F', kind: 'RM_F', label: 'Rose', scentId: 'SCT-1', status: 'active' }],
+    material_price_revisions: [
+      { id: 'R-F-1', materialId: 'M-F', revisionNo: 1, unitBasis: 'per_kg', quotedAt: '2026-09-20T03:00:00Z', validUntil: '2026-12-31' },
+    ],
+    material_price_revision_tiers: [{ revisionId: 'R-F-1', qty: null, pricePerKg: 2800, pricePerUnit: null }],
+  });
+  const pairs = awaitingPriceItems([request()]);
+
+  const [ctx] = await rowsSlotPricesLive(fakeSupabase(oilTables('archived')), [confirmed()], { today: TODAY });
+  assert.deepEqual(ctx.slots, []);
+  assert.match(ctx.blocker, /สูตรหัวน้ำหอม \(02-020\) ใส่ได้แค่ราคา F .*กลิ่น PF859010103 สถานะ "เลิกใช้"/);
+  const [row] = priceBoardRows(pairs, [ctx]);
+  assert.equal(row.priceBlocker, ctx.blocker);
+  assert.equal(row.useCurrent, null);
+
+  // กลิ่นกลับมาใช้ได้ = F ช่องเดียว (ไม่ใช่ B/FB) และราคา F เดิมใช้ได้ทันที
+  const [live] = await rowsSlotPricesLive(fakeSupabase(oilTables('active')), [confirmed()], { today: TODAY });
+  assert.deepEqual(live.slots.map((s) => s.key), ['F']);
+  assert.equal(live.blocker, '');
+  const [usable] = priceBoardRows(pairs, [live]);
+  assert.equal(usable.useCurrent.key, 'F');
+  assert.equal(usable.priceBlocker, '');
+});
+
 /* ── การเดินสาย (ด่านซอร์ส) — สามที่ต้องพูดตรงกัน: หน้า · ป้ายเมนู · POST ── */
 const src = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 

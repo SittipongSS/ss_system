@@ -15,6 +15,10 @@
 // ⚠️ ทุกช่องเป็นราคาเดียวต่อกิโล ไม่มีชั้นจำนวน (มติผู้ใช้ 2026-08-03)
 import { normalizeQuotedPrice } from '@/lib/materialPrices';
 import { PDR_FRAGRANCE_OIL_CODE } from '@/lib/requests/pdrFields';
+import { SCENT_STATUS_LABELS, isScentUsable } from '@/lib/master/scents';
+
+/** เหตุเมื่อไม่มีช่องให้ใส่เลย (แถว/รายการยังไม่ผูกกลิ่นหรือสูตร) — ข้อความเดียวทั้ง API · จอ · หน้า "รอใส่ราคา" */
+export const NO_PRICE_SLOTS_REASON = 'รายการนี้ยังไม่ผูกกลิ่นหรือสูตรในทะเบียน — ใส่ราคาไม่ได้';
 
 export const PRICE_SLOTS = Object.freeze({
   F: Object.freeze({
@@ -46,12 +50,15 @@ const MAIN_PRIORITY = ['FB', 'B', 'F'];
  *   ⚠️ สูตร 02-020 ที่ไม่มีกลิ่น (สูตรฐาน) ไม่มีที่ให้ลง F ⇒ ถอยไปใช้ช่องของสูตรตามปกติ ไม่ปิดทางใส่ราคา
  */
 /*   · `scentUsable: false` = กลิ่นของสูตรใส่ราคา F ไม่ได้ (ร่าง/เลิกใช้) ⇒ ไม่เปิดช่อง F — ไม่งั้นโมดัลเปิดช่องที่ server ตีกลับ
- *     แล้วทั้งชุด (B/FB ที่ถูกต้อง) บันทึกไม่ได้ไปด้วย (รีวิว ม-148 รอบสอง) · ไม่รู้สถานะ (ไม่ส่งมา) = ถือว่าใช้ได้ */
+ *     แล้วทั้งชุด (B/FB ที่ถูกต้อง) บันทึกไม่ได้ไปด้วย (รีวิว ม-148 รอบสอง) · ไม่รู้สถานะ (ไม่ส่งมา) = ถือว่าใช้ได้
+ *   · 🐞 **สูตรหัวน้ำหอมที่กลิ่นใช้ไม่ได้ = ไม่มีช่องเลย ไม่ใช่ B/FB** (ผู้ใช้ 2026-10-05 "แก้เลย") — เดิมล้าง scentId
+ *     ก่อนดูหมวด ⇒ หัวน้ำหอมที่กลิ่นเป็นร่าง/เลิกใช้ตกไปทาง "สูตรไม่มีกลิ่น" แล้วได้ช่อง B/FB ซึ่งขัดมติ "ใส่ได้แค่ F"
+ *     ⇒ ตัดสินหมวดก่อนสถานะกลิ่นเสมอ · เหตุที่ใส่ไม่ได้อยู่ที่ `priceSlotsBlocker` */
 export function priceSlotsFor({ scentId: rawScentId = null, formulaId = null, categoryCode = null, scentUsable = true } = {}) {
-  const scentId = scentUsable === false ? null : rawScentId;
-  if (formulaId && scentId && categoryCode === PDR_FRAGRANCE_OIL_CODE) {
-    return [{ ...PRICE_SLOTS.F, id: scentId }];
+  if (formulaId && isFragranceOilFormula({ scentId: rawScentId, categoryCode })) {
+    return scentUsable === false ? [] : [{ ...PRICE_SLOTS.F, id: rawScentId }];
   }
+  const scentId = scentUsable === false ? null : rawScentId;
   if (formulaId) {
     return [
       scentId ? { ...PRICE_SLOTS.F, id: scentId } : null,
@@ -60,6 +67,45 @@ export function priceSlotsFor({ scentId: rawScentId = null, formulaId = null, ca
     ].filter(Boolean);
   }
   return scentId ? [{ ...PRICE_SLOTS.F, id: scentId }] : [];
+}
+
+/**
+ * สูตรหมวดหัวน้ำหอม (02-020) ที่มีกลิ่น — ราคาของมันคือ F ของกลิ่น **เสมอ** ไม่ว่าตอนนี้ใส่ได้หรือไม่
+ * ⚠️ ตัวเดียวที่ทั้งช่องราคา (`priceSlotsFor`) และราคาที่โชว์บนทะเบียนสูตร (`withFragranceOilPrice`) ถาม — สองที่คิดเองเมื่อไรก็เพี้ยนหากัน
+ */
+export function isFragranceOilFormula(formula) {
+  return !!formula?.scentId && formula?.categoryCode === PDR_FRAGRANCE_OIL_CODE;
+}
+
+/**
+ * ทำไมไม่มีช่องให้ใส่ — คืนข้อความไทย หรือ `''` เมื่อมีช่อง · อาร์กิวเมนต์ชุดเดียวกับ `priceSlotsFor`
+ * (+ `scentStatus` · `scentLabel` ของกลิ่นไว้เขียนเหตุ) · ตัดสิน "ไม่มีช่อง" ด้วย `priceSlotsFor` ตัวเดียว ⇒ เหตุกับช่องขัดกันไม่ได้
+ */
+export function priceSlotsBlocker(args = {}) {
+  if (priceSlotsFor(args).length) return '';
+  const { formulaId = null, scentId = null, categoryCode = null, scentStatus = '', scentLabel = '' } = args;
+  if (!formulaId || !isFragranceOilFormula({ scentId, categoryCode })) return NO_PRICE_SLOTS_REASON;
+  const who = scentLabel ? `กลิ่น ${scentLabel}` : 'กลิ่นของสูตรนี้';
+  const state = SCENT_STATUS_LABELS[scentStatus] ? ` สถานะ "${SCENT_STATUS_LABELS[scentStatus]}"` : '';
+  const fix = { draft: ' · RD ต้องรับกลิ่นเข้าทะเบียนก่อน', archived: ' · เปิดใช้กลิ่นก่อน' }[scentStatus] || '';
+  return `สูตรหัวน้ำหอม (${PDR_FRAGRANCE_OIL_CODE}) ใส่ได้แค่ราคา F ที่กลิ่นของสูตร — ${who}${state} ยังใส่ราคา F ไม่ได้${fix}`;
+}
+
+/**
+ * ช่องราคาของ **สูตร** + เหตุเมื่อไม่มีช่อง — `{ slots, blocker }` · ทุกทางที่ใส่ราคาให้สูตรประกอบอาร์กิวเมนต์ที่นี่ที่เดียว
+ * (ปุ่มราคาหน้าทะเบียนสูตร · API ราคาสูตร · ขั้นราคาของแถวคำร้องที่ผูกสูตร · หน้า "รอใส่ราคา")
+ * `scent` = กลิ่นของสูตร `{ status, code?, name? }` — ไม่รู้สถานะ = ถือว่าใช้ได้ (ด่านจริงตอนเขียนอยู่ที่ `loadPriceSlotSource`)
+ */
+export function formulaPriceSlots(formula, scent = null) {
+  const args = {
+    scentId: formula?.scentId || null,
+    formulaId: formula?.id || null,
+    categoryCode: formula?.categoryCode || null,
+    scentUsable: scent?.status ? isScentUsable(scent) : true,
+    scentStatus: scent?.status || '',
+    scentLabel: scent?.code || scent?.name || '',
+  };
+  return { slots: priceSlotsFor(args), blocker: priceSlotsBlocker(args) };
 }
 
 /** ช่องที่ถือว่าเป็น "ราคาของสิ่งนี้" เมื่อมีช่องเดียวให้เลือก (ทางเข้าเก่าที่ส่ง `price` ตัวเดียว) */
@@ -76,9 +122,10 @@ export function primaryPriceSlot(slots = []) {
  *
  * รับ `body.prices = { F?, B?, FB? }` · ทางเข้าเก่า `body.price` = ช่องหลัก (FB ของสูตร / F ของกลิ่น)
  * ⚠️ ส่งช่องที่รายการนี้ไม่มีมา = ตีกลับ ไม่ทิ้งเงียบ (เช่น B ของกลิ่น — ถูกทิ้งแล้วคนใส่คิดว่าบันทึกแล้ว)
+ * · `blocker` = เหตุที่ไม่มีช่อง (จาก `priceSlotsBlocker`) — ไม่ส่ง = ข้อความ "ยังไม่ผูก" มาตรฐาน
  */
-export function normalizeSlotPrices(slots = [], body = {}) {
-  if (!slots.length) return { entries: [], error: 'รายการนี้ยังไม่ผูกกลิ่นหรือสูตรในทะเบียน — ใส่ราคาไม่ได้' };
+export function normalizeSlotPrices(slots = [], body = {}, { blocker = '' } = {}) {
+  if (!slots.length) return { entries: [], error: blocker || NO_PRICE_SLOTS_REASON };
   let raw = {};
   if (body?.prices && typeof body.prices === 'object' && !Array.isArray(body.prices)) {
     raw = body.prices;
