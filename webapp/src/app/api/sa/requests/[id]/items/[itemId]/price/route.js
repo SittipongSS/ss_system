@@ -26,7 +26,7 @@ import { requestActorSide } from '@/lib/requests/replyTurn';
 import { canPriceRow } from '@/lib/requests/rowStage';
 import { currentPriceToUse, mainPriceEntry, normalizeSlotPrices } from '@/lib/master/priceSlots';
 import { findRequest, priceRegistrySlots } from '@/lib/materialPricesAdmin';
-import { loadPriceSlotSource, rowPriceSlotsLive, rowsSlotPricesLive } from '@/lib/master/scentFormulaAdmin';
+import { loadPriceSlotSource, rowPricePlanLive, rowsSlotPricesLive } from '@/lib/master/scentFormulaAdmin';
 import { appendUpdate } from '@/lib/master/updates';
 import { recordAudit } from '@/lib/audit';
 import { fmtNumber } from '@/lib/format';
@@ -91,10 +91,12 @@ export async function POST(request, { params }) {
   /* ⚠️ แถวที่ผูกสูตร: ช่อง F ลงกลิ่นของ **สูตร** (`formulas.scentId`) ไม่ใช่กลิ่นที่แถวอ้างตอนเปิดใบ — RD แก้กลิ่นของสูตร
      ในทะเบียนได้ ⇒ ใช้ของแถวแล้วราคา F ไปลงกลิ่นเก่า ขณะที่หน้าสูตรอ่าน F จากกลิ่นใหม่ (รีวิว ม-148 รอบสอง)
      · สถานะกลิ่นตรวจที่ `loadPriceSlotSource` ตัวเดียวกับปุ่มราคาหน้าทะเบียนสูตร */
-  //   · ตัวคิดเดียวกับที่ GET ติดให้โมดัล (`rowPriceSlotsLive`) — จอกับ API เปิดช่องชุดเดียวกันเสมอ
+  //   · ตัวคิดเดียวกับที่ GET ติดให้โมดัล (`rowPricePlanLive`) — จอกับ API เปิดช่องชุดเดียวกันเสมอ
+  //   · ไม่มีช่อง = ตีกลับด้วยเหตุตัวเดียวกับที่โมดัลโชว์ (`blocker` — หัวน้ำหอมที่กลิ่นใช้ไม่ได้ ไม่ใช่ "ยังไม่ผูก")
   let slots;
+  let blocker;
   try {
-    slots = await rowPriceSlotsLive(supabase, row);
+    ({ slots, blocker } = await rowPricePlanLive(supabase, row));
   } catch (e) {
     return Response.json({ error: `อ่านทะเบียนกลิ่น/สูตรไม่สำเร็จ: ${e.message}` }, { status: 500 });
   }
@@ -106,7 +108,7 @@ export async function POST(request, { params }) {
     return linkCurrentPrice({ supabase, request, user, id, itemId, before, row, body });
   }
   // ⚠️ F/B/FB **ไม่มีชั้นจำนวน** (มติผู้ใช้ 2026-08-03) — ราคาต่อกิโลเดียวต่อช่อง ไม่ลดตามจำนวน
-  const { entries, error: priceError } = normalizeSlotPrices(slots, body);
+  const { entries, error: priceError } = normalizeSlotPrices(slots, body, { blocker });
   if (priceError) return Response.json({ error: priceError }, { status: 400 });
 
   const nowIso = new Date().toISOString();
@@ -199,7 +201,8 @@ async function linkCurrentPrice({ supabase, request, user, id, itemId, before, r
   }
   const { entry, blocker } = currentPriceToUse(live?.current || []);
   if (!entry) {
-    return Response.json({ error: 'ยังไม่มีราคาในทะเบียนให้ใช้ — กด "ใส่ราคา" แทน' }, { status: 409 });
+    // ไม่มีช่องให้ใส่เลย (หัวน้ำหอมที่กลิ่นใช้ไม่ได้) — บอกเหตุจริง ไม่ใช่พาไป "ใส่ราคา" ที่ก็ใส่ไม่ได้
+    return Response.json({ error: live?.blocker || 'ยังไม่มีราคาในทะเบียนให้ใช้ — กด "ใส่ราคา" แทน' }, { status: 409 });
   }
   if (blocker) return Response.json({ error: blocker }, { status: 409 });
   const expected = body.useCurrent?.revisionId || null;

@@ -27,8 +27,7 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import RowActionMenu from "@/components/ui/RowActionMenu";
 import RegistryPrice from "@/components/database/RegistryPrice";
 import RegistryPriceModal from "@/components/database/RegistryPriceModal";
-import { priceSlotsFor } from "@/lib/master/priceSlots";
-import { isScentUsable } from "@/lib/master/scents";
+import { formulaPriceSlots } from "@/lib/master/priceSlots";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { emptyFormulaForm, formulaToForm } from "@/components/database/FormulaForm";
 import FormulaFormModal from "@/components/database/FormulaFormModal";
@@ -150,6 +149,8 @@ export default function FormulasPage() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
   const [pricing, setPricing] = useState(null); // สูตรที่กำลังใส่ราคา FB
+  // ช่องราคา + เหตุที่ใส่ไม่ได้ของสูตรนั้น — `scentStatus`/`scentName` ติดมากับแถว (attachFormulaUsage)
+  const pricingPlan = pricing ? formulaPriceSlots(pricing, { status: pricing.scentStatus, name: pricing.scentName }) : null;
 
   // ⚠️ โหลดกลิ่นมาพร้อมกันใน reload เดียวกัน ไม่ใช่ useEffect แยกตอน mount —
   // ตารางแปลง scentId เป็นชื่อกลิ่นจากชุดนี้ ถ้าโหลดพลาดครั้งเดียวแล้วปุ่มรีเฟรช
@@ -809,13 +810,9 @@ export default function FormulasPage() {
         onClose={() => setPricing(null)}
         title={pricing ? `${pricing.price?.unitPrice != null ? "ออกราคาใหม่" : "ใส่ราคา"} — ${pricing.name}` : ""}
         endpoint={pricing ? `/api/master/formulas/${pricing.id}/price` : ""}
-        /* ⭐ ม-148 — สูตรใส่ได้ F · B · FB (F ลงกลิ่นของสูตร) */
-        slots={pricing
-          ? priceSlotsFor({
-            scentId: pricing.scentId, formulaId: pricing.id, categoryCode: pricing.categoryCode,
-            scentUsable: pricing.scentStatus ? isScentUsable({ status: pricing.scentStatus }) : true,
-          })
-          : null}
+        /* ⭐ ม-148 — สูตรใส่ได้ F · B · FB (F ลงกลิ่นของสูตร) · ช่อง + เหตุที่ใส่ไม่ได้ตัวเดียวกับ API */
+        slots={pricingPlan ? pricingPlan.slots : null}
+        blocker={pricingPlan ? pricingPlan.blocker : ""}
         onSaved={(msg) => {
           setPricing(null);
           setToast({ kind: "success", msg });

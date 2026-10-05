@@ -11,7 +11,7 @@
 import { canPriceRow } from '@/lib/requests/rowStage';
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { requestedLabel } from '@/lib/requests/rowLabel';
-import { currentPriceToUse } from '@/lib/master/priceSlots';
+import { NO_PRICE_SLOTS_REASON, currentPriceToUse } from '@/lib/master/priceSlots';
 
 const DEPT = 'RD';
 
@@ -84,8 +84,8 @@ export function priceBoardRows(pairs = [], live = []) {
         source: entry.source || null,
       } : null,
       useCurrentBlocker: blocker,
-      // ไม่มีช่องให้ใส่ = แถวยังไม่ผูกกลิ่น/สูตร — ข้อความเดียวกับที่ `normalizeSlotPrices` ตีกลับ
-      priceBlocker: slots.length ? '' : 'รายการนี้ยังไม่ผูกกลิ่นหรือสูตรในทะเบียน — ใส่ราคาไม่ได้',
+      // ไม่มีช่องให้ใส่ — เหตุจากตัวคิดช่องสด (หัวน้ำหอมที่กลิ่นใช้ไม่ได้) ไม่งั้น "ยังไม่ผูก" · ข้อความเดียวกับที่ POST ตีกลับ
+      priceBlocker: slots.length ? '' : (ctx?.blocker || NO_PRICE_SLOTS_REASON),
     };
   });
 }
