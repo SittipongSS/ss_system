@@ -10,6 +10,7 @@ import { BadgeDollarSign, Beaker, Pencil, Trash2 } from "lucide-react";
 import RegistryDetailShell, { RegistryFactCard } from "@/components/database/RegistryDetailShell";
 import RegistryPriceModal from "@/components/database/RegistryPriceModal";
 import RegistryShareCard from "@/components/database/RegistryShareCard";
+import { canManageRegistryShares } from "@/lib/master/registryShares";
 import RegistryPrice from "@/components/database/RegistryPrice";
 import { formulaPriceSlots } from "@/lib/master/priceSlots";
 import FormulaFormModal from "@/components/database/FormulaFormModal";
@@ -35,6 +36,8 @@ export default function FormulaDetailPage() {
   const role = useRole();
   const department = useDepartment();
   const me = useMemo(() => ({ role, department }), [role, department]);
+  // แชร์ให้ลูกค้ารายอื่น — การ์ด + ช่องในฟอร์มแก้ ถามตัวเดียวกับ API (RD + Sup ขึ้นไป · มติ 05/10)
+  const canShare = canManageRegistryShares(me);
   const [formula, setFormula] = useState(null);
   const [scentName, setScentName] = useState("");
   const [loading, setLoading] = useState(true);
@@ -67,7 +70,7 @@ export default function FormulaDetailPage() {
   const submitEdit = async () => {
     setSaving(true);
     try {
-      const payload = formulaFormPayload(form.value, { canSetCode: isFormulaRegistrar(me) });
+      const payload = formulaFormPayload(form.value, { canSetCode: isFormulaRegistrar(me), canShare });
       const res = await apiFetch(`/api/master/formulas/${formula.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -205,15 +208,15 @@ export default function FormulaDetailPage() {
           { label: "หมายเหตุ", value: formula.note, wide: true },
         ]}
       />
-      {/* ⭐ ลูกค้าที่ใช้ร่วม (ม-150) — RD แชร์สูตรให้ลูกค้ารายอื่นได้ (สูตรฐานไม่ต้องแชร์) */}
-      <RegistryShareCard kind="formula" entity={formula} canManage={isFormulaRegistrar(me)} onSaved={(_, msg) => { setToast({ kind: "success", msg }); load(); }} />
+      {/* ⭐ ลูกค้าที่ใช้ร่วม (ม-150) — RD + หัวหน้าฝ่ายขาย Sup ขึ้นไปแชร์สูตรให้ลูกค้ารายอื่นได้ (สูตรฐานไม่ต้องแชร์) */}
+      <RegistryShareCard kind="formula" entity={formula} canManage={canShare} onSaved={(_, msg) => { setToast({ kind: "success", msg }); load(); }} />
 
       {/* ฟอร์มแก้ — ตัวเดียวกับหน้ารายการ เปิดทับหน้านี้ ไม่พาผู้ใช้ออกไปไหน */}
       <FormulaFormModal
         form={form} saving={saving}
         customers={registryData.customers} scents={registryData.scents}
         formulas={registryData.formulas} categories={registryData.categories}
-        canSetCode={isFormulaRegistrar(me)}
+        canSetCode={isFormulaRegistrar(me)} canShare={canShare}
         onChange={(value) => setForm({ ...form, value })}
         onClose={() => setForm(null)}
         onSubmit={submitEdit}

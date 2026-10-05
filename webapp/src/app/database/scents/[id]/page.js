@@ -13,6 +13,7 @@ import { BadgeDollarSign, FlaskConical, Pencil, Trash2 } from "lucide-react";
 import RegistryDetailShell, { RegistryFactCard } from "@/components/database/RegistryDetailShell";
 import RegistryPriceModal from "@/components/database/RegistryPriceModal";
 import RegistryShareCard from "@/components/database/RegistryShareCard";
+import { canManageRegistryShares } from "@/lib/master/registryShares";
 import { scentFPriceNotice } from "@/lib/requests/deliveredCategory";
 import ScentFormModal from "@/components/database/ScentFormModal";
 import { scentToForm } from "@/components/database/ScentForm";
@@ -38,6 +39,8 @@ export default function ScentDetailPage() {
   const role = useRole();
   const department = useDepartment();
   const me = useMemo(() => ({ role, department }), [role, department]);
+  // แชร์ให้ลูกค้ารายอื่น — การ์ด + ช่องในฟอร์มแก้ ถามตัวเดียวกับ API (RD + Sup ขึ้นไป · มติ 05/10)
+  const canShare = canManageRegistryShares(me);
   const [scent, setScent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -76,6 +79,7 @@ export default function ScentDetailPage() {
         // แล้วเป็นของ RD · ด่านจริงอยู่ที่ API ทุกเส้นอยู่แล้ว
         canSetCode: isScentRegistrar(me) || scent.status === "draft",
         mode: "edit",
+        canShare,
         /* 🐞 เดิมอ่าน `.name` ดิบ ⇒ ลูกค้าที่มีแต่ชื่ออังกฤษถูกประทับ null ทับทุกครั้ง
            ที่กดบันทึก · `customerSnapshotName` ตกไป `nameEn` ให้เอง และคืน null เอง
            เมื่อไม่มีสักภาษา ⇒ ไม่ต้องมี `|| null` (ต้องตรงกับหน้ารายการเป๊ะ) */
@@ -227,8 +231,8 @@ export default function ScentDetailPage() {
           { label: "หมายเหตุ", value: scent.note, wide: true },
         ]}
       />
-      {/* ⭐ ลูกค้าที่ใช้ร่วม (ม-150) — RD แชร์กลิ่นให้ลูกค้ารายอื่นได้ · บันทึกแล้วโหลดใบใหม่ (ตัวเลือกทุกจออ่านจาก GET) */}
-      <RegistryShareCard kind="scent" entity={scent} canManage={isScentRegistrar(me)} onSaved={(_, msg) => { setToast({ kind: "success", msg }); load(); }} />
+      {/* ⭐ ลูกค้าที่ใช้ร่วม (ม-150) — RD + หัวหน้าฝ่ายขาย Sup ขึ้นไปแชร์กลิ่นให้ลูกค้ารายอื่นได้ · บันทึกแล้วโหลดใบใหม่ (ตัวเลือกทุกจออ่านจาก GET) */}
+      <RegistryShareCard kind="scent" entity={scent} canManage={canShare} onSaved={(_, msg) => { setToast({ kind: "success", msg }); load(); }} />
 
       {/* ฟอร์มแก้ — ตัวเดียวกับหน้ารายการ เปิดทับหน้านี้ ไม่พาผู้ใช้ออกไปไหน */}
       <ScentFormModal
@@ -236,7 +240,7 @@ export default function ScentDetailPage() {
         customers={registryData.customers} scents={registryData.scents}
         perfumers={registryData.perfumers}
         canSetCode={isScentRegistrar(me) || scent.status === "draft"}
-        proposal={!isScentRegistrar(me)}
+        proposal={!isScentRegistrar(me)} canShare={canShare}
         onChange={(value) => setForm({ ...form, value })}
         onClose={() => setForm(null)}
         onSubmit={submitEdit}

@@ -31,6 +31,7 @@ import { formulaPriceSlots } from "@/lib/master/priceSlots";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { emptyFormulaForm, formulaToForm } from "@/components/database/FormulaForm";
 import FormulaFormModal from "@/components/database/FormulaFormModal";
+import { canManageRegistryShares } from "@/lib/master/registryShares";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import styles from "./page.module.css";
 import { usePagination } from "@/lib/usePagination";
@@ -55,6 +56,8 @@ export default function FormulasPage() {
   // department ใช้กับด่านใส่ราคา FB (canQuoteMaterial — ฝ่าย RD) เท่านั้น
   const me = useMemo(() => ({ role, department }), [role, department]);
   const registrar = isFormulaRegistrar(me);
+  // ช่อง "ลูกค้าอื่นที่ใช้ได้" ในฟอร์ม (มติ 05/10) — RD + หัวหน้าฝ่ายขาย Sup ขึ้นไป
+  const canShare = canManageRegistryShares(me);
   // ปุ่มใส่ราคา FB ต่อแถว (กติกาเดียวกับทะเบียนกลิ่น 2026-08-12):
   // ฝ่าย RD + สูตรสถานะใช้งานได้ (ร่าง/กำลังพัฒนายังอ้างราคาไม่ได้)
   const canPriceFormula = (f) => canQuoteMaterial(me, "RM_FB") && isFormulaUsable(f);
@@ -298,7 +301,7 @@ export default function FormulasPage() {
        ฟอร์มตัวนี้ได้แล้ว (2026-08-19) · เขียนสองที่เมื่อไรมันเลื่อนออกจากกันทันที
        ⭐ รหัสส่งเฉพาะตอนมีสิทธิ์รับเข้าทะเบียน — คนที่ไม่มีสิทธิ์จะได้ไม่โดนตีกลับทั้ง
        ฟอร์มเพราะช่องที่เขาแก้ไม่ได้อยู่แล้ว */
-    const payload = formulaFormPayload(form.value, { canSetCode: registrar });
+    const payload = formulaFormPayload(form.value, { canSetCode: registrar, canShare });
     if (form.mode === "create") {
       const done = await call("/api/master/formulas", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -684,7 +687,7 @@ export default function FormulasPage() {
       <FormulaFormModal
         form={form} saving={saving}
         customers={customers} scents={scents} formulas={formulas} categories={categories}
-        canSetCode={registrar}
+        canSetCode={registrar} canShare={canShare}
         onChange={(value) => setForm({ ...form, value })}
         onClose={() => setForm(null)}
         onSubmit={submitForm}
