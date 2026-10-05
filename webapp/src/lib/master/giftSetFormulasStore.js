@@ -32,25 +32,32 @@ export async function loadProductFormulaRows(supabase, productId) {
  *   formulaDate, formulaStatus, scentId, scentName }]`
  */
 export async function loadProductFormulas(supabase, productId, { productTypes = null } = {}) {
-  const rows = await loadProductFormulaRows(supabase, productId);
-  if (!rows.length) return [];
-  const formulaIds = [...new Set(rows.map((r) => r.formulaId))];
-  const { data: formulas, error } = await supabase.from('formulas').select(FORMULA_COLUMNS).in('id', formulaIds);
-  if (error) throw error;
-  const formulaById = new Map((formulas || []).map((f) => [f.id, f]));
-  const scentIds = [...new Set((formulas || []).map((f) => f.scentId).filter(Boolean))];
-  let scentById = new Map();
-  if (scentIds.length) {
-    const { data: scents, error: scentError } = await supabase.from('scents').select('id, name').in('id', scentIds);
-    if (scentError) throw scentError;
-    scentById = new Map((scents || []).map((s) => [s.id, s]));
-  }
+  return (await loadProductFormulasMany(supabase, [productId], { productTypes })).get(productId) || [];
+}
+
+/**
+ * ตัวเดียวกับ `loadProductFormulas` แต่หลายสินค้าในคราวเดียว (ไฟล์ export ทะเบียนสินค้า) —
+ * คืน Map productId → รายการ (เรียงตามลำดับในชุด) · สินค้าที่ไม่มีรายการไม่อยู่ใน Map
+ * ⚠️ ซอยก้อน + ไล่หน้า (`fetchAllInChunks`) — ลิสต์ id ยาวตามทะเบียน (กับดัก 16 KB / เพดาน 1,000 แถว)
+ */
+export async function loadProductFormulasMany(supabase, productIds = [], { productTypes = null } = {}) {
+  const rows = await fetchAllInChunks(productIds, (chunk) => supabase
+    .from('product_formulas').select('id, "productId", "formulaId", "categoryCode", "sortOrder"')
+    .in('productId', chunk).order('id'));
+  const out = new Map();
+  if (!rows.length) return out;
+  const formulas = await fetchAllInChunks(rows.map((r) => r.formulaId), (chunk) => supabase
+    .from('formulas').select(FORMULA_COLUMNS).in('id', chunk).order('id'));
+  const formulaById = new Map(formulas.map((f) => [f.id, f]));
+  const scents = await fetchAllInChunks(formulas.map((f) => f.scentId).filter(Boolean), (chunk) => supabase
+    .from('scents').select('id, name').in('id', chunk).order('id'));
+  const scentById = new Map(scents.map((s) => [s.id, s]));
   const types = productTypes || await loadProductTypeNames(supabase);
-  return rows.map((row) => {
+  for (const row of [...rows].sort(byOrder)) {
     const formula = formulaById.get(row.formulaId) || null;
     const type = categoryRow(row.categoryCode, types);
     const nameEn = String(type?.nameEn ?? '').trim();
-    return {
+    out.set(row.productId, [...(out.get(row.productId) || []), {
       id: row.id,
       formulaId: row.formulaId,
       categoryCode: row.categoryCode,
@@ -62,8 +69,9 @@ export async function loadProductFormulas(supabase, productId, { productTypes = 
       formulaStatus: formula?.status || null,
       scentId: formula?.scentId || null,
       scentName: scentById.get(formula?.scentId)?.name || null,
-    };
-  });
+    }]);
+  }
+  return out;
 }
 
 /**

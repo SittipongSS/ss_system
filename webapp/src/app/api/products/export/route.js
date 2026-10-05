@@ -12,12 +12,36 @@ import { getCurrentUser } from '@/lib/authUser';
 import { canSeeProductCostUser } from '@/lib/permissions';
 import { filterProducts } from '@/lib/master/productFilter';
 import { buildProductExportBuffer, productExportFilename } from '@/lib/master/productWorkbook';
+import { isGiftSetCategory } from '@/lib/master/giftSetFormulas';
+import { loadProductFormulasMany } from '@/lib/master/giftSetFormulasStore';
+import { fetchAllInChunks } from '@/lib/supabaseInChunks';
 import { GET as listProducts } from '../route';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const csv = (value) => String(value || '').split(',').map((s) => s.trim()).filter(Boolean);
+
+/* สูตรของแต่ละ FG สำหรับสามคอลัมน์สูตร (มติผู้ใช้ 2026-10-05)
+   ⭐ อ่าน **สดจากทะเบียนสูตร** แบบเดียวกับใบสเปค FM-SA-04 — `products.formulaName/Code/Date` เป็นสำเนาที่เขียนตอนบันทึก FG
+      เท่านั้น RD แก้ชื่อ/ออกรหัสทีหลังแล้วสำเนาไม่ตาม · หาแถวสูตรไม่เจอ = ใช้สำเนาบนแถวเดิม
+   ⭐ ชุดของขวัญ (01-037 · mig 0403) ได้ `formulaComponents` จากตาราง product_formulas (หลายบรรทัดในเซลล์) */
+async function withFormulas(supabase, rows) {
+  const components = await loadProductFormulasMany(
+    supabase, rows.filter((p) => isGiftSetCategory(p.categoryCode)).map((p) => p.id),
+  );
+  const formulas = await fetchAllInChunks(rows.map((p) => p.formulaId).filter(Boolean), (chunk) => supabase
+    .from('formulas').select('id, code, name, "formulaDate"').in('id', chunk).order('id'));
+  const formulaById = new Map(formulas.map((f) => [f.id, f]));
+  return rows.map((p) => {
+    const live = p.formulaId ? formulaById.get(p.formulaId) : null;
+    return {
+      ...p,
+      ...(live ? { formulaCode: live.code, formulaName: live.name, formulaDate: live.formulaDate } : {}),
+      ...(components.has(p.id) ? { formulaComponents: components.get(p.id) } : {}),
+    };
+  });
+}
 
 export async function GET(request) {
   const user = await getCurrentUser();
@@ -51,7 +75,7 @@ export async function GET(request) {
 
   try {
     const now = new Date();
-    const buffer = await buildProductExportBuffer(rows, {
+    const buffer = await buildProductExportBuffer(await withFormulas(supabase, rows), {
       includeCost: canSeeProductCostUser(user),
       now,
     });
