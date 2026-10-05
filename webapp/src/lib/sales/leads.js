@@ -8,8 +8,9 @@ import { countBusinessDays } from '@/lib/pm/dateHelpers';
 import { businessDayKey } from '@/lib/datePeriods';
 import { can, hasTeam, hasTeamScope, isDealHolder, isReadOnlyObserver, isSuperuser, isTeamLead } from '@/lib/permissions';
 import { whereTeamIn } from '@/lib/teamScope';
-// ⚠️ ทางเดียว: leadAutoBounce.js ไม่ import ไฟล์นี้กลับ (ไม่มี cycle)
+// ⚠️ ทางเดียว: leadAutoBounce.js / leadAutoLost.js ไม่ import ไฟล์นี้กลับ (ไม่มี cycle)
 import { AUTO_BOUNCE_MAX_ROUNDS } from '@/lib/sales/leadAutoBounce';
+import { AUTO_LOST_AFTER_BUSINESS_DAYS, AUTO_LOST_CODE_BY_EFFORT, AUTO_LOST_FULL_EFFORT } from '@/lib/sales/leadAutoLost';
 
 export const LEAD_CHANNELS = [
   'chatcone_line', 'chatcone_meta', 'chatcone_tiktok', 'chatcone_ig', 'typeform', 'email',
@@ -177,7 +178,18 @@ export const LEAD_LOST_REASONS = Object.freeze([
   { code: 'duplicate', label: 'ลีดซ้ำ', hint: 'มีใบเดิมของลูกค้ารายนี้อยู่แล้ว', countable: false },
   { code: 'invalid', label: 'ข้อมูลติดต่อผิด / สแปม', hint: 'เบอร์/อีเมลใช้ไม่ได้ หรือใบทดสอบ', countable: false },
   { code: 'other', label: 'อื่นๆ', hint: 'ระบุเองในช่องรายละเอียด', countable: true, detail: 'required' },
+  /* ⭐ **ระบบปิดเอง** (มติ 2026-09-16 · lib/sales/leadAutoLost.js) — ถือครบ 10 วันทำการแล้ว
+     ยังไม่ได้นัด · สามรหัส = สามฉลากความพยายาม ขึ้นเป็นสามแถวในรายงานได้โดยไม่ต้องมีคอลัมน์ใหม่
+     `system: true` = **คนเลือกไม่ได้** (ไม่โผล่ในฟอร์ม · API ตีกลับ) — ใบที่คนปิดเองต้องบอกเหตุผลจริง
+     ⚠️ นับในตัวส่วน (countable) — ใบพวกนี้เคยเป็นโอกาสขายจริงที่หลุดมือไป ไม่ใช่สแปม */
+  { code: AUTO_LOST_CODE_BY_EFFORT.full, label: 'ระบบปิด · ตามครบ', hint: `ติดต่อ ${AUTO_LOST_FULL_EFFORT} ครั้งขึ้นไปแล้วยังไม่ได้นัดใน ${AUTO_LOST_AFTER_BUSINESS_DAYS} วันทำการ`, countable: true, system: true },
+  { code: AUTO_LOST_CODE_BY_EFFORT.partial, label: 'ระบบปิด · ตามไม่ครบ', hint: `ติดต่อไม่ถึง ${AUTO_LOST_FULL_EFFORT} ครั้ง และไม่ได้นัดใน ${AUTO_LOST_AFTER_BUSINESS_DAYS} วันทำการ`, countable: true, system: true },
+  { code: AUTO_LOST_CODE_BY_EFFORT.none, label: 'ระบบปิด · ไม่เคยแตะ', hint: `ไม่มีบันทึกการติดต่อเลยตลอด ${AUTO_LOST_AFTER_BUSINESS_DAYS} วันทำการ`, countable: true, system: true },
 ]);
+
+/* ตัวเลือกที่ **คนเลือกได้** — ฟอร์มปิดลีดอ่านจากตัวนี้ ไม่ใช่ `LEAD_LOST_REASONS` ทั้งชุด */
+export const LEAD_LOST_PICKABLE = LEAD_LOST_REASONS.filter((r) => !r.system);
+export const LEAD_LOST_SYSTEM_CODES = LEAD_LOST_REASONS.filter((r) => r.system).map((r) => r.code);
 
 /* เหตุผลที่ **ไม่ใช่แพ้ถาวร** — ถามวันกลับมาคุยใหม่ต่อได้
    ⚠️ ไม่บังคับกรอก: บางเคสลูกค้าบอกแค่ "ไว้ก่อน" โดยไม่มีกำหนด · บังคับแล้วคนจะ
@@ -199,6 +211,7 @@ const LOST_DETAIL_REQUIRED = new Set(
 export function leadLostReasonError({ code, detail } = {}) {
   if (!code) return 'ต้องเลือกเหตุผลที่ไม่ไปต่อ';
   if (!LEAD_LOST_CODES.includes(code)) return 'เหตุผลที่ไม่ไปต่อไม่ถูกต้อง';
+  if (LEAD_LOST_SYSTEM_CODES.includes(code)) return 'เหตุผลนี้ระบบใช้ปิดลีดเองเท่านั้น — เลือกเหตุผลที่เกิดขึ้นจริง';
   if (LOST_DETAIL_REQUIRED.has(code) && !String(detail || '').trim()) {
     return 'เลือก "อื่นๆ" แล้วต้องเขียนรายละเอียดด้วย';
   }
