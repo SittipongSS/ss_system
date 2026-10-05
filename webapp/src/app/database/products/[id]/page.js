@@ -23,6 +23,7 @@ import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { brandThList, brandBoth, hasBrandField } from "@/lib/master/brands";
 import { fmtDate, fmtMoney, fmtMoneyOrDash, fmtNumber, productNameBoth, naText, NA } from "@/lib/format";
 import { productDisplayName } from "@/lib/master/productIdentity";
+import { isGiftSetCategory } from "@/lib/master/giftSetFormulas";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import ProductSpecCard from "@/components/database/ProductSpecCard";
@@ -641,6 +642,36 @@ export default function ProductDetails() {
               {/* ข้อมูลสูตร (0112 → ทะเบียน 0171) — FG ที่ไม่มีสูตร (กล่อง/บรรจุภัณฑ์)
                   โชว์ — ได้ · ชื่อ/รหัส/วันที่เป็น snapshot จากทะเบียน จึงยังอ่านจาก
                   แถวสินค้าตรง ๆ เหมือนเดิม ต่างแค่มีลิงก์กลับไปตัวสูตรเมื่อผูกแล้ว */}
+              {/* ชุดของขวัญ (01-037 · มติ 2026-10-05 · mig 0403) — หลายสูตร แถวละ หมวด · สูตร | รหัส | วันที่
+                  (ลำดับเดียวกับใบสเปค FM-SA-04) แทนสามช่องของสูตรเดี่ยว · อ่านสดจากทะเบียนสูตร */}
+              {isGiftSetCategory(product.categoryCode) ? (
+                <div className="md:col-span-2">
+                  <span className="text-[var(--text-3)] block mb-1">สูตรในชุด (Formulas)</span>
+                  {(product.formulaComponents || []).length ? (
+                    <ol className="flex flex-col gap-2">
+                      {product.formulaComponents.map((row, index) => (
+                        <li key={row.id || index} className="text-sm">
+                          <span className="text-[var(--text-3)]">{`สูตร ${index + 1} · ${row.categoryName || row.categoryCode}`}</span>
+                          <span className="block">
+                            <Link
+                              href={`/database/formulas?q=${encodeURIComponent(row.formulaCode || row.formulaName || "")}`}
+                              className="font-semibold text-[var(--accent)] hover:underline"
+                            >
+                              {row.formulaName || row.formulaCode || row.formulaId}
+                            </Link>
+                            <span className="font-mono text-[var(--text-2)]">
+                              {` · ${naText(row.formulaCode)} · ${row.formulaDate ? fmtDate(row.formulaDate) : NA}`}
+                            </span>
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <span className="font-semibold text-[var(--text)] text-sm">{NA}</span>
+                  )}
+                </div>
+              ) : (
+              <>
               <div>
                 <span className="text-[var(--text-3)] block mb-1">ชื่อสูตร (Formula)</span>
                 {product.formulaId ? (
@@ -680,6 +711,8 @@ export default function ProductDetails() {
                 <span className="text-[var(--text-3)] block mb-1">วันที่สูตร (Formula Date)</span>
                 <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.formulaDate ? fmtDate(product.formulaDate) : NA}</span>
               </div>
+              </>
+              )}
               {/* กลุ่ม 03/04 ไม่มีของให้วัดขนาด — ไม่มีช่องนี้ทั้งในฟอร์มและหน้านี้ (ดู units.js)
                   โชว์เป็นขีดไว้เฉย ๆ ไม่ได้ เพราะขีดแปลว่า "ยังไม่กรอก" ซึ่งชวนให้คนไปหาอะไรมาใส่ */}
               {showPackaging && (

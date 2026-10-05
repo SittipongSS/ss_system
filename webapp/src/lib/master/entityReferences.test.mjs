@@ -1,6 +1,7 @@
 // Tests ทะเบียน "ใครอ้างถึงลูกค้า" + ด่านก่อนลบ. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert';
+import { readFileSync } from 'node:fs';
 import {
   CUSTOMER_REFERENCE_TABLES, CUSTOMER_REFERENCE_TABLE_NAMES, findCustomerReferences,
   REFERENCE_REGISTRY, referenceTableNames, findEntityReferences,
@@ -121,6 +122,15 @@ test('สมุดประวัติราคาต้องอยู่ใ�
   assert.ok(ignored.product_price_history.length > 10, 'ต้องเขียนเหตุผลกำกับ');
   assert.ok(!referenceTableNames('product').includes('product_price_history'),
     'ห้ามอยู่ในลิสต์ที่บล็อกการลบพร้อมกัน');
+});
+
+test('รายการสูตรของชุดของขวัญ (mig 0403) อยู่ในลิสต์ยกเว้น — FG ชุดของขวัญที่ผูกสูตรแล้วต้องลบได้', () => {
+  const ignored = REFERENCE_REGISTRY.product.ignored;
+  assert.ok(ignored.product_formulas?.length > 10, 'ต้องประกาศพร้อมเหตุผล');
+  assert.ok(!referenceTableNames('product').includes('product_formulas'), 'ห้ามอยู่ในลิสต์ที่บล็อกการลบ');
+  const sql = readFileSync(new URL('../../../supabase/migrations/0403_product_gift_set_formulas.sql', import.meta.url), 'utf8');
+  assert.match(sql, /"productId"\s+text NOT NULL REFERENCES public\.products\(id\) ON DELETE CASCADE/,
+    'ยกเว้นได้เพราะฐานกวาดให้ — FK ต้องเป็น CASCADE จริง');
 });
 
 test('findEntityReferences ใช้คอลัมน์ของ entity นั้น (productId ไม่ใช่ customerId)', async () => {

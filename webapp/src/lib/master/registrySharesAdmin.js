@@ -7,6 +7,7 @@ import { fetchAll } from '@/lib/supabaseFetchAll';
 import { fetchAllInChunks } from '@/lib/supabaseInChunks';
 import { CUSTOMER_NAME_SELECT, customerSnapshotName } from '@/lib/master/customerName';
 import { diffShares, normalizeShareInput, unshareError } from '@/lib/master/registryShares';
+import { giftSetsUsingFormulas } from '@/lib/master/giftSetFormulasStore';
 
 export const SHARE_TABLES = Object.freeze({
   scent: Object.freeze({ table: 'scent_customer_shares', column: 'scentId' }),
@@ -85,7 +86,10 @@ export async function shareUsage(supabase, kind, id, customerIds = []) {
     ]);
     reqs.forEach((r) => requestIds.add(r.id));
     [...items, ...targets].forEach((r) => requestIds.add(r.requestId));
-    products = prods; formulas = fmls;
+    /* ชุดของขวัญ (mig 0403) ไม่มี scentId บนแถวสินค้า — ถือกลิ่นผ่านสูตรในรายการ ⇒ นับชุดที่มีสูตรของกลิ่นนี้
+       (FG สูตรเดี่ยวนับผ่าน products.scentId ที่ derive จากสูตรอยู่แล้ว) */
+    const giftSets = await giftSetsUsingFormulas(supabase, fmls.map((f) => f.id));
+    products = [...prods, ...uniqueGiftSetProducts(giftSets)]; formulas = fmls;
     for (const c of children) if (wanted.has(c.customerId)) usage[c.customerId].scents = (usage[c.customerId].scents || 0) + 1;
     /* สูตรของกลิ่นนี้ที่ **แชร์** ให้ลูกค้านั้นอยู่ — เลิกแชร์กลิ่นแล้วสูตรที่แชร์ไว้ใช้ไม่ได้ (เลือกกลิ่นในคำร้องไม่ได้) */
     const formulaIds = fmls.map((f) => f.id);
@@ -105,7 +109,8 @@ export async function shareUsage(supabase, kind, id, customerIds = []) {
     ]);
     reqs.forEach((r) => requestIds.add(r.id));
     items.forEach((r) => requestIds.add(r.requestId));
-    products = prods; formulas = children;
+    // ชุดของขวัญถือสูตรผ่าน product_formulas (mig 0403) ไม่ใช่ products.formulaId
+    products = [...prods, ...uniqueGiftSetProducts(await giftSetsUsingFormulas(supabase, [id]))]; formulas = children;
   }
   for (const p of products) if (wanted.has(p.customerId)) usage[p.customerId].products += 1;
   for (const f of formulas) if (wanted.has(f.customerId)) usage[f.customerId].formulas += 1;
@@ -115,6 +120,12 @@ export async function shareUsage(supabase, kind, id, customerIds = []) {
     : [];
   for (const r of requests) if (wanted.has(r.customerId)) usage[r.customerId].requests += 1;
   return usage;
+}
+
+/* ชุดของขวัญหนึ่งชุดมีหลายสูตรของกลิ่นเดียวกันได้ — นับเป็นสินค้าหนึ่งตัว */
+function uniqueGiftSetProducts(giftSets) {
+  const byProduct = new Map(giftSets.map((g) => [g.productId, { id: g.productId, customerId: g.customerId }]));
+  return [...byProduct.values()];
 }
 
 const httpError = (message, status) => Object.assign(new Error(message), { status });

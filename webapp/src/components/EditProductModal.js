@@ -3,7 +3,9 @@ import MoneyInput from "@/components/ui/MoneyInput";
 import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Factory } from "lucide-react";
 import Modal from "@/components/Modal";
-import ProductForm, { PRODUCT_EDIT_FIELDS } from "@/components/database/ProductForm";
+import ProductForm, { PRODUCT_EDIT_FIELDS, giftSetFormSeed } from "@/components/database/ProductForm";
+import { giftSetFormError } from "@/lib/master/giftSetFormulas";
+import { categoryOf } from "@/lib/master/categoryOf";
 import { brandTh, brandEn, hasBrandField, normalizeBrands } from "@/lib/master/brands";
 import { isAutoFgCode } from "@/lib/master/masterCodes";
 import { fmtMoney } from "@/lib/format";
@@ -33,7 +35,8 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
     if (open && product) {
       const seed = {};
       for (const k of PRODUCT_EDIT_FIELDS) seed[k] = product[k] ?? "";
-      setForm(seed);
+      // รายการสูตรของชุดของขวัญ (mig 0403) — ไม่อยู่ใน PRODUCT_EDIT_FIELDS เพราะไม่มีค่า = ไม่ใส่คีย์ (ดู giftSetFormSeed)
+      setForm({ ...seed, ...giftSetFormSeed(product) });
       setFactoryPriceDraft(product.costPrice ?? "");
       setPriceEditorOpen(false);
       setPriceConfirmed(false);
@@ -90,6 +93,9 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
     if (!form.productDescription?.trim() && !form.productDescriptionEn?.trim()) {
       setError("กรุณากรอกชื่อสินค้าอย่างน้อย 1 ภาษา (ไทยหรืออังกฤษ)"); return;
     }
+    // ชุดของขวัญ (01-037): ทุกแถวต้องมีหมวด + สูตร · สูตรไม่ซ้ำ · หมวดตรงกับสูตร — ตัวตรวจเดียวกับ API
+    const giftSetError = giftSetFormError(form.categoryCode || categoryOf(form.fgCode), form.formulaComponents, formulas);
+    if (giftSetError) { setError(giftSetError); return; }
     setSubmitting(true);
     setError(null);
     const body = {

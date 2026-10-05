@@ -93,3 +93,27 @@ export function productSpecFormulaRow(product, language = 'th') {
   }
   return { kind: 'formula', label: PRODUCT_SPEC_FORMULA_ROW_LABEL, value: null };
 }
+
+/**
+ * แถวสูตรทั้งหมดของ Product Overview — ชุดของขวัญได้หลายแถว · สินค้าอื่นได้แถวเดียว (`productSpecFormulaRow`)
+ *
+ * ⭐ มติผู้ใช้ 2026-10-05 (mig 0403): ชุดของขวัญ (01-037) ผูกได้หลายสูตร สูตรละหนึ่งหมวด ⇒ กระดาษพิมพ์
+ *    **ทุกสูตร แถวละสูตร บอกหมวด** — ป้าย "สูตร 1 · น้ำหอมสำหรับผิวกาย" · ค่า "ชื่อ | รหัส | วันที่" รูปเดียวกับแถวสูตรเดี่ยว
+ *    ลำดับ = ลำดับในชุดที่ตั้งไว้บนฟอร์มสินค้า · ป้ายไม่แปล (ชื่อหมวดไทยก่อน) เหมือนป้ายแถวอื่นของตาราง
+ * ⚠️ `formulaComponents` มีเฉพาะก้อนของชุดของขวัญ (`loadProductPrintFields`) — ไม่มีคีย์/อาเรย์ว่าง = ทางเดิมทุกตัวอักษร
+ *    (ชุดที่ยังไม่ผูกสูตรสักตัวจึงได้แถว "สูตร / รหัสสูตร / วันที่" ช่องว่างเหมือน FG ที่ไม่ผูกสูตร)
+ * @returns {Array<{ kind: 'formula'|'scent', label: string, value: string|null }>}
+ */
+export function productSpecFormulaRows(product, language = 'th') {
+  const parts = Array.isArray(product?.formulaComponents) ? product.formulaComponents : [];
+  if (!parts.length) return [productSpecFormulaRow(product, language)];
+  return parts.map((row, index) => {
+    const pieces = [textOf(row?.formulaName), textOf(row?.formulaCode), productSpecDateText(row?.formulaDate, language) || ''];
+    const category = textOf(row?.categoryName) || textOf(row?.categoryCode);
+    return {
+      kind: 'formula',
+      label: `สูตร ${index + 1}${category ? ` · ${category}` : ''}`,
+      value: pieces.some(Boolean) ? pieces.map((part) => part || MISSING_PART).join(PART_SEPARATOR) : null,
+    };
+  });
+}

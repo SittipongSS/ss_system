@@ -95,8 +95,9 @@ test('รหัสที่โค้ดอ้างครบตามที่�
     '02-020', // PDR_FRAGRANCE_OIL_CODE
     '03-001', '03-002', '03-005', '03-008', '03-009', '03-010', // SCENT_DESIGN_CATEGORIES
     '01-001', '02-010', // standardPreview.js
+    '01-037', // GIFT_SET_CATEGORY_CODE (giftSetFormulas.js · mig 0403)
   ]) {
     assert.ok(PROTECTED_PRODUCT_CATEGORY_CODES.includes(code), `${code} หายจากลิสต์กันลบ`);
   }
-  assert.equal(PROTECTED_PRODUCT_CATEGORY_CODES.length, 10);
+  assert.equal(PROTECTED_PRODUCT_CATEGORY_CODES.length, 11);
 });
