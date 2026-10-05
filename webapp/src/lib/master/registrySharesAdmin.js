@@ -131,12 +131,12 @@ function uniqueGiftSetProducts(giftSets) {
 const httpError = (message, status) => Object.assign(new Error(message), { status });
 
 /**
- * ตั้งรายชื่อลูกค้าที่ได้รับแชร์ (แทนทั้งชุด) — คืน `{ before, after, add, remove }`
- * ⚠️ ผู้เรียกตรวจสิทธิ์ (RD เท่านั้น) ก่อนเรียก · ลูกค้าต้องมีจริง · เลิกแชร์ลูกค้าที่ใช้อยู่ไม่ได้
- * ⚠️ ไม่มี transaction — เพิ่มก่อนลบ (พังกลางทาง = แชร์เกิน ไม่ใช่แชร์ขาดจนของใครติดด่าน)
+ * ตรวจรายชื่อแชร์ชุดใหม่ **โดยไม่เขียนอะไร** — คืน `{ customerById, current, add, remove }` หรือ throw (400/409)
+ * ⭐ มีไว้ให้ฟอร์มสร้าง/แก้ (มติ 2026-10-05) ตรวจก่อนเขียนตัวกลิ่น/สูตร — ไม่งั้นรายชื่อผิดแล้วได้ของครึ่งเดียว:
+ *    สร้างกลิ่นสำเร็จแต่แชร์ตีกลับ ⇒ ฟอร์มค้างให้กดใหม่ ⇒ กดซ้ำได้กลิ่นซ้ำสองตัว
+ * · `entity.id` ว่าง (ยังไม่สร้าง) = ชุดเดิมว่าง · ตรวจแค่ลูกค้ามีจริง
  */
-export async function saveRegistryShares(supabase, kind, entity, rawIds, user = null) {
-  const { table, column } = tableOf(kind);
+export async function planRegistryShares(supabase, kind, entity, rawIds) {
   const { customerIds, error } = normalizeShareInput(rawIds, { ownerId: entity?.customerId || null, kind });
   if (error) throw httpError(error, 400);
 
@@ -150,17 +150,28 @@ export async function saveRegistryShares(supabase, kind, entity, rawIds, user = 
 
   const [current] = await attachShares(supabase, [entity], kind);   // ไม่รวมแถวของเจ้าของปัจจุบัน (ดู attachShares)
   const { add, remove } = diffShares(current.sharedCustomerIds, customerIds);
+  if (remove.length && entity?.id) {
+    const usage = await shareUsage(supabase, kind, entity.id, remove);
+    const nameOf = (id) => current.sharedCustomers.find((s) => s.customerId === id)?.customerName || id;
+    const blocked = unshareError(remove, usage, nameOf);
+    if (blocked) throw httpError(blocked, 409);
+  }
+  return { customerById, current, add, remove };
+}
+
+/**
+ * ตั้งรายชื่อลูกค้าที่ได้รับแชร์ (แทนทั้งชุด) — คืน `{ before, after, add, remove, scentSharedWith }`
+ * ⚠️ ผู้เรียกตรวจสิทธิ์ (`canManageRegistryShares`) ก่อนเรียก · ลูกค้าต้องมีจริง · เลิกแชร์ลูกค้าที่ใช้อยู่ไม่ได้
+ * ⚠️ ไม่มี transaction — เพิ่มก่อนลบ (พังกลางทาง = แชร์เกิน ไม่ใช่แชร์ขาดจนของใครติดด่าน)
+ */
+export async function saveRegistryShares(supabase, kind, entity, rawIds, user = null) {
+  const { table, column } = tableOf(kind);
+  const { customerById, current, add, remove } = await planRegistryShares(supabase, kind, entity, rawIds);
   // แถวค้างของเจ้าของ (เปลี่ยนเจ้าของหลังแชร์) — ล้างทิ้งเงียบ ๆ ไม่ผ่านด่านใช้งาน (เจ้าของใช้ได้อยู่แล้ว)
   if (entity?.customerId) {
     const { error: ownerRowError } = await supabase.from(table).delete()
       .eq(column, entity.id).eq('customerId', entity.customerId);
     if (ownerRowError) throw ownerRowError;
-  }
-  if (remove.length) {
-    const usage = await shareUsage(supabase, kind, entity.id, remove);
-    const nameOf = (id) => current.sharedCustomers.find((s) => s.customerId === id)?.customerName || id;
-    const blocked = unshareError(remove, usage, nameOf);
-    if (blocked) throw httpError(blocked, 409);
   }
 
   const nowIso = new Date().toISOString();

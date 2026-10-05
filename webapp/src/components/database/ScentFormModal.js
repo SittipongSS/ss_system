@@ -9,7 +9,7 @@ import ScentForm from "@/components/database/ScentForm";
 export default function ScentFormModal({
   form, onChange, onClose, onSubmit, saving = false,
   customers = [], scents = [], perfumers = [],
-  canSetCode = false, canSetLegacy = false, proposal = false,
+  canSetCode = false, canSetLegacy = false, proposal = false, canShare = false,
 }) {
   return (
     <Modal
@@ -32,7 +32,7 @@ export default function ScentFormModal({
           mode={form.mode} value={form.value}
           customers={customers} scents={scents}
           editingId={form.scent?.id || null}
-          canSetCode={canSetCode} canSetLegacy={canSetLegacy} proposal={proposal}
+          canSetCode={canSetCode} canSetLegacy={canSetLegacy} proposal={proposal} canShare={canShare}
           disabled={saving}
           onChange={onChange}
         />

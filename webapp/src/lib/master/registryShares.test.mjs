@@ -4,19 +4,21 @@
 //   1) เจ้าของยังมีรายเดียว · ลูกค้าที่ได้รับแชร์ "ใช้ได้เหมือนเป็นของตัวเอง" — ทุกด่าน "ของลูกค้ารายนี้ไหม" ยอมรับ
 //      (สายพันธุ์กลิ่น/สูตร · สูตรใช้กลิ่น · PDR · NPD · บรรทัดพัฒนาสูตร · ปิดบรีฟแบบผูกกลิ่น)
 //   2) ลูกค้าที่ไม่ได้รับแชร์ยังถูกกันเหมือนเดิม (มติ 9 ยังอยู่สำหรับคนนอก)
-//   3) ตั้งรายชื่อแชร์: ตัดเจ้าของ · ลูกค้าต้องมีจริง · เลิกแชร์คนที่ใช้อยู่ไม่ได้ · RD เท่านั้น
+//   3) ตั้งรายชื่อแชร์: ตัดเจ้าของ · ลูกค้าต้องมีจริง · เลิกแชร์คนที่ใช้อยู่ไม่ได้ · RD + หัวหน้าฝ่ายขาย Sup ขึ้นไป (มติ 05/10)
 //   4) ส่งงานผูกสูตรของลูกค้าอื่น = แชร์ให้อัตโนมัติ · รอบแก้ทับสูตรของลูกค้าอื่นไม่ได้
+//   5) ช่อง "ลูกค้าอื่นที่ใช้ได้" ในฟอร์มสร้าง/แก้ (มติ 05/10) — ตรวจก่อนเขียนตัวกลิ่น/สูตร · ไม่มีสิทธิ์ = ไม่ส่งคีย์
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  diffShares, formulaUsableByCustomer, normalizeShareInput, scentUsableByCustomer, unshareError,
+  canManageRegistryShares, diffShares, formulaUsableByCustomer, normalizeShareInput, requestedShareIds,
+  scentUsableByCustomer, shareChangeSummary, unshareError,
 } from './registryShares.js';
-import { derivedFromError } from './scents.js';
-import { derivedFromFormulaError, formulaScentCustomerError } from './formulas.js';
+import { derivedFromError, scentFormPayload } from './scents.js';
+import { derivedFromFormulaError, formulaFormPayload, formulaScentCustomerError } from './formulas.js';
 import { pdrTargetScentError } from '../requests/pdrTargets.js';
 import { npdWorkRowsScentError } from '../requests/npdWorkRows.js';
-import { attachShares, saveRegistryShares } from './registrySharesAdmin.js';
+import { attachShares, planRegistryShares, saveRegistryShares } from './registrySharesAdmin.js';
 import { formulaDeliveryPreview, planFormulaDelivery } from '../requests/formulaRework.js';
 
 const read = (rel) => readFileSync(rel, 'utf8');
@@ -58,6 +60,9 @@ test('รายชื่อแชร์: ตัดซ้ำ/ช่องว่�
   assert.deepEqual(normalizeShareInput([' CUS-B ', 'CUS-B', '', 'CUS-A', 'CUS-C'], { ownerId: 'CUS-A' }).customerIds, ['CUS-B', 'CUS-C']);
   assert.match(normalizeShareInput('CUS-B', { ownerId: 'CUS-A' }).error, /ไม่ถูกต้อง/);
   assert.match(normalizeShareInput(['CUS-B'], { ownerId: null, kind: 'formula' }).error, /สูตรฐาน/);
+  // ฟอร์มสร้าง/แก้สูตรฐานส่ง [] มาทุกครั้ง — ต้องผ่าน ไม่งั้นสร้างสูตรฐานจากฟอร์มไม่ได้อีกเลย
+  assert.deepEqual(normalizeShareInput([], { ownerId: null, kind: 'formula' }), { customerIds: [], error: null });
+  assert.deepEqual(normalizeShareInput(['', ' '], { ownerId: null, kind: 'formula' }), { customerIds: [], error: null });
   assert.deepEqual(diffShares(['CUS-B', 'CUS-C'], ['CUS-C', 'CUS-D']), { add: ['CUS-D'], remove: ['CUS-B'] });
   assert.equal(unshareError(['CUS-B'], { 'CUS-B': { formulas: 0, requests: 0, products: 0 } }), null);
   assert.match(unshareError(['CUS-B'], { 'CUS-B': { formulas: 1, requests: 2 } }, () => 'บริษัท บี'),
@@ -135,10 +140,10 @@ test('saveRegistryShares: เพิ่ม/ลบตามชุดใหม่ �
   assert.equal(sbUsed.tables.scent_customer_shares.length, 1, 'ตีกลับก่อนเขียน');
 });
 
-test('ต่อสาย: API แชร์ = RD เท่านั้น · ลูกค้าของสูตรจากกลิ่นที่แชร์มา = ลูกค้าที่เลือก · ส่งงานผูกสูตรต่างลูกค้า = แชร์อัตโนมัติ', () => {
+test('ต่อสาย: API แชร์ = canManageRegistryShares · ลูกค้าของสูตรจากกลิ่นที่แชร์มา = ลูกค้าที่เลือก · ส่งงานผูกสูตรต่างลูกค้า = แชร์อัตโนมัติ', () => {
   for (const [path, gate] of [
-    ['src/app/api/master/scents/[id]/route.js', 'isScentRegistrar'],
-    ['src/app/api/master/formulas/[id]/route.js', 'isFormulaRegistrar'],
+    ['src/app/api/master/scents/[id]/route.js', 'canManageRegistryShares'],
+    ['src/app/api/master/formulas/[id]/route.js', 'canManageRegistryShares'],
   ]) {
     const src = read(path);
     const block = src.slice(src.indexOf("if (action === 'shares')"));
@@ -202,3 +207,92 @@ test('รอบแก้ทับสูตรของลูกค้าอื�
   assert.equal(preview.plan.kind, 'blocked');
 });
 
+
+/* ── มติผู้ใช้ 2026-10-05: เปิดให้ฝ่ายขาย Sup ขึ้นไปแชร์ได้ + กรอกในฟอร์มสร้าง/แก้ ───────────────────── */
+
+test('ใครแชร์ได้: RD ทุกตำแหน่ง + admin + CD/CM/AE Sup/AC Sup · ตำแหน่งในทีมและผู้ดูอย่างเดียวไม่ได้', () => {
+  for (const role of ['rd', 'rd_perfumer', 'rd_chemist', 'rd_coordinator', 'rd_supervisor',
+    'admin', 'commercial_director', 'commercial_manager', 'ae_supervisor', 'ac_supervisor']) {
+    assert.equal(canManageRegistryShares({ role }), true, role);
+  }
+  for (const role of ['ae', 'ac', 'senior_ae', 'senior_ac', 'viewer', 'executive', 'mkt', 'ra', 'fn', undefined]) {
+    assert.equal(canManageRegistryShares({ role }), false, String(role));
+  }
+  assert.equal(canManageRegistryShares(null), false);
+});
+
+test('คีย์แชร์ในคำขอ: ไม่ส่ง = ไม่แตะ · ส่งอาเรย์ = ตั้งทั้งชุด · สรุป audit ว่างเมื่อไม่มีอะไรเปลี่ยน', () => {
+  assert.equal(requestedShareIds({ name: 'x' }), undefined);
+  assert.equal(requestedShareIds({ sharedCustomerIds: 'CUS-B' }), undefined);
+  assert.deepEqual(requestedShareIds({ sharedCustomerIds: [] }), []);
+  assert.deepEqual(requestedShareIds({ sharedCustomerIds: ['CUS-B'] }), ['CUS-B']);
+  assert.equal(shareChangeSummary('scent', { code: 'PF-A' }, { add: [], remove: [] }), null);
+  assert.equal(shareChangeSummary('formula', { code: 'PF-A-P1' }, { add: ['B', 'C'], remove: ['D'] }),
+    'แชร์สูตร PF-A-P1: เพิ่ม 2 ลูกค้า · เลิกแชร์ 1 ลูกค้า');
+});
+
+test('payload ฟอร์ม: มีสิทธิ์ = ส่งรายชื่อทั้งชุด · ไม่มีสิทธิ์/แถวไม่ได้ติดรายชื่อ = ไม่ส่งคีย์ · สูตรฐาน = ชุดว่าง', () => {
+  const shared = [{ customerId: 'CUS-B', customerName: 'บี' }, { customerId: 'CUS-C', customerName: 'ซี' }];
+  const scent = { name: 'กลิ่น', customerId: 'CUS-A', sharedCustomers: shared };
+  assert.deepEqual(scentFormPayload(scent, { canShare: true }).sharedCustomerIds, ['CUS-B', 'CUS-C']);
+  assert.deepEqual(scentFormPayload({ ...scent, sharedCustomers: [] }, { canShare: true, mode: 'edit' }).sharedCustomerIds, []);
+  assert.equal('sharedCustomerIds' in scentFormPayload(scent, { canShare: false }), false);
+  // null = แถวที่โหลดมาไม่ได้ติดรายชื่อแชร์ — ส่ง [] ไปเมื่อไร = เลิกแชร์ทุกรายเงียบ ๆ
+  assert.equal('sharedCustomerIds' in scentFormPayload({ ...scent, sharedCustomers: null }, { canShare: true }), false);
+
+  const formula = { name: 'สูตร', customerId: 'CUS-A', sharedCustomers: shared };
+  assert.deepEqual(formulaFormPayload(formula, { canShare: true }).sharedCustomerIds, ['CUS-B', 'CUS-C']);
+  assert.deepEqual(formulaFormPayload({ ...formula, customerId: '' }, { canShare: true }).sharedCustomerIds, []);
+  assert.equal('sharedCustomerIds' in formulaFormPayload(formula, {}), false);
+  assert.equal('sharedCustomerIds' in formulaFormPayload({ ...formula, sharedCustomers: null }, { canShare: true }), false);
+});
+
+test('planRegistryShares ตรวจโดยไม่เขียน — ของที่ยังไม่สร้างตรวจแค่ลูกค้ามีจริง · ของเดิมตีกลับเลิกแชร์คนที่ใช้อยู่', async () => {
+  const tables = () => ({
+    customers: [{ id: 'CUS-B', name: 'บี' }],
+    scent_customer_shares: [{ scentId: 'S-A', customerId: 'CUS-B', customerName: 'บี' }],
+    dept_requests: [], dept_request_items: [], dept_request_pdr_targets: [], products: [],
+    formulas: [{ id: 'F-B', customerId: 'CUS-B', scentId: 'S-A' }], scents: [],
+  });
+  const fresh = await planRegistryShares(fake(tables()), 'scent', { id: null, customerId: 'CUS-A' }, ['CUS-B', 'CUS-A']);
+  assert.deepEqual(fresh.add, ['CUS-B']);
+  assert.deepEqual(fresh.remove, []);
+  await assert.rejects(planRegistryShares(fake(tables()), 'scent', { id: null, customerId: 'CUS-A' }, ['CUS-X']),
+    (e) => e.status === 400 && /ไม่พบลูกค้า CUS-X/.test(e.message));
+
+  const sb = fake(tables());
+  await assert.rejects(planRegistryShares(sb, 'scent', { id: 'S-A', customerId: 'CUS-A' }, []),
+    (e) => e.status === 409 && /เลิกแชร์ บี ไม่ได้/.test(e.message));
+  assert.equal(sb.tables.scent_customer_shares.length, 1, 'ตรวจอย่างเดียว ไม่ลบอะไร');
+  // สูตรฐานส่งชุดว่าง = ไม่มีอะไรต้องทำ
+  const base = await planRegistryShares(fake(tables()), 'formula', { id: null, customerId: null }, []);
+  assert.deepEqual([base.add, base.remove], [[], []]);
+});
+
+test('ต่อสาย: ฟอร์มสร้าง/แก้ส่งรายชื่อแชร์ — ตรวจก่อนเขียน · ด่านสิทธิ์ตัวเดียวกับ action แชร์ · จอถามตัวเดียวกับ API', () => {
+  for (const [path, anchor] of [
+    ['src/app/api/master/scents/route.js', 'export const POST'],
+    ['src/app/api/master/formulas/route.js', 'export const POST'],
+    ['src/app/api/master/scents/[id]/route.js', "if (action === 'edit')"],
+    ['src/app/api/master/formulas/[id]/route.js', "if (action === 'edit')"],
+  ]) {
+    const block = read(path).slice(read(path).indexOf(anchor));
+    assert.match(block, /requestedShareIds\(body\)/, path);
+    assert.match(block, /if \(shareIds && !canManageRegistryShares\(user\)\) return forbidden/, path);
+    const plan = block.indexOf('planRegistryShares(');
+    const save = block.indexOf('saveRegistryShares(');
+    const write = Math.min(...['createScent(', 'createFormula(', 'updateScent(', 'editFormula(']
+      .map((w) => block.indexOf(w)).filter((i) => i >= 0));
+    assert.ok(plan > 0 && plan < write && write < save, `${path}: ตรวจ → เขียนตัวของ → เขียนแชร์`);
+  }
+  for (const page of ['src/app/database/scents/page.js', 'src/app/database/formulas/page.js',
+    'src/app/database/scents/[id]/page.js', 'src/app/database/formulas/[id]/page.js']) {
+    const src = read(page);
+    assert.match(src, /const canShare = canManageRegistryShares\(me\)/, page);
+    assert.match(src, /canShare=\{canShare\}/, page);
+  }
+  for (const f of ['src/components/database/ScentForm.js', 'src/components/database/FormulaForm.js',
+    'src/components/database/RegistryShareCard.js']) {
+    assert.match(read(f), /<RegistryShareField/, f);
+  }
+});

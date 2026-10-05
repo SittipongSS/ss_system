@@ -7,8 +7,12 @@
 //        ⚠️ ด่านจริงอยู่ที่นี่ — proxy เห็นแค่ role ไม่รู้ว่าใครเป็นเจ้าของทะเบียน
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import { recordAudit } from '@/lib/audit';
-import { canEditScent, canOfferScentDelete, canProposeScent, canViewScents, isScentRegistrar } from '@/lib/master/scents';
+import {
+  canEditScent, canOfferScentDelete, canProposeScent, canViewScents, isScentRegistrar, normalizeScentInput,
+} from '@/lib/master/scents';
 import { createScent, loadScents } from '@/lib/master/scentFormulaAdmin';
+import { canManageRegistryShares, requestedShareIds, shareChangeSummary, SHARE_FORBIDDEN } from '@/lib/master/registryShares';
+import { planRegistryShares, saveRegistryShares } from '@/lib/master/registrySharesAdmin';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,7 +39,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 });
 
 // POST /api/master/scents
-// { name, customerId, customerName?, code?, dealId?, note? }
+// { name, customerId, customerName?, code?, dealId?, note?, sharedCustomerIds? }
+//   `sharedCustomerIds` = ช่อง "ลูกค้าอื่นที่ใช้ได้" ของฟอร์ม (มติ 2026-10-05 · `canManageRegistryShares` เท่านั้น)
 export const POST = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
   if (!canProposeScent(user)) return forbidden('ไม่มีสิทธิ์เพิ่มกลิ่นเข้าทะเบียน');
@@ -43,15 +48,31 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   const body = await req.json().catch(() => ({}));
   // RD สร้างพร้อมรหัส = เข้าทะเบียนเลย · ฝ่ายขาย (หรือ RD ที่ยังไม่ใส่รหัส) = ร่าง
   const accepted = isScentRegistrar(user) && !!String(body.code ?? '').trim();
+  const shareIds = requestedShareIds(body);
+  if (shareIds && !canManageRegistryShares(user)) return forbidden(SHARE_FORBIDDEN.scent);
 
   try {
-    const data = await createScent(supabase, body, user, { accepted });
+    /* ⚠️ ตรวจรายชื่อแชร์ **ก่อนสร้าง** — สร้างแล้วแชร์ตีกลับ = ฟอร์มค้างให้กดใหม่ แล้วได้กลิ่นซ้ำสองตัว */
+    if (shareIds?.length) {
+      const owner = normalizeScentInput(body).value?.customerId || null;
+      await planRegistryShares(supabase, 'scent', { id: null, customerId: owner }, shareIds);
+    }
+    let data = await createScent(supabase, body, user, { accepted });
     await recordAudit({
       user, action: 'create', entityType: 'scent', entityId: data.id, after: data, request: req,
     });
+    if (shareIds?.length) {
+      const result = await saveRegistryShares(supabase, 'scent', data, shareIds, user);
+      await recordAudit({
+        user, action: 'update', entityType: 'scent', entityId: data.id, request: req,
+        before: { ...data, sharedCustomers: result.before }, after: { ...data, sharedCustomers: result.after },
+        summary: shareChangeSummary('scent', data, result),
+      });
+      data = { ...data, sharedCustomers: result.after, sharedCustomerIds: result.after.map((c) => c.customerId) };
+    }
     return ok(data, 201);
   } catch (e) {
-    // ข้อความจาก normalize/แปล unique violation = เรื่องที่ผู้ใช้แก้เองได้ → 400
-    return badRequest(e.message);
+    // ข้อความจาก normalize/แปล unique violation = เรื่องที่ผู้ใช้แก้เองได้ → 400 · ด่านแชร์พก status ของตัวเอง (409)
+    return e.status ? fail(e.message, e.status) : badRequest(e.message);
   }
 });

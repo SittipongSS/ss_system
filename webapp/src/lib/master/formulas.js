@@ -343,8 +343,10 @@ export function formulaScentCustomerError(scent, { customerId } = {}) {
  * ⚠️ **ส่งรหัสไปเสมอเมื่อมีสิทธิ์ รวมตอนช่องว่าง** — ของเดิมส่งเฉพาะตอนไม่ว่าง ⇒ ผู้ใช้
  * ลบรหัสทิ้งแล้วกดบันทึก หน้าจอไม่ส่งอะไรเลย server คงค่าเดิมแล้วตอบ 200 = "บันทึกแล้ว"
  * ทั้งที่ไม่มีอะไรเปลี่ยน (ผู้ใช้ทัก 2026-08-10)
+ * ⭐ `canShare` (มติ 2026-10-05) = ส่งช่อง "ลูกค้าอื่นที่ใช้ได้" เป็น `sharedCustomerIds` ทั้งชุด · ไม่มีสิทธิ์ = ไม่ส่งคีย์
+ *    (กติกาเดียวกับ `scentFormPayload`) · สูตรฐานส่ง `[]` เสมอ (ฟอร์มล้างรายชื่อตอนถอดลูกค้าหลัก)
  */
-export function formulaFormPayload(value = {}, { canSetCode = false } = {}) {
+export function formulaFormPayload(value = {}, { canSetCode = false, canShare = false } = {}) {
   const payload = {
     name: value.name,
     formulaDate: value.formulaDate || null,
@@ -357,5 +359,9 @@ export function formulaFormPayload(value = {}, { canSetCode = false } = {}) {
     note: value.note,
   };
   if (canSetCode) payload.code = String(value.code ?? '').trim();
+  // `null` = แถวที่โหลดมาไม่ได้ติดรายชื่อแชร์ (ดู sharesToField) ⇒ ไม่แตะ
+  if (canShare && Array.isArray(value.sharedCustomers)) {
+    payload.sharedCustomerIds = value.customerId ? value.sharedCustomers.map((s) => s.customerId) : [];
+  }
   return payload;
 }

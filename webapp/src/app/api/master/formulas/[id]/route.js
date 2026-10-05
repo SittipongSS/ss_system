@@ -4,7 +4,8 @@ import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } fro
 import { logRegistryChangeToRequests } from '@/lib/requests/registryNotify';
 import { recordAudit } from '@/lib/audit';
 import { canDeleteRegistryAnyStatus } from '@/lib/permissions';
-import { saveRegistryShares } from '@/lib/master/registrySharesAdmin';
+import { planRegistryShares, saveRegistryShares } from '@/lib/master/registrySharesAdmin';
+import { canManageRegistryShares, requestedShareIds, shareChangeSummary, SHARE_FORBIDDEN } from '@/lib/master/registryShares';
 import {
   acceptFormulaError, archiveFormulaError, canEditFormula, canOfferFormulaDelete, canViewFormulas,
   deleteFormulaError, formulaTransitionError, isFormulaRegistrar, normalizeFormulaInput,
@@ -33,7 +34,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   }
 });
 
-// PATCH  { action: 'edit' | 'accept' | 'status' | 'shares' (ม-150 · RD แชร์ให้ลูกค้ารายอื่น) }
+// PATCH  { action: 'edit' | 'accept' | 'status' | 'shares' (ม-150 · แชร์ให้ลูกค้ารายอื่น — RD + Sup ขึ้นไป มติ 05/10) }
+//   'edit' ส่ง `sharedCustomerIds` มาด้วยได้ = ช่อง "ลูกค้าอื่นที่ใช้ได้" ในฟอร์มแก้ (ผลเดียวกับ 'shares')
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
   const { id } = await ctx.params;
@@ -51,18 +53,17 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   try {
     /* ⭐ แชร์ให้ลูกค้ารายอื่น (ม-150 · mig 0373) — `{ action: 'shares', customerIds: [...] }` ตั้งรายชื่อทั้งชุด
-       · RD เท่านั้น (มติผู้ใช้ 2026-09-22) · เลิกแชร์ลูกค้าที่ใช้อยู่ไม่ได้ (409 พร้อมเหตุ) */
+       · RD + หัวหน้าฝ่ายขาย Sup ขึ้นไป (`canManageRegistryShares` · มติ 2026-10-05) · เลิกแชร์ลูกค้าที่ใช้อยู่ไม่ได้ (409 พร้อมเหตุ) */
     if (action === 'shares') {
-      if (!isFormulaRegistrar(user)) return forbidden('เฉพาะ RD เท่านั้นที่แชร์สูตรให้ลูกค้ารายอื่นได้');
+      if (!canManageRegistryShares(user)) return forbidden(SHARE_FORBIDDEN.formula);
       try {
         const result = await saveRegistryShares(supabase, 'formula', formula, body.customerIds, user);
-        if (result.add.length || result.remove.length) {
+        const summary = shareChangeSummary('formula', formula, result);
+        if (summary) {
           await recordAudit({
             user, action: 'update', entityType: 'formula', entityId: id, request: req,
             before: { ...formula, sharedCustomers: result.before }, after: { ...formula, sharedCustomers: result.after },
-            summary: `แชร์สูตร ${formula.code || formula.name}: `
-              + [result.add.length ? `เพิ่ม ${result.add.length} ลูกค้า` : null,
-                result.remove.length ? `เลิกแชร์ ${result.remove.length} ลูกค้า` : null].filter(Boolean).join(' · '),
+            summary,
           });
         }
         return ok({
@@ -77,6 +78,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
     if (action === 'edit') {
       if (!canEditFormula(user, formula)) return forbidden('ไม่มีสิทธิ์แก้สูตรนี้');
+      // ช่อง "ลูกค้าอื่นที่ใช้ได้" (มติ 05/10) — ไม่ส่งมา = ไม่แตะการแชร์ (ฟอร์มของคนไม่มีสิทธิ์ไม่มีช่องนี้)
+      const shareIds = requestedShareIds(body);
+      if (shareIds && !canManageRegistryShares(user)) return forbidden(SHARE_FORBIDDEN.formula);
       const { value, error } = normalizeFormulaInput({ ...formula, ...body });
       if (error) return badRequest(error);
       /* ⭐ **แก้รหัสได้แล้ว** (มติผู้ใช้ 2026-08-10) — เดิมรหัสเปลี่ยนผ่าน action
@@ -100,7 +104,17 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       // ⚠️ ต้อง derive ลูกค้าใหม่ **ทุกครั้งที่แก้** ไม่ใช่เฉพาะตอนสร้าง — เปลี่ยนกลิ่น
       // ที่สูตรใช้แล้วลูกค้าไม่ตามไปด้วย = สูตรของลูกค้า A ที่ใช้กลิ่นของลูกค้า B
       // ซึ่งคือรูที่ 0207 ตั้งใจปิด
-      const data = await editFormula(supabase, id, editable);
+      /* ⚠️ ตรวจรายชื่อแชร์ **ก่อนเขียนตัวสูตร** — เลิกแชร์คนที่ใช้อยู่ (409) ต้องตีกลับทั้งใบ
+         · เจ้าของที่ใช้ตรวจ = ค่าที่ฟอร์มส่งมา (ตัวจริง derive ใน editFormula · ตอนเขียนแชร์ตรวจซ้ำกับแถวจริงอีกรอบ) */
+      if (shareIds) {
+        try {
+          const owner = 'customerId' in editable ? editable.customerId : formula.customerId;
+          await planRegistryShares(supabase, 'formula', { ...formula, customerId: owner || null }, shareIds);
+        } catch (e) {
+          return fail(e.message, e.status || 500);
+        }
+      }
+      let data = await editFormula(supabase, id, editable);
       await logRegistryChangeToRequests(supabase, {
         kind: 'formula', id, before: formula, after: data, user,
       });
@@ -108,6 +122,25 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         user, action: 'update', entityType: 'formula', entityId: id,
         before: formula, after: data, request: req,
       });
+      if (shareIds) {
+        try {
+          const result = await saveRegistryShares(supabase, 'formula', data, shareIds, user);
+          const summary = shareChangeSummary('formula', data, result);
+          if (summary) {
+            await recordAudit({
+              user, action: 'update', entityType: 'formula', entityId: id, request: req,
+              before: { ...data, sharedCustomers: result.before }, after: { ...data, sharedCustomers: result.after },
+              summary,
+            });
+          }
+          data = {
+            ...data, sharedCustomers: result.after, sharedCustomerIds: result.after.map((c) => c.customerId),
+            scentSharedWith: result.scentSharedWith || [],
+          };
+        } catch (e) {
+          return fail(`บันทึกข้อมูลสูตรแล้ว แต่บันทึกการแชร์ไม่สำเร็จ — ${e.message}`, e.status || 500);
+        }
+      }
       return ok(data);
     }
 
