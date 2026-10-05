@@ -19,6 +19,7 @@ import { NO_PRICE_SLOTS_REASON, formulaPriceSlots, isFragranceOilFormula } from 
 import { rowPriceSlots } from '@/lib/requests/rowPriceTarget';
 import { fetchAllInChunks } from '@/lib/supabaseInChunks';
 import { attachShares, sharedIdsForCustomer } from '@/lib/master/registrySharesAdmin';
+import { countGiftSetsUsingFormula, giftSetsUsingFormulas } from '@/lib/master/giftSetFormulasStore';
 
 // ── กลิ่น ────────────────────────────────────────────────────────────────
 //
@@ -281,8 +282,10 @@ async function attachFormulaUsage(supabase, rows) {
   // ⚠️ ซอยก้อน — ทะเบียนทั้งชุดส่ง id หลายร้อยตัว (กับดัก 16 KB) และหลาย FG ต่อสูตรทำให้แถวโตได้เกิน 1,000
   const holders = await fetchAllInChunks(rows.map((r) => r.id), (chunk) => supabase
     .from('products').select('id, "fgCode", "formulaId"').in('formulaId', chunk).order('id'));
+  // ⭐ ชุดของขวัญ (01-037 · mig 0403) ถือสูตรผ่านตาราง product_formulas ไม่ใช่ products.formulaId
+  const giftSets = await giftSetsUsingFormulas(supabase, rows.map((r) => r.id));
   const byFormula = new Map();
-  for (const p of holders) {
+  for (const p of [...holders, ...giftSets.map((g) => ({ id: g.productId, fgCode: g.fgCode, formulaId: g.formulaId }))]) {
     byFormula.set(p.formulaId, [...(byFormula.get(p.formulaId) || []), { id: p.id, fgCode: p.fgCode || null }]);
   }
 
@@ -621,10 +624,11 @@ export async function countRegistryDependents(supabase, kind, id) {
     .select('id', { count: 'exact', head: true }).eq(column, id)
     .then(({ count, error }) => { if (error) throw error; return count || 0; });
   if (kind === 'formula') {
-    const [productCount, childCount] = await Promise.all([
-      head('products', 'formulaId'), head('formulas', 'derivedFromFormulaId'),
+    // สินค้า = FG สูตรเดี่ยว (products.formulaId) + ชุดของขวัญที่มีสูตรนี้ในรายการ (mig 0403) — FG ตัวเดียวอยู่ได้ทางเดียว
+    const [single, giftSets, childCount] = await Promise.all([
+      head('products', 'formulaId'), head('product_formulas', 'formulaId'), head('formulas', 'derivedFromFormulaId'),
     ]);
-    return { productCount, childCount };
+    return { productCount: single + giftSets, childCount };
   }
   // `childCount` = กลิ่นที่แก้ต่อจากกลิ่นนี้ (`scents.derivedFromScentId` SET NULL) — กติกาเดียวกับฝั่งสูตร
   const [formulaCount, productCount, childCount] = await Promise.all([
@@ -633,12 +637,12 @@ export async function countRegistryDependents(supabase, kind, id) {
   return { formulaCount, productCount, childCount };
 }
 
-// จำนวนสินค้าที่อ้างสูตรนี้ — ใช้เป็นด่านก่อนลบ
+// จำนวนสินค้าที่อ้างสูตรนี้ — ใช้เป็นด่านก่อนลบ · นับชุดของขวัญ (product_formulas · mig 0403) ด้วย
 export async function countProductsUsingFormula(supabase, formulaId) {
   const { count, error } = await supabase
     .from('products').select('id', { count: 'exact', head: true }).eq('formulaId', formulaId);
   if (error) throw error;
-  return count || 0;
+  return (count || 0) + await countGiftSetsUsingFormula(supabase, formulaId);
 }
 
 // ── "รอจัดระเบียบ": สินค้าที่มีชื่อสูตรแต่ยังไม่ผูกทะเบียน ────────────────

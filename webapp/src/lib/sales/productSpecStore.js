@@ -21,6 +21,8 @@ import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { fetchAllInChunks, fetchInChunks } from '@/lib/supabaseInChunks';
 import { accountProfileFromAuthUser } from '@/lib/accountProfile';
 import { categoryOf } from '@/lib/master/categoryOf';
+import { isGiftSetCategory } from '@/lib/master/giftSetFormulas';
+import { loadProductFormulas } from '@/lib/master/giftSetFormulasStore';
 import { SPEC_ILLUSTRATION_DOC_TYPE } from '@/lib/master/attachmentTypes';
 import { productSpecCertSeed, productSpecChecklistSeed } from '@/lib/sales/productSpecChecklist';
 import { productSpecDocNoParts } from '@/lib/sales/productSpecDocNo';
@@ -411,6 +413,25 @@ export async function loadProductPrintFields(supabase, productId) {
     formula = res.data
       || { id: product.formulaId, code: product.formulaCode, name: product.formulaName, formulaDate: product.formulaDate };
   }
+  /* ⭐ ชุดของขวัญ (01-037 · mig 0403 · มติ 2026-10-05) — ไม่มีสูตรหลัก สูตรเป็นรายการ (หมวด, สูตร) ⇒ กระดาษพิมพ์
+     ทุกสูตร แถวละสูตร บอกหมวด (`productSpecFormulaRows`) · อ่านสดจากทะเบียนเหมือนสูตรเดี่ยวด้านบน
+     ⚠️ คีย์ `formulaComponents` มีเฉพาะชุดของขวัญ — สินค้าหมวดอื่นได้ก้อนเดิมทุกตัวอักษร (ภาพนิ่งเดิมไม่ขยับ) */
+  let formulaComponents = null;
+  if (isGiftSetCategory(category)) {
+    try {
+      // ชื่อหมวดของแถว = ไทยก่อน (ป้ายแถวในตารางไม่แปล — กติกาเดียวกับป้าย "สูตร / รหัสสูตร / วันที่")
+      formulaComponents = (await loadProductFormulas(supabase, product.id)).map((row) => ({
+        categoryCode: row.categoryCode,
+        categoryName: row.categoryName,
+        formulaId: row.formulaId,
+        formulaName: row.formulaName,
+        formulaCode: row.formulaCode,
+        formulaDate: row.formulaDate,
+      }));
+    } catch (e) {
+      return { error: `อ่านสูตรในชุดของขวัญไม่สำเร็จ: ${messageOf(e)}` };
+    }
+  }
 
   return {
     product: {
@@ -434,6 +455,7 @@ export async function loadProductPrintFields(supabase, productId) {
       formulaName: formula?.name || null,
       formulaCode: formula?.code || null,
       formulaDate: formula?.formulaDate || null,
+      ...(formulaComponents ? { formulaComponents } : {}),
       volume: product.volume ?? null,
       volumeUnit: product.volumeUnit || null,
       volumeText: [product.volume, product.volumeUnit].filter((part) => part !== null && part !== undefined && part !== '')

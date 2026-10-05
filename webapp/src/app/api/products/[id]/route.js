@@ -24,6 +24,10 @@ import { clearedPackagingFields } from '@/lib/master/units';
 import { clearedBrandFields } from '@/lib/master/brands';
 import { productFormulaSnapshot } from '@/lib/master/scentFormulaAdmin';
 import { customerSnapshotName } from '@/lib/master/customerName';
+import { isGiftSetCategory, sameGiftSetFormulas } from '@/lib/master/giftSetFormulas';
+import {
+  loadProductFormulaRows, loadProductFormulas, planGiftSetFormulas, replaceProductFormulas,
+} from '@/lib/master/giftSetFormulasStore';
 
 export const dynamic = 'force-dynamic';
 // GET /api/products/[id]
@@ -57,8 +61,17 @@ export async function GET(request, { params }) {
     if (scentError) return Response.json({ error: scentError.message }, { status: 500 });
     scentName = scent?.name ?? null;
   }
+  // ชุดของขวัญ (01-037 · mig 0403) — รายการสูตรอ่านสดจากทะเบียน · หมวดอื่นได้อาเรย์ว่าง (รูปเดียวกันทุกสินค้า)
+  let formulaComponents = [];
+  if (isGiftSetCategory(data.categoryCode)) {
+    try {
+      formulaComponents = await loadProductFormulas(supabase, id);
+    } catch (e) {
+      return Response.json({ error: e.message }, { status: 500 });
+    }
+  }
   // Strip the confidential cost breakdown/profit for non-margin roles.
-  return Response.json({ ...redactProductMargin(user, data), customerType, scentName });
+  return Response.json({ ...redactProductMargin(user, data), customerType, scentName, formulaComponents });
 }
 
 // PATCH /api/products/[id]
@@ -285,6 +298,40 @@ export async function PATCH(request, { params }) {
     if (categoryError) return Response.json({ error: categoryError }, { status: 400 });
   }
 
+  /* ── ชุดของขวัญ (01-037 · mig 0403): สูตรเป็นรายการ ไม่มีสูตรหลัก ─────────────────────
+     ตัดสินจาก updated.categoryCode (หลังหมวดนิ่ง) — เคสที่กัดจริงคือ **ย้ายหมวด**:
+       · ย้ายเข้าชุดของขวัญ ⇒ สูตรเดี่ยวที่ derive ไว้ต้องหลุด (formulaId/ชื่อ/รหัส/วันที่ + กลิ่นที่มากับสูตร)
+       · ย้ายออกจากชุดของขวัญ ⇒ รายการสูตรเดิมถูกล้าง (หมวดอื่นไม่มีรายการ — แบบเดียวกับช่องแบรนด์ 03/04)
+     ไม่ส่ง `formulaComponents` มา (ปุ่มอนุมัติ/พักใช้/อัปเดตราคาผลิต) = รายการเดิมไม่ถูกแตะ */
+  const giftSet = isGiftSetCategory(updated.categoryCode);
+  // ⚠️ error ของ supabase เป็นอ็อบเจกต์ธรรมดา ไม่ใช่ `Error` — ต้อง try/catch (เช็ค `instanceof Error` จับไม่ได้)
+  let giftSetBefore = [];
+  if (giftSet || isGiftSetCategory(product.categoryCode)) {
+    try {
+      giftSetBefore = await loadProductFormulaRows(supabase, id);
+    } catch (e) {
+      return Response.json({ error: e.message }, { status: 500 });
+    }
+  }
+  let giftSetRows = giftSetBefore;
+  if (giftSet) {
+    if (updated.formulaId) {
+      Object.assign(updated, { formulaId: null, formulaCode: null, formulaName: null, formulaDate: null, scentId: null });
+    }
+    if (body.formulaComponents !== undefined) {
+      try {
+        const plan = await planGiftSetFormulas(supabase, body.formulaComponents);
+        if (plan.error) return Response.json({ error: plan.error }, { status: 400 });
+        giftSetRows = plan.rows;
+      } catch (e) {
+        return Response.json({ error: e.message }, { status: 500 });
+      }
+    }
+  } else {
+    giftSetRows = [];
+  }
+  const giftSetChanged = !sameGiftSetFormulas(giftSetBefore, giftSetRows);
+
   // กลุ่ม 03/04 ไม่มีแบรนด์ (มติ 2026-08-21 · ดู brands.js) — ล้างที่ server เสมอ
   // เคสที่กัดจริงคือ **ย้ายหมวดข้ามกลุ่ม**: สินค้ากลุ่ม 01 ที่ถูกย้ายไป 03 ต้องไม่ลาก
   // ชื่อแบรนด์เก่าติดไปด้วย ⇒ ตัดสินจาก updated.categoryCode หลังหมวดนิ่งแล้ว (ต่างจาก
@@ -329,6 +376,8 @@ export async function PATCH(request, { params }) {
     ignore: ['updatedAt', 'laborCost', 'shippingCost', 'materialCost', 'factoryProfit',
       'approvalStatus', 'submittedBy', 'submittedByName', 'approvedBy', 'approvedByName', 'approvedAt', 'rejectionReason'],
   });
+  // รายการสูตรของชุดอยู่นอกแถวสินค้า — changedFieldsAgainst มองไม่เห็น ต้องนับเอง (แก้สูตร = อนุมัติใหม่ เหมือนแก้ formulaId)
+  if (giftSetChanged) changedFields.push('formulaComponents');
   const reapproval = isLifecycleToggleOnly
     ? null
     : resetApprovalOnEdit(product, user, { changedFields, exemptFields: PRODUCT_DOC_NOTE_FIELDS });
@@ -346,6 +395,19 @@ export async function PATCH(request, { params }) {
     }
     return Response.json({ error: error.message }, { status: 500 });
   }
+  /* เขียนรายการสูตรหลังแถวสินค้า — แถวสินค้าตกกลับรออนุมัติไปแล้ว ⇒ ล้มตรงนี้ = สูตรยังเป็นชุดเดิม
+     แต่ไม่มีของที่ผ่านอนุมัติหลุดออกไปพร้อมสูตรที่ไม่มีใครตรวจ · กลับกัน (เขียนสูตรก่อน) แล้วแถวสินค้าล้ม
+     = สูตรเปลี่ยนบนสินค้าที่ยังขึ้น "อนุมัติแล้ว" */
+  if (giftSetChanged) {
+    try {
+      await replaceProductFormulas(supabase, id, giftSetRows);
+    } catch (e) {
+      return Response.json(
+        { error: `บันทึกข้อมูลสินค้าแล้ว แต่บันทึกสูตรในชุดไม่สำเร็จ (${e.message}) — กดบันทึกอีกครั้ง` },
+        { status: 500 },
+      );
+    }
+  }
   // Audit เก็บ record เต็ม (ก่อน redact margin) — หน้า /audit เป็น supervisor only.
   await recordProductPriceHistory({
     user,
@@ -355,7 +417,14 @@ export async function PATCH(request, { params }) {
     changeType: 'update',
     metadata: { fgCode: data.fgCode, customerId: data.customerId },
   });
-  await recordAudit({ user, action: 'update', entityType: 'product', entityId: id, before: product, after: data, request });
+  // รายการสูตรของชุดลงสำเนา audit ด้วยเมื่อเกี่ยวข้อง — ทางกู้ข้อมูลมีทางเดียวคือ audit_logs
+  const withGiftSet = (row, rows) => (giftSet || giftSetBefore.length ? { ...row, formulaComponents: rows } : row);
+  await recordAudit({
+    user, action: 'update', entityType: 'product', entityId: id,
+    before: withGiftSet(product, giftSetBefore.map(({ formulaId, categoryCode }) => ({ formulaId, categoryCode }))),
+    after: withGiftSet(data, giftSetRows.map(({ formulaId, categoryCode }) => ({ formulaId, categoryCode }))),
+    request,
+  });
   // ตกกลับรออนุมัติ = สินค้าหลุดจากลิสต์เลือกทุกหน้า — ต้องไม่เงียบ · เธรดคือช่องทางเดียว
   // ที่เหลือหลังถอด Google Chat ออก (2026-08-12) จึงต้องเขียนลงเธรดเสมอ
   if (reapproval) {

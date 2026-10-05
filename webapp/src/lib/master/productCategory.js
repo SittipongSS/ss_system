@@ -81,6 +81,7 @@ export const PROTECTED_PRODUCT_CATEGORY_CODES = Object.freeze([
   '03-001', '03-002', '03-005', '03-008', '03-009', '03-010', // SCENT_DESIGN_CATEGORIES — lib/requests/scentDesignOrders.js
   '01-001', // pdrProductKinds/categoryCode ตั้งต้น — lib/documents/standardPreview.js
   '02-010', // pdrProductKinds/categoryCode ตั้งต้น — lib/documents/standardPreview.js
+  '01-037', // GIFT_SET_CATEGORY_CODE — lib/master/giftSetFormulas.js (ชุดของขวัญผูกได้หลายสูตร · mig 0403)
 ]);
 
 /**

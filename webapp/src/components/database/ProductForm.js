@@ -41,10 +41,12 @@ import {
   packagingSummary,
   unitOptions,
 } from "@/lib/master/units";
-import { fmtMoney, naText } from "@/lib/format";
+import { fmtDate, fmtMoney, naText } from "@/lib/format";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { customerSelectOptions } from "@/components/master/customerOption";
 import { apiFetch } from "@/lib/apiFetch";
+import { isGiftSetCategory } from "@/lib/master/giftSetFormulas";
+import GiftSetFormulaRows from "@/components/database/GiftSetFormulaRows";
 
 export const EMPTY_PRODUCT = {
   customerId: "", fgCode: "", productDescription: "", productDescriptionEn: "",
@@ -57,6 +59,8 @@ export const EMPTY_PRODUCT = {
   // เติมให้จาก formulaId ฟอร์มไม่ต้องส่ง (เก็บไว้ใน state เพื่อโชว์ค่าเดิมของ
   // สินค้าที่ยังไม่ผูกทะเบียนเท่านั้น)
   formulaId: "", formulaName: "", formulaCode: "", formulaDate: "",
+  // ชุดของขวัญ (01-037 · mig 0403) — รายการ (หมวด, สูตร) แทนสูตรเดี่ยว · หมวดอื่นไม่ใช้
+  formulaComponents: [],
   volume: "", volumeUnit: DEFAULT_VOLUME_UNIT, saleUnit: DEFAULT_SALE_UNIT, piecesPerCase: "", costPrice: "", retailPriceIncVat: "",
   // หมายเหตุประจำสินค้า (mig 0317) — ติดไปกับรายการบนใบเสนอราคา/ใบสั่งขาย
   docNote: "", docNoteEn: "",
@@ -73,8 +77,20 @@ export const PRODUCT_EDIT_FIELDS = [
 export const productToForm = (p) => {
   const seed = { ...EMPTY_PRODUCT };
   for (const k of PRODUCT_EDIT_FIELDS) seed[k] = p[k] ?? "";
-  return seed;
+  return { ...seed, ...giftSetFormSeed(p) };
 };
+
+/* รายการสูตรของชุดของขวัญจากสินค้าเดิม (GET /api/products/[id] แนบ `formulaComponents` มาให้)
+   ⚠️ สินค้าที่ไม่มีอาเรย์ติดมา (โหลดจากลิสต์ที่ไม่แนบ) = **ไม่ใส่คีย์** — ส่ง `[]` ไปแทน = API อ่านเป็น
+   "ถอดสูตรทั้งชุด" ทั้งที่ผู้ใช้ไม่ได้แตะ · ไม่มีคีย์ในบอดี้ = API คงรายการเดิม */
+export function giftSetFormSeed(product) {
+  if (!Array.isArray(product?.formulaComponents)) return {};
+  return {
+    formulaComponents: product.formulaComponents.map((row) => ({
+      id: row.id, categoryCode: row.categoryCode || "", formulaId: row.formulaId || "",
+    })),
+  };
+}
 
 // กล่องบอกหมวดหมู่/ภาษีสรรพสามิต/จดแจ้ง อย. — ธงมาจากช่องติ๊กบนหมวดสินค้า
 // (product_types.isExcise / requiresFdaNotice, mig 0131)
@@ -207,6 +223,8 @@ export default function ProductForm({
   // เสมอ ไม่งั้นแค่เปิดฟอร์มแก้ชื่อสินค้าแล้วกดบันทึก สูตรจะหลุดเงียบ ๆ
   // ⭐ 1 สูตรผูกได้หลาย FG (มติผู้ใช้ 2026-09-22 · ม-150) — ไม่ตัดสูตรที่ FG อื่นใช้อยู่ออกแล้ว
   const pickedFormula = formulas.find((f) => f.id === form.formulaId) || null;
+  // อ่านจาก categoryCode ตัวเดียวกับช่องอื่น (โหมดพิมพ์รหัสเองอ่านจากรหัสที่พิมพ์)
+  const giftSet = isGiftSetCategory(categoryCode);
   const formulaOptions = formulas
     .filter((f) => f.status !== "archived" || f.id === form.formulaId)
     .map((f) => ({
@@ -443,6 +461,15 @@ export default function ProductForm({
               (ชื่อ/รหัส/วันที่) ซึ่งเป็นสาเหตุที่บน prod มี **สินค้า 10 แถวที่เอา
               ชื่อกลิ่นไปกรอกช่องชื่อสูตร** เพราะตอนนั้นระบบยังไม่มีที่เก็บกลิ่น
               · ชื่อ/รหัส/วันที่ตอนนี้ derive จากทะเบียน server เติมให้เอง */}
+          {/* ชุดของขวัญ (01-037 · มติ 2026-10-05 · mig 0403) ผูกได้หลายสูตร แถวละ หมวด → สูตร แทนช่องสูตรเดี่ยว */}
+          {giftSet ? (
+            <GiftSetFormulaRows
+              rows={Array.isArray(form.formulaComponents) ? form.formulaComponents : []}
+              onRows={(formulaComponents) => onForm({ formulaComponents })}
+              formulas={formulas}
+              productTypes={productTypes}
+            />
+          ) : (
           <div className="form-group col-span-2">
             <label>สูตร</label>
             <SearchableSelect
@@ -455,10 +482,11 @@ export default function ProductForm({
               {!formulas.length
                 ? "ยังไม่มีสูตรในทะเบียน — เพิ่มที่ ฐานข้อมูล → ทะเบียนสูตร ก่อน"
                 : pickedFormula
-                  ? `กลิ่น: ${pickedFormula.scentName || "— สูตรยังไม่ผูกกลิ่น —"} · วันที่สูตร ${pickedFormula.formulaDate || "— ยังไม่ระบุ —"} · ดึงจากทะเบียนอัตโนมัติ`
-                  : "1 สูตรผูกได้ 1 FG — สูตรที่มีสินค้าอื่นถือแล้วไม่แสดงในลิสต์ · กลิ่นของสินค้าจะตามสูตรที่เลือก"}
+                  ? `กลิ่น: ${pickedFormula.scentName || "— สูตรยังไม่ผูกกลิ่น —"} · วันที่สูตร ${pickedFormula.formulaDate ? fmtDate(pickedFormula.formulaDate) : "— ยังไม่ระบุ —"} · ดึงจากทะเบียนอัตโนมัติ`
+                  : "กลิ่นของสินค้าจะตามสูตรที่เลือก"}
             </span>
           </div>
+          )}
           {/* สินค้าเก่าที่ยังไม่ผูกทะเบียน (prod เหลือ 1 แถว) — โชว์ค่าเดิมไว้ให้เห็น
               ว่ามีอะไรค้างอยู่ ไม่ใช่ทำหายไปเฉย ๆ แต่แก้ไม่ได้แล้ว ต้องผูกทะเบียนแทน */}
           {!form.formulaId && (form.formulaName || form.formulaCode) && (
