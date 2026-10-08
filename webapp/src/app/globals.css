@@ -205,11 +205,14 @@
   --panel-3: #eee9e0;
   /* พื้นผิว "แผงลอย" ของระบบ — ทึบ 100% ใช้กับทุกอย่างที่ลอยทับเนื้อหาอื่น:
      dropdown / เมนู / popover ตัวกรอง / ปฏิทิน / ตัวเลือกเวลา / แถบบันทึกลอย.
-     --panel เป็นพื้น "กระจก" (alpha .92) ที่ต้องมาคู่กับ backdrop-filter เท่านั้น
-     (.glass-panel, Toast) — เอาไปใช้กับแผงลอยที่ไม่มี blur ตัวอักษรข้างหลังจะทะลุ
+     --panel เป็นพื้นโปร่ง (alpha .94 สว่าง · .96 มืด):
+     · พื้นผิวในแนวเนื้อหาที่ไม่มีอะไรเลื่อนผ่านข้างใต้ ใช้เปล่า ๆ ได้ (การ์ด .glass-panel — ไม่มี
+       backdrop-filter แล้วตั้งแต่ 2026-10-08 วัดแล้วไม่มีอะไรข้างหลังให้เบลอ ดูที่กฎ .glass-panel)
+     · ของที่ลอยทับเนื้อหา **ต้องคู่กับ backdrop-filter** เท่านั้น (Toast · .form-actions)
+     เอาไปใช้กับแผงลอยที่ไม่มี blur ตัวอักษรข้างหลังจะทะลุ
      ขึ้นมาปนกับรายการในแผง (เจอจริงที่ dropdown เลือกลูกค้า 2026-07-26 ผู้ใช้ส่งภาพมา)
-     ⚠️ scripts/audit-ui.mjs บังคับกฎนี้แล้ว: แผงที่ position:fixed หรือ z-index ≥ 1000
-     ห้ามใช้ var(--panel) ถ้าไม่มี backdrop-filter */
+     ⚠️ scripts/audit-ui.mjs บังคับกฎนี้แล้ว: แผงที่ position:fixed / sticky หรือ z-index ≥ 1000
+     ห้ามใช้ var(--panel) ถ้าไม่มี backdrop-filter (ยกเว้นรายตัว = .topnav ที่ลูกทึบปิดเต็ม) */
   --panel-float: #fffdf9;
   /* พื้นการ์ดแบบทึบ 100% — สีเดียวกับ --panel ที่ผสมกับ --bg แล้ว ใช้กับสิ่งที่ตรึงไว้
      แล้วมีเนื้อหาเลื่อนผ่านข้างใต้ (คอลัมน์แรกที่ freeze) ซึ่งใช้ --panel โปร่ง 6% ไม่ได้
@@ -1135,7 +1138,7 @@ button, select, input, textarea {
 .form-action-inline { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); }
 .form-action-inline .btn { justify-content: center; }
 /* แถบปุ่มท้ายโมดัลลอยทับเนื้อหาที่เลื่อนอยู่ข้างใต้ → ต้องใช้พื้นทึบ 100%
-   (--panel เป็นพื้นกระจกโปร่ง 6% ที่ต้องมาคู่กับ backdrop-filter เท่านั้น — ใช้เปล่า ๆ
+   (--panel เป็นพื้นโปร่ง 6% — ของที่ลอยทับเนื้อหาใช้ได้ต่อเมื่อคู่กับ backdrop-filter เท่านั้น — ใช้เปล่า ๆ
    แล้วช่องกรอกที่เลื่อนผ่านจะทะลุขึ้นมาปนกับปุ่ม ผู้ใช้ส่งภาพมา 2026-07-27) */
 /* ⚠️ ชั้นเข้ากันได้ของโมดัลที่ยังไม่ย้ายไปใช้ prop `footer` — แถบลอยเหนือ
    เนื้อหาที่เลื่อนใน .drawer-body · เลขติดลบต้องเท่ากับ padding ของ .drawer-body
@@ -1343,7 +1346,21 @@ button, select, input, textarea {
    เมนูของระบบไม่ได้อยู่ในหัวแล้ว — เป็นแถบข้าง (.topnav-menu ท้ายไฟล์ชุดนี้)
    ⚠️ เคยมี --topnav-h (ผลรวมความสูงสองชั้น) ประกาศไว้พร้อมคอมเมนต์ว่า sticky
    element อื่นอ้างได้ — ตรวจ 2026-07-29 พบว่าไม่มีใครอ้างเลยสักจุด ลบทิ้งแล้ว
-   ถ้าวันหนึ่งต้องใช้จริงค่อยประกาศใหม่ตอนนั้น */
+   ถ้าวันหนึ่งต้องใช้จริงค่อยประกาศใหม่ตอนนั้น
+   ⚠️ แถบนี้ **ไม่มี backdrop-filter แล้ว** (ถอด 2026-10-08 · มติเจ้าของ 08/10)
+   🐞 เดิมเขียนคู่ `backdrop-filter: blur(18px)` + `-webkit-backdrop-filter` ⇒ ตัว build ยุบเหลือบรรทัด
+      `-webkit-` บรรทัดเดียว (ดูต้นเรื่องที่กฎ .overlay) ⇒ Chrome ไม่ได้เบลอแถบนี้อยู่แล้ว มีแต่ Safari ที่คำนวณ
+   วัด 08/10: กวาด 96 เส้นทาง × จอกว้าง/มือถือ ใน Chrome แล้วเปิดเบลอกลับ — พิกเซลเปลี่ยนมากสุด 0.023% ของจอ
+      ตามองไม่เห็นสักจุด · เหตุคือพื้นของ header ตัวนี้ **ไม่เคยโผล่ให้เห็น**: ลูกสองชั้น .topnav-system /
+      .topnav-systems พื้น var(--navy) ทึบ 100% ปิดเต็มเนื้อกล่อง (เหลือแค่ใต้เส้นขอบล่าง 1px) ⇒ ไม่มีอะไร
+      ทะลุขึ้นมาให้เบลอ
+   ⇒ ถอดทั้งสองบรรทัด ค่า background คงเดิมทุกตัว: Chrome หน้าตาเท่าเดิม · Safari เลิกคำนวณเบลอที่ไม่มีใครเห็น
+      และใน Safari header เลิกเป็น containing block ของลูก position: fixed — เท่ากับที่ Chrome เป็นอยู่แล้ว
+      (กับดักตัวนี้คือเหตุที่แถบเมนูถูกย้ายออกนอก header · .topnav-sys-menu จอแคบยึด inset จากขอบจอได้ค่าเดิม
+      เพราะ header ตรึงที่ top: 0 เต็มความกว้างอยู่แล้ว)
+   audit:ui — กฎแผงลอย (sticky + var(--panel) ต้องคู่ backdrop-filter) ยกเว้น .topnav ไว้รายตัว และตรวจทุกรอบว่า
+      ลูกสองชั้นยังทึบ (`FLOATING_SURFACE_COVERED` ใน scripts/audit-ui.mjs) · ถ้าวันหนึ่งพื้น header จะโผล่จริง
+      ให้เปลี่ยนเป็นพื้นทึบ ไม่ใช่เติมเบลอกลับ */
 .topnav {
   position: sticky;
   top: 0;
@@ -1351,8 +1368,6 @@ button, select, input, textarea {
   border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--panel) 96%, transparent);
   box-shadow: var(--glass-shadow);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
 }
 
 
@@ -1712,7 +1727,8 @@ a.topnav-here-sys:focus-visible {
      (จอ ≤1200px) ตัวหนังสือของหน้าจะทะลุขึ้นมาอ่านออกจาง ๆ · กติกาเดียวกับแผงลอย
      ทุกตัวในระบบ (audit:ui บังคับ: พื้นลอย = --panel-float หรือ --panel + backdrop-filter)
      ไม่ใช้ backdrop-filter เพราะพื้นทึบแล้วไม่เห็นผล และมันสร้าง containing block
-     ให้ลูกที่ position: fixed ซึ่งเป็นกับดักที่ .topnav โดนมาแล้ว */
+     ให้ลูกที่ position: fixed ซึ่งเป็นกับดักที่ .topnav เคยโดน (ตอนยังมี backdrop-filter —
+     ถอดออกแล้ว 2026-10-08 ด้วยเหตุผลเดียวกัน: ลูกทึบปิดเต็ม เบลอไปก็ไม่เห็นผล) */
   background: color-mix(in srgb, var(--navy) 7%, var(--panel-float));
   /* เลื่อนเองในแนวตั้ง — เมนูยาวกว่าจอเมื่อไรก็ไถได้ ไม่ล้นทะลุแถบออกไป */
   overflow-x: hidden;
@@ -2386,10 +2402,30 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* Cards & Panels */
+/* ⚠️ การ์ดนี้ **ไม่มี backdrop-filter แล้ว** (ถอด 2026-10-08 · มติเจ้าของ 08/10) — ชื่อ "glass" เป็นชื่อเก่า
+   🐞 เดิมเขียนคู่ `backdrop-filter: blur(16px)` + `-webkit-backdrop-filter` ⇒ ตัว build ยุบเหลือบรรทัด
+      `-webkit-` บรรทัดเดียว (ดูต้นเรื่องที่กฎ .overlay) ⇒ Chrome ไม่ได้เบลอการ์ดอยู่แล้ว มีแต่ Safari ที่คำนวณ
+   วัด 08/10: กวาด 96 เส้นทาง × จอกว้าง/มือถือ ใน Chrome แล้วเปิดเบลอกลับ — พิกเซลเปลี่ยนมากสุด 0.023% ของจอ
+      ตามองไม่เห็นสักจุด · พื้น --panel ทึบ 94–96% วางบน --bg เรียบ และไม่มีการ์ดใบไหนลอยทับเนื้อหาอื่น
+      (การ์ดที่เป็น sticky/fixed/absolute = 0 ใบทุกเส้นทางที่กวาด · คลาสนี้ใช้อยู่ 80 กว่าไฟล์)
+      ⇒ ไม่มีอะไรอยู่ข้างหลังให้เบลอ
+   ⇒ ถอดทั้งสองบรรทัด: Chrome หน้าตาเท่าเดิมทุกพิกเซล (พื้นค่าเดิม) · Safari เลิกคำนวณเบลอที่ไม่มีใครเห็น
+      และเลิกได้ stacking context / containing block ที่ backdrop-filter สร้างให้ ⇒ วางชั้นเหมือน Chrome
+   ⚠️ ห้ามเอาการ์ดนี้ไปลอยทับเนื้อหา (sticky/fixed/absolute) — พื้นโปร่ง 4–6% ตัวหนังสือข้างหลังจะทะลุ
+      ของลอยใช้ --panel-float · ของตรึงที่มีเนื้อหาเลื่อนผ่านใช้ --panel-solid
+      ตัวที่ยืมคลาสนี้ไปลอยอยู่แล้ว (ไล่ทุกแท็กที่มี glass-panel ทั้ง src 08/10 — รวมแท็กหลายบรรทัดและตำแหน่งที่มาจาก
+      style inline / คลาสของ module ซึ่งรอบแรกไล่แค่ className บรรทัดเดียวจึงตกไปหนึ่งตัว):
+      · FilterPopover และแถบบันทึกของหน้าวางเป้า — ทับพื้นเป็น --panel-float เองจึงทึบ ไม่กระทบ
+      · **เมนูสองตัวที่ยังโปร่ง 4–6% ไม่มีเบลอ** (absolute · --z-inline-menu · ไม่ทับพื้น):
+        เมนู ZIP ของ excise/ReportExportActions (/tax/filings · /tax/registrations) และเมนูของ
+        ui/MultiSelectFilter (position อยู่ใน style inline · ผู้เรียกจริงเหลือที่เดียว = /settings/design-preview)
+        Chrome เป็นแบบนี้มาตลอด · Safari เคยได้เบลอ 16px จากคลาสนี้ เพิ่งมาเท่า Chrome รอบนี้ ⇒ เป็น **สองจุดเดียว
+        ที่ Safari เห็นต่างจากเดิม** (การกวาด 96 เส้นทางไม่เห็น เพราะเมนูโผล่ต่อเมื่อกดเปิด · audit:ui ก็ไม่เห็น
+        เพราะพื้นโปร่งมาจากคลาสที่ยืม ไม่ได้อยู่ในกฎของเมนูเอง)
+        ทางแก้ = `background: var(--panel-float)` ที่ตัวเมนู — แต่ Chrome จะเปลี่ยนด้วย (โปร่ง 4–6% → ทึบ)
+        จึง **ยังไม่แก้ รอมติเจ้าของ** · ห้ามแก้ด้วยการเติมเบลอกลับที่ .glass-panel */
 .glass-panel {
   background: var(--panel);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--glass-shadow);
@@ -2916,6 +2952,23 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* Reconciliation Drawer / Details Modal */
+/* ⚠️ เบลอฉากหลังโมดัล — เขียน **`backdrop-filter` บรรทัดเดียว** ห้ามเติม `-webkit-backdrop-filter` เอง
+   🐞 2026-10-08 — เดิมกฎนี้เขียนคู่สองบรรทัด (มาตรฐานก่อน แล้วตามด้วย `-webkit-`) ⇒ ตัว build (Lightning CSS)
+      ยุบเหลือบรรทัด `-webkit-` บรรทัดเดียวใน CSS ที่ขึ้น production · Chrome ไม่รู้จัก property ที่มี prefix
+      (`CSS.supports` ตอบ false) ⇒ ฉากหลังโมดัล **ทุกใบ** ใน Chrome ไม่เบลอเลย ทั้งที่ Safari เบลอ
+      (อ่านจาก CSS บน production + เปิดจอ Chrome ดูจริง)
+      กฎที่เขียนบรรทัดมาตรฐานบรรทัดเดียว (.form-actions · .mobile-nav-sheet-header · .chart-tooltip ·
+      .toast ใน Toast.module.css) ตัว build เติม prefix ให้เอง ออกครบสองบรรทัด เบลอทุกเบราว์เซอร์
+   มติเจ้าของ 08/10: **คืนเบลอ** ที่นี่ — เป็นจุดเดียวในสามจุดที่โดนซึ่งตาเห็นความต่างชัด
+      (อีกสองจุด .topnav / .glass-panel ถอดเบลอทิ้ง ดูที่กฎของมัน) ⇒ Chrome กลับมาหน้าตาเท่า Safari
+   ผลที่ตามมาใน Chrome (Safari เป็นแบบนี้อยู่แล้ว — ตั้งใจตามมติ ไม่ใช่บั๊ก):
+      · โมดัลซ้อน (กล่องยืนยันบนฟอร์ม) — ฉากหลังของใบบนเบลอใบล่างไปด้วย
+      · .overlay กลายเป็น containing block ของลูก position: fixed ⇒ เมนู/ปฏิทิน/ทูลทิปที่เปิดในโมดัลต้อง portal ไป body
+        (Select · DateInput · Toast · Tooltip ทำอยู่แล้ว และอยู่ชั้นเหนือ --z-modal จึงคมชัด ไม่โดนเบลอ)
+      · แผ่นเต็มจอมือถือ (.overlay.phone-sheet) ยังเบลออยู่ — มติคือ "โมดัลทุกใบ" และแผ่นไม่ได้ทึบสนิท
+        (.drawer พื้น --panel 94–96%) เบลอจึงยังมีผลกับสิ่งที่ทะลุขึ้นมา · มุมมนบน · จังหวะเปิด
+        ⇒ ห้ามปิดด้วย `backdrop-filter: none` โดยไม่วัดจอจริงก่อน (ยังไม่ได้วัดความลื่นบน Android รุ่นล่าง)
+   ด่าน: components/ui/backdropFilterSource.test.mjs — ห้ามมี `-webkit-backdrop-filter` เขียนมือทั้ง src */
 .overlay {
   position: fixed;
   top: 0;
@@ -2924,7 +2977,6 @@ h1, h2, h3, h4, h5, h6 {
   height: calc(100vh / var(--ui-scale));
   background: rgba(0, 0, 0, 0.65);
   backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
   z-index: var(--z-modal);
   display: flex;
   align-items: center;
@@ -4008,8 +4060,7 @@ button.ui-kpi-card { cursor: pointer; }
    ผลคือปุ่ม "บันทึก" ที่ disabled เพราะยังไม่มีอะไรเปลี่ยน หรือ "รีเฟรช" ตอนกำลังโหลด
    ดูเหมือนกดได้ปกติทั้งระบบ (76 ไฟล์ส่ง disabled ให้ปุ่ม) ใช้ค่าเดียวกับ .btn-icon:disabled
    ให้ปุ่มสองแบบหรี่เท่ากัน
-   หมายเหตุ: .btn-danger:hover / .btn-warning:hover ยังเข้มขึ้นเล็กน้อยตอนชี้ปุ่มที่ disabled
-   ตั้งใจไม่แตะเพราะใต้ opacity .45 แทบมองไม่เห็น และไม่อยากไปยุ่ง hover ของทุกโทนในแพตช์นี้ */
+   (2026-10-08: กฎ hover ของโทนสีมี `:not(:disabled)` ครบแล้ว — ปุ่ม disabled ไม่ตอบสนองการชี้ทุกโทน) */
 .btn:disabled {
   opacity: var(--op-disabled);
   cursor: not-allowed;
@@ -4034,8 +4085,26 @@ button.ui-kpi-card { cursor: pointer; }
   color: #fff;
 }
 
-.btn-primary:hover {
+/* ── hover ของปุ่มพื้นสี (primary · accent · warning · danger) ─────────────────────
+   🐞 2026-10-08 — กฎฐาน `.btn:hover:not(:disabled)` ข้างบนหนัก (0,3,0) เพราะ `:not(:disabled)` นับน้ำหนัก
+      ส่วนกฎ hover ของโทนสีเดิมเขียนแค่ `.btn-primary:hover` = (0,2,0) ⇒ **แพ้กฎฐานทั้งพื้นและสีตัวหนังสือ**
+      ปุ่มพื้นสีที่กดได้ทุกโทนจึงกลายเป็นพื้น --panel-2 ตัวหนังสือ --text ตอนชี้ ทั้งระบบ ("บันทึก" สีนาวี
+      จางเป็นปุ่มธรรมดา · จอสัมผัส hover ค้างหลังแตะ จึงเห็นเป็น "กดบันทึกแล้วปุ่มซีด") — วัดจริงด้วยเมาส์:
+      ปุ่ม disabled เข้มขึ้นถูกต้อง แต่ปุ่มที่กดได้ไปที่ --panel-2 ทุกโทน · กฎฐานตั้งใจกันปุ่ม disabled
+      แต่ผลข้างเคียงคือพังปุ่มที่กดได้แทน
+   ทางแก้ = ให้กฎของโทนสี **หนักเท่ากฎฐานพอดี (0,3,0) และประกาศทีหลัง** แล้วตั้ง **พื้น + สีตัวหนังสือ** เอง
+      (กฎฐานตั้งทั้งสองอย่าง — ตั้งพื้นอย่างเดียวจะได้ตัวหนังสือ --text บนพื้นสี)
+   ⚠️ ส่วนใน `:where()` มีน้ำหนักศูนย์ ใช้จำกัดวงโดยไม่เพิ่มน้ำหนัก:
+      · `.btn` — ปุ่มไอคอน (`.btn-icon.btn-primary`) มีพื้นและ hover ของตัวเอง ไม่ใช่ปุ่มพื้นสี
+      · ไม่ใช่ `.ghost` / `.action-outline` / `.action-ghost` — สามแบบนี้พื้นโปร่ง ตัวหนังสือเป็นสีของโทน
+        hover ของมันคือ --panel-2 (`.btn.ghost:hover` · `.btn.action-outline:hover`) · ถ้ากฎนี้ไปโดน
+        จะได้ตัวหนังสือสีแดงบนพื้นแดงเข้ม (`.btn.ghost:hover` ประกาศก่อนกฎนี้ในไฟล์ จึงแพ้ถ้าไม่กันไว้)
+   ⚠️ **ห้ามเพิ่มน้ำหนักเกิน (0,3,0)** — กฎของหน้าที่หนัก (0,3,0) และโหลดทีหลัง (CSS module เช่น
+      `.card :global(.btn-primary[aria-disabled="true"])`) ต้องยังชนะเหมือนเดิม
+   เทสต์ `components/ui/buttonHover.test.mjs` ล็อกน้ำหนัก ลำดับ และคู่พื้น/สีตัวหนังสือของทั้งสี่โทน */
+.btn-primary:hover:not(:disabled):where(.btn:not(.ghost, .action-outline, .action-ghost)) {
   background: color-mix(in oklab, var(--navy) 88%, var(--text));
+  color: #fff;
   transform: none;
   box-shadow: var(--shadow-md);
 }
@@ -4056,9 +4125,10 @@ button.ui-kpi-card { cursor: pointer; }
   color: var(--accent-fg);
 }
 
-.btn-accent:hover {
+.btn-accent:hover:not(:disabled):where(.btn:not(.ghost, .action-outline, .action-ghost)) {
   background: color-mix(in oklab, var(--accent) 90%, #000);
   border-color: color-mix(in oklab, var(--accent) 90%, #000);
+  color: var(--accent-fg);
   box-shadow: var(--shadow-md);
 }
 
@@ -4084,9 +4154,9 @@ button.ui-kpi-card { cursor: pointer; }
    เดียวกัน ไม่มีเหตุผลให้ยืนยันเป็นเขียว — ใช้ .btn-primary แทน.
    .btn-danger ยังอยู่: การทำลายต้องเตือนด้วยสี ตัดไม่ได้ */
 .btn-warning { background: var(--amber); border-color: var(--amber); color: #fff; }
-.btn-warning:hover { background: color-mix(in oklab, var(--amber) 88%, #000); box-shadow: var(--shadow-md); }
+.btn-warning:hover:not(:disabled):where(.btn:not(.ghost, .action-outline, .action-ghost)) { background: color-mix(in oklab, var(--amber) 88%, #000); color: #fff; box-shadow: var(--shadow-md); }
 .btn-danger { background: var(--red); border-color: var(--red); color: #fff; }
-.btn-danger:hover { background: color-mix(in oklab, var(--red) 88%, #000); box-shadow: var(--shadow-md); }
+.btn-danger:hover:not(:disabled):where(.btn:not(.ghost, .action-outline, .action-ghost)) { background: color-mix(in oklab, var(--red) 88%, #000); color: #fff; box-shadow: var(--shadow-md); }
 
 /* All semantic actions support the same three treatments: filled for the main
    decision, outline for secondary actions and ghost/icon-only inside tables. */
