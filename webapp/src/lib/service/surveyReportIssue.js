@@ -190,6 +190,24 @@ function imageFailure(failedFiles) {
 const VERSION_LABEL = Object.fromEntries(VERSIONS);
 
 /**
+ * บรรทัดของตัววัดกระดาษ → ท่อนที่ **หัวหน้าอ่าน** — ตัดรายละเอียดของคนแก้ระบบออก เหลือ "ฉบับไหน · หน้าไหน · เป็นอะไร"
+ *
+ * 🐞 UAT เอกสารประเมินพื้นที่ (2026-10-08 · S37): กล่องยืนยันและการ์ดพิมพ์ "ฉบับลูกค้า: หน้า 3 เนื้อหาเลยเส้นท้ายกระดาษ 6.4px ใต้ td.zn" —
+ *    ค่าวัดเป็น px กับชื่อชิ้นของหน้า (tag.class) ไปถึงหัวหน้า ซึ่งทำอะไรกับมันไม่ได้ · ตัววัดยังพิมพ์ "(เหลือ su-img: ใน HTML)" และ
+ *    "HTML 4 แผ่น · วัดได้ 4 แผ่น · PDF 5 หน้า" ได้ด้วย (`surveyReportPaperIssues` ของ surveyReportState)
+ * ⭐ ของที่ตัด **ไม่หาย**: บรรทัดเต็มยังอยู่ใน `reasons` ของผล และลง log ของ server ที่ `measurePaper`
+ * ⚠️ ตัดเฉพาะท่อนท้ายสามรูปที่ตัววัดต่อให้ (ค่าวัด + ชิ้นของหน้า · วงเล็บของ HTML · จำนวนแผ่นของ HTML/PDF) — บรรทัดอื่นผ่านไปตามเดิม
+ *    · เทสต์ยิงบรรทัดจริงของตัววัดผ่านฟังก์ชันนี้ (ตัววัดเปลี่ยนถ้อยคำเมื่อไร เทสต์ฟ้อง)
+ */
+export function surveyReportPaperLineForReader(line) {
+  return String(line ?? '')
+    .replace(/ \d+(?:\.\d+)?px(?: ใต้ \S+)?$/, '')
+    .replace(/ \((?:เหลือ [^)]*ใน HTML|HTML [^)]*)\)$/, '')
+    .replace(/ — HTML \d+ แผ่น · .*$/, '')
+    .trim();
+}
+
+/**
  * เรียกตัววัดที่ route เอกสารส่งมา (ขั้นกระดาษเป็นเจ้าของ — เปิด chromium · แปลง token จาก bucket · `surveyReportPaperIssues`)
  * สัญญา: `measure({ customerHtml, internalHtml, deadline })` → `{ issues: [{ version, kind, text, page }], error }`
  *   · `kind: 'block'` (หรือสตริงล้วน) = ห้ามออกเลข · `kind: 'log'` = ลง log เท่านั้น · `error` (ข้อความ) = วัดไม่ได้เลย
@@ -226,8 +244,10 @@ async function measurePaper(measure, payload, label) {
     else blocks.push(line);
   }
   if (!blocks.length) return null;
+  /* ค่าวัดและชื่อชิ้นของหน้าเป็นของคนแก้ระบบ — ลง log เต็มบรรทัด (และอยู่ใน `reasons`) · ประโยคที่หัวหน้าอ่านใช้ท่อนที่ตัดแล้ว */
+  console.error(`[survey-report] กระดาษของ ${label} พิมพ์ไม่ได้:`, unique(blocks).join(' | '));
   return failed('paper_blocked', blocks, {
-    reason: `กระดาษของเอกสารยังพิมพ์ไม่ได้ — ${unique(blocks).join(' | ')} · ยังไม่ได้ออกเลขเอกสาร`,
+    reason: `กระดาษของเอกสารยังพิมพ์ไม่ได้ — ${unique(blocks.map(surveyReportPaperLineForReader)).join(' | ')} · ยังไม่ได้ออกเลขเอกสาร`,
     retry: false,
   });
 }

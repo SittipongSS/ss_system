@@ -4,9 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { FileText, Palette, Printer, ShieldCheck } from 'lucide-react';
 import Workspace from '@/components/ui/Workspace';
+import Segmented from '@/components/ui/Segmented';
 import {
   DOCUMENT_STANDARD_KEYS,
   DOCUMENT_STANDARD_LABELS,
+  documentAudienceAccentMarks,
+  documentPreviewAudience,
   documentStandardFormLine,
 } from '@/lib/documentStandards';
 import {
@@ -38,6 +41,13 @@ export default function DocumentStandardPreviewPage() {
   const [scenarioId, setScenarioId] = useState('standard');
   const [documentState, setDocumentState] = useState('approved');
   const [grayscale, setGrayscale] = useState(false);
+  /* ฉบับของใบตัวอย่าง — เฉพาะชนิดที่มีสองฉบับตามผู้อ่าน (FM-TS-01: ฉบับลูกค้า | ฉบับภายใน · คนละสี คนละจำนวนหน้า)
+     เริ่มจาก `?audience=` ที่ปุ่ม "เปิดเต็มจอ" ของหน้าตั้งค่าพกมา (`documentStandardPreviewHref`) แล้วสลับได้บนหน้านี้
+     🔑 ค่าจาก URL เป็นของที่ผู้ใช้พิมพ์เองได้ ⇒ ผ่าน `documentPreviewAudience` ทุกครั้ง: ค่าแปลก/ไม่ส่ง = ฉบับลูกค้า ·
+        ชนิดที่มีใบตัวอย่างใบเดียว = `null` (ไม่มีตัวสลับ ไม่ส่งอะไรให้เครื่องยนต์) */
+  const audienceMarks = documentAudienceAccentMarks(documentKey);
+  const [pickedAudience, setPickedAudience] = useState(() => searchParams.get('audience'));
+  const audience = documentPreviewAudience(documentKey, pickedAudience);
   const frameRef = useRef(null);
 
   // ⚠️ ร่างที่ยังไม่เผยแพร่ **ไม่เอา** — หน้านี้เปิดจากลิงก์ ไม่ได้ผูกกับฟอร์มที่กำลังแก้
@@ -62,8 +72,8 @@ export default function DocumentStandardPreviewPage() {
     [documentKey, standard, scenarioId, documentState],
   );
   const html = useMemo(
-    () => buildStandardPreviewHTML(documentKey, standard, { grayscale, scenarioId, documentState }),
-    [documentKey, standard, grayscale, scenarioId, documentState],
+    () => buildStandardPreviewHTML(documentKey, standard, { grayscale, scenarioId, documentState, audience }),
+    [documentKey, standard, grayscale, scenarioId, documentState, audience],
   );
 
   // ปรับความสูง iframe ให้เท่าเนื้อหาจริง (หน้า A4 หลายหน้า) ไม่ให้มี scrollbar ซ้อน
@@ -154,6 +164,19 @@ export default function DocumentStandardPreviewPage() {
                 <button type="button" aria-pressed={!grayscale} className={!grayscale ? 'active' : ''} onClick={() => setGrayscale(false)}><Palette size={14} /> สี</button>
                 <button type="button" aria-pressed={grayscale} className={grayscale ? 'active' : ''} onClick={() => setGrayscale(true)}>ขาวดำ</button>
               </div>
+            </div>
+          ) : null}
+
+          {/* ตัวสลับฉบับ — แถบที่เห็นตรง ๆ ตัวเดียวกับหน้าตั้งค่า (ตัวเลือกสองตัว ไม่ใช่ dropdown) · "พิมพ์ / Save PDF" พิมพ์ฉบับที่เลือก */}
+          {audienceMarks ? (
+            <div className="form-group">
+              <span>ฉบับ</span>
+              <Segmented
+                ariaLabel="ฉบับของใบตัวอย่าง"
+                value={audience}
+                onChange={setPickedAudience}
+                options={audienceMarks.map((mark) => ({ value: mark.audience, label: mark.copy }))}
+              />
             </div>
           ) : null}
         </div>

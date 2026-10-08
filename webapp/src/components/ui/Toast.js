@@ -18,6 +18,7 @@ import {
   toastQueueReducer,
 } from "@/lib/toastQueue";
 import { TOAST_EVENT } from "@/lib/feedback";
+import thaiText from "@/components/ThaiText";
 import Button from "./Button";
 import styles from "./Toast.module.css";
 
@@ -86,7 +87,9 @@ function ToastCard({ toast, onClose, duration = 3600 }) {
       onBlur={startTimer}
     >
       <span className={styles.icon}><Icon size={18} aria-hidden="true" /></span>
-      <span className={styles.message}>{toast.msg}</span>
+      {/* ข้อความล้วนผ่าน `thaiText` — เลขที่เอกสาร (`SU-26100003-1`) ไม่ขาดสองบรรทัดที่ขีด และคำไทยไม่ขาดกลางคำ
+          (🐞 UAT 2026-10-08: toast ดึงผลกลับ "… · เอกสาร SU-" / "26100003-1 ใช้ไม่ได้แล้ว") · ของที่ไม่ใช่สตริงวาดตามเดิม */}
+      <span className={styles.message}>{typeof toast.msg === "string" ? thaiText(toast.msg) : toast.msg}</span>
       {toast.action?.label ? (
         <button type="button" className={styles.action} onClick={runAction}>
           {toast.action.label}

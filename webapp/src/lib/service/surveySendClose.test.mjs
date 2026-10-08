@@ -17,8 +17,11 @@ import {
   surveySendConfirm,
   surveySendDiffBaseline,
   surveySendDocumentRefusal,
+  surveySendDocumentRefusalList,
   surveySendDoneText,
+  surveySendDoneToast,
   surveySendImageRefusal,
+  surveySendRefusalKeeps,
   surveySendReport,
   surveySendUnseenWarnings,
   surveySendVisitStep,
@@ -387,6 +390,8 @@ test('⭐ โมดัลยืนยัน: ไม่ส่งสามตั�
   for (const extra of [
     {}, { issuesDocument: false }, { issuesDocument: false, replacesDocNo: 'SU-26100001-0' },
     { warnings: null }, { warnings: [] }, { warnings: ['', '   ', null, 7] }, { issuesDocument: undefined, replacesDocNo: null, warnings: undefined },
+    // PR-3: ตัวที่สี่ (`documentUnknown`) — ไม่ส่ง/ไม่ใช่ true ตรงตัว = ไม่มีข้อเพิ่ม
+    { documentUnknown: false }, { documentUnknown: undefined }, { documentUnknown: null }, { documentUnknown: 'true' }, { documentUnknown: 1 },
   ]) {
     assert.deepEqual(surveySendConfirm({ ...base, ...extra }), before, JSON.stringify(extra));
   }
@@ -480,6 +485,29 @@ test('🔴 เอกสารออกไม่ได้: ตีกลับเ�
   ]), 'ออกเอกสารไม่ได้ — ภาพผังของพื้นที่ 1 เป็น PDF | ฉบับลูกค้า: หน้า 2 ล้น · ยังไม่ได้ส่งผล');
 });
 
+/* 🐞 UAT PR-3 (S03): ประโยคของ route ต่อเหตุด้วย " | " — บนการ์ดกว้าง 298px อ่านเป็นก้อนเดียว ⇒ จอวาด "บรรทัดนำ + รายการ" ของประโยคเดียวกัน */
+test('รูป "บรรทัดนำ + รายการ" ของประโยคเอกสารออกไม่ได้: เหตุชุดเดียวกับประโยคเต็ม (เฉพาะ content · ไม่ซ้ำ · ลำดับเดิม) · ท่อนหัว/ท้ายคำเดียวกัน', () => {
+  assert.equal(surveySendDocumentRefusalList([]), null);
+  assert.equal(surveySendDocumentRefusalList(null), null);
+  assert.equal(surveySendDocumentRefusalList([{ kind: 'system', text: 'ยังไม่มีข้อมูลบริษัทที่เผยแพร่' }, { text: 'ไม่มีชนิด' }]), null);
+  const blockers = [
+    { kind: 'system', text: 'ยังไม่มีแบบฟอร์มที่เผยแพร่' },
+    { kind: 'content', text: 'ภาพผังของพื้นที่ 1 เป็น PDF' },
+    { kind: 'content', text: 'ฉบับลูกค้า: หน้า 2 ล้น' },
+    { kind: 'content', text: 'ภาพผังของพื้นที่ 1 เป็น PDF' },
+    { kind: 'content', text: '  ' },
+  ];
+  const list = surveySendDocumentRefusalList(blockers);
+  assert.deepEqual(list, {
+    lead: 'ออกเอกสารไม่ได้ — ติด 2 ข้อ · ยังไม่ได้ส่งผล',
+    items: ['ภาพผังของพื้นที่ 1 เป็น PDF', 'ฉบับลูกค้า: หน้า 2 ล้น'],
+  });
+  /* สองรูปของประโยคเดียวกัน — ประกอบรายการกลับด้วย " | " ต้องได้ประโยคเต็มของ route ทุกตัวอักษร */
+  const [head, tail] = list.lead.split('ติด 2 ข้อ');
+  assert.equal(`${head}${list.items.join(' | ')}${tail}`, surveySendDocumentRefusal(blockers));
+  assert.doesNotMatch(list.lead, / \| /);
+});
+
 test('🔴 ฐานของส่วนต่าง = แถวแรก (ใหม่ก่อน) ที่พก meta.totals — แถวคำตอบรุ่นก่อนที่ไม่มียอดถูกข้าม', () => {
   const t = (n) => ({ zones: n, areaSqm: n * 10, packageQty: n });
   assert.equal(surveySendDiffBaseline([]), null);
@@ -517,4 +545,97 @@ test('🔴 report ของคำตอบ: หยิบทีละคีย์
     assert.deepEqual(surveySendReport(odd), fallback, JSON.stringify(odd));
   }
   assert.deepEqual(surveySendReport({ state: 'failed' }), { state: 'failed', code: 'internal', reason: SURVEY_SEND_REPORT_FAILED, retry: false });
+});
+
+/* ══ PR-3 (สเปก §3.5) — โมดัลบอกผลเมื่ออ่านสถานะเอกสารไม่สำเร็จ · toast ที่บอกเลขเอกสาร · การตีกลับที่การ์ดเก็บไว้ ══ */
+
+test('โมดัลยืนยัน: คำเตือนที่ซ้ำกันตามตัวอักษรขึ้นข้อเดียว (จอใช้ข้อความเป็น key ของข้อ) · ลำดับเดิม', () => {
+  const a = 'หมายเหตุพื้นที่ 1 มีคำว่า "เครื่อง" — เอกสารฉบับลูกค้าไม่ระบุเครื่อง รุ่น หรือราคา ตรวจข้อความก่อนส่ง';
+  const b = 'ชื่อลูกค้า มีอักขระที่เอกสารพิมพ์ไม่ได้ (😀 U+1F600) — จะขึ้นเป็นกล่องสี่เหลี่ยม';
+  const c = surveySendConfirm({ docNo: 'AS-26090001', issuesDocument: true, warnings: [a, b, a, b, a] });
+  assert.deepEqual(c.effects.slice(3), [
+    `ฉบับลูกค้าจะพิมพ์ตามที่กรอกไว้ — ${a}`,
+    `ฉบับลูกค้าจะพิมพ์ตามที่กรอกไว้ — ${b}`,
+    'ใบจะจบเมื่อฝ่ายขายกด “ปิดเรื่อง”',
+  ]);
+  assert.equal(new Set(c.effects).size, c.effects.length);
+  // ต่างกันช่องว่างเดียว = คนละบรรทัด (ไม่ขัดเกลา — server เทียบตรงตัว)
+  assert.equal(surveySendConfirm({ issuesDocument: true, warnings: [a, `${a} `] }).effects.length, 6);
+});
+
+test('โมดัลยืนยัน: อ่านสถานะเอกสารไม่สำเร็จ = บอกผลแบบมีเงื่อนไข หนึ่งข้อก่อนข้อปิดท้าย · ป้ายปุ่มไม่เปลี่ยน', () => {
+  const line = 'อ่านสถานะเอกสารประเมินไม่สำเร็จ — ถ้าระบบเปิดออกเอกสารตอนส่งผลอยู่ การส่งครั้งนี้จะออกเลข SU ด้วย';
+  const plain = surveySendConfirm({ docNo: 'AS-26090001', closesVisit: closes() });
+  const unknown = surveySendConfirm({ docNo: 'AS-26090001', closesVisit: closes(), documentUnknown: true });
+  assert.equal(unknown.confirmLabel, plain.confirmLabel);
+  assert.equal(unknown.effects.length, plain.effects.length + 1);
+  assert.equal(unknown.effects.at(-2), line);
+  assert.equal(unknown.effects.at(-1), 'ใบจะจบเมื่อฝ่ายขายกด “ปิดเรื่อง”');
+  assert.deepEqual(unknown.effects.filter((l) => l !== line), plain.effects, 'ข้ออื่นไม่ขยับ');
+  // ไม่รู้ = ไม่มีข้อ "ออกเอกสาร" ที่พูดเหมือนรู้แน่
+  assert.ok(unknown.effects.every((l) => !/^ออกเอกสารประเมิน/.test(l)));
+});
+
+test('toast หลังส่งผล: ไม่มีเอกสาร = ข้อความเดิม · โมดัลสัญญาเอกสารแต่สวิตช์ถูกปิด = เตือน · ออกแล้วบอกเลข · ออกไม่สำเร็จชี้ไปส่วนเอกสาร', () => {
+  const closedVisit = { id: 'SVV-1', code: 'SV-2609001' };
+  const visitPart = ' · ปิดนัด SV-2609001 เป็น “เข้าแล้ว”';
+
+  // สวิตช์ปิด และโมดัลไม่ได้บอกเรื่องเอกสาร — เท่าเดิมทุกตัวอักษร ไม่มีคีย์ `duration` (ใช้ค่าตั้งต้นของ toast)
+  for (const res of [{}, { report: SURVEY_SEND_REPORT_OFF }, { report: null }, { report: { state: 'อื่น' } }, null, undefined]) {
+    assert.deepEqual(surveySendDoneToast(res), { kind: 'success', msg: 'ส่งผลให้ฝ่ายขายแล้ว' }, JSON.stringify(res));
+  }
+  assert.deepEqual(surveySendDoneToast({ closedVisit, report: SURVEY_SEND_REPORT_OFF }, { expectedDocument: false }),
+    { kind: 'success', msg: surveySendDoneText(closedVisit) });
+
+  // โมดัลบอกว่าจะออกเอกสาร แต่คำตอบไม่มีเอกสาร (ถอยรุ่นระหว่างที่แท็บเปิดอยู่)
+  const offText = 'ส่งผลให้ฝ่ายขายแล้ว · เอกสารยังไม่ออก — กด “ออกเอกสาร” ที่ส่วน “เอกสารประเมินพื้นที่”';
+  assert.deepEqual(surveySendDoneToast({ report: SURVEY_SEND_REPORT_OFF }, { expectedDocument: true }),
+    { kind: 'warning', duration: 9000, msg: offText });
+  assert.deepEqual(surveySendDoneToast({ closedVisit }, { expectedDocument: true }),
+    { kind: 'warning', duration: 9000, msg: `${offText}${visitPart}` });
+
+  // ออกเอกสารแล้ว — เลขกับนัดเท่านั้น (คำเตือนที่ยังไม่ได้อ่านไปอยู่ที่ส่วนเอกสาร)
+  const issued = surveySendReport({ state: 'issued', docNo: 'SU-26100001-0', rev: 0, reused: false, warnings: ['พื้นที่ 1: มีภาพผัง 3 รูป'] });
+  assert.deepEqual(surveySendDoneToast({ report: issued }, { expectedDocument: true }),
+    { kind: 'success', duration: 6000, msg: 'ส่งผลให้ฝ่ายขายแล้ว · ออกเอกสาร SU-26100001-0' });
+  assert.deepEqual(surveySendDoneToast({ closedVisit, report: issued }, { expectedDocument: true }),
+    { kind: 'success', duration: 6000, msg: `ส่งผลให้ฝ่ายขายแล้ว · ออกเอกสาร SU-26100001-0${visitPart}` });
+  assert.doesNotMatch(surveySendDoneToast({ report: issued }).msg, /ภาพผัง/);
+
+  // ส่งผลสำเร็จ เอกสารยังไม่ออก — เหตุอยู่ที่ส่วนเอกสาร (ไม่ยัดประโยคยาวลง toast)
+  const failed = surveySendReport({ state: 'failed', code: 'undecodable', reason: 'รูป 1 รูปเปิดไม่ได้ — ดึงผลกลับมาอัปใหม่', retry: false });
+  const failText = 'ส่งผลให้ฝ่ายขายแล้ว · เอกสารยังไม่ออก — ดูเหตุที่ส่วน “เอกสารประเมินพื้นที่”';
+  for (const expectedDocument of [true, false]) {
+    assert.deepEqual(surveySendDoneToast({ report: failed }, { expectedDocument }), { kind: 'warning', duration: 9000, msg: failText });
+  }
+  assert.deepEqual(surveySendDoneToast({ closedVisit, report: failed }, { expectedDocument: true }),
+    { kind: 'warning', duration: 9000, msg: `${failText}${visitPart}` });
+  // "ออกแล้ว" ที่ไม่มีเลข = ไม่อ้างว่าออกแล้ว
+  assert.equal(surveySendDoneToast({ report: { state: 'issued', docNo: '  ' } }).kind, 'warning');
+});
+
+test('การตีกลับที่การ์ดเก็บไว้ = รูปเปิดไม่ได้เท่านั้น — ตรงกับผลของตัวสร้างประโยค · การตีกลับอื่นไม่เก็บ', () => {
+  const one = surveySendImageRefusal([{ attId: 'B1', fileName: 'IMG_0001.jpg', permanent: true }]);
+  const many = surveySendImageRefusal(Array.from({ length: 12 }, (_, i) => ({ attId: `B${i}`, fileName: `ผัง ${i}.png`, permanent: true })));
+  assert.equal(surveySendRefusalKeeps(one), true);
+  assert.equal(surveySendRefusalKeeps(many), true);
+  assert.match(many, /^รูป 12 รูปเปิดไม่ได้/);
+
+  const draft = surveySendVisitStep(visit({ status: 'draft' }), { today: TODAY }).error;
+  const others = [
+    SURVEY_SEND_OLD_PAGE_ERROR,
+    SURVEY_SEND_WARNINGS_CHANGED_ERROR,
+    surveySendDocumentRefusal([{ kind: 'content', text: 'รูป 2 รูปเปิดไม่ได้ — อัปใหม่เป็น JPG แล้วส่งอีกครั้ง (ชื่อไฟล์ a.jpg)' }]),
+    draft,
+    'นัดของใบนี้เปลี่ยนไปหลังเปิดหน้า — โหลดหน้าใหม่แล้วกดส่งผลอีกครั้ง',
+    'ใบนี้ถูกส่งผลไปแล้ว — โหลดหน้าใหม่เพื่อดูผลล่าสุด',
+    'ส่งผลไม่สำเร็จ',
+    'รูป หลายรูปเปิดไม่ได้ — อัปใหม่เป็น JPG แล้วส่งอีกครั้ง (ชื่อไฟล์ a.jpg) · ยังไม่ได้ส่งผล',
+    'รูป 2 รูปเปิดไม่ได้',
+  ];
+  for (const message of others) {
+    assert.ok(typeof message === 'string' && message, 'ประโยคตัวอย่างต้องมีจริง');
+    assert.equal(surveySendRefusalKeeps(message), false, message);
+  }
+  for (const none of [null, undefined, '', 7, { message: one }, [one]]) assert.equal(surveySendRefusalKeeps(none), false);
 });

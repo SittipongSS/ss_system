@@ -4,7 +4,7 @@
 //   ตัดบรรทัด** ⇒ ยืนยันของจริงได้โดยไม่ต้องเปิดเบราว์เซอร์
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { THAI_LOANWORDS, splitThai, thaiWrapText } from './thaiWrap.js';
+import { THAI_KEEP_TOGETHER, THAI_LOANWORDS, splitThai, thaiWrapText } from './thaiWrap.js';
 
 const segments = (s) => [...new Intl.Segmenter('th', { granularity: 'word' }).segment(s)]
   .map((x) => x.segment);
@@ -98,6 +98,63 @@ test('ค่าที่ไม่ใช่ข้อความ / ข้อค�
   assert.equal(thaiWrapText(42), 42);
 });
 
+/* ── วลีไทยแท้ที่ ICU ตัดข้างในวลี · เลขที่เอกสาร — ห่อ `nowrap` อย่างเดียว ไม่เติมขอบคำ ──────────────── */
+
+/* 🐞 UAT เอกสารประเมินพื้นที่ 2026-10-08: "ดึงผลกลับมาแก้" ขึ้นบรรทัดใหม่เป็น "…ดึงผลก" / "ลับมาแก้" (รายการ Rev · กล่องยืนยันออกเอกสาร) */
+test('🔴 ของเดิม: ICU ตัด "ผลกลับ" กลางคำ "กลับ" จริง — นี่คือบั๊กที่กำลังแก้', () => {
+  assert.deepEqual(segments('ดึงผลกลับมาแก้'), ['ดึง', 'ผลก', 'ลับ', 'มา', 'แก้']);
+  assert.deepEqual(segments('ไม่ต้องดึงผลกลับ').slice(-2), ['ผลก', 'ลับ']);
+});
+
+test('⭐ วลีใน THAI_KEEP_TOGETHER ถูกแยกเป็นชิ้นของตัวเอง (ตัววาดห่อ nowrap) · ตัวหนังสือไม่ถูกแตะ ไม่มี ZWSP สักตัว', () => {
+  for (const text of ['ดึงผลกลับมาแก้แล้วส่งใหม่ (ออกเป็น Rev ถัดไป)', 'ไม่ต้องดึงผลกลับ', 'ออก 02/10/2026 · ถูกแทนที่ 05/10/2026 · ดึงผลกลับมาแก้']) {
+    assert.deepEqual(wordsOf(text), ['ผลกลับ'], text);
+    assert.equal(rendered(text), text, 'Ctrl+F หาทั้งวลี ("ดึงผลกลับมาแก้" = ชื่อปุ่มของระบบ) ต้องยังเจอ');
+    assert.equal(thaiWrapText(text), text);
+    assert.equal(splitThai(text).touched, true, 'ต้องบอกตัววาดว่ามีชิ้นให้ห่อ');
+  }
+});
+
+/* 🔴 `nowrap` อย่างเดียวพอ **ก็ต่อเมื่อ** รอยต่อปลอมอยู่ในวลีทั้งหมด — ถ้า ICU ตัดคร่อมขอบนอกของวลี (แบบคำทับศัพท์) ต้องย้ายไป
+   `THAI_LOANWORDS` (ซึ่งเติม ZWSP ให้) · ข้อนี้ฟ้องเมื่อใครเติมวลีที่ไม่เข้าเงื่อนไข */
+test('🔴 ทุกวลีใน THAI_KEEP_TOGETHER: ICU ตัดผิดที่ข้างในวลี และขอบนอกของวลีเป็นขอบคำจริง', () => {
+  const lefts = ['', 'ดึง', 'ส่ง', 'ถอน', 'ต้องดึง', 'เอา'];
+  const rights = ['', 'มาแก้', 'แล้วส่งใหม่', 'ก่อน', ' อัปรูปใหม่'];
+  for (const phrase of THAI_KEEP_TOGETHER) {
+    assert.ok(!phrase.includes(ZWSP));
+    assert.ok(segments(phrase).length > 1, `${phrase}: ICU ต้องตัดข้างในวลี (ไม่งั้นไม่ต้องอยู่ในรายการ)`);
+    for (const l of lefts) {
+      for (const r of rights) {
+        assert.equal(crossesBoundary(l, phrase, r), false, `${l}+${phrase}+${r}: ขอบนอกของวลีต้องเป็นขอบคำของ ICU`);
+      }
+    }
+  }
+});
+
+/* 🐞 UAT เอกสารประเมินพื้นที่ 2026-10-08: toast "… · เอกสาร SU-" / "26100003-1 ใช้ไม่ได้แล้ว" — เลขที่เอกสารขาดสองบรรทัดที่ขีด */
+test('⭐ เลขที่เอกสารเป็นชิ้นของตัวเอง (ตัววาดห่อ nowrap) — ไม่ขาดที่ขีด · ตัวเลขไม่ถูกแตะ', () => {
+  assert.deepEqual(wordsOf('ดึงผลกลับมาแก้แล้ว — ฝ่ายขายได้รับแจ้งพร้อมตัวเลขเดิม · เอกสาร SU-26100003-1 ใช้ไม่ได้แล้ว'), ['ผลกลับ', 'SU-26100003-1']);
+  assert.deepEqual(wordsOf('ส่งผลให้ฝ่ายขายแล้ว · ออกเอกสาร SU-26100003-0'), ['SU-26100003-0']);
+  assert.deepEqual(wordsOf('ใบ RQ-AS-26090186 · นัด SV-26090013 (FM-TS-01)'), ['RQ-AS-26090186', 'SV-26090013', 'FM-TS-01']);
+  const text = 'เอกสาร SU-26100003-1 จะถูกแทนที่';
+  assert.equal(rendered(text), text);
+  assert.equal(thaiWrapText(text), text);
+});
+
+test('ของที่ไม่ใช่เลขที่เอกสารไม่ถูกห่อ: id ตัวเล็ก · ไม่มีขีด · ยาวเกินเพดาน · รหัสที่จับได้ไม่ทั้งตัว', () => {
+  for (const text of [
+    'id DR-fe9add35-6576-44c3-9ef5-d7ef6c9499dd',
+    'ต้องเป็นรูป JPG/PNG (😀 U+1F600)',
+    'ABCDE-12',
+    'RQ-AS-26090186x',
+    'AB-0123456789-0123456789-0123456789',
+    'ขนาด SM · ST',
+  ]) {
+    assert.deepEqual(wordsOf(text), [], text);
+    assert.equal(splitThai(text).touched, false, text);
+  }
+});
+
 /* 🔴 ห้ามฝัง ZWSP ไว้ในสตริงต้นทาง — มันมองไม่เห็นใน editor, ทำให้ `includes()` และ
    ช่องค้นหาพัง, และหลุดลงไฟล์ export · โมดูลนี้ต้องเป็นตัวแปลง **ตอนแสดงผล** เท่านั้น */
 test('🔴 ห้ามมี ZWSP ฝังอยู่ในสตริงต้นทางของโมดูลเอง', () => {
@@ -130,6 +187,7 @@ test('🔴 primitive ที่วาดร้อยแก้วต้องย�
     ['../components/ui/ConfirmDialog.js', 'คำอธิบายของกล่องยืนยัน'],
     ['../components/ui/AlertBanner.js', 'แถบเตือนพร้อมทางไปจัดการ'],
     ['../components/ui/RowActionMenu.js', 'เหตุผลที่เมนูแถวกดไม่ได้'],
+    ['../components/ui/Toast.js', 'ข้อความ toast (เลขที่เอกสารไม่ขาดที่ขีด)'],
   ];
   const missing = WIRED.filter(([file]) => !/thaiText\(/.test(read(new URL(file, import.meta.url), 'utf8')));
   assert.deepEqual(missing.map(([f, why]) => `${f} (${why})`), [],

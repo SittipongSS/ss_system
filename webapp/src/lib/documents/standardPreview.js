@@ -10,6 +10,7 @@ import { COMPANY_PROFILE_FALLBACK } from '@/lib/companyProfile';
 import { numberingPatternExample } from '@/lib/documentStandards';
 import { buildGanttPrintHTML } from '@/lib/pm/ganttPrint';
 import { renderPdrDocument } from '@/lib/requests/pdrDocument';
+import { buildSurveyReportPreviewHTML } from '@/lib/service/surveyReportPreview';
 import { buildBillPrintHTML } from '@/lib/tax/billPrint';
 import { renderQuotationMasterDocumentHTML } from '@/lib/sales/quotationMasterDocument';
 import { buildQuotationMasterPreview } from '@/lib/sales/quotationMasterTemplate';
@@ -169,11 +170,14 @@ const pdrPreviewRequest = () => ({
  *
  * @param documentKey  คีย์ใน DOCUMENT_STANDARD_KEYS
  * @param standard     แถวเวอร์ชันที่กำลังดู/กำลังแก้ (ร่างก็ได้ — พรีวิวจะขยับตามทันที)
- * @param options      { grayscale, scenarioId, documentState } — สองตัวหลังใช้เฉพาะ
- *                     ชนิดใน SCENARIO_DOCUMENT_KEYS
+ * @param options      { grayscale, scenarioId, documentState, audience } — `scenarioId`/`documentState` ใช้เฉพาะ
+ *                     ชนิดใน SCENARIO_DOCUMENT_KEYS · `audience` ('external' | 'internal' — DOCUMENT_AUDIENCES)
+ *                     ใช้เฉพาะชนิดที่ใบตัวอย่างมีสองฉบับตามผู้อ่าน (วันนี้คือ siteSurvey) ไม่ส่ง = ฉบับที่ออกนอกบริษัท
+ *                     ⚠️ ผู้เรียกทุกหน้าที่วาดใบตัวอย่างของชนิดนั้นต้องส่งค่านี้ — หน้าตั้งค่าส่งจากตัวสลับ · หน้าเต็มจอรับจากลิงก์
+ *                        (`documentStandardPreviewHref` → `documentPreviewAudience` ใน lib/documentStandards.js) ไม่ส่ง = ดูฉบับภายในเต็มจอไม่ได้
  */
 export function buildStandardPreviewHTML(documentKey, standard, options = {}) {
-  const { grayscale = false, scenarioId = 'standard', documentState = 'approved' } = options;
+  const { grayscale = false, scenarioId = 'standard', documentState = 'approved', audience } = options;
 
   if (documentKey === 'projectTimeline') {
     // ส่งมาตรฐานเป็น activeStandard (ไม่ใช่ timelineStandardSnapshot บนตัวอย่าง)
@@ -203,6 +207,11 @@ export function buildStandardPreviewHTML(documentKey, standard, options = {}) {
       // และบล็อกบริษัทตกไปใช้ค่าที่เผยแพร่ · ส่ง toolbar:false เป็นตัวสุดท้าย
     }, undefined, null, { toolbar: false });
   }
+
+  // ⭐ รายงานการประเมินพื้นที่ (FM-TS-01) มีเครื่องยนต์ของตัวเอง (lib/service/surveyReportDocument) — ต้องดักก่อนตกไป
+  // เครื่องยนต์ใบเสนอราคา ไม่งั้นได้ "ใบเสนอราคาที่หัวเขียน FM-TS-01" · ใบตัวอย่างกับลายน้ำอยู่ที่ surveyReportPreview
+  // สองฉบับตามผู้อ่าน (ลูกค้า | ภายใน) คนละสีคนละเนื้อหา — ผู้เรียกเลือกด้วย `audience`
+  if (documentKey === 'siteSurvey') return buildSurveyReportPreviewHTML(standard, { audience });
 
   const model = buildQuotationMasterPreview(scenarioId, documentState, 'v4', documentKey, { standard });
   return renderQuotationMasterDocumentHTML(model, { grayscale, toolbar: false });

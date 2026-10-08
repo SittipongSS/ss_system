@@ -33,6 +33,7 @@ import Input from "@/components/ui/Input";
 import ReadableText from "@/components/ui/ReadableText";
 import RowActionMenu from "@/components/ui/RowActionMenu";
 import StatusBadge from "@/components/ui/StatusBadge";
+import StatusNotice from "@/components/ui/StatusNotice";
 import Textarea from "@/components/ui/Textarea";
 import SurveyZonePager from "@/components/service/SurveyZonePager";
 import {
@@ -103,6 +104,8 @@ function Section({ area, id, number, icon: Icon, title, hint, state, children })
  * @param onUploadBusy  `(busy)` — ยิงจากลูปอัปของแผงเอง (ยังยิงแม้หน้านี้ถูกถอดกลางการอัป · หน้านับเอง)
  * @param canLinkSpots  ผูก/ย้ายรูปจุดกับจุดได้ไหม — `canLinkSpotPhotos` ของ server (ด่านเดียวกับ PATCH):
  *                      ใบเปิด = คนที่เขียนได้ · ใบที่ส่งผลแล้ว = หัวหน้าฝ่าย (Q1a — metadata อย่างเดียว แนบ/ลบยังล็อก)
+ * @param spotsNote     บรรทัดแจ้งบนสุดของหัวข้อจุด (สตริงเดียว · ไม่ส่ง = ไม่มี) — ใบที่ส่งผลแล้วหัวหน้ายังผูก/ย้ายรูปจุดได้ ⇒ หน้าบอกว่า
+ *                      ทำแล้วเอกสารประเมิน (SU) เปลี่ยนไหม · ประโยคมาจากตัวตัดสินของเอกสาร (`view.document.relinkNote`) หน้านี้แค่วาด
  */
 export default function SurveyZonePage({
   zone,
@@ -128,6 +131,7 @@ export default function SurveyZonePage({
   onFilesChange,
   onUploadBusy,
   canLinkSpots = false,
+  spotsNote = null,
   jumpToTray = false,
   onTrayShown,
 }) {
@@ -687,6 +691,9 @@ export default function SurveyZonePage({
               🔄 มติ 01/10 (G1): ทุกจุดต้องมีรูปก่อนส่งงาน (`surveySpotSubmitError`) — คำกำกับเดิม "รูปไม่บังคับ" ขัดกับด่าน */}
           <Section area="spots" id={sectionId("spots")} number={3} title="จุดที่ติดตั้งได้"
             hint={edit ? "อย่างน้อย 1 จุด · ทุกจุดต้องมีรูป" : null} state={sections.spots}>
+            {/* ใบที่ส่งผลแล้ว: ผูก/ย้ายรูปจุดตอนนี้เปลี่ยนเอกสารประเมินไหม (PR-3) — อยู่บนสุดของหัวข้อ เพราะถาด "ยังไม่ได้ผูกจุด"
+                มีเฉพาะตอนมีรูปค้าง แต่การย้ายรูประหว่างจุดทำได้เสมอ */}
+            {spotsNote ? <StatusNotice tone="info">{spotsNote}</StatusNotice> : null}
             {spots.length === 0 && !edit ? <p className={styles.empty}>ยังไม่ได้ระบุจุด</p> : null}
             <div className={styles.photos}>
               {/* ⚠️ `intakeWeight={1}` — Ctrl+V ลอย ๆ ตกที่ภาพกว้างก่อน (ของที่ต้องมี) · ของที่ลากมาวางที่นี่ไม่รู้แถว ⇒ ลงถาด */}

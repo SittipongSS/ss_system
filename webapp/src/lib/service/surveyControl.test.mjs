@@ -1169,9 +1169,13 @@ const surveyPageCode = () => readFileSync(new URL('../../app/service/surveys/[id
 test('⭐ ปุ่มส่งผลส่งรหัสนัดที่โมดัลบอก · toast บอกผลกับนัด · ล้มแล้วโยนกลับให้โมดัลบอก (ไม่ใช่ toast ที่หาย)', () => {
   const page = surveyPageCode();
   const send = page.slice(page.indexOf('const send = async'), page.indexOf('const recall = async'));
-  assert.match(send, /json: \{ closeVisitId: view\.send\.closesVisit\?\.id \?\? null \}/,
-    'รหัสนัดต้องมาจาก `send.closesVisit` ตัวเดียวกับที่โมดัลวาด');
-  assert.match(send, /surveySendDoneText\(res\?\.closedVisit\)/);
+  /* PR-3 (มติ 10): `seenWarnings` ไปกับคำขอเฉพาะเมื่อโมดัลบอกเรื่องเอกสารไว้แล้ว — ส่งเสมอ = แท็บที่โหลดตอนสวิตช์ปิดผ่านด่านของ route เงียบ ๆ */
+  assert.match(send, /json: \{ closeVisitId: view\.send\.closesVisit\?\.id \?\? null, \.\.\.\(says \? \{ seenWarnings: seen \} : \{\}\) \}/,
+    'รหัสนัดต้องมาจาก `send.closesVisit` ตัวเดียวกับที่โมดัลวาด · คำเตือนที่ส่งกลับคือชุดที่โมดัลกาง');
+  assert.match(send, /const says = view\.send\.issuesDocument \|\| view\.send\.documentUnknown;\s*const seen = view\.send\.seenWarnings;/,
+    '`seen` ต้องเป็นลิสต์ดิบของตัวตัดสิน (route เทียบตรงตัว) — ห้ามตัด/ขัดเกลาก่อนส่ง');
+  assert.match(send, /setToast\(surveySendDoneToast\(res, \{ expectedDocument: view\.send\.issuesDocument \}\)\);/,
+    'toast บอกผลกับนัด และเลขเอกสารเมื่อการส่งออกเอกสารด้วย (ถอยสวิตช์กลางทาง = เตือนว่าเอกสารยังไม่ออก)');
   assert.match(send, /catch \(e\) \{\s*await load\(\{ background: true \}\);\s*throw e;/,
     'ล้ม = อ่านใบใหม่ (โมดัลวาดนัด/ด่านล่าสุด) แล้วโยน error ให้กล่องบอกตรงนั้น');
   assert.doesNotMatch(send, /kind: "error"/, 'error 409 ยาว ๆ เคยหายไปกับ toast 3.6 วิ');
@@ -1179,8 +1183,9 @@ test('⭐ ปุ่มส่งผลส่งรหัสนัดที่โ�
 
 test('⭐ โมดัลส่งผลวาดผลทุกข้อจาก `surveySendConfirm` · ป้ายปุ่มพูดตามผล · ส่งไม่ได้แล้ว = ปุ่มเดียว "ปิด"', () => {
   const page = surveyPageCode();
-  assert.match(page, /surveySendConfirm\(\{\s*docNo: data\?\.request\?\.docNo, closesVisit: view\.send\.closesVisit,[\s\S]{0,160}sendBackPending: view\.send\.sendBackPending,[\s\S]{0,200}sizeReview: view\.send\.sizeReview,\s*\}\)/,
-    '🐞 review 26/09: ส่งกลับค้าง = โมดัลบอกก่อนกด · UAT PR-P 01/10: ขนาดที่ยังไม่เคยเทียบกับข้อเสนอ = โมดัลบอกก่อนกด');
+  assert.match(page, /surveySendConfirm\(\{\s*docNo: data\?\.request\?\.docNo, closesVisit: view\.send\.closesVisit,\s*issuesDocument: view\.send\.issuesDocument, replacesDocNo: view\.send\.replacesDocNo,\s*warnings: view\.send\.seenWarnings, documentUnknown: view\.send\.documentUnknown,[\s\S]{0,160}sendBackPending: view\.send\.sendBackPending,[\s\S]{0,200}sizeReview: view\.send\.sizeReview,\s*\}\)/,
+    '🐞 review 26/09: ส่งกลับค้าง = โมดัลบอกก่อนกด · UAT PR-P 01/10: ขนาดที่ยังไม่เคยเทียบกับข้อเสนอ = โมดัลบอกก่อนกด'
+    + ' · PR-3: ออกเอกสาร SU ด้วยไหม · แทนฉบับไหน · ข้อความที่พิมพ์ตามที่กรอก · อ่านสถานะเอกสารไม่สำเร็จ = โมดัลบอกก่อนกด');
   const at = page.indexOf('title="ส่งผลประเมินให้ฝ่ายขาย"');
   const dialog = page.slice(at, page.indexOf('</ConfirmDialog>', at));
   assert.match(dialog, /confirmLabel=\{view\.send\.allowed \? sendConfirm\.confirmLabel : "ปิด"\}/);

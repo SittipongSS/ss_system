@@ -24,6 +24,7 @@ import {
   surveyZonePackageText, surveyZoneSuggestedDiffText,
 } from './survey';
 import { surveyControlView, surveyPackagesLabel, surveySendBackAskText, surveyZoneFacts } from './surveyControl';
+import { surveyRequestDocumentView } from './surveyDocumentView';
 import { VISIT_STATUS_LABELS, holdsRequestSlot, isClosedVisit } from './visitStatus';
 
 const join = (...parts) => parts.flat().filter(Boolean).join(' · ');
@@ -313,11 +314,14 @@ function dateFacts(request, visit, today, assignee, { finished = false } = {}) {
  * @param request     ใบจาก GET `/api/sa/requests/[id]` — มี `surveyZones` · `surveySite` · `surveyVisit` ·
  *                    `surveyVisits` · `surveyFilesByZone` · `surveyRecall` · `surveySendBack` · `surveyUnknown`
  * @param today       วันไทยวันนี้ `YYYY-MM-DD` (เปลือกจับใน effect) — `null` = ยังไม่รู้ ไม่นับเลยกำหนด
- * @param viewer      `{ canDecide, isOpener, isRequesterSide }` — ส่งผลได้ไหม · เป็นคนเปิดใบเองไหม · อยู่ฝั่งผู้ขอไหม
+ * @param viewer      `{ canDecide, canWork, isOpener, isRequesterSide }` — ส่งผลได้ไหม · เปิดใบประเมินได้ไหม · เป็นคนเปิดใบเองไหม ·
+ *                    อยู่ฝั่งผู้ขอไหม (`_mine` ของ GET คำร้อง)
  * @param people      ทะเบียนคน `[{ id, name }]` (ชื่อผู้ช่วยบนนัด) · `peopleLoading` = ยังโหลดไม่เสร็จ
+ * @param refreshStalled เปลือกอ่านใบเบื้องหลังพังติดกันจนเลิกตรวจซ้ำเองแล้ว (`refreshStalled` ของ `app/requests/[id]`)
+ *                    — บล็อกเอกสารใช้เลิกสัญญาว่า "หน้านี้ตรวจให้เองทุก 15 วินาที" (`surveyRequestDocumentView`)
  */
 export function surveyJobView({
-  request = null, today = null, viewer = {}, people = [], peopleLoading = false,
+  request = null, today = null, viewer = {}, people = [], peopleLoading = false, refreshStalled = false,
 } = {}) {
   if (!request) return null;
   const visit = request.surveyVisit || null;
@@ -339,6 +343,8 @@ export function surveyJobView({
     skipPackageRegistry: true,
     tab: 'result',
     today,
+    /* ⚠️ **ไม่ส่ง `document`** — หน้านี้ไม่มีแถวด่าน "เอกสารประเมินออกได้" (GET คำร้องไม่ตรวจเนื้อเอกสาร · PR-3 §3.6)
+       เอกสารของหน้านี้อยู่ที่คีย์ `document` ของผลลัพธ์ (`surveyRequestDocumentView`) */
   });
   const filesUnknown = unknown.files === true;
   const stage = stageOf(request, visit, control, today, { filesUnknown, sendBack: request.surveySendBack || null });
@@ -718,6 +724,18 @@ export function surveyJobView({
     stage,
     status: STAGE_BADGE[stage] || STAGE_BADGE.queue,
     control,
+    /* ⭐ บล็อก "เอกสารประเมินพื้นที่" ของหน้าคำร้อง (PR-3 · สเปก §5.1) — `null` = ไม่มีบล็อก (ไม่มีสิทธิ์ · ยังไม่ส่งผล · Planner)
+       ปุ่มมาจากธง `surveyDocument.access` ของ server · ธงของคนดูที่ส่งต่อไปใช้เลือก **ข้อความ** เท่านั้น */
+    document: surveyRequestDocumentView({
+      surveyDocument: request.surveyDocument,
+      request,
+      viewer: {
+        canOpenSheet: viewer.canWork === true,
+        isRequesterSide: viewer.isRequesterSide === true,
+        canDecide: viewer.canDecide === true,
+      },
+      pollStopped: refreshStalled === true,
+    }),
     steps: timeline,
     index: Math.min(index, timeline.length),
     current,
