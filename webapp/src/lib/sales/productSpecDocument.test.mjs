@@ -1341,3 +1341,26 @@ test('ชุดของขวัญ: ตัวจองแถวนับทุ
   const three = { ...GIFT_SET, formulaComponents: [...GIFT_SET.formulaComponents, { ...GIFT_SET.formulaComponents[0], formulaId: 'FML-3' }] };
   assert.equal(plan(three).length, plan(TEA_FORMULA).length + 2);
 });
+
+/* ── ราคาทุน + รูปประจำแถว checklist (mig 0405 · มติเจ้าของ 08/10/2569) — ใช้ในระบบเท่านั้น ───────────────
+   ภาพนิ่งไม่ถ่ายสองช่องนี้อยู่แล้ว (ด่านที่ productSpec.test.mjs) · ที่นี่คือชั้นสุดท้าย: **ต่อให้หลุดเข้าภาพนิ่งมา**
+   ตัววาดกระดาษก็ต้องไม่พิมพ์ — กระดาษใบนี้ลูกค้าเซ็น */
+test('🔴 กระดาษ FM-SA-04 (ไทย/อังกฤษ) ไม่พิมพ์ราคาทุนและรูปของแถว checklist แม้แถวในภาพนิ่งจะมีค่า · ไม่มีคอลัมน์ราคาทุน/รูปเพิ่ม', () => {
+  const IMAGE_ID = 'aaaaaaaa-0000-4000-8000-000000000001';
+  const withCost = (snapshot) => ({
+    ...snapshot,
+    spec: { ...snapshot.spec, pricingTier: 'ราคาต้นทุน 987654.32 บาท' },
+    items: snapshot.items.map((row) => ({ ...row, costPrice: 987654.32, imageAttachmentId: IMAGE_ID })),
+  });
+  const SENTINEL = /987654|987,654|aaaaaaaa-0000|costPrice|imageAttachmentId|ราคาทุน|ราคาต้นทุน|Cost price/i;
+  for (const [label, snapshot] of [['th', snapshotOf()], ['en', englishSnapshot()]]) {
+    const plain = renderProductSpecDocument(baseInput({ snapshot }));
+    const html = renderProductSpecDocument(baseInput({ snapshot: withCost(snapshot) }));
+    assert.doesNotMatch(html, SENTINEL, label);
+    // กระดาษเหมือนเดิมทุกไบต์ — ไม่มีคอลัมน์/แถว/รูปเพิ่มจากสองช่องนี้
+    assert.equal(html, plain, `${label}: กระดาษต้องไม่เปลี่ยนเมื่อแถวมีราคาทุน/รูป`);
+    // ร่าง (ลายน้ำ) ก็เช่นกัน
+    const draft = renderProductSpecDocument(baseInput({ snapshot: withCost(snapshot), revision: revisionOf({ status: 'draft' }), watermark: 'draft' }));
+    assert.doesNotMatch(draft, SENTINEL, `${label} ร่าง`);
+  }
+});

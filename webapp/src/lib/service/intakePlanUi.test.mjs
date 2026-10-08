@@ -200,6 +200,8 @@ test('OrphanPlanStrip: หนึ่งกล่องเตือนต่อช
   assert.match(src, /href=\{`\/database\/sites\/\$\{item\.siteId\}`\}/);
   assert.match(src, />\s*หน้าไซต์\s*</);
   assert.match(src, /if \(!groups\.length\) return null;/, 'ไม่มีรอบกำพร้า = ไม่วาดอะไร');
+  /* mig 0404: กลุ่ม "ใบ Rev. ยังไม่ตั้งงานบริการ" (ตัวคำนวณส่ง `unset`) ต้องถูกวาด — ไม่อยู่ในรายการ = รอบหายจากแถบเงียบ ๆ */
+  assert.match(src, /const ORPHAN_KINDS = \["dropped", "stale", "cancelled", "unset"\];/);
   assert.doesNotMatch(src, /style=\{\{|apiJson|apiFetch/);
 });
 

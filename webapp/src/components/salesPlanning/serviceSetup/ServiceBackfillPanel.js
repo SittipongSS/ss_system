@@ -10,6 +10,9 @@
 //    · หน้าคิด `pressed` ด้วย `backfillRailPressed` — ด่าน "ยังไม่บันทึก" ของจอไม่นับ (แถวคิดจากของที่บันทึกแล้ว · UAT 29/09)
 // ⭐ ใบที่เปิดแก้หลังอนุมัติ (mig 0396 · `view.reopened`) ใช้สองชิ้นนี้ตัวเดิม — เปลี่ยนแค่หัว/ป้าย + บรรทัด "เปิดแก้ … โดย … · เหตุผล"
 //   (`backfillCopyOfView` · ภาคผนวก A.4 · ม็อก ReopenEditing/ReopenReview) · ปุ่ม/ด่าน/แถวตรวจเหมือนใบเดิมทุกอย่าง
+// ⭐ ใบที่อนุมัติโดย "ยื่นโดยยังไม่ตั้งงานบริการ" (mig 0404 · `view.deferred` stage 'approved') ก็ใช้สองชิ้นนี้ตัวเดิมเช่นกัน — หัว
+//   "ข้ามการตั้งงานบริการตอนยื่น" + บรรทัด "ข้ามการตั้งงานบริการตอนยื่น … โดย …" ในช่องเดียวกับบรรทัดเปิดแก้ (`copy.reopenLine` / `copy.bannerLead`)
+//   · ป้ายขั้นเป็นของใบเดิม (ใบไม่เคยตั้ง) · ปุ่ม "ยื่นตรวจงานบริการ" → ผู้จัดการฝ่ายขายอนุมัติ → ส่ง TS เหมือนเดิมทุกอย่าง
 import { Repeat } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { DetailCard } from "@/components/ui/DetailPage";
@@ -79,7 +82,8 @@ export function ServiceBackfillRailCard({ setup, pressed = false, busy = false, 
     >
       <div className={styles.rail}>
         <StepTrack steps={steps} ariaLabel="ขั้นของงานบริการย้อนหลัง" />
-        {/* ใบที่เปิดแก้หลังอนุมัติ: ใคร · เมื่อไร · ทำไม (มติเจ้าของ 30/09 ข้อ 4.3) — ผู้จัดการอ่านก่อนตรวจ */}
+        {/* ใบที่เปิดแก้หลังอนุมัติ: ใคร · เมื่อไร · ทำไม (มติเจ้าของ 30/09 ข้อ 4.3) — ผู้จัดการอ่านก่อนตรวจ
+            · ใบที่ข้ามการตั้งงานบริการตอนยื่น (mig 0404): ใครข้าม · เมื่อไร ในช่องเดียวกัน */}
         {copy.reopenLine ? <p className={styles.railReopen}>{copy.reopenLine}</p> : null}
         {state === "rejected" ? <p className={styles.railReject}>{rejectedLine(setupState)}</p> : null}
 

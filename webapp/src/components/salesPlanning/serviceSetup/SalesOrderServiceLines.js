@@ -3,8 +3,9 @@
 //
 // ⭐ การ์ดราคา = **ตารางตัวเดียวกับใบเสนอราคา** (`QuotationReadOnlyLineItems`) อ่านอย่างเดียว ไม่มีอะไรของงานบริการแทรก
 //   (ท้ายการ์ดมีแค่บรรทัดชี้ไปการ์ดงานบริการ)
-// ⭐ การ์ดงานบริการ = ตาราง `ServiceSetupGrid` หนึ่งแถวต่อรายการ ①→⑥ ตามมติเจ้าของ 30/09 (เลือกทาง A 01/10 · ม็อก BindGridEdit):
-//   งานบริการ? → แพ็คเกจ FG → ไซต์ · โซน → จำนวนรอบบริการ → รอบละกี่แพ็ค → รวมแพ็ค + แถวรวมทุกรายการ
+// ⭐ การ์ดงานบริการ = ตาราง `ServiceSetupGrid` หนึ่งแถวต่อรายการ ①→⑥ ตามมติเจ้าของ 30/09 (เลือกทาง A 01/10 · ม็อก BindGridEdit)
+//   + มติเจ้าของ 08/10 (สลับ ④⑤ · หน่วยจำนวนรอบบริการเป็นเดือน):
+//   งานบริการ? → แพ็คเกจ FG → ไซต์ · โซน → รอบละกี่แพ็ค → จำนวนรอบบริการ → รวมแพ็ค + แถวรวมทุกรายการ
 //   ของบนการ์ด: หัว (ชิป "งานบริการครบ x/n รายการ") · แถบช่วงบริการ · ตาราง · ทางเพิ่มไซต์ D19 · ประกาศลูกค้าไม่มีไซต์
 // ⭐ ช่วงบริการสองโหมด (mig 0400 · มติเจ้าของ 01/10): สวิตช์ "ทั้งใบช่วงเดียว | แยกรายรายการ" บนแถบช่วงบริการ
 //   · โหมดบนจอ = `periodModeOfDraft` (ร่างถ้าสลับไว้ ไม่งั้นค่าที่บันทึก) · สลับ = `switchPeriodMode` (ยังไม่บันทึกจนกดบันทึก)
@@ -38,8 +39,8 @@ import ZonesBulkModal from "@/components/service/ZonesBulkModal";
 import { apiJson } from "@/lib/apiFetch";
 import { fmtNumber } from "@/lib/format";
 import {
-  SERVICE_KIND_PACKAGE, SERVICE_PERIOD_MODE_LINE, SERVICE_REOPEN_TEXT, SERVICE_SETUP_EDIT_TEXT, SERVICE_SETUP_GRID_TEXT, SERVICE_SETUP_LIMITS,
-  SERVICE_SETUP_SQL_MESSAGES, serviceLineLabel, serviceSetupTotals,
+  SERVICE_DEFER_TEXT, SERVICE_KIND_PACKAGE, SERVICE_PERIOD_MODE_LINE, SERVICE_REOPEN_TEXT, SERVICE_SETUP_EDIT_TEXT, SERVICE_SETUP_GRID_TEXT,
+  SERVICE_SETUP_LIMITS, SERVICE_SETUP_SQL_MESSAGES, serviceLineLabel, serviceSetupTotals,
 } from "@/lib/sales/serviceSetup";
 import { registryIndex, zoneTakenMap } from "@/lib/service/zonePickerOptions";
 import ServicePeriodApplyAllModal from "./ServicePeriodApplyAllModal";
@@ -443,7 +444,11 @@ export default function SalesOrderServiceLines({
             {editable && serviceLines > 0 ? <ServiceRegistryPaths dealId={order?.dealId} orderId={orderId} /> : null}
             {editable && serviceLines > 0 && noSites ? (
               <StatusNotice tone="warning">
-                {`${customerText} ยังไม่มีไซต์ในทะเบียน — เลือกโซนไม่ได้ · บันทึกร่างได้ แต่${flow === "backfill" ? "ยื่นตรวจ" : "ยื่นอนุมัติ"}ไม่ได้จนกว่ามีโซน`}
+                {/* ใบร่าง (mig 0404): "ยื่นอนุมัติไม่ได้จนกว่ามีโซน" ไม่จริงแล้ว — ยื่นโดยยังไม่ตั้งงานบริการได้ (ปุ่มอยู่บนแผงแดงหลังกด ‘ยื่นอนุมัติ’)
+                    ⇒ ประโยคของใบร่างมาจากแคตตาล็อก · เส้นตั้งย้อนหลังคงคำเดิม (ยื่นตรวจต้องมีโซนจริง) */}
+                {flow === "backfill"
+                  ? `${customerText} ยังไม่มีไซต์ในทะเบียน — เลือกโซนไม่ได้ · บันทึกร่างได้ แต่ยื่นตรวจไม่ได้จนกว่ามีโซน`
+                  : SERVICE_DEFER_TEXT.noSites(customerText)}
               </StatusNotice>
             ) : null}
             {editable && serviceLines > 0 && noSites && siblings.length ? (

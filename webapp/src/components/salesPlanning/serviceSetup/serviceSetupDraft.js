@@ -17,8 +17,8 @@
 // ⚠️ ไฟล์นี้ถูกเทสต์ใต้ node (serviceSetupUi.test.mjs) — ห้าม import คอมโพเนนต์/ของฝั่ง browser
 import { categoryOf } from '@/lib/master/categoryOf';
 import {
-  SERVICE_BACKFILL_RAIL_TEXT, SERVICE_BACKFILL_STATE_LABELS, SERVICE_KIND_NOT_SERVICE, SERVICE_KIND_PACKAGE, SERVICE_PERIOD_MODE_LINE,
-  SERVICE_PERIOD_MODE_WHOLE, SERVICE_PERIOD_TEXT, SERVICE_REOPENED_TEXT, SERVICE_ROLE_UNSET,
+  SERVICE_BACKFILL_RAIL_TEXT, SERVICE_BACKFILL_STATE_LABELS, SERVICE_DEFER_TEXT, SERVICE_DEFERRED_TEXT, SERVICE_KIND_NOT_SERVICE, SERVICE_KIND_PACKAGE,
+  SERVICE_PERIOD_MODE_LINE, SERVICE_PERIOD_MODE_WHOLE, SERVICE_PERIOD_TEXT, SERVICE_REOPENED_TEXT, SERVICE_ROLE_UNSET,
   SERVICE_SETUP_EDIT_TEXT, SERVICE_SETUP_LINE_TEXT, SERVICE_SETUP_PANEL_TEXT, periodEnvelope, periodSpan, validServicePeriod,
 } from '@/lib/sales/serviceSetup';
 import { NA, fmtDate, fmtDateTime, fmtNumber } from '@/lib/format';
@@ -534,7 +534,7 @@ export function seqRangesText(seqs = []) {
      + ทางลัดเป็นตัวหนังสือ (`hinted` — ครั้งเดียวต่อแบบของแผง: สองกลุ่มที่เปิดแผงแบบเดียวกัน ต่อทั้งสองแถว = คำเดิมซ้ำ ·
        สองกลุ่มที่เปิดคนละแบบ = คำคนละคำ ต่างคนต่างได้)
    · ช่วงครอบ — "ไปแก้" = เซลล์ของงวดแรก */
-function mergedItem(entries, { hinted = new Set() } = {}) {
+function mergedItem(entries, { hinted = new Set(), deferrable = false } = {}) {
   const [first] = entries;
   const { rest } = issueHeadTail(first?.message);
   const seqs = entries.map((entry) => entry?.seq);
@@ -555,7 +555,29 @@ function mergedItem(entries, { hinted = new Set() } = {}) {
     entries,
     tag: null,
     jump: true,
+    deferrable,
   };
+}
+
+/* ⭐ ลำดับที่แผงแดงไล่ข้อของ **รายการเดียวกัน** = ลำดับคอลัมน์ของตาราง (มติเจ้าของ 08/10: … ③ ไซต์ · โซน → ④ รอบละกี่แพ็ค → ⑤ จำนวนรอบบริการ)
+   ⇒ ข้อ "ยังไม่ใส่จำนวนรอบบริการ" ของรายการย้ายไปต่อท้ายข้อของรายการนั้น (หลังข้อโซน/แพ็ค) · ข้ออื่นคงลำดับเดิมทุกตัว
+   🔴 จัดที่จอเท่านั้น — `serviceSetupIssues` (และรหัส DETAIL ของ `sales_order_service_setup_errors` ที่ฐาน) ยังเรียง รอบ → โซน → แพ็ค
+      ตามสัญญาเดิมของ server (0392/0400 — ไม่มี migration ในงานนี้) · ทั้งสองทาง (ก้อน GET และรหัสจากฐาน) ผ่านตัวจัดนี้ก่อนขึ้นแผง
+   ข้อของรายการเดียวกันมาติดกันเสมอ (ตัวตรวจไล่ทีละรายการ) ⇒ ย้ายภายในช่วงที่ติดกันของ `lineId` เดียวกันเท่านั้น */
+const LAST_COLUMN_KEYS = new Set(['rounds_missing']);
+export function issuesInColumnOrder(issues = []) {
+  const out = [];
+  let held = [];
+  let heldLine = null;
+  const flush = () => { out.push(...held); held = []; heldLine = null; };
+  for (const issue of list(issues)) {
+    const lineId = issue?.lineId ?? null;
+    if (held.length && lineId !== heldLine) flush();
+    if (lineId !== null && LAST_COLUMN_KEYS.has(issue?.key)) { held.push(issue); heldLine = lineId; continue; }
+    out.push(issue);
+  }
+  flush();
+  return out;
 }
 
 /**
@@ -567,8 +589,12 @@ function mergedItem(entries, { hinted = new Set() } = {}) {
  *     🐞 เดิมแถวละงวด ⇒ ลูกค้าวางบิล 12 งวดได้ 12 แถวเหมือนกันทุกตัวอักษร จอ 375px ยาวหลายหน้าจอก่อนถึงตาราง
  *   · แถวรวมของข้อวันงวดมี `entry.dateFill` ('empty' | 'dated') — หน้าใบอ่านธงนี้ตอน "ไปแก้" (โหมดตั้งวันงวด + แผงเติม · #1846 ·
  *     'dated' = พร้อม "จัดใหม่งวดที่มีวันแล้วด้วย") · แถวเดี่ยวไม่มีธงนี้ (ธงรายงวดของด่านถูกถอด — แถวเดี่ยวไปที่เซลล์ของงวดนั้น)
+ *   · `item.deferrable` (mig 0404) = แถวนี้ติดป้าย 'ข้ามได้' — ผู้เรียกส่งตัวถาม `deferrable(entry)` (ข้อ **ตัวเดิมของ `issues`**) มาเอง
+ *     ไม่ส่ง = false ทุกแถว (แผงเดิมทุกตัวอักษร) · ของบัญชี (owner FN) และคำเตือนไม่มีทางเป็น true · แถวรวม: ทุกข้อรหัสเดียวกัน ⇒ ข้อแรกตัดสิน
+ *   · ข้อของรายการเดียวกันเรียงตามคอลัมน์ของตาราง (`issuesInColumnOrder` · มติ 08/10 — แพ็คก่อนจำนวนรอบบริการ)
  */
-export function submitGateGroups(issues = [], warnings = []) {
+export function submitGateGroups(issues = [], warnings = [], { deferrable = null } = {}) {
+  const canDefer = (entry) => (typeof deferrable === 'function' && entry?.owner !== 'FN' ? !!deferrable(entry) : false);
   const groups = [
     { key: 'overview', title: SERVICE_SETUP_PANEL_TEXT.groups.overview, count: 0, warnCount: 0, items: [] },
     { key: 'payment', title: SERVICE_SETUP_PANEL_TEXT.groups.payment, count: 0, warnCount: 0, items: [] },
@@ -582,7 +608,7 @@ export function submitGateGroups(issues = [], warnings = []) {
   }
   const placed = new Set();
   const hinted = new Set();
-  for (const entry of list(issues)) {
+  for (const entry of issuesInColumnOrder(issues)) {
     const group = groupOf(entry);
     group.count += 1;
     const mergeKey = `${entry?.key}\u0000${entry?.billingMode || ''}`;
@@ -590,11 +616,14 @@ export function submitGateGroups(issues = [], warnings = []) {
     if (bucket && bucket.length > 1) {
       if (placed.has(mergeKey)) continue;
       placed.add(mergeKey);
-      group.items.push(mergedItem(bucket, { hinted }));
+      group.items.push(mergedItem(bucket, { hinted, deferrable: canDefer(bucket[0]) }));
       continue;
     }
     const fn = entry?.owner === 'FN';
-    group.items.push({ kind: 'issue', entry: withoutDateFill(entry), tag: fn ? (entry.tag || SERVICE_SETUP_PANEL_TEXT.fnTag) : null, jump: !fn });
+    group.items.push({
+      kind: 'issue', entry: withoutDateFill(entry), tag: fn ? (entry.tag || SERVICE_SETUP_PANEL_TEXT.fnTag) : null, jump: !fn,
+      deferrable: canDefer(entry),
+    });
   }
   for (const entry of list(warnings)) {
     const fn = entry?.owner === 'FN';
@@ -602,9 +631,56 @@ export function submitGateGroups(issues = [], warnings = []) {
     group.warnCount += 1;
     group.items.push({
       kind: 'warning', entry, tag: fn ? (entry.tag || SERVICE_SETUP_PANEL_TEXT.fnTag) : SERVICE_SETUP_PANEL_TEXT.warningTag, jump: !fn,
+      deferrable: false,
     });
   }
   return groups.filter((group) => group.items.length);
+}
+
+/* ══ ยื่นโดยยังไม่ตั้งงานบริการ (mig 0404 · มติเจ้าของ 01/10) — ตัวช่วยของจอ ═════════════════════════════════════
+   ⭐ ตัวตัดสินทุกตัวอยู่ที่ serviceSetup.js (`view.skip` · `view.deferred` ของก้อน GET) — ที่นี่แค่เลือกว่าจอวาดแบบไหน ไม่คิดข้อเอง */
+
+/**
+ * แถวของแผงแดงติดป้าย 'ข้ามได้' เมื่อไร (`view.skip` ของก้อน GET)
+ *   · ข้ามได้ (`canSkip`) — บรรทัดท้ายแผงอ้าง "ข้อที่ติดป้าย ‘ข้ามได้’" ⇒ ต้องมีป้ายให้ชี้
+ *   · ติดเพราะยังเหลือข้อที่ข้ามไม่ได้ — แผงต้องแยกให้เห็นว่าข้อไหนเลื่อนได้ ข้อไหนต้องแก้ก่อน
+ *   · 🔴 ใบ Rev. ที่ใบเดิมยังเดินรอบบริการ (D-F18) = ข้ามไม่ได้ทั้งใบ ⇒ **ไม่มีป้าย** (ป้ายจะขัดกับบรรทัดท้ายแผง "ข้ามการตั้งงานบริการไม่ได้")
+ * ⚠️ ก้อน `skip` ไม่มีช่องบอกชนิดของเหตุ ⇒ แยกสองกรณีด้วยบรรทัดท้ายแผงที่ server เลือก (ตัวสร้างข้อความตัวเดียวกันจากแคตตาล็อก)
+ */
+export function skipTagsShown(skip) {
+  if (!skip?.visible) return false;
+  if (skip.canSkip) return true;
+  return skip.lead === SERVICE_DEFER_TEXT.panelBlocked(skip.deferredCount, skip.blockingCount);
+}
+
+/**
+ * ประกาศบนใบ **รออนุมัติ** ที่ผู้ยื่นเลือกข้ามการตั้งงานบริการ (`view.deferred` · stage 'pending') — ทุกคนที่เปิดใบเห็น
+ * → `{ tone, title, tag, lines }` หรือ null (ไม่มีตราการข้าม · ไม่ใช่ขั้นรออนุมัติ — หลังอนุมัติเป็นหน้าที่ของแบนเนอร์/การ์ดราง)
+ * สี่แบบจาก `active` (การอนุมัติตอนนี้จะไม่เปิดงานให้ TS) × `blocking` (ข้อที่หยุดการอนุมัติตอนนี้) — ไม่สัญญาการอนุมัติที่ด่านจะปฏิเสธ:
+ *   ยังข้ามอยู่ + ไม่มีข้อค้าง   เตือน + ป้าย · บอกผลของการอนุมัติ + ทางให้ตั้งก่อน (ดึงกลับ/ตีกลับ)
+ *   ยังข้ามอยู่ + มีข้อที่ข้ามไม่ได้ เตือน + ป้าย · บอกว่าอนุมัติไม่ได้จนกว่าจะตีกลับ
+ *   ไม่ข้ามแล้ว + ไม่มีข้อค้าง   ข้อมูล · งานบริการครบแล้ว อนุมัติแล้วส่ง TS ตามปกติ
+ *   ไม่ข้ามแล้ว + มีข้อค้าง      เตือน · ข้ามไม่ได้แล้วและยังขาด — อนุมัติไม่ได้
+ * 🔴 ไม่มีแบบไหนเป็นสีแดง (ยังไม่มีใครกดอะไร — กฎ 3)
+ */
+export function deferNoticeOfView(view) {
+  const deferred = view?.deferred || null;
+  if (!deferred || deferred.stage !== 'pending') return null;
+  const blocking = Number(deferred.blocking) || 0;
+  const title = SERVICE_DEFERRED_TEXT.pendingTitle;
+  if (deferred.active) {
+    return {
+      tone: 'warning',
+      title,
+      tag: SERVICE_DEFERRED_TEXT.badge,
+      lines: [
+        SERVICE_DEFERRED_TEXT.pendingLine(deferred, Number(deferred.missing) || 0),
+        blocking > 0 ? SERVICE_DEFERRED_TEXT.pendingBlocked(blocking) : SERVICE_DEFERRED_TEXT.pendingHow,
+      ],
+    };
+  }
+  if (blocking > 0) return { tone: 'warning', title, tag: null, lines: [SERVICE_DEFERRED_TEXT.pendingStuck(deferred, blocking)] };
+  return { tone: 'info', title, tag: null, lines: [SERVICE_DEFERRED_TEXT.pendingComplete(deferred)] };
 }
 
 /* ══ การ์ดราง / แบนเนอร์ของงานบริการย้อนหลัง ══════════════════════════════════════════════════════════════ */
@@ -660,14 +736,20 @@ export function backfillBannerText(view) {
   }
   /* เปิดแก้หลังอนุมัติ (mig 0396 · ภาคผนวก A.4) — ใคร/เมื่อไร/ทำไม + ช่องที่แก้ได้ของใบนี้ (`view.reopened.fields` ตามชนิดบรรทัด R20) */
   if (view?.reopened) return SERVICE_REOPENED_TEXT.bannerLine(view.reopened);
-  /* มติ 30/09: ลำดับเดียวกับการ์ดงานบริการ (แพ็คเกจ → ไซต์ · โซน → จำนวนรอบบริการ → รอบละกี่แพ็ค) · คำจากแคตตาล็อก `SERVICE_SETUP_LINE_TEXT` */
-  return `ตั้งงานบริการ (แพ็คเกจ · ไซต์ · โซน · ${SERVICE_SETUP_LINE_TEXT.roundsLabel} · ${SERVICE_SETUP_LINE_TEXT.packsLabel} · ช่วงบริการ)`
+  /* ข้ามการตั้งงานบริการตอนยื่น (mig 0404) — ใคร/เมื่อไร + สิ่งที่ต้องตั้ง · server ไม่ส่ง `reopened` กับ `deferred` พร้อมกัน (เหตุการณ์ที่เกิดทีหลังชนะ) */
+  if (view?.deferred?.stage === 'approved') return SERVICE_DEFERRED_TEXT.bannerLine(view.deferred);
+  /* มติ 30/09: ลำดับเดียวกับการ์ดงานบริการ · มติ 08/10 (สลับ ④⑤): แพ็คเกจ → ไซต์ · โซน → รอบละกี่แพ็ค → จำนวนรอบบริการ
+     · คำจากแคตตาล็อก `SERVICE_SETUP_LINE_TEXT` */
+  return `ตั้งงานบริการ (แพ็คเกจ · ไซต์ · โซน · ${SERVICE_SETUP_LINE_TEXT.packsLabel} · ${SERVICE_SETUP_LINE_TEXT.roundsLabel} · ช่วงบริการ)`
     + ` แล้วยื่นให้ผู้จัดการฝ่ายขายตรวจ · ${BANNER_UNCHANGED}`;
 }
 
-/* หัว/ป้ายของแบนเนอร์และการ์ดรางงานบริการย้อนหลัง — "ใบเดิม" (อนุมัติก่อนมีการตั้งงานบริการ) กับ "แก้หลังอนุมัติ" (mig 0396)
-   ⭐ ตัวตัดสินเดียวคือ `view.reopened` ของก้อน GET (`serviceSetupReopened` — มีค่าเฉพาะตอนใบอยู่ในเส้นตั้งย้อนหลัง) · ขั้น (`flow`) ยัง 'backfill'
-   ⚠️ คำของใบที่เปิดแก้มาจาก `SERVICE_REOPENED_TEXT` ที่เดียว (ภาคผนวก A.4) · ขั้นแรกของรางเปลี่ยนชื่อเป็น "เปิดแก้" (ม็อก ReopenEditing) */
+/* หัว/ป้ายของแบนเนอร์และการ์ดรางงานบริการย้อนหลัง — "ใบเดิม" (อนุมัติก่อนมีการตั้งงานบริการ) · "แก้หลังอนุมัติ" (mig 0396)
+   · "ข้ามตอนยื่น" (mig 0404 — ผู้ยื่นกด 'ยื่นโดยยังไม่ตั้งงานบริการ' แล้วใบอนุมัติไปโดยยังไม่ตั้ง)
+   ⭐ ตัวตัดสินคือ `view.reopened` / `view.deferred` ของก้อน GET (`serviceSetupReopened` · `serviceSetupDeferred` — มีค่าเฉพาะตอนใบอยู่ในเส้นตั้งย้อนหลัง
+     และไม่ตอบพร้อมกัน) · ขั้น (`flow`) ยัง 'backfill' · ไม่มีทั้งสอง = ใบเดิม (คำเดิมทุกตัวอักษร)
+   ⚠️ คำของใบที่เปิดแก้มาจาก `SERVICE_REOPENED_TEXT` · ของใบที่ข้ามมาจาก `SERVICE_DEFERRED_TEXT` ที่เดียว · ขั้นแรกของรางของใบที่เปิดแก้ชื่อ "เปิดแก้"
+     (ม็อก ReopenEditing) — ใบที่ข้ามยังเป็น "ตั้งค่า" (ใบไม่เคยตั้ง) และป้ายขั้นเป็นของใบเดิม (`SERVICE_BACKFILL_STATE_LABELS` — จริงกับใบนี้) */
 const LEGACY_BACKFILL_COPY = Object.freeze({
   bannerTitle: 'ใบนี้อนุมัติก่อนมีการตั้งงานบริการ',
   eyebrow: 'Service setup · ใบเดิม',
@@ -677,22 +759,42 @@ const LEGACY_BACKFILL_COPY = Object.freeze({
 });
 
 /**
- * → `{ reopened, bannerTitle, bannerLead, eyebrow, title, meta, firstStep, stateLabel, reopenLine }`
- *   · `bannerLead` = บรรทัด "เปิดแก้ … โดย … · เหตุผล" เหนือบรรทัดรอตรวจ (ขั้นรอตรวจ — บรรทัดหลักเป็นของการยื่นแล้ว · ม็อก ReopenReview)
- *   · `reopenLine` = บรรทัดเดียวกันบนการ์ดราง (ทุกขั้น) · ใบเดิม = null ทั้งสอง
+ * → `{ reopened, deferred, bannerTitle, bannerLead, eyebrow, title, meta, firstStep, stateLabel, reopenLine }`
+ *   · `bannerLead` = บรรทัด "เปิดแก้ … โดย … · เหตุผล" / "ข้ามการตั้งงานบริการตอนยื่น … โดย …" เหนือบรรทัดรอตรวจ
+ *     (ขั้นรอตรวจ — บรรทัดหลักเป็นของการยื่นแล้ว · ม็อก ReopenReview)
+ *   · `reopenLine` = บรรทัดเดียวกันบนการ์ดราง (ทุกขั้น — ช่อง "ใคร · เมื่อไร" ของการ์ด) · ใบเดิม = null ทั้งสอง
+ *   · `deferred` = ก้อน `view.deferred` ของใบที่อนุมัติโดยข้ามการตั้งงานบริการ (stage 'approved') · ใบอื่น = null
  */
 export function backfillCopyOfView(view) {
   const state = backfillStateOfView(view);
   const reopened = view?.reopened || null;
+  /* ใบรออนุมัติ (stage 'pending') มีประกาศของตัวเอง (`deferNoticeOfView`) — ที่นี่เฉพาะหลังอนุมัติ */
+  const deferred = !reopened && view?.deferred?.stage === 'approved' ? view.deferred : null;
+  if (deferred) {
+    const deferLine = SERVICE_DEFERRED_TEXT.railLine(deferred);
+    return {
+      reopened: null,
+      deferred,
+      bannerTitle: SERVICE_DEFERRED_TEXT.bannerTitle,
+      bannerLead: state === 'submitted' ? deferLine : null,
+      eyebrow: SERVICE_DEFERRED_TEXT.railEyebrow,
+      title: SERVICE_DEFERRED_TEXT.railTitle,
+      meta: SERVICE_DEFERRED_TEXT.railMeta,
+      firstStep: LEGACY_BACKFILL_COPY.firstStep,
+      stateLabel: state ? SERVICE_BACKFILL_STATE_LABELS[state] : null,
+      reopenLine: deferLine,
+    };
+  }
   if (!reopened) {
     return {
-      ...LEGACY_BACKFILL_COPY, reopened: null, bannerLead: null, reopenLine: null,
+      ...LEGACY_BACKFILL_COPY, reopened: null, deferred: null, bannerLead: null, reopenLine: null,
       stateLabel: state ? SERVICE_BACKFILL_STATE_LABELS[state] : null,
     };
   }
   const reopenLine = SERVICE_REOPENED_TEXT.railLine(reopened);
   return {
     reopened,
+    deferred: null,
     bannerTitle: SERVICE_REOPENED_TEXT.bannerTitle,
     bannerLead: state === 'submitted' ? reopenLine : null,
     eyebrow: SERVICE_REOPENED_TEXT.railEyebrow,
@@ -714,27 +816,38 @@ export function linesCardMeta({ order, lineCount } = {}) {
 
 /** บรรทัดรองบนหัวการ์ด "งานบริการ" — ขั้นของงานบริการ (ม็อก BindGridEdit / BindGridMulti) */
 export function serviceCardMeta({ view, flow, editable, totals } = {}) {
-  const ask = 'ทุกรายการต้องตอบว่าเป็นงานบริการไหม · ถ้าใช่ เลือกแพ็คเกจ → ไซต์ · โซน → จำนวนรอบบริการ → รอบละกี่แพ็ค';
+  /* ลำดับของหัวตาราง ②→⑤ (มติเจ้าของ 08/10: รอบละกี่แพ็คก่อนจำนวนรอบบริการ) · คำจากแคตตาล็อก — ไม่สะกดเองที่นี่ */
+  const ask = `ทุกรายการต้องตอบว่าเป็นงานบริการไหม · ถ้าใช่ เลือกแพ็คเกจ → ไซต์ · โซน → ${SERVICE_SETUP_LINE_TEXT.packsLabel} → ${SERVICE_SETUP_LINE_TEXT.roundsLabel}`;
   if (flow === 'stamped') {
     const opened = view?.state?.termsOpenedAt;
     return `อนุมัติแล้ว · เปิด ${fmtNumber(totals?.zones || 0)} โซนให้ TS${opened ? ` เมื่อ ${fmtDateTime(opened)}` : ''}`;
   }
   if (editable && flow === 'pipeline') return `${ask} · แก้ได้จนกว่าจะยื่นอนุมัติ`;
   /* เปิดแก้หลังอนุมัติ (mig 0396 · ภาคผนวก A.4) — บอกว่าเป็นการแก้ใบที่ส่ง TS ไปแล้ว ไม่ใช่ใบเดิมที่ยังไม่เคยตั้ง */
-  if (editable && flow === 'backfill') return `${ask} · ${view?.reopened ? SERVICE_REOPENED_TEXT.cardMeta : 'แก้ได้จนกว่าจะยื่นตรวจ'}`;
-  /* ม็อก BackfillApproveModal: ใบเดิมที่ยื่นตรวจแล้วบอกวันยื่นบนหัวการ์ด · ใบที่เปิดแก้บอกว่าเป็นรอบแก้ (ม็อก ReopenReview) */
+  /* ข้ามการตั้งงานบริการตอนยื่น (mig 0404) — บอกว่าใบนี้อนุมัติมาโดยยังไม่ตั้ง ไม่ใช่ใบเก่าที่อนุมัติก่อนมีการตั้งงานบริการ */
+  const deferred = view?.deferred?.stage === 'approved';
+  if (editable && flow === 'backfill') {
+    return `${ask} · ${view?.reopened ? SERVICE_REOPENED_TEXT.cardMeta : deferred ? SERVICE_DEFERRED_TEXT.cardMeta : 'แก้ได้จนกว่าจะยื่นตรวจ'}`;
+  }
+  /* ม็อก BackfillApproveModal: ใบเดิมที่ยื่นตรวจแล้วบอกวันยื่นบนหัวการ์ด · ใบที่เปิดแก้บอกว่าเป็นรอบแก้ (ม็อก ReopenReview) · ใบที่ข้าม = "ข้ามตอนยื่น" */
   if (flow === 'backfill' && view?.state?.setupState === 'submitted' && view?.state?.submittedAt) {
-    return `${view?.reopened ? 'เปิดแก้หลังอนุมัติ' : 'ตั้งย้อนหลัง'} · ยื่นตรวจ ${fmtDate(view.state.submittedAt)}`;
+    return `${view?.reopened ? 'เปิดแก้หลังอนุมัติ' : deferred ? SERVICE_DEFERRED_TEXT.cardMetaSubmitted : 'ตั้งย้อนหลัง'} · ยื่นตรวจ ${fmtDate(view.state.submittedAt)}`;
   }
   return null;
 }
 
+/* แถวตรวจของการ์ดราง จัดกลุ่มตามคอลัมน์ของตารางงานบริการ (มติเจ้าของ 08/10 — สลับ ④⑤):
+     แถว "งานบริการ? · แพ็คเกจ"                         = คอลัมน์ ① ②
+     แถว "ไซต์ · โซน · รอบละกี่แพ็ค · จำนวนรอบบริการ"  = คอลัมน์ ③ ④ ⑤ (ก้อนโซนของรายการ)
+   ⇒ ข้อ `rounds_missing` (⑤) อยู่กลุ่มเดียวกับโซน/แพ็ค — เดิมอยู่แถวแรก จึงขึ้น "จำนวนรอบบริการ" เหนือ "ไซต์ · โซน · รอบละกี่แพ็ค"
+     สวนกับแบนเนอร์ · ตาราง · แผงแดงของหน้าเดียวกัน (ตรวจทาน 08/10 · ui-2) · จัดที่จอเท่านั้น — กุญแจของข้อและลำดับของ server ไม่ถูกแตะ */
 const LINE_SHORT = Object.freeze({
   kind_missing: 'ยังไม่ตอบ ‘งานบริการ?’', fg_missing: 'ยังไม่เลือกแพ็คเกจ', fg_invalid: 'แพ็คเกจใช้ไม่ได้แล้ว',
-  fg_foreign: 'แพ็คเกจของนิติบุคคลอื่น', rounds_missing: SERVICE_SETUP_LINE_TEXT.noRounds,
+  fg_foreign: 'แพ็คเกจของนิติบุคคลอื่น',
 });
 const ZONE_SHORT = Object.freeze({
   zones_missing: 'ยังไม่เลือกโซน', packs_missing: SERVICE_SETUP_LINE_TEXT.noPacks, zone_invalid: 'โซนใช้ไม่ได้', zones_on_not_service: 'มีโซนค้าง',
+  rounds_missing: SERVICE_SETUP_LINE_TEXT.noRounds,
 });
 const LINE_KEYS = new Set(Object.keys(LINE_SHORT));
 const ZONE_KEYS = new Set(Object.keys(ZONE_SHORT));
@@ -750,12 +863,13 @@ const BILL_KEYS = new Set(['installments_missing', 'due_missing', 'billing_missi
  */
 export function backfillRailChecks(view) {
   if (!view) return [];
-  const issues = list(view.issues);
+  /* ข้อของรายการเดียวกันไล่ตามคอลัมน์ของตาราง (แพ็คก่อนจำนวนรอบบริการ — ตัวจัดเดียวกับแผงแดง) ⇒ "ข้อแรกของแถว" ตรงกับที่แผงแดงขึ้นก่อน */
+  const issues = issuesInColumnOrder(view.issues);
   const lines = list(view.lines);
   const unset = Number(view.totals?.unsetLines || 0);
   const packageLines = Number(view.totals?.packageLines || 0);
   const linesWith = (keys) => new Set(issues.filter((issue) => keys.has(issue?.key)).map((issue) => issue.lineId));
-  /* "รายการ 3: ยังไม่ใส่จำนวนรอบบริการ · อีก 2 รายการ" — ข้อแรกของแถว + จำนวนบรรทัดที่เหลือ */
+  /* "รายการ 3: ยังไม่ใส่รอบละกี่แพ็ค · อีก 2 รายการ" — ข้อแรกของแถว + จำนวนบรรทัดที่เหลือ */
   const shortSub = (keys, labels, badCount) => {
     const first = issues.find((issue) => keys.has(issue?.key));
     if (!first) return null;
@@ -828,12 +942,13 @@ export function backfillRailChecks(view) {
 
   return [
     {
-      key: 'lines', label: `งานบริการ? · แพ็คเกจ · ${SERVICE_SETUP_LINE_TEXT.roundsLabel}`,
+      key: 'lines', label: 'งานบริการ? · แพ็คเกจ',
       value: `${fmtNumber(lines.length - lineBad.size)}/${fmtNumber(lines.length)} รายการ`,
       sub: shortSub(LINE_KEYS, LINE_SHORT, lineBad.size), ok: lineBad.size === 0,
     },
     {
-      key: 'zones', label: `ไซต์ · โซน · ${SERVICE_SETUP_LINE_TEXT.packsLabel}`,
+      /* ลำดับเดียวกับหัวตาราง ③ → ④ → ⑤ (มติเจ้าของ 08/10) · คำจากแคตตาล็อก */
+      key: 'zones', label: `ไซต์ · โซน · ${SERVICE_SETUP_LINE_TEXT.packsLabel} · ${SERVICE_SETUP_LINE_TEXT.roundsLabel}`,
       value: zoneLines.length ? `${fmtNumber(zoneDone)}/${fmtNumber(zoneLines.length)} รายการ` : 'ไม่มีแพ็คเกจ',
       sub: unset ? SERVICE_BACKFILL_RAIL_TEXT.waitKind(fmtNumber(unset)) : shortSub(ZONE_KEYS, ZONE_SHORT, zoneBad.size),
       ok: zoneBad.size === 0 && !unset,

@@ -86,3 +86,59 @@
 .itemText b {
   font-weight: var(--fw-bold);
 }
+
+/* ── ท้ายแผง: "ยื่นโดยยังไม่ตั้งงานบริการ" (mig 0404) ─────────────────────────────────────────────────────
+   พื้นกลาง ไม่ใช่แดง — เป็นทางเลือกของผู้ยื่น ไม่ใช่ข้อผิด (แถวข้อข้างบนเท่านั้นที่แดง) · เส้นคั่นบนแยกจากรายการข้อ
+   จอกว้าง = แถวเดียว (ข้อความซ้าย ปุ่มขวา) · จอแคบ (≤ 680px — จุดตัดเดียวกับเลย์เอาต์หน้ารายละเอียด) = ข้อความแล้วปุ่มเต็มแถว
+   (นิ้วกด — สูง --ctl-h-touch · ป้ายกลางปุ่ม ไม่ให้อ่านเป็นช่องกรอก) */
+.skip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin-top: var(--space-3);
+  padding: var(--space-2-5) var(--space-3);
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 var(--radius) var(--radius);
+  background: var(--panel-solid);
+}
+
+.skipText {
+  min-width: 0;
+  flex: 1;
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+}
+
+.skipButton {
+  flex: none;
+}
+
+/* หน้ากำลังยิงคำสั่ง: ปุ่มจางและไม่รับการกด แต่ **ยังถือโฟกัส** (aria-disabled — ไม่ใช่ disabled ของเบราว์เซอร์ที่ทำโฟกัสตกไป <body>)
+   หน้าตาเท่าปุ่มที่ disabled ของระบบ (`.btn:disabled` ใน globals: opacity --op-disabled · cursor not-allowed) */
+.skipButton[aria-disabled="true"] {
+  opacity: var(--op-disabled);
+  cursor: not-allowed;
+}
+
+@media (max-width: 680px) {
+  /* แถวที่ติดป้าย 'ข้ามได้' บนจอแคบ: ข้อความเต็มแถวก่อน แล้วป้าย + "ไปแก้" ขึ้นบรรทัดถัดไป
+     (ป้ายเพิ่มมาอีกชิ้นข้างปุ่ม ⇒ ถ้าอยู่แถวเดียว ข้อความเหลือกว้าง ~150px แตกเป็น 4–5 บรรทัด — วัดที่ 390px) */
+  .item[data-deferrable] .itemText {
+    flex-basis: 100%;
+  }
+
+  .skip {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  /* `button.` = ชนะ `.btn.sm` ของ globals (min-height 30px) ไม่ว่าชีตไหนโหลดก่อน */
+  .skip button.skipButton {
+    width: 100%;
+    min-height: var(--ctl-h-touch);
+    justify-content: center;
+  }
+}

@@ -12,6 +12,27 @@ import { SURVEY_DOC_PLAN, SURVEY_DOC_SPOT, SURVEY_DOC_WIDE } from "@/lib/service
    แล้วรูปจะไม่ขึ้นบนกระดาษโดยไม่มีอะไรฟ้อง */
 export const SPEC_ILLUSTRATION_DOC_TYPE = 'spec_illustration';
 
+/* ⭐ รูปของแถว checklist วัตถุดิบ/บรรจุภัณฑ์ (มติเจ้าของ 08/10/2569 · mig 0405) — แถวละรูป แนบกับ **ตัวสินค้า**
+   แล้วแถวชี้ด้วย id (`product_spec_items."imageAttachmentId"`) · **ใช้ในระบบเท่านั้น** ไม่ลงภาพนิ่ง ไม่ลงกระดาษ FM-SA-04
+   ⚠️ คนละคีย์กับ `spec_illustration` โดยตั้งใจ — ใช้คีย์เดียวกันเมื่อไร รูปของแถวจะไปโผล่ในแผ่นภาพประกอบของกระดาษลูกค้า
+      (`loadSpecIllustrations` หยิบทุกไฟล์ของคีย์นั้น)
+   ⚠️ **อยู่ใน union ของสินค้า แต่ไม่เป็นการ์ด และไม่ขึ้นแผงเอกสารของสินค้าเลย** (`PANEL_HIDDEN_DOC_TYPES`) — ลบจากแผงนั้นได้เมื่อไร
+      แถวจะเสียรูปเงียบ ๆ (FK ON DELETE SET NULL) โดยไม่มี audit และไม่ขยับ updatedAt ของสเปค
+   ⚠️ แนบ/เปลี่ยน/เอาออกได้ทุกคนที่แก้สเปคได้ — ช่องแคบ `canAttachSpecItemImage` (lib/master/attachmentAccess.js) ·
+      ด่านแก้ทะเบียนสินค้าเดิมผูกกับทีมที่ดูแลลูกค้า ⇒ คนแก้สเปคนอกทีมจะกดแนบแล้วได้ 403 */
+export const SPEC_ITEM_IMAGE_DOC_TYPE = 'spec_item_image';
+/* เพดานขนาดของรูปรายแถว — จอสเปคโหลดรูปต้นฉบับแถวละรูป (ไม่มีตัวย่อรูป) ⇒ 25 MB × 37 แถวคือหน้าที่เปิดไม่ขึ้น */
+export const SPEC_ITEM_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+
+/* docType ที่ **ห้ามขึ้นแผงเอกสารทั่วไปของ entity** (`AttachmentsPanel` การ์ด "เอกสารอื่นๆ" + ตัวนับที่หัวแผง) —
+   ไฟล์พวกนี้มีบ้านของตัวเองบนจออื่น · แผงที่ขอคีย์นั้นมาตรง ๆ ใน `docTypes` ยังเห็นตามปกติ */
+export const PANEL_HIDDEN_DOC_TYPES = Object.freeze({
+  product: Object.freeze([SPEC_ITEM_IMAGE_DOC_TYPE]),
+});
+export const isPanelHiddenDocType = (entityType, docType) => (
+  (PANEL_HIDDEN_DOC_TYPES[entityType] || []).includes(docType)
+);
+
 /* ⭐ รูปปฏิทินวางบิลของลูกค้า (v5 ปฏิทินรายปี · มติเจ้าของ 29/09 · contract §8) — แนบกับ **ตัวลูกค้า** ปีละรูป
    (`metadata.year`) แล้วกติกาของลูกค้าชี้ด้วย id (`billingRule.runs.years[YYYY].fileId`) · ตัวแก้ปฏิทินเปิดรูปคู่กับตาราง
    ให้คนกด "ตรงกับรูป" ทีละเดือน (ไม่มี AI อ่านรูป)
@@ -193,7 +214,9 @@ export function productDocTypes(record) {
   /* ⚠️ ภาพประกอบใบสเปคถูกกรองออกจากการ์ดของหน้าสินค้า — มันเป็นเนื้อของกระดาษ
      FM-SA-04 ไม่ใช่เอกสารที่ทะเบียนสินค้าต้องมี · ปล่อยติดมาเมื่อไรจะได้การ์ดซ้ำ
      สองที่และด่าน "ยังขาดเอกสาร" จะนับรูปประกอบเป็นเอกสารที่ขาด */
-  const list = ATTACHMENT_TYPES.product.filter((t) => t.key !== SPEC_ILLUSTRATION_DOC_TYPE);
+  /* รูปของแถว checklist (mig 0405) ก็เช่นกัน — เป็นของจอสเปค ไม่ใช่เอกสารของทะเบียน */
+  const hidden = [SPEC_ILLUSTRATION_DOC_TYPE, SPEC_ITEM_IMAGE_DOC_TYPE];
+  const list = ATTACHMENT_TYPES.product.filter((t) => !hidden.includes(t.key));
   if (!mainCode || ARTWORK_MAIN_CATEGORIES.includes(mainCode)) return list;
   return list.map((t) => (t.required ? { ...t, required: false } : t));
 }
@@ -297,6 +320,8 @@ export const ATTACHMENT_TYPES = {
        กรองออก ⇒ ไม่โผล่เป็นการ์ดบนหน้าสินค้า และไม่เข้าด่าน "ยังขาดเอกสาร" ของทะเบียน
        (รูปประกอบไม่ใช่เอกสารที่ทะเบียนสินค้าต้องมี — มันเป็นเนื้อของกระดาษ FM-SA-04) */
     { key: "spec_illustration", label: "ภาพประกอบใบสเปคสินค้า", required: false },
+    /* รูปของแถว checklist วัตถุดิบ/บรรจุภัณฑ์ — ดูหัว `SPEC_ITEM_IMAGE_DOC_TYPE` (ในระบบเท่านั้น ไม่ลงกระดาษ) */
+    { key: SPEC_ITEM_IMAGE_DOC_TYPE, label: "รูปของแถว checklist ใบสเปค", required: false },
     { key: "other", label: "เอกสารอื่นๆ", required: false },
   ],
   // เฟส B — เอกสารการชำระ ผูกกับออเดอร์ (รายรอบการชำระ) มาคนละสเตป/คนละฝ่าย:
@@ -470,6 +495,14 @@ export const DOC_TYPE_FILE_RULES = Object.freeze({
     mime: PRINTABLE_IMAGE_MIME,
     ext: PRINTABLE_IMAGE_EXT,
   }),
+  /* รูปของแถว checklist — ชนิดเดียวกับภาพประกอบ (เบราว์เซอร์วาดเป็นรูปย่อได้) + เพดานขนาดของตัวเอง (`maxBytes`) */
+  [SPEC_ITEM_IMAGE_DOC_TYPE]: Object.freeze({
+    label: "รูปภาพ (JPG · PNG · WEBP · GIF)",
+    accept: [...PRINTABLE_IMAGE_MIME, ...PRINTABLE_IMAGE_EXT.map((e) => `.${e}`)].join(","),
+    mime: PRINTABLE_IMAGE_MIME,
+    ext: PRINTABLE_IMAGE_EXT,
+    maxBytes: SPEC_ITEM_IMAGE_MAX_BYTES,
+  }),
   /* ⭐ รูปปฏิทินวางบิล (v5) — ตัวแก้ปฏิทินเปิดไฟล์ **คู่กับตาราง** ให้คนเทียบทีละเดือน ("ตรงกับรูป") ⇒ ต้องเป็นชนิดที่เบราว์เซอร์
      เปิดในหน้าได้: รูปชุดเดียวกับภาพประกอบ + PDF (ลูกค้าส่งปฏิทินเป็น PDF บ่อย) · Excel/เอกสาร Google เปิดคู่กับตารางไม่ได้ ⇒ ไม่รับ
      (บันทึกเป็น PDF ก่อน) · เอกสาร Google ตกด่านนี้เองใน POST */
@@ -500,7 +533,14 @@ export function attachmentFileRuleError(docType, file = {}) {
   const mimeOk = !mime || rule.mime.includes(mime);
   const extOk = !ext || rule.ext.includes(ext);
   const ok = (mime || ext) && mimeOk && extOk;
-  return ok ? null : `${name || "ไฟล์นี้"} — แนบได้เฉพาะ${rule.label}`;
+  if (!ok) return `${name || "ไฟล์นี้"} — แนบได้เฉพาะ${rule.label}`;
+  /* เพดานขนาดราย docType (ถ้ากติกาตั้งไว้) — `sizeBytes` มาจากคำขอฝั่ง server · `size` คือ `File` ของเบราว์เซอร์
+     ⚠️ ไม่รู้ขนาด = ไม่ตัดสินที่นี่ (เพดานรวมของระบบยังคุมอยู่ที่ตัวอัป) */
+  const size = Number(file.sizeBytes ?? file.size);
+  if (rule.maxBytes && Number.isFinite(size) && size > rule.maxBytes) {
+    return `${name || "ไฟล์นี้"} — ใหญ่เกิน ${Math.round(rule.maxBytes / (1024 * 1024))} MB`;
+  }
+  return null;
 }
 
 // นามสกุล → Content-Type ที่ **server** เป็นคนตัดสิน

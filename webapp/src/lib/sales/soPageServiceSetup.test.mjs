@@ -86,7 +86,7 @@ test('ยื่นอนุมัติ (pipeline): ยังไม่บัน�
   assert.ok(gate.indexOf('if (setup.dirty)') >= 0 && gate.indexOf('if (setup.dirty)') < gate.indexOf('freshServiceView()'),
     'ต้องเช็คร่างที่ยังไม่บันทึกก่อนโหลดก้อนสด');
   assert.match(gate, /showSubmitIssues\(serviceSetupIssues\(\{ unsaved: true \}\), \[\], flow, "client"\);/);
-  assert.match(gate, /if \(Array\.isArray\(fresh\.issues\) && fresh\.issues\.length\) \{\s*showSubmitIssues\(fresh\.issues, fresh\.warnings, flow, "server"\);\s*return null;/);
+  assert.match(gate, /if \(Array\.isArray\(fresh\.issues\) && fresh\.issues\.length\) \{\s*showSubmitIssues\(fresh\.issues, fresh\.warnings, flow, "server", flow === "pipeline" \? fresh\.skip : null\);\s*return null;/);
   assert.doesNotMatch(gate, /setConfirmState/, 'ด่านไม่เปิดโมดัลเอง');
 
   const press = slice(page, 'async function pressSubmit() {', '\n  }\n');
@@ -99,7 +99,7 @@ test('ยื่นอนุมัติ (pipeline): ยังไม่บัน�
   assert.match(page, /onClick: pressSubmit,/);
 
   const request = slice(page, 'async function requestAction(action, payload = {}) {', '\n  async function save()');
-  assert.match(request, /if \(issues && action === "submit"\) \{\s*setConfirmState\(null\);\s*setError\(""\);\s*showSubmitIssues\(issues, data\.warnings, "pipeline", "server"\);/);
+  assert.match(request, /if \(issues && action === "submit"\) \{\s*setConfirmState\(null\);\s*setError\(""\);\s*showSubmitIssues\(issues, data\.warnings, "pipeline", "server", data\.skip\);/);
   assert.match(request, /if \(action === "submit"\) setSubmitIssues\(null\);/, 'ยื่นผ่าน = ล้างแผงแดง');
 });
 
@@ -284,11 +284,15 @@ test('F14: คำเตือนของฝ่ายขาย (ครอบซ�
 });
 
 test('UAT 29/09 ข้อ 1: แผงแดงพกที่มา (client/server) · การ์ดรางแดงจากด่านของ server เท่านั้น · บันทึกสำเร็จล้างแผง "ยังไม่บันทึก"', () => {
-  assert.match(page, /const showSubmitIssues = \(issues, warnings, flow, source\) => setSubmitIssues\(\{[^}]*\n\s*source,\n[^}]*\}\);/);
-  /* ทุกที่ที่วาดแผงบอกที่มาตรง ๆ — ลืมบอก = การ์ดรางไม่แดง (ปลอดภัยไว้ก่อน) แต่ยามนี้จับได้ */
+  assert.match(page, /const showSubmitIssues = \(issues, warnings, flow, source, skip = null\) => setSubmitIssues\(\{[^}]*\n\s*source,\n[^}]*\}\);/);
+  /* ทุกที่ที่วาดแผงบอกที่มาตรง ๆ — ลืมบอก = การ์ดรางไม่แดง (ปลอดภัยไว้ก่อน) แต่ยามนี้จับได้
+     · 7 จุด = 4 เดิม (ด่านก่อนยื่น 2 · 400 ของการยื่น · 400 ของการยื่นตรวจ) + 3 ของปุ่ม "ยื่นโดยยังไม่ตั้งงานบริการ" (mig 0404 · `pressSkipSubmit`:
+       ยังไม่บันทึก · ก้อนสดบอกว่าข้ามไม่ได้แล้ว · ก้อนสดก่อนบอกเหตุ/เปิดโมดัล) — เพิ่มจุดใหม่ต้องขยับเลขนี้โดยตั้งใจ */
   const calls = page.match(/showSubmitIssues\([^;]*\);/g) || [];
-  assert.equal(calls.length, 4, calls.join('\n'));
-  for (const call of calls) assert.match(call, /, "(client|server)"\);$/, call);
+  assert.equal(calls.length, 7, calls.join('\n'));
+  /* ที่มาอยู่ช่องที่สี่เสมอ · ช่องที่ห้า (mig 0404 — ก้อน `skip` ของคำตอบเดียวกัน) มีได้เฉพาะแผงที่ server ตอบ */
+  for (const call of calls) assert.match(call, /, "(client|server)"(, [^;]+)?\);$/, call);
+  for (const call of calls.filter((c) => /, "client"/.test(c))) assert.match(call, /, "client"\);$/, `ด่านของจอไม่มีก้อน skip: ${call}`);
   const gate = slice(page, 'async function serviceGateBeforeSubmit(flow) {', '\n  }\n');
   assert.match(gate, /showSubmitIssues\(serviceSetupIssues\(\{ unsaved: true \}\), \[\], flow, "client"\);/,
     'ด่าน "ยังไม่บันทึก" เป็นของจอ — ยังไม่ได้ถาม server');
@@ -327,8 +331,8 @@ test('29/09 คำเตือนรอบน้อย: โมดัลยืน
   };
   const [warning] = serviceSetupWarnings(ctx);
   assert.equal(warning.owner, 'SA', 'ของฝ่ายขาย ⇒ saWarningLines ใส่ในโมดัลยืนยันยื่น');
-  assert.equal(warning.message, 'รายการ 1: จำนวนรอบบริการ 1 รอบ ในช่วงบริการ 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็ยื่นได้)');
-  assert.ok(serviceSetupApprovalChecklist(ctx).includes('รายการ 1: จำนวนรอบบริการ 1 รอบ ในช่วงบริการ 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็อนุมัติได้)'));
+  assert.equal(warning.message, 'รายการ 1: จำนวนรอบบริการ 1 เดือน แต่ช่วงบริการยาว 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็ยื่นได้)');
+  assert.ok(serviceSetupApprovalChecklist(ctx).includes('รายการ 1: จำนวนรอบบริการ 1 เดือน แต่ช่วงบริการยาว 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็อนุมัติได้)'));
   /* หน้าใบส่งต่อตรง ๆ — ไม่กรอง/ไม่เขียนคำเอง */
   assert.match(page, /\.filter\(\(w\) => w\?\.owner === "SA" && w\?\.message\)/);
   assert.match(slice(page, 'if (action === "approve") {', '\n      return;'), /checklist: service\?\.approvalChecklist \|\| \[\],/);
@@ -431,7 +435,8 @@ test('0396: โมดัลเหตุผล = ReasonDialog (เหตุผล
 });
 
 test('0396: หลังเปิดแก้ — คำใต้สถานะใบพูด "การแก้งานบริการ" · โมดัลอนุมัติของผู้จัดการมีเหตุที่เปิดแก้เป็นข้อแรก (มติ 30/09 ข้อ 4.3)', () => {
-  assert.match(page, /\? \(setupView\?\.reopened\s*\? SERVICE_REOPENED_TEXT\.actualNote\(order\.approvedAt\)\s*: `ยอดถูกนับเป็น Actual แล้ว/);
+  /* mig 0404: สามทาง — เปิดแก้หลังอนุมัติ · ข้ามการตั้งงานบริการตอนยื่น (`setupView.deferred`) · ใบเดิม (ประโยคเดิมเป็นกิ่งสุดท้าย) */
+  assert.match(page, /\? \(setupView\?\.reopened\s*\? SERVICE_REOPENED_TEXT\.actualNote\(order\.approvedAt\)\s*: setupView\?\.deferred\s*\? SERVICE_DEFERRED_TEXT\.actualNote\(order\.approvedAt\)\s*: `ยอดถูกนับเป็น Actual แล้ว/);
   assert.equal(SERVICE_REOPENED_TEXT.actualNote('2026-09-29T04:08:11Z'), 'ยอดถูกนับเป็น Actual แล้ว (อนุมัติ 29/09/2026) — การแก้งานบริการไม่เปลี่ยนยอดนี้');
   /* หน้าไม่อ่านคอลัมน์ 0396 เอง — ถาม `view.reopened` ของก้อน GET (ตัวตัดสินกลาง serviceSetupReopened) */
   assert.doesNotMatch(page, /serviceSetupReopened/);

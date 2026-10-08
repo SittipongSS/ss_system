@@ -3,7 +3,9 @@ import test from 'node:test';
 import {
   ILLUSTRATION_CAPTION_MAX, illustrationCaption, snapshotIllustrationRows, sortIllustrations, specIllustrationsOf,
 } from './productSpecIllustrations.js';
-import { ATTACHMENT_TYPES, SPEC_ILLUSTRATION_DOC_TYPE, productDocTypes } from '@/lib/master/attachmentTypes';
+import {
+  ATTACHMENT_TYPES, SPEC_ILLUSTRATION_DOC_TYPE, SPEC_ITEM_IMAGE_DOC_TYPE, productDocTypes,
+} from '@/lib/master/attachmentTypes';
 
 const row = (id, over = {}) => ({ id, createdAt: '2026-09-17T00:00:00Z', metadata: {}, ...over });
 
@@ -114,4 +116,17 @@ test('🪤 ภาพนิ่งที่ไม่มี attachmentId ถูก�
   assert.deepEqual(snapshotIllustrationRows([{ caption: 'ลอย' }, null, { attachmentId: 'A' }]).map((r) => r.id), ['A']);
   assert.deepEqual(snapshotIllustrationRows(), []);
   assert.deepEqual(snapshotIllustrationRows('ไม่ใช่ลิสต์'), []);
+});
+
+/* รูปประจำแถว checklist (mig 0405) ใช้ในระบบเท่านั้น — ต้องไม่มีทางไหนพามันขึ้นแผ่นภาพประกอบของกระดาษที่ลูกค้าเซ็น */
+test('🔴 รูปของแถว checklist ไม่ใช่ภาพประกอบ — คนละ docType · ตัวโหลดภาพประกอบของกระดาษกรองด้วย docType ของภาพประกอบเท่านั้น', async () => {
+  assert.notEqual(SPEC_ITEM_IMAGE_DOC_TYPE, SPEC_ILLUSTRATION_DOC_TYPE);
+  assert.ok(!productDocTypes({ categoryCode: '01-002' }).some((t) => t.key === SPEC_ITEM_IMAGE_DOC_TYPE));
+  // `specIllustrationsOf` คัดจากชนิดไฟล์ ไม่ได้ดู docType ⇒ ด่านอยู่ที่ตัวโหลดของ store — ล็อกที่ต้นทาง
+  // (ผลจริงบนฐานจำลองอยู่ที่ productSpec.test.mjs "ภาพนิ่งของเอกสารไม่มีราคาทุน/รูปของแถว")
+  const { readFileSync } = await import('node:fs');
+  const store = readFileSync(new URL('./productSpecStore.js', import.meta.url), 'utf8');
+  const loader = store.slice(store.indexOf('export async function loadSpecIllustrations'), store.indexOf('export async function loadDealOwner'));
+  assert.match(loader, /\.eq\('docType', SPEC_ILLUSTRATION_DOC_TYPE\)/);
+  assert.doesNotMatch(loader, /SPEC_ITEM_IMAGE_DOC_TYPE/);
 });

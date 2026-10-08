@@ -12,7 +12,7 @@
 import {
   canUser, canEditCustomerBillingRule, canEditRecord, canViewRecord, caretakerTeamsOf, hasTeam, isSuperuser,
 } from '@/lib/permissions';
-import { BILLING_CALENDAR_DOC_TYPE, isPersonalDoc } from '@/lib/master/attachmentTypes';
+import { BILLING_CALENDAR_DOC_TYPE, SPEC_ITEM_IMAGE_DOC_TYPE, isPersonalDoc } from '@/lib/master/attachmentTypes';
 import { canAttachToCosting, canViewCostingAttachment, isCostingAttachment } from '@/lib/master/costingAttachmentAccess';
 import { canAttachToPersonalTask, canViewPersonalTask } from '@/lib/pm/personalTaskAccess';
 import { canAttachToSalesEntity, canViewSalesAttachment, isSalesAttachment } from '@/lib/sales/salesAttachmentAccess';
@@ -20,6 +20,7 @@ import {
   canAttachToSalesOrder, canViewSalesOrderAttachment, isSalesOrderAttachment,
 } from '@/lib/sales/salesOrderAttachmentAccess';
 import { productCaretakerTeams } from '@/lib/master/productScope';
+import { canEditProductSpec } from '@/lib/sales/productSpecWorkflow';
 
 // resource key ที่ส่งให้ helper สิทธิ์กลาง (ตรงกับ lib/permissions)
 const RESOURCE = { customer: 'customers', product: 'products', order: 'orders', registration: 'registrations' };
@@ -96,4 +97,17 @@ export async function canEditAttachmentParent(supabase, entityType, parent, user
 export function canAttachBillingCalendar(entityType, docType, parent, user) {
   if (entityType !== 'customer' || docType !== BILLING_CALENDAR_DOC_TYPE || !parent) return false;
   return canEditCustomerBillingRule(user, parent);
+}
+
+/**
+ * ⭐ ช่องแคบของรูปประจำแถว checklist ใบสเปค (mig 0405 · มติเจ้าของ 08/10/2569) — แนบ/ลบ/แก้รายละเอียด **รูปของแถว**
+ * บนสินค้าได้ ถ้าแก้สเปคสินค้าได้ (`canEditProductSpec` ตัวเดียวกับ PATCH `/api/products/[id]/spec` — ฝ่ายขายทุกตำแหน่ง + admin)
+ * ⭐ ทำไมต้องมี: ด่านรวมของไฟล์แนบสินค้า = แก้ทะเบียนสินค้า ซึ่งผูกกับ **ทีมที่ดูแลลูกค้าเจ้าของสินค้า** — แต่สเปคแก้ได้
+ *   ทั้งฝ่ายขาย ⇒ คนแก้สเปคนอกทีมกรอกแถวได้ทุกช่องยกเว้นรูป (403)
+ * ⚠️ **แคบเป๊ะ**: entity สินค้า + docType รูปของแถวเท่านั้น — ไฟล์อื่นของสินค้า (artwork · ภาพประกอบกระดาษ) ยังต้องผ่านด่านเดิม
+ * ⚠️ ผู้เรียกส่ง docType **ที่จะเก็บจริง** (POST: ค่าที่ผ่านทะเบียนแล้ว · ลบ/แก้: `docType` ของแถว) — ไม่ใช่ค่าดิบจากคำขอ
+ * ⚠️ ไม่รับแถวแม่ — กติกานี้ไม่ขึ้นกับทีมของสินค้า (ผู้เรียกยังต้องเช็กว่าสินค้ามีจริงเอง)
+ */
+export function canAttachSpecItemImage(entityType, docType, user) {
+  return entityType === 'product' && docType === SPEC_ITEM_IMAGE_DOC_TYPE && canEditProductSpec(user?.role);
 }

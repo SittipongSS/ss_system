@@ -11,7 +11,10 @@
 //   `intake.js` เองห้าม import `serviceSetup.js` (กฎ 16 · serviceSetupImports.test.mjs) ⇒ ตัวที่ต้องใช้สองฝั่งมาอยู่ที่นี่
 import { businessDate } from '@/lib/businessDate';
 import { fmtDate, fmtNumber } from '@/lib/format';
-import { SERVICE_PERIOD_MODE_LINE, SERVICE_PERIOD_MODE_WHOLE, periodEnvelope, periodSpan, servicePeriodModeOf, servicePeriodOf } from '@/lib/sales/serviceSetup';
+import {
+  SERVICE_DEFERRED_TEXT, SERVICE_PERIOD_MODE_LINE, SERVICE_PERIOD_MODE_WHOLE, periodEnvelope, periodSpan, serviceSetupDeferred,
+  servicePeriodModeOf, servicePeriodOf,
+} from '@/lib/sales/serviceSetup';
 import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
 import { orderReadiness } from './intake';
 import { cadenceText, suggestCadence } from './cadence';
@@ -336,6 +339,10 @@ export function planTotalsLine(totals) {
    · stale     — ใบปลายโซ่อนุมัติแล้ว **มี** term ที่ไซต์นี้ แต่รอบยังชี้ใบเก่า (0392 ย้ายรอบจาก `revisedFromId` ทอดเดียว ⇒
                  Rev. ของ Rev. ที่เอาไซต์กลับมา ทิ้งรอบไว้ที่ใบแรก)
    · cancelled — ใบถูกยกเลิก หรือใบ Rev. ปลายโซ่ถูกยกเลิก (ไม่มีใบไหนย้ายรอบให้อีกแล้ว)
+   · unset     — (mig 0404) ใบปลายโซ่อนุมัติแล้วแต่ **ยื่นโดยยังไม่ตั้งงานบริการ** (`serviceSetupDeferred` ขั้น 'approved': ยังไม่ประทับ ยังไม่มี term)
+                 ⇒ ยังไม่รู้ว่าใบ Rev. มีไซต์นี้ไหม — ห้ามนับเป็น dropped ("Rev. ไม่มีไซต์นี้ — ปิดรอบ/ถอนเครื่อง" ไม่จริง และชวน TS ปิดรอบ)
+                 เกิดได้เมื่อ TS เปิดรอบของใบเดิมกลับหลังใบ Rev. ถูกอนุมัติแบบข้าม (ด่านของฐานตรวจรอบที่เดินอยู่แค่ตอนยื่น/อนุมัติ และทอดเดียว)
+                 · ผู้จัดการอนุมัติงานบริการของใบ Rev. แล้ว = ตัวเปิดรอบขายย้ายรอบจากใบก่อนหน้าทอดเดียวให้เอง · ไกลกว่านั้นแถบกลับเป็น stale/dropped ตามจริง
    ไม่ใช่กำพร้า: ใบยังมีผล · ปลายโซ่ยังไม่อนุมัติ (Rev. รออนุมัติ — 0392 ย้ายให้ตอนอนุมัติ) · ย้อนการอนุมัติ ·
    ข้อต่อที่ไม่ได้โหลดมา · โซ่วน · โซ่ยาวเกินเพดาน (ไม่เดา)
    ⚠️ ระบบไม่ปิด/ย้ายรอบเอง — แถบบอก TS ให้ตัดสินที่หน้าไซต์ */
@@ -359,7 +366,7 @@ function chainTip(order, ordersById) {
 }
 
 /**
- * รอบที่ค้างบนใบที่ไม่มีผลแล้ว → `{ dropped, stale, cancelled }`
+ * รอบที่ค้างบนใบที่ไม่มีผลแล้ว → `{ dropped, stale, cancelled, unset }`
  * @param ordersById ใบที่มีผล + ใบที่ตายแล้วที่ route โหลดเพิ่มตาม `orphanOrderIdsToLoad`
  * @param terms term ทั้งหมด (ใช้ดูว่าใบปลายโซ่มีโซนที่ไซต์ของรอบไหม) · `zones` ทุกโซน (โซน → ไซต์) · `sites` ทะเบียนไซต์
  */
@@ -375,7 +382,7 @@ export function orphanPlanRows({ plans = [], ordersById = new Map(), terms = [],
     sitesByOrder.set(term.salesOrderId, set);
   }
 
-  const out = { dropped: [], stale: [], cancelled: [] };
+  const out = { dropped: [], stale: [], cancelled: [], unset: [] };
   for (const plan of plans) {
     if (!planIsLive(plan, todayIso)) continue;
     const from = pick(ordersById, plan.salesOrderId);
@@ -393,7 +400,11 @@ export function orphanPlanRows({ plans = [], ordersById = new Map(), terms = [],
         to = tip;
       } else if (termOrderActive(tip)) {
         to = tip;
-        kind = sitesByOrder.get(tip.id)?.has(plan.siteId) ? 'stale' : 'dropped';
+        /* ใบปลายโซ่ที่ยื่นโดยยังไม่ตั้งงานบริการ (ยังไม่ประทับ) ไม่มี term ⇒ "ไม่มีไซต์นี้" ยังตัดสินไม่ได้ — กลุ่มของตัวเอง ไม่ใช่ dropped
+           ⚠️ ต้องเป็นแถวที่พก `serviceSetupDeferredAt` / `serviceTermsOpenedAt` / `origin` (select ของคิวงานเข้าใหม่พกครบ — ใบปลายโซ่ที่ยังมีผล
+              มาจาก `ordersById` ของคิวเสมอ) · แถวที่ไม่พก = `serviceSetupDeferred` คืน null = พฤติกรรมเดิม */
+        kind = sitesByOrder.get(tip.id)?.has(plan.siteId) ? 'stale'
+          : serviceSetupDeferred(tip)?.stage === 'approved' ? 'unset' : 'dropped';
       } else {
         continue;
       }
@@ -448,6 +459,8 @@ export const ORPHAN_TITLES = Object.freeze({
   dropped: (n) => `รอบของใบเดิมที่ถูกแทนแล้ว ${fmtNumber(n)} รอบ (Rev. ไม่มีไซต์นี้) — ปิดรอบ หรือนัดถอนเครื่อง`,
   stale: (n) => `รอบที่ยังผูกใบเดิม ${fmtNumber(n)} รอบ — ใบ Rev. ล่าสุดครอบไซต์นี้แล้ว ย้ายรอบไปใบนั้นที่หน้าไซต์ (แก้รอบ → “ใบสั่งขายที่ครอบรอบนี้”)`,
   cancelled: (n) => `รอบของใบที่ยกเลิกแล้ว ${fmtNumber(n)} รอบ — ปิดรอบ หรือนัดถอนเครื่อง`,
+  /* mig 0404 — คำอยู่ที่แคตตาล็อกของงานบริการ (จอ/คิว TS ห้ามพิมพ์คำ "ข้ามตอนยื่น" เอง) */
+  unset: (n) => SERVICE_DEFERRED_TEXT.tsOrphanTitle(n),
 });
 
 /** บรรทัดของแถบรอบกำพร้า: "{รหัสไซต์} {ชื่อ} · {ใบเดิม} → {ใบปลายโซ่} · {ความถี่}" (ไม่มีใบปลายโซ่ = ไม่มีลูกศร)
