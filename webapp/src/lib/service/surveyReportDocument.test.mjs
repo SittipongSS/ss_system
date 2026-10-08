@@ -1,25 +1,29 @@
 // ── กระดาษของรายงานการประเมินพื้นที่ (FM-TS-01) — HTML ที่ออกจริง ──────────────────────────────
 //
-// ⭐ ล็อกห้าเรื่อง:
+// ⭐ ล็อกหกเรื่อง:
 //   ① 🔴 ฉบับลูกค้าไม่รั่ว — grep **ทั้งไฟล์ HTML** (รวม CSS) หาเครื่องหมายของทุกช่องภายใน + คำต้องห้าม (สเปก PR-1 §7)
 //   ② ฉบับภายใน: แถบ "ฉบับภายใน" ทุกแผ่น · จุดที่ไม่เลือกไม่โผล่
 //   ③ ทองคำ (แฝดสังเคราะห์ของ RQ-AS-26090186): 4 / 6 แผ่น · คอลัมน์ "หน้า" 2, 3 · หัววิ่งมีแค่เลขที่เอกสาร · "หน้า x / N"
 //   ④ รูป: token `su-img:<sha>` ตั้งต้น · แปลงครบ · ไม่มี `/api/` ในกระดาษ
 //   ⑤ กระดาษเดินตามแผนหน้า — หนึ่งแผ่นต่อหนึ่งหน้าของแผน ชนิดตรงกัน (หน้า "(ต่อ)" · ตารางแบ่ง · ภาคผนวกหลายหน้า)
+//   ⑥ 🔴 สีชื่อเอกสารเดินตามฉบับ (มติเจ้าของ 08/10/2026): ลูกค้า = สีใบเสนอราคา · ภายใน = สีใบสั่งขาย · ไม่มี teal
 //
 // ⚠️ ความสูงจริง (ไม่ล้นขอบล่าง · ตรงกับแผน) วัดได้ใน Chrome เท่านั้น — เทสต์ท้ายไฟล์รันเมื่อมี `PUPPETEER_EXECUTABLE_PATH`
 //   (เครื่องนักพัฒนา) และข้ามเองใน CI · ของจริงพร้อมรูปใช้ `scripts/render-survey-report.mjs --assert`
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { resolveDocumentAccentKey } from '../documentStandards.js';
+import { DOCUMENT_AUDIENCES, documentAudienceAccentKey } from '../documents/documentAudience.js';
 import { uncoveredChars } from '../documents/documentFontRanges.js';
-import { stampWatermark } from '../documents/documentShell.js';
+import { DOCUMENT_ACCENT_THEMES, stampWatermark } from '../documents/documentShell.js';
 import { DOCUMENT_FONT_FACE_CSS } from '../sales/quotationDocumentFonts.js';
 import {
   SURVEY_REPORT_CSS, SURVEY_REPORT_INTERNAL_CSS, SURVEY_REPORT_RENDERER_VERSION,
-  renderSurveyReportHTML, resolveImageTokens, surveyReportImageShas, surveyReportImageToken,
+  renderSurveyReportHTML, resolveImageTokens, surveyReportAccentKey, surveyReportAudience, surveyReportImageShas, surveyReportImageToken,
 } from './surveyReportDocument.js';
 import { SURVEY_REPORT_PX, paginateSurveyReport } from './surveyReportLayout.js';
 import { buildSurveyReportSnapshot } from './surveyReportSnapshot.js';
@@ -493,6 +497,133 @@ test('สองฉบับจากภาพนิ่งเดียว: ส่
     [...customer.html.matchAll(/<p class="note">.*?<\/p>/g)].map((m) => m[0]),
     [...internal.html.matchAll(/<p class="note">.*?<\/p>/g)].map((m) => m[0]),
   );
+});
+
+/* ══ ⑥ สีชื่อเอกสารเดินตามฉบับ (มติเจ้าของ 08/10/2026) ═════════════════════
+   กระดาษที่ออกนอกบริษัทใช้สีใบเสนอราคา · กระดาษภายในใช้สีใบสั่งขาย — แทน teal ตายตัวของกระดานที่อนุมัติ
+   ค่าสีเขียนตายตัวที่นี่โดยเจตนา (ตัวเลขของมติ): คีย์ถูกแต่เฉดในเครื่องยนต์ถูกแก้ ก็ต้องล้ม */
+
+const QUOTATION_ACCENT = '#ad5d43';
+const SALES_ORDER_ACCENT = '#1e6091';
+const BOARD_TEAL = '#0f766e';
+/** สีที่เปลือกประกาศให้กระดาษทั้งใบ (`--doc-accent` บนกล่อง `.document`) */
+const shellAccent = (html) => html.match(/<div class="document surveyReport" style="--doc-accent:(#[0-9a-f]{6});">/)?.[1] ?? null;
+
+test('🔴 สีชื่อเอกสาร: ฉบับลูกค้า = สีใบเสนอราคา · ฉบับภายใน = สีใบสั่งขาย — เลือกจากฉบับของ view เอง · ไม่มี teal ทั้งไฟล์', () => {
+  const customer = paper(twin(), 'customer');
+  const internal = paper(twin(), 'internal');
+  assert.equal(shellAccent(customer.html), QUOTATION_ACCENT);
+  assert.equal(shellAccent(internal.html), SALES_ORDER_ACCENT);
+
+  // ที่มาของสองสีคือ "สีของ QT / สีของ SO" — เทียบกับ **สีตั้งต้น** ของสองชนิดนั้น และกับตัวกลางของกติกา
+  // (คีย์ตายตัว: มาตรฐานที่เผยแพร่ของ QT/SO เปลี่ยนสีได้โดยกระดาษนี้ไม่ตาม — `documentAudience.test.mjs`)
+  assert.equal(surveyReportAccentKey('customer'), resolveDocumentAccentKey(null, 'quotation'));
+  assert.equal(surveyReportAccentKey('internal'), resolveDocumentAccentKey(null, 'salesOrder'));
+  assert.deepEqual(DOCUMENT_AUDIENCES, ['external', 'internal']);
+  assert.equal(surveyReportAudience('customer'), 'external');
+  assert.equal(surveyReportAudience('internal'), 'internal');
+  for (const version of ['customer', 'internal']) {
+    assert.equal(surveyReportAccentKey(version), documentAudienceAccentKey(surveyReportAudience(version)), version);
+  }
+  // ฉบับที่ไม่ใช่ `internal` = กระดาษที่ออกนอกบริษัท (เกณฑ์เดียวกับที่ตัวเรนเดอร์ใช้เลือกฝัง CSS ของฉบับภายใน)
+  for (const odd of [undefined, null, '', 'INTERNAL', 'draft']) assert.equal(surveyReportAudience(odd), 'external', String(odd));
+
+  // ทุกทรงของกระดาษได้สีตามฉบับ: ลายน้ำ (ใบร่าง/ใบตัวอย่าง) · ไม่มีเลขที่ · ชุดสุดขอบ · โหมดร่าง
+  const want = { customer: QUOTATION_ACCENT, internal: SALES_ORDER_ACCENT };
+  const papers = [];
+  for (const version of ['customer', 'internal']) {
+    papers.push([version, paper(twin(), version, { watermark: 'ฉบับร่าง', docNo: null }).html]);
+    papers.push([version, paper(markedSurveyInputs().inputs, version).html]);
+    for (const c of surveyStressCases()) papers.push([version, paper(stressSurveyInputs(c.spec), version, { mode: c.mode }).html]);
+  }
+  assert.ok(papers.length > 6);
+  for (const [version, html] of [['customer', customer.html], ['internal', internal.html], ...papers]) {
+    assert.equal(shellAccent(html), want[version], version);
+    // ประกาศสีที่เดียวต่อไฟล์ — ไม่มีชิ้นไหนของกระดาษตั้งสีทับเอง
+    assert.equal(count(html, 'style="--doc-accent:'), 1, version);
+    // 🔴 teal ของกระดานเดิมต้องไม่เหลือทั้งไฟล์ (รวม CSS ที่ฝัง) — "#" ไม่อยู่ในชุดอักขระ base64 ของฟอนต์ จึง grep ทั้งไฟล์ได้
+    assert.equal(html.toLowerCase().includes(BOARD_TEAL), false, `${version}: ยังมี teal ในกระดาษ`);
+    /* สีของอีกฉบับต้องไม่ปนมา: ฉบับลูกค้าไม่มีสีใบสั่งขายสักที่ · ฉบับภายในมีสีใบเสนอราคาที่เดียวคือค่าตั้งต้นใน CSS ของเปลือก
+       (`.document { --doc-accent: … }` — เอกสารทุกชนิดพกบรรทัดนี้) ซึ่งแพ้ `style` บนกล่อง `.document` เสมอ */
+    assert.equal(count(html, SALES_ORDER_ACCENT), version === 'internal' ? 1 : 0, `${version}: สีใบสั่งขาย`);
+    assert.equal(count(html, QUOTATION_ACCENT), version === 'internal' ? 1 : 2, `${version}: สีใบเสนอราคา`);
+    assert.equal(count(html, `--doc-accent: ${QUOTATION_ACCENT};`), 1, `${version}: ค่าตั้งต้นของเปลือก`);
+  }
+});
+
+test('สีไปถึงกระดาษที่เดียวคือชื่อเอกสารหน้า 1 · รุ่นตัวเรนเดอร์ขยับแล้ว', () => {
+  // ผู้อ่านของ `--doc-accent` ใน CSS ของกระดาษ = `--accent` ตัวเดียว และผู้อ่านของ `--accent` = ชื่อเอกสารตัวเดียว
+  assert.equal(count(SURVEY_REPORT_CSS, 'var(--doc-accent)'), 1);
+  assert.equal(count(SURVEY_REPORT_CSS, 'var(--accent)'), 1);
+  assert.match(SURVEY_REPORT_CSS, /\.surveyReport \.sheet \.dh-title\{[^}]*color:var\(--accent\);\}/);
+  assert.equal(SURVEY_REPORT_INTERNAL_CSS.includes('--accent'), false, 'ชิ้นของฉบับภายในไม่ใช้สีชื่อเอกสาร');
+  // ไม่มีค่าสีของเอกสารเขียนตายตัวใน CSS ของกระดาษ — สีมาจากเปลือกทางเดียว
+  for (const css of [SURVEY_REPORT_CSS, SURVEY_REPORT_INTERNAL_CSS]) {
+    for (const [key, theme] of Object.entries(DOCUMENT_ACCENT_THEMES)) {
+      if (key === 'navy') continue; // กรมท่าเป็นสีหมึกของกระดาษเอง (`--navy`) ไม่ใช่สีชื่อเอกสาร
+      assert.equal(css.toLowerCase().includes(theme.accent), false, `CSS ของกระดาษเขียนสี ${key} ตายตัว`);
+    }
+  }
+  const sheet = sheetHtml(paper(twin(), 'customer').html, 1);
+  assert.equal(count(sheet, '<h1 class="dh-title">รายงานการประเมินพื้นที่</h1>'), 1);
+
+
+  // กระดาษที่ตรึงพก CSS กับสีของวันที่ออก — สีเปลี่ยน = รุ่นของตัวเรนเดอร์ต้องไม่ใช่รุ่นของยุค teal
+  assert.notEqual(SURVEY_REPORT_RENDERER_VERSION, 'fm-ts-01@2026-10-01b');
+  assert.ok(SURVEY_REPORT_RENDERER_VERSION.slice('fm-ts-01@'.length) >= '2026-10-08a', SURVEY_REPORT_RENDERER_VERSION);
+});
+
+/* 🔴 ตัวเรนเดอร์ **ไม่มีตัวเลือกสี** — ฉบับหนึ่งพิมพ์สีของอีกฉบับไม่ได้ ไม่ว่าผู้เรียกจะส่งอะไรมา (กันด้วยโครงสร้าง ไม่ใช่ grep)
+   เดิมรับ `accentKey` ไว้เป็นจุดเสียบของเทสต์: `{ view: ฉบับลูกค้า, accentKey: 'steel' }` ได้ฉบับลูกค้าสีของฉบับภายใน และคีย์ที่
+   ไม่มีธีมบนฉบับภายใน ตกไป terracotta (= สีของฉบับลูกค้า) ผ่านค่าตั้งต้นของเปลือก — ด่านเดียวที่กันคือเทสต์สแกนซอร์สข้างล่าง */
+test('🔴 `accentKey` ที่ส่งให้ตัวเรนเดอร์ไม่มีผล — ทุกค่าได้กระดาษตัวเดียวกับที่ไม่ส่ง (สีตามฉบับ) ทั้งสองฉบับ', () => {
+  const want = { customer: QUOTATION_ACCENT, internal: SALES_ORDER_ACCENT };
+  for (const version of ['customer', 'internal']) {
+    const plain = paper(twin(), version).html;
+    assert.equal(shellAccent(plain), want[version], version);
+    // ทุกคีย์ที่เปลือกมีธีม (รวมสีของอีกฉบับ · teal ของกระดานเดิม) + ค่าที่ไม่มีธีม + ค่าว่าง
+    for (const accentKey of [...Object.keys(DOCUMENT_ACCENT_THEMES), 'ไม่มีสีนี้', '', null, undefined, 0, {}]) {
+      const html = paper(twin(), version, { accentKey }).html;
+      assert.equal(shellAccent(html), want[version], `${version} ← accentKey ${String(accentKey)}`);
+      assert.equal(html, plain, `${version} ← accentKey ${String(accentKey)}: กระดาษต้องเหมือนตอนไม่ส่งทุกไบต์`);
+    }
+  }
+  // ตัวที่เคยพิมพ์ผิดสีตรง ๆ (ชื่อไว้ให้อ่านออก): ฉบับลูกค้า + steel · ฉบับภายใน + คีย์ที่ไม่มีธีม (เคยตกไป terracotta)
+  assert.equal(shellAccent(paper(twin(), 'customer', { accentKey: 'steel' }).html), QUOTATION_ACCENT);
+  assert.equal(shellAccent(paper(twin(), 'internal', { accentKey: 'ไม่มีสีนี้' }).html), SALES_ORDER_ACCENT);
+  assert.equal(shellAccent(paper(twin(), 'internal', { accentKey: 'terracotta' }).html), SALES_ORDER_ACCENT);
+});
+
+/* ด่านที่สอง (ซอร์ส): ไม่มีผู้เรียกของแอปเขียน `accentKey` ใส่ตัวเรนเดอร์ — ส่งไปก็ถูกทิ้ง (เทสต์ข้างบน) แต่คนอ่านโค้ดจะเข้าใจว่ามีผล
+   (ขั้นกระดาษ · เรนเดอร์แห้งของขั้นออกเลข · ใบร่างของ route · ใบตัวอย่างของหน้าตั้งค่า · harness) */
+test('🔴 ผู้เรียกตัวเรนเดอร์ทุกตัวในแอปและ harness ไม่ส่ง accentKey — สีมาจากฉบับของ view ทางเดียว', () => {
+  const WEBAPP = fileURLToPath(new URL('../../..', import.meta.url));
+  const walk = (dir, out = []) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) walk(full, out);
+      else if (/\.m?js$/.test(entry.name) && !/\.test\.mjs$/.test(entry.name)) out.push(full);
+    }
+    return out;
+  };
+  const strip = (source) => source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:\w\\])\/\/[^\n]*/g, '$1');
+  const callers = [...walk(join(WEBAPP, 'src')), ...walk(join(WEBAPP, 'scripts'))]
+    .map((file) => ({ file: file.slice(WEBAPP.length).replace(/^\//, ''), code: strip(readFileSync(file, 'utf8')) }))
+    .filter(({ file, code }) => code.includes('renderSurveyReportHTML') && !file.endsWith('lib/service/surveyReportDocument.js'));
+  const names = callers.map((c) => c.file);
+  // กันเทสต์ผ่านเพราะหาผู้เรียกไม่เจอ — ผู้เรียกที่รู้จักต้องอยู่ครบ
+  for (const must of [
+    'src/lib/service/surveyReportPaper.js', 'src/lib/service/surveyReportIssue.js', 'src/lib/service/surveyReportPreview.js',
+    'src/app/api/service/surveys/[id]/document/route.js', 'scripts/render-survey-report.mjs',
+  ]) assert.ok(names.includes(must), `หาผู้เรียก ${must} ไม่เจอ (ได้ ${names.join(' · ')})`);
+  for (const { file, code } of callers) assert.doesNotMatch(code, /\baccentKey\b/, `${file} ส่ง accentKey ให้ตัวเรนเดอร์`);
+  // ตัวเรนเดอร์เอง: `accentKey` โผล่ที่เดียวคือค่าที่ส่งให้เปลือก ซึ่งถามจากฉบับของ view — ไม่มีพารามิเตอร์ ไม่มีค่าตั้งต้นเป็นชื่อสี
+  const renderer = strip(readFileSync(join(WEBAPP, 'src/lib/service/surveyReportDocument.js'), 'utf8'));
+  assert.deepEqual(
+    renderer.split('\n').filter((row) => /\baccentKey\b/.test(row)).map((row) => row.trim()),
+    ['accentKey: surveyReportAccentKey(view.version),'],
+  );
+  assert.doesNotMatch(renderer, /['"]teal['"]|SURVEY_REPORT_DEFAULT_ACCENT/);
 });
 
 /* ══ วัดจริงใน Chrome (เครื่องนักพัฒนา) ════════════════════════════════ */

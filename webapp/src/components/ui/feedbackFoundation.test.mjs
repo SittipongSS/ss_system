@@ -40,6 +40,38 @@ test("ConfirmDialog owns async, error, busy, and deliberate focus behavior", () 
   assert.match(MODAL, /aria-describedby=\{ariaDescribedBy\}/);
 });
 
+/* 🐞 UAT เอกสารประเมินพื้นที่ 2026-10-08 (จอ 360): กล่องยืนยันที่เนื้อยาวกว่าจอเปิดมา **เลื่อนลงไปแล้ว** 168px — โฟกัสแรกอยู่ที่ปุ่ม
+   "ยกเลิก" ท้ายเนื้อ เบราว์เซอร์จึงเลื่อน `.drawer-body` ไปหาปุ่ม ⇒ ข้อความหลักกับ "อย่าปิดหน้านี้ระหว่างรอ" หลุดขึ้นไปเหนือจอ
+   · ยืนยันแล้วล้ม: กล่องแดงโผล่ครึ่งเดียวที่ขอบล่าง แถวปุ่มอยู่ใต้จอ และโฟกัสหล่นไป body (ปุ่มยืนยันถูก disabled ระหว่างรอ) */
+test("ConfirmDialog เปิดที่บรรทัดแรก · ยืนยันแล้วล้ม = แถวปุ่มกับข้อผิดพลาดเลื่อนเข้ามา และโฟกัสกลับเข้ากล่อง", () => {
+  assert.match(CONFIRM, /initialFocusRef=\{hideCancel \? confirmRef : cancelRef\}[\s\S]{0,260}initialFocusScroll=\{false\}/,
+    "โฟกัสแรกไม่เลื่อนเนื้อกล่องตาม — กล่องยืนยันต้องอ่านจากบรรทัดแรก");
+  assert.match(MODAL, /\n {2}initialFocusScroll = true,\n/, "ค่าตั้งต้นของ Modal เหมือนเดิม — โมดัลฟอร์มที่ชี้โฟกัสไปช่องกรอกยังเลื่อนตาม");
+  assert.match(MODAL, /initialFocus\.focus\(\{ preventScroll: !initialFocusScroll \}\);/);
+  assert.match(MODAL, /\}, \[open, initialFocusRef, initialFocusScroll\]\);/);
+
+  const effect = CONFIRM.slice(CONFIRM.indexOf("if (!open || !resolvedError || pending) return;"));
+  assert.ok(effect.length > 0 && effect.length < CONFIRM.length, "ไม่มี effect ของข้อผิดพลาด");
+  assert.match(effect, /^if \(!open \|\| !resolvedError \|\| pending\) return;\s*const actions = actionsRef\.current;\s*if \(!actions\) return;\s*actions\.scrollIntoView\(\{ block: "nearest" \}\);/,
+    "รอจนปุ่มกลับมากดได้ (ไม่ pending) แล้วเลื่อนแถวปุ่มเข้ามา — กล่องแดงอยู่เหนือแถวปุ่มพอดี");
+  assert.match(effect, /if \(dialog && !dialog\.contains\(document\.activeElement\)\) \{\s*\(confirmRef\.current \|\| cancelRef\.current\)\?\.focus\(\{ preventScroll: true \}\);\s*\}\s*\}, \[open, resolvedError, pending\]\);/,
+    "คืนโฟกัสเฉพาะตอนโฟกัสหลุดออกนอกกล่อง — คนที่ย้ายโฟกัสเองไม่ถูกดึงกลับ");
+  assert.match(CONFIRM, /<div className="confirm-dialog-actions" ref=\{actionsRef\}>/);
+  /* กล่องแดงต้องอยู่ติดเหนือแถวปุ่มใน DOM — เลื่อนแถวปุ่มเข้ามา = เห็นคู่กัน */
+  const alertAt = CONFIRM.indexOf('<StatusNotice tone="error" role="alert">');
+  assert.ok(alertAt !== -1 && alertAt < CONFIRM.indexOf('<div className="confirm-dialog-actions"'));
+});
+
+/* 🐞 UAT เอกสารประเมินพื้นที่ 2026-10-08: ตัวหนังสือของหน้าข้างหลังทะลุขึ้นมาซ้อนกับเนื้อโมดัล — พื้นของ `.drawer` เคยเป็น `--panel` (โปร่ง 6%)
+   ซึ่งต้องมาคู่กับ backdrop-filter แต่ blur ของ `.overlay` ไม่ถึง Chrome (ตัวแปลง CSS ทิ้งบรรทัดที่ไม่มี prefix ของกฎนั้น) */
+test("พื้นของโมดัลทึบ 100% — ไม่พึ่ง blur ของ overlay", () => {
+  const globals = source("../../app/globals.css").replace(/\/\*[\s\S]*?\*\//g, "");
+  const drawer = /\n\.drawer \{([^}]*)\}/.exec(globals)?.[1] || "";
+  assert.match(drawer, /background: var\(--panel-solid\);/);
+  assert.doesNotMatch(drawer, /background: var\(--panel\);/);
+  assert.match(globals, /--panel-solid: #[0-9a-f]{6};/, "โทเคนพื้นทึบต้องเป็นสีทึบจริง (ไม่มี alpha)");
+});
+
 /* เดิมเทสต์นี้ตรวจว่า shim สองตัว "ส่งต่อให้ ConfirmDialog กลางถูกไหม"
    ปลดระวาง shim แล้ว (2026-07-30) จึงเปลี่ยนมาตรึง *ผลของการปลด* แทน:
    ทั้งคู่เขียนคอมเมนต์ตัวเองว่า "one-release migration window" แต่อยู่ยาว และ

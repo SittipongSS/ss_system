@@ -2387,15 +2387,47 @@ for (const file of uiFiles) {
    โปร่ง 8% ให้ตัวอักษรข้างหลังลอดขึ้นมาปนกับรายการในแผง (ของจริง: dropdown เลือก
    ลูกค้าในหน้าสร้างใบเสนอราคา 2026-07-26 — ผู้ใช้ส่งภาพมา ทั้ง .ui-select-menu และ
    .ui-time-menu เป็นแบบนั้นมาตั้งแต่ต้น ส่วนปฏิทินของ DateInput แก้ไปก่อนแล้วด้วยสีทึบ) */
+/* ── ข้อยกเว้นรายตัว: "พื้นโปร่งที่ลูกทึบปิดเต็ม" — ตรวจเงื่อนไขใหม่ทุกรอบ ไม่ใช่ทะเบียนที่ประกาศแล้วเชื่อ (2026-10-08) ──
+   `.topnav` เข้ากฎแผงลอยตามตัวอักษร: sticky + `color-mix(var(--panel) 96%, transparent)` และ **ไม่มี
+   backdrop-filter แล้ว** (มติเจ้าของ 08/10 — บรรทัดเบลอเขียนคู่กับ `-webkit-` จนตัว build ยุบเหลือแต่ `-webkit-`
+   Chrome จึงไม่ได้เบลอแถบนี้อยู่แล้ว ดูต้นเรื่องที่กฎ .overlay / .topnav ใน globals.css)
+   แต่สิ่งที่กฎนี้กัน — ตัวหนังสือข้างหลังทะลุพื้นโปร่ง — **เกิดไม่ได้ที่นี่**: header มีลูกสองชั้น
+   .topnav-system / .topnav-systems พื้น var(--navy) ทึบ ปิดเต็มเนื้อกล่อง พื้นของ header เองไม่เคยโผล่
+   วัด 08/10: กวาด 96 เส้นทาง × จอกว้าง/มือถือ ใน Chrome เปิดเบลอกลับแล้วพิกเซลต่างมากสุด 0.023% ของจอ
+   ⇒ ยกเว้นได้ **ตราบที่ลูกทุกตัวในลิสต์ยังประกาศพื้น var(--navy)** (เทสต์ backdropFilterSource ล็อกว่า --navy ทึบทุกธีม):
+     · ลูกตัวไหนเลิกทึบ → ข้อยกเว้นหายเอง .topnav กลับมาแดงพร้อมชื่อลูกตัวนั้น
+     · .topnav เลิกเข้ากฎ (เปลี่ยนเป็นพื้นทึบ / ได้เบลอกลับ) → รายการค้าง = แดง ให้ลบออก
+   ⚠️ **ไม่ใช่ทางหนีของแผงลอยตัวอื่น** — "ปิดเต็มกล่อง" พิสูจน์จาก CSS ไม่ได้ ต้องวัดจอจริง · จะเพิ่มรายการ
+     ต้องมีผลวัดกำกับแบบข้างบน และ src/components/ui/backdropFilterSource.test.mjs ล็อกว่ามีรายการเดียว
+     ห้ามแก้พื้น .topnav เพื่อให้ผ่านกฎ (มติ: หน้าตาใน Chrome ต้องเท่าเดิม) และห้ามเติมเบลอกลับ */
+const FLOATING_SURFACE_COVERED = new Map([
+  ["src/app/globals.css .topnav", [".topnav-system", ".topnav-systems"]],
+]);
+const OPAQUE_COVER_BACKGROUND = /^var\(--navy\)$/;
+
 const floatingSurfaceViolations = [];
+const floatingSurfaceCovered = [];
+const floatingCoverSeen = new Set();
 for (const file of files.filter((f) => f.endsWith(".css"))) {
   const rel = relative(file);
   const source = withoutBlockComments(fs.readFileSync(file, "utf8"));
-  for (const block of source.split("}")) {
+  const blocks = source.split("}").flatMap((block) => {
     const brace = block.indexOf("{");
-    if (brace === -1) continue;
-    const selector = block.slice(0, brace).split(/\r?\n/).filter(Boolean).pop()?.trim() || "";
-    const body = block.slice(brace + 1);
+    if (brace === -1) return [];
+    return [{
+      selector: block.slice(0, brace).split(/\r?\n/).filter(Boolean).pop()?.trim() || "",
+      body: block.slice(brace + 1),
+    }];
+  });
+  /* ลูกตัวหนึ่ง "ทึบ" = มีกฎของมันประกาศพื้น var(--navy) อย่างน้อยหนึ่งจุด และ **ไม่มีกฎไหนของ selector เดียวกัน
+     ประกาศพื้นเป็นค่าอื่น** (กันกฎทีหลังใน @media ทับเป็นโปร่งแล้วข้อยกเว้นยังติดอยู่) */
+  const coverLeaks = (child) => {
+    const backgrounds = blocks
+      .filter((b) => b.selector === child)
+      .flatMap((b) => [...b.body.matchAll(/(?:^|[;\s])background(?:-color)?:\s*([^;]+);/g)].map((m) => m[1].trim()));
+    return backgrounds.length === 0 || backgrounds.some((value) => !OPAQUE_COVER_BACKGROUND.test(value));
+  };
+  for (const { selector, body } of blocks) {
     /* `position: sticky` ก็ลอยทับเนื้อหาเหมือนกัน — เดิมกฎนี้ตรวจแค่ fixed หรือ
        z-index ≥ 1000 แถบปุ่มท้ายโมดัล (sticky + z-index 5) จึงหลุดไปใช้ --panel
        แล้วช่องกรอกที่เลื่อนผ่านทะลุขึ้นมาปนกับปุ่ม (ผู้ใช้ส่งภาพมา 2026-07-27)
@@ -2406,7 +2438,18 @@ for (const file of files.filter((f) => f.endsWith(".css"))) {
     if (!floats) continue;
     if (!/background[^;]*var\(--panel\)/.test(body)) continue;
     if (/backdrop-filter/.test(body)) continue;
-    floatingSurfaceViolations.push(`${rel} ${selector}`);
+    const key = `${rel} ${selector}`;
+    const cover = FLOATING_SURFACE_COVERED.get(key);
+    if (!cover) { floatingSurfaceViolations.push(key); continue; }
+    floatingCoverSeen.add(key);
+    const leaky = cover.filter(coverLeaks);
+    if (leaky.length === 0) floatingSurfaceCovered.push(key);
+    else floatingSurfaceViolations.push(`${key} — ยกเว้นต่อไม่ได้: ลูกที่ต้องปิดพื้นไม่ได้ประกาศพื้น var(--navy) ล้วนแล้ว (${leaky.join(", ")})`);
+  }
+}
+for (const key of FLOATING_SURFACE_COVERED.keys()) {
+  if (!floatingCoverSeen.has(key)) {
+    floatingSurfaceViolations.push(`${key} — ข้อยกเว้นค้าง: กฎนี้ไม่เข้าเงื่อนไขพื้นโปร่งลอยแล้ว ลบออกจาก FLOATING_SURFACE_COVERED`);
   }
 }
 
@@ -2847,7 +2890,7 @@ console.log(`Native feedback violations: ${nativeFeedbackViolations.length} (ห
 console.log(`Table contract violations: ${tableContractViolations.length}`);
 console.log(`family="matrix" นอกลิสต์: ${matrixFamilyViolations.length} (อนุญาต ${MATRIX_FAMILY_ALLOWLIST.size} ไฟล์)`);
 console.log(`Chart contract violations: ${chartContractViolations.length}`);
-console.log(`Floating surface violations: ${floatingSurfaceViolations.length}`);
+console.log(`Floating surface violations: ${floatingSurfaceViolations.length} (ยกเว้น: พื้นโปร่งที่ลูกทึบปิดเต็ม ${floatingSurfaceCovered.length} จุด — ${floatingSurfaceCovered.join(", ") || "ไม่มี"})`);
 console.log(`Cross-layer :global() overrides: ${crossLayerOverrideViolations.length}`);
 /* ── ด่านการเข้าถึงตัวแรกของ CI (บล็อกเต็มเหนือ `const HOST_TAG`) ──────────
    วางแยกเป็นบล็อกของตัวเองโดยเจตนา ไม่แทรกกลางแผงข้างบน — ทุกบรรทัดข้างบนวัด
