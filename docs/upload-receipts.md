@@ -1,6 +1,6 @@
 # ใบรับการอัปโหลด (`upload_receipts` · mig 0406) — ที่มาของ `driveFileId` ที่ client ส่งมา
 
-> สถานะ: **กำลังดำเนินการ** · ตรวจกับโค้ดเมื่อ 2026-10-08 · แบรนช์ `claude/upload-receipts` · มติเจ้าของ 08/10/2569 · 🔴 **mig 0406 ยังไม่ได้รันบนฐานจริง** — ต้องรันบน SQL Editor ก่อน CI ของ PR จะเขียว (ดู §ลำดับขึ้นระบบ) · รอบหนึ่งครอบ `POST /api/attachments` (สาขาไฟล์ธรรมดา) · `DELETE /api/upload` · ตัวปล่อยไฟล์ของแถวไฟล์แนบ — ปลายทางอื่นเป็นรอบสอง (§ยังไม่ครอบ) · ⚠️ ยังไม่ได้ลองกับ server / Drive จริง
+> สถานะ: **กำลังดำเนินการ** · ตรวจกับโค้ดเมื่อ 2026-10-08 · แบรนช์ `claude/upload-receipts` · มติเจ้าของ 08/10/2569 · mig 0406 **รันบนฐานจริงแล้ว 2026-10-08** (เจ้าของรันบน SQL Editor · ยืนยันจากฝั่งแอป: คีย์ service อ่านตารางได้ · คีย์ anon ได้ `42501`) · ยังไม่ merge / ยังไม่ deploy (ดู §ลำดับขึ้นระบบ) · รอบหนึ่งครอบ `POST /api/attachments` (สาขาไฟล์ธรรมดา) · `DELETE /api/upload` · ตัวปล่อยไฟล์ของแถวไฟล์แนบ — ปลายทางอื่นเป็นรอบสอง (§ยังไม่ครอบ) · ⚠️ ยังไม่ได้ลองกับ server / Drive จริง
 
 **อ่านก่อนแตะสายอัปโหลด → แนบ → ลบไฟล์ หรือเพิ่มปลายทางใหม่ที่รับ `driveFileId` จาก client**
 
@@ -93,7 +93,7 @@
 
 ## ลำดับขึ้นระบบ
 
-1. **เจ้าของรัน `webapp/supabase/migrations/0406_upload_receipts.sql` บน Supabase SQL Editor** แล้วรันชุด SELECT ตรวจท้ายไฟล์ (7 ช่อง · constraint 2 ตัว · RLS `true` · policy 0 · สิทธิ์ `f · f · t`) — **ต้องมาก่อน CI ของ PR**: `check:columns` เทียบ `.from().select()` กับ schema จริงบนฐาน ตารางที่ยังไม่มี = แดง · ไฟล์เข้ากันได้กับโค้ดที่ deploy อยู่ (โค้ดเก่าไม่แตะตารางนี้) และรันซ้ำได้
+1. ✅ **เสร็จแล้ว 2026-10-08** — เจ้าของรัน `webapp/supabase/migrations/0406_upload_receipts.sql` บน Supabase SQL Editor แล้วรันชุด SELECT ตรวจท้ายไฟล์ (7 ช่อง · constraint 2 ตัว · RLS `true` · policy 0 · สิทธิ์ `f · f · t`) — **ต้องมาก่อน CI ของ PR**: `check:columns` เทียบ `.from().select()` กับ schema จริงบนฐาน ตารางที่ยังไม่มี = แดง · ไฟล์เข้ากันได้กับโค้ดที่ deploy อยู่ (โค้ดเก่าไม่แตะตารางนี้) และรันซ้ำได้
 2. CI เขียว → merge
 3. deploy ตามรอบปกติ (หรือ Run workflow) — ⚠️ กลับลำดับไม่ได้: โค้ดใหม่บนฐานที่ไม่มีตาราง = อัปได้ แต่แนบตอบ 503 ทุกครั้ง
 4. **smoke test บน production**: แนบไฟล์เข้าระเบียนใดก็ได้ → ลบไฟล์นั้น → แนบไฟล์ในโมดัลสรรพสามิต (`components/excise/FileTaxDialog.js` หรือ `ReceiveDialog.js` — สองจอนี้ยิง `POST /api/master/attachments` เอง ไม่ผ่าน `uploadAttachment`) · ต้องผ่านทั้งสามขั้น · ตาราง `upload_receipts` ต้องมีแถวใหม่ที่ `claimedBy` เป็น `attachments:<id แถว>` · Vercel → Logs ต้องไม่มี `🔴 ออกใบรับการอัปโหลดไม่สำเร็จ`
