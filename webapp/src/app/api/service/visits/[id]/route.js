@@ -39,8 +39,76 @@ import { fmtDate } from '@/lib/format';
 import { stampVisitInput, stampVisitTimes } from '@/lib/service/visitStamp';
 import { visitMoveDecision } from '@/lib/service/crew/jobStart';
 import { businessDate } from '@/lib/businessDate';
+import { parseDriveId } from '@/lib/driveId';
+import {
+  FILE_REF_ERROR_CODE, REF_SHAPE_TEXT, claimDriveRefs, strictDriveId, verifyDriveRefs,
+} from '@/lib/upload/driveRefGate';
 
 export const dynamic = 'force-dynamic';
+
+/* ── ด่านที่มาของรูปหน้างาน/ลายเซ็นที่ PATCH กำลังจะเขียน (รอบสองของมติเจ้าของ 08/10/2569 · docs/upload-receipts.md) ──
+   🐞 เดิมเก็บ URL อะไรก็ได้ที่จอส่งมา แล้ว `visits/[id]/file` สตรีมไฟล์ตาม id ในสตริงนั้น ⇒ ส่งลิงก์ไฟล์ของคนอื่น
+      (สัญญาที่เซ็นแล้ว · บัตรประชาชนลูกค้า) มาเป็น "รูปหน้างาน" แล้วเปิดอ่านผ่านนัดของตัวเองได้
+   ⭐ URL ที่ **ตรงกับที่นัดนี้เก็บอยู่แล้วทุกตัวอักษร** ผ่านโดยไม่ถามฐาน (แผ่นปิดงานส่งทั้งชุดซ้ำทุกครั้งที่บันทึก) ·
+      ตัวใหม่ต้องเป็นลิงก์ Drive ที่ชี้ไฟล์ใบเดียว (`strictDriveId`) และมีใบรับการอัปโหลดของคนเรียกเองที่ยังไม่ถูกใช้
+   ⚠️ ถามจาก `patch` (ของที่กำลังจะลงแถวจริง) ไม่ใช่จาก body — คีย์ที่ไม่ได้ส่งมาถูกถอดออกจาก `patch` ไปแล้ว
+      ⇒ คำขอที่ไม่แตะรูป/ลายเซ็นไม่ถามฐานเลย
+   ⚠️ ข้อความ 400 บอกช่างว่าไฟล์ไหนและต้องทำอะไร — แผ่นปิดงานไม่มีปุ่มถอดรูปที่ยังไม่บันทึก ทางเดียวคือเปิดแผ่นใหม่ ·
+      503 (อ่านทะเบียนใบรับไม่ได้) ไฟล์เดิมกดบันทึกซ้ำแล้วอาจผ่าน จึงคงข้อความเดิมและไม่ติด `code`
+   คืน `{ response }` หรือ `{ claimable }` (id ที่ต้องประทับหลังเขียนแถวสำเร็จ) */
+const VISIT_FILE_RETRY_TEXT = 'ปิดแล้วเปิดแผ่นปิดงานใหม่ แล้วแนบไฟล์นั้นอีกครั้ง';
+const visitFileClaim = (id) => `service_visits:${id}`;
+
+function storedVisitFileUrls(visit) {
+  const photos = Array.isArray(visit?.attachments) ? visit.attachments : [];
+  return [...photos.map((att) => att?.url), visit?.customerSignatureUrl]
+    .filter((url) => typeof url === 'string' && url);
+}
+
+function visitFileRefusal({ label, status, error, code }) {
+  const text = status === 400
+    ? `${label}: ${String(error).split(' — ')[0]} — ${VISIT_FILE_RETRY_TEXT}`
+    : `${label}: ${error}`;
+  return Response.json({ error: text, ...(code ? { code } : {}) }, { status });
+}
+
+async function verifyVisitFiles(supabase, { user, visit, patch }) {
+  const incoming = [];
+  if ('attachments' in patch) {
+    for (const att of patch.attachments || []) incoming.push({ url: att.url, label: `รูป "${att.name}"` });
+  }
+  if ('customerSignatureUrl' in patch && patch.customerSignatureUrl) {
+    incoming.push({ url: patch.customerSignatureUrl, label: 'ลายเซ็นลูกค้า' });
+  }
+  const stored = storedVisitFileUrls(visit);
+  const fresh = incoming.filter((file) => !stored.includes(file.url));
+  if (!fresh.length) return { claimable: [] };
+
+  const refs = fresh.map((file) => ({ driveFileId: strictDriveId(file.url), fileUrl: file.url }));
+  // รูปร่างก่อน ทั้งชุด — ลิงก์ที่ไม่ใช่ไฟล์ Drive ใบเดียวต้องไม่ทำให้ตัวอื่นถูกถามฐานไปก่อน
+  const shapeless = refs.findIndex((ref) => !ref.driveFileId);
+  if (shapeless >= 0) {
+    return {
+      response: visitFileRefusal({
+        label: fresh[shapeless].label, status: 400, error: REF_SHAPE_TEXT, code: FILE_REF_ERROR_CODE,
+      }),
+    };
+  }
+  const checked = await verifyDriveRefs(supabase, {
+    refs,
+    userId: user?.id,
+    storedIds: new Set(stored.map((url) => strictDriveId(url) || parseDriveId(url)).filter(Boolean)),
+    ownClaim: visitFileClaim(visit.id),
+    refuseClaimed: true,
+    route: 'PATCH /api/service/visits/[id]',
+    logContext: { entityType: 'service_visit', entityId: visit.id },
+  });
+  if (checked.error) {
+    const { index, ...refusal } = checked.error;
+    return { response: visitFileRefusal({ label: fresh[index]?.label || 'ไฟล์แนบ', ...refusal }) };
+  }
+  return { claimable: checked.claimable };
+}
 
 export const GET = withUser(async ({ user, supabase, ctx }) => {
   const { id } = await ctx.params;
@@ -365,6 +433,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       }
     }
 
+    /* 🔒 ด่านที่มาของรูป/ลายเซ็น — ด่านสุดท้ายก่อนเขียนใบ (ทุกด่านข้างบนไม่ถามทะเบียนใบรับ) · ตัวใดไม่ผ่าน = ไม่เขียนอะไรเลย */
+    const visitFiles = await verifyVisitFiles(supabase, { user, visit: before, patch });
+    if (visitFiles.response) return visitFiles.response;
+
     const { data, error: updateError } = await supabase
       .from('service_visits')
       .update({ ...patch, updatedAt: nowIso })
@@ -380,6 +452,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       }
       return fail(updateError.message, 500);
     }
+    // ประทับใบรับของไฟล์ที่เพิ่งลงแถว — ใบรับหนึ่งใบใช้ได้กับนัดเดียว (best-effort · ไม่ล้มคำขอที่เขียนสำเร็จแล้ว)
+    await claimDriveRefs(supabase, { ids: visitFiles.claimable, claimedBy: visitFileClaim(id) });
 
     /* ── นัดประเมินพื้นที่: ใบต้นเรื่องต้องตามวันด้วย (เฟส 2) ────────────────
        🐞 ก่อนหน้านี้ซิงก์ **ทางเดียว** — เลื่อนวันบนใบขยับนัดให้ แต่แก้วันที่หน้าจัดคิวเจ้าหน้าที่
