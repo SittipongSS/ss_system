@@ -5,6 +5,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  SERVICE_BACKFILL_STATE_LABELS,
+  SERVICE_DEFER_TEXT,
+  SERVICE_DEFERRED_TEXT,
   SERVICE_KIND_OPTIONS,
   SERVICE_PERIOD_MODE_LINE,
   SERVICE_PERIOD_MODE_WHOLE,
@@ -37,6 +40,7 @@ import {
   serviceBackfillNeeded,
   serviceBackfillState,
   serviceBackfillSubmitPrompt,
+  serviceDeferPrompt,
   serviceLineLabel,
   serviceLineRole,
   serviceLineRoleSource,
@@ -46,15 +50,21 @@ import {
   servicePeriodOf,
   serviceSetupApprovalChecklist,
   serviceSetupApprovalEffects,
+  serviceSetupApprovalGate,
   serviceSetupAuditSnapshot,
+  serviceSetupDeferSplit,
+  serviceSetupDeferred,
   serviceSetupEditError,
   serviceSetupFieldId,
   serviceSetupFlow,
   serviceSetupFooterText,
   serviceSetupHeroFact,
+  serviceSetupIssueGroup,
   serviceSetupIssues,
   serviceSetupRequired,
   serviceSetupRevisionLine,
+  serviceSetupSkipMoneyIssues,
+  serviceSetupSkipState,
   serviceSetupSqlIssues,
   serviceSetupSqlMessage,
   serviceSetupStripText,
@@ -1977,4 +1987,616 @@ test('0400 แคตตาล็อก: หัวคอลัมน์ ① · �
     ...SERVICE_SETUP_GRID_TEXT.steps.map((step) => `${step.label} ${step.hint}`),
   ]);
   assert.doesNotMatch(all, /ไปกี่รอบ/);
+});
+
+/* ══ ยื่นโดยยังไม่ตั้งงานบริการ (mig 0404 · มติเจ้าของ 01/10 "ผูกรอบบริการให้ข้ามได้ มาใส่ทีหลัง Actual ได้" → "ฝ่ายขายกดข้ามเอง") ══════════════
+   ⭐ ผู้ยื่นกด 'ยื่นโดยยังไม่ตั้งงานบริการ' บนแผงแดงได้เมื่อยังมี **ข้อของการตั้งงานบริการ** — ข้อพวกนั้น (+ ข้อที่ตามมา) ถูกเลื่อน
+     งวดชำระ/วันวางบิล/กำหนดชำระ/ข้อของบัญชียังบล็อก · อนุมัติแล้วนับ Actual แต่ไม่เปิดรอบขาย ไม่ประทับ ⇒ ใบเข้าเส้นตั้งย้อนหลังเดิม
+   🔴 ใบที่ไม่มีตราการข้าม (ทุกใบที่มีอยู่วันนี้) ต้องได้ผลเดิมทุกตัวอักษร — ชุดนี้ยึดทั้งสองด้าน */
+
+const DEFER_AT = '2026-10-02T02:30:00Z';
+const deferCols = (over = {}) => ({
+  serviceSetupDeferredAt: DEFER_AT, serviceSetupDeferredById: 'U-AE', serviceSetupDeferredByName: 'Kamonrat P.', ...over,
+});
+const DEFER_INFO = { at: DEFER_AT, byId: 'U-AE', byName: 'Kamonrat P.' };
+/* ใบร่างที่ยังไม่ตอบ 'งานบริการ?' สักรายการ (2 บรรทัดพิมพ์เอง) — ไม่มีรายการแพ็คเกจ ⇒ `serviceSetupIssues` ไม่มีข้อของงวดเลย
+   (งวดของก้อนนี้ครบ: 12 งวด มีกำหนดชำระ + ช่วงครอบ ⇒ ด่านเงินของการยื่นแบบข้าม `serviceSetupSkipMoneyIssues` ก็ผ่าน) */
+const unansweredCtx = (over = {}) => ctxOf({ lines: [manual(1), manual(2)], ...over });
+/* ใบที่มีแพ็คเกจหนึ่งรายการตั้งครบ แต่ยังไม่ใส่ช่วงบริการ (ข้อเดียวของการตั้งงานบริการ: period_missing) */
+const noPeriodCtx = (over = {}) => ctxOf({
+  lines: [done(1)], zones: [zone('Z1', 'S1')], allocations: [alloc('SOL-1', 'Z1', 2)], ...over,
+});
+const SKIP_NONE = { visible: false, canSkip: false, blockedReason: null, lead: null, deferredCount: 0, blockingCount: 0, extraIssues: [], prompt: null };
+const PREDECESSOR = { id: 'SO0', orderNumber: 'SO-26090001-0' };
+/* ช่องโหว่ระหว่างสองงวดที่บัญชีรับรองแล้ว (ของฝ่ายบัญชี — ฝ่ายขายแก้ไม่ได้) บนใบที่ยังมีรายการไม่ตอบ */
+const fnGapCtx = (over = {}) => ctxOf({
+  order: orderOf({ servicePeriodFrom: '2026-10-22', servicePeriodTo: '2027-10-21' }),
+  lines: [fgLine(1, S247_FG, { serviceRounds: 12 }), manual(2)],
+  zones: [zone('Z1', 'S1')], allocations: [alloc('SOL-1', 'Z1', 2)],
+  installments: [
+    { ...monthlyRows()[0], id: 'I1', seq: 1, status: 'confirmed', coversFrom: '2026-10-22', coversTo: '2027-01-21' },
+    { ...monthlyRows()[1], id: 'I2', seq: 2, status: 'confirmed', coversFrom: '2027-03-01', coversTo: '2027-10-21' },
+  ],
+  ...over,
+});
+
+test('0404 กลุ่มของข้อที่ยังขาด: ทุกคีย์ของ SERVICE_SETUP_ISSUE_TEXT ถูกตัดสิน (ตาราง D-F4) · ของบัญชีและคีย์ที่ไม่รู้จัก = บล็อก', () => {
+  const GROUPS = {
+    kind_missing: 'setup', fg_missing: 'setup', fg_invalid: 'setup', zones_missing: 'setup', packs_missing: 'setup', zone_invalid: 'setup',
+    zones_on_not_service: 'setup', rounds_missing: 'setup', period_missing: 'setup', line_period_missing: 'setup',
+    fg_foreign: 'follow', coverage_missing: 'follow', coverage_start: 'follow', coverage_gap: 'follow', coverage_end: 'follow',
+    installments_missing: 'blocking', billing_missing: 'blocking', due_missing: 'blocking', unsaved: 'blocking',
+    /* คำเตือน — ไม่เคยเป็นข้อที่บล็อก ถ้าหลุดเข้ามาเป็นข้อ = บล็อก (fail-closed) */
+    coverage_overlap: 'blocking', fn_coverage_missing: 'blocking', rounds_low: 'blocking',
+  };
+  assert.deepEqual(Object.keys(SERVICE_SETUP_ISSUE_TEXT).sort(), Object.keys(GROUPS).sort(),
+    'เพิ่มคีย์ข้อที่ยังขาดใหม่ = ต้องตัดสินว่าการข้ามเลื่อนข้อนั้นได้ไหม (แผน IMPL_PLAN_DEFER ตาราง D-F4)');
+  for (const [key, group] of Object.entries(GROUPS)) assert.equal(serviceSetupIssueGroup({ key, owner: 'SA' }), group, key);
+  /* ข้อของฝ่ายบัญชี = บล็อกเสมอ แม้คีย์จะเป็นกลุ่มที่เลื่อนได้ (D-F16) */
+  for (const key of Object.keys(GROUPS)) assert.equal(serviceSetupIssueGroup({ key, owner: 'FN' }), 'blocking', `FN ${key}`);
+  for (const bad of [{ key: 'historical_zone_mismatch' }, { key: 'something_new' }, { key: '' }, { key: null }, {}, null, undefined, 'kind_missing']) {
+    assert.equal(serviceSetupIssueGroup(bad), 'blocking', JSON.stringify(bad));
+  }
+  /* ของจริงจากตัวตัดสิน: ช่องโหว่ระหว่างงวดที่บัญชีรับรองแล้ว = ของบัญชี ⇒ บล็อก · รายการที่ยังไม่ตอบ = setup */
+  const real = serviceSetupIssues(fnGapCtx());
+  assert.deepEqual(real.map((i) => [i.key, i.owner, serviceSetupIssueGroup(i)]),
+    [['kind_missing', 'SA', 'setup'], ['coverage_gap', 'FN', 'blocking']]);
+});
+
+test('0404 serviceSetupDeferSplit: มีข้อกลุ่ม setup = เลื่อน setup + follow · ไม่มี = ไม่มีอะไรเลื่อน (ทุกข้อบล็อก ลำดับเดิม)', () => {
+  const i = (key, over = {}) => ({ key, owner: 'SA', ...over });
+  const mixed = [i('kind_missing'), i('coverage_missing', { seq: 1 }), i('due_missing'), i('fg_foreign'), i('coverage_gap', { owner: 'FN' }), i('period_missing')];
+  const split = serviceSetupDeferSplit(mixed);
+  assert.deepEqual(keys(split.setup), ['kind_missing', 'period_missing']);
+  assert.deepEqual(keys(split.follow), ['coverage_missing', 'fg_foreign']);
+  assert.deepEqual(split.blocking.map((x) => [x.key, x.owner]), [['due_missing', 'SA'], ['coverage_gap', 'FN']]);
+  assert.equal(split.deferrable, true);
+  assert.equal(split.setup[0], mixed[0], 'ข้อเดิมตัวเดิม (จอเทียบด้วยตัวตน)');
+
+  const followOnly = [i('coverage_missing'), i('fg_foreign'), i('coverage_end')];
+  const none = serviceSetupDeferSplit(followOnly);
+  assert.deepEqual(none, { setup: [], follow: [], blocking: followOnly, deferrable: false }, 'ไม่มีข้อของการตั้งงานบริการ = ข้อที่ตามมาบล็อกตามเดิม');
+  assert.notEqual(none.blocking, followOnly, 'สำเนา ไม่ใช่อาร์เรย์ของผู้เรียก');
+  assert.deepEqual(serviceSetupDeferSplit([]), { setup: [], follow: [], blocking: [], deferrable: false });
+  assert.deepEqual(serviceSetupDeferSplit(), { setup: [], follow: [], blocking: [], deferrable: false });
+  assert.deepEqual(serviceSetupDeferSplit(null), { setup: [], follow: [], blocking: [], deferrable: false });
+  assert.deepEqual(serviceSetupDeferSplit(serviceSetupIssues({ unsaved: true })).deferrable, false, 'ยังไม่บันทึก = ข้ามไม่ได้');
+});
+
+test('0404 ปุ่มข้ามบนแผงแดง (serviceSetupSkipState): โชว์เมื่อมีสิทธิ์ · ใบร่าง/ตีกลับ · มีข้อของการตั้งงานบริการ · มีรายการที่ต้องตั้ง', () => {
+  const can = { canEdit: true };
+  /* ทุกรายการยังไม่ตอบ · งวดครบ (กำหนดชำระ + ไม่ใช่ลูกค้าเครดิต) ⇒ ข้ามได้ทั้งใบ */
+  const open = serviceSetupSkipState(unansweredCtx(), can);
+  assert.deepEqual(Object.keys(open), ['visible', 'canSkip', 'blockedReason', 'lead', 'deferredCount', 'blockingCount', 'extraIssues', 'prompt']);
+  assert.deepEqual(open.extraIssues, []);
+  assert.deepEqual([open.visible, open.canSkip, open.blockedReason, open.deferredCount, open.blockingCount], [true, true, null, 2, 0]);
+  assert.equal(open.lead, SERVICE_DEFER_TEXT.panelLead(2));
+  assert.deepEqual(open.prompt, serviceDeferPrompt(unansweredCtx()));
+  assert.deepEqual(keys(serviceSetupIssues(unansweredCtx())), ['kind_missing', 'kind_missing'], 'ไม่มีข้อของงวดเลย');
+  assert.deepEqual(serviceSetupSkipState(unansweredCtx({ order: orderOf({ status: 'rejected' }) }), can).canSkip, true, 'ใบถูกตีกลับยื่นใหม่แบบข้ามได้');
+  /* ส่งข้อที่คิดไว้แล้วได้ — ผลเดียวกัน และไม่คิดซ้ำ (บริบทไม่มี fgOptionIds ก็ไม่ throw) */
+  const given = serviceSetupSkipState({ ...unansweredCtx(), fgOptionIds: null }, { canEdit: true, issues: serviceSetupIssues(unansweredCtx()) });
+  assert.deepEqual(given, open);
+  assert.throws(() => serviceSetupSkipState({ ...unansweredCtx(), fgOptionIds: null }, can), /fgOptionIds/, 'ไม่ส่งข้อ = คิดเอง (fail-closed)');
+
+  /* ไม่มีสิทธิ์ / ไม่ใช่ใบร่าง-ตีกลับ / ไม่ใช่สายบริการ / ใบย้อนหลัง = ก้อนกลาง (ไม่มี undefined) */
+  assert.deepEqual(serviceSetupSkipState(unansweredCtx(), { canEdit: false }), SKIP_NONE);
+  assert.deepEqual(serviceSetupSkipState(unansweredCtx()), SKIP_NONE, 'ไม่ส่ง canEdit = ไม่มีสิทธิ์');
+  for (const status of ['pending_approval', 'approved', 'approval_revoked', 'cancelled', 'revised']) {
+    assert.deepEqual(serviceSetupSkipState(unansweredCtx({ order: orderOf({ status }) }), can), SKIP_NONE, status);
+  }
+  assert.deepEqual(serviceSetupSkipState(unansweredCtx({ order: orderOf({ deal: PRODUCT_DEAL, dealId: 'DL2' }) }), can), SKIP_NONE);
+  assert.deepEqual(serviceSetupSkipState(unansweredCtx({ order: orderOf({ origin: 'historical' }) }), can), SKIP_NONE);
+  assert.deepEqual(serviceSetupSkipState({}, can), SKIP_NONE);
+  assert.notEqual(serviceSetupSkipState({}, can), serviceSetupSkipState({}, can), 'ก้อนกลางสร้างใหม่ทุกครั้ง');
+
+  /* งานบริการครบ = ไม่มีอะไรให้ข้าม (กด 'ยื่นอนุมัติ' ตามปกติ) */
+  assert.deepEqual(serviceSetupIssues(completeCtx()), []);
+  assert.deepEqual(serviceSetupSkipState(completeCtx(), can), SKIP_NONE);
+  /* ขาดแต่ข้อที่ตามมา (ช่วงครอบของงวด / แพ็คเกจของนิติบุคคลอื่น) — ฐานเห็นว่าครบ ⇒ ข้ามไม่ได้ ปุ่มไม่ขึ้น */
+  const coverageOnly = completeCtx({ installments: monthlyRows({ coversFrom: null, coversTo: null }) });
+  assert.deepEqual([...new Set(keys(serviceSetupIssues(coverageOnly)))], ['coverage_missing']);
+  assert.deepEqual(serviceSetupSkipState(coverageOnly, can), SKIP_NONE);
+  const foreignOnly = completeCtx({ fgOptionIds: new Set() });
+  assert.deepEqual([...new Set(keys(serviceSetupIssues(foreignOnly)))], ['fg_foreign']);
+  assert.deepEqual(serviceSetupSkipState(foreignOnly, can), SKIP_NONE);
+  /* มีข้อของการตั้งงานบริการ แต่ไม่มีรายการที่ต้องตั้ง (FG หมวดอื่นที่มีโซนค้าง) — คู่กับ service_setup_defer_nothing ของฐาน */
+  const strayZone = ctxOf({ lines: [fgLine(1, 'FG-0521-03-002-00001')], zones: [zone('Z1', 'S1')], allocations: [alloc('SOL-1', 'Z1', 1)] });
+  assert.deepEqual(keys(serviceSetupIssues(strayZone)), ['zones_on_not_service']);
+  assert.deepEqual(serviceSetupSkipState(strayZone, can), SKIP_NONE);
+
+  /* ข้อของการตั้งงานบริการ + ข้อที่ตามมา = ข้ามได้ทั้งคู่ · โมดัลบอกว่าช่วงครอบเลื่อนไปตรวจทีหลัง */
+  const withCoverage = noPeriodCtx({ installments: monthlyRows({ coversFrom: null, coversTo: null }) });
+  assert.deepEqual([...new Set(keys(serviceSetupIssues(withCoverage)))], ['period_missing', 'coverage_missing']);
+  const both = serviceSetupSkipState(withCoverage, can);
+  assert.deepEqual([both.visible, both.canSkip, both.deferredCount, both.blockingCount], [true, true, 13, 0]);
+  assert.ok(both.prompt.effects.includes(SERVICE_DEFER_TEXT.effectCoverage(12)));
+
+  /* ข้อของการตั้งงานบริการ + ข้อที่ข้ามไม่ได้ (ยังไม่มีงวดชำระ) = ปุ่มยังโชว์ กดแล้วบอกเหตุ · ไม่มีโมดัล */
+  const noMoney = noPeriodCtx({ installments: [] });
+  assert.deepEqual(keys(serviceSetupIssues(noMoney)), ['period_missing', 'installments_missing']);
+  const blocked = serviceSetupSkipState(noMoney, can);
+  assert.deepEqual([blocked.visible, blocked.canSkip, blocked.deferredCount, blocked.blockingCount, blocked.prompt], [true, false, 1, 1, null]);
+  assert.equal(blocked.blockedReason, SERVICE_DEFER_TEXT.blocked(1));
+  assert.equal(blocked.lead, SERVICE_DEFER_TEXT.panelBlocked(1, 1));
+  /* กำหนดชำระ/วันวางบิลที่ยังไม่ใส่ก็บล็อก (ไม่ใช่เรื่องของการตั้งงานบริการ) */
+  const noDue = serviceSetupSkipState(noPeriodCtx({ installments: monthlyRows({ dueDate: null }) }), can);
+  assert.deepEqual([noDue.canSkip, noDue.deferredCount, noDue.blockingCount], [false, 1, 12]);
+  /* ข้อของฝ่ายบัญชี (ช่องโหว่ระหว่างงวดที่รับรองแล้ว) บล็อกการข้าม — ฝ่ายขายพาใบไปถึง TS เองไม่ได้ (D-F16) */
+  const fn = serviceSetupSkipState(fnGapCtx(), can);
+  assert.deepEqual([fn.visible, fn.canSkip, fn.deferredCount, fn.blockingCount], [true, false, 1, 1]);
+});
+
+test('0404 🔴 ใบ Rev. ของใบที่ TS ยังเดินรอบบริการอยู่ข้ามไม่ได้ (D-F18) — ปุ่มโชว์ กดแล้วบอกเหตุ · ใบเดิมไม่มีรอบเดิน = ข้ามได้', () => {
+  const running = unansweredCtx({
+    order: orderOf({ revisedFromId: 'SO0' }), predecessor: { ...PREDECESSOR, activePlanSiteIds: ['S1', 'S9'] },
+  });
+  const skip = serviceSetupSkipState(running, { canEdit: true });
+  assert.deepEqual([skip.visible, skip.canSkip, skip.prompt, skip.deferredCount, skip.blockingCount], [true, false, null, 2, 0]);
+  assert.equal(skip.blockedReason, SERVICE_DEFER_TEXT.predecessorRunning('SO-26090001-0', 2));
+  assert.equal(skip.lead, SERVICE_DEFER_TEXT.panelPredecessor('SO-26090001-0'), 'บรรทัดท้ายแผงไม่พูดว่า "เหลือ 0 ข้อ"');
+  /* เหตุของใบเดิมมาก่อนเหตุของข้อที่ข้ามไม่ได้ (แก้งวดแล้วก็ยังข้ามไม่ได้) */
+  const runningNoMoney = noPeriodCtx({ installments: [], order: orderOf({ revisedFromId: 'SO0' }), predecessor: { ...PREDECESSOR, activePlanSiteIds: ['S1'] } });
+  assert.equal(serviceSetupSkipState(runningNoMoney, { canEdit: true }).blockedReason, SERVICE_DEFER_TEXT.predecessorRunning('SO-26090001-0', 1));
+
+  const idle = unansweredCtx({ order: orderOf({ revisedFromId: 'SO0' }), predecessor: { ...PREDECESSOR, activePlanSiteIds: [] } });
+  assert.equal(serviceSetupSkipState(idle, { canEdit: true }).canSkip, true, 'รอบของใบเดิมตายไปกับใบที่ถูกแทนแล้ว — ไม่มีอะไรค้าง');
+
+  /* ด่านอนุมัติรู้กรณีเดียวกัน: มีตราการข้าม + ยังขาดข้อของการตั้ง แต่ใบเดิมมีรอบเดิน ⇒ ไม่ใช่การอนุมัติแบบข้าม ทุกข้อหยุดการอนุมัติ */
+  const pendingRunning = { ...running, order: { ...running.order, status: 'pending_approval', ...deferCols() } };
+  const gate = serviceSetupApprovalGate(pendingRunning);
+  assert.deepEqual([gate.deferring, keys(gate.blocking), gate.deferredIssues], [false, ['kind_missing', 'kind_missing'], []]);
+});
+
+test('0404 🔴 ใบ Rev. ของใบที่ TS ตั้งมาตรฐาน มล./เดือนบนรอบขายไว้แล้วข้ามไม่ได้ (ค่ามาตรฐานถูกยกทอดเดียว — ตรวจทานรอบสุดท้าย) · ด่านอนุมัติรู้กรณีเดียวกัน', () => {
+  const rev = (predecessor, over = {}) => unansweredCtx({ order: orderOf({ revisedFromId: 'SO0' }), predecessor: { ...PREDECESSOR, activePlanSiteIds: [], ...predecessor }, ...over });
+  const withMl = rev({ standardMlTermCount: 3 });
+  const skip = serviceSetupSkipState(withMl, { canEdit: true });
+  assert.deepEqual([skip.visible, skip.canSkip, skip.prompt, skip.deferredCount, skip.blockingCount], [true, false, null, 2, 0]);
+  assert.equal(skip.blockedReason, SERVICE_DEFER_TEXT.predecessorStandard('SO-26090001-0', 3));
+  assert.equal(skip.lead, SERVICE_DEFER_TEXT.panelPredecessorStandard('SO-26090001-0'), 'บรรทัดท้ายแผงบอกเหตุของใบเดิม ไม่ใช่ "เหลือ 0 ข้อ"');
+  assert.notEqual(skip.lead, SERVICE_DEFER_TEXT.panelBlocked(skip.deferredCount, skip.blockingCount), 'จอไม่ติดป้าย ‘ข้ามได้’ บนใบที่ข้ามไม่ได้ทั้งใบ (skipTagsShown เทียบบรรทัดนี้)');
+  /* รอบที่ยังเดินมาก่อนค่ามาตรฐาน (TS กำลังบริการอยู่) · ไม่มีทั้งสอง = ข้ามได้ · ไม่ใช่จำนวนเต็มบวก = ไม่นับ (แถวที่ไม่พกช่องนี้ = พฤติกรรมเดิม) */
+  assert.equal(serviceSetupSkipState(rev({ activePlanSiteIds: ['S1'], standardMlTermCount: 2 }), { canEdit: true }).blockedReason,
+    SERVICE_DEFER_TEXT.predecessorRunning('SO-26090001-0', 1));
+  for (const standardMlTermCount of [0, undefined, null, -1, 'x', 1.5]) {
+    assert.equal(serviceSetupSkipState(rev({ standardMlTermCount }), { canEdit: true }).canSkip, true, String(standardMlTermCount));
+  }
+  assert.equal(serviceSetupSkipState(unansweredCtx({ predecessor: null }), { canEdit: true }).canSkip, true, 'ไม่ใช่ใบ Rev.');
+  /* เหตุของใบเดิมมาก่อนเหตุของข้อที่ข้ามไม่ได้ */
+  const mlNoMoney = noPeriodCtx({ installments: [], order: orderOf({ revisedFromId: 'SO0' }), predecessor: { ...PREDECESSOR, activePlanSiteIds: [], standardMlTermCount: 1 } });
+  assert.equal(serviceSetupSkipState(mlNoMoney, { canEdit: true }).blockedReason, SERVICE_DEFER_TEXT.predecessorStandard('SO-26090001-0', 1));
+
+  /* ด่านอนุมัติ: มีตราการข้าม + ยังขาดข้อของการตั้ง แต่รอบขายของใบเดิมมีค่ามาตรฐาน ⇒ ฐานไม่เข้า D1 (RAISE ไม่ครบ) ⇒ JS ไม่ถือว่าเป็นการอนุมัติแบบข้าม */
+  const pending = { ...withMl, order: { ...withMl.order, status: 'pending_approval', ...deferCols() } };
+  const gate = serviceSetupApprovalGate(pending);
+  assert.deepEqual([gate.deferring, keys(gate.blocking), gate.deferredIssues], [false, ['kind_missing', 'kind_missing'], []]);
+  const view = serviceSetupView(pending, { canEdit: true, userId: 'U-SUP', role: 'ae_supervisor' });
+  assert.deepEqual([view.deferred.active, view.deferred.missing, view.deferred.blocking], [false, 0, 2], 'ประกาศบนใบ = "ข้ามไม่ได้แล้ว · ตีกลับ" (pendingStuck)');
+});
+
+test('0404 🔴 ด่านเงินของการยื่นแบบข้าม (lib-01): ใบที่ยังไม่ตอบ ‘งานบริการ?’ ถูกตรวจงวดชำระ/วันวางบิล/กำหนดชำระเหมือนมีแพ็คเกจ — ล้างคำตอบแล้วข้ามไม่ได้', () => {
+  const can = { canEdit: true };
+  const answered = (installments, over = {}) => ctxOf({ lines: [done(1), manual(2)], zones: [zone('Z1', 'S1')], allocations: [alloc('SOL-1', 'Z1', 2)], installments, ...over });
+  const dueless = [{ ...monthlyRows()[0], dueDate: null }];
+
+  /* ① ตอบ ‘ใช่’ หนึ่งรายการ · ไม่มีงวด → ข้อเงินอยู่ใน serviceSetupIssues แล้ว (กลุ่ม blocking) · ไม่มีข้อเพิ่ม */
+  const a1 = answered([]);
+  assert.ok(keys(serviceSetupIssues(a1)).includes('installments_missing'));
+  assert.deepEqual(serviceSetupSkipMoneyIssues(a1), [], 'ใบที่มีแพ็คเกจแล้ว: ไม่ซ้ำกับข้อของ serviceSetupIssues');
+  const s1 = serviceSetupSkipState(a1, can);
+  assert.deepEqual([s1.canSkip, s1.blockingCount, s1.extraIssues], [false, 1, []]);
+
+  /* ② ทุกรายการยังไม่ตอบ · ไม่มีงวด → serviceSetupIssues ไม่มีข้อเงิน (เหมือนเดิม) แต่การยื่นแบบข้ามติด "ยังไม่มีงวดชำระ" */
+  const u1 = unansweredCtx({ installments: [] });
+  assert.deepEqual(keys(serviceSetupIssues(u1)), ['kind_missing', 'kind_missing'], 'ข้อของการยื่นปกติไม่เปลี่ยน');
+  assert.deepEqual(keys(serviceSetupSkipMoneyIssues(u1)), ['installments_missing']);
+  const s2 = serviceSetupSkipState(u1, can);
+  assert.deepEqual([s2.visible, s2.canSkip, s2.deferredCount, s2.blockingCount, s2.prompt], [true, false, 2, 1, null]);
+  assert.deepEqual(keys(s2.extraIssues), ['installments_missing']);
+  assert.equal(s2.blockedReason, SERVICE_DEFER_TEXT.blocked(1));
+  assert.equal(s2.lead, SERVICE_DEFER_TEXT.panelBlocked(2, 1), 'ป้าย ‘ข้ามได้’ ยังขึ้นบนข้อของการตั้งงานบริการ (skipTagsShown)');
+
+  /* ③ ตอบ ‘ใช่’ · งวดไม่มีกำหนดชำระ → ติด · ④ ล้างคำตอบ (ทุกรายการยังไม่ตอบ) งวดเดิม → **ยังติด** (ช่องโหว่ที่ตรวจทานเจอ) */
+  const s3 = serviceSetupSkipState(answered(dueless), can);
+  assert.equal(s3.canSkip, false);
+  assert.ok(keys(serviceSetupIssues(answered(dueless))).includes('due_missing'));
+  const u2 = unansweredCtx({ installments: dueless });
+  assert.deepEqual(keys(serviceSetupIssues(u2)), ['kind_missing', 'kind_missing']);
+  const s4 = serviceSetupSkipState(u2, can);
+  assert.deepEqual([s4.canSkip, s4.blockingCount, keys(s4.extraIssues)], [false, 1, ['due_missing']]);
+  assert.deepEqual([s4.extraIssues[0].installmentId, s4.extraIssues[0].seq, s4.extraIssues[0].owner], ['I1', 1, 'SA'], 'ข้อพกงวดที่ต้องแก้ — แผงแดงมี "ไปแก้"');
+  /* ลูกค้าเครดิต: วันวางบิลก็บังคับ */
+  const credit = { billing: { mode: 'monthly', days: [25] }, payment: { mode: 'credit', days: 30 } };
+  const u3 = unansweredCtx({ installments: [{ ...monthlyRows()[0], billingDate: null }], customerBillingRule: credit });
+  const billing = keys(serviceSetupSkipMoneyIssues(u3));
+  assert.deepEqual(billing, ['billing_missing']);
+  assert.deepEqual(billing, keys(serviceSetupIssues(answered([{ ...monthlyRows()[0], billingDate: null }], { customerBillingRule: credit }))
+    .filter((i) => serviceSetupIssueGroup(i) === 'blocking')), 'ข้อเงินเท่ากับของใบเดียวกันที่ตอบ ‘ใช่’ แล้ว');
+
+  /* ข้อช่วงครอบ (เลื่อนได้) ไม่ถูกเติม — งวดมีกำหนดชำระแต่ไม่มีช่วงครอบ = ข้ามได้ */
+  const u4 = unansweredCtx({ installments: monthlyRows({ coversFrom: null, coversTo: null }) });
+  assert.deepEqual(serviceSetupSkipMoneyIssues(u4), []);
+  assert.equal(serviceSetupSkipState(u4, can).canSkip, true);
+  /* ยอดศูนย์ = ไม่ต้องมีงวด · ทุกรายการตอบ ‘ไม่ใช่’ (เหลือข้อโซนค้าง) = ไม่มีข้อเพิ่ม · ยังไม่บันทึก = ไม่คิด */
+  assert.deepEqual(serviceSetupSkipMoneyIssues(unansweredCtx({ installments: [], order: orderOf({ totalAmount: 0 }) })), []);
+  const notService = ctxOf({ lines: [manual(1, { serviceKind: 'not_service' })], zones: [zone('Z1', 'S1')], allocations: [alloc('SOL-1', 'Z1', 1)], installments: [] });
+  assert.deepEqual(keys(serviceSetupIssues(notService)), ['zones_on_not_service']);
+  assert.deepEqual(serviceSetupSkipMoneyIssues(notService), []);
+  assert.deepEqual(serviceSetupSkipMoneyIssues({ unsaved: true }), []);
+
+  /* ด่านอนุมัติของใบรออนุมัติที่ยังข้ามอยู่: ข้อเงินชุดเดียวกันหยุดการอนุมัติ (งวดถูกลบ/แก้ระหว่างรออนุมัติ) · ใบที่ไม่มีตรา = ทุกข้อเหมือนเดิม */
+  const pending = { ...u1, order: { ...u1.order, status: 'pending_approval', ...deferCols() } };
+  const gate = serviceSetupApprovalGate(pending);
+  assert.deepEqual([gate.deferring, keys(gate.blocking), keys(gate.deferredIssues)], [true, ['installments_missing'], ['kind_missing', 'kind_missing']]);
+  const view = serviceSetupView(pending, { canEdit: true, userId: 'U-SUP', role: 'ae_supervisor' });
+  assert.deepEqual(keys(view.issues), ['installments_missing'], 'โมดัลอนุมัติ: "งานบริการยังขาด 1 ข้อ"');
+  assert.deepEqual([view.deferred.active, view.deferred.missing, view.deferred.blocking], [true, 2, 1]);
+  const plain = { ...u1, order: { ...u1.order, status: 'pending_approval' } };
+  assert.deepEqual(keys(serviceSetupApprovalGate(plain).blocking), ['kind_missing', 'kind_missing'], 'ไม่มีตราการข้าม = ด่านเดิมทุกตัวอักษร (ไม่มีข้อเพิ่ม)');
+  /* ก้อน GET ของใบร่าง: `issues` ไม่มีข้อเพิ่ม (ไม่ใช่ข้อของการยื่นปกติ) — อยู่ที่ `skip.extraIssues` */
+  const draft = serviceSetupView(u1, { canEdit: true, userId: 'U-AE', role: 'ae' });
+  assert.deepEqual(keys(draft.issues), ['kind_missing', 'kind_missing']);
+  assert.deepEqual(keys(draft.skip.extraIssues), ['installments_missing']);
+});
+
+test('0404 โมดัลยืนยันการข้าม: บอกผลครบ (ข้ามกี่ข้อ · นับ Actual แต่ยังไม่ส่ง TS · ทางเดินหลังอนุมัติ · ล้างเมื่อดึงกลับ/ตีกลับ) · ป้อน approvalPrompt ได้', () => {
+  const prompt = serviceDeferPrompt(unansweredCtx());
+  assert.deepEqual(prompt, {
+    title: 'ยื่นอนุมัติโดยยังไม่ตั้งงานบริการ',
+    verb: 'ยื่น',
+    subject: 'SO-26100005-0 ให้ AE Supervisor ตรวจอนุมัติ โดยยังไม่ตั้งงานบริการ',
+    effects: [
+      'ข้ามการตั้งงานบริการ 2 ข้อ — ผู้อนุมัติเห็นว่าใบนี้ยังไม่ตั้งงานบริการ และตีกลับให้ตั้งก่อนได้',
+      'เมื่ออนุมัติ: ยอดนับเป็น Actual ทันที แต่ยังไม่ส่งงานบริการให้ TS — ไม่มีโซนขึ้น “งานเข้าใหม่ › รอตั้งรอบ”',
+      'หลังอนุมัติ ใบขึ้น ‘ยังไม่ตั้งงานบริการ’ ในคิว ‘รอฉันลงมือ’ ของเจ้าของดีล — ตั้งงานบริการให้ครบ กด ‘ยื่นตรวจงานบริการ’ แล้วผู้จัดการฝ่ายขายอนุมัติอีกครั้ง จึงส่ง TS',
+      'ดึงกลับหรือถูกตีกลับ = การข้ามถูกล้าง ต้องเลือกใหม่ตอนยื่นครั้งถัดไป',
+    ],
+    confirmLabel: 'ยื่นโดยยังไม่ตั้งงานบริการ',
+  });
+  const dialog = approvalPrompt(prompt);
+  assert.equal(dialog.title, 'ยื่นอนุมัติโดยยังไม่ตั้งงานบริการ');
+  assert.equal(dialog.description, 'ยืนยันยื่น SO-26100005-0 ให้ AE Supervisor ตรวจอนุมัติ โดยยังไม่ตั้งงานบริการ หรือไม่');
+  assert.equal(dialog.confirmLabel, 'ยื่นโดยยังไม่ตั้งงานบริการ');
+  for (const line of prompt.effects) assert.ok(dialog.detail.includes(`· ${line}`));
+
+  /* บรรทัดช่วงครอบขึ้นเฉพาะเมื่อมีข้อช่วงครอบที่ถูกเลื่อน — นับเฉพาะข้อช่วงครอบ ไม่นับแพ็คเกจของนิติบุคคลอื่น */
+  const i = (key) => ({ key, owner: 'SA' });
+  const withFollow = serviceDeferPrompt(unansweredCtx(), serviceSetupDeferSplit([i('kind_missing'), i('fg_foreign'), i('coverage_missing'), i('coverage_end')]));
+  assert.equal(withFollow.effects[0], SERVICE_DEFER_TEXT.effectSkip(4));
+  assert.equal(withFollow.effects[3], 'ช่วงครอบบริการของงวดชำระ 2 ข้อเลื่อนไปตรวจตอนยื่นตรวจงานบริการ');
+  assert.equal(withFollow.effects.length, 5);
+  const foreign = serviceDeferPrompt(unansweredCtx(), serviceSetupDeferSplit([i('kind_missing'), i('fg_foreign')]));
+  assert.equal(foreign.effects.length, 4, 'ไม่มีข้อช่วงครอบ = ไม่มีบรรทัดนั้น');
+  assert.equal(serviceDeferPrompt({}, serviceSetupDeferSplit([i('kind_missing')])).subject, 'ใบสั่งขายนี้ ให้ AE Supervisor ตรวจอนุมัติ โดยยังไม่ตั้งงานบริการ');
+});
+
+test('0404 "ใบนี้ยื่นโดยยังไม่ตั้งงานบริการ" (serviceSetupDeferred): รออนุมัติ = pending · อนุมัติแล้วยังไม่ประทับ = approved · อื่น ๆ = null', () => {
+  const flagged = (over = {}) => orderOf({ ...deferCols(), ...over });
+  assert.deepEqual(serviceSetupDeferred(flagged({ status: 'pending_approval' })), { ...DEFER_INFO, stage: 'pending' });
+  assert.deepEqual(serviceSetupDeferred(flagged({ status: 'approved' })), { ...DEFER_INFO, stage: 'approved' });
+  assert.deepEqual(serviceSetupDeferred(flagged({ status: 'approved', serviceSetupState: 'submitted' }))?.stage, 'approved', 'รอผู้จัดการตรวจยังเป็นใบที่ข้าม');
+  assert.deepEqual(serviceSetupDeferred(flagged({ status: 'approved', serviceSetupState: 'rejected' }))?.stage, 'approved');
+  /* ตราคงอยู่เป็นประวัติ แต่ป้ายไม่ขึ้น: ประทับแล้ว · ถูก Rev. ทับ · ย้อนการอนุมัติ · ยกเลิก · ถูกแทน */
+  assert.equal(serviceSetupDeferred(flagged({ status: 'approved', serviceTermsOpenedAt: STAMP })), null);
+  assert.equal(serviceSetupDeferred(flagged({ status: 'approved', supersededById: 'SO2' })), null);
+  for (const status of ['approval_revoked', 'cancelled', 'revised']) assert.equal(serviceSetupDeferred(flagged({ status })), null, status);
+  /* ร่าง/ตีกลับมีตราไม่ได้ (CHECK + trigger ของ 0404) — ถ้าหลุดมาก็ไม่ขึ้นป้าย */
+  for (const status of ['draft', 'rejected']) assert.equal(serviceSetupDeferred(flagged({ status })), null, status);
+  assert.equal(serviceSetupDeferred(flagged({ status: 'pending_approval', origin: 'historical' })), null, 'ใบย้อนหลังไม่เกี่ยว');
+  assert.equal(serviceSetupDeferred(orderOf({ status: 'pending_approval' })), null, 'ไม่มีตรา');
+  assert.equal(serviceSetupDeferred(orderOf({ status: 'pending_approval', serviceSetupDeferredAt: null, serviceSetupDeferredByName: 'x' })), null);
+  assert.equal(serviceSetupDeferred(null), null);
+  assert.equal(serviceSetupDeferred(undefined), null);
+  /* select ที่พกแค่เวลา + ชื่อ (คิว TS) — byId เป็น null ไม่ใช่ undefined */
+  assert.deepEqual(serviceSetupDeferred({ status: 'approved', origin: 'pipeline', serviceSetupDeferredAt: DEFER_AT, serviceSetupDeferredByName: 'Kamonrat P.' }),
+    { at: DEFER_AT, byId: null, byName: 'Kamonrat P.', stage: 'approved' });
+});
+
+test('0404 ข้าม ↔ เปิดแก้หลังอนุมัติ (0396): เหตุการณ์ที่เกิดทีหลังชนะ — ตัวตัดสินสองตัวไม่ตอบพร้อมกัน (D-F10)', () => {
+  /* ข้ามตอนยื่น → อนุมัติ → ตั้ง → ผู้จัดการอนุมัติ (ประทับ) → ฝ่ายขายกด 'แก้งานบริการ' ⇒ "เปิดแก้หลังอนุมัติ" */
+  const reopenedLater = reopenedOrder(deferCols({ serviceSetupDeferredAt: '2026-09-20T02:00:00Z' }));
+  assert.equal(serviceSetupReopened(reopenedLater)?.byName, 'Kamonrat P.');
+  assert.equal(serviceSetupDeferred(reopenedLater), null);
+  /* เคยเปิดแก้ → ยกเลิก → กู้คืนเป็นร่าง → ยื่นโดยยังไม่ตั้งงานบริการ → อนุมัติ ⇒ "ข้ามตอนยื่น" (ช่องของ 0396 ค้างเป็นประวัติ) */
+  const deferredLater = reopenedOrder(deferCols({ serviceSetupDeferredAt: '2026-10-05T02:00:00Z' }));
+  assert.equal(serviceSetupReopened(deferredLater), null);
+  assert.deepEqual(serviceSetupDeferred(deferredLater), { at: '2026-10-05T02:00:00Z', byId: 'U-AE', byName: 'Kamonrat P.', stage: 'approved' });
+  /* เวลาเท่ากันพอดี / เวลาที่อ่านไม่ออก = การเปิดแก้ชนะ (พฤติกรรมเดิมของ 0396) */
+  assert.ok(serviceSetupReopened(reopenedOrder(deferCols({ serviceSetupDeferredAt: REOPEN_AT }))));
+  assert.ok(serviceSetupReopened(reopenedOrder(deferCols({ serviceSetupDeferredAt: 'ไม่ใช่เวลา' }))));
+  /* เวลาแบบ Postgres (ไมโครวินาที + เขตเวลา) เทียบได้ — ละเอียดถึงมิลลิวินาที (สองเหตุการณ์นี้ห่างกันเป็นขั้นของงาน ไม่ใช่เสี้ยววินาที) */
+  assert.equal(serviceSetupReopened(reopenedOrder(deferCols({ serviceSetupDeferredAt: '2026-09-30T08:15:00.001000+00:00' }))), null);
+  assert.equal(serviceSetupReopened(reopenedOrder(deferCols({ serviceSetupDeferredAt: '2026-09-30T15:15:01.123456+07:00' }))), null);
+  assert.ok(serviceSetupReopened(reopenedOrder(deferCols({ serviceSetupDeferredAt: '2026-09-30T15:14:59.999999+07:00' }))), 'ข้ามก่อนเปิดแก้ 1 วินาที (เขตเวลาไทย)');
+  /* ระหว่างรออนุมัติ การเปิดแก้ครั้งเก่าไม่มีผลอยู่แล้ว (สถานะไม่ใช่อนุมัติ) ⇒ ใบขึ้นเป็นใบที่ข้าม */
+  assert.deepEqual(serviceSetupDeferred(reopenedOrder(deferCols({ status: 'pending_approval', serviceSetupDeferredAt: '2026-10-05T02:00:00Z' })))?.stage, 'pending');
+  /* ผู้เรียกที่ select ไม่พกคอลัมน์ของ 0404 = เหมือนเดิม */
+  assert.deepEqual(serviceSetupReopened(reopenedOrder()), serviceSetupReopened(reopenedOrder({ serviceSetupDeferredAt: undefined })));
+});
+
+test('0404 ด่านอนุมัติใบ (serviceSetupApprovalGate): ไม่มีตรา = ทุกข้อหยุด (เหมือนเดิม) · ยังข้ามอยู่ = หยุดเฉพาะข้อที่ข้ามไม่ได้', () => {
+  const pending = (ctx, flag = true) => ({ ...ctx, order: { ...ctx.order, status: 'pending_approval', ...(flag ? deferCols() : {}) } });
+
+  /* ไม่มีตรา — ทุกข้อหยุดการอนุมัติ (อาร์เรย์เดิม) */
+  const plainIssues = serviceSetupIssues(pending(unansweredCtx(), false));
+  const plain = serviceSetupApprovalGate(pending(unansweredCtx(), false), plainIssues);
+  assert.deepEqual([plain.deferred, plain.deferring, plain.deferredIssues], [null, false, []]);
+  assert.equal(plain.blocking, plainIssues, 'ไม่ข้าม = ข้อชุดเดิมทั้งชุด');
+
+  /* มีตรา + ยังขาดข้อของการตั้ง ⇒ อนุมัติแบบไม่เปิดรอบขาย: ไม่มีข้อไหนหยุด */
+  const skipping = serviceSetupApprovalGate(pending(unansweredCtx()));
+  assert.deepEqual(skipping.deferred, { ...DEFER_INFO, stage: 'pending' });
+  assert.deepEqual([skipping.deferring, skipping.blocking, keys(skipping.deferredIssues)], [true, [], ['kind_missing', 'kind_missing']]);
+
+  /* มีตรา + ข้อของการตั้ง + ข้อที่ตามมา ⇒ เลื่อนทั้งคู่ */
+  const follow = serviceSetupApprovalGate(pending(noPeriodCtx({ installments: monthlyRows({ coversFrom: null, coversTo: null }) })));
+  assert.deepEqual([follow.deferring, follow.blocking.length, follow.deferredIssues.length], [true, 0, 13]);
+
+  /* มีตรา + ข้อของการตั้ง + ข้อที่ข้ามไม่ได้ (งวดหายระหว่างรออนุมัติ) ⇒ หยุดเฉพาะข้อที่ข้ามไม่ได้ */
+  const mixed = serviceSetupApprovalGate(pending(noPeriodCtx({ installments: [] })));
+  assert.deepEqual([mixed.deferring, keys(mixed.blocking), keys(mixed.deferredIssues)], [true, ['installments_missing'], ['period_missing']]);
+  const fn = serviceSetupApprovalGate(pending(fnGapCtx()));
+  assert.deepEqual([fn.deferring, fn.blocking.map((i) => [i.key, i.owner])], [true, [['coverage_gap', 'FN']]], 'ข้อของบัญชีหยุดการอนุมัติเสมอ');
+
+  /* มีตรา แต่ไม่เหลือข้อของการตั้ง (ฐานเห็นว่าครบ ⇒ เปิดรอบขายตามปกติ) ⇒ ด่านเต็มชุดของวันนี้: ข้อที่ตามมาก็หยุด */
+  const stuck = serviceSetupApprovalGate(pending(completeCtx({ installments: monthlyRows({ coversFrom: null, coversTo: null }) })));
+  assert.deepEqual([stuck.deferring, stuck.blocking.length, stuck.deferredIssues], [false, 12, []]);
+  assert.ok(stuck.deferred, 'ตรายังอยู่ — แค่ไม่มีผลกับการอนุมัติ');
+  const foreign = serviceSetupApprovalGate(pending(completeCtx({ fgOptionIds: new Set() })));
+  assert.deepEqual([foreign.deferring, [...new Set(keys(foreign.blocking))]], [false, ['fg_foreign']]);
+  /* มีตรา + ครบทุกอย่าง ⇒ ไม่มีอะไรหยุด และไม่ใช่การอนุมัติแบบข้าม */
+  const complete = serviceSetupApprovalGate(pending(completeCtx()));
+  assert.deepEqual([complete.deferring, complete.blocking, complete.deferredIssues], [false, [], []]);
+
+  /* เส้นตั้งย้อนหลัง (อนุมัติแล้ว) ไม่ใช่ด่านนี้ — ทุกข้อหยุดการยื่นตรวจ/อนุมัติงานบริการเหมือนเดิม */
+  const approved = unansweredCtx({ order: orderOf({ status: 'approved', ...deferCols() }) });
+  const backfill = serviceSetupApprovalGate(approved);
+  assert.deepEqual([backfill.deferred?.stage, backfill.deferring, keys(backfill.blocking)], ['approved', false, ['kind_missing', 'kind_missing']]);
+
+  /* 🔴 fail-closed: ไม่ส่งข้อ = คิดเองจากบริบท ซึ่งต้องโหลดตัวเลือก FG มาแล้ว */
+  assert.throws(() => serviceSetupApprovalGate({ ...pending(unansweredCtx()), fgOptionIds: null }), /fgOptionIds/);
+});
+
+test('0404 🔴 โมดัลอนุมัติของใบที่ข้าม: ใบที่ทุกรายการยังไม่ตอบ (ไม่มีแพ็คเกจให้นับ) ต้องพูดว่า "ยังไม่ส่ง TS" ไม่ใช่ "ใบนี้ไม่มีแพ็คเกจบริการ"', () => {
+  const ctx = unansweredCtx({ order: orderOf({ status: 'pending_approval', ...deferCols() }) });
+  assert.equal(serviceSetupTotals(ctx).packageLines, 0);
+  assert.deepEqual(serviceSetupApprovalEffects(ctx), [
+    'ยังไม่ส่งงานบริการให้ TS — ผู้ยื่นเลือกข้ามการตั้งงานบริการ (ยังขาด 2 ข้อ) · ไม่มีโซนขึ้น “งานเข้าใหม่ › รอตั้งรอบ”',
+    'หลังอนุมัติ ใบขึ้น ‘ยังไม่ตั้งงานบริการ’ ในคิว ‘รอฉันลงมือ’ ของเจ้าของดีล — ฝ่ายขายตั้งงานบริการ กด ‘ยื่นตรวจงานบริการ’ แล้วผู้จัดการฝ่ายขายอนุมัติอีกครั้ง จึงส่ง TS',
+  ]);
+  assert.deepEqual(serviceSetupApprovalChecklist(ctx),
+    ['ใบนี้ยื่นโดยยังไม่ตั้งงานบริการ (Kamonrat P. 02/10/2026) — ถ้าต้องให้ตั้งก่อน กด ‘ตีกลับให้แก้ไข’ แทนการอนุมัติ']);
+  assert.equal(serviceSetupStripText(ctx), 'งานบริการ: ข้ามการตั้งตอนยื่น · ยังขาด 2 ข้อ · อนุมัติแล้วยังไม่ส่ง TS');
+  assert.ok(serviceSetupStripText(ctx).includes(SERVICE_DEFERRED_TEXT.stripWarn), 'แถบหาคำเตือนด้วยสตริงย่อยนี้');
+  assert.deepEqual(serviceSetupHeroFact(ctx), { label: 'รอบบริการที่ขาย', value: 'ยังไม่ตั้ง', sub: 'ข้ามตอนยื่น — ตั้งหลังอนุมัติ', tone: 'muted' });
+  /* ไม่เตือนเรื่องสัญญา (ยังไม่มีอะไรส่งให้ TS) และไม่พูดว่าเปิดงานให้ TS */
+  assert.ok(!serviceSetupApprovalEffects(ctx).some((line) => line.includes('ยังไม่ผูกสัญญา') || line.startsWith('เปิดงานบริการให้ TS')));
+  /* ใบเดียวกันที่ไม่มีตรา — คำเดิมทุกตัวอักษร (ใบแบบนี้ผ่านด่านยื่นไม่ได้อยู่แล้ว แต่คำของผิวต้องไม่เปลี่ยน) */
+  const plain = unansweredCtx({ order: orderOf({ status: 'pending_approval' }) });
+  assert.deepEqual(serviceSetupApprovalEffects(plain), ['ใบนี้ไม่มีแพ็คเกจบริการ — ไม่มีอะไรส่งให้ TS']);
+  assert.deepEqual(serviceSetupApprovalChecklist(plain), []);
+  assert.equal(serviceSetupStripText(plain), 'งานบริการ: ใบนี้ไม่มีแพ็คเกจบริการ');
+  /* ตอบ 'ไม่ใช่' แล้วแต่โซนค้าง (ไม่มีทั้งแพ็คเกจและรายการที่ยังไม่ตอบ) ก็ยังเป็นใบที่ข้าม */
+  const stray = ctxOf({
+    order: orderOf({ status: 'pending_approval', ...deferCols() }),
+    lines: [manual(1, { serviceKind: 'not_service' })], zones: [zone('Z1', 'S1')], allocations: [alloc('SOL-1', 'Z1', 1)],
+  });
+  assert.equal(serviceSetupHeroFact(stray).sub, SERVICE_DEFERRED_TEXT.heroPending);
+  assert.equal(serviceSetupApprovalEffects(stray)[0], SERVICE_DEFERRED_TEXT.approveEffectNoTs(1));
+  /* ผู้เรียกที่ไม่มีตัวเลือก FG ต้องส่งข้อมาเอง (ใบรออนุมัติที่มีตรา) — ไม่ส่ง = throw ไม่เดา */
+  const bare = { ...ctx, fgOptionIds: null };
+  assert.throws(() => serviceSetupApprovalEffects(bare), /fgOptionIds/);
+  assert.deepEqual(serviceSetupApprovalEffects(bare, { issues: serviceSetupIssues(ctx) }), serviceSetupApprovalEffects(ctx));
+  assert.equal(serviceSetupStripText(bare, { issues: serviceSetupIssues(ctx) }), serviceSetupStripText(ctx));
+});
+
+test('0404 ก้อน GET ของใบร่าง: `skip` (ปุ่มข้าม) คิดจากทุกข้อ · `deferred` null · ผิวอื่นเหมือนเดิม', () => {
+  const view = serviceSetupView(unansweredCtx(), { canEdit: true, userId: 'U-AE', role: 'ae' });
+  assert.equal(view.flow, 'pipeline');
+  assert.equal(view.deferred, null);
+  assert.deepEqual(view.skip, serviceSetupSkipState(unansweredCtx(), { canEdit: true }));
+  assert.equal(view.skip.canSkip, true);
+  assert.deepEqual(keys(view.issues), ['kind_missing', 'kind_missing'], 'ใบร่าง: issues = ทุกข้อ (แผงแดงวาดจากชุดนี้)');
+  assert.deepEqual(view.approvalEffects, ['ใบนี้ไม่มีแพ็คเกจบริการ — ไม่มีอะไรส่งให้ TS']);
+  /* ผู้อ่านที่แก้ใบไม่ได้ไม่เห็นปุ่ม */
+  assert.deepEqual(serviceSetupView(unansweredCtx(), { canEdit: false, userId: 'U-FN', role: 'finance' }).skip, SKIP_NONE);
+  /* ใบที่ตั้งครบ / ใบสถานะอื่น = ก้อนกลาง */
+  assert.deepEqual(serviceSetupView(completeCtx(), { canEdit: true }).skip, SKIP_NONE);
+  assert.deepEqual(serviceSetupView(s247Ctx(), { canEdit: true, reopenBlockers: [] }).skip, SKIP_NONE);
+  assert.equal(serviceSetupView(s247Ctx(), { canEdit: true, reopenBlockers: [] }).deferred, null);
+});
+
+test('0404 ก้อน GET ของใบรออนุมัติที่ข้าม (D-F11): issues = ข้อที่หยุดการอนุมัติเท่านั้น · `deferred` บอก active/missing/blocking สี่แบบ', () => {
+  const pending = (ctx) => ({ ...ctx, order: { ...ctx.order, status: 'pending_approval', submittedByName: 'Kamonrat P.', submittedAt: DEFER_AT, ...deferCols() } });
+  const sup = { canEdit: true, userId: 'U-SUP', role: 'ae_supervisor' };
+
+  /* ① ยังข้ามอยู่ ไม่มีข้อที่ข้ามไม่ได้ — อนุมัติได้เลย (ไม่เปิดรอบขาย) */
+  const a = serviceSetupView(pending(unansweredCtx()), sup);
+  assert.deepEqual([a.flow, a.mode], ['locked', 'read']);
+  assert.deepEqual(a.issues, [], 'โมดัลอนุมัติไม่ขึ้น "อนุมัติไม่ได้ — งานบริการยังขาด n ข้อ"');
+  assert.deepEqual(a.deferred, { ...DEFER_INFO, stage: 'pending', active: true, missing: 2, blocking: 0 });
+  assert.deepEqual(a.skip, SKIP_NONE, 'ยื่นไปแล้ว — ไม่มีปุ่มข้าม');
+  assert.equal(a.reopened, null);
+  assert.deepEqual(a.approvalEffects, [SERVICE_DEFERRED_TEXT.approveEffectNoTs(2), SERVICE_DEFERRED_TEXT.approveEffectAfter]);
+  assert.deepEqual(a.approvalChecklist, [SERVICE_DEFERRED_TEXT.approveCheck(a.deferred)]);
+  assert.equal(a.stripText, SERVICE_DEFERRED_TEXT.strip(2));
+  assert.deepEqual([a.hero.value, a.hero.sub], ['ยังไม่ตั้ง', SERVICE_DEFERRED_TEXT.heroPending]);
+  assert.equal(a.approvalSubject, 'SO-26100005-0 · ยื่นโดย Kamonrat P. 02/10/2026', 'ประโยคหัวโมดัลไม่เปลี่ยน');
+  assert.equal(a.editBlockedReason, serviceSetupEditError(pending(unansweredCtx()).order, { canEdit: true }), 'รออนุมัติยังแก้ไม่ได้ตามเดิม');
+
+  /* ② ยังข้ามอยู่ + มีข้อที่ข้ามไม่ได้ (งวดถูกลบระหว่างรออนุมัติ) — อนุมัติไม่ได้ ต้องตีกลับ */
+  const b = serviceSetupView(pending(noPeriodCtx({ installments: [] })), sup);
+  assert.deepEqual(keys(b.issues), ['installments_missing']);
+  assert.deepEqual(b.deferred, { ...DEFER_INFO, stage: 'pending', active: true, missing: 1, blocking: 1 });
+  assert.deepEqual(b.approvalEffects, [SERVICE_DEFERRED_TEXT.approveEffectNoTs(1), SERVICE_DEFERRED_TEXT.approveEffectAfter]);
+
+  /* ③ เลือกข้ามไว้ แต่ตอนนี้ครบแล้ว — อนุมัติ = เปิดงานให้ TS ตามปกติ (ตราไม่มีผล) */
+  const plainComplete = { ...completeCtx(), order: { ...completeCtx().order, status: 'pending_approval', submittedByName: 'Kamonrat P.', submittedAt: DEFER_AT } };
+  const plainView = serviceSetupView(plainComplete, sup);
+  const c = serviceSetupView(pending(completeCtx()), sup);
+  assert.deepEqual(c.issues, []);
+  assert.deepEqual(c.deferred, { ...DEFER_INFO, stage: 'pending', active: false, missing: 0, blocking: 0 });
+  assert.deepEqual(c.approvalEffects, [SERVICE_DEFERRED_TEXT.approveEffectComplete, ...plainView.approvalEffects], 'บรรทัดเดิมครบ + บอกว่าตราการข้ามไม่มีผลแล้ว');
+  assert.ok(c.approvalEffects[1].startsWith('เปิดงานบริการให้ TS'));
+  assert.deepEqual([c.approvalChecklist, c.stripText, c.hero], [plainView.approvalChecklist, plainView.stripText, plainView.hero]);
+
+  /* ④ เลือกข้ามไว้ แต่ข้ามไม่ได้แล้ว (ไม่เหลือข้อของการตั้ง) และยังขาดข้ออื่น — อนุมัติไม่ได้ · ไม่สัญญาอะไร */
+  const stuckCtx = completeCtx({ installments: monthlyRows({ coversFrom: null, coversTo: null }) });
+  const d = serviceSetupView(pending(stuckCtx), sup);
+  assert.equal(d.issues.length, 12);
+  assert.deepEqual(d.deferred, { ...DEFER_INFO, stage: 'pending', active: false, missing: 0, blocking: 12 });
+  const plainStuck = serviceSetupView({ ...stuckCtx, order: pending(stuckCtx).order && { ...stuckCtx.order, status: 'pending_approval', submittedByName: 'Kamonrat P.', submittedAt: DEFER_AT } }, sup);
+  assert.deepEqual(d.approvalEffects, plainStuck.approvalEffects, 'ไม่มีบรรทัด "ครบแล้ว" ระหว่างที่ยังขาดข้อ');
+  assert.deepEqual([d.approvalChecklist, d.stripText, d.hero, d.issues], [plainStuck.approvalChecklist, plainStuck.stripText, plainStuck.hero, plainStuck.issues]);
+
+  /* ใบรออนุมัติที่ไม่มีตรา: issues = ทุกข้อ (เหมือนเดิม) · deferred null */
+  const noFlag = serviceSetupView({ ...unansweredCtx(), order: orderOf({ status: 'pending_approval' }) }, sup);
+  assert.deepEqual([keys(noFlag.issues), noFlag.deferred], [['kind_missing', 'kind_missing'], null]);
+});
+
+test('0404 ก้อน GET หลังอนุมัติแบบข้าม: เส้นตั้งย้อนหลังเดิมทั้งเส้น (แก้ได้ · ยื่นตรวจ · ผู้จัดการตรวจ) + ป้าย "ข้ามตอนยื่น"', () => {
+  const approved = (ctx, over = {}) => ({ ...ctx, order: { ...ctx.order, status: 'approved', approvedAt: '2026-10-03T03:00:00Z', ...deferCols(), ...over } });
+  const ae = { canEdit: true, userId: 'U-AE', role: 'ae' };
+
+  const view = serviceSetupView(approved(unansweredCtx()), ae);
+  assert.deepEqual([view.flow, view.mode, view.backfill.canSubmit], ['backfill', 'edit', true], 'เส้นเดิมรับใบนี้โดยไม่มีอะไรเปลี่ยน');
+  assert.equal(serviceBackfillNeeded(approved(unansweredCtx()).order, [manual(1), manual(2)]), true);
+  assert.deepEqual(view.deferred, { ...DEFER_INFO, stage: 'approved', active: true, missing: 2, blocking: 0 });
+  assert.deepEqual(keys(view.issues), ['kind_missing', 'kind_missing'], 'เส้นตั้งย้อนหลัง: issues = ทุกข้อ (ด่านยื่นตรวจเต็มชุด)');
+  assert.deepEqual(view.skip, SKIP_NONE);
+  assert.equal(view.reopened, null);
+  assert.equal(view.reopen.visible, false, 'ยังไม่ประทับ — ไม่มีปุ่มแก้งานบริการ');
+  assert.equal(view.hero.sub, 'ตั้งที่ตารางรายการ แล้วยื่นตรวจ · ข้ามตอนยื่น — ยังไม่ส่ง TS');
+  assert.ok(view.backfillSubmitPrompt, 'โมดัลยื่นตรวจงานบริการตัวเดิม');
+
+  /* ตั้งครบแล้วยื่นตรวจ → ผู้จัดการ: ข้อแรกของสิ่งที่ต้องตรวจบอกว่าใบนี้อนุมัติมาโดยข้าม · ด่านเงิน "เริ่มใช้" (ประทับครั้งแรก) */
+  const sent = approved(completeCtx(), { serviceSetupState: 'submitted', serviceSetupSubmittedById: 'U-AE', serviceSetupSubmittedByName: 'Kamonrat P.', serviceSetupSubmittedAt: '2026-10-04T03:00:00Z' });
+  const review = serviceSetupView(sent, { canEdit: true, userId: 'U-SUP', role: 'ae_supervisor' });
+  assert.equal(review.backfill.canReview, true);
+  assert.equal(review.approvalChecklist[0], 'ใบนี้อนุมัติโดยข้ามการตั้งงานบริการตอนยื่น (Kamonrat P. 02/10/2026)');
+  assert.ok(review.approvalChecklist[1].startsWith('ตรวจแพ็คเกจ'));
+  assert.ok(review.approvalEffects.some((e) => e.startsWith('ด่านเงินของบัญชีเริ่มใช้กับใบนี้')), 'คำของใบเดิมจริงกับใบนี้ (ยังไม่เคยประทับ)');
+  assert.ok(review.approvalEffects[0].startsWith('เปิดงานบริการให้ TS'));
+  assert.ok(review.hero.sub.endsWith(' · รอตรวจ'), review.hero.sub);
+  assert.deepEqual(review.deferred, { ...DEFER_INFO, stage: 'approved', active: true, missing: 0, blocking: 0 });
+  /* ไม่ใช่ใบที่ข้าม = ไม่มีข้อนั้น (คำเดิม) */
+  const legacy = { ...sent, order: { ...sent.order, serviceSetupDeferredAt: null, serviceSetupDeferredById: null, serviceSetupDeferredByName: null } };
+  assert.ok(serviceSetupApprovalChecklist(legacy, { flow: 'backfill' })[0].startsWith('ตรวจแพ็คเกจ'));
+  assert.deepEqual(serviceSetupApprovalChecklist(sent, { flow: 'backfill' }).slice(1), serviceSetupApprovalChecklist(legacy, { flow: 'backfill' }));
+  assert.deepEqual(serviceSetupApprovalEffects(sent, { flow: 'backfill' }), serviceSetupApprovalEffects(legacy, { flow: 'backfill' }));
+
+  /* ผู้จัดการอนุมัติแล้ว (ประทับ) — ตราคงเป็นประวัติ ทุกผิวเท่ากับใบประทับปกติ · ปุ่ม 'แก้งานบริการ' ของ 0396 ใช้ได้ */
+  const stampedFlag = s247Ctx({ order: stampedOrder(deferCols()) });
+  const opts = { canEdit: true, userId: 'U-AE', role: 'ae', reopenBlockers: [] };
+  assert.deepEqual(serviceSetupView(stampedFlag, opts), serviceSetupView(s247Ctx(), opts));
+  assert.equal(serviceSetupView(stampedFlag, opts).reopen.visible, true);
+});
+
+test('0404 ตราการข้ามที่ค้างบนใบสถานะอื่นไม่มีผลกับผิวไหนเลย (ย้อนการอนุมัติ · ยกเลิก · ถูกแทน · ถูก Rev. ทับ)', () => {
+  const opts = { canEdit: true, userId: 'U-AE', role: 'ae' };
+  for (const over of [{ status: 'approval_revoked' }, { status: 'cancelled' }, { status: 'revised', supersededById: 'SO2' }, { status: 'approved', supersededById: 'SO2' }]) {
+    for (const make of [unansweredCtx, completeCtx, noPeriodCtx]) {
+      const plain = make();
+      const withFlag = { ...plain, order: { ...plain.order, ...over, ...deferCols() } };
+      const without = { ...plain, order: { ...plain.order, ...over } };
+      const strip = ({ order, ...rest }) => rest;
+      assert.deepEqual(serviceSetupView(withFlag, opts), serviceSetupView(without, opts), JSON.stringify(over));
+      assert.deepEqual(strip(withFlag), strip(without));
+    }
+  }
+});
+
+test('0404 แคตตาล็อก: คีย์ตามสัญญากับจอ · คำตามแผน (ตามตัวอักษร) · คำรอบ/แพ็คจากแคตตาล็อกกลาง · ไม่มีคำต้องห้าม', () => {
+  const T = SERVICE_DEFER_TEXT;
+  const D = SERVICE_DEFERRED_TEXT;
+  assert.deepEqual(Object.keys(T), ['button', 'deferTag', 'panelLead', 'panelBlocked', 'blocked', 'predecessorRunning', 'panelPredecessor',
+    'predecessorStandard', 'panelPredecessorStandard',
+    'title', 'verb', 'subject', 'effectSkip', 'effectApprove', 'effectAfter', 'effectCoverage', 'effectReset', 'confirmLabel', 'toast', 'gone', 'complete',
+    'unsavedDocument', 'failed', 'loadFailed', 'noSites']);
+  assert.deepEqual(Object.keys(D), ['badge', 'who', 'pendingTitle', 'pendingLine', 'pendingHow', 'pendingComplete', 'pendingBlocked', 'pendingStuck',
+    'strip', 'stripWarn', 'heroPending', 'approveCheck', 'approveEffectNoTs', 'approveEffectAfter', 'approveEffectComplete', 'approvedToast',
+    'bannerTitle', 'bannerLine', 'railEyebrow', 'railTitle', 'railMeta', 'railLine', 'actualNote', 'cardMeta', 'cardMetaSubmitted', 'heroSuffix',
+    'queueLabel', 'queueTag', 'auditTag', 'checklistLine', 'tsPrefix', 'tsSub', 'tsOrphanTitle']);
+  assert.ok(Object.isFrozen(T) && Object.isFrozen(D));
+
+  /* ปุ่ม · แผงแดง · โมดัล */
+  assert.deepEqual([T.button, T.deferTag, T.title, T.verb, T.confirmLabel], ['ยื่นโดยยังไม่ตั้งงานบริการ', 'ข้ามได้', 'ยื่นอนุมัติโดยยังไม่ตั้งงานบริการ', 'ยื่น', 'ยื่นโดยยังไม่ตั้งงานบริการ']);
+  assert.equal(T.panelLead(3), 'ยังไม่พร้อมตั้งงานบริการ? ยื่นได้เลยโดยข้าม 3 ข้อที่ติดป้าย ‘ข้ามได้’ — อนุมัติแล้วนับ Actual ทันที · TS ยังไม่ได้รับงานจนกว่าจะตั้งงานบริการและผู้จัดการฝ่ายขายอนุมัติ');
+  assert.equal(T.panelBlocked(3, 2), 'ข้ามการตั้งงานบริการได้ 3 ข้อ แต่ยังเหลือ 2 ข้อที่ข้ามไม่ได้ (งวดชำระ · วันวางบิล · กำหนดชำระ · ข้อที่รอฝ่ายบัญชี) — แก้ก่อนแล้วจึงยื่น');
+  assert.equal(T.blocked(2), 'ยื่นโดยยังไม่ตั้งงานบริการยังไม่ได้ — เหลือ 2 ข้อที่ข้ามไม่ได้ (งวดชำระ · วันวางบิล · กำหนดชำระ · ข้อที่รอฝ่ายบัญชี) แก้ที่แท็บการชำระก่อน');
+  assert.equal(T.predecessorRunning('SO-26090001-0', 2), 'ยื่นโดยยังไม่ตั้งงานบริการไม่ได้ — SO-26090001-0 ยังมีรอบบริการที่ TS เดินอยู่ 2 ไซต์ · ต้องตั้งงานบริการของใบ Rev. นี้ให้ครบแล้วกด ‘ยื่นอนุมัติ’ ตามปกติ รอบบริการจึงย้ายมาใบนี้');
+  assert.equal(T.predecessorRunning(null, 1), 'ยื่นโดยยังไม่ตั้งงานบริการไม่ได้ — ใบเดิม ยังมีรอบบริการที่ TS เดินอยู่ 1 ไซต์ · ต้องตั้งงานบริการของใบ Rev. นี้ให้ครบแล้วกด ‘ยื่นอนุมัติ’ ตามปกติ รอบบริการจึงย้ายมาใบนี้');
+  assert.equal(T.panelPredecessor('SO-26090001-0'), 'ใบนี้เป็น Rev. ของ SO-26090001-0 ที่ TS ยังเดินรอบบริการอยู่ — ข้ามการตั้งงานบริการไม่ได้ ต้องตั้งให้ครบก่อนยื่น');
+  assert.deepEqual([T.toast, T.gone, T.complete], [
+    'ยื่นอนุมัติแล้ว — ข้ามการตั้งงานบริการไว้ · ตั้งได้หลังอนุมัติ',
+    'ใบนี้ยื่นโดยยังไม่ตั้งงานบริการไม่ได้แล้ว — โหลดข้อมูลล่าสุดแล้ว',
+    'งานบริการครบแล้ว — กด ‘ยื่นอนุมัติ’ ตามปกติ',
+  ]);
+  /* ตรวจทานรอบสุดท้าย (08/10): ใบ Rev. ที่ TS ตั้งมาตรฐาน มล./เดือนบนรอบขายของใบเดิม · ของที่ยังไม่บันทึก · ยื่นไม่ผ่าน/โหลดไม่ขึ้น · ลูกค้ายังไม่มีไซต์ */
+  assert.equal(T.predecessorStandard('SO-26090001-0', 3), 'ยื่นโดยยังไม่ตั้งงานบริการไม่ได้ — TS ตั้งมาตรฐาน มล./เดือนบนรอบขายของ SO-26090001-0 ไว้แล้ว 3 รอบขาย · ต้องตั้งงานบริการของใบ Rev. นี้ให้ครบแล้วกด ‘ยื่นอนุมัติ’ ตามปกติ ค่ามาตรฐานจึงถูกยกมาใบนี้');
+  assert.equal(T.predecessorStandard(null, 1).startsWith('ยื่นโดยยังไม่ตั้งงานบริการไม่ได้ — TS ตั้งมาตรฐาน มล./เดือนบนรอบขายของ ใบเดิม ไว้แล้ว 1 รอบขาย'), true);
+  assert.equal(T.panelPredecessorStandard('SO-26090001-0'), 'ใบนี้เป็น Rev. ของ SO-26090001-0 ที่ TS ตั้งมาตรฐาน มล./เดือนไว้แล้ว — ข้ามการตั้งงานบริการไม่ได้ ต้องตั้งให้ครบก่อนยื่น');
+  assert.equal(T.unsavedDocument, 'มีการแก้ไขที่ยังไม่บันทึก (ข้อมูลใบสั่งขาย · ไฟล์ยืนยันคำสั่งซื้อ · วันของงวดชำระ) — บันทึกก่อน แล้วจึงกด ‘ยื่นโดยยังไม่ตั้งงานบริการ’');
+  assert.deepEqual([T.failed, T.loadFailed], [
+    'ยื่นโดยยังไม่ตั้งงานบริการไม่สำเร็จ — ยังไม่ได้ยื่น ลองกดอีกครั้ง',
+    'โหลดงานบริการล่าสุดไม่สำเร็จ — ยังไม่ได้ยื่น ลองกดอีกครั้ง',
+  ]);
+  /* ประกาศ "ลูกค้ายังไม่มีไซต์" ของใบร่าง — ห้ามพูดว่า "ยื่นอนุมัติไม่ได้จนกว่ามีโซน" (ไม่จริงแล้ว: ยื่นโดยยังไม่ตั้งงานบริการได้) และต้องชี้ทางไปปุ่มข้าม */
+  assert.equal(T.noSites('ลูกค้า AR-0100'), 'ลูกค้า AR-0100 ยังไม่มีไซต์ในทะเบียน — เลือกโซนไม่ได้ · บันทึกร่างได้ · ยื่นอนุมัติตามปกติต้องมีโซนก่อน — ถ้ายังไม่พร้อม กด ‘ยื่นอนุมัติ’ แล้วเลือก ‘ยื่นโดยยังไม่ตั้งงานบริการ’ (ตั้งหลังอนุมัติ)');
+  assert.doesNotMatch(T.noSites('x'), /ยื่นอนุมัติไม่ได้/);
+  assert.ok(T.noSites('x').includes(T.button), 'ชี้ชื่อปุ่มตรงกับปุ่มจริง');
+  assert.equal(T.noSites().startsWith('ลูกค้า ยังไม่มีไซต์'), true);
+  assert.equal(D.tsOrphanTitle(2), 'รอบที่ยังผูกใบเดิม 2 รอบ — ใบ Rev. ล่าสุดยังไม่ตั้งงานบริการ (ฝ่ายขายข้ามตอนยื่น) · ยังไม่ต้องปิดรอบหรือถอนเครื่อง รอฝ่ายขายตั้งงานบริการและผู้จัดการฝ่ายขายอนุมัติก่อน');
+
+  /* ใบรออนุมัติ */
+  const d = { ...DEFER_INFO, stage: 'pending' };
+  assert.deepEqual([D.badge, D.pendingTitle, D.stripWarn, D.heroPending], ['ยังไม่ตั้งงานบริการ', 'ยื่นโดยยังไม่ตั้งงานบริการ', 'ยังไม่ส่ง TS', 'ข้ามตอนยื่น — ตั้งหลังอนุมัติ']);
+  assert.equal(D.who(d), 'Kamonrat P. 02/10/2026');
+  assert.equal(D.who({}), '— —');
+  assert.equal(D.pendingLine(d, 4), 'Kamonrat P. เลือกข้ามการตั้งงานบริการตอนยื่น (02/10/2026) · ยังขาด 4 ข้อ — อนุมัติแล้วนับ Actual ทันที แต่ยังไม่ส่งงานให้ TS จนกว่าจะตั้งงานบริการและผู้จัดการฝ่ายขายอนุมัติ');
+  assert.equal(D.pendingHow, 'ต้องการให้ตั้งก่อนอนุมัติ: ผู้ยื่นกด ‘ดึงกลับ’ หรือผู้อนุมัติกด ‘ตีกลับให้แก้ไข’ (การข้ามถูกล้าง ต้องเลือกใหม่ตอนยื่น)');
+  assert.equal(D.pendingComplete(d), 'Kamonrat P. เลือกข้ามไว้ตอนยื่น (02/10/2026) แต่ตอนนี้งานบริการครบแล้ว — อนุมัติแล้วส่งงานให้ TS ตามปกติ');
+  assert.equal(D.pendingBlocked(2), 'แต่ยังมี 2 ข้อที่ข้ามไม่ได้ — อนุมัติไม่ได้จนกว่าจะตีกลับให้ฝ่ายขายแก้');
+  assert.equal(D.pendingStuck(d, 12), 'Kamonrat P. เลือกข้ามไว้ตอนยื่น (02/10/2026) แต่ตอนนี้ข้ามไม่ได้แล้ว และยังขาด 12 ข้อ — อนุมัติไม่ได้ · ตีกลับให้ฝ่ายขายแก้แล้วยื่นใหม่');
+  assert.equal(D.pendingLine({}, 1).startsWith('ผู้ยื่น เลือกข้าม'), true, 'ไม่มีชื่อ = "ผู้ยื่น"');
+  assert.equal(D.strip(1234), 'งานบริการ: ข้ามการตั้งตอนยื่น · ยังขาด 1,234 ข้อ · อนุมัติแล้วยังไม่ส่ง TS');
+  assert.equal(D.approveEffectComplete, 'ผู้ยื่นเลือกข้ามไว้ตอนยื่น แต่ตอนนี้งานบริการครบแล้ว — อนุมัติแล้วเปิดงานให้ TS ตามปกติ');
+  assert.equal(D.approvedToast, 'อนุมัติแล้ว · นับ Actual แล้ว — ยังไม่ส่งงานให้ TS (ข้ามการตั้งงานบริการตอนยื่น)');
+
+  /* หลังอนุมัติ (เส้นตั้งย้อนหลัง) · คิว · audit · แท็บ TS */
+  const { roundsLabel, packsLabel } = SERVICE_SETUP_LINE_TEXT;
+  assert.equal(D.bannerTitle, 'ข้ามการตั้งงานบริการตอนยื่น');
+  assert.equal(D.bannerLine(d), `ข้ามโดย Kamonrat P. 02/10/2026 — ตั้งงานบริการ (แพ็คเกจ · ไซต์ · โซน · ${roundsLabel} · ${packsLabel} · ช่วงบริการ) แล้วยื่นให้ผู้จัดการฝ่ายขายตรวจ · ยอด/Actual/เอกสารไม่เปลี่ยน`);
+  assert.deepEqual([D.railEyebrow, D.railTitle, D.railMeta], ['Service setup · ข้ามตอนยื่น', 'งานบริการ (ข้ามตอนยื่น)', 'อนุมัติแล้วโดยยังไม่ตั้งงานบริการ — ผู้จัดการฝ่ายขายตรวจก่อนส่งให้ TS']);
+  assert.equal(D.railLine(d), 'ข้ามการตั้งงานบริการตอนยื่น 02/10/2026 โดย Kamonrat P.');
+  assert.equal(D.actualNote('2026-10-03T03:00:00Z'), 'ยอดถูกนับเป็น Actual แล้ว (อนุมัติ 03/10/2026) — การตั้งงานบริการทีหลังไม่เปลี่ยนยอดนี้');
+  assert.deepEqual([D.cardMeta, D.cardMetaSubmitted, D.heroSuffix, D.queueLabel, D.queueTag, D.auditTag, D.tsPrefix], [
+    'ข้ามการตั้งงานบริการตอนยื่น — แก้ได้จนกว่าจะยื่นตรวจ', 'ข้ามตอนยื่น', ' · ข้ามตอนยื่น — ยังไม่ส่ง TS',
+    'งานบริการ (ข้ามตอนยื่น)', 'ยังไม่ตั้งงานบริการ (ข้ามตอนยื่น)', '(ข้ามตอนยื่น)', 'ข้ามตอนยื่น · ',
+  ]);
+  assert.equal(D.tsSub(d), 'ฝ่ายขายยื่นโดยยังไม่ตั้งงานบริการ 02/10/2026');
+  /* ป้ายขั้นของเส้นตั้งย้อนหลังยังเป็นชุดเดิม (จริงกับใบที่ข้าม — ใบไม่เคยตั้ง) */
+  assert.deepEqual(SERVICE_BACKFILL_STATE_LABELS, { not_started: 'ยังไม่เริ่ม', editing: 'ฝ่ายขายกำลังตั้ง', submitted: 'รอผู้จัดการตรวจ', rejected: 'ตีกลับ' });
+
+  /* รหัสของตัวห่อการยื่น (0404) — 409 ทุกตัว · ไม่มีคีย์ไหนเป็นสตริงย่อยของอีกคีย์ · ผู้แปลหาเจอเป็นตัวเอง */
+  const M = SERVICE_SETUP_SQL_MESSAGES;
+  const NEW_CODES = ['service_setup_defer_state_invalid', 'service_setup_defer_nothing', 'service_setup_defer_terms_exist', 'service_setup_defer_plans_running'];
+  assert.deepEqual(NEW_CODES.map((code) => M[code]?.status), [409, 409, 409, 409]);
+  const codes = Object.keys(M);
+  for (const a of codes) for (const b of codes) if (a !== b) assert.ok(!b.includes(a), `${a} อยู่ใน ${b}`);
+  for (const code of NEW_CODES) assert.equal(serviceSetupSqlMessage({ message: `P0001: ${code}` })?.code, code);
+  assert.equal(serviceSetupSqlMessage({ message: 'service_setup_state_invalid' })?.code, 'service_setup_state_invalid', 'รหัสเดิมยังถูกแปลเป็นตัวเอง');
+  assert.equal(serviceSetupSqlMessage({ message: 'service_setup_legacy_terms_exist' })?.code, 'service_setup_legacy_terms_exist');
+  assert.equal(M.service_setup_defer_nothing.message, 'งานบริการของใบนี้ครบแล้ว (หรือไม่มีรายการที่ต้องตั้ง) — กด ‘ยื่นอนุมัติ’ ตามปกติ');
+
+  /* คำต้องห้าม (มติ 29/09) ไม่กลับมากับคำใหม่ · คำรอบ/แพ็คมาจากแคตตาล็อกกลางที่เดียว */
+  const all = JSON.stringify([
+    ...Object.values(T).map((v) => (typeof v === 'function' ? v(1, 2) : v)),
+    ...Object.values(D).map((v) => (typeof v === 'function' ? v(d, 2) : v)),
+    ...NEW_CODES.map((code) => M[code].message),
+  ]);
+  assert.doesNotMatch(all, /ไปกี่รอบ|แต่ละครั้งกี่แพ็ค|แพ็คต่อรอบ/);
+  assert.equal(all.split(roundsLabel).length - 1, 1, 'คำ "จำนวนรอบบริการ" มีที่เดียว (บรรทัดแบนเนอร์) และมาจาก ROUNDS_TERM');
+  assert.equal(all.split(packsLabel).length - 1, 1);
 });

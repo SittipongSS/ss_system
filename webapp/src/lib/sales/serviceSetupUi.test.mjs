@@ -17,12 +17,14 @@ import {
   rebaseDraft, serviceCardMeta, setupPayload, stripParts, submitGateGroups, submitIssuesAfterSave, surveyRequestHref, zonePacksFieldId,
   applyPeriodToAllLines, baseLineOf, copyLinePeriod, ctxLineOf, linePeriodCounters, localEnvelope, periodModeOfDraft, sameSourceOf, switchPeriodMode,
   wholePeriodOfDraft,
+  deferNoticeOfView, skipTagsShown,
 } from '../../components/salesPlanning/serviceSetup/serviceSetupDraft.js';
 import {
   ZONES_BULK_NONE_PICKED, ZONES_BULK_PACKS_INVALID, zonesBulkCapText, zonesBulkConsequence, zonesBulkPlan,
 } from '../../components/service/zonesBulkPlan.js';
 import {
-  SERVICE_BACKFILL_RAIL_TEXT, SERVICE_BACKFILL_STATE_LABELS, SERVICE_PERIOD_TEXT, SERVICE_REOPEN_TEXT, SERVICE_REOPENED_TEXT, SERVICE_SETUP_GRID_TEXT,
+  SERVICE_BACKFILL_RAIL_TEXT, SERVICE_BACKFILL_STATE_LABELS, SERVICE_DEFER_TEXT, SERVICE_DEFERRED_TEXT, SERVICE_PERIOD_TEXT, SERVICE_REOPEN_TEXT,
+  SERVICE_REOPENED_TEXT, SERVICE_SETUP_GRID_TEXT,
   SERVICE_SETUP_LIMITS, SERVICE_SETUP_LINE_TEXT, SERVICE_SETUP_PANEL_TEXT, serviceLinePeriod, serviceSetupFieldId, serviceSetupIssues, serviceSetupTotals,
 } from './serviceSetup.js';
 import { salesOrderMoneyOutcome } from './salesOrderPayments.js';
@@ -1517,4 +1519,74 @@ test('0400 CSS: คอลัมน์ ① 156px · บล็อกช่วง�
   const periodRules = fieldsCss.slice(fieldsCss.indexOf('.periodTop {'));
   const reds = [...periodRules.matchAll(/([^{}]+)\{[^}]*var\(--red\)[^}]*\}/g)].map((match) => match[1].trim());
   assert.deepEqual(reds, ['.periodEnvelope[data-invalid]'], 'สีแดงของส่วนใหม่มีที่เดียว: กล่องช่วงรวมหลังกด (data-invalid จาก error)');
+});
+
+/* ══ mig 0404 (มติเจ้าของ 01/10 "ผูกรอบบริการให้ข้ามได้ มาใส่ทีหลัง Actual ได้" → "ฝ่ายขายกดข้ามเอง"): ยื่นโดยยังไม่ตั้งงานบริการ ══════════════
+   ตัวช่วยของจอจากก้อน GET รูป `viewFixture` (ก้อนที่จอได้รับ — ไม่ผ่านตัวตัดสิน) · ไล่กับตัวตัดสินจริง + ยามซอร์สของหน้าใบอยู่ที่ serviceDeferUi.test.mjs */
+const DEFERRED = Object.freeze({
+  at: '2026-10-08T02:30:00Z', byId: 'U-AE', byName: 'Kamonrat Pipattanapong', stage: 'approved', active: true, missing: 5, blocking: 0,
+});
+
+test('0404: กติกาของโฟลเดอร์ใช้กับ ServiceDeferNotice เอง · แบนเนอร์/การ์ดราง/หัวการ์ดของใบที่อนุมัติโดยข้าม — คำจาก SERVICE_DEFERRED_TEXT · ป้ายขั้นของใบเดิม', () => {
+  /* ไฟล์ใหม่อยู่ในชุดที่ยามของโฟลเดอร์ไล่ ("use client" · ไม่มี style={{ · CSS โฟลเดอร์เดียวกัน · icon เป็นคอมโพเนนต์ · แดงหลังกด) */
+  assert.ok(UI_FILES.includes(`${FOLDER}/ServiceDeferNotice.js`));
+  assert.ok(JSX_FILES.includes(`${FOLDER}/ServiceDeferNotice.js`));
+
+  const view = (state, extra = {}) => viewFixture({ flow: 'backfill', state: { setupState: state, ...extra }, deferred: DEFERRED });
+  const editing = backfillCopyOfView(view(null));
+  assert.equal(editing.bannerTitle, SERVICE_DEFERRED_TEXT.bannerTitle);
+  assert.equal(editing.eyebrow, SERVICE_DEFERRED_TEXT.railEyebrow);
+  assert.equal(editing.title, SERVICE_DEFERRED_TEXT.railTitle);
+  assert.equal(editing.meta, SERVICE_DEFERRED_TEXT.railMeta);
+  assert.equal(editing.firstStep, 'ตั้งค่า', 'ใบไม่เคยตั้ง — ขั้นแรกของรางยังเป็น "ตั้งค่า" (ไม่ใช่ "เปิดแก้" ของ 0396)');
+  assert.equal(editing.stateLabel, SERVICE_BACKFILL_STATE_LABELS.editing, 'ป้ายขั้นของใบเดิม — จริงกับใบที่ข้าม');
+  assert.equal(editing.reopenLine, 'ข้ามการตั้งงานบริการตอนยื่น 08/10/2026 โดย Kamonrat Pipattanapong');
+  assert.equal(editing.bannerLead, null, 'ขั้นตั้ง: บรรทัดหลักของแบนเนอร์บอกใคร/เมื่อไรอยู่แล้ว');
+  assert.equal(editing.deferred, DEFERRED);
+  assert.equal(backfillBannerText(view(null)), SERVICE_DEFERRED_TEXT.bannerLine(DEFERRED));
+  assert.ok(backfillBannerText(view(null)).includes('จำนวนรอบบริการ') && backfillBannerText(view(null)).includes('รอบละกี่แพ็ค'));
+  assert.equal(backfillCopyOfView(view('rejected')).stateLabel, SERVICE_BACKFILL_STATE_LABELS.rejected);
+  const submitted = view('submitted', { submittedAt: '2026-10-09T03:00:00Z', submittedByName: 'Kamonrat Pipattanapong' });
+  assert.equal(backfillCopyOfView(submitted).bannerLead, editing.reopenLine, 'รอตรวจ: ใครข้าม/เมื่อไรเป็นบรรทัดนำ (ช่องเดียวกับบรรทัดเปิดแก้)');
+  assert.match(backfillBannerText(submitted), /^ยื่นตรวจงานบริการแล้ว — รอผู้จัดการฝ่ายขายตรวจ/);
+  assert.equal(serviceCardMeta({ view: submitted, flow: 'backfill', editable: false, totals: {} }), `${SERVICE_DEFERRED_TEXT.cardMetaSubmitted} · ยื่นตรวจ 09/10/2026`);
+  assert.ok(serviceCardMeta({ view: view(null), flow: 'backfill', editable: true, totals: {} }).endsWith(` · ${SERVICE_DEFERRED_TEXT.cardMeta}`));
+  /* ใบร่าง/ใบประทับแล้วที่ก้อนไม่มี deferred = หัวการ์ดเดิม */
+  assert.ok(serviceCardMeta({ view: viewFixture(), flow: 'pipeline', editable: true, totals: {} }).endsWith(' · แก้ได้จนกว่าจะยื่นอนุมัติ'));
+  /* การ์ดราง/แบนเนอร์วาดจากช่องเดิมของ copy — คอมโพเนนต์ไม่ต้องรู้จักการข้าม (ไม่พิมพ์คำเอง) */
+  const panel = code(`${FOLDER}/ServiceBackfillPanel.js`);
+  assert.doesNotMatch(panel, /deferred|SERVICE_DEFERRED_TEXT|ข้าม/);
+});
+
+test('0404: ประกาศบนใบรออนุมัติ + ป้าย \'ข้ามได้\' ของแผงแดง จากก้อน GET — สี่แบบ · ไม่ใช่ขั้นรออนุมัติ = ไม่มี · ตัวถามไม่ส่ง = แผงเดิม', () => {
+  const pending = (over) => ({ deferred: { ...DEFERRED, stage: 'pending', missing: 5, ...over } });
+  assert.deepEqual(deferNoticeOfView(pending({ active: true, blocking: 0 })).lines,
+    [SERVICE_DEFERRED_TEXT.pendingLine(DEFERRED, 5), SERVICE_DEFERRED_TEXT.pendingHow]);
+  assert.deepEqual(deferNoticeOfView(pending({ active: true, blocking: 2 })).lines,
+    [SERVICE_DEFERRED_TEXT.pendingLine(DEFERRED, 5), SERVICE_DEFERRED_TEXT.pendingBlocked(2)]);
+  assert.deepEqual(deferNoticeOfView(pending({ active: false, missing: 0, blocking: 0 })),
+    { tone: 'info', title: SERVICE_DEFERRED_TEXT.pendingTitle, tag: null, lines: [SERVICE_DEFERRED_TEXT.pendingComplete(DEFERRED)] });
+  assert.deepEqual(deferNoticeOfView(pending({ active: false, missing: 0, blocking: 3 })),
+    { tone: 'warning', title: SERVICE_DEFERRED_TEXT.pendingTitle, tag: null, lines: [SERVICE_DEFERRED_TEXT.pendingStuck(DEFERRED, 3)] });
+  assert.equal(deferNoticeOfView(pending({ active: true, blocking: 0 })).tag, SERVICE_DEFERRED_TEXT.badge);
+  assert.equal(deferNoticeOfView({ deferred: DEFERRED }), null, 'อนุมัติแล้ว = หน้าที่ของแบนเนอร์');
+  assert.equal(deferNoticeOfView(viewFixture()), null);
+
+  /* ป้ายแถว: ตัวถามของผู้เรียก (ข้อตัวเดิม) · FN/คำเตือนไม่ติด · ไม่ส่ง = false */
+  const issues = [
+    { key: 'kind_missing', tab: 'overview', lineId: 'L1', message: 'รายการ 1: ยังไม่ตอบว่าเป็นงานบริการไหม' },
+    { key: 'due_missing', tab: 'payment', installmentId: 'I2', seq: 2, message: 'งวด 2: ยังไม่ใส่กำหนดชำระ' },
+  ];
+  const asked = [];
+  const groups = submitGateGroups(issues, [], { deferrable: (entry) => { asked.push(entry); return entry.key === 'kind_missing'; } });
+  assert.deepEqual(groups.flatMap((group) => group.items).map((item) => [item.entry.key, item.deferrable]), [['kind_missing', true], ['due_missing', false]]);
+  assert.ok(asked.every((entry) => issues.includes(entry)), 'ตัวถามได้ข้อตัวเดิมของผู้เรียก (เทียบตัวตนได้)');
+  assert.ok(submitGateGroups(issues, []).flatMap((group) => group.items).every((item) => item.deferrable === false));
+
+  /* skipTagsShown จากก้อน `view.skip` รูปของ GET */
+  const skip = { visible: true, canSkip: false, blockedReason: SERVICE_DEFER_TEXT.blocked(1), lead: SERVICE_DEFER_TEXT.panelBlocked(4, 1), deferredCount: 4, blockingCount: 1, prompt: null };
+  assert.equal(skipTagsShown(skip), true);
+  assert.equal(skipTagsShown({ ...skip, canSkip: true, blockedReason: null, lead: SERVICE_DEFER_TEXT.panelLead(4), blockingCount: 0 }), true);
+  assert.equal(skipTagsShown({ ...skip, blockedReason: SERVICE_DEFER_TEXT.predecessorRunning('SO-1', 2), lead: SERVICE_DEFER_TEXT.panelPredecessor('SO-1') }), false);
+  assert.equal(skipTagsShown({ ...skip, visible: false }), false);
 });

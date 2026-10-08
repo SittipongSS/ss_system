@@ -4,6 +4,8 @@
 //   ช่วงบริการที่หน้าใบสั่งขายเอง ใบใหม่อนุมัติแล้วรอบขายของโซนเกิดทันที ⇒ TS ไม่ต้องผูกโซนอีก
 //   ใบที่อนุมัติไปก่อนมีเรื่องนี้ = "ใบเดิม" ฝ่ายขายตั้งย้อนหลังแล้วผู้จัดการฝ่ายขายตรวจ · แท็บนี้ให้ TS **ดูอย่างเดียว**
 //   ว่าใบไหนยังรออยู่ และถึงขั้นไหนแล้ว (ตรวจผ่านแล้วขึ้น "รอตั้งรอบ" เอง)
+//   ⭐ mig 0404: ใบใหม่ที่ฝ่ายขาย **ยื่นโดยยังไม่ตั้งงานบริการ** แล้วได้รับอนุมัติ ก็อยู่ในถังนี้ (อนุมัติแล้ว · ยังไม่ประทับ — เข้าเกณฑ์เดิม
+//     ไม่มีคิวรีใหม่) · แถวบอกเองว่า "ข้ามตอนยื่น" (`row.deferred` ← `serviceSetupDeferred` · คำจาก `SERVICE_DEFERRED_TEXT`)
 //
 // 🔴 **ทำไมเป็นไฟล์แยก ไม่อยู่ใน intake.js** (กฎ 16 ของแผน) — ถังนี้ต้องใช้ทั้ง `intake.js` และตัวตัดสิน
 //   `serviceSetup.js` แต่ `intake.js` ↔ `serviceOrders.js` เป็นวง import อยู่แล้ว และ `serviceSetup.js` import
@@ -20,6 +22,7 @@ import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
 import { orderBusinessLine, orderReadiness, orderReceivable } from '@/lib/service/intake';
 import {
   SERVICE_BACKFILL_STATE_LABELS,
+  SERVICE_DEFERRED_TEXT,
   SERVICE_KIND_NOT_SERVICE,
   SERVICE_REOPENED_TEXT,
   serviceBackfillNeeded,
@@ -27,6 +30,7 @@ import {
   serviceLineNeedsBackfill,
   serviceLineRole,
   servicePeriodModeOf,
+  serviceSetupDeferred,
   serviceSetupReopened,
   serviceSetupTotals,
 } from '@/lib/sales/serviceSetup';
@@ -117,6 +121,10 @@ function buildRow(order, orderLines, orderAllocations, { zonesById, dealsById, c
     /* ใบที่ฝ่ายขายเปิดแก้หลังอนุมัติ (mig 0396) — `{ at, byId, byName, reason }` หรือ null · ตัวตัดสินกลางตัวเดียว
        (select ไม่พกคอลัมน์ 0396 = undefined = null — แถวยังขึ้นเป็นใบเดิมตามเดิม ไม่พัง) */
     reopened: serviceSetupReopened(order),
+    /* ใบที่ฝ่ายขายยื่นโดยยังไม่ตั้งงานบริการ (mig 0404) — `{ at, byId, byName, stage }` หรือ null · ตัวตัดสินกลางตัวเดียว
+       (ใบในถังนี้อนุมัติแล้วยังไม่ประทับ ⇒ stage = 'approved' เสมอ · ใบที่ถูกเปิดแก้ทีหลัง = null — `reopened` ชนะ)
+       select ไม่พกคอลัมน์ 0404 = undefined = null — แถวยังขึ้นเป็นใบเดิมตามเดิม ไม่พัง */
+    deferred: serviceSetupDeferred(order),
     progress: { done, total: relevant.length },
     /* RPC บันทึกขยับ `updatedAt` ของใบ ⇒ "แก้ล่าสุด" ของงานบริการ (ขั้นอื่นไม่ต้องใช้) */
     lastEditedAt: state === 'editing' ? (order.updatedAt || null) : null,
@@ -200,13 +208,19 @@ export function legacySetupStatusView(row) {
   const base = SERVICE_BACKFILL_STATE_LABELS[state] || SERVICE_BACKFILL_STATE_LABELS.not_started;
   /* ใบที่เปิดแก้หลังอนุมัติ (mig 0396 · ภาคผนวก A.4) — TS ต้องรู้ว่าใบนี้เคยส่งงานมาแล้วและทำไมถึงหายจาก "รอตั้งรอบ" */
   const reopened = row?.reopened || null;
+  /* ใบที่ฝ่ายขายยื่นโดยยังไม่ตั้งงานบริการ (mig 0404) — ชื่อแท็บยังเป็น "(ใบเดิม)" ⇒ แถวต้องบอกเองว่าใบนี้ไม่ใช่ใบเดิม:
+     หน้าป้ายสถานะทุกขั้นมี "ข้ามตอนยื่น · " และขั้นที่ฝ่ายขายยังตั้งอยู่ (ยังไม่เริ่ม/กำลังตั้ง) บอกวันที่ยื่นในบรรทัดรอง
+     · ใบที่ถูกเปิดแก้ทีหลังใช้ป้ายของการเปิดแก้ (ตัวตัดสินกลางไม่ส่งทั้งคู่ — กันซ้ำอีกชั้นสำหรับแถวที่ประกอบเอง) */
+  const deferred = reopened ? null : (row?.deferred || null);
+  const prefix = deferred ? SERVICE_DEFERRED_TEXT.tsPrefix : '';
+  const deferredSub = deferred ? SERVICE_DEFERRED_TEXT.tsSub(deferred) : null;
   if (state === 'editing' || (reopened && state === 'not_started')) {
     const { done = 0, total = 0 } = row.progress || {};
     const edited = row.lastEditedAt ? `แก้ล่าสุด ${fmtDate(row.lastEditedAt)}` : null;
     return {
       tone,
-      label: reopened ? SERVICE_REOPENED_TEXT.tsEditing({ done, total }) : `${base} · ${fmtNumber(done)}/${fmtNumber(total)} รายการ`,
-      sub: [reopened ? SERVICE_REOPENED_TEXT.tsEditingSub(reopened) : null, edited, noSite ? LEGACY_SETUP_NO_SITE_SUB : null]
+      label: reopened ? SERVICE_REOPENED_TEXT.tsEditing({ done, total }) : `${prefix}${base} · ${fmtNumber(done)}/${fmtNumber(total)} รายการ`,
+      sub: [reopened ? SERVICE_REOPENED_TEXT.tsEditingSub(reopened) : null, deferredSub, edited, noSite ? LEGACY_SETUP_NO_SITE_SUB : null]
         .filter(Boolean).join(' · ') || null,
     };
   }
@@ -214,7 +228,7 @@ export function legacySetupStatusView(row) {
     const s = row.submitted || {};
     return {
       tone,
-      label: base,
+      label: `${prefix}${base}`,
       /* คำของมติ 29/09 ("แต่ละครั้งกี่แพ็ค") — ความหมายเดิม: Σ แพ็คของทุกโซนในหนึ่งครั้งที่ไป */
       sub: `${reopened ? SERVICE_REOPENED_TEXT.tsSubmittedPrefix : ''}ยื่นเมื่อ ${s.at ? fmtDate(s.at) : '—'}`
         + ` · ${fmtNumber(s.zones || 0)} โซนใน ${fmtNumber(s.sites || 0)} ไซต์ · ครั้งละ ${fmtNumber(s.packsPerRound || 0)} แพ็ค`,
@@ -224,11 +238,11 @@ export function legacySetupStatusView(row) {
     const r = row.rejected || {};
     return {
       tone,
-      label: `${base}: ${r.reason || '—'}`,
+      label: `${prefix}${base}: ${r.reason || '—'}`,
       sub: [r.byName, r.at ? fmtDate(r.at) : null].filter(Boolean).join(' · ') || null,
     };
   }
-  return { tone, label: base, sub: noSite ? LEGACY_SETUP_NO_SITE_SUB : null };
+  return { tone, label: `${prefix}${base}`, sub: [deferredSub, noSite ? LEGACY_SETUP_NO_SITE_SUB : null].filter(Boolean).join(' · ') || null };
 }
 
 /* จำนวนของแต่ละตัวกรอง — ป้ายเลขบน Segmented · 'all' = ทุกแถว */
@@ -242,7 +256,8 @@ export function legacySetupFilterCounts(rows = []) {
 }
 
 /* ⭐ คำค้น = ทุกอย่างที่ตาเห็นบนแถว (กติกา "ตาเห็นบนแถว = ต้องค้นเจอ") — รหัส · ลูกค้า · วันอนุมัติ · ผู้ดูแล ·
-   ป้าย/บรรทัดรองของสถานะ · ชิปสัญญา · เหตุที่เปิดแก้หลังอนุมัติ (mig 0396 — ขั้นรอตรวจ/ตีกลับไม่มีบนแถว แต่ TS ค้นเจอได้) */
+   ป้าย/บรรทัดรองของสถานะ (รวม "ข้ามตอนยื่น" ของ mig 0404 — อยู่ในป้ายอยู่แล้ว) · ชิปสัญญา
+   · เหตุที่เปิดแก้หลังอนุมัติ (mig 0396 — ขั้นรอตรวจ/ตีกลับไม่มีบนแถว แต่ TS ค้นเจอได้) */
 export function legacySetupHaystack(row) {
   const view = legacySetupStatusView(row);
   return [

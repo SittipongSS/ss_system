@@ -71,6 +71,22 @@ test('ใบที่เปิดแก้หลังอนุมัติ → 
   assert.deepEqual(map.get('Z').map((o) => [o.orderId, o.group]), [['B', 'backfill'], ['R', 'reopened']]);
 });
 
+/* mig 0404 (D-F10 · ตรวจทานรอบสุดท้าย lib-02): ใบที่เคยเปิดแก้ (0396) → ยกเลิก → ผู้ดูแลกู้คืนเป็นร่าง (ช่องของการเปิดแก้ไม่ถูกล้าง) →
+   ยื่นโดยยังไม่ตั้งงานบริการ → อนุมัติ · หน้าใบ/ทะเบียน/แท็บ TS พูดว่า "ข้ามตอนยื่น" (เหตุการณ์ที่เกิดทีหลังชนะ) ⇒ ป้ายโซน/คำเตือนปิดโซน/ชิปด่านนัด
+   ต้องเป็นกลุ่ม "ตั้งย้อนหลัง" ไม่ใช่ "แก้หลังอนุมัติ" — ใบเดียวกันต้องไม่ถูกเล่าสองแบบ */
+test('0404: เปิดแก้ก่อน แล้วยื่นแบบข้ามทีหลัง → กลุ่ม backfill ("ฝ่ายขายกำลังตั้ง") · ไม่พกคอลัมน์ของ 0404 = เล่าผิดเป็น reopened (เหตุที่ select ต้องพก)', () => {
+  const row = { status: 'approved', serviceSetupReopenedAt: '2026-09-30T03:15:00Z', serviceSetupDeferredAt: '2026-10-05T02:00:00Z' };
+  assert.deepEqual(setupOrderState(so('D', row)), { group: 'backfill', key: 'editing', label: 'ฝ่ายขายกำลังตั้ง' });
+  assert.deepEqual(setupOrderState(so('D', { ...row, serviceSetupState: 'submitted' })), { group: 'backfill', key: 'submitted', label: 'รอผู้จัดการตรวจ' });
+  /* แถวจาก select ที่ไม่พก "serviceSetupDeferredAt" (ของเดิมก่อนแก้) — ตัวตัดสินไม่เห็นการข้าม ⇒ กลุ่ม reopened (ผิด) */
+  const { serviceSetupDeferredAt: _dropped, ...withoutDeferred } = row;
+  assert.equal(setupOrderState(so('D', withoutDeferred)).group, 'reopened');
+  /* ข้ามก่อน แล้วเปิดแก้ทีหลัง (ผ่านการตั้งย้อนหลัง → ประทับ → กดแก้งานบริการ) = reopened ตามเดิม */
+  assert.equal(setupOrderState(so('D', { ...row, serviceSetupDeferredAt: '2026-09-20T02:00:00Z' })).group, 'reopened');
+  /* ใบที่ข้ามอย่างเดียว (ไม่เคยเปิดแก้) = backfill เหมือนใบที่ยังไม่ประทับทุกใบ */
+  assert.equal(setupOrderState(so('D', { status: 'approved', serviceSetupDeferredAt: '2026-10-05T02:00:00Z' })).group, 'backfill');
+});
+
 test('ไม่มีป้าย: ประทับแล้ว · ยกเลิก · ถูก Rev. ทับ · ใบย้อนหลังที่อนุมัติแล้ว · ไม่มีใบ', () => {
   assert.equal(setupOrderState(so('C', { status: 'approved', serviceTermsOpenedAt: STAMP })), null);
   assert.equal(setupOrderState(so('C', { status: 'cancelled' })), null);

@@ -11,6 +11,7 @@
 // ⚠️ ลิสต์ที่โตตามข้อมูล (โซน · ไซต์ · สินค้า · ไซต์ของพี่น้อง) ซอยก้อน + ไล่หน้า (`fetchAllInChunks`)
 //    และตารางที่ติดเพดาน check:rowcap อ่านผ่าน `fetchAllResult` / `.maybeSingle()` เท่านั้น
 // ⚠️ ไม่แตะคอลัมน์ snapshot ของบรรทัด — การเขียนทั้งหมดไปทาง RPC ของ 0392 (ด่านสถานะ/ล็อกอยู่ที่ฐานด้วย)
+import { signatureEvidenceRpcError } from '@/lib/admin/signatureEvidence';
 import { businessDate } from '@/lib/businessDate';
 import { categoryOf } from '@/lib/master/categoryOf';
 import { customerTaxSiblings } from '@/lib/master/customerTaxSiblings';
@@ -150,21 +151,29 @@ async function loadContract(supabase, contractId) {
     : null;
 }
 
-/* ใบเดิมของใบ Rev. — เลขใบ (แบนเนอร์ "ยกมาจาก …") + ไซต์ที่มีรอบบริการเดินอยู่ (บรรทัด "ย้ายรอบบริการ n ไซต์") */
+/* ใบเดิมของใบ Rev. — เลขใบ (แบนเนอร์ "ยกมาจาก …") + ไซต์ที่มีรอบบริการเดินอยู่ (บรรทัด "ย้ายรอบบริการ n ไซต์")
+   ⭐ mig 0404: + จำนวนรอบขายของใบเดิมที่ TS ตั้งมาตรฐาน มล./เดือนไว้ (`standardMlTermCount`) — ใบ Rev. แบบนี้ "ยื่นโดยยังไม่ตั้งงานบริการ" ไม่ได้
+      (คู่กับ `service_setup_defer_ml_set` ของฐาน · ตัวตัดสิน `serviceSetupSkipState` / `serviceSetupApprovalGate`)
+      อ่านรอบขายของใบเดิมทั้งชุด (ใบหนึ่งมีไม่กี่แถว · ไล่หน้า) แล้วนับใน JS — อ่านไม่ขึ้น = throw (ห้ามเดาว่าไม่มี: ด่านจะเปิดเอง) */
 async function loadPredecessor(supabase, revisedFromId) {
   if (!revisedFromId) return null;
-  const [head, plans] = await Promise.all([
+  const [head, plans, terms] = await Promise.all([
     supabase.from('sales_orders').select('id, "orderNumber"').eq('id', revisedFromId).maybeSingle(),
     fetchAllResult(() => supabase.from('service_plans').select('id, "siteId"')
       .eq('salesOrderId', revisedFromId).eq('isActive', true)
       .order('id', { ascending: true })),
+    fetchAllResult(() => supabase.from('service_zone_terms').select('id, "standardMlPerMonth"')
+      .eq('salesOrderId', revisedFromId)
+      .order('id', { ascending: true })),
   ]);
   if (head.error) throw readFailed('อ่านใบเดิมของใบ Rev. ', head.error);
   if (plans.error) throw readFailed('อ่านรอบบริการของใบเดิม', plans.error);
+  if (terms.error) throw readFailed('อ่านรอบขายของใบเดิม', terms.error);
   return {
     id: revisedFromId,
     orderNumber: head.data?.orderNumber ?? null,
     activePlanSiteIds: uniqueIds(list(plans.data).map((plan) => plan?.siteId)),
+    standardMlTermCount: list(terms.data).filter((term) => term?.standardMlPerMonth !== null && term?.standardMlPerMonth !== undefined).length,
   };
 }
 
@@ -384,6 +393,60 @@ export function rejectServiceBackfill(supabase, { orderId, expectedUpdatedAt, re
     p_reason: text(reason),
     ...actorOf(user),
   });
+}
+
+/* ── RPC ของ 0404 — ยื่นอนุมัติโดยยังไม่ตั้งงานบริการ ──────────────────────────────────────────────────────── */
+
+/* ผลผิดที่ไม่ใช่รหัสของงานบริการ → รูป `{ status, message, code, extra }` ผ่านตัวแปลของการยื่นปกติ (คำ "ก่อนยื่นอนุมัติ" · 409 + ลิงก์ /account) */
+const evidenceFailure = (error) => {
+  const mapped = signatureEvidenceRpcError(error, { action: 'submit' });
+  return { status: mapped.status, message: mapped.message, code: mapped.code, extra: mapped.extra || {} };
+};
+
+/**
+ * ยื่นอนุมัติโดยยังไม่ตั้งงานบริการ — ตัวห่อของตัวยื่นเดิมในทรานแซกชันเดียว (mig 0404 · `submit_sales_order_deferring_service_setup`):
+ *   ตรวจสถานะ/เวอร์ชัน/"ยังไม่ครบจริง"/รอบขายค้าง/รอบของใบเดิม → เรียกตัวยื่นเดิม (หลักฐานลายเซ็นผู้จัดทำ) → จดว่าใคร/เมื่อไรที่ข้าม
+ * → `{ data: { document, evidence } }` | `{ error: { status, message, code, extra } }` — **ไม่ throw** (supabase ไม่ throw · อ่าน error เอง)
+ * · รหัสของงานบริการ (สี่รหัสใหม่ · workflow_stale · service_setup_forbidden · sales_order_not_found) → `SERVICE_SETUP_SQL_MESSAGES`
+ * · รหัส `signature_evidence_*` ของตัวยื่นเดิมไหลผ่านตามเดิม → `signatureEvidenceRpcError(error, { action: 'submit' })`
+ *   (เช่นยังไม่มีลายเซ็น = 409 `signature_required` + `accountUrl`) · รหัสที่ไม่รู้จัก = 500 (ข้อความดิบลง log ไม่ออกไปที่จอ)
+ * 🔴 **ผู้ลงนามต้องเป็นค่าเดียวกับการยื่นปกติทุกตัวอักษร** (`submitSalesOrderWithSignatureEvidence` · D-F20) — ตัวยื่นเดิมเขียนชื่อนี้ลง
+ *    `submittedByName` และหลักฐานลายเซ็นผู้จัดทำ ⇒ **ห้ามใช้ `actorOf()`** ของไฟล์นี้ (ตัวนั้นถอยไปใช้อีเมลเมื่อไม่มีชื่อ)
+ * ⚠️ `expectedUpdatedAt` = ค่าดิบที่จอได้จาก GET — ฐานเทียบถึงไมโครวินาที ห้ามผ่าน Date
+ * ⚠️ ฐานไม่ลง audit ของการข้าม — route ลงเองหลังสำเร็จ
+ */
+export async function submitOrderDeferringServiceSetup(supabase, {
+  orderId, evidenceId, expectedUpdatedAt, documentFingerprint, user,
+} = {}) {
+  let data = null;
+  let error = null;
+  try {
+    ({ data, error } = await supabase.rpc('submit_sales_order_deferring_service_setup', {
+      p_order_id: orderId,
+      p_evidence_id: evidenceId,
+      p_expected_updated_at: expectedUpdatedAt,
+      p_document_fingerprint: documentFingerprint,
+      p_actor_id: user.id,
+      p_actor_name: user.name || null,
+      p_actor_role: user.role || null,
+      p_actor_team: user.team || null,
+    }));
+  } catch (thrown) {
+    error = thrown || new Error('submit_sales_order_deferring_service_setup: ไม่ทราบสาเหตุ');
+  }
+  if (error) {
+    const mapped = serviceSetupSqlMessage(error);
+    if (mapped) return { error: { status: mapped.status, message: mapped.message, code: mapped.code, extra: {} } };
+    const failure = evidenceFailure(error);
+    if (failure.status >= 500) console.error('[service-setup] submit_sales_order_deferring_service_setup ตอบรหัสที่ไม่รู้จัก:', error);
+    return { error: failure };
+  }
+  /* 2xx แต่ไม่มีก้อนเอกสาร/หลักฐาน = อ่านผลไม่ออก (ด่านเดียวกับ approveWithEvidence ของการยื่นปกติ) — ไม่เดาว่าสำเร็จ */
+  if (!data?.document || !data?.evidence) {
+    console.error('[service-setup] submit_sales_order_deferring_service_setup ตอบสำเร็จแต่ไม่มี document/evidence');
+    return { error: evidenceFailure(null) };
+  }
+  return { data };
 }
 
 /* ── RPC ของ 0396 — เปิดแก้งานบริการหลังอนุมัติ ─────────────────────────────────────────────────────────── */

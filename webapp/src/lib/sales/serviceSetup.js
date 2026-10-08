@@ -14,6 +14,10 @@
 //        แล้วเห็นช่วงรวมที่ครบ หรือ "ยังไม่มีช่วง" · ห้ามคิดช่วงรวมที่เก็บซ้ำใน JS
 //   ⇒ อนุมัติแล้วรอบขายของโซน (service_zone_terms) เกิดทันทีในทรานแซกชันเดียวกัน TS ไม่ต้องผูกโซนอีก
 //   ใบที่อนุมัติไปก่อนมีเรื่องนี้ = "ตั้งงานบริการย้อนหลัง" (ยื่นตรวจ → ผู้จัดการฝ่ายขายอนุมัติ · ไม่แตะยอด/Actual)
+//   ⭐ มติเจ้าของ 01/10 (mig 0404): **ยื่นโดยยังไม่ตั้งงานบริการได้** ("ผูกรอบบริการให้ข้ามได้ มาใส่ทีหลัง Actual ได้" → "ฝ่ายขายกดข้ามเอง")
+//     ผู้ยื่นกดข้ามบนแผงแดง → ใบจดว่าใคร/เมื่อไร (`serviceSetupDeferred(order)`) → อนุมัติ = นับ Actual แต่ไม่เปิดรอบขาย ไม่ประทับ
+//     → ใบเข้าเส้น "ตั้งงานบริการย้อนหลัง" เดิมทั้งเส้น · ข้อไหนเลื่อนได้ = `serviceSetupIssueGroup` · ปุ่ม = `serviceSetupSkipState`
+//     · ด่านอนุมัติ = `serviceSetupApprovalGate` · คำ = `SERVICE_DEFER_TEXT` / `SERVICE_DEFERRED_TEXT`
 //
 // ⭐ **ไฟล์เดียวที่ทุกผิวพูดตาม** — ตาราง (U6) · ด่านยื่น/อนุมัติ (U3/U4) · โมดัลอนุมัติ · แถบผู้อนุมัติ · หัวใบ
 //   ถามตัวตัดสินที่นี่เท่านั้น · ฐาน (0392) มีกติกาคู่กัน (`sales_order_line_service_role` · `sales_order_service_setup_errors`
@@ -120,6 +124,16 @@ export const SERVICE_SETUP_SQL_MESSAGES = Object.freeze({
   service_setup_reopen_state_invalid: { message: 'แก้งานบริการได้เฉพาะใบที่อนุมัติแล้วและส่งงานให้ TS แล้ว (ยังไม่ถูกย้อน/ออก Rev./ยกเลิก) — โหลดหน้าใหม่', status: 409 },
   service_setup_reopen_blocked: { message: 'แก้งานบริการไม่ได้แล้ว — TS เริ่มงานของใบนี้แล้ว · ทางแก้: ย้อนการอนุมัติแล้วออก Rev.', status: 409 },
   service_setup_reopen_busy: { message: 'ระบบกำลังบันทึกงานของ TS อยู่ — รอสักครู่แล้วกด ‘แก้งานบริการ’ อีกครั้ง', status: 409 },
+  /* ── ยื่นโดยยังไม่ตั้งงานบริการ (mig 0404 · `submit_sales_order_deferring_service_setup`) — ห้ารหัสของตัวห่อการยื่น
+     route ตรวจด้วยตัวตัดสิน JS (`serviceSetupSkipState`) ก่อนยิงแล้ว ⇒ ถึงตรงนี้ได้เมื่อของเปลี่ยนระหว่างทาง หรือเป็นกรณีที่ JS มองไม่เห็น
+     (`…_terms_exist`: ใบที่กู้คืนจากยกเลิกยังถือรอบขายของการอนุมัติรอบก่อน) */
+  service_setup_defer_state_invalid: { message: 'ใบนี้ยื่นโดยยังไม่ตั้งงานบริการไม่ได้ในสถานะนี้ — ต้องเป็นใบสายบริการที่ยังเป็นร่างหรือถูกตีกลับ (โหลดหน้าใหม่)', status: 409 },
+  service_setup_defer_nothing: { message: 'งานบริการของใบนี้ครบแล้ว (หรือไม่มีรายการที่ต้องตั้ง) — กด ‘ยื่นอนุมัติ’ ตามปกติ', status: 409 },
+  service_setup_defer_terms_exist: { message: 'ใบนี้มีรอบขายที่เคยส่ง TS ค้างจากการอนุมัติรอบก่อน — ข้ามการตั้งงานบริการไม่ได้ · ตั้งงานบริการให้ครบแล้วกด ‘ยื่นอนุมัติ’ ตามปกติ', status: 409 },
+  service_setup_defer_plans_running: { message: 'ใบนี้เป็น Rev. ของใบที่ TS ยังเดินรอบบริการอยู่ — ข้ามการตั้งงานบริการไม่ได้ (รอบบริการจะค้างที่ใบเดิม) · ตั้งงานบริการให้ครบแล้วกด ‘ยื่นอนุมัติ’ ตามปกติ', status: 409 },
+  /* ใบ Rev. ของใบที่ TS ตั้งมาตรฐาน มล./เดือนบนรอบขายไว้แล้ว — ค่ามาตรฐานถูกยกมาใบ Rev. ตอนเปิดรอบขาย (ทอดเดียว) · อนุมัติแบบข้าม = ไม่มีรอบขาย
+     ⇒ ออก Rev. ต่ออีกทอดก่อนตั้งงานบริการ ค่าหายเงียบ (เหตุเดียวกับ `ml_set` ของปุ่มแก้งานบริการ) */
+  service_setup_defer_ml_set: { message: 'ใบนี้เป็น Rev. ของใบที่ TS ตั้งมาตรฐาน มล./เดือนไว้แล้ว — ข้ามการตั้งงานบริการไม่ได้ (ค่ามาตรฐานจะไม่ถูกยกมาใบนี้) · ตั้งงานบริการให้ครบแล้วกด ‘ยื่นอนุมัติ’ ตามปกติ', status: 409 },
 });
 
 /** error ดิบจาก RPC → `{ code, message, status }` หรือ null (รหัสที่ไม่รู้จัก — ผู้เรียกตอบข้อความกลาง/500 เอง) */
@@ -428,6 +442,111 @@ export const SERVICE_REOPENED_TEXT = Object.freeze({
   tsEditing: ({ done = 0, total = 0 } = {}) => `ฝ่ายขายกำลังแก้ (หลังอนุมัติ) · ${fmtNumber(done)}/${fmtNumber(total)} รายการ`,
   tsEditingSub: (r = {}) => `เปิดแก้ ${dayText(r?.at)} · ${r?.reason || '—'}`,
   tsSubmittedPrefix: 'แก้หลังอนุมัติ · ',
+});
+
+/* ══ ยื่นโดยยังไม่ตั้งงานบริการ (mig 0404 · มติเจ้าของ 01/10 "ผูกรอบบริการให้ข้ามได้ มาใส่ทีหลัง Actual ได้" → ทาง "ฝ่ายขายกดข้ามเอง"
+      · แผน IMPL_PLAN_DEFER) ════════════════════════════════════════════════════════════════════════════════════════
+   ⭐ ใบ pipeline สาย SERVICE ที่ยังเป็นร่าง/ถูกตีกลับและงานบริการยังไม่ครบ — ผู้ยื่นกด 'ยื่นโดยยังไม่ตั้งงานบริการ' บนแผงแดงได้
+     ⇒ RPC `submit_sales_order_deferring_service_setup` ยื่นตามปกติ (ลายเซ็นผู้จัดทำ) + จดว่าใคร/เมื่อไรที่ข้าม (สามช่อง `serviceSetupDeferred…`)
+     ⇒ ผู้อนุมัติเห็นว่าใบนี้ข้าม → อนุมัติ = นับ Actual ตามเดิม แต่ **ไม่เปิดรอบขาย ไม่ประทับตรา** (แพตช์ D1 ของตัวเปิดรอบขาย)
+     ⇒ ใบตกเข้าเส้น "ตั้งย้อนหลัง" เดิมทั้งเส้น (flow 'backfill' → ยื่นตรวจ → ผู้จัดการฝ่ายขายอนุมัติ → เปิดรอบขาย + ตรา)
+   ⭐ ข้ามได้เฉพาะ **ข้อของการตั้งงานบริการ** (+ ข้อที่ตามมา: แพ็คเกจของนิติบุคคลอื่น · ช่วงครอบของงวด) — งวดชำระ/วันวางบิล/กำหนดชำระ/ข้อของบัญชี
+     ยังบล็อก (`serviceSetupIssueGroup`) · ดึงกลับ/ตีกลับ/กู้คืนเป็นร่าง = ฐานล้างการข้าม (trigger) ต้องเลือกใหม่ทุกครั้งที่ยื่น · ไม่ยกไปใบ Rev.
+   ⚠️ literal ล้วน (กฎ 16) — ตัวที่จัดรูปตัวเลข/วันอ่าน `fmtNumber` / `dayText` ในฟังก์ชันเท่านั้น
+      · คำ "จำนวนรอบบริการ" / "รอบละกี่แพ็ค" อ่านจาก ROUNDS_TERM / PACKS_TERM เท่านั้น */
+
+/* ปุ่มบนแผงแดง + โมดัลยืนยัน — จอ (`SubmitGateNotice` · หน้าใบ) อ่านจากที่นี่ ห้ามพิมพ์คำเอง */
+export const SERVICE_DEFER_TEXT = Object.freeze({
+  button: 'ยื่นโดยยังไม่ตั้งงานบริการ',
+  /* ป้ายบนแถวของแผงแดงที่การข้ามเลื่อนออกไปได้ (ข้อของบัญชีไม่มีป้ายนี้) */
+  deferTag: 'ข้ามได้',
+  /* บรรทัดท้ายแผงแดง — server เลือกให้ (`view.skip.lead`): ข้ามได้ / ติดข้อที่ข้ามไม่ได้ / ใบเดิมของ Rev. ยังเดินรอบ */
+  panelLead: (n) => `ยังไม่พร้อมตั้งงานบริการ? ยื่นได้เลยโดยข้าม ${fmtNumber(n)} ข้อที่ติดป้าย ‘ข้ามได้’ — อนุมัติแล้วนับ Actual ทันที · TS ยังไม่ได้รับงานจนกว่าจะตั้งงานบริการและผู้จัดการฝ่ายขายอนุมัติ`,
+  panelBlocked: (n, m) => `ข้ามการตั้งงานบริการได้ ${fmtNumber(n)} ข้อ แต่ยังเหลือ ${fmtNumber(m)} ข้อที่ข้ามไม่ได้ (งวดชำระ · วันวางบิล · กำหนดชำระ · ข้อที่รอฝ่ายบัญชี) — แก้ก่อนแล้วจึงยื่น`,
+  /* เหตุที่กดแล้วยังข้ามไม่ได้ (toast ตอนกด · 400 ของ route) */
+  blocked: (m) => `ยื่นโดยยังไม่ตั้งงานบริการยังไม่ได้ — เหลือ ${fmtNumber(m)} ข้อที่ข้ามไม่ได้ (งวดชำระ · วันวางบิล · กำหนดชำระ · ข้อที่รอฝ่ายบัญชี) แก้ที่แท็บการชำระก่อน`,
+  /* ใบ Rev. ของใบที่ TS ยังเดินรอบบริการอยู่ (D-F18) — เหตุเดียวกับ service_setup_defer_plans_running ของฐาน · n = จำนวนไซต์ที่มีรอบเดินอยู่ */
+  predecessorRunning: (orderNumber, n) => `ยื่นโดยยังไม่ตั้งงานบริการไม่ได้ — ${orderNumber || 'ใบเดิม'} ยังมีรอบบริการที่ TS เดินอยู่ ${fmtNumber(n)} ไซต์ · ต้องตั้งงานบริการของใบ Rev. นี้ให้ครบแล้วกด ‘ยื่นอนุมัติ’ ตามปกติ รอบบริการจึงย้ายมาใบนี้`,
+  panelPredecessor: (orderNumber) => `ใบนี้เป็น Rev. ของ ${orderNumber || 'ใบเดิม'} ที่ TS ยังเดินรอบบริการอยู่ — ข้ามการตั้งงานบริการไม่ได้ ต้องตั้งให้ครบก่อนยื่น`,
+  /* ใบ Rev. ของใบที่ TS ตั้งมาตรฐาน มล./เดือนบนรอบขายไว้แล้ว — เหตุเดียวกับ service_setup_defer_ml_set ของฐาน · n = จำนวนรอบขายที่มีค่ามาตรฐาน
+     (ค่ามาตรฐานถูกยกมาใบ Rev. ตอนเปิดรอบขาย ทอดเดียว — อนุมัติแบบข้ามไม่มีรอบขาย ⇒ ออก Rev. ต่ออีกทอดก่อนตั้งงานบริการ ค่าหายเงียบ) */
+  predecessorStandard: (orderNumber, n) => `ยื่นโดยยังไม่ตั้งงานบริการไม่ได้ — TS ตั้งมาตรฐาน มล./เดือนบนรอบขายของ ${orderNumber || 'ใบเดิม'} ไว้แล้ว ${fmtNumber(n)} รอบขาย · ต้องตั้งงานบริการของใบ Rev. นี้ให้ครบแล้วกด ‘ยื่นอนุมัติ’ ตามปกติ ค่ามาตรฐานจึงถูกยกมาใบนี้`,
+  panelPredecessorStandard: (orderNumber) => `ใบนี้เป็น Rev. ของ ${orderNumber || 'ใบเดิม'} ที่ TS ตั้งมาตรฐาน มล./เดือนไว้แล้ว — ข้ามการตั้งงานบริการไม่ได้ ต้องตั้งให้ครบก่อนยื่น`,
+  /* โมดัลยืนยัน (`view.skip.prompt` → approvalPrompt()) */
+  title: 'ยื่นอนุมัติโดยยังไม่ตั้งงานบริการ',
+  verb: 'ยื่น',
+  subject: (orderNumber) => `${orderNumber || 'ใบสั่งขายนี้'} ให้ AE Supervisor ตรวจอนุมัติ โดยยังไม่ตั้งงานบริการ`,
+  effectSkip: (n) => `ข้ามการตั้งงานบริการ ${fmtNumber(n)} ข้อ — ผู้อนุมัติเห็นว่าใบนี้ยังไม่ตั้งงานบริการ และตีกลับให้ตั้งก่อนได้`,
+  effectApprove: 'เมื่ออนุมัติ: ยอดนับเป็น Actual ทันที แต่ยังไม่ส่งงานบริการให้ TS — ไม่มีโซนขึ้น “งานเข้าใหม่ › รอตั้งรอบ”',
+  effectAfter: 'หลังอนุมัติ ใบขึ้น ‘ยังไม่ตั้งงานบริการ’ ในคิว ‘รอฉันลงมือ’ ของเจ้าของดีล — ตั้งงานบริการให้ครบ กด ‘ยื่นตรวจงานบริการ’ แล้วผู้จัดการฝ่ายขายอนุมัติอีกครั้ง จึงส่ง TS',
+  effectCoverage: (k) => `ช่วงครอบบริการของงวดชำระ ${fmtNumber(k)} ข้อเลื่อนไปตรวจตอนยื่นตรวจงานบริการ`,
+  effectReset: 'ดึงกลับหรือถูกตีกลับ = การข้ามถูกล้าง ต้องเลือกใหม่ตอนยื่นครั้งถัดไป',
+  confirmLabel: 'ยื่นโดยยังไม่ตั้งงานบริการ',
+  /* หลังกด */
+  toast: 'ยื่นอนุมัติแล้ว — ข้ามการตั้งงานบริการไว้ · ตั้งได้หลังอนุมัติ',
+  /* กดแล้ว GET ใหม่บอกว่าข้ามไม่ได้แล้ว (สถานะเปลี่ยน/ไม่มีข้อให้ข้าม) · งานบริการครบไปแล้วระหว่างนั้น */
+  gone: 'ใบนี้ยื่นโดยยังไม่ตั้งงานบริการไม่ได้แล้ว — โหลดข้อมูลล่าสุดแล้ว',
+  complete: 'งานบริการครบแล้ว — กด ‘ยื่นอนุมัติ’ ตามปกติ',
+  /* ฟอร์มเอกสารของใบ (โหมด ‘แก้ไขข้อมูล’) มีการแก้/ไฟล์ที่ยังไม่บันทึก — ยื่นตอนนี้ = ของที่พิมพ์ค้างหายเงียบและใบล็อก ⇒ บอกเหตุตอนกด ไม่ยิง */
+  unsavedDocument: 'มีการแก้ไขที่ยังไม่บันทึก (ข้อมูลใบสั่งขาย · ไฟล์ยืนยันคำสั่งซื้อ · วันของงวดชำระ) — บันทึกก่อน แล้วจึงกด ‘ยื่นโดยยังไม่ตั้งงานบริการ’',
+  /* ยิงแล้วไม่ผ่านและ server ไม่ได้บอกเหตุ (เน็ตหลุดกลางทาง) · กดแล้วโหลดงานบริการล่าสุดไม่ขึ้น — ทักในจอที่ผู้ใช้มองอยู่ (แถบ error อยู่เหนือแผงแดง) */
+  failed: 'ยื่นโดยยังไม่ตั้งงานบริการไม่สำเร็จ — ยังไม่ได้ยื่น ลองกดอีกครั้ง',
+  loadFailed: 'โหลดงานบริการล่าสุดไม่สำเร็จ — ยังไม่ได้ยื่น ลองกดอีกครั้ง',
+  /* ประกาศ "ลูกค้ายังไม่มีไซต์" ของการ์ดงานบริการบนใบร่าง — เดิมบอกว่า "ยื่นอนุมัติไม่ได้จนกว่ามีโซน" ซึ่งไม่จริงแล้วตั้งแต่มีปุ่มข้าม
+     (ปุ่มข้ามอยู่บนแผงแดงหลังกด ‘ยื่นอนุมัติ’ — คนที่เชื่อประโยคเดิมจะไม่กดและไม่มีวันเจอ) · `customerText` = "ลูกค้า AR-xxxx" ของการ์ด */
+  noSites: (customerText) => `${customerText || 'ลูกค้า'} ยังไม่มีไซต์ในทะเบียน — เลือกโซนไม่ได้ · บันทึกร่างได้ · ยื่นอนุมัติตามปกติต้องมีโซนก่อน — ถ้ายังไม่พร้อม กด ‘ยื่นอนุมัติ’ แล้วเลือก ‘ยื่นโดยยังไม่ตั้งงานบริการ’ (ตั้งหลังอนุมัติ)`,
+});
+
+/* ป้าย/ประโยคของใบที่ข้ามการตั้งงานบริการตอนยื่น — ขึ้นเฉพาะตอน `serviceSetupDeferred(order)` ไม่ใช่ null
+   (รออนุมัติ · หรืออนุมัติแล้วยังไม่ประทับ ไม่ถูก Rev. ทับ) · อาร์กิวเมนต์ `d` = ก้อนนั้น / `view.deferred`
+   ⚠️ ป้ายขั้นของเส้นตั้งย้อนหลัง (ยังไม่เริ่ม · ฝ่ายขายกำลังตั้ง · รอผู้จัดการตรวจ · ตีกลับ) ใช้ `SERVICE_BACKFILL_STATE_LABELS` ตามเดิม — จริงกับใบนี้
+      (ใบไม่เคยตั้ง) · จอ/คิว TS ห้ามพิมพ์คำเหล่านี้เอง — เรียกจากที่นี่ */
+export const SERVICE_DEFERRED_TEXT = Object.freeze({
+  badge: 'ยังไม่ตั้งงานบริการ',
+  who: (d = {}) => `${d?.byName || '—'} ${dayText(d?.at)}`,
+  /* ── รออนุมัติ ── */
+  pendingTitle: 'ยื่นโดยยังไม่ตั้งงานบริการ',
+  pendingLine: (d = {}, n = 0) => `${d?.byName || 'ผู้ยื่น'} เลือกข้ามการตั้งงานบริการตอนยื่น (${dayText(d?.at)}) · ยังขาด ${fmtNumber(n)} ข้อ — อนุมัติแล้วนับ Actual ทันที แต่ยังไม่ส่งงานให้ TS จนกว่าจะตั้งงานบริการและผู้จัดการฝ่ายขายอนุมัติ`,
+  pendingHow: 'ต้องการให้ตั้งก่อนอนุมัติ: ผู้ยื่นกด ‘ดึงกลับ’ หรือผู้อนุมัติกด ‘ตีกลับให้แก้ไข’ (การข้ามถูกล้าง ต้องเลือกใหม่ตอนยื่น)',
+  pendingComplete: (d = {}) => `${d?.byName || 'ผู้ยื่น'} เลือกข้ามไว้ตอนยื่น (${dayText(d?.at)}) แต่ตอนนี้งานบริการครบแล้ว — อนุมัติแล้วส่งงานให้ TS ตามปกติ`,
+  /* ข้ามไว้ และยังมีข้อที่ข้ามไม่ได้ค้าง (เช่นงวดถูกแก้ระหว่างรออนุมัติ) — ต่อท้ายบรรทัด pendingLine */
+  pendingBlocked: (m) => `แต่ยังมี ${fmtNumber(m)} ข้อที่ข้ามไม่ได้ — อนุมัติไม่ได้จนกว่าจะตีกลับให้ฝ่ายขายแก้`,
+  /* ข้ามไว้ แต่ตอนนี้ไม่เหลือข้อของการตั้งงานบริการให้ข้ามแล้ว (หรือใบเดิมของ Rev. มีรอบเดินอยู่) และยังขาดข้ออื่น — การอนุมัติถูกปฏิเสธ */
+  pendingStuck: (d = {}, m = 0) => `${d?.byName || 'ผู้ยื่น'} เลือกข้ามไว้ตอนยื่น (${dayText(d?.at)}) แต่ตอนนี้ข้ามไม่ได้แล้ว และยังขาด ${fmtNumber(m)} ข้อ — อนุมัติไม่ได้ · ตีกลับให้ฝ่ายขายแก้แล้วยื่นใหม่`,
+  strip: (n) => `งานบริการ: ข้ามการตั้งตอนยื่น · ยังขาด ${fmtNumber(n)} ข้อ · อนุมัติแล้วยังไม่ส่ง TS`,
+  /* ส่วนของแถบผู้อนุมัติที่ต้องขึ้นสีเตือน (`ServiceSetupStrip` หาด้วยคำนี้ — เป็นสตริงย่อยของ `strip` เสมอ) */
+  stripWarn: 'ยังไม่ส่ง TS',
+  heroPending: 'ข้ามตอนยื่น — ตั้งหลังอนุมัติ',
+  /* ── โมดัลอนุมัติใบ (AE Supervisor · Admin Override) ── */
+  approveCheck: (d = {}) => `ใบนี้ยื่นโดยยังไม่ตั้งงานบริการ (${SERVICE_DEFERRED_TEXT.who(d)}) — ถ้าต้องให้ตั้งก่อน กด ‘ตีกลับให้แก้ไข’ แทนการอนุมัติ`,
+  approveEffectNoTs: (n) => `ยังไม่ส่งงานบริการให้ TS — ผู้ยื่นเลือกข้ามการตั้งงานบริการ (ยังขาด ${fmtNumber(n)} ข้อ) · ไม่มีโซนขึ้น “งานเข้าใหม่ › รอตั้งรอบ”`,
+  approveEffectAfter: 'หลังอนุมัติ ใบขึ้น ‘ยังไม่ตั้งงานบริการ’ ในคิว ‘รอฉันลงมือ’ ของเจ้าของดีล — ฝ่ายขายตั้งงานบริการ กด ‘ยื่นตรวจงานบริการ’ แล้วผู้จัดการฝ่ายขายอนุมัติอีกครั้ง จึงส่ง TS',
+  approveEffectComplete: 'ผู้ยื่นเลือกข้ามไว้ตอนยื่น แต่ตอนนี้งานบริการครบแล้ว — อนุมัติแล้วเปิดงานให้ TS ตามปกติ',
+  approvedToast: 'อนุมัติแล้ว · นับ Actual แล้ว — ยังไม่ส่งงานให้ TS (ข้ามการตั้งงานบริการตอนยื่น)',
+  /* ── หลังอนุมัติ (เส้นตั้งย้อนหลัง) ── */
+  bannerTitle: 'ข้ามการตั้งงานบริการตอนยื่น',
+  bannerLine: (d = {}) => `ข้ามโดย ${d?.byName || '—'} ${dayText(d?.at)} — ตั้งงานบริการ (แพ็คเกจ · ไซต์ · โซน · ${ROUNDS_TERM} · ${PACKS_TERM} · ช่วงบริการ) แล้วยื่นให้ผู้จัดการฝ่ายขายตรวจ · ยอด/Actual/เอกสารไม่เปลี่ยน`,
+  railEyebrow: 'Service setup · ข้ามตอนยื่น',
+  railTitle: 'งานบริการ (ข้ามตอนยื่น)',
+  railMeta: 'อนุมัติแล้วโดยยังไม่ตั้งงานบริการ — ผู้จัดการฝ่ายขายตรวจก่อนส่งให้ TS',
+  railLine: (d = {}) => `ข้ามการตั้งงานบริการตอนยื่น ${dayText(d?.at)} โดย ${d?.byName || '—'}`,
+  /* คำอธิบายใต้สถานะใบ (หน้า SO) — วันอนุมัติใบ ไม่ใช่วันที่ข้าม */
+  actualNote: (approvedAt) => `ยอดถูกนับเป็น Actual แล้ว (อนุมัติ ${dayText(approvedAt)}) — การตั้งงานบริการทีหลังไม่เปลี่ยนยอดนี้`,
+  cardMeta: 'ข้ามการตั้งงานบริการตอนยื่น — แก้ได้จนกว่าจะยื่นตรวจ',
+  cardMetaSubmitted: 'ข้ามตอนยื่น',
+  heroSuffix: ' · ข้ามตอนยื่น — ยังไม่ส่ง TS',
+  /* แถวคิวผู้จัดการ (ขั้นรอตรวจงานบริการ) · ป้ายต่อท้ายแถวคิวใบรออนุมัติ */
+  queueLabel: 'งานบริการ (ข้ามตอนยื่น)',
+  queueTag: 'ยังไม่ตั้งงานบริการ (ข้ามตอนยื่น)',
+  /* วงเล็บท้ายสรุป audit ของการยื่นตรวจ/อนุมัติ/ตีกลับงานบริการ แทน "(ใบเดิม)" */
+  auditTag: '(ข้ามตอนยื่น)',
+  checklistLine: (d = {}) => `ใบนี้อนุมัติโดยข้ามการตั้งงานบริการตอนยื่น (${SERVICE_DEFERRED_TEXT.who(d)})`,
+  /* ── แท็บ TS "รอฝ่ายขายตั้งงานบริการ (ใบเดิม)" — หน้าป้ายสถานะทุกขั้น / บรรทัดรองของขั้นที่ฝ่ายขายยังตั้งอยู่ ── */
+  tsPrefix: 'ข้ามตอนยื่น · ',
+  tsSub: (d = {}) => `ฝ่ายขายยื่นโดยยังไม่ตั้งงานบริการ ${dayText(d?.at)}`,
+  /* แถบรอบกำพร้าของหน้างานเข้าใหม่ (`ORPHAN_TITLES.unset` · intakePlanFacts.js) — รอบของใบเดิมที่ถูก Rev. ทับ และใบ Rev. ปลายโซ่อนุมัติแล้ว
+     แต่ยื่นโดยยังไม่ตั้งงานบริการ (ยังไม่มีรอบขาย) ⇒ ห้ามบอกว่า "Rev. ไม่มีไซต์นี้ — ปิดรอบ/ถอนเครื่อง" (ยังไม่รู้ว่าใบ Rev. มีไซต์นี้ไหม) */
+  tsOrphanTitle: (n) => `รอบที่ยังผูกใบเดิม ${fmtNumber(n)} รอบ — ใบ Rev. ล่าสุดยังไม่ตั้งงานบริการ (ฝ่ายขายข้ามตอนยื่น) · ยังไม่ต้องปิดรอบหรือถอนเครื่อง รอฝ่ายขายตั้งงานบริการและผู้จัดการฝ่ายขายอนุมัติก่อน`,
 });
 
 /* ══ บรรทัด: ชนิดของงาน ════════════════════════════════════════════════════════════════════════════════ */
@@ -1512,8 +1631,11 @@ function predecessorMoveLine(ctx) {
     + (left ? ` · ไซต์ที่ใบนี้ไม่มีแล้ว ${left} ไซต์ TS จะเห็นเป็นรอบของใบเดิมให้ตัดสิน` : '');
 }
 
-/** ผลของการอนุมัติ (บรรทัด "สิ่งที่จะเกิดขึ้นทันที") — flow: 'pipeline' (อนุมัติใบ) | 'backfill' (อนุมัติงานบริการย้อนหลัง/เปิดแก้หลังอนุมัติ) */
-export function serviceSetupApprovalEffects(ctx = {}, { flow = 'pipeline' } = {}) {
+/** ผลของการอนุมัติ (บรรทัด "สิ่งที่จะเกิดขึ้นทันที") — flow: 'pipeline' (อนุมัติใบ) | 'backfill' (อนุมัติงานบริการย้อนหลัง/เปิดแก้หลังอนุมัติ)
+ *  ⭐ mig 0404: ใบรออนุมัติที่ผู้ยื่นเลือกข้ามการตั้งงานบริการ (`serviceSetupApprovalGate`) — ยังข้ามอยู่ = บอกว่า **ยังไม่ส่ง TS** + ทางเดินต่อ
+ *    · เลือกข้ามไว้แต่ตอนนี้ครบแล้ว = บรรทัดเดิม + บอกว่าเปิดงานให้ TS ตามปกติ · ใบที่ไม่มีตราการข้าม = เหมือนเดิมทุกตัวอักษร
+ *  @param issues ข้อที่คิดไว้แล้ว (ใช้เฉพาะใบรออนุมัติที่มีตราการข้าม · ไม่ส่ง = คิดใหม่จาก ctx ซึ่งต้องมี fgOptionIds) */
+export function serviceSetupApprovalEffects(ctx = {}, { flow = 'pipeline', issues = null } = {}) {
   const totals = serviceSetupTotals(ctx);
   const money = installmentFindings(ctx, totals);
   const order = ctx?.order || {};
@@ -1544,6 +1666,14 @@ export function serviceSetupApprovalEffects(ctx = {}, { flow = 'pipeline' } = {}
     ].filter(Boolean);
   }
 
+  /* 🔴 กิ่งนี้ต้องมา **ก่อน** กิ่ง "ไม่มีแพ็คเกจบริการ" ข้างล่าง — ใบที่ทุกรายการยังไม่ตอบ 'งานบริการ?' ยังไม่มีรายการแพ็คเกจ
+     (packageLines = 0) ถ้าตกไปกิ่งนั้นผู้อนุมัติจะอ่านว่า "ใบนี้ไม่มีงานบริการ" ทั้งที่ยังไม่ได้ตั้ง
+     · ไม่เตือนเรื่องสัญญา (ยังไม่มีอะไรส่งให้ TS) */
+  const skipGate = pendingSkipGate(ctx, issues);
+  if (skipGate?.deferring) {
+    return [SERVICE_DEFERRED_TEXT.approveEffectNoTs(skipGate.deferredIssues.length), SERVICE_DEFERRED_TEXT.approveEffectAfter];
+  }
+
   if (!totals.packageLines) return ['ใบนี้ไม่มีแพ็คเกจบริการ — ไม่มีอะไรส่งให้ TS'];
 
   const period = orderPeriodText(ctx);
@@ -1554,6 +1684,9 @@ export function serviceSetupApprovalEffects(ctx = {}, { flow = 'pipeline' } = {}
   const renewalOrders = [...new Set([...renewals.values()].flat())];
   const moveLine = predecessorMoveLine(ctx);
   return [
+    /* ผู้ยื่นเลือกข้ามไว้ แต่ตอนนี้ไม่เหลือข้อที่ยังขาดเลย ⇒ การอนุมัติเปิดรอบขายตามปกติ (ตราการข้ามไม่มีผล) — บอกผู้อนุมัติก่อนบรรทัดส่งงาน
+       · ยังมีข้อค้าง (ข้ามไม่ได้แล้ว) = ไม่พูด: โมดัลขึ้น "อนุมัติไม่ได้ — งานบริการยังขาด n ข้อ" จาก `view.issues` อยู่แล้ว */
+    skipGate && !skipGate.blocking.length ? SERVICE_DEFERRED_TEXT.approveEffectComplete : null,
     handoffLine(totals),
     zeroTotal
       ? `ช่วงบริการ ${period} · ใบยอด 0 บาท — ไม่มีงวด`
@@ -1568,8 +1701,11 @@ export function serviceSetupApprovalEffects(ctx = {}, { flow = 'pipeline' } = {}
   ].filter(Boolean);
 }
 
-/** สิ่งที่ผู้อนุมัติควรตรวจก่อนกด — ⭐ คำเตือนรอบน้อย (มติ 29/09) ต่อท้าย: ผู้อนุมัติเห็นก่อนกดทั้งใบ pipeline และงานบริการย้อนหลัง */
-export function serviceSetupApprovalChecklist(ctx = {}, { flow = 'pipeline' } = {}) {
+/** สิ่งที่ผู้อนุมัติควรตรวจก่อนกด — ⭐ คำเตือนรอบน้อย (มติ 29/09) ต่อท้าย: ผู้อนุมัติเห็นก่อนกดทั้งใบ pipeline และงานบริการย้อนหลัง
+ *  ⭐ mig 0404: ใบรออนุมัติที่ยังข้ามการตั้งงานบริการอยู่ = ข้อเดียว "ใบนี้ยื่นโดยยังไม่ตั้งงานบริการ (ใคร · เมื่อไร) — ต้องให้ตั้งก่อนก็ตีกลับ"
+ *    (ยังไม่มีตารางให้ตรวจ) · เส้นตั้งย้อนหลังของใบที่ข้าม = บรรทัด "อนุมัติโดยข้ามการตั้งงานบริการตอนยื่น" เป็นข้อแรก (ที่เดียวกับเหตุที่เปิดแก้ของ 0396)
+ *  @param issues ข้อที่คิดไว้แล้ว (ใช้เฉพาะใบรออนุมัติที่มีตราการข้าม — ดู `serviceSetupApprovalEffects`) */
+export function serviceSetupApprovalChecklist(ctx = {}, { flow = 'pipeline', issues = null } = {}) {
   const tableCheck = `ตรวจแพ็คเกจ · ไซต์ · โซน · ${ROUNDS_TERM} · ${PACKS_TERM} ในการ์ดงานบริการ`;
   const roundsLow = roundsLowLines(ctx).map(({ lineNo, rounds, months }) => SERVICE_SETUP_ISSUE_TEXT.rounds_low({
     n: lineNo, rounds, months, stage: 'approve',
@@ -1580,12 +1716,18 @@ export function serviceSetupApprovalChecklist(ctx = {}, { flow = 'pipeline' } = 
   if (flow === 'backfill') {
     /* ใบที่เปิดแก้หลังอนุมัติ (0396) — ผู้จัดการเห็นเหตุที่เปิดแก้เป็นข้อแรก (มติเจ้าของ 30/09 ข้อ 4.3) */
     const reopened = serviceSetupReopened(ctx?.order);
-    const reason = reopened ? [SERVICE_REOPENED_TEXT.checklistLine(reopened)] : [];
+    /* ใบที่ข้ามการตั้งงานบริการตอนยื่น (0404) — ผู้จัดการเห็นว่าใบนี้อนุมัติมาโดยยังไม่ตั้ง (ใคร · เมื่อไร) เป็นข้อแรก
+       · ตัวตัดสินสองตัวไม่ตอบพร้อมกัน (เหตุการณ์ที่เกิดทีหลังชนะ — `serviceSetupDeferred` คืน null เมื่อใบถูกเปิดแก้ทีหลัง) */
+    const deferred = serviceSetupDeferred(ctx?.order);
+    const reason = reopened ? [SERVICE_REOPENED_TEXT.checklistLine(reopened)]
+      : deferred ? [SERVICE_DEFERRED_TEXT.checklistLine(deferred)] : [];
     const totals = serviceSetupTotals(ctx);
     if (!totals.packageLines) return [...reason, 'ตรวจว่าทุกรายการไม่ใช่งานบริการรายรอบจริง (ดูคำอธิบาย/หมายเหตุของแต่ละรายการ)'];
     const { unconfirmedCovered } = installmentFindings(ctx, totals);
     return [...reason, tableCheck, ...linePeriodCheck(totals), 'ช่วงบริการตรงกับหมายเหตุของแต่ละสาขา', `งวดที่ยังไม่รับรองมีช่วงครอบครบ ${unconfirmedCovered} งวด`, ...roundsLow];
   }
+  const skipGate = pendingSkipGate(ctx, issues);
+  if (skipGate?.deferring) return [SERVICE_DEFERRED_TEXT.approveCheck(skipGate.deferred)];
   const totals = serviceSetupTotals(ctx);
   return totals.packageLines ? [tableCheck, ...linePeriodCheck(totals), ...roundsLow] : [];
 }
@@ -1615,8 +1757,12 @@ export function serviceBackfillSubmitPrompt(ctx = {}) {
   };
 }
 
-/** แถบสรุปของผู้อนุมัติ: "งานบริการ: จำนวนรอบบริการ r รอบ · แต่ละครั้ง z โซนใน s ไซต์ · ครั้งละ p แพ็ค · รวมทั้งใบ t แพ็ค · ช่วง … · สัญญา: …" */
-export function serviceSetupStripText(ctx = {}) {
+/** แถบสรุปของผู้อนุมัติ: "งานบริการ: จำนวนรอบบริการ r รอบ · แต่ละครั้ง z โซนใน s ไซต์ · ครั้งละ p แพ็ค · รวมทั้งใบ t แพ็ค · ช่วง … · สัญญา: …"
+ *  ⭐ mig 0404: ใบรออนุมัติที่ยังข้ามการตั้งงานบริการอยู่ = "งานบริการ: ข้ามการตั้งตอนยื่น · ยังขาด n ข้อ · อนุมัติแล้วยังไม่ส่ง TS"
+ *  @param issues ข้อที่คิดไว้แล้ว (ใช้เฉพาะใบรออนุมัติที่มีตราการข้าม — ดู `serviceSetupApprovalEffects`) */
+export function serviceSetupStripText(ctx = {}, { issues = null } = {}) {
+  const skipGate = pendingSkipGate(ctx, issues);
+  if (skipGate?.deferring) return SERVICE_DEFERRED_TEXT.strip(skipGate.deferredIssues.length);
   const totals = serviceSetupTotals(ctx);
   if (!totals.packageLines) return 'งานบริการ: ใบนี้ไม่มีแพ็คเกจบริการ';
   const contract = text(ctx?.contract?.contractNo) || 'ยังไม่ผูก';
@@ -1635,14 +1781,24 @@ export function serviceSetupRevisionLine(ctx = {}) {
   return `คัดลอกงานบริการ ${fmtNumber(count)} รายการ · ${fmtNumber(totals.zones)} โซน · ช่วงบริการ ${orderPeriodText(ctx)} ไปใบ Rev.`;
 }
 
-/** ช่อง "รอบบริการที่ขาย" ของหัวใบ → `{ label, value, sub, tone }` */
-export function serviceSetupHeroFact(ctx = {}, { flow = null } = {}) {
+/** ช่อง "รอบบริการที่ขาย" ของหัวใบ → `{ label, value, sub, tone }`
+ *  ⭐ mig 0404: ใบรออนุมัติที่ยังข้ามการตั้งงานบริการอยู่ = "ยังไม่ตั้ง · ข้ามตอนยื่น — ตั้งหลังอนุมัติ"
+ *    · อนุมัติแล้วโดยข้าม (ยังไม่ยื่นตรวจ) = บรรทัดรองเดิม + " · ข้ามตอนยื่น — ยังไม่ส่ง TS"
+ *  @param issues ข้อที่คิดไว้แล้ว (ใช้เฉพาะใบรออนุมัติที่มีตราการข้าม — ดู `serviceSetupApprovalEffects`) */
+export function serviceSetupHeroFact(ctx = {}, { flow = null, issues = null } = {}) {
   const label = 'รอบบริการที่ขาย';
   const order = ctx?.order || {};
+  /* ก่อนกิ่ง "ไม่มีแพ็คเกจบริการ" — ใบที่ข้ามอาจยังไม่มีรายการแพ็คเกจ/รายการที่ยังไม่ตอบให้นับ (เช่นตอบ 'ไม่ใช่' แต่โซนค้าง) */
+  if (pendingSkipGate(ctx, issues)?.deferring) {
+    return { label, value: 'ยังไม่ตั้ง', sub: SERVICE_DEFERRED_TEXT.heroPending, tone: 'muted' };
+  }
   const totals = serviceSetupTotals(ctx);
   const awaiting = serviceBackfillAwaitingReview(order);
-  /* เปิดแก้หลังอนุมัติแล้วยังไม่ยื่นตรวจ (0396) — บอกว่างานยังไม่อยู่ที่ TS (ภาคผนวก A.4) · รอตรวจใช้ป้าย "รอตรวจ" เดิม */
-  const reopenTail = serviceSetupReopened(order) && !awaiting ? SERVICE_REOPENED_TEXT.heroSuffix : '';
+  /* เปิดแก้หลังอนุมัติแล้วยังไม่ยื่นตรวจ (0396) — บอกว่างานยังไม่อยู่ที่ TS (ภาคผนวก A.4) · รอตรวจใช้ป้าย "รอตรวจ" เดิม
+     · ใบที่อนุมัติโดยข้ามการตั้งงานบริการ (0404) พูดแบบเดียวกันด้วยคำของตัวเอง — ตัวตัดสินสองตัวไม่ตอบพร้อมกัน (D-F10) */
+  const reopenTail = awaiting ? ''
+    : serviceSetupReopened(order) ? SERVICE_REOPENED_TEXT.heroSuffix
+      : serviceSetupDeferred(order)?.stage === 'approved' ? SERVICE_DEFERRED_TEXT.heroSuffix : '';
   if (!totals.packageLines && !totals.unsetLines) return { label, value: '—', sub: 'ใบนี้ไม่มีแพ็คเกจบริการ', tone: 'muted' };
   const complete = !!order.serviceTermsOpenedAt
     || (totals.completeLines === totals.lineCount && !!validPeriod(servicePeriodOf(order)));
@@ -1841,6 +1997,9 @@ export function serviceReopenPrompt(ctx = {}, { issues = null } = {}) {
  */
 export function serviceSetupReopened(order) {
   if (!order?.serviceSetupReopenedAt || isHistoricalOrder(order)) return null;
+  /* mig 0404 (D-F10): เหตุการณ์ที่เกิดทีหลังชนะ — ใบที่เคยเปิดแก้ แล้วถูกยกเลิก → กู้คืน → ยื่นโดยยังไม่ตั้งงานบริการ ต้องพูดว่า "ข้ามตอนยื่น"
+     (ช่องของ 0396 คงอยู่เป็นประวัติ) · select ที่ไม่พกคอลัมน์ของ 0404 = undefined = พฤติกรรมเดิม */
+  if (order.serviceSetupDeferredAt && Date.parse(order.serviceSetupDeferredAt) > Date.parse(order.serviceSetupReopenedAt)) return null;
   if (order.status !== 'approved' || order.supersededById || order.serviceTermsOpenedAt) return null;
   return {
     at: order.serviceSetupReopenedAt,
@@ -1848,6 +2007,217 @@ export function serviceSetupReopened(order) {
     byName: order.serviceSetupReopenedByName ?? null,
     reason: order.serviceSetupReopenedReason ?? null,
   };
+}
+
+/* ══ ยื่นโดยยังไม่ตั้งงานบริการ: ตัวตัดสิน (mig 0404 · แผน IMPL_PLAN_DEFER §4) ════════════════════════════════════════ */
+
+/* ข้อของการตั้งงานบริการ = **ทุกรหัสที่ `sales_order_service_setup_errors` ของฐานปล่อยให้ใบ pipeline** (0392 + L1 ของ 0400)
+   ⇒ JS "มีข้อกลุ่ม setup" ⟺ ฐาน "ยังไม่ครบ" (เทสต์คู่ขนาน serviceSetupSqlParity.test.mjs · ฮาร์เนส 0404 เคส J-3)
+   · การมีข้อกลุ่มนี้อย่างน้อยหนึ่งข้อ = ปุ่ม 'ยื่นโดยยังไม่ตั้งงานบริการ' ใช้ได้ */
+const DEFER_SETUP_KEYS = Object.freeze(['kind_missing', 'fg_missing', 'fg_invalid', 'zones_missing', 'packs_missing', 'zone_invalid',
+  'zones_on_not_service', 'rounds_missing', 'period_missing', 'line_period_missing']);
+/* ข้อที่ **ตามมา** กับการตั้งงานบริการ (ฐานมองไม่เห็น — JS เท่านั้น): แพ็คเกจของนิติบุคคลอื่น · ช่วงครอบของงวดเทียบช่วงบริการ
+   เลื่อนไปพร้อมข้อกลุ่ม setup (ตรวจซ้ำตอนยื่นตรวจ/อนุมัติงานบริการ — ด่านเต็มของเส้นตั้งย้อนหลัง) · ไม่มีข้อกลุ่ม setup = บล็อกตามเดิม */
+const DEFER_FOLLOW_KEYS = Object.freeze(['fg_foreign', 'coverage_missing', 'coverage_start', 'coverage_gap', 'coverage_end']);
+
+/* ใบ Rev. ของใบที่ TS ยังเดินรอบบริการอยู่ (D-F18) — จำนวนไซต์ที่มีรอบเดินอยู่บนใบเดิม · ไม่ใช่ใบ Rev./ไม่มีรอบ = 0
+   ⚠️ การอนุมัติแบบข้ามไม่ย้ายรอบมาใบ Rev. ⇒ TS จะเห็นรอบเป็น "Rev. ไม่มีไซต์นี้ — ปิดรอบ/ถอนเครื่อง" ซึ่งไม่จริง ⇒ ใบแบบนี้ข้ามไม่ได้
+      (ฐานปฏิเสธด้วย `service_setup_defer_plans_running` · เงื่อนไขเดียวกับตัวย้ายรอบของตัวเปิดรอบขาย) */
+const predecessorRunning = (ctx) => (Array.isArray(ctx?.predecessor?.activePlanSiteIds) ? ctx.predecessor.activePlanSiteIds.length : 0);
+
+/* ใบ Rev. ของใบที่ TS ตั้งมาตรฐาน มล./เดือนบนรอบขายไว้แล้ว — จำนวนรอบขายของใบเดิมที่มีค่ามาตรฐาน · ไม่ใช่ใบ Rev./ไม่มี = 0
+   ⚠️ ตัวเปิดรอบขายยกค่ามาตรฐานจากรอบขายของใบเดิม **ทอดเดียว** (0392 §7) — ใบที่อนุมัติแบบข้ามไม่มีรอบขาย ⇒ ถ้าถูกออก Rev. ต่ออีกทอด
+      ก่อนตั้งงานบริการ รอบขายของใบถัดไปหาค่าไม่เจอ = ค่าที่ TS ตั้งหายเงียบ ⇒ ใบแบบนี้ข้ามไม่ได้ (ฐานปฏิเสธด้วย `service_setup_defer_ml_set`
+      · ตาข่ายเดียวกันใน D1) · ค่ามาตรฐานตั้งได้เฉพาะบนใบที่ยังมีผล (`/api/service/terms/[id]`) ⇒ หลังใบเดิมถูกย้อนการอนุมัติ ตัวเลขนี้นิ่ง */
+const predecessorStandards = (ctx) => {
+  const n = Number(ctx?.predecessor?.standardMlTermCount);
+  return Number.isInteger(n) && n > 0 ? n : 0;
+};
+
+/* เหตุที่ใบ Rev. ข้ามไม่ได้ทั้งใบเพราะใบเดิม → `{ reason, lead }` หรือ null · รอบที่ยังเดินมาก่อน (TS กำลังบริการอยู่ = เรื่องด่วนกว่า) */
+function predecessorSkipBlock(ctx) {
+  const running = predecessorRunning(ctx);
+  if (running) {
+    return { reason: SERVICE_DEFER_TEXT.predecessorRunning(ctx.predecessor.orderNumber, running),
+      lead: SERVICE_DEFER_TEXT.panelPredecessor(ctx.predecessor.orderNumber) };
+  }
+  const standards = predecessorStandards(ctx);
+  if (standards) {
+    return { reason: SERVICE_DEFER_TEXT.predecessorStandard(ctx.predecessor.orderNumber, standards),
+      lead: SERVICE_DEFER_TEXT.panelPredecessorStandard(ctx.predecessor.orderNumber) };
+  }
+  return null;
+}
+
+/**
+ * กลุ่มของข้อที่ยังขาดเมื่อ "ยื่นโดยยังไม่ตั้งงานบริการ" — 'setup' | 'follow' | 'blocking'
+ *   setup    ข้อของการตั้งงานบริการ (ฐานเห็น) — เลื่อนได้ และทำให้ปุ่มข้ามใช้ได้
+ *   follow   ข้อที่เลื่อนได้ **เมื่อมีข้อกลุ่ม setup ด้วย** (`serviceSetupDeferSplit` ตัดสินว่าเลื่อนจริงไหม)
+ *   blocking ข้ามไม่ได้: ยังไม่มีงวดชำระ · วันวางบิล · กำหนดชำระ · ยังไม่บันทึก · **ข้อของฝ่ายบัญชี** (owner 'FN') · รหัสที่ไม่รู้จัก (fail-closed)
+ */
+export function serviceSetupIssueGroup(issue) {
+  const key = issue?.key;
+  if (typeof key !== 'string' || !key || issue?.owner === 'FN') return 'blocking';
+  if (DEFER_SETUP_KEYS.includes(key)) return 'setup';
+  if (DEFER_FOLLOW_KEYS.includes(key)) return 'follow';
+  return 'blocking';
+}
+
+/**
+ * แยกข้อที่ยังขาดเป็นสามกลุ่ม → `{ setup, follow, blocking, deferrable }` (ลำดับในแต่ละกลุ่ม = ลำดับเดิม)
+ * ⭐ ไม่มีข้อกลุ่ม setup = **ไม่มีอะไรเลื่อนได้** ⇒ `{ setup: [], follow: [], blocking: [...issues], deferrable: false }`
+ *   (งานบริการครบในสายตาของฐาน ⇒ การอนุมัติเปิดรอบขายตามปกติ ⇒ ด่าน JS เต็มชุดของวันนี้ใช้ต่อ)
+ */
+export function serviceSetupDeferSplit(issues = []) {
+  const list = Array.isArray(issues) ? issues : [];
+  const out = { setup: [], follow: [], blocking: [] };
+  for (const issue of list) out[serviceSetupIssueGroup(issue)].push(issue);
+  if (!out.setup.length) return { setup: [], follow: [], blocking: [...list], deferrable: false };
+  return { ...out, deferrable: true };
+}
+
+/**
+ * ⭐ ด่านเงินของ **การยื่นแบบข้าม** บนใบที่ยังไม่มีรายการไหนเป็นแพ็คเกจ แต่ยังมีรายการที่ **ยังไม่ตอบ** 'งานบริการ?' → Issue[] (ว่าง = ไม่มีข้อเพิ่ม)
+ * ด่านงวด (ยังไม่มีงวดชำระ · วันวางบิล · กำหนดชำระ) ของ `serviceSetupIssues` ทำงานเฉพาะใบที่มีแพ็คเกจแล้ว (`totals.packageLines`) —
+ * ใบที่ทุกรายการยังไม่ตอบจึงไม่มีข้อเงินเลย และการยื่นปกติก็ยื่นไม่ได้อยู่แล้ว (ยังไม่ตอบ) · แต่การยื่นแบบข้าม **เลื่อน** ข้อ "ยังไม่ตอบ" ออกไป
+ * ⇒ ถ้าไม่ตรวจที่นี่ กติกา "งวดชำระ/วันวางบิล/กำหนดชำระ ข้ามไม่ได้" จะจริงเฉพาะใบที่ตอบ ‘ใช่’ ไปแล้ว และผู้ยื่นที่ติดข้อเงินแค่ล้างคำตอบก็ข้ามได้
+ *   (ตรวจทานรอบสุดท้าย lib-01) ⇒ ใบที่จะข้ามถูกตรวจเหมือน **มีแพ็คเกจ**: คืนเฉพาะข้อกลุ่ม blocking (ข้อช่วงครอบเลื่อนได้อยู่แล้ว ไม่นับ)
+ * · ใบที่มีแพ็คเกจแล้ว = [] (ข้อเงินอยู่ใน `serviceSetupIssues` แล้ว — ไม่ซ้ำ) · ทุกรายการตอบแล้ว = [] · ยอดศูนย์ = [] (ไม่ต้องมีงวด)
+ * ⚠️ ข้อชุดนี้ **ไม่ใช่** ข้อของการยื่นปกติ (ตอบ ‘ไม่ใช่’ ครบทุกรายการ = ไม่ต้องมีงวด) ⇒ ไม่อยู่ใน `view.issues` ของใบร่าง —
+ *    อยู่ที่ `view.skip.extraIssues` (แผงแดงวาดต่อท้ายเมื่อกดปุ่มข้าม) และในข้อที่หยุดการอนุมัติของใบรออนุมัติที่ยังข้ามอยู่
+ */
+export function serviceSetupSkipMoneyIssues(ctx = {}) {
+  if (ctx?.unsaved) return [];
+  const totals = serviceSetupTotals(ctx);
+  if (totals.packageLines || !totals.unsetLines) return [];
+  return installmentFindings(ctx, { ...totals, packageLines: totals.unsetLines }).issues
+    .filter((issue) => serviceSetupIssueGroup(issue) === 'blocking');
+}
+
+/**
+ * โมดัลยืนยัน 'ยื่นโดยยังไม่ตั้งงานบริการ' — ส่งเข้า `approvalPrompt()` ได้ตรง ๆ (หน้าใบเติมสองบรรทัดของการยื่นปกติไว้ข้างหน้า)
+ * ผล: ① ข้ามกี่ข้อ + ผู้อนุมัติเห็น ② อนุมัติแล้วนับ Actual แต่ยังไม่ส่ง TS ③ ทางเดินหลังอนุมัติ ④ (มีข้อช่วงครอบที่เลื่อน) ตรวจตอนยื่นตรวจ
+ *   ⑤ ดึงกลับ/ตีกลับ = ต้องเลือกใหม่
+ * @param split ผลของ `serviceSetupDeferSplit` ที่คิดไว้แล้ว (ไม่ส่ง = คิดใหม่จาก ctx · ต้องมี fgOptionIds — fail-closed)
+ */
+export function serviceDeferPrompt(ctx = {}, split = null) {
+  const parts = split || serviceSetupDeferSplit(serviceSetupIssues(ctx));
+  const follow = Array.isArray(parts?.follow) ? parts.follow : [];
+  const count = (Array.isArray(parts?.setup) ? parts.setup.length : 0) + follow.length;
+  const coverage = follow.filter((issue) => String(issue?.key || '').startsWith('coverage_')).length;
+  return {
+    title: SERVICE_DEFER_TEXT.title,
+    verb: SERVICE_DEFER_TEXT.verb,
+    subject: SERVICE_DEFER_TEXT.subject(ctx?.order?.orderNumber),
+    effects: [
+      SERVICE_DEFER_TEXT.effectSkip(count),
+      SERVICE_DEFER_TEXT.effectApprove,
+      SERVICE_DEFER_TEXT.effectAfter,
+      coverage ? SERVICE_DEFER_TEXT.effectCoverage(coverage) : null,
+      SERVICE_DEFER_TEXT.effectReset,
+    ].filter(Boolean),
+    confirmLabel: SERVICE_DEFER_TEXT.confirmLabel,
+  };
+}
+
+/* ก้อน `view.skip` ของใบที่ข้ามไม่ได้/ไม่เกี่ยว — ทุกช่องมีค่าเสมอ (ไม่มี undefined) · สร้างใหม่ทุกครั้ง ผู้เรียกแก้ได้โดยไม่กระทบกัน */
+const skipNone = () => ({
+  visible: false, canSkip: false, blockedReason: null, lead: null, deferredCount: 0, blockingCount: 0, extraIssues: [], prompt: null,
+});
+
+/**
+ * ⭐ ปุ่ม 'ยื่นโดยยังไม่ตั้งงานบริการ' บนแผงแดง (`view.skip`) — ตัวเดียวกันทั้ง GET (จอ) และด่านของ route ยื่น (server ตรวจซ้ำ ไม่เชื่อจอ)
+ *   → `{ visible, canSkip, blockedReason, lead, deferredCount, blockingCount, extraIssues, prompt }`
+ *   visible  มีสิทธิ์แก้ใบ (ผู้เรียกคิด) · ใบร่าง/ถูกตีกลับของสาย SERVICE (`flow === 'pipeline'`) · มีข้อกลุ่ม setup ≥ 1
+ *            · มีรายการที่ต้องตั้ง (`serviceLineNeedsBackfill` — คู่กับ `service_setup_defer_nothing` ของฐาน ⇒ หลังอนุมัติใบเข้าเส้นตั้งย้อนหลังแน่นอน)
+ *   canSkip  visible และไม่มีเหตุบล็อก · `blockedReason` = เหตุที่บอกตอนกด (ปุ่มยังโชว์ — ติดด่าน = โชว์แล้วบอกเหตุ):
+ *            ใบเดิมของ Rev. ยังเดินรอบ (ก่อน) · ใบเดิมของ Rev. มีมาตรฐาน มล./เดือนที่ TS ตั้งไว้ · ยังเหลือข้อที่ข้ามไม่ได้
+ *   blockingCount ข้อที่ข้ามไม่ได้ = กลุ่ม blocking ของ `issues` + `extraIssues`
+ *   extraIssues   ข้อเงินที่การยื่นแบบข้ามต้องการเพิ่มบนใบที่ยังไม่ตอบ 'งานบริการ?' (`serviceSetupSkipMoneyIssues` — ไม่อยู่ใน `issues`)
+ *                 ⇒ แผงแดงวาดต่อท้ายเมื่อกดปุ่มข้าม · route ส่งรวมไปกับ 400
+ *   lead     บรรทัดท้ายแผงแดง (server เลือกให้ จอไม่ตัดสินเอง) · prompt = ป้อน approvalPrompt() เมื่อข้ามได้
+ * ⚠️ JS มองไม่เห็น "ใบมีรอบขายค้างจากการอนุมัติรอบก่อน" (กู้คืนจากยกเลิก — `ctx.liveTermsByZone` มีแต่ของใบอื่น) ⇒ กรณีนั้นฐานปฏิเสธ
+ *    หลังโมดัล (`service_setup_defer_terms_exist` · 409)
+ * @param issues ข้อที่คิดไว้แล้ว (ไม่ส่ง = คิดใหม่จาก ctx · ต้องมี fgOptionIds — fail-closed เหมือน serviceSetupIssues)
+ */
+export function serviceSetupSkipState(ctx = {}, { canEdit = false, issues = null } = {}) {
+  const order = ctx?.order || null;
+  if (!canEdit || !order || serviceSetupFlow(order, ctx) !== 'pipeline') return skipNone();
+  const split = serviceSetupDeferSplit(Array.isArray(issues) ? issues : serviceSetupIssues(ctx));
+  if (!split.deferrable || !linesFrom(order, ctx).some((line) => serviceLineNeedsBackfill(line))) return skipNone();
+  const predecessor = predecessorSkipBlock(ctx);
+  const extraIssues = serviceSetupSkipMoneyIssues(ctx);
+  const deferredCount = split.setup.length + split.follow.length;
+  const blockingCount = split.blocking.length + extraIssues.length;
+  const blockedReason = predecessor
+    ? predecessor.reason
+    : blockingCount ? SERVICE_DEFER_TEXT.blocked(blockingCount) : null;
+  const canSkip = !blockedReason;
+  return {
+    visible: true,
+    canSkip,
+    blockedReason,
+    lead: canSkip ? SERVICE_DEFER_TEXT.panelLead(deferredCount)
+      : predecessor ? predecessor.lead
+        : SERVICE_DEFER_TEXT.panelBlocked(deferredCount, blockingCount),
+    deferredCount,
+    blockingCount,
+    extraIssues,
+    prompt: canSkip ? serviceDeferPrompt(ctx, split) : null,
+  };
+}
+
+/**
+ * ⭐ "ใบนี้ยื่นโดยยังไม่ตั้งงานบริการ" — ตัวเดียวที่ทุกป้ายถาม (ประกาศบนใบรออนุมัติ · โมดัลอนุมัติ · แบนเนอร์/ราง · คิว · แท็บ TS · สรุป audit)
+ *   → `{ at, byId, byName, stage }` หรือ null · ดูแค่แถวใบ ไม่ต้องใช้บรรทัด (คิวหลายใบเรียกได้)
+ *   stage 'pending'  ใบรออนุมัติ (ผู้อนุมัติต้องเห็นว่าใบนี้ข้าม)
+ *   stage 'approved' อนุมัติแล้ว · ยังไม่ประทับ · ไม่ถูก Rev. ทับ (ใบอยู่ในเส้นตั้งย้อนหลัง)
+ * null: ไม่มีตรา · ใบย้อนหลัง · สถานะอื่น (ย้อนการอนุมัติ/ยกเลิก/ถูก Rev. ทับ — ตราคงเป็นประวัติแต่ป้ายไม่ขึ้น) · ประทับแล้ว
+ *   · ใบที่เปิดแก้หลังอนุมัติทีหลัง (`serviceSetupReopened` ไม่ใช่ null — เหตุการณ์ที่เกิดทีหลังชนะ · D-F10)
+ * ⚠️ ไม่ได้ตอบว่า "การอนุมัติจะไม่เปิดรอบขาย" — นั่นขึ้นกับข้อที่ยังขาดตอนนั้น (`serviceSetupApprovalGate`)
+ */
+export function serviceSetupDeferred(order) {
+  if (!order?.serviceSetupDeferredAt || isHistoricalOrder(order)) return null;
+  const stage = order.status === 'pending_approval' ? 'pending'
+    : order.status === 'approved' && !order.supersededById && !order.serviceTermsOpenedAt ? 'approved' : null;
+  if (!stage || serviceSetupReopened(order)) return null;
+  return {
+    at: order.serviceSetupDeferredAt,
+    byId: order.serviceSetupDeferredById ?? null,
+    byName: order.serviceSetupDeferredByName ?? null,
+    stage,
+  };
+}
+
+/**
+ * ⭐ ด่านงานบริการของ **การอนุมัติใบ** → `{ deferred, deferring, blocking, deferredIssues }`
+ *   deferring      ใบรออนุมัติที่ผู้ยื่นเลือกข้าม · ยังมีข้อกลุ่ม setup (ฐานจะเห็นว่ายังไม่ครบ) · ใบเดิมของ Rev. ไม่มีรอบเดินอยู่
+ *                  และรอบขายของใบเดิมไม่มีมาตรฐาน มล./เดือน (เงื่อนไขเดียวกับ D1)
+ *                  ⇒ การอนุมัติ **ไม่เปิดรอบขาย ไม่ประทับตรา** (แพตช์ D1 ของ 0404) — หยุดการอนุมัติเฉพาะข้อกลุ่ม blocking
+ *                  + ข้อเงินของใบที่ยังไม่ตอบ 'งานบริการ?' (`serviceSetupSkipMoneyIssues` — ด่านเดียวกับตอนยื่นแบบข้าม)
+ *   ไม่ deferring  ทุกข้อหยุดการอนุมัติเหมือนเดิมทุกตัวอักษร (ไม่มีตรา · งานบริการครบแล้ว · ข้ามไม่ได้แล้ว)
+ *   blocking       ข้อที่หยุดการอนุมัติตอนนี้ · deferredIssues = ข้อที่ถูกเลื่อน (setup + follow · ว่างเมื่อไม่ deferring)
+ * ⚠️ สิ่งที่เกิดจริงอ่านจากแถวที่ RPC คืน เสมอ (เปิดรอบขายแล้ว ⟺ `serviceTermsOpenedAt` มีค่า) — ห้ามสรุปจากด่านนี้
+ *    (ของเปลี่ยนระหว่างด่านกับ RPC ได้ · ฐานเป็นคนตัดสิน)
+ * @param issues ข้อที่คิดไว้แล้ว (ไม่ส่ง = `serviceSetupIssues(ctx)` — throw เมื่อไม่มี fgOptionIds · fail-closed เหมือนทุกด่าน)
+ */
+export function serviceSetupApprovalGate(ctx = {}, issues = null) {
+  const all = Array.isArray(issues) ? issues : serviceSetupIssues(ctx);
+  const deferred = serviceSetupDeferred(ctx?.order);
+  const split = serviceSetupDeferSplit(all);
+  const deferring = deferred?.stage === 'pending' && split.deferrable && !predecessorSkipBlock(ctx);
+  return {
+    deferred,
+    deferring,
+    blocking: deferring ? [...split.blocking, ...serviceSetupSkipMoneyIssues(ctx)] : all,
+    deferredIssues: deferring ? [...split.setup, ...split.follow] : [],
+  };
+}
+
+/* ด่านของใบรออนุมัติที่มีตราการข้าม — null เมื่อใบไม่ได้อยู่ขั้นนั้น (ไม่คิดข้อที่ยังขาด ⇒ ผู้เรียกที่ไม่มี fgOptionIds ไม่ throw เหมือนเดิม)
+   ใช้ร่วมกันโดยผลของการอนุมัติ · ข้อที่ต้องตรวจ · แถบผู้อนุมัติ · ช่องหัวใบ ⇒ สี่ผิวตัดสินจากตัวเดียว */
+function pendingSkipGate(ctx, issues) {
+  return serviceSetupDeferred(ctx?.order)?.stage === 'pending' ? serviceSetupApprovalGate(ctx, issues) : null;
 }
 
 /* ก้อน `view.reopen` — ปุ่มไม่โชว์ = ทุกช่องว่าง · โชว์ = เหตุบล็อก (รหัสฐาน + รหัส JS) หรือโมดัล
@@ -1878,11 +2248,19 @@ function reopenViewOf(ctx, { canEdit, reopenBlockers, issues }) {
  * @param canEdit ผู้ขอแก้ใบนี้ได้ไหม (`canEditSalesPlanning && inSalesEditScope`) · role/userId = ผู้ขอ
  * @param reopenBlockers รหัสจาก `sales_order_service_reopen_blockers` ของฐาน (route อ่านเฉพาะตอนปุ่มโชว์ · อ่านพัง = ['unread'])
  *   ไม่ส่ง = 'unread' เมื่อปุ่มโชว์ (ปิดไว้ก่อน) · รหัส JS (`money_fn`) คิดที่นี่เสมอ — ส่งมาแล้วก็ถูกคิดใหม่ ไม่ซ้ำ
+ * ⭐ mig 0404: เพิ่ม `skip` (ปุ่ม 'ยื่นโดยยังไม่ตั้งงานบริการ') และ `deferred` (ใบที่ผู้ยื่นเลือกข้าม) · `issues` ของใบรออนุมัติที่ยังข้ามอยู่
+ *   = เฉพาะข้อที่หยุดการอนุมัติ (D-F11) · ใบที่ไม่มีตราการข้าม: ทุกคีย์เดิมค่าเดิม + `skip` ก้อนกลาง/ตามขั้น + `deferred: null`
  */
 export function serviceSetupView(ctx = {}, { canEdit = false, userId = null, role = null, reopenBlockers = null } = {}) {
   const order = ctx?.order || {};
   const flow = serviceSetupFlow(order, ctx);
-  const issues = serviceSetupIssues(ctx);
+  /* ⭐ mig 0404 (D-F11): `issues` ของใบ **รออนุมัติ** = ข้อที่หยุดการอนุมัติ — ไม่มีตราการข้าม = ทุกข้อ (เหมือนเดิม) · ยังข้ามอยู่ = เฉพาะข้อที่
+     ข้ามไม่ได้ (ข้อที่ถูกเลื่อนไปอยู่ที่ `deferred.missing`) ⇒ "อนุมัติไม่ได้ — งานบริการยังขาด n ข้อ" ของโมดัลอนุมัติยังจริงเสมอ
+     · ทุกสถานะอื่น = ทุกข้อ (เหมือนเดิม) · ตัวที่ต้องการทุกข้อเสมอ (ปุ่มข้าม · ปุ่มแก้งานบริการ · ข้อความของโมดัล) ใช้ `allIssues` */
+  const allIssues = serviceSetupIssues(ctx);
+  const gate = serviceSetupApprovalGate(ctx, allIssues);
+  const issues = order.status === 'pending_approval' ? gate.blocking : allIssues;
+  const deferredInfo = gate.deferred;
   const reopenedInfo = serviceSetupReopened(order);
   const editBlockedReason = serviceSetupEditError(order, { canEdit });
   const mode = (flow === 'pipeline' || flow === 'backfill') && !editBlockedReason ? 'edit' : 'read';
@@ -1965,14 +2343,14 @@ export function serviceSetupView(ctx = {}, { canEdit = false, userId = null, rol
     issues,
     warnings: serviceSetupWarnings(ctx),
     totals: serviceSetupTotals(ctx),
-    approvalEffects: serviceSetupApprovalEffects(ctx, { flow: playFlow }),
-    approvalChecklist: serviceSetupApprovalChecklist(ctx, { flow: playFlow }),
+    approvalEffects: serviceSetupApprovalEffects(ctx, { flow: playFlow, issues: allIssues }),
+    approvalChecklist: serviceSetupApprovalChecklist(ctx, { flow: playFlow, issues: allIssues }),
     approvalSubject: submitterName
       ? `${orderNumber} · ยื่นโดย ${submitterName}${submittedAt ? ` ${fmtDate(submittedAt)}` : ''}`
       : orderNumber,
     submitLine: serviceSetupSubmitLine(ctx),
-    stripText: serviceSetupStripText(ctx),
-    hero: serviceSetupHeroFact(ctx, { flow }),
+    stripText: serviceSetupStripText(ctx, { issues: allIssues }),
+    hero: serviceSetupHeroFact(ctx, { flow, issues: allIssues }),
     backfillSubmitPrompt: flow === 'backfill' ? serviceBackfillSubmitPrompt(ctx) : null,
     revisedFrom: ctx?.predecessor ? { id: ctx.predecessor.id ?? null, orderNumber: ctx.predecessor.orderNumber ?? null } : null,
     backfill: {
@@ -1984,8 +2362,22 @@ export function serviceSetupView(ctx = {}, { canEdit = false, userId = null, rol
     liveTermsInfo: [...liveTermsOnSetup(ctx)].map(([zoneId, orderNumbers]) => ({ zoneId, orderNumbers })),
     /* ปุ่ม 'แก้งานบริการ' บนหัวการ์ดงานบริการ (mig 0396) — `{ visible, canReopen, blockedReason, blockers, prompt }`
        visible = canReopen (มีสิทธิ์ · ใบประทับ · มีอะไรให้แก้) · blockedReason = toast ตอนกด (GatedAction) · prompt = ป้อน approvalPrompt() */
-    reopen: reopenViewOf(ctx, { canEdit, reopenBlockers, issues }),
+    reopen: reopenViewOf(ctx, { canEdit, reopenBlockers, issues: allIssues }),
     /* ใบที่เปิดแก้หลังอนุมัติอยู่ (flow 'backfill') — `{ at, byId, byName, reason, fields }` หรือ null · ป้าย A.4 อ่านจากตัวนี้ */
     reopened: reopenedInfo ? { ...reopenedInfo, fields: serviceReopenFieldsText(ctx) } : null,
+    /* ปุ่ม 'ยื่นโดยยังไม่ตั้งงานบริการ' บนแผงแดง (mig 0404) — `{ visible, canSkip, blockedReason, lead, deferredCount, blockingCount, extraIssues, prompt }`
+       มีความหมายเฉพาะใบร่าง/ถูกตีกลับ (`flow === 'pipeline'`) · ขั้นอื่น = ก้อนกลาง (ทุกช่องมีค่า · visible false) · คิดจาก **ทุกข้อ** เสมอ */
+    skip: serviceSetupSkipState(ctx, { canEdit, issues: allIssues }),
+    /* ใบที่ผู้ยื่นเลือกข้ามการตั้งงานบริการ (mig 0404) — `{ at, byId, byName, stage, active, missing, blocking }` หรือ null (`serviceSetupDeferred`)
+       stage 'pending' (รออนุมัติ): active = การอนุมัติตอนนี้ **จะไม่เปิดรอบขาย** (ยังข้ามอยู่) · missing = ข้อที่ถูกเลื่อน (0 เมื่อไม่ active)
+                                    · blocking = ข้อที่หยุดการอนุมัติตอนนี้ (= `issues.length`)
+       stage 'approved' (เส้นตั้งย้อนหลัง): active true · missing = ข้อที่ยังขาดทั้งหมดตอนนี้ · blocking 0
+       ⇒ ประกาศบนใบรออนุมัติเลือกหนึ่งในสี่แบบจาก active × blocking (ไม่สัญญาการอนุมัติที่ด่านจะปฏิเสธ) */
+    deferred: deferredInfo ? {
+      ...deferredInfo,
+      active: deferredInfo.stage === 'approved' || gate.deferring,
+      missing: deferredInfo.stage === 'approved' ? allIssues.length : gate.deferredIssues.length,
+      blocking: deferredInfo.stage === 'pending' ? issues.length : 0,
+    } : null,
   };
 }

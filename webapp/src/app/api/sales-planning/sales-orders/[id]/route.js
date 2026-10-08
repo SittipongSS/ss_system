@@ -72,9 +72,10 @@ import { loadScoped } from '@/lib/scopedRow';
 import { serviceContractLinkError } from '@/lib/sales/serviceContractLink';
 import { serviceRoundsEditError, validateServiceRoundsPatch } from '@/lib/sales/serviceRoundsEntry';
 import {
-  SERVICE_SETUP_SQL_MESSAGES, serviceSetupIssues, serviceSetupRequired, serviceSetupSqlIssues, serviceSetupTotals,
+  SERVICE_SETUP_SQL_MESSAGES, serviceSetupApprovalGate, serviceSetupDeferred, serviceSetupIssues, serviceSetupRequired,
+  serviceSetupSkipState, serviceSetupSqlIssues, serviceSetupTotals,
 } from '@/lib/sales/serviceSetup';
-import { loadServiceSetupContext } from '@/lib/sales/serviceSetupRepo';
+import { loadServiceSetupContext, submitOrderDeferringServiceSetup } from '@/lib/sales/serviceSetupRepo';
 import {
   HISTORICAL_CANCEL_SETTLE_STUCK, HISTORICAL_CORRECTION_PATH, historicalCancelBlock, historicalCancelNoteError,
   historicalCancelOpening, historicalCancelSettleBlock, historicalDeleteBlock, historicalOpeningSettled, isHistoricalOrder,
@@ -1122,12 +1123,72 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
        (`serviceSetupIssues` · GET ของ /service-setup ส่งข้อเดียวกัน) ⇒ ตอบ 400 พร้อม `issues` ให้แผงแดงวาดรายข้อ
        ⚠️ `withFgOptions: true` บังคับ — ข้อ "แพ็คเกจของนิติบุคคลอื่น" ตรวจที่ JS เท่านั้น · ไม่โหลด = ตัวตัดสิน throw (fail-closed)
        ⚠️ อ่านไม่ขึ้น = 500 ไม่ใช่ "ผ่าน" (ห้ามเดา) · ใบสายอื่น/ใบย้อนหลังไม่ผ่านด่านนี้ (serviceSetupRequired) */
+    /* ⭐ **ยื่นโดยยังไม่ตั้งงานบริการ** (mig 0404 · มติเจ้าของ 01/10 "ฝ่ายขายกดข้ามเอง") — `deferServiceSetup: true` (บูลีนแท้เท่านั้น)
+       + `expectedUpdatedAt` ของก้อน GET สดที่จอเพิ่งอ่าน (ตามตัวอักษร) · ไม่ส่ง = การยื่นปกติ เหมือนเดิมทุกอย่าง
+       🔴 **server ตัดสินเองว่าข้ามได้ไหม ไม่เชื่อจอ** — ตัวตัดสินเดียวกับปุ่มบนแผงแดง (`serviceSetupSkipState` บนบริบทที่เพิ่งโหลด):
+          ข้ามได้เฉพาะข้อของการตั้งงานบริการ (+ ข้อที่ตามมา) · งวดชำระ/วันวางบิล/กำหนดชำระ/ข้อของบัญชี ยังบล็อก (ใบที่ยังไม่ตอบ 'งานบริการ?'
+          ก็ถูกตรวจข้อเงินเหมือนมีแพ็คเกจ) · ใบ Rev. ที่ใบเดิมยังเดินรอบ หรือ TS ตั้งมาตรฐาน มล./เดือนบนรอบขายของใบเดิมไว้ = ข้ามไม่ได้
+          · ไม่มีอะไรให้ข้ามแต่ยังขาดข้ออื่น = 400 เดิม (แผงแดง) · ครบแล้ว = 409 ไม่พก `issues` (จอห้ามวาดแผงแดงเปล่า)
+       ⇒ ผ่านแล้วยิง RPC ตัวห่อ (`submit_sales_order_deferring_service_setup`): ตรวจสถานะ/เวอร์ชัน/รอบขายค้างซ้ำใต้ล็อกแถว → ตัวยื่นเดิม
+          (ลายเซ็นผู้จัดทำ) → จดว่าใคร/เมื่อไรที่ข้าม ในทรานแซกชันเดียว · ดึงกลับ/ตีกลับ = ฐานล้างการข้ามเอง (trigger) */
+    const deferring = body.deferServiceSetup === true;
+    if (deferring && !serviceSetupRequired(before)) {
+      return Response.json({
+        error: SERVICE_SETUP_SQL_MESSAGES.service_setup_defer_state_invalid.message, code: 'service_setup_defer_state_invalid',
+      }, { status: 409 });
+    }
+    let deferExpected = null;
+    if (deferring) {
+      // เวอร์ชันที่ "หน้าเว็บเห็น" ไม่ใช่ที่ server เพิ่งอ่าน — ดู lib/sales/documentConcurrency.js
+      const expected = resolveExpectedUpdatedAt(body);
+      if (!expected.ok) return badRequest(expected.error);
+      deferExpected = expected.value;
+    }
+    let deferSkip = null;
     if (serviceSetupRequired(before)) {
       let setupCtx;
       try { setupCtx = await loadServiceSetupContext(supabase, before, { lines: before.lines, withFgOptions: true }); }
       catch (setupError) { return fail(`ตรวจงานบริการไม่สำเร็จ: ${setupError.message}`, 500); }
       const issues = serviceSetupIssues(setupCtx);
-      if (issues.length) return Response.json({ error: `ยื่นอนุมัติไม่ได้ — ยังขาด ${issues.length} ข้อ`, issues }, { status: 400 });
+      if (deferring) {
+        const skip = serviceSetupSkipState(setupCtx, { canEdit: true, issues });
+        if (!skip.visible && !issues.length) {
+          return Response.json({
+            error: SERVICE_SETUP_SQL_MESSAGES.service_setup_defer_nothing.message, code: 'service_setup_defer_nothing',
+          }, { status: 409 });
+        }
+        /* ข้ามไม่ได้ = 400 พร้อมข้อที่แผงแดงต้องวาด: ทุกข้อของการยื่น + ข้อเงินที่การยื่นแบบข้ามต้องการเพิ่มบนใบที่ยังไม่ตอบ 'งานบริการ?'
+           (`skip.extraIssues`) · พก `skip` ไปด้วย — จอวาดบรรทัดท้ายแผง/ป้าย 'ข้ามได้' จากก้อนเดียวกับข้อ (ภาพ ณ ตอนตอบ) */
+        if (skip.visible && !skip.canSkip) {
+          return Response.json({ error: skip.blockedReason, issues: [...issues, ...skip.extraIssues], skip }, { status: 400 });
+        }
+        if (skip.visible) deferSkip = skip;
+      }
+      if (issues.length && !deferSkip) return Response.json({ error: `ยื่นอนุมัติไม่ได้ — ยังขาด ${issues.length} ข้อ`, issues }, { status: 400 });
+    }
+    if (deferSkip) {
+      /* ผู้ลงนาม · fingerprint · เลขหลักฐาน = นิพจน์เดียวกับการยื่นปกติข้างล่าง · เวอร์ชัน = ค่าของจอ (ไม่ใช่ `before.updatedAt`)
+         ⚠️ supabase ไม่ throw — ตัวเรียกคืน `{ error }` (รหัสงานบริการ 409/403/404 · รหัสลายเซ็นของตัวยื่นเดิมตามเดิม เช่น 409 + accountUrl) */
+      const deferred = await submitOrderDeferringServiceSetup(supabase, {
+        orderId: id,
+        evidenceId: genId('DSE'),
+        expectedUpdatedAt: deferExpected,
+        documentFingerprint: salesOrderApprovalFingerprint(before, before.lines),
+        user,
+      });
+      if (deferred.error) {
+        return Response.json({
+          error: deferred.error.message, code: deferred.error.code, ...(deferred.error.extra || {}),
+        }, { status: deferred.error.status });
+      }
+      const data = deferred.data.document;
+      await logThread('submit');
+      await recordAudit({
+        user, action: 'update', entityType: 'sales_order', entityId: id, before, after: data,
+        summary: `submit ${before.orderNumber} for approval (ลงนามผู้จัดทำ) · ข้ามการตั้งงานบริการ ${deferSkip.deferredCount} ข้อ`,
+        request: req,
+      });
+      return ok(data);
     }
     // การยื่น = การลงนามของผู้จัดทำ (mig 0153) — สถานะ + หลักฐาน proposer ต้อง commit
     // พร้อมกันในทรานแซกชันเดียว จึงยกจาก plain UPDATE มาเป็น RPC; ผู้ยื่นที่ไม่มีลายเซ็นจะ
@@ -1183,7 +1244,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (serviceSetupRequired(before)) {
       try { setupCtx = await loadServiceSetupContext(supabase, before, { lines: before.lines, withFgOptions: true }); }
       catch (setupError) { return fail(`ตรวจงานบริการไม่สำเร็จ: ${setupError.message}`, 500); }
-      const issues = serviceSetupIssues(setupCtx);
+      /* ⭐ mig 0404: ใบที่ผู้ยื่นเลือก "ยื่นโดยยังไม่ตั้งงานบริการ" และยังข้ามอยู่ (`serviceSetupApprovalGate().deferring`) — หยุดการอนุมัติ
+         เฉพาะข้อที่ข้ามไม่ได้ (งวด · วันวางบิล · กำหนดชำระ · ข้อของบัญชี) แล้วฐานอนุมัติโดย **ไม่เปิดรอบขาย ไม่ประทับตรา** (แพตช์ D1)
+         · ใบที่ไม่มีตราการข้าม / ครบแล้ว / ข้ามไม่ได้แล้ว = ทุกข้อหยุดการอนุมัติเหมือนเดิมทุกตัวอักษร (`blocking` = ทุกข้อ) */
+      const allIssues = serviceSetupIssues(setupCtx);
+      const issues = serviceSetupApprovalGate(setupCtx, allIssues).blocking;
       if (issues.length) {
         return Response.json({ error: `อนุมัติไม่ได้ — งานบริการยังขาด ${issues.length} ข้อ · ตีกลับให้ฝ่ายขายแก้`, issues }, { status: 409 });
       }
@@ -1278,6 +1343,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     }
 
     await logThread('approve', { overrideReason });
+    /* ⭐ mig 0404: ท้ายสรุป audit ของใบที่อนุมัติโดยยังไม่ตั้งงานบริการ — **อ่านจากแถวที่ RPC คืน ไม่ใช่จากด่าน JS**
+       (ฐานเห็นว่าครบแล้ว = เปิดรอบขาย + ประทับ ⇒ สรุปห้ามพูดว่ายังไม่ส่ง TS) */
+    const approvedWithoutSetup = !!setupCtx && !data?.serviceTermsOpenedAt && serviceSetupDeferred(data)?.stage === 'approved';
     await recordAudit({
       user,
       action: 'update',
@@ -1285,9 +1353,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       entityId: id,
       before,
       after: data,
-      summary: selfApproval
+      summary: (selfApproval
         ? `admin override approve ${before.orderNumber}: ${overrideReason}`
-        : `approve ${before.orderNumber}`,
+        : `approve ${before.orderNumber}`)
+        + (approvedWithoutSetup ? ' · ยังไม่ตั้งงานบริการ (ข้ามตอนยื่น) — ยังไม่ส่ง TS' : ''),
       request: req,
     });
     // แจ้งทีมขาย: SO อนุมัติแล้ว → ยอด Actual เข้าระบบ

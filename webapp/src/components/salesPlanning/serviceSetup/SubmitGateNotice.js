@@ -9,24 +9,44 @@
 //   · กลุ่มที่มีแต่คำเตือน = "เตือน n ข้อ" สีกลาง (ไม่ใช่ "0 ข้อ" สีแดง)
 // ⭐ ปุ่ม "ไปแก้" ทุกปุ่มชื่อเดียวกันบนจอ ⇒ อ้างข้อความของแถวตัวเองด้วย aria-describedby (โปรแกรมอ่านจอรู้ว่าไปแก้อะไร ·
 //   ชื่อปุ่มยังเป็นคำที่ตาเห็น "ไปแก้" ตาม WCAG 2.5.3)
+// ⭐ ท้ายแผง "ยื่นโดยยังไม่ตั้งงานบริการ" (mig 0404 · มติเจ้าของ 01/10 "ผูกรอบบริการให้ข้ามได้ มาใส่ทีหลัง Actual ได้" → ทาง "ฝ่ายขายกดข้ามเอง")
+//   · ขึ้นเมื่อหน้าส่ง `skip` (ก้อน `view.skip` ของ GET — ใบร่าง/ถูกตีกลับที่ยังมีข้อของการตั้งงานบริการ) เท่านั้น · ไม่ส่ง = แผงเดิมทุกตัวอักษร
+//   · บรรทัดท้ายแผง = `skip.lead` ที่ **server เลือก** (ข้ามได้ / ยังเหลือข้อที่ข้ามไม่ได้ / ใบเดิมของ Rev. ยังเดินรอบ) — ที่นี่พิมพ์อย่างเดียว ไม่ตัดสิน
+//   · 🔴 ปุ่ม **กดได้เสมอ** (ดับเฉพาะตอนหน้ากำลังยิงคำสั่ง) — ติดด่าน = โชว์แล้วบอกเหตุตอนกด: หน้าโหลดก้อน GET สดแล้วบอกเหตุ/เปิดโมดัลยืนยัน
+//     ⚠️ "ดับ" = `aria-disabled` + ไม่รับการกดซ้ำ **ไม่ใช่ `disabled` ของเบราว์เซอร์**: หน้าตั้ง busy ระหว่างโหลดก้อนสดทุกครั้งที่กดปุ่มนี้ —
+//        ปุ่มที่ถือโฟกัสอยู่แล้วถูก `disabled` = โฟกัสตกไป <body> (โมดัลที่เปิดตามมาจำ <body> ไว้คืนโฟกัส · คนใช้คีย์บอร์ด/โปรแกรมอ่านจอ
+//        หลุดตำแหน่งทุกครั้งที่กด — ตรวจทานรอบสุดท้าย) ⇒ ปุ่มต้องอยู่ในลำดับโฟกัสตลอด (ท่าเดียวกับ DocumentControlPanel)
+//   · พื้นกลาง ไม่ใช่แดง — เป็นทางเลือก ไม่ใช่ข้อผิด · ไม่ใช่ปุ่มหลัก (ทางหลักยังเป็น "แก้ให้ครบแล้วกดยื่นอนุมัติ")
+//   · แถวที่การข้ามเลื่อนออกไปได้ติดป้าย 'ข้ามได้' (`skipTagsShown` — ใบที่ข้ามไม่ได้ทั้งใบไม่มีป้าย) · ข้อของบัญชีไม่มีป้ายนี้
 import { useId } from "react";
+import thaiText from "@/components/ThaiText";
 import Button from "@/components/ui/Button";
 import StatusNotice from "@/components/ui/StatusNotice";
 import Tag from "@/components/ui/Tag";
 import { fmtDateTime } from "@/lib/format";
-import { SERVICE_SETUP_PANEL_TEXT } from "@/lib/sales/serviceSetup";
-import { issueHeadTail, submitGateGroups } from "./serviceSetupDraft";
+import { SERVICE_DEFER_TEXT, SERVICE_SETUP_PANEL_TEXT, serviceSetupDeferSplit, serviceSetupIssueGroup } from "@/lib/sales/serviceSetup";
+import { issueHeadTail, skipTagsShown, submitGateGroups } from "./serviceSetupDraft";
 import styles from "./SubmitGateNotice.module.css";
 
 /**
  * @param issues ข้อที่บล็อก (Issue[]) · @param warnings คำเตือน (Warning[]) · @param flow 'pipeline' | 'backfill'
  * @param checkedAt เวลาที่ตรวจ (ISO) · @param onJump `(issueOrWarning) => void` — หน้าสลับแท็บแล้วโฟกัสช่อง
  *   (`revealServiceSetupField(serviceSetupFieldId(issue))`)
+ * @param skip ก้อน `view.skip` ของ GET เมื่อใบนี้กด 'ยื่นโดยยังไม่ตั้งงานบริการ' ได้/ติดด่าน (`visible`) — null = ไม่มีท้ายแผง
+ * @param onSkip หน้าเป็นเจ้าของทั้งเส้น (ก้อนสด → บอกเหตุ/โมดัลยืนยัน → ยิง) · @param skipBusy หน้ากำลังยิงคำสั่ง (ปุ่มไม่รับการกด · ยังถือโฟกัสได้)
  */
-export default function SubmitGateNotice({ issues = [], warnings = [], flow = "pipeline", checkedAt = null, onJump }) {
+export default function SubmitGateNotice({
+  issues = [], warnings = [], flow = "pipeline", checkedAt = null, onJump, skip = null, onSkip, skipBusy = false,
+}) {
   const list = Array.isArray(issues) ? issues : [];
-  const groups = submitGateGroups(list, warnings);
+  const skipRow = skip?.visible ? skip : null;
+  /* ป้าย 'ข้ามได้' คิดจากข้อของแผงเอง (ภาพ ณ ตอนกด) ด้วยตัวตัดสินกลาง — ไม่มีข้อของการตั้งงานบริการ = ไม่มีอะไรเลื่อนได้ */
+  const split = skipTagsShown(skipRow) ? serviceSetupDeferSplit(list) : null;
+  const groups = submitGateGroups(list, warnings, {
+    deferrable: split?.deferrable ? (entry) => serviceSetupIssueGroup(entry) !== "blocking" : null,
+  });
   const baseId = useId();
+  const skipTextId = `${baseId}-skip`;
   return (
     <StatusNotice tone="error" title={SERVICE_SETUP_PANEL_TEXT.title(flow, list.length)}>
       <p className={styles.subtitle}>{SERVICE_SETUP_PANEL_TEXT.subtitle(flow)}</p>
@@ -45,9 +65,10 @@ export default function SubmitGateNotice({ issues = [], warnings = [], flow = "p
                 const textId = `${baseId}-${group.key}-${index}`;
                 return (
                   <li key={`${item.kind}-${item.entry?.key}-${item.entry?.lineId || item.entry?.installmentId || ""}-${item.entry?.zoneId || ""}-${index}`}
-                    className={styles.item} data-kind={item.kind}>
+                    className={styles.item} data-kind={item.kind} data-deferrable={item.deferrable ? "" : undefined}>
                     <span id={textId} className={styles.itemText}>{head ? <b>{head}</b> : null}{rest}</span>
                     {item.tag ? <Tag tone={item.entry?.owner === "FN" ? "info" : "neutral"}>{item.tag}</Tag> : null}
+                    {item.deferrable ? <Tag tone="neutral">{SERVICE_DEFER_TEXT.deferTag}</Tag> : null}
                     {item.jump ? (
                       <Button size="sm" variant="quiet" aria-describedby={textId} onClick={() => onJump?.(item.entry)}>
                         {SERVICE_SETUP_PANEL_TEXT.jump}
@@ -60,6 +81,23 @@ export default function SubmitGateNotice({ issues = [], warnings = [], flow = "p
           </section>
         ))}
       </div>
+      {skipRow ? (
+        <div className={styles.skip}>
+          <p id={skipTextId} className={styles.skipText}>{thaiText(skipRow.lead)}</p>
+          <Button
+            size="sm"
+            variant="outline"
+            className={styles.skipButton}
+            aria-disabled={skipBusy || undefined}
+            aria-busy={skipBusy || undefined}
+            title={skipRow.blockedReason || undefined}
+            aria-describedby={skipTextId}
+            onClick={() => { if (!skipBusy) onSkip?.(); }}
+          >
+            {SERVICE_DEFER_TEXT.button}
+          </Button>
+        </div>
+      ) : null}
     </StatusNotice>
   );
 }

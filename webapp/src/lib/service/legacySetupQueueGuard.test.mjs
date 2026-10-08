@@ -93,3 +93,20 @@ test('0396: select ใบของ route งานเข้าใหม่พก
   }
   assert.match(code('lib/service/legacySetupQueue.js'), /reopened: serviceSetupReopened\(order\),/, 'ถามตัวตัดสินกลาง ไม่อ่านคอลัมน์เอง');
 });
+
+test('0404: select ใบของ route งานเข้าใหม่พกคอลัมน์ตราการข้าม (เวลา + ชื่อ) — ไม่มี = ป้าย "ข้ามตอนยื่น" บนแท็บ TS หายเงียบ (serviceSetupDeferred ได้ undefined)', () => {
+  const route = code('app/api/service/intake/route.js');
+  const selects = [...route.matchAll(/from\(\s*['"]sales_orders['"]\s*\)\s*\.select\(\s*'([^']*)'/g)].map((m) => m[1]);
+  const legacy = selects.find((cols) => cols.includes('"serviceTermsOpenedAt"'));
+  assert.ok(legacy, 'ต้องเจอ select ของถังใบเดิม');
+  for (const col of ['"serviceSetupDeferredAt"', '"serviceSetupDeferredByName"']) assert.ok(legacy.includes(col), `select ขาด ${col}`);
+  /* ตัวตัดสินกลางเทียบเวลากับการเปิดแก้ (เหตุการณ์ที่เกิดทีหลังชนะ) ⇒ คอลัมน์เวลาเปิดแก้ต้องอยู่ใน select เดียวกัน */
+  assert.ok(legacy.includes('"serviceSetupReopenedAt"'));
+  assert.equal(selects.filter((cols) => cols.includes('serviceSetupDeferred')).length, 1, 'ต่อท้าย select ตัวเดิม — ไม่เพิ่มคำสั่งอ่านใบ');
+  const lib = code('lib/service/legacySetupQueue.js');
+  assert.match(lib, /deferred: serviceSetupDeferred\(order\),/, 'ถามตัวตัดสินกลาง ไม่อ่านคอลัมน์เอง');
+  assert.doesNotMatch(lib, /\.serviceSetupDeferred(At|ById|ByName)\b/, 'ถังไม่อ่านคอลัมน์ของตราการข้ามเอง');
+  assert.doesNotMatch(lib, /ข้ามตอนยื่น/, 'คำอยู่ที่ SERVICE_DEFERRED_TEXT ที่เดียว');
+  /* intake.js ยังไม่ import serviceSetup (กฎ 16) — ป้ายของใบที่ข้ามอยู่ในไฟล์ถังเท่านั้น */
+  assert.doesNotMatch(code('lib/service/intake.js'), /serviceSetupDeferred|SERVICE_DEFERRED_TEXT/);
+});

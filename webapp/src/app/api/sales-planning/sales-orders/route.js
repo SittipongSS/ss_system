@@ -22,7 +22,8 @@ import { missingStoredEvidence } from '@/lib/upload/privateEvidence';
 import { businessDate } from '@/lib/businessDate';
 import { orderBusinessLineOf, orderHasServiceRounds, serviceVisitsSold } from '@/lib/sales/serviceOrders';
 import {
-  SERVICE_REOPENED_TEXT, serviceBackfillAwaitingReview, serviceBackfillNeeded, serviceRoundsText, serviceSetupReopened, serviceSetupTotals,
+  SERVICE_DEFERRED_TEXT, SERVICE_REOPENED_TEXT, serviceBackfillAwaitingReview, serviceBackfillNeeded, serviceRoundsText,
+  serviceSetupDeferred, serviceSetupReopened, serviceSetupTotals,
 } from '@/lib/sales/serviceSetup';
 import { paidThrough } from '@/lib/sales/paymentCoverage';
 
@@ -249,6 +250,9 @@ export const GET = withUser(async ({ user, supabase }) => {
          · ป้ายมาจากแคตตาล็อกที่ server (จอทะเบียนไม่ต้องดึง serviceSetup.js ทั้งก้อน) · ไม่ใช่ใบที่เปิดแก้ = null (จอใช้ป้ายเดิม) */
       reopened: !!serviceSetupReopened(row),
       label: serviceSetupReopened(row) ? SERVICE_REOPENED_TEXT.queueLabel : null,
+      /* ใบที่ผู้ยื่นเลือกข้ามการตั้งงานบริการตอนยื่น (mig 0404) — ป้ายแถวคิว "งานบริการ (ข้ามตอนยื่น)" แทน "งานบริการ (ใบเดิม)"
+         · ตัวตัดสินกลาง `serviceSetupDeferred` คืน null เมื่อใบถูกเปิดแก้ทีหลัง (เหตุการณ์ที่เกิดทีหลังชนะ) ⇒ ทับป้ายได้เฉพาะตอนป้ายข้างบนเป็น null */
+      ...(serviceSetupDeferred(row) ? { label: SERVICE_DEFERRED_TEXT.queueLabel } : {}),
     };
   };
   /* ใบที่อนุมัติแล้วแต่ยังต้องตั้งงานบริการย้อนหลัง (D25) — คิดครั้งเดียว ใช้ทั้งชิปและเลนเจ้าของดีลของ "รอฉันลงมือ" */
@@ -324,6 +328,11 @@ export const GET = withUser(async ({ user, supabase }) => {
       _serviceSetupPending: setupPendingIds.has(row.id),
       /* ตัวเลขของแถวคิว "งานบริการ (ใบเดิม)" — มีเฉพาะใบที่รอผู้จัดการตรวจ */
       serviceReview: serviceBackfillAwaitingReview(row) ? serviceReviewOf(row) : null,
+      /* ⭐ ใบรออนุมัติที่ผู้ยื่นเลือก "ยื่นโดยยังไม่ตั้งงานบริการ" (mig 0404) — ป้ายต่อท้ายแถวคิวของผู้อนุมัติ (จอต่อหลังยอด) · ไม่ใช่ = null
+         ตัดสินจากแถวใบอย่างเดียว (ทะเบียนไม่คิดข้อที่ยังขาด) ⇒ ป้ายแปลว่า "ผู้ยื่นเลือกข้าม" ตามที่คอลัมน์จดไว้ — ยังข้ามอยู่จริงไหมดูที่หน้าใบ
+         · เฉพาะใบสาย SERVICE (สายถูกเปลี่ยนระหว่างรออนุมัติ = ไม่มีงานบริการให้พูดถึง) · ใบที่อนุมัติแล้วใช้ชิป "ยังไม่ตั้งงานบริการ" เดิม */
+      serviceDeferredTag: serviceSetupDeferred(row)?.stage === 'pending' && businessLineById.get(row.id) === 'SERVICE'
+        ? SERVICE_DEFERRED_TEXT.queueTag : null,
       /* ⭐ สายธุรกิจของใบ — ตัวกรอง segmented บนทะเบียน (PR-D)
          สามค่า: 'PRODUCT' · 'SERVICE' · null (ยังไม่ระบุ ซึ่งมีจริงเยอะ) */
       businessLine: businessLineById.get(row.id) ?? null,
