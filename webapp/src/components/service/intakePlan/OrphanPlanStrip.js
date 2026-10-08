@@ -5,6 +5,7 @@
 //   · dropped   ใบถูก Rev. และใบล่าสุดไม่มีไซต์นี้แล้ว → ปิดรอบ หรือนัดถอนเครื่อง
 //   · stale     ใบ Rev. ล่าสุดครอบไซต์นี้ แต่รอบยังชี้ใบเก่า → ย้ายรอบไปใบนั้นที่หน้าไซต์
 //   · cancelled ใบถูกยกเลิก → ปิดรอบ หรือนัดถอนเครื่อง
+//   · unset     ใบ Rev. ล่าสุดอนุมัติแล้วแต่ยื่นโดยยังไม่ตั้งงานบริการ (mig 0404) → ยังไม่ต้องปิดรอบ รอฝ่ายขายตั้งงานบริการ
 // ⚠️ **ระบบไม่ปิด/ย้ายรอบเอง** — แถบนี้บอกอย่างเดียว ทางลงมือคือหน้าไซต์ (แก้รอบ/ปิดรอบอยู่ที่นั่น)
 // ⚠️ ไม่มีรอบกำพร้า = ไม่วาดอะไรเลย (ไม่มีกล่อง "ไม่มีปัญหา" ให้รก) · ผู้เรียกวาดเฉพาะตอนโหลดสำเร็จ
 import Link from "next/link";
@@ -13,8 +14,8 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import { ORPHAN_ITEM_TEXT, ORPHAN_TITLES } from "@/lib/service/intakePlanFacts";
 import styles from "./OrphanPlanStrip.module.css";
 
-/* ลำดับกล่อง: ใบถูกแทน (พบบ่อยสุด) → ใบ Rev. ครอบแล้ว → ใบยกเลิก */
-const ORPHAN_KINDS = ["dropped", "stale", "cancelled"];
+/* ลำดับกล่อง: ใบถูกแทน (พบบ่อยสุด) → ใบ Rev. ครอบแล้ว → ใบยกเลิก → ใบ Rev. ยังไม่ตั้งงานบริการ (ไม่ต้องลงมือ — อยู่ท้ายสุด) */
+const ORPHAN_KINDS = ["dropped", "stale", "cancelled", "unset"];
 
 export default function OrphanPlanStrip({ orphans }) {
   const groups = ORPHAN_KINDS

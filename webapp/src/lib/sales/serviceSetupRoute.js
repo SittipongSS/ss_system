@@ -4,6 +4,8 @@
 //   แบบเดียวกับ historicalOrderCommit.js ⇒ ทดสอบด้วย supabase ปลอมได้ (route.js import ใต้ node ไม่ได้ เพราะ
 //   `@/lib/http` ลาก `next/headers` มาด้วย)
 //   GET   ก้อนของตาราง/โมดัล/แถบ (`serviceSetupView`) — ทุกคนที่อ่านใบได้
+//         · mig 0404: ก้อนพก `skip` (ปุ่ม 'ยื่นโดยยังไม่ตั้งงานบริการ' — คิดจาก canEdit ของ server) และ `deferred` (ใบที่ผู้ยื่นเลือกข้าม)
+//           การยื่นแบบข้ามเองอยู่ที่ action 'submit' ของ route ใบ (`deferServiceSetup: true`) ไม่ใช่เส้นนี้ · หลังอนุมัติใบเดินเส้น POST เดิมข้างล่าง
 //   PATCH บันทึกงานบริการ (RPC `save_sales_order_service_setup`) — ฝ่ายขายที่แก้ใบนี้ได้
 //   POST  งานบริการย้อนหลังของใบที่อนุมัติแล้ว: `submit` ยื่นตรวจ · `approve` / `reject` ผู้จัดการฝ่ายขาย
 //         · `reopen` เปิดแก้งานบริการหลังอนุมัติ (mig 0396 — ถอนรอบขายจาก TS แล้วกลับเข้าเส้นตั้งย้อนหลัง)
@@ -23,9 +25,9 @@ import { resolveExpectedUpdatedAt } from '@/lib/sales/documentConcurrency';
 import { adminOverrideReasonError, normalizeAdminOverrideReason } from '@/lib/sales/salesOrderApprovalOverride';
 import { isSalesOrderReviewer } from '@/lib/sales/salesOrderWorkflow';
 import {
-  SERVICE_REOPENED_TEXT, SERVICE_SETUP_EDIT_TEXT, SERVICE_SETUP_LIMITS, SERVICE_SETUP_SQL_MESSAGES,
+  SERVICE_DEFERRED_TEXT, SERVICE_REOPENED_TEXT, SERVICE_SETUP_EDIT_TEXT, SERVICE_SETUP_LIMITS, SERVICE_SETUP_SQL_MESSAGES,
   serviceBackfillAwaitingReview, serviceReopenAvailable, serviceReopenBlockedText, serviceReopenBlockers,
-  serviceReopenMoneyCodes, serviceReopenStateError, serviceSetupAuditSnapshot, serviceSetupEditError, serviceSetupFlow,
+  serviceReopenMoneyCodes, serviceReopenStateError, serviceSetupAuditSnapshot, serviceSetupDeferred, serviceSetupEditError, serviceSetupFlow,
   serviceSetupIssues, serviceSetupReopened, serviceSetupSqlIssues, serviceSetupTotals, serviceSetupView, serviceSetupWarnings,
   validateServiceSetupPatch,
 } from '@/lib/sales/serviceSetup';
@@ -83,8 +85,10 @@ const contextFailed = (error) => failWith(500, `โหลดงานบริ�
 const canEditOrder = (user, order) => canEditSalesPlanning(user) && inSalesEditScope(user, order?.deal);
 
 const orderLabel = (order) => order?.orderNumber || order?.id || '—';
-/* วงเล็บในสรุป audit ของเส้นย้อนหลัง — ใบที่เปิดแก้หลังอนุมัติ (0396) ไม่ใช่ "ใบเดิม" (ภาคผนวก A.4) */
-const backfillTag = (order) => (serviceSetupReopened(order) ? SERVICE_REOPENED_TEXT.auditTag : '(ใบเดิม)');
+/* วงเล็บในสรุป audit ของเส้นย้อนหลัง — ใบที่เปิดแก้หลังอนุมัติ (0396) ไม่ใช่ "ใบเดิม" (ภาคผนวก A.4)
+   · ใบที่ผู้ยื่นเลือกข้ามการตั้งงานบริการตอนยื่น (0404) ก็ไม่ใช่ — "(ข้ามตอนยื่น)" · ตัวตัดสินสองตัวไม่ตอบพร้อมกัน (เหตุการณ์ที่เกิดทีหลังชนะ) */
+const backfillTag = (order) => (serviceSetupReopened(order) ? SERVICE_REOPENED_TEXT.auditTag
+  : serviceSetupDeferred(order) ? SERVICE_DEFERRED_TEXT.auditTag : '(ใบเดิม)');
 const auditOrder = (audit, { user, order, before, after, summary, request }) => audit({
   user, action: 'update', entityType: 'sales_order', entityId: order.id, before, after, summary, request,
 });

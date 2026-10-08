@@ -55,10 +55,13 @@ export const GET = withUser(async ({ user, supabase }) => {
           (`serviceSetupReopened`) · ⚠️ ต้องรัน 0396 ก่อน deploy (ไม่มีคอลัมน์ = select 500 ทั้งหน้างานเข้าใหม่ · check:columns แดงจนกว่ารัน)
        ⭐ mig 0400: `servicePeriodMode` — ใบแยกรายรายการ ('line') ช่วงของแถวรอตั้งรอบ = ช่วงของรายการที่ลงไซต์นั้น (แนบให้ term ข้างล่าง)
           ไม่ใช่ช่วงรวมของใบ · ถังใบเดิมใช้ตัดสิน "เริ่มตั้งแล้ว/ครบกี่รายการ" · ต่อท้าย select ตัวเดิม (ไม่เพิ่มคำสั่งอ่านใบ — ยามเงินนับคำสั่ง)
-          ⚠️ ต้องรัน 0400 ก่อน deploy (ไม่มีคอลัมน์ = select 500 ทั้งหน้างานเข้าใหม่ · check:columns แดงจนกว่ารัน) */
+          ⚠️ ต้องรัน 0400 ก่อน deploy (ไม่มีคอลัมน์ = select 500 ทั้งหน้างานเข้าใหม่ · check:columns แดงจนกว่ารัน)
+       ⭐ mig 0404: `serviceSetupDeferredAt` / `serviceSetupDeferredByName` — ใบที่ฝ่ายขายยื่นโดยยังไม่ตั้งงานบริการแล้วได้รับอนุมัติ อยู่ในถังใบเดิม
+          (อนุมัติแล้ว · ยังไม่ประทับ) ⇒ แถวขึ้นป้าย "ข้ามตอนยื่น · …" (`serviceSetupDeferred`) · ต่อท้าย select ตัวเดิม (ไม่เพิ่มคำสั่งอ่านใบ)
+          ⚠️ ต้องรัน 0404 ก่อน deploy (ไม่มีคอลัมน์ = select 500 ทั้งหน้างานเข้าใหม่ · check:columns แดงสองชื่อนี้จนกว่ารัน) */
     const { data: orders, error: orderError } = await fetchAllResult(() => supabase
       .from('sales_orders')
-      .select('id, "orderNumber", status, supersededById, customerId, customerName, projectId, dealId, orderDate, approvedAt, "serviceContractId", origin, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef", "totalAmount", "serviceTermsOpenedAt", "serviceSetupState", "serviceSetupSubmittedAt", "serviceSetupSubmittedByName", "serviceSetupRejectedAt", "serviceSetupRejectedByName", "serviceSetupRejectedReason", "servicePeriodFrom", "servicePeriodTo", "updatedAt", "serviceSetupReopenedAt", "serviceSetupReopenedByName", "serviceSetupReopenedReason", "servicePeriodMode"')
+      .select('id, "orderNumber", status, supersededById, customerId, customerName, projectId, dealId, orderDate, approvedAt, "serviceContractId", origin, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef", "totalAmount", "serviceTermsOpenedAt", "serviceSetupState", "serviceSetupSubmittedAt", "serviceSetupSubmittedByName", "serviceSetupRejectedAt", "serviceSetupRejectedByName", "serviceSetupRejectedReason", "servicePeriodFrom", "servicePeriodTo", "updatedAt", "serviceSetupReopenedAt", "serviceSetupReopenedByName", "serviceSetupReopenedReason", "servicePeriodMode", "serviceSetupDeferredAt", "serviceSetupDeferredByName"')
       .eq('status', 'approved')
       .is('supersededById', null)
       .order('approvedAt', { ascending: false })

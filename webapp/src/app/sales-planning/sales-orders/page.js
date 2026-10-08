@@ -156,7 +156,8 @@ const NOTE_TONE = { danger: "cell-num-bad", success: "cell-num-ok", warning: "",
    ⭐ "ไม่นับ Actual" = การอนุมัติงานบริการไม่แตะยอด (ใบนับ Actual ไปแล้วตอนอนุมัติใบ) ⇒ ผู้จัดการรู้ก่อนเปิดว่า
      ไม่ใช่การอนุมัติใบซ้ำ · ⚠️ บรรทัดนี้ไม่พูดยอดเงินโดยเจตนา
    ⚠️ ชื่อผู้ยื่นเต็มตัวเดียวกับหัวโมดัลอนุมัติบนหน้าใบ (`approvalSubject`) — ไม่ย่อ */
-/* ใบที่เปิดแก้หลังอนุมัติ (mig 0396) — ป้ายของมันมากับแถว (`serviceReview.label` = SERVICE_REOPENED_TEXT.queueLabel ของ server) · ไม่มี = ป้ายนี้ */
+/* ใบที่เปิดแก้หลังอนุมัติ (mig 0396) — ป้ายของมันมากับแถว (`serviceReview.label` = SERVICE_REOPENED_TEXT.queueLabel ของ server) · ไม่มี = ป้ายนี้
+   · ใบที่อนุมัติโดยข้ามการตั้งงานบริการตอนยื่น (mig 0404) ก็มากับแถวเช่นกัน ("งานบริการ (ข้ามตอนยื่น)" = SERVICE_DEFERRED_TEXT.queueLabel) */
 const SERVICE_REVIEW_LABEL = "งานบริการ (ใบเดิม)";
 function serviceReviewLine(order) {
   const review = order.serviceReview || {};
@@ -615,12 +616,16 @@ export default function SalesOrdersPage() {
              จึงต้องรู้ตั้งแต่ก่อนเปิดว่ากำลังจะอนุมัติใบคนละกองกับยอดในการ์ดข้างบน */
           /* ⭐ แถว "งานบริการ (ใบเดิม)" (mig 0392) พูดงานบริการ ไม่พูดยอด — ดู `serviceReviewLine` · ใบชนิดนี้ไม่เคยเป็นใบย้อนหลัง
              (ตัวตัดสินตัดทิ้งแล้ว) ⇒ ท้าย "ใบย้อนหลัง" ไม่มีทางต่อซ้ำ */
+          /* ⭐ ใบรออนุมัติที่ผู้ยื่นกด "ยื่นโดยยังไม่ตั้งงานบริการ" (mig 0404) ต่อท้ายว่า "ยังไม่ตั้งงานบริการ (ข้ามตอนยื่น)" — ผู้อนุมัติรู้ตั้งแต่ในคิว
+             ว่าอนุมัติใบนี้แล้วยังไม่ส่งงานให้ TS · ป้ายมากับแถว (`serviceDeferredTag` ของ server — คำจากแคตตาล็อก · ไม่ใช่ใบแบบนี้ = null)
+             · เปลือกบัญชีไม่ต่อ (คิวปิดใบ ไม่ใช่คิวอนุมัติ) · แถวรอตรวจงานบริการไม่มีป้ายนี้ (ป้ายของมันอยู่ที่ `serviceReview.label`) */
           secondary={(o) => (financeShell
             ? `${naText(o.customerName)} · ${fmtMoney(o.totalAmount)}`
             : serviceReviewRow(o)
               ? serviceReviewLine(o)
               : `${naText(o.customerName)} · ${fmtMoney(o.actualAmount)} ก่อน VAT`)
-            + (isHistoricalOrder(o) ? " · ใบย้อนหลัง · ไม่นับ Actual" : "")}
+            + (isHistoricalOrder(o) ? " · ใบย้อนหลัง · ไม่นับ Actual" : "")
+            + (!financeShell && o.serviceDeferredTag ? ` · ${o.serviceDeferredTag}` : "")}
           rowHref={(o) => `/sa/sales-orders/${o.id}`}
           renderAction={(o) => (
             <Button as={Link} href={`/sa/sales-orders/${o.id}`} tone="primary" size="sm">

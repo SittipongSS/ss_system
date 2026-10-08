@@ -337,3 +337,85 @@ test('0400: ใบที่สลับเป็น "แยกรายราย
   assert.deepEqual(submitted.progress, { done: 2, total: 2 });
   assert.deepEqual(submitted.submitted, { at: '2026-09-28T02:00:00Z', byName: 'Lalida Chaiwanna', zones: 2, sites: 2, packsPerRound: 2 });
 });
+
+/* ══ ใบที่ฝ่ายขายยื่นโดยยังไม่ตั้งงานบริการ (mig 0404 · มติเจ้าของ 01/10) ═══════════════════════════════════════════
+   ใบใหม่ที่อนุมัติแล้วโดยข้ามการตั้งงานบริการ = อนุมัติแล้ว · ยังไม่ประทับ ⇒ เข้าถังนี้ด้วยเกณฑ์เดิม (ไม่มีคิวรีใหม่)
+   ชื่อแท็บยังเป็น "(ใบเดิม)" ⇒ แถวต้องบอกเองว่า "ข้ามตอนยื่น" — select ของ route พก `serviceSetupDeferredAt` / `…ByName` */
+const deferredCols = { serviceSetupDeferredAt: '2026-10-02T02:30:00Z', serviceSetupDeferredByName: 'Kamonrat Pipattanapong' };
+const DEFERRED = { at: '2026-10-02T02:30:00Z', byId: null, byName: 'Kamonrat Pipattanapong', stage: 'approved' };
+
+test('0404: ใบที่ข้ามตอนยื่นอยู่ในถังเดิม · แถวพก `deferred` · ป้ายทุกขั้นนำหน้า "ข้ามตอนยื่น · " · ขั้นที่ฝ่ายขายยังตั้งบอกวันที่ยื่น', () => {
+  const alloc = { id: 'A1', salesOrderId: 'SO1', salesOrderLineId: 'L2', zoneId: 'Z1', packsPerRound: 2 };
+  const zonesById = new Map([['Z1', { id: 'Z1', siteId: 'S1' }]]);
+
+  /* ยังไม่เริ่ม — ฝ่ายขายยังไม่แตะอะไรหลังอนุมัติ */
+  const [fresh] = run({ orders: [so(deferredCols)], lines: [manual()] }).rows;
+  assert.deepEqual(fresh.deferred, DEFERRED);
+  assert.equal(fresh.reopened, null);
+  assert.equal(fresh.state, 'not_started', 'ตัวกรองสถานะเดิม (ขั้นของงานไม่เปลี่ยน)');
+  assert.deepEqual(legacySetupStatusView(fresh), {
+    tone: 'neutral', label: 'ข้ามตอนยื่น · ยังไม่เริ่ม', sub: 'ฝ่ายขายยื่นโดยยังไม่ตั้งงานบริการ 02/10/2026',
+  });
+  for (const needle of ['ข้ามตอนยื่น', 'ยังไม่ตั้งงานบริการ', '02/10/2026']) assert.ok(legacySetupHaystack(fresh).includes(needle), needle);
+
+  /* กำลังตั้ง — บรรทัดรอง: วันที่ยื่นแบบข้าม ก่อน "แก้ล่าสุด" */
+  const [editing] = run({
+    orders: [so({ ...deferredCols, servicePeriodFrom: '2026-10-22' })], lines: [fgPackage({ serviceRounds: 12 })], allocations: [alloc], zonesById,
+  }).rows;
+  assert.deepEqual(legacySetupStatusView(editing), {
+    tone: 'info',
+    label: 'ข้ามตอนยื่น · ฝ่ายขายกำลังตั้ง · 1/1 รายการ',
+    sub: 'ฝ่ายขายยื่นโดยยังไม่ตั้งงานบริการ 02/10/2026 · แก้ล่าสุด 27/09/2026',
+  });
+
+  /* รอผู้จัดการตรวจ / ตีกลับ — ป้ายนำหน้าเหมือนกัน · บรรทัดรองเดิม */
+  const [submitted] = run({
+    orders: [so({ ...deferredCols, serviceSetupState: 'submitted', serviceSetupSubmittedAt: '2026-10-04T05:00:00Z', servicePeriodFrom: '2026-10-22' })],
+    lines: [fgPackage({ serviceRounds: 12 })], allocations: [alloc], zonesById,
+  }).rows;
+  assert.deepEqual(legacySetupStatusView(submitted), {
+    tone: 'accent', label: 'ข้ามตอนยื่น · รอผู้จัดการตรวจ', sub: 'ยื่นเมื่อ 04/10/2026 · 1 โซนใน 1 ไซต์ · ครั้งละ 2 แพ็ค',
+  });
+  const [rejected] = run({
+    orders: [so({ ...deferredCols, serviceSetupState: 'rejected', serviceSetupRejectedAt: '2026-10-05T05:00:00Z', serviceSetupRejectedByName: 'Patcharapit Jueajan', serviceSetupRejectedReason: 'ขาดโซน Bakery' })],
+    lines: [manual()],
+  }).rows;
+  assert.deepEqual(legacySetupStatusView(rejected), {
+    tone: 'danger', label: 'ข้ามตอนยื่น · ตีกลับ: ขาดโซน Bakery', sub: 'Patcharapit Jueajan · 05/10/2026',
+  });
+
+  /* ลูกค้ายังไม่มีไซต์ — บรรทัดรองพกทั้งสองเรื่อง (ใบข้าม + TS ต้องเพิ่มไซต์) */
+  const [noSite] = run({ orders: [so(deferredCols)], lines: [manual()], customersWithSite: new Set() }).rows;
+  assert.deepEqual(legacySetupStatusView(noSite), {
+    tone: 'warning', label: 'ข้ามตอนยื่น · ยังไม่เริ่ม', sub: `ฝ่ายขายยื่นโดยยังไม่ตั้งงานบริการ 02/10/2026 · ${LEGACY_SETUP_NO_SITE_SUB}`,
+  });
+});
+
+test('0404: ผู้จัดการอนุมัติแล้ว (ประทับ) = ออกจากถัง · ใบเดิม = deferred null คำเดิม · select เก่าไม่มีคอลัมน์ = ไม่พัง · เปิดแก้ทีหลัง = ป้ายของการเปิดแก้', () => {
+  assert.equal(run({ orders: [so({ ...deferredCols, serviceTermsOpenedAt: '2026-10-06T03:00:00Z' })], lines: [manual()] }).rows.length, 0);
+  const [plain] = run({ orders: [so()], lines: [manual()] }).rows;
+  assert.equal(plain.deferred, null);
+  assert.deepEqual(legacySetupStatusView(plain), { tone: 'neutral', label: 'ยังไม่เริ่ม', sub: null });
+  assert.ok(!legacySetupHaystack(plain).includes('ข้ามตอนยื่น'));
+  /* แถวที่ประกอบเองไม่มีคีย์ deferred (จอรุ่นเก่า/เทสต์อื่น) = คำเดิม */
+  assert.deepEqual(legacySetupStatusView({ state: 'not_started' }), { tone: 'neutral', label: 'ยังไม่เริ่ม', sub: null });
+  /* ใบย้อนหลัง/สายสินค้า มีตราไม่ได้ และไม่อยู่ในถังอยู่แล้ว */
+  assert.equal(run({ orders: [so({ ...deferredCols, origin: 'historical' })], lines: [manual()] }).rows.length, 0);
+  assert.equal(run({ orders: [so({ ...deferredCols, dealId: 'DL-P' })], lines: [manual()] }).rows.length, 0);
+
+  /* ข้าม → ตั้ง → ประทับ → ฝ่ายขายกด 'แก้งานบริการ' (0396) ⇒ เหตุการณ์ที่เกิดทีหลังชนะ: แถวพูดเรื่องการเปิดแก้ ไม่พูด "ข้ามตอนยื่น" */
+  const reopenedLater = { ...deferredCols, ...reopenedCols, serviceSetupReopenedAt: '2026-10-09T03:15:00Z' };
+  const [reopened] = run({ orders: [so(reopenedLater)], lines: [manual()] }).rows;
+  assert.equal(reopened.deferred, null);
+  assert.equal(reopened.reopened.byName, 'Kamonrat Pipattanapong');
+  assert.equal(legacySetupStatusView(reopened).label, 'ฝ่ายขายกำลังแก้ (หลังอนุมัติ) · 0/1 รายการ');
+  /* แถวที่พกทั้งสองก้อน (ไม่ควรเกิด — ตัวตัดสินกลางไม่ส่งคู่กัน) ก็ยังใช้ป้ายของการเปิดแก้ */
+  const forged = legacySetupStatusView({ ...reopened, deferred: DEFERRED });
+  assert.equal(forged.label, 'ฝ่ายขายกำลังแก้ (หลังอนุมัติ) · 0/1 รายการ');
+  assert.ok(!String(forged.sub).includes('ยื่นโดยยังไม่ตั้งงานบริการ'));
+  /* เคยเปิดแก้ → ยกเลิก → กู้คืน → ยื่นแบบข้าม → อนุมัติ ⇒ "ข้ามตอนยื่น" */
+  const deferredLater = { ...reopenedCols, ...deferredCols, serviceSetupDeferredAt: '2026-10-09T03:15:00Z' };
+  const [later] = run({ orders: [so(deferredLater)], lines: [manual()] }).rows;
+  assert.deepEqual([later.reopened, later.deferred?.stage], [null, 'approved']);
+  assert.equal(legacySetupStatusView(later).label, 'ข้ามตอนยื่น · ยังไม่เริ่ม');
+});

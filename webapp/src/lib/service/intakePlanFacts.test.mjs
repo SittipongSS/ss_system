@@ -15,6 +15,7 @@ import { withLinePeriods } from './terms.js';
 import { suggestEveryDays } from './rounds.js';
 import { suggestCadence } from './cadence.js';
 import { ORIGIN_HISTORICAL, ORIGIN_PIPELINE } from '../sales/historicalOrders.js';
+import { SERVICE_DEFERRED_TEXT } from '../sales/serviceSetup.js';
 
 /* ── ใบจริง SO-26090247-0 ─────────────────────────────────────────────────────────────── */
 const SITE = { id: 'SVS-muar3j8841c30', code: 'ST-0364-01-BKK-1120', name: 'Asan Service', customerId: 'CUS-1' };
@@ -343,6 +344,36 @@ test('⭐ รอบกำพร้า: Rev. ที่อนุมัติไม
   assert.deepEqual(out.dropped, [{ planId: 'P1', siteId: 'S1', site: OS1, fromOrderId: 'A', fromOrderNumber: 'SO-A', toOrderId: 'B', toOrderNumber: 'SO-B', everyDays: 30, cadenceText: 'ทุก 30 วัน', kind: 'dropped' }]);
   assert.deepEqual(out.stale, [{ planId: 'P2', siteId: 'S1', site: OS1, fromOrderId: 'C', fromOrderNumber: 'SO-C', toOrderId: 'E', toOrderNumber: 'SO-E', everyDays: 14, cadenceText: 'ทุก 14 วัน', kind: 'stale' }]);
   assert.deepEqual(out.cancelled, [{ planId: 'P3', siteId: 'S1', site: OS1, fromOrderId: 'F', fromOrderNumber: 'SO-F', toOrderId: null, toOrderNumber: null, everyDays: 30, cadenceText: 'ทุก 30 วัน', kind: 'cancelled' }]);
+  assert.deepEqual(out.unset, []);
+});
+
+/* mig 0404 (ตรวจทานรอบสุดท้าย sql-predecessor-plan-net-point-in-time): ใบ Rev. ปลายโซ่ที่ฝ่ายขาย "ยื่นโดยยังไม่ตั้งงานบริการ" อนุมัติแล้วแต่ยังไม่มี term
+   — ด่านของฐานตรวจ "ใบเดิมมีรอบเดินอยู่ไหม" แค่ตอนยื่น/อนุมัติ (และทอดเดียว) ⇒ TS เปิดรอบของใบเดิมกลับทีหลังได้ · เดิมรอบนั้นถูกนับ dropped
+   ("Rev. ไม่มีไซต์นี้ — ปิดรอบ หรือนัดถอนเครื่อง") ซึ่งไม่จริงและชวนให้ปิดรอบ/ถอนเครื่อง ⇒ กลุ่มของตัวเอง `unset` */
+test('⭐ 0404 รอบกำพร้า: ใบ Rev. ปลายโซ่ยื่นโดยยังไม่ตั้งงานบริการ (อนุมัติแล้ว ยังไม่ประทับ) = unset ไม่ใช่ dropped · ประทับแล้ว/ไม่มีตรา = กติกาเดิม', () => {
+  const deferred = { origin: 'pipeline', serviceTermsOpenedAt: null, serviceSetupDeferredAt: '2026-09-28T03:00:00Z', serviceSetupDeferredByName: 'เอ ขายดี' };
+  const tip = (id, over = {}) => ({ ...ord(id, 'approved'), origin: 'pipeline', serviceTermsOpenedAt: null, ...over });
+  /* ทอดเดียว: รอบชี้ A · ใบ Rev. B อนุมัติแบบข้าม (ไม่มี term) */
+  const one = orphanCtx([livePlan('P1', 'A')], [ord('A', 'revised', 'B'), tip('B', deferred)], []);
+  assert.deepEqual(one.dropped, []);
+  assert.deepEqual(one.unset, [{ planId: 'P1', siteId: 'S1', site: OS1, fromOrderId: 'A', fromOrderNumber: 'SO-A', toOrderId: 'B', toOrderNumber: 'SO-B', everyDays: 30, cadenceText: 'ทุก 30 วัน', kind: 'unset' }]);
+  /* สองทอด: รอบชี้ A · B ถูกแทนด้วย C ที่อนุมัติแบบข้าม */
+  const two = orphanCtx([livePlan('P1', 'A')], [ord('A', 'revised', 'B'), ord('B', 'revised', 'C'), tip('C', deferred)], []);
+  assert.deepEqual([two.dropped.length, two.unset.length, two.unset[0].toOrderId], [0, 1, 'C']);
+  /* ผู้จัดการอนุมัติงานบริการแล้ว (ประทับ): มี term ที่ไซต์ = stale (TS ย้ายรอบเอง) · ไม่มี = dropped ตามจริง — ตราการข้ามที่ค้างเป็นประวัติไม่มีผล */
+  const stamped = { ...deferred, serviceTermsOpenedAt: '2026-09-29T02:00:00Z' };
+  const afterStale = orphanCtx([livePlan('P1', 'A')], [ord('A', 'revised', 'B'), tip('B', stamped)], [{ id: 'T-B', zoneId: 'Z1', salesOrderId: 'B' }]);
+  assert.deepEqual([afterStale.stale.length, afterStale.unset.length, afterStale.dropped.length], [1, 0, 0]);
+  const afterDropped = orphanCtx([livePlan('P1', 'A')], [ord('A', 'revised', 'B'), tip('B', stamped)], [{ id: 'T-B', zoneId: 'Z2', salesOrderId: 'B' }]);
+  assert.deepEqual([afterDropped.dropped.length, afterDropped.unset.length], [1, 0]);
+  /* ใบปลายโซ่ที่ยังไม่ประทับแต่ **ไม่มีตราการข้าม** (ใบเดิมก่อนมีการตั้งงานบริการ) = dropped เหมือนเดิมทุกตัวอักษร · แถวที่ไม่พกคอลัมน์ของ 0404 ด้วย */
+  assert.deepEqual(orphanCtx([livePlan('P1', 'A')], [ord('A', 'revised', 'B'), tip('B')], []).dropped.length, 1);
+  assert.deepEqual(orphanCtx([livePlan('P1', 'A')], [ord('A', 'revised', 'B'), ord('B', 'approved')], []).dropped.length, 1);
+  /* ใบย้อนหลังไม่มีตราการข้าม (CHECK ของ 0404) — ถึงแถวจะพกค่ามาก็ไม่นับ */
+  assert.deepEqual(orphanCtx([livePlan('P1', 'A')], [ord('A', 'revised', 'B'), tip('B', { ...deferred, origin: 'historical' })], []).dropped.length, 1);
+  assert.equal(ORPHAN_TITLES.unset(2), SERVICE_DEFERRED_TEXT.tsOrphanTitle(2));
+  assert.equal(ORPHAN_TITLES.unset(2), 'รอบที่ยังผูกใบเดิม 2 รอบ — ใบ Rev. ล่าสุดยังไม่ตั้งงานบริการ (ฝ่ายขายข้ามตอนยื่น) · ยังไม่ต้องปิดรอบหรือถอนเครื่อง รอฝ่ายขายตั้งงานบริการและผู้จัดการฝ่ายขายอนุมัติก่อน');
+  assert.doesNotMatch(ORPHAN_TITLES.unset(1), /Rev\. ไม่มีไซต์นี้|นัดถอนเครื่อง —|— ปิดรอบ/);
 });
 
 test('รอบกำพร้า: Rev. ยังไม่อนุมัติ · ย้อนการอนุมัติ · ใบยังมีผล = ไม่ใช่กำพร้า (0392 ย้ายให้ตอนอนุมัติ)', () => {
@@ -354,7 +385,7 @@ test('รอบกำพร้า: Rev. ยังไม่อนุมัติ 
     ord('LIVE', 'approved'),
   ];
   const out = orphanCtx([livePlan('P4', 'G'), livePlan('P5', 'I'), livePlan('P6', 'J'), livePlan('P7', 'L'), livePlan('P8', 'LIVE')], orders, []);
-  assert.deepEqual(out, { dropped: [], stale: [], cancelled: [] });
+  assert.deepEqual(out, { dropped: [], stale: [], cancelled: [], unset: [] });
 });
 
 test('รอบกำพร้า: รอบปิด/จบแล้ว · ไม่ผูกใบ · ใบไม่รู้จัก · ข้อต่อหาย · วน · เกิน 10 ทอด = ข้าม (ไม่เดา)', () => {
@@ -375,7 +406,7 @@ test('รอบกำพร้า: รอบปิด/จบแล้ว · ไ�
     livePlan('P-loop', 'LA'),
     livePlan('P-long', 'X0'),
   ];
-  assert.deepEqual(orphanCtx(plans, orders, []), { dropped: [], stale: [], cancelled: [] });
+  assert.deepEqual(orphanCtx(plans, orders, []), { dropped: [], stale: [], cancelled: [], unset: [] });
   // จบวันนี้ยังนับว่ามีผล
   assert.equal(orphanCtx([livePlan('P-today', 'A', { endDate: '2026-09-29' })], orders, []).dropped.length, 1);
   // โซ่ยาวพอดีเพดานยังเดินถึง

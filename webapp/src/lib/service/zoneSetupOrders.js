@@ -23,7 +23,8 @@ const UNAPPROVED_STATUSES = ['draft', 'pending_approval', 'rejected', 'approval_
 
 /**
  * สถานะการตั้งงานบริการของใบที่ถือโซนไว้ — `{ group, key, label } | null`
- * @param order แถว sales_orders ที่มี `status, supersededById, serviceTermsOpenedAt, serviceSetupState, origin, serviceSetupReopenedAt`
+ * @param order แถว sales_orders ที่มี `status, supersededById, serviceTermsOpenedAt, serviceSetupState, origin, serviceSetupReopenedAt,
+ *   serviceSetupDeferredAt` (mig 0404 — ใบที่เปิดแก้แล้วถูกยื่นแบบข้ามทีหลัง = กลุ่ม "ตั้งย้อนหลัง" · `serviceSetupReopened` คืน null)
  */
 export function setupOrderState(order) {
   if (!order) return null;
