@@ -21,7 +21,8 @@ import {
   serviceSetupView, serviceSetupWarnings,
 } from './serviceSetup.js';
 import {
-  backfillBannerText, backfillCopyOfView, backfillRailOnTop, deferNoticeOfView, serviceCardMeta, skipTagsShown, stripParts, submitGateGroups,
+  backfillBannerText, backfillCopyOfView, backfillRailChecks, backfillRailOnTop, deferNoticeOfView, issuesInColumnOrder, serviceCardMeta,
+  skipTagsShown, stripParts, submitGateGroups,
 } from '../../components/salesPlanning/serviceSetup/serviceSetupDraft.js';
 
 const SRC = path.resolve(process.cwd(), 'src');
@@ -143,6 +144,114 @@ test('แผงแดง: submitGateGroups ติด deferrable ตามตั�
   assert.deepEqual(fn.map((item) => [item.kind, item.deferrable, item.tag]), [['issue', false, 'รอฝ่ายบัญชี'], ['warning', false, 'เตือน · ไม่บล็อกการยื่น']]);
 });
 
+/* ⭐ หลังรวม main #1878 (มติเจ้าของ 08/10 "สลับ ข้อ 4 กับ ข้อ 5 · หน่วยเป็นเดือน") — งานข้ามตอนยื่นถูกเขียนบนตารางรุ่นก่อน:
+     ยามชุดนี้ยึดว่าของสองงานอยู่ด้วยกันได้ — แผงแดงไล่ข้อตามคอลัมน์ **พร้อม** ป้าย 'ข้ามได้' · การ์ดรางของใบที่ข้ามจัดแถวตามคอลัมน์ ·
+     ทุกผิวของใบที่ข้ามพูดหน่วย "เดือน" และลำดับ รอบละกี่แพ็ค → จำนวนรอบบริการ · ฝั่ง TS ยังพูด "รอบ" */
+test('⭐ 08/10 × ข้ามตอนยื่น: แผงแดงไล่ข้อของรายการเดียวกันตามคอลัมน์ (โซน/แพ็คก่อนจำนวนรอบบริการ) และป้าย \'ข้ามได้\' ยังครบทุกแถว', () => {
+  /* รายการ 1 (FG แพ็คเกจ): เลือกโซนแล้วแต่ยังไม่ใส่แพ็ค และยังไม่ใส่จำนวนรอบบริการ · รายการ 2–3 ยังไม่ตอบ */
+  const ctx = ctxOf({ allocations: [{ id: 'A1', salesOrderLineId: 'L1', zoneId: 'Z1', packsPerRound: null, sortOrder: 0 }] });
+  const issues = serviceSetupIssues(ctx);
+  const keysOf = (list) => list.filter((issue) => issue.lineId === 'L1').map((issue) => issue.key);
+  /* สัญญาของ server ไม่เปลี่ยน: รอบ → โซน/แพ็ค (ลำดับเดียวกับรหัส DETAIL ของฐาน) — ตัวจัดอยู่ที่จอเท่านั้น */
+  assert.deepEqual(keysOf(issues), ['rounds_missing', 'packs_missing']);
+  assert.deepEqual(keysOf(issuesInColumnOrder(issues)), ['packs_missing', 'rounds_missing']);
+
+  const asked = [];
+  const groups = submitGateGroups(issues, [], { deferrable: (entry) => { asked.push(entry); return serviceSetupIssueGroup(entry) !== 'blocking'; } });
+  const overview = groups.find((group) => group.key === 'overview').items;
+  assert.deepEqual(overview.filter((item) => item.entry.lineId === 'L1').map((item) => [item.entry.key, item.deferrable]),
+    [['packs_missing', true], ['rounds_missing', true]], 'แถวของรายการ 1: รอบละกี่แพ็ค (④) ก่อนจำนวนรอบบริการ (⑤) · ติดป้ายทั้งคู่');
+  assert.deepEqual(overview.map((item) => item.entry.message).slice(0, 2), [
+    'รายการ 1 · Lobby: ยังไม่ใส่รอบละกี่แพ็ค',
+    'รายการ 1: ยังไม่ใส่จำนวนรอบบริการ',
+  ]);
+  /* ตัวถามยังได้ **ข้อตัวเดิมของ `issues`** (จัดลำดับ = ย้ายที่ ไม่ใช่สร้างใหม่) — ป้ายคิดจากข้อของแผงเอง */
+  assert.ok(asked.length > 0 && asked.every((entry) => issues.includes(entry)));
+  /* จำนวนที่ติดป้ายยังเท่าตัวเลขบนบรรทัดท้ายแผง */
+  const skip = serviceSetupSkipState(ctx, { canEdit: true, issues });
+  const tagged = groups.flatMap((group) => group.items).filter((item) => item.deferrable).reduce((sum, item) => sum + (item.entries ? item.entries.length : 1), 0);
+  assert.deepEqual([skip.canSkip, skip.deferredCount, tagged], [true, issues.length, issues.length]);
+  assert.equal(skip.lead, SERVICE_DEFER_TEXT.panelLead(issues.length));
+
+  /* ข้อเงินที่การยื่นแบบข้ามเติมท้าย (`skip.extraIssues` — ไม่มี lineId) ไม่ถูกตัวจัดคอลัมน์ขยับ: ยังอยู่ท้ายสุดและไม่ติดป้าย */
+  const bare = ctxOf({ lines: [line(1), line(2)], installments: [] });
+  const bareIssues = serviceSetupIssues(bare);
+  const bareSkip = serviceSetupSkipState(bare, { canEdit: true, issues: bareIssues });
+  assert.deepEqual(bareSkip.extraIssues.map((issue) => issue.key), ['installments_missing']);
+  const merged = [...bareIssues, ...bareSkip.extraIssues];
+  assert.deepEqual(issuesInColumnOrder(merged), merged, 'ไม่มีข้อจำนวนรอบบริการของรายการ = ลำดับเดิมทุกตัว');
+  const bareItems = submitGateGroups(merged, [], { deferrable: (entry) => serviceSetupIssueGroup(entry) !== 'blocking' }).flatMap((group) => group.items);
+  assert.deepEqual(bareItems.map((item) => [item.entry.key, item.deferrable]),
+    [['kind_missing', true], ['kind_missing', true], ['installments_missing', false]]);
+});
+
+test('⭐ 08/10 × ข้ามตอนยื่น: ทุกผิวของใบที่ข้ามพูดหน่วย "เดือน" และไล่ รอบละกี่แพ็ค → จำนวนรอบบริการ — ฝั่ง TS (รอบกำพร้า) ยังพูด "รอบ"', () => {
+  const summary = 'แต่ละครั้ง 3 โซนใน 2 ไซต์ · ครั้งละ 4 แพ็ค · จำนวนรอบบริการ 12 เดือน · รวมทั้งใบ 48 แพ็ค';
+  const done = { lines: DONE_LINES(), allocations: DONE_ALLOCS(), installments: COVERED() };
+  const supervisor = { canEdit: true, userId: 'U-SUP', role: 'ae_supervisor' };
+
+  /* ① รออนุมัติ · ข้ามไว้แต่ตอนนี้ครบแล้ว: แถบผู้อนุมัติ/ผลของการอนุมัติ/หัวใบ = ประโยคของ main (ลำดับคอลัมน์ · เดือน) */
+  const complete = viewOf(ctxOf({ order: { ...SUBMITTED, ...DEFER, ...DONE }, ...done }), supervisor);
+  assert.deepEqual([complete.deferred.active, complete.deferred.missing, complete.deferred.blocking], [false, 0, 0]);
+  assert.ok(complete.stripText.startsWith(`งานบริการ: ${summary} · ช่วง `), complete.stripText);
+  assert.deepEqual(complete.approvalEffects.slice(0, 2), [
+    SERVICE_DEFERRED_TEXT.approveEffectComplete,
+    `เปิดงานบริการให้ TS: ${summary} — ขึ้นที่ “งานเข้าใหม่ › รอตั้งรอบ” ทันที ไม่ต้องผูกโซนอีก`,
+  ]);
+  assert.deepEqual(complete.approvalChecklist, ['ตรวจแพ็คเกจ · ไซต์ · โซน · รอบละกี่แพ็ค · จำนวนรอบบริการ ในการ์ดงานบริการ']);
+  assert.deepEqual([complete.hero.value, complete.hero.sub], ['12 เดือน', 'แต่ละครั้ง 3 โซน · ครั้งละ 4 แพ็ค']);
+
+  /* ② อนุมัติแล้วโดยข้าม · ตั้งครบแล้วยังไม่ยื่นตรวจ: หัวใบ "12 เดือน" + ท้าย "ข้ามตอนยื่น — ยังไม่ส่ง TS" */
+  const filled = viewOf(ctxOf({ order: { ...SUBMITTED, ...DEFER, ...APPROVED, ...DONE }, ...done }));
+  assert.deepEqual([filled.flow, filled.deferred.stage, filled.hero.value], ['backfill', 'approved', '12 เดือน']);
+  assert.equal(filled.hero.sub, `แต่ละครั้ง 3 โซน · ครั้งละ 4 แพ็ค${SERVICE_DEFERRED_TEXT.heroSuffix}`);
+  /* ③ …ยื่นตรวจแล้ว: โมดัลอนุมัติงานบริการของผู้จัดการ — ข้อแรกบอกว่าใบนี้ข้ามมา แล้วข้อตรวจตาราง/ผลตามลำดับคอลัมน์ */
+  const review = viewOf(ctxOf({
+    order: {
+      ...SUBMITTED, ...DEFER, ...APPROVED, ...DONE, serviceSetupState: 'submitted', serviceSetupSubmittedAt: '2026-10-09T03:00:00Z',
+      serviceSetupSubmittedById: 'U-AE', serviceSetupSubmittedByName: 'Kamonrat Pipattanapong',
+    },
+    ...done,
+  }), supervisor);
+  assert.deepEqual(review.approvalChecklist.slice(0, 2), [
+    SERVICE_DEFERRED_TEXT.checklistLine(review.deferred),
+    'ตรวจแพ็คเกจ · ไซต์ · โซน · รอบละกี่แพ็ค · จำนวนรอบบริการ ในการ์ดงานบริการ',
+  ]);
+  assert.equal(review.approvalEffects[0], `เปิดงานบริการให้ TS: ${summary} — ขึ้นที่ “งานเข้าใหม่ › รอตั้งรอบ” ทันที ไม่ต้องผูกโซนอีก`);
+  assert.ok(review.stripText.startsWith(`งานบริการ: ${summary} · ช่วง `));
+
+  /* ④ การ์ดรางของใบที่อนุมัติโดยข้าม (ยังไม่ตั้ง): แถวตรวจจัดกลุ่มตามคอลัมน์ ① ② แล้ว ③ ④ ⑤ — ป้ายเดียวกับใบเดิม */
+  const approved = viewOf(ctxOf({ order: { ...SUBMITTED, ...DEFER, ...APPROVED } }));
+  const rail = backfillRailChecks(approved);
+  assert.deepEqual(rail.map((row) => row.label), [
+    'งานบริการ? · แพ็คเกจ', 'ไซต์ · โซน · รอบละกี่แพ็ค · จำนวนรอบบริการ', 'ช่วงบริการ', 'ช่วงครอบของงวดที่ยังไม่รับรอง', 'วันวางบิล · กำหนดชำระ',
+  ]);
+  /* ใบที่ข้ามซึ่งทุกรายการตอบแล้ว: "ข้อแรกของแถว" ของก้อนโซน = ข้อของคอลัมน์ ④ ก่อน ⑤ (ตัวจัดเดียวกับแผงแดง) */
+  const partial = viewOf(ctxOf({
+    order: { ...SUBMITTED, ...DEFER, ...APPROVED, ...DONE },
+    lines: [line(1, { fgCode: FG.fgCode, productId: 'P1' }), line(2, { serviceKind: 'not_service' }), line(3, { serviceKind: 'not_service' })],
+    allocations: [{ id: 'A1', salesOrderLineId: 'L1', zoneId: 'Z1', packsPerRound: null, sortOrder: 0 }],
+    installments: COVERED(),
+  }));
+  assert.deepEqual(partial.issues.map((issue) => issue.key), ['rounds_missing', 'packs_missing'], 'ก้อน GET ยังเรียงตามสัญญาของ server');
+  assert.equal(backfillRailChecks(partial).find((row) => row.key === 'zones').sub, 'รายการ 1: ยังไม่ใส่รอบละกี่แพ็ค');
+  assert.equal(backfillRailChecks(partial).find((row) => row.key === 'lines').sub, null, 'ข้อจำนวนรอบบริการไม่อยู่แถว ① ② แล้ว');
+
+  /* ⑤ แคตตาล็อกของงานนี้ไม่พิมพ์ค่าที่ขายด้วยหน่วย "รอบ" บนผิวฝ่ายขาย — "n รอบ" เหลือที่เดียวคือหัวแถบรอบกำพร้าของ TS (นับรอบที่ TS เดิน) */
+  const d = { ...DEFER, at: DEFER.serviceSetupDeferredAt, byName: DEFER.serviceSetupDeferredByName, stage: 'approved' };
+  /* ตัวสร้างข้อความรับได้ทั้งก้อนการข้าม · ตัวเลข · เลขใบ — พิมพ์ทุกแบบแล้วรวม (ตัวเลขต้องเป็นตัวเลขจริง ไม่งั้น "n รอบ" หลุดสายตา) */
+  const printed = (catalog) => Object.entries(catalog).map(([key, value]) => [key, typeof value === 'function'
+    ? [[d, 7], [7, 7], ['SO-26090001-0', 7]].map((args) => String(value(...args))).join(' ¦ ') : String(value)]);
+  const roundUnit = /[\d,] รอบ(?!ขาย|บริการ|ละ)/;
+  assert.match('จำนวนรอบบริการ 12 รอบ · รวม', roundUnit, 'ตัวจับต้องเห็นรูป "n รอบ" ของรุ่นก่อนมติ 08/10');
+  assert.doesNotMatch('ไว้แล้ว 3 รอบขาย · จำนวนรอบบริการ 12 เดือน · 4 รอบละ', roundUnit);
+  const withRoundUnit = [...printed(SERVICE_DEFER_TEXT), ...printed(SERVICE_DEFERRED_TEXT)].filter(([, value]) => roundUnit.test(value)).map(([key]) => key);
+  assert.deepEqual(withRoundUnit, ['tsOrphanTitle']);
+  assert.equal(SERVICE_DEFERRED_TEXT.tsOrphanTitle(7).startsWith('รอบที่ยังผูกใบเดิม 7 รอบ — '), true, 'ฝั่ง TS ยังนับเป็นรอบ (นอกขอบเขตมติ 08/10)');
+  /* ประโยคที่ไล่ขั้นมีที่เดียวในแคตตาล็อกของงานนี้ (บรรทัดแบนเนอร์) และไล่ตามหัวตาราง */
+  assert.match(SERVICE_DEFERRED_TEXT.bannerLine(d), /\(แพ็คเกจ · ไซต์ · โซน · รอบละกี่แพ็ค · จำนวนรอบบริการ · ช่วงบริการ\)/);
+});
+
 test('แผงแดง: ป้าย \'ข้ามได้\' ขึ้นเมื่อข้ามได้ หรือติดเพราะยังเหลือข้อที่ข้ามไม่ได้ — ใบ Rev. ที่ใบเดิมยังเดินรอบ (ข้ามไม่ได้ทั้งใบ) ไม่มีป้าย', () => {
   const can = { canEdit: true };
   const open = serviceSetupSkipState(ctxOf(), can);
@@ -229,8 +338,9 @@ test('หลังอนุมัติ: แบนเนอร์/การ์�
     stateLabel: SERVICE_BACKFILL_STATE_LABELS.not_started,
     reopenLine: 'ข้ามการตั้งงานบริการตอนยื่น 08/10/2026 โดย Kamonrat Pipattanapong',
   });
+  /* มติเจ้าของ 08/10 (สลับ ④⑤ · #1878): วงเล็บไล่ตามหัวตารางงานบริการ — รอบละกี่แพ็คก่อนจำนวนรอบบริการ (เดิมยามนี้ยึดลำดับ 29/09) */
   assert.equal(backfillBannerText(view),
-    'ข้ามโดย Kamonrat Pipattanapong 08/10/2026 — ตั้งงานบริการ (แพ็คเกจ · ไซต์ · โซน · จำนวนรอบบริการ · รอบละกี่แพ็ค · ช่วงบริการ) แล้วยื่นให้ผู้จัดการฝ่ายขายตรวจ · ยอด/Actual/เอกสารไม่เปลี่ยน');
+    'ข้ามโดย Kamonrat Pipattanapong 08/10/2026 — ตั้งงานบริการ (แพ็คเกจ · ไซต์ · โซน · รอบละกี่แพ็ค · จำนวนรอบบริการ · ช่วงบริการ) แล้วยื่นให้ผู้จัดการฝ่ายขายตรวจ · ยอด/Actual/เอกสารไม่เปลี่ยน');
   assert.equal(backfillRailOnTop(view), true, 'การ์ดรางอยู่บนสุดของรางขวาระหว่างยังไม่ยื่นตรวจ — กติกาเดิม');
   /* ไม่มีคำของใบเดิมบนใบที่ข้าม */
   for (const value of [copy.bannerTitle, copy.eyebrow, copy.title, copy.meta, backfillBannerText(view)]) assert.doesNotMatch(value, /ใบเดิม|ตั้งย้อนหลัง|ก่อนมีการตั้งงานบริการ/);
@@ -262,8 +372,12 @@ test('หลังอนุมัติ: แบนเนอร์/การ์�
       'ตั้งย้อนหลังบนใบที่อนุมัติแล้ว — ผู้จัดการฝ่ายขายตรวจก่อนส่งให้ TS', 'ตั้งค่า', null, null]);
   assert.ok(serviceCardMeta({ view: legacyView, flow: 'backfill', editable: true, totals: {} }).endsWith(' · แก้ได้จนกว่าจะยื่นตรวจ'));
   assert.ok(!serviceCardMeta({ view: legacyView, flow: 'backfill', editable: true, totals: {} }).includes('ข้าม'));
+  /* "คำเดิมทุกตัวอักษร" = คำของใบเดิมบน main วันนี้ — ลำดับในวงเล็บเป็นของมติเจ้าของ 08/10 (#1878: รอบละกี่แพ็คก่อนจำนวนรอบบริการ)
+     · งานข้ามตอนยื่นไม่ได้แตะประโยคนี้ และแบนเนอร์ของใบที่ข้ามต้องไล่ลำดับเดียวกัน (ต่างแค่หัว "ข้ามโดย …") */
   assert.equal(backfillBannerText(legacyView),
-    'ตั้งงานบริการ (แพ็คเกจ · ไซต์ · โซน · จำนวนรอบบริการ · รอบละกี่แพ็ค · ช่วงบริการ) แล้วยื่นให้ผู้จัดการฝ่ายขายตรวจ · ยอด/Actual/เอกสารไม่เปลี่ยน');
+    'ตั้งงานบริการ (แพ็คเกจ · ไซต์ · โซน · รอบละกี่แพ็ค · จำนวนรอบบริการ · ช่วงบริการ) แล้วยื่นให้ผู้จัดการฝ่ายขายตรวจ · ยอด/Actual/เอกสารไม่เปลี่ยน');
+  assert.ok(backfillBannerText(view).endsWith(backfillBannerText(legacyView).replace(/^ตั้งงานบริการ/, '— ตั้งงานบริการ')),
+    'แบนเนอร์ของใบที่ข้าม = หัว "ข้ามโดย …" + ประโยคเดียวกับใบเดิมทุกตัวอักษร (ลำดับขั้นไม่มีทางแยกกันอีก)');
 
   /* ใบที่ข้ามตอนยื่น → ประทับแล้ว → เปิดแก้หลังอนุมัติ: เหตุการณ์ที่เกิดทีหลังชนะ — server ส่ง reopened ไม่ส่ง deferred ⇒ ป้ายของ 0396 */
   const reopenedView = viewOf(ctxOf({
@@ -547,7 +661,7 @@ test('ทะเบียนใบสั่งขาย: แถวคิวขอ
 
 /* ══ ส่วนที่ 3: ยามเอกสาร ══════════════════════════════════════════════════════════════════════════════════ */
 
-test('docs/so-service-setup.md: หัวข้อของ 0404 — สถานะจาก 5 คำ · เจ้าของต้องรัน 0404 ก่อน merge/deploy · ตารางกลุ่มข้อตรงกับตัวตัดสิน · ชื่อที่อ้างมีจริง · แถวสารบัญ', () => {
+test('docs/so-service-setup.md: หัวข้อของ 0404 — สถานะจาก 5 คำ · 0404 อยู่บนฐานจริงแล้ว (ไม่ต้องรันซ้ำ · ห้ามแก้ไฟล์ · รอผล SELECT ตรวจหลังรันก่อน merge/deploy) · ตารางกลุ่มข้อตรงกับตัวตัดสิน · ชื่อที่อ้างมีจริง · แถวสารบัญ', () => {
   const DOC = readFileSync(new URL('../../../../docs/so-service-setup.md', import.meta.url), 'utf8');
   const INDEX = readFileSync(new URL('../../../../docs/INDEX.md', import.meta.url), 'utf8');
   const heading = '### ยื่นโดยยังไม่ตั้งงานบริการ — ข้ามตอนยื่น ตั้งหลังอนุมัติ (mig 0404 · มติเจ้าของ 01/10 · แบรนช์ `claude/so-service-defer`)';
@@ -557,7 +671,31 @@ test('docs/so-service-setup.md: หัวข้อของ 0404 — สถา�
   assert.ok(end > start);
   const section = DOC.slice(start, end);
   assert.match(section, /\n> สถานะ: \*\*(รอดำเนินการ|กำลังดำเนินการ|รอตรวจ|เสร็จสมบูรณ์|ระงับ)\*\*/);
-  assert.match(section, /เจ้าของต้องรัน `0404_so_service_setup_defer\.sql` ที่ SQL Editor ก่อน merge\/deploy/);
+  /* 🔁 ตรวจสคีมาฐานจริงแบบอ่านอย่างเดียว 08/10/2026 16:04 น. (วันเดียวกับที่แบรนช์นี้รวม main #1878 ของมติเจ้าของ 08/10 "สลับ ④⑤ + หน่วยเดือน"):
+       สามช่องของ 0404 + RPC ตัวห่ออยู่บนฐานแล้ว และ `check:columns` เขียว — เดิมยามนี้ยึดประโยคเดียว
+       "เจ้าของต้องรัน `0404_…sql` ที่ SQL Editor ก่อน merge/deploy" ซึ่งไม่จริงแล้ว (ปล่อยไว้ = เจ้าของถูกขอให้รันไฟล์ที่อยู่บนฐานแล้ว และ
+       SELECT ตรวจก่อนรันจะได้ cols = 3 ไม่ใช่ 0) ⇒ ยามย้ายไปยึดความจริงใหม่ **ครบทุกข้อ** ไม่ใช่ถอดออก:
+       อยู่บนฐานแล้ว (พร้อมวันเวลาที่ตรวจ) · check:columns เขียว · ไม่ต้องรันซ้ำ · ห้ามแก้ไฟล์ · ก่อน merge/deploy ยังต้องได้ผล SELECT ตรวจหลังรันจากเจ้าของ
+       (ค่าที่คาดในเอกสาร = ค่าที่หัวไฟล์เขียน) · SQL ต่อจากนี้ = migration ใหม่ · คำของตอนก่อนรันต้องไม่ค้างในหัวข้อ */
+  assert.match(section, /\n> สถานะ: \*\*[^*]+\*\* · ✅ \*\*`0404_so_service_setup_defer\.sql` อยู่บนฐานจริงแล้ว\*\*/);
+  assert.match(section, /ตรวจฐานจริงแบบอ่านอย่างเดียว 08\/10\/2026 16:04 น\. \(เวลาไทย\): 0404 อยู่บนฐานแล้ว/);
+  assert.match(section, /`npm run check:columns` \*\*เขียว\*\*/);
+  assert.match(section, /\*\*ไม่ต้องรันไฟล์ซ้ำ\*\*/);
+  assert.match(section, /\*\*ห้ามแก้ไฟล์ 0404 อีก\*\*/);
+  assert.match(section, /\*\*ก่อน merge\/deploy เหลืออย่างเดียวที่ฐาน: เจ้าของแปะผล SELECT ตรวจหลังรันของหัวไฟล์\*\*/);
+  assert.match(section, /SQL ของงานนี้ที่ต้องเปลี่ยนต่อจากนี้ = migration ใหม่/);
+  const afterRun = 'cols = 3 · chk = 1 · trg = 1 · fns = 2 · d1 = 1 · p1 = 1 · anon_submit = f · svc_submit = t · deferred = 0';
+  const MIG_0404 = readFileSync(new URL('../../../supabase/migrations/0404_so_service_setup_defer.sql', import.meta.url), 'utf8');
+  assert.ok(MIG_0404.includes(`คาด: ${afterRun}`), 'หัวไฟล์ 0404: ค่าที่คาดของ SELECT ตรวจหลังรัน');
+  assert.ok(section.replace(/\n/g, ' ').includes(`คาด \`${afterRun}\``), 'เอกสารยกค่าที่คาดของ SELECT ตรวจหลังรันตรงกับหัวไฟล์ทุกตัว');
+  /* SELECT ตรวจรุ่นของไฟล์ที่รัน (ข้อ 1 ของลำดับ deploy): เข็มสองเล่มต้องมีจริงในโค้ดของไฟล์ (ไม่นับคอมเมนต์) — ด่านของรอบตรวจทานสุดท้าย
+     · เล่มแรก = ด่านที่แปดของตัวห่อ · เล่มสอง = เงื่อนไขที่หกของบล็อก D1 (ชื่อย่อ dm มีเฉพาะในบล็อกนั้น — ตัวเปิดรอบขายเดิมไม่มี) */
+  const code0404 = MIG_0404.slice(MIG_0404.indexOf('\nBEGIN;')).replace(/--[^\n]*/g, '');
+  for (const needle of ['service_setup_defer_ml_set', 'dm."standardMlPerMonth" IS NOT NULL']) {
+    assert.ok(section.includes(`strpos(p.prosrc, '${needle}') > 0`), `เอกสารต้องมี SELECT ตรวจรุ่นด้วยเข็ม ${needle}`);
+    assert.equal(code0404.split(needle).length - 1, 1, `เข็ม ${needle} ต้องอยู่ในโค้ดของไฟล์ 0404 ครั้งเดียว`);
+  }
+  assert.doesNotMatch(section, /ยังไม่ได้รัน 0404|เจ้าของต้องรัน `0404|ต้องรัน 0404 ก่อน|ห้าม merge\/deploy\*\*/, 'คำของตอนก่อนรันต้องไม่ค้าง');
   assert.ok(existsSync(new URL('../../../supabase/migrations/0404_so_service_setup_defer.sql', import.meta.url)), 'ไฟล์ migration ที่เอกสารอ้างต้องมีจริง');
   assert.match(section, /"เรื่อง ผูก รอบบริการ ให้ ข้ามได้ มาใส่ที่หลัง Actual ได้"/, 'คำของเจ้าของตามตัวอักษร');
 
@@ -618,12 +756,20 @@ test('docs/so-service-setup.md: หัวข้อของ 0404 — สถา�
   assert.match(section, /\*\*ฝ่ายบัญชี/);
   assert.match(section, /คำถามที่รอเจ้าของ/);
 
-  /* สารบัญ: แถวของไฟล์นี้บอกว่ามีงาน 0404 และต้องรันก่อน merge/deploy · คำสถานะของแถวยังเท่าหัวไฟล์ */
+  /* สารบัญ: แถวของไฟล์นี้บอกว่ามีงาน 0404 · ฐานมีไฟล์แล้ว (ตรวจสคีมา 08/10/2026) · ก่อน merge/deploy ยังต้องได้ผล SELECT ตรวจหลังรัน ·
+     คำสถานะของแถวยังเท่าหัวไฟล์ — เดิมยึด "เจ้าของรัน 0404 ก่อน merge/deploy" (ความจริงของตอนก่อนรัน · เหตุเดียวกับยามของหัวข้อข้างบน) */
   const row = INDEX.split('\n').find((line) => line.startsWith('| [so-service-setup.md](so-service-setup.md) |'));
   assert.ok(row, 'หาแถว so-service-setup.md ในสารบัญไม่เจอ');
   assert.match(row, /mig 0404/);
-  assert.match(row, /เจ้าของรัน 0404 ก่อน merge\/deploy/);
   assert.match(row, /ยื่นโดยยังไม่ตั้งงานบริการ/);
+  const deferAt = row.indexOf('ยื่นโดยยังไม่ตั้งงานบริการ — ');
+  assert.ok(deferAt >= 0, 'หาช่วงของงาน 0404 ในแถวสารบัญไม่เจอ');
+  const deferPart = row.slice(deferAt);
+  assert.match(deferPart, /mig 0404/);
+  assert.match(deferPart, /\*\*0404 อยู่บนฐานจริงแล้ว\*\* · ตรวจสคีมาแบบอ่านอย่างเดียว 08\/10\/2026 16:04 น\./);
+  assert.match(deferPart, /ไม่ต้องรันซ้ำ · ห้ามแก้ไฟล์/);
+  assert.match(deferPart, /\*\*ก่อน merge\/deploy เหลือให้เจ้าของแปะผล SELECT ตรวจหลังรัน\*\*/);
+  assert.doesNotMatch(deferPart, /ยังไม่ได้รัน|เจ้าของรัน 0404 ก่อน/, 'คำของตอนก่อนรันต้องไม่ค้างในช่วงของงาน 0404');
   const headWord = DOC.split('\n').find((line) => line.startsWith('> สถานะ:')).match(/\*\*([^*]+)\*\*/)[1];
   assert.equal(row.match(/\| ([^|]+) \|$/)?.[1], headWord);
 });
