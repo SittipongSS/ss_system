@@ -2,7 +2,7 @@
 import { fmtDateTime, naText, NA } from "@/lib/format";
 import { TableScroll } from "@/components/ui/Table";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, ChevronDown, Edit3, Expand, Eye, FileBadge2, Save, Send, Trash2 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
@@ -13,28 +13,37 @@ import RecordDrawer from "@/components/excise/RecordDrawer";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
+import StatusNotice from "@/components/ui/StatusNotice";
 import Tabs from "@/components/ui/Tabs";
 import Toast from "@/components/ui/Toast";
 import ReadableText from "@/components/ui/ReadableText";
+import Segmented from "@/components/ui/Segmented";
 import { useRole } from "@/lib/roleContext";
 import { accessState } from "@/lib/accessGate";
 import { canManageDocumentStandards } from "@/lib/permissions";
 import {
-  DOCUMENT_ACCENT_KEYS,
   DOCUMENT_ACCENT_LABELS,
+  DOCUMENT_AUDIENCE_ACCENT_LEAD,
+  DOCUMENT_FORM_ONLY_KEYS,
   DOCUMENT_STANDARD_KEYS,
   DOCUMENT_STANDARD_LABELS,
+  documentAccentKeysFor,
+  documentAudienceAccentMarks,
   documentNumberCycle,
+  documentStandardEditCopy,
+  documentStandardPreviewHref,
+  documentStandardPublishBlocker,
   documentStandardStatusLabel,
   formatDocumentStandardEffectiveDate,
-  hasDocumentStandardChangeNote,
   numberingPatternExample,
   resolveDocumentAccentKey,
 } from "@/lib/documentStandards";
+import { DOCUMENT_AUDIENCES } from "@/lib/documents/documentAudience";
 import { buildStandardPreviewHTML } from "@/lib/documents/standardPreview";
 import styles from "./page.module.css";
 import Textarea from "@/components/ui/Textarea";
 import { apiFetch } from "@/lib/apiFetch";
+import { scrollToTopOf } from "@/lib/ui/scrollToTopOf";
 
 const EMPTY_FORM = {
   titleTh: "",
@@ -75,9 +84,17 @@ function versionForm(row) {
   // มาตรฐานเวอร์ชันเก่าอาจถือ accent ที่เลิกให้เลือกแล้ว (teal/amber/green/navy) — ถ้าปล่อย
   // ค่านั้นค้างในฟอร์ม ตัวเลือกสีจะไม่มีปุ่มไหนติด แล้วกดบันทึกจะโดนตีกลับว่า Accent
   // ไม่ถูกต้องโดยผู้ใช้ไม่รู้ว่าต้องแก้อะไร
+  // ⭐ FM-TS-01 (สีเดินตามผู้อ่าน) ไม่มีตัวเลือกสีให้แก้เลย — ร่างที่คัดลอก teal มาจากแถวที่เผยแพร่จึงต้องได้ค่าที่บันทึกผ่าน
+  //    จากตรงนี้ที่เดียว (ค่าเดียวที่คอลัมน์ของชนิดนั้นรับ) ไม่งั้นกดบันทึกแล้วโดนตีกลับโดยไม่มีปุ่มสีให้แก้
   form.accentKey = resolveDocumentAccentKey(row, row?.documentKey);
   return form;
 }
+
+/* ช่วงที่ฟอร์มเพิ่งเปิด ยังไม่มีใครตั้งใจกด "บันทึก" — กันดับเบิลคลิก/แตะสองทีที่ปุ่ม "แก้ไข"
+   🐞 UAT PR-3 (วัดจริงที่ 360px): จอแคบปุ่ม "บันทึก" ของโหมดแก้อยู่ตรงตำแหน่งเดียวกับปุ่ม "แก้ไข" ของโหมดดู ⇒ ทีที่สองของ
+      ดับเบิลแท็ปตกบน "บันทึก" แล้วร่างที่บันทึกไว้แล้วถูก PATCH ซ้ำทั้งที่ไม่มีอะไรเปลี่ยน (ญาติของบั๊ก "แก้ไขแล้วฟอร์มส่งเอง")
+   ใช้เวลา ไม่ใช้ `event.detail` — จำนวนคลิกของการแตะบนจอสัมผัสไม่เท่ากันทุกเบราว์เซอร์ · 500ms = เพดานดับเบิลคลิกของระบบปฏิบัติการทั่วไป */
+const EDIT_SETTLE_MS = 500;
 
 const sameForm = (a, b) => Object.keys(EMPTY_FORM).every((key) => String(a?.[key] ?? "") === String(b?.[key] ?? ""));
 
@@ -97,30 +114,86 @@ function AccentMark({ accentKey, label = true, className = "" }) {
   );
 }
 
+/* ⭐ ชนิดที่สีเดินตามผู้อ่าน (มติเจ้าของ 08/10/2026 — รอบนี้คือ FM-TS-01): กระดาษมีสองสีตามฉบับ ไม่มี "สีของมาตรฐาน" สีเดียวให้โชว์
+   ⇒ จุดสองสีเรียงตามฉบับ (ลูกค้า · ภายใน) — สีของจุดคือคีย์เดียวกับที่กระดาษพิมพ์ (`documentAudienceAccentMarks`)
+   `label`: "text" = ประโยคเต็มกำกับแต่ละจุด · "copy" = ชื่อฉบับ · false = จุดอย่างเดียว (ตารางประวัติ — ประโยคเต็มอยู่ใน title/aria-label) */
+function AudienceAccentMarks({ marks, label = "copy" }) {
+  const summary = marks.map((mark) => mark.text).join(" · ");
+  return (
+    <span
+      className={`${styles.audienceMarks} ${label ? "" : styles.audienceDots}`.trim()}
+      title={label === "text" ? undefined : summary}
+      role={label ? undefined : "img"}
+      aria-label={label ? undefined : summary}
+    >
+      {marks.map((mark) => (
+        <span key={mark.audience} className={styles.accentMark}>
+          <span className={`${styles.swatch} ${styles[mark.accentKey] || styles.terracotta}`} aria-hidden="true" />
+          {label ? <span>{label === "text" ? mark.text : mark.copy}</span> : null}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/* สีของมาตรฐานหนึ่งแถว — **จุดเดียว** ที่ตัดสินว่าจะโชว์ "สีตามผู้อ่าน" (จุดสองสี) หรือ "สีของมาตรฐาน" (จุดเดียว + ป้าย)
+   หัวรายละเอียด · ตารางประวัติ · ลิ้นชัก เรียกตัวนี้ทั้งสามที่ ⇒ ไม่มีจอไหนหยิบ `accentKey` ดิบของแถวไปวาดเอง
+   (แถวที่เผยแพร่ของ FM-TS-01 ถือ teal ในฐานและแก้ไม่ได้ — ต้องไม่มีจุดไหนบนจอขึ้นสีนั้น) */
+function StandardAccent({ row, documentKey, label = true }) {
+  const marks = documentAudienceAccentMarks(documentKey);
+  if (marks) return <AudienceAccentMarks marks={marks} label={label === true ? "copy" : label} />;
+  return <AccentMark accentKey={resolveDocumentAccentKey(row, documentKey)} label={!!label} />;
+}
+
+/* ใบตัวอย่างของชนิดที่สีเดินตามผู้อ่านมีสองฉบับ (คนละสี คนละเนื้อหา) — ตัวสลับเป็นแถบที่เห็นตรง ๆ ไม่ใช่ dropdown (ตัวเลือกสองตัว)
+   ชนิดอื่นไม่มีตัวสลับ (มีใบตัวอย่างใบเดียว) */
+function PreviewAudienceSwitch({ documentKey, value, onChange, className = "" }) {
+  const marks = documentAudienceAccentMarks(documentKey);
+  if (!marks) return null;
+  return (
+    <Segmented
+      className={`${styles.audienceSwitch} ${className}`.trim()}
+      ariaLabel="ฉบับของใบตัวอย่าง"
+      value={value}
+      onChange={onChange}
+      options={marks.map((mark) => ({ value: mark.audience, label: mark.copy }))}
+    />
+  );
+}
+
 // พรีวิวเอกสารจริง — เรนเดอร์ด้วยเครื่องยนต์ตัวเดียวกับที่พิมพ์/ตรึง (ไม่ใช่กล่อง CSS
 // จำลองแบบเดิมที่โชว์คนละสีคนละสัดส่วนกับใบจริง) ป้อนค่าจาก "ร่างที่กำลังแก้" เข้าไป
 // จึงเห็นผลของสิ่งที่พิมพ์อยู่ทันที
 //
 // ⚠️ ใบตัวอย่างกับการเลือกเครื่องยนต์อยู่ที่ `lib/documents/standardPreview` ที่เดียว —
 // หน้าเต็มจอเรียกตัวเดียวกัน เพิ่มชนิดเอกสารใหม่จึงแก้ไฟล์เดียว
-function LiveDocumentPreview({ documentKey, standard, className = "" }) {
+// `audience` = ฉบับที่จะดู ของชนิดที่มีสองฉบับ (PreviewAudienceSwitch) — ชนิดอื่นไม่อ่านค่านี้
+function LiveDocumentPreview({ documentKey, standard, audience, className = "" }) {
   const html = useMemo(
-    () => buildStandardPreviewHTML(documentKey, standard),
-    [documentKey, standard],
+    () => buildStandardPreviewHTML(documentKey, standard, { audience }),
+    [documentKey, standard, audience],
   );
+  const copy = documentAudienceAccentMarks(documentKey)?.find((mark) => mark.audience === audience)?.copy;
   return (
     <iframe
       className={`${styles.livePreview} ${className}`.trim()}
-      title={`ตัวอย่าง${DOCUMENT_STANDARD_LABELS[documentKey] || "เอกสาร"}`}
+      title={`ตัวอย่าง${DOCUMENT_STANDARD_LABELS[documentKey] || "เอกสาร"}${copy ? ` ${copy}` : ""}`}
       srcDoc={html}
     />
   );
 }
 
+/* ชนิดที่กระดาษอ่านจากมาตรฐานแค่บรรทัดแบบฟอร์ม (DOCUMENT_FORM_ONLY_KEYS — ตอนนี้มี FM-TS-01 ชนิดเดียว)
+   ฟอร์มยังมีช่องชื่อ/สี/รูปแบบเลขที่ครบเหมือนชนิดอื่น (ทะเบียนบังคับให้มีค่า) แต่แก้แล้วกระดาษไม่ขยับ
+   ⇒ บอกตรง ๆ ที่หัวฟอร์ม ไม่ปล่อยให้คนแก้แล้วงงว่าทำไมพรีวิวไม่เปลี่ยน */
+const FORM_ONLY_NOTICE = "กระดาษ FM-TS-01 ใช้จากมาตรฐานนี้เฉพาะ รหัสแบบฟอร์ม · Revision · วันที่มีผล — ชื่อเอกสาร สี และรูปแบบเลขที่กำหนดในระบบ (เลขที่ SU-YYMMXXXX-R) แก้ที่นี่ไม่เปลี่ยนกระดาษ";
+
 function DocumentStandardFields({ form, setForm, documentKey }) {
   const update = (field, value) => setForm((current) => ({ ...current, [field]: value }));
+  const audienceMarks = documentAudienceAccentMarks(documentKey);
   return (
     <>
+      {DOCUMENT_FORM_ONLY_KEYS.includes(documentKey) ? <StatusNotice tone="info">{FORM_ONLY_NOTICE}</StatusNotice> : null}
       <section className={styles.formSection}>
         <h4>ตัวตนของเอกสารควบคุม</h4>
         {/* ป้ายอยู่ใน <span> เสมอ — label เป็น flex column ถ้าปล่อยข้อความลอย
@@ -143,20 +216,32 @@ function DocumentStandardFields({ form, setForm, documentKey }) {
       </section>
       <section className={styles.formSection}>
         <h4>สี Accent ของเอกสาร</h4>
-        <div className={styles.accentPicker} role="group" aria-label="สี Accent ของเอกสาร">
-          {DOCUMENT_ACCENT_KEYS.map((key) => (
-            <button
-              key={key}
-              type="button"
-              className={`${styles.accentOption} ${styles[key] || styles.terracotta}`}
-              aria-pressed={form.accentKey === key}
-              onClick={() => update("accentKey", key)}
-            >
-              <span className={styles.swatch} aria-hidden="true" />
-              <span>{DOCUMENT_ACCENT_LABELS[key]}</span>
-            </button>
-          ))}
-        </div>
+        {audienceMarks ? (
+          /* ⭐ สีเดินตามผู้อ่าน (FM-TS-01): **ไม่มีตัวเลือกสี** — สีไม่ได้มาจากมาตรฐาน จึงไม่มีอะไรให้กด
+             บรรทัดอ่านอย่างเดียวบอกกติกาพร้อมจุดสีจริงของแต่ละฉบับ · `form.accentKey` ยังถูกส่งไปกับฟอร์ม
+             (ทะเบียนบังคับให้มีค่า) เป็นค่าที่ `versionForm` resolve ไว้ ผู้ใช้แก้ไม่ได้ */
+          <p className={styles.audienceAccent}>
+            <span className={styles.audienceLead}>{DOCUMENT_AUDIENCE_ACCENT_LEAD}</span>
+            <AudienceAccentMarks marks={audienceMarks} label="text" />
+          </p>
+        ) : (
+          /* สีที่เลือกได้ถามจากชนิดเอกสาร (documentAccentKeysFor) — ด่านฝั่ง server ถามตัวเดียวกัน
+             ⚠️ เป็นกลุ่มปุ่มที่เห็นตรง ๆ ไม่ยุบเป็น dropdown */
+          <div className={styles.accentPicker} role="group" aria-label="สี Accent ของเอกสาร">
+            {documentAccentKeysFor(documentKey).map((key) => (
+              <button
+                key={key}
+                type="button"
+                className={`${styles.accentOption} ${styles[key] || styles.terracotta}`}
+                aria-pressed={form.accentKey === key}
+                onClick={() => update("accentKey", key)}
+              >
+                <span className={styles.swatch} aria-hidden="true" />
+                <span>{DOCUMENT_ACCENT_LABELS[key]}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </section>
       <section className={styles.formSection}>
         <h4>รูปแบบเลขที่เอกสาร</h4>
@@ -201,11 +286,36 @@ export default function DocumentStandardsPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [confirm, setConfirm] = useState(null);
   const [toast, setToast] = useState(null);
+  // ฉบับของใบตัวอย่างที่กำลังดู (เฉพาะชนิดที่มีสองฉบับ — PreviewAudienceSwitch) · เริ่มที่ฉบับลูกค้าเสมอ
+  const [previewAudience, setPreviewAudience] = useState(DOCUMENT_AUDIENCES[0]);
+
+  const controlBarRef = useRef(null);
+  const editTitleRef = useRef(null);
+  const editButtonRef = useRef(null);
+  const wasEditingRef = useRef(false);
+  const editOpenedAtRef = useRef(0);
 
   const selectedStandard = useMemo(
     () => standards.find((standard) => standard.documentKey === selectedKey) || null,
     [selectedKey, standards],
   );
+
+  /* เปิด/ปิดโหมดแก้ = แถวปุ่มถูกสลับทั้งชุด (ดูคอมเมนต์ที่ `controlActions`) ปุ่มที่เพิ่งกดจึงหายจากหน้า
+     ⇒ โฟกัสร่วงไปที่ <body> ถ้าไม่พาไปต่อ: เปิด = หัวฟอร์ม · ปิดด้วย "ยกเลิก" = กลับมาที่ปุ่ม "แก้ไข"
+     ⚠️ พาเฉพาะตอนโฟกัสร่วงจริง — สลับแท็บระหว่างแก้ก็ปิดโหมดแก้เหมือนกัน แต่โฟกัสอยู่ที่แท็บที่เพิ่งกด ห้ามแย่ง
+     เปิดแล้วพาจอกลับขึ้นมาที่แถบควบคุมด้วย: ใบตัวอย่างเต็มความกว้างที่อยู่เหนือแถบหายไปตอนเข้าโหมดแก้ หน้าจึงสั้นลง
+     แล้วฟอร์มเริ่มเหนือขอบจอ (เลื่อนขึ้นอย่างเดียว — `scrollToTopOf`) */
+  const editingId = editRow?.id || null;
+  useEffect(() => {
+    const focusLost = !document.activeElement || document.activeElement === document.body;
+    if (editingId) {
+      if (focusLost) editTitleRef.current?.focus({ preventScroll: true });
+      scrollToTopOf(controlBarRef.current);
+    } else if (wasEditingRef.current && focusLost) {
+      editButtonRef.current?.focus({ preventScroll: true });
+    }
+    wasEditingRef.current = !!editingId;
+  }, [editingId]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -236,6 +346,7 @@ export default function DocumentStandardsPage() {
     setForm(versionForm(row));
     setViewRow(null);
     setEditRow(row);
+    editOpenedAtRef.current = Date.now();
   };
 
   const createDraft = async () => {
@@ -255,6 +366,8 @@ export default function DocumentStandardsPage() {
   const saveDraft = async (event) => {
     event.preventDefault();
     if (!editRow) return;
+    // ทีที่สองของดับเบิลคลิกที่ปุ่ม "แก้ไข" (ดู EDIT_SETTLE_MS) — ฟอร์มยังเปิดอยู่ ไม่มีอะไรถูกส่ง
+    if (Date.now() - editOpenedAtRef.current < EDIT_SETTLE_MS) return;
     setBusy(true);
     try {
       const saved = await request(`/api/document-standards/draft/${editRow.id}`, {
@@ -319,6 +432,12 @@ export default function DocumentStandardsPage() {
   // ตัวที่ "กำลังแสดง" สำหรับข้อความ/รายละเอียด — ระหว่างแก้ต้องได้เลขเวอร์ชันกับ
   // เวลาจากแถวร่างด้วย ซึ่งฟอร์มไม่มี จึงซ้อนค่าฟอร์มทับแถว (ใช้กับข้อความเท่านั้น)
   const shown = editing ? { ...editRow, ...form } : (draft || published);
+  const editCopy = documentStandardEditCopy(selectedKey);
+  // ปุ่ม "เผยแพร่" มีเมื่อมีร่าง (หรือกำลังแก้ร่างอยู่) — กดไม่ได้เมื่อไรบอกเหตุเป็นบรรทัดใต้แถวปุ่ม
+  const publishBlocker = editing || draft ? documentStandardPublishBlocker({ editing, draft }) : null;
+  const publishBlockedProps = publishBlocker
+    ? { "aria-disabled": true, "aria-describedby": "standard-publish-blocked", onClick: (event) => event.preventDefault() }
+    : null;
 
   return (
     <Workspace
@@ -333,7 +452,7 @@ export default function DocumentStandardsPage() {
         className={styles.docTabs}
         ariaLabel="ชนิดเอกสาร"
         value={selectedKey}
-        onChange={(key) => { setSelectedKey(key); setEditRow(null); setViewRow(null); }}
+        onChange={(key) => { setSelectedKey(key); setEditRow(null); setViewRow(null); setPreviewAudience(DOCUMENT_AUDIENCES[0]); }}
         tabs={DOCUMENT_STANDARD_KEYS.map((key) => {
           const standard = standards.find((item) => item.documentKey === key);
           return {
@@ -342,7 +461,7 @@ export default function DocumentStandardsPage() {
             ariaLabel: DOCUMENT_STANDARD_LABELS[key],
             label: (
               <span className={`${styles.docTab} ${selectedKey === key ? styles.docTabActive : ""}`.trim()}>
-                <span>{DOCUMENT_STANDARD_LABELS[key]}</span>
+                <span className={styles.tabName}>{DOCUMENT_STANDARD_LABELS[key]}</span>
                 {standard?.published?.formCode ? <span className={styles.tabCode}>{standard.published.formCode}</span> : null}
                 {/* จุดเหลือง = ชนิดนี้มีฉบับร่างค้างอยู่ เห็นได้โดยไม่ต้องกดเข้าไปดูทีละแท็บ */}
                 {standard?.draft ? <span className={styles.draftDot} title="มีฉบับร่างค้างอยู่" /> : null}
@@ -370,19 +489,25 @@ export default function DocumentStandardsPage() {
                 </div>
                 {/* 🐞 เดิมปุ่มนี้ขึ้นเฉพาะ QT/SO เพราะหน้าเต็มจอมีเครื่องยนต์ใบเสนอราคา
                     ของตัวเอง ⇒ อีกสามชนิดดูเต็มจอไม่ได้เลย (ผู้ใช้ทักเอง) · ตอนนี้หน้านั้น
-                    เรียก `buildStandardPreviewHTML` ตัวเดียวกับพรีวิวในหน้านี้ จึงครบทุกชนิด */}
-                <Link className="btn ghost sm" href={`/settings/document-standards/preview?doc=${selectedKey}`}>
-                  <Expand size={14} /> เปิดเต็มจอ
-                </Link>
+                    เรียก `buildStandardPreviewHTML` ตัวเดียวกับพรีวิวในหน้านี้ จึงครบทุกชนิด
+                    ⭐ ชนิดที่ใบตัวอย่างมีสองฉบับ (ตัวสลับข้าง ๆ): ลิงก์พกฉบับที่กำลังดูไปด้วย (`&audience=`) — ไม่งั้นเลือก
+                    ฉบับภายในแล้วเปิดเต็มจอได้ฉบับลูกค้า · ลิงก์ประกอบที่ lib ที่เดียว (`documentStandardPreviewHref`)
+                    ฝั่งรับต้องอ่านด้วย `documentPreviewAudience` — ดูคอมเมนต์ของสองตัวนั้นใน lib/documentStandards.js */}
+                <div className={styles.previewTools}>
+                  <PreviewAudienceSwitch documentKey={selectedKey} value={previewAudience} onChange={setPreviewAudience} />
+                  <Link className="btn ghost sm" href={documentStandardPreviewHref(selectedKey, previewAudience)}>
+                    <Expand size={14} /> เปิดเต็มจอ
+                  </Link>
+                </div>
               </header>
-              <LiveDocumentPreview documentKey={selectedKey} standard={previewStandard} />
+              <LiveDocumentPreview documentKey={selectedKey} standard={previewStandard} audience={previewAudience} />
             </section>
           ) : null}
 
           {/* แถบควบคุมใต้พรีวิว — บรรทัดเดียวบอกว่ากำลังดูเวอร์ชันอะไร ส่วนค่าทั้งชุด
               พับไว้หลังปุ่ม (เดิมกางเป็นการ์ดเต็มตลอดเวลา ดันพรีวิวกับประวัติห่างกัน)
               ปุ่มทำงานอยู่ที่นี่ที่เดียว ฟอร์มด้านล่างจึงไม่มีปุ่มบันทึกซ้ำ */}
-          <section className={`glass-panel ${styles.controlBar}`}>
+          <section ref={controlBarRef} className={`glass-panel ${styles.controlBar}`}>
             <div className={styles.controlHead}>
               <button
                 type="button"
@@ -400,33 +525,44 @@ export default function DocumentStandardsPage() {
               </button>
 
               {/* ปุ่มทุกตัวผ่าน Button primitive — คลาส btn ประกอบที่เดียวในระบบ */}
-              <div className={styles.controlActions}>
-                {editing ? (
-                  <>
-                    <Button variant="quiet" onClick={() => setEditRow(null)} disabled={busy}>ยกเลิก</Button>
-                    {/* form= ชี้ไปที่ฟอร์มด้านล่าง ปุ่มจึงอยู่นอกฟอร์มได้โดยยังยิง onSubmit ตัวเดิม */}
-                    <Button tone="primary" type="submit" form="document-standard-form" icon={<Save size={15} />} disabled={busy}>{busy ? "กำลังบันทึก…" : "บันทึก"}</Button>
-                    <Button icon={<Send size={15} />} disabled title="บันทึกฉบับร่างก่อนจึงเผยแพร่ได้">เผยแพร่</Button>
-                  </>
-                ) : (
-                  <>
-                    {draft ? <Button variant="quiet" icon={<Trash2 size={15} />} onClick={() => setConfirm({ action: "discard" })} disabled={busy}>ยกเลิกร่าง</Button> : null}
-                    {/* ไม่มีร่าง = สร้างร่างเบื้องหลังแล้วเปิดฟอร์มทันที (แนวเดียวกับหน้าข้อมูลบริษัท
-                        — ซ่อนศัพท์ version/ร่างจากปุ่มหลัก) · มีร่างอยู่แล้ว = เปิดร่างนั้นมาแก้ต่อ */}
-                    <Button tone={draft ? undefined : "accent"} icon={<Edit3 size={15} />} onClick={() => draft ? openEdit(draft) : createDraft()} disabled={busy}>แก้ไข</Button>
-                    {draft ? (
-                      <Button
-                        tone="primary"
-                        icon={<Send size={15} />}
-                        onClick={() => setConfirm({ action: "publish" })}
-                        disabled={busy || !hasDocumentStandardChangeNote(draft)}
-                        title={hasDocumentStandardChangeNote(draft) ? undefined : "บันทึกหมายเหตุการเปลี่ยนแปลงก่อนเผยแพร่"}
-                      >
-                        เผยแพร่
-                      </Button>
-                    ) : null}
-                  </>
-                )}
+              <div className={styles.controlSide}>
+                <div className={styles.controlActions}>
+                  {/* 🔴 สองชุดปุ่มต้องมี `key` คนละค่า — ห้ามถอด
+                      🐞 UAT PR-3 (D09/D19 · มีมาตั้งแต่ก่อน PR-3): เดิมเป็น fragment เปล่าสองก้อนในช่องเดียวกัน React จึง **ใช้ปุ่มเดิมซ้ำ**
+                         ตามลำดับ — ปุ่ม "แก้ไข" (ลำดับ 2 ของชุดดู) กลายเป็นปุ่ม "บันทึก" (`type="submit" form=…`) กลางการกดครั้งเดียวกัน
+                         แล้วเบราว์เซอร์ส่งฟอร์มต่อทันที: ร่างที่มีหมายเหตุอยู่แล้วยิง PATCH เองแล้วปิดโหมดแก้ (เปิดแก้ร่างที่บันทึกแล้วไม่ได้เลย)
+                         ร่างใหม่เด้งไปท้ายฟอร์มพร้อมฟอง "โปรดกรอกฟิลด์นี้" ทั้งที่ยังไม่ได้พิมพ์อะไร
+                      `key` ต่างกัน = ถอดชุดเก่าออกแล้วสร้างชุดใหม่ ⇒ ปุ่มที่ถูกกดหลุดจากหน้าไปแล้ว ไม่มีอะไรให้ส่ง */}
+                  {editing ? (
+                    <Fragment key="edit-actions">
+                      <Button variant="quiet" onClick={() => setEditRow(null)} disabled={busy}>ยกเลิก</Button>
+                      {/* form= ชี้ไปที่ฟอร์มด้านล่าง ปุ่มจึงอยู่นอกฟอร์มได้โดยยังยิง onSubmit ตัวเดิม */}
+                      <Button tone="primary" type="submit" form="document-standard-form" icon={<Save size={15} />} disabled={busy}>{busy ? "กำลังบันทึก…" : "บันทึก"}</Button>
+                      <Button icon={<Send size={15} />} {...publishBlockedProps}>เผยแพร่</Button>
+                    </Fragment>
+                  ) : (
+                    <Fragment key="view-actions">
+                      {draft ? <Button variant="quiet" icon={<Trash2 size={15} />} onClick={() => setConfirm({ action: "discard" })} disabled={busy}>ยกเลิกร่าง</Button> : null}
+                      {/* ไม่มีร่าง = สร้างร่างเบื้องหลังแล้วเปิดฟอร์มทันที (แนวเดียวกับหน้าข้อมูลบริษัท
+                          — ซ่อนศัพท์ version/ร่างจากปุ่มหลัก) · มีร่างอยู่แล้ว = เปิดร่างนั้นมาแก้ต่อ */}
+                      <Button ref={editButtonRef} tone={draft ? undefined : "accent"} icon={<Edit3 size={15} />} onClick={() => draft ? openEdit(draft) : createDraft()} disabled={busy}>แก้ไข</Button>
+                      {draft ? (
+                        <Button
+                          tone="primary"
+                          icon={<Send size={15} />}
+                          onClick={() => setConfirm({ action: "publish" })}
+                          disabled={busy}
+                          {...publishBlockedProps}
+                        >
+                          เผยแพร่
+                        </Button>
+                      ) : null}
+                    </Fragment>
+                  )}
+                </div>
+                {/* ปุ่มที่กดไม่ได้ต้องบอกเหตุให้เห็น — เดิมเหตุอยู่ใน `title` ของปุ่ม `disabled` ซึ่งจอสัมผัสไม่มีทางเห็น
+                    และปุ่ม `disabled` หลุดจากลำดับ Tab · ตอนนี้ปุ่มจางด้วย `aria-disabled` (ยัง Tab ถึง) ชี้มาที่บรรทัดนี้ */}
+                {publishBlocker ? <p id="standard-publish-blocked" className={styles.blockedReason}>{publishBlocker}</p> : null}
               </div>
             </div>
 
@@ -434,7 +570,7 @@ export default function DocumentStandardsPage() {
               <div id="standard-details" className={styles.details}>
                 <div className={styles.detailsHead}>
                   <p className={styles.english}>{naText(shown.titleEn)}</p>
-                  <AccentMark accentKey={resolveDocumentAccentKey(shown, selectedKey)} />
+                  <StandardAccent row={shown} documentKey={selectedKey} label="text" />
                 </div>
                 <div className={styles.metaGrid}>
                   <div><span>รหัสแบบฟอร์ม</span><strong className="mono">{naText(shown.formCode)}</strong></div>
@@ -456,8 +592,9 @@ export default function DocumentStandardsPage() {
               <form id="document-standard-form" className={`${cardPanel} ${styles.editPanel}`} onSubmit={saveDraft}>
                 <header className={styles.panelHeader}>
                   <div>
-                    <h2>แก้ไขฉบับร่าง Version {editRow.versionNumber} · {DOCUMENT_STANDARD_LABELS[selectedKey]}</h2>
-                    <p>ทุกช่องที่แก้จะเห็นผลบนตัวอย่างเอกสารทันที — กด “บันทึก” ที่แถบด้านบน</p>
+                    <h2 ref={editTitleRef} tabIndex={-1}>แก้ไขฉบับร่าง Version {editRow.versionNumber} · {DOCUMENT_STANDARD_LABELS[selectedKey]}</h2>
+                    {/* แก้แล้วใบตัวอย่างขยับแค่ไหนไม่เท่ากันทุกชนิด — ประโยคมาจาก lib (`documentStandardEditCopy`) คู่กับหัวการ์ดใบตัวอย่างข้าง ๆ */}
+                    <p>{editCopy.formLead}</p>
                   </div>
                   <StatusBadge status="draft" />
                 </header>
@@ -473,10 +610,11 @@ export default function DocumentStandardsPage() {
                 <header className={styles.previewHeader}>
                   <div>
                     <h2 id="live-preview-title">ตัวอย่างเอกสารจริง</h2>
-                    <p>ขยับตามที่พิมพ์อยู่ทันที · เครื่องยนต์เดียวกับที่พิมพ์</p>
+                    <p>{editCopy.previewLead}</p>
                   </div>
+                  <PreviewAudienceSwitch documentKey={selectedKey} value={previewAudience} onChange={setPreviewAudience} />
                 </header>
-                <LiveDocumentPreview documentKey={selectedKey} standard={previewStandard} className={styles.previewInColumn} />
+                <LiveDocumentPreview documentKey={selectedKey} standard={previewStandard} audience={previewAudience} className={styles.previewInColumn} />
               </aside>
             </div>
           ) : null}
@@ -487,10 +625,10 @@ export default function DocumentStandardsPage() {
             </header>
             <TableScroll surface="embedded" className={styles.historyTableWrap}>
               <table className={`premium-table ${styles.historyTable}`}><thead><tr><th>Version</th><th>สถานะ</th><th>แบบฟอร์ม</th><th>Accent</th><th>หมายเหตุ</th><th>ผู้ดำเนินการ</th><th>วันที่</th><th aria-label="การทำงาน" /></tr></thead><tbody>
-                {versions.map((row) => <tr key={row.id}><td><strong>Version {row.versionNumber}</strong><small>{row.id}</small></td><td><StatusBadge status={row.status} /></td><td><span className="mono">{row.formCode}</span><small>Rev.{row.revision}</small></td><td><AccentMark accentKey={row.accentKey} label={false} /></td><td><ReadableText text={row.changeNote} lines={3} /></td><td>{actorOf(row)}</td><td>{formatDateTime(row.publishedAt || row.archivedAt || row.updatedAt)}</td><td><button type="button" className="btn ghost sm" onClick={() => setViewRow(row)}><Eye size={14} /> ดูรายละเอียด</button></td></tr>)}
+                {versions.map((row) => <tr key={row.id}><td><strong>Version {row.versionNumber}</strong></td><td><StatusBadge status={row.status} /></td><td><span className="mono">{row.formCode}</span><small>Rev.{row.revision}</small></td><td><StandardAccent row={row} documentKey={row.documentKey || selectedKey} label={false} /></td><td><ReadableText text={row.changeNote} lines={3} /></td><td>{actorOf(row)}</td><td>{formatDateTime(row.publishedAt || row.archivedAt || row.updatedAt)}</td><td><button type="button" className="btn ghost sm" onClick={() => setViewRow(row)}><Eye size={14} /> ดูรายละเอียด</button></td></tr>)}
               </tbody></table>
             </TableScroll>
-            <div className={styles.historyCards}>{versions.map((row) => <article key={row.id} className={styles.historyCard}><div className={styles.cardHead}><strong>Version {row.versionNumber} · {row.formCode}</strong><StatusBadge status={row.status} /></div><ReadableText text={row.changeNote} lines={3} empty="ไม่มีหมายเหตุ" style={{ margin: "10px 0", color: "var(--text-2)", fontSize: "var(--fs-6)" }} /><small>{actorOf(row)} · {formatDateTime(row.publishedAt || row.archivedAt || row.updatedAt)}</small><button type="button" className="btn ghost" onClick={() => setViewRow(row)}><Eye size={15} /> ดูรายละเอียด</button></article>)}</div>
+            <div className={styles.historyCards}>{versions.map((row) => <article key={row.id} className={styles.historyCard}><div className={styles.cardHead}><strong>Version {row.versionNumber} · {row.formCode}</strong><StatusBadge status={row.status} /></div><ReadableText text={row.changeNote} lines={3} empty="ไม่มีหมายเหตุ" style={{ margin: "10px 0", color: "var(--text-2)", fontSize: "var(--fs-6)" }} /><StandardAccent row={row} documentKey={row.documentKey || selectedKey} /><small>{actorOf(row)} · {formatDateTime(row.publishedAt || row.archivedAt || row.updatedAt)}</small><button type="button" className="btn ghost" onClick={() => setViewRow(row)}><Eye size={15} /> ดูรายละเอียด</button></article>)}</div>
           </section>
         </>
       )}
@@ -498,8 +636,9 @@ export default function DocumentStandardsPage() {
       <RecordDrawer open={!!viewRow} onClose={() => setViewRow(null)} title={`${viewRow?.titleTh || "มาตรฐานเอกสาร"} Version ${naText(viewRow?.versionNumber)}`} badge={viewRow ? <StatusBadge status={viewRow.status} /> : null} footer={<button type="button" className="btn" onClick={() => setViewRow(null)}>ปิด</button>}>
         {viewRow ? (
           <div className={styles.drawerBody}>
-            <LiveDocumentPreview documentKey={viewRow.documentKey || selectedKey} standard={viewRow} className={styles.previewInDrawer} />
-            <section className={styles.drawerSection}><h4>ตัวตนของเอกสารควบคุม</h4><div className={styles.detailGrid}><div className={styles.full}><span>ชื่อภาษาไทย</span><strong>{viewRow.titleTh}</strong></div><div className={styles.full}><span>ชื่อภาษาอังกฤษ</span><strong>{naText(viewRow.titleEn)}</strong></div><div><span>รหัสแบบฟอร์ม</span><strong className="mono">{viewRow.formCode}</strong></div><div><span>Revision</span><strong className="mono">{viewRow.revision}</strong></div><div><span>วันที่มีผล</span><strong>{formatEffectiveDate(viewRow.effectiveDate)}</strong></div><div><span>สี Accent</span><strong><AccentMark accentKey={viewRow.accentKey} /></strong></div></div></section>
+            <PreviewAudienceSwitch documentKey={viewRow.documentKey || selectedKey} value={previewAudience} onChange={setPreviewAudience} className={styles.drawerSwitch} />
+            <LiveDocumentPreview documentKey={viewRow.documentKey || selectedKey} standard={viewRow} audience={previewAudience} className={styles.previewInDrawer} />
+            <section className={styles.drawerSection}><h4>ตัวตนของเอกสารควบคุม</h4><div className={styles.detailGrid}><div className={styles.full}><span>ชื่อภาษาไทย</span><strong>{viewRow.titleTh}</strong></div><div className={styles.full}><span>ชื่อภาษาอังกฤษ</span><strong>{naText(viewRow.titleEn)}</strong></div><div><span>รหัสแบบฟอร์ม</span><strong className="mono">{viewRow.formCode}</strong></div><div><span>Revision</span><strong className="mono">{viewRow.revision}</strong></div><div><span>วันที่มีผล</span><strong>{formatEffectiveDate(viewRow.effectiveDate)}</strong></div><div><span>สี Accent</span><strong><StandardAccent row={viewRow} documentKey={viewRow.documentKey || selectedKey} /></strong></div></div></section>
             <section className={styles.drawerSection}><h4>เลขที่เอกสาร</h4><div className={styles.detailGrid}><div className={styles.full}><span>Numbering pattern</span><strong className="mono">{viewRow.numberingPattern}</strong></div><div className={styles.full}><span>ตัวอย่าง</span><strong className="mono">{numberingPatternExample(viewRow.numberingPattern, "0")}</strong></div></div></section>
             <section className={styles.drawerSection}><h4>ประวัติเวอร์ชัน</h4><div className={styles.detailGrid}><div className={styles.full}><span>หมายเหตุ</span><ReadableText text={viewRow.changeNote} lines={4} /></div><div><span>สร้างโดย</span><strong>{viewRow.createdByName || "ระบบ"}</strong></div><div><span>สร้างเมื่อ</span><strong>{formatDateTime(viewRow.createdAt)}</strong></div><div><span>ดำเนินการล่าสุดโดย</span><strong>{actorOf(viewRow)}</strong></div><div><span>เวลาล่าสุด</span><strong>{formatDateTime(viewRow.publishedAt || viewRow.archivedAt || viewRow.updatedAt)}</strong></div></div></section>
           </div>

@@ -8,9 +8,10 @@
  * 🔑 **ปุ่มระดับใบมาจาก `requestActions` ตัวเดียวของเปลือก** — ที่นี่แค่เลือกที่วาง (หัวใบ · แถบตอนนี้)
  *    ไม่สร้างปุ่มใหม่ และแต่ละปุ่มวาดครั้งเดียว (บทเรียนรางขวารุ่นแรก)
  * ⚠️ ลงทะเบียนที่ `details/index.js` (`viewForKind`) — เปลือกไม่เทียบชื่อหัวข้อเอง
+ * 📄 บล็อก "เอกสารประเมินพื้นที่" (FM-TS-01 · PR-3) วาดจาก `job.document` — ดู `DocumentBlock` ข้างล่าง
  */
 import Link from "next/link";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Building2, Check, CircleDashed, ClipboardList, FileText, FolderKanban, Handshake, Lock,
   MapPin, MessageCircleQuestion, Route, UserRound,
@@ -38,8 +39,9 @@ const initials = (name) => String(name || "").trim().split(/\s+/).slice(0, 2)
   .map((word) => Array.from(word)[0] || "").join("").toUpperCase();
 
 /* ── ปุ่มจากก้อน action ของเปลือก ─────────────────────────────────────────────────────────
-   ⚠️ ติดด่าน = โชว์แล้วบอกเหตุตอนกด (`GatedAction` · กติกา ui-visibility) — ไม่ใช่ปุ่มจางเงียบ */
-function ActionControl({ action, busy, tone, variant = "outline", className = "", blocker = "" }) {
+   ⚠️ ติดด่าน = โชว์แล้วบอกเหตุตอนกด (`GatedAction` · กติกา ui-visibility) — ไม่ใช่ปุ่มจางเงียบ
+   · `blockerKind` = ชนิด toast ของเหตุ (ไม่ส่ง = `error` ตามเดิม) — บล็อกเอกสารส่งโทนของกล่องแจ้งที่พิมพ์เหตุเดียวกันอยู่ */
+function ActionControl({ action, busy, tone, variant = "outline", className = "", blocker = "", blockerKind }) {
   if (!action) return null;
   const meta = kindMeta(action.kind) || {};
   const Icon = action.icon === undefined ? meta.Icon : action.icon;
@@ -58,6 +60,7 @@ function ActionControl({ action, busy, tone, variant = "outline", className = ""
     <GatedAction
       {...common}
       blocker={reason}
+      blockerKind={blockerKind}
       onClick={action.onClick}
       disabled={!!busy && !reason}
       aria-disabled={reason ? "true" : undefined}
@@ -266,20 +269,127 @@ function GateCard({ icon: Icon, title, gate }) {
   );
 }
 
+/* ── บล็อก "เอกสารประเมินพื้นที่" (FM-TS-01 · เลข SU · PR-3 สเปก §5.1) ─────────────────────────
+   🔑 **วาดจาก `job.document` อย่างเดียว** (`surveyRequestDocumentView`) — ปุ่มไหนขึ้น ประโยคไหน ลิงก์อะไร ตัดสินที่ lib
+      จากธง `surveyDocument.access` ของ server · ไฟล์นี้ไม่ประกอบที่อยู่ของเอกสาร ไม่เทียบสถานะ และไม่เทียบสิทธิ์เอง
+      ⇒ ฝ่ายขายไม่มีทางได้ปุ่มของฉบับภายใน เพราะปุ่มนั้นไม่เคยอยู่ใน `doc.buttons` ของเขา
+   🔴 **view ยังไม่ยิง API** (เทสต์ registry ล็อก) — ปุ่มเปิดแท็บใหม่ แล้ว route ของเอกสารเสิร์ฟไฟล์เอง
+      · ห้ามเปิดล่วงหน้า/ถามว่าไฟล์พร้อมหรือยัง: เสิร์ฟหนึ่งครั้ง = audit หนึ่งแถว และอาจเริ่มจัดทำไฟล์
+      · หน้านี้ไม่มีปุ่ม "ออกเอกสาร" ของ SU — หัวหน้าออกที่ใบประเมิน (ลิงก์ "เปิดใบประเมิน" เมื่อ `doc.sheetLink`)
+   ⚠️ **ปุ่มที่กดไม่ได้ยังวาด และบอกเหตุเมื่อกด** (`GatedAction`) — เหตุเดียวกับประโยคที่พิมพ์อยู่ในบล็อก (กติกา ui-visibility) */
+
+/* ⭐ **ไฟล์ที่ยังไม่ถูกจัดทำ: กดแล้วล็อกปุ่ม 15 วินาที** — การเปิดครั้งแรกคือคนจัดทำไฟล์ (≈10 วินาที) และเอกสารที่ยังไม่ตรึง
+   พิมพ์ **ทั้งสองฉบับ** ทุกครั้งที่ถูกเปิด ⇒ กดรัวหรือกดอีกฉบับตามทันที = เริ่มเครื่องพิมพ์ซ้ำซ้อน
+   ⇒ ระหว่างล็อก ปุ่มของไฟล์ที่ยังไม่พร้อม **ทุกปุ่ม** กดไม่ได้ (ไฟล์ที่จัดทำแล้วยังกดได้ตามปกติ) · ครบเวลา = ขอให้เปลือก
+      อ่านใบใหม่เบื้องหลัง (`onRefresh`) แล้ว `ready` กับประโยคในบล็อกขยับเอง
+   ⚠️ 15 วินาทีเป็นเวลาที่ **จอล็อกปุ่ม** ไม่ใช่เวลาที่บอกคน — ประโยคของบรรทัดรอมาจาก lib (`doc.waitText`) ซึ่งใช้ตัวเลขเดียวกับ
+      กล่องแจ้ง "เปิดครั้งแรกรอ…" ที่พิมพ์อยู่เหนือปุ่ม (UAT R02: เดิมสองตัวเลขข้างกัน และอ่านเหมือนต้องกดซ้ำถึงจะได้ไฟล์) */
+const DOC_WAIT_MS = 15_000;
+
+/* ชนิด toast ของเหตุที่ปุ่มบอกตอนกด = โทนของกล่องแจ้งในบล็อก (เหตุของปุ่มคือประโยคเดียวกับกล่องนั้นเสมอ — สัญญาของ lib)
+   🐞 UAT R03: กดปุ่มที่ติดด่านแล้วได้ toast แดง "ผิดพลาด" ของประโยคที่พิมพ์เป็นกล่องฟ้าอยู่ข้างบน — ไม่มีอะไรพัง
+   · ไม่รู้จักโทน = `undefined` ⇒ `GatedAction` ใช้ค่าตั้งต้นของมัน */
+const NOTICE_TOAST_KIND = { info: "info", warning: "warning", danger: "error" };
+
+function DocumentBlock({ doc, sheetHref, onRefresh }) {
+  const [waiting, setWaiting] = useState(false);
+  const timer = useRef(null);
+  /* ตัวจับเวลาเรียก `onRefresh` ตัวล่าสุดเสมอ — เปลือกอาจส่งตัวใหม่มาระหว่าง 15 วินาที */
+  const refresh = useRef(onRefresh);
+  useEffect(() => { refresh.current = onRefresh; }, [onRefresh]);
+  /* ออกจากหน้า (หรือเปลือกโหลดใหม่ทั้งหน้า) = เลิกรอ — ใบที่มาใหม่บอกเองว่าไฟล์พร้อมหรือยัง */
+  useEffect(() => () => { clearTimeout(timer.current); timer.current = null; }, []);
+
+  const open = (button) => {
+    if (!button.href) return;
+    window.open(button.href, "_blank", "noopener,noreferrer");
+    if (button.ready) return;
+    setWaiting(true);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      setWaiting(false);
+      refresh.current?.();
+    }, DOC_WAIT_MS);
+  };
+
+  /* เหตุของการรอ — เฉพาะปุ่มที่ไฟล์ยังไม่พร้อม · ปุ่มที่ติดเหตุของตัวเอง (`blocked`) พูดเหตุนั้นก่อน */
+  const waitTextOf = (button) => (waiting && !button.ready ? doc.waitText || "" : "");
+  const waitShown = doc.buttons.some((button) => !button.blocked && waitTextOf(button));
+  /* เหตุของปุ่มเอง = โทนของกล่องแจ้ง · เหตุของการรอ = ข้อมูล (ไฟล์กำลังเปิด ไม่มีอะไรพัง) */
+  const blockerKindOf = (button) => (button.blocked ? NOTICE_TOAST_KIND[doc.text?.tone] : "info");
+  const issued = doc.issuedText != null || doc.issuedByName != null;
+  const sheetLink = doc.sheetLink && sheetHref;
+  const hasActions = doc.buttons.length > 0 || !!sheetLink || !!doc.foot;
+
+  return (
+    <section className={styles.siteStrip} aria-label="เอกสารประเมินพื้นที่">
+      {/* ① ชื่อบล็อก · เลขที่ · ป้ายสถานะ · ข้อความของสถานะ (กล่องแจ้ง — โทนแดงเป็น role="alert" เอง) */}
+      <div className={styles.nowMain}>
+        <div>
+          <small>เอกสารประเมินพื้นที่</small>
+          <p>
+            <FileText size={14} aria-hidden="true" />
+            {doc.docNo ? <b className="mono">{doc.docNo}</b> : null}
+            {doc.badge?.label ? <StatusBadge size="sm" tone={doc.badge.tone} label={doc.badge.label} /> : null}
+          </p>
+        </div>
+        {doc.text ? <StatusNotice tone={doc.text.tone}>{doc.text.text}</StatusNotice> : null}
+      </div>
+      {/* ② ออกเมื่อ / ออกโดย — มีเฉพาะตอนมีฉบับที่ใช้อยู่ (lib ส่ง null ในสถานะอื่น · ค่าว่างมาเป็นขีดแล้ว)
+          ⚠️ ช่องนี้วาดไว้แม้ว่าง เมื่อมีปุ่ม — ปุ่มต้องอยู่คอลัมน์ขวาที่เดิมทุกสถานะ ไม่ขยับตอนเอกสารออก */}
+      {issued || hasActions ? (
+        <div>
+          {issued ? (
+            <>
+              <small>ออกเมื่อ</small>
+              <p><b>{naText(doc.issuedText)}</b></p>
+              <small className={styles.factNote}>ออกโดย {naText(doc.issuedByName)}</small>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+      {/* ③ ปุ่มดาวน์โหลด (ปุ่มละฉบับที่คนดูได้) · บรรทัดรอ · ลิงก์ไปใบประเมิน · หมายเหตุใต้ปุ่ม */}
+      {hasActions ? (
+        <div className={styles.manageActions}>
+          {doc.buttons.map((button) => (
+            <ActionControl
+              key={button.id}
+              action={{ id: button.id, kind: "download", label: button.label, onClick: () => open(button) }}
+              blocker={button.blocked || waitTextOf(button) || ""}
+              blockerKind={blockerKindOf(button)}
+              className={styles.bandAction}
+            />
+          ))}
+          {waitShown ? <p className={styles.wait} role="status">{doc.waitText}</p> : null}
+          {sheetLink ? (
+            <Button as={Link} href={sheetHref} variant="outline" icon={<ClipboardList size={15} aria-hidden="true" />} className={`${styles.action} ${styles.bandAction}`}>
+              เปิดใบประเมิน
+            </Button>
+          ) : null}
+          {doc.foot ? <small className={styles.factNote}>{doc.foot}</small> : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 /**
  * @param request   ใบจาก GET (มีก้อน survey* ครบ)
  * @param actions   `requestActions` ของเปลือก (normalize แล้ว) — ปุ่มระดับใบชุดเดียว
  * @param viewer    `{ canDecide, canWork, canOpenVisit, isOpener, isRequesterSide }`
  * @param thread    การ์ดความเคลื่อนไหว (เปลือกประกอบ — `UpdateThread` ตัวเดียวกับทุกหัวข้อ)
  * @param attachments การ์ดไฟล์แนบของคำร้อง
+ * @param onRefresh ขอให้เปลือกอ่านใบใหม่ **เบื้องหลัง** (ไม่ล้างจอ) — บล็อกเอกสารเรียกเมื่อครบเวลารอไฟล์ · view ไม่ยิง API เอง
+ * @param refreshStalled เปลือกอ่านใบเบื้องหลังพังติดกันจนเลิกตรวจซ้ำเองแล้ว — ส่งต่อให้ `surveyJobView` (บล็อกเอกสารเลิกสัญญาว่าตรวจให้เอง)
  */
 export default function SurveyRequestView({
   request, today, viewer = {}, people = [], peopleLoading = false,
-  actions = {}, busy = false, thread = null, attachments = null,
+  actions = {}, busy = false, thread = null, attachments = null, onRefresh, refreshStalled = false,
 }) {
   const job = useMemo(
-    () => surveyJobView({ request, today, viewer, people, peopleLoading }),
-    [request, today, viewer, people, peopleLoading],
+    () => surveyJobView({ request, today, viewer, people, peopleLoading, refreshStalled }),
+    [request, today, viewer, people, peopleLoading, refreshStalled],
   );
   if (!job) return null;
 
@@ -492,9 +602,12 @@ export default function SurveyRequestView({
               <Metric label="ปริมาตรรวม" value={`${num(zones.totals.volumeCbm)} ลบ.ม.`} />
               <Metric label="แพ็คเกจ" value={`${fmtNumber(zones.totals.packageQty)} แพ็คเกจ`} note={zones.packageMixText || null} />
               <Metric label="จุดติดตั้ง" value={`${zones.totals.spotsSelected} / ${zones.totals.spotsTotal}`} note="เลือก / ที่ติดตั้งได้" />
-              <Metric label="เอกสารผลประเมิน" value="ยังไม่ออก" note="ภาพและผังจะมาในเอกสารส่งงาน" />
             </MetricStrip>
           ) : null}
+
+          {/* ⭐ เอกสารประเมินพื้นที่ (PR-3) — **ไม่ผูกกับ `zones.sent`**: ใบที่ถูกดึงผลกลับไม่มีแถบตัวเลข แต่ยังต้องบอกว่า
+              ฉบับก่อนถูกแทนที่แล้ว ⇒ บล็อกขึ้นเป็นอย่างแรกของการ์ด · 🔄 แทนช่องที่หก "เอกสารผลประเมิน · ยังไม่ออก" ที่เขียนค้างไว้ */}
+          {job.document ? <DocumentBlock doc={job.document} sheetHref={surveyHref} onRefresh={onRefresh} /> : null}
 
           {site ? (
             <div className={styles.siteStrip}>

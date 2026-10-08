@@ -473,7 +473,8 @@ function renderPapers(row, renderHtml) {
         continue;
       }
       /* `issuedAt` ของแถว ไม่ใช่นาฬิกาของแอป (RPC คืนแค่เลข · ใกล้เที่ยงคืนสองเรือนไม่ตรงกัน) ·
-         ไม่ส่ง `accentKey` — ค่าตั้งต้นของตัวเรนเดอร์คือ teal ตามกระดานที่อนุมัติ */
+         สีไม่ได้ส่งจากที่นี่ — ตัวเรนเดอร์ไม่มีตัวเลือกสี เลือกจากฉบับของ view เอง: ฉบับลูกค้า = terracotta · ฉบับภายใน = steel
+         (มติเจ้าของ 08/10/2026 · `surveyReportAccentKey`) ⇒ สีถูกตรึงไปกับ HTML ของแต่ละฉบับ ไม่ขึ้นกับมาตรฐานเอกสารของชนิดไหนเลย */
       const html = String(renderHtml({ view, layout, docNo: row.docNo, issuedAt: row.issuedAt }) ?? '');
       if (!html.trim()) {
         reasons.push(`${LABEL[version]}: ตัวเรนเดอร์คืนกระดาษว่าง`);

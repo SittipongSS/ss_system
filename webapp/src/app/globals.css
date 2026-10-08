@@ -2944,7 +2944,11 @@ h1, h2, h3, h4, h5, h6 {
   width: 100%;
   max-width: 480px;
   max-height: 90vh;
-  background: var(--panel);
+  /* 🐞 UAT 2026-10-08 (กล่องยืนยันของใบประเมิน): ตัวหนังสือของหน้าข้างหลังทะลุขึ้นมาซ้อนกับเนื้อกล่อง — เดิมพื้นเป็น `--panel` (โปร่ง 6%)
+     ซึ่งต้องมาคู่กับ backdrop-filter เสมอ (ดูคำกำกับของ `--panel-float`) แต่ blur ของ `.overlay` **ไม่ถึง Chrome**: ตัวแปลง CSS ทิ้งบรรทัด
+     `backdrop-filter` ของกฎที่ประกาศ `-webkit-backdrop-filter` ตามหลัง เหลือแต่ตัวมี prefix (วัดจาก CSS ที่เสิร์ฟจริง + computed style)
+     ⇒ พื้นทึบ `--panel-solid` = สีเดียวกับ `--panel` ที่ผสมกับพื้นแล้ว หน้าตาเท่าเดิม และไม่ขึ้นกับ blur ของเบราว์เซอร์ไหนอีก */
+  background: var(--panel-solid);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 0;

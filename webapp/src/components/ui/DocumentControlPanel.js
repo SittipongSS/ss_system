@@ -87,6 +87,30 @@ function DocumentActionSlot({ action, slot, busy, reasonId }) {
   );
 }
 
+/* ⭐ **แถวปุ่มของส่วนย่อยในการ์ด** (เอกสารประเมินพื้นที่ · PR-3) — ปุ่มตัวเดียวกับช่องปุ่มของการ์ด (`DocumentAction`)
+   เรียงแถวเดียวแล้วห่อบรรทัดเอง · ทำไมไม่ใช้ `.actionStack`: สแต็กนั้นถูกสลับลำดับด้วย `order` ที่จอ ≤1050 (ปุ่มระดับใบขึ้นก่อนราง)
+   ซึ่งต้องไม่เกิดกับปุ่มที่อยู่ในส่วนท้ายการ์ด — ลำดับ Tab ต้องตรงกับที่ตาเห็น
+   ⚠️ **เหตุที่กดไม่ได้อยู่ที่กล่องสถานะของส่วนนั้นกล่องเดียว** (ไม่ใช่บรรทัดเหตุผลรายปุ่ม) — ปุ่มที่จางทุกตัวชี้ไปด้วย
+      `aria-describedby` · ผู้เรียกส่ง id ของกล่องมาทาง `describedBy` · ปุ่มที่กดได้ไม่ชี้ (โฟกัสแล้วไม่ต้องฟังเหตุที่ไม่เกี่ยว)
+   ⚠️ ปุ่มที่จางยังเป็น `aria-disabled` ไม่ใช่ `disabled` (อยู่ในลำดับ Tab) — กติกาเดียวกับ `DocumentAction` ข้างบน */
+export function DocumentActionGroup({ actions = [], busy = false, label, describedBy }) {
+  const shown = actions.filter((action) => action && action.visible !== false);
+  if (!shown.length) return null;
+  return (
+    <div className={styles.actionGroup} role="group" aria-label={label}>
+      {shown.map((action) => (
+        <DocumentAction
+          key={action.id}
+          action={action}
+          slot="secondary"
+          busy={busy}
+          describedBy={action.disabled || busy ? describedBy : undefined}
+        />
+      ))}
+    </div>
+  );
+}
+
 /* `orientation="row"` — รางแนวนอนสำหรับการ์ดที่กว้างเต็มหน้า (หัวใบรายละเอียด)
    ค่าตั้งต้นยังเป็นแนวตั้งเหมือนเดิม เพราะที่ใช้กันอยู่ทั้งหมดคือรางขวาที่แคบ
    ⚠️ ไม่ใช่คนละคอมโพเนนต์ — ขั้น/สถานะ/ป้ายชุดเดียวกัน ต่างแค่ผัง ไม่งั้นรางสองชุด
@@ -220,6 +244,12 @@ export function DocumentControlCard({
      ⚠️ **ไม่ส่งมา = เหมือนเดิมทุก px** ทั้งเจ็ดหน้าที่ใช้การ์ดนี้ · จอกว้าง/จอมือถือ
      ไม่แตะเลย (รางแคบ 330px ไม่มีที่ให้แบ่ง · มือถือแบ่งแล้วปุ่มเหลือ 150px) */
   tabletSplit = false,
+  /* ⭐ `noticesFirst` — **จอ ≤1050px วางกล่องแจ้งก่อนปุ่มระดับใบ** (ค่าตั้งต้นของการ์ดนี้ที่จอแคบคือ ปุ่ม → กล่องแจ้ง เพราะกล่องแจ้ง
+     ส่วนใหญ่อธิบายว่าทำไมกดไม่ได้) · ใช้กับการ์ดที่กล่องแจ้งเป็น **ของที่ต้องอ่านก่อนกด** — ใบประเมินพื้นที่: "ตรวจข้อความบนฉบับลูกค้า
+     ก่อนส่งผล" (🐞 UAT PR-3: กล่องนี้อยู่ใต้ปุ่ม "ส่งผลให้ฝ่ายขาย" ที่จอ 360 และ 1024 ทั้งที่จอกว้างอยู่เหนือปุ่ม)
+     ⚠️ **ไม่ส่งมา = เหมือนเดิมทุก px** ทุกหน้าที่ใช้การ์ดนี้ · จอกว้างไม่แตะเลย (ที่นั่นกล่องแจ้งอยู่ก่อนปุ่มตาม DOM อยู่แล้ว)
+     ⚠️ สลับด้วย `order` ได้ด้วยเหตุเดียวกับรางขั้นตอน: ลำดับใน DOM คือ กล่องแจ้ง → ปุ่ม อยู่แล้ว (กฎนี้ **คืน** ลำดับ Tab ให้ตรงกับที่ตาเห็น) */
+  noticesFirst = false,
   className = "",
 }) {
   const actions = normalizeDocumentControlActions({ primaryAction, secondaryActions, dangerActions });
@@ -252,7 +282,7 @@ export function DocumentControlCard({
         </div>
       ) : null}
       <WorkflowRail steps={workflowSteps} />
-      {notices ? <div className={styles.notices}>{notices}</div> : null}
+      {notices ? <div className={`${styles.notices} ${noticesFirst ? styles.noticesFirst : ""}`.trim()}>{notices}</div> : null}
       {evidence ? <div className={styles.evidence}>{evidence}</div> : null}
       {children}
       {hasActions ? (
