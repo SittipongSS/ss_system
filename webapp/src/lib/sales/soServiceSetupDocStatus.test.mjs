@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import * as draft from '../../components/salesPlanning/serviceSetup/serviceSetupDraft.js';
+import * as roundsEntry from './serviceRoundsEntry.js';
 import * as serviceSetup from './serviceSetup.js';
 
 const read = (rel) => readFileSync(new URL(rel, import.meta.url), 'utf8');
@@ -124,4 +125,96 @@ test('หัวข้อ "ช่วงบริการรายรายกา
   const row = INDEX.split('\n').find((line) => line.startsWith('| [so-service-setup.md](so-service-setup.md) |'));
   assert.match(row, /mig 0400/);
   assert.match(row, /เจ้าของรัน 0400 ก่อน merge\/deploy/);
+});
+
+test('หัวข้อ "สลับ ④⑤ + หน่วยเดือน" (มติเจ้าของ 08/10): สถานะจาก 5 คำ · ไม่มี migration · อยู่ก่อนหัวข้อช่วงบริการรายรายการ · ลำดับ/หน่วย/ชื่อที่เล่าตรงกับโค้ด', () => {
+  const start = DOC.indexOf('### สลับ ④⑤ + หน่วยเดือน (มติเจ้าของ 08/10');
+  assert.ok(start >= 0, 'หาหัวข้อสลับ ④⑤ + หน่วยเดือนไม่เจอ');
+  const end = DOC.indexOf('### ช่วงบริการรายรายการ — สวิตช์', start);
+  assert.ok(end > start, 'หัวข้อนี้ต่อจากหัวข้อรื้อตาราง 30/09 (ก่อนหัวข้อช่วงบริการรายรายการ)');
+  const section = DOC.slice(start, end);
+  assert.match(section, new RegExp(`\\n> สถานะ: ${STATUS_WORDS.source}`));
+  assert.match(section, /ไม่มี migration/);
+  assert.ok(section.includes('อยากสลับ ข้อ 4 กับ ข้อ 5 เปลี่ยน หน่วยรอบบริการ จาก รอบ เป็น เดือน'), 'ยกคำของเจ้าของตามตัวอักษร');
+  /* ลำดับ ①→⑥ และหน่วยที่เอกสารเล่า = แคตตาล็อก (สลับกลับ/เปลี่ยนหน่วยแล้วลืมเอกสาร = แดง) */
+  const { steps } = serviceSetup.SERVICE_SETUP_GRID_TEXT;
+  assert.deepEqual(steps.map((step) => step.key), ['kind', 'fg', 'zones', 'packs', 'rounds', 'total']);
+  let cursor = 0;
+  for (const step of steps) {
+    const at = section.indexOf(step.label, cursor);
+    assert.ok(at >= cursor, `เอกสารต้องเล่าคอลัมน์ "${step.label}" ตามลำดับของแคตตาล็อก`);
+    cursor = at + step.label.length;
+  }
+  const { roundUnit } = serviceSetup.SERVICE_SETUP_LINE_TEXT;
+  assert.equal(roundUnit, 'เดือน');
+  assert.ok(section.includes(`"${steps.at(-1).hint}"`), 'คำใบ้ของ ⑥');
+  assert.ok(section.includes(`"${serviceSetup.SERVICE_SETUP_LINE_TEXT.roundsText(12)}"`), 'ประโยครอบ');
+  assert.ok(section.includes(serviceSetup.lineRoundsLowText(1, { from: '2026-10-01', to: '2027-09-30' }, { stage: 'read' })), 'คำเตือนรอบน้อย');
+  assert.ok(section.includes(roundsEntry.SERVICE_ROUNDS_EDIT_TEXT.requiredMonths), 'คำของดินสอ');
+  /* ชื่อที่เอกสารอ้างมีจริงในโค้ด */
+  for (const name of ['issuesInColumnOrder', 'serviceCardMeta', 'backfillBannerText']) {
+    assert.ok(section.includes(`\`${name}\``), `เอกสารต้องอ้าง ${name}`);
+    assert.equal(typeof draft[name], 'function', `${name} ต้องมีจริงใน serviceSetupDraft.js`);
+  }
+  for (const name of ['serviceReopenFieldsText', 'serviceSetupIssues', 'roundsLowOf']) {
+    assert.ok(section.includes(`\`${name}\``), `เอกสารต้องอ้าง ${name}`);
+    assert.equal(typeof serviceSetup[name], 'function', `${name} ต้องมีจริงใน serviceSetup.js`);
+  }
+  assert.ok(section.includes('`serviceRoundsRequiredText(order)`'));
+  assert.equal(typeof roundsEntry.serviceRoundsRequiredText, 'function');
+  /* สารบัญบอกมติ 08/10 และลำดับใหม่ */
+  const row = INDEX.split('\n').find((line) => line.startsWith('| [so-service-setup.md](so-service-setup.md) |'));
+  assert.match(row, /มติ 08\/10 สลับ ④⑤/);
+  assert.match(row, /ไซต์ · โซน → รอบละกี่แพ็ค → จำนวนรอบบริการ → รวม/);
+
+  /* ── ผลตรวจทาน 08/10 (หลังรอบแรก) — สิ่งที่เอกสารต้องเล่าตรงกับโค้ด ── */
+  /* ① ประโยคสรุปตัวเลขที่เอกสารยกมา = ตัวที่โค้ดพิมพ์จริง (ลำดับคอลัมน์ ③ → ④ → ⑤ → ⑥) */
+  const stripOf = (rounds) => serviceSetup.serviceSetupStripText({
+    order: { id: 'SO1', customerId: 'C1', servicePeriodFrom: '2026-10-01', servicePeriodTo: '2027-03-31' },
+    lines: [{ id: 'L1', lineNo: 1, fgCode: 'FG-364-02-001-1061', productId: 'P1', serviceRounds: rounds, metadata: {} }],
+    allocations: [{ salesOrderLineId: 'L1', zoneId: 'Z1', packsPerRound: 1, sortOrder: 0 }],
+    zonesById: new Map([['Z1', { id: 'Z1', siteId: 'S1' }]]),
+  });
+  const summary = 'แต่ละครั้ง 1 โซนใน 1 ไซต์ · ครั้งละ 1 แพ็ค · จำนวนรอบบริการ 6 เดือน · รวมทั้งใบ 6 แพ็ค';
+  assert.ok(stripOf(6).startsWith(`งานบริการ: ${summary} · `), stripOf(6));
+  assert.ok(section.includes(`"${summary}"`), 'เอกสารยกประโยคสรุปตามลำดับที่โค้ดพิมพ์');
+  assert.doesNotMatch(section, /ประโยคสรุปตัวเลขยังขึ้นด้วยจำนวนรอบบริการ/, 'คำของรอบแรก (ยังไม่สลับประโยคสรุป) ต้องไม่ค้าง');
+  /* ② ลำดับ Tab = ที่ตาเห็นทั้งสองผัง: เอกสารอ้างตัวอ่านธงพับและธงของ CSS ที่มีจริง · ไม่เหลือคำว่า "ไม่ตรงกับที่ตาเห็น" ของรอบแรก */
+  const grid = read('../../components/salesPlanning/serviceSetup/ServiceSetupGrid.js');
+  const gridCss = read('../../components/salesPlanning/serviceSetup/ServiceSetupGrid.module.css');
+  for (const name of ['useGridFolded', '--svc-grid-folded']) {
+    assert.ok(section.includes(`\`${name}\``), `เอกสารต้องอ้าง ${name}`);
+    assert.ok(grid.includes(name), `${name} ต้องมีจริงใน ServiceSetupGrid.js`);
+  }
+  assert.ok(gridCss.includes('--svc-grid-folded: 1'));
+  assert.doesNotMatch(section, /ลำดับ Tab ยังเป็นของ DOM/, 'ข้อจำกัดของรอบแรกแก้แล้ว — เอกสารต้องไม่บอกว่ายังไม่ตรง');
+  /* ③ การ์ดราง: ป้ายสองแถวที่เอกสารเล่า = ป้ายที่ `backfillRailChecks` พิมพ์ */
+  const rail = draft.backfillRailChecks({ lines: [], issues: [], totals: {} });
+  for (const key of ['lines', 'zones']) {
+    const { label } = rail.find((item) => item.key === key);
+    assert.ok(section.includes(`"${label}"`), `เอกสารต้องเล่าป้ายแถว ${key}: ${label}`);
+  }
+  /* ④ ที่ที่ยังพูด "รอบ" โดยตั้งใจ ต้องมีหน้าสรุปไซต์ของทะเบียนไซต์ (อยู่ใต้ /database ไม่ใช่ /service — ผลตรวจทานชี้ว่าตกรายการ) */
+  assert.ok(section.includes('`webapp/src/app/database/sites/[id]/page.js`'));
+  assert.match(read('../../app/database/sites/[id]/page.js'), /label: ROUNDS_SOLD_LABEL, value: `\$\{fmtNumber\(roundsSold\)\} รอบ`/,
+    'หน้าสรุปไซต์ยังพูด "รอบ" (นอกขอบเขตมติ 08/10) — ถ้าเปลี่ยนแล้วให้แก้รายการในเอกสารด้วย');
+});
+
+/* ผลตรวจทาน 08/10 (text-docs-stale-unit): ส่วนที่ไม่มีวันที่กำกับ ("ทะเบียนใบสั่งขาย") และหัวข้อ UAT 29/09 เล่าคำของแคตตาล็อกเป็น "ของปัจจุบัน"
+   ⇒ บรรทัดคิวต้องพูดหน่วย/ลำดับปัจจุบัน และข้อของ 29/09 ที่ยกคำเก่าต้องชี้ไปหัวข้อ 08/10 */
+test('08/10 เอกสารนอกหัวข้อของมติ: บรรทัดคิวของทะเบียนพูดหน่วย/ลำดับปัจจุบัน · ข้อของ 29/09 ที่ยกคำเก่าชี้ไปหัวข้อ 08/10', () => {
+  const { roundUnit } = serviceSetup.SERVICE_SETUP_LINE_TEXT;
+  const registry = DOC.slice(DOC.indexOf('### ทะเบียนใบสั่งขาย (`/sa/sales-orders`)'));
+  assert.ok(registry.includes(`"ลูกค้า · แต่ละครั้ง z โซนใน s ไซต์ · จำนวนรอบบริการ r ${roundUnit} · ไม่นับ Actual · ยื่นโดย ชื่อ dd/mm/yyyy"`),
+    'บรรทัดคิว: โซน/ไซต์ก่อนจำนวนรอบบริการ + หน่วยจากแคตตาล็อก');
+  /* ลำดับเดียวกับที่จอประกอบจริง */
+  const page = read('../../app/sales-planning/sales-orders/page.js');
+  assert.ok(page.includes('แต่ละครั้ง ${naText(review.zones)} โซนใน ${naText(review.sites)} ไซต์ · ${naText(review.roundsLabel)} · ไม่นับ Actual'));
+  const uat = DOC.slice(DOC.indexOf('### เก็บผล UAT 29/09'), DOC.indexOf('### รื้อหน้าตาช่องผูกงานบริการเป็นตาราง'));
+  assert.ok(uat.length > 0, 'หาหัวข้อเก็บผล UAT 29/09 ไม่เจอ');
+  assert.ok(uat.includes(`\`roundsText\` = "${serviceSetup.SERVICE_SETUP_LINE_TEXT.roundsLabel} r ${roundUnit}"`), 'ข้อ 29/09 ที่ยก "r รอบ" ต้องบอกคำปัจจุบัน');
+  assert.ok(uat.includes(`\`roundsCount\` = "${serviceSetup.SERVICE_SETUP_LINE_TEXT.roundsCount(12)}"`));
+  assert.ok(uat.includes(serviceSetup.lineRoundsLowText(1, { from: '2026-10-01', to: '2027-09-30' }, { stage: 'read' }).replace(/ — ตรวจอีกครั้ง$/, '')),
+    'ข้อคำเตือนรอบน้อยของ 29/09 ต้องบอกประโยคปัจจุบัน');
+  assert.equal(uat.split('ดูหัวข้อ "สลับ ④⑤ + หน่วยเดือน (มติเจ้าของ 08/10)"').length - 1, 2, 'สองข้อที่ยกคำเก่าชี้ไปหัวข้อ 08/10');
 });

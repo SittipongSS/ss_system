@@ -94,6 +94,11 @@ test('กรอกจำนวนรอบ: ส่ง before เข้าตั�
   assert.ok(rounds.indexOf("'sales_order_service_setup_locked'") < rounds.indexOf('return fail(updateError.message, 500)'),
     'แปลล็อกก่อนตกไป 500 ดิบ');
   assert.equal(SERVICE_SETUP_SQL_MESSAGES.sales_order_service_setup_locked.status, 409);
+  /* มติเจ้าของ 08/10 (หน่วยของจำนวนรอบบริการบนผิวฝ่ายขาย = "เดือน"): สรุป audit ของใบ pipeline พูดหน่วยเดียวกับตารางงานบริการ
+     (`roundsCount` ของแคตตาล็อก) · ใบย้อนหลังยังพูด "รอบ" — ก้อน before/after ยังเป็นตัวเลข `serviceRounds` */
+  assert.match(rounds, /const roundsWords = \(rounds\) => \(isHistoricalOrder\(before\) \? `\$\{rounds\} รอบ` : SERVICE_SETUP_LINE_TEXT\.roundsCount\(rounds\)\);/);
+  assert.match(rounds, /rounds === null \? 'ยังไม่ระบุ' : roundsWords\(rounds\)/);
+  assert.match(rounds, /serviceRounds: rounds \}\)\)/, 'after ของ audit ยังเก็บตัวเลข');
 });
 
 // ── คืนร่าง ──────────────────────────────────────────────────────────────────────────────────────────
