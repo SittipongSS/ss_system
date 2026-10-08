@@ -92,3 +92,58 @@ test('⭐ แนบ (POST) และลบ/แก้ (guardAttachmentWrite) ไ�
   // DELETE และ PATCH ผ่าน guardAttachmentWrite ทั้งคู่ — ด่านอยู่ในตัวกลางจึงครอบสองทางพร้อมกัน
   assert.equal((routeSource.match(/await guardAttachmentWrite\(supabase, att, user,/g) || []).length, 2);
 });
+
+/* ── แถวแม่ถูกลบไปแล้ว: เก็บกวาดไฟล์ค้างได้เฉพาะคนแนบเองหรือผู้ดูแล ─────────────────────────
+   ทุกสาขาที่อ่านแถวแม่เคยถือ "ไม่มีแถวแม่" เป็น "เหลือด่านระบบล้วน" — และสาขา PARENT_TABLE เขียนว่า
+   `if (parent && …)` ⇒ แม่หาย = ไม่มีด่านเลย · ใครผ่านด่านหยาบของ proxy ก็ลบ/แก้ไฟล์กำพร้าของคนอื่นได้
+   ⇒ ทุกสาขาต้องถาม `canSweepOrphan` **ทันทีหลังรู้ว่าอ่านไม่พัง** และก่อนตัวตัดสินเดิมของสาขานั้น
+   (เพิ่มสาขาที่ห้าเมื่อไร ต้องเพิ่มบรรทัดในตารางข้างล่างด้วย — จำนวนการอ่านแถวแม่ถูกนับไว้) */
+const stripComments = (source) => source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+test('⭐ ทุกสาขาที่แถวแม่หาย: ผ่านได้เฉพาะคนแนบไฟล์นั้นหรือผู้ดูแล — ไม่เหลือทางที่ด่านระบบล้วนพอ', () => {
+  const guard = stripComments(routeSource.slice(
+    routeSource.indexOf('async function guardAttachmentWrite'),
+    routeSource.indexOf('const SPEC_ILLUSTRATION_RETIRED_MESSAGE'),
+  ));
+
+  // ตัวตัดสินกลาง: ผู้ดูแล หรือ uploadedBy ตรงกับคนกด · แถวเก่าที่ uploadedBy ว่าง = ผู้ดูแลเท่านั้น
+  assert.match(routeSource, /import \{ isSuperuser \} from '@\/lib\/permissions';/);
+  assert.match(
+    guard,
+    /const canSweepOrphan = isSuperuser\(user\?\.role\) \|\| \(!!att\.uploadedBy && att\.uploadedBy === user\?\.id\);/,
+  );
+  // ปฏิเสธด้วย 403 + เหตุผลเป็นประโยค ไม่ใช่ 'forbidden' เปล่า ๆ
+  assert.match(guard, /const orphanDenied = \(\) => Response\.json\(\{\s*error: `\$\{actionLabel\}ไม่ได้ — [^`]*ถูกลบไปแล้ว[^`]*`,\s*\}, \{ status: 403 \}\);/);
+
+  /* สาขา → [ตัวแปรแถวแม่ · ตัวแปร error · ตัวตัดสินเดิมที่ต้องมาทีหลัง] */
+  const branches = [
+    ['ขอราคา/คำร้อง', 'parentRow', 'parentError', 'const allowed = parentRow'],
+    ['ดีล/โครงการ/สัญญา', 'deal', 'dealError', 'const allowed = deal ?'],
+    ['PARENT_TABLE', 'parent', 'parentError', 'const canEditParent ='],
+  ];
+  for (const [label, row, err, decider] of branches) {
+    const check = new RegExp(
+      `if \\(${err}\\) return Response\\.json\\(\\{ error: ${err}\\.message \\}, \\{ status: 500 \\}\\);\\s*`
+      + `if \\(!${row} && !canSweepOrphan\\) return orphanDenied\\(\\);`,
+    );
+    const found = guard.match(check);
+    assert.ok(found, `สาขา ${label}: ไม่ถาม canSweepOrphan ทันทีหลังด่านอ่านพัง`);
+    const at = guard.indexOf(decider, found.index);
+    assert.ok(at > found.index, `สาขา ${label}: ด่านแม่หายต้องมาก่อน "${decider}"`);
+    // ระหว่างด่านกับตัวตัดสินเดิมต้องไม่มี return อื่นแทรก (ทางออกก่อนถึงด่าน = ช่องเดิมกลับมา)
+    assert.doesNotMatch(guard.slice(found.index + found[0].length, at), /return /, `สาขา ${label}`);
+  }
+
+  // สาขาใบสั่งขายมีกติกาของตัวเอง (คนแนบหรือแอดมิน) ผูกกับ && ทั้งกรณีมีใบและใบหาย
+  assert.match(
+    guard,
+    /const allowed = canRemoveSalesOrderFile\(att, user\)\s*&& \(order \? await canAttachToSalesOrder\(supabase, order, user\) : canViewSalesPlanning\(user\)\);/,
+  );
+
+  /* นับการอ่านแถวแม่: 4 ทาง = 3 ทางในตาราง + ใบสั่งขาย · เพิ่มทางที่ 5 โดยไม่เพิ่มด่าน = เทสต์นี้ตก */
+  const reads = guard.match(/\.eq\('id', att\.entityId\)\.maybeSingle\(\)/g) || [];
+  assert.equal(reads.length, 4, 'จำนวนทางที่อ่านแถวแม่เปลี่ยน — ทางใหม่ต้องมีด่านแม่หายของตัวเอง แล้วแก้เลขนี้');
+  assert.equal((guard.match(/return orphanDenied\(\);/g) || []).length, branches.length);
+  // ไม่มีสาขาไหนเขียนด่านแม่หายแบบกว้างกว่า (เช่น ถามแค่ role) มาแทน
+  assert.doesNotMatch(guard, /if \(!(?:parentRow|deal|parent)\) return null/);
+});
