@@ -184,6 +184,7 @@ export default function RdPricesPage() {
         title={pricing ? `ใส่ราคา — ${pricing.name}` : ""}
         endpoint={pricing ? `/api/sa/requests/${pricing.requestId}/items/${pricing.itemId}/price` : ""}
         slots={pricing ? pricing.slots : null}
+        blocker={pricing ? pricing.priceBlocker : ""}
         hint={pricing ? `ราคาเข้าทะเบียนวัสดุเป็นรุ่นใหม่ของกลิ่น/สูตรของรายการนี้${pricing.customerName ? ` (ราคาเฉพาะ ${pricing.customerName})` : ""}`
           + " — อ่านได้จากใบขอราคาผลิตและหน้าทะเบียนตามปกติ · ใส่อย่างน้อยหนึ่งช่อง" : null}
         onSaved={async (msg) => {

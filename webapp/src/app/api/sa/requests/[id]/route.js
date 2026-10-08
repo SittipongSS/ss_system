@@ -70,7 +70,7 @@ import { resolveLineLabels } from '@/lib/requests/lineLabels';
 import { resolveOptionalRefs } from '@/lib/requests/optionalRefs';
 import { resolveBillAmount } from '@/lib/requests/billingQuotations';
 import { isScentRegistrar } from '@/lib/master/scents';
-import { createScent, findScentShared, rowPriceSlotsLive } from '@/lib/master/scentFormulaAdmin';
+import { createScent, findScentShared, rowPricePlanLive } from '@/lib/master/scentFormulaAdmin';
 import { attachShares } from '@/lib/master/registrySharesAdmin';
 import { scentUsableByCustomer } from '@/lib/master/registryShares';
 import { canPriceRow } from '@/lib/requests/rowStage';
@@ -85,6 +85,9 @@ import {
 } from '@/lib/service/surveyRequest';
 import { loadSurveySite, materializeSurveyZones } from '@/lib/service/surveyRepo';
 import { loadSurveyRequestExtras } from '@/lib/service/surveyRequestExtras';
+/* ⚠️ เอกสารประเมิน (mig 0401): import ได้เฉพาะตัวอ่านแถว (`surveyReportRows`) — เส้นนี้เป็นของคำร้อง **ทุกหัวข้อ**
+   ⇒ ห้ามลาก sharp / chromium / ตัวเรนเดอร์เข้ามาที่หัวไฟล์ (สเปก PR-2 มติ 24 · ด่าน `check-doc-tracing.mjs`) */
+import { surveyDocumentSummary, surveyReportVoided } from '@/lib/service/surveyReportRows';
 import {
   createSurveyVisit, findSurveyVisit, moveSurveyVisit, surveyScheduleError,
 } from '@/lib/service/surveyVisit';
@@ -178,22 +181,41 @@ export async function GET(request, { params }) {
         { status: 403 },
       );
     }
-    /* ⭐ ช่องราคาของแถวที่รอใส่ราคา — คิดจากทะเบียนสด ตัวเดียวกับ POST ขั้นราคา (`rowPriceSlotsLive` · รีวิว ม-148 รอบสาม)
+    /* ⭐ ช่องราคาของแถวที่รอใส่ราคา — คิดจากทะเบียนสด ตัวเดียวกับ POST ขั้นราคา (`rowPricePlanLive` · รีวิว ม-148 รอบสาม)
+       · `priceBlocker` = เหตุที่ไม่มีช่องให้ใส่ (หัวน้ำหอมที่กลิ่นใช้ไม่ได้ · ยังไม่ผูก) — โมดัลโชว์แทนช่องราคา
        ⚠️ ด่านชุดเดียวกับ POST (รีวิวรอบสี่): หลังด่านอ่าน · ใบเปิดอยู่ · คนดูตอบราคาได้ — คนอื่นไม่มีวันเปิดโมดัล
        ⚠️ ยิงขนานกัน ไม่ใช่ทีละแถว · อ่านพัง = ไม่ติด (โมดัลถอยไปคิดจากแถว · API ตัดสินจริงอยู่ดี) */
     if (REQUEST_OPEN_STATUSES.includes(row.status) && canAnswerRequest(user, row)) {
       await Promise.all((row.items || []).filter(canPriceRow).map(async (item) => {
-        item.priceSlots = await rowPriceSlotsLive(getSupabaseAdmin(), item).catch(() => undefined);
+        const plan = await rowPricePlanLive(getSupabaseAdmin(), item).catch(() => null);
+        if (plan) { item.priceSlots = plan.slots; item.priceBlocker = plan.blocker; }
       }));
     }
     /* ⭐ **งานประเมินบนหน้าคำร้อง** (หน้าคำร้องแบบไทม์ไลน์ · มติเจ้าของ 25/09) — รูปรายพื้นที่ ·
        การดึงกลับ · การส่งกลับให้ช่างแก้ · ภาระของไซต์ ⇒ จอเล่าได้ว่าวัดไปกี่พื้นที่ ขาดอะไร ใครถือตา
        ⚠️ **หลังด่านอ่านรายแถว** เสมอ (คนที่ไม่ผ่านด่านไม่ต้องจ่ายค่าอ่าน) · เฉพาะหน้ารายละเอียด ไม่ใช่
           ใน `findRequest` ซึ่งถูกเรียกทุกครั้งที่ PATCH (กติกาเดียวกับ `withRegistryLinks` ข้างบน)
-       ⚠️ อ่านพลาดไม่ล้มหน้า — ตัวโหลดปัก `surveyUnknown` ให้จอเขียน "ไม่ทราบ" */
+       ⚠️ อ่านพลาดไม่ล้มหน้า — ตัวโหลดปัก `surveyUnknown` ให้จอเขียน "ไม่ทราบ"
+
+       ⭐ **เอกสารประเมินของใบ** (mig 0401 · สเปก PR-2 §10) — คีย์ `surveyDocument` เฉพาะหัวข้อ `site_survey`
+          (ทริกเกอร์แทนที่เอกสารของ 0401 ⑤ ผูกกับหัวข้อนี้หัวข้อเดียว) · หัวข้ออื่นไม่มีคีย์และไม่อ่านแถวเอกสารเลย
+          ⚠️ เรียก **ที่นี่** ไม่ใช่ใน `loadSurveyRequestExtras` — สรุปคิดตามสิทธิ์ของคนดู ซึ่งตัวโหลดนั้นไม่รู้จัก
+          ⭐ `withVoids` — `voids: 'SU-…-n' | null` = ฉบับที่ใช้อยู่ซึ่ง "ยังไม่จบ"/ดึงผลกลับจะทำให้ใช้ไม่ได้ · ให้ทุกคนที่
+             ตอบหรือจัดการใบนี้ได้: Planner เปิดใบกลับได้โดยไม่มีสิทธิ์เอกสาร ⇒ เขาได้ `{ access: 'none', voids }`
+             พอให้โมดัลบอกผลของการกด (กติกา #1223) · ไม่มีผลตรวจ (`send`/`issue`) ที่เส้นนี้ — ของจอ TS เท่านั้น
+          🔴 ไม่มีภาพนิ่ง · HTML · id ของแถว · ที่อยู่ไฟล์ — ตัวสรุปคัดคีย์ทีละตัว (เทสต์ไล่คีย์ทุกชั้นของคำตอบนี้)
+          ⚠️ สรุปล้ม = `{ access: 'none', unknown: true }` ไม่ใช่ 500 · สองก้อนนี้ไม่รอกัน ⇒ ยิงขนาน */
     let surveyExtras = null;
-    if (requestNeedsRef(row.kind, 'site')) {
-      const extras = await loadSurveyRequestExtras(getSupabaseAdmin(), row);
+    const [extras, surveyDocument] = await Promise.all([
+      requestNeedsRef(row.kind, 'site') ? loadSurveyRequestExtras(getSupabaseAdmin(), row) : null,
+      row.kind === 'site_survey'
+        ? surveyDocumentSummary(getSupabaseAdmin(), row, user, { withVoids: true }).catch((e) => {
+          console.error('[requests] สรุปเอกสารประเมินของใบล้ม', row.id, e?.message || e);
+          return { access: 'none', unknown: true };
+        })
+        : null,
+    ]);
+    if (extras) {
       surveyExtras = {
         surveyFilesByZone: extras.filesByZone,
         surveyRecall: extras.recall,
@@ -208,6 +230,7 @@ export async function GET(request, { params }) {
       {
         ...row,
         ...surveyExtras,
+        ...(surveyDocument ? { surveyDocument } : {}),
         // ⚠️ **ที่นี่ `_mine` = "จัดการใบนี้ได้"** (เจ้าของใบ · เพื่อนร่วมทีม · admin)
         // ไม่ใช่ "ฉันเปิดเอง" — หน้ารายละเอียดใช้ธงนี้ตัดสินว่าจะโชว์ปุ่มไหน ส่วน
         // รายการใช้ชื่อเดียวกันแทน "ฉันเปิดเอง" (ดูคอมเมนต์ที่ route ของรายการ)
@@ -1537,6 +1560,31 @@ export async function PATCH(request, { params }) {
       const cleanup = await cleanupCancelledSurveyZones(supabase, { request: after || before });
       const note = cancelCleanupSummary(cleanup);
       if (note) summary = `${summary} — ${note}`;
+    }
+
+    /* ⭐ **"ยังไม่จบ" บนใบประเมินที่ส่งผลแล้ว = เอกสารประเมินที่ใช้อยู่ใช้ไม่ได้** (mig 0401 ⑤ · สเปก PR-2 §6 · มติ 31)
+       update ข้างบนล้าง `answeredAt` ⇒ ทริกเกอร์ของฐานแทนที่เอกสารในคำสั่งเดียวกัน · ที่นี่ **ไม่มีโค้ดแทนที่** —
+       แค่อ่านเลขที่มาบอกในเธรดและ audit: ฝ่ายขายอาจส่ง PDF ฉบับลูกค้าออกไปแล้ว แต่กระดิ่งเดิมพูดแค่ "ยังไม่จบ — เปิดเรื่องกลับมา"
+       🔴 **หัวข้ออื่นไม่อ่านแถวเอกสารเลย** — เส้นนี้เป็นของคำร้องทุกหัวข้อ · ใบประเมินที่ฝ่ายยังไม่ตอบ (ผู้ขอถอนตราปิดของตัวเอง)
+          ก็ไม่อ่าน: ไม่มีคำตอบให้ล้าง ทริกเกอร์ไม่ยิง
+       🔴 **อ่านหลัง update สำเร็จเสมอ** (เหตุผลเดียวกับเส้นดึงผลกลับ — RPC ออกเลขถือล็อกแถวคำร้อง การอ่านล่วงหน้าไม่เห็นแถวที่
+          RPC เพิ่งเขียน) · ส่ง `answeredAt` ของ `before` เพราะบนแถวตอนนี้ถูกล้างแล้ว
+       ⚠️ ตัวอ่านไม่โยน · อ่านพลาด / เอกสารของรอบส่งก่อนหน้า / แถวที่ยังเป็นฉบับใช้อยู่ (ทริกเกอร์ไม่ยิง · ลง log) = `null`
+          ⇒ เธรดไม่อ้างสิ่งที่ฐานไม่ได้ทำ
+       🔴 **ในเธรด ประโยคนี้อยู่ "หน้า" เหตุผลของคนกด ไม่ใช่ต่อท้าย** — แถวเธรดตัดที่ 1,000 (`costingUpdates`) แต่ **กระดิ่งตัดที่ 500**
+          (`notifyThreadUpdate`) และเหตุผลยาวได้ถึง 500 ตัว (`reopenRequestError`)
+          🐞 ต่อท้าย: เหตุผลยาวราว 420 ตัวขึ้นไป กระดิ่งเหลือแค่ "ยังไม่จบ — เปิดเรื่องกลับมา … <เหตุผล>" — คำว่า "ใช้ไม่ได้แล้ว"
+             (แล้วก็เลข SU) หลุดขอบ ทั้งที่กระดิ่งคือเหตุผลเดียวที่ hook นี้มีอยู่
+          ⇒ หัวบรรทัด + ฝั่งที่รอ + ประโยคนี้ รวมกันไม่ถึง 150 ตัว อยู่ใน 500 ตัวแรกเสมอ · ของที่ถูกตัดในกระดิ่งคือหางของเหตุผล
+            (อ่านเต็มได้ในเธรด) ไม่ใช่คำเตือน
+       ⚠️ สรุป audit ยังต่อท้ายตามเดิม — ไม่มีใครตัดมัน */
+    if (action === 'reopen' && before.kind === 'site_survey' && before.answeredAt) {
+      const voidedDocNo = await surveyReportVoided(supabase, { requestId: id, answeredAt: before.answeredAt });
+      if (voidedDocNo) {
+        const voidedSentence = `เอกสาร ${voidedDocNo} ใช้ไม่ได้แล้ว ห้ามใช้ฉบับที่ส่งลูกค้าไปแล้ว`;
+        eventReason = eventReason ? `${voidedSentence} · ${eventReason}` : voidedSentence;
+        summary = `${summary} · ${voidedSentence}`;
+      }
     }
 
     await recordAudit({

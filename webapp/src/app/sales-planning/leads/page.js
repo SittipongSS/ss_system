@@ -40,6 +40,11 @@ import {
   LEAD_SORT_DEFAULT, leadSortDefaultDir, sortLeads,
 } from "@/lib/sales/leads";
 import { canExportLeadReport } from "@/lib/sales/leadReport";
+import {
+  NO_TEAM, NO_ASSIGNEE, LEAD_FOLLOW_FILTERS, LEAD_FOLLOW_FILTER_LABELS,
+  filterLeadRows, leadFacetCounts, leadQueuePick,
+} from "@/lib/sales/leadListFilter";
+import { businessDayKey } from "@/lib/datePeriods";
 import { SCOPE_LABELS, yearOfMonth } from "@/components/salesPlanning/ui";
 import StatusNotice from "@/components/ui/StatusNotice";
 import ReportPeriodControl from "@/components/ui/ReportPeriodControl";
@@ -62,11 +67,6 @@ import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
 /* ไอคอนของสามด่าน — ป้ายกับกติกาอยู่ที่ `LEAD_SLA_STAGES` (lib ฝั่งข้อมูลไม่ import react) */
 const SLA_STAGE_ICONS = { screen: <Filter />, assign: <Users />, contact: <PhoneCall /> };
 
-/* ค่าแทน "ยังไม่มีทีม" ในตัวกรอง — ลีดที่ยังไม่ถูกคัดกรองมี team = null
-   ซึ่งใส่เป็น value ของ checkbox ตรง ๆ ไม่ได้ */
-const NO_TEAM = "__no_team__";
-/* เช่นเดียวกัน — ลีดที่ยังไม่ถูกมอบหมายมี assigneeId = null */
-const NO_ASSIGNEE = "__no_assignee__";
 
 const initialForm = {
   id: null, channel: "chatcone_line", contactName: "", company: "", email: "",
@@ -165,6 +165,9 @@ export default function LeadsPage() {
   const [teamFilter, setTeamFilter] = useStickyState("teamFilter", EMPTY);
   const [assigneeFilter, setAssigneeFilter] = useStickyState("assigneeFilter", EMPTY);
   const [channelFilter, setChannelFilter] = useStickyState("channelFilter", EMPTY);
+  // มิติวันติดตาม (2026-10-08) — ตัวกรองที่การ์ดค้างคิวชี้ไป ("เลยวันติดตาม N") ต้องอยู่ในแผงกรองด้วย
+  // ไม่งั้นการ์ดตั้งตัวกรองที่ผู้ใช้มองไม่เห็นและล้างเองไม่ได้
+  const [followFilter, setFollowFilter] = useStickyState("followFilter", EMPTY);
   // ตั้งต้น = "ติดตามต่อ" (มติผู้ใช้ 2026-09-29) — ตารางเป็นคิวงาน · คนที่เคยเลือกเองยังได้ค่าที่จำไว้
   const [sortKey, setSortKey] = useStickyState("sortKey", LEAD_SORT_DEFAULT);
   const [sortDir, setSortDir] = useStickyState("sortDir", leadSortDefaultDir(LEAD_SORT_DEFAULT));
@@ -309,47 +312,47 @@ export default function LeadsPage() {
     return true;
   }), [leads, activeScope, meId, teams, myTeams]);
 
-  const filtered = useMemo(() => {
+  /* ⭐ ตารางกับตัวเลขท้ายตัวเลือกใช้ชุดเดียวกัน: ขอบเขต (scopedLeads) → คำค้น → ตัวกรองมิติ
+     กติกา "ผ่านตัวกรองไหม" อยู่ที่ lib/sales/leadListFilter ที่เดียว (ดูอาการเดิมที่หัวไฟล์นั้น) */
+  const searchedLeads = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const result = leads.filter((l) => {
-      // ขอบเขต: "ของฉัน" = ถูกมอบให้เรา หรือเรากรอกเข้ามา (ตรงกับสาขา ae ของ
-      // applyLeadScope) · "ทีม" = ทีมเดียวกับเรา · "ทั้งหมด" = ไม่กรอง
-      if (activeScope === "mine" && !(meId && (l.assigneeId === meId || l.createdBy === meId))) return false;
-      if (activeScope === "team" && teams.length && !(teams.includes(l.team) && myTeams.matches(l.team))) return false;
-      if (statusFilter.length && !statusFilter.includes(l.status)) return false;
-      // ลีดที่ยังไม่คัดกรองไม่มีทีม (team = null) — ต้องมีตัวเลือกของตัวเอง
-      // ไม่งั้นพอกรองทีม คิวกลางจะหายไปทั้งก้อนโดยไม่มีอะไรบอก
-      if (teamFilter.length && !teamFilter.includes(l.team || NO_TEAM)) return false;
-      // แยกจากทีมโดยตั้งใจ: หัวหน้าทีมอยากดู "ทีมตัวเอง" กับ "ใบของ AE คนนี้"
-      // คนละคำถามกัน และลีดของทีมอาจยังไม่มีผู้รับผิดชอบ
-      if (assigneeFilter.length && !assigneeFilter.includes(l.assigneeId || NO_ASSIGNEE)) return false;
-      if (channelFilter.length && !channelFilter.includes(l.channel)) return false;
-      if (!q) return true;
-      // ค้นด้วยชื่อ *ปัจจุบัน* — ไม่งั้นพิมพ์ชื่อใหม่ของ AE แล้วหาลีดของเขาไม่เจอ
-      // เหตุผลไม่ไปต่อโชว์บนแถวแล้ว ⇒ ต้องค้นเจอ (กฎ: ตาเห็นบนแถว = ค้นเจอ)
-      return [l.contactName, l.company, l.phone, l.email, l.details, assigneeNameOf(l), l.status === "disqualified" ? leadLostText(l, "") : ""].some((v) => (v || "").toLowerCase().includes(q));
-    });
+    if (!q) return scopedLeads;
+    // ค้นด้วยชื่อ *ปัจจุบัน* — ไม่งั้นพิมพ์ชื่อใหม่ของ AE แล้วหาลีดของเขาไม่เจอ
+    // เหตุผลไม่ไปต่อโชว์บนแถวแล้ว ⇒ ต้องค้นเจอ (กฎ: ตาเห็นบนแถว = ค้นเจอ)
+    return scopedLeads.filter((l) => [l.contactName, l.company, l.phone, l.email, l.details, assigneeNameOf(l), l.status === "disqualified" ? leadLostText(l, "") : ""].some((v) => (v || "").toLowerCase().includes(q)));
+  }, [scopedLeads, query, assigneeNameOf]);
 
-    return sortLeads(result, sortKey, sortDir);
-  }, [leads, query, activeScope, meId, teams, myTeams, statusFilter, teamFilter, assigneeFilter, channelFilter, sortKey, sortDir, assigneeNameOf]);
+  // วันไทยของวันนี้ — นิยามเดียวกับที่การ์ดค้างคิวใช้แบ่ง "เลยวันติดตาม / ถึงกำหนดวันนี้"
+  const todayKey = useMemo(() => businessDayKey(pageNow.toISOString()), [pageNow]);
+  const filters = useMemo(() => ({
+    status: statusFilter, team: teamFilter, assignee: assigneeFilter, channel: channelFilter, follow: followFilter,
+  }), [statusFilter, teamFilter, assigneeFilter, channelFilter, followFilter]);
+
+  const filtered = useMemo(
+    () => sortLeads(filterLeadRows(searchedLeads, filters, todayKey), sortKey, sortDir),
+    [searchedLeads, filters, todayKey, sortKey, sortDir],
+  );
+
+  /* การ์ดค้างคิวสั่งตัวกรอง **ทั้งชุด** — ล้างคำค้นและมิติที่ไม่เกี่ยวด้วย
+     🐞 เดิมตั้งทีละช่อง ⇒ ตัวกรองที่ค้างจากการกดครั้งก่อนทำให้กด "ติดตามต่อ 29" แล้วได้ 3 ใบ */
+  const pickFromQueue = (pick) => {
+    const next = leadQueuePick(pick);
+    setQuery("");
+    setStatusFilter(next.status);
+    setTeamFilter(next.team);
+    setAssigneeFilter(next.assignee);
+    setChannelFilter(next.channel);
+    setFollowFilter(next.follow);
+  };
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(filtered, {
-      resetKey: `${activeScope}|${query}|${statusFilter.join()}|${teamFilter.join()}|${assigneeFilter.join()}|${channelFilter.join()}|${sortKey}|${sortDir}`,
+      resetKey: `${activeScope}|${query}|${statusFilter.join()}|${teamFilter.join()}|${assigneeFilter.join()}|${channelFilter.join()}|${followFilter.join()}|${sortKey}|${sortDir}`,
     });
 
-  /* จำนวนต่อตัวเลือก — โชว์ท้ายป้ายในแผงกรอง ให้เห็นว่าติ๊กแล้วจะเหลือกี่ใบ
-     ก่อนกด (นับจากลีดทั้งหมดที่โหลดมา ไม่ใช่จากผลกรองปัจจุบัน) */
-  const countBy = useMemo(() => {
-    const status = {}; const team = {}; const assignee = {}; const channel = {};
-    for (const l of leads) {
-      status[l.status] = (status[l.status] || 0) + 1;
-      team[l.team || NO_TEAM] = (team[l.team || NO_TEAM] || 0) + 1;
-      assignee[l.assigneeId || NO_ASSIGNEE] = (assignee[l.assigneeId || NO_ASSIGNEE] || 0) + 1;
-      channel[l.channel] = (channel[l.channel] || 0) + 1;
-    }
-    return { status, team, assignee, channel };
-  }, [leads]);
+  /* จำนวนต่อตัวเลือก = ติ๊กตัวนั้นแล้วตารางจะเหลือกี่ใบ — นับแบบแยกมิติจากชุดเดียวกับตาราง
+     (ขอบเขต + คำค้น + ตัวกรองมิติอื่น) · 🐞 เดิมนับจากลีดทั้งบริษัท ใต้ "ของฉัน" จึงโชว์ยอดของคนอื่น */
+  const countBy = useMemo(() => leadFacetCounts(searchedLeads, filters, todayKey), [searchedLeads, filters, todayKey]);
 
   /* ตัวเลือก "ผู้รับผิดชอบ" มาจาก **คนที่ถือลีดอยู่จริง** ไม่ใช่รายชื่อผู้ใช้ทั้งระบบ —
      ทะเบียนผู้ใช้มีคนที่ไม่เคยแตะคิวลีดเลยเยอะ ถ้าเอามาทั้งหมดจะเลื่อนหาไม่เจอ
@@ -357,7 +360,9 @@ export default function LeadsPage() {
      ไม่งั้นกรองด้วยชื่อที่เห็นในตารางแล้วหาไม่เจอ */
   const assigneeOptions = useMemo(() => {
     const byId = new Map();
-    for (const l of leads) {
+    /* คนในขอบเขตที่กำลังดู + คนที่ติ๊กค้างไว้ (ต้องเห็นเพื่อเอาติ๊กออกได้)
+       — ใต้ "ของฉัน" ไม่ต้องลิสต์ทั้งฝ่ายพร้อมเลขศูนย์ */
+    for (const l of [...scopedLeads, ...leads.filter((x) => assigneeFilter.includes(x.assigneeId))]) {
       if (!l.assigneeId) continue;
       if (!byId.has(l.assigneeId)) byId.set(l.assigneeId, assigneeNameOf(l) || l.assigneeName || l.assigneeId);
     }
@@ -367,7 +372,7 @@ export default function LeadsPage() {
     const none = countBy.assignee[NO_ASSIGNEE] || 0;
     // ใบที่ยังไม่มีเจ้าของ = คิวที่หัวหน้าทีมต้องกระจาย — ต้องกรองเจาะได้
     return none ? [...rows, { value: NO_ASSIGNEE, label: `ยังไม่มอบหมาย (${none})` }] : rows;
-  }, [leads, countBy, assigneeNameOf]);
+  }, [leads, scopedLeads, assigneeFilter, countBy, assigneeNameOf]);
 
   // ด่านเดียวกับที่ปุ่มใช้ — ห้ามเขียนเงื่อนไขเพิ่มที่ปุ่ม (ปุ่มจางแบบไม่บอกเหตุผล)
   const leadBlocker = formOpen ? leadFormBlocker(form) : "";
@@ -621,8 +626,7 @@ export default function LeadsPage() {
           showOwners={activeScope !== "mine"}
           // API แนบบริบทการตีกลับมากับแถวแล้ว (ดู attachBounceContext)
           withBounceContext
-          onPickStatus={(status) => setStatusFilter([status])}
-          onPickOwner={(assigneeId) => setAssigneeFilter([assigneeId])}
+          onPick={pickFromQueue}
         />
 
         {/* ⚠️ subtitle ต้องบอกให้ชัดว่าตารางนี้ไม่ได้ผูกกับตัวเลือกเดือนด้านบน — ไม่งั้น
@@ -641,13 +645,19 @@ export default function LeadsPage() {
               <input autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาลีด / บริษัท / เบอร์" aria-label="ค้นหาลีด" />
             </div>
             <FilterPopover
-              count={statusFilter.length + teamFilter.length + assigneeFilter.length + channelFilter.length}
-              onClear={() => { setStatusFilter([]); setTeamFilter([]); setAssigneeFilter([]); setChannelFilter([]); }}
+              count={statusFilter.length + teamFilter.length + assigneeFilter.length + channelFilter.length + followFilter.length}
+              onClear={() => { setStatusFilter([]); setTeamFilter([]); setAssigneeFilter([]); setChannelFilter([]); setFollowFilter([]); }}
               groups={[
                 {
                   key: "status", label: "สถานะ", icon: Filter,
                   options: LEAD_STATUSES.map((s) => ({ value: s, label: `${LEAD_STATUS_LABELS[s]} (${countBy.status[s] || 0})` })),
                   selected: statusFilter, onChange: setStatusFilter,
+                },
+                {
+                  /* นับเฉพาะใบ "ติดต่อแล้ว" — นิยามเดียวกับการ์ดค้างคิว (สี่ค่ารวมกัน = จำนวนติดต่อแล้ว) */
+                  key: "follow", label: "วันติดตาม", icon: CalendarClock,
+                  options: LEAD_FOLLOW_FILTERS.map((f) => ({ value: f, label: `${LEAD_FOLLOW_FILTER_LABELS[f]} (${countBy.follow[f] || 0})` })),
+                  selected: followFilter, onChange: setFollowFilter,
                 },
                 {
                   key: "team", label: "ทีมเจ้าของงาน", icon: Users,

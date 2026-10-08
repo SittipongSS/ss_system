@@ -108,7 +108,7 @@ import { fmtNumber, fmtPhone } from '@/lib/format';
 import { saleUnitLabel, volumeUnitLabel } from '@/lib/master/units';
 import { PRODUCT_SPEC_CERT_STATUS_LABELS, productSpecCertPendingLabel } from '@/lib/sales/productSpecChecklist';
 import { formatSpecDocNo } from '@/lib/sales/productSpecDocNo';
-import { productSpecDateText, productSpecFormulaRow } from '@/lib/sales/productSpecFormulaRow';
+import { productSpecDateText, productSpecFormulaRows } from '@/lib/sales/productSpecFormulaRow';
 import {
   illustrationCaption, snapshotIllustrationRows, sortIllustrations,
 } from '@/lib/sales/productSpecIllustrations';
@@ -462,7 +462,8 @@ function buildSections({ spec, product, order, checkItems, certs, figures, langu
     rows: pairs.map(([label, value]) => ({ html: kvRow(label, value), cost: kvRowMm(label, value) })),
   });
 
-  const formula = productSpecFormulaRow(product, language);
+  // ชุดของขวัญ (01-037 · mig 0403) = หลายแถว แถวละสูตร บอกหมวด · สินค้าอื่น = แถวเดียวแบบเดิม
+  const formulaRows = productSpecFormulaRows(product, language);
   kvSection('overview', 'specOverview', [
     // ใบอังกฤษ = ชื่ออังกฤษก่อน ถอยไปไทย · ใบไทย = ไทยก่อน (สินค้าหมวด 01/02 ราวครึ่งหนึ่งมีแต่ชื่ออังกฤษ)
     ['ชื่อผลิตภัณฑ์', productDisplayNameFor(product, language)],
@@ -475,7 +476,7 @@ function buildSections({ spec, product, order, checkItems, certs, figures, langu
        ซึ่งมีได้หลายสูตร ฝ่ายผลิตแยกไม่ออกว่าใช้ตัวไหน) · FG ไม่ผูกสูตรแต่มีกลิ่น/ภาพนิ่งที่ยื่นก่อนวันนั้น = แถวกลิ่นเดิม
        ทั้งแถว (ป้ายกลิ่นอยู่เฉพาะแถวที่พิมพ์กลิ่นจริง) · ไม่มีทั้งสูตรและกลิ่น = ป้ายใหม่ + N/A · ชิ้นที่ไม่มีเป็นขีด · วันที่ของสูตรตามภาษาของใบ — ตัวประกอบตัวเดียวกับจอ (productSpecFormulaRow)
        ⚠️ แถวยาวขึ้น (ชื่อสูตรยาว + รหัส + วันที่ = สองบรรทัดได้) — ความสูงคิดจากข้อความชุดเดียวกันที่ `kvRowMm` ในตัวจองแถว */
-    [formula.label, formula.value],
+    ...formulaRows.map((row) => [row.label, row.value]),
     /* ⭐ มติผู้ใช้ 2026-09-22 "ปริมาตรบรรจุ และ จำนวนผลิต ดึงมาจาก ข้อมูล FG และ QT SO"
        · ปริมาตรบรรจุ = ปริมาตร + หน่วยของสินค้า FG ในทะเบียน (`products.volume/volumeUnit` ที่ภาพนิ่งถ่ายไว้)
        · จำนวนผลิต = จำนวน + หน่วยของบรรทัด SO (ไม่มี = บรรทัดใบเสนอราคาของสินค้าเดียวกัน) ที่ภาพนิ่งถ่ายไว้

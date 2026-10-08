@@ -708,8 +708,10 @@ export async function cleanupRequestOrphans(supabase, requestId) {
 }
 
 export async function formulaForcePreview(supabase, formula) {
-  const [products, materials, requests, requestItems] = await Promise.all([
+  const [products, giftSets, materials, requests, requestItems] = await Promise.all([
     countBy(supabase, 'products', 'formulaId', formula.id),
+    // ชุดของขวัญ (mig 0403) — แถวในรายการหายตาม FK CASCADE · สินค้ายังอยู่
+    countBy(supabase, 'product_formulas', 'formulaId', formula.id),
     countBy(supabase, 'material_prices', 'formulaId', formula.id),
     // เพิ่มหลัง mig 0232 ด้วยเหตุผลเดียวกับฝั่งกลิ่น — เดิมพรีวิวไม่เคยพูดถึงคำร้องเลย
     countBy(supabase, 'dept_requests', 'formulaId', formula.id),
@@ -719,6 +721,7 @@ export async function formulaForcePreview(supabase, formula) {
     line('คำร้องที่อ้างสูตรนี้ทั้งใบ (ปลดการเชื่อมโยง คำร้องยังอยู่)', requests),
     line('บรรทัดคำร้องที่ผลิตสูตรนี้ขึ้นมา (ปลดการเชื่อมโยง คำร้องยังอยู่)', requestItems),
     line('สินค้าที่อ้างสูตรนี้ (ปลดการเชื่อมโยง สินค้ายังอยู่)', products),
+    line('ชุดของขวัญที่มีสูตรนี้ในชุด (ถอดสูตรออกจากชุด สินค้ายังอยู่)', giftSets),
     line('วัสดุในทะเบียนที่อ้างสูตรนี้ (ปลดการเชื่อมโยง)', materials),
   ].filter((r) => r.count > 0);
   const notes = [];

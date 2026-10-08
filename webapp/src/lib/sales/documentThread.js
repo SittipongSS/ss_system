@@ -42,12 +42,16 @@ export async function appendDocumentEvent(supabase, {
  * @param request  แถวคำร้อง (ต้องมี id · kind · dept · docNo · dealId)
  * @param action   submit | acknowledge | assign | update | pdr | reschedule |
  *                 approve | bounce | answer | close | cancel
- * @param opts     { reason, previousDueDate, assigneeName }
+ * @param opts     { reason, previousDueDate, assigneeName, summary, totals }
+ *                 ส่งต่อให้ `askActionUpdate` ทั้งก้อน — คีย์ใหม่ของตัวนั้นไม่ต้องแก้ที่นี่
  *                 reason = เหตุผลตอนยกเลิก/ตีกลับ/เลื่อนวัน
  *                 previousDueDate = วันกำหนดส่ง **ก่อน** เลื่อน (route ต้องอ่านจาก
  *                 แถวเดิม เพราะแถวที่ส่งมาถูกทับไปแล้ว) — เธรดต้องบอกว่าเลื่อนจาก
  *                 วันไหนเป็นวันไหน ไม่ใช่แค่ "แก้วันแล้ว"
  *                 assigneeName = ชื่อผู้รับผิดชอบหลังมอบหมาย (null = ถอนมอบหมาย)
+ *                 summary / totals = ของ action `answer` ของใบประเมินพื้นที่: สรุปท้ายบรรทัด และยอดที่ส่งออกไป
+ *                 ⭐ `totals` ลง `meta.totals` ของแถว **เธรดคำร้อง** เท่านั้น (รอบส่งถัดไปอ่านจากเธรดคำร้อง) —
+ *                 เงาบนดีลไม่พกยอด (`dealRequestUpdate` ไม่อ่านคีย์นี้)
  * @param mentions คนที่ถูก @ ในเรื่องนี้ — **ต้องผ่าน sanitizeMentions มาแล้ว**
  *                 รูป [{ id, name }] · ลงเฉพาะแถวของเธรด **คำร้อง** (แจ้งเตือน
  *                 อ่านจาก meta.mentions ของแถวนั้น) ไม่ยกไปเธรดดีล เพราะคนที่ถูก

@@ -25,6 +25,8 @@ export const SEND_CLOSABLE_VISIT_STATES = ['scheduled', 'in_progress'];
 const codeOf = (visit) => visit?.code || visit?.id || 'นัด';
 const dayOf = (value) => (value ? String(value).slice(0, 10) : null);
 const timeOf = (value) => (value ? String(value).slice(0, 5) : null);
+/* ลิสต์ข้อความที่มาจากนอกไฟล์ (body ของคำขอ · ผลของตัวตรวจ) — เก็บเฉพาะสตริงที่มีเนื้อ ไม่ตัด ไม่แก้ตัวอักษร */
+const textList = (value) => (Array.isArray(value) ? value : []).filter((t) => typeof t === 'string' && t.trim() !== '');
 
 /**
  * ส่งผลแล้วนัดของใบจะเป็นยังไง — คืน `{ action: 'none' | 'block' | 'close', ... }`
@@ -70,8 +72,17 @@ export function surveySendVisitStep(visit, { today = null } = {}) {
  * ⚠️ ป้ายปุ่มพูดตามผล: ปิดนัดด้วย = "ส่งผลและปิดนัด" · ไม่แตะนัด = "ส่งผล"
  * @param sendBackPending  `view.send.sendBackPending` (`{ itemCount }` | null) — 🐞 review 26/09: ส่งกลับให้ช่างแก้ค้างอยู่
  *                     ⇒ ข้อเตือนต่อท้ายข้อ "ล็อก" (ผลของการล็อกเอง: ช่างแก้ต่อไม่ได้ · ไม่เขียนอะไรลงเธรด — ใบที่ล็อกซ่อนเรื่องค้างที่ `surveySendBackOnSheet` ของ GET · ดึงกลับ = ค้างตามจริง) · ไม่เปลี่ยนป้ายปุ่ม
+ * @param issuesDocument  การส่งผลครั้งนี้ **ออกเอกสารประเมิน (เลข SU) ด้วย** (`document.issueAtSend` ของ GET · PR-2 §8)
+ *                     ⇒ ข้อ "ออกเอกสาร" ต่อจากข้อปิดนัด · ไม่ส่ง = ไม่มีข้อนี้ (ผลเท่าก่อน PR-2 ทุกตัวอักษร — เทสต์ล็อก)
+ * @param replacesDocNo   เลขเอกสารฉบับก่อนที่ถูกแทนที่ไปตอนดึงผลกลับ (`SU-…-n`) — ส่งรอบใหม่ = ออก Rev ถัดไปแทนฉบับนั้น
+ * @param warnings        `document.send.warnings` (string[]) — ข้อความที่จะพิมพ์บนฉบับลูกค้าตามที่กรอก (มติเจ้าของ 01/10 ข้อ 3:
+ *                     เตือน ไม่บล็อก) · หนึ่งคำเตือน = หนึ่งข้อ · จอส่งลิสต์ **ชุดเดียวกันนี้** กลับไปเป็น `seenWarnings`
+ *                     ⚠️ ป้ายปุ่มไม่เปลี่ยนตามสามตัวนี้ — ป้ายพูดเรื่องนัด (ปิด/ไม่ปิด) ซึ่งต่างกันรายใบ · เอกสารออกทุกใบเมื่อเปิดสวิตช์
  */
-export function surveySendConfirm({ docNo = null, closesVisit = null, sendBackPending = null, sizeReview = null } = {}) {
+export function surveySendConfirm({
+  docNo = null, closesVisit = null, sendBackPending = null, sizeReview = null,
+  issuesDocument = false, replacesDocNo = null, warnings = null,
+} = {}) {
   const effects = [
     `${docNo ? `ใบ ${docNo}` : 'ใบนี้'} เป็น “ตอบแล้ว” — ฝ่ายขายได้แจ้งเตือนและเอาตัวเลขไปตั้งราคาได้ทันที`,
     'ผลประเมินล็อก แก้ไม่ได้ จนกว่าหัวหน้าจะกด “ดึงผลกลับมาแก้”',
@@ -84,6 +95,16 @@ export function surveySendConfirm({ docNo = null, closesVisit = null, sendBackPe
     effects.push(`เรื่องที่ส่งกลับให้ช่างแก้${n} ยังรอช่างแจ้งว่าแก้แล้ว — ส่งผลแล้วช่างแก้ต่อไม่ได้ (ดึงผลกลับมาแก้ = เรื่องนี้กลับมารอช่างอีกครั้ง)`);
   }
   if (closesVisit) effects.push(surveySendVisitEffect(closesVisit));
+  /* ⭐ ส่งผล = ออกเอกสารประเมินด้วย (PR-2) — เลขเอกสารถาวร แก้ไม่ได้หลังออก ⇒ ต้องอยู่ในรายการผลก่อนกด (#1223)
+     · คำเตือนของข้อความบนฉบับลูกค้าตามมาทีละข้อ: หัวหน้าอ่านแล้วส่งต่อ หรือปิดกล่องกลับไปแก้ */
+  if (issuesDocument) {
+    const replaced = String(replacesDocNo ?? '').trim();
+    effects.push((replaced
+      ? `ออกเอกสารประเมินฉบับใหม่ (Rev ถัดไป) แทน ${replaced} ที่ใช้ไม่ได้แล้ว`
+      : 'ออกเอกสารประเมิน (เลข SU) ไปพร้อมกัน')
+      + ' — ฝ่ายขายดาวน์โหลดฉบับลูกค้าได้ที่หน้าคำร้อง · เอกสารที่ออกแล้วแก้ไม่ได้ (แก้ = ดึงผลกลับแล้วส่งใหม่เป็น Rev ถัดไป)');
+  }
+  for (const line of textList(warnings)) effects.push(`ฉบับลูกค้าจะพิมพ์ตามที่กรอกไว้ — ${line}`);
   effects.push('ใบจะจบเมื่อฝ่ายขายกด “ปิดเรื่อง”');
   return { effects, confirmLabel: closesVisit ? 'ส่งผลและปิดนัด' : 'ส่งผล' };
 }
@@ -238,4 +259,107 @@ export async function surveySendWrites(supabase, {
   }
   if (!data) return { error: 'ใบนี้ถูกส่งผลไปแล้ว — โหลดหน้าใหม่เพื่อดูผลล่าสุด', status: 409, closedVisit };
   return { request: data, closedVisit: closedVisit || null };
+}
+
+/* ══ ส่งผล = ออกเอกสารประเมินด้วย (PR-2 §2 · สวิตช์ `SURVEY_REPORT_ISSUE_AT_SEND`) ══════════════════
+ *
+ * ⭐ **คำตัดสินและข้อความของ route ส่งผลอยู่ที่นี่** (ตรรกะล้วน เทสต์ได้) — route แค่อ่าน เรียก แล้วตอบ
+ * 🔴 **ตีกลับได้เฉพาะก่อนเขียน** — นัดถูกปิดก่อนตอบใบ (`surveySendWrites`) ⇒ หลังจุดนั้นเรื่องของเอกสารไม่มีสิทธิ์ทำให้
+ *    การส่งผลล้ม: ผลออกเอกสารกลับไปใน `report` ของคำตอบ 200 เท่านั้น
+ * 🔴 **ปัญหาของใบ = ตีกลับ · ปัญหาของระบบ = ไม่ตีกลับ** (มติเจ้าของ 01/10 ข้อ 2) — รูปเปิดไม่ได้/หายจาก Drive · หน้าล้น ·
+ *    ไม่มีนัดที่ปิด ตีกลับตอนที่ใบยังแก้ได้ · Drive ล่ม · ที่เก็บ · ข้อมูลบริษัท/แบบฟอร์ม ไม่ตีกลับ (ออกเอกสารตามทีหลังได้)
+ */
+
+/** งบเวลาของรอบตรวจรูปก่อนส่งผล (S3) — รอบเติมหลังล็อกมีงบของตัวเอง (`SURVEY_REPORT_IMAGE_BUDGET_MS.send`) */
+export const SURVEY_SEND_PREFLIGHT_MS = 60_000;
+
+/** S2 — จอที่โหลดไว้ก่อนเปิดสวิตช์ไม่รู้ว่าการส่งผลออกเอกสารด้วย (ไม่ส่ง `seenWarnings`) ⇒ ต้องโหลดใหม่ให้เห็นก่อนกด */
+export const SURVEY_SEND_OLD_PAGE_ERROR = 'หน้านี้เป็นรุ่นเก่า — โหลดหน้าใหม่ก่อนส่งผล (การส่งผลจะออกเอกสาร SU ด้วย)';
+
+/** S5 ข้อ 2 — server เจอคำเตือนที่จอไม่ได้กางให้หัวหน้าอ่าน (หมายเหตุถูกแก้หลังเปิดหน้า) */
+export const SURVEY_SEND_WARNINGS_CHANGED_ERROR = 'ข้อความบนเอกสารเปลี่ยนไปหลังเปิดหน้า — โหลดหน้าใหม่แล้วอ่านคำเตือนก่อนส่งอีกครั้ง';
+
+/** S8 — ขั้นออกเลขไม่คืนผล (โหลดโมดูลไม่ได้ · โยนทั้งที่สัญญาว่าไม่โยน) · คำเดียวกับเหตุ `internal` ของขั้นออกเลข */
+export const SURVEY_SEND_REPORT_FAILED = 'ออกเอกสารไม่สำเร็จ — กดออกเอกสารอีกครั้ง ถ้ายังไม่ได้ให้แจ้งผู้ดูแลระบบ';
+
+/** ผลของเอกสารเมื่อสวิตช์ปิด — จอรุ่นเก่าไม่อ่านคีย์นี้ (อ่านแค่ `closedVisit`) */
+export const SURVEY_SEND_REPORT_OFF = Object.freeze({ state: 'off' });
+
+/**
+ * คำเตือนที่ server คิดได้ **แต่จอไม่ได้ส่งกลับมา** ใน `seenWarnings` — ว่าง = หัวหน้าเห็นครบทุกข้อแล้ว
+ * ⚠️ เทียบสตริงตรงตัว (ไม่ตัดช่องว่าง ไม่เทียบบางส่วน) — จอส่งลิสต์ของ `document.send.warnings` กลับมาทั้งก้อน ·
+ *    คำเตือนที่หายไปแล้ว (หัวหน้าแก้หมายเหตุ) ไม่ใช่เหตุให้ตีกลับ: ตีกลับเฉพาะข้อที่ **ยังไม่เคยเห็น**
+ */
+export function surveySendUnseenWarnings(warnings, seenWarnings) {
+  const seen = new Set(textList(seenWarnings));
+  return textList(warnings).filter((line) => !seen.has(line));
+}
+
+/**
+ * S3 — ประโยค 409 ของรูปที่ **ตัวไฟล์เองเปิดไม่ได้** (`permanent`) หรือ `null` เมื่อไม่มี
+ * @param failed `failed` ของ `prepareSurveyReportImages` (`[{ attId, fileName, reason, permanent }]`)
+ * ⚠️ ไฟล์ที่ล้มแบบชั่วคราว (Drive ช้า · อัปไม่ขึ้น · หมดงบเวลา · โหลดตัวย่อรูปไม่ได้) ไม่นับ — ไม่ใช่เหตุให้ตีกลับ
+ */
+export function surveySendImageRefusal(failed) {
+  const broken = (Array.isArray(failed) ? failed : []).filter((f) => f?.permanent === true);
+  if (!broken.length) return null;
+  const names = [...new Set(broken.map((f) => String(f.fileName || f.attId || 'ไฟล์ไม่มีชื่อ')))];
+  return `รูป ${broken.length} รูปเปิดไม่ได้ — อัปใหม่เป็น JPG แล้วส่งอีกครั้ง (ชื่อไฟล์ ${names.join(' · ')}) · ยังไม่ได้ส่งผล`;
+}
+
+/**
+ * S5 ข้อ 3 — ประโยค 409 ของเหตุที่เอกสารออกไม่ได้ **เพราะเนื้อของใบ** หรือ `null`
+ * @param blockers `blockers` ของ `surveyReportPrecheck` (`[{ kind: 'content' | 'system', text }]`)
+ * 🔴 ชนิด `system` ถูกข้าม — ข้อมูลบริษัท/แบบฟอร์ม/การอ่านที่ล้ม ไม่ขวางผลประเมินไปถึงฝ่ายขาย
+ */
+export function surveySendDocumentRefusal(blockers) {
+  const texts = [...new Set((Array.isArray(blockers) ? blockers : [])
+    .filter((b) => b?.kind === 'content')
+    .map((b) => String(b.text ?? '').trim())
+    .filter(Boolean))];
+  return texts.length ? `ออกเอกสารไม่ได้ — ${texts.join(' | ')} · ยังไม่ได้ส่งผล` : null;
+}
+
+/**
+ * S7 — **ตัวเลขที่ฝ่ายขายถืออยู่** = ยอดของรอบที่ตอบล่าสุด · คืน `totals` หรือ `null` (ส่งรอบแรก = ไม่มีอะไรให้เทียบ)
+ * @param rows แถวเธรดของคำร้อง ชนิด `answer` กับ `recall` **ใหม่ก่อน**
+ *
+ * ⭐ แถวแรกที่พก `meta.totals`: แถว `answer` ของ PR-2 พกยอดที่ส่งออกไป · แถว `recall` พกยอด ณ ตอนดึงกลับ (เท่ากัน —
+ *    ระหว่างสองจังหวะนั้นใบล็อก) ⇒ ใบที่ถูกเปิดกลับด้วย "ยังไม่จบ" (ไม่มีแถว `recall`) ก็ยังเทียบกับรอบที่ส่งไปจริง
+ * ⚠️ แถว `answer` ก่อน PR-2 ไม่มียอด ⇒ ข้ามไปหาแถว `recall` ถัดไป (พฤติกรรมเดิม)
+ * 🔴 เอกสาร SU ไม่ใช่แหล่งของยอด — รอบที่ตอบโดยไม่มีเอกสาร (สวิตช์ปิด · ออกเอกสารล้ม) มีได้ ⇒ เทียบกับเอกสารฉบับก่อน
+ *    = บอกฝ่ายขายถึงตัวเลขที่เขาไม่ได้ถืออยู่แล้ว
+ */
+export function surveySendDiffBaseline(rows) {
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const totals = row?.meta?.totals;
+    if (totals && typeof totals === 'object' && !Array.isArray(totals)) return totals;
+  }
+  return null;
+}
+
+/**
+ * S9 — ผลของขั้นออกเลข (`issueSurveyReport`) → คีย์ `report` ของคำตอบ
+ *   `{ state: 'issued', docNo, rev, reused, warnings }` | `{ state: 'failed', code, reason, retry }`
+ * 🔴 **หยิบทีละคีย์ ห้าม spread** — ผลของขั้นออกเลขพก id ของแถวเอกสาร (= ที่อยู่ไฟล์ PDF) ซึ่งห้ามออก payload
+ * ⚠️ ผลที่อ่านไม่ออก (null · ไม่มีเลข) = `failed` ที่กดออกเอกสารซ้ำได้ — การส่งผลสำเร็จไปแล้ว ไม่มีทางตอบว่า "ออกแล้ว" โดยไม่มีเลข
+ */
+export function surveySendReport(result) {
+  const docNo = typeof result?.docNo === 'string' ? result.docNo.trim() : '';
+  if (result?.state === 'issued' && docNo) {
+    return {
+      state: 'issued',
+      docNo,
+      rev: Number.isInteger(result.rev) ? result.rev : null,
+      reused: result.reused === true,
+      warnings: textList(result.warnings),
+    };
+  }
+  const known = result?.state === 'failed';
+  return {
+    state: 'failed',
+    code: (known && typeof result.code === 'string' && result.code) || 'internal',
+    reason: (known && typeof result.reason === 'string' && result.reason.trim()) || SURVEY_SEND_REPORT_FAILED,
+    retry: known ? result.retry === true : true,
+  };
 }

@@ -46,12 +46,18 @@ const nextConfig = {
   // ⚠️ key เป็น glob ไม่ใช่ path ตรง ๆ — ต้อง escape เป็น \[id\] ไม่งั้นวงเล็บถูกอ่านเป็น
   // character class แล้วไม่แมตช์ route จริง "เงียบ ๆ" (build ผ่าน ไม่มี warning ไปตายที่ prod).
   // ตรวจว่าได้ผลจริงโดยดูไฟล์ .br ใน .next/server/app/<route>/route.js.nft.json หลัง build
-  // ระบุเจาะจง 2 route ที่เรนเดอร์ PDF เพราะ bin/ หนัก ~70MB ไม่ควรพองไปทุกฟังก์ชัน
+  // ระบุเจาะจงเฉพาะ route ที่เรนเดอร์ PDF เพราะ bin/ หนัก ~70MB ไม่ควรพองไปทุกฟังก์ชัน
+  // ⭐ route เอกสารประเมินพื้นที่ (SU-… · PR-2) คือที่เดียวของงานประเมินที่เปิด chromium — วัดกระดาษก่อนออกเลข
+  //   ตรึง HTML และเก็บ PDF (GET/POST ของ `/document`) · เส้นส่งผล (`/send`) **ตั้งใจไม่อยู่ในลิสต์นี้**: มันไม่เปิด
+  //   chromium เลย (มติ 3) และด่าน `scripts/check-doc-tracing.mjs` ตรวจหลัง build ว่ามันไม่ลาก puppeteer/chromium ไปด้วย
   outputFileTracingIncludes: {
     '/api/sales-planning/quotations/\\[id\\]/issued/pdf': [
       'node_modules/@sparticuz/chromium/bin/**/*',
     ],
     '/api/sales-planning/quotations/\\[id\\]/approval': [
+      'node_modules/@sparticuz/chromium/bin/**/*',
+    ],
+    '/api/service/surveys/\\[id\\]/document': [
       'node_modules/@sparticuz/chromium/bin/**/*',
     ],
   },

@@ -14,6 +14,8 @@ import { recordAudit } from '@/lib/audit';
 import { resolveProductTaxable, productTaxRates } from '@/lib/tax/exciseBilling';
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
 import { productFormulaSnapshot } from '@/lib/master/scentFormulaAdmin';
+import { isGiftSetCategory } from '@/lib/master/giftSetFormulas';
+import { planGiftSetFormulas, replaceProductFormulas } from '@/lib/master/giftSetFormulasStore';
 import { customerSnapshotName } from '@/lib/master/customerName';
 import { branchKeyOf } from '@/lib/master/customerTaxId';
 import { customerTaxSiblings } from '@/lib/master/customerTaxSiblings';
@@ -264,9 +266,19 @@ export async function POST(request) {
   // customer is later renamed. Category comes from the picker (auto mode) or is
   // derived from the typed FG code (manual) — ตรวจไปแล้วด้านบนพร้อมกับตัวรหัส
   // สูตรมาจากทะเบียน — ชื่อ/รหัส/วันที่เป็น snapshot ที่ derive จาก formulaId
+  // ⭐ ชุดของขวัญ (01-037 · mig 0403): ไม่มีสูตรหลัก — สูตรเป็นรายการ (หมวด, สูตร) ในตาราง
+  // product_formulas ซึ่งเขียนหลัง insert · ตรวจกับทะเบียนสดตรงนี้ก่อน เพื่อให้ขั้นเขียนหลัง
+  // insert เหลือแค่เหตุจากระบบ ไม่ใช่ข้อมูลผิด · หมวดอื่นไม่มีรายการ (ล้างทิ้งแบบช่องแบรนด์ 03/04)
+  const giftSet = isGiftSetCategory(categoryCode);
   let formulaSnapshot;
+  let giftSetRows = [];
   try {
-    formulaSnapshot = await productFormulaSnapshot(supabase, body.formulaId);
+    formulaSnapshot = await productFormulaSnapshot(supabase, giftSet ? null : body.formulaId);
+    if (giftSet) {
+      const plan = await planGiftSetFormulas(supabase, body.formulaComponents);
+      if (plan.error) return Response.json({ error: plan.error }, { status: 400 });
+      giftSetRows = plan.rows;
+    }
   } catch (e) {
     return Response.json({ error: e.message }, { status: 400 });
   }
@@ -384,6 +396,19 @@ export async function POST(request) {
     }
     return Response.json({ error: error.message }, { status: 500 });
   }
+  /* รายการสูตรของชุดของขวัญเขียนหลังได้แถวสินค้า (ต้องมี productId ก่อน) · ข้อมูลตรวจผ่านแล้วด้านบน
+     ⇒ ล้มตรงนี้ได้แค่เหตุจากระบบ — สินค้าเกิดแล้ว จึงบอกให้เปิดแก้แล้วบันทึกสูตรซ้ำ ไม่ใช่ทำเหมือนไม่ได้สร้าง */
+  if (giftSetRows.length) {
+    try {
+      await replaceProductFormulas(supabase, data.id, giftSetRows);
+    } catch (e) {
+      await recordAudit({ user, action: 'create', entityType: 'product', entityId: data.id, after: data, request });
+      return Response.json(
+        { error: `บันทึกสินค้า ${data.fgCode} แล้ว แต่บันทึกสูตรในชุดไม่สำเร็จ (${e.message}) — เปิดแก้ไขสินค้าแล้วเลือกสูตรอีกครั้ง` },
+        { status: 500 },
+      );
+    }
+  }
   await recordProductPriceHistory({
     user,
     productId: data.id,
@@ -391,7 +416,12 @@ export async function POST(request) {
     changeType: 'create',
     metadata: { fgCode: data.fgCode, customerId: data.customerId },
   });
-  await recordAudit({ user, action: 'create', entityType: 'product', entityId: data.id, after: data, request });
+  // รายการสูตรของชุดลงสำเนา audit ด้วย — ทางกู้ข้อมูลที่ถูกลบมีทางเดียวคือ audit_logs
+  await recordAudit({
+    user, action: 'create', entityType: 'product', entityId: data.id,
+    after: giftSet ? { ...data, formulaComponents: giftSetRows } : data,
+    request,
+  });
 
 
   return Response.json(data, { status: 201 });

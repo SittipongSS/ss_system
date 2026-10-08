@@ -15,6 +15,11 @@
 // ⭐ **หลายช่อง** (ม-148 · มติผู้ใช้ 2026-09-22: *"ถ้าเป็นสูตร ก็ใส่ได้ทั้ง F และ B และ FB … ยกเว้น
 // กลิ่น(หัวน้ำหอม)ที่ใส่ได้แค่ F"*) — ผู้เรียกส่ง `slots` จาก `priceSlotsFor`/`rowPriceSlots` ตัวเดียวกับ API
 // · ใส่อย่างน้อยหนึ่งช่อง · วันยืนราคา/หมายเหตุใช้ร่วมทุกช่อง · ขั้นใส่ราคาในคำร้องใช้โมดัลตัวนี้ด้วย
+//
+// ⭐ **ไม่มีช่องให้ใส่ = บอกเหตุแทนฟอร์ม** (ผู้ใช้ 2026-10-05) — เดิม `slots=[]` ตกไปโหมดช่องเดียว "ราคา" ลอย ๆ
+// ให้พิมพ์ได้ แล้วค่อยโดนตีกลับตอนบันทึก (ของจริงที่จะเกิด: สูตรหัวน้ำหอม 02-020 ที่กลิ่นเป็นร่าง/เลิกใช้)
+// ⇒ `blocker` จากตัวตัดสินเดียวกับ API (`priceSlotsBlocker` · `formulaPriceSlots`) · `slots=[]` ไม่มีเหตุ = "ยังไม่ผูก"
+// ⚠️ `slots=null` (ไม่ส่ง) ยังเป็นโหมดช่องเดียวของหน้าทะเบียนกลิ่นตามเดิม
 import { useState } from "react";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
@@ -23,6 +28,7 @@ import MoneyInput from "@/components/ui/MoneyInput";
 import DateInput from "@/components/ui/DateInput";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { DEFAULT_PRICE_TTL_DAYS } from "@/lib/materialPrices";
+import { NO_PRICE_SLOTS_REASON } from "@/lib/master/priceSlots";
 import styles from "./registryForm.module.css";
 import { apiFetch } from "@/lib/apiFetch";
 
@@ -40,10 +46,13 @@ export default function RegistryPriceModal({
   onError = null,   // (error) => void — ตีกลับแล้วผู้เรียกอยากโหลดข้อมูลใหม่ (สถานะเปลี่ยนระหว่างเปิดโมดัล)
   // ม-148 — คำเตือนก่อนใส่ราคา (เช่น กลิ่นที่ส่งเป็นสินค้า: ราคาเนื้อต้องไปใส่ที่สูตร) · null = ไม่มี
   notice = null,
+  // เหตุที่ใส่ราคาไม่ได้ (ไม่มีช่อง) — มาจากตัวตัดสินเดียวกับ API · ไม่ว่าง = โชว์เหตุแทนฟอร์ม
+  blocker = "",
 }) {
   const [price, setPrice] = useState("");
   const [prices, setPrices] = useState({});
   const multi = Array.isArray(slots) && slots.length > 0;
+  const blocked = blocker || (Array.isArray(slots) && slots.length === 0 ? NO_PRICE_SLOTS_REASON : "");
   const [validUntil, setValidUntil] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
@@ -91,7 +100,9 @@ export default function RegistryPriceModal({
       open={open} onClose={close} size="sm" dismissible={!saving} title={title}
       /* ปุ่มอยู่ในโซน .drawer-footer ของโครงโมดัล — ห้ามใช้ div class เอง
          (.modal-actions ที่เคยลอกมาไม่มี CSS อยู่จริง ปุ่มติดกัน 0px) */
-      footer={(
+      footer={blocked ? (
+        <Button variant="quiet" onClick={close}>ปิด</Button>
+      ) : (
         <>
           <Button variant="quiet" onClick={close} disabled={saving}>ยกเลิก</Button>
           <Button tone="primary" onClick={submit} disabled={saving || priceMissing}>
@@ -100,51 +111,57 @@ export default function RegistryPriceModal({
         </>
       )}
     >
-      {/* ⚠️ เตือน ไม่บล็อก — ราคา F ของกลิ่นที่มีสูตรยังมีได้จริง (ลูกค้าซื้อหัวน้ำหอมแยก · SDS) */}
-      {notice && <StatusNotice tone="warning" className={styles.priceNotice}>{notice}</StatusNotice>}
-      {multi ? slots.map((slot, i) => (
-        <div className="form-group" key={slot.key}>
-          <label htmlFor={`registry-price-${slot.key}`}>{slot.text} ({unitLabel})</label>
-          <MoneyInput
-            id={`registry-price-${slot.key}`} name={`registryPrice${slot.key}`} value={prices[slot.key] ?? ""}
-            onChange={(v) => setPrices((prev) => ({ ...prev, [slot.key]: v ?? "" }))}
-            className="w-full" autoFocus={i === 0}
-          />
-          {slot.hint && <small className={styles.hint}>{slot.hint}</small>}
-        </div>
-      )) : (
-        <div className="form-group">
-          <label htmlFor="registry-price">ราคา ({unitLabel})</label>
-          <MoneyInput
-            id="registry-price" name="registryPrice" value={price}
-            onChange={(v) => setPrice(v ?? "")} className="w-full" autoFocus
-          />
-        </div>
+      {blocked ? (
+        <StatusNotice tone="warning" title="ยังใส่ราคาไม่ได้">{blocked}</StatusNotice>
+      ) : (
+        <>
+          {/* ⚠️ เตือน ไม่บล็อก — ราคา F ของกลิ่นที่มีสูตรยังมีได้จริง (ลูกค้าซื้อหัวน้ำหอมแยก · SDS) */}
+          {notice && <StatusNotice tone="warning" className={styles.priceNotice}>{notice}</StatusNotice>}
+          {multi ? slots.map((slot, i) => (
+            <div className="form-group" key={slot.key}>
+              <label htmlFor={`registry-price-${slot.key}`}>{slot.text} ({unitLabel})</label>
+              <MoneyInput
+                id={`registry-price-${slot.key}`} name={`registryPrice${slot.key}`} value={prices[slot.key] ?? ""}
+                onChange={(v) => setPrices((prev) => ({ ...prev, [slot.key]: v ?? "" }))}
+                className="w-full" autoFocus={i === 0}
+              />
+              {slot.hint && <small className={styles.hint}>{slot.hint}</small>}
+            </div>
+          )) : (
+            <div className="form-group">
+              <label htmlFor="registry-price">ราคา ({unitLabel})</label>
+              <MoneyInput
+                id="registry-price" name="registryPrice" value={price}
+                onChange={(v) => setPrice(v ?? "")} className="w-full" autoFocus
+              />
+            </div>
+          )}
+          <small className={`${styles.hint} ${styles.priceSlotsHint}`}>
+            {hint || (multi
+              ? "ใส่อย่างน้อยหนึ่งช่อง · เว้นว่าง = ไม่เปลี่ยนราคาช่องนั้น · ราคาเดียวต่อกิโล ไม่มีชั้นจำนวน — บันทึกเป็นรุ่น (rev) ใหม่ รุ่นเก่าคงอยู่เป็นประวัติ"
+              : "ราคาเดียวต่อหน่วย ไม่มีชั้นจำนวน — บันทึกเป็นรุ่น (rev) ใหม่ รุ่นเก่าคงอยู่เป็นประวัติ")}
+          </small>
+          <div className="form-group">
+            <label htmlFor="registry-price-until">ใช้ได้ถึงวันที่</label>
+            <DateInput
+              id="registry-price-until" value={validUntil}
+              onChange={setValidUntil} disabled={saving}
+            />
+            <small className={styles.hint}>
+              เว้นว่าง = อายุมาตรฐาน {DEFAULT_PRICE_TTL_DAYS} วันนับจากวันนี้ — เกินแล้วใบขอราคาผลิตจะขอให้ยืนยันก่อนใช้
+            </small>
+          </div>
+          <div className="form-group">
+            <label htmlFor="registry-price-note">หมายเหตุ</label>
+            <Input
+              id="registry-price-note" value={note} disabled={saving}
+              placeholder="เช่น ราคาจากผู้ขายรายใหม่ · ต่ออายุรอบปี" maxLength={500}
+              onChange={(e) => setNote(e.target.value)}
+            />
+          </div>
+          {error && <div className={styles.priceModalError}>{error}</div>}
+        </>
       )}
-      <small className={`${styles.hint} ${styles.priceSlotsHint}`}>
-        {hint || (multi
-          ? "ใส่อย่างน้อยหนึ่งช่อง · เว้นว่าง = ไม่เปลี่ยนราคาช่องนั้น · ราคาเดียวต่อกิโล ไม่มีชั้นจำนวน — บันทึกเป็นรุ่น (rev) ใหม่ รุ่นเก่าคงอยู่เป็นประวัติ"
-          : "ราคาเดียวต่อหน่วย ไม่มีชั้นจำนวน — บันทึกเป็นรุ่น (rev) ใหม่ รุ่นเก่าคงอยู่เป็นประวัติ")}
-      </small>
-      <div className="form-group">
-        <label htmlFor="registry-price-until">ใช้ได้ถึงวันที่</label>
-        <DateInput
-          id="registry-price-until" value={validUntil}
-          onChange={setValidUntil} disabled={saving}
-        />
-        <small className={styles.hint}>
-          เว้นว่าง = อายุมาตรฐาน {DEFAULT_PRICE_TTL_DAYS} วันนับจากวันนี้ — เกินแล้วใบขอราคาผลิตจะขอให้ยืนยันก่อนใช้
-        </small>
-      </div>
-      <div className="form-group">
-        <label htmlFor="registry-price-note">หมายเหตุ</label>
-        <Input
-          id="registry-price-note" value={note} disabled={saving}
-          placeholder="เช่น ราคาจากผู้ขายรายใหม่ · ต่ออายุรอบปี" maxLength={500}
-          onChange={(e) => setNote(e.target.value)}
-        />
-      </div>
-      {error && <div className={styles.priceModalError}>{error}</div>}
     </Modal>
   );
 }

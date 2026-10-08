@@ -16,7 +16,7 @@ import FormulaForm from "@/components/database/FormulaForm";
 
 export default function FormulaFormModal({
   form, onChange, onClose, onSubmit, saving = false,
-  customers = [], scents = [], formulas = [], categories = [], canSetCode = false,
+  customers = [], scents = [], formulas = [], categories = [], canSetCode = false, canShare = false,
 }) {
   return (
     <Modal
@@ -34,7 +34,7 @@ export default function FormulaFormModal({
           mode={form.mode} value={form.value}
           customers={customers} scents={scents} formulas={formulas} categories={categories}
           editingId={form.formula?.id || null}
-          canSetCode={canSetCode} disabled={saving}
+          canSetCode={canSetCode} canShare={canShare} disabled={saving}
           onChange={onChange}
         />
       )}

@@ -7,6 +7,7 @@ import { fetchAll } from '@/lib/supabaseFetchAll';
 import { fetchAllInChunks } from '@/lib/supabaseInChunks';
 import { CUSTOMER_NAME_SELECT, customerSnapshotName } from '@/lib/master/customerName';
 import { diffShares, normalizeShareInput, unshareError } from '@/lib/master/registryShares';
+import { giftSetsUsingFormulas } from '@/lib/master/giftSetFormulasStore';
 
 export const SHARE_TABLES = Object.freeze({
   scent: Object.freeze({ table: 'scent_customer_shares', column: 'scentId' }),
@@ -85,7 +86,10 @@ export async function shareUsage(supabase, kind, id, customerIds = []) {
     ]);
     reqs.forEach((r) => requestIds.add(r.id));
     [...items, ...targets].forEach((r) => requestIds.add(r.requestId));
-    products = prods; formulas = fmls;
+    /* ชุดของขวัญ (mig 0403) ไม่มี scentId บนแถวสินค้า — ถือกลิ่นผ่านสูตรในรายการ ⇒ นับชุดที่มีสูตรของกลิ่นนี้
+       (FG สูตรเดี่ยวนับผ่าน products.scentId ที่ derive จากสูตรอยู่แล้ว) */
+    const giftSets = await giftSetsUsingFormulas(supabase, fmls.map((f) => f.id));
+    products = [...prods, ...uniqueGiftSetProducts(giftSets)]; formulas = fmls;
     for (const c of children) if (wanted.has(c.customerId)) usage[c.customerId].scents = (usage[c.customerId].scents || 0) + 1;
     /* สูตรของกลิ่นนี้ที่ **แชร์** ให้ลูกค้านั้นอยู่ — เลิกแชร์กลิ่นแล้วสูตรที่แชร์ไว้ใช้ไม่ได้ (เลือกกลิ่นในคำร้องไม่ได้) */
     const formulaIds = fmls.map((f) => f.id);
@@ -105,7 +109,8 @@ export async function shareUsage(supabase, kind, id, customerIds = []) {
     ]);
     reqs.forEach((r) => requestIds.add(r.id));
     items.forEach((r) => requestIds.add(r.requestId));
-    products = prods; formulas = children;
+    // ชุดของขวัญถือสูตรผ่าน product_formulas (mig 0403) ไม่ใช่ products.formulaId
+    products = [...prods, ...uniqueGiftSetProducts(await giftSetsUsingFormulas(supabase, [id]))]; formulas = children;
   }
   for (const p of products) if (wanted.has(p.customerId)) usage[p.customerId].products += 1;
   for (const f of formulas) if (wanted.has(f.customerId)) usage[f.customerId].formulas += 1;
@@ -117,15 +122,21 @@ export async function shareUsage(supabase, kind, id, customerIds = []) {
   return usage;
 }
 
+/* ชุดของขวัญหนึ่งชุดมีหลายสูตรของกลิ่นเดียวกันได้ — นับเป็นสินค้าหนึ่งตัว */
+function uniqueGiftSetProducts(giftSets) {
+  const byProduct = new Map(giftSets.map((g) => [g.productId, { id: g.productId, customerId: g.customerId }]));
+  return [...byProduct.values()];
+}
+
 const httpError = (message, status) => Object.assign(new Error(message), { status });
 
 /**
- * ตั้งรายชื่อลูกค้าที่ได้รับแชร์ (แทนทั้งชุด) — คืน `{ before, after, add, remove }`
- * ⚠️ ผู้เรียกตรวจสิทธิ์ (RD เท่านั้น) ก่อนเรียก · ลูกค้าต้องมีจริง · เลิกแชร์ลูกค้าที่ใช้อยู่ไม่ได้
- * ⚠️ ไม่มี transaction — เพิ่มก่อนลบ (พังกลางทาง = แชร์เกิน ไม่ใช่แชร์ขาดจนของใครติดด่าน)
+ * ตรวจรายชื่อแชร์ชุดใหม่ **โดยไม่เขียนอะไร** — คืน `{ customerById, current, add, remove }` หรือ throw (400/409)
+ * ⭐ มีไว้ให้ฟอร์มสร้าง/แก้ (มติ 2026-10-05) ตรวจก่อนเขียนตัวกลิ่น/สูตร — ไม่งั้นรายชื่อผิดแล้วได้ของครึ่งเดียว:
+ *    สร้างกลิ่นสำเร็จแต่แชร์ตีกลับ ⇒ ฟอร์มค้างให้กดใหม่ ⇒ กดซ้ำได้กลิ่นซ้ำสองตัว
+ * · `entity.id` ว่าง (ยังไม่สร้าง) = ชุดเดิมว่าง · ตรวจแค่ลูกค้ามีจริง
  */
-export async function saveRegistryShares(supabase, kind, entity, rawIds, user = null) {
-  const { table, column } = tableOf(kind);
+export async function planRegistryShares(supabase, kind, entity, rawIds) {
   const { customerIds, error } = normalizeShareInput(rawIds, { ownerId: entity?.customerId || null, kind });
   if (error) throw httpError(error, 400);
 
@@ -139,17 +150,28 @@ export async function saveRegistryShares(supabase, kind, entity, rawIds, user = 
 
   const [current] = await attachShares(supabase, [entity], kind);   // ไม่รวมแถวของเจ้าของปัจจุบัน (ดู attachShares)
   const { add, remove } = diffShares(current.sharedCustomerIds, customerIds);
+  if (remove.length && entity?.id) {
+    const usage = await shareUsage(supabase, kind, entity.id, remove);
+    const nameOf = (id) => current.sharedCustomers.find((s) => s.customerId === id)?.customerName || id;
+    const blocked = unshareError(remove, usage, nameOf);
+    if (blocked) throw httpError(blocked, 409);
+  }
+  return { customerById, current, add, remove };
+}
+
+/**
+ * ตั้งรายชื่อลูกค้าที่ได้รับแชร์ (แทนทั้งชุด) — คืน `{ before, after, add, remove, scentSharedWith }`
+ * ⚠️ ผู้เรียกตรวจสิทธิ์ (`canManageRegistryShares`) ก่อนเรียก · ลูกค้าต้องมีจริง · เลิกแชร์ลูกค้าที่ใช้อยู่ไม่ได้
+ * ⚠️ ไม่มี transaction — เพิ่มก่อนลบ (พังกลางทาง = แชร์เกิน ไม่ใช่แชร์ขาดจนของใครติดด่าน)
+ */
+export async function saveRegistryShares(supabase, kind, entity, rawIds, user = null) {
+  const { table, column } = tableOf(kind);
+  const { customerById, current, add, remove } = await planRegistryShares(supabase, kind, entity, rawIds);
   // แถวค้างของเจ้าของ (เปลี่ยนเจ้าของหลังแชร์) — ล้างทิ้งเงียบ ๆ ไม่ผ่านด่านใช้งาน (เจ้าของใช้ได้อยู่แล้ว)
   if (entity?.customerId) {
     const { error: ownerRowError } = await supabase.from(table).delete()
       .eq(column, entity.id).eq('customerId', entity.customerId);
     if (ownerRowError) throw ownerRowError;
-  }
-  if (remove.length) {
-    const usage = await shareUsage(supabase, kind, entity.id, remove);
-    const nameOf = (id) => current.sharedCustomers.find((s) => s.customerId === id)?.customerName || id;
-    const blocked = unshareError(remove, usage, nameOf);
-    if (blocked) throw httpError(blocked, 409);
   }
 
   const nowIso = new Date().toISOString();

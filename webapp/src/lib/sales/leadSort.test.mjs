@@ -73,6 +73,7 @@ test('ไม่แตะอาร์เรย์เดิม', () => {
 test('หน้า /sa/leads: หัวคอลัมน์ติดตามต่อผูกคีย์ followup และใช้ sortLeads ตัวกลาง', () => {
   assert.match(pageSrc, /<SortTh label="ติดตามต่อ \/ รับเมื่อ" sortKey="followup"/);
   assert.match(pageSrc, /useStickyState\("sortKey", LEAD_SORT_DEFAULT\)/);
-  assert.match(pageSrc, /sortLeads\(result, sortKey, sortDir\)/);
+  // ตารางเรียงหลังกรองด้วยตัวกลาง (lib/sales/leadListFilter · 2026-10-08)
+  assert.match(pageSrc, /sortLeads\(filterLeadRows\(searchedLeads, filters, todayKey\), sortKey, sortDir\)/);
   assert.match(pageSrc, /key: "followup", label: "ติดตามต่อ"/);
 });

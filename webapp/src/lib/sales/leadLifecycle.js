@@ -26,7 +26,7 @@ import {
   MEETING_MODES,
   MEETING_MODE_LABELS,
   LEAD_FOLLOW_UP_ACTIONS,
-  LEAD_LOST_REASONS,
+  LEAD_LOST_PICKABLE,
   LEAD_LOST_REVISIT_CODES,
   LEAD_REOPEN_FOLLOW_UP_STATUSES,
   canWorkLead,
@@ -202,7 +202,7 @@ const NEXT_STEP_FIELDS = [
     type: "tiles",
     required: true,
     visible: (lead, user, values) => values?.nextStep === "disqualify",
-    options: LEAD_LOST_REASONS.map(({ code, label, hint, countable }) => ({
+    options: LEAD_LOST_PICKABLE.map(({ code, label, hint, countable }) => ({
       value: code,
       label,
       description: countable ? hint : `${hint} · ไม่นับเป็นแพ้ในรายงาน`,
@@ -506,7 +506,7 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
         /* ⭐ รหัสเหตุผล (mig 0290) — **หัวข้อก่อน แล้วค่อยรายละเอียด**
            ข้อความอิสระอย่างเดียวนับไม่ได้ ("งบไม่ถึง"/"งบไม่พอ"/"ลูกค้าบอกแพง" =
            เรื่องเดียวกันแต่ group by ไม่ได้) ⇒ รายงาน "แพ้เพราะอะไร" เกิดไม่ได้เลย
-           ⚠️ ตัวเลือกมาจาก `LEAD_LOST_REASONS` ที่เดียว — สะกดซ้ำที่นี่เมื่อไร
+           ⚠️ ตัวเลือกมาจาก `LEAD_LOST_PICKABLE` (= `LEAD_LOST_REASONS` ลบรหัสที่ระบบใช้ปิดเอง) ที่เดียว — สะกดซ้ำที่นี่เมื่อไร
            ฟอร์มกับ CHECK ของ DB จะเริ่มไม่ตรงกัน แล้วผู้ใช้เลือกได้แต่บันทึกไม่ได้ */
         fields: [
           {
@@ -518,7 +518,7 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
                จะเอียงไปทางตัวเลือกบนสุดโดยไม่มีใครรู้ */
             type: "tiles",
             required: true,
-            options: LEAD_LOST_REASONS.map(({ code, label, hint, countable }) => ({
+            options: LEAD_LOST_PICKABLE.map(({ code, label, hint, countable }) => ({
               value: code,
               label,
               // คำอธิบายมาจากลิสต์เดียวกับรหัส — สะกดที่จอเมื่อไรก็เริ่มไม่ตรงกัน

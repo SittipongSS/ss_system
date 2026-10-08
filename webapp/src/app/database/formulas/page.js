@@ -27,11 +27,11 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import RowActionMenu from "@/components/ui/RowActionMenu";
 import RegistryPrice from "@/components/database/RegistryPrice";
 import RegistryPriceModal from "@/components/database/RegistryPriceModal";
-import { priceSlotsFor } from "@/lib/master/priceSlots";
-import { isScentUsable } from "@/lib/master/scents";
+import { formulaPriceSlots } from "@/lib/master/priceSlots";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { emptyFormulaForm, formulaToForm } from "@/components/database/FormulaForm";
 import FormulaFormModal from "@/components/database/FormulaFormModal";
+import { canManageRegistryShares } from "@/lib/master/registryShares";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import styles from "./page.module.css";
 import { usePagination } from "@/lib/usePagination";
@@ -56,6 +56,8 @@ export default function FormulasPage() {
   // department ใช้กับด่านใส่ราคา FB (canQuoteMaterial — ฝ่าย RD) เท่านั้น
   const me = useMemo(() => ({ role, department }), [role, department]);
   const registrar = isFormulaRegistrar(me);
+  // ช่อง "ลูกค้าอื่นที่ใช้ได้" ในฟอร์ม (มติ 05/10) — RD + หัวหน้าฝ่ายขาย Sup ขึ้นไป
+  const canShare = canManageRegistryShares(me);
   // ปุ่มใส่ราคา FB ต่อแถว (กติกาเดียวกับทะเบียนกลิ่น 2026-08-12):
   // ฝ่าย RD + สูตรสถานะใช้งานได้ (ร่าง/กำลังพัฒนายังอ้างราคาไม่ได้)
   const canPriceFormula = (f) => canQuoteMaterial(me, "RM_FB") && isFormulaUsable(f);
@@ -150,6 +152,8 @@ export default function FormulasPage() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
   const [pricing, setPricing] = useState(null); // สูตรที่กำลังใส่ราคา FB
+  // ช่องราคา + เหตุที่ใส่ไม่ได้ของสูตรนั้น — `scentStatus`/`scentName` ติดมากับแถว (attachFormulaUsage)
+  const pricingPlan = pricing ? formulaPriceSlots(pricing, { status: pricing.scentStatus, name: pricing.scentName }) : null;
 
   // ⚠️ โหลดกลิ่นมาพร้อมกันใน reload เดียวกัน ไม่ใช่ useEffect แยกตอน mount —
   // ตารางแปลง scentId เป็นชื่อกลิ่นจากชุดนี้ ถ้าโหลดพลาดครั้งเดียวแล้วปุ่มรีเฟรช
@@ -297,7 +301,7 @@ export default function FormulasPage() {
        ฟอร์มตัวนี้ได้แล้ว (2026-08-19) · เขียนสองที่เมื่อไรมันเลื่อนออกจากกันทันที
        ⭐ รหัสส่งเฉพาะตอนมีสิทธิ์รับเข้าทะเบียน — คนที่ไม่มีสิทธิ์จะได้ไม่โดนตีกลับทั้ง
        ฟอร์มเพราะช่องที่เขาแก้ไม่ได้อยู่แล้ว */
-    const payload = formulaFormPayload(form.value, { canSetCode: registrar });
+    const payload = formulaFormPayload(form.value, { canSetCode: registrar, canShare });
     if (form.mode === "create") {
       const done = await call("/api/master/formulas", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -683,7 +687,7 @@ export default function FormulasPage() {
       <FormulaFormModal
         form={form} saving={saving}
         customers={customers} scents={scents} formulas={formulas} categories={categories}
-        canSetCode={registrar}
+        canSetCode={registrar} canShare={canShare}
         onChange={(value) => setForm({ ...form, value })}
         onClose={() => setForm(null)}
         onSubmit={submitForm}
@@ -809,13 +813,9 @@ export default function FormulasPage() {
         onClose={() => setPricing(null)}
         title={pricing ? `${pricing.price?.unitPrice != null ? "ออกราคาใหม่" : "ใส่ราคา"} — ${pricing.name}` : ""}
         endpoint={pricing ? `/api/master/formulas/${pricing.id}/price` : ""}
-        /* ⭐ ม-148 — สูตรใส่ได้ F · B · FB (F ลงกลิ่นของสูตร) */
-        slots={pricing
-          ? priceSlotsFor({
-            scentId: pricing.scentId, formulaId: pricing.id, categoryCode: pricing.categoryCode,
-            scentUsable: pricing.scentStatus ? isScentUsable({ status: pricing.scentStatus }) : true,
-          })
-          : null}
+        /* ⭐ ม-148 — สูตรใส่ได้ F · B · FB (F ลงกลิ่นของสูตร) · ช่อง + เหตุที่ใส่ไม่ได้ตัวเดียวกับ API */
+        slots={pricingPlan ? pricingPlan.slots : null}
+        blocker={pricingPlan ? pricingPlan.blocker : ""}
         onSaved={(msg) => {
           setPricing(null);
           setToast({ kind: "success", msg });

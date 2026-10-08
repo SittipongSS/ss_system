@@ -537,15 +537,16 @@ test('escape ชื่อ/รหัสสูตรที่ RD พิมพ์ �
 test('🔴 จอหน้าสเปคประกอบแถวสูตรด้วยตัวเดียวกับกระดาษ — ไม่ฝังป้าย/ช่องกลิ่นไว้เอง · ตัวประกอบไม่ลากเปลือกเอกสารเข้า bundle', () => {
   const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
   const form = read('../../components/database/ProductSpecForm.js');
-  assert.match(form, /import \{ productSpecFormulaRow \} from "@\/lib\/sales\/productSpecFormulaRow";/);
+  assert.match(form, /import \{ productSpecFormulaRows \} from "@\/lib\/sales\/productSpecFormulaRow";/);
   // ⚠️ ส่ง product ตรง ๆ — `product || {}` ทำให้จอที่ยังไม่มีก้อนสินค้าถูกอ่านเป็น "ภาพนิ่งเก่า" (ป้ายกลิ่น) แล้วป้ายกระพริบตอนโหลดเสร็จ
-  assert.match(form, /const formulaRow = productSpecFormulaRow\(product, "th"\);/, 'ตัวอย่างจากหน้าสินค้าเป็นใบไทยเสมอ');
-  assert.match(form, /\{derived\(formulaRow\.label, formulaRow\.value\)\}/);
+  // ชุดของขวัญ (mig 0403) ได้หลายแถว — จอวาดทุกแถวที่ตัวประกอบคืน
+  assert.match(form, /const formulaRows = productSpecFormulaRows\(product, "th"\);/, 'ตัวอย่างจากหน้าสินค้าเป็นใบไทยเสมอ');
+  assert.match(form, /formulaRows\.map\(\(row, index\) => <Fragment key=\{index\}>\{derived\(row\.label, row\.value\)\}<\/Fragment>\)/);
   assert.doesNotMatch(form, /derived\("กลิ่น \/ รหัสกลิ่น"|product\?\.scentText/, 'ต้องไม่เหลือแถวกลิ่นที่ฝังไว้ในจอ');
   // กระดาษเรียกตัวเดียวกัน และไม่เหลือป้ายที่พิมพ์ตรง ๆ
   const paper = read('./productSpecDocument.js');
-  assert.match(paper, /const formula = productSpecFormulaRow\(product, language\);/);
-  assert.match(paper, /\[formula\.label, formula\.value\],/);
+  assert.match(paper, /const formulaRows = productSpecFormulaRows\(product, language\);/);
+  assert.match(paper, /\.\.\.formulaRows\.map\(\(row\) => \[row\.label, row\.value\]\),/);
   assert.doesNotMatch(paper, /\['กลิ่น \/ รหัสกลิ่น', product\.scentText\]/);
   // ตัวประกอบต้องเบา (จอเป็น client component) — import ได้แค่ตัวจัดรูปกลาง
   const row = read('./productSpecFormulaRow.js');
@@ -1297,4 +1298,46 @@ test('⭐ ช่องลงนามชิดขอบล่างของแ�
   assert.equal((html.match(/<div class="signTail">/g) || []).length, 1);
   assert.match(html, /<div class="signTail"><h3 class="signHeading">การตรวจสอบและอนุมัติ <span>\/ FINAL REVIEW &amp; APPROVAL<\/span><\/h3>\s*<section class="signatures"/);
   assert.match(html, /\.specsheet \.signTail \{ margin-top: auto; \}/);
+});
+
+/* ── ชุดของขวัญ (01-037 · มติผู้ใช้ 2026-10-05 · mig 0403) — พิมพ์ทุกสูตร แถวละสูตร บอกหมวด ───────────── */
+const GIFT_SET = {
+  formulaId: null, formulaName: null, formulaCode: null, formulaDate: null, scentText: null,
+  formulaComponents: [
+    { categoryCode: '01-002', categoryName: 'น้ำหอมสำหรับผิวกาย', formulaId: 'FML-1', formulaName: 'Midnight #1', formulaCode: 'PF85901', formulaDate: '2026-09-10' },
+    { categoryCode: '01-006', categoryName: 'ก้านหอมปรับอากาศ', formulaId: 'FML-2', formulaName: 'Midnight Reed', formulaCode: null, formulaDate: null },
+  ],
+};
+
+test('⭐ ชุดของขวัญ: แถวสูตรแตกเป็นแถวละสูตร ป้าย "สูตร N · หมวด" ตามลำดับในชุด — แถวอื่นอยู่ที่เดิม', () => {
+  const rows = overviewRows(renderProductSpecDocument(baseInput({ snapshot: withProduct(GIFT_SET) })));
+  assert.deepEqual(rows.map(([label]) => label), [
+    'ชื่อผลิตภัณฑ์', 'ชื่อแบรนด์', 'รหัสสินค้า', 'ประเภทผลิตภัณฑ์',
+    'สูตร 1 · น้ำหอมสำหรับผิวกาย', 'สูตร 2 · ก้านหอมปรับอากาศ',
+    'ปริมาตรบรรจุ (Size)', 'จำนวนผลิต (Quantity)', 'ลักษณะเนื้อสาร', 'บรรจุภัณฑ์มาตรฐาน',
+  ]);
+  assert.deepEqual(rows[4], ['สูตร 1 · น้ำหอมสำหรับผิวกาย', 'Midnight #1 | PF85901 | 10/09/2569']);
+  assert.deepEqual(rows[5], ['สูตร 2 · ก้านหอมปรับอากาศ', 'Midnight Reed | - | -'], 'ชิ้นที่ไม่มีเป็นขีด เหมือนแถวสูตรเดี่ยว');
+});
+
+test('ชุดของขวัญบนใบอังกฤษ: วันที่ ค.ศ. · ป้ายไม่แปล (ชื่อหมวดไทยก่อน แบบป้ายแถวอื่นของตาราง)', () => {
+  const rows = overviewRows(renderProductSpecDocument(baseInput({ snapshot: withProduct(GIFT_SET, englishSnapshot) })));
+  assert.deepEqual(rows[4], ['สูตร 1 · น้ำหอมสำหรับผิวกาย', 'Midnight #1 | PF85901 | 10/09/2026']);
+});
+
+test('ชุดของขวัญที่ยังไม่ผูกสูตร = แถวสูตรเดี่ยวว่างแบบเดิม (N/A) · ชื่อหมวดหาไม่เจอ = ใช้รหัสหมวด', () => {
+  const empty = overviewRows(renderProductSpecDocument(baseInput({ snapshot: withProduct({ ...GIFT_SET, formulaComponents: [] }) })));
+  assert.deepEqual(empty[4], ['สูตร / รหัสสูตร / วันที่', '<span class="na">N/A</span>']);
+  const noName = overviewRows(renderProductSpecDocument(baseInput({
+    snapshot: withProduct({ ...GIFT_SET, formulaComponents: [{ ...GIFT_SET.formulaComponents[0], categoryName: null }] }),
+  })));
+  assert.equal(noName[4][0], 'สูตร 1 · 01-002');
+});
+
+test('ชุดของขวัญ: ตัวจองแถวนับทุกแถวสูตร (ตารางหัวข้อ 1 สูงตามจำนวนสูตร ไม่ล้นขอบเงียบ)', () => {
+  const plan = (product) => planProductSpecPaper(baseInput({ snapshot: withProduct(product) }))
+    .sections.find((section) => section.key === 'overview').rows;
+  assert.equal(plan(GIFT_SET).length, plan(TEA_FORMULA).length + 1);
+  const three = { ...GIFT_SET, formulaComponents: [...GIFT_SET.formulaComponents, { ...GIFT_SET.formulaComponents[0], formulaId: 'FML-3' }] };
+  assert.equal(plan(three).length, plan(TEA_FORMULA).length + 2);
 });

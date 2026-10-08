@@ -38,6 +38,7 @@ import { productNameBoth, fmtMoney, fmtMoneyOrDash, naText, NA } from "@/lib/for
 import CostVatLines from "@/components/database/CostVatLines";
 import { apiFetch } from "@/lib/apiFetch";
 import { canApproveMasterRecord } from "@/lib/master/approvalControl";
+import { giftSetFormError } from "@/lib/master/giftSetFormulas";
 
 // Management view sees every status; the default GET (used by registration / PM
 // pickers) returns only approved products.
@@ -246,6 +247,10 @@ export default function ProductRegistry() {
       const codeError = fgCodeError(formData.fgCode, { mode: codeMode, categoryCode: formData.categoryCode });
       if (codeError) { notifyToast.error(codeError); return; }
     }
+    // ชุดของขวัญ (01-037 · mig 0403): ทุกแถวต้องมีหมวด + สูตร — ตัวตรวจเดียวกับ API
+    // (ก่อนป๊อปอัปเตือนภาษี/อย. — กดยืนยันแล้วค่อยโดนตีกลับเรื่องสูตร = ต้องยืนยันซ้ำ)
+    const giftSetError = giftSetFormError(brandCategory, formData.formulaComponents, formulas);
+    if (giftSetError) { notifyToast.error(giftSetError); return; }
     // เตือนกลับด้านกับของเดิม: popup เฉพาะหมวดที่ติ๊กธงบน product_types (mig 0131 —
     // ส่วนน้อยที่มีภาระตามมา) — หมวดอื่นบันทึกเงียบ ๆ
     const catInfo = categoryInfoOf(formData.categoryCode || categoryOf(formData.fgCode), productTypes);

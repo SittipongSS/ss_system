@@ -37,9 +37,12 @@ test('แถวที่ยังไม่ผูกทะเบียน = null 
 
 test('route ถามตัวตัดสินกลาง ไม่คิดชนิดราคาเอง', () => {
   // ตัวคิดช่องจากทะเบียนสด ตัวเดียวกับที่ GET ติดให้โมดัล (รีวิว ม-148 รอบสาม)
-  assert.ok(SRC.includes('rowPriceSlotsLive(supabase, row)'));
-  assert.match(readFileSync('src/app/api/sa/requests/[id]/route.js', 'utf8'), /item\.priceSlots = await rowPriceSlotsLive\(/);
-  assert.ok(SRC.includes('normalizeSlotPrices('));
+  assert.ok(SRC.includes('await rowPricePlanLive(supabase, row)'));
+  const GET = readFileSync('src/app/api/sa/requests/[id]/route.js', 'utf8');
+  assert.match(GET, /= await rowPricePlanLive\(/);
+  assert.match(GET, /item\.priceSlots = plan\.slots; item\.priceBlocker = plan\.blocker;/);
+  // เหตุที่ไม่มีช่อง (หัวน้ำหอมที่กลิ่นใช้ไม่ได้) ต้องไปถึงข้อความที่ตีกลับ — ไม่ใช่ "ยังไม่ผูก" ลอย ๆ
+  assert.ok(SRC.includes('normalizeSlotPrices(slots, body, { blocker })'));
   assert.ok(!/kind: 'RM_F/.test(SRC), 'ชนิดราคาต้องไม่ถูกเขียนซ้ำใน route');
 });
 

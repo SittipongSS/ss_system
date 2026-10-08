@@ -10,9 +10,9 @@ import { BadgeDollarSign, Beaker, Pencil, Trash2 } from "lucide-react";
 import RegistryDetailShell, { RegistryFactCard } from "@/components/database/RegistryDetailShell";
 import RegistryPriceModal from "@/components/database/RegistryPriceModal";
 import RegistryShareCard from "@/components/database/RegistryShareCard";
+import { canManageRegistryShares } from "@/lib/master/registryShares";
 import RegistryPrice from "@/components/database/RegistryPrice";
-import { priceSlotsFor } from "@/lib/master/priceSlots";
-import { isScentUsable } from "@/lib/master/scents";
+import { formulaPriceSlots } from "@/lib/master/priceSlots";
 import FormulaFormModal from "@/components/database/FormulaFormModal";
 import { formulaToForm } from "@/components/database/FormulaForm";
 import Toast from "@/components/ui/Toast";
@@ -36,6 +36,8 @@ export default function FormulaDetailPage() {
   const role = useRole();
   const department = useDepartment();
   const me = useMemo(() => ({ role, department }), [role, department]);
+  // แชร์ให้ลูกค้ารายอื่น — การ์ด + ช่องในฟอร์มแก้ ถามตัวเดียวกับ API (RD + Sup ขึ้นไป · มติ 05/10)
+  const canShare = canManageRegistryShares(me);
   const [formula, setFormula] = useState(null);
   const [scentName, setScentName] = useState("");
   const [loading, setLoading] = useState(true);
@@ -68,7 +70,7 @@ export default function FormulaDetailPage() {
   const submitEdit = async () => {
     setSaving(true);
     try {
-      const payload = formulaFormPayload(form.value, { canSetCode: isFormulaRegistrar(me) });
+      const payload = formulaFormPayload(form.value, { canSetCode: isFormulaRegistrar(me), canShare });
       const res = await apiFetch(`/api/master/formulas/${formula.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -138,6 +140,9 @@ export default function FormulaDetailPage() {
   // ปุ่มใส่ราคา (F · B · FB — ม-148) — กติกาเดียวกับราคา F บนหน้ากลิ่น (ดูหมายเหตุที่นั่น)
   const canPrice = canQuoteMaterial(me, "RM_FB") && isFormulaUsable(formula);
   const hasPrice = formula.price?.unitPrice != null;
+  /* ⭐ ม-148 — สูตรใส่ได้ F · B · FB (F ลงกลิ่นของสูตร) · ช่อง + เหตุที่ใส่ไม่ได้มาจากตัวเดียวกับ API
+     (หัวน้ำหอม 02-020 ที่กลิ่นเป็นร่าง/เลิกใช้ = โมดัลบอกเหตุ ไม่เปิดช่อง B/FB ให้) */
+  const pricePlan = formulaPriceSlots(formula, { status: formula.scentStatus, name: scentName });
 
 
   return (
@@ -203,15 +208,15 @@ export default function FormulaDetailPage() {
           { label: "หมายเหตุ", value: formula.note, wide: true },
         ]}
       />
-      {/* ⭐ ลูกค้าที่ใช้ร่วม (ม-150) — RD แชร์สูตรให้ลูกค้ารายอื่นได้ (สูตรฐานไม่ต้องแชร์) */}
-      <RegistryShareCard kind="formula" entity={formula} canManage={isFormulaRegistrar(me)} onSaved={(_, msg) => { setToast({ kind: "success", msg }); load(); }} />
+      {/* ⭐ ลูกค้าที่ใช้ร่วม (ม-150) — RD + หัวหน้าฝ่ายขาย Sup ขึ้นไปแชร์สูตรให้ลูกค้ารายอื่นได้ (สูตรฐานไม่ต้องแชร์) */}
+      <RegistryShareCard kind="formula" entity={formula} canManage={canShare} onSaved={(_, msg) => { setToast({ kind: "success", msg }); load(); }} />
 
       {/* ฟอร์มแก้ — ตัวเดียวกับหน้ารายการ เปิดทับหน้านี้ ไม่พาผู้ใช้ออกไปไหน */}
       <FormulaFormModal
         form={form} saving={saving}
         customers={registryData.customers} scents={registryData.scents}
         formulas={registryData.formulas} categories={registryData.categories}
-        canSetCode={isFormulaRegistrar(me)}
+        canSetCode={isFormulaRegistrar(me)} canShare={canShare}
         onChange={(value) => setForm({ ...form, value })}
         onClose={() => setForm(null)}
         onSubmit={submitEdit}
@@ -222,12 +227,8 @@ export default function FormulaDetailPage() {
         onClose={() => setPricing(false)}
         title={`${hasPrice ? "ออกราคาใหม่" : "ใส่ราคา"} — ${formula.name}`}
         endpoint={`/api/master/formulas/${formula.id}/price`}
-        /* ⭐ ม-148 — สูตรใส่ได้ F · B · FB (F ลงกลิ่นของสูตร) · ช่องจากตัวเดียวกับ API */
-        slots={priceSlotsFor({
-          scentId: formula.scentId, formulaId: formula.id, categoryCode: formula.categoryCode,
-          // กลิ่นเลิกใช้/ร่าง = ไม่เปิดช่อง F (server ตัดสินตัวเดียวกัน)
-          scentUsable: formula.scentStatus ? isScentUsable({ status: formula.scentStatus }) : true,
-        })}
+        slots={pricePlan.slots}
+        blocker={pricePlan.blocker}
         onSaved={(msg) => {
           setPricing(false);
           setToast({ kind: "success", msg });

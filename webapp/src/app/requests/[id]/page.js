@@ -2772,6 +2772,8 @@ export default function RequestDetailPage() {
         endpoint={pricing ? `/api/sa/requests/${id}/items/${pricing.item.id}/price` : ""}
         // ช่องที่ server คิดจากทะเบียนสดให้แล้ว (ตัวเดียวกับ POST) · ไม่มี = ถอยไปคิดจากแถว
         slots={pricing ? (pricing.item.priceSlots || rowPriceSlots(pricing.item)) : null}
+        // ไม่มีช่อง = เหตุจากตัวคิดเดียวกัน (หัวน้ำหอมที่กลิ่นใช้ไม่ได้) — โมดัลโชว์แทนฟอร์ม
+        blocker={pricing?.item.priceBlocker || ""}
         hint={`ราคาเข้าทะเบียนวัสดุเป็นรุ่นใหม่ของกลิ่น/สูตรของรายการนี้${req.customerName ? ` (ราคาเฉพาะ ${req.customerName})` : ""}`
           + " — อ่านได้จากใบขอราคาผลิตและหน้าทะเบียนตามปกติ · ใส่อย่างน้อยหนึ่งช่อง"}
         /* ⚠️ **โหลดใบใหม่ผ่าน GET เสมอ** — ห้ามตั้ง `req` จาก body ที่ route ราคาตอบ (รีวิว ม-148 รอบสาม): body นั้นเป็น

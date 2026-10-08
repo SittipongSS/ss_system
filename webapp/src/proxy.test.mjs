@@ -5,8 +5,10 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { apiWriteAllowed, bypassesSessionGate, lockedOut } from './proxy.js';
 import {
-  RD_ROLES, ROLES, can, canAnswerServiceRequests, canEditService, canManagePackageSizes, canViewServiceRegistry,
+  RD_ROLES, ROLES, can, canAnswerServiceRequests, canEditService, canManagePackageSizes, canSendSurveyResult,
+  canViewServiceRegistry,
 } from '@/lib/permissions';
+import { canOpenSurveyDocument, surveyDocAccess } from '@/lib/service/surveyAccess';
 
 /* 🐞 ของจริงที่หลุด prod: proxy ตอบ 401 ให้ทุก request ที่ไม่มี cookie session รวม
    Vercel Cron ซึ่งยืนยันตัวด้วย `Authorization: Bearer $CRON_SECRET` เท่านั้น
@@ -564,6 +566,52 @@ test('⭐ ทะเบียนขนาดแพ็คเกจ: คนแก�
     assert.equal(lockedOut(me, '/api/service/package-sizes', 'GET', true), false, `${role} GET`);
     assert.equal(lockedOut(me, '/database/package-sizes', 'GET', false), false, `${role} เปิดหน้าทะเบียน`);
     assert.equal(canViewServiceRegistry({ role }), true, `${role} อ่านทะเบียน`);
+  }
+});
+
+/* ── เอกสารประเมินพื้นที่ SU-… (PR-2 · /api/service/surveys/[id]/document) — เส้นใหม่ต้องผ่าน proxy ทั้งสองด่าน ─────────
+   🪤 บทเรียน `/api/rd`: เส้นที่ไม่อยู่ในลิสต์ไหนเลยโดน 403 เปล่า ๆ ทุก role ที่ไม่ใช่แอดมิน โดยไม่มีอะไรฟ้อง
+      เส้นนี้ **ไม่ต้องเพิ่มรายการ** เพราะอยู่ใต้ `/api/service` (OPEN_WRITE_APIS + กฎ service:edit/work) — เทสต์นี้ตรึงข้อเท็จจริงนั้นไว้
+   ⭐ GET (เปิดไฟล์ · ฉบับร่าง) ต้องถึง handler ทุก role ที่ล็อกอิน — ผู้ขอฝ่ายขายและผู้บริหารไม่ถือ cap ของโมดูลบริการ
+      แต่ได้ฉบับลูกค้า (ด่านจริง = `surveyDocAccess` ซึ่งดูแถวคำร้อง · proxy เห็นแค่ method + path)
+   ⭐ POST (ออกเอกสาร) = หัวหน้าฝ่ายบริการ (+ แอดมิน · CD/CM) ต้องผ่านทั้งสองด่าน
+   ⚠️ ช่าง (`ts` · service:work) · Planner · ฝ่ายขาย (service:edit) ผ่าน proxy ที่ POST ได้ แล้วได้ 403 จาก handler
+      (`surveyDocAccess(...).issue`) — ไม่ใช่ช่องโหว่ แต่ห้ามมีใครถอดด่านใน handler เพราะคิดว่า proxy กันให้แล้ว */
+test('⭐ เอกสารประเมินพื้นที่: GET ถึง handler ทุก role · หัวหน้าฝ่ายบริการ POST ผ่าน proxy ทั้งสองด่าน · ด่านจริงอยู่ใน handler', () => {
+  const path = '/api/service/surveys/DR-1/document';
+  const request = { id: 'DR-1', kind: 'site_survey', dept: 'TS', requestedById: 'U-requester', team: 'SV' };
+
+  // คนที่กด "ออกเอกสาร" ได้ = หัวหน้าฝ่ายบริการชุดเดียวกับที่ส่งผลประเมิน
+  const heads = ROLES.filter((role) => role !== 'admin' && canSendSurveyResult({ role, department: 'TS' }));
+  assert.deepEqual([...heads].sort(), ['commercial_director', 'commercial_manager', 'ts_audit', 'ts_manager', 'ts_senior']);
+  for (const role of heads) {
+    assert.equal(lockedOut({ role, extraCaps: [] }, path, 'POST', true), false, `${role} POST: ด่าน lockdown`);
+    assert.equal(apiWriteAllowed('POST', path, role, []), true, `${role} POST: ด่าน cap`);
+  }
+  // หัวหน้าฝ่าย TS ตอบใบของฝ่ายตัวเองได้ ⇒ ออกเอกสารได้จริงเมื่อถึง handler
+  for (const role of ['ts_manager', 'ts_audit', 'ts_senior']) {
+    assert.equal(surveyDocAccess({ id: 'U-1', role, department: 'TS' }, request).issue, true, `${role} ออกเอกสาร`);
+  }
+
+  // GET: ไม่มี role ไหนถูก lockdown ตัดก่อนถึง handler — ผู้ขอ (ฝ่ายขาย) และผู้บริหารต้องเปิดฉบับลูกค้าได้
+  for (const role of ROLES) {
+    assert.equal(lockedOut({ role, extraCaps: [] }, path, 'GET', true), false, `${role} GET`);
+    assert.equal(apiWriteAllowed('GET', path, role, []), true, `${role} GET: ด่าน cap ไม่เกี่ยวกับการอ่าน`);
+  }
+  assert.equal(surveyDocAccess({ id: 'U-requester', role: 'ae', department: 'SALES' }, request).customer, true);
+  assert.equal(surveyDocAccess({ id: 'U-requester', role: 'ae', department: 'SALES' }, request).internal, false);
+  assert.equal(surveyDocAccess({ id: 'U-x', role: 'executive' }, request).internal, true);
+
+  // ช่าง · Planner · ฝ่ายขาย ถึง handler ที่ POST ได้ — handler ต้องเป็นคนตัด
+  for (const [role, department] of [['ts', 'TS'], ['ts_planner', 'TS'], ['ae', 'SALES'], ['ae_supervisor', 'SALES']]) {
+    assert.equal(apiWriteAllowed('POST', path, role, []), true, `${role} ผ่าน proxy`);
+    assert.equal(surveyDocAccess({ id: 'U-requester', role, department }, request).issue, false, `${role} ออกเอกสารไม่ได้`);
+  }
+  // ช่างไม่ได้อะไรเลยตั้งแต่ด่านชั้นนอกของ handler (ไม่มี query สักตัว)
+  assert.equal(canOpenSurveyDocument({ role: 'ts', department: 'TS' }), false);
+  // ฝ่ายที่ไม่เกี่ยวกับงานบริการถูกตัดตั้งแต่ proxy ที่ POST
+  for (const role of ['wh', 'qc', 'pc', 'rd', 'finance', 'secretary', 'viewer', 'executive']) {
+    assert.equal(apiWriteAllowed('POST', path, role, []), false, `${role} ต้องไม่ผ่าน`);
   }
 });
 

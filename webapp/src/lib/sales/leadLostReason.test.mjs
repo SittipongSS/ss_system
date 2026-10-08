@@ -10,11 +10,13 @@
 //   3) ตัวหารของรายงานต้องไม่กินสแปม ไม่งั้นเหตุผลจริงทุกแถวดูเล็กลงพร้อมกัน
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import {
   LEAD_LOST_REASONS, LEAD_LOST_CODES, LEAD_LOST_LABELS, LEAD_LOST_UNCOUNTABLE,
-  LEAD_LOST_REVISIT_CODES, leadLostReasonError, leadLostText, lostReasonRollup,
+  LEAD_LOST_REVISIT_CODES, LEAD_LOST_PICKABLE, LEAD_LOST_SYSTEM_CODES,
+  leadLostReasonError, leadLostText, lostReasonRollup,
 } from './leads.js';
+import { AUTO_LOST_CODE_BY_EFFORT } from './leadAutoLost.js';
 import { createLeadLifecycle } from './leadLifecycle.js';
 import { fieldVisible, visibleFieldValues } from '../recordLifecycle.js';
 
@@ -26,10 +28,18 @@ const disqualifyFields = () => createLeadLifecycle({})
 /* 🐞 โรคที่เคยเกิดกับ `channel`: เพิ่มตัวเลือกในโค้ดแล้วลืมแก้ CHECK ⇒ ฟอร์มโชว์
    ตัวเลือกให้เลือก แต่พอกดบันทึกจริง Postgres ตีกลับ · ผู้ใช้เห็นแค่ error ที่
    อ่านไม่รู้เรื่อง และไม่มีอะไรจับได้ตอน review */
+/* ⚠️ อ่านจาก **migration ล่าสุดที่สร้าง CHECK ตัวนี้** ไม่ใช่ชื่อไฟล์ตายตัว — mig 0402 เพิ่ม
+   รหัสระบบปิดเอง · ผูกกับ 0290 ไว้เมื่อไร เทสต์จะเทียบกับชุดเก่าแล้วตกทั้งที่ DB ถูก
+   (หรือแย่กว่า: ใครสักคนแก้ 0290 ย้อนหลังเพื่อให้เขียว) */
+const latestDisqualifiedCodeCheck = () => {
+  const dir = new URL('../../../supabase/migrations/', import.meta.url);
+  const file = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort().reverse()
+    .find((f) => readFileSync(new URL(f, dir), 'utf8').includes('ADD CONSTRAINT sales_leads_disqualified_code_check'));
+  return readFileSync(new URL(file, dir), 'utf8');
+};
+
 test('รหัสในโค้ดต้องตรงกับ CHECK ของ sales_leads.disqualifiedCode เป๊ะ', () => {
-  const sql = readFileSync(
-    new URL('../../../supabase/migrations/0290_lead_lost_reason_code.sql', import.meta.url), 'utf8',
-  );
+  const sql = latestDisqualifiedCodeCheck();
   // อ่านเฉพาะส่วนที่รันจริง — ท้ายไฟล์มีบล็อก Rollback ที่พิมพ์ SQL ไว้เป็นคอมเมนต์
   const body = sql.slice(0, sql.indexOf('COMMIT;'));
   const add = body.slice(body.indexOf('ADD CONSTRAINT sales_leads_disqualified_code_check'));
@@ -64,7 +74,7 @@ test('เหตุผลไม่ไปต่อเป็นไทล์ ไม�
   const field = disqualifyFields().find((f) => f.name === 'disqualifiedCode');
   assert.equal(field.type, 'tiles');
   const opts = field.options;
-  assert.equal(opts.length, LEAD_LOST_CODES.length);
+  assert.equal(opts.length, LEAD_LOST_PICKABLE.length);
   for (const o of opts) {
     assert.ok(o.description, `${o.value} ไม่มีคำอธิบายใต้ป้าย`);
   }
@@ -128,7 +138,8 @@ test('เลือก "อื่นๆ" แล้วต้องเขียน�
 });
 
 test('เหตุผลอื่นไม่บังคับรายละเอียดที่ชั้นนี้ (API เข้มกว่าเอง)', () => {
-  for (const code of LEAD_LOST_CODES.filter((c) => c !== 'other')) {
+  // รหัสระบบตกด่านด้วยเหตุผลอื่น (คนเลือกไม่ได้) — เทสต์แยกท้ายไฟล์
+  for (const code of LEAD_LOST_PICKABLE.map((r) => r.code).filter((c) => c !== 'other')) {
     assert.equal(leadLostReasonError({ code }), '', code);
   }
 });
@@ -211,4 +222,43 @@ test('ไม่มีใบที่ปิด = ก้อนว่างที�
   assert.equal(roll.countedTotal, 0);
   assert.equal(roll.reasons.length, LEAD_LOST_REASONS.length);
   assert.equal(lostReasonRollup().total, 0);
+});
+
+/* ── รหัสที่ระบบใช้ปิดเอง (มติ 2026-09-16 · leadAutoLost.js) ───────────────── */
+
+/* 🔴 คนเลือกรหัสระบบเองได้เมื่อไร รายงาน "ระบบปิด · ตามครบ" จะปนใบที่คนปิดเอง
+   แล้วฉลากความพยายามเลิกมีความหมาย · ฟอร์มต้องไม่โชว์ และ API (ด่านเดียวกัน) ต้องตีกลับ */
+test('รหัสระบบปิดเอง: ฟอร์มไม่โชว์ · ด่านเดียวกับ API ตีกลับ', () => {
+  assert.deepEqual([...LEAD_LOST_SYSTEM_CODES].sort(), Object.values(AUTO_LOST_CODE_BY_EFFORT).sort());
+  for (const code of LEAD_LOST_SYSTEM_CODES) {
+    assert.ok(LEAD_LOST_CODES.includes(code), `${code} ต้องอยู่ในชุดรหัส (CHECK + รายงาน)`);
+    assert.match(leadLostReasonError({ code, detail: 'x' }), /ระบบใช้ปิดลีดเองเท่านั้น/);
+  }
+  const offered = disqualifyFields().find((f) => f.name === 'disqualifiedCode').options.map((o) => o.value);
+  for (const code of LEAD_LOST_SYSTEM_CODES) assert.equal(offered.includes(code), false, `${code} โผล่ในฟอร์ม`);
+  // ⚠️ ฟอร์มปิดลีดมีสองที่ (ไทล์ "ก้าวถัดไป" ของประตูติดต่อ + action ไม่ไปต่อ) — ต้องกรองทั้งคู่
+  const contactGate = createLeadLifecycle({}).transitions
+    .flatMap((t) => t.fields || []).filter((f) => f.name === 'disqualifiedCode');
+  assert.ok(contactGate.length >= 2, 'หาช่องเหตุผลไม่ครบสองที่');
+  for (const field of contactGate) {
+    for (const code of LEAD_LOST_SYSTEM_CODES) {
+      assert.equal(field.options.some((o) => o.value === code), false, `${code} โผล่ในช่องเหตุผล`);
+    }
+  }
+});
+
+/* ใบที่ระบบปิดเคยเป็นโอกาสขายจริง — หลุดจากตัวส่วนเมื่อไร อัตราแปลงจะดูดีขึ้นเพราะใบหาย */
+test('รหัสระบบปิดเอง นับในตัวส่วน · ขึ้นแถวของตัวเองในรายงาน', () => {
+  for (const code of LEAD_LOST_SYSTEM_CODES) assert.equal(LEAD_LOST_UNCOUNTABLE.includes(code), false, code);
+  const rollup = lostReasonRollup([
+    { status: 'disqualified', disqualifiedCode: AUTO_LOST_CODE_BY_EFFORT.full },
+    { status: 'disqualified', disqualifiedCode: AUTO_LOST_CODE_BY_EFFORT.none },
+    { status: 'disqualified', disqualifiedCode: AUTO_LOST_CODE_BY_EFFORT.none },
+  ]);
+  const count = (code) => rollup.reasons.find((r) => r.code === code)?.count;
+  assert.equal(count(AUTO_LOST_CODE_BY_EFFORT.full), 1);
+  assert.equal(count(AUTO_LOST_CODE_BY_EFFORT.partial), 0);
+  assert.equal(count(AUTO_LOST_CODE_BY_EFFORT.none), 2);
+  assert.equal(rollup.countedTotal, 3);
+  assert.equal(rollup.unknown, 0);
 });

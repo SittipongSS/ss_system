@@ -13,6 +13,9 @@ import { listAttachments } from '@/lib/master/attachments';
 import { loadPackageSizesOrNull } from '@/lib/service/packageSizesRepo';
 import { loadSurveyCrew, loadSurveySheetContext, loadSurveyZones } from '@/lib/service/surveyRepo';
 import { surveySendBackOnSheet } from '@/lib/service/survey';
+/* ⚠️ เอกสารประเมิน: import ได้เฉพาะตัวอ่านแถว (`surveyReportRows`) — ช่างเปิดเส้นนี้ทุกครั้งที่บันทึกหน้างาน
+   ⇒ ห้ามลาก sharp / chromium / ตัวเรนเดอร์เข้ามาที่หัวไฟล์ (สเปก PR-2 มติ 24 · ด่าน `check-doc-tracing.mjs`) */
+import { surveyDocumentSummary } from '@/lib/service/surveyReportRows';
 import { loadSurveyRequestFiles } from '@/lib/service/surveyRequestFiles';
 import { surveySpotLinkDecision } from '@/lib/service/surveySpotPhotos';
 import { findSurveyVisit } from '@/lib/service/surveyVisit';
@@ -66,19 +69,30 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
           ⭐ ตัวโหลดถามด่านอ่านตัวเดียวกับ proxy ก่อน ⇒ ลิสต์เท่ากับที่เปิดได้ · พัง = `unknown.requestFiles`
        ⑥ ทะเบียนขนาดแพ็คเกจ (mig 0398) — แถบ "ขนาด" ของแท็บสรุปส่งผล · ที่ระบบเสนอ · ด่าน "ขนาดถูกลบ" ของการ์ด
           ⚠️ อ่านไม่สำเร็จ = `null` (ไม่ใช่ `[]`) ⇒ การ์ดบล็อกส่งผลด้วยเหตุเดียวกับ route ส่งผล ไม่ใช่บอกว่าขนาดถูกลบ
+       ⑦ เอกสารประเมินของใบ (mig 0401 · สเปก PR-2 §10) — สรุปตามสิทธิ์ของคนดู ออกเป็นคีย์ `document`
+          🔴 **ช่าง / Planner ได้ `{ access: 'none' }` เป๊ะ และไม่มีการอ่านแถวเอกสารเลย** — ตัวสรุปตัดสิทธิ์ก่อนแตะฐาน
+          ⭐ `withChecks` — หัวหน้าฝ่ายได้ผลตรวจของ server เอง (`send` · `issue`): นัด/ทะเบียนโซน/ข้อมูลบริษัทที่เส้นนี้ถือ
+             ไม่พอประกอบด่านเดียวกับเส้นส่งผล ⇒ จอแค่พิมพ์ผล ไม่ประกอบด่านเอง
+          ⚠️ ส่ง `zones` ที่อ่านไว้แล้วให้ (ไม่อ่านซ้ำ) · ไฟล์/ทะเบียนขนาด/นัด ไม่ส่ง — กำลังอ่านขนานอยู่ในรอบเดียวกันนี้
+             จะส่งได้ต้องรอให้เสร็จก่อน = เพิ่มรอบเดินทางให้ทุกคนที่มีสิทธิ์เอกสาร · ตัวตรวจอ่านเองเฉพาะตอนต้องตรวจ
+          ⚠️ สรุปล้ม = `{ access: 'none', unknown: true }` ไม่ใช่ 500 (เหตุผลเดียวกับ ③ — ผลวัดอ่านได้แล้ว)
 
        ⭐ **ไม่มีก้อนไหนรอผลของอีกก้อน ⇒ ยิงขนานกัน** — จอนี้ถูกโหลดใหม่ทุกครั้ง
           ที่บันทึก/ส่ง/ดึงกลับ และทุกครั้งที่สลับกลับมาที่แท็บ (`useRevalidateOnFocus`)
           ⇒ รอบเดินทางที่เพิ่มมาหนึ่งรอบ คือรอบที่ช่างรอทุกครั้งที่กดบันทึกหน้างาน
        ⚠️ `findSurveyVisit` ยัง throw ได้เหมือนเดิม ⇒ ทั้งเส้นยังเป็น 500 เท่าเดิม
           (ตั้งใจ: มันเป็นด่านตัดสิน `canWrite` — เดาแทนไม่ได้ ต้อง fail-closed) */
-    const [files, [visit, crewRes], context, requestFiles, packageSizes] = await Promise.all([
+    const [files, [visit, crewRes], context, requestFiles, packageSizes, reportDoc] = await Promise.all([
       Promise.all(zones.map((z) => listAttachments('service_survey_zone', z.id, supabase))),
       findSurveyVisit(supabase, id, { preferOpen: true })
         .then(async (found) => [found, await loadSurveyCrew(supabase, found, { viewerId: user?.id })]),
       loadSurveySheetContext(supabase, request, zones),
       loadSurveyRequestFiles(supabase, request, user),
       loadPackageSizesOrNull(supabase),
+      surveyDocumentSummary(supabase, request, user, { withChecks: true, zones }).catch((e) => {
+        console.error('[survey] สรุปเอกสารประเมินของใบล้ม', id, e?.message || e);
+        return { access: 'none', unknown: true };
+      }),
     ]);
     const filesByZone = Object.fromEntries(zones.map((z, i) => [z.id, files[i] || []]));
     if (crewRes.unknown) context.unknown.crew = true;
@@ -126,6 +140,12 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       /* ⭐ ทะเบียนขนาดแพ็คเกจ เรียงตามที่แถบเลือกแสดง (mig 0398) · `null` = อ่านไม่สำเร็จ — จอส่งต่อให้
          `surveyControlView({ packageSizes })` และตัวตัดสินร่าง (`surveyDecisionError(…, { sizes })`) ซึ่ง fail-closed ทั้งคู่ */
       packageSizes,
+      /* ⭐ **เอกสารประเมินของใบ ตามสิทธิ์ของคนดู** (`surveyDocumentSummary` · สเปก PR-2 §10) — จอ PR-3 อ่านจากคีย์นี้
+         ไม่มีสิทธิ์ = `{ access: 'none' }` · มีสิทธิ์ = `{ access: {…}, issueAtSend, storeAllowed, state, current, … }`
+         🔴 ไม่มีภาพนิ่ง · HTML · id ของแถว · ที่อยู่ไฟล์ — ตัวสรุปคัดคีย์ทีละตัว (เทสต์ไล่คีย์ทุกชั้นของคำตอบนี้)
+         ⚠️ `history` · `nextDocNo` · `send` · `issue` เป็นคีย์ที่ **มีหรือไม่มี** ตามสิทธิ์ ไม่ใช่ค่าว่าง · `state` เป็น
+            `null` ได้เมื่ออ่านแถวเอกสารไม่สำเร็จ (คู่กับ `unknown: true`) */
+      document: reportDoc,
       // เหตุผลที่เขียนไม่ได้ — จอต้องบอกเหตุ ไม่ใช่ซ่อนปุ่มเงียบ ๆ
       writeBlockedReason: access.ok ? null : (access.error || 'ไม่มีสิทธิ์บันทึกผลของใบนี้'),
       /* ⭐ **เปิดหน้าคำร้องได้ไหม** — จอเอาไปตัดสินว่าจะโชว์ลิงก์ "คำร้อง RQ-…" หรือไม่
