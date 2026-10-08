@@ -11,9 +11,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   approveServiceBackfill, loadServiceFgOptions, loadServiceReopenBlockers, loadServiceSetupContext, loadSiblingSiteCounts,
-  rejectServiceBackfill, reopenServiceSetup, rpcServiceSetup, saveServiceSetup, submitServiceBackfill,
+  rejectServiceBackfill, reopenServiceSetup, rpcServiceSetup, saveServiceSetup, submitOrderDeferringServiceSetup, submitServiceBackfill,
 } from './serviceSetupRepo.js';
-import { serviceSetupFlow, serviceSetupIssues, serviceSetupRequired, serviceSetupView } from './serviceSetup.js';
+import { SERVICE_SETUP_SQL_MESSAGES, serviceSetupFlow, serviceSetupIssues, serviceSetupRequired, serviceSetupView } from './serviceSetup.js';
+import { SignatureEvidenceError, submitSalesOrderWithSignatureEvidence } from '../admin/signatureEvidence.js';
 import { IN_CHUNK_SIZE } from '../supabaseInChunks.js';
 
 const MAX_ROWS = 1000;
@@ -201,7 +202,7 @@ test('loadServiceSetupContext — บริบทเต็มตามรูป�
   assert.deepEqual(ctx.installments.map((i) => i.seq), [1, 2]);
   assert.deepEqual(ctx.customerBillingRule, { kind: 'monthly', day: 25 });
   assert.deepEqual(ctx.contract, { id: 'CT1', contractNo: 'CT-2609-001', status: 'signed', effectiveDate: '2026-10-01', expiryDate: '2027-09-30' });
-  assert.deepEqual(ctx.predecessor, { id: 'SO0', orderNumber: 'SO-26080001-0', activePlanSiteIds: ['S1', 'S2'] });
+  assert.deepEqual(ctx.predecessor, { id: 'SO0', orderNumber: 'SO-26080001-0', activePlanSiteIds: ['S1', 'S2'], standardMlTermCount: 0 });
   assert.deepEqual(ctx.siblingSites, [{ customerId: 'C2', arCode: 'AR-0790', siteCount: 1 }]);
   assert.equal(ctx.unsaved, false);
 
@@ -343,8 +344,10 @@ test('อ่านพังที่ไหน = throw ข้อความไ�
     ['งวด', (s) => s.table === 'sales_order_installments', /อ่านงวดชำระไม่สำเร็จ/],
     ['รอบวางบิล', (s) => s.table === 'customers' && s.select.includes('billingRule'), /อ่านรอบวางบิลของลูกค้าไม่สำเร็จ/],
     ['สัญญา', (s) => s.table === 'sales_contracts', /อ่านสัญญาที่ผูกกับใบไม่สำเร็จ/],
-    ['รอบขายใบอื่น', (s) => s.table === 'service_zone_terms', /อ่านรอบขายของใบอื่นบนโซนที่ตั้งไม่สำเร็จ/],
+    ['รอบขายใบอื่น', (s) => s.table === 'service_zone_terms' && s.select.includes('zoneId'), /อ่านรอบขายของใบอื่นบนโซนที่ตั้งไม่สำเร็จ/],
     ['ใบเดิม', (s) => s.table === 'service_plans', /อ่านรอบบริการของใบเดิมไม่สำเร็จ/],
+    /* mig 0404: รอบขายของใบเดิม (มาตรฐาน มล./เดือนที่ TS ตั้ง) — อ่านไม่ขึ้นแล้วเดาว่า "ไม่มี" = ด่านข้ามของใบ Rev. เปิดเอง */
+    ['มาตรฐานของใบเดิม', (s) => s.table === 'service_zone_terms' && s.select.includes('standardMlPerMonth'), /อ่านรอบขายของใบเดิมไม่สำเร็จ/],
     ['แพ็คเกจที่เลือก', (s) => s.table === 'products' && s.inColumn === 'id', /อ่านแพ็คเกจที่เลือกไว้ไม่สำเร็จ/],
     ['นิติบุคคลเดียวกัน', (s) => s.table === 'customers' && s.select.includes('taxId'), /อ่านลูกค้านิติบุคคลเดียวกันไม่สำเร็จ/],
     ['ไซต์ของพี่น้อง', (s) => s.table === 'service_sites' && !s.select.includes('code'), /อ่านไซต์ของลูกค้านิติบุคคลเดียวกันไม่สำเร็จ/],
@@ -550,4 +553,114 @@ test('0400 ตัวห่อ RPC บันทึก — ก้อนที่�
   const incomplete = fakeSupabase({}, { rpc: { submit_sales_order_service_setup: () => ({ data: null, error: { message: 'sales_order_service_setup_incomplete', details: 'line_period_missing:L2,rounds_missing:L2', code: 'P0001' } }) } });
   const { error } = await rpcServiceSetup(incomplete.client, 'submit_sales_order_service_setup', {});
   assert.deepEqual([error.status, error.detailCodes], [409, ['line_period_missing:L2', 'rounds_missing:L2']]);
+});
+
+/* ══ ยื่นอนุมัติโดยยังไม่ตั้งงานบริการ (mig 0404 · `submit_sales_order_deferring_service_setup`) ══════════════════════════════ */
+
+const DEFER_FN = 'submit_sales_order_deferring_service_setup';
+const deferInput = (over = {}) => ({
+  orderId: 'SO1', evidenceId: 'DSE-1', expectedUpdatedAt: '2026-10-02T02:30:11.170722+00:00', documentFingerprint: 'fp-abc',
+  user: { id: 'U1', name: 'สมชาย', email: 's@x', role: 'ae', team: 'T1' }, ...over,
+});
+/* จับ console.error ระหว่างรัน — ของที่ไม่รู้จักต้องลง log และข้อความดิบต้องไม่ออกไปที่จอ */
+async function withErrorLog(run) {
+  const original = console.error;
+  const logged = [];
+  console.error = (...args) => logged.push(args);
+  try { return { result: await run(), logged }; } finally { console.error = original; }
+}
+
+test('0404 🔴 ตัวห่อ RPC ยื่นแบบข้าม — พารามิเตอร์เท่ากับการยื่นปกติทุกตัว (ผู้ลงนามไม่ถอยไปใช้อีเมล · D-F20) · เวอร์ชันตามตัวอักษร', async () => {
+  const doc = { document: { id: 'SO1', status: 'pending_approval', serviceSetupDeferredAt: 'now' }, evidence: { id: 'DSE-1' } };
+  const users = [
+    { id: 'U1', name: 'สมชาย', email: 's@x', role: 'ae', team: 'T1' },
+    /* ไม่มีชื่อ: การยื่นปกติส่ง null (ไม่ใช่อีเมล) — ตัวยื่นเดิมเขียนค่านี้ลง submittedByName และหลักฐานลายเซ็นผู้จัดทำ */
+    { id: 'U2', name: '', email: 'e@x', role: 'ae', team: '' },
+    { id: 'U3', email: 'only@x' },
+  ];
+  for (const user of users) {
+    const { client, rpcCalls } = fakeSupabase({}, {
+      rpc: { [DEFER_FN]: () => ({ data: doc, error: null }), submit_sales_order_with_signature_evidence_atomic: () => ({ data: doc, error: null }) },
+    });
+    const input = deferInput({ user });
+    assert.deepEqual(await submitOrderDeferringServiceSetup(client, input), { data: doc });
+    await submitSalesOrderWithSignatureEvidence(client, {
+      documentId: input.orderId, evidenceId: input.evidenceId, expectedUpdatedAt: input.expectedUpdatedAt,
+      documentFingerprint: input.documentFingerprint, user,
+    });
+    assert.deepEqual(rpcCalls.map((call) => call.fn), [DEFER_FN, 'submit_sales_order_with_signature_evidence_atomic']);
+    assert.deepEqual(rpcCalls[0].params, rpcCalls[1].params, `พารามิเตอร์ต้องเท่ากับการยื่นปกติ (${user.id})`);
+    assert.deepEqual(Object.keys(rpcCalls[0].params), ['p_order_id', 'p_evidence_id', 'p_expected_updated_at', 'p_document_fingerprint',
+      'p_actor_id', 'p_actor_name', 'p_actor_role', 'p_actor_team'], 'ลำดับ/ชื่อเดียวกับลายเซ็นของฟังก์ชันใน 0404');
+    assert.equal(rpcCalls[0].params.p_expected_updated_at, '2026-10-02T02:30:11.170722+00:00', 'ไมโครวินาทีอยู่ครบ — ฐานเทียบถึงไมโครวินาที');
+  }
+  /* ชื่อว่าง ⇒ null ไม่ใช่อีเมล */
+  const { client, rpcCalls } = fakeSupabase({}, { rpc: { [DEFER_FN]: () => ({ data: doc, error: null }) } });
+  await submitOrderDeferringServiceSetup(client, deferInput({ user: { id: 'U2', email: 'e@x', role: 'ae' } }));
+  assert.deepEqual([rpcCalls[0].params.p_actor_name, rpcCalls[0].params.p_actor_team], [null, null]);
+});
+
+test('0404 ตัวห่อ RPC ยื่นแบบข้าม — รหัสของงานบริการ → ข้อความ/สถานะจากแคตตาล็อก · รหัสลายเซ็นของตัวยื่นเดิมไหลผ่านเหมือนการยื่นปกติ', async () => {
+  const failing = (error) => fakeSupabase({}, { rpc: { [DEFER_FN]: () => ({ data: null, error }) } }).client;
+  const M = SERVICE_SETUP_SQL_MESSAGES;
+  for (const [code, status] of [
+    ['service_setup_defer_state_invalid', 409], ['service_setup_defer_nothing', 409], ['service_setup_defer_terms_exist', 409],
+    ['service_setup_defer_plans_running', 409], ['workflow_stale', 409], ['service_setup_forbidden', 403], ['sales_order_not_found', 404],
+  ]) {
+    const out = await submitOrderDeferringServiceSetup(failing({ message: code, code: 'P0001' }), deferInput());
+    assert.deepEqual(out, { error: { status, message: M[code].message, code, extra: {} } }, code);
+  }
+
+  /* ยังไม่มีลายเซ็น = 409 + ลิงก์ไปบัญชีของฉัน · คำ "ก่อนยื่นอนุมัติ" (ไม่ใช่ "ก่อนอนุมัติ") */
+  const unsigned = await submitOrderDeferringServiceSetup(failing({ message: 'signature_evidence_signature_required', code: 'P0001' }), deferInput());
+  assert.deepEqual(unsigned, { error: {
+    status: 409, message: 'กรุณาเพิ่มลายเซ็นอิเล็กทรอนิกส์ในบัญชีของฉันก่อนยื่นอนุมัติ', code: 'signature_required', extra: { accountUrl: '/account' },
+  } });
+  /* ตัวยื่นเดิมตีกลับ (เอกสารไม่ครบ · สถานะเปลี่ยนใต้ล็อก) — ผลเดียวกับที่การยื่นปกติตอบ */
+  for (const raw of ['signature_evidence_document_incomplete', 'signature_evidence_submit_state_invalid', 'signature_evidence_approval_stale']) {
+    const error = { message: raw, code: 'P0001' };
+    const out = await submitOrderDeferringServiceSetup(failing(error), deferInput());
+    let normal;
+    try {
+      await submitSalesOrderWithSignatureEvidence(fakeSupabase({}, { rpc: { submit_sales_order_with_signature_evidence_atomic: () => ({ data: null, error }) } }).client,
+        { documentId: 'SO1', evidenceId: 'DSE-1', expectedUpdatedAt: 'T', documentFingerprint: 'fp', user: deferInput().user });
+    } catch (thrown) { normal = thrown; }
+    assert.ok(normal instanceof SignatureEvidenceError);
+    assert.deepEqual(out.error, { status: normal.status, message: normal.message, code: normal.code, extra: normal.extra }, raw);
+  }
+});
+
+test('0404 ตัวห่อ RPC ยื่นแบบข้าม — ไม่รู้จัก = 500 (ข้อความดิบลง log ไม่ออกจอ) · 2xx ไม่มี document/evidence = 500 · ไม่ throw แม้ client พัง', async () => {
+  /* รหัสที่ไม่รู้จัก (เช่นยังไม่ได้รัน migration ⇒ ไม่มีฟังก์ชัน) */
+  const missing = { message: 'Could not find the function public.submit_sales_order_deferring_service_setup', code: 'PGRST202' };
+  const { result: unknown, logged } = await withErrorLog(() => submitOrderDeferringServiceSetup(
+    fakeSupabase({}, { rpc: { [DEFER_FN]: () => ({ data: null, error: missing }) } }).client, deferInput()));
+  assert.equal(unknown.error.status, 500);
+  assert.equal(unknown.data, undefined);
+  assert.doesNotMatch(unknown.error.message, /Could not find|PGRST/, 'ข้อความดิบของฐานไม่ออกไปถึงจอ');
+  assert.equal(typeof unknown.error.message, 'string');
+  assert.ok(unknown.error.message.length > 0);
+  assert.deepEqual(unknown.error.extra, {});
+  assert.equal(logged.length, 1, 'ของที่ไม่รู้จักต้องลง log');
+  assert.equal(logged[0][1], missing, 'log พก error ดิบ');
+
+  /* สำเร็จแต่รูปผลไม่ครบ = อ่านผลไม่ออก ไม่เดาว่าสำเร็จ */
+  for (const data of [null, {}, { document: { id: 'SO1' } }, { evidence: { id: 'E' } }]) {
+    const { result } = await withErrorLog(() => submitOrderDeferringServiceSetup(
+      fakeSupabase({}, { rpc: { [DEFER_FN]: () => ({ data, error: null }) } }).client, deferInput()));
+    assert.equal(result.error?.status, 500, JSON.stringify(data));
+    assert.equal(result.data, undefined);
+  }
+
+  /* 🔴 ไม่ throw: client โยนเอง (เน็ตหลุดกลางทาง) · ผู้เรียกลืมส่ง user — ได้ { error } เสมอ ให้ route ตอบเป็น JSON */
+  const exploding = { rpc: () => { throw new Error('socket hang up'); } };
+  const { result: thrown } = await withErrorLog(() => submitOrderDeferringServiceSetup(exploding, deferInput()));
+  assert.equal(thrown.error.status, 500);
+  const rejecting = { rpc: () => Promise.reject(new Error('fetch failed')) };
+  const { result: rejected } = await withErrorLog(() => submitOrderDeferringServiceSetup(rejecting, deferInput()));
+  assert.equal(rejected.error.status, 500);
+  const { result: noUser } = await withErrorLog(() => submitOrderDeferringServiceSetup(exploding, deferInput({ user: null })));
+  assert.equal(noUser.error.status, 500);
+  const { result: noArgs } = await withErrorLog(() => submitOrderDeferringServiceSetup(exploding));
+  assert.equal(noArgs.error.status, 500);
 });

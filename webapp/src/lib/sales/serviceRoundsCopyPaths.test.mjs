@@ -112,6 +112,10 @@ const REVISION_RESETS = new Set([
   /* ผู้/เวลา/เหตุที่เปิดแก้งานบริการหลังอนุมัติ (mig 0396) — ตั้งใจไม่ก๊อป: เป็นประวัติของ *ใบเดิม* · ใบ Rev. เริ่มเส้นงานบริการใหม่
      ด้วยการอนุมัติของตัวเอง (P2 ยกแค่ชนิด/แพ็คเกจ/โซน/ช่วงบริการ) · ก๊อปมา = ใบ Rev. ขึ้นป้าย "แก้หลังอนุมัติ" ทั้งที่ไม่เคยถูกเปิดแก้ */
   'serviceSetupReopenedAt', 'serviceSetupReopenedById', 'serviceSetupReopenedByName', 'serviceSetupReopenedReason',
+  /* ตรา "ยื่นโดยยังไม่ตั้งงานบริการ" (mig 0404 · ใคร/เมื่อไรที่เลือกข้ามตอนยื่น) — ตั้งใจไม่ก๊อป: เป็นการเลือกของ *การยื่นรอบนั้น*
+     ของใบเดิม · ใบ Rev. เป็นร่าง (CHECK `sales_orders_service_setup_defer_shape` ห้ามร่าง/ตีกลับมีตรา ⇒ ก๊อปมา = INSERT ตายที่ CHECK)
+     และผู้ยื่นต้องเลือกข้ามใหม่เองทุกครั้งที่ยื่น · ก๊อปมา = ใบ Rev. ถูกอนุมัติแบบไม่ส่งงานให้ TS ทั้งที่ไม่มีใครเลือก */
+  'serviceSetupDeferredAt', 'serviceSetupDeferredById', 'serviceSetupDeferredByName',
 ]);
 
 test('🪤 Rev. ของใบสั่งขายต้องพาทุกคอลัมน์ที่ยังมีความหมายไปด้วย', () => {
@@ -206,6 +210,9 @@ const DRAFT_OWNED = new Set([
   /* การเปิดแก้งานบริการหลังอนุมัติ (mig 0396) — มีได้เฉพาะใบ pipeline ที่อนุมัติแล้ว (CHECK `sales_orders_service_setup_reopen_shape`)
      ใบใหม่จากใบเสนอราคายังไม่เคยอนุมัติ ⇒ ว่างโดยนิยาม */
   'serviceSetupReopenedAt', 'serviceSetupReopenedById', 'serviceSetupReopenedByName', 'serviceSetupReopenedReason',
+  /* ตรา "ยื่นโดยยังไม่ตั้งงานบริการ" (mig 0404) — เขียนได้ที่เดียวคือ RPC ยื่นแบบข้าม (submit_sales_order_deferring_service_setup)
+     ตอนใบออกจากร่าง · ใบใหม่จากใบเสนอราคาเป็นร่าง ⇒ ว่างโดยนิยาม (CHECK `sales_orders_service_setup_defer_shape` ห้ามร่างมีตรา) */
+  'serviceSetupDeferredAt', 'serviceSetupDeferredById', 'serviceSetupDeferredByName',
 ]);
 
 /* 🪤 **ทะเบียนนี้ต้องไม่มีชื่อที่ไม่ใช่คอลัมน์จริง** — ของที่ประกาศเกินไม่ทำให้เทสต์แดง

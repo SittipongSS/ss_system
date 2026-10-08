@@ -13,7 +13,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { serviceSetupGet, serviceSetupPatch, serviceSetupPost } from './serviceSetupRoute.js';
 import {
-  SERVICE_REOPEN_BLOCKER_TEXT, SERVICE_SETUP_EDIT_TEXT, SERVICE_SETUP_SQL_MESSAGES, serviceReopenBlockedText,
+  SERVICE_DEFER_TEXT, SERVICE_DEFERRED_TEXT, SERVICE_REOPEN_BLOCKER_TEXT, SERVICE_SETUP_EDIT_TEXT, SERVICE_SETUP_SQL_MESSAGES,
+  serviceReopenBlockedText,
 } from './serviceSetup.js';
 import { apiWriteAllowed, lockedOut } from '../../proxy.js';
 
@@ -752,6 +753,149 @@ test('POST ย้อนหลังของใบที่เปิดแก้
   const rej = fakeSupabase(world({ order: submittedRow(reopenedCols) }), { rpc: { reject_sales_order_service_setup: rpcOk({ id: 'SO1' }) } });
   await serviceSetupPost({ supabase: rej.client, user: SUP, id: 'SO1', body: { action: 'reject', expectedUpdatedAt: UPDATED_AT, reason: 'โซนยังผิดอยู่ ตรวจอีกครั้ง' }, audit: rej.audit });
   assert.equal(rej.audits[0].summary, 'ตีกลับงานบริการ (แก้หลังอนุมัติ) SO-26090001-0: โซนยังผิดอยู่ ตรวจอีกครั้ง');
+});
+
+/* ══ ยื่นโดยยังไม่ตั้งงานบริการ (mig 0404) — ก้อน GET พก `skip` / `deferred` · เส้นตั้งย้อนหลังรับใบที่ข้ามโดยไม่มีอะไรเปลี่ยน ══════════ */
+
+const DEFER_COLS = {
+  serviceSetupDeferredAt: '2026-10-02T02:30:00+00:00', serviceSetupDeferredById: 'U-AE', serviceSetupDeferredByName: 'เอ ขายดี',
+};
+const DEFER_INFO = { at: DEFER_COLS.serviceSetupDeferredAt, byId: 'U-AE', byName: 'เอ ขายดี' };
+/* ใบที่ยังไม่ตอบ 'งานบริการ?' สักรายการ (บรรทัดพิมพ์เองสองบรรทัด · ไม่มีช่วงบริการ) — ไม่มีแพ็คเกจ ⇒ ไม่มีด่านงวด */
+const unansweredWorld = (order) => world({
+  order: { ...order, servicePeriodFrom: null, servicePeriodTo: null },
+  lines: [line('L2', 1), line('L3', 2)],
+  over: { sales_order_line_zones: [] },
+});
+
+test('0404 GET ใบร่าง — ผู้แก้ได้เห็นปุ่มข้าม (`skip`) พร้อมโมดัล · ผู้อ่าน/ใบที่ตั้งครบ = ก้อนกลาง · `deferred` null', async () => {
+  const f = fakeSupabase(unansweredWorld(soRow()));
+  const res = await serviceSetupGet({ supabase: f.client, user: AE, id: 'SO1' });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.deepEqual(res.body.issues.map((i) => i.key), ['kind_missing', 'kind_missing']);
+  assert.deepEqual(Object.keys(res.body.skip), ['visible', 'canSkip', 'blockedReason', 'lead', 'deferredCount', 'blockingCount', 'extraIssues', 'prompt']);
+  assert.deepEqual([res.body.skip.visible, res.body.skip.canSkip, res.body.skip.blockedReason, res.body.skip.deferredCount, res.body.skip.blockingCount],
+    [true, true, null, 2, 0]);
+  assert.equal(res.body.skip.lead, SERVICE_DEFER_TEXT.panelLead(2));
+  assert.equal(res.body.skip.prompt.title, SERVICE_DEFER_TEXT.title);
+  assert.equal(res.body.skip.prompt.subject, SERVICE_DEFER_TEXT.subject('SO-26090001-0'));
+  assert.equal(res.body.deferred, null);
+  assert.equal(res.body.updatedAt, UPDATED_AT, 'เวอร์ชันที่จอส่งกลับพร้อมการข้าม (ค่าดิบ)');
+  assert.equal(f.rpcCalls.length, 0, 'GET ไม่เขียนอะไร');
+
+  const none = { visible: false, canSkip: false, blockedReason: null, lead: null, deferredCount: 0, blockingCount: 0, extraIssues: [], prompt: null };
+  /* ฝ่ายบัญชีอ่านได้แต่แก้ไม่ได้ — ไม่มีสิทธิ์ = ไม่โชว์ */
+  const reader = await serviceSetupGet({ supabase: fakeSupabase(unansweredWorld(soRow())).client, user: FN, id: 'SO1' });
+  assert.deepEqual(reader.body.skip, none);
+  /* ใบที่ตั้งครบ — ไม่มีอะไรให้ข้าม */
+  const complete = await serviceSetupGet({ supabase: fakeSupabase(world()).client, user: AE, id: 'SO1' });
+  assert.deepEqual([complete.body.skip, complete.body.deferred, complete.body.issues], [none, null, []]);
+  /* ยังขาดงวดชำระด้วย (ข้ามไม่ได้) — ปุ่มยังโชว์ พร้อมเหตุที่จะบอกตอนกด */
+  const noMoney = world({ order: soRow({ servicePeriodFrom: null, servicePeriodTo: null }), over: { sales_order_installments: [] } });
+  const blocked = await serviceSetupGet({ supabase: fakeSupabase(noMoney).client, user: AE, id: 'SO1' });
+  assert.deepEqual(blocked.body.issues.map((i) => i.key), ['period_missing', 'installments_missing']);
+  assert.deepEqual([blocked.body.skip.visible, blocked.body.skip.canSkip, blocked.body.skip.prompt], [true, false, null]);
+  assert.equal(blocked.body.skip.blockedReason, SERVICE_DEFER_TEXT.blocked(1));
+  assert.equal(blocked.body.skip.lead, SERVICE_DEFER_TEXT.panelBlocked(1, 1));
+});
+
+test('0404 GET ใบ Rev. ที่ใบเดิมยังเดินรอบบริการ — ปุ่มข้ามโชว์แต่บล็อกด้วยเหตุของใบเดิม (อ่านรอบที่ยังเดินจาก service_plans)', async () => {
+  const rev = world({
+    order: soRow({ revisedFromId: 'SO-A', servicePeriodFrom: null, servicePeriodTo: null }),
+    lines: [line('L2', 1), line('L3', 2)],
+    over: {
+      sales_order_line_zones: [],
+      service_plans: [
+        { id: 'PL1', salesOrderId: 'SO-A', siteId: 'S1', isActive: true },
+        { id: 'PL2', salesOrderId: 'SO-A', siteId: 'S2', isActive: false },
+      ],
+    },
+  });
+  const res = await serviceSetupGet({ supabase: fakeSupabase(rev).client, user: AE, id: 'SO1' });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.deepEqual([res.body.skip.visible, res.body.skip.canSkip, res.body.skip.prompt], [true, false, null]);
+  assert.equal(res.body.skip.blockedReason, SERVICE_DEFER_TEXT.predecessorRunning('SO-26080073-0', 1));
+  assert.equal(res.body.skip.lead, SERVICE_DEFER_TEXT.panelPredecessor('SO-26080073-0'));
+  /* รอบของใบเดิมปิดหมดแล้ว = ข้ามได้ */
+  const idle = { ...rev, service_plans: rev.service_plans.map((plan) => ({ ...plan, isActive: false })) };
+  const ok = await serviceSetupGet({ supabase: fakeSupabase(idle).client, user: AE, id: 'SO1' });
+  assert.equal(ok.body.skip.canSkip, true);
+  /* ⭐ ตรวจทานรอบสุดท้าย: TS ตั้งมาตรฐาน มล./เดือนบนรอบขายของใบเดิมไว้ (อ่านจาก service_zone_terms ของใบเดิม) = ข้ามไม่ได้ แม้ไม่มีรอบเดิน
+     · รอบขายของใบอื่น/ที่ไม่มีค่ามาตรฐานไม่นับ */
+  const withMl = { ...idle, service_zone_terms: [
+    { id: 'T1', zoneId: 'Z1', salesOrderId: 'SO-A', standardMlPerMonth: 500 },
+    { id: 'T2', zoneId: 'Z2', salesOrderId: 'SO-A', standardMlPerMonth: null },
+    { id: 'T3', zoneId: 'Z1', salesOrderId: 'SO-OTHER', standardMlPerMonth: 900 },
+  ] };
+  const ml = await serviceSetupGet({ supabase: fakeSupabase(withMl).client, user: AE, id: 'SO1' });
+  assert.deepEqual([ml.body.skip.visible, ml.body.skip.canSkip, ml.body.skip.prompt], [true, false, null]);
+  assert.equal(ml.body.skip.blockedReason, SERVICE_DEFER_TEXT.predecessorStandard('SO-26080073-0', 1));
+  assert.equal(ml.body.skip.lead, SERVICE_DEFER_TEXT.panelPredecessorStandard('SO-26080073-0'));
+  const noMl = { ...idle, service_zone_terms: withMl.service_zone_terms.map((term) => (term.salesOrderId === 'SO-A' ? { ...term, standardMlPerMonth: null } : term)) };
+  assert.equal((await serviceSetupGet({ supabase: fakeSupabase(noMl).client, user: AE, id: 'SO1' })).body.skip.canSkip, true);
+});
+
+test('0404 GET ใบรออนุมัติที่ข้าม — `deferred` (ใคร · เมื่อไร · ยังข้ามอยู่ไหม) · `issues` = ข้อที่หยุดการอนุมัติเท่านั้น · โมดัลอนุมัติบอกว่ายังไม่ส่ง TS', async () => {
+  const pending = soRow({ status: 'pending_approval', submittedBy: 'U-AE', submittedByName: 'เอ ขายดี', submittedAt: DEFER_COLS.serviceSetupDeferredAt, ...DEFER_COLS });
+  const res = await serviceSetupGet({ supabase: fakeSupabase(unansweredWorld(pending)).client, user: SUP, id: 'SO1' });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.deepEqual([res.body.flow, res.body.mode], ['locked', 'read']);
+  assert.deepEqual(res.body.deferred, { ...DEFER_INFO, stage: 'pending', active: true, missing: 2, blocking: 0 });
+  assert.deepEqual(res.body.issues, [], 'ข้อของการตั้งงานบริการถูกเลื่อน — ไม่ใช่ข้อที่หยุดการอนุมัติ');
+  assert.deepEqual(res.body.approvalEffects, [SERVICE_DEFERRED_TEXT.approveEffectNoTs(2), SERVICE_DEFERRED_TEXT.approveEffectAfter]);
+  assert.deepEqual(res.body.approvalChecklist, [SERVICE_DEFERRED_TEXT.approveCheck(res.body.deferred)]);
+  assert.equal(res.body.stripText, SERVICE_DEFERRED_TEXT.strip(2));
+  assert.equal(res.body.hero.sub, SERVICE_DEFERRED_TEXT.heroPending);
+  assert.equal(res.body.skip.visible, false);
+  /* ใบรออนุมัติเดียวกันที่ไม่มีตรา (ใบที่ยื่นค้างอยู่ก่อน deploy) — ทุกข้อหยุดการอนุมัติเหมือนเดิม */
+  const plain = { ...pending, serviceSetupDeferredAt: null, serviceSetupDeferredById: null, serviceSetupDeferredByName: null };
+  const old = await serviceSetupGet({ supabase: fakeSupabase(unansweredWorld(plain)).client, user: SUP, id: 'SO1' });
+  assert.deepEqual([old.body.deferred, old.body.issues.map((i) => i.key)], [null, ['kind_missing', 'kind_missing']]);
+  /* เลือกข้ามไว้ แต่ตอนนี้ตั้งครบแล้ว — ไม่ใช่การอนุมัติแบบข้าม (เปิดงานให้ TS ตามปกติ) */
+  const complete = await serviceSetupGet({ supabase: fakeSupabase(world({ order: pending })).client, user: SUP, id: 'SO1' });
+  assert.deepEqual(complete.body.deferred, { ...DEFER_INFO, stage: 'pending', active: false, missing: 0, blocking: 0 });
+  assert.equal(complete.body.approvalEffects[0], SERVICE_DEFERRED_TEXT.approveEffectComplete);
+  assert.ok(complete.body.approvalEffects[1].startsWith('เปิดงานบริการให้ TS'));
+});
+
+test('0404 หลังอนุมัติแบบข้าม — เส้นตั้งย้อนหลังเดิม: GET โหมดแก้ + `deferred` · ยื่น/อนุมัติ/ตีกลับผ่าน RPC เดิม · สรุป audit บอก "(ข้ามตอนยื่น)"', async () => {
+  const get = await serviceSetupGet({ supabase: fakeSupabase(unansweredWorld(backfillRow(DEFER_COLS))).client, user: AE, id: 'SO1' });
+  assert.deepEqual([get.body.flow, get.body.mode, get.body.backfill.canSubmit], ['backfill', 'edit', true]);
+  assert.deepEqual(get.body.deferred, { ...DEFER_INFO, stage: 'approved', active: true, missing: 2, blocking: 0 });
+  assert.deepEqual(get.body.issues.map((i) => i.key), ['kind_missing', 'kind_missing'], 'ด่านยื่นตรวจเต็มชุด');
+  assert.equal(get.body.skip.visible, false);
+  /* ยังไม่ครบ = ยื่นตรวจไม่ได้ (ด่านเดิม) */
+  const early = fakeSupabase(unansweredWorld(backfillRow(DEFER_COLS)));
+  const refused = await serviceSetupPost({ supabase: early.client, user: AE, id: 'SO1', body: { action: 'submit', expectedUpdatedAt: UPDATED_AT }, audit: early.audit });
+  assert.equal(refused.status, 400);
+  assert.equal(early.rpcCalls.length, 0);
+
+  const sub = fakeSupabase(world({ order: backfillRow(DEFER_COLS) }), {
+    rpc: { submit_sales_order_service_setup: rpcOk({ id: 'SO1', serviceSetupState: 'submitted' }) },
+  });
+  const submitted = await serviceSetupPost({ supabase: sub.client, user: AE, id: 'SO1', body: { action: 'submit', expectedUpdatedAt: UPDATED_AT }, audit: sub.audit });
+  assert.equal(submitted.status, 200, JSON.stringify(submitted.body));
+  assert.deepEqual(sub.rpcCalls.map((c) => c.fn), ['submit_sales_order_service_setup'], 'RPC เดิม — ไม่มีทางใหม่');
+  assert.equal(sub.audits[0].summary, 'ยื่นตรวจงานบริการ (ข้ามตอนยื่น) SO-26090001-0 — 2 โซนใน 1 ไซต์');
+
+  const app = fakeSupabase(world({ order: submittedRow(DEFER_COLS) }), { rpc: { approve_sales_order_service_setup: approvedResult } });
+  const approved = await serviceSetupPost({ supabase: app.client, user: SUP, id: 'SO1', body: approveBody(), audit: app.audit });
+  assert.equal(approved.status, 200, JSON.stringify(approved.body));
+  assert.equal(approved.body.termsOpened, 2);
+  assert.equal(app.audits[0].summary, 'อนุมัติงานบริการ (ข้ามตอนยื่น) SO-26090001-0 — เปิดรอบขาย 2 โซนให้ TS');
+
+  const rej = fakeSupabase(world({ order: submittedRow(DEFER_COLS) }), { rpc: { reject_sales_order_service_setup: rpcOk({ id: 'SO1' }) } });
+  await serviceSetupPost({ supabase: rej.client, user: SUP, id: 'SO1', body: { action: 'reject', expectedUpdatedAt: UPDATED_AT, reason: 'โซนยังผิดอยู่ ตรวจอีกครั้ง' }, audit: rej.audit });
+  assert.equal(rej.audits[0].summary, 'ตีกลับงานบริการ (ข้ามตอนยื่น) SO-26090001-0: โซนยังผิดอยู่ ตรวจอีกครั้ง');
+
+  /* ใบที่ถูกเปิดแก้ทีหลัง (ข้าม → ประทับ → เปิดแก้) = "(แก้หลังอนุมัติ)" — เหตุการณ์ที่เกิดทีหลังชนะ */
+  const reopenedLater = {
+    ...DEFER_COLS, serviceSetupReopenedAt: '2026-10-09T08:15:00+00:00', serviceSetupReopenedById: 'U-AE',
+    serviceSetupReopenedByName: 'เอ ขายดี', serviceSetupReopenedReason: 'SA คีย์โซนผิด รายการ 2 ต้องเป็นอีกโซน',
+  };
+  const both = fakeSupabase(world({ order: backfillRow(reopenedLater) }), { rpc: { submit_sales_order_service_setup: rpcOk({ id: 'SO1' }) } });
+  await serviceSetupPost({ supabase: both.client, user: AE, id: 'SO1', body: { action: 'submit', expectedUpdatedAt: UPDATED_AT }, audit: both.audit });
+  assert.equal(both.audits[0].summary, 'ยื่นตรวจงานบริการ (แก้หลังอนุมัติ) SO-26090001-0 — 2 โซนใน 1 ไซต์');
 });
 
 test('POST — คำสั่งที่ไม่รู้จัก = 400 ก่อนอ่านอะไร', async () => {

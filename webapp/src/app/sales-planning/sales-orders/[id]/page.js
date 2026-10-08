@@ -108,14 +108,15 @@ import { deliveryDueAmendError } from "@/lib/sales/salesOrderDeliveryDue";
 /* ⭐ งานบริการรายบรรทัด (mig 0392 · PR-A) — ตัวตัดสินทุกตัวอยู่ที่ serviceSetup.js · ก้อน GET `…/service-setup`
    (useServiceSetup) คือความจริงเดียวของตาราง/แผงแดง/การ์ดราง/แถบผู้อนุมัติ/หัวใบ — หน้านี้แค่ต่อสาย */
 import {
-  SERVICE_REOPEN_TEXT, SERVICE_REOPENED_TEXT, SERVICE_SETUP_PANEL_TEXT, issuesByTab, serviceBackfillAwaitingReview, serviceSetupFieldId,
-  serviceSetupIssues, serviceSetupRequired, serviceSetupRevisionLine,
+  SERVICE_DEFER_TEXT, SERVICE_DEFERRED_TEXT, SERVICE_REOPEN_TEXT, SERVICE_REOPENED_TEXT, SERVICE_SETUP_PANEL_TEXT, issuesByTab,
+  serviceBackfillAwaitingReview, serviceSetupDeferred, serviceSetupFieldId, serviceSetupIssues, serviceSetupRequired, serviceSetupRevisionLine,
 } from "@/lib/sales/serviceSetup";
 import useServiceSetup from "@/components/salesPlanning/serviceSetup/useServiceSetup";
 import SalesOrderServiceLines, { revealServiceSetupField } from "@/components/salesPlanning/serviceSetup/SalesOrderServiceLines";
 import SubmitGateNotice from "@/components/salesPlanning/serviceSetup/SubmitGateNotice";
 import { ServiceBackfillBanner, ServiceBackfillRailCard } from "@/components/salesPlanning/serviceSetup/ServiceBackfillPanel";
 import ServiceSetupStrip from "@/components/salesPlanning/serviceSetup/ServiceSetupStrip";
+import ServiceDeferNotice from "@/components/salesPlanning/serviceSetup/ServiceDeferNotice";
 import {
   backfillRailOnTop, backfillRailPressed, localSetupCtx, mergedLines, submitIssuesAfterSave,
 } from "@/components/salesPlanning/serviceSetup/serviceSetupDraft";
@@ -408,11 +409,15 @@ export default function SalesOrderDetailPage() {
     return map;
   }, [submitIssues]);
 
-  const showSubmitIssues = (issues, warnings, flow, source) => setSubmitIssues({
+  /* ⭐ `skip` (mig 0404) = ก้อน `view.skip` ของ **คำตอบเดียวกับที่ให้ข้อชุดนี้** (GET สด หรือ 400 ของ route) — ท้ายแผง "ยื่นโดยยังไม่ตั้งงานบริการ"
+       วาดจากตัวนี้ ไม่ใช่จากก้อนงานบริการสดของหน้า: แผงคือ "ภาพ ณ ตอนกด" (บันทึกงานบริการแล้วแผงคงเดิม · r2 S9) ⇒ จำนวนบนบรรทัดท้ายแผง
+       ต้องเป็นของภาพเดียวกับแถว/ป้าย 'ข้ามได้' (เดิมอ่านก้อนสด ⇒ บันทึกแล้วแถวยัง 7 ข้อแต่ท้ายแผงบอก "ข้าม 6 ข้อ") · ไม่ส่ง = ไม่มีท้ายแผง */
+  const showSubmitIssues = (issues, warnings, flow, source, skip = null) => setSubmitIssues({
     issues: Array.isArray(issues) ? issues : [],
     warnings: Array.isArray(warnings) ? warnings : [],
     flow,
     source,
+    skip: skip?.visible ? skip : null,
     checkedAt: new Date().toISOString(),
   });
 
@@ -475,11 +480,23 @@ export default function SalesOrderDetailPage() {
       if (issues && action === "submit") {
         setConfirmState(null);
         setError("");
-        showSubmitIssues(issues, data.warnings, "pipeline", "server");
+        showSubmitIssues(issues, data.warnings, "pipeline", "server", data.skip);
       } else {
         setError(issues ? issuesErrorText(data.error || "อัปเดตใบสั่งขายไม่สำเร็จ", issues) : (data.error || "อัปเดตใบสั่งขายไม่สำเร็จ"));
       }
-      if (issues) refreshServiceSetup();
+      /* ⭐ ยื่นโดยยังไม่ตั้งงานบริการ (mig 0404) ไม่ผ่าน = ก้อนงานบริการบนจอเก่าแล้วเสมอ (ใบขยับ · งานบริการครบไปแล้ว · ข้ามไม่ได้แล้ว)
+         ⇒ โหลดใหม่ทุกกรณี
+         🔴 **ทักเหตุทุกครั้ง** (ไม่ใช่เฉพาะตอน route ตอบ `issues`): โมดัลยืนยันของปุ่มนี้ปิดเสมอ และแถบ error ของหน้าอยู่ **เหนือ** แผงแดงที่ผู้ใช้
+            มองอยู่ (พ้นจอ 228–1,040px ตามความกว้าง — ตรวจทานรอบสุดท้าย) ⇒ ไม่ทัก = โมดัลปิดแล้วไม่มีอะไรบอกว่าทำไมไม่ผ่าน
+            (แท็บค้าง 409 · ยังไม่มีลายเซ็น · รอบขายค้าง · หลักฐานยืนยันคำสั่งซื้อ · 500) · ยังไม่มีลายเซ็น = ทักพร้อมปุ่มไปหน้าบัญชี
+            (ลิงก์เดียวกับแถบ error — `accountUrl` ของ route) */
+      if (action === "submit" && payload.deferServiceSetup) {
+        const accountUrl = data.accountUrl || "";
+        notifyToast.error(data.error || SERVICE_DEFER_TEXT.failed, accountUrl
+          ? { action: { label: "ไปบัญชีของฉัน", onClick: () => router.push(accountUrl) } }
+          : {});
+      }
+      if (issues || payload.deferServiceSetup) refreshServiceSetup();
       setErrorActionUrl(data.accountUrl || "");
       if (action === "save") setSaveState("error");
       /* ⭐ **ตีกลับ = จอไม่ตรงกับของจริงแล้ว ⇒ ดึงตัวใบกลับมา** — ด่านของ SO อ่านแถวสด
@@ -509,14 +526,21 @@ export default function SalesOrderDetailPage() {
       /* ⚠️ ข้อความของใบปกติพูดว่า "อัปเดต Actual แล้ว" ซึ่งไม่จริงกับใบย้อนหลังสักตัวอักษร —
          ของใบนี้บอกสิ่งที่เกิดจริง (อนุมัติ: เอกสารแทนสัญญาได้เลข CT · งวดขึ้นคิวบัญชี · โซนขึ้นคิว TS ·
          ยกเลิก: สัญญาถูกยกเลิกตาม · งวดยกมาเป็นโมฆะ · ทางคีย์ใหม่ — จากคำตอบของ route · มติ 24/09)
-         ⭐ ใบบริการที่อนุมัติแล้วเปิดงานให้ TS (mig 0392 · `termsOpened` จาก route) = บอกจำนวนโซนที่เปิด (ภาคผนวก A.5) */
+         ⭐ ใบบริการที่อนุมัติแล้วเปิดงานให้ TS (mig 0392 · `termsOpened` จาก route) = บอกจำนวนโซนที่เปิด (ภาคผนวก A.5)
+         ⭐ ใบที่ยื่นโดยยังไม่ตั้งงานบริการ (mig 0404): อนุมัติแล้ว **ไม่** เปิดงานให้ TS — ตัดสินจาก **แถวที่ route คืน** ด้วยตัวตัดสินกลาง
+            (`serviceSetupDeferred(data)` = อนุมัติแล้ว ยังไม่ประทับ และมีตราการข้าม) ไม่ใช่จากด่านบนจอ: ถ้าฐานเห็นว่าครบแล้วมันเปิดงานให้ TS
+            ตามปกติ แถวที่คืนจะประทับแล้ว ⇒ ตกไปกิ่ง "เปิดงานบริการ n โซนให้ TS" เอง · ยื่นแบบข้าม = ทักว่าข้ามไว้ ตั้งได้หลังอนุมัติ */
       msg: (action === "approve" && isHistoricalOrder(order)
         ? HISTORICAL_APPROVE_TOAST
-        : action === "approve" && Number(data?.termsOpened) > 0
-          ? `อนุมัติแล้ว · เปิดงานบริการ ${fmtNumber(Number(data.termsOpened))} โซนให้ TS`
-          : action === "cancel" && isHistoricalOrder(order)
-            ? historicalCancelToast(data)
-            : ACTION_MESSAGE[action]) || "อัปเดตเรียบร้อยแล้ว",
+        : action === "approve" && setupRequired && serviceSetupDeferred(data)?.stage === "approved"
+          ? SERVICE_DEFERRED_TEXT.approvedToast
+          : action === "approve" && Number(data?.termsOpened) > 0
+            ? `อนุมัติแล้ว · เปิดงานบริการ ${fmtNumber(Number(data.termsOpened))} โซนให้ TS`
+            : action === "submit" && payload.deferServiceSetup
+              ? SERVICE_DEFER_TEXT.toast
+              : action === "cancel" && isHistoricalOrder(order)
+                ? historicalCancelToast(data)
+                : ACTION_MESSAGE[action]) || "อัปเดตเรียบร้อยแล้ว",
     });
     if (action === "save") setSaveState("saved");
     return data || true;
@@ -558,6 +582,15 @@ export default function SalesOrderDetailPage() {
     setEditMode(false);
   }
 
+  /* สองบรรทัดของ **ทุกการยื่น** (ยื่นอนุมัติปกติ · ยื่นโดยยังไม่ตั้งงานบริการ — mig 0404): เอกสารล็อก + ยอดขึ้นเป็น "รออนุมัติ"
+     เขียนที่เดียว ⇒ สองโมดัลบอกทางของเงินด้วยคำเดียวกันเสมอ (กติกา approval-confirm-modals #1223) */
+  function submitMoneyLines() {
+    return [
+      "หลังยื่นแล้วเอกสารจะถูกล็อก ผู้ยื่นดึงเอกสารของตัวเองกลับได้",
+      `ยอด ${fmtMoney(order.actualAmount)} (ก่อน VAT) จะขึ้นเป็น "${PENDING_APPROVAL_LABEL}" บนภาพรวม ดีล และโครงการ — ยังไม่นับเป็น Actual จนกว่าจะอนุมัติ`,
+    ];
+  }
+
   /* ⭐ จังหวะที่ยอดกลายเป็น "รออนุมัติ" คือปุ่มนี้ (มติผู้ใช้ 2026-09-11 · mig 0353) — โมดัล
      ต้องบอกว่าเงินไปอยู่ไหน ไม่ใช่บอกแค่ว่าเอกสารถูกล็อก (กติกา approval-confirm-modals #1223) */
   function openSubmitConfirm() {
@@ -573,8 +606,7 @@ export default function SalesOrderDetailPage() {
       title: "ยื่นอนุมัติ ใบสั่งขาย",
       description: `ยืนยันยื่น ${order.orderNumber} ให้ AE Supervisor ตรวจอนุมัติหรือไม่`,
       detail: [
-        "หลังยื่นแล้วเอกสารจะถูกล็อก ผู้ยื่นดึงเอกสารของตัวเองกลับได้",
-        `ยอด ${fmtMoney(order.actualAmount)} (ก่อน VAT) จะขึ้นเป็น "${PENDING_APPROVAL_LABEL}" บนภาพรวม ดีล และโครงการ — ยังไม่นับเป็น Actual จนกว่าจะอนุมัติ`,
+        ...submitMoneyLines(),
         submitLine,
         ...warningLines,
       ].filter(Boolean).join("\n"),
@@ -615,7 +647,7 @@ export default function SalesOrderDetailPage() {
     const fresh = await freshServiceView();
     if (!fresh) return null;
     if (Array.isArray(fresh.issues) && fresh.issues.length) {
-      showSubmitIssues(fresh.issues, fresh.warnings, flow, "server");
+      showSubmitIssues(fresh.issues, fresh.warnings, flow, "server", flow === "pipeline" ? fresh.skip : null);
       return null;
     }
     setSubmitIssues(null);
@@ -635,6 +667,88 @@ export default function SalesOrderDetailPage() {
     submitLineRef.current = fresh.submitLine || null;
     submitWarningsRef.current = saWarningLines(fresh.warnings);
     openSubmitConfirm();
+  }
+
+  /* ── ปุ่ม "ยื่นโดยยังไม่ตั้งงานบริการ" บนแผงแดง (mig 0404 · มติเจ้าของ 01/10 "ผูกรอบบริการให้ข้ามได้ มาใส่ทีหลัง Actual ได้"
+        → ทาง "ฝ่ายขายกดข้ามเอง" · แผน IMPL_PLAN_DEFER §5.2) ────────────────────────────────────────────────────────────
+     ⭐ ปุ่มบนแผง **กดได้เสมอ** — ทุกการกดมาถึงที่นี่ แล้วโหลดก้อน GET **สด** ก่อนตัดสิน (หน้าเปิดทิ้งไว้ งานบริการอาจครบ/ใบถูกยื่นไปแล้ว/
+       ติดด่านไปแล้ว) · ตัวตัดสินทั้งหมดอยู่ที่ server (`view.skip` = `serviceSetupSkipState`) — หน้านี้ไม่คิดเองว่าข้ามได้ไหม
+       1) มีการแก้งานบริการที่ยังไม่บันทึก = ข้อเดียว "ยังไม่บันทึก" (ด่านของจอ · เหมือนยื่นอนุมัติ)
+       2) สดบอกว่าปุ่มไม่ควรมีแล้ว (`skip.visible` false): ยังเป็นร่างและยังมีข้อ = แผงแดงของสด + ทักว่าข้ามไม่ได้แล้ว ·
+          ยังเป็นร่างและครบแล้ว = ล้างแผง + ทักให้กดยื่นอนุมัติตามปกติ · ใบไม่ใช่ร่างแล้ว = ล้างแผง + ทักว่าข้ามไม่ได้แล้ว · โหลดตัวใบตาม
+       3) ติดด่าน (`blockedReason`: ยังเหลือข้อที่ข้ามไม่ได้ · ใบเดิมของ Rev. ยังเดินรอบบริการ) = แผงแดงของสด + ทักเหตุ ไม่เปิดโมดัล
+       4) ข้ามได้ = โมดัลยืนยันที่บอกผล (`skip.prompt` ของ server + สองบรรทัดของการยื่น + คำเตือนของฝ่ายขาย)
+     ⭐ ยิง `PATCH { action: "submit", deferServiceSetup: true, expectedUpdatedAt }` — เวอร์ชันของก้อนสดที่โมดัลโชว์ **ตามตัวอักษร**
+       (ผ่าน Date = ไมโครวินาทีหาย ⇒ 409 ทุกครั้ง) · ไม่ลองซ้ำ (requestAction → apiFetch PATCH)
+     ⭐ โมดัล **ปิดเสมอ** หลังยิง — เวอร์ชันที่โมดัลถือใช้ได้ครั้งเดียว (ค้างไว้ = กดซ้ำได้ 409 ทุกรอบ) · เหตุที่ไม่ผ่าน **ทักในจอทุกครั้ง**
+       (`requestAction` — แถบ error ของหน้าอยู่เหนือแผงแดง พ้นจอ) + แถบ error ของหน้า หรือเป็นแผงแดงเมื่อ route ตอบ `issues`
+       · `requestAction` ไม่จับ throw (เน็ตหลุด) ⇒ จับที่นี่: คืน busy + ขึ้นแถบ error + ทัก
+     ⭐ ฟอร์มเอกสารของใบมีของที่ยังไม่บันทึก = ไม่ยิง บอกเหตุตอนกด (`SERVICE_DEFER_TEXT.unsavedDocument`) — ก่อนด่านอื่นทั้งหมด */
+  async function pressSkipSubmit() {
+    setError("");
+    /* 🔴 ฟอร์มเอกสารของใบมีของที่ยังไม่บันทึก (โหมด ‘แก้ไขข้อมูล’ · ไฟล์ยืนยันคำสั่งซื้อที่เลือกค้าง · ร่างวันของงวด) = ไม่ยิง บอกเหตุตอนกด
+       ปุ่ม ‘ยื่นอนุมัติ’ ปกติหายไประหว่างแก้ (เหลือ ‘บันทึกร่าง’) แต่แผงแดงกับปุ่มนี้ยังอยู่ — ยื่นตอนนี้ `load()` เขียนทับฟอร์ม ของที่พิมพ์ค้าง
+       หายเงียบ แล้วใบล็อก (จะแก้ต้องดึงกลับ ซึ่งล้างการข้ามด้วย · ตรวจทานรอบสุดท้าย) */
+    if (dirty || datesDirty || confirmFiles.length) {
+      notifyToast.error(SERVICE_DEFER_TEXT.unsavedDocument);
+      return;
+    }
+    if (setup.dirty) {
+      showSubmitIssues(serviceSetupIssues({ unsaved: true }), [], "pipeline", "client");
+      return;
+    }
+    const fresh = await freshServiceView();
+    if (!fresh) {
+      /* โหลดก้อนสดไม่ขึ้น: เหตุอยู่ที่แถบ error ของหน้า (เหนือแผงแดง — พ้นจอ) ⇒ ทักซ้ำในจอที่ผู้ใช้มองอยู่ */
+      notifyToast.error(SERVICE_DEFER_TEXT.loadFailed);
+      return;
+    }
+    const skip = fresh.skip || null;
+    if (!skip?.visible) {
+      const stillDraft = fresh.flow === "pipeline";
+      if (stillDraft && fresh.issues?.length) {
+        showSubmitIssues(fresh.issues, fresh.warnings, "pipeline", "server");
+        notifyToast.error(SERVICE_DEFER_TEXT.gone);
+      } else {
+        setSubmitIssues(null);
+        if (stillDraft) notifyToast.info(SERVICE_DEFER_TEXT.complete);
+        else notifyToast.error(SERVICE_DEFER_TEXT.gone);
+      }
+      refreshOrder();
+      return;
+    }
+    /* แผงแดง = ภาพของก้อนสด (ข้อ/ป้าย 'ข้ามได้'/บรรทัดท้ายแผงตรงกับสิ่งที่กำลังจะยืนยัน)
+       + ข้อเงินที่การยื่นแบบข้ามต้องการเพิ่มบนใบที่ยังไม่ตอบ 'งานบริการ?' (`skip.extraIssues` — งวดชำระ/วันวางบิล/กำหนดชำระ · ไม่ใช่ข้อของการยื่นปกติ
+         จึงไม่อยู่ใน `fresh.issues`) ⇒ กดแล้วติด = เห็นเป็นแถวพร้อม "ไปแก้" ไม่ใช่แค่ตัวเลขบนบรรทัดท้ายแผง */
+    showSubmitIssues([...(fresh.issues || []), ...(skip.extraIssues || [])], fresh.warnings, "pipeline", "server", skip);
+    if (skip.blockedReason || !skip.prompt) {
+      notifyToast.error(skip.blockedReason || SERVICE_DEFER_TEXT.gone);
+      return;
+    }
+    const version = fresh.updatedAt ?? null;
+    setConfirmState({
+      ...approvalPrompt({
+        title: skip.prompt.title,
+        subject: skip.prompt.subject,
+        verb: skip.prompt.verb,
+        effects: [...submitMoneyLines(), ...skip.prompt.effects, ...saWarningLines(fresh.warnings)],
+        confirmLabel: skip.prompt.confirmLabel,
+      }),
+      tone: "warning",
+      showsError: true,
+      action: async () => {
+        try {
+          await requestAction("submit", { deferServiceSetup: true, expectedUpdatedAt: version });
+        } catch (failure) {
+          /* เน็ตหลุดกลางทาง: requestAction ไม่ได้จับ ⇒ คืน busy + แถบ error + ทักในจอ (โมดัลกำลังจะปิด · แถบ error อยู่เหนือแผงแดง) */
+          const message = failure?.message || SERVICE_DEFER_TEXT.failed;
+          setBusy("");
+          setError(message);
+          notifyToast.error(message);
+        }
+        return true;
+      },
+    });
   }
 
   /* ── งานบริการย้อนหลัง (ใบที่อนุมัติแล้ว · D11/D12) — ยื่นตรวจ · อนุมัติ · ตีกลับ ผ่าน POST `…/service-setup` ──────
@@ -1653,8 +1767,23 @@ export default function SalesOrderDetailPage() {
   ) : null;
   /* แถบสรุปของผู้อนุมัติ — ใบรออนุมัติของสาย SERVICE หรืองานบริการย้อนหลังที่รอตรวจ */
   const showSetupStrip = setupRequired && reviewer && (order.status === "pending_approval" || backfillAwaiting);
+  /* ⭐ ใบรออนุมัติที่ผู้ยื่นกด "ยื่นโดยยังไม่ตั้งงานบริการ" (mig 0404 · `setupView.deferred` ของก้อน GET — ตัวตัดสินกลาง `serviceSetupDeferred`)
+     ทุกคนที่เปิดใบเห็นประกาศเหนือแท็บ (`ServiceDeferNotice`) + ป้ายบนหัวใบเมื่อยังข้ามอยู่ (`active` = อนุมัติตอนนี้ยังไม่ส่งงานให้ TS)
+     ⚠️ ผูกกับสถานะของ **ตัวใบ** ด้วย — ก้อนงานบริการตามตัวใบช้ากว่าหนึ่งจังหวะ (ดึงกลับ/ตีกลับแล้วก้อนเก่ายังบอก 'pending' จนโหลดใหม่เสร็จ)
+       ⇒ ไม่ให้ประกาศ "ยื่นโดยยังไม่ตั้งงานบริการ" ค้างบนใบที่กลับเป็นร่างแล้ว · หลังอนุมัติเป็นหน้าที่ของแบนเนอร์/การ์ดรางเส้นตั้งย้อนหลัง */
+  const deferPending = setupRequired && order.status === "pending_approval" && setupView?.deferred?.stage === "pending"
+    ? setupView.deferred
+    : null;
   /* ป้ายบนหัวแท็บ: หลังกดยื่น = จำนวนข้อที่ติด (แดง) · ก่อนกด = "ครบ x/n" เป็นกลาง ขณะยังแก้ได้ (กฎ 3) */
   const tabIssueCounts = submitIssues ? issuesByTab(submitIssues.issues) : null;
+  /* ท้ายแผงแดง "ยื่นโดยยังไม่ตั้งงานบริการ" (mig 0404) — เฉพาะแผงของการยื่นอนุมัติ (pipeline) ที่ **server ตอบ** (ด่าน "ยังไม่บันทึก" ของจอ
+     ยังไม่ได้ถาม server ว่าข้ามได้ไหม) และคำตอบนั้นบอกว่าปุ่มนี้มีได้ (`skip.visible`: มีสิทธิ์แก้ใบ · ใบร่าง/ถูกตีกลับ · มีข้อของการตั้งงานบริการ)
+     ⚠️ ก้อน `skip` **ของภาพเดียวกับแผง** (`submitIssues.skip` — คำตอบเดียวกับที่ให้ข้อ) ไม่ใช่ก้อนงานบริการสดของหน้า: แถว · ป้าย 'ข้ามได้' ·
+        จำนวนบนบรรทัดท้ายแผงต้องเล่าเรื่องเดียวกัน (บันทึกงานบริการแล้วแผงคงภาพ ณ ตอนกด) · ปุ่มกดได้เสมอ — ทุกการกดโหลดก้อนสดแล้วบอกเหตุ/เปิดโมดัล
+        (`pressSkipSubmit`) แผงจึงตามทันเมื่อกด */
+  const submitGateSkip = submitIssues?.flow === "pipeline" && submitIssues.source === "server" && submitIssues.skip?.visible
+    ? submitIssues.skip
+    : null;
   const setupServiceLines = Number(setupView?.totals?.packageLines || 0) + Number(setupView?.totals?.unsetLines || 0);
   const setupTabProgress = !submitIssues && setupView?.mode === "edit" && setupServiceLines > 0
     ? `${fmtNumber(setupView.totals.completeLines || 0)}/${fmtNumber(setupView.totals.lineCount || 0)}`
@@ -1688,10 +1817,14 @@ export default function SalesOrderDetailPage() {
     : null;
   /* ยอดของใบย้อนหลังไม่ขยับ (ม็อก BackfillApprovedSo) — แทนคำอธิบายสถานะ "ยอดถูกนับเป็น Actual แล้ว" ในที่เดิม */
   /* ใบที่เปิดแก้หลังอนุมัติ (mig 0396 · `setupView.reopened` ของก้อน GET) พูดว่า "การแก้งานบริการ" ไม่ใช่ "ตั้งย้อนหลัง" (ภาคผนวก A.4) */
+  /* ใบที่อนุมัติโดยข้ามการตั้งงานบริการตอนยื่น (mig 0404 · `setupView.deferred`) พูดว่า "การตั้งงานบริการทีหลัง" — ใบนี้ไม่ใช่ใบเก่าที่ตั้งย้อนหลัง
+     · server ไม่ส่ง `reopened` กับ `deferred` พร้อมกัน (เหตุการณ์ที่เกิดทีหลังชนะ) · ไม่มีทั้งสอง = ประโยคของใบเดิมทุกตัวอักษร */
   const backfillActualNote = showBackfillPanel
     ? (setupView?.reopened
       ? SERVICE_REOPENED_TEXT.actualNote(order.approvedAt)
-      : `ยอดถูกนับเป็น Actual แล้ว (อนุมัติ ${fmtDate(order.approvedAt)}) — การตั้งงานบริการย้อนหลังไม่เปลี่ยนยอดนี้`)
+      : setupView?.deferred
+        ? SERVICE_DEFERRED_TEXT.actualNote(order.approvedAt)
+        : `ยอดถูกนับเป็น Actual แล้ว (อนุมัติ ${fmtDate(order.approvedAt)}) — การตั้งงานบริการย้อนหลังไม่เปลี่ยนยอดนี้`)
     : null;
   /* "ไปแก้" ของแผงแดง — สลับแท็บแล้วพาไปที่ช่อง (ข้อที่ไม่มีช่อง เช่น "ยังไม่มีงวด" = แค่สลับแท็บ) */
   /* ⚠️ สลับแท็บถามก่อนได้ (ร่างวันงวดค้างในแท็บการชำระ · #1846) ⇒ รอคำตอบ แล้วพาไปที่ช่องเฉพาะเมื่อสลับจริง
@@ -2039,7 +2172,7 @@ export default function SalesOrderDetailPage() {
           description={`${customerHeadline(order.customerName, order.customer?.arCode) || "ไม่ระบุลูกค้า"} · ${order.deal?.title || "ไม่ระบุดีล"}`}
           /* ⭐ ป้าย "ย้อนหลัง" + "ไม่นับ Actual" บนหัวใบ (ม็อก SoStatus) — โทน info ตัวเดียวกับชิปในทะเบียน
              และคิวงานเข้าใหม่ของ TS · คนที่เปิดใบมาต้องรู้ตั้งแต่บรรทัดแรกว่ายอดนี้ไม่เข้า Actual/FC/เป้า */
-          badges={<><SalesStateBadge label={status.label} color={status.color} />{historical && <StatusBadge size="sm" tone="info" label="ย้อนหลัง" />}{historical && <StatusBadge size="sm" tone="neutral" label="ไม่นับ Actual" />}{order.signatureEvidenceId && <span className="ui-badge" style={{ color: "var(--green)" }}>มีหลักฐานลายเซ็น</span>}{order.approvalMode === "admin_override" && <span className="ui-badge ui-badge-warn">Admin Override</span>}{financeStatus && <StatusBadge size="sm" tone={FINANCE_STATUS_TONES[financeStatus]} label={FINANCE_STATUS_LABELS[financeStatus]} />}{backfillAwaiting && <StatusBadge size="sm" tone="warning" label="งานบริการรอผู้จัดการตรวจ" />}</>}
+          badges={<><SalesStateBadge label={status.label} color={status.color} />{historical && <StatusBadge size="sm" tone="info" label="ย้อนหลัง" />}{historical && <StatusBadge size="sm" tone="neutral" label="ไม่นับ Actual" />}{order.signatureEvidenceId && <span className="ui-badge" style={{ color: "var(--green)" }}>มีหลักฐานลายเซ็น</span>}{order.approvalMode === "admin_override" && <span className="ui-badge ui-badge-warn">Admin Override</span>}{financeStatus && <StatusBadge size="sm" tone={FINANCE_STATUS_TONES[financeStatus]} label={FINANCE_STATUS_LABELS[financeStatus]} />}{backfillAwaiting && <StatusBadge size="sm" tone="warning" label="งานบริการรอผู้จัดการตรวจ" />}{deferPending?.active && <StatusBadge size="sm" tone="warning" label={SERVICE_DEFERRED_TEXT.badge} />}</>}
           facts={[
             { icon: CalendarDays, label: "วันที่ SO", value: fmtDate(order.orderDate) },
             // กำหนดชำระขึ้นแถบหัวแทน "Actual ในระบบ" ที่พูดซ้ำกับการ์ดสรุปฝั่งขวา
@@ -2213,6 +2346,7 @@ export default function SalesOrderDetailPage() {
               · แผงแดง: หลังกดยื่นแล้วไม่ผ่านเท่านั้น (กฎ 3) — "ไปแก้" สลับแท็บแล้วโฟกัสช่อง */}
           {setupFlow === "backfill" ? <ServiceBackfillBanner setup={setup} /> : null}
           {showSetupStrip ? <ServiceSetupStrip setup={setup} /> : null}
+          {deferPending ? <ServiceDeferNotice view={setupView} /> : null}
           {submitIssues ? (
             <div ref={submitGateRef} className={styles.submitGate}>
               <SubmitGateNotice
@@ -2221,6 +2355,9 @@ export default function SalesOrderDetailPage() {
                 flow={submitIssues.flow}
                 checkedAt={submitIssues.checkedAt}
                 onJump={jumpToIssue}
+                skip={submitGateSkip}
+                onSkip={pressSkipSubmit}
+                skipBusy={!!busy}
               />
             </div>
           ) : null}

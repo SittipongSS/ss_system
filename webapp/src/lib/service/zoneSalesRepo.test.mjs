@@ -131,6 +131,24 @@ test('บริบทการขายของไซต์: term · ใบข�
 
 /* 🪤 ยามเงินของใบย้อนหลัง (historicalMoneyGuards) จับคำสั่งอ่าน sales_orders ที่แตะ 'approved'/ยอด/ตัวกรองสถานะ/select('*')
    ⇒ ตัวโหลดใหม่เลือกคอลัมน์ตามชื่อ กรองด้วย id อย่างเดียว แล้วตัดสินสถานะใน JS (กฎ 18 ของแผน C) */
+/* 🔴 select ของใบต้องพกทุกช่องที่ `setupOrderState` → `serviceBackfillState` / `serviceSetupReopened` อ่าน — ขาดช่องเดียว ตัวตัดสินตอบจากค่า
+   undefined เงียบ ๆ (mig 0404: ขาด "serviceSetupDeferredAt" = ใบที่ยื่นแบบข้ามหลังเคยเปิดแก้ ถูกเล่าว่า "แก้หลังอนุมัติ" บนป้ายโซน/ชิปด่านนัด
+   ขณะที่หน้าใบ/ทะเบียน/แท็บ TS บอก "ข้ามตอนยื่น" — ตรวจทานรอบสุดท้าย lib-02) */
+test('🔴 0404: select ของ sales_orders พกทุกช่องที่ตัวติดป้ายอ่าน (รวม "serviceSetupReopenedAt" ของ 0396 และ "serviceSetupDeferredAt" ของ 0404)', () => {
+  const src = readFileSync(new URL('./zoneSalesRepo.js', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const selects = [...src.matchAll(/from\('sales_orders'\)\.select\('([^']*)'\)/g)].map((m) => m[1]);
+  assert.ok(selects.length >= 1, 'ไม่เจอ select ของ sales_orders');
+  const setupSelect = selects.find((cols) => cols.includes('"serviceSetupState"'));
+  assert.ok(setupSelect, 'ไม่เจอ select ที่ป้อน setupOrderState');
+  for (const col of ['status', '"supersededById"', '"serviceTermsOpenedAt"', '"serviceSetupState"', 'origin', '"serviceSetupReopenedAt"', '"serviceSetupDeferredAt"']) {
+    assert.ok(setupSelect.split(',').map((c) => c.trim()).includes(col), `select ขาด ${col}`);
+  }
+  /* ตัวตัดสินอ่านช่องของ 0404 จริง — ถ้าวันหนึ่งเลิกอ่าน ยามนี้ต้องถูกทบทวนพร้อมกัน */
+  const lib = readFileSync(new URL('../sales/serviceSetup.js', import.meta.url), 'utf8');
+  const reopened = lib.slice(lib.indexOf('export function serviceSetupReopened(order) {'), lib.indexOf('/* ══ ยื่นโดยยังไม่ตั้งงานบริการ: ตัวตัดสิน'));
+  assert.match(reopened, /order\.serviceSetupDeferredAt && Date\.parse\(order\.serviceSetupDeferredAt\) > Date\.parse\(order\.serviceSetupReopenedAt\)/);
+});
+
 test('คำสั่งอ่าน sales_orders ไม่เป็น "ผู้ต้องสงสัย" ของยามเงิน', () => {
   const src = readFileSync(new URL('./zoneSalesRepo.js', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
   assert.doesNotMatch(src, /['"]approved['"]/);

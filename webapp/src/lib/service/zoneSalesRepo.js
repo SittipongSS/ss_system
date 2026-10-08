@@ -35,9 +35,13 @@ export async function loadSetupOrdersByZone(supabase, zoneIds, { withOwners = fa
   if (!allocations.length) return new Map();
 
   /* คอลัมน์ชุดนี้คือทั้งหมดที่ `setupOrderState` → `serviceBackfillState` / `serviceSetupReopened` อ่าน (serviceSetup.js) + เลขที่ใบ + ดีล
-     ⚠️ "serviceSetupReopenedAt" เกิดที่ mig 0396 — ต้องรันก่อน deploy (check:columns แดงชื่อนี้จนกว่าจะรัน) */
+     ⚠️ "serviceSetupReopenedAt" เกิดที่ mig 0396 — ต้องรันก่อน deploy (check:columns แดงชื่อนี้จนกว่าจะรัน)
+     ⭐ mig 0404: "serviceSetupDeferredAt" — `serviceSetupReopened` ตัดสิน "เหตุการณ์ที่เกิดทีหลังชนะ" (D-F10) จากช่องนี้: ใบที่เคยเปิดแก้ →
+        ยกเลิก → กู้คืน → ยื่นโดยยังไม่ตั้งงานบริการ ต้องเป็นกลุ่ม "ตั้งย้อนหลัง" (หน้าใบ/ทะเบียน/แท็บ TS พูดว่า "ข้ามตอนยื่น") ไม่ใช่ "แก้หลังอนุมัติ"
+        — ไม่พกช่องนี้ = ป้ายโซน/คำเตือนปิดโซน/ชิปด่านนัดเล่าใบเดียวกันคนละแบบ (ตรวจทานรอบสุดท้าย lib-02)
+        ⚠️ ต้องรัน 0404 ก่อน deploy (ไม่มีคอลัมน์ = select พัง · check:columns แดงชื่อนี้จนกว่าจะรัน) */
   const orders = await fetchAllInChunks(uniqueIds(allocations.map((a) => a.salesOrderId)), (chunk) => supabase
-    .from('sales_orders').select('id, "orderNumber", status, "supersededById", "serviceTermsOpenedAt", "serviceSetupState", origin, "dealId", "serviceSetupReopenedAt"')
+    .from('sales_orders').select('id, "orderNumber", status, "supersededById", "serviceTermsOpenedAt", "serviceSetupState", origin, "dealId", "serviceSetupReopenedAt", "serviceSetupDeferredAt"')
     .in('id', chunk).order('id', { ascending: true }));
   const ordersById = new Map(orders.map((o) => [o.id, o]));
 
