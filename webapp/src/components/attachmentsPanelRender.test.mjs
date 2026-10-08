@@ -337,7 +337,9 @@ test('🐞 แผง: ย้ายรูปเข้ากลุ่ม = PATCH m
    🐞 แผงดึงไฟล์ทุกใบของ entity แล้วโยน docType ที่ไม่มีการ์ดลง "เอกสารอื่นๆ" ⇒ รูปของแถว checklist ไปโผล่บนหน้าสินค้า
       ถูกนับในหัวแผง และมีปุ่มลบ ทั้งที่แถว checklist ยังชี้อยู่ · ตัวคัดอยู่ที่ `attachmentsPanelItems.js` (ค่าล้วน) */
 import { panelItemsByType, panelVisibleItems } from './attachmentsPanelItems.js';
-import { ATTACHMENT_TYPES, productDocTypes, SPEC_ITEM_IMAGE_DOC_TYPE } from '../lib/master/attachmentTypes.js';
+import {
+  ATTACHMENT_TYPES, productDocTypes, SPEC_ILLUSTRATION_DOC_TYPE, SPEC_ITEM_IMAGE_DOC_TYPE,
+} from '../lib/master/attachmentTypes.js';
 
 const att = (id, docType) => ({ id, docType, fileName: `${id}.png`, mimeType: 'image/png' });
 
@@ -366,6 +368,90 @@ test('แผงที่ขอชนิดนั้นมาเองยัง�
   // ชนิดเดียวกันบน entity อื่น (ไม่ได้ประกาศซ่อน) = แถวธรรมดา
   assert.deepEqual(panelVisibleItems(items, 'customer', undefined).map((it) => it.id), ['A1', 'A2']);
   assert.deepEqual(panelVisibleItems(null, 'product', undefined), []);
+});
+
+/* ⭐ ภาพประกอบใบสเปค (มติเจ้าของ 08/10/2569) — ของจริงที่เห็นบนจอก่อนแก้: สินค้าที่มีแต่ภาพประกอบ 2 รูป หัวแผงเอกสารของสินค้า
+      ขึ้น "(2)" และทั้งสองรูปอยู่ใต้ "เอกสารอื่นๆ" พร้อมปุ่มลบ */
+test('แผงเอกสารของสินค้า: ภาพประกอบใบสเปคไม่อยู่กองไหนและไม่ถูกนับ · การ์ดภาพประกอบของหน้าสเปคยังได้ครบ', () => {
+  const items = [
+    att('I1', SPEC_ILLUSTRATION_DOC_TYPE), att('I2', SPEC_ILLUSTRATION_DOC_TYPE),
+    att('R1', SPEC_ITEM_IMAGE_DOC_TYPE), att('W1', 'artwork'), att('O1', 'other'),
+  ];
+  // หน้าสินค้า (การ์ดของทะเบียน) และแผงที่ไม่ส่ง docTypes — เหลือแต่เอกสารของทะเบียนจริง
+  for (const docTypes of [productDocTypes({}), undefined]) {
+    const types = docTypes?.length ? docTypes : ATTACHMENT_TYPES.product;
+    const visible = panelVisibleItems(items, 'product', docTypes);
+    assert.deepEqual(visible.map((it) => it.id), ['W1', 'O1'], 'เลขในหัวแผง = 2 ไม่ใช่ 5');
+    const byType = panelItemsByType(visible, types);
+    assert.deepEqual(byType.artwork.map((it) => it.id), ['W1']);
+    assert.deepEqual(byType.other.map((it) => it.id), ['O1'], 'ภาพประกอบต้องไม่ตกกอง "อื่นๆ"');
+    assert.equal(SPEC_ILLUSTRATION_DOC_TYPE in byType, false);
+  }
+  // มีแต่ภาพประกอบ = แผงของหน้าสินค้าว่าง
+  assert.deepEqual(panelVisibleItems([att('I1', SPEC_ILLUSTRATION_DOC_TYPE)], 'product', productDocTypes({})), []);
+
+  // การ์ดภาพประกอบของหน้าสเปคขอคีย์นี้มาเอง (ProductSpecIllustrations) ⇒ ได้ภาพประกอบครบ และยังไม่เห็นรูปของแถว checklist
+  const asked = [{ key: SPEC_ILLUSTRATION_DOC_TYPE, label: 'ภาพประกอบใบสเปคสินค้า' }];
+  const visible = panelVisibleItems(items, 'product', asked);
+  assert.deepEqual(visible.filter((it) => it.docType === SPEC_ILLUSTRATION_DOC_TYPE).map((it) => it.id), ['I1', 'I2']);
+  assert.equal(visible.some((it) => it.docType === SPEC_ITEM_IMAGE_DOC_TYPE), false);
+  assert.deepEqual(panelItemsByType(visible, asked)[SPEC_ILLUSTRATION_DOC_TYPE].map((it) => it.id), ['I1', 'I2']);
+  // คีย์เดียวกันบน entity อื่น = แถวธรรมดา
+  assert.deepEqual(panelVisibleItems([att('I1', SPEC_ILLUSTRATION_DOC_TYPE)], 'customer', undefined).map((it) => it.id), ['I1']);
+});
+
+test('การ์ดภาพประกอบของหน้าสเปคขอคีย์ภาพประกอบเองผ่าน docTypes — ถอดบรรทัดนี้ = การ์ดว่างทั้งที่มีรูป', () => {
+  const card = code(fs.readFileSync(path.join(path.dirname(FILE), 'database/ProductSpecIllustrations.js'), 'utf8'));
+  assert.match(card, /entityType="product"/);
+  assert.match(card, /docTypes=\{\[\{ key: SPEC_ILLUSTRATION_DOC_TYPE, label: "[^"]+" \}\]\}/);
+});
+
+/* ภาพปลดระวางไม่ถูกวาดเป็นรูปในการ์ด และไม่ขึ้นหน้าสินค้าแล้ว ⇒ ทางลบทางเดียวที่เหลือคือรายการนี้ */
+test('การ์ดภาพประกอบ: ภาพที่ซ่อนไว้มีรายการ + ปุ่มลบไฟล์ของตัวเอง (เฉพาะคนแก้สเปคได้) · ผล "ยังมีเอกสารใช้อยู่" ไม่ถือว่าลบแล้ว', () => {
+  const card = code(fs.readFileSync(path.join(path.dirname(FILE), 'database/ProductSpecIllustrations.js'), 'utf8'));
+  // รายการมาจากตัวคัดกลาง (มีเทสต์) และตัดแถวที่เพิ่งลบจริงออก
+  assert.match(card, /setRetiredRows\(retiredIllustrations\(next\)\);/);
+  assert.match(card, /const hidden = retiredRows\.filter\(\(row\) => !purgedIds\.has\(row\.id\)\);/);
+  assert.match(card, /\{canEdit && retired \? \(/, 'คนที่แก้สเปคไม่ได้ต้องไม่เห็นปุ่มลบ');
+  assert.match(card, /\{hidden\.map\(\(row\) => \(/);
+  assert.match(card, /onClick=\{\(\) => removeHidden\(row\)\}/);
+  // ลบ = ถามก่อน → เส้น DELETE ของไฟล์แนบผ่านตัวห่อ (ไม่ใช่ fetch ดิบ)
+  const fn = card.slice(card.indexOf('const removeHidden = async'), card.indexOf('const photoRows ='));
+  assert.ok(fn.indexOf('await confirmAction(') > 0 && fn.indexOf('await confirmAction(') < fn.indexOf('apiJson('), 'ต้องถามยืนยันก่อนยิงลบ');
+  // กดยกเลิก = ออกทันที ก่อนล็อกการ์ดและก่อนยิงลบ (ลำดับอย่างเดียวไม่พอ — ผลของคำถามต้องถูกใช้)
+  assert.match(fn, /if \(!\(await confirmAction\([\s\S]*?\)\)\) return;\s*setBusyId\(row\.id\);/, 'กดยกเลิกต้องไม่ยิงลบ');
+  assert.match(fn, /apiJson\(`\/api\/attachments\/\$\{row\.id\}`, \{ method: "DELETE"/);
+  assert.doesNotMatch(card, /[^a-zA-Z]fetch\(/);
+  // ผลทุกแบบตัดสินที่ตัวเดียว (มีเทสต์ค่า: productSpecView.test.mjs) — ทั้งคำตอบที่ผ่านและที่ล้ม
+  assert.match(fn, /outcome = hiddenIllustrationDeleteOutcome\(\{ body \}\);/);
+  assert.match(fn, /catch \(removeError\) \{\s*outcome = hiddenIllustrationDeleteOutcome\(\{ error: removeError \}\);/);
+  // แถวต้องคงอยู่เมื่อ ล้ม/ยังมีเอกสารใช้อยู่ — สองทางออกนี้ต้องมาก่อนการตัดแถวออกจากรายการ
+  const failedAt = fn.indexOf('if (outcome.kind === "failed") { setError(outcome.message); return; }');
+  const keptAt = fn.indexOf('if (outcome.kind === "kept") { notifyToast.info(outcome.message); return; }');
+  const purgeAt = fn.indexOf('setPurgedIds((prev) => new Set(prev).add(row.id));');
+  assert.ok(failedAt > 0 && keptAt > failedAt && purgeAt > keptAt, 'ล้ม/ยังใช้อยู่ ต้องออกก่อนถึงบรรทัดตัดแถว');
+  assert.equal((fn.match(/setPurgedIds\(/g) || []).length, 1, 'ตัดแถวได้ทางเดียว');
+  // ลบสำเร็จแล้วปุ่มถูกถอด ⇒ คืนโฟกัสคีย์บอร์ดให้รายการ/หมายเหตุของการ์ด
+  assert.match(fn, /refocusHidden\.current = true;\s*setPurgedIds\(/);
+  assert.match(card, /wrap\?\.querySelector\("li button:not\(\[disabled\]\)"\)\s*\|\| wrap\?\.querySelector\("\[data-hidden-note\]"\)\s*\|\| wrap\?\.parentElement\?\.querySelector\("button:not\(\[disabled\]\)"\)/);
+  assert.match(card, /tabIndex=\{-1\} data-hidden-note=""/);
+});
+
+test('การ์ดภาพประกอบ: งานของการ์ดไม่ซ้อนกัน — ทุกปุ่มล็อกด้วยธงเดียว และงานที่จบปล่อยเฉพาะธงของตัวเอง', () => {
+  const card = code(fs.readFileSync(path.join(path.dirname(FILE), 'database/ProductSpecIllustrations.js'), 'utf8'));
+  // 🐞 ปุ่มบันทึกคำบรรยายเคยล็อกเฉพาะแถวตัวเอง ⇒ กดบันทึกระหว่างลบภาพซ่อนได้ แล้วตัวที่จบก่อนล้างธงของอีกตัว
+  assert.doesNotMatch(card, /disabled=\{busyId === row\.id\}/);
+  assert.match(card, /<Button size="sm" tone="primary" disabled=\{Boolean\(busyId\)\}\s*onClick=\{\(\) => save\(row\.id, caption\.trim\(\)\)\}>/);
+  assert.doesNotMatch(card, /setBusyId\(""\)/, 'ห้ามล้างธงแบบไม่ดูว่าเป็นของใคร');
+  assert.equal((card.match(/setBusyId\(\(current\) => \(current === [^?]+ \? "" : current\)\)/g) || []).length, 3, 'save · move · removeHidden');
+});
+
+test('แผงไฟล์แนบ: เส้นลบตอบ "ปลดระวาง" = แถวยังอยู่ในฐาน ⇒ โหลดรายการใหม่ ไม่ตัดแถวทิ้งจากรายการในมือ', () => {
+  const source = code(fs.readFileSync(FILE, 'utf8'));
+  const fn = source.slice(source.indexOf('const handleDelete = async'), source.indexOf('const deletePreview'));
+  // 🐞 เดิมตัดแถวก่อนอ่านคำตอบ ⇒ ภาพที่เพิ่งถูกปลดระวางหายจากรายการที่แจ้งผู้เรียก: เลข "ซ่อนไว้ N ภาพ" และรายการภาพที่ซ่อนไว้ขาดไปหนึ่ง
+  assert.match(fn, /const body = await res\.json\(\)\.catch\(\(\) => null\);\s*if \(body\?\.retired\) \{\s*if \(body\.message\) notifyToast\.info\(body\.message\);\s*await fetchItems\(\);\s*\} else \{\s*setItems\(\(prev\) => prev\.filter\(\(it\) => it\.id !== id\)\);\s*\}\s*return true;/);
+  assert.equal((fn.match(/prev\.filter\(\(it\) => it\.id !== id\)/g) || []).length, 1);
 });
 
 test('แผงกรองที่ต้นทางที่เดียว — ทุกจุดที่โชว์/นับอ่านรายการที่คัดแล้ว และยังแจ้งผู้เรียกด้วยรายการดิบ', () => {

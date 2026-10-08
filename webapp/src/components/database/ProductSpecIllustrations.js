@@ -1,16 +1,20 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, Images } from "lucide-react";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import Button from "@/components/ui/Button";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 import Input from "@/components/ui/Input";
 import StatusNotice from "@/components/ui/StatusNotice";
+import { notifyToast } from "@/components/ui/Toast";
 import { DetailCard } from "@/components/ui/DetailPage";
 import { apiJson } from "@/lib/apiFetch";
 import { naText } from "@/lib/format";
 import { SPEC_ILLUSTRATION_DOC_TYPE, docTypeFileRule } from "@/lib/master/attachmentTypes";
 import { ILLUSTRATION_CAPTION_MAX, sortIllustrations } from "@/lib/sales/productSpecIllustrations";
-import { illustrationReorderPlan, isRetiredIllustration, liveIllustrations } from "@/lib/sales/productSpecView";
+import {
+  hiddenIllustrationDeleteOutcome, illustrationReorderPlan, liveIllustrations, retiredIllustrations,
+} from "@/lib/sales/productSpecView";
 import styles from "./ProductSpecIllustrations.module.css";
 
 // ชนิดไฟล์ที่ภาพประกอบรับ — ป้ายบนจอมาจากกติกาเดียวกับที่ปุ่ม/ลากวาง/POST ใช้ตัดสิน
@@ -33,6 +37,13 @@ const specIllustrationRule = docTypeFileRule(SPEC_ILLUSTRATION_DOC_TYPE);
  * **ปลดระวาง** (`metadata.retiredAt`) แทนการลบไฟล์ · จอนี้ซ่อนรูปที่ปลดระวางแล้ว แต่กระดาษเก่า
  * ยังเปิดรูปได้ ⇒ ตัวคัด `liveIllustrations` ใช้ทั้งตอนนับและตอนวาด
  *
+ * ⭐ **ภาพที่ซ่อนไว้ลบได้จากการ์ดนี้** (08/10/2569) — ภาพประกอบไม่ขึ้นแผงเอกสารของหน้าสินค้าแล้ว ซึ่งเคยเป็นที่เดียวที่ยังกดลบ
+ * ภาพปลดระวางได้ ⇒ คนแก้สเปคเห็นรายการ "ภาพที่ซ่อนไว้" ใต้การ์ด พร้อมปุ่ม "ลบไฟล์" รายภาพ · เส้น DELETE ตัดสินเอง:
+ * ยังมีเอกสารที่ยื่นแล้วใช้อยู่ = คงซ่อนไว้ (ตอบ `retired` + ข้อความ) · ไม่มีแล้ว = ลบแถวและปล่อยไฟล์จริง
+ * ⚠️ **เห็นปุ่ม ≠ ลบได้เสมอ** — ปุ่มขึ้นตามสิทธิ์แก้สเปค (ทั้งฝ่ายขาย) แต่เส้น DELETE ถามด่านแก้ไฟล์ของสินค้า
+ *    (`guardAttachmentWrite`: ทีมที่ดูแลลูกค้าเจ้าของสินค้า/หัวหน้า — ด่านเดียวกับแนบรูป แก้คำบรรยาย สลับลำดับ ของการ์ดนี้
+ *    และเท่ากับทางลบเดิมบนหน้าสินค้า) ⇒ คนนอกทีมกดแล้วได้ 403 พร้อมเหตุเป็นคำไทย (`hiddenIllustrationDeleteOutcome`)
+ *
  * ⚠️ **ห้ามก๊อปแถว `attachments` ให้ชี้ไฟล์เดียวกันสองแถว** — `DELETE` ของเส้นไฟล์แนบ
  * เรียก `releaseAttachmentFile` ซึ่งปล่อยตัวไฟล์จริง ⇒ ลบแถวหนึ่งแล้วอีกแถวเหลือ
  * ตัวชี้ที่ไฟล์หายไป
@@ -42,7 +53,13 @@ const specIllustrationRule = docTypeFileRule(SPEC_ILLUSTRATION_DOC_TYPE);
  */
 export default function ProductSpecIllustrations({ productId, canEdit = false, onDirtyChange }) {
   const [count, setCount] = useState(0);
-  const [retired, setRetired] = useState(0);
+  const [retiredRows, setRetiredRows] = useState([]);
+  /* ภาพซ่อนที่เพิ่งลบจริงจากการ์ดนี้ — ลิสต์เป็นของแผงไฟล์แนบ (ไม่รู้ว่าเราลบไปแล้ว) ⇒ ทับไว้จนกว่าแผงจะโหลดรอบใหม่
+     ไม่งั้นแถวที่ลบแล้วเด้งกลับมาทุกครั้งที่แผงแจ้งรายการเดิมซ้ำ */
+  const [purgedIds, setPurgedIds] = useState(() => new Set());
+  /* ลบภาพซ่อนสำเร็จ = ปุ่มที่กดถูกถอดจากจอ ⇒ โฟกัสคีย์บอร์ดตกไป <body> · คืนให้ปุ่มลบของแถวถัดไป หรือหมายเหตุของการ์ดเมื่อหมดรายการ */
+  const hiddenWrapRef = useRef(null);
+  const refocusHidden = useRef(false);
   const [loaded, setLoaded] = useState(false);
   const [drafts, setDrafts] = useState({});
   /* ค่าที่เพิ่งบันทึกสำเร็จ — ทับค่าที่แผงไฟล์แนบถืออยู่จนกว่ามันจะโหลดรอบใหม่
@@ -58,7 +75,7 @@ export default function ProductSpecIllustrations({ productId, canEdit = false, o
     const live = liveIllustrations(next);
     setCount(live.length);
     setLiveIds(new Set(live.map((row) => row.id)));
-    setRetired((next || []).filter((row) => row?.docType === SPEC_ILLUSTRATION_DOC_TYPE && isRetiredIllustration(row)).length);
+    setRetiredRows(retiredIllustrations(next));
     setLoaded(Boolean(meta?.loaded));
   }, []);
 
@@ -85,7 +102,8 @@ export default function ProductSpecIllustrations({ productId, canEdit = false, o
     } catch (saveError) {
       setError(saveError.message || "บันทึกคำบรรยายไม่สำเร็จ");
     } finally {
-      setBusyId("");
+      // ปล่อยเฉพาะของตัวเอง — งานอื่นของการ์ด (สลับลำดับ · ลบภาพซ่อน) ที่ยังวิ่งอยู่ต้องไม่ถูกปลดล็อกตาม
+      setBusyId((current) => (current === id ? "" : current));
     }
   };
 
@@ -106,9 +124,50 @@ export default function ProductSpecIllustrations({ productId, canEdit = false, o
     } catch (moveError) {
       setError(moveError.message || "สลับลำดับไม่สำเร็จ");
     } finally {
-      setBusyId("");
+      setBusyId((current) => (current === rows[index].id ? "" : current));
     }
   };
+
+  const hidden = retiredRows.filter((row) => !purgedIds.has(row.id));
+  const retired = hidden.length;
+
+  /* ลบไฟล์ของภาพที่ซ่อนไว้ — ผลมีสองแบบและต้องบอกต่างกัน: ยังมีเอกสารใช้อยู่ = ภาพคงซ่อนไว้ (ไม่ใช่ลบไม่สำเร็จ) ·
+     ไม่มีแล้ว = ไฟล์ถูกลบจริง แถวหายจากรายการ */
+  const removeHidden = async (row) => {
+    const name = row.fileName || "ภาพนี้";
+    if (!(await confirmAction(`ลบไฟล์ "${name}" ที่ซ่อนไว้? ถ้ายังมีเอกสารที่ยื่นแล้วใช้ภาพนี้อยู่ ระบบจะคงซ่อนไว้ตามเดิม`))) return;
+    setBusyId(row.id);
+    setError("");
+    let outcome;
+    try {
+      const body = await apiJson(`/api/attachments/${row.id}`, { method: "DELETE", fallbackError: "ลบภาพที่ซ่อนไว้ไม่สำเร็จ" });
+      outcome = hiddenIllustrationDeleteOutcome({ body });
+    } catch (removeError) {
+      outcome = hiddenIllustrationDeleteOutcome({ error: removeError });
+    } finally {
+      setBusyId((current) => (current === row.id ? "" : current));
+    }
+    // แถวคงอยู่สองแบบ: ลบไม่สำเร็จ (บอกเหตุบนการ์ด) · ยังมีเอกสารใช้อยู่ (บอกด้วย toast — ไม่ใช่ความผิดพลาด)
+    if (outcome.kind === "failed") { setError(outcome.message); return; }
+    if (outcome.kind === "kept") { notifyToast.info(outcome.message); return; }
+    // ลบจริง หรือหายไปก่อนแล้ว (404) = ออกจากรายการ
+    refocusHidden.current = true;
+    setPurgedIds((prev) => new Set(prev).add(row.id));
+    if (outcome.kind === "gone") notifyToast.info(outcome.message);
+    else notifyToast.success(outcome.message);
+  };
+
+  useEffect(() => {
+    if (!refocusHidden.current || busyId) return;
+    refocusHidden.current = false;
+    const wrap = hiddenWrapRef.current;
+    // ลำดับ: ปุ่มลบของแถวถัดไป → หมายเหตุของการ์ด → ปุ่มแรกของการ์ด (แนบรูป) เมื่อไม่มีภาพเหลือเลยจนหมายเหตุก็ถูกถอด
+    //   (เปิดจอดูแล้ว 08/10: ลบภาพซ่อนภาพสุดท้ายของการ์ดที่ไม่มีภาพใช้งานเหลือ โฟกัสตกไป <body>)
+    const target = wrap?.querySelector("li button:not([disabled])")
+      || wrap?.querySelector("[data-hidden-note]")
+      || wrap?.parentElement?.querySelector("button:not([disabled])");
+    target?.focus({ preventScroll: true });
+  }, [purgedIds, busyId]);
 
   /* แถวหนึ่งบรรทัดต่อหนึ่งรูป — ฝั่งขวาของรูปนั้น ๆ
      ⚠️ รูปที่ไม่อยู่ในลิสต์ที่คืนไป **ไม่ถูกวาด** (สัญญาของ `photoRows`) ⇒ รูปที่ปลดระวางหายจากจอ
@@ -159,8 +218,9 @@ export default function ProductSpecIllustrations({ productId, canEdit = false, o
                     });
                   }}
                 />
+                {/* ปุ่มบันทึกล็อกเมื่อการ์ดกำลังทำงานใดอยู่ (เหมือนปุ่มเลื่อน/ลบภาพซ่อน) — งานสองอย่างซ้อนกันแล้วตัวที่จบก่อนจะปลดล็อกอีกตัว */}
                 {dirty ? (
-                  <Button size="sm" tone="primary" disabled={busyId === row.id}
+                  <Button size="sm" tone="primary" disabled={Boolean(busyId)}
                     onClick={() => save(row.id, caption.trim())}>
                     {busyId === row.id ? "กำลังบันทึก…" : "บันทึก"}
                   </Button>
@@ -201,8 +261,9 @@ export default function ProductSpecIllustrations({ productId, canEdit = false, o
         photoRows={photoRows}
       />
 
+      <div ref={hiddenWrapRef}>
       {count || retired ? (
-        <p className={`form-note ${styles.note}`}>
+        <p className={`form-note ${styles.note}`} tabIndex={-1} data-hidden-note="">
           รับเฉพาะ{specIllustrationRule.label}
           · คำบรรยายพิมพ์ใต้ภาพบนกระดาษ · จองไว้สองบรรทัดเสมอเพื่อให้ทุกแถวสูงเท่ากัน
           · ไม่ใส่ก็ได้ กระดาษจะขึ้นแค่เลขลำดับ
@@ -210,6 +271,27 @@ export default function ProductSpecIllustrations({ productId, canEdit = false, o
           {retired ? ` (ซ่อนไว้ ${retired} ภาพ)` : ""}
         </p>
       ) : null}
+
+      {/* ภาพที่ซ่อนไว้ — เห็นเฉพาะคนแก้สเปคได้ (คนอื่นเห็นแค่เลขในหมายเหตุข้างบน) · ไม่วาดรูป: ไฟล์พวกนี้ถูกซ่อนจากสเปคโดยตั้งใจ
+          ให้แค่ชื่อไฟล์กับทางลบ */}
+      {canEdit && retired ? (
+        <div className={styles.hidden}>
+          <p className={styles.hiddenHead}>ภาพที่ซ่อนไว้ {retired} ภาพ — ลบไฟล์ได้เมื่อไม่มีเอกสารที่ยื่นแล้วใช้อยู่</p>
+          <ul className={styles.hiddenList}>
+            {hidden.map((row) => (
+              <li key={row.id} className={styles.hiddenRow}>
+                <span className={`mono ${styles.file}`}>{naText(row.fileName)}</span>
+                <Button size="sm" variant="ghost" tone="danger" disabled={Boolean(busyId)}
+                  aria-label={`ลบไฟล์ของภาพที่ซ่อนไว้ ${row.fileName || ""}`}
+                  onClick={() => removeHidden(row)}>
+                  {busyId === row.id ? "กำลังลบ…" : "ลบไฟล์"}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      </div>
     </DetailCard>
   );
 }
