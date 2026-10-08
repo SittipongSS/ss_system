@@ -775,6 +775,74 @@ export async function grantFileRole(fileId, email, role = 'reader') {
   });
 }
 
+// role ของ Drive → ระดับที่ระบบสนใจ (แก้ได้ / เปิดดูได้) · commenter นับเป็น reader
+// เพราะระบบให้สิทธิ์แค่สองระดับ และ "คอมเมนต์ได้" ไม่ใช่ "แก้เนื้อหาได้"
+const ACCESS_LEVEL = {
+  owner: 'writer', organizer: 'writer', fileOrganizer: 'writer', writer: 'writer',
+  commenter: 'reader', reader: 'reader',
+};
+// permission ชนิดไหน "ครอบคลุม" อีเมลนี้ — ชนิดที่ไม่อยู่ในตาราง (เช่น group) = ไม่นับ
+// ⚠️ เขียนเป็นตาราง ไม่ใช่ if เทียบชนิดทีละตัว — driveFolderBuilder.test.mjs กวาดไฟล์นี้หา
+// รูป "เทียบชนิดกับสตริง" เพื่อไล่สาขาของตัวสร้าง path ⇒ เขียนรูปนั้นที่นี่จะถูกนับเป็น entity ปลอม
+// ⚠️ ต้องเช็ก `Object.hasOwn` ก่อนเรียก — ชนิดที่ชื่อชนกับของใน prototype (`constructor`) ห้ามผ่าน
+const PERMISSION_COVERS = {
+  user: (p, address) => String(p.emailAddress || '').toLowerCase() === address,
+  anyone: () => true,
+  domain: (p, _address, domain) => !!domain && String(p.domain || '').toLowerCase() === domain,
+};
+// กันวนไม่จบถ้า Drive ส่ง nextPageToken กลับมาเรื่อย ๆ — เกินนี้ถือว่าอ่านไม่ครบ ⇒ โยน
+const ACCESS_MAX_PAGES = 50;
+
+// คนนี้ **เปิดไฟล์นี้ได้อยู่แล้วระดับไหน** — 'writer' | 'reader' | null (ไม่มีสิทธิ์ที่พิสูจน์ได้)
+//
+// ⭐ ใช้เป็น **หลักฐาน** ก่อนผูกลิงก์เอกสาร (มติเจ้าของ 08/10/2569: ผูกได้เฉพาะเอกสารที่
+// คนผูกเปิดได้อยู่แล้ว) และก่อนให้สิทธิ์ตอนเปิดรายการของแถวที่ผูกมา — service account
+// เห็นไฟล์ได้กว้างกว่าคนกดเสมอ ⇒ "ระบบอ่านไฟล์ได้" ไม่เคยแปลว่า "คนนี้เปิดได้"
+//
+// นับว่าเป็นของอีเมลนี้เมื่อ: รายคน (`user`) ที่อยู่ตรงกัน (ไม่สนตัวพิมพ์) · ใครมีลิงก์ก็เปิดได้
+// (`anyone`) · ทั้งโดเมน (`domain`) ที่ตรงกับโดเมนของอีเมล
+// ⚠️ **ไม่นับ `group`** — ระบบไม่รู้ว่าใครอยู่กลุ่มไหน เดาว่า "น่าจะอยู่" คือปล่อยผ่านโดยไม่มีหลักฐาน
+// ⇒ ผลคือปฏิเสธเกิน (คนในกลุ่มต้องขอแชร์รายคน) ไม่ใช่ปล่อยเกิน
+// ⚠️ **อ่านทุกหน้า** — ไฟล์ที่แชร์เยอะมี permission เกินหน้าแรก · อ่านหน้าเดียวแล้วสรุปว่า
+// "ไม่มีสิทธิ์" คือปฏิเสธคนที่มีสิทธิ์จริง
+// ⚠️ **Drive ตอบ error = โยนต่อ** ไม่คืน null — null แปลว่า "ตรวจแล้วไม่มี" ซึ่งผู้เรียกบางเส้น
+// เอาไปสร้าง permission ใหม่ทับ ⇒ ตรวจไม่ได้ต้องไม่ถูกอ่านเป็นตรวจแล้วไม่มี
+//
+// `deps.drive` มีไว้ให้เทสต์ยัดตัวปลอม (WIF ออก token ได้เฉพาะบน Vercel) — โค้ดจริงไม่เคยส่ง
+export async function fileAccessRole(fileId, email, deps = {}) {
+  const address = String(email || '').trim().toLowerCase();
+  if (!fileId || !address) return null;
+  const domain = address.includes('@') ? address.slice(address.lastIndexOf('@') + 1) : '';
+  const drive = deps.drive || getDrive();
+
+  let best = null;
+  let pageToken;
+  for (let page = 0; ; page += 1) {
+    if (page >= ACCESS_MAX_PAGES) throw new Error(`อ่านรายชื่อผู้มีสิทธิ์ของไฟล์ไม่ครบ (เกิน ${ACCESS_MAX_PAGES} หน้า)`);
+    const { data } = await drive.permissions.list({
+      fileId,
+      fields: 'nextPageToken, permissions(emailAddress,role,type,domain,deleted,permissionDetails)',
+      pageSize: 100,
+      supportsAllDrives: true,
+      ...(pageToken ? { pageToken } : {}),
+    });
+    for (const p of data?.permissions || []) {
+      if (!p || p.deleted) continue;
+      if (!Object.hasOwn(PERMISSION_COVERS, p.type) || !PERMISSION_COVERS[p.type](p, address, domain)) continue;
+      // ไฟล์บน Shared Drive มี role หลายชั้น (รายไฟล์ + ที่สืบทอดจากสมาชิก) อยู่ใน
+      // permissionDetails — เอาชั้นที่สูงสุด
+      const roles = [p.role, ...(Array.isArray(p.permissionDetails) ? p.permissionDetails.map((d) => d?.role) : [])];
+      for (const role of roles) {
+        const level = ACCESS_LEVEL[role];
+        if (level === 'writer') return 'writer';
+        if (level === 'reader') best = 'reader';
+      }
+    }
+    pageToken = data?.nextPageToken;
+    if (!pageToken) return best;
+  }
+}
+
 // ถอนสิทธิ์รายไฟล์ของอีเมลหนึ่ง — คืน true ถ้าถอนจริง, false ถ้าไม่มีอะไรให้ถอน
 //
 // ⚠️ ถอนได้เฉพาะ permission ที่ให้ไว้**รายไฟล์** · ถ้าคนนั้นเป็นสมาชิก Shared Drive
