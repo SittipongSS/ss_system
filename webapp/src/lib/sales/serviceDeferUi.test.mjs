@@ -12,6 +12,7 @@
 //    ปุ่มข้ามกดได้เสมอ (ติดด่าน = บอกเหตุตอนกด) · แดงหลังกดเท่านั้น · เวลาของใบไปตามตัวอักษร · เขียนข้อมูลไม่ลองซ้ำ · ไม่มี style={{
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -661,7 +662,7 @@ test('ทะเบียนใบสั่งขาย: แถวคิวขอ
 
 /* ══ ส่วนที่ 3: ยามเอกสาร ══════════════════════════════════════════════════════════════════════════════════ */
 
-test('docs/so-service-setup.md: หัวข้อของ 0404 — สถานะจาก 5 คำ · 0404 อยู่บนฐานจริงแล้ว (ไม่ต้องรันซ้ำ · ห้ามแก้ไฟล์ · รอผล SELECT ตรวจหลังรันก่อน merge/deploy) · ตารางกลุ่มข้อตรงกับตัวตัดสิน · ชื่อที่อ้างมีจริง · แถวสารบัญ', () => {
+test('docs/so-service-setup.md: หัวข้อของ 0404 — สถานะจาก 5 คำ · 0404 อยู่บนฐานจริงแล้ว (เจ้าของรัน + แปะผล SELECT ตรวจหลังรันแล้ว 08/10 · ไม่ต้องรันซ้ำ · ห้ามแก้ไฟล์ · ที่ฐานไม่เหลืออะไรก่อน merge/deploy · รวม main #1879 แล้ว) · ตารางกลุ่มข้อตรงกับตัวตัดสิน · ชื่อที่อ้างมีจริง · แถวสารบัญ', () => {
   const DOC = readFileSync(new URL('../../../../docs/so-service-setup.md', import.meta.url), 'utf8');
   const INDEX = readFileSync(new URL('../../../../docs/INDEX.md', import.meta.url), 'utf8');
   const heading = '### ยื่นโดยยังไม่ตั้งงานบริการ — ข้ามตอนยื่น ตั้งหลังอนุมัติ (mig 0404 · มติเจ้าของ 01/10 · แบรนช์ `claude/so-service-defer`)';
@@ -676,18 +677,53 @@ test('docs/so-service-setup.md: หัวข้อของ 0404 — สถา�
        "เจ้าของต้องรัน `0404_…sql` ที่ SQL Editor ก่อน merge/deploy" ซึ่งไม่จริงแล้ว (ปล่อยไว้ = เจ้าของถูกขอให้รันไฟล์ที่อยู่บนฐานแล้ว และ
        SELECT ตรวจก่อนรันจะได้ cols = 3 ไม่ใช่ 0) ⇒ ยามย้ายไปยึดความจริงใหม่ **ครบทุกข้อ** ไม่ใช่ถอดออก:
        อยู่บนฐานแล้ว (พร้อมวันเวลาที่ตรวจ) · check:columns เขียว · ไม่ต้องรันซ้ำ · ห้ามแก้ไฟล์ · ก่อน merge/deploy ยังต้องได้ผล SELECT ตรวจหลังรันจากเจ้าของ
-       (ค่าที่คาดในเอกสาร = ค่าที่หัวไฟล์เขียน) · SQL ต่อจากนี้ = migration ใหม่ · คำของตอนก่อนรันต้องไม่ค้างในหัวข้อ */
+       (ค่าที่คาดในเอกสาร = ค่าที่หัวไฟล์เขียน) · SQL ต่อจากนี้ = migration ใหม่ · คำของตอนก่อนรันต้องไม่ค้างในหัวข้อ
+     ✅ เจ้าของแปะผล SELECT ตรวจหลังรันแล้ว 08/10/2026 (ตรงตามที่คาดทุกค่า) และแบรนช์รวม main #1879 แล้ว ⇒ ข้อ "ก่อน merge/deploy เหลืออย่างเดียวที่ฐาน:
+       เจ้าของแปะผล SELECT …" ไม่จริงแล้ว — ยามย้ายไปยึดความจริงใหม่ข้อ ①–⑦ ข้างล่าง (ไม่ใช่ถอดออก) */
   assert.match(section, /\n> สถานะ: \*\*[^*]+\*\* · ✅ \*\*`0404_so_service_setup_defer\.sql` อยู่บนฐานจริงแล้ว\*\*/);
   assert.match(section, /ตรวจฐานจริงแบบอ่านอย่างเดียว 08\/10\/2026 16:04 น\. \(เวลาไทย\): 0404 อยู่บนฐานแล้ว/);
   assert.match(section, /`npm run check:columns` \*\*เขียว\*\*/);
   assert.match(section, /\*\*ไม่ต้องรันไฟล์ซ้ำ\*\*/);
   assert.match(section, /\*\*ห้ามแก้ไฟล์ 0404 อีก\*\*/);
-  assert.match(section, /\*\*ก่อน merge\/deploy เหลืออย่างเดียวที่ฐาน: เจ้าของแปะผล SELECT ตรวจหลังรันของหัวไฟล์\*\*/);
   assert.match(section, /SQL ของงานนี้ที่ต้องเปลี่ยนต่อจากนี้ = migration ใหม่/);
   const afterRun = 'cols = 3 · chk = 1 · trg = 1 · fns = 2 · d1 = 1 · p1 = 1 · anon_submit = f · svc_submit = t · deferred = 0';
   const MIG_0404 = readFileSync(new URL('../../../supabase/migrations/0404_so_service_setup_defer.sql', import.meta.url), 'utf8');
   assert.ok(MIG_0404.includes(`คาด: ${afterRun}`), 'หัวไฟล์ 0404: ค่าที่คาดของ SELECT ตรวจหลังรัน');
   assert.ok(section.replace(/\n/g, ' ').includes(`คาด \`${afterRun}\``), 'เอกสารยกค่าที่คาดของ SELECT ตรวจหลังรันตรงกับหัวไฟล์ทุกตัว');
+  /* แทนข้อ "เหลืออย่างเดียวที่ฐาน: เจ้าของแปะผล SELECT ตรวจหลังรันของหัวไฟล์" — ผลมาแล้ว 08/10/2026:
+     ① หัวข้อ (บรรทัดสถานะ) บอกว่าที่ฐานไม่เหลืออะไร และบอกของที่ยังต้องมีก่อน merge/deploy ครบสามอย่าง */
+  const flat = (text) => text.replace(/\n(?:> ?)?/g, ' '); // ประโยคที่ยาวข้ามบรรทัด: จัดบรรทัดใหม่ต้องไม่ทำให้ยามแดง
+  const body = flat(section);
+  const statusBlock = flat(section.slice(section.indexOf('\n> สถานะ:'), section.indexOf('\n> · กติกาของฐานที่')));
+  assert.match(statusBlock, /อยู่บนฐานจริงแล้ว\*\* \(เจ้าของรันที่ SQL Editor 08\/10\/2026 และแปะผล SELECT ตรวจหลังรันแล้ว — ตรงตามที่คาดทุกค่า · ย่อหน้าถัดไป\)/);
+  assert.match(statusBlock, /✅ \*\*ที่ฐานไม่เหลืออะไรต้องทำก่อน merge\/deploy\*\*/);
+  assert.match(statusBlock, /⚠️ \*\*ก่อน merge\/deploy ยังต้องมี: `npm run build` · ตรวจจอจริงแบบอ่านอย่างเดียวที่ 1440 และ 390 · เจ้าของสั่งให้ merge\/deploy\*\*/);
+  /* ② ใครรัน · วันไหน · ไฟล์ฉบับไหน (sha256 เต็มในเอกสาร = ของไฟล์ในรีโปจริง) · เวลาที่แน่นอนไม่ได้จด */
+  const sha0404 = createHash('sha256').update(readFileSync(new URL('../../../supabase/migrations/0404_so_service_setup_defer.sql', import.meta.url))).digest('hex');
+  assert.ok(body.includes('✅ **เจ้าของรันและแปะผลแล้ว 08/10/2026**: รันไฟล์ที่ส่งให้ (ตัวอักษรของ `0404_so_service_setup_defer.sql` ทุกตัว · sha256 '
+    + `\`${sha0404}\` · ตามด้วย SELECT ตรวจหลังรันของหัวไฟล์) ที่ Supabase SQL Editor — ก่อน 16:04 น. เวลาไทย (ไม่ได้จดเวลาที่แน่นอน)`),
+  'ใครรัน/วันไหน/ไฟล์ฉบับไหน — sha256 เต็มในเอกสารต้องเท่าไฟล์ 0404 ของรีโป');
+  /* ③ ผลที่เจ้าของแปะ = ค่าที่หัวไฟล์คาดทุกตัว (ต่างแค่ตัวเขียนบูลีน f/t → false/true) */
+  const pasted = afterRun.replace('anon_submit = f ', 'anon_submit = false ').replace('svc_submit = t ', 'svc_submit = true ');
+  assert.equal(pasted, 'cols = 3 · chk = 1 · trg = 1 · fns = 2 · d1 = 1 · p1 = 1 · anon_submit = false · svc_submit = true · deferred = 0');
+  assert.ok(body.includes(`· ผล SELECT ตรวจหลังรันที่เจ้าของแปะ: \`${pasted}\` — **ตรงตามที่คาดทุกค่า**`), 'เอกสารยกผลที่เจ้าของแปะครบทุกค่า');
+  /* ④ ฝั่งแอปยืนยันอะไร (อ่านอย่างเดียว) และไม่ได้ลองอะไร — สิทธิ์ anon ยืนยันจากผลของเจ้าของเท่านั้น */
+  assert.match(body, /✅ \*\*ฝั่งแอปยืนยันวันเดียวกัน \(อ่านอย่างเดียว\)\*\*: PostgREST อ่านสามช่องได้ \(HTTP 200\) · ไม่มีใบสั่งขายใบไหนมี `serviceSetupDeferredAt` \(0 ใบ\) · `check:columns` เขียว/);
+  assert.match(body, /⚠️ \*\*ไม่ได้ลองเรียก RPC ด้วยคีย์ anon จากฝั่งแอป\*\* \(env ในเครื่องไม่มีคีย์ anon\) — สิทธิ์ของ RPC ยืนยันจาก `anon_submit = false` ในผลของเจ้าของเท่านั้น/);
+  /* ⑤ ลำดับ deploy: ข้อ 1 (ฐาน) ปิดแล้ว · ข้อ 2 = ของที่ยังต้องมีก่อน merge/deploy · SQL ต่อจากนี้ = เลข 0406 ขึ้นไป */
+  const deploy = flat(section.slice(section.indexOf('**ลำดับ deploy:**'), section.indexOf('**ยามของงานนี้:**')));
+  assert.ok(deploy.includes('1) **ฐาน — เสร็จแล้ว ไม่เหลืออะไรต้องทำก่อน merge/deploy**: เจ้าของรันไฟล์ที่ SQL Editor 08/10/2026 และแปะผล SELECT ตรวจหลังรันของหัวไฟล์แล้ว — '
+    + `คาด \`${afterRun}\` · ได้ตรงทุกค่า`), 'ข้อ 1 ของลำดับ deploy: ฐานเสร็จแล้ว + ค่าที่คาด = ค่าที่ได้');
+  assert.match(deploy, /\*\*ห้ามรัน 0404 ซ้ำ · ห้ามแก้ไฟล์\*\* — SQL ของงานนี้ที่ต้องเพิ่ม = migration ใหม่เลข 0406 ขึ้นไป/);
+  assert.match(deploy, /2\) \*\*ก่อน merge\/deploy ยังต้องมี: `npm run build` · ตรวจจอจริงแบบอ่านอย่างเดียวที่ 1440 และ 390 · เจ้าของสั่งให้ merge\/deploy\*\* → CI \(`check:columns` เขียว\) → merge → Deploy to production/);
+  /* ⑥ main #1879 (75751e5c · mig 0405) รวมเข้าแบรนช์แล้ว — เดิมเอกสารสั่ง "ต้องรวม #1879 ด้วยก่อนเปิด PR" */
+  assert.match(body, /🔁 \*\*รวม main ถึง #1879 แล้ว \(08\/10 · `75751e5c` · mig 0405 สเปคสินค้า · ขึ้น main 15:28 น\.\)\*\* — คอมมิตรวม `0140ee91` · `git merge-base --is-ancestor 75751e5c HEAD` ผ่าน/);
+  assert.match(deploy, /\*\*รวมถึง #1878 `1bab0846` และ #1879 `75751e5c` \(mig 0405 สเปคสินค้า\) แล้ว\*\* — คอมมิตรวม `0140ee91` · เช็ก `git merge-base --is-ancestor 75751e5c HEAD`/);
+  /* ⑦ คำของตอนรอผล / รอรวม ต้องไม่ค้าง — ทั้งหัวข้อนี้และแถว "ฐาน" ของตารางไฟล์ท้ายเอกสาร */
+  assert.doesNotMatch(section, /เหลืออย่างเดียวที่ฐาน|ที่ยังไม่ได้ยืนยัน|ต้องได้ผลจากเจ้าของก่อน merge\/deploy|เหลือ: เจ้าของรัน SELECT|ต้องรวม #1879|ต้องรวมด้วยก่อนเปิด PR/,
+    'คำของตอนรอผล SELECT / รอรวม #1879 ต้องไม่ค้าง');
+  assert.doesNotMatch(DOC, /0404 ยังรอผล SELECT ตรวจหลังรัน/, 'แถว "ฐาน" ของตารางไฟล์ต้องไม่บอกว่ายังรอผล');
+  assert.match(DOC, /ของ 0404 เจ้าของแปะผล SELECT ตรวจหลังรันแล้ว 08\/10\/2026 — ตรงตามที่คาดทุกค่า\)/);
   /* SELECT ตรวจรุ่นของไฟล์ที่รัน (ข้อ 1 ของลำดับ deploy): เข็มสองเล่มต้องมีจริงในโค้ดของไฟล์ (ไม่นับคอมเมนต์) — ด่านของรอบตรวจทานสุดท้าย
      · เล่มแรก = ด่านที่แปดของตัวห่อ · เล่มสอง = เงื่อนไขที่หกของบล็อก D1 (ชื่อย่อ dm มีเฉพาะในบล็อกนั้น — ตัวเปิดรอบขายเดิมไม่มี) */
   const code0404 = MIG_0404.slice(MIG_0404.indexOf('\nBEGIN;')).replace(/--[^\n]*/g, '');
@@ -756,8 +792,9 @@ test('docs/so-service-setup.md: หัวข้อของ 0404 — สถา�
   assert.match(section, /\*\*ฝ่ายบัญชี/);
   assert.match(section, /คำถามที่รอเจ้าของ/);
 
-  /* สารบัญ: แถวของไฟล์นี้บอกว่ามีงาน 0404 · ฐานมีไฟล์แล้ว (ตรวจสคีมา 08/10/2026) · ก่อน merge/deploy ยังต้องได้ผล SELECT ตรวจหลังรัน ·
-     คำสถานะของแถวยังเท่าหัวไฟล์ — เดิมยึด "เจ้าของรัน 0404 ก่อน merge/deploy" (ความจริงของตอนก่อนรัน · เหตุเดียวกับยามของหัวข้อข้างบน) */
+  /* สารบัญ: แถวของไฟล์นี้บอกว่ามีงาน 0404 · ฐานมีไฟล์แล้ว (ตรวจสคีมา 08/10/2026) · เจ้าของแปะผล SELECT ตรวจหลังรันแล้ว 08/10 ⇒ ที่ฐานไม่เหลืออะไร ·
+     ของที่ยังต้องมีก่อน merge/deploy · รวม main #1879 แล้ว · คำสถานะของแถวยังเท่าหัวไฟล์ — เดิมยึด "เจ้าของรัน 0404 ก่อน merge/deploy" แล้วจึง
+     "ก่อน merge/deploy เหลือให้เจ้าของแปะผล SELECT ตรวจหลังรัน" (ความจริงของตอนก่อนรัน / ตอนรอผล · เหตุเดียวกับยามของหัวข้อข้างบน) */
   const row = INDEX.split('\n').find((line) => line.startsWith('| [so-service-setup.md](so-service-setup.md) |'));
   assert.ok(row, 'หาแถว so-service-setup.md ในสารบัญไม่เจอ');
   assert.match(row, /mig 0404/);
@@ -768,8 +805,12 @@ test('docs/so-service-setup.md: หัวข้อของ 0404 — สถา�
   assert.match(deferPart, /mig 0404/);
   assert.match(deferPart, /\*\*0404 อยู่บนฐานจริงแล้ว\*\* · ตรวจสคีมาแบบอ่านอย่างเดียว 08\/10\/2026 16:04 น\./);
   assert.match(deferPart, /ไม่ต้องรันซ้ำ · ห้ามแก้ไฟล์/);
-  assert.match(deferPart, /\*\*ก่อน merge\/deploy เหลือให้เจ้าของแปะผล SELECT ตรวจหลังรัน\*\*/);
+  assert.match(deferPart, /\*\*เจ้าของรันที่ SQL Editor 08\/10\/2026 และแปะผล SELECT ตรวจหลังรันแล้ว — ตรงตามที่คาดทุกค่า\*\*/);
+  assert.match(deferPart, /\*\*ที่ฐานไม่เหลืออะไรต้องทำก่อน merge\/deploy\*\* — ยังต้องมี `npm run build` · ตรวจจอจริงแบบอ่านอย่างเดียวที่ 1440 และ 390 · เจ้าของสั่งให้ merge\/deploy/);
+  assert.match(deferPart, /\(SQL ใหม่ = เลข 0406 ขึ้นไป\)/);
+  assert.match(deferPart, /\*\*รวม main ถึง #1879 แล้ว\*\* \(`75751e5c` · mig 0405 · คอมมิตรวม `0140ee91`\)/);
   assert.doesNotMatch(deferPart, /ยังไม่ได้รัน|เจ้าของรัน 0404 ก่อน/, 'คำของตอนก่อนรันต้องไม่ค้างในช่วงของงาน 0404');
+  assert.doesNotMatch(deferPart, /เหลือให้เจ้าของแปะผล|ต้องรวมด้วยก่อนเปิด PR|main เดินต่อถึง #1879/, 'คำของตอนรอผล SELECT / รอรวม #1879 ต้องไม่ค้างในช่วงของงาน 0404');
   const headWord = DOC.split('\n').find((line) => line.startsWith('> สถานะ:')).match(/\*\*([^*]+)\*\*/)[1];
   assert.equal(row.match(/\| ([^|]+) \|$/)?.[1], headWord);
 });
