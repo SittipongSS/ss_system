@@ -16,7 +16,7 @@ import {
 import { addDays, coverageContinuityErrors, isConfirmed, paidThrough } from '@/lib/sales/paymentCoverage';
 import { historicalDuplicateApprovalRows, historicalDuplicateReviewOf } from '@/lib/sales/historicalDuplicates';
 import { paymentNotRequired, salesOrderMoneyOutcome } from '@/lib/sales/salesOrderPayments';
-import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL } from '@/lib/sales/serviceOrders';
+import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL, SERVICE_ROUNDS_UNIT } from '@/lib/sales/serviceOrders';
 
 const text = (value) => (value === null || value === undefined ? '' : String(value)).trim();
 const list = (value) => (Array.isArray(value) ? value.filter(Boolean) : []);
@@ -322,9 +322,12 @@ export function historicalBillingDatesText(installments = []) {
    ⭐ แพ็คต่อรอบเป็นช่องของ **โซน** (sales_order_line_zones.packsPerRound) คนละช่องกับจำนวนของบรรทัด (เงิน: 1 ชุด × 12 เดือน)
      — อนุมัติแล้วเป็น packageQty ของรอบขาย (0394/P3 เปิดผ่าน sales_order_open_service_terms) ⇒ ผู้คีย์ (ขั้น ④)
      ผู้อนุมัติ (โมดัล) และการ์ดโซนหน้าใบอ่านตัวเลขชุดเดียวกันจากตัวนี้
-   ⭐ มติเจ้าของ 29/09 ("ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง"): ป้าย = `SERVICE_PACKS_LABEL` "รอบละกี่แพ็ค" ·
-     พูดรอบก่อนแพ็คทุกที่ (หัวแถว · ค่ารวม · รายโซน · ผลลัพธ์ของ TS)
+   ⭐ มติเจ้าของ 29/09 ("ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง"): ป้าย = `SERVICE_PACKS_LABEL` "รอบละกี่แพ็ค"
+   ⭐ มติเจ้าของ 08/10 รอบสอง (จอฝ่ายขายที่เหลือ — ตามตารางงานบริการของใบใหม่ #1878): **พูดแพ็คก่อนจำนวนรอบบริการทุกที่**
+     (หัวแถว · ค่ารวม · รายโซน · ผลลัพธ์ของ TS) และ **หน่วยของจำนวนรอบบริการ = `SERVICE_ROUNDS_UNIT` "เดือน"** ("12 เดือน/โซน" ·
+     "Lobby 2 แพ็ค/รอบ × 12 เดือน") · เปลี่ยนแค่คำและลำดับ — ตัวเลขชุดเดิม (`historicalServiceTotals`) · 1 เดือน = 1 รอบ
    🔴 คำที่ยอม: "รอบละกี่แพ็ค" · "แพ็ค/รอบ" เท่านั้น — "N แพ็ค" เปล่า ๆ อ่านได้สองความหมาย (มติ 23/09 · เทสต์ไล่ทุกสตริง)
+     ("แพ็ค/รอบ" = แพ็คต่อการเข้าโซนหนึ่งครั้ง — คำของแพ็ค ไม่ใช่หน่วยของจำนวนรอบบริการ จึงคงเดิม)
    ⚠️ ค่าที่ไม่ใช่จำนวนเต็มบวก = **ไม่รู้** (null) ไม่ใช่ 0 — ใบที่คีย์ก่อนมีช่องไม่มีแถวโซนของงานบริการ */
 const positiveInt = (value) => {
   if (value === null || value === undefined || typeof value === 'boolean' || text(value) === '') return null;
@@ -332,10 +335,10 @@ const positiveInt = (value) => {
   return Number.isInteger(n) && n > 0 ? n : null;
 };
 const ZONE_CARD_META_TAIL = 'โซนผูกจากทะเบียนไซต์ตอนคีย์ใบแล้ว ฝ่าย TS ตั้งรอบต่อได้เลย';
-/* หัวแถว "จำนวนรอบบริการ · แต่ละครั้งกี่แพ็ค" ของขั้น ④ (historicalReviewView) และโมดัลอนุมัติ — คำและลำดับตามมติเจ้าของ 29/09
-   (`SERVICE_ROUNDS_LABEL` · `SERVICE_PACKS_LABEL`) · ค่าตามหลังเป็นตัวเลขล้วน เรียงเดียวกับหัว "12 รอบ/โซน · รวม 6 แพ็ค/รอบ"
-   (ป้ายบอกแล้วว่าตัวไหนคืออะไร) */
-export const PACKS_ROUNDS_HEAD = `${SERVICE_ROUNDS_LABEL} · ${SERVICE_PACKS_LABEL}`;
+/* หัวแถว "รอบละกี่แพ็ค · จำนวนรอบบริการ" ของขั้น ④ (historicalReviewView) และโมดัลอนุมัติ — คำตามมติเจ้าของ 29/09 ·
+   ลำดับตามมติเจ้าของ 08/10 รอบสอง (`SERVICE_PACKS_LABEL` ก่อน `SERVICE_ROUNDS_LABEL` — ชื่อค่าคงที่ตรงกับลำดับแล้ว) ·
+   ค่าตามหลังเป็นตัวเลขล้วน เรียงเดียวกับหัว "รวม 6 แพ็ค/รอบ · 12 เดือน/โซน" (ป้ายบอกแล้วว่าตัวไหนคืออะไร) */
+export const PACKS_ROUNDS_HEAD = `${SERVICE_PACKS_LABEL} · ${SERVICE_ROUNDS_LABEL}`;
 /* "ยังไม่ใส่รอบละกี่แพ็ค" — ท้ายเดียวกับ packs_missing ของใบใหม่ (SERVICE_SETUP_ISSUE_TEXT) */
 const PACKS_MISSING_TEXT = `ยังไม่ใส่${SERVICE_PACKS_LABEL}`;
 
@@ -368,27 +371,30 @@ export function historicalServiceTotals(zones = []) {
   };
 }
 
-/* "12 รอบ/โซน" · รอบต่างกัน = ช่วง "6–12 รอบ/โซน" · ไม่รู้สักโซน = '' */
+/* "12 เดือน/โซน" · จำนวนรอบบริการต่างกัน = ช่วง "6–12 เดือน/โซน" · ไม่รู้สักโซน = '' (หน่วย = `SERVICE_ROUNDS_UNIT` · มติ 08/10 รอบสอง) */
 function roundsPerZoneText(totals) {
   if (totals.roundsMin === null) return '';
   return totals.roundsMin === totals.roundsMax
-    ? `${fmtNumber(totals.roundsMin)} รอบ/โซน`
-    : `${fmtNumber(totals.roundsMin)}–${fmtNumber(totals.roundsMax)} รอบ/โซน`;
+    ? `${fmtNumber(totals.roundsMin)} ${SERVICE_ROUNDS_UNIT}/โซน`
+    : `${fmtNumber(totals.roundsMin)}–${fmtNumber(totals.roundsMax)} ${SERVICE_ROUNDS_UNIT}/โซน`;
 }
 
-/* "Lobby 12 รอบ × 2 แพ็ค/รอบ" (รอบก่อนแพ็ค — มติ 29/09) · ยังไม่มีแพ็ค = "Lobby 12 รอบ · ยังไม่ใส่ว่าแต่ละครั้งกี่แพ็ค"
-   (บอกว่าโซนไหนขาด) */
+/* "Lobby 2 แพ็ค/รอบ × 12 เดือน" (แพ็คก่อนจำนวนรอบบริการ — มติ 08/10 รอบสอง) · ยังไม่มีแพ็ค = "Lobby ยังไม่ใส่รอบละกี่แพ็ค (12 เดือน)"
+   (บอกว่าโซนไหนขาด)
+   ⚠️ ค่าเดือนของโซนที่ขาดแพ็คอยู่ **ในวงเล็บของโซนนั้น** ไม่ใช่ต่อด้วย " · " (ผลตรวจทาน 08/10): `historicalPacksRoundsText` คั่นโซนด้วย
+      " · " ตัวเดียวกัน ⇒ "… BTS ยังไม่ใส่รอบละกี่แพ็ค · 12 เดือน · ห้องน้ำหญิง …" มี "12 เดือน" ลอยอยู่ระหว่างชื่อสองโซน บอกไม่ได้ว่าของโซนไหน
+      (ก่อนสลับลำดับ ตัวเลขอยู่ติดชื่อโซน "… BTS 12 รอบ · ยังไม่ใส่…" จึงไม่กำกวม) */
 function zonePacksText({ label, packs, rounds }) {
-  const roundsText = rounds !== null ? `${fmtNumber(rounds)} รอบ` : '';
-  if (packs === null) return `${label} ${[roundsText, PACKS_MISSING_TEXT].filter(Boolean).join(' · ')}`;
-  return `${label} ${[roundsText, `${fmtNumber(packs)} แพ็ค/รอบ`].filter(Boolean).join(' × ')}`;
+  const roundsText = rounds !== null ? `${fmtNumber(rounds)} ${SERVICE_ROUNDS_UNIT}` : '';
+  if (packs === null) return `${label} ${PACKS_MISSING_TEXT}${roundsText ? ` (${roundsText})` : ''}`;
+  return `${label} ${[`${fmtNumber(packs)} แพ็ค/รอบ`, roundsText].filter(Boolean).join(' × ')}`;
 }
 
 /**
- * ประโยคของรอบ · แพ็คต่อรอบ (IMPL_PLAN_D §3.4 · ลำดับตามมติ 29/09)
+ * ประโยคของแพ็คต่อรอบ · จำนวนรอบบริการ (IMPL_PLAN_D §3.4 · ลำดับและหน่วยตามมติเจ้าของ 08/10 รอบสอง — แพ็คก่อน · "เดือน")
  * @returns `{ total, perZone, meta, overflow, totals }`
- *   · total "12 รอบ/โซน · รวม 9 แพ็ค/รอบ" (ขาดบางโซน = บอกจำนวนที่ขาดในวงเล็บ) · ไม่รู้แพ็คสักโซน = null
- *   · perZone "Lobby 12 รอบ × 2 แพ็ค/รอบ · …" · เกิน `maxZones` = null + `overflow: true` (ผู้เรียกชี้ที่ของตัวเอง)
+ *   · total "รวม 9 แพ็ค/รอบ · 12 เดือน/โซน" (ขาดบางโซน = บอกจำนวนที่ขาดในวงเล็บ) · ไม่รู้แพ็คสักโซน = null
+ *   · perZone "Lobby 2 แพ็ค/รอบ × 12 เดือน · …" · เกิน `maxZones` = null + `overflow: true` (ผู้เรียกชี้ที่ของตัวเอง)
  *   · meta = บรรทัดหัวของการ์ด "โซนในใบนี้" · ไม่รู้แพ็คสักโซน = null (การ์ดใช้ meta เดิม)
  */
 export function historicalPacksRoundsText(zones = [], { maxZones = 5 } = {}) {
@@ -399,7 +405,7 @@ export function historicalPacksRoundsText(zones = [], { maxZones = 5 } = {}) {
     ? `รวม ${fmtNumber(totals.packsTotal)} แพ็ค/รอบ${totals.packsMissing ? ` (${PACKS_MISSING_TEXT} ${fmtNumber(totals.packsMissing)} โซน)` : ''}`
     : null;
   return {
-    total: packs ? [roundsPerZoneText(totals), packs].filter(Boolean).join(' · ') : null,
+    total: packs ? [packs, roundsPerZoneText(totals)].filter(Boolean).join(' · ') : null,
     perZone: overflow ? null : totals.perZone.map(zonePacksText).join(' · '),
     meta: packs ? `${fmtNumber(totals.zoneCount)} โซน · ${packs} — ${ZONE_CARD_META_TAIL}` : null,
     overflow,
@@ -411,6 +417,25 @@ export function historicalPacksRoundsText(zones = [], { maxZones = 5 } = {}) {
 export function historicalPacksCellText(value) {
   const packs = positiveInt(value);
   return packs === null ? NA : `${fmtNumber(packs)} แพ็ค/รอบ`;
+}
+
+/** เซลล์ "จำนวนรอบบริการ" ของการ์ดโซน — "12 เดือน" (หน่วย = `SERVICE_ROUNDS_UNIT` · มติเจ้าของ 08/10 รอบสอง) · ไม่รู้ / ไม่ใช่
+ *  จำนวนเต็มบวก = ขีด (การ์ดไม่พิมพ์หน่วยเอง — เหตุเดียวกับเซลล์แพ็คข้างบน) */
+export function historicalRoundsCellText(value) {
+  const rounds = positiveInt(value);
+  return rounds === null ? NA : `${fmtNumber(rounds)} ${SERVICE_ROUNDS_UNIT}`;
+}
+
+/**
+ * ค่าของช่องหัวใบ "รอบบริการที่ขาย" ของใบย้อนหลัง — "12 เดือน/โซน" · จำนวนรอบบริการต่างกันรายบรรทัด = ช่วง "6–12 เดือน/โซน" ·
+ * ไม่มีบรรทัดไหนมีจำนวนรอบ = null (จอขีด)
+ * 🔴 **ไม่ใช่ผลรวมของทุกบรรทัด** (มติเจ้าของ 08/10 รอบสอง — พบตอนวาดจอจริง): ช่องนี้เคยพิมพ์ Σ รายบรรทัด "48 รอบ" (4 โซน × 12 รอบ ·
+ *   นับครั้งที่เข้าโซน) — พอหน่วยเป็น "เดือน" ผลรวมอ่านเป็น "48 เดือน" ทั้งที่สัญญายาว 12 เดือน ⇒ พูดต่อโซนแบบเดียวกับแถวของขั้น ④/
+ *   โมดัลอนุมัติ (`roundsPerZoneText`) และแบบเดียวกับช่องหัวใบของใบ pipeline ("8–12 เดือน" ไม่ใช่ผลรวม — `serviceSetupHeroFact`)
+ * @param lines บรรทัดของใบ (`serviceRounds`) หรือแถวโซนของเสริม (`rounds`) — ตัวรวมเดียวกับ `historicalServiceTotals`
+ */
+export function historicalRoundsSoldText(lines = []) {
+  return roundsPerZoneText(historicalServiceTotals(lines)) || null;
 }
 
 /* ── ตัวกลางตีกลับการอนุมัติใบย้อนหลัง (mig 0394/P3 → sales_order_open_service_terms) ──────────────────────
@@ -506,7 +531,7 @@ export function historicalApprovalFacts(order, {
   checklist.push(zones.length
     ? `โซน: ${historicalZoneSitesText(zones)}`
     : `โซน: ${missing} — ใบย้อนหลังต้องมีอย่างน้อย 1 โซน`);
-  /* ── รอบ · แพ็คต่อรอบ (PR-D · มติ 26/09 A3/O9 · ลำดับตามมติ 29/09) — แพ็คมากับแถวโซนของเสริมเท่านั้น (บรรทัดของใบไม่พก)
+  /* ── แพ็คต่อรอบ · จำนวนรอบบริการ (PR-D · มติ 26/09 A3/O9 · ลำดับ/หน่วยตามมติ 08/10 รอบสอง) — แพ็คมากับแถวโซนของเสริมเท่านั้น (บรรทัดของใบไม่พก)
      ⇒ ของเสริมโหลดไม่ขึ้น / ไม่มีแถวโซน = บอกว่าไม่รู้ ("โหลดไม่ขึ้น"/"ไม่พบ") ไม่ใช่ ⚠️ "คีย์ก่อนมีช่อง" (ไม่รู้ ≠ ไม่มี)
      · ตัวกลางของ 0392 ตรวจซ้ำตอนกด (0394/P3) — แพ็คไม่ครบ = การอนุมัติทั้งก้อนถอย */
   const service = historicalPacksRoundsText(list(lineZones));
@@ -515,7 +540,7 @@ export function historicalApprovalFacts(order, {
   } else if (!service.totals.zoneCount) {
     if (zones.length) checklist.push(`${PACKS_ROUNDS_HEAD}: ${missing} — ระบบตรวจซ้ำตอนกดอนุมัติ`);
   } else {
-    const head = service.total || [roundsPerZoneText(service.totals), PACKS_MISSING_TEXT].filter(Boolean).join(' · ');
+    const head = service.total || [PACKS_MISSING_TEXT, roundsPerZoneText(service.totals)].filter(Boolean).join(' · ');
     checklist.push(`${PACKS_ROUNDS_HEAD}: ${head} — ${service.perZone || 'ดูการ์ดโซนในหน้าใบ'}`);
     if (service.totals.packsMissing) {
       checklist.push(`⚠️ ${PACKS_MISSING_TEXT} ${fmtNumber(service.totals.packsMissing)} รายการ (ใบนี้คีย์ก่อนมีช่องนี้)`
@@ -595,13 +620,13 @@ export function historicalApprovalFacts(order, {
   const gate = zeroValue ? 'นัดขึ้นตารางได้ทันที (ใบยอด 0 ไม่มีด่านเงิน)'
     : opening ? `นัดขึ้นตารางได้เมื่อบัญชีรับรอง${OPENING_INSTALLMENT_LABEL}`
       : 'นัดขึ้นตารางได้เมื่อบัญชีรับรองงวดแรก';
-  /* ⭐ PR-D: แพ็คครบทุกโซน = บอกสิ่งที่ TS จะเห็นในคิว (โซน · ไซต์ · จำนวนรอบบริการ · แพ็ค/รอบ — รอบก่อนตามมติ 29/09)
+  /* ⭐ PR-D: แพ็คครบทุกโซน = บอกสิ่งที่ TS จะเห็นในคิว (โซน · ไซต์ · แพ็ค/รอบ · จำนวนรอบบริการ n เดือน — แพ็คก่อนตามมติ 08/10 รอบสอง)
      · ไม่รู้/ไม่ครบ = ประโยคเดิม */
   const totals = service.totals;
   const rounds = roundsPerZoneText(totals);
   effects.push(!extrasError && totals.zoneCount && !totals.packsMissing
     ? `${fmtNumber(totals.zoneCount)} โซน${totals.siteCount ? `ใน ${fmtNumber(totals.siteCount)} ไซต์` : ''}`
-      + `${rounds ? ` · ${SERVICE_ROUNDS_LABEL} ${rounds}` : ''} · รวม ${fmtNumber(totals.packsTotal)} แพ็ค/รอบ ขึ้นคิว TS งานเข้าใหม่ › รอตั้งรอบ — ${gate}`
+      + ` · รวม ${fmtNumber(totals.packsTotal)} แพ็ค/รอบ${rounds ? ` · ${SERVICE_ROUNDS_LABEL} ${rounds}` : ''} ขึ้นคิว TS งานเข้าใหม่ › รอตั้งรอบ — ${gate}`
     : `${fmtNumber(zones.length)} โซนขึ้นคิว TS งานเข้าใหม่ › รอตั้งรอบ — ${gate}`);
 
   return { subject: `ใบสั่งขาย ${text(order?.orderNumber) || '—'}`, checklist, effects };

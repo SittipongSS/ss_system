@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs';
 import { PLAN_ROUNDS_SOLD_HINT, ROUNDS_SOLD_LABEL, roundsSoldSentence, suggestEveryDays } from './rounds.js';
 import { planSuggestionLabel } from './intakePlanFacts.js';
 import { planRoundsSoldText } from './intake.js';
+import { SERVICE_ROUNDS_UNIT, siteRoundsSoldText } from '../sales/serviceOrders.js';
 
 /* ตัดคอมเมนต์โดยคงจำนวนบรรทัด — ข้อความในคอมเมนต์ต้องไม่ทำให้ยามผ่าน/แดงเอง */
 const code = (rel) => readFileSync(`src/${rel}`, 'utf8')
@@ -45,6 +46,45 @@ test('จอ: แถวรอตั้งรอบ (การ์ด + ตาร�
   assert.match(modal, /salesOrderId \? PLAN_ROUNDS_SOLD_HINT\.ofOrder : PLAN_ROUNDS_SOLD_HINT\.ofSite/);
   assert.match(modal, /PLAN_ROUNDS_SOLD_HINT\.diff\(Math\.abs\(estimate - roundsSold\)\)/);
   assert.match(code(SITE), /\{ id: "roundsSold", label: ROUNDS_SOLD_LABEL, value: /);
+});
+
+/* มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ: หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ
+   ⭐ แถว "จำนวนรอบบริการ" ของสรุปไซต์ (โมดูลฐานข้อมูล) = ค่าที่ **ฝ่ายขายขายไว้** ⇒ พูด "เดือน" จากฝั่งขาย · ป้ายยังเป็น
+     `ROUNDS_SOLD_LABEL` ตัวกลางตัวเดิม (จอ TS ใช้ร่วม — ไม่แตะ)
+   ⚠️ ผลตรวจทาน 08/10 (หลังเห็นจอจริง): หน้านี้เป็นจอร่วม — โมดัลรอบบริการของ TS ที่เปิดจากหน้านี้ได้ตัวเลขเดียวกันแล้วพูด "12 รอบ"
+     และตัวเลขนั้นเป็นผลรวมของทุกใบที่ยังมีผล (สองใบ 12 รอบซ้อน = 24) ⇒ ยามย้ายจาก `${fmtNumber(roundsSold)} ${SERVICE_ROUNDS_UNIT}`
+     ไปยึดคำของฝั่งขายตัวใหม่ `siteRoundsSoldText(roundsSold, roundsSoldRange)`: "12 เดือน (12 รอบ)" — เดือน = ค่าที่ขายไว้ต่อรายการ
+     (ช่วง ไม่บวกข้ามใบ) · รอบในวงเล็บ = ผลรวมของทั้งไซต์ ตัวเลข/หน่วยเดียวกับโมดัล
+   🔴 ฝั่ง TS ไม่เปลี่ยน: แคตตาล็อกของ rounds.js และหน้างานเข้าใหม่/โมดัลรอบบริการยังนับ "รอบ" ที่ช่างไป · จำนวนรอบที่ TS ตั้งของไซต์
+     (การ์ด "รอบบริการ n รอบ" · คอลัมน์ "รอบ" ของตารางรอบบริการ ในหน้าเดียวกัน) ก็ยังเป็น "รอบ" */
+test('สรุปไซต์: ค่าที่ฝ่ายขายขายไว้พูด "เดือน" + รอบของทั้งไซต์ในวงเล็บ (ตัวเลขเดียวกับโมดัล) · จอ TS และจำนวนรอบที่ TS ตั้งยังพูด "รอบ"', () => {
+  const site = code(SITE);
+  assert.match(site, /import \{ siteRoundsSoldText \} from "@\/lib\/sales\/serviceOrders";/);
+  assert.match(site, /\{ id: "roundsSold", label: ROUNDS_SOLD_LABEL, value: siteRoundsSoldText\(roundsSold, roundsSoldRange\) \}/);
+  assert.doesNotMatch(site, /fmtNumber\(roundsSold\)\} รอบ/, 'ค่าที่ขายไว้ไม่พิมพ์หน่วย "รอบ" เองอีก');
+  assert.doesNotMatch(site, /SERVICE_ROUNDS_UNIT|\$\{fmtNumber\(roundsSold\)\}/, 'หน้าไม่ประกอบคำของแถวนี้เอง — คำอยู่ที่ siteRoundsSoldText ตัวเดียว');
+  assert.match(site, /setRoundsSoldRange\(siteData\?\.roundsSoldRange \?\? null\);/, 'ช่วงมาจากคีย์เสริมของ GET ไซต์');
+  /* โมดัลรอบบริการยังได้ผลรวมของทั้งไซต์ตัวเดิม (TS เทียบกับจำนวนนัด) — ไม่ได้ช่วง */
+  assert.match(site, /<ServicePlanModal[\s\S]{0,400}?roundsSold=\{roundsSold\}/);
+  assert.doesNotMatch(site, /<ServicePlanModal[\s\S]{0,600}?roundsSoldRange/);
+  /* คำของแถว: เท่ากัน = "12 เดือน (12 รอบ)" · สองใบซ้อน/รายการไม่เท่ากัน = เดือนเป็นช่วง ไม่ใช่ผลรวม + "ทั้งไซต์ n รอบ" */
+  assert.equal(siteRoundsSoldText(12, { min: 12, max: 12 }), '12 เดือน (12 รอบ)');
+  assert.equal(siteRoundsSoldText(24, { min: 12, max: 12 }), '12 เดือน (ทั้งไซต์ 24 รอบ)', 'ไม่ใช่ "24 เดือน" ของสัญญา 12 เดือน');
+  assert.equal(siteRoundsSoldText(12, { min: 4, max: 12 }), '4–12 เดือน (ทั้งไซต์ 12 รอบ)');
+  assert.ok(siteRoundsSoldText(12, { min: 12, max: 12 }).includes(`12 ${SERVICE_ROUNDS_UNIT}`), 'หน่วยของค่าที่ขายไว้ = SERVICE_ROUNDS_UNIT');
+  /* ตัวเลขในวงเล็บ = ตัวเลข + หน่วยที่โมดัลรอบบริการพิมพ์ ("<strong>{roundsSold} รอบ</strong>") */
+  assert.ok(siteRoundsSoldText(24, { min: 12, max: 12 }).includes('24 รอบ)'));
+  assert.equal(SERVICE_ROUNDS_UNIT, 'เดือน');
+  /* จำนวนรอบที่ TS ตั้งของไซต์ = "รอบ" คำเดิม */
+  assert.match(site, /label: "รอบบริการ", value: `\$\{plans\.length\} รอบ`/);
+  assert.match(site, /<th>รอบ<\/th>/);
+  /* แคตตาล็อกฝั่ง TS ไม่อ่านหน่วยของฝ่ายขาย และยังพูด "n รอบ" */
+  assert.equal(roundsSoldSentence(12), 'จำนวนรอบบริการ 12 รอบ');
+  assert.deepEqual(planRoundsSoldText({ roundsSold: 12, stamped: true }), { value: '12 รอบ', hint: null });
+  for (const rel of ['lib/service/rounds.js', FACTS, INTAKE, PAGE, MODAL]) {
+    assert.doesNotMatch(code(rel), /SERVICE_ROUNDS_UNIT/, `${rel} (ฝั่ง TS) ต้องไม่อ่านหน่วยของฝ่ายขาย`);
+  }
+  assert.match(code(MODAL), /<strong>\{roundsSold\} รอบ<\/strong>/, 'โมดัลรอบบริการของ TS ยังพูด "รอบ"');
 });
 
 test('ไม่มีคำเก่าหลงเหลือในโค้ด (นอกคอมเมนต์) ของผิวที่พูดจำนวนรอบที่ขาย', () => {

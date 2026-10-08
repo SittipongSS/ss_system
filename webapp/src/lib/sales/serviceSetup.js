@@ -17,6 +17,11 @@
 //        (1 เดือน = 1 รอบ · ตรวจข้อมูลจริง 08/10: ทุกบรรทัดที่บันทึกเป็นรายเดือน) · ไม่มี migration · รูป API · ช่วงที่ยอม · รหัสข้อผิด ·
 //        สูตร (รวม = Σ รอบละ × จำนวนรอบ) · ชิป "ทุกเดือน ≈ n" · เกณฑ์คำเตือนรอบน้อย ไม่เปลี่ยน · `ROUNDS_TERM` / `PACKS_TERM` คำเดิม
 //     ⚠️ ฝั่ง TS (lib/service · components/service · app/service) นับเป็น "รอบ" ที่ช่างไปตามเดิม — ไม่อ่านหน่วยจากไฟล์นี้
+//     ⭐ มติเจ้าของ 08/10 รอบสอง: ใบย้อนหลังและจอฝ่ายขายที่เหลือพูด "เดือน" ด้วย — คำของฝั่งนั้นคือ `SERVICE_ROUNDS_UNIT` ของ serviceOrders.js
+//        (literal ของไฟล์นั้นเอง เพราะ import ไฟล์นี้ไม่ได้ · เทสต์ยึดให้เท่ากับ `ROUND_UNIT` ข้างล่าง)
+//   ⭐ มติเจ้าของ 08/10 ("ตามงานค้าง"): ใบในเส้นตั้งย้อนหลังบอกว่า **ค้างอยู่ที่ใคร มากี่วัน** — ตัวตัดสินเดียว `serviceBackfillAging(order)`
+//     (นาฬิกา: ยังไม่ยื่นตรวจ = เหตุการณ์ล่าสุดของ อนุมัติใบ / เปิดแก้หลังอนุมัติ / ถูกตีกลับ · รอผู้จัดการ = วันที่ยื่นตรวจ) · คำ/เกณฑ์/ตัวเรียงอยู่ที่
+//     `serviceBackfillAging.js` · ไม่มี migration · ไม่มีการแจ้งเตือน
 //   ⭐ มติเจ้าของ 01/10 (mig 0400): ช่วงบริการมีสองโหมด — "ทั้งใบช่วงเดียว" (ค่าตั้งต้น · เหมือนเดิมทุกอย่าง) | "แยกรายรายการ"
 //     (รายการแพ็คเกจแต่ละบรรทัดมีช่วงของตัวเอง · ช่วงของใบ = ช่วงรวมที่ RPC บันทึกคิดให้ **เมื่อรายการครบทุกรายการ** ยังไม่ครบ = ว่าง)
 //     ตัวตัดสินเดียวของโหมด = `servicePeriodModeOf(order)` · ช่วงที่ใช้กับบรรทัด = `serviceLinePeriod(line, ctx)` · คำ = `SERVICE_PERIOD_TEXT`
@@ -37,6 +42,7 @@
 // 🔴 **ทิศทางการ import (กฎ 16 ของแผน)**: `intake.js` ↔ `serviceOrders.js` เป็นวงอยู่แล้ววันนี้ ⇒
 //   - ไฟล์นี้ import `intake.js` / `serviceOrders.js` ได้ แต่สองไฟล์นั้น **ห้าม** import ไฟล์นี้
 //   - ไฟล์นี้ **ห้าม** import `serviceRoundsEntry.js` (ตัวนั้น import ไฟล์นี้)
+//   - ไฟล์นี้ import `serviceBackfillAging.js` (ไฟล์ใบไม้: เลขคณิตของวัน + คำของชิป "ค้าง n วัน") ได้ — ตัวนั้น **ห้าม** import ไฟล์นี้
 //   - **ห้ามมีค่าคงที่ระดับบนสุดที่อ่านชื่อที่ import มา** — เขียน literal แล้วอ่าน import ในฟังก์ชันเท่านั้น
 //     (วงของ ESM: ถ้าวันหนึ่งมีใครพาไฟล์นี้เข้าวง ชื่อที่ import อาจยังไม่ถูกผูกตอนโมดูลนี้รันบรรทัดบนสุด)
 //   ยาม: serviceSetupImports.test.mjs
@@ -51,6 +57,7 @@ import { isHistoricalOrder, isOpeningInstallment } from '@/lib/sales/historicalO
 import { fmtDate, fmtMoney, fmtNumber, fmtYearMonth } from '@/lib/format';
 import { formatMonthLabel } from '@/lib/datePeriods';
 import { isSalesManager } from '@/lib/permissions';
+import { latestTimestamp, serviceAgingOf } from '@/lib/sales/serviceBackfillAging';
 
 /* ══ ค่าคงที่ ══════════════════════════════════════════════════════════════════════════════════════ */
 
@@ -702,6 +709,32 @@ export function serviceBackfillState(order, { hasDraftData = false } = {}) {
   if (serviceBackfillAwaitingReview(order)) return 'submitted';
   if (order?.serviceSetupState === 'rejected') return 'rejected';
   return hasDraftData ? 'editing' : 'not_started';
+}
+
+/**
+ * ⭐ "งานบริการของใบนี้ค้างอยู่ที่ใคร ตั้งแต่เมื่อไร" (มติเจ้าของ 08/10 "ตามงานค้าง") — ตัวเดียวที่ทุกผิวถาม
+ *   (แถวทะเบียน SO · คิวผู้จัดการ · แบนเนอร์/การ์ดรางของหน้าใบ · แท็บ TS) → ก้อนของ `serviceAgingOf` หรือ null
+ *   null: ใบที่ไม่อยู่ในเส้นตั้งย้อนหลัง — ใบย้อนหลัง · ยังไม่อนุมัติ/ย้อนอนุมัติ/ยกเลิก · ถูก Rev. ทับ · ประทับแล้ว (งานถึง TS แล้ว)
+ *   รอผู้จัดการ (`serviceBackfillAwaitingReview`) → นาฬิกา = วันที่ยื่นตรวจ (`serviceSetupSubmittedAt`)
+ *   ยังไม่ยื่นตรวจ ('sales') → นาฬิกา = **เหตุการณ์ล่าสุด** ของ อนุมัติใบ / เปิดแก้หลังอนุมัติ / ถูกตีกลับ (ทุกเหตุการณ์คือ "ลูกบอลกลับมาที่ฝ่ายขาย")
+ * 🔴 ต้องเป็น "ล่าสุดของสาม" ไม่ใช่สวิตช์ตามสถานะ — RPC ยื่นตรวจไม่ล้าง `serviceSetupRejectedAt` (ล้างเฉพาะตอนเปิดแก้) ⇒ ค่าเก่าค้างได้
+ *   และใบที่ถูกตีกลับหลังเปิดแก้ต้องนับจากวันที่ถูกตีกลับ
+ * ⚠️ `serviceSetupDeferredAt` (ข้ามตอนยื่น · mig 0404) **ไม่ใช่นาฬิกา** — การข้ามเกิดตอนยื่น งานมาถึงฝ่ายขายตอนใบได้รับอนุมัติ (`approvedAt`)
+ * 🔴 `waitingOn: 'sales'` = **ยังไม่ยื่นตรวจ** — ไม่ได้พิสูจน์ว่าฝ่ายขายลงมือได้ (ผลตรวจทาน 08/10): ลูกค้าที่ยังไม่มีไซต์ในทะเบียน
+ *   ฝ่ายขายเลือกโซนไม่ได้จนกว่า TS เพิ่มไซต์ และแถวใบไม่รู้เรื่องไซต์ (ข้อมูลจริง 08/10: 11 จาก 58 ใบ) ⇒ คำบนจอของขั้นนี้บอก "ขั้น"
+ *   ไม่ชี้ "คน" (`SERVICE_BACKFILL_AGING_TEXT`) · จอที่รู้เรื่องไซต์ (แท็บ TS · หน้าใบ) บอกเหตุของตัวเองอยู่แล้ว
+ * ⚠️ ดูแค่แถวใบ — **ไม่ตอบว่า "ใบนี้มีอะไรให้ตั้งไหม"** (บรรทัด + สายธุรกิจ) · ผู้เรียกกั้นด้วยของที่ตัวเองคิดอยู่แล้ว:
+ *   ทะเบียน = `setupPendingIds` · หน้าใบ = `flow === 'backfill'` · แท็บ TS = `serviceBackfillNeeded`
+ * @param todayIso วันนี้ตามเวลาไทย 'YYYY-MM-DD' (`businessDate()` ของ server) · ไม่ส่ง = ก้อนที่ `days`/`label` เป็น null (ไม่มีป้าย)
+ */
+export function serviceBackfillAging(order, { todayIso = null } = {}) {
+  if (!order || isHistoricalOrder(order)) return null;
+  if (order.status !== 'approved' || order.supersededById || order.serviceTermsOpenedAt) return null;
+  const manager = serviceBackfillAwaitingReview(order);
+  const since = manager
+    ? (order.serviceSetupSubmittedAt || null)
+    : latestTimestamp([order.approvedAt, order.serviceSetupReopenedAt, order.serviceSetupRejectedAt]);
+  return serviceAgingOf({ waitingOn: manager ? 'manager' : 'sales', since }, todayIso);
 }
 
 /**
@@ -1840,7 +1873,8 @@ export function serviceSetupHeroFact(ctx = {}, { flow = null, issues = null } = 
   }
   /* ช่องนี้ป้ายบอกแล้วว่า "รอบบริการที่ขาย" ⇒ ค่า (ตัวใหญ่) คือคำตอบของป้าย = ตัวเลข + หน่วย (ไม่ซ้ำคำ "จำนวนรอบบริการ" ใต้ป้าย)
      · บรรทัดรองบอกโซน/แพ็คของแต่ละครั้ง · มติ 08/10: หน่วยเดียวกับตารางงานบริการของใบนี้ "12 เดือน" (`roundsCount`)
-     — ใบที่ไม่ต้องตั้งงานบริการ (ใบย้อนหลัง) ยังพูด "n รอบ" ที่หน้าใบของมันเอง ไม่ปนกันในหน้าเดียว
+     — ใบที่ไม่ต้องตั้งงานบริการ (ใบย้อนหลัง) พูด "เดือน" เหมือนกันตั้งแต่มติเจ้าของ 08/10 รอบสอง (`SERVICE_ROUNDS_UNIT` ของ serviceOrders.js ·
+       ช่องสำรองบนหัวใบของมัน = "12 เดือน/โซน") — หน้าใบสองชนิดไม่พูดคนละหน่วยอีก
      ⚠️ ช่องหัวใบเป็น "ป้าย → ค่า → บรรทัดรอง" ไม่ใช่ประโยคไล่คอลัมน์ ⇒ ไม่เรียงตาม `columnOrderParts` (ค่าต้องตอบป้ายของตัวเอง) */
   return {
     label,
@@ -2282,8 +2316,10 @@ function reopenViewOf(ctx, { canEdit, reopenBlockers, issues }) {
  *   ไม่ส่ง = 'unread' เมื่อปุ่มโชว์ (ปิดไว้ก่อน) · รหัส JS (`money_fn`) คิดที่นี่เสมอ — ส่งมาแล้วก็ถูกคิดใหม่ ไม่ซ้ำ
  * ⭐ mig 0404: เพิ่ม `skip` (ปุ่ม 'ยื่นโดยยังไม่ตั้งงานบริการ') และ `deferred` (ใบที่ผู้ยื่นเลือกข้าม) · `issues` ของใบรออนุมัติที่ยังข้ามอยู่
  *   = เฉพาะข้อที่หยุดการอนุมัติ (D-F11) · ใบที่ไม่มีตราการข้าม: ทุกคีย์เดิมค่าเดิม + `skip` ก้อนกลาง/ตามขั้น + `deferred: null`
+ * ⭐ มติเจ้าของ 08/10 ("ตามงานค้าง"): เพิ่ม `aging` (ชิป "ค้าง n วัน" ของแบนเนอร์/การ์ดราง) — มีเฉพาะขั้น 'backfill' · ทุกคีย์เดิมค่าเดิม
+ * @param todayIso วันนี้ตามเวลาไทย (route ส่ง `businessDate()`) — ไม่ส่ง = `aging.days` เป็น null (ไม่มีป้าย)
  */
-export function serviceSetupView(ctx = {}, { canEdit = false, userId = null, role = null, reopenBlockers = null } = {}) {
+export function serviceSetupView(ctx = {}, { canEdit = false, userId = null, role = null, reopenBlockers = null, todayIso = null } = {}) {
   const order = ctx?.order || {};
   const flow = serviceSetupFlow(order, ctx);
   /* ⭐ mig 0404 (D-F11): `issues` ของใบ **รออนุมัติ** = ข้อที่หยุดการอนุมัติ — ไม่มีตราการข้าม = ทุกข้อ (เหมือนเดิม) · ยังข้ามอยู่ = เฉพาะข้อที่
@@ -2411,5 +2447,8 @@ export function serviceSetupView(ctx = {}, { canEdit = false, userId = null, rol
       missing: deferredInfo.stage === 'approved' ? allIssues.length : gate.deferredIssues.length,
       blocking: deferredInfo.stage === 'pending' ? issues.length : 0,
     } : null,
+    /* ⭐ "ค้าง n วัน" (มติเจ้าของ 08/10 "ตามงานค้าง") — ก้อนของ `serviceBackfillAging` · มีเฉพาะขั้น 'backfill' (ใบที่มีอะไรให้ตั้งจริง · D25)
+       ขั้นอื่น = null (ร่าง/รออนุมัติยังไม่ถึงเส้นนี้ · ประทับแล้ว = งานถึง TS แล้ว) · แบนเนอร์และการ์ดรางวาดชิปจากตัวนี้ */
+    aging: flow === 'backfill' ? serviceBackfillAging(order, { todayIso }) : null,
   };
 }

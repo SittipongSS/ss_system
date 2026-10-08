@@ -150,10 +150,13 @@ export const GET = withUser(async ({ user, supabase }) => {
     /* ลูกค้าที่มีไซต์ลูกค้าที่ใช้งานในทะเบียน — ไม่มี = แถวใบเดิมบอก TS ให้เพิ่มไซต์ก่อน (ฝ่ายขายเลือกโซนไม่ได้)
        ⭐ ใช้ไซต์ที่โหลดไว้แล้ว (loadSites: kind='customer' รวมที่ปิด) · กติกาเดียวกับ `noSites` ของหน้าใบสั่งขาย (ไซต์ที่ใช้งาน) */
     const customersWithSite = new Set((sites || []).filter((s) => s?.isActive !== false).map((s) => s.customerId).filter(Boolean));
+    /* ⭐ `todayIso` (มติเจ้าของ 08/10 "ตามงานค้าง") — ตัวตั้งของชิป "ค้าง n วัน" บนแถวใบเดิม · วันไทยตัวเดียวกับที่คิวข้างล่างใช้
+       · นาฬิกาของชิปอ่านจาก approvedAt + สามคอลัมน์ serviceSetup…At ที่ select ข้างบนเลือกมาอยู่แล้ว (ไม่มีคำสั่งอ่านเพิ่ม · ยาม legacySetupQueueGuard) */
     const legacy = legacySetupQueue({
       orders: orders || [], lines, allocations, projectsById, dealsById, contractsById,
       zonesById: new Map((zones || []).map((z) => [z.id, z])),
       customersWithSite,
+      todayIso,
     });
     // ⚠️ term ชี้บรรทัดด้วย salesOrderLineId — ส่ง Map เข้าไปเพื่อให้คิววางรอบตอบ
     // "ขายไว้กี่รอบ" ได้ (ไม่ส่ง = ตอบ null ซึ่งอ่านว่า "ยังไม่ระบุ" ไม่ใช่ศูนย์)

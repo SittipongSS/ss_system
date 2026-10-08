@@ -8,14 +8,18 @@
 //   · ตัวกลางถือ: ค้น → ติ๊ก (ทีละโซน / ทั้งไซต์ / ทุกโซนที่เห็น) · รอบละกี่แพ็ค [ตามผลประเมินของแต่ละโซน | เท่ากันทุกโซน] ·
 //     ท้ายหน้าต่างบอกผลก่อนกด · `pressed`
 //   · ตัวห่อถือ: แพ็คเกจ * · จำนวน (ต่อบรรทัด · ว่างได้) · ราคา/หน่วย (อ่านอย่างเดียว) · จำนวนรอบบริการ (ทุกบรรทัด) *
-//   · ⭐ มติ 29/09: ช่องของตัวห่อวาดเหนือแถว "แต่ละครั้งกี่แพ็ค (ทุกบรรทัด)" ของตัวกลาง ⇒ จำนวนรอบบริการมาก่อนแพ็คเหมือนใบใหม่
+//   · ⭐ มติเจ้าของ 08/10 รอบสอง (จอฝ่ายขายที่เหลือ — แพ็คก่อนจำนวนรอบบริการ เหมือนตารางงานบริการของใบใหม่ #1878):
+//     แพ็คเกจ · จำนวน · ราคา/หน่วย วาดเหนือแถว "รอบละกี่แพ็ค (ทุกบรรทัด)" ของตัวกลาง (`renderFields`) ·
+//     **จำนวนรอบบริการ (ทุกบรรทัด) * ย้ายลงมาอยู่ใต้แถวนั้น** (`renderAfterPacks` — ช่องเสริมของตัวกลาง) · หน่วยท้ายช่อง = "เดือน"
+//     (`T.roundsUnit` ← `SERVICE_ROUNDS_UNIT`) · ย้ายแค่ผัง — ค่า `rounds` · ด่าน · ลำดับเหตุ (M1 ข้างล่าง) เท่าเดิม
 //   · หนึ่งโซนที่ติ๊ก = หนึ่งบรรทัดใหม่ (`historicalBulkAddRows` — แพ็คต่อรอบรายโซนมาจากแถวของตัวกลาง)
 //   · ทะเบียน = ทะเบียนรายไซต์ชุดเดียวกับขั้น ② (`historicalBulkRegistrySites` — ไซต์ที่อ่านโซนไม่ได้พกประโยคทางออก)
 // ⭐ โซนที่อยู่ในใบแล้ว / ปิดใช้งาน **เห็นแต่ติ๊กไม่ได้ พร้อมเหตุ** (`historicalBulkTaken` → `taken` ของตัวกลาง)
 //   ⚠️ โซนที่อยู่ในใบแล้ววาดแบบไม่ติ๊ก (ตัวกลางติ๊กให้เฉพาะโซนของรายการเดียวกัน) — ยอมรับใน DD4
 // 🔴 กฎบ้าน 3 (แดงหลังกด): ข้อความติดด่านขึ้นหลังกด "เพิ่ม n บรรทัด" เท่านั้น · ⚠️ ถอยจาก 25/09 ที่ปุ่มปิดและบอกเหตุทันที
 //    **โดยตั้งใจ** (IMPL_PLAN_D §0.2 ข้อ 3) · ลำดับเหตุ (M1): ช่องของตัวห่อ (แพ็คเกจ → จำนวน → จำนวนรอบบริการ · `historicalBulkFieldsIssue`)
-//    ก่อน แล้วค่อยของตัวกลาง (ยังไม่เลือกโซน / รอบละกี่แพ็คผิด)
+//    ก่อน แล้วค่อยของตัวกลาง (ยังไม่เลือกโซน / รอบละกี่แพ็คผิด) — ⚠️ หลังมติ 08/10 รอบสอง ช่องจำนวนรอบบริการอยู่ใต้แถวแพ็ค แต่ลำดับเหตุ
+//    ยังเป็นของเดิม (สัญญาของตรรกะ ไม่ใช่ของผัง) ⇒ ผิดทั้งสองช่อง ท้ายหน้าต่างพูดเรื่องจำนวนรอบบริการก่อน · กรอบแดงขึ้นทั้งสองช่องอยู่แล้ว
 // ⚠️ จำนวนเว้นว่างได้ (ใส่ทีละบรรทัดทีหลัง) แต่ใส่แล้วต้องเป็นจำนวนเต็ม > 0 — ด่านเดียวกับแผน (ไม่เดาจำนวนแทนผู้คีย์)
 // ⚠️ แพ็คเกจเติมที่ขั้น ② ด้วย `quoteLineFromProduct` ตัวเดียวกับช่องเลือกในบรรทัด (ผู้เรียกทำใน `onAdd`)
 // ⚠️ ผลประเมินยังโหลด/อ่านไม่ได้ (M6) = บอกหนึ่งบรรทัดเหนือแถวรอบละกี่แพ็คว่าโหมด "ตามผลประเมิน" จะได้ช่องว่าง ·
@@ -117,26 +121,30 @@ export default function HistoricalBulkZonesModal({
               </div>
               <small>{T.priceHint}</small>
             </div>
-            <div className={styles.field}>
-              <span>{T.roundsLabel} <b className={styles.req}>*</b></span>
-              <div className={styles.packsField}>
-                <Input
-                  type="number" min="1" step="1" inputMode="numeric" placeholder="—" autoComplete="off"
-                  value={rounds}
-                  invalid={pressed && Boolean(roundsIssue)}
-                  aria-required="true"
-                  onChange={(event) => setRounds(event.target.value)}
-                  aria-label={T.roundsAria}
-                />
-                <span className={styles.packsUnit}>{T.roundsUnit}</span>
-              </div>
-              <small data-bad={pressed && roundsIssue ? "yes" : undefined}>
-                {(pressed && roundsIssue) || HISTORICAL_SERVICE_TEXT.roundsNote}
-              </small>
-            </div>
           </div>
           {assessNote ? <p className={styles.assessNote}>{assessNote}</p> : null}
         </>
+      )}
+      /* ⭐ มติเจ้าของ 08/10 รอบสอง: จำนวนรอบบริการ (ทุกบรรทัด) อยู่ **ใต้** แถวรอบละกี่แพ็คของตัวกลาง (แพ็คก่อนจำนวนรอบบริการ) ·
+         ช่องเดิมทุกตัวอักษร (ค่า · ด่าน · `pressed`) ย้ายแค่ที่วาด */
+      renderAfterPacks={({ pressed }) => (
+        <div className={styles.field}>
+          <span>{T.roundsLabel} <b className={styles.req}>*</b></span>
+          <div className={styles.packsField}>
+            <Input
+              type="number" min="1" step="1" inputMode="numeric" placeholder="—" autoComplete="off"
+              value={rounds}
+              invalid={pressed && Boolean(roundsIssue)}
+              aria-required="true"
+              onChange={(event) => setRounds(event.target.value)}
+              aria-label={T.roundsAria}
+            />
+            <span className={styles.packsUnit}>{T.roundsUnit}</span>
+          </div>
+          <small data-bad={pressed && roundsIssue ? "yes" : undefined}>
+            {(pressed && roundsIssue) || HISTORICAL_SERVICE_TEXT.roundsNote}
+          </small>
+        </div>
       )}
       consequence={(plan, { mode }) => historicalBulkConsequence({
         count: plan.count, qty, unitPrice, mode, packs: plan.packs, assessed: plan.assessed, blank: plan.blank, rounds,

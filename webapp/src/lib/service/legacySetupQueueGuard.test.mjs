@@ -110,3 +110,52 @@ test('0404: select ใบของ route งานเข้าใหม่พก
   /* intake.js ยังไม่ import serviceSetup (กฎ 16) — ป้ายของใบที่ข้ามอยู่ในไฟล์ถังเท่านั้น */
   assert.doesNotMatch(code('lib/service/intake.js'), /serviceSetupDeferred|SERVICE_DEFERRED_TEXT/);
 });
+
+/* ── "ค้าง n วัน" บนแท็บใบเดิม (มติเจ้าของ 08/10 "ตามงานค้าง") ─────────────────────────────────────────────────────────
+   ชิปนับจากนาฬิกาสี่ตัวของใบ: วันอนุมัติ · วันที่ยื่นตรวจ · วันที่ถูกตีกลับ · วันที่เปิดแก้ — คอลัมน์ไหนตกจาก select ของ route
+   ตัวตัดสินได้ undefined แล้ว **นับจากนาฬิกาผิดตัวเงียบ ๆ** (เช่นใบที่เปิดแก้ 7 วันก่อนขึ้น "ค้าง 56 วัน" จากวันอนุมัติ) ไม่มี error ให้เห็น
+   ⇒ ยึด select + การส่ง "วันนี้" + การถามตัวตัดสินกลางไว้ที่นี่ (ไม่มีคำสั่งอ่านเพิ่ม · ไม่มีคอลัมน์ใหม่ในฐาน) */
+test('ตามงานค้าง: select ใบของ route งานเข้าใหม่พกนาฬิกาครบสี่ตัว · route ส่งวันนี้ (วันไทย) เข้าถัง · ถังถามตัวตัดสินกลางและเรียงค้างนานสุดก่อน', () => {
+  const route = code('app/api/service/intake/route.js');
+  const selects = [...route.matchAll(/from\(\s*['"]sales_orders['"]\s*\)\s*\.select\(\s*'([^']*)'/g)].map((m) => m[1]);
+  const legacy = selects.find((cols) => cols.includes('"serviceTermsOpenedAt"'));
+  assert.ok(legacy, 'ต้องเจอ select ของถังใบเดิม');
+  const columns = legacy.split(',').map((col) => col.trim());
+  for (const col of ['approvedAt', '"serviceSetupSubmittedAt"', '"serviceSetupRejectedAt"', '"serviceSetupReopenedAt"']) {
+    assert.ok(columns.includes(col), `select ขาด ${col} — ชิป "ค้าง n วัน" จะนับจากนาฬิกาผิดตัว`);
+  }
+  /* ตัวตัดสินกลางต้องรู้ด้วยว่าใบอยู่ขั้นไหน/ประทับหรือยัง/ถูก Rev. ทับไหม/เป็นใบย้อนหลังไหม */
+  for (const col of ['status', 'supersededById', '"serviceTermsOpenedAt"', '"serviceSetupState"', 'origin']) {
+    assert.ok(columns.includes(col), `select ขาด ${col}`);
+  }
+  /* "วันนี้" = วันไทยของ server ตัวเดียวกับที่คิวของหน้านี้ใช้ — ประกาศก่อนเรียกถัง และส่งเข้าไป */
+  const todayAt = route.indexOf('const todayIso = businessDate();');
+  const callAt = route.indexOf('legacySetupQueue({');
+  assert.ok(todayAt >= 0 && callAt > todayAt, '`todayIso` ต้องประกาศก่อนเรียกถัง (ไม่งั้น ReferenceError ทั้งหน้างานเข้าใหม่)');
+  const call = route.slice(callAt, route.indexOf('});', callAt));
+  assert.match(call, /\btodayIso,/, 'ไม่ส่ง = แถวไม่มีป้ายอายุ (เงียบ)');
+  assert.equal(route.split('const todayIso = ').length - 1, 1, 'วันนี้มีที่เดียวใน route นี้');
+
+  const lib = code('lib/service/legacySetupQueue.js');
+  assert.ok(lib.includes('aging: serviceBackfillAging(order, { todayIso }),'), 'ถามตัวตัดสินกลาง ไม่คิดอายุเอง');
+  assert.match(lib, /import \{ compareLongestWaiting \} from '@\/lib\/sales\/serviceBackfillAging';/);
+  assert.match(lib, /compareLongestWaiting\(a\.aging, b\.aging\) \|\| String\(a\.code\)\.localeCompare\(String\(b\.code\)\)/);
+  assert.match(lib, /rows: rows\.sort\(byLongestWaiting\), unknownLine: unknownLine\.sort\(byLongestWaiting\)/);
+  assert.doesNotMatch(lib, /byNewest/, 'ลำดับเดิม (อนุมัติล่าสุดก่อน) ถูกแทนแล้ว — ไม่เหลือตัวเรียงสองแบบ');
+  /* ถังไม่อ่านนาฬิกาเองและไม่อ่านคอลัมน์ของนาฬิกาเพื่อคิดอายุ (ค่าดิบที่แถวพกอยู่เดิม — submitted.at / rejected.at — ไม่เกี่ยว) */
+  assert.doesNotMatch(lib, /new Date\(|Date\.now\(|businessDate\(/, 'วันนี้มาจากผู้เรียก');
+  assert.doesNotMatch(lib, /\.serviceSetupState\b|\.serviceSetupReopenedAt\b/, 'D28: ถามผ่านตัวตัดสินกลางเท่านั้น');
+  assert.doesNotMatch(lib, /ค้าง \$\{|'ค้าง|"ค้าง/, 'คำของชิปอยู่ที่ SERVICE_BACKFILL_AGING_TEXT ที่เดียว');
+  /* คำค้นของแถวมีป้ายอายุ (ตาเห็นบนแถว = ต้องค้นเจอ) */
+  assert.match(lib, /view\.sub,\s*row\?\.aging\?\.label,/);
+
+  /* จอ: ชิปตัวเดียวกับฝั่งขาย อยู่ในตัววาดสถานะที่ตาราง/การ์ดใช้ร่วม · บรรทัดสรุปจากตัวประกอบกลาง · หน้าไม่พิมพ์คำเอง */
+  const page = code('app/service/intake/page.js');
+  assert.match(page, /<span className=\{styles\.statusBadges\}>\s*<StatusBadge tone=\{view\.tone\} size="sm" dot label=\{view\.label\} title=\{view\.label\} \/>\s*<ServiceAgingChip aging=\{row\.aging\} \/>\s*<\/span>/);
+  assert.equal((page.match(/<LegacySetupStatus row=\{row\} \/>/g) || []).length, 2, 'ตาราง + การ์ด ใช้ตัววาดเดียว');
+  assert.match(page, /serviceAgingSummaryText\(legacyRows\.length, legacyRows\.map\(\(row\) => row\.aging\)\)/);
+  assert.match(page, /\{showCounts && legacyAgingSummary \? <span className="cell-sub">\{legacyAgingSummary\}<\/span> : null\}/);
+  assert.doesNotMatch(page, /ค้าง \$\{|ค้างนานสุด|new Date\(\)\s*\.toISOString/, 'หน้าไม่ประกอบคำ/ไม่คิดวันเอง');
+  const css = readFileSync(join(SRC, 'app/service/intake/page.module.css'), 'utf8');
+  assert.match(css, /\.statusBadges \{[^}]*display: inline-flex;[^}]*flex-wrap: wrap;[^}]*gap: var\(--space-1-5\);/);
+});

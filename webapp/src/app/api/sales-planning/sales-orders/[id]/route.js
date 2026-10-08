@@ -779,10 +779,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       if (updateError) return fail(updateError.message, 500);
     }
 
-    /* หน่วยในสรุป audit (แท็บประวัติของหน้าใบ) เดินตามหน่วยที่หน้าใบนั้นพูด — มติเจ้าของ 08/10: ใบ pipeline = "เดือน"
-       (`roundsCount` ของแคตตาล็อก · หน่วยเดียวกับดินสอบนตารางงานบริการ) · ใบย้อนหลัง (การ์ดสัญญาบริการ) ยังพูด "รอบ" คำเดิม
-       ⚠️ เปลี่ยนแค่คำของสรุป — `before`/`after` ยังเก็บ `serviceRounds` เป็นตัวเลขเหมือนเดิม */
-    const roundsWords = (rounds) => (isHistoricalOrder(before) ? `${rounds} รอบ` : SERVICE_SETUP_LINE_TEXT.roundsCount(rounds));
+    /* หน่วยในสรุป audit (แท็บประวัติของหน้าใบ) เดินตามหน่วยที่หน้าใบนั้นพูด — มติเจ้าของ 08/10: "เดือน" ทุกใบ
+       (`roundsCount` ของแคตตาล็อก · หน่วยเดียวกับดินสอบนตารางงานบริการ) · รอบสอง (จอฝ่ายขายที่เหลือ): ใบย้อนหลัง
+       (การ์ดสัญญาบริการ) ก็พูด "เดือน" แล้ว ⇒ ไม่แตกกิ่งตามชนิดใบอีก
+       ⚠️ เปลี่ยนแค่คำของสรุป — `before`/`after` ยังเก็บ `serviceRounds` เป็นตัวเลขเหมือนเดิม · สรุปเก่าที่บันทึกไว้แล้วไม่ถูกเขียนทับ */
+    const roundsWords = (rounds) => SERVICE_SETUP_LINE_TEXT.roundsCount(rounds);
     const summary = changed
       .map(([lineId, rounds]) => `${byId.get(lineId)?.fgCode || lineId}: ${rounds === null ? 'ยังไม่ระบุ' : roundsWords(rounds)}`)
       .join(' · ');

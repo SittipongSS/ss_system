@@ -47,6 +47,7 @@ import {
   zoneBuildingKey,
 } from "@/lib/service/siteDetailLists";
 import { usePagination } from "@/lib/usePagination";
+import { siteRoundsSoldText } from "@/lib/sales/serviceOrders";
 import {
   ROUNDS_SOLD_LABEL,
   VISIT_KIND_LABELS,
@@ -85,6 +86,9 @@ export default function ServiceSiteDetailPage({ params }) {
   const [schedule, setSchedule] = useState({ lastRefillDate: null, nextVisitDate: null });
   // ข้อผูกพันจำนวนรอบจากใบเสนอราคา (mig 0326) — ฟอร์มวางรอบเทียบกับความถี่ที่กำลังตั้ง
   const [roundsSold, setRoundsSold] = useState(null);
+  /* ช่วงของค่าที่ขายไว้ต่อรายการ `{ min, max }` (คีย์เสริมของ GET ไซต์) — ใช้กับแถว "จำนวนรอบบริการ" ของสรุปไซต์เท่านั้น
+     ⚠️ โมดัลรอบบริการยังได้ `roundsSold` (ผลรวมของทั้งไซต์) ตัวเดิม — TS เทียบกับจำนวนนัด */
+  const [roundsSoldRange, setRoundsSoldRange] = useState(null);
   // ใบสั่งขายที่ลงของไว้ที่ไซต์นี้ — ตัวเลือกของช่อง "ใบที่ครอบรอบนี้" ในโมดัลรอบ
   const [siteOrders, setSiteOrders] = useState([]);
 
@@ -138,6 +142,7 @@ export default function ServiceSiteDetailPage({ params }) {
       setAssets(Array.isArray(siteData?.assets) ? siteData.assets : []);
       setSchedule(siteData?.schedule || { lastRefillDate: null, nextVisitDate: null });
       setRoundsSold(siteData?.roundsSold ?? null);
+      setRoundsSoldRange(siteData?.roundsSoldRange ?? null);
       setSiteOrders(siteData?.salesOrders || []);
 
       const planData = await planRes.json().catch(() => null);
@@ -572,7 +577,14 @@ export default function ServiceSiteDetailPage({ params }) {
         rows={[
           { id: "lastRefill", label: "เข้าเติมล่าสุด", value: schedule.lastRefillDate },
           { id: "nextVisit", label: "นัดครั้งหน้า", value: schedule.nextVisitDate || upcoming.map((v) => v.scheduledDate).sort()[0] },
-          ...(roundsSold != null ? [{ id: "roundsSold", label: ROUNDS_SOLD_LABEL, value: `${fmtNumber(roundsSold)} รอบ` }] : []),
+          /* ⭐ มติเจ้าของ 08/10 รอบสอง (จอฝ่ายขายที่เหลือ): แถวนี้ = ค่าที่ **ฝ่ายขายขายไว้** ⇒ พูด "เดือน" จากฝั่งขาย
+              (`siteRoundsSoldText` ของ lib/sales/serviceOrders.js · 1 เดือน = 1 รอบ · ค่าที่เก็บเท่าเดิม) · ป้ายยังเป็น `ROUNDS_SOLD_LABEL`
+              ตัวกลางที่จอ TS ใช้ร่วม (ไม่แตะ)
+              ⚠️ ผลตรวจทาน 08/10: หน้านี้เป็นจอร่วม และโมดัลรอบบริการที่เปิดจากหน้านี้พูดตัวเลขเดียวกันเป็น "รอบ" (คำของ TS)
+                 ⇒ แถวนี้พูดทั้งสองอย่าง "12 เดือน (12 รอบ)" — เดือน = ค่าที่ขายไว้ต่อรายการ (ช่วง ไม่บวกข้ามใบ) · รอบในวงเล็บ = ผลรวมของ
+                 ทั้งไซต์ ตัวเดียวกับที่โมดัลแสดง (สองใบซ้อน = "12 เดือน (ทั้งไซต์ 24 รอบ)" ไม่ใช่ "24 เดือน")
+              ⚠️ "รอบบริการ n รอบ" ของการ์ดข้างล่าง และคอลัมน์ "รอบ" ของตารางรอบบริการ = จำนวนรอบที่ TS ตั้ง — คงคำ "รอบ" */
+          ...(roundsSold != null ? [{ id: "roundsSold", label: ROUNDS_SOLD_LABEL, value: siteRoundsSoldText(roundsSold, roundsSoldRange) }] : []),
         ]}
       />
 

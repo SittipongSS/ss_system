@@ -83,7 +83,7 @@ test('ใบเปล่า/ไม่มีบรรทัด = ไม่เข�
 
 /* ══ mig 0392 (PR-A): บรรทัดพิมพ์เองที่ฝ่ายขายเลือกแพ็คเกจให้ (`serviceFgCode`) ═══════════════════════════════
    🔴 ด่านเงิน (#1683) ขยายได้ **หลังใบประทับ `serviceTermsOpenedAt` แล้วเท่านั้น** — ก่อนนั้นตอบเหมือนเดิมทุกทาง */
-import { effectiveServiceFgCode, serviceVisitsSold, siteRoundsSoldOf } from './serviceOrders.js';
+import { effectiveServiceFgCode, serviceVisitsSold, siteRoundsSoldOf, siteRoundsSoldRangeOf, siteRoundsSoldText } from './serviceOrders.js';
 
 const manualPkg = (over = {}) => ({ id: 'M1', fgCode: null, productId: null, serviceKind: 'package', serviceProductId: 'P1', serviceFgCode: 'FG-0233-02-001-10001', serviceRounds: 12, ...over });
 
@@ -179,4 +179,54 @@ test('F18: ขายไว้กี่รอบของไซต์เดีย
   assert.equal(siteRoundsSoldOf({ orders: two, terms: twoTerms, lines: [...lines, { id: 'L3', serviceRounds: 6 }], zonesById: siteZones }), 18);
   assert.equal(siteRoundsSoldOf({ orders: stamped, terms, lines: [{ id: 'L1', serviceRounds: null }], zonesById: siteZones }), null);
   assert.equal(siteRoundsSoldOf(), null);
+});
+
+/* ผลตรวจทาน 08/10 ของมติ "จอฝ่ายขายที่เหลือ" (หน่วยเดือน): ผลรวมของไซต์ (`siteRoundsSoldOf`) ติดหน่วย "เดือน" ไม่ได้ —
+   สองใบ 12 รอบซ้อนกันตอนต่อสัญญา = 24 ซึ่งจะอ่านเป็นสัญญา 24 เดือน ⇒ ค่าที่ขายไว้ (เดือน) มาจาก **ช่วงต่อรายการ** ที่ไม่บวกข้ามบรรทัด/ข้ามใบ
+   ส่วนผลรวมยังอยู่ในวงเล็บเป็น "รอบ" ของทั้งไซต์ (ตัวเลขเดียวกับโมดัลรอบบริการของ TS) */
+test('สรุปไซต์: ช่วงของค่าที่ขายไว้ต่อรายการ (ไม่บวกข้ามใบ) + คำของแถว — เดือน = ต่อรายการ · รอบในวงเล็บ = ผลรวมของทั้งไซต์', () => {
+  const siteZones = new Map([['Z1', { id: 'Z1', siteId: 'S1' }], ['Z2', { id: 'Z2', siteId: 'S1' }]]);
+  const one = { orders: [{ id: 'SO1', serviceTermsOpenedAt: '2026-10-01T03:00:00Z' }], terms: [{ salesOrderId: 'SO1', salesOrderLineId: 'L1', zoneId: 'Z1' }], lines: [{ id: 'L1', serviceRounds: 12 }] };
+  assert.deepEqual(siteRoundsSoldRangeOf(one), { min: 12, max: 12 });
+  assert.equal(siteRoundsSoldText(siteRoundsSoldOf({ ...one, zonesById: siteZones }), siteRoundsSoldRangeOf(one)), '12 เดือน (12 รอบ)');
+
+  // สองใบ 12 รอบซ้อนกัน (ต่อสัญญา): ผลรวม 24 · ค่าที่ขายไว้ยังเป็น 12 เดือน
+  const two = {
+    orders: [...one.orders, { id: 'SO2', serviceTermsOpenedAt: '2026-11-01T03:00:00Z' }],
+    terms: [...one.terms, { salesOrderId: 'SO2', salesOrderLineId: 'L2', zoneId: 'Z1' }],
+    lines: [...one.lines, { id: 'L2', serviceRounds: 12 }],
+  };
+  assert.equal(siteRoundsSoldOf({ ...two, zonesById: siteZones }), 24);
+  assert.deepEqual(siteRoundsSoldRangeOf(two), { min: 12, max: 12 });
+  assert.equal(siteRoundsSoldText(24, siteRoundsSoldRangeOf(two)), '12 เดือน (ทั้งไซต์ 24 รอบ)');
+
+  // ใบเดิมที่ยังไม่ประทับ สองบรรทัด 12 รอบในไซต์เดียว: ผลรวมรายบรรทัด 24 · ค่าที่ขายไว้ 12 เดือน
+  const legacy = {
+    orders: [{ id: 'SO1', serviceTermsOpenedAt: null }],
+    terms: [{ salesOrderId: 'SO1', salesOrderLineId: 'L1', zoneId: 'Z1' }, { salesOrderId: 'SO1', salesOrderLineId: 'L2', zoneId: 'Z2' }],
+    lines: [{ id: 'L1', serviceRounds: 12 }, { id: 'L2', serviceRounds: 12 }],
+  };
+  assert.equal(siteRoundsSoldOf({ ...legacy, zonesById: siteZones }), 24);
+  assert.equal(siteRoundsSoldText(24, siteRoundsSoldRangeOf(legacy)), '12 เดือน (ทั้งไซต์ 24 รอบ)');
+
+  // ใบที่ประทับแล้ว รายการขายไม่เท่ากัน (12 กับ 4): TS ไปไซต์ 12 รอบ · ค่าที่ขายไว้เป็นช่วง
+  const mixed = { ...legacy, orders: [{ id: 'SO1', serviceTermsOpenedAt: '2026-10-01T03:00:00Z' }], lines: [{ id: 'L1', serviceRounds: 12 }, { id: 'L2', serviceRounds: 4 }] };
+  assert.equal(siteRoundsSoldOf({ ...mixed, zonesById: siteZones }), 12);
+  assert.deepEqual(siteRoundsSoldRangeOf(mixed), { min: 4, max: 12 });
+  assert.equal(siteRoundsSoldText(12, siteRoundsSoldRangeOf(mixed)), '4–12 เดือน (ทั้งไซต์ 12 รอบ)');
+
+  // ช่วงนับเฉพาะใบที่ส่งมา (ใบที่ยังมีผล) และเฉพาะบรรทัดที่รอบขายชี้ถึง · บรรทัดเดียวกันหลายโซนนับครั้งเดียว · ไม่มีรอบ = null
+  assert.deepEqual(siteRoundsSoldRangeOf({ ...two, orders: one.orders }), { min: 12, max: 12 }, 'ใบที่ไม่อยู่ในชุดไม่ถูกนับ');
+  assert.deepEqual(siteRoundsSoldRangeOf({ ...one, lines: [...one.lines, { id: 'LX', serviceRounds: 99 }] }), { min: 12, max: 12 }, 'บรรทัดที่ไม่มีรอบขายชี้ถึงไม่ถูกนับ');
+  assert.equal(siteRoundsSoldRangeOf({ ...one, lines: [{ id: 'L1', serviceRounds: null }] }), null);
+  assert.equal(siteRoundsSoldRangeOf({ ...one, lines: [{ id: 'L1', serviceRounds: 0 }] }), null);
+  assert.equal(siteRoundsSoldRangeOf(), null);
+
+  // คำ: ตัวเลขผ่าน fmtNumber · ไม่มีผลรวม = null (หน้าไม่วาดแถว) · ไม่มีช่วง (response รุ่นก่อน) = ใช้ผลรวมเป็นค่าเดือนด้วย
+  assert.equal(siteRoundsSoldText(1200, { min: 1200, max: 1200 }), '1,200 เดือน (1,200 รอบ)');
+  assert.equal(siteRoundsSoldText(12), '12 เดือน (12 รอบ)');
+  assert.equal(siteRoundsSoldText(12, null), '12 เดือน (12 รอบ)');
+  assert.equal(siteRoundsSoldText(12, { min: null, max: undefined }), '12 เดือน (12 รอบ)');
+  assert.equal(siteRoundsSoldText(12, { min: 12, max: 4 }), '4–12 เดือน (ทั้งไซต์ 12 รอบ)', 'ช่วงกลับด้านไม่ทำให้คำเพี้ยน');
+  for (const none of [null, undefined, 0, -1, '', 'x']) assert.equal(siteRoundsSoldText(none, { min: 12, max: 12 }), null, String(none));
 });

@@ -138,6 +138,16 @@
   min-width: 0;
 }
 
+/* ป้ายขั้น + ชิป "ค้าง n วัน" ในเซลล์สถานะของแท็บใบเดิม (มติเจ้าของ 08/10 "ตามงานค้าง") — เคียงกันในแถวเดียว ตกบรรทัดได้เมื่อแคบ
+   ใช้ทั้งตารางและการ์ด (`LegacySetupStatus` ตัวเดียว) */
+.statusBadges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1-5);
+  max-width: 100%;
+}
+
 .statusSub {
   display: block;
   margin-top: var(--space-1);

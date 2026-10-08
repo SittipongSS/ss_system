@@ -20,7 +20,7 @@ import { DEFAULT_SALE_UNIT } from "@/lib/master/units";
 import { productSelectOptions } from "@/components/master/productOption";
 import styles from "./QuotationLineItems.module.css";
 import Textarea from "@/components/ui/Textarea";
-import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL, lineIsServicePackage } from "@/lib/sales/serviceOrders";
+import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL, SERVICE_ROUNDS_UNIT, lineIsServicePackage } from "@/lib/sales/serviceOrders";
 import {
   QuoteLineActionsHead, QuoteLineFgInfo, QuoteLineHeadCells, QuoteLineIndexCell, QuoteLineIndexHead,
   QuoteLineInstallationPoint, QuoteLineItemCell, QuoteLineMoneyCells, QuoteLineProductPicker, QuoteLineRemoveCell,
@@ -57,7 +57,8 @@ const packsPerRoundText = (value) => {
 
 export function QuotationReadOnlyLineItems({
   lines = [],
-  /* ⭐ `showServiceRounds` — โชว์ "จำนวนรอบบริการ" (`SERVICE_ROUNDS_LABEL` · มติ 29/09) ใต้คำอธิบายของบรรทัดหมวด 02-001
+  /* ⭐ `showServiceRounds` — โชว์ "จำนวนรอบบริการ: n เดือน" (`SERVICE_ROUNDS_LABEL` · มติ 29/09 · หน่วย `SERVICE_ROUNDS_UNIT` ·
+     มติเจ้าของ 08/10 รอบสอง) ใต้คำอธิบายของบรรทัดหมวด 02-001 — ต่อจากป้าย "รอบละกี่แพ็ค" เมื่อเปิดทั้งคู่ (แพ็คก่อนจำนวนรอบบริการ)
      ⚠️ ปิดไว้เป็นค่าตั้งต้นโดยตั้งใจ: คอมโพเนนต์นี้ใช้ทั้งใบเสนอราคาและใบสั่งขาย
      แต่จำนวนรอบเป็นของ **ใบสั่งขาย** ที่เดียว (มติผู้ใช้ 2026-08-31 รอบสอง)
      ⇒ เปิดทั่วไป = ใบเสนอราคาโชว์ขีดค้างไว้ทุกใบตลอดกาล */
@@ -67,7 +68,8 @@ export function QuotationReadOnlyLineItems({
      (บรรทัด "12 แพ็คเกจ × 3,500" สี่บรรทัดที่เหมือนกันทุกตัวอักษรอ่านไม่ออกว่าต่างกันตรงไหน — มติ 23/09)
      ⚠️ ปิดเป็นค่าตั้งต้น เหตุผลเดียวกับ showServiceRounds: บรรทัดของใบเสนอราคาไม่มีโซน */
   showInstallationPoint = false,
-  /* ⭐ `showPacksPerRound` — ป้ายที่สอง "แต่ละครั้งกี่แพ็ค" (`SERVICE_PACKS_LABEL` · มติ 29/09) ต่อจากรอบบริการ (บรรทัดหมวด 02-001 · `line.packsPerRound`)
+  /* ⭐ `showPacksPerRound` — ป้าย "รอบละกี่แพ็ค" (`SERVICE_PACKS_LABEL` · มติ 29/09) **ก่อน** ป้ายจำนวนรอบบริการ (มติเจ้าของ 08/10 รอบสอง ·
+     บรรทัดหมวด 02-001 · `line.packsPerRound`)
      ของขั้น ④ ของฟอร์มคีย์ใบย้อนหลัง (PR-D · มติเจ้าของ 26/09 A3/O9 · mig 0394) — แพ็คต่อรอบเป็นช่องของ **โซน**
      คนละช่องกับจำนวนของบรรทัด (เงิน: 1 ชุด × 12 เดือน) ⇒ ต้องอ่านแยกจากคอลัมน์ "จำนวน"
      ⚠️ ปิดเป็นค่าตั้งต้น เหตุผลเดียวกับ showServiceRounds: บรรทัดของใบเสนอราคา/หน้าใบสั่งขายไม่พกช่องนี้ */
@@ -107,14 +109,15 @@ export function QuotationReadOnlyLineItems({
                         ) : null}
                         <ReadableText text={line.description} lines={3} />
                         {showInstallationPoint ? <QuoteLineInstallationPoint point={line.installationPoint} /> : null}
-                        {showServiceRounds && lineIsServicePackage(line) ? (
-                          <span className={styles.serviceRoundsTag}>
-                            {SERVICE_ROUNDS_LABEL}: <strong>{line.serviceRounds ? `${line.serviceRounds} รอบ` : NA}</strong>
-                          </span>
-                        ) : null}
+                        {/* มติเจ้าของ 08/10 รอบสอง: แพ็คก่อนจำนวนรอบบริการ · หน่วยของจำนวนรอบบริการ = "เดือน" (ที่เดียว: serviceOrders.js) */}
                         {showPacksPerRound && lineIsServicePackage(line) ? (
                           <span className={styles.serviceRoundsTag}>
                             {SERVICE_PACKS_LABEL}: <strong>{packsPerRoundText(line.packsPerRound)}</strong>
+                          </span>
+                        ) : null}
+                        {showServiceRounds && lineIsServicePackage(line) ? (
+                          <span className={styles.serviceRoundsTag}>
+                            {SERVICE_ROUNDS_LABEL}: <strong>{line.serviceRounds ? `${fmtNumber(line.serviceRounds)} ${SERVICE_ROUNDS_UNIT}` : NA}</strong>
                           </span>
                         ) : null}
                         {line.metadata?.note ? (

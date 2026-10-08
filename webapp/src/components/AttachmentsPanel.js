@@ -422,12 +422,19 @@ export default function AttachmentsPanel({
     try {
       const res = await apiFetch(`/api/master/attachments/${id}`, { method: "DELETE" });
       if (res.ok) {
-        setItems((prev) => prev.filter((it) => it.id !== id));
         /* ⭐ รูปประกอบสเปคที่เอกสาร FM-SA-04 ซึ่งยื่น/อนุมัติแล้วอ้างอยู่ = **ปลดระวาง** แทนการลบ
            (mig 0370 · ไฟล์ต้องอยู่ให้กระดาษเก่าเปิดได้) ⇒ เส้นลบตอบ `{ retired, message }`
-           ต้องบอกผู้ใช้ ไม่งั้นเข้าใจว่าไฟล์ถูกลบไปแล้วจริง */
+           ต้องบอกผู้ใช้ ไม่งั้นเข้าใจว่าไฟล์ถูกลบไปแล้วจริง
+           ⚠️ **แถวยังอยู่ในฐาน** (แค่ถูกประทับปลดระวาง) ⇒ โหลดรายการใหม่ ไม่ใช่ตัดแถวทิ้งจากรายการในมือ — ตัดทิ้งแล้ว
+              ผู้เรียก (`onItemsChange`) ไม่เคยเห็นแถวที่เพิ่งปลดระวาง: เลข "ซ่อนไว้ N ภาพ" กับรายการภาพที่ซ่อนไว้ของการ์ด
+              ภาพประกอบขาดไปหนึ่งจนกว่าจะโหลดหน้าใหม่ */
         const body = await res.json().catch(() => null);
-        if (body?.retired && body.message) notifyToast.info(body.message);
+        if (body?.retired) {
+          if (body.message) notifyToast.info(body.message);
+          await fetchItems();
+        } else {
+          setItems((prev) => prev.filter((it) => it.id !== id));
+        }
         return true;
       }
       // `(await res.json()).error` เดิมโยน exception เองถ้า body ไม่ใช่ JSON —
@@ -926,9 +933,9 @@ export default function AttachmentsPanel({
           ที่ audit ยอมรับ (ดูหัวข้อ nativeFeedbackDebt ใน scripts/audit-ui.mjs) */}
       <ReasonDialog
         open={!!docForm}
-        title={docForm?.mode === "link" ? "ผูกเอกสาร Google ที่มีอยู่" : `สร้าง ${docForm?.type === "gsheet" ? "Sheet" : "Doc"} ใหม่`}
+        title={docForm?.mode === "link" ? "ผูก Google Doc/Sheet ที่คุณเปิดได้" : `สร้าง ${docForm?.type === "gsheet" ? "Sheet" : "Doc"} ใหม่`}
         description={docForm?.mode === "link"
-          ? "เอกสารยังอยู่ที่เดิมบน Drive — ระบบเก็บแค่ลิงก์กับชื่อไว้แสดงในหน้านี้"
+          ? "ผูกได้เฉพาะ Google Doc หรือ Google Sheet ที่คุณเปิดได้อยู่แล้ว — เอกสารยังอยู่ที่เดิมบน Drive และระบบไม่ได้เพิ่มสิทธิ์ให้คุณ"
           : "ไฟล์เปล่าจะถูกสร้างในโฟลเดอร์ของระเบียนนี้บน Shared Drive ของบริษัท"}
         label={docForm?.mode === "link" ? "ลิงก์เอกสาร" : "ชื่อเอกสาร"}
         value={docForm?.value || ""}
@@ -937,7 +944,7 @@ export default function AttachmentsPanel({
         onConfirm={submitDocForm}
         confirmLabel={docForm?.mode === "link" ? "ผูกเอกสาร" : "สร้าง"}
         placeholder={docForm?.mode === "link"
-          ? "https://docs.google.com/document/d/..."
+          ? "ลิงก์ Doc หรือ Sheet เช่น https://docs.google.com/document/d/..."
           : "เช่น ร่างสเปกกลิ่น รอบ 2"}
         rows={1}
         tone="info"

@@ -19,8 +19,9 @@
 //   ⭐ PR-D (mig 0394 · r2 S12 · มติ 26/09 A3/O9): + **แพ็คต่อรอบ** ต่อโซน (ชิป "ประเมินไว้ n แพ็ค" [ใช้] · ช่องของตัวเอง —
 //     ไม่ใช่จำนวนของบรรทัด) · **รอบบริการบังคับ** (เลิก "เว้นว่างได้") · "รวมทั้งรายการ n แพ็ค" อ่านอย่างเดียว
 //     (`HistoricalLineServiceFields`) · แดงหลังกด "ถัดไป" เหมือนช่องอื่นของบรรทัด
-//   ⭐ มติเจ้าของ 29/09 ("ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง"): แถบผูกเรียง ไซต์ · โซน → **จำนวนรอบบริการ *** →
-//     **รอบละกี่แพ็ค *** → รวมทั้งรายการ n แพ็ค (คำและลำดับเดียวกับตารางงานบริการของใบใหม่ · 1 บรรทัด = 1 โซนเหมือนเดิม)
+//   ⭐ มติเจ้าของ 29/09 ("ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง") + มติเจ้าของ 08/10 รอบสอง (จอฝ่ายขายที่เหลือ — แพ็คก่อนจำนวนรอบบริการ):
+//     แถบผูกเรียง ไซต์ · โซน → **รอบละกี่แพ็ค *** → **จำนวนรอบบริการ *** (หน่วย "เดือน") → รวมทั้งรายการ n แพ็ค
+//     (คำ · ลำดับ · หน่วยเดียวกับตารางงานบริการของใบใหม่ #1878 · 1 บรรทัด = 1 โซนเหมือนเดิม · ค่าที่เก็บเท่าเดิม 1 เดือน = 1 รอบ)
 // ⚠️ ข้อยกเว้นจากตารางใบเสนอราคา (เหตุผลด้านข้อมูล — เจ้าของรับรองแล้ว 25/09):
 //   จำนวนเริ่มที่ว่าง (1 ชุด × 12 เดือน = 12 · ใส่ 1 ให้ = เดาผิดเกือบทุกใบ) · ไม่มีหมายเหตุรายบรรทัด (ใบย้อนหลังไม่พิมพ์) ·
 //   ไม่มีบรรทัดพิมพ์เอง (ทุกบรรทัดต้องเป็นแพ็คเกจ 02-001 ที่ผูกโซน) · ราคา/หน่วยปิดตั้งแต่ยังไม่เลือกแพ็คเกจ (ใบนี้ไม่ส่งราคา)
@@ -391,8 +392,9 @@ export default function WizardZonesStep({
                       บรรทัดนี้ผูกแพ็คเกจไว้แล้ว ({row.productId}) — ชื่อไม่ขึ้นเพราะทะเบียนสินค้าโหลดไม่สำเร็จ
                     </span>
                   ) : null}
-                  {/* ⭐ ของเพิ่มของใบย้อนหลัง (มติ 23/09 · 25/09 · PR-D): ไซต์ · โซน (เลือกในบรรทัด) → จำนวนรอบบริการ → รอบละกี่แพ็ค
-                      → รวมทั้งรายการ (ลำดับตามมติ 29/09 — เดียวกับใบใหม่) */}
+                  {/* ⭐ ของเพิ่มของใบย้อนหลัง (มติ 23/09 · 25/09 · PR-D): ไซต์ · โซน (เลือกในบรรทัด) → รอบละกี่แพ็ค → จำนวนรอบบริการ
+                      → รวมทั้งรายการ (ลำดับตามมติเจ้าของ 08/10 รอบสอง — แพ็คก่อนจำนวนรอบบริการ เดียวกับตารางงานบริการของใบใหม่ #1878
+                      · ลำดับใน DOM = ลำดับ Tab = ลำดับที่ตาเห็น) */}
                   <div className={styles.lineBind}>
                     <div className={styles.lineBindZone}>
                       <span className={styles.lineBindLabel}>ไซต์ · โซน <b className={styles.req}>*</b></span>
@@ -421,6 +423,14 @@ export default function WizardZonesStep({
                       {zone?.code ? <small className={styles.cellSub}>{zone.code}</small> : null}
                       {bad.zoneId ? <span className={styles.cellBad}>{bad.zoneId}</span> : null}
                     </div>
+                    <HistoricalLineServiceFields
+                      name={name}
+                      value={row.packsPerRound}
+                      view={service}
+                      error={bad.packsPerRound || null}
+                      disabled={busy}
+                      onChange={(value) => patchRow(row.key, { packsPerRound: value })}
+                    />
                     <div className={styles.lineBindRounds}>
                       <QuoteLineServiceRounds
                         value={row.rounds}
@@ -433,14 +443,6 @@ export default function WizardZonesStep({
                       />
                       {bad.rounds ? <span className={styles.cellBad}>{bad.rounds}</span> : null}
                     </div>
-                    <HistoricalLineServiceFields
-                      name={name}
-                      value={row.packsPerRound}
-                      view={service}
-                      error={bad.packsPerRound || null}
-                      disabled={busy}
-                      onChange={(value) => patchRow(row.key, { packsPerRound: value })}
-                    />
                     <HistoricalLineServiceTotal view={service} />
                   </div>
                   {warn ? (

@@ -31,7 +31,7 @@ import { productIdentity } from "@/lib/master/productIdentity";
 import { DEFAULT_SALE_UNIT, SALE_UNITS, unitOptions } from "@/lib/master/units";
 import { QUOTE_VAT_OPTIONS, quoteLineNet } from "@/lib/salesPlanning";
 import { masterPriceDrift, masterPriceState, quoteLineLocks } from "@/lib/sales/quoteLines";
-import { SERVICE_ROUNDS_LABEL } from "@/lib/sales/serviceOrders";
+import { SERVICE_ROUNDS_LABEL, SERVICE_ROUNDS_UNIT } from "@/lib/sales/serviceOrders";
 import styles from "./QuotationLineItems.module.css";
 
 /* พื้นความกว้างของตาราง — คอลัมน์ตายตัวรวมกัน 646 (36+120+130+210+150) ที่เหลือเป็นของ "รายการ"
@@ -374,9 +374,11 @@ export function QuoteLineMoneyCells({
 
 /**
  * ช่อง "จำนวนรอบบริการ" ของบรรทัดแพ็คเกจบริการ — ช่องเดียวกับการ์ดสัญญาบริการของใบสั่งขาย
- * (`ServiceContractCard`: จำนวนเต็ม ≥ 1 · เว้นว่างได้ · ต่อท้ายด้วย "รอบ") วางใต้คำอธิบายของบรรทัด
- * ตรงที่ตารางฝั่งอ่านโชว์ "จำนวนรอบบริการ: N รอบ"
+ * (`ServiceContractCard`: จำนวนเต็ม ≥ 1 · เว้นว่างได้ · ต่อท้ายด้วยหน่วย "เดือน") วางใต้คำอธิบายของบรรทัด
+ * ตรงที่ตารางฝั่งอ่านโชว์ "จำนวนรอบบริการ: N เดือน"
  * ⭐ ป้าย = `SERVICE_ROUNDS_LABEL` (serviceOrders.js · มติเจ้าของ 29/09) — ห้ามสะกดเอง
+ * ⭐ หน่วย = `SERVICE_ROUNDS_UNIT` "เดือน" (serviceOrders.js · มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ) — ห้ามพิมพ์หน่วยเอง ·
+ *   ค่าที่เก็บยังเป็นจำนวนรอบที่ TS ไปบริการ (1 เดือน = 1 รอบ)
  * ⚠️ เป็นของ **ใบสั่งขาย** ที่เดียว (มติผู้ใช้ 2026-08-31) — ใบเสนอราคาไม่เรียกตัวนี้
  * ⭐ PR-D (mig 0394 · r2 S12): ใบย้อนหลังบังคับรอบ ⇒ `required` = ดอกจัน + aria-required (ป้ายคำเดียวกับไม่บังคับ — DD2) ·
  *   `invalid` = ผู้เรียกบอกว่าผิด (ใบย้อนหลัง: ข้อความของแผนหลังกด "ถัดไป" — แดงหลังกด) · ค่าตั้งต้นทั้งคู่ = ของเดิมทุกตัวอักษร
@@ -397,7 +399,7 @@ export function QuoteLineServiceRounds({
           onChange={(event) => onChange?.(event.target.value)}
           aria-label={`${SERVICE_ROUNDS_LABEL} ${name}`}
         />
-        <span className={styles.roundsUnit}>รอบ</span>
+        <span className={styles.roundsUnit}>{SERVICE_ROUNDS_UNIT}</span>
       </span>
       {note ? <small>{note}</small> : null}
     </div>

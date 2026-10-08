@@ -26,6 +26,10 @@ import styles from "./ApprovalQueue.module.css";
      primary      — (rec) => string   บรรทัดหลัก (เช่น arCode / เลขที่เอกสาร)
      secondary    — (rec) => string   บรรทัดรอง (ชื่อ · ทีม)
      rowHref      — (rec) => string   URL ของระเบียนนั้น ⚠️ **บังคับ** (ดูบล็อกข้างล่าง)
+     badge        — (rec) => ReactNode  ป้ายเล็กหลังบรรทัดหลัก (ไม่บังคับ) เช่นชิป "ค้าง n วัน" ของแถวงานบริการรอตรวจบนทะเบียนใบสั่งขาย
+                    (มติเจ้าของ 08/10 "ตามงานค้าง") — บรรทัดหลัก/รองเป็นสตริง ป้ายที่มีโทนต้องเป็น element ⇒ ช่องของมันเอง
+                    ⚠️ ไม่ส่ง หรือคืนค่าว่างให้แถวไหน = แถวนั้นหน้าตาเดิมทุกตัวอักษร (อีกสี่ทะเบียนที่ใช้คิวนี้ไม่ส่ง)
+                    ⚠️ ป้ายต้องไม่ใช่ control (อยู่ในลิงก์ของแถว — `<a>` ห้ามมี interactive descendant)
      title        — คำบนหัวกล่อง (ไม่บังคับ) */
 
 /* ── ทางเข้าเป็น <Link> ในแถว ไม่ใช่ `onClick` บนแถว (2026-09-02) ────────────────
@@ -54,7 +58,7 @@ import styles from "./ApprovalQueue.module.css";
 const QUEUE_PREVIEW = 3;
 
 export default function ApprovalQueue({
-  items, onDecide, renderAction, primary, secondary, rowHref,
+  items, onDecide, renderAction, primary, secondary, rowHref, badge,
   title = "ต้องทำตอนนี้ — รออนุมัติจากคุณ", unit = "รายการ",
 }) {
   const [open, setOpen] = useState(false);
@@ -68,12 +72,16 @@ export default function ApprovalQueue({
         <span>{title} ({items.length})</span>
       </div>
       <div className={styles.list}>
-        {shown.map((rec) => (
+        {shown.map((rec) => {
+          /* ป้ายเสริมของแถว — ไม่ส่ง `badge` หรือคืนค่าว่าง = ไม่มีอะไรแทรก (DOM เดิม) */
+          const extra = badge ? badge(rec) : null;
+          return (
           <div key={rec.id} className={styles.row}>
             <div className={styles.rowText}>
               {/* prefetch={false}: คิวกางได้ยาว (ฝ่ายบัญชีเคยเจอ 43 ใบ) — กัน RSC prefetch ต่อแถว */}
               <Link prefetch={false} href={rowHref(rec)} className="linklike linklike-block">
                 <strong className="code">{primary(rec)}</strong>{" "}
+                {extra ? <>{extra}{" "}</> : null}
                 <span className="name">{secondary(rec)}</span>
               </Link>
             </div>
@@ -81,7 +89,8 @@ export default function ApprovalQueue({
                 (`ApprovalActions` มีตัวกันของตัวเองอยู่แล้วเผื่อผู้เรียกที่ยังมีแถวกดได้) */}
             {renderAction ? renderAction(rec) : <ApprovalActions onDecide={(status) => onDecide(rec, status)} />}
           </div>
-        ))}
+          );
+        })}
         {items.length > QUEUE_PREVIEW && (
           <div className={styles.more}>
             <Button size="sm" variant="quiet" onClick={() => setOpen((v) => !v)}>

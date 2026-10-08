@@ -10,6 +10,8 @@ import { readFileSync } from 'node:fs';
 import * as draft from '../../components/salesPlanning/serviceSetup/serviceSetupDraft.js';
 import * as roundsEntry from './serviceRoundsEntry.js';
 import * as serviceSetup from './serviceSetup.js';
+import * as aging from './serviceBackfillAging.js';
+import { SERVICE_ROUNDS_UNIT, siteRoundsSoldText } from './serviceOrders.js';
 
 const read = (rel) => readFileSync(new URL(rel, import.meta.url), 'utf8');
 const DOC = read('../../../../docs/so-service-setup.md');
@@ -194,10 +196,122 @@ test('หัวข้อ "สลับ ④⑤ + หน่วยเดือน" 
     const { label } = rail.find((item) => item.key === key);
     assert.ok(section.includes(`"${label}"`), `เอกสารต้องเล่าป้ายแถว ${key}: ${label}`);
   }
-  /* ④ ที่ที่ยังพูด "รอบ" โดยตั้งใจ ต้องมีหน้าสรุปไซต์ของทะเบียนไซต์ (อยู่ใต้ /database ไม่ใช่ /service — ผลตรวจทานชี้ว่าตกรายการ) */
-  assert.ok(section.includes('`webapp/src/app/database/sites/[id]/page.js`'));
-  assert.match(read('../../app/database/sites/[id]/page.js'), /label: ROUNDS_SOLD_LABEL, value: `\$\{fmtNumber\(roundsSold\)\} รอบ`/,
-    'หน้าสรุปไซต์ยังพูด "รอบ" (นอกขอบเขตมติ 08/10) — ถ้าเปลี่ยนแล้วให้แก้รายการในเอกสารด้วย');
+  /* ④ 🔁 มติเจ้าของ 08/10 รอบสอง ("จอฝ่ายขายที่เหลือ" — หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ · แบรนช์ `claude/so-service-aging-months`):
+       รอบแรกยามนี้ยึดว่า **หน้าสรุปไซต์ของทะเบียนไซต์ยังพูด "รอบ" โดยตั้งใจ** (`… value: \`${fmtNumber(roundsSold)} รอบ\``) และเอกสารจดไว้ในรายการ
+       "ยังพูด รอบ" ให้เจ้าของตัดสิน · เจ้าของเลือกให้เปลี่ยน ⇒ ยามย้ายไปยึดความจริงใหม่ (ไม่ใช่ถอดออก): แถว "จำนวนรอบบริการ" ของสรุปไซต์ = ค่าที่ขายไว้
+       พูดหน่วยของฝั่งขาย (`SERVICE_ROUNDS_UNIT` ของ serviceOrders.js) · ป้ายยังเป็น `ROUNDS_SOLD_LABEL` ของ lib/service/rounds.js (จอ TS ใช้ร่วม — ไม่แตะ)
+       · เอกสารยังต้องเอ่ยไฟล์นี้ (ตอนนี้ในฐานะผิวที่เปลี่ยน) · จำนวนรอบที่ TS ตั้งในหน้าเดียวกันยังเป็น "รอบ" */
+  const months = section.slice(0, section.indexOf('### ตามงานค้าง — ชิป "ค้าง n วัน"'));
+  assert.ok(months.length > 0 && months.length < section.length, 'หัวข้อ "ตามงานค้าง" อยู่ต่อจากหัวข้อนี้');
+  assert.ok(months.includes('`webapp/src/app/database/sites/[id]/page.js`'));
+  const sitePage = read('../../app/database/sites/[id]/page.js');
+  /* ⚠️ ผลตรวจทาน 08/10 (หลังเห็นจอจริง): ยามนี้เคยยึด `value: \`${fmtNumber(roundsSold)} ${SERVICE_ROUNDS_UNIT}\`` — ตัวเลขนั้นเป็นผลรวมของ
+       ทั้งไซต์ (สองใบ 12 รอบซ้อน = "24 เดือน") และโมดัลรอบบริการของ TS ที่เปิดจากหน้าเดียวกันพูดตัวเดียวกันเป็น "รอบ" ⇒ ย้ายไปยึดคำของฝั่งขาย
+       ตัวใหม่ `siteRoundsSoldText(roundsSold, roundsSoldRange)`: เดือน = ช่วงของค่าที่ขายไว้ต่อรายการ · รอบในวงเล็บ = ผลรวมของทั้งไซต์ */
+  assert.match(sitePage, /label: ROUNDS_SOLD_LABEL, value: siteRoundsSoldText\(roundsSold, roundsSoldRange\)/,
+    'สรุปไซต์: ค่าที่ขายไว้พูดหน่วยของฝั่งขาย (เดือน) ตั้งแต่มติเจ้าของ 08/10 รอบสอง — ถ้าเปลี่ยนอีกให้แก้เอกสารด้วย');
+  assert.match(sitePage, /import \{ siteRoundsSoldText \} from "@\/lib\/sales\/serviceOrders";/);
+  assert.doesNotMatch(sitePage, /fmtNumber\(roundsSold\)\} รอบ`/, 'คำของรอบแรกต้องไม่ค้าง');
+  assert.equal(siteRoundsSoldText(12, { min: 12, max: 12 }), `12 ${SERVICE_ROUNDS_UNIT} (12 รอบ)`);
+  for (const text of [siteRoundsSoldText(12, { min: 12, max: 12 }), siteRoundsSoldText(24, { min: 12, max: 12 })]) {
+    assert.ok(months.includes(`"${text}"`), `เอกสารต้องยกคำของแถวสรุปไซต์ "${text}"`);
+  }
+  assert.ok(months.includes('`siteRoundsSoldText`') && months.includes('`siteRoundsSoldRangeOf`') && months.includes('`roundsSoldRange`'),
+    'เอกสารบอกตัวประกอบคำ · ตัวคิดช่วง · คีย์เสริมของ GET ไซต์');
+  /* หน่วยของฝั่งขายมีที่เดียวต่อไฟล์ และสองไฟล์ต้องเท่ากัน (serviceOrders.js import serviceSetup.js ไม่ได้ — literal ที่ยึดด้วยเทสต์) */
+  assert.equal(SERVICE_ROUNDS_UNIT, roundUnit);
+  assert.ok(months.includes('`SERVICE_ROUNDS_UNIT`'), 'เอกสารบอกที่เดียวของคำ "เดือน" ฝั่งจอฝ่ายขายที่เหลือ');
+  assert.ok(months.includes(`แถว "จำนวนรอบบริการ N ${SERVICE_ROUNDS_UNIT} (N รอบ)"`), 'เอกสารเล่าแถวของสรุปไซต์ด้วยหน่วยปัจจุบัน');
+  /* รอบสอง: สถานะของงาน + ผลตรวจข้อมูลจริงที่รองรับ "1 เดือน = 1 รอบ" + คำ "อย่างน้อย 1 เดือน" ของทุกใบ */
+  assert.ok(months.includes('🔁 **รอบสอง (มติเจ้าของ 08/10 — จอฝ่ายขายที่เหลือ)** อยู่แบรนช์ `claude/so-service-aging-months` ยังไม่ merge'));
+  assert.ok(months.includes('✅ **รอบแรกขึ้น prod แล้ว 08/10/2026 — #1878 · squash `1bab0846` อยู่บน main และแบรนช์ `production`**'), 'รอบแรกอยู่บน prod แล้ว');
+  assert.ok(months.replace(/\n\s*/g, ' ').includes('ใบย้อนหลัง 4 ใบในฐาน มี 5 บรรทัดที่มีจำนวนรอบ และไม่มีใบไหนมีช่วงบริการ ⇒ ไม่มีแถวไหนขัดกับ "1 เดือน = 1 รอบ"'),
+    'ผลตรวจข้อมูลจริง 08/10 (อ่านอย่างเดียว) ต้องอยู่ในเอกสาร');
+  assert.equal(roundsEntry.serviceRoundsRequiredText({ origin: 'historical' }), roundsEntry.SERVICE_ROUNDS_EDIT_TEXT.requiredMonths, 'ใบย้อนหลังได้คำเดียวกัน');
+  assert.equal(roundsEntry.serviceRoundsRequiredText({ origin: 'pipeline' }), roundsEntry.SERVICE_ROUNDS_EDIT_TEXT.requiredMonths);
+  assert.doesNotMatch(months, /หน้าใบย้อนหลังทั้งหน้าพูด "รอบ"/, 'คำของรอบแรก (ใบย้อนหลังยังพูดรอบ) ต้องไม่ค้าง');
+  assert.match(months, /ยังพูด "รอบ" โดยตั้งใจ \(หลังรอบสอง/, 'รายการที่ยังพูด "รอบ" ต้องเป็นรายการหลังรอบสอง');
+  /* สารบัญ: แถวของไฟล์นี้บอกรอบสอง + ชิปตามงานค้าง */
+  assert.ok(row.includes('รอบสอง: จอฝ่ายขายที่เหลือพูด "เดือน" + แพ็คก่อนจำนวนรอบบริการ และชิป "ค้าง n วัน" ตามงานค้าง — แบรนช์ `claude/so-service-aging-months` รอตรวจ'));
+});
+
+/* ── หัวข้อ "ตามงานค้าง" (มติเจ้าของ 08/10) — เอกสารกับโค้ดต้องพูดตรงกัน: หัวข้อ · สถานะ · ตำแหน่ง · ชื่อ · เกณฑ์ · คำบนจอ ── */
+test('หัวข้อ "ตามงานค้าง — ชิป ค้าง n วัน" (มติเจ้าของ 08/10): สถานะจาก 5 คำ · ไม่มี migration/ช่องใหม่/การแจ้งเตือน · อยู่ก่อนหัวข้อ 0404 · ชื่อ/เกณฑ์/คำที่เล่าตรงกับโค้ด', () => {
+  const heading = '### ตามงานค้าง — ชิป "ค้าง n วัน" บนเส้นตั้งย้อนหลัง (มติเจ้าของ 08/10 · แบรนช์ `claude/so-service-aging-months`)';
+  const start = DOC.indexOf(heading);
+  assert.ok(start >= 0, 'หาหัวข้อ "ตามงานค้าง" ไม่เจอ');
+  const end = DOC.indexOf('### ยื่นโดยยังไม่ตั้งงานบริการ — ข้ามตอนยื่น', start);
+  assert.ok(end > start, 'หัวข้อนี้อยู่ก่อนหัวข้อ "ยื่นโดยยังไม่ตั้งงานบริการ" (mig 0404)');
+  assert.ok(DOC.indexOf('### สลับ ④⑤ + หน่วยเดือน (มติเจ้าของ 08/10') < start, 'และอยู่หลังหัวข้อ "สลับ ④⑤ + หน่วยเดือน"');
+  const section = DOC.slice(start, end);
+  assert.equal(section.split('\n### ').length, 1, 'ไม่มีหัวข้ออื่นคั่นกลาง');
+  assert.ok(section.includes('\n> สถานะ: **รอตรวจ** · ไม่มี migration · ไม่มีช่องใหม่ในฐาน · ไม่มีการแจ้งเตือน\n'), 'บรรทัดสถานะตามตัวอักษร');
+  assert.match(section, new RegExp(`\\n> สถานะ: ${STATUS_WORDS.source}`));
+  const flat = section.replace(/\n\s*/g, ' ');
+
+  /* ชื่อที่เอกสารอ้างมีจริงในโค้ด (เปลี่ยนชื่อแล้วลืมเอกสาร = แดง) */
+  assert.ok(section.includes('`serviceBackfillAging(order, { todayIso })`'));
+  assert.equal(typeof serviceSetup.serviceBackfillAging, 'function');
+  for (const name of ['serviceAgingOf', 'compareLongestWaiting', 'longestWaitingFirst', 'serviceAgingSummaryText']) {
+    assert.ok(section.includes(`\`${name}\``), `เอกสารต้องอ้าง ${name}`);
+    assert.equal(typeof aging[name], 'function', `${name} ต้องมีจริงใน serviceBackfillAging.js`);
+  }
+  assert.ok(section.includes('`SERVICE_BACKFILL_AGING_TEXT`'));
+  assert.equal(typeof aging.SERVICE_BACKFILL_AGING_TEXT, 'object');
+  for (const file of ['lib/sales/serviceBackfillAging.js', 'components/salesPlanning/ServiceAgingChip.js', 'components/ui/ApprovalQueue.js']) {
+    assert.ok(section.includes(`\`${file}\``), `เอกสารต้องเอ่ยไฟล์ ${file}`);
+    assert.ok(read(`../../${file}`).length > 0, `${file} ต้องมีจริง`);
+  }
+  for (const column of ['approvedAt', 'serviceSetupReopenedAt', 'serviceSetupRejectedAt', 'serviceSetupSubmittedAt', 'serviceSetupDeferredAt']) {
+    assert.ok(section.includes(`\`${column}\``), `เอกสารต้องเล่าคอลัมน์ ${column}`);
+  }
+  assert.ok(section.includes('`businessDayKey`') && section.includes('`businessDate()`') && section.includes('`todayIso`'), 'วันไทย: ที่มาของวันและของวันนี้');
+
+  /* เกณฑ์ในเอกสาร = ค่าคงที่ในโค้ด */
+  assert.ok(section.includes(`\`SERVICE_AGING_WARN_DAYS\` = ${aging.SERVICE_AGING_WARN_DAYS}`));
+  assert.ok(section.includes(`\`SERVICE_AGING_LONG_DAYS\` = ${aging.SERVICE_AGING_LONG_DAYS}`));
+  /* ผลตรวจทาน 08/10: ระดับที่สองเป็นไอคอนนาฬิกาทราย (เดิมจุดนำ — ซ้ำกับจุดนำของป้ายขั้นข้าง ๆ บนแท็บ TS จนแยกจาก 7–29 วันไม่ออก) */
+  assert.ok(flat.includes(`1–${aging.SERVICE_AGING_WARN_DAYS - 1} วัน = กลาง · ตั้งแต่ ${aging.SERVICE_AGING_WARN_DAYS} วัน = โทนเตือน (amber) · ตั้งแต่ ${aging.SERVICE_AGING_LONG_DAYS} วัน = โทนเตือน + ไอคอนนาฬิกาทราย`),
+    'ประโยคโทนของเอกสารเดินตามค่าคงที่');
+  const chipSource = read('../../components/salesPlanning/ServiceAgingChip.js');
+  assert.ok(chipSource.includes('icon={aging.strong ? Hourglass : undefined}') && section.includes('`Hourglass`') && section.includes('prop `icon` ของ `StatusBadge`'),
+    'เอกสารกับชิปพูดสัญญาณของระดับ 30 วันตรงกัน');
+  const at = (days) => aging.serviceAgingOf({ waitingOn: 'sales', since: new Date(Date.parse('2026-10-08T05:00:00Z') - days * 86400000).toISOString() }, '2026-10-08');
+  assert.deepEqual([at(0).label, at(6).tone, at(7).tone, at(29).strong, at(30).strong], [null, 'neutral', 'warning', false, true], 'โค้ดทำตามที่เอกสารเล่า');
+  assert.match(section, /\*\*วันเดียวกับที่งานมาถึง = ไม่มีชิป\*\*/);
+
+  /* คำบนจอที่เอกสารยกมา = คำของแคตตาล็อก */
+  const T = aging.SERVICE_BACKFILL_AGING_TEXT;
+  for (const text of [
+    T.chip(56), T.title.sales('2026-08-13T03:00:00Z'), T.title.manager('2026-09-29T02:00:00Z'), T.rowLabel.sales, T.rowLabel.manager,
+    aging.serviceAgingSummaryText(59, [{ days: 56 }, { days: 9 }]), T.sortLabel,
+  ]) {
+    assert.ok(flat.includes(`"${text}"`), `เอกสารต้องยกคำ "${text}" ตามแคตตาล็อก`);
+  }
+  /* ข้อเท็จจริงของวันที่ตรวจ (08/10/2026 · อ่านอย่างเดียว)
+     ⚠️ ผลตรวจทาน 08/10: ประโยคเดิมเขียน "58 ใบรอฝ่ายขาย" — 11 ใน 58 ใบลูกค้ายังไม่มีไซต์ในทะเบียน (ติดที่ TS เพิ่มไซต์ ไม่ใช่ฝ่ายขาย · 4 ใน 5 ใบที่ค้างนานสุด)
+     ⇒ เอกสารและจอพูด "ยังไม่ยื่นตรวจ" (ขั้น) ไม่ชี้ผู้ถือ และเอกสารต้องเล่าข้อนี้พร้อมตัวเลข */
+  assert.ok(flat.includes('มี **59 ใบ** — 58 ใบยังไม่ยื่นตรวจ (49 ใบเดิม + 9 ใบที่เปิดแก้หลังอนุมัติ) · 1 ใบรอผู้จัดการตรวจ · ค้างนานสุด 56 วัน · มัธยฐาน 22 วัน'));
+  assert.ok(flat.includes('**ใน 58 ใบที่ยังไม่ยื่นตรวจ มี 11 ใบที่ฝ่ายขายลงมือไม่ได้**') && flat.includes('**4 ใน 5 ใบที่ค้างนานสุดอยู่ในกลุ่มนี้'),
+    'เอกสารต้องเล่าใบที่ติดที่ TS (ลูกค้ายังไม่มีไซต์) พร้อมตัวเลขของวันที่ตรวจ');
+  assert.ok(flat.includes('**คำของขั้นยังไม่ยื่นตรวจ บอก "ขั้น" ไม่ชี้ "คน"**'));
+  assert.doesNotMatch(T.rowLabel.sales + T.title.sales('2026-08-13T03:00:00Z'), /ฝ่ายขาย/, 'คำบนจอของขั้นนี้ไม่ชี้ว่างานอยู่ที่ฝ่ายขาย');
+  assert.ok(flat.includes('รอเจ้าของตัดสินว่าจะให้แถว ขึ้น "รอ TS เพิ่มไซต์" ไหม'), 'ข้อที่ยังเปิดอยู่ของทะเบียน SO ต้องเขียนไว้');
+  /* ลำดับตั้งต้นของคิวงานบริการบนทะเบียน (ผลตรวจทาน 08/10): ชื่อที่เอกสารอ้างมีจริงในหน้า */
+  const listPage = read('../../app/sales-planning/sales-orders/page.js');
+  for (const name of ['SERVICE_QUEUE_SORT', 'activeSortKey', 'activeSortDir', 'queueSortChosen']) {
+    assert.ok(section.includes(`\`${name}\``), `เอกสารต้องอ้าง ${name}`);
+    assert.ok(listPage.includes(name), `${name} ต้องมีจริงในทะเบียนใบสั่งขาย`);
+  }
+  assert.ok(flat.includes('**คิวงานบริการของทะเบียน (เปิดชิป "ยังไม่ตั้งงานบริการ") เปิดมาเรียงค้างนานสุดก่อน**'));
+  assert.ok(flat.includes('ตัวกรอง "รอฉันลงมือ" **อย่างเดียว** ยังเรียงตามเดิม'), 'ข้อที่ตั้งใจไม่เปลี่ยนต้องเขียนไว้');
+  /* สิ่งที่ตั้งใจไม่แตะ ต้องเขียนไว้ (ป้ายบนเมนู/จำนวนของเลน · ป้ายโซน · การแจ้งเตือน) */
+  assert.match(flat, /\*\*ไม่ได้แตะโดยตั้งใจ\*\*: ป้ายตัวเลขบนเมนู · จำนวนของเลน "รอฉันลงมือ"/);
+  assert.ok(section.includes('`zoneSetupOrders.js`') && /ไม่มีกระดิ่ง \/ อีเมล \/ การแจ้งเตือนใด ๆ/.test(flat));
+  /* ส่วนอื่นของเอกสารชี้มาที่หัวข้อนี้: ทะเบียน SO · ฝั่ง TS · ตารางไฟล์ · ยาม */
+  const tail = DOC.slice(DOC.indexOf('## เส้นตั้งย้อนหลัง (ใบที่อนุมัติก่อนมีการตั้งงานบริการ)'));
+  assert.equal(tail.split('หัวข้อ "ตามงานค้าง" ข้างบน').length - 1, 2, 'ทะเบียน SO และฝั่ง TS ชี้มาที่หัวข้อนี้');
+  assert.ok(tail.includes('`lib/sales/serviceBackfillAging.js`') && tail.includes('`components/salesPlanning/ServiceAgingChip.js`') && tail.includes('`serviceBackfillAging.test.mjs`'));
 });
 
 /* ผลตรวจทาน 08/10 (text-docs-stale-unit): ส่วนที่ไม่มีวันที่กำกับ ("ทะเบียนใบสั่งขาย") และหัวข้อ UAT 29/09 เล่าคำของแคตตาล็อกเป็น "ของปัจจุบัน"

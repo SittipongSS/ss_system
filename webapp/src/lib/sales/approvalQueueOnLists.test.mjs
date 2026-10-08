@@ -7,6 +7,7 @@ import { isQuotationAwaitingMyApproval, isQuotationWaitingOnMe } from './quotati
 import { isSalesOrderWaitingOnMe } from './salesOrderWorkflow.js';
 import { isSalesOrderSelfApproval } from './salesOrderApprovalOverride.js';
 import { serviceBackfillAwaitingReview } from './serviceSetup.js';
+import { SERVICE_BACKFILL_AGING_TEXT } from './serviceBackfillAging.js';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (rel) => readFileSync(join(SRC, rel), 'utf8');
@@ -244,8 +245,148 @@ test('⭐ ชิป "ยังไม่ตั้งงานบริการ n
   const block = slice(page, '{(serviceSetupPendingCount > 0 || serviceSetupPendingOnly) && (', '</Button>');
   assert.match(block, /<Button\b/);
   assert.match(block, /size="sm"/);
-  assert.match(block, /onClick=\{\(\) => setServiceSetupPendingOnly\(\(on\) => !on\)\}/);
+  /* ผลตรวจทาน 08/10 ("ตามงานค้าง"): เปิด/ปิดชิป = เข้า/ออกคิวงานบริการ ⇒ สลับค่าเดิม + ล้างธง "ผู้ใช้เลือกแบบเรียงเองระหว่างดูคิว"
+     (คิวเปิดมาเรียงค้างนานสุดก่อน — ยามของเรื่องนั้นอยู่ท้ายไฟล์) · การสลับยังเป็นนิพจน์เดิม */
+  assert.match(block, /onClick=\{\(\) => \{ setServiceSetupPendingOnly\(\(on\) => !on\); setQueueSortChosen\(false\); \}\}/);
   assert.match(block, /ยังไม่ตั้งงานบริการ/);
   assert.match(block, /<CountBadge count=\{serviceSetupPendingCount\}/);
   assert.match(page, /import CountBadge from "@\/components\/ui\/CountBadge";/);
 });
+
+/* ══ "ค้าง n วัน" บนทะเบียนใบสั่งขาย (มติเจ้าของ 08/10 "ตามงานค้าง") ══════════════════════════════════════════════════════════
+   ตรวจข้อมูลจริง 08/10: 59 ใบสายบริการอนุมัติแล้วงานยังไม่ถึง TS (58 รอฝ่ายขาย · 1 รอผู้จัดการ) นานสุด 56 วัน — ไม่มีจอไหนบอกอายุ
+   ⭐ ก้อนอายุติดที่ server (ตัวตัดสินเดียว + วันไทยของ server) · จอวาดชิปตัวเดียว (`ServiceAgingChip`) และไม่พิมพ์คำเอง
+   ผิวของหน้านี้: แถวตาราง (= คิวของฝ่ายขายหลังชิป "ยังไม่ตั้งงานบริการ" และตัวกรอง "รอฉันลงมือ") · แถวคิวของผู้จัดการ · บรรทัดสรุป · คำค้น · ตัวเลือกเรียง */
+test('ตามงานค้าง: ก้อนอายุของแถวติดที่ server — ฐานเดียวกับชิป "ยังไม่ตั้งงานบริการ" · วันนี้ของ server · ไม่มีคำสั่งอ่านเพิ่ม', () => {
+  const orders = read('app/api/sales-planning/sales-orders/route.js');
+  assert.ok(orders.includes('serviceAging: setupPendingIds.has(row.id) ? serviceBackfillAging(row, { todayIso }) : null,'),
+    'ใบที่มีอะไรให้ตั้งจริง (D25) เท่านั้นที่มีก้อนอายุ — ชุดเดียวกับ _serviceSetupPending และเลนเจ้าของดีล');
+  assert.match(orders, /import \{[^}]*\bserviceBackfillAging\b[^}]*\} from '@\/lib\/sales\/serviceSetup';/);
+  /* "วันนี้" = วันไทยตัวเดียวกับที่ route ใช้ตัดสินงวดเลยกำหนด — ประกาศครั้งเดียว ก่อนประกอบแถว */
+  assert.equal(orders.split('const todayIso = businessDate();').length - 1, 1);
+  assert.ok(orders.indexOf('const todayIso = businessDate();') < orders.indexOf('serviceAging: setupPendingIds.has(row.id)'));
+  /* นาฬิกาทั้งสี่ (approvedAt · serviceSetupSubmittedAt / RejectedAt / ReopenedAt) มากับ select('*') ของใบอยู่แล้ว */
+  assert.match(orders, /\.from\('sales_orders'\)\s*(?:\/\*[^*]*\*\/\s*)?\.select\('\*'\)/);
+  assert.doesNotMatch(orders, /serviceSetupState\s*[!=]==/, 'ยังไม่อ่าน serviceSetupState เอง (D28) — ใครถืองานถามตัวตัดสิน');
+  assert.doesNotMatch(orders, /ค้าง \$\{|'ค้าง /, 'route ไม่พิมพ์คำของชิปเอง');
+});
+
+test('ตามงานค้าง: แถวตารางมีบรรทัด "ชิป + งานบริการ · รอใคร" · อยู่ในคำค้น · จอไม่พิมพ์คำ/ไม่อ่านนาฬิกาเอง', () => {
+  const page = read('app/sales-planning/sales-orders/page.js');
+  assert.match(page, /import ServiceAgingChip from "@\/components\/salesPlanning\/ServiceAgingChip";/);
+  assert.match(page, /import \{\s*SERVICE_BACKFILL_AGING_TEXT, compareLongestWaiting, longestWaitingFirst, serviceAgingSummaryText,\s*\} from "@\/lib\/sales\/serviceBackfillAging";/);
+  assert.doesNotMatch(page, /from "@\/lib\/sales\/serviceSetup"/, 'ทะเบียนฝั่งจอไม่พก serviceSetup.js ทั้งก้อน — ดึงไฟล์ใบไม้');
+
+  /* บรรทัดรองของเซลล์เอกสาร — ใต้รางขั้น (หรือป้ายยกเลิก) · เฉพาะแถวที่ server ติดก้อนอายุ
+     ⚠️ ต้องมีคำบอกว่าเป็นเรื่องงานบริการและค้างที่ใคร: แถวเดียวกันมีกำหนดชำระ — "ค้าง n วัน" ลอย ๆ อ่านเป็นค้างชำระ */
+  const row = slice(page, 'const orderRow = (row) => {', '\n  };\n');
+  assert.match(row, /\{row\.serviceAging \? \(\s*<span className="cell-sub mt-1\.5">\s*<ServiceAgingChip aging=\{row\.serviceAging\} \/>\{" "\}\s*<span>\{SERVICE_BACKFILL_AGING_TEXT\.rowLabel\[row\.serviceAging\.waitingOn\]\}<\/span>\s*<\/span>\s*\) : null\}/);
+  assert.ok(row.indexOf('<StepTrack steps={track.steps} />') < row.indexOf('{row.serviceAging ? ('), 'อยู่ใต้รางขั้นของใบ');
+  assert.ok(row.indexOf('{row.serviceAging ? (') < row.indexOf('{row.customerArCode ?'), 'อยู่ในเซลล์แรก (เอกสาร / ความคืบหน้า) — เห็นโดยไม่ต้องเลื่อนตาราง');
+  assert.equal((page.match(/<ServiceAgingChip /g) || []).length, 2, 'แถวตาราง + แถวคิวผู้จัดการ');
+  for (const who of ['sales', 'manager']) assert.equal(typeof SERVICE_BACKFILL_AGING_TEXT.rowLabel[who], 'string');
+
+  /* คำค้น: ป้าย + คำข้างป้าย ต่อท้ายชุดเดิม (ชุดเดิมไม่ถูกแทรก — ยามของเลขเอกสารเดิมยังยึดรูปเดิมอยู่) */
+  const memo = slice(page, 'const filtered = useMemo(', '\n\n');
+  assert.match(memo, /\.\.\.historicalRefsOf\(row\)\]\s*\.concat\(row\.serviceAging\?\.label, row\.serviceAging \? SERVICE_BACKFILL_AGING_TEXT\.rowLabel\[row\.serviceAging\.waitingOn\] : null\)\s*\.some\(/);
+  assert.match(page, /placeholder="ค้นหาเลข SO \/ QT \/ ลูกค้า \/ AR \/ ดีล \/ เอกสารอ้างอิง \/ เลขเดิม"/, 'คำใบ้ของช่องค้นหาไม่เปลี่ยน');
+
+  /* จอไม่พิมพ์คำของเรื่องนี้เอง (คอมเมนต์ไม่นับ) และไม่อ่านนาฬิกา */
+  const code = page.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:"'`])\/\/.*$/gm, '$1');
+  assert.doesNotMatch(code, /ค้าง/, 'คำ "ค้าง…" ทั้งหมดมาจาก SERVICE_BACKFILL_AGING_TEXT');
+  assert.doesNotMatch(code, /new Date\(\)|Date\.now\(|businessDate/, 'ก้อนอายุคิดที่ server ด้วยวันไทย');
+});
+
+test('ตามงานค้าง: คิวผู้จัดการ — แถวงานบริการรอตรวจมีชิป และเรียงค้างนานสุดก่อนในช่องของตัวเอง · ใบรออนุมัติไม่ขยับ · เปลือกบัญชีไม่เรียง', () => {
+  const page = read('app/sales-planning/sales-orders/page.js');
+  const memo = slice(page, 'const approvalQueue = useMemo(', '\n  );');
+  assert.match(memo, /const list = rows\.filter\(\(row\) => \(financeShell \? row\._awaitingFinanceReview : \(row\._awaitingMyApproval \|\| row\._awaitingMyServiceReview\)\)\);/);
+  assert.match(memo, /return financeShell \? list : longestWaitingFirst\(list, \(row\) => \(row\._awaitingMyServiceReview \? row\.serviceAging : null\)\);/,
+    'เรียงเฉพาะแถวงานบริการรอตรวจ (คีย์จากธงของ server) — แถวอื่นอยู่ช่องเดิม');
+  assert.match(memo, /\[rows, financeShell\]/);
+
+  /* ช่อง badge อยู่ระหว่าง rowHref กับ renderAction · บรรทัดหลัก/รองของคิวไม่ถูกแตะ (ยามข้างบนยึดไว้ตัวอักษรต่อตัวอักษร) */
+  const queue = slice(page, '<ApprovalQueue', 'renderAction=');
+  assert.match(queue, /rowHref=\{\(o\) => `\/sa\/sales-orders\/\$\{o\.id\}`\}[\s\S]*badge=\{\(o\) => \(serviceReviewRow\(o\) \? <ServiceAgingChip aging=\{o\.serviceAging\} \/> : null\)\}\s*$/);
+
+  /* คิวกลาง: ช่องเสริม — ไม่ส่ง = DOM เดิม (อีกสี่ทะเบียนไม่ส่ง) · ป้ายอยู่ในลิงก์ของแถว หลังบรรทัดหลัก ก่อนบรรทัดรอง */
+  const shared = read('components/ui/ApprovalQueue.js');
+  assert.match(shared, /items, onDecide, renderAction, primary, secondary, rowHref, badge,/);
+  assert.match(shared, /const extra = badge \? badge\(rec\) : null;/);
+  assert.match(shared, /<strong className="code">\{primary\(rec\)\}<\/strong>\{" "\}\s*\{extra \? <>\{extra\}\{" "\}<\/> : null\}\s*<span className="name">\{secondary\(rec\)\}<\/span>/);
+  assert.doesNotMatch(shared, /badge = /, 'ไม่มีค่าตั้งต้น — ไม่ส่งคือ undefined');
+  for (const other of [
+    'app/database/customers/page.js', 'app/database/products/page.js',
+    'app/sales-planning/quotations/page.js', 'app/sales-planning/contracts/page.js',
+  ]) {
+    assert.doesNotMatch(read(other), /<ApprovalQueue[\s\S]{0,1200}\bbadge=/, `${other} ไม่ส่งช่องเสริม — หน้าตาคิวเดิม`);
+  }
+});
+
+test('ตามงานค้าง: ตัวเลือกเรียง "งานบริการค้างนานสุด" — ค่าตั้งต้นของตารางและตัวเลือกเดิมไม่เปลี่ยน · ใบที่ไม่มีนาฬิกาอยู่ท้ายทั้งสองทิศ', () => {
+  const page = read('app/sales-planning/sales-orders/page.js');
+  assert.match(page, /const SORT_DEFAULT = "recent";/, 'ลำดับตั้งต้นของตารางยังเป็น "ล่าสุด" (ไม่เปลี่ยนลำดับที่ผู้ใช้เลือก)');
+  const options = slice(page, 'const SORT_OPTIONS = [', '];');
+  assert.deepEqual([...options.matchAll(/value: "(\w+)"/g)].map((m) => m[1]), ['recent', 'order', 'customer', 'actual', 'due', 'waiting'], 'ตัวใหม่ต่อท้าย');
+  assert.match(options, /\{ value: "waiting", label: SERVICE_BACKFILL_AGING_TEXT\.sortLabel, dir: "desc" \}/);
+  assert.equal(SERVICE_BACKFILL_AGING_TEXT.sortLabel, 'งานบริการค้างนานสุด');
+
+  const compare = slice(page, 'function compareOrders(', '\n}\n');
+  const branch = compare.slice(compare.indexOf('key === "waiting"'));
+  assert.ok(branch.length > 0, 'ต้องมีกิ่งของตัวเลือกใหม่');
+  assert.match(branch, /const aClock = a\.serviceAging\?\.since \|\| null;\s*const bClock = b\.serviceAging\?\.since \|\| null;/);
+  assert.match(branch, /if \(!aClock !== !bClock\) return aClock \? -1 : 1;/, 'ไม่มีนาฬิกา = ท้ายเสมอ (ไม่คูณทิศ) — กติกาเดียวกับ "กำหนดชำระ"');
+  assert.match(branch, /const byClock = compareLongestWaiting\(a\.serviceAging, b\.serviceAging\);\s*if \(byClock\) return dir === "desc" \? byClock : -byClock;/,
+    'มากไปน้อย = ค้างนานสุดก่อน · ตัวเทียบเดียวกับคิวผู้จัดการและแท็บ TS');
+  assert.match(compare, /const byOrder = text\(a\.orderNumber\)\.localeCompare\(text\(b\.orderNumber\), "th"\);\s*return key === "order" \? byOrder \* mul : byOrder;/, 'ตัวตัดสินเสมอเดิม');
+  /* กิ่งเดิมของ "กำหนดชำระ" ไม่ถูกแตะ */
+  assert.match(compare, /if \(!aDue !== !bDue\) return aDue \? -1 : 1;/);
+});
+
+test('ตามงานค้าง: บรรทัดสรุปของคิวขึ้นแทนคำอธิบายของแผงเฉพาะตอนเปิดชิป "ยังไม่ตั้งงานบริการ" · ฐานเดียวกับเลขบนชิป · ไม่มีแผงใหม่', () => {
+  const page = read('app/sales-planning/sales-orders/page.js');
+  assert.match(page, /const serviceAgingSummary = useMemo\(\s*\(\) => serviceAgingSummaryText\(serviceSetupPendingCount, rows\.filter\(\(row\) => row\._serviceSetupPending\)\.map\(\(row\) => row\.serviceAging\)\),\s*\[rows, serviceSetupPendingCount\],\s*\);/);
+  const panel = slice(page, '<ListPanel', 'toolbar={(');
+  assert.match(panel, /subtitle=\{serviceSetupPendingOnly && serviceAgingSummary \? serviceAgingSummary : "ค้นหา ตรวจเอกสาร และติดตามขั้นตอนอนุมัติจากจุดเดียว"\}/);
+  assert.equal((page.match(/<ListPanel\b/g) || []).length, 1, 'ไม่เพิ่มแผง');
+  assert.equal((page.match(/<SaMetric\s/g) || []).length, 4, 'ไม่เพิ่มการ์ดสรุปบนหัวหน้า');
+});
+
+/* ผลตรวจทาน 08/10 (หลังเห็นจอจริงกับข้อมูลจริง): เปิดชิป "ยังไม่ตั้งงานบริการ" แล้วตารางยังเรียง "ล่าสุด" — หน้าแรก (25 ใบ) มีแต่ใบที่ค้าง
+   7–20 วัน · ใบที่ค้างตั้งแต่ 30 วันทั้ง 25 ใบอยู่หน้า 2–3 · ใบ 56 วันเป็นแถวที่ 58 จาก 59 ทั้งที่บรรทัดสรุปของแผงเดียวกันบอก "ค้างนานสุด 56 วัน"
+   ⇒ คิวงานบริการ (ชิปเปิดอยู่) เปิดมาเรียงค้างนานสุดก่อน และเมนูเรียงโชว์ตัวเลือกนั้น · ลำดับที่ผู้ใช้เลือกเองไม่ถูกทับ
+   ⚠️ เฉพาะชิป — ตัวกรอง "รอฉันลงมือ" อย่างเดียวเป็นคิวผสม (ใบถูกตีกลับ/ถูกย้อนอนุมัติอยู่ด้วย) ยังเรียงตามเดิม */
+test('ตามงานค้าง: คิวงานบริการ (ชิป "ยังไม่ตั้งงานบริการ" เปิด) เปิดมาเรียงค้างนานสุดก่อน · เมนูเรียง/ปุ่มทิศแสดงลำดับที่ใช้จริง · ไม่ทับลำดับที่ผู้ใช้เลือก', () => {
+  const page = read('app/sales-planning/sales-orders/page.js');
+  assert.match(page, /const SERVICE_QUEUE_SORT = "waiting";/);
+  assert.match(page, /const \[queueSortChosen, setQueueSortChosen\] = useStickyState\("serviceQueueSortChosen", false\);/, 'จำคู่กับแบบเรียง (กดย้อนกลับมาได้ค่าเดิม)');
+  /* ใช้ค่าตั้งต้นของคิวเฉพาะเมื่อ: ชิปเปิด + แบบเรียงยังเป็นค่าตั้งต้น + ผู้ใช้ยังไม่ได้เลือกเองระหว่างดูคิว */
+  assert.match(page, /const queueSortAuto = serviceSetupPendingOnly && sortKey === SORT_DEFAULT && !queueSortChosen;/);
+  assert.doesNotMatch(slice(page, 'const queueSortAuto =', ';'), /waitingOnMeOnly/, 'ตัวกรอง "รอฉันลงมือ" อย่างเดียวไม่เปลี่ยนลำดับ (คิวผสม)');
+  assert.match(page, /const activeSortKey = queueSortAuto \? SERVICE_QUEUE_SORT : sortKey;/);
+  assert.match(page, /const activeSortDir = queueSortAuto \? sortDirOf\(SERVICE_QUEUE_SORT\) : sortDir;/);
+  /* ตาราง · การแบ่งหน้า · เมนูเรียง · ปุ่มทิศ ใช้ลำดับเดียวกัน (ไม่มีที่ไหนอ่าน sortKey/sortDir ดิบแล้วเพี้ยนจากที่ตาเห็น) */
+  const sorted = slice(page, 'const sorted = useMemo(', '\n\n');
+  assert.match(sorted, /if \(activeSortKey === SORT_DEFAULT\) return activeSortDir === "desc" \? \[\.\.\.filtered\]\.reverse\(\) : filtered;/);
+  assert.match(sorted, /compareOrders\(a, b, activeSortKey, activeSortDir\)/);
+  assert.match(sorted, /\[filtered, activeSortKey, activeSortDir\]/);
+  assert.match(slice(page, 'usePagination(sorted', ';'), /\$\{activeSortKey\}\|\$\{activeSortDir\}/, 'เปลี่ยนลำดับ = กลับหน้าแรก');
+  const menu = slice(page, '<SortMenu', '/>');
+  assert.match(menu, /value=\{activeSortKey\}/, 'เมนูขึ้นตัวเลือกที่ตารางใช้จริง');
+  assert.match(menu, /defaultValue=\{SORT_DEFAULT\}/, 'ค่าตั้งต้นของตารางยังเป็น "ล่าสุด" — ปุ่มเรียงติดสีตอนคิวใช้ลำดับของตัวเอง');
+  assert.match(menu, /onChange=\{\(value\) => \{ setSortKey\(value\); setSortDir\(sortDirOf\(value\)\); setQueueSortChosen\(serviceSetupPendingOnly\); \}\}/,
+    'เลือกเองระหว่างดูคิว (รวมเลือก "ล่าสุด" กลับ) = ใช้ตามที่เลือก');
+  const dirButton = slice(page, '<SortDirButton', '/>');
+  assert.match(dirButton, /dir=\{activeSortDir\}/);
+  assert.match(dirButton, /setSortKey\(activeSortKey\);\s*setSortDir\(activeSortDir === "asc" \? "desc" : "asc"\);\s*setQueueSortChosen\(serviceSetupPendingOnly\);/,
+    'กลับทิศ = กลับทิศของลำดับที่เห็นอยู่ (ไม่ใช่ของ "ล่าสุด" ที่ซ่อนอยู่)');
+  /* ออกจากคิวทุกทาง (ปุ่มชิป · ล้างตัวกรอง) ล้างธง — เข้าคิวรอบใหม่ได้ค่าตั้งต้นของคิวอีก */
+  assert.match(slice(page, 'onClear={() => {', '}}'), /setServiceSetupPendingOnly\(false\); setQueueSortChosen\(false\);/);
+  assert.equal(page.split('setQueueSortChosen(').length - 1, 4, 'ปุ่มชิป · ล้างตัวกรอง · เมนูเรียง · ปุ่มทิศ');
+  assert.equal(SORT_OPTIONS_DIR('waiting', page), 'desc', 'ทิศตั้งต้นของตัวเลือกนี้ = ค้างนานสุดก่อน');
+});
+
+function SORT_OPTIONS_DIR(value, page) {
+  const options = slice(page, 'const SORT_OPTIONS = [', '];');
+  return new RegExp(`value: "${value}"[^}]*dir: "(\\w+)"`).exec(options)?.[1] || null;
+}

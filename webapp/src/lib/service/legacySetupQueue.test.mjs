@@ -221,16 +221,94 @@ test('แถวพกผู้ดูแลฝ่ายขาย (เจ้าข
   assert.deepEqual(bare.readiness, { contractNo: null, hasContract: false });
 });
 
-test('เรียงใหม่สุดก่อน (วันอนุมัติ) · เท่ากันเรียงตามเลขที่ใบ', () => {
-  const q = run({
+/* 🔁 มติเจ้าของ 08/10 ("ตามงานค้าง"): ถังนี้เคยเรียง **อนุมัติล่าสุดก่อน** (เทสต์เดิมชื่อ "เรียงใหม่สุดก่อน (วันอนุมัติ)" ยึดลำดับ C · B · A)
+   ⇒ ใบที่ค้างนานสุด (ตรวจข้อมูลจริง 08/10: 56 วัน) ไปอยู่ท้ายสุดของแท็บ · เจ้าของสั่งตามงานค้าง ⇒ ลำดับตั้งต้นกลับเป็น **ค้างนานสุดก่อน**
+   · นาฬิกาที่ใช้เรียง = นาฬิกาเดียวกับชิป "ค้าง n วัน" (ไม่ใช่วันอนุมัติเสมอไป — เปิดแก้/ถูกตีกลับ/ยื่นตรวจนับจากเหตุการณ์นั้น)
+   · เท่ากันเรียงตามเลขที่ใบเหมือนเดิม · แท็บนี้ไม่มีตัวเลือกเรียงของผู้ใช้ (ไม่มีลำดับที่ผู้ใช้เลือกให้ทับ) */
+test('เรียงค้างนานสุดก่อน (นาฬิกาของชิป "ค้าง n วัน") · เท่ากันเรียงตามเลขที่ใบ · ไม่มีนาฬิกาอยู่ท้าย — มติเจ้าของ 08/10', () => {
+  const orders = [
+    so({ id: 'A', orderNumber: 'SO-26090191-0', approvedAt: '2026-09-16T03:00:00Z' }),
+    so({ id: 'B', orderNumber: 'SO-26090244-0', approvedAt: '2026-09-25T03:00:00Z' }),
+    so({ id: 'C', orderNumber: 'SO-26090227-0', approvedAt: '2026-09-25T03:00:00Z' }),
+  ];
+  const lines = (ids) => ids.map((id) => manual({ id: `L-${id}`, salesOrderId: id }));
+  // ชุดเดิมของเทสต์นี้: เดิมได้ C · B · A (ใหม่สุดก่อน) — ตอนนี้ใบที่อนุมัติ 16/09 (ค้างนานสุด) ขึ้นก่อน แล้วเลขที่ใบ
+  assert.deepEqual(run({ orders, lines: lines(['A', 'B', 'C']), todayIso: '2026-10-08' }).rows.map((r) => r.orderId), ['A', 'C', 'B']);
+  // ไม่ส่งวันนี้ (ผู้เรียกเก่า) ลำดับเท่ากัน — ตัวเรียงใช้จุดเวลาเริ่ม ไม่ใช่จำนวนวัน
+  assert.deepEqual(run({ orders, lines: lines(['A', 'B', 'C']) }).rows.map((r) => r.orderId), ['A', 'C', 'B']);
+
+  // นาฬิกาไม่ใช่วันอนุมัติเสมอไป: ใบเก่าที่เพิ่งเปิดแก้ / เพิ่งถูกตีกลับ ค้างน้อยกว่าใบที่ยื่นตรวจมานาน
+  const mixed = [
+    so({ id: 'OLD', orderNumber: 'SO-26080010-0', approvedAt: '2026-08-13T03:00:00Z' }),                                              // รอฝ่ายขาย 56 วัน
+    so({ id: 'REOPEN', orderNumber: 'SO-26080011-0', approvedAt: '2026-08-13T03:00:00Z', serviceSetupReopenedAt: '2026-10-01T04:00:00Z' }), // เปิดแก้ 7 วัน
+    so({ id: 'SENT', orderNumber: 'SO-26080012-0', approvedAt: '2026-08-13T03:00:00Z', serviceSetupState: 'submitted', serviceSetupSubmittedAt: '2026-09-29T02:00:00Z' }), // รอผู้จัดการ 9 วัน
+    so({ id: 'BACK', orderNumber: 'SO-26080013-0', approvedAt: '2026-08-13T03:00:00Z', serviceSetupState: 'rejected', serviceSetupRejectedAt: '2026-10-05T09:00:00Z' }),   // ตีกลับ 3 วัน
+    so({ id: 'NOCLOCK', orderNumber: 'SO-26080001-0', approvedAt: null }),                                                             // ไม่มีนาฬิกา = ท้าย
+  ];
+  const q = run({ orders: mixed, lines: lines(['OLD', 'REOPEN', 'SENT', 'BACK', 'NOCLOCK']), todayIso: '2026-10-08' });
+  assert.deepEqual(q.rows.map((r) => [r.orderId, r.aging.waitingOn, r.aging.days]), [
+    ['OLD', 'sales', 56], ['SENT', 'manager', 9], ['REOPEN', 'sales', 7], ['BACK', 'sales', 3], ['NOCLOCK', 'sales', null],
+  ]);
+  // ถังของใบที่ยังไม่ระบุสายเรียงแบบเดียวกัน
+  const unknown = run({
     orders: [
-      so({ id: 'A', orderNumber: 'SO-26090191-0', approvedAt: '2026-09-16T03:00:00Z' }),
-      so({ id: 'B', orderNumber: 'SO-26090244-0', approvedAt: '2026-09-25T03:00:00Z' }),
-      so({ id: 'C', orderNumber: 'SO-26090227-0', approvedAt: '2026-09-25T03:00:00Z' }),
+      so({ id: 'U1', orderNumber: 'SO-26090300-0', dealId: 'DL-0', approvedAt: '2026-09-25T03:00:00Z' }),
+      so({ id: 'U2', orderNumber: 'SO-26090301-0', dealId: 'DL-0', approvedAt: '2026-09-01T03:00:00Z' }),
     ],
-    lines: ['A', 'B', 'C'].map((id) => manual({ id: `L-${id}`, salesOrderId: id })),
+    lines: lines(['U1', 'U2']), todayIso: '2026-10-08',
   });
-  assert.deepEqual(q.rows.map((r) => r.orderId), ['C', 'B', 'A']);
+  assert.deepEqual(unknown.unknownLine.map((r) => r.orderId), ['U2', 'U1']);
+});
+
+/* ── "ค้าง n วัน" บนแถว (มติเจ้าของ 08/10 "ตามงานค้าง") — TS เห็นอายุเดียวกับที่ฝ่ายขาย/ผู้จัดการเห็นบนทะเบียนและหน้าใบ ───────── */
+test('ตามงานค้าง: แถวพก `aging` จากตัวตัดสินกลาง — ใบเดิม (วันอนุมัติ) · เปิดแก้ · ตีกลับ · รอผู้จัดการ (วันที่ยื่นตรวจ) · วันไทย · ไม่ส่งวันนี้ = ไม่มีป้าย', () => {
+  const today = '2026-10-08';
+  const rowOf = (over, opts = {}) => run({ orders: [so(over)], lines: [manual()], todayIso: today, ...opts }).rows[0];
+  const brief = (row) => [row.aging.waitingOn, row.aging.since, row.aging.days, row.aging.tone, row.aging.strong, row.aging.label];
+
+  // ใบเดิม: อนุมัติ 25/09 → 13 วัน (เตือน · ไม่มีจุดนำ) · ป้ายขั้นไม่เปลี่ยน
+  const legacy = rowOf({});
+  assert.deepEqual(brief(legacy), ['sales', '2026-09-25T03:00:00Z', 13, 'warning', false, 'ค้าง 13 วัน']);
+  assert.equal(legacy.aging.title, 'ยังไม่ยื่นตรวจงานบริการ · นับจาก 25/09/2026');
+  assert.deepEqual(legacySetupStatusView(legacy), { tone: 'neutral', label: 'ยังไม่เริ่ม', sub: null }, 'ป้าย/บรรทัดรองของขั้นไม่ถูกแตะ — อายุเป็นชิปแยก');
+  // ค้างเกิน 30 วัน = เตือน + จุดนำ
+  assert.deepEqual(brief(rowOf({ approvedAt: '2026-08-13T03:00:00Z' })).slice(2), [56, 'warning', true, 'ค้าง 56 วัน']);
+  // เปิดแก้หลังอนุมัติ (0396): นับจากวันที่เปิดแก้ ไม่ใช่วันอนุมัติ
+  const reopened = rowOf({ approvedAt: '2026-08-13T03:00:00Z', ...reopenedCols, serviceSetupReopenedAt: '2026-10-01T04:00:00Z' });
+  assert.deepEqual(brief(reopened), ['sales', '2026-10-01T04:00:00Z', 7, 'warning', false, 'ค้าง 7 วัน']);
+  // ตีกลับ: นับจากวันที่ถูกตีกลับ (ต่ำกว่า 7 วัน = โทนกลาง)
+  const rejected = rowOf({ serviceSetupState: 'rejected', serviceSetupSubmittedAt: '2026-09-29T02:00:00Z', serviceSetupRejectedAt: '2026-10-05T09:00:00Z', serviceSetupRejectedReason: 'ขาดโซน' });
+  assert.deepEqual(brief(rejected), ['sales', '2026-10-05T09:00:00Z', 3, 'neutral', false, 'ค้าง 3 วัน']);
+  // รอผู้จัดการตรวจ: นับจากวันที่ยื่นตรวจ · คำบอกพูดถึงผู้จัดการ
+  const sent = rowOf({ serviceSetupState: 'submitted', serviceSetupSubmittedAt: '2026-09-29T02:00:00Z' });
+  assert.deepEqual(brief(sent), ['manager', '2026-09-29T02:00:00Z', 9, 'warning', false, 'ค้าง 9 วัน']);
+  assert.equal(sent.aging.title, 'รอผู้จัดการฝ่ายขายตรวจตั้งแต่ 29/09/2026');
+  // ข้ามตอนยื่น (0404): ตราการข้ามไม่ใช่นาฬิกา — นับจากวันอนุมัติ
+  const deferred = rowOf({ approvedAt: '2026-10-06T03:00:00Z', serviceSetupDeferredAt: '2026-10-01T02:30:00Z', serviceSetupDeferredByName: 'Kamonrat Pipattanapong' });
+  assert.deepEqual(brief(deferred).slice(0, 3), ['sales', '2026-10-06T03:00:00Z', 2]);
+  // 🔴 วันไทย: อนุมัติ 00:30 น. เวลาไทยของวันนี้ (ยังเป็นเมื่อวานของ UTC) = ไม่มีป้าย · 23:59 น. ของเมื่อวาน = 1 วัน
+  assert.deepEqual([rowOf({ approvedAt: '2026-10-07T17:30:00Z' }).aging.days, rowOf({ approvedAt: '2026-10-07T17:30:00Z' }).aging.label], [0, null]);
+  assert.equal(rowOf({ approvedAt: '2026-10-07T16:59:59Z' }).aging.label, 'ค้าง 1 วัน');
+  // ผู้เรียกไม่ส่งวันนี้ = ก้อนที่ไม่มีป้าย (แถวไม่พัง · ยังรู้ว่างานอยู่ที่ใคร)
+  const noToday = run({ orders: [so()], lines: [manual()] }).rows[0];
+  assert.deepEqual([noToday.aging.waitingOn, noToday.aging.days, noToday.aging.label], ['sales', null, null]);
+  // 🔒 ก้อนอายุไม่พกยอดเงิน/ชื่อคน — มีแต่ใคร (ฝ่าย) · เมื่อไร · กี่วัน · โทน · คำ
+  assert.deepEqual(Object.keys(legacy.aging).sort(), ['days', 'label', 'level', 'since', 'sinceDay', 'strong', 'title', 'tone', 'waitingOn']);
+});
+
+test('ตามงานค้าง: ป้าย "ค้าง n วัน" อยู่ในคำค้นของแถว (ตาเห็นบนแถว = ต้องค้นเจอ) · คำบอกเมื่อชี้ไม่อยู่ · ไม่มีป้าย = ไม่มีคำ', () => {
+  const [sent] = run({
+    orders: [so({ serviceSetupState: 'submitted', serviceSetupSubmittedAt: '2026-09-29T02:00:00Z' })], lines: [manual()], todayIso: '2026-10-08',
+  }).rows;
+  const hay = legacySetupHaystack(sent);
+  assert.ok(hay.includes('ค้าง 9 วัน'), hay);
+  assert.ok(!hay.includes('รอผู้จัดการฝ่ายขายตรวจตั้งแต่'), 'คำบอกของป้าย (title) ตาไม่เห็นบนแถว — ไม่อยู่ในคำค้น');
+  // พิมพ์ "ค้าง" = เจอทุกใบที่มีป้าย · ใบที่มาถึงวันนี้/ไม่มีวันนี้ไม่มีคำนี้
+  const sameDay = run({ orders: [so({ approvedAt: '2026-10-07T17:30:00Z' })], lines: [manual()], todayIso: '2026-10-08' }).rows[0];
+  assert.ok(!legacySetupHaystack(sameDay).includes('ค้าง'));
+  assert.ok(!legacySetupHaystack(run({ orders: [so()], lines: [manual()] }).rows[0]).includes('ค้าง'));
+  // แถวที่ประกอบเองไม่มีคีย์ aging (จอรุ่นเก่า/เทสต์อื่น) = ไม่พัง
+  assert.equal(typeof legacySetupHaystack({ state: 'not_started' }), 'string');
 });
 
 test('ป้ายเซลล์สถานะ: ตารางกับการ์ดอ่านจากตัวเดียว', () => {

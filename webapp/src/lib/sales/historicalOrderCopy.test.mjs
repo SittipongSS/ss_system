@@ -8,10 +8,11 @@ import {
   HISTORICAL_APPROVE_TOAST, HISTORICAL_SETUP_ISSUE_TEXT, PACKS_ROUNDS_HEAD, historicalAfterSendRail, historicalApprovalFacts, historicalBillingDatesText,
   historicalCancelEffect,
   historicalCancelPrompt, historicalCancelToast, historicalCoverageSegments, historicalOpeningVoidSummary, historicalOpeningRejectNote, historicalOverrideNote, historicalRejectDetail,
-  historicalPacksCellText, historicalPacksRoundsText, historicalServiceTotals, historicalSetupIncompleteMessage,
+  historicalPacksCellText, historicalPacksRoundsText, historicalRoundsCellText, historicalRoundsSoldText, historicalServiceTotals, historicalSetupIncompleteMessage,
   historicalServiceProgress, historicalStatusCopy, historicalWithdrawDetail, historicalWorkflowSteps,
   historicalZoneState, quoteLineText,
 } from './historicalOrderCopy.js';
+import { SERVICE_ROUNDS_UNIT } from './serviceOrders.js';
 import { HISTORICAL_CORRECTION_PATH, HISTORICAL_STATUS_NOTE } from './historicalOrders.js';
 import { historicalApprovalPrompt } from '../approvalPrompt.js';
 import { workflowStepsFromIndex } from '../documentControlModel.js';
@@ -44,9 +45,12 @@ const LINE_ZONES = [
   const { fgCode, qty, unit, unitPrice, discountAmount, lineTotal } = ORDER.lines[index];
   return { ...zone, fgCode, qty, unit, unitPrice, discountAmount, lineTotal, rounds: 12 };
 });
-/* ⭐ มติเจ้าของ 29/09 ("ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง"): จำนวนรอบบริการ ก่อน แล้วค่อย แต่ละครั้งกี่แพ็ค */
-const PACKS_ROW = 'จำนวนรอบบริการ · รอบละกี่แพ็ค: 12 รอบ/โซน · รวม 6 แพ็ค/รอบ — ชั้น G ล็อบบี้ 12 รอบ × 2 แพ็ค/รอบ'
-  + ' · ชั้น M ทางเชื่อม BTS 12 รอบ × 1 แพ็ค/รอบ · ห้องน้ำหญิง ชั้น 1 12 รอบ × 1 แพ็ค/รอบ · ทางเข้าหลัก 12 รอบ × 2 แพ็ค/รอบ';
+/* ⭐ มติเจ้าของ 29/09 ("ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง"): คำเดียวกับใบใหม่
+   ⭐ มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ: หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ
+     ⇒ หัวแถว "รอบละกี่แพ็ค · จำนวนรอบบริการ" · ค่ารวม "รวม 6 แพ็ค/รอบ · 12 เดือน/โซน" · รายโซน "… 2 แพ็ค/รอบ × 12 เดือน"
+     (ของเดิมยึด "จำนวนรอบบริการ · รอบละกี่แพ็ค: 12 รอบ/โซน · รวม 6 แพ็ค/รอบ — … 12 รอบ × 2 แพ็ค/รอบ" · ตัวเลขชุดเดิมทุกตัว) */
+const PACKS_ROW = 'รอบละกี่แพ็ค · จำนวนรอบบริการ: รวม 6 แพ็ค/รอบ · 12 เดือน/โซน — ชั้น G ล็อบบี้ 2 แพ็ค/รอบ × 12 เดือน'
+  + ' · ชั้น M ทางเชื่อม BTS 1 แพ็ค/รอบ × 12 เดือน · ห้องน้ำหญิง ชั้น 1 1 แพ็ค/รอบ × 12 เดือน · ทางเข้าหลัก 2 แพ็ค/รอบ × 12 เดือน';
 const PACKS_WARN = /^⚠️ ยังไม่ใส่รอบละกี่แพ็ค/;
 /* คำที่ยอมให้มี "แพ็ค" (มติ 26/09 — IMPL_PLAN_D §0.2 ข้อ 14 · ป้ายตามมติ 29/09): แพ็คเกจ · แต่ละครั้งกี่แพ็ค · แพ็ค/รอบ เท่านั้นในไฟล์นี้
    · "แพ็คต่อรอบ" (ป้ายเดิมก่อนมติ 29/09) ไม่ยอมแล้ว */
@@ -266,7 +270,8 @@ test('โมดัลอนุมัติ: ชุดม็อก — ตรว�
     'เอกสารแทนสัญญา ใบสั่งซื้อของลูกค้า (PO) PO-SPW-2026-0118 อนุมัติ ออกเลข CT แล้วผูกกับใบนี้ (มีผล 01/01/2026–31/12/2026)',
     'ส่งงวดยกมา ฿196,452.00 (ครอบบริการ 01/01/2026–30/09/2026) ให้บัญชีรับรอง',
     'งวดที่ยังต้องเก็บ 1 งวดขึ้นทะเบียนการชำระ — ฝ่ายขายแจ้งชำระเมื่อลูกค้าจ่าย',
-    '4 โซนใน 2 ไซต์ · จำนวนรอบบริการ 12 รอบ/โซน · รวม 6 แพ็ค/รอบ ขึ้นคิว TS งานเข้าใหม่ › รอตั้งรอบ — นัดขึ้นตารางได้เมื่อบัญชีรับรองงวดยกมา',
+    /* มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ: หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ (ของเดิม "· จำนวนรอบบริการ 12 รอบ/โซน · รวม 6 แพ็ค/รอบ") */
+    '4 โซนใน 2 ไซต์ · รวม 6 แพ็ค/รอบ · จำนวนรอบบริการ 12 เดือน/โซน ขึ้นคิว TS งานเข้าใหม่ › รอตั้งรอบ — นัดขึ้นตารางได้เมื่อบัญชีรับรองงวดยกมา',
   ]);
   // ป้อนตัวสร้างโมดัลได้ตรง ๆ — ปกติและ override ใช้รายการตรวจชุดเดียวกัน
   const prompt = collect(historicalApprovalPrompt(facts));
@@ -297,49 +302,58 @@ test('🔴 โมดัลอนุมัติ: ของเสริมโห�
   assert.ok(fromZones.checklist.some((l) => l.startsWith('รายการ: FG-SNS-02-001-0012 72 แพ็คเกจ')));
   assert.ok(facts.checklist.some((l) => /ช่วงสัญญาโหลดไม่ขึ้น/.test(l)));
   /* แพ็คต่อรอบมากับของเสริม — โหลดไม่ขึ้น = บอกว่าโหลดไม่ขึ้น ไม่ใช่ ⚠️ "คีย์ก่อนมีช่อง" (ไม่รู้ ≠ ไม่มี) · ผลลัพธ์ถอยไปประโยคเดิม */
-  assert.equal(facts.checklist[facts.checklist.indexOf('โซน: 4 โซน') + 1], 'จำนวนรอบบริการ · รอบละกี่แพ็ค: โหลดไม่ขึ้น — ระบบตรวจซ้ำตอนกดอนุมัติ');
+  /* มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ: หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ (หัวแถวสลับลำดับ) */
+  assert.equal(facts.checklist[facts.checklist.indexOf('โซน: 4 โซน') + 1], 'รอบละกี่แพ็ค · จำนวนรอบบริการ: โหลดไม่ขึ้น — ระบบตรวจซ้ำตอนกดอนุมัติ');
   assert.ok(!facts.checklist.some((l) => PACKS_WARN.test(l)));
   assert.equal(facts.effects.at(-1), '4 โซนขึ้นคิว TS งานเข้าใหม่ › รอตั้งรอบ — นัดขึ้นตารางได้เมื่อบัญชีรับรองงวดยกมา');
 });
 
 /* ⭐ PR-D (mig 0394/P3): รอบขายของโซนเปิดผ่านตัวกลาง — term.packageQty = แพ็คต่อรอบของโซน ⇒ โมดัลต้องพูดจำนวนรอบบริการ · รอบละกี่แพ็ค
    และบอกก่อนกดว่าใบที่ยังไม่ได้ใส่รอบละกี่แพ็ค (คีย์ก่อนมีช่อง) อนุมัติไม่ผ่าน
-   ⭐ มติเจ้าของ 29/09 ("ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง"): รอบก่อน แล้วค่อยแพ็ค — ทั้งหัวแถว ค่ารวม และรายโซน */
-test('โมดัลอนุมัติ: จำนวนรอบบริการ · รอบละกี่แพ็ค — รอบต่างกันเป็นช่วง · เกิน 5 โซนชี้การ์ดโซน · ขาดแพ็ค = ⚠️ + ประโยคผลลัพธ์เดิม', () => {
+   ⭐ มติเจ้าของ 29/09 ("ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง"): คำเดียวกับใบใหม่
+   ⭐ มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ: หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ — ทั้งหัวแถว ค่ารวม รายโซน และผลลัพธ์ของ TS
+     (ทุกข้อคาดหวังข้างล่างย้ายจาก "รอบก่อนแพ็ค · n รอบ" ของมติ 29/09 มาเป็น "แพ็คก่อน · n เดือน" · ตัวเลขชุดเดิม) */
+test('โมดัลอนุมัติ: รอบละกี่แพ็ค · จำนวนรอบบริการ — เดือนต่างกันเป็นช่วง · เกิน 5 โซนชี้การ์ดโซน · ขาดแพ็ค = ⚠️ + ประโยคผลลัพธ์เดิม', () => {
   /* หัวแถว = ค่าคงที่ตัวเดียวกับแถวของขั้น ④ (historicalReviewView) · คำเดียวกับแคตตาล็อกของใบใหม่ (SERVICE_SETUP_LINE_TEXT) */
-  assert.equal(PACKS_ROUNDS_HEAD, 'จำนวนรอบบริการ · รอบละกี่แพ็ค');
+  assert.equal(PACKS_ROUNDS_HEAD, 'รอบละกี่แพ็ค · จำนวนรอบบริการ');
   const mixed = LINE_ZONES.map((zone, i) => ({ ...zone, rounds: [12, 12, 6, 12][i] }));
   const facts = collect(historicalApprovalFacts(ORDER, { ...EXTRAS, lineZones: mixed }));
-  assert.ok(facts.checklist.includes('จำนวนรอบบริการ · รอบละกี่แพ็ค: 6–12 รอบ/โซน · รวม 6 แพ็ค/รอบ — ชั้น G ล็อบบี้ 12 รอบ × 2 แพ็ค/รอบ'
-    + ' · ชั้น M ทางเชื่อม BTS 12 รอบ × 1 แพ็ค/รอบ · ห้องน้ำหญิง ชั้น 1 6 รอบ × 1 แพ็ค/รอบ · ทางเข้าหลัก 12 รอบ × 2 แพ็ค/รอบ'),
+  assert.ok(facts.checklist.includes('รอบละกี่แพ็ค · จำนวนรอบบริการ: รวม 6 แพ็ค/รอบ · 6–12 เดือน/โซน — ชั้น G ล็อบบี้ 2 แพ็ค/รอบ × 12 เดือน'
+    + ' · ชั้น M ทางเชื่อม BTS 1 แพ็ค/รอบ × 12 เดือน · ห้องน้ำหญิง ชั้น 1 1 แพ็ค/รอบ × 6 เดือน · ทางเข้าหลัก 2 แพ็ค/รอบ × 12 เดือน'),
   facts.checklist.join('\n'));
   assert.equal(facts.effects.at(-1),
-    '4 โซนใน 2 ไซต์ · จำนวนรอบบริการ 6–12 รอบ/โซน · รวม 6 แพ็ค/รอบ ขึ้นคิว TS งานเข้าใหม่ › รอตั้งรอบ — นัดขึ้นตารางได้เมื่อบัญชีรับรองงวดยกมา');
+    '4 โซนใน 2 ไซต์ · รวม 6 แพ็ค/รอบ · จำนวนรอบบริการ 6–12 เดือน/โซน ขึ้นคิว TS งานเข้าใหม่ › รอตั้งรอบ — นัดขึ้นตารางได้เมื่อบัญชีรับรองงวดยกมา');
 
   const six = [...LINE_ZONES, ...LINE_ZONES.slice(0, 2).map((zone, i) => ({ ...zone, zoneId: `Z-X${i}`, zoneName: `โซนเสริม ${i + 1}` }))];
   const many = collect(historicalApprovalFacts(ORDER, { ...EXTRAS, lineZones: six }));
-  assert.ok(many.checklist.includes('จำนวนรอบบริการ · รอบละกี่แพ็ค: 12 รอบ/โซน · รวม 9 แพ็ค/รอบ — ดูการ์ดโซนในหน้าใบ'), many.checklist.join('\n'));
+  assert.ok(many.checklist.includes('รอบละกี่แพ็ค · จำนวนรอบบริการ: รวม 9 แพ็ค/รอบ · 12 เดือน/โซน — ดูการ์ดโซนในหน้าใบ'), many.checklist.join('\n'));
 
   /* ใบที่คีย์ก่อนมีช่อง (ไม่มีแถว sales_order_line_zones) — ของเสริมคืน packsPerRound: null */
   const blank = LINE_ZONES.map((zone, i) => ({ ...zone, packsPerRound: i === 1 ? null : zone.packsPerRound }));
   const missing = collect(historicalApprovalFacts(ORDER, { ...EXTRAS, lineZones: blank }));
-  const at = missing.checklist.findIndex((l) => l.startsWith('จำนวนรอบบริการ · รอบละกี่แพ็ค:'));
-  assert.equal(missing.checklist[at], 'จำนวนรอบบริการ · รอบละกี่แพ็ค: 12 รอบ/โซน · รวม 5 แพ็ค/รอบ (ยังไม่ใส่รอบละกี่แพ็ค 1 โซน)'
-    + ' — ชั้น G ล็อบบี้ 12 รอบ × 2 แพ็ค/รอบ · ชั้น M ทางเชื่อม BTS 12 รอบ · ยังไม่ใส่รอบละกี่แพ็ค · ห้องน้ำหญิง ชั้น 1 12 รอบ × 1 แพ็ค/รอบ'
-    + ' · ทางเข้าหลัก 12 รอบ × 2 แพ็ค/รอบ');
+  const at = missing.checklist.findIndex((l) => l.startsWith('รอบละกี่แพ็ค · จำนวนรอบบริการ:'));
+  /* ⚠️ ผลตรวจทาน 08/10: ค่าเดือนของโซนที่ขาดแพ็คอยู่ในวงเล็บของโซนนั้น — เดิมต่อด้วย " · " ตัวเดียวกับตัวคั่นโซน
+       ("… BTS ยังไม่ใส่รอบละกี่แพ็ค · 12 เดือน · ห้องน้ำหญิง …") จึงมี "12 เดือน" ลอยระหว่างชื่อสองโซน บอกไม่ได้ว่าของโซนไหน */
+  assert.equal(missing.checklist[at], 'รอบละกี่แพ็ค · จำนวนรอบบริการ: รวม 5 แพ็ค/รอบ (ยังไม่ใส่รอบละกี่แพ็ค 1 โซน) · 12 เดือน/โซน'
+    + ' — ชั้น G ล็อบบี้ 2 แพ็ค/รอบ × 12 เดือน · ชั้น M ทางเชื่อม BTS ยังไม่ใส่รอบละกี่แพ็ค (12 เดือน) · ห้องน้ำหญิง ชั้น 1 1 แพ็ค/รอบ × 12 เดือน'
+    + ' · ทางเข้าหลัก 2 แพ็ค/รอบ × 12 เดือน');
   assert.equal(missing.checklist[at + 1],
     '⚠️ ยังไม่ใส่รอบละกี่แพ็ค 1 รายการ (ใบนี้คีย์ก่อนมีช่องนี้) — ระบบจะไม่ยอมให้อนุมัติ ตีกลับให้ผู้คีย์บันทึกขั้น ② ใหม่');
   assert.equal(missing.effects.at(-1), '4 โซนขึ้นคิว TS งานเข้าใหม่ › รอตั้งรอบ — นัดขึ้นตารางได้เมื่อบัญชีรับรองงวดยกมา', 'แพ็คไม่ครบ = ประโยคเดิม');
   const none = collect(historicalApprovalFacts(ORDER, { ...EXTRAS, lineZones: LINE_ZONES.map((zone) => ({ ...zone, packsPerRound: null })) }));
-  assert.ok(none.checklist.includes('จำนวนรอบบริการ · รอบละกี่แพ็ค: 12 รอบ/โซน · ยังไม่ใส่รอบละกี่แพ็ค'
-    + ' — ชั้น G ล็อบบี้ 12 รอบ · ยังไม่ใส่รอบละกี่แพ็ค · ชั้น M ทางเชื่อม BTS 12 รอบ · ยังไม่ใส่รอบละกี่แพ็ค'
-    + ' · ห้องน้ำหญิง ชั้น 1 12 รอบ · ยังไม่ใส่รอบละกี่แพ็ค · ทางเข้าหลัก 12 รอบ · ยังไม่ใส่รอบละกี่แพ็ค'),
+  assert.ok(none.checklist.includes('รอบละกี่แพ็ค · จำนวนรอบบริการ: ยังไม่ใส่รอบละกี่แพ็ค · 12 เดือน/โซน'
+    + ' — ชั้น G ล็อบบี้ ยังไม่ใส่รอบละกี่แพ็ค (12 เดือน) · ชั้น M ทางเชื่อม BTS ยังไม่ใส่รอบละกี่แพ็ค (12 เดือน)'
+    + ' · ห้องน้ำหญิง ชั้น 1 ยังไม่ใส่รอบละกี่แพ็ค (12 เดือน) · ทางเข้าหลัก ยังไม่ใส่รอบละกี่แพ็ค (12 เดือน)'),
   none.checklist.join('\n'));
   assert.ok(none.checklist.some((l) => l.startsWith('⚠️ ยังไม่ใส่รอบละกี่แพ็ค 4 รายการ')));
+  /* ทุกท่อนที่คั่นด้วย " · " ของรายโซนต้องขึ้นด้วยชื่อโซน — ไม่มีท่อนที่เป็นตัวเลข + หน่วยลอย ๆ */
+  for (const line of [missing.checklist[at], none.checklist.find((l) => l.includes(' — ชั้น G ล็อบบี้ ยังไม่ใส่'))]) {
+    for (const part of line.slice(line.indexOf(' — ') + 3).split(' · ')) assert.doesNotMatch(part, /^[\d,–]+ เดือน/, `ท่อนลอย: "${part}"`);
+  }
 
   /* ไม่มีแถวโซนของเสริม (แต่ไม่ได้โหลดพัง) = "ไม่พบ" แบบแถวอื่น ไม่เดาว่าคีย์ก่อนมีช่อง · ใบไม่มีโซนเลย = ไม่มีแถวนี้ (แถวโซนบอกแล้ว) */
   const bare = collect(historicalApprovalFacts(ORDER, { ...EXTRAS, lineZones: [] }));
-  assert.ok(bare.checklist.includes('จำนวนรอบบริการ · รอบละกี่แพ็ค: ไม่พบ — ระบบตรวจซ้ำตอนกดอนุมัติ'));
+  assert.ok(bare.checklist.includes('รอบละกี่แพ็ค · จำนวนรอบบริการ: ไม่พบ — ระบบตรวจซ้ำตอนกดอนุมัติ'));
   assert.ok(!bare.checklist.some((l) => PACKS_WARN.test(l)));
   const zoneless = collect(historicalApprovalFacts({ ...ORDER, lines: [] }, { ...EXTRAS, lineZones: [] }));
   assert.ok(!zoneless.checklist.some((l) => l.startsWith(PACKS_ROUNDS_HEAD)), zoneless.checklist.join('\n'));
@@ -367,7 +381,7 @@ test('วันวางบิล: "มีวันวางบิล k จา�
 });
 
 /* ตัวสรุปกลางของแพ็คต่อรอบ · จำนวนรอบบริการ — อ่านได้ทั้งแถวโซนของเสริม (packsPerRound · rounds) และบรรทัดของแผน (packsPerRound · serviceRounds) */
-test('historicalServiceTotals / historicalPacksRoundsText: แถวโซนของเสริม = บรรทัดของแผน · การ์ดโซนได้ meta · เซลล์ "n แพ็ค/รอบ"', () => {
+test('historicalServiceTotals / historicalPacksRoundsText: แถวโซนของเสริม = บรรทัดของแผน · การ์ดโซนได้ meta · เซลล์ "n แพ็ค/รอบ" · "n เดือน"', () => {
   const fromExtras = historicalServiceTotals(LINE_ZONES);
   assert.deepEqual(fromExtras, {
     zoneCount: 4, siteCount: 2, packsKnown: 4, packsMissing: 0, packsTotal: 6, roundsMin: 12, roundsMax: 12,
@@ -387,7 +401,15 @@ test('historicalServiceTotals / historicalPacksRoundsText: แถวโซนข
   });
 
   const t = collect(historicalPacksRoundsText(LINE_ZONES));
-  assert.equal(t.total, '12 รอบ/โซน · รวม 6 แพ็ค/รอบ', 'รอบก่อนแพ็ค (มติ 29/09)');
+  /* มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ: หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ (ของเดิม '12 รอบ/โซน · รวม 6 แพ็ค/รอบ' ตามมติ 29/09) */
+  assert.equal(t.total, 'รวม 6 แพ็ค/รอบ · 12 เดือน/โซน', 'แพ็คก่อนจำนวนรอบบริการ · หน่วยเดือน (มติ 08/10 รอบสอง)');
+  assert.equal(SERVICE_ROUNDS_UNIT, 'เดือน', 'หน่วยมาจากค่าคงที่ของ serviceOrders.js ที่เดียว');
+  const ranged = historicalPacksRoundsText(LINE_ZONES.map((zone, i) => ({ ...zone, rounds: [12, 12, 6, 12][i] })));
+  assert.equal(ranged.total, 'รวม 6 แพ็ค/รอบ · 6–12 เดือน/โซน');
+  /* ไม่รู้จำนวนรอบบริการสักโซน = ไม่มีท่อนเดือน (ไม่พิมพ์ "· เดือน/โซน" ลอย ๆ) */
+  const noRounds = historicalPacksRoundsText(LINE_ZONES.map((zone) => ({ ...zone, rounds: null })));
+  assert.equal(noRounds.total, 'รวม 6 แพ็ค/รอบ');
+  assert.equal(noRounds.perZone.split(' · ')[0], 'ชั้น G ล็อบบี้ 2 แพ็ค/รอบ');
   assert.equal(t.perZone, PACKS_ROW.split(' — ')[1]);
   assert.equal(t.overflow, false);
   assert.equal(t.meta, '4 โซน · รวม 6 แพ็ค/รอบ — โซนผูกจากทะเบียนไซต์ตอนคีย์ใบแล้ว ฝ่าย TS ตั้งรอบต่อได้เลย');
@@ -400,6 +422,30 @@ test('historicalServiceTotals / historicalPacksRoundsText: แถวโซนข
   assert.equal(collect(historicalPacksCellText(2)), '2 แพ็ค/รอบ');
   assert.equal(historicalPacksCellText(1200), '1,200 แพ็ค/รอบ');
   for (const bad of [null, undefined, '', 0, -1, 1.5, 'x']) assert.equal(historicalPacksCellText(bad), '—', String(bad));
+  /* มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ: หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ
+     ⇒ เซลล์ "จำนวนรอบบริการ" ของการ์ดโซน = "12 เดือน" จาก lib (การ์ดไม่พิมพ์หน่วยเอง) · ไม่รู้ / ไม่ใช่จำนวนเต็มบวก = ขีด (ไม่ใช่ "0 เดือน") */
+  assert.equal(collect(historicalRoundsCellText(12)), '12 เดือน');
+  assert.equal(historicalRoundsCellText('12'), '12 เดือน');
+  assert.equal(historicalRoundsCellText(1200), '1,200 เดือน');
+  for (const bad of [null, undefined, '', 0, -1, 1.5, 'x', true]) assert.equal(historicalRoundsCellText(bad), '—', String(bad));
+});
+
+/* มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ: หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ
+   🔴 พบตอนวาดหน้าใบจริง: ช่องหัวใบ "รอบบริการที่ขาย" ของใบย้อนหลังเคยพิมพ์ **ผลรวม** รายบรรทัด (4 โซน × 12 รอบ = "48 รอบ" — นับครั้งที่เข้าโซน)
+     พอหน่วยเป็น "เดือน" ผลรวมอ่านเป็น "48 เดือน" ทั้งที่สัญญายาว 12 เดือน ⇒ ช่องนี้พูดต่อโซน ("12 เดือน/โซน") แบบเดียวกับแถวของขั้น ④/โมดัลอนุมัติ
+     และแบบเดียวกับช่องหัวใบของใบ pipeline (ช่วง min–max ไม่ใช่ผลรวม) */
+test('🔴 ช่องหัวใบ "รอบบริการที่ขาย" ของใบย้อนหลัง: "12 เดือน/โซน" — ไม่ใช่ผลรวมของทุกบรรทัด (48 เดือน) · ต่างกัน = ช่วง · ไม่รู้ = null', () => {
+  const lines = (rounds) => rounds.map((serviceRounds, i) => ({ id: `L${i + 1}`, serviceZoneId: `Z-${i}`, serviceRounds }));
+  assert.equal(collect(historicalRoundsSoldText(lines([12, 12, 12, 12]))), '12 เดือน/โซน');
+  assert.notEqual(historicalRoundsSoldText(lines([12, 12, 12, 12])), '48 เดือน', 'ผลรวมของครั้งที่เข้าโซนไม่ใช่จำนวนเดือน');
+  assert.equal(collect(historicalRoundsSoldText(lines([12, 6, 12]))), '6–12 เดือน/โซน');
+  assert.equal(historicalRoundsSoldText(lines([12])), '12 เดือน/โซน', 'ใบบรรทัดเดียว (ของจริงส่วนใหญ่) = คำเดียวกัน');
+  assert.equal(historicalRoundsSoldText(lines([12, null, 0, 'x'])), '12 เดือน/โซน', 'บรรทัดที่ยังไม่มีจำนวนรอบถูกข้าม (ว่าง ≠ 0)');
+  assert.equal(historicalRoundsSoldText(lines([1200])), '1,200 เดือน/โซน');
+  for (const empty of [[], lines([null, null]), null, undefined]) assert.equal(historicalRoundsSoldText(empty), null, 'ไม่รู้ = null ให้จอขีด');
+  /* ตัวเลขเดียวกับแถวของโมดัลอนุมัติ/ขั้น ④ — แถวโซนของเสริม (`rounds`) และบรรทัดของใบ (`serviceRounds`) ได้คำเดียวกัน */
+  assert.equal(historicalRoundsSoldText(LINE_ZONES), '12 เดือน/โซน');
+  assert.ok(historicalPacksRoundsText(LINE_ZONES).total.endsWith(historicalRoundsSoldText(LINE_ZONES)));
 });
 
 /* ⭐ DD9 (IMPL_PLAN_D §3.5): ตัวกลางตีกลับการอนุมัติ (sales_order_service_setup_incomplete · DETAIL = 'รหัส:บรรทัด[:โซน]' คั่นจุลภาค)
@@ -504,7 +550,8 @@ test('โมดัลอนุมัติ: ตัวอย่างเจ้า
      "N แพ็ค" เปล่า ๆ (อ่านได้สองความหมาย · มติ 23/09) ยังห้าม */
   for (const facts of [owner, discounted, many]) {
     assert.ok(!facts.checklist.some((l) => LOOSE_PACK.test(l)), 'ไม่มีคำว่า "แพ็ค" ที่อ่านได้สองความหมายแล้ว');
-    assert.ok(facts.checklist.some((l) => l.startsWith('จำนวนรอบบริการ · รอบละกี่แพ็ค:')), 'แถวจำนวนรอบบริการ · รอบละกี่แพ็ค ขึ้นทุกใบที่มีโซน');
+    /* มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ: หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ (หัวแถวสลับลำดับ) */
+    assert.ok(facts.checklist.some((l) => l.startsWith('รอบละกี่แพ็ค · จำนวนรอบบริการ:')), 'แถวรอบละกี่แพ็ค · จำนวนรอบบริการ ขึ้นทุกใบที่มีโซน');
   }
 });
 
@@ -769,4 +816,20 @@ test('🔴 ทุกประโยคที่ไฟล์ถ้อยคำค
   assert.ok(LOOSE_PACK.test('12 แพ็ค'), 'ตัวจับต้องจับ "N แพ็ค" เปล่า ๆ ได้');
   assert.ok(LOOSE_PACK.test('ยังไม่ใส่แพ็คต่อรอบ'), 'ป้ายเดิมก่อนมติ 29/09 ต้องไม่กลับมา');
   assert.ok(!LOOSE_PACK.test('ยังไม่ใส่รอบละกี่แพ็ค'));
+});
+
+/* 🔴 ยามรวมของหน่วย "รอบ" (มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ: หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ) — ต้องอยู่ท้ายไฟล์เช่นกัน
+   ⭐ จำนวนรอบบริการที่ขายไว้พูด "n เดือน" ทุกประโยค ⇒ ไม่มีสตริงไหนของไฟล์ถ้อยคำที่มี "ตัวเลข + รอบ" อีก
+     ("แพ็ค/รอบ" = แพ็คต่อการเข้าโซนหนึ่งครั้ง · "TS ตั้งรอบ" · "รอบขายของโซน" · "รอตั้งรอบ" เป็นคำนาม ไม่มีตัวเลขนำหน้า — ไม่ถูกจับ) */
+test('🔴 ทุกประโยคที่ไฟล์ถ้อยคำคืน: ไม่มี "n รอบ" — จำนวนรอบบริการที่ขายไว้พูด "n เดือน" (หน่วยจาก SERVICE_ROUNDS_UNIT)', () => {
+  const NUMBER_ROUNDS = /\d\s*รอบ/;
+  assert.ok(NUMBER_ROUNDS.test('12 รอบ/โซน') && NUMBER_ROUNDS.test('Lobby 12 รอบ × 2 แพ็ค/รอบ'), 'ตัวจับต้องจับรูปเดิมได้');
+  assert.ok(!NUMBER_ROUNDS.test('รวม 6 แพ็ค/รอบ · 12 เดือน/โซน') && !NUMBER_ROUNDS.test('ตั้งรอบแล้ว 3/4 โซน'));
+  assert.deepEqual(OUTPUTS.filter((s) => NUMBER_ROUNDS.test(s)), []);
+  assert.ok(OUTPUTS.some((s) => s.includes(`12 ${SERVICE_ROUNDS_UNIT}/โซน`)), 'ต้องเก็บประโยคจำนวนรอบบริการมาตรวจด้วย');
+  /* ไฟล์ถ้อยคำไม่พิมพ์หน่วยเอง — "เดือน" ที่ต่อท้ายตัวเลขรอบมาจากค่าคงที่ทุกจุด (สี่จุด: ต่อโซนสองกิ่ง · รายโซน · เซลล์การ์ด) */
+  const source = readFileSync(new URL('./historicalOrderCopy.js', import.meta.url), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.doesNotMatch(source, /\} รอบ|\} เดือน/, 'หน่วยของจำนวนรอบบริการต้องมาจาก SERVICE_ROUNDS_UNIT');
+  assert.equal((source.match(/\$\{SERVICE_ROUNDS_UNIT\}/g) || []).length, 4, 'ช่องหัวใบ (historicalRoundsSoldText) ใช้ตัวประกอบต่อโซนตัวเดิม ไม่พิมพ์หน่วยอีกที่');
 });

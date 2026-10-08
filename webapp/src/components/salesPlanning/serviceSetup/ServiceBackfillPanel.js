@@ -13,12 +13,16 @@
 // ⭐ ใบที่อนุมัติโดย "ยื่นโดยยังไม่ตั้งงานบริการ" (mig 0404 · `view.deferred` stage 'approved') ก็ใช้สองชิ้นนี้ตัวเดิมเช่นกัน — หัว
 //   "ข้ามการตั้งงานบริการตอนยื่น" + บรรทัด "ข้ามการตั้งงานบริการตอนยื่น … โดย …" ในช่องเดียวกับบรรทัดเปิดแก้ (`copy.reopenLine` / `copy.bannerLead`)
 //   · ป้ายขั้นเป็นของใบเดิม (ใบไม่เคยตั้ง) · ปุ่ม "ยื่นตรวจงานบริการ" → ผู้จัดการฝ่ายขายอนุมัติ → ส่ง TS เหมือนเดิมทุกอย่าง
+// ⭐ มติเจ้าของ 08/10 ("ตามงานค้าง"): ทั้งสองชิ้นมีชิปอายุของงานข้างป้ายขั้น (`ServiceAgingChip` ← `view.aging` ที่ server คิดด้วยวันไทย)
+//   — นับจากวันที่งานมาถึงคนที่ถืออยู่ (ฝ่ายขาย: อนุมัติใบ / เปิดแก้ / ถูกตีกลับ ล่าสุด · ผู้จัดการ: วันที่ยื่นตรวจ) · วันเดียวกัน = ไม่มีชิป
+//   · ไฟล์นี้ไม่พิมพ์คำของชิปเองและไม่อ่านนาฬิกา (คำอยู่ที่ `serviceBackfillAging.js`)
 import { Repeat } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { DetailCard } from "@/components/ui/DetailPage";
 import StatusNotice from "@/components/ui/StatusNotice";
 import StepTrack from "@/components/ui/StepTrack";
 import Tag from "@/components/ui/Tag";
+import ServiceAgingChip from "@/components/salesPlanning/ServiceAgingChip";
 import { fmtDate, fmtNumber } from "@/lib/format";
 import { backfillBannerText, backfillCopyOfView, backfillRailChecks, backfillStateOfView } from "./serviceSetupDraft";
 import styles from "./ServiceBackfillPanel.module.css";
@@ -42,7 +46,7 @@ export function ServiceBackfillBanner({ setup }) {
     <StatusNotice
       tone={rejected ? "warning" : "info"}
       title={copy.bannerTitle}
-      action={<Tag tone={STATE_TONE[state]}>{copy.stateLabel}</Tag>}
+      action={<span className={styles.stateTags}><ServiceAgingChip aging={view.aging} /><Tag tone={STATE_TONE[state]}>{copy.stateLabel}</Tag></span>}
     >
       {copy.bannerLead ? <span className={styles.bannerLine}>{copy.bannerLead}</span> : null}
       <span className={styles.bannerLine}>{backfillBannerText(view)}</span>
@@ -78,7 +82,7 @@ export function ServiceBackfillRailCard({ setup, pressed = false, busy = false, 
       eyebrow={copy.eyebrow}
       title={copy.title}
       meta={copy.meta}
-      actions={<Tag tone={STATE_TONE[state]}>{copy.stateLabel}</Tag>}
+      actions={<><ServiceAgingChip aging={view.aging} /><Tag tone={STATE_TONE[state]}>{copy.stateLabel}</Tag></>}
     >
       <div className={styles.rail}>
         <StepTrack steps={steps} ariaLabel="ขั้นของงานบริการย้อนหลัง" />

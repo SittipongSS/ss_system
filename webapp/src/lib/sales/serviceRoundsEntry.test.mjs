@@ -10,6 +10,7 @@ import {
   validateServiceRoundsPatch,
 } from './serviceRoundsEntry.js';
 import { SERVICE_SETUP_LINE_TEXT } from './serviceSetup.js';
+import { SERVICE_ROUNDS_UNIT } from './serviceOrders.js';
 
 const svc = (over = {}) => ({ id: 'L1', fgCode: 'FG-374-02-001-1418', description: 'แพ็คเกจ', ...over });
 const other = (over = {}) => ({ id: 'L2', fgCode: 'FG-374-01-002-1418', description: 'น้ำหอม', ...over });
@@ -114,9 +115,11 @@ test('บรรทัดที่กรอกรอบได้: ใบประ
   assert.deepEqual(serviceRoundLines(lines, svcOrder({ status: 'approved', serviceTermsOpenedAt: STAMP })).map((l) => l.id), ['L1', 'L3']);
 });
 
-/* มติเจ้าของ 08/10 ("เปลี่ยน หน่วยรอบบริการ จาก รอบ เป็น เดือน"): ใบ pipeline (ดินสอบนตารางงานบริการ) พูดหน่วย "เดือน" —
-   คำเดิม "…อย่างน้อย 1 รอบ" เหลือเฉพาะใบย้อนหลัง (การ์ดสัญญาบริการ · นอกขอบเขตมตินี้) · ด่านเดิมทุกข้อ: ล้างไม่ได้ทั้งสองแบบ */
-test('ใบที่ประทับแล้ว: บรรทัดแพ็คเกจต้องมีอย่างน้อย 1 (trigger ของ 0392 ห้ามล้าง) — คำพูดหน่วยตามหน้าใบ: pipeline "เดือน" · ย้อนหลัง "รอบ"', () => {
+/* มติเจ้าของ 08/10 ("เปลี่ยน หน่วยรอบบริการ จาก รอบ เป็น เดือน"): ใบ pipeline (ดินสอบนตารางงานบริการ) พูดหน่วย "เดือน" (#1878)
+   มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ: หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ
+   ⇒ ใบย้อนหลัง (การ์ดสัญญาบริการ) ก็พูด "เดือน" แล้ว — ของเดิมเทสต์นี้ยึดว่าใบย้อนหลังยังได้ "…อย่างน้อย 1 รอบ" (ตอนนั้นอยู่นอกขอบเขตมติ)
+   · ด่านเดิมทุกข้อ: ล้างไม่ได้ทั้งสองแบบ · คีย์ `required` กับ `requiredMonths` เป็นประโยคเดียวกัน (คงทั้งสองคีย์ให้ผู้เรียกเดิม) */
+test('ใบที่ประทับแล้ว: บรรทัดแพ็คเกจต้องมีอย่างน้อย 1 (trigger ของ 0392 ห้ามล้าง) — คำพูดหน่วย "เดือน" ทั้งใบ pipeline และใบย้อนหลัง', () => {
   const stamped = svcOrder({ status: 'approved', serviceTermsOpenedAt: STAMP });
   const lines = [svc(), manualPkg()];
   assert.equal(validateServiceRoundsPatch({ L3: '' }, lines, stamped).error, 'แพ็คเกจต้องมีอย่างน้อย 1 เดือน');
@@ -124,8 +127,14 @@ test('ใบที่ประทับแล้ว: บรรทัดแพ็
   assert.equal(SERVICE_ROUNDS_EDIT_TEXT.requiredMonths, `แพ็คเกจต้องมีอย่างน้อย 1 ${SERVICE_SETUP_LINE_TEXT.roundUnit}`, 'หน่วยเดียวกับตารางงานบริการ (แคตตาล็อก)');
   assert.equal(serviceRoundsRequiredText(stamped), SERVICE_ROUNDS_EDIT_TEXT.requiredMonths);
   const historicalStamped = { ...stamped, origin: 'historical' };
-  assert.equal(serviceRoundsRequiredText(historicalStamped), 'แพ็คเกจต้องมีอย่างน้อย 1 รอบ');
-  assert.equal(validateServiceRoundsPatch({ L1: null }, lines, historicalStamped).error, 'แพ็คเกจต้องมีอย่างน้อย 1 รอบ');
+  assert.equal(serviceRoundsRequiredText(historicalStamped), 'แพ็คเกจต้องมีอย่างน้อย 1 เดือน');
+  assert.equal(validateServiceRoundsPatch({ L1: null }, lines, historicalStamped).error, 'แพ็คเกจต้องมีอย่างน้อย 1 เดือน');
+  assert.equal(serviceRoundsRequiredText(historicalStamped), SERVICE_ROUNDS_EDIT_TEXT.requiredMonths, 'ตัวเลือกคำตัวเดียว คืนคำเดียวกันทุกใบ');
+  assert.equal(SERVICE_ROUNDS_EDIT_TEXT.required, SERVICE_ROUNDS_EDIT_TEXT.requiredMonths, 'สองคีย์ = ประโยคเดียว (ไม่มีทางได้ "1 รอบ" จากคีย์เดิม)');
+  assert.equal(SERVICE_ROUNDS_EDIT_TEXT.required, `แพ็คเกจต้องมีอย่างน้อย 1 ${SERVICE_ROUNDS_UNIT}`, 'หน่วยเดียวกับการ์ดสัญญาบริการ (serviceOrders.js)');
+  for (const order of [null, undefined, {}, { origin: 'pipeline' }]) assert.equal(serviceRoundsRequiredText(order), 'แพ็คเกจต้องมีอย่างน้อย 1 เดือน');
+  /* ข้อความล็อกที่เหลือเป็นคำนาม "จำนวนรอบ" ไม่มีตัวเลข — ไม่มี "n รอบ" เหลือในแคตตาล็อกนี้ */
+  for (const [key, text] of Object.entries(SERVICE_ROUNDS_EDIT_TEXT)) assert.doesNotMatch(text, /\d\s*รอบ/, key);
   assert.equal(validateServiceRoundsPatch({ L3: 10 }, lines, stamped).value.get('L3'), 10);
   // ยังไม่ประทับ: บรรทัดพิมพ์เองไม่ใช่ที่ของช่องนี้ · ลบเลขทิ้งได้เหมือนเดิม
   assert.match(validateServiceRoundsPatch({ L3: 10 }, lines, svcOrder({ status: 'approved' })).error || '', /02-001/);

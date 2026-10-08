@@ -292,13 +292,16 @@ test('รูปของแถว checklist: อยู่ในทะเบี�
   assert.equal(unsatisfiedRequiredDocs('product', { categoryCode: '03-001' }, []).some((t) => t.key === SPEC_ITEM_IMAGE_DOC_TYPE), false);
 
   // 🔴 แผงเอกสารของสินค้าจัดคีย์ที่ไม่รู้จักลงการ์ด "เอกสารอื่นๆ" พร้อมปุ่มลบ — ลบจากที่นั่นได้ = แถวเสียรูปเงียบ ๆ (FK SET NULL)
-  assert.deepEqual(PANEL_HIDDEN_DOC_TYPES.product, [SPEC_ITEM_IMAGE_DOC_TYPE]);
+  // ⭐ ภาพประกอบใบสเปคเข้าชุดเดียวกัน (มติเจ้าของ 08/10/2569) — เดิมตกกอง "อื่นๆ" ของหน้าสินค้าพร้อมปุ่มลบ ทั้งที่บ้านของมันคือหน้าสเปค
+  assert.deepEqual(PANEL_HIDDEN_DOC_TYPES.product, [SPEC_ILLUSTRATION_DOC_TYPE, SPEC_ITEM_IMAGE_DOC_TYPE]);
   assert.ok(Object.isFrozen(PANEL_HIDDEN_DOC_TYPES) && Object.isFrozen(PANEL_HIDDEN_DOC_TYPES.product));
   assert.equal(isPanelHiddenDocType('product', SPEC_ITEM_IMAGE_DOC_TYPE), true);
-  // แคบเฉพาะคีย์นี้ของสินค้า — ของอื่นขึ้นแผงตามเดิม (ภาพประกอบของกระดาษมีกติกาปลดระวางของตัวเอง ไม่ได้ซ่อนด้วยทางนี้)
+  assert.equal(isPanelHiddenDocType('product', SPEC_ILLUSTRATION_DOC_TYPE), true);
+  // แคบเฉพาะสองคีย์นี้ของสินค้า — ของอื่นขึ้นแผงตามเดิม · entity อื่นไม่ถูกแตะแม้คีย์เดียวกัน
   for (const [entityType, docType] of [
-    ['product', 'artwork'], ['product', 'other'], ['product', SPEC_ILLUSTRATION_DOC_TYPE], ['product', undefined],
-    ['customer', SPEC_ITEM_IMAGE_DOC_TYPE], ['ไม่มี entity นี้', SPEC_ITEM_IMAGE_DOC_TYPE], [undefined, undefined],
+    ['product', 'artwork'], ['product', 'other'], ['product', undefined],
+    ['customer', SPEC_ITEM_IMAGE_DOC_TYPE], ['customer', SPEC_ILLUSTRATION_DOC_TYPE],
+    ['ไม่มี entity นี้', SPEC_ITEM_IMAGE_DOC_TYPE], [undefined, undefined],
   ]) {
     assert.equal(isPanelHiddenDocType(entityType, docType), false, `${entityType}/${docType}`);
   }

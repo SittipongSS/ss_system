@@ -300,6 +300,10 @@ const driveIdFromUrl = (url) => {
   return m ? m[1] : null;
 };
 
+// ทุกที่ในระบบที่อ้างถึงไฟล์/โฟลเดอร์บน Drive — ตัวกวาดทั้งระบบของรายงานไฟล์กำพร้า
+// 🔴 เพิ่มที่เก็บไฟล์ใหม่ที่นี่เมื่อไร ต้องเพิ่มใน `driveFileReferenced` (src/lib/master/attachments.js) ด้วย —
+//    ตัวนั้นถามรายไฟล์ก่อนเส้นถอยการอัป (DELETE /api/upload) ทิ้งไฟล์ · สองลิสต์ไม่ตรงกัน = ทิ้งไฟล์ที่ที่เก็บใหม่ยังอ้างอยู่ได้
+//    (เทสต์ src/lib/upload/uploadReceiptRoutes.test.mjs ล้มเมื่อฟังก์ชันนี้เริ่มอ่านตารางใหม่)
 async function collectReferencedIds(supabase) {
   const refs = new Set();
   const add = (id) => { if (id) refs.add(String(id)); };

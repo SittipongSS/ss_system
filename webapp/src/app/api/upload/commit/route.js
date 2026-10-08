@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { checkUploadCandidate, resolveUploadMime } from '@/lib/master/attachmentTypes';
 import { MAX_BYTES, MAX_MB } from '@/lib/upload/limits';
 import { UPLOAD_STAGING_BUCKET, isOwnStagingPath } from '@/lib/upload/staging';
+import { recordUploadReceipt } from '@/lib/upload/receipts';
 
 // googleapis (Drive backend) ต้อง Node runtime — กันถูก bundle เป็น edge.
 export const runtime = 'nodejs';
@@ -100,6 +101,23 @@ export async function POST(request) {
         { error: `อัปโหลดขึ้น Google Drive ไม่สำเร็จ${detail ? ` — ${detail}` : ''}` },
         { status: 502 },
       );
+    }
+
+    /* 🔴 ออกใบรับการอัปโหลด (mig 0406 · มติเจ้าของ 08/10/2569) — จดว่าไฟล์ Drive ใบนี้ **คนเรียกอัปขึ้นมาเอง** · id มาจาก Drive
+       ไม่ใช่จากคำขอ ⇒ ปลายทางที่รับ `driveFileId` จาก client (POST /api/attachments · DELETE /api/upload) ถามใบรับนี้ก่อน
+       ⚠️ ออกไม่สำเร็จ (ลองสองครั้งแล้ว) = **log ดังแล้วคืน ref ตามเดิม ไม่ล้มการอัป** — ปลายทางที่ยังไม่ตรวจใบรับ
+          (ไฟล์ในเธรด · แจ้งปัญหา · รูปของนัดช่าง) ต้องใช้ไฟล์นี้ต่อได้ · ส่วนการแนบเป็นไฟล์แนบจะปิดเอง สองแบบตามเหตุ:
+          · ทะเบียนอ่านไม่ได้ / ยังไม่มีตาราง (ไม่ได้รัน 0406) = แนบตอบ 503 "ตรวจที่มาของไฟล์ไม่ได้" และเส้นถอยก็ 503
+          · ออกใบรับพลาดชั่วคราวแต่ทะเบียนอ่านได้ = ไม่มีใบรับ ⇒ แนบตอบ 400 "ไฟล์นี้ไม่ได้มาจากการอัปโหลดของคุณ…" และ
+            เส้นถอย (DELETE /api/upload) ตอบ 403 ⇒ ไฟล์ค้างบน Drive เป็นไฟล์กำพร้า ให้รายงาน drive-orphans ตามเก็บ ·
+            ผู้ใช้อัปไฟล์ใหม่แล้วแนบอีกครั้ง (ตามหา log นี้ด้วย 400/403 ไม่ใช่ 503)
+       ⚠️ `entityType`/`entityId` คือค่าที่ client ส่งมา ยังไม่ผ่านด่านสิทธิ์ — จดไว้ดูย้อนหลังเท่านั้น */
+    const receipt = await recordUploadReceipt(supabase, {
+      driveFileId: uploaded.id, userId: user.id, entityType, entityId,
+    });
+    if (receipt.error) {
+      console.error('[upload/commit] 🔴 ออกใบรับการอัปโหลดไม่สำเร็จ — ไฟล์ขึ้น Drive แล้วแต่จะแนบเป็นไฟล์แนบไม่ได้ (ตรวจว่ารัน migration 0406 แล้ว)',
+        uploaded.id, receipt.error.message);
     }
 
     // ไฟล์อยู่ Drive แล้ว — ที่พักไม่ต้องเก็บอีก (best-effort: ถ้าลบไม่ได้ก็ไม่ล้มทั้งงาน
