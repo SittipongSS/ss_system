@@ -152,3 +152,13 @@ test('🔴 หน้าของหัวข้อ (viewForKind) ได้ปุ
   const view = readFileSync('src/components/requests/details/SurveyRequestView.js', 'utf8');
   assert.ok(!/apiFetch|apiJson|method:\s*"(PATCH|POST|DELETE)"/.test(view), 'view ห้ามยิง API เอง');
 });
+
+test('🔴 บล็อกเอกสารประเมิน (PR-3 §5.1) วาดจาก job.document และเปิดไฟล์ในแท็บใหม่ — view ยังไม่ยิง API', () => {
+  /* ⭐ ช่องที่หก "เอกสารผลประเมิน · ยังไม่ออก" เป็นที่จองไว้ตั้งแต่ก่อนมีเอกสารจริง — ต้องไม่เหลือ ไม่งั้นใบที่ออกเอกสารแล้ว
+     ยังขึ้นว่า "ยังไม่ออก" ติดกับปุ่มดาวน์โหลด · รายละเอียดรายสถานะอยู่ที่ lib/service/surveyDocumentRequest.test.mjs */
+  const view = readFileSync('src/components/requests/details/SurveyRequestView.js', 'utf8');
+  assert.ok(!view.includes('value="ยังไม่ออก"'), 'ช่องจองที่ของเอกสารบนแถบตัวเลขต้องถูกถอด');
+  assert.ok(view.includes('job.document'), 'บล็อกต้องวาดจากคีย์ document ของ surveyJobView');
+  // เปิดแท็บใหม่แบบเดียวกับเอกสาร PDR ของหน้านี้ · `noopener` = แท็บของไฟล์แตะหน้าต้นทางไม่ได้
+  assert.match(view, /window\.open\(\s*button\.href,\s*"_blank",\s*"noopener,noreferrer"\s*\)/);
+});

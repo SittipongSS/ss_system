@@ -11,6 +11,10 @@
 .controls :global(.form-group) > span { display: block; margin-bottom: var(--space-1-5); color: var(--text-2); font-size: var(--fs-4); font-weight: var(--fw-semibold); }
 .controls :global(.segmented) { min-height: var(--ctl-h); }
 .controls :global(.segmented button) { min-height: var(--ctl-h); }
+/* แถบตัวเลือกกว้างเท่าตัวเลือกของมัน — `.form-group` เป็น flex แนวตั้ง ลูกจึงถูกยืดเต็มช่อง
+   🐞 UAT PR-3 (D10): FM-TS-01 มีตัวควบคุมตัวเดียว (ฉบับ) มันจึงตกไปอยู่คอลัมน์ `1fr` แล้วแถบสองปุ่มถูกยืดเป็นแถบยาว ~1300px
+      ที่ปุ่มกองอยู่ซ้ายสุด อ่านเป็นช่องกรอกว่าง · แถบของใบเสนอราคาอยู่คอลัมน์ `auto` จึงไม่เคยเจอ */
+.controls :global(.form-group) > :global(.segmented) { align-self: flex-start; }
 .scenarioSummary { display: flex; flex-wrap: wrap; gap: var(--space-1-5) var(--space-3); margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--border); }
 .scenarioSummary strong { color: var(--text); font-size: var(--fs-6); }
 .scenarioSummary span { color: var(--text-3); font-size: var(--fs-5); }
@@ -36,11 +40,19 @@
   color-scheme: light;
 }
 
+/* จอ ≤1050 = น่าจะใช้นิ้ว (เส้นเดียวกับหน้ามาตรฐานเอกสารและตัวควบคุมของ PR-3) — ปุ่มในแถบตัวเลือกสูง 44px (--ctl-h-touch)
+   เดิม 40px ที่ ≤900 และ 40px (--ctl-h) ที่ 901–1050 */
+@media (max-width: 1050px) {
+  .controls :global(.segmented button) { min-height: var(--ctl-h-touch); }
+}
+
 @media (max-width: 900px) {
   .headerActions { width: 100%; flex-wrap: wrap; }
   .controls { grid-template-columns: 1fr; align-items: stretch; }
+  /* จอแคบ: แถบเต็มความกว้าง ปุ่มแบ่งเท่ากัน (align-self ของจอกว้างต้องถอย ไม่งั้น width: 100% ยังได้ แต่เขียนให้ชัด) */
+  .controls :global(.form-group) > :global(.segmented) { align-self: stretch; }
   .controls :global(.segmented) { width: 100%; }
-  .controls :global(.segmented button) { flex: 1; min-height: 40px; }
+  .controls :global(.segmented button) { flex: 1; }
   .scenarioSummary span:last-child { width: 100%; margin-left: 0; }
   .previewStage { padding: var(--space-2); }
 }

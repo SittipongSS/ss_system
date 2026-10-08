@@ -4,7 +4,7 @@
 // ผู้ขอ: ส่งคำร้อง / ยกเลิก / ลบร่าง · เห็นสถานะทุกขั้นว่าใครรับเรื่องแล้ว
 // RD/PC: รับเรื่อง → ตอบราคาราย "ชั้นจำนวน" ที่ผู้ขอระบุ หรือกด "ตอบไม่ได้" พร้อมเหตุผล
 // ราคาที่ตอบ = rev ใหม่ของวัสดุตัวเดิมในทะเบียน และเติมกลับบรรทัดในใบขอราคาผลิตให้เอง
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import {
   Building2, CalendarClock, FileText, FolderKanban, Handshake, Hash, History, MessageCircleQuestion, Paperclip, Pencil, Plus, Printer, Send, Ban, Check, CheckCheck, Trash2, Undo2, UserPlus,
@@ -116,8 +116,12 @@ import { resolveDocumentForm } from "@/lib/documentStandards";
 import Textarea from "@/components/ui/Textarea";
 import { requestDueCell } from "@/lib/requests/dueCell";
 import { apiFetch } from "@/lib/apiFetch";
+import useLatestRun from "@/lib/ui/useLatestRun";
+import StatusNotice from "@/components/ui/StatusNotice";
 import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
 import { surveyQueueStep } from "@/lib/service/surveyQueue";
+/* บรรทัดเรื่องเอกสารประเมิน (SU) ในโมดัล "ยังไม่จบ" — ตัวตัดสินล้วน ไม่ลากโค้ดฝั่ง server เข้า bundle (PR-3 §5.2) */
+import { surveyReopenDocumentLine } from "@/lib/service/surveyDocumentView";
 /* ⭐ โมดัลลงคิว/แจ้งกำหนดส่ง + ข้อความกล่องรับเรื่อง — ตัวเดียวกับหน้าจัดคิว (มติเจ้าของ 23/09) */
 import CommitDueDialog from "@/components/requests/CommitDueDialog";
 import { commitDueLabels } from "@/lib/requests/commitDue";
@@ -146,6 +150,14 @@ const HOP_DATE_LABEL = {
   receive: "วันที่ได้รับเอกสาร",
   // refuse ไม่มีช่องวัน — เวลาอยู่บนเหตุการณ์ในเธรด · เหลือแต่เหตุผล (บังคับ)
 };
+
+/* จังหวะตรวจซ้ำระหว่างเอกสารประเมิน (SU) กำลังออก — ตรงกับประโยค "หน้านี้ตรวจให้เองทุก 15 วินาที" ของบล็อกเอกสาร
+   (`surveyRequestDocumentView` · PR-3 §5.3) */
+const SURVEY_DOCUMENT_POLL_MS = 15_000;
+/* อ่านใบพังติดกันกี่รอบแล้วเลิกตรวจซ้ำ (8 รอบ ≈ 2 นาที) — สถานะ "กำลังออก" ออกได้ด้วย GET ที่ **สำเร็จ** เท่านั้น
+   ⇒ เซสชันหมด (401) · ใบถูกลบ (404) · server ตอบ 500 ค้าง จะวนยิงทุก 15 วินาทีตลอดที่แท็บเปิดอยู่ (≈5,760 ครั้ง/วัน)
+   ⚠️ นับ **รอบที่พังติดกัน** ไม่ใช่เวลาที่ผ่านไป — เครื่องที่พับจอแล้วเปิดใหม่ต้องยังได้ลองจนเน็ตกลับมา (ดูตัวจับเวลาในเปลือก) */
+const SURVEY_DOCUMENT_POLL_MAX_FAILS = 8;
 
 export default function RequestDetailPage() {
   const { id } = useParams();
@@ -339,19 +351,93 @@ export default function RequestDetailPage() {
   /* `background: true` = ดึงใหม่โดยไม่พาหน้าไปอยู่สถานะ "กำลังโหลด" — ใช้ตอนที่จอ
      มีของอยู่แล้วและเราแค่อยากให้มันตรงกับของจริง (ดู `call` ข้างล่าง)
      ⚠️ เช็ค `?.background` ไม่ใช่ arg ตรง ๆ เพราะ `load` ถูกส่งเป็น callback ให้
-     ลูก (`onReload` / `onPosted`) ซึ่งเรียกมาพร้อม event/ข้อมูล — ต้องตกไปโหมดปกติ */
+     ลูก (`onReload` / `onPosted`) ซึ่งเรียกมาพร้อม event/ข้อมูล — ต้องตกไปโหมดปกติ
+
+     ⭐ **กติกาของการโหลดเบื้องหลัง** (PR-3 §5.3 · กติกาเดียวกับใบประเมิน `app/service/surveys/[id]`)
+     🐞 เดิมโหลดพังรอบไหนก็ตั้ง `loadError` ⇒ ทั้งหน้าถูกแทนด้วยกล่องแดง: เธรดถูกถอด ข้อความที่พิมพ์ค้างหาย
+        และไม่มีอะไรลองใหม่ให้ · PR-3 ทำให้การอ่านใบซ้ำเบื้องหลังเป็นเรื่องปกติ (เธรดขยับ · รอเอกสารออก ·
+        รอไฟล์) ⇒ เน็ตสะดุดครั้งเดียวต้องไม่ล้มหน้าที่คนกำลังอ่านอยู่
+       · **รอบเบื้องหลังที่พัง = คงจอไว้ตามเดิม ไม่ตั้ง error** — รอบถัดไปพาของสดมาเอง
+       · **รอบเบื้องหลังไม่แซงรอบล่าสุดที่ยังบินอยู่** — ถ้าแซงแล้วพัง คำตอบดีของรอบก่อนจะถูกทิ้ง (ไม่ใช่รอบล่าสุดแล้ว)
+         และจอค้างของเก่าโดยไม่มีอะไรบอก
+         🐞 เดิมนับ **ทุกรอบ** ที่ยังบิน (`inFlight`) ⇒ รอบที่ถูกทับไปแล้วแต่ยังไม่ตอบ (คำขอค้างเกิน 15 วินาที) กันรอบเบื้องหลัง
+            ใหม่ทุกรอบ · รอบที่ถูกทับจบแล้วก็ไม่ขยับ `loadSettled` ⇒ ตัวจับเวลา "กำลังออกเอกสาร" ไม่ถูกตั้งอีกเลย ทั้งที่บล็อก
+            ยังบอกว่า "หน้านี้ตรวจให้เองทุก 15 วินาที" · รอบที่ถูกทับเขียน state ไม่ได้อยู่แล้ว จึงไม่มีอะไรให้ต้องรอมัน
+            ⇒ `latestBusy` ถือเฉพาะรอบล่าสุด: ขึ้นตอนเริ่มทุกรอบ ลงเมื่อ **รอบล่าสุด** จบเท่านั้น
+       · **คำตอบมาผิดลำดับถูกทิ้ง** (`useLatestRun`) — เช็กก่อนทุก setState ของรอบนั้น
+       · `loadSettled` นับรอบที่จบ (ได้ใบหรือพังก็นับ) — ตัวจับเวลาข้างล่างตั้งรอบใหม่จากตัวนี้ ไม่ใช่จาก `req`
+         (รอบที่พังไม่เปลี่ยน `req` ⇒ ถ้าผูกกับ `req` ตัวจับเวลาจะหยุดเดินตั้งแต่รอบแรกที่พัง)
+       · `failedRuns` นับรอบที่พัง **ติดกัน** (รอบที่ได้ใบล้างเป็นศูนย์) — เพดานของตัวจับเวลาข้างล่างอ่านจากตัวนี้
+       · `refreshStalled` = ตัวนับชนเพดานแล้ว (state คู่ของ ref — ref ไม่พาจอวาดใหม่) ⇒ หน้าของหัวข้อรู้ว่าไม่มีใครตรวจซ้ำให้แล้ว
+         🐞 UAT: ตัวจับเวลาเลิกตั้งรอบใหม่ แต่บล็อกเอกสารยังพิมพ์ "หน้านี้ตรวจให้เองทุก 15 วินาที" ค้างไว้ ไม่มีอะไรบอกว่าเลิกตรวจ
+       · **รอบปกติเริ่ม = ลืมแถวล่าสุดของเธรด** (`threadSeen`) — รอบปกติถอดเธรดออกทั้งตัว (หน้าขึ้นโครงรอ) แล้วใบที่ได้ก็สดกว่า
+         แถวที่จำไว้ ⇒ เธรดที่ต่อกลับมาต้องนับเป็นรอบแรกอีกครั้ง (ดู `onThreadItems`) */
+  const startRun = useLatestRun();
+  const latestBusy = useRef(false);
+  const failedRuns = useRef(0);
+  const [refreshStalled, setRefreshStalled] = useState(false);
+  const [loadSettled, setLoadSettled] = useState(0);
+  /* id ของแถวล่าสุดในเธรดที่เห็นครั้งก่อน — `{ entityId, newest }` · `null` = ยังไม่เคยเห็นเธรดของใบที่อยู่บนจอ (ดู `onThreadItems`) */
+  const threadSeen = useRef(null);
   const load = useCallback(async (opts) => {
+    const background = opts?.background === true;
+    if (background && latestBusy.current) return;
+    const isLatest = startRun();
+    latestBusy.current = true;
+    /* ⚠️ รูปบรรทัด `if (!opts?.background) setLoading(true)` ถูกล็อกโดย `lib/ui/staleScreenRefresh.test.mjs`
+       (รอบเบื้องหลังห้ามแตะ loading — ไม่งั้นจอกระพริบทุกครั้งที่ action พลาด) · เงื่อนไขเดียวกับ `!background` ทุกผู้เรียก */
     if (!opts?.background) setLoading(true);
-    setLoadError("");
+    if (!background) { threadSeen.current = null; setLoadError(""); }
     try {
       const res = await apiFetch(`/api/sa/requests/${id}`, { cache: "no-store" });
       const d = await res.json().catch(() => null);
       if (!res.ok) throw new Error(d?.error || "โหลดคำร้องไม่สำเร็จ");
+      if (!isLatest()) return;
+      failedRuns.current = 0;
+      setRefreshStalled(false);
       setReq(d);
-    } catch (e) { setLoadError(e.message); }
-    setLoading(false);
-  }, [id]);
+      setLoadError("");
+    } catch (e) {
+      if (isLatest()) {
+        failedRuns.current += 1;
+        if (failedRuns.current >= SURVEY_DOCUMENT_POLL_MAX_FAILS) setRefreshStalled(true);
+        if (!background) setLoadError(e.message);
+      }
+    } finally {
+      if (isLatest()) {
+        latestBusy.current = false;
+        setLoading(false);
+        setLoadSettled((n) => n + 1);
+      }
+    }
+  }, [id, startRun]);
   useEffect(() => { load(); }, [load]);
+  /* อ่านใบใหม่เบื้องหลัง — ตัวคงที่ที่ส่งให้หน้าของหัวข้อ (`onRefresh` · บล็อกเอกสารประเมินเรียกเมื่อครบเวลารอไฟล์) */
+  const refreshQuietly = useCallback(() => load({ background: true }), [load]);
+  /* ⭐ **กำลังออกเอกสารประเมิน = ตรวจซ้ำเองทุก 15 วินาที** (PR-3 §5.3) — การส่งผลไม่เขียนบรรทัดเรื่องเอกสารลงเธรด
+     ⇒ เธรดอย่างเดียวพาหน้าออกจากสถานะนี้ไม่ได้ · ประโยคในบล็อกสัญญาไว้ว่า "หน้านี้ตรวจให้เองทุก 15 วินาที"
+     ⚠️ ตั้งรอบใหม่จาก `loadSettled` — รอบที่พังก็ต้องได้ลองอีก · สถานะนี้เป็นการเดาจากนาฬิกาของ server (จบเองในไม่กี่นาที)
+     🐞 **แต่ลองได้ไม่ตลอดไป** — รอบที่พังคงใบเดิมไว้ ⇒ สถานะบนจอยังเป็น "กำลังออก" และ `loadSettled` ก็ยังขยับ
+        ⇒ GET ที่พังทุกครั้ง (เซสชันหมด · ใบถูกลบ · 500 ค้าง) วนยิงไม่มีวันหยุด · พังติดกันครบ `SURVEY_DOCUMENT_POLL_MAX_FAILS`
+        รอบ = ไม่ตั้งรอบใหม่ · รอบไหนได้ใบ (ตัวจับเวลา · เธรดขยับ · คนกดอะไรบนหน้า) ตัวนับกลับเป็นศูนย์แล้วเดินต่อเอง
+        · เลิกแล้วจอต้องบอก: `refreshStalled` ไปถึงบล็อกเอกสาร ซึ่งเปลี่ยนเป็น "ไม่ทราบ … ลองโหลดหน้าใหม่" แทนคำสัญญา 15 วินาที
+     ⚠️ อ่านคีย์ `surveyDocument` อย่างเดียว ไม่เทียบชื่อหัวข้อ (กติกา ม-34) — หัวข้ออื่นไม่มีคีย์นี้ */
+  const surveyDocumentState = req?.surveyDocument?.state;
+  useEffect(() => {
+    if (surveyDocumentState !== "issuing") return undefined;
+    if (failedRuns.current >= SURVEY_DOCUMENT_POLL_MAX_FAILS) return undefined;
+    const timer = setTimeout(() => load({ background: true }), SURVEY_DOCUMENT_POLL_MS);
+    return () => clearTimeout(timer);
+  }, [surveyDocumentState, loadSettled, load]);
+  /* ⭐ **เลิกตรวจซ้ำแล้วไม่ใช่ทางตัน** — เหตุที่พบบ่อยสุดคือเครื่องหลุดเน็ต (มือถือ) ⇒ เน็ตกลับมา (`online`) = อ่านใบเบื้องหลังหนึ่งรอบ
+     · ได้ใบ = `load` ล้างตัวนับกับ `refreshStalled` แล้วตัวจับเวลาข้างบนเดินต่อเอง · ยังพัง = อยู่ตามเดิม (จอบอกให้โหลดหน้าใหม่)
+     ⚠️ หนึ่ง event = หนึ่งคำขอ ไม่ตั้งเวลาวน — เซสชันหมด/ใบถูกลบไม่มี event นี้ จึงไม่กลับไปวนยิง (เหตุที่ตั้งเพดานไว้ตั้งแต่แรก) */
+  useEffect(() => {
+    if (!refreshStalled || surveyDocumentState !== "issuing") return undefined;
+    const retry = () => load({ background: true });
+    window.addEventListener("online", retry);
+    return () => window.removeEventListener("online", retry);
+  }, [refreshStalled, surveyDocumentState, load]);
 
   // กลิ่นของลูกค้ารายนี้ — ใช้ในโมดัลปิดบรีฟ (มติ 9: กลิ่นข้ามลูกค้าไม่ได้ จึงกรอง
   // ที่ต้นทางเลย ไม่ปล่อยให้เลือกผิดแล้วค่อยให้ server ตีกลับ)
@@ -568,6 +654,8 @@ export default function RequestDetailPage() {
      ตราฝั่งใดฝั่งหนึ่งแล้วแต่ยังไม่ครบ · กดได้ทั้งสองฝั่ง (ฝั่งที่กดเปลี่ยนใจ หรือ
      อีกฝั่งที่รู้ว่างานยังไม่จบจริง) — ด่านเดียวกับ server */
   const canReopen = (owner || req._mine) && !reopenRequestError(req, { reason: "x" });
+  /* ผลของ "ยังไม่จบ" ต่อเอกสารประเมิน (SU) — บรรทัดในโมดัลข้างล่าง · `null` = ไม่มีอะไรต้องบอก (PR-3 §5.2) */
+  const reopenDocumentLine = surveyReopenDocumentLine(req?.surveyDocument, req);
   /* 🔑 ด่านตัวเดียวกับ server — ป้อนเหตุผลปลอมยาวพอเพื่อถามเฉพาะ "ขั้นตอนพร้อมไหม"
      (ท่าเดียวกับ `canReopen` ข้างบน) · ธง `cancelBeforeAckOnly` ของหัวข้ออยู่ในตัวตัดสิน
      ⇒ หน้านี้ไม่ต้องรู้จักชื่อหัวข้อเลย (กติกา ม-34: ห้ามเทียบ req.kind กลางหน้าเปลือก) */
@@ -1550,6 +1638,25 @@ export default function RequestDetailPage() {
     </DetailCard>
   ) : null;
 
+  /* ⭐ **เธรดมีแถวใหม่ล่าสุด = อ่านใบใหม่เบื้องหลัง** (PR-3 §5.3 · มติ 18) — เอกสารประเมินออก/ถูกแทนที่/ผลถูกดึงกลับ
+     ล้วนเขียนเหตุการณ์ลงเธรด และเธรดดึงของใหม่เองอยู่แล้ว ⇒ ใช้มันเป็นสัญญาณ ไม่ตั้งตัวจับเวลาอีกชุด
+     ⚠️ รอบแรกหลังใบถูกโหลดทั้งหน้าแค่จำไว้ (ใบเพิ่งโหลดมาพร้อมกัน) — ตัวจำอยู่ที่เปลือก และ **รอบปกติของ `load` ล้างมัน**
+        🐞 เดิมตัวจำรอดข้ามการโหลดทั้งหน้า ⇒ ทุกปุ่มที่ผ่าน `call` (รับเรื่อง · ลงคิว · ปิด · ยังไม่จบ …) อ่านใบสองรอบ:
+           `call` โหลดปกติ → เธรดถูกถอดแล้วต่อใหม่ → แถวล่าสุดคือเหตุการณ์ที่ปุ่มนั้นเพิ่งเขียนเอง → นับเป็น "แถวใหม่" → อ่านซ้ำ
+        · สลับโหมดแก้ ↔ หน้าของหัวข้อ ถอดเธรดเหมือนกันแต่ไม่มีรอบปกติ ⇒ ตัวจำยังอยู่ (แถวใหม่ระหว่างนั้นยังเป็นสัญญาณ)
+     ⚠️ เฉพาะใบที่มีคีย์ `surveyDocument` — หัวข้ออื่นไม่มีอะไรบนจอที่เธรดทำให้เก่า และไม่ควรจ่ายค่าอ่านใบซ้ำ
+     ⚠️ **เลื่อนไปหนึ่งจังหวะ (`setTimeout 0`) ก่อนอ่านใบ** — โพสต์/แก้/ลบของคนดูเอง เธรดเรียกตรงนี้ก่อน แล้วเรียก `onPosted={load}`
+        (โหลดปกติ) ต่อทันทีในจังหวะเดียวกัน ⇒ พอถึงคิวของตัวนี้ รอบปกติบินอยู่แล้ว กติกา "ไม่แซงรอบล่าสุด" ตัดรอบนี้ทิ้งเอง
+        (เดิมยิงทันที = สองคำขอต่อหนึ่งโพสต์) · แถวของคนอื่นที่เธรดดึงมาเองไม่มีรอบปกติตาม ⇒ อ่านใบตามเดิม */
+  const onThreadItems = (items) => {
+    const rows = Array.isArray(items) ? items : [];
+    const newest = rows.length ? (rows[rows.length - 1]?.id ?? null) : null;
+    const seen = threadSeen.current;
+    threadSeen.current = { entityId: req.id, newest };
+    if (!seen || seen.entityId !== req.id || seen.newest === newest) return;
+    if (req.surveyDocument) setTimeout(() => load({ background: true }), 0);
+  };
+
   /* การ์ดเธรด + ไฟล์แนบของใบ — ประกาศครั้งเดียว วางได้ทั้งโครงกลาง (คอลัมน์เนื้อ) และหน้าของหัวข้อ
      (แบบ A ของประเมินพื้นที่วางคู่กันท้ายหน้า) ⇒ ของชุดเดียว ไม่ใช่สองสำเนา */
   const threadBlock = (
@@ -1584,6 +1691,7 @@ export default function RequestDetailPage() {
             ? "ยังไม่มีความเคลื่อนไหว — ถามข้อมูลหน้างานหรือเรื่องผลประเมินไว้ตรงนี้ได้ แนบรูปได้ด้วย"
             : "ยังไม่มีความเคลื่อนไหว — ถามสเปกหรือเงื่อนไขไว้ตรงนี้ได้ แนบรูปตัวอย่างได้ด้วย"}
           composeHint={composeHint}
+          onItemsChange={onThreadItems}
           onPosted={load}
         />
       </DetailCard>
@@ -1878,6 +1986,8 @@ export default function RequestDetailPage() {
           busy={saving}
           thread={threadBlock}
           attachments={attachmentsBlock}
+          onRefresh={refreshQuietly}
+          refreshStalled={refreshStalled}
         />
       ) : (
       <DetailPageLayout
@@ -2081,6 +2191,10 @@ export default function RequestDetailPage() {
                 ตราปิดที่กดไปแล้วจะถูกถอน · ใบขึ้น &ldquo;ยังไม่จบ&rdquo; ในคิวฝั่งที่เลือก จนกว่าฝั่งนั้นจะตอบหรือขยับงาน
               </small>
             </div>
+            {/* ⭐ **กดแล้วเอกสารประเมิน (SU) ใช้ไม่ได้ทันที** — โมดัลต้องบอกผลก่อนกด (กติกา #1223 · PR-3 §5.2)
+                ⚠️ อ่านคีย์ `surveyDocument` อย่างเดียว (หัวข้ออื่นไม่มีคีย์ ⇒ ไม่มีบรรทัด) · Planner ที่ไม่มีสิทธิ์เอกสาร
+                   ก็ได้ `voids` มาพอให้บรรทัดนี้ขึ้น · ใบที่ยังไม่ตอบ การเปิดกลับไม่แทนที่อะไร ⇒ lib คืน null */}
+            {reopenDocumentLine ? <StatusNotice tone="warning">{reopenDocumentLine}</StatusNotice> : null}
             <div className={`action-bar ${styles.modalActions}`}>
               <Button variant="quiet" disabled={saving} onClick={() => setReopen(null)}>ยกเลิก</Button>
               <Button

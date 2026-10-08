@@ -35,14 +35,33 @@
 // ⚠️ แก้ CSS/markup ที่นี่ = ความสูงเปลี่ยน ⇒ รัน harness `--assert` แล้วแก้ค่าคงที่ใน `surveyReportLayout.js` พร้อมกัน
 //   และขึ้น `SURVEY_REPORT_RENDERER_VERSION` (กระดาษที่ตรึงแล้วพก CSS ของวันที่ออกไปด้วย — แก้ที่นี่ไม่ถึงใบเก่า)
 import { SYSTEM_DOCUMENT_LOGO_URL } from '@/lib/documentBrand';
+import { documentAudienceAccentKey } from '@/lib/documents/documentAudience';
 import { esc, renderDocumentHTML, watermarkBlock } from '@/lib/documents/documentShell';
 import { fmtDate } from '@/lib/format';
 import { surveyReportFileName } from './surveyReportNumber';
 
-export const SURVEY_REPORT_RENDERER_VERSION = 'fm-ts-01@2026-10-01b';
+/* 2026-10-08a — สีชื่อเอกสารเดินตามฉบับ (ลูกค้า = terracotta · ภายใน = steel) แทน teal ตายตัว · ความสูงไม่ขยับ
+   (สีอย่างเดียว — harness `--assert` ยืนยัน 4 / 6 หน้าเท่าเดิม)
+   🔴 **ขึ้นรุ่นไม่ได้เปลี่ยนสีของกระดาษที่ตรึงไปแล้ว** — HTML ที่ตรึงพกสีของวันที่ตรึง: ฉบับที่ตรึงด้วยรุ่นก่อนหน้า
+      (คอลัมน์ `rendererVersion` ของแถว = `fm-ts-01@2026-10-01b`) ยังเป็น teal ตลอดไป · ฉบับที่ออกเลขแล้วแต่ยังไม่ตรึงกระดาษ
+      จะตรึงด้วยสีใหม่ (ขั้นกระดาษเขียนรุ่นของวันที่ตรึง — `surveyReportPaper.js`)
+   ⚠️ **"ยังไม่มีเอกสารที่ออกแล้วสักใบ" เป็นข้อสมมติ ไม่ใช่สิ่งที่โค้ดรับประกัน** — สวิตช์ `SURVEY_REPORT_ISSUE_AT_SEND` ปิดอยู่
+      แต่ POST `/api/service/surveys/[id]/document` (ออกเอกสารของใบที่ส่งผลไปแล้ว) อยู่บน production ตั้งแต่ PR-2 และไม่ถามสวิตช์
+      ⇒ **ก่อน merge รุ่นนี้ต้องนับแถว `service_survey_reports` (SELECT อย่างเดียว)**: 0 แถว = จบ ·
+        มีแถวที่ตรึงแล้ว = เจ้าของตัดสินว่าฉบับเหล่านั้นคง teal หรือออก Rev. ใหม่ */
+export const SURVEY_REPORT_RENDERER_VERSION = 'fm-ts-01@2026-10-08a';
 
-/** สีชื่อเอกสารตั้งต้น (กระดานที่อนุมัติ = teal) — PR-2 ส่งคีย์จากมาตรฐานเอกสาร `siteSurvey` มาแทนได้ */
-export const SURVEY_REPORT_DEFAULT_ACCENT = 'teal';
+/* ── สีชื่อเอกสาร: เดินตามผู้อ่านของฉบับ (มติเจ้าของ 08/10/2026 — แทนมติ "teal ตายตัว" ของกระดาน) ──────────
+   ฉบับลูกค้าออกนอกบริษัท ⇒ terracotta (สีตั้งต้นของใบเสนอราคา) · ฉบับภายใน ⇒ steel (สีตั้งต้นของใบสั่งขาย)
+   — คีย์ตายตัวของ `lib/documents/documentAudience.js` ไม่ได้อ่านมาตรฐานที่เผยแพร่ของสองชนิดนั้น
+   🔑 ถามจาก **ฉบับของ view ที่กำลังพิมพ์** ทางเดียว — `renderSurveyReportHTML` **ไม่มีตัวเลือก `accentKey`**
+     ⇒ ไม่มีผู้เรียกคนไหน (แอป · สคริปต์ · เทสต์) พิมพ์ฉบับหนึ่งด้วยสีของอีกฉบับได้ ไม่ว่าจะส่งอะไรมา (โครงสร้างกันไว้ ไม่ใช่ grep)
+   ⚠️ ฉบับที่ไม่ใช่ `internal` = กระดาษที่ออกนอกบริษัท — เกณฑ์เดียวกับที่ตัวเรนเดอร์ใช้เลือกว่าจะฝัง CSS ของฉบับภายในหรือไม่
+   ⚠️ มาตรฐานเอกสาร `siteSurvey` ไม่ได้คุมสี (แถวที่เผยแพร่ยังถือ `accentKey: 'teal'` — ไม่มีใครอ่านช่องนั้น) */
+export const surveyReportAudience = (version) => (version === 'internal' ? 'internal' : 'external');
+
+/** คีย์สี (`DOCUMENT_ACCENT_THEMES`) ของกระดาษฉบับหนึ่ง — `'customer' | 'internal'` */
+export const surveyReportAccentKey = (version) => documentAudienceAccentKey(surveyReportAudience(version));
 
 const IMAGE_TOKEN = 'su-img:';
 const IMAGE_TOKEN_RE = /su-img:([0-9a-f]{64})/g;
@@ -78,7 +97,8 @@ export function surveyReportImageShas(html) {
        210mm = 793.70px (ขนาดของเปลือก · @page A4) ⇒ ถ้าคง 46px คอลัมน์เนื้อหาเหลือ 701.7px แล้วชื่อพื้นที่ที่กระดานลงพอดี
        บรรทัด ("…และสนามเทนนิส · ชั้น GF" ในช่อง 128px ของตารางหน้า 1 ฉบับภายใน) ตกเป็นสามบรรทัด — วัดเจอจริงใน harness
        ตรึงคอลัมน์ไว้ที่ 702px เท่ากระดาน แล้วให้ขอบกระดาษรับส่วนต่าง 0.15px ต่อข้างแทน
-     · `--accent` อ่านจาก `--doc-accent` ของเปลือก (สีชื่อเอกสารตามมาตรฐานเอกสาร · ตั้งต้น teal เท่ากระดาน)
+     · `--accent` อ่านจาก `--doc-accent` ของเปลือก — สีชื่อเอกสารเดินตามฉบับ (`surveyReportAccentKey` · มติเจ้าของ 08/10/2026)
+       กระดานวาด teal ทั้งสองฉบับ: ฉบับลูกค้าพิมพ์สีใบเสนอราคา ฉบับภายในพิมพ์สีใบสั่งขายแทน · ใช้ที่ชื่อเอกสารหน้า 1 ที่เดียว
      · ขนาดกล่องรูป 226×170 เป็นคลาส `.shot` แทน style ในแท็ก (กระดานเขียน inline ทุกกล่อง)
      · `.no` (คอลัมน์ # ของตาราง) ลด padding ซ้ายขวาเหลือ 2px และห้ามตัดบรรทัด — คอลัมน์กว้าง 26–30px ของกระดานมีที่ให้ตัวเลข
        แค่ 10–14px (กระดานมีแต่เลขหลักเดียว) ⇒ พื้นที่ที่ 10 ขึ้นไปตกเป็นสองบรรทัด "1/0" — วัดเจอจริงในชุดสุดขอบของ harness
@@ -905,13 +925,15 @@ function sheetHtml(ctx, page) {
  * @param opts.issuedAt  วันที่ออก (คอลัมน์ `issuedAt` · วัน `YYYY-MM-DD` หรือจุดเวลา) — ไม่ส่ง = ขีด
  * @param opts.imageSrc  `(img) => src | null` — ไม่ส่ง = token `su-img:<sha>` (ดู `resolveImageTokens`)
  * @param opts.watermark ข้อความลายน้ำทุกแผ่น ("ฉบับร่าง" ฯลฯ) — ไม่ส่ง = ไม่มี
- * @param opts.accentKey สีชื่อเอกสาร (คีย์ของ `DOCUMENT_ACCENT_THEMES`) — ไม่ส่ง = teal ตามกระดาน
  * @param opts.toolbar   แถบเครื่องมือของเปลือก (`{ label, button }`) — ไม่ส่ง = ไม่มี (กระดาษล้วน)
  * @returns HTML เต็มไฟล์ (ฟอนต์ฝังในตัว) — หนึ่ง `<article class="sheet su-page">` ต่อหนึ่งหน้าของแผน
+ *
+ * 🔴 **ไม่มีตัวเลือกสี** — สีชื่อเอกสารมาจาก `view.version` ทางเดียว (`surveyReportAccentKey`) · `accentKey` ที่ผู้เรียกส่งมาถูกทิ้ง
+ *    (เคยรับไว้เป็นจุดเสียบของเทสต์: ฉบับลูกค้าพิมพ์สีของฉบับภายในได้ และคีย์ที่ไม่รู้จักพาฉบับภายในตกไปสีของฉบับลูกค้า)
  */
 export function renderSurveyReportHTML({
   view, layout, docNo = null, issuedAt = null, imageSrc = surveyReportImageToken,
-  watermark = null, accentKey = SURVEY_REPORT_DEFAULT_ACCENT, toolbar = null,
+  watermark = null, toolbar = null,
 } = {}) {
   if (!view || !layout) throw new Error('renderSurveyReportHTML: view and layout are required');
   const internal = view.version === 'internal';
@@ -928,7 +950,7 @@ export function renderSurveyReportHTML({
   return renderDocumentHTML({
     lang: 'th',
     title: surveyReportFileName(docNo || 'SU', view.party?.customerName, view.version),
-    accentKey,
+    accentKey: surveyReportAccentKey(view.version),
     variantClass: 'surveyReport',
     pages: list(layout.pages).map((page) => sheetHtml(ctx, page)).join(''),
     toolbar,

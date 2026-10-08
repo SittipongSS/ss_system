@@ -6,7 +6,16 @@
 
 /* ── แท็บชนิดเอกสาร (Tabs.js — .tabs-header/.tab-btn ของระบบ) ─────────────── */
 .docTabs { margin-bottom: var(--space-4); }
-.docTab { display: inline-flex; align-items: center; gap: var(--space-2); }
+/* ชื่อเอกสารอยู่บน · รหัสแบบฟอร์มอยู่ใต้ชื่อ (จุดร่างค้างอยู่ข้างชื่อ)
+   🐞 UAT PR-3 (D16): เดิมชื่อกับรหัสเรียงแถวเดียว — หกแท็บกว้าง ~1296px พอดีจอ 1440 แต่แท็บที่เจ็ด (FM-TS-01) ดันแถวเป็น 1525px
+      ในกรอบ 1384px ⇒ ป้ายแท็บใหม่ขาดเหลือ "รายงานการป" และรหัส FM-TS-01 ไม่เคยขึ้นจอ (แถวพอดีอีกทีที่จอ ≥1581px)
+   ซ้อนสองบรรทัดแล้วความกว้างของแท็บ = ตัวที่ยาวกว่าระหว่างชื่อกับรหัส ⇒ เจ็ดแท็บกว้าง ~1050px (วัดจริง) พอดีจอตั้งแต่ ~1110px
+   โดยไม่ต้องตัดรหัสทิ้ง · จอที่แคบกว่านั้นแถวเลื่อนแนวนอน และแท็บที่ถูกเลือกถูกพาเข้ากรอบเอง (lib/ui/rowReveal.js ใน Tabs)
+   ⚠️ รหัสอยู่คอลัมน์เดียวกับชื่อ จุดร่างอยู่คอลัมน์ที่สอง (คอลัมน์โดยนัย — แท็บที่ไม่มีร่างไม่เสียช่องว่างให้คอลัมน์เปล่า) */
+.docTab { display: inline-grid; grid-template-columns: auto; grid-auto-columns: auto; justify-items: start; align-items: center; column-gap: var(--space-2); row-gap: var(--space-0-5); text-align: left; }
+.tabName { grid-column: 1; grid-row: 1; }
+.draftDot { grid-column: 2; grid-row: 1; }
+.tabCode { grid-column: 1; grid-row: 2; }
 .tabCode { padding: var(--space-0-5) var(--space-1-5); border-radius: var(--radius-full); color: var(--text-3); background: var(--panel-2); font-size: var(--fs-3); font-weight: var(--fw-semibold); }
 .docTabActive .tabCode { color: var(--accent-ink); background: var(--accent-soft); }
 .draftDot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: var(--radius-full); background: var(--amber); }
@@ -20,11 +29,15 @@
 .previewHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
 .previewHeader h2 { margin: 0; color: var(--text); font-size: var(--fs-9); font-weight: var(--fw-bold); }
 .previewHeader p { margin: var(--space-0-5) 0 0; color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-text); }
+/* ตัวสลับฉบับ (เฉพาะชนิดที่ใบตัวอย่างมีสองฉบับ) + ลิงก์เปิดเต็มจอ — อยู่ฝั่งขวาของหัวการ์ดด้วยกัน จอแคบตกลงมาเป็นแถวของตัวเอง */
+.previewTools { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 /* เอกสารกว้างคงที่ 210mm แล้ว zoom "ย่อ" เมื่อกรอบแคบกว่า 820px เท่านั้น (ไม่ขยาย)
    → เต็มความกว้างจึงได้เอกสารขนาด 1:1 อ่านออกจริง ไม่ใช่ใบจิ๋วที่ถูกย่อ
    ความสูงผูกกับจอ: จอสูงพอเห็นเกือบเต็มหน้า A4 (1123px) จอเตี้ยก็ไม่กินทั้งหน้าจอ */
 .livePreview { width: 100%; height: clamp(420px, 76vh, 1180px); border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel-2); }
 .previewInDrawer { height: 320px; }
+/* ลิ้นชักเป็น flex แนวตั้ง — ไม่ตรึงไว้ซ้าย แถบสองปุ่มจะถูกยืดเต็มความกว้างลิ้นชัก */
+.drawerSwitch { align-self: flex-start; }
 
 /* ── โหมดแก้: ฟอร์มซ้าย · พรีวิวขวาแบบตรึง ─────────────────────────────────
    เอกสารย่อเป็นขั้นบันได (quotationMasterDocument): ≤640px→74% · ≤580px→68%
@@ -42,7 +55,8 @@
 /* ── แถบควบคุม: สรุปบรรทัดเดียว + ปุ่มทำงาน + รายละเอียดที่พับไว้ ─────────
    เดิมส่วนนี้เป็นการ์ดค่ามาตรฐานเต็มใบคู่กับกล่องควบคุมเวอร์ชัน กางค้างตลอดเวลา
    ทั้งที่ค่าทั้งชุดเป็นของที่เปิดดูนาน ๆ ครั้ง (พรีวิวด้านบนบอกผลลัพธ์ไปแล้ว) */
-.controlBar { margin-bottom: var(--space-4); overflow: hidden; }
+/* scroll-margin-top = จุดจอดตอนเปิดโหมดแก้แล้วโค้ดพาจอกลับขึ้นมาที่แถบนี้ (lib/ui/scrollToTopOf.js) */
+.controlBar { margin-bottom: var(--space-4); overflow: hidden; scroll-margin-top: var(--scroll-anchor-top); }
 .controlHead { padding: var(--space-2-5) var(--space-4); display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
 .detailsToggle { min-width: 260px; flex: 1; min-height: 40px; padding: var(--space-1-5) var(--space-2); border: 0; border-radius: var(--radius); display: flex; align-items: center; gap: var(--space-2-5); color: var(--text-2); background: none; text-align: left; cursor: pointer; transition: background var(--motion-fast) ease; }
 .detailsToggle:hover { background: var(--panel-2); }
@@ -52,7 +66,15 @@
 .controlSummary { min-width: 0; flex: 1; display: flex; flex-direction: column; }
 .controlSummary strong { color: var(--text); font-size: var(--fs-7); font-weight: var(--fw-bold); overflow-wrap: anywhere; }
 .controlSummary small { margin-top: var(--space-0-5); color: var(--text-3); font-size: var(--fs-4); overflow-wrap: anywhere; }
+/* แถวปุ่ม + บรรทัดเหตุที่ปุ่ม "เผยแพร่" ยังกดไม่ได้ (ถ้ามี) — ซ้อนกันชิดขวา บรรทัดเหตุอยู่ใต้ปุ่มที่มันพูดถึง */
+.controlSide { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-1-5); }
 .controlActions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+/* ป้ายปุ่มไม่ตัดกลางคำ — ที่จอ 360 ปุ่ม "เผยแพร่" เคยแตกเป็น "เผย / แพร่" (ที่ไม่พอ = ปุ่มตกบรรทัดทั้งปุ่ม ไม่ใช่ตัวหนังสือ) */
+.controlActions > * { white-space: nowrap; }
+/* ปุ่มที่ติดด่าน: จางเท่าปุ่ม disabled แต่ยังอยู่ในลำดับ Tab (`aria-disabled`) — เหตุอยู่ที่ .blockedReason ข้างล่าง
+   pointer-events: none = ไม่มี hover หลอกว่ากดได้ (ท่าเดียวกับ DocumentControlPanel) */
+.controlActions > [aria-disabled="true"] { opacity: var(--op-disabled); pointer-events: none; }
+.blockedReason { margin: 0; color: var(--text-2); font-size: var(--fs-4); line-height: var(--lh-text); text-align: right; }
 .details { padding: var(--space-4); border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: var(--space-3); }
 .detailsHead { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
 .english { color: var(--text-2); font-size: var(--fs-7); }
@@ -73,14 +95,28 @@
 .steel { --doc-accent: var(--document-accent-steel); }
 .amber { --doc-accent: var(--document-accent-amber); }
 .navy { --doc-accent: var(--document-accent-navy); }
-/* คีย์เก่าที่เลิกให้เลือกแล้ว — คงไว้ให้มาตรฐานเวอร์ชันเดิมในประวัติยังแสดงสีถูก */
+/* คีย์เก่าที่ไม่มีเอกสารชนิดไหนใช้แล้ว (teal: FM-SA-04 เลิกใช้ 22/09 · FM-TS-01 เปลี่ยนเป็นสีตามผู้อ่าน 08/10)
+   ทุกจุดสีบนหน้านี้ resolve ด้วยชนิดเอกสารก่อน (StandardAccent) จึงไม่มีแถวไหนหยิบสองคลาสนี้อีก —
+   คงไว้คู่กับโทเคน `--document-accent-teal/green` ใน globals.css (ธีมของเครื่องยนต์เอกสารยังมีสองคีย์นี้) จนกว่าจะถอดพร้อมกัน */
 .teal { --doc-accent: var(--document-accent-teal); }
 .green { --doc-accent: var(--document-accent-green); }
+/* ── สีเดินตามผู้อ่าน (FM-TS-01 — มติ 08/10/2026) ──────────────────────────────
+   กระดาษมีสองสีตามฉบับ จึงไม่มีจุดสีเดียวของมาตรฐาน: จุดสองสีเรียงกัน (ฉบับลูกค้า · ฉบับภายใน) ใช้คลาสสีชุดข้างบน
+   wrap ได้ — ประโยคเต็มสองท่อนไม่พอบรรทัดเดียวบนจอแคบ */
+.audienceMarks { display: inline-flex; align-items: center; flex-wrap: wrap; gap: var(--space-1-5) var(--space-3); }
+/* จุดอย่างเดียว (ตารางประวัติ) — ชิดกันให้อ่านเป็นคู่
+   ⚠️ ห้าม wrap: คอลัมน์ Accent แคบ (จอ 1024) เคยบีบจุดคู่ให้ซ้อนบน-ล่างแล้วแถวสูงขึ้น — จุดสองจุดกว้างรวม ~44px ไม่มีเหตุให้ตัดบรรทัด */
+.audienceDots { flex-wrap: nowrap; gap: var(--space-2); }
+/* บรรทัดอ่านอย่างเดียวในฟอร์ม — อยู่ตรงที่ชนิดอื่นมีตัวเลือกสี แต่ไม่ใช่ปุ่ม: ไม่มีกรอบ ไม่มี hover ไม่รับโฟกัส */
+.audienceAccent { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1-5) var(--space-3); color: var(--text-2); font-size: var(--fs-5); line-height: var(--lh-text); }
+.audienceLead { color: var(--text-3); font-weight: var(--fw-semibold); }
 
 /* ── การ์ดที่มีหัวข้อ (ฟอร์มแก้ไข / ประวัติเวอร์ชัน) ───────────────────────── */
 .panel { overflow: hidden; }
 .panelHeader { padding: var(--space-3-5) var(--panel-inset); border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
 .panelHeader h2 { margin: 0; color: var(--text); font-size: var(--fs-9); font-weight: var(--fw-bold); }
+/* หัวฟอร์มรับโฟกัสตอนเปิดโหมดแก้ (tabIndex -1) — วงโฟกัสขึ้นเฉพาะคนที่มาด้วยคีย์บอร์ด */
+.panelHeader h2:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius); }
 .panelHeader p { margin: var(--space-0-5) 0 0; color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-text); }
 
 .historyTable td small { display: block; margin-top: var(--space-0-5); color: var(--text-3); }
@@ -154,10 +190,17 @@
   .previewInColumn { height: clamp(380px, 52vh, 700px); }
 }
 
+/* จอ ≤1050 = น่าจะใช้นิ้ว (เส้นเดียวกับตัวควบคุมใหม่ของ PR-3 — SurveyControlCard · DocumentControlPanel)
+   ตัวสลับฉบับของใบตัวอย่างสูง 44px (--ctl-h-touch) ทั้งในหัวการ์ด โหมดแก้ และลิ้นชัก — เดิม 30px ทุกที่
+   ⚠️ `.audienceSwitch:global(.segmented)` (สองคลาส) — ชนะกฎ `.segmented > button` ของ globals โดยไม่พึ่งลำดับไฟล์ */
+@media (max-width: 1050px) {
+  .audienceSwitch:global(.segmented) > button { min-height: var(--ctl-h-touch); padding-inline: var(--space-3-5); }
+}
+
 @media (max-width: 1000px) {
   .accentPicker { grid-template-columns: 1fr; }
-  /* แถบแท็บเลื่อนแนวนอนได้แต่ไม่มีสกอร์ลบาร์ให้เห็น — ตัดรหัสแบบฟอร์มออกก่อน
-     เพื่อให้ชื่อเอกสารทั้ง 4 ยังอยู่ในจอเดียว (รหัสยังอยู่ในแถบควบคุมด้านล่าง) */
+  /* แถบแท็บเลื่อนแนวนอนได้แต่ไม่มีสกอร์ลบาร์ให้เห็น — จอแคบตัดรหัสแบบฟอร์มออก เหลือชื่อเอกสารบรรทัดเดียว
+     (รหัสยังอยู่ในแถบควบคุมด้านล่าง) · แท็บที่ถูกเลือกถูกพาเข้ากรอบของแถบเอง */
   .tabCode { display: none; }
 }
 
@@ -170,6 +213,8 @@
   .historyCard { padding: var(--space-2-5); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel-2); }
   .cardHead { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); }
   .historyCard > small { display: block; margin-top: var(--space-1-5); color: var(--text-3); font-size: var(--fs-3); }
+  /* สีของเวอร์ชันบนการ์ด (จอแคบไม่มีตาราง — เดิมการ์ดไม่วาดสีเลย ต้องเปิดลิ้นชักถึงจะรู้) · ป้ายยาวตัดบรรทัดได้ จุดสีไม่หด */
+  .historyCard .accentMark { align-items: flex-start; font-size: var(--fs-4); line-height: var(--lh-text); }
   .historyCard > button { width: 100%; min-height: 40px; margin-top: var(--space-2); justify-content: center; }
 }
 
@@ -177,7 +222,9 @@
   .metaGrid, .formGrid, .formTriple, .detailGrid { grid-template-columns: 1fr; }
   .full { grid-column: 1; }
   .numberExample { align-items: flex-start; flex-direction: column; }
-  /* ปุ่มทำงานอยู่บรรทัดของตัวเองเต็มความกว้าง — จอแคบแถบสรุปกินทั้งบรรทัดไปแล้ว */
+  /* ปุ่มทำงานอยู่บรรทัดของตัวเองเต็มความกว้าง — จอแคบแถบสรุปกินทั้งบรรทัดไปแล้ว · ปุ่มสูงเท่าเป้านิ้ว (44px) */
+  .controlSide { width: 100%; align-items: stretch; }
   .controlActions { width: 100%; }
-  .controlActions > * { min-height: 40px; flex: 1; justify-content: center; }
+  .controlActions > * { min-height: var(--ctl-h-touch); flex: 1; justify-content: center; }
+  .blockedReason { text-align: left; }
 }
