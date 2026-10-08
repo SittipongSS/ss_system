@@ -1,6 +1,6 @@
 # ใบรับการอัปโหลด (`upload_receipts` · mig 0406) — ที่มาของ `driveFileId` ที่ client ส่งมา
 
-> สถานะ: **กำลังดำเนินการ** · ตรวจกับโค้ดเมื่อ 2026-10-08 · **merge เข้า main แล้ว 2026-10-08** (#1885 `cf9c7b24`) · มติเจ้าของ 08/10/2569 · mig 0406 **รันบนฐานจริงแล้ว 2026-10-08** (เจ้าของรันบน SQL Editor · ยืนยันจากฝั่งแอป: คีย์ service อ่านตารางได้ · คีย์ anon ได้ `42501`) · เจ้าของสั่ง deploy คืน 2026-10-08 — **smoke test บน production ยังค้าง** (ดู §ลำดับขึ้นระบบ ข้อ 4) · รอบหนึ่งครอบ `POST /api/attachments` (สาขาไฟล์ธรรมดา) · `DELETE /api/upload` · ตัวปล่อยไฟล์ของแถวไฟล์แนบ — ปลายทางอื่นเป็นรอบสอง (§ยังไม่ครอบ) · ⚠️ ยังไม่ได้ลองกับ server / Drive จริง
+> สถานะ: **กำลังดำเนินการ** · ตรวจกับโค้ดเมื่อ 2026-10-09 (เฉพาะ §รอบสอง ส่วนหลักฐานของใบสั่งขาย และขา `storagePath` ของ `DELETE /api/upload` · ส่วนอื่นตรวจ 2026-10-08) · **merge เข้า main แล้ว 2026-10-08** (#1885 `cf9c7b24`) · มติเจ้าของ 08/10/2569 · mig 0406 **รันบนฐานจริงแล้ว 2026-10-08** (เจ้าของรันบน SQL Editor · ยืนยันจากฝั่งแอป: คีย์ service อ่านตารางได้ · คีย์ anon ได้ `42501`) · เจ้าของสั่ง deploy คืน 2026-10-08 — **smoke test บน production ยังค้าง** (ดู §ลำดับขึ้นระบบ ข้อ 4) · รอบหนึ่งครอบ `POST /api/attachments` (สาขาไฟล์ธรรมดา) · `DELETE /api/upload` · ตัวปล่อยไฟล์ของแถวไฟล์แนบ — ปลายทางอื่นเป็นรอบสอง (§ยังไม่ครอบ) · **รอบสอง ส่วนหลักฐานของใบสั่งขาย** อยู่ใน PR `claude/evidence-private-only` (2026-10-09 · ยังไม่ merge · ไม่มี migration · ไม่ใช้ใบรับ) · ⚠️ ยังไม่ได้ลองกับ server / Drive / Storage จริง
 
 **อ่านก่อนแตะสายอัปโหลด → แนบ → ลบไฟล์ หรือเพิ่มปลายทางใหม่ที่รับ `driveFileId` จาก client**
 
@@ -59,7 +59,7 @@
 
 ## `DELETE /api/upload` — ขา Drive
 
-ไม่ล็อกอิน = 401 · ขา `storagePath` (หลักฐาน Won ใน bucket ส่วนตัว) ไม่ได้แก้ · ไม่ส่ง `driveFileId` = `{ ok: true }` · ผู้เรียกทุกจุดยิงแบบไม่รอผล — สถานะมีไว้ให้คนไล่ log
+ไม่ล็อกอิน = 401 · ขา `storagePath` (ไฟล์ใน bucket ส่วนตัว) = **403 `forbidden` เสมอ** ตั้งแต่ 2026-10-09 (§รอบสอง ส่วนหลักฐานของใบสั่งขาย ข้อ ④) · ไม่ส่ง `driveFileId` = `{ ok: true }` · ผู้เรียกทุกจุดยิงแบบไม่รอผล — สถานะมีไว้ให้คนไล่ log
 
 | # | ด่าน | ไม่ผ่าน |
 |---|---|---|
@@ -99,10 +99,84 @@
 4. **smoke test บน production**: แนบไฟล์เข้าระเบียนใดก็ได้ → ลบไฟล์นั้น → แนบไฟล์ในโมดัลสรรพสามิต (`components/excise/FileTaxDialog.js` หรือ `ReceiveDialog.js` — สองจอนี้ยิง `POST /api/master/attachments` เอง ไม่ผ่าน `uploadAttachment`) · ต้องผ่านทั้งสามขั้น · ตาราง `upload_receipts` ต้องมีแถวใหม่ที่ `claimedBy` เป็น `attachments:<id แถว>` · Vercel → Logs ต้องไม่มี `🔴 ออกใบรับการอัปโหลดไม่สำเร็จ`
 5. ไฟล์ที่ **อัปด้วยโค้ดเก่าแล้วมากดแนบหลัง deploy** (แท็บเปิดค้างข้ามรอบ) ไม่มีใบรับ ⇒ ได้ข้อความ 400 ของด่าน ④ ต้องอัปไฟล์ใหม่ — ไม่ใช่บั๊ก
 
-## ยังไม่ครอบ (รอบสอง)
+## รอบสอง ส่วนหลักฐานของใบสั่งขาย (PR `claude/evidence-private-only` · 2026-10-09)
 
-- ปลายทางอื่นที่รับ id/ลิงก์ไฟล์จาก client ยัง **ไม่ตรวจและไม่ประทับใบรับ**: ไฟล์ในเธรดอัปเดต (`entity_updates.attachments`) · ref เอกสารยืนยันคำสั่งซื้อ (`sales_orders.confirmAttachments`) · URL รูปของนัดช่าง — `requireUploadReceipt` มีพารามิเตอร์ `alreadyStored` เตรียมไว้ให้ปลายทางที่บันทึกทั้งชุดซ้ำทุกครั้งที่แก้
-- `collectReferencedIds` และ `driveFileReferenced` ยังไม่อ่าน `sales_orders.confirmAttachments` กับรูปของนัดช่าง (คอมเมนต์ในโค้ดจดว่าวันนี้ไม่มีใบไหนเก็บเป็น id ไฟล์ Drive)
+หลักฐานของใบสั่งขายอยู่ใน Supabase Storage (bucket ส่วนตัว `sales-evidence`) ไม่ใช่ Drive ⇒ **ไม่ใช้ใบรับ** — ที่มาของไฟล์พิสูจน์จากตำแหน่งของ object เอง: โฟลเดอร์ของเอกสารใบนั้นเปิดให้อัปเฉพาะคนที่ผ่าน `checkPrivateEvidenceScope` ของใบนั้น · ไม่มี migration · ⚠️ ยืนยันด้วยเทสต์ตัวช่วยและเทสต์อ่านซอร์ส ยังไม่ได้ลองกับ server / Storage จริง
+
+### ช่องที่ปิด
+
+| # | อาการเดิม | เส้นที่เป็น |
+|---|---|---|
+| ① | `sanitizeEvidenceAttachments` ปล่อย `{ fileUrl: 'x', driveFileId }` ลงแถว แล้ว `confirm-file` สตรีม Drive id นั้นออกมาด้วยสิทธิ์ของระบบ | `POST` ใบสั่งขาย · `PATCH` action `save` |
+| ② | `{ fileUrl: 'x', storagePath }` ที่ไม่ส่ง `storageBucket` ข้ามด่าน bucket/โฟลเดอร์ทั้งคู่ แล้วเส้นลบใบสั่งขายตามไปลบ object นั้น ไม่ว่าเป็นของใคร | เส้นเดียวกัน + `DELETE` ใบสั่งขาย |
+| ③ | แจ้งชำระรายงวด (action `report`) เรียกตัว sanitize เปล่า ไม่ส่ง options = เก็บ ref อะไรก็ได้เป็นสลิปของงวด | `PATCH …/installments` |
+| ④ | ขา `storagePath` ของ `DELETE /api/upload` ลบ object ใต้ `won/` ของใบเสนอราคาที่ยังเปิดอยู่ตาม path จากคำขอ ทั้งที่อาจมีแถวอ้างไฟล์นั้นอยู่ | `DELETE /api/upload` |
+
+### กติกา: โหมด `privateOnly` ของ `sanitizeEvidenceAttachments`
+
+[`lib/sales/orderConfirmationDocs.js`](../webapp/src/lib/sales/orderConfirmationDocs.js) — `sanitizeEvidenceAttachments(input, { allowedStorageBucket, allowedStoragePathPrefix, privateOnly: true })` · `validateOrderConfirmation` ส่ง options ต่อทั้งก้อน · ref ผ่านเมื่อครบ **สี่ข้อ**:
+
+1. **bucket ส่วนตัว** — `storageBucket` และ `storagePath` เป็นตัวหนังสือ และ `storageBucket === allowedStorageBucket`
+2. **โฟลเดอร์ของเอกสารใบนั้น** — `storagePath` ขึ้นต้นด้วย `allowedStoragePathPrefix`
+3. **ชื่อ object เดียว** — ส่วนที่ต่อจากโฟลเดอร์ตรง `^[A-Za-z0-9._-]+$` และไม่ใช่ `.` / `..` (รูปเดียวกับที่ `privateEvidenceObjectPath` สร้าง: `<ms>_<uuid>_<ชื่อที่ล้างแล้ว>` · จุดซ้อนในชื่อไฟล์ผ่าน · `/` `%` `?` `#` `\` ช่องว่าง อักขระไทย และอักขระควบคุมไม่ผ่าน)
+4. **ไฟล์มีอยู่จริง** — ผู้เรียกถาม `missingStoredEvidence` ต่อทุกครั้ง (ไม่พบ/ถามไม่ได้ = 400 `ไม่พบไฟล์ <ชื่อ> ในพื้นที่จัดเก็บ private`)
+
+- 🔴 ไม่ส่ง bucket หรือโฟลเดอร์ (ว่าง · `null` · ไม่มี key) = **ไม่รับสักไฟล์** — ผู้เรียกที่ประกอบโฟลเดอร์จาก id ว่างต้องไม่กลายเป็นด่านที่เปิดเอง
+- ผลลัพธ์มี `fileUrl: null` · `driveFileId: null` เสมอ แม้ client ส่งมาด้วย · path/bucket ที่ยาวเกินเพดาน (1000/100) ถูกทิ้ง ไม่ตัดจนชี้ object อื่น
+- ตัวกรองเอง **ทิ้ง ref ที่ไม่ผ่านออกจากชุด** (ไม่โยน error) — การปฏิเสธเป็นหน้าที่ของผู้เรียก: `evidenceRefsDropped(sent, kept)` (ไฟล์เดียวกัน) ตอบ `true` เมื่อ client ส่งอาร์เรย์มาและจำนวนที่ผ่านน้อยกว่า `min(จำนวนที่ส่ง, MAX_CONFIRM_ATTACHMENTS = 8)` · ไม่ใช่อาร์เรย์/อาร์เรย์ว่าง = `false` · ส่งเกินเพดาน 8 ไม่นับเป็นการถูกปฏิเสธ (ตัวกรองตัดที่เพดานเหมือนเดิม) · ผู้เรียกตอบ 400 `ไฟล์แนบบางไฟล์ไม่ใช่ไฟล์ที่อัปโหลดผ่านระบบให้เอกสารนี้ — ลบไฟล์นั้นออกแล้วแนบใหม่อีกครั้ง` (`EVIDENCE_REFS_DROPPED_TEXT`) โดยไม่เขียนอะไร — เส้นไหนเรียกบ้างดูตารางข้างล่าง (มีข้อยกเว้นหนึ่งกรณีที่ `PATCH` `save`)
+- ⚠️ **ห้ามเปิดเป็นค่าตั้งต้น** — ฟอร์มสร้างใบสั่งขาย (`sales-orders/new/page.js`) เรียก `validateOrderConfirmation` ฝั่งจอด้วยตัวแทน `{ fileUrl: 'pending' }` ของไฟล์ที่ยังไม่ได้อัป โดยไม่ส่ง option · ไม่ส่ง `privateOnly: true` = พฤติกรรมเดิมทุกอย่าง (เทสต์ตรึงผลลัพธ์เดิมไว้)
+
+### ผู้เรียกฝั่ง server
+
+| เส้น (ใต้ `webapp/src/app/api/sales-planning/sales-orders/`) | ช่องที่เขียน | โฟลเดอร์ที่รับ | ไม่ผ่าน |
+|---|---|---|---|
+| `route.js` `POST` | `confirmAttachments` · หลักฐานงวดแรก (`firstPayment.evidence`) | `quotations/<id ใบเสนอราคา>/order-confirmation/` (ทั้งสองช่อง — จออัปด้วย entityType `sales_order_confirmation` ทั้งคู่) | ไม่เหลือสักไฟล์: 400 ข้อความเดิมของตัวตรวจ (`แนบไฟล์เอกสารยืนยันอย่างน้อย 1 ไฟล์` ฯลฯ) · **ผ่านไม่ครบ (ช่องใดช่องหนึ่ง): 400 `ไฟล์แนบบางไฟล์ไม่ใช่ไฟล์ที่อัปโหลดผ่านระบบให้เอกสารนี้ — ลบไฟล์นั้นออกแล้วแนบใหม่อีกครั้ง`** ก่อนถามที่เก็บไฟล์และก่อนออกเลขใบ |
+| `[id]/route.js` `PATCH` action `save` | `confirmAttachments` | `privateEvidencePrefix('sales_order_confirmation', before.quotationId)` — ใบที่ไม่มีใบเสนอราคาต้นทางได้ `null` ⇒ ไม่รับสักไฟล์ (เดิมประกอบ `quotations//order-confirmation/` จาก id ว่าง) | ไม่เหลือสักไฟล์: 400 ข้อความเดิมของตัวตรวจ · **ผ่านไม่ครบ: 400 ข้อความเดียวกับแถวบน** — ชุดที่ส่งมา **ทับ** ชุดเดิม จึงไม่บันทึกชุดที่สั้นลงเงียบ ๆ · ⚠️ ตรวจเฉพาะใบที่มี `confirmAttachments` ของตัวเองแล้ว (ดูข้อยกเว้นใต้ตาราง) |
+| `[id]/installments/route.js` action `report` | `sales_order_installments.evidence` | `sales-orders/<id ใบ>/payments/` | ไม่เหลือสักไฟล์: 400 `ต้องแนบหลักฐานการชำระอย่างน้อย 1 ไฟล์` · **ผ่านไม่ครบ: 400 ข้อความเดียวกับแถวบน** · ไฟล์ไม่มีจริง 400 |
+| `[id]/installments/route.js` action `tax-invoice` | `taxInvoiceFile` | `sales-orders/<id ใบ>/tax-invoices/` | ส่งไฟล์มาแต่ไม่ผ่าน: 400 `ไฟล์ใบกำกับภาษีต้องเป็นไฟล์ที่อัปโหลดผ่านระบบให้ใบสั่งขายนี้ — ลบไฟล์ออกแล้วแนบใหม่อีกครั้ง` (เดิมถอยไปใช้ไฟล์เดิมเงียบ ๆ) · ไฟล์ใหม่ไม่มีจริง 400 · **ไม่ส่งไฟล์ = เก็บไฟล์เดิมไว้เหมือนเดิม** ไม่ตรวจไฟล์เดิมซ้ำ |
+
+- จอที่เกี่ยว **ไม่ได้แก้** — ตรวจจากซอร์สแล้วว่าทุกจออัปเข้าโฟลเดอร์เดียวกับที่ server รับ: แจ้งชำระอัปด้วย `sales_order_payment_evidence` + id ของใบที่เปิดอยู่ (รวมงวดที่ยกมาจากใบเก่า — เส้นนี้ปฏิเสธงวดที่ `salesOrderId` ไม่ใช่ใบที่เปิดก่อนถึงทุก action) · ใบกำกับอัปด้วย `sales_order_tax_invoice` + id ของใบ ทั้งจากหน้าใบและจากทะเบียน `/finance/payments`
+- จอของสามเส้นแรก **ไม่มีทางส่งชุดที่ถูกนับว่า "ผ่านไม่ครบ" เอง** (ตรวจจากซอร์ส): ทุก ref ที่จอส่งมาจากผลของ `uploadFileBytes` ด้วย entityType/id เดียวกับโฟลเดอร์ที่ server รับ · ตัวเลือกไฟล์จำกัดที่ 8 (`MAX_CONFIRM_ATTACHMENTS` ที่หน้าสร้างและช่องเอกสารยืนยัน · `max={8}` ที่โมดัลแจ้งชำระ) และถึงส่งเกินก็ไม่นับ · ตัวกรองไม่ตัดตัวซ้ำและไม่ตัดเพราะขาด `fileName`
+- `PATCH` `save` ส่ง ref เดิมที่เก็บไว้กลับมาพร้อมไฟล์ใหม่ ⇒ ref เดิมต้องผ่านกติกาเดียวกัน (ดูข้อมูลจริงข้างล่าง) · ref เดิมที่ไม่ผ่าน = บันทึกใบนั้นไม่ได้ (400) จนกว่าจะแก้ข้อมูล — ไม่ใช่ไฟล์หายเงียบ ๆ เหมือนเดิม
+- **ข้อยกเว้นของ `PATCH` `save`: ใบที่ยังไม่มี `confirmAttachments` ของตัวเอง ไม่ถูกตรวจ "ผ่านไม่ครบ"** — ใบก่อน mig 0285 ที่จอตั้งต้นฟอร์มจากไฟล์ `won/` ของใบเสนอราคา (`confirmationDraft`) ส่ง ref `won/` กลับมาทุกครั้ง ซึ่งไม่ผ่านด่านโฟลเดอร์อยู่แล้ว และจอไม่มีปุ่มลบไฟล์ที่บันทึกไว้ ⇒ ถ้าปฏิเสธ ใบนั้นจะบันทึกไม่ได้อีกเลย · ใบแบบนั้นยังไม่มีไฟล์ของตัวเองให้หาย (ไฟล์ `won/` ยังอยู่ที่ใบเสนอราคา) ⇒ คงพฤติกรรมเดิม: ref ที่ไม่ผ่านถูกทิ้งจากชุด และล้มเฉพาะเมื่อไม่เหลือสักไฟล์
+- นำเข้าใบย้อนหลัง (`sanitizeHistoricalEvidence` ใน `lib/sales/historicalOrderCommit.js`) เรียกโหมด `privateOnly` แล้ว (bucket ส่วนตัว + `sales-orders/<id ใบ>/payments/` + ตรวจว่าไฟล์มีจริง) · 🐞 เดิมเรียกโหมดตั้งต้นแล้วกรองซ้ำเอง — ref ที่ `storagePath`/`storageBucket` เป็น **อาร์เรย์** (มี `fileUrl` พาผ่าน) ข้ามด่าน bucket/โฟลเดอร์แล้วถูกแปลงเป็นตัวหนังสือ กลายเป็น ref หน้าตาปกติของใบอื่น · ตัวกรองซ้ำท้ายการเรียก (`.filter` + `.map` ล้าง URL) ถอดออกแล้วเพราะโหมดเข้มให้ผลนั้นเอง · ⚠️ เส้นนี้ **ยังทิ้ง ref ที่ไม่ผ่านเงียบ ๆ** (ไม่เรียก `evidenceRefsDropped`) — ดู §ของที่เหลือ
+- **ทะเบียนผู้เรียก (ratchet)** [`lib/sales/evidenceSinkCallers.test.mjs`](../webapp/src/lib/sales/evidenceSinkCallers.test.mjs) — ไฟล์ฝั่ง server ทุกไฟล์ (ใต้ `src/app/api` และไฟล์ใน `src/lib` ที่ไม่ใช่ client component) ที่เรียก `sanitizeEvidenceAttachments(` หรือ `validateOrderConfirmation(` ต้องอยู่ในทะเบียนเป็น `{ privateOnly: true }` หรือ `{ why }` · ไฟล์นอกทะเบียน = แดง · ชื่อค้างในทะเบียน = แดง · ตัวที่ประกาศ `privateOnly` ต้องมีตัวหนังสือ `privateOnly: true` ที่การเรียกทุกจุด · ทะเบียนวันนี้: สามเส้นในตาราง + `lib/sales/historicalOrderCommit.js` เป็น `privateOnly` · `lib/sales/orderConfirmationDocs.js` (ตัวนิยาม) เป็น `why` · ไฟล์เดียวกันตรึงตำแหน่งของ `evidenceRefsDropped` ในสามเส้น
+
+### ตัวอ่านและตัวลบ
+
+- **`confirm-file`** — ถอดทาง Drive และทาง redirect · รายละเอียดที่ [stored-file-responses.md](stored-file-responses.md) §แก้ตาม 2026-10-09
+- **`removeEvidenceRefs(supabase, refs, { bucket, prefixes })`** ([`lib/upload/privateEvidence.js`](../webapp/src/lib/upload/privateEvidence.js)) — ส่ง options มา = ลบเฉพาะ ref ที่ `storageBucket === bucket` และ `storagePath` ขึ้นต้นด้วยโฟลเดอร์ใดโฟลเดอร์หนึ่ง · ตัวอื่นข้าม พร้อม `console.warn` หนึ่งบรรทัดต่อการเรียก (จำนวนที่ข้าม · bucket · โฟลเดอร์ที่อนุญาต — ไม่มีชื่อไฟล์/ path ของตัวที่ข้าม) · `prefixes: []` · ไม่มี `bucket` · `{}` = **ไม่ลบอะไรเลย** · ไม่ส่ง options (หรือ `null`) = พฤติกรรมเดิม (เส้นลบใบเสนอราคายังเรียกแบบนั้น)
+- **`DELETE` ใบสั่งขาย** ส่ง `{ bucket: PRIVATE_EVIDENCE_BUCKET, prefixes: [โฟลเดอร์ order-confirmation ของใบเสนอราคาต้นทาง] }` · ใบที่ไม่มีใบเสนอราคาต้นทาง = `prefixes: []` · ผลข้างเคียงที่ตั้งใจ: ref เก่าที่ชี้โฟลเดอร์ `won/` ของใบเสนอราคา (ใบก่อน mig 0285) ไม่ถูกลบตามใบสั่งขายแล้ว — ไฟล์นั้นเป็นของใบเสนอราคา หายพร้อมโฟลเดอร์ตอนลบใบเสนอราคา
+- **`DELETE /api/upload` ขา `storagePath`** — ตอบ 403 `forbidden` เสมอ และทั้ง handler ไม่เรียก Supabase Storage แล้ว · เหตุ: ไฟล์ใน Storage ไม่มีใบรับ จึงไม่รู้ว่าใครอัป · ลบตาม path ไม่ได้ถามว่ามีแถวไหนอ้างอยู่ · ผู้เรียกเดียวของขานี้ (หน้าสร้างใบสั่งขาย ตอนสร้างไม่สำเร็จ ส่ง entityType `sales_order_confirmation`) ได้ 403 มาตั้งแต่เดิม ⇒ ไม่มีจอไหนเสียความสามารถ · **คำขอนั้นถอดออกจากจอแล้ว** (`sales-orders/new/page.js` — กิ่งล้มเหลือแค่แสดงเหตุกับปลดปุ่ม) ⇒ ไม่มีจอไหนเรียกขานี้อีก · ขา Drive ไม่ได้แตะ
+
+### ข้อมูลจริงที่ใช้ตัดสิน (อ่านอย่างเดียว 09/10/2569 00:55 เวลาไทย)
+
+- `sales_orders.confirmAttachments` 220 ref — bucket `sales-evidence` ใต้ `quotations/<quotationId ของใบเอง>/order-confirmation/` ทั้งหมด · `driveFileId` 0 · `fileUrl` 0 ⇒ กติกา ①② ไม่ตัด ref จริงใบไหน และ `PATCH` `save` ที่ส่ง ref เดิมกลับมายังผ่าน
+- `sales_order_installments.evidence` 164 ref — bucket `sales-evidence` ทั้งหมด · `taxInvoiceFile` 9 ใบ อยู่ใต้ `sales-orders/<id ใบเอง>/tax-invoices/` ทั้งหมด
+- `upload_receipts` 0 แถว (ยังไม่มีใครอัปตั้งแต่รอบหนึ่งขึ้นระบบ) — เหตุที่ PR นี้แยกจากส่วนเธรด/นัดช่างซึ่งต้องพึ่งใบรับ
+- ชื่อ object: ไม่ได้วัดจากฐานว่าทุกใบตรงรูป `^[A-Za-z0-9._-]+$` — อ้างจากโค้ด: ตัวสร้าง path ล้างชื่อเป็น ASCII ชุดนี้มาตั้งแต่คอมมิตแรกที่เก็บหลักฐานใน bucket (`e43c2dd5`) และ Storage ไม่รับ key ที่มีอักขระไทย/ช่องว่าง
+- ⚠️ ตัวเลขมาจากผู้ตรวจที่อ่านฐานจริง ไม่มีสคริปต์ในรีโป
+
+### ของที่เหลือ (รู้แล้ว ไม่ได้แก้ใน PR นี้)
+
+- **`DELETE` ใบสั่งขายไม่ถามว่ามีแถวอื่นอ้าง object เดียวกันอยู่ไหม** — วันนี้กันด้วยด่านห้ามลบใบที่อยู่ในสาย Rev. และใบที่มีงวดย้ายออก
+- **แก้ใบก่อน mig 0285 ที่ยกไฟล์จาก `won/` ตามเข้าใบ ยังบันทึกไม่ได้ถ้าไม่แนบไฟล์ใหม่** (ref ชี้ `won/` ไม่ใช่ `order-confirmation/` — เป็นมาก่อน PR นี้) · แนบไฟล์ใหม่แล้วบันทึกได้ แต่ ref `won/` ไม่ตามเข้าใบ (ถูกทิ้งจากชุดโดยไม่บอก — ข้อยกเว้นของ `PATCH` `save` ข้างบน) · วัดแล้วไม่มีใบแบบนี้ที่ยังแก้ได้ (0 ใบ)
+- **สร้างใบสั่งขายไม่สำเร็จ = ไฟล์ค้างเป็นไฟล์กำพร้า** ในโฟลเดอร์ order-confirmation ของใบเสนอราคา (เป็นอยู่เดิม — เส้นถอยตอบ 403 มาตลอด และจอไม่ยิงเส้นถอยแล้ว) · กดสร้างใหม่ = อัปทุกไฟล์อีกรอบ (หน้านี้ไม่จำ ref ของรอบที่ล้ม) · หายพร้อมโฟลเดอร์ตอนลบใบเสนอราคา
+- **นำเข้าใบย้อนหลังยังทิ้ง ref ที่ไม่ผ่านเงียบ ๆ** — ชุดหลักฐานงวดยกมาที่ผ่านไม่ครบถูกบันทึกสั้นลงโดยไม่มีข้อความ (ทั้งตอนแก้ใบและตอนส่งอนุมัติ) · ยังไม่ได้ไล่ว่าวิซาร์ดส่งอะไรมาบ้างในทุกทาง จึงยังไม่ใส่ด่าน "ผ่านไม่ครบ"
+- **ชุดที่ส่งเกินเพดาน 8 ไฟล์ถูกตัดเงียบ ๆ** (เป็นอยู่เดิม) — ตัวกรองเก็บ 8 ตัวแรกที่ผ่าน และ `evidenceRefsDropped` ไม่นับส่วนที่เกินเพดานเป็นการถูกปฏิเสธ
+- **`quotations/[id]/file` ยังมีทาง Drive/redirect** — ช่อง `wonAttachments` ไม่มีเส้นเขียนแล้ว และไม่มี ref รูปนั้น (0 แถว)
+- `removeEvidenceRefs` แบบมีขอบเขตตรวจแค่ bucket + โฟลเดอร์ ไม่ตรวจ "ชื่อ object เดียว" — ฝั่งเขียนสร้าง ref ที่มีโฟลเดอร์ย่อยไม่ได้แล้ว
+- ไม่มีการตรวจย้อนหลัง ref ที่เขียนระหว่างเวลาที่วัดกับเวลาที่ PR นี้ขึ้นระบบ — ref นอกกติกาที่ถูกปลูกในช่วงนั้นอ่านไม่ได้ (404) และไม่ถูกลบตามใบ แต่ยังค้างในแถว
+
+### เทสต์ของส่วนนี้
+
+`lib/sales/orderConfirmationDocs.test.mjs` (28 · โหมด `privateOnly` 7 + ตรึงโหมดเดิม 1 + `evidenceRefsDropped` 5) · `lib/upload/evidencePurge.test.mjs` (10 · ขอบเขตการลบ 4) · `lib/sales/evidenceSinkCallers.test.mjs` (10 · ทะเบียน + ตรึงรูปการเรียกของสามเส้น + ตำแหน่งด่าน "ผ่านไม่ครบ" 2) · `lib/sales/historicalOrderCommit.test.mjs` (45 · โหมดเข้มของหลักฐานงวดยกมา 1) · `app/api/storedFileResponses.test.mjs` (9 · `confirm-file` 1) · `lib/upload/uploadReceiptRoutes.test.mjs` (7 · ขา `storagePath` 1 + หน้าสร้างใบไม่ยิงเส้นถอย 1)
+
+## ยังไม่ครอบ (รอบสอง ส่วนที่เหลือ)
+
+- ปลายทางที่รับ id/ลิงก์ไฟล์ **Drive** จาก client ยัง **ไม่ตรวจและไม่ประทับใบรับ**: ไฟล์ในเธรดอัปเดต (`entity_updates.attachments`) · URL รูปและลายเซ็นของนัดช่าง — เป็น PR แยก (`claude/thread-visit-receipts`) ซึ่ง **ห้าม merge ก่อนรอบหนึ่งถูกใช้จริงบน production** (มีใบรับที่ออกและถูกประทับจริงอย่างน้อยหนึ่งใบ) · `requireUploadReceipt` มีพารามิเตอร์ `alreadyStored` เตรียมไว้ให้ปลายทางที่บันทึกทั้งชุดซ้ำทุกครั้งที่แก้
+- ✅ ref เอกสารยืนยันคำสั่งซื้อ (`sales_orders.confirmAttachments`) · หลักฐานรายงวด · ไฟล์ใบกำกับภาษี — ปิดใน §รอบสอง ส่วนหลักฐานของใบสั่งขาย (bucket ส่วนตัว + โฟลเดอร์ของตัวเอง + ชื่อ object เดียว + ไฟล์มีจริง)
+- `collectReferencedIds` และ `driveFileReferenced` ยังไม่อ่านรูปของนัดช่าง · `sales_orders.confirmAttachments` ไม่ต้องอ่านแล้ว — ฝั่งเขียนไม่รับ id ไฟล์ Drive ลงช่องนี้อีก (และวัดแล้วไม่มีใบไหนเก็บ)
 - `ledgerHealth` มีแล้วแต่ **ยังไม่ต่อเข้าหน้าตรวจที่เก็บไฟล์** (`/settings/storage`) — ลืมรัน 0406 วันนี้รู้ได้จาก log `🔴 ออกใบรับการอัปโหลดไม่สำเร็จ` กับ 503 ที่ผู้ใช้เจอตอนแนบเท่านั้น
 - ยังไม่มีงานลบใบรับเก่า (ตารางโตหนึ่งแถวต่อการอัปหนึ่งครั้ง)
 
@@ -117,5 +191,5 @@
 
 - **PGlite นอกรีโป** รันไฟล์ SQL ตัวจริง: `ALL PASS (30)` — รันสามรอบซ้ำได้ · RLS เปิด · ไม่มี policy · `anon`/`authenticated` ถูกปฏิเสธ · `service_role` insert และประทับได้ · CHECK ทำงาน · 7 ช่อง · ชุดตรวจและชุด rollback ท้ายไฟล์รันได้ตามที่เขียน (สคริปต์อยู่นอกรีโป รันซ้ำจาก CI ไม่ได้)
 - **ในรีโป** `lib/upload/uploadReceiptsMigration.test.mjs` (6 เทสต์) อ่านตัวหนังสือของไฟล์: ทรานแซกชันเดียว · `NOTIFY` หลัง `COMMIT` · CHECK ตั้งชื่อเอง + `DROP IF EXISTS` แล้ว `ADD` · RLS ไม่มี policy
-- เทสต์อื่นของส่วนนี้: `lib/upload/receipts.test.mjs` (21) · `lib/upload/uploadReceiptRoutes.test.mjs` (5) · `app/api/attachments/uploadProvenanceAttach.test.mjs` (5) · `lib/master/attachmentSafeRelease.test.mjs` (15)
+- เทสต์อื่นของส่วนนี้: `lib/upload/receipts.test.mjs` (21) · `lib/upload/uploadReceiptRoutes.test.mjs` (7 — ตัวที่หกและเจ็ดมากับ PR รอบสอง) · `app/api/attachments/uploadProvenanceAttach.test.mjs` (5) · `lib/master/attachmentSafeRelease.test.mjs` (15)
 - 🔴 **ยังไม่ได้รันบนฐานจริง** และยังไม่ได้รัน `check:columns` กับโค้ดชุดนี้ — แก้บรรทัดสถานะของไฟล์นี้ในคอมมิตที่ยืนยันการรัน

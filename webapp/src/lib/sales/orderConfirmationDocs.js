@@ -40,11 +40,43 @@ export const DEFAULT_EVIDENCE_BUCKET = 'sales-evidence';
 
 // รับเฉพาะ ref ไฟล์ที่อัปผ่าน /api/upload แล้ว — เก็บฟิลด์ที่จำเป็นเท่านั้น
 // (pattern เดียวกับ sales_deal_activities.attachments)
-export function sanitizeEvidenceAttachments(input, { allowedStorageBucket = null, allowedStoragePathPrefix = null } = {}) {
+//
+/* ⭐ `privateOnly: true` = โหมดเข้มของ **ฝั่ง server** (รอบสองของด่านที่มาไฟล์ · 2026-10-09)
+   🐞 โหมดตั้งต้นปล่อยของสองแบบที่ไม่ควรถึงแถว: `{ fileUrl:'x', driveFileId }` (confirm-file
+   เคยสตรีม Drive id นั้นออกมาให้) และ `{ fileUrl:'x', storagePath }` ที่ไม่ส่ง storageBucket
+   (ข้ามด่าน bucket/โฟลเดอร์ทั้งคู่ แล้วเส้นลบใบสั่งขายตามไปลบ object นั้นทีหลัง)
+   ⇒ โหมดนี้รับเฉพาะไฟล์ใน bucket ส่วนตัว ใต้โฟลเดอร์ของเอกสารใบนั้น และเป็น **ชื่อ object เดียว**
+   ตามรูปที่ `privateEvidenceObjectPath` สร้าง (`<ms>_<uuid>_<ชื่อที่ล้างแล้ว>`) — จุดซ้อนในชื่อไฟล์
+   ถูกต้อง · `/` `%` `?` `#` `\` และอักขระควบคุมไม่ผ่าน
+   🔴 ไม่ได้ส่ง bucket/โฟลเดอร์มา (ว่าง · null · ไม่มี) = **ไม่รับสักไฟล์** — ผู้เรียกที่ประกอบ
+   โฟลเดอร์จาก id ที่ว่างต้องไม่กลายเป็นด่านที่เปิดเอง
+   ⚠️ **ห้ามเปิดเป็นค่าตั้งต้น** — ฟอร์มสร้างใบสั่งขายเรียก `validateOrderConfirmation` ด้วยตัวแทน
+   `{ fileUrl: 'pending' }` โดยไม่ส่ง option (ไฟล์ยังไม่ได้อัป) เพื่อให้ตัวตรวจนับจำนวนได้ */
+const EVIDENCE_OBJECT_NAME_RE = /^[A-Za-z0-9._-]+$/;
+const MAX_STORAGE_BUCKET = 100;
+const MAX_STORAGE_PATH = 1000;
+
+function isOwnPrivateRef(a, bucket, prefix) {
+  if (typeof bucket !== 'string' || !bucket) return false;
+  if (typeof prefix !== 'string' || !prefix) return false;
+  if (typeof a.storageBucket !== 'string' || typeof a.storagePath !== 'string') return false;
+  if (a.storageBucket !== bucket || !a.storagePath.startsWith(prefix)) return false;
+  // ยาวเกินเพดาน = ค่าที่เก็บจะถูกตัดจนชี้ object อื่น ⇒ ไม่รับตั้งแต่ต้น
+  if (a.storageBucket.length > MAX_STORAGE_BUCKET || a.storagePath.length > MAX_STORAGE_PATH) return false;
+  const name = a.storagePath.slice(prefix.length);
+  return EVIDENCE_OBJECT_NAME_RE.test(name) && name !== '.' && name !== '..';
+}
+
+export function sanitizeEvidenceAttachments(
+  input,
+  { allowedStorageBucket = null, allowedStoragePathPrefix = null, privateOnly = false } = {},
+) {
   if (!Array.isArray(input)) return [];
+  const strict = privateOnly === true;
   return input
     .filter((a) => {
       if (!a || typeof a !== 'object') return false;
+      if (strict) return isOwnPrivateRef(a, allowedStorageBucket, allowedStoragePathPrefix);
       const legacyRef = typeof a.fileUrl === 'string' && a.fileUrl;
       const privateRef = typeof a.storageBucket === 'string' && a.storageBucket
         && typeof a.storagePath === 'string' && a.storagePath;
@@ -55,15 +87,34 @@ export function sanitizeEvidenceAttachments(input, { allowedStorageBucket = null
     })
     .slice(0, MAX_CONFIRM_ATTACHMENTS)
     .map((a) => ({
-      fileUrl: a.fileUrl ? String(a.fileUrl) : null,
-      driveFileId: a.driveFileId ? String(a.driveFileId) : null,
-      storageBucket: a.storageBucket ? String(a.storageBucket).slice(0, 100) : null,
-      storagePath: a.storagePath ? String(a.storagePath).slice(0, 1000) : null,
+      // โหมดเข้ม: ไฟล์อยู่ใน bucket ที่เดียว — ค่า Drive ที่ client ส่งมาด้วยต้องไม่ตามลงแถว
+      fileUrl: !strict && a.fileUrl ? String(a.fileUrl) : null,
+      driveFileId: !strict && a.driveFileId ? String(a.driveFileId) : null,
+      storageBucket: a.storageBucket ? String(a.storageBucket).slice(0, MAX_STORAGE_BUCKET) : null,
+      storagePath: a.storagePath ? String(a.storagePath).slice(0, MAX_STORAGE_PATH) : null,
       fileName: a.fileName ? String(a.fileName).slice(0, 200) : null,
       mimeType: a.mimeType ? String(a.mimeType).slice(0, 100) : null,
       sizeBytes: Number.isFinite(a.sizeBytes) ? Number(a.sizeBytes) : null,
     }));
 }
+
+/**
+ * client ส่ง ref มา แต่ตัวกรองโหมดเข้มตัดบางตัวทิ้ง ⇒ true — **ฝั่ง server ใช้ปฏิเสธทั้งคำขอ** (400 · ไม่เขียนอะไร)
+ *
+ * 🐞 เดิม ref ที่ไม่ผ่านถูกตัดเงียบ ๆ และคำขอล้มเฉพาะเมื่อไม่เหลือสักไฟล์ — PATCH `save` เอาชุดที่สั้นลงไป **ทับ** ชุดเดิม
+ *    (ไฟล์ที่หายไปคือไฟล์ที่ถูกลบ) ⇒ ไฟล์หายจากใบด้วย 200 โดยไม่มีข้อความ (2026-10-09)
+ * ⭐ นับกับ `min(จำนวนที่ส่ง, MAX_CONFIRM_ATTACHMENTS)` — ตัวกรองตัดที่เพดานอยู่แล้ว การส่งเกินเพดานไม่ใช่ ref ที่ถูกปฏิเสธ
+ * ⚠️ `sent` ที่ไม่ใช่อาร์เรย์/ว่าง = ไม่ได้ส่งไฟล์ ⇒ false เสมอ (ด่าน "ต้องมีอย่างน้อย 1 ไฟล์" เป็นของผู้เรียก)
+ * ⚠️ ไม่ได้ฝังในตัวกรอง — ฟอร์มสร้างใบเรียก `validateOrderConfirmation` ด้วยตัวแทนไฟล์ที่ยังไม่ได้อัป (ดูข้างบน)
+ * @param {unknown} sent - ค่าที่ client ส่งมาตามจริง (ก่อนกรอง)
+ * @param {unknown} kept - ผลของ `sanitizeEvidenceAttachments` กับค่าเดียวกัน
+ */
+export function evidenceRefsDropped(sent, kept) {
+  if (!Array.isArray(sent) || !sent.length) return false;
+  const keptCount = Array.isArray(kept) ? kept.length : 0;
+  return keptCount < Math.min(sent.length, MAX_CONFIRM_ATTACHMENTS);
+}
+export const EVIDENCE_REFS_DROPPED_TEXT = 'ไฟล์แนบบางไฟล์ไม่ใช่ไฟล์ที่อัปโหลดผ่านระบบให้เอกสารนี้ — ลบไฟล์นั้นออกแล้วแนบใหม่อีกครั้ง';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const isDate = (v) => typeof v === 'string' && DATE_RE.test(v) && !Number.isNaN(Date.parse(v));
