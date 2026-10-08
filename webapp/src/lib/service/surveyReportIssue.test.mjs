@@ -18,11 +18,11 @@ import { renderSurveyReportHTML } from './surveyReportDocument.js';
 import { SURVEY_IMAGE_FAILURE } from './surveyReportImages.js';
 import { SURVEY_REPORT_STANDARD_KEY } from './surveyReportInputs.js';
 import {
-  SURVEY_REPORT_IMAGE_BUDGET_MS, SURVEY_REPORT_ISSUE_CODES, issueSurveyReport,
+  SURVEY_REPORT_IMAGE_BUDGET_MS, SURVEY_REPORT_ISSUE_CODES, issueSurveyReport, surveyReportPaperLineForReader,
 } from './surveyReportIssue.js';
 import { SURVEY_REPORT_COLUMNS, SURVEY_REPORT_NOT_PRODUCTION } from './surveyReportRows.js';
 import { buildSurveyReportSnapshot, surveyReportImageFiles } from './surveyReportSnapshot.js';
-import { SURVEY_REPORT_REASONS, surveyReportState } from './surveyReportState.js';
+import { SURVEY_REPORT_REASONS, surveyReportPaperIssues, surveyReportState } from './surveyReportState.js';
 import { surveyReportSendWarnings, surveyReportView } from './surveyReportView.js';
 import {
   TEST_COMPANY, fakeSha, stressSurveyInputs, surveyReportInputsFromFixture, syntheticSurveyFixture, thaiText,
@@ -1021,6 +1021,58 @@ test('I5b: chromium ล้ม (โยน · คืน error · ไม่คื�
     assert.ok(result.reason.includes('ยังไม่ได้ออกเลขเอกสาร'));
     assert.equal(world.db.rpcLog.length, 0);
   }
+});
+
+/* 🐞 UAT เอกสารประเมินพื้นที่ 2026-10-08 (S37): กล่องยืนยันและการ์ดพิมพ์ "ฉบับลูกค้า: หน้า 3 เนื้อหาเลยเส้นท้ายกระดาษ 6.4px ใต้ td.zn" —
+   ค่าวัดเป็น px กับชื่อชิ้นของหน้าไปถึงหัวหน้า · ของคนแก้ระบบต้องอยู่ใน `reasons` กับ log ไม่ใช่ในประโยคที่คนอ่าน */
+const TECHNICAL = /\dpx|td\.|HTML|su-img/;
+
+test('🐞 I5b: ประโยคที่หัวหน้าอ่าน (`reason`) ไม่มีค่าวัดเป็น px · ชื่อชิ้นของหน้า · จำนวนแผ่นของ HTML/PDF — บรรทัดเต็มยังอยู่ใน `reasons`', async () => {
+  const world = twinWorld();
+  const technical = [
+    'หน้า 3 เนื้อหาเลยเส้นท้ายกระดาษ 6.4px ใต้ td.zn',
+    'รูป 2 รูปยังไม่ถูกฝังลงกระดาษ (เหลือ su-img: ใน HTML)',
+    'จำนวนแผ่นไม่ตรงกัน — HTML 4 แผ่น · วัดได้ 4 แผ่น · PDF 5 หน้า',
+    'นับหน้าของ PDF ไม่ได้ (HTML 4 แผ่น · วัดได้ 4 แผ่น)',
+  ];
+  const clip = async () => ({
+    issues: technical.map((text, i) => ({ version: 'customer', kind: 'block', text, page: i + 1 })),
+    error: null,
+  });
+  const { result } = await issue(world, { via: 'issue_only', requestId: world.request().id, measure: clip });
+  assert.equal(result.code, 'paper_blocked');
+  assert.equal(result.retry, false);
+  assert.equal(result.reason, 'กระดาษของเอกสารยังพิมพ์ไม่ได้ — ฉบับลูกค้า: หน้า 3 เนื้อหาเลยเส้นท้ายกระดาษ | ฉบับลูกค้า: รูป 2 รูปยังไม่ถูกฝังลงกระดาษ'
+    + ' | ฉบับลูกค้า: จำนวนแผ่นไม่ตรงกัน | ฉบับลูกค้า: นับหน้าของ PDF ไม่ได้ · ยังไม่ได้ออกเลขเอกสาร');
+  assert.doesNotMatch(result.reason, TECHNICAL);
+  assert.deepEqual(result.reasons, technical.map((text) => `ฉบับลูกค้า: ${text}`), 'บรรทัดเต็มของตัววัดยังอยู่ครบสำหรับคนแก้ระบบ');
+  assert.equal(world.db.rpcLog.length, 0);
+});
+
+test('บรรทัดจริงของตัววัดกระดาษ (`surveyReportPaperIssues`) ผ่านตัวตัดแล้วไม่เหลือของคนแก้ระบบ · บรรทัดที่ไม่มีของแบบนั้นผ่านไปตามเดิม', () => {
+  const html = `<article class="sheet"></article><img src="su-img:${'a'.repeat(64)}">`;
+  const fit = [{ page: 1, rule: 1054, last: 1060.4, lastBlock: 'td.zn' }];
+  const lines = [
+    ...surveyReportPaperIssues({ html, fit, brokenImages: 1, buffer: Buffer.from('not a pdf') }),
+    ...surveyReportPaperIssues({ html, fit: [...fit, { page: 2, rule: null, last: 10 }], brokenImages: 0, buffer: Buffer.from('%PDF-1.4\n1 0 obj << /Type /Page >> endobj\n') }),
+    ...surveyReportPaperIssues({}),
+  ].filter((i) => i.kind === 'block').map((i) => i.text);
+  /* ตัววัดยังพิมพ์ของพวกนี้จริง — ถ้าวันหนึ่งมันเลิกพิมพ์ เทสต์นี้ไม่มีอะไรให้เฝ้าแล้ว (ถอดตัวตัดได้) */
+  assert.ok(lines.some((t) => /px ใต้ td\.zn$/.test(t)), lines.join(' | '));
+  assert.ok(lines.some((t) => t.includes('su-img:')), lines.join(' | '));
+  assert.ok(lines.some((t) => t.includes('HTML ')), lines.join(' | '));
+  for (const line of lines) {
+    const say = surveyReportPaperLineForReader(line);
+    assert.ok(say.length > 0, line);
+    assert.doesNotMatch(say, TECHNICAL, line);
+    assert.ok(line.startsWith(say), `ตัดได้เฉพาะท่อนท้าย: ${line}`);
+  }
+  assert.equal(surveyReportPaperLineForReader('ฉบับลูกค้า: หน้า 3 เนื้อหาเลยเส้นท้ายกระดาษ 6.4px ใต้ td.zn'), 'ฉบับลูกค้า: หน้า 3 เนื้อหาเลยเส้นท้ายกระดาษ');
+  assert.equal(surveyReportPaperLineForReader('หน้า 3 เนื้อหาเลยเส้นท้ายกระดาษ 12px'), 'หน้า 3 เนื้อหาเลยเส้นท้ายกระดาษ');
+  for (const plain of ['รูปถอดรหัสไม่ได้ 1 รูป', 'หน้า 2 ไม่มีเส้นท้ายกระดาษ', 'ไม่มีไฟล์ PDF ให้ตรวจ', 'ฉบับลูกค้า: ไม่มีกระดาษให้วัด']) {
+    assert.equal(surveyReportPaperLineForReader(plain), plain);
+  }
+  assert.equal(surveyReportPaperLineForReader(null), '');
 });
 
 /* ══ 8. I6 ผลของ RPC — ออกซ้อน · ชนกัน · คำตอบหาย (§3 ตาราง error · §15 idempotency) ═══════════ */

@@ -11,6 +11,8 @@
  *   ② **สอบเทียบตัวจัดหน้า** — แผนหน้า (`surveyReportLayout.js`) ประเมินความสูงด้วยตัวเลข · ที่นี่วัดของจริงใน Chrome
  *      แล้วพิมพ์ตารางเทียบ (ขอบล่างตามแผน vs ที่วัดได้ · ตำแหน่งตารางหน้า 1 · ความสูงกล่องผัง) — ต่างกัน = แก้ค่าคงที่
  *   ③ `--assert` ล็อกผลของ fixture จริง: ลูกค้า 4 หน้า · ภายใน 6 หน้า · คอลัมน์ "หน้า" = 2, 3 · ยอดรวม · ไม่มีหน้าไหนล้น
+ *      · สีชื่อเอกสารตามฉบับ (มติเจ้าของ 08/10/2026): ลูกค้า = สีใบเสนอราคา #ad5d43 · ภายใน = สีใบสั่งขาย #1e6091
+ *        — ตรวจทั้งค่าที่เปลือกประกาศใน HTML และสีที่ Chrome คำนวณได้จริงบนชื่อเอกสารหน้า 1 (ทุกชุดอินพุต)
  *      และล้มเมื่อ (ทุกชุดอินพุต): จุดอ้างอิงของแผน (ตารางบน · ความสูงผัง · การรับรอง · ลงนาม) ต่างจากที่วัดเกิน 8px ·
  *      ขอบล่างจริงเกินที่แผนคิด · แผนรายงานหน้าล้น (`overflow`) · PDF มีฟอนต์อื่นนอกจาก Sarabun (อักขระที่ฟอนต์ฝังไม่มี)
  *   ④ `--pipeline` (PR-2 §16 ข้อ 2) — **เดินสองขั้นของของจริงทั้งเส้น** ด้วยโค้ดชุดเดียวกับ production:
@@ -153,6 +155,12 @@ function placeholder(img) {
 /* ── เรนเดอร์ ─────────────────────────────────────────────────────────── */
 
 const SHEET = { width: 794, height: 1123 };
+/* สีชื่อเอกสารของแต่ละฉบับ — ค่าของมติเจ้าของ 08/10/2026 ("สีเดินตามผู้อ่าน": กระดาษที่ออกนอกบริษัท = สีใบเสนอราคา ·
+   กระดาษภายใน = สีใบสั่งขาย) เขียนตายตัวที่นี่โดยเจตนา: harness ต้องจับได้เมื่อโค้ดของแอปขยับสี ไม่ใช่ถามโค้ดของแอปว่าสีอะไร */
+export const PAPER_ACCENT = Object.freeze({ customer: '#ad5d43', internal: '#1e6091' });
+/** สีที่เปลือกประกาศให้กระดาษทั้งใบ (`--doc-accent` บนกล่อง `.document`) — ไม่เจอ = `null` */
+export const paperAccentOf = (html) => String(html ?? '').match(/<div class="document surveyReport" style="--doc-accent:(#[0-9a-fA-F]{6});">/)?.[1].toLowerCase() ?? null;
+const rgbOf = (hex) => `rgb(${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(', ')})`;
 const FIT_MARGIN = SURVEY_REPORT_FIT_MARGIN; // เนื้อหาต้องจบก่อนเส้นท้ายกระดาษอย่างน้อยเท่านี้ (กระดาน R-C-1:21-27) — ค่าเดียวกับขั้นกระดาษ
 const MARK_TOLERANCE = 8; // จุดอ้างอิงของแผนต่างจากที่วัดได้ไม่เกินเท่านี้ (px)
 
@@ -178,6 +186,11 @@ async function renderVersion(browser, pdfLib, { version, snapshot, bySha, dir, d
   const { page, brokenImages } = await pdfLib.openHtmlPage(browser, html);
   await page.setViewport({ ...SHEET, deviceScaleFactor: scale });
   const fit = await pdfLib.measureSheets(page);
+  // สีที่ Chrome คำนวณได้จริงบนชื่อเอกสารหน้า 1 — ค่าในแท็ก `style` ถูก แต่กฎ CSS ถูกทับ/ตัวแปรขาด ก็จับได้
+  const titleColor = await page.evaluate(() => {
+    const title = document.querySelector('.surveyReport .sheet .dh-title');
+    return title ? getComputedStyle(title).color : null;
+  });
   const pdf = Buffer.from(await page.pdf({ printBackground: true, preferCSSPageSize: true }));
   writeFileSync(join(dir, `${version}.pdf`), pdf);
 
@@ -192,7 +205,7 @@ async function renderVersion(browser, pdfLib, { version, snapshot, bySha, dir, d
   }
   await page.close();
   return {
-    version, view, layout, html, fit, brokenImages, placeholders, sheets: count,
+    version, view, layout, html, fit, brokenImages, placeholders, sheets: count, titleColor,
     pdfPages: pdfPageCount(pdf), pdfFonts: pdfFonts(pdf), pdfBytes: pdf.length, htmlBytes: Buffer.byteLength(html),
   };
 }
@@ -206,7 +219,16 @@ const mb = (bytes) => `${(Number(bytes || 0) / 1e6).toFixed(2)} MB`;
 function report(result) {
   const { version, layout, fit } = result;
   const issues = [];
-  console.log(`\n${version}: ${layout.pageCount} หน้า · HTML ${mb(result.htmlBytes)} · PDF ${mb(result.pdfBytes)} (${result.pdfPages ?? '?'} หน้า) · ฟอนต์ ${result.pdfFonts.names.join(' ') || '—'}`);
+  console.log(`\n${version}: ${layout.pageCount} หน้า · HTML ${mb(result.htmlBytes)} · PDF ${mb(result.pdfBytes)} (${result.pdfPages ?? '?'} หน้า) · ฟอนต์ ${result.pdfFonts.names.join(' ') || '—'}`
+    + ` · สีชื่อเอกสาร ${paperAccentOf(result.html) || '—'} (Chrome: ${result.titleColor || '—'})`);
+  /* สีชื่อเอกสารเดินตามฉบับ — ทุกชุดอินพุต ไม่เฉพาะชุดทองคำ: ค่าที่เปลือกประกาศ + สีที่ Chrome ใช้จริง */
+  const wantAccent = PAPER_ACCENT[version];
+  if (paperAccentOf(result.html) !== wantAccent) {
+    issues.push(`${version}: สีชื่อเอกสารต้องเป็น ${wantAccent} — เปลือกประกาศ ${paperAccentOf(result.html) || 'ไม่มี'}`);
+  }
+  if (result.titleColor !== rgbOf(wantAccent)) {
+    issues.push(`${version}: Chrome วาดชื่อเอกสารด้วย ${result.titleColor || 'ไม่พบชื่อเอกสาร'} — ต้องเป็น ${rgbOf(wantAccent)} (${wantAccent})`);
+  }
   console.log(`  ${pad('หน้า', 5)}${pad('ชนิด', 13)}${pad('แผน', 7)}${pad('วัดได้', 8)}${pad('ต่าง', 7)}${pad('เส้นท้าย', 9)}${pad('ล่างสุด', 9)}${pad('เหลือ', 7)}จุดอ้างอิง`);
   const rows = layout.pages.map((page, i) => {
     const m = fit[i] || {};
@@ -265,6 +287,9 @@ export function goldenFailures(results, docNo) {
     expect(r.view.table.total.sizeMix === 'SM 1 · ST 1', `${r.version}: ขนาดรวมต้อง "SM 1 · ST 1" — ได้ ${r.view.table.total.sizeMix}`);
     expect(r.view.survey.timeText === '12:00 น. (ตามนัด)', `${r.version}: เวลาต้อง "12:00 น. (ตามนัด)" — ได้ ${r.view.survey.timeText}`);
     expect(r.html.includes(`<div class="rh-ref">${docNo}</div>`), `${r.version}: หัววิ่งต้องมีแค่เลขที่เอกสาร`);
+    // สีชื่อเอกสารตามฉบับ (มติ 08/10/2026) — กระดาษที่ตรึงของไปป์ไลน์ก็ผ่านข้อนี้ (สีถูกตรึงไปกับ HTML)
+    expect(paperAccentOf(r.html) === PAPER_ACCENT[r.version],
+      `${r.version}: สีชื่อเอกสารต้องเป็น ${PAPER_ACCENT[r.version]} — ได้ ${paperAccentOf(r.html) || 'ไม่มี'}`);
   }
   // ตำแหน่งบนสุดของตารางหน้า 1 — ค่าคงที่ของตัวจัดหน้าต้องไม่ต่ำกว่าที่วัดได้ (ประเมินต่ำ = ล้นจริงโดยแผนไม่รู้)
   for (const r of results) {
@@ -818,7 +843,10 @@ async function mainRender(args, outDir) {
       const issues = [];
       for (const result of results) {
         const { rows, issues: found } = report(result);
-        fitReport[result.version] = { pageCount: result.layout.pageCount, zonePage: result.layout.zonePage, fonts: result.pdfFonts, pages: rows };
+        fitReport[result.version] = {
+          pageCount: result.layout.pageCount, zonePage: result.layout.zonePage, fonts: result.pdfFonts,
+          accent: paperAccentOf(result.html), titleColor: result.titleColor, pages: rows,
+        };
         issues.push(...found);
       }
       writeFileSync(join(run.dir, 'fit.json'), JSON.stringify(fitReport, null, 2));

@@ -398,3 +398,76 @@ test('🔴 อ่านรูปไม่สำเร็จ — ขั้นม�
   assert.equal(v.zones.crewGate.badge.label, 'ไม่ทราบ');
   assert.ok(!/วัดแล้ว 0/.test(`${v.now.headline} ${v.now.sub}`));
 });
+
+/* ══ PR-3 (สเปก §3.6) — บล็อกเอกสารประเมินบนหน้าคำร้อง: คีย์ `document` ของงาน ══
+   รายละเอียดทุกสถานะอยู่ที่ surveyDocumentView.test.mjs — ที่นี่ล็อกการต่อสาย: อ่าน `request.surveyDocument` ·
+   ส่งธงของคนดูถูกตัว · และการ์ดของหน้านี้ **ไม่มี** แถวด่านเอกสาร (GET คำร้องไม่ตรวจเนื้อเอกสาร) */
+const SENT = '2026-09-29T03:00:00.000Z';
+const docCurrent = (ready = { customer: true, internal: true }) => ({
+  docNo: 'SU-26090001-0', rev: 0, issuedAt: '2026-09-29T03:01:00.000Z', issuedByName: 'Apisith Pattangthani',
+  approvedByName: 'Apisith Pattangthani', approvedAt: SENT, frozenAt: SENT, ready,
+});
+const sentJob = (surveyDocument, viewer, over = {}) => surveyJobView({
+  request: request({
+    status: 'answered', answeredAt: SENT, answeredByName: 'Apisith Pattangthani',
+    surveyVisit: visit({ status: 'done', actualEndTime: '11:48:00' }), surveyDocument, ...over,
+  }),
+  today: '2026-09-30', viewer, people: PEOPLE,
+});
+
+test('PR-3 · งานมีคีย์ `document` เสมอ: ไม่มีคีย์ `surveyDocument` / ไม่มีสิทธิ์ / ยังไม่ส่งผล = null (ไม่มีบล็อก)', () => {
+  const before = surveyJobView({ request: request(), today: '2026-09-28', viewer: { canDecide: true }, people: PEOPLE });
+  assert.ok('document' in before);
+  assert.equal(before.document, null);
+  assert.equal(sentJob(undefined, { isRequesterSide: true }).document, null);
+  assert.equal(sentJob({ access: 'none' }, { isRequesterSide: true }).document, null);
+  const notSent = { access: { customer: true, internal: false, issue: false, draft: false, history: false }, issueAtSend: false, storeAllowed: true, state: 'not_sent', current: null };
+  assert.equal(surveyJobView({ request: request({ surveyDocument: notSent }), today: '2026-09-28', viewer: { isRequesterSide: true } }).document, null);
+});
+
+test('PR-3 · ผู้ขอ (ฝ่ายขาย): ปุ่มเดียว ฉบับลูกค้า · ผู้บริหาร: ปุ่มละฉบับ · หัวหน้าบนใบที่ยังไม่มีเอกสาร: ลิงก์ไปใบประเมิน', () => {
+  const sales = sentJob(
+    { access: { customer: true, internal: false, issue: false, draft: false, history: false }, issueAtSend: true, storeAllowed: true, state: 'ready', current: docCurrent(), voids: 'SU-26090001-0' },
+    { isRequesterSide: true, isOpener: true, canDecide: false, canWork: false },
+  ).document;
+  assert.equal(sales.docNo, 'SU-26090001-0');
+  assert.equal(sales.issuedText, '29/09/2026 10:01');
+  assert.deepEqual(sales.buttons, [{
+    id: 'customer', label: 'ดาวน์โหลด PDF', href: '/api/service/surveys/r1/document?version=customer&download=1', ready: true, blocked: null,
+  }]);
+  assert.doesNotMatch(JSON.stringify(sales), /internal|ภายใน/);
+
+  const exec = sentJob(
+    { access: { customer: true, internal: true, issue: false, draft: false, history: false }, issueAtSend: true, storeAllowed: true, state: 'ready', current: docCurrent() },
+    { isRequesterSide: false, canDecide: false, canWork: false },
+  ).document;
+  assert.deepEqual(exec.buttons.map((b) => b.label), ['ดาวน์โหลด PDF ฉบับลูกค้า', 'ดาวน์โหลด PDF ฉบับภายใน']);
+
+  const headDoc = {
+    access: { customer: true, internal: true, issue: true, draft: true, history: true }, issueAtSend: false, storeAllowed: true,
+    state: 'missing', current: null, history: [], nextDocNo: null, send: null, issue: null, voids: null,
+  };
+  const head = sentJob(headDoc, { isRequesterSide: false, canDecide: true, canWork: true });
+  assert.equal(head.document.text.text, 'ยังไม่มีเอกสารของใบนี้ — กด “ออกเอกสาร” ที่ใบประเมิน');
+  assert.equal(head.document.sheetLink, true, '`viewer.canWork` = เปิดใบประเมินได้');
+  assert.equal(sentJob(headDoc, { canDecide: true, canWork: false }).document.sheetLink, false);
+  // 🔴 การ์ดของหน้าคำร้องไม่มีแถวด่านเอกสาร และไม่มีส่วนเอกสารของใบประเมิน — แม้ payload จะเป็นของหัวหน้า สวิตช์เปิด
+  const flagOn = sentJob({ ...headDoc, issueAtSend: true }, { canDecide: true, canWork: true });
+  assert.ok(flagOn.control.gates.length > 0);
+  assert.ok(flagOn.control.gates.every((g) => g.key !== 'document'));
+  assert.equal(flagOn.control.gatesSentFailed, 0);
+  assert.equal(flagOn.control.document.show, false);
+});
+
+test('PR-3 · ธงของคนดูเลือกข้อความเท่านั้น: ผู้ขอบนใบเปิดได้ช่องทางเธรด · Planner ไม่มีบล็อกแม้อ่านเอกสารไม่สำเร็จ', () => {
+  const missing = { access: { customer: true, internal: false, issue: false, draft: false, history: false }, issueAtSend: false, storeAllowed: true, state: 'missing', current: null };
+  assert.equal(sentJob(missing, { isRequesterSide: true }).document.text.text,
+    'ยังไม่มีเอกสารของใบนี้ — แจ้งหัวหน้าฝ่ายบริการให้กดออกเอกสาร (เขียนในเธรดด้านล่างได้)');
+  // ธงที่ไม่ใช่ true ตรงตัว = ไม่ใช่ฝั่งผู้ขอ ⇒ ไม่ชี้ไปเธรดที่เขาเขียนไม่ได้
+  assert.equal(sentJob(missing, { isRequesterSide: 'yes' }).document.text.text,
+    'ยังไม่มีเอกสารของใบนี้ — แจ้งหัวหน้าฝ่ายบริการโดยตรงให้กดออกเอกสาร');
+  const unknown = { access: 'none', voids: null, unknown: true };
+  assert.equal(sentJob(unknown, { isRequesterSide: false, canDecide: false, canWork: true }).document, null);
+  assert.equal(sentJob(unknown, { isRequesterSide: true }).document.state, 'unknown');
+  assert.equal(sentJob(unknown, { canDecide: true }).document.state, 'unknown');
+});

@@ -1,10 +1,15 @@
 import { cachedFetchJson } from './apiCache';
 import { businessDate } from './businessDate';
 import { DOCUMENT_FORMS } from './documentBrand';
+import { DOCUMENT_AUDIENCES, documentAudienceAccentKey } from './documents/documentAudience';
 
 // ⭐ `pdr` = แบบฟอร์มคำขอพัฒนาผลิตภัณฑ์ (FM-RD-01) — ตัวแรกที่ไม่ใช่เอกสารฝั่งขาย
 // แต่ใช้เปลือกเดียวกันเพราะมันคือกระดาษที่ลูกค้า/ฝ่ายผลิตอ่านเหมือนกัน
-export const DOCUMENT_STANDARD_KEYS = Object.freeze(['quotation', 'salesOrder', 'exciseTaxNotice', 'projectTimeline', 'pdr', 'productSpec']);
+/* ⭐ `siteSurvey` = รายงานการประเมินพื้นที่ (FM-TS-01 · mig 0401 ⑦ seed แถวไว้แล้ว) — เอกสารของฝ่ายบริการ
+   🔴 **คีย์ในลิสต์นี้ต้องมีแถวใน `document_standards` เสมอ** — `loadDocumentStandardsAdmin` ไล่ตามลิสต์นี้แล้วโยน
+      `root_missing` เมื่อขาดแถว ซึ่งพา `/api/document-standards/active` ล้มสำหรับผู้ใช้ทุกคน (เอกสารทุกชนิดตกไปค่าสำรอง)
+      ⇒ เพิ่มคีย์ = ต้องมี migration ที่ seed แถวขึ้น prod ก่อนโค้ด */
+export const DOCUMENT_STANDARD_KEYS = Object.freeze(['quotation', 'salesOrder', 'exciseTaxNotice', 'projectTimeline', 'pdr', 'productSpec', 'siteSurvey']);
 
 export const DOCUMENT_STANDARD_LABELS = Object.freeze({
   quotation: 'ใบเสนอราคา',
@@ -18,13 +23,18 @@ export const DOCUMENT_STANDARD_LABELS = Object.freeze({
         (v3: titleTh/titleEn คู่นี้ — เปลี่ยนชื่อผ่านเส้นมาตรฐานเอกสาร ไม่ใช่ UPDATE ทับ)
      🪤 อย่ารวมสองภาษาไว้ในสตริงเดียว ("… (Product Spec)") — หัวเอกสารเลือกภาษาเอง ใบไทยจะได้ชื่อสองภาษาซ้อน */
   productSpec: 'รายละเอียดผลิตภัณฑ์',
+  // ป้ายของแท็บ/หัวข้อบนหน้าตั้งค่า — ชื่อบนกระดาษ FM-TS-01 ตรึงอยู่ในตัวเรนเดอร์ (ดู DOCUMENT_FORM_ONLY_KEYS)
+  siteSurvey: 'รายงานการประเมินพื้นที่',
 });
 
 // เปิดให้เลือกเฉพาะสีที่มีเอกสารใช้จริงตอนนี้ (มติ 2026-07-25) — เครื่องยนต์เอกสาร
 // (DOCUMENT_ACCENT_THEMES) รองรับมากกว่านี้ แต่ตัวเลือกที่ไม่มีเอกสารชนิดไหนใช้
 // ก็เป็นปุ่มที่กดแล้วไม่เกิดอะไร · เพิ่มคีย์ที่นี่ตอนมีเอกสารชนิดใหม่จริง
-/* ⭐ FM-SA-04 ใช้สีเดียวกับใบเสนอราคา (มติผู้ใช้ 2026-09-22 "ขอเปลี่ยน accent เป็นเหมือน QT") ⇒ teal ไม่มีเอกสารใช้แล้ว
-   จึงถอดจากตัวเลือก · แถวมาตรฐานเก่าที่ถือ teal ตกไปสีตั้งต้นของชนิดนั้นเอง (resolver ข้างล่าง) ไม่ต้องแก้ข้อมูล */
+/* ⭐ FM-SA-04 ใช้สีเดียวกับใบเสนอราคา (มติผู้ใช้ 2026-09-22 "ขอเปลี่ยน accent เป็นเหมือน QT") ⇒ teal ถูกถอดจากตัวเลือก
+   ของชุดนี้ · แถวมาตรฐานเก่าที่ถือ teal ตกไปสีตั้งต้นของชนิดนั้นเอง (resolver ข้างล่าง) ไม่ต้องแก้ข้อมูล
+   ⭐ **teal ไม่มีเอกสารชนิดไหนใช้แล้ว** (มติเจ้าของ 08/10/2026) — FM-TS-01 เคยจะพิมพ์ teal ตามกระดาน แต่มติเปลี่ยนเป็น
+      "สีเดินตามผู้อ่าน" (ดู ACCENT_BY_AUDIENCE_DOCUMENT_KEYS ข้างล่าง) ⇒ ไม่มีป้าย teal ไม่มีชนิดไหนเลือกได้ และด่านรูปร่างของ body
+      ตีกลับ · แถวในฐานที่ยังถือ teal (FM-SA-04 v1–v3 · แถว seed ของ siteSurvey) อ่านผ่าน resolver เป็นสีตั้งต้นของชนิดตัวเองเสมอ */
 export const DOCUMENT_ACCENT_KEYS = Object.freeze(['terracotta', 'steel', 'amber', 'navy']);
 
 export const DOCUMENT_ACCENT_LABELS = Object.freeze({
@@ -42,7 +52,97 @@ const DEFAULT_ACCENT_BY_KEY = Object.freeze({
   exciseTaxNotice: 'amber',
   projectTimeline: 'navy',
   productSpec: 'terracotta',
+  /* สีของ FM-TS-01 เดินตามผู้อ่าน ไม่ใช่ค่าของแถวมาตรฐาน — ค่านี้คือสิ่งที่คอลัมน์ `accentKey` ของชนิดนี้ **ถือไว้เฉย ๆ**
+     (ทะเบียนบังคับให้มีค่า) และคือค่าที่ resolver คืนให้แถวที่ยังถือ teal · เลือกสีของฉบับที่ออกนอกบริษัท = ฉบับที่เป็นหน้าตา
+     ของเอกสารชนิดนี้ · ⚠️ กระดาษไม่อ่านค่านี้ (`surveyReportAccentKey` ถามจากฉบับเอง) */
+  siteSurvey: documentAudienceAccentKey('external'),
 });
+
+/* ── ชนิดที่กระดาษอ่านจากมาตรฐานแค่ "บรรทัดแบบฟอร์ม" ──────────────────────────────
+   กระดาษของชนิดนี้ใช้จากมาตรฐานแค่ รหัสแบบฟอร์ม · Revision · วันที่มีผล
+   ชื่อเอกสาร · สี · รูปแบบเลขที่ กำหนดในระบบ (FM-TS-01: สีเดินตามผู้อ่านของฉบับ — ดูบล็อกถัดไป · เลขที่ SU-YYMMXXXX-R
+   ออกจาก RPC `issue_survey_report`) — แก้ช่องพวกนั้นในหน้าตั้งค่าไม่เปลี่ยนกระดาษ
+
+   🔑 คำถามเจ้าของข้อ 6 (ใครแก้มาตรฐาน FM-TS-01 ได้) — ตอบแล้ว 08/10/2026: "ด่านเดิม" คีย์นี้ใช้ `canManageDocumentStandards`
+      (lib/permissions.js) ตัวเดียวกับทุกชนิด ไม่มีสิทธิ์รายคีย์ */
+export const DOCUMENT_FORM_ONLY_KEYS = Object.freeze(['siteSurvey']);
+
+/* ── ชนิดที่สีของกระดาษเดินตามผู้อ่าน (มติเจ้าของ 08/10/2026 ข้อ 5 — กติกาทั้งระบบ) ─────────────────
+   กระดาษที่ออกนอกบริษัท = terracotta (สีของใบเสนอราคา) · กระดาษภายใน = steel (สีของใบสั่งขาย) — `lib/documents/documentAudience.js`
+   ⇒ ชนิดในลิสต์นี้ **ไม่มีสีให้เลือก**: หน้าตั้งค่าไม่มีตัวเลือกสี โชว์บรรทัดอ่านอย่างเดียวพร้อมจุดสีของแต่ละฉบับแทน
+      (`documentAudienceAccentMarks`) และทุกจุดที่เคยโชว์ "สีของมาตรฐาน" (หัวรายละเอียด · ประวัติ · ลิ้นชัก) โชว์จุดสองสีชุดเดียวกัน
+   ⚠️ รอบนี้มี FM-TS-01 ชนิดเดียว — ชนิดอื่นยังเลือกสีจากมาตรฐานเหมือนเดิมทุกอย่าง · งานถัดไปจะย้ายเอกสารทุกชนิดมาที่กติกานี้
+      (เติมคีย์ที่นี่ + ให้ตัวเรนเดอร์ของชนิดนั้นถามสีจาก `documentAudienceAccentKey`)
+   🔴 **สีของกลุ่มผู้อ่านเป็นคีย์ตายตัว ไม่ได้อ่านมาตรฐานที่เผยแพร่ของใบเสนอราคา/ใบสั่งขาย** — และสองชนิดนั้น **ยังเลือกสีได้สี่สี**
+      (`documentAccentKeysFor` ข้างล่าง · กระดาษของมันอ่านค่าที่เผยแพร่จริง — `lib/sales/quotePrint.js` · `salesOrderPrint.js`)
+      ⇒ วันที่หัวหน้าเผยแพร่ใบเสนอราคาเป็น Navy ใบเสนอราคาพิมพ์ navy แต่ฉบับลูกค้าของ FM-TS-01 ยัง terracotta
+      ⇒ **ข้อความบนจอห้ามบอกว่า "สีเดียวกับใบเสนอราคา / ใบสั่งขาย"** (จริงแค่ตราบที่ไม่มีใครแก้สองชนิดนั้น) — เอ่ย **ชื่อสี** แทน
+      ทางที่ทำให้ประโยค "เหมือนใบเสนอราคา" จริงโดยโครงสร้าง = ล็อกสีของสองชนิดนั้น (`documentAccentKeysFor` คืนค่าเดียว)
+      — **ยังไม่ได้ทำ รอมติเจ้าของ**: ตัวเลือกสีของใบเสนอราคา/ใบสั่งขายจะหายจากหน้าตั้งค่า (เรื่องของงานทั้งระบบ ไม่ใช่ของ FM-TS-01)
+   ⚠️ คนละเรื่องกับ DOCUMENT_FORM_ONLY_KEYS (กระดาษอ่านแค่บรรทัดแบบฟอร์ม) — วันนี้สองลิสต์มีสมาชิกตัวเดียวกันโดยบังเอิญ */
+export const ACCENT_BY_AUDIENCE_DOCUMENT_KEYS = Object.freeze(['siteSurvey']);
+
+export const documentAccentFollowsAudience = (documentKey) => ACCENT_BY_AUDIENCE_DOCUMENT_KEYS.includes(documentKey);
+
+// ชื่อที่ใช้เรียกฉบับของผู้อ่านแต่ละกลุ่มบนจอ
+const AUDIENCE_COPIES = Object.freeze({
+  external: 'ฉบับลูกค้า',
+  internal: 'ฉบับภายใน',
+});
+
+// ชื่อสีล้วน = ท่อนหน้าของป้ายสี ("Terracotta · ใบเสนอราคา · …" → "Terracotta") — ท่อนหลังของป้ายคือชนิดเอกสารที่ใช้สีนั้นเป็นค่าตั้งต้น
+const accentName = (accentKey) => String(DOCUMENT_ACCENT_LABELS[accentKey] || accentKey).split(' · ')[0];
+
+/** หัวบรรทัดของ `documentAudienceAccentMarks` บนหน้าตั้งค่า */
+export const DOCUMENT_AUDIENCE_ACCENT_LEAD = 'สีเดินตามผู้อ่าน';
+
+/**
+ * จุดสีของเอกสารที่สีเดินตามผู้อ่าน — สิ่งที่หน้าตั้งค่าวาดแทนตัวเลือกสี/ป้ายสีของมาตรฐาน
+ * @returns `null` สำหรับชนิดที่สีมาจากมาตรฐาน (จอวาดตัวเลือกสีตามเดิม) · ไม่งั้น
+ *   `[{ audience, accentKey, copy, text }]` ตามลำดับ DOCUMENT_AUDIENCES — `copy` = ชื่อฉบับ ("ฉบับลูกค้า") ·
+ *   `text` = ประโยคเต็ม ("ฉบับลูกค้าใช้สี Terracotta") · `accentKey` = คีย์สีจริงของฉบับนั้น (ตัวเดียวกับที่กระดาษพิมพ์)
+ *   ⚠️ `text` เอ่ย **ชื่อสีของ `accentKey` ตัวเดียวกัน** ไม่เอ่ยชื่อเอกสารชนิดอื่น (ดูบล็อกข้างบน) ⇒ ประโยคกับจุดสีไม่มีวันพูดคนละอย่าง
+ */
+export function documentAudienceAccentMarks(documentKey) {
+  if (!documentAccentFollowsAudience(documentKey)) return null;
+  return DOCUMENT_AUDIENCES.map((audience) => {
+    const copy = AUDIENCE_COPIES[audience];
+    const accentKey = documentAudienceAccentKey(audience);
+    return { audience, accentKey, copy, text: `${copy}ใช้สี ${accentName(accentKey)}` };
+  });
+}
+
+/* ── ใบตัวอย่างของชนิดที่มีสองฉบับตามผู้อ่าน: ฉบับไหน + ลิงก์หน้าเต็มจอ ─────────────────────────────
+   หน้าตั้งค่ามีตัวสลับฉบับ (ลูกค้า | ภายใน) — ปุ่ม "เปิดเต็มจอ" ต้องพาฉบับที่กำลังดูไปด้วย ไม่งั้นเลือกฉบับภายในแล้วเปิดเต็มจอ
+   ได้ฉบับลูกค้า (คนละสี คนละจำนวนหน้า) และ "พิมพ์ / Save PDF" ของหน้านั้นพิมพ์ได้แต่ฉบับลูกค้า
+   🔑 ค่าใน URL เป็นของที่ผู้ใช้พิมพ์เองได้ ⇒ รับเฉพาะค่าใน DOCUMENT_AUDIENCES · ค่าอื่น/ไม่ส่ง = ฉบับที่ออกนอกบริษัท (ตัวแรกของลิสต์)
+      — ไม่มีทางพาใบตัวอย่างไปฉบับภายในโดยไม่ตั้งใจ · ชนิดที่มีใบตัวอย่างใบเดียว = `null` (ไม่มีตัวสลับ ไม่มีพารามิเตอร์) */
+
+/** ฉบับของใบตัวอย่างที่ใช้ได้จริงสำหรับชนิดเอกสารหนึ่ง — `'external' | 'internal'` หรือ `null` (ชนิดนั้นมีใบตัวอย่างใบเดียว) */
+export function documentPreviewAudience(documentKey, value) {
+  if (!documentAccentFollowsAudience(documentKey)) return null;
+  return DOCUMENT_AUDIENCES.includes(value) ? value : DOCUMENT_AUDIENCES[0];
+}
+
+/** ลิงก์หน้าเต็มจอของใบตัวอย่าง — ชนิดที่มีสองฉบับพก `audience` ของฉบับที่กำลังดูไปด้วย
+ *  ⚠️ ฝั่งรับ (`app/settings/document-standards/preview/page.js`) ต้องอ่านพารามิเตอร์นี้ผ่าน `documentPreviewAudience(documentKey, ค่าจาก URL)`
+ *     แล้วส่งเป็น `{ audience }` ให้ `buildStandardPreviewHTML` — ไม่อ่าน = หน้าเต็มจอได้ฉบับที่ออกนอกบริษัทเสมอ */
+export function documentStandardPreviewHref(documentKey, audience) {
+  const copy = documentPreviewAudience(documentKey, audience);
+  return `/settings/document-standards/preview?doc=${documentKey}${copy ? `&audience=${copy}` : ''}`;
+}
+
+/** สี accent ที่คอลัมน์ `accentKey` ของเอกสารชนิดหนึ่ง **รับได้** — ชนิดที่เลือกสีจากมาตรฐาน = ชุดกลางสี่สี ·
+ *  ชนิดที่ไม่มีสีให้เลือก (กระดาษอ่านแค่บรรทัดแบบฟอร์ม หรือสีเดินตามผู้อ่าน) = ค่าเดียวคือสีตั้งต้นของชนิดนั้น */
+export function documentAccentKeysFor(documentKey) {
+  return DOCUMENT_FORM_ONLY_KEYS.includes(documentKey) || documentAccentFollowsAudience(documentKey)
+    ? [DEFAULT_ACCENT_BY_KEY[documentKey]]
+    : DOCUMENT_ACCENT_KEYS;
+}
+
+// สีที่เลือกได้ของ "อย่างน้อยหนึ่งชนิด" — ด่านรูปร่างของ body (normalizeDocumentStandardInput) ใช้ชุดนี้
+// เพราะตอนนั้นยังไม่รู้ว่ากำลังแก้มาตรฐานของชนิดไหน
+const SELECTABLE_ACCENT_KEYS = Object.freeze([...new Set(DOCUMENT_STANDARD_KEYS.flatMap(documentAccentKeysFor))]);
 
 export const DOCUMENT_STANDARD_LIMITS = Object.freeze({
   titleTh: 150,
@@ -84,6 +184,9 @@ export const DOCUMENT_NUMBER_CYCLES = Object.freeze({
   // สามอย่างนี้เกิดคู่กัน ถ้ารอบตัดไม่ตรงกันโครงการหนึ่งใบจะถือเลขสองรอบคาบเกี่ยว
   projectTimeline: 'year',
   pdr: 'month',
+  // SU ตัดรอบรายปี (ตัวนับ scope 'SU' คีย์ด้วย YY · mig 0401 ④) — `YYMM` ในเลขเป็นแค่เดือนที่ออกฉบับแรก
+  // ไม่ใส่ = ตกไป 'month' แล้วหน้าตั้งค่าจะบอกว่าเลขรันรีเซ็ตทุกเดือน ซึ่งไม่จริง
+  siteSurvey: 'year',
 });
 
 export const documentNumberCycle = (documentKey) => DOCUMENT_NUMBER_CYCLES[documentKey] || 'month';
@@ -154,7 +257,11 @@ export function normalizeDocumentStandardInput(input = {}) {
       || parsedEffectiveDate.toISOString().slice(0, 10) !== value.effectiveDate) {
     errors.push('วันที่มีผลไม่ถูกต้อง');
   }
-  if (!DOCUMENT_ACCENT_KEYS.includes(value.accentKey)) {
+  /* ⚠️ ด่านนี้ **ไม่รู้ชนิดเอกสาร** (เราต์ส่งมาแค่ body) ⇒ รับสีที่เลือกได้ของอย่างน้อยหนึ่งชนิด
+     ด่านจริงรายชนิดอยู่ที่ updateDocumentStandardDraft ซึ่งถาม `documentAccentKeysFor` ด้วยชนิดจากแถวในฐาน
+     (แบบเดียวกับรอบตัดเลขรันของ validateNumberingPattern) · teal ไม่ผ่านด่านนี้แล้ว (ไม่มีชนิดไหนใช้ — มติ 08/10/2026):
+     ร่างของ FM-TS-01 ที่คัดลอก teal มาจากแถวที่เผยแพร่ ฟอร์มส่งค่าที่ resolve แล้วมาแทน จึงบันทึกผ่าน */
+  if (!SELECTABLE_ACCENT_KEYS.includes(value.accentKey)) {
     errors.push('Accent ที่เลือกไม่ถูกต้อง');
   }
   const numbering = validateNumberingPattern(value.numberingPattern);
@@ -172,6 +279,42 @@ export function documentStandardStatusLabel(status) {
 
 export function hasDocumentStandardChangeNote(version) {
   return !!String(version?.changeNote || '').trim();
+}
+
+/* ── ข้อความของหน้าตั้งค่าที่ต้อง "จริงรายชนิด / รายสถานะ" — อยู่ที่นี่ จอแค่วาด ─────────────────────────── */
+
+// ช่องที่กระดาษของชนิด form-only อ่านจากมาตรฐาน (DOCUMENT_FORM_ONLY_KEYS) — ชื่อช่องตรงกับป้ายในฟอร์ม
+const FORM_ONLY_FIELDS_TEXT = 'รหัสแบบฟอร์ม · Revision · วันที่มีผล';
+
+/**
+ * ข้อความของโหมดแก้ที่บอกว่า "แก้แล้วใบตัวอย่างขยับแค่ไหน" — หัวฟอร์ม (`formLead`) กับหัวการ์ดใบตัวอย่าง (`previewLead`)
+ * 🐞 UAT PR-3 (D17): สองบรรทัดนี้เคยเป็นประโยคตายตัวของทุกชนิด ("ทุกช่องที่แก้จะเห็นผล…" · "ขยับตามที่พิมพ์อยู่ทันที")
+ *    ขณะที่กล่องแจ้งของ FM-TS-01 ที่อยู่ถัดลงมาบอกว่าชื่อ/สี/รูปแบบเลขที่ "แก้ที่นี่ไม่เปลี่ยนกระดาษ" — จอเดียวพูดสองอย่าง
+ *    และกล่องแจ้งคือตัวที่จริง (พิมพ์ชื่อใหม่ · รูปแบบเลขที่ใหม่ แล้วกระดาษไม่ขยับ) ⇒ ชนิด form-only ได้ประโยคที่เอ่ยเฉพาะช่องที่ขยับจริง
+ */
+export function documentStandardEditCopy(documentKey) {
+  if (DOCUMENT_FORM_ONLY_KEYS.includes(documentKey)) {
+    return {
+      formLead: `ตัวอย่างเอกสารขยับตามเฉพาะ ${FORM_ONLY_FIELDS_TEXT} — กด “บันทึก” ที่แถบด้านบน`,
+      previewLead: `ขยับตาม ${FORM_ONLY_FIELDS_TEXT} ที่พิมพ์อยู่ · เครื่องยนต์เดียวกับที่พิมพ์`,
+    };
+  }
+  return {
+    formLead: 'ทุกช่องที่แก้จะเห็นผลบนตัวอย่างเอกสารทันที — กด “บันทึก” ที่แถบด้านบน',
+    previewLead: 'ขยับตามที่พิมพ์อยู่ทันที · เครื่องยนต์เดียวกับที่พิมพ์',
+  };
+}
+
+/**
+ * เหตุที่ปุ่ม "เผยแพร่" ยังกดไม่ได้ — `null` = กดได้
+ * จอวาดปุ่มเสมอ (จาง · `aria-disabled`) แล้ววาดประโยคนี้เป็นบรรทัดใต้แถวปุ่ม — ไม่ฝากไว้ใน `title` ที่จอสัมผัสไม่มีทางเห็น
+ * @param editing กำลังแก้ฟอร์มอยู่ (ค่าในฟอร์มยังไม่ใช่ค่าของร่างที่บันทึก)
+ * @param draft   แถวร่างที่บันทึกไว้
+ */
+export function documentStandardPublishBlocker({ editing = false, draft = null } = {}) {
+  if (editing) return 'บันทึกฉบับร่างก่อนจึงเผยแพร่ได้';
+  if (!hasDocumentStandardChangeNote(draft)) return 'บันทึกหมายเหตุการเปลี่ยนแปลงก่อนเผยแพร่';
+  return null;
 }
 
 export function formatDocumentStandardEffectiveDate(value) {
@@ -217,10 +360,14 @@ export function resolveDocumentForm(version, documentKey) {
   };
 }
 
+// ⚠️ ถามด้วย **ชนิดเอกสาร** เสมอ — สีที่คอลัมน์รับได้ไม่เท่ากันทุกชนิด
+//    แถวที่ถือ teal (FM-SA-04 รุ่นเก่า · แถว seed ของ siteSurvey) ตกไปสีตั้งต้นของชนิดตัวเอง — ไม่มีชนิดไหนคืน teal
+// ⚠️ ชนิดที่สีเดินตามผู้อ่าน (`documentAccentFollowsAudience`): ค่าที่คืนคือค่าที่ **ฟอร์มส่งกลับไปเก็บ** เท่านั้น
+//    ไม่ใช่สีของกระดาษ (กระดาษมีสองสีตามฉบับ) — จอที่จะโชว์สีของชนิดนั้นให้ถาม `documentAudienceAccentMarks`
 export function resolveDocumentAccentKey(version, documentKey) {
   const fallback = DEFAULT_ACCENT_BY_KEY[documentKey] || 'terracotta';
   const accentKey = String(version?.accentKey || '').trim();
-  return DOCUMENT_ACCENT_KEYS.includes(accentKey) ? accentKey : fallback;
+  return documentAccentKeysFor(documentKey).includes(accentKey) ? accentKey : fallback;
 }
 
 // ชื่อไทยของเอกสารที่พิมพ์บนหัวใบ — มาตรฐานคุมได้ ไม่งั้นใช้ป้ายมาตรฐานของชนิดนั้น
@@ -267,6 +414,10 @@ export const DEFAULT_NUMBERING_PATTERNS = Object.freeze({
      ⚠️ ต้องตรงกับแถวที่ 0370 seed ลง `document_standard_versions` และผ่าน validateNumberingPattern
         (`{REVISION}` ปิดท้าย) — ค่าเดิมไม่มี `{REVISION}` จึงไม่ผ่านด่านของตัวเอง */
   productSpec: 'FM-SA-04-{DD}{MM}{YY}-{RUNNING:3}-{REVISION}',
+  /* ⚠️ **รายงานการประเมินพื้นที่ (FM-TS-01) ไม่ออกเลขด้วยรูปแบบนี้** — เลข `SU-YYMMXXXX-R` ออกจาก RPC
+     `issue_survey_report` (mig 0401 ④) ใต้ล็อกเดียวกับการเขียนแถว · รูปแบบนี้มีไว้ให้ครบตามที่ทะเบียนมาตรฐานเอกสาร
+     บังคับเท่านั้น ไม่มีใครเรียกใช้ (เหตุผลเดียวกับ `pdr`) · ต้องตรงกับแถวที่ 0401 ⑦ seed และผ่าน validateNumberingPattern */
+  siteSurvey: 'SU-{YY}{MM}{RUNNING:4}-{REVISION}',
 });
 
 const REVISION_TOKEN = '{REVISION}';

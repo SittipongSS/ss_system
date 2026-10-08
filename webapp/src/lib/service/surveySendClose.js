@@ -78,10 +78,13 @@ export function surveySendVisitStep(visit, { today = null } = {}) {
  * @param warnings        `document.send.warnings` (string[]) — ข้อความที่จะพิมพ์บนฉบับลูกค้าตามที่กรอก (มติเจ้าของ 01/10 ข้อ 3:
  *                     เตือน ไม่บล็อก) · หนึ่งคำเตือน = หนึ่งข้อ · จอส่งลิสต์ **ชุดเดียวกันนี้** กลับไปเป็น `seenWarnings`
  *                     ⚠️ ป้ายปุ่มไม่เปลี่ยนตามสามตัวนี้ — ป้ายพูดเรื่องนัด (ปิด/ไม่ปิด) ซึ่งต่างกันรายใบ · เอกสารออกทุกใบเมื่อเปิดสวิตช์
+ *                     · คำเตือนที่ซ้ำกันตามตัวอักษรขึ้นข้อเดียว (PR-3 — จอใช้ข้อความเป็น key ของข้อ) · ลิสต์ที่ส่งกลับ server ยังดิบ
+ * @param documentUnknown `view.send.documentUnknown` — GET อ่านสถานะเอกสารไม่สำเร็จ (`{ access: 'none', unknown: true }`) ⇒ จอไม่รู้ว่า
+ *                     การส่งครั้งนี้ออกเอกสารด้วยไหม · โมดัลต้องบอกผลแบบมีเงื่อนไข (PR-3 มติ 12 · #1223) · ไม่ส่ง = ไม่มีข้อนี้
  */
 export function surveySendConfirm({
   docNo = null, closesVisit = null, sendBackPending = null, sizeReview = null,
-  issuesDocument = false, replacesDocNo = null, warnings = null,
+  issuesDocument = false, replacesDocNo = null, warnings = null, documentUnknown = false,
 } = {}) {
   const effects = [
     `${docNo ? `ใบ ${docNo}` : 'ใบนี้'} เป็น “ตอบแล้ว” — ฝ่ายขายได้แจ้งเตือนและเอาตัวเลขไปตั้งราคาได้ทันที`,
@@ -104,7 +107,10 @@ export function surveySendConfirm({
       : 'ออกเอกสารประเมิน (เลข SU) ไปพร้อมกัน')
       + ' — ฝ่ายขายดาวน์โหลดฉบับลูกค้าได้ที่หน้าคำร้อง · เอกสารที่ออกแล้วแก้ไม่ได้ (แก้ = ดึงผลกลับแล้วส่งใหม่เป็น Rev ถัดไป)');
   }
-  for (const line of textList(warnings)) effects.push(`ฉบับลูกค้าจะพิมพ์ตามที่กรอกไว้ — ${line}`);
+  for (const line of [...new Set(textList(warnings))]) effects.push(`ฉบับลูกค้าจะพิมพ์ตามที่กรอกไว้ — ${line}`);
+  if (documentUnknown === true) {
+    effects.push('อ่านสถานะเอกสารประเมินไม่สำเร็จ — ถ้าระบบเปิดออกเอกสารตอนส่งผลอยู่ การส่งครั้งนี้จะออกเลข SU ด้วย');
+  }
   effects.push('ใบจะจบเมื่อฝ่ายขายกด “ปิดเรื่อง”');
   return { effects, confirmLabel: closesVisit ? 'ส่งผลและปิดนัด' : 'ส่งผล' };
 }
@@ -126,6 +132,42 @@ export function surveySendDoneText(closedVisit = null) {
   return closedVisit
     ? `ส่งผลให้ฝ่ายขายแล้ว · ปิดนัด ${codeOf(closedVisit)} เป็น “${VISIT_STATUS_LABELS.done}”`
     : 'ส่งผลให้ฝ่ายขายแล้ว';
+}
+
+/**
+ * ⭐ **toast หลังส่งผล เมื่อการส่งอาจออกเอกสารด้วย** (PR-3 · สเปก §3.5) — คืน `{ kind, msg }` (+ `duration` เมื่อไม่ใช่ค่าตั้งต้น)
+ *
+ * @param res                   คำตอบ 200 ของ route ส่งผล (`{ closedVisit, report }`)
+ * @param opts.expectedDocument โมดัลบอกไว้ว่าการส่งครั้งนี้ออกเอกสาร (`view.send.issuesDocument`)
+ *
+ * · `report` ไม่มี/`off` และโมดัลไม่ได้สัญญาเอกสาร = ข้อความเดิม (`surveySendDoneText`)
+ * · `report` ไม่มี/`off` แต่โมดัลสัญญาไว้ = สวิตช์ถูกปิดหลังเปิดหน้า (ถอยรุ่น) ⇒ เตือนว่าเอกสารยังไม่ออก พร้อมทางไปกดออกเอง
+ * · `issued` = บอกเลข · `failed` = ส่งผลสำเร็จแต่เอกสารยังไม่ออก (เหตุอยู่ที่ส่วนเอกสารบนการ์ด)
+ * ⚠️ มีแค่เลขกับนัด — ช่อง toast มีช่องเดียวและหายใน ~3.6 วิ · คำเตือนของเอกสารที่หัวหน้ายังไม่ได้อ่านไปอยู่ที่ส่วนเอกสาร (มติ 11 · 29)
+ * ⚠️ **ค่าตั้งต้น = ไม่มีคีย์ `duration`** — `normalizeToast` แปลง `null` เป็น 0 มิลลิวินาที
+ */
+export function surveySendDoneToast(res, { expectedDocument = false } = {}) {
+  const closedVisit = res?.closedVisit || null;
+  const visitPart = closedVisit ? ` · ปิดนัด ${codeOf(closedVisit)} เป็น “${VISIT_STATUS_LABELS.done}”` : '';
+  const report = res?.report;
+  const docNo = typeof report?.docNo === 'string' ? report.docNo.trim() : '';
+  if (report?.state === 'issued' && docNo) {
+    return { kind: 'success', duration: 6000, msg: `ส่งผลให้ฝ่ายขายแล้ว · ออกเอกสาร ${docNo}${visitPart}` };
+  }
+  /* `issued` ที่ไม่มีเลข = ผลที่อ่านไม่ออก (ไม่ควรเกิด — `surveySendReport` ตอบ `failed` แทน) ⇒ ไม่อ้างว่าออกแล้ว */
+  if (report?.state === 'failed' || report?.state === 'issued') {
+    return {
+      kind: 'warning', duration: 9000,
+      msg: `ส่งผลให้ฝ่ายขายแล้ว · เอกสารยังไม่ออก — ดูเหตุที่ส่วน “เอกสารประเมินพื้นที่”${visitPart}`,
+    };
+  }
+  if (expectedDocument === true) {
+    return {
+      kind: 'warning', duration: 9000,
+      msg: `ส่งผลให้ฝ่ายขายแล้ว · เอกสารยังไม่ออก — กด “ออกเอกสาร” ที่ส่วน “เอกสารประเมินพื้นที่”${visitPart}`,
+    };
+  }
+  return { kind: 'success', msg: surveySendDoneText(closedVisit) };
 }
 
 /**
@@ -295,6 +337,10 @@ export function surveySendUnseenWarnings(warnings, seenWarnings) {
   return textList(warnings).filter((line) => !seen.has(line));
 }
 
+/* ท่อนตายตัวของประโยค S3 (ระหว่างจำนวนรูปกับรายชื่อไฟล์) — ตัวสร้างกับตัวจำ (`surveySendRefusalKeeps`) ใช้ค่าคงที่เดียวกัน
+   ⇒ แก้ถ้อยคำของประโยคเมื่อไร ตัวจำตามไปเอง ไม่เงียบหาย */
+const IMAGE_REFUSAL_FIXED = ' รูปเปิดไม่ได้ — อัปใหม่เป็น JPG แล้วส่งอีกครั้ง (ชื่อไฟล์ ';
+
 /**
  * S3 — ประโยค 409 ของรูปที่ **ตัวไฟล์เองเปิดไม่ได้** (`permanent`) หรือ `null` เมื่อไม่มี
  * @param failed `failed` ของ `prepareSurveyReportImages` (`[{ attId, fileName, reason, permanent }]`)
@@ -304,7 +350,30 @@ export function surveySendImageRefusal(failed) {
   const broken = (Array.isArray(failed) ? failed : []).filter((f) => f?.permanent === true);
   if (!broken.length) return null;
   const names = [...new Set(broken.map((f) => String(f.fileName || f.attId || 'ไฟล์ไม่มีชื่อ')))];
-  return `รูป ${broken.length} รูปเปิดไม่ได้ — อัปใหม่เป็น JPG แล้วส่งอีกครั้ง (ชื่อไฟล์ ${names.join(' · ')}) · ยังไม่ได้ส่งผล`;
+  return `รูป ${broken.length}${IMAGE_REFUSAL_FIXED}${names.join(' · ')}) · ยังไม่ได้ส่งผล`;
+}
+
+/**
+ * ⭐ **การตีกลับที่การ์ดต้องเก็บไว้ให้อ่านหลังปิดโมดัล** (PR-3 · สเปก §3.5) — วันนี้มีข้อเดียว: รูปเปิดไม่ได้ (S3) ซึ่งพกรายชื่อไฟล์
+ *   ที่ต้องอัปใหม่ · โมดัลล้างข้อความของตัวเองตอนปิด ⇒ ไม่เก็บ = หัวหน้าต้องจำชื่อไฟล์เองระหว่างเดินไปแก้
+ * ⚠️ การตีกลับอื่น (หน้ารุ่นเก่า · คำเตือนเปลี่ยน · เอกสารออกไม่ได้ · นัด) **ไม่เก็บ** — โหลดใหม่แล้วจอวาดเหตุเหล่านั้นจาก GET เองได้
+ * @param message ข้อความ error ของคำขอส่งผล (`e.message`)
+ */
+export function surveySendRefusalKeeps(message) {
+  if (typeof message !== 'string') return false;
+  const count = /^รูป \d+/.exec(message)?.[0];
+  return !!count && message.startsWith(`${count}${IMAGE_REFUSAL_FIXED}`);
+}
+
+/* ท่อนตายตัวของประโยค S5 ข้อ 3 — ตัวสร้างประโยค (`surveySendDocumentRefusal`) กับรูป "หัว + รายการ" ของจอ
+   (`surveySendDocumentRefusalList`) ใช้ค่าคงที่ชุดเดียวกัน ⇒ แก้ถ้อยคำเมื่อไร สองรูปตามกันเอง */
+const DOCUMENT_REFUSAL_HEAD = 'ออกเอกสารไม่ได้ — ';
+const DOCUMENT_REFUSAL_TAIL = ' · ยังไม่ได้ส่งผล';
+function documentRefusalTexts(blockers) {
+  return [...new Set((Array.isArray(blockers) ? blockers : [])
+    .filter((b) => b?.kind === 'content')
+    .map((b) => String(b.text ?? '').trim())
+    .filter(Boolean))];
 }
 
 /**
@@ -313,11 +382,22 @@ export function surveySendImageRefusal(failed) {
  * 🔴 ชนิด `system` ถูกข้าม — ข้อมูลบริษัท/แบบฟอร์ม/การอ่านที่ล้ม ไม่ขวางผลประเมินไปถึงฝ่ายขาย
  */
 export function surveySendDocumentRefusal(blockers) {
-  const texts = [...new Set((Array.isArray(blockers) ? blockers : [])
-    .filter((b) => b?.kind === 'content')
-    .map((b) => String(b.text ?? '').trim())
-    .filter(Boolean))];
-  return texts.length ? `ออกเอกสารไม่ได้ — ${texts.join(' | ')} · ยังไม่ได้ส่งผล` : null;
+  const texts = documentRefusalTexts(blockers);
+  return texts.length ? `${DOCUMENT_REFUSAL_HEAD}${texts.join(' | ')}${DOCUMENT_REFUSAL_TAIL}` : null;
+}
+
+/**
+ * ⭐ **ประโยคเดียวกับ `surveySendDocumentRefusal` ในรูปที่จอวาดเป็นข้อ ๆ** — `{ lead, items }` หรือ `null` (ไม่มีเหตุของเนื้อใบ)
+ * 🐞 UAT PR-3 (S03 · S09 · S15): ประโยคของ route ต่อเหตุด้วย " | " — บนการ์ดกว้าง 298px เหตุสองข้อยาวสามบรรทัดอ่านเป็นก้อนเดียว
+ *    แยกไม่ออกว่ามีกี่ข้อ ⇒ จอวาด `lead` ("… ติด n ข้อ …") แล้วตามด้วย `items` ทีละข้อ · ประโยคเต็มของ route ไม่เปลี่ยนสักตัวอักษร
+ *    (เป็นข้อความ 409 ของเส้นส่งผล และ `send.reason.detail` ของการ์ด)
+ * @param blockers `[{ kind, text }]` ชุดเดียวกับที่ส่งให้ `surveySendDocumentRefusal` — ชนิด `system` ถูกข้ามเหมือนกัน
+ */
+export function surveySendDocumentRefusalList(blockers) {
+  const items = documentRefusalTexts(blockers);
+  return items.length
+    ? { lead: `${DOCUMENT_REFUSAL_HEAD}ติด ${items.length} ข้อ${DOCUMENT_REFUSAL_TAIL}`, items }
+    : null;
 }
 
 /**
