@@ -14,6 +14,9 @@ import {
   customerMismatchMessage, customerMismatchedLines,
   enforceMasterPrices, normalizeManualLines, seedLinesFromProject,
 } from '@/lib/sales/quoteLines';
+import {
+  LinePackError, QUOTE_PACK_INPUT_OPEN, lineMoneyRuleMessage, linePackIssues, linePackMessage, withPackColumn,
+} from '@/lib/sales/linePacks';
 import { normalizePaymentPlan, validatePaymentPlan } from '@/lib/sales/paymentPlan';
 import { businessDate } from '@/lib/businessDate';
 import { pickDocumentAddresses } from '@/lib/master/addresses';
@@ -28,20 +31,36 @@ export class QuotationDraftError extends Error {
   }
 }
 
-export async function createQuotationDraft({ supabase, user, deal, body = {}, request }) {
+/* `packInputOpen` = ช่องสำหรับเทสต์เท่านั้น (ค่าตั้งต้น = สวิตช์จริง QUOTE_PACK_INPUT_OPEN) — ป้อนทั้งตัว normalize และด่านเลขแพ็ค
+   ข้างล่าง เพื่อให้เทสต์พิสูจน์ทางสร้างใบทั้งเส้นขณะช่อง "แพ็ค/เดือน" ยังปิดบน production
+   🔴 ห้ามมีผู้เรียกใน src/app หรือ src/lib ส่งค่านี้ (ยาม linePackWritePaths.test.mjs) */
+export async function createQuotationDraft({
+  supabase, user, deal, body = {}, request, packInputOpen = QUOTE_PACK_INPUT_OPEN,
+}) {
+  /* normalize ครั้งเดียว ใช้ทั้งด่านลูกค้าและตัว sync ราคา (ด่านลูกค้าอ่านอย่างเดียว)
+     เลขแพ็คที่ใช้ไม่ได้ / ส่งมาขณะช่องปิด = ปฏิเสธพร้อมเลขรายการ — ไม่ตัดทิ้ง ไม่สร้างใบ (mig 0407 · linePacks.js) */
+  let manualLines;
+  try {
+    manualLines = normalizeManualLines(body.lines || [], { packInputOpen });
+  } catch (e) {
+    if (e instanceof LinePackError) throw new QuotationDraftError(e.message, 400);
+    throw e;
+  }
   // FG ต้องเป็นของลูกค้าที่ออกใบให้ (มติผู้ใช้ 2026-08-17) — ใบใหม่ไม่มีบรรทัดเดิม
   // ให้ยกเว้น จึงตรวจทุกบรรทัดที่ผูกสินค้า
-  const mismatched = await customerMismatchedLines(supabase, normalizeManualLines(body.lines || []), {
+  const mismatched = await customerMismatchedLines(supabase, manualLines, {
     customerId: deal.customerId,
   });
   if (mismatched.length) throw new QuotationDraftError(customerMismatchMessage(mismatched));
   // ราคาบรรทัด FG ล็อกตาม master เสมอ (client ส่งราคามาเองไม่ได้ — มติผู้ใช้ 2026-07-15)
   // ราคาขายในใบ = ราคาผลิตทั้งระบบ (มติ 2026-07-19 — ดู QUOTE_PRICE_FIELD)
-  let lines = await enforceMasterPrices(supabase, normalizeManualLines(body.lines || []), [], {
+  let lines = await enforceMasterPrices(supabase, manualLines, [], {
     customerId: deal.customerId,
   });
   // ดึง FG ของโครงการมาตั้งต้นเฉพาะเมื่อขอ (default = ใบเปล่า ให้ใส่รหัส FG เองใน editor)
+  let seeded = false;
   if (!lines.length && body.seedFromProject) {
+    seeded = true;
     lines = await seedLinesFromProject(supabase, deal);
     /* 🪤 ด่านข้างบนตรวจ `body.lines` ซึ่งตอนนี้ว่าง — บรรทัดที่ seed มาจากโครงการ
        ไม่เคยผ่านด่านเลย · โครงการผูกลูกค้าคนละใบกับดีลได้ ⇒ ต้องตรวจซ้ำที่นี่
@@ -50,6 +69,12 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
     if (seedMismatch.length) throw new QuotationDraftError(customerMismatchMessage(seedMismatch));
     lines = await enforceMasterPrices(supabase, lines, [], { customerId: deal.customerId });
   }
+  /* ด่านเลขแพ็คบน **บรรทัดชุดสุดท้าย** ที่จะถูกเขียน (รวมบรรทัดที่ตั้งต้นจากโครงการ ซึ่งไม่ผ่านตัว normalize)
+     · ช่องปิด: มีเลขแพ็คมาถึงตรงนี้ทางไหนก็ตาม = ปฏิเสธ · ช่องเปิด (งวด PR-3): บรรทัดหมวด 02-001 ที่คนกรอกเองต้องมีเลขแพ็ค
+     · `requireOnCategory: !seeded` — บรรทัดที่ระบบตั้งต้นจากโครงการยังไม่มีใครกรอก ⇒ ไม่ปฏิเสธตอนสร้าง
+       ด่านจะทักตอนบันทึก/ส่งครั้งถัดไป เหมือนตอนออก Rev. (มติ 08/10 ข้อ 3) */
+  const packIssues = linePackIssues(lines, { open: packInputOpen, requireOnCategory: !seeded });
+  if (packIssues.length) throw new QuotationDraftError(linePackMessage(packIssues), 400);
   if (body.status === 'sent' && !lines.length) {
     throw new QuotationDraftError('ต้องมีอย่างน้อย 1 รายการก่อนส่งลูกค้า');
   }
@@ -169,11 +194,13 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
 
   let insertedLines = [];
   if (lines.length) {
-    const rows = lines.map((line) => ({ ...line, quotationId: quote.id }));
+    // withPackColumn: ทุกแถวของคำขอเดียวมีคีย์ packQty เหมือนกัน — หรือไม่มีเลยเมื่อไม่มีบรรทัดไหนมีเลขแพ็ค (linePacks.js)
+    const rows = withPackColumn(lines.map((line) => ({ ...line, quotationId: quote.id })));
     const { data: lineRows, error: lineError } = await supabase.from('quotation_lines').insert(rows).select();
     if (lineError) {
       await supabase.from('quotations').delete().eq('id', quote.id);
-      throw new QuotationDraftError(lineError.message, 500);
+      // CHECK กฎเงินของบรรทัด / ช่วงเลขแพ็ค (0407) ปฏิเสธ = ข้อความไทยที่อ่านรู้เรื่อง ไม่ใช่ชื่อ constraint ดิบ
+      throw new QuotationDraftError(lineMoneyRuleMessage(lineError) || lineError.message, 500);
     }
     insertedLines = lineRows || [];
   }

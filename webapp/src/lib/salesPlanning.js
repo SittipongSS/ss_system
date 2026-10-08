@@ -2,6 +2,7 @@ import { can, hasTeam, hasTeamScope, inScope, isReadOnlyObserver, isRdRole, isSa
 import { whereTeamIn } from '@/lib/teamScope';
 import { businessMonthKey } from '@/lib/businessDate';
 import { documentNumberSlots, publishedNumberingPattern } from '@/lib/documentStandards';
+import { packFactorOf } from '@/lib/sales/linePacks';
 
 // ⚠️ ลำดับในอาร์เรย์นี้ = กติกา "เดินหน้าอย่างเดียว" ของทั้งระบบ ไม่ใช่แค่ลำดับที่โชว์:
 // ทุกจุดที่ผลักดีลไปข้างหน้าเทียบด้วย stageIndex() ตัวล่างนี้ ("ถ้าอยู่ก่อนเป้าหมาย ค่อยดัน")
@@ -416,9 +417,14 @@ export function normalizeDiscountValue(discountType, discountValue) {
   return discountType === 'percent' ? Math.min(v, 100) : v;
 }
 
-// ยอดสุทธิรายบรรทัด: qty × unitPrice − ส่วนลดบรรทัด (ปัดสตางค์)
+/* ยอดสุทธิรายบรรทัด: แพ็ค × qty × unitPrice − ส่วนลดบรรทัด (ปัดสตางค์ **ครั้งเดียว** หลังคูณครบ — ห้ามปัดต่อหน่วยแล้วคูณ)
+   ⭐ สูตรเดียวของทั้งระบบ (มติเจ้าของ 08/10 · mig 0407 · docs/qt-pack-column.md) — คู่กับ CHECK *_line_money_rule ในฐาน
+     · เทสต์ quoteLinePackRule.test.mjs เทียบสองฝั่งด้วยชุดตัวอย่างเดียวกัน
+   · `packQty` ว่าง/ไม่มี/ใช้ไม่ได้ = คูณ 1 (packFactorOf) ⇒ บรรทัดที่ไม่มีเลขแพ็คได้ยอดเดิมทุกบิต (คูณ 1 ใน floating point ไม่เปลี่ยนค่า)
+   · ⚠️ ห้ามใช้ toMoney กับเลขแพ็ค: toMoney('0', 1) = 0 และ toMoney('1.5', 1) = 1.5 — ตัวคูณต้องเป็นจำนวนเต็ม 1–9999 หรือ 1 เท่านั้น
+   · ส่วนลดเป็นบาท **ไม่** คูณจำนวนแพ็ค — หักจากยอดทั้งรายการเหมือนเดิม (มติ A5) */
 export function quoteLineNet(line = {}) {
-  const gross = round2(toMoney(line.qty, 1) * toMoney(line.unitPrice));
+  const gross = round2(packFactorOf(line.packQty) * toMoney(line.qty, 1) * toMoney(line.unitPrice));
   const discountAmount = round2(discountAmountOf(gross, line.discountType, line.discountValue));
   return { gross, discountAmount, lineTotal: round2(gross - discountAmount) };
 }
@@ -439,12 +445,14 @@ export const QUOTE_VAT_OPTIONS = Object.freeze([
  * (normalizeDiscountValue) แล้วจึงคิดด้วย quoteLineNet ตัวเดียวกับจอ
  * ⭐ ตัวเดียวที่ `normalizeManualLines` (บันทึกใบเสนอราคา) และแผนใบสั่งขายย้อนหลังใช้คิดบรรทัด
  *   ⇒ บรรทัดของสองเอกสารคิดเงินสูตรเดียวกันทุกสตางค์ (มติเจ้าของ 23/09)
+ * · `packQty` (เลขแพ็คของบรรทัดหมวด 02-001 · mig 0407) เป็นตัวคูณของยอดก่อนลด — ไม่ส่ง/ว่าง = คูณ 1
  * @returns `{ discountType, discountValue, gross, discountAmount, lineTotal }` — สองช่องแรกคือค่าที่บันทึกได้จริง
  */
-export function quoteLineMoney({ qty, unitPrice, discountType = null, discountValue = 0 } = {}) {
+export function quoteLineMoney({ qty, unitPrice, discountType = null, discountValue = 0, packQty = null } = {}) {
   const type = QUOTE_DISCOUNT_TYPES.includes(discountType) ? discountType : null;
   const value = normalizeDiscountValue(type, discountValue);
-  const net = quoteLineNet({ qty, unitPrice, discountType: type, discountValue: value });
+  // เลขแพ็คเข้าสูตรเท่านั้น — **ไม่คืนคีย์ packQty** (ห้าคีย์เดิม): ผู้เรียกเป็นคนถือเลขแพ็คของบรรทัดเอง
+  const net = quoteLineNet({ qty, unitPrice, discountType: type, discountValue: value, packQty });
   return { discountType: type, discountValue: value, ...net };
 }
 
