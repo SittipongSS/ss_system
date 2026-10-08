@@ -350,15 +350,9 @@ test('🔴 checklist ทับทั้งชุดผ่าน RPC เดีย
   assert.ok(code.includes(`GRANT EXECUTE ON FUNCTION public.replace_product_spec_items${sig}\n  TO service_role;`));
 });
 
-test('🪤 คีย์ของแถว checklist ที่ store ส่ง = คอลัมน์ที่ RPC อ่าน (คีย์เกิน = ถูกทิ้งเงียบ · คีย์ขาด = NULL)', () => {
-  const body = store.slice(store.indexOf('async function replaceSpecItems'), store.indexOf("rpc('replace_product_spec_items'"));
-  const sent = [...body.slice(body.indexOf('items.map(')).matchAll(/^\s+([A-Za-z]+):/gm)].map((m) => m[1]).sort();
-  const fn = between('CREATE OR REPLACE FUNCTION public.replace_product_spec_items(', 'REVOKE ALL ON FUNCTION public.replace_product_spec_items');
-  const recordset = fn.slice(fn.indexOf('AS r('), fn.indexOf(');', fn.indexOf('AS r(')));
-  const read = [...recordset.matchAll(/^\s+"?([A-Za-z]+)"?\s+(?:text|integer|boolean)/gm)].map((m) => m[1]).sort();
-  assert.deepEqual(sent, read);
-  assert.deepEqual(sent, ['detail', 'id', 'itemKey', 'itemLabel', 'note', 'preparedByCustomer', 'preparedByS', 'sortOrder']);
-});
+/* 🪤 "คีย์ของแถว checklist ที่ store ส่ง = คอลัมน์ที่ RPC อ่าน" ย้ายไป productSpecItemCostImageMigration.test.mjs —
+   ตัว RPC ถูกแทนในที่โดย 0405 (เพิ่ม costPrice · imageAttachmentId) ⇒ ต้องเทียบกับ migration **ตัวล่าสุดที่นิยามฟังก์ชันนี้**
+   ไม่ใช่กับ 0370 (เทียบกับตัวเก่า = เทสต์เขียวทั้งที่คีย์ใหม่ถูกทิ้งเงียบ หรือแดงทั้งที่ถูก) */
 
 /* ── ⑩ มาตรฐานเอกสาร ──────────────────────────────────────────────── */
 

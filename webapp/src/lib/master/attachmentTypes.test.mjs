@@ -273,3 +273,64 @@ test('docType ที่ไม่มีกติกา รับชุดมา�
   assert.equal(attachmentFileRuleError('other', { type: 'application/pdf', name: 'a.pdf' }), null);
   assert.equal(attachmentFileRuleError('artwork', { type: '', name: 'logo.ai' }), null);
 });
+
+/* ── รูปประจำแถว checklist ของใบสเปค (mig 0405 · มติเจ้าของ 08/10/2569 — ใช้ในระบบเท่านั้น) ─────────────── */
+
+test('รูปของแถว checklist: อยู่ในทะเบียนของสินค้า · ไม่เป็นการ์ดบนหน้าสินค้า · ถูกประกาศว่าไม่ขึ้นแผงเอกสารทั่วไป', async () => {
+  const {
+    ATTACHMENT_TYPES, PANEL_HIDDEN_DOC_TYPES, SPEC_ILLUSTRATION_DOC_TYPE, SPEC_ITEM_IMAGE_DOC_TYPE,
+    isPanelHiddenDocType, productDocTypes, unsatisfiedRequiredDocs,
+  } = await import('./attachmentTypes.js');
+  assert.equal(SPEC_ITEM_IMAGE_DOC_TYPE, 'spec_item_image');
+  assert.ok(ATTACHMENT_TYPES.product.some((t) => t.key === SPEC_ITEM_IMAGE_DOC_TYPE), 'ไม่อยู่ในทะเบียน = API ตีเป็น other');
+  for (const record of [{ categoryCode: '01-002' }, { categoryCode: '03-001' }, {}]) {
+    const keys = productDocTypes(record).map((t) => t.key);
+    assert.ok(!keys.includes(SPEC_ITEM_IMAGE_DOC_TYPE), JSON.stringify(record));
+    assert.ok(!keys.includes(SPEC_ILLUSTRATION_DOC_TYPE), JSON.stringify(record));
+  }
+  // ไม่เข้าด่าน "ยังขาดเอกสาร" ของการอนุมัติสินค้า
+  assert.equal(unsatisfiedRequiredDocs('product', { categoryCode: '03-001' }, []).some((t) => t.key === SPEC_ITEM_IMAGE_DOC_TYPE), false);
+
+  // 🔴 แผงเอกสารของสินค้าจัดคีย์ที่ไม่รู้จักลงการ์ด "เอกสารอื่นๆ" พร้อมปุ่มลบ — ลบจากที่นั่นได้ = แถวเสียรูปเงียบ ๆ (FK SET NULL)
+  assert.deepEqual(PANEL_HIDDEN_DOC_TYPES.product, [SPEC_ITEM_IMAGE_DOC_TYPE]);
+  assert.ok(Object.isFrozen(PANEL_HIDDEN_DOC_TYPES) && Object.isFrozen(PANEL_HIDDEN_DOC_TYPES.product));
+  assert.equal(isPanelHiddenDocType('product', SPEC_ITEM_IMAGE_DOC_TYPE), true);
+  // แคบเฉพาะคีย์นี้ของสินค้า — ของอื่นขึ้นแผงตามเดิม (ภาพประกอบของกระดาษมีกติกาปลดระวางของตัวเอง ไม่ได้ซ่อนด้วยทางนี้)
+  for (const [entityType, docType] of [
+    ['product', 'artwork'], ['product', 'other'], ['product', SPEC_ILLUSTRATION_DOC_TYPE], ['product', undefined],
+    ['customer', SPEC_ITEM_IMAGE_DOC_TYPE], ['ไม่มี entity นี้', SPEC_ITEM_IMAGE_DOC_TYPE], [undefined, undefined],
+  ]) {
+    assert.equal(isPanelHiddenDocType(entityType, docType), false, `${entityType}/${docType}`);
+  }
+});
+
+test('รูปของแถว checklist: รับเฉพาะรูปที่เบราว์เซอร์วาดได้ · เพดาน 5 MB บังคับเมื่อรู้ขนาด (ทั้ง File ของเบราว์เซอร์และคำขอของ server)', async () => {
+  const {
+    SPEC_ILLUSTRATION_DOC_TYPE, SPEC_ITEM_IMAGE_DOC_TYPE, SPEC_ITEM_IMAGE_MAX_BYTES, attachmentFileRuleError, docTypeFileRule,
+  } = await import('./attachmentTypes.js');
+  const rule = docTypeFileRule(SPEC_ITEM_IMAGE_DOC_TYPE);
+  assert.ok(rule, 'spec_item_image ต้องมีกติกาไฟล์');
+  assert.equal(rule.maxBytes, SPEC_ITEM_IMAGE_MAX_BYTES);
+  assert.equal(SPEC_ITEM_IMAGE_MAX_BYTES, 5 * 1024 * 1024);
+  assert.match(rule.accept, /image\/png/);
+  assert.match(rule.accept, /\.webp/);
+  assert.doesNotMatch(rule.accept, /pdf|\.ai\b|heic/);
+
+  const check = (file) => attachmentFileRuleError(SPEC_ITEM_IMAGE_DOC_TYPE, file);
+  assert.equal(check({ type: 'image/png', name: 'ฝา.png', size: 1024 }), null);
+  assert.equal(check({ mimeType: 'image/jpeg', fileName: 'กล่อง.JPG', sizeBytes: SPEC_ITEM_IMAGE_MAX_BYTES }), null, 'พอดีเพดานต้องผ่าน');
+  assert.equal(check({ type: 'image/jpeg', name: 'image' }), null, 'ไม่รู้ขนาด = ไม่ตัดสินที่นี่');
+  assert.match(check({ type: 'application/pdf', name: 'artwork.pdf', size: 10 }), /แนบได้เฉพาะรูปภาพ/);
+  assert.ok(check({ type: 'image/heic', name: 'IMG_1.HEIC' }));
+  assert.ok(check({ type: 'image/png', name: 'แอบ.pdf' }), 'type ที่ client ประกาศเองต้องไม่พาไฟล์ .pdf ผ่าน');
+  // เกินเพดาน — ข้อความบอกเพดานที่ใช้จริง
+  assert.match(check({ type: 'image/png', name: 'ใหญ่.png', size: SPEC_ITEM_IMAGE_MAX_BYTES + 1 }), /ใหญ่\.png — ใหญ่เกิน 5 MB/);
+  assert.match(check({ mimeType: 'image/png', fileName: 'ใหญ่.png', sizeBytes: 25 * 1024 * 1024 }), /ใหญ่เกิน 5 MB/);
+  // ชนิดผิดถูกบอกก่อนขนาด
+  assert.match(check({ type: 'application/pdf', name: 'a.pdf', size: 99 * 1024 * 1024 }), /แนบได้เฉพาะ/);
+  // ภาพประกอบของกระดาษไม่มีเพดานขนาดของตัวเอง (กติกาเดิมไม่เปลี่ยน)
+  assert.equal(docTypeFileRule(SPEC_ILLUSTRATION_DOC_TYPE).maxBytes, undefined);
+  assert.equal(attachmentFileRuleError(SPEC_ILLUSTRATION_DOC_TYPE, { type: 'image/png', name: 'a.png', size: 20 * 1024 * 1024 }), null);
+  // docType ที่ไม่มีกติกา: ขนาดไม่ถูกตัดสินที่นี่
+  assert.equal(attachmentFileRuleError('other', { type: 'application/pdf', name: 'a.pdf', size: 99 * 1024 * 1024 }), null);
+});

@@ -875,3 +875,42 @@ test('escape ข้อความในหน้าแจ้งเหตุ', a
   const text = await specPaperErrorResponse(req, '<script>x</script>', 500).text();
   assert.doesNotMatch(text, /<script>x<\/script>/);
 });
+
+/* ── ราคาทุน + รูปประจำแถว checklist (mig 0405 · มติเจ้าของ 08/10/2569) — ใช้ในระบบเท่านั้น ───────────────
+   ทางที่กระดาษอ่าน **สเปคสด** (ตัวอย่างจากหน้าสินค้า · ร่างที่ยังไม่ยื่น) คือทางที่แถวของฐานเดินถึงกระดาษตรงที่สุด
+   ⇒ แถวที่เก็บอยู่มีราคาทุน/รูป กระดาษก็ต้องเหมือนตอนไม่มีทุกไบต์ */
+test('🔴 กระดาษจากสเปคสด (ตัวอย่าง · ร่าง) และกระดาษที่ตรึง ไม่มีราคาทุน/รูปของแถว checklist แม้แถวในฐานจะมี', async () => {
+  const IMAGE_ID = 'aaaaaaaa-0000-4000-8000-000000000001';
+  const SENTINEL = /987654|987,654|aaaaaaaa-0000|costPrice|imageAttachmentId|ราคาทุน|ราคาต้นทุน/;
+  const costed = () => {
+    const base = seed();
+    base.product_specs[0] = { ...base.product_specs[0], pricingTier: 'ราคาต้นทุน 987654.32 บาท' };
+    base.product_spec_items = base.product_spec_items.map((row) => ({ ...row, costPrice: 987654.32, imageAttachmentId: IMAGE_ID }));
+    // รูปของแถวเป็นไฟล์แนบของสินค้าตัวเดียวกับภาพประกอบ แต่คนละ docType — ต้องไม่ขึ้นแผ่นภาพประกอบ
+    base.attachments = [{
+      id: IMAGE_ID, entityType: 'product', entityId: 'P-1', docType: 'spec_item_image', mimeType: 'image/png',
+      fileName: 'row-image-987654.png', metadata: { sortOrder: 0, caption: 'รูปของแถว 987654' }, createdAt: NOW,
+    }];
+    return base;
+  };
+
+  const sample = await renderProductSpecSample(fakeDb(costed(), { users: USERS }), { productId: 'P-1', now: NOW });
+  assert.equal(sample.error, undefined, sample.error);
+  assert.match(sample.html, /checklist สดวันนี้/, 'ตัวอย่างอ่านแถวสดจริง');
+  assert.doesNotMatch(sample.html, SENTINEL);
+  const plain = await renderProductSpecSample(fakeDb(seed(), { users: USERS }), { productId: 'P-1', now: NOW });
+  assert.equal(sample.html, plain.html, 'กระดาษตัวอย่างต้องไม่เปลี่ยนเมื่อแถวมีราคาทุน/รูป');
+
+  // ร่างที่ยังไม่ยื่น (อ่านสเปคสด)
+  const draftDb = fakeDb(costed(), { users: USERS });
+  const draft = await paper(draftDb, '2');
+  assert.equal(draft.error, undefined, draft.error);
+  assert.match(draft.html, /checklist สดวันนี้/);
+  assert.doesNotMatch(draft.html, SENTINEL);
+
+  // ตรึง Rev ที่อนุมัติแล้ว — frozenHtml ที่เขียนลงฐานต้องสะอาด
+  const frozenDb = fakeDb(costed(), { users: USERS });
+  const frozen = await freezeProductSpecRevision(frozenDb, { documentId: 'PSD-1', revisionId: 'R1', now: NOW });
+  assert.equal(frozen.error, undefined, frozen.error);
+  assert.doesNotMatch(frozenOf(frozenDb, 'R1').frozenHtml, SENTINEL);
+});

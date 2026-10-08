@@ -28,16 +28,27 @@
 //      **อัปขึ้น server ทันที** ไฟล์จะไปโผล่ผิดที่จริง ๆ ไม่ใช่แค่ค้างในฟอร์ม
 //   3. โฟกัสอยู่ในช่องพิมพ์ที่ไม่ใช่ของเรา = ไม่แตะ (ปล่อยให้เป็นการวางข้อความตามปกติ)
 //
-// ⚠️ ด่านขนาดไฟล์อยู่ที่นี่ที่เดียวเหมือนกัน — เดิม `PendingFiles` เช็คเอง ส่วนจุดอื่น
-// ไม่เช็คเลย ⇒ ผู้ใช้เพิ่งรู้ว่าไฟล์ใหญ่เกินตอนอัปไม่ผ่านหลังกดบันทึก (เสียรอบหนึ่งรอบ)
+// ⭐ `paste: "focused"` (08/10/2569 · รูปของแถว checklist ใบสเปค) — กล่องเล็กที่มี **หลายสิบกล่องต่อหน้า**
+// (หนึ่งกล่องต่อแถวตาราง) ห้ามเข้าคิวข้อ 2 เลย: ไม่มีใครโฟกัสแล้วกด Ctrl+V ต้องไม่ไปลงแถวที่ 1
+// เงียบ ๆ (แถวนั้นอัปขึ้น server ทันที) และต้องไม่ไป "ชนะ" แผงแนบไฟล์ตัวจริงของหน้า ⇒ กล่องแบบนี้
+// **ไม่ติดป้ายกล่องรับไฟล์** (ไม่อยู่ในคิว ไม่บังใคร) และรับ paste เฉพาะตอนโฟกัสอยู่ข้างในตัวเอง
+// · กดเลือกกับลากมาวางยังทำงานเหมือนเดิม
+//
+// ⚠️ ด่านขนาดไฟล์ **ทั่วไป** อยู่ที่นี่ที่เดียวเหมือนกัน (`maxBytes` · ไม่ส่ง = `MAX_UPLOAD_BYTES`) — เดิม
+// `PendingFiles` เช็คเอง ส่วนจุดอื่นไม่เช็คเลย ⇒ ผู้ใช้เพิ่งรู้ว่าไฟล์ใหญ่เกินตอนอัปไม่ผ่านหลังกดบันทึก
+// (เสียรอบหนึ่งรอบ) · เพดาน **เฉพาะชนิดเอกสาร** (08/10/2569) ไม่ได้อยู่ที่นี่: อยู่ที่
+// `DOC_TYPE_FILE_RULES[...].maxBytes` บังคับด้วย `attachmentFileRuleError` ทั้งบนจอและ server —
+// กล่องของชนิดนั้นส่งเพดานเดียวกันเข้ามาเป็น `maxBytes` · นอกจากสองตัวนี้อย่าเขียนด่านขนาดเองที่ปลายทาง
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
+import { MAX_UPLOAD_BYTES, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 
 // ป้ายบอกว่า element นี้เป็นกล่องรับไฟล์ — ใช้หากล่องเจ้าของ paste ข้ามคอมโพเนนต์
 // โดยไม่ต้องมี context provider คร่อมทั้งแอป
 const ZONE_ATTR = "data-file-intake";
 // ลำดับความเป็นเจ้าของตอนไม่มีใครโฟกัส — น้อย = ได้ก่อน (ดูเหตุผลข้อ 2 หัวไฟล์)
 const WEIGHT_ATTR = "data-file-intake-weight";
+// ป้ายของกล่อง `paste: "focused"` — **ไม่ใช่** ป้ายกล่องรับไฟล์ (ไม่เข้าคิว) · ใช้บอกกล่องอื่นว่าโฟกัสอยู่ในกล่องแบบนี้
+const FOCUS_ZONE_ATTR = "data-file-intake-focus";
 
 const isVisible = (el) => !!el && !!el.offsetParent && el.getClientRects().length > 0;
 
@@ -65,6 +76,37 @@ const isForeignTextField = (el, zone) => {
   return tag === "INPUT" || tag === "TEXTAREA" || el.isContentEditable;
 };
 
+/**
+ * การวางครั้งนี้เป็นของกล่องนี้ไหม — ตัดสินขั้นแรกก่อนถึงคิวข้อ 2 (ฟังก์ชันล้วน มีเทสต์)
+ * @returns {"take" | "skip" | "pool"} take = ของกล่องนี้แน่ · skip = ไม่ใช่ · pool = ไปถามคิว (`pickIntakeOwner`)
+ */
+export function pasteClaim({
+  paste = "auto", focusedInside = false, foreignTextField = false, focusedInFocusZone = false,
+} = {}) {
+  if (focusedInside) return "take";
+  if (paste === "focused") return "skip";
+  // 🪤 โฟกัสอยู่ในกล่อง "focused" ของคนอื่น (ปุ่มแนบรูปของแถว) = กล่องนั้นรับไปแล้ว — ถ้ายังไปถามคิว
+  //    แผงแนบไฟล์ตัวจริงของหน้าจะชนะคิวแล้วอัปไฟล์เดียวกันซ้ำอีกที่ (ปุ่มไม่ใช่ช่องพิมพ์ ด่านข้างล่างไม่กัน)
+  if (focusedInFocusZone) return "skip";
+  return foreignTextField ? "skip" : "pool";
+}
+
+/**
+ * ป้ายที่กล่องรับไฟล์ติดบน element ของตัวเอง — กล่อง `paste: "focused"` **ไม่ติดป้ายกล่องรับไฟล์** จึงไม่เคยอยู่ใน
+ * คิว paste ลอย ๆ (ไม่ได้ และไม่บังลำดับ weight ของกล่องอื่น) · ติดแค่ป้าย "รับเฉพาะตอนโฟกัส" ให้กล่องอื่นรู้ว่า
+ * การวางตอนโฟกัสอยู่ในนี้มีเจ้าของแล้ว (`pasteClaim` · `focusedInFocusZone`)
+ */
+export function intakeZoneAttrs({ paste = "auto", weight = 0 } = {}) {
+  if (paste === "focused") return { [FOCUS_ZONE_ATTR]: "" };
+  return { [ZONE_ATTR]: "", [WEIGHT_ATTR]: String(weight) };
+}
+
+/** ข้อความไฟล์ใหญ่เกิน — พิมพ์เพดาน **ที่กล่องนี้ใช้จริง** (เดิมพิมพ์ 25 MB เสมอ แม้ผู้เรียกตั้งเพดานเล็กกว่า) */
+export function oversizeMessage(maxBytes, names = []) {
+  const mb = Math.round((maxBytes / (1024 * 1024)) * 10) / 10;
+  return `ไฟล์ใหญ่เกิน ${mb} MB: ${names.join(", ")}`;
+}
+
 const filesFromClipboard = (event) => Array.from(event.clipboardData?.items || [])
   .filter((item) => item.kind === "file")
   .map((item) => item.getAsFile())
@@ -78,6 +120,7 @@ const filesFromClipboard = (event) => Array.from(event.clipboardData?.items || [
  * @param {boolean} [options.multiple]
  * @param {string}  [options.accept]     ค่าตั้งต้น = ชนิดไฟล์แนบมาตรฐานของระบบ
  * @param {number}  [options.maxBytes]
+ * @param {"auto" | "focused"} [options.paste]  "focused" = รับ paste เฉพาะตอนโฟกัสอยู่ในกล่อง (ดูหัวไฟล์)
  * @returns {{open: () => void, dragOver: boolean, inputProps: object, zoneProps: object}}
  */
 export function useFileIntake({
@@ -89,6 +132,7 @@ export function useFileIntake({
   maxBytes = MAX_UPLOAD_BYTES,
   // 0 = กล่อง "แนบไฟล์" ปกติ · 1 = ถอยให้กล่องอื่นก่อน (ช่องพิมพ์ของเธรดอัปเดต)
   weight = 0,
+  paste = "auto",
 } = {}) {
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef(null);
@@ -108,7 +152,7 @@ export function useFileIntake({
 
     const oversized = picked.filter((file) => file.size > cap);
     if (oversized.length) {
-      warn?.(`ไฟล์ใหญ่เกิน ${MAX_UPLOAD_MB} MB: ${oversized.map((f) => f.name).join(", ")}`);
+      warn?.(oversizeMessage(cap, oversized.map((f) => f.name)));
     }
     const ok = picked.filter((file) => file.size <= cap);
     if (!ok.length) return false;
@@ -126,10 +170,15 @@ export function useFileIntake({
       if (!zone || !isVisible(zone)) return;
 
       const active = document.activeElement;
-      const focusedInside = zone.contains(active);
-      if (!focusedInside && isForeignTextField(active, zone)) return;
+      const claim = pasteClaim({
+        paste,
+        focusedInside: zone.contains(active),
+        foreignTextField: isForeignTextField(active, zone),
+        focusedInFocusZone: !!active?.closest?.(`[${FOCUS_ZONE_ATTR}]`),
+      });
+      if (claim === "skip") return;
 
-      if (!focusedInside) {
+      if (claim === "pool") {
         // ไม่มีใครเจาะจง — เลือกเจ้าของตามกติกาข้อ 2 (โมดัล → weight → ลำดับใน DOM)
         const all = Array.from(document.querySelectorAll(`[${ZONE_ATTR}]`)).filter(isVisible);
         const index = pickIntakeOwner(all.map((el) => ({
@@ -145,7 +194,7 @@ export function useFileIntake({
 
     document.addEventListener("paste", onPaste);
     return () => document.removeEventListener("paste", onPaste);
-  }, [disabled, acceptFiles]);
+  }, [disabled, acceptFiles, paste]);
 
   const open = useCallback(() => {
     if (!handlersRef.current.disabled) inputRef.current?.click();
@@ -166,8 +215,7 @@ export function useFileIntake({
 
   const zoneProps = {
     ref: zoneRef,
-    [ZONE_ATTR]: "",
-    [WEIGHT_ATTR]: String(weight),
+    ...intakeZoneAttrs({ paste, weight }),
     "data-drag-over": dragOver ? "" : undefined,
     onDragOver: disabled ? undefined : (event) => {
       if (!Array.from(event.dataTransfer?.types || []).includes("Files")) return;

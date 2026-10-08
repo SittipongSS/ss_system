@@ -945,3 +945,28 @@ test('⭐ โมดัลยกเลิก/ออก Rev. ของ SO บอ�
   assert.match(salesOrderSpecDocEffect('revise', undefined), /ถ้ามี/);
   assert.equal(salesOrderSpecDocEffect('approve', 2), null);
 });
+
+/* ── ราคาทุน + รูปประจำแถว checklist (mig 0405 · มติเจ้าของ 08/10/2569) — ใช้ในระบบเท่านั้น ───────────────
+   หน้าเอกสารอ่านสเปคสดจาก GET /api/products/[id]/spec ⇒ คนที่เห็นต้นทุนได้มี `costPrice` อยู่ในก้อนที่ส่งเข้าตัวสรุปนี้
+   — จอเอกสารต้องไม่วาดมัน (จอเดียวที่โชว์ราคาทุนคือหน้าสเปคสินค้า) */
+test('🔴 สรุปเนื้อเอกสาร (สเปคสด และภาพนิ่ง) ไม่พกราคาทุน/รูปของแถว checklist ออกไปให้จอเอกสารวาด', () => {
+  const IMAGE_ID = 'aaaaaaaa-0000-4000-8000-000000000001';
+  const items = [
+    { id: 'I1', itemKey: 'cap', itemLabel: 'ฝา', detail: 'ฝาทอง', preparedByS: true, note: 'ล็อตใหม่', costPrice: 987654.32, imageAttachmentId: IMAGE_ID },
+    { id: 'I2', itemKey: null, itemLabel: 'ถุงผ้า', costPrice: 0, imageAttachmentId: null },
+  ];
+  const live = docContentSummary({
+    source: 'live', spec: { texture: 'ครีม', pricingTier: 'ราคาต้นทุน 987654.32', certifications: [], items },
+  });
+  const frozen = docContentSummary({
+    source: 'snapshot', snapshot: { spec: { texture: 'ครีม', pricingTier: 'ราคาต้นทุน 987654.32', certifications: [] }, items, illustrations: [] },
+  });
+  for (const [label, summary] of [['live', live], ['snapshot', frozen]]) {
+    assert.equal(summary.items.length, 2, label);
+    for (const row of summary.items) {
+      assert.deepEqual(Object.keys(row).sort(), ['detail', 'label', 'no', 'note', 'preparedBy'], label);
+    }
+    assert.doesNotMatch(JSON.stringify(summary), /987654|987,654|aaaaaaaa-0000|costPrice|imageAttachmentId|pricingTier|ราคาต้นทุน/, label);
+    assert.deepEqual([summary.items[0].label, summary.items[0].detail, summary.items[0].note], ['ฝา', 'ฝาทอง', 'ล็อตใหม่'], label);
+  }
+});

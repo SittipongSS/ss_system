@@ -23,13 +23,14 @@ import { accountProfileFromAuthUser } from '@/lib/accountProfile';
 import { categoryOf } from '@/lib/master/categoryOf';
 import { isGiftSetCategory } from '@/lib/master/giftSetFormulas';
 import { loadProductFormulas } from '@/lib/master/giftSetFormulasStore';
-import { SPEC_ILLUSTRATION_DOC_TYPE } from '@/lib/master/attachmentTypes';
+import { SPEC_ILLUSTRATION_DOC_TYPE, SPEC_ITEM_IMAGE_DOC_TYPE } from '@/lib/master/attachmentTypes';
+import { deleteAttachmentRows } from '@/lib/master/attachments';
 import { productSpecCertSeed, productSpecChecklistSeed } from '@/lib/sales/productSpecChecklist';
 import { productSpecDocNoParts } from '@/lib/sales/productSpecDocNo';
 import {
   illustrationCaption, sortIllustrations, specIllustrationsOf,
 } from '@/lib/sales/productSpecIllustrations';
-import { SPEC_CONTENT_FIELDS, normalizeProductSpecInput } from '@/lib/sales/productSpecWorkflow';
+import { SPEC_CONTENT_FIELDS, normalizeProductSpecInput, prepareSpecItemRows } from '@/lib/sales/productSpecWorkflow';
 import { docReasonError, revisionPatch } from '@/lib/sales/productSpecDocWorkflow';
 
 // เราต์/สคริปต์ฝั่ง server ที่เคย import จากที่นี่ยังใช้ได้ — ต้นทางจริงอยู่ที่ workflow
@@ -204,32 +205,174 @@ export async function syncProductSpecMirror(supabase, { productId, spec, done = 
   return {};
 }
 
-/* checklist ทับทั้งชุด — **ลบของเก่า + เขียนของใหม่ในทรานแซกชันเดียว** (RPC ของ 0370)
+/* checklist ทับทั้งชุด — **ลบของเก่า + เขียนของใหม่ในทรานแซกชันเดียว** (RPC ของ 0370 · ตัวปัจจุบันคือของ 0405)
    🐞 เดิมเขียนใหม่แล้วค่อยลบเก่าเป็นสองคำขอ ⇒ AC กดยื่นแทรกกลางได้ภาพนิ่งที่มี checklist
       สองชุดซ้อนกัน (ตรึงลงกระดาษที่อนุมัติแล้ว) และถ้าขั้นลบล้ม แถวซ้อนค้างจนทุกการบันทึก
       ถัดไปชนด่าน "แถวซ้ำกับแถวก่อนหน้า" · RPC ล็อกแถวสเปคแล้วทำทั้งสองขั้นในคำสั่งเดียว
       คนอ่านเห็นชุดเก่าหรือชุดใหม่ชุดใดชุดหนึ่งเท่านั้น
-   ⚠️ คีย์ของแต่ละแถวต้องตรงกับคอลัมน์ที่ RPC อ่านจาก `jsonb_to_recordset` — คีย์เกิน = ถูกทิ้งเงียบ
-      (productSpecMigration.test.mjs เทียบให้) */
+   ⚠️ คีย์ของแต่ละแถวต้องตรงกับคอลัมน์ที่ RPC อ่านจาก `jsonb_to_record` — คีย์เกิน = ถูกทิ้งเงียบ
+      (productSpecItemCostImageMigration.test.mjs เทียบให้)
+   ⭐ `costPrice` / `imageAttachmentId` (mig 0405) ใส่ **เฉพาะเมื่อแถวมีคีย์** — คีย์ที่ไม่ใส่ = RPC ยกค่าของแถวเดิมมาให้
+      (ห้ามใส่ `undefined` แล้วหวังให้หาย: ที่นี่ JSON ทิ้งให้ก็จริง แต่ `?? null` ตัวเดียวก็กลายเป็น "ล้าง")
+   ⭐ `id` ของแถวที่ผ่าน `prepareSpecItemRows` มาแล้วคงเดิมข้ามการบันทึก (ทั้ง id ที่ client ส่งมา และ id ที่จับให้จาก
+      itemKey/ชื่อรายการของแถวเดิม) — ที่เหลือออกใหม่ที่นี่ */
 async function replaceSpecItems(supabase, specId, items) {
-  const rows = items.map((row, index) => ({
-    id: genId('PSI'),
-    sortOrder: index,
-    itemKey: row.itemKey ?? null,
-    itemLabel: row.itemLabel,
-    detail: row.detail ?? null,
-    preparedByS: Boolean(row.preparedByS),
-    preparedByCustomer: Boolean(row.preparedByCustomer),
-    note: row.note ?? null,
-  }));
+  const rows = items.map((row, index) => {
+    const out = {
+      id: row.id || genId('PSI'),
+      sortOrder: index,
+      itemKey: row.itemKey ?? null,
+      itemLabel: row.itemLabel,
+      detail: row.detail ?? null,
+      preparedByS: Boolean(row.preparedByS),
+      preparedByCustomer: Boolean(row.preparedByCustomer),
+      note: row.note ?? null,
+    };
+    if ('costPrice' in row) out.costPrice = row.costPrice ?? null;
+    if ('imageAttachmentId' in row) out.imageAttachmentId = row.imageAttachmentId ?? null;
+    return out;
+  });
   const { error } = await supabase.rpc('replace_product_spec_items', { p_spec_id: specId, p_rows: rows });
-  if (error) {
-    if (/product_spec_not_found/.test(messageOf(error))) {
-      return { error: 'บันทึก checklist ไม่สำเร็จ: ไม่พบสเปคนี้ — อาจถูกลบไปแล้ว', status: 404 };
-    }
-    return { error: `บันทึก checklist ไม่สำเร็จ: ${messageOf(error)}` };
-  }
+  if (error) return specItemsRpcFailure(error);
   return { items: rows.map((row) => ({ ...row, specId })) };
+}
+
+/* error ของ RPC checklist → ข้อความไทย + status
+   ⚠️ ดู `error.code` ก่อนข้อความ — ข้อความของ Postgres เปลี่ยนตามรุ่น/ภาษา แต่ SQLSTATE ไม่เปลี่ยน
+   ⚠️ **ห้ามแปะข้อความดิบของ Postgres ลงในคำตอบที่แปลแล้ว** — เราต์อ่านคำว่า "foreign key" ในข้อความที่ไม่มี status
+      แล้วตอบ 409 "ไม่พบสเปคนี้" (storeFailure) · และผู้ใช้ไม่ควรเห็นชื่อ constraint
+   ⚠️ ข้อมูลผิดทั้งหมด = 400 (ด่านของ `normalizeSpecItems` ควรกันไว้ก่อนแล้ว — ที่นี่คือตาข่ายของฐาน) ·
+      error ที่ไม่รู้จัก = ไม่มี status (ระบบล้ม · ตอบ 500 พร้อมข้อความเดิม) */
+function specItemsRpcFailure(error) {
+  const message = messageOf(error);
+  const code = error?.code || '';
+  const fail = (text, status) => ({ error: `บันทึก checklist ไม่สำเร็จ: ${text}`, status });
+  if (/product_spec_not_found/.test(message)) return fail('ไม่พบสเปคนี้ — อาจถูกลบไปแล้ว', 404);
+  if (code === '22P02' || code === '22003' || /invalid input syntax|out of range/i.test(message)) {
+    return fail('ราคาทุนหรือรูปของบางแถวมีรูปแบบไม่ถูกต้อง — โหลดหน้าใหม่แล้วลองอีกครั้ง', 400);
+  }
+  if (code === '23503' || /product_spec_items_image_fk/.test(message)) {
+    return fail('รูปของบางแถวถูกลบไปแล้ว — เอารูปออกจากแถวนั้นหรือแนบใหม่ แล้วบันทึกอีกครั้ง', 400);
+  }
+  if (code === '23514' || /product_spec_items_(cost|text)_check/.test(message)) {
+    return fail('ราคาทุนหรือข้อความของบางแถวเกินที่ระบบรับได้', 400);
+  }
+  if (code === '23505' || /duplicate key/i.test(message)) {
+    return fail('รหัสของบางแถวซ้ำกัน — โหลดหน้าใหม่แล้วบันทึกอีกครั้ง', 400);
+  }
+  return { error: `บันทึก checklist ไม่สำเร็จ: ${message}` };
+}
+
+/* ── ราคาทุน + รูปของแถว checklist (mig 0405 · มติเจ้าของ 08/10/2569 — ใช้ในระบบเท่านั้น) ──────────── */
+
+const SPEC_ITEM_MIGRATION_MISSING = 'ฐานข้อมูลยังไม่รองรับราคาทุน/รูปของ checklist — ต้องรัน migration 0405 ก่อน';
+/** รูปที่เพิ่งอัปแต่ยังไม่มีแถวชี้ — อาจเป็นของแท็บอื่นที่ยังไม่กดบันทึก ⇒ รอให้พ้นช่วงนี้ก่อนเก็บกวาด */
+export const SPEC_ITEM_IMAGE_GRACE_MS = 60 * 60 * 1000;
+/** เก็บกวาดต่อการบันทึกหนึ่งครั้งไม่เกินเท่านี้ (คุยกับ Drive ไฟล์ละครั้งในคำขอเดียว) — ที่เหลือรอบถัดไป */
+export const SPEC_ITEM_IMAGE_CLEANUP_MAX = 25;
+
+/**
+ * รูปของแถว checklist ทุกรูปของสินค้า (แถว attachments · docType `spec_item_image`)
+ * @returns {{ images: object[] } | { error: string }}
+ */
+export async function listSpecItemImages(supabase, productId) {
+  const res = await fetchAllResult(() => supabase
+    .from('attachments').select('*')
+    .eq('entityType', 'product').eq('entityId', productId)
+    .eq('docType', SPEC_ITEM_IMAGE_DOC_TYPE)
+    .order('id', { ascending: true }));
+  if (res.error) return { error: messageOf(res.error) };
+  return { images: res.data || [] };
+}
+
+const sendsNewColumns = (rows) => rows.some((row) => row.costPrice != null || row.imageAttachmentId != null);
+
+/**
+ * ด่านก่อนเขียน checklist — **ต้องผ่านก่อนคำสั่งเขียนตัวแรก** (ไม่มีอะไรให้ถอย)
+ *
+ * 🔴 ฐานที่ยังไม่รัน 0405: RPC ตัวเก่าทิ้งสองคีย์ใหม่เงียบ แล้ว API จะตอบว่าบันทึกสำเร็จ ⇒ แถวที่เก็บอยู่ไม่มีคีย์
+ *    `imageAttachmentId` (อ่านด้วย `select('*')`) + คำขอนี้ส่งราคาทุน/รูปมา = หยุดที่ 503 พร้อมบอกว่าต้องรันอะไร
+ *    (สเปคที่ยังไม่มีแถวเลยตรวจทางนี้ไม่ได้ — ตาข่ายคือการอ่านกลับหลังเขียน)
+ * 🔴 ตัวชี้รูปทุกตัวต้องเป็นรูปของแถว checklist **ของสินค้านี้** — ไม่งั้นแถวชี้ไฟล์ของสินค้าอื่น/เอกสารชนิดอื่นได้
+ *    แล้วตัวเก็บกวาดจะลบไฟล์นั้นทิ้งเมื่อแถวเลิกชี้
+ * @returns {{ images: object[]|null } | { error: string, status?: number }}
+ */
+async function specItemWriteGate(supabase, { productId, rows, storedRows }) {
+  if (storedRows.length && !('imageAttachmentId' in storedRows[0]) && sendsNewColumns(rows)) {
+    return { error: SPEC_ITEM_MIGRATION_MISSING, status: 503 };
+  }
+  if (!rows.some((row) => row.imageAttachmentId)) return { images: null };
+  const listed = await listSpecItemImages(supabase, productId);
+  if (listed.error) return { error: `ตรวจรูปของ checklist ไม่สำเร็จ จึงยังไม่บันทึก: ${listed.error}` };
+  const known = new Set(listed.images.map((att) => String(att.id).toLowerCase()));
+  for (const [index, row] of rows.entries()) {
+    if (row.imageAttachmentId && !known.has(row.imageAttachmentId)) {
+      return {
+        error: `ไม่พบรูปของ checklist แถวที่ ${index + 1} — อาจถูกลบไปแล้ว แนบรูปใหม่แล้วบันทึกอีกครั้ง`,
+        status: 400,
+      };
+    }
+  }
+  return { images: listed.images };
+}
+
+/* อ่านกลับหลังเขียนแล้วเทียบ: ราคาทุน/รูปที่ส่งไป "ถึงฐานจริง" ไหม — แถวที่อ่านกลับไม่มีคีย์ = RPC ตัวเก่าทิ้งไป */
+function sentColumnsLost(sentRows, storedRows) {
+  const byId = new Map(storedRows.map((row) => [row.id, row]));
+  return sentRows.some((row) => {
+    const stored = byId.get(row.id);
+    if (row.costPrice != null && !(stored && 'costPrice' in stored)) return true;
+    if (row.imageAttachmentId != null && !(stored && 'imageAttachmentId' in stored)) return true;
+    return false;
+  });
+}
+
+const olderThanGrace = (createdAt, now) => {
+  const age = Date.parse(now) - Date.parse(createdAt);
+  // ⚠️ ไม่รู้อายุ (createdAt ว่าง/อ่านไม่ออก) = เก็บไว้ — ลบไฟล์ที่ไม่แน่ใจคือความเสียหายที่กู้ไม่ได้
+  return Number.isFinite(age) && age > SPEC_ITEM_IMAGE_GRACE_MS;
+};
+
+/**
+ * เก็บกวาดรูปของแถวที่ไม่มีแถวไหนชี้แล้ว — **หลังบันทึกสำเร็จเท่านั้น และไม่มีวันทำให้การบันทึกล้ม**
+ *
+ * ลบเมื่อ (ก) แถวที่เก็บอยู่ก่อนการบันทึกนี้ชี้อยู่ แล้วชุดใหม่ไม่ชี้ (ผู้ใช้เอารูปออก/เปลี่ยนรูป/ลบแถว) หรือ
+ * (ข) ไม่มีใครชี้และอัปมาเกินหนึ่งชั่วโมง (แนบแล้วปิดหน้าไปโดยไม่บันทึก)
+ * 🔴 **ทำเฉพาะเมื่อคำขอมีแถว และส่งคีย์ `imageAttachmentId` มาครบทุกแถว** (`explicitImages`) — จอรุ่นก่อน/แท็บที่เปิดค้าง
+ *    ข้าม deploy ไม่รู้จักรูปของแถว และไม่ส่ง id ของแถวมาด้วย: แถวของมันถูกจับคู่กับของเดิมด้วย itemKey หรือ (แถวที่
+ *    เพิ่มเอง) ชื่อรายการที่ตรงกันเป๊ะ (`prepareSpecItemRows` + RPC ของ 0405) ⇒ ตัวชี้หลุดได้ทางเดียวคือผู้เรียกแบบนั้น
+ *    **แก้ชื่อแถวที่เพิ่มเอง** (หรือลบแถว) — ถ้าเก็บกวาดตอนนั้น = ลบไฟล์โดยคนที่ไม่เคยเห็นว่ามีรูปอยู่
+ *    · ลิสต์ว่าง (ลบทุกแถว) ก็ไม่เก็บกวาด — ไม่มีแถวให้รู้ว่าผู้เรียกรู้จักรูปไหม (รูปที่ค้างไปกับกฎอายุรอบถัดไป/ตอนลบสเปค)
+ * 🔴 และเฉพาะเมื่อแถวที่อ่านกลับ **มีคีย์** `imageAttachmentId` — ฐานที่ยังไม่รัน 0405 ไม่มีแถวไหนชี้อะไรได้เลย
+ *    ⇒ ทุกรูปดู "ไม่มีใครชี้" ทั้งหมด
+ */
+async function cleanupSpecItemImages(supabase, {
+  productId, readBack, storedRows, explicitImages, images, now, releaseFile,
+}) {
+  try {
+    if (!explicitImages || !productId) return;
+    const sample = readBack[0] || storedRows[0];
+    if (sample && !('imageAttachmentId' in sample)) return;
+    let list = images;
+    if (!list) {
+      const listed = await listSpecItemImages(supabase, productId);
+      if (listed.error) {
+        console.error('[productSpec] อ่านรูปของแถว checklist เพื่อเก็บกวาดไม่สำเร็จ', productId, listed.error);
+        return;
+      }
+      list = listed.images;
+    }
+    const pointed = new Set(readBack.map((row) => row.imageAttachmentId).filter(Boolean));
+    const pointedBefore = new Set(storedRows.map((row) => row.imageAttachmentId).filter(Boolean));
+    const doomed = list
+      .filter((att) => !pointed.has(att.id))
+      .filter((att) => pointedBefore.has(att.id) || olderThanGrace(att.createdAt, now))
+      .slice(0, SPEC_ITEM_IMAGE_CLEANUP_MAX);
+    if (!doomed.length) return;
+    await deleteAttachmentRows(supabase, doomed, releaseFile ? { release: releaseFile } : undefined);
+  } catch (err) {
+    console.error('[productSpec] เก็บกวาดรูปของแถว checklist ไม่สำเร็จ', productId, err?.message);
+  }
 }
 
 /**
@@ -237,15 +380,23 @@ async function replaceSpecItems(supabase, specId, items) {
  *
  * ⭐ ไม่ส่ง checklist/เอกสารที่ขอได้มา = ได้แถวตั้งต้นของกระดาษ (17 + 4 แถว)
  *    🐞 `productSpecCertSeed` เคยไม่มีใครเรียก ⇒ สเปคที่สร้างได้ตารางเอกสารว่าง ทั้งที่กระดาษมีสี่แถวเสมอ
+ * ⭐ `id` ของแถวที่ client ส่งมา **ไม่ถึง RPC เลย** (ยังไม่มีแถวที่เก็บอยู่ให้เป็นเจ้าของ id — `prepareSpecItemRows`)
  * @param input `{ content, certifications?, items? }` — ผ่าน `normalizeProductSpecInput` ที่นี่อีกรอบ
+ * @param canEditItemCost แก้ราคาทุนรายแถวได้ไหม (เราต์ตัดสิน) — ไม่ได้ = ราคาทุนที่ส่งมาถูกข้าม ไม่ใช่ error
  * @returns {{ spec: object, warning?: string } | { error: string, status?: number, conflict?: true }}
  */
 export async function createProductSpec(supabase, {
-  productId, input = {}, user, now = new Date().toISOString(),
+  productId, input = {}, user, now = new Date().toISOString(), canEditItemCost = false, releaseFile,
 }) {
   const normalized = normalizeProductSpecInput(input);
   if (normalized.error) return { error: normalized.error, status: 400 };
   const { content, certifications, items } = normalized.value;
+
+  const prepared = prepareSpecItemRows(
+    items?.length ? items : productSpecChecklistSeed(), [], { canEditCost: canEditItemCost },
+  );
+  const gate = await specItemWriteGate(supabase, { productId, rows: prepared.rows, storedRows: [] });
+  if (gate.error) return gate;
 
   const specId = genId('PSP');
   const { data, error } = await supabase.from('product_specs').insert({
@@ -266,33 +417,63 @@ export async function createProductSpec(supabase, {
     return { error: `สร้างสเปคไม่สำเร็จ: ${messageOf(error)}` };
   }
 
-  const saved = await replaceSpecItems(supabase, specId, items?.length ? items : productSpecChecklistSeed());
-  if (saved.error) {
-    /* ⚠️ สเปคที่ไม่มี checklist คือใบครึ่งเดียว — ถอยแถวสเปคที่เพิ่งสร้างทิ้ง (ยังไม่มีเอกสาร
-       อ้างถึงแน่นอน) ให้กดสร้างใหม่ได้สะอาด ๆ แทนที่จะค้างใบเปล่าไว้ */
+  /* ⚠️ สเปคที่ไม่มี checklist คือใบครึ่งเดียว — ถอยแถวสเปคที่เพิ่งสร้างทิ้ง (ยังไม่มีเอกสาร
+     อ้างถึงแน่นอน) ให้กดสร้างใหม่ได้สะอาด ๆ แทนที่จะค้างใบเปล่าไว้ */
+  const rollBack = async (failure) => {
     const rollback = await supabase.from('product_specs').delete().eq('id', specId);
     const tail = rollback.error ? ` (ถอยสเปคที่สร้างค้างไว้ไม่สำเร็จ: ${messageOf(rollback.error)})` : '';
-    return { error: `${saved.error}${tail}` };
+    return { error: `${failure.error}${tail}`, ...(failure.status ? { status: failure.status } : {}) };
+  };
+
+  const saved = await replaceSpecItems(supabase, specId, prepared.rows);
+  if (saved.error) return rollBack(saved);
+
+  // อ่านกลับ — ราคาทุน/รูปที่ส่งไปไม่ถึงฐาน (ยังไม่รัน 0405) = ถอยทั้งใบ ไม่ทิ้งสเปคที่เสียค่าที่เพิ่งกรอกไว้เงียบ ๆ
+  const readBack = await loadSpecItems(supabase, specId);
+  if (!readBack.error && sentColumnsLost(saved.items, readBack.items)) {
+    return rollBack({ error: SPEC_ITEM_MIGRATION_MISSING, status: 503 });
+  }
+  const savedItems = readBack.error ? saved.items : readBack.items;
+  if (!readBack.error) {
+    await cleanupSpecItemImages(supabase, {
+      productId, readBack: readBack.items, storedRows: [], explicitImages: prepared.explicitImages,
+      images: gate.images, now, releaseFile,
+    });
   }
 
   const mirror = await syncProductSpecMirror(supabase, { productId, spec: data });
-  return { spec: { ...data, items: saved.items }, ...(mirror.warning ? { warning: mirror.warning } : {}) };
+  return { spec: { ...data, items: savedItems }, ...(mirror.warning ? { warning: mirror.warning } : {}) };
 }
 
 /**
  * บันทึกสเปค — ช่องเนื้อหาที่ส่งมา · `certifications`/`items` ที่ส่งมา = ทับทั้งชุด
  *
  * ⚠️ ไม่แตะเอกสารที่ยื่น/อนุมัติแล้ว (เอกสารถือภาพนิ่งของตัวเอง) — ร่างที่ยังไม่ยื่นเห็นค่าใหม่ทันที
+ * ⭐ checklist (mig 0405): `spec.items` = แถวที่เก็บอยู่ก่อนบันทึก (เราต์โหลดมาเป็น `before`) ใช้ตัดสิน id ·
+ *    ด่านตัวชี้รูป · และการเก็บกวาดรูป · `items` ของผลลัพธ์ = แถวที่ **อ่านกลับจากฐาน** หลังเขียน (ราคาทุน/รูปที่ RPC
+ *    ยกมาจากแถวเดิมจึงอยู่ครบทั้งใน audit และคำตอบ)
  * @param expectedUpdatedAt ส่งมา = กันเขียนทับคนอื่น (ไม่ตรง ⇒ 409)
+ * @param canEditItemCost แก้ราคาทุนรายแถวได้ไหม (เราต์ตัดสิน) — ไม่ได้ = ราคาทุนเดิมคงอยู่ทุกแถว
  * @returns {{ spec: object, warning?: string } | { error: string, status?: number, conflict?: true }}
  */
 export async function saveProductSpec(supabase, {
   spec, input = {}, user, now = new Date().toISOString(), expectedUpdatedAt = null,
+  canEditItemCost = false, releaseFile,
 }) {
   if (!spec?.id) return { error: 'สินค้านี้ยังไม่มีสเปค', status: 404 };
   const normalized = normalizeProductSpecInput(input);
   if (normalized.error) return { error: normalized.error, status: 400 };
   const { content, certifications, items } = normalized.value;
+
+  // ⚠️ ด่านของ checklist ทั้งหมดอยู่ **ก่อนคำสั่งเขียนตัวแรก** — เนื้อสเปคเข้าไปแล้วค่อยรู้ว่ารูปไม่ผ่าน = บันทึกครึ่งเดียว
+  const storedRows = Array.isArray(spec.items) ? spec.items : [];
+  let prepared = null;
+  let gate = null;
+  if (items !== undefined) {
+    prepared = prepareSpecItemRows(items, storedRows, { canEditCost: canEditItemCost });
+    gate = await specItemWriteGate(supabase, { productId: spec.productId, rows: prepared.rows, storedRows });
+    if (gate.error) return gate;
+  }
 
   /* 🪤 ชื่อ `specPatch` ไม่ใช่ `patch` โดยตั้งใจ — `check:columns` หาคีย์ของตัวแปรที่เขียนลงตาราง
      จาก `const <ชื่อ> =` ตัวล่าสุดก่อนจุดเขียน · `transitionRevision` ข้างล่างรับ `patch` เป็นพารามิเตอร์
@@ -316,10 +497,24 @@ export async function saveProductSpec(supabase, {
   }
 
   let savedItems;
-  if (items !== undefined) {
-    const saved = await replaceSpecItems(supabase, spec.id, items);
-    if (saved.error) return { error: `บันทึกเนื้อสเปคแล้ว แต่ ${saved.error}` };
-    savedItems = saved.items;
+  if (prepared) {
+    const saved = await replaceSpecItems(supabase, spec.id, prepared.rows);
+    if (saved.error) {
+      return { error: `บันทึกเนื้อสเปคแล้ว แต่ ${saved.error}`, ...(saved.status ? { status: saved.status } : {}) };
+    }
+    const readBack = await loadSpecItems(supabase, spec.id);
+    if (readBack.error) {
+      // เขียนสำเร็จแล้ว — อ่านกลับไม่ขึ้นไม่ใช่เหตุให้ตอบว่าบันทึกล้ม · คืนแถวที่ส่งไป และ **ไม่เก็บกวาดรูป** (ไม่รู้ว่าฐานเก็บอะไรจริง)
+      savedItems = saved.items;
+    } else {
+      // 🔴 ราคาทุน/รูปที่ส่งไปไม่ถึงฐาน = RPC ตัวเก่า (ยังไม่รัน 0405) — บอกดัง ๆ และห้ามเก็บกวาดรูป
+      if (sentColumnsLost(saved.items, readBack.items)) return { error: SPEC_ITEM_MIGRATION_MISSING, status: 503 };
+      savedItems = readBack.items;
+      await cleanupSpecItemImages(supabase, {
+        productId: data.productId || spec.productId, readBack: readBack.items, storedRows,
+        explicitImages: prepared.explicitImages, images: gate.images, now, releaseFile,
+      });
+    }
   } else {
     const loaded = await loadSpecItems(supabase, spec.id);
     if (loaded.error) return { error: loaded.error };
@@ -339,7 +534,7 @@ export async function saveProductSpec(supabase, {
  *    บรรจุภัณฑ์มาตรฐาน" ของสเปคที่ไม่มีแล้ว · ล้างไม่ผ่าน = ลบสำเร็จพร้อม `warning`
  * @returns {{ deleted: true, spec: object, warning?: string } | { error: string, status?: number }}
  */
-export async function deleteProductSpec(supabase, { spec }) {
+export async function deleteProductSpec(supabase, { spec, releaseFile }) {
   if (!spec?.id) return { error: 'สินค้านี้ยังไม่มีสเปค', status: 404 };
   const { data, error } = await supabase.from('product_specs').delete().eq('id', spec.id).select('*').maybeSingle();
   if (error) {
@@ -347,8 +542,20 @@ export async function deleteProductSpec(supabase, { spec }) {
     return { error: `ลบสเปคไม่สำเร็จ: ${messageOf(error)}` };
   }
   if (!data) return { error: 'ไม่พบสเปคนี้ — อาจถูกลบไปแล้ว', status: 404 };
+  const productId = data.productId || spec.productId;
+  /* รูปของแถว checklist ตายตามสเปค (mig 0405) — แถวหายตาม CASCADE แล้ว ไม่มีอะไรชี้รูปพวกนี้อีก
+     ⚠️ เฉพาะ docType `spec_item_image` — **ภาพประกอบของกระดาษยังอยู่กับสินค้าตามเดิม** (Rev ที่ยื่นแล้วอ้างอยู่)
+     ⚠️ ล้มที่นี่ไม่ล้มการลบสเปค — ไฟล์ค้างเก็บได้ทีหลัง สเปคที่ลบไปแล้วเอากลับไม่ได้ */
+  if (productId) {
+    const images = await listSpecItemImages(supabase, productId);
+    if (images.error) {
+      console.error('[productSpec] ลบสเปคแล้ว แต่อ่านรูปของแถว checklist เพื่อลบตามไม่สำเร็จ', productId, images.error);
+    } else {
+      await deleteAttachmentRows(supabase, images.images, releaseFile ? { release: releaseFile } : undefined);
+    }
+  }
   const mirror = await syncProductSpecMirror(supabase, {
-    productId: data.productId || spec.productId, spec: null, done: 'ลบสเปคแล้ว',
+    productId, spec: null, done: 'ลบสเปคแล้ว',
   });
   return { deleted: true, spec: data, ...(mirror.warning ? { warning: mirror.warning } : {}) };
 }
@@ -1226,6 +1433,21 @@ export async function isIllustrationReferenced(supabase, attachmentId) {
     .select('id')
     .contains('illustrationIds', [attachmentId])
     .neq('status', 'draft')
+    .limit(1);
+  if (error) return { error: messageOf(error) };
+  return { referenced: (data || []).length > 0 };
+}
+
+/**
+ * รูปของแถว checklist รูปนี้ยังมีแถวไหนชี้อยู่ไหม (mig 0405) — ด่านของ DELETE ไฟล์แนบ
+ *
+ * ⚠️ อ่านไม่ได้ = คืน `{ error }` ไม่ใช่ `referenced: false` — ผู้เรียกต้องหยุด ไม่ใช่ลบต่อ
+ * @returns {{ referenced: boolean } | { error: string }}
+ */
+export async function isSpecItemImageReferenced(supabase, attachmentId) {
+  const { data, error } = await supabase.from('product_spec_items')
+    .select('id')
+    .eq('imageAttachmentId', attachmentId)
     .limit(1);
   if (error) return { error: messageOf(error) };
   return { referenced: (data || []).length > 0 };

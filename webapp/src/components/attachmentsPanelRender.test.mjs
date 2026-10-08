@@ -332,3 +332,47 @@ test('🐞 แผง: ย้ายรูปเข้ากลุ่ม = PATCH m
   assert.match(body, /notifyToast\.error\(/, 'ผูกไม่สำเร็จต้องพูดออกมา (409 จุดยังไม่บันทึก · 403 ใบล็อก)');
   assert.doesNotMatch(body, /retry: true/, 'PATCH ไม่ลองใหม่เอง');
 });
+
+/* ══ ชนิดที่ไม่ขึ้นแผง (รูปของแถว checklist ใบสเปค · 08/10/2569) ═══════════════════════════════════
+   🐞 แผงดึงไฟล์ทุกใบของ entity แล้วโยน docType ที่ไม่มีการ์ดลง "เอกสารอื่นๆ" ⇒ รูปของแถว checklist ไปโผล่บนหน้าสินค้า
+      ถูกนับในหัวแผง และมีปุ่มลบ ทั้งที่แถว checklist ยังชี้อยู่ · ตัวคัดอยู่ที่ `attachmentsPanelItems.js` (ค่าล้วน) */
+import { panelItemsByType, panelVisibleItems } from './attachmentsPanelItems.js';
+import { ATTACHMENT_TYPES, productDocTypes, SPEC_ITEM_IMAGE_DOC_TYPE } from '../lib/master/attachmentTypes.js';
+
+const att = (id, docType) => ({ id, docType, fileName: `${id}.png`, mimeType: 'image/png' });
+
+test('แผงเอกสารของสินค้า: รูปของแถว checklist ไม่อยู่กองไหนและไม่ถูกนับ · docType ที่ไม่มีการ์ดยังลง "อื่นๆ"', () => {
+  const items = [att('A1', SPEC_ITEM_IMAGE_DOC_TYPE), att('A2', 'ไม่มีในทะเบียน'), att('A3', 'other')];
+  // หน้าสินค้าส่งการ์ดของตัวเอง (ไม่มีชนิดนี้) · แผงที่ไม่ส่ง docTypes ใช้ทะเบียนของ entity ซึ่ง **มี** ชนิดนี้ใน union
+  for (const docTypes of [productDocTypes({}), undefined]) {
+    const types = docTypes?.length ? docTypes : ATTACHMENT_TYPES.product;
+    const visible = panelVisibleItems(items, 'product', docTypes);
+    assert.deepEqual(visible.map((it) => it.id), ['A2', 'A3'], 'เลขในหัวแผง = จำนวนนี้');
+    const byType = panelItemsByType(visible, types);
+    assert.deepEqual(Object.values(byType).flat().map((it) => it.id).sort(), ['A2', 'A3']);
+    assert.deepEqual(byType.other.map((it) => it.id), ['A2', 'A3'], 'ชนิดที่ไม่มีการ์ดยังตกกอง "อื่นๆ" เหมือนเดิม');
+    assert.equal(SPEC_ITEM_IMAGE_DOC_TYPE in byType, false);
+  }
+  // เหลือแต่รูปของแถว = แผงว่าง (ขึ้น "ยังไม่มีเอกสารแนบ" ไม่ใช่รายการเปล่า)
+  assert.deepEqual(panelVisibleItems([att('A1', SPEC_ITEM_IMAGE_DOC_TYPE)], 'product', undefined), []);
+});
+
+test('แผงที่ขอชนิดนั้นมาเองยังได้ไฟล์ครบ · entity อื่นไม่ถูกแตะ', () => {
+  const items = [att('A1', SPEC_ITEM_IMAGE_DOC_TYPE), att('A2', 'other')];
+  const asked = [{ key: SPEC_ITEM_IMAGE_DOC_TYPE, label: 'รูปของแถว' }];
+  const visible = panelVisibleItems(items, 'product', asked);
+  assert.deepEqual(visible.map((it) => it.id), ['A1', 'A2']);
+  assert.deepEqual(panelItemsByType(visible, asked)[SPEC_ITEM_IMAGE_DOC_TYPE].map((it) => it.id), ['A1']);
+  // ชนิดเดียวกันบน entity อื่น (ไม่ได้ประกาศซ่อน) = แถวธรรมดา
+  assert.deepEqual(panelVisibleItems(items, 'customer', undefined).map((it) => it.id), ['A1', 'A2']);
+  assert.deepEqual(panelVisibleItems(null, 'product', undefined), []);
+});
+
+test('แผงกรองที่ต้นทางที่เดียว — ทุกจุดที่โชว์/นับอ่านรายการที่คัดแล้ว และยังแจ้งผู้เรียกด้วยรายการดิบ', () => {
+  const source = code(fs.readFileSync(FILE, 'utf8'));
+  assert.match(source, /const \[rawItems, setItems\] = useState\(\[\]\);\s*const items = panelVisibleItems\(rawItems, entityType, docTypes\);/);
+  assert.match(source, /const byType = panelItemsByType\(items, types\);/);
+  // รายการดิบถูกอ่านแค่สองที่: ตัวคัด กับการแจ้งผู้เรียก (ผู้เรียกคัดตาม docType เอง — ต้องได้ครบ)
+  assert.match(source, /onItemsChange\?\.\(rawItems, \{ loaded \}\);/);
+  assert.equal([...source.matchAll(/\brawItems\b/g)].length, 4, 'ประกาศ · ตัวคัด · แจ้งผู้เรียก · deps ของ effect');
+});
