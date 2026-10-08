@@ -9,6 +9,8 @@ import {
   privateEvidenceObjectPath,
   privateEvidencePrefix,
 } from '@/lib/upload/privateEvidence';
+import { DRIVE_FILE_ID_PATTERN, recordUploadReceipt, uploadReceiptStatus } from '@/lib/upload/receipts';
+import { driveFileReferenced, driveFileTrashable } from '@/lib/master/attachments';
 
 // googleapis (Drive backend) ต้อง Node runtime — กันถูก bundle เป็น edge.
 export const runtime = 'nodejs';
@@ -78,17 +80,16 @@ export async function POST(request) {
     // (ทาง Supabase Storage ถูกตัดออก 2026-07-30: prod อยู่บน Drive 100% อยู่แล้ว
     //  128/128 แถว และโค้ดสองทางคือแหล่งของบั๊กเกือบทุกข้อในสายอัปโหลด)
     // dynamic import: โหลด googleapis เฉพาะตอนอัปจริง ไม่ถ่วง route อื่น
+    let uploaded;
     try {
       const { uploadForEntity } = await import('@/lib/drive');
-      const { id, webViewLink } = await uploadForEntity({
+      uploaded = await uploadForEntity({
         entityType,
         entityId,
         buffer,
         name: file.name || 'file',
         mimeType: contentType,
       });
-      // คืน driveFileId เพิ่ม — caller ส่งต่อให้ /api/master/attachments เก็บไว้.
-      return Response.json({ url: webViewLink, driveFileId: id, mimeType: contentType });
     } catch (err) {
       console.error('[upload] Google Drive upload failed:', err);
       // ส่งสาเหตุจริงกลับไปให้ผู้ใช้เห็น — "อัปโหลดไม่สำเร็จ" เฉย ๆ ทำให้ทั้งผู้ใช้และ
@@ -99,6 +100,31 @@ export async function POST(request) {
         { status: 502 },
       );
     }
+
+    /* 🔴 ออกใบรับการอัปโหลด (mig 0406 · มติเจ้าของ 08/10/2569) — กติกาเดียวกับ /api/upload/commit: จดว่าไฟล์ Drive ใบนี้
+       คนเรียกอัปขึ้นมาเอง (id มาจาก Drive ไม่ใช่จากคำขอ) · ขาหลักฐานใน bucket ส่วนตัวข้างบน **ไม่ออกใบรับ** (ไม่ใช่ไฟล์ Drive)
+       ⚠️ อยู่ **นอก** try ของขา Drive — ออกใบรับพังต้องไม่ถูกรายงานเป็น "อัปโหลดขึ้น Google Drive ไม่สำเร็จ"
+       ⚠️ ออกไม่สำเร็จ (ลองสองครั้งแล้ว · หรือสร้าง client ไม่ได้) = log ดังแล้วคืน ref ตามเดิม ไม่ล้มการอัป — ปลายทางที่ยังไม่ตรวจ
+          ใบรับต้องใช้ไฟล์นี้ต่อได้ · การแนบเป็นไฟล์แนบจะปิดเอง สองแบบตามเหตุ:
+          · ทะเบียนอ่านไม่ได้ / ยังไม่มีตาราง (ไม่ได้รัน 0406) = แนบตอบ 503 "ตรวจที่มาของไฟล์ไม่ได้" และเส้นถอยข้างล่างก็ 503
+          · ออกใบรับพลาดชั่วคราวแต่ทะเบียนอ่านได้ = ไม่มีใบรับ ⇒ แนบตอบ 400 "ไฟล์นี้ไม่ได้มาจากการอัปโหลดของคุณ…" และ
+            เส้นถอย (DELETE ข้างล่าง) ตอบ 403 ⇒ ไฟล์ค้างบน Drive เป็นไฟล์กำพร้า ให้รายงาน drive-orphans ตามเก็บ ·
+            ผู้ใช้อัปไฟล์ใหม่แล้วแนบอีกครั้ง (ตามหา log นี้ด้วย 400/403 ไม่ใช่ 503) */
+    let receipt;
+    try {
+      receipt = await recordUploadReceipt(getSupabaseAdmin(), {
+        driveFileId: uploaded.id, userId: user.id, entityType, entityId,
+      });
+    } catch (err) {
+      receipt = { error: err };
+    }
+    if (receipt.error) {
+      console.error('[upload] 🔴 ออกใบรับการอัปโหลดไม่สำเร็จ — ไฟล์ขึ้น Drive แล้วแต่จะแนบเป็นไฟล์แนบไม่ได้ (ตรวจว่ารัน migration 0406 แล้ว)',
+        uploaded.id, receipt.error?.message);
+    }
+
+    // คืน driveFileId เพิ่ม — caller ส่งต่อให้ /api/master/attachments เก็บไว้.
+    return Response.json({ url: uploaded.webViewLink, driveFileId: uploaded.id, mimeType: contentType });
   } catch (error) {
     console.error('Upload error:', error);
     // ⚠️ ข้อความนี้ต้อง **ไม่ซ้ำ** กับค่าสำรองฝั่ง client ("อัปโหลดไฟล์ไม่สำเร็จ")
@@ -115,7 +141,20 @@ export async function POST(request) {
 
 // DELETE /api/upload — rollback ไฟล์ Drive ที่เพิ่งอัป เมื่อ caller บันทึก metadata
 // (/api/master/attachments) ไม่สำเร็จ → กัน orphan (ไฟล์ค้างใน Drive ไม่มี row).
-// best-effort: ใครก็ตามที่ล็อกอินเรียกได้ (เป็นการลบไฟล์ที่ตัวเองเพิ่งอัป).
+//
+// 🔴 **ถอยได้เฉพาะไฟล์ที่คนเรียกอัปเอง และยังไม่มีที่ไหนใช้** (มติเจ้าของ 08/10/2569) —
+// 🐞 เดิม "ใครก็ตามที่ล็อกอินเรียกได้" โดยเชื่อ `driveFileId` จากคำขอ และถามแค่สองตาราง (ทิ้ง error ของคำถามด้วย) ⇒ ส่ง id ของ
+//    โฟลเดอร์ลูกค้าทั้งโฟลเดอร์ · ไฟล์ในเธรด · รูปของนัดช่าง มาแล้วระบบทิ้งลงถังขยะ Drive ให้ทันที ไม่ต้องมีแถวสักแถว
+// ลำดับด่านของขา Drive (สลับไม่ได้ — ด่านถูกสุดและบอกน้อยสุดมาก่อน):
+//   ① รูปร่าง id (400 · ค่าที่หลุดรูปห้ามถึงตัวกรองของฐาน)
+//   ② ใบรับการอัปโหลดของคนเรียกเอง อายุไม่เกิน 24 ชั่วโมง (mig 0406) — ไม่มี/ของคนอื่น/หมดอายุ = 403 · ตรวจไม่ได้ = 503
+//   ③ ใบรับที่ปลายทางรับไปแล้ว (`claimedBy`) = 409
+//   ④ มีที่ไหนอ้างถึง (`driveFileReferenced` — attachments สองช่อง · หลักฐาน Won รุ่นเก่า · ไฟล์ในเธรด) หรือถามไม่ได้ = 409
+//   ⑤ ชนิดจริงบน Drive (`driveFileTrashable`) — โฟลเดอร์/ไฟล์ของ Google = 409 · ถามไม่ได้ = 502
+//   แล้วจึงทิ้งไฟล์
+// ⚠️ **สวิตช์ผ่อนด่านใบรับ (UPLOAD_RECEIPT_MODE) ไม่มีผลกับเส้นนี้ทุกโหมด** — ปฏิเสธผิดที่นี่เสียแค่ไฟล์กำพร้าหนึ่งใบ
+//    (รายงาน drive-orphans ตามเก็บได้) · ปล่อยผิดคือไฟล์ของคนอื่นลงถังขยะ
+// ⚠️ ผู้เรียกทุกจุดยิงแบบไม่รอผล (rollback หลังแนบไม่ผ่าน) — สถานะที่ตอบมีไว้ให้คนไล่ log ไม่ใช่ให้จอ
 export async function DELETE(request) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });
@@ -146,17 +185,42 @@ export async function DELETE(request) {
 
   if (!driveFileId) return Response.json({ ok: true });
 
-  // rollback นี้ลบได้เฉพาะไฟล์ "orphan" (อัปแล้วบันทึก metadata ไม่สำเร็จ = ยังไม่มี
-  // ที่ไหนอ้างอิง). ไฟล์ที่ commit แล้วห้ามลบผ่าน endpoint นี้ (กันใครก็ได้ยิง driveFileId
-  // มาลบไฟล์บริษัท): attachment ต้องลบผ่าน /api/master/attachments/[id] ที่เช็คสิทธิ์ราย
-  // entity; หลักฐาน Won ล็อกหลัง accept. เช็คทั้งตาราง attachments และ quotations.wonAttachments.
+  // ① รูปร่าง id
+  if (typeof driveFileId !== 'string' || !DRIVE_FILE_ID_PATTERN.test(driveFileId)) {
+    return Response.json({ error: 'ลบไฟล์ที่อัปไม่สำเร็จ — รหัสไฟล์ไม่ถูกต้อง' }, { status: 400 });
+  }
+
+  // ② ใบรับของคนเรียกเอง (ตรวจไม่ได้ต้องแยกจาก "ไม่มีใบรับ" — ฐานล่มไม่ใช่ความผิดของคนเรียก)
   const supabase = getSupabaseAdmin();
-  const [{ data: attRef }, { data: wonRef }] = await Promise.all([
-    supabase.from('attachments').select('id').eq('driveFileId', driveFileId).limit(1),
-    supabase.from('quotations').select('id').contains('wonAttachments', [{ driveFileId }]).limit(1),
-  ]);
-  if (attRef?.length || wonRef?.length) {
-    return Response.json({ error: 'forbidden' }, { status: 403 });
+  const receipt = await uploadReceiptStatus(supabase, { driveFileId, userId: user.id });
+  if (receipt.reason === 'unverifiable') {
+    return Response.json({ error: 'ตรวจที่มาของไฟล์ไม่ได้ในขณะนี้ จึงยังไม่ลบไฟล์ — ลองอีกครั้ง' }, { status: 503 });
+  }
+  if (!receipt.ok) {
+    return Response.json({ error: 'ลบได้เฉพาะไฟล์ที่คุณอัปโหลดเองในช่วง 24 ชั่วโมงที่ผ่านมา' }, { status: 403 });
+  }
+
+  // ③ ปลายทางรับไฟล์ไปแล้ว — ต้องลบผ่านปลายทางนั้น (attachment ลบผ่าน /api/master/attachments/[id] ที่เช็คสิทธิ์ราย entity)
+  if (receipt.receipt?.claimedBy) {
+    return Response.json({ error: 'ไฟล์นี้ถูกแนบไว้กับเอกสารแล้ว — ลบผ่านหน้าของเอกสารนั้น' }, { status: 409 });
+  }
+
+  // ④ ยังมีที่ไหนอ้างถึง หรือถามไม่ได้ = ไม่ลบ (หลักฐาน Won ล็อกหลัง accept · ไฟล์ในเธรดลบผ่านเธรด)
+  const ref = await driveFileReferenced(supabase, driveFileId);
+  if (ref.error || ref.referenced) {
+    if (ref.error) console.error('[upload] ตรวจว่าไฟล์ถูกอ้างถึงอยู่ไหมไม่สำเร็จ — ไม่ลบไฟล์', driveFileId, ref.error.message);
+    return Response.json({ error: 'ไฟล์นี้ถูกใช้อยู่ในระบบ (หรือตรวจไม่ได้) จึงไม่ลบ' }, { status: 409 });
+  }
+
+  // ⑤ ชนิดจริงบน Drive — ด่านเดียวกับตัวปล่อยไฟล์ของแถวไฟล์แนบ (lib/master/attachments)
+  const trashable = await driveFileTrashable(driveFileId);
+  if (!trashable.ok) {
+    if (trashable.reason === 'trashed') return Response.json({ ok: true });
+    if (trashable.reason === 'unverifiable') {
+      console.error('[upload] ตรวจชนิดไฟล์กับ Google Drive ไม่สำเร็จ — ไม่ลบไฟล์', driveFileId, trashable.error?.message || '');
+      return Response.json({ error: 'ตรวจไฟล์กับ Google Drive ไม่สำเร็จ จึงยังไม่ลบไฟล์ — ลองอีกครั้ง' }, { status: 502 });
+    }
+    return Response.json({ error: 'ไฟล์ชนิดนี้ลบผ่านเส้นนี้ไม่ได้ (โฟลเดอร์หรือเอกสาร Google)' }, { status: 409 });
   }
 
   try {
