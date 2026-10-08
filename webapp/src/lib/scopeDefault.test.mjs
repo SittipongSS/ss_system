@@ -145,7 +145,10 @@ test('คิวคำร้อง: มาจากหน้าดีล (?dealId
 test('เพรดิเคต "ของฉัน" ทุกจอต้องปิดไว้ก่อนระหว่างที่ยังไม่รู้ว่าเราเป็นใคร', () => {
   const leads = readFileSync(join(ROOT, 'src/app/sales-planning/leads/page.js'), 'utf8');
   assert.match(leads, /activeScope === "mine"\) return !!meId && \(l\.assigneeId === meId \|\| l\.createdBy === meId\)/);
-  assert.match(leads, /activeScope === "mine" && !\(meId && \(l\.assigneeId === meId \|\| l\.createdBy === meId\)\)/);
+  /* ตาราง (2026-10-08) ไม่มีเพรดิเคตชุดที่สองแล้ว — เดินต่อจาก `scopedLeads` ตัวเดียวกับการ์ดค้างคิว
+     ⇒ ด่าน "ปิดไว้ก่อนรู้ตัวตน" ข้างบนครอบตารางด้วย */
+  assert.match(leads, /return scopedLeads\.filter\(/);
+  assert.match(leads, /if \(!q\) return scopedLeads;/);
   const deals = readFileSync(join(ROOT, 'src/app/sales-planning/deals/page.js'), 'utf8');
   assert.match(deals, /activeScope === "mine"\) return !!me\?\.id &&/);
   const calendar = readFileSync(join(ROOT, 'src/app/sa/calendar/page.js'), 'utf8');

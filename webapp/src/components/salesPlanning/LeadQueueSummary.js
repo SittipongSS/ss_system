@@ -34,8 +34,10 @@ export default function LeadQueueSummary({
   /* แถวมี `lead.bounce` แนบมาหรือยัง — ไม่มี = ไม่วาดป้าย "ส่งกลับ" เลย
      (ดูเหตุผลที่ไม่ให้ค่าตั้งต้นเป็น true ใน summarizeLeadQueue) */
   withBounceContext = false,
-  onPickStatus,
-  onPickOwner,
+  /* กดขั้น/คน/ป้าย → `onPick({ status, assigneeId?, follow? })` ตัวเดียว ให้หน้าแปลงเป็นตัวกรอง
+     **ทั้งชุด** (leadQueuePick) · 🐞 เดิมแยก onPickStatus/onPickOwner แล้วหน้าตั้งทีละช่อง
+     ⇒ กดชื่อคนได้ทุกใบของคนนั้นทุกสถานะ (การ์ดบอก 1 ตารางขึ้น 72) และตัวกรองเก่าค้างข้ามการกด */
+  onPick,
 }) {
   const nameOf = useMemo(() => {
     const map = new Map((directory || []).map((u) => [u.id, u.name || u.email]));
@@ -71,7 +73,8 @@ export default function LeadQueueSummary({
           tone={notice.tone}
           icon={TriangleAlert}
           action={(
-            <Button size="sm" variant="quiet" onClick={() => onPickStatus?.("contacted")}>ดูรายการ</Button>
+            // พาไปเฉพาะใบที่แถบพูดถึง ไม่ใช่ทุกใบที่ติดต่อแล้ว
+            <Button size="sm" variant="quiet" onClick={() => onPick?.({ status: "contacted", follow: notice.kind === "late" ? "late" : "none" })}>ดูรายการ</Button>
           )}
         >
           {notice.kind === "late" ? (
@@ -100,7 +103,7 @@ export default function LeadQueueSummary({
       <ul className={styles.rows}>
         {summary.screen.count > 0 && (
           <li className={rowClass(summary.screen.oldest)}>
-            <button type="button" className={styles.stage} onClick={() => onPickStatus?.("new")}>
+            <button type="button" className={styles.stage} onClick={() => onPick?.({ status: "new" })}>
               <Filter size={14} aria-hidden="true" /> รอคัดกรอง
               <span className={styles.count}>{summary.screen.count}</span>
             </button>
@@ -114,7 +117,7 @@ export default function LeadQueueSummary({
 
         {summary.spread.count > 0 && (
           <li className={rowClass(summary.spread.oldest)}>
-            <button type="button" className={styles.stage} onClick={() => onPickStatus?.("screened")}>
+            <button type="button" className={styles.stage} onClick={() => onPick?.({ status: "screened" })}>
               <Users size={14} aria-hidden="true" /> รอกระจาย
               <span className={styles.count}>{summary.spread.count}</span>
             </button>
@@ -133,7 +136,7 @@ export default function LeadQueueSummary({
 
         {summary.contact.count > 0 && (
           <li className={rowClass(summary.contact.oldest)}>
-            <button type="button" className={styles.stage} onClick={() => onPickStatus?.("assigned")}>
+            <button type="button" className={styles.stage} onClick={() => onPick?.({ status: "assigned" })}>
               <PhoneCall size={14} aria-hidden="true" /> รอติดต่อกลับ
               <span className={styles.count}>{summary.contact.count}</span>
             </button>
@@ -146,8 +149,8 @@ export default function LeadQueueSummary({
                   key={o.key}
                   type="button"
                   className={`${styles.pill} ${styles.pillAction} ${late(o.oldest) ? styles.pillLate : ""}`.trim()}
-                  onClick={() => onPickOwner?.(o.key)}
-                  title={`ดูเฉพาะลีดของ ${o.label} · ค้างนานสุด ${o.oldest} วันทำการ`}
+                  onClick={() => onPick?.({ status: "assigned", assigneeId: o.key })}
+                  title={`ดูเฉพาะลีดรอติดต่อกลับของ ${o.label} · ค้างนานสุด ${o.oldest} วันทำการ`}
                 >
                   {o.label} {o.count}
                   {late(o.oldest) ? ` · ${o.oldest} วัน` : ""}
@@ -161,26 +164,29 @@ export default function LeadQueueSummary({
             AE นัดลูกค้าไว้แม้วันเดียวก็คือผิดคำพูดแล้ว จึงใช้ late.count ไม่ใช่ oldest */}
         {summary.followUp.count > 0 && (
           <li className={rowFlag(summary.followUp.late.count > 0)}>
-            <button type="button" className={styles.stage} onClick={() => onPickStatus?.("contacted")}>
+            <button type="button" className={styles.stage} onClick={() => onPick?.({ status: "contacted" })}>
               <CalendarClock size={14} aria-hidden="true" /> ติดตามต่อ
               <span className={styles.count}>{summary.followUp.count}</span>
             </button>
             <span className={styles.detail}>
+              {/* ⭐ ทุกป้ายที่มีตัวเลขกดได้ และพาไปเจอใบชุดนั้นพอดี (มิติ "วันติดตาม" ของตาราง) */}
               {summary.followUp.dueToday > 0 && (
-                <span className={styles.pill}>ถึงกำหนดวันนี้ {summary.followUp.dueToday}</span>
+                <button type="button" className={`${styles.pill} ${styles.pillAction}`} onClick={() => onPick?.({ status: "contacted", follow: "today" })}>
+                  ถึงกำหนดวันนี้ {summary.followUp.dueToday}
+                </button>
               )}
               {!showOwners && summary.followUp.late.count > 0 && (
-                <span className={`${styles.pill} ${styles.pillLate}`}>
+                <button type="button" className={`${styles.pill} ${styles.pillAction} ${styles.pillLate}`} onClick={() => onPick?.({ status: "contacted", follow: "late" })}>
                   เลยวันติดตาม {summary.followUp.late.count}
-                </span>
+                </button>
               )}
               {showOwners && summary.followUp.late.owners.map((o) => (
                 <button
                   key={o.key}
                   type="button"
                   className={`${styles.pill} ${styles.pillAction} ${styles.pillLate}`}
-                  onClick={() => onPickOwner?.(o.key)}
-                  title={`ดูเฉพาะลีดของ ${o.label} · เลยวันติดตามนานสุด ${o.oldest} วันทำการ`}
+                  onClick={() => onPick?.({ status: "contacted", follow: "late", assigneeId: o.key })}
+                  title={`ดูเฉพาะลีดที่เลยวันติดตามของ ${o.label} · นานสุด ${o.oldest} วันทำการ`}
                 >
                   เลยวันติดตาม · {o.label} {o.count}
                 </button>
@@ -188,9 +194,9 @@ export default function LeadQueueSummary({
               {/* 🔴 ใบที่ไม่มีวันติดตามเลย = ไม่มีนาฬิกาจับ ตีกลับอัตโนมัติก็ไม่แตะ
                   ต้องเห็นแยก ไม่งั้น "เลยวันติดตาม 0" อ่านเหมือนทุกอย่างเรียบร้อย */}
               {summary.followUp.noPlan > 0 && (
-                <span className={`${styles.pill} ${styles.pillWarn}`}>
+                <button type="button" className={`${styles.pill} ${styles.pillAction} ${styles.pillWarn}`} onClick={() => onPick?.({ status: "contacted", follow: "none" })}>
                   ยังไม่มีวันติดตาม {summary.followUp.noPlan}
-                </span>
+                </button>
               )}
               <Age days={summary.followUp.late.oldest} late={summary.followUp.late.count > 0} />
             </span>
