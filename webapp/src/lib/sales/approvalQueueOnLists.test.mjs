@@ -197,8 +197,11 @@ test('⭐ คิวบนหัวทะเบียนใบสั่งขา�
     'ยื่นโดย ${submitted}',
   ]) assert.ok(line.includes(piece), `บรรทัดรองขาด ${piece}`);
   assert.match(line, /review\.submittedAt \? fmtDate\(review\.submittedAt\) : null/, 'วันที่ยื่นผ่าน fmtDate (เวลาไทย)');
-  /* มติ 29/09: "จำนวนรอบบริการ" ก่อน แล้วค่อยบอกว่าแต่ละครั้งไปกี่โซน · คำ "จำนวนรอบบริการ n รอบ" มาจากตัวเดียวกับหน้าใบ (serviceRoundsText) */
-  assert.ok(line.indexOf('${naText(review.roundsLabel)}') < line.indexOf('${naText(review.zones)} โซนใน'), 'จำนวนรอบบริการมาก่อนจำนวนโซน');
+  /* มติเจ้าของ 08/10 ("อยากสลับ ข้อ 4 กับ ข้อ 5 เปลี่ยน หน่วยรอบบริการ จาก รอบ เป็น เดือน"): บรรทัดคิวเรียงตามคอลัมน์ของตารางงานบริการ
+     และแถบผู้อนุมัติบนหน้าใบ — โซน/ไซต์ (③) ก่อนจำนวนรอบบริการ (⑤) · เดิม 29/09 ยึดว่าจำนวนรอบบริการมาก่อนจำนวนโซน
+     · คำ "จำนวนรอบบริการ n เดือน" มาจากตัวเดียวกับหน้าใบ (serviceRoundsText) */
+  assert.ok(line.indexOf('${naText(review.zones)} โซนใน') < line.indexOf('${naText(review.roundsLabel)}'), 'โซน/ไซต์มาก่อนจำนวนรอบบริการ (ลำดับคอลัมน์ · มติ 08/10)');
+  assert.ok(line.indexOf('${naText(review.roundsLabel)}') < line.indexOf('ไม่นับ Actual'), 'จำนวนรอบบริการยังอยู่ก่อนส่วนท้ายของบรรทัด');
   assert.match(line, /แต่ละครั้ง \$\{naText\(review\.zones\)\} โซนใน/);
   const route = read('app/api/sales-planning/sales-orders/route.js');
   assert.match(route, /roundsLabel: serviceRoundsText\(totals\),/, 'ยังไม่มีรอบ = null — จอขึ้นขีดผ่าน naText (ห้ามขีดดิบ · audit:ui)');
