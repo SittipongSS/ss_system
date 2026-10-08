@@ -234,9 +234,12 @@ export function stripDriveMetadata(metadata) {
   return safe;
 }
 
-// อ่านบัญชีไม่ได้ "ชั่วคราว" ไหม — 4xx (ยกเว้น 408/429) คือ auth ตอบชัดว่าไม่มีบัญชีนี้/รหัสผิดรูป
-// = "ไม่มีอีเมล" จริง · อย่างอื่นทั้งหมด (5xx · หมดเวลา · ต่อไม่ติด) = ยังไม่รู้
+// อ่านบัญชีไม่ได้ "ชั่วคราว" ไหม — 4xx (ยกเว้น 408/429) คือ auth ตอบชัดว่าไม่มีบัญชีนี้
+// = "ไม่มีอีเมล" จริง · อย่างอื่นทั้งหมด (5xx · หมดเวลา · ต่อไม่ติด = status 0/ไม่มี) = ยังไม่รู้
+// รหัสผู้ใช้ที่ไม่ใช่ UUID (devBypass `local-dev`) auth-js โยน Error เปล่าก่อนยิงจริง ไม่มี status
+// ⇒ ต้องดูข้อความ ไม่งั้นถูกนับเป็น "ชั่วคราว" แล้วได้ 502 ตลอดไป
 function authLookupTransient(err) {
+  if (/Expected parameter to be UUID/i.test(String(err?.message || ''))) return false;
   const status = Number(err?.status);
   if (!(status >= 400 && status < 500)) return true;
   return status === 408 || status === 429;

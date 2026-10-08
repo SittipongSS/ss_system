@@ -714,7 +714,7 @@ test('workspaceEmail ปกติ (ไม่ strict): ล้มแบบไห�
 });
 
 test('🔴 workspaceEmail strict: auth สะดุดชั่วคราว = 502 ให้ลองใหม่ ไม่ใช่ null', async () => {
-  const transient = [failed(500), failed(503), failed(429), failed(408), failed(undefined), authWith(new Error('fetch failed'))];
+  const transient = [failed(500), failed(503), failed(429), failed(408), failed(0), failed(undefined), authWith(new Error('fetch failed'))];
   for (const client of transient) {
     await assert.rejects(
       () => workspaceEmail(client, 'u1', { strict: true }),
@@ -723,10 +723,13 @@ test('🔴 workspaceEmail strict: auth สะดุดชั่วคราว =
   }
 });
 
-test('workspaceEmail strict: auth ตอบชัดว่าไม่มีบัญชี/รหัสผิดรูป (4xx) = null — เดินต่อไปเจอ 403 "ไม่มีอีเมล" ตามเดิม', async () => {
+test('workspaceEmail strict: auth ตอบชัดว่าไม่มีบัญชี (4xx) = null — เดินต่อไปเจอ 403 "ไม่มีอีเมล" ตามเดิม', async () => {
   for (const status of [400, 404, 422]) {
     assert.equal(await workspaceEmail(failed(status), 'u1', { strict: true }), null, String(status));
   }
+  // รหัสที่ไม่ใช่ UUID: auth-js โยน Error เปล่า (ไม่มี status) ก่อนยิงจริง — ไม่ใช่เรื่องชั่วคราว
+  const notUuid = authWith(new Error('@supabase/auth-js: Expected parameter to be UUID but is not'));
+  assert.equal(await workspaceEmail(notUuid, 'local-dev', { strict: true }), null);
 });
 
 test('🔴 route: โหมดผูกลิงก์เรียก workspaceEmail แบบ strict และอยู่ใน try ที่แปลง GoogleDocError เป็นคำตอบ', () => {
