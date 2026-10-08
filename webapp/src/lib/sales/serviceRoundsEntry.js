@@ -30,7 +30,12 @@ export const lineTakesServiceRounds = (line, order = null) => (order?.serviceTer
 export const serviceRoundLines = (lines = [], order = null) =>
   (Array.isArray(lines) ? lines : []).filter((l) => lineTakesServiceRounds(l, order));
 
-/* ข้อความล็อกของช่องจำนวนรอบ (แผน §2.2 · ภาคผนวก A.3) */
+/* ข้อความล็อกของช่องจำนวนรอบ (แผน §2.2 · ภาคผนวก A.3)
+   ⭐ `required` มีสองคำตามหน่วยที่หน้าใบนั้นพูด (มติเจ้าของ 08/10: หน่วยของจำนวนรอบบริการบนตารางงานบริการ = "เดือน"):
+     · ใบ pipeline ที่ประทับแล้ว (ดินสอบนตารางงานบริการ) = `requiredMonths` — หน่วยเดียวกับ `SERVICE_SETUP_LINE_TEXT.roundUnit` (เทสต์ยึดไว้)
+     · ใบย้อนหลังที่ประทับแล้ว (การ์ดสัญญาบริการ — นอกขอบเขตมติ 08/10 ยังพูด "รอบ") = `required` คำเดิม
+     ตัวเลือกคำ = `serviceRoundsRequiredText(order)` ที่เดียว (ดินสอของจอและตัวตรวจของ API ใช้ตัวเดียวกัน)
+   ⚠️ literal — ไฟล์นี้ import serviceSetup.js ได้ทิศเดียว แต่ค่าคงที่ระดับบนสุดไม่อ่านชื่อที่ import (แบบเดียวกับกฎ 16) */
 export const SERVICE_ROUNDS_EDIT_TEXT = Object.freeze({
   pipeline: 'แก้จำนวนรอบที่ตารางรายการ แล้วกด ‘บันทึกงานบริการ’',
   pending: 'รออนุมัติ — ดึงกลับก่อนแก้จำนวนรอบ',
@@ -38,7 +43,13 @@ export const SERVICE_ROUNDS_EDIT_TEXT = Object.freeze({
   backfill: 'ใบนี้ยังไม่ได้ตั้งงานบริการ — ตั้งจำนวนรอบที่ตารางรายการ แล้วกด ‘บันทึกงานบริการ’',
   backfillSubmitted: 'ยื่นตรวจงานบริการแล้ว — แก้ไม่ได้จนกว่าผู้จัดการจะตีกลับ',
   required: 'แพ็คเกจต้องมีอย่างน้อย 1 รอบ',
+  requiredMonths: 'แพ็คเกจต้องมีอย่างน้อย 1 เดือน',
 });
+
+/** คำของ "ล้างจำนวนรอบบริการของใบที่ประทับแล้วไม่ได้" ตามหน่วยที่หน้าใบนั้นพูด — ใบย้อนหลัง "รอบ" · ใบ pipeline "เดือน" (มติ 08/10) */
+export const serviceRoundsRequiredText = (order) => (isHistoricalOrder(order)
+  ? SERVICE_ROUNDS_EDIT_TEXT.required
+  : SERVICE_ROUNDS_EDIT_TEXT.requiredMonths);
 
 /**
  * ค่าที่ยอมให้เขียนลงฐาน — จำนวนเต็มบวก หรือ null (ยังไม่ระบุ)
@@ -108,7 +119,7 @@ export function validateServiceRoundsPatch(patch, lines = [], order = null) {
     }
     const rounds = normalizeServiceRounds(raw);
     /* ⭐ ใบที่ประทับแล้ว (mig 0392): รอบขายของโซนเกิดแล้ว — ล้างเป็น "ยังไม่ระบุ" ไม่ได้ (trigger ตอบ rounds_required) */
-    if (rounds === null && order?.serviceTermsOpenedAt) return { value: null, error: SERVICE_ROUNDS_EDIT_TEXT.required };
+    if (rounds === null && order?.serviceTermsOpenedAt) return { value: null, error: serviceRoundsRequiredText(order) };
     value.set(lineId, rounds);
   }
   if (!value.size) return { value: null, error: 'ไม่มีข้อมูลจำนวนรอบที่จะบันทึก' };

@@ -2,21 +2,27 @@
 // ── ตาราง "งานบริการ" ของใบสั่งขายสาย SERVICE — หนึ่งแถวต่อรายการ (มติเจ้าของ 30/09 · ม็อก BindGridEdit/BindGridMulti · ทาง A) ──
 //
 // ⭐ เจ้าของ 30/09: "มันต้องเลือกว่า รายการ เป็นงานบริการมั้ย ถ้าเป็น ก็มาเลือกว่า FG ไหน / Site Zone อะไร / ต้องไปกี่รอบ
-//   รอบละกี่แพ็ค ผลรวมแพ็คที่ใช้ทั้งหมด รายบรรทัด รวมทุกบรรทัด" ⇒ คอลัมน์ ①→⑥ ตามลำดับนี้เท่านั้น (`SERVICE_SETUP_GRID_TEXT.steps`)
-//     ① งานบริการ? (ใช่/ไม่ใช่) → ② แพ็คเกจ FG → ③ ไซต์ · โซน → ④ จำนวนรอบบริการ → ⑤ รอบละกี่แพ็ค (ต่อโซน) → ⑥ รวมแพ็ค
+//   รอบละกี่แพ็ค ผลรวมแพ็คที่ใช้ทั้งหมด รายบรรทัด รวมทุกบรรทัด" ⇒ คอลัมน์ ①→⑥ ตามลำดับของแคตตาล็อกเท่านั้น (`SERVICE_SETUP_GRID_TEXT.steps`)
+// ⭐ เจ้าของ 08/10: "อยากสลับ ข้อ 4 กับ ข้อ 5 เปลี่ยน หน่วยรอบบริการ จาก รอบ เป็น เดือน" ⇒
+//     ① งานบริการ? (ใช่/ไม่ใช่) → ② แพ็คเกจ FG → ③ ไซต์ · โซน → ④ รอบละกี่แพ็ค (ต่อโซน · แพ็ค) → ⑤ จำนวนรอบบริการ (ต่อรายการ · เดือน) → ⑥ รวมแพ็ค
+//   · หน่วยมาจาก `SERVICE_SETUP_LINE_TEXT.roundUnit` / `packUnit` ที่เดียว — ไฟล์นี้ไม่สะกดหน่วยเอง · ค่าที่เก็บ/สูตร/ช่วงที่ยอมไม่เปลี่ยน
 // ⭐ ช่วงบริการของรายการอยู่ **ใต้คำตอบในคอลัมน์ ①** (mig 0400 · มติเจ้าของ 01/10: "ช่วงบริการ เอาไว้ คอลัมน์ 1 งานบริการดีกว่า
 //   ถ้าใช่ก็ให้กรอก ไม่ใช่ก็ปิด") — หน้าตาอยู่ที่ `ServiceLinePeriod` · โหมดแยกรายรายการ: ชิป "ทุกเดือน ≈ n" และคำเตือนรอบน้อย
 //   คิดจาก **ช่วงของรายการนั้น** (ก้อนโซนรับ `period={linePeriod}`) · โหมดทั้งใบ: ช่วงของใบเหมือนเดิม
-//   + แถวท้าย "รวมทุกรายการ" (โซน · ไซต์ · รอบ · รอบละ · รวมแพ็คทั้งใบ) — 01/10 เจ้าของเลือกทาง A (ตารางแยกใต้ตารางราคา)
+//   + แถวท้าย "รวมทุกรายการ" (โซน · ไซต์ · รอบละ · จำนวนรอบบริการ · รวมแพ็คทั้งใบ) — 01/10 เจ้าของเลือกทาง A (ตารางแยกใต้ตารางราคา)
 // ⭐ หน้าตาตามชนิดของบรรทัด:
 //   · พิมพ์เอง — ① ปุ่มสองทาง **ไม่มีค่าตั้งต้น** (หมวดของบรรทัดตอบให้ได้ พร้อมบอก "ตามหมวด …") · ใช่ = ② เลือก FG 02-001 ของลูกค้า
 //   · FG 02-001 — ① ใช่ / ② FG มาจากใบเสนอราคา (เส้นประ แก้ไม่ได้) เหลือ ③–⑤
 //   · FG หมวดอื่น — ① ไม่ใช่ (ตามหมวด) · แถบจางแถบเดียว "ไม่ต้องตั้ง"
 // ⭐ วางผังด้วย CSS grid ล้วน (ห้าม style={{ }} ในโฟลเดอร์นี้) — แถวของรายการมี 6 ช่อง: # · รายการ · ① · ② · ก้อนโซน · ⑥
-//   ก้อนโซนเป็น grid ของตัวเอง `โซน | รอบ | แพ็ค` (กว้างเท่าคอลัมน์ ③④⑤ ของหัว) ⇒ แถวโซนที่ i กับช่องแพ็คของโซนนั้นอยู่แถวเดียวกันเสมอ
-//   ช่อง ④ มีค่าเฉพาะแถวโซนแรก (แถวอื่นช่องว่าง) = หน้าตาเดียวกับ rowspan ของม็อก
-// ⭐ คอลัมน์เอกสารแคบ (@container) — แถวพับเป็นการ์ดเรียง ①→⑥: ก้อนโซน `display: contents` แล้วใช้ `order`
-//   ให้ ③ โซนทั้งหมด → ④ รอบ → ⑤ แพ็ครายโซน (ช่องแพ็คบอกชื่อโซนของตัวเอง) — ลำดับเดียวกับหัวคอลัมน์
+//   ก้อนโซนเป็น grid ของตัวเอง `โซน | แพ็ค | รอบ` (กว้างเท่าคอลัมน์ ③④⑤ ของหัว) ⇒ ช่องแพ็คของโซนที่ i อยู่ติดโซนนั้นในแถวเดียวกันเสมอ
+//   ช่อง ⑤ (จำนวนรอบบริการ + ชิป) มีค่าเฉพาะแถวโซนแรก (แถวอื่นช่องว่าง) = หน้าตาเดียวกับ rowspan ของม็อก
+//   ลำดับใน DOM ของแถวโซน = โซน → แพ็ค → รอบ ⇒ ลำดับปุ่ม Tab เดินตามที่ตาเห็นบนจอกว้าง
+// ⭐ คอลัมน์เอกสารแคบ (@container) — แถวพับเป็นการ์ดเรียง ①→⑥: ก้อนโซนเป็น flex คอลัมน์
+//   ③ โซนทั้งหมด (+ ปุ่มเพิ่มโซน) → ④ แพ็ครายโซน (ช่องแพ็คบอกชื่อโซนของตัวเอง) → ⑤ รอบ (+ คำเตือนรอบน้อย) — ลำดับเดียวกับหัวคอลัมน์
+//   ⭐ ลำดับปุ่ม Tab ตอนพับ = ลำดับเดียวกันนี้: ช่องของก้อนโซนเป็นลูกโดยตรงของก้อน (มี key) และ **เรียงใน DOM ตามผังที่กำลังใช้**
+//     (`useGridFolded` อ่านว่าตารางพับอยู่ไหมจาก CSS) — เดิม CSS `order` ย้ายแค่ภาพ ปุ่ม Tab จึงกระโดดขึ้นลง (ตรวจทาน 08/10 · ui-1)
+//     `order` ในบล็อก @container ยังอยู่ = ตัวสำรองของเฟรมแรกก่อน effect (ภาพถูกเสมอ ไม่ว่า DOM จะเรียงแบบไหน)
 // 🔴 กฎ 3: ไม่มีสีแดงก่อนกด — แดงมาจาก `highlightOf` (แผงแดงหลังกดยื่น · บันทึกไม่ผ่าน) เท่านั้น
 // ⚠️ ข้อความข้อมูล (รอบขายของใบอื่นที่ยังมีผล · อยู่รายการอื่นด้วย · ผลประเมิน) ไม่เคยแดง
 // ⚠️ ไม่เติมจำนวนแพ็คจากผลประเมินให้เอง — ปุ่ม "ใช้" ข้างผลประเมินคือการเลือกของคน (ไม่มีค่าตั้งต้นเงียบ ๆ)
@@ -73,6 +79,41 @@ function selectOption(option) {
       </span>
     ),
   };
+}
+
+/* ── ตารางกำลังพับเป็นการ์ดอยู่ไหม — อ่านจาก CSS เอง: บล็อก `@container` ของ ServiceSetupGrid.module.css ตั้ง `--svc-grid-folded: 1`
+   บน `.grid` ⇒ เกณฑ์ความกว้างอยู่ที่ CSS ที่เดียว (ไฟล์นี้ไม่มีเลขความกว้างซ้ำ) · ResizeObserver ยิงครั้งแรกตอนเริ่มเฝ้า แล้วทุกครั้งที่ขนาดเปลี่ยน
+   ⭐ ใช้อย่างเดียว: ให้ก้อนโซนเรียงช่องใน DOM ตามที่ตาเห็นของผังนั้น (ลำดับปุ่ม Tab / ตัวอ่านจอ — มติ 08/10: ③ → ④ → ⑤ ทั้งสองผัง)
+     ⚠️ การ์ดพับไม่ได้มีแค่มือถือ: คอลัมน์เอกสารข้างรางขวาแคบกว่าเกณฑ์ที่จอกว้างราว 1051–1338px ด้วย (เช่นโน้ตบุ๊ก 1280)
+   ⚠️ ผังยังเป็นของ CSS ทั้งหมด — เฟรมแรกก่อน effect (และเบราว์เซอร์ที่ไม่มี ResizeObserver) ได้ลำดับของตาราง แล้ว `order` ในบล็อก
+     `@container` จัดภาพให้ถูกเหมือนเดิม (ต่างแค่ลำดับ Tab) ── */
+function useGridFolded(ref) {
+  const [folded, setFolded] = useState(false);
+  const last = useRef(false);
+  const refocus = useRef(null);
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || typeof ResizeObserver === "undefined") return undefined;
+    const read = () => {
+      const next = getComputedStyle(node).getPropertyValue("--svc-grid-folded").trim() === "1";
+      if (next === last.current) return;
+      last.current = next;
+      /* ผังสลับระหว่างที่โฟกัสอยู่ในตาราง (หมุนจอ · ย่อหน้าต่าง) — จำช่องไว้คืนโฟกัสหลัง React ย้ายโหนด */
+      const active = document.activeElement;
+      refocus.current = active && active !== node && node.contains(active) ? active : null;
+      setFolded(next);
+    };
+    const observer = new ResizeObserver(read);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [ref]);
+  /* React ย้ายโหนดของช่องตอนสลับลำดับ ⇒ เบราว์เซอร์ปล่อยโฟกัสของช่องที่ถูกย้าย — คืนให้ช่องเดิม (โหนดเดิม เพราะช่องมี key) */
+  useEffect(() => {
+    const node = refocus.current;
+    refocus.current = null;
+    if (node && node.isConnected && document.activeElement !== node) node.focus({ preventScroll: true });
+  }, [folded]);
+  return folded;
 }
 
 /* ป้ายของช่องตอนแถวพับเป็นการ์ด (คอลัมน์แคบ) — จอกว้างซ่อน เพราะหัวคอลัมน์บอกแล้ว */
@@ -261,8 +302,8 @@ function FgCell({ line, editable, fgOptions, error, onChange }) {
   );
 }
 
-/* ── ④ จำนวนรอบบริการ — ช่อง + ชิป "ทุกเดือน ≈ n" จากช่วงบริการ (แตะแล้วใส่ค่า · ไม่มีค่าตั้งต้นเงียบ ๆ)
-   ⚠️ ชิปเดียว (รายเดือน) ตามม็อก — คอลัมน์ ④ แคบ ชิปราย 2 สัปดาห์/ไตรมาสตัดบรรทัดกลางคำ · ความถี่อื่นพิมพ์เลขเอง
+/* ── ⑤ จำนวนรอบบริการ (หน่วยเดือน · มติเจ้าของ 08/10) — ช่อง + ชิป "ทุกเดือน ≈ n" จากช่วงบริการ (แตะแล้วใส่ค่า · ไม่มีค่าตั้งต้นเงียบ ๆ)
+   ⚠️ ชิปเดียว (รายเดือน) ตามม็อก — คอลัมน์ ⑤ แคบ ชิปราย 2 สัปดาห์/ไตรมาสตัดบรรทัดกลางคำ · ความถี่อื่นพิมพ์เลขเอง
    ⭐ โหมดแยกรายรายการที่รายการยังไม่มีช่วง (`periodWait`): ชิปเส้นประ "ทุกเดือน ≈ —" กดไม่ได้ + บอกเหตุที่ title (ม็อก PeriodSwitchPerLine) ── */
 function RoundsEdit({ line, period, periodWait, error, onChange }) {
   const chips = roundChipsFromPeriod(period).filter((chip) => chip.key === "monthly");
@@ -303,7 +344,7 @@ function RoundsEdit({ line, period, periodWait, error, onChange }) {
   );
 }
 
-/* ดินสอแก้ "จำนวนรอบบริการ" ของใบที่ประทับแล้ว — ≥ 1 (ล้างเป็นว่างไม่ได้ · trigger ของฐานตอบ rounds_required) */
+/* ดินสอแก้ "จำนวนรอบบริการ" ของใบที่ประทับแล้ว (ช่อง ⑤ · หน่วยเดือน) — ≥ 1 (ล้างเป็นว่างไม่ได้ · trigger ของฐานตอบ rounds_required) */
 function StampedRoundsEdit({ line, onRoundsSave }) {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState("");
@@ -320,7 +361,8 @@ function StampedRoundsEdit({ line, onRoundsSave }) {
   }
   const save = async () => {
     const rounds = normalizeServiceRounds(value);
-    if (rounds === null) { setError(SERVICE_ROUNDS_EDIT_TEXT.required); return; }
+    /* ตารางนี้เป็นของใบ pipeline เท่านั้น ⇒ คำที่พูดหน่วย "เดือน" (มติเจ้าของ 08/10 · ใบย้อนหลังใช้การ์ดสัญญาบริการ) */
+    if (rounds === null) { setError(SERVICE_ROUNDS_EDIT_TEXT.requiredMonths); return; }
     setBusy(true);
     try {
       const ok = await onRoundsSave?.({ [line.lineId]: rounds });
@@ -361,7 +403,8 @@ function RoundsRead({ line, canEditRounds, onRoundsSave }) {
   );
 }
 
-/* ── ⑥ รวมแพ็คของรายการ = รอบละ (Σ ทุกโซน) × จำนวนรอบบริการ + เทียบจำนวนในใบ (ไม่บังคับให้เท่า) ── */
+/* ── ⑥ รวมแพ็คของรายการ = รอบละ (Σ ทุกโซน) × จำนวนรอบบริการ + เทียบจำนวนในใบ (ไม่บังคับให้เท่า)
+   สูตรใต้ตัวเลข "1 × 6 เดือน" — ลำดับเดียวกับคอลัมน์ ④ × ⑤ · หน่วยจากแคตตาล็อก (มติเจ้าของ 08/10) ── */
 const CROSS_SHORT = Object.freeze({
   ok: () => "ตรงกับจำนวนในใบ",
   warn: (line) => `≠ ในใบ ${naText(line.qty === null || line.qty === undefined ? null : fmtNumber(Number(line.qty)))} · ตรวจอีกครั้ง`,
@@ -379,10 +422,10 @@ function TotalCell({ line, ctx }) {
       <StackLabel step="total" />
       <span className={styles.totalNum}>
         <b>{blank ? NA : fmtNumber(totals.packsTotal)}</b>
-        <span className={styles.unit}>แพ็ค</span>
+        <span className={styles.unit}>{SERVICE_SETUP_LINE_TEXT.packUnit}</span>
       </span>
       <span className={styles.totalFormula}>
-        {`${totals.packsPerRound ? fmtNumber(totals.packsPerRound) : NA} × ${totals.rounds ? fmtNumber(totals.rounds) : NA} รอบ`}
+        {`${totals.packsPerRound ? fmtNumber(totals.packsPerRound) : NA} × ${totals.rounds ? fmtNumber(totals.rounds) : NA} ${SERVICE_SETUP_LINE_TEXT.roundUnit}`}
       </span>
       {short ? <span className={styles.cross} data-tone={cross.tone} title={cross.text}>{short}</span> : null}
     </div>
@@ -452,9 +495,10 @@ function ZonePick({
   );
 }
 
-/* ── ก้อนโซน ③④⑤ ของรายการที่เป็นงานบริการ ── */
+/* ── ก้อนโซน ③④⑤ ของรายการที่เป็นงานบริการ — แถวโซน: ③ โซน → ④ รอบละกี่แพ็ค → ⑤ จำนวนรอบบริการ (เฉพาะแถวแรก)
+   `folded` = ตารางกำลังพับเป็นการ์ด (`useGridFolded`) ⇒ ช่องเรียงใน DOM แบบการ์ด: ③ โซนทั้งหมด → ④ แพ็ครายโซน → ⑤ รอบ ── */
 function ZoneBlock({
-  line, editable, period, periodWait, zonesById, sitesById, registry, takenLines, liveTerms, zoneErrors, noSites,
+  line, editable, folded, period, periodWait, zonesById, sitesById, registry, takenLines, liveTerms, zoneErrors, noSites,
   highlightOf, onChange, onRoundsChange, onOpenBulk, canEditRounds, onRoundsSave, roundsLowStage,
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -551,114 +595,135 @@ function ZoneBlock({
     <RoundsRead line={line} canEditRounds={canEditRounds} onRoundsSave={onRoundsSave} />
   );
 
-  /* ไม่มีโซนเลย = แถวเดียวที่บอกว่ายังไม่เลือก (ช่อง ④ ยังอยู่แถวนี้ — ใส่รอบก่อนเลือกโซนได้) */
+  /* ไม่มีโซนเลย = แถวเดียวที่บอกว่ายังไม่เลือก (ช่อง ⑤ ยังอยู่แถวนี้ — ใส่จำนวนรอบบริการก่อนเลือกโซนได้) */
   const zoneRows = visible.length ? visible : [null];
+
+  /* ช่องของก้อนโซนเป็นลูกโดยตรงของก้อน (ไม่มีกล่องห่อรายแถว) และมี key ของตัวเอง ⇒ สลับลำดับใน DOM ตามผังได้โดยช่องไม่ถูกสร้างใหม่
+     (ค่าที่กำลังพิมพ์ในดินสอ · เมนูโซนที่เปิดอยู่ ไม่หายตอนผังสลับ) — ลำดับจริงประกอบที่ `cells` ข้างล่าง */
+  const zoneCells = [];
+  const packsCells = [];
+  const roundsPads = [];
+  zoneRows.forEach((row, index) => {
+    const rowKey = row?.key ?? "empty";
+    const zone = row?.zoneId ? zonesById.get(row.zoneId) : null;
+    const site = zone ? sitesById.get(zone.siteId) : null;
+    const packsError = row ? packsErrorOf(row) : null;
+    const packs = row ? positiveIntOrNull(row.packsPerRound) : null;
+    const zoneName = zone?.name || zone?.code || row?.zoneId || "";
+    zoneCells.push(
+      <div key={`zone:${rowKey}`} className={styles.zoneCell} data-first={index === 0 ? "" : undefined} id={!editable && index === 0 ? zonesFieldId : undefined}>
+        {index === 0 ? <StackLabel step="zones" /> : null}
+        {!row ? (
+          <span className={styles.zoneEmpty}>{noSites ? NO_SITE_TEXT : "ยังไม่เลือกโซน"}</span>
+        ) : editable ? (
+          <ZonePick
+            line={line}
+            row={row}
+            index={index}
+            zone={zone}
+            site={site}
+            registry={registry}
+            takenLines={takenLines}
+            liveOrders={row.zoneId ? liveTerms.get(row.zoneId) : null}
+            otherLineNos={row.zoneId ? otherLinesByZone.get(row.zoneId) : null}
+            zoneError={zoneErrorOf(row)}
+            blockedNote={removeBlocked && blockedRow === row.key ? removeBlocked : null}
+            packsText={String(row.packsPerRound ?? "").trim()}
+            onPick={pick}
+            onPacks={setPacks}
+            onRemove={remove}
+          />
+        ) : (
+          <span className={styles.zoneRead}>
+            {site?.code ? <small>{site.code}</small> : null}
+            <span className={styles.zoneReadSite}>{site?.name || (site ? NA : zoneReadLabel(zone, site, row.zoneId))}</span>
+            {zone ? <b>{zone.name || zone.code || NA}{zone.code ? <small>{zone.code}</small> : null}</b> : null}
+          </span>
+        )}
+      </div>,
+    );
+    packsCells.push(
+      <div key={`packs:${rowKey}`} className={styles.packsCell} data-first={index === 0 ? "" : undefined}>
+        {index === 0 ? <StackLabel step="packs" /> : null}
+        {row && zoneName ? <span className={styles.packsZone}>{zoneName}</span> : null}
+        {!row ? <span className={styles.muted}>{NA}</span> : editable ? (
+          <>
+            <span className={styles.num}>
+              <Input
+                id={row.zoneId ? zonePacksFieldId(lineId, row.zoneId) : undefined}
+                type="number" min="1" max="9999" step="1" inputMode="numeric" autoComplete="off" placeholder="—"
+                value={row.packsPerRound}
+                invalid={!!packsError}
+                onChange={(event) => setPacks(index, event.target.value)}
+                aria-label={`${SERVICE_SETUP_LINE_TEXT.packsLabel} ${zoneName || `แถว ${index + 1}`} รายการ ${line.lineNo}`}
+              />
+              <span className={styles.unit}>{SERVICE_SETUP_LINE_TEXT.packUnit}</span>
+            </span>
+            {packsError ? <span className={styles.error} role="alert">{packsError}</span> : null}
+          </>
+        ) : (
+          <span className={styles.readValue}>
+            {packs === null ? <span className={styles.muted}>{SERVICE_SETUP_LINE_TEXT.noPacks}</span> : (
+              <><b>{fmtNumber(packs)}</b> {SERVICE_SETUP_LINE_TEXT.packUnit}</>
+            )}
+          </span>
+        )}
+      </div>,
+    );
+    /* ช่องว่างของคอลัมน์ ⑤ ในแถวโซนที่ 2 เป็นต้นไป (ผังตารางเท่านั้น — ตัวเติมช่องของ grid ให้แถวถัดไปเริ่มที่คอลัมน์โซน) */
+    if (index > 0) roundsPads.push(<div key={`pad:${rowKey}`} className={styles.roundsCell} />);
+  });
+  /* ช่อง ⑤ (จำนวนรอบบริการ + ชิป) — ครั้งเดียวต่อรายการ · key คงที่ ⇒ ลบ/สลับแถวโซนแล้วช่องนี้ (และดินสอที่เปิดอยู่) ไม่ถูกสร้างใหม่ */
+  const roundsBox = (
+    <div key="rounds" className={styles.roundsCell} data-first="">
+      <StackLabel step="rounds" />
+      {roundsCell}
+    </div>
+  );
+  const foot = editable || hidden > 0 ? (
+    <div key="foot" className={styles.zoneFoot} id={editable ? zonesFieldId : undefined}>
+      {hidden > 0 ? (
+        <Button size="sm" variant="quiet" className={styles.zoneMore} onClick={() => setExpanded(true)}>
+          แสดงอีก {fmtNumber(hidden)} โซน
+        </Button>
+      ) : null}
+      {editable ? (
+        <span className={styles.zoneAdd}>
+          <Button size="sm" icon={<Plus size={14} aria-hidden="true" />} disabled={noSites} onClick={addRow}>เพิ่มโซน</Button>
+          <Button size="sm" icon={<ListPlus size={14} aria-hidden="true" />} disabled={noSites} onClick={openBulk}>เพิ่มหลายโซน…</Button>
+          <span className={styles.zoneCount}>{countText}</span>
+        </span>
+      ) : null}
+      {editable && noSites && rows.length ? <span className={styles.note}>{NO_SITE_TEXT}</span> : null}
+      {capHit ? <span className={styles.error} role="alert">{zonesBulkCapText(cap)}</span> : null}
+      {zonesError ? <span className={styles.error} role="alert">{zonesError}</span> : null}
+    </div>
+  ) : null;
+  /* คำเตือนรอบน้อย (ไม่บล็อก · เทา) — กล่องของตัวเองท้ายก้อนโซน: จอกว้างกินเต็มก้อน · การ์ดพับตามหลังช่อง ⑤ ที่มันพูดถึง
+     (เดิมอยู่ในแถวปุ่มเพิ่มโซน — พอ ④ แพ็ครายโซนมาคั่น คำเตือนจะลอยห่างจากช่องจำนวนรอบบริการ) */
+  const note = roundsLow ? (
+    <div key="note" className={styles.roundsNote}>
+      <span className={styles.note} role="status">{roundsLow}</span>
+    </div>
+  ) : null;
+
+  /* ⭐ ลำดับใน DOM = ลำดับที่ตาเห็น **ทั้งสองผัง** (ลำดับปุ่ม Tab และตัวอ่านจอเดินตาม DOM — CSS `order` ย้ายได้แค่ภาพ):
+       ตาราง (จอกว้าง) : แถวโซนที่ i = ③ โซน → ④ แพ็ค → ⑤ รอบ (เฉพาะแถวแรก · แถวอื่นเป็นช่องว่าง) → … → ปุ่มเพิ่มโซน → คำเตือนรอบน้อย
+       การ์ดพับ (แคบ)  : ③ โซนทั้งหมด → ปุ่มเพิ่มโซน → ④ แพ็ครายโซน → ⑤ รอบ → คำเตือนรอบน้อย   (มติ 08/10: ③ → ④ → ⑤) */
+  const cells = folded
+    ? [...zoneCells, foot, ...packsCells, roundsBox, note]
+    : [...zoneRows.flatMap((_, index) => [zoneCells[index], packsCells[index], index === 0 ? roundsBox : roundsPads[index - 1]]), foot, note];
 
   return (
     <div className={styles.zoneBlock} data-invalid={zonesError ? "" : undefined}>
-      {zoneRows.map((row, index) => {
-        const zone = row?.zoneId ? zonesById.get(row.zoneId) : null;
-        const site = zone ? sitesById.get(zone.siteId) : null;
-        const packsError = row ? packsErrorOf(row) : null;
-        const packs = row ? positiveIntOrNull(row.packsPerRound) : null;
-        const zoneName = zone?.name || zone?.code || row?.zoneId || "";
-        return (
-          <div key={row?.key ?? "empty"} className={styles.zoneRow}>
-            <div className={styles.zoneCell} data-first={index === 0 ? "" : undefined} id={!editable && index === 0 ? zonesFieldId : undefined}>
-              {index === 0 ? <StackLabel step="zones" /> : null}
-              {!row ? (
-                <span className={styles.zoneEmpty}>{noSites ? NO_SITE_TEXT : "ยังไม่เลือกโซน"}</span>
-              ) : editable ? (
-                <ZonePick
-                  line={line}
-                  row={row}
-                  index={index}
-                  zone={zone}
-                  site={site}
-                  registry={registry}
-                  takenLines={takenLines}
-                  liveOrders={row.zoneId ? liveTerms.get(row.zoneId) : null}
-                  otherLineNos={row.zoneId ? otherLinesByZone.get(row.zoneId) : null}
-                  zoneError={zoneErrorOf(row)}
-                  blockedNote={removeBlocked && blockedRow === row.key ? removeBlocked : null}
-                  packsText={String(row.packsPerRound ?? "").trim()}
-                  onPick={pick}
-                  onPacks={setPacks}
-                  onRemove={remove}
-                />
-              ) : (
-                <span className={styles.zoneRead}>
-                  {site?.code ? <small>{site.code}</small> : null}
-                  <span className={styles.zoneReadSite}>{site?.name || (site ? NA : zoneReadLabel(zone, site, row.zoneId))}</span>
-                  {zone ? <b>{zone.name || zone.code || NA}{zone.code ? <small>{zone.code}</small> : null}</b> : null}
-                </span>
-              )}
-            </div>
-            <div className={styles.roundsCell} data-first={index === 0 ? "" : undefined}>
-              {index === 0 ? (
-                <>
-                  <StackLabel step="rounds" />
-                  {roundsCell}
-                </>
-              ) : null}
-            </div>
-            <div className={styles.packsCell} data-first={index === 0 ? "" : undefined}>
-              {index === 0 ? <StackLabel step="packs" /> : null}
-              {row && zoneName ? <span className={styles.packsZone}>{zoneName}</span> : null}
-              {!row ? <span className={styles.muted}>{NA}</span> : editable ? (
-                <>
-                  <span className={styles.num}>
-                    <Input
-                      id={row.zoneId ? zonePacksFieldId(lineId, row.zoneId) : undefined}
-                      type="number" min="1" max="9999" step="1" inputMode="numeric" autoComplete="off" placeholder="—"
-                      value={row.packsPerRound}
-                      invalid={!!packsError}
-                      onChange={(event) => setPacks(index, event.target.value)}
-                      aria-label={`${SERVICE_SETUP_LINE_TEXT.packsLabel} ${zoneName || `แถว ${index + 1}`} รายการ ${line.lineNo}`}
-                    />
-                    <span className={styles.unit}>{SERVICE_SETUP_LINE_TEXT.packUnit}</span>
-                  </span>
-                  {packsError ? <span className={styles.error} role="alert">{packsError}</span> : null}
-                </>
-              ) : (
-                <span className={styles.readValue}>
-                  {packs === null ? <span className={styles.muted}>{SERVICE_SETUP_LINE_TEXT.noPacks}</span> : (
-                    <><b>{fmtNumber(packs)}</b> {SERVICE_SETUP_LINE_TEXT.packUnit}</>
-                  )}
-                </span>
-              )}
-            </div>
-          </div>
-        );
-      })}
-
-      {editable || hidden > 0 || roundsLow ? (
-        <div className={styles.zoneFoot} id={editable ? zonesFieldId : undefined}>
-          {hidden > 0 ? (
-            <Button size="sm" variant="quiet" className={styles.zoneMore} onClick={() => setExpanded(true)}>
-              แสดงอีก {fmtNumber(hidden)} โซน
-            </Button>
-          ) : null}
-          {editable ? (
-            <span className={styles.zoneAdd}>
-              <Button size="sm" icon={<Plus size={14} aria-hidden="true" />} disabled={noSites} onClick={addRow}>เพิ่มโซน</Button>
-              <Button size="sm" icon={<ListPlus size={14} aria-hidden="true" />} disabled={noSites} onClick={openBulk}>เพิ่มหลายโซน…</Button>
-              <span className={styles.zoneCount}>{countText}</span>
-            </span>
-          ) : null}
-          {editable && noSites && rows.length ? <span className={styles.note}>{NO_SITE_TEXT}</span> : null}
-          {capHit ? <span className={styles.error} role="alert">{zonesBulkCapText(cap)}</span> : null}
-          {zonesError ? <span className={styles.error} role="alert">{zonesError}</span> : null}
-          {roundsLow ? <span className={styles.note} role="status">{roundsLow}</span> : null}
-        </div>
-      ) : null}
+      {cells}
     </div>
   );
 }
 
 /* ── แถวของรายการหนึ่ง ── */
 function GridLine({
-  line, editable, period, periodMode, sameSource, ctx, fgOptions, zonesById, sitesById, registry, takenLines, liveTerms, zoneErrors, noSites,
+  line, editable, folded, period, periodMode, sameSource, ctx, fgOptions, zonesById, sitesById, registry, takenLines, liveTerms, zoneErrors, noSites,
   highlightOf, onLineChange, onLineReplace, onOpenBulk, canEditRounds, onRoundsSave, roundsLowStage,
 }) {
   const kindError = highlightOf(lineFieldId(line.lineId, "kind"));
@@ -704,6 +769,7 @@ function GridLine({
         <ZoneBlock
           line={line}
           editable={editable}
+          folded={folded}
           period={linePeriod}
           periodWait={byLine && !validServicePeriod(linePeriod)}
           zonesById={zonesById}
@@ -761,7 +827,7 @@ function GridLine({
   );
 }
 
-/* ── แถวท้าย "รวมทุกรายการ" ── */
+/* ── แถวท้าย "รวมทุกรายการ" — … โซน/ไซต์ | รอบละ (แพ็ค) | จำนวนรอบบริการ (เดือน) | รวมแพ็ค ── */
 function GridFoot({ totals }) {
   const t = totals || {};
   const extra = [
@@ -781,17 +847,18 @@ function GridFoot({ totals }) {
         <span><b>{fmtNumber(t.zones || 0)}</b> โซนใน <b>{fmtNumber(t.sites || 0)}</b> ไซต์</span>
         {extra ? <span className={styles.footExtra}>({extra})</span> : null}
       </span>
-      <span className={styles.footNum} data-col="rounds" title={serviceRoundsText(t) || undefined}>
-        <small>{t.roundsMixed ? "ต่างกันรายรายการ" : "ทุกรายการ"}</small>
-        <span><b>{rounds ?? NA}</b> <span className={styles.unit}>รอบ</span></span>
-      </span>
+      {/* ลำดับช่องท้ายตาราง = คอลัมน์ ④ → ⑤ → ⑥ ของหัว (มติเจ้าของ 08/10) · หน่วยจากแคตตาล็อก */}
       <span className={styles.footNum} data-col="packs">
         <small>รอบละ</small>
-        <span><b>{fmtNumber(t.packsPerRound || 0)}</b> <span className={styles.unit}>แพ็ค</span></span>
+        <span><b>{fmtNumber(t.packsPerRound || 0)}</b> <span className={styles.unit}>{SERVICE_SETUP_LINE_TEXT.packUnit}</span></span>
+      </span>
+      <span className={styles.footNum} data-col="rounds" title={serviceRoundsText(t) || undefined}>
+        <small>{t.roundsMixed ? "ต่างกันรายรายการ" : "ทุกรายการ"}</small>
+        <span><b>{rounds ?? NA}</b> <span className={styles.unit}>{SERVICE_SETUP_LINE_TEXT.roundUnit}</span></span>
       </span>
       <span className={styles.footNum} data-col="total">
         <small>รวม</small>
-        <span><b>{fmtNumber(t.packsTotal || 0)}</b> <span className={styles.unit}>แพ็ค</span></span>
+        <span><b>{fmtNumber(t.packsTotal || 0)}</b> <span className={styles.unit}>{SERVICE_SETUP_LINE_TEXT.packUnit}</span></span>
       </span>
     </div>
   );
@@ -815,15 +882,18 @@ export default function ServiceSetupGrid({
 }) {
   /* ต้นทางของปุ่ม "เหมือนรายการ n" — รายการงานบริการแรกที่มีช่วงแล้ว (คิดครั้งเดียวทั้งตาราง) */
   const sameSource = useMemo(() => (periodMode === SERVICE_PERIOD_MODE_LINE && editable ? sameSourceOf(lines) : null), [periodMode, editable, lines]);
+  const gridRef = useRef(null);
+  const folded = useGridFolded(gridRef);
   return (
     <div className={styles.wrap}>
-      <div className={styles.grid} role="group" aria-label="งานบริการรายรายการ">
+      <div ref={gridRef} className={styles.grid} role="group" aria-label="งานบริการรายรายการ">
         <GridHead editable={editable} />
         {lines.map((line) => (
           <GridLine
               key={line.lineId}
               line={line}
               editable={editable}
+              folded={folded}
               period={period}
               periodMode={periodMode}
               sameSource={sameSource}

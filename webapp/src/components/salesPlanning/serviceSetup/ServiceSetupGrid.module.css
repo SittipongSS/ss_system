@@ -1,8 +1,10 @@
 /* ── ตาราง "งานบริการ" หนึ่งแถวต่อรายการ (ServiceSetupGrid · ม็อก BindGridEdit / BindGridMulti · มติเจ้าของ 30/09–01/10) ─────
    ผัง: หัว 8 คอลัมน์ (# · รายการ · ①…⑥) · แถวรายการ 6 ช่อง (# · รายการ · ① · ② · ก้อนโซน · ⑥)
-   ก้อนโซนกินคอลัมน์ ③④⑤ ของหัว และเป็น grid ของตัวเอง `โซน | รอบ | แพ็ค` — แถวโซน (`.zoneRow`) เป็น display: contents
-   ⇒ ช่องทั้งสามของโซนเดียวกันอยู่แถวเดียวกันเสมอ ไม่ต้องใช้ rowspan/inline style
-   ⚠️ ไม่มี column-gap ทุกชั้น — ความกว้างคอลัมน์ ③ ของหัว = ก้อนโซน − รอบ − แพ็ค ต้องลงตัวพอดี (ระยะห่างอยู่ใน padding ของช่อง)
+   ⭐ มติเจ้าของ 08/10 ("สลับ ข้อ 4 กับ ข้อ 5"): ④ = รอบละกี่แพ็ค (ต่อโซน) · ⑤ = จำนวนรอบบริการ (ต่อรายการ · หน่วยเดือน)
+     ⇒ หัว · ก้อนโซน · แถวท้าย เรียงคอลัมน์ `… ③ โซน | ④ แพ็ค | ⑤ รอบ | ⑥ รวม` เหมือนกันทั้งสามที่
+   ก้อนโซนกินคอลัมน์ ③④⑤ ของหัว และเป็น grid ของตัวเอง `โซน | แพ็ค | รอบ` — ช่องของแถวโซนเป็นลูกโดยตรงของก้อน (สามช่องต่อแถว)
+   ⇒ ช่องแพ็คของโซนอยู่ติดโซนนั้นในแถวเดียวกันเสมอ (ช่องรอบมีค่าเฉพาะแถวแรก · แถวอื่นเป็นช่องว่าง) ไม่ต้องใช้ rowspan/inline style
+   ⚠️ ไม่มี column-gap ทุกชั้น — ความกว้างคอลัมน์ ③ ของหัว = ก้อนโซน − แพ็ค − รอบ ต้องลงตัวพอดี (ระยะห่างอยู่ใน padding ของช่อง)
    ⭐ เป็น container ของตัวเอง — คอลัมน์เอกสารแคบกว่า 900px (รางขวาไม่พับ · แท็บเล็ต · มือถือ) แถวพับเป็นการ์ดเรียง ①→⑥
    ⭐ คอลัมน์ ① กว้าง 156px (เดิม 132px · mig 0400) — ใต้คำตอบมีช่วงบริการของรายการ: ช่องวันเต็ม + ไอคอนปฏิทิน ต้องพอดีคอลัมน์
      ส่วนที่เพิ่มเอาจากคอลัมน์ ③ (minmax(0, 1fr)) คอลัมน์อื่นไม่ขยับ */
@@ -19,7 +21,10 @@
   min-width: 0;
 }
 
+/* `--svc-grid-folded` = ธงให้ JS อ่านว่าตารางพับเป็นการ์ดอยู่ไหม (`useGridFolded` ของ ServiceSetupGrid.js — ก้อนโซนเรียงช่องใน DOM
+   ตามผังที่ใช้ ให้ลำดับปุ่ม Tab ตรงกับที่ตาเห็น) · ค่า 1 ตั้งในบล็อก @container ท้ายไฟล์ ⇒ เกณฑ์ความกว้างอยู่ที่นั่นที่เดียว */
 .grid {
+  --svc-grid-folded: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--panel-solid);
@@ -33,7 +38,7 @@
   display: grid;
   grid-template-columns:
     var(--c-idx) var(--c-item) var(--c-kind) var(--c-fg) minmax(0, 1fr)
-    var(--c-rounds) var(--c-packs) var(--c-total);
+    var(--c-packs) var(--c-rounds) var(--c-total);
   align-items: end;
   border-bottom: 1px solid var(--border);
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
@@ -390,16 +395,12 @@
 .zoneBlock {
   display: grid;
   min-width: 0;
-  grid-template-columns: minmax(0, 1fr) var(--c-rounds) var(--c-packs);
+  grid-template-columns: minmax(0, 1fr) var(--c-packs) var(--c-rounds);
   align-content: start;
 }
 
 .zoneBlock[data-invalid] {
   box-shadow: inset 0 0 0 1px var(--red);
-}
-
-.zoneRow {
-  display: contents;
 }
 
 .zoneCell,
@@ -412,7 +413,8 @@
   padding: var(--space-3) var(--space-2);
 }
 
-/* เส้นประคั่นระหว่างแถวโซน — เฉพาะช่องโซนกับช่องแพ็ค (ช่องรอบเป็นของทั้งรายการ ไม่คั่น) */
+/* เส้นประคั่นระหว่างแถวโซน — เฉพาะช่องโซนกับช่องแพ็ค ซึ่งอยู่ติดกัน ⇒ เส้นต่อเนื่องใต้คู่ "โซน + แพ็คของโซนนั้น"
+   (ช่องรอบท้ายแถวเป็นของทั้งรายการ ไม่คั่น) */
 .zoneCell:not([data-first]),
 .packsCell:not([data-first]) {
   border-top: 1px dashed var(--border);
@@ -529,6 +531,18 @@
   align-self: stretch;
 }
 
+/* คำเตือนรอบน้อยของรายการ (เทา · ไม่บล็อก) — กล่องของตัวเองท้ายก้อนโซน กินเต็มก้อน
+   ตามหลังแถวปุ่มเพิ่มโซน = ระยะห่างเท่าตอนที่ยังอยู่ในแถวนั้น (ช่องไฟ --space-1-5 แทนขอบล่าง --space-3 ของแถวปุ่ม) */
+.roundsNote {
+  display: flex;
+  grid-column: 1 / -1;
+  padding: 0 var(--space-2) var(--space-3);
+}
+
+.zoneFoot + .roundsNote {
+  margin-top: calc(var(--space-1-5) - var(--space-3));
+}
+
 .zoneAdd {
   display: flex;
   flex-wrap: wrap;
@@ -542,7 +556,7 @@
   white-space: nowrap;
 }
 
-/* ── ④ ⑤ ตัวเลข ── */
+/* ── ④ ⑤ ตัวเลข (④ รอบละกี่แพ็ค · ⑤ จำนวนรอบบริการ) ── */
 .num {
   display: flex;
   align-items: center;
@@ -554,7 +568,7 @@
   text-align: right;
 }
 
-/* ช่อง ⑤ แคบกว่าช่อง ④ (ม็อก) — คอลัมน์ ⑤ กว้าง 88px: ช่อง 60px + "แพ็ค" ล้นขอบคอลัมน์ไปทับระยะของคอลัมน์ ⑥ 6px
+/* ช่องแพ็ค (④) แคบกว่าช่องรอบ (⑤) (ม็อก) — คอลัมน์แพ็คกว้าง 88px: ช่อง 60px + "แพ็ค" ล้นขอบคอลัมน์ไปทับระยะของคอลัมน์ถัดไป 6px
    (วัดจากจอจริง 01/10) · 48px = เลข 4 หลัก (สูงสุด 9999) พอดี และหน่วยอยู่ในคอลัมน์ */
 .packsCell .num input {
   width: 48px;
@@ -706,7 +720,7 @@
   display: grid;
   grid-template-columns:
     var(--c-idx) var(--c-item) var(--c-kind) var(--c-fg) minmax(0, 1fr)
-    var(--c-rounds) var(--c-packs) var(--c-total);
+    var(--c-packs) var(--c-rounds) var(--c-total);
   align-items: end;
   border-top: 1px solid var(--border-strong);
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
@@ -774,8 +788,15 @@
 }
 
 /* ── คอลัมน์เอกสารแคบ: แถวพับเป็นการ์ดเรียง ①→⑥ ──────────────────────────────────────────────────
-   ก้อนโซนเป็น flex คอลัมน์ + แถวโซน display: contents ⇒ order จัด ③ โซนทั้งหมด (+ ปุ่มเพิ่มโซน) → ④ รอบ → ⑤ แพ็ครายโซน */
+   ก้อนโซนเป็น flex คอลัมน์: ③ โซนทั้งหมด (+ ปุ่มเพิ่มโซน) → ④ แพ็ครายโซน → ⑤ รอบ (+ คำเตือนรอบน้อย)
+   (มติเจ้าของ 08/10 — เดิม ④ รอบ → ⑤ แพ็ครายโซน)
+   ⭐ ตอนพับ ServiceSetupGrid.js เรียงช่องของก้อนโซนใน DOM เป็นลำดับนี้เอง (อ่านธง `--svc-grid-folded` ข้างล่าง) ⇒ ปุ่ม Tab เดินตามที่ตาเห็น
+     `order` ที่ยังอยู่ = ตัวสำรองของเฟรมแรกก่อน JS อ่านธง (DOM ยังเรียงแบบตาราง) — ภาพถูกทั้งสองกรณี · ห้ามพึ่ง `order` อย่างเดียว
+     (ย้ายได้แค่ภาพ ลำดับ Tab ไม่ตาม — ตรวจทาน 08/10)
+   ⚠️ เกณฑ์ 900px วัดที่คอลัมน์เอกสาร (ตัว container) ไม่ใช่จอ — ข้างรางขวา จอกว้างราว 1051–1338px ก็พับ (เช่นโน้ตบุ๊ก 1280) */
 @container (max-width: 900px) {
+  .grid { --svc-grid-folded: 1; }
+
   .head { display: none; }
 
   /* ⚠️ align-items ต้องเป็น stretch — ค่า `start` ของผังตารางตามมาด้วย ทำให้ก้อนโซนกว้างตามเนื้อ (ชื่อไซต์ยาว)
@@ -818,11 +839,12 @@
   .zoneCell,
   .zoneFoot { order: 1; }
 
-  .roundsCell { order: 2; }
+  .packsCell { order: 2; }
+
+  .roundsCell,
+  .roundsNote { order: 3; }
 
   .roundsCell:not([data-first]) { display: none; }
-
-  .packsCell { order: 3; }
 
   .zoneCell:not([data-first]),
   .packsCell:not([data-first]) {
@@ -840,6 +862,12 @@
     flex-basis: 100%;
   }
 
+  /* ข้อความแดงของช่องแพ็ค (หลังกดยื่น/บันทึกไม่ผ่าน) ขึ้นบรรทัดของตัวเอง — อยู่แถวเดียวกับชื่อโซน + ช่อง แล้วชื่อโซน (flex: 1 · ฐาน 0)
+     ถูกบีบเหลือไม่กี่พิกเซลจนตัดคำละบรรทัดและช่องทับชื่อ (วัดจากจอ 390px 08/10) */
+  .packsCell .error {
+    flex-basis: 100%;
+  }
+
   .packsZone {
     display: block;
     min-width: 0;
@@ -848,8 +876,13 @@
     font-size: var(--fs-5);
   }
 
-  .zoneFoot {
+  .zoneFoot,
+  .roundsNote {
     padding: 0;
+  }
+
+  .zoneFoot + .roundsNote {
+    margin-top: 0;
   }
 
   .total {

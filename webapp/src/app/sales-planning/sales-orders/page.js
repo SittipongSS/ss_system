@@ -162,8 +162,10 @@ function serviceReviewLine(order) {
   const review = order.serviceReview || {};
   const submitted = [naText(review.submittedByName), review.submittedAt ? fmtDate(review.submittedAt) : null]
     .filter(Boolean).join(" ");
-  /* มติ 29/09: "จำนวนรอบบริการ n รอบ" ก่อน แล้วค่อยบอกว่าแต่ละครั้งไปกี่โซน (คำจาก `serviceRoundsText` ของ route) */
-  return `${naText(order.customerName)} · ${naText(review.roundsLabel)} · แต่ละครั้ง ${naText(review.zones)} โซนใน ${naText(review.sites)} ไซต์ · ไม่นับ Actual · ยื่นโดย ${submitted}`;
+  /* มติเจ้าของ 08/10 (สลับ ④⑤ · หน่วยเดือน): ลำดับเดียวกับคอลัมน์ของตารางงานบริการและแถบผู้อนุมัติบนหน้าใบ —
+     "แต่ละครั้ง z โซนใน s ไซต์" (③) ก่อน แล้วค่อย "จำนวนรอบบริการ n เดือน" (⑤ · คำจาก `serviceRoundsText` ของ route)
+     · เดิม 29/09 ขึ้นด้วยจำนวนรอบบริการ */
+  return `${naText(order.customerName)} · แต่ละครั้ง ${naText(review.zones)} โซนใน ${naText(review.sites)} ไซต์ · ${naText(review.roundsLabel)} · ไม่นับ Actual · ยื่นโดย ${submitted}`;
 }
 
 /* ── มุมมองของตาราง: เรียง · จัดกลุ่ม (มติผู้ใช้ 2026-08-15) ────────────────

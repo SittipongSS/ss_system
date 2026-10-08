@@ -558,6 +558,27 @@ function mergedItem(entries, { hinted = new Set() } = {}) {
   };
 }
 
+/* ⭐ ลำดับที่แผงแดงไล่ข้อของ **รายการเดียวกัน** = ลำดับคอลัมน์ของตาราง (มติเจ้าของ 08/10: … ③ ไซต์ · โซน → ④ รอบละกี่แพ็ค → ⑤ จำนวนรอบบริการ)
+   ⇒ ข้อ "ยังไม่ใส่จำนวนรอบบริการ" ของรายการย้ายไปต่อท้ายข้อของรายการนั้น (หลังข้อโซน/แพ็ค) · ข้ออื่นคงลำดับเดิมทุกตัว
+   🔴 จัดที่จอเท่านั้น — `serviceSetupIssues` (และรหัส DETAIL ของ `sales_order_service_setup_errors` ที่ฐาน) ยังเรียง รอบ → โซน → แพ็ค
+      ตามสัญญาเดิมของ server (0392/0400 — ไม่มี migration ในงานนี้) · ทั้งสองทาง (ก้อน GET และรหัสจากฐาน) ผ่านตัวจัดนี้ก่อนขึ้นแผง
+   ข้อของรายการเดียวกันมาติดกันเสมอ (ตัวตรวจไล่ทีละรายการ) ⇒ ย้ายภายในช่วงที่ติดกันของ `lineId` เดียวกันเท่านั้น */
+const LAST_COLUMN_KEYS = new Set(['rounds_missing']);
+export function issuesInColumnOrder(issues = []) {
+  const out = [];
+  let held = [];
+  let heldLine = null;
+  const flush = () => { out.push(...held); held = []; heldLine = null; };
+  for (const issue of list(issues)) {
+    const lineId = issue?.lineId ?? null;
+    if (held.length && lineId !== heldLine) flush();
+    if (lineId !== null && LAST_COLUMN_KEYS.has(issue?.key)) { held.push(issue); heldLine = lineId; continue; }
+    out.push(issue);
+  }
+  flush();
+  return out;
+}
+
 /**
  * ข้อที่ยังขาด + คำเตือน → กลุ่มของแผงแดง (รายการ/แท็บภาพรวม · งวดชำระ/แท็บการชำระ)
  * @returns `[{ key, title, count (ข้อที่บล็อก), warnCount, items: [{ kind:'issue'|'warning', entry, entries?, tag, jump }] }]`
@@ -567,6 +588,7 @@ function mergedItem(entries, { hinted = new Set() } = {}) {
  *     🐞 เดิมแถวละงวด ⇒ ลูกค้าวางบิล 12 งวดได้ 12 แถวเหมือนกันทุกตัวอักษร จอ 375px ยาวหลายหน้าจอก่อนถึงตาราง
  *   · แถวรวมของข้อวันงวดมี `entry.dateFill` ('empty' | 'dated') — หน้าใบอ่านธงนี้ตอน "ไปแก้" (โหมดตั้งวันงวด + แผงเติม · #1846 ·
  *     'dated' = พร้อม "จัดใหม่งวดที่มีวันแล้วด้วย") · แถวเดี่ยวไม่มีธงนี้ (ธงรายงวดของด่านถูกถอด — แถวเดี่ยวไปที่เซลล์ของงวดนั้น)
+ *   · ข้อของรายการเดียวกันเรียงตามคอลัมน์ของตาราง (`issuesInColumnOrder` · มติ 08/10 — แพ็คก่อนจำนวนรอบบริการ)
  */
 export function submitGateGroups(issues = [], warnings = []) {
   const groups = [
@@ -582,7 +604,7 @@ export function submitGateGroups(issues = [], warnings = []) {
   }
   const placed = new Set();
   const hinted = new Set();
-  for (const entry of list(issues)) {
+  for (const entry of issuesInColumnOrder(issues)) {
     const group = groupOf(entry);
     group.count += 1;
     const mergeKey = `${entry?.key}\u0000${entry?.billingMode || ''}`;
@@ -660,8 +682,9 @@ export function backfillBannerText(view) {
   }
   /* เปิดแก้หลังอนุมัติ (mig 0396 · ภาคผนวก A.4) — ใคร/เมื่อไร/ทำไม + ช่องที่แก้ได้ของใบนี้ (`view.reopened.fields` ตามชนิดบรรทัด R20) */
   if (view?.reopened) return SERVICE_REOPENED_TEXT.bannerLine(view.reopened);
-  /* มติ 30/09: ลำดับเดียวกับการ์ดงานบริการ (แพ็คเกจ → ไซต์ · โซน → จำนวนรอบบริการ → รอบละกี่แพ็ค) · คำจากแคตตาล็อก `SERVICE_SETUP_LINE_TEXT` */
-  return `ตั้งงานบริการ (แพ็คเกจ · ไซต์ · โซน · ${SERVICE_SETUP_LINE_TEXT.roundsLabel} · ${SERVICE_SETUP_LINE_TEXT.packsLabel} · ช่วงบริการ)`
+  /* มติ 30/09: ลำดับเดียวกับการ์ดงานบริการ · มติ 08/10 (สลับ ④⑤): แพ็คเกจ → ไซต์ · โซน → รอบละกี่แพ็ค → จำนวนรอบบริการ
+     · คำจากแคตตาล็อก `SERVICE_SETUP_LINE_TEXT` */
+  return `ตั้งงานบริการ (แพ็คเกจ · ไซต์ · โซน · ${SERVICE_SETUP_LINE_TEXT.packsLabel} · ${SERVICE_SETUP_LINE_TEXT.roundsLabel} · ช่วงบริการ)`
     + ` แล้วยื่นให้ผู้จัดการฝ่ายขายตรวจ · ${BANNER_UNCHANGED}`;
 }
 
@@ -714,7 +737,8 @@ export function linesCardMeta({ order, lineCount } = {}) {
 
 /** บรรทัดรองบนหัวการ์ด "งานบริการ" — ขั้นของงานบริการ (ม็อก BindGridEdit / BindGridMulti) */
 export function serviceCardMeta({ view, flow, editable, totals } = {}) {
-  const ask = 'ทุกรายการต้องตอบว่าเป็นงานบริการไหม · ถ้าใช่ เลือกแพ็คเกจ → ไซต์ · โซน → จำนวนรอบบริการ → รอบละกี่แพ็ค';
+  /* ลำดับของหัวตาราง ②→⑤ (มติเจ้าของ 08/10: รอบละกี่แพ็คก่อนจำนวนรอบบริการ) · คำจากแคตตาล็อก — ไม่สะกดเองที่นี่ */
+  const ask = `ทุกรายการต้องตอบว่าเป็นงานบริการไหม · ถ้าใช่ เลือกแพ็คเกจ → ไซต์ · โซน → ${SERVICE_SETUP_LINE_TEXT.packsLabel} → ${SERVICE_SETUP_LINE_TEXT.roundsLabel}`;
   if (flow === 'stamped') {
     const opened = view?.state?.termsOpenedAt;
     return `อนุมัติแล้ว · เปิด ${fmtNumber(totals?.zones || 0)} โซนให้ TS${opened ? ` เมื่อ ${fmtDateTime(opened)}` : ''}`;
@@ -729,12 +753,18 @@ export function serviceCardMeta({ view, flow, editable, totals } = {}) {
   return null;
 }
 
+/* แถวตรวจของการ์ดราง จัดกลุ่มตามคอลัมน์ของตารางงานบริการ (มติเจ้าของ 08/10 — สลับ ④⑤):
+     แถว "งานบริการ? · แพ็คเกจ"                         = คอลัมน์ ① ②
+     แถว "ไซต์ · โซน · รอบละกี่แพ็ค · จำนวนรอบบริการ"  = คอลัมน์ ③ ④ ⑤ (ก้อนโซนของรายการ)
+   ⇒ ข้อ `rounds_missing` (⑤) อยู่กลุ่มเดียวกับโซน/แพ็ค — เดิมอยู่แถวแรก จึงขึ้น "จำนวนรอบบริการ" เหนือ "ไซต์ · โซน · รอบละกี่แพ็ค"
+     สวนกับแบนเนอร์ · ตาราง · แผงแดงของหน้าเดียวกัน (ตรวจทาน 08/10 · ui-2) · จัดที่จอเท่านั้น — กุญแจของข้อและลำดับของ server ไม่ถูกแตะ */
 const LINE_SHORT = Object.freeze({
   kind_missing: 'ยังไม่ตอบ ‘งานบริการ?’', fg_missing: 'ยังไม่เลือกแพ็คเกจ', fg_invalid: 'แพ็คเกจใช้ไม่ได้แล้ว',
-  fg_foreign: 'แพ็คเกจของนิติบุคคลอื่น', rounds_missing: SERVICE_SETUP_LINE_TEXT.noRounds,
+  fg_foreign: 'แพ็คเกจของนิติบุคคลอื่น',
 });
 const ZONE_SHORT = Object.freeze({
   zones_missing: 'ยังไม่เลือกโซน', packs_missing: SERVICE_SETUP_LINE_TEXT.noPacks, zone_invalid: 'โซนใช้ไม่ได้', zones_on_not_service: 'มีโซนค้าง',
+  rounds_missing: SERVICE_SETUP_LINE_TEXT.noRounds,
 });
 const LINE_KEYS = new Set(Object.keys(LINE_SHORT));
 const ZONE_KEYS = new Set(Object.keys(ZONE_SHORT));
@@ -750,12 +780,13 @@ const BILL_KEYS = new Set(['installments_missing', 'due_missing', 'billing_missi
  */
 export function backfillRailChecks(view) {
   if (!view) return [];
-  const issues = list(view.issues);
+  /* ข้อของรายการเดียวกันไล่ตามคอลัมน์ของตาราง (แพ็คก่อนจำนวนรอบบริการ — ตัวจัดเดียวกับแผงแดง) ⇒ "ข้อแรกของแถว" ตรงกับที่แผงแดงขึ้นก่อน */
+  const issues = issuesInColumnOrder(view.issues);
   const lines = list(view.lines);
   const unset = Number(view.totals?.unsetLines || 0);
   const packageLines = Number(view.totals?.packageLines || 0);
   const linesWith = (keys) => new Set(issues.filter((issue) => keys.has(issue?.key)).map((issue) => issue.lineId));
-  /* "รายการ 3: ยังไม่ใส่จำนวนรอบบริการ · อีก 2 รายการ" — ข้อแรกของแถว + จำนวนบรรทัดที่เหลือ */
+  /* "รายการ 3: ยังไม่ใส่รอบละกี่แพ็ค · อีก 2 รายการ" — ข้อแรกของแถว + จำนวนบรรทัดที่เหลือ */
   const shortSub = (keys, labels, badCount) => {
     const first = issues.find((issue) => keys.has(issue?.key));
     if (!first) return null;
@@ -828,12 +859,13 @@ export function backfillRailChecks(view) {
 
   return [
     {
-      key: 'lines', label: `งานบริการ? · แพ็คเกจ · ${SERVICE_SETUP_LINE_TEXT.roundsLabel}`,
+      key: 'lines', label: 'งานบริการ? · แพ็คเกจ',
       value: `${fmtNumber(lines.length - lineBad.size)}/${fmtNumber(lines.length)} รายการ`,
       sub: shortSub(LINE_KEYS, LINE_SHORT, lineBad.size), ok: lineBad.size === 0,
     },
     {
-      key: 'zones', label: `ไซต์ · โซน · ${SERVICE_SETUP_LINE_TEXT.packsLabel}`,
+      /* ลำดับเดียวกับหัวตาราง ③ → ④ → ⑤ (มติเจ้าของ 08/10) · คำจากแคตตาล็อก */
+      key: 'zones', label: `ไซต์ · โซน · ${SERVICE_SETUP_LINE_TEXT.packsLabel} · ${SERVICE_SETUP_LINE_TEXT.roundsLabel}`,
       value: zoneLines.length ? `${fmtNumber(zoneDone)}/${fmtNumber(zoneLines.length)} รายการ` : 'ไม่มีแพ็คเกจ',
       sub: unset ? SERVICE_BACKFILL_RAIL_TEXT.waitKind(fmtNumber(unset)) : shortSub(ZONE_KEYS, ZONE_SHORT, zoneBad.size),
       ok: zoneBad.size === 0 && !unset,

@@ -2,11 +2,21 @@
 //
 // ⭐ **ฝ่ายขายตั้งงานบริการที่ใบสั่งขายเอง** — ทุกบรรทัดของใบสาย SERVICE ต้องตอบว่า "เป็นแพ็คเกจบริการรายรอบไหม"
 //   แพ็คเกจต้องมี FG หมวด 02-001 · จำนวนรอบบริการ · โซน (หลายโซนได้ แต่ละโซนบอกว่า "รอบละกี่แพ็ค") · และใบมีช่วงบริการหนึ่งช่วง
-//   ⭐ มติเจ้าของ 29/09: ทุกผิวเรียง **"จำนวนรอบบริการ" ก่อน แล้วค่อยบอกว่ากี่แพ็ค** — คำอยู่ที่ `SERVICE_SETUP_LINE_TEXT`
-//   ⭐ มติเจ้าของ 30/09: การ์ด "งานบริการ" เป็นตาราง ① งานบริการ? → ② FG → ③ ไซต์ · โซน → ④ จำนวนรอบบริการ → ⑤ รอบละกี่แพ็ค → ⑥ รวม
-//     (`SERVICE_SETUP_GRID_TEXT`) · คำ "แต่ละครั้งกี่แพ็ค" ของ 29/09 เปลี่ยนเป็น "รอบละกี่แพ็ค" (`PACKS_TERM`)
-//     (ค่าที่เก็บยังเป็น `serviceRounds` + `packsPerRound` เหมือนเดิม — เปลี่ยนแค่คำและลำดับบนจอ)
-//     · คำเรียกรอบเดิม "ไปกี่รอบ" → "จำนวนรอบบริการ" (มติเจ้าของ 29/09 รอบสอง) — คำนี้อยู่ที่ `ROUNDS_TERM` ที่เดียว
+//   ⭐ มติเจ้าของ 29/09: ทุกผิวพูดเรื่องรอบ/แพ็คเป็นประโยคชุดเดียวกัน — คำอยู่ที่ `SERVICE_SETUP_LINE_TEXT`
+//     (ลำดับ "จำนวนรอบบริการก่อน" ของ 29/09 ถูกมติ 08/10 กลับ — ประโยคสรุปตัวเลขเรียงตามคอลัมน์ ③ → ④ → ⑤ → ⑥ แล้ว · ดู `columnOrderParts`)
+//   ⭐ มติเจ้าของ 30/09: การ์ด "งานบริการ" เป็นตาราง ①→⑥ (`SERVICE_SETUP_GRID_TEXT`) · คำ "แต่ละครั้งกี่แพ็ค" ของ 29/09
+//     เปลี่ยนเป็น "รอบละกี่แพ็ค" (`PACKS_TERM`) · คำเรียกรอบเดิม "ไปกี่รอบ" → "จำนวนรอบบริการ" (29/09 รอบสอง) — อยู่ที่ `ROUNDS_TERM` ที่เดียว
+//   ⭐ มติเจ้าของ 08/10 ("อยากสลับ ข้อ 4 กับ ข้อ 5 เปลี่ยน หน่วยรอบบริการ จาก รอบ เป็น เดือน"):
+//       ① งานบริการ? → ② FG → ③ ไซต์ · โซน → **④ รอบละกี่แพ็ค** (ต่อโซน · หน่วย แพ็ค) → **⑤ จำนวนรอบบริการ** (หน่วย **เดือน**) → ⑥ รวม
+//     · หัวคอลัมน์ · ลำดับช่อง · ประโยคที่ไล่ขั้นตามลำดับ ("… ไซต์ · โซน → รอบละกี่แพ็ค → จำนวนรอบบริการ") เดินตามลำดับนี้
+//     · ประโยคสรุปตัวเลข (แถบผู้อนุมัติ · ผลของการอนุมัติ · ท้ายตาราง · แถวคิวของทะเบียน) เรียงตามคอลัมน์ด้วย:
+//       "แต่ละครั้ง z โซนใน s ไซต์ · ครั้งละ p แพ็ค · จำนวนรอบบริการ r เดือน · รวมทั้งใบ t แพ็ค" (`columnOrderParts` — ตรวจทาน 08/10:
+//       แถบอยู่เหนือตารางในหน้าเดียวกัน ตัวเลขสี่ตัวต้องมาลำดับเดียวกับคอลัมน์/แถวท้ายของตาราง)
+//     · หน่วยของค่านี้บนผิวฝ่ายขายคือ "เดือน" (`ROUND_UNIT` ที่เดียว — ช่องกรอก · โหมดอ่าน · ดินสอ · สูตรรวม · ท้ายตาราง · ประโยครอบ)
+//     🔴 **เปลี่ยนแค่คำและผัง** — ค่าที่เก็บและความหมายเท่าเดิม: `serviceRounds` = จำนวนรอบที่ TS ไปบริการ · `packsPerRound` = แพ็คต่อรอบ
+//        (1 เดือน = 1 รอบ · ตรวจข้อมูลจริง 08/10: ทุกบรรทัดที่บันทึกเป็นรายเดือน) · ไม่มี migration · รูป API · ช่วงที่ยอม · รหัสข้อผิด ·
+//        สูตร (รวม = Σ รอบละ × จำนวนรอบ) · ชิป "ทุกเดือน ≈ n" · เกณฑ์คำเตือนรอบน้อย ไม่เปลี่ยน · `ROUNDS_TERM` / `PACKS_TERM` คำเดิม
+//     ⚠️ ฝั่ง TS (lib/service · components/service · app/service) นับเป็น "รอบ" ที่ช่างไปตามเดิม — ไม่อ่านหน่วยจากไฟล์นี้
 //   ⭐ มติเจ้าของ 01/10 (mig 0400): ช่วงบริการมีสองโหมด — "ทั้งใบช่วงเดียว" (ค่าตั้งต้น · เหมือนเดิมทุกอย่าง) | "แยกรายรายการ"
 //     (รายการแพ็คเกจแต่ละบรรทัดมีช่วงของตัวเอง · ช่วงของใบ = ช่วงรวมที่ RPC บันทึกคิดให้ **เมื่อรายการครบทุกรายการ** ยังไม่ครบ = ว่าง)
 //     ตัวตัดสินเดียวของโหมด = `servicePeriodModeOf(order)` · ช่วงที่ใช้กับบรรทัด = `serviceLinePeriod(line, ctx)` · คำ = `SERVICE_PERIOD_TEXT`
@@ -59,6 +69,11 @@ const PACKAGE_CATEGORY = '02-001';
    literal ของไฟล์เอง ไม่ใช่ชื่อที่ import (กฎ 16) */
 const ROUNDS_TERM = 'จำนวนรอบบริการ';
 
+/* หน่วยของ "จำนวนรอบบริการ" บนผิวฝ่ายขาย — มติเจ้าของ 08/10: "เปลี่ยน หน่วยรอบบริการ จาก รอบ เป็น เดือน"
+   ที่เดียวของคำนี้ · ช่องกรอก · โหมดอ่าน · ดินสอ · สูตรรวม · ท้ายตาราง · ประโยครอบ (`roundsCount` / `roundsText`) อ่านจากตัวนี้
+   ⚠️ เปลี่ยนแค่คำ — ค่าที่เก็บ (`serviceRounds`) ยังเป็นจำนวนรอบที่ TS ไปบริการ (1 เดือน = 1 รอบ) · literal ของไฟล์เอง (กฎ 16) */
+const ROUND_UNIT = 'เดือน';
+
 /* เพดานเดียวกับ CHECK/RPC ของ 0392 */
 export const SERVICE_SETUP_LIMITS = Object.freeze({ zonesPerLine: 500, packsMin: 1, packsMax: 9999, roundsMin: 1, roundsMax: 999 });
 
@@ -69,7 +84,7 @@ const PACKS_TERM = 'รอบละกี่แพ็ค';
 /* คำตอบข้อ ① "งานบริการ?" ของบรรทัดพิมพ์เอง (ปุ่มสองทาง · ไม่มีค่าตั้งต้น) — มติเจ้าของ 30/09
    "มันต้องเลือกว่า รายการ เป็นงานบริการมั้ย" ⇒ คำถามเป็น ใช่/ไม่ใช่ · คำอธิบายขึ้นเป็น title ของปุ่ม */
 export const SERVICE_KIND_OPTIONS = Object.freeze([
-  { value: 'package', label: 'ใช่', description: `แพ็คเกจที่ TS ต้องไปบริการตามรอบ — เลือก FG หมวด 02-001 → ไซต์ · โซน → ${ROUNDS_TERM} → ${PACKS_TERM}` },
+  { value: 'package', label: 'ใช่', description: `แพ็คเกจที่ TS ต้องไปบริการตามรอบ — เลือก FG หมวด 02-001 → ไซต์ · โซน → ${PACKS_TERM} → ${ROUNDS_TERM}` },
   { value: 'not_service', label: 'ไม่ใช่', description: 'ค่าขนส่ง ค่าออกแบบ สินค้าส่งครั้งเดียว รายได้อื่นๆ — ไม่ส่งให้ TS' },
 ]);
 
@@ -175,12 +190,14 @@ export const SERVICE_SETUP_ISSUE_TEXT = Object.freeze({
   unsaved: () => 'มีการแก้ไขงานบริการที่ยังไม่บันทึก — กด ‘บันทึกงานบริการ’ ก่อนยื่น',
   coverage_overlap: ({ a, b, since, until } = {}) => `งวด ${a} กับ งวด ${b} ครอบซ้อน ${dayText(since)}–${dayText(until)}`,
   fn_coverage_missing: ({ seq } = {}) => `งวด ${seq} (บัญชีรับรองแล้ว): ยังไม่มีช่วงครอบ — ฝ่ายบัญชีกรอกที่แผงงวด`,
-  /* คำเตือน (ไม่บล็อก · มติ 29/09): ไปน้อยกว่าครึ่งหนึ่งของจำนวนเดือนเต็มในช่วงบริการ (`roundsLowOf`) — เช่น 1 รอบในช่วง 12 เดือน
-     ไม่มี `n` = คำบนบรรทัดเอง (อยู่ใต้ช่องจำนวนรอบบริการแล้ว) · มี `n` = แผงแดง/โมดัล
-     "จำนวนรอบบริการ 1 รอบ ในช่วงบริการ 12 เดือน — …" (ประโยครอบตัวเดียวกับบรรทัด · `SERVICE_SETUP_LINE_TEXT.roundsText`) */
+  /* คำเตือน (ไม่บล็อก · มติ 29/09): ไปน้อยกว่าครึ่งหนึ่งของจำนวนเดือนเต็มในช่วงบริการ (`roundsLowOf`) — เช่นใส่ 1 ในช่วง 12 เดือน
+     ไม่มี `n` = คำบนบรรทัดเอง (อยู่ใต้ก้อนโซนของรายการแล้ว) · มี `n` = แผงแดง/โมดัล
+     "จำนวนรอบบริการ 1 เดือน แต่ช่วงบริการยาว 12 เดือน — …" (ประโยครอบตัวเดียวกับบรรทัด · `SERVICE_SETUP_LINE_TEXT.roundsText`)
+     ⭐ มติ 08/10 (หน่วยเป็นเดือน): เดิม "… n รอบ ในช่วงบริการ m เดือน" — พอสองตัวเลขเป็นเดือนทั้งคู่ "n เดือน ในช่วงบริการ m เดือน"
+        อ่านเหมือนพูดเรื่องเดียวกันสองครั้ง ⇒ เชื่อมด้วย "แต่ช่วงบริการยาว" ให้เห็นว่าเป็นสองค่าที่ไม่ตรงกัน */
   rounds_low: ({ n = null, rounds, months, stage = 'submit' } = {}) => {
     const tail = Object.prototype.hasOwnProperty.call(ROUNDS_LOW_TAIL, stage) ? ROUNDS_LOW_TAIL[stage] : ROUNDS_LOW_TAIL.submit;
-    const body = `${SERVICE_SETUP_LINE_TEXT.roundsText(rounds)} ในช่วงบริการ ${fmtNumber(months)} เดือน — ตรวจอีกครั้ง${tail ? ` (${tail})` : ''}`;
+    const body = `${SERVICE_SETUP_LINE_TEXT.roundsText(rounds)} แต่ช่วงบริการยาว ${fmtNumber(months)} เดือน — ตรวจอีกครั้ง${tail ? ` (${tail})` : ''}`;
     return n === null || n === undefined ? body : `รายการ ${n}: ${body}`;
   },
 });
@@ -225,27 +242,31 @@ export const SERVICE_BACKFILL_RAIL_TEXT = Object.freeze({
    เจ้าของ: "ตั้ง แพ็ค รอบ รายบรรทัด ยังเข้าใจยาก — เรียงว่าไปกี่รอบก่อน แล้วค่อยบอกรอบละกี่แพ็ค"
    แล้วรอบสอง (29/09): "ไปกี่รอบ เปลี่ยน เป็น คำว่า จำนวนรอบบริการ" (`ROUNDS_TERM`)
    ⇒ ทุกผิวพูดเป็นประโยคเดียวกัน ทั้งโหมดแก้และโหมดอ่าน:
-       แพ็คเกจ FG-… → จำนวนรอบบริการ 12 รอบ (ตลอดช่วงบริการ …) → แต่ละครั้ง: • ไซต์ · โซน — 2 แพ็ค → รวมทั้งรายการ 24 แพ็ค
+       แพ็คเกจ FG-… → จำนวนรอบบริการ 12 เดือน (ตลอดช่วงบริการ …) → แต่ละครั้ง: • ไซต์ · โซน — 2 แพ็ค → รวมทั้งรายการ 24 แพ็ค
+   ⭐ มติเจ้าของ 08/10: หน่วยของจำนวนรอบบริการเป็น **"เดือน"** (`roundUnit` = `ROUND_UNIT`) — "12 เดือน" · "8–12 เดือน" ทุกผิวของฝ่ายขาย
+     และลำดับ "รอบก่อน" ข้างบนถูกกลับ: ตาราง · ประโยคไล่ขั้น · ประโยคสรุปตัวเลข เรียง รอบละกี่แพ็ค → จำนวนรอบบริการ (`columnOrderParts`)
    ⚠️ ค่าที่เก็บไม่เปลี่ยน (`serviceRounds` = จำนวนรอบบริการ · `packsPerRound` = รอบละกี่แพ็ค) — เปลี่ยนแค่คำและลำดับ
    ⚠️ literal ล้วน (กฎ 16) — ตัวที่ต้องจัดรูปตัวเลขอ่าน `fmtNumber` ในฟังก์ชันเท่านั้น */
 export const SERVICE_SETUP_LINE_TEXT = Object.freeze({
   roundsLabel: ROUNDS_TERM,
   packsLabel: PACKS_TERM,
   eachTime: 'แต่ละครั้ง',
-  roundUnit: 'รอบ',
+  roundUnit: ROUND_UNIT,
   packUnit: 'แพ็ค',
   noRounds: `ยังไม่ใส่${ROUNDS_TERM}`,
   noPacks: `ยังไม่ใส่${PACKS_TERM}`,
   zonePacks: (packs) => `${fmtNumber(packs)} แพ็ค`,
-  /* "12 รอบ" · "8–12 รอบ" — ตัวเลขล้วน (ช่องหัวใบที่ป้ายบอกแล้วว่า "รอบบริการที่ขาย") */
-  roundsCount: (min, max = min) => `${min === max ? fmtNumber(min) : `${fmtNumber(min)}–${fmtNumber(max)}`} รอบ`,
-  /* "จำนวนรอบบริการ 12 รอบ" · "จำนวนรอบบริการ 8–12 รอบ" — ประโยครอบของทุกผิว (บรรทัด · ท้ายตาราง · แถบ · คิว · คำเตือน) */
+  /* "12 เดือน" · "8–12 เดือน" — ตัวเลข + หน่วย (ช่องหัวใบที่ป้ายบอกแล้วว่า "รอบบริการที่ขาย") */
+  roundsCount: (min, max = min) => `${min === max ? fmtNumber(min) : `${fmtNumber(min)}–${fmtNumber(max)}`} ${ROUND_UNIT}`,
+  /* "จำนวนรอบบริการ 12 เดือน" · "จำนวนรอบบริการ 8–12 เดือน" — ประโยครอบของทุกผิว (บรรทัด · ท้ายตาราง · แถบ · คิว · คำเตือน) */
   roundsText: (min, max = min) => `${ROUNDS_TERM} ${SERVICE_SETUP_LINE_TEXT.roundsCount(min, max)}`,
 });
 
 /* ── การ์ด "งานบริการ" แบบตาราง (ServiceSetupGrid · มติเจ้าของ 30/09 · 01/10 เลือกทาง A — ม็อก BindGridEdit) ─────────────
    เจ้าของ 30/09: "มันต้องเลือกว่า รายการ เป็นงานบริการมั้ย ถ้าเป็น ก็มาเลือกว่า FG ไหน / Site Zone อะไร / ต้องไปกี่รอบ
    รอบละกี่แพ็ค ผลรวมแพ็คที่ใช้ทั้งหมด รายบรรทัด รวมทุกบรรทัด" ⇒ `steps` คือหัวคอลัมน์ ①→⑥ **ตามลำดับนี้เท่านั้น** (เทสต์ยึดไว้)
+   ⭐ เจ้าของ 08/10: "อยากสลับ ข้อ 4 กับ ข้อ 5 เปลี่ยน หน่วยรอบบริการ จาก รอบ เป็น เดือน" ⇒ ④ = รอบละกี่แพ็ค (ต่อโซน) · ⑤ = จำนวนรอบบริการ
+     (ครั้งเดียวต่อรายการ · หน่วยเดือน) · คำใบ้ของ ⑥ = "รอบละ × เดือน" · ตาราง/ก้อนโซน/การ์ดพับ/แถวท้ายเรียงตาม `steps` นี้
    ⚠️ literal ล้วน (กฎ 16) */
 export const SERVICE_SETUP_GRID_TEXT = Object.freeze({
   steps: Object.freeze([
@@ -253,9 +274,9 @@ export const SERVICE_SETUP_GRID_TEXT = Object.freeze({
     Object.freeze({ key: 'kind', label: 'งานบริการ? · ช่วงบริการ', hint: 'ใช่ = ส่ง TS + ใส่ช่วง', required: true }),
     Object.freeze({ key: 'fg', label: 'แพ็คเกจ FG', hint: 'หมวด 02-001 ของลูกค้า', required: true }),
     Object.freeze({ key: 'zones', label: 'ไซต์ · โซน', hint: 'รายการเดียวเลือกได้หลายโซน', required: true }),
-    Object.freeze({ key: 'rounds', label: ROUNDS_TERM, hint: 'ตลอดช่วงบริการ', required: true }),
     Object.freeze({ key: 'packs', label: PACKS_TERM, hint: 'ต่อโซน', required: true }),
-    Object.freeze({ key: 'total', label: 'รวมแพ็ค', hint: 'รอบละ × รอบ', required: false }),
+    Object.freeze({ key: 'rounds', label: ROUNDS_TERM, hint: 'ตลอดช่วงบริการ', required: true }),
+    Object.freeze({ key: 'total', label: 'รวมแพ็ค', hint: `รอบละ × ${ROUND_UNIT}`, required: false }),
   ]),
   kindQuestion: 'เป็นงานบริการไหม',
   yes: 'ใช่',
@@ -728,7 +749,7 @@ export function lineRoundsSpan(period) {
   return p ? `ตลอดช่วงบริการ ${periodText(p)}` : 'ยังไม่ใส่ช่วงบริการ';
 }
 
-/** "จำนวนรอบบริการ 12 รอบ (ตลอดช่วงบริการ …)" · "จำนวนรอบบริการ 1 รอบ (ยังไม่ใส่ช่วงบริการ)" · ยังไม่มีรอบ = "ยังไม่ใส่จำนวนรอบบริการ" */
+/** "จำนวนรอบบริการ 12 เดือน (ตลอดช่วงบริการ …)" · "จำนวนรอบบริการ 1 เดือน (ยังไม่ใส่ช่วงบริการ)" · ยังไม่มีรอบ = "ยังไม่ใส่จำนวนรอบบริการ" */
 export function lineRoundsSentence(rounds, period) {
   const n = Number(rounds);
   if (rounds === null || rounds === undefined || rounds === '' || !Number.isInteger(n) || n < 1) return SERVICE_SETUP_LINE_TEXT.noRounds;
@@ -743,7 +764,7 @@ export function lineTotalText(lineTotals) {
   return `รวมทั้งรายการ ${blank ? '—' : fmtNumber(total)} แพ็ค`;
 }
 
-/** "จำนวนรอบบริการ 12 รอบ" · หลายบรรทัดรอบไม่เท่ากัน "จำนวนรอบบริการ 8–12 รอบ" · ยังไม่มีบรรทัดไหนใส่รอบ = null (ผู้เรียกเลือกคำเอง) */
+/** "จำนวนรอบบริการ 12 เดือน" · หลายบรรทัดไม่เท่ากัน "จำนวนรอบบริการ 8–12 เดือน" · ยังไม่มีบรรทัดไหนใส่ = null (ผู้เรียกเลือกคำเอง) */
 export function serviceRoundsText(totals) {
   if (totals?.roundsMin === null || totals?.roundsMin === undefined) return null;
   return SERVICE_SETUP_LINE_TEXT.roundsText(totals.roundsMin, totals.roundsMixed ? totals.roundsMax : totals.roundsMin);
@@ -751,7 +772,8 @@ export function serviceRoundsText(totals) {
 
 /**
  * ⭐ คำเตือนรอบน้อย (มติ 29/09 · **ไม่บล็อก**): จำนวนรอบบริการ < ครึ่งหนึ่งของจำนวน **เดือนเต็ม** ในช่วงบริการ → `{ rounds, months }` · ไม่เข้าเกณฑ์ = null
- *   เช่น 1 รอบในช่วง 12 เดือน (SO-26090247-0 ก่อนแก้ 29/09 — ฝ่ายขายใส่ 1 ทั้งที่จำนวนในใบ 12 เดือน) · ครึ่งพอดีไม่เตือน
+ *   เช่นใส่ 1 ในช่วง 12 เดือน (SO-26090247-0 ก่อนแก้ 29/09 — ฝ่ายขายใส่ 1 ทั้งที่จำนวนในใบ 12 เดือน) · ครึ่งพอดีไม่เตือน
+ *   ⚠️ เกณฑ์ไม่เปลี่ยนตามมติ 08/10 (หน่วยบนจอเป็นเดือน): ยังเทียบค่าที่เก็บ (`serviceRounds`) กับจำนวนเดือนเต็มของช่วงบริการ
  *   ไม่มีช่วงบริการ / ช่วงไม่ถึงเดือน / ยังไม่มีรอบ = ไม่เตือน (ข้อที่ยังขาดบอกเอง)
  * @param rounds จำนวนเต็ม (ข้อความที่พิมพ์ต้องแปลงก่อน — `positiveIntOrNull` ของจอ) · @param period `{ from, to }` ISO
  */
@@ -898,29 +920,33 @@ export function serviceSetupTotals(ctx = {}) {
   return out;
 }
 
-/* "จำนวนรอบบริการ r รอบ · แต่ละครั้ง z โซนใน s ไซต์ · ครั้งละ p แพ็ค · รวมทั้งใบ t แพ็ค" (มติ 29/09 — รอบก่อน แล้วค่อยแต่ละครั้ง)
+/* "แต่ละครั้ง z โซนใน s ไซต์ · ครั้งละ p แพ็ค · จำนวนรอบบริการ r เดือน · รวมทั้งใบ t แพ็ค" — ประโยคสรุปตัวเลขของทั้งใบ
+   ⭐ เรียงตามคอลัมน์ของตารางงานบริการ ③ โซน → ④ รอบละ (แพ็ค) → ⑤ จำนวนรอบบริการ (เดือน) → ⑥ รวม (มติเจ้าของ 08/10 "สลับ ข้อ 4 กับ ข้อ 5"
+     · ลำดับเดียวกับแถวท้าย "รวมทุกรายการ" ของตาราง) — เดิม 29/09 ขึ้นด้วยจำนวนรอบบริการ ซึ่งคือลำดับที่มติ 08/10 กลับ
+     (ตรวจทาน 08/10: แถบผู้อนุมัติอยู่เหนือตารางในหน้าเดียวกัน ตัวเลขชุดเดียวกันต้องไม่มาสองลำดับ)
    ส่วนเดียวกันทั้งท้ายตาราง · แถบผู้อนุมัติ · ผลของการอนุมัติ ⇒ สามผิวพูดตรงกัน · แยกด้วย " · " (แถบแยกเป็นชิปตามตัวนี้) */
-function roundsFirstParts(totals) {
+function columnOrderParts(totals) {
   const t = totals || {};
   return [
-    serviceRoundsText(t) || SERVICE_SETUP_LINE_TEXT.noRounds,
     `${SERVICE_SETUP_LINE_TEXT.eachTime} ${fmtNumber(t.zones || 0)} โซนใน ${fmtNumber(t.sites || 0)} ไซต์`,
     `ครั้งละ ${fmtNumber(t.packsPerRound || 0)} แพ็ค`,
+    serviceRoundsText(t) || SERVICE_SETUP_LINE_TEXT.noRounds,
     `รวมทั้งใบ ${fmtNumber(t.packsTotal || 0)} แพ็ค`,
   ];
 }
 
-/** สรุปบรรทัดเดียว (ภาคผนวก A.4/A.8): "จำนวนรอบบริการ y รอบ · แต่ละครั้ง x แพ็ค · รวมทั้งรายการ z แพ็ค" — ยังไม่มีรอบ = null */
+/** สรุปบรรทัดเดียว (ภาคผนวก A.4/A.8): "แต่ละครั้ง x แพ็ค · จำนวนรอบบริการ y เดือน · รวมทั้งรายการ z แพ็ค" (ลำดับคอลัมน์ ④ → ⑤ → ⑥ · มติ 08/10)
+ *  — ยังไม่มีรอบ = null */
 export function lineDerivedText(lineTotals) {
   if (!lineTotals || lineTotals.rounds === null || lineTotals.rounds === undefined) return null;
-  return `${SERVICE_SETUP_LINE_TEXT.roundsText(lineTotals.rounds)} · ${SERVICE_SETUP_LINE_TEXT.eachTime} ${fmtNumber(lineTotals.packsPerRound)} แพ็ค`
+  return `${SERVICE_SETUP_LINE_TEXT.eachTime} ${fmtNumber(lineTotals.packsPerRound)} แพ็ค · ${SERVICE_SETUP_LINE_TEXT.roundsText(lineTotals.rounds)}`
     + ` · ${lineTotalText(lineTotals)}`;
 }
 
-/** ท้ายตาราง (ภาคผนวก A.4/A.8): "งานบริการทั้งใบ: k รายการแพ็คเกจ · จำนวนรอบบริการ r รอบ · แต่ละครั้ง z โซนใน s ไซต์ · ครั้งละ p แพ็ค · รวมทั้งใบ t แพ็ค" */
+/** ท้ายตาราง (ภาคผนวก A.4/A.8): "งานบริการทั้งใบ: k รายการแพ็คเกจ · แต่ละครั้ง z โซนใน s ไซต์ · ครั้งละ p แพ็ค · จำนวนรอบบริการ r เดือน · รวมทั้งใบ t แพ็ค" */
 export function serviceSetupFooterText(totals) {
   const t = totals || {};
-  return `งานบริการทั้งใบ: ${fmtNumber(t.packageLines || 0)} รายการแพ็คเกจ · ${roundsFirstParts(t).join(' · ')}`;
+  return `งานบริการทั้งใบ: ${fmtNumber(t.packageLines || 0)} รายการแพ็คเกจ · ${columnOrderParts(t).join(' · ')}`;
 }
 
 /**
@@ -938,7 +964,7 @@ export function lineQtyCrossCheck(line, lineTotals) {
   if (unit.includes('เดือน')) return { tone: 'info', text: `จำนวนในใบ ${qty} เดือน = ระยะเวลา ไม่ได้นับเป็นแพ็ค` };
   if (!lineTotals?.zones) return { tone: 'none', text: `จำนวนในใบ ${qtyUnit} — ตรวจได้เมื่อเลือกโซนแล้ว` };
   if (lineTotals.packsTotal === null || lineTotals.packsTotal === undefined) {
-    return { tone: 'none', text: `จำนวนในใบ ${qtyUnit} — ตรวจได้เมื่อใส่${SERVICE_SETUP_LINE_TEXT.roundsLabel}และ${PACKS_TERM}แล้ว` };
+    return { tone: 'none', text: `จำนวนในใบ ${qtyUnit} — ตรวจได้เมื่อใส่${PACKS_TERM}และ${SERVICE_SETUP_LINE_TEXT.roundsLabel}แล้ว` };
   }
   if (Number.isFinite(qtyNumber) && qtyNumber === lineTotals.packsTotal) {
     return { tone: 'ok', text: `จำนวนในใบ ${qtyUnit} · ตรงกับทั้งรายการ ✓` };
@@ -1472,7 +1498,7 @@ const CONTRACT_WARNING = 'ยังไม่ผูกสัญญา — นั�
 const firstFew = (items, max = 3) => (items.length > max ? `${items.slice(0, max).join(', ')} ฯลฯ` : items.join(', '));
 
 function handoffLine(totals) {
-  return `เปิดงานบริการให้ TS: ${roundsFirstParts(totals).join(' · ')} — ขึ้นที่ “งานเข้าใหม่ › รอตั้งรอบ” ทันที ไม่ต้องผูกโซนอีก`;
+  return `เปิดงานบริการให้ TS: ${columnOrderParts(totals).join(' · ')} — ขึ้นที่ “งานเข้าใหม่ › รอตั้งรอบ” ทันที ไม่ต้องผูกโซนอีก`;
 }
 
 /* โซนที่ตั้งในใบนี้ซึ่งมีรอบขายของใบอื่นที่ยังมีผล (ต่ออายุ) — Map zoneId → เลขใบ */
@@ -1570,7 +1596,8 @@ export function serviceSetupApprovalEffects(ctx = {}, { flow = 'pipeline' } = {}
 
 /** สิ่งที่ผู้อนุมัติควรตรวจก่อนกด — ⭐ คำเตือนรอบน้อย (มติ 29/09) ต่อท้าย: ผู้อนุมัติเห็นก่อนกดทั้งใบ pipeline และงานบริการย้อนหลัง */
 export function serviceSetupApprovalChecklist(ctx = {}, { flow = 'pipeline' } = {}) {
-  const tableCheck = `ตรวจแพ็คเกจ · ไซต์ · โซน · ${ROUNDS_TERM} · ${PACKS_TERM} ในการ์ดงานบริการ`;
+  /* ลำดับเดียวกับหัวตาราง ②→⑤ (มติเจ้าของ 08/10: รอบละกี่แพ็คก่อนจำนวนรอบบริการ) */
+  const tableCheck = `ตรวจแพ็คเกจ · ไซต์ · โซน · ${PACKS_TERM} · ${ROUNDS_TERM} ในการ์ดงานบริการ`;
   const roundsLow = roundsLowLines(ctx).map(({ lineNo, rounds, months }) => SERVICE_SETUP_ISSUE_TEXT.rounds_low({
     n: lineNo, rounds, months, stage: 'approve',
   }));
@@ -1615,12 +1642,13 @@ export function serviceBackfillSubmitPrompt(ctx = {}) {
   };
 }
 
-/** แถบสรุปของผู้อนุมัติ: "งานบริการ: จำนวนรอบบริการ r รอบ · แต่ละครั้ง z โซนใน s ไซต์ · ครั้งละ p แพ็ค · รวมทั้งใบ t แพ็ค · ช่วง … · สัญญา: …" */
+/** แถบสรุปของผู้อนุมัติ: "งานบริการ: แต่ละครั้ง z โซนใน s ไซต์ · ครั้งละ p แพ็ค · จำนวนรอบบริการ r เดือน · รวมทั้งใบ t แพ็ค · ช่วง … · สัญญา: …"
+ *  (ลำดับคอลัมน์ของตาราง — `columnOrderParts` · มติ 08/10) */
 export function serviceSetupStripText(ctx = {}) {
   const totals = serviceSetupTotals(ctx);
   if (!totals.packageLines) return 'งานบริการ: ใบนี้ไม่มีแพ็คเกจบริการ';
   const contract = text(ctx?.contract?.contractNo) || 'ยังไม่ผูก';
-  return `งานบริการ: ${roundsFirstParts(totals).join(' · ')} · ช่วง ${orderPeriodText(ctx)} · สัญญา: ${contract}`;
+  return `งานบริการ: ${columnOrderParts(totals).join(' · ')} · ช่วง ${orderPeriodText(ctx)} · สัญญา: ${contract}`;
 }
 
 /** บรรทัดของโมดัลออก Rev. — ไม่มีอะไรตั้งไว้ = null
@@ -1652,8 +1680,10 @@ export function serviceSetupHeroFact(ctx = {}, { flow = null } = {}) {
       label, value: 'ยังไม่ตั้ง', sub: `${backfill ? 'ตั้งที่ตารางรายการ แล้วยื่นตรวจ' : 'ตั้งที่ตารางรายการ แล้วยื่นอนุมัติ'}${reopenTail}`, tone: 'muted',
     };
   }
-  /* มติ 29/09: รอบก่อน แล้วค่อยบอกว่าแต่ละครั้งกี่โซน/กี่แพ็ค · ช่องนี้ป้ายบอกแล้วว่า "รอบบริการที่ขาย" ⇒ ค่าเป็นตัวเลขล้วน "12 รอบ"
-     (ไม่ซ้ำคำ "จำนวนรอบบริการ" ใต้ป้าย · รูปเดียวกับใบที่ไม่ต้องตั้งงานบริการ `${roundsSold} รอบ`) */
+  /* ช่องนี้ป้ายบอกแล้วว่า "รอบบริการที่ขาย" ⇒ ค่า (ตัวใหญ่) คือคำตอบของป้าย = ตัวเลข + หน่วย (ไม่ซ้ำคำ "จำนวนรอบบริการ" ใต้ป้าย)
+     · บรรทัดรองบอกโซน/แพ็คของแต่ละครั้ง · มติ 08/10: หน่วยเดียวกับตารางงานบริการของใบนี้ "12 เดือน" (`roundsCount`)
+     — ใบที่ไม่ต้องตั้งงานบริการ (ใบย้อนหลัง) ยังพูด "n รอบ" ที่หน้าใบของมันเอง ไม่ปนกันในหน้าเดียว
+     ⚠️ ช่องหัวใบเป็น "ป้าย → ค่า → บรรทัดรอง" ไม่ใช่ประโยคไล่คอลัมน์ ⇒ ไม่เรียงตาม `columnOrderParts` (ค่าต้องตอบป้ายของตัวเอง) */
   return {
     label,
     value: totals.roundsMin === null || totals.roundsMin === undefined
@@ -1781,14 +1811,14 @@ export function serviceReopenBlockedText(codes = []) {
 }
 
 /**
- * ช่องที่แก้ได้หลังเปิดแก้ (R20 · ลำดับหัวตาราง ①→⑥) — บรรทัดพิมพ์เองเปลี่ยนคำตอบ/แพ็คเกจได้
+ * ช่องที่แก้ได้หลังเปิดแก้ (R20 · ลำดับหัวตาราง ①→⑥ — มติ 08/10: รอบละกี่แพ็คก่อนจำนวนรอบบริการ) — บรรทัดพิมพ์เองเปลี่ยนคำตอบ/แพ็คเกจได้
  *   · บรรทัด FG แพ็คเกจคือ FG ของใบเสนอราคา (ฐานตีกลับ `service_setup_kind_on_fg_line`) ⇒ บอกว่าแก้ FG = ออก Rev.
  */
 export function serviceReopenFieldsText(ctx = {}) {
   const lines = orderedLines(ctx).map(({ line }) => line).filter((line) => serviceLineNeedsBackfill(line));
   const manual = lines.some((line) => isManualSalesLine(line));
   const fgPackage = lines.some((line) => !isManualSalesLine(line) && serviceLineRole(line) === SERVICE_KIND_PACKAGE);
-  const fields = [manual ? 'แพ็คเกจ (รายการพิมพ์เอง)' : null, 'ไซต์ · โซน', ROUNDS_TERM, PACKS_TERM, 'ช่วงบริการ'].filter(Boolean).join(' · ');
+  const fields = [manual ? 'แพ็คเกจ (รายการพิมพ์เอง)' : null, 'ไซต์ · โซน', PACKS_TERM, ROUNDS_TERM, 'ช่วงบริการ'].filter(Boolean).join(' · ');
   return fgPackage ? `${fields} — แพ็คเกจของรายการที่มีรหัส FG แก้ไม่ได้ (ต้องออก Rev.)` : fields;
 }
 
