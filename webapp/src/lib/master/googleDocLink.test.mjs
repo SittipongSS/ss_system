@@ -11,9 +11,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fileAccessRole, kindFromMime, GOOGLE_NATIVE_MIME } from '../drive.js';
 import { parseDriveId } from '../driveId.js';
+import { readFileSync } from 'node:fs';
 import {
-  buildGoogleAttachment, GoogleDocError, stripDriveMetadata, DRIVE_OWNED_METADATA_KEYS,
+  buildGoogleAttachment, GoogleDocError, stripDriveMetadata, DRIVE_OWNED_METADATA_KEYS, workspaceEmail,
 } from './googleDocs.js';
+import { phoneLoginEmail } from '../auth/loginIdentity.js';
 import { ensureGoogleDocAccess, revokeAttachmentGrants, roleForViewer } from './googleDocAccess.js';
 
 const ME = 'me@scentandsense.co.th';
@@ -684,4 +686,56 @@ test('PATCH merge ทับของเดิมบนแถว — ตัดค
   const stored = { kind: 'gdoc', googleFileId: 'F1', linkRole: 'reader', linkedBy: ME, accessGranted: [ME], accessRoles: { [ME]: 'reader' } };
   const requested = stripDriveMetadata({ issuedDate: '2026-10-08', linkRole: 'writer', accessGranted: [], linkedBy: '' });
   assert.deepEqual({ ...stored, ...requested }, { ...stored, issuedDate: '2026-10-08' });
+});
+
+// ── 7) อีเมลของคนผูก — "อ่านไม่สำเร็จ" ต้องไม่ถูกเล่าเป็น "บัญชีนี้ไม่มีอีเมล" ──────────
+// 🐞 โหมดผูกปฏิเสธถาวรเมื่อ workspaceEmail คืน null · เดิมฟังก์ชันกลืนทุกความล้มเหลวเป็น null
+//    ⇒ auth สะดุดครั้งเดียว ผู้ใช้ได้ 403 "บัญชีนี้ไม่มีอีเมล Google … ใช้ปุ่มสร้างแทน" ทั้งที่มีอีเมล
+const authWith = (result) => ({
+  auth: { admin: { getUserById: async () => { if (result instanceof Error) throw result; return result; } } },
+});
+const found = (email) => authWith({ data: { user: { email } }, error: null });
+const failed = (status, message = 'boom') => authWith({ data: { user: null }, error: Object.assign(new Error(message), { status }) });
+
+test('workspaceEmail: อ่านได้ = คืนอีเมล · บัญชีล็อกอินด้วยเบอร์ = null ทั้งสองโหมด', async () => {
+  assert.equal(await workspaceEmail(found(ME), 'u1'), ME);
+  assert.equal(await workspaceEmail(found(ME), 'u1', { strict: true }), ME);
+  const phone = phoneLoginEmail('0812345678');
+  assert.equal(await workspaceEmail(found(phone), 'u1'), null);
+  assert.equal(await workspaceEmail(found(phone), 'u1', { strict: true }), null);
+  assert.equal(await workspaceEmail(found(null), 'u1', { strict: true }), null, 'บัญชีไม่มีอีเมลจริง = null ไม่ใช่ error');
+  assert.equal(await workspaceEmail(found(ME), '', { strict: true }), null, 'ไม่มีผู้ใช้ = null');
+});
+
+test('workspaceEmail ปกติ (ไม่ strict): ล้มแบบไหนก็คืน null — การแนบ/การอ่านรายการต้องไม่ล้มตาม', async () => {
+  assert.equal(await workspaceEmail(failed(500), 'u1'), null);
+  assert.equal(await workspaceEmail(failed(404), 'u1'), null);
+  assert.equal(await workspaceEmail(authWith(new Error('fetch failed')), 'u1'), null);
+});
+
+test('🔴 workspaceEmail strict: auth สะดุดชั่วคราว = 502 ให้ลองใหม่ ไม่ใช่ null', async () => {
+  const transient = [failed(500), failed(503), failed(429), failed(408), failed(undefined), authWith(new Error('fetch failed'))];
+  for (const client of transient) {
+    await assert.rejects(
+      () => workspaceEmail(client, 'u1', { strict: true }),
+      (err) => err instanceof GoogleDocError && err.status === 502 && /ลองใหม่/.test(err.message),
+    );
+  }
+});
+
+test('workspaceEmail strict: auth ตอบชัดว่าไม่มีบัญชี/รหัสผิดรูป (4xx) = null — เดินต่อไปเจอ 403 "ไม่มีอีเมล" ตามเดิม', async () => {
+  for (const status of [400, 404, 422]) {
+    assert.equal(await workspaceEmail(failed(status), 'u1', { strict: true }), null, String(status));
+  }
+});
+
+test('🔴 route: โหมดผูกลิงก์เรียก workspaceEmail แบบ strict และอยู่ใน try ที่แปลง GoogleDocError เป็นคำตอบ', () => {
+  const src = readFileSync(new URL('../../app/api/attachments/route.js', import.meta.url), 'utf8');
+  const start = src.indexOf('googleFile = await buildGoogleAttachment(');
+  assert.ok(start > 0);
+  const block = src.slice(start, src.indexOf('throw err;', start));
+  assert.match(block, /workspaceEmail\(supabase, user\?\.id, \{ strict: google\.mode === 'link' \}\)/);
+  assert.match(block, /err instanceof GoogleDocError/);
+  // จุดอ่านรายการ (GET) ต้องไม่ strict — การอ่านอีเมลสะดุดห้ามทำให้รายการไฟล์แนบล้ม
+  assert.match(src, /email: await workspaceEmail\(supabase, user\?\.id\),/);
 });

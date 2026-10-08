@@ -234,19 +234,36 @@ export function stripDriveMetadata(metadata) {
   return safe;
 }
 
+// อ่านบัญชีไม่ได้ "ชั่วคราว" ไหม — 4xx (ยกเว้น 408/429) คือ auth ตอบชัดว่าไม่มีบัญชีนี้/รหัสผิดรูป
+// = "ไม่มีอีเมล" จริง · อย่างอื่นทั้งหมด (5xx · หมดเวลา · ต่อไม่ติด) = ยังไม่รู้
+function authLookupTransient(err) {
+  const status = Number(err?.status);
+  if (!(status >= 400 && status < 500)) return true;
+  return status === 408 || status === 429;
+}
+
 // อีเมล Workspace ของผู้ใช้ (ใช้ตอนให้สิทธิ์/ตรวจสิทธิ์บน Drive) — แยกออกมาเพราะทั้งสอง route
 // ต้องขุดจาก auth admin เหมือนกัน และล้มแล้วต้องไม่ทำให้การแนบล้ม
-export async function workspaceEmail(supabase, userId) {
+//
+// `strict` (ใช้กับโหมดผูกลิงก์เท่านั้น): ที่นั่น null = ปฏิเสธถาวร "บัญชีนี้ไม่มีอีเมล Google"
+// ⇒ การอ่านบัญชีที่สะดุดชั่วคราวต้องไม่ถูกเล่าเป็นเหตุถาวร — โยน 502 ให้ลองใหม่แทน
+// (supabase-js ไม่ throw — คืน `{ data, error }` · ไม่อ่าน error = แยกสองกรณีนี้ไม่ออก)
+export async function workspaceEmail(supabase, userId, { strict = false } = {}) {
   if (!userId) return null;
   try {
-    const { data } = await supabase.auth.admin.getUserById(userId);
+    const { data, error } = await supabase.auth.admin.getUserById(userId);
+    if (error) throw error;
     const email = data?.user?.email || null;
     /* 🔴 **ที่อยู่ล็อกอินด้วยเบอร์ไม่ใช่อีเมลจริง** (lib/auth/loginIdentity.js) — โดเมน
        ภายในไม่มีกล่องจดหมายและไม่ใช่บัญชี Google ⇒ เอาไปสั่งแชร์ Drive = สร้าง
        permission ให้ที่อยู่ที่ไม่มีใครเปิดได้ (หรือโดน API ตีกลับ) แล้วระบบจะบอกว่า
        "แชร์ให้แล้ว" ทั้งที่คนนั้นเปิดเอกสารไม่ได้ · คืน null = "คนนี้ไม่มีอีเมล" ซึ่งจริง */
     return email && !isPhoneLogin(email) ? email : null;
-  } catch {
+  } catch (err) {
+    if (strict && authLookupTransient(err)) {
+      console.error('[googleDocs] อ่านอีเมลของบัญชีไม่สำเร็จ', userId, err?.message);
+      throw new GoogleDocError('ตรวจอีเมลของบัญชีคุณไม่สำเร็จ จึงยังผูกไม่ได้ — ลองใหม่อีกครั้ง', 502);
+    }
     return null;
   }
 }

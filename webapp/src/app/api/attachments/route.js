@@ -290,7 +290,8 @@ export async function POST(request) {
         type: google.type,
         url: google.url,
         name: google.name,
-        grantEmail: await workspaceEmail(supabase, user?.id),
+        // โหมดผูก: อ่านอีเมลไม่สำเร็จ ≠ ไม่มีอีเมล — ให้ตอบ 502 "ลองใหม่" ไม่ใช่ 403 ถาวร
+        grantEmail: await workspaceEmail(supabase, user?.id, { strict: google.mode === 'link' }),
       });
     } catch (err) {
       if (err instanceof GoogleDocError) return Response.json({ error: err.message }, { status: err.status });
