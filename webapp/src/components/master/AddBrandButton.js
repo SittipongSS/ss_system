@@ -22,8 +22,9 @@ export default function AddBrandButton({ customerId, onAdded, disabled }) {
   const close = () => { setOpen(false); setTh(""); setEn(""); setError(""); };
 
   // แผงเปิดผ่าน portal + position:fixed แบบเดียวกับ ui-select-menu/FilterPopover —
-  // ถ้าวางเป็น absolute ในการ์ด แผงโดน overflow:hidden ของการ์ดตัด หรือโดน
-  // stacking context ของ glass-panel (backdrop-filter) ทับ
+  // ถ้าวางเป็น absolute ในการ์ด แผงโดน overflow:hidden ของการ์ดตัด
+  // (เดิมยังโดน stacking context ที่ backdrop-filter ของ glass-panel สร้างทับด้วย —
+  // glass-panel ถอด backdrop-filter แล้ว 2026-10-08 เหลือเหตุผลเรื่อง overflow)
   useEffect(() => {
     if (!open) return;
     const place = () => {

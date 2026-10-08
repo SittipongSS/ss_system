@@ -49,6 +49,10 @@ const openModals = [];
 //   ⚠️ `aria-labelledby` ยังชี้ที่ `<h3>` ตัวเดียว — ชิปไม่ใช่ส่วนของชื่อที่โปรแกรมอ่านจอประกาศ
 // · `className` = ต่อท้ายคลาสของ `.drawer` (ให้เปลือกที่ประกอบจากโมดัลนี้จัดโซนข้างในเองได้)
 // · `sheetOnPhone` = จอ ≤640px กลายเป็นแผ่นเต็มจอ (หัวนิ่ง · เนื้อเลื่อน · ปุ่มนิ่งชิดขอบล่าง)
+//
+// `initialFocusScroll` (ค่าตั้งต้น true = เหมือนเดิม): false = วางโฟกัสแรกโดย **ไม่เลื่อนเนื้อโมดัลตาม** — ใช้กับกล่องที่โฟกัสแรก
+//   อยู่ท้ายเนื้อ (ปุ่ม "ยกเลิก" ของกล่องยืนยัน) และเนื้อยาวกว่าจอมือถือ: เบราว์เซอร์เลื่อน `.drawer-body` ไปหาปุ่ม กล่องจึงเปิดมา
+//   กลางเนื้อ บรรทัดแรก (ข้อความหลัก · "อย่าปิดหน้านี้ระหว่างรอ") หลุดขึ้นไปเหนือจอ (UAT 2026-10-08 · จอ 360)
 export default function Modal({
   open,
   onClose,
@@ -65,6 +69,7 @@ export default function Modal({
   dismissible = true,
   closeOnOverlay = false,
   initialFocusRef,
+  initialFocusScroll = true,
   ariaDescribedBy,
 }) {
   const dialogRef = useRef(null);
@@ -124,7 +129,7 @@ export default function Modal({
     document.body.style.overflow = "hidden";
     const initialFocus = initialFocusRef?.current;
     if (initialFocus instanceof HTMLElement && dialog?.contains(initialFocus)) {
-      initialFocus.focus();
+      initialFocus.focus({ preventScroll: !initialFocusScroll });
     } else {
       (focusableElements()[0] || dialog)?.focus();
     }
@@ -141,7 +146,7 @@ export default function Modal({
         previousActiveElement.focus({ preventScroll: true });
       }
     };
-  }, [open, initialFocusRef]);
+  }, [open, initialFocusRef, initialFocusScroll]);
 
   if (!open || !mounted) return null;
   const overlayClose = dismissible && closeOnOverlay ? onClose : undefined;

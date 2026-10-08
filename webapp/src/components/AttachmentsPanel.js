@@ -422,12 +422,19 @@ export default function AttachmentsPanel({
     try {
       const res = await apiFetch(`/api/master/attachments/${id}`, { method: "DELETE" });
       if (res.ok) {
-        setItems((prev) => prev.filter((it) => it.id !== id));
         /* ⭐ รูปประกอบสเปคที่เอกสาร FM-SA-04 ซึ่งยื่น/อนุมัติแล้วอ้างอยู่ = **ปลดระวาง** แทนการลบ
            (mig 0370 · ไฟล์ต้องอยู่ให้กระดาษเก่าเปิดได้) ⇒ เส้นลบตอบ `{ retired, message }`
-           ต้องบอกผู้ใช้ ไม่งั้นเข้าใจว่าไฟล์ถูกลบไปแล้วจริง */
+           ต้องบอกผู้ใช้ ไม่งั้นเข้าใจว่าไฟล์ถูกลบไปแล้วจริง
+           ⚠️ **แถวยังอยู่ในฐาน** (แค่ถูกประทับปลดระวาง) ⇒ โหลดรายการใหม่ ไม่ใช่ตัดแถวทิ้งจากรายการในมือ — ตัดทิ้งแล้ว
+              ผู้เรียก (`onItemsChange`) ไม่เคยเห็นแถวที่เพิ่งปลดระวาง: เลข "ซ่อนไว้ N ภาพ" กับรายการภาพที่ซ่อนไว้ของการ์ด
+              ภาพประกอบขาดไปหนึ่งจนกว่าจะโหลดหน้าใหม่ */
         const body = await res.json().catch(() => null);
-        if (body?.retired && body.message) notifyToast.info(body.message);
+        if (body?.retired) {
+          if (body.message) notifyToast.info(body.message);
+          await fetchItems();
+        } else {
+          setItems((prev) => prev.filter((it) => it.id !== id));
+        }
         return true;
       }
       // `(await res.json()).error` เดิมโยน exception เองถ้า body ไม่ใช่ JSON —

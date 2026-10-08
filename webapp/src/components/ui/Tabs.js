@@ -1,7 +1,8 @@
 "use client";
 
-import { useId, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import { nextEnabledIndex } from "@/lib/ui/selectionNavigation";
+import { revealInRow } from "@/lib/ui/rowReveal";
 import { scrollToTopOf } from "@/lib/ui/scrollToTopOf";
 
 // แท็บสลับ "ส่วน/มุมมอง" ของหน้า (M3 Tabs — active = เส้นใต้). คู่กับ ViewSwitcher
@@ -33,6 +34,17 @@ export default function Tabs({
   const visibleTabs = (tabs || []).filter(Boolean);
   const hasSelectedTab = visibleTabs.some((tab) => value === tab.key && !tab.disabled);
   const firstEnabledIndex = visibleTabs.findIndex((tab) => !tab.disabled);
+  const selectedIndex = visibleTabs.findIndex((tab) => value === tab.key);
+
+  /* แท็บที่ถูกเลือกต้องอยู่ในกรอบของแถบ **เต็มตัว** — แถบเลื่อนแนวนอนได้แต่ซ่อนสกอร์ลบาร์ (`.tabs-header`)
+     🐞 UAT PR-3 (D16 · 1440px): แท็บที่ล้นขอบขวาเห็นแค่ครึ่งป้าย กดส่วนที่เห็นแล้วถูกเลือกจริงแต่ป้ายยังขาดอยู่อย่างเดิม
+        (คีย์บอร์ดไม่เจอ — `focus()` ของลูกศรเลื่อนให้เอง · เมาส์/นิ้วไม่มีอะไรเลื่อนให้)
+     ผูกกับ `value` ไม่ใช่กับการกด ⇒ ครอบทั้งกด · ลูกศร · และค่าที่หน้าเปลี่ยนเอง (เปิดหน้ามาที่แท็บท้ายแถว)
+     ⚠️ ขยับ `scrollLeft` ของแถบอย่างเดียว (lib/ui/rowReveal.js) — ไม่แตะการเลื่อนของหน้า · แถบที่ไม่ล้นไม่มีอะไรขยับ */
+  useEffect(() => {
+    if (orientation !== "horizontal" || selectedIndex < 0) return;
+    revealInRow(rootRef.current, buttonsRef.current[selectedIndex]);
+  }, [value, selectedIndex, orientation]);
 
   const moveFocus = (event, currentIndex) => {
     const nextIndex = nextEnabledIndex(visibleTabs, currentIndex, event.key, orientation);

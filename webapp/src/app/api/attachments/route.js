@@ -9,7 +9,12 @@ import { canAttachSpecItemImage } from '@/lib/master/attachmentAccess';
 import { ensureGoogleDocAccess } from '@/lib/master/googleDocAccess';
 import { listAttachments } from '@/lib/master/attachments';
 import { driveFileHeld } from '@/lib/master/attachments';
+import { driveFileReferenced } from '@/lib/master/attachments';
 import { attachmentUrlErrorForEnv } from '@/lib/master/attachmentStorage';
+import { parseDriveId } from '@/lib/driveId';
+import {
+  DRIVE_FILE_ID_PATTERN, claimUploadReceipt, requireUploadReceipt, uploadReceiptStatus,
+} from '@/lib/upload/receipts';
 import {
   GoogleDocError, buildGoogleAttachment, googleDocsEnvError, stripDriveMetadata, workspaceEmail,
 } from '@/lib/master/googleDocs';
@@ -228,6 +233,57 @@ export async function POST(request) {
     if (ruleError) return Response.json({ error: ruleError }, { status: 400 });
   }
 
+  /* 🔴 ที่มาของไฟล์ (สาขาไฟล์ธรรมดา · mig 0406 · มติเจ้าของ 08/10/2569) — `driveFileId` มาจาก client และแถวที่ได้คือกุญแจ
+     เปิดอ่านไฟล์ใบนั้น (proxy ดาวน์โหลดสตรีมตาม id ของแถว) กับกุญแจทิ้งไฟล์ใบนั้น (ลบแถว = ระบบทิ้งไฟล์ลงถังขยะ Drive)
+     🐞 เดิมรับ id อะไรก็ได้ (ตรวจให้เฉพาะรูปของแถว checklist) ⇒ คนที่แก้ระเบียนไหนได้สักใบ แนบแถวที่ชี้สัญญาที่เซ็นแล้ว/
+        บัตรประชาชนลูกค้าของคนอื่น แล้วเปิดอ่านหรือกดลบเพื่อทิ้งไฟล์นั้นได้
+     ห้าด่าน เรียงจากถูกสุดไปแพงสุด:
+     ① **ต้องมี `driveFileId` เป็นตัวหนังสือ** — null · '' · ตัวเลข · array · object = 400 (ของจริงไม่มีแถวไฟล์ธรรมดาที่ไม่มี
+        ไฟล์ Drive และจอทุกจอส่งมาเสมอ · แถวที่มีแต่ fileUrl คือทางอ้อมข้ามทุกด่านข้างล่าง)
+     ② รูปร่าง id (ค่าที่หลุดรูปห้ามถึงตัวกรองของฐาน)
+     ③ `fileUrl` ที่มี id ไฟล์อยู่ในตัว ต้องเป็น id เดียวกับ `driveFileId` — ไม่งั้นลิงก์ที่จอโชว์กับไฟล์ที่ระบบถือเป็นคนละใบ
+     ④ **ใบรับการอัปโหลดของคนเรียกเอง อายุไม่เกิน 24 ชั่วโมง** (`requireUploadReceipt`) — ไม่มี/ของคนอื่น/หมดอายุ = 400 ·
+        ตรวจไม่ได้ = 503 · ⚠️ ด่านเดียวที่สวิตช์ฉุกเฉิน UPLOAD_RECEIPT_MODE ผ่อนได้ (จดแล้วปล่อยผ่าน) — ①②③⑤ บังคับทุกโหมด
+        · ใบรับที่ปลายทางรับไปแล้ว (`claimedBy`) = 400 (ใบรับหนึ่งใบแนบได้ครั้งเดียว)
+     ⑤ ไม่มีที่ไหนในระบบอ้างไฟล์นี้อยู่ (`driveFileReferenced` — แถว attachments สองช่อง · ไฟล์ในเธรดอัปเดต · หลักฐาน Won
+        รุ่นเก่า) — ตรวจไม่ได้ = 500 · 🐞 เดิมถามแค่แถว attachments ⇒ ไฟล์ที่โพสต์ไว้ในเธรด (ใบรับยังไม่ถูกประทับ) แนบเป็น
+        ไฟล์แนบได้ แล้วลบแถว = ทิ้งไฟล์ของเธรด · ตัวปล่อยไฟล์กันชั้นนั้นอีกทีอยู่แล้ว ที่นี่กันไม่ให้แถวแบบนั้นเกิดตั้งแต่แรก
+        · รูปของแถว checklist ไม่ถามที่นี่ (บล็อกถัดไปถามแถว attachments เองพร้อมข้อความของมัน · เธรด/หลักฐาน Won ของ
+        docType นั้นกันที่ตัวปล่อยไฟล์ชั้นเดียว)
+     ⚠️ ลำดับ: ด่านสิทธิ์ → กติกาชนิดไฟล์ → ห้าด่านนี้ → เขียนแถว — คนไม่มีสิทธิ์ต้องไม่ได้ใช้เส้นนี้ถามว่า id ไหนมีใบรับ/มีคนถือ
+     ⚠️ สาขาเอกสาร Google ไม่ผ่านบล็อกนี้ — id ของสาขานั้นมาจาก Drive ไม่ใช่จาก client */
+  if (!google) {
+    if (typeof driveFileId !== 'string' || !driveFileId) {
+      return Response.json({ error: 'แนบไฟล์ไม่สำเร็จ — ไม่พบไฟล์ที่อัปโหลด ลองอัปโหลดไฟล์แล้วแนบอีกครั้ง' }, { status: 400 });
+    }
+    if (!DRIVE_FILE_ID_PATTERN.test(driveFileId)) {
+      return Response.json({ error: 'แนบไฟล์ไม่สำเร็จ — รหัสไฟล์ไม่ถูกต้อง ลองอัปโหลดไฟล์แล้วแนบอีกครั้ง' }, { status: 400 });
+    }
+    const urlFileId = parseDriveId(fileUrl);
+    if (urlFileId && urlFileId !== driveFileId) {
+      return Response.json({ error: 'แนบไฟล์ไม่สำเร็จ — ลิงก์ของไฟล์ไม่ตรงกับไฟล์ที่อัปโหลด ลองอัปโหลดไฟล์แล้วแนบอีกครั้ง' }, { status: 400 });
+    }
+    const receiptStatus = await uploadReceiptStatus(supabase, { driveFileId, userId: user?.id });
+    const receiptError = await requireUploadReceipt(supabase, {
+      driveFileId,
+      userId: user?.id,
+      status: receiptStatus,
+      route: 'POST /api/attachments',
+      logContext: { entityType, entityId, docType: safeDocType },
+    });
+    if (receiptError) return Response.json({ error: receiptError.error }, { status: receiptError.status });
+    if (receiptStatus.receipt?.claimedBy) {
+      return Response.json({ error: 'ไฟล์นี้ถูกแนบไว้กับเอกสารอื่นแล้ว — อัปไฟล์ใหม่แล้วแนบอีกครั้ง' }, { status: 400 });
+    }
+    if (safeDocType !== SPEC_ITEM_IMAGE_DOC_TYPE) {
+      const holder = await driveFileReferenced(supabase, driveFileId);
+      if (holder.error) return Response.json({ error: holder.error.message }, { status: 500 });
+      if (holder.referenced) {
+        return Response.json({ error: 'ไฟล์นี้ถูกแนบไว้กับเอกสารอื่นแล้ว — อัปไฟล์ใหม่แล้วแนบอีกครั้ง' }, { status: 400 });
+      }
+    }
+  }
+
   /* 🔴 รูปประจำแถว checklist (mig 0405) — ไฟล์พวกนี้ **ระบบลบเอง** เมื่อไม่มีแถวไหนชี้แล้ว (บันทึกสเปค/ลบสเปค)
      ⇒ `driveFileId` ที่ client ส่งมาต้องเป็นไฟล์ที่ยังไม่มีแถว attachments ไหนถืออยู่: ไม่งั้นแนบแถวที่ชี้ไฟล์ของคนอื่น
      (สัญญาที่เซ็นแล้ว · บัตรประชาชนลูกค้า) แล้วปล่อยให้ตัวเก็บกวาดทิ้งไฟล์นั้นลงถังขยะ Drive ได้ · ช่องแคบข้างบนเปิดเส้นนี้
@@ -330,6 +386,13 @@ export async function POST(request) {
 
   const { data, error } = await supabase.from('attachments').insert(row).select().single();
   if (error) return Response.json({ error: error.message }, { status: 500 });
+
+  /* ประทับใบรับว่าแถวนี้รับไฟล์ไปแล้ว (mig 0406) — ใบรับที่ถูกประทับใช้แนบซ้ำไม่ได้และถอยการอัป (DELETE /api/upload) ไม่ได้
+     ⚠️ best-effort: แถวเขียนสำเร็จแล้ว ประทับพังไม่ล้มคำขอ (ด่าน "มีแถวอื่นถือ" ยังกันการแนบซ้ำอยู่) · เอกสาร Google ไม่มีใบรับ */
+  if (!google) {
+    const claim = await claimUploadReceipt(supabase, { driveFileId, claimedBy: `attachments:${data.id}` });
+    if (claim.error) console.error('[attachments] ประทับใบรับการอัปโหลดไม่สำเร็จ', data.id, claim.error.message);
+  }
 
   // เอกสารแนบ **ไม่** ทำให้ลูกค้า/สินค้าตกกลับรออนุมัติ (มติผู้ใช้ 2026-07-27) — เหตุผล
   // เดียวกับตอนลบไฟล์ ดู attachments/[id]/route.js. เดิมการแนบไฟล์ทำให้ลูกค้าที่อนุมัติแล้ว

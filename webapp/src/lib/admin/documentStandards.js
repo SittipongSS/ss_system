@@ -1,6 +1,6 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
-import { DOCUMENT_STANDARD_KEYS, validateNumberingPattern } from '@/lib/documentStandards';
+import { DOCUMENT_STANDARD_KEYS, documentAccentKeysFor, validateNumberingPattern } from '@/lib/documentStandards';
 
 export class DocumentStandardError extends Error {
   constructor(message, status = 500, code = 'document_standard_error') {
@@ -90,6 +90,16 @@ export async function updateDocumentStandardDraft(supabase, id, input, expectedU
   if (input?.numberingPattern) {
     const numbering = validateNumberingPattern(input.numberingPattern, before.documentKey);
     if (!numbering.ok) throw new DocumentStandardError(numbering.error, 400, 'numbering_pattern_invalid');
+  }
+  /* ⚠️ สี accent ก็ตรวจซ้ำ **ด้วยชนิดเอกสารจากแถวในฐาน** เหตุผลเดียวกัน — ด่านแรกรับสีที่เลือกได้ของ "อย่างน้อยหนึ่งชนิด"
+     ส่วนค่าที่คอลัมน์รับได้จริงต่างกันรายชนิด: รายงานการประเมินพื้นที่ (siteSurvey) สีเดินตามผู้อ่านของฉบับ ไม่มีให้เลือก
+     (มติ 08/10/2026) — คอลัมน์ของชนิดนี้รับค่าเดียวคือค่าที่ฟอร์มส่งกลับมาเอง (`resolveDocumentAccentKey` = สีของฉบับลูกค้า)
+     ⇒ ไม่มีด่านนี้ = ยิง PATCH ตรง ๆ ตั้ง navy ให้ FM-TS-01 ได้ (จอไม่มีปุ่มให้กด แต่ API รับ) แล้วหน้าตั้งค่ากับกระดาษพูดคนละอย่าง
+     · teal ไม่ผ่านกับชนิดไหนแล้ว: ร่างที่คัดลอก teal มาจากแถวที่เผยแพร่ (FM-TS-01 v1 · FM-SA-04 รุ่นเก่า) ถูกเขียนทับด้วยค่าที่
+       resolve แล้วตอนบันทึกครั้งแรก — แถวที่เผยแพร่ไปแล้วไม่ถูกแตะ
+     · `accentKey` ไม่มาใน input = ไม่ได้แก้สี (คอลัมน์คงค่าเดิม) จึงไม่ตรวจ — ค่าว่าง/null ยังถูกตีกลับ */
+  if (input?.accentKey !== undefined && !documentAccentKeysFor(before.documentKey).includes(input.accentKey)) {
+    throw new DocumentStandardError('Accent ที่เลือกไม่ถูกต้อง', 400, 'accent_invalid');
   }
 
   const now = new Date().toISOString();

@@ -40,7 +40,10 @@ import {
   PACKAGE_SIZE_REGISTRY_DOWN, PACKAGE_SIZE_REGISTRY_UNREAD, normalizePackageSizeCode, sortPackageSizes,
   surveyPackageReviewRows, surveyPackageReviewText, surveyPackageSizeGates,
 } from '@/lib/service/packageSizes';
-import { surveySendVisitStep } from '@/lib/service/surveySendClose';
+import {
+  SURVEY_DOC_STALE_TEXT, surveyDocumentView, surveyFilesSignature, surveyRequestEnded, surveyWarningKinds,
+} from '@/lib/service/surveyDocumentView';
+import { surveySendDocumentRefusal, surveySendDocumentRefusalList, surveySendVisitStep } from '@/lib/service/surveySendClose';
 import { spotPhotoGroups, surveySpotGates } from '@/lib/service/surveySpotPhotos';
 import { VISIT_STATUS_LABELS } from '@/lib/service/visitStatus';
 
@@ -66,6 +69,7 @@ export const SURVEY_UNKNOWN_LABELS = {
 const SURVEY_UNKNOWN_OWN_ROW = new Set(['requestFiles']);
 
 const isCut = (row) => (row?.status || 'ok') === 'cut';
+const isRecord = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
 const activeZones = (rows) => (Array.isArray(rows) ? rows : []).filter((r) => !isCut(r));
 
 /**
@@ -405,6 +409,37 @@ export function surveySendBackAskText(sentBack) {
   return `${asks.length} ข้อ: ${numberedAsks(asks, asks.map((_, i) => i))}`;
 }
 
+/* ── ผังของส่วนรองบนการ์ด + คำบนปุ่มคลี่ (มติเจ้าของ 08/10 ชุดสุดท้าย) ────────────────────────
+   ส่วนรอง = ด่าน · ส่วนเอกสารประเมิน (เมื่อ `placement: 'fold'`) · ขั้นตอน · เอกสารที่เกี่ยวข้อง — จอ ≤1050 พับหลังปุ่มคลี่ทุกการ์ด (ไม่ต้องมีธง)
+   ⭐ `wide` — พับส่วนรอง **ทุกความกว้าง** ไหม: เฉพาะการ์ดที่มีส่วนเอกสาร **และใบพ้นช่วง "ก่อนส่งผล" แล้ว** (ส่งผลแล้ว · ใบจบแล้ว)
+      ⇒ การ์ดของใบที่ส่งผลแล้วพอดีรางที่ปักหมุด
+      🐞 เดิมอ่าน `placement === 'pinned'` ค่าเดียว ⇒ ใบที่ **ยังไม่ส่ง** แต่อ่านสถานะเอกสารไม่สำเร็จ (ส่วนเอกสารปักไว้ให้เห็น "โหลดใหม่")
+         ถูกพับด่านที่จอกว้างทั้งที่ปุ่มส่งผลยังกดได้ — มติ: ก่อนส่งผล ด่านกางเสมอที่ราง ไม่มีปุ่มคลี่บัง
+   ⭐ `belowRail` — พับส่วนรอง **ทุกที่ที่การ์ดไม่ได้อยู่ในราง** ไหม: การ์ดที่มีส่วนเอกสารและยังไม่ส่งผล
+      "จอกว้าง" ของมติคือ **ราง** ซึ่งมีตั้งแต่ 1200px (`SURVEY_RAIL_QUERY`) — ที่ 1051–1199 การ์ดไหลตามหน้า/อยู่ในบานรายการ 320px เหมือนแท็บเล็ต
+      🐞 เดิมช่วงนั้นได้กติกาของราง (กางทุกก้อน): การ์ดสูง 974–1158px ดันตารางสรุปลงไป y≈1315 · รายการพื้นที่ลงไป y≈1422 (iPad แนวนอน)
+      ⚠️ การ์ดรู้อย่างเดียวว่าจอนี้มีรางไหม (`useMediaQuery(SURVEY_RAIL_QUERY)` ตัวเดียวกับหน้า) — กติกาอยู่ที่นี่ · การ์ดที่ไม่มีส่วนเอกสาร
+         (ช่าง · คนดู) ทั้งสองธงเป็น `false`: จอ >1050 กางทุกก้อนเหมือนก่อน PR-3 ทุก px
+   ⭐ `labels` — ชื่อของแต่ละก้อนบนปุ่มคลี่ · `null` = ก้อนนั้นไม่อยู่ข้างใน ปุ่มไม่เอ่ยถึง · การ์ดเรียงตามลำดับที่กางออกมา
+      (ด่าน → เอกสารประเมิน → ขั้นตอน → เอกสารที่เกี่ยวข้อง) แล้วตัดชื่อของก้อนที่ตัวเองไม่ได้วาด (ก้อนเอกสารที่เกี่ยวข้อง — ลิงก์มาจากหน้า
+      ตัวตัดสินไม่เห็น) ⇒ **ปุ่มเอ่ยเฉพาะของที่อยู่ข้างในจริง** (🐞 เดิมลงท้าย "· เอกสาร" เสมอ แม้การ์ดที่ไม่มีก้อนนั้น)
+      ⚠️ ก้อนด่านใช้หัวข้อเดียวกับบล็อกข้างใน (`gatesTitle`) + จำนวนที่ติด — ปุ่มที่เรียกของข้างในคนละชื่อทำให้คนคิดว่ากดผิดปุ่ม
+      ⚠️ "เอกสาร" คำสั้น = ก้อนเอกสารที่เกี่ยวข้อง ใช้ได้เมื่อข้างในมีก้อนเอกสารก้อนเดียว · ส่วนเอกสารประเมินอยู่ข้างในด้วยเมื่อไร
+         (ก่อนส่งผลที่จอ ≤1050) เรียกชื่อเต็มทั้งสองก้อน · ใบที่ยกเลิกไม่มีก้อนด่าน ป้ายสั้นอยู่แล้ว จึงใช้ชื่อเต็มเหมือนเดิม */
+function controlFold({ document, gatesTitle, gatesStuck, cancelled, afterSend }) {
+  const documentInside = document.show && document.placement === 'fold';
+  return {
+    wide: document.show && document.placement === 'pinned' && afterSend,
+    belowRail: document.show && !afterSend,
+    labels: {
+      gates: cancelled ? null : `${gatesTitle}${gatesStuck ? ` (ติด ${gatesStuck})` : ' (ผ่านครบ)'}`,
+      document: documentInside ? 'เอกสารประเมิน' : null,
+      steps: 'ขั้นตอน',
+      refs: cancelled || documentInside ? 'เอกสารที่เกี่ยวข้อง' : 'เอกสาร',
+    },
+  };
+}
+
 /**
  * 🔑 **ทุกอย่างที่การ์ด "จัดการผลประเมิน" วาด — คำนวณที่เดียว**
  *
@@ -436,6 +471,10 @@ export function surveySendBackAskText(sentBack) {
  * @param skipPackageRegistry `true` = ผู้เรียกไม่มีทะเบียนและ **ไม่ใช่จอที่กดส่งผล** (หน้าคำร้องของฝ่ายขาย · `surveyJobView`)
  *                       ⇒ ไม่ถามด่าน "ขนาดถูกลบ" (ข้ออื่นอ่านจากแถวล้วน) · ⚠️ ห้ามใช้กับจอที่มีปุ่มส่งผล — ต้องขอออกเองชัด ๆ
  *                       ไม่ใช่ได้มาเพราะลืมส่งทะเบียน (ลืม = fail-closed)
+ * @param document       คีย์ `document` ของ GET ใบประเมิน (สรุปเอกสารประเมินตามสิทธิ์คนดู · PR-3) — ไม่ส่ง = ไม่มีแถวด่านเอกสาร
+ *                       ไม่มีกล่องแจ้งของเอกสาร และคีย์เดิมทุกตัวได้ค่าเดิม (หน้าคำร้องเรียกแบบนี้ · เทสต์ล็อก)
+ * @param documentLocal  ของที่จอจำไว้เองเกี่ยวกับเอกสาร (ไม่มี GET ไหนคืน): `{ round, sendFailed, issueError, paper, printed,
+ *                       sendRefused }` — ส่งต่อให้ `surveyDocumentView` · ที่นี่อ่านเฉพาะ `sendRefused` (กล่อง "ถูกตีกลับ")
  */
 export function surveyControlView({
   request = null,
@@ -452,6 +491,8 @@ export function surveyControlView({
   today = null,
   packageSizes = null,
   skipPackageRegistry = false,
+  document = null,
+  documentLocal = null,
 } = {}) {
   const rows = Array.isArray(zones) ? zones : [];
   const files = filesByZone && typeof filesByZone === 'object' ? filesByZone : {};
@@ -533,24 +574,97 @@ export function surveyControlView({
     const stuckIds = new Set(sizeGate.zoneIds.map(String));
     const failing = active.filter((r) => stuckIds.has(String(r.id))
       || surveyZoneFacts(r, files[r.id] || []).missingHead.some((m) => m.key === 'package'));
+    /* เหตุใต้แถว: พื้นที่ที่ยังไม่เคาะ (ถ้ามี) แล้วตามด้วยเหตุของขนาด — บนจอไม่มี "ลองใหม่" (ดู `PACKAGE_SIZE_REGISTRY_UNREAD`)
+       ⭐ `reasons` = เหตุชุดเดียวกันทีละข้อ ให้การ์ดวาดเป็นบรรทัดของตัวเอง (UAT PR-3: " | " ดิบบนจออ่านเป็นก้อนเดียว) ·
+          `reason` ยังเป็นประโยคที่ต่อด้วย " | " เหมือนเดิม (คำเดียวกับเหตุของ server) */
+    const reasons = [
+      g.zones.length ? `ขาด ${g.zones.join(' · ')}` : null,
+      registryUnread ? PACKAGE_SIZE_REGISTRY_UNREAD : sizeGate.reason,
+    ].filter(Boolean);
     return {
       ...g,
       ok: false,
       done: g.total - failing.length,
       zones: failing.map(surveyZoneName),
-      /* เหตุใต้แถว: พื้นที่ที่ยังไม่เคาะ (ถ้ามี) แล้วตามด้วยเหตุของขนาด — บนจอไม่มี "ลองใหม่" (ดู `PACKAGE_SIZE_REGISTRY_UNREAD`) */
-      reason: [
-        g.zones.length ? `ขาด ${g.zones.join(' · ')}` : null,
-        registryUnread ? PACKAGE_SIZE_REGISTRY_UNREAD : sizeGate.reason,
-      ].filter(Boolean).join(' | '),
+      reasons,
+      reason: reasons.join(' | '),
     };
   });
-  const gates = canDecide
+  /* 🔑 **เอกสารประเมิน (PR-3 · สเปก §3.3–§3.4)** — ส่วน "เอกสารประเมินพื้นที่" ของการ์ด + แถวด่าน "เอกสารประเมินออกได้"
+     ⭐ ตัวตรวจอยู่ฝั่ง server (`document.send` / `document.issue` ของ GET ใบประเมิน — ตัวเดียวกับเส้นส่งผลและปุ่มออกเอกสาร)
+        ที่นี่แค่จัดผลเป็นของที่การ์ดวาด · ด่านที่จอประกอบเองจะเถียงกับ server (GET ถือข้อมูลไม่ครบ — ดู `documentChecks`)
+     ⚠️ ชื่อด่านที่ส่งให้ส่วนเอกสาร **ไม่รวมแถวเอกสารเอง** — ส่วนนั้นต้องไม่อ้างตัวเองเป็นเหตุ ("ยังติด 1 ด่าน: เอกสาร") */
+  const ownGates = canDecide
     ? [...headGates, ...spotSendGates]
     : [...allGates.filter((g) => g.owner === 'crew'), ...spotCrewGates];
+  const documentView = surveyDocumentView({
+    document,
+    request,
+    zones: rows,
+    local: documentLocal,
+    canDecide,
+    canWrite,
+    failedGates: ownGates.filter((g) => !g.ok).map((g) => g.short),
+    spotsUnlinked: spotSendGates.some((g) => g.key === 'spotLinked' && !g.ok),
+  });
+  const docAccess = isRecord(document?.access) ? document.access : null;
+  /* สถานะของเอกสารหลังหักของที่จอรู้เอง (อ่านไม่สำเร็จ = `unknown` · การส่งรอบนี้ออกเอกสารล้ม = `missing`) — ตัวเดียวกับส่วนเอกสาร */
+  const docState = documentView.state;
+  /* ผลตรวจก่อนส่งของ server — มีเฉพาะสวิตช์ออกเอกสารตอนส่งผลเปิด + ใบยังไม่ตอบ + คนดูออกเอกสารได้
+     ⚠️ `unknown: true` (server ตรวจไม่สำเร็จ) **ไม่ขวาง** — เส้นส่งผลข้ามด่านนี้เมื่ออ่านของตัวเองพลาดเช่นกัน */
+  const docSend = canDecide && !locked && docAccess?.issue === true && isRecord(document.send) ? document.send : null;
+  const docBlockers = docSend
+    ? (Array.isArray(docSend.blockers) ? docSend.blockers : []).filter((t) => typeof t === 'string' && t.trim() !== '')
+    : [];
+  const docIssueBlockers = (isRecord(document?.issue) && Array.isArray(document.issue.blockers) ? document.issue.blockers : [])
+    .map((b) => String(b?.text ?? '').trim()).filter(Boolean);
+  /* ⭐ **จำนวนข้อคงที่ทุกสถานะ** (กติกาเดียวกับแถวแพ็คเกจข้างบน · มติ 7) — สวิตช์เปิด = มีแถวนี้ทั้งก่อนและหลังส่ง ·
+     สวิตช์ปิด = ไม่มีทั้งก่อนและหลัง · หลังส่ง แถวติดเฉพาะเอกสารค้างผิดรอบ (`stale`) หรือออกเอกสารไม่ได้เพราะมีเหตุขวาง */
+  const docAfterSend = sent && !cancelled && canDecide && docAccess?.issue === true && document.issueAtSend === true;
+  const docGateOk = docSend
+    ? docBlockers.length === 0
+    : !(docState === 'stale' || (docState === 'missing' && docIssueBlockers.length > 0));
+  const docGateList = docSend ? docBlockers : docIssueBlockers;
+  /* เหตุของแถวทีละข้อ — แถวที่ผ่าน = ไม่มี · เอกสารค้างผิดรอบ = ประโยคเดียว · นอกนั้นเหตุชุดสดของ server ตามลำดับ */
+  const docGateReasons = docGateOk ? []
+    : !docSend && docState === 'stale' ? [SURVEY_DOC_STALE_TEXT] : docGateList;
+  const documentGate = docSend || docAfterSend
+    ? {
+      key: 'document',
+      owner: 'head',
+      short: 'เอกสาร',
+      label: 'เอกสารประเมินออกได้',
+      ok: docGateOk,
+      done: docGateOk ? 1 : 0,
+      total: 1,
+      zones: [],
+      zoneIds: [],
+      count: docGateOk ? 0 : docGateList.length || 1,
+      /* ทุกเหตุต่อกันด้วย " | " เหมือนแถวแพ็คเกจและประโยคของ server — ไม่ตัด ไม่หักข้อที่ซ้ำกับด่านหกข้อ (มติ 8)
+         ⭐ `reasons` = เหตุชุดเดียวกันทีละข้อ (ไม่ซ้ำ — การ์ดใช้ข้อความเป็น key ของบรรทัด) ให้การ์ดวาดข้อละบรรทัด
+            🐞 UAT PR-3 (S09 · S15): " | " ดิบใต้แถวอ่านเป็นประโยคเดียว แยกไม่ออกว่าติดกี่ข้อ */
+      reasons: [...new Set(docGateReasons)],
+      reason: docGateOk ? null : docGateReasons.join(' | '),
+    }
+    : null;
+  /* เหตุของเอกสารที่ **ขวางการส่งผล** — ประโยคของ route เอง (`surveySendDocumentRefusal`) · นัดยังเป็นร่างพูดก่อน (เหมือน route) */
+  const docReason = visitStep.action === 'block'
+    ? null
+    : surveySendDocumentRefusal(docBlockers.map((text) => ({ kind: 'content', text })));
+  const gates = documentGate ? [...ownGates, documentGate] : ownGates;
   const gatesFailed = gates.filter((g) => !g.ok);
+  /* ⭐ **ด่านที่ติดแต่ไม่มีพื้นที่ให้ชี้ = บล็อกด่านเอ่ยชื่อด่านนั้นเอง** — วันนี้มีแถวเดียว: "เอกสารประเมินออกได้" (แถวรายพื้นที่ของ
+     `zoneGaps` ไม่มีวันเอ่ยถึง เพราะเหตุของเอกสารไม่ผูกกับพื้นที่)
+     🐞 UAT PR-3 (S03 · S25 · S26 ที่ราง หลังมติเรื่องผัง 08/10 · S09 · S15 เมื่อคลี่): ป้ายของบล็อกบอก "ติด 1 / 8 ข้อ" โดยไม่มีแถวไหนบอกว่าข้อไหน
+        ขณะที่กล่องเหตุเหนือบล็อกกับส่วนเอกสารใต้บล็อกบอก "ติด 2 ข้อ" ⇒ ตัวเลขสามตัวของเรื่องเดียวยืนติดกัน อ่านเหมือนสามเรื่อง
+        ⇒ แถวนี้ผูกให้: 1 ข้อของป้าย = ด่านเอกสาร · เหตุ (n ข้อ) ของมันอยู่ที่ส่วนเอกสาร
+     ⚠️ **ไม่พิมพ์จำนวนเหตุซ้ำ และไม่กางเหตุซ้ำ** — รายการอยู่ครบแล้วสองที่ (กล่องเหตุ · ส่วนเอกสาร) ตัวเลขตัวที่สี่คือสิ่งที่กำลังแก้
+     ⚠️ ชี้ไปส่วนเอกสารได้ต่อเมื่อส่วนนั้นถูกวาด (`documentView.show`) — ใบที่จบแล้วซึ่งไม่มีส่วน ไม่มีแถวนี้ (ไม่ชี้ไปที่ที่ไม่มีอยู่) */
+  const gateNotes = documentGate && !documentGate.ok && documentView.show
+    ? [{ key: documentGate.key, label: documentGate.label, note: 'ดูเหตุที่ส่วน “เอกสารประเมินพื้นที่”' }]
+    : [];
   const sendGatesFailed = allGates.some((g) => !g.ok) || sizeGates.some((g) => !g.ok)
-    || spotSendGates.some((g) => !g.ok);
+    || spotSendGates.some((g) => !g.ok) || !!docReason;
 
   /* ── ค่าที่ยังอยู่บนจอ ยังไม่ลงฐาน (จอส่ง id มา) ─────────────────────────
      🔴 **ตัดสินจากลิสต์ที่รับมา ไม่ใช่จากผลกรองแถว** — ของเดิมกรอง id ผ่าน `rows` ก่อน
@@ -644,15 +758,30 @@ export function surveyControlView({
     status = { key: 'measuring', tone: 'warning', headline: 'กำลังวัดหน้างาน', sub: `${measuredSub} · ${spotText}` };
   } else if (sendGatesFailed) {
     const measured = `วัดแล้ว ${progress.done} / ${progress.total} พื้นที่`;
+    const headGateFailed = allGates.some((g) => g.owner === 'head' && !g.ok);
+    const sizeFailed = sizeGates.some((g) => !g.ok);
+    /* ติดเฉพาะเอกสารประเมิน (PR-3) — หกข้อ · ขนาด · รูปจุด ผ่านครบ เหลือแต่เหตุของเอกสาร · ไม่มีเหตุของเอกสาร = เท็จเสมอ
+       (`docReason` มีได้เฉพาะคนที่ส่งผลได้ ⇒ ถ้อยคำของช่างไม่เคยเปลี่ยน) */
+    const documentOnly = !headGateFailed && !sizeFailed && !!docReason && spotSendGates.every((g) => g.ok);
     /* เหลือแค่ผูกรูปในถาด (G2) = บอกตรง ๆ — "เหลือเคาะจุดและแพ็คเกจ" ทั้งที่เคาะครบแล้วคือชี้ผิดงาน */
-    const headLeft = allGates.some((g) => g.owner === 'head' && !g.ok)
+    const headLeft = headGateFailed
       ? 'เหลือเคาะจุดและแพ็คเกจ'
-      : sizeGates.some((g) => !g.ok)
+      : sizeFailed
         ? (sizeGates.some((g) => g.reason === PACKAGE_SIZE_REGISTRY_DOWN) ? 'อ่านทะเบียนขนาดแพ็คเกจไม่สำเร็จ' : 'เหลือเลือกขนาดแพ็คเกจใหม่')
-        : 'เหลือผูกรูปจุดที่ยังไม่ได้ผูก';
+        /* "เหลือผูกรูปจุด" ทั้งที่ผูกครบแล้วคือชี้ผิดงาน · ไม่มีเหตุของเอกสาร = คำเดิมเสมอ */
+        : documentOnly
+          ? 'เหลือแก้ข้อที่ทำให้เอกสารประเมินออกไม่ได้'
+          : 'เหลือผูกรูปจุดที่ยังไม่ได้ผูก';
+    /* 🐞 นัดยังเปิด (ทางปกติ — การส่งผลเป็นคนปิดนัด) + ติดเฉพาะเอกสาร: บรรทัดรองเคยบอกหัวหน้าให้ "เคาะจุดและแพ็คเกจ" ที่เคาะครบไปแล้ว
+       ⇒ ใช้บรรทัดเดียวกับตอนนัดปิด · กรณีอื่นทุกกรณี (รวมใบที่ไม่มีเอกสาร) ได้ประโยคเดิม */
+    const headNext = (sentence) => `${measured} · ${documentOnly ? headLeft : sentence}`;
     status = !crewNotSubmitted
       ? {
-        key: 'awaiting-decision', tone: 'info', headline: 'วัดครบแล้ว — รอหัวหน้าเคาะ',
+        /* 🐞 UAT PR-3 (S03): ติดเฉพาะเอกสารประเมิน = หัวหน้าเคาะครบแล้ว — พาดหัว "รอหัวหน้าเคาะ" บอกเขาให้ทำสิ่งที่ทำไปแล้ว
+           ⇒ พาดหัวเอ่ยเรื่องที่ค้างจริง (เอกสาร) โทนอำพันเหมือนกล่องเหตุใต้ปุ่มส่งผล · `key` เดิม (ขั้นของใบยังเป็นของหัวหน้า) */
+        key: 'awaiting-decision',
+        tone: documentOnly ? 'warning' : 'info',
+        headline: documentOnly ? 'วัดและเคาะครบแล้ว — เอกสารประเมินยังออกไม่ได้' : 'วัดครบแล้ว — รอหัวหน้าเคาะ',
         sub: `${measured} · ${headLeft}`,
       }
       : actsAsCrew
@@ -662,12 +791,12 @@ export function surveyControlView({
           headline: canDecide ? 'วัดครบแล้ว — กด “ส่งงาน” เพื่อปิดงานหน้างาน' : 'วัดครบแล้ว — กด “ส่งงาน” เพื่อแจ้งหัวหน้า',
           /* บรรทัดรองบอก **ก้าวถัดไปของใคร** ไม่ใช่ท่องพาดหัวซ้ำ */
           sub: canDecide
-            ? `${measured} · ส่งงานแล้วเคาะจุดและแพ็คเกจต่อได้เลย`
+            ? headNext('ส่งงานแล้วเคาะจุดและแพ็คเกจต่อได้เลย')
             : `${measured} · ส่งแล้วหัวหน้าเคาะจุดและแพ็คเกจต่อ`,
         }
         : {
           key: 'awaiting-submit', tone: 'info', headline: 'วัดครบแล้ว — ช่างยังไม่กดส่งงาน',
-          sub: canDecide ? `${measured} · เคาะจุดและแพ็คเกจได้เลย ไม่ต้องรอ` : measured,
+          sub: canDecide ? headNext('เคาะจุดและแพ็คเกจได้เลย ไม่ต้องรอ') : measured,
         };
   } else {
     status = {
@@ -759,11 +888,12 @@ export function surveyControlView({
   /* 🔑 ด่านตัวเดียวกับ server เป็นตัวตัดสิน `allowed` เสมอ · สองข้อแรกเป็นของที่ server
      มองไม่เห็น (ค่าที่ยังอยู่บนจอ) ⇒ มันเพิ่มด่านได้ แต่ **ลดไม่ได้** */
   /* 🔑 ลำดับเดียวกับ route ส่งผล: ด่านหกข้อ → ขนาดถูกลบจากทะเบียน → ด่านรูปจุด (ถาด · + ทุกจุดมีรูปเมื่อส่งผลปิดนัด)
-     — เหตุคือข้อความของ server เป๊ะ */
+     → เอกสารประเมินออกไม่ได้ (PR-3) — เหตุคือข้อความของ server เป๊ะ */
   const failedReasons = (list) => (list.some((g) => !g.ok) ? list.filter((g) => !g.ok).map((g) => g.reason).join(' | ') : null);
   const serverSendReason = surveySendError(rows, files, { canSend: canDecide })
     || failedReasons(sizeGates)
-    || failedReasons(spotSendGates);
+    || failedReasons(spotSendGates)
+    || docReason;
   let sendReason = null;
   if (!locked) {
     /* 🐞 **ไม่มีสิทธิ์ส่ง = เหตุผลเดียว ห้ามประกอบบรรทัดด่านหกข้อทับ** — ของเดิมเขียน
@@ -801,10 +931,17 @@ export function surveyControlView({
     } else if (serverSendReason) {
       /* ด่านที่ติดทั้งหมดของการส่งผล (หกข้อ + รูปจุด) — ติดแค่รูปจุด = เหตุเต็มของ server (มติ: "มีรูปจุดที่ยังไม่ได้ผูก n รูป …") */
       /* ⚠️ นับจากแถวที่การ์ดวาด (`headGates` — ขนาดถูกลบพับอยู่ในแถวแพ็คเกจ) ⇒ "ติด n ข้อ" ตรงกับป้าย "ติด n / m ข้อ" เสมอ */
-      const failed = [...headGates, ...spotSendGates].filter((g) => !g.ok);
-      /* ติดเฉพาะด่านนอกหกข้อ (รูปจุด · ขนาดถูกลบ) = เหตุเต็มของ server — "ติด 1 ข้อ ที่ …" บอกไม่ได้ว่าต้องทำอะไร */
+      const failed = [...headGates, ...spotSendGates, ...(documentGate ? [documentGate] : [])].filter((g) => !g.ok);
+      /* ติดเฉพาะด่านนอกหกข้อ (รูปจุด · ขนาดถูกลบ · เอกสารประเมิน) = เหตุเต็มของ server — "ติด 1 ข้อ ที่ …" บอกไม่ได้ว่าต้องทำอะไร */
       const sizeOnly = !!sizeGate && allGates.every((g) => g.key !== 'package' || g.ok);
-      const spotOnly = failed.every((g) => g.key === 'spotPhotos' || g.key === 'spotLinked' || (g.key === 'package' && sizeOnly));
+      const spotOnly = failed.every((g) => g.key === 'spotPhotos' || g.key === 'spotLinked' || g.key === 'document'
+        || (g.key === 'package' && sizeOnly));
+      /* ติดเฉพาะเอกสารประเมิน — ไม่มีพื้นที่ไหนให้พาไป (เหตุอยู่ในรายการของส่วนเอกสาร) ⇒ ทางออกคือแก้แล้วให้ server ตรวจใหม่ */
+      const documentOnly = failed.length > 0 && failed.every((g) => g.key === 'document');
+      /* ⭐ ติดเฉพาะเอกสาร และมีมากกว่าหนึ่งข้อ = รูป "หัว + รายการ" ของประโยคเดียวกัน (`surveySendDocumentRefusalList`)
+         🐞 UAT PR-3 (S03): ประโยคเต็มต่อเหตุด้วย " | " — ในกล่องกว้าง 298px อ่านเป็นก้อนเดียว · `text`/`detail` ยังเป็นประโยคเต็มของ route */
+      const docList = documentOnly ? surveySendDocumentRefusalList(docBlockers.map((text) => ({ kind: 'content', text }))) : null;
+      const docListed = !!docList && docList.items.length > 1;
       const stuckNames = [...new Set(failed.flatMap((g) => g.zones))];
       const crewStuck = failed.some((g) => g.owner === 'crew');
       /* พาไปที่พื้นที่ที่ **ช่างยังค้าง** ก่อน ถ้าไม่มีก็พื้นที่แรกที่ติดอะไรก็ได้
@@ -822,9 +959,14 @@ export function surveyControlView({
         /* 🔑 ข้อความเต็มของด่าน server — โมดัลยืนยันใช้ตัวนี้ ไม่ใช่บรรทัดย่อของราง
            (บรรทัดย่อมีไว้ให้รางกว้าง 330px อ่านได้ ไม่ได้มีไว้แทนเหตุผล) */
         detail: serverSendReason,
-        target: stuckTarget && (stuckTarget.kind === 'tab'
-          ? { ...stuckTarget, label: 'ไปเคาะที่แท็บสรุปส่งผล' }
-          : stuckTarget),
+        /* การ์ดและโมดัลวาด `lead` + `items` แทน `text` เมื่อมีรายการ · ไม่มีรายการ = `lead: null` · `items: []` (วาด `text` เหมือนเดิม) */
+        lead: docListed ? docList.lead : null,
+        items: docListed ? docList.items : [],
+        target: documentOnly
+          ? { kind: 'reload', label: 'ตรวจอีกครั้ง' }
+          : stuckTarget && (stuckTarget.kind === 'tab'
+            ? { ...stuckTarget, label: 'ไปเคาะที่แท็บสรุปส่งผล' }
+            : stuckTarget),
       };
     } else if (visitStep.action === 'block') {
       /* นัดยังเป็นร่าง — route ตีกลับด้วยประโยคเดียวกัน · ทางออกอยู่ที่หน้าจัดคิว ไม่ใช่บนจอนี้ */
@@ -863,12 +1005,28 @@ export function surveyControlView({
        ยังเป็นขนาดที่ไม่มีใครเทียบกับข้อเสนอ · **เตือน ไม่บล็อก** (ไม่เข้า `allowed`/`reason` · บังคับหรือไม่เป็นคำถามเปิดของเจ้าของ
        — ดู `packageSizeUnchecked`) · `null` = ไม่มีแถวแบบนั้น/อ่านทะเบียนไม่ได้ */
     sizeReview: sizeReview.length ? { rows: sizeReview, text: surveyPackageReviewText(sizeReview) } : null,
+    /* ── เอกสารประเมิน (PR-3 · สเปก §3.4) — สี่คีย์ที่โมดัลยืนยันและคำขอส่งผลอ่าน ──
+       `issuesDocument`  การส่งครั้งนี้ออกเอกสาร (เลข SU) ด้วย — โมดัลต้องบอกก่อนกด (#1223)
+       `replacesDocNo`   เลขฉบับที่ถูกแทนที่ตอนดึงผลกลับ — ส่งรอบใหม่ = Rev ถัดไปแทนฉบับนั้น
+       `seenWarnings`    คำเตือนของ server ที่จอกางให้อ่าน แล้ว **ส่งกลับไปกับคำขอ** — 🔴 ดิบตามตัวอักษร ห้ามตัด/ขัดเกลา/ตัดซ้ำ:
+                         route เทียบกับผลของตัวตรวจตัวเดียวกันแบบตรงตัว ต่างช่องว่างเดียว = 409 ทุกครั้งที่กดส่ง
+       `documentUnknown` อ่านสถานะเอกสารไม่สำเร็จ — โมดัลบอกผลแบบมีเงื่อนไข และคำขอส่ง `seenWarnings: []` (มติ 10 · 12) */
+    issuesDocument: !!docAccess && document.issueAtSend === true,
+    replacesDocNo: docState === 'recalled' && Array.isArray(document.history)
+      && typeof document.history[0]?.docNo === 'string' ? document.history[0].docNo : null,
+    seenWarnings: docSend && Array.isArray(docSend.warnings) ? docSend.warnings.filter((t) => typeof t === 'string') : [],
+    documentUnknown: canDecide && !locked && document?.access === 'none' && document?.unknown === true,
   };
 
   /* ⚠️ เหตุผลของการดึงกลับยังไม่ถูกพิมพ์ตอนนี้ (อยู่ในโมดัล) ⇒ ยิงค่ายาวพอผ่านด่าน
      ความยาว เพื่อถาม **เฉพาะเงื่อนไขอื่น** ของด่านตัวเดียวกับ server */
   const recallGate = surveyRecallError(request, { reason: 'x'.repeat(10), canRecall: canDecide });
   const recallAllowed = !recallGate;
+  /* ⭐ **ดึงผลกลับ = เอกสารฉบับที่ใช้อยู่ถูกแทนที่ทันที** (ทริกเกอร์ 0401) — ปุ่มและกล่องยืนยันต้องเอ่ยเลขก่อนกด (#1223)
+     ⚠️ เอ่ยเฉพาะฉบับของผลรอบนี้ (`issued` · `frozen` · `ready`) — แถวค้างผิดรอบ (`stale`) server ก็ไม่เอ่ยในเธรดเช่นกัน
+     ⚠️ อ่านสถานะเอกสารไม่สำเร็จ = บอกแบบมีเงื่อนไข ไม่เงียบ (ไม่ทราบ ≠ ไม่มี) */
+  const voidsDocNo = ['issued', 'frozen', 'ready'].includes(docState) && typeof document?.current?.docNo === 'string'
+    && document.current.docNo.trim() ? document.current.docNo.trim() : null;
 
   // ── กล่องแจ้ง ───────────────────────────────────────────────────────────
   const notices = [];
@@ -893,6 +1051,32 @@ export function surveyControlView({
       key: 'size-review', tone: 'warning', title: 'ตรวจขนาดก่อนส่งผล',
       text: surveyPackageReviewText(sizeReview),
     });
+  }
+  /* ⭐ **คำเตือนของข้อความบนฉบับลูกค้า** (มติเจ้าของ 01/10 ข้อ 3: เตือน ไม่บล็อก · PR-3 มติ 28) — กาง **ทุกข้อ** บนการ์ด
+     🐞 โมดัลยืนยันเปิดได้เฉพาะตอนส่งได้ ⇒ ถ้าอยู่แต่ในโมดัล ข้อ 2..n อ่านไม่ได้เลยขณะที่ยังมีด่านติด
+     ⚠️ บรรทัดปิดท้ายบอกที่แก้ **ตามชนิดของบรรทัด** — คำเตือนไม่ได้มีแค่หมายเหตุพื้นที่ (ชื่อลูกค้า · ไซต์ · บริษัท · ชื่อพื้นที่ก็มี)
+        · หมายเหตุพื้นที่แก้ได้เฉพาะคนที่เขียนผลวัดได้ (CD/CM ส่งผลได้แต่เขียนไม่ได้ — `canUploadPlan` ข้างล่างเล่าเรื่องเดียวกัน) */
+  const warningItems = [...new Set(send.seenWarnings.filter((line) => line.trim() !== ''))];
+  if (warningItems.length) {
+    const kinds = surveyWarningKinds(warningItems);
+    const where = [
+      kinds.note && (canWrite
+        ? 'หมายเหตุพื้นที่แก้ได้ที่หน้าพื้นที่ (แท็บหน้างาน)'
+        : 'หมายเหตุพื้นที่ คุณแก้เองไม่ได้ — ให้หัวหน้าฝ่ายบริการหรือช่างแก้'),
+      kinds.other && 'ช่องอื่นแก้ที่ต้นทางของช่องที่ระบุ (เช่น ทะเบียนลูกค้า ทะเบียนไซต์ ชื่อพื้นที่)',
+    ].filter(Boolean);
+    notices.push({
+      key: 'document-warnings', tone: 'warning', title: 'ตรวจข้อความบนฉบับลูกค้าก่อนส่งผล',
+      text: `${where.join(' · ')} · หรือส่งตามนี้ได้`,
+      items: warningItems,
+    });
+  }
+  /* ⭐ **การส่งผลรอบล่าสุดที่ถูกตีกลับ** (รูปเปิดไม่ได้ · สเปก PR-3 §14 ข้อ S8) — โมดัลล้างข้อความตอนปิด ⇒ รายชื่อไฟล์ที่ต้องอัปใหม่อยู่บนการ์ด
+     จนกว่าชุดไฟล์จะเปลี่ยน (ลายเซ็นไม่ตรง = หัวหน้าแก้อะไรไปแล้ว ⇒ กล่องหายเอง) · เฉพาะใบที่ยังมีปุ่มส่งผล */
+  const sendRefused = isRecord(documentLocal?.sendRefused) ? documentLocal.sendRefused : null;
+  const refusedText = typeof sendRefused?.message === 'string' ? sendRefused.message.trim() : '';
+  if (canDecide && !locked && refusedText && sendRefused.sig === surveyFilesSignature(files)) {
+    notices.push({ key: 'send-refused', tone: 'warning', title: 'ส่งผลรอบล่าสุดถูกตีกลับ', text: refusedText });
   }
   if (readOnly && !cancelled) {
     /* ⭐ **เหตุผลของ server มาก่อนประโยคกลาง ๆ** — `visitWriteAccess` รู้เหตุรายคน
@@ -974,6 +1158,9 @@ export function surveyControlView({
     ? { id: leftZones[0].id, name: surveyZoneName(leftZones[0]) }
     : null;
 
+  const gatesSentFailed = sent ? gates.filter((g) => g.key === 'document' && !g.ok).length : 0;
+  const gatesTitle = canDecide ? 'ด่านก่อนส่งผล' : 'ของที่ช่างต้องเก็บ';
+
   return {
     status,
     progress: {
@@ -988,7 +1175,17 @@ export function surveyControlView({
     totals,
     gates,
     gatesFailed: gatesFailed.length,
-    gatesTitle: canDecide ? 'ด่านก่อนส่งผล' : 'ของที่ช่างต้องเก็บ',
+    /* ⭐ ด่านที่ **ติดอยู่บนใบที่ส่งผลแล้ว** (PR-3 · มติ 7) — นับเฉพาะแถวเอกสาร: แถวอื่นบนใบที่ส่งแล้วยังหมายถึง "ผ่านตอนส่ง"
+       เหมือนเดิม · การ์ดอ่านตัวนี้เปลี่ยนป้าย "ผ่านครบ n ข้อตอนส่ง" เป็น "ติด 1 / n ข้อ" (การ์ดไม่มีกติกาเอง) */
+    gatesSentFailed,
+    gatesTitle,
+    /* ผังของส่วนรอง + คำบนปุ่มคลี่ของการ์ด (`controlFold`) — จำนวนที่ติดบนปุ่มคือตัวเดียวกับป้ายของบล็อกด่าน */
+    fold: controlFold({
+      document: documentView, gatesTitle, cancelled, gatesStuck: sent ? gatesSentFailed : gatesFailed.length,
+      afterSend: sent || surveyRequestEnded(request),
+    }),
+    /* ด่านที่ติดซึ่งไม่มีแถวรายพื้นที่ (แถวเอกสารประเมิน) — บล็อกด่านเอ่ยชื่อเอง `[{ key, label, note }]` · ว่าง = ไม่มี */
+    gateNotes,
     send,
     recallAllowed,
     recallBlockedReason: recallGate,
@@ -996,9 +1193,17 @@ export function surveyControlView({
     recallAction: {
       show: canDecide && sent && !cancelled,
       allowed: recallAllowed,
-      hint: 'ต้องใส่เหตุผล · ฝ่ายขายได้แจ้งเตือนว่าตัวเลขเดิมใช้ไม่ได้',
+      hint: `ต้องใส่เหตุผล · ฝ่ายขายได้แจ้งเตือนว่าตัวเลขเดิมใช้ไม่ได้${voidsDocNo ? ` · เอกสาร ${voidsDocNo} จะถูกแทนที่` : ''}`,
+      voidsDocNo,
+      /* บรรทัดรองของกล่องยืนยัน — บรรทัดใต้ปุ่ม (`hint`) ถูกซ่อนที่จอ ≤1050 ⇒ กล่องยืนยันต้องพกเรื่องเอกสารเองทุกขนาดจอ */
+      detail: 'ฝ่ายขายได้รับแจ้งทันทีพร้อมตัวเลขเดิม · ตอนส่งรอบใหม่ ระบบจะบอกส่วนต่างให้เขาเห็น'
+        + (voidsDocNo
+          ? ` · เอกสาร ${voidsDocNo} จะถูกแทนที่ — ใช้ไม่ได้ทันที ห้ามใช้ฉบับที่ส่งลูกค้าไปแล้ว · ฉบับใหม่เป็น Rev ถัดไป`
+          : docState === 'unknown' ? ' · อ่านสถานะเอกสารไม่สำเร็จ — ถ้าใบนี้มีเอกสาร SU เอกสารนั้นจะถูกแทนที่' : ''),
     },
     recall: recallPending ? recall : null,
+    /* ส่วน "เอกสารประเมินพื้นที่" (PR-3) — ทุกคีย์มีเสมอ · `show: false` เมื่อไม่มีอะไรให้วาด (ช่าง · ไม่ส่ง `document` มา) */
+    document: documentView,
     nextZone,
     notices,
     zoneGaps,

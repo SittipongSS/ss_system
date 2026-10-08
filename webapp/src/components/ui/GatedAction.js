@@ -25,6 +25,10 @@ import { notifyToast } from "@/lib/feedback";
 export default function GatedAction({
   // เหตุที่ยังกดใช้งานไม่ได้ — ว่าง/null = ทำได้ตามปกติ
   blocker = "",
+  // ชนิด toast ของเหตุ (`error` | `warning` | `info`) — ตั้งต้น `error` ตามเดิมทุกผู้เรียก
+  // ⚠️ เปลี่ยนเฉพาะเมื่อเหตุนั้น **พิมพ์อยู่บนจอด้วยโทนอื่นอยู่แล้ว** (เช่น กล่องแจ้งสีฟ้า "กำลังออกเอกสาร…" ของบล็อกเอกสาร
+  //    ประเมินบนหน้าคำร้อง · UAT PR-3 R03) — ประโยคเดียวกันขึ้นสองที่ด้วยสองโทน อ่านเป็น "มีอะไรพัง" ทั้งที่ไม่มี
+  blockerKind = "error",
   // ปลายทางเมื่อทำได้ (เลือกอย่างใดอย่างหนึ่งกับ onClick)
   href = "",
   onClick,
@@ -38,7 +42,7 @@ export default function GatedAction({
       // กันไม่ให้ลิงก์พาไปทั้งที่ยังไปไม่ได้ (ปุ่มยังเป็น <button> อยู่ แต่ผู้เรียก
       // อาจห่อด้วยอย่างอื่น) แล้วบอกเหตุแทน
       event?.preventDefault?.();
-      notifyToast.error(blocker);
+      (notifyToast[blockerKind] || notifyToast.error)(blocker);
       return;
     }
     if (onClick) onClick(event);
