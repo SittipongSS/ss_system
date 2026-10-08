@@ -14,10 +14,11 @@ import {
   productSpecScopeReason, productSpecUsedForCategory, productSpecUsedForFgCode,
 } from './productSpecScope.js';
 import {
-  SPEC_CONTENT_FIELDS, SPEC_CONTENT_LIMITS, SPEC_EDIT_ROLES, SPEC_ITEM_EXTRA_MAX, SPEC_CERT_EXTRA_MAX,
-  canEditProductSpec, normalizeProductSpecInput, normalizeSpecCertifications, normalizeSpecContent,
-  normalizeSpecItems, productSpecDeleteBlock, productSpecPermissions,
+  SPEC_CONTENT_FIELDS, SPEC_CONTENT_LIMITS, SPEC_EDIT_ROLES, SPEC_ITEM_COST_MAX, SPEC_ITEM_EXTRA_MAX, SPEC_CERT_EXTRA_MAX,
+  canEditProductSpec, canSeeSpecItemCost, normalizeProductSpecInput, normalizeSpecCertifications, normalizeSpecContent,
+  normalizeSpecItems, prepareSpecItemRows, productSpecDeleteBlock, productSpecPermissions, redactSpecForViewer,
 } from './productSpecWorkflow.js';
+import { canSeeProductCost } from '@/lib/permissions';
 import { formatSpecDocNo, parseProductSpecDocNo, productSpecDocNoParts } from './productSpecDocNo.js';
 
 /* ── ทะเบียน checklist ─────────────────────────────────────────────── */
@@ -181,12 +182,14 @@ test('ยังไม่มีสเปค = ไม่มีอะไรให�
 test('สิทธิ์บนหน้าสเปค: ไม่มีสิทธิ์ = ไม่โชว์ปุ่มลบ · ติดเอกสาร = โชว์พร้อมเหตุ', () => {
   assert.deepEqual(productSpecPermissions({ spec: spec1, documents: [], role: 'ac' }), {
     canEdit: true, delete: { visible: true, reason: null },
+    canSeeItemCost: true, canEditItemCost: true, canAttachItemImage: true,
   });
   const blocked = productSpecPermissions({ spec: spec1, documents: [docOf()], role: 'ac' });
   assert.equal(blocked.delete.visible, true);
   assert.match(blocked.delete.reason, /FM-SA-04-220969-001/);
   assert.deepEqual(productSpecPermissions({ spec: spec1, documents: [], role: 'rd' }), {
     canEdit: false, delete: { visible: false, reason: 'ต้องเป็น AC หรือฝ่ายขายจึงลบสเปคได้' },
+    canSeeItemCost: false, canEditItemCost: false, canAttachItemImage: false,
   });
   // ยังไม่มีสเปค = ไม่มีของให้ลบ ⇒ ไม่โชว์
   assert.deepEqual(productSpecPermissions({ spec: null, role: 'ac' }).delete, { visible: false, reason: null });
@@ -236,6 +239,201 @@ test('checklist: ลบหมดได้ (ส่งลิสต์ว่าง)
   assert.match(normalizeSpecItems([{ itemKey: 'cap', detail: 'ก'.repeat(501) }]).error, /500/);
   assert.match(normalizeSpecItems('ไม่ใช่ลิสต์').error, /รูปแบบ/);
 });
+
+/* ── ราคาทุน + รูปประจำแถว checklist (mig 0405 · มติเจ้าของ 08/10/2569 — ใช้ในระบบเท่านั้น) ─────────── */
+
+const IMG1 = 'aaaaaaaa-0000-4000-8000-000000000001';
+const IMG2 = 'aaaaaaaa-0000-4000-8000-000000000002';
+const IMG3 = 'aaaaaaaa-0000-4000-8000-000000000003';
+
+test('⭐ ทุกตำแหน่งที่แก้สเปคได้เห็นราคาทุนของสินค้าอยู่แล้ว — ไม่มีคนแก้สเปคที่กรอกแถวได้แต่ไม่เห็นคอลัมน์ราคาทุน', () => {
+  for (const role of SPEC_EDIT_ROLES) {
+    assert.equal(canSeeProductCost(role), true, role);
+    assert.equal(canSeeSpecItemCost({ role }), true, role);
+  }
+  // ด่านเดียวกับราคาทุนของทะเบียนสินค้า: ผู้ดูที่ไม่ใช่ฝ่ายขายบางตำแหน่งเห็น (FN · RA) · RD/ผู้ดูไม่เห็น
+  for (const role of ['finance', 'ra']) assert.equal(canSeeSpecItemCost({ role }), true, role);
+  for (const role of ['rd', 'rd_supervisor', 'viewer', 'marketing', 'ts']) assert.equal(canSeeSpecItemCost({ role }), false, role);
+  assert.equal(canSeeSpecItemCost(null), false);
+  assert.equal(canSeeSpecItemCost(undefined), false);
+});
+
+test('สิทธิ์บนหน้าสเปค (0405): เรียกด้วย role อย่างเดียว = ถามเป็นผู้ใช้ที่มีแค่ role · ส่ง user มา = ใช้สิทธิ์รายคนของ user', () => {
+  // ยังไม่มีสเปค = แนบรูปไม่ได้ (รูปผูกกับแถวที่บันทึกแล้ว) แต่ราคาทุนกรอกตอนสร้างได้
+  const fresh = productSpecPermissions({ spec: null, role: 'ac' });
+  assert.equal(fresh.canAttachItemImage, false);
+  assert.equal(fresh.canEditItemCost, true);
+  // ผู้ดูที่เห็นต้นทุนได้: เห็นคอลัมน์ แก้ไม่ได้ แนบรูปไม่ได้
+  const finance = productSpecPermissions({ spec: spec1, role: 'finance' });
+  assert.deepEqual([finance.canEdit, finance.canSeeItemCost, finance.canEditItemCost, finance.canAttachItemImage], [false, true, false, false]);
+  // ส่ง user มา: สิทธิ์รายคน (`products:margin` ที่ให้เพิ่ม) นับด้วย — role อย่างเดียวไม่เห็น
+  assert.equal(productSpecPermissions({ spec: spec1, role: 'rd' }).canSeeItemCost, false);
+  const granted = productSpecPermissions({ spec: spec1, role: 'rd', user: { role: 'rd', extraCaps: ['products:margin'] } });
+  assert.equal(granted.canSeeItemCost, true, 'สิทธิ์รายคนต้องถึงคอลัมน์ราคาทุน');
+  assert.equal(granted.canEditItemCost, false, 'เห็นได้แต่แก้สเปคไม่ได้ = แก้ราคาทุนไม่ได้');
+  // ไม่มีทั้ง role และ user
+  assert.deepEqual(productSpecPermissions({ spec: spec1 }), {
+    canEdit: false, delete: { visible: false, reason: 'ต้องเป็น AC หรือฝ่ายขายจึงลบสเปคได้' },
+    canSeeItemCost: false, canEditItemCost: false, canAttachItemImage: false,
+  });
+});
+
+test('🔴 checklist สามสถานะ: ไม่ส่งคีย์ = ไม่มีคีย์ในผลลัพธ์ · null/ว่าง = ล้าง · มีค่า = ตรวจแล้วเขียน', () => {
+  const { value } = normalizeSpecItems([
+    { itemKey: 'cap' },
+    { itemKey: 'box', costPrice: null, imageAttachmentId: null },
+    { itemKey: 'ring', costPrice: '', imageAttachmentId: '  ' },
+    { itemKey: 'card', costPrice: 0, imageAttachmentId: IMG1.toUpperCase() },
+    { itemLabel: 'ถุงผ้า', costPrice: ' 1,234.567 ', imageAttachmentId: ` ${IMG2} ` },
+    { itemLabel: 'เชือก', costPrice: SPEC_ITEM_COST_MAX, id: 'PSI-abc_1' },
+    { itemLabel: 'ป้าย', costPrice: 12.345, id: 'มี ช่องว่าง' },
+    { itemLabel: 'ริบบิ้น', costPrice: undefined, imageAttachmentId: undefined, id: 42 },
+  ]);
+  // 🔴 แถวที่ไม่ส่งคีย์ต้องไม่มีคีย์ — เติม null ให้เมื่อไร คนที่ไม่เห็นราคาทุนกดบันทึก = ล้างของคนอื่น
+  assert.deepEqual(Object.keys(value[0]).sort(), ['detail', 'itemKey', 'itemLabel', 'note', 'preparedByCustomer', 'preparedByS', 'sortOrder']);
+  assert.deepEqual([value[1].costPrice, value[1].imageAttachmentId], [null, null]);
+  assert.deepEqual([value[2].costPrice, value[2].imageAttachmentId], [null, null]);
+  assert.deepEqual([value[3].costPrice, value[3].imageAttachmentId], [0, IMG1], '0 ≠ ว่าง · uuid เป็นตัวเล็ก');
+  assert.deepEqual([value[4].costPrice, value[4].imageAttachmentId], [1234.57, IMG2], 'ข้อความเลข (มีลูกน้ำ) ปัดสองตำแหน่ง');
+  assert.equal(value[5].costPrice, SPEC_ITEM_COST_MAX, 'เพดานพอดีต้องผ่าน');
+  assert.equal(value[5].id, 'PSI-abc_1');
+  assert.equal(value[6].costPrice, 12.35);
+  assert.equal('id' in value[6], false, 'id รูปร่างผิดถูกทิ้งเงียบ ไม่ใช่ error');
+  assert.deepEqual(['costPrice' in value[7], 'imageAttachmentId' in value[7], 'id' in value[7]], [false, false, false],
+    'undefined = ไม่ส่งคีย์ (JSON ทิ้งให้อยู่แล้ว) · id ที่ไม่ใช่ข้อความถูกทิ้ง');
+  assert.equal(Object.is(normalizeSpecItems([{ itemKey: 'cap', costPrice: -0 }]).value[0].costPrice, 0), true, '-0 เก็บเป็น 0');
+});
+
+test('checklist: ราคาทุนผิดรูป/ติดลบ/เกินเพดาน · รูปผิดรูป · รูปซ้ำสองแถว = error บอกเลขแถว', () => {
+  const COST = /ราคาทุน checklist แถวที่ 2 ต้องเป็นตัวเลขตั้งแต่ 0 ถึง 999,999,999\.99/;
+  for (const bad of [-0.01, -1, 1000000000, 999999999.995, NaN, Infinity, 'abc', '1e3', '0x10', '-5', '12.', true, [], {}, '1 2']) {
+    assert.match(normalizeSpecItems([{ itemKey: 'cap' }, { itemKey: 'box', costPrice: bad }]).error, COST, String(bad));
+  }
+  const IMAGE = /รูป checklist แถวที่ 1 ไม่ถูกต้อง/;
+  for (const bad of ['not-a-uuid', 'ATT-1', 12, {}, [], true, `${IMG1}x`, IMG1.replace(/-/g, '')]) {
+    assert.match(normalizeSpecItems([{ itemKey: 'cap', imageAttachmentId: bad }]).error, IMAGE, String(bad));
+  }
+  assert.match(normalizeSpecItems([
+    { itemKey: 'cap', imageAttachmentId: IMG1 }, { itemKey: 'box', imageAttachmentId: null },
+    { itemKey: 'ring', imageAttachmentId: IMG1.toUpperCase() },
+  ]).error, /รูป checklist แถวที่ 3 ซ้ำกับแถวก่อนหน้า/);
+  // หลายแถวไม่มีรูป (null) ไม่นับว่าซ้ำ
+  assert.equal(normalizeSpecItems([{ itemKey: 'cap', imageAttachmentId: null }, { itemKey: 'box', imageAttachmentId: null }]).error, undefined);
+  // ด่านผ่านมาถึงก้อนรวมของ API
+  assert.match(normalizeProductSpecInput({ content: {}, items: [{ itemKey: 'cap', costPrice: -1 }] }).error, /ราคาทุน checklist แถวที่ 1/);
+});
+
+test('🔴 prepareSpecItemRows: id ที่ส่งมาคงไว้เฉพาะของแถวในสเปคนี้ที่ยังไม่ถูกใช้ · คนแก้ราคาทุนไม่ได้เสียคีย์ costPrice · explicitImages (ลิสต์ว่าง = ไม่นับ)', () => {
+  const stored = [{ id: 'S1', itemKey: 'cap' }, { id: 'S2', itemKey: null }];
+  const input = normalizeSpecItems([
+    { id: 'S1', itemKey: 'cap', costPrice: 5, imageAttachmentId: IMG1 },
+    { id: 'S1', itemLabel: 'ซ้ำ id แถวบน', costPrice: 6, imageAttachmentId: null },
+    { id: 'PSI-of-other-spec', itemLabel: 'id ของสเปคอื่น', costPrice: 7, imageAttachmentId: null },
+    { id: 'S2', itemLabel: 'แถวเพิ่มเอง', costPrice: null, imageAttachmentId: IMG2 },
+    { itemLabel: 'แถวใหม่ไม่มี id', imageAttachmentId: null },
+  ]).value;
+  const frozen = structuredClone(input);
+  const editor = prepareSpecItemRows(input, stored, { canEditCost: true });
+  assert.deepEqual(editor.rows.map((row) => row.id), ['S1', undefined, undefined, 'S2', undefined]);
+  assert.deepEqual(editor.rows.map((row) => 'id' in row), [true, false, false, true, false], 'ตัดคีย์ทิ้ง ไม่ใช่ใส่ undefined');
+  assert.deepEqual(editor.rows.map((row) => row.costPrice), [5, 6, 7, null, undefined]);
+  assert.equal('costPrice' in editor.rows[4], false, 'แถวที่ไม่ได้ส่งราคาทุนมาก็ยังไม่มีคีย์');
+  assert.equal(editor.explicitImages, true);
+  assert.deepEqual(input, frozen, 'ห้ามแก้แถวที่รับมา');
+
+  // แก้ราคาทุนไม่ได้: คีย์หายทุกแถว (RPC ยกค่าเดิมมาให้) · รูปยังอยู่
+  const viewer = prepareSpecItemRows(input, stored, { canEditCost: false });
+  assert.equal(viewer.rows.some((row) => 'costPrice' in row), false);
+  assert.deepEqual(viewer.rows.map((row) => row.imageAttachmentId), [IMG1, null, null, IMG2, null]);
+  assert.equal(prepareSpecItemRows(input, stored).rows.some((row) => 'costPrice' in row), false, 'ไม่บอกสิทธิ์ = ไม่ได้');
+
+  // จอรุ่นก่อน/แท็บค้าง: บางแถว (หรือทุกแถว) ไม่มีคีย์รูป ⇒ ห้ามเก็บกวาด
+  const mixed = normalizeSpecItems([{ itemKey: 'cap', imageAttachmentId: null }, { itemKey: 'box' }]).value;
+  assert.equal(prepareSpecItemRows(mixed, stored, { canEditCost: true }).explicitImages, false);
+  assert.equal(prepareSpecItemRows(normalizeSpecItems([{ itemKey: 'cap' }]).value, stored).explicitImages, false);
+  // 🔴 ลิสต์ว่างไม่ใช่ "ส่งคีย์รูปครบทุกแถว" — จอรุ่นก่อนที่ลบทุกแถวก็ส่ง [] เหมือนกัน และมันไม่เคยเห็นว่ามีรูปอยู่
+  assert.equal(prepareSpecItemRows([], stored).explicitImages, false, 'ไม่มีแถวให้รู้ว่าผู้เรียกรู้จักรูปของแถวไหม = ห้ามเก็บกวาด');
+  assert.equal(prepareSpecItemRows(null, stored).explicitImages, false);
+  assert.equal(prepareSpecItemRows(normalizeSpecItems([{ itemKey: 'cap', imageAttachmentId: null }]).value, stored).explicitImages, true);
+
+  // ตอนสร้าง (ไม่มีแถวที่เก็บอยู่): id จาก client ไม่รอดสักตัว
+  const created = prepareSpecItemRows(input, [], { canEditCost: true });
+  assert.equal(created.rows.some((row) => 'id' in row), false);
+  assert.equal(prepareSpecItemRows(input, null, { canEditCost: true }).rows.some((row) => 'id' in row), false);
+});
+
+test('🔴 prepareSpecItemRows: แถวที่ไม่มี id (จอรุ่นก่อน/แท็บค้าง) รับ id ของแถวเดิม — itemKey ตรงกัน · ไม่มีค่อยแถวที่เพิ่มเองชื่อตรงกันเป๊ะ · แถวเดิมหนึ่งแถวใช้ได้ครั้งเดียว', () => {
+  const stored = [
+    { id: 'K-CAP', itemKey: 'cap', itemLabel: 'ฝา' },
+    { id: 'C-BAG', itemKey: null, itemLabel: 'ถุงผ้า' },
+    { id: 'C-RIB1', itemKey: null, itemLabel: 'ริบบิ้น' },
+    { id: 'C-RIB2', itemKey: null, itemLabel: 'ริบบิ้น' },
+    { id: 'K-BOX', itemKey: 'box', itemLabel: 'กล่อง' },
+  ];
+  const ids = (rows, have = stored) => prepareSpecItemRows(normalizeSpecItems(rows).value, have).rows.map((row) => row.id);
+
+  // จอรุ่นก่อน: ไม่มี id สักแถว — ทุกแถวได้ id เดิมกลับ (ลำดับที่ส่งมาไม่เกี่ยว)
+  assert.deepEqual(ids([{ itemLabel: 'ถุงผ้า' }, { itemKey: 'box' }, { itemKey: 'cap' }]), ['C-BAG', 'K-BOX', 'K-CAP']);
+  // แก้ชื่อแถวที่เพิ่มเอง = ไม่เหลืออะไรให้จับ ⇒ ไม่มี id (store ออกใหม่) · ชื่อต้องตรงเป๊ะ (ช่องว่างหัวท้ายถูกตัดก่อนถึงที่นี่)
+  assert.deepEqual(ids([{ itemLabel: 'ถุงผ้า (แก้ชื่อ)' }, { itemLabel: '  ถุงผ้า  ' }, { itemLabel: 'ถุงผ้า' }]), [undefined, 'C-BAG', undefined],
+    'แถวเดิมหนึ่งแถวให้ id ได้ครั้งเดียว — แถวชื่อซ้ำแถวถัดไปไม่ได้');
+  const renamed = prepareSpecItemRows(normalizeSpecItems([{ itemLabel: 'ถุงผ้า (แก้ชื่อ)' }]).value, stored).rows[0];
+  assert.equal('id' in renamed, false, 'ไม่มีคีย์ ไม่ใช่ใส่ undefined');
+  // แถวเดิมชื่อซ้ำสองแถว: จับตามลำดับที่เก็บอยู่ ทีละแถว · แถวที่สามไม่เหลือให้จับ
+  assert.deepEqual(ids([{ itemLabel: 'ริบบิ้น' }, { itemLabel: 'ริบบิ้น' }, { itemLabel: 'ริบบิ้น' }]), ['C-RIB1', 'C-RIB2', undefined]);
+  // แถวที่มี itemKey ไม่ตกไปจับด้วยชื่อ · แถวที่เพิ่มเองไม่จับแถวของแบบฟอร์มแม้ชื่อเหมือน
+  assert.deepEqual(ids([{ itemKey: 'ring' }]), [undefined], 'itemKey ที่ไม่มีแถวเดิม = แถวใหม่');
+  assert.deepEqual(ids([{ itemLabel: 'ฝา' }, { itemLabel: 'กล่อง' }]), [undefined, undefined], 'ชื่อเหมือนแถวของแบบฟอร์ม ≠ แถวเดียวกัน');
+  assert.deepEqual(ids([{ itemKey: 'cap' }], [{ id: 'X', itemKey: null, itemLabel: 'ฝา' }]), [undefined]);
+
+  // 🔴 id ที่ส่งมาชนะเสมอ (รอบแรกจบก่อน): แถวล่างถือ id ของ C-BAG อยู่ ⇒ แถวบนที่ชื่อ "ถุงผ้า" จับ C-BAG ไม่ได้
+  assert.deepEqual(ids([{ itemLabel: 'ถุงผ้า' }, { id: 'C-BAG', itemLabel: 'ถุงผ้าใบใหม่' }]), [undefined, 'C-BAG']);
+  assert.deepEqual(ids([{ itemKey: 'cap' }, { id: 'K-CAP', itemLabel: 'ย้ายมาเป็นแถวเพิ่มเอง' }]), [undefined, 'K-CAP']);
+  // id ที่ส่งมาใช้ไม่ได้ (ของสเปคอื่น) ⇒ ตัดทิ้งแล้วเข้ารอบจับด้วยคีย์/ชื่อเหมือนแถวที่ไม่มี id
+  assert.deepEqual(ids([{ id: 'PSI-of-other-spec', itemKey: 'cap' }, { id: 'PSI-other-2', itemLabel: 'ถุงผ้า' }]), ['K-CAP', 'C-BAG']);
+  // id ซ้ำสองแถว: แถวแรกได้ id · แถวที่สองเข้ารอบสอง (itemKey ของมันเองยังว่างอยู่)
+  assert.deepEqual(ids([{ id: 'C-BAG', itemLabel: 'ก' }, { id: 'C-BAG', itemKey: 'box' }]), ['C-BAG', 'K-BOX']);
+
+  // สองคีย์ใหม่ไม่ถูกแตะ: แถวที่ไม่ส่งคีย์ก็ยังไม่มีคีย์ (RPC ยกค่าเดิมให้ด้วย id ที่เพิ่งจับ)
+  const keyless = prepareSpecItemRows(normalizeSpecItems([{ itemLabel: 'ถุงผ้า' }]).value, stored, { canEditCost: true });
+  assert.deepEqual(Object.keys(keyless.rows[0]).filter((key) => ['costPrice', 'imageAttachmentId'].includes(key)), []);
+  assert.equal(keyless.explicitImages, false);
+  // แถวที่เก็บอยู่ไม่มี id/ชื่อ (ไม่ควรเกิด) ไม่ทำให้จับผิดตัว · ตอนสร้าง (ไม่มีแถวเดิม) ไม่มีอะไรให้จับ
+  assert.deepEqual(ids([{ itemLabel: 'ถุงผ้า' }], [{ itemKey: null, itemLabel: 'ถุงผ้า' }, null, { id: 'NOLABEL', itemKey: null }]), [undefined]);
+  assert.deepEqual(ids([{ itemKey: 'cap' }, { itemLabel: 'ถุงผ้า' }], []), [undefined, undefined]);
+});
+
+test('🔴 redactSpecForViewer: คนที่ไม่เห็นต้นทุนได้สำเนาที่ไม่มีคีย์ costPrice และ pricingTier · คนที่เห็นได้ก้อนเดิม · ไม่แก้ก้อนที่รับมา', () => {
+  const spec = Object.freeze({
+    id: 'PSP1', productId: 'PRD1', texture: 'เจล', pricingTier: 'ราคาต้นทุน 200 บาท/ขวด',
+    items: Object.freeze([
+      Object.freeze({ id: 'I1', itemKey: 'cap', itemLabel: 'ฝา', costPrice: 987654.32, imageAttachmentId: IMG1 }),
+      Object.freeze({ id: 'I2', itemKey: null, itemLabel: 'ถุงผ้า', costPrice: null, imageAttachmentId: null }),
+    ]),
+  });
+  for (const role of ['rd', 'viewer', 'marketing', 'ts']) {
+    const out = redactSpecForViewer(spec, { id: 'U', role });
+    assert.notEqual(out, spec, role);
+    assert.equal('pricingTier' in out, false, role);
+    assert.deepEqual(out.items.map((row) => 'costPrice' in row), [false, false], `${role}: ตัดคีย์ ไม่ใช่ใส่ null`);
+    assert.doesNotMatch(JSON.stringify(out), /987654|ราคาต้นทุน/, role);
+    // ช่องอื่นอยู่ครบ — รูปของแถวไม่ใช่ความลับ
+    assert.deepEqual(out.items.map((row) => [row.id, row.itemLabel, row.imageAttachmentId]), [['I1', 'ฝา', IMG1], ['I2', 'ถุงผ้า', null]]);
+    assert.equal(out.texture, 'เจล');
+  }
+  for (const role of ['ac', 'ae', 'finance', 'ra', 'admin']) {
+    assert.equal(redactSpecForViewer(spec, { id: 'U', role }), spec, `${role} ได้ก้อนเดิม`);
+  }
+  // ไม่มีผู้ใช้ = ไม่เห็น · ก้อนที่รับมายังเต็ม (audit ถือก้อนเดียวกัน)
+  assert.equal('costPrice' in redactSpecForViewer(spec, null).items[0], false);
+  assert.equal(spec.items[0].costPrice, 987654.32);
+  assert.equal(spec.pricingTier, 'ราคาต้นทุน 200 บาท/ขวด');
+  // null-safe
+  assert.equal(redactSpecForViewer(null, { role: 'rd' }), null);
+  assert.equal(redactSpecForViewer(undefined, null), undefined);
+  assert.deepEqual(redactSpecForViewer({ id: 'X', pricingTier: 'p' }, { role: 'rd' }), { id: 'X' }, 'สเปคที่ไม่มี items');
+});
+
 
 test(`checklist: แถวที่เพิ่มเองได้ไม่เกิน ${SPEC_ITEM_EXTRA_MAX} แถว`, () => {
   const extras = (n) => Array.from({ length: n }, (_, i) => ({ itemKey: null, itemLabel: `แถว ${i}` }));
@@ -382,7 +580,7 @@ function fakeDb(seed = {}, { fail = () => null, rpc = null, users = {} } = {}) {
   const tables = structuredClone(seed);
   const rowsOf = (table) => (tables[table] ||= []);
   const from = (table) => {
-    const st = { action: 'select', filters: [], order: [], single: false, limit: null, range: null };
+    const st = { action: 'select', filters: [], order: [], ors: [], single: false, limit: null, range: null };
     const match = (row) => st.filters.every((test0) => test0(row));
     const run = () => {
       const failure = fail(table, st.action, st);
@@ -430,6 +628,18 @@ function fakeDb(seed = {}, { fail = () => null, rpc = null, users = {} } = {}) {
         return b;
       },
       contains: (col, values) => { st.filters.push((row) => values.every((v) => (row[col] || []).includes(v))); return b; },
+      /* `.or('คอลัมน์.eq.ค่า,คอลัมน์->>คีย์.eq.ค่า')` — เฉพาะรูปที่โค้ดใช้จริง (driveFileHeld) · รูปอื่น = โยน error ให้เทสต์แดง
+         ไม่ใช่กรองไม่ติดเงียบ ๆ · ตัวหนังสือดิบเก็บไว้ใน `st.ors` ให้เทสต์ดูได้ว่าค่าอะไรถึงตัวกรอง */
+      or: (expr) => {
+        st.ors.push(expr);
+        const terms = String(expr).split(',').map((term) => {
+          const m = term.match(/^([A-Za-z]+)(?:->>([A-Za-z]+))?\.eq\.([A-Za-z0-9_-]+)$/);
+          if (!m) throw new Error(`fakeDb.or: ไม่รู้จักเงื่อนไข "${term}"`);
+          return (row) => (m[2] ? row[m[1]]?.[m[2]] : row[m[1]]) === m[3];
+        });
+        st.filters.push((row) => terms.some((hit) => hit(row)));
+        return b;
+      },
       order: (col, opts = {}) => { st.order.push([col, opts.ascending !== false]); return b; },
       limit: (n) => { st.limit = n; return b; },
       range: (a, z) => { st.range = [a, z]; return b; },
@@ -1174,4 +1384,762 @@ test('store: รายการเอกสารของสินค้าพ�
     ['D2', null, null], ['D1', 1, 'SO-26090001-1'],
   ]);
   assert.match(productSpecDeleteBlock({ spec: res.spec, documents: res.documents, role: 'ac' }), /2 ใบ/);
+});
+
+
+/* ── store: ราคาทุน + รูปประจำแถว checklist (mig 0405) ───────────────────────────────────────────── */
+
+const { listSpecItemImages, isSpecItemImageReferenced, SPEC_ITEM_IMAGE_CLEANUP_MAX, SPEC_ITEM_IMAGE_GRACE_MS } = await import('./productSpecStore.js');
+const { deleteAttachmentRows, driveFileHeld } = await import('@/lib/master/attachments');
+
+/* RPC ของ **0405** จำลอง — เหมือน `itemsRpc` แต่ยกราคาทุน/รูปของแถวเดิมมาให้เมื่อแถวที่ส่งมาไม่มีคีย์
+   (จับคู่สามขั้นเหมือนของจริง: id → itemKey ที่ไม่ว่าง → แถวที่เพิ่มเอง (itemKey ว่างทั้งคู่) ที่ itemLabel ตรงกันเป๊ะ ·
+   หลายแถวเข้าข่าย = แถวบนสุดตาม sortOrder, id) และทุกแถวที่เก็บมีสองคีย์เสมอ · ของจริงพิสูจน์ด้วย PGlite ตอนเขียน migration */
+const itemsRpc0405 = (calls = []) => (name, args, tables) => {
+  if (name !== 'replace_product_spec_items') return { data: null, error: { message: `no rpc ${name}` } };
+  calls.push(structuredClone(args));
+  if (!(tables.product_specs || []).some((row) => row.id === args.p_spec_id)) {
+    return { data: null, error: { message: `product_spec_not_found: ${args.p_spec_id}` } };
+  }
+  const old = (tables.product_spec_items || []).filter((row) => row.specId === args.p_spec_id)
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || (a.id < b.id ? -1 : 1));
+  const next = args.p_rows.map((row) => {
+    const prev = old.find((have) => have.id === row.id)
+      || (row.itemKey != null
+        ? old.find((have) => have.itemKey === row.itemKey)
+        : old.find((have) => have.itemKey == null && have.itemLabel === row.itemLabel));
+    return {
+      ...row,
+      specId: args.p_spec_id,
+      costPrice: 'costPrice' in row ? row.costPrice : prev?.costPrice ?? null,
+      imageAttachmentId: 'imageAttachmentId' in row ? row.imageAttachmentId : prev?.imageAttachmentId ?? null,
+    };
+  });
+  tables.product_spec_items = (tables.product_spec_items || []).filter((row) => row.specId !== args.p_spec_id).concat(next);
+  return { data: next.length, error: null };
+};
+/* RPC ของ **0370** จำลอง (ฐานที่ยังไม่รัน 0405) — สองคีย์ใหม่ถูกทิ้งเงียบ แล้วตอบว่าสำเร็จ */
+const itemsRpc0370 = (calls = []) => (name, args, tables) => {
+  if (name !== 'replace_product_spec_items') return { data: null, error: { message: `no rpc ${name}` } };
+  calls.push(structuredClone(args));
+  const next = args.p_rows.map(({ costPrice: _c, imageAttachmentId: _i, ...row }) => ({ ...row, specId: args.p_spec_id }));
+  tables.product_spec_items = (tables.product_spec_items || []).filter((row) => row.specId !== args.p_spec_id).concat(next);
+  return { data: next.length, error: null };
+};
+// จดทุกคำสั่งที่ไม่ใช่การอ่าน — ใช้ยืนยันว่า "ด่านหยุดก่อนคำสั่งเขียนตัวแรก"
+const writeLog = () => {
+  const log = [];
+  return { log, fail: (table, action) => { if (action !== 'select') log.push(`${action}:${table}`); return null; } };
+};
+const HOUR_AGO_2 = '2026-09-22T00:59:59.000Z';   // เกินหนึ่งชั่วโมงก่อน NOW
+const MIN_AGO_10 = '2026-09-22T02:50:00.000Z';   // ภายในหนึ่งชั่วโมง
+const rowImage = (id, over = {}) => ({
+  id, entityType: 'product', entityId: 'PRD1', docType: 'spec_item_image', fileName: `${id}.png`, mimeType: 'image/png',
+  driveFileId: null, metadata: {}, createdAt: HOUR_AGO_2, ...over,
+});
+const storedItem = (id, over = {}) => ({
+  id, specId: 'PSP1', sortOrder: 0, itemKey: null, itemLabel: id, detail: null, preparedByS: false, preparedByCustomer: false,
+  note: null, costPrice: null, imageAttachmentId: null, createdAt: NOW, ...over,
+});
+const SPEC1 = { id: 'PSP1', productId: 'PRD1', updatedAt: NOW };
+const specDb = ({ items = [], attachments = [], rpcCalls = [], rpc = itemsRpc0405, fail } = {}) => fakeDb({
+  products: [{ id: 'PRD1' }],
+  product_specs: [{ ...SPEC1 }],
+  product_spec_items: items,
+  attachments,
+}, { rpc: rpc(rpcCalls), ...(fail ? { fail } : {}) });
+const releaseSpy = () => {
+  const released = [];
+  return { released, releaseFile: async (att) => { released.push(att.id); } };
+};
+
+test('store: รูปของแถว checklist ของสินค้า = เฉพาะ docType spec_item_image ของสินค้านั้น · อ่านพัง = error', async () => {
+  const db = fakeDb({
+    attachments: [
+      rowImage(IMG2), rowImage(IMG1),
+      rowImage(IMG3, { entityId: 'PRD9' }),
+      { id: 'ILL', entityType: 'product', entityId: 'PRD1', docType: 'spec_illustration' },
+      { id: 'ART', entityType: 'product', entityId: 'PRD1', docType: 'artwork' },
+    ],
+  });
+  assert.deepEqual((await listSpecItemImages(db, 'PRD1')).images.map((row) => row.id), [IMG1, IMG2]);
+  const broken = fakeDb({}, { fail: (table) => (table === 'attachments' ? { message: 'down' } : null) });
+  assert.equal((await listSpecItemImages(broken, 'PRD1')).error, 'down');
+});
+
+test('store: บันทึกราคาทุน + รูปของแถว — id ของแถวคงเดิม · ผลลัพธ์คือแถวที่อ่านกลับจากฐาน', async () => {
+  const calls = [];
+  const db = specDb({
+    items: [storedItem('OLD1', { itemKey: 'cap', itemLabel: 'ฝา' }), storedItem('OLD2', { sortOrder: 1, itemLabel: 'ถุงผ้า' })],
+    attachments: [rowImage(IMG1)],
+    rpcCalls: calls,
+  });
+  const spec = { ...SPEC1, items: structuredClone(db.tables.product_spec_items) };
+  const res = await saveProductSpec(db, {
+    spec, user: ADMIN, now: NOW, canEditItemCost: true,
+    input: { content: {}, items: [
+      { id: 'OLD1', itemKey: 'cap', costPrice: 12.5, imageAttachmentId: IMG1 },
+      { id: 'OLD2', itemLabel: 'ถุงผ้า', costPrice: 0, imageAttachmentId: null },
+      { id: 'PSI-from-another-spec', itemLabel: 'แถวใหม่', costPrice: null, imageAttachmentId: null },
+    ] },
+  });
+  assert.equal(res.error, undefined, res.error);
+  const sent = calls[0].p_rows;
+  assert.deepEqual(sent.slice(0, 2).map((row) => row.id), ['OLD1', 'OLD2'], 'id ของแถวเดิมคงอยู่');
+  assert.match(sent[2].id, /^PSI-/);
+  assert.notEqual(sent[2].id, 'PSI-from-another-spec', '🔴 id ที่ไม่ใช่ของสเปคนี้ต้องไม่ถึง RPC (PK เป็นของทั้งระบบ)');
+  assert.deepEqual(sent.map((row) => [row.costPrice, row.imageAttachmentId]), [[12.5, IMG1], [0, null], [null, null]]);
+  assert.deepEqual(res.spec.items.map((row) => [row.id, row.costPrice, row.imageAttachmentId, row.specId]), [
+    ['OLD1', 12.5, IMG1, 'PSP1'], ['OLD2', 0, null, 'PSP1'], [sent[2].id, null, null, 'PSP1'],
+  ]);
+});
+
+test('🔴 store: คนที่แก้ราคาทุนไม่ได้บันทึก — คีย์ costPrice ไม่ถึง RPC เลย · ราคาทุนเดิมคงอยู่และกลับมาในผลลัพธ์ (audit เห็นค่าจริง)', async () => {
+  const calls = [];
+  const db = specDb({ items: [storedItem('OLD1', { itemKey: 'cap', itemLabel: 'ฝา', costPrice: 987654.32 })], rpcCalls: calls });
+  const spec = { ...SPEC1, items: structuredClone(db.tables.product_spec_items) };
+  const res = await saveProductSpec(db, {
+    spec, user: ADMIN, now: NOW,   // ไม่ส่ง canEditItemCost = ไม่ได้
+    input: { content: {}, items: [{ id: 'OLD1', itemKey: 'cap', detail: 'สีทอง', costPrice: 1, imageAttachmentId: null }] },
+  });
+  assert.equal(res.error, undefined, res.error);
+  assert.equal('costPrice' in calls[0].p_rows[0], false, 'คีย์ต้องไม่มี — ส่ง null = ล้างราคาทุนของคนอื่น');
+  assert.equal('imageAttachmentId' in calls[0].p_rows[0], true);
+  assert.equal(db.tables.product_spec_items[0].costPrice, 987654.32);
+  assert.equal(res.spec.items[0].costPrice, 987654.32, 'ผลลัพธ์ = แถวที่อ่านกลับ ไม่ใช่แถวที่ส่งไป');
+  assert.equal(res.spec.items[0].detail, 'สีทอง');
+});
+
+test('🔴 store: จอรุ่นก่อน (ไม่ส่งสองคีย์ ไม่ส่ง id) **แก้ชื่อแถวที่เพิ่มเอง** แล้วบันทึก — แถวที่มีคีย์ทะเบียนได้ค่าเดิม · แถวที่แก้ชื่อเสียตัวชี้ (ยอมรับ) · ไม่ลบไฟล์สักไฟล์', async () => {
+  const calls = [];
+  const spy = releaseSpy();
+  const writes = writeLog();
+  const db = specDb({
+    items: [
+      storedItem('OLD1', { itemKey: 'cap', itemLabel: 'ฝา', costPrice: 50, imageAttachmentId: IMG1 }),
+      storedItem('OLD2', { sortOrder: 1, itemLabel: 'ถุงผ้า', costPrice: 9, imageAttachmentId: IMG2 }),
+    ],
+    attachments: [rowImage(IMG1, { driveFileId: 'DRV1' }), rowImage(IMG2, { driveFileId: 'DRV2' }), rowImage(IMG3, { driveFileId: 'DRV3' })],
+    rpcCalls: calls, fail: writes.fail,
+  });
+  const spec = { ...SPEC1, items: structuredClone(db.tables.product_spec_items) };
+  // แท็บค้าง: แก้ชื่อแถวที่เพิ่มเอง ⇒ ไม่มี id · ไม่มี itemKey · ชื่อไม่ตรง = จับคู่กับของเดิมไม่ได้ ตัวชี้รูปหลุด (ยอมรับได้)
+  // — แต่ไฟล์ต้องอยู่ · ชื่อไม่เปลี่ยน = ไม่หลุด (เทสต์ถัดไป)
+  const res = await saveProductSpec(db, {
+    spec, user: ADMIN, now: NOW, canEditItemCost: true, releaseFile: spy.releaseFile,
+    input: { content: {}, items: [{ itemKey: 'cap', detail: 'แก้จากแท็บเก่า' }, { itemLabel: 'ถุงผ้า (แก้ชื่อ)' }] },
+  });
+  assert.equal(res.error, undefined, res.error);
+  assert.deepEqual(calls[0].p_rows.map((row) => ['costPrice' in row, 'imageAttachmentId' in row]), [[false, false], [false, false]]);
+  assert.deepEqual([res.spec.items[0].costPrice, res.spec.items[0].imageAttachmentId], [50, IMG1], 'แถวที่มีคีย์ทะเบียนได้ค่าเดิม');
+  assert.deepEqual([res.spec.items[1].costPrice, res.spec.items[1].imageAttachmentId], [null, null]);
+  assert.equal(calls[0].p_rows[0].id, 'OLD1', 'แถวที่มีคีย์ทะเบียนได้ id เดิมจาก itemKey');
+  assert.notEqual(calls[0].p_rows[1].id, 'OLD2', 'แถวที่แก้ชื่อคือแถวใหม่ — ไม่รับ id ของแถวเดิม');
+  assert.equal(db.tables.attachments.length, 3, '🔴 คำขอที่ไม่รู้จักรูปของแถว ห้ามลบไฟล์ — ทั้งรูปที่เพิ่งหลุดและรูปเก่าที่ไม่มีใครชี้');
+  assert.deepEqual(spy.released, []);
+  assert.equal(writes.log.includes('delete:attachments'), false, 'ไม่มีคำสั่งลบไฟล์แนบสักคำสั่ง');
+
+  // ส่งคีย์รูปมาแค่บางแถว ก็ยังไม่เก็บกวาด
+  const mixed = await saveProductSpec(db, {
+    spec: { ...SPEC1, items: structuredClone(db.tables.product_spec_items) }, user: ADMIN, now: NOW, canEditItemCost: true,
+    releaseFile: spy.releaseFile,
+    input: { content: {}, items: [{ itemKey: 'cap', imageAttachmentId: null }, { itemLabel: 'ถุงผ้า (แก้ชื่อ)' }] },
+  });
+  assert.equal(mixed.error, undefined, mixed.error);
+  assert.equal(db.tables.attachments.length, 3);
+  assert.deepEqual(spy.released, []);
+});
+
+test('🔴 store: จอรุ่นก่อน (ไม่ส่ง id ไม่ส่งสองคีย์) บันทึกโดย **ไม่แก้ชื่อ** แถวที่เพิ่มเอง — ราคาทุนกับรูปอยู่ครบ · แถวได้ id เดิม · ไม่ลบไฟล์สักไฟล์', async () => {
+  // 🐞 เดิมแถวที่เพิ่มเอง (itemKey ว่าง) ของผู้เรียกแบบนี้ไม่มีอะไรให้จับคู่เลย ⇒ ราคาทุนกับรูปหายทุกครั้งที่แท็บค้างกดบันทึก
+  //    แล้วรูปที่หลุดถูกเก็บกวาดทิ้งในการบันทึกครั้งถัดไปของจอรุ่นใหม่
+  const calls = [];
+  const spy = releaseSpy();
+  const writes = writeLog();
+  const db = specDb({
+    items: [
+      storedItem('OLD1', { itemKey: 'cap', itemLabel: 'ฝา', costPrice: 50, imageAttachmentId: IMG1 }),
+      storedItem('OLD2', { sortOrder: 1, itemLabel: 'ถุงผ้า', costPrice: 9, imageAttachmentId: IMG2 }),
+    ],
+    attachments: [rowImage(IMG1, { driveFileId: 'DRV1' }), rowImage(IMG2, { driveFileId: 'DRV2' }), rowImage(IMG3, { driveFileId: 'DRV3' })],
+    rpcCalls: calls, fail: writes.fail,
+  });
+  const res = await saveProductSpec(db, {
+    spec: { ...SPEC1, items: structuredClone(db.tables.product_spec_items) }, user: ADMIN, now: NOW, canEditItemCost: true,
+    releaseFile: spy.releaseFile,
+    // สลับลำดับแถวด้วย — การจับคู่ไม่ขึ้นกับตำแหน่ง
+    input: { content: {}, items: [{ itemLabel: ' ถุงผ้า ', note: 'แก้จากแท็บเก่า' }, { itemKey: 'cap' }] },
+  });
+  assert.equal(res.error, undefined, res.error);
+  assert.deepEqual(calls[0].p_rows.map((row) => [row.id, 'costPrice' in row, 'imageAttachmentId' in row]), [
+    ['OLD2', false, false], ['OLD1', false, false],
+  ], 'แถวได้ id เดิม (ชื่อตรงกัน / itemKey ตรงกัน) และยังไม่มีสองคีย์ใหม่ — RPC ยกค่าให้ด้วย id');
+  assert.deepEqual(res.spec.items.map((row) => [row.id, row.costPrice, row.imageAttachmentId, row.note]), [
+    ['OLD2', 9, IMG2, 'แก้จากแท็บเก่า'], ['OLD1', 50, IMG1, null],
+  ]);
+  assert.equal(db.tables.attachments.length, 3);
+  assert.deepEqual(spy.released, []);
+  assert.equal(writes.log.includes('delete:attachments'), false, 'ไม่มีคำสั่งลบไฟล์แนบสักคำสั่ง');
+});
+
+test('RPC จำลองของ 0405: ผู้เรียกที่ไม่ผ่าน store รุ่นนี้ (id ใหม่ทุกแถว ไม่มีสองคีย์) — แถวที่เพิ่มเองชื่อเดิมได้ค่าเดิม · แก้ชื่อ = NULL · id ชนะ itemKey ชนะชื่อ', async () => {
+  // ⚠️ ที่นี่ยืนยันแค่ว่า **ตัวจำลอง** ทำตามกฎสามขั้นของ SQL (เทสต์ store ข้างบนพึ่งมัน) — ตัว SQL จริงพิสูจน์ด้วย PGlite
+  const db = specDb({ items: [
+    storedItem('OLD1', { itemKey: 'cap', itemLabel: 'ฝา', costPrice: 50, imageAttachmentId: IMG1 }),
+    storedItem('OLD2', { sortOrder: 1, itemLabel: 'ถุงผ้า', costPrice: 9, imageAttachmentId: IMG2 }),
+    storedItem('OLD3', { sortOrder: 2, itemLabel: 'ริบบิ้น', costPrice: 3, imageAttachmentId: IMG3 }),
+  ] });
+  const bare = (id, over) => ({ id, sortOrder: 0, itemKey: null, itemLabel: id, detail: null, preparedByS: false, preparedByCustomer: false, note: null, ...over });
+  const call = (rows) => db.rpc('replace_product_spec_items', { p_spec_id: 'PSP1', p_rows: rows });
+  await call([
+    bare('N1', { itemLabel: 'ถุงผ้า' }), bare('N2', { itemLabel: 'ริบบิ้น (แก้ชื่อ)' }), bare('N3', { itemKey: 'cap', itemLabel: 'ฝา' }),
+    bare('N4', { itemLabel: 'ฝา' }),   // แถวที่เพิ่มเองชื่อเหมือนแถวของแบบฟอร์ม — ไม่ใช่แถวเดียวกัน
+  ]);
+  assert.deepEqual(db.tables.product_spec_items.map((row) => [row.id, row.costPrice, row.imageAttachmentId]), [
+    ['N1', 9, IMG2], ['N2', null, null], ['N3', 50, IMG1], ['N4', null, null],
+  ]);
+  // id ตรงแถวหนึ่ง แต่ itemKey/ชื่อไปตรงอีกแถว ⇒ ได้ของแถวที่ id ตรง
+  await call([bare('N1', { itemKey: 'cap', itemLabel: 'ฝา' }), bare('N3', { itemLabel: 'ถุงผ้า' })]);
+  assert.deepEqual(db.tables.product_spec_items.map((row) => [row.id, row.costPrice, row.imageAttachmentId]), [
+    ['N1', 9, IMG2], ['N3', 50, IMG1],
+  ]);
+});
+
+test('🔴 store: คำขอที่ส่ง checklist ว่าง (ลบทุกแถว) ไม่เก็บกวาดรูป — จอรุ่นก่อนก็ส่ง [] ได้โดยไม่เคยเห็นว่ามีรูป · รูปค้างไปกับกฎอายุรอบถัดไป', async () => {
+  const spy = releaseSpy();
+  const writes = writeLog();
+  const db = specDb({
+    items: [storedItem('OLD1', { imageAttachmentId: IMG1 }), storedItem('OLD2', { sortOrder: 1, imageAttachmentId: IMG2 })],
+    // IMG1 เพิ่งอัป (แถวชี้อยู่) · IMG2 เก่า (แถวชี้อยู่) · IMG3 เก่าและไม่มีใครชี้ — ทั้งสามแบบต้องรอด
+    attachments: [
+      rowImage(IMG1, { driveFileId: 'DRV1', createdAt: MIN_AGO_10 }), rowImage(IMG2, { driveFileId: 'DRV2' }),
+      rowImage(IMG3, { driveFileId: 'DRV3' }),
+    ],
+    fail: writes.fail,
+  });
+  const res = await saveProductSpec(db, {
+    spec: { ...SPEC1, items: structuredClone(db.tables.product_spec_items) }, user: ADMIN, now: NOW, canEditItemCost: true,
+    releaseFile: spy.releaseFile, input: { content: {}, items: [] },
+  });
+  assert.equal(res.error, undefined, res.error);
+  assert.deepEqual(res.spec.items, [], 'แถวถูกลบตามคำขอ');
+  assert.equal(db.tables.attachments.length, 3, '🔴 ลิสต์ว่างไม่ได้บอกว่าผู้เรียกรู้จักรูปของแถว — ห้ามลบไฟล์');
+  assert.deepEqual(spy.released, []);
+  assert.equal(writes.log.includes('delete:attachments'), false);
+
+  // การบันทึกครั้งถัดไปที่มีแถวและส่งคีย์รูปครบ (จอรุ่นใหม่) เก็บรูปที่ค้างเกินชั่วโมง · รูปที่เพิ่งอัปยังอยู่
+  const next = await saveProductSpec(db, {
+    spec: { ...SPEC1, items: [] }, user: ADMIN, now: NOW, releaseFile: spy.releaseFile,
+    input: { content: {}, items: [{ itemLabel: 'แถวใหม่', imageAttachmentId: null }] },
+  });
+  assert.equal(next.error, undefined, next.error);
+  assert.deepEqual(db.tables.attachments.map((row) => row.id), [IMG1]);
+  assert.deepEqual(spy.released.sort(), [IMG2, IMG3].sort());
+});
+
+test('🔴 store: เขียน checklist สำเร็จแต่อ่านกลับไม่ขึ้น = บันทึกสำเร็จ คืนแถวที่ส่งไป และ **ไม่เก็บกวาดรูป** — ทั้งบันทึกและสร้าง', async () => {
+  // อ่าน product_spec_items ล้มเฉพาะ **หลัง** RPC วิ่งแล้ว (การอ่านก่อนเขียนต้องผ่านตามปกติ)
+  const readFailsAfterRpc = (calls, log) => (table, action) => {
+    if (action !== 'select') log.push(`${action}:${table}`);
+    return table === 'product_spec_items' && action === 'select' && calls.length > 0 ? { message: 'timeout' } : null;
+  };
+
+  // บันทึก: แถวเดิมชี้ IMG1 · คำขอเอารูปออก (ส่งคีย์ครบ) ⇒ ถ้าเก็บกวาดด้วย "อ่านกลับ = ว่าง" IMG1 จะถูกลบทั้งที่ไม่รู้ว่าฐานเก็บอะไร
+  const calls = [];
+  const log = [];
+  const spy = releaseSpy();
+  const db = specDb({
+    items: [storedItem('OLD1', { imageAttachmentId: IMG1 })],
+    attachments: [rowImage(IMG1, { driveFileId: 'DRV1' }), rowImage(IMG2, { driveFileId: 'DRV2' })],
+    rpcCalls: calls, fail: readFailsAfterRpc(calls, log),
+  });
+  const res = await saveProductSpec(db, {
+    spec: { ...SPEC1, items: structuredClone(db.tables.product_spec_items) }, user: ADMIN, now: NOW, canEditItemCost: true,
+    releaseFile: spy.releaseFile,
+    input: { content: { longevity: '8 ชม.' }, items: [{ id: 'OLD1', itemLabel: 'OLD1', costPrice: 4, imageAttachmentId: null }] },
+  });
+  assert.equal(res.error, undefined, res.error);
+  assert.equal(calls.length, 1);
+  assert.equal(res.spec.longevity, '8 ชม.');
+  assert.deepEqual(res.spec.items, calls[0].p_rows.map((row) => ({ ...row, specId: 'PSP1' })), 'คืนแถวที่ส่งเข้า RPC');
+  assert.deepEqual(db.tables.attachments.map((row) => row.id), [IMG1, IMG2], '🔴 ไม่รู้ว่าฐานเก็บอะไรจริง = ห้ามลบไฟล์');
+  assert.deepEqual(spy.released, []);
+  assert.equal(log.includes('delete:attachments'), false);
+
+  // สร้าง: มีรูปเก่าเกินชั่วโมงที่ไม่มีใครชี้ (ของเดียวที่เก็บกวาดได้ตอนสร้าง) — ต้องรอด และแถวสเปคต้องไม่ถูกถอย
+  const createCalls = [];
+  const createLog = [];
+  const createDb = fakeDb({ products: [{ id: 'PRD1' }], attachments: [rowImage(IMG3, { driveFileId: 'DRV3' })] }, {
+    rpc: itemsRpc0405(createCalls), fail: readFailsAfterRpc(createCalls, createLog),
+  });
+  const created = await createProductSpec(createDb, {
+    productId: 'PRD1', user: ADMIN, now: NOW, canEditItemCost: true, releaseFile: spy.releaseFile,
+    input: { content: {}, items: [{ itemKey: 'cap', costPrice: 4, imageAttachmentId: null }] },
+  });
+  assert.equal(created.error, undefined, created.error);
+  assert.equal(createDb.tables.product_specs.length, 1, 'เขียนสำเร็จแล้ว — ห้ามถอยแถวสเปค');
+  assert.deepEqual(created.spec.items, createCalls[0].p_rows.map((row) => ({ ...row, specId: created.spec.id })));
+  assert.deepEqual(createDb.tables.attachments.map((row) => row.id), [IMG3]);
+  assert.deepEqual(spy.released, []);
+  assert.deepEqual(createLog.filter((entry) => entry.startsWith('delete:')), []);
+});
+
+test('🔴 store: ตัวชี้รูปที่ไม่ใช่รูปของแถว checklist ของสินค้านี้ = 400 บอกเลขแถว **ก่อนเขียนอะไรทั้งสิ้น**', async () => {
+  const cases = [
+    ['ไม่มีไฟล์นี้', []],
+    ['ไฟล์ของสินค้าอื่น', [rowImage(IMG2, { entityId: 'PRD9' })]],
+    ['ไฟล์ชนิดอื่นของสินค้านี้', [rowImage(IMG2, { docType: 'spec_illustration' })]],
+  ];
+  for (const [label, attachments] of cases) {
+    const calls = [];
+    const writes = writeLog();
+    const db = specDb({ items: [storedItem('OLD1')], attachments: [rowImage(IMG1), ...attachments], rpcCalls: calls, fail: writes.fail });
+    const res = await saveProductSpec(db, {
+      spec: { ...SPEC1, items: structuredClone(db.tables.product_spec_items) }, user: ADMIN, now: NOW, canEditItemCost: true,
+      input: { content: { longevity: 'ต้องไม่ถูกเขียน' }, items: [
+        { itemLabel: 'แถวหนึ่ง', imageAttachmentId: IMG1 }, { itemLabel: 'แถวสอง', imageAttachmentId: IMG2 },
+      ] },
+    });
+    assert.equal(res.status, 400, label);
+    assert.match(res.error, /ไม่พบรูปของ checklist แถวที่ 2/, label);
+    assert.deepEqual(writes.log, [], `${label}: ต้องไม่มีคำสั่งเขียน`);
+    assert.equal(calls.length, 0, label);
+    assert.equal(db.tables.product_specs[0].longevity, undefined, label);
+  }
+  // อ่านรายการรูปไม่ได้ = หยุด (ไม่มี status = 500) ไม่ใช่ปล่อยผ่าน
+  const calls = [];
+  const down = specDb({ rpcCalls: calls, fail: (table, action) => (table === 'attachments' && action === 'select' ? { message: 'down' } : null) });
+  const res = await saveProductSpec(down, {
+    spec: { ...SPEC1, items: [] }, user: ADMIN, now: NOW, input: { content: {}, items: [{ itemLabel: 'x', imageAttachmentId: IMG1 }] },
+  });
+  assert.match(res.error, /ตรวจรูปของ checklist ไม่สำเร็จ/);
+  assert.equal(res.status, undefined);
+  assert.equal(calls.length, 0);
+  // ตอนสร้างสเปค: ด่านเดียวกัน และต้องไม่มีแถวสเปคค้าง
+  const createDb = fakeDb({ products: [{ id: 'PRD1' }] }, { rpc: itemsRpc0405() });
+  const created = await createProductSpec(createDb, {
+    productId: 'PRD1', user: ADMIN, now: NOW, input: { content: {}, items: [{ itemKey: 'cap', imageAttachmentId: IMG1 }] },
+  });
+  assert.equal(created.status, 400);
+  assert.match(created.error, /แถวที่ 1/);
+  assert.equal((createDb.tables.product_specs || []).length, 0);
+});
+
+test('🔴 store: ฐานยังไม่รัน 0405 (แถวที่เก็บอยู่ไม่มีคีย์ใหม่) + ส่งราคาทุน/รูปมา = 503 บอกให้รัน migration **ก่อนเขียน**', async () => {
+  const legacyRow = { id: 'OLD1', specId: 'PSP1', sortOrder: 0, itemKey: 'cap', itemLabel: 'ฝา', detail: null, note: null };
+  for (const [label, row] of [['ราคาทุน', { costPrice: 5 }], ['ราคาทุนเป็น 0', { costPrice: 0 }], ['รูป', { imageAttachmentId: IMG1 }]]) {
+    const calls = [];
+    const writes = writeLog();
+    const db = specDb({ items: [legacyRow], attachments: [rowImage(IMG1)], rpc: itemsRpc0370, rpcCalls: calls, fail: writes.fail });
+    const res = await saveProductSpec(db, {
+      spec: { ...SPEC1, items: [legacyRow] }, user: ADMIN, now: NOW, canEditItemCost: true,
+      input: { content: { longevity: 'x' }, items: [{ id: 'OLD1', itemKey: 'cap', ...row }] },
+    });
+    assert.equal(res.status, 503, label);
+    assert.equal(res.error, 'ฐานข้อมูลยังไม่รองรับราคาทุน/รูปของ checklist — ต้องรัน migration 0405 ก่อน', label);
+    assert.deepEqual(writes.log, [], label);
+    assert.equal(calls.length, 0, label);
+  }
+  // ไม่ได้ส่งค่าใหม่ (จอใหม่ส่ง null ทั้งคู่) = บันทึกได้ตามปกติบนฐานเก่า — ฟีเจอร์เดิมต้องไม่พังเพราะยังไม่รัน SQL
+  const calls = [];
+  const spy = releaseSpy();
+  const db = specDb({ items: [legacyRow], attachments: [rowImage(IMG1, { driveFileId: 'DRV1' })], rpc: itemsRpc0370, rpcCalls: calls });
+  const ok = await saveProductSpec(db, {
+    spec: { ...SPEC1, items: [legacyRow] }, user: ADMIN, now: NOW, canEditItemCost: true, releaseFile: spy.releaseFile,
+    input: { content: {}, items: [{ id: 'OLD1', itemKey: 'cap', detail: 'ยังบันทึกได้', costPrice: null, imageAttachmentId: null }] },
+  });
+  assert.equal(ok.error, undefined, ok.error);
+  assert.equal(ok.spec.items[0].detail, 'ยังบันทึกได้');
+  // 🔴 แถวที่อ่านกลับไม่มีคีย์ `imageAttachmentId` = ฐานเก่า ⇒ ห้ามเก็บกวาด แม้คำขอจะส่งคีย์รูปครบทุกแถวและรูปจะเก่าเกินชั่วโมง
+  assert.equal(db.tables.attachments.length, 1);
+  assert.deepEqual(spy.released, []);
+});
+
+test('🔴 store: อ่านกลับหลังเขียนแล้วราคาทุน/รูปไม่ถึงฐาน (RPC ตัวเก่าทิ้งคีย์เงียบ) = 503 · ไม่ลบไฟล์สักไฟล์', async () => {
+  // สเปคที่ยังไม่มีแถวเลย ⇒ ด่านก่อนเขียนมองไม่เห็นว่าฐานเก่า — ตาข่ายคือการอ่านกลับ
+  const spy = releaseSpy();
+  const db = specDb({
+    attachments: [rowImage(IMG1, { driveFileId: 'DRV1' }), rowImage(IMG2, { driveFileId: 'DRV2', createdAt: HOUR_AGO_2 })],
+    rpc: itemsRpc0370,
+  });
+  const res = await saveProductSpec(db, {
+    spec: { ...SPEC1, items: [] }, user: ADMIN, now: NOW, canEditItemCost: true, releaseFile: spy.releaseFile,
+    input: { content: {}, items: [{ itemLabel: 'แถวหนึ่ง', costPrice: 5, imageAttachmentId: IMG1 }] },
+  });
+  assert.equal(res.status, 503);
+  assert.match(res.error, /ต้องรัน migration 0405 ก่อน/);
+  assert.equal(db.tables.attachments.length, 2, '🔴 ฐานเก่าไม่มีแถวไหนชี้อะไรได้ — ทุกรูปดูเหมือนไม่มีใครชี้ ห้ามเก็บกวาด');
+  assert.deepEqual(spy.released, []);
+
+  // 🔴 ส่ง **รูปอย่างเดียว** (คนที่แก้ราคาทุนไม่ได้: คีย์ costPrice ถูกตัดก่อนถึง RPC = ก้อนปกติของคนแก้สเปคส่วนใหญ่) ก็ต้อง 503
+  //    ⚠️ IMG1 ต้องเป็นรูปของแถวของสินค้านี้จริง — ไม่งั้นหยุดที่ด่านตัวชี้รูป (400) ก่อนถึงการอ่านกลับ
+  const imageOnlyDb = specDb({ attachments: [rowImage(IMG1, { driveFileId: 'DRV1' })], rpc: itemsRpc0370 });
+  const imageOnly = await saveProductSpec(imageOnlyDb, {
+    spec: { ...SPEC1, items: [] }, user: ADMIN, now: NOW, releaseFile: spy.releaseFile,   // ไม่ส่ง canEditItemCost
+    input: { content: {}, items: [{ itemLabel: 'แถวหนึ่ง', imageAttachmentId: IMG1 }] },
+  });
+  assert.equal(imageOnly.status, 503, 'รูปที่ส่งไปไม่ถึงฐานต้องดัง ไม่ใช่ตอบว่าบันทึกแล้ว');
+  assert.match(imageOnly.error, /ต้องรัน migration 0405 ก่อน/);
+  assert.equal(imageOnlyDb.tables.attachments.length, 1);
+  assert.deepEqual(spy.released, []);
+  const imageOnlyCreateDb = fakeDb({ products: [{ id: 'PRD1' }], attachments: [rowImage(IMG1)] }, { rpc: itemsRpc0370() });
+  const imageOnlyCreated = await createProductSpec(imageOnlyCreateDb, {
+    productId: 'PRD1', user: ADMIN, now: NOW, releaseFile: spy.releaseFile,
+    input: { content: {}, items: [{ itemKey: 'cap', imageAttachmentId: IMG1 }] },
+  });
+  assert.equal(imageOnlyCreated.status, 503);
+  assert.match(imageOnlyCreated.error, /ต้องรัน migration 0405 ก่อน/);
+  assert.equal(imageOnlyCreateDb.tables.product_specs.length, 0);
+  assert.equal(imageOnlyCreateDb.tables.attachments.length, 1);
+  assert.deepEqual(spy.released, []);
+
+  // ตอนสร้าง: 503 เหมือนกัน และถอยแถวสเปคทิ้ง (กดสร้างใหม่หลังรัน SQL ได้ ไม่ชน "มีสเปคอยู่แล้ว")
+  const createDb = fakeDb({ products: [{ id: 'PRD1' }], attachments: [rowImage(IMG2)] }, { rpc: itemsRpc0370() });
+  const created = await createProductSpec(createDb, {
+    productId: 'PRD1', user: ADMIN, now: NOW, canEditItemCost: true, releaseFile: spy.releaseFile,
+    input: { content: {}, items: [{ itemKey: 'cap', costPrice: 5 }] },
+  });
+  assert.equal(created.status, 503);
+  assert.equal(createDb.tables.product_specs.length, 0);
+  assert.equal(createDb.tables.attachments.length, 1);
+  assert.deepEqual(spy.released, []);
+  // ไม่ได้ส่งค่าใหม่ = สร้างได้บนฐานเก่า
+  const plain = await createProductSpec(fakeDb({ products: [{ id: 'PRD1' }] }, { rpc: itemsRpc0370() }), {
+    productId: 'PRD1', user: ADMIN, now: NOW, canEditItemCost: true, input: { content: {} },
+  });
+  assert.equal(plain.error, undefined, plain.error);
+  assert.equal(plain.spec.items.length, 17);
+});
+
+test('store: error ของ RPC checklist แปลเป็นไทยพร้อม status ที่ถึงผู้เรียกจริง — ทั้งบันทึกและสร้าง · ไม่มีข้อความดิบของ Postgres', async () => {
+  const cases = [
+    [{ code: '23503', message: 'insert or update on table "product_spec_items" violates foreign key constraint "product_spec_items_image_fk"' }, 400, /รูปของบางแถวถูกลบไปแล้ว/],
+    [{ code: '23514', message: 'new row for relation "product_spec_items" violates check constraint "product_spec_items_cost_check"' }, 400, /เกินที่ระบบรับได้/],
+    [{ code: '22P02', message: 'invalid input syntax for type uuid: "x"' }, 400, /รูปแบบไม่ถูกต้อง/],
+    [{ code: '22003', message: 'numeric field overflow' }, 400, /รูปแบบไม่ถูกต้อง/],
+    [{ code: '23505', message: 'duplicate key value violates unique constraint "product_spec_items_pkey"' }, 400, /รหัสของบางแถวซ้ำกัน/],
+    // ไม่มี code (ชั้นกลางตัดทิ้ง) ก็ยังจำได้จากข้อความ
+    [{ message: 'violates foreign key constraint "product_spec_items_image_fk"' }, 400, /รูปของบางแถวถูกลบไปแล้ว/],
+    [{ message: 'violates check constraint "product_spec_items_cost_check"' }, 400, /เกินที่ระบบรับได้/],
+    [{ message: 'product_spec_not_found: PSP1' }, 404, /ไม่พบสเปคนี้/],
+  ];
+  for (const [error, status, text] of cases) {
+    const rpc = () => () => ({ data: null, error });
+    const saved = await saveProductSpec(specDb({ rpc }), {
+      spec: { ...SPEC1, items: [] }, user: ADMIN, now: NOW, input: { content: {}, items: [{ itemKey: 'cap' }] },
+    });
+    assert.equal(saved.status, status, `save ${error.code || error.message}`);
+    assert.match(saved.error, /^บันทึกเนื้อสเปคแล้ว แต่ บันทึก checklist ไม่สำเร็จ: /);
+    assert.match(saved.error, text);
+    // 🪤 เราต์อ่านคำว่า "foreign key" ในข้อความที่ไม่มี status แล้วตอบ 409 "ไม่พบสเปคนี้" — ข้อความที่แปลแล้วต้องสะอาด
+    assert.doesNotMatch(saved.error, /foreign key|violates|constraint|invalid input|duplicate key|product_spec_items/i);
+
+    const createDb = fakeDb({ products: [{ id: 'PRD1' }] }, { rpc: () => ({ data: null, error }) });
+    const created = await createProductSpec(createDb, { productId: 'PRD1', user: ADMIN, now: NOW, input: { content: {} } });
+    assert.equal(created.status, status, `create ${error.code || error.message}`);
+    assert.match(created.error, text);
+    assert.equal(createDb.tables.product_specs.length, 0, 'สร้างไม่สำเร็จต้องถอยแถวสเปค');
+  }
+  // error ที่ไม่รู้จัก = ไม่มี status (500) และคงข้อความเดิมไว้ให้คนดูแลอ่าน
+  const unknown = await saveProductSpec(specDb({ rpc: () => () => ({ data: null, error: { message: 'timeout' } }) }), {
+    spec: { ...SPEC1, items: [] }, user: ADMIN, now: NOW, input: { content: {}, items: [{ itemKey: 'cap' }] },
+  });
+  assert.equal(unknown.status, undefined);
+  assert.match(unknown.error, /timeout/);
+});
+
+test('🔴 store: เก็บกวาดรูปหลังบันทึก — แถวเคยชี้แล้วเลิกชี้ = ลบทันที · ไม่มีใครชี้เกิน 1 ชม. = ลบ · เพิ่งอัป = เก็บ · ยังชี้อยู่ = เก็บ', async () => {
+  const KEPT = 'bbbbbbbb-0000-4000-8000-000000000001';      // ยังมีแถวชี้
+  const DROPPED = 'bbbbbbbb-0000-4000-8000-000000000002';   // แถวเคยชี้ ชุดใหม่เอาออก (เพิ่งอัป 10 นาที — ลบอยู่ดี)
+  const FRESH = 'bbbbbbbb-0000-4000-8000-000000000003';     // ไม่มีใครชี้ เพิ่งอัป (อาจเป็นของแท็บอื่นที่ยังไม่บันทึก)
+  const STALE = 'bbbbbbbb-0000-4000-8000-000000000004';     // ไม่มีใครชี้ เกินหนึ่งชั่วโมง
+  const NODATE = 'bbbbbbbb-0000-4000-8000-000000000005';    // ไม่รู้อายุ = เก็บไว้
+  const spy = releaseSpy();
+  const db = specDb({
+    items: [storedItem('OLD1', { imageAttachmentId: KEPT }), storedItem('OLD2', { sortOrder: 1, imageAttachmentId: DROPPED })],
+    attachments: [
+      rowImage(KEPT, { driveFileId: 'D-KEPT' }), rowImage(DROPPED, { driveFileId: 'D-DROPPED', createdAt: MIN_AGO_10 }),
+      rowImage(FRESH, { driveFileId: 'D-FRESH', createdAt: MIN_AGO_10 }), rowImage(STALE, { driveFileId: 'D-STALE' }),
+      rowImage(NODATE, { driveFileId: 'D-NODATE', createdAt: null }),
+      // ของที่ไม่ใช่รูปของแถว checklist ต้องไม่ถูกแตะไม่ว่าเก่าแค่ไหน
+      { id: 'ILL', entityType: 'product', entityId: 'PRD1', docType: 'spec_illustration', driveFileId: 'D-ILL', createdAt: HOUR_AGO_2 },
+      { id: 'ART', entityType: 'product', entityId: 'PRD1', docType: 'artwork', driveFileId: 'D-ART', createdAt: HOUR_AGO_2 },
+      rowImage('cccccccc-0000-4000-8000-000000000009', { entityId: 'PRD9', driveFileId: 'D-OTHER' }),
+    ],
+  });
+  const res = await saveProductSpec(db, {
+    spec: { ...SPEC1, items: structuredClone(db.tables.product_spec_items) }, user: ADMIN, now: NOW, canEditItemCost: true,
+    releaseFile: spy.releaseFile,
+    input: { content: {}, items: [
+      { id: 'OLD1', itemLabel: 'OLD1', imageAttachmentId: KEPT }, { id: 'OLD2', itemLabel: 'OLD2', imageAttachmentId: null },
+    ] },
+  });
+  assert.equal(res.error, undefined, res.error);
+  assert.deepEqual(db.tables.attachments.map((row) => row.id).sort(), [
+    'ART', 'ILL', KEPT, FRESH, NODATE, 'cccccccc-0000-4000-8000-000000000009',
+  ].sort());
+  assert.deepEqual(spy.released.sort(), [DROPPED, STALE].sort(), 'ปล่อยไฟล์เฉพาะของแถวที่ลบ');
+  assert.equal(SPEC_ITEM_IMAGE_GRACE_MS, 60 * 60 * 1000);
+});
+
+test('store: เก็บกวาดรูปต่อการบันทึกไม่เกินเพดาน — ที่เหลือรอบถัดไป', async () => {
+  const many = Array.from({ length: SPEC_ITEM_IMAGE_CLEANUP_MAX + 5 }, (_, index) => (
+    rowImage(`dddddddd-0000-4000-8000-${String(index).padStart(12, '0')}`, { driveFileId: `D-${index}` })
+  ));
+  const spy = releaseSpy();
+  const db = specDb({ attachments: many });
+  const save = () => saveProductSpec(db, {
+    spec: { ...SPEC1, items: [] }, user: ADMIN, now: NOW, releaseFile: spy.releaseFile,
+    input: { content: {}, items: [{ itemLabel: 'แถวเดียว', imageAttachmentId: null }] },
+  });
+  assert.equal((await save()).error, undefined);
+  assert.equal(SPEC_ITEM_IMAGE_CLEANUP_MAX, 25);
+  assert.equal(db.tables.attachments.length, 5);
+  assert.equal(spy.released.length, 25);
+  assert.equal((await save()).error, undefined);
+  assert.equal(db.tables.attachments.length, 0);
+  assert.equal(spy.released.length, 30);
+});
+
+test('🔴 store: ไฟล์ Drive ที่แถวอื่นถืออยู่ด้วย — ลบแถวรูป แต่ **ไม่ปล่อยไฟล์** (driveFileId มาจาก client ตอนแนบ)', async () => {
+  const spy = releaseSpy();
+  const db = specDb({
+    attachments: [
+      rowImage(IMG1, { driveFileId: 'DRV-CONTRACT' }), rowImage(IMG2, { driveFileId: 'DRV-OWN' }),
+      { id: 'CONTRACT-FILE', entityType: 'contract', entityId: 'CT1', docType: 'signed', driveFileId: 'DRV-CONTRACT', createdAt: HOUR_AGO_2 },
+    ],
+  });
+  const res = await saveProductSpec(db, {
+    spec: { ...SPEC1, items: [] }, user: ADMIN, now: NOW, releaseFile: spy.releaseFile,
+    input: { content: {}, items: [{ itemLabel: 'แถวเดียว', imageAttachmentId: null }] },
+  });
+  assert.equal(res.error, undefined, res.error);
+  assert.deepEqual(db.tables.attachments.map((row) => row.id), ['CONTRACT-FILE'], 'แถวรูปทั้งสองถูกลบ · ไฟล์ของสัญญาอยู่');
+  assert.deepEqual(spy.released, [IMG2], '🔴 ไฟล์ที่สัญญาถืออยู่ต้องไม่ถูกทิ้งลงถังขยะ Drive');
+
+  // 🔴 เอกสาร Google ที่ผูกไว้กับระเบียนอื่นถือไฟล์ที่ `metadata.googleFileId` (driveFileId ของแถวนั้นเป็น null) — ต้องนับว่าถืออยู่
+  const spy2 = releaseSpy();
+  const sheet = specDb({
+    attachments: [
+      rowImage(IMG1, { driveFileId: 'GSHEET-OF-DEAL' }), rowImage(IMG2, { driveFileId: 'DRV-OWN' }),
+      { id: 'DEAL-SHEET', entityType: 'deal', entityId: 'DL1', docType: 'other', driveFileId: null,
+        metadata: { kind: 'gsheet', googleFileId: 'GSHEET-OF-DEAL' }, createdAt: HOUR_AGO_2 },
+    ],
+  });
+  const res2 = await saveProductSpec(sheet, {
+    spec: { ...SPEC1, items: [] }, user: ADMIN, now: NOW, releaseFile: spy2.releaseFile,
+    input: { content: {}, items: [{ itemLabel: 'แถวเดียว', imageAttachmentId: null }] },
+  });
+  assert.equal(res2.error, undefined, res2.error);
+  assert.deepEqual(sheet.tables.attachments.map((row) => row.id), ['DEAL-SHEET']);
+  assert.deepEqual(spy2.released, [IMG2], '🔴 เอกสาร Google ของดีลต้องไม่ถูกทิ้งลงถังขยะ Drive');
+});
+
+test('store: เก็บกวาดรูปล้ม (ลบแถวไม่ผ่าน/อ่านรายการไม่ได้) ไม่ทำให้การบันทึกล้ม และไม่ปล่อยไฟล์', async () => {
+  const spy = releaseSpy();
+  const db = specDb({
+    attachments: [rowImage(IMG1, { driveFileId: 'DRV1' })],
+    fail: (table, action) => (table === 'attachments' && action === 'delete' ? { message: 'down' } : null),
+  });
+  const res = await saveProductSpec(db, {
+    spec: { ...SPEC1, items: [] }, user: ADMIN, now: NOW, releaseFile: spy.releaseFile,
+    input: { content: { longevity: '8 ชม.' }, items: [{ itemLabel: 'แถวเดียว', imageAttachmentId: null }] },
+  });
+  assert.equal(res.error, undefined, res.error);
+  assert.equal(res.spec.longevity, '8 ชม.');
+  assert.equal(db.tables.attachments.length, 1);
+  assert.deepEqual(spy.released, [], 'ลบแถวไม่ผ่าน = ไม่แตะไฟล์ (ไฟล์หายแต่แถวอยู่ = รูปเปิดไม่ขึ้น)');
+
+  // อ่านรายการรูปเพื่อเก็บกวาดไม่ได้ (ไม่มีแถวไหนส่งตัวชี้รูป ⇒ ด่านก่อนเขียนไม่ได้อ่านรายการไว้ให้ · ตัวเก็บกวาดอ่านเอง)
+  const reads = [];
+  const down = specDb({
+    attachments: [rowImage(IMG1, { driveFileId: 'DRV1' })],
+    fail: (table, action) => {
+      if (table !== 'attachments') return null;
+      reads.push(action);
+      return action === 'select' ? { message: 'down' } : null;
+    },
+  });
+  const res2 = await saveProductSpec(down, {
+    spec: { ...SPEC1, items: [] }, user: ADMIN, now: NOW, releaseFile: spy.releaseFile,
+    input: { content: { longevity: '6 ชม.' }, items: [{ itemLabel: 'แถวเดียว', imageAttachmentId: null }] },
+  });
+  assert.equal(res2.error, undefined, res2.error);
+  assert.equal(res2.spec.longevity, '6 ชม.');
+  assert.deepEqual(reads, ['select'], 'ตัวเก็บกวาดพยายามอ่านรายการรูปแล้วหยุด — ไม่มีคำสั่งลบตามมา');
+  assert.equal(down.tables.attachments.length, 1);
+  assert.deepEqual(spy.released, []);
+});
+
+test('deleteAttachmentRows: ลบเฉพาะแถวที่ส่งมาในคำสั่งเดียว · ไม่มีอะไรให้ลบ = ไม่ยิง · ไม่ throw · 🔴 ตรวจไม่ได้ว่ามีแถวอื่นถือไฟล์ไหม = เก็บไฟล์ไว้', async () => {
+  // แถวมี driveFileId จริง — การปล่อยไฟล์ในทางปกติต้องเดินผ่านด่าน "มีแถวอื่นถือไหม" ไม่ใช่ข้ามเพราะ id ว่าง
+  const files = () => [rowImage(IMG1, { driveFileId: 'DRV1' }), rowImage(IMG2, { driveFileId: 'DRV2' }), rowImage(IMG3, { driveFileId: 'DRV3' })];
+  const writes = writeLog();
+  const db = fakeDb({ attachments: files() }, { fail: writes.fail });
+  const spy = releaseSpy();
+  assert.deepEqual(await deleteAttachmentRows(db, [], { release: spy.releaseFile }), { count: 0, error: null });
+  assert.deepEqual(await deleteAttachmentRows(db, null, { release: spy.releaseFile }), { count: 0, error: null });
+  assert.deepEqual(writes.log, []);
+  const res = await deleteAttachmentRows(db, [files()[0], files()[2], { id: null }], { release: spy.releaseFile });
+  assert.deepEqual(res, { count: 2, error: null });
+  assert.deepEqual(writes.log, ['delete:attachments'], 'คำสั่งลบเดียว');
+  assert.deepEqual(db.tables.attachments.map((row) => row.id), [IMG2]);
+  assert.deepEqual(spy.released.sort(), [IMG1, IMG3].sort());
+  // ตัวปล่อยไฟล์โยน error = ไม่ล้ม
+  const boom = await deleteAttachmentRows(db, [files()[1]], { release: async () => { throw new Error('drive down'); } });
+  assert.deepEqual(boom, { count: 1, error: null });
+
+  // 🔴 ลบแถวผ่าน แต่คำถาม "มีแถวอื่นถือไฟล์นี้ไหม" ล้ม ⇒ แถวหายแล้ว ไฟล์ต้องอยู่ (อาจเป็นไฟล์ที่สัญญา/บัตรประชาชนถืออยู่)
+  let deleted = false;
+  const flaky = fakeDb({ attachments: [files()[0]] }, {
+    fail: (table, action) => {
+      if (table !== 'attachments') return null;
+      if (action === 'delete') { deleted = true; return null; }
+      return deleted && action === 'select' ? { message: 'down' } : null;
+    },
+  });
+  const spy2 = releaseSpy();
+  assert.deepEqual(await deleteAttachmentRows(flaky, [files()[0]], { release: spy2.releaseFile }), { count: 1, error: null });
+  assert.deepEqual(flaky.tables.attachments, []);
+  assert.deepEqual(spy2.released, [], 'ตรวจไม่ได้ = เก็บไฟล์ไว้');
+  // id ไฟล์ผิดรูป (ไม่ควรเกิด — POST กันไว้) = ไม่ยิงคำถาม และเก็บไฟล์ไว้เหมือนกัน
+  const odd = rowImage(IMG1, { driveFileId: 'x,id.neq.0' });
+  const oddDb = fakeDb({ attachments: [odd] });
+  assert.deepEqual(await deleteAttachmentRows(oddDb, [odd], { release: spy2.releaseFile }), { count: 1, error: null });
+  assert.deepEqual(spy2.released, []);
+});
+
+test('🔴 driveFileHeld: แถวถือไฟล์ได้สองช่อง (driveFileId · metadata.googleFileId) · excludeId · id ผิดรูปไม่ถึงตัวกรอง · query ล้ม = ถือว่ามีคนถือ', async () => {
+  const seen = [];
+  const seed = {
+    attachments: [
+      { id: 'A-FILE', entityType: 'contract', entityId: 'CT1', driveFileId: 'DRV_file-1', metadata: {} },
+      { id: 'A-SHEET', entityType: 'deal', entityId: 'DL1', driveFileId: null, metadata: { kind: 'gsheet', googleFileId: 'GSHEET_1-x' } },
+      { id: 'A-NOMETA', entityType: 'product', entityId: 'PRD1', driveFileId: null, metadata: null },
+    ],
+  };
+  const db = fakeDb(seed, { fail: (table, action, st) => { seen.push({ table, action, ors: [...st.ors], limit: st.limit }); return null; } });
+  const free = { held: false, error: null, invalid: false };
+  const taken = { held: true, error: null, invalid: false };
+
+  assert.deepEqual(await driveFileHeld(db, 'DRV_file-1'), taken, 'ช่อง driveFileId');
+  assert.deepEqual(await driveFileHeld(db, 'GSHEET_1-x'), taken, '🔴 ช่อง metadata.googleFileId — เอกสาร Google เก็บ driveFileId เป็น null');
+  assert.deepEqual(await driveFileHeld(db, 'DRV_nobody'), free);
+  // ตัวกรองที่ยิงจริง: คำถามเดียว สองช่อง มีเพดาน 1 แถว
+  assert.deepEqual(seen[0], {
+    table: 'attachments', action: 'select', limit: 1,
+    ors: ['driveFileId.eq.DRV_file-1,metadata->>googleFileId.eq.DRV_file-1'],
+  });
+  assert.equal(seen.length, 3);
+
+  // excludeId: แถวของผู้ถามเองไม่นับ — แต่แถวอื่นที่ถือไฟล์เดียวกันยังนับ
+  assert.deepEqual(await driveFileHeld(db, 'DRV_file-1', { excludeId: 'A-FILE' }), free);
+  assert.deepEqual(await driveFileHeld(db, 'GSHEET_1-x', { excludeId: 'A-SHEET' }), free);
+  assert.deepEqual(await driveFileHeld(db, 'DRV_file-1', { excludeId: 'A-SHEET' }), taken);
+  const twice = fakeDb({ attachments: [...seed.attachments, { id: 'A-COPY', driveFileId: 'DRV_file-1', metadata: {} }] });
+  assert.deepEqual(await driveFileHeld(twice, 'DRV_file-1', { excludeId: 'A-FILE' }), taken);
+
+  // 🔴 id ผิดรูป = invalid + held และ **ไม่มีคำถามถึงฐานเลย** (`,` `)` `.` คือการเขียนเงื่อนไข .or() เอง)
+  const before = seen.length;
+  for (const bad of ['x,id.neq.0', 'a)', 'a.b', 'a b', 'ไทย', '', ' DRV_file-1', null, undefined, 123, {}, ['DRV_file-1']]) {
+    assert.deepEqual(await driveFileHeld(db, bad), { held: true, error: null, invalid: true }, JSON.stringify(bad));
+  }
+  assert.equal(seen.length, before, 'id ผิดรูปต้องไม่ถูกต่อเข้าตัวกรอง');
+
+  // query ล้ม = ถือว่ามีคนถือ (ผู้เรียกที่กำลังจะทิ้งไฟล์อ่านแค่ `held` ก็ปลอดภัย) พร้อม error ให้ผู้เรียกที่ต้องตอบ 500
+  const down = fakeDb(seed, { fail: () => ({ message: 'down' }) });
+  assert.deepEqual(await driveFileHeld(down, 'DRV_nobody'), { held: true, error: { message: 'down' }, invalid: false });
+});
+
+test('store: ลบสเปค = ลบรูปของแถว checklist ทุกรูปของสินค้า · ภาพประกอบกระดาษ/artwork/ของสินค้าอื่นอยู่ครบ · ลบรูปล้มไม่ล้มการลบสเปค', async () => {
+  const seed = () => ({
+    products: [{ id: 'PRD1' }],
+    product_specs: [{ id: 'PSP1', productId: 'PRD1' }],
+    attachments: [
+      rowImage(IMG1, { driveFileId: 'DRV1', createdAt: MIN_AGO_10 }), rowImage(IMG2, { driveFileId: 'DRV2' }),
+      { id: 'ILL', entityType: 'product', entityId: 'PRD1', docType: 'spec_illustration', driveFileId: 'D-ILL' },
+      { id: 'ART', entityType: 'product', entityId: 'PRD1', docType: 'artwork', driveFileId: 'D-ART' },
+      rowImage(IMG3, { entityId: 'PRD9', driveFileId: 'DRV3' }),
+    ],
+  });
+  const spy = releaseSpy();
+  const db = fakeDb(seed());
+  const res = await deleteProductSpec(db, { spec: { id: 'PSP1', productId: 'PRD1' }, releaseFile: spy.releaseFile });
+  assert.equal(res.deleted, true);
+  assert.deepEqual(db.tables.attachments.map((row) => row.id).sort(), ['ART', 'ILL', IMG3].sort(),
+    'รูปที่เพิ่งอัปก็ไปด้วย — สเปคไม่มีแล้ว ไม่มีแถวให้ชี้');
+  assert.deepEqual(spy.released.sort(), [IMG1, IMG2].sort());
+
+  // ลบสเปคไม่สำเร็จ (มีเอกสารอ้าง) = ห้ามแตะรูป
+  const blocked = fakeDb(seed(), {
+    fail: (table, action) => (table === 'product_specs' && action === 'delete' ? { code: '23503', message: 'violates foreign key constraint' } : null),
+  });
+  const kept = await deleteProductSpec(blocked, { spec: { id: 'PSP1', productId: 'PRD1' }, releaseFile: spy.releaseFile });
+  assert.equal(kept.status, 400);
+  assert.equal(blocked.tables.attachments.length, 5);
+  // ลบรูปไม่ผ่าน = ลบสเปคสำเร็จตามเดิม
+  const broken = fakeDb(seed(), { fail: (table) => (table === 'attachments' ? { message: 'down' } : null) });
+  const partial = await deleteProductSpec(broken, { spec: { id: 'PSP1', productId: 'PRD1' }, releaseFile: spy.releaseFile });
+  assert.equal(partial.deleted, true);
+  assert.equal(broken.tables.product_specs.length, 0);
+});
+
+test('store: สร้างสเปค — id ที่ client ส่งมาไม่ถึง RPC · คนที่แก้ราคาทุนไม่ได้ ราคาทุนที่ส่งมาถูกข้าม (ไม่ใช่ error)', async () => {
+  const calls = [];
+  const db = fakeDb({ products: [{ id: 'PRD1' }], attachments: [] }, { rpc: itemsRpc0405(calls) });
+  const res = await createProductSpec(db, {
+    productId: 'PRD1', user: ADMIN, now: NOW, canEditItemCost: true,
+    input: { content: {}, items: [{ id: 'PSI-squat', itemKey: 'cap', costPrice: 15, imageAttachmentId: null }] },
+  });
+  assert.equal(res.error, undefined, res.error);
+  assert.notEqual(calls[0].p_rows[0].id, 'PSI-squat');
+  assert.match(calls[0].p_rows[0].id, /^PSI-/);
+  assert.equal(res.spec.items[0].costPrice, 15);
+
+  const calls2 = [];
+  const db2 = fakeDb({ products: [{ id: 'PRD2' }] }, { rpc: itemsRpc0405(calls2) });
+  const viewer = await createProductSpec(db2, {
+    productId: 'PRD2', user: ADMIN, now: NOW,
+    input: { content: {}, items: [{ itemKey: 'cap', costPrice: 15 }] },
+  });
+  assert.equal(viewer.error, undefined, viewer.error);
+  assert.equal('costPrice' in calls2[0].p_rows[0], false);
+  assert.equal(viewer.spec.items[0].costPrice, null);
+  // แถวตั้งต้น 17 แถวไม่พกสองคีย์ใหม่ (ไม่มีอะไรให้ล้าง)
+  const calls3 = [];
+  await createProductSpec(fakeDb({ products: [{ id: 'PRD3' }] }, { rpc: itemsRpc0405(calls3) }), {
+    productId: 'PRD3', user: ADMIN, now: NOW, canEditItemCost: true, input: { content: {} },
+  });
+  assert.equal(calls3[0].p_rows.length, 17);
+  assert.equal(calls3[0].p_rows.some((row) => 'costPrice' in row || 'imageAttachmentId' in row), false);
+});
+
+test('store: รูปของแถวยังมีแถวชี้อยู่ไหม — ด่านของ DELETE ไฟล์แนบ · อ่านพัง = error ไม่ใช่ "ไม่มีใครชี้"', async () => {
+  const db = fakeDb({ product_spec_items: [storedItem('I1', { imageAttachmentId: IMG1 }), storedItem('I2')] });
+  assert.deepEqual(await isSpecItemImageReferenced(db, IMG1), { referenced: true });
+  assert.deepEqual(await isSpecItemImageReferenced(db, IMG2), { referenced: false });
+  const broken = fakeDb({}, { fail: () => ({ message: 'column product_spec_items.imageAttachmentId does not exist' }) });
+  assert.match((await isSpecItemImageReferenced(broken, IMG1)).error, /does not exist/);
+});
+
+test('🔴 ภาพนิ่งของเอกสารไม่มีราคาทุน/รูปของแถว แม้แถวที่เก็บอยู่จะมี — ใช้ในระบบเท่านั้น (กระดาษใบนี้ลูกค้าเซ็น)', async () => {
+  const db = fakeDb({
+    product_specs: [{ id: 'PSP1', productId: 'PRD1', texture: 'เจล', pricingTier: 'ราคาต้นทุน 987654.32', certifications: [] }],
+    product_spec_items: [
+      storedItem('I1', { itemKey: 'cap', itemLabel: 'ฝา', detail: 'เงิน', preparedByS: true, costPrice: 987654.32, imageAttachmentId: IMG1 }),
+      storedItem('I2', { sortOrder: 1, itemLabel: 'ถุงผ้า', costPrice: 0, imageAttachmentId: null }),
+    ],
+    products: [{ id: 'PRD1', fgCode: 'FG-1', productDescription: 'สเปรย์', categoryCode: '01-002' }],
+    product_types: [{ mainCategoryCode: '01', typeCode: '002', nameTh: 'สเปรย์', nameEn: 'SPRAY' }],
+    // รูปของแถว checklist ต้องไม่ไปโผล่เป็นภาพประกอบของกระดาษ (คนละ docType โดยตั้งใจ)
+    attachments: [rowImage(IMG1, { metadata: { sortOrder: 0, caption: 'รูปของแถว' } })],
+  });
+  const res = await buildDocumentSnapshot(db, { productId: 'PRD1', order: null, line: null, dealOwner: null, now: NOW });
+  assert.equal(res.error, undefined, res.error);
+  const KEYS = ['detail', 'itemKey', 'itemLabel', 'note', 'preparedByCustomer', 'preparedByS', 'sortOrder'];
+  for (const row of res.snapshot.items) assert.deepEqual(Object.keys(row).sort(), KEYS);
+  assert.equal(res.snapshot.items.length, 2);
+  assert.doesNotMatch(JSON.stringify(res.snapshot), /987654|costPrice|imageAttachmentId|pricingTier/);
+  assert.deepEqual(res.snapshot.illustrations, []);
+  assert.deepEqual(res.illustrationIds, []);
 });

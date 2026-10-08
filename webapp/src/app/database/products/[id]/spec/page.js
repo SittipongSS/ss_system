@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ClipboardCheck, ExternalLink, Files, RefreshCw } from "lucide-react";
@@ -23,7 +23,7 @@ import { productDisplayName } from "@/lib/master/productIdentity";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import {
   specControlActions, specControlDescription, specDeletePrompt, specDocumentRows, specDraftFrom,
-  specHeadline, specReadiness, specSaveBody,
+  specHeadline, specReadiness, specSaveBody, withRowUids,
 } from "@/lib/sales/productSpecView";
 import styles from "./page.module.css";
 
@@ -39,6 +39,13 @@ import styles from "./page.module.css";
  * 🐞 **ของที่พิมพ์ค้างเคยหายเงียบ** — ⇒ `useUnsavedChanges` ดักทั้งปิดแท็บและกดลิงก์ในแอป
  *    (รวมคำบรรยายภาพที่พิมพ์ค้าง) · และ **ห้ามโหลดใหม่ทับร่าง** ยกเว้นหลังบันทึก/ลบสำเร็จ
  *    หรือผู้ใช้สั่งเองหลังรู้ว่าจะทิ้งของที่แก้
+ *
+ * ⭐ **รูปของแถว checklist (08/10/2569)** — แนบแล้วไฟล์ขึ้น server ทันที แต่ตัวชี้อยู่ในร่างจนกว่าจะกดบันทึก
+ *    ⇒ ระหว่างรูปกำลังขึ้น (`rowUploads > 0`) ห้ามบันทึก · ห้ามโหลดทับร่าง · ห้ามลบสเปค และกันออกจากหน้า
+ *    (ทั้งสามทางสร้างร่างใหม่/ทิ้งร่าง ⇒ ผลการแนบที่กลับมาทีหลังจะไม่มีแถวให้ลง แล้วไฟล์ค้างโดยไม่มีใครชี้)
+ *    ⇒ **และกลับกัน**: ระหว่างกำลังสร้าง/บันทึก/ลบ (`busy`) ห้ามเริ่มแนบรูปของแถว (`saving` → ProductSpecForm)
+ *    ผลบันทึกที่กลับมา `apply()` สร้างร่างใหม่ทั้งก้อน (แถวเดิมคง id · แถวที่เพิ่งเพิ่มเปลี่ยน `_uid` จาก `~new-N` เป็น id ของฐาน)
+ *    ⇒ รูปที่ขึ้นคร่อมการบันทึกหายเงียบ: ขึ้นเสร็จก่อน = ตัวชี้ถูกร่างใหม่ทับ · ขึ้นเสร็จทีหลังบนแถวที่เพิ่งเพิ่ม = ไม่มีแถวเดิมให้ลง
  */
 export default function ProductSpecPage() {
   const { id } = useParams();
@@ -54,8 +61,11 @@ export default function ProductSpecPage() {
   const [dirty, setDirty] = useState(false);
   const [captionDirty, setCaptionDirty] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  // จำนวนรูปของแถวที่กำลังขึ้น server — กล่องรูปแต่ละแถวแจ้ง +1 ก่อนอัป และ −1 ตอนจบ (สำเร็จหรือไม่ก็ตาม)
+  const [rowUploads, setRowUploads] = useState(0);
+  const trackRowUpload = useCallback((delta) => setRowUploads((count) => Math.max(0, count + delta)), []);
 
-  useUnsavedChanges(dirty || captionDirty);
+  useUnsavedChanges(dirty || captionDirty || rowUploads > 0);
 
   const spec = data?.spec || null;
   const product = data?.product || null;
@@ -96,12 +106,33 @@ export default function ProductSpecPage() {
     } catch { /* เงียบ — ข้อความที่ผู้ใช้ต้องอ่านคือ error ของการบันทึก */ }
   }, [id]);
 
+  // แถวของร่างล่าสุด — ให้ `patchItem` ที่ถูกเรียกจาก closure เก่า (ผลการแนบรูปที่กลับมาช้า) ถามของจริงได้
+  const itemsRef = useRef(draft.items);
+  useEffect(() => { itemsRef.current = draft.items; }, [draft.items]);
+
   const mark = () => { setDirty(true); setWarning(""); };
   const setField = (key, value) => { setDraft((prev) => ({ ...prev, form: { ...prev.form, [key]: value } })); mark(); };
-  const setItems = (items) => { setDraft((prev) => ({ ...prev, items })); mark(); };
+  /* รับได้ทั้งชุดแถวและ "ตัวแก้" `(rows) => rows` — ฟอร์มส่งตัวแก้เสมอ (แถวอ้างด้วย `_uid` ไม่ใช่ชุดที่จำไว้ตอนวาด)
+     · แถวใหม่ (เพิ่มแถว · คืนแถวจากแบบฟอร์ม) ได้ `_uid` ที่นี่ที่เดียว */
+  const setItems = (next) => {
+    setDraft((prev) => ({ ...prev, items: withRowUids(typeof next === "function" ? next(prev.items) : next) }));
+    mark();
+  };
+  /* แก้แถวเดียวด้วย `_uid` · 🪤 ผลการแนบรูปกลับมาหลังแถวถูกลบ/ร่างถูกโหลดใหม่ = **ไม่มีแถวนั้นแล้ว**
+     ⇒ คืนร่างเดิมทั้งก้อน และไม่ปักว่ามีของค้าง (ไม่งั้นร่างที่เพิ่งโหลดมาสะอาด ๆ กลายเป็น "มีการแก้ที่ยังไม่บันทึก") */
+  const patchItem = (uid, patch) => {
+    // ⚠️ ถามจาก ref ไม่ใช่ `draft` ของรอบวาดนี้ — ตัวเรียกคือ closure ของรอบวาดตอนเริ่มอัป ซึ่งยังเห็นแถวที่ถูกลบไปแล้ว
+    if (!itemsRef.current.some((row) => row._uid === uid)) return;
+    setDraft((prev) => {
+      if (!prev.items.some((row) => row._uid === uid)) return prev;
+      return { ...prev, items: prev.items.map((row) => (row._uid === uid ? { ...row, ...patch } : row)) };
+    });
+    mark();
+  };
   const setCerts = (certs) => { setDraft((prev) => ({ ...prev, certs })); mark(); };
 
   const write = async (kind) => {
+    if (rowUploads > 0) return;   // รูปของแถวกำลังขึ้น — ปุ่มบอกเหตุอยู่แล้ว (specControlActions) นี่คือด่านชั้นสอง
     setBusy(kind);
     setError("");
     setWarning("");
@@ -109,7 +140,10 @@ export default function ProductSpecPage() {
     try {
       const next = await apiJson(`/api/products/${id}/spec`, {
         method: kind === "create" ? "POST" : "PATCH",
-        json: specSaveBody({ ...draft, expectedUpdatedAt: kind === "create" ? null : spec?.updatedAt }),
+        json: specSaveBody(
+          { ...draft, expectedUpdatedAt: kind === "create" ? null : spec?.updatedAt },
+          { canEditItemCost: permissions.canEditItemCost },
+        ),
         fallbackError: kind === "create" ? "สร้างสเปคไม่สำเร็จ" : "บันทึกสเปคไม่สำเร็จ",
       });
       /* 🪤 บันทึกสำเร็จแต่ API อ่านกลับไม่ขึ้น ⇒ ได้แค่ `{ spec, warning }` (ไม่มี product/permissions)
@@ -134,6 +168,7 @@ export default function ProductSpecPage() {
   };
 
   const reloadDiscarding = async () => {
+    if (rowUploads > 0) return;   // โหลดทับร่างตอนรูปกำลังขึ้น = ผลการแนบไม่มีแถวให้ลง
     if (dirty && !(await confirmAction({
       title: "โหลดสเปคล่าสุด",
       description: "ทิ้งสิ่งที่แก้ไว้บนจอนี้แล้วโหลดสเปคล่าสุดหรือไม่",
@@ -146,6 +181,7 @@ export default function ProductSpecPage() {
   };
 
   const remove = async () => {
+    if (rowUploads > 0) return;   // ลบสเปคตอนรูปกำลังขึ้น = รูปที่ขึ้นทีหลังค้างโดยไม่มีสเปคให้ผูก
     setBusy("delete");
     try {
       const res = await apiJson(`/api/products/${id}/spec`, { method: "DELETE", fallbackError: "ลบสเปคไม่สำเร็จ" });
@@ -169,6 +205,7 @@ export default function ProductSpecPage() {
     permissions,
     scopeReason,
     dirty,
+    uploading: rowUploads > 0,
     onCreate: () => write("create"),
     onSave: () => write("save"),
     onDelete: () => setDeleteOpen(true),
@@ -250,7 +287,7 @@ export default function ProductSpecPage() {
             statusSub={headline.sub}
             statusColor={headline.color}
             statusDescription={specControlDescription({ spec, documents: data?.documents })}
-            busy={Boolean(busy)}
+            busy={Boolean(busy) || rowUploads > 0}
             primaryAction={actions.primaryAction}
             secondaryActions={actions.secondaryActions}
             dangerActions={actions.dangerActions}
@@ -273,6 +310,12 @@ export default function ProductSpecPage() {
             certs={draft.certs}
             onCerts={setCerts}
             readOnly={!canEdit}
+            saving={Boolean(busy)}
+            permissions={permissions}
+            productId={id}
+            specExists={Boolean(spec)}
+            onItemPatch={patchItem}
+            onRowUpload={trackRowUpload}
           />
         ) : (
           <DetailCard icon={ClipboardCheck} eyebrow="FM-SA-04" title="สินค้าชิ้นนี้ยังไม่มีสเปค">

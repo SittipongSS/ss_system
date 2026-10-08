@@ -5,6 +5,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import { DetailCard } from "@/components/ui/DetailPage";
 import { TableScroll } from "@/components/ui/Table";
 import { fmtDate, naText } from "@/lib/format";
+import { PRODUCT_SPEC_CHECKLIST_TITLE } from "@/lib/sales/productSpecChecklist";
 import { liveIllustrationNote } from "@/lib/sales/productSpecDocView";
 import styles from "./SpecDocumentContent.module.css";
 
@@ -55,7 +56,7 @@ export default function SpecDocumentContent({ summary, meta, liveError = "", liv
         </dl>
       </DetailCard>
 
-      <DetailCard icon={ListChecks} eyebrow="CHECKLIST PROJECT" title={`Checklist บรรจุภัณฑ์ (${summary.items.length})`}>
+      <DetailCard icon={ListChecks} eyebrow="CHECKLIST PROJECT" title={`${PRODUCT_SPEC_CHECKLIST_TITLE} (${summary.items.length})`}>
         {summary.items.length ? (
           <TableScroll family="list" surface="embedded">
             <table>

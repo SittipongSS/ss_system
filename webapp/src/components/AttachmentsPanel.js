@@ -57,6 +57,7 @@ import { useFileIntake } from "@/lib/ui/useFileIntake";
 import { businessDate } from "@/lib/businessDate";
 import PhotoThumb from "@/components/ui/PhotoThumb";
 import { apiFetch, apiJson } from "@/lib/apiFetch";
+import { panelItemsByType, panelVisibleItems } from "./attachmentsPanelItems";
 import styles from "./AttachmentsPanel.module.css";
 
 // เช็คขนาดก่อนอัป (กันเสียแบนด์วิดท์อัปแล้วโดน server ปฏิเสธ). server บังคับซ้ำเสมอ.
@@ -187,7 +188,12 @@ export default function AttachmentsPanel({
   // แผ่นรูปมีความหมายเฉพาะกล่องรูปของโหมด inline — ส่งมากับโหมดอื่น = ไม่มีผล (หน้าตาเดิม)
   const tilesMode = photoTiles && inlineUpload && photoCapture;
 
-  const [items, setItems] = useState([]);
+  /* ⭐ `rawItems` = ทุกใบของ entity ตามที่ API ส่ง · `items` = ใบที่แผงนี้โชว์และนับ — ตัดชนิดที่ทะเบียนกลางประกาศว่า
+     "ไม่ขึ้นแผง" (รูปของแถว checklist ใบสเปค · 08/10/2569) เว้นแต่ผู้เรียกขอชนิดนั้นมาเองผ่าน `docTypes`
+     ⚠️ ทุกจุดข้างล่าง (กอง · เลขในหัวแผง · ด่านแผงว่าง · รายการ inline) อ่าน `items` ⇒ กรองที่นี่ที่เดียว
+     ⚠️ `onItemsChange` ยังส่ง `rawItems` — ผู้เรียกบางตัวคัดตาม docType เอง */
+  const [rawItems, setItems] = useState([]);
+  const items = panelVisibleItems(rawItems, entityType, docTypes);
   const [loading, setLoading] = useState(true);
   /* รายการนี้ "อ่านมาได้จริงแล้ว" หรือยัง — ต่างจาก `loading` ตรงที่โหลดไม่สำเร็จก็จบ
      การโหลดเหมือนกัน แต่ยังไม่รู้ว่ามีไฟล์กี่ใบ (ดูหัวข้อ `onItemsChange`) */
@@ -253,8 +259,8 @@ export default function AttachmentsPanel({
 
   // แจ้งรายการเอกสารปัจจุบันกลับไปให้ parent (เช่น เพื่อบังคับแนบก่อนยื่น).
   useEffect(() => {
-    onItemsChange?.(items, { loaded });
-  }, [items, loaded, onItemsChange]);
+    onItemsChange?.(rawItems, { loaded });
+  }, [rawItems, loaded, onItemsChange]);
 
   // ── เอกสารมีชีวิต (Google Doc/Sheet) ────────────────────────────────────
   // ⚠️ ไม่มีขั้นอัปไฟล์ — server เป็นคนคุยกับ Drive แล้วบันทึกแถวให้ในคำขอเดียว
@@ -487,13 +493,8 @@ export default function AttachmentsPanel({
   };
   const relinkArgs = (it) => ({ relink: (patch) => relinkPhoto(it, patch), busy: relinkingId === it?.id, locked: !!relinkingId });
 
-  // จัดกลุ่มไฟล์ตามประเภท (docType ที่ไม่รู้จัก → 'other')
-  const knownKeys = new Set(types.map((t) => t.key));
-  const byType = {};
-  for (const it of items) {
-    const k = knownKeys.has(it.docType) ? it.docType : "other";
-    (byType[k] ||= []).push(it);
-  }
+  // จัดกลุ่มไฟล์ตามประเภท (docType ที่ไม่รู้จัก → 'other') — จาก `items` ที่ตัดชนิดไม่ขึ้นแผงแล้ว
+  const byType = panelItemsByType(items, types);
 
   // เรียงการ์ดตามความสำคัญ: จำเป็น+ยังขาด → จำเป็น+มีแล้ว → ไม่บังคับ+ยังขาด → ไม่บังคับ+มีแล้ว
   // (เห็น "เอกสารจำเป็นที่ยังไม่ได้แนบ" บนสุดทันที). sort เสถียร → คงลำดับเดิมในกลุ่มเดียวกัน

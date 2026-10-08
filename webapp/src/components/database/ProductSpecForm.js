@@ -4,15 +4,18 @@ import { Box, FileBadge, ListChecks, Plus, Target, Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Textarea from "@/components/ui/Textarea";
+import MoneyInput from "@/components/ui/MoneyInput";
 import ChoiceChips from "@/components/ui/ChoiceChips";
 import { TableScroll } from "@/components/ui/Table";
 import { DetailCard } from "@/components/ui/DetailPage";
-import { naText } from "@/lib/format";
+import { fmtMoneyOrDash, naText } from "@/lib/format";
 import { productBrandName, productDisplayName } from "@/lib/master/productIdentity";
 import {
-  PRODUCT_SPEC_CERT_STATUS_LABELS, PRODUCT_SPEC_CHECKLIST, productSpecCertPendingLabel,
+  PRODUCT_SPEC_CERT_STATUS_LABELS, PRODUCT_SPEC_CHECKLIST, PRODUCT_SPEC_CHECKLIST_TITLE, productSpecCertPendingLabel,
   productSpecChecklistMissing, restoreChecklistItem,
 } from "@/lib/sales/productSpecChecklist";
+import { SPEC_ITEM_COST_MAX } from "@/lib/sales/productSpecWorkflow";
+import SpecItemImageCell, { SPEC_ITEM_IMAGE_NEEDS_SPEC } from "@/components/database/SpecItemImageCell";
 import { productSpecFormulaRows } from "@/lib/sales/productSpecFormulaRow";
 import styles from "./ProductSpecForm.module.css";
 
@@ -31,7 +34,18 @@ import styles from "./ProductSpecForm.module.css";
  * ต้องบันทึกค้างไว้ได้ · ความพร้อมบอกด้วยรายการบนการ์ดจัดการ ไม่ใช่ด่านกดไม่ได้
  * ⚠️ แก้สเปคที่นี่ **ไม่แตะเอกสารที่ยื่น/อนุมัติแล้ว** (เอกสารถือภาพนิ่งของตัวเอง) — มีผลกับ
  * เอกสารที่ยังเป็นร่างเท่านั้น
+ *
+ * ⭐ **มติเจ้าของ 08/10/2569** — ตาราง checklist มีสองคอลัมน์ที่เป็นของ **ในระบบเท่านั้น** (ไม่ลงกระดาษ ไม่เข้าเอกสาร):
+ *    · "ราคาทุน" — ทั้งคอลัมน์ขึ้นเฉพาะคนที่ API บอกว่าเห็นได้ (`permissions.canSeeItemCost` · คนอื่น API ไม่ส่งค่ามาเลย)
+ *      เห็นได้แต่แก้ไม่ได้ (`canEditItemCost` ไม่จริง) = ตัวเลขอ่านอย่างเดียว
+ *    · "รูป" — แถวละรูป ไม่บังคับ · ยังไม่มีสเปค = ปุ่มขึ้นแต่กดไม่ได้ เหตุพิมพ์ครั้งเดียวเหนือตาราง (ต้องสร้างสเปคก่อน)
+ *      หน้ากำลังบันทึก/ลบ (`saving`) = แนบรูปใหม่ไม่ได้ชั่วคราว เหตุอยู่ที่ `title` ของปุ่ม (การ์ดจัดการขึ้นสถานะกำลังทำอยู่แล้ว)
+ * ⚠️ แถวอ้างกันด้วย `_uid` (ตัวชี้บนจอ — `withRowUids`) ไม่ใช่เลขลำดับ: ผลการแนบรูปกลับมาช้ากว่าการลบ/คืนแถวได้
+ *    ⇒ ทุกการแก้แถวส่ง "ตัวแก้" ให้จอ (`onItems(fn)` / `onItemPatch(uid, patch)`) ไม่ส่งชุดแถวที่จำไว้ตอนวาด
  */
+/* เหตุที่แนบรูปของแถวไม่ได้ตอนหน้ากำลังบันทึก/ลบ — ขึ้นเป็น `title` ของปุ่มในกล่องรูป (ไม่พิมพ์เหนือตาราง: ชั่วครู่เดียว) */
+const SPEC_ITEM_IMAGE_SAVING = "กำลังบันทึก — รอสักครู่แล้วแนบรูปอีกครั้ง";
+
 /* ข้อความหัวการ์ด Checklist — บอกว่าครบ/ขาดจากแบบฟอร์มกี่แถว ไม่ใช่เดาจากเลข 17
    (17 แถวลบได้แล้ว ⇒ "เกิน 17 = มีแถวที่เพิ่มเอง" ไม่จริงอีกต่อไป) */
 function checklistMeta(items) {
@@ -50,6 +64,12 @@ export default function ProductSpecForm({
   certs = [],
   onCerts,
   readOnly = false,
+  saving = false,
+  permissions = {},
+  productId,
+  specExists = false,
+  onItemPatch,
+  onRowUpload,
 }) {
   const derived = (label, value, hint) => (
     <div className={styles.derived}>
@@ -87,15 +107,28 @@ export default function ProductSpecForm({
   /* ชุดของขวัญ (01-037 · mig 0403) ได้หลายแถว แถวละสูตร บอกหมวด — ตัวประกอบชุดเดียวกับกระดาษ (`productSpecFormulaRows`) */
   const formulaRows = productSpecFormulaRows(product, "th");
 
-  const setItem = (index, patch) => onItems(items.map((row, i) => (i === index ? { ...row, ...patch } : row)));
-  const addItem = () => onItems([...items, {
+  // จอห้ามคิดสิทธิ์เอง — ธงทั้งสามมาจาก API (`productSpecPermissions`)
+  const canSeeItemCost = Boolean(permissions?.canSeeItemCost);
+  const canEditItemCost = !readOnly && Boolean(permissions?.canEditItemCost);
+  /* ⚠️ `!saving` — ผลบันทึกที่กลับมาสร้างร่างใหม่ทั้งก้อน ⇒ รูปที่เริ่มแนบระหว่างนั้นหายเงียบ: ขึ้นเสร็จก่อน = ตัวชี้ถูกร่างใหม่ทับ ·
+     ขึ้นเสร็จทีหลังบนแถวที่เพิ่งเพิ่ม (`_uid` เปลี่ยนจาก `~new-N` เป็น id ของฐาน) = ไม่มีแถวเดิมให้ลง · ทั้งสองทางไฟล์ค้างโดยไม่มีใครชี้
+     · ปิดที่ธงนี้ = ปิดทั้งปุ่ม ลากวาง และวาง (กล่องส่งต่อให้ `disabled` ของ hook) */
+  const canAttachItemImage = !readOnly && !saving && Boolean(permissions?.canAttachItemImage);
+  const imageBlockedReason = saving ? SPEC_ITEM_IMAGE_SAVING : (specExists ? "" : SPEC_ITEM_IMAGE_NEEDS_SPEC);
+
+  /* แก้แถวด้วย `_uid` — ไม่พบแถว (ถูกลบไปแล้ว) = ไม่มีอะไรเกิด และจอไม่ถูกนับว่ามีของค้าง (ดู `patchItem` ที่หน้า) */
+  const setItem = (uid, patch) => (onItemPatch
+    ? onItemPatch(uid, patch)
+    : onItems((rows) => rows.map((row) => (row._uid === uid ? { ...row, ...patch } : row))));
+  const addItem = () => onItems((rows) => [...rows, {
     itemKey: null, itemLabel: "", detail: "", preparedByS: false, preparedByCustomer: false, note: "",
+    imageAttachmentId: null,
   }]);
   /* ⭐ **ลบได้ทุกแถวรวม 17 แถวของแบบฟอร์ม** (มติผู้ใช้ 2026-09-21) — สินค้าหลายตัว
      ไม่มีก้านไม้ ไม่มีสายคาดกล่อง แถวที่ไม่เกี่ยวทำให้ทั้งใบอ่านยากและกระดาษยาวเกินจริง
      ⇒ ลบได้ แต่ต้องคืนได้ด้วย (ชิป "คืนแถวจากแบบฟอร์ม" ใต้ตาราง) ไม่งั้นลบพลาด
         ครั้งเดียวคือทางตัน: พิมพ์ชื่อเพิ่มใหม่ได้ แต่ได้แถวไม่มีคีย์ซึ่งไม่ใช่แถวเดิม */
-  const removeItem = (index) => onItems(items.filter((_, i) => i !== index));
+  const removeItem = (uid) => onItems((rows) => rows.filter((row) => row._uid !== uid));
   const missingItems = readOnly ? [] : productSpecChecklistMissing(items);
 
   const setCert = (index, patch) => onCerts(certs.map((row, i) => (i === index ? { ...row, ...patch } : row)));
@@ -143,13 +176,17 @@ export default function ProductSpecForm({
       <DetailCard
         icon={ListChecks}
         eyebrow="CHECKLIST PROJECT"
-        title="Checklist บรรจุภัณฑ์"
+        title={PRODUCT_SPEC_CHECKLIST_TITLE}
         meta={checklistMeta(items)}
         actions={readOnly ? null : (
           <Button size="sm" variant="ghost" onClick={addItem} icon={<Plus size={13} />}>เพิ่มแถว</Button>
         )}
       >
-        <TableScroll family="editable" surface="embedded">
+        {/* ยังไม่มีสเปค = ปุ่มแนบรูปขึ้นแต่กดไม่ได้ทุกแถว ⇒ บอกเหตุ **ครั้งเดียว** ตรงนี้ (กติกา: ติดด่าน = โชว์แล้วบอกเหตุ)
+            ไม่ใช่พิมพ์ซ้ำใต้ปุ่มทุกแถว */}
+        {!readOnly && !specExists ? <p className={`form-note ${styles.imageNote}`}>{SPEC_ITEM_IMAGE_NEEDS_SPEC}</p> : null}
+        {/* ตารางกว้างขึ้นสองคอลัมน์ (ราคาทุน · รูป) ⇒ ตั้งความกว้างขั้นต่ำให้เลื่อนแนวนอน ดีกว่าบีบช่องกรอกจนพิมพ์ไม่ได้ */}
+        <TableScroll family="editable" surface="embedded" minWidth={canSeeItemCost ? 1100 : 972}>
           <table>
             <thead>
               <tr>
@@ -157,52 +194,86 @@ export default function ProductSpecForm({
                 <th className={styles.colItem}>สิ่งที่ต้องเตรียม</th>
                 <th>รายละเอียด</th>
                 <th className={styles.colBy}>ผู้จัดเตรียม</th>
+                {canSeeItemCost ? <th className={`num ${styles.colCost}`}>ราคาทุน</th> : null}
+                <th className={styles.colImage}>รูป</th>
                 <th className={styles.colNote}>หมายเหตุ</th>
                 {readOnly ? null : <th className={styles.colRemove} aria-label="ลบแถว" />}
               </tr>
             </thead>
             <tbody>
-              {items.map((row, index) => (
-                <tr key={row.id || `${row.itemKey || "extra"}-${index}`}>
-                  <td className="num">{index + 1}</td>
-                  <td>
-                    {row.itemKey || readOnly
-                      ? <span className={styles.itemLabel}>{naText(row.itemLabel)}</span>
-                      : <Input value={row.itemLabel || ""} placeholder="ชื่อรายการ" onChange={(event) => setItem(index, { itemLabel: event.target.value })} />}
-                  </td>
-                  <td>
-                    {readOnly
-                      ? naText(row.detail)
-                      : <Input value={row.detail || ""} placeholder="—" onChange={(event) => setItem(index, { detail: event.target.value })} />}
-                  </td>
-                  <td>
-                    <ChoiceChips
-                      multiple
-                      minSelected={0}
-                      disabled={readOnly}
-                      ariaLabel={`ผู้จัดเตรียม ${row.itemLabel || index + 1}`}
-                      value={[row.preparedByS ? "ss" : null, row.preparedByCustomer ? "customer" : null].filter(Boolean)}
-                      onChange={(next) => setItem(index, {
-                        preparedByS: next.includes("ss"),
-                        preparedByCustomer: next.includes("customer"),
-                      })}
-                      options={[{ value: "ss", label: "S&S" }, { value: "customer", label: "ลูกค้า" }]}
-                    />
-                  </td>
-                  <td>
-                    {readOnly
-                      ? naText(row.note)
-                      : <Input value={row.note || ""} placeholder="—" onChange={(event) => setItem(index, { note: event.target.value })} />}
-                  </td>
-                  {readOnly ? null : (
+              {items.map((row, index) => {
+                const uid = row._uid;
+                const rowLabel = row.itemLabel || `แถวที่ ${index + 1}`;
+                return (
+                  <tr key={row._uid}>
+                    <td className="num">{index + 1}</td>
                     <td>
-                      <Button iconOnly tone="danger" variant="ghost" size="sm"
-                        aria-label={`ลบแถว ${row.itemLabel || index + 1}`}
-                        onClick={() => removeItem(index)} icon={<Trash2 size={14} />} />
+                      {row.itemKey || readOnly
+                        ? <span className={styles.itemLabel}>{naText(row.itemLabel)}</span>
+                        : <Input value={row.itemLabel || ""} placeholder="ชื่อรายการ" onChange={(event) => setItem(uid, { itemLabel: event.target.value })} />}
                     </td>
-                  )}
-                </tr>
-              ))}
+                    <td>
+                      {readOnly
+                        ? naText(row.detail)
+                        : <Input value={row.detail || ""} placeholder="—" onChange={(event) => setItem(uid, { detail: event.target.value })} />}
+                    </td>
+                    <td>
+                      <ChoiceChips
+                        multiple
+                        minSelected={0}
+                        disabled={readOnly}
+                        ariaLabel={`ผู้จัดเตรียม ${row.itemLabel || index + 1}`}
+                        value={[row.preparedByS ? "ss" : null, row.preparedByCustomer ? "customer" : null].filter(Boolean)}
+                        onChange={(next) => setItem(uid, {
+                          preparedByS: next.includes("ss"),
+                          preparedByCustomer: next.includes("customer"),
+                        })}
+                        options={[{ value: "ss", label: "S&S" }, { value: "customer", label: "ลูกค้า" }]}
+                      />
+                    </td>
+                    {canSeeItemCost ? (
+                      <td className="num">
+                        {/* ว่าง = ยังไม่กรอก (`null`) · 0 = ศูนย์บาทที่ตั้งใจกรอก — สองค่านี้ต้องไม่ถูกยุบรวมกัน
+                            ⚠️ ตัดที่เพดานของฐานตั้งแต่ตอนพิมพ์ — พิมพ์เกินแล้วไปรู้ตอนบันทึก = ทั้งใบบันทึกไม่ผ่านเพราะแถวเดียว */}
+                        {canEditItemCost ? (
+                          <MoneyInput
+                            value={row.costPrice ?? ""}
+                            placeholder="—"
+                            aria-label={`ราคาทุน ${rowLabel}`}
+                            onChange={(next) => setItem(uid, {
+                              costPrice: next === null || next === undefined ? null : Math.min(next, SPEC_ITEM_COST_MAX),
+                            })}
+                          />
+                        ) : fmtMoneyOrDash(row.costPrice)}
+                      </td>
+                    ) : null}
+                    <td>
+                      <SpecItemImageCell
+                        productId={productId}
+                        value={row.imageAttachmentId || null}
+                        canAttach={canAttachItemImage}
+                        blockedReason={imageBlockedReason}
+                        readOnly={readOnly}
+                        rowLabel={rowLabel}
+                        onChange={(imageAttachmentId) => setItem(uid, { imageAttachmentId })}
+                        onBusy={onRowUpload}
+                      />
+                    </td>
+                    <td>
+                      {readOnly
+                        ? naText(row.note)
+                        : <Input value={row.note || ""} placeholder="—" onChange={(event) => setItem(uid, { note: event.target.value })} />}
+                    </td>
+                    {readOnly ? null : (
+                      <td>
+                        <Button iconOnly tone="danger" variant="ghost" size="sm"
+                          aria-label={`ลบแถว ${row.itemLabel || index + 1}`}
+                          onClick={() => removeItem(uid)} icon={<Trash2 size={14} />} />
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </TableScroll>
@@ -211,7 +282,7 @@ export default function ProductSpecForm({
             <span className={styles.restoreLabel}>คืนแถวจากแบบฟอร์ม</span>
             {missingItems.map((entry) => (
               <Button key={entry.key} size="sm" variant="ghost" icon={<Plus size={12} />}
-                onClick={() => onItems(restoreChecklistItem(items, entry.key))}>
+                onClick={() => onItems((rows) => restoreChecklistItem(rows, entry.key))}>
                 {entry.label}
               </Button>
             ))}
@@ -219,7 +290,7 @@ export default function ProductSpecForm({
         ) : null}
         <p className={`form-note ${styles.note}`}>
           ลบได้ทุกแถว — แถวของแบบฟอร์มที่ลบทิ้งคืนได้จากปุ่มด้านบน และจะไม่กลับมาเอง
-          · เว้นว่างไว้ก็ได้ถ้ายังไม่รู้
+          · เว้นว่างไว้ก็ได้ถ้ายังไม่รู้ · {canSeeItemCost ? "ราคาทุนและรูป" : "รูป"}ใช้ในระบบเท่านั้น ไม่ลงกระดาษ FM-SA-04
         </p>
       </DetailCard>
 

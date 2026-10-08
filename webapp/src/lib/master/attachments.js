@@ -145,3 +145,78 @@ export async function purgeAttachments(entityType, entityId, client = null) {
   }
   return { count: list.length, error: error || null };
 }
+
+/* รูปร่างของ id ไฟล์บน Drive — ตัวอักษรอังกฤษ ตัวเลข `_` `-` เท่านั้น · ค่าที่หลุดรูปนี้ห้ามถึงตัวกรองของ PostgREST
+   (`,` `)` `.` ในค่าคือการเขียนเงื่อนไขของ `.or()` ใหม่เอง) */
+const DRIVE_FILE_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
+
+/**
+ * มีแถว attachments ไหน **ถือไฟล์ Drive นี้อยู่** ไหม — ถามก่อนรับ `driveFileId` จาก client และก่อนทิ้งไฟล์ลงถังขยะ Drive
+ *
+ * 🔴 แถวถือไฟล์ได้ **สองช่อง**: `driveFileId` (ไฟล์ที่อัปขึ้นมา) และ `metadata.googleFileId` (เอกสาร Google ที่ยังใช้ร่วมกัน —
+ *    แถวพวกนั้นเก็บ `driveFileId` เป็น null · lib/master/googleDocs.js) · 🐞 เดิมสามจุดถามแค่ช่องแรก ⇒ แนบ "รูปของแถว
+ *    checklist" ที่ชี้ id ของ Google Sheet ของดีลคนอื่นได้ แล้วให้ระบบเก็บกวาดทิ้งเอกสารนั้นลงถังขยะ
+ * ⚠️ **ตรวจไม่ได้ = ถือว่ามีคนถือ** (`held: true` พร้อม `error`) — supabase ไม่ throw · ผู้เรียกที่กำลังจะทิ้งไฟล์อ่านแค่
+ *    `held` ก็ปลอดภัย · id ผิดรูป = `invalid` (และ `held: true`) โดยไม่ยิงคำถามเลย
+ * ⚠️ เห็นแค่ไฟล์ที่มีแถว attachments — โฟลเดอร์/ไฟล์ Drive ที่ไม่มีแถวไหนชี้ ตัวนี้ตอบว่าไม่มีใครถือ (POST ของรูปประจำแถว
+ *    ถาม Drive ซ้ำอีกชั้น)
+ * ⚠️ อ่านแบบมีเพดาน (`.limit(1)`) — ถามแค่ "มีสักแถวไหม"
+ * @param excludeId แถวของผู้ถามเอง (ไม่นับว่าเป็น "แถวอื่น")
+ * @returns {Promise<{ held: boolean, error: object|null, invalid: boolean }>}
+ */
+export async function driveFileHeld(supabase, fileId, { excludeId } = {}) {
+  if (typeof fileId !== 'string' || !DRIVE_FILE_ID_PATTERN.test(fileId)) {
+    return { held: true, error: null, invalid: true };
+  }
+  let query = supabase.from('attachments').select('id')
+    .or(`driveFileId.eq.${fileId},metadata->>googleFileId.eq.${fileId}`);
+  if (excludeId) query = query.neq('id', excludeId);
+  const { data, error } = await query.limit(1);
+  if (error) return { held: true, error, invalid: false };
+  return { held: Boolean(data?.length), error: null, invalid: false };
+}
+
+/**
+ * ลบแถวไฟล์แนบ **ตามรายการที่ส่งมา** (ไม่ใช่ทั้ง entity) แล้วปล่อยไฟล์บน Drive — ใช้กับไฟล์ที่ระบบเก็บกวาดเอง
+ * (รูปของแถว checklist ใบสเปคที่ไม่มีแถวไหนชี้แล้ว · mig 0405)
+ *
+ * ⚠️ **ห้ามใช้ `purgeAttachments` กับงานนี้** — ตัวนั้นลบทุกไฟล์ของ entity (artwork · ภาพประกอบกระดาษ ไปด้วย)
+ * ⚠️ ลำดับ: ลบแถวก่อน (คำสั่งเดียว `.in('id', …)`) แล้วค่อยปล่อยไฟล์ — ลบแถวไม่ผ่าน = ไม่แตะไฟล์เลย
+ *    (ไฟล์หายแต่แถวยังอยู่ = รูปเปิดไม่ขึ้น · แถวหายแต่ไฟล์ค้าง = cron drive-orphans ตามเก็บได้)
+ * 🔴 **ไฟล์ถูกปล่อยเฉพาะเมื่อไม่มีแถว attachments อื่นถือไฟล์เดียวกัน** (`driveFileHeld` — ทั้งช่อง `driveFileId` และ
+ *    `metadata.googleFileId`) — `driveFileId` มาจาก client ตอนแนบ (POST ตรวจซ้ำให้เฉพาะ docType ใหม่ ๆ) ⇒ แถวที่ชี้ไฟล์
+ *    ของคนอื่นแล้วปล่อยให้ระบบเก็บกวาด = ทิ้งสัญญา/บัตรประชาชน/เอกสาร Google ของคนอื่นลงถังขยะ Drive ·
+ *    ตรวจไม่ได้ (query ล้ม · id ผิดรูป) = ถือว่ามีคนใช้ (เก็บไฟล์ไว้)
+ * ⚠️ ไม่ throw — ผู้เรียกทำงานหลัก (บันทึก/ลบสเปค) เสร็จไปแล้ว · พังแล้ว log ดัง
+ * @param release ตัวปล่อยไฟล์ (ให้เทสต์นับการเรียกได้ — ค่าตั้งต้นคือของจริง)
+ * @returns {{ count: number, error: object|null }} count = แถวที่ลบ
+ */
+export async function deleteAttachmentRows(supabase, rows, { release = releaseAttachmentFile } = {}) {
+  const list = (rows || []).filter((row) => row?.id);
+  if (!list.length) return { count: 0, error: null };
+  try {
+    const ids = list.map((row) => row.id);
+    const { error } = await supabase.from('attachments').delete().in('id', ids);
+    if (error) {
+      console.error('[attachments] ลบแถวไฟล์แนบตามรายการไม่สำเร็จ', ids.length, error.message);
+      return { count: 0, error };
+    }
+    const releasable = [];
+    for (const att of list) {
+      if (att.driveFileId) {
+        const shared = await driveFileHeld(supabase, att.driveFileId);
+        if (shared.held) {
+          console.error('[attachments] ลบแถวแล้ว แต่เก็บไฟล์บน Drive ไว้ — ยังมีแถวอื่นถือไฟล์เดียวกัน (หรือตรวจไม่ได้)',
+            att.id, shared.error?.message || '');
+          continue;
+        }
+      }
+      releasable.push(att);
+    }
+    await Promise.allSettled(releasable.map((att) => release(att)));
+    return { count: list.length, error: null };
+  } catch (err) {
+    console.error('[attachments] ลบไฟล์แนบตามรายการไม่สำเร็จ', err?.message);
+    return { count: 0, error: err };
+  }
+}

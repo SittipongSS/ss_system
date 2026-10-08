@@ -5,14 +5,18 @@ import { COSTING_ATTACHMENT_TABLE } from '@/lib/master/costingAttachmentAccess';
 import {
   canAttachBillingCalendar, canEditAttachmentParent, canViewAttachmentParent, canViewAttachmentRow,
 } from '@/lib/master/attachmentAccess';
+import { canAttachSpecItemImage } from '@/lib/master/attachmentAccess';
 import { ensureGoogleDocAccess } from '@/lib/master/googleDocAccess';
 import { listAttachments } from '@/lib/master/attachments';
+import { driveFileHeld } from '@/lib/master/attachments';
 import { attachmentUrlErrorForEnv } from '@/lib/master/attachmentStorage';
 import {
   GoogleDocError, buildGoogleAttachment, googleDocsEnvError, stripDriveMetadata, workspaceEmail,
 } from '@/lib/master/googleDocs';
 import { hasFolderBranch } from '@/lib/master/driveEntityMap';
-import { ATTACHMENT_ENTITY_TYPES, ATTACHMENT_TYPES, attachmentFileRuleError, docTypeFileRule } from '@/lib/master/attachmentTypes';
+import {
+  ATTACHMENT_ENTITY_TYPES, ATTACHMENT_TYPES, SPEC_ITEM_IMAGE_DOC_TYPE, attachmentFileRuleError, docTypeFileRule,
+} from '@/lib/master/attachmentTypes';
 import { appendUpdate as appendMgmtUpdate } from '@/lib/mgmt/repo';
 
 import { SALES_ATTACHMENT_TABLE } from '@/lib/sales/salesAttachmentAccess';
@@ -170,11 +174,21 @@ export async function POST(request) {
     return Response.json({ error: e.message }, { status: 500 });
   }
   if (!parent) return Response.json({ error: 'ไม่พบระเบียนที่จะแนบเอกสาร' }, { status: 404 });
+
+  // docType ต้องเป็นชนิดที่รองรับของ entity นั้น — ที่ไม่รู้จักตกเป็น 'other'.
+  // ⚠️ คัดก่อนด่านสิทธิ์ — ช่องแคบราย docType ข้างล่างต้องถามด้วยค่า **ที่จะเก็บจริง** ไม่ใช่ค่าดิบจากคำขอ
+  const allowed = (ATTACHMENT_TYPES[entityType] || []).map((t) => t.key);
+  const safeDocType = allowed.includes(docType) ? docType : 'other';
+
   /* ⭐ รูปปฏิทินวางบิลของลูกค้า (v5) — ช่องแคบของคนที่แก้กำหนดวางบิลได้ (ฝ่ายขายทีมที่ดูแล + FN) · FN ไม่มีสิทธิ์แก้ทะเบียนลูกค้า
      ⇒ ด่านรวมตอบ false · ⚠️ ถาม docType ที่ **ตรงทะเบียนเป๊ะ** (ค่าที่ไม่รู้จักตกเป็น 'other' ข้างล่าง = ไม่ใช่รูปปฏิทิน ไม่ได้ช่องนี้) */
   const allowedEdit = await canEditAttachmentParent(supabase, entityType, parent, user)
     || canAttachBillingCalendar(entityType, docType, parent, user);
-  if (!allowedEdit) {
+  /* ⭐ รูปประจำแถว checklist ใบสเปค (mig 0405) — ช่องแคบของคนที่แก้สเปคสินค้าได้ (ฝ่ายขายทุกตำแหน่ง) · ด่านรวมผูกกับทีมที่ดูแล
+     ลูกค้าเจ้าของสินค้า ⇒ คนแก้สเปคนอกทีมตอบ false · ⚠️ ประโยคแยก ไม่ต่อท้ายบรรทัดบน (บรรทัดบนถูกเทสต์ตรึงไว้ทั้งประโยค)
+     ⚠️ ถามด้วย `safeDocType` (ค่าที่จะเก็บ) — ค่าที่ไม่รู้จักตกเป็น 'other' = ไม่ได้ช่องนี้ */
+  const allowedWrite = allowedEdit || canAttachSpecItemImage(entityType, safeDocType, user);
+  if (!allowedWrite) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
@@ -202,10 +216,6 @@ export async function POST(request) {
     if (blocked) return Response.json({ error: blocked }, { status: 409 });
   }
 
-  // docType ต้องเป็นชนิดที่รองรับของ entity นั้น — ที่ไม่รู้จักตกเป็น 'other'.
-  const allowed = (ATTACHMENT_TYPES[entityType] || []).map((t) => t.key);
-  const safeDocType = allowed.includes(docType) ? docType : 'other';
-
   /* ชนิดเอกสารที่รับไฟล์แคบกว่าชุดมาตรฐาน (ภาพประกอบใบสเปค = รูปที่วาดบนกระดาษได้เท่านั้น ·
      มติผู้ใช้ 2026-09-22) — ด่านจริงอยู่ที่นี่ ไม่ใช่ที่ปุ่มเลือกไฟล์: ลากวาง/Ctrl+V/ยิง API ตรง
      ผ่านปุ่มไปได้ทั้งหมด · ⚠️ ไบต์ขึ้น Drive ไปก่อนแล้ว — ผู้เรียก (`uploadAttachment`) ลบไฟล์
@@ -214,8 +224,52 @@ export async function POST(request) {
   if (fileRule) {
     const ruleError = google
       ? `เอกสาร Google แนบเป็นหัวข้อนี้ไม่ได้ — แนบได้เฉพาะ${fileRule.label}`
-      : attachmentFileRuleError(safeDocType, { mimeType, fileName });
+      : attachmentFileRuleError(safeDocType, { mimeType, fileName, sizeBytes });
     if (ruleError) return Response.json({ error: ruleError }, { status: 400 });
+  }
+
+  /* 🔴 รูปประจำแถว checklist (mig 0405) — ไฟล์พวกนี้ **ระบบลบเอง** เมื่อไม่มีแถวไหนชี้แล้ว (บันทึกสเปค/ลบสเปค)
+     ⇒ `driveFileId` ที่ client ส่งมาต้องเป็นไฟล์ที่ยังไม่มีแถว attachments ไหนถืออยู่: ไม่งั้นแนบแถวที่ชี้ไฟล์ของคนอื่น
+     (สัญญาที่เซ็นแล้ว · บัตรประชาชนลูกค้า) แล้วปล่อยให้ตัวเก็บกวาดทิ้งไฟล์นั้นลงถังขยะ Drive ได้ · ช่องแคบข้างบนเปิดเส้นนี้
+     ให้ฝ่ายขายทุกคนบนสินค้าทุกตัว จึงต้องปิดที่นี่ · สองชั้น:
+     ① ฐาน (`driveFileHeld`) — ไม่มีแถวไหนถือไฟล์นี้ ทั้งช่อง `driveFileId` และ `metadata.googleFileId` (เอกสาร Google
+        เก็บ id ไว้ช่องหลัง · 🐞 เดิมถามแค่ช่องแรก ⇒ ชี้ Google Sheet ของดีลคนอื่นแล้วให้ระบบทิ้งได้) · id ผิดรูป = 400
+        (ไม่ถึงตัวกรอง) · ตรวจไม่ได้ = 500 ไม่ใช่ปล่อยผ่าน
+     ② Drive (`getFileMeta`) — ชั้น ① มองไม่เห็นของที่ไม่มีแถว attachments (โฟลเดอร์ · เอกสาร Google ที่ไม่ได้ผูก) และ
+        mimeType/ชื่อไฟล์ในคำขอเป็นค่าที่ client ประกาศเอง ⇒ ถามชนิดจริงจาก Drive: อยู่ในถังขยะ · ของ Google
+        (`application/vnd.google-apps.*` = โฟลเดอร์/Docs/Sheets) · ไม่ใช่ชนิดรูปตามกติกาของ docType = 400 ·
+        **ถามไม่ได้ = 502 ไม่ใช่ปล่อยผ่าน**
+     ⚠️ ชั้น ② ยังไม่ตรวจว่าไฟล์อยู่ในโฟลเดอร์ของสินค้านี้ (ที่มาของไฟล์แนบทั้งระบบเป็นงานแยก) — รูปจริงที่ไม่มีแถวไหนถือ
+        และ service account มองเห็น ยังแนบผ่านเส้นนี้ได้
+     ⚠️ ต้องมี `driveFileId` เสมอ (ไม่รับไฟล์ที่มีแต่ fileUrl) · ไม่รับเอกสาร Google
+     ⚠️ ลำดับ: ด่านสิทธิ์ → ชั้น ① → ชั้น ② → เขียนแถว (คนไม่มีสิทธิ์ต้องไม่ได้ใช้เส้นนี้ถามว่า id ไหนมีอยู่ในระบบ/บน Drive) */
+  if (safeDocType === SPEC_ITEM_IMAGE_DOC_TYPE) {
+    if (google) return Response.json({ error: 'รูปของแถว checklist ต้องเป็นไฟล์รูปที่อัปขึ้นมา — เอกสาร Google แนบไม่ได้' }, { status: 400 });
+    if (typeof driveFileId !== 'string' || !driveFileId.trim()) {
+      return Response.json({ error: 'แนบรูปของแถว checklist ไม่สำเร็จ — ไม่พบไฟล์ที่อัป ลองแนบใหม่อีกครั้ง' }, { status: 400 });
+    }
+    const held = await driveFileHeld(supabase, driveFileId);
+    if (held.invalid) {
+      return Response.json({ error: 'แนบรูปของแถว checklist ไม่สำเร็จ — รหัสไฟล์ไม่ถูกต้อง ลองแนบใหม่อีกครั้ง' }, { status: 400 });
+    }
+    if (held.error) return Response.json({ error: held.error.message }, { status: 500 });
+    if (held.held) {
+      return Response.json({ error: 'ไฟล์นี้ถูกแนบไว้กับเอกสารอื่นแล้ว — อัปรูปใหม่แล้วแนบอีกครั้ง' }, { status: 400 });
+    }
+    let driveMeta = null;
+    try {
+      const { getFileMeta } = await import('@/lib/drive');
+      driveMeta = await getFileMeta(driveFileId, 'id, mimeType, trashed');
+    } catch (err) {
+      console.error('[attachments] ตรวจรูปของแถว checklist กับ Drive ไม่สำเร็จ', err?.message);
+    }
+    if (!driveMeta?.id) {
+      return Response.json({ error: 'ตรวจไฟล์ที่อัปกับ Google Drive ไม่สำเร็จ จึงยังไม่แนบ — ลองแนบใหม่อีกครั้ง' }, { status: 502 });
+    }
+    const driveMime = String(driveMeta.mimeType || '').toLowerCase();
+    if (driveMeta.trashed || driveMime.startsWith('application/vnd.google-apps.') || !(fileRule?.mime || []).includes(driveMime)) {
+      return Response.json({ error: `ไฟล์ที่อัปใช้เป็นรูปของแถว checklist ไม่ได้ — แนบได้เฉพาะ${fileRule?.label || 'รูปภาพ'}` }, { status: 400 });
+    }
   }
 
   /* ⭐ รูปจุดติดตั้งที่ถ่ายจากแถวของจุด (PR-S) — `metadata.spotId` ตรวจรูปร่าง + ต้องเป็นภาพจุดเท่านั้น

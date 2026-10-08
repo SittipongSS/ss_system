@@ -20,13 +20,15 @@ import { recordAudit } from '@/lib/audit';
 import { canViewRecord } from '@/lib/permissions';
 import { productSpecScopeReason } from '@/lib/sales/productSpecScope';
 import {
-  canEditProductSpec, productSpecDeleteBlock, productSpecPermissions,
+  canEditProductSpec, canSeeSpecItemCost, productSpecDeleteBlock, productSpecPermissions, redactSpecForViewer,
 } from '@/lib/sales/productSpecWorkflow';
 import {
   createProductSpec, deleteProductSpec, loadProductPrintFields, loadProductSpec, loadSpecRecord, saveProductSpec,
 } from '@/lib/sales/productSpecStore';
 
 export const dynamic = 'force-dynamic';
+// บันทึก checklist อาจเก็บกวาดรูปของแถวที่ไม่มีใครชี้แล้ว (คุยกับ Drive ไฟล์ละครั้ง · เพดาน 25 ไฟล์ต่อการบันทึก)
+export const maxDuration = 60;
 
 const EDIT_FORBIDDEN = 'ต้องเป็น AC หรือฝ่ายขายจึงแก้สเปคสินค้าได้';
 
@@ -71,6 +73,10 @@ const documentSummary = (doc) => ({
  *    ขึ้นขีดที่ "ประเภทผลิตภัณฑ์ · กลิ่น · ขนาดบรรจุ" ทั้งที่กระดาษตัวอย่างจากหน้าเดียวกันพิมพ์ค่าจริง
  *    อ่านไม่ขึ้น = error ไม่ใช่ตัดช่องทิ้งเงียบ ๆ (จอกับกระดาษจะบอกคนละอย่างอีก)
  * ⚠️ `team` · `ownerId` ของแถวเดิมต้องคงอยู่ — ขอบเขตของหน้าอ่านจากสองช่องนี้
+ * 🔴 **ราคาทุนรายแถวของ checklist (mig 0405) ใช้ในระบบเท่านั้น และเฉพาะคนที่เห็นต้นทุนสินค้าได้** — ทุกก้อนที่มีสเปค
+ *    ออกจากเส้นนี้ต้องผ่าน `redactSpecForViewer` (ตัดคีย์ `costPrice` ของทุกแถว + `pricingTier` ช่องเก่า) ·
+ *    เส้นนี้คือทางออกทางเดียวของแถว checklist ดิบ (จอสเปค · การ์ดบนหน้าสินค้า · หน้าเอกสาร อ่านจากที่นี่ทั้งหมด)
+ *    ⚠️ ตัด **หลัง** ลง audit เสมอ — audit_logs ต้องถือแถวเต็ม (ทางกู้ทางเดียวของระบบ)
  * @returns {{ body: object } | { error: string }}
  */
 async function specPayload(supabase, product, user) {
@@ -83,9 +89,9 @@ async function specPayload(supabase, product, user) {
     body: {
       product: { ...product, ...printed.product, team: product.team, ownerId: product.ownerId },
       scopeReason: productSpecScopeReason(product),
-      spec: loaded.spec,
+      spec: redactSpecForViewer(loaded.spec, user),
       documents: documents.map(documentSummary),
-      permissions: productSpecPermissions({ spec: loaded.spec, documents, role: user?.role }),
+      permissions: productSpecPermissions({ spec: loaded.spec, documents, role: user?.role, user }),
     },
   };
 }
@@ -125,6 +131,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       items: body?.items,
     },
     user,
+    // แก้ราคาทุนรายแถวได้ = แก้สเปคได้ + เห็นต้นทุนสินค้า — คนที่ไม่เห็น บันทึกแล้วราคาทุนเดิมคงอยู่ (ไม่ใช่ error)
+    canEditItemCost: canEditProductSpec(user.role) && canSeeSpecItemCost(user),
   });
   if (created.error) return storeFailure(created, { missing: 'ไม่พบสินค้าชิ้นนี้ — อาจถูกลบไปแล้ว โหลดหน้าใหม่' });
 
@@ -138,7 +146,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const payload = await specPayload(supabase, loaded.product, user);
   // สร้างสำเร็จแล้ว — อ่านกลับไม่ขึ้นต้องไม่กลายเป็น 500 (คนจะกดสร้างซ้ำแล้วชน UNIQUE)
   if (payload.error) {
-    return ok({ spec: created.spec, warning: `บันทึกสเปคแล้ว แต่โหลดหน้าใหม่ไม่สำเร็จ: ${payload.error}` }, 201);
+    return ok({ spec: redactSpecForViewer(created.spec, user), warning: `บันทึกสเปคแล้ว แต่โหลดหน้าใหม่ไม่สำเร็จ: ${payload.error}` }, 201);
   }
   return ok(created.warning ? { ...payload.body, warning: created.warning } : payload.body, 201);
 });
@@ -171,6 +179,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     },
     user,
     expectedUpdatedAt: expected,
+    canEditItemCost: canEditProductSpec(user.role) && canSeeSpecItemCost(user),
   });
   if (saved.error) return storeFailure(saved, { missing: 'ไม่พบสเปคนี้ — อาจถูกลบไปแล้ว โหลดหน้าใหม่' });
 
@@ -182,7 +191,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   const payload = await specPayload(supabase, loaded.product, user);
   if (payload.error) {
-    return ok({ spec: saved.spec, warning: `บันทึกสเปคแล้ว แต่โหลดหน้าใหม่ไม่สำเร็จ: ${payload.error}` });
+    return ok({ spec: redactSpecForViewer(saved.spec, user), warning: `บันทึกสเปคแล้ว แต่โหลดหน้าใหม่ไม่สำเร็จ: ${payload.error}` });
   }
   return ok(saved.warning ? { ...payload.body, warning: saved.warning } : payload.body);
 });

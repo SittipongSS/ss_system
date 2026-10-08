@@ -3,13 +3,15 @@ import { stripDriveMetadata } from '@/lib/master/googleDocs';
 import { getCurrentUser } from '@/lib/authUser';
 import { can, canUser, canEditRecord, canViewCosting } from '@/lib/permissions';
 import { getAttachment, releaseAttachmentFile } from '@/lib/master/attachments';
+import { driveFileHeld } from '@/lib/master/attachments';
 import {
-  ISSUED_DATE_FIELD, RETIRED_METADATA_KEYS, SPEC_ILLUSTRATION_DOC_TYPE, isRetiredAttachment,
+  ISSUED_DATE_FIELD, RETIRED_METADATA_KEYS, SPEC_ILLUSTRATION_DOC_TYPE, SPEC_ITEM_IMAGE_DOC_TYPE, isRetiredAttachment,
 } from '@/lib/master/attachmentTypes';
-import { isIllustrationReferenced } from '@/lib/sales/productSpecStore';
+import { isIllustrationReferenced, isSpecItemImageReferenced } from '@/lib/sales/productSpecStore';
 import { productCaretakerTeams } from '@/lib/master/productScope';
 import { canAttachToPersonalTask } from '@/lib/pm/personalTaskAccess';
 import { canAttachBillingCalendar } from '@/lib/master/attachmentAccess';
+import { canAttachSpecItemImage } from '@/lib/master/attachmentAccess';
 import {
   COSTING_ATTACHMENT_TABLE, canAttachToCosting, isCostingAttachment,
 } from '@/lib/master/costingAttachmentAccess';
@@ -121,7 +123,10 @@ async function guardAttachmentWrite(supabase, att, user, actionLabel) {
           parent,
           att.entityType === 'product' ? await productCaretakerTeams(parent, supabase) : undefined,
         ) || canAttachBillingCalendar(att.entityType, att.docType, parent, user);
-    if (parent && !canEditParent) {
+    /* ⭐ รูปประจำแถว checklist ใบสเปค (mig 0405) — ลบ/แก้ได้ด้วยช่องแคบเดียวกับตอนแนบ (`canAttachSpecItemImage` · คนที่แก้สเปคได้)
+       ⚠️ อ่าน docType **ของแถว** เช่นกัน · ประโยคแยก ไม่ต่อท้ายประโยคบน (ประโยคบนถูกเทสต์ตรึงไว้) */
+    const canEditSpecImage = canAttachSpecItemImage(att.entityType, att.docType, user);
+    if (parent && !(canEditParent || canEditSpecImage)) {
       return Response.json({ error: 'forbidden' }, { status: 403 });
     }
     // Registration lock (stricter): can't remove docs from an APPROVED reg unless
@@ -226,6 +231,25 @@ export async function DELETE(request, { params }) {
     if (raced) return raced;
   }
 
+  /* 🔴 รูปประจำแถว checklist (mig 0405) ที่ยังมีแถวชี้อยู่ ลบตรง ๆ ไม่ได้ — FK เป็น ON DELETE SET NULL ⇒ ลบแล้วแถวเสียรูป
+     เงียบ ๆ ไม่มี audit ไม่ขยับ updatedAt ของสเปค (แท็บสเปคที่เปิดอยู่ไม่รู้ตัว) · ทางที่ถูกคือเอารูปออกที่หน้าสเปคแล้วบันทึก
+     — ตัวบันทึกลบไฟล์ที่ไม่มีแถวชี้ให้เอง · รูปที่ไม่มีแถวชี้ (แนบแล้วไม่ได้บันทึก) ลบได้ตามปกติ
+     ⚠️ อ่านไม่ได้ = 500 ไม่ใช่ "ไม่มีใครชี้" (supabase ไม่ throw)
+     ⚠️ **กันได้เท่าที่ทำได้ ไม่ใช่กันขาด** — ตรวจแล้วค่อยลบเป็นสองคำสั่ง ไม่มีล็อก: การบันทึกสเปคที่ commit ตัวชี้แทรกระหว่าง
+        สองคำสั่งนี้พอดี จะเสียรูปของแถวนั้น (FK ตั้งตัวชี้เป็น NULL) โดยไม่มี 409 · ยอมรับได้เพราะ (ก) ไม่มีจอไหนยิง DELETE
+        กับ docType นี้ — การเอารูปออกเดินผ่านการบันทึกสเปคเท่านั้น จึงต้องเป็นคนที่แก้สเปคได้ยิง API เองให้ชนจังหวะ
+        (ข) FK SET NULL ทำให้ฐานไม่มีตัวชี้ค้างไปหาแถวที่หายแล้ว — เสียแค่รูปประกอบภายในหนึ่งรูป แถวกับราคาทุนอยู่ครบ
+        · ปิดขาดต้องย้ายไปลบใน RPC ที่ล็อกแถวสเปคตัวเดียวกับ `replace_product_spec_items` (ยังไม่ทำ) */
+  if (att.entityType === 'product' && att.docType === SPEC_ITEM_IMAGE_DOC_TYPE) {
+    const used = await isSpecItemImageReferenced(supabase, att.id);
+    if (used.error) {
+      return Response.json({ error: `ตรวจไม่ได้ว่ารูปนี้ผูกกับแถว checklist อยู่หรือไม่ จึงยังไม่ลบ — ${used.error}` }, { status: 500 });
+    }
+    if (used.referenced) {
+      return Response.json({ error: 'รูปนี้ผูกกับแถว checklist ของใบสเปค — เอารูปออกที่หน้าสเปคแล้วกดบันทึก' }, { status: 409 });
+    }
+  }
+
   const { error } = await supabase.from('attachments').delete().eq('id', id);
   if (error) return Response.json({ error: error.message }, { status: 500 });
 
@@ -233,6 +257,19 @@ export async function DELETE(request, { params }) {
   // ประกอบไม่ใช่สเปกหรือตัวตนของแถว และการ reset ทำให้แถวนั้นหลุดจากลิสต์เลือกทุกหน้า
   // ทันที (GET คืนเฉพาะ approved) ซึ่งแพงเกินกว่าเหตุ. ทะเบียนสรรพสามิตยังล็อกตามเดิม
   // (ด่านข้างบน) เพราะเป็นกติกาที่เข้มกว่าโดยเจตนา
+
+  /* 🔴 รูปประจำแถว checklist: `driveFileId` ของแถวมาจาก client ตอนแนบ ⇒ ก่อนทิ้งไฟล์ ถามว่ามีแถวอื่นถือไฟล์เดียวกันไหม
+     (`driveFileHeld` — ทั้งช่อง `driveFileId` และ `metadata.googleFileId`) · 🐞 เดิมเส้นนี้ทิ้งไฟล์เลยโดยไม่ถาม ทั้งที่ตัวเก็บกวาด
+     (`deleteAttachmentRows`) ถาม ⇒ แนบแล้วกดลบเองทันทีคือทางลัดข้ามด่าน · มีคนถือ/ตรวจไม่ได้ = ลบแค่แถว เก็บไฟล์ไว้
+     ⚠️ ข้าม `releaseAttachmentFile` ทั้งตัวได้ — แถวชนิดนี้ไม่ใช่เอกสาร Google จึงไม่มีสิทธิ์ที่ระบบเคยให้ต้องถอน */
+  if (att.entityType === 'product' && att.docType === SPEC_ITEM_IMAGE_DOC_TYPE && att.driveFileId) {
+    const shared = await driveFileHeld(supabase, att.driveFileId, { excludeId: att.id });
+    if (shared.held) {
+      console.error('[attachments] ลบแถวรูปของ checklist แล้ว แต่เก็บไฟล์บน Drive ไว้ — ยังมีแถวอื่นถือไฟล์เดียวกัน (หรือตรวจไม่ได้)',
+        att.id, shared.error?.message || '');
+      return Response.json({ success: true });
+    }
+  }
 
   // ปล่อยของบน Drive ที่แถวนี้ถืออยู่ — **สิทธิ์ที่เคยให้** แล้วค่อยทิ้งตัวไฟล์
   // (best-effort ทั้งคู่ ไม่ให้ block การลบ row ถ้าพลาด · ดู releaseAttachmentFile)
