@@ -235,7 +235,8 @@ export const GET = withUser(async ({ user, supabase }) => {
     for (const zone of zones || []) zonesById.set(zone.id, zone);
   }
   /* แถวคิว "งานบริการ (ใบเดิม)" ของผู้จัดการ — ตัวเลขชุดเดียวกับแถบผู้อนุมัติ (serviceSetupTotals)
-     · "จำนวนรอบบริการ n รอบ" คำเดียวกับหน้าใบ (`serviceRoundsText` · มติ 29/09 รอบก่อน) — ยังไม่มีรอบ = null (จอขึ้นขีดด้วย naText) */
+     · "จำนวนรอบบริการ n เดือน" คำเดียวกับหน้าใบ (`serviceRoundsText` · หน่วยเดือนตามมติ 08/10 — จอเรียงโซน/ไซต์ก่อนคำนี้ตามคอลัมน์ของตาราง)
+       — ยังไม่มีรอบ = null (จอขึ้นขีดด้วย naText) */
   const serviceReviewOf = (row) => {
     const totals = serviceSetupTotals({
       lines: linesByOrder.get(row.id) || [], allocations: allocationsByOrder.get(row.id) || [], zonesById,

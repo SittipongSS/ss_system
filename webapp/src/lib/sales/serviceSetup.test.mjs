@@ -2,6 +2,16 @@
 //
 // สิ่งที่ชุดนี้ล็อกไว้: ชนิดของบรรทัด (D2) · ด่านยื่น (ข้อที่ยังขาด · fail-closed) · กติกางวด (D7/D8) ·
 // ขั้นของงาน/ล็อก (D9/D25/D28) · ก้อนที่จอส่งมาบันทึก · ข้อความของโมดัล/แถบ/หัวใบ (ภาคผนวก A)
+//
+// ⭐ มติเจ้าของ 08/10 ("อยากสลับ ข้อ 4 กับ ข้อ 5 เปลี่ยน หน่วยรอบบริการ จาก รอบ เป็น เดือน") — ข้อความที่ชุดนี้ยึดเดินตามมตินี้:
+//   · หน่วยของจำนวนรอบบริการบนผิวฝ่ายขาย = "เดือน" ("จำนวนรอบบริการ 12 เดือน" · "8–12 เดือน" · ช่องหัวใบ "12 เดือน")
+//   · หัวตาราง ①→⑥ = … ③ ไซต์ · โซน → ④ รอบละกี่แพ็ค → ⑤ จำนวนรอบบริการ → ⑥ รวมแพ็ค (คำใบ้ ⑥ "รอบละ × เดือน")
+//     และประโยคที่ไล่ขั้น/ไล่ช่อง (คำอธิบายปุ่ม ‘ใช่’ · ข้อตรวจตารางของผู้อนุมัติ · ช่องที่แก้ได้หลังเปิดแก้ · คำเทียบจำนวนในใบ) ไล่ตามลำดับนี้
+//   · คำเตือนรอบน้อย "จำนวนรอบบริการ n เดือน แต่ช่วงบริการยาว m เดือน — …" (เดิม "… n รอบ ในช่วงบริการ m เดือน")
+//   · ประโยคสรุปตัวเลขของทั้งใบ (ท้ายตาราง · ผลของการอนุมัติ · แถบผู้อนุมัติ) เรียงตามคอลัมน์ ③ → ④ → ⑤ → ⑥:
+//     "แต่ละครั้ง z โซนใน s ไซต์ · ครั้งละ p แพ็ค · จำนวนรอบบริการ r เดือน · รวมทั้งใบ t แพ็ค" (เดิม 29/09 ขึ้นด้วยจำนวนรอบบริการ —
+//     คือลำดับที่มติ 08/10 กลับ · ผลตรวจทาน 08/10: แถบอยู่เหนือตารางในหน้าเดียวกัน ตัวเลขชุดเดียวกันต้องไม่มาสองลำดับ)
+//   🔴 ค่าที่เก็บ · สูตร · เกณฑ์ · ลำดับข้อของ `serviceSetupIssues` (ตรงกับฐาน) ไม่เปลี่ยน — เทสต์ของสิ่งเหล่านี้ไม่ถูกแตะ
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -638,10 +648,11 @@ test('จำนวนในใบเทียบแพ็คที่ตั้�
   assert.deepEqual(lineQtyCrossCheck(manual(1, { serviceKind: 'package', unit: 'เดือน' }), { zones: 3 }),
     { tone: 'info', text: 'จำนวนในใบ 12 เดือน = ระยะเวลา ไม่ได้นับเป็นแพ็ค' });
   assert.equal(lineQtyCrossCheck(manual(1, { serviceKind: 'not_service' }), { zones: 0 }).tone, 'none');
-  assert.equal(lineDerivedText(lineSetupTotals(line, ctx)), 'จำนวนรอบบริการ 12 รอบ · แต่ละครั้ง 1 แพ็ค · รวมทั้งรายการ 12 แพ็ค');
+  /* มติเจ้าของ 08/10 (สลับ ④⑤): ประโยคสรุปเรียงตามคอลัมน์ ④ รอบละ → ⑤ จำนวนรอบบริการ → ⑥ รวม (เดิม 29/09 ขึ้นด้วยจำนวนรอบบริการ) */
+  assert.equal(lineDerivedText(lineSetupTotals(line, ctx)), 'แต่ละครั้ง 1 แพ็ค · จำนวนรอบบริการ 12 เดือน · รวมทั้งรายการ 12 แพ็ค');
   assert.equal(lineDerivedText({ rounds: null }), null);
   assert.equal(serviceSetupFooterText(serviceSetupTotals(ctx)),
-    'งานบริการทั้งใบ: 10 รายการแพ็คเกจ · จำนวนรอบบริการ 12 รอบ · แต่ละครั้ง 10 โซนใน 10 ไซต์ · ครั้งละ 10 แพ็ค · รวมทั้งใบ 120 แพ็ค');
+    'งานบริการทั้งใบ: 10 รายการแพ็คเกจ · แต่ละครั้ง 10 โซนใน 10 ไซต์ · ครั้งละ 10 แพ็ค · จำนวนรอบบริการ 12 เดือน · รวมทั้งใบ 120 แพ็ค');
 });
 
 /* ══ ก้อนที่จอส่งมาบันทึก ══════════════════════════════════════════════════════════════════════════ */
@@ -739,7 +750,7 @@ test('ผลของการอนุมัติใบ (pipeline) ตาม�
   ctx.liveTermsByZone = new Map([['Z1', [{ term: { id: 'T1', salesOrderId: 'SO9' }, order: { id: 'SO9', orderNumber: 'SO-26080073-0' } }]]]);
   const effects = serviceSetupApprovalEffects(ctx, { flow: 'pipeline' });
   assert.deepEqual(effects, [
-    'เปิดงานบริการให้ TS: จำนวนรอบบริการ 12 รอบ · แต่ละครั้ง 10 โซนใน 10 ไซต์ · ครั้งละ 10 แพ็ค · รวมทั้งใบ 120 แพ็ค — ขึ้นที่ “งานเข้าใหม่ › รอตั้งรอบ” ทันที ไม่ต้องผูกโซนอีก',
+    'เปิดงานบริการให้ TS: แต่ละครั้ง 10 โซนใน 10 ไซต์ · ครั้งละ 10 แพ็ค · จำนวนรอบบริการ 12 เดือน · รวมทั้งใบ 120 แพ็ค — ขึ้นที่ “งานเข้าใหม่ › รอตั้งรอบ” ทันที ไม่ต้องผูกโซนอีก',
     'ช่วงบริการ 01/10/2026–30/09/2027 · งวด 12 งวดครอบต่อเนื่อง — ช่างเข้าไซต์ได้เฉพาะวันที่บัญชีรับรองงวดที่ครอบแล้ว',
     'ยังไม่ผูกสัญญา — นัดบริการติดด่านสัญญาจนกว่าจะผูกสัญญาที่ลงนามแล้วที่แท็บ “สัญญา”',
     'ไม่ใช่งานบริการรายรอบ 1 รายการ (ค่าขนส่ง) — ไม่ส่งให้ TS',
@@ -764,11 +775,12 @@ test('ผลของการอนุมัติใบ (pipeline) ตาม�
   // ไม่มีแพ็คเกจเลย
   assert.deepEqual(serviceSetupApprovalEffects(ctxOf({ lines: [manual(1, { serviceKind: 'not_service' })] })),
     ['ใบนี้ไม่มีแพ็คเกจบริการ — ไม่มีอะไรส่งให้ TS']);
-  assert.deepEqual(serviceSetupApprovalChecklist(ctx), ['ตรวจแพ็คเกจ · ไซต์ · โซน · จำนวนรอบบริการ · รอบละกี่แพ็ค ในการ์ดงานบริการ']);
+  assert.deepEqual(serviceSetupApprovalChecklist(ctx), ['ตรวจแพ็คเกจ · ไซต์ · โซน · รอบละกี่แพ็ค · จำนวนรอบบริการ ในการ์ดงานบริการ']);
   // รอบไม่เท่ากัน
   const mixed = completeCtx();
   mixed.lines[0] = { ...mixed.lines[0], serviceRounds: 8 };
-  assert.match(serviceSetupApprovalEffects(mixed)[0], /^เปิดงานบริการให้ TS: จำนวนรอบบริการ 8–12 รอบ · /);
+  /* มติเจ้าของ 08/10: ลำดับคอลัมน์ — โซน/แพ็คก่อน แล้ว "จำนวนรอบบริการ 8–12 เดือน" (เดิมประโยคขึ้นด้วยจำนวนรอบบริการ) */
+  assert.match(serviceSetupApprovalEffects(mixed)[0], /^เปิดงานบริการให้ TS: แต่ละครั้ง 10 โซนใน 10 ไซต์ · ครั้งละ 10 แพ็ค · จำนวนรอบบริการ 8–12 เดือน · /);
 });
 
 test('ผลของการอนุมัติงานบริการย้อนหลัง: ไม่แตะ Actual/ยอด/สถานะ · ด่านเงินเริ่มใช้ · ไม่มีคำว่า "นับ Actual"', () => {
@@ -778,7 +790,7 @@ test('ผลของการอนุมัติงานบริการ�
   });
   const ctx = completeCtx({ order });
   const effects = serviceSetupApprovalEffects(ctx, { flow: 'backfill' });
-  assert.equal(effects[0], 'เปิดงานบริการให้ TS: จำนวนรอบบริการ 12 รอบ · แต่ละครั้ง 10 โซนใน 10 ไซต์ · ครั้งละ 10 แพ็ค · รวมทั้งใบ 120 แพ็ค — ขึ้นที่ “งานเข้าใหม่ › รอตั้งรอบ” ทันที ไม่ต้องผูกโซนอีก');
+  assert.equal(effects[0], 'เปิดงานบริการให้ TS: แต่ละครั้ง 10 โซนใน 10 ไซต์ · ครั้งละ 10 แพ็ค · จำนวนรอบบริการ 12 เดือน · รวมทั้งใบ 120 แพ็ค — ขึ้นที่ “งานเข้าใหม่ › รอตั้งรอบ” ทันที ไม่ต้องผูกโซนอีก');
   assert.equal(effects[1], 'ไม่แตะยอด Actual · ยอดใบ · เอกสารที่ออกแล้ว · สถานะใบ (อนุมัติแล้วเหมือนเดิม) — Actual ก.ย. 2026 ฿250,380.00 · ยอดรวม ฿250,380.00 · งวดชำระ 12 งวด เท่าเดิม');
   assert.equal(effects[2], 'ด่านเงินของบัญชีเริ่มใช้กับใบนี้: งวดที่ยังไม่รับรองต้องมีช่วงครอบก่อนรับรอง (ครบแล้ว 12 งวด)');
   assert.equal(effects[3], 'ยังไม่ผูกสัญญา — นัดบริการติดด่านสัญญาจนกว่าจะผูกสัญญาที่ลงนามแล้วที่แท็บ “สัญญา”');
@@ -786,7 +798,7 @@ test('ผลของการอนุมัติงานบริการ�
     'หลังอนุมัติล็อก — เปิดแก้ด้วย ‘แก้งานบริการ’ ได้ก่อน TS เริ่มงาน · หลังจากนั้นย้อนการอนุมัติใบแล้วออก Rev. (จำนวนรอบบริการยังแก้ได้)');
   assert.ok(effects.every((e) => !e.includes('นับ Actual')));
   assert.deepEqual(serviceSetupApprovalChecklist(ctx, { flow: 'backfill' }), [
-    'ตรวจแพ็คเกจ · ไซต์ · โซน · จำนวนรอบบริการ · รอบละกี่แพ็ค ในการ์ดงานบริการ', 'ช่วงบริการตรงกับหมายเหตุของแต่ละสาขา', 'งวดที่ยังไม่รับรองมีช่วงครอบครบ 12 งวด',
+    'ตรวจแพ็คเกจ · ไซต์ · โซน · รอบละกี่แพ็ค · จำนวนรอบบริการ ในการ์ดงานบริการ', 'ช่วงบริการตรงกับหมายเหตุของแต่ละสาขา', 'งวดที่ยังไม่รับรองมีช่วงครอบครบ 12 งวด',
   ]);
 });
 
@@ -796,7 +808,7 @@ test('บรรทัดยืนยันการยื่น · แถบผ�
     'ส่งการตั้งค่างานบริการ (10 โซนใน 10 ไซต์ · ช่วงบริการ 01/10/2026–30/09/2027) ให้ผู้อนุมัติตรวจ — ระหว่างรออนุมัติแก้ไม่ได้ ดึงกลับได้');
   assert.equal(serviceSetupSubmitLine(ctxOf({ lines: [manual(1, { serviceKind: 'not_service' })] })), null);
   assert.equal(serviceSetupStripText(ctx),
-    'งานบริการ: จำนวนรอบบริการ 12 รอบ · แต่ละครั้ง 10 โซนใน 10 ไซต์ · ครั้งละ 10 แพ็ค · รวมทั้งใบ 120 แพ็ค · ช่วง 01/10/2026–30/09/2027 · สัญญา: ยังไม่ผูก');
+    'งานบริการ: แต่ละครั้ง 10 โซนใน 10 ไซต์ · ครั้งละ 10 แพ็ค · จำนวนรอบบริการ 12 เดือน · รวมทั้งใบ 120 แพ็ค · ช่วง 01/10/2026–30/09/2027 · สัญญา: ยังไม่ผูก');
   assert.match(serviceSetupStripText({ ...ctx, contract: { contractNo: 'CT-2609-0001', status: 'signed' } }), /สัญญา: CT-2609-0001$/);
   assert.equal(serviceSetupRevisionLine(ctx), 'คัดลอกงานบริการ 10 รายการ · 10 โซน · ช่วงบริการ 01/10/2026–30/09/2027 ไปใบ Rev.');
   assert.equal(serviceSetupRevisionLine(ctxOf({ lines: [manual(1)] })), null);
@@ -811,16 +823,18 @@ test('หัวใบ "รอบบริการที่ขาย": ยัง
   const stamped = completeCtx({ order: orderOf({ ...PERIOD, status: 'approved', serviceTermsOpenedAt: STAMP }) });
   stamped.lines[0] = { ...stamped.lines[0], serviceRounds: 8 };
   assert.deepEqual(serviceSetupHeroFact(stamped, { flow: 'stamped' }),
-    { label: 'รอบบริการที่ขาย', value: '8–12 รอบ', sub: 'แต่ละครั้ง 10 โซน · ครั้งละ 10 แพ็ค', tone: null });
+    { label: 'รอบบริการที่ขาย', value: '8–12 เดือน', sub: 'แต่ละครั้ง 10 โซน · ครั้งละ 10 แพ็ค', tone: null });
 
   const waiting = completeCtx({ order: orderOf({ ...PERIOD, status: 'approved', serviceSetupState: 'submitted', serviceSetupSubmittedAt: STAMP }) });
   const hero = serviceSetupHeroFact(waiting, { flow: 'backfill' });
-  assert.equal(hero.value, '12 รอบ');
+  assert.equal(hero.value, '12 เดือน');
   assert.ok(hero.sub.endsWith(' · รอตรวจ'));
 });
 
 /* ══ มติเจ้าของ 29/09: "จำนวนรอบบริการ" ก่อน แล้วค่อยบอกว่า "แต่ละครั้งกี่แพ็ค" ═════════════════════════════════════
-   ประโยคเดียวทั้งโหมดแก้/อ่าน: แพ็คเกจ FG-… → จำนวนรอบบริการ n รอบ (ตลอดช่วงบริการ …) → แต่ละครั้ง: • ไซต์ · โซน — p แพ็ค → รวมทั้งรายการ n×Σp แพ็ค */
+   ประโยคเดียวทั้งโหมดแก้/อ่าน: แพ็คเกจ FG-… → จำนวนรอบบริการ n เดือน (ตลอดช่วงบริการ …) [หน่วย "เดือน" = มติเจ้าของ 08/10] → แต่ละครั้ง: • ไซต์ · โซน — p แพ็ค → รวมทั้งรายการ n×Σp แพ็ค
+   ⚠️ ชุดนี้ยึด **คำ** ของ 29/09 (ประโยครอบ · รอบละกี่แพ็ค · รวมทั้งรายการ) — **ลำดับ** "รอบก่อน" ถูกมติเจ้าของ 08/10 กลับแล้ว
+      (ตาราง · ประโยคไล่ขั้น · ประโยคสรุปตัวเลข เรียง รอบละกี่แพ็ค → จำนวนรอบบริการ) ยามของลำดับอยู่ที่เทสต์ของแต่ละประโยค */
 
 test('29/09 จำนวนรอบบริการก่อน: คำของบรรทัดมาจากแคตตาล็อกเดียว (ประโยครอบ · รอบละกี่แพ็ค · รวมทั้งรายการ)', () => {
   assert.equal(SERVICE_SETUP_LINE_TEXT.roundsLabel, 'จำนวนรอบบริการ');
@@ -830,40 +844,45 @@ test('29/09 จำนวนรอบบริการก่อน: คำขอ
   assert.equal(SERVICE_SETUP_LINE_TEXT.zonePacks(1200), '1,200 แพ็ค');
   assert.equal(SERVICE_SETUP_LINE_TEXT.noPacks, 'ยังไม่ใส่รอบละกี่แพ็ค');
   const period = { from: '2026-10-22', to: '2027-10-21' };
-  assert.equal(lineRoundsSentence(12, period), 'จำนวนรอบบริการ 12 รอบ (ตลอดช่วงบริการ 22/10/2026–21/10/2027)');
-  assert.equal(lineRoundsSentence(1, null), 'จำนวนรอบบริการ 1 รอบ (ยังไม่ใส่ช่วงบริการ)');
-  assert.equal(lineRoundsSentence(3, { from: '2026-10-22', to: '' }), 'จำนวนรอบบริการ 3 รอบ (ยังไม่ใส่ช่วงบริการ)', 'ช่วงครึ่งเดียว = ยังไม่ใส่');
+  assert.equal(lineRoundsSentence(12, period), 'จำนวนรอบบริการ 12 เดือน (ตลอดช่วงบริการ 22/10/2026–21/10/2027)');
+  assert.equal(lineRoundsSentence(1, null), 'จำนวนรอบบริการ 1 เดือน (ยังไม่ใส่ช่วงบริการ)');
+  assert.equal(lineRoundsSentence(3, { from: '2026-10-22', to: '' }), 'จำนวนรอบบริการ 3 เดือน (ยังไม่ใส่ช่วงบริการ)', 'ช่วงครึ่งเดียว = ยังไม่ใส่');
   assert.equal(lineRoundsSentence(null, period), 'ยังไม่ใส่จำนวนรอบบริการ');
   assert.equal(lineTotalText({ packsPerRound: 2, packsTotal: 24 }), 'รวมทั้งรายการ 24 แพ็ค');
   assert.equal(lineTotalText({ packsPerRound: 2, packsTotal: null }), 'รวมทั้งรายการ — แพ็ค', 'ยังไม่มีรอบ');
   assert.equal(lineTotalText({ zones: 0, packsPerRound: 0, packsTotal: 0, rounds: 12 }), 'รวมทั้งรายการ — แพ็ค', 'มีรอบแต่ยังไม่มีโซน/แพ็ค ≠ 0 แพ็ค');
-  assert.equal(serviceRoundsText({ roundsMin: 12, roundsMax: 12, roundsMixed: false }), 'จำนวนรอบบริการ 12 รอบ');
-  assert.equal(serviceRoundsText({ roundsMin: 8, roundsMax: 12, roundsMixed: true }), 'จำนวนรอบบริการ 8–12 รอบ');
+  assert.equal(serviceRoundsText({ roundsMin: 12, roundsMax: 12, roundsMixed: false }), 'จำนวนรอบบริการ 12 เดือน');
+  assert.equal(serviceRoundsText({ roundsMin: 8, roundsMax: 12, roundsMixed: true }), 'จำนวนรอบบริการ 8–12 เดือน');
   assert.equal(serviceRoundsText({ roundsMin: null }), null);
   assert.equal(SERVICE_SETUP_ISSUE_TEXT.rounds_missing({ n: 3 }), 'รายการ 3: ยังไม่ใส่จำนวนรอบบริการ');
   assert.equal(SERVICE_SETUP_ISSUE_TEXT.packs_missing({ n: 3, zone: 'Office' }), 'รายการ 3 · Office: ยังไม่ใส่รอบละกี่แพ็ค');
   assert.deepEqual(lineQtyCrossCheck(done(1), { zones: 1, packsTotal: null }),
-    { tone: 'none', text: 'จำนวนในใบ 12 แพ็คเกจ — ตรวจได้เมื่อใส่จำนวนรอบบริการและรอบละกี่แพ็คแล้ว' });
+    { tone: 'none', text: 'จำนวนในใบ 12 แพ็คเกจ — ตรวจได้เมื่อใส่รอบละกี่แพ็คและจำนวนรอบบริการแล้ว' });
 });
 
 /* มติเจ้าของ 29/09 รอบสอง: "ไปกี่รอบ เปลี่ยน เป็น คำว่า จำนวนรอบบริการ" — คำเดียวทุกแคตตาล็อก (ป้ายช่อง · ข้อที่ยังขาด ·
-   ข้อความ SQL · คำเตือนรอบน้อย · ประโยครอบ) · ช่องหัวใบที่ป้าย "รอบบริการที่ขาย" บอกแล้ว ใช้ตัวเลขล้วน "12 รอบ" */
+   ข้อความ SQL · คำเตือนรอบน้อย · ประโยครอบ) · ช่องหัวใบที่ป้าย "รอบบริการที่ขาย" บอกแล้ว ใช้ตัวเลข + หน่วย "12 เดือน"
+   (หน่วย "เดือน" ตามมติเจ้าของ 08/10 — เดิม "12 รอบ" · คำเรียก "จำนวนรอบบริการ" / "รอบละกี่แพ็ค" คงเดิม) */
 test('29/09 รอบสอง: "ไปกี่รอบ" → "จำนวนรอบบริการ" ทุกแคตตาล็อก · ตัวเลขล้วนสำหรับช่องหัวใบ', () => {
   assert.equal(SERVICE_SETUP_LINE_TEXT.noRounds, 'ยังไม่ใส่จำนวนรอบบริการ');
-  assert.equal(SERVICE_SETUP_LINE_TEXT.roundsCount(12), '12 รอบ');
-  assert.equal(SERVICE_SETUP_LINE_TEXT.roundsCount(8, 12), '8–12 รอบ');
-  assert.equal(SERVICE_SETUP_LINE_TEXT.roundsCount(1200), '1,200 รอบ');
-  assert.equal(SERVICE_SETUP_LINE_TEXT.roundsText(12), 'จำนวนรอบบริการ 12 รอบ');
-  assert.equal(SERVICE_SETUP_LINE_TEXT.roundsText(8, 12), 'จำนวนรอบบริการ 8–12 รอบ');
+  /* มติเจ้าของ 08/10 ("เปลี่ยน หน่วยรอบบริการ จาก รอบ เป็น เดือน"): หน่วยของค่านี้บนผิวฝ่ายขายคือ "เดือน" — ที่เดียว (`roundUnit`) */
+  assert.equal(SERVICE_SETUP_LINE_TEXT.roundUnit, 'เดือน');
+  assert.equal(SERVICE_SETUP_LINE_TEXT.packUnit, 'แพ็ค');
+  assert.equal(SERVICE_SETUP_LINE_TEXT.roundsCount(12), '12 เดือน');
+  assert.equal(SERVICE_SETUP_LINE_TEXT.roundsCount(8, 12), '8–12 เดือน');
+  assert.equal(SERVICE_SETUP_LINE_TEXT.roundsCount(1200), '1,200 เดือน');
+  assert.ok(SERVICE_SETUP_LINE_TEXT.roundsCount(3).endsWith(` ${SERVICE_SETUP_LINE_TEXT.roundUnit}`), 'ประโยครอบอ่านหน่วยจากที่เดียว');
+  assert.equal(SERVICE_SETUP_LINE_TEXT.roundsText(12), 'จำนวนรอบบริการ 12 เดือน');
+  assert.equal(SERVICE_SETUP_LINE_TEXT.roundsText(8, 12), 'จำนวนรอบบริการ 8–12 เดือน');
   assert.equal(SERVICE_SETUP_SQL_MESSAGES.service_setup_rounds_invalid.message, 'จำนวนรอบบริการ ต้องเป็นจำนวนเต็ม 1–999');
   assert.match(SERVICE_SETUP_SQL_MESSAGES.sales_order_service_setup_locked.message, / \(จำนวนรอบบริการยังแก้ได้หลังอนุมัติ\)$/);
   assert.equal(SERVICE_KIND_OPTIONS.find((o) => o.value === 'package').description,
-    'แพ็คเกจที่ TS ต้องไปบริการตามรอบ — เลือก FG หมวด 02-001 → ไซต์ · โซน → จำนวนรอบบริการ → รอบละกี่แพ็ค');
+    'แพ็คเกจที่ TS ต้องไปบริการตามรอบ — เลือก FG หมวด 02-001 → ไซต์ · โซน → รอบละกี่แพ็ค → จำนวนรอบบริการ');
   assert.equal(SERVICE_SETUP_ISSUE_TEXT.rounds_low({ rounds: 1, months: 12, stage: 'read' }),
-    'จำนวนรอบบริการ 1 รอบ ในช่วงบริการ 12 เดือน — ตรวจอีกครั้ง');
+    'จำนวนรอบบริการ 1 เดือน แต่ช่วงบริการยาว 12 เดือน — ตรวจอีกครั้ง');
 });
 
-test('29/09 SO-26090247-0 (ภาพของเจ้าของ): FG 02-001 · 12 เดือน · จำนวนรอบบริการ 1 รอบ · Office 2 แพ็ค ⇒ รวมทั้งรายการ 2 แพ็ค + คำเตือนรอบน้อย', () => {
+test('29/09 SO-26090247-0 (ภาพของเจ้าของ): FG 02-001 · 12 เดือน · จำนวนรอบบริการ 1 เดือน · Office 2 แพ็ค ⇒ รวมทั้งรายการ 2 แพ็ค + คำเตือนรอบน้อย', () => {
   const order = orderOf({
     status: 'approved', servicePeriodFrom: '2026-10-22', servicePeriodTo: '2027-10-21', serviceTermsOpenedAt: '2026-09-29T04:08:11Z',
   });
@@ -873,7 +892,7 @@ test('29/09 SO-26090247-0 (ภาพของเจ้าของ): FG 02-001 �
     allocations: [alloc('SOL-1', 'Z1', 2), alloc('SOL-2', 'Z1', 2)],
   });
   assert.equal(lineTotalText(lineSetupTotals(lines[0], ctx)), 'รวมทั้งรายการ 2 แพ็ค');
-  assert.equal(lineRoundsSentence(1, servicePeriodOf(order)), 'จำนวนรอบบริการ 1 รอบ (ตลอดช่วงบริการ 22/10/2026–21/10/2027)');
+  assert.equal(lineRoundsSentence(1, servicePeriodOf(order)), 'จำนวนรอบบริการ 1 เดือน (ตลอดช่วงบริการ 22/10/2026–21/10/2027)');
   assert.deepEqual(roundsLowOf(1, servicePeriodOf(order)), { rounds: 1, months: 12 });
   /* คำเตือนไม่บล็อก — ไม่อยู่ในข้อที่ยังขาด */
   assert.deepEqual(serviceSetupIssues(ctx).filter((i) => i.key === 'rounds_low'), []);
@@ -882,13 +901,13 @@ test('29/09 SO-26090247-0 (ภาพของเจ้าของ): FG 02-001 �
     ['SOL-1', 1, 'lines', 'overview', 'rounds', 'SA'],
     ['SOL-2', 2, 'lines', 'overview', 'rounds', 'SA'],
   ]);
-  assert.equal(warnings[0].message, 'รายการ 1: จำนวนรอบบริการ 1 รอบ ในช่วงบริการ 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็ยื่นได้)');
+  assert.equal(warnings[0].message, 'รายการ 1: จำนวนรอบบริการ 1 เดือน แต่ช่วงบริการยาว 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็ยื่นได้)');
   assert.equal(serviceSetupFieldId(warnings[0]), 'svc-line-SOL-1-rounds', '"ไปแก้" ของคำเตือนพาไปช่องจำนวนรอบบริการ');
   /* บนบรรทัด (ไม่มีเลขรายการ) — ใบอนุมัติแล้วแก้รอบได้ที่ดินสอ ⇒ ไม่พูดว่า "ยื่น" */
   assert.equal(lineRoundsLowText(1, servicePeriodOf(order), { stage: 'approved' }),
-    'จำนวนรอบบริการ 1 รอบ ในช่วงบริการ 12 เดือน — ตรวจอีกครั้ง (จำนวนรอบบริการยังแก้ได้หลังอนุมัติ)');
-  assert.equal(lineRoundsLowText(1, servicePeriodOf(order)), 'จำนวนรอบบริการ 1 รอบ ในช่วงบริการ 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็ยื่นได้)');
-  assert.equal(lineRoundsLowText(1, servicePeriodOf(order), { stage: 'read' }), 'จำนวนรอบบริการ 1 รอบ ในช่วงบริการ 12 เดือน — ตรวจอีกครั้ง');
+    'จำนวนรอบบริการ 1 เดือน แต่ช่วงบริการยาว 12 เดือน — ตรวจอีกครั้ง (จำนวนรอบบริการยังแก้ได้หลังอนุมัติ)');
+  assert.equal(lineRoundsLowText(1, servicePeriodOf(order)), 'จำนวนรอบบริการ 1 เดือน แต่ช่วงบริการยาว 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็ยื่นได้)');
+  assert.equal(lineRoundsLowText(1, servicePeriodOf(order), { stage: 'read' }), 'จำนวนรอบบริการ 1 เดือน แต่ช่วงบริการยาว 12 เดือน — ตรวจอีกครั้ง');
   assert.equal(lineRoundsLowText(12, servicePeriodOf(order)), null);
 });
 
@@ -905,7 +924,7 @@ test('29/09 คำเตือนรอบน้อย: รอบ < ครึ่
   assert.equal(roundsLowOf(1, null), null);
   assert.equal(roundsLowOf(1, { from: '2027-09-30', to: '2026-10-01' }), null, 'ช่วงกลับหัว');
 
-  /* ใบร่างที่ตั้งครบ: บรรทัด 1 จำนวนรอบบริการ 1 รอบ ⇒ คำเตือนข้อเดียว (ขึ้นก่อนคำเตือนงวด) · ยื่นได้ · ผู้อนุมัติเห็นในสิ่งที่ต้องตรวจก่อนกด */
+  /* ใบร่างที่ตั้งครบ: บรรทัด 1 จำนวนรอบบริการ 1 เดือน ⇒ คำเตือนข้อเดียว (ขึ้นก่อนคำเตือนงวด) · ยื่นได้ · ผู้อนุมัติเห็นในสิ่งที่ต้องตรวจก่อนกด */
   const rows = monthlyRows();
   rows[1] = { ...rows[1], coversFrom: '2026-10-15' };
   const ctx = completeCtx({ installments: rows });
@@ -914,13 +933,13 @@ test('29/09 คำเตือนรอบน้อย: รอบ < ครึ่
   const warnings = serviceSetupWarnings(ctx);
   assert.deepEqual(warnings.map((w) => w.key), ['rounds_low', 'coverage_overlap']);
   assert.deepEqual(serviceSetupApprovalChecklist(ctx), [
-    'ตรวจแพ็คเกจ · ไซต์ · โซน · จำนวนรอบบริการ · รอบละกี่แพ็ค ในการ์ดงานบริการ',
-    'รายการ 1: จำนวนรอบบริการ 1 รอบ ในช่วงบริการ 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็อนุมัติได้)',
+    'ตรวจแพ็คเกจ · ไซต์ · โซน · รอบละกี่แพ็ค · จำนวนรอบบริการ ในการ์ดงานบริการ',
+    'รายการ 1: จำนวนรอบบริการ 1 เดือน แต่ช่วงบริการยาว 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็อนุมัติได้)',
   ]);
   const backfill = completeCtx({ order: orderOf({ ...PERIOD, status: 'approved', serviceSetupState: 'submitted' }) });
   backfill.lines[0] = { ...backfill.lines[0], serviceRounds: 2 };
   assert.ok(serviceSetupApprovalChecklist(backfill, { flow: 'backfill' })
-    .includes('รายการ 1: จำนวนรอบบริการ 2 รอบ ในช่วงบริการ 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็อนุมัติได้)'));
+    .includes('รายการ 1: จำนวนรอบบริการ 2 เดือน แต่ช่วงบริการยาว 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็อนุมัติได้)'));
   /* ไม่ใช่แพ็คเกจ / ยังไม่มีรอบ / ไม่มีช่วงบริการ = ไม่เตือน */
   const quiet = completeCtx({ order: orderOf() });
   quiet.lines[0] = { ...quiet.lines[0], serviceRounds: 1 };
@@ -1395,9 +1414,10 @@ test('0396 โมดัลเปิดแก้ (ตรวจทาน lib-02): 
 test('0396 ช่องที่แก้ได้หลังเปิดแก้ (R20): บรรทัด FG = แก้แพ็คเกจไม่ได้ · มีบรรทัดพิมพ์เอง = แก้แพ็คเกจได้ · คำจากแคตตาล็อก', () => {
   const { roundsLabel, packsLabel } = SERVICE_SETUP_LINE_TEXT;
   assert.equal(serviceReopenFieldsText(s247Ctx()),
-    `ไซต์ · โซน · ${roundsLabel} · ${packsLabel} · ช่วงบริการ — แพ็คเกจของรายการที่มีรหัส FG แก้ไม่ได้ (ต้องออก Rev.)`);
+    `ไซต์ · โซน · ${packsLabel} · ${roundsLabel} · ช่วงบริการ — แพ็คเกจของรายการที่มีรหัส FG แก้ไม่ได้ (ต้องออก Rev.)`);
+  /* ลำดับหัวตาราง ①→⑥ หลังมติเจ้าของ 08/10 (สลับ ④⑤): รอบละกี่แพ็คก่อนจำนวนรอบบริการ */
   assert.equal(serviceReopenFieldsText(completeCtx()),
-    `แพ็คเกจ (รายการพิมพ์เอง) · ไซต์ · โซน · ${roundsLabel} · ${packsLabel} · ช่วงบริการ`);
+    `แพ็คเกจ (รายการพิมพ์เอง) · ไซต์ · โซน · ${packsLabel} · ${roundsLabel} · ช่วงบริการ`);
   const mixed = completeCtx();
   mixed.lines.push(fgLine(11, S247_FG));
   assert.ok(serviceReopenFieldsText(mixed).startsWith('แพ็คเกจ (รายการพิมพ์เอง) · '));
@@ -1749,10 +1769,10 @@ test('0400 คำเตือนรอบน้อยคิดจากช่ว
   ctx.lines = ctx.lines.map((line) => ({ ...line, serviceRounds: 1 }));
   const low = serviceSetupWarnings(ctx).filter((w) => w.key === 'rounds_low');
   assert.deepEqual(low.map((w) => [w.lineId, w.message]), [
-    ['SOL-1', 'รายการ 1: จำนวนรอบบริการ 1 รอบ ในช่วงบริการ 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็ยื่นได้)'],
+    ['SOL-1', 'รายการ 1: จำนวนรอบบริการ 1 เดือน แต่ช่วงบริการยาว 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็ยื่นได้)'],
   ]);
   assert.deepEqual(serviceSetupApprovalChecklist(ctx).filter((line) => line.includes('ตรวจอีกครั้ง')),
-    ['รายการ 1: จำนวนรอบบริการ 1 รอบ ในช่วงบริการ 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็อนุมัติได้)']);
+    ['รายการ 1: จำนวนรอบบริการ 1 เดือน แต่ช่วงบริการยาว 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็อนุมัติได้)']);
   /* ใบเดียวกันโหมดทั้งใบ: ทุกรายการเทียบกับช่วงของใบ 13 เดือน */
   const whole = { ...ctx, order: { ...ctx.order, servicePeriodMode: 'whole' } };
   assert.deepEqual(serviceSetupWarnings(whole).filter((w) => w.key === 'rounds_low').map((w) => w.lineId), ['SOL-1', 'SOL-2', 'SOL-3']);
@@ -1890,7 +1910,7 @@ test('0400 ก้อน GET + ก้อน audit: โหมด · ช่วง�
   const full = lineModeCtx([lp('2026-10-01', '2027-03-31'), lp('2027-04-01', '2027-09-30')], { order: PERIOD });
   const done2 = serviceSetupView(full, { canEdit: true, userId: 'U1', role: 'ae' });
   assert.deepEqual([done2.periodMode, done2.period, done2.linePeriods], ['line', { from: '2026-10-01', to: '2027-09-30' }, { total: 2, filled: 2 }]);
-  assert.equal(done2.hero.value, '12 รอบ');
+  assert.equal(done2.hero.value, '12 เดือน');
   assert.deepEqual(done2.issues, []);
 
   const whole = serviceSetupView(completeCtx(), { canEdit: true, userId: 'U1', role: 'ae' });
@@ -1910,7 +1930,7 @@ test('0400 ประโยคที่พิมพ์ช่วงของใบ
   assert.equal(serviceSetupSubmitLine(full),
     `ส่งการตั้งค่างานบริการ (2 โซนใน 2 ไซต์ · ช่วงบริการ ${tail}) ให้ผู้อนุมัติตรวจ — ระหว่างรออนุมัติแก้ไม่ได้ ดึงกลับได้`);
   assert.equal(serviceSetupStripText(full),
-    `งานบริการ: จำนวนรอบบริการ 12 รอบ · แต่ละครั้ง 2 โซนใน 2 ไซต์ · ครั้งละ 2 แพ็ค · รวมทั้งใบ 24 แพ็ค · ช่วง ${tail} · สัญญา: ยังไม่ผูก`);
+    `งานบริการ: แต่ละครั้ง 2 โซนใน 2 ไซต์ · ครั้งละ 2 แพ็ค · จำนวนรอบบริการ 12 เดือน · รวมทั้งใบ 24 แพ็ค · ช่วง ${tail} · สัญญา: ยังไม่ผูก`);
   assert.equal(serviceSetupRevisionLine(full), `คัดลอกงานบริการ 2 รายการ · 2 โซน · ช่วงบริการ ${tail} ไปใบ Rev.`);
   assert.equal(serviceSetupApprovalEffects(full)[1], `ช่วงบริการ ${tail} · งวด 12 งวดครอบต่อเนื่อง — ช่างเข้าไซต์ได้เฉพาะวันที่บัญชีรับรองงวดที่ครอบแล้ว`);
   assert.equal(serviceBackfillSubmitPrompt(full).effects[0],
@@ -1928,17 +1948,19 @@ test('0400 ประโยคที่พิมพ์ช่วงของใบ
 
   /* ข้อตรวจของผู้อนุมัติ — ต่อจากข้อตรวจตาราง ทั้งเส้นอนุมัติใบและเส้นงานบริการย้อนหลัง */
   const check = 'ตรวจช่วงบริการของแต่ละรายการในคอลัมน์ ① (แยกรายรายการ 2 รายการ)';
-  assert.deepEqual(serviceSetupApprovalChecklist(full), ['ตรวจแพ็คเกจ · ไซต์ · โซน · จำนวนรอบบริการ · รอบละกี่แพ็ค ในการ์ดงานบริการ', check]);
+  assert.deepEqual(serviceSetupApprovalChecklist(full), ['ตรวจแพ็คเกจ · ไซต์ · โซน · รอบละกี่แพ็ค · จำนวนรอบบริการ ในการ์ดงานบริการ', check]);
   const backfill = serviceSetupApprovalChecklist({ ...full, order: { ...full.order, status: 'approved' } }, { flow: 'backfill' });
-  assert.deepEqual(backfill.slice(0, 3), ['ตรวจแพ็คเกจ · ไซต์ · โซน · จำนวนรอบบริการ · รอบละกี่แพ็ค ในการ์ดงานบริการ', check, 'ช่วงบริการตรงกับหมายเหตุของแต่ละสาขา']);
+  assert.deepEqual(backfill.slice(0, 3), ['ตรวจแพ็คเกจ · ไซต์ · โซน · รอบละกี่แพ็ค · จำนวนรอบบริการ ในการ์ดงานบริการ', check, 'ช่วงบริการตรงกับหมายเหตุของแต่ละสาขา']);
   assert.equal(serviceSetupApprovalChecklist(completeCtx()).some((line) => line.includes('แยกรายรายการ')), false, 'โหมดทั้งใบไม่มีข้อนี้');
   assert.deepEqual(serviceSetupApprovalChecklist(ctxOf({ order: orderOf(LINE), lines: [manual(1, { serviceKind: 'not_service' })] })), [], 'ไม่มีแพ็คเกจ = ไม่มีข้อตรวจ');
 });
 
 test('0400 แคตตาล็อก: หัวคอลัมน์ ① · คำของม็อกที่เจ้าของอนุมัติ (ตามตัวอักษร) · รหัสฐานใหม่สี่ตัว · ไม่มีคำต้องห้าม', () => {
   assert.deepEqual({ ...SERVICE_SETUP_GRID_TEXT.steps[0] }, { key: 'kind', label: 'งานบริการ? · ช่วงบริการ', hint: 'ใช่ = ส่ง TS + ใส่ช่วง', required: true });
-  assert.deepEqual(SERVICE_SETUP_GRID_TEXT.steps.map((step) => step.key), ['kind', 'fg', 'zones', 'rounds', 'packs', 'total'], 'ลำดับ ①→⑥ ไม่เปลี่ยน');
-  assert.deepEqual(SERVICE_SETUP_GRID_TEXT.steps.slice(1).map((step) => step.label), ['แพ็คเกจ FG', 'ไซต์ · โซน', 'จำนวนรอบบริการ', 'รอบละกี่แพ็ค', 'รวมแพ็ค']);
+  /* mig 0400 ไม่ได้ขยับลำดับ ①→⑥ · ลำดับปัจจุบันมาจากมติเจ้าของ 08/10 ("อยากสลับ ข้อ 4 กับ ข้อ 5"): ④ รอบละกี่แพ็ค → ⑤ จำนวนรอบบริการ */
+  assert.deepEqual(SERVICE_SETUP_GRID_TEXT.steps.map((step) => step.key), ['kind', 'fg', 'zones', 'packs', 'rounds', 'total'], 'ลำดับ ①→⑥ ตามมติ 08/10');
+  assert.deepEqual(SERVICE_SETUP_GRID_TEXT.steps.slice(1).map((step) => step.label), ['แพ็คเกจ FG', 'ไซต์ · โซน', 'รอบละกี่แพ็ค', 'จำนวนรอบบริการ', 'รวมแพ็ค']);
+  assert.deepEqual(SERVICE_SETUP_GRID_TEXT.steps.slice(3).map((step) => step.hint), ['ต่อโซน', 'ตลอดช่วงบริการ', 'รอบละ × เดือน'], 'คำใบ้ของ ⑥ พูดหน่วยเดือน (มติ 08/10)');
 
   const T = SERVICE_PERIOD_TEXT;
   /* คำจากม็อก PeriodSwitchWhole / PeriodSwitchPerLine รอบสอง */

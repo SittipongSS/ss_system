@@ -1188,7 +1188,7 @@ export default function SalesOrderDetailPage() {
         ...approvalPrompt({
           title: "อนุมัติ ใบสั่งขาย",
           subject: `ใบสั่งขาย ${order.orderNumber}`,
-          /* "ตรวจแพ็คเกจ · จำนวนรอบบริการ · โซน · แต่ละครั้งกี่แพ็ค ในตารางรายการ" + คำเตือนรอบน้อย (มติ 29/09) — ใบที่ไม่มีแพ็คเกจ = ว่าง (ภาคผนวก A.5) */
+          /* "ตรวจแพ็คเกจ · ไซต์ · โซน · รอบละกี่แพ็ค · จำนวนรอบบริการ ในการ์ดงานบริการ" (ลำดับหัวตาราง · มติ 08/10) + คำเตือนรอบน้อย (มติ 29/09) — ใบที่ไม่มีแพ็คเกจ = ว่าง (ภาคผนวก A.5) */
           checklist: service?.approvalChecklist || [],
           effects: [
             `ยอด ${fmtMoney(order.actualAmount)} ย้ายจาก "${PENDING_APPROVAL_LABEL}" เข้าเป็น Actual ของเดือน ${formatMonthLabel(currentMonth())} (เดือนที่อนุมัติ) — ขึ้นบนดีลทันที`,
@@ -2199,7 +2199,9 @@ export default function SalesOrderDetailPage() {
             ...(onServiceLine ? [{ icon: FileSignature, label: "สัญญาบริการ", ...serviceContractHeadline(order.serviceContract, { linkedId: order.serviceContractId }) }] : []),
             /* "รอบที่ขาย" อ่านจากคอลัมน์รายบรรทัดซึ่งกรอกได้เฉพาะบรรทัดหมวด 02-001
                ⇒ ผูกกับเกณฑ์แคบ ไม่ใช่เส้นบริการ (ไม่งั้นได้ขีดลอย ๆ บนใบที่กรอกไม่ได้)
-               ⭐ ใบที่ต้องตั้งงานบริการ (mig 0392) ใช้ช่องจากก้อน GET แทน — "n รอบ" · แต่ละครั้ง z โซน · ครั้งละ p แพ็ค หรือ "ยังไม่ตั้ง" */
+               ⭐ ใบที่ต้องตั้งงานบริการ (mig 0392) ใช้ช่องจากก้อน GET แทน — "n เดือน" · แต่ละครั้ง z โซน · ครั้งละ p แพ็ค หรือ "ยังไม่ตั้ง"
+                 (หน่วย "เดือน" ตามมติเจ้าของ 08/10 — หน่วยเดียวกับตารางงานบริการของหน้านี้ · มาจาก `serviceSetupHeroFact`)
+               ⚠️ ช่องสำรองข้างล่าง (`!setupRequired`) = ใบย้อนหลังเท่านั้น — หน้าใบย้อนหลังพูด "รอบ" ทั้งหน้า (นอกขอบเขตมติ 08/10) */
             ...(serviceHeroFact ? [serviceHeroFact] : !setupRequired && hasServiceRounds ? [{
               icon: Repeat,
               label: "รอบบริการที่ขาย",

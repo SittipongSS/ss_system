@@ -331,8 +331,8 @@ test('29/09 คำเตือนรอบน้อย: โมดัลยืน
   };
   const [warning] = serviceSetupWarnings(ctx);
   assert.equal(warning.owner, 'SA', 'ของฝ่ายขาย ⇒ saWarningLines ใส่ในโมดัลยืนยันยื่น');
-  assert.equal(warning.message, 'รายการ 1: จำนวนรอบบริการ 1 รอบ ในช่วงบริการ 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็ยื่นได้)');
-  assert.ok(serviceSetupApprovalChecklist(ctx).includes('รายการ 1: จำนวนรอบบริการ 1 รอบ ในช่วงบริการ 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็อนุมัติได้)'));
+  assert.equal(warning.message, 'รายการ 1: จำนวนรอบบริการ 1 เดือน แต่ช่วงบริการยาว 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็ยื่นได้)');
+  assert.ok(serviceSetupApprovalChecklist(ctx).includes('รายการ 1: จำนวนรอบบริการ 1 เดือน แต่ช่วงบริการยาว 12 เดือน — ตรวจอีกครั้ง (ถ้าตั้งใจก็อนุมัติได้)'));
   /* หน้าใบส่งต่อตรง ๆ — ไม่กรอง/ไม่เขียนคำเอง */
   assert.match(page, /\.filter\(\(w\) => w\?\.owner === "SA" && w\?\.message\)/);
   assert.match(slice(page, 'if (action === "approve") {', '\n      return;'), /checklist: service\?\.approvalChecklist \|\| \[\],/);
