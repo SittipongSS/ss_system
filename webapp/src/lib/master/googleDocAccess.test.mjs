@@ -167,7 +167,9 @@ test('🔴 revokeAttachmentGrants ถอนทุกอีเมลที่แ�
     revokeFileRole: async (fileId, email) => { calls.push([fileId, email]); return email !== 'b@x.co'; },
   };
   const att = { id: 'A1', metadata: { kind: 'gdoc', googleFileId: 'F1', accessGranted: ['a@x.co', 'b@x.co'] } };
-  const revoked = await revokeAttachmentGrants(att, { drive });
+  // ไม่มีแถวอื่นผูกไฟล์ใบนี้ (08/10/2569: ตัวถอนถามแถวพี่น้องก่อน — ดู googleDocLink.test.mjs)
+  const supabase = { from: () => ({ select: () => ({ contains: () => ({ limit: async () => ({ data: [], error: null }) }) }) }) };
+  const revoked = await revokeAttachmentGrants(att, { drive, supabase });
   assert.deepEqual(calls, [['F1', 'a@x.co'], ['F1', 'b@x.co']], 'ต้องยิงครบทุกอีเมล');
   assert.equal(revoked, 1, 'นับเฉพาะที่ถอนได้จริง ไม่ใช่จำนวนที่วนผ่าน');
 });

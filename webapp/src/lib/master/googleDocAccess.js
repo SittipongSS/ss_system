@@ -43,6 +43,48 @@ const grantedRoles = (attachment) => {
   return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
 };
 
+/* ⭐ **เพดานสิทธิ์ของแถวที่ "ผูกลิงก์" มา** (`metadata.linkRole` · 08/10/2569)
+ *
+ * แถวที่ระบบสร้างเอกสารเอง ไฟล์เป็นของระบบ ⇒ ใครแก้ระเบียนได้ก็แก้เอกสารได้ (เหมือนเดิม)
+ * แถวที่ **ผูก** มา ไฟล์เป็นของคนอื่น — คนผูกพิสูจน์ได้แค่ว่าตัวเองเปิดได้ระดับไหน
+ * (buildGoogleAttachment จดไว้) ⇒ แถวนั้นพาสิทธิ์ไปให้คนอื่นได้ **ไม่เกินระดับนั้น**
+ * 🐞 ไม่มีเพดานนี้: คนที่อ่านเอกสารได้อย่างเดียว (หรือแค่มีลิงก์แบบ "ใครมีลิงก์ก็ดูได้") ผูกเข้า
+ *    งานของตัวเอง แล้วเปิดรายการไฟล์แนบหนึ่งครั้ง = ได้ writer จาก service account
+ *
+ * ⚠️ แถวเก่าที่ผูกไว้ก่อนมีคีย์นี้ไม่มี `linkRole` ⇒ เดินแบบเดิมทุกประการ (ไม่ย้อนแก้ของเดิม)
+ * ⚠️ มีคีย์แต่ค่าไม่ใช่ 'writer' = นับเป็น 'reader' (ค่าแปลกปลอมต้องตกทางแคบ ไม่ใช่ทางกว้าง) */
+const LINK_ROLE_KEY = 'linkRole';
+const isLinkedDoc = (attachment) => {
+  const meta = attachment?.metadata;
+  return !!meta && typeof meta === 'object' && meta[LINK_ROLE_KEY] != null;
+};
+
+/* ⭐ **คนผูกไม่ได้อะไรจากแถวที่ตัวเองผูก** (`metadata.linkedBy` · 08/10/2569)
+ *
+ * `linkRole` คือหลักฐานที่พิสูจน์ **ครั้งเดียวตอนผูก** — ใช้เป็นเพดานให้คนอื่นที่เห็นระเบียน
+ * ได้ (มติเจ้าของ: คนที่เห็นระเบียนยังเปิดเอกสารที่ผูกไว้ได้ แม้คนผูกจะหลุดสิทธิ์/ลาออกไปแล้ว)
+ * แต่ใช้คืนสิทธิ์ให้ **ตัวคนผูกเอง** ไม่ได้ เพราะกติกาคือระบบไม่ให้สิทธิ์อะไรเพิ่มแก่คนผูก
+ * 🐞 ไม่แยกคนผูกออก: คนที่แก้เอกสารของดีลได้ ผูกเอกสารนั้นเข้างานส่วนตัวไว้ก่อน · พอย้ายทีม
+ *    แล้วถูกกดโล่ถอนสิทธิ์ เขาเปิดงานส่วนตัวหนึ่งครั้ง = service account สร้าง writer คืนให้
+ *    (ตัวถอนหาแถวนี้ไม่เจอด้วย เพราะคนผูกไม่เคยถูกจดลง `accessGranted`) ⇒ ถอนกี่รอบก็กลับมา
+ * ⇒ คนดูที่เป็นคนผูกของแถวนั้น **ข้ามทั้งแถว ก่อนถาม Drive** — ไม่ให้ ไม่ลด ไม่จด ไม่อ่าน
+ *    (สิทธิ์ที่เขามีอยู่จริงบนไฟล์เป็นเรื่องระหว่างเขากับเจ้าของเอกสาร ระบบไม่เกี่ยว)
+ * ⚠️ เทียบแบบไม่สนตัวพิมพ์ — ค่าที่จดเป็นตัวเล็กเสมอ แต่อีเมลของคนดูมาจาก auth ตามที่พิมพ์ไว้
+ * ⚠️ แถวที่มี `linkRole` แต่ไม่มี `linkedBy` = ไม่รู้ว่าใครผูก ⇒ เดินแบบคนดูทั่วไป (เหมือนเดิม) */
+const LINKED_BY_KEY = 'linkedBy';
+const isOwnLink = (attachment, email) => {
+  if (!isLinkedDoc(attachment)) return false;
+  const linker = attachment.metadata[LINKED_BY_KEY];
+  return typeof linker === 'string' && !!linker && linker.trim().toLowerCase() === String(email || '').trim().toLowerCase();
+};
+
+/** role ที่จะให้คนดูคนนี้จริง = ตัวที่ต่ำกว่าระหว่าง role ที่ระบบอยากให้ กับเพดานของแถว
+ *  export ไว้ให้เทสต์จับได้ตรง ๆ — ผิดแล้วไม่มีใครเห็นจนกว่าจะมีคนแก้เอกสารที่ไม่ควรแก้ได้ */
+export const roleForViewer = (attachment, role) => {
+  if (!isLinkedDoc(attachment)) return role;
+  return role === 'writer' && attachment.metadata[LINK_ROLE_KEY] === 'writer' ? 'writer' : 'reader';
+};
+
 /** ต้องยิง Drive ให้คนนี้ไหม — ยังไม่เคยให้ หรือเคยให้ด้วย role อื่น
  *  export ไว้ให้เทสต์จับได้ตรง ๆ: ตรรกะนี้คือตัวตัดสินว่า writer จะถูกลดเป็น reader
  *  ไหม ซึ่งเป็นของที่ผิดแล้วไม่มีใครเห็นจนกว่าจะมีคนแก้เอกสารที่ไม่ควรแก้ได้ */
@@ -55,28 +97,63 @@ export const needsGrant = (attachment, email, role) => (
 //
 // `role` = 'writer' เมื่อผู้ใช้แนบ/ลบเอกสารของระเบียนนี้ได้ · 'reader' เมื่อดูได้อย่างเดียว
 // คืนจำนวนไฟล์ที่เพิ่งให้สิทธิ์ไป (0 = ทุกใบเคยให้แล้ว หรือไม่มีเอกสารร่วมเลย)
-export async function ensureGoogleDocAccess(supabase, attachments, { email, role }) {
+//
+// 🔴 **แถวที่ผูกลิงก์มา (มี `linkRole`) เดินอีกแบบ** — เอกสารเป็นของคนอื่น ระบบจึง:
+//   0. **คนดูคือคนผูกของแถวนั้นเอง (`linkedBy`) = ข้ามทั้งแถว** ไม่ถาม Drive ไม่ให้ ไม่จด —
+//      รวมถึงตอนสิทธิ์ของเขาบนไฟล์ถูกถอนไปแล้ว (ดู `isOwnLink`) · ข้อ 1–4 เป็นของคนดูคนอื่น
+//   1. ให้ไม่เกินเพดานของแถว (`roleForViewer`)
+//   2. **ถาม Drive ก่อนว่าคนนี้มีสิทธิ์อยู่แล้วไหม** (`fileAccessRole`) — มีอยู่แล้วไม่ว่าระดับไหน
+//      = ไม่แตะเลย (ไม่ลด ไม่ยก) และ **ไม่จดชื่อ** ลง `accessGranted`
+//      🐞 ไม่ถามก่อน: `grantFileRole` เขียนทับ role เดิมได้ทั้งสองทาง ⇒ คนที่เจ้าของเอกสารให้
+//         writer ไว้เองถูกลดเป็น reader เพียงเพราะเปิดหน้านี้ · และชื่อที่ถูกจดจะถูก **ลบ
+//         permission ทิ้งทั้งอัน** ตอนแถวถูกลบ (revokeAttachmentGrants) ทั้งที่สิทธิ์นั้นระบบ
+//         ไม่ได้เป็นคนให้ = ผูกเอกสารเข้าระเบียนร่วมแล้วลบแถว เพื่อตัดสิทธิ์เพื่อนร่วมงานได้
+//   3. ไม่มีสิทธิ์เลยเท่านั้น จึงสร้าง permission แล้วจด — ชื่อใน `accessGranted` ของแถวแบบนี้
+//      จึงแปลว่า "ระบบเป็นคนสร้าง" จริง ๆ ⇒ รอบถัดไป role ของคนนั้นเดินตามสิทธิ์ในระบบได้
+//      ตามปกติ (ลดเป็น reader เมื่อหลุดขอบเขต) โดยยังไม่เกินเพดาน
+//   4. ถามไม่สำเร็จ = ข้ามคนนี้ไปเฉย ๆ (ไม่ให้ ไม่จด) — รายการไฟล์แนบต้องขึ้นตามปกติ
+//   ⚠️ ราคา: คนที่มีสิทธิ์อยู่แล้วบนเอกสารที่ผูกมา ถูกถาม Drive หนึ่งครั้งต่อแถวทุกครั้งที่เปิด
+//      รายการ (เพราะไม่มีการจด) — ยอมจ่ายเพื่อไม่ให้สมุดสิทธิ์มีชื่อที่ระบบไม่ได้ให้
+//
+// `deps.drive` มีไว้ให้เทสต์ยัดตัวปลอม — โค้ดจริงไม่เคยส่ง
+export async function ensureGoogleDocAccess(supabase, attachments, { email, role }, deps = {}) {
   if (!email) return 0;
   const pending = (attachments || []).filter((att) => (
-    isGoogleDoc(att) && att.metadata?.googleFileId && needsGrant(att, email, role)
+    isGoogleDoc(att) && att.metadata?.googleFileId && !isOwnLink(att, email)
+    && needsGrant(att, email, roleForViewer(att, role))
   ));
   if (!pending.length) return 0;
 
   // ⚠️ **ห้ามให้ขั้นนี้ทำให้รายการไฟล์แนบล้ม** — มันเป็นของแถม ไม่ใช่เนื้อหาหลักของ
   // คำขอ · Drive ล่ม/token หมดอายุ ต้องได้ลิสต์ครบเหมือนเดิม แค่กรอบพรีวิวว่าง
   // (ซึ่งมีคำอธิบายกำกับในกล่องอยู่แล้ว) ไม่ใช่ทั้งหน้าขึ้น "โหลดรายการไม่สำเร็จ"
-  let drive;
-  try {
-    drive = await import('@/lib/drive');
-  } catch (err) {
-    console.error('[googleDocAccess] โหลด lib/drive ไม่ได้', err?.message);
-    return 0;
+  let drive = deps.drive;
+  if (!drive) {
+    try {
+      drive = await import('@/lib/drive');
+    } catch (err) {
+      console.error('[googleDocAccess] โหลด lib/drive ไม่ได้', err?.message);
+      return 0;
+    }
   }
 
   let granted = 0;
   for (const att of pending) {
+    // role ที่ให้จริงของแถวนี้ — แถวที่ผูกมาโดนเพดาน `linkRole` · แถวอื่นเท่ากับ `role` เดิม
+    const giveRole = roleForViewer(att, role);
+    // แถวที่ผูกมา + ระบบยังไม่เคยสร้างสิทธิ์ให้คนนี้ ⇒ ถาม Drive ก่อน (ดูข้อ 2–4 ที่หัวฟังก์ชัน)
+    if (isLinkedDoc(att) && !grantedList(att).includes(email)) {
+      let current;
+      try {
+        current = await drive.fileAccessRole(att.metadata.googleFileId, email);
+      } catch (err) {
+        console.error('[googleDocAccess] อ่านสิทธิ์เดิมของคนดูไม่สำเร็จ — ข้ามการให้สิทธิ์รอบนี้', att.id, email, err?.message);
+        continue;
+      }
+      if (current) continue;
+    }
     try {
-      await drive.grantFileRole(att.metadata.googleFileId, email, role);
+      await drive.grantFileRole(att.metadata.googleFileId, email, giveRole);
     } catch (err) {
       // ⚠️ ดังแต่ไม่ล้ม — รายการไฟล์ต้องขึ้นเสมอแม้ Drive จะงอแง · ผลที่ผู้ใช้เห็นคือ
       // กรอบพรีวิวว่าง ซึ่งมีคำอธิบายกำกับอยู่แล้วในตัวกล่อง
@@ -89,7 +166,7 @@ export async function ensureGoogleDocAccess(supabase, attachments, { email, role
     // รายการ — รอบหน้าที่เจ้าของชื่อเปิดจะให้+จดซ้ำ (Drive รับซ้ำได้) แต่ถ้าเขาไม่ได้เปิด
     // อีกเลย ตัวถอนจะหาไฟล์นี้ไม่เจอ (อาการเดียวกับจดพลาดข้างล่าง)
     const next = grantedList(att).includes(email) ? grantedList(att) : [...grantedList(att), email];
-    const nextRoles = { ...grantedRoles(att), [email]: role };
+    const nextRoles = { ...grantedRoles(att), [email]: giveRole };
     /* 🐞 เดิมห่อ try/catch แต่ supabase ไม่ throw ⇒ จดพลาดแล้วเงียบสนิท · และผลไม่ใช่แค่
        "รอบหน้าให้สิทธิ์ซ้ำ": ตัวถอนทั้งสองทาง (ปุ่มโล่/ย้ายทีม · ลบแถว) หาไฟล์จาก
        `accessGranted` ทางเดียว ⇒ permission ที่ให้แล้วแต่ไม่ได้จด **ถอนไม่เจอ** · คนที่
@@ -101,7 +178,7 @@ export async function ensureGoogleDocAccess(supabase, attachments, { email, role
       .eq('id', att.id);
     if (recordError) {
       console.error('[googleDocAccess] ⚠️ ให้สิทธิ์บน Drive แล้วแต่จดไม่สำเร็จ — ตัวถอนจะหาไฟล์นี้ไม่เจอ',
-        `att=${att.id}`, `file=${att.metadata.googleFileId}`, `email=${email}`, `role=${role}`, recordError.message);
+        `att=${att.id}`, `file=${att.metadata.googleFileId}`, `email=${email}`, `role=${giveRole}`, recordError.message);
     }
   }
   return granted;
@@ -124,12 +201,33 @@ export async function ensureGoogleDocAccess(supabase, attachments, { email, role
 //
 // คืนจำนวนที่ถอนสำเร็จจริง (ไม่ใช่จำนวนอีเมลที่วนผ่าน)
 //
-// ⚠️ `deps.drive` มีไว้ให้เทสต์ยัดตัวปลอมเข้ามา — โค้ดจริงไม่เคยส่ง · เส้นนี้เป็น
-// "ของที่ถ้าพลาดแล้วไม่มีทางแก้" จึงต้องพิสูจน์ด้วยเทสต์ได้ ไม่ใช่ตรวจด้วยตาอย่างเดียว
+// 🔴 **ไม่ถอนอีเมลที่แถวอื่นของไฟล์เดียวกันยังจดอยู่** (08/10/2569) — เอกสารใบเดียวผูกจาก
+// หลายระเบียนได้ (ตั้งใจ: เอกสารกลางของโครงการผูกเข้าหลายดีล) และ permission บน Drive
+// มี **อันเดียวต่อคนต่อไฟล์** ไม่ใช่อันละแถว
+// 🐞 ไม่ดูแถวพี่น้อง: ลบแถวหนึ่ง = ลบ permission อันเดียวนั้นทิ้ง ทั้งที่อีกแถวยังจดว่า
+//    "ให้แล้ว" ⇒ `needsGrant` ของแถวที่เหลือไม่ให้ซ้ำ คนที่ยังมีสิทธิ์เห็นระเบียนนั้นได้กรอบ
+//    พรีวิวว่างไม่มีกำหนด (อาการเดียวกับที่คอมเมนต์ใน revokeGoogleDocAccess เตือนไว้)
+// ⚠️ **อ่านแถวพี่น้องไม่ได้ = ไม่ถอนใครเลย** — กติกาเดิมของโมดูล: ไม่แน่ใจห้ามทำให้สิทธิ์ที่
+//    ยังควรมีหายไป · แลกกับสิทธิ์ค้างที่ต้องตามเก็บด้วยมือ ⇒ log ดังพร้อม fileId/อีเมล
+// ⚠️ ปุ่มโล่ (`revokeGoogleDocAccess`) ไม่ผ่านด่านนี้โดยเจตนา — ทางนั้นถอนคนคนเดียวจาก
+//    **ทุกแถว** ที่จดชื่อเขา จึงไม่มีแถวพี่น้องที่ยังต้องการสิทธิ์นั้น
+//
+// ⚠️ `deps.drive` มีไว้ให้เทสต์ยัดตัวปลอมเข้ามา · `deps.supabase` ไม่ส่งก็ได้ — ไม่ส่ง =
+// ฟังก์ชันหา admin client เอง · ผู้เรียกที่ส่งมาเอง **ต้องส่ง client ระดับ service role**
+// เท่านั้น: ตัวอ่านแถวพี่น้องต้องเห็นแถว `attachments` ของไฟล์นี้ **ครบทุกแถว** — client ที่
+// เห็นน้อยกว่านั้นจะถอนอีเมลที่ระเบียนอื่นยังต้องใช้ · เส้นนี้เป็น "ของที่ถ้าพลาดแล้วไม่มี
+// ทางแก้" จึงต้องพิสูจน์ด้วยเทสต์ได้ ไม่ใช่ตรวจด้วยตาอย่างเดียว
 export async function revokeAttachmentGrants(att, deps = {}) {
   const fileId = att?.metadata?.googleFileId;
   const emails = grantedList(att);
   if (!fileId || !emails.length) return 0;
+
+  const heldElsewhere = await siblingGrantees(att, fileId, deps.supabase);
+  if (!heldElsewhere) {
+    console.error('[googleDocAccess] ⚠️ ตรวจไม่ได้ว่าแถวอื่นยังใช้สิทธิ์ของไฟล์นี้อยู่ไหม — ไม่ถอนสิทธิ์ (ต้องตามถอนด้วยมือ)',
+      `att=${att?.id}`, `file=${fileId}`, `emails=${emails.join(',')}`);
+    return 0;
+  }
 
   let drive = deps.drive;
   if (!drive) {
@@ -143,6 +241,7 @@ export async function revokeAttachmentGrants(att, deps = {}) {
 
   let revoked = 0;
   for (const email of emails) {
+    if (heldElsewhere.has(email)) continue; // แถวอื่นของไฟล์เดียวกันยังจดชื่อนี้ — สิทธิ์ยังต้องอยู่
     try {
       if (await drive.revokeFileRole(fileId, email)) revoked += 1;
     } catch (err) {
@@ -153,6 +252,40 @@ export async function revokeAttachmentGrants(att, deps = {}) {
     }
   }
   return revoked;
+}
+
+/* รูปร่างของ id ไฟล์บน Drive — ค่าที่หลุดรูปนี้ห้ามถึงตัวกรองของ PostgREST */
+const DRIVE_ID_SHAPE = /^[A-Za-z0-9_-]+$/;
+/* เพดานของการอ่านแถวพี่น้อง — เอกสารใบเดียวผูกจากไม่กี่ระเบียน (วัดจริง 08/10/2569: ไม่มี
+   ไฟล์ไหนผูกเกินหนึ่งแถว) · ได้เต็มเพดาน = อาจถูกตัด ⇒ ถือว่า "ตรวจไม่ได้" ไม่ใช่ "ครบแล้ว" */
+const SIBLING_ROW_CAP = 200;
+
+// อีเมลที่ **แถวอื่น** ของไฟล์ Google เดียวกันยังจดว่าให้สิทธิ์ไว้ — คืน Set · คืน null = ตรวจไม่ได้
+// ⚠️ supabase-js ไม่ throw ⇒ อ่าน `{ error }` เอง · อะไรที่ไม่แน่ใจคืน null ทั้งหมด (ผู้เรียกจะไม่ถอน)
+// ⚠️ ไม่กรอง entity เดียวกันออก: ลบแถวเดียว (DELETE /api/attachments/[id]) แถวนั้นหายจากฐานไปก่อน
+//    แล้ว แถวที่เหลือในระเบียนเดียวกันคือของจริงที่ยังต้องการสิทธิ์
+async function siblingGrantees(att, fileId, client) {
+  if (!DRIVE_ID_SHAPE.test(String(fileId))) return null;
+  try {
+    let supabase = client;
+    if (!supabase) {
+      const { getSupabaseAdmin } = await import('@/lib/supabaseAdmin');
+      supabase = getSupabaseAdmin();
+    }
+    const { data, error } = await supabase.from('attachments')
+      .select('id, metadata')
+      .contains('metadata', { googleFileId: fileId })
+      .limit(SIBLING_ROW_CAP);
+    if (error || !Array.isArray(data) || data.length >= SIBLING_ROW_CAP) return null;
+    const held = new Set();
+    for (const row of data) {
+      if (!row || row.id === att?.id || row.metadata?.googleFileId !== fileId) continue;
+      for (const email of grantedList(row)) held.add(email);
+    }
+    return held;
+  } catch {
+    return null;
+  }
 }
 
 // ถอนสิทธิ์เอกสารร่วมทั้งหมดของอีเมลหนึ่ง — ใช้ตอนคนย้ายทีมหรือปิดบัญชี

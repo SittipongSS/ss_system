@@ -926,9 +926,9 @@ export default function AttachmentsPanel({
           ที่ audit ยอมรับ (ดูหัวข้อ nativeFeedbackDebt ใน scripts/audit-ui.mjs) */}
       <ReasonDialog
         open={!!docForm}
-        title={docForm?.mode === "link" ? "ผูกเอกสาร Google ที่มีอยู่" : `สร้าง ${docForm?.type === "gsheet" ? "Sheet" : "Doc"} ใหม่`}
+        title={docForm?.mode === "link" ? "ผูก Google Doc/Sheet ที่คุณเปิดได้" : `สร้าง ${docForm?.type === "gsheet" ? "Sheet" : "Doc"} ใหม่`}
         description={docForm?.mode === "link"
-          ? "เอกสารยังอยู่ที่เดิมบน Drive — ระบบเก็บแค่ลิงก์กับชื่อไว้แสดงในหน้านี้"
+          ? "ผูกได้เฉพาะ Google Doc หรือ Google Sheet ที่คุณเปิดได้อยู่แล้ว — เอกสารยังอยู่ที่เดิมบน Drive และระบบไม่ได้เพิ่มสิทธิ์ให้คุณ"
           : "ไฟล์เปล่าจะถูกสร้างในโฟลเดอร์ของระเบียนนี้บน Shared Drive ของบริษัท"}
         label={docForm?.mode === "link" ? "ลิงก์เอกสาร" : "ชื่อเอกสาร"}
         value={docForm?.value || ""}
@@ -937,7 +937,7 @@ export default function AttachmentsPanel({
         onConfirm={submitDocForm}
         confirmLabel={docForm?.mode === "link" ? "ผูกเอกสาร" : "สร้าง"}
         placeholder={docForm?.mode === "link"
-          ? "https://docs.google.com/document/d/..."
+          ? "ลิงก์ Doc หรือ Sheet เช่น https://docs.google.com/document/d/..."
           : "เช่น ร่างสเปกกลิ่น รอบ 2"}
         rows={1}
         tone="info"
