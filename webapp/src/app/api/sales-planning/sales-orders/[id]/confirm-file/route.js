@@ -2,7 +2,7 @@
 //
 // ⭐ ฝาแฝดของ quotations/[id]/file (หลักฐานปิด Won ของใบเก่า) และ
 // sales-orders/[id]/payment-file (หลักฐานรายงวด) — ด่านเดียวกัน: view-scope ของดีล
-// เจ้าของใบ แล้ว stream ไบต์จาก private bucket / Drive · legacy public URL redirect
+// เจ้าของใบ แล้ว stream ไบต์จาก private bucket / Drive · ลิงก์ล้วน redirect ได้เฉพาะไฟล์ของ Google
 //
 // ⚠️ path ต้องอยู่ใต้โฟลเดอร์ของ **ใบเสนอราคาต้นทาง** เพราะไฟล์ถูกอัปตั้งแต่ตอนที่ใบ
 // สั่งขายยังไม่เกิด (เลขที่ใบใช้ซ้ำไม่ได้ ⇒ ฟอร์มสร้างใบยิงคำขอเดียวตอนกดสร้าง)
@@ -13,6 +13,8 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewSalesPlanning } from '@/lib/salesPlanning';
 import { DEFAULT_EVIDENCE_BUCKET } from '@/lib/sales/orderConfirmationDocs';
+import { attachmentFileHeaders } from '@/lib/master/attachmentTypes';
+import { attachmentUrlError } from '@/lib/master/attachmentStorage';
 import { isQuotationEvidencePath } from '@/lib/upload/privateEvidence';
 
 export const runtime = 'nodejs';
@@ -52,27 +54,28 @@ export async function GET(request, { params }) {
       console.error('[sales-orders/confirm-file] private storage download failed:', error);
       return Response.json({ error: 'ดึงไฟล์เอกสารยืนยันไม่สำเร็จ' }, { status: 502 });
     }
+    /* ⚠️ header จากตัวกลาง ไม่ใช่ `att.mimeType` — ค่านั้น client ประกาศมาเองตอนบันทึก ⇒ `text/html` + inline =
+       หน้าเว็บที่รันสคริปต์บนโดเมนของระบบ · ชนิดคิดจากนามสกุล + nosniff + ชนิดที่ไม่ปลอดภัยบังคับดาวน์โหลด
+       · คง no-store ของหลักฐานในถังส่วนตัวไว้ (ตัวกลางตั้ง max-age=60) */
     return new Response(data, {
-      headers: {
-        'Content-Type': att.mimeType || data.type || 'application/octet-stream',
-        'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(att.fileName || 'file')}`,
-        'Cache-Control': 'private, no-store',
-      },
+      headers: { ...attachmentFileHeaders(att), 'Cache-Control': 'private, no-store' },
     });
   }
 
-  if (!att.driveFileId) return Response.redirect(att.fileUrl, 307);
+  /* ไม่มี driveFileId = ลิงก์เอกสาร Google เท่านั้น · **ตรวจปลายทางก่อน redirect ทุกครั้ง** — `fileUrl` เป็นค่าที่
+     client ส่งมาตอนบันทึก ไม่ตรวจ = open redirect จากโดเมนของแอปเราเอง (ลิงก์หลอกที่หน้าตาเป็นของระบบ)
+     · ตัวตรวจเดียวกับ master/attachments/[id]/file · ปลายทางอื่น/ค่ามั่ว = ตอบเหมือนไม่มีไฟล์
+     (วัดจริง 08/10/2569: ไม่มี ref แบบ URL ล้วนในช่องนี้เลย ⇒ ไม่มีไฟล์จริงใบไหนเปิดไม่ได้เพราะด่านนี้) */
+  if (!att.driveFileId) {
+    if (attachmentUrlError(att.fileUrl)) return Response.json({ error: 'ไม่พบไฟล์แนบ' }, { status: 404 });
+    return Response.redirect(att.fileUrl, 307);
+  }
 
   try {
     const { getFileStream } = await import('@/lib/drive');
     const stream = await getFileStream(att.driveFileId);
-    return new Response(Readable.toWeb(stream), {
-      headers: {
-        'Content-Type': att.mimeType || 'application/octet-stream',
-        'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(att.fileName || 'file')}`,
-        'Cache-Control': 'private, max-age=60',
-      },
-    });
+    // header ชุดเดียวกับไฟล์แนบ (ชนิดจากนามสกุล · nosniff · private, max-age=60 เท่าเดิม) — ไม่เชื่อ mimeType ที่เก็บในแถว
+    return new Response(Readable.toWeb(stream), { headers: attachmentFileHeaders(att) });
   } catch (err) {
     console.error('[sales-orders/confirm-file] drive stream failed:', err);
     return Response.json({ error: 'ดึงไฟล์จาก Google Drive ไม่สำเร็จ' }, { status: 502 });

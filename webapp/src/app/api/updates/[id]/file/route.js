@@ -9,6 +9,7 @@ import { getCurrentUser } from '@/lib/authUser';
 import { canViewUpdates, loadUpdateParent } from '@/lib/master/updateAccess';
 import { findUpdate } from '@/lib/master/updates';
 import { attachmentFileHeaders } from '@/lib/master/attachmentTypes';
+import { attachmentUrlError } from '@/lib/master/attachmentStorage';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -33,8 +34,14 @@ export async function GET(request, { params }) {
   const att = list[Number(new URL(request.url).searchParams.get('i')) || 0];
   if (!att?.fileUrl) return Response.json({ error: 'ไม่พบไฟล์แนบ' }, { status: 404 });
 
-  // ไฟล์บน Supabase (public URL, ไม่มี driveFileId) → redirect ตรง
-  if (!att.driveFileId) return Response.redirect(att.fileUrl, 307);
+  /* ไม่มี driveFileId = ลิงก์เอกสาร Google เท่านั้น · **ตรวจปลายทางก่อน redirect ทุกครั้ง** — `fileUrl` เป็นค่าที่
+     client ส่งมาตอนบันทึก ไม่ตรวจ = open redirect จากโดเมนของแอปเราเอง (ลิงก์หลอกที่หน้าตาเป็นของระบบ)
+     · ตัวตรวจเดียวกับ master/attachments/[id]/file · ปลายทางอื่น/ค่ามั่ว = ตอบเหมือนไม่มีไฟล์
+     (วัดจริง 08/10/2569: ไม่มี ref แบบ URL ล้วนในช่องนี้เลย ⇒ ไม่มีไฟล์จริงใบไหนเปิดไม่ได้เพราะด่านนี้) */
+  if (!att.driveFileId) {
+    if (attachmentUrlError(att.fileUrl)) return Response.json({ error: 'ไม่พบไฟล์แนบ' }, { status: 404 });
+    return Response.redirect(att.fileUrl, 307);
+  }
 
   try {
     const { getFileStream } = await import('@/lib/drive');
