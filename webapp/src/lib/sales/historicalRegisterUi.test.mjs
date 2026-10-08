@@ -1023,17 +1023,20 @@ test('⭐ 23/09 → 26/09: ขั้น ② ไม่เหลือ "แพ็�
   assert.doesNotMatch(said, /แพ็คต่อรอบ/, 'มติ 29/09: ป้ายเดียวกับใบใหม่ — "รอบละกี่แพ็ค"');
 });
 
-/* ⭐ PR-D (mig 0394 · r2 S12 · IMPL_PLAN_D DD1–DD2): แถบผูกของบรรทัด = ไซต์ · โซน * | จำนวนรอบบริการ * (บังคับ — เลิก "เว้นว่างได้")
-   | รอบละกี่แพ็ค * (ชิป "ประเมินไว้ n แพ็ค" [ใช้]) | รวมทั้งรายการ n แพ็ค (อ่านอย่างเดียว เมื่อสองช่องถูก)
-   — คำและลำดับตามมติเจ้าของ 29/09 ("ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง")
+/* ⭐ PR-D (mig 0394 · r2 S12 · IMPL_PLAN_D DD1–DD2): แถบผูกของบรรทัด = ไซต์ · โซน * | รอบละกี่แพ็ค * (ชิป "ประเมินไว้ n แพ็ค" [ใช้])
+   | จำนวนรอบบริการ * (บังคับ — เลิก "เว้นว่างได้" · หน่วย "เดือน") | รวมทั้งรายการ n แพ็ค (อ่านอย่างเดียว เมื่อสองช่องถูก)
+   — คำตามมติเจ้าของ 29/09 ("ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง")
+   — มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ: หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ (ลำดับของเดิม: จำนวนรอบบริการก่อนรอบละกี่แพ็ค)
    🔴 แดงหลังกด "ถัดไป" เท่านั้น — ข้อความใต้ช่องมาจาก `bad` (issues ที่เปิดเผยแล้ว) ช่องเดียวกับช่องอื่นของบรรทัด */
-test('PR-D ⭐ ขั้น ②: "จำนวนรอบบริการ *" บังคับ → "รอบละกี่แพ็ค *" + ชิปผลประเมิน → "รวมทั้งรายการ n แพ็ค" — แดงหลังกด ถัดไป', () => {
+test('PR-D ⭐ ขั้น ②: "รอบละกี่แพ็ค *" + ชิปผลประเมิน → "จำนวนรอบบริการ *" บังคับ (เดือน) → "รวมทั้งรายการ n แพ็ค" — แดงหลังกด ถัดไป', () => {
   const src = code(STEP_ZONES);
   assert.match(src, /import HistoricalLineServiceFields, \{ HistoricalLineServiceTotal \} from "\.\/HistoricalLineServiceFields";/);
   const bind = slice(src, '<div className={styles.lineBind}>', '{warn ? (');
   let at = -1;
-  /* ⭐ มติเจ้าของ 29/09 (ใบใหม่และใบย้อนหลัง): ไซต์ · โซน → จำนวนรอบบริการ → แต่ละครั้งกี่แพ็ค → รวมทั้งรายการ n แพ็ค */
-  for (const piece of ['className={styles.lineBindZone}', '<QuoteLineServiceRounds', '<HistoricalLineServiceFields', '<HistoricalLineServiceTotal view={service} />']) {
+  /* มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ: หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ
+     ⇒ ไซต์ · โซน → รอบละกี่แพ็ค → จำนวนรอบบริการ → รวมทั้งรายการ n แพ็ค · ลำดับใน source = ลำดับ DOM = ลำดับ Tab = ลำดับที่ตาเห็น
+     (แถบผูกเป็น flex-wrap ไม่มี `order` ใน CSS — ยึดไว้ข้างล่าง) */
+  for (const piece of ['className={styles.lineBindZone}', '<HistoricalLineServiceFields', '<QuoteLineServiceRounds', '<HistoricalLineServiceTotal view={service} />']) {
     const next = bind.indexOf(piece);
     assert.ok(next > at, `ลำดับในแถบผูกผิดที่ ${piece}`);
     at = next;
@@ -1051,7 +1054,10 @@ test('PR-D ⭐ ขั้น ②: "จำนวนรอบบริการ *" 
   assert.match(rounds, /invalid=\{!!bad\.rounds\}/);
   assert.match(rounds, /note=\{HISTORICAL_SERVICE_TEXT\.roundsNote\}/);
   assert.doesNotMatch(src, /เว้นว่างได้ · TS ตั้งวันนัดเอง/, 'รอบบริการบังคับแล้ว (r2 S12)');
-  assert.equal(intakeForm.HISTORICAL_SERVICE_TEXT.roundsNote, 'บังคับ · จำนวนครั้งที่ต้องเข้าโซนนี้ตลอดสัญญา');
+  /* มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ: หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ (คำใต้ช่องของเดิม 'บังคับ · จำนวนครั้งที่ต้องเข้าโซนนี้ตลอดสัญญา') */
+  assert.equal(intakeForm.HISTORICAL_SERVICE_TEXT.roundsNote, 'บังคับ · จำนวนรอบที่ TS เข้าโซนนี้ตลอดสัญญา — 1 เดือน = 1 รอบ');
+  const wizardCss = read('components/salesPlanning/historicalWizard/HistoricalOrderWizard.module.css');
+  assert.doesNotMatch(slice(wizardCss, '.lineBind {', '.zoneOption {'), /\border:\s*-?\d/, 'ห้ามสลับลำดับด้วย CSS order — Tab ต้องเดินตามที่ตาเห็น');
 
   /* ช่องใหม่: ตัวเลข 1–9999 · หน่วย · ชิป + ปุ่ม "ใช้" (เติมค่า ไม่ใช่ด่าน — สีกลาง) · ข้อความผิดใต้ช่อง */
   const line = code(LINE_SERVICE);
@@ -1456,7 +1462,9 @@ test('⭐ 25/09 → PR-D: หน้าต่างเพิ่มหลายโ
 
 /* กฎบ้าน: บอกผลลัพธ์ก่อนคลิก · ⭐ PR-D (กฎบ้าน 3 — แดงหลังกด): ปุ่มยืนยันกดได้เสมอ ข้อความติดด่านขึ้น **หลังกด** (ตัวกลางถือ
    `pressed`) — ⚠️ ถอยจาก 25/09 ที่ปุ่มปิด + เหตุขึ้นทันที **โดยตั้งใจ** (IMPL_PLAN_D §0.2 ข้อ 3) · ลำดับเหตุ (M1): ช่องของตัวห่อ
-   (แพ็คเกจ → จำนวน → รอบ) ก่อน แล้วค่อยของตัวกลาง (ยังไม่เลือกโซน / แพ็คต่อรอบผิด) · ท้ายหน้าต่างไม่เคยพิมพ์ "null" */
+   (แพ็คเกจ → จำนวน → รอบ) ก่อน แล้วค่อยของตัวกลาง (ยังไม่เลือกโซน / แพ็คต่อรอบผิด) · ท้ายหน้าต่างไม่เคยพิมพ์ "null"
+   มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ: หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ
+   ⇒ ประโยคผลก่อนกดพูดแพ็คก่อน แล้วค่อย "จำนวนรอบบริการ n เดือน" · ⚠️ ลำดับเหตุ (M1) ไม่เปลี่ยนแม้ช่องจำนวนรอบบริการย้ายลงไปใต้แถวแพ็ค */
 test('⭐ 25/09 → PR-D: ปุ่มยืนยันของหน้าต่างเพิ่มหลายโซนบอกผลก่อนกด · ติดด่าน = เหตุท้ายหน้าต่างหลังกด (ช่องของตัวห่อก่อน)', () => {
   const bulk = code(BULK);
   assert.match(bulk, /const extraError = historicalBulkFieldsIssue\(\{ productId, qty, rounds \}\);/);
@@ -1485,7 +1493,7 @@ test('⭐ 25/09 → PR-D: ปุ่มยืนยันของหน้าต
   assert.equal(intakeForm.historicalBulkQtyIssue('1.5'), intakeForm.HISTORICAL_LINE_MESSAGES.qty);
   assert.equal(intakeForm.historicalBulkQtyIssue(''), null);
   assert.equal(intakeForm.historicalBulkConsequence({ count: 3, qty: '12', unitPrice: 3500, mode: 'equal', packs: 2, rounds: '12' }),
-    'จะเพิ่ม 3 บรรทัด · บรรทัดละ 12 × ฿3,500.00 = ฿42,000.00 · รวม ฿126,000.00 · จำนวนรอบบริการ 12 รอบ · แต่ละครั้งเท่ากันทุกบรรทัด ครั้งละ 2 แพ็ค');
+    'จะเพิ่ม 3 บรรทัด · บรรทัดละ 12 × ฿3,500.00 = ฿42,000.00 · รวม ฿126,000.00 · แต่ละครั้งเท่ากันทุกบรรทัด ครั้งละ 2 แพ็ค · จำนวนรอบบริการ 12 เดือน');
   assert.match(intakeForm.historicalBulkConsequence({ count: 3, qty: '', unitPrice: 3500, mode: 'assessed', assessed: 2, blank: 1, rounds: '' }),
     /จำนวนใส่ทีละบรรทัดในตาราง · รอบละกี่แพ็ค: ตามผลประเมิน 2 โซน · ยังว่าง 1 โซน$/);
 });
@@ -1504,7 +1512,37 @@ test('PR-D 🔴 หน้าต่างเพิ่มหลายโซน: �
   assert.match(bulk, /invalid=\{pressed && Boolean\(roundsIssue\)\}/);
   assert.match(bulk, /renderFields=\{\(\{ pressed \}\) => \(/, 'ตัวห่อรู้ว่ากดแล้วจากตัวกลาง (ไม่ถือ pressed ของตัวเองซ้อน)');
   assert.doesNotMatch(bulk, /useState\(false\)|setPressed/, 'pressed มีเจ้าของคนเดียว (ตัวกลาง)');
-  /* ช่องรอบ: จำนวนเต็ม ≥ 1 · หน่วย "รอบ" · ปิด autoComplete (กฎบ้าน) · ช่องจำนวนก็ปิด */
+  /* มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ: หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ
+     ⇒ ช่อง "จำนวนรอบบริการ (ทุกบรรทัด) *" ย้ายจาก `renderFields` (เหนือแถวรอบละกี่แพ็คของตัวกลาง) ไป `renderAfterPacks` (ใต้แถวนั้น)
+       · `pressed` ยังมาจากตัวกลางตัวเดียว · แพ็คเกจ / จำนวน / ราคา และบรรทัด M6 (`assessNote`) ยังอยู่ใน `renderFields` เหนือแถวแพ็ค
+       · หน่วยท้ายช่อง = `T.roundsUnit` (← `SERVICE_ROUNDS_UNIT` "เดือน") ไม่พิมพ์เองในตัวห่อ */
+  assert.match(bulk, /renderAfterPacks=\{\(\{ pressed \}\) => \(/, 'ช่องจำนวนรอบบริการรู้ว่ากดแล้วจากตัวกลางเหมือนเดิม');
+  const above = slice(bulk, 'renderFields={({ pressed }) => (', 'renderAfterPacks={');
+  const below = slice(bulk, 'renderAfterPacks={({ pressed }) => (', 'consequence={');
+  for (const piece of ['{T.packageLabel}', '{T.qtyLabel}', '{T.priceLabel}', '{assessNote ? <p className={styles.assessNote}>{assessNote}</p> : null}']) {
+    assert.ok(above.includes(piece), `${piece} ยังอยู่เหนือแถวรอบละกี่แพ็ค`);
+    assert.ok(!below.includes(piece), `${piece} ไม่ย้ายลงไปใต้แถวรอบละกี่แพ็ค`);
+  }
+  assert.ok(!above.includes('T.roundsLabel') && !above.includes('roundsIssue'), 'ช่องจำนวนรอบบริการไม่อยู่เหนือแถวรอบละกี่แพ็คแล้ว');
+  for (const piece of ['{T.roundsLabel} <b className={styles.req}>*</b>', 'value={rounds}', 'invalid={pressed && Boolean(roundsIssue)}',
+    'onChange={(event) => setRounds(event.target.value)}', '<span className={styles.packsUnit}>{T.roundsUnit}</span>',
+    '{(pressed && roundsIssue) || HISTORICAL_SERVICE_TEXT.roundsNote}']) {
+    assert.ok(below.includes(piece), `ช่องจำนวนรอบบริการใต้แถวแพ็คต้องมี ${piece}`);
+  }
+  assert.doesNotMatch(bulk, />รอบ<|>เดือน</, 'ตัวห่อไม่พิมพ์หน่วยเอง');
+  assert.equal(intakeForm.HISTORICAL_SERVICE_TEXT.bulk.roundsUnit, 'เดือน');
+  /* ตัวกลาง: ช่องเสริมใหม่อยู่ใต้แถวแพ็ค เหนือแถบค้น · ไม่ส่ง = ไม่วาดอะไร (ตารางงานบริการของใบ pipeline ไม่ส่ง ⇒ หน้าตาเดิมทุกตัวอักษร) */
+  const shared = code(SHARED_BULK);
+  assert.match(shared, /renderFields = null, renderAfterPacks = null, extraError = null,/);
+  const packsAt = shared.indexOf('<div className={styles.packs}>');
+  const slotAt = shared.indexOf('{renderAfterPacks ? renderAfterPacks({ pressed, plan }) : null}');
+  const fieldsAt = shared.indexOf('{renderFields ? renderFields({ pressed, plan }) : null}');
+  const toolsAt = shared.indexOf('<div className={styles.tools}>');
+  assert.ok(fieldsAt > 0 && packsAt > fieldsAt && slotAt > packsAt && toolsAt > slotAt, 'ลำดับในตัวกลาง: ช่องผู้เรียก → แถวแพ็ค → ช่องเสริมใต้แพ็ค → ค้น/ติ๊ก');
+  assert.equal((shared.match(/renderAfterPacks\(/g) || []).length, 1);
+  assert.doesNotMatch(code('components/salesPlanning/serviceSetup/SalesOrderServiceLines.js'), /renderAfterPacks|renderFields/,
+    'ตารางงานบริการของใบสั่งขายไม่ใช้ช่องเสริมทั้งสอง (หน้าต่างของใบ pipeline ไม่เปลี่ยน)');
+  /* ช่องรอบ: จำนวนเต็ม ≥ 1 · หน่วยจากแคตตาล็อก · ปิด autoComplete (กฎบ้าน) · ช่องจำนวนก็ปิด */
   const roundsField = slice(bulk, '<Input', '/>');
   assert.match(roundsField, /type="number" min="1" step="1" inputMode="numeric" placeholder="—" autoComplete="off"/);
   assert.match(bulk, /<MoneyInput min="0" autoComplete="off"/);

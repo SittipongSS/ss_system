@@ -466,19 +466,13 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
       else { unitPrice = toMoney(product[QUOTE_PRICE_FIELD]); priceOk = true; }
     }
     if (!priceOk) linesMoneyOk = false;
-    /* ── งานบริการของบรรทัด (PR-D · mig 0394): รอบบริการ + แพ็คต่อรอบ — **ไม่แตะเงิน** (linesMoneyOk ไม่ขยับ) ──
-       ลำดับข้อ = ลำดับช่องบนจอ (โซน · จำนวนรอบบริการ · รอบละกี่แพ็ค — มติ 29/09) ⇒ ข้อแรกที่ปุ่มพาไปคือช่องแรกที่ตาเห็น
+    /* ── งานบริการของบรรทัด (PR-D · mig 0394): แพ็คต่อรอบ + จำนวนรอบบริการ — **ไม่แตะเงิน** (linesMoneyOk ไม่ขยับ) ──
+       ลำดับข้อ = ลำดับช่องบนจอ (โซน · รอบละกี่แพ็ค · จำนวนรอบบริการ — มติเจ้าของ 08/10 รอบสอง: แพ็คก่อนจำนวนรอบบริการ เหมือนตาราง
+       งานบริการของใบใหม่ #1878) ⇒ ข้อแรกที่ปุ่มพาไปคือช่องแรกที่ตาเห็น · ⚠️ สลับแค่ลำดับของข้อ — กติกา · ข้อความ · ชื่อช่อง · ค่าที่ส่งเข้า RPC เท่าเดิม
        🪤 ไม่มีคีย์ `packsPerRound` = แท็บที่เปิดค้างจากก่อน deploy (จอของเขาไม่มีช่องนี้) ⇒ บอกให้โหลดหน้าใหม่ (DD13)
           ไม่ใช่ "ยังไม่ใส่" ที่ส่งเขาไปหาช่องที่ไม่มี · แถวรุ่น 0374 (`staleForm` ข้างบน) ได้ข้อความเดียวของมันพอ
        ⚠️ ฐานตรวจซ้ำ: 0394/P4 (ตัวตรวจบรรทัด — รอบว่าง = historical_so_line_rounds_required) · P5 (ตัวเขียน — ทุกบรรทัดต้องพก
           แพ็คต่อรอบเป็นตัวเลข 1–9999 ⇒ ค่าที่ส่งเข้า RPC เป็น **ตัวเลข** เสมอ ไม่ใช่สตริงของช่องกรอก) */
-    /* ⭐ รอบบริการบังคับ (r2 S12) — ของเดิม "เว้นว่างได้ · TS ตั้งวันนัดเอง" ถูกถอด: ตัวกลางเปิดรอบขายของ 0392 ต้องรู้จำนวนรอบ */
-    let serviceRounds = null;
-    if (!text(row.rounds)) push(HISTORICAL_LINE_MESSAGES.roundsMissing, 'rounds');
-    else {
-      serviceRounds = historicalRoundsValue(row.rounds);
-      if (serviceRounds === null) push(HISTORICAL_LINE_MESSAGES.rounds, 'rounds');
-    }
     let packsPerRound = null;
     if (!staleForm) {
       if (!has(row, 'packsPerRound')) push(HISTORICAL_LINE_MESSAGES.packsStaleForm, 'packsPerRound');
@@ -487,6 +481,13 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
         packsPerRound = historicalPacksValue(row.packsPerRound);
         if (packsPerRound === null) push(HISTORICAL_LINE_MESSAGES.packs, 'packsPerRound');
       }
+    }
+    /* ⭐ รอบบริการบังคับ (r2 S12) — ของเดิม "เว้นว่างได้ · TS ตั้งวันนัดเอง" ถูกถอด: ตัวกลางเปิดรอบขายของ 0392 ต้องรู้จำนวนรอบ */
+    let serviceRounds = null;
+    if (!text(row.rounds)) push(HISTORICAL_LINE_MESSAGES.roundsMissing, 'rounds');
+    else {
+      serviceRounds = historicalRoundsValue(row.rounds);
+      if (serviceRounds === null) push(HISTORICAL_LINE_MESSAGES.rounds, 'rounds');
     }
 
     // รอบขายที่ยังมีผลของใบอื่นบนโซนเดียวกัน — เตือน ไม่บล็อก (ต่อสัญญาช่วงคาบเกี่ยวเป็นเรื่องปกติ · AE Sup ตัดสิน)

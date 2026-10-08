@@ -76,15 +76,17 @@ test('⭐ แถวตรวจ: ข้อเดียวกับหน้า�
   const rows = historicalReviewChecklist(plan(), {
     contractFiles: { count: 1, names: ['PO-7781.pdf'], pending: [] }, evidenceFileCount: 2, todayIso: '2026-09-25',
   });
-  /* ⭐ PR-D: แถว "จำนวนรอบบริการ · แต่ละครั้งกี่แพ็ค" (มติ 29/09 — รอบก่อนแพ็คเหมือนใบใหม่) ต่อจากโซน — ข้อเดียวกับหน้าต่างอนุมัติ (historicalPacksRoundsText) */
+  /* ⭐ PR-D: แถว "รอบละกี่แพ็ค · จำนวนรอบบริการ" ต่อจากโซน — ข้อเดียวกับหน้าต่างอนุมัติ (historicalPacksRoundsText)
+     มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ: หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ
+     (ของเดิมยึดรอบก่อนแพ็คตามมติ 29/09: 'จำนวนรอบบริการ · รอบละกี่แพ็ค' · '12 รอบ/โซน · รวม 3 แพ็ค/รอบ' · 'Lobby 12 รอบ × 2 แพ็ค/รอบ') */
   assert.deepEqual(rows.map((r) => r.key), ['contract', 'signedFile', 'refs', 'zones', 'packs', 'opening', 'remaining', 'verdict']);
   assert.equal(rowOf(rows, 'contract').value, 'ใบสั่งซื้อของลูกค้า (PO) PO-7781 · 01/01/2026–31/12/2026 · 12 เดือน');
   assert.equal(rowOf(rows, 'signedFile').value, 'PO-7781.pdf');
   assert.equal(rowOf(rows, 'refs').value, 'QT-OLD-1 · IV-2601-0412');
   assert.equal(rowOf(rows, 'zones').value, '2 โซน — ST-01 อาคาร A 2 โซน');
   assert.deepEqual(rowOf(rows, 'packs'), {
-    key: 'packs', label: 'จำนวนรอบบริการ · รอบละกี่แพ็ค', value: '12 รอบ/โซน · รวม 3 แพ็ค/รอบ',
-    sub: 'Lobby 12 รอบ × 2 แพ็ค/รอบ · ทางเดิน 12 รอบ × 1 แพ็ค/รอบ', tone: null, step: 'zones', field: 'zones',
+    key: 'packs', label: 'รอบละกี่แพ็ค · จำนวนรอบบริการ', value: 'รวม 3 แพ็ค/รอบ · 12 เดือน/โซน',
+    sub: 'Lobby 2 แพ็ค/รอบ × 12 เดือน · ทางเดิน 1 แพ็ค/รอบ × 12 เดือน', tone: null, step: 'zones', field: 'zones',
   });
   assert.equal(rowOf(rows, 'remaining').sub, null, 'ไม่มีวันวางบิลสักงวด = ไม่พูด');
   assert.match(rowOf(rows, 'opening').value, /หลักฐาน 2 ไฟล์/);
@@ -128,21 +130,24 @@ test('⭐ ใบ ฿0: แถวยอดใบแทนงวด · หมา�
   assert.deepEqual([rowOf(rows, 'zero').step, rowOf(rows, 'zero').field], ['zones', 'zones']);
 });
 
-/* ⭐ PR-D (มติ 26/09 A3/O9 · IMPL_PLAN_D §3.4): แพ็คต่อรอบ · รอบ — รอบต่างกันเป็นช่วง · เกิน 5 โซนชี้ตารางด้านล่าง
+/* ⭐ PR-D (มติ 26/09 A3/O9 · IMPL_PLAN_D §3.4): แพ็คต่อรอบ · จำนวนรอบบริการ — เดือนต่างกันเป็นช่วง · เกิน 5 โซนชี้ตารางด้านล่าง
+   มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ: หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ (ทุกข้อคาดหวังข้างล่างย้ายจาก "n รอบ" + รอบก่อนแพ็ค)
    · ยังไม่ครบ = เหลือง ชี้ขั้น ② (ช่อง 'zones' มีจุดยึดบนขั้น ② อยู่แล้ว — ยามจุดยึดของ historicalRegisterUi) */
-test('⭐ แถวรอบ · แพ็ค: ช่วงรอบ · เกิน 5 โซน = ดูรายการด้านล่าง · ขาดแพ็ค = เหลือง ชี้ขั้น ② · ไม่มีบรรทัด = ขีด', () => {
+test('⭐ แถวแพ็ค · จำนวนรอบบริการ: ช่วงเดือน · เกิน 5 โซน = ดูรายการด้านล่าง · ขาดแพ็ค = เหลือง ชี้ขั้น ② · ไม่มีบรรทัด = ขีด', () => {
   const packs = (lines) => rowOf(historicalReviewChecklist(plan({ lines })), 'packs');
   const mixed = packs([{ ...PLAN.lines[0], serviceRounds: 6 }, PLAN.lines[1]]);
-  assert.equal(mixed.value, '6–12 รอบ/โซน · รวม 3 แพ็ค/รอบ');
-  assert.equal(mixed.sub, 'Lobby 6 รอบ × 2 แพ็ค/รอบ · ทางเดิน 12 รอบ × 1 แพ็ค/รอบ');
+  assert.equal(mixed.value, 'รวม 3 แพ็ค/รอบ · 6–12 เดือน/โซน');
+  assert.equal(mixed.sub, 'Lobby 2 แพ็ค/รอบ × 6 เดือน · ทางเดิน 1 แพ็ค/รอบ × 12 เดือน');
   const six = packs(Array.from({ length: 6 }, (_, i) => ({ ...PLAN.lines[0], zoneId: `Z-${i}`, zoneName: `โซน ${i + 1}` })));
-  assert.deepEqual([six.value, six.sub, six.tone], ['12 รอบ/โซน · รวม 12 แพ็ค/รอบ', 'ดูรายการด้านล่าง', null]);
+  assert.deepEqual([six.value, six.sub, six.tone], ['รวม 12 แพ็ค/รอบ · 12 เดือน/โซน', 'ดูรายการด้านล่าง', null]);
   const missing = packs([PLAN.lines[0], { ...PLAN.lines[1], packsPerRound: null }]);
   assert.deepEqual([missing.value, missing.tone, missing.step, missing.field], ['ยังไม่ครบ 1 รายการ — กลับไปขั้น ②', 'warn', 'zones', 'zones']);
-  assert.equal(missing.sub, 'Lobby 12 รอบ × 2 แพ็ค/รอบ · ทางเดิน 12 รอบ · ยังไม่ใส่รอบละกี่แพ็ค', 'บอกว่าโซนไหนยังขาด');
+  /* ผลตรวจทาน 08/10: ค่าเดือนของโซนที่ขาดแพ็คอยู่ในวงเล็บของโซนนั้น (ไม่ต่อด้วยตัวคั่นโซน " · " — ตัวเลขจะลอยระหว่างสองโซน) */
+  assert.equal(missing.sub, 'Lobby 2 แพ็ค/รอบ × 12 เดือน · ทางเดิน ยังไม่ใส่รอบละกี่แพ็ค (12 เดือน)', 'บอกว่าโซนไหนยังขาด');
   const empty = packs([]);
   assert.deepEqual([empty.value, empty.sub, empty.tone], ['—', null, null]);
   for (const row of [mixed, six, missing]) assert.doesNotMatch(`${row.value} ${row.sub}`, /(?<!กี่)แพ็ค(?!เกจ|\/รอบ)/);
+  for (const row of [mixed, six, missing]) assert.doesNotMatch(`${row.value} ${row.sub}`, /\d\s*รอบ/, 'ไม่มี "n รอบ" — จำนวนรอบบริการพูด "n เดือน"');
 });
 
 /* ⭐ H1 (IMPL_PLAN_D §3.3): วันวางบิลไม่บังคับ — แถวงวดที่ยังต้องเก็บบอกว่าตั้งไว้กี่งวด (คำเดียวกับหน้าต่างอนุมัติ) */

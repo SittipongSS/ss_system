@@ -16,6 +16,8 @@ import {
   SERVICE_DEFER_TEXT, SERVICE_DEFERRED_TEXT, SERVICE_REOPEN_BLOCKER_TEXT, SERVICE_SETUP_EDIT_TEXT, SERVICE_SETUP_SQL_MESSAGES,
   serviceReopenBlockedText,
 } from './serviceSetup.js';
+import { serviceAgingDays } from './serviceBackfillAging.js';
+import { businessDate } from '../businessDate.js';
 import { apiWriteAllowed, lockedOut } from '../../proxy.js';
 
 const WEBAPP = process.cwd();
@@ -246,6 +248,38 @@ test('GET — นอกขอบเขตอ่าน = 403 ก่อนแต�
   assert.deepEqual([...new Set(f.calls.map((c) => c.table))], ['sales_orders'], 'ไม่โหลดงานบริการของใบที่ไม่มีสิทธิ์');
   const missing = await serviceSetupGet({ supabase: fakeSupabase(world()).client, user: AE, id: 'SO-NONE' });
   assert.equal(missing.status, 404);
+});
+
+/* ⭐ มติเจ้าของ 08/10 ("ตามงานค้าง") — ก้อน GET ของใบในเส้นตั้งย้อนหลังพก `aging` (ชิป "ค้าง n วัน" ของแบนเนอร์/การ์ดราง)
+   · "วันนี้" = `businessDate()` ที่ server ส่งเข้า serviceSetupView (จอไม่อ่านนาฬิกาเอง) ⇒ `days` เป็นตัวเลขเสมอเมื่อมีนาฬิกา
+   · เทสต์นี้อ่านนาฬิกาจริงของเครื่อง (เส้นจริงทำแบบนั้น) — เทียบกับค่าที่คิดจากวันไทยก่อน/หลังเรียก กันเที่ยงคืนคั่นกลาง */
+test('GET — ใบในเส้นตั้งย้อนหลัง: `aging.days` เป็นตัวเลขจากวันไทยของ server · รอฝ่ายขาย = วันอนุมัติ · รอผู้จัดการ = วันที่ยื่นตรวจ · ใบร่าง = null', async () => {
+  const expectDays = (aging, since, before) => {
+    const allowed = [serviceAgingDays(since, before), serviceAgingDays(since, businessDate())];
+    assert.ok(Number.isInteger(aging.days) && aging.days >= 0, `days ต้องเป็นจำนวนเต็ม ≥ 0 (ได้ ${aging.days})`);
+    assert.ok(allowed.includes(aging.days), `${aging.days} ∉ ${allowed.join('/')}`);
+  };
+  const legacyBefore = businessDate();
+  const legacy = await serviceSetupGet({ supabase: fakeSupabase(world({ order: backfillRow() })).client, user: AE, id: 'SO1' });
+  assert.equal(legacy.status, 200, JSON.stringify(legacy.body));
+  assert.equal(legacy.body.flow, 'backfill');
+  assert.deepEqual([legacy.body.aging.waitingOn, legacy.body.aging.since, legacy.body.aging.sinceDay], ['sales', '2026-08-15T02:00:00+00:00', '2026-08-15']);
+  expectDays(legacy.body.aging, '2026-08-15T02:00:00+00:00', legacyBefore);
+  assert.equal(legacy.body.aging.title, 'ยังไม่ยื่นตรวจงานบริการ · นับจาก 15/08/2026');
+  assert.equal(legacy.body.aging.label, `ค้าง ${legacy.body.aging.days} วัน`, 'ใบอนุมัติ 15/08 — ค้างเกิน 1 วันแน่นอน ⇒ มีป้าย');
+
+  const sentBefore = businessDate();
+  const sent = await serviceSetupGet({ supabase: fakeSupabase(world({ order: submittedRow() })).client, user: SUP, id: 'SO1' });
+  assert.equal(sent.status, 200, JSON.stringify(sent.body));
+  assert.deepEqual([sent.body.aging.waitingOn, sent.body.aging.since], ['manager', '2026-09-27T02:00:00+00:00']);
+  expectDays(sent.body.aging, '2026-09-27T02:00:00+00:00', sentBefore);
+  assert.equal(sent.body.aging.title, 'รอผู้จัดการฝ่ายขายตรวจตั้งแต่ 27/09/2026');
+
+  /* ใบร่าง (ขั้น pipeline) และใบที่ค่า submitted ค้างหลังย้อนอนุมัติ = ไม่อยู่ในเส้นนี้ */
+  const draft = await serviceSetupGet({ supabase: fakeSupabase(world()).client, user: AE, id: 'SO1' });
+  assert.equal(draft.body.aging, null);
+  const revoked = await serviceSetupGet({ supabase: fakeSupabase(world({ order: submittedRow({ status: 'approval_revoked' }) })).client, user: SUP, id: 'SO1' });
+  assert.equal(revoked.body.aging, null);
 });
 
 /* ══ PATCH ═════════════════════════════════════════════════════════════════════════════════════════ */
@@ -1106,6 +1140,15 @@ test('รูปซอร์ส: route เป็นเปลือกบาง �
   assert.match(src, /serviceSetupPatch\(\{ supabase, user, id, body, request: req \}\)/);
   assert.match(src, /serviceSetupPost\(\{ supabase, user, id, body, request: req \}\)/);
   assert.equal(/\.from\(|\.rpc\(|\.in\(/.test(src), false, 'route ไม่อ่าน/เขียนฐานเอง — ตรรกะอยู่ที่ lib');
+});
+
+test('รูปซอร์ส: "วันนี้" ของชิป "ค้าง n วัน" มาจาก businessDate() ที่ server จุดเดียว (มติเจ้าของ 08/10) — ไม่ใช่นาฬิกา UTC/นาฬิกาของจอ', () => {
+  const src = code(LIB_FILE);
+  assert.match(src, /import \{ businessDate \} from '@\/lib\/businessDate';/);
+  const get = fnBody(src, 'serviceSetupGet');
+  assert.match(get, /serviceSetupView\(ctx, \{\s*canEdit, userId: user\.id \?\? null, role: user\.role \?\? null, reopenBlockers, todayIso: businessDate\(\),\s*\}\)/);
+  assert.equal(src.split('businessDate()').length - 1, 1, 'ที่เดียวของ "วันนี้" ในไฟล์นี้');
+  assert.doesNotMatch(src, /new Date\(\)\s*\.toISOString\(\)/, 'ห้ามคิดวันนี้จากนาฬิกา UTC (check:thaitime)');
 });
 
 test('รูปซอร์ส: ทุกจุดโหลดบริบทส่ง withFgOptions: true (มีจุดเดียว) — serviceSetupIssues fail-closed', () => {

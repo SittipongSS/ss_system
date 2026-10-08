@@ -44,6 +44,10 @@ import {
 } from "@/lib/service/legacySetupQueue";
 import { isHistoricalOrder } from "@/lib/sales/historicalOrders";
 import { SERVICE_SETUP_LINE_TEXT } from "@/lib/sales/serviceSetup";
+/* ⭐ "ค้าง n วัน" ของแท็บใบเดิม (มติเจ้าของ 08/10 "ตามงานค้าง") — ชิปตัวเดียวกับทะเบียนใบสั่งขาย/หน้าใบ · ก้อนอายุของแถว (`row.aging`)
+   คิดที่ route ด้วยวันไทย · หน้านี้ไม่อ่านนาฬิกาและไม่พิมพ์คำของชิปเอง */
+import ServiceAgingChip from "@/components/salesPlanning/ServiceAgingChip";
+import { serviceAgingSummaryText } from "@/lib/sales/serviceBackfillAging";
 import { fmtDate, fmtNumber, naText } from "@/lib/format";
 import styles from "./page.module.css";
 import { apiFetch, apiJson } from "@/lib/apiFetch";
@@ -112,12 +116,16 @@ function revealTab(tab) {
 }
 
 /* เซลล์สถานะการตั้งงานบริการของใบเดิม — ป้าย + บรรทัดรองหนึ่งบรรทัด (ตาราง · การ์ดใช้ตัวเดียว)
-   ข้อความมาจาก `legacySetupStatusView` ⇒ สองมุมมองพูดตรงกันและค้นเจอคำเดียวกัน (legacySetupHaystack) */
+   ข้อความมาจาก `legacySetupStatusView` ⇒ สองมุมมองพูดตรงกันและค้นเจอคำเดียวกัน (legacySetupHaystack)
+   ⭐ ชิป "ค้าง n วัน" (มติเจ้าของ 08/10) อยู่ข้างป้ายขั้นในแถวเดียวกัน (`.statusBadges` — ตกบรรทัดได้เมื่อแคบ) · ไม่มีอายุ = ไม่มีชิป */
 function LegacySetupStatus({ row }) {
   const view = legacySetupStatusView(row);
   return (
     <>
-      <StatusBadge tone={view.tone} size="sm" dot label={view.label} title={view.label} />
+      <span className={styles.statusBadges}>
+        <StatusBadge tone={view.tone} size="sm" dot label={view.label} title={view.label} />
+        <ServiceAgingChip aging={row.aging} />
+      </span>
       {view.sub ? <span className={`cell-sub ${styles.statusSub}`}>{view.sub}</span> : null}
     </>
   );
@@ -270,6 +278,12 @@ export default function ServiceIntakePage() {
     () => legacyRows.filter((row) => row.noSite && (row.state === "not_started" || row.state === "editing")).length,
     [legacyRows],
   );
+  /* ⭐ บรรทัดสรุปของแท็บ (มติเจ้าของ 08/10 "ตามงานค้าง") — "งานบริการที่ยังไม่ส่ง TS n ใบ · ค้างนานสุด n วัน" · ทุกใบของแท็บ
+     (ไม่หดตามคำค้น/ตัวกรองสถานะ — ฐานเดียวกับเลขบนแท็บ) · ไม่มีใบ = null */
+  const legacyAgingSummary = useMemo(
+    () => serviceAgingSummaryText(legacyRows.length, legacyRows.map((row) => row.aging)),
+    [legacyRows],
+  );
   const needle = search.trim().toLocaleLowerCase("th");
   /* แท็บใบเดิม: ตัวกรองสถานะ + คำค้น (คำค้น = ทุกอย่างที่ตาเห็นบนแถว · legacySetupHaystack)
      ⚠️ ป้ายเลขบนตัวกรองนับจากแถวทั้งหมด ไม่ใช่หลังค้นหา — เลขบนปุ่มคือ "มีกี่ใบในสถานะนี้" */
@@ -392,6 +406,8 @@ export default function ServiceIntakePage() {
               {`${fmtNumber(legacyNoSite)} ใบรอไซต์ในทะเบียน — ลูกค้ายังไม่มีไซต์ TS เพิ่มไซต์ก่อน ฝ่ายขายจึงเลือกโซนได้`}
             </span>
           ) : null}
+          {/* สรุปงานค้างของแท็บ (มติเจ้าของ 08/10) — ขึ้นเมื่อโหลดได้และมีใบ (`showCounts` กันเลขของข้อมูลค้างรอบก่อนตอนโหลดพัง) */}
+          {showCounts && legacyAgingSummary ? <span className="cell-sub">{legacyAgingSummary}</span> : null}
         </StatusNotice>
       )}
 

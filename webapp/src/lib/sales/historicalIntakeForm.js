@@ -46,7 +46,7 @@ import {
   HISTORICAL_SERVICE_LIMITS, HISTORICAL_VAT_RATES, historicalLinesMoney, historicalPacksValue, historicalRoundsValue, historicalZonePoint,
 } from '@/lib/sales/historicalOrderPlan';
 import { DEFAULT_SALE_UNIT } from '@/lib/master/units';
-import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL } from '@/lib/sales/serviceOrders';
+import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL, SERVICE_ROUNDS_UNIT } from '@/lib/sales/serviceOrders';
 
 export {
   HISTORICAL_REF_MAX, INSTALLMENT_LABEL_MAX, INSTALLMENT_NOTE_MAX, HISTORICAL_VAT_RATES,
@@ -1514,18 +1514,21 @@ export function historicalLinesSummary(zones = []) {
   return `${fmtNumber(rows.length)} บรรทัด · ${fmtNumber(bound)} โซน`;
 }
 
-/* ── ขั้น ② งานบริการของบรรทัด: จำนวนรอบบริการ + รอบละกี่แพ็ค (PR-D · mig 0394 · r2 S12 · IMPL_PLAN_D §3.1–§3.2) ──────────
+/* ── ขั้น ② งานบริการของบรรทัด: รอบละกี่แพ็ค + จำนวนรอบบริการ (PR-D · mig 0394 · r2 S12 · IMPL_PLAN_D §3.1–§3.2) ──────────
    ⭐ **ที่เดียวของคำว่า "แพ็ค" ในฟอร์มใบย้อนหลัง** (§0.2 ข้อ 14 — มติ 23/09 "จำนวนของบรรทัดไม่ใช่แพ็ค" ยังจริง ·
      มติ 26/09 A3/O9 นำแพ็คต่อรอบกลับมาเป็นช่องของตัวเอง) ⇒ component ไม่สะกดคำนี้เอง อ่านจากก้อนนี้เท่านั้น
      รูปที่อนุญาต: "รอบละกี่แพ็ค" · "แพ็ค/รอบ" · "ประเมินไว้ n แพ็ค" · "รวมทั้งรายการ n แพ็ค" (+ หน่วยท้ายช่อง "แพ็ค")
    ⚠️ `bulk` = คำของหน้าต่าง "เพิ่มหลายโซน" ของใบย้อนหลัง (ตัวห่อของ components/service/ZonesBulkModal — D27)
-   ⭐ มติเจ้าของ 29/09 ("ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง"): คำ + ลำดับเดียวกับใบใหม่ — `SERVICE_ROUNDS_LABEL`
-     "จำนวนรอบบริการ" ก่อน แล้วค่อย `SERVICE_PACKS_LABEL` "รอบละกี่แพ็ค" แล้ว "รวมทั้งรายการ n แพ็ค" (serviceOrders.js) */
+   ⭐ มติเจ้าของ 29/09 ("ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง"): คำ + ลำดับเดียวกับใบใหม่ (serviceOrders.js)
+   ⭐ มติเจ้าของ 08/10 รอบสอง (จอฝ่ายขายที่เหลือ — ตามตารางงานบริการของใบใหม่ #1878): ลำดับ = `SERVICE_PACKS_LABEL` "รอบละกี่แพ็ค" ก่อน
+     แล้วค่อย `SERVICE_ROUNDS_LABEL` "จำนวนรอบบริการ" แล้ว "รวมทั้งรายการ n แพ็ค" · หน่วยของจำนวนรอบบริการ = `SERVICE_ROUNDS_UNIT` "เดือน"
+     🔴 เปลี่ยนแค่คำและลำดับ — ค่าที่เก็บ (`rounds` → `serviceRounds`) ยังเป็นจำนวนรอบที่ TS เข้าโซน · `roundsNote` บอกผู้คีย์ตรง ๆ ว่า
+        "1 เดือน = 1 รอบ" (ตรวจข้อมูลจริง 08/10 อ่านอย่างเดียว: ใบย้อนหลัง 4 ใบ · 5 บรรทัดที่มีรอบ · ไม่มีใบไหนมีช่วงบริการ ⇒ ไม่มีแถวไหนขัด) */
 export const HISTORICAL_SERVICE_TEXT = Object.freeze({
   packsLabel: SERVICE_PACKS_LABEL,
   packsUnit: 'แพ็ค',
   packsAria: (name) => `${SERVICE_PACKS_LABEL} ${name}`,
-  roundsNote: 'บังคับ · จำนวนครั้งที่ต้องเข้าโซนนี้ตลอดสัญญา',
+  roundsNote: 'บังคับ · จำนวนรอบที่ TS เข้าโซนนี้ตลอดสัญญา — 1 เดือน = 1 รอบ',
   assessed: (n) => `ประเมินไว้ ${fmtNumber(n)} แพ็ค`,
   useAssessed: 'ใช้',
   useAssessedAria: (n, name) => `ใช้ผลประเมิน ${fmtNumber(n)} แพ็คในช่อง${SERVICE_PACKS_LABEL}ของ${name}`,
@@ -1535,7 +1538,7 @@ export const HISTORICAL_SERVICE_TEXT = Object.freeze({
   assessRetry: 'ลองอ่านผลประเมินอีกครั้ง',
   bulk: Object.freeze({
     title: 'เพิ่มหลายโซน',
-    subtitle: `ติ๊กโซนแล้วใส่แพ็คเกจ · จำนวน · ${SERVICE_ROUNDS_LABEL} · ${SERVICE_PACKS_LABEL}ทีเดียว — ได้หนึ่งบรรทัดต่อโซน แก้ทีละบรรทัดต่อได้ในตาราง · บรรทัดที่มีอยู่แล้วไม่ถูกแตะ`,
+    subtitle: `ติ๊กโซนแล้วใส่แพ็คเกจ · จำนวน · ${SERVICE_PACKS_LABEL} · ${SERVICE_ROUNDS_LABEL}ทีเดียว — ได้หนึ่งบรรทัดต่อโซน แก้ทีละบรรทัดต่อได้ในตาราง · บรรทัดที่มีอยู่แล้วไม่ถูกแตะ`,
     packageLabel: 'แพ็คเกจ',
     qtyLabel: 'จำนวน (ต่อบรรทัด)',
     qtyHint: (unit) => `หน่วย: ${naText(unit)} · เว้นว่างได้ — ใส่ทีละบรรทัดทีหลัง`,
@@ -1544,7 +1547,7 @@ export const HISTORICAL_SERVICE_TEXT = Object.freeze({
     packsLabel: `${SERVICE_PACKS_LABEL} (ทุกบรรทัด)`,
     roundsLabel: `${SERVICE_ROUNDS_LABEL} (ทุกบรรทัด)`,
     roundsAria: `${SERVICE_ROUNDS_LABEL}ของทุกบรรทัดที่จะเพิ่ม`,
-    roundsUnit: 'รอบ',
+    roundsUnit: SERVICE_ROUNDS_UNIT,
     noPackage: 'เลือกแพ็คเกจก่อน',
     assessLoading: 'กำลังอ่านผลประเมินของโซน… — “ตามผลประเมินของแต่ละโซน” ยังไม่มีตัวเลขให้',
     assessFailed: 'ยังอ่านผลประเมินไม่ได้ — “ตามผลประเมินของแต่ละโซน” จะได้ช่องว่างทุกโซน · ใช้ “เท่ากันทุกโซน” หรือใส่ทีละบรรทัด',
@@ -1694,7 +1697,9 @@ export function historicalBulkRoundsIssue(rounds = '') {
 }
 
 /**
- * ด่านช่องของตัวห่อ (ข้อแรกที่ติด ตามลำดับช่องบนจอ): แพ็คเกจ → จำนวน → รอบ — ผู้เรียกส่งเป็น `extraError` ของตัวกลาง
+ * ด่านช่องของตัวห่อ (ข้อแรกที่ติด): แพ็คเกจ → จำนวน → รอบ — ผู้เรียกส่งเป็น `extraError` ของตัวกลาง
+ * ⚠️ มติ 08/10 รอบสอง ย้ายช่องจำนวนรอบบริการลงไปอยู่ใต้แถวรอบละกี่แพ็คของตัวกลาง (`renderAfterPacks`) — **ลำดับเหตุไม่เปลี่ยน** (M1:
+ *   ช่องของตัวห่อก่อนของตัวกลาง เป็นสัญญาของตรรกะ ไม่ใช่ของผัง) ⇒ ผิดทั้งรอบและแพ็ค ท้ายหน้าต่างพูดเรื่องรอบก่อน
  * ⚠️ ข้อความขึ้นหลังกด "เพิ่ม n บรรทัด" เท่านั้น (กฎบ้าน: แดงหลังกด — ตัวกลางถือ `pressed`) · null = ช่องของตัวห่อผ่าน
  */
 export function historicalBulkFieldsIssue({ productId = '', qty = '', rounds = '' } = {}) {
@@ -1705,8 +1710,9 @@ export function historicalBulkFieldsIssue({ productId = '', qty = '', rounds = '
 /**
  * ผลของปุ่ม "เพิ่ม N บรรทัด" ก่อนกด (กฎบ้าน: บอกผลลัพธ์ก่อนคลิก)
  * ⭐ PR-D: ตัวห่อส่ง `mode` ('assessed' | 'equal') + ตัวเลขจากแผนของตัวกลาง (`packs` · `assessed` · `blank`) + `rounds`
- *   ⇒ ต่อท้ายด้วย จำนวนรอบบริการ → แต่ละครั้งกี่แพ็ค (มติ 29/09 · ลำดับและประโยคแพ็คแบบ `zonesBulkConsequence` ของหน้าต่างกลาง
- *   แต่พูด "บรรทัด") · ไม่ส่ง `mode` = ประโยคเดิมทุกตัวอักษร (pin ของ historicalRegisterUi ยังเขียวที่คลื่น W1)
+ *   ⇒ ต่อท้ายด้วย รอบละกี่แพ็ค → จำนวนรอบบริการ n เดือน (มติเจ้าของ 08/10 รอบสอง: แพ็คก่อนจำนวนรอบบริการ · หน่วย `SERVICE_ROUNDS_UNIT`
+ *   · ประโยคแพ็คแบบ `zonesBulkConsequence` ของหน้าต่างกลาง แต่พูด "บรรทัด") · ไม่ส่ง `mode` = ประโยคเดิมทุกตัวอักษร
+ *   (pin ของ historicalRegisterUi ยังเขียวที่คลื่น W1)
  */
 export function historicalBulkConsequence({
   count = 0, qty = '', unitPrice = null, mode = null, packs = null, assessed = 0, blank = 0, rounds = '',
@@ -1727,7 +1733,7 @@ export function historicalBulkConsequence({
       ? `แต่ละครั้งเท่ากันทุกบรรทัด ครั้งละ ${naText(packs === null || packs === undefined ? null : fmtNumber(packs))} แพ็ค`
       : `${SERVICE_PACKS_LABEL}: ตามผลประเมิน ${fmtNumber(Number(assessed) || 0)} โซน · ยังว่าง ${fmtNumber(Number(blank) || 0)} โซน`;
     const roundsValue = historicalRoundsValue(rounds);
-    const parts = [head, money, ...(roundsValue === null ? [] : [`${SERVICE_ROUNDS_LABEL} ${fmtNumber(roundsValue)} รอบ`]), packsText];
+    const parts = [head, money, packsText, ...(roundsValue === null ? [] : [`${SERVICE_ROUNDS_LABEL} ${fmtNumber(roundsValue)} ${SERVICE_ROUNDS_UNIT}`])];
     return `${parts.join(' · ')}${qtyOk && !priced ? ` — ${unpricedNote}` : ''}`;
   }
   if (priced) {

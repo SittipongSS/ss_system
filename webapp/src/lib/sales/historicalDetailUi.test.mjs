@@ -25,6 +25,7 @@ import { fileURLToPath } from 'node:url';
 
 import { historicalApprovalPrompt } from '../approvalPrompt.js';
 import { historicalOverrideNote } from './historicalOrderCopy.js';
+import * as orderCopyLib from './historicalOrderCopy.js';
 import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL } from './serviceOrders.js';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -299,6 +300,24 @@ test('🔴 โมดัลยืนยันทุกตัวของหน้
   }
 });
 
+// ── 6ข. ช่องหัวใบ "รอบบริการที่ขาย" ของใบย้อนหลัง ────────────────────────────────────────
+
+/* มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ: หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ
+   ⭐ ช่องสำรองบนหัวใบ (`!setupRequired && hasServiceRounds` = ใบย้อนหลังเท่านั้น) พูด "12 เดือน/โซน" จาก `historicalRoundsSoldText`
+   🔴 ของเดิม `${roundsSold} รอบ` = ผลรวมรายบรรทัด (`serviceRoundsSold`) — ติดหน่วย "เดือน" แล้วเป็น "48 เดือน" ของสัญญา 12 เดือน (พบตอนวาดจอจริง)
+     ⇒ หน้าใบห้ามเอาผลรวมนั้นมาติดหน่วยเดือน และห้ามพิมพ์หน่วยเอง */
+test('ช่องหัวใบ "รอบบริการที่ขาย" ของใบย้อนหลัง: ต่อโซนจาก historicalRoundsSoldText — ไม่ใช่ผลรวมรายบรรทัดติดหน่วยเดือน', () => {
+  const page = code(PAGE);
+  assert.match(page, /const roundsSoldText = historicalRoundsSoldText\(order\?\.lines\);/);
+  const fallback = slice(page, '...(serviceHeroFact ? [serviceHeroFact] : !setupRequired && hasServiceRounds ? [{', '}] : []),');
+  assert.match(fallback, /label: "รอบบริการที่ขาย",/, 'ป้ายเดียวกับช่องของใบ pipeline');
+  assert.match(fallback, /value: roundsSoldText \?\? NA,/);
+  assert.match(fallback, /tone: roundsSoldText \? undefined : "muted",/);
+  assert.doesNotMatch(page, /serviceRoundsSold\(/, 'หน้าใบไม่รวมจำนวนรอบของทุกบรรทัดเองอีก (ผลรวม ≠ จำนวนเดือน)');
+  assert.doesNotMatch(page, /\} รอบ`|SERVICE_ROUNDS_UNIT/, 'หน้าใบไม่พิมพ์หน่วยของจำนวนรอบบริการเอง — หน่วยอยู่ที่ lib');
+  assert.equal(orderCopyLib.historicalRoundsSoldText([{ serviceRounds: 12 }, { serviceRounds: 12 }]), '12 เดือน/โซน');
+});
+
 // ── 7. การ์ดโซน + การ์ดสัญญา ─────────────────────────────────────────────────────────
 
 test('การ์ดโซนไม่คิดสถานะเอง · ไม่มี inline style · ว่างเพราะโหลดไม่ขึ้นต้องดัง', () => {
@@ -314,12 +333,20 @@ test('การ์ดโซนไม่คิดสถานะเอง · ไ�
    ⭐ PR-D (มติเจ้าของ 26/09 A3/O9 · mig 0394): "แพ็คต่อรอบ" กลับมาเป็น **ช่องของโซน** (sales_order_line_zones) คนละช่องกับ
    จำนวนของบรรทัด ⇒ คอลัมน์ใหม่ "แพ็คต่อรอบ" · ข้อห้ามแคบลงโดยตั้งใจ: ห้าม "แพ็ค" ที่ไม่ใช่ แพ็คเกจ/แพ็คต่อรอบ/แพ็ค/รอบ
    และ (M3) ตัวการ์ดเองมีคำว่าแพ็คได้ที่หัวคอลัมน์ที่เดียว — ค่าในเซลล์/หัวการ์ดประกอบที่ lib (historicalOrderCopy) */
-test('⭐ 23/09 + PR-D: การ์ดโซนพูดรายการ · จำนวน + หน่วย · จำนวนรอบบริการ · รอบละกี่แพ็ค · จำนวนเงิน — ไม่มี "N แพ็ค" เปล่า', () => {
+test('⭐ 23/09 + PR-D: การ์ดโซนพูดรายการ · จำนวน + หน่วย · รอบละกี่แพ็ค · จำนวนรอบบริการ (เดือน) · จำนวนเงิน — ไม่มี "N แพ็ค" เปล่า', () => {
   const card = code(ZONES_CARD);
   const heads = [...slice(card, '<thead>', '</thead>').matchAll(/<th\b[^>]*>([^<]+)<\/th>/g)].map((m) => m[1].trim());
-  /* ⭐ มติเจ้าของ 29/09 (ใบใหม่และใบย้อนหลัง): หัวคอลัมน์ = ค่าคงที่ `SERVICE_ROUNDS_LABEL` "จำนวนรอบบริการ" ก่อน
-     `SERVICE_PACKS_LABEL` "รอบละกี่แพ็ค" (ไม่สะกดเองในการ์ด) */
-  assert.deepEqual(heads, ['ไซต์ · โซน', 'รายการ', 'จำนวน', '{SERVICE_ROUNDS_LABEL}', '{SERVICE_PACKS_LABEL}', 'จำนวนเงิน', 'สถานะรอบ']);
+  /* ⭐ มติเจ้าของ 29/09 (ใบใหม่และใบย้อนหลัง): หัวคอลัมน์ = ค่าคงที่ของ serviceOrders.js (ไม่สะกดเองในการ์ด)
+     ⭐ มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ: หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ
+       ⇒ `SERVICE_PACKS_LABEL` "รอบละกี่แพ็ค" มา **ก่อน** `SERVICE_ROUNDS_LABEL` "จำนวนรอบบริการ" (ของเดิมยึดรอบก่อนแพ็คตามมติ 29/09)
+       · เซลล์จำนวนรอบบริการ = `historicalRoundsCellText` ("12 เดือน" · หน่วยจาก `SERVICE_ROUNDS_UNIT`) — การ์ดไม่พิมพ์หน่วยเอง
+       · "สถานะรอบ" = สถานะรอบบริการที่ TS ตั้ง (คำนาม) คงเดิม */
+  assert.deepEqual(heads, ['ไซต์ · โซน', 'รายการ', 'จำนวน', '{SERVICE_PACKS_LABEL}', '{SERVICE_ROUNDS_LABEL}', 'จำนวนเงิน', 'สถานะรอบ']);
+  const bodyCells = [...slice(card, '<tbody>', '</tbody>').matchAll(/<td className="num">\{([^<]+)\}<\/td>/g)].map((m) => m[1].trim());
+  assert.deepEqual(bodyCells.slice(1, 3), ['historicalPacksCellText(zone.packsPerRound)', 'historicalRoundsCellText(zone.rounds)'],
+    'เซลล์เรียงเดียวกับหัว: แพ็คก่อนจำนวนรอบบริการ');
+  assert.doesNotMatch(card, /\} รอบ`|> ?รอบ ?</, 'การ์ดไม่พิมพ์หน่วย "รอบ" ต่อท้ายตัวเลขเอง (มติ 08/10 รอบสอง)');
+  assert.doesNotMatch(card, /เดือน/, 'และไม่พิมพ์ "เดือน" เองด้วย — หน่วยอยู่ที่ lib ที่เดียว');
   assert.equal(SERVICE_ROUNDS_LABEL, 'จำนวนรอบบริการ');
   assert.equal(SERVICE_PACKS_LABEL, 'รอบละกี่แพ็ค');
   assert.match(card, /import \{ SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL \} from "@\/lib\/sales\/serviceOrders";/);

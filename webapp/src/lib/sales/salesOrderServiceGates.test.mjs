@@ -536,9 +536,12 @@ test('กรอกจำนวนรอบ: ส่ง before เข้าตั�
   assert.ok(rounds.indexOf("'sales_order_service_setup_locked'") < rounds.indexOf('return fail(updateError.message, 500)'),
     'แปลล็อกก่อนตกไป 500 ดิบ');
   assert.equal(SERVICE_SETUP_SQL_MESSAGES.sales_order_service_setup_locked.status, 409);
-  /* มติเจ้าของ 08/10 (หน่วยของจำนวนรอบบริการบนผิวฝ่ายขาย = "เดือน"): สรุป audit ของใบ pipeline พูดหน่วยเดียวกับตารางงานบริการ
-     (`roundsCount` ของแคตตาล็อก) · ใบย้อนหลังยังพูด "รอบ" — ก้อน before/after ยังเป็นตัวเลข `serviceRounds` */
-  assert.match(rounds, /const roundsWords = \(rounds\) => \(isHistoricalOrder\(before\) \? `\$\{rounds\} รอบ` : SERVICE_SETUP_LINE_TEXT\.roundsCount\(rounds\)\);/);
+  /* มติเจ้าของ 08/10 (หน่วยของจำนวนรอบบริการบนผิวฝ่ายขาย = "เดือน"): สรุป audit พูดหน่วยเดียวกับตารางงานบริการ
+     (`roundsCount` ของแคตตาล็อก) — ก้อน before/after ยังเป็นตัวเลข `serviceRounds`
+     มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ: หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ
+     ⇒ ไม่แตกกิ่งตามชนิดใบอีก: ใบย้อนหลัง (การ์ดสัญญาบริการ) ก็ได้ "n เดือน" (ของเดิมยึด `isHistoricalOrder(before) ? `${rounds} รอบ` : …`) */
+  assert.match(rounds, /const roundsWords = \(rounds\) => SERVICE_SETUP_LINE_TEXT\.roundsCount\(rounds\);/);
+  assert.doesNotMatch(rounds, /\} รอบ`/, 'สรุป audit ไม่พิมพ์หน่วย "รอบ" เอง');
   assert.match(rounds, /rounds === null \? 'ยังไม่ระบุ' : roundsWords\(rounds\)/);
   assert.match(rounds, /serviceRounds: rounds \}\)\)/, 'after ของ audit ยังเก็บตัวเลข');
 });

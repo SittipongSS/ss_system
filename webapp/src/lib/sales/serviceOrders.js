@@ -20,6 +20,7 @@
 //   จะไม่เข้าคิวบริการเลยตลอดกาล (ไก่กับไข่)
 import { categoryOf } from '@/lib/master/categoryOf';
 import { orderBusinessLine } from '@/lib/service/intake';
+import { fmtNumber } from '@/lib/format';
 
 /* หมวดสินค้าที่ทำให้ใบเข้าเส้นบริการ — ค่าเดียว ประกาศที่นี่ที่เดียว
    (02 = ธุรกิจบริการ · 001 = ระบบกระจายกลิ่น SDS — ทะเบียน product_types mig 0007) */
@@ -27,7 +28,7 @@ export const SERVICE_ROUND_CATEGORY = '02-001';
 
 /* ⭐ **คำเรียกจำนวนรอบที่ขายไว้ของบรรทัดแพ็คเกจบริการ** — มติเจ้าของ 29/09: *"ไปกี่รอบ เปลี่ยน เป็น คำว่า จำนวนรอบบริการ"*
    ที่เดียวของคำนี้: ช่องกรอกของบรรทัด (ขั้น ② ใบย้อนหลัง) · ป้ายฝั่งอ่าน (ขั้น ④ · หน้าใบสั่งขาย) · หัวคอลัมน์การ์ดโซน ·
-   หน้าต่างเพิ่มหลายโซน · แถว "จำนวนรอบบริการ · รอบละกี่แพ็ค" ของขั้น ④/โมดัลอนุมัติ ⇒ คอมโพเนนต์ห้ามสะกดคำนี้เอง (เทสต์ยึด)
+   หน้าต่างเพิ่มหลายโซน · แถว "รอบละกี่แพ็ค · จำนวนรอบบริการ" ของขั้น ④/โมดัลอนุมัติ (ลำดับตามมติ 08/10 รอบสอง) ⇒ คอมโพเนนต์ห้ามสะกดคำนี้เอง (เทสต์ยึด)
    ⚠️ "จำนวนรอบบริการที่ขายไว้" ของการ์ดสัญญาบริการ (ServiceContractCard · mig 0326) เป็นหัวการ์ดเดิม — ไม่ใช่ป้ายช่อง
    ⚠️ คำเดียวกับ `SERVICE_SETUP_LINE_TEXT.roundsLabel` ของใบใหม่ (serviceSetup.js) — ไฟล์นี้ import serviceSetup.js ไม่ได้
      (กฎ 16 · serviceSetupImports.test.mjs) จึงเขียน literal · historicalOrderPlan.test.mjs ยึดให้เท่ากัน */
@@ -35,10 +36,51 @@ export const SERVICE_ROUNDS_LABEL = 'จำนวนรอบบริการ'
 
 /* ⭐ **คำเรียกจำนวนแพ็คที่ใช้ต่อการเข้าโซนหนึ่งครั้ง** (`packsPerRound` · ค่าที่เก็บชื่อเดิม) — มติเจ้าของ 29/09:
    *"เรียงว่าไปกี่รอบก่อน แล้วค่อยบอกรอบละกี่แพ็ค"* · *"ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง"*
-   ⇒ ทุกผิวของใบย้อนหลังเรียง `SERVICE_ROUNDS_LABEL` ก่อน แล้วค่อยคำนี้ (ช่องขั้น ② · ป้ายขั้น ④ · การ์ดโซน · โมดัลอนุมัติ)
+   ⭐ มติเจ้าของ 08/10 (#1878 ตารางงานบริการของใบใหม่ · รอบสอง = จอฝ่ายขายที่เหลือ): **สลับลำดับ — คำนี้มาก่อน `SERVICE_ROUNDS_LABEL`**
+   ⇒ ทุกผิวของใบย้อนหลังเรียงคำนี้ก่อน แล้วค่อยจำนวนรอบบริการ (ช่องขั้น ② · ป้ายขั้น ④ · การ์ดโซน · หน้าต่างเพิ่มหลายโซน · โมดัลอนุมัติ)
    ⚠️ คำเดียวกับ `SERVICE_SETUP_LINE_TEXT.packsLabel` (serviceSetup.js) และ `ZONES_BULK_PACKS_LABEL` (หน้าต่างเพิ่มหลายโซน)
      — literal ด้วยเหตุเดียวกับข้างบน · historicalOrderPlan.test.mjs ยึดทั้งสามให้เท่ากัน */
 export const SERVICE_PACKS_LABEL = 'รอบละกี่แพ็ค';
+
+/* ⭐ **หน่วยของ "จำนวนรอบบริการ" ที่ขายไว้ บนจอฝ่ายขายที่อยู่นอกตารางงานบริการ** — มติเจ้าของ 08/10 รอบสอง ("จอฝ่ายขายที่เหลือ"):
+   ใบย้อนหลัง (ฟอร์มคีย์ขั้น ② ④ · หน้าต่างเพิ่มหลายโซน · การ์ดโซน · การ์ดสัญญาบริการ · โมดัลอนุมัติ) · ป้ายใต้บรรทัดของตารางฝั่งอ่าน ·
+   ช่องสำรองบนหัวใบ · แถว "จำนวนรอบบริการ" ของสรุปไซต์ (โมดูลฐานข้อมูล) พูด "n เดือน" เหมือนตารางงานบริการของใบใหม่ (#1878)
+   ⇒ คอมโพเนนต์ห้ามพิมพ์หน่วยเอง อ่านจากตัวนี้ (หรือ `SERVICE_SETUP_LINE_TEXT.roundsCount` ในไฟล์ที่ import serviceSetup.js อยู่แล้ว)
+   🔴 เปลี่ยนแค่คำ — ค่าที่เก็บ (`serviceRounds`) ยังเป็นจำนวนรอบที่ TS ไปบริการ (1 เดือน = 1 รอบ) · ไม่มี migration · รูป API เท่าเดิม
+   ⚠️ ฝั่ง TS (lib/service · components/service · app/service) นับ "รอบ" ที่ช่างไปตามเดิม — ไม่อ่านตัวนี้
+   ⚠️ คำเดียวกับ `SERVICE_SETUP_LINE_TEXT.roundUnit` (serviceSetup.js) — literal ด้วยเหตุเดียวกับสองคำข้างบน (ไฟล์นี้ import
+     serviceSetup.js ไม่ได้ · กฎ 16) · historicalOrderPlan.test.mjs ยึดให้เท่ากัน */
+export const SERVICE_ROUNDS_UNIT = 'เดือน';
+
+/* ⭐ **คำของแถว "จำนวนรอบบริการ" บนสรุปไซต์** (`/database/sites/[id]` — จอร่วมของฝ่ายขายกับ TS) — ผลตรวจทาน 08/10 ของมติรอบสอง
+   แถวนี้ได้ตัวเลขเดียว (`roundsSold` ของ GET ไซต์ = `siteRoundsSoldOf`) แล้วส่งตัวเดียวกันให้โมดัลรอบบริการของ TS ที่เปิดจากหน้านี้
+   ซึ่งพูด "จำนวนรอบบริการที่ฝ่ายขายระบุ 12 รอบ" (นับเทียบกับ "n นัด" — คำของ TS ไม่แตะ) ⇒ ติดหน่วย "เดือน" เฉย ๆ = ตัวเลขเดียวสองหน่วย
+   ห่างกันคลิกเดียว และตัวเลขนั้นเป็น **ผลรวมของทุกใบที่ยังมีผล** — สองใบ 12 รอบซ้อนกันตอนต่อสัญญาจะอ่านเป็น "24 เดือน" ของสัญญา 12 เดือน
+   ⇒ แถวนี้พูดสองอย่างที่จริงทั้งคู่:
+       ค่าที่ **ขายไว้ต่อรายการ** เป็นเดือน (ช่วงต่ำสุด–สูงสุดของบรรทัดที่ลงไซต์นี้ — `siteRoundsSoldRangeOf`) = หน่วยของฝ่ายขาย
+       จำนวน **รอบของทั้งไซต์** ที่ TS ใช้วางรอบ (ผลรวมตัวเดิม) ในวงเล็บ = ตัวเลขและหน่วยเดียวกับโมดัล
+     "12 เดือน (12 รอบ)" · สองใบซ้อน "12 เดือน (ทั้งไซต์ 24 รอบ)" · รายการขายไม่เท่ากัน "4–12 เดือน (ทั้งไซต์ 12 รอบ)"
+   ⚠️ "รอบ" ในวงเล็บคือคำของ TS (จำนวนครั้งที่ช่างเข้าไซต์) — ไม่ใช่หน่วยของค่าที่ขายไว้ จึงไม่อ่าน `SERVICE_ROUNDS_UNIT`
+   ⚠️ ไม่มีช่วง (ผู้เรียกไม่ส่ง / response รุ่นก่อน) = ใช้ผลรวมเป็นค่าเดือนด้วย (รูปเดิมของรอบสอง + วงเล็บ) */
+const SITE_VISITS_UNIT = 'รอบ';
+const SITE_VISITS_SCOPE = 'ทั้งไซต์';
+
+const positiveInt = (value) => {
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 ? n : null;
+};
+
+export function siteRoundsSoldText(total, range = null) {
+  const visits = positiveInt(total);
+  if (visits === null) return null;
+  const min = positiveInt(range?.min) ?? visits;
+  const max = positiveInt(range?.max) ?? visits;
+  const low = Math.min(min, max);
+  const high = Math.max(min, max);
+  const months = low === high ? fmtNumber(high) : `${fmtNumber(low)}–${fmtNumber(high)}`;
+  const same = low === high && high === visits;
+  return `${months} ${SERVICE_ROUNDS_UNIT} (${same ? '' : `${SITE_VISITS_SCOPE} `}${fmtNumber(visits)} ${SITE_VISITS_UNIT})`;
+}
 
 /* ⭐ **รหัส FG ที่ด่านเงินอ่าน** (mig 0392 · PR-A · มติ r3 28/09) — FG ของบรรทัดก่อนเสมอ
    แล้วค่อยแพ็คเกจที่ฝ่ายขายเลือกให้บรรทัดพิมพ์เอง (`serviceFgCode`) **เฉพาะเมื่อใบประทับ `serviceTermsOpenedAt` แล้ว**
@@ -170,6 +212,23 @@ export function siteRoundsSoldOf({ orders = [], terms = [], lines = [], zonesByI
     if (rounds !== null && rounds !== undefined) { total += rounds; seen = true; }
   }
   return seen ? total : null;
+}
+
+/**
+ * ช่วงของ "จำนวนรอบบริการ" ที่ขายไว้ **ต่อรายการ** ของไซต์เดียว — คู่ของ `siteRoundsSoldOf` (ตัวนั้น = ผลรวมของทั้งไซต์ที่ TS ใช้วางรอบ)
+ *   ค่าต่ำสุด–สูงสุดของ `serviceRounds` ของบรรทัดที่รอบขายของไซต์นี้ชี้ถึง ในใบที่ยังมีผล — **ไม่บวกข้ามบรรทัด/ข้ามใบ**
+ *   ⇒ สรุปไซต์บอกค่าที่ขายไว้เป็น "เดือน" ได้โดยไม่กลายเป็น "24 เดือน" ตอนสองใบ 12 รอบซ้อนกัน (`siteRoundsSoldText` · ผลตรวจทาน 08/10)
+ * @param orders ใบที่ยังมีผลเท่านั้น (ชุดเดียวกับที่ส่งให้ `siteRoundsSoldOf`) · @param terms รอบขายของโซนในไซต์นี้ · @param lines `{ id, serviceRounds }`
+ * → `{ min, max }` หรือ null (ไม่มีบรรทัดไหนมีจำนวนรอบ)
+ */
+export function siteRoundsSoldRangeOf({ orders = [], terms = [], lines = [] } = {}) {
+  const activeIds = new Set((Array.isArray(orders) ? orders : []).map((order) => order?.id).filter(Boolean));
+  const roundsByLine = new Map((Array.isArray(lines) ? lines : []).map((line) => [line?.id, line?.serviceRounds]));
+  const lineIds = new Set((Array.isArray(terms) ? terms : [])
+    .filter((term) => activeIds.has(term?.salesOrderId) && term?.salesOrderLineId)
+    .map((term) => term.salesOrderLineId));
+  const values = [...lineIds].map((id) => Number(roundsByLine.get(id))).filter((n) => Number.isFinite(n) && n > 0);
+  return values.length ? { min: Math.min(...values), max: Math.max(...values) } : null;
 }
 
 /* ⭐ **"ใบนี้อยู่บนเส้นบริการไหม" — กว้างกว่าตัวบน และตั้งใจให้กว้าง**

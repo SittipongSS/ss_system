@@ -18,6 +18,10 @@
 // ⚠️ ใบที่ทุกบรรทัดตัดสินได้**เอง**ว่า "ไม่ใช่งานบริการ" ไม่ขึ้นที่นี่ (D25 — ไม่มีอะไรให้ TS) · ใบที่ฝ่ายขายเลือก "ไม่ใช่งานบริการ"
 //   เองครบทุกบรรทัดยังอยู่จนผู้จัดการอนุมัติ (`serviceLineNeedsBackfill`)
 // 🔒 ไม่มียอดเงินออกไปกับแถว — ฝ่ายบริการไม่เห็นราคาโดยตั้งใจ (หัวไฟล์ route คิว)
+// ⭐ มติเจ้าของ 08/10 ("ตามงานค้าง"): แถวพก `aging` (ชิป "ค้าง n วัน" — งานค้างอยู่ที่ฝ่ายขายหรือผู้จัดการ มากี่วันตามปฏิทินไทย)
+//   จากตัวตัดสินกลาง `serviceBackfillAging` ตัวเดียวกับทะเบียนใบสั่งขายและหน้าใบ ⇒ TS กับฝ่ายขายเห็นตัวเลขเดียวกัน
+//   · ถังเรียง **ค้างนานสุดก่อน** (เดิมเรียงวันอนุมัติล่าสุดก่อน — ใบที่ค้างนานสุดไปอยู่ท้ายสุด) · ป้ายอยู่ในคำค้นของแถว
+//   · ไฟล์นี้ไม่อ่านนาฬิกาเอง — `todayIso` มาจาก route (`businessDate()`)
 import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
 import { orderBusinessLine, orderReadiness, orderReceivable } from '@/lib/service/intake';
 import {
@@ -25,6 +29,7 @@ import {
   SERVICE_DEFERRED_TEXT,
   SERVICE_KIND_NOT_SERVICE,
   SERVICE_REOPENED_TEXT,
+  serviceBackfillAging,
   serviceBackfillNeeded,
   serviceBackfillState,
   serviceLineNeedsBackfill,
@@ -34,6 +39,7 @@ import {
   serviceSetupReopened,
   serviceSetupTotals,
 } from '@/lib/sales/serviceSetup';
+import { compareLongestWaiting } from '@/lib/sales/serviceBackfillAging';
 import { fmtDate, fmtNumber } from '@/lib/format';
 
 /* 🔴 คอลัมน์นี้ต้องมาจาก select ของใบเสมอ — ไม่ส่งมา = undefined = "ยังไม่ประทับ" ⇒ ใบที่ตั้งเสร็จและเปิดงานให้ TS
@@ -96,7 +102,7 @@ function hasDraftData(order, lines, allocations) {
   return lines.some((line) => !!line?.serviceKind || !!line?.serviceProductId || !!line?.serviceFgCode);
 }
 
-function buildRow(order, orderLines, orderAllocations, { zonesById, dealsById, contractsById, line, customersWithSite }) {
+function buildRow(order, orderLines, orderAllocations, { zonesById, dealsById, contractsById, line, customersWithSite, todayIso }) {
   const relevant = orderLines.filter(lineNeedsDecision);
   const allocationsByLine = groupBy(orderAllocations, 'salesOrderLineId');
   const periodMode = servicePeriodModeOf(order);
@@ -145,6 +151,11 @@ function buildRow(order, orderLines, orderAllocations, { zonesById, dealsById, c
       }
       : null,
     readiness: { contractNo: readiness.contractNo, hasContract: readiness.hasContract },
+    /* ⭐ "ค้าง n วัน" (มติเจ้าของ 08/10 "ตามงานค้าง") — ก้อนของตัวตัดสินกลาง: งานอยู่ที่ใคร (ฝ่ายขาย/ผู้จัดการ) · นาฬิกาเริ่มเมื่อไร · กี่วัน · โทน · ป้าย
+       ใบในถังนี้อนุมัติแล้วยังไม่ประทับเสมอ ⇒ ไม่เป็น null · ไม่ส่ง `todayIso` = ก้อนที่ไม่มีป้าย (ยังเรียงตามนาฬิกาได้)
+       ⚠️ `aging.waitingOn === 'sales'` = **ยังไม่ยื่นตรวจ** ไม่ใช่ "ฝ่ายขายช้า" — แถว `noSite` ข้างล่างติดที่ TS เพิ่มไซต์ (ข้อมูลจริง 08/10: 11 จาก 58 ใบ)
+          คำบอกของชิปจึงบอกขั้น ไม่ชี้คน และไม่ขัดกับบรรทัดรอง "ลูกค้ายังไม่มีไซต์ในทะเบียน — …" ของแถวเดียวกัน (ผลตรวจทาน 08/10) */
+    aging: serviceBackfillAging(order, { todayIso }),
     /* ไม่ส่งชุดไซต์มา = ไม่รู้ ⇒ false (ไม่เดาว่าไม่มี) */
     noSite: customersWithSite instanceof Set ? !customersWithSite.has(order.customerId) : false,
   };
@@ -160,11 +171,13 @@ function buildRow(order, orderLines, orderAllocations, { zonesById, dealsById, c
  * @param contractsById ชิปสัญญาของใบ
  * @param customersWithSite Set ของ customerId ที่มีไซต์ลูกค้าที่ใช้งานในทะเบียน — ไม่มี = แถวบอก TS ให้เพิ่มไซต์ก่อน
  *   (ไม่ส่ง = ไม่ตัดสินเรื่องไซต์)
+ * @param todayIso วันนี้ตามเวลาไทย 'YYYY-MM-DD' (route ส่ง `businessDate()`) — ตัวตั้งของชิป "ค้าง n วัน" · ไม่ส่ง = แถวไม่มีป้ายอายุ
  * @returns `{ rows, unknownLine }` — `unknownLine` = ใบที่ตอบไม่ได้ว่าสายอะไร (ขึ้นแถบของมันเอง ห้ามเงียบห้ามเดา)
+ *   · ทั้งสองชุดเรียง **ค้างนานสุดก่อน** (นาฬิกาของ `aging` ที่เริ่มก่อนอยู่หน้า · ไม่มีนาฬิกาอยู่ท้าย) แล้วตามเลขที่ใบ
  */
 export function legacySetupQueue({
   orders = [], lines = [], allocations = [], zonesById = new Map(), projectsById, dealsById, contractsById = new Map(),
-  customersWithSite = null,
+  customersWithSite = null, todayIso = null,
 } = {}) {
   const orderList = Array.isArray(orders) ? orders : [];
   if (orderList.some((order) => !hasOwn(order, 'serviceTermsOpenedAt'))) throw new Error(LEGACY_SETUP_SELECT_ERROR);
@@ -180,7 +193,7 @@ export function legacySetupQueue({
     const orderLines = linesByOrder.get(order.id) || [];
     const orderAllocations = allocationsByOrder.get(order.id) || [];
     const line = orderBusinessLine(order, lineCtx);
-    const extra = { zonesById, dealsById, contractsById, line, customersWithSite };
+    const extra = { zonesById, dealsById, contractsById, line, customersWithSite, todayIso };
     if (serviceBackfillNeeded(order, orderLines, lineCtx)) {
       rows.push(buildRow(order, orderLines, orderAllocations, extra));
     } else if (!line && orderLines.some((l) => serviceLineNeedsBackfill(l))) {
@@ -191,9 +204,10 @@ export function legacySetupQueue({
     // สาย PRODUCT ไม่เข้าคิวนี้เลย — ของส่งออกจากบริษัทแล้วจบ ไม่มีอะไรให้ไปดูแล
   }
 
-  const byNewest = (a, b) => String(b.approvedAt || '').localeCompare(String(a.approvedAt || ''))
-    || String(a.code).localeCompare(String(b.code));
-  return { rows: rows.sort(byNewest), unknownLine: unknownLine.sort(byNewest) };
+  /* ⭐ มติเจ้าของ 08/10 ("ตามงานค้าง"): ค้างนานสุดก่อน — เดิมเรียงวันอนุมัติล่าสุดก่อน ⇒ ใบที่ค้าง 56 วันอยู่ท้ายสุดของแท็บ
+     · เทียบจากนาฬิกาของ `aging` (ไม่ใช่วันอนุมัติ — ใบที่เปิดแก้/ถูกตีกลับ/ยื่นตรวจแล้วนับจากเหตุการณ์นั้น) · แท็บนี้ไม่มีตัวเลือกเรียงของผู้ใช้ */
+  const byLongestWaiting = (a, b) => compareLongestWaiting(a.aging, b.aging) || String(a.code).localeCompare(String(b.code));
+  return { rows: rows.sort(byLongestWaiting), unknownLine: unknownLine.sort(byLongestWaiting) };
 }
 
 /* ── ป้ายของเซลล์สถานะ — ตารางกับการ์ดอ่านจากตัวเดียว (สองมุมมองพูดตรงกัน) ────────────────────────────────
@@ -257,6 +271,7 @@ export function legacySetupFilterCounts(rows = []) {
 
 /* ⭐ คำค้น = ทุกอย่างที่ตาเห็นบนแถว (กติกา "ตาเห็นบนแถว = ต้องค้นเจอ") — รหัส · ลูกค้า · วันอนุมัติ · ผู้ดูแล ·
    ป้าย/บรรทัดรองของสถานะ (รวม "ข้ามตอนยื่น" ของ mig 0404 — อยู่ในป้ายอยู่แล้ว) · ชิปสัญญา
+   · ชิป "ค้าง n วัน" (มติเจ้าของ 08/10 — พิมพ์ "ค้าง" = เห็นใบที่ค้างทั้งหมด · คำบอกเมื่อชี้ไม่อยู่ในคำค้น เพราะตาไม่เห็นบนแถว)
    · เหตุที่เปิดแก้หลังอนุมัติ (mig 0396 — ขั้นรอตรวจ/ตีกลับไม่มีบนแถว แต่ TS ค้นเจอได้) */
 export function legacySetupHaystack(row) {
   const view = legacySetupStatusView(row);
@@ -267,6 +282,7 @@ export function legacySetupHaystack(row) {
     row?.ownerName,
     view.label,
     view.sub,
+    row?.aging?.label,
     row?.reopened?.reason || null,
     row?.readiness?.hasContract ? row.readiness.contractNo : 'ยังไม่ผูกสัญญา',
   ].filter(Boolean).join(' ').toLocaleLowerCase('th');

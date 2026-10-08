@@ -77,6 +77,24 @@ test('serviceRoundsEntry.js import serviceSetup.js ได้ (ทิศเดี
   assert.equal(importsSetup(join(SRC, 'lib/sales/serviceRoundsEntry.js')), true);
 });
 
+/* ⭐ ไฟล์ใบไม้ของชิป "ค้าง n วัน" (มติเจ้าของ 08/10 "ตามงานค้าง") — serviceSetup.js import มัน (ตัวตัดสิน `serviceBackfillAging` ใช้เลขคณิต/คำ)
+   และทะเบียนใบสั่งขายฝั่งจอ import มันตรง ๆ (คำ + ตัวเรียง) โดยตั้งใจไม่พก serviceSetup.js ทั้งก้อน
+   ⇒ ใบไม้ import serviceSetup.js กลับเมื่อไร = วง ESM ใหม่ + bundle ของทะเบียนโตทั้งก้อน */
+test('serviceBackfillAging.js เป็นใบไม้: serviceSetup.js import มัน · มันและทุกไฟล์ในกราฟของมันไม่ import serviceSetup.js กลับ', () => {
+  const LEAF = join(SRC, 'lib/sales/serviceBackfillAging.js');
+  assert.ok(importsOf(SETUP).includes(LEAF), 'serviceSetup.js ต้อง import ไฟล์ใบไม้ (ตัวตัดสินอายุอยู่ที่ serviceSetup.js ที่เดียว)');
+  assert.equal(importsSetup(LEAF), false, 'ใบไม้ห้าม import serviceSetup.js');
+  const closure = closureOf(LEAF);
+  assert.ok(closure.size > 0, 'ตัวไล่กราฟต้องเจอไฟล์ที่ใบไม้ import (datePeriods · format)');
+  assert.ok(!closure.has(SETUP), 'ไม่มีทางอ้อมจากใบไม้กลับไป serviceSetup.js');
+  assert.deepEqual(importsOf(LEAF).map(rel).sort(), ['lib/datePeriods.js', 'lib/format.js'], 'ใบไม้พึ่งแค่ตัวแปลงวันไทยกับตัวจัดรูปกลาง');
+  /* ผู้ใช้ฝั่งจอของทะเบียน: ดึงใบไม้ ไม่ดึง serviceSetup.js */
+  const listPage = join(SRC, 'app/sales-planning/sales-orders/page.js');
+  assert.ok(importsOf(listPage).includes(LEAF));
+  assert.equal(importsSetup(listPage), false, 'ทะเบียนใบสั่งขายฝั่งจอไม่พก serviceSetup.js (ก้อนอายุของแถวคิดที่ server)');
+  assert.equal(importsSetup(join(SRC, 'components/salesPlanning/ServiceAgingChip.js')), false, 'ชิปไม่ดึง lib ของงานบริการ');
+});
+
 test('ไม่มีค่าคงที่ระดับบนสุดใน serviceSetup.js ที่อ่านชื่อที่ import มา', () => {
   const source = stripComments(read(SETUP));
   const imported = new Set();

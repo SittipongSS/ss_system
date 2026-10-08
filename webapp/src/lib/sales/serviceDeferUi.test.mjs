@@ -662,7 +662,7 @@ test('ทะเบียนใบสั่งขาย: แถวคิวขอ
 
 /* ══ ส่วนที่ 3: ยามเอกสาร ══════════════════════════════════════════════════════════════════════════════════ */
 
-test('docs/so-service-setup.md: หัวข้อของ 0404 — สถานะจาก 5 คำ · 0404 อยู่บนฐานจริงแล้ว (เจ้าของรัน + แปะผล SELECT ตรวจหลังรันแล้ว 08/10 · ไม่ต้องรันซ้ำ · ห้ามแก้ไฟล์ · ที่ฐานไม่เหลืออะไรก่อน merge/deploy · รวม main #1879 แล้ว) · ตารางกลุ่มข้อตรงกับตัวตัดสิน · ชื่อที่อ้างมีจริง · แถวสารบัญ', () => {
+test('docs/so-service-setup.md: หัวข้อของ 0404 — สถานะจาก 5 คำ · 0404 อยู่บนฐานจริงแล้ว (เจ้าของรัน + แปะผล SELECT ตรวจหลังรันแล้ว 08/10 · ไม่ต้องรันซ้ำ · ห้ามแก้ไฟล์ · ที่ฐานไม่เหลืออะไรก่อน merge/deploy · รวม main #1879 แล้ว) · ขึ้น prod แล้ว 08/10 (#1880 · d7af5da9) · ตารางกลุ่มข้อตรงกับตัวตัดสิน · ชื่อที่อ้างมีจริง · แถวสารบัญ', () => {
   const DOC = readFileSync(new URL('../../../../docs/so-service-setup.md', import.meta.url), 'utf8');
   const INDEX = readFileSync(new URL('../../../../docs/INDEX.md', import.meta.url), 'utf8');
   const heading = '### ยื่นโดยยังไม่ตั้งงานบริการ — ข้ามตอนยื่น ตั้งหลังอนุมัติ (mig 0404 · มติเจ้าของ 01/10 · แบรนช์ `claude/so-service-defer`)';
@@ -697,7 +697,15 @@ test('docs/so-service-setup.md: หัวข้อของ 0404 — สถา�
   const statusBlock = flat(section.slice(section.indexOf('\n> สถานะ:'), section.indexOf('\n> · กติกาของฐานที่')));
   assert.match(statusBlock, /อยู่บนฐานจริงแล้ว\*\* \(เจ้าของรันที่ SQL Editor 08\/10\/2026 และแปะผล SELECT ตรวจหลังรันแล้ว — ตรงตามที่คาดทุกค่า · ย่อหน้าถัดไป\)/);
   assert.match(statusBlock, /✅ \*\*ที่ฐานไม่เหลืออะไรต้องทำก่อน merge\/deploy\*\*/);
-  assert.match(statusBlock, /⚠️ \*\*ก่อน merge\/deploy ยังต้องมี: `npm run build` · ตรวจจอจริงแบบอ่านอย่างเดียวที่ 1440 และ 390 · เจ้าของสั่งให้ merge\/deploy\*\*/);
+  /* 🔁 08/10/2026 (งาน "ตามงานค้าง + รอบสองของหน่วยเดือน" · แบรนช์ `claude/so-service-aging-months` · สถานะเอกสารที่ค้างถูกสั่งแก้พร้อมมติเจ้าของ 08/10):
+       #1880 ถูก squash เป็น `d7af5da9` และแบรนช์ `production` อยู่ที่คอมมิตนั้นแล้ว (`git merge-base --is-ancestor d7af5da9 origin/production` ผ่าน)
+       ⇒ ประโยค "ก่อน merge/deploy ยังต้องมี: `npm run build` · ตรวจจอจริง… · เจ้าของสั่งให้ merge/deploy" ที่ยามนี้เคยยึดสามจุด (บรรทัดสถานะ ·
+       ข้อ 2 ของลำดับ deploy · แถวสารบัญ) **ไม่จริงแล้ว** — ปล่อยไว้ = เอกสารบอกว่ายังไม่ได้ deploy ทั้งที่ของอยู่บน prod
+       ยามย้ายไปยึดความจริงใหม่ครบสามจุด (ไม่ใช่ถอดออก) และกันคำของตอนก่อน deploy ไม่ให้กลับมา · คำสถานะของหัวข้อยังเป็น "รอตรวจ"
+       (คำถามที่รอเจ้าของยังไม่ได้คำตอบ) — ยามข้อคำสถานะข้างบนไม่ถูกแตะ */
+  assert.ok(statusBlock.includes('✅ **ขึ้น prod แล้ว 08/10/2026 — #1880 · squash `d7af5da9` อยู่บน main และแบรนช์ `production`** '
+    + '(ตรวจจาก git 08/10 · `git merge-base --is-ancestor d7af5da9 origin/production` ผ่าน)'), 'บรรทัดสถานะ: ขึ้น prod แล้ว + หลักฐานจาก git');
+  assert.doesNotMatch(section, /ก่อน merge\/deploy ยังต้องมี/, 'คำของตอนก่อน deploy ต้องไม่ค้างในหัวข้อ');
   /* ② ใครรัน · วันไหน · ไฟล์ฉบับไหน (sha256 เต็มในเอกสาร = ของไฟล์ในรีโปจริง) · เวลาที่แน่นอนไม่ได้จด */
   const sha0404 = createHash('sha256').update(readFileSync(new URL('../../../supabase/migrations/0404_so_service_setup_defer.sql', import.meta.url))).digest('hex');
   assert.ok(body.includes('✅ **เจ้าของรันและแปะผลแล้ว 08/10/2026**: รันไฟล์ที่ส่งให้ (ตัวอักษรของ `0404_so_service_setup_defer.sql` ทุกตัว · sha256 '
@@ -710,12 +718,15 @@ test('docs/so-service-setup.md: หัวข้อของ 0404 — สถา�
   /* ④ ฝั่งแอปยืนยันอะไร (อ่านอย่างเดียว) และไม่ได้ลองอะไร — สิทธิ์ anon ยืนยันจากผลของเจ้าของเท่านั้น */
   assert.match(body, /✅ \*\*ฝั่งแอปยืนยันวันเดียวกัน \(อ่านอย่างเดียว\)\*\*: PostgREST อ่านสามช่องได้ \(HTTP 200\) · ไม่มีใบสั่งขายใบไหนมี `serviceSetupDeferredAt` \(0 ใบ\) · `check:columns` เขียว/);
   assert.match(body, /⚠️ \*\*ไม่ได้ลองเรียก RPC ด้วยคีย์ anon จากฝั่งแอป\*\* \(env ในเครื่องไม่มีคีย์ anon\) — สิทธิ์ของ RPC ยืนยันจาก `anon_submit = false` ในผลของเจ้าของเท่านั้น/);
-  /* ⑤ ลำดับ deploy: ข้อ 1 (ฐาน) ปิดแล้ว · ข้อ 2 = ของที่ยังต้องมีก่อน merge/deploy · SQL ต่อจากนี้ = เลข 0406 ขึ้นไป */
+  /* ⑤ ลำดับ deploy: ข้อ 1 (ฐาน) ปิดแล้ว · ข้อ 2 = merge/deploy เสร็จแล้ว 08/10/2026 (เดิม: ของที่ยังต้องมีก่อน merge/deploy) · SQL ต่อจากนี้ = เลข 0406 ขึ้นไป */
   const deploy = flat(section.slice(section.indexOf('**ลำดับ deploy:**'), section.indexOf('**ยามของงานนี้:**')));
   assert.ok(deploy.includes('1) **ฐาน — เสร็จแล้ว ไม่เหลืออะไรต้องทำก่อน merge/deploy**: เจ้าของรันไฟล์ที่ SQL Editor 08/10/2026 และแปะผล SELECT ตรวจหลังรันของหัวไฟล์แล้ว — '
     + `คาด \`${afterRun}\` · ได้ตรงทุกค่า`), 'ข้อ 1 ของลำดับ deploy: ฐานเสร็จแล้ว + ค่าที่คาด = ค่าที่ได้');
   assert.match(deploy, /\*\*ห้ามรัน 0404 ซ้ำ · ห้ามแก้ไฟล์\*\* — SQL ของงานนี้ที่ต้องเพิ่ม = migration ใหม่เลข 0406 ขึ้นไป/);
-  assert.match(deploy, /2\) \*\*ก่อน merge\/deploy ยังต้องมี: `npm run build` · ตรวจจอจริงแบบอ่านอย่างเดียวที่ 1440 และ 390 · เจ้าของสั่งให้ merge\/deploy\*\* → CI \(`check:columns` เขียว\) → merge → Deploy to production/);
+  assert.ok(deploy.includes('2) **merge/deploy — เสร็จแล้ว 08/10/2026**: #1880 squash `d7af5da9` → Deploy to production '
+    + '(main และแบรนช์ `production` อยู่ที่ `d7af5da9`)'), 'ข้อ 2 ของลำดับ deploy: เสร็จแล้ว + คอมมิตที่ขึ้น');
+  assert.match(deploy, /ที่ยืนยันได้จากงานนี้คือตำแหน่งของแบรนช์ใน git/, 'บอกตรง ๆ ว่ายืนยันจากอะไร (ไม่อ้างสิ่งที่ไม่ได้ตรวจ)');
+  assert.ok(deploy.indexOf('2) **merge/deploy — เสร็จแล้ว 08/10/2026**') < deploy.indexOf('3) UAT อ่านอย่างเดียวก่อน'), 'ข้อ 3 (UAT · ถอยกลับ) ยังอยู่ต่อจากข้อ 2');
   /* ⑥ main #1879 (75751e5c · mig 0405) รวมเข้าแบรนช์แล้ว — เดิมเอกสารสั่ง "ต้องรวม #1879 ด้วยก่อนเปิด PR" */
   assert.match(body, /🔁 \*\*รวม main ถึง #1879 แล้ว \(08\/10 · `75751e5c` · mig 0405 สเปคสินค้า · ขึ้น main 15:28 น\.\)\*\* — คอมมิตรวม `0140ee91` · `git merge-base --is-ancestor 75751e5c HEAD` ผ่าน/);
   assert.match(deploy, /\*\*รวมถึง #1878 `1bab0846` และ #1879 `75751e5c` \(mig 0405 สเปคสินค้า\) แล้ว\*\* — คอมมิตรวม `0140ee91` · เช็ก `git merge-base --is-ancestor 75751e5c HEAD`/);
@@ -793,7 +804,7 @@ test('docs/so-service-setup.md: หัวข้อของ 0404 — สถา�
   assert.match(section, /คำถามที่รอเจ้าของ/);
 
   /* สารบัญ: แถวของไฟล์นี้บอกว่ามีงาน 0404 · ฐานมีไฟล์แล้ว (ตรวจสคีมา 08/10/2026) · เจ้าของแปะผล SELECT ตรวจหลังรันแล้ว 08/10 ⇒ ที่ฐานไม่เหลืออะไร ·
-     ของที่ยังต้องมีก่อน merge/deploy · รวม main #1879 แล้ว · คำสถานะของแถวยังเท่าหัวไฟล์ — เดิมยึด "เจ้าของรัน 0404 ก่อน merge/deploy" แล้วจึง
+     ขึ้น prod แล้ว 08/10/2026 (#1880 · d7af5da9 — เดิม: ของที่ยังต้องมีก่อน merge/deploy) · รวม main #1879 แล้ว · คำสถานะของแถวยังเท่าหัวไฟล์ — เดิมยึด "เจ้าของรัน 0404 ก่อน merge/deploy" แล้วจึง
      "ก่อน merge/deploy เหลือให้เจ้าของแปะผล SELECT ตรวจหลังรัน" (ความจริงของตอนก่อนรัน / ตอนรอผล · เหตุเดียวกับยามของหัวข้อข้างบน) */
   const row = INDEX.split('\n').find((line) => line.startsWith('| [so-service-setup.md](so-service-setup.md) |'));
   assert.ok(row, 'หาแถว so-service-setup.md ในสารบัญไม่เจอ');
@@ -806,7 +817,9 @@ test('docs/so-service-setup.md: หัวข้อของ 0404 — สถา�
   assert.match(deferPart, /\*\*0404 อยู่บนฐานจริงแล้ว\*\* · ตรวจสคีมาแบบอ่านอย่างเดียว 08\/10\/2026 16:04 น\./);
   assert.match(deferPart, /ไม่ต้องรันซ้ำ · ห้ามแก้ไฟล์/);
   assert.match(deferPart, /\*\*เจ้าของรันที่ SQL Editor 08\/10\/2026 และแปะผล SELECT ตรวจหลังรันแล้ว — ตรงตามที่คาดทุกค่า\*\*/);
-  assert.match(deferPart, /\*\*ที่ฐานไม่เหลืออะไรต้องทำก่อน merge\/deploy\*\* — ยังต้องมี `npm run build` · ตรวจจอจริงแบบอ่านอย่างเดียวที่ 1440 และ 390 · เจ้าของสั่งให้ merge\/deploy/);
+  /* แถวสารบัญ: เดิมต่อท้ายด้วย "— ยังต้องมี `npm run build` · ตรวจจอจริง… · เจ้าของสั่งให้ merge/deploy" (ความจริงของตอนก่อน deploy · เหตุเดียวกับข้อ ① ข้างบน) */
+  assert.ok(deferPart.includes('**ที่ฐานไม่เหลืออะไรต้องทำก่อน merge/deploy** — **ขึ้น prod แล้ว 08/10/2026 (#1880 · `d7af5da9`)**'), 'แถวสารบัญ: ขึ้น prod แล้ว');
+  assert.doesNotMatch(deferPart, /ยังต้องมี `npm run build`|เจ้าของสั่งให้ merge\/deploy/, 'คำของตอนก่อน deploy ต้องไม่ค้างในช่วงของงาน 0404');
   assert.match(deferPart, /\(SQL ใหม่ = เลข 0406 ขึ้นไป\)/);
   assert.match(deferPart, /\*\*รวม main ถึง #1879 แล้ว\*\* \(`75751e5c` · mig 0405 · คอมมิตรวม `0140ee91`\)/);
   assert.doesNotMatch(deferPart, /ยังไม่ได้รัน|เจ้าของรัน 0404 ก่อน/, 'คำของตอนก่อนรันต้องไม่ค้างในช่วงของงาน 0404');

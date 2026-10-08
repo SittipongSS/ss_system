@@ -16,7 +16,7 @@ import {
   emptyHistoricalZone, historicalIssuesWithRowKeys, historicalLineIssues, historicalWizardBody, stepOfField,
   wizardStateFromOrder,
 } from './historicalIntakeForm.js';
-import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL, SERVICE_ROUND_CATEGORY } from './serviceOrders.js';
+import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL, SERVICE_ROUNDS_UNIT, SERVICE_ROUND_CATEGORY } from './serviceOrders.js';
 import { OPENING_INSTALLMENT_LABEL } from './historicalOrders.js';
 import { QUOTE_VAT_OPTIONS, quoteLineMoney, quoteTotals } from '../salesPlanning.js';
 import { normalizeManualLines } from './quoteLines.js';
@@ -578,6 +578,13 @@ test('มติ 29/09: คำของใบย้อนหลัง = คำข
   assert.equal(SERVICE_PACKS_LABEL, ZONES_BULK_PACKS_LABEL);
   assert.deepEqual([SERVICE_ROUNDS_LABEL, SERVICE_PACKS_LABEL], ['จำนวนรอบบริการ', 'รอบละกี่แพ็ค']);
   assert.equal(ZONES_BULK_PACKS_INVALID, SERVICE_SETUP_SQL_MESSAGES.service_setup_packs_invalid.message);
+  /* มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ: หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ
+     ⇒ หน่วยของจำนวนรอบบริการบนจอฝ่ายขายนอกตารางงานบริการ (`SERVICE_ROUNDS_UNIT` ของ serviceOrders.js) = หน่วยของตารางงานบริการ
+       ของใบใหม่ (`SERVICE_SETUP_LINE_TEXT.roundUnit` ของ serviceSetup.js · #1878) — literal สองที่ด้วยเหตุเดียวกับสองป้ายข้างบน ยึดด้วยบรรทัดนี้
+       (วันที่ฝั่งใดเปลี่ยนหน่วยฝั่งเดียว เทสต์นี้แดง ไม่ใช่จอสองจอพูดคนละหน่วยเงียบ ๆ) */
+  assert.equal(SERVICE_ROUNDS_UNIT, SERVICE_SETUP_LINE_TEXT.roundUnit);
+  assert.equal(SERVICE_ROUNDS_UNIT, 'เดือน');
+  assert.equal(SERVICE_SETUP_LINE_TEXT.roundsCount(12), `12 ${SERVICE_ROUNDS_UNIT}`, 'ประโยครอบของใบใหม่กับหน่วยของใบย้อนหลังประกอบได้คำเดียวกัน');
 });
 
 test('v2 PR-D 🪤 แท็บรุ่น 0374 (แพ็ค + ยอดที่พิมพ์เอง) ได้ข้อความเดียวต่อแถว — ไม่ซ้อน "ไม่มีช่องแพ็คต่อรอบ"', () => {
@@ -610,15 +617,17 @@ test('v2 ราคา: แพ็คเกจยังไม่ตั้งรา
 const MISSING_ZONE = 'ต้องเลือกไซต์ · โซนจากทะเบียนไซต์ของลูกค้า — ห้ามพิมพ์ชื่อจุดเอง';
 test('v2 ⭐ error ของบรรทัดชี้ช่อง (zones.<i>.<ช่อง>) + detail ไม่มีป้าย · ป้าย "รายการ N (โซน)" · ทุกช่องพาไปขั้น ②', () => {
   // หนึ่งบรรทัดผิดครบห้าช่อง (บรรทัดใหม่จาก "เพิ่มรายการ" ที่ยังไม่ได้เลือกอะไร + รอบผิด) = ห้าข้อ คนละช่อง
-  // ⭐ มติ 29/09: รอบก่อนแพ็ค — ลำดับเดียวกับช่องบนจอ (โซน · จำนวนรอบบริการ · แต่ละครั้งกี่แพ็ค)
+  // ⭐ มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ: หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ
+  //   ⇒ ข้อของแพ็คมาก่อนข้อของจำนวนรอบบริการ — ลำดับเดียวกับช่องบนจอ (โซน · รอบละกี่แพ็ค · จำนวนรอบบริการ) · ของเดิมยึดรอบก่อนแพ็คตามมติ 29/09
+  //   ⚠️ สลับแค่ลำดับของข้อ — กติกา · ข้อความ · ชื่อช่อง (`field`) · จำนวนข้อ เท่าเดิมทุกตัว
   const blank = planV2({ zones: [{ zoneId: '', productId: '', qty: '', discountType: null, discountValue: 0, rounds: '2.5', packsPerRound: '' }] });
   const lineErrors = blank.errors.filter((e) => /^zones\./.test(e.field));
   assert.deepEqual(lineErrors, [
     { field: 'zones.0.zoneId', message: `รายการ 1: ${MISSING_ZONE}`, detail: MISSING_ZONE },
     { field: 'zones.0.productId', message: 'รายการ 1: ต้องเลือกแพ็คเกจบริการ', detail: 'ต้องเลือกแพ็คเกจบริการ' },
     { field: 'zones.0.qty', message: `รายการ 1: ${HISTORICAL_LINE_MESSAGES.qty}`, detail: HISTORICAL_LINE_MESSAGES.qty },
-    { field: 'zones.0.rounds', message: `รายการ 1: ${HISTORICAL_LINE_MESSAGES.rounds}`, detail: HISTORICAL_LINE_MESSAGES.rounds },
     { field: 'zones.0.packsPerRound', message: `รายการ 1: ${HISTORICAL_LINE_MESSAGES.packsMissing}`, detail: HISTORICAL_LINE_MESSAGES.packsMissing },
+    { field: 'zones.0.rounds', message: `รายการ 1: ${HISTORICAL_LINE_MESSAGES.rounds}`, detail: HISTORICAL_LINE_MESSAGES.rounds },
   ], 'ยังไม่รู้โซน = ป้ายเลขบรรทัดล้วน ไม่มีวงเล็บ');
 
   // รู้โซนแล้ว = ป้ายพกชื่อโซน · เลขบรรทัด = ลำดับในตาราง (index + 1) ไม่ใช่ลำดับของโซน

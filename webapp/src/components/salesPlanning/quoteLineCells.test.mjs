@@ -20,7 +20,7 @@ import {
 } from '../../lib/sales/historicalIntakeForm.js';
 import { quoteLineFromProduct, quoteLineLocks } from '../../lib/sales/quoteLines.js';
 import { DEFAULT_SALE_UNIT } from '../../lib/master/units.js';
-import { SERVICE_ROUNDS_LABEL } from '../../lib/sales/serviceOrders.js';
+import { SERVICE_ROUNDS_LABEL, SERVICE_ROUNDS_UNIT } from '../../lib/sales/serviceOrders.js';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const read = (rel) => readFileSync(join(SRC, rel), 'utf8');
@@ -214,7 +214,7 @@ test('⭐ กริดความตรงกัน: เซลล์ · ยอ�
   assert.equal(checked, 24 * 5 * 10);
 });
 
-test('⭐ ช่องจำนวนรอบบริการ = ช่องของการ์ดสัญญาบริการใบสั่งขาย (จำนวนเต็ม ≥ 1 · เว้นว่างได้ · "รอบ")', () => {
+test('⭐ ช่องจำนวนรอบบริการ = ช่องของการ์ดสัญญาบริการใบสั่งขาย (จำนวนเต็ม ≥ 1 · เว้นว่างได้ · หน่วย "เดือน" จากค่าคงที่)', () => {
   const rounds = slice(code(CELLS), 'export function QuoteLineServiceRounds', undefined);
   /* ⭐ PR-D (mig 0394 · r2 S12): ใบย้อนหลังบังคับรอบ ⇒ ดอกจันแบบเลือกได้ (`required`) — ป้ายคำเดียวกับไม่บังคับ (DD2) · ค่าตั้งต้นไม่บังคับ
      ⭐ มติเจ้าของ 29/09: ป้าย = "จำนวนรอบบริการ" จากค่าคงที่ `SERVICE_ROUNDS_LABEL` (serviceOrders.js) — ห้ามสะกดเองในคอมโพเนนต์ */
@@ -227,7 +227,17 @@ test('⭐ ช่องจำนวนรอบบริการ = ช่อง�
   assert.ok(rounds.includes(control), 'ช่องเดียวกับ ServiceContractCard');
   assert.ok(code('components/salesPlanning/ServiceContractCard.js').includes(control),
     'ต้นแบบของช่องนี้ยังอยู่ที่การ์ดสัญญาบริการ — เปลี่ยนที่นั่นต้องเปลี่ยนที่นี่ด้วย');
-  assert.match(rounds, /<span className=\{styles\.roundsUnit\}>รอบ<\/span>/);
+  /* มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ: หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ
+     ⇒ หน่วยท้ายช่อง = `SERVICE_ROUNDS_UNIT` "เดือน" (serviceOrders.js · ที่เดียว) ทั้งเซลล์กลางและการ์ดสัญญาบริการ — ห้ามพิมพ์หน่วยเองในคอมโพเนนต์
+     (ของเดิมยึด `>รอบ<` · ค่าที่เก็บยังเป็นจำนวนรอบที่ TS ไปบริการ 1 เดือน = 1 รอบ) */
+  assert.equal(SERVICE_ROUNDS_UNIT, 'เดือน');
+  assert.match(rounds, /<span className=\{styles\.roundsUnit\}>\{SERVICE_ROUNDS_UNIT\}<\/span>/);
+  assert.doesNotMatch(rounds, />รอบ</, 'หน่วย "รอบ" ที่พิมพ์เองห้ามกลับมา (มติ 08/10 รอบสอง)');
+  assert.match(code(CELLS), /import \{ SERVICE_ROUNDS_LABEL, SERVICE_ROUNDS_UNIT \} from "@\/lib\/sales\/serviceOrders";/);
+  const contractCard = code('components/salesPlanning/ServiceContractCard.js');
+  assert.equal((contractCard.match(/<span className=\{styles\.roundsUnit\}>\{SERVICE_ROUNDS_UNIT\}<\/span>/g) || []).length, 2,
+    'การ์ดสัญญาบริการ: หน่วยของช่องกรอกและของฝั่งอ่านมาจากค่าคงที่ตัวเดียวกัน');
+  assert.doesNotMatch(contractCard, /roundsUnit\}>รอบ</);
   /* แดงเมื่อผู้เรียกบอก (ใบย้อนหลัง: ข้อความของแผนหลังกด "ถัดไป") · บังคับ = บอกโปรแกรมอ่านหน้าจอด้วย ไม่ใช่แค่ดอกจัน */
   assert.match(rounds, /invalid=\{invalid\}/);
   assert.match(rounds, /aria-required=\{required \? "true" : undefined\}/);
