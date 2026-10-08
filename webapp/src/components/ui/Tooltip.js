@@ -15,7 +15,8 @@
 //
 // ⚠️ **portal ไป body เสมอ** — เซลล์ตารางมีเพดานความกว้าง (--cell-text-max) พร้อม
 // `overflow: hidden` ⇒ กล่องที่วาดอยู่ในเซลล์จะถูกตัดขาดครึ่งใบ · และ `position: fixed`
-// เฉย ๆ ก็ไม่พอ เพราะบรรพบุรุษที่มี transform/backdrop-filter (แถบบน) กลายเป็น
+// เฉย ๆ ก็ไม่พอ เพราะบรรพบุรุษที่มี transform/backdrop-filter (ฉากหลังโมดัล .overlay ·
+// แถบบันทึกลอย .form-actions — แถบบนไม่มี backdrop-filter แล้วตั้งแต่ 2026-10-08) กลายเป็น
 // containing block ให้ fixed ได้
 //
 // ⚠️ **ไม่ผูก aria** — กล่องนี้เป็นภาพล้วน (`aria-hidden`) · ข้อความที่มันพูดต้องมี
