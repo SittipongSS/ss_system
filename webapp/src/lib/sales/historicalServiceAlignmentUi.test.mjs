@@ -19,7 +19,7 @@ import {
   HISTORICAL_BILLING_TEXT, emptyHistoricalInstallment, emptyHistoricalWizard, emptyHistoricalZone,
   historicalBillingColumn, historicalFieldAnchorId, historicalInstallmentIssues, historicalMoneyIssues,
 } from './historicalIntakeForm.js';
-import { historicalPacksCellText, historicalPacksRoundsText } from './historicalOrderCopy.js';
+import { historicalPacksCellText, historicalPacksRoundsText, historicalRoundsCellText } from './historicalOrderCopy.js';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const read = (rel) => readFileSync(join(SRC, rel), 'utf8');
@@ -46,19 +46,26 @@ const ZONES_CARD = 'components/salesPlanning/HistoricalZonesCard.js';
 
 // ── 1. ขั้น ④: ป้ายแพ็คต่อรอบใต้คำอธิบาย (ตารางฝั่งอ่านตัวเดียวกับหน้าใบ) ─────────────────────────────────────
 
-test('PR-D ⭐ QuotationReadOnlyLineItems: showPacksPerRound ปิดเป็นค่าตั้งต้น · ป้ายที่สองต่อจากรอบบริการ (บรรทัดแพ็คเกจเท่านั้น)', () => {
+test('PR-D ⭐ QuotationReadOnlyLineItems: showPacksPerRound ปิดเป็นค่าตั้งต้น · ป้ายแพ็คก่อนป้ายจำนวนรอบบริการ "n เดือน" (บรรทัดแพ็คเกจเท่านั้น)', () => {
   const ro = slice(code(LINE_ITEMS), 'export function QuotationReadOnlyLineItems', 'export default function');
   assert.match(ro, /\n\s*showPacksPerRound = false,\n/, 'ปิดเป็นค่าตั้งต้น — ใบเสนอราคา/หน้าใบสั่งขายไม่ได้ขีดค้างทุกบรรทัด');
   const tag = slice(ro, '{showPacksPerRound && lineIsServicePackage(line) ? (', ') : null}');
   assert.match(tag, /<span className=\{styles\.serviceRoundsTag\}>/, 'หน้าตาเดียวกับป้ายรอบบริการ (ไม่มีคลาสใหม่)');
   /* ⭐ มติเจ้าของ 29/09: ป้าย = ค่าคงที่ `SERVICE_PACKS_LABEL` "แต่ละครั้งกี่แพ็ค" (คำเดียวกับใบใหม่ · ไม่สะกดเอง) */
   assert.match(tag, /\{SERVICE_PACKS_LABEL\}: <strong>\{packsPerRoundText\(line\.packsPerRound\)\}<\/strong>/);
-  assert.match(code(LINE_ITEMS), /import \{ SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL, lineIsServicePackage \} from "@\/lib\/sales\/serviceOrders";/);
-  /* ลำดับ: ไซต์ · โซน → จำนวนรอบบริการ → รอบละกี่แพ็ค → หมายเหตุ */
+  /* มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ: หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ
+     ⇒ import เพิ่ม `SERVICE_ROUNDS_UNIT` · ลำดับ: ไซต์ · โซน → รอบละกี่แพ็ค → จำนวนรอบบริการ → หมายเหตุ (ของเดิมยึดรอบก่อนแพ็คตามมติ 29/09)
+     · ค่าของป้ายจำนวนรอบบริการ = ตัวเลขผ่าน fmtNumber + หน่วยจากค่าคงที่ (ของเดิมพิมพ์ "รอบ" เองในคอมโพเนนต์) */
+  assert.match(code(LINE_ITEMS), /import \{ SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL, SERVICE_ROUNDS_UNIT, lineIsServicePackage \} from "@\/lib\/sales\/serviceOrders";/);
   const rounds = ro.indexOf('{showServiceRounds && lineIsServicePackage(line) ? (');
   const packs = ro.indexOf('{showPacksPerRound && lineIsServicePackage(line) ? (');
+  const point = ro.indexOf('{showInstallationPoint ? ');
   const note = ro.indexOf('{line.metadata?.note ? (');
-  assert.ok(rounds > 0 && packs > rounds && note > packs, 'ป้ายแพ็คต่อรอบต้องอยู่ถัดจากป้ายรอบบริการ');
+  assert.ok(point > 0 && packs > point && rounds > packs && note > rounds, 'ป้ายรอบละกี่แพ็คต้องอยู่ก่อนป้ายจำนวนรอบบริการ (มติ 08/10 รอบสอง)');
+  const roundsTag = slice(ro, '{showServiceRounds && lineIsServicePackage(line) ? (', ') : null}');
+  assert.match(roundsTag, /\{SERVICE_ROUNDS_LABEL\}: <strong>\{line\.serviceRounds \? `\$\{fmtNumber\(line\.serviceRounds\)\} \$\{SERVICE_ROUNDS_UNIT\}` : NA\}<\/strong>/);
+  assert.doesNotMatch(ro, /\} รอบ`|\} เดือน`/, 'หน่วยของจำนวนรอบบริการไม่พิมพ์เองในคอมโพเนนต์');
+  assert.match(ro, /\n\s*showServiceRounds = false,\n/, 'ธงของป้ายจำนวนรอบบริการยังปิดเป็นค่าตั้งต้น (ใบเสนอราคาไม่มีรอบ)');
   /* ตารางแบบแก้ของใบเสนอราคาไม่แตะ */
   assert.doesNotMatch(slice(code(LINE_ITEMS), 'export default function', undefined), /showPacksPerRound|packsPerRound/);
 });
@@ -85,26 +92,32 @@ test('PR-D ⭐ ขั้น ④ เปิด showPacksPerRound ที่ตา�
 
 test('PR-D ⭐ การ์ดโซน: เซลล์แพ็คต่อรอบจาก historicalPacksCellText · หัวการ์ดจาก historicalPacksRoundsText (ไม่รู้ = หัวเดิม)', () => {
   const card = code(ZONES_CARD);
-  assert.match(card, /import \{ historicalPacksCellText, historicalPacksRoundsText, historicalZoneState \} from "@\/lib\/sales\/historicalOrderCopy";/);
+  /* มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ: หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ
+     ⇒ การ์ด import `historicalRoundsCellText` เพิ่ม (เซลล์ "12 เดือน" ประกอบที่ lib) และเซลล์/หัวเรียงแพ็คก่อนจำนวนรอบบริการ */
+  assert.match(card, /import \{ historicalPacksCellText, historicalPacksRoundsText, historicalRoundsCellText, historicalZoneState \} from "@\/lib\/sales\/historicalOrderCopy";/);
   assert.match(card, /<td className="num">\{historicalPacksCellText\(zone\.packsPerRound\)\}<\/td>/);
+  assert.match(card, /<td className="num">\{historicalRoundsCellText\(zone\.rounds\)\}<\/td>/);
   assert.match(card, /historicalPacksRoundsText\(zones\)\.meta\s*\n?\s*\?\? `\$\{fmtNumber\(zones\.length\)\} โซน — /,
     'ไม่รู้แพ็คสักโซน (ใบที่คีย์ก่อนมีช่อง) = หัวเดิม ไม่ใช่ "รวม 0 แพ็ค/รอบ"');
   assert.match(card, /minWidth=\{760\}/, 'คอลัมน์เพิ่ม ⇒ ตารางกว้างขึ้น (จอแคบเลื่อนข้าง)');
-  /* ลำดับเซลล์ตรงกับหัว (มติ 29/09 — ใบใหม่และใบย้อนหลัง): จำนวน → จำนวนรอบบริการ → แต่ละครั้งกี่แพ็ค → จำนวนเงิน */
+  /* ลำดับเซลล์ตรงกับหัว (มติ 08/10 รอบสอง — เดียวกับตารางงานบริการของใบใหม่): จำนวน → รอบละกี่แพ็ค → จำนวนรอบบริการ → จำนวนเงิน */
   const row = slice(card, '<tr key={zone.lineId || zone.zoneId}>', '</tr>');
   const qty = row.indexOf('{qtyText(zone)}');
-  const rounds = row.indexOf('zone.rounds == null');
   const packs = row.indexOf('historicalPacksCellText(');
+  const rounds = row.indexOf('historicalRoundsCellText(');
   const money = row.indexOf('zone.lineTotal == null');
-  assert.ok(qty > 0 && rounds > qty && packs > rounds && money > packs, 'เซลล์รอบละกี่แพ็คต้องอยู่ระหว่างจำนวนรอบบริการกับจำนวนเงิน');
+  assert.ok(qty > 0 && packs > qty && rounds > packs && money > rounds, 'เซลล์จำนวนรอบบริการต้องอยู่ระหว่างรอบละกี่แพ็คกับจำนวนเงิน');
   const head = slice(card, '<thead>', '</thead>');
-  assert.ok(head.indexOf('{SERVICE_ROUNDS_LABEL}') < head.indexOf('{SERVICE_PACKS_LABEL}'), 'หัวคอลัมน์เรียงเหมือนเซลล์');
+  assert.ok(head.indexOf('{SERVICE_PACKS_LABEL}') < head.indexOf('{SERVICE_ROUNDS_LABEL}'), 'หัวคอลัมน์เรียงเหมือนเซลล์');
 });
 
 test('PR-D ⭐ ของจริงของ lib ที่การ์ดเรียก: "2 แพ็ค/รอบ" · ไม่รู้ = ขีด · หัวรวมขึ้นเมื่อรู้อย่างน้อยหนึ่งโซน', () => {
   assert.equal(historicalPacksCellText(2), '2 แพ็ค/รอบ');
   assert.equal(historicalPacksCellText(null), '—');
   assert.equal(historicalPacksCellText(0), '—', '0 = ไม่รู้ (ใบที่คีย์ก่อนมีช่อง) ไม่ใช่ "0 แพ็ค/รอบ"');
+  /* มติเจ้าของ 08/10 รอบสอง: เซลล์จำนวนรอบบริการ "12 เดือน" · ไม่รู้ = ขีด */
+  assert.equal(historicalRoundsCellText(12), '12 เดือน');
+  assert.equal(historicalRoundsCellText(null), '—');
   const zones = [
     { zoneName: 'Lobby', siteId: 'ST-1', packsPerRound: 2, rounds: 12 },
     { zoneName: 'ทางเดิน', siteId: 'ST-1', packsPerRound: 1, rounds: 12 },

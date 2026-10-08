@@ -4,6 +4,7 @@
 //   แบบเดียวกับ historicalOrderCommit.js ⇒ ทดสอบด้วย supabase ปลอมได้ (route.js import ใต้ node ไม่ได้ เพราะ
 //   `@/lib/http` ลาก `next/headers` มาด้วย)
 //   GET   ก้อนของตาราง/โมดัล/แถบ (`serviceSetupView`) — ทุกคนที่อ่านใบได้
+//         · มติเจ้าของ 08/10 ("ตามงานค้าง"): ก้อนพก `aging` (ชิป "ค้าง n วัน" ของใบในเส้นตั้งย้อนหลัง) — "วันนี้" = `businessDate()` ที่นี่
 //         · mig 0404: ก้อนพก `skip` (ปุ่ม 'ยื่นโดยยังไม่ตั้งงานบริการ' — คิดจาก canEdit ของ server) และ `deferred` (ใบที่ผู้ยื่นเลือกข้าม)
 //           การยื่นแบบข้ามเองอยู่ที่ action 'submit' ของ route ใบ (`deferServiceSetup: true`) ไม่ใช่เส้นนี้ · หลังอนุมัติใบเดินเส้น POST เดิมข้างล่าง
 //   PATCH บันทึกงานบริการ (RPC `save_sales_order_service_setup`) — ฝ่ายขายที่แก้ใบนี้ได้
@@ -19,6 +20,7 @@
 // ⚠️ ไม่มีกระดิ่ง/แชต (มติกล่องกระดิ่ง) — ป้ายตัวเลขบนเมนูคือช่องทางแจ้งผู้จัดการ
 // ⚠️ ลง audit **หลัง** RPC สำเร็จเท่านั้น (ของที่ไม่ได้เขียนต้องไม่มีประวัติ) · ยกเว้น `reopen` ที่ฐานลงเอง (ดู reopenSetup)
 import { recordAudit } from '@/lib/audit';
+import { businessDate } from '@/lib/businessDate';
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope } from '@/lib/salesPlanning';
 import { loadScoped } from '@/lib/scopedRow';
 import { resolveExpectedUpdatedAt } from '@/lib/sales/documentConcurrency';
@@ -140,7 +142,11 @@ export async function serviceSetupGet({ supabase, user, id }) {
       const { codes, error: blockersError } = await loadServiceReopenBlockers(supabase, order.id);
       reopenBlockers = blockersError ? ['unread'] : codes;
     }
-    return reply(200, serviceSetupView(ctx, { canEdit, userId: user.id ?? null, role: user.role ?? null, reopenBlockers }));
+    /* ⭐ `todayIso` = วันนี้ตามเวลาไทย (มติเจ้าของ 08/10 "ตามงานค้าง") — ชิป "ค้าง n วัน" ของแบนเนอร์/การ์ดรางนับจากวันนี้ของ server
+       ตัวเดียวกับทะเบียนใบสั่งขายและแท็บ TS (จอไม่อ่านนาฬิกาเอง) */
+    return reply(200, serviceSetupView(ctx, {
+      canEdit, userId: user.id ?? null, role: user.role ?? null, reopenBlockers, todayIso: businessDate(),
+    }));
   } catch (viewError) {
     return contextFailed(viewError);
   }

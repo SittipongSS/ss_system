@@ -22,7 +22,7 @@ import { missingStoredEvidence } from '@/lib/upload/privateEvidence';
 import { businessDate } from '@/lib/businessDate';
 import { orderBusinessLineOf, orderHasServiceRounds, serviceVisitsSold } from '@/lib/sales/serviceOrders';
 import {
-  SERVICE_DEFERRED_TEXT, SERVICE_REOPENED_TEXT, serviceBackfillAwaitingReview, serviceBackfillNeeded, serviceRoundsText,
+  SERVICE_DEFERRED_TEXT, SERVICE_REOPENED_TEXT, serviceBackfillAging, serviceBackfillAwaitingReview, serviceBackfillNeeded, serviceRoundsText,
   serviceSetupDeferred, serviceSetupReopened, serviceSetupTotals,
 } from '@/lib/sales/serviceSetup';
 import { paidThrough } from '@/lib/sales/paymentCoverage';
@@ -327,6 +327,11 @@ export const GET = withUser(async ({ user, supabase }) => {
       /* ชิป "ยังไม่ตั้งงานบริการ" บนแถบเครื่องมือ — ใบที่อนุมัติแล้วแต่ยังต้องตั้งงานบริการย้อนหลัง (D25: มีบรรทัดที่ยังไม่ใช่
          "ไม่ใช่งานบริการ" อย่างน้อยหนึ่ง · ทุกผิวถามตัวเดียวกัน) */
       _serviceSetupPending: setupPendingIds.has(row.id),
+      /* ⭐ "ค้าง n วัน" (มติเจ้าของ 08/10 "ตามงานค้าง") — งานบริการของใบนี้ค้างอยู่ที่ใคร (ฝ่ายขาย / ผู้จัดการ) มากี่วันตามปฏิทินไทย
+         · ฐานเดียวกับชิป "ยังไม่ตั้งงานบริการ" และเลนเจ้าของดีล (`setupPendingIds` — ใบที่มีอะไรให้ตั้งจริง · D25) · ใบอื่น = null
+         · ตัวตัดสินเดียว `serviceBackfillAging` + "วันนี้" ของ server (`todayIso` ตัวเดียวกับที่ใช้ตัดสินงวดเลยกำหนด) — จอไม่อ่านนาฬิกาเอง
+         · ทุกคอลัมน์ที่ใช้มากับ `select('*')` ข้างบนอยู่แล้ว (approvedAt · สามคอลัมน์ของการตั้งย้อนหลัง) — ไม่มีคำสั่งอ่านเพิ่ม */
+      serviceAging: setupPendingIds.has(row.id) ? serviceBackfillAging(row, { todayIso }) : null,
       /* ตัวเลขของแถวคิว "งานบริการ (ใบเดิม)" — มีเฉพาะใบที่รอผู้จัดการตรวจ */
       serviceReview: serviceBackfillAwaitingReview(row) ? serviceReviewOf(row) : null,
       /* ⭐ ใบรออนุมัติที่ผู้ยื่นเลือก "ยื่นโดยยังไม่ตั้งงานบริการ" (mig 0404) — ป้ายต่อท้ายแถวคิวของผู้อนุมัติ (จอต่อหลังยอด) · ไม่ใช่ = null

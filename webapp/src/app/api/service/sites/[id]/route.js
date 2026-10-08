@@ -19,7 +19,7 @@ import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { termOrderActive, termsByZone } from '@/lib/service/terms';
 import { loadZoneSaleContext } from '@/lib/service/zoneSalesRepo';
 import { zoneSaleFacts } from '@/lib/service/zoneRegistry';
-import { siteRoundsSoldOf } from '@/lib/sales/serviceOrders';
+import { siteRoundsSoldOf, siteRoundsSoldRangeOf } from '@/lib/sales/serviceOrders';
 import { businessDate } from '@/lib/businessDate';
 
 export const dynamic = 'force-dynamic';
@@ -52,13 +52,19 @@ async function siteSalesOrders(supabase, zones = [], { terms: preloaded = null }
     .sort((a, b) => String(a.orderNumber || '').localeCompare(String(b.orderNumber || '')));
 }
 
+/* ⭐ คืนสองอย่างจากแถวชุดเดียวกัน (ไม่มีคำสั่งอ่านเพิ่ม · ผลตรวจทาน 08/10 ของมติ "จอฝ่ายขายที่เหลือ"):
+     total = ผลรวมของทั้งไซต์ (ตัวเดิม — คีย์ `roundsSold` ของ response · โมดัลรอบบริการของ TS เทียบกับจำนวนนัด)
+     range = ช่วงของค่าที่ขายไว้ต่อรายการ (คีย์เสริม `roundsSoldRange`) — สรุปไซต์พูดค่าที่ขายไว้เป็น "เดือน" จากตัวนี้
+             ไม่ใช่จากผลรวม (สองใบ 12 รอบซ้อนกัน = "12 เดือน (ทั้งไซต์ 24 รอบ)" ไม่ใช่ "24 เดือน") */
+const NO_ROUNDS_SOLD = Object.freeze({ total: null, range: null });
+
 async function siteRoundsSold(supabase, zones = [], { terms: preloaded = null } = {}) {
   const zoneIds = zones.map((z) => z.id);
-  if (!zoneIds.length) return null;
+  if (!zoneIds.length) return NO_ROUNDS_SOLD;
   const terms = preloaded ?? await loadTerms(supabase, { zoneIds });
-  if (!terms.length) return null;
+  if (!terms.length) return NO_ROUNDS_SOLD;
   const orderIds = [...new Set(terms.map((t) => t.salesOrderId).filter(Boolean))];
-  if (!orderIds.length) return null;
+  if (!orderIds.length) return NO_ROUNDS_SOLD;
   /* ⚠️ ไล่ทีละหน้าแม้จะกรองด้วย id ชุดเดียว — ไซต์ที่ต่อสัญญามาหลายปีสะสม term ได้เกิน
      พันแถว และเพดาน PostgREST ตัดเงียบ ๆ ⇒ ใบที่หลุดจะถูกนับเป็น "ไม่มีผล" แล้ว
      จำนวนรอบที่ขายหายไปดื้อ ๆ (ด่าน check:rowcap ใน CI คุมไว้) */
@@ -71,13 +77,14 @@ async function siteRoundsSold(supabase, zones = [], { terms: preloaded = null } 
   const activeIds = new Set(activeOrders.map((o) => o.id));
   const activeTerms = terms.filter((t) => activeIds.has(t.salesOrderId));
   const lineIds = [...new Set(activeTerms.map((t) => t.salesOrderLineId).filter(Boolean))];
-  if (!lineIds.length) return null;
+  if (!lineIds.length) return NO_ROUNDS_SOLD;
   const { data: lines, error: lineError } = await fetchAllResult(() => supabase.from('sales_order_lines')
     .select('id, "serviceRounds"').in('id', lineIds).order('id', { ascending: true }));
   if (lineError) throw lineError;
-  return siteRoundsSoldOf({
+  const total = siteRoundsSoldOf({
     orders: activeOrders, terms: activeTerms, lines: lines || [], zonesById: new Map(zones.map((z) => [z.id, z])),
   });
+  return { total, range: siteRoundsSoldRangeOf({ orders: activeOrders, terms: activeTerms, lines: lines || [] }) };
 }
 
 export const GET = withUser(async ({ user, supabase, ctx }) => {
@@ -105,13 +112,17 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
         pendingOrders: sale.pendingOrdersByZone.get(zone.id) || [],
       }),
     }));
+    const sold = await siteRoundsSold(supabase, zones, { terms: sale.terms });
     return ok({
       site: access.site,
       zones: zonesOut,
       assets: await loadAssets(supabase, id),
       schedule: schedule.get(id) || { lastRefillDate: null, nextVisitDate: null },
       // ข้อผูกพันจำนวนรอบที่ฝ่ายขายระบุไว้ — ฟอร์มวางรอบเอาไปเทียบกับความถี่ที่กำลังตั้ง
-      roundsSold: await siteRoundsSold(supabase, zones, { terms: sale.terms }),
+      roundsSold: sold.total,
+      /* ⭐ คีย์เสริม (ของเดิมไม่เปลี่ยน): ช่วงของค่าที่ขายไว้ต่อรายการ `{ min, max }` หรือ null — แถว "จำนวนรอบบริการ" ของสรุปไซต์
+         พูดค่าที่ขายไว้เป็น "เดือน" จากตัวนี้ (`siteRoundsSoldText` ของ lib/sales/serviceOrders.js) */
+      roundsSoldRange: sold.range,
       /* ⭐ **ใบสั่งขายที่ลงของไว้ที่ไซต์นี้** — ตัวเลือกของช่อง "ใบที่ครอบรอบนี้"
          ⚠️ รายการต้องมาจาก term ของไซต์นี้เท่านั้น ไม่ใช่ทะเบียนใบทั้งระบบ:
             รอบที่ผูกใบที่ไม่เคยลงของที่ไซต์นี้คือข้อผูกพันที่อ้างไม่ได้

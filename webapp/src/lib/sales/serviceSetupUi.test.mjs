@@ -1716,3 +1716,46 @@ test('0404: ประกาศบนใบรออนุมัติ + ป้�
   assert.equal(skipTagsShown({ ...skip, blockedReason: SERVICE_DEFER_TEXT.predecessorRunning('SO-1', 2), lead: SERVICE_DEFER_TEXT.panelPredecessor('SO-1') }), false);
   assert.equal(skipTagsShown({ ...skip, visible: false }), false);
 });
+
+/* ══ "ค้าง n วัน" บนแบนเนอร์/การ์ดรางของเส้นตั้งย้อนหลัง (มติเจ้าของ 08/10 "ตามงานค้าง") ════════════════════════════════════════
+   ตรวจข้อมูลจริง 08/10: 59 ใบสายบริการอนุมัติแล้วงานยังไม่ถึง TS · นานสุด 56 วัน · ไม่มีจอไหนบอกอายุ
+   ⭐ ชิปตัวเดียวทุกผิว (`ServiceAgingChip`) วาดจากก้อน `view.aging` ที่ server คิดด้วยวันไทย — คอมโพเนนต์ไม่อ่านนาฬิกา ไม่พิมพ์คำเอง */
+test('ตามงานค้าง: แบนเนอร์ + การ์ดรางมีชิปอายุข้างป้ายขั้น จาก `view.aging` · ป้ายขั้นยังมาจาก copy ตัวเดียว · ไม่มี style ฝัง', () => {
+  const panel = code(`${FOLDER}/ServiceBackfillPanel.js`);
+  assert.match(panel, /import ServiceAgingChip from "@\/components\/salesPlanning\/ServiceAgingChip";/);
+  assert.equal((panel.match(/<ServiceAgingChip aging=\{view\.aging\} \/>/g) || []).length, 2, 'แบนเนอร์ + การ์ดราง');
+  assert.equal((panel.match(/\{copy\.stateLabel\}/g) || []).length, 2, 'ป้ายขั้นยังมีสองที่ จากตัวเดียว');
+  /* แบนเนอร์: ชิป + ป้ายขั้นในกล่องเดียวของช่อง action · การ์ดราง: สองป้ายเป็นลูกของช่อง actions ตรง ๆ (แถว flex ที่ห่อได้อยู่แล้ว) */
+  assert.match(panel, /action=\{<span className=\{styles\.stateTags\}><ServiceAgingChip aging=\{view\.aging\} \/><Tag tone=\{STATE_TONE\[state\]\}>\{copy\.stateLabel\}<\/Tag><\/span>\}/);
+  assert.match(panel, /actions=\{<><ServiceAgingChip aging=\{view\.aging\} \/><Tag tone=\{STATE_TONE\[state\]\}>\{copy\.stateLabel\}<\/Tag><\/>\}/);
+  assert.doesNotMatch(panel, /style=\{\{/);
+  /* ไฟล์นี้ไม่พิมพ์คำของชิป ไม่คิดวัน ไม่อ่านนาฬิกา — ทั้งหมดมากับก้อนของ server */
+  assert.doesNotMatch(panel, /ค้าง|serviceBackfillAging|SERVICE_BACKFILL_AGING_TEXT|new Date\(|businessDate/);
+  const css = read(`${FOLDER}/ServiceBackfillPanel.module.css`);
+  assert.match(css, /\.stateTags \{[^}]*display: inline-flex;[^}]*flex-wrap: wrap;[^}]*align-items: center;[^}]*gap: var\(--space-2\);/);
+});
+
+/* ⚠️ ผลตรวจทาน 08/10 (หลังเห็นจอจริง): เกณฑ์ที่สอง (≥ 30 วัน) เปลี่ยนจาก "จุดนำ" เป็น **ไอคอนนาฬิกาทราย** — บนแท็บ TS ป้ายขั้นที่อยู่ข้างชิปมี
+   จุดนำเสมอ และแถวที่รอไซต์เป็นโทนเตือนเหมือนกัน ⇒ "● ยังไม่เริ่ม" กับ "● ค้าง 30 วัน" หน้าตาเดียวกัน ระดับ 30 วันมองไม่ออก
+   · ยังเป็นโทนเตือนของระบบ (ไม่ใช้แดง ไม่ตั้งสีใหม่) · ไอคอนผ่านช่อง `icon` เดิมของ StatusBadge */
+test('ตามงานค้าง: `ServiceAgingChip` — ชิ้นเดียวทุกผิว · โทน/ไอคอนนาฬิกาทราย/คำบอกมาจากก้อน · ไม่มีป้าย = ไม่วาด · ไม่มีคำไทย/ตรรกะของวันในคอมโพเนนต์', () => {
+  const chip = code('components/salesPlanning/ServiceAgingChip.js');
+  assert.match(chip, /import StatusBadge from "@\/components\/ui\/StatusBadge";/);
+  assert.match(chip, /import \{ Hourglass \} from "lucide-react";/, 'ไอคอน "รอ" ตัวที่ระบบใช้อยู่แล้ว');
+  assert.equal((chip.match(/^import /gm) || []).length, 2, 'พึ่งแค่ป้ายกลางของระบบ + ไอคอน (ไม่ดึง lib ของงานบริการเข้าจอที่ใช้ชิป)');
+  assert.match(chip, /if \(!aging\?\.label\) return null;/, 'วันเดียวกัน/ไม่มีนาฬิกา/ไม่มีวันนี้ = ไม่วาดอะไร');
+  assert.match(chip, /<StatusBadge\s+tone=\{aging\.tone\}\s+icon=\{aging\.strong \? Hourglass : undefined\}\s+iconSize=\{12\}\s+size="sm"\s+label=\{aging\.label\}\s+title=\{aging\.title \|\| undefined\}\s+\/>/);
+  assert.doesNotMatch(chip, /\bdot\b/, 'เกณฑ์ที่สองไม่ใช้จุดนำ — ซ้ำกับจุดนำของป้ายขั้นข้าง ๆ บนแท็บ TS');
+  assert.doesNotMatch(chip, /[\u0E00-\u0E7F]/, 'คำทั้งหมดอยู่ที่ SERVICE_BACKFILL_AGING_TEXT (lib/sales/serviceBackfillAging.js)');
+  assert.doesNotMatch(chip, /style=\{\{|new Date\(|className=/, 'ไม่มีสี/ทรงของตัวเอง — ใช้โทนของ StatusBadge เท่านั้น');
+  assert.doesNotMatch(chip, /"use client"/, 'ไม่มี state/hook — ใช้ได้ทั้งจอ server และ client');
+  /* ทุกผิวที่บอกสถานะตั้งงานบริการย้อนหลังใช้ชิปตัวนี้ (ไม่วาด StatusBadge ของอายุเอง) */
+  for (const rel of [
+    `${FOLDER}/ServiceBackfillPanel.js`,
+    'app/sales-planning/sales-orders/page.js',
+    'app/service/intake/page.js',
+  ]) {
+    assert.match(code(rel), /import ServiceAgingChip from "@\/components\/salesPlanning\/ServiceAgingChip";/, rel);
+    assert.doesNotMatch(code(rel), /aging\.tone|aging\.strong|aging\?\.tone/, `${rel}: โทน/ไอคอนตัดสินในชิปที่เดียว`);
+  }
+});

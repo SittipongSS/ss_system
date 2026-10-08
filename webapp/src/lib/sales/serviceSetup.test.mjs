@@ -46,6 +46,7 @@ import {
   periodSpan,
   roundChipsFromPeriod,
   roundsLowOf,
+  serviceBackfillAging,
   serviceBackfillAwaitingReview,
   serviceBackfillNeeded,
   serviceBackfillState,
@@ -2625,4 +2626,140 @@ test('0404 แคตตาล็อก: คีย์ตามสัญญาก�
   assert.doesNotMatch(all, /ไปกี่รอบ|แต่ละครั้งกี่แพ็ค|แพ็คต่อรอบ/);
   assert.equal(all.split(roundsLabel).length - 1, 1, 'คำ "จำนวนรอบบริการ" มีที่เดียว (บรรทัดแบนเนอร์) และมาจาก ROUNDS_TERM');
   assert.equal(all.split(packsLabel).length - 1, 1);
+});
+
+/* ══ "ค้าง n วัน" — งานบริการของใบค้างอยู่ที่ใคร ตั้งแต่เมื่อไร (มติเจ้าของ 08/10 "ตามงานค้าง") ══════════════════════════════════
+   ตรวจข้อมูลจริง 08/10 (อ่านอย่างเดียว): 59 ใบค้าง — 49 ใบเดิม + 9 ใบเปิดแก้ รอฝ่ายขาย · 1 ใบรอผู้จัดการ · นานสุด 56 วัน
+   ตัวตัดสินเดียว `serviceBackfillAging(order, { todayIso })` — ดูแค่แถวใบ · เลขคณิตของวัน/ระดับ/คำอยู่ที่ serviceBackfillAging.test.mjs
+   ⚠️ ต้องผ่านใต้ `TZ=UTC` ด้วย — ทุกเคสส่ง "วันนี้" เข้าไปเอง ไม่มีตัวไหนอ่านนาฬิกาของเครื่อง */
+const AGING_TODAY = '2026-10-08';
+const A_AT = '2026-08-13T03:00:00Z';   // อนุมัติใบ (56 วันก่อน 08/10)
+const R_AT = '2026-10-01T04:00:00Z';   // เปิดแก้หลังอนุมัติ (7 วัน)
+const J_AT = '2026-10-05T09:00:00Z';   // ถูกตีกลับ (3 วัน)
+const S_AT = '2026-09-29T02:00:00Z';   // ยื่นตรวจ (9 วัน)
+const backfillOrder = (over = {}) => orderOf({ status: 'approved', approvedAt: A_AT, ...over });
+const agingOf = (over = {}, today = AGING_TODAY) => serviceBackfillAging(backfillOrder(over), { todayIso: today });
+const brief = (aging) => (aging ? [aging.waitingOn, aging.since, aging.days, aging.level, aging.tone, aging.strong, aging.label] : null);
+
+test('⭐ ตามงานค้าง — ตารางความจริง: รอฝ่ายขาย = เหตุการณ์ล่าสุดของ อนุมัติ/เปิดแก้/ตีกลับ · รอผู้จัดการ = วันที่ยื่นตรวจ', () => {
+  // 1 ใบเดิม: ไม่เคยแตะ — นับจากวันอนุมัติใบ
+  assert.deepEqual(brief(agingOf()), ['sales', A_AT, 56, 'long', 'warning', true, 'ค้าง 56 วัน']);
+  // 2 เปิดแก้หลังอนุมัติ (0396): ลูกบอลกลับมาที่ฝ่ายขายวันที่เปิดแก้
+  assert.deepEqual(brief(agingOf({ serviceSetupReopenedAt: R_AT })), ['sales', R_AT, 7, 'warn', 'warning', false, 'ค้าง 7 วัน']);
+  // 3 ถูกตีกลับ: นับจากวันที่ถูกตีกลับ (วันยื่นตรวจเก่าไม่เกี่ยวแล้ว)
+  assert.deepEqual(
+    brief(agingOf({ serviceSetupState: 'rejected', serviceSetupSubmittedAt: S_AT, serviceSetupRejectedAt: J_AT })),
+    ['sales', J_AT, 3, 'fresh', 'neutral', false, 'ค้าง 3 วัน'],
+  );
+  // 4 เปิดแก้ 01/10 → ยื่น → ถูกตีกลับ 05/10: ล่าสุดของสาม = วันตีกลับ
+  assert.deepEqual(
+    brief(agingOf({ serviceSetupState: 'rejected', serviceSetupSubmittedAt: S_AT, serviceSetupRejectedAt: J_AT, serviceSetupReopenedAt: R_AT })).slice(0, 3),
+    ['sales', J_AT, 3],
+  );
+  // 5 🔴 ค่าตีกลับเก่าค้าง (RPC ยื่นตรวจไม่ล้าง `serviceSetupRejectedAt` · ล้างเฉพาะตอนเปิดแก้) + เปิดแก้ทีหลัง = นับจากวันเปิดแก้
+  //   — เหตุที่กติกาต้องเป็น "ล่าสุดของสาม" ไม่ใช่สวิตช์ตามสถานะ
+  assert.deepEqual(
+    brief(agingOf({ serviceSetupState: null, serviceSetupRejectedAt: '2026-09-01T03:00:00Z', serviceSetupReopenedAt: R_AT })).slice(0, 3),
+    ['sales', R_AT, 7],
+  );
+  // 6 ยื่นตรวจแล้ว: งานอยู่ที่ผู้จัดการ นับจากวันที่ยื่น — ไม่ใช่วันอนุมัติ/วันเปิดแก้ (แม้คอลัมน์เปิดแก้จะใหม่กว่าวันที่ยื่น)
+  assert.deepEqual(
+    brief(agingOf({ serviceSetupState: 'submitted', serviceSetupReopenedAt: R_AT, serviceSetupSubmittedAt: S_AT })),
+    ['manager', S_AT, 9, 'warn', 'warning', false, 'ค้าง 9 วัน'],
+  );
+  // 7 ยื่นตรวจแล้วแต่ไม่มีวันที่ยื่น (ข้อมูลเสีย): ยังรู้ว่าอยู่ที่ผู้จัดการ แต่ไม่มีป้าย — ไม่ย้อนไปใช้วันอนุมัติ
+  assert.deepEqual(brief(agingOf({ serviceSetupState: 'submitted', serviceSetupSubmittedAt: null })), ['manager', null, null, 'none', 'neutral', false, null]);
+  // 8 ข้ามตอนยื่น (0404): ตราการข้าม **ไม่ใช่นาฬิกา** — งานมาถึงฝ่ายขายตอนใบได้รับอนุมัติ
+  assert.deepEqual(
+    brief(agingOf({ approvedAt: '2026-10-06T03:00:00Z', serviceSetupDeferredAt: '2026-10-01T02:30:00Z', serviceSetupDeferredByName: 'Kamonrat P.' })).slice(0, 4),
+    ['sales', '2026-10-06T03:00:00Z', 2, 'fresh'],
+  );
+  // 9 ไม่มีนาฬิกาเลย: ก้อนที่ไม่มีป้าย (ไม่เดาวัน)
+  assert.deepEqual(brief(agingOf({ approvedAt: null })), ['sales', null, null, 'none', 'neutral', false, null]);
+});
+
+test('🔴 ตามงานค้าง — วันไทย: อนุมัติ 00:30 น. เวลาไทยของวันนี้ = ไม่มีป้าย · 23:59 น. ของเมื่อวาน = "ค้าง 1 วัน"', () => {
+  // 10 2026-10-07T17:30:00Z = 08/10 00:30 เวลาไทย (ยังเป็น 07/10 ใน UTC)
+  const sameDay = agingOf({ approvedAt: '2026-10-07T17:30:00Z' });
+  assert.deepEqual([sameDay.sinceDay, sameDay.days, sameDay.level, sameDay.label], ['2026-10-08', 0, 'none', null]);
+  assert.equal(sameDay.title, 'ยังไม่ยื่นตรวจงานบริการ · นับจาก 08/10/2026');
+  // 11 2026-10-07T16:59:59Z = 07/10 23:59:59 เวลาไทย
+  const yesterday = agingOf({ approvedAt: '2026-10-07T16:59:59Z' });
+  assert.deepEqual([yesterday.sinceDay, yesterday.days, yesterday.label], ['2026-10-07', 1, 'ค้าง 1 วัน']);
+  // ข้ามปี: อนุมัติ 31/12 23:59 เวลาไทย → 01/01 = 1 วัน · 01/01 00:00 เวลาไทย = วันเดียวกัน
+  assert.equal(agingOf({ approvedAt: '2026-12-31T16:59:59Z' }, '2027-01-01').days, 1);
+  assert.equal(agingOf({ approvedAt: '2026-12-31T17:00:00Z' }, '2027-01-01').days, 0);
+  // ขอบเกณฑ์: 6 / 7 / 29 / 30 วัน
+  const levelAt = (approvedAt) => { const a = agingOf({ approvedAt }); return [a.days, a.level, a.strong]; };
+  assert.deepEqual(levelAt('2026-10-02T05:00:00Z'), [6, 'fresh', false]);
+  assert.deepEqual(levelAt('2026-10-01T05:00:00Z'), [7, 'warn', false]);
+  assert.deepEqual(levelAt('2026-09-09T05:00:00Z'), [29, 'warn', false]);
+  assert.deepEqual(levelAt('2026-09-08T05:00:00Z'), [30, 'long', true]);
+});
+
+test('ตามงานค้าง — ใบที่ไม่อยู่ในเส้นตั้งย้อนหลัง = null: ประทับแล้ว · ถูก Rev. ทับ · ยังไม่อนุมัติ/ย้อนอนุมัติ/ยกเลิก · ใบย้อนหลัง', () => {
+  // 12 ประทับแล้ว = งานถึง TS แล้ว
+  assert.equal(agingOf({ serviceTermsOpenedAt: STAMP }), null);
+  assert.equal(agingOf({ serviceTermsOpenedAt: STAMP, serviceSetupReopenedAt: '2026-09-20T03:00:00Z' }), null, 'คอลัมน์เปิดแก้ค้างหลังอนุมัติใหม่ไม่มีผล');
+  // 13 ถูก Rev. ทับ
+  assert.equal(agingOf({ supersededById: 'SO2' }), null);
+  // 14 สถานะอื่นทุกตัว — รวมใบที่ค่า 'submitted' ค้าง (D28: ย้อนอนุมัติ/ออก Rev./ยกเลิกไม่ล้างสถานะ)
+  for (const status of ['draft', 'pending_approval', 'rejected', 'approval_revoked', 'revised', 'cancelled']) {
+    assert.equal(agingOf({ status }), null, status);
+    assert.equal(agingOf({ status, serviceSetupState: 'submitted', serviceSetupSubmittedAt: S_AT }), null, `${status} + submitted ค้าง`);
+  }
+  // 15 ใบย้อนหลัง (เปิดงานให้ TS ตอนอนุมัติ ไม่มีเส้นตั้งย้อนหลัง)
+  assert.equal(agingOf({ origin: 'historical' }), null);
+  assert.equal(serviceBackfillAging(null, { todayIso: AGING_TODAY }), null);
+  assert.equal(serviceBackfillAging(undefined), null);
+  // 16 ไม่ส่งวันนี้ = ก้อนที่รู้ว่าอยู่ที่ใคร/ตั้งแต่เมื่อไร แต่ไม่มีจำนวนวันและไม่มีป้าย
+  const noToday = serviceBackfillAging(backfillOrder());
+  assert.deepEqual([noToday.waitingOn, noToday.since, noToday.sinceDay, noToday.days, noToday.label], ['sales', A_AT, '2026-08-13', null, null]);
+  assert.deepEqual(serviceBackfillAging(backfillOrder(), {}), noToday);
+  // ⚠️ ดูแค่แถวใบ — ไม่ถามสายธุรกิจ/บรรทัด (ผู้เรียกกั้นเอง: setupPendingIds · flow 'backfill' · serviceBackfillNeeded)
+  assert.ok(serviceBackfillAging(backfillOrder({ deal: PRODUCT_DEAL, dealId: 'DL2' }), { todayIso: AGING_TODAY }), 'ตัวตัดสินไม่กั้นสายเอง');
+  // ผู้ถืองานตรงกับตัวตัดสินกลางของ "รอผู้จัดการตรวจ" ทุกกรณี
+  for (const over of [{}, { serviceSetupState: 'submitted', serviceSetupSubmittedAt: S_AT }, { serviceSetupState: 'rejected', serviceSetupRejectedAt: J_AT }]) {
+    assert.equal(agingOf(over).waitingOn === 'manager', serviceBackfillAwaitingReview(backfillOrder(over)));
+  }
+});
+
+test('ตามงานค้าง — ก้อน GET: `aging` มีเฉพาะขั้น backfill (ใบที่มีอะไรให้ตั้งจริง) · ขั้นอื่น null · ไม่ส่งวันนี้ = ไม่มีป้าย · คีย์เดิมค่าเดิม', () => {
+  const ae = { canEdit: true, userId: 'U1', role: 'ae' };
+  const today = { ...ae, todayIso: AGING_TODAY };
+  // ใบเดิมรอฝ่ายขาย
+  const legacyCtx = completeCtx({ order: backfillOrder(PERIOD) });
+  const legacy = serviceSetupView(legacyCtx, today);
+  assert.equal(legacy.flow, 'backfill');
+  assert.deepEqual(brief(legacy.aging), ['sales', A_AT, 56, 'long', 'warning', true, 'ค้าง 56 วัน']);
+  assert.equal(legacy.aging.title, 'ยังไม่ยื่นตรวจงานบริการ · นับจาก 13/08/2026');
+  assert.deepEqual(legacy.aging, serviceBackfillAging(legacyCtx.order, { todayIso: AGING_TODAY }), 'ก้อนเดียวกับที่ทะเบียน/แท็บ TS ได้');
+  // รอผู้จัดการตรวจ
+  const sent = serviceSetupView(completeCtx({
+    order: backfillOrder({ ...PERIOD, serviceSetupState: 'submitted', serviceSetupSubmittedAt: S_AT, serviceSetupSubmittedById: 'U1', serviceSetupSubmittedByName: 'Sittipong K.' }),
+  }), { ...today, userId: 'U2', role: 'ae_supervisor' });
+  assert.equal(sent.flow, 'backfill');
+  assert.deepEqual(brief(sent.aging), ['manager', S_AT, 9, 'warn', 'warning', false, 'ค้าง 9 วัน']);
+  // ไม่ส่งวันนี้ (ผู้เรียกเก่า) = ก้อนที่ไม่มีป้าย — จอไม่วาดชิป
+  const noToday = serviceSetupView(legacyCtx, ae);
+  assert.deepEqual([noToday.aging.waitingOn, noToday.aging.days, noToday.aging.label], ['sales', null, null]);
+  // ทุกคีย์อื่นของก้อนเท่าเดิมทุกค่า ไม่ว่าส่งวันนี้หรือไม่
+  const { aging: _a, ...restWith } = legacy;
+  const { aging: _b, ...restWithout } = noToday;
+  assert.deepEqual(restWith, restWithout);
+
+  // ขั้นอื่น = null: ร่าง · รออนุมัติ · ประทับแล้ว · ย้อนอนุมัติ (locked) · อนุมัติแล้วแต่ไม่มีอะไรให้ตั้ง (none · D25) · สายสินค้า
+  const nullCases = {
+    pipeline: completeCtx(),
+    pending: completeCtx({ order: orderOf({ ...PERIOD, status: 'pending_approval' }) }),
+    stamped: s247Ctx(),
+    locked: completeCtx({ order: backfillOrder({ ...PERIOD, status: 'approval_revoked', serviceSetupState: 'submitted', serviceSetupSubmittedAt: S_AT }) }),
+    none: completeCtx({ order: backfillOrder(), lines: [fgLine(1, 'FG-0233-03-002-00001')], allocations: [] }),
+    product: completeCtx({ order: backfillOrder({ deal: PRODUCT_DEAL, dealId: 'DL2' }) }),
+  };
+  for (const [name, ctx] of Object.entries(nullCases)) {
+    const view = serviceSetupView(ctx, { ...today, reopenBlockers: [] });
+    assert.notEqual(view.flow, 'backfill', name);
+    assert.equal(view.aging, null, `${name}: ไม่อยู่ในเส้นตั้งย้อนหลัง = ไม่มีก้อนอายุ`);
+  }
 });

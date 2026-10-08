@@ -4,7 +4,9 @@
 // ⭐ **generic** — ไม่รู้จักใบสั่งขาย: รับทะเบียนไซต์ของลูกค้า + โซนที่ติดอยู่แล้ว แล้วคืนแถว `{ zoneId, packsPerRound }`
 //   ⇒ ตารางงานบริการของใบสั่งขาย + หน้าต่างเพิ่มหลายโซนของใบย้อนหลัง (`HistoricalBulkZonesModal` = ตัวห่อ · PR-D)
 // ⭐ PR-D (DD4): prop เสริมล้วน ค่าตั้งต้น = หน้าตาเดิมทุกตัวอักษร — `title` · `subtitle` · `lead` (undefined = ประโยคเดิม ·
-//   null = ซ่อน) · `packsLabel` · `renderFields({ pressed, plan })` (ช่องของผู้เรียก เหนือแถวรอบละกี่แพ็ค) · `extraError`
+//   null = ซ่อน) · `packsLabel` · `renderFields({ pressed, plan })` (ช่องของผู้เรียก เหนือแถวรอบละกี่แพ็ค) ·
+//   `renderAfterPacks({ pressed, plan })` (ช่องของผู้เรียก **ใต้** แถวรอบละกี่แพ็ค — ใบย้อนหลังวางช่องจำนวนรอบบริการตรงนี้ ·
+//   มติเจ้าของ 08/10 รอบสอง "แพ็คก่อนจำนวนรอบบริการ" · ไม่ส่ง = ไม่วาดอะไร ตารางงานบริการของใบสั่งขายเห็นหน้าตาเดิม) · `extraError`
 //   (ด่านของช่องผู้เรียก — มาก่อนด่านของตัวนี้) · `consequence(plan, { lineNo, mode })` · `confirmLabel(count)` ·
 //   `emptyRegistryText` · ไซต์ที่พก `loadError` (ผู้เรียกอ่านโซนของไซต์นั้นไม่สำเร็จ) = ประโยคแทนชิปโซน และขึ้นเสมอแม้คำค้นไม่ตรง
 //   · `assessedHint` (review 29/09) ประโยคข้างโหมด "ตามผลประเมิน" (undefined = ประโยคเดิม · null = ซ่อน — ผู้เรียกที่ผลประเมิน
@@ -46,6 +48,7 @@ const assessedOf = (zone) => {
  * @param onAdd `(rows: [{ zoneId, packsPerRound|null }]) => void`
  * @param extraError ด่านของช่องผู้เรียก (ข้อความไทย | null) — ขึ้นท้ายหน้าต่างหลังกดเท่านั้น และมาก่อน `plan.error` (M1)
  * @param renderFields `({ pressed, plan }) => node` ช่องของผู้เรียก (วาดเหนือแถวแพ็คต่อรอบ · แดงหลังกดด้วย `pressed`)
+ * @param renderAfterPacks `({ pressed, plan }) => node` ช่องของผู้เรียกที่ต้องอยู่ใต้แถวแพ็คต่อรอบ — ไม่ส่ง = ไม่วาด (ค่าตั้งต้น)
  * @param assessedHint ประโยคข้างโหมด "ตามผลประเมินของแต่ละโซน" — ไม่ส่ง = ประโยคเดิม · null = ซ่อน
  */
 export default function ZonesBulkModal({
@@ -53,7 +56,7 @@ export default function ZonesBulkModal({
   taken = EMPTY_TAKEN, existingCount = 0, cap = 500, onAdd,
   title = `เพิ่มหลายโซน — ${lineLabel}`,
   subtitle = "ติ๊กโซนแล้วใส่รอบละกี่แพ็คทีเดียว — ได้หนึ่งแถวต่อโซนใต้รายการนี้ · แก้ทีละแถวต่อได้ในตาราง · แถวที่มีอยู่แล้วไม่ถูกแตะ",
-  lead, packsLabel = ZONES_BULK_PACKS_LABEL, renderFields = null, extraError = null,
+  lead, packsLabel = ZONES_BULK_PACKS_LABEL, renderFields = null, renderAfterPacks = null, extraError = null,
   consequence = zonesBulkConsequence, confirmLabel = countLabel,
   emptyRegistryText = "ลูกค้ารายนี้ยังไม่มีไซต์ในทะเบียน — เลือกโซนไม่ได้",
   assessedHint = "โซนที่ยังไม่เคยประเมินเว้นว่างไว้ — ใส่ทีละแถวในตาราง",
@@ -159,6 +162,8 @@ export default function ZonesBulkModal({
           <span className={styles.count}>{assessedHint}</span>
         ) : null}
       </div>
+
+      {renderAfterPacks ? renderAfterPacks({ pressed, plan }) : null}
 
       <div className={styles.tools}>
         <div className={`search-glass ${styles.search}`}>

@@ -102,7 +102,7 @@ import DealContractsCard from "@/components/salesPlanning/DealContractsCard";
 import Tabs from "@/components/ui/Tabs";
 import SalesOrderServiceTab from "@/components/salesPlanning/SalesOrderServiceTab";
 import SalesOrderDocumentsPanel, { installmentFilesKey, useSalesOrderDocuments } from "@/components/salesPlanning/SalesOrderDocumentsPanel";
-import { orderHasServiceRounds, orderOnServiceLine, serviceRoundsSold } from "@/lib/sales/serviceOrders";
+import { orderHasServiceRounds, orderOnServiceLine } from "@/lib/sales/serviceOrders";
 import { serviceRoundsEditError } from "@/lib/sales/serviceRoundsEntry";
 import { deliveryDueAmendError } from "@/lib/sales/salesOrderDeliveryDue";
 /* ⭐ งานบริการรายบรรทัด (mig 0392 · PR-A) — ตัวตัดสินทุกตัวอยู่ที่ serviceSetup.js · ก้อน GET `…/service-setup`
@@ -145,8 +145,8 @@ import {
    และใบย้อนหลังพูดคนละเรื่องกับใบปกติแทบทุกจุด ⇒ ที่นี่แตกกิ่ง JSX อย่างเดียว ไม่เขียนคำเอง */
 import {
   HISTORICAL_APPROVE_TOAST, historicalApprovalFacts, historicalCancelEffect, historicalCancelPrompt, historicalCancelToast,
-  historicalCoverageSegments, historicalOverrideNote, historicalRejectDetail, historicalServiceProgress, historicalStatusCopy,
-  historicalWithdrawDetail, historicalWorkflowSteps,
+  historicalCoverageSegments, historicalOverrideNote, historicalRejectDetail, historicalRoundsSoldText, historicalServiceProgress,
+  historicalStatusCopy, historicalWithdrawDetail, historicalWorkflowSteps,
 } from "@/lib/sales/historicalOrderCopy";
 import HistoricalZonesCard from "@/components/salesPlanning/HistoricalZonesCard";
 import HistoricalDuplicateReviewCard from "@/components/salesPlanning/HistoricalDuplicateReviewCard";
@@ -1535,9 +1535,11 @@ export default function SalesOrderDetailPage() {
      วัดจริง 08/09: ใบบนเส้นบริการ 30 ใบ แต่เข้าเกณฑ์แคบแค่ 8 ⇒ อีก 22 ใบเปิดแท็บสัญญา
      ไม่ได้เลย ทั้งที่เป็นงานบริการจริง และสัญญาคือด่านแรกของทั้งเส้น */
   const onServiceLine = orderOnServiceLine(order);
-  // รวมรอบทั้งใบ — คำนวณจากบรรทัดที่มีอยู่แล้ว ไม่ยิง API (ตัวเลขรายบรรทัดอยู่ในตาราง
-  // แต่ยอดรวมทั้งใบไม่เคยมีที่ไหนบอก)
-  const roundsSold = serviceRoundsSold(order?.lines);
+  /* ค่าของช่องหัวใบ "รอบบริการที่ขาย" ของใบย้อนหลัง — คิดจากบรรทัดที่มีอยู่แล้ว ไม่ยิง API
+     ⭐ มติเจ้าของ 08/10 รอบสอง (จอฝ่ายขายที่เหลือ): พูด "12 เดือน/โซน" (ช่วง "6–12 เดือน/โซน") จาก `historicalRoundsSoldText` —
+       🔴 ไม่ใช่ผลรวมรายบรรทัดแบบเดิม ("48 รอบ" ของ 4 โซน × 12 รอบ): ผลรวมติดหน่วยเดือนอ่านเป็น "48 เดือน" ทั้งที่สัญญา 12 เดือน
+       · null = ยังไม่มีบรรทัดไหนมีจำนวนรอบ (จอขีด) */
+  const roundsSoldText = historicalRoundsSoldText(order?.lines);
 
   /* ── แท็บของหน้าใบ (PR-F · มติผู้ใช้ 2026-08-31 "ทาง ก") ──────────────────
      ⭐ **ไม่มีแถบสถานะเส้นที่สอง** — แผนเดิมให้เพิ่มเส้น 4 ช่อง (ยืนยัน SO · สัญญา ·
@@ -2201,12 +2203,13 @@ export default function SalesOrderDetailPage() {
                ⇒ ผูกกับเกณฑ์แคบ ไม่ใช่เส้นบริการ (ไม่งั้นได้ขีดลอย ๆ บนใบที่กรอกไม่ได้)
                ⭐ ใบที่ต้องตั้งงานบริการ (mig 0392) ใช้ช่องจากก้อน GET แทน — "n เดือน" · แต่ละครั้ง z โซน · ครั้งละ p แพ็ค หรือ "ยังไม่ตั้ง"
                  (หน่วย "เดือน" ตามมติเจ้าของ 08/10 — หน่วยเดียวกับตารางงานบริการของหน้านี้ · มาจาก `serviceSetupHeroFact`)
-               ⚠️ ช่องสำรองข้างล่าง (`!setupRequired`) = ใบย้อนหลังเท่านั้น — หน้าใบย้อนหลังพูด "รอบ" ทั้งหน้า (นอกขอบเขตมติ 08/10) */
+               ⚠️ ช่องสำรองข้างล่าง (`!setupRequired`) = ใบย้อนหลังเท่านั้น — มติเจ้าของ 08/10 รอบสอง (จอฝ่ายขายที่เหลือ): พูด "เดือน" เหมือนกัน
+                 = "12 เดือน/โซน" ต่อโซน ไม่ใช่ผลรวมของทุกบรรทัด (`roundsSoldText` ข้างบน · หน่วยมาจาก lib · ค่าที่เก็บเท่าเดิม 1 เดือน = 1 รอบ) */
             ...(serviceHeroFact ? [serviceHeroFact] : !setupRequired && hasServiceRounds ? [{
               icon: Repeat,
               label: "รอบบริการที่ขาย",
-              value: roundsSold == null ? NA : `${roundsSold} รอบ`,
-              tone: roundsSold == null ? "muted" : undefined,
+              value: roundsSoldText ?? NA,
+              tone: roundsSoldText ? undefined : "muted",
             }] : []),
           ]}
         >

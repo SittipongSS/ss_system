@@ -34,6 +34,12 @@ import {
   isHistoricalOrder,
 } from "@/lib/sales/historicalOrders";
 import StatusBadge from "@/components/ui/StatusBadge";
+import ServiceAgingChip from "@/components/salesPlanning/ServiceAgingChip";
+/* ⭐ "ค้าง n วัน" (มติเจ้าของ 08/10 "ตามงานค้าง") — คำ + ตัวเรียงจากไฟล์ใบไม้ (ไม่พก serviceSetup.js เข้า bundle ของทะเบียน)
+   · ก้อนอายุของแต่ละแถว (`row.serviceAging`) คิดที่ server ด้วยวันไทย — จอนี้ไม่อ่านนาฬิกาและไม่พิมพ์คำของชิปเอง */
+import {
+  SERVICE_BACKFILL_AGING_TEXT, compareLongestWaiting, longestWaitingFirst, serviceAgingSummaryText,
+} from "@/lib/sales/serviceBackfillAging";
 
 // ป้ายสถานะชุดกลาง — เดิมเป็นสำเนาในไฟล์ที่ขาด revised / approval_revoked จนแถวพวกนั้นโชว์ค่าดิบ
 const STATUS = SALES_ORDER_STATUS_LABELS;
@@ -181,8 +187,19 @@ const SORT_OPTIONS = [
      ⭐ `value` คงเป็น "actual" — ค่าถูกจำไว้ใน useStickyState ของผู้ใช้แล้ว */
   { value: "actual", label: "ยอดก่อน VAT", dir: "desc" },
   { value: "due", label: "กำหนดชำระ", dir: "asc" },
+  /* ⭐ ตัวเลือกเสริม (มติเจ้าของ 08/10 "ตามงานค้าง") — ตารางนี้เรียงตามที่ผู้ใช้เลือกเสมอ (ตั้งต้น "ล่าสุด" ไม่เปลี่ยน) ⇒ ใบที่ค้าง 56 วัน
+     อยู่หน้าท้าย ๆ ของ "ล่าสุด" · ตัวเลือกนี้พาใบที่งานบริการค้างนานสุดขึ้นบน · ใบที่ไม่อยู่ในเส้นตั้งย้อนหลังอยู่ท้ายเสมอ (ดู `compareOrders`)
+     · เป็นลำดับตั้งต้นของ **คิวงานบริการ** (ตอนเปิดชิป "ยังไม่ตั้งงานบริการ") ด้วย — ดู `SERVICE_QUEUE_SORT` */
+  { value: "waiting", label: SERVICE_BACKFILL_AGING_TEXT.sortLabel, dir: "desc" },
 ];
 const SORT_DEFAULT = "recent";
+/* ⭐ ลำดับตั้งต้นของคิวงานบริการ (ผลตรวจทาน 08/10 ของ "ตามงานค้าง"): เปิดชิป "ยังไม่ตั้งงานบริการ" แล้วรายการ **คือคิวนั้น** — ถ้ายังเรียง
+   "ล่าสุด" หน้าแรก (25 ใบ) มีแต่ใบที่ค้าง 7–20 วัน ใบที่ค้าง 30 วันขึ้นไปทั้ง 25 ใบอยู่หน้า 2–3 และใบ 56 วันเป็นแถวที่ 58 จาก 59
+   ทั้งที่บรรทัดสรุปของแผงเดียวกันบอก "ค้างนานสุด 56 วัน" ⇒ คิวเปิดมาเรียงค้างนานสุดก่อน และเมนูเรียงโชว์ตัวเลือกนี้ว่ากำลังใช้
+   🔴 ไม่ทับลำดับที่ผู้ใช้เลือกเอง: ใช้เฉพาะตอนแบบเรียงยังเป็นค่าตั้งต้นและผู้ใช้ยังไม่ได้แตะเมนูเรียง/ปุ่มทิศระหว่างดูคิว (`queueSortChosen`)
+   ⚠️ เฉพาะชิปนี้ — ตัวกรอง "รอฉันลงมือ" อย่างเดียวยังเรียงตามเดิม: เลนนั้นเป็นคิวผสม (ใบถูกตีกลับ · ใบถูกย้อนอนุมัติ ฯลฯ)
+      ตัวเทียบนี้วางใบที่ไม่อยู่ในเส้นตั้งย้อนหลังไว้ท้าย ⇒ ใบถูกตีกลับจะถูกดันลงใต้งานบริการที่ค้างทั้งกอง */
+const SERVICE_QUEUE_SORT = "waiting";
 const sortDirOf = (key) => SORT_OPTIONS.find((option) => option.value === key)?.dir || "asc";
 
 /* ── มุมมองตามสายธุรกิจ (PR-D · มติผู้ใช้ 2026-08-27) ───────────────────────
@@ -263,6 +280,14 @@ function compareOrders(a, b, key, dir) {
   } else if (key === "customer") {
     const byName = text(a.customerName).localeCompare(text(b.customerName), "th");
     if (byName) return byName * mul;
+  } else if (key === "waiting") {
+    /* ⚠️ ใบที่ไม่มีนาฬิกาของงานบริการ (ไม่อยู่ในเส้นตั้งย้อนหลัง) อยู่ท้ายเสมอทั้งสองทิศ — กติกาเดียวกับ "กำหนดชำระ" ข้างบน
+       · มากไปน้อย (ทิศตั้งต้น) = ค้างนานสุดก่อน = นาฬิกาที่เริ่มก่อนอยู่หน้า (`compareLongestWaiting` ตัวเดียวกับคิวผู้จัดการ/แท็บ TS) */
+    const aClock = a.serviceAging?.since || null;
+    const bClock = b.serviceAging?.since || null;
+    if (!aClock !== !bClock) return aClock ? -1 : 1;
+    const byClock = compareLongestWaiting(a.serviceAging, b.serviceAging);
+    if (byClock) return dir === "desc" ? byClock : -byClock;
   }
   const byOrder = text(a.orderNumber).localeCompare(text(b.orderNumber), "th");
   return key === "order" ? byOrder * mul : byOrder;
@@ -304,6 +329,12 @@ export default function SalesOrdersPage() {
     () => rows.filter((row) => row._serviceSetupPending).length,
     [rows],
   );
+  /* ⭐ บรรทัดสรุปของคิวนี้ (มติเจ้าของ 08/10 "ตามงานค้าง") — "งานบริการที่ยังไม่ส่ง TS n ใบ · ค้างนานสุด n วัน" · ฐานเดียวกับเลขบนชิป
+     (ทุกใบของ `rows` ไม่หดตามตัวกรองอื่น) · ขึ้นแทนคำอธิบายของแผงเฉพาะตอนเปิดชิป (ตอนนั้นรายการ = คิวนี้) · ไม่มีใบ = null */
+  const serviceAgingSummary = useMemo(
+    () => serviceAgingSummaryText(serviceSetupPendingCount, rows.filter((row) => row._serviceSetupPending).map((row) => row.serviceAging)),
+    [rows, serviceSetupPendingCount],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -338,6 +369,13 @@ export default function SalesOrdersPage() {
   const [groupBy, setGroupBy] = useStickyState("groupBy", "none");
   const [sortKey, setSortKey] = useStickyState("sortKey", SORT_DEFAULT);
   const [sortDir, setSortDir] = useStickyState("sortDir", sortDirOf(SORT_DEFAULT));
+  /* ⭐ คิวงานบริการเรียง "ค้างนานสุดก่อน" เป็นค่าตั้งต้น (ดู `SERVICE_QUEUE_SORT`) — `queueSortChosen` = ผู้ใช้เลือกแบบเรียง/กลับทิศเอง
+     ระหว่างดูคิว (รวมการเลือก "ล่าสุด" กลับ) ⇒ เลิกใช้ค่าตั้งต้นของคิว · เปิด/ปิดชิปใหม่ = เริ่มนับใหม่ · จำไว้คู่กับแบบเรียง (กดย้อนกลับมาได้ค่าเดิม)
+     `activeSortKey` / `activeSortDir` = ลำดับที่ตารางใช้จริง และที่เมนูเรียง/ปุ่มทิศแสดง (สองที่ต้องตรงกันเสมอ) */
+  const [queueSortChosen, setQueueSortChosen] = useStickyState("serviceQueueSortChosen", false);
+  const queueSortAuto = serviceSetupPendingOnly && sortKey === SORT_DEFAULT && !queueSortChosen;
+  const activeSortKey = queueSortAuto ? SERVICE_QUEUE_SORT : sortKey;
+  const activeSortDir = queueSortAuto ? sortDirOf(SERVICE_QUEUE_SORT) : sortDir;
   const [collapsed, setCollapsed] = useState(() => new Set());
 
   const filtered = useMemo(() => {
@@ -358,7 +396,10 @@ export default function SalesOrdersPage() {
       // ⭐ เลขเอกสารเดิมของใบสั่งขายย้อนหลัง (mig 0360) อยู่ในชุดค้นด้วย — ลูกค้า/บัญชีถามด้วยเลขใบกำกับ/Express เดิม
       // ⭐ ชื่อ AE ของดีลอยู่ในชุดค้นด้วย — แถวใบย้อนหลังโชว์ "AE {ชื่อ}" แทนชื่อดีล
       //    (ตาเห็นบนแถว = ต้องค้นเจอ · กฎ search haystack)
+      // ⭐ บรรทัด "ค้าง n วัน · งานบริการ · รอ…" ของแถว (มติเจ้าของ 08/10) อยู่ในชุดค้นด้วย — พิมพ์ "ค้าง" = เห็นทั้งคิวงานบริการที่ค้าง
+      //    (ตาเห็นบนแถว = ต้องค้นเจอ · คำบอกเมื่อชี้ที่ป้ายไม่อยู่ในชุดค้น เพราะตาไม่เห็นบนแถว) · ต่อท้ายชุดเดิม ไม่แทรกกลาง
       return !q || [row.orderNumber, row.customerName, row.customerArCode, row.deal?.title, row.deal?.ownerName, row.quotation?.quoteNumber, row.referenceDoc, ...historicalRefsOf(row)]
+        .concat(row.serviceAging?.label, row.serviceAging ? SERVICE_BACKFILL_AGING_TEXT.rowLabel[row.serviceAging.waitingOn] : null)
         .some((value) => String(value || "").toLowerCase().includes(q));
     });
   }, [query, rows, statusFilter, paymentFilter, invoiceFilter, originFilter, waitingOnMeOnly, serviceSetupPendingOnly, lineView]);
@@ -366,9 +407,9 @@ export default function SalesOrdersPage() {
   /* `recent` = ลำดับที่ API ส่งมา (ล่าสุดก่อน) — ไม่คิดใหม่ที่นี่ ไม่งั้นมีกติกา
      "ล่าสุด" สองชุดที่เพี้ยนหากันได้ · สลับทิศคือกลับลำดับเดิม */
   const sorted = useMemo(() => {
-    if (sortKey === SORT_DEFAULT) return sortDir === "desc" ? [...filtered].reverse() : filtered;
-    return [...filtered].sort((a, b) => compareOrders(a, b, sortKey, sortDir));
-  }, [filtered, sortKey, sortDir]);
+    if (activeSortKey === SORT_DEFAULT) return activeSortDir === "desc" ? [...filtered].reverse() : filtered;
+    return [...filtered].sort((a, b) => compareOrders(a, b, activeSortKey, activeSortDir));
+  }, [filtered, activeSortKey, activeSortDir]);
 
   /* ⭐ `weight` ของถัง = **Actual ล้วน** (ใบอนุมัติแล้ว) ผ่าน `salesOrderActual` ตัวกลาง
      ยอด "รออนุมัติ" ของถังคิดแยกตอนวาดหัวกลุ่มจาก `bucket.items` ชุดเดียวกัน
@@ -413,7 +454,7 @@ export default function SalesOrdersPage() {
     + (waitingOnMeOnly ? 1 : 0);
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
-    usePagination(sorted, { resetKey: `${query}|${statusFilter.join()}|${paymentFilter.join()}|${invoiceFilter.join()}|${originFilter.join()}|${waitingOnMeOnly}|${serviceSetupPendingOnly}|${lineView}|${sortKey}|${sortDir}` });
+    usePagination(sorted, { resetKey: `${query}|${statusFilter.join()}|${paymentFilter.join()}|${invoiceFilter.join()}|${originFilter.join()}|${waitingOnMeOnly}|${serviceSetupPendingOnly}|${lineView}|${activeSortKey}|${activeSortDir}` });
 
   /* ⭐ **คิวบนหัวหน้าเดินตามเปลือกของคนดู** (มติผู้ใช้ 2026-08-25)
      ทะเบียนใบสั่งขายอยู่ในเมนูของทั้งสายขายและฝ่ายบัญชี (มติ 2026-08-22 · SHARED_DOC_ITEMS)
@@ -430,8 +471,13 @@ export default function SalesOrdersPage() {
   /* ⭐ เปลือกงานขายรวมแถว "งานบริการ (ใบเดิม)" ที่รอฉันตรวจ (mig 0392 · D26) — ธงจาก server ผ่านตัวตัดสินตัวเดียว
      (`serviceBackfillAwaitingReview`: ค่า 'submitted' ค้างบนใบที่ย้อนอนุมัติ/ออก Rev./ยกเลิกแล้วไม่ขึ้น) และตัดคนยื่นเอง
      ยกเว้น admin · ⚠️ ไม่ชนกับ `_awaitingMyApproval` บนแถวเดียวกัน (อันนั้น pending_approval · อันนี้ approved) */
+  /* ⭐ มติเจ้าของ 08/10 ("ตามงานค้าง"): แถวงานบริการรอตรวจเรียง **ค้างนานสุดก่อนในหมู่ตัวเอง** แล้ววางกลับลงช่องเดิมของแถวชนิดนั้น
+     (`longestWaitingFirst`) — ใบรออนุมัติไม่ขยับ ⇒ พรีวิว 3 แถวแรกยังมีใบรออนุมัติชุดเดิม · เปลือกบัญชีไม่มีแถวชนิดนี้ ไม่เรียง */
   const approvalQueue = useMemo(
-    () => rows.filter((row) => (financeShell ? row._awaitingFinanceReview : (row._awaitingMyApproval || row._awaitingMyServiceReview))),
+    () => {
+      const list = rows.filter((row) => (financeShell ? row._awaitingFinanceReview : (row._awaitingMyApproval || row._awaitingMyServiceReview)));
+      return financeShell ? list : longestWaitingFirst(list, (row) => (row._awaitingMyServiceReview ? row.serviceAging : null));
+    },
     [rows, financeShell],
   );
   // เปลือกบัญชีไม่มีแถวชนิดนี้ — ใบเดียวกันอาจติดคิวปิดใบของบัญชีด้วย (admin) ซึ่งต้องพูดเรื่องเงินตามเดิม
@@ -491,6 +537,18 @@ export default function SalesOrdersPage() {
                          (กำหนดชำระยุบเข้าเซลล์งวดชำระ) ให้ตารางแคบลงจริง ๆ */
                       <StepTrack steps={track.steps} />
                     )}
+                    {/* ⭐ "ค้าง n วัน · งานบริการ · ยังไม่ยื่นตรวจ / รอผู้จัดการตรวจ" (มติเจ้าของ 08/10 "ตามงานค้าง") — เฉพาะใบที่อนุมัติแล้วแต่
+                        งานบริการยังไม่ถึง TS (`row.serviceAging` ของ server · ฐานเดียวกับชิป "ยังไม่ตั้งงานบริการ")
+                        ⚠️ ต้องมีคำบอกว่าเป็นเรื่องงานบริการและอยู่ขั้นไหน (คำของขั้น "ยังไม่ยื่นตรวจ" ไม่ชี้ว่าใครถือ — ลูกค้าที่ไม่มีไซต์
+                           ในทะเบียนติดที่ TS ไม่ใช่ฝ่ายขาย และแถวนี้ไม่รู้เรื่องไซต์) — แถวนี้มีกำหนดชำระอยู่ด้วย ป้าย "ค้าง n วัน" ลอย ๆ อ่านเป็นค้างชำระ
+                        · วันเดียวกับที่งานมาถึง = ไม่มีป้าย เหลือแต่คำ (ศูนย์วันไม่ใช่การค้าง)
+                        · `mt-1.5` = ระยะเดียวกับที่รางขั้นเว้นจากบรรทัดบน (ป้ายมีกรอบ — ติดรางแล้วอ่านเป็นก้อนเดียวกับราง) */}
+                    {row.serviceAging ? (
+                      <span className="cell-sub mt-1.5">
+                        <ServiceAgingChip aging={row.serviceAging} />{" "}
+                        <span>{SERVICE_BACKFILL_AGING_TEXT.rowLabel[row.serviceAging.waitingOn]}</span>
+                      </span>
+                    ) : null}
                   </td>
                   <td>
                     {/* AR บน · ชื่อล่าง (มติผู้ใช้ 2026-08-12 — ทรงเดียวกับตาราง QT) */}
@@ -627,6 +685,8 @@ export default function SalesOrdersPage() {
             + (isHistoricalOrder(o) ? " · ใบย้อนหลัง · ไม่นับ Actual" : "")
             + (!financeShell && o.serviceDeferredTag ? ` · ${o.serviceDeferredTag}` : "")}
           rowHref={(o) => `/sa/sales-orders/${o.id}`}
+          /* ⭐ ชิป "ค้าง n วัน" ของแถวงานบริการรอตรวจ (มติเจ้าของ 08/10) — นับจากวันที่ฝ่ายขายยื่นตรวจ · แถวใบรออนุมัติไม่มีชิปนี้ */
+          badge={(o) => (serviceReviewRow(o) ? <ServiceAgingChip aging={o.serviceAging} /> : null)}
           renderAction={(o) => (
             <Button as={Link} href={`/sa/sales-orders/${o.id}`} tone="primary" size="sm">
               {financeShell ? "เปิดใบเพื่อตรวจ" : "เปิดใบเพื่ออนุมัติ"}
@@ -639,7 +699,7 @@ export default function SalesOrdersPage() {
         <ListPanel
           icon={<ClipboardList size={17} aria-hidden="true" />}
           title="รายการใบสั่งขาย"
-          subtitle="ค้นหา ตรวจเอกสาร และติดตามขั้นตอนอนุมัติจากจุดเดียว"
+          subtitle={serviceSetupPendingOnly && serviceAgingSummary ? serviceAgingSummary : "ค้นหา ตรวจเอกสาร และติดตามขั้นตอนอนุมัติจากจุดเดียว"}
           count={`${filtered.length} ใบ`}
           toolbar={(
           <>
@@ -659,7 +719,7 @@ export default function SalesOrdersPage() {
                 icon={<Repeat size={14} aria-hidden="true" />}
                 aria-pressed={serviceSetupPendingOnly}
                 title="ใบที่อนุมัติแล้วแต่ยังไม่ได้ตั้งแพ็คเกจ · โซน · รอบ · ช่วงบริการ — ฝ่ายขายตั้งย้อนหลังที่หน้าใบ แล้วยื่นให้ผู้จัดการตรวจ"
-                onClick={() => setServiceSetupPendingOnly((on) => !on)}
+                onClick={() => { setServiceSetupPendingOnly((on) => !on); setQueueSortChosen(false); }}
               >
                 ยังไม่ตั้งงานบริการ
                 <CountBadge count={serviceSetupPendingCount} label="ใบที่ยังไม่ตั้งงานบริการ" />
@@ -670,7 +730,7 @@ export default function SalesOrdersPage() {
               count={filterCount}
               onClear={() => {
                 setStatusFilter([]); setPaymentFilter([]); setInvoiceFilter([]); setOriginFilter([]);
-                setWaitingOnMeOnly(false); setServiceSetupPendingOnly(false);
+                setWaitingOnMeOnly(false); setServiceSetupPendingOnly(false); setQueueSortChosen(false);
               }}
               groups={[
                 {
@@ -722,15 +782,25 @@ export default function SalesOrdersPage() {
               />
             )}
             <div className="spacer" />
-            {/* เปลี่ยนแบบเรียง = ตั้งทิศตั้งต้นของแบบนั้นให้ด้วย (เงินมากไปน้อย · วันใกล้ไปไกล) */}
+            {/* เปลี่ยนแบบเรียง = ตั้งทิศตั้งต้นของแบบนั้นให้ด้วย (เงินมากไปน้อย · วันใกล้ไปไกล)
+                ⭐ เมนูและปุ่มทิศแสดง **ลำดับที่ตารางใช้จริง** (`activeSortKey` / `activeSortDir`) — ตอนคิวงานบริการใช้ค่าตั้งต้นของคิว
+                   เมนูจึงขึ้น "งานบริการค้างนานสุด" (ติดสีเพราะต่างจากค่าตั้งต้นของตาราง) · เลือกเองระหว่างดูคิว = ใช้ตามที่เลือก
+                   · กดปุ่มทิศตอนใช้ค่าตั้งต้นของคิว = กลับทิศของลำดับที่เห็นอยู่ (เก็บเป็นแบบเรียงนั้นเอง ไม่ใช่กลับทิศของ "ล่าสุด") */}
             <SortMenu
               title="เรียงลำดับใบสั่งขาย"
-              value={sortKey}
+              value={activeSortKey}
               defaultValue={SORT_DEFAULT}
-              onChange={(value) => { setSortKey(value); setSortDir(sortDirOf(value)); }}
+              onChange={(value) => { setSortKey(value); setSortDir(sortDirOf(value)); setQueueSortChosen(serviceSetupPendingOnly); }}
               options={SORT_OPTIONS}
             />
-            <SortDirButton dir={sortDir} onToggle={() => setSortDir((dir) => (dir === "asc" ? "desc" : "asc"))} />
+            <SortDirButton
+              dir={activeSortDir}
+              onToggle={() => {
+                setSortKey(activeSortKey);
+                setSortDir(activeSortDir === "asc" ? "desc" : "asc");
+                setQueueSortChosen(serviceSetupPendingOnly);
+              }}
+            />
           </>
           )}
         >

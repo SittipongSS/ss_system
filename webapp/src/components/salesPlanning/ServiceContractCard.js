@@ -36,6 +36,7 @@ import Input from "@/components/ui/Input";
 import { contractKindLabel, contractStatusLabel, externalDocKindLabel, isSubstituteContract } from "@/lib/sales/contracts";
 import { isHistoricalOrder } from "@/lib/sales/historicalOrders";
 import { serviceContractLinkError, serviceContractOptions } from "@/lib/sales/serviceContractLink";
+import { SERVICE_ROUNDS_UNIT } from "@/lib/sales/serviceOrders";
 import { normalizeServiceRounds, serviceRoundLines, serviceRoundsEditError } from "@/lib/sales/serviceRoundsEntry";
 import { periodSpan, servicePeriodOf } from "@/lib/sales/serviceSetup";
 import { fmtDate, naText, NA } from "@/lib/format";
@@ -301,7 +302,9 @@ export default function ServiceContractCard({
     {/* ⭐ ข้อผูกพันจำนวนครั้งที่ต้องไปหน้างาน — ไม่กระทบยอดเงินและไม่อยู่บนเอกสาร
         ที่ออกไปแล้ว ⇒ แก้ได้แม้ใบอนุมัติแล้ว โดยไม่ต้องออก Rev. (มติผู้ใช้)
         ⚠️ เป็นตัวเลขอ้างอิง ไม่ได้บังคับจำนวนนัดที่ระบบสร้าง — รอบจริงเลื่อน/งดได้
-        ⭐ D21 (mig 0392): เหลือเฉพาะใบย้อนหลัง (`showRoundsCard`) — ใบ pipeline ตั้งรอบที่ตารางรายการ */}
+        ⭐ D21 (mig 0392): เหลือเฉพาะใบย้อนหลัง (`showRoundsCard`) — ใบ pipeline ตั้งรอบที่ตารางรายการ
+        ⭐ มติเจ้าของ 08/10 รอบสอง (จอฝ่ายขายที่เหลือ): หน่วยท้ายช่อง/ตัวเลข = `SERVICE_ROUNDS_UNIT` "เดือน" (1 เดือน = 1 รอบ ·
+          ค่าที่เก็บเท่าเดิม) · หัวการ์ด "จำนวนรอบบริการที่ขายไว้" และปุ่ม "บันทึกจำนวนรอบ" เป็นคำนาม ไม่มีตัวเลข — คงคำเดิม */}
     {showRoundsCard && (
       <DetailCard icon={Repeat} title="จำนวนรอบบริการที่ขายไว้">
         <p className={styles.roundsHint}>
@@ -332,12 +335,12 @@ export default function ServiceContractCard({
                     aria-label={`จำนวนรอบบริการของ ${line.fgCode || line.description || "รายการนี้"}`}
                     onChange={(e) => setRounds((prev) => ({ ...prev, [line.id]: e.target.value }))}
                   />
-                  <span className={styles.roundsUnit}>รอบ</span>
+                  <span className={styles.roundsUnit}>{SERVICE_ROUNDS_UNIT}</span>
                 </span>
               ) : (
                 <span className={styles.roundsField}>
                   <span className={styles.roundsValue}>{line.serviceRounds || naText(null)}</span>
-                  <span className={styles.roundsUnit}>รอบ</span>
+                  <span className={styles.roundsUnit}>{SERVICE_ROUNDS_UNIT}</span>
                 </span>
               )}
             </div>
