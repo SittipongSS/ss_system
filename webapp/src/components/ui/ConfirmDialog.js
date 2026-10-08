@@ -95,6 +95,7 @@ export default function ConfirmDialog({
   const [internalError, setInternalError] = useState("");
   const cancelRef = useRef(null);
   const confirmRef = useRef(null);
+  const actionsRef = useRef(null);
   const descriptionId = useId();
   const destructive = danger || tone === "danger";
   const pending = busy || internalBusy;
@@ -108,6 +109,22 @@ export default function ConfirmDialog({
       setInternalError("");
     }
   }, [open]);
+
+  /* ⭐ **ยืนยันแล้วล้ม = ข้อผิดพลาดกับแถวปุ่มต้องอยู่ในสายตา และโฟกัสต้องกลับเข้ากล่อง**
+     🐞 UAT 2026-10-08 (กล่องส่งผล/ออกเอกสารของใบประเมิน · จอ 360): ข้อผิดพลาดต่อท้ายรายการที่ยาวเกินเนื้อกล่อง — กล่องแดงโผล่ครึ่งเดียว
+        ที่ขอบล่าง แถวปุ่มอยู่ใต้จอ · และปุ่มยืนยันที่ถูก `disabled` ระหว่างรอทำโฟกัสหล่นไป `body` (กด Tab ต่อไม่ได้ ต้องแตะกล่องใหม่)
+     ⇒ รอจนเลิก "กำลังทำงาน" (ปุ่มกลับมากดได้) แล้วเลื่อนแถวปุ่มเข้ามา — กล่องแดงอยู่เหนือแถวปุ่มพอดี จึงเห็นคู่กัน — และคืนโฟกัสให้ปุ่มในกล่อง
+     ⚠️ คืนโฟกัสเฉพาะตอนโฟกัสหลุดออกนอกกล่องแล้วเท่านั้น (คนที่ย้ายโฟกัสเองไม่ถูกดึงกลับ) · ไม่เลื่อนซ้ำ (`preventScroll`) */
+  useEffect(() => {
+    if (!open || !resolvedError || pending) return;
+    const actions = actionsRef.current;
+    if (!actions) return;
+    actions.scrollIntoView({ block: "nearest" });
+    const dialog = actions.closest('[role="dialog"]');
+    if (dialog && !dialog.contains(document.activeElement)) {
+      (confirmRef.current || cancelRef.current)?.focus({ preventScroll: true });
+    }
+  }, [open, resolvedError, pending]);
 
   const close = () => {
     if (!pending) onClose?.();
@@ -142,6 +159,8 @@ export default function ConfirmDialog({
       size="sm"
       dismissible={!pending && !hideCancel}
       initialFocusRef={hideCancel ? confirmRef : cancelRef}
+      /* กล่องเปิดที่บรรทัดแรกเสมอ — ปุ่มที่ได้โฟกัสแรกอยู่ท้ายเนื้อ กล่องที่ยาวกว่าจอมือถือจึงเคยเปิดมากลางเนื้อ (ดู `Modal`) */
+      initialFocusScroll={false}
       ariaDescribedBy={resolvedDescription || detail || resolvedError ? descriptionId : undefined}
     >
       <div className="confirm-dialog">
@@ -156,7 +175,7 @@ export default function ConfirmDialog({
         {resolvedError ? (
           <StatusNotice tone="error" role="alert">{resolvedError}</StatusNotice>
         ) : null}
-        <div className="confirm-dialog-actions">
+        <div className="confirm-dialog-actions" ref={actionsRef}>
           {!hideCancel ? (
             <Button ref={cancelRef} variant="quiet" onClick={close} disabled={pending}>
               {cancelLabel}

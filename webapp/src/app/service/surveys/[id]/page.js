@@ -72,7 +72,12 @@ import {
   surveySheetHref, surveySheetNotices, surveySheetTotalsText, surveyVisitBadge, surveyZoneListView, surveyZoneNeighbors,
   surveyZoneTitle,
 } from "@/lib/service/surveyFieldView";
-import { surveySendConfirm, surveySendDoneText } from "@/lib/service/surveySendClose";
+import {
+  surveyFilesSignature, surveyIssueDoneToast, surveyIssueErrorSticky, surveyRecallDoneText, surveyRecheckToast,
+} from "@/lib/service/surveyDocumentView";
+import {
+  surveySendConfirm, surveySendDoneToast, surveySendRefusalKeeps, surveySendUnseenWarnings,
+} from "@/lib/service/surveySendClose";
 import { surveySpotSubmitReason } from "@/lib/service/surveySpotPhotos";
 import { surveyPendingDecisions } from "@/lib/service/surveyDecision";
 import { surveyRowNameClash } from "@/lib/service/surveyRequest";
@@ -84,6 +89,27 @@ import styles from "./page.module.css";
 /* เหตุผลที่ตัดพื้นที่ออก — ขั้นต่ำเดียวกับ server (ฝ่ายขายจะเห็นข้อความนี้ · ไม่ได้ไปหน้างานเอง) */
 const CUT_REASON_MIN = 5;
 const CUT_REASON_MAX = 500;
+
+/* ── เอกสารประเมินพื้นที่ (FM-TS-01 · เลข SU · PR-3) — ของที่จอจำไว้เอง เพราะไม่มี GET ไหนคืน ──────────────
+   `round`       เวลาตอบ (`answeredAt`) ของรอบที่สี่คีย์ถัดไปเป็นของมัน — ตัวตัดสินไม่ใช้ของรอบอื่น (`surveyDocumentView`)
+   `sendFailed`  การส่งผลรอบนี้ออกเอกสารไม่สำเร็จ (`report.state: 'failed'`) · `issueError` กด "ออกเอกสาร" แล้วถูกตีกลับ
+   `paper`       ขั้นจัดทำไฟล์ PDF ที่ตามหลังการออกเลข (`{ busy, reason }`) · `printed` ข้อที่พิมพ์ลงเอกสารแต่ยังไม่ได้อ่านก่อนออก
+   `sendRefused` การส่งผลที่ถูกตีกลับด้วยเหตุที่ GET มองไม่เห็น (รูปเปิดไม่ได้) — ของใบที่ยังไม่ส่ง ไม่ผูกกับรอบ
+   ⚠️ โหลดหน้าใหม่ = ของชุดนี้หายทั้งหมด (ความเสี่ยงที่ยอมรับ · สเปก PR-3 §13) */
+const DOC_LOCAL_ROUND = Object.freeze({ sendFailed: null, issueError: null, paper: null, printed: [] });
+/* สถานะที่ใบมี "เอกสารฉบับที่ใช้อยู่ของผลรอบนี้" — ชุดเดียวกับ `ISSUED_STATES` ของ `surveyDocumentView` */
+const DOC_ISSUED_STATES = ["issued", "frozen", "ready"];
+/* อ่านใบพังติดกันกี่รอบแล้วเลิกตรวจซ้ำของสถานะ "กำลังออก" (8 รอบ ≈ 2 นาที) — เพดานเดียวกับหน้าคำร้อง
+   (`SURVEY_DOCUMENT_POLL_MAX_FAILS` ใน app/requests/[id]/page.js) · นับ **รอบที่พังติดกัน** ไม่ใช่เวลาที่ผ่านไป:
+   เครื่องที่พับจอแล้วเปิดใหม่ต้องยังได้ลองจนเน็ตกลับมา */
+const DOC_POLL_MAX_FAILS = 8;
+/* เวลาสองค่าเป็นจุดเดียวกันไหม — เทียบเป็นมิลลิวินาที ไม่เทียบสตริง (PostgREST คืน `+00:00` · `toISOString()` ลงท้าย `Z`) */
+const sameInstant = (a, b) => {
+  if (!a || !b) return false;
+  const at = Date.parse(a);
+  return Number.isFinite(at) && at === Date.parse(b);
+};
+const textLines = (value) => (Array.isArray(value) ? value.filter((line) => typeof line === "string") : []);
 
 export default function SurveySheetPage({ params }) {
   const { id } = use(params);
@@ -105,6 +131,15 @@ export default function SurveySheetPage({ params }) {
   const [initialZone] = useState(() => params$.get("zone"));
   const [sending, setSending] = useState(false);
   const [sendBusy, setSendBusy] = useState(false);
+  /* ── เอกสารประเมินพื้นที่ (PR-3) ──
+     `docLocal`    ของที่จอจำไว้เอง (ดู `DOC_LOCAL_ROUND` บนหัวไฟล์) — ส่งให้ตัวตัดสินทั้งก้อน จอไม่อ่านเองสักคีย์
+     `issueDialog` เนื้อของกล่องยืนยัน "ออกเอกสาร" **ที่คัดลอกไว้ตอนเปิด** — `view.document.issue` กลายเป็น null ทันทีที่สถานะเปลี่ยน
+                   (ถูกดึงผลกลับ · อีกคนออกไปก่อน) ซึ่งเป็นจังหวะเดียวกับที่กล่องต้องยังอยู่เพื่อบอกเหตุที่ถูกตีกลับ */
+  const [docLocal, setDocLocal] = useState(null);
+  const [issueDialog, setIssueDialog] = useState(null);
+  /* POST ออกเอกสารกำลังวิ่ง (10–60 วิ · นานสุด ~270 วิ) — ระหว่างนี้กล่องยืนยันคงเนื้อเดิมไว้ แม้ใบที่อ่านใหม่เบื้องหลัง
+     (กลับมาที่แท็บ) จะเปลี่ยนสถานะไปแล้ว: กล่องที่เปลี่ยนเนื้อใต้ปุ่ม "กำลังออกเอกสาร…" อ่านเหมือนการกดถูกยกเลิก */
+  const [issueBusy, setIssueBusy] = useState(false);
   /* ดึงผลกลับมาแก้ (§5E ④) — เหตุผลบังคับ เพราะ SA อาจเอาตัวเลขไปเสนอราคาแล้ว */
   const [recalling, setRecalling] = useState(false);
   const [recallReason, setRecallReason] = useState("");
@@ -177,17 +212,26 @@ export default function SurveySheetPage({ params }) {
      🐞 UAT 25/09: ใช้ตัว `data` เป็นสัญญาณแล้วโหลดเบื้องหลังที่พังไม่เปลี่ยน `data` ⇒ คำขอค้าง แล้วรอบหน้าที่โหลดผ่าน
         (กลับมาที่แท็บ · รูปขึ้นเสร็จ) พาไปพื้นที่นั้นกลางงาน */
   const [loadSettled, setLoadSettled] = useState(0);
+  /* รอบโหลดที่พัง **ติดกัน** (รอบที่ได้ใบล้างเป็นศูนย์ · รอบที่ถูกแซงไม่นับทั้งสองทาง) — เพดานของนาฬิกา "กำลังออก" อ่านจากตัวนี้ */
+  const failedRuns = useRef(0);
+  /* ⭐ คืนใบที่เพิ่งอ่านได้ (หรือ `null` เมื่ออ่านไม่สำเร็จ) — "ออกเอกสาร" ที่คำตอบหายกลางทางอ่านค่านี้ตัดสินว่าเลขออกไปแล้วหรือยัง
+     โดยไม่ต้องรอให้จอวาดรอบใหม่ (PR-3 §4.4) · ถูกรอบที่ใหม่กว่าแซง = ยังคืนใบที่อ่านได้ (จอไม่วาดจากรอบนี้ แต่ใบนั้นอ่านหลังคำขอ
+     ของผู้เรียกแล้ว ใช้ตัดสินได้) · ผู้เรียกเดิมไม่อ่านค่าที่คืน */
   const load = useCallback(async (opts) => {
     const isLatest = startRun();
     if (!opts?.background) setLoading(true);
     setLoadError("");
     try {
       const body = await apiJson(`/api/service/surveys/${id}`, { fallbackError: "โหลดใบประเมินไม่สำเร็จ" });
-      if (!isLatest()) return;
+      if (!isLatest()) return body;
+      failedRuns.current = 0;
       setData(body);
+      return body;
     } catch (e) {
+      if (isLatest()) failedRuns.current += 1;
       // ⚠️ ห้ามกลืน error แล้วโชว์ "ยังไม่มีพื้นที่" — โหลดพังกับใบว่างหน้าตาเหมือนกัน
       if (isLatest() && !opts?.background) setLoadError(e.message || "โหลดใบประเมินไม่สำเร็จ");
+      return null;
     } finally {
       if (isLatest()) {
         setLoading(false);
@@ -336,16 +380,25 @@ export default function SurveySheetPage({ params }) {
      ผู้ใช้ว่าจะปิด (`view.send.closesVisit`) ให้ route ยืนยันว่าเป็นนัดตัวเดียวกัน · ไม่ตรง = 409 "โหลดหน้าใหม่"
      🔑 ล้ม = **โยน error กลับให้โมดัลบอกตรงนั้น** แล้วอ่านใบใหม่ทันที ⇒ โมดัลที่ยังเปิดอยู่เปลี่ยนเป็นนัด/ด่าน
         ล่าสุดให้อ่านก่อนกดซ้ำ (🐞 เดิมเป็น toast 3.6 วิ แล้วปิดโมดัล — ข้อความ 409 ยาว ๆ หายก่อนอ่านจบ) */
+  /* ⭐ **ส่งผลอาจออกเอกสารประเมิน (เลข SU) ไปด้วย** (PR-3 · สวิตช์ `SURVEY_REPORT_ISSUE_AT_SEND`)
+     🔑 `seenWarnings` ไปกับคำขอ **เฉพาะเมื่อโมดัลบอกเรื่องเอกสารไว้แล้ว** (`issuesDocument` หรือ `documentUnknown`) — ด่านของ route
+        มีไว้ไม่ให้หน้าที่ไม่ได้ประกาศว่าจะออกเอกสาร ออกเอกสารได้ · ส่งคีย์นี้เสมอ = แท็บที่โหลดไว้ตอนสวิตช์ปิดผ่านด่านนั้นไปเงียบ ๆ
+        ⇒ แท็บแบบนั้นไม่ส่งคีย์ · route ตอบ "หน้านี้เป็นรุ่นเก่า" · `catch` ข้างล่างอ่านใบใหม่ แล้วโมดัลวาดบรรทัดเอกสารกับคำเตือนให้อ่านก่อนกดซ้ำ
+     🔑 ลิสต์ที่ส่งคือ `view.send.seenWarnings` **ดิบ** (ชุดเดียวกับที่โมดัลกาง) — route เทียบตรงตัว ห้ามตัด/ขัดเกลา
+     ⚠️ toast พูดแค่เลขกับนัด (ช่องเดียว หายเร็ว) — เหตุที่เอกสารไม่ออก · ข้อที่ยังไม่ได้อ่าน ไปอยู่ที่ส่วนเอกสารบนการ์ด (`afterSend`) */
   const send = async () => {
+    const says = view.send.issuesDocument || view.send.documentUnknown;
+    const seen = view.send.seenWarnings;
     setSendBusy(true);
     try {
       const res = await apiJson(`/api/service/surveys/${id}/send`, {
         method: "POST",
-        json: { closeVisitId: view.send.closesVisit?.id ?? null },
+        json: { closeVisitId: view.send.closesVisit?.id ?? null, ...(says ? { seenWarnings: seen } : {}) },
         fallbackError: "ส่งผลไม่สำเร็จ",
       });
       setSending(false);
-      setToast({ kind: "success", msg: surveySendDoneText(res?.closedVisit) });
+      setToast(surveySendDoneToast(res, { expectedDocument: view.send.issuesDocument }));
+      afterSend(res, seen);
       await load({ background: true });
     } catch (e) {
       await load({ background: true });
@@ -355,20 +408,178 @@ export default function SurveySheetPage({ params }) {
     }
   };
 
+  /* ดึงผลกลับ = เอกสารฉบับที่ใช้อยู่ถูกแทนที่ทันที — toast เอ่ยเลขที่เพิ่งใช้ไม่ได้ (`supersededReport` ของ route · ไม่มี = ประโยคเดิม)
+     ⚠️ 409 = ใบเปลี่ยนไประหว่างทาง (อีกคนดึงกลับ/ปิดเรื่องไปก่อน) ⇒ อ่านใบใหม่ให้การ์ดขึ้นสถานะจริง ไม่ค้างปุ่มที่กดแล้วชนซ้ำ */
   const recall = async () => {
     setRecallBusy(true);
     try {
-      await apiJson(`/api/service/surveys/${id}/recall`, {
+      const res = await apiJson(`/api/service/surveys/${id}/recall`, {
         method: "POST", json: { reason: recallReason.trim() }, fallbackError: "ดึงผลกลับไม่สำเร็จ",
       });
       setRecalling(false);
       setRecallReason("");
-      setToast({ kind: "success", msg: "ดึงผลกลับมาแก้แล้ว — ฝ่ายขายได้รับแจ้งพร้อมตัวเลขเดิม" });
+      setToast({ kind: "success", msg: surveyRecallDoneText(res?.supersededReport) });
       await load({ background: true });
     } catch (e) {
       setToast({ kind: "error", msg: e.message });
+      if (e.status === 409) await load({ background: true });
     } finally {
       setRecallBusy(false);
+    }
+  };
+
+  /* ── เอกสารประเมินพื้นที่ (FM-TS-01 · เลข SU · PR-3) — หลังส่งผล และปุ่ม "ออกเอกสาร" ──────────────────────
+     ⚠️ ฟังก์ชันชุดนี้ประกาศ **หลัง `recall`** โดยเจตนา — ช่วง `send` → `recall` ถูกเทสต์ตรึงว่าไม่มี toast โทน error
+        (ส่งผลล้ม = โยนกลับให้โมดัลบอก) */
+
+  /* เขียนของรอบนี้ลง `docLocal` — ของรอบก่อน (คนละ `answeredAt`) ทิ้งก่อนเขียน · `sendRefused` ไม่ผูกกับรอบ จึงอยู่ต่อ
+     ⚠️ **คำตอบที่มาช้าของรอบเก่าต้องไม่ทับรอบใหม่** — POST เอกสารวิ่งได้หลายนาที ระหว่างนั้นใบถูกดึงกลับแล้วส่งใหม่ได้
+        ⇒ ก้อนที่ถืออยู่เป็นของรอบที่ใหม่กว่า = ทิ้งการเขียนนี้ */
+  const patchDocLocal = (round, patch) => setDocLocal((prev) => {
+    if (prev?.round && round && Date.parse(round) < Date.parse(prev.round)) return prev;
+    return {
+      ...(prev && sameInstant(prev.round, round) ? prev : DOC_LOCAL_ROUND),
+      sendRefused: prev?.sendRefused ?? null,
+      round,
+      ...patch,
+    };
+  });
+
+  /* POST เส้นเดียวของเอกสาร: ออกเลข (ถ้ายังไม่มี) แล้วจัดทำไฟล์ PDF สองฉบับ
+     🔴 **ห้ามใส่ `retry: true`** — "ไม่ได้คำตอบ" ไม่ได้แปลว่า server ไม่ได้ทำ: ยิงซ้ำเองคือเสี่ยงออกเลขถาวรโดยไม่มีใครกดยืนยัน
+        (กติกา apiFetch ของ AGENTS.md) · คำตอบหาย = อ่านใบใหม่แล้วให้ใบเป็นคนบอก (`issueDocument`) */
+  const postDocument = () => apiJson(`/api/service/surveys/${id}/document`, {
+    method: "POST", json: {}, fallbackError: "ออกเอกสารไม่สำเร็จ",
+  });
+
+  /* ⭐ หัวหน้าที่เพิ่งส่งผลยังอยู่หน้าจอ ⇒ ให้เห็นปัญหาของกระดาษทันที ไม่ใช่ให้ฝ่ายขายไปเจอตอนกดดาวน์โหลด
+     ⚠️ ไม่ await จากผู้เรียก — POST นี้วิ่งได้นานถึง ~270 วิ และ `sendBusy` ล็อกทั้งการ์ด
+     ⚠️ ล้มทางไหนก็แค่บอก (กล่องสถานะ + toast) — ปุ่ม "ดาวน์โหลด PDF" ยังใช้ได้ เพราะ GET จัดทำไฟล์ที่ขาดเอง */
+  const finishPaper = async (round, docNo) => {
+    patchDocLocal(round, { paper: { busy: true, reason: null } });
+    let reason = null;
+    try {
+      const out = await postDocument();
+      reason = out?.report?.reason ?? null;
+    } catch (e) {
+      reason = e.message || "จัดทำไฟล์ PDF ไม่สำเร็จ";
+    }
+    patchDocLocal(round, { paper: { busy: false, reason } });
+    if (reason) setToast(surveyIssueDoneToast({ docNo, reason }));
+    void load({ background: true });
+  };
+
+  /* ผลของเอกสารจากคำตอบส่งผล (`report`) → ของที่ส่วนเอกสารบนการ์ดต้องรู้
+     · `failed` = ส่งผลสำเร็จแต่เลขไม่ออก ⇒ เก็บเหตุไว้ให้กล่องสถานะ · 🔴 **ไม่ยิง POST ตาม** — POST จะออกเลขใหม่และแจ้งผู้ขอ
+       โดยไม่ผ่านกล่องยืนยัน (หัวหน้าต้องกด "ออกเอกสาร" เอง)
+     · `issued` = เก็บข้อที่ระบบพิมพ์ลงเอกสารแต่โมดัลไม่ได้กางให้อ่าน (`report.warnings` ลบชุดที่อ่านแล้ว) แล้วไปจัดทำไฟล์ต่อ
+     · สวิตช์ปิด (`off`) = ไม่มีอะไรต้องจำ
+     ⚠️ ส่งผลสำเร็จ = การตีกลับรอบก่อน (`sendRefused`) หมดความหมาย ⇒ เริ่มก้อนใหม่ทั้งก้อน */
+  const afterSend = (res, seen) => {
+    const report = res?.report;
+    const round = res?.request?.answeredAt ?? null;
+    if (report?.state === "failed") {
+      setDocLocal({
+        ...DOC_LOCAL_ROUND, sendRefused: null, round,
+        sendFailed: { code: report.code ?? null, reason: report.reason ?? null, retry: report.retry ?? null },
+      });
+      return;
+    }
+    if (report?.state === "issued") {
+      setDocLocal({
+        ...DOC_LOCAL_ROUND, sendRefused: null, round,
+        printed: surveySendUnseenWarnings(report.warnings, seen),
+      });
+      void finishPaper(round, report.docNo);
+      return;
+    }
+    setDocLocal(null);
+  };
+
+  /* การตีกลับของการส่งผลที่ **ไม่มี GET ไหนวาดให้ได้** (รูปเปิดไม่ได้ — พกรายชื่อไฟล์ที่ต้องอัปใหม่) — โมดัลล้างข้อความตอนปิด
+     ⇒ เก็บไว้ให้กล่องแจ้งบนการ์ด คู่กับลายเซ็นของชุดไฟล์ตอนกด: ชุดไฟล์เปลี่ยน (หัวหน้าแก้แล้ว) = ตัวตัดสินเลิกวาดเอง */
+  const rememberSendRefusal = (e) => {
+    if (!surveySendRefusalKeeps(e?.message)) return;
+    setDocLocal((prev) => ({
+      ...DOC_LOCAL_ROUND, round: null, ...(prev || {}), sendRefused: { message: e.message, sig: liveSig },
+    }));
+  };
+
+  /* เปิดกล่องยืนยัน "ออกเอกสาร" — **คัดลอกเนื้อกล่องไว้ตอนเปิด** (ดู `issueDialog`) + คำเตือนชุดที่กล่องกางให้อ่าน
+     (ใช้หักออกจากข้อที่พิมพ์จริงหลังออก ⇒ ส่วนเอกสารบอกเฉพาะข้อที่ยังไม่เคยเห็น) */
+  const openIssueDialog = () => {
+    const confirm = view.document.issue?.confirm;
+    if (!confirm) return;
+    setIssueDialog({ ...confirm, warnings: textLines(data?.document?.issue?.warnings) });
+  };
+
+  /* ⭐ กด "ออกเอกสาร" ในกล่องยืนยัน — ออกเลข SU ถาวรจากผลที่ส่งไปแล้ว + แจ้งผู้ขอ
+     · สำเร็จ = ปิดกล่อง · เก็บเหตุของกระดาษ (ถ้ามี) กับข้อที่ยังไม่ได้อ่าน · toast · อ่านใบใหม่
+     · ล้ม = **อ่านใบใหม่ก่อน** แล้วให้ใบเป็นคนบอก: มีฉบับที่ใช้อยู่แล้ว = เลขออกไปแล้ว (คำตอบหายกลางทาง หรืออีกคนกดไปก่อน
+       — จอแยกไม่ออก จึงใช้ประโยคกลาง) · ยังไม่มี = เก็บเหตุไว้ให้ส่วนเอกสาร แล้วโยนกลับให้กล่องบอกตรงนั้น
+       (ปุ่มของกล่องเดินตามใบที่เพิ่งอ่าน — เหตุที่กดซ้ำไม่ผ่านกลายเป็นปุ่ม "ปิด") */
+  const issueDocument = async () => {
+    const round = data?.request?.answeredAt ?? null;
+    const acknowledged = issueDialog?.warnings || [];
+    setIssueBusy(true);
+    try {
+      let out;
+      try {
+        out = await postDocument();
+      } catch (e) {
+        const fresh = await load({ background: true });
+        const current = fresh?.document?.current;
+        if (current?.docNo && DOC_ISSUED_STATES.includes(fresh.document.state)) {
+          setIssueDialog(null);
+          patchDocLocal(round, { issueError: null });
+          setToast(surveyIssueDoneToast({ docNo: current.docNo }));
+          return;
+        }
+        patchDocLocal(round, {
+          issueError: { code: e.data?.code ?? null, message: e.message, retry: e.data?.retry ?? null },
+        });
+        throw e;
+      }
+      const report = out?.report || {};
+      setIssueDialog(null);
+      patchDocLocal(round, {
+        issueError: null,
+        sendFailed: null,
+        paper: { busy: false, reason: report.reason ?? null },
+        printed: surveySendUnseenWarnings(report.warnings, acknowledged),
+      });
+      setToast(surveyIssueDoneToast(report));
+      await load({ background: true });
+    } finally {
+      setIssueBusy(false);
+    }
+  };
+
+  /* ⭐ "ตรวจอีกครั้ง" / "โหลดใหม่" ของเอกสารประเมิน (กล่องสถานะของส่วนเอกสาร · เหตุ "ติดเฉพาะเอกสาร" ใต้ปุ่มส่งผล) — ปุ่มที่มีงานเดียวคือ
+     ให้ server ตรวจซ้ำ **ต้องบอกผลของการกดเสมอ**
+     🐞 เดิมใช้ `reloadSheet` ซึ่งเงียบทั้งสองทาง: อ่านใบไม่สำเร็จ = จอไม่ขยับ · ตรวจแล้วเหตุเดิม = จอไม่ขยับ ⇒ หัวหน้าแยกไม่ออกว่า
+        "ตรวจแล้วยังติด" หรือ "ยังไม่ได้ตรวจ"
+     · อ่านใบไม่สำเร็จ = toast แดง (คำเดียวกับปุ่มที่กด) · อ่านได้และคำตอบเรื่องเอกสารของ server เหมือนเดิมทุกตัวอักษร = toast "ตรวจแล้ว"
+       พร้อมจำนวนข้อที่ยังติด (อ่านสถานะเอกสารยังไม่สำเร็จ = บอกตรง ๆ ด้วยคำของปุ่ม) · คำตอบเปลี่ยน = จอเปลี่ยนให้เห็นเอง (รายการข้อ ·
+       ปุ่มส่งผล) ไม่ต้องมี toast
+     ⚠️ เทียบ **ก้อน `document` ดิบของ GET** ก่อน/หลัง (ไม่มีช่องไหนในก้อนเดินตามนาฬิกา) — หน้าไม่ตีความเองว่าข้อไหนขวาง ·
+        ถ้อยคำของ toast มาจากตัวตัดสิน (`surveyRecheckToast` อ่านส่วนเอกสาร **ก่อนกด**: คำบนปุ่ม · จำนวนข้อ · อ่านสถานะไม่สำเร็จ)
+     ⚠️ กดรัว = รอบที่วิ่งอยู่รอบเดียว (GET นี้วิ่งตัวตรวจเอกสารฝั่ง server — ช้ากว่าการอ่านใบธรรมดา) */
+  const recheckBusy = useRef(false);
+  const recheckDocument = async () => {
+    if (recheckBusy.current) return;
+    recheckBusy.current = true;
+    const before = JSON.stringify(data?.document ?? null);
+    const section = view.document;
+    try {
+      const fresh = await load({ background: true });
+      if (!fresh) {
+        setToast(surveyRecheckToast(section, "failed"));
+      } else if (JSON.stringify(fresh.document ?? null) === before) {
+        setToast(surveyRecheckToast(section, "same"));
+      }
+    } finally {
+      recheckBusy.current = false;
     }
   };
 
@@ -518,15 +729,104 @@ export default function SurveySheetPage({ params }) {
       writeBlockedReason: data?.writeBlockedReason || null,
       onVisit: data?.onVisit === true,
     },
+    /* ⭐ เอกสารประเมินพื้นที่ (PR-3) — สรุปของ server ตามสิทธิ์คนดู (`document` ของ GET) + ของที่จอจำไว้เอง (`docLocal`)
+       ⇒ ส่วนเอกสารบนการ์ด · แถวด่าน "เอกสารประเมินออกได้" · บรรทัดเอกสารในโมดัลส่งผล/ดึงกลับ มาจากตัวตัดสินตัวเดียวกันนี้ */
+    document: data?.document ?? null,
+    documentLocal: docLocal,
     dirtyZoneIds,
     pendingDecisionZoneIds,
     tab,
     today: businessDate(),
     /* ทะเบียนขนาดแพ็คเกจ (mig 0398) — `null` = server อ่านไม่สำเร็จ ⇒ การ์ดบล็อกส่งผลด้วยเหตุเดียวกับ route */
     packageSizes,
-  }), [data, zones, filesByZone, dirtyZoneIds, pendingDecisionZoneIds, tab, packageSizes]);
+  }), [data, zones, filesByZone, dirtyZoneIds, pendingDecisionZoneIds, tab, docLocal, packageSizes]);
 
   const canDecide = data?.canDecide === true;
+
+  /* ── เอกสารประเมินพื้นที่ (PR-3): ลายเซ็นของชุดไฟล์ + การอ่านใบซ้ำ ─────────────────────────────────
+     `liveSig` = ชุดไฟล์ที่จอถืออยู่ตอนนี้ (**ก้อนเดียวกับที่ส่งให้ตัวตัดสิน** — กล่อง "ส่งผลรอบล่าสุดถูกตีกลับ" เทียบกับตัวนี้)
+     `baseSig` = ชุดไฟล์ของ GET รอบล่าสุด · ต่างกัน = หัวหน้าเพิ่ง แนบ/ลบ/ผูกจุด บนจอ ที่ผลตรวจเอกสารของ server ยังไม่เห็น */
+  const liveSig = useMemo(() => surveyFilesSignature(filesByZone), [filesByZone]);
+  const baseSig = useMemo(() => surveyFilesSignature(data?.filesByZone), [data]);
+
+  /* ของรอบก่อนไม่ตามมารอบใหม่ — `answeredAt` เปลี่ยน (ดึงผลกลับ · ส่งรอบใหม่) = ล้างของที่ผูกกับรอบ (`sendRefused` ไม่ผูก จึงอยู่ต่อ)
+     ⚠️ ก้อนที่เขียนไว้ **ล่วงหน้า** ของรอบที่ใบยังโหลดมาไม่ถึง (`afterSend` เขียนก่อน GET ตามมา) ไม่โดนล้าง: effect นี้เดินเฉพาะตอน
+        `answeredAt` ของใบเปลี่ยน ซึ่งตอนนั้นค่าตรงกับรอบของก้อนแล้ว */
+  const answeredAt = data?.request?.answeredAt ?? null;
+  useEffect(() => {
+    setDocLocal((prev) => {
+      if (!prev?.round || sameInstant(prev.round, answeredAt)) return prev;
+      return prev.sendRefused ? { ...DOC_LOCAL_ROUND, round: null, sendRefused: prev.sendRefused } : null;
+    });
+  }, [answeredAt]);
+
+  /* ชุดไฟล์เปลี่ยน = หัวหน้าแก้อะไรไปแล้ว ⇒ ข้อผิดพลาดที่กดซ้ำได้ (ของ "ออกเอกสาร" และของการส่งรอบนี้) เลิกค้างบนกล่องสถานะ
+     · ข้อที่กดซ้ำไปก็ไม่ผ่านและไม่มี GET ไหนมองเห็น (`surveyIssueErrorSticky`) อยู่ต่อจนจบรอบ — ปุ่มต้องจางต่อ
+     🔴 **`sendFailed` ล้างได้เฉพาะตอน server ตอบ "ยังไม่มีเอกสาร" เอง** (`document.state: 'missing'` — มาพร้อมเหตุชุดสดของ
+        `document.issue.blockers` ซึ่งชนะเหตุที่จอจำไว้อยู่แล้ว) · ตราบที่ server ยังตอบ "กำลังออก" (`issuing` = นาฬิกา 180 วิหลังส่งผล
+        ไม่ใช่งานที่วิ่งอยู่จริง) `sendFailed` เป็นของชิ้นเดียวที่บอกจอว่าการส่งรอบนี้ออกเลขไม่สำเร็จไปแล้ว (`surveyDocumentView` แปลงเป็น
+        "ยังไม่ออก" + ปุ่มกดได้)
+        🐞 เดิมล้างทุกครั้งที่ชุดไฟล์เปลี่ยน ⇒ หัวหน้าผูกรูปตามที่บรรทัดบนหัวข้อจุดบอก ("ผูกรูปให้ครบก่อนกด ออกเอกสาร") ภายใน 180 วิ
+           แล้วส่วนเอกสารกลับเป็นป้าย "กำลังออก" · ปุ่ม "ออกเอกสาร" จาง · หน้าอ่านใบซ้ำทุก 15 วิ ทั้งที่ไม่มีอะไรกำลังออก
+        · สถานะอื่น (ใบของ GET ยังตามมาไม่ถึง · อ่านสถานะเอกสารไม่สำเร็จ) = ยังไม่รู้ว่า server จะตอบ "กำลังออก" ไหม ⇒ เก็บไว้ก่อนเช่นกัน
+          (ตัวตัดสินอ่าน `sendFailed` เฉพาะสถานะ `issuing` กับ `missing` — ค้างไว้ในสถานะอื่นไม่มีผลบนจอ · ของรอบอื่นถูกทิ้งตอน
+          `answeredAt` เปลี่ยนอยู่แล้ว)
+        · `issueError` ไม่เกี่ยวกับนาฬิกานี้ — ล้างเหมือนเดิม */
+  const docServerState = data?.document?.state ?? null;
+  const sigSeen = useRef(liveSig);
+  useEffect(() => {
+    if (sigSeen.current === liveSig) return;
+    sigSeen.current = liveSig;
+    setDocLocal((prev) => {
+      if (!prev) return prev;
+      const issueError = prev.issueError && surveyIssueErrorSticky(prev.issueError) ? prev.issueError : null;
+      const sendFailed = prev.sendFailed && (docServerState !== "missing" || surveyIssueErrorSticky(prev.sendFailed))
+        ? prev.sendFailed : null;
+      return issueError === prev.issueError && sendFailed === prev.sendFailed ? prev : { ...prev, issueError, sendFailed };
+    });
+  }, [liveSig, docServerState]);
+
+  /* สถานะ "กำลังออก" เป็นการเดาจากนาฬิกาของ server (180 วิหลังส่งผล) — ไม่มีเหตุการณ์ไหนบนจอจบมันได้ ⇒ อ่านใบใหม่ทุก 15 วิ
+     ⚠️ ผูกกับ `loadSettled` (นับทุกรอบที่จบ รวมรอบที่พัง) ⇒ ตั้งนาฬิกาใหม่หลังทุกรอบ ไม่หยุดเองเมื่อโหลดเบื้องหลังพังครั้งเดียว
+     🐞 **แต่ลองได้ไม่ตลอดไป** — รอบที่พังคงใบเดิมไว้ ⇒ `poll` ยังจริงและ `loadSettled` ก็ยังขยับ ⇒ GET ที่พังทุกครั้ง (เซสชันหมด ·
+        ใบถูกลบ · 500 ค้าง) วนยิงทุก 15 วิตลอดที่แท็บเปิดอยู่ · พังติดกันครบ `DOC_POLL_MAX_FAILS` รอบ = ไม่ตั้งรอบใหม่ ·
+        รอบไหนได้ใบ (กลับมาที่แท็บ · กด "ตรวจอีกครั้ง" · ทำอะไรบนใบ) ตัวนับกลับเป็นศูนย์แล้วเดินต่อเอง — อาการเดียวกับหน้าคำร้อง */
+  useEffect(() => {
+    if (!view.document.poll) return undefined;
+    if (failedRuns.current >= DOC_POLL_MAX_FAILS) return undefined;
+    const t = setTimeout(() => load({ background: true }), 15000);
+    return () => clearTimeout(t);
+  }, [view.document.poll, loadSettled, load]);
+
+  /* แนบ/ลบ/ผูกจุดบนจอแล้ว ผลตรวจเอกสารของ server (`document.send` / `document.issue`) ยังเป็นของชุดไฟล์เดิม ⇒ อ่านใบใหม่หนึ่งรอบ
+     หลังนิ่ง 1.5 วิ · **หนึ่งรอบต่อหนึ่งลายเซ็น** (`rechecked`) — อ่านแล้วยังต่าง (รอบนั้นพัง) ก็ไม่วนยิงซ้ำ
+     ⚠️ รูปที่ยังส่งไม่เสร็จ = รอก่อน (ส่งเสร็จแล้วมีรอบอ่านใหม่ของมันเองอยู่ข้างบน) */
+  const rechecked = useRef(null);
+  useEffect(() => {
+    if (!view.document.recheckOnFiles || uploadsBusy !== 0 || liveSig === baseSig || rechecked.current === liveSig) {
+      return undefined;
+    }
+    const t = setTimeout(() => {
+      rechecked.current = liveSig;
+      load({ background: true });
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [view.document.recheckOnFiles, uploadsBusy, liveSig, baseSig, load]);
+
+  /* ออกเอกสารสำเร็จ = ปุ่มที่เพิ่งกดหายไปพร้อมสถานะ "ยังไม่ออก" ⇒ โฟกัสตกไปที่ body · ย้ายมาที่ส่วนเอกสาร (เลขที่เพิ่งออกอยู่ตรงนั้น)
+     ⚠️ เฉพาะตอนโฟกัสหลุดจริง — คนที่ไปทำอย่างอื่นต่อแล้วไม่โดนดึงกลับ
+     ⚠️ กล่องยืนยันยังเปิดอยู่ = รอให้ปิดก่อน (โฟกัสยังอยู่ในกล่อง · กล่องคืนโฟกัสให้ปุ่มเดิมตอนปิด ซึ่งอาจถูกถอดไปแล้ว) */
+  const docSectionRef = useRef(null);
+  const docStateSeen = useRef(null);
+  const docFocusDue = useRef(false);
+  useEffect(() => {
+    const was = docStateSeen.current;
+    docStateSeen.current = view.document.state;
+    if (was === "missing" && DOC_ISSUED_STATES.includes(view.document.state)) docFocusDue.current = true;
+    if (!docFocusDue.current || issueDialog) return;
+    docFocusDue.current = false;
+    if (document.activeElement === document.body) docSectionRef.current?.focus();
+  }, [view.document.state, issueDialog]);
 
   /* ── หน้าพื้นที่ ↔ ประวัติของเบราว์เซอร์ (แผนลงมือ §3.3) ──────────────────────────────
      ⚠️ สลับแท็บเขียน URL ด้วย `history.replaceState` (ท่าเดียวกับตัวต่อสาย) ไม่ใช่ `router.replace` — ตัวหลัง commit
@@ -641,11 +941,38 @@ export default function SurveySheetPage({ params }) {
   /* ⭐ ข้อความโมดัลส่งผล — ผลทุกข้อของการกด รวม "ปิดนัด SV-… ไปพร้อมกัน" (มติเจ้าของ 24/09 ข้อ 2) */
   const sendConfirm = surveySendConfirm({
     docNo: data?.request?.docNo, closesVisit: view.send.closesVisit,
+    /* เอกสารประเมิน (PR-3) — การส่งครั้งนี้ออกเลข SU ด้วยไหม · แทนฉบับไหน · ข้อความที่จะพิมพ์ตามที่กรอก (ชุดเดียวกับที่ส่งกลับเป็น
+       `seenWarnings`) · อ่านสถานะเอกสารไม่สำเร็จ = บอกผลแบบมีเงื่อนไข (กติกาโมดัลบอกผลลัพธ์ #1223) */
+    issuesDocument: view.send.issuesDocument, replacesDocNo: view.send.replacesDocNo,
+    warnings: view.send.seenWarnings, documentUnknown: view.send.documentUnknown,
     // ส่งกลับให้ช่างแก้ค้างอยู่ = บอกก่อนกดว่าส่งแล้วช่างแก้ต่อไม่ได้ (review 26/09 · เตือน ไม่บล็อก)
     sendBackPending: view.send.sendBackPending,
     // ขนาดที่ตั้งไว้ก่อนมีข้อเสนอของระบบ (back-fill ST) = บอกก่อนกดว่าพื้นที่ไหนยังไม่ได้เทียบ (UAT PR-P 01/10 · เตือน ไม่บล็อก)
     sizeReview: view.send.sizeReview,
   });
+  /* เหตุหลายข้อที่ขวางการส่งผล (ติดเฉพาะเอกสารประเมิน) — โมดัลที่เหลือปุ่ม "ปิด" วาดเป็นรายการ · ใบที่ล็อกไปแล้วไม่มีเหตุให้วาด */
+  const sendBlockedItems = view.send.show && !view.send.allowed ? view.send.reason?.items || [] : [];
+  /* กล่องยืนยัน "ออกเอกสาร" — ปุ่มเดินตามใบสด (`view.document.issue.allowed`) · ระหว่างที่คำขอยังวิ่ง = คงเนื้อเดิม (ดู `issueBusy`)
+     ออกไม่ได้แล้ว = สถานะล่าสุดของส่วนเอกสารสองบรรทัด: **ป้ายของส่วนนำเสมอ** ("สถานะเอกสารตอนนี้: ออกแล้ว") แล้วตามด้วยข้อความของ
+     กล่องสถานะบนการ์ด (ถ้ามี)
+     🐞 เดิมข้อความ = ข้อความของกล่องสถานะอย่างเดียว:
+        · ถูกตีกลับด้วยเหตุที่กดซ้ำไม่ผ่าน (กระดาษล้น · รูปเปิดไม่ได้) = กล่องสถานะคือประโยคของ server ประโยคเดียวกับที่กล่องแดงของ
+          กล่องยืนยันพิมพ์อยู่ ⇒ ประโยคเดียวกันสองครั้งติดกัน
+        · อีกคนออกไปก่อน = กล่องบอกแค่ "ไฟล์ฉบับนี้จัดทำตอนเปิดครั้งแรก…" ไม่มีคำไหนบอกว่าเอกสารออกแล้ว
+     ⚠️ บรรทัดรองไม่ขึ้นเมื่อมันคือประโยคที่เพิ่งถูกโยนกลับมา (`docLocal.issueError.message` — `issueDocument` เขียนในจังหวะเดียวกับที่โยนให้กล่อง)
+        ⇒ ประโยคของ server อยู่ในกล่องแดงที่เดียว
+     ⭐ **บรรทัดทางออกของกล่องสถานะ (`status.foot`) ตามมาเสมอ** — 🐞 UAT PR-3 (S23 · S37): กล่องที่เหลือปุ่ม "ปิด" บอกแค่สถานะกับประโยคของ
+        server ("กระดาษยังพิมพ์ไม่ได้ …") ไม่บอกว่าต้องทำอะไรต่อ · ทางออกเป็นของตัวตัดสิน (ดึงผลกลับมาแก้แล้วส่งใหม่ / แจ้งผู้ดูแลระบบ)
+        หน้าแค่ต่อเป็นบรรทัดใหม่ (`.confirm-dialog-detail` เป็น `pre-line`) */
+  const issueAllowed = issueBusy || view.document.issue?.allowed === true;
+  const issueBlockedLead = view.document.badge.label
+    ? `สถานะเอกสารตอนนี้: ${view.document.badge.label}` : "ออกเอกสารไม่ได้ตอนนี้";
+  const issueThrownText = typeof docLocal?.issueError?.message === "string" ? docLocal.issueError.message.trim() : "";
+  const issueStatusText = view.document.status?.text || "";
+  const issueBlockedDetail = [
+    issueStatusText && issueStatusText !== issueThrownText ? issueStatusText : null,
+    view.document.status?.foot || null,
+  ].filter(Boolean).join("\n") || undefined;
   /* 🔑 ด่านตัวเดียวกับ server — ปุ่มในโมดัลปิดตามนี้ และเหตุขึ้นเป็นตัวหนังสือ
      ⚠️ รายชื่อช่างมาจาก **นัด** ไม่ใช่จากใบ — ตัวตัดสินอ่านให้แล้ว (`zoneGaps.crewIds`)
      🔄 ไม่ส่งของขาดเข้าด่านแล้ว (§10.5 S4) — ฝั่งช่างครบก็ส่งกลับได้ ของขาดเป็นแค่เรื่องเล่าในกล่อง */
@@ -834,13 +1161,20 @@ export default function SurveySheetPage({ params }) {
     <SurveyControlCard
       view={view}
       busy={sendBusy || recallBusy || sendBackBusy}
-      onSend={() => setSending(true)}
+      /* เปิดโมดัล **แล้วอ่านใบใหม่เสมอ** (PR-3) — โมดัลต้องวาดจากสวิตช์ออกเอกสาร · ด่าน · คำเตือน ชุดล่าสุด
+         (แท็บที่เปิดค้างไว้ข้ามการเปิดสวิตช์ ไม่มีเหตุการณ์โฟกัสให้ตัวอ่านซ้ำอัตโนมัติทำงาน) */
+      onSend={() => { setSending(true); load({ background: true }); }}
       onRecall={() => setRecalling(true)}
       onSendBack={() => { setSendingBack(true); setSendBackNote(""); }}
+      /* "ออกเอกสาร" ของส่วนเอกสารประเมิน = เปิดกล่องยืนยันที่บอกผลก่อนกด (ออกเลขถาวร · แจ้งผู้ขอ) */
+      onIssueDocument={openIssueDialog}
+      documentRef={docSectionRef}
       onOpenZone={openZone}
       onGoTab={goTab}
       /* "โหลดใหม่" ข้างเหตุ "อ่านทะเบียนขนาดแพ็คเกจไม่สำเร็จ" — ทะเบียนมากับ GET ใบประเมิน ⇒ อ่านใบใหม่เบื้องหลัง (ร่างการเคาะไม่หาย) */
       onReload={reloadSheet}
+      /* "ตรวจอีกครั้ง" / "โหลดใหม่" ของเอกสารประเมิน — อ่านใบใหม่แล้ว **บอกผล** (อ่านไม่สำเร็จ · ตรวจแล้วยังติดเท่าเดิม) ไม่เงียบเหมือนตัวบน */
+      onRecheckDocument={recheckDocument}
       requestDocNo={req.docNo}
       requestHref={`/requests/${id}`}
       visitCode={visit?.code || null}
@@ -1036,6 +1370,9 @@ export default function SurveySheetPage({ params }) {
           onUploadBusy={handleUploadBusy}
           /* ถาด "ยังไม่ได้ผูกจุด" — หัวหน้าผูกได้แม้ใบส่งผลแล้ว (metadata อย่างเดียว · แนบ/ลบยังล็อก) */
           canLinkSpots={canLinkSpots}
+          /* ใบที่ส่งผลแล้ว หัวหน้ายังผูก/ย้ายรูปจุดได้ ⇒ บอกตรงหัวข้อจุดว่าทำแล้วเอกสารเปลี่ยนไหม (ออกแล้ว = ไม่เปลี่ยน ·
+             ยังไม่ออก = ผูกให้ครบก่อนกดออก) · ประโยคมาจากตัวตัดสิน · คนที่ผูกไม่ได้และใบที่ยังไม่ส่งไม่มีบรรทัดนี้ */
+          spotsNote={canLinkSpots && view.flags.sent ? view.document.relinkNote : null}
           jumpToTray={trayJump === String(shownZone.id)}
           onTrayShown={trayShown}
         />
@@ -1210,7 +1547,9 @@ export default function SurveySheetPage({ params }) {
         /* 🔑 เหตุผลเต็มของด่าน server — ไม่ใช่บรรทัดย่อของราง (บรรทัดย่อมีไว้ให้ราง
            กว้าง 330px อ่านได้ ไม่ได้มีไว้แทนเหตุผล) */
         /* ⚠️ ใบถูกล็อกระหว่างที่กล่องเปิด (หัวหน้าอีกคนส่งไปก่อน) = บอกสถานะล่าสุด ไม่ใช่ตัวเลขชวนส่ง */
+        /* เหตุหลายข้อของเอกสารประเมิน = บรรทัดนำของตัวตัดสิน แล้วรายการข้อละบรรทัดข้างล่าง (🐞 UAT PR-3: ประโยคเต็มต่อเหตุด้วย " | ") */
         message={!view.send.show ? `${view.status.headline} — ${view.status.sub}`
+          : sendBlockedItems.length ? view.send.reason.lead
           : view.send.reason?.detail || view.send.reason?.text
           || `ส่งผล ${totals.zones} พื้นที่ · ${totals.areaSqm} ตร.ม. · ${surveyPackagesLabel(totals, packageSizes)}`}
         /* ส่งไม่ได้แล้ว = ปุ่มเดียว "ปิด" — ปุ่มที่เขียนว่า "ส่งผล" แต่กดแล้วแค่ปิดกล่อง คือปุ่มที่โกหก */
@@ -1218,6 +1557,8 @@ export default function SurveySheetPage({ params }) {
         hideCancel={!view.send.allowed}
         busy={sendBusy}
         onConfirm={view.send.allowed ? send : undefined}
+        /* การตีกลับที่พกรายชื่อไฟล์ (รูปเปิดไม่ได้) ต้องอยู่ต่อหลังปิดกล่อง — เก็บไว้ให้กล่องแจ้งบนการ์ด (PR-3) */
+        onError={rememberSendRefusal}
         onClose={() => !sendBusy && setSending(false)}
       >
         {view.send.allowed ? (
@@ -1227,6 +1568,10 @@ export default function SurveySheetPage({ params }) {
               {sendConfirm.effects.map((line) => <li key={line}>{thaiText(line)}</li>)}
             </ul>
           </div>
+        ) : sendBlockedItems.length ? (
+          <ul className={styles.effectList}>
+            {sendBlockedItems.map((line) => <li key={line}>{thaiText(line)}</li>)}
+          </ul>
         ) : null}
       </ConfirmDialog>
       {/* ⭐ **โมดัลต้องบอกว่าใครจะได้รับ ไม่ใช่แค่ถามว่าจะส่งไหม** — กระดิ่งของใบคำร้อง
@@ -1269,7 +1614,9 @@ export default function SurveySheetPage({ params }) {
         open={recalling}
         title="ดึงผลประเมินกลับมาแก้"
         message={`ตัวเลขที่ส่งไปแล้ว (${totals.zones} พื้นที่ · ${totals.areaSqm} ตร.ม. · ${surveyPackagesLabel(totals, packageSizes)}) จะถูกถอนออกจากมือฝ่ายขาย`}
-        detail="ฝ่ายขายได้รับแจ้งทันทีพร้อมตัวเลขเดิม · ตอนส่งรอบใหม่ ระบบจะบอกส่วนต่างให้เขาเห็น"
+        /* บรรทัดรองมาจากตัวตัดสิน (PR-3) — ประโยคเดิม + เอกสาร SU ที่จะถูกแทนที่ทันที (หรือ "อ่านสถานะเอกสารไม่สำเร็จ")
+           ⚠️ บรรทัดใต้ปุ่มบนการ์ดถูกซ่อนที่จอ ≤1050 ⇒ กล่องนี้ต้องพกเรื่องเอกสารเองทุกขนาดจอ */
+        detail={view.recallAction.detail}
         confirmLabel="ดึงกลับมาแก้"
         busy={recallBusy}
         onConfirm={recallReason.trim().length >= 10 ? recall : undefined}
@@ -1292,6 +1639,35 @@ export default function SurveySheetPage({ params }) {
             ? "ฝ่ายขายจะเห็นเหตุผลนี้ในกระดิ่ง"
             : "ต้องบอกเหตุผลอย่างน้อย 10 ตัวอักษร — ฝ่ายขายจะเห็นข้อความนี้"}
         </p>
+      </ConfirmDialog>
+
+      {/* ── ออกเอกสารประเมินพื้นที่ (FM-TS-01 · เลข SU · PR-3) ─────────────────────────────
+          ⭐ **บอกผลทุกข้อก่อนกด** (กติกาโมดัลบอกผลลัพธ์ #1223) — ออกเลขถาวร · ตรึงสองฉบับ · ผู้ขอได้รับแจ้ง · ข้อความที่จะพิมพ์ตามที่กรอก
+          🔑 **เนื้อกล่องคือชุดที่คัดลอกไว้ตอนเปิด** (`issueDialog`) ไม่อ่านจากใบสด — ใบสดไม่มีเนื้อกล่องให้แล้วในจังหวะที่กล่องต้องบอกเหตุ
+             ที่ถูกตีกลับ (ผลถูกดึงกลับ · คำตอบเปลี่ยน) · **ปุ่มเท่านั้นที่เดินตามใบสด**: ออกไม่ได้แล้ว = ปุ่มเดียว "ปิด" พร้อมสถานะล่าสุดของ
+             ส่วนเอกสาร — ป้ายนำ แล้วตามด้วยข้อความของกล่องสถานะ (ปุ่มที่เขียนว่า "ออกเอกสาร" แต่กดแล้วไม่ออก คือปุ่มที่โกหก — ท่าเดียวกับโมดัลส่งผล)
+          ⚠️ ล้ม = error ขึ้นในกล่องนี้ (ประโยคของ server บอกทางออกในตัว) — ประโยคนั้นอยู่ในกล่องแดงที่เดียว ไม่ซ้ำเป็นข้อความของกล่อง
+             · กดรัว = ด่านกำลังทำงานของกล่องเอง */}
+      <ConfirmDialog
+        open={!!issueDialog}
+        title={issueDialog?.title}
+        message={issueAllowed ? issueDialog?.message : issueBlockedLead}
+        detail={issueAllowed ? issueDialog?.detail : issueBlockedDetail}
+        confirmLabel={issueAllowed ? issueDialog?.confirmLabel : "ปิด"}
+        busyLabel={issueDialog?.busyLabel}
+        hideCancel={!issueAllowed}
+        busy={issueBusy}
+        onConfirm={issueAllowed ? issueDocument : undefined}
+        onClose={() => !issueBusy && setIssueDialog(null)}
+      >
+        {issueAllowed && issueDialog ? (
+          <div className={styles.effects}>
+            <p className={styles.effectsTitle}>กดแล้วเกิดขึ้นทันที</p>
+            <ul className={styles.effectList}>
+              {issueDialog.effects.map((line) => <li key={line}>{thaiText(line)}</li>)}
+            </ul>
+          </div>
+        ) : null}
       </ConfirmDialog>
 
       <Toast toast={toast} onClose={() => setToast(null)} />

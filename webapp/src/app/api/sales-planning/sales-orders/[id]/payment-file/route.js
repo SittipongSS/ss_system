@@ -11,6 +11,7 @@ import { loadScoped } from '@/lib/scopedRow';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewSalesPlanning } from '@/lib/salesPlanning';
 import { DEFAULT_EVIDENCE_BUCKET } from '@/lib/sales/orderConfirmationDocs';
+import { attachmentFileHeaders } from '@/lib/master/attachmentTypes';
 import { isInstallmentEvidencePath } from '@/lib/upload/privateEvidence';
 
 export const runtime = 'nodejs';
@@ -73,11 +74,10 @@ export async function GET(request, { params }) {
     console.error('[sales-orders/payment-file] private storage download failed:', error);
     return Response.json({ error: 'ดึงไฟล์หลักฐานไม่สำเร็จ' }, { status: 502 });
   }
+  /* ⚠️ header จากตัวกลาง ไม่ใช่ `att.mimeType` — ค่านั้น client ประกาศมาเองตอนบันทึก ⇒ `text/html` + inline =
+     หน้าเว็บที่รันสคริปต์บนโดเมนของระบบ · ชนิดคิดจากนามสกุล + nosniff + ชนิดที่ไม่ปลอดภัยบังคับดาวน์โหลด
+     · คง no-store ของหลักฐานในถังส่วนตัวไว้ (ตัวกลางตั้ง max-age=60) */
   return new Response(data, {
-    headers: {
-      'Content-Type': att.mimeType || data.type || 'application/octet-stream',
-      'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(att.fileName || 'file')}`,
-      'Cache-Control': 'private, no-store',
-    },
+    headers: { ...attachmentFileHeaders(att), 'Cache-Control': 'private, no-store' },
   });
 }

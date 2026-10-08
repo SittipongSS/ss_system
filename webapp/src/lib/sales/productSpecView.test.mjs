@@ -7,7 +7,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  illustrationReorderPlan, isRetiredIllustration, liveIllustrations,
+  HIDDEN_ILLUSTRATION_FORBIDDEN, hiddenIllustrationDeleteOutcome,
+  illustrationReorderPlan, isRetiredIllustration, liveIllustrations, retiredIllustrations,
   specControlActions, specControlDescription, specDeletePrompt, specDocumentRows,
   specDraftFrom, specFormFrom, specHeadline, specItemsFrom, specCertsFrom, specReadiness,
   specSamplePrintHref, specSaveBody, withRowUids, SPEC_ROW_UPLOADING_REASON,
@@ -231,6 +232,8 @@ test('กล่องลบใช้คีย์ของ ConfirmDialog แล�
   // ⭐ 08/10/2569: รูปของแต่ละแถว checklist ถูกลบตามสเปค · ภาพประกอบ (แผ่นท้ายกระดาษ) ยังอยู่กับสินค้า — สองประโยคนี้ต้องอยู่คู่กัน
   assert.match(prompt.detail, /เนื้อสเปค checklist รูปของแต่ละแถว และเอกสารที่ขอได้ของสินค้านี้ถูกลบทั้งหมด/);
   assert.match(prompt.detail, /รูปประกอบยังอยู่/);
+  // 08/10/2569: ภาพประกอบไม่ขึ้นแผงเอกสารของหน้าสินค้าแล้ว ⇒ หลังลบสเปคไม่มีจอไหนโชว์รูปชุดนี้ — ต้องบอกว่ารูปกลับมาเมื่อสร้างสเปคใหม่
+  assert.match(prompt.detail, /สร้างสเปคใหม่เมื่อไรรูปชุดเดิมกลับมา/);
   assert.ok(prompt.confirmLabel);
   assert.equal('onConfirm' in prompt, false, 'ตัวลงมืออยู่ที่จอ ไม่ใช่ในก้อนข้อความ');
 });
@@ -289,6 +292,49 @@ test('ภาพที่ปลดระวางแล้วไม่ขึ้�
   const rows = [img('A1'), img('A2', undefined, { metadata: { retiredAt: '2026-09-22T00:00:00Z' } })];
   assert.equal(isRetiredIllustration(rows[1]), true);
   assert.deepEqual(liveIllustrations(rows).map((r) => r.id), ['A1']);
+});
+
+/* ⭐ 08/10/2569: ภาพประกอบไม่ขึ้นแผงเอกสารของหน้าสินค้าแล้ว — กอง "เอกสารอื่นๆ" ตรงนั้นเคยเป็นที่เดียวที่ยังลบภาพปลดระวางได้
+      ⇒ การ์ดภาพประกอบต้องมีรายการ "ภาพที่ซ่อนไว้" ของตัวเอง · ตัวคัดนี้คือรายการนั้น */
+test('ภาพที่ซ่อนไว้: เฉพาะภาพประกอบที่เป็นรูปและปลดระวางแล้ว · ไม่ปนไฟล์ชนิดอื่น · ไม่ทับกับภาพที่ยังใช้', () => {
+  const retiredAt = { metadata: { retiredAt: '2026-09-22T00:00:00Z' } };
+  const rows = [
+    img('A1'),
+    img('A2', undefined, retiredAt),
+    { id: 'W1', docType: 'artwork', fileName: 'art.pdf', ...retiredAt },           // ไฟล์ชนิดอื่นที่บังเอิญมีคีย์ปลดระวาง
+    { id: 'R1', docType: 'spec_item_image', fileName: 'row.png', ...retiredAt },    // รูปของแถว checklist ไม่ใช่ภาพประกอบ
+    // ไฟล์รุ่นเก่าที่ไม่ใช่รูป: แผงไฟล์แนบวาดเป็นแถวไฟล์พร้อมปุ่มลบของมันเองอยู่แล้ว — ใส่ที่นี่ด้วย = สองทางลบ ลบทางนี้แล้วแถวของแผงค้างตาย
+    { id: 'P1', docType: 'spec_illustration', fileName: 'old.pdf', mimeType: 'application/pdf', ...retiredAt },
+    null,
+  ];
+  assert.deepEqual(retiredIllustrations(rows).map((r) => r.id), ['A2']);
+  // สองตัวคัดแบ่งภาพประกอบออกเป็นสองกองที่ไม่ทับกัน
+  const live = new Set(liveIllustrations(rows.filter(Boolean)).map((r) => r.id));
+  assert.equal(retiredIllustrations(rows).some((r) => live.has(r.id)), false);
+  assert.deepEqual(retiredIllustrations([]), []);
+  assert.deepEqual(retiredIllustrations(null), []);
+});
+
+test('กด "ลบไฟล์" บนภาพที่ซ่อนไว้: ยังมีเอกสารใช้อยู่ = แถวคงอยู่ · ลบจริง/หายไปก่อนแล้ว = ออกจากรายการ · ไม่มีสิทธิ์ = บอกเป็นคำไทย', () => {
+  // server ตอบ retired = ยังมีเอกสารที่ยื่นแล้วใช้อยู่ — ไม่ใช่ลบแล้ว และไม่ใช่ความผิดพลาด
+  assert.deepEqual(hiddenIllustrationDeleteOutcome({ body: { success: true, retired: true, message: 'ยังใช้อยู่' } }), { kind: 'kept', message: 'ยังใช้อยู่' });
+  assert.equal(hiddenIllustrationDeleteOutcome({ body: { retired: true } }).kind, 'kept');
+  assert.match(hiddenIllustrationDeleteOutcome({ body: { retired: true } }).message, /คงซ่อนไว้ตามเดิม/);
+  // ลบจริง
+  assert.equal(hiddenIllustrationDeleteOutcome({ body: { success: true } }).kind, 'purged');
+  assert.equal(hiddenIllustrationDeleteOutcome({ body: null }).kind, 'purged');
+  // 404 = แถวหายไปก่อนแล้ว (ลบจากแท็บอื่น) — ปล่อยค้างในรายการ = ปุ่มที่กดกี่ครั้งก็ 404
+  assert.equal(hiddenIllustrationDeleteOutcome({ error: { status: 404, message: 'ไม่พบเอกสารแนบ' } }).kind, 'gone');
+  // 403 = ด่านแก้ไฟล์ของสินค้า (ทีมที่ดูแลลูกค้า/หัวหน้า) ไม่ใช่ด่านแก้สเปค — ห้ามโชว์คำว่า forbidden ดิบของ server
+  const forbidden = hiddenIllustrationDeleteOutcome({ error: { status: 403, message: 'forbidden' } });
+  assert.deepEqual(forbidden, { kind: 'failed', message: HIDDEN_ILLUSTRATION_FORBIDDEN });
+  assert.doesNotMatch(forbidden.message, /forbidden/i);
+  // อย่างอื่น = ล้ม แถวคงอยู่ · เครือข่ายล่ม (ไม่มี status) ห้ามเดาว่าลบไปแล้ว
+  assert.deepEqual(hiddenIllustrationDeleteOutcome({ error: { status: 500, message: 'ตรวจซ้ำไม่ได้' } }), { kind: 'failed', message: 'ตรวจซ้ำไม่ได้' });
+  assert.equal(hiddenIllustrationDeleteOutcome({ error: { message: 'เชื่อมต่อไม่ได้' } }).kind, 'failed');
+  assert.equal(hiddenIllustrationDeleteOutcome({ error: {} }).message, 'ลบภาพที่ซ่อนไว้ไม่สำเร็จ');
+  // มี error = ไม่อ่าน body (body ของคำตอบที่ล้มไม่ใช่คำตอบ)
+  assert.equal(hiddenIllustrationDeleteOutcome({ body: { retired: true }, error: { status: 500 } }).kind, 'failed');
 });
 
 test('🐞 เลื่อนภาพเมื่อภาพก่อนหน้ายังไม่มีลำดับ — ต้องไม่มีภาพกระโดดไปท้าย', () => {

@@ -61,6 +61,15 @@ export const DOCUMENT_FORMS = Object.freeze({
     effectiveDate: '06/02/2569',
     title: 'PRODUCT DEVELOPMENT REQUEST (PDR)',
   }),
+  // ⭐ รายงานการประเมินพื้นที่ FM-TS-01 — **ต้องเท่ากับแถวที่ mig 0401 ⑦ seed** (Rev.00 · มีผล 29/09/2569 ·
+  //    เจ้าของยืนยันวันที่ก่อนรัน) · ไม่มีบรรทัดนี้ = resolveDocumentForm ตกไป FM-SA-01 ของใบเสนอราคา
+  //    ⚠️ กระดาษอ่านจากมาตรฐานแค่ รหัส · Revision · วันที่มีผล — `title` มีไว้ให้รูป form ครบ ตัวเรนเดอร์พิมพ์ชื่อเอง
+  siteSurvey: Object.freeze({
+    code: 'FM-TS-01',
+    revision: '00',
+    effectiveDate: '29/09/2569',
+    title: 'SITE SURVEY REPORT',
+  }),
 });
 
 export const documentFormLine = (form) =>

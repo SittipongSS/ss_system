@@ -30,7 +30,10 @@ import { surveyReportSendWarnings, surveyReportView } from './surveyReportView';
 import { loadSurveyZones } from './surveyRepo';
 import { surveySendVisitStep } from './surveySendClose';
 
-/** คีย์มาตรฐานเอกสารของ FM-TS-01 (แถว seed ของ mig 0401 ⑦) — การลงทะเบียนคีย์ในหน้าตั้งค่าเป็นงานของ PR-3 */
+/** คีย์มาตรฐานเอกสารของ FM-TS-01 (แถว seed ของ mig 0401 ⑦ · ลงทะเบียนในหน้าตั้งค่าแล้ว — `DOCUMENT_STANDARD_KEYS`)
+ *  กระดาษอ่านจากมาตรฐานนี้แค่บรรทัดแบบฟอร์ม (รหัส · Revision · วันที่มีผล) — **ไม่อ่านสี**: สีชื่อเอกสารเดินตามฉบับ
+ *  (ลูกค้า = terracotta · ภายใน = steel — คีย์ตายตัวของ `surveyReportAccentKey` ไม่ได้อ่านมาตรฐานของใบเสนอราคา/ใบสั่งขาย)
+ *  แถวที่เผยแพร่ยังถือ `accentKey: 'teal'` ซึ่งไม่มีใครใช้ */
 export const SURVEY_REPORT_STANDARD_KEY = 'siteSurvey';
 
 /* คอลัมน์ของนัดที่ภาพนิ่งกับตัวเลือกนัดใช้ — เอ่ยชื่อทีละตัว (ด่าน `check:columns` อ่านค่าคงที่นี้) */

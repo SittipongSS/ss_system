@@ -28,3 +28,31 @@
 .captionCell > :first-child { flex: 1 1 auto; min-width: 0; }
 .captionRead { margin: 0; color: var(--text-2); line-height: var(--lh-thai); }
 .note { margin: var(--space-3) 0 0; }
+
+/* ภาพที่ซ่อนไว้ (ปลดระวาง) — รายการชื่อไฟล์ + ปุ่มลบไฟล์ · ไม่มีรูป (ถูกซ่อนจากสเปคโดยตั้งใจ) */
+.hidden {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.hiddenHead {
+  margin: 0 0 var(--space-1-5);
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+.hiddenList {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.hiddenRow {
+  display: flex;
+  min-width: 0;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: space-between;
+}

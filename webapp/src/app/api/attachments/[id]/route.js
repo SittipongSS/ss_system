@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { stripDriveMetadata } from '@/lib/master/googleDocs';
 import { getCurrentUser } from '@/lib/authUser';
 import { can, canUser, canEditRecord, canViewCosting } from '@/lib/permissions';
+import { isSuperuser } from '@/lib/permissions';
 import { getAttachment, releaseAttachmentFile } from '@/lib/master/attachments';
 import { driveFileHeld } from '@/lib/master/attachments';
 import {
@@ -48,6 +49,17 @@ const isMgmt = (entityType) => entityType === 'mgmt_task' || entityType === 'mgm
 // = ข้ามด่านรายใบไปเลย ใครที่ผ่านด่านระบบก็ลบ/แก้ไฟล์ของระเบียนที่ตัวเองไม่มีสิทธิ์ได้
 // ⇒ อ่านพังต้องหยุดที่ 500 เสมอ แยกให้ออกจาก "ไม่มีจริง"
 async function guardAttachmentWrite(supabase, att, user, actionLabel) {
+  /* ⭐ แถวแม่ถูกลบไปแล้ว = ไม่มีแถวให้ตรวจสิทธิ์รายใบ ⇒ "เก็บกวาดไฟล์ค้าง" เป็นของ **คนที่แนบไฟล์นี้เอง** หรือ
+     ผู้ดูแล (แอดมิน/หัวหน้าที่ขอบเขตทุกทีม · `isSuperuser`) เท่านั้น — และยังต้องผ่านด่านระบบของสาขานั้นด้วย
+     🐞 เดิมเหลือด่านระบบล้วน: ใครถือสิทธิ์โมดูล (หรือแค่ผ่านด่านหยาบของ proxy ในสาขา PARENT_TABLE ซึ่งเขียนว่า
+        `if (parent && …)`) ก็ลบ/แก้ไฟล์กำพร้าของคนอื่นได้ ทั้งที่ไม่เคยมีสิทธิ์ในระเบียนนั้นเลย
+     ⚠️ แถวเก่าที่ไม่มี `uploadedBy` = ผู้ดูแลเท่านั้น (ค่าว่างต้องไม่เท่ากับ id ว่างของใคร)
+     · สาขาใบสั่งขายมีกติกาเดียวกันอยู่แล้วในตัว (`canRemoveSalesOrderFile` — คนแนบหรือแอดมิน) */
+  const canSweepOrphan = isSuperuser(user?.role) || (!!att.uploadedBy && att.uploadedBy === user?.id);
+  const orphanDenied = () => Response.json({
+    error: `${actionLabel}ไม่ได้ — ระเบียนต้นทางของไฟล์นี้ถูกลบไปแล้ว เหลือเฉพาะคนที่แนบไฟล์นี้หรือผู้ดูแลระบบที่เก็บกวาดได้`,
+  }, { status: 403 });
+
   // mgmt: gate ด้วย cap ของโมดูล (ไม่ผ่าน parent customer/product).
   if (isMgmt(att.entityType) && !canUser(user, 'mgmt:edit')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
@@ -58,6 +70,7 @@ async function guardAttachmentWrite(supabase, att, user, actionLabel) {
     const { data: parentRow, error: parentError } = await supabase
       .from(COSTING_ATTACHMENT_TABLE[att.entityType]).select('*').eq('id', att.entityId).maybeSingle();
     if (parentError) return Response.json({ error: parentError.message }, { status: 500 });
+    if (!parentRow && !canSweepOrphan) return orphanDenied();
     const allowed = parentRow
       ? await canAttachToCosting(supabase, att.entityType, parentRow, user)
       // ระเบียนแม่ถูกลบไปแล้ว — ไม่มีแถวให้ตรวจสิทธิ์รายใบ เหลือด่านระบบล้วน
@@ -72,6 +85,7 @@ async function guardAttachmentWrite(supabase, att, user, actionLabel) {
     const { data: deal, error: dealError } = await supabase
       .from(SALES_ATTACHMENT_TABLE[att.entityType]).select('*').eq('id', att.entityId).maybeSingle();
     if (dealError) return Response.json({ error: dealError.message }, { status: 500 });
+    if (!deal && !canSweepOrphan) return orphanDenied();
     // ดีลถูกลบไปแล้ว — ไม่มีแถวให้ตรวจสิทธิ์รายใบ เหลือด่านระบบล้วน (เจตนาเดิม
     // เหมือนระบบขอราคา: ให้เก็บกวาดไฟล์ที่ค้างได้ ไม่ใช่ให้เปิดอ่านของใคร)
     const allowed = deal ? canAttachToSalesEntity(deal, user) : canViewSalesPlanning(user);
@@ -111,6 +125,7 @@ async function guardAttachmentWrite(supabase, att, user, actionLabel) {
     let parentError;
     ({ data: parent, error: parentError } = await supabase.from(table).select('*').eq('id', att.entityId).maybeSingle());
     if (parentError) return Response.json({ error: parentError.message }, { status: 500 });
+    if (!parent && !canSweepOrphan) return orphanDenied();
     // product: edit scope follows the OWNING CUSTOMER's caretaker team (มติ
     // 2026-07-20/21) — resolve it so the check matches the product detail page.
     /* ⭐ รูปปฏิทินวางบิลของลูกค้า (v5) — ลบ/แก้ได้ด้วยช่องแคบเดียวกับตอนแนบ (`canAttachBillingCalendar` · ฝ่ายขายทีมที่ดูแล + FN)
