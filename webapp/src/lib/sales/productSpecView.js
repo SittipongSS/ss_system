@@ -12,7 +12,9 @@ import { fmtDate } from '@/lib/format';
 import { toneColor } from '@/lib/ui/tone';
 import { isRetiredAttachment } from '@/lib/master/attachmentTypes';
 import { specIllustrationsOf } from '@/lib/sales/productSpecIllustrations';
-import { productSpecCertSeed, productSpecChecklistSeed } from '@/lib/sales/productSpecChecklist';
+import {
+  PRODUCT_SPEC_CHECKLIST_TITLE, productSpecCertSeed, productSpecChecklistSeed,
+} from '@/lib/sales/productSpecChecklist';
 import {
   DOC_REVISION_STATUS_LABELS, DOC_STATUS_LABELS, formatRevLabel,
 } from '@/lib/sales/productSpecDocWorkflow';
@@ -33,6 +35,24 @@ export function specFormFrom(spec) {
 export const specItemsFrom = (spec) => (Array.isArray(spec?.items) ? spec.items : []);
 export const specCertsFrom = (spec) => (Array.isArray(spec?.certifications) ? spec.certifications : []);
 
+/* ── ตัวชี้แถวบนจอ (`_uid`) ─────────────────────────────────────────────────
+   ⭐ 08/10/2569 แถว checklist มีช่องราคาทุนกับรูป ⇒ แถวต้องมี "ตัวตนบนจอ" ที่ไม่ขยับตามตำแหน่ง:
+      · key ของ React — ลบแถวกลางตารางแล้วช่องที่กำลังพิมพ์/รูปที่กำลังแนบต้องไม่เลื่อนไปอยู่แถวอื่น
+      · ผลการแนบรูปที่กลับมาช้า (ผู้ใช้ลบ/เลื่อนแถวไปแล้ว) ต้องลงแถวเดิม หรือไม่ลงเลย — ห้ามลงตามเลขลำดับ
+   แถวจาก server ใช้ `id` ของมันเอง (คงที่ข้ามการบันทึกเมื่อ server เก็บ id เดิมไว้ ⇒ รูปย่อไม่ถูกโหลดใหม่)
+   แถวใหม่ได้ค่าจากตัวนับของโมดูล · คำนำหน้า `~` ไม่อยู่ในอักขระที่ id ของฐานใช้ได้ ⇒ ชนกันไม่ได้
+   ⚠️ `_uid` อยู่บนจอเท่านั้น — `specSaveBody` ไม่ส่ง (เลือกคีย์ทีละตัว) และห้ามใช้เป็น id/htmlFor ของ DOM */
+let rowUidSeq = 0;
+
+/** เติม `_uid` ให้แถวที่ยังไม่มี — แถวที่มีแล้วคืนตัวเดิม (เรียกซ้ำได้ ไม่ขยับค่า) */
+export function withRowUids(rows) {
+  return (Array.isArray(rows) ? rows : []).filter(Boolean).map((row) => {
+    if (row._uid) return row;
+    rowUidSeq += 1;
+    return { ...row, _uid: row.id ? String(row.id) : `~new-${rowUidSeq}` };
+  });
+}
+
 /**
  * ร่างบนจอทั้งชุด `{ form, items, certs }` — มีสเปค = ค่าที่บันทึกไว้ · ยังไม่มี = แถวตั้งต้นของกระดาษ
  *
@@ -44,7 +64,7 @@ export const specCertsFrom = (spec) => (Array.isArray(spec?.certifications) ? sp
 export function specDraftFrom(spec) {
   return {
     form: specFormFrom(spec),
-    items: spec ? specItemsFrom(spec) : productSpecChecklistSeed(),
+    items: withRowUids(spec ? specItemsFrom(spec) : productSpecChecklistSeed()),
     certs: spec ? specCertsFrom(spec) : productSpecCertSeed(),
   };
 }
@@ -53,10 +73,17 @@ export function specDraftFrom(spec) {
  * ก้อนที่ส่ง `POST/PATCH /api/products/[id]/spec` — `{ content, certifications, items }`
  *
  * ⚠️ **ส่งทั้งชุดทุกครั้ง** — `certifications`/`items` ที่ส่งมา = ทับทั้งชุด (แถวที่หายไปคือแถวที่
- *    ถูกลบ) · ส่งเฉพาะคีย์ที่ตัวตรวจฝั่ง server อ่าน ไม่ลาก `id/specId/createdAt` ของแถวเดิมไป
+ *    ถูกลบ) · ส่งเฉพาะคีย์ที่ตัวตรวจฝั่ง server อ่าน ไม่ลาก `specId/createdAt/sortOrder` ของแถวเดิมไป
  * ⚠️ `expectedUpdatedAt` = กันเขียนทับคนอื่น (อีกแท็บบันทึกไปก่อน ⇒ 409) · ไม่มีสเปค = ไม่ส่ง
+ *
+ * ⭐ แถว checklist (08/10/2569 · ราคาทุน + รูป — ในระบบเท่านั้น ไม่ลงกระดาษ):
+ *    · `id` ของแถวเดิมส่งกลับไป — server ใช้จับคู่แถวเก่า (เก็บ id เดิม · ยกราคาทุนของคนที่ไม่มีสิทธิ์เห็นข้ามมา)
+ *    · `imageAttachmentId` ส่ง **ทุกครั้ง** (สตริงหรือ `null`) — คีย์ที่มีอยู่ = "จอนี้รู้จักช่องรูป" ⇒ `null` คือถอดรูปจริง
+ *    · `costPrice` ส่ง **เฉพาะคนที่แก้ราคาทุนได้** — คนที่ไม่เห็นราคาไม่มีค่าบนจอ ส่ง `null` ไปคือล้างราคาของคนอื่นเงียบ ๆ
+ *      ว่าง = `null` · 0 = `0` (ศูนย์บาทเป็นราคาที่ตั้งใจกรอก ไม่ใช่ "ยังไม่กรอก")
+ *    · `_uid` ไม่ส่งเด็ดขาด (ตัวชี้บนจอ)
  */
-export function specSaveBody({ form, items = [], certs = [], expectedUpdatedAt } = {}) {
+export function specSaveBody({ form, items = [], certs = [], expectedUpdatedAt } = {}, { canEditItemCost = false } = {}) {
   return {
     content: Object.fromEntries(SPEC_CONTENT_FIELDS.map((key) => [key, String(form?.[key] ?? '')])),
     certifications: (certs || []).filter(Boolean).map((row) => ({
@@ -66,15 +93,25 @@ export function specSaveBody({ form, items = [], certs = [], expectedUpdatedAt }
       note: row.note || '',
     })),
     items: (items || []).filter(Boolean).map((row) => ({
+      ...(row.id ? { id: row.id } : {}),
       itemKey: row.itemKey || null,
       itemLabel: row.itemLabel || '',
       detail: row.detail || '',
       preparedByS: Boolean(row.preparedByS),
       preparedByCustomer: Boolean(row.preparedByCustomer),
       note: row.note || '',
+      imageAttachmentId: row.imageAttachmentId ? String(row.imageAttachmentId) : null,
+      ...(canEditItemCost ? { costPrice: specItemCostValue(row.costPrice) } : {}),
     })),
     ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}),
   };
+}
+
+/** ราคาทุนของแถวตามที่ส่ง server — ว่าง/ไม่ใช่ตัวเลข = `null` · 0 คงเป็น 0 */
+function specItemCostValue(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 }
 
 /* ── การ์ดจัดการ ─────────────────────────────────────────────────────────── */
@@ -106,6 +143,8 @@ export function specHeadline({ spec, dirty = false } = {}) {
   };
 }
 
+/* รูปของแถวกำลังขึ้น Drive — บันทึกตอนนี้ = แถวนั้นถูกบันทึกโดยไม่มีรูป แล้วรูปที่ขึ้นทีหลังกลายเป็นของค้างไม่บันทึก */
+export const SPEC_ROW_UPLOADING_REASON = 'กำลังแนบรูปของแถว — รอให้เสร็จก่อนบันทึก';
 const DIRTY_PRINT_BLOCK = 'มีการแก้ที่ยังไม่บันทึก — กระดาษตัวอย่างพิมพ์จากสเปคที่บันทึกแล้ว กดบันทึกก่อน';
 
 /**
@@ -115,7 +154,7 @@ const DIRTY_PRINT_BLOCK = 'มีการแก้ที่ยังไม่�
  * ⚠️ "บันทึกแล้ว" ตอนไม่มีอะไรเปลี่ยน = `disabled` เปล่า ๆ ได้ (ไม่มีของให้ทำ ไม่ใช่ติดด่าน)
  */
 export function specControlActions({
-  spec, productId, permissions, scopeReason = null, dirty = false,
+  spec, productId, permissions, scopeReason = null, dirty = false, uploading = false,
   onCreate, onSave, onDelete,
 } = {}) {
   const canEdit = Boolean(permissions?.canEdit);
@@ -127,8 +166,8 @@ export function specControlActions({
         kind: 'save',
         visible: canEdit,
         // นอกขอบเขต (หมวด 03/04) — มีสิทธิ์แต่สินค้าชิ้นนี้ไม่มีสเปคให้ตกลง ⇒ โชว์พร้อมเหตุ
-        disabled: Boolean(scopeReason),
-        disabledReason: scopeReason || null,
+        disabled: Boolean(scopeReason) || Boolean(uploading),
+        disabledReason: scopeReason || (uploading ? SPEC_ROW_UPLOADING_REASON : null),
         onClick: onCreate,
       },
       secondaryActions: [],
@@ -142,8 +181,9 @@ export function specControlActions({
       label: dirty ? 'บันทึกสเปค' : 'บันทึกแล้ว',
       kind: 'save',
       visible: canEdit,
-      disabled: !dirty,
-      disabledReason: null,
+      // ⚠️ ติดด่าน = โชว์แล้วบอกเหตุ (ui-visibility-rule) — รูปกำลังขึ้นมีเหตุให้อ่าน · ไม่มีของเปลี่ยนไม่มี
+      disabled: !dirty || Boolean(uploading),
+      disabledReason: uploading ? SPEC_ROW_UPLOADING_REASON : null,
       onClick: onSave,
     },
     /* ⚠️ พิมพ์ตัวอย่างเป็น **ลิงก์แท็บใหม่** ไม่ใช่ `window.open` ในปุ่ม — เส้นนี้คืน HTML ทั้งหน้า
@@ -193,7 +233,7 @@ export function specDeletePrompt({ productName } = {}) {
       subject: productName || 'สินค้านี้',
       irreversible: true,
       effects: [
-        'เนื้อสเปค checklist และเอกสารที่ขอได้ของสินค้านี้ถูกลบทั้งหมด',
+        'เนื้อสเปค checklist รูปของแต่ละแถว และเอกสารที่ขอได้ของสินค้านี้ถูกลบทั้งหมด',
         'สินค้ากลับไปเป็น "ยังไม่มีสเปค" — ออกเอกสาร FM-SA-04 จากใบสั่งขายไม่ได้จนกว่าจะสร้างใหม่',
         'รูปประกอบยังอยู่กับสินค้า ไม่ถูกลบตาม',
         'กู้คืนจากหน้าจอไม่ได้ ต้องกรอกใหม่ทั้งหมด',
@@ -230,7 +270,7 @@ export function specReadiness({ form, items = [] } = {}) {
     },
     {
       id: 'checklist',
-      label: 'Checklist บรรจุภัณฑ์',
+      label: PRODUCT_SPEC_CHECKLIST_TITLE,
       detail: `กรอกแล้ว ${filled.length}/${rows.length} แถว`,
       ready: rows.length > 0 && filled.length === rows.length,
     },

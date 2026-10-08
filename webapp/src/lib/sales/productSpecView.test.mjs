@@ -10,9 +10,10 @@ import {
   illustrationReorderPlan, isRetiredIllustration, liveIllustrations,
   specControlActions, specControlDescription, specDeletePrompt, specDocumentRows,
   specDraftFrom, specFormFrom, specHeadline, specItemsFrom, specCertsFrom, specReadiness,
-  specSamplePrintHref, specSaveBody,
+  specSamplePrintHref, specSaveBody, withRowUids, SPEC_ROW_UPLOADING_REASON,
 } from './productSpecView.js';
 import { normalizeProductSpecInput, SPEC_CONTENT_FIELDS } from './productSpecWorkflow.js';
+import { PRODUCT_SPEC_CHECKLIST_TITLE } from './productSpecChecklist.js';
 
 const spec = {
   id: 'PSP1', productId: 'PRD1', texture: 'เหลว', standardPackaging: null,
@@ -49,10 +50,12 @@ test('🪤 ก้อนบันทึกผ่านตัวตรวจขอ
   const body = specSaveBody({
     form: specFormFrom(spec), items: specItemsFrom(spec), certs: specCertsFrom(spec),
   });
+  // คีย์ชั้นบนไม่เปลี่ยน — ราคาทุน/รูปเป็นของแถว ไม่ใช่ของก้อน
   assert.deepEqual(Object.keys(body), ['content', 'certifications', 'items']);
-  // ไม่ลาก id/specId ของแถวเดิมไป — server ออก id ใหม่ทั้งชุด
-  assert.equal('id' in body.items[0], false);
+  // ⭐ 08/10/2569: `id` ของแถวเดิมส่งกลับ (server ใช้จับคู่แถวเก่า) · ของที่ server ไม่อ่านยังไม่ลากไป
+  assert.equal(body.items[0].id, 'PSI1');
   assert.equal('specId' in body.items[0], false);
+  assert.equal('sortOrder' in body.items[0], false);
   const normalized = normalizeProductSpecInput(body);
   assert.equal(normalized.error, undefined);
   assert.equal(normalized.value.content.texture, 'เหลว');
@@ -60,6 +63,92 @@ test('🪤 ก้อนบันทึกผ่านตัวตรวจขอ
   assert.equal(normalized.value.items[0].itemKey, 'cap');
   assert.equal(normalized.value.items[0].detail, 'ฝาทอง');
   assert.equal(normalized.value.certifications[0].status, 'ready');
+});
+
+/* ── ราคาทุน + รูปของแถว checklist (มติ 08/10/2569 · ในระบบเท่านั้น) ─────────────────────────
+   สามเรื่องที่พังเงียบได้: ผลแนบรูปลงผิดแถว (key ตามลำดับ) · คนไม่เห็นราคาส่ง null ไปล้างราคาของคนอื่น ·
+   ช่องว่างกับ 0 บาทถูกยุบรวมกัน */
+test('withRowUids: แถวจาก server ใช้ id ของตัวเอง (คงที่) · แถวใหม่ได้ค่าไม่ซ้ำ · เรียกซ้ำไม่ขยับ', () => {
+  const rows = withRowUids([{ id: 'PSI1', itemKey: 'cap' }, { itemKey: null }, { itemKey: null }, null]);
+  assert.equal(rows.length, 3, 'ค่าว่างถูกตัดทิ้ง');
+  assert.equal(rows[0]._uid, 'PSI1');
+  assert.equal(withRowUids([{ id: 'PSI1' }])[0]._uid, 'PSI1', 'โหลดใหม่ได้ค่าเดิม — รูปย่อของแถวไม่ถูกสร้างใหม่');
+  assert.notEqual(rows[1]._uid, rows[2]._uid);
+  // คำนำหน้าของแถวใหม่ไม่อยู่ในอักขระที่ id ของฐานใช้ได้ ⇒ ชนกับ id จริงไม่ได้
+  for (const row of rows.slice(1)) assert.doesNotMatch(row._uid, /^[A-Za-z0-9_-]{1,64}$/);
+  // เรียกซ้ำ = แถวตัวเดิม ค่าเดิม (ตัวตั้งของจอเรียกทุกครั้งที่แก้แถว)
+  const again = withRowUids(rows);
+  assert.deepEqual(again.map((r) => r._uid), rows.map((r) => r._uid));
+  assert.equal(again[1], rows[1]);
+  // ไม่แก้ของที่ส่งเข้ามา (ก้อนจาก API ต้องไม่ถูกเติมคีย์ของจอ)
+  const source = [{ id: 'PSI9' }];
+  withRowUids(source);
+  assert.equal('_uid' in source[0], false);
+  assert.deepEqual(withRowUids(null), []);
+});
+
+test('ร่างบนจอมี _uid ครบทุกแถว ทั้งสเปคที่มีแล้วและแถวตั้งต้น — และไม่ซ้ำกัน', () => {
+  assert.equal(specDraftFrom(spec).items[0]._uid, 'PSI1');
+  const seeded = specDraftFrom(null).items.map((row) => row._uid);
+  assert.equal(seeded.every(Boolean), true);
+  assert.equal(new Set(seeded).size, seeded.length);
+  // โหลดร่างตั้งต้นสองรอบ = คนละชุด (ผลแนบรูปของร่างเก่าต้องหาแถวในร่างใหม่ไม่เจอ)
+  assert.notEqual(specDraftFrom(null).items[0]._uid, seeded[0]);
+});
+
+test('ก้อนบันทึกของแถว: _uid ไม่ส่ง · imageAttachmentId ส่งเสมอ · costPrice เฉพาะคนที่แก้ราคาทุนได้', () => {
+  const draft = {
+    form: specFormFrom(spec),
+    certs: [],
+    items: withRowUids([
+      { id: 'PSI1', itemKey: 'cap', itemLabel: 'ฝา', costPrice: 12.5, imageAttachmentId: '0b6f8a52-1111-4222-8333-444455556666' },
+      { itemKey: null, itemLabel: 'เพิ่มเอง', costPrice: '', imageAttachmentId: null },
+      { itemKey: null, itemLabel: 'ศูนย์บาท', costPrice: 0 },
+      { itemKey: null, itemLabel: 'ยังไม่แตะ' },
+    ]),
+  };
+  const plain = specSaveBody(draft);
+  assert.deepEqual(Object.keys(plain), ['content', 'certifications', 'items']);
+  for (const row of plain.items) {
+    assert.equal('_uid' in row, false);
+    assert.equal('imageAttachmentId' in row, true, 'คีย์ต้องมีทุกแถว — server อ่านว่า "จอนี้รู้จักช่องรูป"');
+    assert.equal('costPrice' in row, false, 'คนไม่มีสิทธิ์ราคาทุน: ไม่ส่งคีย์เลย (ส่ง null = ล้างราคาของคนอื่น)');
+  }
+  assert.equal(plain.items[0].id, 'PSI1');
+  assert.equal('id' in plain.items[1], false, 'แถวใหม่ไม่มี id — _uid ของจอห้ามหลุดไปเป็น id');
+  assert.equal(plain.items[0].imageAttachmentId, '0b6f8a52-1111-4222-8333-444455556666');
+  assert.equal(plain.items[1].imageAttachmentId, null);
+  assert.equal(plain.items[3].imageAttachmentId, null);
+
+  const priced = specSaveBody(draft, { canEditItemCost: true });
+  assert.deepEqual(Object.keys(priced), ['content', 'certifications', 'items']);
+  assert.deepEqual(priced.items.map((row) => row.costPrice), [12.5, null, 0, null], 'ว่าง = null · 0 = 0 ไม่ยุบรวมกัน');
+  assert.equal(priced.items.every((row) => !('_uid' in row)), true);
+  // ธงไม่จริงทุกแบบ = ไม่ส่ง (permissions จาก API รุ่นเก่าไม่มีคีย์นี้)
+  assert.equal('costPrice' in specSaveBody(draft, { canEditItemCost: undefined }).items[0], false);
+  assert.equal('costPrice' in specSaveBody(draft, {}).items[0], false);
+});
+
+test('รูปของแถวกำลังขึ้น: ปุ่มบันทึก/สร้างกดไม่ได้พร้อมเหตุ (ติดด่าน = โชว์แล้วบอกเหตุ)', () => {
+  assert.equal(SPEC_ROW_UPLOADING_REASON, 'กำลังแนบรูปของแถว — รอให้เสร็จก่อนบันทึก');
+  const saving = specControlActions({ spec, dirty: true, uploading: true, permissions: { canEdit: true } }).primaryAction;
+  assert.equal(saving.id, 'save');
+  assert.equal(saving.visible, true);
+  assert.equal(saving.disabled, true);
+  assert.equal(saving.disabledReason, SPEC_ROW_UPLOADING_REASON);
+  const creating = specControlActions({ spec: null, uploading: true, permissions: { canEdit: true } }).primaryAction;
+  assert.equal(creating.id, 'create');
+  assert.equal(creating.disabled, true);
+  assert.equal(creating.disabledReason, SPEC_ROW_UPLOADING_REASON);
+  // นอกขอบเขตมาก่อน — เหตุที่แก้ไม่ได้ด้วยการรอ
+  assert.equal(
+    specControlActions({ spec: null, uploading: true, scopeReason: 'หมวด 03 ไม่ใช้ใบสเปค', permissions: { canEdit: true } }).primaryAction.disabledReason,
+    'หมวด 03 ไม่ใช้ใบสเปค',
+  );
+  // ไม่ได้อัปอยู่ = ของเดิม (ไม่มีเหตุ · กดได้ตามมีของเปลี่ยน)
+  const idle = specControlActions({ spec, dirty: true, permissions: { canEdit: true } }).primaryAction;
+  assert.equal(idle.disabled, false);
+  assert.equal(idle.disabledReason, null);
 });
 
 test('ส่ง expectedUpdatedAt เฉพาะเมื่อมี — สร้างสเปคใหม่ไม่มีค่าให้เทียบ', () => {
@@ -139,6 +228,8 @@ test('กล่องลบใช้คีย์ของ ConfirmDialog แล�
   assert.equal(prompt.danger, true);
   assert.match(prompt.description, /สเปรย์ปรับอากาศ/);
   assert.match(prompt.detail, /กู้คืนจากหน้าจอไม่ได้/);
+  // ⭐ 08/10/2569: รูปของแต่ละแถว checklist ถูกลบตามสเปค · ภาพประกอบ (แผ่นท้ายกระดาษ) ยังอยู่กับสินค้า — สองประโยคนี้ต้องอยู่คู่กัน
+  assert.match(prompt.detail, /เนื้อสเปค checklist รูปของแต่ละแถว และเอกสารที่ขอได้ของสินค้านี้ถูกลบทั้งหมด/);
   assert.match(prompt.detail, /รูปประกอบยังอยู่/);
   assert.ok(prompt.confirmLabel);
   assert.equal('onConfirm' in prompt, false, 'ตัวลงมืออยู่ที่จอ ไม่ใช่ในก้อนข้อความ');
@@ -149,6 +240,9 @@ test('ความพร้อมอ่านจากฟอร์มที่�
   assert.equal(ready.find((r) => r.id === 'spec').ready, true);
   assert.equal(ready.find((r) => r.id === 'checklist').ready, true);
   assert.equal(specReadiness({ form: {}, items: [] }).find((r) => r.id === 'checklist').ready, false);
+  // ป้ายเดียวกับหัวการ์ดบนฟอร์ม (ค่าคงที่ตัวเดียว) · id ของรายการไม่เปลี่ยน
+  assert.equal(ready.find((r) => r.id === 'checklist').label, PRODUCT_SPEC_CHECKLIST_TITLE);
+  assert.equal(PRODUCT_SPEC_CHECKLIST_TITLE, 'Checklist วัตถุดิบ/บรรจุภัณฑ์');
 });
 
 test('บรรทัดใต้หัวการ์ดนับเอกสารรวมใบที่ยกเลิก', () => {

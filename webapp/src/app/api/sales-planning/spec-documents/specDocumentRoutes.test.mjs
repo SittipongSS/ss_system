@@ -492,3 +492,70 @@ test('🔴 บังคับลบ SO: จดเอกสาร active ก่�
   assert.ok(voided > removed, 'void หลังลบสำเร็จ — ลบล้มต้องไม่ทิ้งเอกสารที่ void ไปแล้วบน SO ที่ยังอยู่');
   assert.match(del, /return ok\(\{ deleted: true, forced: force, \.\.\.\(warning \? \{ warning \} : \{\}\) \}\)/);
 });
+
+/* ── ราคาทุนรายแถวของ checklist (mig 0405 · มติเจ้าของ 08/10/2569) — ใช้ในระบบเท่านั้น และเฉพาะคนที่เห็นต้นทุนสินค้าได้ ──
+   เส้น `/api/products/[id]/spec` คือทางออกทางเดียวของแถว checklist ดิบ ⇒ ทุกก้อนที่มีสเปคต้องผ่านตัวตัด */
+test('🔴 สเปคของสินค้า: ทุกก้อนที่ตอบพร้อมสเปคผ่าน redactSpecForViewer — ไม่มีก้อนไหนส่งแถวดิบออกไป', () => {
+  const source = code(SPEC_ROUTE);
+  // สามก้อน: specPayload + ก้อนถอย "บันทึกแล้วแต่โหลดหน้าใหม่ไม่สำเร็จ" ของ POST และ PATCH
+  assert.match(source, /spec: redactSpecForViewer\(loaded\.spec, user\),/);
+  assert.match(source, /return ok\(\{ spec: redactSpecForViewer\(created\.spec, user\), warning: /);
+  assert.match(source, /return ok\(\{ spec: redactSpecForViewer\(saved\.spec, user\), warning: /);
+  assert.equal((source.match(/redactSpecForViewer\(/g) || []).length, 3);
+  // ไม่มี `spec:` ตัวไหนในคำตอบที่ไม่ผ่านตัวตัด (ยกเว้นที่ส่งเข้า store/ด่าน ซึ่งต้องเป็นแถวเต็ม)
+  const bare = [...source.matchAll(/\bspec: ([A-Za-z.]+)[,} ]/g)].map((m) => m[1]);
+  assert.deepEqual([...new Set(bare)].sort(), ['before.spec', 'loaded.spec'],
+    'spec: ที่ไม่ผ่านตัวตัดมีได้แค่ของ store (before.spec) กับตัวคิดสิทธิ์ (loaded.spec ใน productSpecPermissions)');
+  assert.doesNotMatch(source, /ok\(\{ spec: (created|saved|loaded|before)\.spec/);
+  // ตัวตัดถามผู้ใช้ทั้งก้อน (สิทธิ์รายคน) ไม่ใช่ role
+  assert.doesNotMatch(source, /redactSpecForViewer\([^)]*role/);
+});
+
+test('🔴 สเปคของสินค้า: ตัดราคาทุน **หลัง** ลง audit — audit_logs ถือแถวเต็ม · สิทธิ์ที่ส่งให้จอคิดจากผู้ใช้ทั้งก้อน', () => {
+  const source = code(SPEC_ROUTE);
+  for (const method of ['POST', 'PATCH']) {
+    const start = source.indexOf(`export const ${method}`);
+    const body = source.slice(start, source.indexOf('export const', start + 10));
+    const audit = body.indexOf('await recordAudit({');
+    const redact = body.indexOf('redactSpecForViewer(');
+    const payload = body.indexOf('await specPayload(');
+    assert.ok(audit > 0 && redact > audit && payload > audit, `${method}: ตัดหลัง audit เท่านั้น`);
+    // audit รับแถวเต็มของ store ตรง ๆ
+    assert.doesNotMatch(body.slice(audit, payload), /redactSpecForViewer/, method);
+    // store ได้สิทธิ์แก้ราคาทุนจากเราต์ — แก้สเปคได้ + เห็นต้นทุนสินค้า
+    assert.match(body, /canEditItemCost: canEditProductSpec\(user\.role\) && canSeeSpecItemCost\(user\),/, method);
+  }
+  assert.match(source.slice(source.indexOf('export const POST'), source.indexOf('export const PATCH')), /before: null, after: created\.spec,/);
+  assert.match(source.slice(source.indexOf('export const PATCH'), source.indexOf('export const DELETE')), /before: before\.spec, after: saved\.spec,/);
+  assert.match(source, /permissions: productSpecPermissions\(\{ spec: loaded\.spec, documents, role: user\?\.role, user \}\),/);
+  // PATCH ส่งแถวที่เก็บอยู่ (พร้อม items) ให้ store — ใช้ตัดสิน id ของแถว · ด่านตัวชี้รูป · การเก็บกวาดรูป
+  assert.match(source, /const before = await loadSpecRecord\(supabase, id\);[\s\S]*?const saved = await saveProductSpec\(supabase, \{\s*spec: before\.spec,/);
+  assert.doesNotMatch(source, /isSuperuser/);
+  assert.match(source, /export const maxDuration = 60;/);
+});
+
+test('🔴 เส้นข้อมูลของหน้าออกเอกสาร: แถว checklist ออกไปผ่านลิสต์ช่อง SPEC_ITEM_FIELDS แปดช่องเท่านั้น — ไม่มีราคาทุน/รูปของแถว (mig 0405)', () => {
+  /* เส้นนี้ **ไม่ผ่าน** `redactSpecForViewer` และเปิดให้ทุกคนที่เห็นใบสั่งขาย + มีสิทธิ์ออกเอกสาร — กว้างกว่ากติกาเห็นต้นทุน ·
+     แถวที่ `loadSpecRecord` คืนมาอ่านด้วย `select('*')` ⇒ ตั้งแต่ 0405 ทุกแถวพก `costPrice` กับ `imageAttachmentId` มาถึงที่นี่
+     ⇒ ลิสต์ช่องนี้คือตัวกรองเดียวของเส้น: เติมคีย์เข้าไปหนึ่งคำ หรือส่ง `spec` ดิบออกไป = ราคาทุนรายแถวรั่วโดยไม่มีเทสต์ไหนแดง */
+  const data = code(NEW_PAGE_ROUTE);
+  const list = data.match(/const SPEC_ITEM_FIELDS = \[([^\]]*)\];/);
+  assert.ok(list, 'หาลิสต์ช่อง SPEC_ITEM_FIELDS ไม่เจอ');
+  assert.deepEqual(list[1].split(',').map((key) => key.trim().replace(/^'|'$/g, '')).filter(Boolean), [
+    'id', 'sortOrder', 'itemKey', 'itemLabel', 'detail', 'preparedByS', 'preparedByCustomer', 'note',
+  ]);
+  assert.equal((data.match(/SPEC_ITEM_FIELDS/g) || []).length, 2, 'ประกาศครั้งเดียว ใช้ครั้งเดียว — ไม่มีที่ไหนเติมคีย์ทีหลัง');
+  assert.doesNotMatch(data, /costPrice|imageAttachmentId|pricingTier/);
+  // แถวถูกประกอบจากลิสต์ช่องเท่านั้น (ไม่ spread แถวดิบ)
+  assert.match(data, /items: \(spec\.items \|\| \[\]\)\.map\(\(row\) => Object\.fromEntries\(SPEC_ITEM_FIELDS\.map\(\(field\) => \[field, row\[field\] \?\? null\]\)\)\),/);
+  const view = data.slice(data.indexOf('const specView = (spec) => ({'), data.indexOf('const productView'));
+  assert.doesNotMatch(view, /\.\.\.spec\b|\.\.\.row\b/, 'ห้าม spread สเปค/แถวดิบลงคำตอบ');
+  // คำตอบส่งสเปคผ่าน specView ทางเดียว — ไม่มี `spec,` / `spec: spec` ดิบ
+  assert.match(data, /spec: spec \? specView\(spec\) : null,/);
+  const responses = [...data.matchAll(/\bok\(\{[\s\S]*?\}\)/g)].map((m) => m[0]);
+  assert.ok(responses.length >= 2, 'ต้องเจอคำตอบทั้งสองทาง (ไม่มีสิทธิ์ออก · ปกติ)');
+  for (const body of responses) {
+    assert.doesNotMatch(body, /[{,]\s*spec\s*[,}]|\bspec: spec\s*[,}]|\.\.\.spec\b/, 'สเปคดิบห้ามออกไปกับคำตอบ');
+    assert.match(body, /spec: (null|spec \? specView\(spec\) : null)/);
+  }
+});
