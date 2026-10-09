@@ -5,7 +5,20 @@ import {
   buildQuotationMasterSwitchableHTML,
   renderQuotationMasterDocumentHTML,
 } from './quotationMasterDocument.js';
-import { buildQuotationMasterModelFromQuote, buildQuotationMasterPreview } from './quotationMasterTemplate.js';
+import {
+  ITEM_TEXT_CHARS,
+  QUOTATION_PREVIEW_SCENARIOS,
+  buildQuotationMasterModelFromQuote,
+  buildQuotationMasterPreview,
+  itemTextChars,
+  quotationDocLabels,
+} from './quotationMasterTemplate.js';
+// ── คอลัมน์ "แพ็ค/เดือน" (ท้ายไฟล์) ──
+import { ITEM_TABLE_PACK_CSS, documentShellCss } from '../documents/documentShell.js';
+import { PACK_COLUMN_LABEL } from './linePackView.js';
+import { buildIssuedQuotationArtifactHtml } from './issuedQuotationSnapshot.js';
+import { buildIssuedSalesOrderArtifactHtml } from './issuedSalesOrderSnapshot.js';
+import { buildSalesOrderPrintHTML } from './salesOrderPrint.js';
 
 const lineOf = (id, over = {}) => ({
   id, sortOrder: Number(id.replace(/\D/g, '')) || 0,
@@ -831,4 +844,280 @@ test('V4 doc: กลุ่มที่อยู่ใต้ตารางรา
   const html = printedMarkup(buildQuotationMasterHTML(baseQuote([lineOf('1')]), {}));
   assert.ok(html.includes('class="paymentContent"'), 'หน้า combined ไม่ใส่คลาสจัดหน้าใหม่');
   assert.ok(!html.includes('paymentFlow'));
+});
+
+// ══ คอลัมน์ "แพ็ค/เดือน" บนกระดาษ (มติเจ้าของ 08/10 · mig 0407 · docs/qt-pack-column.md) ═══════════════════════
+//
+// สองฝั่งที่ต้องจริงพร้อมกัน:
+//   ก. ใบที่ **ไม่มี** บรรทัดมีเลขแพ็ค (ใบจริงทุกใบในระบบวันนี้) = ไฟล์เดิมทุกไบต์ — markup และ CSS
+//   ข. ใบที่ **มี** = คอลัมน์ระหว่างรายละเอียดกับจำนวน ตัดสินทั้งใบ · บรรทัดอื่นพิมพ์ขีด · หน่วยของบรรทัดแพ็คคือเดือน
+
+/* บรรทัดหมวด 02-001 ที่มีเลขแพ็ค: 2 แพ็ค × 12 เดือน × 3,500 = 84,000 (ตัวอย่างของเจ้าของ) */
+const packLine = (id, over = {}) => lineOf(id, {
+  fgCode: 'FG-364-02-001-1061', description: 'ระบบกระจายกลิ่น · 1 package', packQty: 2, qty: 12, unit: 'เดือน',
+  unitPrice: 3500, lineTotal: 84000, ...over,
+});
+const discountOn = { discountType: 'amount', discountValue: 200, discountAmount: 200, lineTotal: 800 };
+/* ค่าที่ "ไม่ใช่เลขแพ็ค" — select * หลังรัน 0407 คืน null ทุกบรรทัด · ที่เหลือคือค่าที่เก็บลงฐานไม่ได้อยู่แล้ว */
+const NOT_A_PACK = [null, undefined, '', '   ', 'abc', 0, '0', '02', 1.5, 10000, true];
+const withPackKey = (doc, value) => ({ ...doc, lines: doc.lines.map((l) => ({ ...l, packQty: value })) });
+/* ใบสั่งขายที่ห่อใบเสนอราคาตัวอย่าง — เดินเครื่องยนต์เดียวกันผ่าน buildSalesOrderPrintHTML */
+const orderOf = (quote) => ({
+  id: 'SO-1', orderNumber: 'SO-2026-0001', orderDate: '2026-07-25', status: 'approved', customerName: quote.customerName,
+  lines: quote.lines, subtotal: quote.subtotal, discountAmount: 0, vatAmount: quote.vatAmount, totalAmount: quote.totalAmount,
+  createdByName: 'ผู้จัดทำ', approvedByName: 'ผู้อนุมัติ', approvedAt: '2026-07-25T03:00:00.000Z', docLanguage: quote.docLanguage,
+  quotation: { quoteNumber: quote.quoteNumber, billingAddress: quote.billingAddress, paymentPlan: quote.paymentPlan, paymentTerms: quote.paymentTerms },
+  deal: { title: 'ดีล', ownerName: 'ผู้จัดทำ' },
+});
+/* ตัวสร้างไฟล์ทั้งสี่ทางของเครื่องยนต์เดียว: พิมพ์สด · หน้าต่างพิมพ์สองภาษา · ฉบับตรึงของใบเสนอราคา · ฉบับตรึงของใบสั่งขาย */
+const BUILDERS = {
+  plain: (quote) => buildQuotationMasterHTML(quote, { toolbar: false }),
+  switchable: (quote) => buildQuotationMasterSwitchableHTML({ ...quote, id: 'QT-abc123' }, { editable: true }),
+  quotationArtifact: (quote) => buildIssuedQuotationArtifactHtml(quote, {}),
+  salesOrderArtifact: (quote) => buildIssuedSalesOrderArtifactHtml(orderOf(quote), {}),
+  salesOrderPrint: (quote) => buildSalesOrderPrintHTML(orderOf(quote), null, null),
+};
+const itemTablesOf = (html) => html.match(/<table class="itemTable[\s\S]*?<\/table>/g) || [];
+const headersOf = (tableHtml) => [...tableHtml.split('</thead>')[0].matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1]);
+/* ข้อความในช่องของแถวหนึ่ง — ช่องรายละเอียด (ช่องที่สอง) มี markup ซ้อนอยู่ จึงเก็บเป็น null */
+const cellsOfRow = (rowHtml) => [...rowHtml.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((m, index) => (index === 1 ? null : m[1].trim()));
+const bodyRowsOf = (tableHtml) => tableHtml.split('<tbody>')[1].split('</tbody>')[0].split('<tr>').slice(1).map(cellsOfRow);
+
+test('คอลัมน์แพ็ค: ใบที่ไม่มีเลขแพ็คได้ไฟล์เดิมทุกไบต์ — ทุกค่าที่ไม่ใช่เลขแพ็ค · ทุกตัวสร้างไฟล์ · ทั้งสองภาษา · มี/ไม่มีส่วนลด', () => {
+  for (const language of ['th', 'en']) {
+    for (const lines of [[lineOf('1'), lineOf('2', { note: 'หมายเหตุสินค้า' })], [lineOf('1', discountOn), lineOf('2')]]) {
+      const plain = { ...baseQuote(lines), docLanguage: language };
+      for (const [name, build] of Object.entries(BUILDERS)) {
+        const expected = build(plain);
+        assert.ok(!expected.includes('withPack'), `${name}/${language}: ไม่มีคำว่า withPack ทั้งใน markup และ CSS`);
+        assert.ok(!expected.includes('แพ็ค/เดือน') && !expected.includes('Pack/Month'), `${name}/${language}: ไม่มีหัวคอลัมน์แพ็ค`);
+        // CSS ของไฟล์คือแผ่นกลางล้วน ๆ — ไม่มีอะไรต่อท้ายแม้ไบต์เดียว
+        assert.ok(expected.includes(`<style>${documentShellCss('portrait')}</style>`), `${name}/${language}: <style> = แผ่นกลางเท่านั้น`);
+        for (const value of NOT_A_PACK) {
+          assert.equal(build(withPackKey(plain, value)), expected, `${name}/${language}: packQty=${JSON.stringify(value) ?? 'undefined'} ต้องได้ไฟล์เดียวกันทั้งไฟล์`);
+        }
+      }
+    }
+  }
+});
+
+/* ⛔ markup ของตารางรายการของใบที่ไม่มีเลขแพ็ค — **จับจากโค้ดก่อนเพิ่มคอลัมน์แพ็ค** (11c4d926) ทุกไบต์รวมช่องว่าง
+   ห้ามแก้สตริงให้เทสต์เขียว: สตริงนี้เปลี่ยน = ไฟล์ของใบจริงทุกใบเปลี่ยน
+   (บรรทัดช่องว่างใต้ช่องราคา/หน่วยของตารางแรกคือของเดิม — เงื่อนไขของช่องส่วนลดอยู่บรรทัดของตัวเองมาตั้งแต่ต้น
+    ช่องแพ็คต้อง **ไม่** ทิ้งบรรทัดแบบนั้นเพิ่ม: ย้ายเงื่อนไขของช่องแพ็คไปอยู่บรรทัดของตัวเองเมื่อไร เทสต์นี้แดง) */
+const PINNED_TABLE_PLAIN = "\n    <table class=\"itemTable\">\n      <thead>\n        <tr>\n          <th class=\"center\">ลำดับ</th>\n          <th>รายละเอียดสินค้า / บริการ</th>\n          <th class=\"number\">จำนวน</th>\n          <th class=\"center\">หน่วย</th>\n          <th class=\"number\">ราคา/หน่วย</th>\n          \n          <th class=\"number\">จำนวนเงิน</th>\n        </tr>\n      </thead>\n      <tbody>\n        <tr>\n          <td class=\"center\">1</td>\n          <td>\n            <span class=\"itemIdentity\">FG-1</span>\n            <strong class=\"itemName\">สินค้า 1</strong>\n            \n          </td>\n          <td class=\"number\">10</td>\n          <td class=\"center\">ชิ้น</td>\n          <td class=\"number\">100.00</td>\n          \n          <td class=\"number\">1,000.00</td>\n        </tr>\n        <tr>\n          <td class=\"center\">2</td>\n          <td>\n            <span class=\"itemIdentity\">FG-2</span>\n            <strong class=\"itemName\">สินค้า 2</strong>\n            <span class=\"itemNote\">หมายเหตุสินค้า</span>\n          </td>\n          <td class=\"number\">10</td>\n          <td class=\"center\">ชิ้น</td>\n          <td class=\"number\">100.00</td>\n          \n          <td class=\"number\">1,000.00</td>\n        </tr></tbody>\n    </table>";
+const PINNED_TABLE_DISCOUNT = "\n    <table class=\"itemTable withLineDiscount\">\n      <thead>\n        <tr>\n          <th class=\"center\">ลำดับ</th>\n          <th>รายละเอียดสินค้า / บริการ</th>\n          <th class=\"number\">จำนวน</th>\n          <th class=\"center\">หน่วย</th>\n          <th class=\"number\">ราคา/หน่วย</th>\n          <th class=\"number\">ส่วนลด</th>\n          <th class=\"number\">จำนวนเงิน</th>\n        </tr>\n      </thead>\n      <tbody>\n        <tr>\n          <td class=\"center\">1</td>\n          <td>\n            <span class=\"itemIdentity\">FG-1</span>\n            <strong class=\"itemName\">สินค้า 1</strong>\n            \n          </td>\n          <td class=\"number\">10</td>\n          <td class=\"center\">ชิ้น</td>\n          <td class=\"number\">100.00</td>\n          <td class=\"number\">-200.00</td>\n          <td class=\"number\">800.00</td>\n        </tr>\n        <tr>\n          <td class=\"center\">2</td>\n          <td>\n            <span class=\"itemIdentity\">FG-2</span>\n            <strong class=\"itemName\">สินค้า 2</strong>\n            \n          </td>\n          <td class=\"number\">10</td>\n          <td class=\"center\">ชิ้น</td>\n          <td class=\"number\">100.00</td>\n          <td class=\"number\">-</td>\n          <td class=\"number\">1,000.00</td>\n        </tr></tbody>\n    </table>";
+
+test('คอลัมน์แพ็ค: ตารางรายการของใบที่ไม่มีเลขแพ็ค = markup ที่จับไว้ก่อนเพิ่มคอลัมน์ ทุกไบต์รวมช่องว่าง', () => {
+  const tableOf = (html) => html.match(/\n    <table class="itemTable[\s\S]*?<\/table>/)[0];
+  const plain = baseQuote([lineOf('1'), lineOf('2', { note: 'หมายเหตุสินค้า' })]);
+  const discount = baseQuote([lineOf('1', discountOn), lineOf('2')]);
+  assert.equal(tableOf(buildQuotationMasterHTML(plain, {})), PINNED_TABLE_PLAIN);
+  assert.equal(tableOf(buildQuotationMasterHTML(discount, {})), PINNED_TABLE_DISCOUNT);
+  // บรรทัดที่มีคีย์ packQty แต่ไม่มีเลข (สิ่งที่ select * คืนหลังรัน 0407) ได้ markup เดียวกัน
+  assert.equal(tableOf(buildQuotationMasterHTML(withPackKey(plain, null), {})), PINNED_TABLE_PLAIN);
+  assert.equal(tableOf(buildQuotationMasterHTML(withPackKey(discount, null), {})), PINNED_TABLE_DISCOUNT);
+});
+
+test('คอลัมน์แพ็ค: มีบรรทัดมีเลขแพ็ค = หัวคอลัมน์ + คลาส withPack + ตัวเลข อยู่ระหว่างรายละเอียดกับจำนวน · บรรทัดอื่นพิมพ์ขีด', () => {
+  const html = buildQuotationMasterHTML(baseQuote([packLine('1'), lineOf('2'), lineOf('3')]), {});
+  const [table] = itemTablesOf(html);
+  assert.match(table, /^<table class="itemTable withPack">/);
+  assert.ok(table.includes('<th class="number">แพ็ค/เดือน</th>'));
+  assert.deepEqual(headersOf(table), ['ลำดับ', 'รายละเอียดสินค้า / บริการ', 'แพ็ค/เดือน', 'จำนวน', 'หน่วย', 'ราคา/หน่วย', 'จำนวนเงิน']);
+  // ลำดับช่องของแต่ละแถว: ลำดับ · (รายละเอียด) · แพ็ค · จำนวน · หน่วย · ราคา/หน่วย · จำนวนเงิน
+  assert.deepEqual(bodyRowsOf(table), [
+    ['1', null, '2', '12', 'เดือน', '3,500.00', '84,000.00'],
+    ['2', null, '-', '10', 'ชิ้น', '100.00', '1,000.00'],
+    ['3', null, '-', '10', 'ชิ้น', '100.00', '1,000.00'],
+  ]);
+  // ช่องแพ็คชิดขวาแบบตัวเลข (คลาส number) ทั้งตัวเลขและขีด — ธรรมเนียมเดียวกับช่องส่วนลด
+  assert.ok(table.includes('<td class="number">2</td>\n          <td class="number">12</td>'));
+  assert.ok(table.includes('<td class="number">-</td>\n          <td class="number">10</td>'));
+  // ความกว้างของคอลัมน์ฝังมากับไฟล์ **ครั้งเดียว** ต่อท้ายแผ่นกลาง
+  assert.equal(html.split(ITEM_TABLE_PACK_CSS).length - 1, 1);
+  assert.ok(html.includes(`<style>${documentShellCss('portrait')}${ITEM_TABLE_PACK_CSS}</style>`));
+});
+
+test('คอลัมน์แพ็ค: เลขแพ็คพิมพ์ผ่านตัวจัดรูปตัวเลข (9,999) และรับเลขที่เก็บเป็นสตริงได้', () => {
+  const html = buildQuotationMasterHTML(baseQuote([
+    packLine('1', { packQty: 9999, qty: 1, unitPrice: 100, lineTotal: 999900 }), packLine('2', { packQty: '3' }),
+  ]), {});
+  const rows = bodyRowsOf(itemTablesOf(html)[0]);
+  assert.equal(rows[0][2], '9,999');
+  assert.equal(rows[1][2], '3');
+});
+
+test('คอลัมน์แพ็ค: หน่วยของบรรทัดที่มีเลขแพ็คคือ "เดือน" เสมอ ไม่ว่าหน่วยที่เก็บไว้เป็นอะไร — บรรทัดอื่นคงหน่วยเดิม', () => {
+  const lines = [
+    packLine('1', { unit: 'แพ็คเกจ' }), packLine('2', { unit: 'กิโลกรัม' }), packLine('3', { unit: '' }),
+    lineOf('4', { unit: 'แพ็คเกจ' }), lineOf('5', { unit: 'กิโลกรัม' }),
+  ];
+  const th = bodyRowsOf(itemTablesOf(buildQuotationMasterHTML(baseQuote(lines), {}))[0]);
+  assert.deepEqual(th.map((row) => row[4]), ['เดือน', 'เดือน', 'เดือน', 'แพ็คเกจ', 'กิโลกรัม']);
+  const en = bodyRowsOf(itemTablesOf(buildQuotationMasterHTML({ ...baseQuote(lines), docLanguage: 'en' }, {}))[0]);
+  assert.deepEqual(en.map((row) => row[4]), ['Month', 'Month', 'Month', 'Package', 'Kilogram']);
+});
+
+test('คอลัมน์แพ็ค + ส่วนลดรายบรรทัด = แปดคอลัมน์ตามลำดับ และคลาสครบสองตัว', () => {
+  // 2 × 12 × 3,500 = 84,000 − 7,200 = 76,800 (ส่วนลดบาทหักจากยอดทั้งรายการ ไม่คูณจำนวนแพ็ค — มติ A5)
+  const lines = [packLine('1', { discountType: 'amount', discountValue: 7200, discountAmount: 7200, lineTotal: 76800 }), lineOf('2')];
+  const html = buildQuotationMasterHTML(baseQuote(lines), {});
+  const [table] = itemTablesOf(html);
+  assert.match(table, /^<table class="itemTable withLineDiscount withPack">/);
+  assert.deepEqual(headersOf(table), ['ลำดับ', 'รายละเอียดสินค้า / บริการ', 'แพ็ค/เดือน', 'จำนวน', 'หน่วย', 'ราคา/หน่วย', 'ส่วนลด', 'จำนวนเงิน']);
+  assert.deepEqual(bodyRowsOf(table), [
+    ['1', null, '2', '12', 'เดือน', '3,500.00', '-7,200.00', '76,800.00'],
+    ['2', null, '-', '10', 'ชิ้น', '100.00', '-', '1,000.00'],
+  ]);
+  assert.equal(html.split(ITEM_TABLE_PACK_CSS).length - 1, 1);
+});
+
+test('คอลัมน์แพ็ค: ใบหลายหน้าที่มีเลขแพ็คบรรทัดเดียว — หัวตารางทุกหน้ามีคอลัมน์แพ็ค (ตัดสินทั้งใบ ไม่ใช่รายหน้า)', () => {
+  // บรรทัดแพ็คอยู่หน้าแรก (ลำดับ 1) หรือหน้าสุดท้าย (ลำดับ 30) ก็ต้องได้คอลัมน์ครบทุกหน้า — ไม่ใช่เฉพาะหน้าที่มีมัน และไม่ใช่ดูแค่หน้าแรก
+  for (const packIndex of [0, 29]) {
+    const lines = Array.from({ length: 30 }, (_, i) => (i === packIndex ? packLine(`L${i}`) : lineOf(`L${i}`)));
+    const html = buildQuotationMasterHTML(baseQuote(lines), {});
+    const tables = itemTablesOf(html);
+    assert.ok(tables.length >= 2, 'ต้องมีตารางรายการมากกว่า 1 หน้า');
+    for (const table of tables) {
+      assert.match(table, /^<table class="itemTable withPack">/, `บรรทัดแพ็คลำดับ ${packIndex + 1}`);
+      assert.equal(headersOf(table)[2], 'แพ็ค/เดือน');
+    }
+    assert.equal((html.match(/<th class="number">แพ็ค\/เดือน<\/th>/g) || []).length, tables.length);
+    // หน้าที่ไม่มีบรรทัดแพ็คเลยยังมีช่องแพ็คทุกแถว (ขีด) — จำนวนช่องต่อแถวเท่ากันทั้งใบ
+    for (const row of tables.flatMap(bodyRowsOf)) assert.equal(row.length, 7);
+    assert.deepEqual(tables.flatMap(bodyRowsOf).map((row) => row[2]), Array.from({ length: 30 }, (_, i) => (i === packIndex ? '2' : '-')));
+    assert.equal(html.split(ITEM_TABLE_PACK_CSS).length - 1, 1);
+  }
+});
+
+test('คอลัมน์แพ็ค: ใบอังกฤษ = Pack/Month · Month · ไม่มีอักขระไทยเหลือบนกระดาษ', () => {
+  const q = {
+    ...baseQuote([
+      packLine('1', { description: 'Scent diffusing system · 1 package', unit: 'แพ็คเกจ' }),
+      lineOf('2', { description: 'Reed diffuser 100 ml', unit: 'pcs' }),
+    ]),
+    docLanguage: 'en', customerName: 'ACME PTE LTD', billingAddress: '1 Marina Blvd, Singapore', contactName: 'Mr. Lim',
+    paymentPlan: { type: 'full', paymentMethod: 'Bank transfer' }, paymentTerms: 'Net 30 days', notes: 'Price excludes overseas freight.',
+    approvedByName: 'Kanti T.', createdByName: 'Nattawut P.', deal: { title: 'Room Diffuser 2026', ownerName: 'Kanti T.' },
+  };
+  const html = buildQuotationMasterHTML(q, {});
+  const [table] = itemTablesOf(html);
+  assert.deepEqual(headersOf(table), ['No.', 'Description', 'Pack/Month', 'Qty', 'Unit', 'Unit Price', 'Amount']);
+  assert.deepEqual(bodyRowsOf(table).map((row) => [row[2], row[3], row[4]]), [['2', '12', 'Month'], ['-', '10', 'pcs']]);
+  assert.doesNotMatch(printedMarkup(html), /[฀-๿]/, 'ใบอังกฤษต้องไม่มีอักขระไทยเหลือบนกระดาษ');
+});
+
+test('คอลัมน์แพ็ค: หน้าต่างพิมพ์สองภาษา — ทั้งสองแผงมีคอลัมน์ · CSS ของคอลัมน์ฝังครั้งเดียว', () => {
+  const html = buildQuotationMasterSwitchableHTML(switchableQuote({ lines: [packLine('1'), lineOf('2')] }), { editable: true });
+  const panes = html.split('<div class="langPane" data-lang="').slice(1);
+  assert.equal(panes.length, 2);
+  const byLang = Object.fromEntries(panes.map((pane) => [pane.slice(0, 2), itemTablesOf(pane)]));
+  assert.deepEqual(headersOf(byLang.th[0])[2], 'แพ็ค/เดือน');
+  assert.deepEqual(headersOf(byLang.en[0])[2], 'Pack/Month');
+  // สองภาษาตัดสินคอลัมน์เหมือนกันเสมอ (บรรทัดชุดเดียวกัน) — คลาสของตารางเท่ากันทุกตาราง
+  for (const table of [...byLang.th, ...byLang.en]) assert.match(table, /^<table class="itemTable withPack">/);
+  assert.equal(html.split(ITEM_TABLE_PACK_CSS).length - 1, 1);
+  // ใบที่ไม่มีเลขแพ็ค: หน้าต่างพิมพ์สองภาษาไม่มีทั้งคอลัมน์และ CSS
+  assert.ok(!buildQuotationMasterSwitchableHTML(switchableQuote(), { editable: true }).includes('withPack'));
+});
+
+test('คอลัมน์แพ็ค: โมเดลของอีกภาษาตัดสินคอลัมน์ได้คำตอบเดียวกัน (แพ็ค · ส่วนลด) — สองแผงมีหรือไม่มีพร้อมกัน', () => {
+  const cases = [
+    [lineOf('1'), lineOf('2')],
+    [lineOf('1', discountOn), lineOf('2')],
+    [packLine('1'), lineOf('2')],
+    [packLine('1', { discountType: 'amount', discountValue: 7200, discountAmount: 7200, lineTotal: 76800 }), lineOf('2')],
+  ];
+  for (const lines of cases) {
+    const classOf = (language) => (buildQuotationMasterHTML({ ...baseQuote(lines), docLanguage: language }, {}).match(/<table class="(itemTable[^"]*)">/) || [])[1];
+    assert.equal(classOf('th'), classOf('en'));
+  }
+});
+
+test('คอลัมน์แพ็ค: ฉบับตรึงและใบสั่งขายเดินเครื่องยนต์เดียวกัน — มีคอลัมน์ มี CSS ครั้งเดียว ทั้งสองภาษา', () => {
+  for (const language of ['th', 'en']) {
+    const quote = { ...baseQuote([packLine('1', { unit: 'แพ็คเกจ' }), lineOf('2')]), docLanguage: language };
+    for (const name of ['quotationArtifact', 'salesOrderArtifact', 'salesOrderPrint']) {
+      const html = BUILDERS[name](quote);
+      const [table] = itemTablesOf(html);
+      assert.match(table, /^<table class="itemTable withPack">/, `${name}/${language}`);
+      assert.equal(headersOf(table)[2], language === 'en' ? 'Pack/Month' : 'แพ็ค/เดือน', `${name}/${language}`);
+      assert.deepEqual(bodyRowsOf(table)[0].slice(2, 5), ['2', '12', language === 'en' ? 'Month' : 'เดือน'], `${name}/${language}`);
+      assert.equal(html.split(ITEM_TABLE_PACK_CSS).length - 1, 1, `${name}/${language}`);
+    }
+  }
+});
+
+test('คอลัมน์แพ็ค: ป้ายบนกระดาษไทย = ป้ายของจอ (PACK_COLUMN_LABEL) = ป้ายของตัวอย่างในหน้าตั้งค่า', () => {
+  assert.equal(quotationDocLabels('th').t('packQty'), PACK_COLUMN_LABEL);
+  assert.equal(quotationDocLabels('en').t('packQty'), 'Pack/Month');
+  assert.equal(QUOTATION_PREVIEW_SCENARIOS.find((scenario) => scenario.id === 'packs').label, PACK_COLUMN_LABEL);
+});
+
+test('คอลัมน์แพ็ค: ตัวอย่าง packs ของหน้าตั้งค่า — ตารางมีคอลัมน์แพ็คและคอลัมน์ส่วนลด ทั้งใบเสนอราคาและใบสั่งขาย', () => {
+  for (const docType of ['quotation', 'salesOrder']) {
+    const html = renderQuotationMasterDocumentHTML(buildQuotationMasterPreview('packs', 'approved', 'v4', docType), { toolbar: false });
+    const tables = itemTablesOf(html);
+    for (const table of tables) assert.match(table, /^<table class="itemTable withLineDiscount withPack">/);
+    assert.deepEqual(tables.flatMap(bodyRowsOf).map((row) => [row[2], row[3], row[4], row[5], row[6], row[7]]), [
+      ['2', '12', 'เดือน', '3,500.00', '-', '84,000.00'],
+      ['1', '12', 'เดือน', '5,800.00', '-7,200.00', '62,400.00'],
+      ['-', '360', 'ชิ้น', '185.00', '-', '66,600.00'],
+      ['-', '1', 'งาน', '25,000.00', '-', '25,000.00'],
+    ]);
+    assert.equal(html.split(ITEM_TABLE_PACK_CSS).length - 1, 1);
+  }
+  // ตัวอย่างอีกหกแบบไม่มีเลขแพ็ค ⇒ ไม่มีทั้งคอลัมน์และ CSS (ไฟล์ของตัวอย่างเดิมไม่ขยับ)
+  for (const scenario of QUOTATION_PREVIEW_SCENARIOS.filter((item) => item.id !== 'packs')) {
+    const html = renderQuotationMasterDocumentHTML(buildQuotationMasterPreview(scenario.id, 'approved', 'v4'), { toolbar: false });
+    assert.ok(!html.includes('withPack'), scenario.id);
+  }
+});
+
+test('คอลัมน์แพ็ค + ส่วนลด: ตัวแบ่งหน้านับความกว้างของช่องตัวเลขจากข้อความเดียวกับที่ตัวพิมพ์วาดจริง — ขอบของทั้งสี่ช่อง ทั้งสองภาษา', () => {
+  /* ชุดตัวอักษรต่อบรรทัดของใบแพ็ค + ส่วนลดขึ้นกับว่ามีช่องตัวเลขไหนยาวเกินคอลัมน์ไหม (itemTextChars · quotationMasterTemplate.js)
+     ตัวแบ่งหน้าคิดจากโมเดล ตัวพิมพ์วาดจากโมเดลเดียวกัน — ถ้าวันหนึ่งตัวพิมพ์เปลี่ยนรูปตัวเลข (ทศนิยม · ตัวคั่นหลัก · เครื่องหมาย)
+     โดยตัวแบ่งหน้าไม่รู้ ใบที่ช่องแคบจริงจะถูกประเมินด้วยชุดกว้าง แล้วแผ่นล้นเงียบ ⇒ เทสต์นี้ยึดสองฝั่งกับ HTML ที่พิมพ์จริง
+     จำนวนตัวอักษรมากสุดที่อยู่ในคอลัมน์ (วัด 2026-10-09): จำนวน 6 · ราคา/หน่วย 10 · ส่วนลด 10 (รวมขีดลบ) · จำนวนเงิน 12 */
+  const LIMITS = { qty: 6, unitPrice: 10, discount: 10, amount: 12 };
+  const service = packLine('L1', { discountType: 'amount', discountValue: 7200, discountAmount: 7200, lineTotal: 76800 });
+  const probeOf = (over) => lineOf('L2', { qty: 552, unit: 'ชิ้น', unitPrice: 185, discountAmount: 0, lineTotal: 102120, ...over });
+  // [คีย์ของบรรทัด, ช่องที่ถูกดัน, ค่าที่ยังอยู่ในคอลัมน์ + ข้อความที่พิมพ์, ค่าแรกที่ดันคอลัมน์ + ข้อความที่พิมพ์]
+  const EDGES = [
+    ['qty', 'qty', [99999, '99,999'], [100000, '100,000']],
+    ['qty', 'qty', [999.75, '999.75'], [9999.5, '9,999.5']],
+    ['unitPrice', 'unitPrice', [999999.99, '999,999.99'], [1000000, '1,000,000.00']],
+    ['unitPrice', 'unitPrice', [-99999.99, '-99,999.99'], [-999999.99, '-999,999.99']],
+    ['discountAmount', 'discount', [99999.99, '-99,999.99'], [100000, '-100,000.00']],
+    ['lineTotal', 'amount', [9999999.99, '9,999,999.99'], [10000000, '10,000,000.00']],
+  ];
+  for (const docLanguage of ['th', 'en']) {
+    const nominal = docLanguage === 'th' ? ITEM_TEXT_CHARS.packDiscountTh : ITEM_TEXT_CHARS.packDiscountEn;
+    for (const [key, cell, fits, widens] of EDGES) {
+      for (const [[value, printed], expectedChars] of [[fits, nominal], [widens, ITEM_TEXT_CHARS.packDiscount]]) {
+        const quote = { ...baseQuote([service, probeOf({ [key]: value })]), docLanguage };
+        const model = buildQuotationMasterModelFromQuote(quote);
+        // ฝั่งตัวพิมพ์: ช่องของบรรทัดที่สอง [ลำดับ, (รายละเอียด), แพ็ค, จำนวน, หน่วย, ราคา/หน่วย, ส่วนลด, จำนวนเงิน]
+        const row = itemTablesOf(buildQuotationMasterHTML(quote, { toolbar: false })).flatMap(bodyRowsOf)[1];
+        const printedCells = { qty: row[3], unitPrice: row[5], discount: row[6], amount: row[7] };
+        assert.equal(printedCells[cell], printed, `${docLanguage} · ${key}=${value}`);
+        assert.equal(printedCells[cell].length > LIMITS[cell], expectedChars === ITEM_TEXT_CHARS.packDiscount, `${docLanguage} · ${key}=${value}: "${printed}" ${printedCells[cell].length} ตัวอักษร`);
+        // ช่องอื่นของแถวนี้ไม่เกินคอลัมน์ ⇒ ชุดที่ได้ตัดสินจากช่องที่กำลังดูช่องเดียว
+        for (const other of Object.keys(LIMITS).filter((name) => name !== cell)) assert.ok(printedCells[other].length <= LIMITS[other], `${other}: ${printedCells[other]}`);
+        // ฝั่งตัวแบ่งหน้า: ชุดที่เลือกจากโมเดลของใบเดียวกัน
+        assert.equal(itemTextChars(model.lines, docLanguage), expectedChars, `${docLanguage} · ${key}=${value}`);
+      }
+    }
+    // หน่วยที่พิมพ์ = หน่วยที่ตัวแบ่งหน้าเทียบกับรายการที่วัด: บรรทัดที่มีเลขแพ็คได้เดือน/Month เสมอ ⇒ ไม่ทำให้ใบตกไปชุดแคบสุด
+    const stored = { ...baseQuote([{ ...service, unit: 'หน่วยที่คนพิมพ์เอง' }, probeOf({})]), docLanguage };
+    const rows = itemTablesOf(buildQuotationMasterHTML(stored, { toolbar: false })).flatMap(bodyRowsOf);
+    assert.deepEqual(rows.map((row) => row[4]), docLanguage === 'th' ? ['เดือน', 'ชิ้น'] : ['Month', 'Piece']);
+    assert.equal(itemTextChars(buildQuotationMasterModelFromQuote(stored).lines, docLanguage), nominal);
+    // …แต่หน่วยที่คนพิมพ์เองบนบรรทัดที่ไม่มีเลขแพ็คถูกพิมพ์ตามนั้น ⇒ ยังไม่รู้ความกว้าง ⇒ ชุดแคบสุด
+    const typed = { ...baseQuote([service, probeOf({ unit: 'หน่วยที่คนพิมพ์เอง' })]), docLanguage };
+    assert.equal(itemTablesOf(buildQuotationMasterHTML(typed, { toolbar: false })).flatMap(bodyRowsOf)[1][4], 'หน่วยที่คนพิมพ์เอง');
+    assert.equal(itemTextChars(buildQuotationMasterModelFromQuote(typed).lines, docLanguage), ITEM_TEXT_CHARS.packDiscount);
+  }
 });

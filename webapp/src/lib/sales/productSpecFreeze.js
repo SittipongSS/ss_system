@@ -252,7 +252,7 @@ async function liveSnapshot(supabase, loaded, now) {
   let line = null;
   if (document.salesOrderLineId) {
     const res = await supabase.from('sales_order_lines')
-      .select('id, salesOrderId, quotationLineId, productId, fgCode, description, qty, unit, sortOrder')
+      .select('id, salesOrderId, quotationLineId, productId, fgCode, description, qty, packQty, unit, sortOrder')
       .eq('id', document.salesOrderLineId)
       .maybeSingle();
     if (res.error) return { error: `อ่านบรรทัดใบสั่งขายไม่สำเร็จ: ${messageOf(res.error)}` };

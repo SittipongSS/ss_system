@@ -254,6 +254,55 @@ test('ใบที่ยังไม่ประทับ (ใบเดิม) �
   assert.equal(out.rounds.sold, 18);
 });
 
+/* ── เลขแพ็คของบรรทัด (mig 0407 · งวด PR-2 · docs/qt-pack-column.md) ───────────────────────────────────
+   ใบเดิม (ยังไม่ประทับ): ของค้าง = หน่วยรวมของบรรทัด (แพ็ค × จำนวน) หน่วย "แพ็ค" · ใบที่ประทับแล้ว: ไม่มีของค้างตามเดิม */
+test('⭐ ใบที่ยังไม่ประทับ + บรรทัดที่มีเลขแพ็ค: ขายไว้ 2 × 12 = 24 แพ็ค · ลงโซนไป 5 เหลือ 19 (วันนี้จะบอก 12 เดือน เหลือ 7)', () => {
+  const packLine = line({ qty: 12, unit: 'เดือน', packQty: 2 });
+  const out = salesOrderServiceSummary({
+    order: live, lines: [packLine], terms: [term({ packageQty: 5 })], zonesById, sitesById, todayIso: TODAY,
+  });
+  assert.deepEqual(out.allocation.fg.map((g) => [g.qty, g.unit, g.remaining]), [[24, 'แพ็ค', 19]]);
+  assert.equal(out.allocation.remaining, 19);
+  assert.equal(out.allocation.complete, false);
+  const full = salesOrderServiceSummary({
+    order: live, lines: [packLine], terms: [term({ packageQty: 24 })], zonesById, sitesById, todayIso: TODAY,
+  });
+  assert.equal(full.allocation.remaining, 0);
+  assert.equal(full.allocation.complete, true);
+});
+
+test('ใบที่ประทับแล้ว + บรรทัดที่มีเลขแพ็ค: ไม่มีของค้างตามเดิม — แถวสรุปบอก 24 แพ็ค เหลือ 0', () => {
+  const out = salesOrderServiceSummary({
+    order: stamped, lines: [line({ qty: 12, unit: 'เดือน', packQty: 2, serviceKind: 'package', serviceFgCode: 'FG-0521-02-001-00012' })],
+    terms: [term({ packageQty: 2 })], zonesById, sitesById, todayIso: TODAY,
+  });
+  assert.deepEqual(out.allocation.fg.map((g) => [g.qty, g.unit, g.remaining]), [[24, 'แพ็ค', 0]]);
+  assert.equal(out.allocation.remaining, 0);
+  assert.equal(out.allocation.complete, true);
+});
+
+test('🔴 เลขแพ็คว่าง = สรุปงานบริการเท่ากับวันนี้ทุกคีย์ (ไม่มีคีย์ · packQty: null) — ทั้งใบเดิมและใบที่ประทับแล้ว', () => {
+  const lines = [line({ qty: 3 }), line({ id: 'L2', fgCode: 'FG-2-02-001-2', qty: 12, unit: 'เดือน', serviceRounds: 6 })];
+  for (const order of [live, stamped]) {
+    const args = { order, zonesById, sitesById, todayIso: TODAY, terms: [term({ packageQty: 1 })] };
+    const noKey = salesOrderServiceSummary({ ...args, lines });
+    const withNull = salesOrderServiceSummary({ ...args, lines: lines.map((l) => ({ ...l, packQty: null })) });
+    const strip = (out) => JSON.parse(JSON.stringify(out, (key, value) => (key === 'packQty' ? undefined : value)));
+    assert.deepEqual(strip(withNull), strip(noKey));
+    // ค่าที่คาด = ลอกจากพฤติกรรมวันนี้
+    assert.deepEqual(noKey.allocation.fg.map((g) => [g.key, g.qty, g.unit, g.remaining]),
+      order === live ? [['FG-1-02-001-1', 3, 'แพ็คเกจ', 2], ['FG-2-02-001-2', 12, 'เดือน', 12]]
+        : [['FG-1-02-001-1', 3, 'แพ็คเกจ', 0], ['FG-2-02-001-2', 12, 'เดือน', 0]]);
+  }
+});
+
+test('mig 0407: route สรุปงานบริการเลือก "packQty" คู่กับ qty — ไม่มี = บรรทัด 2 × 12 ถูกนับเป็น 12', () => {
+  const route = readFileSync(new URL('../../app/api/sales-planning/sales-orders/[id]/service/route.js', import.meta.url), 'utf8');
+  const select = route.match(/from\('sales_order_lines'\)\s*\.select\('([^']*)'\)/)?.[1] || '';
+  const columns = select.split(',').map((col) => col.trim().replace(/"/g, ''));
+  assert.ok(columns.includes('qty') && columns.includes('packQty'), select);
+});
+
 test('route สรุปงานบริการเลือกช่องที่ตัวตัดสินของใบที่ประทับแล้วอ่าน (ไม่มีราคา)', () => {
   const route = readFileSync(new URL('../../app/api/sales-planning/sales-orders/[id]/service/route.js', import.meta.url), 'utf8');
   const select = route.match(/from\('sales_order_lines'\)\s*\.select\('([^']*)'\)/)?.[1] || '';

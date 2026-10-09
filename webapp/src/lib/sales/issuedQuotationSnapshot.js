@@ -32,7 +32,11 @@ import { resolveDocumentAccentKey, resolveDocumentForm, resolveDocumentTitleTh }
 //        ครั้งถัดไปต้องได้ฉบับใหม่ ไม่ reuse ฉบับที่ยังไม่มีช่องอังกฤษ
 // v4.5 = ช่องลงนามพิมพ์ตำแหน่งเต็มของคนที่เซ็นจริง (signerRole ของหลักฐานการยื่น/การอนุมัติ · มติ 2026-09-22)
 //        แทน "พนักงานขาย" / "ผู้อนุมัติ" — payload ไม่เปลี่ยน เปลี่ยนแค่ artifact ⇒ ใบที่ตรึงแล้วคงเดิม
-export const ISSUED_QUOTATION_LAYOUT_VERSION = 'quote-master-v4.5';
+// v4.6 = คอลัมน์แพ็คต่อเดือนบนกระดาษ (mig 0407 · docs/qt-pack-column.md) — บรรทัดที่มีเลขแพ็คพิมพ์แพ็ค × เดือน และ
+//        payload พกคีย์ packQty ของบรรทัดนั้นมาตั้งแต่งวดก่อน (เนื้อหา = quotationApprovalContent)
+//        **ใบที่ไม่มีเลขแพ็ค: artifact และ payload เหมือนเดิมทุกไบต์** (ป้ายนี้ไม่ถูกใช้ตัดสินอะไร —
+//        RPC ใช้ฉบับเดิมซ้ำตามลายนิ้วมือเนื้อหาเท่านั้น)
+export const ISSUED_QUOTATION_LAYOUT_VERSION = 'quote-master-v4.6';
 export const ISSUED_QUOTATION_LOCALE = 'th-TH';
 
 /* ── docLanguage กับฉบับตรึง: ตัดสินแล้ว (2026-08-12) ────────────────────────

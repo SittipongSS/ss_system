@@ -131,7 +131,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   /* บรรทัดใบเสนอราคาโหลดเฉพาะใบที่รายงานใช้จริง — ตารางนี้โตตามทุกใบที่เคยออก
      แต่ที่รายงานใช้คือเศษเสี้ยว ⇒ แคบก่อนอ่านเสมอ
      🪤 ลิสต์ id โตตามจำนวนดีล ⇒ `.in()` ก้อนเดียวชนเพดาน URL 16 KB ของ undici แล้ว
-        โยน `TypeError: fetch failed` ทั้งที่ไม่มีอะไรผิด — ต้องซอยด้วย fetchInChunks */
+        โยน `TypeError: fetch failed` ทั้งที่ไม่มีอะไรผิด — ต้องซอยด้วย fetchInChunks
+     ⭐ mig 0407: "packQty" คู่กับ qty — ไฟล์พิมพ์ จำนวน × ราคา ข้างมูลค่าบรรทัด และคิดปริมาตรรวม/จำนวนรวมจากหน่วยรวม (แพ็ค × จำนวน) */
   const usedQuoteIds = [...new Set([
     // ใบที่ลูกค้ารับมาก่อนใบที่ FC ชี้ (lib/sales/reportQuotation) — ไม่งั้นวางแผนผลิตตามใบที่ลูกค้าไม่ได้ซื้อ
     ...deals.data.map(reportQuotationIdOf).filter(Boolean),
@@ -139,7 +140,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   ])];
   const lines = await fetchInChunks(usedQuoteIds, (chunk) => fetchAllResult(() => supabase
     .from('quotation_lines')
-    .select('id, "quotationId", "productId", "fgCode", description, qty, unit, "unitPrice", "lineTotal", "sortOrder"')
+    .select('id, "quotationId", "productId", "fgCode", description, qty, "packQty", unit, "unitPrice", "lineTotal", "sortOrder"')
     .in('quotationId', chunk).order('id', { ascending: true })));
   if (lines.error) return fail(lines.error.message, 500);
 

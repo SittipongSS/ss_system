@@ -13,6 +13,7 @@ import { gridForecastLines, isScheduledRow, monthsInRows, summarizeForecastLines
 import { STAGE_LABELS } from '@/lib/salesPlanning';
 import { teamNameOf } from '@/lib/master/teams';
 import { fmtNumber } from '@/lib/format';
+import { PACK_COLUMN_LABEL, hasPackColumn } from '@/lib/sales/linePackView';
 
 const FONT = 'Leelawadee UI';
 const HEADER_FILL = 'FFC17A52';
@@ -90,6 +91,16 @@ export const DEAL_LEAD_COLUMNS = [
   { key: 'unitPrice', label: 'ราคา/หน่วย', width: 13, money: true },
   { key: 'amount', label: 'มูลค่าบรรทัด', width: 14, money: true },
 ];
+
+/* ⭐ คอลัมน์ "แพ็ค/เดือน" ของชีตรายดีล (mig 0407 · งวด PR-2) — ขึ้น **เฉพาะไฟล์ที่มีบรรทัดที่มีเลขแพ็ค** (ตัดสินทั้งไฟล์)
+   วางหน้า "จำนวน": แพ็ค × จำนวน × ราคา/หน่วย = มูลค่าบรรทัด อ่านได้จากซ้ายไปขวา · แถวที่ไม่มีเลขแพ็คขึ้นขีด
+   ⚠️ ไฟล์ที่ไม่มีเลขแพ็คเลยใช้ `DEAL_LEAD_COLUMNS` ตัวเดิม (อาร์เรย์เดียวกัน ไม่ถูกแก้) ⇒ คอลัมน์ ความกว้าง ช่วงกรอง เท่าเดิม */
+const PACK_LEAD_COLUMN = Object.freeze({ key: 'packQty', label: PACK_COLUMN_LABEL, width: 11, number: true });
+export function dealLeadColumns(rows = []) {
+  if (!hasPackColumn(rows)) return DEAL_LEAD_COLUMNS;
+  const at = DEAL_LEAD_COLUMNS.findIndex((column) => column.key === 'qty');
+  return [...DEAL_LEAD_COLUMNS.slice(0, at), PACK_LEAD_COLUMN, ...DEAL_LEAD_COLUMNS.slice(at)];
+}
 
 const SOURCE_LABEL = {
   quotation: 'ใบเสนอราคา',
@@ -312,7 +323,7 @@ export async function buildForecastReportBuffer(lines = [], meta = {}) {
     + ' · ยอดรวมของชีตนี้เท่ากับชีต "รายดีล" เสมอ · ช่องว่าง (—) = เดือนนั้นไม่มียอด ไม่ใช่ศูนย์', grid);
 
   const detail = book.addWorksheet('รายดีล');
-  paintGridSheet(detail, DEAL_LEAD_COLUMNS, months,
+  paintGridSheet(detail, dealLeadColumns(lines), months,
     gridForecastLines(lines, months).map((row) => ({
       ...named(row),
       /* ⚠️ แปลงคำที่เป็น enum อังกฤษก่อนลงไฟล์ — ไฟล์นี้ไปถึงคนที่ไม่ได้อยู่ในระบบ

@@ -141,6 +141,21 @@ test('ใบสั่งขาย: บรรทัดที่มีเลขแ
   // ฉบับตรึงของใบเสนอราคาฝังเนื้อหาการอนุมัติ ⇒ เลขแพ็คเข้าฉบับตรึงของใบเสนอราคาไปด้วยโดยโครงสร้าง
   const quote = withPackOn(GOLDEN_QUOTE, 'QTL-b', 2);
   assert.deepEqual(buildIssuedQuotationPayload(quote, {}, null).content, quotationApprovalContent(quote));
-  // ฉบับตรึงของใบสั่งขายมีรายการคีย์ของตัวเอง — งวด PR-1 ยังไม่แตะ (งวด PR-2 เติมพร้อมกระดาษ)
-  assert.equal(documentApprovalFingerprint(buildIssuedSalesOrderPayload(order, null).content), GOLDEN.issuedSalesOrderContent);
+  /* ฉบับตรึงของใบสั่งขายมีรายการคีย์ของตัวเอง — งวด PR-1 ยังไม่แตะ · **งวด PR-2 เติมพร้อมกระดาษ** (บรรทัดนี้คือจุดที่
+     งวด PR-1 ประกาศไว้ว่าจะพลิก): บรรทัดที่มีเลขแพ็คได้คีย์ packQty ต่อท้าย + หน่วยเป็นเดือนตามที่กระดาษพิมพ์
+     ⇒ ลายนิ้วมือเนื้อหาของใบที่มีเลขแพ็ค **ต้องต่าง** จากค่าทอง · ใบที่ไม่มีเลขแพ็คยังเท่าค่าทองทุกตัวอักษร
+     (เทสต์ "payload ของฉบับตรึง … ไม่ขยับ" ด้านบนไม่ถูกแก้) */
+  const issued = buildIssuedSalesOrderPayload(order, null).content;
+  assert.notEqual(documentApprovalFingerprint(issued), GOLDEN.issuedSalesOrderContent);
+  assert.deepEqual(issued.lines.map((l) => ('packQty' in l ? l.packQty : 'ไม่มีคีย์')), ['ไม่มีคีย์', 2, 'ไม่มีคีย์', 'ไม่มีคีย์']);
+  assert.deepEqual(Object.keys(issued.lines[1]).slice(-2), ['lineTotal', 'packQty']);
+  assert.equal(issued.lines[1].unit, 'เดือน', 'เก็บไว้เป็นแพ็คเกจ แต่กระดาษพิมพ์เดือน — หลักฐานพูดตรงกับกระดาษ');
+  // บรรทัดอื่นของใบเดียวกัน และยอดท้ายใบ ไม่ขยับจากใบที่ไม่มีเลขแพ็ค
+  const base = buildIssuedSalesOrderPayload(GOLDEN_ORDER, null).content;
+  assert.deepEqual([issued.lines[0], issued.lines[2], issued.lines[3]], [base.lines[0], base.lines[2], base.lines[3]]);
+  const { packQty: _pack, unit: _unit, ...rest } = issued.lines[1];
+  const { unit: baseUnit, ...baseRest } = base.lines[1];
+  assert.deepEqual(rest, baseRest);
+  assert.equal(baseUnit, 'แพ็คเกจ');
+  assert.deepEqual({ ...issued, lines: null }, { ...base, lines: null });
 });

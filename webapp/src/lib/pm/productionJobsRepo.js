@@ -77,7 +77,7 @@ export async function approvedOrdersWithLines(supabase, { salesOrderId = null } 
 
   const lines = await fetchAllInChunks(orders.map((o) => o.id), (chunk) => supabase
     .from('sales_order_lines')
-    .select('id, salesOrderId, productId, fgCode, description, qty')
+    .select('id, salesOrderId, productId, fgCode, description, qty, packQty')
     .in('salesOrderId', chunk)
     .order('salesOrderId', { ascending: true })
     .order('id', { ascending: true }));

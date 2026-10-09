@@ -22,6 +22,7 @@ import {
   SERVICE_SETUP_EDIT_TEXT, SERVICE_SETUP_LINE_TEXT, SERVICE_SETUP_PANEL_TEXT, periodEnvelope, periodSpan, validServicePeriod,
 } from '@/lib/sales/serviceSetup';
 import { NA, fmtDate, fmtDateTime, fmtNumber } from '@/lib/format';
+import { linePackQty } from '@/lib/sales/linePackView';
 
 const PACKAGE_CATEGORY = '02-001';
 export const EMPTY_DRAFT = Object.freeze({ lines: Object.freeze({}) });
@@ -384,6 +385,8 @@ export const ctxLineOf = (line) => ({
   productId: line.productId ?? null,
   description: line.description ?? null,
   qty: line.qty ?? null,
+  /* เลขแพ็คของบรรทัด (mig 0407 · อ่านอย่างเดียว) — ส่งต่อให้ตัวเทียบจำนวนในใบ · คีย์มีเฉพาะบรรทัดที่มีเลขแพ็ค */
+  ...(linePackQty(line) !== null ? { packQty: linePackQty(line) } : {}),
   unit: line.unit ?? null,
   metadata: { categoryCode: line.categoryCode ?? null, note: line.note ?? null },
   serviceKind: line.kind ?? null,

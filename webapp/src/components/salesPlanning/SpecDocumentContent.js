@@ -7,6 +7,7 @@ import { TableScroll } from "@/components/ui/Table";
 import { fmtDate, naText } from "@/lib/format";
 import { PRODUCT_SPEC_CHECKLIST_TITLE } from "@/lib/sales/productSpecChecklist";
 import { liveIllustrationNote } from "@/lib/sales/productSpecDocView";
+import { linePackQtyText } from "@/lib/sales/linePackView";
 import styles from "./SpecDocumentContent.module.css";
 
 /**
@@ -43,7 +44,8 @@ export default function SpecDocumentContent({ summary, meta, liveError = "", liv
             <div><dt>ใบสั่งขาย</dt><dd>{naText(order.orderNumber)}</dd></div>
             <div><dt>ลูกค้า</dt><dd>{naText(order.customerName)}</dd></div>
             {/* ชื่อเดียวกับแถวบนกระดาษ "จำนวนผลิต (Quantity)" (มติ 22/09 — ย้ายจากกล่องอ้างอิงไป Product Overview) */}
-            <div><dt>จำนวนผลิต</dt><dd>{order.qty === null ? naText(null) : `${order.qty}${order.unit ? ` ${order.unit}` : ""}`}</dd></div>
+            {/* บรรทัดที่มีเลขแพ็ค (mig 0407) = "2 แพ็ค × 12 เดือน" ตรงกับกระดาษ · บรรทัดอื่นข้อความเดิม */}
+            <div><dt>จำนวนผลิต</dt><dd>{order.qty === null ? naText(null) : (linePackQtyText(order) ?? `${order.qty}${order.unit ? ` ${order.unit}` : ""}`)}</dd></div>
             <div><dt>กำหนดส่ง</dt><dd>{order.deliveryDueDate ? fmtDate(order.deliveryDueDate) : naText(null)}</dd></div>
             {/* ชื่อเดียวกับแถวบนกระดาษ — "Contact for Sales" ย้ายขึ้นกล่องอ้างอิงแล้ว (มติ 22/09) */}
             <div><dt>ผู้ติดต่อฝ่ายขาย</dt><dd>{naText(order.dealOwnerName)}</dd></div>

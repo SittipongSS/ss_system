@@ -656,6 +656,77 @@ test('จำนวนในใบเทียบแพ็คที่ตั้�
     'งานบริการทั้งใบ: 10 รายการแพ็คเกจ · แต่ละครั้ง 10 โซนใน 10 ไซต์ · ครั้งละ 10 แพ็ค · จำนวนรอบบริการ 12 เดือน · รวมทั้งใบ 120 แพ็ค');
 });
 
+/* ── เลขแพ็คของบรรทัด (mig 0407 · งวด PR-2 · docs/qt-pack-column.md) ───────────────────────────────────
+   บรรทัดที่มีเลขแพ็ค: จำนวนในใบ = "2 แพ็ค × 12 เดือน" และเทียบ **หน่วยรวม** (แพ็ค × จำนวน) กับรวมทั้งรายการ
+   — ไม่เข้าทางลัด "หน่วยเดือน = ระยะเวลา" อีก (ใบบอกจำนวนแพ็คแล้ว) · ชั่วคราวจนงวด PR-4 (เทียบยอดรวมอย่างเดียว) */
+test('⭐ จำนวนในใบของบรรทัดที่มีเลขแพ็ค: เทียบ แพ็ค × จำนวน กับรวมทั้งรายการ — ตรง / ไม่ตรง / ยังเทียบไม่ได้ · ไม่มีวันเป็น “= ระยะเวลา”', () => {
+  const packLine = done(1, { qty: 12, unit: 'เดือน', packQty: 2 });
+  assert.deepEqual(lineQtyCrossCheck(packLine, { zones: 1, packsPerRound: 2, rounds: 12, packsTotal: 24 }),
+    { tone: 'ok', text: 'จำนวนในใบ 2 แพ็ค × 12 เดือน · ตรงกับทั้งรายการ ✓' });
+  assert.deepEqual(lineQtyCrossCheck(packLine, { zones: 1, packsPerRound: 1, rounds: 12, packsTotal: 12 }),
+    { tone: 'warn', text: 'จำนวนในใบ 2 แพ็ค × 12 เดือน ≠ ทั้งรายการ 12 แพ็ค — ตรวจอีกครั้ง (ไม่บังคับให้เท่า)' },
+    'ตารางตั้ง 1 แพ็ค × 12 = 12 — เลข 12 ของจำนวนเดือนในใบต้องไม่ถูกอ่านว่าตรง');
+  assert.deepEqual(lineQtyCrossCheck(packLine, { zones: 0 }),
+    { tone: 'none', text: 'จำนวนในใบ 2 แพ็ค × 12 เดือน — ตรวจได้เมื่อเลือกโซนแล้ว' });
+  assert.deepEqual(lineQtyCrossCheck(packLine, { zones: 1, packsTotal: null }),
+    { tone: 'none', text: 'จำนวนในใบ 2 แพ็ค × 12 เดือน — ตรวจได้เมื่อใส่รอบละกี่แพ็คและจำนวนรอบบริการแล้ว' });
+  // หน่วยที่เก็บบนบรรทัดเป็นอะไรก็ตาม (มติ A3) ข้อความและการเทียบเหมือนกัน
+  for (const unit of ['เดือน', 'แพ็คเกจ', 'กิโลกรัม', null]) {
+    assert.equal(lineQtyCrossCheck(done(1, { qty: 12, unit, packQty: 2 }), { zones: 1, packsTotal: 24 }).tone, 'ok', String(unit));
+    assert.equal(lineQtyCrossCheck(done(1, { qty: 12, unit, packQty: 2 }), { zones: 3 }).tone, 'none', `ไม่ใช่ info · ${unit}`);
+  }
+  // ⚠️ ชั่วคราวจนงวด PR-4: 3 × 8 ในใบ กับตารางที่รวมได้ 24 อ่านว่าตรง (เทียบยอดรวมอย่างเดียว)
+  assert.equal(lineQtyCrossCheck(done(1, { qty: 8, unit: 'เดือน', packQty: 3 }), { zones: 1, packsTotal: 24 }).tone, 'ok');
+  // จำนวนไม่ใช่ตัวเลข: ไม่มีวัน "ตรง" (เดิมก็ไม่ตรง) — ไม่เทียบ 0 กับ 0
+  assert.equal(lineQtyCrossCheck(done(1, { qty: 'abc', unit: 'เดือน', packQty: 2 }), { zones: 1, packsTotal: 0 }).tone, 'warn');
+  // บรรทัดที่ไม่ใช่แพ็คเกจยังไม่มีอะไรให้เทียบ
+  assert.deepEqual(lineQtyCrossCheck(manual(1, { serviceKind: 'not_service', packQty: 2 }), { zones: 0 }), { tone: 'none', text: '' });
+});
+
+test('🔴 เลขแพ็คว่าง = ตัวเทียบจำนวนในใบพูดประโยคเดิมทุกตัวอักษร (ไม่มีคีย์ · packQty: null · ค่าที่เก็บไม่ได้)', () => {
+  // ค่าที่คาด = ประโยคที่เทสต์ภาคผนวก A.4 ยึดไว้วันนี้ (ลอกมา ไม่ได้คำนวณจากโค้ดที่ทดสอบ)
+  const cases = [
+    [done(1), { zones: 1, packsPerRound: 1, rounds: 12, packsTotal: 12 }, { tone: 'ok', text: 'จำนวนในใบ 12 แพ็คเกจ · ตรงกับทั้งรายการ ✓' }],
+    [done(1), { zones: 2, packsPerRound: 2, rounds: 12, packsTotal: 24 },
+      { tone: 'warn', text: 'จำนวนในใบ 12 แพ็คเกจ ≠ ทั้งรายการ 24 แพ็ค — ตรวจอีกครั้ง (ไม่บังคับให้เท่า)' }],
+    [manual(1, { serviceKind: 'package' }), { zones: 0 }, { tone: 'none', text: 'จำนวนในใบ 12 แพ็คเกจ — ตรวจได้เมื่อเลือกโซนแล้ว' }],
+    [manual(1, { serviceKind: 'package', unit: 'เดือน' }), { zones: 3 }, { tone: 'info', text: 'จำนวนในใบ 12 เดือน = ระยะเวลา ไม่ได้นับเป็นแพ็ค' }],
+    [manual(1, { serviceKind: 'package', unit: 'เดือน' }), { zones: 3, packsTotal: 12 }, { tone: 'info', text: 'จำนวนในใบ 12 เดือน = ระยะเวลา ไม่ได้นับเป็นแพ็ค' }],
+    [done(1), { zones: 1, packsTotal: null }, { tone: 'none', text: 'จำนวนในใบ 12 แพ็คเกจ — ตรวจได้เมื่อใส่รอบละกี่แพ็คและจำนวนรอบบริการแล้ว' }],
+    [done(1, { unit: null }), { zones: 1, packsTotal: 12 }, { tone: 'ok', text: 'จำนวนในใบ 12 · ตรงกับทั้งรายการ ✓' }],
+    [done(1, { qty: null }), { zones: 1, packsTotal: 12 }, { tone: 'warn', text: 'จำนวนในใบ 0 แพ็คเกจ ≠ ทั้งรายการ 12 แพ็ค — ตรวจอีกครั้ง (ไม่บังคับให้เท่า)' }],
+    [done(1, { qty: 'abc' }), { zones: 1, packsTotal: 12 }, { tone: 'warn', text: 'จำนวนในใบ abc แพ็คเกจ ≠ ทั้งรายการ 12 แพ็ค — ตรวจอีกครั้ง (ไม่บังคับให้เท่า)' }],
+    [manual(1, { serviceKind: 'not_service' }), { zones: 0 }, { tone: 'none', text: '' }],
+  ];
+  for (const [line, totals, expected] of cases) {
+    assert.deepEqual(lineQtyCrossCheck(line, totals), expected);
+    for (const packQty of [null, undefined, '', '  ', 'abc', 0, 1.5, 10000]) {
+      assert.deepEqual(lineQtyCrossCheck({ ...line, packQty }, totals), expected, `packQty: ${String(packQty)}`);
+    }
+  }
+});
+
+test('serviceSetupView: บรรทัดที่มีเลขแพ็คพกคีย์ packQty (ตัวเลข) · บรรทัดเดิมมีคีย์ชุดเดิมทุกตัว — ไม่มีคีย์ null', () => {
+  const ctx = completeCtx();
+  ctx.lines[0] = { ...ctx.lines[0], qty: 12, unit: 'เดือน', packQty: '2' };
+  ctx.lines[1] = { ...ctx.lines[1], packQty: null };
+  ctx.lines[2] = { ...ctx.lines[2], packQty: 'abc' };
+  const view = serviceSetupView(ctx, { canEdit: true, userId: 'U1', role: 'ae' });
+  assert.equal(view.lines[0].packQty, 2);
+  const today = ['lineId', 'lineNo', 'role', 'roleSource', 'kind', 'serviceProductId', 'serviceFgCode', 'rounds', 'period', 'fgCode',
+    'productId', 'description', 'note', 'qty', 'unit', 'categoryCode', 'categoryName'];
+  assert.deepEqual(Object.keys(view.lines[0]).filter((key) => key !== 'packQty').sort(), [...today].sort());
+  for (const index of [1, 2, 3]) {
+    assert.deepEqual(Object.keys(view.lines[index]).sort(), [...today].sort(), `รายการ ${index + 1} ต้องไม่มีคีย์ packQty`);
+  }
+  // ใบที่ไม่มีบรรทัดไหนมีเลขแพ็ค: view เท่ากับใบเดียวกันที่ทุกบรรทัดพก packQty: null (สิ่งที่ select คืนหลัง 0407)
+  const plain = completeCtx();
+  const withNull = completeCtx();
+  withNull.lines = withNull.lines.map((line) => ({ ...line, packQty: null }));
+  const actor = { canEdit: true, userId: 'U1', role: 'ae' };
+  assert.deepEqual(serviceSetupView(withNull, actor), serviceSetupView(plain, actor));
+});
+
 /* ══ ก้อนที่จอส่งมาบันทึก ══════════════════════════════════════════════════════════════════════════ */
 
 test('validateServiceSetupPatch — ก้อนดีได้ payload ที่ทำรูปแล้ว (จำนวนเต็ม · sortOrder ตามลำดับ)', () => {

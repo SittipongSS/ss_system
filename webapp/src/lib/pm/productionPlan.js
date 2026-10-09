@@ -9,6 +9,7 @@
 import { isBusinessDay, toLocalISODate } from './dateHelpers';
 import { capacityOn } from './productionLines';
 import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
+import { lineUnitsTotal } from '@/lib/sales/linePacks';
 
 export const JOB_STATUSES = ['draft', 'planned', 'in_progress', 'done', 'cancelled'];
 export const JOB_STATUS_LABELS = {
@@ -369,6 +370,9 @@ export function salesOrderPlanSummary(jobs = [], lines = [], opts = {}) {
 // ⚠️ **ห้ามสร้างจาก QT** — QT ยังไม่ใช่คำสั่ง จะได้คิวขยะที่ไม่มีใครกล้าลบ
 // ⚠️ กันซ้ำด้วย salesOrderLineId ที่มีงานอยู่แล้ว — ฟังก์ชันนี้ถูกเรียกซ้ำได้ทุกครั้ง
 //    ที่เปิดคิว ถ้าไม่กัน คิวจะบวมด้วยงานเดียวกันสิบใบภายในสัปดาห์เดียว
+// ⭐ จำนวนของงาน = **หน่วยรวมของบรรทัด** (`lineUnitsTotal` = แพ็ค × จำนวน · mig 0407) — บรรทัด 2 แพ็ค × 12 เดือน
+//    คือของ 24 หน่วย ไม่ใช่ 12 · บรรทัดที่ไม่มีเลขแพ็ค (ทุกบรรทัดก่อนงวด PR-3) ได้ `qty` ตามเดิมทุกค่า
+//    ⚠️ ตัวโหลด (`approvedOrdersWithLines`) ต้อง select `packQty` คู่กับ `qty` เสมอ (ด่าน linePackReaders.test.mjs)
 export function draftJobsForSalesOrder(order, lines = [], { existingLineIds = [] } = {}) {
   // ⛔ ใบสั่งขายย้อนหลัง (mig 0360) ไม่สร้างงานผลิต — ชั้นสองต่อจากตัวกรองของ approvedOrdersWithLines
   if (!order || order.status !== 'approved' || isHistoricalOrder(order)) return [];
@@ -377,8 +381,8 @@ export function draftJobsForSalesOrder(order, lines = [], { existingLineIds = []
   for (const line of lines) {
     if (!line?.productId) continue;
     if (taken.has(line.id)) continue;
-    const qty = Number(line.qty);
-    if (!Number.isFinite(qty) || qty <= 0) continue;
+    const qty = lineUnitsTotal(line);
+    if (!(qty > 0)) continue;
     taken.add(line.id);
     rows.push({
       projectId: order.projectId || null,

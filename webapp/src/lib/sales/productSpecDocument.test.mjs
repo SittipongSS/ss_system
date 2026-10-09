@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   PRODUCT_SPEC_RENDERER_VERSION, PRODUCT_SPEC_WATERMARKS,
-  applyProductSpecWatermark, planProductSpecPaper, productSizeText, productSpecDateText, productSpecRevText,
+  applyProductSpecWatermark, planProductSpecPaper, productSizeText, productSpecDateText, productSpecQuantityText, productSpecRevText,
   productSpecSignedSteps, productSpecWatermark, renderProductSpecDocument, supersededWatermark,
 } from './productSpecDocument.js';
 import {
@@ -366,6 +366,43 @@ test('⭐ Product Overview: "ปริมาตรบรรจุ (Size)" จา
   assert.match(overviewOf(renderProductSpecDocument(baseInput())), /<th>ปริมาตรบรรจุ \(Size\)<\/th><td>50 ML<\/td>/);
   assert.match(overviewOf(renderProductSpecDocument(sampleInput())), /<th>จำนวนผลิต \(Quantity\)<\/th><td><span class="na">N\/A<\/span><\/td>/);
   assert.doesNotMatch(renderProductSpecDocument(baseInput()), /ขนาดบรรจุ \(Size\)/, 'ป้ายเดิมต้องไม่เหลือ');
+});
+
+/* ── เลขแพ็คของบรรทัด (mig 0407 · งวด PR-2 · docs/qt-pack-column.md) ───────────────────────────────────
+   ภาพนิ่งที่มี `order.packQty` (บรรทัดที่ให้จำนวนมีเลขแพ็ค) ⇒ "จำนวนผลิต" = แพ็ค × เดือน · ไม่มีคีย์ = ข้อความเดิมทุกไบต์ */
+test('⭐ จำนวนผลิตของบรรทัดที่มีเลขแพ็ค: “2 แพ็ค × 12 เดือน” · ใบอังกฤษ “2 Pack × 12 Month” · หน่วยที่เก็บไม่ถูกอ่าน', () => {
+  const qtyRow = (html) => html.match(/<th>จำนวนผลิต \(Quantity\)<\/th><td>(.*?)<\/td>/)?.[1];
+  const packOrder = (over = {}) => ({ ...snapshotOf().order, qty: 12, unit: 'เดือน', packQty: 2, ...over });
+  assert.equal(qtyRow(renderProductSpecDocument(baseInput({ snapshot: snapshotOf({ order: packOrder() }) }))), '2 แพ็ค × 12 เดือน');
+  assert.equal(qtyRow(renderProductSpecDocument(baseInput({ snapshot: snapshotOf({ order: packOrder({ docLanguage: 'en' }) }) }))), '2 Pack × 12 Month');
+  // หน่วยที่เก็บเป็นอะไรก็ตาม (มติ A3) จำนวนของบรรทัดแพ็ค = จำนวนเดือน
+  assert.equal(qtyRow(renderProductSpecDocument(baseInput({ snapshot: snapshotOf({ order: packOrder({ unit: 'กิโลกรัม', packQty: 9999, qty: 1200 }) }) }))),
+    '9,999 แพ็ค × 1,200 เดือน');
+  assert.equal(productSpecQuantityText({ qty: 12, unit: 'เดือน', packQty: 2 }, 'th'), '2 แพ็ค × 12 เดือน');
+  assert.equal(productSpecQuantityText({ qty: '12', unit: null, packQty: '2' }, 'en'), '2 Pack × 12 Month');
+  // ไม่มีจำนวน = N/A ก่อนเสมอ แม้มีเลขแพ็ค (ไม่พิมพ์ "2 แพ็ค × 0 เดือน")
+  for (const qty of [null, undefined, '']) assert.equal(productSpecQuantityText({ qty, unit: 'เดือน', packQty: 2 }, 'th'), null, String(qty));
+  assert.match(renderProductSpecDocument(baseInput({ snapshot: snapshotOf({ order: packOrder({ qty: null }) }) })),
+    /<th>จำนวนผลิต \(Quantity\)<\/th><td><span class="na">N\/A<\/span><\/td>/);
+});
+
+test('🔴 ภาพนิ่งที่ไม่มีเลขแพ็ค (ทุกใบวันนี้): กระดาษเท่าเดิมทุกไบต์ — ไม่มีคีย์ · packQty: null · ค่าที่เก็บไม่ได้', () => {
+  // ค่าที่คาด = ข้อความที่เทสต์เดิมยึดไว้ ("1,500 ขวด" · "1,500 Bottle") ไม่ได้คำนวณจากโค้ดที่ทดสอบ
+  assert.equal(productSpecQuantityText({ qty: 1500, unit: 'ขวด' }, 'th'), '1,500 ขวด');
+  assert.equal(productSpecQuantityText({ qty: 1500, unit: 'ขวด' }, 'en'), '1,500 Bottle');
+  assert.equal(productSpecQuantityText({ qty: 12, unit: 'เดือน' }, 'th'), '12 เดือน');
+  assert.equal(productSpecQuantityText({ qty: 12, unit: 'เดือน' }, 'en'), '12 Month');
+  assert.equal(productSpecQuantityText({ qty: 'abc', unit: null }, 'th'), 'abc');
+  assert.equal(productSpecQuantityText({ qty: null, unit: 'ขวด' }, 'th'), null);
+  assert.equal(productSpecQuantityText(undefined, 'th'), null);
+  for (const make of [snapshotOf, englishSnapshot]) {
+    const plain = renderProductSpecDocument(baseInput({ snapshot: make() }));
+    for (const packQty of [null, undefined, '', '  ', 'abc', 0, 1.5, 10000]) {
+      const snapshot = make();
+      snapshot.order = { ...snapshot.order, packQty };
+      assert.equal(renderProductSpecDocument(baseInput({ snapshot })), plain, `packQty: ${String(packQty)}`);
+    }
+  }
 });
 
 test('ตัวจัดปริมาตรบรรจุ — ปริมาตร + หน่วยจากทะเบียน · ทศนิยมไม่ปัดทิ้ง · ไม่มีปริมาตร = volumeText เดิม · ว่าง = null', () => {
@@ -1185,7 +1222,8 @@ test('รุ่นตัวเรนเดอร์พอดีคอลัม�
   assert.ok(PRODUCT_SPEC_RENDERER_VERSION.length > 0 && PRODUCT_SPEC_RENDERER_VERSION.length <= 40);
   // แถว "สูตร / รหัสสูตร / วันที่" (01/10/2569) เปลี่ยนช่องบนกระดาษ ⇒ รุ่นต้องขยับจาก @2026-09-22g
   assert.match(PRODUCT_SPEC_RENDERER_VERSION, /^fm-sa-04@\d{4}-\d{2}-\d{2}[a-z]$/);
-  assert.ok(PRODUCT_SPEC_RENDERER_VERSION >= 'fm-sa-04@2026-10-01a', PRODUCT_SPEC_RENDERER_VERSION);
+  // "จำนวนผลิต" ของบรรทัดที่มีเลขแพ็คพิมพ์ แพ็ค × เดือน (09/10/2569 · mig 0407) = ข้อความในช่องเปลี่ยน ⇒ รุ่นขยับจาก @2026-10-01a
+  assert.ok(PRODUCT_SPEC_RENDERER_VERSION >= 'fm-sa-04@2026-10-09a', PRODUCT_SPEC_RENDERER_VERSION);
 });
 
 /* ── ภาพประกอบ (แผ่นท้าย) — มาจากภาพนิ่ง ───────────────────────────────── */

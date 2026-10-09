@@ -188,7 +188,9 @@ test('capture ไม่ทับค่าที่ตรึงไว้แล้
 });
 
 test('layout version is tagged for regeneration tracking', () => {
-  assert.equal(ISSUED_QUOTATION_LAYOUT_VERSION, 'quote-master-v4.5');
+  // v4.6 = คอลัมน์แพ็คต่อเดือนบนกระดาษ (docs/qt-pack-column.md) — ป้ายของตัวสร้างเท่านั้น
+  // ใบที่ไม่มีเลขแพ็คได้ artifact และ payload เดิมทุกไบต์ (quotationMasterDocument.test.mjs · approvalFingerprintGolden.test.mjs)
+  assert.equal(ISSUED_QUOTATION_LAYOUT_VERSION, 'quote-master-v4.6');
 });
 
 test('payload ตรึงชื่อ/ที่อยู่อังกฤษคู่กับไทย — ว่าง = null ไม่ใช่ค่าไทยซ้ำ', () => {

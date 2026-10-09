@@ -534,6 +534,30 @@ test('0400 select ของบรรทัดพกช่วงของรา�
   assert.equal(serviceSetupView(plain, { canEdit: true, userId: 'U1', role: 'ae' }).periodMode, 'whole');
 });
 
+/* ══ เลขแพ็คของบรรทัด (mig 0407 · งวด PR-2) ══════════════════════════════════════════════════════════════ */
+
+test('0407 select ของบรรทัดพก "packQty" คู่กับ qty — ตัวเทียบจำนวนในใบเห็นเลขแพ็ค · view พกคีย์เฉพาะบรรทัดที่มี', async () => {
+  const tables = world();
+  tables.sales_order_lines = tables.sales_order_lines.map((row) => (row.id === 'L2'
+    ? { ...row, qty: 12, unit: 'เดือน', packQty: 2 } : { ...row, packQty: null }));
+  const { client, calls } = fakeSupabase(tables);
+  const ctx = await loadServiceSetupContext(client, baseOrder(), { withFgOptions: true, todayIso: TODAY });
+  const read = calls.find((c) => c.table === 'sales_order_lines');
+  const columns = read.select.split(',').map((col) => col.trim().replace(/"/g, ''));
+  assert.ok(columns.includes('qty') && columns.includes('packQty'), read.select);
+  assert.deepEqual(ctx.lines.map((l) => [l.id, l.packQty ?? null]), [['L1', null], ['L2', 2], ['L3', null]]);
+  const view = serviceSetupView(ctx, { canEdit: true, userId: 'U1', role: 'ae' });
+  assert.deepEqual(view.lines.map((l) => [l.lineId, Object.prototype.hasOwnProperty.call(l, 'packQty'), l.packQty ?? null]),
+    [['L1', false, null], ['L2', true, 2], ['L3', false, null]]);
+  /* ใบเดิม (ทุกบรรทัด packQty ว่าง) ผ่านตัวโหลดเดียวกัน = view เดิมทุกคีย์ */
+  const nulls = world();
+  nulls.sales_order_lines = nulls.sales_order_lines.map((row) => ({ ...row, packQty: null }));
+  const actor = { canEdit: true, userId: 'U1', role: 'ae' };
+  const before = serviceSetupView(await loadServiceSetupContext(fakeSupabase(world()).client, baseOrder(), { withFgOptions: true, todayIso: TODAY }), actor);
+  const after = serviceSetupView(await loadServiceSetupContext(fakeSupabase(nulls).client, baseOrder(), { withFgOptions: true, todayIso: TODAY }), actor);
+  assert.deepEqual(after, before);
+});
+
 test('0400 ตัวห่อ RPC บันทึก — ก้อนที่มี periodMode + ช่วงของรายการส่งถึงฐานตามตัวอักษร · รหัสใหม่ของฐาน → ข้อความ/สถานะ', async () => {
   const payload = { periodMode: 'line', lines: [{ lineId: 'L2', period: { from: '2026-09-02', to: '2027-09-01' } }, { lineId: 'L3', period: null }] };
   const { client, rpcCalls } = fakeSupabase({}, { rpc: { save_sales_order_service_setup: () => ({ data: { updatedAt: 'T1', lines: 2, zones: 0, periodMode: 'line' }, error: null }) } });

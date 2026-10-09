@@ -26,12 +26,14 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import Select from "@/components/ui/Select";
 import { TableScroll } from "@/components/ui/Table";
 import { productOwnerTag } from "@/components/master/productOption";
-import { fmtMoney, naText, NA } from "@/lib/format";
+import { fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
 import { productIdentity } from "@/lib/master/productIdentity";
 import { DEFAULT_SALE_UNIT, SALE_UNITS, unitOptions } from "@/lib/master/units";
 import { QUOTE_VAT_OPTIONS, quoteLineNet } from "@/lib/salesPlanning";
 import { masterPriceDrift, masterPriceState, quoteLineLocks } from "@/lib/sales/quoteLines";
 import { SERVICE_ROUNDS_LABEL, SERVICE_ROUNDS_UNIT } from "@/lib/sales/serviceOrders";
+import { packLineUnit } from "@/lib/sales/linePacks";
+import { PACK_COLUMN_LABEL, lineHasPacks, linePackFormulaText, linePackQty } from "@/lib/sales/linePackView";
 import styles from "./QuotationLineItems.module.css";
 
 /* พื้นความกว้างของตาราง — คอลัมน์ตายตัวรวมกัน 646 (36+120+130+210+150) ที่เหลือเป็นของ "รายการ"
@@ -102,11 +104,18 @@ export function QuoteLinesEmptyRow({ colSpan, children }) {
   return <tr><td colSpan={colSpan} className={styles.emptyRows}>{children}</td></tr>;
 }
 
-/** หัวคอลัมน์ห้าช่องของบรรทัด (ไม่รวม "#" และช่องปุ่มลบ — `QuoteLineIndexHead` · `QuoteLineActionsHead`) */
-export function QuoteLineHeadCells() {
+/**
+ * หัวคอลัมน์ห้าช่องของบรรทัด (ไม่รวม "#" และช่องปุ่มลบ — `QuoteLineIndexHead` · `QuoteLineActionsHead`)
+ * @param showPacks ⭐ คอลัมน์ "แพ็ค/เดือน" (mig 0407 · งวด PR-2) ระหว่าง รายการ กับ จำนวน — ผู้เรียกเปิดเมื่อ **มีบรรทัดที่มีเลขแพ็ค**
+ *   (`hasPackColumn(lines)`) เท่านั้น ⇒ ใบที่ไม่มีเลขแพ็คได้ห้าคอลัมน์เดิม · คู่กับ `showPacks` ของ `QuoteLineMoneyCells` เสมอ
+ *   ⚠️ ขั้น ② ของใบสั่งขายย้อนหลัง (WizardZonesStep) **ไม่ส่ง** โดยมีเหตุผลด้านข้อมูล: แถวของมันถือ `packsPerRound` รายโซน
+ *      ไม่เคยมี `packQty` (งวด PR-5 เป็นเจ้าของ) · ความกว้างของคอลัมน์อื่นปรับเองด้วย `.linesTable:has(th.colPack)`
+ */
+export function QuoteLineHeadCells({ showPacks = false }) {
   return (
     <>
       <th>รายการ</th>
+      {showPacks ? <th className={`${styles.numHeader} ${styles.colPack}`}>{PACK_COLUMN_LABEL}</th> : null}
       {/* หัวคอลัมน์ตัวเลขชิดขวาให้ตรงกับตัวเลขในช่องกรอก (numeric-input ชิดขวา) */}
       <th className={`${styles.numHeader} ${styles.colQty}`}>จำนวน</th>
       <th className={`${styles.numHeader} ${styles.colPrice}`}>ราคา/หน่วย</th>
@@ -307,36 +316,57 @@ export function QuoteLineTotalsEditor({
  * @param registryPriceOnly ราคา/หน่วยมาจากทะเบียน **เท่านั้น** ⇒ ช่องราคาปิดตั้งแต่ยังไม่เลือกสินค้า
  *   (ใบย้อนหลัง · รีวิว 23/09) — ใบเสนอราคาเปิดช่องให้พิมพ์ได้ก่อนเลือก (บรรทัดที่ไม่ผูกสินค้าใช้ราคาที่พิมพ์)
  *   แต่ใบย้อนหลังไม่ส่งราคาขึ้นไปเลย ⇒ เปิดไว้ = ช่องที่พิมพ์แล้วหายเงียบ (เช่นพิมพ์ 42,000 เป็นราคา/หน่วย)
+ * @param showPacks ⭐ เซลล์ "แพ็ค/เดือน" (mig 0407 · งวด PR-2) หน้าเซลล์จำนวน — **โชว์อย่างเดียวทั้งโหมดอ่านและโหมดแก้**:
+ *   บรรทัดที่มีเลขแพ็คโชว์ตัวเลขในหน้าตาช่องที่ล็อก (เลขนี้คูณเงิน ต้องไม่เป็นตัวคูณที่มองไม่เห็น) · บรรทัดอื่นขีด
+ *   · หน่วยข้างจำนวนของบรรทัดที่มีเลขแพ็ค = "เดือน" (`packLineUnit` · ไม่มีตัวเลือกหน่วย) · ใต้จำนวนเงินมีสูตร "2 × 12 × 3,500.00"
+ *   🔴 ไม่มีช่องกรอก ไม่มี `onPatch` ของเลขแพ็ค ไม่มีการตรวจ/บังคับกรอก — เป็นของงวด PR-3 (`QUOTE_PACK_INPUT_OPEN`)
  * @param qtyNote   เหตุที่จำนวนนี้ใช้ไม่ได้ ใต้ช่องจำนวน (ใบย้อนหลัง: ไม่ใช่จำนวนเต็ม > 0) — ไม่ส่ง = ไม่มีบรรทัดนี้
  */
 export function QuoteLineMoneyCells({
   line, product = null, editable = true, onPatch, name, driftNote = "กดบันทึกเพื่ออัปเดต",
-  amountPending = false, registryPriceOnly = false, qtyNote = null,
+  amountPending = false, registryPriceOnly = false, qtyNote = null, showPacks = false,
 }) {
   const { bound, unitLocked, priceLocked } = quoteLineLocks(line, { registryPriceOnly });
   const priceDrift = editable ? masterPriceDrift(product, line) : null;
+  /* เลขแพ็คของบรรทัด (อ่านอย่างเดียว) — ไม่มีเลขแพ็ค = null ทั้งสามตัว ⇒ เซลล์เดิมทุกชิ้นวาดเหมือนก่อนมีคอลัมน์นี้ */
+  const pack = showPacks ? linePackQty(line) : null;
+  const packUnit = showPacks && lineHasPacks(line) ? packLineUnit(line, line.unit) : null;
+  const packFormula = showPacks && !amountPending ? linePackFormulaText(line) : null;
   return (
     <>
+      {showPacks ? (
+        <td data-label={PACK_COLUMN_LABEL} className={pack === null ? styles.packNA : undefined}>
+          {pack === null
+            ? <span className={styles.packDash}>{NA}</span>
+            : <span role="group" aria-label={`${PACK_COLUMN_LABEL} ${name}`} className={`mono ${styles.packValue}`}>{fmtNumber(pack)}</span>}
+        </td>
+      ) : null}
       <td data-label="จำนวน">
         <MoneyInput min="0" value={line.qty} disabled={!editable} onChange={(value) => onPatch?.({ qty: value ?? "" })} aria-label={`จำนวน ${name}`} aria-invalid={qtyNote ? "true" : undefined} />
         {/* บรรทัดที่ผูกสินค้า: หน่วยล็อกตามฐานข้อมูลสินค้า (เหมือนราคา — มติ 2026-07-23)
             บรรทัดที่พิมพ์เอง (ค่าบริการ ฯลฯ) ไม่มี master ให้ผูก จึงเลือกเองได้
             นับ _lineKind ด้วย เพราะแถวสินค้าที่ยังไม่ได้เลือกสินค้ายังไม่มี productId —
             ถ้าไม่นับ จะให้เลือกหน่วยแล้วโดน master ทับทิ้งตอนเลือกสินค้า */}
-        {unitLocked || !editable
-          ? (line.unit && <span className={styles.unitNote}>หน่วย: {line.unit}</span>)
-          : (
-            <Select
-              className="premium-select"
-              value={line.unit || DEFAULT_SALE_UNIT}
-              onChange={(event) => onPatch?.({ unit: event.target.value })}
-              aria-label={`หน่วย ${name}`}
-            >
-              {unitOptions(SALE_UNITS, line.unit).map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </Select>
-          )}
+        {/* ⭐ บรรทัดที่มีเลขแพ็ค (mig 0407): จำนวน = จำนวนเดือนเสมอ ⇒ "หน่วย: เดือน" ไม่ว่าทะเบียน/บรรทัดเก็บหน่วยอะไร (มติ A1 · A3)
+            และไม่มีตัวเลือกหน่วย · บรรทัดอื่นเข้ากิ่งเดิมข้างล่างทั้งก้อน */}
+        {packUnit ? <span className={styles.unitNote}>หน่วย: {packUnit}</span> : (
+          <>
+            {unitLocked || !editable
+              ? (line.unit && <span className={styles.unitNote}>หน่วย: {line.unit}</span>)
+              : (
+                <Select
+                  className="premium-select"
+                  value={line.unit || DEFAULT_SALE_UNIT}
+                  onChange={(event) => onPatch?.({ unit: event.target.value })}
+                  aria-label={`หน่วย ${name}`}
+                >
+                  {unitOptions(SALE_UNITS, line.unit).map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </Select>
+              )}
+          </>
+        )}
         {qtyNote ? <span className={styles.qtyNote}>{qtyNote}</span> : null}
       </td>
       <td data-label="ราคา/หน่วย">
@@ -367,7 +397,11 @@ export function QuoteLineMoneyCells({
           <MoneyInput min="0" value={line.discountValue || ""} disabled={!editable || !line.discountType} onChange={(value) => onPatch?.({ discountValue: clampQuoteDiscount(line.discountType, value) ?? "" })} aria-label={`ส่วนลด ${name}`} />
         </div>
       </td>
-      <td className={`num mono ${styles.lineAmount}`} data-label="จำนวนเงิน">{amountPending ? NA : fmtMoney(quoteLineNet(line).lineTotal)}</td>
+      <td className={`num mono ${styles.lineAmount}`} data-label="จำนวนเงิน">
+        {amountPending ? NA : fmtMoney(quoteLineNet(line).lineTotal)}
+        {/* สูตรของบรรทัดที่มีเลขแพ็ค "2 × 12 × 3,500.00" — ผลของตัวคูณต้องอ่านออกข้างยอด (บรรทัดอื่นไม่วาดอะไร) */}
+        {packFormula ? <span className={styles.amountFormula}>{packFormula}</span> : null}
+      </td>
     </>
   );
 }

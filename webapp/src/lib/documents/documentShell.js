@@ -544,6 +544,31 @@ ${ZOOM_LADDER.map(([width, zoom]) => `  @media screen and (max-width: ${bp(width
   }`;
 }
 
+/* ── ความกว้างคอลัมน์ของตารางรายการที่มีคอลัมน์แพ็คต่อเดือน (ใบเสนอราคา / ใบสั่งขาย · docs/qt-pack-column.md) ──
+   ⛔ อยู่ **นอก** documentShellCss() โดยตั้งใจ — แผ่นกลางถูกฝังลงเอกสารทุกชนิด (สัญญา · บันทึกเพิ่มเติม · FM-SA-04 ·
+      PDR · ใบแจ้งชำระภาษี ฯลฯ) และกฎเดิมของตารางรายการผูกตามลำดับคอลัมน์ ⇒ เติมกฎลงแผ่นกลาง = ไฟล์ของทุกใบขยับ
+      ตัวพิมพ์ใบเสนอราคาส่งค่านี้เป็น extraCss **เฉพาะใบที่มีบรรทัดมีเลขแพ็ค** ⇒ ใบที่ไม่มีเลขแพ็คได้ไฟล์เดิมทุกไบต์
+   ⚠️ มีแต่ความกว้างของ td — ห้ามเติมกฎชนิดอื่น (ฟอนต์ · th · @media) เทสต์ itemTablePackCss ยึดรายการ selector ไว้ครบ
+   ⚠️ ชุดสามคลาส (แพ็ค + ส่วนลดรายบรรทัด) ต้องประกาศครบทุกคอลัมน์ — ชุดสองคลาสมีน้ำหนักเท่ากับ
+      .itemTable.withLineDiscount ของแผ่นกลาง จึงพึ่งลำดับในไฟล์ไม่ได้
+   📏 วัดด้วย Chrome 2026-10-09 (ฟอนต์ที่ฝัง · ตาราง auto · คอลัมน์ 1 = 11mm จากแผ่นกลาง):
+        แพ็ค              17 · 15 · 13 · 21 · 23       ⇒ ช่องรายละเอียด 86.0mm (ไทย) / 83.9mm (อังกฤษ)
+        แพ็ค + ส่วนลด     17 · 13 · 13 · 19 · 18 · 21  ⇒ ช่องรายละเอียด 74.0mm (ไทย) / 71.9mm (อังกฤษ)
+      หัวคอลัมน์อังกฤษ (nowrap) ดันคอลัมน์แพ็คเป็น 19.13mm เอง — ค่าที่ประกาศยัง 17mm ทั้งสองภาษา
+   🧊 ค่าชุดนี้ถูกอบลงฉบับตรึงของทุกใบที่มีเลขแพ็ค — แก้ทีหลังไม่ถึงใบที่ออกไปแล้ว */
+export const ITEM_TABLE_PACK_CSS = `
+  .itemTable.withPack td:nth-child(3) { width: 17mm; }
+  .itemTable.withPack td:nth-child(4) { width: 15mm; }
+  .itemTable.withPack td:nth-child(5) { width: 13mm; }
+  .itemTable.withPack td:nth-child(6) { width: 21mm; }
+  .itemTable.withPack td:nth-child(7) { width: 23mm; }
+  .itemTable.withPack.withLineDiscount td:nth-child(3) { width: 17mm; }
+  .itemTable.withPack.withLineDiscount td:nth-child(4) { width: 13mm; }
+  .itemTable.withPack.withLineDiscount td:nth-child(5) { width: 13mm; }
+  .itemTable.withPack.withLineDiscount td:nth-child(6) { width: 19mm; }
+  .itemTable.withPack.withLineDiscount td:nth-child(7) { width: 18mm; }
+  .itemTable.withPack.withLineDiscount td:nth-child(8) { width: 21mm; }`;
+
 // ประกอบเป็นไฟล์ HTML เอกสารเต็ม — ฝังฟอนต์ + CSS เปลือก + CSS เฉพาะชนิด (extraCss)
 // pages = HTML ของแผ่นกระดาษทั้งหมดที่ผู้เรียกประกอบมาแล้ว
 export function renderDocumentHTML({

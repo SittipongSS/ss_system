@@ -736,6 +736,40 @@ test('30/09 + 08/10 แถวของรายการ: # · รายกา�
   assert.match(lines, /totals=\{totals\}/);
 });
 
+/* ── เลขแพ็คของบรรทัด (mig 0407 · งวด PR-2 · docs/qt-pack-column.md) — ตารางงานบริการ "อ่าน" เลขแพ็คของใบ ยังไม่มีช่องกรอก ── */
+test('0407 บรรทัดที่มีเลขแพ็ค: ctxLineOf ส่งเลขแพ็คต่อให้ตัวเทียบ · “ในใบ 2 แพ็ค × 12 เดือน” · บรรทัดเดิมรูปเดิมทุกคีย์', () => {
+  const view = viewFixture();
+  const merged = mergedLines(view, EMPTY_DRAFT, { fgById: fgById(view) });
+  const today = Object.keys(ctxLineOf(merged[1]));
+  assert.equal(today.includes('packQty'), false, 'บรรทัดที่ไม่มีเลขแพ็ค: ไม่มีคีย์ (ไม่ใช่ null)');
+  // ค่าที่ไม่ใช่เลขแพ็คไม่เพิ่มคีย์ — รูปเท่าเดิมทุกตัว
+  for (const packQty of [null, undefined, '', 'abc', 0, 1.5, 10000]) {
+    assert.deepEqual(ctxLineOf({ ...merged[1], packQty }), ctxLineOf(merged[1]), `packQty: ${String(packQty)}`);
+  }
+  const pack = ctxLineOf({ ...merged[1], qty: 12, unit: 'เดือน', packQty: '2' });
+  assert.equal(pack.packQty, 2);
+  assert.deepEqual(Object.keys(pack).filter((key) => key !== 'packQty'), today);
+  // view → mergedLines พกคีย์จากก้อน GET มาถึงแถวบนจอ (`...line`)
+  const packView = viewFixture();
+  packView.lines = packView.lines.map((line) => (line.lineId === 'L2' ? { ...line, qty: 12, unit: 'เดือน', packQty: 2 } : line));
+  const packMerged = mergedLines(packView, EMPTY_DRAFT, { fgById: fgById(packView) });
+  assert.equal(packMerged[1].packQty, 2);
+  assert.equal(Object.prototype.hasOwnProperty.call(packMerged[0], 'packQty'), false);
+
+  const grid = code(`${FOLDER}/ServiceSetupGrid.js`);
+  const item = grid.slice(grid.indexOf('function ItemCell('), grid.indexOf('function KindCell('));
+  /* ข้อความเดิมของบรรทัดที่ไม่มีเลขแพ็คอยู่หลัง `??` ครบทั้งนิพจน์ — ตัวช่วยคืน null เมื่อไม่มีเลขแพ็ค */
+  assert.match(item, /const qtyText = linePackQtyText\(line\) \?\? \(line\.qty === null \|\| line\.qty === undefined \|\| line\.qty === ""\s*\? null\s*: `\$\{Number\.isFinite\(qty\) \? fmtNumber\(qty\) : String\(line\.qty\)\}\$\{line\.unit \? ` \$\{line\.unit\}` : ""\}`\);/);
+  assert.match(item, /\{qtyText \? <span className=\{styles\.itemQty\}>ในใบ \{qtyText\}<\/span> : null\}/);
+  /* คำสั้นใต้ ⑥: บรรทัดที่มีเลขแพ็คบอกหน่วยรวม + หน่วยจากแคตตาล็อก · บรรทัดอื่นนิพจน์เดิม */
+  const cross = grid.slice(grid.indexOf('const CROSS_SHORT'), grid.indexOf('function TotalCell('));
+  assert.match(cross, /warn: \(line\) => \(lineHasPacks\(line\)\s*\? `≠ ในใบ \$\{fmtNumber\(lineUnitsTotal\(line\)\)\} \$\{SERVICE_SETUP_LINE_TEXT\.packUnit\} · ตรวจอีกครั้ง`\s*: `≠ ในใบ \$\{naText\(line\.qty === null \|\| line\.qty === undefined \? null : fmtNumber\(Number\(line\.qty\)\)\)\} · ตรวจอีกครั้ง`\),/);
+  /* 🔴 อ่านอย่างเดียว: ตารางงานบริการไม่มีช่องกรอก/ตัวส่งค่าเลขแพ็ค (งวด PR-4 เป็นเจ้าของ) */
+  for (const rel of UI_FILES.filter((file) => file.startsWith(FOLDER))) {
+    assert.doesNotMatch(code(rel), /packQty\s*=[^=]|onPatch\([^)]*packQty|name="packQty"|<(?:Input|input|MoneyInput|Select)\b[^>]*packQty/, `${rel} ต้องไม่เขียนเลขแพ็ค`);
+  }
+});
+
 test('30/09 ช่องตัวเลข/ป้ายจากแคตตาล็อกเดียว — จำนวนรอบบริการ · รอบละกี่แพ็ค · ยังไม่ใส่ · ดินสอของใบอนุมัติแล้ว', () => {
   const grid = code(`${FOLDER}/ServiceSetupGrid.js`);
   assert.match(grid, /aria-label=\{`\$\{SERVICE_SETUP_LINE_TEXT\.roundsLabel\} รายการ \$\{line\.lineNo\}`\}/);

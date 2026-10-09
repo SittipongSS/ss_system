@@ -80,7 +80,7 @@ async function loadAwaitingFiling(supabase, dealIds) {
 
   const { data: lines, error: lineError } = await fetchInChunks(candidates.map((order) => order.id), (chunk) => fetchAllResult(() => supabase
     .from('sales_order_lines')
-    .select('id, salesOrderId, productId, fgCode, description, qty')
+    .select('id, salesOrderId, productId, fgCode, description, qty, packQty')
     .in('salesOrderId', chunk)
     .order('salesOrderId', { ascending: true })
     .order('id', { ascending: true })));

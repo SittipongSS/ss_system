@@ -479,3 +479,67 @@
   color: var(--text-3);
   font-size: var(--fs-4);
 }
+
+/* ── คอลัมน์ "แพ็ค/เดือน" (mig 0407 · งวด PR-2 · docs/qt-pack-column.md) ────────────────────────────────
+   ขึ้นเฉพาะตารางที่มีบรรทัดที่มีเลขแพ็ค (`hasPackColumn`) — ตารางอื่นไม่มีคลาสข้างล่างนี้สักตัว ⇒ ความกว้างเดิมทุกคอลัมน์
+   ⭐ ตารางแก้ไข (table-layout: fixed): สลับความกว้างด้วย `:has(th.colPack)` ไม่ใช่ prop บนกล่อง — หัวคอลัมน์แพ็คมีเมื่อไร
+      คอลัมน์ตัวเลขอีกสามช่องแคบลงเอง: แพ็ค 88 · จำนวน 120→114 · ราคา/หน่วย 130→124 · จำนวนเงิน 150→136 · ส่วนลดรายการ 210 คงเดิม
+      (190 ตัด "21,600.00" — วัดจากม็อก) ⇒ คอลัมน์ตายตัวรวม 36+88+114+124+210+136 = 708 (เดิม 646) · พื้น 900 และจุดพับการ์ดไม่ขยับ
+      88 = หัว "แพ็ค/เดือน" บรรทัดเดียว (ตัวอักษร 46 + ขอบใน 13 + 25 = 84 · วัดจริง) + 4
+   ⚠️ งวด PR-3 (ช่องกรอก) ต้องวัดใหม่: โหมดแก้มีคอลัมน์ปุ่มลบอีก 40 ⇒ "รายการ" เหลือ 152 ที่พื้น 900 */
+.colPack { width: 88px; }
+.linesTable:has(th.colPack) th.colQty { width: 114px; }
+.linesTable:has(th.colPack) th.colPrice { width: 124px; }
+.linesTable:has(th.colPack) th.colAmount { width: 136px; }
+
+/* หัวคอลัมน์ของตารางฝั่งอ่าน — ห้ามตัดบรรทัดหลัง "/" (ตาราง auto layout บีบหัวได้) */
+.packHead { white-space: nowrap; }
+
+/* เลขแพ็คในตารางแก้ไข: โชว์อย่างเดียว หน้าตาช่องที่ล็อก (ค่าเดียวกับ `.premium-input:disabled`) ชิดขวาแนวเดียวกับช่องจำนวน
+   ⚠️ เป็น span ไม่ใช่ input — งวดนี้ไม่มีช่องกรอกเลขแพ็ค (งวด PR-3) · ขอบใน 8px ให้ "9,999" ลงในคอลัมน์ 88 ได้ */
+.packValue {
+  display: flex;
+  height: var(--ctl-h);
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: var(--fs-8);
+  font-weight: var(--fw-semibold);
+  opacity: var(--op-muted);
+  cursor: default;
+}
+
+/* แถวที่ไม่มีเลขแพ็คในตารางแก้ไข: ขีดสูงเท่าคอนโทรลแถวแรก ให้อยู่แนวเดียวกับตัวเลขในช่องข้าง ๆ */
+.packDash {
+  display: flex;
+  height: var(--ctl-h);
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: var(--space-2);
+  color: var(--text-3);
+}
+
+/* สูตรใต้จำนวนเงินของบรรทัดที่มีเลขแพ็ค: "2 × 12 × 3,500.00" — ตัวเล็กสีรอง บรรทัดเดียว */
+.amountFormula {
+  display: block;
+  margin-top: var(--space-0-5);
+  color: var(--text-3);
+  font-size: var(--fs-2);
+  font-weight: var(--fw-normal);
+  line-height: var(--lh-thai);
+  white-space: nowrap;
+}
+
+/* ที่แคบกว่าพื้นตาราง (การ์ดต่อรายการ): แถวที่ไม่มีเลขแพ็คไม่ต้องมีบรรทัด "แพ็ค/เดือน —"
+   (เลขแพ็คยังชิดขวาเหมือนช่องจำนวน/ราคาของการ์ดเดียวกัน — วัดจากจอ 390px 09/10) */
+@container (max-width: 900px) {
+  .linesTable tbody td.packNA,
+  .readOnlyTable tbody td.packNA { display: none !important; }
+
+  .amountFormula { margin-top: 0; white-space: normal; }
+}
+
