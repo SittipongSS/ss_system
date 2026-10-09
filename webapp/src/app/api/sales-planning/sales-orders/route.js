@@ -11,7 +11,10 @@ import { awaitsFinanceReview } from '@/lib/sales/salesOrderFinanceApproval';
 import { canConfirmPayment } from '@/lib/permissions';
 import { salesOrderPaymentCell } from '@/lib/sales/salesOrderPayments';
 import { ensureInstallments } from '@/lib/sales/salesOrderInstallmentsStore';
-import { validateOrderConfirmation, sanitizeEvidenceAttachments, DEFAULT_EVIDENCE_BUCKET } from '@/lib/sales/orderConfirmationDocs';
+import {
+  validateOrderConfirmation, sanitizeEvidenceAttachments, evidenceRefsDropped,
+  DEFAULT_EVIDENCE_BUCKET, EVIDENCE_REFS_DROPPED_TEXT,
+} from '@/lib/sales/orderConfirmationDocs';
 import { parseDeliveryDueDate } from '@/lib/sales/salesOrderDeliveryDue';
 import { parseCreateFormInstallments } from '@/lib/sales/salesOrderCreateInstallments';
 import { billingFlagShapeError, scheduleExceptionSummary, scheduleExceptionsOf } from '@/lib/sales/installmentScheduleMany';
@@ -395,17 +398,24 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   const closedProject = await closedProjectBlock(supabase, quote.deal.projectId, 'ออกใบสั่งขายใบใหม่');
   if (closedProject) return badRequest(closedProject);
 
-  /* หลักฐานส่วนตัวต้องชี้เข้าโฟลเดอร์ของใบเสนอราคาใบนี้เท่านั้น (ref เก่าแบบ URL/Drive
-     ยังผ่านได้) — กันแนบไฟล์ของใบอื่นมาเป็นหลักฐานของใบนี้ */
+  /* หลักฐานต้องชี้เข้าโฟลเดอร์ของใบเสนอราคาใบนี้เท่านั้น — กันแนบไฟล์ของใบอื่นมาเป็นหลักฐานของใบนี้
+     ⭐ `privateOnly` (2026-10-09): รับเฉพาะไฟล์ใน bucket ส่วนตัว · ref แบบ URL/Drive ไม่ผ่านแล้ว
+        (เดิม `{ fileUrl, driveFileId }` ลงแถวได้ แล้ว confirm-file สตรีม Drive id นั้นออกมาให้) */
   const privateBucket = process.env.SUPABASE_PRIVATE_STORAGE_BUCKET || DEFAULT_EVIDENCE_BUCKET;
   const safeQuoteId = String(quote.id).replace(/[^a-zA-Z0-9_-]+/g, '_');
   const attachmentOptions = {
     allowedStorageBucket: privateBucket,
     allowedStoragePathPrefix: `quotations/${safeQuoteId}/order-confirmation/`,
+    privateOnly: true,
   };
   const confirmCheck = validateOrderConfirmation(body.confirmation || {}, attachmentOptions);
   if (!confirmCheck.ok) return badRequest(confirmCheck.error);
   const confirmation = confirmCheck.confirmation;
+  /* 🔴 ส่งไฟล์มา n ตัวแต่ผ่านด่านไม่ครบ = ปฏิเสธทั้งคำขอ — ไม่ออกใบที่ไฟล์สั้นกว่าที่คนแนบโดยไม่บอก
+     (ไม่เหลือสักไฟล์ = ข้อความ "แนบอย่างน้อย 1 ไฟล์" ของตัวตรวจข้างบนไปแล้ว) */
+  if (evidenceRefsDropped(body.confirmation?.attachments, confirmation?.attachments)) {
+    return badRequest(EVIDENCE_REFS_DROPPED_TEXT);
+  }
 
   // กำหนดส่งสินค้า (0363) — ไม่บังคับ · ว่าง = ยังไม่ตกลงวันส่ง
   const deliveryDue = parseDeliveryDueDate(body.deliveryDueDate);
@@ -415,6 +425,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   // สถานะยังเป็น pending ตาม CHECK ของ 0259 แล้วขึ้นเป็นคำแจ้งตอนใบอนุมัติ
   const firstPaidOn = String(body.firstPayment?.paidOn || '').trim() || null;
   const firstEvidence = sanitizeEvidenceAttachments(body.firstPayment?.evidence, attachmentOptions);
+  if (evidenceRefsDropped(body.firstPayment?.evidence, firstEvidence)) return badRequest(EVIDENCE_REFS_DROPPED_TEXT);
   if (firstPaidOn && !/^\d{4}-\d{2}-\d{2}$/.test(firstPaidOn)) return badRequest('รูปแบบวันที่ชำระงวดแรกไม่ถูกต้อง');
   if (firstPaidOn && !firstEvidence.length) return badRequest('บันทึกว่าลูกค้าจ่ายงวดแรกแล้ว ต้องแนบหลักฐานการชำระอย่างน้อย 1 ไฟล์');
   if (!firstPaidOn && firstEvidence.length) return badRequest('แนบหลักฐานการชำระงวดแรกแล้ว ต้องระบุวันที่ลูกค้าจ่ายด้วย');
