@@ -98,3 +98,90 @@ test('ไม่มี ref / ไม่มี id = ไม่เรียก Storag
   assert.deepEqual(fake.removed, []);
   assert.deepEqual(fake.listed, []);
 });
+
+/* ── ขอบเขตของการลบตาม ref (รอบสองของด่านที่มาไฟล์ · 2026-10-09) ──────────────
+   🐞 ref ใน jsonb ของใบสั่งขายเคยรับ `{ fileUrl:'x', storagePath }` ที่ไม่มี bucket ได้ ⇒ ลบใบแล้ว
+   object ที่ path นั้นชี้ถูกลบตาม ไม่ว่าเป็นของใคร · ผู้เรียกที่รู้โฟลเดอร์ของตัวเองจึงส่งขอบเขตมา */
+function muteWarn(t) {
+  const warned = [];
+  t.mock.method(console, 'warn', (...args) => { warned.push(args); });
+  return warned;
+}
+
+test('ส่งขอบเขตมา: ลบเฉพาะ ref ใน bucket นั้นและใต้โฟลเดอร์ที่อนุญาต ที่เหลือข้ามพร้อมเตือน', async (t) => {
+  const warned = muteWarn(t);
+  const fake = fakeStorage();
+  const removed = await removeEvidenceRefs(fake.supabase, [
+    { storageBucket: 'sales-evidence', storagePath: 'quotations/QT-1/order-confirmation/po.pdf', fileName: 'ลับ.pdf' },
+    { storageBucket: 'sales-evidence', storagePath: 'quotations/QT-2/order-confirmation/other.pdf', fileName: 'ของใบอื่น.pdf' },
+    { storageBucket: 'sales-evidence', storagePath: 'quotations/QT-1/won/slip.pdf' },
+    { storageBucket: 'issued-quotation-pdf', storagePath: 'quotations/QT-1/order-confirmation/x.pdf' },
+    { fileUrl: 'x', storagePath: 'quotations/QT-1/order-confirmation/no-bucket.pdf' },
+    { storageBucket: 'sales-evidence', storagePath: 123 },
+    { fileName: 'ไม่มี path' },
+  ], { bucket: 'sales-evidence', prefixes: ['quotations/QT-1/order-confirmation/'] });
+  assert.equal(removed, 1);
+  assert.deepEqual(fake.removed, ['sales-evidence:quotations/QT-1/order-confirmation/po.pdf']);
+  assert.equal(warned.length, 1, 'เตือนครั้งเดียวต่อการเรียก');
+  const text = JSON.stringify(warned[0]);
+  assert.ok(!text.includes('other.pdf') && !text.includes('ของใบอื่น') && !text.includes('no-bucket'), 'log ไม่มีชื่อไฟล์/ path ของ ref ที่ข้าม');
+});
+
+test('ส่งขอบเขตมา: หลายโฟลเดอร์ได้ และโฟลเดอร์ว่างในรายการไม่นับ', async (t) => {
+  muteWarn(t);
+  const fake = fakeStorage();
+  const refs = [
+    { storageBucket: 'sales-evidence', storagePath: 'quotations/QT-1/order-confirmation/a.pdf' },
+    { storageBucket: 'sales-evidence', storagePath: 'quotations/QT-9/order-confirmation/b.pdf' },
+    { storageBucket: 'sales-evidence', storagePath: 'elsewhere/c.pdf' },
+  ];
+  const removed = await removeEvidenceRefs(fake.supabase, refs, {
+    bucket: 'sales-evidence',
+    prefixes: ['', null, 'quotations/QT-1/order-confirmation/', 'quotations/QT-9/order-confirmation/'],
+  });
+  assert.equal(removed, 2, 'โฟลเดอร์ว่าง ("" ขึ้นต้นทุก path) ต้องไม่เปิดทั้ง bucket');
+  assert.deepEqual(fake.removed.sort(), [
+    'sales-evidence:quotations/QT-1/order-confirmation/a.pdf',
+    'sales-evidence:quotations/QT-9/order-confirmation/b.pdf',
+  ]);
+});
+
+test('ส่งขอบเขตมาแต่ไม่มีโฟลเดอร์/ไม่มี bucket = ไม่ลบอะไรเลย (ไม่ใช่ "ไม่กรอง")', async (t) => {
+  muteWarn(t);
+  const refs = [
+    { storageBucket: 'sales-evidence', storagePath: 'quotations/QT-1/order-confirmation/po.pdf' },
+    { storagePath: 'quotations/QT-1/order-confirmation/po2.pdf' },
+  ];
+  for (const options of [
+    { bucket: 'sales-evidence', prefixes: [] },
+    { bucket: 'sales-evidence', prefixes: [''] },
+    { bucket: 'sales-evidence' },
+    { bucket: 'sales-evidence', prefixes: 'quotations/QT-1/order-confirmation/' },
+    { prefixes: ['quotations/QT-1/order-confirmation/'] },
+    { bucket: '', prefixes: ['quotations/QT-1/order-confirmation/'] },
+    {},
+  ]) {
+    const fake = fakeStorage();
+    assert.equal(await removeEvidenceRefs(fake.supabase, refs, options), 0, JSON.stringify(options));
+    assert.deepEqual(fake.removed, [], JSON.stringify(options));
+  }
+});
+
+test('ไม่ส่งขอบเขต: ลบทุก ref เหมือนเดิม และไม่เตือน (เส้นลบใบเสนอราคา)', async (t) => {
+  const warned = muteWarn(t);
+  const refs = [
+    { storagePath: 'quotations/QT-1/order-confirmation/po.pdf' },
+    { storageBucket: 'issued-quotation-pdf', storagePath: 'quotations/QT-1/IDOC-1.pdf' },
+    { storageBucket: 'sales-evidence', storagePath: 'anywhere/else.pdf' },
+  ];
+  for (const args of [[], [undefined], [null]]) {
+    const fake = fakeStorage();
+    assert.equal(await removeEvidenceRefs(fake.supabase, refs, ...args), 3);
+    assert.deepEqual(fake.removed.sort(), [
+      'issued-quotation-pdf:quotations/QT-1/IDOC-1.pdf',
+      'sales-evidence:anywhere/else.pdf',
+      'sales-evidence:quotations/QT-1/order-confirmation/po.pdf',
+    ]);
+  }
+  assert.equal(warned.length, 0);
+});

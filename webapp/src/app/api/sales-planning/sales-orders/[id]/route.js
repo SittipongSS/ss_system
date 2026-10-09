@@ -5,9 +5,12 @@ import { moveSalesOrderAttachments, purgeSalesOrderFiles } from '@/lib/sales/sal
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import {
-  DEFAULT_EVIDENCE_BUCKET, salesOrderConfirmationGate, validateOrderConfirmation,
+  DEFAULT_EVIDENCE_BUCKET, EVIDENCE_REFS_DROPPED_TEXT, evidenceRefsDropped, salesOrderConfirmationGate,
+  validateOrderConfirmation,
 } from '@/lib/sales/orderConfirmationDocs';
-import { missingStoredEvidence, purgePrivateEvidence, removeEvidenceRefs } from '@/lib/upload/privateEvidence';
+import {
+  PRIVATE_EVIDENCE_BUCKET, missingStoredEvidence, privateEvidencePrefix, purgePrivateEvidence, removeEvidenceRefs,
+} from '@/lib/upload/privateEvidence';
 import { canEditCustomerBillingRule, departmentOf } from '@/lib/permissions';
 import { billingSkipReadyOf, probeBillingSkip } from '@/lib/sales/billingPolicySchema';
 import {
@@ -1054,12 +1057,24 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     let confirmPatch = {};
     if ('confirmation' in body) {
       const privateBucket = process.env.SUPABASE_PRIVATE_STORAGE_BUCKET || DEFAULT_EVIDENCE_BUCKET;
-      const safeQuoteId = String(before.quotationId || '').replace(/[^a-zA-Z0-9_-]+/g, '_');
+      /* ⭐ `privateOnly` (2026-10-09): รับเฉพาะไฟล์ใน bucket ส่วนตัวใต้โฟลเดอร์ของใบเสนอราคาต้นทาง
+         🔴 ใบที่ไม่มีใบเสนอราคาต้นทาง = โฟลเดอร์ว่าง (null) ⇒ ไม่รับสักไฟล์ —
+            ห้ามประกอบ `quotations//order-confirmation/` จาก id ว่างแล้วใช้เป็นด่าน */
       const check = validateOrderConfirmation(body.confirmation || {}, {
         allowedStorageBucket: privateBucket,
-        allowedStoragePathPrefix: `quotations/${safeQuoteId}/order-confirmation/`,
+        allowedStoragePathPrefix: privateEvidencePrefix('sales_order_confirmation', before.quotationId),
+        privateOnly: true,
       });
       if (!check.ok) return badRequest(check.error);
+      /* 🔴 ชุดที่ผ่านด่านสั้นกว่าชุดที่ส่งมา = ปฏิเสธทั้งคำขอ — ชุดนี้ **ทับ** ของเดิม ⇒ ถ้าปล่อยผ่าน ไฟล์ที่ถูกตัดจะหายจากใบ
+            ด้วย 200 โดยไม่มีข้อความ (ไม่เหลือสักไฟล์ = ข้อความ "แนบอย่างน้อย 1 ไฟล์" ของตัวตรวจข้างบนไปแล้ว)
+         ⚠️ เฉพาะใบที่มีไฟล์ยืนยันของตัวเองแล้ว — ใบก่อน 0285 ที่ยังไม่มี จอตั้งต้นฟอร์มจากไฟล์ `won/` ของใบเสนอราคา
+            (confirmationDraft) ซึ่งไม่ผ่านด่านโฟลเดอร์อยู่แล้วและจอไม่มีปุ่มให้ลบออก ⇒ ถ้าปฏิเสธตรงนี้ใบนั้นจะบันทึกไม่ได้อีกเลย
+            ใบแบบนั้นยังไม่มีไฟล์ของตัวเองให้หาย (ไฟล์ `won/` ยังอยู่ที่ใบเสนอราคา) — ดู docs/upload-receipts.md §ที่ยังเหลือ */
+      const ownsConfirmFiles = Array.isArray(before.confirmAttachments) && before.confirmAttachments.length > 0;
+      if (ownsConfirmFiles && evidenceRefsDropped(body.confirmation?.attachments, check.confirmation?.attachments)) {
+        return badRequest(EVIDENCE_REFS_DROPPED_TEXT);
+      }
       const missing = await missingStoredEvidence(supabase, privateBucket, check.confirmation?.attachments || []);
       if (missing) return badRequest(missing);
       confirmPatch = {
@@ -1852,7 +1867,15 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
        ⇒ ลบเฉพาะไฟล์ที่ใบนี้อ้างไว้ ห้ามกวาดทั้งโฟลเดอร์ เพราะใบเสนอราคายังอยู่
        และอาจออกใบสั่งขายใหม่ที่มีไฟล์ของตัวเองอยู่ในโฟลเดอร์เดียวกัน */
   await purgePrivateEvidence(supabase, 'sales_orders', id);
-  await removeEvidenceRefs(supabase, Array.isArray(before.confirmAttachments) ? before.confirmAttachments : []);
+  /* ⭐ ลบเฉพาะ ref ที่อยู่ใน bucket ส่วนตัวใต้โฟลเดอร์ order-confirmation ของใบเสนอราคาต้นทางของใบนี้
+     (2026-10-09) — ref ใน jsonb ที่ชี้ที่อื่นถูกข้าม ไม่ตามไปลบ object ของคนอื่น
+     🔴 ใบที่ไม่มีใบเสนอราคาต้นทาง = `prefixes: []` = ไม่ลบอะไรเลย */
+  const confirmPrefix = privateEvidencePrefix('sales_order_confirmation', before.quotationId);
+  await removeEvidenceRefs(
+    supabase,
+    Array.isArray(before.confirmAttachments) ? before.confirmAttachments : [],
+    { bucket: PRIVATE_EVIDENCE_BUCKET, prefixes: confirmPrefix ? [confirmPrefix] : [] },
+  );
   // เอกสารแทนสัญญาที่ trigger ยกเลิกตามการลบ (อ่านอย่างเดียว · อ่านไม่ขึ้น = ไม่บอก ไม่ล้มการลบที่สำเร็จแล้ว)
   const voidedContract = historical ? await historicalContractVoided(supabase, before) : null;
   /* รอบบริการที่ชี้ใบย้อนหลังใบนี้ (ไม่มี FK) — ปลดหลังลบสำเร็จ · กรองด้วย salesOrderId ไม่ใช่ลิสต์ที่โหลดไว้

@@ -195,7 +195,7 @@ test('⭐ สี่เส้นที่แก้: ทุก Response ที่�
   const expected = {
     'updates/[id]/file/route.js': { drive: 1, bucket: 0 },
     'sales-planning/quotations/[id]/file/route.js': { drive: 1, bucket: 1 },
-    'sales-planning/sales-orders/[id]/confirm-file/route.js': { drive: 1, bucket: 1 },
+    'sales-planning/sales-orders/[id]/confirm-file/route.js': { drive: 0, bucket: 1 },
     'sales-planning/sales-orders/[id]/payment-file/route.js': { drive: 0, bucket: 1 },
   };
   for (const rel of HARDENED) {
@@ -232,7 +232,7 @@ test('⭐ redirect ตามค่าในแถว ต้องผ่านต
   const withRedirect = {
     'updates/[id]/file/route.js': 1,
     'sales-planning/quotations/[id]/file/route.js': 1,
-    'sales-planning/sales-orders/[id]/confirm-file/route.js': 1,
+    'sales-planning/sales-orders/[id]/confirm-file/route.js': 0,
     'sales-planning/sales-orders/[id]/payment-file/route.js': 0,
   };
   for (const rel of HARDENED) {
@@ -246,6 +246,25 @@ test('⭐ redirect ตามค่าในแถว ต้องผ่านต
       `${rel}: ตรวจปลายทาง → 404 → redirect ต้องเรียงกันในบล็อกเดียว`,
     );
   }
+});
+
+test('🔴 confirm-file ของใบสั่งขาย: ส่งได้เฉพาะไฟล์ใน private bucket — ไม่มีทาง Drive / ทาง redirect ตามค่าในแถว', () => {
+  const rel = 'sales-planning/sales-orders/[id]/confirm-file/route.js';
+  const source = readRoute(rel);
+  /* 🐞 `driveFileId` / `fileUrl` ใน ref เป็นค่าที่ client ส่งมาตอนบันทึก ⇒ เดิมใส่ id ไฟล์ Drive ของใครก็ได้แล้วเส้นนี้
+     stream ออกมาด้วยสิทธิ์ของระบบ · ทั้งสองทางถูกถอด — กลับมาเมื่อไรต้องแดง */
+  assert.doesNotMatch(source, /driveFileId/, 'อ่าน driveFileId จาก ref');
+  assert.doesNotMatch(source, /getFileStream/, 'stream จาก Drive');
+  assert.doesNotMatch(source, /redirect/i, 'redirect ตามค่าในแถว');
+  assert.doesNotMatch(source, /fileUrl|attachmentUrlError|Readable|@\/lib\/drive/, 'ของที่เหลือจากทาง Drive/ลิงก์');
+  // ref ที่ไม่มี storagePath = ไม่มีไฟล์ (ด่านแรกหลังหยิบ ref · ก่อนแตะถังเก็บ)
+  assert.match(source, /const att = list\[idx\];\s*if \(!att \|\| !att\.storagePath\) \{\s*return Response\.json\(\{ error: 'ไม่พบไฟล์แนบ' \}, \{ status: 404 \}\);\s*\}/);
+  // ไบต์ออกทางเดียว: ถังส่วนตัว หลังด่าน bucket + โฟลเดอร์ของใบเสนอราคาต้นทาง
+  const pinAt = source.indexOf('isQuotationEvidencePath(att.storagePath, order.quotationId)');
+  const downloadAt = source.indexOf('.download(att.storagePath)');
+  assert.ok(pinAt > 0 && downloadAt > pinAt, 'ด่าน path ต้องมาก่อนดึงไบต์');
+  assert.equal((source.match(/\.download\(/g) || []).length, 1);
+  assert.match(source, /if \(att\.storageBucket !== privateBucket\s*\|\| !\(order\.quotationId && isQuotationEvidencePath\(att\.storagePath, order\.quotationId\)\)\) \{\s*return Response\.json\(\{ error: 'ไม่พบไฟล์แนบ' \}, \{ status: 404 \}\);\s*\}/);
 });
 
 test('เส้นที่คุยกับ Drive ต้องรันบน Node และ import ตัว Drive แบบ dynamic', () => {

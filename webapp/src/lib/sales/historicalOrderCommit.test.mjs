@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { commitHistoricalOrder, sanitizeHistoricalEvidence } from './historicalOrderCommit.js';
-import { PRIVATE_EVIDENCE_BUCKET } from '../upload/privateEvidence.js';
+import { PRIVATE_EVIDENCE_BUCKET, privateEvidenceObjectPath } from '../upload/privateEvidence.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const NOW = new Date('2026-09-22T10:00:00+07:00');
@@ -858,6 +858,39 @@ test('ตัวกรองหลักฐาน (ใช้ร่วมกับ
   const kept = await sanitizeHistoricalEvidence({ supabase: db.supabase, orderId: EDIT_ID, refs: [FOREIGN_REF, OWN_REF] });
   assert.equal(kept.error, null);
   assert.deepEqual(kept.evidence.map((ref) => ref.fileName), ['slip.pdf']);
+});
+
+test('🔴 ตัวกรองหลักฐานเป็นโหมดเข้ม: bucket/path ที่เป็นอาร์เรย์และ ref ทรง Drive ไม่ผ่าน · ref จากวิซาร์ด (ชื่อที่ระบบตั้ง) ผ่าน', async () => {
+  const other = 'sales-orders/SOR-OTHER/payments/2_x.pdf';
+  const own = `sales-orders/${EDIT_ID}/payments/9_z.pdf`;
+  /* 🐞 เดิม: อาร์เรย์ไม่ใช่สตริง ⇒ ข้ามด่าน bucket/โฟลเดอร์ (มี fileUrl พาผ่าน) แล้ว String([x]) กลายเป็น ref หน้าตาปกติ */
+  const refused = [
+    { fileUrl: 'x', storageBucket: PRIVATE_EVIDENCE_BUCKET, storagePath: [other], fileName: 'path-array.pdf' },
+    { fileUrl: 'x', storageBucket: [PRIVATE_EVIDENCE_BUCKET], storagePath: other, fileName: 'bucket-array.pdf' },
+    { fileUrl: 'x', storageBucket: ['public'], storagePath: [own], fileName: 'both-array.pdf' },
+    { storageBucket: [PRIVATE_EVIDENCE_BUCKET], storagePath: [own], fileName: 'own-array.pdf' },
+    { fileUrl: 'https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz012345/view', driveFileId: '1AbCdEfGhIjKlMnOpQrStUvWxYz012345', fileName: 'drive.pdf' },
+    { fileUrl: 'x', driveFileId: '1AbCdEfGhIjKlMnOpQrStUvWxYz012345', storagePath: own, fileName: 'no-bucket.pdf' },
+    { storageBucket: PRIVATE_EVIDENCE_BUCKET, storagePath: `sales-orders/${EDIT_ID}/payments/../../SOR-OTHER/payments/2_x.pdf`, fileName: 'climb.pdf' },
+  ];
+  for (const ref of refused) {
+    const db = fakeDb();
+    const out = await sanitizeHistoricalEvidence({ supabase: db.supabase, orderId: EDIT_ID, refs: [ref] });
+    assert.deepEqual(out, { evidence: [], error: null }, ref.fileName);
+    assert.equal(db.calls.storage.length, 0, `${ref.fileName}: ไม่ถามที่เก็บไฟล์ถึง path ที่ไม่ใช่ของใบนี้`);
+  }
+
+  // ref ที่วิซาร์ดส่งจริง: uploadFileBytes(entityType sales_order_payment_evidence + id ของใบ) ⇒ ชื่อจาก privateEvidenceObjectPath
+  const storagePath = privateEvidenceObjectPath('sales_order_payment_evidence', EDIT_ID, 'สลิป งวดยกมา (1).pdf', 1760000000000);
+  assert.ok(storagePath.startsWith(`sales-orders/${EDIT_ID}/payments/1760000000000_`));
+  const wizardRef = {
+    storageBucket: PRIVATE_EVIDENCE_BUCKET, storagePath, fileName: 'สลิป งวดยกมา (1).pdf', mimeType: 'application/pdf', sizeBytes: 2048,
+  };
+  const db = fakeDb();
+  const kept = await sanitizeHistoricalEvidence({ supabase: db.supabase, orderId: EDIT_ID, refs: [...refused, wizardRef] });
+  assert.equal(kept.error, null);
+  assert.deepEqual(kept.evidence, [{ ...wizardRef, fileUrl: null, driveFileId: null }]);
+  assert.equal(db.calls.storage.length, 1, 'ตรวจว่ามีจริงเฉพาะไฟล์ที่ผ่านด่าน');
 });
 
 // ── ซอร์ส ────────────────────────────────────────────────────────────────────────────────

@@ -154,13 +154,35 @@ export async function purgePrivateEvidence(supabase, table, entityId) {
 
 /** ไฟล์ที่เอกสารอ้างไว้ตรง ๆ — ใช้กับของที่ไฟล์ไม่ได้อยู่ใต้โฟลเดอร์ของตัวเอง
  *  (เอกสารยืนยันคำสั่งซื้อของใบสั่งขาย: ไฟล์อยู่ใต้ใบเสนอราคาต้นทาง เพราะอัปตั้งแต่
- *  ใบสั่งขายยังไม่เกิด) */
-export async function removeEvidenceRefs(supabase, refs = []) {
+ *  ใบสั่งขายยังไม่เกิด)
+ *
+ *  ⭐ `options = { bucket, prefixes }` (รอบสองของด่านที่มาไฟล์ · 2026-10-09) — ผู้เรียกที่รู้ว่า
+ *  ไฟล์ของตัวเองอยู่ตรงไหนส่งมาเพื่อ **ลบเฉพาะของตัวเอง**: ref ต้องอยู่ใน `bucket` นั้นและ path
+ *  ขึ้นต้นด้วยโฟลเดอร์ใดโฟลเดอร์หนึ่ง · ตัวที่ไม่เข้าเกณฑ์ถูกข้ามพร้อม console.warn
+ *  🐞 เดิม ref ใน jsonb ของใบเชื่อได้ทั้งก้อน — แถวที่รับ `{ fileUrl:'x', storagePath }` มาโดยไม่มี
+ *  bucket เคยผ่านด่านเขียนได้ แล้วเส้นลบใบสั่งขายจะตามไปลบ object นั้นให้ ไม่ว่าเป็นของใคร
+ *  🔴 `prefixes: []` (ใบที่ไม่มีใบเสนอราคาต้นทาง) = **ไม่ลบอะไรเลย** ไม่ใช่ "ไม่กรอง"
+ *  ⚠️ ไม่ส่ง options = พฤติกรรมเดิมทุกอย่าง (เส้นลบใบเสนอราคายังเรียกแบบนั้น) */
+export async function removeEvidenceRefs(supabase, refs = [], options = undefined) {
+  const scoped = options !== undefined && options !== null;
+  const prefixes = scoped && Array.isArray(options.prefixes)
+    ? options.prefixes.filter((prefix) => typeof prefix === 'string' && prefix)
+    : [];
+  const own = (ref) => typeof options.bucket === 'string' && options.bucket
+    && ref.storageBucket === options.bucket
+    && typeof ref.storagePath === 'string'
+    && prefixes.some((prefix) => ref.storagePath.startsWith(prefix));
   const byBucket = new Map();
+  let skipped = 0;
   for (const ref of refs || []) {
     if (!ref?.storagePath) continue;
+    if (scoped && !own(ref)) { skipped += 1; continue; }
     const bucket = ref.storageBucket || PRIVATE_EVIDENCE_BUCKET;
     byBucket.set(bucket, [...(byBucket.get(bucket) || []), ref.storagePath]);
+  }
+  // ⚠️ log แค่จำนวนกับขอบเขตที่อนุญาต — ไม่มีชื่อไฟล์/ path ของ ref ที่ถูกข้าม
+  if (skipped) {
+    console.warn('[evidence] ข้าม ref ที่อยู่นอกโฟลเดอร์ของเอกสาร — ไม่ลบ', skipped, options.bucket || null, prefixes);
   }
   let removed = 0;
   for (const [bucket, paths] of byBucket) {

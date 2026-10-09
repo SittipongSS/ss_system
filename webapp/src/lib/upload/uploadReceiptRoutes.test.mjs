@@ -143,25 +143,49 @@ test('🔴 DELETE /api/upload (ขา Drive): รูปร่าง id → ใ�
   assert.match(LEGACY, /^export const runtime = 'nodejs';$/m);
 });
 
-test('🔴 DELETE /api/upload: สวิตช์ผ่อนด่านไม่มีผลที่นี่ · ไม่ถามฐานเองในเส้นนี้ (ทุกคำถามผ่านตัวช่วยที่อ่าน error) · ขา storagePath คงเดิม', () => {
+test('🔴 DELETE /api/upload: สวิตช์ผ่อนด่านไม่มีผลที่นี่ · ไม่ถามฐานเองในเส้นนี้ (ทุกคำถามผ่านตัวช่วยที่อ่าน error)', () => {
   assert.doesNotMatch(DEL, /observe|uploadReceiptMode|requireUploadReceipt|UPLOAD_RECEIPT_MODE/i, 'เส้นถอยการอัปต้องไม่รู้จักสวิตช์เลย');
   // 🐞 เดิมถามสองตารางตรงนี้แล้วทิ้ง `error` (`const [{ data: attRef }, { data: wonRef }]`) ⇒ ฐานล่ม = "ไม่มีใครอ้าง" = ทิ้งไฟล์
   assert.doesNotMatch(DRIVE, /supabase\s*\.from\(/, 'ขา Drive ต้องถามผ่าน uploadReceiptStatus / driveFileReferenced เท่านั้น');
   assert.doesNotMatch(DEL, /\{ data: \w+ \}/, 'อ่าน data โดยไม่รับ error');
   assert.match(LEGACY, /^import \{ driveFileReferenced, driveFileTrashable \} from '@\/lib\/master\/attachments';$/m);
-  // ขา bucket ส่วนตัว (หลักฐาน Won ที่ยังเปิดอยู่) ไม่ถูกแตะ
-  order(DEL, [
-    'if (storagePath) {',
-    "if (entityType !== 'quotation_won_evidence' || !entityId || storageBucket !== PRIVATE_EVIDENCE_BUCKET) {",
-    'const prefix = privateEvidencePrefix(entityType, entityId);',
-    'const scope = await checkPrivateEvidenceScope(user, entityType, entityId);',
-    'await supabase.storage.from(PRIVATE_EVIDENCE_BUCKET).remove([storagePath]);',
-    'if (!driveFileId) return Response.json({ ok: true });',
-  ], 'storagePath');
   // ต้องล็อกอินก่อนเสมอ
   order(DEL, ["if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });", 'if (storagePath) {'], 'auth');
   // หัวคอมเมนต์เดิมที่บอกว่า "ใครก็เรียกได้" ต้องไม่กลับมา
   assert.doesNotMatch(LEGACY_RAW, /ใครก็ตามที่ล็อกอินเรียกได้ \(เป็นการลบไฟล์ที่ตัวเองเพิ่งอัป\)/);
+});
+
+test('🔴 DELETE /api/upload (ขา bucket ส่วนตัว): คำขอที่ส่ง storagePath ถูกปฏิเสธ 403 เสมอ — เส้นนี้ไม่ลบอะไรจาก Supabase Storage', () => {
+  /* 🐞 เดิมขานี้ลบ object ตาม path จากคำขอ (`storage.remove([storagePath])`) — ไฟล์ในถังเก็บไม่มีใบรับว่าใครอัป และไม่ได้
+     ถามว่ามีแถวไหนอ้างอยู่ ⇒ หลักฐานที่แถวยังชี้ถึงหายได้ · ผู้เรียกเดียว (หน้าสร้างใบสั่งขาย) ได้ 403 มาตลอด และถอดคำขอออกแล้ว */
+  const leg = DEL.slice(DEL.indexOf('if (storagePath) {'), DEL.indexOf('if (!driveFileId) return Response.json({ ok: true });'));
+  // ทั้งบล็อก = เงื่อนไข → 403 ไม่มีเงื่อนไขอื่น ไม่มีทางตกผ่านไปถึงขา Drive
+  assert.match(leg, /^if \(storagePath\) \{\s*return Response\.json\(\{ error: 'forbidden' \}, \{ status: 403 \}\);\s*\}\s*$/);
+  assert.equal((DEL.match(/if \(storagePath\)/g) || []).length, 1);
+  // ล็อกอิน → ขา storagePath → ขา Drive (ลำดับเดิม)
+  order(DEL, [
+    "if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });",
+    'if (storagePath) {',
+    'if (!driveFileId) return Response.json({ ok: true });',
+  ], 'storagePath');
+  // 🔴 ทั้ง handler ไม่มีคำสั่งลบของถังเก็บ และไม่แตะ Supabase Storage เลย
+  assert.doesNotMatch(DEL, /\.remove\(/, 'DELETE ต้องไม่มี .remove(');
+  assert.doesNotMatch(DEL, /\.storage\b|storage\s*\.from\(|PRIVATE_EVIDENCE_BUCKET|privateEvidencePrefix|checkPrivateEvidenceScope/,
+    'DELETE ต้องไม่เรียก Supabase Storage / ตัวช่วยของ bucket ส่วนตัว');
+  // ค่าจากคำขอที่ขานี้เคยใช้ตัดสิน ไม่ถูกอ่านแล้ว — อ่านกลับมา = มีคนเปิดทางลบตามเงื่อนไขอีกครั้ง
+  assert.match(DEL, /const \{ driveFileId, storagePath \} = body;/);
+  assert.doesNotMatch(DEL, /storageBucket|entityType|entityId/);
+  // ตัวช่วยที่เหลือใช้เฉพาะขาอัป ไม่ถูก import ค้าง
+  assert.doesNotMatch(LEGACY, /privateEvidencePrefix/);
+});
+
+test('หน้าสร้างใบสั่งขาย: สร้างไม่สำเร็จแล้วไม่ยิง DELETE /api/upload (คำขอที่ถูกปฏิเสธเสมอ) · ข้อความ error กับการปลดปุ่มคงเดิม', () => {
+  const page = strip(read('../../app/sales-planning/sales-orders/new/page.js'));
+  assert.doesNotMatch(page, /["'`]\/api\/upload["'`]/, 'หน้านี้ไม่เรียก /api/upload ตรง ๆ (อัปผ่าน uploadFileBytes · ไม่มีเส้นถอย)');
+  assert.doesNotMatch(page, /method: ["']DELETE["']/);
+  assert.doesNotMatch(page, /Promise\.allSettled\(/);
+  // กิ่งล้มของปุ่มสร้าง = บอกเหตุ + ปลดปุ่ม เท่านั้น
+  assert.match(page, /\} catch \(e\) \{\s*setError\(e\.message \|\| "สร้างใบสั่งขายไม่สำเร็จ"\);\s*setCreating\(false\);\s*\}\s*\}, \[blockedReason,/);
 });
 
 test('ตัวช่วยของเส้นถอยการอัป: ทุกคำถามฐานอ่าน error · รายชื่อแหล่งอ้างอิงชี้ไปที่ collectReferencedIds', () => {
