@@ -11,6 +11,7 @@ import { SURVEY_VISIT_KIND } from './surveyVisit';
 import {
   SEND_BACK_DONE_KIND, SEND_BACK_KIND, surveySendBackOnSheet, surveySendBackState,
 } from './survey';
+import { surveyNeedsVisit } from './surveyMethod';
 import { loadCrewNames, visitCrewFrom, visitCrewRole, visitHelperIds } from './crew/visitCrew';
 import { fetchAll } from '@/lib/supabaseFetchAll';
 import { addDays } from '@/lib/datePeriods';
@@ -382,7 +383,9 @@ async function loadSurveyScreenVisits(supabase, requestIds) {
  *    และตัดสิน `canWrite` จากนัดนั้น · 🐞 review S2 28/09: ของเดิมเอานัดล่าสุด **ของฉัน** แล้วข้ามเฉพาะใบที่ฉันมีนัดเปิด
  *    **ในช่วงวันที่ขอ** ⇒ ใบที่มีนัดใหม่กว่าของช่างอีกคน · นัดเปิดของฉันที่อยู่นอกช่วง (+20 วัน) · นัดล่าสุดถูกยกเลิก
  *    = การ์ดค้าง (และป้ายนับใน PR-3) ที่เปิดแล้วไม่มีอะไรให้ทำ ค้างได้ถึง 31 วัน · ช่องค้างเปลี่ยนตามช่วงวันที่ขอด้วย
- * ⚠️ ถามใบคำร้องและนัดทั้งใบเฉพาะใบที่ค้างจริง ⇒ วันปกติ (ไม่มีใครส่งกลับ) ไม่มีคำขอที่สาม
+ * ⭐ **ใบที่ทุกพื้นที่กลายเป็น "ประเมินจากแบบ" แล้ว ไม่ค้าง** (mig 0408) — ไม่มีนัดเข้าพื้นที่ ไม่มีอะไรให้ช่างแก้
+ *    ⇒ อ่านวิธีประเมินรายพื้นที่ของใบที่ค้าง แล้วให้ `surveySendBackOnSheet` ตัดสิน (`needsVisit`) ตัวเดียวกับจอ
+ * ⚠️ ถามใบคำร้อง · นัดทั้งใบ · วิธีประเมินของพื้นที่ เฉพาะใบที่ค้างจริง ⇒ วันปกติ (ไม่มีใครส่งกลับ) ไม่มีคำขอที่สาม
  * @returns นัด + `sendBack` (รอบที่ค้าง: `{ id, at, byId, byName, note, items }`) เรียงรอนานสุดก่อน
  */
 async function loadSentBackSurveys(supabase, { assigneeId, since }) {
@@ -413,13 +416,24 @@ async function loadSentBackSurveys(supabase, { assigneeId, since }) {
   if (!pending.length) return [];
 
   const keys = pending.map((hit) => hit.key);
-  const [requests, screenVisits] = await Promise.all([
+  const [requests, screenVisits, zones] = await Promise.all([
     fetchAllInChunks(keys, (chunk) => supabase
       .from('dept_requests').select('id, status, "answeredAt", "closedAt", "cancelledAt"')
       .in('id', chunk).order('id', { ascending: true })),
     loadSurveyScreenVisits(supabase, keys),
+    /* วิธีประเมินรายพื้นที่ของใบที่ค้าง — แค่พอตอบ `surveyNeedsVisit` (สถานะตัด + วิธี) ไม่อ่านผลวัด
+       🔴 อ่านพลาดต้องโยน (fetchAll) — เดาว่า "ยังค้าง" = การ์ดพาไปจอที่ไม่มีปุ่ม · เดาว่า "ไม่ค้าง" = งานแก้หายเงียบ */
+    fetchAllInChunks(keys, (chunk) => supabase
+      .from('service_survey_zones').select('id, "requestId", status, method')
+      .in('requestId', chunk).order('id', { ascending: true })),
   ]);
   const requestById = new Map(requests.map((row) => [String(row.id), row]));
+  const zonesByRequest = new Map();
+  for (const zone of zones) {
+    const key = String(zone.requestId);
+    if (!zonesByRequest.has(key)) zonesByRequest.set(key, []);
+    zonesByRequest.get(key).push(zone);
+  }
 
   const out = [];
   for (const { key, state } of pending) {
@@ -430,14 +444,18 @@ async function loadSentBackSurveys(supabase, { assigneeId, since }) {
     const screen = screenVisits.get(key);
     const visit = screen && isClosedVisit(screen) && screen.status !== 'unable' ? mine.get(String(screen.id)) : null;
     if (!visit) continue;
-    const onSheet = surveySendBackOnSheet(state, request);
+    // ใบที่ไม่มีแถวพื้นที่ = ต้องมีนัด (กติกาของ `surveyNeedsVisit`) ⇒ ค้างตามเดิม
+    const onSheet = surveySendBackOnSheet(state, request, {
+      needsVisit: surveyNeedsVisit(zonesByRequest.get(key) || []),
+    });
     if (onSheet?.pending) out.push({ ...visit, sendBack: onSheet.sentBack });
   }
   return out.sort((a, b) => String(a.sendBack?.at || '').localeCompare(String(b.sendBack?.at || '')));
 }
 
 /**
- * **แถวของคิวงาน** — ตัวเดียวกับที่ป้ายนับบนเมนูจะถาม (PR-3) · ไม่อ่านชื่อ เครื่อง หรือพื้นที่เลย (R15)
+ * **แถวของคิวงาน** — ตัวเดียวกับที่ป้ายนับบนเมนูจะถาม (PR-3) · ไม่อ่านชื่อ เครื่อง หรือผลวัดของพื้นที่เลย (R15)
+ *   (ข้อเดียวที่แตะตารางพื้นที่: วิธีประเมินสี่คอลัมน์ของใบที่มีส่งกลับค้าง — `loadSentBackSurveys` · วันปกติไม่ยิง)
  * @param assigneeId เจ้าของคิว (null = ทั้งฝ่าย · scope=team)
  * @param from/to    ช่วงวันของปฏิทิน (ผู้เรียกตรวจ/บีบช่วงมาแล้ว) · today = วันไทย (`businessDate`)
  * @returns `{ visits, overdue, sentBack }`

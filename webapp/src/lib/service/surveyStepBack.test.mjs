@@ -63,6 +63,41 @@ test('นัดชนิดอื่น/ไม่มีใบต้นเรื�
   assert.equal(surveyStepBackPlan({ visit: visit(), before: scheduled, request: null }), null);
 });
 
+/* ── ใบที่ไม่ต้องมีนัด (ประเมินจากแบบทั้งใบ · mig 0408) ไม่ถอยขั้น ─────────────────────
+   วันบนใบแบบนี้คือ **วันส่งผลที่หัวหน้ารับปาก** ไม่ใช่วันนัด — นัดเก่าที่ยังค้าง "กำลังทำ" ตอนใบพลิกเป็น
+   งานโต๊ะ (ช่างตัดพื้นที่ลงหน้างานพื้นที่สุดท้าย) ปิดเป็น "เข้าไม่ได้" ทีหลังได้ ⇒ ต้องไม่ล้างคำสัญญานั้น
+   (แผน survey-desk-assessment §2 แถว 36 ③) */
+test('🔴 ใบงานโต๊ะไม่ถอยขั้น — needsVisit: false = null · ไม่ส่ง / true = แผนเดิมทุกตัวอักษร', () => {
+  const args = { visit: visit(), before: scheduled, request: request() };
+  const today = {
+    patch: { committedDueDate: null, committedDueTime: null },
+    reason: 'อาคารไม่อนุญาตให้เข้าวันหยุด',
+    previousDueDate: '2026-09-20',
+  };
+  assert.equal(surveyStepBackPlan({ ...args, needsVisit: false }), null);
+  // ผู้เรียกเดิมที่ไม่รู้จักคีย์นี้ = พฤติกรรมเดิม
+  assert.deepEqual(surveyStepBackPlan(args), today);
+  assert.deepEqual(surveyStepBackPlan({ ...args, needsVisit: true }), today);
+  assert.deepEqual(surveyStepBackPlan({ ...args, needsVisit: undefined }), today);
+  // เฉพาะ `false` ตรงตัวเท่านั้นที่หยุด — ค่าที่อ่านไม่ได้ไม่ทำให้ใบลงหน้างานเลิกถอยขั้นเงียบ ๆ
+  assert.deepEqual(surveyStepBackPlan({ ...args, needsVisit: null }), today);
+  assert.deepEqual(surveyStepBackPlan({ ...args, needsVisit: 0 }), today);
+});
+
+test('needsVisit ไม่ได้เปิดทางใหม่ — เคสที่ไม่ถอยอยู่แล้วยังไม่ถอย ไม่ว่าส่งค่าไหน', () => {
+  for (const needsVisit of [true, false, undefined]) {
+    assert.equal(surveyStepBackPlan({ visit: visit(), before: visit(), request: request(), needsVisit }), null);
+    assert.equal(
+      surveyStepBackPlan({ visit: visit({ kind: 'refill' }), before: scheduled, request: request(), needsVisit }),
+      null,
+    );
+    assert.equal(
+      surveyStepBackPlan({ visit: visit(), before: scheduled, request: request({ committedDueDate: null }), needsVisit }),
+      null,
+    );
+  }
+});
+
 /* 🔴 SA ต้องได้ **เหตุผล** ไม่ใช่รู้แค่ว่าวันหาย (แผน §5E ②) */
 test('🔴 ข้อความในเธรดต้องมีทั้งเหตุผลและวันเดิม', () => {
   const body = surveyStepBackBody({ reason: 'อาคารปิดปรับปรุง', previousDueDate: '2026-09-20' });

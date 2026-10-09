@@ -12,17 +12,26 @@
 // ⭐ **ตัวตัดสินชุดเดียวของจอกับ server** (`surveySendVisitStep`) — โมดัลยืนยันบอกว่าจะปิดนัดไหน
 //    ด้วยคำตอบเดียวกับที่ route ใช้ปิดจริง · เขียนแยกเมื่อไร โมดัลจะสัญญาอย่างหนึ่งแล้วทำอีกอย่าง
 //
+// ⭐ **รู้จักวิธีประเมินรายพื้นที่** (ประเมินจากแบบ · mig 0408) — ผู้เรียกทุกตัวส่ง `needsVisit`
+//    (= `surveyNeedsVisit` ของแถวพื้นที่) · ใบงานโต๊ะไม่ปิดนัดที่ยังไม่มีใครไปเป็น "เข้าแล้ว"
+//    · ด่าน "พื้นที่ลงหน้างานต้องมีนัดที่เข้าพื้นที่" (`surveySendSiteVisitError`) อยู่ไฟล์นี้เพราะเป็นเรื่องของ **นัด**
+//      ไม่ใช่ด่านรายหัวข้อของพื้นที่ — ชุดหกข้อยังอยู่ที่ `survey.js` ที่เดียวเหมือนเดิม
+//
 // 🔴 **ไม่ประทับเวลาจบเป็นเวลาที่กดส่งผล** — วันส่งผล ≠ วันเข้าพื้นที่ (มติ 21/09) ห่างกันได้หลายวัน
 //    ⇒ เวลาจบ "ตอนนี้" = ชั่วโมงงานเพี้ยน และถ้าเช้ากว่าเวลาเริ่ม ฐานตีกลับ · เก็บเวลาที่ช่างประทับไว้จริงเท่านั้น
 // 🔴 **ปิดเป็น "เข้าแล้ว" อย่างเดียว** — จอประเมินไม่มี "ทำไม่ครบ" (พื้นที่ที่วัดไม่ได้ใช้ "ตัดพื้นที่นี้ออก")
 //    และนัดที่ "ทำไม่ได้" ผ่านด่านส่งผลไม่ได้อยู่แล้ว (ไม่มีขนาด/รูป) · ห้ามเดาเป็นสถานะอื่น
 import { fmtDate } from '@/lib/format';
+import { surveyZoneName } from './survey';
+import { isDrawingZone, surveyMethodMix, surveyNeedsVisit } from './surveyMethod';
 import { VISIT_STATUS_LABELS, isOpenVisit } from './visitStatus';
 
 /** สถานะที่ส่งผลปิดให้ได้ — ชุดเดียวกับ `isOpenVisit` (เงื่อนไขของคำสั่ง update ต้องตรงกับตัวตัดสิน) */
 export const SEND_CLOSABLE_VISIT_STATES = ['scheduled', 'in_progress'];
 
 const codeOf = (visit) => visit?.code || visit?.id || 'นัด';
+// กติกาเดียวกับ `isCut` ใน `survey.js` — ไม่มี status = ยังใช้อยู่
+const isCut = (row) => (row?.status || 'ok') === 'cut';
 const dayOf = (value) => (value ? String(value).slice(0, 10) : null);
 const timeOf = (value) => (value ? String(value).slice(0, 5) : null);
 /* ลิสต์ข้อความที่มาจากนอกไฟล์ (body ของคำขอ · ผลของตัวตรวจ) — เก็บเฉพาะสตริงที่มีเนื้อ ไม่ตัด ไม่แก้ตัวอักษร */
@@ -33,16 +42,35 @@ const textList = (value) => (Array.isArray(value) ? value : []).filter((t) => ty
  *
  * @param visit   นัดที่ **ยังกินสิทธิ์ของใบ** (`findSurveyVisit(…, { openOnly: true })`) หรือ null
  * @param today   วันไทยวันนี้ `YYYY-MM-DD` (`businessDate()` ของผู้เรียก — ไฟล์นี้ไม่อ่านนาฬิกาเอง)
+ * @param needsVisit  ใบนี้ต้องมีนัดลงหน้างานไหม — `surveyNeedsVisit(แถวพื้นที่ของใบ)` (mig 0408 · ประเมินจากแบบ)
+ *   🔴 **บังคับส่ง ไม่มีค่าตั้งต้น** — ไม่ใช่ boolean = โยน `TypeError` ทันที · ผู้เรียกที่ลืมต้องแดงในเทสต์ของตัวเอง
+ *      ไม่ใช่ถูกเดาเป็น "ต้องมีนัด" แล้วปิดนัดของใบงานโต๊ะเป็น "เข้าแล้ว" เงียบ ๆ
  *
  * - `none`  — ไม่มีนัดค้าง / นัดปิดไปแล้ว (เข้าแล้ว · ทำไม่ได้ · ยกเลิก · เลื่อนแล้ว) ⇒ ไม่แตะนัด
  * - `block` — นัดยังเป็น **ร่าง** (ยังไม่ขึ้นตารางช่าง) ⇒ ส่งผลไม่ได้ พร้อมทางออก
  *   ⚠️ ปิดร่างเป็น "เข้าแล้ว" = บันทึกว่าไปหน้างานทั้งที่นัดไม่เคยขึ้นตารางใคร · ยกเลิกร่างให้เอง = ตัดสินแทนผู้จัดคิว
  * - `close` — นัดนัดไว้/กำลังทำ ⇒ ปิดเป็น "เข้าแล้ว" ไปพร้อมกัน · `patch` ไม่มีคีย์เวลาเลย (เวลาที่ช่างประทับไว้อยู่ครบ)
  *   · วันเข้าจริง = ที่ช่างกดเริ่มไว้ · ไม่เคยกดเริ่ม = วันนัด (วันนัดยังไม่มาถึง = วันนี้ — ไปวัดก่อนวันนัด)
+ *
+ * ⭐ **ใบงานโต๊ะ (`needsVisit === false` = ประเมินจากแบบทั้งใบ)** — นัดที่ยังเปิดคือของค้างจากก่อนสลับวิธี:
+ *   · ร่าง **และนัดไว้** = `block` — ยังไม่มีใครไปหน้างาน ⇒ ปิดเป็น "เข้าแล้ว" = บันทึกการเข้าพื้นที่ที่ไม่เคยเกิด
+ *     บนใบที่ไม่ต้องมีใครไป · ทางออกคือยกเลิกนัดผ่าน "เปลี่ยนวิธีประเมิน" (ประโยคบอกรหัสนัดและทางออก)
+ *   · กำลังทำ = `close` ด้วย patch ชุดเดิม — ช่างกดเริ่มที่หน้างานไปแล้วจริง
+ *   · นอกนั้น (ไม่มีนัด · ปิดไปแล้ว) = `none`
  */
-export function surveySendVisitStep(visit, { today = null } = {}) {
+export function surveySendVisitStep(visit, { today = null, needsVisit } = {}) {
+  if (typeof needsVisit !== 'boolean') {
+    throw new TypeError('surveySendVisitStep: ต้องส่ง needsVisit เป็น true/false — คำนวณจาก surveyNeedsVisit(แถวพื้นที่ของใบ)');
+  }
   if (!visit) return { action: 'none', visit: null };
   const code = codeOf(visit);
+  if (!needsVisit && (visit.status === 'draft' || visit.status === 'scheduled')) {
+    return {
+      action: 'block',
+      visit,
+      error: `ใบนี้ประเมินจากแบบทั้งใบ แต่นัด ${code} ยังเปิดอยู่ — กด “เปลี่ยนวิธีประเมิน” แล้วยืนยันยกเลิกนัดก่อนส่งผล (ระบบจะไม่ปิดนัดที่ยังไม่มีใครไปเป็น “เข้าแล้ว” ให้)`,
+    };
+  }
   if (visit.status === 'draft') {
     return {
       action: 'block',
@@ -248,6 +276,36 @@ async function namedVisitGoneError(supabase, { requestId, closeVisitId }) {
   return { error: visitMovedError(current?.code || closeVisitId, current, 'หลังเปิดหน้า'), status: 409 };
 }
 
+const SEND_ALREADY_ANSWERED = 'ใบนี้ถูกส่งผลไปแล้ว — โหลดหน้าใหม่เพื่อดูผลล่าสุด';
+const SEND_METHOD_MOVED = 'วิธีประเมินของใบเปลี่ยนไปแล้ว — โหลดหน้าใหม่แล้วตรวจอีกครั้ง';
+
+/**
+ * ประโยค 409 ของ "เขียนไม่ติดแถวที่ผูก `updatedAt` ไว้" — อ่านซ้ำแค่ `answeredAt` เพื่อเลือกประโยค
+ *   ยังว่าง = แถวถูกแตะหลัง route อ่าน (สลับวิธีประเมิน) ⇒ ให้โหลดหน้าใหม่แล้วตรวจด่านของวิธีใหม่
+ * ⚠️ อ่านซ้ำไม่สำเร็จ / ใบหายไป = ประโยคเดิม — ไม่กล่าวว่าวิธีประเมินเปลี่ยนตอนที่ไม่รู้ (supabase ไม่ throw)
+ */
+async function sendMissError(supabase, requestId) {
+  const { data: current, error: readError } = await supabase
+    .from('dept_requests').select('id, "answeredAt"').eq('id', requestId).maybeSingle();
+  return !readError && current && !current.answeredAt ? SEND_METHOD_MOVED : SEND_ALREADY_ANSWERED;
+}
+
+/**
+ * **จองแถวคำร้องให้การส่งผลครั้งนี้** — แตะ `updatedAt` เป็น `nowIso` เฉพาะแถวที่ยังไม่ตอบและยังถือ `expectUpdatedAt`
+ *   คืน `null` = จองได้ · `{ error, status }` = ตีกลับ (ยังไม่ได้เขียนอะไร)
+ * ⚠️ เขียนแค่ `updatedAt` — ไม่มีคอลัมน์ไหนของใบเปลี่ยนความหมาย · ล้มหลังจากนี้ ใบยังส่งผลซ้ำได้ (จอโหลดใหม่ได้ค่าใหม่)
+ * ⚠️ supabase ไม่ throw — ตรวจ `{ error }` เอง
+ */
+async function claimRequestForSend(supabase, { requestId, expectUpdatedAt, nowIso }) {
+  const { data, error } = await supabase
+    .from('dept_requests').update({ updatedAt: nowIso })
+    .eq('id', requestId).is('answeredAt', null).eq('updatedAt', expectUpdatedAt)
+    .select('id').maybeSingle();
+  if (error) return { error: error.message, status: 500 };
+  if (data) return null;
+  return { error: await sendMissError(supabase, requestId), status: 409 };
+}
+
 /**
  * 🔑 **ลำดับการเขียนทั้งหมดของปุ่มส่งผล** — ปิดนัด (ถ้ามี) **ก่อน** แล้วค่อยตอบใบ · คืน
  *   `{ request, closedVisit }` เมื่อสำเร็จ หรือ `{ error, status }` (ยังไม่ได้ตอบใบ ⇒ กดซ้ำได้เสมอ)
@@ -262,11 +320,23 @@ async function namedVisitGoneError(supabase, { requestId, closeVisitId }) {
  * @param answerPatch   คอลัมน์ที่จะเขียนลงใบ (`answeredAt` · สถานะจาก `closureStatus` ฯลฯ) — ผู้เรียกประกอบ
  * @param onVisitClosed เรียก **ทันทีหลังปิดนัดสำเร็จ ก่อนตอบใบ** (เธรด/audit ของนัด) — ใบตอบไม่สำเร็จแล้วกดซ้ำ
  *                      รอบสองไม่ได้ปิดนัดเอง ⇒ ถ้าเลื่อนไปเขียนหลังตอบใบ บรรทัด "ปิดพร้อมส่งผล" จะหายถาวร
+ * @param needsVisit    ใบนี้ต้องมีนัดไหม (`surveyNeedsVisit` ของแถวที่ด่านเพิ่งอ่าน) — ส่งต่อให้ `surveySendVisitStep` · บังคับส่ง
+ * @param expectUpdatedAt `updatedAt` ของแถวคำร้อง **ตามที่ route อ่านมาก่อนอ่านด่าน** — ส่งผลได้เฉพาะแถวที่ยังถือค่านี้
+ *                      🔑 เส้นสลับวิธีประเมินแตะ `updatedAt` ของใบเป็นก้าวแรก ⇒ สลับระหว่าง "อ่านด่าน" กับ "ตอบใบ"
+ *                         = 409 แทนที่จะตอบด้วยด่านของวิธีเก่า
+ *                      🔑 **จองแถวเป็นคำสั่งเขียนแรก** (`claimRequestForSend` — แตะ `updatedAt` เป็น `nowIso` แบบมีเงื่อนไข)
+ *                         **ก่อนปิดนัด** ⇒ จองไม่ติด = ยังไม่ได้เขียนอะไรเลย กดซ้ำหลังโหลดใหม่ได้ · แล้วคำสั่งตอบใบผูกกับ
+ *                         `nowIso` ที่เพิ่งจอง · 🐞 เดิมผูกเฉพาะคำสั่งตอบใบ (หลังปิดนัด) ⇒ ใบที่เพิ่งพลิกเป็นงานโต๊ะ
+ *                         ได้นัด "เข้าแล้ว" ที่ไม่มีใครไป (ผิดแถว 17) แล้วเส้นสลับวิธีก็ยกเลิกนัดนั้นไม่เจออีก
+ *                      ⚠️ หน้าต่างที่เหลือ (แถวถูกแตะระหว่างจองกับตอบใบ) = สภาพ "นัดปิดแล้ว ใบยังไม่ตอบ" แบบเดิม — ไม่ใช่ transaction
+ *                      ⚠️ ทำเฉพาะเมื่อเป็นสตริงที่มีเนื้อ — ไม่ส่ง/แถวไม่มีค่า = คำสั่งเดิมทุกตัวอักษร ไม่มีคำสั่งจอง
+ *                         (route ส่งมาเฉพาะตอนเปิดสวิตช์ `SURVEY_DRAWING_METHOD` — ปิดอยู่ไม่มีเส้นไหนสลับวิธีได้)
  */
 export async function surveySendWrites(supabase, {
   requestId, open = null, closeVisitId = null, answerPatch, today = null, nowIso, onVisitClosed = null,
+  needsVisit, expectUpdatedAt = null,
 } = {}) {
-  const step = surveySendVisitStep(open, { today });
+  const step = surveySendVisitStep(open, { today, needsVisit });
   if (step.action === 'block') return { error: step.error, status: 409 };
   /* 🔑 **ผูกกับนัดที่โมดัลบอกไว้** — โมดัลเขียนว่า "ปิดนัด SV-… ไปพร้อมกัน" ⇒ ต้องเป็นนัดตัวนั้นจริง
      · จอที่โหลดไว้ก่อนมีนัดค้าง (หรือจอรุ่นก่อนมติที่ไม่รู้ว่าจะปิดนัด) ไม่ส่งรหัสมา ⇒ ต้องโหลดใหม่ให้เห็นก่อน
@@ -280,6 +350,14 @@ export async function surveySendWrites(supabase, {
     if (gone) return gone;
   }
 
+  /* 🔑 **จองแถวที่ด่านเพิ่งตัดสิน ก่อนเขียนอย่างอื่น** (ประเมินจากแบบ แถว 19 ②) — ดู `expectUpdatedAt`
+     จองไม่ติด = ตีกลับตรงนี้ นัดยังไม่ถูกแตะ */
+  const pinned = typeof expectUpdatedAt === 'string' && expectUpdatedAt !== '';
+  if (pinned) {
+    const claim = await claimRequestForSend(supabase, { requestId, expectUpdatedAt, nowIso });
+    if (claim) return claim;
+  }
+
   const closing = await closeSurveyVisitForSend(supabase, { step, nowIso });
   if (closing.error) return { error: closing.error, status: closing.status || 500 };
   const closedVisit = closing.closed;
@@ -287,9 +365,11 @@ export async function surveySendWrites(supabase, {
 
   /* 🔑 **ตอบได้ครั้งเดียว** (`.is('answeredAt', null)`) — หัวหน้าสองคนกดพร้อมกันเคยได้ "ตอบแล้ว" สองรอบ
      (กระดิ่งถึงฝ่ายขายสองเด้ง ตัวเลขเดียวกัน) · คนที่มาช้าได้ 409 แทน */
-  const { data, error } = await supabase
-    .from('dept_requests').update(answerPatch).eq('id', requestId).is('answeredAt', null)
-    .select().maybeSingle();
+  /* 🔑 **และต้องเป็นแถวที่เพิ่งจองไว้** (`.eq('updatedAt', nowIso)` · ประเมินจากแบบ แถว 19 ②) — ดู `expectUpdatedAt` */
+  let answer = supabase
+    .from('dept_requests').update(answerPatch).eq('id', requestId).is('answeredAt', null);
+  if (pinned) answer = answer.eq('updatedAt', nowIso);
+  const { data, error } = await answer.select().maybeSingle();
   if (error) {
     return {
       error: closedVisit
@@ -299,8 +379,39 @@ export async function surveySendWrites(supabase, {
       closedVisit,
     };
   }
-  if (!data) return { error: 'ใบนี้ถูกส่งผลไปแล้ว — โหลดหน้าใหม่เพื่อดูผลล่าสุด', status: 409, closedVisit };
+  if (!data) {
+    /* ตอบไม่ติดแถว — เมื่อจองไว้มีสองเหตุ: มีคนตอบไปก่อน หรือแถวถูกแตะหลังจอง ⇒ `sendMissError` เลือกประโยค
+       ⚠️ ไม่ได้จอง = เหตุเดียว (ตอบไปแล้ว) ⇒ ไม่อ่านซ้ำ คำสั่งชุดเดิม */
+    const miss = pinned ? await sendMissError(supabase, requestId) : SEND_ALREADY_ANSWERED;
+    return { error: miss, status: 409, closedVisit };
+  }
   return { request: data, closedVisit: closedVisit || null };
+}
+
+/**
+ * 🔑 **ด่านส่งผล: พื้นที่ลงหน้างานต้องมีนัดที่เข้าพื้นที่จริง** (ประเมินจากแบบ แถว 17a) — `null` = ผ่าน ·
+ *    ข้อความ 409 เมื่อใบยังมีพื้นที่ลงหน้างาน แต่ไม่มีนัดไหนของใบไปถึงไซต์
+ *
+ * 🐞 ปิดรูเดิม: พิมพ์ขนาดจากโต๊ะ แนบไฟล์อะไรก็ได้เป็น "ภาพกว้าง" แล้วส่งเป็นงานลงหน้างานทั้งที่ไม่มีใครไป —
+ *    `surveySendVisitStep` ตอบ `none` ทั้งตอนไม่มีนัดและตอนนัด "ทำไม่ได้/ยกเลิก" และไม่มีด่านไหนถามต่อ
+ *    ⇒ เมื่อมีทางที่ซื่อตรง (สลับพื้นที่เป็นประเมินจากแบบ) ทางอ้อมนี้ต้องปิด · ประโยคบอกทางออกทั้งสองทาง
+ *
+ * @param rows         แถวผลวัดทุกแถวของใบ (รวมที่ถูกตัด)
+ * @param reachedSite  ใบมีนัดที่ **เข้าพื้นที่แล้ว** (เข้าแล้ว · ทำไม่ครบ) อย่างน้อยหนึ่งนัด
+ * @param closesVisit  การส่งผลครั้งนี้ปิดนัดที่ยังเปิดเป็น "เข้าแล้ว" (`surveySendVisitStep(...).action === 'close'`)
+ *
+ * ผ่านเมื่อ: ใบไม่ต้องมีนัด (`surveyNeedsVisit`) · ไม่เหลือพื้นที่ลงหน้างานที่ยังใช้อยู่ (ตัดหมดทั้งใบ — ไม่มีอะไรให้ไปวัด)
+ *   · มีนัดที่เข้าพื้นที่แล้ว · หรือส่งผลนี้ปิดนัดให้
+ * ⚠️ เอ่ยเฉพาะ **พื้นที่ลงหน้างานที่ยังใช้อยู่** สามชื่อแรก ที่เหลือนับเป็น "และอีก n พื้นที่" — พื้นที่จากแบบไม่ใช่เหตุ
+ * 🔴 **ไม่อ่านสวิตช์ `SURVEY_DRAWING_METHOD` เอง** — ไฟล์นี้ถูก import จากจอ · route เป็นคนเลือกว่าจะถามด่านนี้ไหม
+ *    (เปิดพร้อมปุ่มสลับวิธี: วันที่มีคำปฏิเสธ ต้องมีทางออกให้กดด้วย)
+ */
+export function surveySendSiteVisitError(rows, { reachedSite = false, closesVisit = false } = {}) {
+  if (reachedSite || closesVisit) return null;
+  if (!surveyNeedsVisit(rows) || surveyMethodMix(rows).onsite === 0) return null;
+  const names = rows.filter((row) => row && !isCut(row) && !isDrawingZone(row)).map(surveyZoneName);
+  const more = names.length > 3 ? ` และอีก ${names.length - 3} พื้นที่` : '';
+  return `ใบนี้มีพื้นที่ลงหน้างาน (${names.slice(0, 3).join(' · ')}${more}) แต่ยังไม่มีนัดที่เข้าพื้นที่ — ลงคิวก่อน หรือเปลี่ยนพื้นที่นั้นเป็นประเมินจากแบบ`;
 }
 
 /* ══ ส่งผล = ออกเอกสารประเมินด้วย (PR-2 §2 · สวิตช์ `SURVEY_REPORT_ISSUE_AT_SEND`) ══════════════════

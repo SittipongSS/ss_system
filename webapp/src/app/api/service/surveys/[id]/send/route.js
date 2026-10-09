@@ -28,6 +28,14 @@
 //      (ปุ่ม "ออกเอกสาร" ของ route เอกสาร)
 //   ⚠️ ของในไฟล์นี้ที่มีผลไม่ว่าสวิตช์เปิดหรือปิด (§0): ฐานของส่วนต่างรอบก่อน + `meta.totals` บนแถวคำตอบ (S7) ·
 //      `meta.closedBySend` บนบรรทัดเธรดของนัด (S6)
+//
+// ⭐ **รู้จักวิธีประเมินรายพื้นที่** (ประเมินจากแบบ · mig 0408 · งวด S1)
+//   🔑 `needsVisit` (= `surveyNeedsVisit` ของแถวพื้นที่) คิดครั้งเดียวหลังอ่านผลวัด แล้วส่งให้ทุกที่ที่ถามเรื่องนัด —
+//      ใบงานโต๊ะ (จากแบบทั้งใบ) ไม่ปิดนัดที่ยังไม่มีใครไปเป็น "เข้าแล้ว" · ใบลงหน้างานล้วนได้ `true` = เส้นเดิมทุกก้าว
+//   🔑 ด่าน "พื้นที่ลงหน้างานต้องมีนัดที่เข้าพื้นที่" (แถว 17a) ทำงาน **เฉพาะตอนเปิดสวิตช์ `SURVEY_DRAWING_METHOD`**
+//      (`surveyDrawingMethodEnabled`) — ปิดอยู่ = ไม่อ่านนัดเพิ่ม ไม่ตรวจ
+//   🔑 การส่งผลผูกกับ `updatedAt` ที่อ่านมาตอนต้น (แถว 19 ② · `expectUpdatedAt`) **เฉพาะตอนเปิดสวิตช์เดียวกัน** —
+//      จองแถวเป็นคำสั่งเขียนแรก ก่อนปิดนัด · ปิดอยู่ = ไม่จอง ไม่ผูก คำสั่งเขียนชุดเดิม
 import { recordAudit } from '@/lib/audit';
 import { appendRequestEvent } from '@/lib/sales/documentThread';
 import { appendUpdate } from '@/lib/master/updates';
@@ -42,11 +50,14 @@ import { surveyPackageSizeSendError } from '@/lib/service/packageSizes';
 import { loadPackageSizesOrNull } from '@/lib/service/packageSizesRepo';
 import { loadSurveyZones } from '@/lib/service/surveyRepo';
 import { findSurveyVisit } from '@/lib/service/surveyVisit';
+import { surveyDrawingMethodEnabled } from '@/lib/service/surveyDrawingFlag';
+import { surveyNeedsVisit } from '@/lib/service/surveyMethod';
 import { surveyReportIssueAtSend } from '@/lib/service/surveyReportRows';
 import {
   SURVEY_SEND_OLD_PAGE_ERROR, SURVEY_SEND_PREFLIGHT_MS, SURVEY_SEND_REPORT_FAILED, SURVEY_SEND_REPORT_OFF,
   SURVEY_SEND_WARNINGS_CHANGED_ERROR, surveySendCloseBody, surveySendDiffBaseline, surveySendDocumentRefusal,
-  surveySendImageRefusal, surveySendReport, surveySendUnseenWarnings, surveySendVisitStep, surveySendWrites,
+  surveySendImageRefusal, surveySendReport, surveySendSiteVisitError, surveySendUnseenWarnings, surveySendVisitStep,
+  surveySendWrites,
 } from '@/lib/service/surveySendClose';
 import {
   surveyChangeCounts, surveyChangeText, surveyPackagesText, surveySendError, surveyTotals, surveyTotalsDiff,
@@ -102,15 +113,16 @@ async function surveySendPreflight(supabase, requestId) {
  * S5 — **เหตุที่เอกสารออกไม่ได้เพราะเนื้อของใบ** · คืนประโยค 409 หรือ `null` (ส่งผลต่อได้)
  *
  * 1. นัดที่ค้างยังเป็นร่าง → ประโยคของ `surveySendVisitStep` เอง (ประโยคเดียวกับที่ลำดับการเขียนตอบ — ถ้าไม่ดักตรงนี้
- *    ตัวตรวจข้างล่างจะแทนด้วย "ไม่พบนัดประเมิน" ซึ่งชี้ผิดทาง)
+ *    ตัวตรวจข้างล่างจะแทนด้วย "ไม่พบนัดประเมิน" ซึ่งชี้ผิดทาง) · ใบงานโต๊ะที่ยังมีนัดร่าง/นัดไว้ค้าง = ประโยคของงานโต๊ะ
+ *    (`needsVisit` ตัวเดียวกับที่ด่านรูปจุดและลำดับการเขียนใช้ — สามที่ต้องตอบเรื่องนัดตรงกัน)
  * 2. server เจอคำเตือนที่จอไม่ได้ส่งมาใน `seenWarnings` → ให้โหลดหน้าใหม่ (หัวหน้าต้องได้อ่านก่อนเอกสารถูกตรึง)
  * 3. เหตุชนิด `content` ของตัวตรวจ (ผังเป็น PDF/HEIC/BMP · ไม่มีนัดที่ปิด/ไม่มีวัน/ไม่มีผู้ประเมิน · หน้าล้น) → ตีกลับ
  * 🔴 ตัวตรวจอ่านไม่ครบ (`unknown`) หรือโยน = **ข้ามข้อ 2 กับ 3** แล้วลง log — ปัญหาของระบบไม่ขวางการส่งผล
  */
 async function surveySendDocumentError(supabase, {
-  request, user, zones, filesByZone, open, today, nowIso, seenWarnings,
+  request, user, zones, filesByZone, open, today, nowIso, seenWarnings, needsVisit,
 }) {
-  const step = surveySendVisitStep(open, { today });
+  const step = surveySendVisitStep(open, { today, needsVisit });
   if (step.action === 'block') return step.error;
   try {
     const { surveyReportPrecheck } = await import('@/lib/service/surveyReportInputs');
@@ -190,6 +202,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     /* 🔑 **ด่านหกข้อ — ตัวเดียวกับที่ปุ่มบนจอใช้** · ต้องอ่านไฟล์จริงมานับ
        ⚠️ ไม่มีไฟล์ = ยังไม่มีรูป ⇒ ปฏิเสธ (fail-closed) ไม่ใช่ปล่อยผ่านตอนไม่รู้ */
     const zones = await loadSurveyZones(supabase, id);
+    /* 🔑 **ใบนี้ต้องมีนัดลงหน้างานไหม** (ประเมินจากแบบ · mig 0408) — คิดจากแถวที่ด่านใช้ตัดสินชุดเดียวกันนี้ ครั้งเดียว
+       แล้วส่งให้ทุกที่ที่ถามเรื่องนัดข้างล่าง (ด่านรูปจุด · ด่านนัดเข้าพื้นที่ · ตัวตรวจเอกสาร · ลำดับการเขียน)
+       ⚠️ ใบลงหน้างานล้วน = `true` เสมอ ⇒ ทุกกิ่งข้างล่างเดินเหมือนก่อนมีวิธีประเมิน */
+    const needsVisit = surveyNeedsVisit(zones);
     const files = await Promise.all(
       zones.map((z) => listAttachments('service_survey_zone', z.id, supabase)),
     );
@@ -210,14 +226,31 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
           `surveySendVisitStep` ตัวเดียวกับที่ `surveySendWrites` ใช้ปิดจริงและที่การ์ดใช้บอกโมดัล
        ⚠️ ก่อนเขียนอะไรทั้งนั้น — ตีกลับหลังปิดนัดแล้ว = นัด "เข้าแล้ว" ทั้งที่ใบยังไม่ได้ส่ง */
     const open = await findSurveyVisit(supabase, id, { openOnly: true });
-    const closesVisit = surveySendVisitStep(open, { today }).action === 'close';
+    const closesVisit = surveySendVisitStep(open, { today, needsVisit }).action === 'close';
     const spotGate = surveySpotSendError(zones, filesByZone, { closesVisit });
     if (spotGate) return conflict(spotGate);
+
+    /* 🔑 **ด่านนัดเข้าพื้นที่ (ประเมินจากแบบ แถว 17a)** — ใบที่ยังมีพื้นที่ลงหน้างาน ต้องมีนัดที่เข้าพื้นที่แล้ว
+          (เข้าแล้ว · ทำไม่ครบ) หรือการส่งผลนี้ปิดนัดที่ยังเปิดให้ · ไม่งั้น 409 พร้อมทางออกสองทาง (`surveySendSiteVisitError`)
+       ⭐ **ทำงานเฉพาะตอนเปิดสวิตช์ `SURVEY_DRAWING_METHOD`** — คำปฏิเสธนี้ต้องมาพร้อมปุ่มสลับวิธีประเมิน (ทางออกที่ซื่อตรง)
+          ปิดอยู่ = ไม่อ่าน ไม่ตรวจ เส้นเดิมทุกก้าว
+       ⚠️ อ่านไม่สำเร็จ = 500 (supabase ไม่ throw) — ปล่อยผ่านตอนไม่รู้ = ด่านเปิดเอง · ตอบ 409 ตอนไม่รู้ = โทษใบที่อาจมีนัดครบ
+       ⚠️ ก่อนเขียนอะไรทั้งนั้น เหมือนด่านรูปจุดข้างบน */
+    if (surveyDrawingMethodEnabled()) {
+      const { data: reached, error: reachedError } = await supabase
+        .from('service_visits').select('id, status')
+        .eq('requestId', id).in('status', ['done', 'partial']).limit(1);
+      if (reachedError) return fail(reachedError.message, 500);
+      const siteVisitGate = surveySendSiteVisitError(zones, {
+        reachedSite: Array.isArray(reached) && reached.length > 0, closesVisit,
+      });
+      if (siteVisitGate) return conflict(siteVisitGate);
+    }
 
     /* S5 — เรื่องของเอกสารที่ตีกลับได้ ต้องตีกลับ **ตรงนี้** (ก่อนปิดนัด/ตอบใบ) · หลังบรรทัดนี้ไม่มีอะไรของเอกสารตีกลับอีก */
     if (issueAtSend) {
       const documentError = await surveySendDocumentError(supabase, {
-        request, user, zones, filesByZone, open, today, nowIso, seenWarnings: body.seenWarnings,
+        request, user, zones, filesByZone, open, today, nowIso, seenWarnings: body.seenWarnings, needsVisit,
       });
       if (documentError) return conflict(documentError);
     }
@@ -242,6 +275,13 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       answerPatch: patch,
       today,
       nowIso,
+      needsVisit,
+      /* 🔑 ส่งผลได้เฉพาะแถวที่ยังเป็นตัวเดียวกับที่อ่านมาตอนต้น (ประเมินจากแบบ แถว 19 ②) — เส้นสลับวิธีประเมินแตะ
+         `updatedAt` ของใบเป็นก้าวแรก ⇒ สลับระหว่าง "อ่านด่าน" กับ "ตอบใบ" = 409 ให้โหลดใหม่ ไม่ใช่ตอบด้วยด่านของวิธีเก่า
+         ⭐ **ผูกเฉพาะตอนเปิดสวิตช์ `SURVEY_DRAWING_METHOD`** — ปิดอยู่ไม่มีเส้นไหนสลับวิธีได้ จึงไม่มีอะไรให้กัน
+            และการผูกไม่ฟรี: คำสั่งเขียนอื่นที่แตะใบระหว่างส่ง (ลงคิว · ซิงก์วันจากนัด) จะทำให้การส่งผลของใบ
+            ลงหน้างานตีกลับด้วยประโยคเรื่องวิธีประเมิน ที่ผู้ใช้ยังมองไม่เห็น ⇒ ปิดอยู่ = คำสั่งเดิมทุกตัวอักษร */
+      expectUpdatedAt: surveyDrawingMethodEnabled() ? (request.updatedAt ?? null) : null,
       /* ⭐ ปิดทางนี้ต้องอ่านออกจากเธรดของนัด — ไม่งั้นนัดที่ไม่มีเวลาจบดูเหมือนระบบทำหาย
          ⚠️ ไม่ยิงกระดิ่ง "ช่างส่งงานแล้ว" — คนกดคือหัวหน้าเอง · ไม่ซิงก์วันกลับใบ — นัดที่ปิดไม่กินสิทธิ์ใบแล้ว
          ⚠️ `appendUpdate`/`recordAudit` กลืน error เอง — เขียนประวัติพลาดต้องไม่ลากการส่งผลล้มตาม */

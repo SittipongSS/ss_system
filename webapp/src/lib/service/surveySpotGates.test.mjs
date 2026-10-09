@@ -410,7 +410,7 @@ const src = (path) => readFileSync(new URL(path, import.meta.url), 'utf8')
 test('🐞 route ส่งผล: ถามด่านถาดตัวเดียวกับการ์ด · ปิดนัดหรือไม่มาจาก surveySendVisitStep ตัวเดียวกับที่ปิดจริง · ก่อนเขียนอะไร', () => {
   const route = src('../../app/api/service/surveys/[id]/send/route.js');
   assert.match(route, /surveySpotSendError\(zones, filesByZone, \{ closesVisit \}\)/);
-  assert.match(route, /const closesVisit = surveySendVisitStep\(open, \{ today \}\)\.action === 'close'/);
+  assert.match(route, /const closesVisit = surveySendVisitStep\(open, \{ today, needsVisit \}\)\.action === 'close'/);
   const gate = route.indexOf('surveySpotSendError(');
   assert.ok(gate > 0 && gate < route.indexOf('surveySendWrites('), 'ด่านต้องมาก่อนปิดนัด/ตอบใบ');
   assert.ok(route.indexOf('findSurveyVisit(') < gate, 'ต้องรู้ก่อนว่าส่งผลจะปิดนัดไหม');

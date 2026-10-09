@@ -13,7 +13,7 @@
 // DELETE : ร่างที่ยังไม่ส่ง (+ admin ?force=1 ผ่าน RPC)
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canBeServiceAssignee, canViewRequests } from '@/lib/permissions';
+import { canBeServiceAssignee, canSendSurveyResult, canViewRequests } from '@/lib/permissions';
 import {
   canForceDelete, cleanupRequestOrphans, isDryRun, isForceRequest, requestForcePreview,
 } from '@/lib/forceDelete';
@@ -83,13 +83,16 @@ import { toHHMM } from '@/lib/service/sites';
 import {
   normalizeSurveyCommittedResult, normalizeSurveyRequestedResult, normalizeSurveyTime,
 } from '@/lib/service/surveyRequest';
-import { loadSurveySite, materializeSurveyZones } from '@/lib/service/surveyRepo';
+import { loadSurveySite, loadSurveyZones, materializeSurveyZones } from '@/lib/service/surveyRepo';
+import { surveyNeedsVisit } from '@/lib/service/surveyMethod';
 import { loadSurveyRequestExtras } from '@/lib/service/surveyRequestExtras';
 /* ⚠️ เอกสารประเมิน (mig 0401): import ได้เฉพาะตัวอ่านแถว (`surveyReportRows`) — เส้นนี้เป็นของคำร้อง **ทุกหัวข้อ**
    ⇒ ห้ามลาก sharp / chromium / ตัวเรนเดอร์เข้ามาที่หัวไฟล์ (สเปก PR-2 มติ 24 · ด่าน `check-doc-tracing.mjs`) */
 import { surveyDocumentSummary, surveyReportVoided } from '@/lib/service/surveyReportRows';
 import {
-  createSurveyVisit, findSurveyVisit, moveSurveyVisit, surveyScheduleError,
+  SURVEY_DESK_COMMIT_FORBIDDEN, SURVEY_DESK_RESCHEDULE_FORBIDDEN, SURVEY_DESK_RESCHEDULE_REASON_ERROR,
+  createSurveyVisit, findSurveyVisit, moveSurveyVisit, surveyDeskCommitPatch, surveyDeskCommitSummary,
+  surveyDeskReschedulePatch, surveyDeskRescheduleSummary, surveyDeskResultDate, surveyScheduleError,
 } from '@/lib/service/surveyVisit';
 import { syncCostingPricingStatus } from '@/lib/costingAdmin';
 import { appendRequestEvent } from '@/lib/sales/documentThread';
@@ -278,6 +281,9 @@ export async function PATCH(request, { params }) {
   /* ลงคิวซ้ำเพราะนัดหาย/ปิดไปแล้ว — ประกาศชั้นนอกเพราะ **เธรด** ที่เขียนตอนท้าย route
      ต้องรู้ด้วย ไม่ใช่รู้แค่ตอนตรวจสิทธิ์ในบล็อก commit-due */
   let requeue = false;
+  /* ใบประเมินที่ **ไม่ต้องมีนัด** (ประเมินจากแบบทั้งใบ · mig 0408) — แจ้ง/เลื่อนวันเดินเส้น "วันส่งผล" ของหัวหน้า
+     ประกาศชั้นนอกด้วยเหตุผลเดียวกับ `requeue`: บล็อกนัดท้าย route ต้องรู้ว่าห้ามสร้าง/ขยับนัดให้ใบนี้ */
+  let desk = false;
   // กดส่ง = ต้องออกเลขที่คำร้องพร้อมบันทึกในทรานแซกชันเดียว (mig 0243) ไม่ใช่ใส่ลง patch
   let issueDocNo = false;
   /* รับเรื่อง = ออก **เลขที่เอกสาร PDR** (DDMMYY-XXX · mig 0271) พร้อมบันทึก
@@ -312,6 +318,18 @@ export async function PATCH(request, { params }) {
   let ackRowsWarning = null;
 
   try {
+    /* ⭐ **ใบประเมินที่ประเมินจากแบบทั้งใบ แจ้ง/เลื่อนวันคนละเส้น** (mig 0408 · แผน survey-desk-assessment §2 แถว 21–22)
+       ตัดสินจาก **แถวพื้นที่ที่ server อ่านเอง** (`surveyNeedsVisit`) ไม่ใช่จากธงที่จอส่งมา — การ์ดลงคิวเก่าหรือ
+       การยิง API ตรงใส่ใบงานโต๊ะ ต้องตกเส้นงานโต๊ะ ไม่ใช่ได้นัดไปขึ้นตารางช่าง
+       ⚠️ ถามหลังด่านฝ่าย (`canAnswerRequest`) เท่านั้น — คนนอกฝ่ายได้ 403 เดิมของก้าวนั้น ไม่มีการอ่านแถวพื้นที่
+       ⚠️ ใบที่ยังต้องมีนัด (ทุกใบเดิมของระบบ) ได้ `desk = false` ⇒ สาขา `commit-due` / `reschedule` เดิมเดินเหมือนเดิมทุกบรรทัด
+       🔴 **อ่านแถวพื้นที่ไม่สำเร็จ = โยน (500 · ยังไม่ได้เขียนอะไร กดใหม่ได้) โดยตั้งใจ** — ต่างจากการถอยขั้น/ซิงก์วันของ PATCH นัด
+          ที่เดินแบบ "ต้องมีนัด" เมื่ออ่านพลาด: ที่นี่เดาว่าเป็นใบลงหน้างาน = **สร้างนัดขึ้นตารางช่าง** ให้ใบที่ไม่มีใครต้องไป (ด่านเปิดเอง) */
+    if ((action === 'commit-due' || action === 'reschedule')
+      && requestNeedsRef(before.kind, 'site') && canAnswerRequest(user, before)) {
+      desk = !surveyNeedsVisit(await loadSurveyZones(supabase, id));
+    }
+
     if (action === 'submit') {
       if (!canManageRequest(user, before)) {
         return Response.json({ error: 'ส่งคำร้องได้เฉพาะผู้เปิดเรื่องหรือคนในทีมเดียวกัน' }, { status: 403 });
@@ -432,6 +450,30 @@ export async function PATCH(request, { params }) {
         }
       }
       summary = `รับเรื่อง ${before.docNo || id}`;
+    } else if (action === 'commit-due' && desk) {
+      /* ⭐ **รับปากวันส่งผลของใบที่ประเมินจากแบบทั้งใบ** (mig 0408 · แผน §2 แถว 21) — ใบนี้ไม่มีนัด ไม่มีช่าง
+         ⇒ ก้าว "ลงคิว" เหลือคำสัญญาเดียวคือ **วันส่งผล** และคนรับปากคือคนที่จะส่งผลเอง
+         🔴 **หัวหน้าฝ่ายเท่านั้น** (`canSendSurveyResult`) — ผู้จัดคิวผ่านด่านฝ่ายมาแล้ว (`desk` จริงได้เฉพาะหลังด่านนั้น)
+            แต่วันนี้ไม่ใช่วันบนตารางช่างที่เขาดูแล
+         ⚠️ `requeue` คงเป็น false และ **ไม่ถามหานัดเลย** — ใบงานโต๊ะที่ถือวันอยู่แล้วต้องไปทางเลื่อนวัน
+            ไม่มี "ลงคิวซ้ำเพราะนัดหาย" ให้กู้
+         ⚠️ ไม่ผ่าน `surveyScheduleError` · ไม่ค้นทะเบียนช่าง — วันนัด/เวลา/ช่างที่การ์ดเก่าพกมาใน body ไม่ถูกอ่าน
+         ข้อความกับรูปของ patch อยู่ที่ `surveyVisit.js` ที่เดียว — ที่นี่เรียกอย่างเดียว */
+      if (!canSendSurveyResult(user)) {
+        return Response.json({ error: SURVEY_DESK_COMMIT_FORBIDDEN }, { status: 403 });
+      }
+      const result = surveyDeskResultDate(body);
+      if (result.error) return Response.json({ error: result.error }, { status: 400 });
+      // ด่านของก้าวยังเป็นตัวเดิม (รับเรื่องแล้ว · ใบยังเปิด · ยังไม่เคยแจ้งวันของรอบนี้) — ต่างแค่วันที่ส่งเข้าไป
+      const err = commitDueRequestError(before, { committedDueDate: result.value, requeue: false });
+      if (err) return Response.json({ error: err }, { status: /ระบุวัน/.test(err) ? 400 : 409 });
+      const note = String(body.reason ?? '').trim();
+      if (note.length > 500) {
+        return Response.json({ error: 'เหตุผลยาวเกิน 500 ตัวอักษร' }, { status: 400 });
+      }
+      Object.assign(patch, surveyDeskCommitPatch({ date: result.value, user, nowIso }));
+      eventReason = note || null;
+      summary = surveyDeskCommitSummary({ date: result.value, user, note });
     } else if (action === 'commit-due') {
       /* ⭐ **แจ้งกำหนดส่ง** (มติผู้ใช้ 2026-08-19) — ก้าวที่สองของฝ่ายผู้รับ · แยกจาก
          การรับเรื่องเพราะของจริงคือ "รับไว้แล้ว แต่ยังตอบวันไม่ได้" (รอวัตถุดิบ ·
@@ -999,6 +1041,30 @@ export async function PATCH(request, { params }) {
         categoryLabel: (code) => categoryLabel(code, categories) || code,
       });
       summary = `แก้แบบฟอร์ม PDR ${before.docNo || id}${npdRowsNote ? ` · ${npdRowsNote}` : ''}`;
+    } else if (action === 'reschedule' && desk) {
+      /* ⭐ **เลื่อนวันส่งผลของใบที่ประเมินจากแบบทั้งใบ** (mig 0408 · แผน §2 แถว 22) — สองวันบนใบขยับพร้อมกัน
+         🔴 **ไม่ขยับและไม่สร้างนัด** (บล็อกนัดท้าย route ข้ามใบงานโต๊ะ) — 🐞 เส้นเดิมเลื่อนวันของใบที่ไม่มีนัดเปิด
+            = สร้างนัดจริงให้คนที่ชื่ออยู่บนใบ ซึ่งบนใบงานโต๊ะคือการส่งช่างไปหน้างานที่ไม่มีใครขอ
+         🔴 หัวหน้าฝ่ายเท่านั้น — ด่านเดียวกับตอนรับปาก (`desk` จริงได้เฉพาะหลังด่านฝ่าย)
+         ⚠️ **เหตุผลบังคับ** (เส้นเดิมไม่บังคับ) — ไม่มีเธรดของนัดให้เล่าแทน บรรทัดของใบคือที่เดียวที่ฝ่ายขายรู้ว่าทำไม
+         ⚠️ อ่านเฉพาะ `committedResultDate` — วันนัด/เวลาที่การ์ดเก่าพกมาไม่ถูกอ่าน */
+      if (!canSendSurveyResult(user)) {
+        return Response.json({ error: SURVEY_DESK_RESCHEDULE_FORBIDDEN }, { status: 403 });
+      }
+      const result = surveyDeskResultDate(body);
+      if (result.error) return Response.json({ error: result.error }, { status: 400 });
+      // ด่านทั้งชุดอยู่ที่ lib/requests/stages.js — route ไม่คิดกฎเอง
+      const err = rescheduleRequestError(before, { committedDueDate: result.value });
+      if (err) return Response.json({ error: err }, { status: /ระบุวัน/.test(err) ? 400 : 409 });
+      const reason = String(body.reason ?? '').trim();
+      if (!reason) return Response.json({ error: SURVEY_DESK_RESCHEDULE_REASON_ERROR }, { status: 400 });
+      if (reason.length > 500) {
+        return Response.json({ error: 'เหตุผลยาวเกิน 500 ตัวอักษร' }, { status: 400 });
+      }
+      Object.assign(patch, surveyDeskReschedulePatch({ date: result.value, nowIso }));
+      // ⚠️ ต้องส่งต่อให้เธรดด้วย ไม่ใช่จบที่ audit log — ดูเหตุผลที่ appendRequestEvent
+      eventReason = reason;
+      summary = surveyDeskRescheduleSummary({ before, date: result.value, reason });
     } else if (action === 'reschedule') {
       // ⭐ **เลื่อนวันกำหนดส่ง** — RD แจ้งวันไปแล้วเปลี่ยนใจได้ (มติผู้ใช้)
       // ⚠️ ใบที่ยังไม่เคยแจ้งวันไปทาง `commit-due` — ด่านที่ `stages.js` กันไว้แล้ว
@@ -1487,7 +1553,9 @@ export async function PATCH(request, { params }) {
       if (visitWarning) console.error('[requests] สายนัดประเมิน:', visitWarning);
     }
 
-    if (requestNeedsRef(before.kind, 'site') && (action === 'commit-due' || action === 'reschedule')) {
+    /* 🔴 **ใบที่ประเมินจากแบบทั้งใบ (`desk`) ไม่ผ่านบล็อกนี้เลย** — ไม่ขยับ ไม่สร้างนัด (mig 0408 · แผน §2 แถว 21–22)
+       วันบนใบแบบนั้นคือวันส่งผล ไม่ใช่วันที่ใครต้องไปหน้างาน */
+    if (requestNeedsRef(before.kind, 'site') && (action === 'commit-due' || action === 'reschedule') && !desk) {
       try {
         /* ⚠️ ค่าที่นัดต้องใช้ หยิบจาก **ใบหลังแก้** เสมอ — `reschedule` เลื่อนวันอย่างเดียว
            ไม่ได้ส่งเจ้าหน้าที่มาด้วย ⇒ อ่านจากค่าที่ใบถือไว้ตั้งแต่ลงคิว
@@ -1608,9 +1676,15 @@ export async function PATCH(request, { params }) {
         reason: patch.cancelReason ?? patch.bounceReason ?? eventReason,
         pdrChanges,
         // วันเดิมก่อนเลื่อน — อ่านจาก `before` เพราะ `after` ถูกทับไปแล้ว
-        previousDueDate: before.committedDueDate ?? null,
+        /* ใบประเมินจากแบบทั้งใบ (`desk`): "เดิม" = วันส่งผลที่ฝ่ายขายถืออยู่ก่อน ไม่มีค่อยดูวันบนใบ
+           (ลำดับเดียวกับ `surveyDeskRescheduleSummary`) · ใบอื่นทุกใบ = บรรทัดเดิม */
+        previousDueDate: desk
+          ? (before.committedResultDate ?? before.committedDueDate ?? null)
+          : (before.committedDueDate ?? null),
         // ลงคิวซ้ำเพราะนัดหาย/ปิดไปแล้ว ≠ รอบแก้ของผู้ขอ — เธรดต้องเล่าคนละเรื่อง
         requeue,
+        // ใบงานโต๊ะ: บรรทัดเธรดเล่าเป็น "วันส่งผล" (mig 0408) — จริงได้เฉพาะสองก้าว commit-due / reschedule
+        desk,
         // ⚠️ อ่านจาก `patch` ไม่ใช่ `body` — ตอนถอนมอบหมาย `patch` เป็น null ชัดเจน
         // ส่วน body อาจไม่ส่งคีย์มาเลย แล้วเธรดจะเขียนว่า "มอบหมายให้ undefined"
         assigneeName: patch.assigneeName ?? null,

@@ -119,13 +119,18 @@ function middleStep(request) {
 /* ── รางของงานหน้างาน (`fieldRail` · ประเมินพื้นที่ · มติเจ้าของ 25/09) ───────────────
    ⭐ ขั้นกลางเดินตาม **นัด** ไม่ใช่ตาใครพิมพ์ในเธรด: ยังไม่มีนัดที่ใช้ได้ = ลงคิว/นัด ·
       นัดยังมีชีวิต = เข้าพื้นที่ · ช่างไปถึงไซต์แล้ว (เข้าแล้ว/ทำไม่ครบ) = ส่งผล
-   ⚠️ นัด "เข้าไม่ได้/ยกเลิก/เลื่อนแล้ว" = กลับไปขั้นลงคิว (ต้องลงคิวใหม่) — กติกาเดียวกับ `surveyQueueStep` */
+   ⚠️ นัด "เข้าไม่ได้/ยกเลิก/เลื่อนแล้ว" = กลับไปขั้นลงคิว (ต้องลงคิวใหม่) — กติกาเดียวกับ `surveyQueueStep`
+   ⭐ **งานโต๊ะ** (ทุกพื้นที่ประเมินจากแบบ · mig 0408 · `needsVisit === false`) ไม่มีนัดให้เดินตาม ⇒ ขั้นกลาง
+      เดินตาม **วันส่งผลที่หัวหน้าแจ้ง**: ยังไม่แจ้ง = ค้างที่ขั้น 2 · แจ้งแล้ว = ขั้น 3 · ไม่มีขั้น 4 (ไม่มีใครเข้าพื้นที่)
+      ⚠️ นัดเก่าที่ยังติดใบ (จากตอนที่ยังเป็นงานหน้างาน) ไม่ขยับจุดของงานโต๊ะ
+      ⚠️ ชื่อขั้นและบรรทัดใต้ขั้นยังเป็นชุดของงานหน้างาน — คำของงานโต๊ะมาพร้อมงวดจอ (แผน survey-desk-assessment §7) */
 const visitReached = (visit) => isClosedVisit(visit) && visit?.status !== 'unable';
 
-function fieldIndex(request, visit) {
+function fieldIndex(request, visit, needsVisit = true) {
   if (request.status === 'draft') return 0;
   if (request.status === 'pending') return 1;
   if (request.status === 'acknowledged') {
+    if (needsVisit === false) return String(request.committedResultDate ?? '').trim() ? 3 : 2;
     if (visitReached(visit)) return 4;
     if (holdsRequestSlot(visit)) return 3;
     return 2;
@@ -152,8 +157,8 @@ function fieldVisitHint(visit) {
   return null;
 }
 
-function fieldSteps(request, labels, visit, base) {
-  const index = fieldIndex(request, visit);
+function fieldSteps(request, labels, visit, base, needsVisit = true) {
+  const index = fieldIndex(request, visit, needsVisit);
   const live = holdsRequestSlot(visit) || visitReached(visit);
   const requeue = request.status === 'acknowledged' && !!visit && !live;
   const byId = Object.fromEntries(base.map((step) => [step.id, step]));
@@ -199,8 +204,12 @@ function fieldSteps(request, labels, visit, base) {
  * ⚠️ **รางเป็นชุดเดียวทุกหัวข้อแล้ว** — ขั้น "รอหัวหน้ายืนยัน" ที่เคยแทรกเฉพาะ
  * พัฒนากลิ่นถูกถอดออกทั้งขั้น (มติผู้ใช้ 2026-08-16) ⇒ `index` เท่ากับลำดับของ
  * สถานะตรง ๆ ไม่มี offset ให้พลาดอีก (บั๊ก "จุดไฮไลต์ชี้ผิดขั้น" เกิดจากตรงนั้น)
+ *
+ * @param needsVisit เฉพาะรางหน้างาน — ใบนี้ต้องมีนัดเข้าพื้นที่ไหม (`surveyNeedsVisit` ของแถวพื้นที่)
+ *                   ส่ง boolean มา = ใช้ค่านั้น · ไม่ส่ง = อ่านธง `request.surveyNeedsVisit` ที่ตัวโหลดติดมา
+ *                   ⚠️ ไม่มีทั้งคู่ / ค่าอื่นที่ไม่ใช่ `false` ตรงตัว = ต้องมีนัด (รางของวันนี้ทุกค่า)
  */
-export function requestRailSteps(request, { hasItems = false, visit } = {}) {
+export function requestRailSteps(request, { hasItems = false, visit, needsVisit } = {}) {
   // ชื่อขั้น "กำหนดส่ง" ต่างตามหัวข้อ (ประเมินพื้นที่ = "ลงคิว") — อ่านจากทะเบียน
   const commitStepLabel = requestKindMeta(request.kind)?.form?.commitStepLabel || 'กำหนดส่ง';
 
@@ -305,10 +314,14 @@ export function requestRailSteps(request, { hasItems = false, visit } = {}) {
 
   /* ⭐ หัวข้อที่ประกาศรางหน้างาน — ชื่อขั้นมาจากทะเบียน · ขั้นกลางอ่านนัด (ดู `fieldSteps`)
      ⚠️ `visit` ไม่ส่งมา = อ่าน `request.surveyVisit` ที่ `findRequest` ติดมาให้ (หน้าคำร้อง) ·
-        การ์ดของใบประเมินส่งนัดของมันเองมา (`surveyControl.stepOf`) */
+        การ์ดของใบประเมินส่งนัดของมันเองมา (`surveyControl.stepOf`)
+     ⚠️ `needsVisit` เดินทางเดียวกัน — ผู้เรียกที่ถือแถวพื้นที่ส่งมาเอง · ไม่ส่ง = ธงบนแถวคำร้อง */
   const fieldRail = requestKindMeta(request.kind)?.fieldRail;
   if (fieldRail) {
-    return fieldSteps(request, fieldRail, visit !== undefined ? visit : (request.surveyVisit || null), steps);
+    const fieldNeedsVisit = typeof needsVisit === 'boolean' ? needsVisit : request.surveyNeedsVisit !== false;
+    return fieldSteps(
+      request, fieldRail, visit !== undefined ? visit : (request.surveyVisit || null), steps, fieldNeedsVisit,
+    );
   }
   return { steps, index };
 }

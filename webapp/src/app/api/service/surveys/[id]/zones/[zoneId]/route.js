@@ -21,6 +21,10 @@ import {
   surveyZoneStaleBody, surveyZoneStaleError,
   surveyOnlyBlankRows,
 } from '@/lib/service/survey';
+import {
+  SURVEY_METHOD_DRAWING, isDrawingZone, surveyNeedsVisit, surveyZoneChangeFlips,
+} from '@/lib/service/surveyMethod';
+import { loadSurveyZones } from '@/lib/service/surveyRepo';
 import { findSurveyVisit } from '@/lib/service/surveyVisit';
 import { visitWriteAccess } from '@/lib/service/visitAccess';
 import { genId } from '@/lib/id';
@@ -45,6 +49,72 @@ async function requestLock(supabase, id) {
   return surveyEditLockError(data);
 }
 
+/* ══ วิธีประเมินรายพื้นที่ (mig 0408 · แผน survey-desk-assessment §2 แถว 13 · 15 · 16) ═══════════
+ *
+ * ⭐ **พื้นที่จากแบบเป็นของหัวหน้าฝ่ายคนเดียว** — ผู้จัดคิวและช่างไม่ได้เขียน และไม่ถามนัด
+ *   (งานโต๊ะไม่มีนัด · ช่างของนัดเก่ายังถูกมอบหมายอยู่บนนัดนั้น ด่านนัดจึงกันไม่ได้)
+ * ⚠️ ถามวิธีผ่าน `isDrawingZone` เท่านั้น — แถวที่ไม่มีคีย์ `method` คือลงหน้างาน เดินด่านเดิมทุกตัวอักษร
+ */
+const DRAWING_ZONE_HEAD_ONLY = 'พื้นที่นี้หัวหน้าประเมินจากแบบ — ไม่ต้องวัดหน้างาน';
+const LAST_ONSITE_CUT_CREW = 'พื้นที่สุดท้ายที่ต้องวัด — แจ้งหัวหน้าให้ตัดออก';
+// งวด S1: หัวหน้าก็ยังตัดไม่ได้ขณะนัดเปิดอยู่ — บอกทางออกที่มีจริง (ยกเลิกนัดก่อน) · งวด S2a แทนด้วยกล่องยืนยันที่ยกเลิกนัดให้
+const lastOnsiteVisitOpenText = (visit) => `พื้นที่สุดท้ายที่ต้องวัด และนัด ${visit.code || visit.id} ยังเปิดอยู่`
+  + ' — ยกเลิกนัดที่หน้าจัดคิวก่อน แล้วค่อยตัดพื้นที่นี้ออก';
+
+/**
+ * ตัด/ลบแถวนี้แล้วใบ **พลิก** จาก "ต้องมีนัด" เป็นงานโต๊ะไหม (พื้นที่ลงหน้างานสุดท้ายหายไป ขณะที่ยังมีพื้นที่จากแบบ)
+ * คืน `{ flips, heal, staleCutIds, response }` — `response` = ต้องตีกลับ (ยังไม่เขียนอะไร) · ไม่พลิก = `flips: false` เดินเหมือนเดิม
+ *   `staleCutIds` = แถวที่ถูกตัดไว้แล้วและยังไม่เป็นจากแบบ (ของที่ `markCutZonesDrawing` ต้องทำเครื่องหมาย)
+ *
+ * ① ไม่มีนัดค้าง หรือนัดกำลังทำ — ใครตัดได้วันนี้ก็ตัดได้ (ช่างยืนอยู่หน้างานแล้ว) · ไม่ยกเลิกนัด ไม่แตะวันบนใบ
+ * ② นัดยังเป็นร่าง/ลงตารางแล้ว — นัดนั้นจะค้างอยู่บนใบที่ไม่เหลืออะไรให้ไปวัด ⇒ ตีกลับทุกคน
+ *    (ช่างที่ยังไม่กดเริ่มงานยังไม่ได้อยู่หน้างาน ⇒ ให้แจ้งหัวหน้า)
+ * ⭐ `heal` = ใบ **เป็นงานโต๊ะอยู่แล้ว** แต่ยังมีแถวที่ถูกตัดซึ่งไม่ได้เป็นจากแบบ (รอบพลิกก่อนหน้าทำเครื่องหมายไม่สำเร็จ)
+ *    ⇒ ผู้เรียกทำเครื่องหมายให้ครบ **ก่อน** ตัด/ลบแถวนี้ — นี่คือจังหวะเดียวที่แถวค้างแบบนั้นมีผล (ตัดจนหมดใบ)
+ *    ใบลงหน้างานล้วนและใบผสมได้ `false` เสมอ
+ * ⚠️ อ่านแถวของใบเฉพาะตอนเรียก — ผู้เรียกเรียกเฉพาะคำขอที่ตัด/ลบจริง การบันทึกทั่วไปไม่เสีย query เพิ่ม
+ */
+async function lastOnsiteZoneGate(supabase, { id, row, to, user }) {
+  const rows = await loadSurveyZones(supabase, id);
+  const staleCutIds = rows.filter((r) => r?.status === 'cut' && !isDrawingZone(r)).map((r) => r.id);
+  if (!surveyZoneChangeFlips(rows, { id: row.id, to })) {
+    return { flips: false, heal: !surveyNeedsVisit(rows) && staleCutIds.length > 0, staleCutIds, response: null };
+  }
+  const open = await findSurveyVisit(supabase, id, { openOnly: true });
+  if (open && ['draft', 'scheduled'].includes(open.status)) {
+    return {
+      flips: true,
+      heal: false,
+      staleCutIds,
+      response: canSendSurveyResult(user) ? conflict(lastOnsiteVisitOpenText(open)) : forbidden(LAST_ONSITE_CUT_CREW),
+    };
+  }
+  return { flips: true, heal: false, staleCutIds, response: null };
+}
+
+/**
+ * ใบพลิกเป็นงานโต๊ะ ⇒ แถวที่ **ถูกตัดไปก่อนแล้ว** ของใบต้องเป็นจากแบบด้วย — คืนข้อความ error หรือ `null`
+ * 🐞 กติกา "ถูกตัดหมดทั้งใบ" ของ `surveyNeedsVisit` อ่านวิธีของแถวที่ตัด ⇒ เหลือแถวตัดที่ยังเป็นลงหน้างานไว้
+ *    แล้ววันหนึ่งพื้นที่จากแบบถูกตัดจนหมด ใบจะพลิกกลับไป "ต้องมีนัด" ทั้งที่วันบนใบเป็นวันของงานโต๊ะ
+ * @param ids แถวที่ต้องทำเครื่องหมาย (`staleCutIds` ของ `lastOnsiteZoneGate`) — ว่าง = ไม่ยิงคำสั่งเลย
+ *            ⚠️ ระบุรายแถว ไม่กวาดทั้งใบ: แถวที่กำลังตัดเองพก `method` ไปในคำสั่งของมันแล้ว และ `updatedAt` ของมัน
+ *               ต้องตรงกับที่เพิ่งส่งกลับให้จอ · `.eq('status', 'cut')` ยังอยู่ — แถวที่ถูกคืนเข้าใบแทรกกลางไม่ถูกแตะ
+ * 🔴 **ตอนพลิก เรียกหลังแถวของตัวเองเขียนติดแล้วเท่านั้น**
+ *    🐞 เดิมทำเครื่องหมายก่อน ⇒ แถวของตัวเองเขียนไม่ติด (อีกคนบันทึกแทรก = 409) = ใบยังต้องมีนัด แต่แถวที่ตัดไว้ก่อน
+ *       กลายเป็นจากแบบไปแล้ว: ช่าง/ผู้จัดคิวที่ตัดไว้คืนเองไม่ได้ และหัวหน้ากด "เอากลับเข้าใบ" ได้พื้นที่จากแบบที่ไม่มีใครเลือก
+ *    ล้มหลังแถวของตัวเองติด = ใบเป็นงานโต๊ะแล้วแต่แถวที่ตัดไว้ก่อนยังไม่ครบ — ไม่มีผลจนกว่าจะตัดจนหมดใบ
+ *    และการตัด/ลบครั้งถัดไปของใบซ่อมให้ก่อน (`heal` ของ `lastOnsiteZoneGate`)
+ */
+async function markCutZonesDrawing(supabase, requestId, ids) {
+  if (!ids?.length) return null;
+  const { error } = await supabase
+    .from('service_survey_zones')
+    .update({ method: SURVEY_METHOD_DRAWING, updatedAt: new Date().toISOString() })
+    .eq('requestId', requestId).eq('status', 'cut').in('id', ids);
+  return error ? error.message : null;
+}
+const markAfterWriteError = (done, message) => `${done} แต่บันทึกวิธีประเมินของพื้นที่ที่ตัดไว้ก่อนหน้าไม่สำเร็จ — โหลดหน้าใหม่ (${message})`;
+
 // PATCH { parts?, spots?, note?, status?, cutReason? }
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const { id, zoneId } = await ctx.params;
@@ -62,11 +132,16 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const locked = await requestLock(supabase, id);
     if (locked) return conflict(locked);
 
-    /* 🔑 **ด่านรายใบ ใช้ตัวตัดสินตัวเดียวกับนัด** — เจ้าหน้าที่หน้างานเขียนได้เฉพาะ
-       ใบที่ตัวเองถูกมอบหมาย · นัดของใบประเมินคือที่เดียวที่บอกว่า "ใครไป" */
-    const visit = await findSurveyVisit(supabase, id);
-    const access = visitWriteAccess({ user, visit, canEditAll });
-    if (!access.ok) return access.error ? forbidden(access.error) : forbidden();
+    if (isDrawingZone(row)) {
+      // พื้นที่จากแบบ — หัวหน้าฝ่ายเท่านั้น ไม่ถามนัด (เหตุผลที่หัวข้อ "วิธีประเมินรายพื้นที่" ข้างบน)
+      if (!canSendSurveyResult(user)) return forbidden(DRAWING_ZONE_HEAD_ONLY);
+    } else {
+      /* 🔑 **ด่านรายใบ ใช้ตัวตัดสินตัวเดียวกับนัด** — เจ้าหน้าที่หน้างานเขียนได้เฉพาะ
+         ใบที่ตัวเองถูกมอบหมาย · นัดของใบประเมินคือที่เดียวที่บอกว่า "ใครไป" */
+      const visit = await findSurveyVisit(supabase, id);
+      const access = visitWriteAccess({ user, visit, canEditAll });
+      if (!access.ok) return access.error ? forbidden(access.error) : forbidden();
+    }
 
     const body = await req.json().catch(() => ({}));
 
@@ -76,6 +151,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (surveyZoneStaleError(row, body.baseUpdatedAt)) return Response.json(surveyZoneStaleBody(row), { status: 409 });
 
     const patch = {};
+    // การตัดครั้งนี้ทำให้ใบพลิกเป็นงานโต๊ะไหม — ตั้งในก้อนสถานะข้างล่าง ใช้ตอนเขียน
+    let flipsToDesk = false;
+    // ใบงานโต๊ะที่ยังมีแถวตัดเก่าไม่ได้เป็นจากแบบ (รอบพลิกก่อนทำเครื่องหมายไม่สำเร็จ) — ซ่อมก่อนตัดแถวนี้
+    let healCutMarks = false;
+    let staleCutIds = [];
 
     /* แท็บรุ่นเก่า (ไม่ส่งรุ่น) ส่งส่วน/จุดว่างที่จอเติมให้ทั้งก้อน = ไม่ได้ตั้งใจแก้ช่องนั้น — ไม่งั้นกลายเป็น `[]` ทับของอีกคน (review 26/09) */
     if (body.baseUpdatedAt === undefined) {
@@ -98,7 +178,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       Object.assign(patch, restamp.patch);
     }
 
-    const spots = normalizeSurveySpots(body.spots, row.spots, { newId: () => genId('SPT') });
+    /* พื้นที่จากแบบ: จุดที่เพิ่มใหม่ถือว่า **เลือกแล้ว** ทันที — คนเพิ่มคือหัวหน้าคนเดียวกับที่เคาะจุด ไม่มีรอบ "ช่างแจ้ง → หัวหน้าเลือก"
+       ⚠️ สายลงหน้างานเรียกด้วยคำเดิมทุกตัวอักษร (ไม่ส่งตัวเลือกนี้เลย) — จุดของช่างยังรอหัวหน้าเคาะเหมือนเดิม */
+    const spots = isDrawingZone(row)
+      ? normalizeSurveySpots(body.spots, row.spots, { newId: () => genId('SPT'), defaultSelected: true })
+      : normalizeSurveySpots(body.spots, row.spots, { newId: () => genId('SPT') });
     if (spots.error) return badRequest(spots.error);
     if (spots.value !== undefined) patch.spots = spots.value;
 
@@ -131,6 +215,26 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         // กลับมาใช้ = เหตุผลเดิมไม่จริงอีกต่อไป (CHECK ยอมให้ null เมื่อไม่ใช่ 'cut')
         patch.cutReason = null;
       }
+
+      /* ── การตัด/คืนที่เปลี่ยนคำตอบ "ใบนี้ต้องมีนัดไหม" (mig 0408 · แผน §2 แถว 15–16) ──
+         ⚠️ ถามเฉพาะตอนสถานะเปลี่ยนจริง (ตัดแถวที่ยังใช้อยู่ · คืนแถวที่ถูกตัด) — ใบลงหน้างานล้วนได้คำตอบ "ไม่เปลี่ยน"
+            เสมอ แล้วเดินต่อด้วยคำสั่งเขียนชุดเดิม ไม่มีคีย์ `method` */
+      if (body.status === 'cut' && row.status !== 'cut') {
+        // ตัดพื้นที่ลงหน้างานสุดท้ายขณะที่ยังมีพื้นที่จากแบบ = ใบพลิกเป็นงานโต๊ะ ⇒ แถวนี้ตามไปเป็นจากแบบด้วย
+        const last = await lastOnsiteZoneGate(supabase, { id, row, to: 'cut', user });
+        if (last.response) return last.response;
+        if (last.flips) {
+          flipsToDesk = true;
+          patch.method = SURVEY_METHOD_DRAWING;
+        }
+        healCutMarks = last.heal;
+        staleCutIds = last.staleCutIds;
+      } else if (body.status === 'ok' && row.status === 'cut' && !surveyNeedsVisit(await loadSurveyZones(supabase, id))) {
+        /* คืนแถวเข้าใบงานโต๊ะ = แถวที่คืนเป็นจากแบบ (หัวหน้าฝ่ายเท่านั้น) — คืนเป็นลงหน้างานเฉย ๆ
+           ใบจะพลิกกลับไปต้องมีนัดเงียบ ๆ จากปุ่ม "เอากลับเข้าใบ" ปุ่มเดียว */
+        if (!canSendSurveyResult(user)) return forbidden(DRAWING_ZONE_HEAD_ONLY);
+        patch.method = SURVEY_METHOD_DRAWING;
+      }
     }
 
     if (!Object.keys(patch).length) return badRequest('ไม่มีอะไรให้บันทึก');
@@ -141,6 +245,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     patch.surveyedById = user.id ? String(user.id) : null;
     patch.surveyedByName = user.name || null;
     patch.updatedAt = patch.surveyedAt;
+
+    // ใบงานโต๊ะที่แถวตัดเก่ายังทำเครื่องหมายไม่ครบ — ซ่อมก่อนตัดแถวนี้ (ล้ม = ยังไม่ได้ตัดอะไร กดใหม่ได้ · ใบลงหน้างานไม่เข้า)
+    if (healCutMarks) {
+      const markError = await markCutZonesDrawing(supabase, id, staleCutIds);
+      if (markError) return fail(markError, 500);
+    }
 
     /* 🐞 review 26/09 — **เขียนแบบมีเงื่อนไขกับรุ่นที่เพิ่งอ่าน** ปิดช่องระหว่างอ่านกับเขียน (อีกคนบันทึกแทรกกลาง
        = 0 แถว ไม่ใช่ทับ · จุดที่หัวหน้าเคาะไว้ที่อ่านจาก `row.spots` ก็ไม่ถูกย้อน) — ใช้ทุกคำขอ ไม่ใช่แค่ที่ส่งรุ่นมา
@@ -156,12 +266,17 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       return Response.json(surveyZoneStaleBody(latest || null), { status: 409 });
     }
 
+    /* ใบพลิกเป็นงานโต๊ะ — แถวที่ตัดไปก่อนแล้วตามไปเป็นจากแบบ **หลังแถวนี้ถูกตัดจริง** (เหตุผลที่ `markCutZonesDrawing`)
+       ⚠️ ล้ม = แถวนี้ตัดไปแล้ว ⇒ ยังเขียน audit แล้วค่อยตอบ 500 ที่บอกตรง ๆ ว่าตัดแล้ว */
+    const markError = flipsToDesk ? await markCutZonesDrawing(supabase, id, staleCutIds) : null;
+
     await recordAudit({
       user, action: 'update', entityType: 'service_survey_zone', entityId: zoneId,
       before: row, after: data,
       summary: `บันทึกผลวัด ${data.zoneName}${data.status === 'cut' ? ' (ตัดออก)' : ''}${restamp?.summary || ''}`,
       request: req,
     });
+    if (markError) return fail(markAfterWriteError(`ตัดพื้นที่ ${data.zoneName} ออกแล้ว`, markError), 500);
     return ok(data);
   } catch (e) {
     return fail(e.message, 500);
@@ -271,10 +386,22 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
       .from('dept_requests').select('*').eq('id', id).maybeSingle();
     if (reqError) return fail(reqError.message, 500);
 
-    const visit = await findSurveyVisit(supabase, id);
-    const access = visitWriteAccess({ user, visit, canEditAll });
-    const gate = surveyAddZoneError(request, { canWrite: access.ok === true });
-    if (gate) return access.ok ? conflict(gate) : forbidden(access.error || gate);
+    if (isDrawingZone(row)) {
+      // พื้นที่จากแบบ — หัวหน้าฝ่ายเท่านั้น ไม่ถามนัด · ด่านล็อกของใบยังเป็นตัวเดิม
+      if (!canSendSurveyResult(user)) return forbidden(DRAWING_ZONE_HEAD_ONLY);
+      const locked = surveyEditLockError(request);
+      if (locked) return conflict(locked);
+    } else {
+      const visit = await findSurveyVisit(supabase, id);
+      const access = visitWriteAccess({ user, visit, canEditAll });
+      const gate = surveyAddZoneError(request, { canWrite: access.ok === true });
+      if (gate) return access.ok ? conflict(gate) : forbidden(access.error || gate);
+    }
+
+    /* ลบพื้นที่ลงหน้างานสุดท้ายขณะที่ยังมีพื้นที่จากแบบ = ใบพลิกเป็นงานโต๊ะ — กติกาเดียวกับการตัดใน `PATCH`
+       (นัดร่าง/ลงตารางแล้วยังเปิด = ตีกลับก่อนแตะอะไร) */
+    const last = await lastOnsiteZoneGate(supabase, { id, row, to: 'removed', user });
+    if (last.response) return last.response;
 
     /* ⚠️ **ตัดสินชะตาโซนก่อนลบแถว** — โซนที่ขายไปแล้ว/มีเครื่องต้องอยู่ต่อ และต้องอยู่
        *พร้อมประวัติการวัด* ⇒ ถามก่อนว่าจะลบโซนไหม แล้วค่อยแตะแถว
@@ -288,8 +415,18 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     }
     const decision = zone ? await zoneReleaseDecision(supabase, { request, zone }) : null;
 
+    // ใบงานโต๊ะที่แถวตัดเก่ายังทำเครื่องหมายไม่ครบ — ซ่อมก่อนลบแถวนี้ (ล้ม = ยังไม่ได้ลบอะไร กดใหม่ได้ · ใบลงหน้างานไม่เข้า)
+    if (last.heal) {
+      const healError = await markCutZonesDrawing(supabase, id, last.staleCutIds);
+      if (healError) return fail(healError, 500);
+    }
+
     const purgeError = await purgeSurveyZoneRows(supabase, [row.id]);
     if (purgeError) return fail(purgeError, 500);
+
+    /* ใบพลิกเป็นงานโต๊ะ — แถวที่ตัดไปก่อนแล้วตามไปเป็นจากแบบ **หลังแถวนี้ถูกลบจริง** (เหตุผลที่ `markCutZonesDrawing`)
+       ⚠️ ล้ม = แถวนี้ลบไปแล้ว ⇒ เดินต่อให้จบ (โซน · audit) แล้วค่อยตอบ 500 ที่บอกตรง ๆ ว่าลบแล้ว */
+    const markError = last.flips ? await markCutZonesDrawing(supabase, id, last.staleCutIds) : null;
 
     let zoneDropped = false;
     if (decision?.action === 'delete') {
@@ -305,6 +442,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
         + (zone && !zoneDropped ? ` · เก็บพื้นที่ ${decision.label} ไว้ในทะเบียน (${decision.reason})` : ''),
       request: req,
     });
+    if (markError) return fail(markAfterWriteError(`ลบพื้นที่ ${row.zoneName} ออกจากใบแล้ว`, markError), 500);
     return ok({ id: row.id, zoneDropped });
   } catch (e) {
     return fail(e.message, 500);

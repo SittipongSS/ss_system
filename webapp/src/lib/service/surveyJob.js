@@ -25,6 +25,7 @@ import {
 } from './survey';
 import { surveyControlView, surveyPackagesLabel, surveySendBackAskText, surveyZoneFacts } from './surveyControl';
 import { surveyRequestDocumentView } from './surveyDocumentView';
+import { surveyNeedsVisit } from './surveyMethod';
 import { VISIT_STATUS_LABELS, holdsRequestSlot, isClosedVisit } from './visitStatus';
 
 const join = (...parts) => parts.flat().filter(Boolean).join(' · ');
@@ -71,7 +72,7 @@ function onSiteText(visit) {
 }
 
 /* ── ขั้นของงานตอนนี้ (ละเอียดกว่ารางหกขั้น — แถบ "ตอนนี้" ต้องแยก นัดแล้ว / เลยวันนัด / กำลังวัด …) ── */
-function stageOf(request, visit, control, today, { filesUnknown = false, sendBack = null } = {}) {
+function stageOf(request, visit, control, today, { filesUnknown = false, sendBack = null, needsVisit = true } = {}) {
   if (request.cancelledAt || request.status === 'cancelled') return 'cancelled';
   if (request.status === 'draft') return 'draft';
   if (request.status === 'pending') return 'pending';
@@ -83,6 +84,16 @@ function stageOf(request, visit, control, today, { filesUnknown = false, sendBac
      แล้วจะตอบว่า "วัดแล้ว 0" ⇒ ขั้นต้องมาจากนัดอย่างเดียว (กติกา อ่านพลาด = ไม่ทราบ ไม่ใช่ ไม่มี) */
   const key = filesUnknown && control?.status?.key !== 'recalled' ? null : control?.status?.key;
   if (key === 'no-zones') return key;
+  /* ⭐ **งานโต๊ะ** (ทุกพื้นที่ประเมินจากแบบ · mig 0408) — ไม่ลงคิว ไม่มีนัดเข้าพื้นที่ ⇒ ขั้นเดินตาม **วันส่งผล**
+     ที่หัวหน้าแจ้ง ไม่ใช่ตามนัด: ยังไม่แจ้ง = รอแจ้งวันส่งผล · แจ้งแล้ว = กำลังประเมิน · เลยวัน = เลยวันส่งผล
+     ⚠️ อยู่ **ก่อน** กิ่งของนัดทั้งหมดโดยตั้งใจ — นัดเก่าที่ยังติดใบ (จากตอนที่ยังเป็นงานหน้างาน) ต้องไม่พาใบ
+        กลับไปขั้น "นัดแล้ว/กำลังวัด" และการส่งกลับที่ค้างต้องไม่ขึ้น "ส่งกลับให้ช่างแก้" (ไม่มีอะไรให้ช่างแก้แล้ว)
+     ⚠️ `today` ยังไม่รู้ = ไม่นับเลยกำหนด (กติกาเดียวกับ "เลยวันนัด" ข้างล่าง) */
+  if (needsVisit === false) {
+    const resultDate = String(request.committedResultDate ?? '').trim();
+    if (!resultDate) return 'desk-queue';
+    return today && resultDate < today ? 'desk-overdue' : 'desk-working';
+  }
   /* ⚠️ **งานหน้างานมาก่อนแถว "ดึงกลับ"** — ใบที่ถูกดึงกลับแล้วช่างกำลังวัดใหม่ (RQ-AS-26090188: ถูกดึงกลับ
      เพราะตอบด้วยปุ่มกลางตอนยังไม่มีผลวัด) ถ้าขึ้น "ดึงผลกลับมาแก้ — หัวหน้าแก้ผลแล้วส่งอีกครั้ง" คือชี้ผิดคน
      ⇒ "ดึงกลับ" เป็นขั้นของงานเฉพาะเมื่อช่างวัดเสร็จแล้ว · ก่อนหน้านั้นเป็นป้ายบนขั้นส่งผล (ประวัติ) */
@@ -126,6 +137,11 @@ const STAGE_BADGE = {
   'crew-gaps': { label: 'ของหน้างานยังขาด', tone: 'warning' },
   'sent-back': { label: 'ส่งกลับให้ช่างแก้', tone: 'warning' },
   'no-zones': { label: 'ไม่มีพื้นที่ให้ประเมิน', tone: 'neutral' },
+  /* งานโต๊ะ (ประเมินจากแบบทั้งใบ) — ป้ายของตัวเอง ไม่งั้นคีย์ที่ไม่มีในตารางนี้ถอยไปขึ้น "รอลงคิว" ซึ่งผิดความจริง
+     ⚠️ แถบ "ตอนนี้" (หัวข้อ · บรรทัดรอง · ตาใคร) ยังถอยไปชุดของ `queue` — คำของงานโต๊ะมาพร้อมงวดจอ */
+  'desk-queue': { label: 'รอแจ้งวันส่งผล', tone: 'warning' },
+  'desk-working': { label: 'กำลังประเมินจากแบบ', tone: 'info' },
+  'desk-overdue': { label: 'เลยวันส่งผล', tone: 'danger' },
   sent: { label: 'ส่งผลให้ฝ่ายขายแล้ว', tone: 'success' },
   closed: { label: 'ปิดเรื่องแล้ว', tone: 'success' },
   'closed-unassessed': { label: 'ปิดโดยไม่ได้ประเมิน', tone: 'neutral' },
@@ -347,7 +363,12 @@ export function surveyJobView({
        เอกสารของหน้านี้อยู่ที่คีย์ `document` ของผลลัพธ์ (`surveyRequestDocumentView`) */
   });
   const filesUnknown = unknown.files === true;
-  const stage = stageOf(request, visit, control, today, { filesUnknown, sendBack: request.surveySendBack || null });
+  /* 🔑 ใบนี้ต้องมีนัดเข้าพื้นที่ไหม — คำนวณจากแถวพื้นที่ของใบ (ตัวตัดสินเดียวของทั้งระบบ · `surveyMethod.js`)
+     ขั้นของงานกับจุดบนรางถามค่าเดียวกัน ⇒ สองที่ชี้ขั้นเดียวกันเสมอ */
+  const needsVisit = surveyNeedsVisit(zones);
+  const stage = stageOf(request, visit, control, today, {
+    filesUnknown, sendBack: request.surveySendBack || null, needsVisit,
+  });
   const sent = !!request.answeredAt;
   /* ใบจบแล้ว (ยกเลิก · ปิด · ฝั่งไหนปิดก่อน) = ไม่มีวันให้ทวง ไม่มีคำสั่งให้ใครทำต่อ (ม-145) */
   const finished = ['closed', 'closed-unassessed', 'cancelled', 'closed-early'].includes(stage)
@@ -375,7 +396,7 @@ export function surveyJobView({
       : `วัดแล้ว ${progress.done} / ${progress.total} พื้นที่`;
 
   /* ── หกขั้น — ชื่อจากราง (ทะเบียน) · เนื้อจากใบจริง ─────────────────────────── */
-  const rail = requestRailSteps(request, { visit });
+  const rail = requestRailSteps(request, { visit, needsVisit });
   const index = stage === 'closed' || stage === 'closed-unassessed' ? rail.steps.length : rail.index;
   const byId = Object.fromEntries(rail.steps.map((step) => [step.id, step]));
   const person = (name, note = null) => (name ? { name, note } : null);
