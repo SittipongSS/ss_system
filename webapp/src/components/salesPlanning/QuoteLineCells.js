@@ -17,6 +17,7 @@
 //   ⇒ กล่องแคบกว่า 900 ทุกจอเดสก์ท็อป ตารางพับเป็นการ์ดตลอด — หน้าตาคนละแบบกับใบเสนอราคา)
 // ⚠️ สไตล์เป็นของ `QuotationLineItems.module.css` (โฟลเดอร์เดียวกัน) — ผู้เรียกที่อยู่คนละโฟลเดอร์
 //   **ห้าม import ชีตนั้นเอง** (audit:ui ด่าน crossDirectory) ⇒ ใช้กล่อง/เซลล์ของไฟล์นี้แทนทุกชิ้น
+import { useId } from "react";
 import Link from "next/link";
 import { Trash2 } from "lucide-react";
 import Input from "@/components/ui/Input";
@@ -34,6 +35,7 @@ import { masterPriceDrift, masterPriceState, quoteLineLocks } from "@/lib/sales/
 import { SERVICE_ROUNDS_LABEL, SERVICE_ROUNDS_UNIT } from "@/lib/sales/serviceOrders";
 import { packLineUnit } from "@/lib/sales/linePacks";
 import { PACK_COLUMN_LABEL, lineHasPacks, linePackFormulaText, linePackQty } from "@/lib/sales/linePackView";
+import { PACK_INPUT_TITLE } from "@/lib/sales/linePackEdit";
 import styles from "./QuotationLineItems.module.css";
 
 /* พื้นความกว้างของตาราง — คอลัมน์ตายตัวรวมกัน 646 (36+120+130+210+150) ที่เหลือเป็นของ "รายการ"
@@ -106,16 +108,19 @@ export function QuoteLinesEmptyRow({ colSpan, children }) {
 
 /**
  * หัวคอลัมน์ห้าช่องของบรรทัด (ไม่รวม "#" และช่องปุ่มลบ — `QuoteLineIndexHead` · `QuoteLineActionsHead`)
- * @param showPacks ⭐ คอลัมน์ "แพ็ค/เดือน" (mig 0407 · งวด PR-2) ระหว่าง รายการ กับ จำนวน — ผู้เรียกเปิดเมื่อ **มีบรรทัดที่มีเลขแพ็ค**
- *   (`hasPackColumn(lines)`) เท่านั้น ⇒ ใบที่ไม่มีเลขแพ็คได้ห้าคอลัมน์เดิม · คู่กับ `showPacks` ของ `QuoteLineMoneyCells` เสมอ
+ * @param showPacks ⭐ คอลัมน์ "แพ็ค/เดือน" (mig 0407) ระหว่าง รายการ กับ จำนวน — คู่กับ `showPacks` ของ `QuoteLineMoneyCells` เสมอ
+ *   · โหมดอ่าน/จออนุมัติ: ผู้เรียกเปิดเมื่อ **มีบรรทัดที่มีเลขแพ็ค** (`hasPackColumn(lines)` · งวด PR-2) ⇒ ใบที่ไม่มีเลขแพ็คได้ห้าคอลัมน์เดิม
+ *   · โหมดแก้ของใบเสนอราคา (งวด PR-3): เปิดเมื่อมีบรรทัดที่ได้ช่องกรอก (`quoteLinesPackView(…).showColumn`)
  *   ⚠️ ขั้น ② ของใบสั่งขายย้อนหลัง (WizardZonesStep) **ไม่ส่ง** โดยมีเหตุผลด้านข้อมูล: แถวของมันถือ `packsPerRound` รายโซน
  *      ไม่เคยมี `packQty` (งวด PR-5 เป็นเจ้าของ) · ความกว้างของคอลัมน์อื่นปรับเองด้วย `.linesTable:has(th.colPack)`
+ * @param packRequired ⭐ ดอกจันข้างหัวคอลัมน์ (งวด PR-3 · มติเจ้าของ 08/10 ข้อ A2 "บังคับใส่") — โหมดแก้ที่มีบรรทัดต้องกรอกเท่านั้น
+ *   ดอกจันไม่ใช่สถานะผิด (กติกา "แดงหลังกด" ไม่เกี่ยว) · ค่าตั้งต้นปิด ⇒ ผู้เรียกที่ไม่ส่งได้หัวเดิมของงวด PR-2
  */
-export function QuoteLineHeadCells({ showPacks = false }) {
+export function QuoteLineHeadCells({ showPacks = false, packRequired = false }) {
   return (
     <>
       <th>รายการ</th>
-      {showPacks ? <th className={`${styles.numHeader} ${styles.colPack}`}>{PACK_COLUMN_LABEL}</th> : null}
+      {showPacks ? <th className={`${styles.numHeader} ${styles.colPack}`}>{PACK_COLUMN_LABEL}{packRequired ? <b className={styles.packReq} aria-hidden="true">*</b> : null}</th> : null}
       {/* หัวคอลัมน์ตัวเลขชิดขวาให้ตรงกับตัวเลขในช่องกรอก (numeric-input ชิดขวา) */}
       <th className={`${styles.numHeader} ${styles.colQty}`}>จำนวน</th>
       <th className={`${styles.numHeader} ${styles.colPrice}`}>ราคา/หน่วย</th>
@@ -316,30 +321,61 @@ export function QuoteLineTotalsEditor({
  * @param registryPriceOnly ราคา/หน่วยมาจากทะเบียน **เท่านั้น** ⇒ ช่องราคาปิดตั้งแต่ยังไม่เลือกสินค้า
  *   (ใบย้อนหลัง · รีวิว 23/09) — ใบเสนอราคาเปิดช่องให้พิมพ์ได้ก่อนเลือก (บรรทัดที่ไม่ผูกสินค้าใช้ราคาที่พิมพ์)
  *   แต่ใบย้อนหลังไม่ส่งราคาขึ้นไปเลย ⇒ เปิดไว้ = ช่องที่พิมพ์แล้วหายเงียบ (เช่นพิมพ์ 42,000 เป็นราคา/หน่วย)
- * @param showPacks ⭐ เซลล์ "แพ็ค/เดือน" (mig 0407 · งวด PR-2) หน้าเซลล์จำนวน — **โชว์อย่างเดียวทั้งโหมดอ่านและโหมดแก้**:
- *   บรรทัดที่มีเลขแพ็คโชว์ตัวเลขในหน้าตาช่องที่ล็อก (เลขนี้คูณเงิน ต้องไม่เป็นตัวคูณที่มองไม่เห็น) · บรรทัดอื่นขีด
+ * @param showPacks ⭐ เซลล์ "แพ็ค/เดือน" (mig 0407) หน้าเซลล์จำนวน
+ *   · ไม่ส่ง `packEdit` (โหมดอ่าน · จออนุมัติ · งวด PR-2): **โชว์อย่างเดียว** — บรรทัดที่มีเลขแพ็คโชว์ตัวเลขในหน้าตาช่องที่ล็อก
+ *     (เลขนี้คูณเงิน ต้องไม่เป็นตัวคูณที่มองไม่เห็น) · บรรทัดอื่นขีด
  *   · หน่วยข้างจำนวนของบรรทัดที่มีเลขแพ็ค = "เดือน" (`packLineUnit` · ไม่มีตัวเลือกหน่วย) · ใต้จำนวนเงินมีสูตร "2 × 12 × 3,500.00"
- *   🔴 ไม่มีช่องกรอก ไม่มี `onPatch` ของเลขแพ็ค ไม่มีการตรวจ/บังคับกรอก — เป็นของงวด PR-3 (`QUOTE_PACK_INPUT_OPEN`)
+ * @param packEdit ⭐ ช่องกรอกเลขแพ็คของบรรทัดนี้ (งวด PR-3 · มติเจ้าของ 08/10 ข้อ A2–A5) — ผลของ `linePackEditView` (lib/sales/linePackEdit.js)
+ *   ที่ตารางของใบเสนอราคาคิดให้ทีละบรรทัดในโหมดแก้ · `null` (ค่าตั้งต้น) = เซลล์ของงวด PR-2 ทุกตัวอักษร
+ *   · `packEdit.input` = วาด **ช่องกรอกจำนวนเต็ม** (ว่าง หรือ 1–9,999 · ไม่มีค่าตั้งต้น · ไม่มี placeholder) แทนตัวเลขที่ล็อก/ขีด
+ *   · `packEdit.pending` = บรรทัดนี้ยังไม่มียอดให้พูด ⇒ จำนวนเงินขึ้นขีด · `formula` / `storedAmount` ใต้จำนวนเงิน · `discountCaption` ใต้ส่วนลด
+ *   · `packEdit.note` = ข้อความแดงใต้ช่อง — ผู้เรียกส่งมาเฉพาะหลังคนกดบันทึก/ยื่น (กติกา: แดงหลังกดเท่านั้น)
+ *   · `packEdit.hint` = ข้อความสีกลางใต้ช่อง ก่อนมีการกด: ช่วงที่รับได้ เมื่อค่าที่พิมพ์ใช้ไม่ได้ (ยอดเป็นขีดต้องมีคำอธิบาย — ไม่ใช่สีแดง)
+ *   🔴 ช่องนี้เป็น `Input` ข้อความธรรมดาที่ **เก็บทุกตัวอักษรที่คนพิมพ์** — ห้ามกรอง/ตัด/แปลงใน onChange · **ห้าม** `MoneyInput` (รับทศนิยม) ·
+ *      `type="number"` · `maxLength` · ค่าที่ใช้ไม่ได้ ("1.5" · "0" · "10000") อยู่ในช่องให้เห็น เป็นสถานะ `invalid` (ยอดเป็นขีด · บันทึกไม่ได้)
+ *      🐞 รีวิว 09/10: ตัวกรองรายปุ่มทิ้งปุ่มที่ทำให้ค่าผิดแล้วเดินต่อ ⇒ พิมพ์ 0.5 ได้ 5 · 1.5 ได้ 15 · 2.00 ได้ 200 · 10000 ได้ 1000 ·
+ *         แก้ 10 เป็น 20 ได้ 102 (ตัวคูณเงินเป็นเลขที่ไม่มีใครพิมพ์ ไม่มีอะไรบอก) · `maxLength` ทำแบบเดียวกันกับการวาง ("10000" → "1000" · วัดจริง 09/10)
+ *   🔴 จุดเดียวของทั้งแอปที่จอเขียนคีย์ `packQty` (ยาม linePackReaders GE) · ขั้น ② ของใบสั่งขายย้อนหลังไม่ส่ง prop นี้ (งวด PR-5)
  * @param qtyNote   เหตุที่จำนวนนี้ใช้ไม่ได้ ใต้ช่องจำนวน (ใบย้อนหลัง: ไม่ใช่จำนวนเต็ม > 0) — ไม่ส่ง = ไม่มีบรรทัดนี้
  */
 export function QuoteLineMoneyCells({
   line, product = null, editable = true, onPatch, name, driftNote = "กดบันทึกเพื่ออัปเดต",
-  amountPending = false, registryPriceOnly = false, qtyNote = null, showPacks = false,
+  amountPending = false, registryPriceOnly = false, qtyNote = null, showPacks = false, packEdit = null,
 }) {
+  const packNoteId = useId();
   const { bound, unitLocked, priceLocked } = quoteLineLocks(line, { registryPriceOnly });
   const priceDrift = editable ? masterPriceDrift(product, line) : null;
   /* เลขแพ็คของบรรทัด (อ่านอย่างเดียว) — ไม่มีเลขแพ็ค = null ทั้งสามตัว ⇒ เซลล์เดิมทุกชิ้นวาดเหมือนก่อนมีคอลัมน์นี้ */
   const pack = showPacks ? linePackQty(line) : null;
   const packUnit = showPacks && lineHasPacks(line) ? packLineUnit(line, line.unit) : null;
-  const packFormula = showPacks && !amountPending ? linePackFormulaText(line) : null;
+  /* โหมดแก้ (มี packEdit): สูตรมาจากกฎฝั่งจอ (จำนวนว่าง = 1 เหมือนสูตรเงิน) · ไม่มี packEdit = ตัวช่วยฝั่งอ่านของงวด PR-2 */
+  const packFormula = packEdit ? packEdit.formula : (showPacks && !amountPending ? linePackFormulaText(line) : null);
   return (
     <>
       {showPacks ? (
+        packEdit?.input ? (
+          <td data-label={PACK_COLUMN_LABEL} data-pack-state={packEdit.state} data-pack-required={packEdit.required ? "true" : undefined}>
+            <Input
+              type="text" inputMode="numeric" pattern="[0-9]*" autoComplete="off" className="numeric-input"
+              value={packEdit.value}
+              invalid={Boolean(packEdit.note)}
+              aria-required={packEdit.required ? "true" : undefined}
+              aria-label={`${PACK_COLUMN_LABEL} ${name}`}
+              aria-describedby={packEdit.note || packEdit.hint ? packNoteId : undefined}
+              title={PACK_INPUT_TITLE}
+              onChange={(event) => { const text = event.target.value; onPatch?.({ packQty: text }); }}
+            />
+            {packEdit.note ? <span id={packNoteId} className={styles.packNote}>{packEdit.note}</span> : null}
+            {/* ค่าที่พิมพ์ใช้ไม่ได้ (ยังไม่กดบันทึก): บอกช่วงทันทีด้วยสีกลาง — ยอดของบรรทัดเป็นขีดอยู่ ต้องรู้ว่าเพราะอะไร */}
+            {packEdit.hint ? <span id={packNoteId} className={styles.packRange}>{packEdit.hint}</span> : null}
+          </td>
+        ) : (
         <td data-label={PACK_COLUMN_LABEL} className={pack === null ? styles.packNA : undefined}>
           {pack === null
             ? <span className={styles.packDash}>{NA}</span>
             : <span role="group" aria-label={`${PACK_COLUMN_LABEL} ${name}`} className={`mono ${styles.packValue}`}>{fmtNumber(pack)}</span>}
         </td>
+        )
       ) : null}
       <td data-label="จำนวน">
         <MoneyInput min="0" value={line.qty} disabled={!editable} onChange={(value) => onPatch?.({ qty: value ?? "" })} aria-label={`จำนวน ${name}`} aria-invalid={qtyNote ? "true" : undefined} />
@@ -396,11 +432,16 @@ export function QuoteLineMoneyCells({
           </Select>
           <MoneyInput min="0" value={line.discountValue || ""} disabled={!editable || !line.discountType} onChange={(value) => onPatch?.({ discountValue: clampQuoteDiscount(line.discountType, value) ?? "" })} aria-label={`ส่วนลด ${name}`} />
         </div>
+        {/* "= ลด 600.00 ต่อแพ็คต่อเดือน" — ส่วนลดบาทหักจากยอดทั้งรายการ (มติ A5) คำกำกับนี้ให้คนกรอกเทียบกับที่ตกลงกับลูกค้า */}
+        {packEdit?.discountCaption ? <span className={styles.discountCaption}>{packEdit.discountCaption}</span> : null}
       </td>
       <td className={`num mono ${styles.lineAmount}`} data-label="จำนวนเงิน">
-        {amountPending ? NA : fmtMoney(quoteLineNet(line).lineTotal)}
+        {/* ช่องแพ็คยังว่างบนบรรทัดที่ต้องกรอก = ยังไม่มียอด (ขีด) — ห้ามโชว์ จำนวน × ราคา เหมือนกรอก 1 ไว้ให้แล้ว */}
+        {amountPending || packEdit?.pending ? NA : fmtMoney(quoteLineNet(line).lineTotal)}
         {/* สูตรของบรรทัดที่มีเลขแพ็ค "2 × 12 × 3,500.00" — ผลของตัวคูณต้องอ่านออกข้างยอด (บรรทัดอื่นไม่วาดอะไร) */}
         {packFormula ? <span className={styles.amountFormula}>{packFormula}</span> : null}
+        {/* ยอดที่เก็บไว้ของบรรทัดเก่า ขณะยอดบนจอเป็นขีดหรือไม่เท่าเดิม — ตอนแยกจำนวนเป็น แพ็ค × เดือน ต้องเห็นยอดที่ต้องได้ */}
+        {packEdit?.storedAmount ? <span className={styles.amountStored}>{packEdit.storedAmount}</span> : null}
       </td>
     </>
   );

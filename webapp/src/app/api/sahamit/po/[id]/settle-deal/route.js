@@ -329,6 +329,9 @@ export async function POST(request, { params }) {
         metadata: { source: 'sahamit-po', sahamitPoId: po.id, poNumber: po.poNumber },
       },
       request,
+      /* บรรทัดของใบนี้เซิร์ฟเวอร์สร้างจาก PO — ไม่มีคนกรอก และทางนี้ไม่มีจอให้พิมพ์ "แพ็ค/เดือน" ⇒ บรรทัดหมวด 02-001 (ถ้ามี)
+         ไม่ถูกบังคับเลขแพ็คตอนสร้าง ด่านทักตอนบันทึก/ยื่นใบครั้งถัดไป (งวด PR-3 · createQuotationDraft) */
+      serverBuiltLines: true,
     }));
   } catch (e) {
     const { error: rollbackErr } = await supabase.from('sales_deals').delete().eq('id', merged.id);

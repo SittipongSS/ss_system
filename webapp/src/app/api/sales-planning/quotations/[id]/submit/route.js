@@ -3,6 +3,7 @@ import { genId } from '@/lib/id';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, inSalesEditScope, dealAuditLabel } from '@/lib/salesPlanning';
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
+import { linePackGateMessage, linePackIssues } from '@/lib/sales/linePacks';
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
 import {
   submitQuotationWithSignatureEvidence,
@@ -46,6 +47,13 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // ผู้ดูแล = เจ้าของดีล · ผู้จัดทำ = คนที่กดยื่น (บรรทัดล่างนี้เอง) · ผู้ตรวจสอบอยู่ที่
   // ใบสั่งขาย · ผู้ประสานงานไม่เคยขึ้นเอกสาร ⇒ ไม่เหลืออะไรให้บังคับ
   // (ดู lib/sales/quotationMetadata.js)
+
+  /* ด่านเลขแพ็คของ "ยื่นอนุมัติ" (มติเจ้าของ 08/10 ข้อ 3 · งวด PR-3): บรรทัดหมวด 02-001 ที่ยังไม่มีเลขแพ็ค (ร่างเก่า · ร่างที่เพิ่งออก Rev.
+     · ร่างที่เซิร์ฟเวอร์สร้างบรรทัดให้ · แท็บเบราว์เซอร์รุ่นเก่าที่ไม่มีช่องกรอก) ยื่นไม่ได้ — ก่อนลงนาม ก่อนเขียนอะไรทั้งสิ้น
+     ตัดสินจาก **บรรทัดที่เก็บไว้** (รหัส FG ที่ตรึงบนบรรทัดตอนบันทึก) ไม่อ่านทะเบียนสินค้า · เลขรายการ = ลำดับที่หน้าใบเรียง
+     ข้อความบอกปุ่มที่ต้องกด ("แก้ไขข้อมูล") — เซิร์ฟเวอร์ไม่เติมเลขให้ */
+  const packIssues = linePackIssues(quote.lines, { numbering: 'stored' });
+  if (packIssues.length) return badRequest(linePackGateMessage(packIssues, 'submit'));
 
   let result;
   try {
