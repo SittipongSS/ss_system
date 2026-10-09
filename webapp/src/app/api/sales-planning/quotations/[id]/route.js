@@ -24,6 +24,7 @@ import {
   customerMismatchMessage, customerMismatchedLines,
   enforceMasterPrices, normalizeManualLines, refreshFgLinesForDisplay,
 } from '@/lib/sales/quoteLines';
+import { LinePackError, lineMoneyRuleMessage, linePackIssues, linePackMessage } from '@/lib/sales/linePacks';
 import { normalizePaymentPlan, validatePaymentPlan } from '@/lib/sales/paymentPlan';
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
 import { QUOTATION_DOC_LANGUAGES } from '@/lib/sales/quotationMasterTemplate';
@@ -316,9 +317,16 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   let newLines = null;
   const moneyChanged = 'lines' in body || 'discountType' in body || 'discountValue' in body || 'vatRate' in body;
   if (moneyChanged) {
-    newLines = 'lines' in body
-      ? normalizeManualLines(body.lines || [])
-      : (before.lines || []).map((l) => ({ ...l }));
+    /* เลขแพ็ค (mig 0407): ตัว normalize โยน LinePackError เมื่อค่าที่ส่งมาใช้ไม่ได้ หรือส่งมาขณะช่องปิด
+       ⇒ ตอบ 400 พร้อมเลขรายการ — ไม่ตัดทิ้งแล้วบันทึกต่อ (ยอดจะหดเงียบ) */
+    try {
+      newLines = 'lines' in body
+        ? normalizeManualLines(body.lines || [])
+        : (before.lines || []).map((l) => ({ ...l }));
+    } catch (e) {
+      if (e instanceof LinePackError) return badRequest(e.message);
+      throw e;
+    }
     // FG ต้องเป็นของลูกค้าที่ออกใบให้ (มติผู้ใช้ 2026-08-17) — ตรวจเฉพาะสินค้าที่
     // "เพิ่งใส่เข้ามา" เทียบกับบรรทัดเดิมของใบ ไม่งั้นใบเก่าที่มีของข้ามลูกค้าค้างอยู่
     // จะบันทึกไม่ได้เลย แม้จะมาแก้แค่ VAT/หมายเหตุ
@@ -332,6 +340,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     newLines = await enforceMasterPrices(supabase, newLines, before.lines || [], {
       customerId: before.customerId,
     });
+    /* ด่านเลขแพ็คบนบรรทัดชุดสุดท้ายที่จะส่งเข้า RPC — **ด่านเดียว** ของทางที่ส่งบรรทัดที่เก็บไว้กลับไปทั้งก้อน
+       (แก้แค่ VAT/ส่วนลดท้ายใบ ⇒ `before.lines` ไม่ผ่านตัว normalize) · ช่องปิด: บรรทัดไหนมีเลขแพ็ค = ปฏิเสธ ไม่ล้างให้
+       · ค่าตั้งต้นของตัวเลือกตั้งใจ: วันที่เปิดช่อง (งวด PR-3) การบันทึกเนื้อหาใบต้องมีเลขแพ็คทุกบรรทัดหมวด 02-001 (มติ A4) */
+    const packIssues = linePackIssues(newLines);
+    if (packIssues.length) return badRequest(linePackMessage(packIssues));
     // ใบว่าง (0 รายการ) เก็บเป็นร่างได้ — ใส่รหัส FG ทีหลัง; การส่ง/รับใบมี guard ยอด>0 อยู่แล้ว
     if (!newLines.length && (body.status === 'sent' || before.status === 'sent')) {
       return badRequest('ต้องมีอย่างน้อย 1 รายการก่อนส่งลูกค้า');
@@ -425,7 +438,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     p_content: patch,
     p_lines: rows,
   });
-  if (error) return fail(error.message, 500);
+  // CHECK กฎเงินของบรรทัด / ช่วงเลขแพ็ค (0407) ปฏิเสธ = ข้อความไทย ไม่ใช่ชื่อ constraint ดิบ · RPC ถอยทั้งก้อนแล้ว
+  if (error) return fail(lineMoneyRuleMessage(error) || error.message, 500);
 
   const after = await loadQuote(supabase, id);
 

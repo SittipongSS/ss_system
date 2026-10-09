@@ -12,6 +12,9 @@ import { syncContractsForQuotation } from '@/lib/sales/contractQuotationSync';
 import {
   customerMismatchMessage, customerMismatchedLines, enforceMasterPrices, normalizeManualLines,
 } from '@/lib/sales/quoteLines';
+import {
+  LinePackError, lineMoneyRuleMessage, linePackIssues, linePackMessage, withPackColumn,
+} from '@/lib/sales/linePacks';
 import { RETIRED_PEOPLE_CLEARED, stripRetiredPeople } from '@/lib/sales/quotationMetadata';
 import { isRevisableQuotationApprovalStatus } from '@/lib/sales/quotationWorkflow';
 import { loadDealOwnerContact } from '@/lib/sales/dealOwner';
@@ -58,7 +61,15 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (closedProject) return badRequest(closedProject);
 
   const body = await req.json().catch(() => ({}));
-  const revLines = normalizeManualLines('lines' in body ? body.lines || [] : quote.lines || []);
+  /* เลขแพ็ค (mig 0407): ค่าที่ใช้ไม่ได้ หรือมีค่าขณะช่องปิด (รวมบรรทัดที่สืบทอดจากใบเดิม) = ปฏิเสธพร้อมเลขรายการ
+     — ไม่ตัดทิ้งแล้วออก Rev. ต่อ: ฉบับใหม่จะได้ยอดที่หดเงียบ */
+  let revLines;
+  try {
+    revLines = normalizeManualLines('lines' in body ? body.lines || [] : quote.lines || []);
+  } catch (e) {
+    if (e instanceof LinePackError) return badRequest(e.message);
+    throw e;
+  }
   // FG ต้องเป็นของลูกค้าที่ออกใบให้ (มติผู้ใช้ 2026-08-17) — ยกเว้นบรรทัดที่สืบทอด
   // มาจากใบเดิม ไม่งั้นใบเก่าที่มีของข้ามลูกค้าค้างอยู่จะออก Rev. ไม่ได้เลย
   const revMismatched = await customerMismatchedLines(supabase, revLines, {
@@ -84,6 +95,12 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     notes,
     referenceNote,
   } = revision;
+  /* ด่านเลขแพ็คบนบรรทัดของฉบับใหม่ — ก่อนอ่าน/เขียนอะไรของ Rev. ลงฐาน ⇒ ถูกปฏิเสธแล้วไม่มีใบค้างครึ่งทาง
+     ⭐ `requireOnCategory: false` ตามมติ 08/10 ข้อ 3: การออก Rev. ก๊อปบรรทัดตามที่เป็น (ไม่มีเลขแพ็คก็ยังไม่มี)
+       ด่าน "หมวด 02-001 ต้องกรอก" ทักตอนบันทึก/ส่งร่างฉบับนั้น — ใช้ค่าตั้งต้น (true) = วันที่เปิดช่อง
+       ใบเก่าหมวดนี้ออก Rev. ไม่ได้เลยสักใบ */
+  const packIssues = linePackIssues(revisionLines, { requireOnCategory: false });
+  if (packIssues.length) return badRequest(linePackMessage(packIssues));
 
   // เลข R ถัดไปของเลขฐานเดียวกัน (กันช่องโหว่ revise ใบเก่าซ้ำ → เลขชน unique)
   const base = quote.baseNumber || quote.quoteNumber;
@@ -232,12 +249,18 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     source: l.source,
     sortOrder: l.sortOrder ?? i,
     metadata: l.metadata || {},
+    /* 🪤 ลิสต์นี้เขียนมือ — คีย์ที่ไม่มีชื่อที่นี่หายเงียบทุกครั้งที่ออก Rev. · เลขแพ็คคูณเงิน (mig 0407):
+       หาย = ยอดของฉบับใหม่ไม่ตรงกับบรรทัด ⇒ ต้องอยู่ที่นี่เสมอ (ยาม linePackWritePaths.test.mjs)
+       เอ่ยชื่อคอลัมน์เฉพาะบรรทัดที่มีเลขแพ็ค — คำขอของใบที่ไม่มีเลขแพ็คหน้าตาเดิมทุกตัวอักษร */
+    ...(l.packQty != null ? { packQty: l.packQty } : {}),
   }));
   if (lineRows.length) {
-    const { error: lineErr } = await supabase.from('quotation_lines').insert(lineRows);
+    // withPackColumn: ทุกแถวของคำขอเดียวมีคีย์ packQty เหมือนกัน หรือไม่มีเลย (linePacks.js)
+    const { error: lineErr } = await supabase.from('quotation_lines').insert(withPackColumn(lineRows));
     if (lineErr) {
       await supabase.from('quotations').delete().eq('id', newId);
-      return fail(lineErr.message, 500);
+      // CHECK กฎเงินของบรรทัด / ช่วงเลขแพ็ค (0407) ปฏิเสธ = ข้อความไทย ไม่ใช่ชื่อ constraint ดิบ
+      return fail(lineMoneyRuleMessage(lineErr) || lineErr.message, 500);
     }
   }
 

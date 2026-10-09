@@ -1,0 +1,456 @@
+{
+  "_about": "Fixtures of the line amount rule (QT pack column · mig 0407). ONE list for both sides: quoteLineNet / quoteLineMoney (JS) and the CHECK *_line_money_rule (SQL). rule = input → what JS must compute (every row is accepted by the CHECK). stored = rows as they would sit in the table → whether the CHECK accepts them. typing = what the pack input may hold → packQtyValue / multiplier. The VALUES list of §3 in 0407_quotation_line_pack_qty.sql is this file (rule rows first, then stored rows) — linePackMigration.test.mjs compares them.",
+  "checkExpression": "abs(\"lineTotal\" - (round(COALESCE(\"packQty\", 1) * qty * \"unitPrice\", 2) - COALESCE(\"discountAmount\", 0))) <= 0.01",
+  "rule": [
+    {
+      "id": "A-null-12x3500",
+      "note": "today's commonest line: 12 × 3,500",
+      "packQty": null,
+      "qty": 12,
+      "unitPrice": 3500,
+      "discountType": null,
+      "discountValue": 0,
+      "savedDiscountValue": 0,
+      "gross": 42000,
+      "discountAmount": 0,
+      "lineTotal": 42000
+    },
+    {
+      "id": "A-pack1",
+      "note": "1 pack × 12 months × 3,500 — same money as the line above",
+      "packQty": 1,
+      "qty": 12,
+      "unitPrice": 3500,
+      "discountType": null,
+      "discountValue": 0,
+      "savedDiscountValue": 0,
+      "gross": 42000,
+      "discountAmount": 0,
+      "lineTotal": 42000
+    },
+    {
+      "id": "B-2x12-flat",
+      "note": "owner's example with a flat baht discount: 84,000 − 14,400 (the discount is NOT multiplied by packs)",
+      "packQty": 2,
+      "qty": 12,
+      "unitPrice": 3500,
+      "discountType": "amount",
+      "discountValue": 14400,
+      "savedDiscountValue": 14400,
+      "gross": 84000,
+      "discountAmount": 14400,
+      "lineTotal": 69600
+    },
+    {
+      "id": "B-today-24-flat",
+      "note": "the same sale keyed the old way (SO-26090244-0 line 2)",
+      "packQty": null,
+      "qty": 24,
+      "unitPrice": 3500,
+      "discountType": "amount",
+      "discountValue": 14400,
+      "savedDiscountValue": 14400,
+      "gross": 84000,
+      "discountAmount": 14400,
+      "lineTotal": 69600
+    },
+    {
+      "id": "C-43x4",
+      "note": "43 branches × 4 months",
+      "packQty": 43,
+      "qty": 4,
+      "unitPrice": 2900,
+      "discountType": null,
+      "discountValue": 0,
+      "savedDiscountValue": 0,
+      "gross": 498800,
+      "discountAmount": 0,
+      "lineTotal": 498800
+    },
+    {
+      "id": "C-today-172",
+      "note": "the same sale keyed the old way (QT-26080135-0)",
+      "packQty": null,
+      "qty": 172,
+      "unitPrice": 2900,
+      "discountType": null,
+      "discountValue": 0,
+      "savedDiscountValue": 0,
+      "gross": 498800,
+      "discountAmount": 0,
+      "lineTotal": 498800
+    },
+    {
+      "id": "D-2x12",
+      "note": "owner's example: 2 × 12 × 3,500 = 84,000",
+      "packQty": 2,
+      "qty": 12,
+      "unitPrice": 3500,
+      "discountType": null,
+      "discountValue": 0,
+      "savedDiscountValue": 0,
+      "gross": 84000,
+      "discountAmount": 0,
+      "lineTotal": 84000
+    },
+    {
+      "id": "D-today-12x7000",
+      "note": "the same sale with the packs folded into the price (QT-26100448-0)",
+      "packQty": null,
+      "qty": 12,
+      "unitPrice": 7000,
+      "discountType": null,
+      "discountValue": 0,
+      "savedDiscountValue": 0,
+      "gross": 84000,
+      "discountAmount": 0,
+      "lineTotal": 84000
+    },
+    {
+      "id": "E-max-pack",
+      "note": "largest pack number",
+      "packQty": 9999,
+      "qty": 1,
+      "unitPrice": 0.01,
+      "discountType": null,
+      "discountValue": 0,
+      "savedDiscountValue": 0,
+      "gross": 99.99,
+      "discountAmount": 0,
+      "lineTotal": 99.99
+    },
+    {
+      "id": "F-percent",
+      "note": "percent discount on the full gross",
+      "packQty": 2,
+      "qty": 12,
+      "unitPrice": 3500,
+      "discountType": "percent",
+      "discountValue": 5,
+      "savedDiscountValue": 5,
+      "gross": 84000,
+      "discountAmount": 4200,
+      "lineTotal": 79800
+    },
+    {
+      "id": "G-percent-over",
+      "note": "percent above 100 is saved as 100",
+      "packQty": 2,
+      "qty": 12,
+      "unitPrice": 3500,
+      "discountType": "percent",
+      "discountValue": 150,
+      "savedDiscountValue": 100,
+      "gross": 84000,
+      "discountAmount": 84000,
+      "lineTotal": 0
+    },
+    {
+      "id": "H-flat-over",
+      "note": "a flat discount above the gross is capped at the gross",
+      "packQty": 2,
+      "qty": 1,
+      "unitPrice": 100,
+      "discountType": "amount",
+      "discountValue": 250,
+      "savedDiscountValue": 250,
+      "gross": 200,
+      "discountAmount": 200,
+      "lineTotal": 0
+    },
+    {
+      "id": "I-half-satang-pack",
+      "note": "exact product 149.985: JS floating point gives 149.98, Postgres numeric gives 149.99 — the ±0.01 case",
+      "packQty": 3,
+      "qty": 1.5,
+      "unitPrice": 33.33,
+      "discountType": null,
+      "discountValue": 0,
+      "savedDiscountValue": 0,
+      "gross": 149.98,
+      "discountAmount": 0,
+      "lineTotal": 149.98,
+      "sqlGross": 149.99
+    },
+    {
+      "id": "J-half-satang-null",
+      "note": "exact product 49.995 → 50.00 on both sides",
+      "packQty": null,
+      "qty": 1.5,
+      "unitPrice": 33.33,
+      "discountType": null,
+      "discountValue": 0,
+      "savedDiscountValue": 0,
+      "gross": 50,
+      "discountAmount": 0,
+      "lineTotal": 50
+    },
+    {
+      "id": "K-half-satang-small",
+      "note": "exact product 0.105 → 0.11 on both sides",
+      "packQty": 7,
+      "qty": 0.5,
+      "unitPrice": 0.03,
+      "discountType": null,
+      "discountValue": 0,
+      "savedDiscountValue": 0,
+      "gross": 0.11,
+      "discountAmount": 0,
+      "lineTotal": 0.11
+    },
+    {
+      "id": "L-decimal-price-percent",
+      "note": "decimal price and percent",
+      "packQty": 2,
+      "qty": 3,
+      "unitPrice": 1234.56,
+      "discountType": "percent",
+      "discountValue": 12.5,
+      "savedDiscountValue": 12.5,
+      "gross": 7407.36,
+      "discountAmount": 925.92,
+      "lineTotal": 6481.44
+    },
+    {
+      "id": "M-free",
+      "note": "free line",
+      "packQty": 1,
+      "qty": 1,
+      "unitPrice": 0,
+      "discountType": null,
+      "discountValue": 0,
+      "savedDiscountValue": 0,
+      "gross": 0,
+      "discountAmount": 0,
+      "lineTotal": 0
+    },
+    {
+      "id": "N-9x5800-flat",
+      "note": "a real discount pattern (9 × 5,800 − 39,150) with pack 1",
+      "packQty": 1,
+      "qty": 9,
+      "unitPrice": 5800,
+      "discountType": "amount",
+      "discountValue": 39150,
+      "savedDiscountValue": 39150,
+      "gross": 52200,
+      "discountAmount": 39150,
+      "lineTotal": 13050
+    },
+    {
+      "id": "O-decimal-qty-pack",
+      "note": "decimal quantity with packs",
+      "packQty": 2,
+      "qty": 2.5,
+      "unitPrice": 19.99,
+      "discountType": "amount",
+      "discountValue": 0.01,
+      "savedDiscountValue": 0.01,
+      "gross": 99.95,
+      "discountAmount": 0.01,
+      "lineTotal": 99.94
+    },
+    {
+      "id": "P-third",
+      "note": "exact product 1.005 → 1.01 on both sides",
+      "packQty": 3,
+      "qty": 1,
+      "unitPrice": 0.335,
+      "discountType": null,
+      "discountValue": 0,
+      "savedDiscountValue": 0,
+      "gross": 1.01,
+      "discountAmount": 0,
+      "lineTotal": 1.01
+    }
+  ],
+  "stored": [
+    {
+      "id": "X-forgot-multiplier",
+      "note": "a writer that dropped the multiplier: pack 2 but lineTotal = qty × price",
+      "packQty": 2,
+      "qty": 12,
+      "unitPrice": 3500,
+      "discountAmount": 0,
+      "lineTotal": 42000,
+      "ok": false
+    },
+    {
+      "id": "X-forgot-with-discount",
+      "note": "the same with a discount",
+      "packQty": 2,
+      "qty": 12,
+      "unitPrice": 3500,
+      "discountAmount": 14400,
+      "lineTotal": 27600,
+      "ok": false
+    },
+    {
+      "id": "X-multiplied-no-pack",
+      "note": "the amount was multiplied but the pack number was lost",
+      "packQty": null,
+      "qty": 12,
+      "unitPrice": 3500,
+      "discountAmount": 0,
+      "lineTotal": 84000,
+      "ok": false
+    },
+    {
+      "id": "X-pack1-lost",
+      "note": "BLIND SPOT: a lost pack number of 1 is a valid row — only the copy-hop guards and the parity script see it",
+      "packQty": null,
+      "qty": 12,
+      "unitPrice": 3500,
+      "discountAmount": 0,
+      "lineTotal": 42000,
+      "ok": true
+    },
+    {
+      "id": "X-one-satang-off",
+      "note": "tolerance: 0.01 away from 99.99 is accepted",
+      "packQty": null,
+      "qty": 3,
+      "unitPrice": 33.33,
+      "discountAmount": 0,
+      "lineTotal": 100,
+      "ok": true
+    },
+    {
+      "id": "X-two-satang-off",
+      "note": "0.02 away is refused",
+      "packQty": null,
+      "qty": 3,
+      "unitPrice": 33.33,
+      "discountAmount": 0,
+      "lineTotal": 100.01,
+      "ok": false
+    },
+    {
+      "id": "X-discount-not-taken",
+      "note": "discountAmount stored but not subtracted",
+      "packQty": 2,
+      "qty": 12,
+      "unitPrice": 3500,
+      "discountAmount": 14400,
+      "lineTotal": 84000,
+      "ok": false
+    },
+    {
+      "id": "X-rounded-per-unit",
+      "note": "rounding per unit before multiplying (50.00 × 3) lands 0.01 away — inside the tolerance",
+      "packQty": 3,
+      "qty": 1.5,
+      "unitPrice": 33.33,
+      "discountAmount": 0,
+      "lineTotal": 150,
+      "ok": true
+    },
+    {
+      "id": "X-rounded-per-unit-far",
+      "note": "the same mistake with 30 packs is 0.15 away — refused",
+      "packQty": 30,
+      "qty": 1.5,
+      "unitPrice": 33.33,
+      "discountAmount": 0,
+      "lineTotal": 1500,
+      "ok": false
+    }
+  ],
+  "typing": [
+    {
+      "raw": "",
+      "value": null,
+      "factor": 1
+    },
+    {
+      "raw": "   ",
+      "value": null,
+      "factor": 1
+    },
+    {
+      "raw": null,
+      "value": null,
+      "factor": 1
+    },
+    {
+      "raw": "0",
+      "value": "invalid",
+      "factor": 1
+    },
+    {
+      "raw": "1.5",
+      "value": "invalid",
+      "factor": 1
+    },
+    {
+      "raw": "-2",
+      "value": "invalid",
+      "factor": 1
+    },
+    {
+      "raw": "abc",
+      "value": "invalid",
+      "factor": 1
+    },
+    {
+      "raw": 0,
+      "value": "invalid",
+      "factor": 1
+    },
+    {
+      "raw": 10000,
+      "value": "invalid",
+      "factor": 1
+    },
+    {
+      "raw": "10000",
+      "value": "invalid",
+      "factor": 1
+    },
+    {
+      "raw": "02",
+      "value": "invalid",
+      "factor": 1
+    },
+    {
+      "raw": 1.5,
+      "value": "invalid",
+      "factor": 1
+    },
+    {
+      "raw": true,
+      "value": "invalid",
+      "factor": 1
+    },
+    {
+      "raw": "2",
+      "value": 2,
+      "factor": 2
+    },
+    {
+      "raw": " 7 ",
+      "value": 7,
+      "factor": 7
+    },
+    {
+      "raw": 2,
+      "value": 2,
+      "factor": 2
+    },
+    {
+      "raw": "9999",
+      "value": 9999,
+      "factor": 9999
+    },
+    {
+      "raw": 9999,
+      "value": 9999,
+      "factor": 9999
+    },
+    {
+      "raw": 1,
+      "value": 1,
+      "factor": 1
+    }
+  ]
+}

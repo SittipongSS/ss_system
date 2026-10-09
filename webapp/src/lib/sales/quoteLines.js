@@ -6,6 +6,9 @@ import { customerTaxSiblingIds, customerTaxSiblings } from '@/lib/master/custome
 import { quoteLineMoney, quoteLineNet, toMoney } from '@/lib/salesPlanning';
 import { DEFAULT_SALE_UNIT, saleUnitOf } from '@/lib/master/units';
 import {
+  LinePackError, PACK_QTY_INVALID, QUOTE_PACK_INPUT_OPEN, packLineUnit, packQtyValue,
+} from '@/lib/sales/linePacks';
+import {
   productBrandName,
   productDisplayName,
   productDisplayNameFor,
@@ -180,6 +183,10 @@ export async function seedLinesFromProject(supabase, deal) {
   return (data || []).map((row, index) => {
     const qty = qtyFromProjectProduct(row);
     const unitPrice = toMoney(row.product?.[QUOTE_PRICE_FIELD]);
+    /* ยอดของบรรทัดคิดด้วยสูตรกลางตัวเดียวกับทุกทาง (quoteLineNet) — เดิมเขียน `qty * unitPrice` เองอีกชุด
+       (สำเนาที่สองของสูตร: ไม่ปัดสตางค์ และจะไม่รู้จักตัวคูณแพ็คของ mig 0407) · บรรทัดที่ตั้งต้นจากโครงการ
+       ไม่มีเลขแพ็ค — คนออกใบกรอกเองในใบ */
+    const net = quoteLineNet({ qty, unitPrice });
     return {
       id: genId('QTL'),
       productId: row.productId || row.product?.id || null,
@@ -190,8 +197,8 @@ export async function seedLinesFromProject(supabase, deal) {
       unitPrice,
       discountType: null,
       discountValue: 0,
-      discountAmount: 0,
-      lineTotal: qty * unitPrice,
+      discountAmount: net.discountAmount,
+      lineTotal: net.lineTotal,
       source: 'project_products',
       sortOrder: index,
       metadata: {
@@ -401,7 +408,11 @@ export async function enforceMasterPrices(supabase, lines = [], previousLines = 
     if (ownerMeta) Object.assign(metadata, ownerMeta);
     else { delete metadata.fgOwnerCustomerId; delete metadata.fgOwnerArCode; delete metadata.fgOwnerBranchCode; }
     // หน่วยผูก master เช่นกัน (มติ 2026-07-23) — freeze จากสินค้าตอนบันทึก; สินค้าถูกลบ = คงเดิม
-    const unit = master ? (master.saleUnit || DEFAULT_SALE_UNIT) : (prev?.unit ?? line.unit ?? DEFAULT_SALE_UNIT);
+    // ⭐ บรรทัดที่มีเลขแพ็ค (mig 0407): จำนวน = จำนวนเดือน ⇒ หน่วยเป็น "เดือน" ไม่ว่าทะเบียนตั้งหน่วยขายไว้เป็นอะไร (packLineUnit)
+    const unit = packLineUnit(
+      line,
+      master ? (master.saleUnit || DEFAULT_SALE_UNIT) : (prev?.unit ?? line.unit ?? DEFAULT_SALE_UNIT),
+    );
     if (
       unitPrice === line.unitPrice
       && description === line.description
@@ -414,7 +425,11 @@ export async function enforceMasterPrices(supabase, lines = [], previousLines = 
       && metadata.categoryName === line.metadata?.categoryName
       && metadata.categoryNameEn === line.metadata?.categoryNameEn
     ) return line;
-    const net = quoteLineNet({ qty: line.qty, unitPrice, discountType: line.discountType, discountValue: line.discountValue });
+    /* 🔴 เลขแพ็คต้องเข้าสูตรทุกครั้งที่คิดยอดใหม่ (ราคาในทะเบียนขยับ) — ลืม = ยอดหดเหลือ จำนวน × ราคา เงียบ ๆ
+       · ที่นี่ **ไม่ตั้ง ไม่ล้าง ไม่แก้** เลขแพ็ค: `...line` พกค่าเดิมไปเอง (กฎเซิร์ฟเวอร์ — linePacks.js) */
+    const net = quoteLineNet({
+      qty: line.qty, unitPrice, discountType: line.discountType, discountValue: line.discountValue, packQty: line.packQty,
+    });
     return {
       ...line,
       unitPrice,
@@ -455,7 +470,8 @@ export async function refreshFgLinesForDisplay(supabase, quotes = []) {
             ...l,
             description: fgLineDescription(p),
             fgCode: p.fgCode || l.fgCode,
-            unit: p.saleUnit || l.unit || DEFAULT_SALE_UNIT,
+            // บรรทัดที่มีเลขแพ็คคงหน่วย "เดือน" ไว้ — ไม่ถูกทับด้วยหน่วยขายของทะเบียนตอนเปิดใบ (packLineUnit)
+            unit: packLineUnit(l, p.saleUnit || l.unit || DEFAULT_SALE_UNIT),
             metadata: types ? withCategoryMeta(metadata, p) : metadata,
           };
         });
@@ -514,15 +530,32 @@ export function quoteLineFromProduct(prevLine = {}, product = null) {
 }
 
 // normalize บรรทัดจาก client (สร้าง/แก้): คิดส่วนลดรายบรรทัด + ยอดสุทธิที่ server เสมอ
-export function normalizeManualLines(lines = []) {
+/* ⭐ เลขแพ็ค (`packQty` · mig 0407 · docs/qt-pack-column.md) — คีย์เดียวที่ตัวนี้ **ไม่ทิ้งเงียบ**:
+   · ตรวจ **ทุกบรรทัดที่ส่งมา ก่อนกรองอะไรทิ้ง** (รวมบรรทัดจำนวน 0 ที่กำลังจะถูกตัด) — ค่าที่ใช้ไม่ได้ หรือมีค่าขณะช่องปิด
+     = โยน `LinePackError` ที่บอกเลขรายการ · ผู้เรียกทุกตัวต้องจับแล้วตอบ 400 (ยาม linePackWritePaths.test.mjs)
+   · `null` / `''` / `undefined` / ไม่มีคีย์ = ไม่ใช่เลขแพ็ค ผ่านเสมอ: หลังรัน 0407 ทุกบรรทัดที่ API คืนมี `packQty: null`
+     และจอส่งบรรทัดกลับมาทั้งก้อน — ปฏิเสธค่านี้ = บันทึกใบเสนอราคาไม่ได้ทั้งระบบ
+   · คืนคีย์ `packQty` (เป็นตัวเลข) **เฉพาะบรรทัดที่มีเลขแพ็ค** ⇒ บรรทัดเดิมได้คีย์ชุดเดิมลำดับเดิม และคำขอ INSERT ไม่เอ่ยชื่อคอลัมน์
+   🔴 `packInputOpen` เป็นช่องสำหรับเทสต์เท่านั้น (พิสูจน์ว่าเลขแพ็คเดินครบทุกทอดขณะช่องยังปิดบน production)
+     — ห้ามมีผู้เรียกใน src/app หรือ src/lib ส่งค่านี้ (ยามเดียวกัน) · เปิดช่องจริง = แก้ QUOTE_PACK_INPUT_OPEN ที่เดียว */
+export function normalizeManualLines(lines = [], { packInputOpen = QUOTE_PACK_INPUT_OPEN } = {}) {
+  const packs = lines.map((line) => packQtyValue(line?.packQty));
+  const packIssues = [];
+  packs.forEach((value, index) => {
+    if (value === null) return;
+    if (!packInputOpen) packIssues.push({ index, row: index + 1, code: 'closed' });
+    else if (value === PACK_QTY_INVALID) packIssues.push({ index, row: index + 1, code: 'invalid' });
+  });
+  if (packIssues.length) throw new LinePackError(packIssues);
   return lines
     .map((line, index) => {
       // เว้นว่าง/ไม่ระบุ → default 1; ระบุ 0 มาจริง → 0 (ให้ filter qty>0 ตัดออก ไม่ใช่ดันเป็น 1)
       const qty = line.qty === '' || line.qty == null ? 1 : toMoney(line.qty, 0);
       const unitPrice = toMoney(line.unitPrice);
       // ชนิดที่ไม่รู้จัก = ไม่ลด · % เกิน 100 ตัดเหลือ 100 — ตัวเดียวกับแผนใบสั่งขายย้อนหลัง (quoteLineMoney)
+      const packQty = packs[index]; // ตัวเลข 1–9999 หรือ null (ค่าที่ใช้ไม่ได้ถูกโยนออกไปแล้วข้างบน)
       const { discountType, discountValue, discountAmount, lineTotal } = quoteLineMoney({
-        qty, unitPrice, discountType: line.discountType, discountValue: line.discountValue,
+        qty, unitPrice, discountType: line.discountType, discountValue: line.discountValue, packQty,
       });
       return {
         id: genId('QTL'),
@@ -532,8 +565,8 @@ export function normalizeManualLines(lines = []) {
         qty,
         // บรรทัดที่พิมพ์เองเลือกหน่วยเองได้ (บรรทัดที่ผูกสินค้าถูก enforceMasterPrices ทับ
         // ด้วย master.saleUnit ทีหลังอยู่แล้ว) — clamp กันค่ายาวผิดปกติจาก client ไปดัน
-        // คอลัมน์หน่วยบนเอกสาร A4 เสียรูป
-        unit: saleUnitOf(line.unit),
+        // คอลัมน์หน่วยบนเอกสาร A4 เสียรูป · บรรทัดที่มีเลขแพ็ค = "เดือน" เสมอ (packLineUnit)
+        unit: packLineUnit({ packQty }, saleUnitOf(line.unit)),
         unitPrice,
         discountType,
         discountValue,
@@ -542,6 +575,7 @@ export function normalizeManualLines(lines = []) {
         source: line.source === 'project_products' ? 'project_products' : 'manual',
         sortOrder: index,
         metadata: line.metadata || {},
+        ...(packQty !== null ? { packQty } : {}),
       };
     })
     .filter((line) => line.description && line.qty > 0);

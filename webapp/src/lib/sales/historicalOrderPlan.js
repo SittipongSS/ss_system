@@ -93,7 +93,7 @@ export const HISTORICAL_SERVICE_LIMITS = Object.freeze({ packsMin: 1, packsMax: 
  * @returns `{ lines: [{ discountType, discountValue, gross, discountAmount, lineTotal }], subtotal, discountAmount, vatAmount, totalAmount }`
  */
 export function historicalLinesMoney(rows = [], vatRate = 0, discount = {}) {
-  const lines = (rows || []).map((row) => quoteLineMoney(row || {}));
+  const lines = (rows || []).map((row) => quoteLineMoney({ qty: row?.qty, unitPrice: row?.unitPrice, discountType: row?.discountType, discountValue: row?.discountValue }));
   const discountType = QUOTE_DISCOUNT_TYPES.includes(discount?.discountType) ? discount.discountType : null;
   const totals = quoteTotals((rows || []).map((row, index) => ({
     qty: row?.qty,

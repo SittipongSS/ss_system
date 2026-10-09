@@ -494,3 +494,187 @@ test('หมวดของบรรทัดเพิ่มเองรอด�
   assert.equal(asFg.metadata.categoryName, 'น้ำหอม');
   assert.equal(asFg.metadata.categoryCode, undefined);
 });
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════════════
+   เลขแพ็คของบรรทัด ("แพ็ค/เดือน" · หมวด 02-001 · mig 0407 · docs/qt-pack-column.md)
+   ⭐ กฎ: เซิร์ฟเวอร์ไม่แก้เลขแพ็คเอง — รับตามที่ส่งมา หรือปฏิเสธพร้อมเลขรายการ · งวด PR-1 ช่องยังปิด
+   ⭐ `packInputOpen: true` ในเทสต์ = ช่องสำหรับเทสต์ ใช้พิสูจน์ว่าเลขแพ็คเดินครบทุกทอดขณะ production ยังปิด
+   ═══════════════════════════════════════════════════════════════════════════════════════════════════ */
+import { seedLinesFromProject } from './quoteLines.js';
+import { LINE_PACK_TEXT, LinePackError, QUOTE_PACK_INPUT_OPEN } from './linePacks.js';
+import { quoteLineNet } from '../salesPlanning.js';
+
+const OPEN = { packInputOpen: true };
+const SDS_FG = 'FG-278-02-001-0757';
+const packRow = (over = {}) => ({ productId: 'P1', fgCode: SDS_FG, description: 'ระบบกระจายกลิ่น SDS', qty: 12, unitPrice: 3500, ...over });
+const KEYS_TODAY = ['id', 'productId', 'fgCode', 'description', 'qty', 'unit', 'unitPrice', 'discountType', 'discountValue',
+  'discountAmount', 'lineTotal', 'source', 'sortOrder', 'metadata'];
+const thrownBy = (fn) => {
+  try { fn(); } catch (error) { return error; }
+  return null;
+};
+
+test('แพ็ค 🔴 ช่องปิด: บรรทัดที่ส่งเลขแพ็คมาถูกปฏิเสธพร้อมเลขรายการ — ค่าที่ถูกต้องด้วย · ไม่ตัดทิ้งแล้วบันทึกต่อ', () => {
+  assert.equal(QUOTE_PACK_INPUT_OPEN, false);
+  for (const packQty of [2, '2', 1, 0, 'abc', 1.5, 10000, true]) {
+    const error = thrownBy(() => normalizeManualLines([packRow(), packRow({ packQty }), packRow()]));
+    assert.ok(error instanceof LinePackError, `packQty=${JSON.stringify(packQty)} ต้องโยน LinePackError`);
+    assert.equal(error.status, 400);
+    assert.deepEqual(error.issues, [{ index: 1, row: 2, code: 'closed' }]);
+    assert.equal(error.message, `รายการ 2: ${LINE_PACK_TEXT.closed}`);
+  }
+  // หลายบรรทัด = บอกครบทุกบรรทัดในข้อความเดียว
+  const many = thrownBy(() => normalizeManualLines([packRow({ packQty: 2 }), packRow(), packRow({ packQty: '3' })]));
+  assert.equal(many.message, `รายการ 1, 3: ${LINE_PACK_TEXT.closed}`);
+});
+
+test('แพ็ค 🔴 ช่องปิด: บรรทัดที่กำลังจะถูกตัดทิ้ง (จำนวน 0 · ไม่มีคำอธิบาย) ก็ถูกตรวจก่อน — เลขแพ็คไม่หายไปกับบรรทัดเงียบ ๆ', () => {
+  const error = thrownBy(() => normalizeManualLines([packRow(), packRow({ qty: 0, packQty: 2 })]));
+  assert.ok(error instanceof LinePackError);
+  assert.deepEqual(error.issues, [{ index: 1, row: 2, code: 'closed' }]);
+  // ไม่มีเลขแพ็ค: บรรทัดจำนวน 0 ถูกตัดเหมือนเดิม ไม่โยน
+  assert.equal(normalizeManualLines([packRow(), packRow({ qty: 0 })]).length, 1);
+});
+
+test('แพ็ค ⭐ ช่องปิด: คีย์ packQty ที่ไม่มีค่า (null จาก select * หลังรัน 0407 · ว่าง · undefined) ผ่าน และผลลัพธ์ไม่มีคีย์นี้', () => {
+  // จอส่งบรรทัดที่ API คืนมากลับไปทั้งก้อน ⇒ หลังรัน 0407 ทุกบรรทัดมี packQty: null — ปฏิเสธค่านี้ = บันทึกใบไม่ได้ทั้งระบบ
+  for (const packQty of [null, undefined, '', '   ']) {
+    const [line, plain] = normalizeManualLines([packRow({ packQty }), packRow()]);
+    assert.deepEqual(Object.keys(line), KEYS_TODAY, `packQty=${JSON.stringify(packQty)}`);
+    assert.equal('packQty' in line, false);
+    const { id: _a, ...rest } = line;
+    const { id: _b, ...expected } = plain;
+    assert.deepEqual(rest, { ...expected, sortOrder: 0 }, 'เท่ากับบรรทัดที่ไม่มีคีย์ทุกช่อง');
+    assert.equal(line.lineTotal, 42000);
+    assert.equal(line.unit, 'ชิ้น', 'หน่วยไม่ถูกเปลี่ยนเป็นเดือน');
+  }
+});
+
+test('แพ็ค (ช่องเปิดในเทสต์): พกเลขแพ็ค 1 และ 2 · สตริง "2" เก็บเป็นตัวเลข · ยอด = แพ็ค × จำนวน × ราคา − ส่วนลด · หน่วย = เดือน', () => {
+  const lines = normalizeManualLines([
+    packRow({ packQty: 1, unit: 'แพ็คเกจ' }),
+    packRow({ packQty: 2, unit: 'แพ็คเกจ', discountType: 'amount', discountValue: 14400 }),
+    packRow({ packQty: '2', unit: 'กิโลกรัม' }),
+    packRow({ packQty: ' 43 ', qty: 4, unitPrice: 2900 }),
+    packRow({ unit: 'แพ็คเกจ' }),
+    packRow({ packQty: null, unit: 'แพ็คเกจ' }),
+  ], OPEN);
+  assert.deepEqual(lines.map((l) => l.packQty), [1, 2, 2, 43, undefined, undefined]);
+  assert.deepEqual(lines.map((l) => typeof l.packQty), ['number', 'number', 'number', 'number', 'undefined', 'undefined']);
+  assert.deepEqual(lines.map((l) => l.lineTotal), [42000, 69600, 84000, 498800, 42000, 42000]);
+  assert.deepEqual(lines.map((l) => l.discountAmount), [0, 14400, 0, 0, 0, 0], 'ส่วนลดเป็นบาทไม่คูณจำนวนแพ็ค');
+  assert.deepEqual(lines.map((l) => l.unit), ['เดือน', 'เดือน', 'เดือน', 'เดือน', 'แพ็คเกจ', 'แพ็คเกจ']);
+  assert.deepEqual(lines.map((l) => l.qty), [12, 12, 12, 4, 12, 12], 'จำนวนไม่ถูกคูณเข้าไป — ตัวคูณอยู่ที่เลขแพ็ค');
+  // คีย์: ชุดเดิม + packQty ต่อท้าย เฉพาะบรรทัดที่มีเลขแพ็ค
+  assert.deepEqual(Object.keys(lines[0]), [...KEYS_TODAY, 'packQty']);
+  assert.deepEqual(Object.keys(lines[4]), KEYS_TODAY);
+  assert.deepEqual(Object.keys(lines[5]), KEYS_TODAY);
+});
+
+test('แพ็ค (ช่องเปิดในเทสต์): ค่าที่ใช้ไม่ได้ถูกปฏิเสธพร้อมเลขรายการ — ไม่ปัด ไม่แปลง ไม่เก็บ NULL แทน', () => {
+  for (const packQty of [0, '0', 'abc', 1.5, '1.5', -2, 10000, '02', true]) {
+    const error = thrownBy(() => normalizeManualLines([packRow({ packQty: 2 }), packRow({ packQty })], OPEN));
+    assert.ok(error instanceof LinePackError, `packQty=${JSON.stringify(packQty)}`);
+    assert.deepEqual(error.issues, [{ index: 1, row: 2, code: 'invalid' }]);
+    assert.equal(error.message, `รายการ 2: ${LINE_PACK_TEXT.invalid}`);
+  }
+});
+
+test('แพ็ค (ช่องเปิดในเทสต์): normalize ซ้ำสองรอบได้ผลเดิม (ทางออก Rev. เรียกสองครั้ง) — เลขแพ็ค ยอด หน่วย ไม่ขยับ', () => {
+  const once = normalizeManualLines([
+    packRow({ packQty: 1, unit: 'แพ็คเกจ' }),
+    packRow({ packQty: 2, unit: 'แพ็คเกจ', discountType: 'percent', discountValue: 5 }),
+    packRow({ unit: 'แพ็คเกจ' }),
+  ], OPEN);
+  const twice = normalizeManualLines(once, OPEN);
+  const strip = (rows) => rows.map(({ id, ...rest }) => rest);
+  assert.deepEqual(strip(twice), strip(once));
+  assert.deepEqual(twice.map((l) => [l.packQty, l.lineTotal, l.unit]), [[1, 42000, 'เดือน'], [2, 79800, 'เดือน'], [undefined, 42000, 'แพ็คเกจ']]);
+  // รอบสองขณะช่องปิด = ปฏิเสธ (ไม่ใช่ตัดทิ้ง) — ผู้เรียกที่ลืมส่งตัวเลือกต่อจะรู้ทันที
+  assert.ok(thrownBy(() => normalizeManualLines(once)) instanceof LinePackError);
+});
+
+test('แพ็ค: ราคาทะเบียนขยับบนบรรทัดที่มีเลขแพ็ค → ยอดใหม่ = แพ็ค × จำนวน × ราคาใหม่ − ส่วนลด (เลขแพ็ค 1 และ 2) · หน่วยยังเป็นเดือน', async () => {
+  const master = [
+    { id: 'P1', fgCode: SDS_FG, productDescription: 'ระบบกระจายกลิ่น SDS', saleUnit: 'แพ็คเกจ', costPrice: 4000 },
+    { id: 'P2', fgCode: SDS_FG, productDescription: 'ระบบกระจายกลิ่น SDS', saleUnit: 'แพ็คเกจ', costPrice: 4000 },
+    { id: 'P3', fgCode: 'FG-336-01-009-1290', productDescription: 'น้ำหอม', saleUnit: 'ชิ้น', costPrice: 100 },
+  ];
+  const stored = normalizeManualLines([
+    packRow({ productId: 'P1', packQty: 2, discountType: 'amount', discountValue: 14400 }),
+    packRow({ productId: 'P2', packQty: 1 }),
+    packRow({ productId: 'P3', fgCode: 'FG-336-01-009-1290', qty: 3, unitPrice: 90 }),
+  ], OPEN);
+  assert.deepEqual(stored.map((l) => l.lineTotal), [69600, 42000, 270]);
+  const lines = await enforceMasterPrices(fakeSupabase(master), stored, stored);
+  assert.deepEqual(lines.map((l) => l.unitPrice), [4000, 4000, 100]);
+  assert.deepEqual(lines.map((l) => l.lineTotal), [81600, 48000, 300], '2 × 12 × 4,000 − 14,400 · 1 × 12 × 4,000 · 3 × 100');
+  assert.deepEqual(lines.map((l) => l.discountAmount), [14400, 0, 0]);
+  assert.deepEqual(lines.map((l) => l.packQty), [2, 1, undefined], 'ตัว sync ราคาไม่ตั้ง ไม่ล้าง ไม่แก้เลขแพ็ค');
+  assert.deepEqual(lines.map((l) => l.unit), ['เดือน', 'เดือน', 'ชิ้น'], 'หน่วยขายของทะเบียน (แพ็คเกจ) ไม่ทับบรรทัดที่มีเลขแพ็ค');
+  assert.equal('packQty' in lines[2], false);
+  // ยอดของแต่ละบรรทัด = สูตรกลางของบรรทัดนั้นเอง
+  for (const line of lines) assert.equal(line.lineTotal, quoteLineNet(line).lineTotal);
+});
+
+test('แพ็ค: ทะเบียนไม่เปลี่ยน = คืนอ็อบเจกต์เดิม (ไม่คิดยอดใหม่) · สินค้าถูกลบจากทะเบียน = คงเลขแพ็ค หน่วย และยอดเดิม', async () => {
+  const master = [{ id: 'P1', fgCode: SDS_FG, productDescription: 'ระบบกระจายกลิ่น SDS', saleUnit: 'แพ็คเกจ', costPrice: 3500 }];
+  const [first] = await enforceMasterPrices(fakeSupabase(master), normalizeManualLines([packRow({ packQty: 2 })], OPEN));
+  assert.deepEqual([first.packQty, first.unit, first.lineTotal], [2, 'เดือน', 84000]);
+  // รอบสอง: ทุกอย่างตรงทะเบียนแล้ว (หน่วยที่เทียบคือ "เดือน" ของบรรทัด ไม่ใช่ "แพ็คเกจ" ของทะเบียน) ⇒ ตัวเดิม
+  const [again] = await enforceMasterPrices(fakeSupabase(master), [first], [first]);
+  assert.equal(again, first);
+  // สินค้าหายจากทะเบียน: ถอยไปค่าที่บันทึกไว้ในใบ — เลขแพ็คและหน่วยอยู่ครบ ยอดยังคูณแพ็ค
+  const [orphan] = await enforceMasterPrices(fakeSupabase([]), [{ ...first, unitPrice: 9999 }], [first]);
+  assert.deepEqual([orphan.packQty, orphan.unit, orphan.unitPrice, orphan.lineTotal], [2, 'เดือน', 3500, 84000]);
+});
+
+test('แพ็ค: บรรทัดที่ไม่มีเลขแพ็คยังได้หน่วยขายของทะเบียนตามเดิม (กติกา 2026-07-23 ไม่เปลี่ยน)', async () => {
+  const master = [{ id: 'P1', fgCode: SDS_FG, productDescription: 'ระบบกระจายกลิ่น SDS', saleUnit: 'แพ็คเกจ', costPrice: 3500 }];
+  for (const packQty of [undefined, null]) {
+    const [line] = await enforceMasterPrices(fakeSupabase(master), [{ ...fgLine({ fgCode: SDS_FG, unit: 'เดือน' }), packQty }]);
+    assert.equal(line.unit, 'แพ็คเกจ');
+    assert.equal(line.lineTotal, 7000, 'จำนวน 2 × 3,500');
+  }
+});
+
+test('แพ็ค: เปิดใบ (refreshFgLinesForDisplay) — บรรทัดที่มีเลขแพ็คคงหน่วยเดือน · บรรทัดอื่นได้หน่วยขายของทะเบียนตามเดิม', async () => {
+  const master = [{ id: 'P1', fgCode: SDS_FG, productDescription: 'ระบบกระจายกลิ่น SDS', saleUnit: 'แพ็คเกจ' }];
+  const draft = {
+    status: 'draft',
+    lines: [
+      { productId: 'P1', fgCode: SDS_FG, description: 'เก่า', unit: 'เดือน', packQty: 2, qty: 12, lineTotal: 84000 },
+      { productId: 'P1', fgCode: SDS_FG, description: 'เก่า', unit: 'เดือน', packQty: null, qty: 24, lineTotal: 84000 },
+      { productId: 'P1', fgCode: SDS_FG, description: 'เก่า', unit: 'ชิ้น', qty: 24 },
+    ],
+  };
+  await refreshFgLinesForDisplay(fakeSupabase(master), [draft]);
+  assert.deepEqual(draft.lines.map((l) => l.unit), ['เดือน', 'แพ็คเกจ', 'แพ็คเกจ']);
+  assert.deepEqual(draft.lines.map((l) => l.packQty), [2, null, undefined], 'เลขแพ็คและคีย์ของบรรทัดไม่ถูกแตะ');
+  assert.deepEqual(draft.lines.map((l) => l.lineTotal), [84000, 84000, undefined], 'ยอดไม่ถูกคิดใหม่ตอนเปิดใบ');
+});
+
+test('แพ็ค: บรรทัดที่ตั้งต้นจากโครงการคิดยอดด้วยสูตรกลาง (quoteLineNet) — ปัดสตางค์ ไม่มีเลขแพ็ค · จำนวนเต็มได้ค่าเดิม', async () => {
+  const projectRows = [
+    { id: 'PP-1', productId: 'P1', orderQty: '12', product: { id: 'P1', fgCode: SDS_FG, productDescription: 'ระบบกระจายกลิ่น SDS', saleUnit: 'แพ็คเกจ', costPrice: 3500 } },
+    { id: 'PP-2', productId: 'P2', orderQty: '1.5', product: { id: 'P2', fgCode: 'FG-336-01-009-1290', productDescription: 'น้ำหอม', saleUnit: 'ชิ้น', costPrice: 33.33 } },
+    { id: 'PP-3', productId: 'P3', productionQty: '3', product: { id: 'P3', fgCode: 'FG-336-01-009-1291', productDescription: 'น้ำหอม 2', saleUnit: null, costPrice: 1.005 } },
+  ];
+  const supabase = {
+    from: (table) => {
+      if (table === 'project_products') return { select: () => ({ eq: async () => ({ data: projectRows, error: null }) }) };
+      if (table === 'product_types') return { select: async () => ({ data: [], error: null }) };
+      throw new Error(`unexpected table: ${table}`);
+    },
+  };
+  const lines = await seedLinesFromProject(supabase, { projectId: 'PJ-1' });
+  assert.deepEqual(lines.map((l) => l.lineTotal), [42000, 50, 3.01], 'ปัดสตางค์แล้ว (เดิมเก็บผลคูณดิบ 49.995 / 3.0149999999999997)');
+  for (const line of lines) {
+    assert.deepEqual([line.discountAmount, line.lineTotal], [0, quoteLineNet({ qty: line.qty, unitPrice: line.unitPrice }).lineTotal]);
+    assert.equal('packQty' in line, false, 'ระบบไม่เดาเลขแพ็คให้ — คนออกใบกรอกเอง');
+  }
+  assert.deepEqual(lines.map((l) => l.unit), ['แพ็คเกจ', 'ชิ้น', 'ชิ้น'], 'หน่วยขายของทะเบียนตามเดิม');
+  assert.equal(lines[0].lineTotal, 12 * 3500, 'บรรทัดจำนวนเต็ม × ราคา 2 ตำแหน่ง ได้ค่าเดียวกับที่เคยเก็บ');
+  // บรรทัดที่ตั้งต้นแล้วผ่านด่านช่องปิดได้ (ไม่มีเลขแพ็ค) และ normalize ซ้ำได้ยอดเดิม
+  assert.deepEqual(normalizeManualLines(lines).map((l) => l.lineTotal), [42000, 50, 3.01]);
+});
