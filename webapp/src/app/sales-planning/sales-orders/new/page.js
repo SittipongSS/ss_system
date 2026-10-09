@@ -270,12 +270,11 @@ function NewSalesOrderInner() {
     if (blockedReason) { setError(blockedReason); return; }
     setCreating(true);
     setError("");
-    const uploaded = [];
     try {
       const confirmAttachments = [];
-      for (const file of confirmFiles) { const ref = await uploadOne(file); uploaded.push(ref); confirmAttachments.push(ref); }
+      for (const file of confirmFiles) confirmAttachments.push(await uploadOne(file));
       const firstEvidence = [];
-      for (const file of firstFiles) { const ref = await uploadOne(file); uploaded.push(ref); firstEvidence.push(ref); }
+      for (const file of firstFiles) firstEvidence.push(await uploadOne(file));
 
       const res = await apiFetch("/api/sales-planning/sales-orders", {
         method: "POST",
@@ -301,12 +300,11 @@ function NewSalesOrderInner() {
       if (warning) notifyToast.warning(warning, RESPONSE_WARNING_TOAST);
       router.push(`/sa/sales-orders/${data.id}`);
     } catch (e) {
-      // ⚠️ ล้มแล้วต้องเก็บกวาดไฟล์ที่อัปไปแล้ว ไม่งั้นไฟล์ลอยค้างใน bucket โดยไม่มีใบไหนอ้าง
-      await Promise.allSettled(uploaded.map((att) => apiFetch("/api/upload", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...att, entityType: "sales_order_confirmation", entityId: quotationId }),
-      })));
+      /* ⚠️ ล้มแล้ว **ไม่มีการเก็บกวาดไฟล์ที่อัปไปแล้ว** — ไฟล์ค้างอยู่ในโฟลเดอร์ order-confirmation ของใบเสนอราคาใบนี้
+         โดยไม่มีใบไหนอ้าง แล้วหายไปพร้อมโฟลเดอร์ตอนใบเสนอราคาถูกลบ (docs/upload-receipts.md §รอบสอง)
+         🐞 เดิมตรงนี้ยิง DELETE /api/upload พร้อม storagePath ทีละไฟล์ — เส้นนั้นตอบ 403 กับคำขอแบบนี้มาตลอด
+            (ไฟล์ในถังเก็บไม่มีใบรับการอัปโหลด จึงไม่รู้ว่าใครอัป) ⇒ ไม่เคยลบได้สักไฟล์ ถอดคำขอออกแล้ว 2026-10-09
+         ⚠️ กดสร้างใหม่ = อัปทุกไฟล์ใหม่อีกรอบ (หน้านี้ไม่จำ ref ของรอบที่ล้ม) */
       setError(e.message || "สร้างใบสั่งขายไม่สำเร็จ");
       setCreating(false);
     }

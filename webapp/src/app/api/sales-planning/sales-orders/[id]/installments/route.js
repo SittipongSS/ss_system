@@ -1,9 +1,9 @@
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canViewSalesPlanning, inSalesViewScope } from '@/lib/salesPlanning';
-import { sanitizeEvidenceAttachments } from '@/lib/sales/orderConfirmationDocs';
+import { EVIDENCE_REFS_DROPPED_TEXT, evidenceRefsDropped, sanitizeEvidenceAttachments } from '@/lib/sales/orderConfirmationDocs';
 import {
-  PRIVATE_EVIDENCE_BUCKET, privateEvidencePrefix,
+  PRIVATE_EVIDENCE_BUCKET, missingStoredEvidence, privateEvidencePrefix,
 } from '@/lib/upload/privateEvidence';
 import {
   findLinkedTaxInvoiceItem, mirrorTaxInvoiceToRequestItem, taxInvoiceClearPatch,
@@ -737,9 +737,21 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       if (coversTo && !isDate(coversTo)) return badRequest('รูปแบบวันสิ้นสุดช่วงครอบไม่ถูกต้อง');
       patch = { coversFrom, coversTo };
     } else if (action === 'report') {
-      // หลักฐานผ่าน sanitize ตัวเดียวกับหลักฐาน Won — รับเฉพาะ ref ที่อัปผ่าน /api/upload แล้ว
-      const evidence = sanitizeEvidenceAttachments(body.evidence);
+      /* หลักฐานผ่าน sanitize ตัวเดียวกับเอกสารยืนยันคำสั่งซื้อ
+         ⭐ `privateOnly` (2026-10-09): รับเฉพาะไฟล์ใน bucket ส่วนตัวใต้โฟลเดอร์ payments/ ของ **ใบนี้**
+            (จออัปด้วย entityType `sales_order_payment_evidence` + id ของใบที่เปิดอยู่ — งวดที่ยกมาจากใบเก่าก็เช่นกัน)
+         🐞 เดิมเรียกเปล่า ไม่ส่ง options = รับ ref ที่ชี้ไฟล์ไหนก็ได้ (URL/Drive/ไฟล์ของใบอื่น) มาเป็นสลิปของงวดนี้
+         ⚠️ ไฟล์ต้องมีอยู่จริงใน bucket — ด่านเดียวกับตอนสร้างใบ (`missingStoredEvidence`) */
+      const evidence = sanitizeEvidenceAttachments(body.evidence, {
+        allowedStorageBucket: PRIVATE_EVIDENCE_BUCKET,
+        allowedStoragePathPrefix: privateEvidencePrefix('sales_order_payment_evidence', order.id),
+        privateOnly: true,
+      });
       if (!evidence.length) return badRequest('ต้องแนบหลักฐานการชำระอย่างน้อย 1 ไฟล์');
+      // 🔴 ส่งมา n ไฟล์แต่ผ่านด่านไม่ครบ = ปฏิเสธทั้งคำขอ — ไม่แจ้งชำระด้วยสลิปที่สั้นกว่าที่คนแนบโดยไม่บอก
+      if (evidenceRefsDropped(body.evidence, evidence)) return badRequest(EVIDENCE_REFS_DROPPED_TEXT);
+      const evidenceMiss = await missingStoredEvidence(supabase, PRIVATE_EVIDENCE_BUCKET, evidence);
+      if (evidenceMiss) return badRequest(evidenceMiss);
       /* ⭐ ปลายทางขึ้นกับว่าใครกด (มติผู้ใช้ 2026-08-18 — ทางเลือก ก.)
          ฝ่ายขายแจ้ง → `reported` เข้าคิวบัญชี · **บัญชีแจ้งเอง → `confirmed` เลย**
          ⇒ คิว `reported` เหลือเฉพาะของที่ฝ่ายขายแจ้ง = บัญชีรู้ทันทีว่าอันไหนต้องมาตรวจ
@@ -840,15 +852,24 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
          ⚠️ กันเลขซ้ำที่นี่ ไม่ใช่ที่ UNIQUE ของ DB (ดูเหตุผลใน lib/sales/taxInvoice.js) */
       const conflict = await taxInvoiceConflict(supabase, { installmentId, no: taxInvoiceNo });
       if (conflict) return badRequest(conflict);
-      /* ⚠️ **ต้องส่ง options ให้ sanitize** — ต่างจากที่เรียกเปล่าตอน `report`
-         ไม่ส่ง = รับ ref ที่ชี้ไฟล์ไหนก็ได้ใน bucket มาเป็นใบกำกับของงวดนี้ */
-      const file = sanitizeEvidenceAttachments(
+      /* ⚠️ **ต้องส่ง options ให้ sanitize** — ไม่ส่ง = รับ ref ที่ชี้ไฟล์ไหนก็ได้ใน bucket มาเป็นใบกำกับของงวดนี้
+         ⭐ `privateOnly` (2026-10-09): รับเฉพาะไฟล์ใน bucket ส่วนตัวใต้โฟลเดอร์ tax-invoices/ ของใบนี้
+            และไฟล์ใหม่ต้องมีอยู่จริง (`missingStoredEvidence`) · ไฟล์ที่ส่งมาแต่ไม่ผ่านด่าน = 400
+            ไม่ถอยไปใช้ไฟล์เดิมเงียบ ๆ (คนกดจะเข้าใจว่าไฟล์ใหม่ถูกเก็บแล้ว) */
+      const newFile = sanitizeEvidenceAttachments(
         body.taxInvoiceFile ? [body.taxInvoiceFile] : [],
         {
           allowedStorageBucket: PRIVATE_EVIDENCE_BUCKET,
           allowedStoragePathPrefix: privateEvidencePrefix('sales_order_tax_invoice', order.id),
+          privateOnly: true,
         },
-      )[0]
+      )[0];
+      if (body.taxInvoiceFile && !newFile) {
+        return badRequest('ไฟล์ใบกำกับภาษีต้องเป็นไฟล์ที่อัปโหลดผ่านระบบให้ใบสั่งขายนี้ — ลบไฟล์ออกแล้วแนบใหม่อีกครั้ง');
+      }
+      const fileMiss = newFile ? await missingStoredEvidence(supabase, PRIVATE_EVIDENCE_BUCKET, [newFile]) : null;
+      if (fileMiss) return badRequest(fileMiss);
+      const file = newFile
         /* ⚠️ ไม่ส่งไฟล์มา = **เก็บไฟล์เดิมไว้** ไม่ใช่ล้าง — จอไม่เคยได้ ref ของไฟล์เดิม
            (ทะเบียนส่งมาแค่ชื่อไฟล์) ⇒ ถ้าล้างตามที่ payload ว่างมา การแก้แค่เลขจะลบ
            ไฟล์ใบกำกับทิ้งเงียบ ๆ · ทางลบคือ action `tax-invoice-clear` */

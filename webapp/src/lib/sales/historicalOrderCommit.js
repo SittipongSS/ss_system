@@ -112,8 +112,10 @@ const withoutJoin = (row) => (row ? Object.fromEntries(Object.entries(row).filte
  * หลักฐานงวดยกมาที่ client อ้างมา → เหลือเฉพาะไฟล์ของใบนี้จริง
  * ⭐ ใช้ทั้งตอนแก้ใบ (ที่นี่) และตอนส่งอนุมัติ (ขั้นส่ง) — ด่านเดียวกันสองทาง
  *   · bucket ส่วนตัว + โฟลเดอร์ `sales-orders/<ใบ>/payments/` ของใบนี้เท่านั้น (ไฟล์ของใบอื่น = ตัดทิ้ง)
- *   · ref แบบ storagePath เท่านั้น — 🪤 ตัวล้างกลางยังปล่อย ref ยุคเก่าแบบ URL/Drive ผ่าน (orderConfirmationDocs)
- *     ซึ่งชี้ไปที่ไหนก็ได้ ⇒ ตัดทิ้ง และล้าง URL ที่ติดมากับ ref ส่วนตัวด้วย
+ *   · ref แบบ storagePath เท่านั้น — โหมดเข้มของตัวล้างกลาง (`privateOnly` · orderConfirmationDocs): bucket/path ต้องเป็น
+ *     **สตริง** และ path เป็นชื่อ object เดียวใต้โฟลเดอร์ · ref ยุคเก่าแบบ URL/Drive ถูกตัด · URL ที่ติดมากับ ref ส่วนตัวถูกล้าง
+ *     🐞 เดิมเรียกโหมดตั้งต้นแล้วกรองซ้ำเอง — `{ fileUrl:'x', storagePath: ['sales-orders/<ใบอื่น>/payments/…'] }` (อาร์เรย์)
+ *     ข้ามด่าน bucket/โฟลเดอร์ทั้งคู่ แล้วถูก String() เป็น ref หน้าตาปกติของใบอื่น (2026-10-09)
  *   · ไฟล์ต้องมีอยู่จริงใน bucket (path ปลอม/อัปไม่สำเร็จ ห้ามกลายเป็นหลักฐานเงินถาวร)
  * @returns {Promise<{ evidence: object[], error: string|null }>}
  */
@@ -123,9 +125,8 @@ export async function sanitizeHistoricalEvidence({ supabase, orderId, refs }) {
   const evidence = sanitizeEvidenceAttachments(refs, {
     allowedStorageBucket: PRIVATE_EVIDENCE_BUCKET,
     allowedStoragePathPrefix: prefix,
-  })
-    .filter((ref) => ref.storageBucket && ref.storagePath)
-    .map((ref) => ({ ...ref, fileUrl: null, driveFileId: null }));
+    privateOnly: true,
+  });
   const missing = evidence.length ? await missingStoredEvidence(supabase, PRIVATE_EVIDENCE_BUCKET, evidence) : null;
   return { evidence, error: missing };
 }

@@ -7,7 +7,6 @@ import {
   isPrivateEvidence,
   checkPrivateEvidenceScope,
   privateEvidenceObjectPath,
-  privateEvidencePrefix,
 } from '@/lib/upload/privateEvidence';
 import { DRIVE_FILE_ID_PATTERN, recordUploadReceipt, uploadReceiptStatus } from '@/lib/upload/receipts';
 import { driveFileReferenced, driveFileTrashable } from '@/lib/master/attachments';
@@ -161,27 +160,17 @@ export async function DELETE(request) {
   if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });
   let body = {};
   try { body = await request.json(); } catch { /* no body */ }
-  const { driveFileId, storageBucket, storagePath, entityType, entityId } = body;
+  const { driveFileId, storagePath } = body;
 
-  // Roll back a private Won-evidence upload only while the quotation is still
-  // open. After accept, the quote becomes the Actual source and its evidence is
-  // immutable through this endpoint.
+  /* 🔴 ขา bucket ส่วนตัว (คำขอที่ส่ง `storagePath`) — **ปฏิเสธเสมอ ไม่ลบอะไรจากถังเก็บผ่านเส้นนี้**
+     🐞 เดิมลบ object ใต้โฟลเดอร์ `won/` ของใบเสนอราคาที่ยังเปิดอยู่ได้ด้วย path จากคำขอ ทั้งที่
+       · ไฟล์ในถังเก็บไม่มีใบรับการอัปโหลด — ไม่รู้ว่าใครอัป จึงแยก "ไฟล์ที่คนเรียกเพิ่งอัปเอง" จากไฟล์ของคนอื่นไม่ได้
+       · ลบตาม path ไม่ได้ถามว่ามีแถวไหนอ้างไฟล์นั้นอยู่ ⇒ หลักฐานที่แถวยังชี้ถึงหายได้
+     ผู้เรียกเดียวของขานี้ (หน้าสร้างใบสั่งขาย · ส่ง entityType `sales_order_confirmation`) ถูกปฏิเสธ 403 มาตั้งแต่เดิม
+     และถอดคำขอนั้นออกจากจอแล้ว ⇒ ไม่มีจอไหนเสียความสามารถ · ไม่มีจอไหนเรียกขานี้อีก · สร้างใบไม่สำเร็จ = ไฟล์ค้างเป็นไฟล์กำพร้าในโฟลเดอร์ของใบเสนอราคา แล้วหายไปพร้อมโฟลเดอร์
+     ตอนลบใบเสนอราคา · หลักฐานที่บันทึกแล้วถอนผ่านเส้นของเอกสารนั้นเอง (ซึ่งรู้ว่าแถวไหนอ้างไฟล์อยู่) */
   if (storagePath) {
-    // ⚠️ ลบได้เฉพาะ **หลักฐาน Won ที่ยังอยู่ระหว่างกด Won** — หลักฐานการชำระของใบสั่งขาย
-    // ถอนผ่านเส้นของงวดชำระ ไม่ใช่ทางนี้ (ทางนี้ไม่รู้ว่างวดไหนอ้างไฟล์อยู่)
-    if (entityType !== 'quotation_won_evidence' || !entityId || storageBucket !== PRIVATE_EVIDENCE_BUCKET) {
-      return Response.json({ error: 'forbidden' }, { status: 403 });
-    }
-    const prefix = privateEvidencePrefix(entityType, entityId);
-    if (!prefix || !String(storagePath).startsWith(prefix)) {
-      return Response.json({ error: 'forbidden' }, { status: 403 });
-    }
-    // ด่านเดียวกับตอนอัป (สิทธิ์ฝ่ายขาย + ขอบเขตดีล + ใบต้องยังเปิด)
-    const scope = await checkPrivateEvidenceScope(user, entityType, entityId);
-    if (!scope.ok) return Response.json({ error: 'forbidden' }, { status: 403 });
-    const supabase = getSupabaseAdmin();
-    await supabase.storage.from(PRIVATE_EVIDENCE_BUCKET).remove([storagePath]);
-    return Response.json({ ok: true });
+    return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
   if (!driveFileId) return Response.json({ ok: true });
