@@ -171,3 +171,43 @@ export function isJpgOrPngFile(file) {
   if (mime) return mime === 'image/jpeg' || mime === 'image/png';
   return /\.(jpe?g|png)$/.test(text(file?.fileName).toLowerCase());
 }
+
+// ── งวด S2a: สภาพ "ยืนยันหน้างาน" ของทะเบียนพื้นที่ + ตัวกรองผลจากแบบที่ถูกแทนแล้ว ─────────────
+
+/**
+ * สภาพการยืนยันหน้างานของพื้นที่ในทะเบียน — `'none'` · `'drawing'` · `'awaiting'`
+ * `row` = แถวผลล่าสุดที่ส่งแล้วของพื้นที่ **หลังผ่าน `surveyDropSupersededDrawing`** · `request` = ใบของแถวนั้น
+ *   ไม่มีแถว / แถวลงหน้างาน            ⇒ `'none'` (ค่าบนใบไม่เกี่ยว)
+ *   แถวจากแบบ + ใบตอบว่า `'needed'`    ⇒ `'awaiting'` (รอยืนยันหน้างาน)
+ *   แถวจากแบบ นอกนั้น (`'not_needed'` · ยังไม่เลือก · ไม่มีใบ) ⇒ `'drawing'`
+ * ⚠️ `surveyConfirm` เทียบตรงตัว — ค่าที่ไม่รู้จักไม่ถูกเดาว่าเป็น "ต้องยืนยัน"
+ * ⚠️ ค่าที่สี่ (`'confirming'` ของงวด S5) ต่อเป็นกิ่งใหม่ **ก่อน** บรรทัด `'needed'` ได้ โดยสามค่านี้ไม่ขยับ
+ */
+export function surveyConfirmState(row, request = null) {
+  if (!row || !isDrawingZone(row)) return 'none';
+  if (request?.surveyConfirm === 'needed') return 'awaiting';
+  return 'drawing';
+}
+
+/**
+ * ตัดแถว **จากแบบ** ที่ถูกผลลงหน้างานของใบรุ่นหลังแทนไปแล้ว — ทะเบียนต้องไม่ขึ้นป้าย "จากแบบ" ให้พื้นที่ที่วัดจริงแล้ว
+ * `rows` = แถวที่ส่งผลแล้วและไม่ถูกตัดของ **พื้นที่เดียว** (ผู้เรียกกรองมา) · `createdAtOf(row)` = เวลาเปิดใบของแถวนั้น
+ * ทิ้งแถวจากแบบ D เมื่อในลิสต์มีแถวลงหน้างาน O ที่ใบของ O **เปิดทีหลัง** ใบของ D
+ *   ใบเดียวกัน / เวลาเท่ากัน / ฝั่งใดอ่านเวลาไม่ออก ⇒ D อยู่ (เทียบกับ NaN ได้ false เสมอ — ต้องพิสูจน์ได้ว่ามาทีหลัง)
+ *   จากแบบที่เปิด **หลัง** ลงหน้างาน (ปรับปรุงพื้นที่แล้วประเมินจากแบบใหม่) ⇒ อยู่ทั้งคู่
+ * ⚠️ คืนออบเจ็กต์ตัวเดิม ลำดับเดิม · **ไม่มีอะไรให้ทิ้ง = คืนอาร์เรย์ตัวเดิม** (ใบลงหน้างานล้วนไม่ถูกสร้างอาร์เรย์ใหม่)
+ * ⚠️ ไม่ส่ง `createdAtOf` = ไม่รู้ลำดับของใบ ⇒ ไม่ทิ้งอะไรเลย
+ */
+export function surveyDropSupersededDrawing(rows, { createdAtOf } = {}) {
+  if (!Array.isArray(rows)) return [];
+  if (typeof createdAtOf !== 'function') return rows;
+  if (!rows.some(isDrawingZone)) return rows;
+  const onsiteTimes = rows.filter((r) => r && isOnsite(r)).map((r) => ms(createdAtOf(r)));
+  if (!onsiteTimes.length) return rows;
+  const superseded = (row) => {
+    const mine = ms(createdAtOf(row));
+    return onsiteTimes.some((t) => t > mine);
+  };
+  const kept = rows.filter((row) => !(isDrawingZone(row) && superseded(row)));
+  return kept.length === rows.length ? rows : kept;
+}

@@ -8,7 +8,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  authorableKinds, isAuthorableKind, isNarrativeUpdateItem, isSystemUpdateItem, UPDATE_KINDS,
+  authorableKinds, isAuthorableKind, isKnownUpdateKind, isNarrativeUpdateItem, isQuietUpdateKind, isSystemUpdateItem,
+  UPDATE_KINDS,
 } from './updateTypes.js';
 
 const own = (kind, extra = {}) => ({ kind: 'own', row: { id: 'u1', kind, ...extra } });
@@ -101,4 +102,19 @@ test('ชนิดที่ไม่รู้จัก/ข้อมูลไม�
   assert.equal(isNarrativeUpdateItem('dept_request', null), false);
   // แถวอ่านอย่างเดียวจากแหล่งอื่นไม่ใช่บทสนทนา
   assert.equal(isNarrativeUpdateItem('dept_request', { kind: 'extra', id: 'e1' }), false);
+});
+
+/* ── บรรทัด "เปลี่ยนวิธีประเมิน" ของใบประเมินพื้นที่ (งวด S2a) ──────────────────
+   บรรทัดนี้คือตัวที่บอกฝ่ายขายว่าทำไมผลที่รออยู่เปลี่ยนเส้นทาง — ตกกล่อง log ที่พับไว้ หรือถูกตั้งเป็นชนิดเงียบ
+   = ฝ่ายขายไม่รู้เลยว่านัดถูกยกเลิก */
+test('⭐ dept_request/method: อยู่ในทะเบียน · เป็นบทสนทนา · ยิงกระดิ่ง · คนเลือกโพสต์เองไม่ได้', () => {
+  const meta = UPDATE_KINDS.dept_request.method;
+  assert.deepEqual(meta, { label: 'เปลี่ยนวิธีประเมิน', color: 'var(--amber)', narrative: true });
+  assert.equal(isKnownUpdateKind('dept_request', 'method'), true);
+  assert.equal(isNarrativeUpdateItem('dept_request', own('method')), true);
+  assert.equal(isQuietUpdateKind('dept_request', 'method'), false);
+  assert.equal(isAuthorableKind('dept_request', 'method'), false);
+  assert.equal(authorableKinds('dept_request').includes('method'), false);
+  // บรรทัดยกเลิกบนเธรดของนัด (ตัวที่พก `meta.methodKey`) ใช้ชนิดเดิมของนัด
+  assert.equal(isKnownUpdateKind('service_visit', 'cancel'), true);
 });

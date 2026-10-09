@@ -21,6 +21,7 @@ import { callRoute } from './crew/routeTestKit.mjs';
 import { businessDate } from '../businessDate.js';
 import { askActionUpdate } from '../costingUpdates.js';
 import { fmtDate } from '../format.js';
+import { requestAwaitingDue } from '../requests/statuses.js';
 import { IN_PROGRESS_STAMP_ERROR } from './crew/jobStart.js';
 import { surveyNeedsVisit } from './surveyMethod.js';
 import { surveyStepBackBody, surveyStepBackPlan } from './surveyStepBack.js';
@@ -555,6 +556,105 @@ test('🔴 เลื่อนวันส่งผลได้เฉพาะห
   const sales = await patchRequest(salesDb, SALES, { action: 'reschedule', committedResultDate: D2, reason: 'x' });
   assert.equal(sales.status, 403);
   assert.equal(sales.json.error, 'เลื่อนวันได้เฉพาะฝ่าย TS');
+});
+
+/* ═══ ②ข ใบที่กลายเป็นงานโต๊ะจากการตัดพื้นที่: วันบนใบยังเป็น "วันนัดเก่า" (งวด S2a · สเปก §3 B-9) ═══════════════
+   การตัดพื้นที่ลงหน้างานสุดท้ายไม่แตะวันบนใบ ⇒ `committedDueDate` = วันนัดเก่า · `committedResultDate` = วันส่งผลที่รับปากไว้
+   ด่านกลางเทียบกับ `committedDueDate` — เส้นงานโต๊ะต้องส่ง **วันส่งผล** ให้ด่านเทียบแทน (เฉพาะใบที่ถือครบทั้งสองวัน)
+   ⚠️ ปุ่มบนหน้าคำร้องเลือกจาก `committedDueDate` ตัวจริง (`requestAwaitingDue`) — ด่านของ server ต้องเปิดประตูเดียวกับปุ่มนั้นเสมอ */
+const VISIT_DAY = '2026-10-13'; // วันนัดเก่าที่ค้างอยู่บนใบ
+const RESULT_DAY = '2026-10-15'; // วันส่งผลที่ฝ่ายขายถืออยู่
+const flippedByCut = (over = {}) => request({
+  committedDueDate: VISIT_DAY, committedDueTime: '09:00', committedResultDate: RESULT_DAY,
+  dueCommittedAt: '2026-10-05T02:00:00+00:00',
+  assigneeId: 'u-tech', assigneeName: 'ช่างเอ', assignedAt: '2026-10-05T02:00:00+00:00', ...over,
+});
+const SAME_DATE = 'วันเดิมกับที่แจ้งไว้แล้ว';
+const USE_RESCHEDULE = 'ใบนี้แจ้งกำหนดส่งไปแล้ว — ใช้ปุ่มเลื่อนวันกำหนดส่งแทน';
+const USE_COMMIT = 'ใบนี้ยังไม่ได้แจ้งกำหนดส่ง — ใช้ปุ่มแจ้งกำหนดส่งแทน';
+const WHY = 'ลูกค้าส่งแบบแปลนช้า';
+
+test('🔴 ใบงานโต๊ะที่ถือวันนัดเก่า + วันส่งผล: "วันเดิม" เทียบกับวันส่งผล — เลื่อนไปวันนัดเก่าได้ · เลื่อนไปวันส่งผลเดิม = 409', async () => {
+  for (const [shape, rows] of Object.entries(DESK_SHAPES)) {
+    // เลื่อนวันส่งผลไปตรงกับวันนัดเก่า (13/10) — 🐞 เดิมโดนตอบ "วันเดิม" เพราะด่านเทียบกับวันนัดเก่า
+    const moved = world({ rows: rows(), req: flippedByCut() });
+    const ok = await patchRequest(moved, HEAD, { action: 'reschedule', committedResultDate: VISIT_DAY, reason: WHY });
+    assert.equal(ok.status, 200, `${shape}: ${ok.json.error}`);
+    assert.deepEqual(requestWrites(moved)[0].payload, { updatedAt: NOW, ...surveyDeskReschedulePatch({ date: VISIT_DAY, nowIso: NOW }) }, shape);
+    assert.deepEqual(auditSummaries(moved), [`เลื่อนวันส่งผลประเมิน ${RESULT_DAY} → ${VISIT_DAY} — ${WHY}`], shape);
+    assert.equal(threadRows(moved, 'dept_request')[0].body, `เลื่อนวันส่งผลประเมิน ${fmtDate(RESULT_DAY)} → ${fmtDate(VISIT_DAY)} — ${WHY}`, shape);
+    assert.deepEqual(moved.writes('service_visits'), [], shape);
+
+    // เลื่อนไป "วันส่งผลเดิม" (15/10) — 🐞 เดิมผ่าน แล้วเธรดขึ้น "เลื่อน 15/10 → 15/10"
+    const same = world({ rows: rows(), req: flippedByCut() });
+    const refused = await patchRequest(same, HEAD, { action: 'reschedule', committedResultDate: RESULT_DAY, reason: WHY });
+    assert.equal(refused.status, 409, shape);
+    assert.equal(refused.json.error, SAME_DATE, shape);
+    assert.deepEqual(same.writes(), [], shape);
+
+    // รับปากซ้ำ = ยังต้องไปทางเลื่อนวัน (ปุ่มที่หน้าโชว์)
+    const again = world({ rows: rows(), req: flippedByCut() });
+    const commit = await patchRequest(again, HEAD, { action: 'commit-due', committedResultDate: '2026-10-20' });
+    assert.equal(commit.status, 409, shape);
+    assert.equal(commit.json.error, USE_RESCHEDULE, shape);
+    assert.deepEqual(again.writes(), [], shape);
+  }
+});
+
+test('🔴 ใบงานโต๊ะที่ถือแต่วันนัดเก่า ไม่มีวันส่งผล (ลงคิวก่อนวันส่งผลบังคับ): ด่านเห็นแถวเดิม — เลื่อนวันได้ และไม่ถูกไล่ไปปุ่มที่หน้าไม่ได้โชว์', async () => {
+  const noResult = () => flippedByCut({ committedResultDate: null });
+  assert.equal(requestAwaitingDue(noResult()), false, 'หน้าคำร้องโชว์ปุ่มเลื่อนวัน ไม่ใช่ปุ่มแจ้งวัน');
+
+  const moved = world({ rows: drawingRows(), req: noResult() });
+  const ok = await patchRequest(moved, HEAD, { action: 'reschedule', committedResultDate: RESULT_DAY, reason: WHY });
+  assert.equal(ok.status, 200, ok.json.error);
+  // สองคอลัมน์ถูกเขียนพร้อมกัน — ใบกลับมาอยู่ในรูปปกติของงานโต๊ะ
+  assert.deepEqual(requestWrites(moved)[0].payload, { updatedAt: NOW, ...surveyDeskReschedulePatch({ date: RESULT_DAY, nowIso: NOW }) });
+  assert.equal(ok.json.committedDueDate, RESULT_DAY);
+  assert.equal(ok.json.committedResultDate, RESULT_DAY);
+  assert.deepEqual(auditSummaries(moved), [`เลื่อนวันส่งผลประเมิน ${VISIT_DAY} → ${RESULT_DAY} — ${WHY}`]);
+
+  const same = world({ rows: drawingRows(), req: noResult() });
+  const refused = await patchRequest(same, HEAD, { action: 'reschedule', committedResultDate: VISIT_DAY, reason: WHY });
+  assert.equal(refused.status, 409);
+  assert.equal(refused.json.error, SAME_DATE);
+  assert.deepEqual(same.writes(), []);
+
+  // ไม่ว่าเลื่อนไปวันไหน ด่านเลื่อนวันไม่ตอบ "ใช้ปุ่มแจ้งกำหนดส่งแทน" (หน้าไม่มีปุ่มนั้นให้กด)
+  for (const date of [VISIT_DAY, RESULT_DAY, '2026-10-20']) {
+    const db = world({ rows: drawingRows(), req: noResult() });
+    const { json } = await patchRequest(db, HEAD, { action: 'reschedule', committedResultDate: date, reason: WHY });
+    assert.notEqual(json.error, USE_COMMIT, date);
+  }
+});
+
+test('🔴 ใบงานโต๊ะที่ไม่มีวันบนใบ แต่ยังมีวันส่งผล (นัดเข้าไม่ได้ ใบถอยขั้นก่อนกลายเป็นงานโต๊ะ): รับปากวันส่งผลได้ — ตรงกับปุ่มที่หน้าโชว์', async () => {
+  /* `surveyStepBack` ล้างแค่วันนัด · แทนค่าวันส่งผลให้ด่านในกรณีนี้ = server ตอบ "ใช้ปุ่มเลื่อนวัน" ขณะที่หน้าโชว์แต่ปุ่มรับปาก (ทางตัน) */
+  const steppedBack = () => request({ committedDueDate: null, committedDueTime: null, committedResultDate: RESULT_DAY });
+  assert.equal(requestAwaitingDue(steppedBack()), true, 'หน้าคำร้องโชว์ปุ่มรับปากวันส่งผล');
+
+  for (const date of [RESULT_DAY, '2026-10-20']) {
+    const db = world({ rows: drawingRows(), req: steppedBack() });
+    const { status, json } = await patchRequest(db, HEAD, { action: 'commit-due', committedResultDate: date });
+    assert.equal(status, 200, `${date}: ${json.error}`);
+    assert.deepEqual(requestWrites(db)[0].payload, { updatedAt: NOW, ...surveyDeskCommitPatch({ date, user: HEAD, nowIso: NOW }) }, date);
+  }
+  // ปุ่มเลื่อนวันไม่ได้อยู่บนหน้าของใบนี้ — ยิงตรงได้คำตอบเดิมของด่าน
+  const db = world({ rows: drawingRows(), req: steppedBack() });
+  const refused = await patchRequest(db, HEAD, { action: 'reschedule', committedResultDate: '2026-10-20', reason: WHY });
+  assert.equal(refused.status, 409);
+  assert.equal(refused.json.error, USE_COMMIT);
+  assert.deepEqual(db.writes(), []);
+});
+
+test('🔒 ซอร์ส: สองกิ่งงานโต๊ะส่งแถวผ่าน `deskDueBasis` ให้ด่าน · กิ่งลงหน้างานยังส่งแถวเดิม', () => {
+  const route = code(REQUEST_ROUTE);
+  assert.match(route, /commitDueRequestError\(deskDueBasis\(before\), \{ committedDueDate: result\.value, requeue: false \}\)/);
+  assert.match(route, /rescheduleRequestError\(deskDueBasis\(before\), \{ committedDueDate: result\.value \}\)/);
+  assert.equal(route.split('deskDueBasis(').length - 1, 2, 'ใช้สองจุดเท่านั้น — กิ่งงานโต๊ะของแจ้งวันกับเลื่อนวัน');
+  assert.match(route, /rescheduleRequestError\(before, \{ committedDueDate: body\.committedDueDate \}\)/);
+  // สรุปของการเลื่อนอ่านแถวจริง (ตัวสรุปเลือกวันส่งผลก่อนเองอยู่แล้ว)
+  assert.match(route, /surveyDeskRescheduleSummary\(\{ before, date: result\.value, reason \}\)/);
 });
 
 /* ═══ ④ ใบลงหน้างาน: คำสั่งเขียนเดิมทุกตัว ไม่ว่าแถวพื้นที่จะมีคีย์ method หรือไม่ ═══════════════════ */

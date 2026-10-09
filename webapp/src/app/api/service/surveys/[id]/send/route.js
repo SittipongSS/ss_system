@@ -36,10 +36,14 @@
 //      (`surveyDrawingMethodEnabled`) — ปิดอยู่ = ไม่อ่านนัดเพิ่ม ไม่ตรวจ
 //   🔑 การส่งผลผูกกับ `updatedAt` ที่อ่านมาตอนต้น (แถว 19 ② · `expectUpdatedAt`) **เฉพาะตอนเปิดสวิตช์เดียวกัน** —
 //      จองแถวเป็นคำสั่งเขียนแรก ก่อนปิดนัด · ปิดอยู่ = ไม่จอง ไม่ผูก คำสั่งเขียนชุดเดิม
+//   🔑 **ใบที่มีพื้นที่จากแบบต้องตอบว่า "ต้องยืนยันหน้างานไหม"** (งวด S2a · แผน §3.2) — จอส่ง `methodMix` (สัดส่วนวิธีประเมิน
+//      ที่หัวหน้าเห็น) กับ `surveyConfirm` · ด่าน `surveySendMethodError` ตัดสิน **จากแถว ไม่ถามสวิตช์** (ใบที่มีพื้นที่จากแบบ
+//      ไปแล้วต้องส่งได้แม้สวิตช์ถูกปิดทีหลัง) · คำตอบลงคอลัมน์ `surveyConfirm` ของใบ และต่อท้ายบรรทัดเธรด / audit
+//      ⚠️ ใบลงหน้างานล้วน: ไม่ต้องส่งสองคีย์นี้ · คำสั่งตอบใบไม่มีคีย์ `surveyConfirm` · บรรทัดเธรดและ audit ตัวเดิมทุกตัวอักษร
 import { recordAudit } from '@/lib/audit';
 import { appendRequestEvent } from '@/lib/sales/documentThread';
 import { appendUpdate } from '@/lib/master/updates';
-import { withUser, ok, fail, forbidden, notFound, conflict } from '@/lib/http';
+import { withUser, ok, fail, badRequest, forbidden, notFound, conflict } from '@/lib/http';
 import { canSendSurveyResult } from '@/lib/permissions';
 import { canAnswerRequest } from '@/lib/requests/access';
 import { closureStatus } from '@/lib/requests/closure';
@@ -51,13 +55,13 @@ import { loadPackageSizesOrNull } from '@/lib/service/packageSizesRepo';
 import { loadSurveyZones } from '@/lib/service/surveyRepo';
 import { findSurveyVisit } from '@/lib/service/surveyVisit';
 import { surveyDrawingMethodEnabled } from '@/lib/service/surveyDrawingFlag';
-import { surveyNeedsVisit } from '@/lib/service/surveyMethod';
+import { surveyMethodMix, surveyNeedsVisit } from '@/lib/service/surveyMethod';
 import { surveyReportIssueAtSend } from '@/lib/service/surveyReportRows';
 import {
   SURVEY_SEND_OLD_PAGE_ERROR, SURVEY_SEND_PREFLIGHT_MS, SURVEY_SEND_REPORT_FAILED, SURVEY_SEND_REPORT_OFF,
   SURVEY_SEND_WARNINGS_CHANGED_ERROR, surveySendCloseBody, surveySendDiffBaseline, surveySendDocumentRefusal,
-  surveySendImageRefusal, surveySendReport, surveySendSiteVisitError, surveySendUnseenWarnings, surveySendVisitStep,
-  surveySendWrites,
+  surveySendImageRefusal, surveySendMethodError, surveySendMethodText, surveySendReport, surveySendSiteVisitError,
+  surveySendUnseenWarnings, surveySendVisitStep, surveySendWrites,
 } from '@/lib/service/surveySendClose';
 import {
   surveyChangeCounts, surveyChangeText, surveyPackagesText, surveySendError, surveyTotals, surveyTotalsDiff,
@@ -206,6 +210,13 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
        แล้วส่งให้ทุกที่ที่ถามเรื่องนัดข้างล่าง (ด่านรูปจุด · ด่านนัดเข้าพื้นที่ · ตัวตรวจเอกสาร · ลำดับการเขียน)
        ⚠️ ใบลงหน้างานล้วน = `true` เสมอ ⇒ ทุกกิ่งข้างล่างเดินเหมือนก่อนมีวิธีประเมิน */
     const needsVisit = surveyNeedsVisit(zones);
+    /* 🔑 **ใบที่มีพื้นที่จากแบบ: จอต้องเห็นสัดส่วนวิธีประเมินชุดเดียวกับแถวนี้ และหัวหน้าต้องเลือกแล้วว่าต้องยืนยันหน้างานไหม**
+          (งวด S2a · `surveySendMethodError`) — ก่อนด่านหกข้อ ก่อนเขียนอะไรทั้งนั้น
+       ⭐ **ไม่อยู่ใต้สวิตช์** — ตัดสินจากแถว · ใบลงหน้างานล้วนที่ไม่ส่งสองคีย์นี้มา (ทุกจอของวันนี้) ได้ `null` เดินต่อเหมือนเดิม
+       ⚠️ สัดส่วนไม่ตรง = 409 ให้โหลดใหม่ (ด่านบนจอเป็นของวิธีเก่า) · ยังไม่เลือก = 400 */
+    const methodMix = surveyMethodMix(zones);
+    const methodError = surveySendMethodError(zones, { methodMix: body?.methodMix, surveyConfirm: body?.surveyConfirm });
+    if (methodError) return methodError.status === 400 ? badRequest(methodError.error) : conflict(methodError.error);
     const files = await Promise.all(
       zones.map((z) => listAttachments('service_survey_zone', z.id, supabase)),
     );
@@ -264,6 +275,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       status: closureStatus({ status: request.status, answeredAt: nowIso, closedAt: request.closedAt }),
       updatedAt: nowIso,
     };
+    /* คำตอบ "ต้องยืนยันหน้างานไหม" ลงใบ **เฉพาะใบที่มีพื้นที่จากแบบ** (ด่านข้างบนรับรองแล้วว่าเป็นหนึ่งในสองค่าที่ฐานรับ)
+       ⚠️ ใบลงหน้างานล้วนไม่ส่งคีย์นี้เลย — คำสั่งตอบใบเท่าเดิมทุกคีย์ · ดึงผลกลับ / "ยังไม่จบ" ล้างคอลัมน์นี้ไว้แล้ว */
+    if (methodMix.drawing > 0) patch.surveyConfirm = body?.surveyConfirm;
 
     /* ── ปิดนัดที่ยังเปิด (มติ 24/09 ข้อ 2) → ตอบใบ · ลำดับอยู่ใน `surveySendWrites` ที่เดียว ──────────
        ⭐ นัดที่ส่งผลจะปิด = นัดที่ยังกินสิทธิ์ของใบ (ร่าง = ตีกลับพร้อมทางออก) · ต้องตรงกับที่โมดัลบอกผู้ใช้
@@ -310,6 +324,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     const totals = surveyTotals(zones);
     // "ที่ขอไป" เทียบ "ที่ได้กลับมา" — ตัวสร้างข้อความเดียวกับที่ขึ้นบนจอทั้งสองฝั่ง
     const change = surveyChangeCounts(zones);
+    /* ท่อนของใบที่มีพื้นที่จากแบบ (" · จากแบบ 2 พื้นที่ (…) · ต้องยืนยันหน้างาน") — ต่อหลังแพ็คเกจทั้งในเธรดและ audit
+       · ใบลงหน้างานล้วน = '' ⇒ สองบรรทัดข้างล่างเท่าเดิมทุกตัวอักษร */
+    const methodText = surveySendMethodText(zones, body?.surveyConfirm);
 
     /* 🔴 **บรรทัดในเธรดคือตัวที่แจกกระดิ่ง** — `appendUpdate` เรียก `notifyThreadUpdate`
        ต่อให้เองเสมอ (lib/master/updates.js) ⇒ ไม่เขียนเธรด = ผู้ขอไม่มีทางรู้ว่าผลมาแล้ว
@@ -359,11 +376,15 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
            ⚠️ **ข้อความเดียวกับที่ขึ้นบนจอทั้งสองฝั่ง** (`surveyChangeText`) — เขียนคนละที่
              เมื่อไร กระดิ่งกับจอจะนับคนละแบบ แล้วไม่มีใครรู้ว่าอันไหนจริง
            ⚠️ เงียบเมื่อไม่มีอะไรเปลี่ยน — "ไม่มีตัด ไม่มีเพิ่ม" ซ้ำกับเลขพื้นที่ที่อยู่ต้นบรรทัด */
-        summary: `${totals.zones} พื้นที่ · ${totals.areaSqm} ตร.ม. · ${surveyPackagesText(totals)}`
+        summary: `${totals.zones} พื้นที่ · ${totals.areaSqm} ตร.ม. · ${surveyPackagesText(totals)}${methodText}`
           + (change.cut || change.added ? ` — ${surveyChangeText(change, { actor: 'TS' })}` : '')
           + (diff.length ? ` · ⚠️ แก้จากรอบก่อน: ${diff.join(' · ')}` : ''),
-        /* ⭐ ยอดที่ส่งออกไปรอบนี้ → `meta.totals` ของแถวคำตอบ (S7) — ฐานของส่วนต่างรอบถัดไป แม้รอบนี้จะจบด้วย "ยังไม่จบ" */
-        totals,
+        /* ⭐ ยอดที่ส่งออกไปรอบนี้ → `meta.totals` ของแถวคำตอบ (S7) — ฐานของส่วนต่างรอบถัดไป แม้รอบนี้จะจบด้วย "ยังไม่จบ"
+           ⭐ ใบที่มีพื้นที่จากแบบพกอีกสองคีย์ (จำนวนพื้นที่จากแบบ · คำตอบเรื่องยืนยันหน้างาน) — `surveyTotalsDiff` อ่านเฉพาะคีย์
+              ที่ระบุชื่อ จึงไม่เกิดบรรทัดส่วนต่างจากสองคีย์นี้ · ใบลงหน้างานล้วนส่ง `totals` ตัวเดิม (ออบเจ็กต์เดียวกัน) */
+        totals: methodMix.drawing > 0
+          ? { ...totals, drawingZones: methodMix.drawing, surveyConfirm: body?.surveyConfirm }
+          : totals,
       },
     });
 
@@ -371,7 +392,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       user, action: 'update', entityType: 'dept_request', entityId: id,
       before: request, after: data,
       summary: `ส่งผลประเมิน ${request.docNo || id} — ${totals.zones} พื้นที่ · `
-        + `${totals.areaSqm} ตร.ม. · ${surveyPackagesText(totals)}`
+        + `${totals.areaSqm} ตร.ม. · ${surveyPackagesText(totals)}${methodText}`
         + (change.cut || change.added ? ` · ${surveyChangeText(change, { actor: 'TS' })}` : '')
         + (data.status === 'closed' ? ' · ปิดครบสองฝั่ง' : '')
         + (closedVisit ? ` · ปิดนัด ${closedVisit.code || closedVisit.id}` : ''),

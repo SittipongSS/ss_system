@@ -10,21 +10,35 @@
 //   ⇒ ข้อไหนแดง = พฤติกรรมของใบลงหน้างานเปลี่ยน · **แก้ที่โค้ด ไม่ใช่แก้ตัวเลขในไฟล์นี้**
 //   (เปลี่ยนข้อความของด่านโดยตั้งใจ = แก้ `GOLDEN` พร้อมเหตุผลในคอมมิตเดียวกัน)
 // ⚠️ เทียบหลังแปลงผ่าน JSON — คีย์ที่เป็น `undefined` ไม่นับ (รูปเดียวกับที่ route ส่งออกไปจริง)
+//
+// ⭐ **งวด S2a ต่อท้ายไฟล์ (สเปก S2a §3 Integrate ข้อ 3) — เพิ่ม ไม่ผ่อน:** ตัวตัดสินฝั่งจอและฝั่งคำร้องที่งวด S2a แตะ
+//   (การ์ดควบคุม · รายการพื้นที่ · กล่องส่งงาน · การ์ดงาน · ลงคิว · หัวคำร้อง · ทะเบียนพื้นที่ · ไทล์เลือกพื้นที่) ของใบชุดเดียวกัน
+//   สามแบบเดิม ต้องได้ผลเท่า **โค้ดก่อนงวด S2a** (HEAD `d7a3bf31`) หลังหยิบคีย์ใหม่ที่ §1 อนุญาตออก — ผลเต็มของหนึ่งแบบ
+//   ยาวราว 375 KB จึงจดเป็น **ลายนิ้วมือรายท่อน** (`GOLDEN_S2A` · sha256 ของ JSON ตามลำดับคีย์จริง) ไม่ใช่ค่าตรงตัว
+//   ⇒ ท่อนไหนแดง = ค่าหรือ **ลำดับคีย์** ของใบลงหน้างานเปลี่ยน หรือมีคีย์ใหม่ที่ไม่อยู่ในลิสต์หยิบออก
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import {
   SURVEY_GATES, surveyCrewGaps, surveyFieldMissing, surveyFieldProgress, surveyFieldSubmitError,
   surveyGateChecklist, surveyResultMissing, surveySendBackOnSheet, surveySendError,
 } from './survey.js';
 import { surveyNeedsVisit } from './surveyMethod.js';
 import { surveySpotGates, surveySpotSendError, surveySpotSubmitError } from './surveySpotPhotos.js';
-import { surveySendConfirm, surveySendVisitStep } from './surveySendClose.js';
+import { surveySendConfirm, surveySendMethodError, surveySendMethodText, surveySendVisitStep } from './surveySendClose.js';
 import { surveyQueueStep } from './surveyQueue.js';
 import { requestRailSteps } from '../requests/requestRail.js';
 import { surveyJobView } from './surveyJob.js';
 import { VISIT_STATUSES } from './visitStatus.js';
 import { surveyReportFreezeIssues } from './surveyReportSnapshot.js';
 import { surveyReportInputsFromFixture, syntheticSurveyFixture } from './surveyReportTestKit.mjs';
+import { surveyControlView } from './surveyControl.js';
+import { surveySheetTotalsText, surveySubmitView, surveyZoneListView } from './surveyFieldView.js';
+import { commitDueDefaults, commitDueGaps, commitDueLabels, commitDueMode, commitDuePayload } from '../requests/commitDue.js';
+import { requestHeaderFacts } from '../requests/headerFacts.js';
+import { customerZoneRegistry, zoneRegistryRow } from './zoneRegistry.js';
+import { sitePickSummary, zonePickState } from './zonePickState.js';
 
 const TODAY = '2026-10-09';
 
@@ -909,4 +923,362 @@ test('ตัวตัดสินทุกตัวของใบนี้ถ�
   assert.equal(GOLDEN.checklist.length, 6);
   assert.equal(GOLDEN.visitStep.draft.action, 'block');
   assert.match(GOLDEN.visitStep.draft.error, /ยังเป็นร่าง/);
+});
+
+/* ═══ งวด S2a: ตัวตัดสินฝั่งจอ · ฝั่งคำร้อง · ทะเบียน ของใบลงหน้างานล้วน ═══════════════════════════════ */
+
+/* อินพุตของตัวตัดสินฝั่งจอ/ฝั่งคำร้องที่งวด S2a แตะ — แถวพื้นที่แบบ `way` */
+const HEAD_VIEWER = { canDecide: true, canWrite: true, canOpenRequest: true };
+const CREW_VIEWER = { canDecide: false, canWrite: true, onVisit: true };
+const NOW = new Date('2026-10-09T03:00:00Z');
+const registryFixture = (way) => {
+  const zone = { id: 'SZN-1', code: 'ZN-AAAA-01-00001', name: 'Studio 01', floor: '02', siteId: 'SS-1' };
+  const idle = { id: 'SZN-9', code: 'ZN-AAAA-01-00009', name: 'ห้องประชุม', floor: '03', siteId: 'SS-1' };
+  const sent = request({ status: 'closed', answeredAt: '2026-10-09T02:00:00Z', closedAt: '2026-10-09T02:30:00Z', createdAt: '2026-10-06T07:50:00Z' });
+  const open = request({ id: 'DR-2', docNo: 'RQ-AS-26100030', createdAt: '2026-10-09T01:00:00Z' });
+  const surveys = [
+    way({ ...baseZones()[0], createdAt: '2026-10-06T07:50:01Z' }),
+    way({ ...baseZones()[0], id: 'z1b', requestId: 'DR-2', surveyedAt: null, surveyedByName: null, parts: [], spots: [], packageQty: null, packageSize: null, createdAt: '2026-10-09T01:00:01Z' }),
+  ];
+  return { zone, idle, surveys, requests: [sent, open], sites: [{ id: 'SS-1', code: 'ST-0001', name: 'อาคาร A', customerId: 'CU-1' }] };
+};
+
+function outcomeS2a(way, { drawingMethodEnabled, siteVisitReached } = {}) {
+  const rows = baseZones().map(way);
+  const files = filesByZone();
+  const flag = drawingMethodEnabled === undefined ? {} : { drawingMethodEnabled, siteVisitReached };
+
+  const shapes = Object.fromEntries(Object.entries(REQUEST_SHAPES).map(([name, make]) => {
+    const { row, visit: v } = make();
+    const control = (viewer, extra = {}) => surveyControlView({
+      request: row, zones: rows, filesByZone: files, visit: v, viewer, today: TODAY, ...flag, ...extra,
+    });
+    const job = (viewer) => surveyJobView({
+      request: { ...row, surveyVisit: v, surveyVisits: v ? [v] : [], surveyZones: rows, surveyFilesByZone: files },
+      today: TODAY, viewer,
+    });
+    const head = job({ canDecide: true, canWork: true });
+    const sales = job({});
+    const form = commitDueDefaults(row, { today: TODAY });
+    const asked = { ...row, surveyNeedsVisit: true };
+    return [name, {
+      control: { head: control(HEAD_VIEWER), crew: control(CREW_VIEWER), resultTab: control(HEAD_VIEWER, { tab: 'result' }) },
+      job: {
+        timeline: head.steps.map((step) => [step.id, step.label, step.state ?? null, step.when ?? null]),
+        zones: head.zones, salesZones: sales.zones, facts: head.facts, salesNow: sales.now,
+      },
+      commitDue: {
+        mode: commitDueMode(row),
+        labels: commitDueLabels(row),
+        requeueLabels: commitDueLabels(row, { requeue: true }),
+        form,
+        payload: commitDuePayload(row, { ...form, assigneeId: 'u-pa', reason: 'ลูกค้าขอเลื่อน' }, { technicians: [{ id: 'u-pa', name: 'Phuwadol Aoonnankad' }] }),
+        gaps: commitDueGaps(row, form),
+        sameWithFlag: JSON.stringify(commitDueLabels(asked)) === JSON.stringify(commitDueLabels(row))
+          && commitDueMode(asked) === commitDueMode(row),
+      },
+      headerFacts: requestHeaderFacts(row, { now: NOW }),
+      headerFactsWithFlag: requestHeaderFacts(asked, { now: NOW }),
+    }];
+  }));
+
+  const inProgress = visit('in_progress');
+  const list = (extra) => surveyZoneListView({ zones: rows, filesByZone: files, visit: inProgress, ...extra });
+  const reg = registryFixture(way);
+  const requestsById = new Map(reg.requests.map((r) => [r.id, r]));
+  const registryRow = zoneRegistryRow(reg.zone, { surveys: reg.surveys, requestsById, todayIso: TODAY });
+  const sentOnly = zoneRegistryRow(reg.zone, { surveys: reg.surveys.slice(0, 1), requestsById, todayIso: TODAY });
+  const never = zoneRegistryRow(reg.idle, { surveys: [], requestsById, todayIso: TODAY });
+  const registry = customerZoneRegistry({
+    sites: reg.sites, zones: [reg.zone, reg.idle], surveys: reg.surveys, requests: reg.requests, todayIso: TODAY,
+  });
+
+  return {
+    shapes,
+    controlSendBack: surveyControlView({
+      request: request(), zones: rows, filesByZone: files, visit: inProgress, sendBack: SEND_BACK_PENDING,
+      viewer: HEAD_VIEWER, today: TODAY, ...flag,
+    }),
+    zoneList: {
+      crew: list({ canDecide: false }),
+      head: list({ canDecide: true, selectedZoneId: 'z2', sendBack: SEND_BACK_PENDING }),
+      locked: list({ canDecide: true, locked: true }),
+    },
+    submit: surveySubmitView({ outcome: 'done', visit: inProgress, zones: rows, filesByZone: files }),
+    sheetTotals: surveySheetTotalsText({ zones: rows, filesByZone: files }),
+    registry: {
+      pending: registryRow, sent: sentOnly, never,
+      totals: registry,
+      pick: {
+        pending: zonePickState(registryRow), sent: zonePickState(sentOnly), never: zonePickState(never),
+        picked: zonePickState(sentOnly, new Set(['SZN-1'])),
+      },
+      site: sitePickSummary({ zones: [sentOnly, never] }),
+    },
+  };
+}
+
+/* ── คีย์ใหม่ของงวด S2a (สเปก S2a §1 ข้อยกเว้น 2–3) — หยิบออกทีละตัวพร้อมยืนยันว่าเป็น "ค่าว่างของใบลงหน้างาน" ──
+   ⚠️ หยิบด้วยชื่อคีย์ตรงตัว ณ ตำแหน่งที่ระบุเท่านั้น — คีย์ใหม่ที่ไม่อยู่ในลิสต์นี้ = ลายนิ้วมือไม่ตรง = เทสต์แดง */
+function take(holder, key, expected, at) {
+  assert.ok(holder && Object.hasOwn(holder, key), `ไม่มีคีย์ใหม่ ${key} · ${at}`);
+  if (typeof expected === 'function') expected(holder[key], at);
+  else assert.deepEqual(holder[key], expected, `${key} · ${at}`);
+  delete holder[key];
+}
+const METHOD_OFF = { show: false, allowed: false, reason: null };
+function stripControl(view, at, { flagOn = false } = {}) {
+  if (!view) return view;
+  take(view, 'method', flagOn
+    ? (value) => assert.deepEqual(Object.keys(value), ['show', 'allowed', 'reason'], at)
+    : METHOD_OFF, at);
+  take(view, 'mix', { onsite: 2, drawing: 0, mode: 'onsite' }, at);
+  take(view, 'needsVisit', true, at);
+  take(view, 'fieldTabLabel', 'หน้างาน', at);
+  take(view, 'gatesHidden', false, at);
+  take(view.progress, 'drawing', 0, at);
+  take(view.progress, 'text', `วัดแล้ว ${view.progress.done} / ${view.progress.total} พื้นที่`, at);
+  take(view.send, 'confirm', { required: false, mix: { onsite: 2, drawing: 0 }, mode: 'onsite' }, at);
+  return view;
+}
+function stripJobZones(zones, at) {
+  if (!zones) return zones;
+  for (const row of zones.rows) {
+    take(row, 'method', 'onsite', at);
+    take(row, 'chip', null, at);
+    take(row, 'photosText', null, at);
+    take(row, 'addedLabel', null, at);
+  }
+  take(zones.crewGate, 'hidden', false, at);
+  take(zones, 'drawingBanner', null, at);
+  return zones;
+}
+function stripLabels(labels, at) {
+  take(labels, 'wish', null, at);
+  take(labels, 'plannerNote', null, at);
+  return labels;
+}
+function stripZoneList(view, at) {
+  for (const row of view.rows) {
+    take(row, 'method', 'onsite', at);
+    take(row, 'chip', null, at);
+    // ป้ายที่มาของพื้นที่ที่ถูกเพิ่ม — ใบลงหน้างาน: แถวที่ช่างเพิ่ม = คำเดิมของจอ · นอกนั้น null
+    take(row, 'addedLabel', row.tags.added ? 'เพิ่มหน้างาน' : null, at);
+  }
+  take(view, 'drawingCount', 0, at);
+  take(view, 'drawingNote', null, at);
+  take(view, 'emptyReason', null, at);
+  return view;
+}
+function stripRegistryRow(row, at, { assessed = true, rounds } = {}) {
+  take(row, 'assessMethod', assessed ? 'onsite' : null, at);
+  take(row, 'confirm', 'none', at);
+  take(row, 'confirmTag', null, at);
+  take(row, 'onsiteSurveyCount', rounds === undefined ? row.surveyCount : rounds, at);
+  if (row.pendingRequest) take(row.pendingRequest, 'assessMethod', 'onsite', at);
+  return row;
+}
+function stripPick(state, at, { assessed = true } = {}) {
+  take(state, 'assessMethod', assessed ? 'onsite' : null, at);
+  take(state, 'confirm', 'none', at);
+  take(state, 'tag', null, at);
+  take(state, 'onsiteSurveyCount', (value) => assert.equal(typeof value, 'number', at), at);
+  return state;
+}
+
+/** ตัดผลของ `outcomeS2a` เป็นท่อนเล็ก (ท่อนละลายนิ้วมือ) หลังหยิบคีย์ใหม่ออก — ท่อนไหนแดงบอกชื่อท่อนนั้น */
+function sectionsS2a(raw, at, opts) {
+  const got = plain(raw);
+  const out = {};
+  for (const [name, shape] of Object.entries(got.shapes)) {
+    for (const who of ['head', 'crew', 'resultTab']) {
+      out[`${name} · การ์ดควบคุม · ${who}`] = stripControl(shape.control[who], `${at} · ${name} · ${who}`, opts);
+    }
+    stripJobZones(shape.job.zones, `${at} · ${name} · แถวของหัวหน้า`);
+    stripJobZones(shape.job.salesZones, `${at} · ${name} · แถวของฝ่ายขาย`);
+    out[`${name} · การ์ดงาน`] = shape.job;
+    stripLabels(shape.commitDue.labels, `${at} · ${name}`);
+    stripLabels(shape.commitDue.requeueLabels, `${at} · ${name} · ลงคิวใหม่`);
+    out[`${name} · ลงคิว`] = shape.commitDue;
+    out[`${name} · หัวคำร้อง`] = [shape.headerFacts, shape.headerFactsWithFlag];
+  }
+  out['การ์ดควบคุม · ส่งกลับค้าง'] = stripControl(got.controlSendBack, `${at} · ส่งกลับค้าง`, opts);
+  for (const who of Object.keys(got.zoneList)) stripZoneList(got.zoneList[who], `${at} · รายการพื้นที่ · ${who}`);
+  out['รายการพื้นที่'] = got.zoneList;
+  out['กล่องส่งงาน'] = { submit: got.submit, sheetTotals: got.sheetTotals };
+  const reg = got.registry;
+  stripRegistryRow(reg.pending, `${at} · ทะเบียน · มีใบค้าง`);
+  stripRegistryRow(reg.sent, `${at} · ทะเบียน · ส่งแล้ว`);
+  stripRegistryRow(reg.never, `${at} · ทะเบียน · ไม่เคยประเมิน`, { assessed: false });
+  take(reg.totals, 'awaitingConfirm', 0, at);
+  for (const site of reg.totals.sites) {
+    take(site, 'awaitingConfirm', 0, at);
+    for (const zone of site.zones) stripRegistryRow(zone, `${at} · ทะเบียนลูกค้า · ${zone.name}`, { assessed: !!zone.surveyedAt || zone.surveyCount > 0 });
+  }
+  stripPick(reg.pick.pending, `${at} · ไทล์ · มีใบค้าง`);
+  stripPick(reg.pick.sent, `${at} · ไทล์ · ส่งแล้ว`);
+  stripPick(reg.pick.picked, `${at} · ไทล์ · ติ๊กแล้ว`);
+  stripPick(reg.pick.never, `${at} · ไทล์ · ไม่เคยประเมิน`, { assessed: false });
+  take(reg.site, 'drawing', 0, at);
+  out['ทะเบียนพื้นที่'] = reg;
+  return out;
+}
+const fingerprint = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 16);
+
+/* 🔴 จดจากโค้ดก่อนงวด S2a (HEAD `d7a3bf31`): `outcomeS2a` + `sectionsS2a` ชุดนี้ถูกรันบนสำเนา `git archive` ของ HEAD
+   (ที่นั่นไม่มีคีย์ใหม่ให้หยิบ) แล้วจดลายนิ้วมือรายท่อนมา · สามแบบของแถวได้ค่าเดียวกัน · TZ=UTC กับ Asia/Bangkok ได้ค่าเดียวกัน
+   ⇒ แดง = แก้ที่โค้ด · เปลี่ยนพฤติกรรมของใบลงหน้างานโดยตั้งใจ = จดใหม่ด้วยวิธีเดียวกันพร้อมเหตุผลในคอมมิต */
+const GOLDEN_S2A = {
+  'รอรับเรื่อง · การ์ดควบคุม · head': '467de8bac8544dce',
+  'รอรับเรื่อง · การ์ดควบคุม · crew': '760b6798a1e9ae39',
+  'รอรับเรื่อง · การ์ดควบคุม · resultTab': '467de8bac8544dce',
+  'รอรับเรื่อง · การ์ดงาน': '4aa037647cd6cb24',
+  'รอรับเรื่อง · ลงคิว': '1460a3b2f83aeb3d',
+  'รอรับเรื่อง · หัวคำร้อง': '905e8e6afae9b562',
+  'รับเรื่องแล้ว ยังไม่ลงคิว · การ์ดควบคุม · head': '99fa6ee064e3544c',
+  'รับเรื่องแล้ว ยังไม่ลงคิว · การ์ดควบคุม · crew': '04d7c0529c34d620',
+  'รับเรื่องแล้ว ยังไม่ลงคิว · การ์ดควบคุม · resultTab': '99fa6ee064e3544c',
+  'รับเรื่องแล้ว ยังไม่ลงคิว · การ์ดงาน': 'fa06291fec748ba3',
+  'รับเรื่องแล้ว ยังไม่ลงคิว · ลงคิว': '1460a3b2f83aeb3d',
+  'รับเรื่องแล้ว ยังไม่ลงคิว · หัวคำร้อง': '905e8e6afae9b562',
+  'ลงคิวแล้ว นัดไว้ · การ์ดควบคุม · head': '39f4a799e198ae74',
+  'ลงคิวแล้ว นัดไว้ · การ์ดควบคุม · crew': 'a6ff0ca27482afef',
+  'ลงคิวแล้ว นัดไว้ · การ์ดควบคุม · resultTab': '39f4a799e198ae74',
+  'ลงคิวแล้ว นัดไว้ · การ์ดงาน': '741db45fa56109ef',
+  'ลงคิวแล้ว นัดไว้ · ลงคิว': '4d9e60489f9987e9',
+  'ลงคิวแล้ว นัดไว้ · หัวคำร้อง': 'd57d3761796999eb',
+  'ลงคิวแล้ว นัดยังเป็นร่าง · การ์ดควบคุม · head': '785da48ad18c0e64',
+  'ลงคิวแล้ว นัดยังเป็นร่าง · การ์ดควบคุม · crew': 'e605ccd3f3d115c9',
+  'ลงคิวแล้ว นัดยังเป็นร่าง · การ์ดควบคุม · resultTab': '785da48ad18c0e64',
+  'ลงคิวแล้ว นัดยังเป็นร่าง · การ์ดงาน': 'd2afe803d35a096e',
+  'ลงคิวแล้ว นัดยังเป็นร่าง · ลงคิว': '4d9e60489f9987e9',
+  'ลงคิวแล้ว นัดยังเป็นร่าง · หัวคำร้อง': 'd57d3761796999eb',
+  'ช่างกำลังวัด · การ์ดควบคุม · head': 'e3f42e43223c0e0d',
+  'ช่างกำลังวัด · การ์ดควบคุม · crew': '72dadcea90947816',
+  'ช่างกำลังวัด · การ์ดควบคุม · resultTab': 'e3f42e43223c0e0d',
+  'ช่างกำลังวัด · การ์ดงาน': '3c4b310a6231b074',
+  'ช่างกำลังวัด · ลงคิว': '4d9e60489f9987e9',
+  'ช่างกำลังวัด · หัวคำร้อง': 'd57d3761796999eb',
+  'ช่างส่งงานแล้ว · การ์ดควบคุม · head': '88c645bd7f0f0f3b',
+  'ช่างส่งงานแล้ว · การ์ดควบคุม · crew': '41636683f4f48c3b',
+  'ช่างส่งงานแล้ว · การ์ดควบคุม · resultTab': '88c645bd7f0f0f3b',
+  'ช่างส่งงานแล้ว · การ์ดงาน': 'f63260c7f35e18db',
+  'ช่างส่งงานแล้ว · ลงคิว': '4d9e60489f9987e9',
+  'ช่างส่งงานแล้ว · หัวคำร้อง': 'd57d3761796999eb',
+  'นัดเข้าไม่ได้ · การ์ดควบคุม · head': 'd57de6efed29c039',
+  'นัดเข้าไม่ได้ · การ์ดควบคุม · crew': '87309e9c281b8c3d',
+  'นัดเข้าไม่ได้ · การ์ดควบคุม · resultTab': 'd57de6efed29c039',
+  'นัดเข้าไม่ได้ · การ์ดงาน': '934856d30288497d',
+  'นัดเข้าไม่ได้ · ลงคิว': '4d9e60489f9987e9',
+  'นัดเข้าไม่ได้ · หัวคำร้อง': 'd57d3761796999eb',
+  'นัดถูกยกเลิก · การ์ดควบคุม · head': '11ce69df58aaeb0e',
+  'นัดถูกยกเลิก · การ์ดควบคุม · crew': 'a7e4f3f7d31c4944',
+  'นัดถูกยกเลิก · การ์ดควบคุม · resultTab': '11ce69df58aaeb0e',
+  'นัดถูกยกเลิก · การ์ดงาน': 'd17003b3285442e0',
+  'นัดถูกยกเลิก · ลงคิว': '4d9e60489f9987e9',
+  'นัดถูกยกเลิก · หัวคำร้อง': 'd57d3761796999eb',
+  'มีวันบนใบแต่ไม่มีนัด · การ์ดควบคุม · head': '4675d6d6688276e1',
+  'มีวันบนใบแต่ไม่มีนัด · การ์ดควบคุม · crew': 'df8492b26a2c2088',
+  'มีวันบนใบแต่ไม่มีนัด · การ์ดควบคุม · resultTab': '4675d6d6688276e1',
+  'มีวันบนใบแต่ไม่มีนัด · การ์ดงาน': '43207b670d5d5d2b',
+  'มีวันบนใบแต่ไม่มีนัด · ลงคิว': '4d9e60489f9987e9',
+  'มีวันบนใบแต่ไม่มีนัด · หัวคำร้อง': 'd57d3761796999eb',
+  'ส่งผลแล้ว · การ์ดควบคุม · head': 'c16c284cfd08d18e',
+  'ส่งผลแล้ว · การ์ดควบคุม · crew': 'e5d3c4fe35b42579',
+  'ส่งผลแล้ว · การ์ดควบคุม · resultTab': 'c16c284cfd08d18e',
+  'ส่งผลแล้ว · การ์ดงาน': '082e132dfe0ace2a',
+  'ส่งผลแล้ว · ลงคิว': '4d9e60489f9987e9',
+  'ส่งผลแล้ว · หัวคำร้อง': '2e9281c4e65832d8',
+  'ปิดครบสองฝั่ง · การ์ดควบคุม · head': 'd5a07b87ddf3e5f5',
+  'ปิดครบสองฝั่ง · การ์ดควบคุม · crew': '8900926adbe107b3',
+  'ปิดครบสองฝั่ง · การ์ดควบคุม · resultTab': 'd5a07b87ddf3e5f5',
+  'ปิดครบสองฝั่ง · การ์ดงาน': '7bf877276af30cbf',
+  'ปิดครบสองฝั่ง · ลงคิว': '4d9e60489f9987e9',
+  'ปิดครบสองฝั่ง · หัวคำร้อง': '2e9281c4e65832d8',
+  'การ์ดควบคุม · ส่งกลับค้าง': '4d11a7278b8fde11',
+  'รายการพื้นที่': '8d05c6fd164560ad',
+  'กล่องส่งงาน': '240d894f02651b0b',
+  'ทะเบียนพื้นที่': '029e1d6eae119c9d',
+};
+
+/* สวิตช์ของงวด S2a: ไม่ส่งเลย (ผู้เรียกเดิม) · ปิด · เปิดแล้วรู้ว่าเคยเข้าพื้นที่ / ยังไม่เคย / ไม่ทราบ
+   ใบลงหน้างานล้วนต้องได้คีย์เดิมเท่ากันทุกแบบ — เปิดสวิตช์ต่างแค่คีย์ `method` (ปุ่มเปลี่ยนวิธี) ที่ถูกหยิบออกไปแล้ว */
+const FLAGS = {
+  'ไม่ส่งสวิตช์': [undefined, false],
+  'สวิตช์ปิด': [{ drawingMethodEnabled: false, siteVisitReached: null }, false],
+  'สวิตช์เปิด · เคยเข้าพื้นที่': [{ drawingMethodEnabled: true, siteVisitReached: true }, true],
+  'สวิตช์เปิด · ยังไม่เคยเข้า': [{ drawingMethodEnabled: true, siteVisitReached: false }, true],
+  'สวิตช์เปิด · ไม่ทราบ': [{ drawingMethodEnabled: true, siteVisitReached: null }, true],
+};
+
+for (const [name, way] of Object.entries(WAYS)) {
+  for (const [flagName, [flags, flagOn]] of Object.entries(FLAGS)) {
+    test(`🔴 งวด S2a · ใบลงหน้างานล้วน · ${name} · ${flagName} — คีย์เดิมของทุกตัวตัดสินฝั่งจอเท่าโค้ดก่อนงวด`, () => {
+      const sections = sectionsS2a(outcomeS2a(way, flags), `${name} · ${flagName}`, { flagOn });
+      assert.deepEqual(Object.keys(sections), Object.keys(GOLDEN_S2A));
+      const moved = Object.entries(sections).filter(([key, value]) => fingerprint(value) !== GOLDEN_S2A[key]).map(([key]) => key);
+      assert.deepEqual(moved, [], 'ท่อนที่ค่าหรือลำดับคีย์เปลี่ยน');
+    });
+  }
+}
+
+test('งวด S2a · สวิตช์เปิดบนใบลงหน้างานล้วน: ไม่มีบรรทัดด่านของงานจากแบบ (แถว 17 / 17a) ในทุกขั้นของใบ', () => {
+  const rows = baseZones();
+  for (const [name, make] of Object.entries(REQUEST_SHAPES)) {
+    const { row, visit: v } = make();
+    for (const siteVisitReached of [true, false, null]) {
+      const on = plain(surveyControlView({
+        request: row, zones: rows, filesByZone: filesByZone(), visit: v, viewer: HEAD_VIEWER, today: TODAY,
+        drawingMethodEnabled: true, siteVisitReached,
+      }));
+      const off = plain(surveyControlView({
+        request: row, zones: rows, filesByZone: filesByZone(), visit: v, viewer: HEAD_VIEWER, today: TODAY,
+      }));
+      const { method: methodOn, ...restOn } = on;
+      const { method: methodOff, ...restOff } = off;
+      assert.deepEqual(restOn, restOff, `${name} · ${siteVisitReached}`);
+      assert.deepEqual(methodOff, METHOD_OFF, name);
+      assert.equal(typeof methodOn.show, 'boolean', name);
+    }
+  }
+});
+
+test('งวด S2a · ส่งผลของใบลงหน้างานล้วน: โมดัลยืนยันเท่าเดิมทุกข้อ · ไม่มีท่อนต่อท้าย · ไม่ต้องส่งสัดส่วนวิธีหรือคำตอบยืนยัน', () => {
+  for (const [name, way] of Object.entries(WAYS)) {
+    const rows = baseZones().map(way);
+    const cases = {
+      noVisit: { docNo: 'RQ-AS-26100021', closesVisit: null },
+      closesScheduled: { docNo: 'RQ-AS-26100021', closesVisit: visit('scheduled') },
+      closesInProgress: {
+        docNo: 'RQ-AS-26100021', closesVisit: visit('in_progress', { startTime: '10:12:00' }),
+        sendBackPending: { itemCount: 1 }, issuesDocument: true,
+      },
+    };
+    for (const [key, input] of Object.entries(cases)) {
+      // ค่าที่จดไว้ของงวด S1 (โค้ดก่อนมีคีย์ method) — ส่ง null · ส่งสัดส่วนของใบลงหน้างาน (รูปที่การ์ดส่งจริง) ต้องเท่ากัน
+      const methods = [
+        null,
+        { mix: { onsite: 2, drawing: 0, mode: 'onsite' }, confirm: null, openVisit: null },
+        { mix: { onsite: 2, drawing: 0, mode: 'onsite' }, confirm: 'needed', openVisit: visit('scheduled') },
+      ];
+      for (const method of methods) {
+        assert.deepEqual(plain(surveySendConfirm({ ...input, method })), GOLDEN.sendConfirm[key], `${name} · ${key}`);
+      }
+    }
+    assert.equal(surveySendMethodText(rows, null), '', name);
+    assert.equal(surveySendMethodText(rows, 'needed'), '', `${name} · มีคำตอบค้างมาก็ไม่พิมพ์`);
+    assert.equal(surveySendMethodError(rows), null, name);
+    assert.equal(surveySendMethodError(rows, {}), null, name);
+    assert.equal(surveySendMethodError(rows, { methodMix: null, surveyConfirm: null }), null, name);
+    assert.equal(surveySendMethodError(rows, { methodMix: { onsite: 2, drawing: 0 } }), null, name);
+  }
+  /* คำสั่งตอบใบของ route ส่งผล: คีย์ surveyConfirm ถูกใส่เฉพาะใบที่มีพื้นที่จากแบบ — พฤติกรรมจริง (แถวคำร้องที่ถูกเขียน ·
+     บรรทัดเธรด · audit ของใบลงหน้างานล้วน) ถูกยืนยันกับ handler ตัวจริงที่ `surveyMethodSendChoice.test.mjs`
+     ข้อ "route · ใบลงหน้างานล้วน" · ที่นี่ล็อกว่าเงื่อนไขนั้นยังเป็นทางเดียวที่คีย์เข้า patch */
+  const route = fs.readFileSync(new URL('../../app/api/service/surveys/[id]/send/route.js', import.meta.url), 'utf8');
+  const writes = route.match(/patch\.surveyConfirm\s*=/g) || [];
+  assert.equal(writes.length, 1);
+  assert.ok(route.includes('if (methodMix.drawing > 0) patch.surveyConfirm = body?.surveyConfirm;'));
+  const choice = fs.readFileSync(new URL('./surveyMethodSendChoice.test.mjs', import.meta.url), 'utf8');
+  assert.ok(choice.includes("assert.equal('surveyConfirm' in world.request(), false, at);"));
 });

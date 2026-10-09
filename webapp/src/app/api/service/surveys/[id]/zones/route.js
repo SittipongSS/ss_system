@@ -23,7 +23,7 @@ import { withUser, ok, fail, badRequest, conflict, forbidden, notFound } from '@
 import { canDoFieldWork, canEditService, canSendSurveyResult } from '@/lib/permissions';
 import { genId } from '@/lib/id';
 import { surveyAddZoneError, surveyEditLockError } from '@/lib/service/survey';
-import { SURVEY_METHOD_DRAWING, surveyNewZoneMethod } from '@/lib/service/surveyMethod';
+import { SURVEY_METHOD_DRAWING, isDrawingZone, surveyNewZoneMethod } from '@/lib/service/surveyMethod';
 import { normalizeAddedZone, surveyRowNameClash, zoneNameKey } from '@/lib/service/surveyRequest';
 import { loadSiteZones, loadSurveyZones, loadZoneSurveyLocks, materializeSurveyZones } from '@/lib/service/surveyRepo';
 import { busySurveyRequests } from '@/lib/service/zonePickState';
@@ -135,10 +135,13 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       .from('service_survey_zones').select('*').eq('id', row.id).single();
     if (error) return fail(error.message, 500);
 
+    /* แถวที่เกิดมาเป็นจากแบบ (ใบงานโต๊ะ) คนเพิ่มคือหัวหน้าฝ่าย ไม่มีใครอยู่หน้างาน — สรุปต้องไม่เขียนว่า "ช่างเพิ่มหน้างาน"
+       ⚠️ แถวลงหน้างาน = ประโยคเดิมทุกตัวอักษร */
+    const addedBy = isDrawingZone(data) ? 'หัวหน้าเพิ่มพื้นที่ (ประเมินจากแบบ)' : 'ช่างเพิ่มพื้นที่หน้างาน';
     await recordAudit({
       user, action: 'create', entityType: 'service_survey_zone', entityId: row.id,
       after: data,
-      summary: `ช่างเพิ่มพื้นที่หน้างาน ${data.zoneName} (ชั้น ${data.floor})`
+      summary: `${addedBy} ${data.zoneName} (ชั้น ${data.floor})`
         + ` ในใบ ${request.docNo || id}`,
       request: req,
     });

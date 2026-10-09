@@ -4,7 +4,8 @@
 //    "เขียนอะไรลงตารางไหน ตามลำดับไหน" ไม่ใช่แค่ว่าซอร์สมีคำนี้
 // 🔴 กติกาที่ทุกเคส **ลงหน้างานล้วน** ต้องยืนยัน: คำสั่งเขียนเหมือนเดิมทุกคีย์ — **ไม่มีคีย์ `method` เลย**
 //    (แถวเก่า/fixture เก่าไม่มีคีย์นี้ · และ migration 0408 ยังไม่ถูกรัน ⇒ ส่งคีย์ที่ฐานไม่รู้จัก = เพิ่มพื้นที่ไม่ได้ทั้งระบบ)
-// ⚠️ งวด S1 ยังไม่มีเส้นไหนทำให้แถวเป็น 'drawing' ได้ — แถวจากแบบในไฟล์นี้มาจาก fixture ล้วน
+// ⚠️ แถวจากแบบในไฟล์นี้มาจาก fixture ล้วน (เส้นสลับวิธีของงวด S2a มีเทสต์ของตัวเอง) — ท้ายไฟล์มีสามเรื่องของงวด S2a
+//    ที่อยู่บนเส้นเดียวกันนี้: ช่างบันทึกช้ากว่าการสลับ · ตัดพื้นที่ที่เพิ่มบนใบงานโต๊ะ · สรุป audit ของการเพิ่มพื้นที่
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -12,7 +13,7 @@ import { fakeDb, callRoute, tech, mate, planner } from './crew/routeTestKit.mjs'
 import { isDrawingZone, surveyNeedsVisit } from './surveyMethod.js';
 
 const { POST } = await import('../../app/api/service/surveys/[id]/zones/route.js');
-const { PATCH, DELETE } = await import('../../app/api/service/surveys/[id]/zones/[zoneId]/route.js');
+const { PATCH, PUT, DELETE } = await import('../../app/api/service/surveys/[id]/zones/[zoneId]/route.js');
 const { canAttachToCosting, surveySpotLinkAccess } = await import('../master/costingAttachmentAccess.js');
 const { canEditAttachmentParent } = await import('../master/attachmentAccess.js');
 
@@ -649,6 +650,167 @@ test('ผูกรูปกับจุดของพื้นที่จา�
   assert.deepEqual({ ok: sent.ok, locked: sent.locked }, { ok: true, locked: true });
   // พื้นที่ลงหน้างาน: ช่างบนนัดยังผูกได้เหมือนเดิม
   assert.equal((await surveySpotLinkAccess(filesDb(), zone('A'), tech)).ok, true);
+});
+
+/* ══ งวด S2a: ช่างบันทึกช้ากว่าการสลับของหัวหน้า · ตัดพื้นที่ที่เพิ่มบนใบงานโต๊ะ · สรุป audit ของการเพิ่ม ═══════════
+   (สเปก S2a §3 กลุ่ม B ข้อ 10 · 11 · 16 — กล่องยืนยันของการตัดที่พลิกใบอยู่ที่ `surveyMethodCutConfirm.test.mjs`) */
+
+const SWITCHED_TEXT = 'พื้นที่นี้หัวหน้าเปลี่ยนเป็นประเมินจากแบบแล้ว — ไม่ต้องวัด · โหลดหน้าใหม่';
+const STALE_TEXT = 'พื้นที่นี้ถูกแก้จากที่อื่น — โหลดใหม่แล้วตรวจก่อนบันทึก';
+const T_SWITCH = '2026-10-05T03:00:00.000Z';
+// พื้นที่ที่หัวหน้าสลับเป็นจากแบบ — การสลับประทับเวลาและขยับรุ่นของแถว
+const switched = (id, o = {}) => drawing(id, {
+  methodReason: 'หน้างานยังก่อสร้าง ถึงสิ้นเดือน', methodChangedAt: T_SWITCH, methodChangedByName: 'หัวหน้าฝ่าย',
+  updatedAt: T_SWITCH, ...o,
+});
+
+test('⭐ ช่างบันทึกพื้นที่ที่หัวหน้าเพิ่งสลับเป็นจากแบบ: จอที่ส่งรุ่นเก่าได้ 409 ชนรุ่นตัวเดิม · แท็บที่ไม่ส่งรุ่นได้ 409 "ไม่ต้องวัด" · ไม่เขียนอะไร', async () => {
+  const sheet = () => [switched('A'), zone('B', { sortOrder: 2 })];
+  for (const user of [tech, planner]) {
+    // ① จอของช่างเปิดไว้ตั้งแต่ก่อนสลับ — ร่างตั้งต้นจากรุ่น T0
+    const stale = seed({ zones: sheet(), visits: [visit('in_progress')] });
+    const old = await patch(stale, user, 'A', { note: 'วัดแล้ว', baseUpdatedAt: T0 });
+    assert.equal(old.status, 409, user.id);
+    assert.equal(old.json.code, 'zone_stale', user.id);
+    assert.equal(old.json.error, STALE_TEXT, user.id);
+    // พกแถวล่าสุดกลับไป — จอเห็นเองว่าพื้นที่เป็นจากแบบแล้ว
+    assert.equal(old.json.zone.id, 'A');
+    assert.equal(old.json.zone.method, 'drawing');
+    assert.deepEqual(dataWrites(stale), [], user.id);
+
+    // ② แท็บที่ไม่ส่งรุ่น (จอรุ่นเก่า · ตัด/เอากลับจากหน้าแม่) และ ③ จอที่โหลดใหม่หลังสลับแล้วยังกดบันทึก
+    for (const extra of [{}, { baseUpdatedAt: T_SWITCH }]) {
+      const db = seed({ zones: sheet(), visits: [visit('in_progress')] });
+      const late = await patch(db, user, 'A', { note: 'วัดแล้ว', ...extra });
+      assert.equal(late.status, 409, user.id);
+      assert.deepEqual(late.json, { error: SWITCHED_TEXT }, user.id);
+      assert.deepEqual(dataWrites(db), [], user.id);
+      assert.equal(db.calls.some((c) => c.table === 'service_visits'), false, 'พื้นที่จากแบบไม่ถามนัด');
+    }
+  }
+});
+
+test('🔴 PUT (หัวหน้าเคาะจุด / แพ็คเกจ) ผูกกับรุ่นของแถวที่อ่าน: แถวถูกเขียนแทรก = 409 ชนรุ่นพร้อมแถวล่าสุด · ไม่ทับจุดที่เส้นสลับวิธีเพิ่งปลดเลือก', async () => {
+  const headUser = { id: 'U-HEAD', name: 'หัวหน้าฝ่าย', role: 'ts_manager', department: 'TS' };
+  const put = (db, body) => callRoute(PUT, {
+    user: headUser, db, method: 'PUT', path: '/api/service/surveys/REQ1/zones/A', params: { id: 'REQ1', zoneId: 'A' }, body,
+  });
+  const spots = () => [{ id: 's1', label: 'เคาน์เตอร์', selected: true }, { id: 's2', label: 'ประตู', selected: false }];
+
+  // เส้นปกติ: ไม่มีใครแทรก — คำสั่งผูกทั้ง id และรุ่น
+  const calm = seed({ zones: [switched('A', { spots: spots() })] });
+  const ok = await put(calm, { selectedSpotIds: ['s2'] });
+  assert.equal(ok.status, 200, ok.json.error);
+  assert.deepEqual(ok.json.spots.map((s) => s.selected), [false, true]);
+  const write = calm.calls.find((c) => c.table === 'service_survey_zones' && c.write === 'update');
+  assert.deepEqual(write.filters, [['eq', 'id', 'A'], ['eq', 'updatedAt', T_SWITCH]]);
+
+  // หัวหน้าอีกคนสลับพื้นที่นี้กลับเป็นลงหน้างาน (ปลดเลือกทุกจุด) ระหว่างที่คำขอนี้อ่านแถวกับเขียน
+  const T_BACK = '2026-10-06T03:00:00.000Z';
+  let moved = false;
+  const hook = (q, api) => {
+    if (!moved && q.table === 'dept_requests') {
+      moved = true;
+      Object.assign(api.tables.service_survey_zones[0], {
+        method: 'onsite', updatedAt: T_BACK, spots: spots().map((s) => ({ ...s, selected: false })),
+      });
+    }
+    return undefined;
+  };
+  const db = seed({ zones: [switched('A', { spots: spots() })], hook });
+  const late = await put(db, { selectedSpotIds: ['s1'] });
+  assert.equal(late.status, 409);
+  assert.equal(late.json.code, 'zone_stale');
+  assert.equal(late.json.error, STALE_TEXT);
+  assert.equal(late.json.zone.method, 'onsite', 'พกแถวล่าสุดกลับไปให้จอ');
+  const row = db.tables.service_survey_zones[0];
+  assert.deepEqual(row.spots.map((s) => s.selected), [false, false], 'จุดที่ถูกปลดเลือกต้องไม่ถูกเลือกกลับจากแถวรุ่นเก่า');
+  assert.equal(row.updatedAt, T_BACK);
+  assert.equal((db.tables.audit_logs || []).length, 0);
+});
+
+test('พื้นที่ที่เกิดมาเป็นจากแบบ (ไม่เคยถูกสลับ): ช่างยังได้ 403 เดิม · ส่งรุ่นเก่ามา = ชนรุ่น', async () => {
+  const sheet = () => [drawing('A'), zone('B', { sortOrder: 2 })];
+  for (const user of [tech, planner]) {
+    for (const extra of [{}, { baseUpdatedAt: T0 }]) {
+      const db = seed({ zones: sheet(), visits: [visit('in_progress')] });
+      const refused = await patch(db, user, 'A', { note: 'x', ...extra });
+      assert.equal(refused.status, 403, user.id);
+      assert.deepEqual(refused.json, { error: DRAWING_ZONE_HEAD_ONLY }, user.id);
+      assert.deepEqual(dataWrites(db), []);
+    }
+    const db = seed({ zones: sheet(), visits: [visit('in_progress')] });
+    const old = await patch(db, user, 'A', { note: 'x', baseUpdatedAt: '2026-09-30T00:00:00.000Z' });
+    assert.equal(old.status, 409, user.id);
+    assert.equal(old.json.code, 'zone_stale', user.id);
+    assert.deepEqual(dataWrites(db), []);
+  }
+});
+
+test('การสลับของหัวหน้าไม่เปลี่ยนด่านอื่น: หัวหน้าบันทึกแถวที่สลับได้ (รุ่นเก่า = ชนรุ่น) · ใบที่ส่งผลแล้วล็อกมาก่อน · พื้นที่ลงหน้างานเหมือนเดิม', async () => {
+  const sheet = () => [switched('A'), zone('B', { sortOrder: 2 })];
+  const db = seed({ zones: sheet(), visits: [visit('in_progress')] });
+  const saved = await patch(db, head, 'A', { note: 'อ่านจากแบบชั้น 1', baseUpdatedAt: T_SWITCH });
+  assert.equal(saved.status, 200, saved.json.error);
+  assert.equal(saved.json.note, 'อ่านจากแบบชั้น 1');
+  const behind = await patch(seed({ zones: sheet() }), head, 'A', { note: 'x', baseUpdatedAt: T0 });
+  assert.equal(behind.status, 409);
+  assert.equal(behind.json.code, 'zone_stale');
+
+  // ใบที่ส่งผลแล้ว: ด่านล็อกตอบก่อน ทั้งช่างที่ส่งรุ่นเก่าและที่ไม่ส่งรุ่น
+  const sent = seed({ zones: sheet(), req: { answeredAt: T0 }, visits: [visit('done')] });
+  for (const body of [{ note: 'x' }, { note: 'x', baseUpdatedAt: T0 }]) {
+    const locked = await patch(sent, tech, 'A', body);
+    assert.equal(locked.status, 409);
+    assert.match(locked.json.error, /ส่งผลให้ฝ่ายขายไปแล้ว/);
+  }
+  assert.deepEqual(dataWrites(sent), []);
+
+  // พื้นที่ลงหน้างานของใบเดียวกัน: ช่างนอกนัดได้ 403 ของด่านนัด **ก่อน** คำตอบชนรุ่น (ลำดับเดิม) · ช่างบนนัดได้ชนรุ่น
+  const mixed = seed({ zones: sheet(), visits: [visit('in_progress')] });
+  const outsider = await patch(mixed, mate, 'B', { note: 'x', baseUpdatedAt: '2026-09-30T00:00:00.000Z' });
+  assert.equal(outsider.status, 403);
+  assert.equal(outsider.json.error, NOT_YOUR_VISIT);
+  const crewBehind = await patch(mixed, tech, 'B', { note: 'x', baseUpdatedAt: '2026-09-30T00:00:00.000Z' });
+  assert.equal(crewBehind.status, 409);
+  assert.equal(crewBehind.json.code, 'zone_stale');
+  assert.equal((await patch(mixed, tech, 'B', { note: 'วัดแล้ว', baseUpdatedAt: T0 })).status, 200);
+});
+
+test('ตัดพื้นที่ที่เพิ่มบนใบ: พื้นที่จากแบบได้ประโยคของ TS · พื้นที่ลงหน้างานได้ประโยคเดิมทุกตัวอักษร — ไม่เขียนอะไร', async () => {
+  const desk = seed({ zones: [drawing('A', { status: 'added' }), drawing('B', { sortOrder: 2 })] });
+  const byHead = await cut(desk, head, 'A');
+  assert.equal(byHead.status, 400);
+  assert.deepEqual(byHead.json, { error: 'พื้นที่นี้ TS เพิ่มเอง — ถ้าไม่เอาแล้วให้ลบทิ้ง ไม่ใช่ตัดออก' });
+  assert.deepEqual(dataWrites(desk), []);
+
+  for (const [label, shape] of ONSITE_SHAPES) {
+    const onsite = seed({ zones: [zone('A', { ...shape, status: 'added' }), zone('B', { ...shape, sortOrder: 2 })], visits: [visit('in_progress')] });
+    for (const user of [tech, head]) {
+      const refused = await cut(onsite, user, 'A');
+      assert.equal(refused.status, 400, label);
+      assert.deepEqual(refused.json, { error: 'พื้นที่นี้ช่างเพิ่มเองหน้างาน — ถ้าไม่เอาแล้วให้ลบทิ้ง ไม่ใช่ตัดออก' }, label);
+    }
+    assert.deepEqual(dataWrites(onsite), [], label);
+  }
+});
+
+test('สรุป audit ของการเพิ่มพื้นที่: ใบงานโต๊ะ = "หัวหน้าเพิ่มพื้นที่ (ประเมินจากแบบ)" · ใบลงหน้างาน = ประโยคเดิมทุกตัวอักษร', async () => {
+  const desk = seed({ zones: [drawing('A'), drawing('B', { sortOrder: 2 })] });
+  assert.equal((await add(desk, head)).status, 200);
+  assert.deepEqual(desk.tables.audit_logs.map((a) => a.summary), [
+    'หัวหน้าเพิ่มพื้นที่ (ประเมินจากแบบ) โถงลิฟต์ (ชั้น 03) ในใบ RQ-AS-26100001',
+  ]);
+
+  for (const [label, shape] of ONSITE_SHAPES) {
+    for (const [user, visits] of [[tech, [visit('in_progress')]], [planner, []], [head, []]]) {
+      const db = seed({ zones: [zone('A', shape)], visits });
+      assert.equal((await add(db, user)).status, 200, `${label} · ${user.id}`);
+      assert.deepEqual(db.tables.audit_logs.map((a) => a.summary), [
+        'ช่างเพิ่มพื้นที่หน้างาน โถงลิฟต์ (ชั้น 03) ในใบ RQ-AS-26100001',
+      ], `${label} · ${user.id}`);
+    }
+  }
 });
 
 /* ══ ยามผูกกับซอร์สจริง ═══════════════════════════════════════════════════════════ */

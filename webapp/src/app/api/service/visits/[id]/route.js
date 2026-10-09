@@ -19,6 +19,7 @@ import {
 } from '@/lib/service/survey';
 import { loadSurveyFieldState, loadSurveySendBackState, loadSurveyZones } from '@/lib/service/surveyRepo';
 import { surveyNeedsVisit } from '@/lib/service/surveyMethod';
+import { appendVisitCancelLine } from '@/lib/service/surveyMethodWrites';
 import { surveySpotSubmitError } from '@/lib/service/surveySpotPhotos';
 import { notifySurveyFieldDone } from '@/lib/service/surveyFieldDoneNotify';
 import {
@@ -606,10 +607,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       });
     }
     if (data.status === 'cancelled' && before.status !== 'cancelled') {
-      await appendUpdate(supabase, {
-        entityType: 'service_visit', entityId: id, kind: 'cancel',
-        body: reason || 'ยกเลิกนัด', user,
-      });
+      await appendVisitCancelLine(supabase, { visitId: id, reason, user });
     }
 
     // ⭐ ปิดงานแล้วเสนอนัดรอบถัดไป — **เสนอ ไม่สร้างให้เอง** เพราะรอบอาจถูกยกเลิก

@@ -768,11 +768,19 @@ test('route · สวิตช์เปิด: ส่งผลที่ปิด
   assert.equal(world.request().status, 'answered');
 });
 
+/* งวด S2a: ใบที่มีพื้นที่จากแบบต้องส่งสัดส่วนวิธีประเมินที่จอเห็น + คำตอบ "ต้องยืนยันหน้างานไหม" มาด้วย (`surveySendMethodError`
+   · เทสต์ของด่านนั้นอยู่ที่ `surveyMethodSendChoice.test.mjs`) — เทสต์ชุดนี้ส่งให้ครบเพื่อไปถึงด่านเรื่องนัดที่มันถาม */
+const deskBody = (world, extra = {}) => ({
+  methodMix: (({ onsite, drawing }) => ({ onsite, drawing }))(surveyMethodMix(world.tables.service_survey_zones)),
+  surveyConfirm: 'not_needed',
+  ...extra,
+});
+
 test('route · สวิตช์เปิด: จากแบบทั้งใบ ไม่มีนัดเลย = ส่งได้ — ด่าน 17a ไม่ถามใบที่ไม่ต้องมีนัด', async () => {
   const world = makeWorld({ visit: 'none', zonePatch: { method: 'drawing' } });
   assert.equal(surveyNeedsVisit(world.tables.service_survey_zones), false);
   drawingOn();
-  const { status, json } = await send(world);
+  const { status, json } = await send(world, { body: deskBody(world) });
   assert.equal(status, 200, json.error);
   assert.equal(world.request().status, 'answered');
   assert.equal(json.closedVisit, null);
@@ -782,7 +790,7 @@ test('🔴 route: จากแบบทั้งใบ + นัดยังน�
   for (const on of [false, true]) {
     const world = makeWorld({ visit: 'scheduled', zonePatch: { method: 'drawing' } });
     if (on) drawingOn(); else drawingOff();
-    const { status, json } = await send(world, { body: { closeVisitId: VISIT_ID } });
+    const { status, json } = await send(world, { body: deskBody(world, { closeVisitId: VISIT_ID }) });
     assert.equal(status, 409, String(on));
     assert.equal(json.error, deskText(world.visit().code || VISIT_ID), String(on));
     assert.deepEqual(world.writes(), [], 'ยังไม่ได้เขียนอะไร');

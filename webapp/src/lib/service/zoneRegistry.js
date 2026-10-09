@@ -12,6 +12,11 @@
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { termsSoldNow, zoneTermState } from '@/lib/service/terms';
 import { spotCounts, surveyZoneSize } from '@/lib/service/survey';
+import {
+  isDrawingZone, surveyConfirmState, surveyDropSupersededDrawing, zoneMethod,
+} from '@/lib/service/surveyMethod';
+// ไฟล์ล้วน (ข้อความของฟีเจอร์ประเมินจากแบบ) — ป้ายบนทะเบียนต้องเป็นคำเดียวกับที่จออื่นใช้ ห้ามพิมพ์ซ้ำที่นี่
+import { SURVEY_ZONE_TAG } from '@/lib/service/surveyMethodSwitch';
 import { fmtNumber } from '@/lib/format';
 /* ⚠️ ไฟล์ข้อความ (ไม่มี import) ไม่ใช่ตัวติดป้าย `zoneSetupOrders.js` — ป้ายสถานะมากับชิปจาก server แล้ว
    และไฟล์นี้ต้องไม่ดึงกราฟของ serviceSetup.js ตามมา */
@@ -26,8 +31,13 @@ import { pendingOrderTagText } from '@/lib/service/zoneSetupOrderText';
  *   ต้องชนะแถวที่เปิดทีหลังแต่ยังไม่ได้ไปวัด · แถวที่ยังไม่วัดเลยแพ้เสมอ
  * ⚠️ แถว `cut` ไม่นับเป็นผลวัดล่าสุด — มันคือ "รอบนั้นตัดพื้นที่นี้ออก" ไม่ใช่การวัด
  *   (ตัดออกในใบหนึ่ง ไม่ได้แปลว่าขนาดที่เคยวัดไว้เป็นโมฆะ)
+ * ⭐ **ผลจากแบบที่ถูกวัดจริงแทนแล้ว ไม่กลับมาเป็นผลล่าสุด** (mig 0408 · ประเมินจากแบบ งวด S2a) — ส่ง
+ *   `createdAtOf(row)` (วันเปิดใบของแถว) มา = แถวจากแบบที่มีผลลงหน้างานของ **ใบที่เปิดทีหลัง** ถูกตัดออกก่อนจัดอันดับ
+ *   (`surveyDropSupersededDrawing`) · 🐞 ไม่ตัด = ใบจากแบบที่ถูกดึงกลับ บันทึกทับ แล้วส่งใหม่ ได้ `surveyedAt`
+ *   ใหม่กว่าผลวัดจริง ⇒ ชนะชั้น 2 แล้วทะเบียนกลับไปขึ้นตัวเลขจากแบบพร้อมป้าย "รอยืนยันหน้างาน" ทั้งที่วัดจริงไปแล้ว
+ *   ⚠️ ไม่ส่ง `createdAtOf` / ไม่มีแถวจากแบบ = อันดับเท่าเดิมทุกกรณี
  */
-export function latestSurveyRow(rows = [], { isSent = () => true } = {}) {
+export function latestSurveyRow(rows = [], { isSent = () => true, createdAtOf = null } = {}) {
   /* 🔴 **นับเฉพาะแถวของใบที่ TS ส่งผลแล้ว** (แผน §5A: *"ข้อมูลใช้ได้ตั้งแต่ TS ส่งผล"*)
      🐞 ไม่กรอง = ใบใหม่ที่เพิ่งเปิดกลบตัวเลขจริงของใบเก่าได้ทันที เพราะ `surveyedAt`
        ถูกประทับซ้ำ **ทุก PATCH** รวมทั้ง PATCH ที่แค่แก้หมายเหตุโดยยังไม่ได้วัด
@@ -35,11 +45,12 @@ export function latestSurveyRow(rows = [], { isSent = () => true } = {}) {
          จะว่างลงเฉย ๆ ตอนมีคนเปิดใบประเมินรอบใหม่
      ⚠️ ไม่ได้รอ "ปิดเรื่อง" — สถานะของใบเป็นเรื่องของใบ ตัวตัดคือ `answeredAt` เท่านั้น */
   const usable = (Array.isArray(rows) ? rows : []).filter((r) => r && r.status !== 'cut' && isSent(r));
-  if (!usable.length) return null;
+  const kept = createdAtOf ? surveyDropSupersededDrawing(usable, { createdAtOf }) : usable;
+  if (!kept.length) return null;
   /* 🐞 **ห้ามต่อสองวันเป็นสตริงเดียวแล้วเทียบ** — แถวที่ยังไม่ได้วัดได้คีย์ขึ้นต้นด้วย
      ตัวคั่น ซึ่งมากกว่าตัวเลขทุกตัวใน ASCII ⇒ แถวที่ยังไม่ไปวัดชนะแถวที่วัดแล้ว
      (เจอตอนเขียนเทสต์ 06/09/2026) ⇒ เทียบทีละชั้นตรง ๆ */
-  return usable.reduce((best, row) => (beats(row, best) ? row : best));
+  return kept.reduce((best, row) => (beats(row, best) ? row : best));
 }
 
 function beats(row, best) {
@@ -62,9 +73,13 @@ export function zoneRegistryRow(zone = {}, {
   const requestOf = (id) => (requestsById instanceof Map ? requestsById.get(id) : requestsById?.[id]);
   const latest = latestSurveyRow(surveys, {
     isSent: (row) => !!requestOf(row.requestId)?.answeredAt,
+    createdAtOf: (row) => requestOf(row.requestId)?.createdAt,
   });
   const size = surveyZoneSize(latest?.parts);
   const spots = spotCounts(latest?.spots);
+  const confirm = surveyConfirmState(latest, requestOf(latest?.requestId));
+  // รอบที่ไม่ถูกตัด (ทุกใบ ส่งผลแล้วหรือยังก็ตาม) — ชุดเดียวที่ตัวนับรอบสองตัวข้างล่างใช้
+  const rounds = (Array.isArray(surveys) ? surveys : []).filter((r) => r && r.status !== 'cut');
 
   return {
     id: zone.id,
@@ -77,6 +92,14 @@ export function zoneRegistryRow(zone = {}, {
     // ── ผลวัดล่าสุด (ไม่มี = ยังไม่เคยประเมิน ไม่ใช่ศูนย์) ──────────────
     surveyedAt: latest?.surveyedAt || null,
     surveyRequestId: latest?.requestId || null,
+    /* ── วิธีประเมินของผลล่าสุด (mig 0408 · ประเมินจากแบบ งวด S2a) ─────────
+       `assessMethod`  'onsite' | 'drawing' · ยังไม่เคยประเมิน = null (ไม่ใช่ 'onsite')
+       `confirm`       'none' | 'drawing' | 'awaiting' — ผลจากแบบที่ใบตอบว่าต้องยืนยันหน้างาน = 'awaiting'
+       `confirmTag`    ป้ายที่จอพิมพ์ (`SURVEY_ZONE_TAG`) · ลงหน้างาน / ยังไม่ประเมิน = null
+       ⚠️ ตัวเลขข้างล่าง (ขนาด · จุด · แพ็คเกจ) เป็นของแถวเดียวกับสามคีย์นี้เสมอ — ทะเบียนไม่ผสมตัวเลขจากแบบกับป้ายวัดจริง */
+    assessMethod: latest ? zoneMethod(latest) : null,
+    confirm,
+    confirmTag: SURVEY_ZONE_TAG[confirm] || null,
     parts: size.parts,
     areaSqm: latest ? size.areaSqm : null,
     volumeCbm: latest ? size.volumeCbm : null,
@@ -91,7 +114,10 @@ export function zoneRegistryRow(zone = {}, {
        ⚠️ `null` = ยังไม่ประเมิน หรือผลวัดก่อนมีขนาดที่ยังไม่ถูก back-fill · ไม่ใช่ "ไม่มีขนาด"
        🔄 `suggestedPackages` (สูตร ÷ 2,400) ถอดแล้ว — ไม่มีจอไหนอ่าน และสูตรนั้นไม่มีแล้ว (มติ 01/10) */
     assessedPackageSize: String(latest?.packageSize ?? '').trim().toUpperCase() || null,
-    surveyCount: (Array.isArray(surveys) ? surveys : []).filter((r) => r && r.status !== 'cut').length,
+    surveyCount: rounds.length,
+    /* รอบที่ **ไปวัดจริง** — ไม่นับรอบประเมินจากแบบ · ฟอร์มเปิดใบเขียน "วัดมาแล้ว n รอบ" จากตัวนี้
+       (`surveyCount` ข้างบนคงความหมายเดิม: ทุกรอบที่ไม่ถูกตัด) */
+    onsiteSurveyCount: rounds.filter((r) => !isDrawingZone(r)).length,
 
     /* 🔒 **"มีใบอื่นสั่งวัดไว้แล้ว" เป็นสถานะของตัวเอง ไม่ใช่ "ยังไม่วัด"** (ม็อก §เจ็ดกรณี)
        ยุบรวมกับ "ยังไม่วัด" เมื่อไร สองใบจะสั่งวัดโซนเดียวกันซ้อนกัน แล้วช่างไปเสียเที่ยว
@@ -180,7 +206,13 @@ function pendingRequestOf(surveys = [], requestsById) {
     if (!row?.requestId || row.status === 'cut') continue;
     const req = get(row.requestId);
     if (!req || !REQUEST_OPEN_STATUSES.includes(req.status)) continue;
-    return { id: req.id, docNo: req.docNo || null, status: req.status, dueDate: req.committedDueDate || null };
+    /* `assessMethod` = วิธีของ **แถวที่ค้าง** — แถวจากแบบไม่มีนัดเข้าพื้นที่ และบนใบงานโต๊ะ `committedDueDate`
+       คือวันส่งผลที่หัวหน้ารับปาก (`surveyDeskCommitPatch`) ⇒ ผู้อ่านที่จะเรียก `dueDate` ว่า "นัด" ต้องดูคีย์นี้ก่อน
+       ⚠️ `dueDate` คงค่าเดิม (ผู้อ่านอื่นใช้อยู่) */
+    return {
+      id: req.id, docNo: req.docNo || null, status: req.status, dueDate: req.committedDueDate || null,
+      assessMethod: zoneMethod(row),
+    };
   }
   return null;
 }
@@ -315,6 +347,8 @@ function registryTotals(zones = []) {
     volumeCbm: round2(measured.reduce((s, z) => s + (Number(z.volumeCbm) || 0), 0)),
     assessedPackages: zones.reduce((s, z) => s + (Number(z.assessedPackages) || 0), 0),
     soldPackages: zones.reduce((s, z) => s + (Number(z.soldPackages) || 0), 0),
+    // พื้นที่ที่ผลล่าสุดมาจากแบบและยังรอยืนยันหน้างาน (ประเมินจากแบบ งวด S2a) — นับจากป้ายของแถว ไม่คิดซ้ำ
+    awaitingConfirm: zones.filter((z) => z.confirm === 'awaiting').length,
   };
 }
 

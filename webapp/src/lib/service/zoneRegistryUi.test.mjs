@@ -38,6 +38,18 @@ test('GET ทะเบียนลูกค้า: ใบแม่มีตร�
   assert.match(CUSTOMER_ROUTE, /canOpenSiteRegistry,/, 'คีย์เดิมของ response ต้องอยู่ครบ (ตัวเลือกโซนของ PR-A อ่านอยู่)');
 });
 
+/* ประเมินจากแบบ (mig 0408 · งวด S2a): ป้าย "รอยืนยันหน้างาน" มาจาก `surveyConfirm` ของใบ · ผลลงหน้างานของใบที่เปิดทีหลัง
+   แทนผลจากแบบด้วย `createdAt` ของใบ — select ไม่พกสองคอลัมน์นี้ = ทะเบียนตอบ "ประเมินจากแบบ" เฉย ๆ ทุกพื้นที่
+   และไม่ตัดผลจากแบบที่ถูกวัดจริงแทนแล้ว โดยไม่มี error ให้เห็น
+   ⚠️ คอลัมน์ผูกใบยืนยันหน้างานเป็นของงวด S5 — งวดนี้ select ต้องยังไม่ขอ */
+test('🔴 ใบประเมินของทะเบียนลูกค้าพก surveyConfirm + createdAt — ป้ายจากแบบและตัวกรองผลที่ถูกแทนอ่านจากสองคอลัมน์นี้', () => {
+  const cols = CUSTOMER_ROUTE.match(/\.from\('dept_requests'\)\s*\.select\('([^']*)'\)/)?.[1] || '';
+  for (const col of ['"surveyConfirm"', '"createdAt"', '"answeredAt"', '"committedDueDate"', '"docNo"', 'status']) {
+    assert.ok(cols.includes(col), `select ใบต้องมี ${col}`);
+  }
+  assert.equal(cols.includes('surveyConfirmOfId'), false);
+});
+
 /* 🐞 review 29/09: ตัวรวมข้ามใบ (`termsSoldNow`) ใช้ช่วงบริการของใบที่ประทับเป็นหน้าต่าง — select ใบแม่ต้องพกช่วงมาด้วย
    ไม่พก = ทุกใบเป็น 'current' ⇒ ใบเก่าที่จบแล้วกับใบต่อสัญญารวมกันเงียบ ๆ เหมือนเดิม */
 test('🔴 ใบแม่ของรอบขายพกช่วงบริการ + ตรา — ทะเบียนลูกค้า · หน้าไซต์ (zoneSalesRepo) · หน้าโซน', () => {

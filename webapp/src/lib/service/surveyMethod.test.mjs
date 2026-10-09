@@ -4,8 +4,8 @@ import { readFileSync } from 'node:fs';
 import * as leaf from './surveyMethod.js';
 import {
   SURVEY_METHOD_DRAWING, SURVEY_METHOD_ONSITE,
-  isDrawingZone, isJpgOrPngFile, surveyDrawingAssessor, surveyMethodMix, surveyNeedsVisit,
-  surveyNewZoneMethod, surveyZoneChangeFlips, surveyZoneNeedsResave, zoneMethod,
+  isDrawingZone, isJpgOrPngFile, surveyConfirmState, surveyDrawingAssessor, surveyDropSupersededDrawing,
+  surveyMethodMix, surveyNeedsVisit, surveyNewZoneMethod, surveyZoneChangeFlips, surveyZoneNeedsResave, zoneMethod,
 } from './surveyMethod.js';
 
 /* แถว `service_survey_zones` สามแบบที่ทุกเทสต์ใช้
@@ -355,6 +355,75 @@ test('🔑 isJpgOrPngFile: มี mimeType = ตัดสินจาก mimeTyp
   for (const [name, file, want] of cases) assert.equal(isJpgOrPngFile(file), want, name);
 });
 
+/* ── 8a) surveyConfirmState — สภาพ "ยืนยันหน้างาน" ของพื้นที่ในทะเบียน (งวด S2a) ─────────────── */
+test('surveyConfirmState: แถวลงหน้างาน / ไม่มีแถว = none · แถวจากแบบดูคำตอบบนใบของมัน', () => {
+  const cases = [
+    ['ไม่มีแถว', null, { surveyConfirm: 'needed' }, 'none'],
+    ['undefined', undefined, null, 'none'],
+    ['ลงหน้างาน + needed (ค่าบนใบไม่เกี่ยวกับแถวลงหน้างาน)', on(), { surveyConfirm: 'needed' }, 'none'],
+    ['แถวเก่าไม่มีคีย์ method + needed', old(), { surveyConfirm: 'needed' }, 'none'],
+    ['จากแบบ + needed', dw(), { surveyConfirm: 'needed' }, 'awaiting'],
+    ['จากแบบ + not_needed', dw(), { surveyConfirm: 'not_needed' }, 'drawing'],
+    ['จากแบบ + ยังไม่ได้เลือก', dw(), { surveyConfirm: null }, 'drawing'],
+    ['จากแบบ + ใบไม่มีคีย์', dw(), {}, 'drawing'],
+    ['จากแบบ + ไม่มีใบ', dw(), null, 'drawing'],
+    ['จากแบบ + ไม่ส่งใบมา', dw(), undefined, 'drawing'],
+    ['จากแบบ + ค่าที่ไม่รู้จัก', dw(), { surveyConfirm: 'Needed' }, 'drawing'],
+  ];
+  for (const [name, row, request, want] of cases) assert.equal(surveyConfirmState(row, request), want, name);
+  assert.equal(surveyConfirmState(dw()), 'drawing', 'อาร์กิวเมนต์ที่สองไม่บังคับ');
+});
+
+/* ── 8b) surveyDropSupersededDrawing — ผลจากแบบที่ถูกผลลงหน้างานรุ่นหลังแทนแล้ว ─────────────── */
+test('surveyDropSupersededDrawing: ทิ้งแถวจากแบบเฉพาะเมื่อมีแถวลงหน้างานของใบที่ **เปิดทีหลัง**', () => {
+  const at = { R1: '2026-10-01T03:00:00.000Z', R2: '2026-10-05T03:00:00+00:00', R3: '2026-10-09T03:00:00.000Z' };
+  const createdAtOf = (row) => at[row.requestId];
+  const d1 = dw({ id: 'D1', requestId: 'R1' });
+  const d2 = dw({ id: 'D2', requestId: 'R2' });
+  const d3 = dw({ id: 'D3', requestId: 'R3' });
+  const o1 = on({ id: 'O1', requestId: 'R1' });
+  const o2 = on({ id: 'O2', requestId: 'R2' });
+  const o3 = on({ id: 'O3', requestId: 'R3' });
+  const l2 = old({ id: 'L2', requestId: 'R2' });
+  const noTime = on({ id: 'O9', requestId: 'R9' });
+  const dNoTime = dw({ id: 'D9', requestId: 'R9' });
+  const cases = [
+    ['จากแบบ แล้วลงหน้างานทีหลัง → ทิ้งแถวจากแบบ', [d1, o2], [o2]],
+    ['ลำดับในลิสต์ไม่เกี่ยว ดูเวลาของใบ', [o2, d1], [o2]],
+    ['จากแบบที่เปิด **หลัง** ลงหน้างาน (ปรับปรุงพื้นที่) → อยู่ครบ', [o1, d2], [o1, d2]],
+    ['จากแบบสองแถว ไม่มีลงหน้างาน → อยู่ครบ', [d1, d2], [d1, d2]],
+    ['ลงหน้างานในใบเดียวกัน → อยู่ครบ', [d1, o1], [d1, o1]],
+    ['อ่านเวลาของแถวลงหน้างานไม่ออก → อยู่ครบ', [d1, noTime], [d1, noTime]],
+    ['อ่านเวลาของแถวจากแบบไม่ออก → อยู่ครบ', [dNoTime, o3], [dNoTime, o3]],
+    ['รูปเวลาคนละแบบ (…Z กับ …+00:00) เทียบเป็นเวลา ไม่ใช่สตริง', [d2, o3, d3], [o3, d3]],
+    ['แถวเก่าไม่มีคีย์ method นับเป็นลงหน้างาน', [d1, l2], [l2]],
+    ['หลายแถว: ทิ้งเฉพาะตัวที่ถูกแทน ลำดับเดิม', [d1, o2, d3, o1], [o2, d3, o1]],
+  ];
+  for (const [name, rows, want] of cases) {
+    const got = surveyDropSupersededDrawing(rows, { createdAtOf });
+    assert.equal(got.length, want.length, name);
+    want.forEach((row, i) => assert.equal(got[i], row, `${name} — ต้องเป็นออบเจ็กต์ตัวเดิม ตำแหน่ง ${i}`));
+  }
+  // 🐞 เทียบสตริงตรง ๆ จะได้ "…+00:00" < "…Z" ผิด ๆ ถูก ๆ — ชั่วขณะเดียวกันสองรูปต้องนับว่า "ไม่ได้มาทีหลัง"
+  const same = { A: '2026-10-05T03:00:00.000Z', B: '2026-10-05T03:00:00+00:00' };
+  const dA = dw({ id: 'DA', requestId: 'A' });
+  const oB = on({ id: 'OB', requestId: 'B' });
+  assert.deepEqual(surveyDropSupersededDrawing([dA, oB], { createdAtOf: (r) => same[r.requestId] }), [dA, oB]);
+});
+
+test('surveyDropSupersededDrawing: ไม่มีอะไรให้ทิ้ง = คืนอาร์เรย์ตัวเดิม (ใบลงหน้างานล้วนไม่ถูกแตะ)', () => {
+  const createdAtOf = () => '2026-10-01T03:00:00.000Z';
+  const onsiteOnly = [on({ id: 'O1' }), old({ id: 'L1' })];
+  assert.equal(surveyDropSupersededDrawing(onsiteOnly, { createdAtOf }), onsiteOnly, 'ไม่มีแถวจากแบบ');
+  const mixed = [dw({ id: 'D1' }), on({ id: 'O1' })];
+  assert.equal(surveyDropSupersededDrawing(mixed), mixed, 'ไม่ส่งตัวเลือกมา');
+  assert.equal(surveyDropSupersededDrawing(mixed, {}), mixed, 'ไม่ส่ง createdAtOf');
+  assert.equal(surveyDropSupersededDrawing(mixed, { createdAtOf: 'x' }), mixed, 'createdAtOf ไม่ใช่ฟังก์ชัน');
+  const empty = [];
+  assert.equal(surveyDropSupersededDrawing(empty, { createdAtOf }), empty);
+  assert.deepEqual(surveyDropSupersededDrawing(null, { createdAtOf }), []);
+});
+
 /* ── 9) ยามซอร์ส — โมดูลใบ ห้ามดึงโมดูลอื่น ────────────────────────────────── */
 /* 🔴 `attachmentTypes.js` ดึง `survey.js` และ `survey.js` จะดึงไฟล์นี้ ⇒ ไฟล์นี้ดึงใครเข้ามาเมื่อไร = วงกลม
    ⚠️ เทียบทั้งไฟล์รวมคอมเมนต์ (ไม่ต้องมีตัวลอกคอมเมนต์ให้พลาด) ⇒ คอมเมนต์ในไฟล์ก็ห้ามใช้สองคำนี้ */
@@ -369,6 +438,8 @@ test('ชื่อที่ส่งออกครบตามสเปค S1 �
   const fns = [
     'zoneMethod', 'isDrawingZone', 'surveyMethodMix', 'surveyNeedsVisit', 'surveyNewZoneMethod',
     'surveyZoneChangeFlips', 'surveyZoneNeedsResave', 'surveyDrawingAssessor', 'isJpgOrPngFile',
+    // งวด S2a §2.1
+    'surveyConfirmState', 'surveyDropSupersededDrawing',
   ];
   for (const name of fns) assert.equal(typeof leaf[name], 'function', name);
   assert.equal(typeof leaf.SURVEY_METHOD_ONSITE, 'string');

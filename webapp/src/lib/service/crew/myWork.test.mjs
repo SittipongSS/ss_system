@@ -369,6 +369,23 @@ test('นัดประเมิน: zoneCount ไม่นับพื้น�
   assert.equal(byId(work).get('V-TODAY').zoneCount, null);
 });
 
+/* 🔄 ประเมินจากแบบ (mig 0408 · งวด S2a): การ์ดงานของช่างนับเฉพาะพื้นที่ที่ช่างต้องไปวัด — พื้นที่ที่หัวหน้าประเมินจากแบบ
+   ไม่ใช่งานของช่าง · แถวเก่าที่ไม่มีคีย์ `method` / เป็น null = ลงหน้างาน นับตามเดิม */
+test('นัดประเมิน: zoneCount ไม่นับพื้นที่ที่หัวหน้าประเมินจากแบบ · อ่านวิธีประเมินมาในคำขอเดียวกัน', async () => {
+  const zones = [
+    ...ZONES,
+    { id: 'Z4', requestId: 'RQ1', status: 'ok', method: 'drawing' },
+    { id: 'Z5', requestId: 'RQ1', status: 'added', method: 'onsite' },
+    { id: 'Z6', requestId: 'RQ1', status: 'cut', method: 'drawing' },
+    { id: 'Z7', requestId: 'RQ1', status: 'ok', method: null },
+  ];
+  const { work, enrichCalls } = await enriched({ tables: { service_survey_zones: zones } });
+  assert.equal(byId(work).get('V-SURV').zoneCount, 4, 'Z1 · Z2 · Z5 · Z7 — ไม่นับ Z3/Z6 (ตัด) และ Z4 (จากแบบ)');
+  const zoneReads = enrichCalls.filter((c) => c.table === 'service_survey_zones');
+  assert.equal(zoneReads.length, 1, 'พื้นที่อ่านครั้งเดียวต่อคำขอเหมือนเดิม');
+  assert.deepEqual(zoneReads[0].ops.filter(([name]) => name === 'select'), [['select', 'id, "requestId", status, method']]);
+});
+
 test('🔴 ไม่มีช่องแพ็ก/แผนรอบในคิวงาน (มติ 28/09 Q2 — จำนวนแพ็กต่อรอบอยู่ที่งานใบเดียว S9)', async () => {
   const { work, enrichCalls } = await enriched();
   for (const job of byId(work).values()) {

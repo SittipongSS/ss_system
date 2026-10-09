@@ -133,6 +133,15 @@ export const SERVICE_BELL_KINDS = Object.freeze([
   /* ⭐ ช่างแจ้งว่าแก้ตามที่หัวหน้าส่งกลับแล้ว → หัวหน้า TS (มติ 2026-09-22) — ปิดวงของ
      `survey_send_back` · ยิงจาก `lib/service/surveyFieldDoneNotify.js` (`SURVEY_SEND_BACK_DONE_KIND`) */
   'survey_send_back_done',
+  /* ⭐ หัวหน้าสลับวิธีประเมิน (งวด S2a · แผน survey-desk-assessment §3.5) → ช่างบนนัดของใบนั้น:
+     นัดถูกยกเลิกเพราะใบเป็นประเมินจากแบบ หรือพื้นที่ที่ไม่ต้องวัดแล้ว — ก่อนมีตัวนี้งานหายจากรายการของช่างเฉย ๆ
+     ⚠️ ยิงจาก `lib/service/surveyMethodNotify.js` (`SURVEY_METHOD_CREW_KIND`) · href ไปจอของฝ่ายบริการ
+       เหตุเดียวกับ `survey_send_back` (ช่างเปิดหน้าคำร้องไม่ได้) */
+  'survey_method_changed',
+  /* ⭐ ใบกลายเป็นงานประเมินจากแบบ (ไม่เหลือพื้นที่ที่ต้องลงหน้างาน) → หัวหน้า TS ที่ส่งผลได้ ลบคนกด —
+     ใบออกจากคิวของผู้วางคิวแล้ว ไม่มีช่างมากด "ส่งงาน" ให้ `survey_field_done` เด้ง ⇒ ตัวนี้คือสัญญาณเดียวว่าถึงคิวหัวหน้า
+     ⚠️ ยิงจาก `lib/service/surveyMethodNotify.js` (`SURVEY_DESK_READY_KIND`) */
+  'survey_desk_ready',
 ]);
 
 /* ⭐ **สัญญาเข้ากระดิ่ง แต่เข้าทาง `kinds`** (2026-09-06) — เหตุผลเดียวกับลีด

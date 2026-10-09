@@ -21,9 +21,19 @@
 //    ⇒ เวลาจบ "ตอนนี้" = ชั่วโมงงานเพี้ยน และถ้าเช้ากว่าเวลาเริ่ม ฐานตีกลับ · เก็บเวลาที่ช่างประทับไว้จริงเท่านั้น
 // 🔴 **ปิดเป็น "เข้าแล้ว" อย่างเดียว** — จอประเมินไม่มี "ทำไม่ครบ" (พื้นที่ที่วัดไม่ได้ใช้ "ตัดพื้นที่นี้ออก")
 //    และนัดที่ "ทำไม่ได้" ผ่านด่านส่งผลไม่ได้อยู่แล้ว (ไม่มีขนาด/รูป) · ห้ามเดาเป็นสถานะอื่น
+//
+// ⭐ **ใบที่มีพื้นที่จากแบบ ส่งผลต้องตอบว่า "ต้องยืนยันหน้างานไหม"** (งวด S2a · แผน survey-desk-assessment §3.2)
+//    · `surveySendMethodError` = ด่านของ route (จอเห็นสัดส่วนวิธีประเมินชุดเดียวกับฐานไหม · เลือกแล้วหรือยัง)
+//    · `surveySendMethodText` = ท่อนที่ต่อท้ายบรรทัดส่งผลในเธรด / กระดิ่ง / audit
+//    · `surveySendConfirm({ method })` = หัวโมดัล ตัวเลือก และรายการผลของใบแบบนี้
+//    🔴 ทั้งสามตัว **อ่านจากแถวพื้นที่ ไม่อ่านสวิตช์** — ใบที่มีพื้นที่จากแบบไปแล้วต้องส่งผลได้แม้สวิตช์ถูกปิดทีหลัง ·
+//       ใบลงหน้างานล้วนได้ `null` / `''` / ผลเท่าเดิมทุกคีย์
 import { fmtDate } from '@/lib/format';
 import { surveyZoneName } from './survey';
 import { isDrawingZone, surveyMethodMix, surveyNeedsVisit } from './surveyMethod';
+import {
+  SURVEY_CONFIRM_LABEL, SURVEY_CONFIRM_MISSING, SURVEY_METHOD_LABEL, SURVEY_ZONE_TAG, surveyZoneNamesText,
+} from './surveyMethodSwitch';
 import { VISIT_STATUS_LABELS, isOpenVisit } from './visitStatus';
 
 /** สถานะที่ส่งผลปิดให้ได้ — ชุดเดียวกับ `isOpenVisit` (เงื่อนไขของคำสั่ง update ต้องตรงกับตัวตัดสิน) */
@@ -36,6 +46,8 @@ const dayOf = (value) => (value ? String(value).slice(0, 10) : null);
 const timeOf = (value) => (value ? String(value).slice(0, 5) : null);
 /* ลิสต์ข้อความที่มาจากนอกไฟล์ (body ของคำขอ · ผลของตัวตรวจ) — เก็บเฉพาะสตริงที่มีเนื้อ ไม่ตัด ไม่แก้ตัวอักษร */
 const textList = (value) => (Array.isArray(value) ? value : []).filter((t) => typeof t === 'string' && t.trim() !== '');
+// คำตอบ "ต้องยืนยันหน้างานไหม" ที่ใช้ได้ — สองค่าของ `SURVEY_CONFIRM_LABEL` ตรงตัว (ค่าที่ฐานรับ: CHECK ของ mig 0408)
+const isConfirmChoice = (value) => typeof value === 'string' && Object.hasOwn(SURVEY_CONFIRM_LABEL, value);
 
 /**
  * ส่งผลแล้วนัดของใบจะเป็นยังไง — คืน `{ action: 'none' | 'block' | 'close', ... }`
@@ -87,6 +99,9 @@ export function surveySendVisitStep(visit, { today = null, needsVisit } = {}) {
   return { action: 'close', visit, patch: { status: 'done', actualDate } };
 }
 
+/** ข้อ "เอกสาร" ของโมดัลยืนยันเมื่อใบมีพื้นที่จากแบบ — เอกสารของใบแบบนี้ถูกพักไว้จนกว่างวด S3 จะปรับแบบเอกสาร */
+export const SURVEY_SEND_PAPER_HOLD_EFFECT = 'เอกสารประเมิน (เลข SU) ของใบที่ประเมินจากแบบยังออกไม่ได้ — ระบบกำลังปรับแบบเอกสาร · ผลถึงฝ่ายขายตามปกติ';
+
 /**
  * ⭐ **โมดัลยืนยัน "ส่งผล" ต้องบอกทุกอย่างที่เกิดจากการกดครั้งเดียว** (กติกาโมดัลบอกผลลัพธ์ · #1223)
  *    — คืน `{ effects: string[], confirmLabel }` ให้จอวาดเป็นรายการข้อ ๆ
@@ -109,11 +124,25 @@ export function surveySendVisitStep(visit, { today = null, needsVisit } = {}) {
  *                     · คำเตือนที่ซ้ำกันตามตัวอักษรขึ้นข้อเดียว (PR-3 — จอใช้ข้อความเป็น key ของข้อ) · ลิสต์ที่ส่งกลับ server ยังดิบ
  * @param documentUnknown `view.send.documentUnknown` — GET อ่านสถานะเอกสารไม่สำเร็จ (`{ access: 'none', unknown: true }`) ⇒ จอไม่รู้ว่า
  *                     การส่งครั้งนี้ออกเอกสารด้วยไหม · โมดัลต้องบอกผลแบบมีเงื่อนไข (PR-3 มติ 12 · #1223) · ไม่ส่ง = ไม่มีข้อนี้
+ * @param method       ใบที่มีพื้นที่ **ประเมินจากแบบ** (งวด S2a · แผน survey-desk-assessment §3.2) —
+ *                     `{ mix: surveyMethodMix(แถว), confirm: 'needed' | 'not_needed' | null, openVisit: null | { code, status } }`
+ *                     ⭐ ไม่ส่ง หรือ `mix.drawing === 0` = **ผลเท่าเดิมทุกคีย์** (ไม่มี `title` · ไม่มี `choice`)
+ *                     มีพื้นที่จากแบบ ⇒ ผลได้ `title` (หัวโมดัล) กับ `choice` (คำถาม "ต้องยืนยันหน้างานไหม" · `value` ว่างจนกว่า
+ *                     หัวหน้าจะเลือก — ไม่เลือกให้ล่วงหน้า) · ข้อ "พื้นที่จากแบบ" กับป้ายบนทะเบียนต่อจากข้อส่งกลับ ·
+ *                     ข้อปิดนัดของใบจากแบบทั้งใบ · ข้อ "เอกสารยังออกไม่ได้" แทนข้อออกเอกสาร · ป้ายปุ่มใช้กติกาเดิม
  */
 export function surveySendConfirm({
   docNo = null, closesVisit = null, sendBackPending = null, sizeReview = null,
   issuesDocument = false, replacesDocNo = null, warnings = null, documentUnknown = false,
+  method = null,
 } = {}) {
+  /* ใบที่มีพื้นที่จากแบบ (งวด S2a) — ทุกกิ่งข้างล่างที่ถามสามตัวนี้ได้ `false` / `null` เมื่อไม่ส่ง `method`
+     หรือใบไม่มีพื้นที่จากแบบ ⇒ ลิสต์และคีย์ของผลเท่าเดิมทุกตัวอักษร */
+  const drawingZones = Number(method?.mix?.drawing) || 0;
+  const byDrawing = drawingZones > 0;
+  const allDrawing = byDrawing && method.mix.mode === 'drawing';
+  const confirm = byDrawing && isConfirmChoice(method.confirm) ? method.confirm : null;
+
   const effects = [
     `${docNo ? `ใบ ${docNo}` : 'ใบนี้'} เป็น “ตอบแล้ว” — ฝ่ายขายได้แจ้งเตือนและเอาตัวเลขไปตั้งราคาได้ทันที`,
     'ผลประเมินล็อก แก้ไม่ได้ จนกว่าหัวหน้าจะกด “ดึงผลกลับมาแก้”',
@@ -125,10 +154,30 @@ export function surveySendConfirm({
     const n = Number.isInteger(sendBackPending.itemCount) && sendBackPending.itemCount > 0 ? ` ${sendBackPending.itemCount} ข้อ` : '';
     effects.push(`เรื่องที่ส่งกลับให้ช่างแก้${n} ยังรอช่างแจ้งว่าแก้แล้ว — ส่งผลแล้วช่างแก้ต่อไม่ได้ (ดึงผลกลับมาแก้ = เรื่องนี้กลับมารอช่างอีกครั้ง)`);
   }
-  if (closesVisit) effects.push(surveySendVisitEffect(closesVisit));
+  if (byDrawing) {
+    effects.push(`${drawingZones} พื้นที่${SURVEY_METHOD_LABEL.drawing} — หน้าคำร้องและเอกสารจะระบุว่า “${SURVEY_METHOD_LABEL.drawing}”`);
+    // ยังไม่เลือก = ยังไม่มีข้อนี้ (ป้ายบนทะเบียนขึ้นกับคำตอบ — โมดัลไม่เดาแทนหัวหน้า)
+    if (confirm === 'needed') {
+      effects.push(`ทะเบียนพื้นที่ของลูกค้าขึ้นป้าย “${SURVEY_ZONE_TAG.awaiting}” จนกว่า TS จะส่งผลของใบยืนยันหน้างาน`);
+    } else if (confirm === 'not_needed') {
+      effects.push(`ทะเบียนพื้นที่ของลูกค้าขึ้นป้าย “${SURVEY_ZONE_TAG.drawing}” (${SURVEY_CONFIRM_LABEL.not_needed})`);
+    }
+  }
+  if (allDrawing) {
+    /* จากแบบทั้งใบ: นัดที่ส่งผลปิดให้ได้มีแบบเดียวคือนัดที่ช่างกดเริ่มไว้ (`surveySendVisitStep`) — หนึ่งนัดหนึ่งข้อ ไม่ซ้อนกับข้อปิดนัดเดิม
+       ⚠️ "ไม่มีนัดที่เปิดอยู่" พูดเฉพาะตอนไม่มีจริง (`openVisit` ว่าง) — นัดร่าง/นัดไว้ที่ค้างอยู่ถูกด่านส่งผลตีกลับด้วยประโยคของมันเอง */
+    if (closesVisit) effects.push(`นัด ${codeOf(closesVisit)} ที่ช่างกดเริ่มงานไว้จะถูกปิดเป็น “${VISIT_STATUS_LABELS.done}”`);
+    else if (!method.openVisit) effects.push('ไม่มีการปิดนัด — ใบนี้ไม่มีนัดที่เปิดอยู่');
+  } else if (closesVisit) {
+    effects.push(surveySendVisitEffect(closesVisit));
+  }
   /* ⭐ ส่งผล = ออกเอกสารประเมินด้วย (PR-2) — เลขเอกสารถาวร แก้ไม่ได้หลังออก ⇒ ต้องอยู่ในรายการผลก่อนกด (#1223)
-     · คำเตือนของข้อความบนฉบับลูกค้าตามมาทีละข้อ: หัวหน้าอ่านแล้วส่งต่อ หรือปิดกล่องกลับไปแก้ */
-  if (issuesDocument) {
+     · คำเตือนของข้อความบนฉบับลูกค้าตามมาทีละข้อ: หัวหน้าอ่านแล้วส่งต่อ หรือปิดกล่องกลับไปแก้
+     ⚠️ ใบที่มีพื้นที่จากแบบ: เอกสารยังถูกพักไว้ (งวด S1 · งวด S3 เป็นคนถอดกิ่งนี้) ⇒ บอกตรง ๆ ว่ายังไม่ออก แทนข้อ "ออกเอกสาร"
+        ไม่ว่าสวิตช์ออกเอกสารตอนส่งผลจะเปิดหรือปิด */
+  if (byDrawing) {
+    effects.push(SURVEY_SEND_PAPER_HOLD_EFFECT);
+  } else if (issuesDocument) {
     const replaced = String(replacesDocNo ?? '').trim();
     effects.push((replaced
       ? `ออกเอกสารประเมินฉบับใหม่ (Rev ถัดไป) แทน ${replaced} ที่ใช้ไม่ได้แล้ว`
@@ -136,11 +185,35 @@ export function surveySendConfirm({
       + ' — ฝ่ายขายดาวน์โหลดฉบับลูกค้าได้ที่หน้าคำร้อง · เอกสารที่ออกแล้วแก้ไม่ได้ (แก้ = ดึงผลกลับแล้วส่งใหม่เป็น Rev ถัดไป)');
   }
   for (const line of [...new Set(textList(warnings))]) effects.push(`ฉบับลูกค้าจะพิมพ์ตามที่กรอกไว้ — ${line}`);
-  if (documentUnknown === true) {
+  // ใบที่มีพื้นที่จากแบบบอกไปแล้วข้างบนว่าเอกสารยังไม่ออก — "อาจออกเลข SU ด้วย" จะขัดกับข้อนั้น
+  if (documentUnknown === true && !byDrawing) {
     effects.push('อ่านสถานะเอกสารประเมินไม่สำเร็จ — ถ้าระบบเปิดออกเอกสารตอนส่งผลอยู่ การส่งครั้งนี้จะออกเลข SU ด้วย');
   }
   effects.push('ใบจะจบเมื่อฝ่ายขายกด “ปิดเรื่อง”');
-  return { effects, confirmLabel: closesVisit ? 'ส่งผลและปิดนัด' : 'ส่งผล' };
+  const confirmLabel = closesVisit ? 'ส่งผลและปิดนัด' : 'ส่งผล';
+  if (!byDrawing) return { effects, confirmLabel };
+  return {
+    effects,
+    confirmLabel,
+    title: allDrawing ? 'ส่งผลประเมินจากแบบให้ฝ่ายขาย' : 'ส่งผลให้ฝ่ายขาย',
+    choice: {
+      question: 'ต้องเข้ายืนยันหน้างานภายหลังไหม',
+      value: confirm,
+      missing: SURVEY_CONFIRM_MISSING,
+      options: [
+        {
+          value: 'needed',
+          label: SURVEY_CONFIRM_LABEL.needed,
+          hint: 'ฝ่ายขายใช้ตัวเลขเสนอราคาได้เลย · พื้นที่ติดป้าย “รอยืนยันหน้างาน” จนกว่า TS จะส่งผลของใบยืนยันหน้างาน · ฝ่ายขายเป็นคนกดขอเมื่อพื้นที่พร้อม',
+        },
+        {
+          value: 'not_needed',
+          label: SURVEY_CONFIRM_LABEL.not_needed,
+          hint: 'ใช้ผลจากแบบเป็นผลสุดท้าย เช่น บูธงานอีเวนต์ · ฝ่ายขายจะไม่มีปุ่มขอยืนยันหน้างาน',
+        },
+      ],
+    },
+  };
 }
 
 /** ข้อ "ปิดนัด" ของโมดัลยืนยัน — แยกตามสิ่งที่ช่างกดไว้แล้ว (เริ่มงานแล้ว / ยังไม่เคยเริ่ม) */
@@ -277,7 +350,52 @@ async function namedVisitGoneError(supabase, { requestId, closeVisitId }) {
 }
 
 const SEND_ALREADY_ANSWERED = 'ใบนี้ถูกส่งผลไปแล้ว — โหลดหน้าใหม่เพื่อดูผลล่าสุด';
-const SEND_METHOD_MOVED = 'วิธีประเมินของใบเปลี่ยนไปแล้ว — โหลดหน้าใหม่แล้วตรวจอีกครั้ง';
+/* ประโยคเดียวของ "ใบที่จอเห็นไม่ใช่ใบที่ฐานถืออยู่ในเรื่องวิธีประเมิน" — ทั้งตอนจองแถวไม่ติด (`sendMissError`)
+   และตอนสัดส่วนวิธีประเมินที่จอส่งมาไม่ตรงกับแถว (`surveySendMethodError`) */
+export const SEND_METHOD_MOVED = 'วิธีประเมินของใบเปลี่ยนไปแล้ว — โหลดหน้าใหม่แล้วตรวจอีกครั้ง';
+
+/**
+ * 🔑 **ด่านส่งผลของใบที่มีพื้นที่จากแบบ** (งวด S2a · แผน survey-desk-assessment §3.2) — `null` = ผ่าน ·
+ *    `{ status, error }` เมื่อจอส่งสัดส่วนวิธีประเมินไม่ตรงกับฐาน หรือยังไม่ได้เลือกว่าต้องยืนยันหน้างานไหม
+ *
+ * @param rows           แถวผลวัดทุกแถวของใบ (รวมที่ถูกตัด) — ชุดเดียวกับที่ด่านหกข้อใช้ตัดสิน
+ * @param methodMix      `{ onsite, drawing }` ที่จอเห็นตอนเปิดโมดัล (`body.methodMix`) · ไม่ส่ง = จอรุ่นที่ไม่รู้จักวิธีประเมิน
+ * @param surveyConfirm  คำตอบของหัวหน้า (`body.surveyConfirm`) — `'needed'` / `'not_needed'`
+ *
+ * ① จอส่งสัดส่วนมา แต่ไม่ตรงกับแถว            ⇒ 409 `SEND_METHOD_MOVED` (มีคนสลับวิธีหลังเปิดโมดัล — ด่านที่จอโชว์เป็นของวิธีเก่า)
+ * ② ใบมีพื้นที่จากแบบ แต่จอไม่ได้ส่งสัดส่วนมา ⇒ 409 เดียวกัน (จอที่ไม่รู้ว่าใบมีพื้นที่จากแบบ ยังไม่ได้ถามคำถามนี้กับหัวหน้า)
+ * ③ ใบมีพื้นที่จากแบบ และยังไม่ได้เลือก        ⇒ 400 `SURVEY_CONFIRM_MISSING`
+ * ④ นอกนั้น `null` — **ใบลงหน้างานล้วนที่ไม่ส่งอะไรมา (ทุกจอของวันนี้) ผ่านเสมอ**
+ * 🔴 ไม่อ่านสวิตช์ — ตัดสินจากแถว: ใบที่มีพื้นที่จากแบบไปแล้วต้องถูกถามแม้สวิตช์ถูกปิดทีหลัง
+ * ⚠️ `surveyConfirm` เทียบตรงตัว — ค่าอื่น (`true` · `'yes'` · ว่าง) = ยังไม่ได้เลือก ไม่ถูกเดาเป็นคำตอบ
+ */
+export function surveySendMethodError(rows, { methodMix = null, surveyConfirm = null } = {}) {
+  const mix = surveyMethodMix(rows);
+  const seen = methodMix != null;
+  if (seen && (Number(methodMix.onsite) !== mix.onsite || Number(methodMix.drawing) !== mix.drawing)) {
+    return { status: 409, error: SEND_METHOD_MOVED };
+  }
+  if (mix.drawing === 0) return null;
+  if (!seen) return { status: 409, error: SEND_METHOD_MOVED };
+  if (!isConfirmChoice(surveyConfirm)) return { status: 400, error: SURVEY_CONFIRM_MISSING };
+  return null;
+}
+
+/**
+ * ท่อนต่อท้ายบรรทัดส่งผล (เธรด · กระดิ่ง · audit) — `''` เมื่อใบไม่มีพื้นที่จากแบบ (บรรทัดเดิมทุกตัวอักษร)
+ *   จากแบบทั้งใบ ⇒ ` · ประเมินจากแบบทั้งใบ` · ผสม ⇒ ` · จากแบบ {k} พื้นที่ ({ชื่อพื้นที่จากแบบที่ยังใช้อยู่})`
+ *   แล้วตามด้วย ` · ต้องยืนยันหน้างาน` / ` · ไม่ต้องยืนยันหน้างาน` (ค่าอื่น = ไม่ต่อ — route ตีกลับไปก่อนแล้ว)
+ */
+export function surveySendMethodText(rows, surveyConfirm) {
+  const mix = surveyMethodMix(rows);
+  if (mix.drawing === 0) return '';
+  const names = (Array.isArray(rows) ? rows : [])
+    .filter((row) => row && !isCut(row) && isDrawingZone(row)).map(surveyZoneName);
+  const where = mix.onsite === 0
+    ? ` · ${SURVEY_METHOD_LABEL.drawing}ทั้งใบ`
+    : ` · จากแบบ ${mix.drawing} พื้นที่ (${surveyZoneNamesText(names)})`;
+  return where + (isConfirmChoice(surveyConfirm) ? ` · ${SURVEY_CONFIRM_LABEL[surveyConfirm]}` : '');
+}
 
 /**
  * ประโยค 409 ของ "เขียนไม่ติดแถวที่ผูก `updatedAt` ไว้" — อ่านซ้ำแค่ `answeredAt` เพื่อเลือกประโยค

@@ -553,3 +553,21 @@ test('แถวบันทึกรอบวางบิลไม่ลาก�
     { authorId: 'mgr-1', kind: 'override' },
   ]).sort(), ['mgr-1', 'sa-1']);
 });
+
+/* ── กระดิ่งของการสลับวิธีประเมิน (งวด S2a) ─────────────────────────────────
+   ⚠️ ดริฟต์แบบเดียวกับ LEAD_BELL_KINDS: ไฟล์ยิงประกาศ kind ใหม่แล้วลืมเติมทะเบียน ⇒ แถวลงตารางตามปกติ
+   แต่ไม่โผล่ในกระดิ่ง ไม่มีอะไรฟ้อง · อ่าน `…_KIND = 'survey_…'` จากไฟล์ยิงของใบประเมินจริงมาเทียบ */
+test('SERVICE_BELL_KINDS ครบทุก kind ที่ไฟล์กระดิ่งของใบประเมินประกาศ — รวมสองตัวของการสลับวิธี', () => {
+  const kinds = new Set();
+  for (const file of ['./service/surveyFieldDoneNotify.js', './service/surveyMethodNotify.js']) {
+    const src = readFileSync(new URL(file, import.meta.url), 'utf8');
+    for (const [, kind] of src.matchAll(/export const SURVEY_[A-Z_]+_KIND = '(survey_[a-z_]+)'/g)) kinds.add(kind);
+  }
+  assert.ok(kinds.size >= 4, 'อ่าน kind จากซอร์สไม่ได้ — เทสต์นี้ตาบอดแล้ว');
+  for (const kind of kinds) {
+    assert.ok(SERVICE_BELL_KINDS.includes(kind), `${kind} ประกาศไว้แต่ยังไม่อยู่ใน SERVICE_BELL_KINDS ⇒ ไม่ขึ้นกระดิ่ง`);
+    assert.ok(NOTIFICATION_BOXES.bell.kinds.includes(kind), `${kind} หลุดจากกล่องกระดิ่ง`);
+  }
+  for (const kind of ['survey_method_changed', 'survey_desk_ready']) assert.ok(kinds.has(kind), kind);
+  assert.equal(new Set(SERVICE_BELL_KINDS).size, SERVICE_BELL_KINDS.length, 'ทะเบียนมี kind ซ้ำ');
+});

@@ -945,6 +945,97 @@ test('"ยังไม่จบ" ที่ถูกตีกลับ (ไม่
   }
 });
 
+/* ══ 4ข. คำตอบ "ต้องยืนยันหน้างานไหม" ถูกล้างเมื่อผลถูกเปิดกลับ (ประเมินจากแบบ งวด S2a · mig 0408) ═════════════
+   คำตอบเป็นของรอบที่ส่งไปแล้ว — ระหว่างแก้ วิธีประเมินของพื้นที่เปลี่ยนได้ ⇒ ส่งรอบใหม่หัวหน้าต้องเลือกใหม่
+   สองเส้นนี้ไม่ปฏิเสธอะไรเพิ่ม · ไม่อ่านอะไรเพิ่ม */
+
+const recallWrite = (db) => db.writes('dept_requests').find((c) => c.write === 'update');
+/* ใบจากแบบที่ส่งผลแล้วและตอบว่า "ต้องยืนยันหน้างาน" · พื้นที่ทั้งสองเป็นจากแบบ */
+const DESK_REQ = Object.freeze({ ...REQ, surveyConfirm: 'needed' });
+const deskSeed = (request = DESK_REQ, extra = {}) => ({
+  ...seed({ request, reports: [] }),
+  service_survey_zones: zoneRows().map((z) => ({ ...z, method: 'drawing' })),
+  ...extra,
+});
+
+test('⭐ ดึงผลกลับ: คำสั่งเขียนลงใบพก `surveyConfirm: null` เสมอ — ใบจากแบบถูกล้างคำตอบ · ใบลงหน้างานได้คีย์เดียวกัน (ค่าว่าง)', async () => {
+  const desk = fakeDb(deskSeed());
+  const first = await recall(desk);
+  assert.equal(first.status, 200, first.json.error);
+  assert.deepEqual(recallWrite(desk).payload, {
+    answeredAt: null, answeredById: null, answeredByName: null,
+    closedAt: null, closedById: null, closedByName: null,
+    status: 'acknowledged',
+    surveyConfirm: null,
+    updatedAt: recallWrite(desk).payload.updatedAt,
+  });
+  assert.equal(desk.rows('dept_requests')[0].surveyConfirm, null);
+  assert.equal(first.json.request.surveyConfirm, null);
+  assert.equal(threadRows(desk, 'recall').length, 1);
+
+  // ใบลงหน้างานล้วน (คอลัมน์ว่างอยู่แล้ว) — คำสั่งเดียวกัน ไม่มีคำตอบอื่น ไม่มีการอ่านเพิ่ม
+  const onsite = fakeDb(seed());
+  assert.equal((await recall(onsite)).status, 200);
+  assert.equal(recallWrite(onsite).payload.surveyConfirm, null);
+  assert.deepEqual(Object.keys(recallWrite(onsite).payload), Object.keys(recallWrite(desk).payload));
+  assert.deepEqual(
+    onsite.calls.filter((c) => !c.write).map((c) => c.table),
+    desk.calls.filter((c) => !c.write).map((c) => c.table),
+    'ใบจากแบบไม่ถูกอ่านอะไรเพิ่มจากใบลงหน้างาน',
+  );
+});
+
+test('🔴 ดึงผลกลับไม่ถูกปฏิเสธเพราะพื้นที่เดียวกันมีใบประเมินใบหลัง (ใบยืนยันหน้างานของงวดถัดไป) — ดึงกลับได้ตามเดิม', async () => {
+  /* ใบที่สองบนโซนเดียวกัน เปิดทีหลัง ยังไม่ตอบ และชี้กลับมาที่ใบนี้ — เส้นดึงกลับไม่อ่านและไม่ถามถึงมัน */
+  const later = {
+    ...OPEN_REQ, id: 'REQ-2', docNo: 'RQ-TS-26100009', createdAt: '2026-10-03T02:00:00+00:00', surveyConfirmOfId: 'REQ-1',
+  };
+  const db = fakeDb(deskSeed(DESK_REQ, {
+    dept_requests: [DESK_REQ, later],
+    service_survey_zones: [
+      ...zoneRows().map((z) => ({ ...z, method: 'drawing' })),
+      { id: 'SZ-9', requestId: 'REQ-2', zoneId: 'ZN-1', zoneName: 'ล็อบบี้', status: 'ok', sortOrder: 1 },
+    ],
+  }));
+  const { status, json } = await recall(db);
+  assert.equal(status, 200, json.error);
+  assert.equal(db.rows('dept_requests').find((r) => r.id === 'REQ-1').surveyConfirm, null);
+  // ใบหลังไม่ถูกแตะ และไม่ถูกอ่าน
+  assert.deepEqual(db.rows('dept_requests').find((r) => r.id === 'REQ-2'), later);
+  assert.equal(db.calls.some((c) => c.filters.some(([, , val]) => val === 'REQ-2')), false);
+});
+
+test('⭐ "ยังไม่จบ": ใบประเมินได้ `surveyConfirm: null` · หัวข้ออื่นไม่มีคีย์นี้ในคำสั่งเขียน · ไม่มีใครถูกปฏิเสธ', async () => {
+  for (const user of [HEAD, REQUESTER]) {
+    const db = fakeDb(deskSeed());
+    const { status, json } = await reopen(db, user);
+    assert.equal(status, 200, `${user.role}: ${json.error}`);
+    const { payload } = recallWrite(db);
+    assert.equal('surveyConfirm' in payload, true, user.role);
+    assert.equal(payload.surveyConfirm, null, user.role);
+    assert.equal(db.rows('dept_requests')[0].surveyConfirm, null, user.role);
+    assert.equal(json.surveyConfirm, null, user.role);
+  }
+
+  // ใบประเมินลงหน้างานล้วนก็ได้คีย์ (ค่าว่างอยู่แล้ว) — ตัดสินจากหัวข้อของใบ ไม่ใช่จากวิธีประเมินของแถวพื้นที่
+  const onsite = fakeDb(seed());
+  assert.equal((await reopen(onsite, HEAD)).status, 200);
+  assert.equal(recallWrite(onsite).payload.surveyConfirm, null);
+
+  // ผู้ขอถอนตราปิดของตัวเองบนใบประเมินที่ฝ่ายยังไม่ตอบ — ยังเป็นใบประเมิน ได้คีย์เหมือนกัน
+  const closedByRequester = { ...OPEN_REQ, closedAt: '2026-10-01T06:00:00+00:00', closedById: 'sa-1', closedByName: 'เซลเอ' };
+  const open = fakeDb(seed({ request: closedByRequester, reports: [] }));
+  assert.equal((await reopen(open, REQUESTER)).status, 200);
+  assert.equal(recallWrite(open).payload.surveyConfirm, null);
+
+  // 🔴 หัวข้ออื่น: คอลัมน์ของใบประเมินไม่ถูกส่งไปกับคำร้อง (บทเรียน mig 0351)
+  const info = fakeDb({ dept_requests: [INFO_REQ] });
+  const other = await reopen(info, REQUESTER, { id: 'REQ-INFO' });
+  assert.equal(other.status, 200, other.json.error);
+  assert.equal('surveyConfirm' in recallWrite(info).payload, false);
+  assert.equal(recallWrite(info).payload.status, 'acknowledged');
+});
+
 /* ══ 5. ซอร์สของสามเส้น (§14 · มติ 24 · มติ 34) ═════════════════════════════════════════════════ */
 
 test('🔴 สามเส้น import เอกสารประเมินได้เฉพาะตัวอ่านแถว — ไม่มี import แบบ lazy ของหนัก · ไม่ออกเลข ไม่แตะที่เก็บไฟล์', () => {
