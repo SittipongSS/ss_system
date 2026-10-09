@@ -11,7 +11,7 @@ import { SURVEY_VISIT_KIND } from './surveyVisit';
 import {
   SEND_BACK_DONE_KIND, SEND_BACK_KIND, surveySendBackOnSheet, surveySendBackState,
 } from './survey';
-import { surveyNeedsVisit } from './surveyMethod';
+import { isDrawingZone, surveyNeedsVisit } from './surveyMethod';
 import { loadCrewNames, visitCrewFrom, visitCrewRole, visitHelperIds } from './crew/visitCrew';
 import { fetchAll } from '@/lib/supabaseFetchAll';
 import { addDays } from '@/lib/datePeriods';
@@ -495,17 +495,19 @@ async function crewAssetsForSites(supabase, siteIds = []) {
   return out;
 }
 
-/* จำนวนพื้นที่ของใบประเมิน — ไม่นับพื้นที่ที่ถูกตัด (`survey.js`: ตัดแล้วไม่นับรวมทุกตัวเลข) */
+/* จำนวนพื้นที่ของใบประเมิน **ที่ช่างต้องไปวัด** — ไม่นับพื้นที่ที่ถูกตัด (`survey.js`: ตัดแล้วไม่นับรวมทุกตัวเลข)
+   และไม่นับพื้นที่ที่หัวหน้าประเมินจากแบบ (mig 0408 · `isDrawingZone`) — การ์ดงานของช่างบอกงานของช่าง
+   ⚠️ ใบที่ไม่มีพื้นที่จากแบบได้เลขเท่าเดิม · อ่านคอลัมน์ `method` เพิ่มตัวเดียว (ชุดเดียวกับ `loadSentBackSurveys`) */
 async function surveyZoneCounts(supabase, requestIds = []) {
   const out = new Map();
   const rows = await fetchAllInChunks(requestIds, (chunk) => supabase
-    .from('service_survey_zones').select('id, "requestId", status')
+    .from('service_survey_zones').select('id, "requestId", status, method')
     .in('requestId', chunk)
     .order('id', { ascending: true }));
   for (const row of rows) {
     const key = String(row.requestId);
     if (!out.has(key)) out.set(key, 0);
-    if ((row.status || 'ok') !== 'cut') out.set(key, out.get(key) + 1);
+    if ((row.status || 'ok') !== 'cut' && !isDrawingZone(row)) out.set(key, out.get(key) + 1);
   }
   return out;
 }
@@ -520,7 +522,8 @@ const brokenLine = (asset) => ({
  *                 ⚠️ ไม่ใช่ของคนเปิดจอ: หัวหน้าที่ดูคิวแทน (?user=) ต้องเห็นว่าช่างคนนั้นเป็นคนไปหรือผู้ช่วย
  *   crew          `[{ id, name, lead, you, gone? }]` — `you` = คนเปิดจอ (`viewerId`) · crewUnknown = อ่านชื่อพลาด
  *   machineCount  เครื่องใช้งานของไซต์ (นับแถว ไม่ใช่ `qty`) · brokenCount · brokenAssets ≤ 2 `{ code, label, floor, spot }`
- *   zoneCount     พื้นที่ของใบประเมิน (ไม่นับที่ตัด) — นัดงานเครื่องเป็น null · นัดประเมินไม่มีตัวเลขเครื่อง (null)
+ *   zoneCount     พื้นที่ของใบประเมินที่ช่างต้องวัด (ไม่นับที่ตัด · ไม่นับที่หัวหน้าประเมินจากแบบ) — นัดงานเครื่องเป็น null
+ *                 · นัดประเมินไม่มีตัวเลขเครื่อง (null)
  * ⭐ ทุกอย่างอ่าน **ครั้งเดียวต่อคำขอ** — ชื่อต่อผู้ช่วยที่ไม่ซ้ำ (C10) · เครื่องต่อไซต์ · พื้นที่ต่อใบ
  * ⚠️ นัดซ้ำระหว่างลิสต์ (ช่วงวันย้อนเข้าอดีต) ได้ของประกอบชุดเดียวกัน — ไม่อ่านซ้ำ
  * @throws error ของ Supabase ตัวแรกที่เจอ (เครื่อง/พื้นที่) · ชื่ออ่านพลาดไม่โยน (ของประกอบ)

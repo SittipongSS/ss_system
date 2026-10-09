@@ -229,7 +229,7 @@ test('🐞 ใบส่งผลแล้ว = เรื่องส่งกล
 
   const src = (rel) => readFileSync(new URL(rel, import.meta.url), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-  assert.match(src('../../app/api/service/surveys/[id]/route.js'), /sendBack: surveySendBackOnSheet\(context\.sendBack, request\),/);
+  assert.match(src('../../app/api/service/surveys/[id]/route.js'), /sendBack: surveySendBackOnSheet\(context\.sendBack, request, \{ needsVisit \}\),/);
   assert.doesNotMatch(src('../../app/api/service/surveys/[id]/send/route.js'), /SEND_BACK_DONE_KIND/,
     'route ส่งผลไม่เขียนแถว "ช่างแจ้งว่าแก้แล้ว" แทนช่าง');
 });

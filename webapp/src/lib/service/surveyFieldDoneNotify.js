@@ -31,6 +31,8 @@ export const surveyFieldDoneHref = (requestId) => `/service/surveys/${requestId}
  * @param users     รายชื่อผู้ใช้ (`loadUserDirectory` แปลงเป็นอาร์เรย์)
  * @param actor     คนกดส่งงาน `{ id, name }` — ไม่เด้งใส่ตัวเอง (Senior เป็นทั้งช่างและหัวหน้า)
  * @param progress  `surveyFieldProgress` ของใบ · `cut` = จำนวนพื้นที่ที่ตัดออก
+ *                  ⭐ `progress.drawing` (มีเฉพาะใบที่มีพื้นที่ประเมินจากแบบ) บอกแยกเป็น "จากแบบ k" — ไม่นับรวมเป็นของที่ช่าง "วัด"
+ *                     ใบลงหน้างานล้วนไม่มีคีย์นี้ ⇒ เนื้อกระดิ่งเหมือนเดิมทุกตัวอักษร
  * @returns payload ของ `notifyUsers` หรือ null เมื่อไม่มีใครต้องรู้
  */
 export function surveyFieldDoneNotice({ request, visit, users = [], actor = null, progress = null, cut = 0 } = {}) {
@@ -44,7 +46,10 @@ export function surveyFieldDoneNotice({ request, visit, users = [], actor = null
 
   const doc = request.docNo || request.title || 'ใบประเมิน';
   const who = actor?.name || 'ช่าง';
-  const measured = progress?.total ? `วัด ${progress.done}/${progress.total} พื้นที่` : null;
+  const drawing = Number(progress?.drawing) || 0;
+  let measured = progress?.total ? `วัด ${progress.done}/${progress.total} พื้นที่` : null;
+  // ไม่เหลือพื้นที่ให้ช่างวัด (หัวหน้าเปลี่ยนพื้นที่สุดท้ายเป็นจากแบบระหว่างที่ช่างอยู่หน้างาน) = ไม่พูดว่า "วัด 0/0"
+  if (drawing > 0) measured = measured ? `${measured} · จากแบบ ${drawing}` : `จากแบบ ${drawing} พื้นที่`;
   const cutText = cut > 0 ? `ตัดออก ${cut}` : null;
   const facts = [measured, cutText].filter(Boolean).join(' · ');
   return {

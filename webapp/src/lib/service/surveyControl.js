@@ -14,7 +14,7 @@
 //
 // ⚠️ **"อ่านไม่สำเร็จ" ต้องไม่กลายเป็น "ไม่มี"** (กติกา supabase-never-throws) — ชิ้นที่
 //   อ่านพลาดมาทาง `unknown` แล้วกลายเป็นข้อความ "ไม่ทราบ" บนจอ ไม่ใช่ขีดหรือศูนย์
-import { fmtDateTime, fmtNumber, naText } from '@/lib/format';
+import { fmtDate, fmtDateTime, fmtNumber, naText } from '@/lib/format';
 import { attachmentHref } from '@/lib/master/attachmentStorage';
 import { isPreviewableImage } from '@/lib/master/attachmentTypes';
 import { requestRailSteps } from '@/lib/requests/requestRail';
@@ -31,6 +31,7 @@ import {
   surveyPackagesText,
   surveyRecallError,
   surveySendBackDoneCountText,
+  surveySendBackOnSheet,
   surveySendError,
   surveyTotals,
   surveyZoneName,
@@ -43,8 +44,17 @@ import {
 import {
   SURVEY_DOC_STALE_TEXT, surveyDocumentView, surveyFilesSignature, surveyRequestEnded, surveyWarningKinds,
 } from '@/lib/service/surveyDocumentView';
-import { surveyNeedsVisit } from '@/lib/service/surveyMethod';
-import { surveySendDocumentRefusal, surveySendDocumentRefusalList, surveySendVisitStep } from '@/lib/service/surveySendClose';
+import {
+  isDrawingZone, surveyDrawingAssessor, surveyMethodMix, surveyNeedsVisit, zoneMethod,
+} from '@/lib/service/surveyMethod';
+import {
+  SURVEY_METHOD_BUTTON, SURVEY_METHOD_CHIP, surveyDeskRailSteps, surveyMethodSwitchGate, surveyProgressText,
+  surveyZoneAddedLabel,
+} from '@/lib/service/surveyMethodSwitch';
+import {
+  SURVEY_SEND_PAPER_HOLD_EFFECT, surveySendDocumentRefusal, surveySendDocumentRefusalList, surveySendSiteVisitError,
+  surveySendVisitStep,
+} from '@/lib/service/surveySendClose';
 import { spotPhotoGroups, surveySpotGates } from '@/lib/service/surveySpotPhotos';
 import { VISIT_STATUS_LABELS } from '@/lib/service/visitStatus';
 
@@ -63,11 +73,14 @@ export const SURVEY_UNKNOWN_LABELS = {
   crew: 'ชื่อทีมบนนัด',
   /* ไฟล์แนบของคำร้อง (GET `requestFiles` · PR-S) — 🐞 UAT 01/10 เดิมไม่มีป้าย กล่องแจ้งเขียนคีย์อังกฤษดิบ */
   requestFiles: 'ไฟล์แนบของคำร้อง',
+  /* ไฟล์ที่แนบในเธรดของคำร้อง (GET `threadFiles` · ประเมินจากแบบ งวด S2a) — แผง "แบบจากฝ่ายขาย" ของหัวหน้าอ่านจากชุดนี้ */
+  threadFiles: 'ไฟล์แนบในเธรดของคำร้อง',
 };
 
 /* ชิ้นที่จอ **ไม่ได้** เขียนค่าเป็น "ไม่ทราบ" แต่บอกเหตุในแถวของมันเอง — แถวไฟล์แนบของคำร้องเขียน
-   "อ่านไม่สำเร็จ — ลองโหลดหน้าใหม่" (`surveyRequestFilesView`) ⇒ กล่องแจ้งต้องไม่บอกว่ามัน 'แสดงเป็น "ไม่ทราบ"' */
-const SURVEY_UNKNOWN_OWN_ROW = new Set(['requestFiles']);
+   "อ่านไม่สำเร็จ — ลองโหลดหน้าใหม่" (`surveyRequestFilesView`) ⇒ กล่องแจ้งต้องไม่บอกว่ามัน 'แสดงเป็น "ไม่ทราบ"'
+   · ไฟล์ในเธรดก็เป็นลิสต์ไฟล์ของแผงเดียว (แผงถือธง `unknown` ของตัวเอง — `surveySalesDrawingsView`) ไม่มีค่าไหนถูกเขียนเป็น "ไม่ทราบ" */
+const SURVEY_UNKNOWN_OWN_ROW = new Set(['requestFiles', 'threadFiles']);
 
 const isCut = (row) => (row?.status || 'ok') === 'cut';
 const isRecord = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
@@ -125,6 +138,7 @@ export function surveyZoneFacts(zone = {}, files = []) {
   const spots = spotCounts(zone.spots);
   const photos = surveyDocCounts(files);
   const qty = Number(zone.packageQty);
+  const drawing = isDrawingZone(zone);
   /* 🔴 ถาม `applies` / `ownerOf` ของด่านก่อนเสมอ (mig 0408 · ประเมินจากแบบ) — `missing` ไม่ถามให้:
      พื้นที่จากแบบไม่มีข้อที่ต้องยืนหน้างาน (ภาพกว้าง · จุดติดตั้ง · เลือกจุด) และทุกข้อที่เหลือเป็นของหัวหน้า
      ⚠️ พื้นที่ลงหน้างาน (ทุกแถวเดิม): `applies` จริงทุกข้อ · `ownerOf` = `owner` ที่ประกาศ ⇒ ผลเท่าเดิมทุกตัว */
@@ -134,7 +148,15 @@ export function surveyZoneFacts(zone = {}, files = []) {
       .filter((gate) => gate.applies(zone))
       .map((gate) => ({ gate, text: gate.missing(zone, files || []) }))
       .filter((x) => x.text)
-      .map((x) => ({ key: x.gate.key, owner: x.gate.ownerOf(zone), short: x.gate.short, label: x.gate.label, text: x.text }));
+      /* ชื่อข้อของพื้นที่จากแบบ = คำเดียวกับเช็กลิสต์ของใบจากแบบและแถวของช่าง ("ภาพแบบ" ไม่ใช่ "ภาพผัง") —
+         ด่านที่ไม่ได้ประกาศชื่อแบบจากแบบ และพื้นที่ลงหน้างานทุกแถว ได้ชื่อเดิม */
+      .map((x) => ({
+        key: x.gate.key,
+        owner: x.gate.ownerOf(zone),
+        short: (drawing && x.gate.drawingShort) || x.gate.short,
+        label: (drawing && x.gate.drawingLabel) || x.gate.label,
+        text: x.text,
+      }));
   const crew = gaps.filter((g) => g.owner === 'crew');
   const head = gaps.filter((g) => g.owner === 'head');
   return {
@@ -234,6 +256,44 @@ export function surveyResultZoneCell(zone = {}, files = []) {
     photos: surveyDocCounts(rows),
     thumbs,
     moreThumbs: pictures.length - thumbs.length,
+  };
+}
+
+/* ชื่อช่องผังของพื้นที่จากแบบ — คำเดียวกับชื่อข้อของด่าน (`drawingLabel` ในทะเบียนข้อ) ไม่พิมพ์ซ้ำที่นี่ */
+const DRAWING_PLAN_TITLE = SURVEY_GATES.find((gate) => gate.key === 'plan')?.drawingLabel || null;
+/* จุดติดตั้งของพื้นที่จากแบบ — ด่าน "เลือกจุด" ไม่ใช้กับมัน (`applies`) ⇒ ช่องนั้นต้องบอกว่าเว้นได้ */
+const DRAWING_SPOT_NOTE = 'ไม่บังคับ';
+
+/**
+ * บรรทัดที่มาของผล + ป้ายของแถวในแท็บสรุปส่งผล (ประเมินจากแบบ · งวด S2a)
+ *
+ * ⭐ แถวจากแบบต้องบอกว่า **ตัวเลขนี้ไม่ได้มาจากช่าง** — ใครประเมิน เมื่อไร · ผู้ประเมินมาจาก `surveyDrawingAssessor`
+ *   ตัวเดียวกับกระดาษ (ชื่อช่างที่วัดไว้ก่อนสลับวิธีไม่ขึ้นเป็นผู้ประเมินจากแบบ)
+ * ⚠️ `source: null` = แถวลงหน้างาน — จอพิมพ์หัวช่อง "ผลวัดจากช่าง" ของเดิม (คำอยู่ที่จอ ไม่ย้ายมา)
+ * ⚠️ ไม่มีชื่อผู้ประเมินเลย = "จากแบบ" เฉย ๆ · มีชื่อไม่มีเวลา = ชื่ออย่างเดียว (ไม่เติมขีด ไม่เติม "ไม่ทราบ")
+ *
+ * @param zone    แถว `service_survey_zones`
+ * @param request แถวคำร้อง (อ่าน `answeredByName` · `answeredAt` เป็นทางสุดท้ายของผู้ประเมิน) — ไม่ส่งได้
+ * @returns วัตถุหกคีย์: method · chip · source · planTitle · spotNote · addedLabel
+ *   `addedLabel` = ป้ายที่มาของพื้นที่ที่ถูกเพิ่มบนใบ (`surveyZoneAddedLabel`) — แถวจากแบบหัวหน้าเป็นคนเพิ่มที่โต๊ะ ไม่ใช่ "ช่างเพิ่มหน้างาน"
+ *   · แถวที่ไม่ได้ถูกเพิ่ม = `null` · จอวาดป้ายจากคีย์นี้แทนคำตายตัว
+ */
+export function surveyResultMethodCell(zone = {}, request = null) {
+  // ค่าของวิธีมาจาก `zoneMethod` เสมอ — ที่นี่ไม่พิมพ์ค่าของคอลัมน์เอง (กติกาของ `surveyMethod.js`)
+  const method = zoneMethod(zone);
+  // ชื่อตัวแปร methodLabel ไม่ใช่ chip — เทสต์นับจุดใช้คลาส .chip (badgeFamilies) นับสตริงที่มีคำนั้น
+  const methodLabel = SURVEY_METHOD_CHIP[method];
+  const who = surveyDrawingAssessor(zone, request);
+  const addedLabel = surveyZoneAddedLabel(zone, request?.dept);
+  if (!who) return { method, chip: methodLabel, source: null, planTitle: null, spotNote: null, addedLabel };
+  const by = [who.name, who.name && who.at ? fmtDate(who.at) : null].filter(Boolean).join(' ');
+  return {
+    method,
+    chip: methodLabel,
+    source: by ? `${methodLabel} · ${by}` : methodLabel,
+    planTitle: DRAWING_PLAN_TITLE,
+    spotNote: DRAWING_SPOT_NOTE,
+    addedLabel,
   };
 }
 
@@ -357,18 +417,27 @@ export function surveyDraftSync({ prevSavedSig, savedSig, draftSig, sentSig = nu
       สองชุดที่ชื่อไม่ตรงกันคือสองฝ่ายที่คุยกันคนละเรื่องทั้งที่ดูใบเดียวกัน
    ⚠️ ทับเฉพาะ **บรรทัดใต้ขั้นปัจจุบัน** ด้วยข้อเท็จจริงของใบประเมิน (วัดแล้วกี่พื้นที่ ·
       ดึงกลับเมื่อไร) ซึ่งรางกลางไม่รู้จัก — ชื่อขั้นไม่แตะ */
-function stepOf(request, { cancelled, recallPending, recall, progress, visit, needsVisit }) {
+function stepOf(request, { cancelled, recallPending, recall, progress, progressText, visit, needsVisit }) {
   /* ⭐ ส่งนัดของการ์ดลงไปด้วย — รางหน้างานเดินตามนัด (`fieldRail`) · ไม่ส่ง = รางอ่าน `surveyVisit`
      บนแถวคำร้อง ซึ่ง GET ของใบประเมินไม่ได้ติดมา ⇒ ใบที่ช่างวัดอยู่จะชี้ขั้น "ลงคิว"
      ⭐ `needsVisit` ก็ส่งเอง (ประเมินจากแบบ · mig 0408) — การ์ดถือแถวพื้นที่อยู่แล้ว ส่วนแถวคำร้องของ GET นี้ไม่มี
         `surveyNeedsVisit` ติดมา · ใบงานโต๊ะไม่มีนัดให้รางเดินตาม (กติกาของขั้นอยู่ที่ `requestRail`) */
-  const { steps, index } = requestRailSteps(request || {}, { visit: visit || null, needsVisit });
+  const rail = requestRailSteps(request || {}, { visit: visit || null, needsVisit });
+  const { index } = rail;
+  /* ⭐ **งานโต๊ะ** (ทุกพื้นที่ประเมินจากแบบ) — ชื่อขั้นกลางเป็นของงานโต๊ะ ("รับปากวันส่งผล" · "ประเมินจากแบบ") และไม่มีบรรทัด
+     "รอ … ลงคิว" / เลขนัดเก่าใต้ขั้น: ใบแบบนี้ไม่ลงคิวและไม่มีใครเข้าพื้นที่ · แผนที่ตัวเดียวกับไทม์ไลน์ของหน้าคำร้อง
+     (`surveyDeskRailSteps`) — กฎข้างบนยังอยู่: ชื่อชุดเดียวทั้งสองจอ */
+  const deskJob = needsVisit === false;
+  const steps = deskJob ? surveyDeskRailSteps(rail.steps) : rail.steps;
   const current = steps[index] || steps[steps.length - 1] || null;
   let hint = current?.hint || null;
   if (cancelled) {
     hint = request?.cancelledAt ? `ยกเลิก ${fmtDateTime(request.cancelledAt)}` : 'ยกเลิกแล้ว';
   } else if (recallPending) {
     hint = `ดึงกลับ ${recall?.at ? fmtDateTime(recall.at) : SURVEY_UNKNOWN_TEXT} — รอส่งอีกครั้ง`;
+  } else if (current?.id === 'acknowledged' && (progress.drawing || 0) > 0) {
+    // ใบที่มีพื้นที่จากแบบ — คำของมิเตอร์ตัวเดียวกับที่อื่น (พื้นที่จากแบบไม่ถูกนับเป็น "วัดแล้ว")
+    hint = progressText || surveyProgressText(progress);
   } else if (current?.id === 'acknowledged' && progress.total > 0) {
     hint = `วัดแล้ว ${progress.done}/${progress.total} พื้นที่`;
   }
@@ -433,19 +502,22 @@ export function surveySendBackAskText(sentBack) {
       ⚠️ ก้อนด่านใช้หัวข้อเดียวกับบล็อกข้างใน (`gatesTitle`) + จำนวนที่ติด — ปุ่มที่เรียกของข้างในคนละชื่อทำให้คนคิดว่ากดผิดปุ่ม
       ⚠️ "เอกสาร" คำสั้น = ก้อนเอกสารที่เกี่ยวข้อง ใช้ได้เมื่อข้างในมีก้อนเอกสารก้อนเดียว · ส่วนเอกสารประเมินอยู่ข้างในด้วยเมื่อไร
          (ก่อนส่งผลที่จอ ≤1050) เรียกชื่อเต็มทั้งสองก้อน · ใบที่ยกเลิกไม่มีก้อนด่าน ป้ายสั้นอยู่แล้ว จึงใช้ชื่อเต็มเหมือนเดิม */
-function controlFold({ document, gatesTitle, gatesStuck, cancelled, afterSend }) {
+function controlFold({ document, gatesTitle, gatesStuck, cancelled, afterSend, gatesHidden = false }) {
   const documentInside = document.show && document.placement === 'fold';
   return {
     wide: document.show && document.placement === 'pinned' && afterSend,
     belowRail: document.show && !afterSend,
     labels: {
-      gates: cancelled ? null : `${gatesTitle}${gatesStuck ? ` (ติด ${gatesStuck})` : ' (ผ่านครบ)'}`,
+      gates: cancelled || gatesHidden ? null : `${gatesTitle}${gatesStuck ? ` (ติด ${gatesStuck})` : ' (ผ่านครบ)'}`,
       document: documentInside ? 'เอกสารประเมิน' : null,
       steps: 'ขั้นตอน',
       refs: cancelled || documentInside ? 'เอกสารที่เกี่ยวข้อง' : 'เอกสาร',
     },
   };
 }
+
+/* ชื่อแท็บแรกของจอใบประเมิน — ใบที่มีพื้นที่จากแบบแม้พื้นที่เดียว แท็บนั้นไม่ได้มีแต่งานหน้างานแล้ว (ประเมินจากแบบ · งวด S2a) */
+const FIELD_TAB_LABELS = { onsite: 'หน้างาน', mixed: 'ข้อมูลพื้นที่' };
 
 /**
  * 🔑 **ทุกอย่างที่การ์ด "จัดการผลประเมิน" วาด — คำนวณที่เดียว**
@@ -482,6 +554,13 @@ function controlFold({ document, gatesTitle, gatesStuck, cancelled, afterSend })
  *                       ไม่มีกล่องแจ้งของเอกสาร และคีย์เดิมทุกตัวได้ค่าเดิม (หน้าคำร้องเรียกแบบนี้ · เทสต์ล็อก)
  * @param documentLocal  ของที่จอจำไว้เองเกี่ยวกับเอกสาร (ไม่มี GET ไหนคืน): `{ round, sendFailed, issueError, paper, printed,
  *                       sendRefused }` — ส่งต่อให้ `surveyDocumentView` · ที่นี่อ่านเฉพาะ `sendRefused` (กล่อง "ถูกตีกลับ")
+ * @param drawingMethodEnabled คีย์ `drawingMethodEnabled` ของ GET ใบประเมิน (สวิตช์ `SURVEY_DRAWING_METHOD` · server เป็นคนอ่าน)
+ *                       — เปิด = มีปุ่ม "เปลี่ยนวิธีประเมิน" และด่านแถว 17a · ไม่ส่ง = ปิด
+ *                       ⚠️ กติกาที่อ่านจาก **แถวพื้นที่** (สถานะของใบจากแบบ · ใครค้างอะไร · มิเตอร์) ไม่ขึ้นกับสวิตช์นี้:
+ *                          ปิดสวิตช์หลังมีแถวจากแบบแล้ว ใบพวกนั้นยังต้องเดินได้
+ * @param siteVisitReached คีย์ `siteVisitReached` ของ GET ใบประเมิน — ใบมีนัดที่เข้าพื้นที่แล้วไหม (`true` / `false`)
+ *                       · `null` = ยังไม่ได้อ่าน หรืออ่านไม่สำเร็จ ⇒ การ์ดไม่ขึ้นบรรทัดแถว 17a (ไม่ทราบ ≠ ไม่มีนัด)
+ *                       route ส่งผลยังเป็นคนตัดสินตอนกด
  */
 export function surveyControlView({
   request = null,
@@ -500,10 +579,24 @@ export function surveyControlView({
   skipPackageRegistry = false,
   document = null,
   documentLocal = null,
+  drawingMethodEnabled = false,
+  siteVisitReached = null,
 } = {}) {
   const rows = Array.isArray(zones) ? zones : [];
   const files = filesByZone && typeof filesByZone === 'object' ? filesByZone : {};
   const active = activeZones(rows);
+  /* 🔑 **วิธีประเมินของใบ — คิดครั้งเดียวจากแถวพื้นที่ แล้วทุกกติกาข้างล่างอ่านสองตัวนี้** (ประเมินจากแบบ · mig 0408)
+     `mix` = กี่พื้นที่ลงหน้างาน กี่พื้นที่จากแบบ · `needsVisit` = ใบนี้ต้องมีนัดเข้าพื้นที่ไหม (ตัวตัดสินเดียวของระบบ)
+     ⚠️ ใบลงหน้างานล้วน (ทุกแถวเดิม): `mix.drawing === 0` · `needsVisit === true` ⇒ ทุกสาขาข้างล่างตกทางเดิม */
+  const mix = surveyMethodMix(rows);
+  const needsVisit = surveyNeedsVisit(rows);
+  /* สวิตช์ต้องเป็น `true` ตรงตัว — ค่าที่หลุดรูปมา (สตริง · undefined) = ปิด: ไม่มีปุ่มสลับวิธี ไม่มีด่านแถว 17a */
+  const methodOn = drawingMethodEnabled === true;
+  /* ⭐ **ใบที่ไม่ต้องมีนัดแล้ว เรื่อง "ส่งกลับให้ช่างแก้" ที่ค้างไม่ค้างแล้ว** — ไม่มีช่างคนไหนต้องกลับไปหน้างาน
+     🐞 หน้าคำร้องส่งสภาพดิบมา (`sa/requests/[id]` GET) ⇒ ปิดเรื่องที่นี่ที่เดียว ได้ผลเท่ากันทั้งสองหน้า
+     ⚠️ ไม่ส่งแถวคำร้อง (`null`) โดยตั้งใจ — ใบล็อกมีกติกาของมันอยู่แล้วข้างล่าง (`locked` · `lockReason`) ตามเดิม
+        ⇒ ใบที่ยังต้องมีนัด ได้ออบเจ็กต์ตัวเดิมกลับมา ไม่มีอะไรเปลี่ยน */
+  const back = surveySendBackOnSheet(sendBack, null, { needsVisit });
   const canWriteRaw = viewer?.canWrite === true;
   const canDecide = viewer?.canDecide === true;
   /* ⚠️ **fail-closed** — ไม่ส่งมา = ไม่โชว์ลิงก์ · ลิงก์ที่หายไปคนเดาออกว่าไม่มีสิทธิ์
@@ -552,7 +645,9 @@ export function surveyControlView({
      ⚠️ `visit` ต้องเป็นนัดที่ยังค้างถ้ามี (GET ใช้ `preferOpen`) — ไม่งั้นโมดัลบอกคนละนัดกับที่ปิดจริง
      🔄 คำนวณก่อนด่าน — ด่านรูปจุดของการส่งผลขึ้นกับว่าส่งผลนี้ปิดนัดที่ยังเปิดไหม (`surveySpotGates`)
      🔑 `needsVisit` จากแถวพื้นที่ชุดเดียวกับที่ route อ่าน (ประเมินจากแบบ) — ใบงานโต๊ะที่ยังมีนัดร่าง/นัดไว้ค้าง
-        ได้ `block` พร้อมประโยคของ route · ใบลงหน้างานล้วน = `true` = คำตอบเดิม */
+        ได้ `block` พร้อมประโยคของ route · ใบลงหน้างานล้วน = `true` = คำตอบเดิม
+     ⚠️ บรรทัดนี้ (กับ `step:` ท้ายฟังก์ชัน) ยังเรียก `surveyNeedsVisit(rows)` ตรง ๆ — ค่าเดียวกับ `needsVisit` ข้างบน ·
+        ยามซอร์สใน `surveyMethodSend.test.mjs` ตรึงตัวอักษรของสองบรรทัดนี้ไว้ (ผู้เรียกต้องส่งค่าจากแถวพื้นที่ ไม่เดาเอง) */
   const visitStep = surveySendVisitStep(visit, { today, needsVisit: surveyNeedsVisit(rows) });
   /* 🔑 **ด่านรูปจุด (มติ 01/10)** — ถามตัวเดียวกับ route: ส่งผล = G2 (ถาด · + G1 เมื่อส่งผลปิดนัด) · ส่งงาน = G1
      `spotSendGates` ตัดสินปุ่มส่งผล/สถานะของใบ (ไม่ขึ้นกับคนดู) · `spotCrewGates` = ของที่ช่างต้องเก็บก่อนส่งงาน */
@@ -603,9 +698,17 @@ export function surveyControlView({
      ⭐ ตัวตรวจอยู่ฝั่ง server (`document.send` / `document.issue` ของ GET ใบประเมิน — ตัวเดียวกับเส้นส่งผลและปุ่มออกเอกสาร)
         ที่นี่แค่จัดผลเป็นของที่การ์ดวาด · ด่านที่จอประกอบเองจะเถียงกับ server (GET ถือข้อมูลไม่ครบ — ดู `documentChecks`)
      ⚠️ ชื่อด่านที่ส่งให้ส่วนเอกสาร **ไม่รวมแถวเอกสารเอง** — ส่วนนั้นต้องไม่อ้างตัวเองเป็นเหตุ ("ยังติด 1 ด่าน: เอกสาร") */
+  /* ⭐ **ของที่ช่างต้องเก็บ นับจากพื้นที่ลงหน้างานเท่านั้น** (ประเมินจากแบบ) — ตัวเดียวกับ `surveyCrewGaps`: กรองแถวก่อนเข้าเช็คลิสต์
+     🐞 เดิมกรองจาก `allGates` ⇒ ใบผสม ข้อ "ขนาด" (ของช่างตามที่ประกาศ) เอ่ยชื่อพื้นที่จากแบบที่หัวหน้ายังไม่ได้กรอก ให้ช่างดู
+     ⚠️ ใบที่ไม่เหลือพื้นที่ลงหน้างานแต่ยังมีพื้นที่จากแบบ = ช่างไม่มีข้อไหนเลย — ไม่ปล่อยให้เช็คลิสต์ของลิสต์ว่างคืนสามข้อ "0 / 0"
+        (เช็คลิสต์คืนครบหกข้อเมื่อไม่มีแถวให้ถาม — กติกาของใบที่ไม่เหลือพื้นที่เลย ซึ่งยังได้สามข้อเหมือนเดิม)
+     ⚠️ ใบลงหน้างานล้วน: แถวหลังกรอง = แถวชุดเดิม ⇒ ผลเท่า `allGates.filter(...)` เดิมทุกตัว */
+  const crewGates = mix.onsite === 0 && mix.drawing > 0
+    ? []
+    : surveyGateChecklist(rows.filter((r) => !isDrawingZone(r)), files).filter((g) => g.owner === 'crew');
   const ownGates = canDecide
     ? [...headGates, ...spotSendGates]
-    : [...allGates.filter((g) => g.owner === 'crew'), ...spotCrewGates];
+    : [...crewGates, ...spotCrewGates];
   const documentView = surveyDocumentView({
     document,
     request,
@@ -615,6 +718,8 @@ export function surveyControlView({
     canWrite,
     failedGates: ownGates.filter((g) => !g.ok).map((g) => g.short),
     spotsUnlinked: spotSendGates.some((g) => g.key === 'spotLinked' && !g.ok),
+    // ใบที่มีพื้นที่จากแบบ — เอกสารถูกพักไว้ (งวด S1) ⇒ ส่วนเอกสารต้องไม่สัญญาเลขที่เอกสารก่อนส่ง
+    drawingHold: mix.drawing > 0 ? SURVEY_SEND_PAPER_HOLD_EFFECT : null,
   });
   const docAccess = isRecord(document?.access) ? document.access : null;
   /* สถานะของเอกสารหลังหักของที่จอรู้เอง (อ่านไม่สำเร็จ = `unknown` · การส่งรอบนี้ออกเอกสารล้ม = `missing`) — ตัวเดียวกับส่วนเอกสาร */
@@ -690,8 +795,15 @@ export function surveyControlView({
 
   // ── สถานะ + โทน ────────────────────────────────────────────────────────
   const leftText = surveyNameList(leftZones.map(surveyZoneName));
-  const measuredSub = `วัดแล้ว ${progress.done} / ${progress.total} พื้นที่`
-    + (leftText ? ` · เหลือ ${leftText}` : '');
+  /* ⭐ คำของมิเตอร์มาจาก `surveyProgressText` ที่เดียว (การ์ด · รายการพื้นที่ · แถบของช่าง · หน้าคำร้องใช้ตัวเดียวกัน)
+     ไม่มีพื้นที่จากแบบ = "วัดแล้ว a / b พื้นที่" ตัวเดิมทุกตัวอักษร · ผสม = ต่อท้าย " · จากแบบ k" (หัวหน้าเห็น "(หัวหน้ากรอกเอง)") */
+  const progressText = surveyProgressText(progress, { owner: canDecide });
+  const measuredSub = progressText + (leftText ? ` · เหลือ ${leftText}` : '');
+  /* สถานะ "พร้อมส่งผล" — ใบลงหน้างานและใบจากแบบทั้งใบใช้ก้อนเดียวกัน (ยอดเท่ากัน = บรรทัดเท่ากัน) */
+  const readyStatus = () => ({
+    key: 'ready', tone: 'info', headline: 'พร้อมส่งผลให้ฝ่ายขาย',
+    sub: `${fmtNumber(totals.zones)} พื้นที่ · ${fmtNumber(totals.areaSqm)} ตร.ม. · ${surveyPackagesLabel(totals, packageSizes)}`,
+  });
   let status;
   if (cancelled) {
     /* ⚠️ **ไม่มีคอลัมน์ "ยกเลิกโดยใคร" บน `dept_requests`** — มีแต่ `cancelledAt` กับ
@@ -750,6 +862,27 @@ export function surveyControlView({
       key: 'recalled', tone: 'warning', headline: 'ดึงผลกลับมาแก้',
       sub: progress.complete ? 'วัดครบแล้ว · รอหัวหน้าส่งผลอีกครั้ง' : measuredSub,
     };
+  } else if (mix.mode === 'drawing') {
+    /* ⭐ **ใบจากแบบทั้งใบ — ไม่มีงานหน้างานให้ "วัด"** (ประเมินจากแบบ · งวด S2a) · สถานะเดินตามงานที่โต๊ะของหัวหน้า:
+       ยังไม่มีพื้นที่ไหนมีขนาด → กำลังประเมิน x/N → พร้อมส่ง · `x` = พื้นที่ที่ผ่านทุกข้อของมัน (ขนาด · ภาพแบบ · แพ็คเกจ)
+       🐞 เดิมตกสาขา "กำลังวัดหน้างาน · วัดแล้ว 0 / 0 พื้นที่" เสมอ แม้ผ่านทุกด่าน — ตัวนับงานหน้างานไม่มีพื้นที่ลงหน้างานให้นับ
+          (`progress.complete` เป็นเท็จตลอด) ⇒ ใบที่พร้อมส่งอ่านเหมือนช่างยังไม่ไป
+       ⚠️ อยู่ **ก่อน** สาขาของนัดทั้งหมด — นัดที่ยังติดใบจากตอนลงหน้างานไม่พาใบกลับไป "ยังไม่เริ่มงานหน้างาน"
+          (นัดค้างเป็นเหตุใต้ปุ่มส่งผล — `visit-open-desk`) · อยู่ **หลัง** "ดึงผลกลับมาแก้" เหมือนทุกสถานะของงาน
+       ⚠️ ด่านอื่นของการส่งที่ไม่ผูกกับพื้นที่ (ทะเบียนขนาดอ่านไม่ขึ้น · เอกสารประเมิน) ยังติด = ยังไม่ "พร้อมส่ง" และไม่มีชื่อให้เอ่ย */
+    const deskFacts = active.map((r) => surveyZoneFacts(r, files[r.id] || []));
+    const deskLeft = deskFacts.filter((f) => !f.ready).map((f) => f.zoneName);
+    if (!deskFacts.some((f) => f.sizeComplete)) {
+      status = { key: 'desk-empty', tone: 'neutral', headline: 'ยังไม่ได้กรอกขนาด', sub: '' };
+    } else if (deskLeft.length || sendGatesFailed) {
+      status = {
+        key: 'desk-working', tone: 'warning',
+        headline: `กำลังประเมินจากแบบ — ${deskFacts.length - deskLeft.length}/${mix.drawing} พื้นที่`,
+        sub: deskLeft.length ? `เหลือ ${surveyNameList(deskLeft)}` : '',
+      };
+    } else {
+      status = readyStatus();
+    }
   } else if (visitNotStarted && (allGates.some((g) => !g.ok) || spotCrewFailed)) {
     /* ยังไม่กดเริ่มงาน = ยังไม่มีใครไปหน้างาน **ไม่ว่าจะกรอกล่วงหน้าไปแล้วเท่าไร** · 🐞 เดิมขึ้น
        "กำลังวัดหน้างาน"/"กด ส่งงาน" ข้างแถบที่มีแค่ปุ่ม "เริ่มงาน" บนจอเดียวกัน
@@ -766,21 +899,31 @@ export function surveyControlView({
     const spotText = spotCrewGates.filter((g) => !g.ok).map((g) => g.reason).join(' | ');
     status = { key: 'measuring', tone: 'warning', headline: 'กำลังวัดหน้างาน', sub: `${measuredSub} · ${spotText}` };
   } else if (sendGatesFailed) {
-    const measured = `วัดแล้ว ${progress.done} / ${progress.total} พื้นที่`;
+    const measured = progressText;
     const headGateFailed = allGates.some((g) => g.owner === 'head' && !g.ok);
     const sizeFailed = sizeGates.some((g) => !g.ok);
+    /* ⭐ **ใบผสมที่ช่างครบแล้ว แต่พื้นที่จากแบบยังไม่เสร็จ** (ประเมินจากแบบ) — ข้อ "ขนาด" ของใบผสมประกาศเป็นของช่าง จึงไม่เข้า
+       `headGateFailed` ทั้งที่พื้นที่จากแบบหัวหน้ากรอกเอง · ไม่ดักไว้ = บรรทัดรองตกไป "เหลือผูกรูปจุด…" หรือ "ติดเฉพาะเอกสาร" ซึ่งชี้ผิดงาน
+       ⇒ เอ่ยชื่อพื้นที่นั้น คำเดียวกับบรรทัดรองของใบจากแบบทั้งใบ ("เหลือ …")
+       ⚠️ ใบลงหน้างานล้วนไม่มีแถวจากแบบ = ลิสต์ว่างเสมอ ⇒ ทุกสาขาข้างล่างตกทางเดิม */
+    const deskLeftNames = active
+      .filter((r) => isDrawingZone(r) && !surveyZoneFacts(r, files[r.id] || []).ready)
+      .map(surveyZoneName);
     /* ติดเฉพาะเอกสารประเมิน (PR-3) — หกข้อ · ขนาด · รูปจุด ผ่านครบ เหลือแต่เหตุของเอกสาร · ไม่มีเหตุของเอกสาร = เท็จเสมอ
        (`docReason` มีได้เฉพาะคนที่ส่งผลได้ ⇒ ถ้อยคำของช่างไม่เคยเปลี่ยน) */
-    const documentOnly = !headGateFailed && !sizeFailed && !!docReason && spotSendGates.every((g) => g.ok);
+    const documentOnly = !headGateFailed && !deskLeftNames.length && !sizeFailed && !!docReason
+      && spotSendGates.every((g) => g.ok);
     /* เหลือแค่ผูกรูปในถาด (G2) = บอกตรง ๆ — "เหลือเคาะจุดและแพ็คเกจ" ทั้งที่เคาะครบแล้วคือชี้ผิดงาน */
     const headLeft = headGateFailed
       ? 'เหลือเคาะจุดและแพ็คเกจ'
-      : sizeFailed
-        ? (sizeGates.some((g) => g.reason === PACKAGE_SIZE_REGISTRY_DOWN) ? 'อ่านทะเบียนขนาดแพ็คเกจไม่สำเร็จ' : 'เหลือเลือกขนาดแพ็คเกจใหม่')
-        /* "เหลือผูกรูปจุด" ทั้งที่ผูกครบแล้วคือชี้ผิดงาน · ไม่มีเหตุของเอกสาร = คำเดิมเสมอ */
-        : documentOnly
-          ? 'เหลือแก้ข้อที่ทำให้เอกสารประเมินออกไม่ได้'
-          : 'เหลือผูกรูปจุดที่ยังไม่ได้ผูก';
+      : deskLeftNames.length
+        ? `เหลือ ${surveyNameList(deskLeftNames)}`
+        : sizeFailed
+          ? (sizeGates.some((g) => g.reason === PACKAGE_SIZE_REGISTRY_DOWN) ? 'อ่านทะเบียนขนาดแพ็คเกจไม่สำเร็จ' : 'เหลือเลือกขนาดแพ็คเกจใหม่')
+          /* "เหลือผูกรูปจุด" ทั้งที่ผูกครบแล้วคือชี้ผิดงาน · ไม่มีเหตุของเอกสาร = คำเดิมเสมอ */
+          : documentOnly
+            ? 'เหลือแก้ข้อที่ทำให้เอกสารประเมินออกไม่ได้'
+            : 'เหลือผูกรูปจุดที่ยังไม่ได้ผูก';
     /* 🐞 นัดยังเปิด (ทางปกติ — การส่งผลเป็นคนปิดนัด) + ติดเฉพาะเอกสาร: บรรทัดรองเคยบอกหัวหน้าให้ "เคาะจุดและแพ็คเกจ" ที่เคาะครบไปแล้ว
        ⇒ ใช้บรรทัดเดียวกับตอนนัดปิด · กรณีอื่นทุกกรณี (รวมใบที่ไม่มีเอกสาร) ได้ประโยคเดิม */
     const headNext = (sentence) => `${measured} · ${documentOnly ? headLeft : sentence}`;
@@ -808,10 +951,7 @@ export function surveyControlView({
           sub: canDecide ? headNext('เคาะจุดและแพ็คเกจได้เลย ไม่ต้องรอ') : measured,
         };
   } else {
-    status = {
-      key: 'ready', tone: 'info', headline: 'พร้อมส่งผลให้ฝ่ายขาย',
-      sub: `${fmtNumber(totals.zones)} พื้นที่ · ${fmtNumber(totals.areaSqm)} ตร.ม. · ${surveyPackagesLabel(totals, packageSizes)}`,
-    };
+    status = readyStatus();
   }
 
   // ── ด่านที่ติด รวมเป็นกลุ่มต่อพื้นที่ ────────────────────────────────────
@@ -831,10 +971,15 @@ export function surveyControlView({
     const name = surveyZoneName(row);
     const spotHere = spotFailed.filter((g) => g.zoneIds.includes(row.id));
     const crew = [...facts.missingCrew.filter((g) => gateKeys.has(g.key)), ...spotHere.filter((g) => g.owner === 'crew')];
-    const head = [
-      ...facts.missingHead.filter((g) => gateKeys.has(g.key)),
-      ...sizeGone.filter((g) => g.zoneIds.includes(row.id)),
-    ];
+    /* ⭐ ของหัวหน้าขึ้นเฉพาะคนที่ส่งผลได้ (ประเมินจากแบบ) — ข้อ "ขนาด" ของพื้นที่จากแบบเป็นของหัวหน้า แต่คีย์ของมันอยู่ในชุดข้อของช่างด้วย
+       ⇒ ไม่กันไว้ พื้นที่จากแบบจะขึ้น "หัวหน้าต้องทำ: ขนาด" ในกลุ่ม "ของที่ช่างต้องเก็บ"
+       ⚠️ พื้นที่ลงหน้างาน: ของหัวหน้า (ผัง · เลือกจุด · แพ็คเกจ) ไม่เคยอยู่ในชุดข้อของช่าง ⇒ คนที่ส่งผลไม่ได้ได้ลิสต์ว่างเหมือนเดิม */
+    const head = canDecide
+      ? [
+        ...facts.missingHead.filter((g) => gateKeys.has(g.key)),
+        ...sizeGone.filter((g) => g.zoneIds.includes(row.id)),
+      ]
+      : [];
     const headSpot = spotHere.filter((g) => g.owner === 'head');
     if (!crew.length && !head.length && !headSpot.length) continue;
     const targets = [];
@@ -847,10 +992,14 @@ export function surveyControlView({
        🐞 บรรทัดเหตุผลใต้ปุ่มส่งเคยมีกฎของตัวเองที่ลืมข้อ "ภาพผัง" ⇒ ปุ่มพาไปทางตัน
           ⇒ บรรทัดนั้นหยิบ `targets` ของแถวนี้ไปใช้ ไม่คิดเอง (ยามคือเทสต์ "กฎไปไหนต้องมีชุดเดียว") */
     /* ⭐ รูปจุด (ถาด · แถวจุด) อยู่ในหน้าพื้นที่ ⇒ ผูกรูปของหัวหน้าก็พาไปพื้นที่ ไม่ใช่แท็บสรุป */
-    if (crew.length || headSpot.length) {
+    /* ⭐ **พื้นที่จากแบบ: ขนาดกับภาพแบบ หัวหน้ากรอก/แนบที่หน้าพื้นที่เอง** (ประเมินจากแบบ) — พาไปพื้นที่ ไม่ใช่แท็บสรุป
+       (ตารางสรุปไม่มีช่องกรอกขนาด) · เหลือแต่แพ็คเกจจึงไปแท็บสรุปเหมือนพื้นที่ลงหน้างาน
+       ⚠️ พื้นที่ลงหน้างาน: `onZonePage` ว่างเสมอ ⇒ กฎสองบรรทัดข้างล่างให้ผลเดิม */
+    const onZonePage = isDrawingZone(row) ? head.filter((g) => g.key === 'size' || g.key === 'plan') : [];
+    if (crew.length || headSpot.length || onZonePage.length) {
       targets.push({ kind: 'zone', zoneId: row.id, label: `เปิด ${name}` });
     }
-    if (canDecide && !crew.length && head.length && tab !== 'result') {
+    if (canDecide && !crew.length && head.length > onZonePage.length && tab !== 'result') {
       targets.push({ kind: 'tab', tab: 'result', label: 'เคาะที่สรุปส่งผล' });
     }
     const headAll = [...head, ...headSpot];
@@ -873,8 +1022,9 @@ export function surveyControlView({
     shown: gapRows.slice(0, SHOWN),
     hidden: Math.max(0, gapRows.length - SHOWN),
     /* ปุ่ม "แจ้งช่างให้กลับไป" มีครั้งเดียวต่อใบ และโชว์เฉพาะตอนที่ยังมีของฝั่งช่างค้าง
-       ⚠️ แจ้งไม่ถึงใครถ้านัดไม่มีช่าง — ด่านจริงอยู่ที่ `surveySendBackError` ที่ปุ่มถามต่อ */
-    crewPending: canDecide && !locked && gapRows.some((r) => r.crew.length > 0),
+       ⚠️ แจ้งไม่ถึงใครถ้านัดไม่มีช่าง — ด่านจริงอยู่ที่ `surveySendBackError` ที่ปุ่มถามต่อ
+       ⚠️ ใบที่ไม่ต้องมีนัดแล้ว (`needsVisit` เท็จ — จากแบบทั้งใบ) ไม่มีช่างคนไหนให้กลับไป */
+    crewPending: canDecide && !locked && needsVisit && gapRows.some((r) => r.crew.length > 0),
     crewIds,
   };
   /* 🔄 **ปุ่ม "ส่งกลับให้ช่างแก้" ไม่ผูกกับของขาดแล้ว** (มติเจ้าของ 25/09 · แผน §10.5 S4 · ม็อก A-5/AW-2)
@@ -883,10 +1033,12 @@ export function surveyControlView({
      ⚠️ `crewPending` ยังอยู่และยังหมายถึง "มีของช่างค้าง" — ไม่ยืดความหมาย
      ⚠️ นัดไม่มีช่าง = ยังไม่มีใครไปทำอะไรมาให้ส่งกลับ (ไม่ใช่ด่านที่รอผ่าน) ⇒ ไม่มีปุ่ม
         · ด่านจริงยังอยู่ที่ `surveySendBackError` (route ตีกลับด้วยเหตุเดียวกัน)
-     `message` = บรรทัดหลักของกล่องยืนยัน — ฝั่งช่างครบแล้วต้องไม่ขึ้น "ข้อที่ติด: " ว่าง ๆ */
+     `message` = บรรทัดหลักของกล่องยืนยัน — ฝั่งช่างครบแล้วต้องไม่ขึ้น "ข้อที่ติด: " ว่าง ๆ
+     ⚠️ **ใบงานโต๊ะไม่มีปุ่มนี้** (`needsVisit` เท็จ · ประเมินจากแบบ) — นัดเก่าที่ยังติดใบมีชื่อช่างอยู่ก็จริง แต่ไม่มีพื้นที่ไหน
+        ให้เขากลับไปแก้แล้ว (เรื่องที่ค้างอยู่ก็ถูกปิดด้วยเหตุเดียวกัน — `back` ต้นฟังก์ชัน) */
   const crewGapRows = gapRows.filter((r) => r.crew.length > 0);
   const sendBackAction = {
-    show: canDecide && !locked && crewIds.length > 0,
+    show: canDecide && !locked && needsVisit && crewIds.length > 0,
     label: 'ส่งกลับให้ช่างแก้',
     message: crewGapRows.length
       ? `ข้อที่ติด: ${crewGapRows.map((r) => `${r.zoneName} (${r.crew.join(' · ')})`).join(' · ')}`
@@ -899,10 +1051,20 @@ export function surveyControlView({
   /* 🔑 ลำดับเดียวกับ route ส่งผล: ด่านหกข้อ → ขนาดถูกลบจากทะเบียน → ด่านรูปจุด (ถาด · + ทุกจุดมีรูปเมื่อส่งผลปิดนัด)
      → เอกสารประเมินออกไม่ได้ (PR-3) — เหตุคือข้อความของ server เป๊ะ */
   const failedReasons = (list) => (list.some((g) => !g.ok) ? list.filter((g) => !g.ok).map((g) => g.reason).join(' | ') : null);
-  const serverSendReason = surveySendError(rows, files, { canSend: canDecide })
+  /* 🔑 **แถว 17a — พื้นที่ลงหน้างานต้องมีนัดที่เข้าพื้นที่จริง** (ประเมินจากแบบ) · ตัวตัดสินตัวเดียวกับ route ส่งผล
+     (`surveySendSiteVisitError`) และอยู่ในลำดับเดียวกัน: หลังด่านหกข้อ · ขนาด · รูปจุด — **ก่อน** เหตุของเอกสารและเรื่องนัดร่าง
+     ⚠️ ถามเฉพาะเมื่อเปิดสวิตช์ (route ถามด่านนี้ใต้สวิตช์เดียวกัน — วันที่มีคำปฏิเสธต้องมีปุ่มทางออกให้กด) และเฉพาะคนที่ส่งผลได้
+     ⚠️ `siteVisitReached` ต้องเป็น `true` / `false` ตรงตัว — `null` (GET ไม่ได้อ่าน หรืออ่านไม่สำเร็จ) = ไม่ขึ้นบรรทัดนี้:
+        อ่านไม่สำเร็จต้องไม่กลายเป็น "ไม่มีนัดที่เข้าพื้นที่" · route ยังตัดสินเองตอนกดส่ง */
+  const siteVisitReason = methodOn && canDecide && !locked && typeof siteVisitReached === 'boolean'
+    ? surveySendSiteVisitError(rows, { reachedSite: siteVisitReached, closesVisit: visitStep.action === 'close' })
+    : null;
+  const gateSendReason = surveySendError(rows, files, { canSend: canDecide })
     || failedReasons(sizeGates)
-    || failedReasons(spotSendGates)
-    || docReason;
+    || failedReasons(spotSendGates);
+  const serverSendReason = gateSendReason || siteVisitReason || docReason;
+  /* ปุ่มทางออกของสองแถวข้างบน — เปิดโมดัล "เปลี่ยนวิธีประเมิน" (คำเดียวกับปุ่มของ `method`) */
+  const methodTarget = { kind: 'method', label: SURVEY_METHOD_BUTTON };
   let sendReason = null;
   if (!locked) {
     /* 🐞 **ไม่มีสิทธิ์ส่ง = เหตุผลเดียว ห้ามประกอบบรรทัดด่านหกข้อทับ** — ของเดิมเขียน
@@ -937,6 +1099,11 @@ export function surveyControlView({
         detail: serverSendReason,
         target: { kind: 'reload', label: 'โหลดใหม่' },
       };
+    } else if (siteVisitReason && !gateSendReason) {
+      /* แถว 17a — ด่านของพื้นที่ผ่านครบแล้ว แต่ใบยังมีพื้นที่ลงหน้างานที่ไม่มีนัดไหนเข้าพื้นที่ · ประโยคของ route บอกทางออกสองทาง
+         (ลงคิว · เปลี่ยนพื้นที่นั้นเป็นประเมินจากแบบ) — ปุ่มพาไปทางที่กดได้จากจอนี้
+         ⚠️ เป็น **เหตุใต้ปุ่มส่งผล** ไม่ใช่แถวด่านที่นับ — ไม่มีชื่อข้อใหม่ และ "ติด n / m ข้อ" ของใบอื่นไม่ขยับ */
+      sendReason = { key: 'site-visit', text: siteVisitReason, detail: siteVisitReason, target: methodTarget };
     } else if (serverSendReason) {
       /* ด่านที่ติดทั้งหมดของการส่งผล (หกข้อ + รูปจุด) — ติดแค่รูปจุด = เหตุเต็มของ server (มติ: "มีรูปจุดที่ยังไม่ได้ผูก n รูป …") */
       /* ⚠️ นับจากแถวที่การ์ดวาด (`headGates` — ขนาดถูกลบพับอยู่ในแถวแพ็คเกจ) ⇒ "ติด n ข้อ" ตรงกับป้าย "ติด n / m ข้อ" เสมอ */
@@ -952,7 +1119,11 @@ export function surveyControlView({
       const docList = documentOnly ? surveySendDocumentRefusalList(docBlockers.map((text) => ({ kind: 'content', text }))) : null;
       const docListed = !!docList && docList.items.length > 1;
       const stuckNames = [...new Set(failed.flatMap((g) => g.zones))];
-      const crewStuck = failed.some((g) => g.owner === 'crew');
+      /* ⭐ **"รอช่างเก็บงาน" ตัดสินจากแถวรายพื้นที่ ไม่ใช่จากเจ้าของรายข้อ** (ประเมินจากแบบ) — แถวรายพื้นที่ถามเจ้าของ
+         ทีละพื้นที่ (`ownerOf`): พื้นที่จากแบบที่ยังไม่มีขนาดเป็นงานของหัวหน้า ทั้งที่ข้อ "ขนาด" ของใบผสมประกาศเป็นของช่าง
+         🐞 เดิมอ่าน `owner` ของข้อ ⇒ ใบผสมที่ขาดขนาดเฉพาะพื้นที่จากแบบขึ้น "รอช่างเก็บงาน" ทั้งที่ช่างแก้ไม่ได้
+         ⚠️ ใบลงหน้างานล้วน: ข้อของช่างติด ⇔ มีพื้นที่ที่แถวของมันมีของช่างค้าง ⇒ ค่าเท่าเดิม */
+      const crewStuck = gapRows.some((r) => r.crew.length > 0);
       /* พาไปที่พื้นที่ที่ **ช่างยังค้าง** ก่อน ถ้าไม่มีก็พื้นที่แรกที่ติดอะไรก็ได้
          🔑 **ถาม `targets` ของแถวนั้นว่า "ไปไหน" — ไม่คิดเอง** (นั่นคือกฎชุดที่สองที่
             เคยลืมข้อ "ภาพผัง" ไป) · ที่ต่างกันมีแค่ **คำบนปุ่ม** ซึ่งแบบที่อนุมัติเขียน
@@ -979,8 +1150,12 @@ export function surveyControlView({
       };
     } else if (visitStep.action === 'block') {
       /* นัดยังเป็นร่าง — route ตีกลับด้วยประโยคเดียวกัน · ทางออกอยู่ที่หน้าจัดคิว ไม่ใช่บนจอนี้
-         (ใบงานโต๊ะที่ยังมีนัดร่าง/นัดไว้ค้างก็มาทางนี้ ด้วยประโยคของงานโต๊ะจากตัวตัดสินตัวเดียวกัน — คีย์เดิม) */
-      sendReason = { key: 'visit-draft', text: visitStep.error, detail: visitStep.error, target: null };
+         ⭐ **แถว 17 — ใบงานโต๊ะที่ยังมีนัดร่าง/นัดไว้ค้าง** มาทางนี้ด้วยประโยคของงานโต๊ะจากตัวตัดสินตัวเดียวกัน · คีย์ของตัวเอง
+            (`visit-open-desk` — เดิมยืมคีย์ `visit-draft`) และทางออกอยู่บนจอนี้: ปุ่ม "เปลี่ยนวิธีประเมิน" แล้วยืนยันยกเลิกนัด
+            ⚠️ ปุ่มมีเฉพาะตอนเปิดสวิตช์ — ปิดอยู่ = ประโยคเดิม ไม่มีปุ่ม (นัดยกเลิกที่หน้าจัดคิว) */
+      sendReason = needsVisit
+        ? { key: 'visit-draft', text: visitStep.error, detail: visitStep.error, target: null }
+        : { key: 'visit-open-desk', text: visitStep.error, detail: visitStep.error, target: methodOn ? methodTarget : null };
     }
   }
   /* แถวที่ขนาดยังไม่เคยถูกเทียบกับข้อเสนอ — เฉพาะคนที่ส่งผลได้ และใบที่ยังไม่ล็อก (ใบที่ส่งแล้วไม่มีใครแก้ได้) */
@@ -1008,9 +1183,14 @@ export function surveyControlView({
     /* 🐞 review 26/09 — **ส่งกลับให้ช่างแก้ค้างอยู่** (ช่างยังไม่แจ้งว่าแก้แล้ว) — ตั้งแต่ S4 ค้างได้ทั้งที่ด่านเขียวหมด
        ⇒ โมดัลต้องบอกก่อนกดว่าส่งผลจะปิดเรื่องนั้นและช่างแก้ต่อไม่ได้ (ใบล็อกแล้ว GET ซ่อนเรื่องค้างเอง — `surveySendBackOnSheet` · ไม่เขียนแถวปิดลงเธรด) · **เตือน ไม่บล็อก**
        (ไม่เข้า `allowed`/`reason`) — หัวหน้าเห็นของครบแล้วตัดสินใจส่งได้ · `null` = ไม่มีเรื่องค้าง/อ่านเธรดไม่ได้ */
-    sendBackPending: canDecide && !locked && sendBack?.pending
-      ? { itemCount: Array.isArray(sendBack.sentBack?.items) ? sendBack.sentBack.items.length : 0 }
+    sendBackPending: canDecide && !locked && back?.pending
+      ? { itemCount: Array.isArray(back.sentBack?.items) ? back.sentBack.items.length : 0 }
       : null,
+    /* ⭐ **โมดัลส่งผลต้องถามว่า "ต้องยืนยันหน้างานไหม" เมื่อใบมีพื้นที่จากแบบ** (ประเมินจากแบบ · งวด S2a) — `mix` คือสัดส่วนที่จอเห็น
+       ซึ่งโมดัลส่งกลับไปกับคำขอ (`methodMix`) ให้ route เทียบกับแถวจริง (มีคนสลับวิธีหลังเปิดหน้า = 409)
+       ⚠️ อ่านจากแถวพื้นที่ล้วน ไม่ขึ้นกับสวิตช์ — ปิดสวิตช์ทีหลัง ใบที่มีพื้นที่จากแบบอยู่แล้วยังต้องส่งผลได้
+       ⚠️ ใบลงหน้างานล้วน = `required: false` — คำขอส่งผลไม่มีคีย์ใหม่สักตัว */
+    confirm: { required: mix.drawing > 0, mix: { onsite: mix.onsite, drawing: mix.drawing }, mode: mix.mode },
     /* ⭐ **ขนาดที่ตั้งไว้ก่อนมีข้อเสนอของระบบ** (back-fill ST ของ 0398 · UAT PR-P 01/10) — โมดัลยืนยันต้องบอกก่อนกดว่าพื้นที่ไหน
        ยังเป็นขนาดที่ไม่มีใครเทียบกับข้อเสนอ · **เตือน ไม่บล็อก** (ไม่เข้า `allowed`/`reason` · บังคับหรือไม่เป็นคำถามเปิดของเจ้าของ
        — ดู `packageSizeUnchecked`) · `null` = ไม่มีแถวแบบนั้น/อ่านทะเบียนไม่ได้ */
@@ -1119,19 +1299,22 @@ export function surveyControlView({
   /* ⭐ **วงส่งกลับให้ช่างแก้** (มติผู้ใช้ 2026-09-22) — หัวหน้าต้องเห็นว่ากำลังรอช่างอยู่ หรือช่าง
      แจ้งแล้วว่าแก้ครบ · 🐞 ก่อนหน้านี้ส่งกลับไปแล้วเงียบทั้งสองทาง ต้องเดาจากเช็คลิสต์เอาเอง
      ⚠️ เฉพาะหัวหน้า และใบที่ยังไม่ล็อก — ฝั่งช่างเห็นเรื่องเดียวกันบนแถบงาน (มีปุ่มแจ้ง)
-     ⚠️ "แจ้งแล้ว" ขึ้นเฉพาะรอบล่าสุดที่ยังไม่ถูกส่งกลับซ้ำ (ส่งกลับซ้ำ = ค้างใหม่) */
-  if (canDecide && !lockReason && sendBack?.sentBack) {
-    const back = sendBack.sentBack;
-    const asks = surveySendBackAsks(back);
-    const askText = surveySendBackAskText(back);
-    if (sendBack.pending) {
+     ⚠️ "แจ้งแล้ว" ขึ้นเฉพาะรอบล่าสุดที่ยังไม่ถูกส่งกลับซ้ำ (ส่งกลับซ้ำ = ค้างใหม่)
+     ⚠️ อ่านจาก `back` (สภาพตามที่ใบเห็น) — ใบที่ไม่ต้องมีนัดแล้วไม่มีกล่อง "รอช่างแจ้งว่าแก้แล้ว"
+        · เรื่องที่ถูกปิดเพราะใบไม่ต้องมีนัด (`closedByMethod`) ไม่มีกล่องเลย: "ช่างแจ้งว่าแก้แล้ว" ที่เหลืออยู่เป็นของรอบก่อนหน้า
+          ไม่ใช่คำตอบของการส่งกลับครั้งล่าสุด */
+  if (canDecide && !lockReason && back?.sentBack && back.closedByMethod !== true) {
+    const asked = back.sentBack;
+    const asks = surveySendBackAsks(asked);
+    const askText = surveySendBackAskText(asked);
+    if (back.pending) {
       notices.push({
         key: 'send-back-pending', tone: 'warning',
-        text: `ส่งกลับให้ช่างแก้${back.at ? ` ${fmtDateTime(back.at)}` : ''}${askText ? ` — ${askText}` : ''}`
+        text: `ส่งกลับให้ช่างแก้${asked.at ? ` ${fmtDateTime(asked.at)}` : ''}${askText ? ` — ${askText}` : ''}`
           + ' · รอช่างแจ้งว่าแก้แล้ว',
       });
-    } else if (sendBack.done) {
-      const done = sendBack.done;
+    } else if (back.done) {
+      const done = back.done;
       /* "แก้แล้ว 1 / 2 ข้อ" ต้องบอกด้วยว่า **ข้อไหน** ยังไม่ติ๊ก — ตัวเลขเฉย ๆ หัวหน้าต้องเปิดเทียบเอง
          ⚠️ ติ๊กไม่ครบ = กล่องเหลือง (ช่างบอกเองว่ายังไม่ได้ทำ) · ไม่รู้ว่าติ๊กอะไร = คำเดิม กล่องเขียว */
       const doneItems = Array.isArray(done.doneItems) ? done.doneItems : null;
@@ -1170,6 +1353,9 @@ export function surveyControlView({
 
   const gatesSentFailed = sent ? gates.filter((g) => g.key === 'document' && !g.ok).length : 0;
   const gatesTitle = canDecide ? 'ด่านก่อนส่งผล' : 'ของที่ช่างต้องเก็บ';
+  /* ใบจากแบบทั้งใบไม่มีของให้ช่างเก็บ (แผน §3.2 ข้อ 6) — คนที่ไม่ได้เคาะ (ผู้วางคิว · ช่างของนัดเก่า) ได้ลิสต์ว่างใต้หัวข้อ
+     "ของที่ช่างต้องเก็บ" ⇒ จอไม่วาดบล็อกนี้ (คู่กับ `crewGate.hidden` ของหน้าคำร้อง) · ใบลงหน้างานและใบผสม = `false` เสมอ */
+  const gatesHidden = !canDecide && mix.mode === 'drawing';
 
   return {
     status,
@@ -1181,7 +1367,20 @@ export function surveyControlView({
       cut: totals.cutZones,
       leftNames: leftZones.map(surveyZoneName),
       leftText,
+      /* พื้นที่จากแบบ (ไม่อยู่ใน `done` / `total` — ไม่ใช่ของที่ช่าง "วัดแล้ว") + คำของมิเตอร์ที่จอพิมพ์ได้เลย */
+      drawing: progress.drawing || 0,
+      text: progressText,
     },
+    /* ── วิธีประเมินของใบ (ประเมินจากแบบ · งวด S2a) — จอวาดจากสี่คีย์นี้ ไม่คิดจากแถวพื้นที่เอง ──
+       `method`        ปุ่ม "เปลี่ยนวิธีประเมิน" `{ show, allowed, reason }` — ตัวตัดสินตัวเดียวกับ route สลับวิธี · ไม่ใช่หัวหน้า
+                       หรือสวิตช์ปิด = `show: false` (ไม่มีปุ่มเลย ไม่ใช่ปุ่มจาง)
+       `mix`           กี่พื้นที่ลงหน้างาน กี่พื้นที่จากแบบ (ไม่นับที่ตัด) + โหมดของใบ
+       `needsVisit`    ใบนี้ต้องมีนัดเข้าพื้นที่ไหม
+       `fieldTabLabel` ชื่อแท็บแรก — ใบที่มีพื้นที่จากแบบไม่ใช่ "หน้างาน" ทั้งใบแล้ว */
+    method: surveyMethodSwitchGate(request, { canSwitch: canDecide, enabled: methodOn }),
+    mix: { onsite: mix.onsite, drawing: mix.drawing, mode: mix.mode },
+    needsVisit,
+    fieldTabLabel: mix.drawing > 0 ? FIELD_TAB_LABELS.mixed : FIELD_TAB_LABELS.onsite,
     totals,
     gates,
     gatesFailed: gatesFailed.length,
@@ -1189,10 +1388,11 @@ export function surveyControlView({
        เหมือนเดิม · การ์ดอ่านตัวนี้เปลี่ยนป้าย "ผ่านครบ n ข้อตอนส่ง" เป็น "ติด 1 / n ข้อ" (การ์ดไม่มีกติกาเอง) */
     gatesSentFailed,
     gatesTitle,
+    gatesHidden,
     /* ผังของส่วนรอง + คำบนปุ่มคลี่ของการ์ด (`controlFold`) — จำนวนที่ติดบนปุ่มคือตัวเดียวกับป้ายของบล็อกด่าน */
     fold: controlFold({
       document: documentView, gatesTitle, cancelled, gatesStuck: sent ? gatesSentFailed : gatesFailed.length,
-      afterSend: sent || surveyRequestEnded(request),
+      afterSend: sent || surveyRequestEnded(request), gatesHidden,
     }),
     /* ด่านที่ติดซึ่งไม่มีแถวรายพื้นที่ (แถวเอกสารประเมิน) — บล็อกด่านเอ่ยชื่อเอง `[{ key, label, note }]` · ว่าง = ไม่มี */
     gateNotes,
@@ -1218,7 +1418,7 @@ export function surveyControlView({
     notices,
     zoneGaps,
     sendBackAction,
-    step: stepOf(request, { cancelled, recallPending, recall, progress, visit, needsVisit: surveyNeedsVisit(rows) }),
+    step: stepOf(request, { cancelled, recallPending, recall, progress, progressText, visit, needsVisit: surveyNeedsVisit(rows) }),
     /* ⭐ **กำหนดของจอนี้คือวันส่งผล ไม่ใช่วันเข้าพื้นที่** (มติผู้ใช้ 2026-09-21 · mig 0368)
        — ทั้งจอเป็นเรื่องการส่งตัวเลขให้ฝ่ายขาย · วันนัดเข้าพื้นที่มีแถวของตัวเองอยู่แล้ว
          ("นัดสำรวจ") ⇒ เอามาโชว์ซ้ำตรงนี้คือข้อมูลเดียวกันสองที่ที่นับถอยหลังผิดเรื่อง

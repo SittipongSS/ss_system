@@ -103,6 +103,21 @@ import { cancelCleanupSummary, cleanupCancelledSurveyZones } from '@/lib/service
 
 export const dynamic = 'force-dynamic';
 
+/* ── ใบประเมินที่ประเมินจากแบบทั้งใบ: "คำสัญญา" ที่ด่านแจ้งวัน / เลื่อนวันเทียบ คือ **วันส่งผล** (งวด S2a) ─────────────
+   ด่านกลาง (`commitDueRequestError` · `rescheduleRequestError`) อ่าน `committedDueDate` — แต่ใบที่กลายเป็นงานโต๊ะเพราะ
+   **ตัดพื้นที่ลงหน้างานสุดท้าย** ยังถือ **วันนัดเก่า** อยู่ในคอลัมน์นั้น (การตัดไม่แตะวันบนใบ)
+   🐞 เทียบกับวันนัดเก่า = เลื่อนวันส่งผลไปตรงกับวันนัดเก่าโดนตอบ "วันเดิมกับที่แจ้งไว้แล้ว" ส่วนเลื่อนไป "วันส่งผลเดิม" กลับผ่าน
+   ⇒ ส่งสำเนาที่ `committedDueDate` = วันส่งผล ให้ด่าน **เฉพาะใบที่ถือครบทั้งสองวัน**
+   🔴 ใบที่ขาดวันใดวันหนึ่งส่งแถวเดิม — ปุ่มบนหน้าคำร้องเลือกจาก `committedDueDate` ตัวจริง (`requestAwaitingDue`):
+      · มีวันนัดเก่า ไม่มีวันส่งผล (ลงคิวก่อนวันส่งผลบังคับ · mig 0368) = หน้าโชว์ "เลื่อนวัน" ⇒ ด่านต้องยังเห็นว่าใบแจ้งวันแล้ว
+        (แล้ว `surveyDeskReschedulePatch` เขียนครบทั้งสองวัน)
+      · ไม่มีวันบนใบ แต่ยังมีวันส่งผล (นัดเข้าไม่ได้ ใบถอยขั้นก่อนกลายเป็นงานโต๊ะ — `surveyStepBack` ล้างแค่วันนัด) = หน้าโชว์
+        "รับปากวันส่งผล" ⇒ ด่านต้องยังเห็นว่าใบยังไม่ได้แจ้งวัน
+      แทนค่าในสองกรณีนี้ = server ตอบให้ไปกดปุ่มที่หน้าไม่ได้โชว์ (ทางตัน) */
+const deskDueBasis = (before) => (before?.committedResultDate && before?.committedDueDate
+  ? { ...before, committedDueDate: before.committedResultDate }
+  : before);
+
 // ── เติมค่าสดของทะเบียนให้แถวคำร้อง ──────────────────────────────────────
 // ⚠️ สอง query ต่อใบ (กลิ่น + สูตร) และยิงเฉพาะเมื่อมีแถวที่ผูกจริง — ใบสอบถาม/
 // ขอเอกสารไม่มีลิงก์เลย จึงไม่ต้องจ่ายอะไรเพิ่ม
@@ -465,7 +480,8 @@ export async function PATCH(request, { params }) {
       const result = surveyDeskResultDate(body);
       if (result.error) return Response.json({ error: result.error }, { status: 400 });
       // ด่านของก้าวยังเป็นตัวเดิม (รับเรื่องแล้ว · ใบยังเปิด · ยังไม่เคยแจ้งวันของรอบนี้) — ต่างแค่วันที่ส่งเข้าไป
-      const err = commitDueRequestError(before, { committedDueDate: result.value, requeue: false });
+      // (`deskDueBasis` — คำสัญญาของใบงานโต๊ะคือวันส่งผล)
+      const err = commitDueRequestError(deskDueBasis(before), { committedDueDate: result.value, requeue: false });
       if (err) return Response.json({ error: err }, { status: /ระบุวัน/.test(err) ? 400 : 409 });
       const note = String(body.reason ?? '').trim();
       if (note.length > 500) {
@@ -1053,8 +1069,8 @@ export async function PATCH(request, { params }) {
       }
       const result = surveyDeskResultDate(body);
       if (result.error) return Response.json({ error: result.error }, { status: 400 });
-      // ด่านทั้งชุดอยู่ที่ lib/requests/stages.js — route ไม่คิดกฎเอง
-      const err = rescheduleRequestError(before, { committedDueDate: result.value });
+      // ด่านทั้งชุดอยู่ที่ lib/requests/stages.js — route ไม่คิดกฎเอง · "วันเดิม" เทียบกับวันส่งผลที่รับปากไว้ (`deskDueBasis`)
+      const err = rescheduleRequestError(deskDueBasis(before), { committedDueDate: result.value });
       if (err) return Response.json({ error: err }, { status: /ระบุวัน/.test(err) ? 400 : 409 });
       const reason = String(body.reason ?? '').trim();
       if (!reason) return Response.json({ error: SURVEY_DESK_RESCHEDULE_REASON_ERROR }, { status: 400 });
@@ -1333,6 +1349,10 @@ export async function PATCH(request, { params }) {
       patch.closedById = null;
       patch.closedByName = null;
       patch.status = 'acknowledged';
+      /* ⭐ ใบประเมิน: ล้างคำตอบ "ต้องยืนยันหน้างานไหม" ของรอบที่ส่งไปแล้ว (`surveyConfirm` · mig 0408 · งวด S2a) — ส่งรอบใหม่
+            หัวหน้าต้องเลือกใหม่ (เหตุผลเดียวกับเส้นดึงผลกลับ) · ไม่มีการปฏิเสธเพิ่ม
+         ⚠️ **เฉพาะหัวข้อ `site_survey`** — ก้าวนี้รับทุกหัวข้อ: คอลัมน์ของใบประเมินต้องไม่ถูกส่งไปกับคำร้องหัวข้ออื่น (บทเรียน mig 0351) */
+      if (before.kind === 'site_survey') patch.surveyConfirm = null;
       patch.reopenWaitSide = waitSide;
       patch.reopenedAt = nowIso;
       eventReason = reason;

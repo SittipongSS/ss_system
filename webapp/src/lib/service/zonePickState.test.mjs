@@ -71,7 +71,9 @@ test('สรุประดับสถานที่ — "N พื้นที
       zone({ id: 'D' }),
     ],
   });
-  assert.deepEqual(sum, { zones: 4, measured: 2, sold: 1, pending: 1 });
+  /* `drawing` (ประเมินจากแบบ งวด S2a) = พื้นที่ที่ผลล่าสุดมาจากแบบ — สถานที่ที่วัดหน้างานล้วนได้ 0 และ `measured` เท่าเดิม
+     (เคสจากแบบอยู่ใน `surveyMethodRegistry.test.mjs`) */
+  assert.deepEqual(sum, { zones: 4, measured: 2, drawing: 0, sold: 1, pending: 1 });
 });
 
 /* ══ ยามฝั่ง server ══════════════════════════════════════════════════════

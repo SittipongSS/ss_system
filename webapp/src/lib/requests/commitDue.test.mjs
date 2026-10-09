@@ -57,6 +57,10 @@ test('⭐ ป้ายทุกตัว = ข้อความเดิมบ�
     resultHint: 'ต้องไม่มาก่อนวันนัดเข้าพื้นที่',
     /* 🐞 รีวิว UAT 24/09: `assigneeHint` ("…นอกช่วง = จอดเป็นร่าง") ถอดทิ้ง — ทายผิด (ดูเทสต์ข้างล่าง) */
     notePlaceholder: 'เช่น นัดผู้จัดการไซต์ก่อนเข้า · แลกบัตรที่ รปภ.',
+    /* สองคีย์ของโหมด "รับปากวันส่งผล" (ประเมินจากแบบทั้งใบ · งวด S2a) — โหมดลงคิว/แจ้งกำหนดส่งว่างเสมอ
+       (ชุดของงานโต๊ะอยู่ที่ `service/surveyMethodJob.test.mjs`) */
+    wish: null,
+    plannerNote: null,
   });
   const again = commitDueLabels(requeued, { requeue: true });
   assert.equal(again.action, 'ลงคิวใหม่');
