@@ -206,6 +206,78 @@ test('ไม่มีจุดติดตั้ง (ใบปกติ) = จ�
   assert.deepEqual(rows.map((g) => g.installationPoint), [null, null]);
 });
 
+/* ── เลขแพ็คของบรรทัด (mig 0407 · งวด PR-2 · docs/qt-pack-column.md) ───────────────────────────────────
+   ⭐ จำนวนของบรรทัดที่มีเลขแพ็ค = หน่วยรวม (แพ็ค × จำนวน) หน่วย "แพ็ค" — 2 แพ็ค × 12 เดือน ต้องจัดสรร 24
+   🔴 บรรทัดที่ไม่มีเลขแพ็ค (ทุกบรรทัดในฐานวันนี้) ต้องได้ผลเดิมทุกคีย์ */
+test('⭐ บรรทัดที่มีเลขแพ็ค: จำนวน = แพ็ค × จำนวน (2 × 12 = 24) หน่วย “แพ็ค” · เหลือคิดจาก 24 ไม่ใช่ 12 และไม่ใช่ 2', () => {
+  const packLine = { id: 'L1', fgCode: 'FG-364-02-001-1061', description: 'ระบบกระจายกลิ่น', qty: 12, unit: 'เดือน', packQty: 2 };
+  const [none] = fgSummary([packLine]);
+  assert.deepEqual([none.qty, none.unit, none.remaining], [24, 'แพ็ค', 24]);
+  const [some] = fgSummary([packLine], allocatedByLine([{ salesOrderLineId: 'L1', packageQty: 5 }, { salesOrderLineId: 'L1', packageQty: 4 }]));
+  assert.deepEqual([some.qty, some.remaining], [24, 15]);
+  assert.equal(remainingOf(packLine, [{ salesOrderLineId: 'L1', packageQty: 24 }]), 0);
+  assert.equal(remainingOf(packLine, [{ salesOrderLineId: 'L1', packageQty: 30 }]), 0, 'จัดสรรเกินไม่ติดลบ');
+  assert.equal(remainingOf(packLine, [{ salesOrderLineId: 'L1', packageQty: null }]), 0, 'term เก่าที่ไม่ระบุจำนวนยังกินทั้งบรรทัด');
+  // หน่วยที่เก็บบนบรรทัดเป็นอะไรก็ได้ (มติ A3: กิโลกรัม/ชิ้นของหมวดนี้ก็มีเลขแพ็ค) — หน่วยของยอดรวมยังเป็นแพ็ค
+  assert.equal(fgSummary([{ ...packLine, unit: 'กิโลกรัม' }])[0].unit, 'แพ็ค');
+  assert.equal(fgSummary([{ ...packLine, unit: null }])[0].unit, 'แพ็ค');
+  assert.equal(fgSummary([{ ...packLine, packQty: '43', qty: '4' }])[0].qty, 172, 'ค่าที่มาเป็นสตริงจากฐาน');
+});
+
+test('บรรทัดที่มีเลขแพ็คกับบรรทัดเดิมของ FG เดียวกัน: บวกหน่วยรวมเข้ากลุ่มเดียว · หน่วยต่างกัน = “ปนหน่วย” · หน่วยเดียวกัน (แพ็ค) ไม่ปน', () => {
+  const mixed = fgSummary([
+    { id: 'A', fgCode: 'FG-364-02-001-1061', qty: 12, unit: 'เดือน', packQty: 2 },
+    { id: 'B', fgCode: 'FG-364-02-001-1061', qty: 24, unit: 'เดือน' },
+  ]);
+  assert.equal(mixed.length, 1);
+  assert.deepEqual([mixed[0].qty, mixed[0].remaining, mixed[0].unit], [48, 48, 'ปนหน่วย']);
+  // ลำดับกลับกันก็ต้องบอกว่าปน (หน่วยของกลุ่มตั้งจากบรรทัดแรก)
+  assert.equal(fgSummary([
+    { id: 'B', fgCode: 'FG-364-02-001-1061', qty: 24, unit: 'แพ็คเกจ' },
+    { id: 'A', fgCode: 'FG-364-02-001-1061', qty: 12, unit: 'เดือน', packQty: 2 },
+  ])[0].unit, 'ปนหน่วย');
+  const same = fgSummary([
+    { id: 'A', fgCode: 'FG-364-02-001-1061', qty: 12, unit: 'เดือน', packQty: 2 },
+    { id: 'C', fgCode: 'FG-364-02-001-1061', qty: 6, unit: 'กิโลกรัม', packQty: 3 },
+    { id: 'D', fgCode: 'FG-364-02-001-1061', qty: 5, unit: 'แพ็ค' },
+  ]);
+  assert.deepEqual([same[0].qty, same[0].unit], [47, 'แพ็ค']);
+});
+
+test('🔴 เลขแพ็คว่าง = ไม่มีอะไรเปลี่ยน: fgSummary ของบรรทัดเดิมเท่ากับวันนี้ทุกคีย์ (ไม่มีคีย์ · packQty: null · ค่าที่เก็บไม่ได้)', () => {
+  const stored = [
+    { id: 'L1', fgCode: 'FG-1', description: 'แพ็คเกจ', qty: 10, unit: 'แพ็คเกจ' },
+    { id: 'L2', fgCode: 'FG-1', description: 'แพ็คเกจ', qty: '3', unit: 'แพ็คเกจ' },
+    { id: 'L3', fgCode: null, description: 'ออกแบบกลิ่น', qty: 1, unit: 'งาน' },
+    { id: 'L4', fgCode: 'FG-9', qty: 2, unit: 'กิโลกรัม' },
+    { id: 'L5', fgCode: 'FG-9', qty: 3, unit: 'ชิ้น' },
+    { id: 'L6', fgCode: null, description: 'บริการรายเดือน', qty: null, unit: null },
+    { id: 'L7', fgCode: 'FG-7', qty: 'abc', unit: 'เดือน' },
+    { id: 'L8', fgCode: 'FG-8', qty: 12, unit: 'เดือน', installationPoint: ' สาขาสีลม ' },
+  ];
+  const terms = [
+    { salesOrderLineId: 'L1', packageQty: 4 }, { salesOrderLineId: 'L2', packageQty: null },
+    { salesOrderLineId: 'L7', packageQty: 1 }, { salesOrderLineId: 'L8', packageQty: 5 },
+  ];
+  // ค่าที่คาด = ลอกจากพฤติกรรมวันนี้ (qty = Number(line.qty) · หน่วย = line.unit) ไม่ได้คำนวณจากโค้ดที่ทดสอบ
+  const expected = [
+    ['FG-1', 'แพ็คเกจ', null, 13, 6, ['L1', 'L2']],
+    ['desc:ออกแบบกลิ่น', 'งาน', null, 1, 1, ['L3']],
+    ['FG-9', 'ปนหน่วย', null, 5, 5, ['L4', 'L5']],
+    ['desc:บริการรายเดือน', null, null, 0, 1, ['L6']],
+    ['FG-7', 'เดือน', null, 0, 0, ['L7']],
+    ['FG-8|pt:สาขาสีลม', 'เดือน', 'สาขาสีลม', 12, 7, ['L8']],
+  ];
+  const shape = (rows) => rows.map((g) => [g.key, g.unit, g.installationPoint, g.qty, g.remaining, g.lines.map((l) => l.id)]);
+  const noKey = fgSummary(stored, allocatedByLine(terms));
+  assert.deepEqual(shape(noKey), expected);
+  for (const packQty of [null, undefined, '', '  ', 'abc', 0, 1.5, 10000]) {
+    const withKey = fgSummary(stored.map((line) => ({ ...line, packQty })), allocatedByLine(terms));
+    assert.deepEqual(shape(withKey), expected, `packQty: ${String(packQty)}`);
+    assert.deepEqual(withKey.map(({ lines, ...rest }) => rest), noKey.map(({ lines, ...rest }) => rest), `ทุกคีย์ของกลุ่ม · packQty: ${String(packQty)}`);
+  }
+});
+
 /* ── PR-C C5 (C-D15): จำนวนโซนของรอบขายที่มีผลของใบ — บรรทัดด่านเงินในโมดัล FN รับรองงวด ──────────
    ⭐ นับ **โซนไม่ซ้ำ** — สองบรรทัดของใบลงโซนเดียวกัน (SO-26090247-0: 2 term บน Office) = 1 โซน
    ⚠️ ใบไม่มีผล (ออก Rev./ยกเลิก/ย้อนการอนุมัติ/ไม่ส่งใบ) = 0 — ตัดสินด้วย termOrderActive ตัวเดียวของระบบ */

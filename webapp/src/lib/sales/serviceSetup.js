@@ -58,6 +58,8 @@ import { fmtDate, fmtMoney, fmtNumber, fmtYearMonth } from '@/lib/format';
 import { formatMonthLabel } from '@/lib/datePeriods';
 import { isSalesManager } from '@/lib/permissions';
 import { latestTimestamp, serviceAgingOf } from '@/lib/sales/serviceBackfillAging';
+import { lineUnitsTotal } from '@/lib/sales/linePacks';
+import { linePackQty, linePackQtyText } from '@/lib/sales/linePackView';
 
 /* ══ ค่าคงที่ ══════════════════════════════════════════════════════════════════════════════════════ */
 
@@ -1106,16 +1108,22 @@ export function serviceSetupFooterText(totals) {
 /**
  * จำนวนในใบเทียบจำนวนแพ็คที่ตั้ง (ภาคผนวก A.4) — **ไม่บังคับให้เท่า** (จำนวนในใบบางทีคือจำนวนเดือน)
  * → `{ tone: 'ok' | 'warn' | 'info' | 'none', text }`
+ * ⭐ บรรทัดที่มีเลขแพ็ค (mig 0407 · งวด PR-2): จำนวนในใบ = "2 แพ็ค × 12 เดือน" (`linePackQtyText`) และตัวเลขที่เทียบกับ
+ *   รวมทั้งรายการ = **หน่วยรวม** `lineUnitsTotal` (แพ็ค × จำนวน = 24) — ใบบอกจำนวนแพ็คแล้ว ทางลัด "หน่วยเดือน = ระยะเวลา"
+ *   จึงใช้กับบรรทัดที่ **ไม่มี** เลขแพ็คเท่านั้น · ประโยคสามแบบเดิมใช้ซ้ำ ไม่มีคำใหม่
+ *   ⚠️ ชั่วคราวจนงวด PR-4: เทียบ **ยอดรวม** อย่างเดียว (3 × 8 ในใบ กับ 2 × 12 ในตาราง = 24 ทั้งคู่ = "ตรง") และยังเป็นคำแนะนำ ไม่กั้นอะไร
  */
 export function lineQtyCrossCheck(line, lineTotals) {
   if (serviceLineRole(line) !== SERVICE_KIND_PACKAGE) return { tone: 'none', text: '' };
-  const qtyNumber = Number(line?.qty);
-  const qty = Number.isFinite(qtyNumber) ? fmtNumber(qtyNumber) : text(line?.qty) || '—';
+  const packText = linePackQtyText(line);
+  const rawQty = Number(line?.qty);
+  const qtyNumber = packText !== null && Number.isFinite(rawQty) ? lineUnitsTotal(line) : rawQty;
+  const qty = Number.isFinite(rawQty) ? fmtNumber(rawQty) : text(line?.qty) || '—';
   const unit = text(line?.unit);
-  const qtyUnit = unit ? `${qty} ${unit}` : qty;
+  const qtyUnit = packText ?? (unit ? `${qty} ${unit}` : qty);
   /* ⚠️ ท้ายประโยคต่างจากภาคผนวก A.4 (ความหมายเดิม) — คำว่า จำนวน ที่ติดกับ แพ็ค ถูก ICU ตัดกลางคำ (แพ็คไม่อยู่ในพจนานุกรม)
      ⇒ check:thaiwrap เกินเพดาน · ด่าน W2 เปลี่ยนคำแทนการเติมคำทับศัพท์ (ห้ามยกประโยคเดิมมาใส่คำพูดในคอมเมนต์ — ด่านอ่านด้วย) */
-  if (unit.includes('เดือน')) return { tone: 'info', text: `จำนวนในใบ ${qty} เดือน = ระยะเวลา ไม่ได้นับเป็นแพ็ค` };
+  if (packText === null && unit.includes('เดือน')) return { tone: 'info', text: `จำนวนในใบ ${qty} เดือน = ระยะเวลา ไม่ได้นับเป็นแพ็ค` };
   if (!lineTotals?.zones) return { tone: 'none', text: `จำนวนในใบ ${qtyUnit} — ตรวจได้เมื่อเลือกโซนแล้ว` };
   if (lineTotals.packsTotal === null || lineTotals.packsTotal === undefined) {
     return { tone: 'none', text: `จำนวนในใบ ${qtyUnit} — ตรวจได้เมื่อใส่${PACKS_TERM}และ${SERVICE_SETUP_LINE_TEXT.roundsLabel}แล้ว` };
@@ -2386,6 +2394,8 @@ export function serviceSetupView(ctx = {}, { canEdit = false, userId = null, rol
       description: line?.description ?? null,
       note: line?.metadata?.note ?? null,
       qty: line?.qty ?? null,
+      /* เลขแพ็คของบรรทัด (mig 0407) — คีย์มีเฉพาะบรรทัดที่มีเลขแพ็ค ⇒ view ของใบเดิมมีคีย์ชุดเดิมทุกตัว */
+      ...(linePackQty(line) !== null ? { packQty: linePackQty(line) } : {}),
       unit: line?.unit ?? null,
       categoryCode: lineCategoryCode(line),
       categoryName: line?.metadata?.categoryName ?? null,

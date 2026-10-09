@@ -126,11 +126,18 @@ export const GET = withUser(async ({ user, supabase, req, ctx }) => {
     illustrationCount = ill.illustrations.length;
   }
 
+  /* จำนวนผลิตที่จอตัดสินใจโชว์ — เลือกคีย์ส่งต่อ · `packQty` (mig 0407 · มีเฉพาะบรรทัดที่มีเลขแพ็ค) ต้องตามมาด้วย:
+     ขาดเมื่อไร จอบอก "12 เดือน" ขณะที่กระดาษที่กำลังจะออกพิมพ์ "2 แพ็ค × 12 เดือน" (บั๊กชั้นเดียวกับที่คอมเมนต์ข้างบนเตือน) */
+  const quantityView = {
+    qty: quantity.qty ?? null, unit: quantity.unit || null, source: quantity.source || null,
+    ...(quantity.packQty ? { packQty: quantity.packQty } : {}),
+  };
+
   return ok({
     order: { ...orderView, quotationNumber: specDocQuotationNumber(order, quote.quotation) },
     line: specDocLineView(line),
     product,
-    quantity: { qty: quantity.qty ?? null, unit: quantity.unit || null, source: quantity.source || null },
+    quantity: quantityView,
     dealOwner: owner.dealOwner ? { id: owner.dealOwner.id, name: owner.dealOwner.name || null } : null,
     spec: spec ? specView(spec) : null,
     illustrationCount,

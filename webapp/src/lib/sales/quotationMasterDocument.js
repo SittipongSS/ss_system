@@ -18,9 +18,12 @@ import {
 } from '@/lib/sales/quotationMasterTemplate';
 import { amountInWords } from '@/lib/documents/amountInWords';
 import { englishDocumentGaps, englishGapMessages } from '@/lib/sales/docLanguageGaps';
+// คอลัมน์แพ็คต่อเดือน: ตัวตัดสินของทั้งใบ + ตัวอ่านเลขแพ็คของบรรทัด — ชุดเดียวกับจอและตัวแบ่งหน้า (ห้ามมีสำเนาที่นี่)
+import { hasPackColumn, linePackQty } from '@/lib/sales/linePackView';
 import { fmtNumber, fmtPercent, fmtPhone } from '@/lib/format';
 import {
   DOCUMENT_ACCENT_THEMES,
+  ITEM_TABLE_PACK_CSS,
   documentFileName,
   documentFooter as shellFooter,
   documentHeader as shellHeader,
@@ -110,7 +113,38 @@ function discountCell(line) {
   return `<td class="number">${amount > 0 ? `-${money(amount)}` : '-'}</td>`;
 }
 
-function itemTable(lines, startIndex, showDiscount, L) {
+/* ── คอลัมน์ "แพ็ค/เดือน" (มติเจ้าของ 08/10 · docs/qt-pack-column.md) ───────────────────────────────────
+   อยู่ระหว่างรายละเอียดกับจำนวน · บรรทัดที่มีเลขแพ็ค = ตัวเลข · บรรทัดอื่นของใบเดียวกัน = ขีด (ธรรมเนียมเดียวกับช่องส่วนลด)
+   ลูกค้ากระทบยอดได้จากกระดาษ: แพ็ค × จำนวน (เดือน) × ราคา/หน่วย − ส่วนลด = จำนวนเงิน
+
+   🔴 กฎไบต์ — ใบที่ไม่มีเลขแพ็คต้องได้ไฟล์ **เหมือนเดิมทุกไบต์** (ใบจริงทุกใบในระบบวันนี้)
+      สองชิ้นข้างล่างจึงคืนสตริงว่างเมื่อไม่มีคอลัมน์ และถูกวาง **บนบรรทัดเดียวกับช่องถัดไป** ในแม่แบบ
+      ⛔ ห้ามย้ายไปอยู่บรรทัดของตัวเองแบบช่องส่วนลด — เงื่อนไขที่เป็นเท็จจะทิ้งบรรทัดช่องว่างไว้ในไฟล์ของทุกใบ
+         (ช่องส่วนลดทำแบบนั้นมาตั้งแต่ต้น ไฟล์เดิมจึงมีบรรทัดนั้นอยู่แล้ว — ของใหม่ทำตามไม่ได้)
+      ตัวต่อท้าย (ขึ้นบรรทัด + ย่อหน้าของช่องถัดไป) อยู่ในชิ้นที่คืนเอง ⇒ ใบที่มีคอลัมน์ยังได้ markup ช่องละบรรทัด */
+const PACK_CELL_TAIL = '\n          ';
+
+function packHeadCell(showPack, L) {
+  return showPack ? `<th class="number">${esc(L.t('packQty'))}</th>${PACK_CELL_TAIL}` : '';
+}
+
+function packCell(showPack, line) {
+  if (!showPack) return '';
+  const pack = linePackQty(line);
+  return `<td class="number">${pack !== null ? fmtNumber(pack) : '-'}</td>${PACK_CELL_TAIL}`;
+}
+
+/* คอลัมน์ของตารางรายการ — ตัดสิน **ครั้งเดียวต่อใบ** จากบรรทัดที่ถูกพิมพ์จริงทุกหน้ารวมกัน
+   ทุกหน้าของใบเดียวกันจึงมีหัวตารางชุดเดียวกัน และค่าก้อนเดียวกันนี้คุมทั้ง markup และ CSS ที่ฝัง (extraCss)
+   — สองอย่างนั้นตัดสินคนละที่เมื่อไร ตารางได้คลาส withPack แต่ไม่มีความกว้างของมัน (หรือกลับกัน) */
+function itemColumnsOf(model) {
+  const printed = (model.pages || []).flatMap((page) => page.lines || []);
+  return { discount: hasLineDiscount(printed), pack: hasPackColumn(printed) };
+}
+
+function itemTable(lines, startIndex, columns, L) {
+  const showDiscount = columns.discount;
+  const showPack = columns.pack;
   const rows = lines.map((line, index) => {
     const identityMeta = lineIdentityParts(line).map(esc).join(' · ');
     return `
@@ -121,7 +155,7 @@ function itemTable(lines, startIndex, showDiscount, L) {
             <strong class="itemName">${val(line.description)}</strong>
             ${line.note ? `<span class="itemNote">${esc(line.note)}</span>` : ''}
           </td>
-          <td class="number">${fmtNumber(line.qty || 0)}</td>
+          ${packCell(showPack, line)}<td class="number">${fmtNumber(line.qty || 0)}</td>
           <td class="center">${val(line.unit)}</td>
           <td class="number">${money(line.unitPrice)}</td>
           ${showDiscount ? discountCell(line) : ''}
@@ -129,12 +163,12 @@ function itemTable(lines, startIndex, showDiscount, L) {
         </tr>`;
   }).join('');
   return `
-    <table class="itemTable${showDiscount ? ' withLineDiscount' : ''}">
+    <table class="itemTable${showDiscount ? ' withLineDiscount' : ''}${showPack ? ' withPack' : ''}">
       <thead>
         <tr>
           <th class="center">${esc(L.t('lineNo'))}</th>
           <th>${esc(L.t('lineDescription'))}</th>
-          <th class="number">${esc(L.t('qty'))}</th>
+          ${packHeadCell(showPack, L)}<th class="number">${esc(L.t('qty'))}</th>
           <th class="center">${esc(L.t('unit'))}</th>
           <th class="number">${esc(L.t('unitPrice'))}</th>
           ${showDiscount ? `<th class="number">${esc(L.t('lineDiscount'))}</th>` : ''}
@@ -244,11 +278,10 @@ function documentFooter(model, pageNumber, pageCount, L) {
   });
 }
 
-function renderPages(model, L) {
+function renderPages(model, L, columns = itemColumnsOf(model)) {
   let lineOffset = 0;
-  // ดูจากบรรทัดที่ถูกพิมพ์จริง (ทุกหน้ารวมกัน) — ใบที่ไม่มีส่วนลดรายบรรทัดเลยไม่ต้องมี
-  // คอลัมน์เปล่า ๆ กินความกว้างช่องรายละเอียด
-  const showDiscount = hasLineDiscount(model.pages.flatMap((page) => page.lines || []));
+  // คอลัมน์ดูจากบรรทัดที่ถูกพิมพ์จริง (ทุกหน้ารวมกัน · itemColumnsOf) — ใบที่ไม่มีส่วนลดรายบรรทัดเลยไม่ต้องมี
+  // คอลัมน์เปล่า ๆ กินความกว้างช่องรายละเอียด และใบที่ไม่มีเลขแพ็คไม่มีคอลัมน์แพ็ค
   return model.pages.map((page, pageIndex) => {
     const startIndex = lineOffset;
     lineOffset += page.lines.length;
@@ -280,7 +313,7 @@ function renderPages(model, L) {
         ${page.showParty ? partyGrid(model, L) : ''}
         ${page.kind === 'items' && pageIndex > 0 ? `<div class="continuation">${esc(L.t('itemsContinued'))} · ${val(model.document.number)}</div>` : ''}
         ${(page.kind === 'payment' || page.kind === 'acceptance') ? sectionLead(page.kind, model.document.number, L) : ''}
-        ${page.lines.length > 0 ? itemTable(page.lines, startIndex, showDiscount, L) : ''}
+        ${page.lines.length > 0 ? itemTable(page.lines, startIndex, columns, L) : ''}
         ${page.showTotals ? totalsSection(model, L) : ''}
         ${paymentBlock}
       </div>
@@ -303,6 +336,7 @@ export function renderQuotationMasterDocumentHTML(model, options = {}) {
   const documentLabel = options.documentLabel || 'ใบเสนอราคา';
   const number = model.document?.number || '';
   const L = labelsOf(model);
+  const columns = itemColumnsOf(model);
   return renderDocumentHTML({
     lang: L.language,
     // title = ชื่อไฟล์ที่ต้องการ เพราะเบราว์เซอร์ใช้ document.title ตั้งชื่อไฟล์ตอน
@@ -312,8 +346,10 @@ export function renderQuotationMasterDocumentHTML(model, options = {}) {
     grayscale: options.grayscale === true,
     variantClass: 'v4',
     dataAttrs: ` data-template-version="${esc(model.templateVersion || '')}"`,
+    // ความกว้างของคอลัมน์แพ็คฝังเฉพาะใบที่มีคอลัมน์นั้น — ใบอื่นส่งสตริงว่าง = ไม่เพิ่มแม้ไบต์เดียว
+    extraCss: columns.pack ? ITEM_TABLE_PACK_CSS : '',
     toolbar: options.toolbar === false ? null : { label: `${documentLabel} ${number}` },
-    pages: renderPages(model, L),
+    pages: renderPages(model, L, columns),
   });
 }
 
@@ -475,6 +511,9 @@ export function buildQuotationMasterSwitchableHTML(quote, options = {}) {
     buildQuotationMasterModelFromQuote(quote, { ...options, docLanguage: language }),
   ]));
   const shown = models[active];
+  /* คอลัมน์ของแต่ละภาษาตัดสินจากโมเดลของภาษานั้นเอง — บรรทัดชุดเดียวกัน จึงได้คำตอบเดียวกันทั้งสองแผง
+     CSS ของคอลัมน์แพ็คฝังครั้งเดียวเมื่อมีแผงไหนใช้ (ไฟล์เดียวมี <style> ชุดเดียวใช้ร่วมสองแผง) */
+  const columnsOf = Object.fromEntries(QUOTATION_DOC_LANGUAGES.map((language) => [language, itemColumnsOf(models[language])]));
   const documentLabel = options.documentLabel || 'ใบเสนอราคา';
   const number = shown.document?.number || '';
   const editable = options.editable === true;
@@ -489,6 +528,7 @@ export function buildQuotationMasterSwitchableHTML(quote, options = {}) {
     grayscale: options.grayscale === true,
     variantClass: 'v4',
     dataAttrs: ` data-template-version="${esc(shown.templateVersion || '')}" data-active-lang="${esc(active)}"`,
+    extraCss: QUOTATION_DOC_LANGUAGES.some((language) => columnsOf[language].pack) ? ITEM_TABLE_PACK_CSS : '',
     toolbar: {
       label: `${documentLabel} ${number}`,
       controlsHtml: langSwitchControls(active, { editable }),
@@ -497,7 +537,7 @@ export function buildQuotationMasterSwitchableHTML(quote, options = {}) {
     },
     pages: QUOTATION_DOC_LANGUAGES.map((language) => {
       const model = models[language];
-      return `<div class="langPane" data-lang="${esc(language)}">${renderPages(model, labelsOf(model))}</div>`;
+      return `<div class="langPane" data-lang="${esc(language)}">${renderPages(model, labelsOf(model), columnsOf[language])}</div>`;
     }).join(''),
     script: editable && saveTarget ? langSwitchScript(saveTarget, gapMessages.length > 0) : '',
     overlayHtml: editable && saveTarget ? langConfirmOverlay(gapMessages) : '',

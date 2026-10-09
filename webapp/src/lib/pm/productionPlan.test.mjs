@@ -219,6 +219,47 @@ test('บรรทัดจำนวนเป็น 0 หรือติดล�
   assert.deepEqual(draftJobsForSalesOrder(order(), [{ id: 'L1', productId: 'P', qty: 0 }]), []);
 });
 
+// ── เลขแพ็คของบรรทัด (mig 0407 · งวด PR-2 · docs/qt-pack-column.md) ─────────────────────────────
+test('⭐ บรรทัดที่มีเลขแพ็ค: จำนวนของงาน = แพ็ค × จำนวน (2 × 12 = 24) · บรรทัดที่ไม่มีเลขแพ็คได้จำนวนเดิม', () => {
+  const rows = draftJobsForSalesOrder(order(), [
+    { id: 'L1', productId: 'PRD1', fgCode: 'FG-278-02-001-0757', description: 'แพ็คเกจบริการ', qty: 12, packQty: 2 },
+    { id: 'L2', productId: 'PRD2', description: 'น้ำหอม B', qty: 24 },
+    { id: 'L3', productId: 'PRD3', description: 'น้ำหอม C', qty: '12', packQty: '43' },
+  ]);
+  assert.deepEqual(rows.map((r) => [r.salesOrderLineId, r.qty]), [['L1', 24], ['L2', 24], ['L3', 516]]);
+});
+
+test('🔴 เลขแพ็คว่าง = ไม่มีอะไรเปลี่ยน: แถวที่ได้เท่ากับวันนี้ทุกคีย์ (ไม่มีคีย์ · packQty: null · ค่าที่เก็บไม่ได้)', () => {
+  const stored = [
+    { id: 'L1', productId: 'PRD1', fgCode: 'FG-1', description: 'น้ำหอม A', qty: 500 },
+    { id: 'L2', productId: 'PRD2', description: 'น้ำหอม B', qty: '300.5' },
+    { id: 'L3', productId: null, description: 'ค่าออกแบบฉลาก', qty: 1 },
+    { id: 'L4', productId: 'PRD4', description: 'จำนวนว่าง', qty: null },
+    { id: 'L5', productId: 'PRD5', description: 'จำนวนไม่ใช่ตัวเลข', qty: 'abc' },
+    { id: 'L6', productId: 'PRD6', description: 'ติดลบ', qty: -3 },
+    { id: 'L7', productId: 'PRD7', description: 'ศูนย์', qty: 0 },
+  ];
+  // ค่าที่คาด = ลอกจากพฤติกรรมวันนี้ (qty: Number(line.qty) · ข้าม ไม่ใช่ตัวเลข / ≤ 0) ไม่ได้คำนวณจากโค้ดที่ทดสอบ
+  const expected = [
+    { projectId: 'P1', dealId: 'D1', salesOrderId: 'SO1', salesOrderLineId: 'L1', productId: 'PRD1', fgCode: 'FG-1',
+      productName: 'น้ำหอม A', qty: 500, dueDate: '2026-09-01', status: 'draft' },
+    { projectId: 'P1', dealId: 'D1', salesOrderId: 'SO1', salesOrderLineId: 'L2', productId: 'PRD2', fgCode: null,
+      productName: 'น้ำหอม B', qty: 300.5, dueDate: '2026-09-01', status: 'draft' },
+  ];
+  const noKey = draftJobsForSalesOrder(order(), stored);
+  assert.deepEqual(noKey, expected);
+  for (const packQty of [null, undefined, '', '  ', 'abc', 0, 1.5, 10000]) {
+    const withKey = draftJobsForSalesOrder(order(), stored.map((line) => ({ ...line, packQty })));
+    assert.deepEqual(withKey, noKey, `packQty: ${String(packQty)}`);
+  }
+});
+
+test('บรรทัดที่มีเลขแพ็คแต่จำนวนเป็น 0 / ว่าง / ไม่ใช่ตัวเลข ไม่สร้างงาน — กติกาข้ามเดิม', () => {
+  for (const qty of [0, null, '', 'abc', -1]) {
+    assert.deepEqual(draftJobsForSalesOrder(order(), [{ id: 'L1', productId: 'P', qty, packQty: 2 }]), [], String(qty));
+  }
+});
+
 // ── สรุปแผนผลิตของ SO — การ์ดบนหน้า SO (P-3) ─────────────────────────────
 test('SO ที่ยังไม่มีงานผลิต → "ยังไม่ได้วางคิวผลิต"', () => {
   const s = salesOrderPlanSummary([], [line()]);

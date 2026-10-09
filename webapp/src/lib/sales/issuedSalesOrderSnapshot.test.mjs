@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildIssuedSalesOrderArtifactHtml,
   buildIssuedSalesOrderPayload,
   captureIssuedSalesOrderSnapshot,
+  issuedContentFingerprint,
   ISSUED_SALES_ORDER_LAYOUT_VERSION,
 } from './issuedSalesOrderSnapshot.js';
 
@@ -104,7 +106,9 @@ test('capture ไม่ล้มเมื่อ SO ไม่มีใบเส�
 });
 
 test('layout version ถูก tag ไว้สำหรับติดตาม generator', () => {
-  assert.equal(ISSUED_SALES_ORDER_LAYOUT_VERSION, 'so-master-v4.4');
+  // v4.5 = คอลัมน์แพ็คต่อเดือนบนกระดาษ + คีย์ packQty ใน payload ของบรรทัดที่มีเลขแพ็ค (docs/qt-pack-column.md)
+  // ป้ายของตัวสร้างเท่านั้น — ใบที่ไม่มีเลขแพ็คได้ artifact และ payload เดิมทุกไบต์ (เทสต์ด้านล่างยืนยัน)
+  assert.equal(ISSUED_SALES_ORDER_LAYOUT_VERSION, 'so-master-v4.5');
 });
 
 test('payload ตรึงชื่อ/ที่อยู่อังกฤษ — ค่าบนใบมาก่อน แล้วถอยไปใบเสนอราคาที่ผูก', () => {
@@ -202,4 +206,56 @@ test('🔴 capture: อ่านหลักฐานของผู้ยื่
     }), pattern);
     assert.equal(sink.args, undefined, `${failing}: ห้ามเรียก RPC ตรึง`);
   }
+});
+
+// ══ เลขแพ็คต่อเดือนในฉบับตรึงของใบสั่งขาย (มติเจ้าของ 08/10 · mig 0407 · docs/qt-pack-column.md) ═══════════════════
+
+/* คีย์ของบรรทัดใน payload ณ ก่อนเพิ่มเลขแพ็ค — บรรทัดที่ไม่มีเลขแพ็คต้องมีคีย์ชุดนี้เป๊ะ (ไม่มี packQty แม้เป็น null) */
+const PAYLOAD_LINE_KEYS = ['fgCode', 'description', 'qty', 'unit', 'unitPrice', 'lineTotal'];
+const packOrder = (over = {}) => ({
+  ...baseOrder,
+  subtotal: 85000, vatAmount: 5950, totalAmount: 90950,
+  lines: [
+    { id: 'L1', sortOrder: 1, fgCode: 'FG-1', description: 'สินค้า A', qty: 2, unit: 'ชิ้น', unitPrice: 500, lineTotal: 1000 },
+    { id: 'L2', sortOrder: 2, fgCode: 'FG-364-02-001-1061', description: 'ระบบกระจายกลิ่น · 1 package', qty: 12, unit: 'แพ็คเกจ', unitPrice: 3500, lineTotal: 84000, packQty: 2, ...over },
+  ],
+});
+
+test('payload: บรรทัดที่มีเลขแพ็คได้คีย์ packQty ต่อท้ายสุด และหน่วยเป็นเดือนตามที่กระดาษพิมพ์ — บรรทัดอื่นคีย์และค่าเดิม', () => {
+  const [plain, pack] = buildIssuedSalesOrderPayload(packOrder()).content.lines;
+  assert.deepEqual(Object.keys(plain), PAYLOAD_LINE_KEYS);
+  assert.deepEqual(plain, { fgCode: 'FG-1', description: 'สินค้า A', qty: 2, unit: 'ชิ้น', unitPrice: 500, lineTotal: 1000 });
+  assert.deepEqual(Object.keys(pack), [...PAYLOAD_LINE_KEYS, 'packQty']);
+  assert.deepEqual(pack, {
+    fgCode: 'FG-364-02-001-1061', description: 'ระบบกระจายกลิ่น · 1 package', qty: 12, unit: 'เดือน', unitPrice: 3500, lineTotal: 84000, packQty: 2,
+  });
+  // เลขที่เก็บเป็นสตริงได้ค่าเดียวกับตัวเลข — ลายนิ้วมือเนื้อหาเท่ากัน
+  assert.equal(
+    issuedContentFingerprint(buildIssuedSalesOrderPayload(packOrder({ packQty: '2' }))),
+    issuedContentFingerprint(buildIssuedSalesOrderPayload(packOrder())),
+  );
+  assert.notEqual(
+    issuedContentFingerprint(buildIssuedSalesOrderPayload(packOrder({ packQty: 3 }))),
+    issuedContentFingerprint(buildIssuedSalesOrderPayload(packOrder())),
+    'เลขแพ็คต่างกัน = เนื้อหาต่างกัน = ต้องออกฉบับใหม่',
+  );
+});
+
+test('payload: ค่าที่ไม่ใช่เลขแพ็ค (null ที่ select * คืน · ว่าง · ค่าที่เก็บลงฐานไม่ได้) = payload เดิมทุกคีย์ หน่วยที่เก็บไว้ตามเดิม', () => {
+  const { packQty: _pack, ...noKeyLine } = packOrder().lines[1];
+  const expected = buildIssuedSalesOrderPayload({ ...packOrder(), lines: [packOrder().lines[0], noKeyLine] });
+  assert.deepEqual(Object.keys(expected.content.lines[1]), PAYLOAD_LINE_KEYS);
+  assert.equal(expected.content.lines[1].unit, 'แพ็คเกจ', 'ไม่มีเลขแพ็ค = หน่วยที่เก็บไว้');
+  for (const value of [null, undefined, '', '   ', 'abc', 0, '0', 1.5, 10000, true]) {
+    const payload = buildIssuedSalesOrderPayload(packOrder({ packQty: value }));
+    assert.deepEqual(payload, expected, `packQty=${JSON.stringify(value) ?? 'undefined'}`);
+    assert.equal(issuedContentFingerprint(payload), issuedContentFingerprint(expected));
+  }
+});
+
+test('artifact ของใบที่มีเลขแพ็คมีคอลัมน์แพ็ค — ใบที่ไม่มีไม่มีคำว่า withPack เลย', () => {
+  const html = buildIssuedSalesOrderArtifactHtml(packOrder(), {});
+  assert.match(html, /<table class="itemTable withPack">/);
+  assert.ok(html.includes('<th class="number">แพ็ค/เดือน</th>'));
+  assert.ok(!buildIssuedSalesOrderArtifactHtml(baseOrder, {}).includes('withPack'));
 });

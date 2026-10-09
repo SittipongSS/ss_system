@@ -833,6 +833,43 @@ test('🔴 เส้นข้อมูลของหน้า "ออกเอ�
   assert.equal(payload.dealOwner.name, 'สิทธิพงศ์ เจ้าของดีล');
 });
 
+/* ── เลขแพ็คของบรรทัด (mig 0407 · งวด PR-2) — จอตัดสินใจกับกระดาษร่างต้องพูดจำนวนเดียวกัน ───────────────── */
+test('⭐ บรรทัดที่มีเลขแพ็ค: เส้นข้อมูลหน้าออกเอกสารพก packQty (quantity + line) และกระดาษร่างพิมพ์ “2 แพ็ค × 12 เดือน”', async () => {
+  const base = seed({ product_spec_documents: [], product_spec_document_revisions: [], attachments: [] });
+  base.sales_orders[0] = { ...base.sales_orders[0], team: 'KA', deal: { id: 'D-1', ownerId: 'U-AE', team: 'KA' } };
+  base.sales_order_lines[0] = { ...base.sales_order_lines[0], fgCode: 'FG-0903-01-002-10043', qty: 12, unit: 'เดือน', packQty: 2 };
+  const db = fakeDb(base, { users: USERS });
+  const payload = await newPageChain(db, { user: AC });
+  assert.deepEqual(payload.quantity, { qty: 12, unit: 'เดือน', source: 'sales_order_line', packQty: 2 });
+  assert.equal(payload.line.packQty, 2, 'บรรทัดบนการ์ดเอกสารต่อเนื่องพกเลขแพ็ค');
+  const paper = await draftPreview(db);
+  assert.equal(paper.error, undefined, paper.error);
+  assert.match(paper.html, /<th>จำนวนผลิต \(Quantity\)<\/th><td>2 แพ็ค × 12 เดือน<\/td>/);
+  assert.equal(db.writes.length, 0);
+});
+
+test('🔴 บรรทัดที่ไม่มีเลขแพ็ค: quantity และบรรทัดของหน้าออกเอกสารเท่ากับวันนี้ทุกคีย์ · กระดาษร่างเท่าเดิมทุกไบต์ (packQty: null)', async () => {
+  const build = (lineOver) => {
+    const base = seed({ product_spec_documents: [], product_spec_document_revisions: [], attachments: [] });
+    base.sales_orders[0] = { ...base.sales_orders[0], team: 'KA', deal: { id: 'D-1', ownerId: 'U-AE', team: 'KA' } };
+    base.sales_order_lines[0] = { ...base.sales_order_lines[0], fgCode: 'FG-0903-01-002-10043', ...lineOver };
+    return fakeDb(base, { users: USERS });
+  };
+  const plainDb = build({});
+  const plain = await newPageChain(plainDb, { user: AC });
+  // ค่าที่คาด = รูปของวันนี้ (ลอกจาก loadDocumentQuantity / specDocLineView ก่อนงวดนี้)
+  assert.deepEqual(plain.quantity, { qty: 2500, unit: 'ขวด', source: 'sales_order_line' });
+  assert.deepEqual(Object.keys(plain.line), ['id', 'fgCode', 'description', 'qty', 'unit', 'productId', 'sortOrder']);
+  const plainPaper = await draftPreview(plainDb);
+  for (const packQty of [null, '', 'abc', 0, 1.5, 10000]) {
+    const db = build({ packQty });
+    const payload = await newPageChain(db, { user: AC });
+    assert.deepEqual(payload.quantity, plain.quantity, `packQty: ${String(packQty)}`);
+    assert.deepEqual(payload.line, plain.line, `packQty: ${String(packQty)}`);
+    assert.equal((await draftPreview(db)).html, plainPaper.html, `กระดาษร่าง · packQty: ${String(packQty)}`);
+  }
+});
+
 test('เส้นข้อมูลของหน้า "ออกเอกสาร": บรรทัดที่ออกเอกสารไปแล้ว + ทางที่ต้องอ่านใบเสนอราคา — ก็ยังไม่เขียนอะไร', async () => {
   const base = seed({ attachments: [{ id: 'ATT-1', entityType: 'product', entityId: 'P-1', docType: 'spec_illustration', fileName: 'a.jpg', createdAt: '2026-09-01T00:00:00.000Z' }] });
   // ไม่มีเลขใบเสนอราคาแช่ไว้ ⇒ สายนี้ต้องถอยไปอ่านตารางใบเสนอราคาจริง (ทางที่ route เปิดเมื่อ metadata ว่าง)

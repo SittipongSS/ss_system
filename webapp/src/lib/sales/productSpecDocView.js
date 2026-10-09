@@ -11,6 +11,7 @@
 // ⚠️ ไฟล์นี้ไม่แตะฐาน ไม่แตะ DOM — หน้าเอกสารกับการ์ดบนหน้า SO import ตรง ๆ
 import { approvalPrompt, IRREVERSIBLE_NOTE } from '@/lib/approvalPrompt';
 import { fmtDate } from '@/lib/format';
+import { linePackQty } from '@/lib/sales/linePackView';
 import { toneColor } from '@/lib/ui/tone';
 import {
   PRODUCT_SPEC_CERT_STATUS_LABELS, productSpecCertPendingLabel,
@@ -683,6 +684,8 @@ export function docContentSummary({
       orderNumber: order.orderNumber || null,
       lineDescription: order.lineDescription || null,
       qty: order.qty ?? null,
+      /* เลขแพ็คของบรรทัด (mig 0407) — มีเฉพาะเมื่อภาพนิ่ง/ก้อนสดมี (จอโชว์ "2 แพ็ค × 12 เดือน" ตรงกับกระดาษ) */
+      ...(linePackQty(order) !== null ? { packQty: linePackQty(order) } : {}),
       unit: order.unit || null,
       deliveryDueDate: order.deliveryDueDate || null,
       customerName: order.customerName || null,
@@ -732,6 +735,7 @@ export function specDocNewOrderFacts(payload) {
     orderNumber: order.orderNumber || null,
     lineDescription: payload?.line?.description || null,
     qty: payload?.quantity?.qty ?? null,
+    ...(linePackQty(payload?.quantity) !== null ? { packQty: linePackQty(payload.quantity) } : {}),
     unit: payload?.quantity?.unit || null,
     deliveryDueDate: order.deliveryDueDate || null,
     customerName: order.customerName || null,

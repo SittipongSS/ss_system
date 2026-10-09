@@ -1,5 +1,6 @@
 import { categoryFlags, categoryOf } from "@/lib/master/categoryOf";
 import { billedTaxTotals, exciseTaxLine, resolveProductTaxable } from "@/lib/tax/exciseBilling";
+import { lineUnitsTotal } from "@/lib/sales/linePacks";
 
 const roundMoney = (value) => Math.round((Number(value) || 0) * 100) / 100;
 const normalizedKey = (value) => String(value || "").trim().toLowerCase();
@@ -89,7 +90,10 @@ export function resolveSoFiling({
     });
     if (!taxable) continue;
 
-    const quantity = Number(line.qty || 0);
+    /* ⭐ จำนวนที่ยื่นภาษี = หน่วยรวมของบรรทัด (`lineUnitsTotal` = แพ็ค × จำนวน · mig 0407) — บรรทัด 2 แพ็ค × 12 เดือน คือของ 24 หน่วย
+       ยื่น 12 = ยื่นขาดครึ่งหนึ่ง · บรรทัดที่ไม่มีเลขแพ็ค (ทุกบรรทัดก่อนงวด PR-3) ได้ `qty` ตามเดิม · จำนวนว่าง/ไม่ใช่ตัวเลข = 0 ⇒ คำเตือนเดิม
+       ⚠️ ตัวโหลดสองตัว (from-sales-order · handoffQueueData) ต้อง select `packQty` คู่กับ `qty` (ด่าน linePackReaders.test.mjs) */
+    const quantity = lineUnitsTotal(line);
     if (!product || !Number.isFinite(quantity) || quantity <= 0) {
       warnings.push({
         code: "missing_product",

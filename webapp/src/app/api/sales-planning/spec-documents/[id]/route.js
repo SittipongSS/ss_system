@@ -265,10 +265,11 @@ function notifyLater(supabase, action, context) {
 
 /* บรรทัด SO ที่เอกสารอ้าง — ใช้ถ่ายภาพนิ่งตอนยื่น (จำนวน · หน่วย · คำบรรยาย · บรรทัดใบเสนอราคาต้นทาง
    ที่เป็นค่าสำรองของ "จำนวนผลิต")
-   ⚠️ ต้องเป็นบรรทัดของ SO เดียวกับเอกสาร — เช็คเอง ไม่เชื่อ id ลอย ๆ */
+   ⚠️ ต้องเป็นบรรทัดของ SO เดียวกับเอกสาร — เช็คเอง ไม่เชื่อ id ลอย ๆ
+   ⭐ mig 0407: บรรทัดพก packQty คู่กับ qty — ภาพนิ่งตอนยื่นถ่ายเลขแพ็คของบรรทัดไปด้วย (กระดาษพิมพ์ แพ็ค × เดือน) */
 async function loadDocumentLine(supabase, document, latest) {
   const { data, error } = await supabase.from('sales_order_lines')
-    .select('id, salesOrderId, quotationLineId, productId, fgCode, description, qty, unit, sortOrder')
+    .select('id, salesOrderId, quotationLineId, productId, fgCode, description, qty, packQty, unit, sortOrder')
     .eq('id', document.salesOrderLineId)
     .maybeSingle();
   if (error) return { error: `อ่านบรรทัดใบสั่งขายไม่สำเร็จ: ${error.message}` };

@@ -34,10 +34,11 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     /* ⭐ mig 0392: ชนิด/แพ็คเกจที่ฝ่ายขายเลือก + หมวด (metadata #1844) — ใบที่ประทับแล้วถาม "มีแพ็คเกจไหม" ผ่าน
        `serviceFgCode` (ตัวตัดสิน `hasServicePackageLine` อ่านช่องนี้เมื่อใบประทับ) · `productId` ให้ตัวตัดสินรู้ว่าเป็นบรรทัด FG
        ⭐ mig 0400: "servicePeriodFrom"/"servicePeriodTo" = ช่วงบริการของรายการ — ใบแยกรายรายการ เดือนของรอบขาย (ข้อเสนอ มล./เดือน)
-       คิดจากช่วงของรายการเอง · โหมดของใบมากับ `order` (`loadScoped` อ่าน `*`) · ⚠️ ต้องรัน 0400 ก่อน deploy (check:columns แดงจนกว่าจะรัน) */
+       คิดจากช่วงของรายการเอง · โหมดของใบมากับ `order` (`loadScoped` อ่าน `*`) · ⚠️ ต้องรัน 0400 ก่อน deploy (check:columns แดงจนกว่าจะรัน)
+       ⭐ mig 0407: "packQty" คู่กับ qty เสมอ — `fgSummary` นับหน่วยรวม (แพ็ค × จำนวน) ของบรรทัดที่มีเลขแพ็ค */
     const { data: lines, error: lineError } = await supabase
       .from('sales_order_lines')
-      .select('id, "fgCode", "productId", description, qty, unit, "sortOrder", metadata, "serviceKind", "serviceProductId", "serviceFgCode", "serviceRounds", "servicePeriodFrom", "servicePeriodTo"')
+      .select('id, "fgCode", "productId", description, qty, "packQty", unit, "sortOrder", metadata, "serviceKind", "serviceProductId", "serviceFgCode", "serviceRounds", "servicePeriodFrom", "servicePeriodTo"')
       .eq('salesOrderId', id).order('sortOrder', { ascending: true });
     if (lineError) return fail(lineError.message, 500);
 

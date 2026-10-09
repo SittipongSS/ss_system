@@ -93,3 +93,21 @@ test('🐞 โมดัล/toast ยกเลิกบนการ์ดใช�
     'toast ยกเลิกต้องเป็นข้อความกลาง (บอกว่าแจ้งเตือนใคร)');
   assert.doesNotMatch(confirm, /notifyToast\.success\(`/, 'ห้ามเขียน toast ยกเลิกเองบนการ์ด');
 });
+
+/* ── เลขแพ็คของบรรทัด (mig 0407 · งวด PR-2 · docs/qt-pack-column.md) ───────────────────────────────────
+   ช่องจำนวนของการ์ด: บรรทัดที่มีเลขแพ็ค = "2 แพ็ค × 12 เดือน" (`linePackQtyText`) · บรรทัดอื่นนิพจน์เดิมอยู่หลัง `??` ครบ */
+test('0407 ช่องจำนวนของการ์ดเอกสารต่อเนื่อง: บรรทัดที่มีเลขแพ็คบอก แพ็ค × เดือน · บรรทัดอื่นข้อความเดิม', async () => {
+  assert.match(source, /import \{ linePackQtyText \} from "@\/lib\/sales\/linePackView";/);
+  assert.match(source, /\{line\.qty === null \|\| line\.qty === undefined \? naText\(null\) : \(linePackQtyText\(line\) \?\? `\$\{line\.qty\}\$\{line\.unit \? ` \$\{line\.unit\}` : ""\}`\)\}/);
+  // ตัวช่วยคืน null เมื่อไม่มีเลขแพ็ค ⇒ `??` ตกไปนิพจน์เดิม · มี = วลีเดียวกับกระดาษ
+  const { linePackQtyText } = await import('../../lib/sales/linePackView.js');
+  const { specDocLineView } = await import('../../lib/sales/productSpecDocOrder.js');
+  assert.equal(linePackQtyText({ qty: 12, unit: 'เดือน' }), null);
+  assert.equal(linePackQtyText({ qty: 12, unit: 'เดือน', packQty: 2 }), '2 แพ็ค × 12 เดือน');
+  // บรรทัดที่ API ส่งให้การ์ด (`specDocLineView`) พกเลขแพ็คเฉพาะบรรทัดที่มี — บรรทัดเดิมรูปเดิมทุกคีย์
+  assert.equal(specDocLineView({ id: 'L', qty: 12, unit: 'เดือน', packQty: 2 }).packQty, 2);
+  const plain = { id: 'L', fgCode: 'FG-1', description: 'ของ', qty: 12, unit: 'เดือน', productId: 'P', sortOrder: 0 };
+  assert.deepEqual(specDocLineView({ ...plain, packQty: null, salesOrderId: 'SO', quotationLineId: 'Q' }), plain);
+  assert.deepEqual(specDocLineView({ ...plain, packQty: 'abc' }), plain);
+});
+

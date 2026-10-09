@@ -37,6 +37,7 @@ import ExcelDownloadButton from "@/components/ui/ExcelDownloadButton";
 import useReportPeriod from "@/lib/ui/useReportPeriod";
 import { DEAL_AXIS_OPTIONS, dealDeliveryMonth, dealDeliveryState, dealMissingDelivery, normalizeDealAxis } from "@/lib/sales/dealPeriod";
 import { formatMonthLabel } from "@/lib/datePeriods";
+import { linePackFormulaText } from "@/lib/sales/linePackView";
 import Segmented from "@/components/ui/Segmented";
 import MyTeamsFilter from "@/components/ui/MyTeamsFilter";
 import useMyTeamsFilter from "@/lib/useMyTeamsFilter";
@@ -1271,7 +1272,8 @@ export default function SalesPlanningPipelinePage() {
                             <li key={line.id}>
                               {line.fgCode ? <span className="mono">{line.fgCode}</span> : null}
                               <ReadableText text={line.description} lines={2} empty="ไม่มีรายละเอียด" />
-                              <span className="mono">{line.qty} x {money(line.unitPrice)}</span>
+                              {/* บรรทัดที่มีเลขแพ็ค (mig 0407) = "2 × 12 × 3,500.00" (แพ็ค × จำนวน × ราคา) · บรรทัดอื่นข้อความเดิม */}
+                              <span className="mono">{linePackFormulaText(line) ?? <>{line.qty} x {money(line.unitPrice)}</>}</span>
                             </li>
                           ))}
                         </ul>

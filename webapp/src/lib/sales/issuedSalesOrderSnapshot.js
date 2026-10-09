@@ -13,6 +13,8 @@ import { buildSalesOrderPrintHTML } from '@/lib/sales/salesOrderPrint';
 import { resolveCompanyBlock } from '@/lib/companyProfile';
 import { fillCustomerSnapshotFromMaster } from '@/lib/sales/customerSnapshotFallback';
 import { fillMissingLineCategories } from '@/lib/sales/quoteLines';
+import { packLineUnit } from '@/lib/sales/linePacks';
+import { linePackQty } from '@/lib/sales/linePackView';
 import {
   loadSignatureImageDataUri,
   loadActiveSignatureAsset,
@@ -24,7 +26,10 @@ import {
 //        ครั้งถัดไปต้องได้ฉบับใหม่ ไม่ reuse ฉบับที่ยังไม่มีช่องอังกฤษ
 // v4.4 = ช่องลงนามพิมพ์ตำแหน่งเต็มของคนที่เซ็นจริง (signerRole ของหลักฐาน · มติ 2026-09-22) แทนคำย่อ
 //        "AE เจ้าของดีล" / "AE Supervisor" — payload ไม่เปลี่ยน เปลี่ยนแค่ artifact ⇒ ใบที่ตรึงแล้วคงเดิม
-export const ISSUED_SALES_ORDER_LAYOUT_VERSION = 'so-master-v4.4';
+// v4.5 = คอลัมน์แพ็คต่อเดือนบนกระดาษ (mig 0407 · docs/qt-pack-column.md) + payload ของบรรทัดที่มีเลขแพ็คได้คีย์ packQty
+//        และหน่วยของบรรทัดนั้นเป็นเดือนตามที่กระดาษพิมพ์ — **ใบที่ไม่มีเลขแพ็ค: artifact และ payload เหมือนเดิมทุกไบต์**
+//        (ป้ายนี้ไม่ถูกใช้ตัดสินอะไร — RPC ใช้ฉบับเดิมซ้ำตามลายนิ้วมือเนื้อหาเท่านั้น)
+export const ISSUED_SALES_ORDER_LAYOUT_VERSION = 'so-master-v4.5';
 export const ISSUED_SALES_ORDER_LOCALE = 'th-TH';
 
 const trimOrNull = (value) => {
@@ -57,9 +62,14 @@ export function buildIssuedSalesOrderPayload(order = {}, company) {
           fgCode: trimOrNull(l.fgCode),
           description: trimOrNull(l.description),
           qty: Number(l.qty || 0),
-          unit: trimOrNull(l.unit),
+          // บรรทัดที่มีเลขแพ็ค: หน่วยคือเดือนเสมอ — หลักฐานต้องพูดตรงกับที่กระดาษพิมพ์ · บรรทัดอื่นได้หน่วยที่เก็บไว้ตามเดิม
+          unit: trimOrNull(packLineUnit(l, l.unit)),
           unitPrice: Number(l.unitPrice || 0),
           lineTotal: Number(l.lineTotal || 0),
+          /* เลขแพ็คต่อเดือน (mig 0407) — **ต่อท้ายสุด และมีคีย์เฉพาะบรรทัดที่มีเลขแพ็คที่ใช้ได้**
+             ⛔ ห้ามใส่คีย์ที่ค่าเป็น null: canonical JSON เก็บ null ไว้ (lib/documentApproval.js) ⇒ ลายนิ้วมือเนื้อหาของ
+                ใบเดิมทุกใบจะขยับ แล้วการตรึงครั้งถัดไป (สลับภาษา · บัญชีเซ็น) ออกฉบับใหม่ทั้งที่เนื้อหาไม่ได้เปลี่ยน */
+          ...(linePackQty(l) !== null ? { packQty: linePackQty(l) } : {}),
         })),
       subtotal: Number(order.subtotal || 0),
       discountAmount: Number(order.discountAmount || 0),

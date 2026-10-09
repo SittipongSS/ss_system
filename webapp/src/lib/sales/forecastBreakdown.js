@@ -16,6 +16,8 @@
  */
 
 import { isSuperuser, isTeamLead } from '@/lib/permissions';
+import { lineUnitsTotal, packLineUnit } from '@/lib/sales/linePacks';
+import { linePackQty, lineUnitsUnit } from '@/lib/sales/linePackView';
 
 export const UNCATEGORIZED = 'ไม่ระบุหมวด';
 
@@ -162,7 +164,12 @@ export function allocateToLines(lines, total) {
  *    ต้องอ่านออกว่าแถวนี้รู้แค่หมวด ⇒ คืน `categoryFrom` มาให้ไฟล์ติดป้าย
  * ⚠️ ที่เหลือคือข้อความล้วนจริง ๆ ("PERFUME LOTION" 30,000 ชิ้น) — ยังลงกอง
  *    "ไม่ระบุหมวด" · **ห้ามยืมหมวดของดีลมาแปะ** เพราะดีลใบเดียวมีได้หลายหมวด
- *    (มติผู้ใช้ 2026-09-07: "ต้องอ้างอิงหมวดจริง หลายหมวดก็ต้องหลายหมวด") */
+ *    (มติผู้ใช้ 2026-09-07: "ต้องอ้างอิงหมวดจริง หลายหมวดก็ต้องหลายหมวด")
+ * ⭐ **เลขแพ็คของบรรทัด** (mig 0407 · งวด PR-2 · docs/qt-pack-column.md) — บรรทัดที่มีเลขแพ็คได้สามคีย์เพิ่ม:
+ *      `packQty` (แพ็ค/เดือน · ไฟล์มีคอลัมน์ของมันเมื่อมีบรรทัดแบบนี้) · `units` = หน่วยรวม `lineUnitsTotal` (แพ็ค × จำนวน)
+ *      · `unitsUnit` = "แพ็ค" (หน่วยของ `units`) — และ `unit` ของบรรทัดเป็น "เดือน" (`packLineUnit` · จำนวน = จำนวนเดือน)
+ *    ตัวที่ **นับ** (ปริมาตรรวม · จำนวนรวมของแถวสรุป · คีย์หน่วยของแถวสรุป) อ่าน `units` / `unitsUnit` ก่อน แล้วค่อยถอย `qty` / `unit`
+ *    ⚠️ บรรทัดที่ไม่มีเลขแพ็ค **ไม่มีสามคีย์นี้เลย** ⇒ แถวของดีลเดิมเท่ากับก่อนมีเลขแพ็คทุกคีย์ */
 function quotationLineRows(lines, productById, productByFg = new Map()) {
   return [...(lines || [])]
     .sort((a, b) => num(a.sortOrder) - num(b.sortOrder))
@@ -180,13 +187,15 @@ function quotationLineRows(lines, productById, productByFg = new Map()) {
         : (byId && byId.categoryCode) ? 'product'
           : product ? 'fg-registry'
             : (ownFg ? 'fg-code' : 'fg-text');
+      const pack = linePackQty(line);
+      const unit = line.unit || product?.saleUnit || null;
       return {
         categoryCode: categoryCode || null,
         categoryFrom,
         fgCode,
         description: line.description || product?.productDescription || null,
         qty: num(line.qty),
-        unit: line.unit || product?.saleUnit || null,
+        unit: packLineUnit(line, unit),
         volume: product ? num(product.volume) || null : null,
         volumeUnit: product?.volumeUnit || null,
         unitPrice: num(line.unitPrice),
@@ -194,6 +203,7 @@ function quotationLineRows(lines, productById, productByFg = new Map()) {
            การคูณมาแล้ว บางแถวจึงเป็น 196799.99999999997 · ถ้าไม่ปัดที่นี่ เลขนั้นจะ
            ไปโผล่ในช่อง "มูลค่าบรรทัด" ของ Excel ดิบ ๆ (ของจริงเจอกับใบสหมิตร) */
         amount: money(line.lineTotal),
+        ...(pack !== null ? { packQty: pack, units: lineUnitsTotal(line), unitsUnit: lineUnitsUnit(line, unit) } : {}),
       };
     });
 }
@@ -263,7 +273,8 @@ export function forecastBreakdownOfDeal(deal, context = {}) {
     categoryLabel: line.categoryCode || UNCATEGORIZED,
     // ปริมาตรรวมของบรรทัด = ขนาดต่อหนึ่งหน่วยขาย × จำนวน (ดู dealValueItems: volume
     // ไม่เข้าสูตรคิดเงิน แต่เป็นตัวที่ฝ่ายผลิตใช้วางแผน)
-    volumeTotal: line.volume == null ? null : money(num(line.volume) * num(line.qty)),
+    // ⭐ บรรทัดที่มีเลขแพ็ค: จำนวน = หน่วยรวม (`units` = แพ็ค × จำนวน · mig 0407) — 2 แพ็ค × 12 เดือน = ของ 24 หน่วย
+    volumeTotal: line.volume == null ? null : money(num(line.volume) * num(line.units ?? line.qty)),
   }));
 }
 
@@ -274,9 +285,12 @@ export function forecastBreakdownOfDeal(deal, context = {}) {
       ต้องแยกบรรทัด · น้ำหอม 30 ml กับ 100 ml เป็นคนละงานผลิต คนละขวด คนละกล่อง
       ถ้ายุบรวม "จำนวนรวม" จะเป็นเลขที่เอาไปสั่งของไม่ได้เลย และ "ปริมาตรรวม" ก็บอก
       ไม่ได้ว่าต้องเตรียมขวดขนาดไหนกี่ใบ
-   ⚠️ **เดือนไม่อยู่ในคีย์** เพราะเดือนกลายเป็น *คอลัมน์* ของกริด ไม่ใช่แถว */
+   ⚠️ **เดือนไม่อยู่ในคีย์** เพราะเดือนกลายเป็น *คอลัมน์* ของกริด ไม่ใช่แถว
+   ⭐ บรรทัดที่มีเลขแพ็ค (mig 0407): หน่วยของ "จำนวนรวม" คือหน่วยของหน่วยรวม (`unitsUnit` = "แพ็ค") ไม่ใช่ "เดือน" ของช่องจำนวน
+      ⇒ แถวสรุปของบรรทัดแบบนี้อยู่ใต้หน่วย "แพ็ค" (ไม่ยุบรวมกับบรรทัดเดิมที่หน่วยเป็น "แพ็คเกจ"/"เดือน" — ตั้งใจ · docs) */
+export const summaryUnitOf = (row) => (row.unitsUnit ?? row.unit) || null;
 export const summaryKeyOf = (row) => [
-  row.categoryLabel, row.unit || '', row.volume ?? '', row.volumeUnit || '',
+  row.categoryLabel, summaryUnitOf(row) || '', row.volume ?? '', row.volumeUnit || '',
 ].join(' ');
 
 /* เดือนทั้ง 12 ของปี — กริดต้องมีคอลัมน์ครบทุกเดือนเสมอ แม้เดือนนั้นยังไม่มียอด
@@ -312,7 +326,7 @@ export function summarizeForecastLines(rows = [], months = null) {
       groups.set(key, {
         categoryCode: row.categoryCode || null,
         categoryLabel: row.categoryLabel,
-        unit: row.unit || null,
+        unit: summaryUnitOf(row),
         volume: row.volume ?? null,
         volumeUnit: row.volumeUnit || null,
         qty: 0,
@@ -325,7 +339,7 @@ export function summarizeForecastLines(rows = [], months = null) {
       });
     }
     const group = groups.get(key);
-    group.qty += num(row.qty);
+    group.qty += num(row.units ?? row.qty);
     if (row.volumeTotal != null) { group.volumeTotal += num(row.volumeTotal); group.hasVolume = true; }
     group.fcAmount = money(group.fcAmount + num(row.fcAmount));
     /* ⭐ ยอดที่ยังไม่รู้เดือนรับของ **ไม่ลงช่องเดือน** — ไปกองคอลัมน์ท้ายกริด

@@ -23,6 +23,8 @@ import {
 import {
   DOC_ACTION_KEYS, DOC_REASON_MIN, DOC_REVISION_STATUS_LABELS, documentActions, documentCreateGate,
 } from './productSpecDocWorkflow.js';
+import { linePackQtyText } from './linePackView.js';
+import { productSpecQuantityText } from './productSpecDocument.js';
 
 const doc = {
   id: 'PSD1', docNo: 'FM-SA-04-220969-001', status: 'active',
@@ -836,6 +838,47 @@ test('หน้าออกเอกสาร: ก้อนใบสั่งข
   // ก้อนนี้ป้อน docContentSummary แล้วได้แถว "ใบสั่งขาย" บนการ์ดเนื้อ
   const summary = docContentSummary({ source: 'live', spec: newSpec, order: facts });
   assert.equal(summary.order.qty, 300);
+});
+
+/* ── เลขแพ็คของบรรทัด (mig 0407 · งวด PR-2 · docs/qt-pack-column.md) ───────────────────────────────────
+   จอตัดสินใจ ("ออกเอกสาร") และการ์ดเนื้อเอกสารต้องพูดจำนวนเดียวกับกระดาษ: บรรทัดที่มีเลขแพ็ค = "2 แพ็ค × 12 เดือน" */
+test('⭐ หน้าออกเอกสาร + การ์ดเนื้อเอกสาร: เลขแพ็คของบรรทัดเดินจาก quantity ของ API ถึงสรุปบนจอ — ข้อความเท่ากับที่กระดาษพิมพ์', () => {
+  const payload = { ...newPayload(), quantity: { qty: 12, unit: 'เดือน', source: 'sales_order_line', packQty: 2 } };
+  const facts = specDocNewOrderFacts(payload);
+  assert.equal(facts.packQty, 2);
+  assert.deepEqual([facts.qty, facts.unit], [12, 'เดือน']);
+  const live = docContentSummary({ source: 'live', spec: newSpec, order: facts });
+  assert.equal(live.order.packQty, 2);
+  assert.equal(linePackQtyText(live.order), '2 แพ็ค × 12 เดือน');
+  assert.equal(linePackQtyText(live.order), productSpecQuantityText(live.order, 'th'), 'จอ = กระดาษ');
+  // ภาพนิ่งที่ถ่ายเลขแพ็คไว้ (หน้าเอกสารหลังยื่น)
+  const frozen = docContentSummary({
+    source: 'snapshot',
+    snapshot: { spec: { certifications: [] }, items: [], order: { orderNumber: 'SO-1', qty: 12, unit: 'เดือน', packQty: 2 } },
+  });
+  assert.equal(frozen.order.packQty, 2);
+  assert.equal(linePackQtyText(frozen.order), '2 แพ็ค × 12 เดือน');
+  assert.equal(specDocNewView(payload).orderFacts.packQty, 2, 'ถึงก้อนที่หน้าออกเอกสารวาด');
+});
+
+test('🔴 บรรทัดที่ไม่มีเลขแพ็ค: ก้อนใบสั่งขายบนจอเท่ากับวันนี้ทุกคีย์ (ไม่มีคีย์ · packQty: null · ค่าที่เก็บไม่ได้)', () => {
+  // ค่าที่คาด = ก้อนที่เทสต์ "หน้าออกเอกสาร: ก้อนใบสั่งขายของเนื้อ" ยึดไว้วันนี้ (ลอกมา)
+  const expectedFacts = {
+    orderNumber: 'SO-26090001-0', lineDescription: 'สเปรย์', qty: 300, unit: 'ขวด', deliveryDueDate: '2026-10-30',
+    customerName: 'บริษัท ลูกค้า จำกัด', dealOwnerName: 'เอกี เจ้าของดีล',
+  };
+  const expectedSummaryOrder = {
+    orderNumber: 'SO-26090001-0', lineDescription: 'สเปรย์', qty: 300, unit: 'ขวด', deliveryDueDate: '2026-10-30',
+    customerName: 'บริษัท ลูกค้า จำกัด', dealOwnerName: 'เอกี เจ้าของดีล',
+  };
+  assert.deepEqual(specDocNewOrderFacts(newPayload()), expectedFacts);
+  for (const packQty of [null, undefined, '', '  ', 'abc', 0, 1.5, 10000]) {
+    const payload = { ...newPayload(), quantity: { qty: 300, unit: 'ขวด', source: 'quotation_line', packQty } };
+    const facts = specDocNewOrderFacts(payload);
+    assert.deepEqual(facts, expectedFacts, `packQty: ${String(packQty)}`);
+    assert.deepEqual(docContentSummary({ source: 'live', spec: newSpec, order: { ...facts, packQty } }).order, expectedSummaryOrder);
+    assert.equal(linePackQtyText({ ...facts, packQty }), null, 'จอใช้นิพจน์เดิมของตัวเอง');
+  }
 });
 
 /* 🐞 ผลตรวจสด 23/09: จอเขียนแค่ "ภาพอยู่ที่หน้าสเปคของสินค้า" ขณะที่กระดาษร่างพิมพ์ครบ 5 ภาพ ⇒ คนที่อ่านแต่จอ

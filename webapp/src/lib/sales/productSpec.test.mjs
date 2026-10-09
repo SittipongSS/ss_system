@@ -1201,6 +1201,63 @@ test('⭐ store: จำนวนผลิต = บรรทัด SO · ไม�
   assert.deepEqual(await qtyOf(null, { quotationId: null }), [null, null, null]);
 });
 
+/* ── เลขแพ็คของบรรทัด (mig 0407 · งวด PR-2 · docs/qt-pack-column.md) ───────────────────────────────────
+   บรรทัดที่ให้จำนวน (SO ก่อน · ถอยใบเสนอราคา) มีเลขแพ็ค ⇒ ภาพนิ่งถ่าย `order.packQty` (ตัวเลข) ไปด้วย
+   🔴 บรรทัดที่ไม่มีเลขแพ็ค: ก้อน `order` มีคีย์ชุดเดิมทุกตัว — ไม่มีคีย์ packQty (ไม่ใช่ null) */
+test('⭐ store: จำนวนผลิตของบรรทัดที่มีเลขแพ็คพกเลขแพ็คของบรรทัดเดียวกับที่ให้จำนวน (SO · ใบเสนอราคาที่ชี้ · ถอยสินค้าเดียวกัน)', async () => {
+  const seed = snapshotSeed();
+  seed.quotation_lines = [
+    { id: 'QL-1', quotationId: 'QT-ID', productId: 'PRD-OTHER', qty: 10, packQty: 5, unit: 'เดือน', sortOrder: 0 },
+    { id: 'QL-2', quotationId: 'QT-ID', productId: 'PRD1', qty: 12, packQty: 2, unit: 'เดือน', sortOrder: 1 },
+    { id: 'QL-4', quotationId: 'QT-ID', productId: 'PRD1', qty: 7, packQty: null, unit: 'แพ็คเกจ', sortOrder: 2 },
+  ];
+  const order = { id: 'SO1', quotationId: 'QT-ID', metadata: {} };
+  const of = async (line) => {
+    const res = await buildDocumentSnapshot(fakeDb(seed), { productId: 'PRD1', order, line, now: NOW });
+    assert.equal(res.error, undefined, res.error);
+    const { qty, unit, qtySource, packQty } = res.snapshot.order;
+    return [qty, unit, qtySource, packQty, Object.prototype.hasOwnProperty.call(res.snapshot.order, 'packQty')];
+  };
+  assert.deepEqual(await of({ id: 'SOL-1', qty: 12, unit: 'เดือน', packQty: 2, quotationLineId: 'QL-2' }), [12, 'เดือน', 'sales_order_line', 2, true]);
+  assert.deepEqual(await of({ id: 'SOL-1', qty: '12', unit: 'เดือน', packQty: '43' }), ['12', 'เดือน', 'sales_order_line', 43, true], 'ค่าจากฐานเป็นสตริงก็ได้ตัวเลข');
+  // บรรทัด SO ไม่มีจำนวน ⇒ ใบเสนอราคา: เลขแพ็คต้องมาจากบรรทัดเดียวกับจำนวน (ไม่ใช่ของบรรทัด SO)
+  assert.deepEqual(await of({ id: 'SOL-1', qty: null, unit: null, packQty: 9, quotationLineId: 'QL-2' }), [12, 'เดือน', 'quotation_line', 2, true]);
+  assert.deepEqual(await of({ id: 'SOL-1', qty: null, unit: null, quotationLineId: 'QL-4' }), [7, 'แพ็คเกจ', 'quotation_line', undefined, false]);
+  assert.deepEqual(await of({ id: 'SOL-1', qty: null, unit: null, quotationLineId: 'QL-1' }), [12, 'เดือน', 'quotation_line', 2, true], 'ลิงก์คนละสินค้า = ถอยสินค้าเดียวกัน พร้อมเลขแพ็คของบรรทัดนั้น');
+  assert.deepEqual(await of(null), [12, 'เดือน', 'quotation_line', 2, true]);
+});
+
+test('🔴 store: บรรทัดที่ไม่มีเลขแพ็ค — ก้อน order ของภาพนิ่งเท่ากับวันนี้ทุกคีย์ (ไม่มีคีย์ · packQty: null · ค่าที่เก็บไม่ได้)', async () => {
+  const seed = snapshotSeed();
+  seed.quotation_lines = [{ id: 'QL-2', quotationId: 'QT-ID', productId: 'PRD1', qty: 3000, unit: 'ขวด', sortOrder: 1 }];
+  const order = { id: 'SO1', quotationId: 'QT-ID', metadata: {} };
+  // คีย์ของก้อน order วันนี้ (ลอกจาก buildDocumentSnapshot ก่อนงวดนี้) — เพิ่มคีย์ถาวรเมื่อไร เทสต์นี้ต้องแดง
+  const TODAY_KEYS = ['salesOrderId', 'salesOrderLineId', 'orderNumber', 'quotationNumber', 'confirmDocType', 'confirmDocNo', 'confirmDocDate',
+    'qty', 'unit', 'qtySource', 'lineDescription', 'deliveryDueDate', 'customerName', 'docLanguage', 'dealOwnerId', 'dealOwnerName',
+    'dealOwnerEmail', 'dealOwnerPhone'];
+  const snap = async (db, line) => (await buildDocumentSnapshot(db, { productId: 'PRD1', order, line, now: NOW })).snapshot;
+  const soLine = { id: 'SOL-1', qty: 2500, unit: 'แพ็คเกจ', quotationLineId: 'QL-2' };
+  const base = await snap(fakeDb(seed), soLine);
+  assert.deepEqual(Object.keys(base.order), TODAY_KEYS);
+  assert.deepEqual([base.order.qty, base.order.unit, base.order.qtySource], [2500, 'แพ็คเกจ', 'sales_order_line']);
+  for (const packQty of [null, undefined, '', '  ', 'abc', 0, 1.5, 10000]) {
+    assert.deepEqual(await snap(fakeDb(seed), { ...soLine, packQty }), base, `บรรทัด SO · packQty: ${String(packQty)}`);
+    const quoteSeed = { ...seed, quotation_lines: seed.quotation_lines.map((row) => ({ ...row, packQty })) };
+    const viaQuote = await snap(fakeDb(quoteSeed), { id: 'SOL-1', qty: null, unit: null, quotationLineId: 'QL-2' });
+    assert.deepEqual(Object.keys(viaQuote.order), TODAY_KEYS, `บรรทัดใบเสนอราคา · packQty: ${String(packQty)}`);
+    assert.deepEqual([viaQuote.order.qty, viaQuote.order.unit, viaQuote.order.qtySource], [3000, 'ขวด', 'quotation_line']);
+  }
+});
+
+test('store: ตัวอ่านบรรทัดใบเสนอราคาของจำนวนผลิตเลือก packQty คู่กับ qty (mig 0407)', async () => {
+  // ⚠️ ฐานจำลองของไฟล์นี้ไม่ตัดคอลัมน์ตาม select ⇒ ต้องอ่านข้อความ select ของจริง
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(new URL('./productSpecStore.js', import.meta.url), 'utf8');
+  const select = source.match(/from\('quotation_lines'\)\s*\.select\('([^']*)'\)/)?.[1] || '';
+  const columns = select.split(',').map((col) => col.trim());
+  assert.ok(columns.includes('qty') && columns.includes('packQty'), select);
+});
+
 test('🔴 store: อ่านบรรทัดใบเสนอราคา (ค่าสำรองของจำนวนผลิต) ไม่ได้ = error ไม่ใช่ N/A บนกระดาษ', async () => {
   const db = fakeDb(snapshotSeed(), { fail: (table) => (table === 'quotation_lines' ? { message: 'timeout' } : null) });
   const res = await buildDocumentSnapshot(db, { productId: 'PRD1', order: { id: 'SO1', quotationId: 'QT-ID' }, line: null, now: NOW });

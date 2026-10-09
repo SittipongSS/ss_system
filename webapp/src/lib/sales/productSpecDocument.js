@@ -119,6 +119,7 @@ import {
 import { docLanguageOf, quotationBranchText, quotationDocLabels } from '@/lib/sales/quotationMasterTemplate';
 import { formatRevLabel } from '@/lib/sales/productSpecDocWorkflow';
 import { productBrandName, productDisplayNameFor } from '@/lib/master/productIdentity';
+import { linePackQtyText } from '@/lib/sales/linePackView';
 
 const SPEC_KEY = 'productSpec';
 
@@ -141,8 +142,10 @@ const SPEC_KEY = 'productSpec';
    · `@2026-10-01a` = แถว "กลิ่น / รหัสกลิ่น" ของ Product Overview เป็น "สูตร / รหัสสูตร / วันที่" ของสูตรที่ FG ผูกอยู่จริง
      (มติเจ้าของ 01/10/2569 · FG ไม่ผูกสูตรที่มีกลิ่นและภาพนิ่งที่ยื่นก่อนวันนั้น = แถวกลิ่นเดิม · ไม่มีทั้งสูตรและกลิ่น =
      ป้ายใหม่ + N/A · ชิ้นที่ไม่มีเป็นขีด) —
-     ช่องเปลี่ยน + แถวสูงขึ้นได้ (สองบรรทัดเมื่อชื่อสูตรยาว) · ตารางอื่น/ค่าคงที่งบหน้าไม่ขยับ */
-export const PRODUCT_SPEC_RENDERER_VERSION = 'fm-sa-04@2026-10-01a';
+     ช่องเปลี่ยน + แถวสูงขึ้นได้ (สองบรรทัดเมื่อชื่อสูตรยาว) · ตารางอื่น/ค่าคงที่งบหน้าไม่ขยับ
+   · `@2026-10-09a` = "จำนวนผลิต (Quantity)" ของบรรทัดที่มีเลขแพ็ค (mig 0407) พิมพ์ "2 แพ็ค × 12 เดือน" / "2 Pack × 12 Month"
+     (ข้อความในช่องเดียวเปลี่ยน — แบบเดียวกับ `@2026-09-22e`) · ภาพนิ่งที่ไม่มีคีย์ `order.packQty` (ทุกใบก่อนงวด PR-3) พิมพ์ตามเดิมทุกไบต์ */
+export const PRODUCT_SPEC_RENDERER_VERSION = 'fm-sa-04@2026-10-09a';
 
 const TICK_ON = '☑';
 const TICK_OFF = '☐';
@@ -247,6 +250,14 @@ const qtyText = (qty, unit, language) => {
   const number = Number(qty);
   const text = Number.isFinite(number) ? fmtNumber(number) : String(qty);
   return [text, unit ? saleUnitLabel(unit, language) : null].filter(Boolean).join(' ');
+};
+
+/* จำนวนผลิตของก้อน `order` ของภาพนิ่ง — บรรทัดที่มีเลขแพ็ค (`order.packQty` · mig 0407) = "2 แพ็ค × 12 เดือน"
+   (`linePackQtyText` · อังกฤษ "2 Pack × 12 Month" · หน่วยที่เก็บไม่ถูกอ่าน: จำนวนของบรรทัดแพ็ค = จำนวนเดือนเสมอ)
+   ⚠️ ไม่มีจำนวน = null (N/A) ก่อนเสมอ · ไม่มีคีย์ `packQty` = ข้อความเดิมของ `qtyText` ทุกตัวอักษร */
+export const productSpecQuantityText = (order, language) => {
+  const plain = qtyText(order?.qty, order?.unit, language);
+  return plain === null ? null : (linePackQtyText(order, language) ?? plain);
 };
 
 /* ── หัวเอกสาร + กล่องผู้ซื้อ/อ้างอิง — เลือกภาษา **ที่นี่ที่เดียว** ─────────────────────
@@ -482,7 +493,7 @@ function buildSections({ spec, product, order, checkItems, certs, figures, langu
        · จำนวนผลิต = จำนวน + หน่วยของบรรทัด SO (ไม่มี = บรรทัดใบเสนอราคาของสินค้าเดียวกัน) ที่ภาพนิ่งถ่ายไว้
          ตอนยื่น · ร่างอ่านสด — แถว "จำนวน" ในกล่องอ้างอิงถูกถอด ตัวเลขจึงพิมพ์ที่เดียว */
     ['ปริมาตรบรรจุ (Size)', productSizeText(product, language)],
-    ['จำนวนผลิต (Quantity)', qtyText(order.qty, order.unit, language)],
+    ['จำนวนผลิต (Quantity)', productSpecQuantityText(order, language)],
     ['ลักษณะเนื้อสาร', spec.texture],
     ['บรรจุภัณฑ์มาตรฐาน', spec.standardPackaging],
   ]);
