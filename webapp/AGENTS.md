@@ -78,3 +78,17 @@ await apiJson(`/api/pm/personal-tasks/${id}`, {                    // เขี�
 6 วัน (ทั้งใบเสนอราคาและใบสั่งขาย) · ด่าน `check:apifetch` มองไม่เห็นเพราะสแกนเฉพาะไฟล์
 ที่มี `"use client"` — ยามของกรณีนี้คือเทสต์ที่ยืนยัน **ตัวที่ถูกเรียกในผลลัพธ์ HTML**
 (`quotationMasterDocument.test.mjs` · `salesOrderPrint.test.mjs`) ไม่ใช่ด่าน CI ตัวนั้น
+
+## เทสต์ห้ามต่อฐานข้อมูลจริง — ส่งตัวจำลองเข้าไปเสมอ
+
+**ทำไม** — 🐞 26/08–09/10/2026 `audit_logs` บน production มีแถวปลอม **1,523 แถว** (ผู้ใช้ "RD Staff"
+รหัส U1) เพราะเทสต์ของ `registryPriceRoute` เรียก handler ตัวจริงซึ่งเขียน audit ผ่าน
+`getSupabaseAdmin()` และ CI ตั้งคีย์ service-role ไว้ทั้ง job · ไม่มีอะไรแดงเลย 6 สัปดาห์
+เพราะ `recordAudit` ไม่ throw และเทสต์ก็ผ่านตามปกติ
+
+- handler/ฟังก์ชันที่เขียนฐาน (รวม `recordAudit`) ต้อง**รับตัวเขียนเป็นพารามิเตอร์** หรือถูก stub
+  ในเทสต์ — แบบอย่าง: `makeRegistryPriceHandler({ audit })` · `linePackRoutes.test.mjs`
+- `scripts/test-env-guard.mjs` (เรียกจาก `test-loader.mjs`) ถอดคีย์ฐานข้อมูลออกจากโปรเซสเทสต์
+  ทุกครั้ง — เทสต์ที่หลุดไปถึง client จริงจะได้ error ที่บอกเหตุ ไม่ใช่เขียน production เงียบ ๆ
+  ยามของมันคือ `src/lib/testEnvGuard.test.mjs`
+- ใน `.github/workflows/ci.yml` คีย์ฐานข้อมูลตั้งที่ **step** ของด่านที่ต้องใช้เท่านั้น ห้ามย้ายกลับไประดับ job

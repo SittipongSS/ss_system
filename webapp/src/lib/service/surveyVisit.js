@@ -9,6 +9,9 @@
 //
 // ⚠️ **นัดชนิดนี้สร้างมือไม่ได้** — `VISIT_KINDS_MANUAL` ตัด `survey` ออกจากโมดัลนัด
 //    ทุกใบจึงมีใบคำร้องเป็นต้นเรื่องเสมอ (กติกาเดียวกับที่ไซต์เกิดจากคำร้องทางเดียว)
+//
+// ⚠️ **ใบที่ประเมินจากแบบทั้งใบไม่มีนัดเลย** (mig 0408) — ก้าว "ลงคิว" ของใบแบบนั้นคือการรับปากวันส่งผล
+//    ข้อความและรูปของ patch อยู่ท้ายไฟล์นี้ (`surveyDesk…`) · ทุกอย่างข้างบนนั้นเป็นของใบที่ยังต้องมีนัด
 import { genId } from '@/lib/id';
 import { insertRowWithEntityCode } from '@/lib/entityCode';
 import { toHHMM } from '@/lib/service/sites';
@@ -178,4 +181,79 @@ export async function moveSurveyVisit(supabase, { requestId, date, time }) {
     .from('service_visits').update(patch).eq('id', visit.id).select().maybeSingle();
   if (error) return { visit: null, error: error.message, needsNew: false };
   return { visit: data, error: null, needsNew: false };
+}
+
+// ── ใบที่ประเมินจากแบบทั้งใบ: รับปาก / เลื่อน "วันส่งผล" (mig 0408 · แผน survey-desk-assessment §2 แถว 21–22) ──
+//
+// ⭐ **ใบที่ไม่ต้องมีนัด มีคำสัญญาวันเดียวคือวันส่งผล** (มติเจ้าของ D2) — ไม่มีช่างขับรถไป ไม่มีนัดบนตาราง
+//    ⇒ "ลงคิว" ของใบแบบนี้คือหัวหน้าฝ่ายรับปากวันส่งผล แล้วเป็นผู้รับผิดชอบเอง
+// 🔑 **สองคอลัมน์วันเป็นค่าเดียวกันเสมอ** (`committedDueDate` = `committedResultDate`) — คิว ราง ตัวนับ
+//    "เลยกำหนด" และด่าน `commitDueRequestError` / `rescheduleRequestError` อ่าน `committedDueDate` ทั้งหมด
+//    ⇒ ปล่อยว่างเมื่อไร ใบค้างขั้น "รอลงคิว" ทั้งที่รับปากไปแล้ว
+// ⚠️ ใบนี้เป็นงานโต๊ะหรือไม่ ตัดสินที่ `surveyNeedsVisit` (`surveyMethod.js`) จากแถวพื้นที่ที่ route อ่านเอง
+//    ไฟล์นี้ถือแค่ข้อความกับรูปของ patch — route เรียกอย่างเดียว ไม่ประกอบเอง
+export const SURVEY_DESK_COMMIT_FORBIDDEN = 'รับปากวันส่งผลของใบประเมินจากแบบได้เฉพาะหัวหน้าฝ่ายบริการ';
+export const SURVEY_DESK_RESCHEDULE_FORBIDDEN = 'เลื่อนวันส่งผลของใบประเมินจากแบบได้เฉพาะหัวหน้าฝ่ายบริการ';
+/* เลื่อนวันส่งผลต้องมีเหตุผลเสมอ — ต่างจากการเลื่อนวันนัดที่เหตุผลไม่บังคับ: ใบนี้ไม่มีนัดให้เธรดของนัด
+   เล่าแทน บรรทัดในเธรดของใบคือที่เดียวที่ฝ่ายขายรู้ว่าทำไมวันถึงขยับ */
+export const SURVEY_DESK_RESCHEDULE_REASON_ERROR = 'ต้องบอกเหตุผลที่เลื่อนวันส่งผล';
+/* 🔴 นัดที่ปิด/ยกเลิกไปแล้วของใบงานโต๊ะ เปิดกลับจากโมดัลนัดไม่ได้ — เปิดได้เมื่อไร ใบที่ไม่มีใครต้องไป
+   จะขึ้นตารางช่างเอง แล้วนัดนั้นเขียนวันทับคำสัญญาวันส่งผล (`visits/[id]/route.js`) */
+export const SURVEY_DESK_REVIVE_ERROR = 'ใบนี้ประเมินจากแบบทั้งใบ — เปิดนัดกลับไม่ได้ ให้หัวหน้าเปลี่ยนวิธีประเมินเป็นลงหน้างานก่อน';
+
+/**
+ * วันส่งผลที่ body ส่งมา — คืน `{ value: 'YYYY-MM-DD', error }`
+ * (`ต้องระบุวันที่จะส่งผลประเมิน` · `วันที่จะส่งผลประเมินไม่ถูกต้อง`)
+ * ⚠️ วันนัดเป็น `null` โดยตั้งใจ — ใบนี้ไม่มีวันเข้าพื้นที่ให้เทียบ ⇒ ข้ามกติกา "ไม่มาก่อนวันนัด"
+ *    (`committedDueDate` ที่การ์ดเก่าพกมาใน body ไม่ถูกอ่านเลย)
+ */
+export function surveyDeskResultDate(body) {
+  return normalizeSurveyCommittedResult(body?.committedResultDate, null);
+}
+
+/**
+ * คอลัมน์ที่ "รับปากวันส่งผล" เขียน
+ * ⭐ ผู้รับผิดชอบ = หัวหน้าที่กด (ไม่มีการเลือกช่าง ไม่มีการค้นทะเบียน) · เวลานัดล้างเป็น null เสมอ
+ */
+export function surveyDeskCommitPatch({ date, user, nowIso }) {
+  return {
+    committedDueDate: date,
+    committedResultDate: date,
+    committedDueTime: null,
+    dueCommittedAt: nowIso,
+    assigneeId: String(user.id),
+    assigneeName: user.name || null,
+    assignedAt: nowIso,
+  };
+}
+
+/** `รับปากส่งผลประเมินจากแบบ {date} · {user.name}` (+ ` — {note}`) */
+export function surveyDeskCommitSummary({ date, user, note } = {}) {
+  const name = String(user?.name ?? '').trim();
+  const memo = String(note ?? '').trim();
+  return `รับปากส่งผลประเมินจากแบบ ${date}`
+    + (name ? ` · ${name}` : '')
+    + (memo ? ` — ${memo}` : '');
+}
+
+/** คอลัมน์ที่ "เลื่อนวันส่งผล" เขียน — สองวันขยับพร้อมกัน · ไม่แตะผู้รับผิดชอบ */
+export function surveyDeskReschedulePatch({ date, nowIso }) {
+  return {
+    committedDueDate: date,
+    committedResultDate: date,
+    committedDueTime: null,
+    dueCommittedAt: nowIso,
+  };
+}
+
+/**
+ * `เลื่อนวันส่งผลประเมิน {เดิม} → {ใหม่} — {เหตุผล}`
+ * เดิม = `committedResultDate` ก่อน (คำสัญญาที่ฝ่ายขายถืออยู่) · ไม่มีค่อยดู `committedDueDate` · ไม่มีเลย = `(ไม่เคยระบุ)`
+ */
+export function surveyDeskRescheduleSummary({ before, date, reason } = {}) {
+  const was = String(before?.committedResultDate ?? '').trim()
+    || String(before?.committedDueDate ?? '').trim()
+    || '(ไม่เคยระบุ)';
+  const why = String(reason ?? '').trim();
+  return `เลื่อนวันส่งผลประเมิน ${was} → ${date}` + (why ? ` — ${why}` : '');
 }

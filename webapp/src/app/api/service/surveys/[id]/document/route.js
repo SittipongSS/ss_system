@@ -37,6 +37,7 @@ import { appendUpdate } from '@/lib/master/updates';
 import { printPlaceholderHtml } from '@/lib/printTheme';
 import { surveyZoneSize } from '@/lib/service/survey';
 import { canOpenSurveyDocument, surveyDocAccess, surveyDocVersion } from '@/lib/service/surveyAccess';
+import { surveyNeedsVisit } from '@/lib/service/surveyMethod';
 import { renderSurveyReportHTML, resolveImageTokens, surveyReportImageShas } from '@/lib/service/surveyReportDocument';
 import { surveyReportImagePath } from '@/lib/service/surveyReportImages';
 import { loadSurveyReportInputs } from '@/lib/service/surveyReportInputs';
@@ -206,7 +207,9 @@ async function serveDraft({ supabase, req, user, request, reports, version, form
   /* ใบที่ยังไม่ส่งผล = ร่างของ "สิ่งที่จะออกถ้ากดส่งตอนนี้" — ชุดเดียวกับรอบตรวจก่อนส่งผล (`surveyReportPrecheck`):
      ผู้ตรวจสอบและอนุมัติ = คนที่กำลังดู · นัดที่การส่งผลจะปิด = นัดที่เอกสารรับรอง
      ใบที่ส่งผลแล้ว (ยังไม่มีเอกสาร) = ของบนแถวล้วน ๆ ชุดเดียวกับที่ปุ่ม "ออกเอกสาร" จะใช้
-     ⚠️ อ่านนัดที่ค้างไม่สำเร็จ = ร่างออกโดยไม่มีนัดนั้น (ช่องผู้ประเมินเป็นขีด) ไม่ล้มทั้งร่าง */
+     ⚠️ อ่านนัดที่ค้างไม่สำเร็จ = ร่างออกโดยไม่มีนัดนั้น (ช่องผู้ประเมินเป็นขีด) ไม่ล้มทั้งร่าง
+     ⚠️ ใบประเมินจากแบบทั้งใบ (`surveyNeedsVisit` = ไม่ต้องมีนัด): นัดที่ค้างไม่ถูกปิดในร่าง และตัวโหลดไม่รับรองนัดไหนเลย
+        ⇒ นัดที่ค้างจากก่อนสลับวิธีไม่ขึ้นกระดาษเป็นผู้ประเมิน */
   const nowIso = new Date().toISOString();
   let closing = null;
   let pendingAnswer = null;
@@ -214,7 +217,7 @@ async function serveDraft({ supabase, req, user, request, reports, version, form
     pendingAnswer = { answeredAt: nowIso, answeredById: user?.id ?? null, answeredByName: user?.name ?? null };
     try {
       const open = await findSurveyVisit(supabase, request.id, { openOnly: true });
-      const step = surveySendVisitStep(open, { today: businessDate(nowIso) });
+      const step = surveySendVisitStep(open, { today: businessDate(nowIso), needsVisit: surveyNeedsVisit(zones) });
       if (step.action === 'close') closing = { ...open, ...step.patch };
     } catch (e) {
       console.error('[survey-report] อ่านนัดที่ค้างของฉบับร่างไม่สำเร็จ', request.id, errorText(e));
@@ -510,6 +513,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       // `reason` เป็นประโยคเต็มพร้อมทางออกแล้ว (ดึงผลกลับ / กดอีกครั้ง) — ไม่ต่อท้ายซ้ำ
       return docError(req, issued.reason, ISSUE_STATUS[issued.code] || 500, {
         code: issued.code, reasons: issued.reasons, retry: issued.retry === true,
+        // ติดแค่ข้อกันเอกสารของใบที่มีพื้นที่ประเมินจากแบบ (mig 0408) — คีย์มีเฉพาะตอนนั้น ผลอื่นรูปเดิมทุกคีย์
+        ...(issued.hold === true ? { hold: true } : {}),
       });
     }
 

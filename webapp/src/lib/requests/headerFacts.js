@@ -161,29 +161,40 @@ export function requestHeaderFacts(request, { hasItems = false, progress = null,
      ("ผู้ขอต้องการรับงาน" / "RD กำหนดส่ง" · มติผู้ใช้ 2026-08-19 ล็อกคำไว้)
      ⇒ ที่เปลี่ยนคือใบที่ถ้าไม่บอกชื่อวันจะอ่านไม่ออกว่าวันไหนคือวันไหน */
   const twoDates = !!copy.resultDueLabel;
-  facts.push({
-    key: 'requestedDue',
-    label: twoDates ? `ผู้ขอ: ${copy.dueLabel}` : 'ผู้ขอต้องการรับงาน',
-    value: wanted ? fmtDate(wanted) : '—',
-    sub: wanted ? (noCountdown ? null : countdownLabel(wanted, now)) : 'ใบเก่าที่เปิดก่อนกติกาบังคับวัน',
-  });
+  /* ⭐ **ใบประเมินที่ประเมินจากแบบทั้งใบไม่มีวันเข้าพื้นที่** (mig 0408 · แผน survey-desk-assessment §4 · งวด S2a)
+     — ใบแบบนี้ไม่ลงคิว ไม่มีนัด ⇒ สองช่องวันเข้าพื้นที่ (ผู้ขอ: วันที่ต้องการให้เข้า · ฝ่าย: วันนัด) ไม่ถูกส่งออก
+       เหลือคู่วันส่งผลข้างล่างคู่เดียว ป้ายเดิม
+     🐞 ปล่อยไว้ = หัวใบขึ้น "TS: วันนัดเข้าพื้นที่" ด้วยวันส่งผล: ตอนรับปากวันส่งผล `committedDueDate` ถูกเขียนเป็นวันเดียวกัน
+        (คิวและตัวนับเลยกำหนดอ่านคอลัมน์นั้น) ทั้งที่ไม่มีใครนัดใครไว้
+     ⚠️ ธง `surveyNeedsVisit` มาจากตัวโหลดคำร้อง (คิดจากแถวพื้นที่) — **`false` ตรงตัวเท่านั้น** · ไม่มีธง / ค่าอื่น = ต้องมีนัด
+        (กติกาของงวด S1) ⇒ ใบของวันนี้ทุกใบได้สองช่องเดิม
+     ⚠️ ถามคู่กับ `twoDates` — ธงนี้เป็นของหัวข้อที่มีวันส่งผลแยก หัวข้อที่มีวันเดียวถือมาก็ต้องไม่เหลือหัวใบที่ไม่มีวันสักช่อง */
+  const deskJob = twoDates && request.surveyNeedsVisit === false;
+  if (!deskJob) {
+    facts.push({
+      key: 'requestedDue',
+      label: twoDates ? `ผู้ขอ: ${copy.dueLabel}` : 'ผู้ขอต้องการรับงาน',
+      value: wanted ? fmtDate(wanted) : '—',
+      sub: wanted ? (noCountdown ? null : countdownLabel(wanted, now)) : 'ใบเก่าที่เปิดก่อนกติกาบังคับวัน',
+    });
 
-  const gap = committed && wanted ? committedVsRequested(committed, wanted) : null;
-  facts.push({
-    key: 'committedDue',
-    label: twoDates
-      ? `${request.dept || 'ฝ่าย'}: ${copy.committedDueLabel}`
-      : `${request.dept || 'ฝ่าย'} กำหนดส่ง`,
-    // ⚠️ "ยังไม่ระบุ" ไม่ใช่ขีด — ขีดอ่านได้ทั้ง "ไม่มีกำหนด" และ "ระบบไม่รู้"
-    // ซึ่งคนละเรื่องกัน (บทเรียนเดียวกับคอลัมน์วันในคิว RD)
-    /* ⚠️ ไม่มีวันและไม่มีใครต้องแจ้งแล้ว (จบ/ยกเลิก/มีฝั่งปิด) = ขีด ตรงกับช่องกำหนดส่งในคิว (ม-145)
-       · "ยังไม่ระบุ" แปลว่ายังรอวันอยู่ ซึ่งไม่จริงสำหรับใบพวกนี้ */
-    value: committed ? fmtDate(committed) : (noCountdown ? '—' : 'ยังไม่ระบุ'),
-    // ⚠️ คำนี้ต้องตรงกับปุ่ม (มติผู้ใช้ 2026-08-19) — วันกำหนดส่งไม่ได้เกิดตอนกดรับ
-    // เรื่องอีกแล้ว มันเป็นก้าว "แจ้งกำหนดส่ง" ที่ฝ่ายกดทีหลังได้
-    sub: committed ? (gap?.text || null) : noDueReason(request, closure),
-    tone: committed ? gap?.tone || null : 'muted',
-  });
+    const gap = committed && wanted ? committedVsRequested(committed, wanted) : null;
+    facts.push({
+      key: 'committedDue',
+      label: twoDates
+        ? `${request.dept || 'ฝ่าย'}: ${copy.committedDueLabel}`
+        : `${request.dept || 'ฝ่าย'} กำหนดส่ง`,
+      // ⚠️ "ยังไม่ระบุ" ไม่ใช่ขีด — ขีดอ่านได้ทั้ง "ไม่มีกำหนด" และ "ระบบไม่รู้"
+      // ซึ่งคนละเรื่องกัน (บทเรียนเดียวกับคอลัมน์วันในคิว RD)
+      /* ⚠️ ไม่มีวันและไม่มีใครต้องแจ้งแล้ว (จบ/ยกเลิก/มีฝั่งปิด) = ขีด ตรงกับช่องกำหนดส่งในคิว (ม-145)
+         · "ยังไม่ระบุ" แปลว่ายังรอวันอยู่ ซึ่งไม่จริงสำหรับใบพวกนี้ */
+      value: committed ? fmtDate(committed) : (noCountdown ? '—' : 'ยังไม่ระบุ'),
+      // ⚠️ คำนี้ต้องตรงกับปุ่ม (มติผู้ใช้ 2026-08-19) — วันกำหนดส่งไม่ได้เกิดตอนกดรับ
+      // เรื่องอีกแล้ว มันเป็นก้าว "แจ้งกำหนดส่ง" ที่ฝ่ายกดทีหลังได้
+      sub: committed ? (gap?.text || null) : noDueReason(request, closure),
+      tone: committed ? gap?.tone || null : 'muted',
+    });
+  }
 
   /* ── วันที่สาม/สี่: **วันส่งผล** (มติผู้ใช้ 2026-09-21 · mig 0368) ──────────
      ⭐ หัวข้อที่ฝ่ายปลายทาง *ไปทำถึงที่* มีสองเหตุการณ์ที่ไม่เคยเป็นวันเดียวกัน — วันที่ไป

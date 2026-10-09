@@ -11,6 +11,13 @@ export function getSupabaseAdmin() {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!url || !serviceKey) {
+    // เทสต์: คีย์ถูกถอดออกโดยเจตนา (scripts/test-env-guard.mjs) — บอกเหตุนั้น ไม่ใช่ "ลืมตั้ง env"
+    if (process.env.SS_TEST_DATABASE_KEYS_SCRUBBED) {
+      throw new Error(
+        'เทสต์ต่อ Supabase จริงไม่ได้ — test-loader ถอดคีย์ฐานข้อมูลออกจากโปรเซสเทสต์แล้ว '
+        + '(scripts/test-env-guard.mjs) · ส่ง client/ตัวเขียน audit จำลองเข้าไปแทน',
+      );
+    }
     throw new Error(
       'Supabase env missing. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (see .env.example).'
     );

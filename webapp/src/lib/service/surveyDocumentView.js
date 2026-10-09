@@ -272,13 +272,18 @@ function issueConfirm(doc, request) {
   };
 }
 
-/* เหตุที่ปุ่ม "ออกเอกสาร" จะตีกลับ ชุดสดจาก server — `[{ kind: 'content' | 'system', text }]` ไม่ซ้ำ */
+/* เหตุที่ปุ่ม "ออกเอกสาร" จะตีกลับ ชุดสดจาก server — `[{ kind: 'content' | 'system', text, hold }]` ไม่ซ้ำ
+   ⭐ `hold` = ข้อกันเอกสารของใบที่มีพื้นที่ประเมินจากแบบ (`hold: true` ตรงตัวใน payload · mig 0408) — ไม่มีอะไรให้แก้ กดซ้ำไม่ช่วย
+   ⚠️ ธงอ่านจาก **ทุกแถวก่อนยุบข้อความซ้ำ** (กติกาเดียวกับ `blocked` ของ surveyReportIssue) — แถวซ้ำที่ไม่มีธงต้องไม่ทำให้ข้อกัน
+      กลายเป็นเหตุที่ "แก้แล้วกดซ้ำได้" */
 function issueBlockers(check) {
+  const rows = (Array.isArray(check?.blockers) ? check.blockers : []).filter(isRecord);
+  const held = new Set(rows.filter((b) => b.hold === true).map((b) => trimmed(b.text)));
   const seen = new Set();
-  return (Array.isArray(check?.blockers) ? check.blockers : [])
-    .filter(isRecord)
+  return rows
     .map((b) => ({ kind: b.kind === 'content' ? 'content' : 'system', text: trimmed(b.text) }))
-    .filter((b) => b.text && !seen.has(b.text) && seen.add(b.text));
+    .filter((b) => b.text && !seen.has(b.text) && seen.add(b.text))
+    .map((b) => ({ ...b, hold: b.kind !== 'content' && held.has(b.text) }));
 }
 
 const sectionBase = (state) => ({
@@ -331,14 +336,18 @@ const sectionBase = (state) => ({
  * @param canDecide     คนดูเป็นคนส่งผลได้ (การ์ดวาดให้คนกลุ่มนี้เท่านั้น) — ไม่ใช่ = ซ่อนทั้งส่วน
  * @param failedGates   ชื่อย่อของด่านส่งผลที่ยังติด **ไม่รวมแถวเอกสารเอง** (ส่วนนี้ต้องไม่อ้างตัวเองเป็นเหตุ)
  * @param spotsUnlinked ยังมีรูปจุดค้างในถาด "ยังไม่ได้ผูกจุด" — ทางออกของเหตุชนิดนี้ไม่ต้องดึงผลกลับ (มติ 9)
+ * @param drawingHold   ประโยคของข้อกันเอกสาร เมื่อใบมีพื้นที่ที่ประเมินจากแบบ (ยังอยู่ในใบ) · ไม่มี = `null`
+ *                      เอกสารของใบแบบนี้ถูกพักไว้ ⇒ ก่อนส่งผล (และตอนดึงกลับมาแก้) กล่องสถานะพูดประโยคเดียวกับโมดัลยืนยันส่งผล
+ *                      ไม่สัญญาเลขที่เอกสาร · ผู้เรียกส่งประโยคมา (ไฟล์นี้ import ได้สองไฟล์) · งวด S3 ถอดพร้อมข้อกัน
  * ⚠️ `canWrite` ที่ผู้เรียกส่งมาตามสเปก §3.1 ไม่มีกติกาข้อไหนของส่วนนี้ใช้ (บรรทัด "แก้หมายเหตุได้ไหม" อยู่ที่กล่องแจ้งของการ์ด)
  */
 export function surveyDocumentView({
   document = null, request = null, zones = [], local = null,
-  canDecide = false, failedGates = [], spotsUnlinked = false,
+  canDecide = false, failedGates = [], spotsUnlinked = false, drawingHold = null,
 } = {}) {
   const doc = isRecord(document) ? document : null;
   const access = doc && isRecord(doc.access) ? doc.access : null;
+  const hold = trimmed(drawingHold) || null;
   const round = roundLocal(local, request);
   const state = resolvedState(doc, round);
   const base = sectionBase(state);
@@ -410,6 +419,10 @@ export function surveyDocumentView({
     const stuckText = `ยังติด ${stuck.length} ด่าน: ${stuck.join(' · ')}`;
     if (!draft.ready) {
       status = note('info', draftLine);
+    } else if (hold) {
+      /* 🐞 เดิมกล่องนี้สัญญา "กดส่งผลเพื่อออกเลขที่เอกสาร" อยู่หลังโมดัลยืนยันที่บอกว่าเอกสารยังออกไม่ได้ — พูดประโยคเดียวกัน
+         ⚠️ มาก่อนรายการเหตุของ server: ข้อกันนี้ไม่มีอะไรให้แก้ ปุ่ม "ตรวจอีกครั้ง" ไม่ช่วย */
+      status = note('info', hold);
     } else if (blockers.length) {
       status = note('warning', `เอกสารยังออกไม่ได้ — ติด ${blockers.length} ข้อ`, {
         items: blockers,
@@ -433,10 +446,13 @@ export function surveyDocumentView({
     /* 🐞 ใบที่ดึงกลับมาแก้คือใบที่หัวหน้าแก้ไฟล์บ่อยที่สุด — เหตุที่เอกสารฉบับใหม่ออกไม่ได้ต้องกางที่นี่เหมือนสถานะ `not_sent`
        (ไม่งั้นกล่องนี้สั่ง "ส่งผลอีกครั้ง" ทั้งที่ปุ่มส่งจาง และเหตุเหลือแค่บรรทัดเดียวในแถวด่าน) · วัดไม่ครบพูดก่อน เหมือน `not_sent` */
     const check = isRecord(doc.send) ? doc.send : null;
-    const blockers = check && draft.ready ? shownLines(check.blockers) : [];
-    const text = flagOn
-      ? `${head}ส่งผลอีกครั้งเพื่อออก ${next}`
-      : `${head}ส่งผลอีกครั้ง แล้วกด “ออกเอกสาร” เพื่อออก ${next}`;
+    const blockers = check && draft.ready && !hold ? shownLines(check.blockers) : [];
+    // ใบที่มีพื้นที่จากแบบ: ฉบับถัดไปยังออกไม่ได้ (ข้อกันของงวด S1) — ไม่สัญญา Rev ถัดไป
+    const text = hold
+      ? `${head}${hold}`
+      : flagOn
+        ? `${head}ส่งผลอีกครั้งเพื่อออก ${next}`
+        : `${head}ส่งผลอีกครั้ง แล้วกด “ออกเอกสาร” เพื่อออก ${next}`;
     status = blockers.length
       ? note('warning', text, { items: blockers, foot: `แก้ตามรายการแล้วกด “${RECHECK.label}”`, action: RECHECK })
       : note('warning', text, { foot: draftFoot });
@@ -463,6 +479,15 @@ export function surveyDocumentView({
       let allowed = false;
       if (offProduction) {
         status = note('warning', NOT_PRODUCTION_TEXT, { foot: draftFoot });
+      } else if (blockers.length && blockers.every((b) => b.hold)) {
+        /* ⭐ **ติดแค่ข้อกันเอกสารของใบที่มีพื้นที่ประเมินจากแบบ** (ธง `hold` จาก server) — ประโยคของข้อกันอย่างเดียว:
+           ไม่มีอะไรให้แก้ ดึงผลกลับก็ไม่ช่วย กดกี่ครั้งก็ไม่ออก (หายเมื่อระบบรุ่นที่รองรับออก) ⇒ ไม่มีปุ่ม "ตรวจอีกครั้ง"
+           ไม่มีบรรทัดทางออก และปุ่ม "ออกเอกสาร" จาง (`allowed` ยังเป็นเท็จ) · เหตุของปุ่มที่จางคือประโยคนี้เอง
+           🐞 เดิมได้กล่องของเหตุระบบ: "ติด 1 ข้อ · แก้ตามรายการแล้วกด ตรวจอีกครั้ง" — ชวนให้แก้สิ่งที่ไม่มีอะไรให้แก้
+           ⚠️ มีเหตุอื่นปนอยู่ = สาขาถัดไป (ทางออกของเหตุนั้นตามเดิม · ข้อกันอยู่ในรายการด้วย) — กติกาเดียวกับ route ออกเอกสาร
+           ⚠️ บรรทัดของปุ่มร่างที่จาง (`draftFoot`) ยังต่อท้ายได้ — เป็นเหตุของอีกปุ่มหนึ่ง ไม่ใช่คำแนะนำให้แก้เอกสาร */
+        const [first, ...more] = blockers.map((b) => b.text);
+        status = note('warning', first, { items: more, foot: draftFoot });
       } else if (blockers.length) {
         const content = blockers.some((b) => b.kind === 'content');
         const wayOut = !content

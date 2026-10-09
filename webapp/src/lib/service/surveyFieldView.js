@@ -10,6 +10,17 @@
 //   `surveyFieldSubmitError` · `surveyZoneSavePayload`) แล้วแปลงเป็นคำบนจอ
 //   🔴 กฎใหม่ของใบประเมินให้เขียนที่ `survey.js` เสมอ — เขียนที่นี่ = กฎที่ server มองไม่เห็น
 //
+// ⭐ **วิธีประเมินรายพื้นที่** (mig 0408 · แผน survey-desk-assessment · งวด S2a) — ใบเดียวมีได้ทั้งพื้นที่ที่ช่างไปวัดและพื้นที่ที่
+//   หัวหน้าประเมินจากแบบ ⇒ ตัวตัดสินในไฟล์นี้ **ถามจากแถว** (`isDrawingZone` · `zoneMethod`) ไม่ถามสวิตช์และไม่ถามว่าใบเป็น
+//   ชนิดไหน: พื้นที่จากแบบเป็นงานของหัวหน้า (ขนาด + ภาพแบบ) ไม่เคยเป็นของขาดของช่าง ไม่อยู่ในงานที่ช่างส่ง และตัวนับ
+//   ความคืบหน้าไม่เรียกมันว่า "วัดแล้ว"
+//   · คำของวิธี (ชิป · ป้าย · ตัวนับ) มาจาก `surveyMethodSwitch.js` ที่เดียว · ใบที่ไม่มีพื้นที่จากแบบได้ผลเดิมทุกตัวอักษร
+//     (ยาม: `surveyMethodFieldView.test.mjs` เทียบกับค่าที่จดไว้ก่อนงวดนี้)
+//   ⚠️ งวด S2a แตะ: รายการพื้นที่ · แถบของช่าง · กล่องส่งงาน · บรรทัดรวม + ตัวใหม่สองตัว (`surveyDrawingZoneView` ·
+//      `surveySalesDrawingsView`) · ตัวช่วยของหน้าพื้นที่ (`surveyZoneStateBadge` · `surveyZoneNeighbors` · `surveyZoneFooterView` ·
+//      `surveyZoneSections` · `surveyDefaultZoneId`) ถาม "พื้นที่นี้ยังขาดอะไร" ผ่าน `zonePageGapKeys` ตัวเดียว:
+//      ลงหน้างาน = สามข้อของช่าง (เดิม) · จากแบบ = ขนาด + ภาพแบบ ⇒ พื้นที่จากแบบไม่ถูกอ่านว่า "วัดแล้ว/ครบ" เพราะไม่มีข้อของช่าง
+//
 // 🔑 **บริสุทธิ์ทั้งไฟล์** — ไม่ยิง I/O · **ไม่อ่านนาฬิกา** · "ตอนนี้" มาทาง `nowKey` = `'YYYY-MM-DD HH:MM'` เวลาไทย
 //   (ผู้เรียกประกอบจาก `businessDate()` + `businessTimeKey()` — กติกา thai-time ของระบบ)
 // ⚠️ **ไฟล์ที่ใช้คือชุดสด** (`useLiveZoneFiles`) — รูปที่เพิ่งอัปต้องขยับตัวนับทุกที่ทันที ไม่ใช่แค่ที่หน้าพื้นที่
@@ -18,8 +29,10 @@ import { fmtNumber, naText } from '@/lib/format';
 import { attachmentHref } from '@/lib/master/attachmentStorage';
 import { isPreviewableImage } from '@/lib/master/attachmentTypes';
 import {
+  SURVEY_DOC_PLAN,
   SURVEY_DOC_SPOT,
   SURVEY_DOC_WIDE,
+  SURVEY_GATES,
   isAddedZone,
   isBlankSurveyPart,
   isBlankSurveySpot,
@@ -41,6 +54,10 @@ import {
   surveyZoneFacts,
 } from './surveyControl';
 import { accessConflict, accessWindowText } from './sites';
+import { isDrawingZone, isJpgOrPngFile, zoneMethod } from './surveyMethod';
+import {
+  SURVEY_METHOD_CHIP, SURVEY_METHOD_LABEL, surveyProgressText, surveyZoneAddedLabel,
+} from './surveyMethodSwitch';
 import { SPOT_TRAY_LABEL, spotGapNote, surveySpotPhotoGaps, surveySpotSubmitError } from './surveySpotPhotos';
 import { accessWarnText, dayText, relDayText, thaiDayOf } from './queueWords';
 import { VISIT_STATUS_LABELS, isClosedVisit, isOpenVisit } from './visitStatus';
@@ -55,6 +72,8 @@ const list = (value) => (Array.isArray(value) ? value : []);
 const filesMap = (value) => (value && typeof value === 'object' ? value : {});
 const isCutRow = (row) => (row?.status || 'ok') === 'cut';
 const idOf = (value) => (value === null || value === undefined || value === '' ? null : String(value));
+/* ชื่อไฟล์แนบบนจอ — แถวที่ไม่มีชื่อ (อัปจากกล้องบางรุ่น) ยังต้องมีคำให้กด */
+const attachmentName = (row) => String(row?.fileName ?? '').trim() || 'ไฟล์แนบ';
 /* "10:00:00" → "10:00" · ค่าที่ไม่ใช่เวลา = '' (ช่องเวลาของนัดเป็นสตริงเวลาล้วน ไม่ใช่จุดเวลา) */
 const hhmm = (value) => {
   const text = String(value ?? '').trim().slice(0, 5);
@@ -92,10 +111,31 @@ const CREW_MARKS = [
   { key: 'spots', label: 'จุด' },
 ];
 const crewMissingKeys = (facts) => new Set(facts.missingCrew.map((g) => g.key));
-const crewMissingText = (facts) => {
-  const keys = crewMissingKeys(facts);
-  return keys.size ? `ขาด: ${CREW_MARKS.filter((m) => keys.has(m.key)).map((m) => m.label).join(' · ')}` : null;
-};
+/* "ขาด: ขนาด · ภาพกว้าง" — เรียงตามลำดับของวงบนแถว ไม่ใช่ลำดับที่ด่านตอบมา */
+const missingLine = (marks, keys) => (
+  keys.size ? `ขาด: ${marks.filter((m) => keys.has(m.key)).map((m) => m.label).join(' · ')}` : null
+);
+const crewMissingText = (facts) => missingLine(CREW_MARKS, crewMissingKeys(facts));
+
+/* ── ข้อของพื้นที่ที่ประเมินจากแบบ สองข้อ — ขนาด + ภาพแบบ (mig 0408 · แผน survey-desk-assessment §3.4 · บอร์ด B1) ──
+   ⭐ พื้นที่จากแบบไม่มีข้อที่ต้องยืนหน้างาน (ภาพกว้าง · จุด) และ **ทุกข้อเป็นของหัวหน้า** (`ownerOf` ของทะเบียนด่าน)
+     ⇒ `missingCrew` ของมันว่างเสมอ · แถวจึงอ่านของขาดจาก `facts.missing` เฉพาะสองข้อที่แก้ได้บนหน้าพื้นที่
+   ⚠️ **แพ็คเกจไม่อยู่ในนี้** — เคาะที่แท็บสรุปส่งผล ไม่ใช่ที่หน้าพื้นที่ (กติกาเดียวกับแถวลงหน้างาน: ของที่แก้ที่อื่น
+      เขียนไว้บนแถวคือชี้ผิดที่) ⇒ ครบสองข้อแล้วแต่ยังไม่เคาะ = ป้าย "หัวหน้ายังไม่เคาะ" (`tags.headPending`) ตามเดิม
+   ⚠️ คำว่า "ภาพแบบ" มาจากทะเบียนด่าน (`drawingShort` ของข้อผัง) — คำเดียวกับเช็คลิสต์ของใบจากแบบล้วนบนการ์ดควบคุม */
+const PLAN_GATE = SURVEY_GATES.find((g) => g.key === 'plan');
+const DRAWING_MARKS = [
+  CREW_MARKS[0],
+  { key: 'plan', label: PLAN_GATE.drawingShort },
+];
+const DRAWING_MARK_KEYS = new Set(DRAWING_MARKS.map((m) => m.key));
+const drawingMissingKeys = (facts) => new Set(facts.missing.map((g) => g.key).filter((key) => DRAWING_MARK_KEYS.has(key)));
+/* 🔑 **"พื้นที่นี้ยังขาดอะไรบนหน้าพื้นที่"** — ตัวเดียวที่รายการ · ป้ายหัว · จุดเลื่อน · ท้ายหน้า · พื้นที่ตั้งต้นถาม
+   ลงหน้างาน = สามข้อของช่าง · จากแบบ = ขนาด + ภาพแบบ (ของหัวหน้า) — ถามแยกกันเมื่อไร ป้ายหัวบอก "ครบ" บนแถวที่รายการบอก "ขาด" */
+const zonePageMarks = (zone) => (isDrawingZone(zone) ? DRAWING_MARKS : CREW_MARKS);
+const zonePageGapKeys = (zone, facts) => (isDrawingZone(zone) ? drawingMissingKeys(facts) : crewMissingKeys(facts));
+/* ป้ายสถานะ "ครบ" ของพื้นที่จากแบบ — ห้ามใช้ "วัดแล้ว" (ไม่มีใครไปวัด) */
+const DRAWING_ZONE_DONE_TEXT = 'ครบแล้ว';
 /* ด่านรูปจุด (G1 · มติ 01/10) ต่อพื้นที่ — `zoneId → "จุด 1.3 ยังไม่มีรูป · ยังไม่ได้ผูกจุด 2 รูป"` · ไม่มีเรื่อง = ไม่มีคีย์
    ⭐ ตัวนับตัวเดียวกับ route ปิดนัด (`surveySpotPhotoGaps` → `surveySpotSubmitError`) ⇒ รายการ · กล่องส่งงาน · แถบ ·
    route นับชุดเดียวกัน · พื้นที่ที่ตัดไม่มีในผล (ตัวนับข้ามเอง) */
@@ -195,9 +235,12 @@ function sentenceNames(rows) {
 }
 
 /* ผลรวมของใบ (พื้นที่ที่ยังอยู่ในใบ) — ตัวเดียวของกล่องส่งงานกับบรรทัดท้ายแถบแท็บ ⇒ สองที่บนจอเดียวบอกเลขเดียวกันเสมอ
-   ⚠️ ภาพกว้างนับจากไฟล์ชุดสด · ตร.ม./ลบ.ม./จุด มาจาก `surveyTotals` ตัวเดียวกับที่ server รวมตอนส่งผล */
-function sheetTotals(rows, files) {
-  const active = list(rows).filter((z) => z?.id && !isCutRow(z));
+   ⚠️ ภาพกว้างนับจากไฟล์ชุดสด · ตร.ม./ลบ.ม./จุด มาจาก `surveyTotals` ตัวเดียวกับที่ server รวมตอนส่งผล
+   ⭐ `onsiteOnly` = นับเฉพาะพื้นที่ลงหน้างาน (งวด S2a) — กล่องส่งงานคืองานของนัด: พื้นที่จากแบบไม่มีอะไรที่ช่างเก็บมา
+     นับรวม = แถว "ภาพกว้าง 0 · จุด 0" ที่อ่านเหมือนงานที่ส่งไปแล้วได้ศูนย์ · ใบลงหน้างานล้วนได้ยอดเดิมไม่ว่าเปิดหรือปิด
+     🔴 จอช่างเปิดตัวนี้ **ทั้งสองที่** (บรรทัดท้ายแถบแท็บ + กล่องส่งงาน) — เปิดที่เดียวเมื่อไร สองที่บนจอเดียวบอกคนละเลข */
+function sheetTotals(rows, files, { onsiteOnly = false } = {}) {
+  const active = list(rows).filter((z) => z?.id && !isCutRow(z) && !(onsiteOnly && isDrawingZone(z)));
   const sums = surveyTotals(active);
   return {
     zones: active.length,
@@ -422,13 +465,29 @@ export function surveySendBackItemsView({
  *   เริ่มแล้ว = บรรทัด "ขาด: …" สีอำพัน (AO-2 · AT-3: ของที่ต้องไปเก็บ) · ครบแล้ว = ติ๊กพร้อมค่า · ตัดออก = เหตุผล
  *   ⚠️ ข้อมูลชุดเดียวกัน (สามข้อของช่าง) แค่เล่าคนละจังหวะ — มุมมองแบบคอลัมน์ (AT-1) โชว์วง/ติ๊กเสมอ
  *   ⚠️ ไม่มีนัด (ใบเก่า · หัวหน้าเปิดดู) = ถือว่ายังไม่เริ่ม — ไม่มีใครต้องไปเก็บของตามคำว่า "ขาด"
+ *
+ * ⭐ **พื้นที่ที่ประเมินจากแบบ** (งวด S2a · แผน survey-desk-assessment §3.4 · บอร์ด B1) — แถวของมันมีสองข้อ: ขนาด + ภาพแบบ
+ *   (`DRAWING_MARKS`) · ไม่มีด่านรูปจุด · ครบสองข้อแล้วยังไม่เคาะแพ็คเกจ = ป้าย `headPending` ตัวเดิม
+ *   · `method` = วิธีของแถว · คีย์ป้ายวิธี (ชื่อคีย์ตรงกับคำว่าชิปในภาษาอังกฤษ) = ชิปวิธี **เฉพาะเมื่อใบมีพื้นที่จากแบบที่ยังใช้อยู่** (ใบลงหน้างานล้วน = `null` ทุกแถว —
+ *     จอของใบแบบเดิมไม่มีอะไรโผล่เพิ่ม)
+ * @param hideDrawing    จอของช่าง (เขียนผลวัดได้ · ไม่ได้เคาะ) — พื้นที่จากแบบไม่ใช่งานของเขา ⇒ **ไม่อยู่ใน `rows`**
+ *   (รวมแถวจากแบบที่ตัดไปแล้ว) · `index` นับเฉพาะแถวที่เห็น · จำนวนที่ซ่อนไปพูดด้วย `drawingNote` บรรทัดเดียว
+ *   ⚠️ เลขจุดในหมายเหตุ ("จุด 3.2 ยังไม่มีรูป") ยังเป็น **ลำดับในใบ** — ตัวนับเดียวกับ route ปิดนัด ไม่เลื่อนตามแถวที่ซ่อน
+ *   ⚠️ ชื่อในประโยค (`name`) สะกดจากทั้งใบเสมอ — แถบ · กล่องส่งงาน · "ถัดไป" ต้องเรียกพื้นที่เดียวกันด้วยคำเดียวกัน
+ * @param dept           ฝ่ายของใบ (`request.dept`) — ใช้ในป้าย "เพิ่มโดย {ฝ่าย}" ของพื้นที่จากแบบที่ถูกเพิ่ม · ไม่ส่ง = TS
+ * @returns เพิ่มจากเดิม `drawingCount` (พื้นที่จากแบบที่ยังอยู่ในใบ) · `drawingNote` (บรรทัดของช่าง หรือ `null`) ·
+ *   `emptyReason`: `'drawing'` = ช่างไม่เหลือพื้นที่ให้วัดเพราะที่เหลือเป็นจากแบบทั้งหมด (หัวหน้าสลับพื้นที่สุดท้ายตอนช่างอยู่
+ *   หน้างาน) — จอวาง `drawingNote` **แทน** ข้อความว่างสองตัวเดิม ("ใบนี้ยังไม่มีพื้นที่…" · "ไม่มีพื้นที่ที่ต้องวัดแล้ว…")
+ *   ซึ่งเป็นเท็จทั้งคู่ในกรณีนี้ · นอกนั้น `null`
  */
 export function surveyZoneListView({
   zones = [], filesByZone = {}, selectedZoneId = null, dirtyZoneId = null,
   sendBack = null, canDecide = false, split = false, visit = null, locked = false,
+  hideDrawing = false, dept = null,
 } = {}) {
   const started = visit?.status === 'in_progress' || isClosedVisit(visit);
   const rows = list(zones).filter((z) => z?.id);
+  const shown = hideDrawing === true ? rows.filter((z) => !isDrawingZone(z)) : rows;
   const files = filesMap(filesByZone);
   const asked = surveySendBackZoneIds(sendBack, rows);
   const selected = idOf(selectedZoneId);
@@ -439,15 +498,24 @@ export function surveyZoneListView({
      · ถาดนับเสมอ (ติดทั้งส่งงานและส่งผล) · จุดที่ยังไม่มีรูปนับเฉพาะตอนนัดยังเปิด (ส่งงาน = G1 · ส่งผลตอนนี้ปิดนัดให้ด้วย)
        นัดปิด/ไม่มีนัด = ด่านที่เหลือคือ G2 (ถาดอย่างเดียว) — แถวไม่ขึ้นขาดเรื่องที่ไม่มีใครต้องทำแล้ว */
   const spotGaps = spotGapNotes(rows, files, { photos: isOpenVisit(visit), tray: canDecide || !locked });
+  const progress = surveyFieldProgress(rows, files);
+  const drawingCount = progress.drawing || 0;
 
-  const out = rows.map((zone, i) => {
+  const out = shown.map((zone, i) => {
     const id = String(zone.id);
     const facts = surveyZoneFacts(zone, list(files[zone.id]));
-    const missing = crewMissingKeys(facts);
-    /* ⚠️ พื้นที่ที่ค้างไม่ถามด่านรูปจุด — กติกาเดียวกับกล่องส่งงาน (ตัวนับเห็นแต่จุดที่บันทึกแล้ว) · แถวขึ้น "กำลังแก้" อยู่แล้ว */
+    const method = zoneMethod(zone);
+    /* ข้อบนแถว — ลงหน้างาน: สามข้อของช่าง · จากแบบ: ขนาด + ภาพแบบ (ของหัวหน้าทั้งคู่ — ดู `DRAWING_MARKS`) */
+    const marks = zonePageMarks(zone);
+    const missing = zonePageGapKeys(zone, facts);
+    /* ⚠️ พื้นที่ที่ค้างไม่ถามด่านรูปจุด — กติกาเดียวกับกล่องส่งงาน (ตัวนับเห็นแต่จุดที่บันทึกแล้ว) · แถวขึ้น "กำลังแก้" อยู่แล้ว
+       · พื้นที่จากแบบไม่มีในผลของตัวนับ (ไม่มีใครไปถ่ายรูปจุด) ⇒ `null` เอง */
     const spotNote = facts.cut || dirty === id ? null : (spotGaps.get(id) || null);
     const state = facts.cut ? 'cut' : (missing.size || spotNote ? 'todo' : 'done');
     const areaText = facts.sizeComplete ? `${fmtNumber(facts.areaSqm)} ตร.ม.` : null;
+    const values = {
+      size: areaText, wide: facts.photos.wide || null, spots: facts.spotsTotal || null, plan: facts.photos.plan || null,
+    };
     return {
       id,
       index: i + 1,
@@ -460,17 +528,12 @@ export function surveyZoneListView({
       selected: selected === id,
       areaText,
       sizeText: facts.sizeComplete ? figuresText(facts.areaSqm, facts.volumeCbm) : null,
-      /* วงเปล่ากับติ๊ก — ค่าข้างติ๊กคือของที่นับได้ (ภาพกว้าง 2 · จุด 3) ขนาดใช้ ตร.ม. */
-      marks: facts.cut ? [] : CREW_MARKS.map((m) => ({
-        key: m.key,
-        label: m.label,
-        ok: !missing.has(m.key),
-        value: m.key === 'size' ? areaText
-          : m.key === 'wide' ? (facts.photos.wide || null)
-            : (facts.spotsTotal || null),
-      })),
-      /* คำเดียวกับหมายเหตุแถวของกล่องส่งงาน ("ขาด: ภาพกว้าง · จุด 1.3 ยังไม่มีรูป") */
-      missingText: [crewMissingText(facts), spotNote].filter(Boolean).join(' · ') || null,
+      /* วงเปล่ากับติ๊ก — ค่าข้างติ๊กคือของที่นับได้ (ภาพกว้าง 2 · จุด 3 · ภาพแบบ 1) ขนาดใช้ ตร.ม.
+         ⚠️ "ภาพแบบ" นับไฟล์ในช่องผังทุกชนิด แต่ติ๊กเฉพาะเมื่อมีรูป JPG/PNG (ด่านของ server) — "ภาพแบบ 1" ที่ยังไม่ติ๊ก
+            = มีไฟล์ที่ลงเอกสารไม่ได้ (PDF/TIFF) ค้างอยู่ */
+      marks: facts.cut ? [] : marks.map((m) => ({ key: m.key, label: m.label, ok: !missing.has(m.key), value: values[m.key] })),
+      /* คำเดียวกับหมายเหตุแถวของกล่องส่งงาน ("ขาด: ภาพกว้าง · จุด 1.3 ยังไม่มีรูป") · พื้นที่จากแบบ: "ขาด: ขนาด · ภาพแบบ" */
+      missingText: [missingLine(marks, missing), spotNote].filter(Boolean).join(' · ') || null,
       spotNote,
       /* ก่อนเริ่มงาน สามข้อครบแต่ติดด่านรูปจุด = บรรทัดเหตุด้วย — วงติ๊กครบทั้งแถวไม่บอกว่าทำไมยังไม่ ✓ */
       detail: facts.cut ? 'cut' : (state === 'todo' && (started || !missing.size) ? 'missing' : 'marks'),
@@ -479,35 +542,51 @@ export function surveyZoneListView({
         added: isAddedZone(zone),
         cut: facts.cut,
         sentBack: !facts.cut && asked.has(id),
-        /* ของหัวหน้าค้างบนแถวที่ช่างครบแล้วเท่านั้น — แถวที่ช่างยังขาด บรรทัด "ขาด: …" พูดอยู่แล้ว สองป้ายซ้อนคือเสียงรบกวน */
+        /* ของหัวหน้าค้างบนแถวที่ช่างครบแล้วเท่านั้น — แถวที่ช่างยังขาด บรรทัด "ขาด: …" พูดอยู่แล้ว สองป้ายซ้อนคือเสียงรบกวน
+           · พื้นที่จากแบบ: ครบ = ขนาด + ภาพแบบ ⇒ ของหัวหน้าที่เหลือได้มีข้อเดียวคือแพ็คเกจ */
         headPending: canDecide === true && state === 'done' && facts.missingHead.length > 0,
         editing: split === true && selected === id && dirty === id,
       },
+      method,
+      chip: drawingCount > 0 ? SURVEY_METHOD_CHIP[method] : null,
+      /* คำของป้าย `tags.added` — พื้นที่จากแบบที่ถูกเพิ่มไม่ใช่ "เพิ่มหน้างาน" (หัวหน้าเพิ่มที่โต๊ะ) · ไม่ได้ถูกเพิ่ม = `null` */
+      addedLabel: surveyZoneAddedLabel(zone, dept),
     };
   });
 
-  const progress = surveyFieldProgress(rows, files);
+  const hidden = hideDrawing === true && drawingCount > 0;
   return {
     rows: out,
     progress,
-    progressText: `วัดแล้ว ${progress.done} / ${progress.total} พื้นที่`,
+    /* "วัดแล้ว 2 / 3 พื้นที่" ตัวเดิม · ใบผสมต่อ " · จากแบบ 1" · จากแบบทั้งใบ "จากแบบ 3 พื้นที่" (พื้นที่จากแบบไม่ถูกเรียกว่า "วัดแล้ว") */
+    progressText: surveyProgressText(progress),
     /* ⚠️ เฉพาะพื้นที่ที่สามข้อของช่างยังขาด (แถบพูด "ยังขาด …") — ขาดแค่รูปจุดไม่อยู่ในนี้: แถบพูดด้วยเหตุรูปจุดที่บอก
-       เลขจุด (`spotReason` · G1) ซึ่งละเอียดกว่า "ยังขาด Reception" · "วัดแล้ว n / m" ก็นับสามข้อเท่านั้น (ตัวนับของการ์ด) */
-    leftNames: out.filter((r) => r.state === 'todo' && r.marks.some((m) => !m.ok)).map((r) => r.name),
+       เลขจุด (`spotReason` · G1) ซึ่งละเอียดกว่า "ยังขาด Reception" · "วัดแล้ว n / m" ก็นับสามข้อเท่านั้น (ตัวนับของการ์ด)
+       🔴 **พื้นที่จากแบบไม่อยู่ในนี้แม้แถวจะยังขาด** — ขนาด/ภาพแบบของมันเป็นของหัวหน้า · ใส่เข้ามา = แถบของช่างบอก
+          "ยังขาด …" พื้นที่ที่ช่างแก้ไม่ได้ แล้วส่งงานไม่ผ่านทั้งที่ของตัวเองครบ */
+    leftNames: out
+      .filter((r, i) => !isDrawingZone(shown[i]) && r.state === 'todo' && r.marks.some((m) => !m.ok))
+      .map((r) => r.name),
+    drawingCount,
+    /* คำของแผน §3.4 — ใช้ประโยคเดียวกันแม้ช่างไม่เหลือแถวให้วัด (คำว่า "อีก" ตอนนั้นไม่มีอะไรนำหน้า — รอเจ้าของเคาะ สเปก S2a §7) */
+    drawingNote: hidden ? `อีก ${fmtNumber(drawingCount)} พื้นที่หัวหน้าประเมินจากแบบ — ไม่ต้องวัด` : null,
+    emptyReason: hidden && progress.total === 0 ? 'drawing' : null,
   };
 }
 
 /**
  * พื้นที่ที่บานขวาเปิดเองเมื่อไม่มีใครเลือก (สองบาน · หมุนแท็บเล็ต · พื้นที่ที่เปิดอยู่ถูกลบ)
- * คนดูแก้ได้ = พื้นที่แรกที่ของช่างยังขาด (งานถัดไปของเขา) · นอกนั้น/ครบหมด = พื้นที่แรกที่ยังอยู่ในใบ
- * ⚠️ ไม่มีพื้นที่ที่ยังอยู่ในใบเลย = `null` (บานขวาว่าง ไม่ใช่เปิดพื้นที่ที่ถูกตัด)
+ * คนดูแก้ได้ = พื้นที่แรกที่ยังขาด (งานถัดไปของเขา) · นอกนั้น/ครบหมด = พื้นที่แรกที่ยังอยู่ในใบ
+ *   "ยังขาด" = `zonePageGapKeys`: ลงหน้างาน = ของช่าง (เดิม) · จากแบบ = ขนาด/ภาพแบบของหัวหน้า
+ * @param hideDrawing จอของช่าง (ชุดเดียวกับ `surveyZoneListView`) — พื้นที่จากแบบไม่อยู่ในรายการของเขา จึงไม่ถูกเปิดเอง
+ * ⚠️ ไม่มีพื้นที่ที่ยังอยู่ในใบเลย (หรือช่างไม่เหลือพื้นที่ให้เปิด) = `null` (บานขวาว่าง ไม่ใช่เปิดพื้นที่ที่ถูกตัด)
  */
-export function surveyDefaultZoneId(zones = [], filesByZone = {}, { editable = false } = {}) {
+export function surveyDefaultZoneId(zones = [], filesByZone = {}, { editable = false, hideDrawing = false } = {}) {
   const files = filesMap(filesByZone);
-  const active = list(zones).filter((z) => z?.id && !isCutRow(z));
+  const active = list(zones).filter((z) => z?.id && !isCutRow(z) && !(hideDrawing === true && isDrawingZone(z)));
   if (!active.length) return null;
   if (editable) {
-    const todo = active.find((z) => surveyZoneFacts(z, list(files[z.id])).missingCrew.length > 0);
+    const todo = active.find((z) => zonePageGapKeys(z, surveyZoneFacts(z, list(files[z.id]))).size > 0);
     if (todo) return String(todo.id);
   }
   return String(active[0].id);
@@ -517,30 +596,33 @@ export function surveyDefaultZoneId(zones = [], filesByZone = {}, { editable = f
  * ตัวเลื่อนพื้นที่ (‹ จุด ›) บนหัวหน้าพื้นที่ — ไม่วน (อยู่พื้นที่สุดท้าย › กดไม่ได้ · ม็อก A-2)
  * ⚠️ จุดทุกขนาดจอ · เกิน 8 พื้นที่ขึ้น "n / t" แทน (จุดสิบกว่าจุดเล็กจนกดไม่ได้และนับไม่ออก)
  * @returns `{ index, total, prev, next, dots:[{id, state, current}], ariaLabel, compactText }` — `index` นับจาก 1
+ * ⭐ จุดของพื้นที่จากแบบ: ครบ = ขนาด + ภาพแบบ (`zonePageGapKeys`) · คำอ่านจอไม่นับมันเป็น "วัดแล้ว" — ต่อ " · จากแบบ k" แยกไว้
+ * @param hideDrawing จอของช่าง — เลื่อนเฉพาะพื้นที่ที่อยู่ในรายการของเขา (ชุดเดียวกับ `surveyZoneListView`)
  */
-export function surveyZoneNeighbors(zones = [], zoneId = null, filesByZone = {}) {
+export function surveyZoneNeighbors(zones = [], zoneId = null, filesByZone = {}, { hideDrawing = false } = {}) {
   const files = filesMap(filesByZone);
-  const rows = list(zones).filter((z) => z?.id);
+  const rows = list(zones).filter((z) => z?.id && !(hideDrawing === true && isDrawingZone(z)));
   const here = idOf(zoneId);
   const dots = rows.map((z) => {
     const facts = surveyZoneFacts(z, list(files[z.id]));
     return {
       id: String(z.id),
-      state: facts.cut ? 'cut' : (facts.missingCrew.length ? 'todo' : 'done'),
+      state: facts.cut ? 'cut' : (zonePageGapKeys(z, facts).size ? 'todo' : 'done'),
       current: String(z.id) === here,
     };
   });
   const i = dots.findIndex((d) => d.current);
   const total = rows.length;
   if (i < 0) return { index: 0, total, prev: null, next: null, dots, ariaLabel: '', compactText: null };
-  const done = dots.filter((d) => d.state === 'done').length;
+  const done = dots.filter((d, k) => d.state === 'done' && !isDrawingZone(rows[k])).length;
+  const drawing = rows.filter((z) => !isCutRow(z) && isDrawingZone(z)).length;
   return {
     index: i + 1,
     total,
     prev: i > 0 ? dots[i - 1].id : null,
     next: i < total - 1 ? dots[i + 1].id : null,
     dots,
-    ariaLabel: `พื้นที่ที่ ${i + 1} จาก ${total} · วัดแล้ว ${done}`,
+    ariaLabel: `พื้นที่ที่ ${i + 1} จาก ${total} · วัดแล้ว ${done}${drawing ? ` · จากแบบ ${drawing}` : ''}`,
     compactText: total > 8 ? `${i + 1} / ${total}` : null,
   };
 }
@@ -791,16 +873,24 @@ export function surveyNextDimField(parts = [], partId = null, field = null) {
  * ลำดับ: บันทึกไม่ผ่าน → ถูกแก้จากที่อื่น → ตัดออก → ยังไม่บันทึก → วัดแล้ว / ยังไม่ครบ
  * ⭐ "ยังไม่บันทึก" ชนะ "ยังไม่ครบ" — คนที่ยืนอยู่บนหน้านี้กำลังกรอกอยู่ ของที่เขาต้องรู้คือ "ออกตอนนี้หาย"
  *   (ของขาดรายข้ออยู่บนหัวข้อแต่ละอันแล้ว) · ป้าย "เพิ่มหน้างาน" เป็นอีกแกน (ที่มาของพื้นที่) ขึ้นคู่ได้
- * @returns `{ key, tone, text, added }`
+ * ⭐ พื้นที่จากแบบ: ครบ = ขนาด + ภาพแบบ (`zonePageGapKeys`) และป้ายครบ **ไม่ใช่ "วัดแล้ว"** — ไม่มีใครไปวัด
+ * @param dept ฝ่ายของใบ — ใช้ใน `addedLabel` ของพื้นที่จากแบบที่ถูกเพิ่ม ("เพิ่มโดย {ฝ่าย}")
+ * @returns `{ key, tone, text, added, addedLabel }` — `addedLabel` = คำของป้ายที่มา (`null` เมื่อไม่ได้ถูกเพิ่ม)
  */
-export function surveyZoneStateBadge({ zone = {}, files = [], dirty = false, error = '', conflict = false } = {}) {
+export function surveyZoneStateBadge({
+  zone = {}, files = [], dirty = false, error = '', conflict = false, dept = null,
+} = {}) {
   const facts = surveyZoneFacts(zone || {}, list(files));
   const added = isAddedZone(zone);
-  const pick = (key, tone, text) => ({ key, tone, text, added });
+  const addedLabel = surveyZoneAddedLabel(zone, dept);
+  const pick = (key, tone, text) => ({ key, tone, text, added, addedLabel });
   if (error) return pick('error', 'danger', 'บันทึกไม่สำเร็จ');
   if (conflict && !facts.cut) return pick('conflict', 'warning', 'ถูกแก้จากที่อื่น');
   if (facts.cut) return pick('cut', 'neutral', 'ตัดออก');
   if (dirty) return pick('dirty', 'warning', 'ยังไม่บันทึก');
+  if (isDrawingZone(zone)) {
+    return zonePageGapKeys(zone, facts).size ? pick('todo', 'warning', 'ยังไม่ครบ') : pick('done', 'success', DRAWING_ZONE_DONE_TEXT);
+  }
   return facts.crewComplete ? pick('done', 'success', 'วัดแล้ว') : pick('todo', 'warning', 'ยังไม่ครบ');
 }
 
@@ -831,6 +921,9 @@ export function surveyZoneActions({ zone = {}, canWrite = false } = {}) {
  *   · ค้าง = "ยังไม่บันทึก" (รูปขึ้นทันทีอยู่แล้ว มีป้าย "ขึ้นแล้ว" บนแผ่นรูปเอง) · ไม่มีจุดที่บันทึก = "ยังไม่มี"
  * @param draft ร่างบนจอ `{ parts, spots, note }` · @param dirty ธงค่าค้างรวมของหน้าพื้นที่
  * @returns `{ size, wide, spots, note }` แต่ละตัว `{ mark:'dirty'|'done'|'todo', chip:{tone,text,check}|null }`
+ * ⭐ **พื้นที่จากแบบ** (หัวข้อของ `surveyDrawingZoneView`): `wide: null` (ไม่มีหัวข้อภาพกว้าง) · เพิ่ม `plan` = ภาพแบบ —
+ *   ติ๊กเมื่อด่านข้อผังผ่าน (มีรูป JPG/PNG) นับเฉพาะรูปที่ลงเอกสารได้ · จุดไม่บังคับและไม่มีรูป ⇒ ไม่มีป้าย "ยังไม่มี" และไม่ต่อจำนวนรูป
+ *   ⚠️ พื้นที่ลงหน้างานได้สี่คีย์เดิมทุกตัวอักษร (ไม่มีคีย์ `plan`)
  */
 export function surveyZoneSections({ zone = {}, files = [], draft = null, dirty = false } = {}) {
   const d = draft || zone || {};
@@ -851,6 +944,20 @@ export function surveyZoneSections({ zone = {}, files = [], draft = null, dirty 
     mark: count ? 'done' : 'todo',
     chip: count ? { tone: 'success', text: `ขึ้นแล้ว ${count} รูป`, check: true } : NONE,
   });
+
+  if (isDrawingZone(zone)) {
+    const printable = list(files).filter((f) => f?.id && f.docType === SURVEY_DOC_PLAN && isJpgOrPngFile(f)).length;
+    const planOk = !surveyZoneFacts(zone, list(files)).missing.some((g) => g.key === 'plan');
+    const drawnSpots = typed(dirty && spotsSig(d) !== spotsSig(zone), savedSpots > 0, { optional: true });
+    if (drawnSpots.mark === 'done') drawnSpots.chip = { ...SAVED, text: `${fmtNumber(savedSpots)} จุด` };
+    return {
+      size: typed(dirty && partsSig(d) !== partsSig(zone), savedParts > 0),
+      wide: null,
+      plan: planOk ? uploaded(printable) : { mark: 'todo', chip: NONE },
+      spots: drawnSpots,
+      note: typed(dirty && noteSig(d) !== noteSig(zone), savedNote, { optional: true }),
+    };
+  }
 
   const spots = typed(dirty && spotsSig(d) !== spotsSig(zone), savedSpots > 0);
   if (spots.mark === 'done') {
@@ -886,7 +993,13 @@ export function surveyZoneFooterView({
   const facts = surveyZoneFacts(zone, list(files));
   const readOnly = viewerKind === 'readonly';
   const sending = Number(uploading) > 0 ? ` · กำลังส่ง ${Number(uploading)}` : '';
-  const photoLine = `ภาพกว้างขึ้นแล้ว ${facts.photos.wide}${sending} · รูปไม่ต้องรอบันทึก`;
+  /* พื้นที่จากแบบ — รูปของหน้านี้คือภาพแบบ (ไม่มีภาพกว้าง) · "ครบ" และ "ขาด: …" ถามสองข้อของมัน (`zonePageGapKeys`) ไม่ใช่ของช่าง */
+  const drawn = isDrawingZone(zone);
+  const gaps = zonePageGapKeys(zone, facts);
+  const gapText = missingLine(zonePageMarks(zone), gaps);
+  const photoLine = drawn
+    ? `${PLAN_GATE.drawingShort}ขึ้นแล้ว ${facts.photos.plan}${sending} · รูปไม่ต้องรอบันทึก`
+    : `ภาพกว้างขึ้นแล้ว ${facts.photos.wide}${sending} · รูปไม่ต้องรอบันทึก`;
   const saved = !!zone?.surveyedAt
     || list(zone?.parts).some((p) => !isBlankSurveyPart(p))
     || list(zone?.spots).some((s) => !isBlankSurveySpot(s));
@@ -918,16 +1031,16 @@ export function surveyZoneFooterView({
     sub = photoLine;
   } else if (saved) {
     tone = 'saved';
-    head = `${facts.crewComplete ? 'บันทึกครบแล้ว' : 'บันทึกแล้ว'}${stamp ? ` · ${stamp}` : ''}`;
+    head = `${gaps.size === 0 ? 'บันทึกครบแล้ว' : 'บันทึกแล้ว'}${stamp ? ` · ${stamp}` : ''}`;
     sub = readOnly ? 'ดูอย่างเดียว'
-      : crewMissingText(facts)
+      : gapText
         || (viewerKind === 'head'
           ? 'หัวหน้าแก้ได้จนกว่าจะส่งผลให้ฝ่ายขาย · แก้แล้วต้องกดบันทึก'
           : 'ไม่มีค่าที่ยังไม่บันทึก');
   } else {
     tone = 'plain';
     head = readOnly ? 'ยังไม่มีผลวัด' : 'ยังไม่ได้บันทึกค่าของพื้นที่นี้';
-    sub = crewMissingText(facts);
+    sub = gapText;
   }
 
   const canSave = !busy && dirty && !saveBlocker;
@@ -943,6 +1056,73 @@ export function surveyZoneFooterView({
       reason: busy ? 'กำลังบันทึก…' : (!dirty ? 'ยังไม่ได้แก้อะไร' : (saveBlocker ? String(saveBlocker) : null)),
       emphasis: canSave ? 'primary' : 'quiet',
     },
+  };
+}
+
+/* ══ หน้าพื้นที่ของพื้นที่ที่ประเมินจากแบบ (งวด S2a · แผน survey-desk-assessment §3.2 · บอร์ด B1) ════════════════════ */
+
+/* ⛔ รายชื่อชนิดเต็ม ห้ามย่อเป็น "รูปทุกชนิด" (ชนิดลงท้ายดอกจัน): ชุดนั้นรวม TIFF/HEIC ที่ลงเอกสารไม่ได้ และตัวอักษรคู่นั้นใน
+   สตริงทำให้ตัวตัดคอมเมนต์ของยามซอร์สจออ่านโค้ดที่เหลือเป็นคอมเมนต์ (ยามอยู่ที่ `surveyMethodFieldView.test.mjs`) */
+const DRAWING_PLAN_ACCEPT = 'image/jpeg,image/png';
+const DRAWING_PLAN_REJECT = 'ไฟล์นี้ลงเอกสารไม่ได้ (PDF/TIFF) — แคปเป็น PNG แล้วแนบใหม่';
+
+/**
+ * 🔑 **หน้าพื้นที่ของพื้นที่ที่ประเมินจากแบบ** — หัวข้อตามลำดับจอ: ① ขนาด ② ภาพแบบของพื้นที่ ③ จุดติดตั้งโดยประมาณ ④ หมายเหตุ
+ *   พื้นที่ลงหน้างาน = `null` (หน้าพื้นที่ใช้หัวข้อชุดเดิม: ขนาด → ภาพกว้าง → จุดที่ติดตั้งได้ → หมายเหตุ)
+ *
+ * ⭐ **ไม่มีหัวข้อภาพกว้าง** (`wide: null`) และจุดไม่มีรูป (`spots.photos: false`) — ไม่มีใครยืนอยู่ในห้อง · ภาพแบบคือรูปเดียวของ
+ *   พื้นที่นี้บนเอกสารประเมิน ⇒ ต้องเป็น JPG/PNG (กระดาษวาดได้แค่สองชนิดนี้)
+ *   · `plan.files[].printable` ใช้ตัวตัดสินเดียวกับด่านของ server (`isJpgOrPngFile`) — ไฟล์ที่แนบไว้แต่ลงเอกสารไม่ได้ยังอยู่ในลิสต์
+ *     พร้อม `note` บอกเหตุ (ลบได้ · ไม่ปลดด่าน) · `plan.missing` = ข้อความของด่านข้อผังตัวเดียวกับที่บล็อกการส่งผล
+ * ⭐ **แก้ได้เฉพาะหัวหน้า** (`canDecide`) บนใบที่ยังไม่ล็อกและพื้นที่ที่ยังไม่ถูกตัด — คนอื่นที่เปิดมาถึง (ผู้วางคิว · ช่างที่ตามลิงก์)
+ *   ได้ `readOnlyReason` · หัวหน้าบนใบที่ล็อกไม่มีเหตุซ้ำที่นี่ (กล่องสถานะของใบบอกแล้วว่าทำไมแก้ไม่ได้)
+ * ⭐ `oldFiles` = ภาพกว้าง + ภาพจุดที่ค้างมาจากตอนพื้นที่นี้ยังลงหน้างาน — ไม่ลงเอกสาร ไม่นับในด่าน ให้ลบได้อย่างเดียว
+ *   (ซ่อนเงียบ = ไฟล์ที่ไม่มีใครเห็นและลบไม่ได้ · สลับกลับเป็นลงหน้างานเมื่อไร ไฟล์ชุดนี้กลับมาเป็นของหน้าพื้นที่เดิม)
+ * ⚠️ ไม่มีคำใบ้เรื่องวางรูปจากคลิปบอร์ดในหน้านี้ — ช่องภาพแบบรับเฉพาะไฟล์ที่เลือก หรือปุ่ม "ใช้รูปนี้…" ของแผงแบบจากฝ่ายขาย
+ *
+ * @param zone  แถวที่บันทึกแล้ว · @param files ไฟล์ชุดสดของพื้นที่นี้ (ทุกหัวข้อ)
+ * @param canDecide หัวหน้า · @param locked ใบล็อกแล้ว (ส่งผล · ยกเลิก · ปิด)
+ * @returns `null` หรือวัตถุที่มีคีย์ป้ายวิธี (ชื่อคีย์ตรงกับคำว่าชิปในภาษาอังกฤษ) แล้วตามด้วย
+ *          `{ editable, readOnlyReason, size, plan, spots, note, save, wide, oldFiles }`
+ */
+export function surveyDrawingZoneView({ zone = null, files = [], canDecide = false, locked = false, dept = null } = {}) {
+  if (!zone || !isDrawingZone(zone)) return null;
+  const rows = list(files);
+  const facts = surveyZoneFacts(zone, rows);
+  const ofType = (docType) => rows.filter((f) => f?.id && f.docType === docType);
+  const planGap = facts.missing.find((g) => g.key === 'plan');
+  const old = [...ofType(SURVEY_DOC_WIDE), ...ofType(SURVEY_DOC_SPOT)];
+  return {
+    chip: SURVEY_METHOD_LABEL.drawing,
+    // ป้ายที่มาของพื้นที่ที่หัวหน้าเพิ่มบนใบ ("เพิ่มโดย {ฝ่าย}") — ไม่ได้ถูกเพิ่ม = `null` · จอไม่พิมพ์ "เพิ่มหน้างาน" เอง
+    addedLabel: surveyZoneAddedLabel(zone, dept),
+    editable: canDecide === true && locked !== true && !facts.cut,
+    readOnlyReason: canDecide === true ? null : 'พื้นที่นี้หัวหน้าประเมินจากแบบ — ไม่ต้องวัดหน้างาน',
+    size: { label: 'ขนาด ก × ย × ส', hint: 'อ่านขนาดจากแบบ หรือใช้ค่าที่วัดไว้แล้ว' },
+    plan: {
+      label: `${PLAN_GATE.drawingLabel} (บังคับ · JPG/PNG)`,
+      hint: 'แนบรูปแบบของพื้นที่นี้ (JPG/PNG) — มาร์กจุดหรือไม่ก็ได้',
+      accept: DRAWING_PLAN_ACCEPT,
+      rejectText: DRAWING_PLAN_REJECT,
+      files: ofType(SURVEY_DOC_PLAN).map((f) => {
+        const printable = isJpgOrPngFile(f);
+        return {
+          id: f.id, name: attachmentName(f), href: attachmentHref(f), printable, note: printable ? null : DRAWING_PLAN_REJECT,
+        };
+      }),
+      missing: planGap ? planGap.text : null,
+    },
+    spots: { label: 'จุดติดตั้งโดยประมาณ (ไม่บังคับ)', hint: 'มาร์กตำแหน่งคร่าว ๆ จากแบบได้', photos: false },
+    note: { label: 'หมายเหตุพื้นที่' },
+    save: { label: 'บันทึกพื้นที่นี้' },
+    wide: null,
+    oldFiles: old.length
+      ? {
+        label: `ไฟล์เดิมก่อนเปลี่ยนเป็นประเมินจากแบบ (${fmtNumber(old.length)}) — ไม่ลงเอกสาร`,
+        files: old.map((f) => ({ id: f.id, name: attachmentName(f), href: attachmentHref(f) })),
+        deleteOnly: true,
+      }
+      : null,
   };
 }
 
@@ -1015,7 +1195,8 @@ function visitCountdown(visit, nowKey) {
  *   "บันทึกพื้นที่นี้" ของบานขวากดได้อยู่ (ปุ่มนั้นคืองานถัดไปจริง — บันทึกก่อนส่ง)
  * ⚠️ นับถอยหลังขยับทีละนาทีจาก `nowKey` ที่ผู้เรียกส่ง — ที่นี่ไม่อ่านนาฬิกา
  *
- * @param progress     `{ done, total, cut? }` — `total` = พื้นที่ที่ยังอยู่ในใบ · `cut` แยกใบว่างกับใบที่ตัดออกหมด
+ * @param progress     `{ done, total, cut?, drawing? }` — `total` = พื้นที่ **ลงหน้างาน** ที่ยังอยู่ในใบ · `cut` แยกใบว่างกับใบที่
+ *                     ตัดออกหมด · `drawing` = พื้นที่จากแบบที่ยังอยู่ในใบ (ไม่มีคีย์ / 0 = ไม่มี)
  * @param leftNames    ชื่อพื้นที่ที่ของช่างยังขาด (`surveyZoneListView().leftNames`)
  * @param crewGaps     ด่านของช่างที่ยังติด (`surveyCrewGaps` ของไฟล์ชุดสด)
  * @param spotReason   เหตุของด่านรูปจุด (`surveySpotSubmitReason` ของไฟล์ชุดสด · G1 มติ 01/10) — `null` = ผ่าน
@@ -1085,7 +1266,10 @@ export function surveyFieldBarView({
 
   if (visit.status === 'in_progress') {
     const total = Number(progress?.total) || 0;
-    const noZones = total === 0 && !(Number(progress?.cut) > 0);
+    /* ⭐ ไม่เหลือพื้นที่ลงหน้างาน แต่ใบยังมีพื้นที่จากแบบ (หัวหน้าสลับพื้นที่สุดท้ายตอนช่างอยู่หน้างาน · สเปก S2a §7 D12)
+       = **ครบสำหรับช่าง** ไม่ใช่ "ยังไม่มีพื้นที่ให้วัด" — ไม่มีอะไรให้เขาเพิ่มหรือวัดแล้ว ทางเดียวที่เหลือคือส่งงานปิดนัด
+       ⇒ ตกไปทางข้างล่างตามปกติ (ของขาด → ค่าค้าง → รูปจุด → "ครบทุกพื้นที่แล้ว") · ไม่มีประโยคใหม่ */
+    const noZones = total === 0 && !(Number(progress?.cut) > 0) && !(Number(progress?.drawing) > 0);
     const start = hhmm(visit.actualStartTime);
     let head;
     let sub;
@@ -1166,6 +1350,14 @@ const buttonName = (label) => `“${label}”`;
  *   ไม่มีพื้นที่ → ของขาด (ข้อสุดท้ายถามด่านตัวเดียวกับ route ปิดนัด `surveyFieldSubmitError`)
  *   ⚠️ เข้าไม่ได้ไม่ถามค่าค้าง/ของขาด — ทางนั้นไม่ต้องวัดให้ครบ (ผลวัดที่บันทึกไว้ยังอยู่บนใบ)
  *
+ * ⭐ **กล่องนี้คืองานของนัด — มีแต่พื้นที่ลงหน้างาน** (งวด S2a · แผน survey-desk-assessment §3.4) ไม่ว่าใครเป็นคนส่ง:
+ *   พื้นที่จากแบบไม่มีข้อของช่าง ถ้าอยู่ในลิสต์จะเป็นแถวครบ "ภาพกว้าง 0 · จุด 0" ของงานที่ไม่มีใครไปทำ ⇒ แถว · ยอดรวม ·
+ *   ค่าค้าง นับเฉพาะพื้นที่ลงหน้างาน · ตัวนับความคืบหน้ายังอ่านทั้งใบ (มันแยก "จากแบบ k" ให้เอง)
+ *   🔴 **ด่านถามจากทั้งใบเหมือน route ปิดนัด** (`surveyFieldSubmitError` · `surveySpotSubmitError` กรองพื้นที่จากแบบเอง)
+ *     — ส่งลิสต์ที่กรองแล้วให้ด่าน = ใบที่เหลือแต่พื้นที่จากแบบถูกตอบว่า "ยังไม่มีพื้นที่ให้วัด" ทั้งที่ route รับ และเลขจุด
+ *     "k.n" ในเหตุจะเลื่อนไม่ตรงกับ route
+ *   ⭐ ไม่เหลือพื้นที่ลงหน้างานแต่ยังมีพื้นที่จากแบบ = ครบสำหรับช่าง (สเปก S2a §7 D12) — ไม่ติดเหตุ "ไม่มีพื้นที่"
+ *
  * @param outcome `null` | `'entered'` | `'unable'` · @param reason เหตุผลที่เข้าไม่ได้
  * @param viewerKind `crew` | `senior` (หัวหน้าที่ออกหน้างานเอง) | `head` (ส่งแทนช่างจาก `?submit=1`)
  * @param nowKey `'YYYY-MM-DD HH:MM'` เวลาไทยตอนนี้ — เวลาจบที่ server จะประทับ
@@ -1174,15 +1366,17 @@ export function surveySubmitView({
   outcome = null, reason = '', visit = null, zones = [], filesByZone = {}, dirtyZoneIds = [],
   viewerKind = 'crew', nowKey = null,
 } = {}) {
-  const rows = list(zones).filter((z) => z?.id);
+  /* `sheet` = ทุกแถวของใบ (ด่าน · ชื่อ · เลขจุด · ความคืบหน้า) · `rows` = แถวของกล่อง = พื้นที่ลงหน้างาน */
+  const sheet = list(zones).filter((z) => z?.id);
+  const rows = sheet.filter((z) => !isDrawingZone(z));
   const files = filesMap(filesByZone);
   const dirty = new Set(list(dirtyZoneIds).filter(Boolean).map(String));
 
   // ชื่อในประโยค ("มีค่าที่ยังไม่บันทึก: ห้อง MD") ตัวสะกดเดียวกับแถบและ "ถัดไป" — ไม่ใช่ชื่อดิบที่มีชั้นติดท้าย (UAT 25/09)
-  const names = sentenceNames(rows);
+  const names = sentenceNames(sheet);
   /* ⭐ ด่านรูปจุด (G1 · มติ 01/10) — แถวของพื้นที่ที่จุดยังไม่มีรูป/มีรูปในถาดขึ้น "ไปแก้" พร้อมเลขจุด
      (ตัวนับตัวเดียวกับ route ปิดนัด `surveySpotSubmitError`) */
-  const spotGaps = spotGapNotes(rows, files);
+  const spotGaps = spotGapNotes(sheet, files);
   const viewRows = rows.map((zone) => {
     const facts = surveyZoneFacts(zone, list(files[zone.id]));
     const isDirty = !facts.cut && dirty.has(String(zone.id));
@@ -1209,8 +1403,8 @@ export function surveySubmitView({
     };
   });
   const active = viewRows.filter((r) => r.state !== 'cut');
-  const totals = sheetTotals(rows, files);
-  const progress = surveyFieldProgress(rows, files);
+  const totals = sheetTotals(sheet, files, { onsiteOnly: true });
+  const progress = surveyFieldProgress(sheet, files);
 
   /* ช่วงเวลาที่จะปิด — เริ่ม = ที่ช่างกดเริ่มงาน · จบ = ตอนนี้ (server ประทับเวลาเดียวกัน) · ยังไม่เริ่ม = เวลาเดียว */
   const code = visit?.code || 'นัดนี้';
@@ -1271,12 +1465,13 @@ export function surveySubmitView({
     blocker = enteredBlocker;
   } else if (dirtyNames.length) {
     blocker = `มีค่าที่ยังไม่บันทึก: ${dirtyNames.join(' · ')} — กด ${buttonName('บันทึกพื้นที่นี้')} ก่อนส่งงาน`;
-  } else if (!rows.length) {
+  } else if (!sheet.length) {
     blocker = `ใบนี้ยังไม่มีพื้นที่ให้วัด — เพิ่มพื้นที่ที่เจอหน้างานก่อน หรือเลือก ${buttonName('ไปแล้วเข้าไม่ได้')}`;
   } else {
-    /* ด่านหกข้อก่อน (ขาดหลายพื้นที่ = บอกจำนวน + ปุ่มไปแก้ในแถว) → ด่านรูปจุด (G1 · เหตุเต็มของ route เป๊ะ) */
-    const gateError = surveyFieldSubmitError(rows, files);
-    const spotError = surveySpotSubmitError(rows, files);
+    /* ด่านหกข้อก่อน (ขาดหลายพื้นที่ = บอกจำนวน + ปุ่มไปแก้ในแถว) → ด่านรูปจุด (G1 · เหตุเต็มของ route เป๊ะ)
+       ⚠️ ถามด้วย `sheet` (ทั้งใบ) — ลิสต์เดียวกับที่ route ปิดนัดส่งให้ด่าน (ดูหัวฟังก์ชัน) */
+    const gateError = surveyFieldSubmitError(sheet, files);
+    const spotError = surveySpotSubmitError(sheet, files);
     if (gateError) {
       blocker = missingCount
         ? `ยังขาดผลวัด ${missingCount} พื้นที่ — กด ${buttonName('ไปแก้')} หรือ ${buttonName('ตัดพื้นที่นี้ออก')}`
@@ -1291,7 +1486,7 @@ export function surveySubmitView({
     title: `ส่งงาน${visit?.code ? ` · ${visit.code}` : ''}`,
     statusLabel: visit?.status ? (VISIT_STATUS_LABELS[visit.status] || visit.status) : null,
     rows: viewRows,
-    progressText: `วัดแล้ว ${progress.done} / ${progress.total} พื้นที่`,
+    progressText: surveyProgressText(progress),
     totals,
     totalsText: {
       label: `รวม ${totals.zones} พื้นที่`,
@@ -1488,10 +1683,14 @@ export function surveyJobHeaderView({
 /**
  * บรรทัดท้ายแถบแท็บของหัวหน้า — "รวม 114 ตร.ม. · 336 ลบ.ม. · ภาพกว้าง 5 · จุด 7" (ม็อก AW-2 · AW-3)
  * ⚠️ ตัวรวมตัวเดียวกับแถวรวมของกล่องส่งงาน (`sheetTotals`) — สองที่บนจอเดียวต้องบอกเลขเดียวกัน
+ * @param hideDrawing ค่าเดียวกับที่จอส่งให้ `surveyZoneListView` (จอของช่าง = `true`) — นับเฉพาะพื้นที่ลงหน้างาน
+ *   ⇒ บนจอช่าง บรรทัดนี้เท่ากับยอดรวมของกล่องส่งงาน (ซึ่งนับเฉพาะลงหน้างานเสมอ)
+ *   ⚠️ บนจอหัวหน้า (`false`) บรรทัดนี้นับทุกพื้นที่ ส่วนกล่องส่งงานที่เขาเปิดจาก `?submit=1` นับเฉพาะลงหน้างาน — ต่างกันโดยตั้งใจ:
+ *      แถบแท็บคือผลของทั้งใบ กล่องคืองานของนัด
  * @returns ข้อความ หรือ `null` เมื่อไม่มีพื้นที่ที่ยังอยู่ในใบ (ศูนย์ทุกช่องอ่านเหมือน "วัดแล้วได้ศูนย์")
  */
-export function surveySheetTotalsText({ zones = [], filesByZone = {} } = {}) {
-  const totals = sheetTotals(list(zones), filesMap(filesByZone));
+export function surveySheetTotalsText({ zones = [], filesByZone = {}, hideDrawing = false } = {}) {
+  const totals = sheetTotals(list(zones), filesMap(filesByZone), { onsiteOnly: hideDrawing === true });
   if (!totals.zones) return null;
   return `รวม ${figuresText(totals.areaSqm, totals.volumeCbm)} · ภาพกว้าง ${totals.wide} · จุด ${totals.spots}`;
 }
@@ -1603,7 +1802,7 @@ export function surveyRequestFilesView(rows = [], { unknown = false } = {}) {
     const kind = GOOGLE_DOC_KIND[row.kind] || null;
     const href = kind ? (String(row.fileUrl || '').trim() || null) : attachmentHref(row);
     if (!href) continue;
-    const name = String(row.fileName ?? '').trim() || 'ไฟล์แนบ';
+    const name = attachmentName(row);
     if (!kind && isPreviewableImage(row)) {
       photos.push({ id: row.id, href, name, ariaLabel: `ดูรูป ${name} (เปิดแท็บใหม่)` });
     } else {
@@ -1613,6 +1812,84 @@ export function surveyRequestFilesView(rows = [], { unknown = false } = {}) {
   const count = photos.length + docs.length;
   if (!count) return null;
   return { label, sub: `${fmtNumber(count)} ไฟล์ · ดูอย่างเดียว`, photos, docs, unknown: false };
+}
+
+/* ══ แผง "แบบจากฝ่ายขาย" (งวด S2a · แผน survey-desk-assessment §3.2 · บอร์ด B1) ═══════════════════════════════════ */
+
+/* ชนิดไฟล์ของคำร้องที่ฟอร์มขอประเมินจากแบบจะติดให้ไฟล์แบบ (งวด S4) — ใบเก่าแนบแบบมาเป็น `other` ⇒ ใช้แค่จัดลำดับ ไม่ใช้กรอง */
+const SALES_SPEC_DOC = 'spec';
+const SALES_REUSE_LABEL = 'ใช้รูปนี้เป็นภาพแบบของพื้นที่นี้';
+const SALES_REUSE_BLOCKED = 'ไฟล์นี้ลงเอกสารไม่ได้ — แคปหน้าที่ต้องการเป็น PNG แล้วแนบ';
+
+/**
+ * 🔑 **แผง "แบบจากฝ่ายขาย"** — ทุกไฟล์ที่ฝ่ายขายส่งมาให้ประเมิน: ไฟล์แนบของคำร้อง + ไฟล์ในเธรดของคำร้อง
+ *   ลำดับ: ไฟล์สเปกของคำร้อง → ไฟล์อื่นของคำร้อง → ไฟล์จากเธรด (ลำดับเดิมในแต่ละกลุ่ม)
+ *
+ * ⭐ `image` = เปิดดูเป็นรูปได้ (กดขยายในหน้า) · นอกนั้นเปิดแท็บใหม่ — ชุด "รูปที่เปิดดูได้" ของระบบ ซึ่ง **กว้างกว่า** ชุดที่ลงเอกสารได้
+ *   (TIFF เปิดดูได้แต่กระดาษวาดไม่ขึ้น) ⇒ `image` กับ `reuse.enabled` เป็นคนละคำถาม ห้ามใช้แทนกัน
+ * ⭐ `reuse` = ปุ่ม "ใช้รูปนี้เป็นภาพแบบของพื้นที่นี้" (มติเจ้าของ §10 ข้อ 6) — มี **เฉพาะเมื่อพื้นที่ที่เปิดอยู่ประเมินจากแบบและยังอยู่ในใบ**
+ *   · กดได้เมื่อไฟล์เป็น JPG/PNG (`isJpgOrPngFile` ตัวเดียวกับด่านภาพแบบ) · ไม่ได้ = ปุ่มจางพร้อมเหตุ
+ *   🔴 พื้นที่ลงหน้างาน **ไม่มีปุ่มนี้** — กติกา 29/08 (ไฟล์ฝ่ายขายใช้เป็นภาพผังที่มาร์กจุดไม่ได้) ยังอยู่ครบ
+ *   ⚠️ เอกสาร Google (`kind`) ไม่มีไบต์ให้คัดลอก ⇒ กดไม่ได้เสมอ แม้ชื่อจะลงท้ายเหมือนรูป
+ *   ⚠️ ฟังก์ชันนี้ **ไม่รู้ว่าใครดู** — ปุ่มโชว์ได้ต่อเมื่อ `surveyDrawingZoneView(...).editable` ของพื้นที่เดียวกันจริงด้วย
+ *      (ผู้วางคิวเห็นแผงเหมือนกันแต่แนบแทนหัวหน้าไม่ได้) · เส้นคัดลอกไฟล์เป็นของงวด S2b
+ * ⚠️ ที่อยู่ของไฟล์: ไฟล์ของคำร้อง = proxy ไฟล์แนบ (`attachmentHref`) · ไฟล์เธรด = proxy ของเธรด (`?i=` = ลำดับในข้อความนั้น)
+ *   — ด่านอ่านเดียวกับที่ server ใช้กรองรายการ ⇒ ทุกแถวที่ลิสต์เปิดได้ · แถวที่ไม่มีที่อยู่ให้เปิดไม่ถูกลิสต์
+ * 🔴 **อ่านไม่สำเร็จ ≠ ไม่มีไฟล์** — ลิสต์ใดอ่านไม่ออก (`unknown.requestFiles` · `unknown.threadFiles`) ⇒ `unknown: true`
+ *   และ **ไม่มี** ข้อความ `empty` (บอกว่า "ยังไม่มีไฟล์" ตอนที่จริง ๆ อ่านไม่ได้ = หัวหน้าไปทวงแบบที่ฝ่ายขายส่งมาแล้ว)
+ *
+ * @param requestFiles `requestFiles` ของ GET ใบประเมิน · @param threadFiles `threadFiles` ของ GET (`{ updateId, index, fileName, mimeType }`)
+ * @param zone    พื้นที่ที่หน้าพื้นที่เปิดอยู่ (ไม่มี = แผงบนหน้ารายการ — ไม่มีปุ่ม) · @param unknown `unknown` ของ GET
+ * @returns `{ label, empty, unknown, files: [{ key, name, href, image, source, sourceLabel, reuse }] }`
+ */
+export function surveySalesDrawingsView({ requestFiles = [], threadFiles = [], zone = null, unknown = {} } = {}) {
+  const canReuse = !!zone && isDrawingZone(zone) && !isCutRow(zone);
+  const reuse = (row, copyable = true) => {
+    if (!canReuse) return null;
+    const enabled = copyable && isJpgOrPngFile(row);
+    return { label: SALES_REUSE_LABEL, enabled, reason: enabled ? null : SALES_REUSE_BLOCKED };
+  };
+
+  const attached = list(requestFiles).filter((row) => row?.id);
+  const files = [];
+  for (const row of [
+    ...attached.filter((r) => r.docType === SALES_SPEC_DOC),
+    ...attached.filter((r) => r.docType !== SALES_SPEC_DOC),
+  ]) {
+    const google = !!GOOGLE_DOC_KIND[row.kind];
+    const href = google ? (String(row.fileUrl || '').trim() || null) : attachmentHref(row);
+    if (!href) continue;
+    files.push({
+      key: `request:${row.id}`,
+      name: attachmentName(row),
+      href,
+      image: !google && isPreviewableImage(row),
+      source: 'request',
+      sourceLabel: null,
+      reuse: reuse(row, !row.kind),
+    });
+  }
+  for (const row of list(threadFiles)) {
+    const updateId = idOf(row?.updateId);
+    if (!updateId || !Number.isInteger(row.index) || row.index < 0) continue;
+    files.push({
+      key: `thread:${updateId}:${row.index}`,
+      name: attachmentName(row),
+      href: `/api/updates/${encodeURIComponent(updateId)}/file?i=${row.index}`,
+      image: isPreviewableImage(row),
+      source: 'thread',
+      sourceLabel: 'จากเธรด',
+      reuse: reuse(row),
+    });
+  }
+
+  const unread = unknown?.requestFiles === true || unknown?.threadFiles === true;
+  return {
+    label: 'แบบจากฝ่ายขาย',
+    empty: !files.length && !unread ? 'ยังไม่มีไฟล์แบบจากฝ่ายขาย — ขอในเธรดของคำร้อง' : null,
+    unknown: unread,
+    files,
+  };
 }
 
 /**

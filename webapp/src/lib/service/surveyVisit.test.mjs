@@ -3,7 +3,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+  SURVEY_DESK_COMMIT_FORBIDDEN, SURVEY_DESK_RESCHEDULE_FORBIDDEN, SURVEY_DESK_RESCHEDULE_REASON_ERROR,
+  SURVEY_DESK_REVIVE_ERROR,
   SURVEY_VISIT_KIND, createSurveyVisit, findSurveyVisit, moveSurveyVisit,
+  surveyDeskCommitPatch, surveyDeskCommitSummary, surveyDeskReschedulePatch, surveyDeskRescheduleSummary,
+  surveyDeskResultDate,
   surveyScheduleError, surveyScheduleGaps, surveyVisitDraft, surveyVisitInsertError,
 } from './surveyVisit.js';
 import { REQUEST_SLOT_VISIT_STATES } from './visitStatus.js';
@@ -390,4 +394,125 @@ test('⭐ preferOpen: นัดที่ยังเปิดมาก่อน�
 test('🔴 GET ของจอประเมินใช้ preferOpen — นัดบนจอ = นัดที่ส่งผลจะปิด', () => {
   const route = readFileSync(new URL('../../app/api/service/surveys/[id]/route.js', import.meta.url), 'utf8');
   assert.match(route, /findSurveyVisit\(supabase, id, \{ preferOpen: true \}\)/);
+});
+
+/* ══ ใบที่ประเมินจากแบบทั้งใบ: รับปาก / เลื่อน "วันส่งผล" (แผน survey-desk-assessment §2 แถว 21–22 · มติ D2) ══
+   ⭐ ใบแบบนี้ไม่มีนัด ไม่มีช่าง — คำสัญญามีวันเดียวคือวันส่งผล · หัวหน้าฝ่ายเป็นคนรับปากและเป็นผู้รับผิดชอบเอง
+   ⚠️ ข้อความอยู่ที่ `surveyVisit.js` ที่เดียว (route เรียกอย่างเดียว) ⇒ ล็อกตัวอักษรที่นี่ */
+test('🔒 ข้อความของเส้นงานโต๊ะ — ตัวอักษรตรงตามแผน', () => {
+  assert.equal(SURVEY_DESK_COMMIT_FORBIDDEN, 'รับปากวันส่งผลของใบประเมินจากแบบได้เฉพาะหัวหน้าฝ่ายบริการ');
+  assert.equal(SURVEY_DESK_RESCHEDULE_FORBIDDEN, 'เลื่อนวันส่งผลของใบประเมินจากแบบได้เฉพาะหัวหน้าฝ่ายบริการ');
+  assert.equal(SURVEY_DESK_RESCHEDULE_REASON_ERROR, 'ต้องบอกเหตุผลที่เลื่อนวันส่งผล');
+  assert.equal(
+    SURVEY_DESK_REVIVE_ERROR,
+    'ใบนี้ประเมินจากแบบทั้งใบ — เปิดนัดกลับไม่ได้ ให้หัวหน้าเปลี่ยนวิธีประเมินเป็นลงหน้างานก่อน',
+  );
+});
+
+test('🔑 surveyDeskResultDate: วันส่งผลบังคับ · รูปผิดตีกลับ · ไม่มีกติกา "ไม่มาก่อนวันนัด" (ใบนี้ไม่มีวันนัด)', () => {
+  const MISSING = 'ต้องระบุวันที่จะส่งผลประเมิน';
+  const BAD = 'วันที่จะส่งผลประเมินไม่ถูกต้อง';
+  const cases = [
+    ['ไม่ส่ง body มาเลย', undefined, { value: null, error: MISSING }],
+    ['body เป็น null', null, { value: null, error: MISSING }],
+    ['ไม่มีคีย์', {}, { value: null, error: MISSING }],
+    ['ค่าว่าง', { committedResultDate: '' }, { value: null, error: MISSING }],
+    ['มีแต่ช่องว่าง', { committedResultDate: '   ' }, { value: null, error: MISSING }],
+    ['null', { committedResultDate: null }, { value: null, error: MISSING }],
+    ['รูปแบบไทย', { committedResultDate: '8/9/2026' }, { value: null, error: BAD }],
+    ['เดือนหลักเดียว', { committedResultDate: '2026-9-8' }, { value: null, error: BAD }],
+    ['มีเวลาพ่วง', { committedResultDate: '2026-09-08T00:00:00Z' }, { value: null, error: BAD }],
+    ['ถูกต้อง', { committedResultDate: '2026-09-08' }, { value: '2026-09-08', error: null }],
+    ['ตัดช่องว่างหัวท้าย', { committedResultDate: ' 2026-09-08 ' }, { value: '2026-09-08', error: null }],
+    /* 🔴 วันนัดเข้าพื้นที่ที่ติดมากับ body (การ์ดเก่า · ยิง API ตรง) ต้องไม่ถูกเอามาเทียบ — ใบนี้ไม่มีนัด */
+    ['มาก่อนวันนัดที่ body พกมา', { committedResultDate: '2026-09-01', committedDueDate: '2026-09-08' },
+      { value: '2026-09-01', error: null }],
+  ];
+  for (const [name, body, expected] of cases) {
+    assert.deepEqual(surveyDeskResultDate(body), expected, name);
+  }
+});
+
+test('🔑 surveyDeskCommitPatch: สองวันเป็นค่าเดียวกัน · ไม่มีเวลานัด · ผู้รับผิดชอบ = หัวหน้าที่กด', () => {
+  const nowIso = '2026-10-09T03:00:00.000Z';
+  assert.deepEqual(
+    surveyDeskCommitPatch({ date: '2026-10-15', user: { id: 42, name: 'อานนท์', role: 'ts_manager' }, nowIso }),
+    {
+      committedDueDate: '2026-10-15',
+      committedResultDate: '2026-10-15',
+      committedDueTime: null,
+      dueCommittedAt: nowIso,
+      assigneeId: '42',
+      assigneeName: 'อานนท์',
+      assignedAt: nowIso,
+    },
+  );
+  // บัญชีที่ไม่มีชื่อ = null ไม่ใช่ undefined (คีย์ต้องถูกเขียนลงแถว ไม่ใช่หล่นหาย)
+  const noName = surveyDeskCommitPatch({ date: '2026-10-15', user: { id: 'u-head' }, nowIso });
+  assert.equal(noName.assigneeId, 'u-head');
+  assert.equal(noName.assigneeName, null);
+  assert.equal(Object.keys(noName).length, 7);
+});
+
+test('🔑 surveyDeskCommitSummary: `รับปากส่งผลประเมินจากแบบ {วันที่} · {หัวหน้า}` (+ หมายเหตุ)', () => {
+  const user = { id: 'u-head', name: 'อานนท์' };
+  const cases = [
+    [{ date: '2026-10-15', user }, 'รับปากส่งผลประเมินจากแบบ 2026-10-15 · อานนท์'],
+    [{ date: '2026-10-15', user, note: '' }, 'รับปากส่งผลประเมินจากแบบ 2026-10-15 · อานนท์'],
+    [{ date: '2026-10-15', user, note: null }, 'รับปากส่งผลประเมินจากแบบ 2026-10-15 · อานนท์'],
+    [{ date: '2026-10-15', user, note: 'รอแบบชั้นสอง' }, 'รับปากส่งผลประเมินจากแบบ 2026-10-15 · อานนท์ — รอแบบชั้นสอง'],
+    // ไม่มีชื่อ = ไม่ทิ้งตัวคั่นลอย
+    [{ date: '2026-10-15', user: { id: 'u-head' } }, 'รับปากส่งผลประเมินจากแบบ 2026-10-15'],
+    [{ date: '2026-10-15', user: null, note: 'รอแบบ' }, 'รับปากส่งผลประเมินจากแบบ 2026-10-15 — รอแบบ'],
+  ];
+  for (const [input, expected] of cases) assert.equal(surveyDeskCommitSummary(input), expected);
+});
+
+test('🔑 surveyDeskReschedulePatch: สองวันขยับพร้อมกัน · ไม่แตะผู้รับผิดชอบ', () => {
+  const nowIso = '2026-10-09T03:00:00.000Z';
+  assert.deepEqual(surveyDeskReschedulePatch({ date: '2026-10-20', nowIso }), {
+    committedDueDate: '2026-10-20',
+    committedResultDate: '2026-10-20',
+    committedDueTime: null,
+    dueCommittedAt: nowIso,
+  });
+});
+
+test('🔑 surveyDeskRescheduleSummary: `เลื่อนวันส่งผลประเมิน {เดิม} → {ใหม่} — {เหตุผล}` · เดิม = วันส่งผล ไม่มีค่อยดูวันบนใบ', () => {
+  const cases = [
+    ['วันส่งผลเดิม',
+      { before: { committedResultDate: '2026-10-15', committedDueDate: '2026-10-15' }, date: '2026-10-20', reason: 'ลูกค้าส่งแบบช้า' },
+      'เลื่อนวันส่งผลประเมิน 2026-10-15 → 2026-10-20 — ลูกค้าส่งแบบช้า'],
+    /* ใบที่เคยลงคิวลงหน้างานมาก่อน: วันบนใบเป็นวันนัด วันส่งผลคือคำสัญญาที่ฝ่ายขายถืออยู่ ⇒ พูดวันส่งผล */
+    ['สองวันไม่เท่ากัน',
+      { before: { committedResultDate: '2026-10-17', committedDueDate: '2026-10-15' }, date: '2026-10-20', reason: 'ลูกค้าส่งแบบช้า' },
+      'เลื่อนวันส่งผลประเมิน 2026-10-17 → 2026-10-20 — ลูกค้าส่งแบบช้า'],
+    ['ไม่มีวันส่งผล (ใบก่อน mig 0368)',
+      { before: { committedResultDate: null, committedDueDate: '2026-10-15' }, date: '2026-10-20', reason: 'ลูกค้าส่งแบบช้า' },
+      'เลื่อนวันส่งผลประเมิน 2026-10-15 → 2026-10-20 — ลูกค้าส่งแบบช้า'],
+    ['ไม่มีวันเลย',
+      { before: {}, date: '2026-10-20', reason: 'ลูกค้าส่งแบบช้า' },
+      'เลื่อนวันส่งผลประเมิน (ไม่เคยระบุ) → 2026-10-20 — ลูกค้าส่งแบบช้า'],
+    ['ไม่มีแถวก่อนหน้า',
+      { before: null, date: '2026-10-20', reason: 'ลูกค้าส่งแบบช้า' },
+      'เลื่อนวันส่งผลประเมิน (ไม่เคยระบุ) → 2026-10-20 — ลูกค้าส่งแบบช้า'],
+    ['ไม่มีเหตุผล = ไม่ทิ้งขีดลอย',
+      { before: { committedResultDate: '2026-10-15' }, date: '2026-10-20', reason: '' },
+      'เลื่อนวันส่งผลประเมิน 2026-10-15 → 2026-10-20'],
+  ];
+  for (const [name, input, expected] of cases) assert.equal(surveyDeskRescheduleSummary(input), expected, name);
+});
+
+/* 🔴 ใบลงหน้างานต้องไม่ถูกแตะ: ตัวตรวจลงคิวเดิมยังบังคับกติกา "ส่งผลไม่มาก่อนวันนัด" ด้วยข้อความเดิม */
+test('🔒 เส้นลงหน้างานเดิมไม่เปลี่ยน — surveyScheduleError ยังเทียบวันส่งผลกับวันนัด', () => {
+  assert.equal(
+    surveyScheduleError({ ...schedule, committedResultDate: '2026-09-07' }, request),
+    'วันที่จะส่งผลประเมินต้องไม่มาก่อนวันนัดเข้าพื้นที่',
+  );
+  assert.deepEqual(surveyScheduleGaps({}, {}), [
+    'ใบนี้ไม่มีสถานที่ — ลงคิวไม่ได้',
+    'ต้องระบุวันนัดเข้าพื้นที่',
+    'ต้องเลือกเจ้าหน้าที่ผู้รับผิดชอบ',
+    'ต้องระบุวันที่จะส่งผลประเมิน',
+  ]);
 });

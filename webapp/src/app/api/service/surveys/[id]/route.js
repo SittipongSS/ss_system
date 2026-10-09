@@ -13,10 +13,14 @@ import { listAttachments } from '@/lib/master/attachments';
 import { loadPackageSizesOrNull } from '@/lib/service/packageSizesRepo';
 import { loadSurveyCrew, loadSurveySheetContext, loadSurveyZones } from '@/lib/service/surveyRepo';
 import { surveySendBackOnSheet } from '@/lib/service/survey';
+/* ประเมินจากแบบ (mig 0408 · งวด S2a) — สวิตช์อ่านผ่านตัวอ่านกลางตัวเดียว · จอรู้ค่าจาก payload ของเส้นนี้เท่านั้น */
+import { surveyDrawingMethodEnabled } from '@/lib/service/surveyDrawingFlag';
+import { surveyMethodMix, surveyNeedsVisit } from '@/lib/service/surveyMethod';
 /* ⚠️ เอกสารประเมิน: import ได้เฉพาะตัวอ่านแถว (`surveyReportRows`) — ช่างเปิดเส้นนี้ทุกครั้งที่บันทึกหน้างาน
    ⇒ ห้ามลาก sharp / chromium / ตัวเรนเดอร์เข้ามาที่หัวไฟล์ (สเปก PR-2 มติ 24 · ด่าน `check-doc-tracing.mjs`) */
 import { surveyDocumentSummary } from '@/lib/service/surveyReportRows';
 import { loadSurveyRequestFiles } from '@/lib/service/surveyRequestFiles';
+import { loadSurveyThreadFiles } from '@/lib/service/surveyThreadFiles';
 import { surveySpotLinkDecision } from '@/lib/service/surveySpotPhotos';
 import { findSurveyVisit } from '@/lib/service/surveyVisit';
 import { visitWriteAccess } from '@/lib/service/visitAccess';
@@ -28,6 +32,26 @@ const isOnVisit = (user, visit) => {
   const crew = [visit.assigneeId, ...(Array.isArray(visit.assistantIds) ? visit.assistantIds : [])];
   return crew.filter(Boolean).map(String).includes(String(user.id));
 };
+
+const NO_THREAD_FILES = Object.freeze({ files: [], unknown: false });
+
+/**
+ * ใบนี้มีนัดที่ **เข้าพื้นที่แล้ว** (เข้าแล้ว · ทำไม่ครบ) อย่างน้อยหนึ่งนัดไหม — `true` / `false` · อ่านไม่สำเร็จ = `null`
+ * ⭐ คำถามเดียวกับด่านแถว 17a ของ route ส่งผล (ตาราง · ตัวกรอง · ชุดสถานะเดียวกัน) — การ์ดเอาไปบอกล่วงหน้าว่า
+ *    พื้นที่ลงหน้างานยังไม่มีนัดที่เข้าพื้นที่ · สองที่ถามไม่เหมือนกันเมื่อไร การ์ดบอกอย่าง route ตอบอีกอย่าง
+ * ⚠️ `null` ≠ `false` — อ่านไม่สำเร็จไม่ใช่ "ไม่มีนัด": การ์ดไม่ขึ้นบรรทัดเตือน แล้วให้ route ส่งผลเป็นคนตัดสิน
+ *    (supabase ไม่ throw ⇒ อ่าน `{ error }` เอง) · ไม่ตีทั้งเส้นเป็น 500 เพราะผลวัดอ่านได้แล้ว
+ */
+async function loadSiteVisitReached(supabase, requestId) {
+  const { data, error } = await supabase
+    .from('service_visits').select('id')
+    .eq('requestId', requestId).in('status', ['done', 'partial']).limit(1);
+  if (error) {
+    console.error('[survey] อ่านนัดที่เข้าพื้นที่แล้วของใบไม่สำเร็จ', requestId, error.message);
+    return null;
+  }
+  return Array.isArray(data) && data.length > 0;
+}
 
 export const GET = withUser(async ({ user, supabase, ctx }) => {
   const { id } = await ctx.params;
@@ -46,6 +70,20 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     if (readError) return forbidden(readError);
 
     const zones = await loadSurveyZones(supabase, id);
+    /* 🔑 ใบนี้ยังต้องมีนัดลงหน้างานไหม — ตัดสินจากแถวพื้นที่ (`surveyNeedsVisit`) ไม่ขึ้นกับสวิตช์ */
+    const needsVisit = surveyNeedsVisit(zones);
+
+    /* ── ประเมินจากแบบ (งวด S2a) — ของที่การ์ดของ **หัวหน้า** ต้องใช้เพิ่ม ─────────────────
+       `drawingMethodEnabled`  ค่าสวิตช์ `SURVEY_DRAWING_METHOD` — ตอบทุกคนเสมอ (จออ่าน env ฝั่ง server ไม่ได้)
+       ไฟล์ในเธรด              สวิตช์เปิด **หรือ** ใบมีพื้นที่จากแบบอยู่แล้ว — แถวที่เป็นจากแบบไปแล้วต้องเดินต่อได้
+                               แม้สวิตช์ถูกปิดทีหลัง (หัวหน้ายังต้องเห็นแบบที่ฝ่ายขายส่งมาในเธรด)
+       นัดที่เข้าพื้นที่แล้ว      สวิตช์เปิด และใบยังไม่ส่งผล — ป้อนบรรทัดเตือนแถว 17a ของการ์ด (ด่านนั้นอยู่ใต้สวิตช์)
+       🔴 **ช่าง / ผู้จัดคิว ไม่ทำให้เกิดการอ่านเพิ่มสักคำขอ** — ช่างเปิดเส้นนี้ทุกครั้งที่บันทึกหน้างาน
+       ⚠️ `canDecide` ย้ายขึ้นมาตรงนี้ (เดิมอยู่หลังก้อนอ่าน) เพราะสองคำสั่งอ่านข้างล่างต้องรู้ก่อนยิง */
+    const canDecide = canSendSurveyResult(user);
+    const drawingMethodEnabled = surveyDrawingMethodEnabled();
+    const wantsThreadFiles = canDecide && (drawingMethodEnabled || surveyMethodMix(zones).drawing > 0);
+    const wantsSiteVisit = canDecide && drawingMethodEnabled && !request.answeredAt;
 
     /* ── ทุกอย่างที่เหลือของใบ ยิงพร้อมกันรอบเดียว ────────────────────────────
        ① ไฟล์ของแต่ละพื้นที่ — ด่านนับรูปต้องการของจริง ไม่ใช่ตัวเลขที่จอเดา
@@ -76,13 +114,17 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
           ⚠️ ส่ง `zones` ที่อ่านไว้แล้วให้ (ไม่อ่านซ้ำ) · ไฟล์/ทะเบียนขนาด/นัด ไม่ส่ง — กำลังอ่านขนานอยู่ในรอบเดียวกันนี้
              จะส่งได้ต้องรอให้เสร็จก่อน = เพิ่มรอบเดินทางให้ทุกคนที่มีสิทธิ์เอกสาร · ตัวตรวจอ่านเองเฉพาะตอนต้องตรวจ
           ⚠️ สรุปล้ม = `{ access: 'none', unknown: true }` ไม่ใช่ 500 (เหตุผลเดียวกับ ③ — ผลวัดอ่านได้แล้ว)
+       ⑧ ไฟล์ในเธรดของคำร้อง + "มีนัดที่เข้าพื้นที่แล้วไหม" (ประเมินจากแบบ งวด S2a) — เฉพาะหัวหน้า ตามเงื่อนไขข้างบน
+          ไม่เข้าเงื่อนไข = ค่าตั้งต้น **โดยไม่ยิงอ่าน** · เธรดอ่านพัง = `unknown.threadFiles` · นัดอ่านพัง = `null`
 
        ⭐ **ไม่มีก้อนไหนรอผลของอีกก้อน ⇒ ยิงขนานกัน** — จอนี้ถูกโหลดใหม่ทุกครั้ง
           ที่บันทึก/ส่ง/ดึงกลับ และทุกครั้งที่สลับกลับมาที่แท็บ (`useRevalidateOnFocus`)
           ⇒ รอบเดินทางที่เพิ่มมาหนึ่งรอบ คือรอบที่ช่างรอทุกครั้งที่กดบันทึกหน้างาน
        ⚠️ `findSurveyVisit` ยัง throw ได้เหมือนเดิม ⇒ ทั้งเส้นยังเป็น 500 เท่าเดิม
           (ตั้งใจ: มันเป็นด่านตัดสิน `canWrite` — เดาแทนไม่ได้ ต้อง fail-closed) */
-    const [files, [visit, crewRes], context, requestFiles, packageSizes, reportDoc] = await Promise.all([
+    const [
+      files, [visit, crewRes], context, requestFiles, packageSizes, reportDoc, threadFiles, siteVisitReached,
+    ] = await Promise.all([
       Promise.all(zones.map((z) => listAttachments('service_survey_zone', z.id, supabase))),
       findSurveyVisit(supabase, id, { preferOpen: true })
         .then(async (found) => [found, await loadSurveyCrew(supabase, found, { viewerId: user?.id })]),
@@ -93,17 +135,19 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
         console.error('[survey] สรุปเอกสารประเมินของใบล้ม', id, e?.message || e);
         return { access: 'none', unknown: true };
       }),
+      wantsThreadFiles ? loadSurveyThreadFiles(supabase, request, user) : NO_THREAD_FILES,
+      wantsSiteVisit ? loadSiteVisitReached(supabase, id) : null,
     ]);
     const filesByZone = Object.fromEntries(zones.map((z, i) => [z.id, files[i] || []]));
     if (crewRes.unknown) context.unknown.crew = true;
     if (requestFiles.unknown) context.unknown.requestFiles = true;
+    if (threadFiles.unknown) context.unknown.threadFiles = true;
 
     // ⚠️ ส่ง `canWrite` มาจาก server ไม่ให้จอคำนวณเอง (จอไม่รู้ user id ของตัวเอง)
     const canEditAll = canEditService(user);
     const access = (canEditAll || canDoFieldWork(user))
       ? visitWriteAccess({ user, visit, canEditAll })
       : { ok: false, error: null };
-    const canDecide = canSendSurveyResult(user);
 
     return ok({
       request,
@@ -120,8 +164,9 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       recall: context.recall,
       /* ⭐ หัวหน้าส่งกลับให้แก้ค้างอยู่ไหม — แถบของช่างขึ้นปุ่ม "แจ้งหัวหน้าว่าแก้แล้ว" ตามตัวนี้
          และการ์ดของหัวหน้าบอกว่ารอช่างแก้/ช่างแจ้งแล้ว */
-      /* ใบส่งผลแล้ว = เรื่องที่ค้างไม่ค้างแล้ว (ผลล็อก ช่างแก้ต่อไม่ได้) · ดึงกลับ = ค้างตามจริงอีกครั้ง (`surveySendBackOnSheet`) */
-      sendBack: surveySendBackOnSheet(context.sendBack, request),
+      /* ใบส่งผลแล้ว = เรื่องที่ค้างไม่ค้างแล้ว (ผลล็อก ช่างแก้ต่อไม่ได้) · ดึงกลับ = ค้างตามจริงอีกครั้ง (`surveySendBackOnSheet`)
+         ใบที่ไม่ต้องมีนัดแล้ว (ทุกพื้นที่ที่เหลือเป็นจากแบบ) = ไม่ค้างเช่นกัน — ไม่มีช่างให้รอ (`closedByMethod`) */
+      sendBack: surveySendBackOnSheet(context.sendBack, request, { needsVisit }),
       unknown: context.unknown,
       canWrite: access.ok === true,
       /* ⭐ **คนละสิทธิ์กับ `canWrite`** — เคาะแพ็คเกจ/จุด และกดส่งผล เป็นการตัดสินใจ
@@ -137,6 +182,16 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       }).ok,
       /* ไฟล์แนบของคำร้อง — อ่านอย่างเดียว (`surveyRequestFileRows` · ไม่มี metadata ดิบ) */
       requestFiles: requestFiles.files,
+      /* ── ประเมินจากแบบ (งวด S2a) — สามคีย์นี้มีในคำตอบเสมอ ทุกคนดู ─────────────────────
+         `drawingMethodEnabled`  boolean — จอใช้ตัดสินว่าจะโชว์ปุ่ม "เปลี่ยนวิธีประเมิน" (ผ่าน `surveyControlView`)
+         `threadFiles`           ไฟล์ที่แนบในเธรดของใบ `[{ updateId, index, fileName, mimeType, sizeBytes, createdAt, authorName }]`
+                                 เปิดผ่าน proxy `/api/updates/<updateId>/file?i=<index>` · ไม่มีที่อยู่ไฟล์ดิบ
+                                 · ช่าง / ผู้จัดคิว และใบที่ไม่เข้าเงื่อนไข = `[]`
+         `siteVisitReached`      true / false = ใบมีนัดที่เข้าพื้นที่แล้วไหม · `null` = ไม่ได้ถาม หรืออ่านไม่สำเร็จ
+                                 (การ์ดไม่เตือนอะไรเมื่อเป็น null — route ส่งผลยังเป็นคนตัดสิน) */
+      drawingMethodEnabled,
+      threadFiles: threadFiles.files,
+      siteVisitReached,
       /* ⭐ ทะเบียนขนาดแพ็คเกจ เรียงตามที่แถบเลือกแสดง (mig 0398) · `null` = อ่านไม่สำเร็จ — จอส่งต่อให้
          `surveyControlView({ packageSizes })` และตัวตัดสินร่าง (`surveyDecisionError(…, { sizes })`) ซึ่ง fail-closed ทั้งคู่ */
       packageSizes,

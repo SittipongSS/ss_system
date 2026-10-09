@@ -41,9 +41,13 @@ jobs:
     # (ตอบ 401) และอ่านตารางได้ 0 แถวเพราะ RLS ⇒ ใช้แทนกันไม่ได้ · การเก็บ
     # service-role ไว้ใน GitHub secrets = ทุก workflow run มีสิทธิ์เขียน production
     # ⇒ **เป็นการตัดสินใจของเจ้าของรีโป ไม่ใช่ของ CI** จึงปล่อยให้ข้ามได้ตามค่าตั้งต้น
+    #
+    # 🔴 **คีย์ตั้งที่ step ของสามด่านนั้นเท่านั้น ห้ามตั้งทั้ง job** — 🐞 26/08–09/10/2026 คีย์เคยอยู่ระดับ job
+    # ⇒ `npm test` ถือ service-role ของ production ไปด้วย และเทสต์ที่เรียก handler ตัวจริงเขียน audit ปลอม
+    # ลง production 1,523 แถวโดยไม่มีอะไรแดง · ระดับ job เหลือแค่ธง "มี secret ไหม" (ไม่ใช่ตัวคีย์)
+    # ไว้ให้ `if:` ของแต่ละ step อ่าน · ยามชั้นสอง: scripts/test-env-guard.mjs ถอดคีย์ออกจากโปรเซสเทสต์
     env:
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      HAS_DATABASE_SECRETS: ${{ secrets.SUPABASE_URL != '' && secrets.SUPABASE_SERVICE_ROLE_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -115,24 +119,33 @@ jobs:
       # คอลัมน์ที่ `.select()` อ้างถึงต้องมีอยู่จริงบนฐาน — คอลัมน์ที่พิมพ์ผิด/ถูกลบ
       # ทำให้ PostgREST ตอบ 500 ทั้งเส้น และ JS ไม่มีทางจับได้ตอน build
       - name: Schema drift (select columns)
-        if: env.SUPABASE_URL != '' && env.SUPABASE_SERVICE_ROLE_KEY != ''
+        if: env.HAS_DATABASE_SECRETS == 'true'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npm run check:columns
 
       # ทะเบียนอ้างอิง (หมวด/หน่วย/สถานะ) ที่โค้ดใช้ ต้องตรงกับแถวจริงบนฐาน
       - name: Reference tables
-        if: env.SUPABASE_URL != '' && env.SUPABASE_SERVICE_ROLE_KEY != ''
+        if: env.HAS_DATABASE_SECRETS == 'true'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npm run check:refs
 
       # ทะเบียนทีม (mig 0310/0311) ต้องตรงกับค่าคงที่ TEAMS ในโค้ด — ทีมขายมีสองที่
       # โดยเจตนา (ด่านสิทธิ์อ่านแบบ sync จากฐานไม่ได้) ด่านนี้กันไม่ให้สองฝั่งเพี้ยน
       - name: Team registry
-        if: env.SUPABASE_URL != '' && env.SUPABASE_SERVICE_ROLE_KEY != ''
+        if: env.HAS_DATABASE_SECRETS == 'true'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npm run check:teams
 
       # ⚠️ ไม่มี secret = สามด่านบนถูกข้าม · ต้องส่งเสียงให้เห็นในหน้า run ไม่ใช่
       # ปล่อยให้ทั้ง job เขียวแล้วเข้าใจว่าตรวจครบ
       - name: เตือนเมื่อด่านที่ต้องใช้ฐานข้อมูลถูกข้าม
-        if: env.SUPABASE_URL == '' || env.SUPABASE_SERVICE_ROLE_KEY == ''
+        if: env.HAS_DATABASE_SECRETS != 'true'
         run: |
           echo "::warning title=ด่าน schema ถูกข้าม::check:columns · check:refs · check:teams ไม่ได้รัน เพราะยังไม่ได้ตั้ง secret SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY — คอลัมน์ที่พิมพ์ผิดหรือถูกลบจะหลุดขึ้น production ได้"
 

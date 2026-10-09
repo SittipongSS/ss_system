@@ -94,11 +94,13 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     /* ใบประเมินที่แตะโซนพวกนี้ — ใช้สองที่:
        ① 🔒 "โซนนี้มีใบอื่นสั่งวัดไว้แล้ว" (ฟอร์มเปิดใบต้องล็อกไม่ให้ติ๊กซ้ำ)
        ② ไทม์ไลน์ "ประวัติการประเมิน" บนแท็บ
+       ③ ผลจากแบบ (mig 0408 · ประเมินจากแบบ งวด S2a): `surveyConfirm` = ใบตอบว่าต้องยืนยันหน้างานไหม (ป้ายบนแถวพื้นที่)
+          · `createdAt` = ลำดับของใบ — ผลลงหน้างานของใบที่เปิดทีหลังแทนผลจากแบบ (`latestSurveyRow`)
        ⚠️ อ่านเท่าที่แถวผลวัดอ้างถึง — ดึงทั้งตารางคือดึงคำร้องทั้งบริษัท */
     const requestIds = [...new Set(surveys.map((r) => r.requestId).filter(Boolean))];
     const requests = await fetchAllInChunks(requestIds, (chunk) => supabase
       .from('dept_requests')
-      .select('id, "docNo", status, title, "dealId", "committedDueDate", "answeredAt", "closedAt", "createdAt"')
+      .select('id, "docNo", status, title, "dealId", "committedDueDate", "answeredAt", "closedAt", "createdAt", "surveyConfirm"')
       .in('id', chunk)
       .order('id', { ascending: true }), { sort: byColumns('id') });
 

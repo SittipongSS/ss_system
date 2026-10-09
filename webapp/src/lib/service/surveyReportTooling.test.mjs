@@ -46,10 +46,10 @@ const ruleOf = (route) => DOC_TRACING_RULES.find((rule) => rule.route === route)
 const DOCUMENT = ruleOf('api/service/surveys/[id]/document');
 const SEND = ruleOf('api/service/surveys/[id]/send');
 
-test('ด่าน trace: ห้า route ตามสเปก §15 — และทุก route มีไฟล์จริงในแอป (เปลี่ยนชื่อ route แล้วด่านต้องไม่ว่างเปล่า)', () => {
+test('ด่าน trace: ห้า route ตามสเปก §15 + เส้นสลับวิธีประเมิน (งวด S2a) — และทุก route มีไฟล์จริงในแอป (เปลี่ยนชื่อ route แล้วด่านต้องไม่ว่างเปล่า)', () => {
   assert.deepEqual(DOC_TRACING_RULES.map((rule) => rule.route), [
     'api/service/surveys/[id]/document', 'api/service/surveys/[id]/send', 'api/service/surveys/[id]',
-    'api/service/surveys/[id]/recall', 'api/sa/requests/[id]',
+    'api/service/surveys/[id]/recall', 'api/service/surveys/[id]/method', 'api/sa/requests/[id]',
   ]);
   for (const rule of DOC_TRACING_RULES) assert.ok(existsSync(join(WEBAPP, 'src/app', rule.route, 'route.js')), rule.route);
   assert.deepEqual(DOCUMENT.need, ['chromiumBin', 'puppeteer', 'sharpBinary']);
@@ -105,7 +105,7 @@ test('🔴 ด่าน trace: route ส่งผลห้ามลาก puppet
   assert.match(docTracingIssues(SEND, BASE_FILES)[0], /ขาดไบนารีของ sharp/);
 });
 
-test('🔴 ด่าน trace: GET ใบประเมิน · ดึงผลกลับ · GET/PATCH คำร้อง ห้ามมี sharp / puppeteer-core / chromium แม้ไฟล์เดียว', () => {
+test('🔴 ด่าน trace: GET ใบประเมิน · ดึงผลกลับ · สลับวิธีประเมิน · GET/PATCH คำร้อง ห้ามมี sharp / puppeteer-core / chromium แม้ไฟล์เดียว', () => {
   for (const rule of DOC_TRACING_RULES.slice(2)) {
     assert.match(docTracingIssues(rule, [...BASE_FILES, nm('sharp/lib/index.js')])[0], /ลาก sharp/, rule.route);
     assert.match(docTracingIssues(rule, [...BASE_FILES, nm('@img/sharp-linux-x64/package.json')])[0], /ลาก sharp/, rule.route);
@@ -133,7 +133,7 @@ test('ด่าน trace: อ่านไฟล์ `route.js.nft.json` ของ
   // `root` ชี้ที่ที่ไม่มี node_modules ⇒ ใช้รายชื่อ `.br` สำรอง
   const good = checkDocTracing({ root: dir, buildDir: dir });
   assert.equal(good.ok, true, JSON.stringify(good.results.map((r) => r.issues)));
-  assert.deepEqual(good.results.map((r) => r.count > 0), [true, true, true, true, true]);
+  assert.deepEqual(good.results.map((r) => r.count > 0), [true, true, true, true, true, true]);
 
   put('api/service/surveys/[id]/recall', [...BASE_FILES, ...SHARP]);
   put('api/sa/requests/[id]', '{ not json');

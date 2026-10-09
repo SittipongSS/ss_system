@@ -5,6 +5,7 @@ import { requestRowSummary } from '@/lib/requests/rowStage';
 import { fetchAll } from '@/lib/supabaseFetchAll';
 import { byColumns, fetchAllInChunks } from '@/lib/supabaseInChunks';
 import { pickSurveyVisit } from '@/lib/service/surveyQueue';
+import { surveyNeedsVisit } from '@/lib/service/surveyMethod';
 import { randomUUID } from 'crypto';
 import {
   materialIdentityKey, normalizeMaterialInput, pickStampedMaterial, unitBasisForMaterialKind,
@@ -518,6 +519,10 @@ export async function findRequest(supabase, id) {
     surveySite,
     surveyVisit,
     surveyVisits,
+    /* ⭐ **ใบนี้ต้องมีนัดเข้าพื้นที่ไหม** (ประเมินจากแบบ · mig 0408) — คำนวณจากแถวพื้นที่ที่เพิ่งโหลด ไม่มีคำขอเพิ่ม
+       · ผู้อ่านบนหน้าคำร้อง (ราง · ปุ่มลงคิว/ลงคิวใหม่ · โมดัลแจ้งวัน) อ่านธงนี้ตัวเดียวกับตัวโหลดคิว
+       ⚠️ **เฉพาะใบประเมิน** — หัวข้ออื่นไม่มีคีย์นี้เลย (ผู้อ่านตีความ "ไม่มี" = ต้องมีนัด = เดินเหมือนเดิม) */
+    ...(row.kind === 'site_survey' ? { surveyNeedsVisit: surveyNeedsVisit(surveyZones) } : {}),
   };
 
   // ⭐ ค่าที่แบบฟอร์ม PDR เติมให้เอง (ผู้ดูแล AE · ผู้ประสานงาน AC · ผู้ติดต่อลูกค้า)

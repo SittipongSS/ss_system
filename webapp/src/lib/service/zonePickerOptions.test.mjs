@@ -11,9 +11,11 @@ import {
 } from './zonePickerOptions.js';
 import { historicalZonePickerOptions } from '../sales/historicalIntakeForm.js';
 
-/* รูปเดียวกับที่ GET /api/service/customers/[customerId]/zones คืน (customerZoneRegistry → zoneRegistryRow) */
+/* รูปเดียวกับที่ GET /api/service/customers/[customerId]/zones คืน (customerZoneRegistry → zoneRegistryRow)
+   🔄 ประเมินจากแบบ (งวด S2a): แถวทะเบียนมีคีย์วิธีประเมิน/ป้ายเพิ่ม — ยังไม่เคยประเมิน = null · 'none' · null */
 const zone = (id, siteId, over = {}) => ({
-  id, code: `ZN-${id}`, name: `Lobby ${id}`, siteId, isActive: true, assessedPackages: null, ...over,
+  id, code: `ZN-${id}`, name: `Lobby ${id}`, siteId, isActive: true, assessedPackages: null,
+  assessMethod: null, confirm: 'none', confirmTag: null, ...over,
 });
 const site = (id, zones, over = {}) => ({ id, code: `ST-${id}`, name: `สาขา ${id}`, isActive: true, zones, ...over });
 
@@ -144,6 +146,17 @@ test('zoneBrowserRows — จัดกลุ่มตามไซต์ · picke
   assert.deepEqual([s3.zones, s3.selectableIds], [[], []]);
   /* picked รับ array ได้ด้วย */
   assert.equal(zoneBrowserRows({ registrySites: registry, picked: ['Z4'] })[0].zones[2].picked, true);
+});
+
+/* ประเมินจากแบบ (งวด S2a): ไฟล์นี้ไม่ตัดสินอะไรจากวิธีประเมิน — แถวของหน้าต่าง "เพิ่มหลายโซน" พาคีย์ของทะเบียนไปทั้งแถว
+   (จองวด S2b อ่านป้ายจากแถวนั้น) · ตัวเลือกของช่องเลือกโซนยังคีย์ชุดเดิมเป๊ะ (เทสต์ deepEqual ข้างบน) */
+test('zoneBrowserRows — คีย์วิธีประเมิน/ป้ายของแถวทะเบียนเดินผ่านมาครบ ไม่ถูกแตะ', () => {
+  const tagged = { assessMethod: 'drawing', confirm: 'awaiting', confirmTag: 'ประเมินจากแบบ · รอยืนยันหน้างาน' };
+  const [row] = zoneBrowserRows({ registrySites: [site('S1', [zone('Z1', 'S1', tagged), zone('Z2', 'S1')])] });
+  assert.deepEqual(
+    row.zones.map((z) => [z.id, z.assessMethod, z.confirm, z.confirmTag, z.disabled]),
+    [['Z1', 'drawing', 'awaiting', 'ประเมินจากแบบ · รอยืนยันหน้างาน', false], ['Z2', null, 'none', null, false]],
+  );
 });
 
 test('zoneBrowserRows — ค้น: ไซต์ตรง = ทุกโซนของมัน · ตรงบางโซน = เฉพาะโซนนั้น · ไม่ตรงเลย = ซ่อน', () => {

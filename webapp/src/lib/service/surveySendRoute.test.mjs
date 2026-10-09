@@ -703,7 +703,7 @@ test('🔴 จอรุ่นเก่า (ไม่ส่ง seenWarnings) ถ�
 
 test('🔴 นัดที่ค้างยังเป็นร่าง: ตอบด้วยประโยคของ surveySendVisitStep เอง (ไม่ใช่ "ไม่พบนัดประเมิน") — ก่อนเขียนอะไร', async () => {
   const world = makeWorld({ visit: 'draft' });
-  const expected = surveySendVisitStep(world.visit(), { today: businessDate() }).error;
+  const expected = surveySendVisitStep(world.visit(), { today: businessDate(), needsVisit: true }).error;
   assert.match(expected, /ยังเป็นร่าง/);
   const res = await sendOn(world, { body: { closeVisitId: VISIT_ID } });
   assertRefused(world, res, 'draft');

@@ -8,11 +8,20 @@
 // ⚠️ ข้อความทุกตัวย้ายมาจาก `app/requests/[id]/page.js` **ตัวอักษรเดิม** (เทสต์ล็อกไว้)
 // ⚠️ โหมดอ่านจากทะเบียนหัวข้อ (`requestNeedsRef(kind, 'site')`) ไม่ใช่ `kind === '...'` (ม-34)
 //    และผู้เรียกส่งโหมดเองไม่ได้ ⇒ ส่งผิดโหมดไม่ได้
+// ⭐ **โหมดที่สาม `desk`** (mig 0408 · แผน survey-desk-assessment §3.2 · งวด S2a) — ใบประเมินที่ทุกพื้นที่ประเมินจากแบบ
+//    ไม่ลงคิว ไม่มีนัด ไม่มีช่าง ⇒ ก้าวนี้ของมันคือ **หัวหน้ารับปากวันส่งผล** วันเดียว (`รับปากวันส่งผล`) และ
+//    เปลี่ยนวันทีหลังด้วย `deskRescheduleView` (`เลื่อนวันส่งผล` · เหตุผลบังคับ)
+//    โหมดมาจากธง `surveyNeedsVisit` ที่ตัวโหลดคำร้องติดมาจากแถวพื้นที่ (`false` ตรงตัวเท่านั้น) — server ตัดสินซ้ำจากแถวจริงเสมอ
+//    ⚠️ ทุกจุดในไฟล์นี้ที่ถามว่า `=== 'site'` หมายถึง "ลงคิวเข้าพื้นที่" — งานโต๊ะ **ไม่ใช่** 'site' จึงไม่ได้แผงงาน ชิปวันนัด
+//       ตัวเลือกช่าง หรือด่านเข้าไซต์ มาเองโดยไม่ต้องมีกิ่งเพิ่ม
 import { requestKindMeta, requestNeedsRef } from '@/lib/master/requestTypes';
 import { dueIsStale } from '@/lib/requests/dueRound';
 import { NA, fmtDate } from '@/lib/format';
 import { businessDate } from '@/lib/businessDate';
-import { SURVEY_VISIT_KIND, surveyScheduleGaps, surveyVisitDraft } from '@/lib/service/surveyVisit';
+import {
+  SURVEY_DESK_RESCHEDULE_REASON_ERROR, SURVEY_VISIT_KIND, surveyDeskResultDate, surveyScheduleGaps, surveyVisitDraft,
+} from '@/lib/service/surveyVisit';
+import { SURVEY_METHOD_RESULT_DATE_LABEL } from '@/lib/service/surveyMethodSwitch';
 import { toHHMM } from '@/lib/service/sites';
 import { MAX_ASSETS_PER_DAY, assigneeOverloaded } from '@/lib/service/visitLoad';
 import { VISIT_KIND_LABELS, visitTimeText } from '@/lib/service/rounds';
@@ -27,10 +36,29 @@ import {
 /* ความยาวหมายเหตุสูงสุด — ตัวเดียวกับที่ route ตีกลับ (`เหตุผลยาวเกิน 500 ตัวอักษร`) */
 export const COMMIT_DUE_REASON_MAX = 500;
 
-/** 'site' = ลงคิวเข้าพื้นที่ (วัน · เวลา · เจ้าหน้าที่ · วันส่งผล) · 'date' = แจ้งกำหนดส่ง (วันอย่างเดียว) */
+/**
+ * 'site' = ลงคิวเข้าพื้นที่ (วัน · เวลา · เจ้าหน้าที่ · วันส่งผล) · 'date' = แจ้งกำหนดส่ง (วันอย่างเดียว)
+ * · 'desk' = รับปากวันส่งผลของใบประเมินที่ประเมินจากแบบทั้งใบ (วันส่งผลอย่างเดียว · หัวหน้าเป็นผู้รับผิดชอบเอง)
+ * ⚠️ 'desk' เฉพาะหัวข้อที่มีสถานที่ **และ** ธง `surveyNeedsVisit === false` ตรงตัว — ไม่มีธง / ค่าอื่น = ต้องมีนัด (กติกาของงวด S1)
+ *    ⇒ ใบของวันนี้ทุกใบ (ไม่มีพื้นที่จากแบบ) ได้ 'site' เหมือนเดิม
+ */
 export function commitDueMode(request) {
-  return requestNeedsRef(request?.kind, 'site') ? 'site' : 'date';
+  if (!requestNeedsRef(request?.kind, 'site')) return 'date';
+  return request?.surveyNeedsVisit === false ? 'desk' : 'site';
 }
+
+/* ── ถ้อยคำของงานโต๊ะ (แผน §3.2 ข้อ 2 · toast = สเปก S2a §7 ข้อ 4) ── */
+const DESK_COMMIT_ACTION = 'รับปากวันส่งผล';
+const DESK_COMMIT_TITLE = 'รับปากวันส่งผลประเมิน (จากแบบ)';
+const DESK_COMMIT_OK = 'รับปากวันส่งผลแล้ว — ฝ่ายขายเห็นวันส่งผลนี้';
+const DESK_NOTE_LABEL = 'หมายเหตุถึงฝ่ายขาย';
+/* ผู้วางคิวไม่มีปุ่มของก้าวนี้ (รับปากได้เฉพาะหัวหน้า — `canSendSurveyResult`) ⇒ จอขึ้นประโยคนี้ **แทนปุ่ม** */
+const DESK_PLANNER_NOTE = 'ใบนี้ประเมินจากแบบ — หัวหน้าฝ่ายบริการเป็นผู้รับและส่งผล ไม่ต้องลงคิว';
+const DESK_RESCHEDULE_TITLE = 'เลื่อนวันส่งผล';
+/* คำเดียวกับ `rescheduleRequestError` (`lib/requests/stages.js`) ที่ route ถามต่อ — เทสต์ `surveyMethodJob.test.mjs` เทียบกับตัวจริง */
+const DESK_SAME_DATE_ERROR = 'วันเดิมกับที่แจ้งไว้แล้ว';
+const reasonTooLong = (value) => String(value ?? '').trim().length > COMMIT_DUE_REASON_MAX;
+const REASON_TOO_LONG_ERROR = `เหตุผลยาวเกิน ${COMMIT_DUE_REASON_MAX} ตัวอักษร`;
 
 /**
  * ป้ายทุกตัวของก้าวนี้ — ปุ่มหลักบนหน้าใบ · ปุ่มบนการ์ดหน้าจัดคิว · หัวโมดัล · ปุ่มส่ง · toast
@@ -39,7 +67,10 @@ export function commitDueMode(request) {
  * ⚠️ หัวโมดัลไม่ดู `requeue` — ของเดิมเป็นแบบนั้น (ปุ่ม "ลงคิวใหม่" เปิดโมดัล "ลงคิวเข้าพื้นที่")
  */
 export function commitDueLabels(request, { requeue = false } = {}) {
-  const site = commitDueMode(request) === 'site';
+  const mode = commitDueMode(request);
+  // งานโต๊ะไม่มี "ลงคิวใหม่" (ไม่มีนัดให้หาย) และไม่มีรอบแก้ ⇒ ป้ายชุดเดียว ไม่ดู `requeue`
+  if (mode === 'desk') return deskCommitLabels(request);
+  const site = mode === 'site';
   const stale = dueIsStale(request, request?.items);
   const form = requestKindMeta(request?.kind)?.form || {};
   const dept = request?.dept || '';
@@ -83,6 +114,37 @@ export function commitDueLabels(request, { requeue = false } = {}) {
     notePlaceholder: site
       ? 'เช่น นัดผู้จัดการไซต์ก่อนเข้า · แลกบัตรที่ รปภ.'
       : 'เช่น รอวัตถุดิบเข้าวันที่ 25 — ส่งได้หลังจากนั้น',
+    /* สองคีย์ของงานโต๊ะ (`deskCommitLabels`) — โหมดอื่นว่างเสมอ: ชิปผู้ขอของการลงคิวอยู่ที่ `commitDueWishes`
+       และผู้วางคิวมีปุ่มของก้าวนี้อยู่แล้ว */
+    wish: null,
+    plannerNote: null,
+  };
+}
+
+/**
+ * ป้ายของ "รับปากวันส่งผล" (โหมด `desk`) — คีย์ชุดเดียวกับ `commitDueLabels` + `noteLabel`
+ *   `wish`        "ผู้ขอต้องการผล {วัน}" (เส้นประเหนือช่องวัน) · ผู้ขอไม่ระบุ = null
+ *   `plannerNote` ประโยคที่จอขึ้น **แทนปุ่ม** ให้คนที่รับปากไม่ได้ (ผู้วางคิว · ไม่ผ่าน `canSendSurveyResult`)
+ * ⚠️ ไม่มีคำไหนพูดเรื่องลงคิว / นัด / เจ้าหน้าที่ — ใบนี้ไม่มีทั้งสามอย่าง · `resultHint` ("ต้องไม่มาก่อนวันนัด") จึงว่าง
+ * ⚠️ ไม่มีตัวอย่างในช่องหมายเหตุ — ตัวอย่างของสองโหมดเดิมเป็นเรื่องนัดเข้าไซต์กับวัตถุดิบ ซึ่งไม่ใช่เรื่องของใบนี้
+ */
+function deskCommitLabels(request) {
+  const form = requestKindMeta(request?.kind)?.form || {};
+  const wanted = String(request?.requestedResultDate ?? '').trim();
+  return {
+    action: DESK_COMMIT_ACTION,
+    hint: undefined,
+    title: DESK_COMMIT_TITLE,
+    submit: DESK_COMMIT_ACTION,
+    okMsg: DESK_COMMIT_OK,
+    dateLabel: SURVEY_METHOD_RESULT_DATE_LABEL,
+    dateHint: '',
+    resultLabel: form.committedResultLabel || 'วันที่จะส่งผล',
+    resultHint: '',
+    noteLabel: DESK_NOTE_LABEL,
+    notePlaceholder: '',
+    wish: wanted ? `ผู้ขอต้องการผล ${dayText(wanted)}` : null,
+    plannerNote: DESK_PLANNER_NOTE,
   };
 }
 
@@ -94,11 +156,18 @@ export function commitDueLabels(request, { requeue = false } = {}) {
  * ⭐ ตอนกู้ (`requeue`) ตั้งต้นด้วย **ของเดิมบนใบ** — คนกดยืนยันวันเดิมได้ทันที
  * ⚠️ วันส่งผลตั้งต้นด้วยของเดิมบนใบ แล้วถอยไปวันที่ผู้ขอต้องการ — **ไม่ใช่วันนัด**
  *    (ค่าเริ่มต้นที่เท่ากันทำให้คนกดผ่านไปโดยไม่ได้คิด ซึ่งคือปัญหาที่ช่องนี้เกิดมาแก้)
+ * ⭐ งานโต๊ะ (`desk`) มีวันเดียวคือวันส่งผล — ตั้งต้นด้วยของเดิมบนใบ แล้วถอยไปวันที่ผู้ขอต้องการ · ไม่มีทั้งคู่ = ว่าง
+ *    (ไม่ตั้งต้นเป็นวันนี้: วันส่งผลเป็นคำสัญญากับฝ่ายขาย คนรับปากต้องเลือกเอง) · ไม่มีเวลา ไม่มีช่าง
  * @param today วันนี้แบบไทย 'YYYY-MM-DD' — ไม่ส่ง = `businessDate()`
  */
 export function commitDueDefaults(request, { requeue = false, today } = {}) {
-  const site = commitDueMode(request) === 'site';
+  const mode = commitDueMode(request);
+  const site = mode === 'site';
   const req = request || {};
+  if (mode === 'desk') {
+    const date = req.committedResultDate || req.requestedResultDate || '';
+    return { date, time: '', resultDate: date, assigneeId: '', reason: '' };
+  }
   return {
     date: requeue
       ? req.committedDueDate
@@ -115,10 +184,14 @@ export function commitDueDefaults(request, { requeue = false, today } = {}) {
 /**
  * ก้อน `PATCH /api/sa/requests/[id]` — **ตัวเดียวที่สองหน้าส่ง**
  * ⚠️ ชื่อเจ้าหน้าที่ส่งไปเพื่อความเข้ากันได้เท่านั้น — server อ่านชื่อจากทะเบียนคนเสมอ
+ * ⭐ งานโต๊ะ (`desk`) ส่งแค่วันส่งผลกับหมายเหตุ — กิ่งงานโต๊ะของ route อ่าน `committedResultDate` ตัวเดียว
+ *    (วันนัด · เวลา · ช่าง ไม่ถูกส่ง: ใบนี้ไม่มีนัด และผู้รับผิดชอบคือหัวหน้าที่กด)
  */
 export function commitDuePayload(request, form, { technicians = [] } = {}) {
-  const site = commitDueMode(request) === 'site';
+  const mode = commitDueMode(request);
+  const site = mode === 'site';
   const f = form || {};
+  if (mode === 'desk') return { action: 'commit-due', committedResultDate: f.date, reason: f.reason };
   return {
     action: 'commit-due',
     committedDueDate: f.date,
@@ -137,20 +210,27 @@ export function commitDuePayload(request, form, { technicians = [] } = {}) {
  * ทุกช่องที่ยังขาด/ผิด — **ในครั้งเดียว** (กฎฟอร์มของ repo) · ผ่าน = `[]`
  * ⚠️ ด่านจริงตัวเดียวกับ server: ใบประเมินถาม `surveyScheduleGaps` (ลำดับเดียวกับที่ route
  *    ตอบข้อแรก) · หัวข้ออื่นถามข้อความเดียวกับ `commitDueRequestError`
+ *    · งานโต๊ะถาม `surveyDeskResultDate` ตัวเดียวกับกิ่งงานโต๊ะของ route (ว่าง / ผิดรูป) — ไม่ถามช่าง เวลา สถานที่
+ *      หรือลำดับกับวันนัด เพราะใบนี้ไม่มีนัด
  */
 export function commitDueGaps(request, form) {
   const f = form || {};
-  const gaps = commitDueMode(request) === 'site'
-    ? surveyScheduleGaps({
+  const mode = commitDueMode(request);
+  let gaps;
+  if (mode === 'site') {
+    gaps = surveyScheduleGaps({
       committedDueDate: f.date,
       committedDueTime: f.time,
       assigneeId: f.assigneeId,
       committedResultDate: f.resultDate,
-    }, request)
-    : (/^\d{4}-\d{2}-\d{2}$/.test(String(f.date ?? '').trim()) ? [] : ['ต้องระบุวันกำหนดส่ง']);
-  if (String(f.reason ?? '').trim().length > COMMIT_DUE_REASON_MAX) {
-    gaps.push(`เหตุผลยาวเกิน ${COMMIT_DUE_REASON_MAX} ตัวอักษร`);
+    }, request);
+  } else if (mode === 'desk') {
+    const result = surveyDeskResultDate({ committedResultDate: f.date });
+    gaps = result.error ? [result.error] : [];
+  } else {
+    gaps = /^\d{4}-\d{2}-\d{2}$/.test(String(f.date ?? '').trim()) ? [] : ['ต้องระบุวันกำหนดส่ง'];
   }
+  if (reasonTooLong(f.reason)) gaps.push(REASON_TOO_LONG_ERROR);
   return gaps;
 }
 
@@ -269,14 +349,27 @@ export function commitDueWishes(request, form) {
  *      เริ่มเห็นช่วงเวลา ยามแดง แล้วต้องกลับมาแก้ตัวนี้ (= เปลี่ยนพฤติกรรม ต้องได้มติเจ้าของก่อน)
  *   · เตือน (ไม่บล็อก · อำพัน): นอกช่วงที่ไซต์ให้เข้า (รู้เมื่อจอมีแถวไซต์เต็ม — หน้าจัดคิว) · คนที่เลือกเกินภาระ
  * · แจ้งกำหนดส่ง (หัวข้ออื่น) ⇒ บอกวันที่จะแจ้งผู้ขอ
+ * · รับปากวันส่งผล (งานโต๊ะ) ⇒ ประโยคเดียว: ไม่ลงคิว · ใครรับผิดชอบ · ใครเห็น (`lands: null` — ไม่มีอะไรขึ้นตารางช่าง)
+ *   ยังขาดช่อง ⇒ ข้อความของช่องที่ขาดล้วน ๆ (ตัวเดียวกับปุ่ม) — ไม่มีคำนำ "ยังลงคิวไม่ได้" เพราะใบนี้ไม่ลงคิว
  * @param load/siteLoad ภาระของวันนั้น + ของไซต์ — ตัวเดียวกับตัวเลือกคน ("ถ้าเลือก … x/12 จุด")
+ * @param viewerName ชื่อคนที่เปิดโมดัล — งานโต๊ะเท่านั้น (คนกด = ผู้รับผิดชอบ) · ไม่ส่ง = "คุณ"
  */
 export function commitDueOutcome(request, form, {
-  site = null, accessKnown = true, technicians = [], load = null, siteLoad = null,
+  site = null, accessKnown = true, technicians = [], load = null, siteLoad = null, viewerName = '',
 } = {}) {
   const f = form || {};
-  const siteMode = commitDueMode(request) === 'site';
+  const mode = commitDueMode(request);
+  const siteMode = mode === 'site';
   const gaps = commitDueGaps(request, f);
+  if (mode === 'desk') {
+    if (gaps.length) return { tone: 'warn', lands: null, text: gaps.join(' · ') };
+    const owner = String(viewerName ?? '').trim() || 'คุณ';
+    return {
+      tone: 'info',
+      lands: null,
+      text: `ใบนี้ไม่ลงคิว ไม่มีนัดบนตารางเจ้าหน้าที่ · ผู้รับผิดชอบ = ${owner} · ฝ่ายขายจะเห็นวันส่งผลนี้`,
+    };
+  }
   if (gaps.length) {
     return { tone: 'warn', lands: null, text: `${siteMode ? 'ยังลงคิวไม่ได้' : 'ยังแจ้งกำหนดส่งไม่ได้'} — ${gaps.join(' · ')}` };
   }
@@ -289,4 +382,38 @@ export function commitDueOutcome(request, form, {
   ].filter(Boolean);
   const text = `จะขึ้นตารางของ ${name || 'เจ้าหน้าที่ที่เลือก'} · ${dayText(f.date)} ${visitTimeText(draft)} · ส่งผลภายใน ${dayText(f.resultDate)}`;
   return { tone: warnings.length ? 'warn' : 'ok', lands: 'scheduled', text: withWarnings(text, warnings) };
+}
+
+/* ═══ "เลื่อนวันส่งผล" ของงานโต๊ะ (mig 0408 · แผน survey-desk-assessment §3.2 ข้อ 2 · งวด S2a) ═══════════════════ */
+
+/**
+ * โมดัลเดียวกับ "รับปากวันส่งผล" ในทรงเลื่อนวัน — `{ title, dateLabel, reasonRequired, gaps, payload }`
+ *
+ * ⭐ ใบที่รับปากวันส่งผลไปแล้วเปลี่ยนวันได้ทางนี้ทางเดียว และ **ต้องบอกเหตุผลเสมอ** — ใบนี้ไม่มีนัด จึงไม่มีเธรดของนัด
+ *    เล่าแทน บรรทัดในเธรดของใบคือที่เดียวที่ฝ่ายขายรู้ว่าทำไมวันขยับ (`SURVEY_DESK_RESCHEDULE_REASON_ERROR`)
+ * ⚠️ `gaps` = ทุกช่องที่ขาด/ผิดในครั้งเดียว ด้วยข้อความเดียวกับกิ่งงานโต๊ะของ `PATCH /api/sa/requests/[id]`
+ *    (`surveyDeskResultDate` → `rescheduleRequestError` → เหตุผล) — โมดัลกับ route เพี้ยนจากกันไม่ได้
+ * ⚠️ **"วันเดิม" เทียบกับวันส่งผลที่รับปากไว้** (`committedResultDate`) — ใบที่กลายเป็นงานโต๊ะด้วยการตัดพื้นที่ยังถือ
+ *    วันนัดเก่าใน `committedDueDate` ซึ่งไม่ใช่คำสัญญาของใบนี้แล้ว · ไม่มีวันส่งผลเลย (ใบก่อน mig 0368) จึงค่อยเทียบกับวันนัดเดิม
+ *    — ฐานเดียวกับที่ route ใช้
+ * ⚠️ เลื่อนให้เร็วขึ้นได้ — ไม่มีวันนัดให้วันส่งผลต้องตามหลัง
+ * @param form `{ date, reason }` — ช่องชุดเดียวกับ `commitDueDefaults`
+ */
+export function deskRescheduleView(request, form) {
+  const req = request || {};
+  const f = form || {};
+  const result = surveyDeskResultDate({ committedResultDate: f.date });
+  const held = String(req.committedResultDate ?? '').trim() || String(req.committedDueDate ?? '').trim();
+  const gaps = [];
+  if (result.error) gaps.push(result.error);
+  else if (result.value === held) gaps.push(DESK_SAME_DATE_ERROR);
+  if (!String(f.reason ?? '').trim()) gaps.push(SURVEY_DESK_RESCHEDULE_REASON_ERROR);
+  else if (reasonTooLong(f.reason)) gaps.push(REASON_TOO_LONG_ERROR);
+  return {
+    title: DESK_RESCHEDULE_TITLE,
+    dateLabel: SURVEY_METHOD_RESULT_DATE_LABEL,
+    reasonRequired: true,
+    gaps,
+    payload: { action: 'reschedule', committedResultDate: f.date, reason: f.reason },
+  };
 }

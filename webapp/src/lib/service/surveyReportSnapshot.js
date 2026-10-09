@@ -45,6 +45,7 @@ import {
   surveyChangeCounts, surveyPartLetter, surveyRecallRecord, surveySendBackState, surveyTotals,
   surveyZoneName, surveyZoneSize,
 } from './survey';
+import { isDrawingZone, surveyMethodMix } from './surveyMethod';
 import { SPOT_TRAY_LABEL, spotPhotoGroups } from './surveySpotPhotos';
 import { visitTimeCredible } from './surveyVisitTime';
 import { VISIT_STATUS_LABELS } from './visitStatus';
@@ -113,16 +114,35 @@ const oldestFirst = (a, b) => {
  *   · `unlinked` = รูปจุดที่ไม่ผูก หรือผูกกับจุดที่ถูกลบไปแล้ว
  *   · `undecodable` = HEIC/BMP **ที่ทำให้กระดาษขาดรูป**: ภาพกว้าง (พิมพ์ทุกรูป) · ผังรูปล่าสุด (ไม่ถอยไปพิมพ์ผังเก่าเงียบ ๆ —
  *     ผังที่หัวหน้าเพิ่งแก้คือรูปที่ต้องลง) · จุดที่เลือกซึ่งไม่มีรูปอื่นให้พิมพ์
+ *
+ * ⭐ **พื้นที่ประเมินจากแบบ (`isDrawingZone` · mig 0408) พิมพ์แค่ภาพแบบ** — ไม่มีใครไปถ่ายภาพกว้างหรือรูปจุดที่หน้างาน
+ *   ไฟล์สองหมวดนั้นที่ค้างบนแถว (ถ่ายไว้ก่อนสลับวิธี) จึง **ไม่ถูกมองเลย**: ไม่พิมพ์ ไม่ดึง ไม่นับว่ายังไม่ผูก ไม่ขวางเพราะ HEIC
+ *   และไม่ถูกเตือนว่าไม่ใช่รูป · จุดยังคืนครบทุกจุดตามลำดับ (เลขจุด `k.n` นับจากทุกจุด) แต่ไม่มีรูป · ภาพแบบเดินกติกาเดิมทุกข้อ
+ *   ⚠️ ไม่งั้นรูปจุดที่ไม่มีวันถูกพิมพ์จะขวางการออกเอกสารของใบที่ไม่มีใครต้องไปผูกมัน
  */
 function zoneFiles(row, files) {
   const all = list(files);
   const printable = (f) => isPreviewableImage(f) && !isUndecodable(f);
   const images = (docType) => all.filter((f) => f?.docType === docType && isPreviewableImage(f)).sort(oldestFirst);
-  const groups = spotPhotoGroups({ spots: list(row?.spots), files: all });
-
-  const wide = images(SURVEY_DOC_WIDE);
   const plans = images(SURVEY_DOC_PLAN);
   const newestPlan = plans[plans.length - 1] || null;
+  const plan = newestPlan && printable(newestPlan) ? newestPlan : null;
+  const planCount = plans.filter(printable).length;
+
+  if (isDrawingZone(row)) {
+    return {
+      wide: [],
+      plan,
+      planCount,
+      spotRows: spotPhotoGroups({ spots: list(row?.spots) }).rows.map((r) => ({ spot: r.spot, photo: null, photoCount: 0 })),
+      unlinked: [],
+      undecodable: newestPlan && isUndecodable(newestPlan) ? [newestPlan] : [],
+      notImages: all.filter((f) => f?.docType === SURVEY_DOC_PLAN && !isPreviewableImage(f)),
+    };
+  }
+
+  const groups = spotPhotoGroups({ spots: list(row?.spots), files: all });
+  const wide = images(SURVEY_DOC_WIDE);
   const undecodable = wide.filter(isUndecodable);
   if (newestPlan && isUndecodable(newestPlan)) undecodable.push(newestPlan);
 
@@ -135,8 +155,8 @@ function zoneFiles(row, files) {
 
   return {
     wide: wide.filter(printable),
-    plan: newestPlan && printable(newestPlan) ? newestPlan : null,
-    planCount: plans.filter(printable).length,
+    plan,
+    planCount,
     spotRows,
     unlinked: groups.unlinked,
     undecodable,
@@ -178,6 +198,14 @@ const preparedImage = (inputs, attId) => {
 export const SURVEY_REPORT_NO_VISIT = 'ไม่พบนัดประเมินพื้นที่ของใบนี้';
 
 /**
+ * 🔴 **กันเอกสารของใบที่มีพื้นที่ประเมินจากแบบ** (แผน survey-desk-assessment §2 แถว 32) — กระดาษรุ่นนี้ยังพิมพ์ทุกพื้นที่
+ *   เป็น "ลงหน้างาน" (ผู้ประเมิน = คนบนนัด · ช่องภาพกว้าง/รูปจุด) ⇒ ออกไป = เอกสารที่อ้างการเข้าพื้นที่ที่ไม่เคยเกิด
+ *   ข้อนี้เป็นชนิด `system` ที่พก `hold: true` ข้อเดียวของระบบ: ผลยังถึงฝ่ายขายตามปกติ (ไม่ตีกลับการส่งผล) แต่ขั้นออกเลขไม่ออก
+ *   และ **กดซ้ำไม่ช่วย** — หายเมื่อแบบเอกสารรองรับพื้นที่จากแบบ (งวด S3 ถอดข้อนี้ออก)
+ */
+export const SURVEY_REPORT_DRAWING_HOLD = 'เอกสารประเมินของใบที่ประเมินจากแบบยังออกไม่ได้ — ระบบกำลังปรับแบบเอกสาร';
+
+/**
  * ชื่อชิ้นที่ตัวโหลด (`loadSurveyReportInputs` · PR-2) อ่านไม่สำเร็จ → คำที่คนอ่านออก
  * ⚠️ ตัวโหลดใส่ได้เฉพาะชื่อในตารางนี้ (เทสต์ของตัวโหลดล็อก) — ชื่อที่ไม่มีป้ายจะพิมพ์ชื่อดิบขึ้นจอหัวหน้า
  */
@@ -210,6 +238,11 @@ const unreadText = (name) => `อ่าน${SURVEY_REPORT_INPUT_LABELS[name] || 
  *   `system`   ของนอกใบ — แก้ได้โดยไม่ต้องดึงผลกลับ: หัวข้อผิด · จุดเวลา · ลูกค้า/สถานที่ · รหัสพื้นที่ในทะเบียน · ประวัติ/ทะเบียนขนาด
  *              ที่อ่านไม่ได้ · บริษัท · มาตรฐานเอกสาร · ทุกชิ้นใน `inputs.unknown`
  *              ⇒ **ไม่ตีกลับการส่งผล** (ผลต้องถึงฝ่ายขาย) แต่ขั้นออกเลขไม่ออกจนกว่าจะหาย
+ *   `system` + `hold: true`  ข้อเดียว: ใบมีพื้นที่ประเมินจากแบบ (`SURVEY_REPORT_DRAWING_HOLD`) — ไม่ตีกลับการส่งผลเหมือน `system`
+ *              ทุกข้อ แต่ **ไม่มีอะไรให้คนแก้** · คีย์ `hold` มีเฉพาะข้อนี้ (ข้ออื่นมีแค่ `kind` กับ `text` เหมือนเดิม)
+ *
+ * ⭐ **ใบประเมินจากแบบทั้งใบไม่ถูกถามเรื่องนัด** (ไม่มี · ไม่มีวัน · ไม่มีผู้ประเมิน) — ไม่มีใครต้องไปหน้างาน · ใบผสมและใบที่
+ *   ไม่เหลือพื้นที่ (ตัดหมด) ยังถูกถามเหมือนเดิม: `surveyMethodMix(...).mode` ตัวเดียวกับที่ตัวโหลดใช้ทิ้งนัด
  *
  * 🔴 **อ่านไม่สำเร็จ ≠ ไม่มี** (`inputs.unknown` · กติกา supabase-never-throws) — ชิ้นที่อ่านพลาดเป็น `null` เหมือนชิ้นที่ไม่มีเป๊ะ
  *   ⇒ ข้อ "ไม่มี/ไม่พบ" ของชิ้นนั้นถูกข้าม แล้วบอกว่า "อ่าน…ไม่สำเร็จ" (ชนิด `system`) แทน · ไม่งั้นฐานสะดุดครั้งเดียวตอนอ่านนัด
@@ -240,7 +273,11 @@ export function surveyReportFreezeIssues(inputs = {}) {
     return true;
   };
 
+  // นับเฉพาะพื้นที่ที่ยังอยู่ในใบ — พื้นที่จากแบบที่ถูกตัดไม่ลงกระดาษ จึงไม่กันเอกสาร
+  const mix = surveyMethodMix(inputs.zones);
+
   if (request.kind && request.kind !== 'site_survey') system('ใบนี้ไม่ใช่คำร้องประเมินพื้นที่');
+  if (mix.drawing > 0) out.push({ kind: 'system', hold: true, text: SURVEY_REPORT_DRAWING_HOLD });
   if (!text(inputs.takenAt)) system('ไม่มีจุดเวลาของภาพนิ่ง');
   // ยังไม่ส่งผล: ไม่มีอะไรบนใบให้แก้ (รอบตรวจก่อนส่งใส่ผู้ส่งที่กำลังจะเขียนมาแล้ว — ข้อนี้ไม่ขึ้น)
   if (!request.answeredAt) system('ยังไม่ได้ส่งผลให้ฝ่ายขาย — ยังออกเอกสารไม่ได้');
@@ -248,12 +285,15 @@ export function surveyReportFreezeIssues(inputs = {}) {
   if (!unread('customer') && !text(inputs.customer?.name)) system('ไม่พบข้อมูลลูกค้าของใบนี้');
   if (!unread('site') && !text(inputs.site?.name)) system('ไม่พบข้อมูลสถานที่ของใบนี้');
 
+  /* ประเมินจากแบบทั้งใบ = ไม่มีนัดให้รับรอง ⇒ ข้ามทั้งก้อน · นัดที่อ่านไม่สำเร็จยังถูกบอกที่ท้ายลิสต์ (`unknown.forEach(unread)`) */
   const visit = inputs.visit;
-  if (!visit) {
-    if (!unread('visits')) content(SURVEY_REPORT_NO_VISIT);
-  } else {
-    if (!dayOnly(visit.actualDate) && !dayOnly(visit.scheduledDate)) content('นัดประเมินไม่มีวันที่ประเมิน');
-    if (!text(visit.assigneeName)) content('นัดประเมินไม่มีชื่อผู้ประเมิน');
+  if (mix.mode !== 'drawing') {
+    if (!visit) {
+      if (!unread('visits')) content(SURVEY_REPORT_NO_VISIT);
+    } else {
+      if (!dayOnly(visit.actualDate) && !dayOnly(visit.scheduledDate)) content('นัดประเมินไม่มีวันที่ประเมิน');
+      if (!text(visit.assigneeName)) content('นัดประเมินไม่มีชื่อผู้ประเมิน');
+    }
   }
 
   if (!unread('history') && !Array.isArray(inputs.history)) system(unreadText('history'));

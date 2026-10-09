@@ -78,14 +78,14 @@ const requestRow = (over = {}) => ({ id: 'DR-1', status: 'acknowledged', answere
 
 // ══ ตัวตัดสิน ═══════════════════════════════════════════════════════════
 test('ไม่มีนัดค้าง / นัดปิดไปแล้ว = ไม่แตะนัด', () => {
-  assert.equal(surveySendVisitStep(null, { today: TODAY }).action, 'none');
+  assert.equal(surveySendVisitStep(null, { today: TODAY, needsVisit: true }).action, 'none');
   for (const status of ['done', 'partial', 'unable', 'cancelled', 'rescheduled']) {
-    assert.equal(surveySendVisitStep(visit({ status }), { today: TODAY }).action, 'none', status);
+    assert.equal(surveySendVisitStep(visit({ status }), { today: TODAY, needsVisit: true }).action, 'none', status);
   }
 });
 
 test('⭐ กำลังทำ = ปิดเป็น "เข้าแล้ว" · เก็บวันที่ช่างกดเริ่ม · **ไม่มีคีย์เวลาเลย** (เวลาที่ช่างประทับอยู่ครบ)', () => {
-  const step = surveySendVisitStep(visit(), { today: TODAY });
+  const step = surveySendVisitStep(visit(), { today: TODAY, needsVisit: true });
   assert.equal(step.action, 'close');
   assert.deepEqual(step.patch, { status: 'done', actualDate: '2026-09-22' });
   for (const key of ['actualStartTime', 'actualEndTime', 'actualEndDate']) {
@@ -94,14 +94,14 @@ test('⭐ กำลังทำ = ปิดเป็น "เข้าแล้�
 });
 
 test('ยังไม่เคยกดเริ่ม: วันนัดผ่านมาแล้ว = วันนัด · วันนัดยังไม่มาถึง = วันนี้ (ไปวัดก่อนวันนัด)', () => {
-  const past = surveySendVisitStep(visit({ status: 'scheduled', actualDate: null, actualStartTime: null, scheduledDate: '2026-09-20' }), { today: TODAY });
+  const past = surveySendVisitStep(visit({ status: 'scheduled', actualDate: null, actualStartTime: null, scheduledDate: '2026-09-20' }), { today: TODAY, needsVisit: true });
   assert.deepEqual(past.patch, { status: 'done', actualDate: '2026-09-20' });
-  const future = surveySendVisitStep(visit({ status: 'scheduled', actualDate: null, actualStartTime: null, scheduledDate: '2026-09-30' }), { today: TODAY });
+  const future = surveySendVisitStep(visit({ status: 'scheduled', actualDate: null, actualStartTime: null, scheduledDate: '2026-09-30' }), { today: TODAY, needsVisit: true });
   assert.deepEqual(future.patch, { status: 'done', actualDate: TODAY });
 });
 
 test('🔴 นัดยังเป็นร่าง = ส่งผลไม่ได้ บอกรหัสนัดและทางออก (ไม่ปิดร่างเป็น "เข้าแล้ว" · ไม่ยกเลิกแทนผู้จัดคิว)', () => {
-  const step = surveySendVisitStep(visit({ status: 'draft', actualDate: null, actualStartTime: null }), { today: TODAY });
+  const step = surveySendVisitStep(visit({ status: 'draft', actualDate: null, actualStartTime: null }), { today: TODAY, needsVisit: true });
   assert.equal(step.action, 'block');
   assert.match(step.error, /SV-2609001/);
   assert.match(step.error, /ร่าง/);
@@ -124,7 +124,7 @@ test('⭐ บรรทัดเธรดของนัดบอกใครป�
 // ══ คำสั่งปิดแบบมีเงื่อนไข ═══════════════════════════════════════════════
 test('ปิดด้วยเงื่อนไขสถานะ — เขียน status + actualDate + updatedAt เท่านั้น', async () => {
   const db = fakeSupabase({ service_visits: [visit()] });
-  const step = surveySendVisitStep(visit(), { today: TODAY });
+  const step = surveySendVisitStep(visit(), { today: TODAY, needsVisit: true });
   const out = await closeSurveyVisitForSend(db, { step, nowIso: NOW });
   assert.equal(out.error, null);
   assert.equal(out.closed.status, 'done');
@@ -135,14 +135,14 @@ test('ปิดด้วยเงื่อนไขสถานะ — เขี
 
 test('🔑 ช่างปิดเป็น "เข้าแล้ว" ไปก่อน (0 แถว) = ไปต่อได้ แต่ไม่นับว่าคำขอนี้ปิด', async () => {
   const db = fakeSupabase({ service_visits: [visit({ status: 'done' })] });
-  const step = surveySendVisitStep(visit(), { today: TODAY });
+  const step = surveySendVisitStep(visit(), { today: TODAY, needsVisit: true });
   const out = await closeSurveyVisitForSend(db, { step, nowIso: NOW });
   assert.deepEqual(out, { closed: null, error: null, status: null });
 });
 
 test('🔴 ช่างเพิ่งปิดเป็น "ทำไม่ได้" ระหว่างกดส่งผล = 409 · ไม่ทับผลของช่าง', async () => {
   const db = fakeSupabase({ service_visits: [visit({ status: 'unable' })] });
-  const step = surveySendVisitStep(visit(), { today: TODAY });
+  const step = surveySendVisitStep(visit(), { today: TODAY, needsVisit: true });
   const out = await closeSurveyVisitForSend(db, { step, nowIso: NOW });
   assert.equal(out.status, 409);
   assert.match(out.error, /ทำไม่ได้/);
@@ -151,7 +151,7 @@ test('🔴 ช่างเพิ่งปิดเป็น "ทำไม่ไ�
 
 test('ฐานล้มตอนปิด = 500 พร้อมบอกว่ายังไม่ได้ส่งผล', async () => {
   const db = fakeSupabase({ service_visits: [visit()] }, { failOn: ['service_visits'] });
-  const step = surveySendVisitStep(visit(), { today: TODAY });
+  const step = surveySendVisitStep(visit(), { today: TODAY, needsVisit: true });
   const out = await closeSurveyVisitForSend(db, { step, nowIso: NOW });
   assert.equal(out.status, 500);
   assert.match(out.error, /ยังไม่ได้ส่งผล/);
@@ -162,7 +162,7 @@ test('⭐ นัดกำลังทำ: ปิดนัดก่อน แล�
   const db = fakeSupabase({ service_visits: [visit()], dept_requests: [requestRow()] });
   const order = [];
   const out = await surveySendWrites(db, {
-    requestId: 'DR-1', open: visit(), closeVisitId: 'SVV-1', answerPatch, today: TODAY, nowIso: NOW,
+    requestId: 'DR-1', open: visit(), closeVisitId: 'SVV-1', answerPatch, today: TODAY, nowIso: NOW, needsVisit: true,
     onVisitClosed: (closed) => { order.push(`thread ${closed.id} ${closed.status}`); },
   });
   assert.equal(out.error, undefined);
@@ -177,7 +177,7 @@ test('🔑 โมดัลไม่ได้บอกนัดนี้ (จอ�
   for (const closeVisitId of [null, undefined, '', 'SVV-OTHER']) {
     const db = fakeSupabase({ service_visits: [visit()], dept_requests: [requestRow()] });
     const out = await surveySendWrites(db, {
-      requestId: 'DR-1', open: visit(), closeVisitId, answerPatch, today: TODAY, nowIso: NOW,
+      requestId: 'DR-1', open: visit(), closeVisitId, answerPatch, today: TODAY, nowIso: NOW, needsVisit: true,
     });
     assert.equal(out.status, 409, String(closeVisitId));
     assert.match(out.error, /โหลดหน้าใหม่/);
@@ -189,7 +189,7 @@ test('นัดร่าง = 409 ก่อนเขียนอะไร', asyn
   const draft = visit({ status: 'draft', actualDate: null, actualStartTime: null });
   const db = fakeSupabase({ service_visits: [draft], dept_requests: [requestRow()] });
   const out = await surveySendWrites(db, {
-    requestId: 'DR-1', open: draft, closeVisitId: 'SVV-1', answerPatch, today: TODAY, nowIso: NOW,
+    requestId: 'DR-1', open: draft, closeVisitId: 'SVV-1', answerPatch, today: TODAY, nowIso: NOW, needsVisit: true,
   });
   assert.equal(out.status, 409);
   assert.deepEqual(writes(db.calls), []);
@@ -199,7 +199,7 @@ test('ไม่มีนัดค้าง (ช่างส่งงานแล
   for (const closeVisitId of [null, 'SVV-1']) {
     const db = fakeSupabase({ service_visits: [visit({ status: 'done' })], dept_requests: [requestRow()] });
     const out = await surveySendWrites(db, {
-      requestId: 'DR-1', open: null, closeVisitId, answerPatch, today: TODAY, nowIso: NOW,
+      requestId: 'DR-1', open: null, closeVisitId, answerPatch, today: TODAY, nowIso: NOW, needsVisit: true,
     });
     assert.equal(out.closedVisit, null);
     assert.equal(out.request.status, 'answered');
@@ -214,7 +214,7 @@ test('🔴 ไม่มีสภาพครึ่งทาง: ตอบใบ�
 
   const flaky = fakeSupabase(seed, { failOn: ['dept_requests'] });
   const first = await surveySendWrites(flaky, {
-    requestId: 'DR-1', open: visit(), closeVisitId: 'SVV-1', answerPatch, today: TODAY, nowIso: NOW, onVisitClosed,
+    requestId: 'DR-1', open: visit(), closeVisitId: 'SVV-1', answerPatch, today: TODAY, nowIso: NOW, needsVisit: true, onVisitClosed,
   });
   assert.equal(first.status, 500);
   assert.match(first.error, /ปิดนัด SV-2609001 แล้ว แต่ส่งผลไม่สำเร็จ — กดส่งผลอีกครั้ง/);
@@ -226,7 +226,7 @@ test('🔴 ไม่มีสภาพครึ่งทาง: ตอบใบ�
   // กดซ้ำ: route หานัดค้างใหม่ = ไม่เจอ (ปิดไปแล้ว) · จอยังถือรหัสนัดเดิมอยู่
   const retryDb = fakeSupabase(flaky.tables);
   const retry = await surveySendWrites(retryDb, {
-    requestId: 'DR-1', open: null, closeVisitId: 'SVV-1', answerPatch, today: TODAY, nowIso: NOW, onVisitClosed,
+    requestId: 'DR-1', open: null, closeVisitId: 'SVV-1', answerPatch, today: TODAY, nowIso: NOW, needsVisit: true, onVisitClosed,
   });
   assert.equal(retry.request.answeredAt, NOW);
   assert.deepEqual(writes(retryDb.calls), ['dept_requests']);
@@ -236,7 +236,7 @@ test('🔴 ไม่มีสภาพครึ่งทาง: ตอบใบ�
 test('🔴 ช่างปิดเป็น "ทำไม่ได้" ระหว่างทาง = ไม่ตอบใบ (ใบต้องถอยไปลงคิว ไม่ใช่ส่งผลที่ไม่มีคนวัด)', async () => {
   const db = fakeSupabase({ service_visits: [visit({ status: 'unable' })], dept_requests: [requestRow()] });
   const out = await surveySendWrites(db, {
-    requestId: 'DR-1', open: visit(), closeVisitId: 'SVV-1', answerPatch, today: TODAY, nowIso: NOW,
+    requestId: 'DR-1', open: visit(), closeVisitId: 'SVV-1', answerPatch, today: TODAY, nowIso: NOW, needsVisit: true,
   });
   assert.equal(out.status, 409);
   assert.equal(db.tables.dept_requests[0].answeredAt, null);
@@ -248,7 +248,7 @@ test('🔴 ช่างปิดเป็น "ทำไม่ได้" ระ�
 test('🔴 นัดที่โมดัลบอกว่าจะปิด กลายเป็น "ทำไม่ได้" ก่อนกด = 409 ให้โหลดใหม่ · ไม่ตอบใบ', async () => {
   const db = fakeSupabase({ service_visits: [visit({ status: 'unable' })], dept_requests: [requestRow()] });
   const out = await surveySendWrites(db, {
-    requestId: 'DR-1', open: null, closeVisitId: 'SVV-1', answerPatch, today: TODAY, nowIso: NOW,
+    requestId: 'DR-1', open: null, closeVisitId: 'SVV-1', answerPatch, today: TODAY, nowIso: NOW, needsVisit: true,
   });
   assert.equal(out.status, 409);
   assert.equal(out.error,
@@ -267,7 +267,7 @@ test('นัดที่โมดัลบอก: ยกเลิก · เล�
   for (const [rows, pattern] of cases) {
     const db = fakeSupabase({ service_visits: rows, dept_requests: [requestRow()] });
     const out = await surveySendWrites(db, {
-      requestId: 'DR-1', open: null, closeVisitId: 'SVV-1', answerPatch, today: TODAY, nowIso: NOW,
+      requestId: 'DR-1', open: null, closeVisitId: 'SVV-1', answerPatch, today: TODAY, nowIso: NOW, needsVisit: true,
     });
     assert.equal(out.status, 409, String(rows[0]?.status));
     assert.match(out.error, pattern);
@@ -275,7 +275,7 @@ test('นัดที่โมดัลบอก: ยกเลิก · เล�
   }
   const done = fakeSupabase({ service_visits: [visit({ status: 'done' })], dept_requests: [requestRow()] });
   const ok = await surveySendWrites(done, {
-    requestId: 'DR-1', open: null, closeVisitId: 'SVV-1', answerPatch, today: TODAY, nowIso: NOW,
+    requestId: 'DR-1', open: null, closeVisitId: 'SVV-1', answerPatch, today: TODAY, nowIso: NOW, needsVisit: true,
   });
   assert.equal(ok.request.status, 'answered', 'ช่างส่งงานเองไปแล้ว = ผลเท่ากับที่โมดัลสัญญา');
 });
@@ -286,7 +286,7 @@ test('อ่านนัดที่โมดัลบอกไม่สำเ�
     { failReadOn: ['service_visits'] },
   );
   const out = await surveySendWrites(db, {
-    requestId: 'DR-1', open: null, closeVisitId: 'SVV-1', answerPatch, today: TODAY, nowIso: NOW,
+    requestId: 'DR-1', open: null, closeVisitId: 'SVV-1', answerPatch, today: TODAY, nowIso: NOW, needsVisit: true,
   });
   assert.equal(out.status, 500);
   assert.match(out.error, /ยังไม่ได้ส่งผล/);
@@ -296,7 +296,7 @@ test('อ่านนัดที่โมดัลบอกไม่สำเ�
 test('🔑 ตอบได้ครั้งเดียว — หัวหน้าอีกคนส่งไปก่อน = 409 ไม่ใช่ "ตอบแล้ว" รอบสอง (กระดิ่งเด้งซ้ำ)', async () => {
   const db = fakeSupabase({ service_visits: [], dept_requests: [requestRow({ answeredAt: '2026-09-24T07:59:00.000Z', status: 'answered' })] });
   const out = await surveySendWrites(db, {
-    requestId: 'DR-1', open: null, closeVisitId: null, answerPatch, today: TODAY, nowIso: NOW,
+    requestId: 'DR-1', open: null, closeVisitId: null, answerPatch, today: TODAY, nowIso: NOW, needsVisit: true,
   });
   assert.equal(out.status, 409);
   assert.match(out.error, /ส่งผลไปแล้ว/);
@@ -347,10 +347,10 @@ test('ไม่มีนัดต้องปิด = ไม่มีข้อ "
 test('🔑 ข้อ "ปิดนัด" ในโมดัลมาจากตัวตัดสินตัวเดียวกับที่ route ปิดจริง — ร่าง/ปิดแล้ว = ไม่มีข้อนี้', () => {
   /* โมดัลอ่าน `closesVisit` ซึ่ง `surveyControlView` ประกอบจาก `surveySendVisitStep` — ตัวเดียวกับ `surveySendWrites` */
   for (const status of ['draft', 'done', 'unable', 'cancelled', 'rescheduled']) {
-    assert.notEqual(surveySendVisitStep(visit({ status }), { today: TODAY }).action, 'close', status);
+    assert.notEqual(surveySendVisitStep(visit({ status }), { today: TODAY, needsVisit: true }).action, 'close', status);
   }
   for (const status of ['scheduled', 'in_progress']) {
-    assert.equal(surveySendVisitStep(visit({ status }), { today: TODAY }).action, 'close', status);
+    assert.equal(surveySendVisitStep(visit({ status }), { today: TODAY, needsVisit: true }).action, 'close', status);
   }
 });
 
@@ -621,7 +621,7 @@ test('การตีกลับที่การ์ดเก็บไว้ =
   assert.equal(surveySendRefusalKeeps(many), true);
   assert.match(many, /^รูป 12 รูปเปิดไม่ได้/);
 
-  const draft = surveySendVisitStep(visit({ status: 'draft' }), { today: TODAY }).error;
+  const draft = surveySendVisitStep(visit({ status: 'draft' }), { today: TODAY, needsVisit: true }).error;
   const others = [
     SURVEY_SEND_OLD_PAGE_ERROR,
     SURVEY_SEND_WARNINGS_CHANGED_ERROR,

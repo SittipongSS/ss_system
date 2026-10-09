@@ -19,6 +19,7 @@
  *   route ส่งผล    `api/service/surveys/[id]/send`       ต้องมี: ไบนารี sharp · **ห้ามมี** puppeteer-core / @sparticuz/chromium
  *   GET ใบประเมิน  `api/service/surveys/[id]`            **ห้ามมี** sharp / puppeteer-core / @sparticuz/chromium
  *   ดึงผลกลับ      `api/service/surveys/[id]/recall`     เหมือนกัน
+ *   สลับวิธีประเมิน `api/service/surveys/[id]/method`     เหมือนกัน (ประเมินจากแบบ งวด S2a — เส้นนี้ไม่ออกเอกสาร ไม่แตะรูป)
  *   GET/PATCH คำร้อง `api/sa/requests/[id]`              เหมือนกัน
  *
  * รัน **หลัง** `npm run build` (จาก `webapp/`):  node scripts/check-doc-tracing.mjs [--dir .next]
@@ -71,6 +72,7 @@ export const DOC_TRACING_RULES = Object.freeze([
   },
   { route: 'api/service/surveys/[id]', label: 'GET ใบประเมิน (ช่างเปิดหน้างาน)', need: [], forbid: LIGHT },
   { route: 'api/service/surveys/[id]/recall', label: 'ดึงผลกลับ', need: [], forbid: LIGHT },
+  { route: 'api/service/surveys/[id]/method', label: 'สลับวิธีประเมิน', need: [], forbid: LIGHT },
   { route: 'api/sa/requests/[id]', label: 'GET/PATCH คำร้อง', need: [], forbid: LIGHT },
 ].map((rule) => Object.freeze(rule)));
 

@@ -535,7 +535,7 @@ function sendWorld({ source = twin(), open = openVisit(), extra = {} } = {}) {
 }
 
 /* นัดที่ค้าง + แพตช์ปิดของ `surveySendVisitStep` — นัดที่การส่งผลนี้จะปิด (ตัวเดียวกับที่ route ใช้ปิดจริง) */
-const closingOf = (open) => ({ ...open, ...surveySendVisitStep(open, { today: TODAY }).patch });
+const closingOf = (open) => ({ ...open, ...surveySendVisitStep(open, { today: TODAY, needsVisit: true }).patch });
 
 const precheck = (world, extra = {}) => surveyReportPrecheck(world.db, {
   request: world.request, user: HEAD, open: world.open, today: TODAY, nowIso: NOW, ...extra,
@@ -590,7 +590,7 @@ test('🔴 ไม่มีนัดเลย = เหตุชนิด content 
   const draft = openVisit({ status: 'draft' });
   const world = sendWorld({ open: draft });
   const result = await precheck(world);
-  assert.deepEqual(result.blockers, [{ kind: 'content', text: surveySendVisitStep(draft, { today: TODAY }).error }]);
+  assert.deepEqual(result.blockers, [{ kind: 'content', text: surveySendVisitStep(draft, { today: TODAY, needsVisit: true }).error }]);
   assert.match(result.blockers[0].text, /ยังเป็นร่าง/);
 });
 

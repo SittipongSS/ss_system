@@ -5,6 +5,10 @@
 import { register } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { join } from 'node:path';
+import { scrubDatabaseKeys } from './test-env-guard.mjs';
+
+// โปรเซสเทสต์ต้องไม่ถือคีย์ฐานข้อมูลจริง (ดูหัว test-env-guard.mjs) — ถอดก่อนโหลดโมดูลใดของแอป
+scrubDatabaseKeys(process);
 
 // '@/…' resolves to <cwd>/src/… (mirrors jsconfig paths) so tested modules can
 // use the same bundler-style alias as app code.

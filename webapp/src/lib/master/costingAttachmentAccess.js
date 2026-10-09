@@ -20,6 +20,7 @@ import {
 import { canAnswerRequest, canManageRequest, canReadRequestRow } from '@/lib/deptRequests';
 import { surveyReadError } from '@/lib/service/surveyAccess';
 import { surveyEditLockError } from '@/lib/service/survey';
+import { isDrawingZone } from '@/lib/service/surveyMethod';
 import { surveySpotLinkDecision } from '@/lib/service/surveySpotPhotos';
 import { findSurveyVisit } from '@/lib/service/surveyVisit';
 import { visitWriteAccess } from '@/lib/service/visitAccess';
@@ -84,11 +85,14 @@ async function canViewSurveyZoneFiles(supabase, parent, user) {
 }
 
 async function canWriteSurveyZoneFiles(supabase, parent, user) {
-  return writeSurveyZoneFilesFor(supabase, await parentRequest(supabase, parent), user);
+  return writeSurveyZoneFilesFor(supabase, await parentRequest(supabase, parent), user, { zoneRow: parent });
 }
 
-/* ตัวด่านจริงของ canWriteSurveyZoneFiles — รับใบแม่ที่โหลดแล้ว (ด่านผูกจุดข้างล่างใช้ต่อโดยไม่อ่านซ้ำ) */
-async function writeSurveyZoneFilesFor(supabase, req, user) {
+/* ตัวด่านจริงของ canWriteSurveyZoneFiles — รับใบแม่ที่โหลดแล้ว (ด่านผูกจุดข้างล่างใช้ต่อโดยไม่อ่านซ้ำ)
+   `zoneRow` = แถวผลวัดของไฟล์ (ตัว `parent` ที่ผู้เรียกโหลดมาแล้ว) — ใช้ถามวิธีประเมินของพื้นที่ ไม่อ่านซ้ำ
+   🔴 **ผู้เรียกต้องอ่านแถวนั้นทั้งแถว (`select('*')`)** — เลือกคอลัมน์ขาด `method` = พื้นที่จากแบบถูกอ่านเป็น
+      ลงหน้างานเงียบ ๆ แล้วช่างแนบ/ลบไฟล์ได้ (ยามอยู่ที่ `surveyMethodZoneRoutes.test.mjs`) */
+async function writeSurveyZoneFilesFor(supabase, req, user, { zoneRow } = {}) {
   if (!req) return false;
 
   /* 🔴 **ด่านเขียนต้องเป็นเซตย่อยของด่านอ่านเสมอ** — เริ่มจากด่านอ่านตัวเดียวกันก่อน
@@ -104,6 +108,13 @@ async function writeSurveyZoneFilesFor(supabase, req, user) {
      ⚠️ ทางออกเป็นตัวเดียวกับของผลวัด: กด "ยังไม่จบ" ที่ใบคำร้องก่อน
      ⚠️ แอดมินผ่านด่านเวลาได้ (กติกาเดิมของไฟล์นี้) — เก็บกวาดไฟล์ที่แนบผิดใบ */
   if (user?.role !== 'admin' && surveyEditLockError(req)) return false;
+
+  /* ⭐ **ไฟล์ของพื้นที่จากแบบ = หัวหน้าฝ่ายเท่านั้น** (mig 0408 · แผน survey-desk-assessment §2 แถว 13)
+     กติกาเดียวกับ `PATCH .../zones/[zoneId]` ของพื้นที่จากแบบ — ไม่ปิดที่นี่ด้วย ผู้จัดคิวและช่างที่แก้ตัวเลขไม่ได้
+     จะยังสลับ/ลบภาพแบบ ภาพกว้าง ภาพจุด ของพื้นที่นั้นได้ (ไฟล์เดินคนละด่านกับผลวัด)
+     ⚠️ ไม่ถามนัด — งานโต๊ะไม่มีนัด · ด่านอ่านและล็อกเวลาข้างบนยังมาก่อนเหมือนทุกพื้นที่
+     ⚠️ แถวที่ไม่มีคีย์ `method` = ลงหน้างาน ⇒ ตกลงไปเดินด่านเดิมข้างล่างทุกตัวอักษร */
+  if (isDrawingZone(zoneRow)) return canSendSurveyResult(user);
 
   const canEditAll = canEditService(user);
   if (!canEditAll && !canDoFieldWork(user)) return false;
@@ -135,7 +146,9 @@ export async function surveySpotLinkAccess(supabase, parent, user) {
   }
   const isAdmin = user?.role === 'admin';
   // ล็อกแล้ว (ไม่ใช่แอดมิน) = ด่านเขียนไฟล์ตอบ false แน่ ⇒ ไม่ต้องไปอ่านนัด
-  const canWrite = (!surveyEditLockError(req) || isAdmin) ? await writeSurveyZoneFilesFor(supabase, req, user) : false;
+  const canWrite = (!surveyEditLockError(req) || isAdmin)
+    ? await writeSurveyZoneFilesFor(supabase, req, user, { zoneRow: parent })
+    : false;
   return {
     ...surveySpotLinkDecision(req, { canWrite, canDecide: canSendSurveyResult(user), isAdmin }),
     request: req,

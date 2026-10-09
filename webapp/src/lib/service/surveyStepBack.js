@@ -26,9 +26,17 @@ export const isUnableVisit = (visit) => visit?.status === 'unable';
  * @param visit    แถวนัด **หลังอัปเดต**
  * @param before   แถวนัดก่อนอัปเดต — กันเขียนซ้ำเมื่อ PATCH นัดที่ปิดไปแล้วอีกรอบ
  * @param request  แถว `dept_requests` ของใบต้นเรื่อง
+ * @param needsVisit  ใบนี้ยังต้องมีนัดลงหน้างานไหม (`surveyNeedsVisit` จากแถวพื้นที่ · mig 0408)
+ *                    ไม่ส่ง = `true` = พฤติกรรมเดิม
  */
-export function surveyStepBackPlan({ visit, before, request } = {}) {
+export function surveyStepBackPlan({ visit, before, request, needsVisit = true } = {}) {
   if (!visit || visit.kind !== 'survey' || !visit.requestId) return null;
+  /* 🔴 **ใบที่ประเมินจากแบบทั้งใบไม่ถอยขั้น** (แผน survey-desk-assessment §2 แถว 36 ③) — วันบนใบแบบนี้คือ
+     **วันส่งผลที่หัวหน้ารับปาก** ไม่ใช่วันนัด · นัดเก่าที่ค้าง "กำลังทำ" ตอนใบพลิกเป็นงานโต๊ะ ปิดเป็น
+     "เข้าไม่ได้" ทีหลังได้ ⇒ ล้างวันตรงนี้ = ลบคำสัญญาต่อฝ่ายขาย แล้วใบไหลเข้าคิว "รอลงคิว" ของผู้จัดคิว
+     ทั้งที่ไม่มีใครต้องไป
+     ⚠️ เฉพาะ `false` ตรงตัว — ผู้เรียกที่อ่านแถวพื้นที่ไม่ได้ต้องได้พฤติกรรมเดิม ไม่ใช่เลิกถอยขั้นเงียบ ๆ */
+  if (needsVisit === false) return null;
   // เพิ่งเปลี่ยนเป็น "เข้าไม่ได้" รอบนี้เท่านั้น — PATCH ซ้ำต้องไม่ล้างวันที่ TS เพิ่งลงใหม่
   if (!isUnableVisit(visit) || isUnableVisit(before)) return null;
   if (!request) return null;

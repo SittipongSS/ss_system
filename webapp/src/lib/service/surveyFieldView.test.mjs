@@ -920,7 +920,7 @@ test('ช่อง ก × ย × ส: Enter ไปช่องถัดไป �
 
 test('ป้ายหัวหน้าพื้นที่: ป้ายเดียวตามความเร่ง — บันทึกไม่ผ่าน → ชน → ตัดออก → ยังไม่บันทึก → วัดแล้ว/ยังไม่ครบ', () => {
   const done = { zone: treatment(), files: filesAll().z3 };
-  assert.deepEqual(surveyZoneStateBadge(done), { key: 'done', tone: 'success', text: 'วัดแล้ว', added: false });
+  assert.deepEqual(surveyZoneStateBadge(done), { key: 'done', tone: 'success', text: 'วัดแล้ว', added: false, addedLabel: null });
   assert.equal(surveyZoneStateBadge({ zone: treatmentEmpty(), files: [] }).text, 'ยังไม่ครบ');
   assert.equal(surveyZoneStateBadge({ ...done, dirty: true }).text, 'ยังไม่บันทึก',
     'ม็อก A-2: คนที่กำลังกรอกต้องรู้ก่อนว่า "ออกตอนนี้หาย" — ของขาดรายข้ออยู่บนหัวข้อแล้ว');
@@ -931,6 +931,8 @@ test('ป้ายหัวหน้าพื้นที่: ป้ายเด
     'พื้นที่ที่ตัดออกไม่มีร่างให้ชน');
   assert.equal(surveyZoneStateBadge({ zone: treatment({ status: 'added' }), files: filesAll().z3 }).added, true,
     'ป้าย "เพิ่มหน้างาน" เป็นอีกแกน ขึ้นคู่กับสถานะ');
+  assert.equal(surveyZoneStateBadge({ zone: treatment({ status: 'added' }), files: filesAll().z3 }).addedLabel, 'เพิ่มหน้างาน',
+    'คำของป้ายมากับตัวตัดสิน — จอไม่พิมพ์เอง');
 });
 
 test('ทางออกของพื้นที่ (เมนู ⋮ · แถวท้ายเนื้อ): ขอมา = ตัดออก · เพิ่มเอง = ลบทิ้ง · ตัดแล้ว = เอากลับ · เขียนไม่ได้ = ไม่มีเลย', () => {

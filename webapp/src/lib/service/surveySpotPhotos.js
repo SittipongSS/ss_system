@@ -14,6 +14,7 @@
 //      → survey · `attachmentTypes` อ่าน `SURVEY_DOC_*` ตอนโหลดโมดูล = TDZ พัง) ⇒ ผู้เรียกถามสองตัวคู่กันเสมอ
 import { isPreviewableImage } from '@/lib/master/attachmentTypes';
 import { SURVEY_DOC_SPOT, surveyEditLockError, surveyZoneName } from '@/lib/service/survey';
+import { isDrawingZone } from '@/lib/service/surveyMethod';
 
 /** ชื่อถาดของรูปที่ยังไม่รู้ว่าเป็นของจุดไหน — คำของเจ้าของ 30/09 */
 export const SPOT_TRAY_LABEL = 'ยังไม่ได้ผูกจุด';
@@ -289,6 +290,8 @@ const isCutZone = (row) => (row?.status || 'ok') === 'cut';
  * ⭐ เลขจุด `k.n` = ลำดับพื้นที่ในใบ (นับรวมพื้นที่ที่ตัด — เลขเดียวกับวงบนรายการพื้นที่ `surveyZoneListView().index`)
  *   · ลำดับจุดบนจอ (`spotNo` ของหน้าพื้นที่) ⇒ ช่างอ่านเลขแล้วรู้ว่าแถวไหน · ตรงกับเลขบนผังของเอกสาร (§8.1 "k.n")
  * ⚠️ ไฟล์ของพื้นที่ยังไม่มา (`[]`) = ทุกจุดยังไม่มีรูป — fail-closed เหมือน `surveyDocCounts`
+ * ⭐ **พื้นที่ที่ประเมินจากแบบ (mig 0408) ถูกข้ามเหมือนพื้นที่ที่ตัด** — ไม่มีใครไปถ่ายรูปจุดที่หน้างาน และหน้าพื้นที่แบบนั้นไม่มีถาด
+ *   ⇒ G1 · G2 และตัวหาร `active` ไม่นับมันเลย · เลข `k` ของพื้นที่ที่เหลือไม่เลื่อน (ยังเป็นลำดับในใบ)
  * @returns `{ zones: [{ zoneId, zoneName, number, missing: [{ spotId, number, label }], unlinked }], active, missingTotal, unlinkedTotal }`
  *   `zones` = ทุกพื้นที่ที่ยังอยู่ในใบ (ลำดับเดียวกับใบ) · `active` = จำนวนพื้นที่นั้น
  */
@@ -298,7 +301,7 @@ export function surveySpotPhotoGaps(rows = [], filesByZone = {}) {
   let missingTotal = 0;
   let unlinkedTotal = 0;
   list(rows).filter((row) => isObj(row) && row.id).forEach((row, index) => {
-    if (isCutZone(row)) return;
+    if (isCutZone(row) || isDrawingZone(row)) return;
     const k = index + 1;
     const groups = spotPhotoGroups({ spots: list(row.spots), files: list(files[row.id]) });
     const missing = groups.rows

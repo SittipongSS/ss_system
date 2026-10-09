@@ -615,6 +615,34 @@ test('⭐ เอกสารประเมินพื้นที่: GET ถ�
   }
 });
 
+/* ── สลับวิธีประเมินรายพื้นที่ (ประเมินจากแบบ งวด S2a · POST /api/service/surveys/[id]/method) — เส้นใหม่ต้องผ่าน proxy ทั้งสองด่าน ──
+   🪤 บทเรียนเดียวกับเส้นเอกสารข้างบน (`/api/rd`): เส้นที่ไม่อยู่ในลิสต์ไหนเลยโดน 403 เปล่า ๆ โดยไม่มีอะไรฟ้อง
+      เส้นนี้ **ไม่ต้องเพิ่มรายการ** เพราะอยู่ใต้ `/api/service` (OPEN_WRITE_APIS + กฎ service:edit/work) — เทสต์นี้ตรึงข้อเท็จจริงนั้นไว้
+   ⭐ คนที่สลับวิธีได้ = หัวหน้าฝ่ายบริการชุดเดียวกับที่ส่งผลประเมิน (`canSendSurveyResult`) ต้องผ่านทั้งสองด่าน
+   ⚠️ ช่าง · Planner · ฝ่ายขาย ผ่าน proxy ได้ (ถือ service:work / service:edit) แล้วได้ 403 จาก handler ซึ่งถาม
+      `canSendSurveyResult` เป็นด่านแรก ก่อนถามสวิตช์ ก่อนแตะฐาน — ห้ามมีใครถอดด่านใน handler เพราะคิดว่า proxy กันให้แล้ว */
+test('⭐ สลับวิธีประเมิน: หัวหน้าฝ่ายบริการ POST ผ่าน proxy ทั้งสองด่าน · ช่าง/Planner/ฝ่ายขายถึง handler แล้ว handler เป็นคนตัด', () => {
+  const path = '/api/service/surveys/DR-1/method';
+
+  const heads = ROLES.filter((role) => role !== 'admin' && canSendSurveyResult({ role, department: 'TS' }));
+  assert.deepEqual([...heads].sort(), ['commercial_director', 'commercial_manager', 'ts_audit', 'ts_manager', 'ts_senior']);
+  for (const role of heads) {
+    assert.equal(lockedOut({ role, extraCaps: [] }, path, 'POST', true), false, `${role} POST: ด่าน lockdown`);
+    assert.equal(apiWriteAllowed('POST', path, role, []), true, `${role} POST: ด่าน cap`);
+  }
+
+  // ช่าง · Planner · ฝ่ายขาย ถึง handler ได้ — handler ต้องเป็นคนตัด (ด่านแรกของเส้น)
+  for (const [role, department] of [['ts', 'TS'], ['ts_planner', 'TS'], ['ae', 'SALES']]) {
+    assert.equal(lockedOut({ role, extraCaps: [] }, path, 'POST', true), false, `${role} POST: ด่าน lockdown`);
+    assert.equal(apiWriteAllowed('POST', path, role, []), true, `${role} ผ่าน proxy`);
+    assert.equal(canSendSurveyResult({ role, department }), false, `${role} สลับวิธีประเมินไม่ได้`);
+  }
+  // ฝ่ายที่ไม่เกี่ยวกับงานบริการถูกตัดตั้งแต่ proxy
+  for (const role of ['wh', 'qc', 'pc', 'rd', 'finance', 'secretary', 'viewer', 'executive']) {
+    assert.equal(apiWriteAllowed('POST', path, role, []), false, `${role} ต้องไม่ผ่าน`);
+  }
+});
+
 /* ── จัดทีม (mig 0310) ต้องผ่าน **ทั้งสองด่าน** ไม่ใช่แค่ด่านหลัง ────────────────
    🐞 บั๊กจริงที่ผู้ใช้แจ้ง 2026-09-04 ("ธุรกิจบริการ จัดทีมไม่ได้"): กด "สร้างทีม" ที่
    /service/teams แล้วขึ้น toast คำว่า `forbidden` เปล่า ๆ · `apiWriteAllowed` มีกฎ

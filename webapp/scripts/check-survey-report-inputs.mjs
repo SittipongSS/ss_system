@@ -28,6 +28,7 @@ import { listAttachments } from '../src/lib/master/attachments.js';
 import { surveyPackageSizeSendError } from '../src/lib/service/packageSizes.js';
 import { loadPackageSizesOrNull } from '../src/lib/service/packageSizesRepo.js';
 import { surveySendError } from '../src/lib/service/survey.js';
+import { surveyNeedsVisit } from '../src/lib/service/surveyMethod.js';
 import { loadSurveyReportInputs, surveyReportPrecheck } from '../src/lib/service/surveyReportInputs.js';
 import { paginateSurveyReport, surveyReportOverflowErrors } from '../src/lib/service/surveyReportLayout.js';
 import { buildSurveyReportSnapshot, surveyReportImageFiles } from '../src/lib/service/surveyReportSnapshot.js';
@@ -115,7 +116,8 @@ export async function checkSurveyReportInputs(supabase, { request, now = new Dat
     const sizes = await loadPackageSizesOrNull(supabase);
     // ใบที่ส่งผลแล้วไม่มีนัดให้ปิดแทนช่าง (`closesVisit: false` — กติกาเดียวกับขั้นออกเลข I3)
     const open = send ? await findSurveyVisit(supabase, request.id, { openOnly: true }) : null;
-    const step = surveySendVisitStep(open, { today });
+    // ใบประเมินจากแบบทั้งใบ = ไม่ต้องมีนัด (ตัวตัดสินเดียวกับ route ส่งผล) — นัดที่ยังเปิดบนใบแบบนั้นถูกบล็อก ไม่ถูกปิดให้
+    const step = surveySendVisitStep(open, { today, needsVisit: surveyNeedsVisit(zones) });
     report.visit = { action: step.action, code: open?.code ?? null, error: step.error ?? null };
 
     report.gates = [

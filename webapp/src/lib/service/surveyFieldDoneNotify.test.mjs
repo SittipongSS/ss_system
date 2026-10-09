@@ -54,6 +54,43 @@ test('ข้อความบอกผลวัดและสิ่งที�
   assert.match(n.body, /เคาะจุดติดตั้งและแพ็คเกจ/);
 });
 
+/* ── ประเมินจากแบบ (งวด S2a) — พื้นที่จากแบบไม่ใช่ของที่ช่าง "วัด" จึงบอกแยก ───────────────────────── */
+const TAIL = ' — รอเคาะจุดติดตั้งและแพ็คเกจ แล้วส่งผลให้ฝ่ายขาย';
+const bodyOf = (progress, cut = 0) => surveyFieldDoneNotice({
+  request, visit, users, actor: { id: 'U-OPS', name: 'สมชาย' }, progress, cut,
+}).body;
+
+test('🔴 ใบลงหน้างานล้วน: เนื้อกระดิ่งเหมือนเดิมทุกตัวอักษร — ไม่มีคีย์ drawing · drawing เป็น 0 · ไม่ส่ง progress', () => {
+  const today = `สมชาย ส่งงาน ประเมินพื้นที่ชั้น 12 (วัด 3/3 พื้นที่ · ตัดออก 1)${TAIL}`;
+  assert.equal(bodyOf({ total: 3, done: 3, complete: true }, 1), today);
+  assert.equal(bodyOf({ total: 3, done: 3, complete: true, drawing: 0 }, 1), today);
+  assert.equal(bodyOf({ total: 3, done: 2, complete: false }), `สมชาย ส่งงาน ประเมินพื้นที่ชั้น 12 (วัด 2/3 พื้นที่)${TAIL}`);
+  assert.equal(bodyOf(null), `สมชาย ส่งงาน ประเมินพื้นที่ชั้น 12${TAIL}`);
+  assert.equal(bodyOf({ total: 0, done: 0, complete: false }, 2), `สมชาย ส่งงาน ประเมินพื้นที่ชั้น 12 (ตัดออก 2)${TAIL}`);
+});
+
+test('ใบผสม: ต่อท้ายตัวเลขที่วัดด้วยจำนวนพื้นที่จากแบบ — ไม่นับรวมเป็น "วัด"', () => {
+  assert.equal(
+    bodyOf({ total: 2, done: 2, complete: true, drawing: 1 }),
+    `สมชาย ส่งงาน ประเมินพื้นที่ชั้น 12 (วัด 2/2 พื้นที่ · จากแบบ 1)${TAIL}`,
+  );
+  assert.equal(
+    bodyOf({ total: 2, done: 1, complete: false, drawing: 3 }, 1),
+    `สมชาย ส่งงาน ประเมินพื้นที่ชั้น 12 (วัด 1/2 พื้นที่ · จากแบบ 3 · ตัดออก 1)${TAIL}`,
+  );
+});
+
+test('หัวหน้าเปลี่ยนพื้นที่สุดท้ายเป็นจากแบบระหว่างที่ช่างอยู่หน้างาน: ไม่มี "วัด 0/0" — บอกแต่จำนวนจากแบบ', () => {
+  assert.equal(
+    bodyOf({ total: 0, done: 0, complete: false, drawing: 2 }),
+    `สมชาย ส่งงาน ประเมินพื้นที่ชั้น 12 (จากแบบ 2 พื้นที่)${TAIL}`,
+  );
+  assert.equal(
+    bodyOf({ total: 0, done: 0, complete: false, drawing: 2 }, 1),
+    `สมชาย ส่งงาน ประเมินพื้นที่ชั้น 12 (จากแบบ 2 พื้นที่ · ตัดออก 1)${TAIL}`,
+  );
+});
+
 test('🔴 route ปิดนัด: ด่านส่งงานอยู่ก่อนเขียนใบ และกระดิ่งยิงหลังเขียนสำเร็จ', () => {
   const route = readFileSync(
     new URL('../../app/api/service/visits/[id]/route.js', import.meta.url), 'utf8');
