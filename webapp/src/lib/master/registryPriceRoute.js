@@ -34,6 +34,9 @@ export function makeRegistryPriceHandler({
   entityLabel,   // 'กลิ่น' | 'สูตร'
   find,          // (supabase, id) => แถวทะเบียน
   usableError,   // (row) => ข้อความเมื่อสถานะยังใส่ราคาไม่ได้ | null
+  // ตัวเขียน audit — ของจริงต่อ Supabase ด้วย service key · เทสต์ **ต้อง** ส่งตัวจำลองมาแทน
+  // (🐞 2026-10-09: เทสต์ของไฟล์นี้เขียน audit ปลอมลง production 1,523 แถวผ่าน CI)
+  audit = recordAudit,
 }) {
   const selfSlot = Object.values(PRICE_SLOTS).find((s) => s.kind === kind) || null;
   const slotsFor = slotsOf || ((row) => (selfSlot ? [{ ...selfSlot, stampColumn, id: row.id }] : []));
@@ -86,7 +89,7 @@ export function makeRegistryPriceHandler({
       // ประวัติราคา = ตัว rev ใน material_prices เอง (immutable อยู่แล้ว) —
       // ไม่เขียนเธรด: กลิ่น/สูตรไม่มี kind ราคาในทะเบียนเธรด และหน้ารายละเอียด
       // ไม่มี UI เธรด · audit ด้านล่างเก็บว่าใครกดเมื่อไร
-      await recordAudit({
+      await audit({
         user,
         action: 'update',
         entityType,
