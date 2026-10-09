@@ -104,14 +104,14 @@ test('ไฟล์แนบเก็บเฉพาะแถวที่มี�
   const { value } = normalizeVisitInput({
     siteId: 'S1', kind: 'refill', scheduledDate: TODAY,
     attachments: [
-      { url: 'https://drive/1', name: 'ก่อนซ่อม', kind: 'before' },
+      { url: 'https://drive.google.com/file/d/1PhotoBeforeAAAAAAA/view', name: 'ก่อนซ่อม', kind: 'before' },
       { url: '', name: 'ว่าง' },
-      { url: 'https://drive/2', kind: 'ไม่รู้จัก' },
+      { url: 'https://drive.google.com/file/d/1PhotoAfterBBBBBBBB/view', kind: 'ไม่รู้จัก' },
     ],
   });
   assert.deepEqual(value.attachments, [
-    { url: 'https://drive/1', name: 'ก่อนซ่อม', kind: 'before' },
-    { url: 'https://drive/2', name: 'ไฟล์แนบ', kind: 'other' },
+    { url: 'https://drive.google.com/file/d/1PhotoBeforeAAAAAAA/view', name: 'ก่อนซ่อม', kind: 'before' },
+    { url: 'https://drive.google.com/file/d/1PhotoAfterBBBBBBBB/view', name: 'ไฟล์แนบ', kind: 'other' },
   ]);
 });
 

@@ -47,7 +47,7 @@ test('🔴 /api/upload/commit: ออกใบรับทันทีหลั�
   // 🔴 ค่าที่ลงใบรับ: id ไฟล์จากผลของ Drive · id ผู้ใช้จาก session — ห้ามมาจาก body
   assert.match(COMMIT, /recordUploadReceipt\(supabase, \{\s*driveFileId: uploaded\.id, userId: user\.id, entityType, entityId,\s*\}\);/);
   assert.equal((COMMIT.match(/recordUploadReceipt\(/g) || []).length, 1);
-  // ออกไม่สำเร็จ = log อย่างเดียว — ห้าม return/throw (ปลายทางที่ยังไม่ตรวจใบรับต้องใช้ไฟล์ต่อได้)
+  // ออกไม่สำเร็จ = log อย่างเดียว — ห้าม return/throw (การอัปไม่ล้มเพราะใบรับ · ปลายทางของไฟล์ Drive ทุกที่ตรวจใบรับเอง แล้วตอบ 400/503)
   const failAt = COMMIT.indexOf('if (receipt.error) {');
   const failBlock = COMMIT.slice(failAt, COMMIT.indexOf('\n    }\n', failAt));
   assert.match(failBlock, /console\.error\(/);
@@ -206,9 +206,13 @@ test('ตัวช่วยของเส้นถอยการอัป: ท
   assert.match(doc, /collectReferencedIds/);
   assert.match(doc, /src\/lib\/driveMaintenance\.js/);
   // ตัวกวาดทั้งระบบยังมีอยู่จริง และยังกวาดสามแหล่งเดียวกัน (เพิ่มแหล่งที่นั่น = ต้องมาเพิ่มที่ตัวช่วยด้วย)
+  // ข้อยกเว้นเดียว = service_visits: ตัวกวาดอ่าน แต่ตัวช่วยตั้งใจไม่ถาม — ไฟล์ของนัดถูกกันด้วยใบรับที่จองเป็น
+  // 'service_visits:<id>' (เหตุผลต้องเขียนอยู่ที่คอมเมนต์ของ driveFileReferenced — ตรึงไว้สองบรรทัดล่าง)
+  assert.match(doc, /service_visits:<id>/);
+  assert.doesNotMatch(fn, /service_visits/, 'driveFileReferenced ตั้งใจไม่ถาม service_visits — ถ้าจะเพิ่ม แก้คอมเมนต์กับเทสต์นี้พร้อมกัน');
   const maintenance = read('../driveMaintenance.js');
   const collect = maintenance.slice(maintenance.indexOf('async function collectReferencedIds('), maintenance.indexOf('export async function auditOrphanDriveItems('));
   const tables = [...collect.matchAll(/supabase\.from\('([a-z_]+)'\)/g)].map((m) => m[1]).sort();
-  assert.deepEqual(tables, ['attachments', 'customers', 'entity_updates', 'products', 'quotations'],
+  assert.deepEqual(tables, ['attachments', 'customers', 'entity_updates', 'products', 'quotations', 'service_visits'],
     'collectReferencedIds กวาดแหล่งใหม่ — เพิ่มที่ driveFileReferenced (lib/master/attachments.js) ด้วย แล้วค่อยแก้ลิสต์นี้');
 });
