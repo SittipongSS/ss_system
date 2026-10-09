@@ -170,3 +170,49 @@ test("RA ยกเว้นภาษีบนหมวดสรรพสาม�
   });
   assert.equal(out.lines.length, 0);
 });
+
+/* ── เลขแพ็คของบรรทัด (mig 0407 · งวด PR-2 · docs/qt-pack-column.md) ───────────────────────────────────
+   จำนวนที่ยื่นภาษี = หน่วยรวมของบรรทัด (แพ็ค × จำนวน) — ยื่นตามจำนวนเดือนอย่างเดียว = ยื่นขาด
+   (วันนี้ไม่มีสินค้าหมวด 02-001 ที่เก็บสรรพสามิต · เกิดได้เมื่อ RA สั่งเก็บรายสินค้า) */
+test("สินค้าที่เก็บภาษี + บรรทัดที่มีเลขแพ็ค: จำนวนที่ยื่น = แพ็ค × จำนวน (2 × 12 = 24) และภาษีคิดจาก 24", () => {
+  const packed = { id: "P-9", fgCode: "FG-X-02-001-0009", exciseTax: 8, localTax: 0.8, isExciseTaxable: true };
+  const result = resolveSoFiling({
+    salesOrder, productTypes, products: [packed, products[0]],
+    lines: [
+      { id: "L-1", productId: "P-9", fgCode: packed.fgCode, qty: 12, packQty: 2 },
+      { id: "L-2", productId: "P-1", fgCode: products[0].fgCode, qty: 10 },
+    ],
+  });
+  assert.deepEqual(result.lines.map((line) => [line.salesOrderLineId, line.quantity]), [["L-1", 24], ["L-2", 10]]);
+  assert.equal(result.lines[0].totalTax, 211.2, "24 × (8 + 0.8) — 105.6 คือยื่นขาดครึ่งหนึ่ง");
+  assert.equal(result.totalTax, 299.2);
+  // เลขแพ็คที่มาเป็นสตริงจากฐาน
+  const text = resolveSoFiling({ salesOrder, productTypes, products: [packed], lines: [{ id: "L-1", productId: "P-9", qty: "4", packQty: "43" }] });
+  assert.equal(text.lines[0].quantity, 172);
+  // บรรทัดที่มีเลขแพ็คแต่จำนวนใช้ไม่ได้ = คำเตือนเดิม ไม่แต่งจำนวนขึ้นเอง
+  const bad = resolveSoFiling({ salesOrder, productTypes, products: [packed], lines: [{ id: "L-1", productId: "P-9", qty: null, packQty: 2 }] });
+  assert.deepEqual([bad.lines.length, bad.warnings.map((w) => w.code)], [0, ["missing_product"]]);
+});
+
+test("🔴 เลขแพ็คว่าง = ใบยื่นเท่ากับวันนี้ทุกคีย์ (ไม่มีคีย์ · packQty: null · ค่าที่เก็บไม่ได้) — รวมบรรทัดที่จำนวนใช้ไม่ได้", () => {
+  const stored = [
+    { id: "L-1", productId: "P-1", fgCode: products[0].fgCode, qty: 10 },
+    { id: "L-2", productId: "P-2", fgCode: products[1].fgCode, qty: 10 },
+    { id: "L-3", productId: "P-1", fgCode: products[0].fgCode, qty: "2.5" },
+    { id: "L-4", productId: "P-1", fgCode: products[0].fgCode, qty: null },
+    { id: "L-5", productId: "P-1", fgCode: products[0].fgCode, qty: "abc" },
+    { id: "L-6", productId: "P-1", fgCode: products[0].fgCode, qty: 0 },
+    { id: "L-7", productId: "P-1", fgCode: products[0].fgCode, qty: -1 },
+    { id: "L-8", productId: "P-1", fgCode: products[0].fgCode },
+  ];
+  const run = (lines) => resolveSoFiling({ salesOrder, productTypes, products, lines });
+  const noKey = run(stored);
+  // ค่าที่คาด = ลอกจากพฤติกรรมวันนี้ (quantity = Number(line.qty || 0) · ไม่ใช่ตัวเลข/≤ 0 = คำเตือน)
+  assert.deepEqual(noKey.lines.map((line) => [line.salesOrderLineId, line.quantity, line.totalTax]), [["L-1", 10, 88], ["L-3", 2.5, 22]]);
+  assert.deepEqual(noKey.warnings.filter((w) => w.code === "missing_product").map((w) => w.salesOrderLineId), ["L-4", "L-5", "L-6", "L-7", "L-8"]);
+  assert.equal(noKey.totalTax, 110);
+  for (const packQty of [null, undefined, "", "  ", "abc", 0, 1.5, 10000]) {
+    assert.deepEqual(run(stored.map((line) => ({ ...line, packQty }))), noKey, `packQty: ${String(packQty)}`);
+  }
+});
+

@@ -21,6 +21,8 @@ import { productSelectOptions } from "@/components/master/productOption";
 import styles from "./QuotationLineItems.module.css";
 import Textarea from "@/components/ui/Textarea";
 import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL, SERVICE_ROUNDS_UNIT, lineIsServicePackage } from "@/lib/sales/serviceOrders";
+import { packLineUnit } from "@/lib/sales/linePacks";
+import { PACK_COLUMN_LABEL, hasPackColumn, linePackQty } from "@/lib/sales/linePackView";
 import {
   QuoteLineActionsHead, QuoteLineFgInfo, QuoteLineHeadCells, QuoteLineIndexCell, QuoteLineIndexHead,
   QuoteLineInstallationPoint, QuoteLineItemCell, QuoteLineMoneyCells, QuoteLineProductPicker, QuoteLineRemoveCell,
@@ -80,6 +82,11 @@ export function QuotationReadOnlyLineItems({
   highlightRows = [],
   emptyText = "ยังไม่มีรายการ",
 }) {
+  /* ⭐ คอลัมน์ "แพ็ค/เดือน" (mig 0407 · งวด PR-2 · docs/qt-pack-column.md) — ตัดสิน **ทั้งตาราง** จากบรรทัดเอง:
+       มีบรรทัดที่มีเลขแพ็คอย่างน้อยหนึ่งบรรทัด = ทุกแถวได้ช่องนี้ (แถวที่ไม่มีขึ้นขีด) · ไม่มีเลย = ตารางเดิมทุกช่อง (ใบเดิมหน้าตาเดิม)
+       ผู้เรียกไม่ต้องส่งอะไร (ใบสั่งขาย · สร้างใบสั่งขาย · ขั้น ④ ของใบย้อนหลัง · การ์ดราคาของงานบริการ)
+     ⚠️ ตารางว่าง = ไม่มีคอลัมน์ ⇒ `colSpan` ของแถวว่างไม่ต้องขยับ */
+  const showPack = hasPackColumn(lines);
   return (
     <>
       <TableScroll family="editable" minWidth={760} className={styles.linesContainer}>
@@ -88,6 +95,7 @@ export function QuotationReadOnlyLineItems({
             <tr>
               <th className={styles.rowNumber}>#</th>
               <th>รหัส / รายละเอียด</th>
+              {showPack ? <th className={`num ${styles.packHead}`}>{PACK_COLUMN_LABEL}</th> : null}
               <th className="num">จำนวน</th>
               <th>หน่วย</th>
               <th className="num">ราคาต่อหน่วย</th>
@@ -129,8 +137,15 @@ export function QuotationReadOnlyLineItems({
                       </div>
                     </td>
                     {/* data-label = ป้ายที่ใช้ตอนตารางแปลงเป็นการ์ดบนจอแคบ (หัวตารางถูกซ่อน) */}
+                    {/* แถวที่ไม่มีเลขแพ็ค: ขีดในตาราง · ซ่อนทั้งบรรทัดในโหมดการ์ด (`packNA`) — ไม่ต้องมีบรรทัด "แพ็ค/เดือน —" */}
+                    {showPack ? (
+                      <td className={linePackQty(line) === null ? `num mono ${styles.packNA}` : "num mono"} data-label={PACK_COLUMN_LABEL}>
+                        {linePackQty(line) === null ? NA : fmtNumber(linePackQty(line))}
+                      </td>
+                    ) : null}
                     <td className="num mono" data-label="จำนวน">{naText(line.qty)}</td>
-                    <td data-label="หน่วย">{naText(line.unit)}</td>
+                    {/* บรรทัดที่มีเลขแพ็ค: หน่วยของจำนวน = "เดือน" เสมอ (`packLineUnit` · มติ A1 · A3) · บรรทัดอื่นหน่วยที่เก็บตามเดิม */}
+                    <td data-label="หน่วย">{naText(packLineUnit(line, line.unit))}</td>
                     <td className="num mono" data-label="ราคาต่อหน่วย">{fmtMoney(line.unitPrice)}</td>
                     <td className="num mono" data-label="ส่วนลด">{Number(line.discountAmount || 0) > 0 ? fmtMoney(line.discountAmount) : NA}</td>
                     <td className={`num mono ${styles.lineAmount}`} data-label="รวม">{fmtMoney(line.lineTotal)}</td>
@@ -196,6 +211,9 @@ export default function QuotationLineItems({
     lineIndex === index ? { ...line, ...patch } : line
   )));
   const removeLine = (index) => onChange?.(lines.filter((_, lineIndex) => lineIndex !== index));
+  /* ⭐ คอลัมน์ "แพ็ค/เดือน" (mig 0407 · งวด PR-2): ขึ้นเมื่อมีบรรทัดที่มีเลขแพ็ค — โชว์อย่างเดียวทั้งโหมดอ่านและโหมดแก้
+     (ช่องกรอกเป็นของงวด PR-3) · ใบที่ไม่มีเลขแพ็คได้ตารางเดิมทุกช่อง */
+  const showPacks = hasPackColumn(lines);
   const productOf = (line) => (line.productId ? products.find((item) => item.id === line.productId) || null : null);
 
   // ราคาขายในใบ = ราคาผลิต (costPrice) ทั้งระบบ (มติ 2026-07-19) — ตรงกับที่ server enforce ตอนบันทึก;
@@ -213,7 +231,7 @@ export default function QuotationLineItems({
         <thead>
           <tr>
             <QuoteLineIndexHead />
-            <QuoteLineHeadCells />
+            <QuoteLineHeadCells showPacks={showPacks} />
             {editable && <QuoteLineActionsHead />}
           </tr>
         </thead>
@@ -294,6 +312,7 @@ export default function QuotationLineItems({
                 editable={editable}
                 onPatch={(patch) => setLine(index, patch)}
                 name={`รายการ ${index + 1}`}
+                showPacks={showPacks}
               />
               {editable && <QuoteLineRemoveCell name={`รายการ ${index + 1}`} onRemove={() => removeLine(index)} />}
             </tr>

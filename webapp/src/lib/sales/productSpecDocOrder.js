@@ -12,6 +12,7 @@ import { loadScoped } from '@/lib/scopedRow';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
 import { productSpecScopeReason } from '@/lib/sales/productSpecScope';
+import { linePackQty } from '@/lib/sales/linePackView';
 
 export const NO_PRODUCT_LINK = 'บรรทัดนี้ไม่ได้ผูกสินค้าในทะเบียน — ออกใบสเปคสินค้าไม่ได้';
 
@@ -28,6 +29,7 @@ export const HISTORICAL_ORDER_BLOCK = 'ใบสั่งขายย้อน�
  *    SO ย้อนหลัง) · RPC กันซ้ำอีกชั้น
  * ⚠️ บรรทัดพก `quotationLineId` มาด้วย — "จำนวนผลิต" ของกระดาษถอยไปบรรทัดใบเสนอราคาที่บรรทัด SO ชี้
  *    (`loadDocumentQuantity`) · ขาดคอลัมน์นี้ = กระดาษตัวอย่างพิมพ์จำนวนคนละตัวกับตอนยื่น
+ * ⚠️ บรรทัดพก `packQty` (mig 0407) คู่กับ `qty` เสมอ — "จำนวนผลิต" ของบรรทัดที่มีเลขแพ็คคือ แพ็ค × เดือน ไม่ใช่จำนวนเดือน
  *
  * @param mode 'view' (อ่าน) | 'edit' (ออกเลข)
  * @returns {{ order, dealOwnerId } | { response: Response } | { blocked: string } | { error: string }}
@@ -41,7 +43,7 @@ export async function loadSpecDocOrder(supabase, id, user, mode) {
   //    ไม่งั้นหน้าที่สองซ้อนหน้าแรก (ด่าน check:rowcap)
   const lines = await fetchAllResult(() => supabase
     .from('sales_order_lines')
-    .select('id, salesOrderId, quotationLineId, productId, fgCode, description, qty, unit, sortOrder')
+    .select('id, salesOrderId, quotationLineId, productId, fgCode, description, qty, packQty, unit, sortOrder')
     .eq('salesOrderId', id)
     .order('sortOrder', { ascending: true })
     .order('id', { ascending: true }));
@@ -61,6 +63,8 @@ export const specDocLineView = (line) => ({
   fgCode: line.fgCode || null,
   description: line.description || null,
   qty: line.qty ?? null,
+  /* เลขแพ็คของบรรทัด (mig 0407) — คีย์มีเฉพาะบรรทัดที่มีเลขแพ็ค (จอโชว์ "2 แพ็ค × 12 เดือน") · บรรทัดเดิมรูปเดิมทุกคีย์ */
+  ...(linePackQty(line) !== null ? { packQty: linePackQty(line) } : {}),
   unit: line.unit || null,
   productId: line.productId || null,
   sortOrder: line.sortOrder ?? null,

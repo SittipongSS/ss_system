@@ -20,6 +20,7 @@ import { fmtDate, fmtNumber, NA, naText } from "@/lib/format";
 import { SALES_ORDER_STATUS_LABELS } from "@/lib/sales/salesOrderWorkflow";
 import { requestKindLabel } from "@/lib/master/requestTypes";
 import { apiFetch } from "@/lib/apiFetch";
+import { linePackQtyText } from "@/lib/sales/linePackView";
 
 export default function RdSalesOrdersPage() {
   const [rows, setRows] = useState([]);
@@ -105,8 +106,9 @@ export default function RdSalesOrdersPage() {
                         <div className="mono">{naText(row.lines[0].fgCode)}</div>
                         <div className="cell-sub">
                           {naText(row.lines[0].description)}
+                          {/* บรรทัดที่มีเลขแพ็ค (mig 0407) = "2 แพ็ค × 12 เดือน" · บรรทัดอื่นข้อความเดิม */}
                           {row.lines[0].qty != null
-                            ? ` · ${fmtNumber(row.lines[0].qty)} ${row.lines[0].unit || ""}`.trimEnd()
+                            ? ` · ${linePackQtyText(row.lines[0]) ?? `${fmtNumber(row.lines[0].qty)} ${row.lines[0].unit || ""}`}`.trimEnd()
                             : ""}
                           {row.lines.length > 1 ? ` · อีก ${row.lines.length - 1} รายการ` : ""}
                         </div>

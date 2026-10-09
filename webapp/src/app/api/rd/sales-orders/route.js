@@ -42,9 +42,10 @@ export const GET = withUser(async ({ user, supabase }) => {
     /* บรรทัดสินค้า: RD อ่านเพื่อรู้ว่าออร์เดอร์นี้ต้องได้ FG อะไรออกมา
        ⚠️ **ไม่เอาราคา** — `unitPrice`/`lineTotal` เป็นข้อมูลการค้าของฝ่ายขาย
        ฝ่าย R&D ไม่ต้องใช้ และการไม่ส่งมาคือด่านที่แน่นอนกว่าการซ่อนที่จอ
-       ⚠️ เพดาน: หนึ่งใบมีได้หลายบรรทัด ⇒ กันไว้ที่ 50 บรรทัด/ใบ ซึ่งเกินของจริงมาก */
+       ⚠️ เพดาน: หนึ่งใบมีได้หลายบรรทัด ⇒ กันไว้ที่ 50 บรรทัด/ใบ ซึ่งเกินของจริงมาก
+       ⭐ mig 0407: "packQty" คู่กับ qty — บรรทัด 2 แพ็ค × 12 เดือน ต้องไม่อ่านว่า 12 (เลขแพ็คไม่ใช่ราคา · ส่งได้) */
     supabase.from('sales_order_lines')
-      .select('id, "salesOrderId", "fgCode", description, qty, unit, "sortOrder"')
+      .select('id, "salesOrderId", "fgCode", description, qty, "packQty", unit, "sortOrder"')
       .in('salesOrderId', orderIds).limit(orderIds.length * 50),
   ]);
   if (orderError || lineError) return fail((orderError || lineError).message, 500);

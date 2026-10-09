@@ -55,11 +55,12 @@ function numberLines(rows) {
 
 /* ⭐ mig 0400: "servicePeriodFrom"/"servicePeriodTo" = ช่วงบริการของรายการ (โหมดแยกรายรายการ) — ตัวตัดสินอ่านผ่าน `linePeriodOf`
    ⚠️ ต้องรัน 0400 ก่อน deploy (ไม่มีคอลัมน์ = select 500 ทุกใบสายบริการ · check:columns แดงสองชื่อนี้จนกว่าจะรัน)
-   🪤 คอมเมนต์อยู่เหนือฟังก์ชัน ไม่แทรกระหว่าง `.from()` กับ `.select()` (check:columns มองหา select ไม่เกิน 200 ตัวอักษรหลัง `.from()`) */
+   🪤 คอมเมนต์อยู่เหนือฟังก์ชัน ไม่แทรกระหว่าง `.from()` กับ `.select()` (check:columns มองหา select ไม่เกิน 200 ตัวอักษรหลัง `.from()`)
+   ⭐ mig 0407: "packQty" คู่กับ qty เสมอ — ตัวเทียบจำนวนในใบ (`lineQtyCrossCheck`) นับหน่วยรวมของบรรทัดที่มีเลขแพ็ค */
 async function loadLines(supabase, orderId) {
   const { data, error } = await fetchAllResult(() => supabase
     .from('sales_order_lines')
-    .select('id, "salesOrderId", "quotationLineId", "productId", "fgCode", description, qty, unit, "sortOrder", metadata, "serviceKind", "serviceProductId", "serviceFgCode", "serviceRounds", "servicePeriodFrom", "servicePeriodTo"')
+    .select('id, "salesOrderId", "quotationLineId", "productId", "fgCode", description, qty, "packQty", unit, "sortOrder", metadata, "serviceKind", "serviceProductId", "serviceFgCode", "serviceRounds", "servicePeriodFrom", "servicePeriodTo"')
     .eq('salesOrderId', orderId)
     .order('sortOrder', { ascending: true })
     .order('id', { ascending: true }));

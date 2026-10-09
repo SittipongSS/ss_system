@@ -32,6 +32,7 @@ import {
 } from '@/lib/sales/productSpecIllustrations';
 import { SPEC_CONTENT_FIELDS, normalizeProductSpecInput, prepareSpecItemRows } from '@/lib/sales/productSpecWorkflow';
 import { docReasonError, revisionPatch } from '@/lib/sales/productSpecDocWorkflow';
+import { linePackQty } from '@/lib/sales/linePackView';
 
 // เราต์/สคริปต์ฝั่ง server ที่เคย import จากที่นี่ยังใช้ได้ — ต้นทางจริงอยู่ที่ workflow
 export { SPEC_CONTENT_FIELDS };
@@ -781,14 +782,18 @@ const hasQty = (value) => value !== null && value !== undefined && String(value)
  *    = บรรทัดแรกของสินค้าเดียวกัน
  *    ในใบเสนอราคาที่ SO ผูก · ไม่มีทั้งคู่ = null (กระดาษพิมพ์ N/A)
  * ⚠️ อ่านใบเสนอราคาล้ม = error ไม่ใช่ null — null บนกระดาษคือ "ไม่มีจำนวน" ซึ่งไม่จริง
- * @returns {{ qty, unit, source: 'sales_order_line'|'quotation_line'|null } | { error: string }}
+ * ⭐ เลขแพ็คของบรรทัด (mig 0407 · งวด PR-2): บรรทัดที่ให้จำนวน (SO หรือใบเสนอราคา) มีเลขแพ็ค ⇒ คืน `packQty` (ตัวเลข) มาด้วย
+ *    — กระดาษพิมพ์ "2 แพ็ค × 12 เดือน" · บรรทัดที่ไม่มีเลขแพ็ค **ไม่มีคีย์นี้เลย** (รูปที่คืนเท่ากับก่อนมีเลขแพ็คทุกคีย์)
+ *    ⚠️ ผู้เรียกที่เลือกคีย์ส่งต่อ (route "ออกเอกสาร") ต้องส่ง `packQty` ต่อด้วย — ไม่งั้นจอกับกระดาษพูดคนละจำนวน
+ * @returns {{ qty, unit, source: 'sales_order_line'|'quotation_line'|null, packQty?: number } | { error: string }}
  */
 export async function loadDocumentQuantity(supabase, { order = null, line = null, productId = null } = {}) {
-  if (line && hasQty(line.qty)) return { qty: line.qty, unit: line.unit || null, source: 'sales_order_line' };
+  const packOf = (row) => (linePackQty(row) !== null ? { packQty: linePackQty(row) } : {});
+  if (line && hasQty(line.qty)) return { qty: line.qty, unit: line.unit || null, source: 'sales_order_line', ...packOf(line) };
   if (!order?.quotationId) return { qty: null, unit: null, source: null };
   const pick = async (column, value) => {
     const { data, error } = await supabase.from('quotation_lines')
-      .select('id, quotationId, productId, qty, unit, sortOrder')
+      .select('id, quotationId, productId, qty, packQty, unit, sortOrder')
       .eq('quotationId', order.quotationId)
       .eq(column, value)
       .order('sortOrder', { ascending: true })
@@ -806,7 +811,7 @@ export async function loadDocumentQuantity(supabase, { order = null, line = null
   if (!found.row && productId) found = await pick('productId', productId);
   if (found.error) return { error: found.error };
   if (!found.row || !hasQty(found.row.qty)) return { qty: null, unit: null, source: null };
-  return { qty: found.row.qty, unit: found.row.unit || null, source: 'quotation_line' };
+  return { qty: found.row.qty, unit: found.row.unit || null, source: 'quotation_line', ...packOf(found.row) };
 }
 
 /**
@@ -870,6 +875,9 @@ export async function buildDocumentSnapshot(supabase, {
       qty: quantity.qty ?? null,
       unit: quantity.unit || null,
       qtySource: quantity.source,
+      /* เลขแพ็คของบรรทัดที่ให้จำนวน (mig 0407) — คีย์เพิ่มแบบไม่บังคับ (schemaVersion ยัง 2 · กติกาเดียวกับ `qty`):
+         มีเฉพาะบรรทัดที่มีเลขแพ็ค **ไม่มีวันเป็น null** ⇒ ภาพนิ่งของบรรทัดเดิมมีคีย์ชุดเดิมทุกตัว */
+      ...(quantity.packQty ? { packQty: quantity.packQty } : {}),
       lineDescription: line?.description || null,
       deliveryDueDate: order?.deliveryDueDate || null,
       customerName: order?.customerName || productRes.product.customerName || null,

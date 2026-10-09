@@ -121,7 +121,7 @@ async function listAvailableSalesOrders(supabase, user, customerId) {
 
   const { data: lines, error: lineError } = await fetchInChunks(available.map((salesOrder) => salesOrder.id), (chunk) => fetchAllResult(() => supabase
     .from("sales_order_lines")
-    .select("id, salesOrderId, productId, fgCode, description, qty")
+    .select("id, salesOrderId, productId, fgCode, description, qty, packQty")
     .in("salesOrderId", chunk)
     .order("salesOrderId", { ascending: true })
     .order("id", { ascending: true })));

@@ -19,6 +19,8 @@
 //   ยังอยู่ตลอดไป แต่ startDate/endDate ของ term บอกว่ารอบนั้นครอบเดือนไหนบ้าง
 //   สองคำถามนี้แยกกันตอบ (`termOrderActive` กับ `termInWindow`)
 import { businessDate } from '@/lib/businessDate';
+import { lineUnitsTotal } from '@/lib/sales/linePacks';
+import { lineUnitsUnit } from '@/lib/sales/linePackView';
 
 /* ── ชั้นที่ 1: ใบสั่งขายแม่ยังมีผลไหม ─────────────────────────────────── */
 export function termOrderActive(order) {
@@ -168,13 +170,19 @@ export function allocatedByLine(terms = []) {
 
 /* จำนวนของบรรทัดที่ "ยังไม่ถูกจัดสรร" — ตัวช่วยภายในของ `fgSummary` (ไม่ export แล้ว · mig 0392 ไม่มีผู้เรียกข้างนอก)
    ⚠️ บรรทัดที่ไม่มีจำนวน (qty ว่าง/0) ถือว่า **จัดสรรครบเมื่อมีอย่างน้อยหนึ่งโซน** —
-      ของแบบนี้มีจริง (บริการรายเดือน "1 งาน") การบังคับให้กรอกจำนวนจะทำให้ผูกไม่ได้เลย */
+      ของแบบนี้มีจริง (บริการรายเดือน "1 งาน") การบังคับให้กรอกจำนวนจะทำให้ผูกไม่ได้เลย
+   ⭐ เลขแพ็คของบรรทัด (mig 0407 · งวด PR-2): จำนวนของบรรทัด = **หน่วยรวม** `lineUnitsTotal` (แพ็ค × จำนวน)
+      บรรทัด 2 แพ็ค × 12 เดือน ต้องจัดสรร 24 — เลขเดียวกับที่คนขายพิมพ์ 24 ไว้ในช่องจำนวนแบบเดิม ไม่ใช่ 2 (แพ็คต่อเดือน)
+      บรรทัดที่ไม่มีเลขแพ็ค (ทุกบรรทัดก่อนงวด PR-3) ได้ `qty` ตามเดิมทุกค่า
+   ⚠️ ขีดจำกัดที่รู้ (งวด PR-5 เป็นเจ้าของ): ใบที่ **ยังไม่ประทับ** แต่ term เก็บ "แพ็คต่อรอบ" ใน `packageQty`
+      (ใบย้อนหลังของ mig 0374/0394) จะเทียบ แพ็ค × เดือน กับ แพ็คต่อรอบ = คนละหน่วย · เกิดได้เฉพาะใบย้อนหลังที่มีเลขแพ็ค
+      ซึ่งยังไม่มีทางเกิดจนกว่าฟอร์มใบย้อนหลังจะรับเลขแพ็ค — ถึงตอนนั้นต้องแก้ที่นี่ด้วย (docs/qt-pack-column.md) */
 function remainingOfLine(line = {}, allocated = 0) {
   const entry = typeof allocated === 'object' && allocated
     ? allocated
     : { qty: Number(allocated) || 0, whole: false };
   if (entry.whole) return 0;
-  const qty = Number(line.qty);
+  const qty = lineUnitsTotal(line);
   if (!Number.isFinite(qty) || qty <= 0) return entry.qty > 0 ? 0 : 1;
   return Math.max(0, qty - entry.qty);
 }
@@ -188,29 +196,33 @@ function remainingOfLine(line = {}, allocated = 0) {
       TS เห็น "FG-1 · 6 หน่วย" ก้อนเดียว แล้วไม่รู้ว่าต้องไปหาไซต์ไหนบ้าง
       ⚠️ บรรทัดที่ไม่มีจุดติดตั้ง (ใบปกติทั้งหมด) คีย์เดิมเป๊ะ — การยุบตาม FG ของมติ 2026-08-29 ไม่ขยับ
    🔄 mig 0392: ผู้อ่านเหลือตารางสรุปงานบริการของใบ (salesOrderServiceSummary) — คิวผูกโซนของ TS
-      (`lineNeedsAllocation` · `spreadAllocation`) ถอดพร้อมทางผูก */
+      (`lineNeedsAllocation` · `spreadAllocation`) ถอดพร้อมทางผูก
+   ⭐ เลขแพ็คของบรรทัด (mig 0407 · งวด PR-2): จำนวนของกลุ่ม = Σ `lineUnitsTotal` และหน่วยของบรรทัดที่มีเลขแพ็ค = "แพ็ค"
+      (`lineUnitsUnit` — แพ็คต่อเดือน × เดือน = แพ็ค · ไม่ใช่ "24 เดือน") · บรรทัดที่มีเลขแพ็คกับบรรทัดเดิมของ FG เดียวกัน
+      ที่หน่วยไม่ใช่ "แพ็ค" อยู่กลุ่มเดียวกัน = "ปนหน่วย" ตามกติกาเดิม · บรรทัดที่ไม่มีเลขแพ็คไม่ถูกแตะ */
 export function fgSummary(lines = [], allocatedMap = new Map()) {
   const groups = new Map();
   for (const line of lines) {
     const point = String(line.installationPoint ?? '').trim();
     const key = (line.fgCode || `desc:${line.description || line.id}`) + (point ? `|pt:${point}` : '');
+    const unit = lineUnitsUnit(line, line.unit);
     const row = groups.get(key) || {
       key,
       fgCode: line.fgCode || null,
       description: line.description || null,
-      unit: line.unit || null,
+      unit: unit || null,
       installationPoint: point || null,
       qty: 0,
       remaining: 0,
       lines: [],
     };
-    const qty = Number(line.qty);
+    const qty = lineUnitsTotal(line);
     row.qty += Number.isFinite(qty) && qty > 0 ? qty : 0;
     row.remaining += remainingOfLine(line, allocatedMap.get(line.id));
     row.lines.push(line);
     /* หน่วยต่างกันในกลุ่มเดียวกัน = บวกกันไม่ได้ ⇒ บอกว่าปนหน่วย ไม่ใช่เงียบ
        (กติกาเดียวกับตัวนำเข้าข้อมูลเก่า: แปลงไม่ได้ต้องบอก ห้ามเดา) */
-    if (row.unit && line.unit && row.unit !== line.unit) row.unit = 'ปนหน่วย';
+    if (row.unit && unit && row.unit !== unit) row.unit = 'ปนหน่วย';
     groups.set(key, row);
   }
   return [...groups.values()];

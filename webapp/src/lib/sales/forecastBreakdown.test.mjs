@@ -455,3 +455,80 @@ test('🐞 header ไฟล์ FC ต้องสร้าง Response ได้
   const team = forecastReportDisposition('2026', '2026-09-22', 'ทีม ODM');
   assert.equal(decodeURIComponent(team.split("filename*=UTF-8''")[1]), 'FC-by-category-2026-ทีมODM-2026-09-22.xlsx');
 });
+
+/* ── เลขแพ็คของบรรทัดใบเสนอราคา (mig 0407 · งวด PR-2 · docs/qt-pack-column.md) ──────────────────────────
+   บรรทัด 2 แพ็ค × 12 เดือน × 3,500 = 84,000: ไฟล์ต้องมีเลข 2 ให้เห็นข้าง 12 กับ 3,500 และตัวที่ "นับ" (ปริมาตรรวม ·
+   จำนวนรวมของแถวสรุป) ต้องนับ 24 ไม่ใช่ 12 · 🔴 บรรทัดที่ไม่มีเลขแพ็ค: แถวเท่ากับวันนี้ทุกคีย์ */
+const packProduct = () => product({ id: 'PK', fgCode: 'FG-364-02-001-1061', productDescription: 'ระบบกระจายกลิ่น', categoryCode: '02-001', volume: 500, volumeUnit: 'ml', saleUnit: 'แพ็คเกจ' });
+const packLine = (over = {}) => line({ id: 'LP', productId: 'PK', qty: 12, unit: 'เดือน', unitPrice: 3500, lineTotal: 84000, packQty: 2, ...over });
+
+test('⭐ บรรทัดที่มีเลขแพ็ค: แถวพก packQty · หน่วยของจำนวน = เดือน · หน่วยรวม 24 แพ็ค · ปริมาตรรวมคิดจาก 24 (ไม่ใช่ 12)', () => {
+  const deal = { id: 'D', projectValue: 84000, forecastSource: 'quotation' };
+  const [row] = forecastBreakdownOfDeal(deal, { quotationLines: [packLine()], productById: new Map([['PK', packProduct()]]) });
+  assert.deepEqual([row.packQty, row.qty, row.unit, row.unitPrice, row.amount], [2, 12, 'เดือน', 3500, 84000]);
+  assert.deepEqual([row.units, row.unitsUnit], [24, 'แพ็ค']);
+  assert.equal(row.volumeTotal, 12000, 'ปริมาตรรวม = 500 ml × 24 หน่วย — 6,000 คือครึ่งเดียว');
+  assert.equal(row.fcAmount, 84000);
+  // หน่วยที่เก็บบนบรรทัดเป็นอะไรก็ตาม (มติ A3) หน่วยของจำนวนของบรรทัดแพ็ค = เดือน
+  const [kg] = forecastBreakdownOfDeal(deal, { quotationLines: [packLine({ unit: 'กิโลกรัม', packQty: '43', qty: 4 })], productById: new Map([['PK', packProduct()]]) });
+  assert.deepEqual([kg.packQty, kg.qty, kg.unit, kg.units, kg.unitsUnit], [43, 4, 'เดือน', 172, 'แพ็ค']);
+  // บรรทัดสำรอง (ดีลที่ยังไม่กรอกรายหมวด ยืมรายการจากใบ) เดินทางเดียวกัน
+  const [fallback] = forecastBreakdownOfDeal({ id: 'D', projectValue: 84000, forecastSource: 'manual' },
+    { valueItems: [], fallbackQuotationLines: [packLine()], productById: new Map([['PK', packProduct()]]) });
+  assert.deepEqual([fallback.packQty, fallback.units, fallback.volumeTotal, fallback.source], [2, 24, 12000, 'quotation_lines']);
+  // กริดรายดีลพกเลขแพ็คถึงแถวที่ไฟล์วาด
+  const [grid] = gridForecastLines([{ ...row, month: '2026-09', monthBasis: 'closeMonth' }], ['2026-09']);
+  assert.deepEqual([grid.packQty, grid.units, grid.total], [2, 24, 84000]);
+});
+
+test('⭐ แถวสรุป: จำนวนรวมของบรรทัดที่มีเลขแพ็ค = Σ หน่วยรวม ใต้หน่วย “แพ็ค” — ไม่ปนกับบรรทัดเดิมที่หน่วยเป็นเดือน', () => {
+  const deal = { id: 'D', projectValue: 84000 + 42000, forecastSource: 'quotation' };
+  const rows = forecastBreakdownOfDeal(deal, {
+    quotationLines: [packLine(), packLine({ id: 'LO', qty: 12, unit: 'เดือน', unitPrice: 3500, lineTotal: 42000, packQty: null, sortOrder: 1 })],
+    productById: new Map([['PK', packProduct()]]),
+  }).map((row) => ({ ...row, month: '2026-09', monthBasis: 'closeMonth' }));
+  const summary = summarizeForecastLines(rows, ['2026-09']);
+  assert.deepEqual(summary.map((g) => [g.unit, g.qty, g.volumeTotal, g.fcAmount]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+    [['เดือน', 12, 6000, 42000], ['แพ็ค', 24, 12000, 84000]].sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
+  // สองบรรทัดที่มีเลขแพ็คของหมวด/ขนาดเดียวกันยุบรวม: 2×12 + 3×8 = 48 แพ็ค
+  const two = forecastBreakdownOfDeal({ id: 'D', projectValue: 168000, forecastSource: 'quotation' }, {
+    quotationLines: [packLine(), packLine({ id: 'L3', qty: 8, packQty: 3, lineTotal: 84000, sortOrder: 1 })],
+    productById: new Map([['PK', packProduct()]]),
+  }).map((row) => ({ ...row, month: '2026-09' }));
+  const [merged] = summarizeForecastLines(two, ['2026-09']);
+  assert.deepEqual([merged.unit, merged.qty, merged.volumeTotal], ['แพ็ค', 48, 24000]);
+});
+
+test('🔴 เลขแพ็คว่าง = ไม่มีอะไรเปลี่ยน: แถวรายบรรทัดและแถวสรุปเท่ากับวันนี้ทุกคีย์ (ไม่มีคีย์ · packQty: null · ค่าที่เก็บไม่ได้)', () => {
+  const deal = { id: 'D', projectValue: 92000, forecastSource: 'quotation' };
+  const stored = [
+    line(),
+    line({ id: 'L2', productId: null, description: 'ค่าบริการรายเดือน', qty: 12, unit: 'เดือน', unitPrice: 3500, lineTotal: 42000, sortOrder: 1 }),
+  ];
+  const ctx = (lines) => ({ quotationLines: lines, productById: new Map([['P1', product()]]), quoteNumber: 'QT-1' });
+  // ค่าที่คาด = แถวของวันนี้ ลอกทั้งคีย์ (ไม่มี packQty / units / unitsUnit)
+  const expected = [
+    { categoryCode: '01-002', categoryFrom: 'product', fgCode: 'FG-001', description: 'EDP 30 ml', qty: 100, unit: 'ชิ้น', volume: 30,
+      volumeUnit: 'ml', unitPrice: 500, amount: 50000, fcAmount: 50000, dealId: 'D', source: 'quotation', quoteNumber: 'QT-1',
+      categoryLabel: '01-002', volumeTotal: 3000 },
+    { categoryCode: null, categoryFrom: null, fgCode: null, description: 'ค่าบริการรายเดือน', qty: 12, unit: 'เดือน', volume: null,
+      volumeUnit: null, unitPrice: 3500, amount: 42000, fcAmount: 42000, dealId: 'D', source: 'quotation', quoteNumber: 'QT-1',
+      categoryLabel: UNCATEGORIZED, volumeTotal: null },
+  ];
+  const noKey = forecastBreakdownOfDeal(deal, ctx(stored));
+  assert.deepEqual(noKey, expected);
+  const months = ['2026-09'];
+  const dated = (rows) => rows.map((row) => ({ ...row, month: '2026-09', monthBasis: 'closeMonth' }));
+  for (const packQty of [null, undefined, '', '  ', 'abc', 0, 1.5, 10000]) {
+    const withKey = forecastBreakdownOfDeal(deal, ctx(stored.map((l) => ({ ...l, packQty }))));
+    assert.deepEqual(withKey, expected, `packQty: ${String(packQty)}`);
+    assert.deepEqual(summarizeForecastLines(dated(withKey), months), summarizeForecastLines(dated(noKey), months));
+    assert.deepEqual(gridForecastLines(dated(withKey), months), gridForecastLines(dated(noKey), months));
+  }
+  // แถวที่ AE กรอกเอง (อีกตาราง) ไม่มีเลขแพ็ค — ไม่ถูกแตะ
+  const [manual] = forecastBreakdownOfDeal({ id: 'D', projectValue: 1000, forecastSource: 'manual' },
+    { valueItems: [{ seq: 1, categoryCode: '02-001', qty: 12, unit: 'เดือน', unitPrice: 100, amount: 1000, packQty: 2 }] });
+  assert.equal('packQty' in manual, false, 'แถวมูลค่ารายหมวดของดีลไม่ใช่บรรทัดใบเสนอราคา');
+  assert.equal(manual.qty, 12);
+});
+

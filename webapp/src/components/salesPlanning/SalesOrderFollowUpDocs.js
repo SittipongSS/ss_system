@@ -15,6 +15,7 @@ import { notifyToast } from "@/lib/feedback";
 import { naText } from "@/lib/format";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { docReasonError } from "@/lib/sales/productSpecDocWorkflow";
+import { linePackQtyText } from "@/lib/sales/linePackView";
 import {
   DOC_DELETE_KEY, docActionDoneMessage, docConfirmPrompt, docReasonPrompt, followUpLineView,
   orphanDocPromptInput, orphanRemoveFailureOutcome, specDocumentHref,
@@ -216,7 +217,8 @@ export default function SalesOrderFollowUpDocs({ orderId, orderStatus, onChanged
                       <div className={styles.lineName}>{naText(line.description)}</div>
                     </td>
                     <td className="num">
-                      {line.qty === null || line.qty === undefined ? naText(null) : `${line.qty}${line.unit ? ` ${line.unit}` : ""}`}
+                      {/* บรรทัดที่มีเลขแพ็ค (mig 0407) = "2 แพ็ค × 12 เดือน" · บรรทัดอื่นข้อความเดิม */}
+                      {line.qty === null || line.qty === undefined ? naText(null) : (linePackQtyText(line) ?? `${line.qty}${line.unit ? ` ${line.unit}` : ""}`)}
                     </td>
                     <td>
                       {view.docNo ? (

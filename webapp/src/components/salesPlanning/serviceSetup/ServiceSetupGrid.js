@@ -39,6 +39,8 @@ import {
   roundChipsFromPeriod, serviceRoundsText, validServicePeriod,
 } from "@/lib/sales/serviceSetup";
 import { SERVICE_ROUNDS_EDIT_TEXT, normalizeServiceRounds } from "@/lib/sales/serviceRoundsEntry";
+import { lineUnitsTotal } from "@/lib/sales/linePacks";
+import { lineHasPacks, linePackQtyText } from "@/lib/sales/linePackView";
 import { zonePickerOptions, zoneTakenMap } from "@/lib/service/zonePickerOptions";
 import { nextEnabledIndex } from "@/lib/ui/selectionNavigation";
 import { zonesBulkCapText } from "@/components/service/zonesBulkPlan";
@@ -151,12 +153,13 @@ function LineStatus({ missing, pressed }) {
   return <span className={styles.status} data-tone={tone}>{missing.label}</span>;
 }
 
-/* ── ช่อง "รายการ" (อ่านอย่างเดียว — ราคา/จำนวนอยู่การ์ดข้างบน) ── */
+/* ── ช่อง "รายการ" (อ่านอย่างเดียว — ราคา/จำนวนอยู่การ์ดข้างบน) ──
+   ⭐ บรรทัดที่มีเลขแพ็ค (mig 0407): "ในใบ 2 แพ็ค × 12 เดือน" (`linePackQtyText`) · บรรทัดอื่นข้อความเดิมทุกตัวอักษร */
 function ItemCell({ line, status }) {
   const qty = Number(line.qty);
-  const qtyText = line.qty === null || line.qty === undefined || line.qty === ""
+  const qtyText = linePackQtyText(line) ?? (line.qty === null || line.qty === undefined || line.qty === ""
     ? null
-    : `${Number.isFinite(qty) ? fmtNumber(qty) : String(line.qty)}${line.unit ? ` ${line.unit}` : ""}`;
+    : `${Number.isFinite(qty) ? fmtNumber(qty) : String(line.qty)}${line.unit ? ` ${line.unit}` : ""}`);
   return (
     <div className={styles.item}>
       <span className={styles.itemTop}>
@@ -405,9 +408,13 @@ function RoundsRead({ line, canEditRounds, onRoundsSave }) {
 
 /* ── ⑥ รวมแพ็คของรายการ = รอบละ (Σ ทุกโซน) × จำนวนรอบบริการ + เทียบจำนวนในใบ (ไม่บังคับให้เท่า)
    สูตรใต้ตัวเลข "1 × 6 เดือน" — ลำดับเดียวกับคอลัมน์ ④ × ⑤ · หน่วยจากแคตตาล็อก (มติเจ้าของ 08/10) ── */
+/* ⭐ บรรทัดที่มีเลขแพ็ค (mig 0407): ตัวเลขที่เทียบคือหน่วยรวมของบรรทัด (แพ็ค × จำนวน) จึงบอกหน่วย "แพ็ค" กำกับ
+   — "≠ ในใบ 24 แพ็ค" ไม่ใช่ "≠ ในใบ 12" (12 คือจำนวนเดือน) · บรรทัดอื่นข้อความเดิม */
 const CROSS_SHORT = Object.freeze({
   ok: () => "ตรงกับจำนวนในใบ",
-  warn: (line) => `≠ ในใบ ${naText(line.qty === null || line.qty === undefined ? null : fmtNumber(Number(line.qty)))} · ตรวจอีกครั้ง`,
+  warn: (line) => (lineHasPacks(line)
+    ? `≠ ในใบ ${fmtNumber(lineUnitsTotal(line))} ${SERVICE_SETUP_LINE_TEXT.packUnit} · ตรวจอีกครั้ง`
+    : `≠ ในใบ ${naText(line.qty === null || line.qty === undefined ? null : fmtNumber(Number(line.qty)))} · ตรวจอีกครั้ง`),
   info: () => "ในใบ = เดือน · ไม่เทียบแพ็ค",
 });
 

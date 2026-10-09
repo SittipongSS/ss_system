@@ -273,6 +273,29 @@ test('⭐ เส้นข้อมูลของหน้าออกเอก�
   assert.match(source, /canEditSpec: canEditProductSpec\(user\.role\)/);
 });
 
+/* ── เลขแพ็คของบรรทัด (mig 0407 · งวด PR-2 · docs/qt-pack-column.md) ───────────────────────────────────
+   🐞 ชั้นเดียวกับบั๊กที่คอมเมนต์ของ route เตือน: route "ออกเอกสาร" ประกอบ `quantity` จากลิสต์คีย์ — ลืม `packQty` เมื่อไร
+      จอตัดสินใจบอก "12 เดือน" ขณะที่กระดาษที่กำลังจะออกพิมพ์ "2 แพ็ค × 12 เดือน" */
+test('🔴 0407 เส้นข้อมูลของหน้าออกเอกสารส่งเลขแพ็คของบรรทัดต่อ (quantity.packQty) — มีเฉพาะบรรทัดที่มีเลขแพ็ค ไม่มีคีย์ null', () => {
+  const source = code(NEW_PAGE_ROUTE);
+  assert.match(source, /const quantityView = \{\s*qty: quantity\.qty \?\? null, unit: quantity\.unit \|\| null, source: quantity\.source \|\| null,\s*\.\.\.\(quantity\.packQty \? \{ packQty: quantity\.packQty \} : \{\}\),\s*\};/);
+  assert.match(source, /\bquantity: quantityView,/);
+  assert.equal((source.match(/\bquantity:/g) || []).length, 1, 'คำตอบมีคีย์ quantity ที่เดียว — ไม่มีทางที่สองที่ไม่พกเลขแพ็ค');
+  assert.doesNotMatch(source, /packQty: (null|undefined)/);
+});
+
+test('0407 ตัวโหลดบรรทัดใบสั่งขายของเอกสาร FM-SA-04 ทั้งสามตัวเลือก packQty คู่กับ qty (ภาพนิ่ง · กระดาษร่าง · การ์ดบนหน้า SO)', () => {
+  const selectOf = (source) => [...source.matchAll(/from\('sales_order_lines'\)\s*\.select\('([^']*)'\)/g)].map((m) => m[1]);
+  const sources = { [DOC_ROUTE]: code(DOC_ROUTE), [ORDER_LOADER]: libCode(ORDER_LOADER), 'sales/productSpecFreeze.js': libCode('sales/productSpecFreeze.js') };
+  for (const [name, source] of Object.entries(sources)) {
+    const selects = selectOf(source).filter((select) => /(^|,\s*)qty(,|$)/.test(select));
+    assert.ok(selects.length >= 1, `${name}: ต้องเจอ select ที่มี qty`);
+    for (const select of selects) {
+      assert.ok(select.split(',').map((col) => col.trim()).includes('packQty'), `${name}: ${select}`);
+    }
+  }
+});
+
 /* 🐞 ผลตรวจสด 23/09: role ที่หน้าใหม่บอกว่า "ไม่มีสิทธิ์ออกเอกสารนี้" (senior_ae · rd) ยิง URL ของกระดาษร่าง
    ตรง ๆ แล้วได้กระดาษเต็มใบ (สเปค + กล่องผู้ซื้อ) ⇒ จอปิดประตูแต่หน้าต่างเปิด · มติ 23/09: **กระดาษของ
    "ของที่ยังไม่มีใครตัดสินใจออก" แคบเท่าปุ่มที่พามา** (AC/admin) — ต่างจากกระดาษของเอกสารที่ *มีแล้ว*

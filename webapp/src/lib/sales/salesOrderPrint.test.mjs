@@ -408,3 +408,58 @@ test('ไม่มีป้ายไทยตายตัวเหลือใ�
   const leftover = thaiLiterals.filter((t) => !allowed.has(t));
   assert.deepEqual(leftover, [], `ป้ายไทยตายตัวที่ต้องย้ายไป DOC_LABEL_PAIRS: ${leftover.join(' · ')}`);
 });
+
+// ══ คอลัมน์ "แพ็ค/เดือน" บนใบสั่งขาย (มติเจ้าของ 08/10 · mig 0407 · docs/qt-pack-column.md) ═══════════════════════
+// salesOrderPrint ไม่ถูกแก้ — มันส่ง `order.lines` เข้าเครื่องยนต์ของใบเสนอราคาทั้งก้อน เลขแพ็คของบรรทัด
+// (ก๊อปมาจากใบเสนอราคาตอนสร้างใบ) จึงไปถึงกระดาษเอง · เทสต์ชุดนี้ยืนยันว่าทางนั้นไม่ถูกตัดกลางทาง
+
+const soLine = (id, over = {}) => ({
+  id, sortOrder: Number(id.replace(/\D/g, '')) || 0, fgCode: `FG-${id}`, description: `สินค้า ${id}`, qty: 10, unit: 'ชิ้น', unitPrice: 100, lineTotal: 1000, ...over,
+});
+const soPackLine = (id, over = {}) => soLine(id, {
+  fgCode: 'FG-364-02-001-1061', description: 'ระบบกระจายกลิ่น · 1 package', packQty: 2, qty: 12, unit: 'แพ็คเกจ', unitPrice: 3500, lineTotal: 84000, ...over,
+});
+const soTables = (html) => html.match(/<table class="itemTable[\s\S]*?<\/table>/g) || [];
+const soHeaders = (table) => [...table.split('</thead>')[0].matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1]);
+const soRows = (table) => table.split('<tbody>')[1].split('</tbody>')[0].split('<tr>').slice(1)
+  .map((row) => [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((m, index) => (index === 1 ? null : m[1].trim())));
+
+test('SO: บรรทัดที่มีเลขแพ็ค = คอลัมน์แพ็คบนใบสั่งขาย ทั้งไทยและอังกฤษ · หน่วยเป็นเดือนแม้เก็บไว้เป็นแพ็คเกจ', () => {
+  const lines = [soPackLine('1'), soLine('2')];
+  const th = buildSalesOrderPrintHTML({ ...order, lines });
+  const [thTable] = soTables(th);
+  assert.match(thTable, /^<table class="itemTable withPack">/);
+  assert.deepEqual(soHeaders(thTable), ['ลำดับ', 'รายละเอียดสินค้า / บริการ', 'แพ็ค/เดือน', 'จำนวน', 'หน่วย', 'ราคา/หน่วย', 'จำนวนเงิน']);
+  assert.deepEqual(soRows(thTable), [
+    ['1', null, '2', '12', 'เดือน', '3,500.00', '84,000.00'],
+    ['2', null, '-', '10', 'ชิ้น', '100.00', '1,000.00'],
+  ]);
+  const en = buildSalesOrderPrintHTML({ ...order, lines, docLanguage: 'en' });
+  const [enTable] = soTables(en);
+  assert.deepEqual(soHeaders(enTable), ['No.', 'Description', 'Pack/Month', 'Qty', 'Unit', 'Unit Price', 'Amount']);
+  assert.deepEqual(soRows(enTable).map((row) => row.slice(2, 5)), [['2', '12', 'Month'], ['-', '10', 'Piece']]);
+  // ความกว้างของคอลัมน์แพ็คฝังมากับไฟล์ของใบสั่งขายด้วย (ครั้งเดียว)
+  for (const html of [th, en]) assert.equal(html.split('.itemTable.withPack td:nth-child(3)').length - 1, 1);
+});
+
+test('SO: หน้าต่างพิมพ์สองภาษาของใบที่มีเลขแพ็ค — ทั้งสองแผงมีคอลัมน์', () => {
+  const html = buildSalesOrderPrintHTML({ ...order, id: 'SO-1', lines: [soPackLine('1'), soLine('2')] }, null, null, { switchable: true, editable: true });
+  const tables = soTables(html);
+  assert.equal(tables.length, 2);
+  assert.deepEqual(tables.map((table) => soHeaders(table)[2]), ['แพ็ค/เดือน', 'Pack/Month']);
+  for (const table of tables) assert.match(table, /^<table class="itemTable withPack">/);
+});
+
+test('SO: ใบที่ไม่มีเลขแพ็ค (รวม packQty: null ที่ select * คืนทุกบรรทัด) = ไฟล์เดิมทุกไบต์ ไม่มีคอลัมน์และ CSS ของแพ็ค', () => {
+  for (const docLanguage of ['th', 'en']) {
+    for (const options of [{}, { switchable: true, editable: true }]) {
+      const lines = [soLine('1'), soLine('2', { unit: 'แพ็คเกจ' })];
+      const expected = buildSalesOrderPrintHTML({ ...order, id: 'SO-1', docLanguage, lines }, null, null, options);
+      assert.ok(!expected.includes('withPack'));
+      for (const value of [null, undefined, '', 'abc', 0, 1.5, 10000]) {
+        const withKey = lines.map((line) => ({ ...line, packQty: value }));
+        assert.equal(buildSalesOrderPrintHTML({ ...order, id: 'SO-1', docLanguage, lines: withKey }, null, null, options), expected, `packQty=${JSON.stringify(value) ?? 'undefined'}`);
+      }
+    }
+  }
+});

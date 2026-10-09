@@ -1,12 +1,14 @@
-import { fmtDate } from '@/lib/format';
+import { fmtDate, fmtNumber } from '@/lib/format';
 import { branchValue } from '@/lib/master/thaiAddress';
 import { DEFAULT_SALE_UNIT, saleUnitLabel } from '@/lib/master/units';
 import { DOCUMENT_FORMS, documentFormLine } from '@/lib/documentBrand';
-import { headerText } from '@/lib/documents/documentShell';
+import { headerText, money } from '@/lib/documents/documentShell';
 import { positionTitle } from '@/lib/documents/positionTitles';
 import { resolveCompanyBlock } from '@/lib/companyProfile';
 import { paymentScheduleRows } from '@/lib/sales/paymentPlan';
 import { lineNoteFor } from '@/lib/sales/quoteLines';
+import { packFactorOf, packLineUnit } from '@/lib/sales/linePacks';
+import { hasPackColumn, linePackQty } from '@/lib/sales/linePackView';
 import { dealTypeOf } from '@/lib/salesPlanning';
 import {
   DEFAULT_NUMBERING_PATTERNS,
@@ -37,6 +39,8 @@ export const QUOTATION_PREVIEW_SCENARIOS = Object.freeze([
   { id: 'multipage', label: 'หลายหน้า', description: 'ทดสอบหัวตาราง Footer และเลขหน้าต่อเนื่อง' },
   { id: 'long-content', label: 'ข้อความยาว', description: 'ชื่อลูกค้า ที่อยู่ เงื่อนไข และหมายเหตุยาว' },
   { id: 'installments', label: '4 งวด', description: 'ทดสอบ trigger, due rule และยอดรวมทุกงวด' },
+  // ตัวอย่างของใบที่มีเลขแพ็ค (docs/qt-pack-column.md) — ทรงที่แคบที่สุด: คอลัมน์แพ็ค + คอลัมน์ส่วนลดรายบรรทัด
+  { id: 'packs', label: 'แพ็ค/เดือน', description: 'หมวด 02-001 · คอลัมน์ “แพ็ค/เดือน” · มีส่วนลดรายบรรทัด' },
 ]);
 
 export const QUOTATION_PREVIEW_STATES = Object.freeze([
@@ -109,6 +113,9 @@ const DOC_LABEL_PAIRS = Object.freeze({
   // ตารางรายการ
   lineNo: ['ลำดับ', 'No.'],
   lineDescription: ['รายละเอียดสินค้า / บริการ', 'Description'],
+  /* คอลัมน์ของใบที่มีบรรทัดมีเลขแพ็ค (มติเจ้าของ 08/10 · docs/qt-pack-column.md) — อยู่ระหว่างรายละเอียดกับจำนวน
+     ⚠️ คำไทยต้องเท่ากับ PACK_COLUMN_LABEL ของจอ (lib/sales/linePackView.js) — เทสต์ของตัวพิมพ์ยึดไว้ */
+  packQty: ['แพ็ค/เดือน', 'Pack/Month'],
   qty: ['จำนวน', 'Qty'],
   unit: ['หน่วย', 'Unit'],
   unitPrice: ['ราคา/หน่วย', 'Unit Price'],
@@ -332,6 +339,14 @@ const PRODUCT_NAMES = [
   'บรรจุภัณฑ์กล่องกระดาษพิมพ์ 4 สี',
 ];
 
+// หมายเหตุใต้บรรทัดบริการของตัวอย่าง packs — ทรงเดียวกับที่ฝ่ายขายพิมพ์จริง (ขึ้นบรรทัดเองทีละข้อ)
+const PREVIEW_PACK_NOTE = [
+  '- บริเวณพื้นที่ชั้น 1 ล็อบบี้',
+  '- 1 Package (เครื่อง OV-08 1 เครื่อง)',
+  '- น้ำหอม 1 ลิตร / เดือน',
+  '- ระยะเวลาสัญญา 12 เดือน',
+].join('\n');
+
 function lineAt(index, overrides = {}) {
   const qty = overrides.qty ?? (index % 4 === 3 ? 1 : (index + 1) * 120);
   const unitPrice = overrides.unitPrice ?? (index % 4 === 3 ? 25000 : 145 + ((index % 5) * 20));
@@ -339,7 +354,10 @@ function lineAt(index, overrides = {}) {
   // ยอดหลังหักส่วนลด เหมือนใบจริง ไม่งั้นพรีวิวโชว์ตัวเลขที่บวกลบไม่ลง
   const discountType = ['percent', 'amount'].includes(overrides.discountType) ? overrides.discountType : null;
   const discountValue = discountType ? Number(overrides.discountValue || 0) : 0;
-  const gross = roundMoney(qty * unitPrice);
+  /* เลขแพ็คของบรรทัดตัวอย่าง (ตัวอย่าง packs เท่านั้น) — สูตรเดียวกับของจริง: แพ็ค × จำนวน × ราคา แล้วหักส่วนลด
+     ไม่ส่งมา = คูณ 1 = ตัวอย่างเดิมทุกสตางค์ · ⚠️ บรรทัด gross ต้องอยู่บรรทัดเดียว (ยามตัวอ่านเลขแพ็คยึดไฟล์นี้ไว้) */
+  const pack = linePackQty({ packQty: overrides.packQty });
+  const gross = roundMoney(packFactorOf(overrides.packQty) * qty * unitPrice);
   const discountAmount = discountType === 'percent'
     ? roundMoney(gross * (discountValue / 100))
     : Math.min(gross, roundMoney(discountValue));
@@ -352,12 +370,14 @@ function lineAt(index, overrides = {}) {
     description: overrides.description ?? PRODUCT_NAMES[index % PRODUCT_NAMES.length],
     note: overrides.note ?? (index % 5 === 0 ? 'กลิ่น Signature Bloom · บรรจุตามมาตรฐานที่ตกลง' : ''),
     qty,
-    unit: overrides.unit ?? (index % 4 === 3 ? 'งาน' : 'ชิ้น'),
+    // บรรทัดที่มีเลขแพ็ค หน่วยข้างจำนวนคือเดือนเสมอ — กติกาเดียวกับใบจริง (packLineUnit)
+    unit: packLineUnit({ packQty: overrides.packQty }, overrides.unit ?? (index % 4 === 3 ? 'งาน' : 'ชิ้น')),
     unitPrice,
     discountType,
     discountValue,
     discountAmount,
     lineTotal: roundMoney(gross - discountAmount),
+    ...(pack !== null ? { packQty: pack } : {}),
   };
 }
 
@@ -423,27 +443,92 @@ export function lineIdentityParts(line) {
   return [line?.fgCode, line?.brand, line?.category].filter(Boolean);
 }
 
-function rowUnits(line) {
+/* ── จำนวนตัวอักษรต่อบรรทัดของช่องรายละเอียด (บรรทัดรหัส · ชื่อสินค้า · หมายเหตุ) ที่ใช้ประเมินความสูงแถว ──
+   base           = ใบทุกใบที่ไม่มีคอลัมน์แพ็ค และใบที่มีคอลัมน์แพ็คแต่ไม่มีคอลัมน์ส่วนลดรายบรรทัด (ช่องรายละเอียด ≥ 81.8mm)
+                    ⛔ ห้ามแตะ — เปลี่ยนค่านี้ = ใบเดิมทุกใบถูกแบ่งหน้าใหม่
+   ใบที่มี **ทั้ง** คอลัมน์แพ็ค **และ** คอลัมน์ส่วนลดรายบรรทัด ช่องรายละเอียดแคบลง — ชุดถูกเลือกจากสิ่งที่ทำให้ช่องแคบได้จริง
+   (itemTextChars ข้างล่าง · ตัวเลขทั้งหมดมาจากบันทึกการวัดเหนือ V4_SAFETY):
+   packDiscountTh = ใบไทยที่ไม่มีคอลัมน์ไหนถูกดันกว้าง — ช่องรายละเอียด 73.6–74.0mm
+   packDiscountEn = ใบอังกฤษที่ไม่มีคอลัมน์ตัวเลขถูกดันกว้าง — 69.8–71.9mm (หัว Pack/Month กว้างกว่าหัวไทย 2.1mm
+                    และหน่วย Package / Kilogram ดันคอลัมน์หน่วยได้อีก 1.0 / 2.1mm)
+   packDiscount   = ใบที่มีคอลัมน์ถูกดันกว้าง (ตัวเลขยาวเกินช่อง หรือหน่วยนอกรายการที่วัดไว้) — แคบได้ถึง 64.3mm
+   🐞 ตรวจ 2026-10-09: เดิมใบแพ็ค + ส่วนลดทุกใบใช้ชุดแคบสุดชุดเดียว ⇒ ใบบรรทัดเดียวที่พอดีหน้าเดียวถูกผ่าเป็นสองแผ่น
+      (แถวสูง 53px เท่าเดิม แต่บรรทัดรหัส 51 ตัวอักษรถูกนับเป็นสองบรรทัด) — ชุดแคบสุดจึงเหลือไว้ให้ใบที่ช่องแคบจริงเท่านั้น
+   ⚠️ สามชุดของใบแพ็ค + ส่วนลดลดได้อย่างเดียว — เพิ่ม = ประเมินแถวเตี้ยกว่าจริง แล้ว .sheet (overflow:hidden) ตัดเงียบ
+   🧊 การแบ่งหน้าถูกอบลงฉบับตรึงของทุกใบที่ออกหลังเปิดช่องกรอก — แก้ค่าทีหลังไม่ถึงใบที่ออกไปแล้ว */
+export const ITEM_TEXT_CHARS = Object.freeze({
+  base: Object.freeze({ identity: 54, name: 48, note: 54 }),
+  packDiscountTh: Object.freeze({ identity: 52, name: 44, note: 50 }),
+  packDiscountEn: Object.freeze({ identity: 50, name: 41, note: 44 }),
+  packDiscount: Object.freeze({ identity: 43, name: 36, note: 40 }),
+});
+
+/* หน่วยที่ **วัดแล้ว** ว่าใบแพ็ค + ส่วนลดที่พิมพ์คำนี้ยังอยู่ในช่วงความกว้างของชุด packDiscountTh / packDiscountEn
+   (คำที่พิมพ์จริงบนใบของภาษานั้น: ใบไทย = ค่าที่เก็บ · ใบอังกฤษ = คำแปลของ SALE_UNIT_EN) — วัด 2026-10-09:
+     ไทย    ทุกคำอยู่ในคอลัมน์หน่วย 13mm ยกเว้น แพ็คเกจ ที่ดันคอลัมน์ 0.38mm ⇒ ช่องรายละเอียดแคบสุด 73.64mm
+     อังกฤษ  Package ดัน 1.02mm · Kilogram ดัน 2.14mm ⇒ ช่องรายละเอียดแคบสุด 69.75mm
+   ⛔ หน่วยนอกรายการ (คำที่คนพิมพ์เอง · หน่วยที่เพิ่มลง units.js ทีหลัง) = ยังไม่รู้ความกว้าง ⇒ ใบนั้นใช้ชุดแคบสุด
+      (ปลอดภัยไว้ก่อน เปลืองหน้าได้ ตัดข้อความไม่ได้) · จะเติมคำใหม่ต้องวัดคอลัมน์จริงก่อน แล้วแก้ค่าที่เทสต์ยึดไว้พร้อมกัน */
+export const PACK_DISCOUNT_MEASURED_UNITS = Object.freeze({
+  th: Object.freeze(['ชิ้น', 'กิโลกรัม', 'เดือน', 'แพ็คเกจ', 'งาน', 'ชุด', 'เล่ม', 'ขวด', 'หลอด', 'กล่อง', 'Kg', 'ครั้ง']),
+  en: Object.freeze(['Piece', 'Kilogram', 'Month', 'Package', 'Job', 'Set', 'Book', 'Bottle', 'Tube', 'Box', 'Kg', 'Time']),
+});
+
+/* จำนวนตัวอักษรมากสุดของข้อความในช่องตัวเลขที่ยังอยู่ในความกว้างที่ประกาศของตารางแพ็ค + ส่วนลด (ITEM_TABLE_PACK_CSS)
+   ตัวเลขของฟอนต์เอกสารกว้างเท่ากันทุกตัว (1.71mm) จุลภาค/จุด 0.78mm ขีดลบ 1.06mm — วัด 2026-10-09:
+     จำนวน 13mm        99,999          (9.3 ใน 10.0mm)   · 100,000 หรือ 9,999.25 ดันคอลัมน์ 1.0–1.8mm
+     ราคา/หน่วย 19mm   999,999.99      (15.2 ใน 16.0mm)  · 1,000,000.00 ดัน 1.7mm
+     ส่วนลด 18mm       -99,999.99      (14.6 ใน 15.0mm)  · -100,000.00 ดัน 1.3mm
+     จำนวนเงิน 21mm    9,999,999.99    (17.7 ใน 18.0mm)  · 10,000,000.00 ขึ้นไปดัน 1.4mm
+   เลขแพ็ค (สูงสุด 9,999) และเลขลำดับไม่ดันคอลัมน์ของตัวเอง */
+const PACK_DISCOUNT_CELL_CHARS = Object.freeze({ qty: 6, unitPrice: 10, discount: 10, amount: 12 });
+
+/* บรรทัดนี้ทำให้คอลัมน์ใดคอลัมน์หนึ่งของตารางแพ็ค + ส่วนลดกว้างกว่าที่ประกาศไหม (ตาราง auto: คอลัมน์ที่ถูกดันกินที่ของช่องรายละเอียด)
+   ⚠️ ข้อความที่นับต้องเป็นข้อความเดียวกับที่ตัวพิมพ์วาดลงช่อง (itemTable / discountCell ของ quotationMasterDocument.js)
+      — quotationMasterDocument.test.mjs ยึดขอบของทั้งสี่ช่องกับ HTML ที่พิมพ์จริง */
+function widensPackDiscountColumns(line, measuredUnits) {
+  const unit = String(line?.unit ?? '').trim();
+  if (unit && !measuredUnits.includes(unit)) return true;
+  const discount = Number(line?.discountAmount || 0);
+  return fmtNumber(line?.qty || 0).length > PACK_DISCOUNT_CELL_CHARS.qty
+    || money(line?.unitPrice).length > PACK_DISCOUNT_CELL_CHARS.unitPrice
+    || (discount > 0 && `-${money(discount)}`.length > PACK_DISCOUNT_CELL_CHARS.discount)
+    || money(line?.lineTotal).length > PACK_DISCOUNT_CELL_CHARS.amount;
+}
+
+/* ตัดสินจาก **ทั้งใบ** เหมือน hasLineDiscount — ทุกหน้าของใบเดียวกันมีคอลัมน์ชุดเดียวกัน จึงใช้ชุดตัวอักษรชุดเดียวกัน
+   (ความกว้างคอลัมน์จริงเป็นรายแผ่น แต่ชุดของทั้งใบคือชุดของแผ่นที่แคบที่สุดที่ใบนั้นมีได้ ⇒ ไม่มีแผ่นไหนถูกประเมินเตี้ยกว่าจริง)
+   `lines` = บรรทัดของโมเดล (หน่วยแปลตามภาษาของใบแล้ว) · `language` = ภาษาของใบ
+   ⚠️ ไม่ส่งภาษา (หรือค่าที่ไม่ใช่ 'th') = ชุดของใบอังกฤษ ซึ่งแคบกว่าชุดของใบไทยทุกช่อง — ลืมส่งภาษาจึงเปลืองหน้าได้ แต่ตัดข้อความไม่ได้ */
+export function itemTextChars(lines = [], language) {
+  if (!(hasPackColumn(lines) && hasLineDiscount(lines))) return ITEM_TEXT_CHARS.base;
+  const thai = language === 'th';
+  const measuredUnits = thai ? PACK_DISCOUNT_MEASURED_UNITS.th : PACK_DISCOUNT_MEASURED_UNITS.en;
+  if (lines.some((line) => widensPackDiscountColumns(line, measuredUnits))) return ITEM_TEXT_CHARS.packDiscount;
+  return thai ? ITEM_TEXT_CHARS.packDiscountTh : ITEM_TEXT_CHARS.packDiscountEn;
+}
+
+function rowUnits(line, chars = ITEM_TEXT_CHARS.base) {
   const meta = lineIdentityParts(line).join(' · ');
-  const metaLines = meta ? estimatedTextLines(meta, 54) : 0;
-  const detailLines = estimatedTextLines(line.description, 48);
+  const metaLines = meta ? estimatedTextLines(meta, chars.identity) : 0;
+  const detailLines = estimatedTextLines(line.description, chars.name);
   // แถวพื้นฐานรองรับโครงสร้าง 2 ชั้นอยู่แล้ว จึงหักหนึ่งหน่วยก่อนคิดความสูงเพิ่ม.
   const identityLines = Math.max(1, metaLines + detailLines - 1);
-  const noteLines = line.note ? estimatedTextLines(line.note, 54) : 0;
+  const noteLines = line.note ? estimatedTextLines(line.note, chars.note) : 0;
   return identityLines + noteLines;
 }
 
-function pageUnits(lines = []) {
-  return lines.reduce((sum, line) => sum + rowUnits(line), 0);
+function pageUnits(lines = [], chars = ITEM_TEXT_CHARS.base) {
+  return lines.reduce((sum, line) => sum + rowUnits(line, chars), 0);
 }
 
-function balancedSplit(lines, leftCapacity, rightCapacity, rightReserve) {
+function balancedSplit(lines, leftCapacity, rightCapacity, rightReserve, chars = ITEM_TEXT_CHARS.base) {
   let best = null;
   for (let index = 1; index < lines.length; index += 1) {
     const left = lines.slice(0, index);
     const right = lines.slice(index);
-    const leftUnits = pageUnits(left);
-    const rightUnits = pageUnits(right);
+    const leftUnits = pageUnits(left, chars);
+    const rightUnits = pageUnits(right, chars);
     if (leftUnits > leftCapacity || rightUnits > rightCapacity) continue;
 
     const score = Math.abs(leftUnits - (rightUnits + rightReserve));
@@ -491,6 +576,34 @@ const V4_BANNER = 1; // ป้าย "รายการต่อ" 19px
 const V4_TOTALS = 7; // 133.5px
 const V4_TOTALS_WITH_DISCOUNT_ROWS = 10; // 191.4px
 const V4_SAFETY = 2; // กันประเมินความยาวข้อความพลาด — ห้ามล้นเพราะ overflow:hidden ตัดเงียบ
+/* ── รอบวัด 2026-10-09 · คอลัมน์แพ็คต่อเดือน (ITEM_TEXT_CHARS · docs/qt-pack-column.md) ──
+   Chrome + ฟอนต์ที่ฝัง · จอและ media print · ความกว้างคอลัมน์จาก ITEM_TABLE_PACK_CSS (documentShell.js):
+     ช่องรายละเอียด  แพ็ค 86.01mm (ไทย) / 83.89mm (อังกฤษ) · แพ็ค + ส่วนลด 74.02mm / 71.89mm
+     หัวตาราง 34.33px ทั้งสี่ทรง ⇒ V4_THEAD เดิม · ช่องแพ็คและหน่วยเดือนเป็นบรรทัดเดียว ⇒ V4_ROW_BASE เดิม
+   ช่องรายละเอียดของใบแพ็ค + ส่วนลดแคบลงได้อีกเมื่อคอลัมน์อื่นถูกดันกว้าง (ตาราง auto ไม่ตัดตัวเลข) — วัดทีละสาเหตุ:
+     หน่วย     ไทย: แพ็คเกจ −0.38mm (คำอื่นในรายการอยู่ในคอลัมน์) ⇒ 73.64mm
+               อังกฤษ: Package −1.02mm · Kilogram −2.14mm ⇒ 70.87 / 69.75mm
+     ตัวเลข    จำนวน ≥ 100,000 −1.02mm (มีทศนิยมยาวได้ถึง −1.81mm) · ราคา ≥ 1,000,000.00 −1.71mm ·
+               ส่วนลด ≥ 100,000.00 −1.27mm · จำนวนเงิน ≥ 10,000,000.00 −1.42mm
+     ทุกอย่างพร้อมกันในแผ่นเดียว (ใบอังกฤษ + Kilogram + ทุกคอลัมน์ตัวเลข · จำนวนเงิน 8 หลัก) = 64.3mm (กรณีแย่สุดที่วัด)
+   ข้อความจริงทุกบรรทัดในฐาน (ใบเสนอราคา 1,205 + ใบสั่งขาย 447 บรรทัด · รูปไทยและรูปอังกฤษ) วางในกล่องกว้างเท่าช่อง
+   ชุดใหญ่สุดที่ไม่มีท่อนไหนถูกประเมินเตี้ยกว่าจริง (รหัส / ชื่อ / หมายเหตุ · ค่าต่ำสุดของสองรูป):
+       74.02mm 55/45/51 · 73.64mm 52/45/51 · 71.89mm 51/45/45 · 70.87mm 51/44/45 · 69.75mm 51/42/45 ·
+       66.5mm 45/40/41 · 64.3mm 44/37/41
+     ⇒ แต่ละชุด = ต่ำกว่าค่าที่ขอบแคบของช่วงตัวเองหนึ่งขั้น (ยกเว้นบรรทัดรหัสของชุดไทย — ดูถัดไป)
+       packDiscountTh 52/44/50 (73.64–74.02mm) · packDiscountEn 50/41/44 (69.75–71.89mm) · packDiscount 43/36/40 (ถึง 64.3mm)
+       = 0 ท่อนตลอดช่วงของแต่ละชุด ทั้งสองรูป ทั้งจอและ media print (ชุดไทยยังได้ 0 ที่ 73.0mm · ชุดอังกฤษที่ 69.0mm)
+     บรรทัดรหัสของชุดไทย = 52 เท่าค่าที่ขอบแคบ (73.64mm ซึ่งถึงได้เฉพาะแผ่นที่มีบรรทัดไม่มีเลขแพ็คพิมพ์หน่วย แพ็คเกจ):
+       ที่ความกว้างปกติ 74.02mm ต่ำกว่าค่าใหญ่สุดสามขั้น (55) · ตัวจำกัดที่ 73.64mm คือบรรทัดรหัสรูปอังกฤษบรรทัดเดียว
+       (53 ตัวอักษร ตัวพิมพ์ใหญ่ 17 ตัว กว้าง 70.76mm ในช่อง 70.64mm) ซึ่งใบไทยไม่ได้พิมพ์ — รูปไทยที่ใบไทยพิมพ์จริงได้ถึง 58
+       บรรทัดรหัสจริงที่ยาวไม่เกิน 52 ตัวอักษรกว้างสุด 68.92mm (เหลือ 1.7mm) · 52 คือบรรทัดรหัสของใบบริการที่ออกบ่อย
+       (รหัส FG 18 ตัว · แบรนด์ 13 ตัว · ชื่อหมวด 15 ตัว) ซึ่งพิมพ์บรรทัดเดียวจริง (67.8mm)
+     ใบแพ็คอย่างเดียวแคบสุด 81.8mm ชุดใหญ่สุด 60/50/57 ⇒ ใช้ base (54/48/54) ต่อได้ = 0 ท่อน
+   ยืนยันทั้งใบ (ล้น 0 แผ่น): ใบสังเคราะห์แพ็ค + ส่วนลด 120 เคส · ชุดตัวอย่าง 76 ใบ (จอและ media print) ·
+     ใบจริงที่มีบรรทัดหมวด 02-001 ทั้ง 89 ใบเติมเลขแพ็คในหน่วยความจำ (ไทยและอังกฤษ) · ใบสุ่มจากข้อความจริง 2,400 ใบ
+     (แถว 16,014 แถว ไม่มีแถวไหนสูงกว่าที่ประเมิน — ชุดไทย 4,162 · ชุดอังกฤษ 4,684 · ชุดแคบสุด 4,655 แถว)
+   ⚠️ เลยกรณีแย่สุด (จำนวนเงินบรรทัดละ 9 หลักขึ้นไป ⇒ ช่องรายละเอียด ≤ 63mm) หมายเหตุถูกประเมินขาดได้ 1 บรรทัด
+      ซึ่ง V4_SAFETY รับไว้ — ยอดบรรทัดสูงสุดในฐานวันวัดคือ 7 หลัก */
 /* 🔎 วัดใหม่ 2026-09-17 (Chrome · line-height 1.65 · ทั้งใบเสนอราคาและใบสั่งขาย ทั้ง
    ร่างและอนุมัติแล้ว): .signatures = 140.3px = 7.25 หน่วย ⇒ 7.5 (145px) · ค่าเดิม 8
    จองเกินจริง 15px ซึ่งพอทำให้ใบ 6 งวดที่พอดีหน้าถูกผ่าออกไปอีกหน้าโดยไม่จำเป็น */
@@ -545,12 +658,12 @@ function v4TotalsReserve(discountAmount) {
   return Number(discountAmount || 0) > 0 ? V4_TOTALS_WITH_DISCOUNT_ROWS : V4_TOTALS;
 }
 
-function v4RowCost(line) {
-  return V4_ROW_BASE + rowUnits(line);
+function v4RowCost(line, chars = ITEM_TEXT_CHARS.base) {
+  return V4_ROW_BASE + rowUnits(line, chars);
 }
 
-function v4PageCost(lines = []) {
-  return lines.reduce((sum, line) => sum + v4RowCost(line), 0);
+function v4PageCost(lines = [], chars = ITEM_TEXT_CHARS.base) {
+  return lines.reduce((sum, line) => sum + v4RowCost(line, chars), 0);
 }
 
 function v4FirstCapacity(customer) {
@@ -689,7 +802,7 @@ function v4PaymentSlots(blocks, capacity) {
 //   1. ตัดตามข้อ — ไม่ผ่ากลางรายการ
 //   2. หน้าที่ถือ "มูลค่ารวม" ต้องมีรายการสินค้าด้านบนอย่างน้อย 1 รายการ
 //      → ตอนเติมหน้าจึงต้องเหลือรายการไว้ให้หน้าถัดไปเสมอ ไม่ใช่กวาดจนหมด
-function paginateFilled(remaining, { firstCapacity, continuationCapacity, totalsReserve }) {
+function paginateFilled(remaining, { firstCapacity, continuationCapacity, totalsReserve, chars = ITEM_TEXT_CHARS.base }) {
   const pages = [];
   while (remaining.length) {
     const isFirst = pages.length === 0;
@@ -697,7 +810,7 @@ function paginateFilled(remaining, { firstCapacity, continuationCapacity, totals
     const finalCapacity = Math.max(1, capacity - totalsReserve);
 
     // ที่เหลือทั้งหมดใส่หน้านี้ได้พร้อมบล็อกมูลค่ารวม → จบที่หน้านี้
-    if (v4PageCost(remaining) <= finalCapacity) {
+    if (v4PageCost(remaining, chars) <= finalCapacity) {
       pages.push(remaining.splice(0));
       break;
     }
@@ -706,7 +819,7 @@ function paginateFilled(remaining, { firstCapacity, continuationCapacity, totals
     let used = 0;
     // เงื่อนไข remaining.length > 1 = กันไม่ให้กวาดหมดจนหน้าถัดไปเหลือแต่ยอดรวมลอย ๆ
     while (remaining.length > 1) {
-      const unitsForLine = v4RowCost(remaining[0]);
+      const unitsForLine = v4RowCost(remaining[0], chars);
       if (page.length && used + unitsForLine > capacity) break;
       page.push(remaining.shift());
       used += unitsForLine;
@@ -721,7 +834,10 @@ function paginateFilled(remaining, { firstCapacity, continuationCapacity, totals
 export function paginateQuotationMasterLines(lines = [], options = {}) {
   if (!Array.isArray(lines) || lines.length === 0) return [[]];
 
-  const { mode = 'balanced' } = options;
+  const { mode = 'balanced', language } = options;
+  /* ชุดตัวอักษรต่อบรรทัดตัดสินจากบรรทัดทั้งใบที่นี่ที่เดียว — ตัวพิมพ์ตัดสินคอลัมน์จากบรรทัดชุดเดียวกัน
+     ผู้เรียกส่งภาษาของใบ (options.language) — ใช้เฉพาะใบแพ็ค + ส่วนลด · ไม่ส่ง = ชุดของใบอังกฤษ (แคบกว่า) */
+  const chars = itemTextChars(lines, language);
 
   // โหมด fill (V4) ใช้สเกลหน่วยคนละชุดกับ balanced — ค่าตั้งต้นเป็นหน่วย px-calibrated
   if (mode === 'fill') {
@@ -731,7 +847,7 @@ export function paginateQuotationMasterLines(lines = [], options = {}) {
       totalsReserve = V4_TOTALS,
     } = options;
     return paginateFilled(lines.map((line) => ({ ...line })), {
-      firstCapacity, continuationCapacity, totalsReserve,
+      firstCapacity, continuationCapacity, totalsReserve, chars,
     });
   }
 
@@ -749,7 +865,7 @@ export function paginateQuotationMasterLines(lines = [], options = {}) {
     const isFirst = pages.length === 0;
     const capacity = isFirst ? firstCapacity : continuationCapacity;
     const finalCapacity = isFirst ? firstFinalCapacity : continuationFinalCapacity;
-    const units = pageUnits(remaining);
+    const units = pageUnits(remaining, chars);
 
     if (units <= finalCapacity) {
       pages.push(remaining.splice(0));
@@ -762,6 +878,7 @@ export function paginateQuotationMasterLines(lines = [], options = {}) {
         capacity,
         continuationFinalCapacity,
         totalsReserve,
+        chars,
       );
       if (split) {
         pages.push(split.left, split.right);
@@ -772,7 +889,7 @@ export function paginateQuotationMasterLines(lines = [], options = {}) {
     const page = [];
     let used = 0;
     while (remaining.length > 1) {
-      const unitsForLine = rowUnits(remaining[0]);
+      const unitsForLine = rowUnits(remaining[0], chars);
       if (page.length && used + unitsForLine > capacity) break;
       page.push(remaining.shift());
       used += unitsForLine;
@@ -817,12 +934,15 @@ function buildGroupedPages({
   firstCapacity,
   continuationCapacity,
   totalsReserve,
+  language,
 }) {
   const blocks = v4GroupBlocks({ installments, paymentMethod, paymentTerms, remarks });
   const groupUnits = blocks.installments.total + blocks.terms + blocks.remarks.total + blocks.signatures;
   const lastIndex = linePages.length - 1;
   const lastCapacity = lastIndex === 0 ? firstCapacity : continuationCapacity;
-  const lastFree = lastCapacity - totalsReserve - v4PageCost(linePages[lastIndex]);
+  // ชุดเดียวกับที่ paginateQuotationMasterLines ใช้แบ่งหน้า — ตัดสินจากบรรทัดทั้งใบ ไม่ใช่เฉพาะหน้าสุดท้าย และภาษาเดียวกัน
+  const chars = itemTextChars(linePages.flat(), language);
+  const lastFree = lastCapacity - totalsReserve - v4PageCost(linePages[lastIndex], chars);
   const groupFitsOnLastPage = groupUnits <= lastFree;
 
   const pages = linePages.map((pageLines, index) => ({
@@ -963,6 +1083,18 @@ function scenarioInput(id) {
           { label: 'ส่งมอบ', percent: 20, trigger: 'สินค้าพร้อมส่ง', dueRule: 'ก่อนจัดส่ง', note: 'ชำระยอดคงเหลือทั้งหมด' },
         ],
       };
+    case 'packs':
+      /* ใบที่มีเลขแพ็ค (หมวด 02-001): สองบรรทัดแรก = แพ็ค × เดือน × ราคา พร้อมหมายเหตุ 4 บรรทัดแบบใบบริการจริง
+         บรรทัดที่สองลดเป็นจำนวนเงิน ⇒ ตารางมีทั้งคอลัมน์แพ็คและคอลัมน์ส่วนลด (ทรงที่ช่องรายละเอียดแคบที่สุด)
+         บรรทัดที่สาม = สินค้าทั่วไป · บรรทัดที่สี่ = บรรทัดพิมพ์เอง — สองบรรทัดนี้ต้องพิมพ์ขีดในคอลัมน์แพ็ค */
+      return {
+        lines: [
+          lineAt(0, { fgCode: 'FG-PV-02-001-0001', category: 'ระบบกระจายกลิ่น', description: 'ระบบกระจายกลิ่น Signature Lobby · 1 package', note: PREVIEW_PACK_NOTE, packQty: 2, qty: 12, unitPrice: 3500 }),
+          lineAt(1, { fgCode: 'FG-PV-02-001-0002', category: 'ระบบกระจายกลิ่น', description: 'ระบบกระจายกลิ่น Signature Corridor · 1 package', note: PREVIEW_PACK_NOTE, packQty: 1, qty: 12, unitPrice: 5800, discountType: 'amount', discountValue: 7200 }),
+          lineAt(2),
+          lineAt(3, { fgCode: '', brand: '', category: 'ค่าออกแบบ', description: 'ค่าออกแบบกลิ่นเฉพาะแบรนด์' }),
+        ],
+      };
     case 'standard':
     default:
       return {
@@ -1058,6 +1190,8 @@ export function buildQuotationMasterPreview(
     firstCapacity,
     mode: isFilledLayout ? 'fill' : 'balanced',
     ...(isFilledLayout ? { totalsReserve } : {}),
+    // ตัวอย่างของหน้าตั้งค่าเป็นใบไทยเสมอ (ป้ายและข้อความตัวอย่างเป็นไทย) — ภาษาเดียวกันต้องไปถึง buildGroupedPages ด้วย
+    language: DEFAULT_QUOTATION_DOC_LANGUAGE,
   });
   const pages = isFilledLayout
     ? buildGroupedPages({
@@ -1069,6 +1203,7 @@ export function buildQuotationMasterPreview(
       firstCapacity,
       continuationCapacity: V4_CONTINUATION_CAPACITY,
       totalsReserve,
+      language: DEFAULT_QUOTATION_DOC_LANGUAGE,
     })
     : buildSemanticPages({
       linePages,
@@ -1201,7 +1336,9 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
       // หน่วยแปลตามภาษาใบ (IS-26080025) — ต่างจากข้อความที่คนกรอกตรงที่มันมาจากลิสต์ปิด
       // ของ lib/master/units.js จึงแปลได้โดยไม่ต้องให้ใครกรอกเพิ่ม · ค่าที่ไม่อยู่ในลิสต์
       // (ของเก่า/คนพิมพ์เอง) พิมพ์ตามเดิม ไม่เดาคำแปล
-      unit: saleUnitLabel(line.unit || DEFAULT_SALE_UNIT, language),
+      /* ⭐ บรรทัดที่มีเลขแพ็ค: หน่วยข้างจำนวนคือเดือนเสมอ ไม่ว่าหน่วยที่เก็บ/หน่วยในทะเบียนเป็นอะไร (มติเจ้าของ 08/10
+         ข้อ A1 · A3 — จำนวน = จำนวนเดือน) · บรรทัดที่ไม่มีเลขแพ็ค packLineUnit คืนค่าเดิม ⇒ พิมพ์เหมือนเดิมทุกตัวอักษร */
+      unit: saleUnitLabel(packLineUnit(line, line.unit || DEFAULT_SALE_UNIT), language),
       unitPrice: Number(line.unitPrice || 0),
       // ส่วนลดรายบรรทัดต้องไปถึงเอกสาร: lineTotal ที่พิมพ์คือยอด "หลังหักส่วนลดแล้ว"
       // (quoteLineNet) ถ้าไม่โชว์ส่วนลด ลูกค้าคูณ ราคา/หน่วย × จำนวน แล้วไม่ตรงกับ
@@ -1209,6 +1346,9 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
       // เอกสารพิมพ์เฉพาะ "ยอดเงินที่หัก" — ชนิด/อัตราส่วนลดไม่ขึ้นกระดาษ จึงไม่ส่งต่อ
       discountAmount: Number(line.discountAmount || 0),
       lineTotal: Number(line.lineTotal || 0),
+      /* เลขแพ็คต่อเดือน (mig 0407) — **มีคีย์เฉพาะบรรทัดที่มีเลขแพ็คที่ใช้ได้** บรรทัดอื่นไม่มีคีย์นี้เลย (ไม่ใช่ null)
+         ⇒ โมเดลของใบเดิมมีคีย์ชุดเดิม · ตัวพิมพ์ตัดสินคอลัมน์แพ็คของทั้งใบจากคีย์นี้ (hasPackColumn) */
+      ...(linePackQty(line) !== null ? { packQty: linePackQty(line) } : {}),
     }));
 
   const paymentPlan = quote.paymentPlan || {};
@@ -1305,7 +1445,9 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
 
   const firstCapacity = v4FirstCapacity(customer);
   const totalsReserve = v4TotalsReserve(discountAmount);
-  const linePages = paginateQuotationMasterLines(lines, { firstCapacity, mode: 'fill', totalsReserve });
+  /* ภาษาของใบไปถึงตัวแบ่งหน้าทั้งสองจังหวะ — ใบแพ็ค + ส่วนลดเลือกชุดตัวอักษรต่อบรรทัดตามภาษา (หัว Pack/Month และหน่วยอังกฤษ
+     ทำให้ช่องรายละเอียดของใบอังกฤษแคบกว่าใบไทย · itemTextChars) · ใบอื่นทุกใบไม่ใช้ค่านี้ */
+  const linePages = paginateQuotationMasterLines(lines, { firstCapacity, mode: 'fill', totalsReserve, language });
   const pages = buildGroupedPages({
     linePages,
     installments,
@@ -1315,6 +1457,7 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
     firstCapacity,
     continuationCapacity: V4_CONTINUATION_CAPACITY,
     totalsReserve,
+    language,
   });
 
   // ลายน้ำ: ฉบับร่าง = ยังไม่ยื่น (not_submitted, mig 0155) หรือยื่นแล้วรออนุมัติ (pending)

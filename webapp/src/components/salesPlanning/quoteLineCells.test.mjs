@@ -21,6 +21,8 @@ import {
 import { quoteLineFromProduct, quoteLineLocks } from '../../lib/sales/quoteLines.js';
 import { DEFAULT_SALE_UNIT } from '../../lib/master/units.js';
 import { SERVICE_ROUNDS_LABEL, SERVICE_ROUNDS_UNIT } from '../../lib/sales/serviceOrders.js';
+import { packLineUnit } from '../../lib/sales/linePacks.js';
+import { PACK_COLUMN_LABEL, hasPackColumn, lineHasPacks, linePackFormulaText } from '../../lib/sales/linePackView.js';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const read = (rel) => readFileSync(join(SRC, rel), 'utf8');
@@ -309,8 +311,147 @@ test('⭐ หัวตารางของขั้น ② = หัวตาร
     .filter((tag) => /^<QuoteLine/.test(tag));
   const quote = headOf(slice(code(LINE_ITEMS), 'export default function QuotationLineItems', undefined));
   const zones = headOf(code(ZONES));
-  assert.deepEqual(quote, ['<QuoteLineIndexHead />', '<QuoteLineHeadCells />', '<QuoteLineActionsHead />']);
-  assert.deepEqual(zones, quote);
+  /* ⭐ งวด PR-2 ของคอลัมน์ "แพ็ค/เดือน" (mig 0407) ทำให้ยามนี้ **เข้มขึ้น** ไม่ใช่หลวมลง:
+     (1) หัวของขั้น ② ยังต้องเท่าสามแท็กต้นแบบเป๊ะเหมือนเดิม
+     (2) หัวของใบเสนอราคา = สามแท็กเดียวกัน + prop เดียวที่เขียนตรงตัว `showPacks={showPacks}` (ไม่มี wildcard)
+     (3) ถอดข้อความ prop นั้นออก = ได้ลิสต์ของขั้น ② เป๊ะ ⇒ สองฟอร์มยังต่างกันที่จุดเดียว
+     (4) ขั้น ② ไม่เอ่ย showPacks เลย — แถวของมันถือ packsPerRound รายโซน ไม่เคยมี packQty (งวด PR-5)
+     (5) ค่าตั้งต้นของ prop = false ทั้งหัวและเซลล์ ⇒ ผู้เรียกที่ไม่ส่ง ได้ตารางเดิม */
+  const CANONICAL = ['<QuoteLineIndexHead />', '<QuoteLineHeadCells />', '<QuoteLineActionsHead />'];
+  assert.deepEqual(zones, CANONICAL);
+  assert.deepEqual(quote, ['<QuoteLineIndexHead />', '<QuoteLineHeadCells showPacks={showPacks} />', '<QuoteLineActionsHead />']);
+  assert.deepEqual(quote.map((tag) => tag.replace(' showPacks={showPacks}', '')), zones);
+  assert.doesNotMatch(code(ZONES), /showPacks/, 'ขั้น ② ของใบย้อนหลังไม่เปิดคอลัมน์แพ็ค/เดือน (งวด PR-5)');
+  assert.match(code(CELLS), /export function QuoteLineHeadCells\(\{ showPacks = false \}\) \{/);
+  assert.match(slice(code(CELLS), 'export function QuoteLineMoneyCells({', '}) {'), /\bshowPacks = false,/);
   assert.match(code(ZONES), /<QuoteLinesTable>/, 'พื้นเดียวกับใบเสนอราคา (QUOTE_LINES_MIN_WIDTH)');
   assert.doesNotMatch(code(ZONES), /ZONE_LINES_MIN_WIDTH|zoneCol|minWidth=/);
+});
+
+/* ══ คอลัมน์ "แพ็ค/เดือน" (mig 0407 · งวด PR-2 · docs/qt-pack-column.md) ════════════════════════════════════
+   จอ "อ่าน" เลขแพ็คของบรรทัด: คอลัมน์ขึ้นเมื่อมีบรรทัดที่มีเลขแพ็คเท่านั้น (ใบเดิมหน้าตาเดิม) · โชว์อย่างเดียว —
+   ช่องกรอก · การตรวจ · ด่านบังคับกรอก เป็นของงวด PR-3 */
+test('⭐ หัวคอลัมน์ “แพ็ค/เดือน”: th เดียวที่เนื้อเป็นนิพจน์ = {PACK_COLUMN_LABEL} · อยู่หลัง showPacks · ระหว่าง รายการ กับ จำนวน', () => {
+  const head = slice(code(CELLS), 'export function QuoteLineHeadCells', 'export function');
+  const expressionHeads = [...head.matchAll(/<th\b[^>]*>\{([^}]+)\}<\/th>/g)].map((m) => m[1].trim());
+  assert.deepEqual(expressionHeads, ['PACK_COLUMN_LABEL'], 'หัวที่เป็นนิพจน์มีตัวเดียว และอ่านจากค่าคงที่ (ไม่พิมพ์คำเอง)');
+  assert.match(head, /\{showPacks \? <th className=\{`\$\{styles\.numHeader\} \$\{styles\.colPack\}`\}>\{PACK_COLUMN_LABEL\}<\/th> : null\}/);
+  const at = (needle) => { const index = head.indexOf(needle); assert.ok(index >= 0, needle); return index; };
+  assert.ok(at('<th>รายการ</th>') < at('{showPacks ?'));
+  assert.ok(at('{showPacks ?') < at('>จำนวน</th>'));
+  assert.doesNotMatch(code(CELLS), /แพ็ค\/เดือน/, 'ไฟล์เซลล์ไม่สะกดหัวคอลัมน์เอง — อ่านจาก PACK_COLUMN_LABEL');
+  assert.doesNotMatch(code(LINE_ITEMS), /แพ็ค\/เดือน/);
+  assert.equal(PACK_COLUMN_LABEL, 'แพ็ค/เดือน');
+});
+
+test('⭐ เซลล์ “แพ็ค/เดือน” ของตารางแก้ไข: โชว์อย่างเดียว (ไม่ใช่ช่องกรอก) · ขีดเมื่อไม่มีเลขแพ็ค · อยู่หน้าเซลล์จำนวน · ทั้งหมดอยู่หลัง showPacks', () => {
+  const money = slice(code(CELLS), 'export function QuoteLineMoneyCells({', 'export function QuoteLineServiceRounds');
+  assert.match(money, /const pack = showPacks \? linePackQty\(line\) : null;/);
+  assert.match(money, /const packUnit = showPacks && lineHasPacks\(line\) \? packLineUnit\(line, line\.unit\) : null;/);
+  assert.match(money, /const packFormula = showPacks && !amountPending \? linePackFormulaText\(line\) : null;/);
+  const cell = slice(money, '{showPacks ? (', ') : null}');
+  assert.match(cell, /<td data-label=\{PACK_COLUMN_LABEL\} className=\{pack === null \? styles\.packNA : undefined\}>/);
+  assert.match(cell, /\? <span className=\{styles\.packDash\}>\{NA\}<\/span>/);
+  assert.match(cell, /: <span role="group" aria-label=\{`\$\{PACK_COLUMN_LABEL\} \$\{name\}`\} className=\{`mono \$\{styles\.packValue\}`\}>\{fmtNumber\(pack\)\}<\/span>\}/);
+  assert.doesNotMatch(cell, /<(?:input|Input|MoneyInput|Select|select|textarea|button)\b|onChange|onPatch|onClick/, 'งวด PR-2 ไม่มีช่องกรอกเลขแพ็ค');
+  assert.ok(money.indexOf('{showPacks ? (') < money.indexOf('<td data-label="จำนวน">'), 'เซลล์แพ็คอยู่หน้าเซลล์จำนวน');
+  /* 🔴 ไม่มีทางเขียนเลขแพ็คจากเซลล์เงิน: ไม่มี onPatch ที่พก packQty และไม่มีคอนโทรลที่ผูกกับมัน */
+  assert.doesNotMatch(code(CELLS), /onPatch\?\.\(\{[^}]*packQty|packQty\s*:/);
+  assert.doesNotMatch(code(LINE_ITEMS), /setLine\([^)]*packQty|packQty\s*:/);
+});
+
+test('⭐ บรรทัดที่มีเลขแพ็ค: “หน่วย: เดือน” ไม่มีตัวเลือกหน่วย · สูตร “2 × 12 × 3,500.00” ใต้จำนวนเงิน · บรรทัดอื่นเข้ากิ่งเดิมทั้งก้อน', () => {
+  const money = slice(code(CELLS), 'export function QuoteLineMoneyCells({', 'export function QuoteLineServiceRounds');
+  const qtyCell = slice(money, '<td data-label="จำนวน">', '</td>');
+  /* กิ่งของบรรทัดที่มีเลขแพ็คมาก่อน · กิ่งเดิม (หน่วยล็อก/ตัวเลือกหน่วย) อยู่ในวงเล็บของ `:` ครบทั้งนิพจน์ */
+  assert.match(qtyCell, /\{packUnit \? <span className=\{styles\.unitNote\}>หน่วย: \{packUnit\}<\/span> : \(\s*<>\s*\{unitLocked \|\| !editable\s*\n\s*\? \(line\.unit && <span className=\{styles\.unitNote\}>หน่วย: \{line\.unit\}<\/span>\)/);
+  assert.ok(qtyCell.indexOf('{packUnit ?') < qtyCell.indexOf('<Select'), 'ตัวเลือกหน่วยอยู่ในกิ่งของบรรทัดที่ไม่มีเลขแพ็คเท่านั้น');
+  assert.equal((qtyCell.match(/<Select\b/g) || []).length, 1);
+  const amountCell = slice(money, 'data-label="จำนวนเงิน">', '</td>');
+  assert.match(amountCell, /\{amountPending \? NA : fmtMoney\(quoteLineNet\(line\)\.lineTotal\)\}/, 'ยอดยังมาจากสูตรกลางตัวเดียว');
+  assert.match(amountCell, /\{packFormula \? <span className=\{styles\.amountFormula\}>\{packFormula\}<\/span> : null\}/);
+  /* พฤติกรรมของตัวช่วยที่เซลล์เรียก (ชุดเทสต์ไม่มีตัวเรนเดอร์ React ⇒ ยึดที่ตัวช่วย) */
+  const packLine = { productId: 'P1', fgCode: 'FG-278-02-001-0757', qty: 12, unit: 'แพ็คเกจ', unitPrice: 3500, packQty: 2 };
+  assert.equal(packLineUnit(packLine, packLine.unit), 'เดือน');
+  assert.equal(linePackFormulaText(packLine), '2 × 12 × 3,500.00');
+  assert.equal(quoteLineNet(packLine).lineTotal, 84000, '2 × 12 × 3,500');
+  const plain = { productId: 'P1', fgCode: 'FG-278-02-001-0757', qty: 24, unit: 'แพ็คเกจ', unitPrice: 3500 };
+  for (const packQty of [undefined, null, '', 'abc', 0, 1.5, 10000]) {
+    const line = { ...plain, packQty };
+    assert.equal(lineHasPacks(line), false);
+    assert.equal(packLineUnit(line, line.unit), 'แพ็คเกจ', 'บรรทัดที่ไม่มีเลขแพ็คคงหน่วยที่เก็บ');
+    assert.equal(linePackFormulaText(line), null, 'ไม่มีสูตรใต้ยอด');
+    assert.equal(quoteLineNet(line).lineTotal, 84000);
+  }
+});
+
+test('⭐ ตารางแก้ไข (QuotationLineItems): ตัดสินคอลัมน์จากบรรทัดทั้งตาราง แล้วส่ง showPacks ให้หัวและเซลล์คู่กัน', () => {
+  const editor = slice(code(LINE_ITEMS), 'export default function QuotationLineItems', undefined);
+  assert.match(editor, /const showPacks = hasPackColumn\(lines\);/);
+  assert.match(editor, /<QuoteLineHeadCells showPacks=\{showPacks\} \/>/);
+  const cells = slice(editor, '<QuoteLineMoneyCells', '/>');
+  assert.match(cells, /showPacks=\{showPacks\}/);
+  assert.doesNotMatch(cells, /packQty/);
+  // ตัวตัดสิน: มีอย่างน้อยหนึ่งบรรทัดที่มีเลขแพ็ค
+  assert.equal(hasPackColumn([{ qty: 12 }, { qty: 24, packQty: null }]), false);
+  assert.equal(hasPackColumn([{ qty: 12 }, { qty: 12, packQty: 2 }]), true);
+  assert.equal(hasPackColumn([]), false);
+});
+
+test('⭐ ตารางฝั่งอ่าน (ใบสั่งขาย · สร้างใบสั่งขาย · ขั้น ④): คอลัมน์ “แพ็ค/เดือน” ขึ้นเองจากบรรทัด · ขีดเมื่อไม่มี · หน่วยของบรรทัดแพ็ค = เดือน', () => {
+  const table = slice(code(LINE_ITEMS), 'export function QuotationReadOnlyLineItems', 'export default function QuotationLineItems');
+  assert.match(table, /const showPack = hasPackColumn\(lines\);/);
+  const head = slice(table, '<thead>', '</thead>');
+  assert.match(head, /\{showPack \? <th className=\{`num \$\{styles\.packHead\}`\}>\{PACK_COLUMN_LABEL\}<\/th> : null\}/);
+  /* หัวเดิมทั้งเจ็ดช่องยังอยู่ ลำดับเดิม · หัวแพ็คอยู่ระหว่าง รหัส / รายละเอียด กับ จำนวน */
+  assert.deepEqual([...head.matchAll(/<th\b[^>]*>([^<{]+)<\/th>/g)].map((m) => m[1].trim()),
+    ['#', 'รหัส / รายละเอียด', 'จำนวน', 'หน่วย', 'ราคาต่อหน่วย', 'ส่วนลด', 'รวม']);
+  assert.ok(head.indexOf('>รหัส / รายละเอียด</th>') < head.indexOf('{showPack ?'));
+  assert.ok(head.indexOf('{showPack ?') < head.indexOf('>จำนวน</th>'));
+  const body = slice(table, '<tbody>', '</tbody>');
+  const cell = slice(body, '{showPack ? (', ') : null}');
+  assert.match(cell, /<td className=\{linePackQty\(line\) === null \? `num mono \$\{styles\.packNA\}` : "num mono"\} data-label=\{PACK_COLUMN_LABEL\}>/);
+  assert.match(cell, /\{linePackQty\(line\) === null \? NA : fmtNumber\(linePackQty\(line\)\)\}/);
+  assert.ok(body.indexOf('{showPack ? (') < body.indexOf('data-label="จำนวน"'), 'เซลล์แพ็คอยู่หน้าเซลล์จำนวน');
+  assert.match(body, /<td data-label="หน่วย">\{naText\(packLineUnit\(line, line\.unit\)\)\}<\/td>/);
+  /* เซลล์เดิมอีกสี่ช่องไม่ถูกแตะ */
+  assert.match(body, /<td className="num mono" data-label="จำนวน">\{naText\(line\.qty\)\}<\/td>/);
+  assert.match(body, /<td className="num mono" data-label="ราคาต่อหน่วย">\{fmtMoney\(line\.unitPrice\)\}<\/td>/);
+  assert.match(body, /data-label="รวม">\{fmtMoney\(line\.lineTotal\)\}<\/td>/);
+  /* แถวว่าง: ไม่มีบรรทัด = ไม่มีคอลัมน์แพ็ค ⇒ colSpan เดิม */
+  assert.match(body, /<td colSpan=\{7\} className=\{styles\.emptyRows\}>/);
+  /* ตารางฝั่งอ่านไม่มีสูตรใต้ยอด (จำนวน · หน่วย · ราคา มีคอลัมน์ของตัวเองครบ) */
+  assert.doesNotMatch(table, /linePackFormulaText|amountFormula/);
+  /* ผู้เรียกไม่ต้องส่งอะไร — ไม่มี prop ใหม่ */
+  assert.doesNotMatch(slice(table, 'export function QuotationReadOnlyLineItems({', '}) {'), /\bshowPacks?\b/);
+});
+
+test('⭐ สไตล์ของคอลัมน์ “แพ็ค/เดือน”: เพิ่มอย่างเดียว · ความกว้างเดิมห้าช่องไม่ถูกแก้ · สลับด้วย :has(th.colPack) · โหมดการ์ดซ่อนแถวที่ไม่มีเลขแพ็ค', () => {
+  const css = read('components/salesPlanning/QuotationLineItems.module.css');
+  /* ความกว้างเดิม (ที่มาของพื้น 900) ยังอยู่ครบและมาก่อนกฎใหม่ */
+  for (const rule of ['.colIndex { width: 36px; }', '.colQty { width: 120px; }', '.colPrice { width: 130px; }',
+    '.colDiscount { width: 210px; }', '.colAmount { width: 150px; }', '.colActions { width: 40px; }']) {
+    assert.ok(css.includes(rule), rule);
+    assert.ok(css.indexOf(rule) < css.indexOf('.colPack {'), `${rule} ต้องอยู่ก่อนกฎของคอลัมน์แพ็ค`);
+  }
+  assert.match(css, /\.colPack \{ width: 88px; \}/);
+  assert.match(css, /\.linesTable:has\(th\.colPack\) th\.colQty \{ width: 114px; \}/);
+  assert.match(css, /\.linesTable:has\(th\.colPack\) th\.colPrice \{ width: 124px; \}/);
+  assert.match(css, /\.linesTable:has\(th\.colPack\) th\.colAmount \{ width: 136px; \}/);
+  assert.doesNotMatch(css, /:has\(th\.colPack\) th\.colDiscount/, 'ส่วนลดรายการคง 210 (190 ตัด "21,600.00")');
+  /* คอลัมน์ตายตัวรวม 708 ⇒ "รายการ" ยังเหลือ ≥ 150 ที่พื้น 900 แม้มีปุ่มลบ 40 */
+  assert.equal(36 + 88 + 114 + 124 + 210 + 136, 708);
+  const minWidth = Number(code(CELLS).match(/export const QUOTE_LINES_MIN_WIDTH = (\d+);/)?.[1]);
+  assert.equal(minWidth, 900, 'พื้นความกว้างและจุดพับการ์ดไม่ขยับ');
+  assert.ok(minWidth - 708 - 40 >= 150);
+  assert.match(css, /\.packHead \{ white-space: nowrap; \}/);
+  /* โหมดการ์ด: แถวที่ไม่มีเลขแพ็คไม่มีบรรทัด "แพ็ค/เดือน —" (ทั้งสองตาราง) */
+  const cards = css.slice(css.lastIndexOf('@container (max-width: 900px) {'));
+  assert.match(cards, /\.linesTable tbody td\.packNA,\s*\.readOnlyTable tbody td\.packNA \{ display: none !important; \}/);
+  /* ทุกคลาสใหม่ถูกอ้างตรงตัว styles.<ชื่อ> (ด่าน CSS กำพร้าต้องมองเห็น) */
+  const used = code(CELLS) + code(LINE_ITEMS);
+  for (const name of ['colPack', 'packHead', 'packValue', 'packDash', 'packNA', 'amountFormula']) {
+    assert.match(css, new RegExp(`\\.${name}\\b`), `ชีตต้องมี .${name}`);
+    assert.match(used, new RegExp(`styles\\.${name}\\b`), `ต้องอ้าง styles.${name} ตรงตัว`);
+  }
 });
