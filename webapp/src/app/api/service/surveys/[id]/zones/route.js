@@ -20,9 +20,10 @@
 //     — materializeSurveyZones เขียนให้) · ชื่อไปชนโซนเดิมในทะเบียน = ผูกเฉย ๆ ไม่ได้ตัวชี้ ⇒ ไม่ถูกลบ
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound } from '@/lib/http';
-import { canDoFieldWork, canEditService } from '@/lib/permissions';
+import { canDoFieldWork, canEditService, canSendSurveyResult } from '@/lib/permissions';
 import { genId } from '@/lib/id';
-import { surveyAddZoneError } from '@/lib/service/survey';
+import { surveyAddZoneError, surveyEditLockError } from '@/lib/service/survey';
+import { SURVEY_METHOD_DRAWING, surveyNewZoneMethod } from '@/lib/service/surveyMethod';
 import { normalizeAddedZone, surveyRowNameClash, zoneNameKey } from '@/lib/service/surveyRequest';
 import { loadSiteZones, loadSurveyZones, loadZoneSurveyLocks, materializeSurveyZones } from '@/lib/service/surveyRepo';
 import { busySurveyRequests } from '@/lib/service/zonePickState';
@@ -30,6 +31,9 @@ import { findSurveyVisit } from '@/lib/service/surveyVisit';
 import { visitWriteAccess } from '@/lib/service/visitAccess';
 
 export const dynamic = 'force-dynamic';
+
+// ใบงานโต๊ะ (ไม่เหลือพื้นที่ที่ต้องลงหน้างาน) — คนที่ไม่ใช่หัวหน้าฝ่ายกดเพิ่มพื้นที่ (แผน survey-desk-assessment §2 แถว 14)
+const DESK_ADD_HEAD_ONLY = 'ใบนี้หัวหน้าประเมินจากแบบ — เพิ่มพื้นที่ได้เฉพาะหัวหน้าฝ่ายบริการ';
 
 // POST { name, floor, note? }
 export const POST = withUser(async ({ user, supabase, req, ctx }) => {
@@ -49,18 +53,32 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
        ดีกว่าปล่อยไปตายที่ `materializeSurveyZones` หลังแถวถูกสร้างไปแล้ว */
     if (!request.siteId) return conflict('ใบนี้ยังไม่ได้ผูกสถานที่ — เพิ่มพื้นที่ไม่ได้');
 
-    /* 🔑 ด่านรายใบตัวเดียวกับ `PATCH` — ช่างเขียนได้เฉพาะใบที่ตัวเองถูกมอบหมาย
-       (นัดของใบประเมินคือที่เดียวที่บอกว่า "ใครไป") */
-    const visit = await findSurveyVisit(supabase, id);
-    const access = visitWriteAccess({ user, visit, canEditAll });
-    const gate = surveyAddZoneError(request, { canWrite: access.ok === true });
-    if (gate) return access.ok ? conflict(gate) : forbidden(access.error || gate);
+    /* ⭐ **พื้นที่ใหม่เกิดมาเป็นวิธีไหน มาจากแถวของใบ ไม่ใช่จากคนกด** (`surveyNewZoneMethod` · mig 0408)
+       ใบยังต้องมีนัด = ลงหน้างาน เดินด่านเดิมข้างล่างทุกตัวอักษร · ใบงานโต๊ะ = แถวเกิดมาเป็นจากแบบ
+       ⚠️ อ่านแถวครั้งเดียวตรงนี้ — ใช้ต่อทั้งด่านชื่อซ้ำและลำดับแถวข้างล่าง */
+    const rows = await loadSurveyZones(supabase, id);
+    const method = surveyNewZoneMethod(rows, { variant: request.variant });
+
+    if (method === SURVEY_METHOD_DRAWING) {
+      /* 🔴 **ใบงานโต๊ะ: หัวหน้าฝ่ายเท่านั้น และไม่ถามนัด** (แผน §2 แถว 14)
+         ด่านนัดดูแค่ว่า "ใครถูกมอบหมาย" ไม่ดูว่านัดยังเปิดอยู่ไหม (อ่านนัดล่าสุดทุกสถานะ)
+         ⇒ ช่างของนัดเก่า/นัดที่ยกเลิกแล้วผ่านด่านนั้นได้ แล้วพื้นที่ที่เพิ่มจะพาใบงานโต๊ะกลับไปเดินสายลงคิว */
+      if (!canSendSurveyResult(user)) return forbidden(DESK_ADD_HEAD_ONLY);
+      const locked = surveyEditLockError(request);
+      if (locked) return conflict(locked);
+    } else {
+      /* 🔑 ด่านรายใบตัวเดียวกับ `PATCH` — ช่างเขียนได้เฉพาะใบที่ตัวเองถูกมอบหมาย
+         (นัดของใบประเมินคือที่เดียวที่บอกว่า "ใครไป") */
+      const visit = await findSurveyVisit(supabase, id);
+      const access = visitWriteAccess({ user, visit, canEditAll });
+      const gate = surveyAddZoneError(request, { canWrite: access.ok === true });
+      if (gate) return access.ok ? conflict(gate) : forbidden(access.error || gate);
+    }
 
     const body = await req.json().catch(() => ({}));
     const zone = normalizeAddedZone(body);
     if (zone.error) return badRequest(zone.error);
 
-    const rows = await loadSurveyZones(supabase, id);
     const clash = surveyRowNameClash(zone.value.name, rows);
     if (clash) return badRequest(clash);
 
@@ -82,7 +100,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     }
 
     /* ⭐ **`status: 'added'` ถูกตั้งที่นี่ที่เดียว** — เป็นข้อเท็จจริงของเส้นทางที่แถวเกิด
-       ไม่ใช่ค่าที่ client เลือกได้ (`normalizeAddedZone` ไม่มีช่องนี้ให้ส่งมา) */
+       ไม่ใช่ค่าที่ client เลือกได้ (`normalizeAddedZone` ไม่มีช่องนี้ให้ส่งมา)
+       🔴 **คีย์ `method` ส่งเฉพาะเมื่อเป็นจากแบบ** — แถวลงหน้างานไม่ส่งคีย์นี้เลย (ฐานใส่ค่าตั้งต้นให้เอง)
+         ⇒ คำสั่งของใบลงหน้างานเหมือนเดิมทุกคีย์ และยังใช้ได้แม้ฐานยังไม่มีคอลัมน์ (PostgREST ปฏิเสธคีย์ที่ไม่รู้จัก) */
     const row = {
       id: genId('SVZ'),
       requestId: id,
@@ -94,6 +114,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       sortOrder: rows.reduce((max, r) => Math.max(max, Number(r.sortOrder) || 0), 0) + 1,
       surveyedById: user.id ? String(user.id) : null,
       surveyedByName: user.name || null,
+      ...(method === SURVEY_METHOD_DRAWING ? { method: SURVEY_METHOD_DRAWING } : {}),
     };
     const { error: insertError } = await supabase.from('service_survey_zones').insert(row);
     if (insertError) return fail(insertError.message, 500);

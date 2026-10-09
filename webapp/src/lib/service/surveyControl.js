@@ -43,6 +43,7 @@ import {
 import {
   SURVEY_DOC_STALE_TEXT, surveyDocumentView, surveyFilesSignature, surveyRequestEnded, surveyWarningKinds,
 } from '@/lib/service/surveyDocumentView';
+import { surveyNeedsVisit } from '@/lib/service/surveyMethod';
 import { surveySendDocumentRefusal, surveySendDocumentRefusalList, surveySendVisitStep } from '@/lib/service/surveySendClose';
 import { spotPhotoGroups, surveySpotGates } from '@/lib/service/surveySpotPhotos';
 import { VISIT_STATUS_LABELS } from '@/lib/service/visitStatus';
@@ -124,12 +125,16 @@ export function surveyZoneFacts(zone = {}, files = []) {
   const spots = spotCounts(zone.spots);
   const photos = surveyDocCounts(files);
   const qty = Number(zone.packageQty);
+  /* 🔴 ถาม `applies` / `ownerOf` ของด่านก่อนเสมอ (mig 0408 · ประเมินจากแบบ) — `missing` ไม่ถามให้:
+     พื้นที่จากแบบไม่มีข้อที่ต้องยืนหน้างาน (ภาพกว้าง · จุดติดตั้ง · เลือกจุด) และทุกข้อที่เหลือเป็นของหัวหน้า
+     ⚠️ พื้นที่ลงหน้างาน (ทุกแถวเดิม): `applies` จริงทุกข้อ · `ownerOf` = `owner` ที่ประกาศ ⇒ ผลเท่าเดิมทุกตัว */
   const gaps = cut
     ? []
     : SURVEY_GATES
+      .filter((gate) => gate.applies(zone))
       .map((gate) => ({ gate, text: gate.missing(zone, files || []) }))
       .filter((x) => x.text)
-      .map((x) => ({ key: x.gate.key, owner: x.gate.owner, short: x.gate.short, label: x.gate.label, text: x.text }));
+      .map((x) => ({ key: x.gate.key, owner: x.gate.ownerOf(zone), short: x.gate.short, label: x.gate.label, text: x.text }));
   const crew = gaps.filter((g) => g.owner === 'crew');
   const head = gaps.filter((g) => g.owner === 'head');
   return {
@@ -352,10 +357,12 @@ export function surveyDraftSync({ prevSavedSig, savedSig, draftSig, sentSig = nu
       สองชุดที่ชื่อไม่ตรงกันคือสองฝ่ายที่คุยกันคนละเรื่องทั้งที่ดูใบเดียวกัน
    ⚠️ ทับเฉพาะ **บรรทัดใต้ขั้นปัจจุบัน** ด้วยข้อเท็จจริงของใบประเมิน (วัดแล้วกี่พื้นที่ ·
       ดึงกลับเมื่อไร) ซึ่งรางกลางไม่รู้จัก — ชื่อขั้นไม่แตะ */
-function stepOf(request, { cancelled, recallPending, recall, progress, visit }) {
+function stepOf(request, { cancelled, recallPending, recall, progress, visit, needsVisit }) {
   /* ⭐ ส่งนัดของการ์ดลงไปด้วย — รางหน้างานเดินตามนัด (`fieldRail`) · ไม่ส่ง = รางอ่าน `surveyVisit`
-     บนแถวคำร้อง ซึ่ง GET ของใบประเมินไม่ได้ติดมา ⇒ ใบที่ช่างวัดอยู่จะชี้ขั้น "ลงคิว" */
-  const { steps, index } = requestRailSteps(request || {}, { visit: visit || null });
+     บนแถวคำร้อง ซึ่ง GET ของใบประเมินไม่ได้ติดมา ⇒ ใบที่ช่างวัดอยู่จะชี้ขั้น "ลงคิว"
+     ⭐ `needsVisit` ก็ส่งเอง (ประเมินจากแบบ · mig 0408) — การ์ดถือแถวพื้นที่อยู่แล้ว ส่วนแถวคำร้องของ GET นี้ไม่มี
+        `surveyNeedsVisit` ติดมา · ใบงานโต๊ะไม่มีนัดให้รางเดินตาม (กติกาของขั้นอยู่ที่ `requestRail`) */
+  const { steps, index } = requestRailSteps(request || {}, { visit: visit || null, needsVisit });
   const current = steps[index] || steps[steps.length - 1] || null;
   let hint = current?.hint || null;
   if (cancelled) {
@@ -543,8 +550,10 @@ export function surveyControlView({
   const allGates = surveyGateChecklist(rows, files);
   /* ⭐ **ส่งผลแล้วนัดจะเป็นยังไง** — ตัวตัดสินตัวเดียวกับที่ route ส่งผลใช้ปิดนัดจริง (มติ 24/09 ข้อ 2)
      ⚠️ `visit` ต้องเป็นนัดที่ยังค้างถ้ามี (GET ใช้ `preferOpen`) — ไม่งั้นโมดัลบอกคนละนัดกับที่ปิดจริง
-     🔄 คำนวณก่อนด่าน — ด่านรูปจุดของการส่งผลขึ้นกับว่าส่งผลนี้ปิดนัดที่ยังเปิดไหม (`surveySpotGates`) */
-  const visitStep = surveySendVisitStep(visit, { today });
+     🔄 คำนวณก่อนด่าน — ด่านรูปจุดของการส่งผลขึ้นกับว่าส่งผลนี้ปิดนัดที่ยังเปิดไหม (`surveySpotGates`)
+     🔑 `needsVisit` จากแถวพื้นที่ชุดเดียวกับที่ route อ่าน (ประเมินจากแบบ) — ใบงานโต๊ะที่ยังมีนัดร่าง/นัดไว้ค้าง
+        ได้ `block` พร้อมประโยคของ route · ใบลงหน้างานล้วน = `true` = คำตอบเดิม */
+  const visitStep = surveySendVisitStep(visit, { today, needsVisit: surveyNeedsVisit(rows) });
   /* 🔑 **ด่านรูปจุด (มติ 01/10)** — ถามตัวเดียวกับ route: ส่งผล = G2 (ถาด · + G1 เมื่อส่งผลปิดนัด) · ส่งงาน = G1
      `spotSendGates` ตัดสินปุ่มส่งผล/สถานะของใบ (ไม่ขึ้นกับคนดู) · `spotCrewGates` = ของที่ช่างต้องเก็บก่อนส่งงาน */
   const spotSendGates = surveySpotGates(rows, files, { mode: 'send', closesVisit: visitStep.action === 'close' });
@@ -969,7 +978,8 @@ export function surveyControlView({
             : stuckTarget),
       };
     } else if (visitStep.action === 'block') {
-      /* นัดยังเป็นร่าง — route ตีกลับด้วยประโยคเดียวกัน · ทางออกอยู่ที่หน้าจัดคิว ไม่ใช่บนจอนี้ */
+      /* นัดยังเป็นร่าง — route ตีกลับด้วยประโยคเดียวกัน · ทางออกอยู่ที่หน้าจัดคิว ไม่ใช่บนจอนี้
+         (ใบงานโต๊ะที่ยังมีนัดร่าง/นัดไว้ค้างก็มาทางนี้ ด้วยประโยคของงานโต๊ะจากตัวตัดสินตัวเดียวกัน — คีย์เดิม) */
       sendReason = { key: 'visit-draft', text: visitStep.error, detail: visitStep.error, target: null };
     }
   }
@@ -1208,7 +1218,7 @@ export function surveyControlView({
     notices,
     zoneGaps,
     sendBackAction,
-    step: stepOf(request, { cancelled, recallPending, recall, progress, visit }),
+    step: stepOf(request, { cancelled, recallPending, recall, progress, visit, needsVisit: surveyNeedsVisit(rows) }),
     /* ⭐ **กำหนดของจอนี้คือวันส่งผล ไม่ใช่วันเข้าพื้นที่** (มติผู้ใช้ 2026-09-21 · mig 0368)
        — ทั้งจอเป็นเรื่องการส่งตัวเลขให้ฝ่ายขาย · วันนัดเข้าพื้นที่มีแถวของตัวเองอยู่แล้ว
          ("นัดสำรวจ") ⇒ เอามาโชว์ซ้ำตรงนี้คือข้อมูลเดียวกันสองที่ที่นับถอยหลังผิดเรื่อง

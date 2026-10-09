@@ -10,7 +10,12 @@
 // วาดอะไร (สถานะ/โทน/เหตุผลที่กดส่งไม่ได้/ค่าเปิด-ปิดพื้นที่) แยกไปไฟล์ข้าง ๆ และ
 // **ถามตัวในไฟล์นี้ทั้งหมด** ⇒ กฎใหม่ของใบประเมินเขียนที่นี่เสมอ ไม่ใช่ที่นั่น
 // (เขียนที่นั่นเมื่อไร จะได้กฎที่ server มองไม่เห็น ซึ่งคือบั๊กที่ไฟล์นี้เกิดมาเพื่อกัน)
+//
+// 🔑 **วิธีประเมินรายพื้นที่ (ลงหน้างาน / จากแบบ · mig 0408) ถามผ่าน `surveyMethod.js` เท่านั้น** — ไฟล์นี้
+// ไม่เทียบค่าคอลัมน์ `method` เอง · โมดูลนั้นเป็นโมดูลใบ (ไม่ดึงใครเข้ามา) จึงดึงได้โดยไม่เกิดวงกลม
+// กับ `attachmentTypes.js` ที่ดึงไฟล์นี้อยู่
 import { fmtNumber } from '@/lib/format';
+import { isDrawingZone, isJpgOrPngFile, surveyZoneNeedsResave } from '@/lib/service/surveyMethod';
 
 /* ── ขนาดแพ็คเกจมาจากทะเบียน (mig 0398 · มติเจ้าของ 01/10) ─────────────────
    🔄 สูตรเดิม "2,400 ลบ.ม. = 1 แพ็คเกจ · ceil(ลบ.ม. ÷ 2,400)" **ถอดแล้ว** — พื้นที่หนึ่งมี **ขนาดเดียว + จำนวน**
@@ -159,8 +164,11 @@ function normalizeSurveySpot(raw) {
 /** จุดที่ติดตั้งได้ — ช่างเพิ่มรายการเอง จุดละชื่อ (รูปผูกทีหลังผ่านไฟล์แนบ)
  *  🔴 **จุดต้องมีตัวตนแม้ยังไม่มีรูป** — ถ้าออกแบบให้ "จุด = รูปที่มีป้ายชื่อ" จุดที่ยัง
  *    ไม่ได้ถ่ายจะไม่มีอยู่ในระบบ แล้วช่างไม่มีทางรู้ว่าเหลือถ่ายอะไร
- *  ⚠️ `selected` **ไม่รับจากฝั่งนี้** — คงค่าเดิมที่หัวหน้าเคาะไว้ (`before`) เสมอ */
-export function normalizeSurveySpots(input, before = [], { newId } = {}) {
+ *  ⚠️ `selected` **ไม่รับจากฝั่งนี้** — คงค่าเดิมที่หัวหน้าเคาะไว้ (`before`) เสมอ
+ *  ⭐ `defaultSelected` = ค่าของ **จุดที่เพิ่งเพิ่ม** (id ไม่อยู่ใน `before`) — พื้นที่จากแบบส่ง `true`
+ *    (แผน survey-desk-assessment §2 ข้อ 5: หัวหน้าเพิ่มจุดเองที่โต๊ะ = จุดที่เลือกแล้ว ไม่มีรอบ "เลือกจุด" ตามมา)
+ *    · ไม่ส่งมา = `false` เหมือนเดิม · จุดเดิมไม่ถูกแตะไม่ว่าส่งค่าไหนมา */
+export function normalizeSurveySpots(input, before = [], { newId, defaultSelected = false } = {}) {
   if (input === undefined) return { value: undefined, error: null };
   if (!Array.isArray(input)) return { value: null, error: 'รายการจุดติดตั้งไม่ถูกต้อง' };
   const rows = input.filter((raw) => !isBlankSurveySpot(raw));
@@ -176,7 +184,7 @@ export function normalizeSurveySpots(input, before = [], { newId } = {}) {
     const id = value.id || newId?.() || null;
     if (id && seen.has(id)) return { value: null, error: 'รายการจุดติดตั้งมี id ซ้ำ' };
     seen.add(id);
-    out.push({ ...value, id, selected: keep.get(id) === true });
+    out.push({ ...value, id, selected: keep.has(id) ? keep.get(id) : defaultSelected === true });
   }
   return { value: out, error: null };
 }
@@ -600,7 +608,25 @@ export function surveyDocCounts(files = []) {
  *   บรรทัดเดียวในที่แคบ (หัวพื้นที่ที่พับอยู่ · กลุ่มด่านต่อพื้นที่ในการ์ดควบคุม)
  *   ⚠️ **อยู่ในทะเบียนข้อ ไม่ใช่ที่จอ** — ด้วยเหตุผลเดียวกับ `owner`: จอสองจอที่
  *     ย่อชื่อข้อเองจะย่อไม่เหมือนกัน แล้วผู้ใช้จะอ่านเหมือนเป็นคนละข้อ
+ *
+ * ⭐ **วิธีประเมินรายพื้นที่** (mig 0408 · แผน survey-desk-assessment §2) — ทุกข้อมีตัวถามรายแถวสองตัว:
+ *   `applies(row)`  ข้อนี้ใช้กับพื้นที่นี้ไหม · ข้อที่ต้องยืนหน้างานถึงทำได้ (ภาพกว้าง · จุดที่ติดตั้งได้ · เลือกจุด)
+ *                   ไม่ใช้กับพื้นที่ที่ประเมินจากแบบ · ข้อที่ไม่ประกาศ = ใช้กับทุกพื้นที่
+ *   `ownerOf(row)`  ใครแก้ข้อนี้ของพื้นที่นี้ได้ · พื้นที่จากแบบ = หัวหน้าทุกข้อ (ไม่มีช่างไปหน้างาน) · นอกนั้นตาม `owner`
+ *   🔴 **มีแถวอยู่ในมือเมื่อไร ถามสองตัวนี้ ไม่อ่าน `owner` ตรง ๆ** — `owner` คือเจ้าของตอนลงหน้างาน
+ *     อ่านตรงกับพื้นที่จากแบบ = โยนงานของหัวหน้าไปรอช่างที่ไม่มีนัด
+ *     · `missing` **ไม่ถาม `applies` ให้** — เรียก `missing` ของข้อที่ไม่ใช้กับแถวนั้น ได้ข้อความของด่านหน้างานกลับมา
+ *   ⚠️ แถวที่ไม่มีคีย์ `method` (ทุกแถวก่อน mig 0408) คือลงหน้างาน ⇒ ทุกข้อใช้ · เจ้าของตามที่ประกาศ = เหมือนเดิมทุกตัวอักษร
  */
+/* ข้อที่ต้องยืนหน้างานถึงทำได้ — ประกาศเป็น `applies` ของข้อนั้น */
+const onsiteOnly = (row) => !isDrawingZone(row);
+/* เติมตัวถามรายแถวให้ครบทุกข้อ — กติกา "พื้นที่จากแบบ หัวหน้าเป็นเจ้าของทุกข้อ" เขียนที่นี่ที่เดียว ไม่ต้องจำใส่ทีละข้อ */
+const withZoneMethod = (gate) => ({
+  ...gate,
+  applies: gate.applies || (() => true),
+  ownerOf: (row) => (isDrawingZone(row) ? 'head' : gate.owner),
+});
+
 export const SURVEY_GATES = [
   {
     key: 'size',
@@ -609,10 +635,17 @@ export const SURVEY_GATES = [
     label: 'ขนาด ก × ย × ส ครบทุกพื้นที่',
     missing: (row) => {
       const size = surveyZoneSize(row.parts);
-      if (size.complete) return null;
-      return size.parts === 0
-        ? 'ยังไม่ได้วัดขนาด — เพิ่มอย่างน้อยหนึ่งส่วน'
-        : `มีส่วนที่กรอกไม่ครบสามช่อง ${size.parts - size.measuredParts} ส่วน`;
+      if (!size.complete) {
+        return size.parts === 0
+          ? 'ยังไม่ได้วัดขนาด — เพิ่มอย่างน้อยหนึ่งส่วน'
+          : `มีส่วนที่กรอกไม่ครบสามช่อง ${size.parts - size.measuredParts} ส่วน`;
+      }
+      /* 🔄 พื้นที่ที่สลับจากประเมินจากแบบ **กลับมาเป็นลงหน้างาน**: ตัวเลขที่ค้างอยู่คือของตอนประเมินที่โต๊ะ
+         (หรือของการวัดรอบก่อน) ⇒ ครบสามช่องแล้วก็ยังไม่ผ่าน จนกว่าจะมีคนบันทึกพื้นที่นี้อีกครั้งหลังสลับ
+         ⚠️ แถวที่ไม่เคยสลับ (`methodChangedAt` ว่าง = ทุกแถวเดิมของระบบ) ไม่เข้าทางนี้ */
+      return surveyZoneNeedsResave(row)
+        ? 'พื้นที่นี้เพิ่งกลับมาเป็นลงหน้างาน — ตรวจขนาดกับของจริงแล้วกดบันทึกอีกครั้ง'
+        : null;
     },
   },
   {
@@ -620,6 +653,7 @@ export const SURVEY_GATES = [
     short: 'ภาพกว้าง',
     owner: 'crew',
     label: 'ภาพกว้างครบทุกพื้นที่',
+    applies: onsiteOnly,
     missing: (row, files) => (surveyDocCounts(files).wide === 0 ? 'ยังไม่มีภาพกว้าง' : null),
   },
   {
@@ -627,6 +661,7 @@ export const SURVEY_GATES = [
     short: 'จุดติดตั้ง',
     owner: 'crew',
     label: 'จุดที่ติดตั้งได้ อย่างน้อย 1 จุดต่อพื้นที่',
+    applies: onsiteOnly,
     missing: (row) => (spotCounts(row.spots).total === 0 ? 'ยังไม่ได้ระบุจุดที่ติดตั้งได้' : null),
   },
   {
@@ -634,13 +669,25 @@ export const SURVEY_GATES = [
     short: 'ภาพผัง',
     owner: 'head',
     label: 'ภาพผังที่มาร์กจุดแล้ว',
-    missing: (row, files) => (surveyDocCounts(files).plan === 0 ? 'ยังไม่มีภาพผังที่มาร์กจุดแล้ว' : null),
+    /* ชื่อข้อเมื่อทุกพื้นที่ที่ข้อนี้ใช้เป็นพื้นที่จากแบบ (`surveyGateChecklist`) — แบบของพื้นที่ ไม่บังคับมาร์กจุด */
+    drawingLabel: 'ภาพแบบของพื้นที่',
+    drawingShort: 'ภาพแบบ',
+    missing: (row, files) => {
+      if (!isDrawingZone(row)) return surveyDocCounts(files).plan === 0 ? 'ยังไม่มีภาพผังที่มาร์กจุดแล้ว' : null;
+      /* 🔑 พื้นที่จากแบบ: ภาพแบบคือรูปเดียวของพื้นที่นี้บนเอกสารประเมิน และกระดาษวาดได้แค่ JPG/PNG
+         ⇒ นับเฉพาะไฟล์ผังที่เป็นรูปสองชนิดนี้ · PDF / TIFF / HEIC แนบไว้ได้แต่ไม่ปลดด่าน
+         (พื้นที่ลงหน้างานยังนับไฟล์ผังทุกชนิดเหมือนเดิม — ทางข้างบน) */
+      const drawn = (Array.isArray(files) ? files : [])
+        .some((f) => f?.docType === SURVEY_DOC_PLAN && isJpgOrPngFile(f));
+      return drawn ? null : 'ยังไม่มีภาพแบบของพื้นที่ (ต้องเป็นรูป JPG/PNG — ไฟล์ PDF/TIFF ลงเอกสารไม่ได้)';
+    },
   },
   {
     key: 'picked',
     short: 'เลือกจุด',
     owner: 'head',
     label: 'เลือกจุดที่จะติดตั้งแล้ว',
+    applies: onsiteOnly,
     missing: (row) => (spotCounts(row.spots).selected === 0 ? 'ยังไม่ได้เลือกจุดที่จะติดตั้ง' : null),
   },
   {
@@ -660,16 +707,19 @@ export const SURVEY_GATES = [
       return null;
     },
   },
-];
+].map(withZoneMethod);
 
-const gatesOf = (owner) => SURVEY_GATES.filter((g) => g.owner === owner);
+/* ข้อของ `owner` **ที่ใช้กับพื้นที่นี้** — ถามรายแถว (ลำดับตามทะเบียน): พื้นที่จากแบบถอดข้อหน้างานออก
+   และยกข้อที่เหลือให้หัวหน้าทั้งหมด */
+const gatesOf = (owner, row) => SURVEY_GATES.filter((g) => g.applies(row) && g.ownerOf(row) === owner);
 
-const missingFor = (owner, row, files) => gatesOf(owner)
+const missingFor = (owner, row, files) => gatesOf(owner, row)
   .map((gate) => gate.missing(row, files || []))
   .filter(Boolean);
 
 export function surveyFieldMissing(row = {}, files = []) {
-  if (isCut(row)) return [];
+  // พื้นที่จากแบบไม่มีข้อของช่างเลย (หัวหน้าประเมินเองที่โต๊ะ) — รูปร่างเดียวกับพื้นที่ที่ตัด
+  if (isCut(row) || isDrawingZone(row)) return [];
   return missingFor('crew', row, files);
 }
 
@@ -680,6 +730,7 @@ export function surveyFieldMissing(row = {}, files = []) {
  *   ปกติสามข้อบนจะติ๊กมาแล้ว ถ้าไม่ติ๊ก (ข้อมูลมาจากทางอื่น/ใบเก่า) หัวหน้าต้องเห็น
  *   ว่าติดอะไร เพื่อจะกด "แจ้งช่างให้กลับไป" ได้ ไม่ใช่เจอปุ่มเทาเงียบ
  * ⇒ ผู้เรียกแยกสองกลุ่มด้วย `field` / `result` ในผลลัพธ์
+ * ⭐ พื้นที่จากแบบ: `field` ว่างเสมอ · `result` = ขนาด → ภาพแบบ → แพ็คเกจ (ทั้งหมดเป็นของหัวหน้า — ทะเบียนตอบเอง)
  */
 export function surveyResultMissing(row = {}, files = []) {
   if (isCut(row)) return { field: [], result: [] };
@@ -696,34 +747,49 @@ export function surveyResultMissing(row = {}, files = []) {
  * ⚠️ นับจาก **พื้นที่ที่ยังอยู่ในใบ** เท่านั้น — แถวที่ถูกตัดออกไม่ต้องผ่านด่านไหนเลย
  *   (บังคับให้วัดของที่ตัดทิ้ง คือบังคับงานที่ไม่มีใครได้ใช้)
  *
+ * ⭐ **แต่ละข้อนับเฉพาะพื้นที่ที่ข้อนั้นใช้ด้วย** (`applies`) — ใบผสมจึงได้ตัวหารไม่เท่ากันทุกข้อ:
+ *   ขนาด · ผัง · แพ็คเกจ หารด้วยทุกพื้นที่ · ภาพกว้าง · จุด · เลือกจุด หารด้วยพื้นที่ลงหน้างาน
+ *   · ข้อที่ **มีพื้นที่ในใบแต่ไม่มีพื้นที่ไหนใช้** (ใบจากแบบล้วน) ไม่ออกมาในลิสต์ — ไม่ใช่ขึ้น "0 / 0" ให้หัวหน้าสงสัย
+ *   ⚠️ ใบที่ไม่เหลือพื้นที่เลยยังได้ครบหกข้อ ตัวหาร 0 เหมือนเดิม (ไม่มีแถวให้ถามว่าใช้ข้อไหน)
+ *   · ทุกพื้นที่ที่ข้อนั้นใช้เป็นพื้นที่จากแบบ ⇒ ข้อนั้นเป็นของหัวหน้า และใช้ชื่อข้อของพื้นที่จากแบบถ้าทะเบียนมีให้
+ *     (`drawingLabel` / `drawingShort`) · ใบผสมใช้เจ้าของและชื่อข้อตามที่ประกาศ
+ *
  * @returns `[{ key, owner, label, short, ok, done, total, zones: [ชื่อพื้นที่ที่ยังขาด] }]`
  */
 export function surveyGateChecklist(rows = [], filesByZone = {}) {
   const active = (Array.isArray(rows) ? rows : []).filter((r) => !isCut(r));
-  return SURVEY_GATES.map((gate) => {
+  return SURVEY_GATES.flatMap((gate) => {
+    const applying = active.filter((row) => gate.applies(row));
+    if (active.length > 0 && applying.length === 0) return [];
     const zones = [];
-    for (const row of active) {
+    for (const row of applying) {
       if (gate.missing(row, filesByZone?.[row.id] || [])) {
         zones.push(surveyZoneName(row));
       }
     }
-    return {
+    const allDrawing = applying.length > 0 && applying.every(isDrawingZone);
+    return [{
       key: gate.key,
-      owner: gate.owner,
-      label: gate.label,
-      short: gate.short,
+      owner: allDrawing ? 'head' : gate.owner,
+      label: (allDrawing && gate.drawingLabel) || gate.label,
+      short: (allDrawing && gate.drawingShort) || gate.short,
       ok: zones.length === 0,
-      done: active.length - zones.length,
-      total: active.length,
+      done: applying.length - zones.length,
+      total: applying.length,
       zones,
-    };
+    }];
   });
 }
 
 /** ด่านที่ยังติดและ **ช่างเท่านั้นที่แก้ได้** — ตัวเดียวที่ตัดสินว่าปุ่ม "แจ้งช่างให้กลับไป"
- *  มีเรื่องให้แจ้งไหม · ทั้งปุ่มบนจอและ route ถามตัวนี้ */
+ *  มีเรื่องให้แจ้งไหม · ทั้งปุ่มบนจอและ route ถามตัวนี้
+ *  ⭐ **ถามจากพื้นที่ลงหน้างานเท่านั้น** — พื้นที่จากแบบไม่เคยเป็นงานค้างของช่าง (ขนาดของมันหัวหน้าพิมพ์เอง)
+ *    ⇒ ด่านส่งงาน (`surveyFieldSubmitError`) และด่านแจ้งว่าแก้แล้ว (`surveySendBackDoneError`) ได้กติกานี้ไปด้วย
+ *    ⚠️ กรองแถวก่อนเข้าเช็คลิสต์ ไม่ใช่กรองผล: ข้อ "ขนาด" ของใบผสมเป็นของช่างตามที่ประกาศ ถ้านับรวม
+ *      พื้นที่จากแบบที่ยังไม่มีขนาด จะกลายเป็นเรื่องให้ส่งช่างกลับไปทั้งที่ช่างแก้ไม่ได้ */
 export function surveyCrewGaps(rows = [], filesByZone = {}) {
-  return surveyGateChecklist(rows, filesByZone).filter((g) => g.owner === 'crew' && !g.ok);
+  const onsite = (Array.isArray(rows) ? rows : []).filter((r) => !isDrawingZone(r));
+  return surveyGateChecklist(onsite, filesByZone).filter((g) => g.owner === 'crew' && !g.ok);
 }
 
 /** เคาะแพ็คเกจต่างจากที่ระบบเสนอไหม — `false` เมื่อยังไม่ได้เคาะ หรือระบบไม่ได้เสนออะไรไว้
@@ -958,11 +1024,18 @@ export function surveySendBackState(rows = []) {
  * 🐞 review 26/09 — ตั้งแต่ S4 หัวหน้าส่งผลได้ทั้งที่ส่งกลับค้าง ⇒ ใบล็อกแต่การ์ด/ป้าย "ส่งกลับให้แก้" ของช่างค้างพร้อมปุ่มที่กดไม่ได้
  *   ⚠️ **ไม่เขียนแถวปิดลงเธรด** (ลองแล้วรอบสอง): แถว `send_back_done` ถูกอ่านทุกที่ว่า "ช่างแจ้งว่าแก้แล้ว" — ป้ายเธรดก็เช่นกัน
  *     ⇒ ดึงผลกลับมาแก้แล้วหัวหน้าเห็นกล่องเขียวที่ไม่จริง · ใช้ตัวนี้แทน: ดึงกลับ = ปลดล็อก = เรื่องกลับมาค้างตามจริง
- * @returns สภาพเดิม หรือ `{ ...state, pending: false, closedBySend: true }` เมื่อใบส่งผลแล้วตอนเรื่องยังค้าง
+ * ⭐ **ใบที่ไม่ต้องมีนัดแล้ว** (`needsVisit: false` — ทุกพื้นที่ที่เหลือประเมินจากแบบ · `surveyNeedsVisit` ของ `surveyMethod.js`)
+ *   = เรื่องที่ค้างไม่ค้างเช่นกัน: ไม่มีช่างคนไหนต้องกลับไปหน้างานแล้ว ปล่อยค้าง = ใบรอคนที่ไม่มีงานให้ทำ
+ *   ⚠️ ผู้เรียกคำนวณจากแถวพื้นที่แล้วส่งมา · ไม่ส่ง = `true` = พฤติกรรมเดิม · ต้องเป็น `false` ตรงตัวจึงจะปิด
+ *   ⚠️ คนละธงกับ `closedBySend` — ไม่มีอะไรถูกส่งออกไป · ใบล็อกชนะเสมอ (เหตุคือ "ส่งผลแล้ว" ไม่ใช่ "เปลี่ยนวิธี")
+ * @returns สภาพเดิม · `{ ...state, pending: false, closedBySend: true }` เมื่อใบส่งผลแล้วตอนเรื่องยังค้าง
+ *   · `{ ...state, pending: false, closedByMethod: true }` เมื่อใบไม่ต้องมีนัดแล้วตอนเรื่องยังค้าง
  */
-export function surveySendBackOnSheet(state, request = null) {
-  if (!state?.pending || !request || !surveyEditLockError(request)) return state ?? null;
-  return { ...state, pending: false, closedBySend: true };
+export function surveySendBackOnSheet(state, request = null, { needsVisit = true } = {}) {
+  if (!state?.pending) return state ?? null;
+  if (request && surveyEditLockError(request)) return { ...state, pending: false, closedBySend: true };
+  if (needsVisit === false) return { ...state, pending: false, closedByMethod: true };
+  return state;
 }
 
 /**
@@ -1180,11 +1253,17 @@ export function surveySendError(rows = [], filesByZone = {}, { canSend = false }
   return null;
 }
 
-/** ความคืบหน้าหน้างานของทั้งใบ — หัวจอมือถือ ("วัดแล้ว 3 / 5 พื้นที่") */
+/** ความคืบหน้าหน้างานของทั้งใบ — หัวจอมือถือ ("วัดแล้ว 3 / 5 พื้นที่")
+ *  ⭐ **นับเฉพาะพื้นที่ลงหน้างาน** — พื้นที่จากแบบไม่ใช่ของที่ช่าง "วัดแล้ว" จึงไม่อยู่ทั้งตัวตั้งและตัวหาร
+ *    จำนวนของมันแยกเป็นคีย์ `drawing` · ⚠️ **มีคีย์นี้เฉพาะเมื่อมากกว่า 0** — ใบลงหน้างานล้วนได้สามคีย์เดิม
+ *    เป๊ะ (ผู้อ่านใช้ `progress.drawing || 0`) */
 export function surveyFieldProgress(rows = [], filesByZone = {}) {
   const active = (Array.isArray(rows) ? rows : []).filter((r) => !isCut(r));
-  const done = active.filter((r) => surveyFieldMissing(r, filesByZone?.[r.id] || []).length === 0);
-  return { total: active.length, done: done.length, complete: active.length > 0 && done.length === active.length };
+  const onsite = active.filter((r) => !isDrawingZone(r));
+  const done = onsite.filter((r) => surveyFieldMissing(r, filesByZone?.[r.id] || []).length === 0);
+  const progress = { total: onsite.length, done: done.length, complete: onsite.length > 0 && done.length === onsite.length };
+  const drawing = active.length - onsite.length;
+  return drawing > 0 ? { ...progress, drawing } : progress;
 }
 
 /* ══ ช่างกด "ส่งงาน" หน้างาน (มติผู้ใช้ 2026-09-21) ═══════════════════════

@@ -197,7 +197,13 @@ test('⭐ นัดค้าง: ไม่มีขอบล่าง (200 ว�
 test('🔴 แถวล้วน: ไม่อ่านชื่อ · เครื่อง · พื้นที่ (ป้ายนับบนเมนูยิงทุก 120 วิ — R15)', async () => {
   const s = fakeSupabase(db(), { users: USERS });
   await loadMyWorkRows(s, { assigneeId: ME, ...WINDOW });
-  assert.deepEqual(s.tablesRead(), ['dept_requests', 'entity_updates', 'service_visits']);
+  /* 🔄 ประเมินจากแบบ (mig 0408 · งวด S1): ชุดข้อมูลนี้มีส่งกลับค้างหนึ่งใบ ⇒ ชั้นแถวอ่าน **วิธีประเมิน** ของใบนั้น
+     (ใบที่ทุกพื้นที่เป็นจากแบบไม่ค้างในคิวช่าง) — คำขอเดียว สี่คอลัมน์ ไม่ใช่ผลวัด/จำนวนพื้นที่ของการ์ด
+     · วันที่ไม่มีใครส่งกลับไม่ยิงเลย (เทสต์อยู่ใน `surveyMethodDeciders.test.mjs`) */
+  assert.deepEqual(s.tablesRead(), ['dept_requests', 'entity_updates', 'service_survey_zones', 'service_visits']);
+  const zoneReads = s.calls.filter((c) => c.table === 'service_survey_zones');
+  assert.equal(zoneReads.length, 1);
+  assert.deepEqual(s.opsOf(zoneReads[0], 'select'), [['id, "requestId", status, method']]);
   assert.deepEqual(s.asked, [], 'ไม่ถามบัญชีผู้ใช้');
 });
 
@@ -386,8 +392,11 @@ test('🔴 อ่านชื่อผู้ช่วยพลาด = ชื่
     console.error = original;
   }
   for (const failTable of ['service_assets', 'service_survey_zones']) {
+    /* 🔄 แถวมาจาก client ปกติ — ชั้นแถวอ่านตารางพื้นที่เองแล้ว (วิธีประเมินของใบที่ส่งกลับค้าง · mig 0408)
+       ⇒ ตารางพื้นที่พังตั้งแต่ชั้นนั้น `loadMyWorkRows` โยนเอง (เทสต์อยู่ใน `surveyMethodDeciders.test.mjs`)
+       ข้อนี้ถามเฉพาะชั้นของประกอบการ์ด */
+    const rows = await loadMyWorkRows(fakeSupabase(db(), { users: USERS }), { assigneeId: ME, ...WINDOW });
     const s = fakeSupabase(db(), { users: USERS, failTable });
-    const rows = await loadMyWorkRows(s, { assigneeId: ME, ...WINDOW });
     // error ของ supabase เป็นอ็อบเจกต์ `{ message }` ไม่ใช่ Error — fetchAll โยนตัวนั้นตรง ๆ
     await assert.rejects(enrichMyWork(s, rows, { personId: ME, viewerId: ME }), (e) => /ไม่สำเร็จ/.test(e.message), failTable);
   }

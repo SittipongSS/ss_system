@@ -22,6 +22,7 @@ import { IN_CHUNK_SIZE, fetchInChunks } from '@/lib/supabaseInChunks';
 import { loadCrewNames, visitHelperIds } from './crew/visitCrew';
 import { loadPackageSizesOrNull } from './packageSizesRepo';
 import { SEND_BACK_DONE_KIND, SEND_BACK_KIND } from './survey';
+import { surveyMethodMix, surveyNeedsVisit } from './surveyMethod';
 import { paginateSurveyReport, surveyReportOverflowErrors } from './surveyReportLayout';
 import {
   SURVEY_REPORT_INPUT_LABELS, SURVEY_REPORT_NO_VISIT, buildSurveyReportSnapshot, surveyReportFreezeIssues,
@@ -105,6 +106,7 @@ function priorUnableOf(visits, visit) {
  * @param opts.request        แถว `dept_requests` (ขั้นออกเลข = แถวหลังเขียนคำตอบ)
  * @param opts.closedVisit    นัดที่การส่งผลนี้ปิด (แถวหลังปิด) — มี = เอกสารรับรองนัดนี้ และ `visitClosedBySend` เป็นจริง
  *                            · รอบตรวจก่อนส่งผลส่งนัดที่ค้าง **บวกแพตช์ปิด** มา (นัดที่กำลังจะถูกปิด)
+ *                            · 🔴 ใบประเมินจากแบบทั้งใบ = **ถูกทิ้ง** (ดูย่อหน้า ⭐ ข้างล่าง)
  * @param opts.pendingAnswer  `{ answeredAt, answeredById, answeredByName }` ที่กำลังจะเขียน (รอบตรวจก่อนส่งผล) — ทับลงแถวใบในอินพุต
  * @param opts.zones          แถวผลวัดที่ผู้เรียกอ่านไว้แล้ว (`loadSurveyZones`) — ไม่ส่ง = อ่านเอง · ไม่ถูกแก้ในที่
  * @param opts.filesByZone    `{ [zoneRowId]: attachments[] }` ที่อ่านไว้แล้ว — ไม่ส่ง = อ่านเอง
@@ -114,6 +116,13 @@ function priorUnableOf(visits, visit) {
  * `unknown` = ชื่อชิ้นที่อ่านไม่สำเร็จ (คีย์ของ `SURVEY_REPORT_INPUT_LABELS`) · ชุดเดียวกันอยู่ใน `inputs.unknown` ด้วย
  *   ⇒ `surveyReportFreezeIssues(inputs)` เปลี่ยนข้อ "ไม่มี" ของชิ้นนั้นเป็น "อ่านไม่สำเร็จ" (ชนิด `system`) เอง
  * ⚠️ ทุกชิ้นยิงขนานกัน · ชิ้นที่ต้องรู้นัดก่อน (เธรดของนัด · ผู้ช่วย · ตำแหน่งผู้ประเมิน) ต่อท้ายการอ่านนัดในสายเดียวกัน
+ *
+ * ⭐ **ใบประเมินจากแบบทั้งใบไม่มีนัดให้รับรอง** (mig 0408 · แผน survey-desk-assessment §2 แถว 30) — ทุกพื้นที่ที่ยังอยู่ในใบ
+ *   เป็นจากแบบ (`surveyMethodMix(...).mode === 'drawing'`) ⇒ `visit` เป็น `null` เสมอ: **ทั้งนัด `done` ในฐาน และ `closedVisit`
+ *   ที่ผู้เรียกส่งมา** · ตัดสินที่นี่ที่เดียว ⇒ ไม่มีผู้เรียกไหน (รอบตรวจ · ขั้นออกเลข · ฉบับร่าง) ยัดนัดเข้าใบงานโต๊ะได้
+ *   🐞 ไม่งั้นนัดที่ค้างจากก่อนสลับวิธี (หรือนัดที่ไปแล้วเข้าไม่ได้แล้วถูกปิด `done` ในนาทีเดียวกัน) จะขึ้นกระดาษเป็น "ผู้ประเมิน"
+ *      ของผลที่หัวหน้าประเมินจากแบบแปลน
+ *   ⚠️ โหมดอื่นทุกโหมดเลือกนัดแบบเดิม — รวมใบที่ **ไม่เหลือพื้นที่** (ตัดหมด) และตอนอ่านผลวัดไม่สำเร็จ (ไม่รู้ ≠ งานโต๊ะ)
  */
 export async function loadSurveyReportInputs(supabase, {
   request, closedVisit = null, pendingAnswer = null, zones = null, filesByZone = null, sizes, takenAt = null,
@@ -137,10 +146,13 @@ export async function loadSurveyReportInputs(supabase, {
   };
 
   /* ── ผลวัด → ไฟล์รายพื้นที่ + ทะเบียนพื้นที่ ──────────────────────────────────── */
+  /* แถวผลวัดอ่านครั้งเดียว สองสายใช้ร่วมกัน — สายของนัดต้องรู้ก่อนว่าใบเป็นงานโต๊ะไหม (ประเมินจากแบบทั้งใบ = ไม่มีนัดให้รับรอง)
+     ⚠️ สายของนัดรอแค่แถว ไม่รอไฟล์/ทะเบียน: ไม่งั้นเธรดของนัด · ผู้ช่วย · ตำแหน่ง ต้องต่อคิวหลังไฟล์ของทุกพื้นที่ */
+  const zoneRows = Array.isArray(zones)
+    ? zones
+    : read('zones', async () => ({ data: await loadSurveyZones(supabase, requestId) }));
   const zonesChain = (async () => {
-    const rows = Array.isArray(zones)
-      ? zones
-      : await read('zones', async () => ({ data: await loadSurveyZones(supabase, requestId) }));
+    const rows = await zoneRows;
     // อ่านผลวัดไม่สำเร็จ = ไม่รู้ว่าต้องอ่านไฟล์/ทะเบียนของพื้นที่ไหน — ชื่อ `zones` พูดแทนทั้งสามชิ้น
     if (!rows) return { zones: null, filesByZone: null, zoneRegistry: null };
     /* รหัส ZN · ชั้น · อาคาร อ่านสดจากทะเบียน (จอประเมินอ่านแค่ `id, code` — กระดาษพิมพ์ชั้น/อาคารด้วย)
@@ -164,12 +176,19 @@ export async function loadSurveyReportInputs(supabase, {
 
   /* ── นัดทุกใบของคำร้อง (อ่านครั้งเดียว) → นัดที่รับรอง · นัดที่ทำไม่ได้ · ปิดพร้อมส่งผลไหม · ผู้ช่วย · ตำแหน่ง ── */
   const visitChain = (async () => {
-    const rows = requestId
-      ? await read('visits', () => supabase
-        .from('service_visits').select(VISIT_COLUMNS).eq('requestId', requestId)
-        .order('createdAt', { ascending: false }).order('id', { ascending: true }).limit(VISIT_LIMIT))
-      : [];
-    const visit = closedVisit || surveyReportVisitOf(rows);
+    const [rows, surveyRows] = await Promise.all([
+      requestId
+        ? read('visits', () => supabase
+          .from('service_visits').select(VISIT_COLUMNS).eq('requestId', requestId)
+          .order('createdAt', { ascending: false }).order('id', { ascending: true }).limit(VISIT_LIMIT))
+        : [],
+      zoneRows,
+    ]);
+    /* 🔑 ประเมินจากแบบทั้งใบ = ไม่มีนัดให้รับรอง — ทิ้งทั้งนัด `done` ในฐานและนัดที่ผู้เรียกส่งมา (หัวฟังก์ชัน ⭐)
+       ⚠️ อ่านผลวัดไม่สำเร็จ (`null`) = ไม่รู้ว่าเป็นงานโต๊ะไหม ⇒ เลือกนัดแบบเดิม · ใบที่ไม่เหลือพื้นที่ (โหมด `empty`) ก็แบบเดิม */
+    const desk = !!surveyRows && surveyMethodMix(surveyRows).mode === 'drawing';
+    const closing = desk ? null : closedVisit;
+    const visit = desk ? null : (closing || surveyReportVisitOf(rows));
     const visitId = cleanId(visit?.id);
     const helperIds = visitHelperIds(visit);
     const assigneeId = cleanId(visit?.assigneeId);
@@ -178,7 +197,7 @@ export async function loadSurveyReportInputs(supabase, {
       /* ปิดพร้อมการส่งผลไหม — เวลาจบที่ไม่มีบนนัดต้องอ่านว่า "ไม่ได้กดส่งงาน" ไม่ใช่ "ระบบทำหาย" (`visitTimeCredible`)
          แถว `done` ล่าสุดเป็นตัวตัดสิน: นัดที่ถูกเปิดกลับแล้วช่างส่งงานเอง = ไม่ใช่ปิดพร้อมส่งผลแล้ว */
       (async () => {
-        if (closedVisit) return true;
+        if (closing) return true;
         if (!visitId) return false;
         const thread = await read('visitThread', () => supabase
           .from('entity_updates').select('id, body, meta, "createdAt"')
@@ -220,7 +239,7 @@ export async function loadSurveyReportInputs(supabase, {
 
     return {
       visit: visit || null,
-      // อ่านนัดไม่สำเร็จ = ไม่รู้ว่ามีนัดที่ทำไม่ได้ไหม (`null`) — ต่างจาก "ไม่มี" (`[]`)
+      // อ่านนัดไม่สำเร็จ = ไม่รู้ว่ามีนัดที่ทำไม่ได้ไหม (`null`) — ต่างจาก "ไม่มี" (`[]`) · ใบงานโต๊ะยังเก็บนัดที่ทำไม่ได้ครบทุกใบ
       priorUnable: rows ? priorUnableOf(rows, visit) : null,
       visitClosedBySend: closedBySend,
       helpers,
@@ -317,6 +336,9 @@ const VERSIONS = [['customer', 'ฉบับลูกค้า'], ['internal', '
  *    ⭐ การส่งผลตีกลับเฉพาะชนิด `content` · ขั้นออกเลขตีกลับทุกชนิด (ผู้เรียกกรองเอง)
  *    ⚠️ ตัวจัดหน้าไม่อ่านขนาดรูป ⇒ โหมด `check` (ยังไม่มีรูป) จัดหน้าได้ผลเท่าโหมด `freeze`
  *    ⭐ นัดที่ค้างยังเป็นร่าง = เหตุของ `surveySendVisitStep` เอง (ข้อความเดียวกับที่ route ตอบ) แทน "ไม่พบนัดประเมิน"
+ *       · ใบประเมินจากแบบทั้งใบที่นัดยังเปิด (ร่าง/นัดไว้) ก็มาทางเดียวกัน — ประโยคงานโต๊ะของ `surveySendVisitStep`
+ *       · `needsVisit` คิดจาก `zones` ที่ผู้เรียกส่งมา (`surveyNeedsVisit`) · **ไม่ได้ส่งแถวมา = ต้องมีนัด** (พฤติกรรมเดิม) —
+ *         ตัวโหลดยังทิ้งนัดของใบงานโต๊ะเองอีกชั้น ผู้เรียกที่ไม่ได้ส่งแถวจึงไม่ทำให้นัดขึ้นกระดาษ
  *    🔴 **ไม่มีคำไหนในข้อความที่คนพิมพ์เป็นเหตุขัดข้อง** (มติเจ้าของข้อ 3: พิมพ์ตามที่พิมพ์มา — คำต้องห้ามเป็นแค่คำเตือน)
  *       ⇒ สิ่งที่รอบตรวจนี้ปล่อยผ่าน ขั้นออกเลขต้องไม่มาติดหลังใบถูกตอบ (มติข้อ 2): ยามกันรั่วของฉบับลูกค้า
  *       (`surveyReportCustomerHtmlIssues`) จึงดู markup ของตัวเรนเดอร์ ไม่ค้นคำ — หมายเหตุ "ดูรายละเอียดในฉบับภายใน" ผ่านทั้งสองด่าน
@@ -330,7 +352,8 @@ const VERSIONS = [['customer', 'ฉบับลูกค้า'], ['internal', '
 export async function surveyReportPrecheck(supabase, {
   request, user = null, zones = null, filesByZone = null, sizes, open = null, today = null, nowIso = null,
 } = {}) {
-  const step = surveySendVisitStep(open, { today });
+  const needsVisit = Array.isArray(zones) ? surveyNeedsVisit(zones) : true;
+  const step = surveySendVisitStep(open, { today, needsVisit });
   const closing = step.action === 'close' ? { ...open, ...step.patch } : null;
   const pendingAnswer = request && !request.answeredAt
     ? { answeredAt: nowIso, answeredById: user?.id ?? null, answeredByName: user?.name ?? null }

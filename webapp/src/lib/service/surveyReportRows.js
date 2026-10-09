@@ -241,10 +241,16 @@ async function documentChecks(supabase, { request, user, now, given, precheck, f
     }
     const usable = !!result && typeof result === 'object';
 
-    /* คัดเฉพาะ `kind` กับ `text` — ของอื่นที่ตัวตรวจอาจแนบมาในวันหน้าไม่ไหลออก payload เอง */
+    /* คัดเฉพาะ `kind` กับ `text` — ของอื่นที่ตัวตรวจอาจแนบมาในวันหน้าไม่ไหลออก payload เอง
+       ⭐ ยกเว้นธง `hold` ของข้อกันเอกสาร (ใบมีพื้นที่ประเมินจากแบบ · `SURVEY_REPORT_DRAWING_HOLD`) — ติดไปเฉพาะเมื่อเป็น `true`
+          ตรงตัว: ข้ออื่นทุกข้อยังมีแค่สองคีย์ ⇒ payload ของใบลงหน้างานไม่เปลี่ยนสักไบต์ */
     if (usable) {
       blockers.push(...(Array.isArray(result.blockers) ? result.blockers : [])
-        .map((b) => ({ kind: b?.kind === 'content' ? 'content' : 'system', text: String(b?.text ?? '') }))
+        .map((b) => ({
+          kind: b?.kind === 'content' ? 'content' : 'system',
+          text: String(b?.text ?? ''),
+          ...(b?.hold === true ? { hold: true } : {}),
+        }))
         .filter((b) => b.text.trim()));
     }
 
@@ -273,7 +279,7 @@ async function documentChecks(supabase, { request, user, now, given, precheck, f
  *               history: [{ docNo, rev, issuedAt, supersededAt, supersededReason }],   ← คีย์มีเฉพาะ access.history
  *               nextDocNo,                                ← คีย์มีเฉพาะ access.issue · เลขฐานเดิม R ถัดไปเมื่อไม่มีฉบับที่ใช้อยู่
  *               send:  null | { blockers: string[], warnings: string[], unknown },     ← คีย์มีเฉพาะ access.issue
- *               issue: null | { blockers: [{ kind, text }], warnings: string[], unknown },
+ *               issue: null | { blockers: [{ kind, text, hold? }], warnings: string[], unknown },
  *               unknown: true }                           ← เฉพาะเมื่ออ่านแถวเอกสารไม่สำเร็จ
  * ```
  *
@@ -281,6 +287,7 @@ async function documentChecks(supabase, { request, user, now, given, precheck, f
  *            คำเตือนที่จอต้องส่งกลับมาเป็น `seenWarnings` · ตัวตรวจเดียวกับ S5 ของเส้นส่งผล
  * ⭐ `issue` — สถานะ `missing` (ตอบแล้ว ไม่มีเอกสาร): ทุกเหตุที่ปุ่ม "ออกเอกสาร" จะตีกลับ + คำเตือนของกล่องยืนยัน
  *            `kind: 'content'` = ต้องดึงผลกลับมาแก้แล้วส่งใหม่ · `'system'` = แก้แล้วกดออกเอกสารซ้ำได้
+ *            · `hold: true` (คีย์มีเฉพาะข้อกันเอกสารของใบที่มีพื้นที่ประเมินจากแบบ) = ไม่มีอะไรให้แก้ กดซ้ำไม่ช่วย
  * ⚠️ ทั้งสองตัวคิดเฉพาะ `withChecks` (GET ใบประเมิน) และเฉพาะคนที่ออกเอกสารได้ — ราคาคือการอ่านขนานของตัวโหลดข้อมูลเอกสาร
  * ⚠️ ตรวจล้ม = `unknown: true` ในก้อนนั้น ไม่ใช่ GET ล้ม
  *

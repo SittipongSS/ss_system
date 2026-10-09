@@ -32,9 +32,35 @@ export function askActionUpdate(action, ask, {
   /* ป้ายรูปแบบงานใหม่เมื่อการแก้ครั้งนี้ **สลับรูปแบบ** (พัฒนาสูตร Standard ↔ NPD) — ตาราง
      รายการหาย/แบบฟอร์ม PDR โผล่ ⇒ เธรดต้องบอก ไม่ใช่แค่ "แก้ข้อมูลคำร้อง" */
   variantChange = null,
+  /* ใบประเมินพื้นที่ที่ **ประเมินจากแบบทั้งใบ** (mig 0408 · แผน survey-desk-assessment §2 แถว 21–22) — ใบนี้ไม่มีนัด
+     ⇒ บรรทัด "แจ้งกำหนดส่ง / เลื่อนวันกำหนดส่ง" ต้องเล่าว่าเป็น **วันส่งผล** ที่หัวหน้ารับปาก ไม่ใช่วันลงคิว
+     ⚠️ ผู้เรียก (route ที่อ่านแถวพื้นที่เอง) เป็นคนส่งมา — ไฟล์นี้ไม่รู้จักวิธีประเมิน · ไม่ส่ง = ข้อความเดิมทุกตัว */
+  desk = false,
 } = {}) {
   if (!ask) return null;
   const dept = ask.dept || '';
+  if (desk === true && action === 'commit-due') {
+    const due = ask.committedDueDate ? fmtDate(ask.committedDueDate) : '(ไม่ระบุ)';
+    // ผู้รับปาก = ผู้รับผิดชอบที่ก้าวนี้เพิ่งเขียนลงใบ (หัวหน้าที่กด) — ไม่มีชื่อก็ไม่ต่อท่อนนี้
+    const by = clip(ask.assigneeName, 200);
+    return {
+      kind: 'commitDue',
+      body: `รับปากส่งผลประเมินจากแบบ ${due}`
+        + (by ? ` · ${by}` : '')
+        + (clip(reason) ? ` — ${clip(reason)}` : ''),
+      meta: { dept, due: ask.committedDueDate || null, previousDue: previousDueDate || null, desk: true },
+    };
+  }
+  if (desk === true && action === 'reschedule') {
+    const from = previousDueDate ? fmtDate(previousDueDate) : '(ไม่เคยระบุ)';
+    const to = ask.committedDueDate ? fmtDate(ask.committedDueDate) : '(ไม่ระบุ)';
+    return {
+      kind: 'reschedule',
+      body: `เลื่อนวันส่งผลประเมิน ${from} → ${to}`
+        + (clip(reason) ? ` — ${clip(reason)}` : ''),
+      meta: { dept, from: previousDueDate || null, to: ask.committedDueDate || null, desk: true },
+    };
+  }
   if (action === 'submit') {
     return {
       kind: 'submit',

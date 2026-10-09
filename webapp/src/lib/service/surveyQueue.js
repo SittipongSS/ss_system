@@ -60,15 +60,23 @@ export const visitReachedSite = (visit) => isClosedVisit(visit) && visit?.status
  * · requeue     = มีวันบนใบแล้ว แต่ไม่มีนัดที่ยังมีชีวิต (ยกเลิก · เลื่อนแล้ว · เข้าไม่ได้ ·
  *                 สร้างไม่สำเร็จ/ถูกลบ) — ต้องลงคิวใหม่ด้วยวันเดิมได้ (ธง `requeue` ของ route)
  * · null        = ไม่ใช่ใบประเมิน · ไม่ใช่ใบที่เดินอยู่ · ผู้ขอปิดฝั่งตัวเองแล้ว ·
- *                 มีนัดที่ยังมีชีวิตอยู่แล้ว (การ์ดของนัดโผล่แทน) · ช่างไปถึงไซต์แล้ว
+ *                 มีนัดที่ยังมีชีวิตอยู่แล้ว (การ์ดของนัดโผล่แทน) · ช่างไปถึงไซต์แล้ว ·
+ *                 **งานโต๊ะที่รับเรื่องแล้ว** (ทุกพื้นที่ประเมินจากแบบ — ไม่มีนัดให้ลง)
  *
  * @param request แถวคำร้อง + `surveyVisit` (นัดที่ `pickSurveyVisit` เลือก · ไม่มี = null)
+ *                + `surveyNeedsVisit` (ธงจากแถวพื้นที่ · `surveyNeedsVisit` ใน `surveyMethod.js`)
  * ⚠️ ผู้เรียกต้องติด `surveyVisit` มาให้ใบที่มีวันแล้วเสมอ — ไม่ติดมา = อ่านว่า "ไม่มีนัด"
+ * ⚠️ `surveyNeedsVisit` **ไม่ติดมา / ค่าอื่นที่ไม่ใช่ `false` ตรงตัว = ต้องมีนัด** (ทุกใบของวันนี้)
+ *    — ผู้เรียกที่ไม่ได้โหลดแถวพื้นที่ได้คำตอบเดิมทุกค่า ไม่มีใบไหนกลายเป็นงานโต๊ะเพราะลืมส่งธง
  */
 export function surveyQueueStep(request) {
   if (!request || !requestNeedsRef(request.kind, 'site')) return null;
   if (request.status === 'pending') return 'acknowledge';
   if (request.status !== 'acknowledged' || request.closedAt) return null;
+  /* ⭐ งานโต๊ะ (ประเมินจากแบบทั้งใบ · mig 0408) ไม่ลงคิว ไม่มีนัดเข้าพื้นที่ ⇒ หลังรับเรื่องไม่มีการ์ด
+     "ลงคิว" / "ลงคิวใหม่" อีกเลย แม้วันหรือนัดเก่าจากตอนที่ยังเป็นงานหน้างานจะค้างอยู่บนใบ
+     ⚠️ อยู่ **หลัง** `pending` โดยตั้งใจ — ใบรอรับเรื่องยังต้องมีการ์ด "รับเรื่อง" เหมือนทุกใบ */
+  if (request.surveyNeedsVisit === false) return null;
   if (holdsRequestSlot(request.surveyVisit)) return null;
   if (requestAwaitingDue(request)) return 'queue';
   if (visitReachedSite(request.surveyVisit)) return null;

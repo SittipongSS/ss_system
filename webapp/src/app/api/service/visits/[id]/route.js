@@ -12,12 +12,13 @@ import {
   VISIT_STATUS_LABELS, holdsRequestSlot, isClosedVisit, isLiveVisit,
 } from '@/lib/service/visitStatus';
 import { VISIT_DELETE_BLOCK_LABELS, VISIT_DELETE_CREW_ERROR, visitDeleteBlock } from '@/lib/service/visitDelete';
-import { SURVEY_VISIT_KIND, findSurveyVisit } from '@/lib/service/surveyVisit';
+import { SURVEY_DESK_REVIVE_ERROR, SURVEY_VISIT_KIND, findSurveyVisit } from '@/lib/service/surveyVisit';
 import { surveyStepBackBody, surveyStepBackPlan } from '@/lib/service/surveyStepBack';
 import {
   SEND_BACK_DONE_KIND, surveyEditLockError, surveyFieldProgress, surveyFieldSubmitError, surveySendBackDoneBody,
 } from '@/lib/service/survey';
-import { loadSurveyFieldState, loadSurveySendBackState } from '@/lib/service/surveyRepo';
+import { loadSurveyFieldState, loadSurveySendBackState, loadSurveyZones } from '@/lib/service/surveyRepo';
+import { surveyNeedsVisit } from '@/lib/service/surveyMethod';
 import { surveySpotSubmitError } from '@/lib/service/surveySpotPhotos';
 import { notifySurveyFieldDone } from '@/lib/service/surveyFieldDoneNotify';
 import {
@@ -352,6 +353,29 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       }
     }
 
+    /* ── ใบต้นเรื่องของนัดประเมินนี้ยังต้องมีนัดลงหน้างานไหม (mig 0408 · แผน survey-desk-assessment §2 แถว 36) ────
+       ⭐ ใบที่ประเมินจากแบบทั้งใบ **ไม่ต้องมีนัด** — วันบนใบแบบนั้นคือวันส่งผลที่หัวหน้ารับปาก ไม่ใช่วันของนัด
+          ⇒ สามจุดข้างล่างถามตัวนี้: เปิดนัดที่จบแล้วกลับ · ถอยขั้นเมื่อเข้าไม่ได้ · ซิงก์วันกลับใบ
+       ⚠️ **อ่านเมื่อถูกถามเท่านั้น และครั้งเดียวต่อคำขอ** — นัดชนิดอื่น และนัดประเมินที่คำขอนี้ไม่แตะสามจุดนั้น
+          ไม่เสียคำสั่งอ่านเพิ่มสักคำสั่ง · ผู้เรียกทุกจุดอยู่ใต้เงื่อนไข "นัดประเมินที่มีใบต้นเรื่อง" อยู่แล้ว
+       ⚠️ อ่านพลาด = `null` (ไม่รู้) แล้วลง log — **แต่ละจุดเลือกเองว่าไม่รู้แปลว่าอะไร**:
+          · ถอยขั้น/ซิงก์วัน (`needsVisitOf`) = เดินแบบ "ต้องมีนัด" (พฤติกรรมเดิมทุกข้อ) — ตารางพื้นที่ล่มต้องไม่ทำให้
+            ช่างปิดงานไม่ได้ และต้องไม่ทำให้ใบลงหน้างานเลิกถอยขั้น/เลิกซิงก์วันเงียบ ๆ
+          · เปิดนัดกลับ (`needsVisitKnown`) = 500 — ด่านที่เปิดเองตอนอ่านพลาด = นัดขึ้นตารางช่างให้ใบที่ไม่มีใครต้องไป */
+    let needsVisit = null;
+    const needsVisitKnown = () => {
+      needsVisit ??= (async () => {
+        try {
+          return surveyNeedsVisit(await loadSurveyZones(supabase, before.requestId));
+        } catch (e) {
+          console.error('[service-visits] อ่านวิธีประเมินของใบไม่สำเร็จ:', e?.message);
+          return null;
+        }
+      })();
+      return needsVisit;
+    };
+    const needsVisitOf = async () => (await needsVisitKnown()) !== false;
+
     /* ── เปิดนัดประเมินที่ปิดไปแล้วกลับมา = อาจได้นัดเปิดสองใบต่อหนึ่งคำร้อง ────
        ⭐ ยามจริงคือ index ของ mig 0316 · ตัวนี้อยู่เพื่อ **ข้อความไทยและสถานะ 409**
           และเพื่อให้แอปทำงานเหมือนกันในช่วงที่ยังไม่ได้รัน migration
@@ -359,6 +383,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (before.kind === SURVEY_VISIT_KIND && before.requestId
       && patch.status && patch.status !== before.status
       && holdsRequestSlot({ status: patch.status }) && !holdsRequestSlot(before)) {
+      /* 🔴 **ใบที่ประเมินจากแบบทั้งใบ เปิดนัดกลับไม่ได้** (แผน §2 แถว 36 ①) — ถามก่อนด่าน "มีนัดอื่นเปิดอยู่":
+         ต่อให้ไม่มีนัดอื่นเลย นัดที่ฟื้นขึ้นมาก็คืองานบนตารางช่างของใบที่ไม่มีใครต้องไป · ยังไม่ได้เขียนอะไร
+         ⚠️ อ่านแถวพื้นที่ไม่สำเร็จ = 500 (ยังไม่ได้เขียนอะไร กดใหม่ได้) — ไม่ปล่อยผ่านตอนไม่รู้ */
+      const revivable = await needsVisitKnown();
+      if (revivable === null) return fail('อ่านวิธีประเมินของใบไม่สำเร็จ — ยังไม่ได้เปิดนัดกลับ กดอีกครั้ง', 500);
+      if (!revivable) return conflict(SURVEY_DESK_REVIVE_ERROR);
       const other = await findSurveyVisit(supabase, before.requestId, { openOnly: true });
       if (other && other.id !== id) {
         return conflict(`ใบคำร้องนี้มีนัดที่ยังไม่ปิดอยู่แล้ว (${other.code || other.id}) — ปิดหรือยกเลิกนัดนั้นก่อน ถึงจะเปิดนัดนี้กลับมาได้`);
@@ -400,7 +430,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
          ล้างวันบนใบ ⇒ ทั้งราง คิว ตัวนับ และปุ่มลงคิว derive จากคอลัมน์เดียวนี้
          ⇒ ใบไหลกลับเข้าคิว "รับแล้ว ยังไม่ลงวัน" เอง · นัดเดิมค้างเป็น `unable` ในประวัติ
          ⚠️ ต้องอยู่ **ก่อน** บล็อกซิงก์วันข้างล่าง และบล็อกนั้นต้องไม่เขียนวันกลับมาทับ */
-      const stepBack = surveyStepBackPlan({ visit: data, before, request: reqRow });
+      /* 🔴 **ใบที่ประเมินจากแบบทั้งใบไม่ถอยขั้น** (mig 0408 · แผน §2 แถว 36 ③) — วันบนใบคือวันส่งผลที่หัวหน้ารับปาก
+         ล้างเมื่อไร ใบไหลเข้าคิว "รอลงคิว" ของผู้จัดคิวทั้งที่ไม่มีใครต้องไป · ตัวตัดสินยังเป็น `surveyStepBackPlan`
+         ⚠️ ถามแถวพื้นที่เฉพาะเมื่อ **จะถอยขั้นจริง** — PATCH อื่นของนัดประเมินไม่อ่านเพิ่ม */
+      const stepBack = surveyStepBackPlan({ visit: data, before, request: reqRow })
+        ? surveyStepBackPlan({ visit: data, before, request: reqRow, needsVisit: await needsVisitOf() })
+        : null;
       if (stepBack) {
         steppedBackRequest = true;
         const { error: backError } = await supabase.from('dept_requests')
@@ -437,7 +472,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       const changed = holdsRequestSlot(data) && reqRow && !requestClosedOff
         && (String(reqRow.committedDueDate ?? '') !== String(nextDate ?? '')
           || String(reqRow.committedDueTime ?? '').slice(0, 5) !== String(nextTime ?? ''));
-      if (changed) {
+      /* 🔴 **ใบที่ประเมินจากแบบทั้งใบไม่รับวันจากนัด** (mig 0408 · แผน §2 แถว 36 ②) — นัดที่ค้าง "กำลังทำ" ตอนใบ
+         พลิกเป็นงานโต๊ะยังแก้วันได้ตามปกติ แต่วันของมันต้องไม่ไปทับวันส่งผลบนใบ (และไม่ลงบรรทัด "TS เลื่อนวันนัด")
+         ⚠️ ถามแถวพื้นที่เฉพาะเมื่อมีวันจะเขียนจริง */
+      if (changed && await needsVisitOf()) {
         const { error: syncError } = await supabase.from('dept_requests').update({
           committedDueDate: nextDate,
           committedDueTime: nextTime,

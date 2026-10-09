@@ -93,23 +93,33 @@ const issued = ({ docNo, rev, reused, warnings = [], reportId = null }) => withR
  * @param reasons  เหตุทีละข้อ (ข้อความไทย)
  * @param reason   ประโยคเต็มที่ขึ้นจอได้เลย — ไม่ส่ง = เหตุต่อกันด้วย ` | `
  * @param retry    กด "ออกเอกสาร" ซ้ำโดยไม่ต้องดึงผลกลับแล้วมีโอกาสผ่านไหม
+ * @param hold     ติดแค่ข้อกันเอกสาร (`blocked`) — ผลได้คีย์ `hold: true` **เฉพาะตอนนี้** · ผลอื่นทุกแบบไม่มีคีย์นี้เลย
  */
-const failed = (code, reasons, { reason = null, retry = false } = {}) => {
+const failed = (code, reasons, { reason = null, retry = false, hold = false } = {}) => {
   const lines = unique(list(reasons).map((t) => String(t ?? '').trim()).filter(Boolean));
   return withReportId({
     state: 'failed', code, docNo: null, rev: null, reused: false,
     reasons: lines, reason: reason || lines.join(' | ') || INTERNAL_FAILED, retry, warnings: [],
+    ...(hold ? { hold: true } : {}),
   }, null);
 };
 
-/* ด่านที่ไม่ผ่าน → `blocked` · มีข้อชนิด `content` = ต้องดึงผลกลับมาแก้ (ใบล็อกแล้ว) · มีแต่ `system` = แก้แล้วกดซ้ำได้ */
+/* ด่านที่ไม่ผ่าน → `blocked` · มีข้อชนิด `content` = ต้องดึงผลกลับมาแก้ (ใบล็อกแล้ว) · มีแต่ `system` = แก้แล้วกดซ้ำได้
+   ⭐ ติดแค่ข้อกันเอกสาร (`hold` — ใบมีพื้นที่ประเมินจากแบบ · `SURVEY_REPORT_DRAWING_HOLD`) = ประโยคไม่มีท่อนทางออก และ `retry: false`:
+      ไม่มีอะไรให้แก้ ดึงผลกลับก็ไม่ช่วย กดกี่ครั้งก็ไม่ออก — หายเมื่อระบบรุ่นที่รองรับออก · มีข้ออื่นปนอยู่ = ทางออกของข้อนั้นตามเดิม
+   ⚠️ ธง `hold` อ่านจากทุกแถวก่อนยุบข้อความซ้ำ — แถวซ้ำที่ไม่มีธงต้องไม่ทำให้ข้อกันกลายเป็นเหตุที่ "แก้แล้วกดซ้ำได้" */
 function blocked(issues) {
+  const all = list(issues).filter((i) => i?.text);
   const seen = new Set();
-  const rows = list(issues).filter((i) => i?.text && !seen.has(i.text) && seen.add(i.text));
+  const rows = all.filter((i) => !seen.has(i.text) && seen.add(i.text));
+  const held = new Set(all.filter((i) => i.hold === true).map((i) => i.text));
   const content = rows.some((i) => i.kind === 'content');
+  const holdOnly = rows.length > 0 && rows.every((i) => i.kind !== 'content' && held.has(i.text));
   const texts = rows.map((i) => i.text);
+  const lead = `ออกเอกสารไม่ได้ — ${texts.join(' | ')}`;
+  if (holdOnly) return failed('blocked', texts, { reason: lead, retry: false, hold: true });
   return failed('blocked', texts, {
-    reason: `ออกเอกสารไม่ได้ — ${texts.join(' | ')} · ${content ? RECALL_HINT : RETRY_HINT}`,
+    reason: `${lead} · ${content ? RECALL_HINT : RETRY_HINT}`,
     retry: !content,
   });
 }
@@ -555,6 +565,8 @@ async function reportFailure(ctx, result) {
  *   · `state: 'issued'` — `docNo` · `rev` · `reused` (`true` = มีฉบับที่ใช้อยู่แล้ว ไม่ได้ออกเลขใหม่) · `warnings` · `code: null`
  *   · `state: 'failed'` — `code` (หนึ่งใน `SURVEY_REPORT_ISSUE_CODES`) · `reasons` (ทีละข้อ) · `reason` (ประโยคเต็มขึ้นจอได้เลย
  *     รวมคำแนะนำทางออกแล้ว — ผู้เรียกไม่ต้องต่อท้ายเอง) · `retry` (กดออกเอกสารซ้ำได้โดยไม่ต้องดึงผลกลับ)
+ *     · `hold: true` — คีย์เสริม **เฉพาะ** `blocked` ที่ติดแค่ข้อกันเอกสารของใบที่มีพื้นที่ประเมินจากแบบ (ไม่มีทางออกให้คนกด:
+ *       `reason` ไม่มีท่อนคำแนะนำ · `retry: false`) — ผลอื่นทุกแบบไม่มีคีย์นี้
  *   · `reportId` ติดมากับผลที่ `issued` แบบ **ไม่ถูกไล่** (ดู `withReportId`) — ใช้เรียกขั้นกระดาษ ห้ามใส่ลง payload/เธรด
  *
  * ⚠️ ล้มด้วย `via: 'send'` = เขียน audit ของคำร้อง "ออกเอกสารประเมินไม่สำเร็จหลังส่งผล …" ด้วย (ยกเว้น `answer_changed`)
