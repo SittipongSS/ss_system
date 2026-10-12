@@ -37,6 +37,9 @@ import {
   linePeriodOf,
   lineDerivedText,
   lineQtyCrossCheck,
+  lineQuoteSeeds,
+  quotePacksLeftText,
+  SERVICE_QUOTE_LINK_TEXT,
   lineRoundsLowText,
   lineRoundsSentence,
   lineSetupTotals,
@@ -656,31 +659,58 @@ test('จำนวนในใบเทียบแพ็คที่ตั้�
     'งานบริการทั้งใบ: 10 รายการแพ็คเกจ · แต่ละครั้ง 10 โซนใน 10 ไซต์ · ครั้งละ 10 แพ็ค · จำนวนรอบบริการ 12 เดือน · รวมทั้งใบ 120 แพ็ค');
 });
 
-/* ── เลขแพ็คของบรรทัด (mig 0407 · งวด PR-2 · docs/qt-pack-column.md) ───────────────────────────────────
-   บรรทัดที่มีเลขแพ็ค: จำนวนในใบ = "2 แพ็ค × 12 เดือน" และเทียบ **หน่วยรวม** (แพ็ค × จำนวน) กับรวมทั้งรายการ
-   — ไม่เข้าทางลัด "หน่วยเดือน = ระยะเวลา" อีก (ใบบอกจำนวนแพ็คแล้ว) · ชั่วคราวจนงวด PR-4 (เทียบยอดรวมอย่างเดียว) */
-test('⭐ จำนวนในใบของบรรทัดที่มีเลขแพ็ค: เทียบ แพ็ค × จำนวน กับรวมทั้งรายการ — ตรง / ไม่ตรง / ยังเทียบไม่ได้ · ไม่มีวันเป็น “= ระยะเวลา”', () => {
+/* ── เลขแพ็คของบรรทัด (mig 0407 · งวด PR-4 · docs/qt-pack-column.md) ───────────────────────────────────
+   บรรทัดที่มีเลขแพ็ค: เทียบ **แยกตัว** — แพ็คในใบกับ Σ ④ รอบละกี่แพ็ค · จำนวนในใบ (เดือน) กับ ⑤ จำนวนรอบบริการ
+   — ไม่เข้าทางลัด "หน่วยเดือน = ระยะเวลา" (ใบบอกจำนวนแพ็คแล้ว) · ยอดรวมเท่ากันแต่แยกไม่เท่า = ไม่ตรง · เตือนอย่างเดียว (มติ A7) */
+test('⭐ จำนวนในใบของบรรทัดที่มีเลขแพ็ค: เทียบแพ็คกับ ④ และเดือนกับ ⑤ แยกตัว — ตรง / แพ็คต่าง / เดือนต่าง / ต่างทั้งคู่ / ยังเทียบไม่ได้', () => {
   const packLine = done(1, { qty: 12, unit: 'เดือน', packQty: 2 });
   assert.deepEqual(lineQtyCrossCheck(packLine, { zones: 1, packsPerRound: 2, rounds: 12, packsTotal: 24 }),
-    { tone: 'ok', text: 'จำนวนในใบ 2 แพ็ค × 12 เดือน · ตรงกับทั้งรายการ ✓' });
-  assert.deepEqual(lineQtyCrossCheck(packLine, { zones: 1, packsPerRound: 1, rounds: 12, packsTotal: 12 }),
-    { tone: 'warn', text: 'จำนวนในใบ 2 แพ็ค × 12 เดือน ≠ ทั้งรายการ 12 แพ็ค — ตรวจอีกครั้ง (ไม่บังคับให้เท่า)' },
-    'ตารางตั้ง 1 แพ็ค × 12 = 12 — เลข 12 ของจำนวนเดือนในใบต้องไม่ถูกอ่านว่าตรง');
+    { tone: 'ok', text: 'ในใบ 2 แพ็ค × 12 เดือน · ตรงกับที่ตั้ง ✓', short: 'ตรงกับในใบ' });
+  assert.deepEqual(lineQtyCrossCheck(packLine, { zones: 1, packsPerRound: 3, rounds: 12, packsTotal: 36 }),
+    { tone: 'warn', text: 'แพ็คในใบ 2 ≠ ที่ตั้ง 3 แพ็ค — ตรวจอีกครั้ง (ไม่บังคับให้เท่า)', short: 'แพ็ค ≠ ในใบ' });
+  assert.deepEqual(lineQtyCrossCheck(packLine, { zones: 1, packsPerRound: 2, rounds: 9, packsTotal: 18 }),
+    { tone: 'warn', text: 'จำนวนในใบ 12 เดือน ≠ จำนวนรอบบริการ 9 — ตรวจอีกครั้ง (ไม่บังคับให้เท่า)', short: 'เดือน ≠ ในใบ' });
+  assert.deepEqual(lineQtyCrossCheck(packLine, { zones: 1, packsPerRound: 1, rounds: 6, packsTotal: 6 }),
+    { tone: 'warn', text: 'แพ็คในใบ 2 ≠ ที่ตั้ง 1 แพ็ค · จำนวนในใบ 12 เดือน ≠ จำนวนรอบบริการ 6 — ตรวจอีกครั้ง (ไม่บังคับให้เท่า)', short: 'แพ็ค · เดือน ≠ ในใบ' });
+  // หลายโซน: Σ ④ ของทุกโซนคือสิ่งที่เทียบ (2 โซน โซนละ 1 = 2 แพ็ค)
+  assert.equal(lineQtyCrossCheck(packLine, { zones: 2, packsPerRound: 2, rounds: 12, packsTotal: 24 }).tone, 'ok');
   assert.deepEqual(lineQtyCrossCheck(packLine, { zones: 0 }),
     { tone: 'none', text: 'จำนวนในใบ 2 แพ็ค × 12 เดือน — ตรวจได้เมื่อเลือกโซนแล้ว' });
   assert.deepEqual(lineQtyCrossCheck(packLine, { zones: 1, packsTotal: null }),
     { tone: 'none', text: 'จำนวนในใบ 2 แพ็ค × 12 เดือน — ตรวจได้เมื่อใส่รอบละกี่แพ็คและจำนวนรอบบริการแล้ว' });
   // หน่วยที่เก็บบนบรรทัดเป็นอะไรก็ตาม (มติ A3) ข้อความและการเทียบเหมือนกัน
   for (const unit of ['เดือน', 'แพ็คเกจ', 'กิโลกรัม', null]) {
-    assert.equal(lineQtyCrossCheck(done(1, { qty: 12, unit, packQty: 2 }), { zones: 1, packsTotal: 24 }).tone, 'ok', String(unit));
+    assert.equal(lineQtyCrossCheck(done(1, { qty: 12, unit, packQty: 2 }), { zones: 1, packsPerRound: 2, rounds: 12, packsTotal: 24 }).tone, 'ok', String(unit));
     assert.equal(lineQtyCrossCheck(done(1, { qty: 12, unit, packQty: 2 }), { zones: 3 }).tone, 'none', `ไม่ใช่ info · ${unit}`);
   }
-  // ⚠️ ชั่วคราวจนงวด PR-4: 3 × 8 ในใบ กับตารางที่รวมได้ 24 อ่านว่าตรง (เทียบยอดรวมอย่างเดียว)
-  assert.equal(lineQtyCrossCheck(done(1, { qty: 8, unit: 'เดือน', packQty: 3 }), { zones: 1, packsTotal: 24 }).tone, 'ok');
-  // จำนวนไม่ใช่ตัวเลข: ไม่มีวัน "ตรง" (เดิมก็ไม่ตรง) — ไม่เทียบ 0 กับ 0
-  assert.equal(lineQtyCrossCheck(done(1, { qty: 'abc', unit: 'เดือน', packQty: 2 }), { zones: 1, packsTotal: 0 }).tone, 'warn');
+  // 🔴 3 × 8 ในใบ กับ 2 × 12 ในตาราง = 24 ทั้งคู่ — งวด PR-2 อ่านว่าตรง (เทียบยอดรวม) · ตั้งแต่งวด PR-4 ไม่ตรงทั้งสองตัว
+  assert.equal(lineQtyCrossCheck(done(1, { qty: 8, unit: 'เดือน', packQty: 3 }), { zones: 1, packsPerRound: 2, rounds: 12, packsTotal: 24 }).short, 'แพ็ค · เดือน ≠ ในใบ');
+  // เลข 12 ของจำนวนเดือนในใบต้องไม่ถูกอ่านว่าตรงกับยอดรวม 12 แพ็ค (1 แพ็ค × 12)
+  assert.equal(lineQtyCrossCheck(packLine, { zones: 1, packsPerRound: 1, rounds: 12, packsTotal: 12 }).short, 'แพ็ค ≠ ในใบ');
+  // จำนวนไม่ใช่ตัวเลข: เดือนไม่มีวัน "ตรง" — ไม่เทียบ 0 กับ 0
+  assert.deepEqual(lineQtyCrossCheck(done(1, { qty: 'abc', unit: 'เดือน', packQty: 2 }), { zones: 1, packsPerRound: 2, rounds: 12, packsTotal: 24 }),
+    { tone: 'warn', text: 'จำนวนในใบ abc เดือน ≠ จำนวนรอบบริการ 12 — ตรวจอีกครั้ง (ไม่บังคับให้เท่า)', short: 'เดือน ≠ ในใบ' });
   // บรรทัดที่ไม่ใช่แพ็คเกจยังไม่มีอะไรให้เทียบ
   assert.deepEqual(lineQtyCrossCheck(manual(1, { serviceKind: 'not_service', packQty: 2 }), { zones: 0 }), { tone: 'none', text: '' });
+});
+
+test('งวด PR-4 ข้อเสนอ “ตามใบ”: มีเฉพาะบรรทัดแพ็คเกจที่มีเลขแพ็ค · เดือนนอกช่วงของ ⑤ ไม่เสนอ · หลายโซนบอกเหลือ/ครบ/เกิน', () => {
+  assert.deepEqual(lineQuoteSeeds(done(1, { qty: 12, unit: 'เดือน', packQty: 2 })), { packs: 2, months: 12 });
+  assert.deepEqual(lineQuoteSeeds(done(1, { qty: '12', packQty: '2' })), { packs: 2, months: 12 });
+  for (const qty of [0, 1.5, 1000, 'abc', null]) {
+    assert.deepEqual(lineQuoteSeeds(done(1, { qty, packQty: 2 })), { packs: 2, months: null }, String(qty));
+  }
+  for (const packQty of [null, undefined, '', 'abc', 0, 1.5, 10000]) {
+    assert.equal(lineQuoteSeeds(done(1, { packQty })), null, `packQty: ${String(packQty)}`);
+  }
+  assert.equal(lineQuoteSeeds(done(1)), null, 'บรรทัดเดิมไม่มีข้อเสนอ');
+  assert.equal(lineQuoteSeeds(manual(1, { serviceKind: 'not_service', packQty: 2 })), null);
+  assert.equal(SERVICE_QUOTE_LINK_TEXT.packsChip(2), 'ตามใบ 2 แพ็ค');
+  assert.equal(SERVICE_QUOTE_LINK_TEXT.monthsChip(12), 'ตามใบ 12 เดือน');
+  assert.equal(quotePacksLeftText(3, 2), 'ในใบ 3 แพ็ค · เหลือ 1');
+  assert.equal(quotePacksLeftText(3, 0), 'ในใบ 3 แพ็ค · เหลือ 3');
+  assert.equal(quotePacksLeftText(3, 3), 'ในใบ 3 แพ็ค · ครบ');
+  assert.equal(quotePacksLeftText(3, 5), 'ในใบ 3 แพ็ค · เกิน 2');
 });
 
 test('🔴 เลขแพ็คว่าง = ตัวเทียบจำนวนในใบพูดประโยคเดิมทุกตัวอักษร (ไม่มีคีย์ · packQty: null · ค่าที่เก็บไม่ได้)', () => {
