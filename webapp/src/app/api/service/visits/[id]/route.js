@@ -14,6 +14,7 @@ import {
 import { VISIT_DELETE_BLOCK_LABELS, VISIT_DELETE_CREW_ERROR, visitDeleteBlock } from '@/lib/service/visitDelete';
 import { SURVEY_DESK_REVIVE_ERROR, SURVEY_VISIT_KIND, findSurveyVisit } from '@/lib/service/surveyVisit';
 import { surveyStepBackBody, surveyStepBackPlan } from '@/lib/service/surveyStepBack';
+import { surveyVisitAssigneePatch } from '@/lib/service/surveyVisitAssignee';
 import {
   SEND_BACK_DONE_KIND, surveyEditLockError, surveyFieldProgress, surveyFieldSubmitError, surveySendBackDoneBody,
 } from '@/lib/service/survey';
@@ -170,6 +171,16 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
        — แผ่นปิดงานเคยส่งเวลานัดจบมา แล้วนัดที่เริ่มช้ากว่านั้นปิดไม่ได้เลย (400 เวลาเริ่มหลังเวลาสิ้นสุด) */
     const { value, error } = normalizeVisitInput(stampVisitInput(before, body), { existingKind: before.kind });
     if (error) return badRequest(error);
+
+    /* 🔴 **ผู้รับผิดชอบของนัดประเมิน = "ผู้ประเมิน" ที่รายงานการประเมินพื้นที่พิมพ์ลายเซ็นจริง** (PR-SIG · มติเจ้าของ 09/10/2026)
+       — ทำงานเฉพาะนัดประเมิน **และ** เมื่อกติกาลายเซ็นจริงเปิด (ปิดอยู่ = ไม่อ่าน ไม่ตีกลับ เส้นเดิมทุกก้าว):
+         นัดที่ปิดงานแล้วเปลี่ยนคนไม่ได้ (409) · คนใหม่ต้องเป็นบัญชีฝ่ายบริการที่ยังใช้งาน (400) · ชื่อมาจากทะเบียนผู้ใช้ ไม่ใช่จาก body
+       🐞 ไม่มียามนี้ = สลับผู้ประเมินที่ยังไม่มีลายเซ็นเป็นคนที่มี แล้วเอกสารพิมพ์ลายเซ็นของคนที่ไม่เคยไปนัดนั้น
+          (เหตุผลเต็มและยามชั้นที่สองที่ตัวโหลดของรายงาน: `lib/service/surveyVisitAssignee.js`)
+       ⚠️ ก่อนด่านอื่นและก่อนเขียนอะไรทั้งนั้น · ช่างไม่มาถึงตรงนี้พร้อมช่องนี้ (ช่องของแผนถูกกันไว้ข้างบนแล้ว) */
+    const assignee = await surveyVisitAssigneePatch(supabase, before, value);
+    if (assignee.error) return assignee.status === 400 ? badRequest(assignee.error) : conflict(assignee.error);
+    Object.assign(value, assignee.patch);
 
     /* 🔴 **ช่างเลื่อนวันที่เข้าจริงของนัดถอนที่ปิดแล้วไม่ได้** — วันนี้คือตัวตัดสินว่าเครื่องไหน
        "อยู่ที่ไซต์ตอนไปถอน" (เครื่องที่ติดตั้งทีหลังถอนผ่านนัดนี้ไม่ได้) และเป็นวันที่ในประวัติ

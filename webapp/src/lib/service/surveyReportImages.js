@@ -26,9 +26,14 @@
 //
 // ที่เก็บ: `img/<sha256 ของไฟล์ที่ย่อแล้ว>.jpg` — อ้างด้วยเนื้อไฟล์ ⇒ ส่งใหม่หลังดึงกลับใช้รูปเดิมซ้ำ
 //   ("มีอยู่แล้ว" = สำเร็จ ไม่งั้นทุกการส่งใหม่จะล้ม) · bucket รับเฉพาะ JPEG กับ PDF (0401) ⇒ ทุกรูปออกเป็น JPEG พื้นขาว
+//
+// ⭐ **ลายเซ็นของผู้ลงนาม** (PR-SIG §3.2 · มติเจ้าของ 09/10/2026) — `prepareSurveyReportSignatures` ท้ายไฟล์: อ่าน PNG จากคลังลายเซ็น
+//   (`signature-assets` · อ่านอย่างเดียว) → ตรวจว่าตรงกับที่บันทึก → ถมพื้นขาว ย่อ → ตรวจว่ามีหมึก → JPEG → เก็บที่ `img/<sha>.jpg` ถังเดียวกับรูป
+//   สัญญาเดียวกับรูปทุกข้อ: ความล้มเหลวสองชนิด · ไม่โยน · `sharp` โหลดแบบ lazy · อัปต่อเมื่อด่านเขียนถาวรเปิด
 import 'server-only';
 import { createHash } from 'node:crypto';
 import { MAX_UPLOAD_BYTES } from '@/lib/master/attachmentTypes';
+import { SIGNATURE_BUCKET, isSignatureStoragePathForUser } from '@/lib/signatures';
 import { MAX_BYTES } from '@/lib/upload/limits';
 import { timeoutSignal } from '@/lib/timeoutSignal';
 import { SURVEY_REPORT_BUCKET, surveyReportStoreAllowed } from './surveyReportRows';
@@ -469,6 +474,247 @@ export async function prepareSurveyReportImages(supabase, files, opts = {}) {
     console.error('[survey-report] เตรียมรูปล้มกลางทาง', err?.message);
     for (const entry of entries) {
       if (!doneById.has(entry.attId) && !failedById.has(entry.attId)) fail(entry, F.INTERNAL, false);
+    }
+    return result();
+  }
+}
+
+/* ══ ลายเซ็นของผู้ลงนาม (PR-SIG §3.2) ═══════════════════════════════════════════════════════ */
+
+/** กรอบของลายเซ็นที่เก็บ (px) — พอสำหรับช่อง 45px บนกระดาษที่ 300 dpi · ลายเซ็นที่เล็กกว่านี้ไม่ถูกขยาย */
+export const SURVEY_SIGN_MAX_WIDTH = 600;
+export const SURVEY_SIGN_MAX_HEIGHT = 200;
+
+/** คุณภาพ JPEG ของลายเซ็น — สูงกว่ารูปถ่าย (72): เส้นปากกาบนพื้นขาวเห็นรอยบีบอัดง่าย และไฟล์เล็กอยู่แล้ว */
+export const SURVEY_SIGN_JPEG_QUALITY = 90;
+
+/**
+ * ด่าน "มีหมึกไหม" — นับพิกเซลที่ **เข้มกว่า** `SURVEY_SIGN_INK_LEVEL` (ระดับเทา 0–255) บนรูปที่ถมพื้นขาวและย่อแล้ว ·
+ * น้อยกว่า `SURVEY_SIGN_INK_MIN_PIXELS` = ว่างหรือจางเกินไป
+ * 🔴 คลังลายเซ็นตรวจแค่โครงสร้างกับขนาดของ PNG (`inspectSignaturePng`) — PNG โปร่งใสทั้งแผ่นหรือเส้นสีเทาอ่อนผ่านคลังได้
+ *    แล้วจะกลายเป็นช่องขาวบนกระดาษที่ตรึงแล้วแก้ไม่ได้ · ตัวเลขสองตัวนี้ยังไม่ได้เทียบกับลายเซ็นจริง (สเปก §11)
+ */
+export const SURVEY_SIGN_INK_LEVEL = 160;
+export const SURVEY_SIGN_INK_MIN_PIXELS = 50;
+
+/** เพดานเวลาของการอ่านไฟล์ลายเซ็นหนึ่งไฟล์ และของการเก็บสำเนาหนึ่งไฟล์ (ไฟล์ไม่เกิน 1 MB — สั้นกว่ารูปถ่ายจาก Drive) */
+export const SURVEY_SIGN_FILE_TIMEOUT_MS = 10_000;
+
+/** เหตุใน `failed[].reason` ของ `prepareSurveyReportSignatures` — แยกจาก `SURVEY_IMAGE_FAILURE` (ผู้เรียกของรูปล็อกชุดนั้นไว้) */
+export const SURVEY_SIGN_FAILURE = Object.freeze({
+  // ตัวไฟล์/แถวของลายเซ็นคือปัญหา — เจ้าของลายเซ็นต้องอัปโหลดใหม่
+  PATH: 'sign_path',                 // ที่อยู่ไฟล์ไม่อยู่ใต้โฟลเดอร์ของเจ้าของ (แถวถูกแก้มือ/ข้อมูลเพี้ยน) — ไม่อ่านไฟล์
+  MISSING: 'sign_missing',           // ไม่มีไฟล์นี้ในคลัง
+  MISMATCH: 'sign_mismatch',         // เนื้อไฟล์ไม่ตรงกับ sha256 ที่บันทึกตอนอัปโหลด
+  UNDECODABLE: 'sign_undecodable',   // ถอดรหัสไม่ได้
+  BLANK: 'sign_blank',               // ว่างหรือจางเกินไป (ด่านหมึก)
+  // ระบบคือปัญหา — ลองใหม่ได้
+  TIMEOUT: 'sign_timeout',           // คลังไม่ตอบภายในเพดาน · งบของรอบหมดก่อนถึงคิว
+  STORAGE: 'sign_storage',           // อ่านคลัง/เก็บสำเนาไม่สำเร็จ
+  SHARP_UNAVAILABLE: 'sharp_unavailable',
+  INTERNAL: 'prepare_failed',
+});
+const S = SURVEY_SIGN_FAILURE;
+
+/** เหตุถาวรของลายเซ็น — ชุดเดียวกับที่มีป้ายใน `SURVEY_SIGN_FAILURE_LABELS` ของ surveyReportSigners (เทสต์ล็อกคู่กัน) */
+export const SURVEY_SIGN_PERMANENT_REASONS = Object.freeze([S.PATH, S.MISSING, S.MISMATCH, S.UNDECODABLE, S.BLANK]);
+
+// "ไม่มีไฟล์นี้" ของ Supabase Storage — 404 หรือ 400 ที่ข้อความบอกว่าไม่พบ (รุ่นของ storage-js ตอบต่างกัน · กติกาเดียวกับขั้นกระดาษ)
+const objectMissing = (error) => Number(error?.status) === 404 || String(error?.statusCode) === '404'
+  || /not.?found|does not exist|no such/i.test(`${error?.message || ''} ${error?.error || ''}`);
+
+async function blobBytes(data) {
+  if (data instanceof Uint8Array) return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+  if (data && typeof data.arrayBuffer === 'function') return Buffer.from(await data.arrayBuffer());
+  return Buffer.alloc(0);
+}
+
+/** อ่าน PNG ของลายเซ็นหนึ่งฉบับจากคลัง — เพดานเวลาครอบทั้งคำขอและการอ่านเนื้อไฟล์ · โยน `ImageFailure` เท่านั้น */
+async function fetchSignature(supabase, storagePath, timeoutMs) {
+  const { signal, clear } = timeoutSignal(timeoutMs);
+  try {
+    // `signal` ไปถึง fetch ของคลัง (storage-js รับที่อาร์กิวเมนต์ตัวที่สาม) — หมดเวลาแล้วสายถูกตัดจริง
+    const result = await abortable(
+      Promise.resolve().then(() => supabase.storage.from(SIGNATURE_BUCKET).download(storagePath, {}, { signal })),
+      signal,
+    );
+    // supabase ไม่โยน — ต้องอ่าน { error } เอง · ไม่มีทั้ง data และ error = ไม่มีไฟล์
+    if (result?.error || !result?.data) {
+      if (!result?.error || objectMissing(result.error)) throw failure(S.MISSING, true, result?.error);
+      throw failure(S.STORAGE, false, result.error);
+    }
+    return await abortable(blobBytes(result.data), signal);
+  } catch (err) {
+    if (err instanceof ImageFailure) throw err;
+    if (signal.aborted) throw failure(S.TIMEOUT, false, err);
+    throw failure(S.STORAGE, false, err);
+  } finally {
+    clear();
+  }
+}
+
+/**
+ * 🔑 **ลายเซ็นหนึ่งไฟล์ → รูปที่เอกสารพิมพ์** — หมุนตาม EXIF · ถมพื้นขาว (ลายเซ็นเป็น PNG โปร่งใส) · ย่อให้อยู่ในกรอบ 600×200
+ * (ไม่ขยาย) · นับหมึกบนรูปที่ถมและย่อแล้ว · JPEG คุณภาพ 90
+ * ⚠️ ไม่ตัดขอบให้ชิดหมึก (สเปก §10) — ช่องบนกระดาษสูงตายตัวและวางแบบ `contain` ขนาดของไฟล์จึงขยับเลย์เอาต์ไม่ได้
+ * @returns `{ data: Buffer, sha, w, h, bytes, ink }` · `ink` = จำนวนพิกเซลที่เข้มกว่า `SURVEY_SIGN_INK_LEVEL` · โยนเมื่อถอดรหัสไม่ได้
+ */
+export async function renderSurveySignature(buffer, { sharp = null } = {}) {
+  const lib = sharp || await importSharp();
+  const fitted = () => lib(buffer, { failOn: 'error' })
+    .rotate()
+    .flatten({ background: '#ffffff' })
+    .resize({ width: SURVEY_SIGN_MAX_WIDTH, height: SURVEY_SIGN_MAX_HEIGHT, fit: 'inside', withoutEnlargement: true });
+  const grey = await fitted().greyscale().raw().toBuffer({ resolveWithObject: true });
+  const step = Math.max(1, grey.info.channels);
+  let ink = 0;
+  for (let i = 0; i < grey.data.length; i += step) if (grey.data[i] < SURVEY_SIGN_INK_LEVEL) ink += 1;
+  const { data, info } = await fitted()
+    .jpeg({ quality: SURVEY_SIGN_JPEG_QUALITY, mozjpeg: true })
+    .toBuffer({ resolveWithObject: true });
+  return { data, sha: sha256(data), w: info.width, h: info.height, bytes: data.length, ink };
+}
+
+const defaultSignLog = (line) => console.info('[survey-report] signature', JSON.stringify(line));
+
+/**
+ * 🔑 **เตรียมลายเซ็นของผู้ลงนาม** — อ่านจากคลังลายเซ็น · ตรวจ · ย่อ · เก็บ `img/<sha>.jpg` · คืนแผนที่ที่ `buildSurveyReportSnapshot` ใช้
+ *   (`signatureImageByVersionId`) · สองผู้เรียก: เส้นส่งผล **ก่อนเขียนอะไร** (เหตุถาวร = ปฏิเสธการส่งพร้อมชื่อ) กับขั้นออกเลข I4b
+ *
+ * ต่อหนึ่งคน (คนเดียวสองที่นั่ง = รอบเดียว · ฉบับที่อยู่ใน `have` แล้วไม่ถูกอ่านซ้ำ):
+ *   ① ที่อยู่ไฟล์ต้องอยู่ใต้โฟลเดอร์ของเจ้าของ (`isSignatureStoragePathForUser`) — ไม่ใช่ = `sign_path` ไม่อ่านไฟล์
+ *   ② อ่าน PNG จาก `signature-assets` ใต้เพดานต่อไฟล์ (`timeoutSignal`)
+ *   ③ `sha256:<hash ของไฟล์>` ต้องตรงกับ `version.sha256` ที่บันทึกตอนอัปโหลด
+ *   ④ ถมพื้นขาว ย่อ   ⑤ ด่านหมึก   ⑥ JPEG → `img/<sha>.jpg` (เฉพาะเมื่อ `storeAllowed` เป็นจริง · "มีอยู่แล้ว" = สำเร็จ)
+ *
+ * @param supabase  service-role client (`storage.from('signature-assets').download` · `storage.from(bucket).upload`)
+ * @param signers   `[{ seats, userId, name, version: { versionId, versionNumber, storagePath, sha256, width, height } }]`
+ *                  จาก `surveyReportSignerVersions` (หรือที่เส้นส่งผลส่งต่อมา)
+ * @param opts.deadline       งบของทั้งรอบ — epoch ms / Date / หรือจำนวน ms จากนี้ · ตรวจก่อนเริ่มแต่ละคน: หมดแล้ว = `sign_timeout`
+ * @param opts.have           แผนที่ `{ [versionId]: { sha, w, h, bytes } }` ของรอบก่อน (object หรือ Map) — ฉบับที่มีแล้วติดกลับไปในผล
+ * @param opts.storeAllowed   ด่านเขียนถาวร — **`true` เท่านั้นจึงอัป** · ไม่ส่ง = `surveyReportStoreAllowed()` (production เท่านั้น)
+ * @param opts.bucket         ถังของสำเนา JPEG — ไม่ส่ง = `SURVEY_REPORT_BUCKET` (คลังต้นทางเป็น `signature-assets` เสมอ ไม่มีตัวเลือก)
+ * @param opts.loadSharp · opts.fileTimeoutMs (ค่าตั้งต้น 10 วิ) · opts.now · opts.log   จุดเสียบของเทสต์
+ * @returns `{ imageByVersionId: { [versionId]: { sha, w, h, bytes } }, failed: [{ userId, name, seats, versionId, reason, permanent }] }`
+ *   · `failed[].reason` = ค่าของ `SURVEY_SIGN_FAILURE` · เรียงตามลำดับของ `signers` · **ไม่โยน**
+ *   🔴 ไม่มีอะไรในผลพกที่อยู่ไฟล์ของคลัง
+ */
+export async function prepareSurveyReportSignatures(supabase, signers, opts = {}) {
+  const {
+    deadline = null, have = null, storeAllowed, bucket = SURVEY_REPORT_BUCKET, loadSharp = importSharp,
+    fileTimeoutMs = SURVEY_SIGN_FILE_TIMEOUT_MS, now = Date.now, log = defaultSignLog,
+  } = opts || {};
+
+  const entries = [];
+  const seen = new Set();
+  for (const row of list(signers)) {
+    const version = row?.version && typeof row.version === 'object' ? row.version : {};
+    const versionId = version.versionId != null && version.versionId !== '' ? String(version.versionId) : '';
+    const key = versionId || `user:${row?.userId ?? entries.length}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    entries.push({
+      key, versionId: versionId || null, version,
+      userId: row?.userId != null ? String(row.userId) : null,
+      name: String(row?.name ?? '').trim() || null,
+      seats: list(row?.seats).map(String),
+    });
+  }
+  const doneByKey = new Map();
+  const failedByKey = new Map();
+  const fail = (entry, reason, permanent) => failedByKey.set(entry.key, {
+    userId: entry.userId, name: entry.name, seats: [...entry.seats], versionId: entry.versionId, reason, permanent,
+  });
+  const result = () => {
+    const imageByVersionId = {};
+    const failed = [];
+    for (const entry of entries) {
+      if (doneByKey.has(entry.key)) imageByVersionId[entry.versionId] = doneByKey.get(entry.key);
+      else if (failedByKey.has(entry.key)) failed.push(failedByKey.get(entry.key));
+    }
+    return { imageByVersionId, failed };
+  };
+  const say = (line) => { try { log(line); } catch { /* log พังต้องไม่ทำให้ลายเซ็นพัง */ } };
+
+  try {
+    const endAt = deadlineAt(deadline, now);
+    const todo = [];
+    for (const entry of entries) {
+      const hit = entry.versionId ? preparedIn(have, entry.versionId) : null;
+      if (hit) doneByKey.set(entry.key, { sha: hit.sha, w: hit.w, h: hit.h, bytes: hit.bytes });
+      else todo.push(entry);
+    }
+    if (!todo.length) return result();
+
+    let sharp;
+    try {
+      sharp = await readySharp(loadSharp);
+    } catch (err) {
+      console.error('[survey-report] โหลด sharp ไม่ได้ — ยังไม่ได้เตรียมลายเซ็น', err?.message);
+      todo.forEach((entry) => fail(entry, S.SHARP_UNAVAILABLE, false));
+      return result();
+    }
+
+    // ด่านเขียนถาวร (§0) — ต้องเป็น `true` ตรงตัว ค่าอื่นทุกค่า = ไม่อัป
+    const store = (storeAllowed === undefined ? surveyReportStoreAllowed() : storeAllowed) === true;
+
+    for (const entry of todo) {
+      const line = { versionId: entry.versionId, seats: entry.seats, ok: false };
+      try {
+        if (endAt !== null && now() >= endAt) throw failure(S.TIMEOUT, false);
+        const { storagePath } = entry.version;
+        // แถวที่ไม่มีฉบับ/ไม่มีที่อยู่ = ผู้เรียกส่งของผิดรูป (ไม่ใช่ไฟล์เสีย) — ไม่บอกเจ้าตัวให้อัปโหลดใหม่
+        if (!entry.versionId || !entry.userId) throw failure(S.INTERNAL, false);
+        if (!isSignatureStoragePathForUser(entry.userId, storagePath)) throw failure(S.PATH, true);
+
+        let mark = performance.now();
+        let original = await fetchSignature(supabase, storagePath, fileTimeoutMs);
+        line.fetchMs = elapsed(mark);
+        line.inBytes = original.length;
+        if (`sha256:${sha256(original)}` !== String(entry.version.sha256 ?? '')) throw failure(S.MISMATCH, true);
+
+        mark = performance.now();
+        let out;
+        try {
+          out = await renderSurveySignature(original, { sharp });
+        } catch (err) {
+          // หน่วยความจำไม่พอ = เครื่อง ไม่ใช่ไฟล์ — ห้ามบอกเจ้าตัวว่า "เปิดไฟล์ลายเซ็นไม่ได้"
+          if (OUT_OF_MEMORY.test(String(err?.message || ''))) throw failure(S.INTERNAL, false, err);
+          throw failure(S.UNDECODABLE, true, err);
+        } finally {
+          original = null;
+        }
+        line.resizeMs = elapsed(mark);
+        line.outBytes = out.bytes;
+        line.ink = out.ink;
+        if (out.ink < SURVEY_SIGN_INK_MIN_PIXELS) throw failure(S.BLANK, true);
+
+        if (store) {
+          mark = performance.now();
+          try {
+            await uploadImage(supabase, bucket, out, fileTimeoutMs);
+          } catch (err) {
+            throw failure(S.STORAGE, false, err);
+          }
+          line.uploadMs = elapsed(mark);
+        }
+        doneByKey.set(entry.key, { sha: out.sha, w: out.w, h: out.h, bytes: out.bytes });
+        line.ok = true;
+        line.stored = store;
+      } catch (err) {
+        const known = err instanceof ImageFailure ? err : failure(S.INTERNAL, false, err);
+        fail(entry, known.reason, known.permanent);
+        line.reason = known.reason;
+        line.detail = String(known.message || '').split('\n').pop().slice(0, 200);
+      }
+      say(line);
+    }
+    return result();
+  } catch (err) {
+    // ไม่ควรมาถึง — ทุกขั้นข้างบนจับของตัวเองแล้ว · กันไว้เพราะสัญญาคือ "ไม่โยนเข้า route"
+    console.error('[survey-report] เตรียมลายเซ็นล้มกลางทาง', err?.message);
+    for (const entry of entries) {
+      if (!doneByKey.has(entry.key) && !failedByKey.has(entry.key)) fail(entry, S.INTERNAL, false);
     }
     return result();
   }

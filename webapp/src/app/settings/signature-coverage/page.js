@@ -118,7 +118,7 @@ export default function SignatureCoveragePage() {
     <Workspace
       icon={<Signature size={22} />}
       title="ความพร้อมลายเซ็น"
-      subtitle="ใครยังเซ็นอนุมัติใบเสนอราคา / ใบสั่งขายไม่ได้ เพราะยังไม่มีลายเซ็นอิเล็กทรอนิกส์ในบัญชี"
+      subtitle="ใครยังเซ็นอนุมัติใบเสนอราคา / ใบสั่งขาย หรือลงนามรายงานการประเมินพื้นที่ไม่ได้ เพราะยังไม่มีลายเซ็นอิเล็กทรอนิกส์ในบัญชี"
     >
       {/* ⚠️ ระยะห่างระหว่างก้อนมาจากตัวห่อ `flex flex-col gap-4` — `.ui-metric-strip`
           และกล่องอื่นไม่มี margin ของตัวเอง (กติกาเดียวกับหน้า RD / โครงการ) */}
@@ -127,7 +127,7 @@ export default function SignatureCoveragePage() {
           ⇒ ใบที่ห้าห้อยอยู่แถวสองใบเดียว · MetricStrip นับช่องเองและรองรับ 1–6
           (กติกาของ ui/Workspace.js) และเป็นทรงเดียวกับแถบตัวเลขของหน้าตั้งค่าอื่น */}
       <MetricStrip>
-        <Metric icon={<ShieldCheck size={16} />} label="ต้องมีลายเซ็น" value={summary.required} note="ผู้อนุมัติ + คนที่ถือดีลหรือมีเอกสารรอยื่น" />
+        <Metric icon={<ShieldCheck size={16} />} label="ต้องมีลายเซ็น" value={summary.required} note="ผู้อนุมัติ · คนที่ถือดีลหรือมีเอกสารรอยื่น · ฝ่ายบริการ (ลงนามรายงานการประเมินพื้นที่)" />
         <Metric icon={<CheckCircle2 size={16} />} label="พร้อมแล้ว" value={summary.requiredReady} note={`จากทั้งหมด ${summary.required} คน`} tone="success" />
         <Metric icon={<AlertTriangle size={16} />} label="บล็อกงานอยู่ตอนนี้" value={summary.blocking} note="มีใบรออนุมัติแต่เซ็นไม่ได้" tone={summary.blocking ? "danger" : undefined} />
         <Metric icon={<AlertTriangle size={16} />} label="ใบเสนอราคาที่ค้าง" value={summary.blockedQuotations} note="รออนุมัติจากคนที่ยังไม่มีลายเซ็น" tone={summary.blockedQuotations ? "warning" : undefined} />

@@ -49,7 +49,13 @@ import { surveyReportFileName } from './surveyReportNumber';
       แต่ POST `/api/service/surveys/[id]/document` (ออกเอกสารของใบที่ส่งผลไปแล้ว) อยู่บน production ตั้งแต่ PR-2 และไม่ถามสวิตช์
       ⇒ **ก่อน merge รุ่นนี้ต้องนับแถว `service_survey_reports` (SELECT อย่างเดียว)**: 0 แถว = จบ ·
         มีแถวที่ตรึงแล้ว = เจ้าของตัดสินว่าฉบับเหล่านั้นคง teal หรือออก Rev. ใหม่ */
-export const SURVEY_REPORT_RENDERER_VERSION = 'fm-ts-01@2026-10-08a';
+/* 2026-10-09a — ลายเซ็นจริงในที่นั่งผู้ประเมินกับผู้ตรวจสอบและอนุมัติ (PR-SIG · มติเจ้าของ 09/10/2026)
+   · ภาพนิ่งที่มีคีย์ `signatures` ⇒ ช่องรูปสูงตายตัว (การรับรองผล 45px · ภาคผนวก จ 28px) แทนบรรทัด "ลายเซ็นอิเล็กทรอนิกส์"
+   · ภาพนิ่งที่ไม่มีคีย์ (ทุกฉบับที่ออกก่อนรุ่นนี้ · สวิตช์ `SURVEY_REPORT_SIGNATURES` ปิด) พิมพ์บรรทัดเดิมทุกตัวอักษร
+     ⇒ รุ่นนี้ต่างจากรุ่นก่อนแค่กฎ CSS สามข้อที่ไม่มีใครใช้เมื่อไม่มีรูป — ความสูงไม่ขยับ (harness `--assert` 4 / 6 หน้าเท่าเดิม)
+   🔴 ก่อนถอยโค้ดกลับไปรุ่นก่อนหน้า: เปิดเอกสารที่ออกตอนสวิตช์เปิดและยังไม่ตรึงให้ครบทุกใบก่อน — ตัวเรนเดอร์รุ่นเก่าไม่รู้จักคีย์
+      `signatures` จะตรึงใบนั้นด้วยคำตลอดไป (docs/survey-report-doc.md) */
+export const SURVEY_REPORT_RENDERER_VERSION = 'fm-ts-01@2026-10-09a';
 
 /* ── สีชื่อเอกสาร: เดินตามผู้อ่านของฉบับ (มติเจ้าของ 08/10/2026 — แทนมติ "teal ตายตัว" ของกระดาน) ──────────
    ฉบับลูกค้าออกนอกบริษัท ⇒ terracotta (สีตั้งต้นของใบเสนอราคา) · ฉบับภายใน ⇒ steel (สีตั้งต้นของใบสั่งขาย)
@@ -110,7 +116,13 @@ export function surveyReportImageShas(html) {
      · `.zs-plan.none` / `.zp-plan.none` = พื้นที่ที่ไม่มีภาพผัง (โหมดร่าง — ด่านตรึงบังคับผัง): กล่อง "ไม่มีผัง" เตี้ย 80 ไม่ยืด
        (กระดานมีผังทุกพื้นที่ · กรอบว่างที่ยืดเต็มหน้า ~600px อ่านเป็นหน้าพัง)
      · รูปในกล่อง 226×170: `cover` เฉพาะรูปที่สัดส่วนใกล้ 4:3 แนวนอน (ตัดขอบไม่เกิน ~12%) นอกนั้น `contain` บนพื้นอ่อน —
-       รูปแนวตั้งที่ถูก `cover` เสียบนล่างรวม 43% (จุดติดตั้งหลุดเฟรมได้) · ตัวเรนเดอร์เลือกคลาสจาก w/h ของรูปในภาพนิ่ง */
+       รูปแนวตั้งที่ถูก `cover` เสียบนล่างรวม 43% (จุดติดตั้งหลุดเฟรมได้) · ตัวเรนเดอร์เลือกคลาสจาก w/h ของรูปในภาพนิ่ง
+     · `.sig-img` = ช่องลายเซ็นจริง (PR-SIG · กระดานไม่มี — กระดานวาดคำว่า "ลายเซ็นอิเล็กทรอนิกส์"): สามกฎท้ายก้อนร่วม
+       ช่อง **สูงตายตัว** กว้างเต็มที่นั่ง รูปวางแบบ `contain` ⇒ ขนาดของไฟล์ลายเซ็นขยับเลย์เอาต์ไม่ได้ และไม่ถูกยืด/ตัด
+       ภาคผนวก จ 28 + เว้นล่าง 4 = 32px เท่าบรรทัด `.sig-e` เดิม (18 + 14) และเท่าช่องว่าง `.sig-sp` ของที่นั่งที่ยังไม่เกิด
+       การรับรองผล 45px (≈ 12 มม. เท่าใบเสนอราคา) — ที่นั่งสูงขั้นต่ำ 188 เนื้อใน 152.5 ยังเหลือ ⇒ `signoff.height` 217 กับ
+       `appendix.signs` 161 ของแผนหน้าไม่ขยับ · พื้นขาวโดยเจตนา (ไฟล์ลายเซ็นถูกถมพื้นขาวเสมอ) · `.wait` = ยังไม่มีรูป (ร่าง/ไม่มีลายเซ็น)
+       ⚠️ อยู่ก้อนร่วมเพราะฉบับลูกค้าพิมพ์สองที่นั่งนี้ด้วย — ตัวเลือกจึงห้ามเอ่ยชิ้นของฉบับภายใน (`.sign-last`) */
 const BOARD_CSS = `
 .frame{
   --navy:#1f3551; --text:#202833; --muted:#647080; --line:#cfd5da;
@@ -240,6 +252,9 @@ const BOARD_CSS = `
 .frame .sig-form .lb{justify-self:end;}
 .frame .sig-form .dt{display:flex; align-items:flex-end; gap:4px;}
 .frame .sig-form .sig-ln{width:130px;}
+.frame .sig-img{flex:none; display:block; width:100%; height:28px; margin:auto 0 4px; object-fit:contain; background:#fff; border-radius:2px;}
+.frame .sig-img.wait{display:flex; align-items:center; justify-content:center; border:1px dashed var(--line-strong); font-size:12px; font-style:italic; line-height:1.5; color:var(--muted);}
+.frame .signoff .sig-img{height:45px;}
 `;
 
 const BOARD_INTERNAL_CSS = `
@@ -683,11 +698,24 @@ function zoneContent(ctx, page) {
 
 /* ── การรับรองผล ──────────────────────────────────────────────────────────────────────────── */
 
-const signedSeat = (seat) => `
+/* ช่องลายเซ็นของที่นั่งที่ลงนามแล้ว — สามสภาพ (PR-SIG §4.2):
+     ที่นั่งมีคีย์ `img` และได้ src   = รูปลายเซ็นจริง (กระดาษที่ตรึง: token `su-img:<sha>` เหมือนรูปอื่นทุกรูป)
+     ที่นั่งมีคีย์ `img` แต่ไม่มี src  = กรอบประพร้อมคำของ `mark` (ฉบับร่างก่อนออกเอกสาร · ที่นั่งที่คนยังไม่มีลายเซ็น)
+     ที่นั่งไม่มีคีย์ `img`            = บรรทัดเดิม "ลายเซ็นอิเล็กทรอนิกส์" ทุกตัวอักษร (ภาพนิ่งรุ่นก่อน · สวิตช์ปิด · ที่นั่งฝ่ายขาย)
+   ⚠️ ถาม **มีคีย์ไหม** ไม่ใช่ค่าจริง/เท็จ — `img: null` คือ "กติกาเปิดแต่ยังไม่มีลายเซ็น" ต้องไม่ตกไปพิมพ์คำเดิม */
+function signatureSlot(ctx, seat) {
+  if (!Object.hasOwn(seat, 'img')) return `<div class="sig-e">${esc(seat.mark || 'ลายเซ็นอิเล็กทรอนิกส์')}</div>`;
+  const src = seat.img ? ctx.imageSrc(seat.img) : null;
+  return src
+    ? `<img class="sig-img" src="${esc(src)}" alt="ลายเซ็น ${esc(seat.name)}">`
+    : `<div class="sig-img wait">${esc(seat.mark)}</div>`;
+}
+
+const signedSeat = (ctx, seat) => `
             <div class="sig su-signed">
               <h4>${esc(seat.title)}</h4>
               <div class="sig-role">${esc(seat.role)}</div>
-              <div class="sig-e">${esc(seat.mark || 'ลายเซ็นอิเล็กทรอนิกส์')}</div>
+              ${signatureSlot(ctx, seat)}
               <div class="sig-name">${esc(seat.name)}</div>
               <div class="sig-date">${esc(seat.date)}</div>
             </div>`;
@@ -698,7 +726,7 @@ function signoffContent(ctx) {
   return `
         <section class="signoff" data-m="signoff">
           ${heading('การรับรองผลประเมิน', 'SIGN-OFF')}
-          <div class="sig-grid">${signedSeat(s.assessor || {})}${signedSeat(s.approver || {})}
+          <div class="sig-grid">${signedSeat(ctx, s.assessor || {})}${signedSeat(ctx, s.approver || {})}
             <div class="sig">
               <h4>${esc(s.customer?.title)}</h4>
               <div class="sig-role">${lastWordNw(s.customer?.caption)}</div>
@@ -850,8 +878,8 @@ function notesBlock(ap, block) {
 }
 
 /* จ — ชิดล่างของหน้าสุดท้ายเสมอ (`.sign-last`) · ที่นั่งที่ยังไม่เกิด (ฝ่ายขายยังไม่ปิดเรื่อง) เว้นช่องเท่าบรรทัดลายเซ็น */
-function signsBlock(ap) {
-  const seats = list(ap.signs).map((seat) => (seat.signed ? signedSeat(seat) : `
+function signsBlock(ap, block, ctx) {
+  const seats = list(ap.signs).map((seat) => (seat.signed ? signedSeat(ctx, seat) : `
             <div class="sig">
               <h4>${esc(seat.title)}</h4>
               <div class="sig-role">${esc(seat.role)}</div>
@@ -877,7 +905,7 @@ function appendixContent(ctx, page) {
         <div class="leadrow">
           <h2 class="su-lead">ภาคผนวก — ข้อมูลภายใน${cont ? CONT_TH : ''}<span> / INTERNAL APPENDIX${cont ? CONT_EN : ''}</span></h2>
           <p class="lead-ref">อ้างอิงคำร้อง <b>${esc(ap.ref)}</b></p>
-        </div>${list(page.blocks).map((block) => APPENDIX_BLOCKS[block.type]?.(ap, block) ?? '').join('')}`;
+        </div>${list(page.blocks).map((block) => APPENDIX_BLOCKS[block.type]?.(ap, block, ctx) ?? '').join('')}`;
 }
 
 /* ── ประกอบแผ่น ───────────────────────────────────────────────────────────────────────────── */

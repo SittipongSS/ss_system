@@ -42,7 +42,7 @@ import {
   surveyPackageReviewRows, surveyPackageReviewText, surveyPackageSizeGates,
 } from '@/lib/service/packageSizes';
 import {
-  SURVEY_DOC_STALE_TEXT, surveyDocumentView, surveyFilesSignature, surveyRequestEnded, surveyWarningKinds,
+  SURVEY_DOC_STALE_TEXT, SURVEY_SIGN_LINK, surveyDocumentView, surveyFilesSignature, surveyRequestEnded, surveyWarningKinds,
 } from '@/lib/service/surveyDocumentView';
 import {
   isDrawingZone, surveyDrawingAssessor, surveyMethodMix, surveyNeedsVisit, zoneMethod,
@@ -727,6 +727,10 @@ export function surveyControlView({
   /* ผลตรวจก่อนส่งของ server — มีเฉพาะสวิตช์ออกเอกสารตอนส่งผลเปิด + ใบยังไม่ตอบ + คนดูออกเอกสารได้
      ⚠️ `unknown: true` (server ตรวจไม่สำเร็จ) **ไม่ขวาง** — เส้นส่งผลข้ามด่านนี้เมื่ออ่านของตัวเองพลาดเช่นกัน */
   const docSend = canDecide && !locked && docAccess?.issue === true && isRecord(document.send) ? document.send : null;
+  /* ผู้ลงนามที่ server บอกว่าเอกสารจะพิมพ์ลายเซ็น (PR-SIG) — ส่งต่อเฉพาะที่นั่งกับชื่อ · แถวที่ผิดรูปถูกทิ้ง */
+  const sendSigners = (docSend && Array.isArray(docSend.signers) ? docSend.signers : [])
+    .filter((row) => isRecord(row) && Array.isArray(row.seats) && typeof row.name === 'string' && row.name.trim() !== '')
+    .map((row) => ({ seats: row.seats.filter((seat) => typeof seat === 'string'), name: row.name.trim() }));
   const docBlockers = docSend
     ? (Array.isArray(docSend.blockers) ? docSend.blockers : []).filter((t) => typeof t === 'string' && t.trim() !== '')
     : [];
@@ -1147,6 +1151,11 @@ export function surveyControlView({
           : stuckTarget && (stuckTarget.kind === 'tab'
             ? { ...stuckTarget, label: 'ไปเคาะที่แท็บสรุปส่งผล' }
             : stuckTarget),
+        /* ⭐ **คนดูเป็นผู้ลงนามที่ยังไม่มีลายเซ็น** (PR-SIG §5 · `document.send.selfSign` จาก server) — ลิงก์ "ไปบัญชีของฉัน" ข้างปุ่มตรวจอีกครั้ง
+           ⚠️ เฉพาะตอนติดแค่เอกสาร: บรรทัดเหตุตอนนั้นคือประโยคของ route ที่เอ่ยชื่อเขากับ “บัญชีของฉัน” เอง · ติดด่านอื่นด้วย = บรรทัดเหตุเป็น
+              บรรทัดย่อ "ติด n ข้อ ที่ …" ที่ไม่เอ่ยเรื่องลายเซ็น ⇒ ลิงก์ลอย ๆ อ่านไม่ออกว่ามาจากไหน (ลิงก์ยังอยู่ที่กล่องสถานะของส่วนเอกสาร)
+           ⚠️ คีย์มีเฉพาะตอนนี้ — เหตุอื่นทุกแบบรูปเดิมทุกคีย์ */
+        ...(documentOnly && docSend?.selfSign === true ? { link: SURVEY_SIGN_LINK } : {}),
       };
     } else if (visitStep.action === 'block') {
       /* นัดยังเป็นร่าง — route ตีกลับด้วยประโยคเดียวกัน · ทางออกอยู่ที่หน้าจัดคิว ไม่ใช่บนจอนี้
@@ -1206,6 +1215,10 @@ export function surveyControlView({
       && typeof document.history[0]?.docNo === 'string' ? document.history[0].docNo : null,
     seenWarnings: docSend && Array.isArray(docSend.warnings) ? docSend.warnings.filter((t) => typeof t === 'string') : [],
     documentUnknown: canDecide && !locked && document?.access === 'none' && document?.unknown === true,
+    /* ⭐ `signers` ผู้ลงนามที่เอกสารของการส่งครั้งนี้จะพิมพ์ **ลายเซ็นจริงที่บันทึกไว้** (PR-SIG §5 · `document.send.signers`) — โมดัลยืนยัน
+       เอ่ยชื่อก่อนกด (#1223: ลายเซ็นของผู้ประเมินถูกพิมพ์จากการกดของหัวหน้า) · คีย์มีเฉพาะเมื่อ server ส่งรายชื่อมา (กติกาลายเซ็นจริงเปิด +
+       ทุกที่นั่งมีลายเซ็น) — ไม่มี = `send` รูปเดิมทุกคีย์ */
+    ...(sendSigners.length ? { signers: sendSigners } : {}),
   };
 
   /* ⚠️ เหตุผลของการดึงกลับยังไม่ถูกพิมพ์ตอนนี้ (อยู่ในโมดัล) ⇒ ยิงค่ายาวพอผ่านด่าน
@@ -1217,6 +1230,14 @@ export function surveyControlView({
      ⚠️ อ่านสถานะเอกสารไม่สำเร็จ = บอกแบบมีเงื่อนไข ไม่เงียบ (ไม่ทราบ ≠ ไม่มี) */
   const voidsDocNo = ['issued', 'frozen', 'ready'].includes(docState) && typeof document?.current?.docNo === 'string'
     && document.current.docNo.trim() ? document.current.docNo.trim() : null;
+  /* ⭐ **กับดักของการดึงผลกลับเมื่อกติกาลายเซ็นจริงเปิด** (PR-SIG §5 · §9 ข้อ 6) — ดึงกลับแล้วฉบับที่ใช้อยู่เปิดไม่ได้ทันที และการส่งรอบใหม่
+     ถูกตีกลับถ้าผู้ประเมินหรือผู้ส่งผลยังไม่มีลายเซ็น ⇒ กล่องยืนยันต้องบอกก่อนกด (#1223) · ไม่มี GET ไหนตรวจลายเซ็นให้ใบที่ตอบแล้วและมีเอกสาร
+     ครบ (`surveyDocumentSummary` ตรวจเฉพาะใบที่ยังไม่ส่ง/ยังไม่มีเอกสาร) จึงบอกเป็นกติกา ไม่ใช่ผลตรวจ
+     ⚠️ เฉพาะเมื่อ server บอกว่ากติกาเปิด (`signRule`) **และ** ส่งผลแล้วออกเอกสารด้วย (`issueAtSend`) — สองธงต้องเป็น `true` ตรงตัว
+     ⚠️ ใบที่มีพื้นที่ประเมินจากแบบไม่ถูกถามเรื่องลายเซ็น (เอกสารของใบแบบนั้นถูกพักไว้) ⇒ ไม่มีบรรทัดนี้ */
+  const recallSignNote = isRecord(document) && document.signRule === true && document.issueAtSend === true && mix.drawing === 0
+    ? ` · ส่งผลรอบใหม่ต้องมีลายเซ็นของผู้ประเมินและผู้ส่งผลในระบบ — ยังไม่มี = ส่งรอบใหม่ไม่ได้${voidsDocNo ? ` และ ${voidsDocNo} เปิดไม่ได้แล้ว` : ''}`
+    : '';
 
   // ── กล่องแจ้ง ───────────────────────────────────────────────────────────
   const notices = [];
@@ -1409,7 +1430,8 @@ export function surveyControlView({
       detail: 'ฝ่ายขายได้รับแจ้งทันทีพร้อมตัวเลขเดิม · ตอนส่งรอบใหม่ ระบบจะบอกส่วนต่างให้เขาเห็น'
         + (voidsDocNo
           ? ` · เอกสาร ${voidsDocNo} จะถูกแทนที่ — ใช้ไม่ได้ทันที ห้ามใช้ฉบับที่ส่งลูกค้าไปแล้ว · ฉบับใหม่เป็น Rev ถัดไป`
-          : docState === 'unknown' ? ' · อ่านสถานะเอกสารไม่สำเร็จ — ถ้าใบนี้มีเอกสาร SU เอกสารนั้นจะถูกแทนที่' : ''),
+          : docState === 'unknown' ? ' · อ่านสถานะเอกสารไม่สำเร็จ — ถ้าใบนี้มีเอกสาร SU เอกสารนั้นจะถูกแทนที่' : '')
+        + recallSignNote,
     },
     recall: recallPending ? recall : null,
     /* ส่วน "เอกสารประเมินพื้นที่" (PR-3) — ทุกคีย์มีเสมอ · `show: false` เมื่อไม่มีอะไรให้วาด (ช่าง · ไม่ส่ง `document` มา) */

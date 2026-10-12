@@ -18,9 +18,12 @@ import { buildSurveyReportSnapshot } from './surveyReportSnapshot.js';
 import {
   SURVEY_REPORT_FIT_MARGIN, SURVEY_REPORT_ISSUING_MS, SURVEY_REPORT_REASONS, SURVEY_REPORT_STATES,
   surveyReportCurrent, surveyReportCustomerHtmlIssues, surveyReportIsStale, surveyReportPaperIssues,
-  surveyReportRpcConflict, surveyReportRpcError, surveyReportState,
+  surveyReportRpcConflict, surveyReportRpcError, surveyReportSignatureHtmlIssues, surveyReportState,
 } from './surveyReportState.js';
-import { fakeSha, markedSurveyInputs, surveyReportInputsFromFixture, syntheticSurveyFixture } from './surveyReportTestKit.mjs';
+import {
+  fakeSha, fakeSignatureVersion, markedSurveyInputs, signedSurveyInputs, surveyReportInputsFromFixture, surveySignCases,
+  syntheticSurveyFixture,
+} from './surveyReportTestKit.mjs';
 import { surveyReportView } from './surveyReportView.js';
 
 /* ── ของใช้ร่วม ───────────────────────────────────────────────────────── */
@@ -502,6 +505,107 @@ test('🔴 fail-closed: ไม่มี HTML · ไม่มีภาพนิ�
   assert.match(surveyReportCustomerHtmlIssues({ html: p.html, snapshot: {}, layout: p.layout })[0], /ไม่มีภาพนิ่ง/);
   assert.match(surveyReportCustomerHtmlIssues({ html: p.html, snapshot: p.snapshot, layout: null })[0], /ไม่มีแผนหน้า/);
   assert.match(surveyReportCustomerHtmlIssues({ html: p.html, snapshot: p.snapshot, layout: { pageCount: 0 } })[0], /ไม่มีแผนหน้า/);
+});
+
+/* ══ ⑤ ลายเซ็นของผู้ลงนาม (PR-SIG §4.5 · มติเจ้าของ 09/10/2026) ═════════════════════════ */
+
+const signShaOf = (userId) => fakeSha(`sign-image-${fakeSignatureVersion(userId).versionId}`);
+const signedPaper = (version, opts) => paper(signedSurveyInputs(twin(), opts), version);
+const signCheck = (p, version, html = p.html) => surveyReportSignatureHtmlIssues({ html, snapshot: p.snapshot, version });
+
+test('ยามกันรั่ว: ลายเซ็นของสองที่นั่งที่เอ่ยชื่อเป็นรูปที่ฉบับลูกค้าพิมพ์ได้ — กระดาษจริงผ่าน · รูปอื่นทุกรูปยังติดเหมือนเดิม', () => {
+  const p = signedPaper('customer');
+  assert.ok(surveyReportImageShas(p.html).includes(signShaOf('U-lead')) && surveyReportImageShas(p.html).includes(signShaOf('U-head')));
+  assert.deepEqual(surveyReportCustomerHtmlIssues(p), []);
+
+  // ชุดที่ทุกช่องพกเครื่องหมาย + ลายเซ็น: ยังผ่าน และรูปจุดยังติด
+  const { inputs, leak } = markedSurveyInputs();
+  const marked = paper(signedSurveyInputs(inputs), 'customer');
+  assert.deepEqual(surveyReportCustomerHtmlIssues(marked), []);
+  const withSpot = marked.html.replace('</main>', `<img src="su-img:${leak.spotPhotoSelectedSha}"></main>`);
+  const got = surveyReportCustomerHtmlIssues({ ...marked, html: withSpot });
+  assert.equal(got.length, 1);
+  assert.match(got[0], / 1 รูป/);
+});
+
+test('🔴 ยามกันรั่ว: sha ของลายเซ็นถูกอนุญาตจากคีย์ที่เอ่ยชื่อเท่านั้น — ลายเซ็นของที่นั่งอื่นในภาพนิ่ง (ฝ่ายขาย) ติดในฉบับลูกค้า', () => {
+  const p = signedPaper('customer');
+  const salesSha = fakeSha('sign-image-sales');
+  const snapshot = { ...p.snapshot, signatures: { ...p.snapshot.signatures, sales: { name: 'Sale', img: { sha: salesSha, w: 1, h: 1 } } } };
+  const html = p.html.replace('</main>', `<img class="sig-img" src="su-img:${salesSha}"></main>`);
+  const got = surveyReportCustomerHtmlIssues({ html, snapshot, layout: p.layout });
+  assert.equal(got.length, 1);
+  assert.ok(got[0].includes(salesSha.slice(0, 12)));
+  // ลายเซ็นของสองที่นั่งที่ไม่อยู่ในภาพนิ่ง (ภาพนิ่งรุ่นก่อน) ก็ไม่ได้รับอนุญาตลอย ๆ
+  const plain = paper(twin(), 'customer');
+  const smuggled = plain.html.replace('</main>', `<img class="sig-img" src="su-img:${signShaOf('U-lead')}"></main>`);
+  assert.equal(surveyReportCustomerHtmlIssues({ ...plain, html: smuggled }).length, 1);
+});
+
+test('⭐ ยามลายเซ็น: กระดาษจริงของภาพนิ่งที่ตรึงลายเซ็นผ่านทั้งสองฉบับ — ลูกค้ารูปละที่ ภายในรูปละสองที่ · ทุกกรณีของลายเซ็นที่ตรึงได้', () => {
+  assert.deepEqual(signCheck(signedPaper('customer'), 'customer'), []);
+  assert.deepEqual(signCheck(signedPaper('internal'), 'internal'), []);
+  for (const c of surveySignCases().filter((x) => x.mode === 'freeze')) {
+    for (const version of ['customer', 'internal']) {
+      const p = paper(signedSurveyInputs(c.inputs(), c.sign), version);
+      assert.deepEqual(signCheck(p, version), [], `${c.name}/${version}`);
+    }
+  }
+  // ค่า version ที่ไม่ใช่ 'internal' = ฉบับลูกค้า (ทางที่แคบกว่า)
+  assert.deepEqual(signCheck(signedPaper('customer'), undefined), []);
+  assert.deepEqual(signCheck(signedPaper('customer'), 'INTERNAL'), []);
+});
+
+test('🔴 ยามลายเซ็น: ภาพนิ่งที่ไม่มีคีย์ `signatures` ผ่านเสมอ — ฉบับที่ออกก่อนกติกานี้ตรึงด้วยคำตามเดิม (ไม่มีอะไรเขียนทับเอกสารที่ออกแล้ว)', () => {
+  for (const version of ['customer', 'internal']) {
+    const p = paper(twin(), version);
+    assert.equal('signatures' in p.snapshot, false);
+    assert.deepEqual(signCheck(p, version), []);
+    assert.deepEqual(surveyReportSignatureHtmlIssues({ html: '', snapshot: p.snapshot, version }), []);
+  }
+  for (const snapshot of [undefined, null, {}, { signatures: null }, { signatures: 'x' }]) {
+    assert.deepEqual(surveyReportSignatureHtmlIssues({ html: '<p></p>', snapshot, version: 'customer' }), [], JSON.stringify(snapshot));
+  }
+  assert.deepEqual(surveyReportSignatureHtmlIssues(), []);
+});
+
+test('🔴 ยามลายเซ็นจับได้: ตัวเรนเดอร์พิมพ์คำแทนรูป (deploy รุ่นเก่า) · รูปหายหนึ่งที่นั่ง · ฉบับภายในมีรูปแค่ชุดเดียว · รูปเกิน', () => {
+  // ตัวเรนเดอร์รุ่นก่อน (ไม่รู้จักคีย์ `signatures`) = HTML ของ view ที่ไม่มีลายเซ็น กับภาพนิ่งที่ตรึงลายเซ็นไว้
+  for (const [version, want] of [['customer', 2], ['internal', 4]]) {
+    const p = signedPaper(version);
+    const old = paper(twin(), version).html;
+    assert.deepEqual(signCheck(p, version, old), [
+      'กระดาษไม่มีรูปลายเซ็นของผู้ประเมิน', 'กระดาษไม่มีรูปลายเซ็นของผู้ตรวจสอบและอนุมัติ', `กระดาษมีรูปลายเซ็น 0 ที่ — ต้องมี ${want} ที่`,
+    ], version);
+  }
+  const c = signedPaper('customer');
+  // ตัดรูปของผู้ตรวจสอบและอนุมัติออก
+  const oneGone = c.html.replace(new RegExp(`<img class="sig-img" src="su-img:${signShaOf('U-head')}"[^>]*>`), '<div class="sig-e">x</div>');
+  assert.deepEqual(signCheck(c, 'customer', oneGone), ['กระดาษไม่มีรูปลายเซ็นของผู้ตรวจสอบและอนุมัติ', 'กระดาษมีรูปลายเซ็น 1 ที่ — ต้องมี 2 ที่']);
+  // HTML ของฉบับลูกค้าถูกส่งมาเป็นฉบับภายใน: token ครบ แต่จำนวนไม่ถึง (ภาคผนวก จ ไม่มีรูป)
+  assert.deepEqual(signCheck(c, 'internal'), ['กระดาษมีรูปลายเซ็น 2 ที่ — ต้องมี 4 ที่']);
+  // รูปลายเซ็นเกิน (ที่นั่งที่สามได้รูป)
+  const extra = c.html.replace('</main>', `<img class="sig-img" src="su-img:${signShaOf('U-lead')}"></main>`);
+  assert.deepEqual(signCheck(c, 'customer', extra), ['กระดาษมีรูปลายเซ็น 3 ที่ — ต้องมี 2 ที่']);
+  // ไม่มี HTML เลย
+  assert.equal(signCheck(c, 'customer', '').length, 3);
+});
+
+test('🔴 ยามลายเซ็นเดินตามที่นั่ง: ที่นั่งที่พิมพ์ชื่อแต่ภาพนิ่งไม่มีรูป (ช่องเป็น null · รูปเป็น null) = ไม่ผ่าน แม้ HTML จะไม่มีรูปเกิน', () => {
+  const p = signedPaper('customer');
+  const noSeat = { ...p.snapshot, signatures: { ...p.snapshot.signatures, approver: null } };
+  // กระดาษที่ตัวเรนเดอร์จริงพิมพ์จากภาพนิ่งนั้น: ผู้ประเมินเป็นรูป · ผู้ตรวจสอบและอนุมัติเป็นกรอบประ "ยังไม่มีลายเซ็น"
+  const view = surveyReportView(noSeat, { version: 'customer' });
+  const html = renderSurveyReportHTML({ view, layout: paginateSurveyReport(view), docNo: null, issuedAt: null });
+  assert.ok(html.includes('<div class="sig-img wait">ยังไม่มีลายเซ็น</div>'));
+  assert.deepEqual(surveyReportSignatureHtmlIssues({ html, snapshot: noSeat, version: 'customer' }), ['ที่นั่งผู้ตรวจสอบและอนุมัติไม่มีรูปลายเซ็นในภาพนิ่ง']);
+  const noImg = { ...p.snapshot, signatures: { ...p.snapshot.signatures, assessor: { ...p.snapshot.signatures.assessor, img: null } } };
+  assert.equal(surveyReportSignatureHtmlIssues({ html: p.html, snapshot: noImg, version: 'customer' })[0], 'ที่นั่งผู้ประเมินไม่มีรูปลายเซ็นในภาพนิ่ง');
+  // คีย์อยู่แต่ว่างทั้งสองที่นั่ง ทั้งที่กระดาษพิมพ์ชื่อทั้งสอง = สองข้อ
+  assert.equal(surveyReportSignatureHtmlIssues({ html: paper(twin(), 'customer').html, snapshot: { ...p.snapshot, signatures: {} }, version: 'customer' }).length, 2);
+  // คนเดียวสองที่นั่ง: sha เดียวสองช่อง = นับสองที่นั่ง
+  const same = paper(signedSurveyInputs(twin(), { same: true }), 'internal');
+  assert.deepEqual(signCheck(same, 'internal'), []);
 });
 
 /* ══ ไฟล์นี้ต้องเบา ════════════════════════════════════════════════════ */

@@ -22,6 +22,11 @@
 // 🔑 สองฉบับ: `audience` ('external' = ฉบับลูกค้า — ค่าตั้งต้น · 'internal' = ฉบับภายใน) — หน้าตั้งค่ามีตัวสลับ
 //   ใบตัวอย่างของฉบับภายในมาจากภาพนิ่งเดียวกัน ผ่านตัวกรองของฉบับภายใน (แถบ "ฉบับภายใน" · จุดที่เลือก · ภาคผนวก)
 //
+// 🔑 ลายเซ็น (PR-SIG §4.6 · มติเจ้าของ 09/10/2026): ใบตัวอย่างพิมพ์ **แบบเป้าหมาย** — ที่นั่งผู้ประเมินกับผู้ตรวจสอบและอนุมัติเป็นรูป
+//   ลายเซ็น (เส้นสมมติฝังในตัว ไม่ใช่ลายเซ็นของใคร) ผ่านสายเดียวกับของจริง: อินพุตพกกติกา + ผู้ลงนามสมมติ + รูปที่ "เตรียมแล้ว"
+//   ⚠️ **ไม่ขึ้นกับสวิตช์ `SURVEY_REPORT_SIGNATURES`** (ไฟล์นี้อยู่ฝั่ง client อ่าน env ของ server ไม่ได้): ตอนสวิตช์ยังปิด เอกสารจริง
+//      พิมพ์คำว่า "ลายเซ็นอิเล็กทรอนิกส์" ส่วนใบตัวอย่างโชว์รูปลายเซ็นแล้ว — ตั้งใจ (docs/survey-report-doc.md บอกไว้)
+//
 // ⚠️ อินพุตตัวอย่างเขียนเทียบรูปร่างที่ `buildSurveyReportSnapshot` รับ ณ วันที่เขียน — ตัวสร้างภาพนิ่งเพิ่มช่องบังคับเมื่อไร
 //   เทสต์ "ไม่มีคำเตือน" (`surveyReportPreview.test.mjs`) จะล้ม ให้มาเติมช่องที่นี่
 import { COMPANY_PROFILE_FALLBACK } from '@/lib/companyProfile';
@@ -49,6 +54,24 @@ const SAMPLE_IMAGE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="400" he
   + '<path d="M56 236l84-92 52 56 44-40 108 76z" fill="#c5ccd3"/>'
   + '</svg>';
 export const SURVEY_REPORT_PREVIEW_IMAGE = `data:image/svg+xml,${encodeURIComponent(SAMPLE_IMAGE_SVG)}`;
+
+/* ลายเซ็นตัวอย่าง — เส้นปากกาสมมติบนพื้นขาว 600×200 (สัดส่วนเดียวกับกรอบของลายเซ็นที่เก็บจริง · ของจริงถูกถมพื้นขาวเสมอ)
+   คนละเส้นต่อที่นั่ง · ⚠️ data URI เหมือนรูปตัวอย่างอื่น: ห้ามเป็น token `su-img:` (ไม่มีไฟล์ในถังให้แปลง) */
+const signatureSvg = (path) => `data:image/svg+xml,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="200" viewBox="0 0 600 200"><rect width="600" height="200" fill="#fff"/>'
+  + `<path d="${path}" fill="none" stroke="#1f2a44" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+)}`;
+/** รูปลายเซ็นตัวอย่างของแต่ละที่นั่ง (คีย์ = `img.sign` ที่ตัวกรองสองฉบับติดไว้) */
+export const SURVEY_REPORT_PREVIEW_SIGNATURES = Object.freeze({
+  assessor: signatureSvg('M70 128c26-58 52-84 66-66s-24 86-6 80 44-70 68-72 0 62 22 58 40-56 62-52-8 48 16 46 52-34 86-30 62 22 112-10'),
+  approver: signatureSvg('M84 92c40-44 92-52 96-18s-70 84-52 90 70-96 104-92-26 76 0 74 58-74 84-66-14 60 14 58 60-40 110-34M150 158c90-14 190-18 300-8'),
+});
+/* ผู้ลงนามสมมติ — id เดียวกับ `visit.assigneeId` / `request.answeredById` ของชุดตัวอย่างข้างล่าง · sha เป็นค่าสมมติ 64 หลัก
+   (ใบตัวอย่างไม่มีไฟล์จริง: ตัวตอบ src ข้างล่างดูที่ `img.sign` ไม่ได้ดู sha) */
+const SAMPLE_SIGNERS = Object.freeze({
+  'preview-assessor': Object.freeze({ versionId: 'preview-sign-assessor', sha: `${'0'.repeat(63)}1` }),
+  'preview-approver': Object.freeze({ versionId: 'preview-sign-approver', sha: `${'0'.repeat(63)}2` }),
+});
 
 /* ── ชุดตัวอย่าง (เขียนมือ) ───────────────────────────────────────────────────────────────── */
 
@@ -178,10 +201,22 @@ export function surveyReportPreviewInputs(standard) {
       tel: company.phone, line: company.line, website: company.website,
     },
     form: { code: form.code, revision: form.revision, effectiveDate: form.effectiveDate },
+    /* กติกาลายเซ็นจริง — รูปเดียวกับที่ตัวโหลดของจริงตั้งเมื่อสวิตช์เปิด + รูปที่ขั้นออกเลขเตรียม (`signatureImageByVersionId`) */
+    signatureRule: 'required',
+    signatures: Object.fromEntries(Object.entries(SAMPLE_SIGNERS).map(([userId, s]) => [userId, {
+      versionId: s.versionId, versionNumber: 1, sha256: null, width: 600, height: 200,
+    }])),
+    signatureImageByVersionId: Object.fromEntries(Object.values(SAMPLE_SIGNERS).map((s) => [s.versionId, {
+      sha: s.sha, w: 600, h: 200, bytes: 1,
+    }])),
+    assigneeAccount: 'active',
+    // บัญชีตัวอย่างของทั้งสองที่นั่ง "นั่งได้" (ฝ่ายบริการ · หัวหน้าที่ส่งผล) — ธงที่ตัวโหลดของจริงตั้งหลังอ่านบัญชี
+    signerEligible: { assessor: true, approver: true },
   };
 }
 
-const sampleImageSrc = () => SURVEY_REPORT_PREVIEW_IMAGE;
+// รูปของใบตัวอย่าง: ลายเซ็น (`img.sign` = ที่นั่ง) ได้เส้นตัวอย่างของที่นั่งนั้น · รูปอื่นทุกรูปได้กล่องเทา
+const sampleImageSrc = (img) => (img?.sign ? SURVEY_REPORT_PREVIEW_SIGNATURES[img.sign] || null : SURVEY_REPORT_PREVIEW_IMAGE);
 
 /* ผู้อ่าน (`DOCUMENT_AUDIENCES` ของ lib/documents/documentAudience.js) → ฉบับของกระดาษ · ค่าที่ไม่ใช่ 'internal' = ฉบับลูกค้า
    ⚠️ ทิศปลอดภัย: ค่าแปลก ๆ ต้องไม่พาใบตัวอย่างไปฉบับภายใน (คู่กลับของ `surveyReportAudience` ในตัวเรนเดอร์ — เทสต์เทียบไว้) */

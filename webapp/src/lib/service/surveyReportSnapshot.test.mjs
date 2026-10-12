@@ -5,7 +5,9 @@
 //   — กระดาษที่ตรึงแล้วแก้ไม่ได้ ช่องโหว่บนกระดาษจึงซ่อมทีหลังไม่ได้ ④ ตัวสร้างไม่อ่านนาฬิกาและไม่แตะฐาน
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { surveyReportSignatureIssues } from './surveyReportSigners.js';
 import {
+  SURVEY_REPORT_DRAWING_HOLD,
   SURVEY_REPORT_INPUT_LABELS,
   SURVEY_REPORT_NO_VISIT,
   SURVEY_REPORT_SNAPSHOT_VERSION,
@@ -14,6 +16,7 @@ import {
   surveyReportFreezeIssues,
   surveyReportImageFiles,
 } from './surveyReportSnapshot.js';
+import { surveyReportView } from './surveyReportView.js';
 import {
   PACKAGE_SIZE_SEED,
   fakeSha,
@@ -541,6 +544,8 @@ const unreadCases = [
   ['helpers', (i) => { i.helpers = null; }],
   ['assigneeRole', (i) => { i.assigneeRoleLabel = null; }],
   ['visitThread', () => {}],
+  // กติกาลายเซ็นจริงเปิด + อ่านลายเซ็นไม่สำเร็จ: ต้องไม่กลายเป็น "ยังไม่มีลายเซ็น" (ชนิด content ที่ตีกลับการส่งผล)
+  ['signatures', (i) => { i.signatureRule = 'required'; i.signatures = null; }],
 ];
 
 test('ตารางชิ้นที่อ่านไม่สำเร็จครอบทุกชื่อที่มีป้าย', () => {
@@ -609,3 +614,265 @@ test('หลายชิ้น · ชื่อซ้ำ · ชื่อที่
   // ไม่ใช่ลิสต์ = ไม่มีชิ้นไม่ทราบ
   assert.deepEqual(surveyReportFreezeIssues({ ...twin(), unknown: 'deal' }), []);
 });
+
+/* ══ ลายเซ็นจริงของผู้ลงนาม (PR-SIG §2.2 · §3.4 · มติเจ้าของ 09/10/2026) ═══════════════════════════ */
+
+const SIGN_SHA = { lead: fakeSha('sign-lead'), head: fakeSha('sign-head') };
+const signVersion = (id) => ({
+  versionId: id, versionNumber: 3, storagePath: `users/${id}/secret-path.png`, sha256: `sha256:${fakeSha(id)}`, width: 640, height: 240,
+});
+/** แฝดสังเคราะห์ที่กติกาเปิด — ผู้ประเมิน U-lead · ผู้ส่งผล U-head · `have` = คนที่มีลายเซ็น · `prepared` = เตรียมรูปแล้วไหม */
+function signedTwin({ have = ['U-lead', 'U-head'], prepared = true, ...over } = {}) {
+  const inputs = twin();
+  return {
+    ...inputs,
+    signatureRule: 'required',
+    signatures: {
+      'U-lead': have.includes('U-lead') ? signVersion('V-lead') : null,
+      'U-head': have.includes('U-head') ? signVersion('V-head') : null,
+    },
+    ...(prepared ? {
+      signatureImageByVersionId: {
+        'V-lead': { sha: SIGN_SHA.lead, w: 533, h: 200, bytes: 4100 },
+        'V-head': { sha: SIGN_SHA.head, w: 533, h: 200, bytes: 4200 },
+      },
+    } : {}),
+    assigneeAccount: 'active',
+    signerEligible: { assessor: true, approver: true },
+    ...over,
+  };
+}
+
+test('🔴 กติกาปิด: ภาพนิ่งไม่มีคีย์ `signatures` และเท่าเดิมทุกไบต์ แม้อินพุตจะพกลายเซ็นมา', () => {
+  const base = buildSurveyReportSnapshot(twin(), { mode: 'freeze' });
+  for (const rule of [undefined, 'off', 'on', true]) {
+    const off = signedTwin();
+    if (rule === undefined) delete off.signatureRule;
+    else off.signatureRule = rule;
+    const got = buildSurveyReportSnapshot(off, { mode: 'freeze' });
+    assert.deepEqual(got, base, String(rule));
+    assert.equal('signatures' in got.snapshot, false);
+    assert.deepEqual(surveyReportFreezeIssues({ ...off, signatures: null }), [], 'กติกาปิด = ไม่ถามเรื่องลายเซ็น');
+  }
+});
+
+test('⭐ กติกาเปิด · โหมดตรึง: ภาพนิ่งตรึงฉบับกับรูปของทั้งสองที่นั่ง · คอลัมน์ images ได้แถวชนิด sign · ไม่มีที่อยู่ไฟล์ของคลัง', () => {
+  const inputs = signedTwin();
+  const before = clone(inputs);
+  const built = buildSurveyReportSnapshot(inputs, { mode: 'freeze' });
+  assert.equal(built.errors, undefined, (built.errors || []).join(' | '));
+  assert.deepEqual(inputs, before, 'ไม่แก้อินพุต');
+  assert.equal(built.snapshot.v, 1, 'ยังเป็น v1 — เพิ่มคีย์อย่างเดียว');
+  assert.deepEqual(built.snapshot.signatures, {
+    assessor: {
+      userId: 'U-lead', name: 'Lead Assessor', versionId: 'V-lead', versionNumber: 3,
+      sourceSha256: `sha256:${fakeSha('V-lead')}`, img: { sha: SIGN_SHA.lead, w: 533, h: 200 },
+    },
+    approver: {
+      userId: 'U-head', name: 'Head Approver', versionId: 'V-head', versionNumber: 3,
+      sourceSha256: `sha256:${fakeSha('V-head')}`, img: { sha: SIGN_SHA.head, w: 533, h: 200 },
+    },
+  });
+  // คีย์อื่นของภาพนิ่งไม่ขยับ
+  const { signatures: _signatures, ...rest } = built.snapshot;
+  assert.deepEqual(rest, buildSurveyReportSnapshot(twin(), { mode: 'freeze' }).snapshot);
+  assert.deepEqual(built.images.filter((row) => row.kind === 'sign'), [
+    { sha: SIGN_SHA.lead, attId: null, kind: 'sign', w: 533, h: 200, bytes: 4100 },
+    { sha: SIGN_SHA.head, attId: null, kind: 'sign', w: 533, h: 200, bytes: 4200 },
+  ]);
+  assert.deepEqual(built.images.filter((row) => row.kind !== 'sign'), buildSurveyReportSnapshot(twin(), { mode: 'freeze' }).images);
+  // 🔴 ที่อยู่ไฟล์ของคลังลายเซ็นไม่เข้าภาพนิ่งและไม่เข้าคอลัมน์ images
+  const text = JSON.stringify(built);
+  assert.ok(!text.includes('secret-path') && !text.includes('storagePath') && !text.includes('users/'));
+  // เรียกซ้ำได้ของเท่ากัน
+  assert.deepEqual(buildSurveyReportSnapshot(inputs, { mode: 'freeze' }), built);
+});
+
+test('คนเดียวสองที่นั่ง: สองที่นั่งชี้ฉบับเดียวกัน · images มีแถว sign แถวเดียว (หนึ่งแถวต่อ sha) · รับแผนที่รูปเป็น Map ได้', () => {
+  const inputs = signedTwin();
+  inputs.request = { ...inputs.request, answeredById: 'U-lead', answeredByName: 'Lead Assessor' };
+  inputs.signatureImageByVersionId = new Map(Object.entries(inputs.signatureImageByVersionId));
+  const built = buildSurveyReportSnapshot(inputs, { mode: 'freeze' });
+  assert.equal(built.errors, undefined);
+  assert.equal(built.snapshot.signatures.assessor.versionId, 'V-lead');
+  assert.equal(built.snapshot.signatures.approver.versionId, 'V-lead');
+  assert.deepEqual(built.snapshot.signatures.approver.img, { sha: SIGN_SHA.lead, w: 533, h: 200 });
+  assert.equal(built.images.filter((row) => row.kind === 'sign').length, 1);
+});
+
+test('🔴 โหมดตรึงไม่มีวันถอยไปพิมพ์คำ: ที่นั่งที่พิมพ์ชื่อแต่ยังไม่มีรูปที่เตรียมแล้ว = errors บอกชื่อ (คนละบรรทัด ไม่ซ้ำ)', () => {
+  assert.deepEqual(buildSurveyReportSnapshot(signedTwin({ prepared: false }), { mode: 'freeze' }), {
+    errors: [
+      'ลายเซ็นของ Lead Assessor ยังเตรียมไม่เสร็จ — ยังไม่ได้ออกเอกสาร',
+      'ลายเซ็นของ Head Approver ยังเตรียมไม่เสร็จ — ยังไม่ได้ออกเอกสาร',
+    ],
+  });
+  const half = signedTwin();
+  delete half.signatureImageByVersionId['V-head'];
+  assert.deepEqual(buildSurveyReportSnapshot(half, { mode: 'freeze' }).errors, ['ลายเซ็นของ Head Approver ยังเตรียมไม่เสร็จ — ยังไม่ได้ออกเอกสาร']);
+  // รูปที่ไม่มี sha = ยังไม่เตรียม
+  const noSha = signedTwin();
+  noSha.signatureImageByVersionId['V-lead'] = { w: 1, h: 1 };
+  assert.match(buildSurveyReportSnapshot(noSha, { mode: 'freeze' }).errors[0], /^ลายเซ็นของ Lead Assessor ยังเตรียมไม่เสร็จ/);
+  // คนเดียวสองที่นั่ง = บรรทัดเดียว
+  const same = signedTwin({ prepared: false });
+  same.request = { ...same.request, answeredById: 'U-lead', answeredByName: 'Lead Assessor' };
+  assert.equal(buildSurveyReportSnapshot(same, { mode: 'freeze' }).errors.length, 1);
+  // รูปของพื้นที่ยังไม่ครบมาก่อน — บรรทัดเดิมของรูป
+  const noPhotos = signedTwin({ prepared: false });
+  delete noPhotos.imageByAttId;
+  assert.match(buildSurveyReportSnapshot(noPhotos, { mode: 'freeze' }).errors[0], /^รูป \d+ รูปยังเตรียมไม่เสร็จ/);
+});
+
+test('โหมดตรวจ (`check`): ยังไม่ต้องมีรูปลายเซ็น — ภาพนิ่งพกฉบับ รูปเป็น null · จัดหน้าได้เหมือนเดิม', () => {
+  const built = buildSurveyReportSnapshot(signedTwin({ prepared: false }), { mode: 'check' });
+  assert.equal(built.errors, undefined);
+  assert.equal(built.snapshot.signatures.assessor.versionId, 'V-lead');
+  assert.equal(built.snapshot.signatures.assessor.img, null);
+  assert.equal(built.snapshot.signatures.approver.img, null);
+  assert.equal(built.images.some((row) => row.kind === 'sign'), false);
+});
+
+test('🔴 ผู้ลงนามยังไม่มีลายเซ็น: โหมดตรึง/ตรวจปฏิเสธด้วยบรรทัดของ `surveyReportSignatureIssues` · โหมดร่างออกได้ ที่นั่งนั้นเป็น null', () => {
+  const inputs = signedTwin({ have: ['U-head'] });
+  const line = 'ผู้ประเมิน Lead Assessor ยังไม่มีลายเซ็นในระบบ — ให้เจ้าตัวเพิ่มที่ “บัญชีของฉัน” ก่อน';
+  assert.deepEqual(surveyReportFreezeIssues(inputs), [{ kind: 'content', sign: true, userId: 'U-lead', seats: ['assessor'], text: line }]);
+  assert.deepEqual(surveyReportFreezeIssues(inputs), surveyReportSignatureIssues(inputs));
+  assert.deepEqual(surveyReportFreezeBlockers(inputs), [line]);
+  assert.deepEqual(buildSurveyReportSnapshot(inputs, { mode: 'freeze' }), { errors: [line] });
+  assert.deepEqual(buildSurveyReportSnapshot(inputs, { mode: 'check' }), { errors: [line] });
+  const draft = buildSurveyReportSnapshot(inputs, { mode: 'draft' });
+  assert.deepEqual(draft.warnings, [line]);
+  assert.equal(draft.snapshot.signatures.assessor, null);
+  assert.equal(draft.snapshot.signatures.approver.versionId, 'V-head');
+  // ไม่มีใครมีลายเซ็น = สองบรรทัด · ผู้ประเมินก่อน
+  assert.deepEqual(surveyReportFreezeIssues(signedTwin({ have: [] })).map((i) => i.seats), [['assessor'], ['approver']]);
+});
+
+test('ลำดับ: บรรทัดลายเซ็นต่อจากก้อนนัดทันที — ก่อนเหตุของระบบและของพื้นที่ · ข้ออื่นไม่ขยับลำดับ', () => {
+  const inputs = signedTwin({ have: [] });
+  inputs.customer = null;                     // system · ก่อนก้อนนัด
+  inputs.form = null;                         // system · หลังก้อนนัด
+  inputs.zones[0].packageQty = null;          // content · ท้าย ๆ
+  const withRule = surveyReportFreezeIssues(inputs).map((i) => i.text);
+  const without = surveyReportFreezeIssues({ ...inputs, signatureRule: undefined }).map((i) => i.text);
+  assert.equal(without.length, 3);
+  assert.deepEqual(withRule.filter((line) => !line.includes('ยังไม่มีลายเซ็น')), without, 'ข้อเดิมอยู่ครบ ลำดับเดิม');
+  assert.deepEqual(withRule.map((line) => (line.includes('ยังไม่มีลายเซ็น') ? 'sign' : 'x')), ['x', 'sign', 'sign', 'x', 'x']);
+});
+
+test('🔴 ใบติดข้อกันของใบจากแบบ ⇔ ไม่ถูกถามเรื่องลายเซ็น — ถอดข้อกัน (งวด S3) เมื่อไรต้องตัดสินผู้ลงนามของใบจากแบบก่อน', () => {
+  const hasHold = (issues) => issues.some((i) => i.hold === true);
+  const hasSign = (issues) => issues.some((i) => i.sign === true);
+  const onsite = signedTwin({ have: [] });
+  const mixed = signedTwin({ have: [] });
+  mixed.zones[1].method = 'drawing';
+  const desk = signedTwin({ have: [] });
+  for (const zone of desk.zones) zone.method = 'drawing';
+  desk.visit = null;
+  for (const [name, inputs] of [['ลงหน้างาน', onsite], ['ผสม', mixed], ['จากแบบล้วน', desk]]) {
+    const issues = surveyReportFreezeIssues(inputs);
+    assert.equal(hasHold(issues), name !== 'ลงหน้างาน', name);
+    assert.equal(hasSign(issues), !hasHold(issues), `${name}: ข้อกันกับบรรทัดลายเซ็นต้องไม่มาคู่กัน และต้องมีอย่างใดอย่างหนึ่ง`);
+  }
+  assert.equal(surveyReportFreezeIssues(mixed).find((i) => i.hold).text, SURVEY_REPORT_DRAWING_HOLD);
+  // พื้นที่จากแบบที่ถูกตัดไม่กันเอกสาร ⇒ ถูกถามเรื่องลายเซ็นตามปกติ
+  const cut = signedTwin({ have: [] });
+  Object.assign(cut.zones[1], { method: 'drawing', status: 'cut', cutReason: 'ลูกค้าไม่ติดตั้ง' });
+  assert.equal(hasHold(surveyReportFreezeIssues(cut)), false);
+  assert.equal(hasSign(surveyReportFreezeIssues(cut)), true);
+});
+
+test('🔴 ใบที่มีพื้นที่ประเมินจากแบบ: ภาพนิ่ง **ไม่มีคีย์ `signatures`** แม้กติกาเปิด — ฉบับร่างเท่ากับตอนกติกาปิดทุกไบต์ (พิมพ์คำเดิม ไม่ขึ้นกรอบลายเซ็น)', () => {
+  /* 🐞 เดิมถามแค่ว่ากติกาเปิดไหม ⇒ ฉบับร่างของใบจากแบบ (ซึ่งออกเอกสารไม่ได้อยู่แล้ว) ขึ้นกรอบ "ยังไม่มีลายเซ็น" /
+     "ลายเซ็นจะขึ้นเมื่อออกเอกสาร" ขณะที่การ์ดไม่พูดเรื่องลายเซ็นสักบรรทัด */
+  const shapes = {
+    'ผสม · ทุกคนมีลายเซ็น': () => { const i = signedTwin({ prepared: false }); i.zones[1].method = 'drawing'; return i; },
+    'ผสม · ผู้ประเมินไม่มีลายเซ็น': () => { const i = signedTwin({ have: ['U-head'], prepared: false }); i.zones[1].method = 'drawing'; return i; },
+    'จากแบบล้วน (ไม่มีนัด)': () => {
+      const i = signedTwin({ have: [], prepared: false });
+      for (const zone of i.zones) zone.method = 'drawing';
+      i.visit = null;
+      return i;
+    },
+  };
+  for (const [name, make] of Object.entries(shapes)) {
+    const on = buildSurveyReportSnapshot(make(), { mode: 'draft' });
+    const off = buildSurveyReportSnapshot({ ...make(), signatureRule: undefined }, { mode: 'draft' });
+    assert.equal('signatures' in on.snapshot, false, name);
+    assert.deepEqual(on.snapshot, off.snapshot, `${name}: ภาพนิ่งเท่ากับกติกาปิด`);
+    assert.deepEqual(on.images, off.images, name);
+    for (const version of ['customer', 'internal']) {
+      const view = surveyReportView(on.snapshot, { version });
+      assert.deepEqual(view, surveyReportView(off.snapshot, { version }), `${name} · ${version}`);
+      for (const seat of ['assessor', 'approver']) assert.equal('img' in view.signoff[seat], false, `${name} · ${version} · ${seat}: ที่นั่งพิมพ์คำเดิม`);
+    }
+  }
+  // พื้นที่จากแบบที่ถูกตัดไม่กันเอกสาร ⇒ ใบนั้นยังถูกถามตามปกติ และภาพนิ่งมีคีย์
+  const cut = signedTwin({ prepared: false });
+  Object.assign(cut.zones[1], { method: 'drawing', status: 'cut', cutReason: 'ลูกค้าไม่ติดตั้ง' });
+  assert.equal('signatures' in buildSurveyReportSnapshot(cut, { mode: 'draft' }).snapshot, true);
+});
+
+test('🔴 บัญชีที่นั่งที่นั่งนั้นไม่ได้ (หรือยังไม่รู้) ไม่มีวันถูกตรึงลายเซ็น — แม้มีลายเซ็นและรูปถูกเตรียมมาแล้ว', () => {
+  const lines = {
+    assessor: 'ผู้ประเมิน Lead Assessor ไม่ใช่บัญชีฝ่ายบริการ — เอกสารพิมพ์ลายเซ็นของบัญชีนี้ไม่ได้ แจ้งผู้จัดคิวให้แก้ผู้รับผิดชอบของนัด',
+    approver: 'ผู้ตรวจสอบและอนุมัติ Head Approver (ผู้ส่งผล) ไม่ใช่ผู้มีสิทธิ์ส่งผลประเมิน (หัวหน้าฝ่ายบริการ) — เอกสารพิมพ์ลายเซ็นของบัญชีนี้ไม่ได้ ดึงผลกลับแล้วให้หัวหน้าฝ่ายบริการส่งใหม่',
+  };
+  const sha = { assessor: SIGN_SHA.lead, approver: SIGN_SHA.head };
+  for (const seat of ['assessor', 'approver']) {
+    const other = seat === 'assessor' ? 'approver' : 'assessor';
+    // ทั้งสองคนมีลายเซ็นครบ และรูปของทั้งคู่ "เตรียมแล้ว" (เหมือนผู้เรียกส่งของที่เตรียมไว้มาทั้งชุด)
+    const barred = signedTwin({ signerEligible: { [seat]: false, [other]: true } });
+    assert.deepEqual(surveyReportFreezeIssues(barred), [{ kind: 'content', text: lines[seat] }], seat);
+    for (const mode of ['freeze', 'check']) {
+      const got = buildSurveyReportSnapshot(barred, { mode });
+      assert.equal(got.snapshot, undefined, `${seat} · ${mode}`);
+      assert.deepEqual(got.errors, [lines[seat]], `${seat} · ${mode}`);
+    }
+    // ฉบับร่าง (ด่านไม่หยุด): ที่นั่งนั้นว่าง รูปของเขาไม่เข้าคอลัมน์ images · อีกที่นั่งยังปกติ
+    const draft = buildSurveyReportSnapshot(barred, { mode: 'draft' });
+    assert.equal(draft.snapshot.signatures[seat], null, seat);
+    assert.equal(draft.snapshot.signatures[other].img.sha, sha[other], seat);
+    assert.deepEqual(draft.images.filter((row) => row.kind === 'sign').map((row) => row.sha), [sha[other]], seat);
+    assert.ok(!JSON.stringify(draft.snapshot).includes(sha[seat]), `${seat}: sha ของลายเซ็นที่ไม่ถูกพิมพ์ต้องไม่อยู่ในภาพนิ่ง`);
+
+    // ไม่รู้ (ไม่มีธง — ผู้เรียกลืมตั้ง · ตัวโหลดอ่านบัญชีไม่ได้): โหมดตรึงล้ม · ฉบับร่างว่าง
+    const unsure = signedTwin({ signerEligible: { [other]: true } });
+    assert.equal(buildSurveyReportSnapshot(unsure, { mode: 'freeze' }).snapshot, undefined, seat);
+    assert.equal(buildSurveyReportSnapshot(unsure, { mode: 'draft' }).snapshot.signatures[seat], null, seat);
+  }
+  // ไม่มีธงเลย = ไม่มีที่นั่งไหนถูกตรึง
+  const blank = signedTwin({ signerEligible: undefined });
+  assert.equal(buildSurveyReportSnapshot(blank, { mode: 'freeze' }).snapshot, undefined);
+  assert.deepEqual(buildSurveyReportSnapshot(blank, { mode: 'draft' }).snapshot.signatures, { assessor: null, approver: null });
+});
+
+test('🔴 อ่านลายเซ็นไม่สำเร็จ ≠ ยังไม่มีลายเซ็น: ข้อเดียวชนิด system ตรงตำแหน่งเดิมของบรรทัดลายเซ็น — ไม่มีบรรทัด "ยังไม่มีลายเซ็น"', () => {
+  const inputs = signedTwin({ have: [], signatures: null, unknown: ['signatures'] });
+  assert.deepEqual(surveyReportFreezeIssues(inputs), [{ kind: 'system', text: 'อ่านลายเซ็นของผู้ลงนามไม่สำเร็จ' }]);
+  assert.equal(SURVEY_REPORT_INPUT_LABELS.signatures, 'ลายเซ็นของผู้ลงนาม');
+  // ใบจากแบบที่อ่านลายเซ็นพลาดด้วย: ยังบอกว่าอ่านไม่สำเร็จ (ท้ายลิสต์) คู่กับข้อกัน
+  inputs.zones[0].method = 'drawing';
+  assert.deepEqual(surveyReportFreezeIssues(inputs).map((i) => [i.kind, i.hold === true]), [['system', true], ['system', false]]);
+});
+
+test('ที่นั่งที่พิมพ์ชื่อแต่ไม่ได้ผูกบัญชี: โหมดตรึงปฏิเสธ (content ไม่มี sign) · โหมดร่างออกได้ ที่นั่งเป็น null', () => {
+  const inputs = signedTwin();
+  inputs.visit = { ...inputs.visit, assigneeId: null };
+  const issues = surveyReportFreezeIssues(inputs);
+  assert.deepEqual(issues, [{ kind: 'content', text: 'ผู้ประเมิน Lead Assessor ไม่ได้ผูกกับบัญชีผู้ใช้ — ออกเอกสารไม่ได้ แจ้งผู้จัดคิวหรือผู้ดูแลระบบ' }]);
+  assert.deepEqual(buildSurveyReportSnapshot(inputs, { mode: 'freeze' }).errors, [issues[0].text]);
+  assert.equal(buildSurveyReportSnapshot(inputs, { mode: 'draft' }).snapshot.signatures.assessor, null);
+});
+
+test('🔴 ยามของโหมดตรึงเดินตามที่นั่ง: ด่านถูกข้าม (ลิสต์ผู้ลงนามว่างด้วยเหตุใดก็ตาม) ก็ยังไม่ตรึงกระดาษที่ไม่มีรูปลายเซ็น', () => {
+  // จำลอง "ด่านไม่ได้ทัก": ที่นั่งมีชื่อและมีบัญชี แต่แผนที่ลายเซ็นของผู้เรียกไม่มีคนนั้น และรูปก็ไม่ได้เตรียม — ตัวสร้างเองต้องปฏิเสธ
+  const inputs = signedTwin();
+  inputs.signatures = { 'U-lead': signVersion('V-lead'), 'U-head': signVersion('V-head') };
+  inputs.signatureImageByVersionId = {};
+  const got = buildSurveyReportSnapshot(inputs, { mode: 'freeze' });
+  assert.equal(got.snapshot, undefined);
+  assert.equal(got.errors.length, 2);
+});
+

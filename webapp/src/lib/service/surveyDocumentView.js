@@ -17,8 +17,14 @@
 //   (`surveyDocumentView.test.mjs` — เทสต์อ่านซอร์สล็อกรายการ import ด้วย)
 //
 // 🔑 บริสุทธิ์ทั้งไฟล์ — ไม่ยิง I/O ไม่อ่านนาฬิกา · วันเวลาผ่าน `fmtDateTime` (เวลาไทยเสมอ) · ค่าว่างพิมพ์ขีด `—`
+//
+// ⭐ **ลายเซ็นจริงของผู้ลงนาม** (PR-SIG §5 · มติเจ้าของ 09/10/2026) — ทุกอย่างมาจากคีย์ที่ server ส่งเมื่อกติกาลายเซ็นจริงเปิด
+//   (`send.selfSign` · `send.signers` · `issue.signers` · `issue.blockers[].sign/.self`) · ไม่มีคีย์ = ผลของไฟล์นี้เท่าเดิมทุกคีย์
+//   · ข้อ "ยังไม่มีลายเซ็น" **ไม่ใช่เหตุให้ดึงผลกลับ** — เจ้าตัวเพิ่มที่ “บัญชีของฉัน” แล้วตรวจอีกครั้ง · คนดูที่เป็นเจ้าของข้อนั้นได้ลิงก์ไปเพิ่ม
+//   · import ที่สาม `./surveyReportSigners` เป็นโมดูลล้วน (ไม่มี `node:` · ไม่มี `server-only`) — ป้าย “บัญชีของฉัน” กับวลีผู้ลงนามมีที่เดียว
 import { NA, fmtDateTime } from '@/lib/format';
 import { surveyZoneSize } from './survey';
+import { SURVEY_SIGN_ACCOUNT, surveyReportSignersText } from './surveyReportSigners';
 
 /** ฉบับของเอกสาร ตามลำดับที่จอวาด — คีย์ตรงกับ `access.customer` / `access.internal` และพารามิเตอร์ `version` ของ route */
 export const SURVEY_DOC_VERSIONS = Object.freeze(['customer', 'internal']);
@@ -79,6 +85,17 @@ const SPOT_TRAY = 'ยังไม่ได้ผูกจุด';
 const WARNING_EFFECT_PREFIX = 'ฉบับลูกค้าจะพิมพ์ตามที่กรอกไว้ — ';
 /* บรรทัดคำเตือนของหมายเหตุพื้นที่ขึ้นต้นด้วยคำนี้เสมอ (ตัวสร้างทั้งสองของ `surveyReportView`) */
 const NOTE_WARNING_HEAD = 'หมายเหตุพื้นที่';
+
+/* ── ผู้ลงนามยังไม่มีลายเซ็น (PR-SIG §5) ───────────────────────────────────────────────────
+   ลิงก์ของคนดูที่เป็นเจ้าของข้อนั้น · ทางออกของสถานะ `missing` (ข้อนี้ไม่ต้องดึงผลกลับ — คำเดียวกับ `blocked()` ของขั้นออกเลข) */
+const SIGN_ACCOUNT_TEXT = `“${SURVEY_SIGN_ACCOUNT.label}”`;
+/** ลิงก์ "ไปบัญชีของฉัน" ของคนดูที่เป็นผู้ลงนามซึ่งยังไม่มีลายเซ็น — ก้อนเดียวกันทั้งกล่องสถานะของส่วนนี้และบรรทัดเหตุใต้ปุ่มส่งผล
+ *  (`surveyControlView` · `send.reason.link`) · การ์ดวาดเป็นลิงก์ธรรมดา ไม่ใช่ปุ่มพาไป (ออกจากหน้านี้) */
+export const SURVEY_SIGN_LINK = Object.freeze({ href: SURVEY_SIGN_ACCOUNT.href, label: `ไป${SURVEY_SIGN_ACCOUNT.label}` });
+const SIGN_WAY_OUT = `ให้ผู้ที่มีชื่อในรายการเพิ่มลายเซ็นที่ ${SIGN_ACCOUNT_TEXT} แล้วกด “${RECHECK.label}” — ไม่ต้องดึงผลกลับ`;
+const SIGN_NO_RECALL = 'ลายเซ็นเพิ่มได้เลย (ไม่ต้องดึงผลกลับ)';
+/* คีย์ `link` มีเฉพาะตอนต้องวาดลิงก์ — กล่องสถานะอื่นทุกกล่องยังมีห้าคีย์เท่าเดิม */
+const signLink = (mine) => (mine === true ? { link: SURVEY_SIGN_LINK } : null);
 
 const isRecord = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
 const trimmed = (value) => (typeof value === 'string' ? value.trim() : '');
@@ -251,6 +268,9 @@ function issueConfirm(doc, request) {
   const approver = trimmed(request?.answeredByName);
   const warnings = shownLines(doc.issue?.warnings);
   const kinds = surveyWarningKinds(warnings);
+  /* ⭐ ลายเซ็นจริง (PR-SIG) — ปุ่มนี้ให้หัวหน้าคนที่สามพิมพ์ลายเซ็นของผู้ประเมินกับผู้ส่งผลได้ ⇒ กล่องต้องเอ่ยชื่อและบอกว่า **ไม่ใช่ลายเซ็น
+     ของคนกด** (#1223 · ADR 0006 ข้อยกเว้น 09/10) · `issue.signers` มีเฉพาะเมื่อกติกาเปิดและทุกที่นั่งมีลายเซ็น — ไม่มี = ไม่มีข้อนี้ */
+  const signed = surveyReportSignersText(doc.issue?.signers);
   return {
     title: 'ออกเอกสารประเมินพื้นที่',
     message: 'ออกเอกสารจากผลที่ส่งให้ฝ่ายขายไปแล้ว — ไม่ส่งผลซ้ำ ตัวเลขไม่เปลี่ยน',
@@ -260,6 +280,9 @@ function issueConfirm(doc, request) {
         ? `ออกเอกสาร ${next} (Rev ถัดไปของเลขเดิม) — เลขถาวร เอกสารที่ออกแล้วแก้ไม่ได้`
         : 'ออกเลขเอกสาร SU ใหม่ — เลขถาวร เอกสารที่ออกแล้วแก้ไม่ได้',
       `ตรึงฉบับลูกค้าและฉบับภายในจากข้อมูลในใบตอนนี้${approver ? ` · ผู้ตรวจสอบและอนุมัติบนเอกสาร = ${approver} (ผู้ส่งผล)` : ''}`,
+      ...(signed
+        ? [`พิมพ์ลายเซ็นที่บันทึกไว้ของ ${signed} — เป็นลายเซ็นของผู้ประเมินและผู้ส่งผล ไม่ใช่ของผู้กดออกเอกสาร`]
+        : []),
       'ผู้ขอ (ฝ่ายขาย) ได้รับแจ้งในกระดิ่งและเธรดของคำร้อง — ดาวน์โหลดฉบับลูกค้าได้ที่หน้าคำร้อง',
       ...warnings.map((line) => `${WARNING_EFFECT_PREFIX}${line}`),
       /* ที่แก้ตามชนิดของบรรทัด — ทะเบียนถูกอ่านใหม่ตอนกด (ช่องอื่นแก้ได้โดยไม่ต้องดึงผลกลับ) · หมายเหตุพื้นที่ล็อกอยู่กับผล */
@@ -272,18 +295,28 @@ function issueConfirm(doc, request) {
   };
 }
 
-/* เหตุที่ปุ่ม "ออกเอกสาร" จะตีกลับ ชุดสดจาก server — `[{ kind: 'content' | 'system', text, hold }]` ไม่ซ้ำ
+/* เหตุที่ปุ่ม "ออกเอกสาร" จะตีกลับ ชุดสดจาก server — `[{ kind: 'content' | 'system', text, hold, sign, self }]` ไม่ซ้ำ
    ⭐ `hold` = ข้อกันเอกสารของใบที่มีพื้นที่ประเมินจากแบบ (`hold: true` ตรงตัวใน payload · mig 0408) — ไม่มีอะไรให้แก้ กดซ้ำไม่ช่วย
+   ⭐ `sign` = ผู้ลงนามยังไม่มีลายเซ็น (`sign: true` ตรงตัวบนข้อชนิด `content` · PR-SIG §2.3) — **ไม่ต้องดึงผลกลับ** เจ้าตัวเพิ่มลายเซ็นแล้ว
+      ตรวจอีกครั้งได้เลย · `self` = ข้อนั้นเป็นของคนดูเอง (`self: true` ตรงตัว — server เทียบรหัสผู้ใช้ให้ ไม่ส่งรหัสมา)
    ⚠️ ธงอ่านจาก **ทุกแถวก่อนยุบข้อความซ้ำ** (กติกาเดียวกับ `blocked` ของ surveyReportIssue) — แถวซ้ำที่ไม่มีธงต้องไม่ทำให้ข้อกัน
-      กลายเป็นเหตุที่ "แก้แล้วกดซ้ำได้" */
+      กลายเป็นเหตุที่ "แก้แล้วกดซ้ำได้" และต้องไม่ทำให้ข้อลายเซ็นกลายเป็นเหตุให้ดึงผลกลับ */
 function issueBlockers(check) {
   const rows = (Array.isArray(check?.blockers) ? check.blockers : []).filter(isRecord);
   const held = new Set(rows.filter((b) => b.hold === true).map((b) => trimmed(b.text)));
+  const signs = rows.filter((b) => b.kind === 'content' && b.sign === true);
+  const signed = new Set(signs.map((b) => trimmed(b.text)));
+  const mine = new Set(signs.filter((b) => b.self === true).map((b) => trimmed(b.text)));
   const seen = new Set();
   return rows
     .map((b) => ({ kind: b.kind === 'content' ? 'content' : 'system', text: trimmed(b.text) }))
     .filter((b) => b.text && !seen.has(b.text) && seen.add(b.text))
-    .map((b) => ({ ...b, hold: b.kind !== 'content' && held.has(b.text) }));
+    .map((b) => ({
+      ...b,
+      hold: b.kind !== 'content' && held.has(b.text),
+      sign: b.kind === 'content' && signed.has(b.text),
+      self: b.kind === 'content' && mine.has(b.text),
+    }));
 }
 
 const sectionBase = (state) => ({
@@ -312,7 +345,8 @@ const sectionBase = (state) => ({
  *                preview:  null | { label, href, blocked },     ← null = ไม่วาดปุ่ม · href เป็น null เมื่อ blocked
  *                download: null | { label, href, blocked } }],
  *   rows: [{ key, label, value }],                               ← เลขที่ · ออกเมื่อ · ออกโดย
- *   status: null | { tone, text, items: string[], foot: string | null, action: null | { kind: 'reload', label } },
+ *   status: null | { tone, text, items: string[], foot: string | null, action: null | { kind: 'reload', label },
+ *                    link?: { href, label } },                 ← คีย์มีเฉพาะเมื่อคนดูเป็นผู้ลงนามที่ยังไม่มีลายเซ็น (“ไปบัญชีของฉัน”)
  *   printed: null | { title, items: string[] },
  *   issue: null | { allowed, confirm: null | { title, message, detail, effects[], confirmLabel, busyLabel } },
  *   hint, history: null | { label, hideLabel, foot, rows: [{ docNo, line }] },
@@ -338,7 +372,7 @@ const sectionBase = (state) => ({
  * @param spotsUnlinked ยังมีรูปจุดค้างในถาด "ยังไม่ได้ผูกจุด" — ทางออกของเหตุชนิดนี้ไม่ต้องดึงผลกลับ (มติ 9)
  * @param drawingHold   ประโยคของข้อกันเอกสาร เมื่อใบมีพื้นที่ที่ประเมินจากแบบ (ยังอยู่ในใบ) · ไม่มี = `null`
  *                      เอกสารของใบแบบนี้ถูกพักไว้ ⇒ ก่อนส่งผล (และตอนดึงกลับมาแก้) กล่องสถานะพูดประโยคเดียวกับโมดัลยืนยันส่งผล
- *                      ไม่สัญญาเลขที่เอกสาร · ผู้เรียกส่งประโยคมา (ไฟล์นี้ import ได้สองไฟล์) · งวด S3 ถอดพร้อมข้อกัน
+ *                      ไม่สัญญาเลขที่เอกสาร · ผู้เรียกส่งประโยคมา (รายการ import ของไฟล์นี้ถูกล็อก — ดูหัวไฟล์) · งวด S3 ถอดพร้อมข้อกัน
  * ⚠️ `canWrite` ที่ผู้เรียกส่งมาตามสเปก §3.1 ไม่มีกติกาข้อไหนของส่วนนี้ใช้ (บรรทัด "แก้หมายเหตุได้ไหม" อยู่ที่กล่องแจ้งของการ์ด)
  */
 export function surveyDocumentView({
@@ -424,10 +458,12 @@ export function surveyDocumentView({
          ⚠️ มาก่อนรายการเหตุของ server: ข้อกันนี้ไม่มีอะไรให้แก้ ปุ่ม "ตรวจอีกครั้ง" ไม่ช่วย */
       status = note('info', hold);
     } else if (blockers.length) {
+      /* ข้อ "ยังไม่มีลายเซ็น" อยู่ในรายการนี้เอง (เหตุของ server ตามตัวอักษร) — คนดูที่เป็นเจ้าของข้อนั้นได้ลิงก์ไปเพิ่ม (`send.selfSign`) */
       status = note('warning', `เอกสารยังออกไม่ได้ — ติด ${blockers.length} ข้อ`, {
         items: blockers,
         foot: `แก้ตามรายการแล้วกด “${RECHECK.label}”${stuck.length ? ` · ด่านอื่น${stuckText}` : ''}`,
         action: RECHECK,
+        ...signLink(check.selfSign),
       });
     } else if (stuck.length) {
       status = note('warning', `${flagOn ? 'ดาวน์โหลด PDF ได้' : 'ออกเอกสารได้'}หลังส่งผลให้ฝ่ายขาย — ${stuckText}`);
@@ -454,7 +490,9 @@ export function surveyDocumentView({
         ? `${head}ส่งผลอีกครั้งเพื่อออก ${next}`
         : `${head}ส่งผลอีกครั้ง แล้วกด “ออกเอกสาร” เพื่อออก ${next}`;
     status = blockers.length
-      ? note('warning', text, { items: blockers, foot: `แก้ตามรายการแล้วกด “${RECHECK.label}”`, action: RECHECK })
+      ? note('warning', text, {
+        items: blockers, foot: `แก้ตามรายการแล้วกด “${RECHECK.label}”`, action: RECHECK, ...signLink(check.selfSign),
+      })
       : note('warning', text, { foot: draftFoot });
     out.rows = lastRow;
     preview = draftPreview;
@@ -489,14 +527,21 @@ export function surveyDocumentView({
         const [first, ...more] = blockers.map((b) => b.text);
         status = note('warning', first, { items: more, foot: draftFoot });
       } else if (blockers.length) {
-        const content = blockers.some((b) => b.kind === 'content');
-        const wayOut = !content
-          ? `แก้ตามรายการแล้วกด “${RECHECK.label}” — ไม่ต้องดึงผลกลับ`
-          : spotsUnlinked === true
-            ? `รูปจุดผูกได้เลยที่ถาด “${SPOT_TRAY}” ของพื้นที่นั้น (ไม่ต้องดึงผลกลับ) แล้วกด “${RECHECK.label}” · เรื่องอื่นต้องดึงผลกลับมาแก้แล้วส่งใหม่`
-            : 'ดึงผลกลับมาแก้แล้วส่งใหม่';
+        /* ⭐ "ต้องดึงผลกลับ" = มีข้อชนิด `content` ที่ **ไม่ใช่** ข้อลายเซ็น (PR-SIG §2.3 — กติกาเดียวกับ `blocked()` ของขั้นออกเลข)
+             ติดแค่ลายเซ็น (จะมีเหตุของระบบปนหรือไม่ก็ตาม)  ⇒ เจ้าตัวเพิ่มลายเซ็นแล้วตรวจอีกครั้ง ไม่ต้องดึงผลกลับ
+             ลายเซ็น + เหตุของเนื้อใบ                       ⇒ นำด้วย "ลายเซ็นเพิ่มได้เลย" แล้วตามด้วยทางออกเดิมของเหตุเนื้อใบ
+           🐞 ไม่แยก = ส่วนนี้สั่งให้ดึงผลกลับเพราะข้อที่การดึงผลกลับไม่ช่วยอะไร (และฉบับที่ถือเลขอยู่จะเปิดไม่ได้ทันที) */
+        const content = blockers.some((b) => b.kind === 'content' && !b.sign);
+        const sign = blockers.some((b) => b.sign);
+        const contentWayOut = spotsUnlinked === true
+          ? `รูปจุดผูกได้เลยที่ถาด “${SPOT_TRAY}” ของพื้นที่นั้น (ไม่ต้องดึงผลกลับ) แล้วกด “${RECHECK.label}” · เรื่องอื่นต้องดึงผลกลับมาแก้แล้วส่งใหม่`
+          : 'ดึงผลกลับมาแก้แล้วส่งใหม่';
+        const wayOut = content
+          ? `${sign ? `${SIGN_NO_RECALL} · ` : ''}${contentWayOut}`
+          : sign ? SIGN_WAY_OUT : `แก้ตามรายการแล้วกด “${RECHECK.label}” — ไม่ต้องดึงผลกลับ`;
         status = note('warning', `ส่งผลแล้ว แต่ยังออกเอกสารไม่ได้ — ติด ${blockers.length} ข้อ`, {
           items: blockers.map((b) => b.text), foot: joinFoot(wayOut, draftFoot), action: RECHECK,
+          ...signLink(blockers.some((b) => b.self)),
         });
       } else if (failed) {
         /* ประโยคของ server ตามที่ได้มา — บอกทางออกในตัวแล้ว (ดึงผลกลับ / กดอีกครั้ง / แจ้งผู้ดูแลระบบ) · เว้นกระดาษพิมพ์ไม่ได้

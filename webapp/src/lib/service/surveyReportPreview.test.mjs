@@ -21,14 +21,16 @@ import { documentAudienceAccentMarks, resolveDocumentAccentKey } from '../docume
 import { DOCUMENT_AUDIENCES, documentAudienceAccentKey } from '../documents/documentAudience.js';
 import { DOCUMENT_ACCENT_THEMES } from '../documents/documentShell.js';
 import { buildStandardPreviewHTML } from '../documents/standardPreview.js';
-import { surveyReportAudience } from './surveyReportDocument.js';
-import { surveyReportOverflowErrors } from './surveyReportLayout.js';
+import { renderSurveyReportHTML, surveyReportAudience } from './surveyReportDocument.js';
+import { paginateSurveyReport, surveyReportOverflowErrors } from './surveyReportLayout.js';
 import {
-  SURVEY_REPORT_PREVIEW_DOC_NO, SURVEY_REPORT_PREVIEW_IMAGE, SURVEY_REPORT_PREVIEW_WATERMARK,
+  SURVEY_REPORT_PREVIEW_DOC_NO, SURVEY_REPORT_PREVIEW_IMAGE, SURVEY_REPORT_PREVIEW_SIGNATURES, SURVEY_REPORT_PREVIEW_WATERMARK,
   buildSurveyReportPreview, buildSurveyReportPreviewHTML, surveyReportPreviewInputs,
 } from './surveyReportPreview.js';
-import { surveyReportFreezeIssues } from './surveyReportSnapshot.js';
-import { surveyReportSendWarnings } from './surveyReportView.js';
+import { surveyReportSignerVersions } from './surveyReportSigners.js';
+import { buildSurveyReportSnapshot, surveyReportFreezeIssues } from './surveyReportSnapshot.js';
+import { surveyReportSignatureHtmlIssues } from './surveyReportState.js';
+import { surveyReportSendWarnings, surveyReportView } from './surveyReportView.js';
 
 // แถวที่ mig 0401 ⑦ seed ไว้ (รูปของแถว `document_standard_versions`) — วันที่มีผลเป็น ISO ค.ศ.
 // ⚠️ `accentKey: 'teal'` คือค่าจริงของแถวที่เผยแพร่ (แก้ไม่ได้) — ใบตัวอย่างต้องไม่พิมพ์สีนี้ (ข้อ ⑥)
@@ -155,6 +157,64 @@ test('ชุดตัวอย่าง: สองพื้นที่ · ไ�
   assert.equal(view.zones[0].parts, null);
   assert.equal(view.zones[1].parts.rows.length, 2);
   assert.notEqual(view.table.total.sizeMix, '—', 'ใช้สองขนาดแพ็คเกจ — แถวรวมโชว์ช่องขนาดแพ็ค');
+});
+
+/* ══ ④ข ลายเซ็นบนใบตัวอย่าง (PR-SIG §4.6 · มติเจ้าของ 09/10/2026) ═══════════════════════════ */
+
+test('⭐ ใบตัวอย่างพิมพ์แบบเป้าหมาย: ที่นั่งผู้ประเมินกับผู้ตรวจสอบและอนุมัติเป็นรูปลายเซ็นตัวอย่าง (ลูกค้า 2 ที่ · ภายใน 4 ที่) — ผ่านสายเดียวกับของจริง', () => {
+  const sign = SURVEY_REPORT_PREVIEW_SIGNATURES;
+  assert.deepEqual(Object.keys(sign), ['assessor', 'approver']);
+  for (const src of Object.values(sign)) {
+    assert.match(src, /^data:image\/svg\+xml,/);
+    assert.ok(src.length < 900, 'เส้นตัวอย่างต้องเล็ก');
+  }
+  assert.notEqual(sign.assessor, sign.approver, 'คนละเส้นต่อที่นั่ง');
+
+  for (const [audience, each] of [['external', 1], ['internal', 2]]) {
+    const { html, view } = buildSurveyReportPreview(SEEDED, { audience });
+    assert.equal(count(html, `<img class="sig-img" src="${sign.assessor}" alt="ลายเซ็น ตัวอย่าง ผู้ประเมิน">`), each, audience);
+    assert.equal(count(html, `<img class="sig-img" src="${sign.approver}" alt="ลายเซ็น ตัวอย่าง ผู้อนุมัติ">`), each, audience);
+    assert.equal(count(html, '<img class="sig-img"'), each * 2, audience);
+    assert.equal(count(html, 'class="sig-img wait"'), 0, `${audience}: ไม่มีกรอบประบนใบตัวอย่าง`);
+    assert.equal(count(html, 'ลายเซ็นอิเล็กทรอนิกส์'), 0, audience);
+    assert.equal(view.signoff.assessor.img.sign, 'assessor');
+    // ที่นั่งลูกค้ายังเป็นแบบฟอร์มเปล่า
+    assert.equal(count(html, '<div class="sig-form">'), 1, audience);
+  }
+});
+
+test('ชุดตัวอย่างของลายเซ็น: กติกาเปิดในอินพุต · ผู้ลงนามสมมติครบสองที่นั่ง · ไม่มีที่อยู่ไฟล์ของคลัง · ภาพนิ่งผ่านยามลายเซ็นแบบเดียวกับของจริง', () => {
+  const inputs = surveyReportPreviewInputs(SEEDED);
+  assert.equal(inputs.signatureRule, 'required');
+  assert.deepEqual(surveyReportSignerVersions(inputs).map((s) => [s.seats, s.userId, s.name]), [
+    [['assessor'], 'preview-assessor', 'ตัวอย่าง ผู้ประเมิน'], [['approver'], 'preview-approver', 'ตัวอย่าง ผู้อนุมัติ'],
+  ]);
+  assert.ok(!JSON.stringify(inputs).includes('storagePath') && !JSON.stringify(inputs).includes('users/'));
+  // รูปลายเซ็นที่ "เตรียมแล้ว" มากับชุดตัวอย่าง — ภาพนิ่งของใบตัวอย่าง (โหมดร่าง: รูปของพื้นที่ไม่มีไฟล์จริง) ตรึงฉบับกับรูปของสองที่นั่ง
+  const built = buildSurveyReportSnapshot(inputs, { mode: 'draft' });
+  assert.deepEqual(built.warnings, []);
+  assert.match(built.snapshot.signatures.assessor.img.sha, /^[0-9a-f]{64}$/);
+  assert.notEqual(built.snapshot.signatures.assessor.img.sha, built.snapshot.signatures.approver.img.sha);
+  // กระดาษของภาพนิ่งนี้ผ่านยามลายเซ็นตัวเดียวกับของจริง (ที่นี่พิมพ์เป็น token เพื่อให้ยามนับได้)
+  const view = surveyReportView(built.snapshot, { version: 'internal' });
+  const html = renderSurveyReportHTML({ view, layout: paginateSurveyReport(view), docNo: SURVEY_REPORT_PREVIEW_DOC_NO });
+  assert.deepEqual(surveyReportSignatureHtmlIssues({ html, snapshot: built.snapshot, version: 'internal' }), []);
+});
+
+test('🔴 ใบตัวอย่างไม่ขึ้นกับสวิตช์ SURVEY_REPORT_SIGNATURES — ไฟล์ฝั่ง client ไม่อ่าน env · สวิตช์ปิด/เปิดได้กระดาษเดิมทุกไบต์', () => {
+  const source = readFileSync(new URL('./surveyReportPreview.js', import.meta.url), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+  assert.doesNotMatch(source, /process\.env|surveyReportSignFlag/);
+  const before = process.env.SURVEY_REPORT_SIGNATURES;
+  try {
+    delete process.env.SURVEY_REPORT_SIGNATURES;
+    const off = buildSurveyReportPreviewHTML(SEEDED, { audience: 'internal' });
+    process.env.SURVEY_REPORT_SIGNATURES = 'on';
+    assert.equal(buildSurveyReportPreviewHTML(SEEDED, { audience: 'internal' }), off);
+  } finally {
+    if (before === undefined) delete process.env.SURVEY_REPORT_SIGNATURES;
+    else process.env.SURVEY_REPORT_SIGNATURES = before;
+  }
 });
 
 /* ══ ⑥ สีเดินตามฉบับ + ตัวสลับฉบับของหน้าตั้งค่า (มติเจ้าของ 08/10/2026) ═════════════════════ */

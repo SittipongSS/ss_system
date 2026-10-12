@@ -12,11 +12,25 @@
 //                            ลายเซ็นเช่นกัน (mig 0151+) → ไม่มีลายเซ็น = ยื่นไม่ได้
 // เดิมตัด ac ออกเพราะด่านลายเซ็นมีแค่ตอนอนุมัติ — เจตนานั้นหมดอายุเมื่อการกดยื่นกลายเป็น
 // explicit signing action; AC เป็นกลุ่มที่ยื่น SO บ่อยสุด ถ้าไม่อยู่ในรายงานจะถูกบล็อกเงียบ
+//
+// ⭐ ฝ่ายบริการทุกตำแหน่ง (ts · ts_planner · ts_senior · ts_audit · ts_manager) — มติเจ้าของ 09/10/2026 (PR-SIG §6):
+//   รายงานการประเมินพื้นที่ (FM-TS-01) พิมพ์ลายเซ็นจริงของ "ผู้ประเมิน" (คนบนนัดประเมิน — ถูกมอบหมายได้ทั้งฝ่าย:
+//   `canBeServiceAssignee`) กับ "ผู้ตรวจสอบและอนุมัติ" (หัวหน้าที่ส่งผล) · คนใดคนหนึ่งไม่มี = ส่งผล/ออกเอกสารไม่ได้
+//   ⇒ ทั้งฝ่าย "ต้องมี" เสมอ ไม่ขึ้นกับดีลหรือเอกสารค้าง (ใครจะถูกมอบหมายนัดใบถัดไปรู้ล่วงหน้าไม่ได้)
+//   ⚠️ แถวของฝ่ายบริการขึ้นรายงานตั้งแต่โค้ด merge แม้สวิตช์ `SURVEY_REPORT_SIGNATURES` ยังปิด — โดยตั้งใจ:
+//      เจ้าของต้องเห็นว่าใครยังขาดก่อนเปิดสวิตช์ (เปิดแล้วการส่งผลของบัญชีที่ไม่มีลายเซ็นถูกตีกลับทันที)
+//   ⚠️ ไม่มี query ใหม่ — คอลัมน์ดีล/ใบรออนุมัติ/เอกสารรอยื่นของฝ่ายบริการเป็นขีดตามจริง
 
-import { can, canUser, SALES_MANAGER_ROLES, SALES_ROLES } from '@/lib/permissions';
+import {
+  can, canUser, rolesForDepartment, SALES_MANAGER_ROLES, SALES_ROLES, SERVICE_DEPARTMENT,
+} from '@/lib/permissions';
+
+// ฝ่ายบริการทั้งฝ่าย — มาจากทะเบียนตำแหน่งกลาง ไม่พิมพ์รายชื่อเอง (เพิ่มตำแหน่งใหม่ในฝ่ายเมื่อไร รายงานตามไปเอง)
+export const SERVICE_SIGNER_ROLES = Object.freeze([...rolesForDepartment(SERVICE_DEPARTMENT)]);
 
 // = admin + ฝ่ายขายทุกตำแหน่ง (ผังตำแหน่ง 2026-09-24) — ทุกตำแหน่งยื่นหรืออนุมัติเอกสารได้อย่างน้อยหนึ่งทาง
-export const SIGNATURE_COHORT_ROLES = ['admin', ...SALES_ROLES];
+//   + ฝ่ายบริการทุกตำแหน่ง (ผู้ลงนามของรายงานการประเมินพื้นที่ — ดูหัวไฟล์)
+export const SIGNATURE_COHORT_ROLES = ['admin', ...SALES_ROLES, ...SERVICE_SIGNER_ROLES];
 
 // ใครเปิดรายงานนี้ได้ — กติกาเดียวกับ GET /api/users: ผู้ดูแลระบบ (role cap users:manage)
 // หรือผู้ได้รับ grant users:view รายคน
@@ -40,8 +54,9 @@ export function isSignatureCohortRole(role) {
 // แยก "ต้องมีแน่ ๆ" ออกจาก "ยังไม่ต้องรีบ" เพื่อไม่ให้รายชื่อค้างเต็มไปด้วยคนที่ไม่ได้แตะเอกสารเลย
 // มี 2 เส้นที่ทำให้ต้องมีลายเซ็น: เส้นผู้อนุมัติ (ถือดีลเปิด) และเส้นผู้ยื่น (มีเอกสารค้างในมือ)
 // — AC มาทางเส้นที่สองเท่านั้นเพราะไม่ถือดีล
+// ⭐ ฝ่ายบริการ = ต้องมีเสมอ (ผู้ลงนามของรายงานการประเมินพื้นที่ — ไม่มีดีลหรือเอกสารค้างให้นับ)
 export function signatureRequirement(role, openDealCount, submittableDocs = 0) {
-  if (ALWAYS_APPROVER_ROLES.includes(role)) return 'required';
+  if (ALWAYS_APPROVER_ROLES.includes(role) || SERVICE_SIGNER_ROLES.includes(role)) return 'required';
   if (openDealCount > 0 || submittableDocs > 0) return 'required';
   return 'optional';
 }

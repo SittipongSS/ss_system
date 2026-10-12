@@ -18,7 +18,21 @@
  * รัน (จาก `webapp/` · อ่าน SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY จาก .env.local):
  *   node --import ./scripts/test-loader.mjs scripts/check-survey-report-inputs.mjs RQ-AS-26090186     # เลขที่ใบ หรือ id
  *   node --import ./scripts/test-loader.mjs scripts/check-survey-report-inputs.mjs --open             # ใบประเมินที่ยังไม่ส่งผลทุกใบ + สรุปยอด
+ *   … --answered                                                                                     # ใบที่ส่งผลแล้ว (ยังไม่ถูกยกเลิก) ทุกใบด้วย
+ *   … --signers                                                                                      # ตรวจด้วยกติกาลายเซ็นจริง (PR-SIG) + รายชื่อผู้ลงนาม
  *   … --json                                                                                         # ผลเป็น JSON (ไม่มีข้อความบนจอ)
+ *
+ * ⭐ **ก่อนเปิดสวิตช์ลายเซ็นจริง** (PR-SIG §9 ขั้น 3 · มติเจ้าของ 09/10/2026): `--open --answered --signers`
+ *   ตอบสองคำถาม: ① ใครต้องเพิ่มลายเซ็นที่ "บัญชีของฉัน" (ผู้ประเมินของทุกใบ · ผู้ส่งผลของใบที่ส่งแล้ว)
+ *   ② มีกี่ใบที่ผู้ประเมินยังไม่มีลายเซ็น **และ** บัญชีถูกปิดหรือถูกลบ — ใบแบบนั้นส่งผลใหม่ไม่ได้อีกเลยหลังดึงผลกลับ
+ *      ⇒ **ต้องเป็น 0** (หรือเจ้าของตอบคำถามเปิดข้อ 1 ของสเปกก่อน) จึงเปิดสวิตช์
+ *   ③ มีกี่ใบที่ **บัญชีของผู้ลงนามนั่งที่นั่งนั้นไม่ได้** — ผู้ประเมินไม่ใช่บัญชีฝ่ายบริการ หรือผู้ส่งผลของใบที่ตอบแล้วไม่ใช่ผู้มีสิทธิ์ส่งผล
+ *      (ใบที่ตอบผ่านปุ่มทั่วไปก่อน 24/09 ถูกตอบโดยใครก็ได้ที่ตอบคำร้องของฝ่ายได้) — เอกสารของใบแบบนั้นออกไม่ได้เมื่อกติกาเปิด
+ *      ต้องแก้ที่ตัวใบ (เปลี่ยนผู้รับผิดชอบของนัด · ดึงผลกลับแล้วให้หัวหน้าส่งใหม่) ไม่ใช่เพิ่มลายเซ็น
+ *   · `--signers` ส่ง `signatureRule: 'required'` ให้ตัวตรวจตรง ๆ (ไม่อ่าน/ไม่สลับสวิตช์) — ไม่ส่ง = ตรวจตามสวิตช์ของเครื่องที่รัน
+ *   · อ่านเพิ่มแค่สองตาราง (`user_signatures` · `user_signature_versions`) ผ่านตัวโหลดเดียวกับ route — **ไม่แตะคลังไฟล์ลายเซ็น**
+ *     ⇒ ไฟล์ลายเซ็นที่ว่าง/จาง/หาย **ไม่ถูกจับที่นี่** (ถูกจับตอนกดส่งผลหรือออกเอกสาร)
+ *   · ใบที่ยังไม่ส่งผล: ที่นั่งผู้ตรวจสอบและอนุมัติยังไม่มีตัวตน (คือหัวหน้าที่จะกดส่ง) — ไม่ถูกรายงาน และบรรทัดของเขาไม่ถูกนับ
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -31,6 +45,7 @@ import { surveySendError } from '../src/lib/service/survey.js';
 import { surveyNeedsVisit } from '../src/lib/service/surveyMethod.js';
 import { loadSurveyReportInputs, surveyReportPrecheck } from '../src/lib/service/surveyReportInputs.js';
 import { paginateSurveyReport, surveyReportOverflowErrors } from '../src/lib/service/surveyReportLayout.js';
+import { SURVEY_SIGN_SEAT_LABEL, surveyReportSeatEligible, surveyReportSigners } from '../src/lib/service/surveyReportSigners.js';
 import { buildSurveyReportSnapshot, surveyReportImageFiles } from '../src/lib/service/surveyReportSnapshot.js';
 import { surveyReportView } from '../src/lib/service/surveyReportView.js';
 import { loadSurveyZones } from '../src/lib/service/surveyRepo.js';
@@ -46,6 +61,37 @@ const message = (e) => String(e?.message || e || '').trim();
 
 /* ผู้ส่งผลสมมติของใบที่ยังไม่ส่ง — ตัวสร้างภาพนิ่งบังคับชื่อผู้ส่ง (ของจริงคือหัวหน้าที่กดปุ่ม) ⇒ ไม่มีชื่อ = ได้เหตุปลอม "ไม่มีผู้ส่งผล" */
 const PENDING_HEAD = Object.freeze({ id: 'check-inputs', name: 'หัวหน้าที่จะกดส่งผล' });
+
+/* ── ผู้ลงนาม (`--signers` · PR-SIG) ─────────────────────────────────────────── */
+
+/** ผู้ลงนามของใบ ตามที่นั่ง — `[{ seat, label, name, userId, signature, account, barred }]`
+ *   · `signature`  `'ready'` มีลายเซ็น · `'none'` ยังไม่มี · `'unlinked'` ชื่อพิมพ์แต่ไม่ได้ผูกบัญชี · `'unknown'` อ่านลายเซ็นไม่สำเร็จ
+ *   · `account`    สถานะบัญชีของผู้ประเมิน (`'active' | 'disabled' | 'missing' | null`) — ที่นั่งอื่นเป็น `null`
+ *   · `barred`     `true` = บัญชีของคนบนที่นั่ง **นั่งที่นั่งนั้นไม่ได้** (ผู้ประเมินไม่ใช่บัญชีฝ่ายบริการ · ผู้ส่งผลไม่ใช่ผู้มีสิทธิ์ส่งผลประเมิน)
+ *                  — เอกสารไม่พิมพ์ลายเซ็นของบัญชีนั้นแม้จะมีลายเซ็น (`signerEligible` ของตัวโหลด · เพิ่มลายเซ็นไม่ช่วย)
+ *   ⚠️ ใบที่ยังไม่ส่งผล: ตัดที่นั่งผู้ตรวจสอบและอนุมัติออก — คนบนที่นั่งคือผู้ส่งผลสมมติของสคริปต์ ไม่ใช่คนจริง */
+function signerRows(inputs, { send }) {
+  const unread = (inputs.unknown || []).includes('signatures');
+  const have = inputs.signatures && typeof inputs.signatures === 'object' ? inputs.signatures : {};
+  return surveyReportSigners(inputs).filter((s) => !(send && s.seat === 'approver')).map((s) => {
+    let signature = 'none';
+    if (unread) signature = 'unknown';
+    else if (!s.userId) signature = 'unlinked';
+    else if (have[s.userId]) signature = 'ready';
+    const account = s.seat === 'assessor' ? (inputs.assigneeAccount ?? null) : null;
+    return {
+      seat: s.seat, label: SURVEY_SIGN_SEAT_LABEL[s.seat], name: s.name, userId: s.userId, signature, account,
+      // ผู้ประเมินที่บัญชีถูกลบและไม่มีลายเซ็นถูกรายงานเป็น "บัญชีถูกลบ" อยู่แล้ว (บรรทัดเดียวกับที่ด่านพูด) — ไม่นับซ้ำเป็นบัญชีที่นั่งไม่ได้
+      barred: !!s.userId && surveyReportSeatEligible(inputs, s.seat) === false && !(account === 'missing' && signature === 'none'),
+    };
+  });
+}
+
+const accountGone = (row) => row.account === 'disabled' || row.account === 'missing';
+/** ผู้ประเมินยังไม่มีลายเซ็น และบัญชีถูกปิดหรือถูกลบ — ใบที่ส่งผลใหม่ไม่ได้อีกเลยเมื่อกติกาเปิด (สเปก PR-SIG คำถามเปิดข้อ 1) */
+export const signerStuck = (report) => (report.signers || []).some((row) => row.seat === 'assessor' && row.signature === 'none' && accountGone(row));
+/** มีที่นั่งที่บัญชีนั่งไม่ได้ — ใบนี้ออกเอกสารไม่ได้จนกว่าจะแก้ที่ตัวใบ (เปลี่ยนผู้รับผิดชอบของนัด · ดึงผลกลับให้หัวหน้าส่งใหม่) */
+export const signerBarred = (report) => (report.signers || []).some((row) => row.barred === true);
 
 /**
  * 🔴 **ห่อ client ให้อ่านได้อย่างเดียว** — ทางเขียนทุกทางโยนทันที ไม่ว่าโมดูลที่ถูกเรียกจะเปลี่ยนไปยังไงในวันหน้า
@@ -81,14 +127,16 @@ export function readOnlyClient(client) {
  * @param supabase  client ที่ห่อด้วย `readOnlyClient` แล้ว
  * @param opts.request  แถว `dept_requests`
  * @param opts.now      นาฬิกาของรอบ (ค่าตั้งต้น = ตอนนี้) — "วันนี้" ของด่านคิดตามเวลาไทย (`businessDate`)
- * @returns `{ request, mode, error, unknown, visit, gates, issues, overflow, warnings, images, verdict }`
+ * @param opts.signers  `true` = ตรวจด้วยกติกาลายเซ็นจริง (`signatureRule: 'required'` — ไม่ผ่านสวิตช์) แล้วเติม `report.signers`
+ *                      · ไม่ส่ง = ตรวจตามสวิตช์ของเครื่องที่รัน และรายงานไม่มีคีย์ `signers`
+ * @returns `{ request, mode, error, unknown, visit, gates, issues, overflow, warnings, images, verdict }` (+ `signers` · `signHold` เมื่อ `opts.signers`)
  *   · `mode`     `'send'` = ใบยังไม่ส่งผล (ถามว่า S4/S5 จะว่ายังไง) · `'issue'` = ส่งผลแล้ว (ถามว่าปุ่ม "ออกเอกสาร" จะติดอะไร)
  *   · `gates`    `[{ name, error }]` ด่านที่มีอยู่ก่อน PR-2 — `error: null` = ผ่าน
  *   · `issues`   `{ content: string[], system: string[] }` เหตุของเอกสารจาก `surveyReportPrecheck` ตัวเดียวกับที่ route ใช้
  *   · `overflow` `{ customer: { pages, errors }, internal: { pages, errors } }` หรือ `null` เมื่อยังจัดหน้าไม่ได้
  *   · `verdict`  `{ refusedByGates, refusedByDocument, newlyRefused, skipped }` — `newlyRefused` = วันนี้ส่งได้ แต่เปิดสวิตช์แล้วถูกตีกลับ
  */
-export async function checkSurveyReportInputs(supabase, { request, now = new Date() } = {}) {
+export async function checkSurveyReportInputs(supabase, { request, now = new Date(), signers = false } = {}) {
   const report = {
     request: {
       id: request?.id ?? null, docNo: request?.docNo ?? null, title: request?.title ?? null,
@@ -107,6 +155,8 @@ export async function checkSurveyReportInputs(supabase, { request, now = new Dat
   const nowIso = new Date(now).toISOString();
   const today = businessDate(nowIso);
   const send = report.mode === 'send';
+  // กติกาลายเซ็นจริงของรอบ — ส่งตรงให้ตัวตรวจกับตัวโหลด (ชุดเดียวกัน) เฉพาะเมื่อขอ `--signers`
+  const rule = signers ? { signatureRule: 'required' } : {};
 
   try {
     /* ── ชุดเดียวกับที่ route ส่งผลอ่านสำหรับด่านหกข้อ (S4) ───────────────────────────── */
@@ -128,12 +178,15 @@ export async function checkSurveyReportInputs(supabase, { request, now = new Dat
 
     /* ── คำตัดสินของ server เอง (S5 · `document.send` / `document.issue` ของ GET ใบประเมิน) ─────────── */
     const check = await surveyReportPrecheck(supabase, {
-      request, user: PENDING_HEAD, zones, filesByZone, sizes, open, today, nowIso,
+      request, user: PENDING_HEAD, zones, filesByZone, sizes, open, today, nowIso, ...rule,
     });
     report.unknown = [...check.unknown];
     report.warnings = [...check.warnings];
+    /* ผู้ส่งผลสมมติของใบที่ยังไม่ส่ง "ยังไม่มีลายเซ็น" เสมอ (ไม่มีบัญชีจริง) — บรรทัดนั้นเป็นเหตุปลอม ตัดก่อนนับ
+       (ของจริง: หัวหน้าที่กดส่งต้องมีลายเซ็นเอง — ดูรายชื่อบัญชีฝ่ายบริการที่หน้า "ความครอบคลุมลายเซ็น") */
+    const blockers = check.blockers.filter((issue) => !(send && issue?.sign === true && issue.userId === PENDING_HEAD.id));
     const seen = new Set();
-    for (const issue of check.blockers) {
+    for (const issue of blockers) {
       if (!issue?.text || seen.has(issue.text)) continue;
       seen.add(issue.text);
       report.issues[issue.kind === 'content' ? 'content' : 'system'].push(issue.text);
@@ -145,8 +198,13 @@ export async function checkSurveyReportInputs(supabase, { request, now = new Dat
       request,
       closedVisit: step.action === 'close' ? { ...open, ...step.patch } : null,
       pendingAnswer: send ? { answeredAt: nowIso, answeredById: PENDING_HEAD.id, answeredByName: PENDING_HEAD.name } : null,
-      zones, filesByZone, sizes, takenAt: nowIso,
+      zones, filesByZone, sizes, takenAt: nowIso, ...rule,
     });
+    if (signers) {
+      report.signers = signerRows(inputs, { send });
+      // ใบที่มีพื้นที่ประเมินจากแบบยังออกเอกสารไม่ได้ — ตัวตรวจจึงไม่ถามเรื่องลายเซ็น (รายชื่อผู้ลงนามยังแสดงให้เห็น)
+      report.signHold = blockers.some((issue) => issue?.hold === true);
+    }
     report.images = surveyReportImageFiles(inputs).map(({ attId, kind, file }) => ({
       attId, kind, fileName: file?.fileName ?? null, mimeType: file?.mimeType ?? null,
       sizeBytes: file?.sizeBytes ?? null, onDrive: !!file?.driveFileId,
@@ -166,7 +224,7 @@ export async function checkSurveyReportInputs(supabase, { request, now = new Dat
     if (send) {
       if (step.action === 'block') report.verdict.refusedByDocument = step.error;
       else if (report.unknown.length) report.verdict.skipped = true; // อ่านไม่ครบ = route ข้ามการตีกลับ (ปัญหาของระบบไม่ขวางการส่งผล)
-      else report.verdict.refusedByDocument = surveySendDocumentRefusal(check.blockers);
+      else report.verdict.refusedByDocument = surveySendDocumentRefusal(blockers);
       // นัดร่างตีกลับอยู่แล้วก่อน PR-2 (ประโยคเดียวกัน จากลำดับการเขียน) — ไม่นับเป็น "ตีกลับใหม่"
       report.verdict.newlyRefused = !gateFails && step.action !== 'block' && !!report.verdict.refusedByDocument;
     } else {
@@ -192,6 +250,18 @@ export async function findSurveyRequest(supabase, ref) {
   return { request: (data || [])[0] || null, error: null };
 }
 
+/** ใบประเมินที่ **ส่งผลแล้ว** และไม่ถูกยกเลิก ใหม่ก่อน (`--answered`) — คืน `{ requests, capped, error }`
+ *  ใบพวกนี้คือใบที่ปุ่ม "ออกเอกสาร" / การดึงผลกลับแล้วส่งใหม่จะถูกถามเรื่องลายเซ็นเมื่อกติกาเปิด */
+export async function loadAnsweredSurveyRequests(supabase, { limit = OPEN_SURVEY_LIMIT } = {}) {
+  const { data, error } = await supabase
+    .from('dept_requests').select('*')
+    .eq('kind', 'site_survey').not('answeredAt', 'is', null).is('cancelledAt', null)
+    .order('createdAt', { ascending: false }).order('id', { ascending: true })
+    .limit(limit);
+  if (error) return { requests: [], capped: false, error: message(error) };
+  return { requests: data || [], capped: (data || []).length >= limit, error: null };
+}
+
 /** ใบประเมินที่ยังไม่ส่งผลและไม่ถูกยกเลิก ใหม่ก่อน — คืน `{ requests, capped, error }` */
 export async function loadOpenSurveyRequests(supabase, { limit = OPEN_SURVEY_LIMIT } = {}) {
   const { data, error } = await supabase
@@ -206,6 +276,19 @@ export async function loadOpenSurveyRequests(supabase, { limit = OPEN_SURVEY_LIM
 /* ── พิมพ์ ───────────────────────────────────────────────────────────────────── */
 
 const kb = (bytes) => (Number.isFinite(Number(bytes)) && bytes !== null ? `${Math.round(Number(bytes) / 1024)} KB` : '—');
+
+const SIGNATURE_TEXT = Object.freeze({
+  ready: 'มีลายเซ็นแล้ว', none: 'ยังไม่มีลายเซ็น', unlinked: 'ชื่อไม่ได้ผูกกับบัญชีผู้ใช้', unknown: 'อ่านลายเซ็นไม่สำเร็จ (รันซ้ำ)',
+});
+const ACCOUNT_TEXT = Object.freeze({ disabled: 'บัญชีถูกระงับ', missing: 'บัญชีถูกลบ' });
+/** "ยังไม่มีลายเซ็น · บัญชีถูกระงับ — เพิ่มลายเซ็นเองไม่ได้" */
+const BARRED_TEXT = Object.freeze({
+  assessor: 'ไม่ใช่บัญชีฝ่ายบริการ — เอกสารไม่พิมพ์ลายเซ็นของบัญชีนี้ (แก้ผู้รับผิดชอบของนัด)',
+  approver: 'ไม่ใช่ผู้มีสิทธิ์ส่งผลประเมิน — เอกสารไม่พิมพ์ลายเซ็นของบัญชีนี้ (ดึงผลกลับแล้วให้หัวหน้าฝ่ายบริการส่งใหม่)',
+});
+const signerText = (row) => `${SIGNATURE_TEXT[row.signature] || row.signature}`
+  + (ACCOUNT_TEXT[row.account] ? ` · ${ACCOUNT_TEXT[row.account]}${row.signature === 'none' ? ' — เพิ่มลายเซ็นเองไม่ได้' : ''}` : '')
+  + (row.barred ? ` · 🔴 ${BARRED_TEXT[row.seat] || 'บัญชีนั่งที่นั่งนี้ไม่ได้'}` : '');
 
 /** รายงานของใบเดียว → บรรทัดข้อความ */
 export function reportLines(r) {
@@ -239,6 +322,16 @@ export function reportLines(r) {
 
   out.push(`  คำเตือนที่หัวหน้าต้องรับทราบก่อนส่ง (seenWarnings): ${r.warnings.length || '—'}`);
   for (const text of r.warnings) out.push(`    ⚠ ${text}`);
+
+  if (r.signers) {
+    out.push(`  ผู้ลงนาม (กติกาลายเซ็นจริง)${r.signHold ? ' — ใบมีพื้นที่ประเมินจากแบบ: ยังออกเอกสารไม่ได้ จึงยังไม่ถูกถามเรื่องลายเซ็น' : ''}:`);
+    for (const row of r.signers) {
+      const mark = row.barred ? '✗' : row.signature === 'ready' ? '✓' : row.signature === 'unknown' ? '?' : '✗';
+      out.push(`    ${mark} ${row.label} ${row.name} — ${signerText(row)}`);
+    }
+    if (!r.signers.length) out.push('    — (ยังไม่มีที่นั่งที่พิมพ์ชื่อ)');
+    if (r.mode === 'send') out.push('    · ผู้ตรวจสอบและอนุมัติ = หัวหน้าที่จะกดส่งผล (ยังไม่รู้ว่าใคร — ต้องมีลายเซ็นของตัวเองก่อนกด)');
+  }
 
   out.push(`  รูปที่กระดาษพิมพ์: ${r.images.length} ไฟล์ (ไม่ได้ตรวจว่าเปิดได้จริง — ต้องดึงจาก Drive)`);
   for (const img of r.images) {
@@ -276,6 +369,45 @@ export function summaryLines(reports, { capped = false, limit = OPEN_SURVEY_LIMI
     `      มีคำเตือนให้รับทราบ: ${count((r) => r.warnings.length > 0)}`,
     `      มีเหตุชนิด system (ส่งได้ เอกสารยังไม่ออก): ${count((r) => r.issues.system.length > 0)}`,
     `  ส่งผลแล้ว: ${issue.length} ใบ · ปุ่ม "ออกเอกสาร" จะติด: ${issue.filter((r) => r.verdict.refusedByDocument).length}`,
+    ...signerSummaryLines(reports),
+  ];
+}
+
+/** สรุปของ `--signers`: ใครต้องเพิ่มลายเซ็น (คนละบรรทัด พร้อมจำนวนใบ) + ใบที่ผู้ประเมินเพิ่มลายเซ็นเองไม่ได้แล้ว · ไม่ได้ขอ = `[]` */
+function signerSummaryLines(reports) {
+  const checked = reports.filter((r) => !r.error && Array.isArray(r.signers));
+  if (!checked.length) return [];
+  const people = new Map(); // คน (id หรือชื่อเมื่อไม่ผูกบัญชี) → { name, seats, sheets, gone }
+  for (const r of checked) {
+    for (const row of r.signers) {
+      if (row.signature !== 'none' && row.signature !== 'unlinked') continue;
+      const key = row.userId || `ชื่อ:${row.name}`;
+      const hit = people.get(key) || { name: row.name, seats: new Set(), sheets: 0, gone: false, unlinked: false };
+      hit.seats.add(row.label);
+      hit.sheets += 1;
+      hit.gone = hit.gone || accountGone(row);
+      hit.unlinked = hit.unlinked || row.signature === 'unlinked';
+      people.set(key, hit);
+    }
+  }
+  const stuck = checked.filter(signerStuck);
+  const barred = checked.filter(signerBarred);
+  const unread = checked.filter((r) => r.signers.some((row) => row.signature === 'unknown')).length;
+  return [
+    `  ── ลายเซ็นของผู้ลงนาม (กติกาลายเซ็นจริง · ตรวจ ${checked.length} ใบ) ──`,
+    `  ผู้ที่ต้องเพิ่มลายเซ็นที่ "บัญชีของฉัน": ${people.size || '— (ผู้ลงนามของทุกใบมีลายเซ็นแล้ว)'}${people.size ? ' คน' : ''}`,
+    ...[...people.values()].sort((a, b) => b.sheets - a.sheets || a.name.localeCompare(b.name, 'th')).map((p) => (
+      `    ${p.name} (${[...p.seats].join(' · ')}) — ${p.sheets} ใบ${p.unlinked ? ' · ชื่อไม่ได้ผูกกับบัญชี' : ''}${p.gone ? ' · 🔴 บัญชีถูกปิดหรือถูกลบ' : ''}`
+    )),
+    `  ${stuck.length ? '🔴' : '✅'} ใบที่ผู้ประเมินยังไม่มีลายเซ็นและบัญชีถูกปิดหรือถูกลบ: ${stuck.length}`
+      + ` (ต้องเป็น 0 ก่อนเปิดสวิตช์ลายเซ็นจริง — ใบแบบนี้ส่งผลใหม่ไม่ได้อีกหลังดึงผลกลับ)`,
+    ...stuck.map((r) => `    ${r.request.docNo || r.request.id} · ${r.mode === 'send' ? 'ยังไม่ส่งผล' : 'ส่งผลแล้ว'}`),
+    `  ${barred.length ? '🔴' : '✅'} ใบที่บัญชีของผู้ลงนามนั่งที่นั่งนั้นไม่ได้ (ผู้ประเมินนอกฝ่ายบริการ · ผู้ส่งผลที่ไม่ใช่หัวหน้า): ${barred.length}`
+      + ' (เอกสารของใบแบบนี้ออกไม่ได้เมื่อกติกาเปิด — ต้องแก้ที่ตัวใบ ไม่ใช่เพิ่มลายเซ็น)',
+    ...barred.map((r) => `    ${r.request.docNo || r.request.id} · ${r.mode === 'send' ? 'ยังไม่ส่งผล' : 'ส่งผลแล้ว'} · `
+      + r.signers.filter((row) => row.barred).map((row) => `${row.label} ${row.name}`).join(' · ')),
+    ...(unread ? [`  ? อ่านลายเซ็นไม่สำเร็จ ${unread} ใบ — รันซ้ำก่อนสรุป`] : []),
+    '  ⚠️ ผู้ส่งผลของใบที่ยังไม่ส่งไม่อยู่ในรายการนี้ (คือหัวหน้าที่จะกดส่ง) · ไฟล์ลายเซ็นว่าง/จาง/หายไม่ถูกตรวจที่นี่',
   ];
 }
 
@@ -287,8 +419,9 @@ export async function main({ argv = [], supabase, log = console.log, now = new D
   const flags = new Set(argv.filter((a) => a.startsWith('--')));
   const refs = argv.filter((a) => !a.startsWith('--'));
   const json = flags.has('--json');
-  if ((!refs.length && !flags.has('--open')) || flags.has('--help')) {
-    log('ใช้: node --import ./scripts/test-loader.mjs scripts/check-survey-report-inputs.mjs <id | RQ-…> [...] | --open [--json]');
+  const signers = flags.has('--signers');
+  if ((!refs.length && !flags.has('--open') && !flags.has('--answered')) || flags.has('--help')) {
+    log('ใช้: node --import ./scripts/test-loader.mjs scripts/check-survey-report-inputs.mjs <id | RQ-…> [...] | --open | --answered [--signers] [--json]');
     return flags.has('--help') ? 0 : 2;
   }
   const client = readOnlyClient(supabase);
@@ -309,17 +442,24 @@ export async function main({ argv = [], supabase, log = console.log, now = new D
     const have = new Set(requests.map((r) => r.id));
     requests.push(...open.requests.filter((r) => !have.has(r.id)));
   }
+  if (flags.has('--answered')) {
+    const answered = await loadAnsweredSurveyRequests(client);
+    if (answered.error) { log(`❌ อ่านใบประเมินที่ส่งผลแล้วไม่สำเร็จ: ${answered.error}`); return 1; }
+    capped = capped || answered.capped;
+    const have = new Set(requests.map((r) => r.id));
+    requests.push(...answered.requests.filter((r) => !have.has(r.id)));
+  }
 
   const reports = [];
   // ทีละใบ — ใบหนึ่งยิงสิบกว่าคำสั่งขนานกันอยู่แล้ว ไม่ต้องถล่มฐานของจริงพร้อมกันทุกใบ
-  for (const request of requests) reports.push(await checkSurveyReportInputs(client, { request, now }));
+  for (const request of requests) reports.push(await checkSurveyReportInputs(client, { request, now, signers }));
 
   if (json) {
     log(JSON.stringify({ reports, capped }, null, 2));
     return 0;
   }
   for (const report of reports) reportLines(report).forEach((line) => log(line));
-  if (reports.length > 1 || flags.has('--open')) summaryLines(reports, { capped }).forEach((line) => log(line));
+  if (reports.length > 1 || flags.has('--open') || flags.has('--answered')) summaryLines(reports, { capped }).forEach((line) => log(line));
   return 0;
 }
 

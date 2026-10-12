@@ -26,10 +26,22 @@ import {
   SURVEY_IMAGE_FILE_TIMEOUT_MS,
   SURVEY_IMAGE_PLAN_EDGE,
   SURVEY_IMAGE_PROBE_TIMEOUT_MS,
+  SURVEY_SIGN_FAILURE,
+  SURVEY_SIGN_FILE_TIMEOUT_MS,
+  SURVEY_SIGN_INK_LEVEL,
+  SURVEY_SIGN_INK_MIN_PIXELS,
+  SURVEY_SIGN_JPEG_QUALITY,
+  SURVEY_SIGN_MAX_HEIGHT,
+  SURVEY_SIGN_MAX_WIDTH,
+  SURVEY_SIGN_PERMANENT_REASONS,
   downscaleSurveyImage,
   prepareSurveyReportImages,
+  prepareSurveyReportSignatures,
+  renderSurveySignature,
   surveyReportImagePath,
 } from './surveyReportImages.js';
+import { makeSignaturePng, signatureTables, withSignatureStorage } from './surveyReportSignWorld.mjs';
+import { inspectSignaturePng } from '../signatures.js';
 
 const WEBAPP = process.cwd();
 const F = SURVEY_IMAGE_FAILURE;
@@ -958,3 +970,308 @@ test('sharp ล็อกรุ่น 0.34.5 ตรงตัวใน dependencie
   assert.equal(lock.packages['node_modules/@img/sharp-linux-x64'].version, '0.34.5');
   assert.equal(sharp.versions.sharp, '0.34.5', 'ตัวที่ติดตั้งอยู่ต้องเป็นรุ่นเดียวกับที่ล็อก');
 });
+
+/* ══ 10. ลายเซ็นของผู้ลงนาม (PR-SIG §3.2 · มติเจ้าของ 09/10/2026) — sharp ตัวจริง · คลังลายเซ็นกับถังเป็นตัวปลอม ═══════════ */
+
+const SG = SURVEY_SIGN_FAILURE;
+
+/** โลกของลายเซ็น: ตาราง (ไว้หยิบแถวของฉบับ) + คลังอ่านอย่างเดียว + ถังในหน่วยความจำ */
+function signStore(users) {
+  const tables = signatureTables(users);
+  const db = withSignatureStorage({}, { ...tables.files });
+  return { db, vault: db.signatureVault, versions: tables.versions };
+}
+/** แถวผู้ลงนามแบบที่ `surveyReportSignerVersions` ส่งให้ — จากแถวของฉบับในตาราง */
+const signerOf = (world, userId, { seats = ['assessor'], name = `ชื่อ ${userId}` } = {}) => {
+  const v = world.versions[userId];
+  return {
+    seats, userId, name,
+    version: { versionId: v.id, versionNumber: v.versionNumber, storagePath: v.storagePath, sha256: v.sha256, width: v.width, height: v.height },
+  };
+};
+const prepareSign = (world, signers, opts = {}) => prepareSurveyReportSignatures(world.db, signers, {
+  storeAllowed: true, bucket: 'survey-report', log: quiet, ...opts,
+});
+const stored = (world) => [...world.vault.objects.keys()];
+
+test('PNG ของชุดทดสอบเป็นไฟล์ที่คลังลายเซ็นรับได้จริง — ลายเซ็นปกติ · ว่าง · จาง ผ่านตัวตรวจของคลังทั้งสาม (ด่านหมึกจึงจำเป็น)', () => {
+  for (const kind of ['signed', 'blank', 'faint']) {
+    const png = makeSignaturePng({ kind });
+    const seen = inspectSignaturePng(png);
+    assert.equal(seen.error, null, kind);
+    assert.deepEqual([seen.value.width, seen.value.height], [640, 240], kind);
+    assert.ok(makeSignaturePng({ kind }).equals(png), 'ไฟล์นิ่ง — seed เดิมได้ไบต์เดิม');
+  }
+  assert.ok(!makeSignaturePng({ seed: 1 }).equals(makeSignaturePng({ seed: 2 })), 'seed ต่างกัน = ลายเซ็นคนละเส้น');
+});
+
+test('⭐ ลายเซ็นปกติ: ถมพื้นขาว · อยู่ในกรอบ 600×200 · JPEG · เก็บที่ img/<sha>.jpg ชนิด image/jpeg · ผลไม่มีที่อยู่ไฟล์ของคลัง', async () => {
+  const world = signStore(['U-lead', 'U-head']);
+  const signers = [signerOf(world, 'U-lead', { name: 'Lead Assessor' }), signerOf(world, 'U-head', { seats: ['approver'], name: 'Head Approver' })];
+  const lines = [];
+  const got = await prepareSign(world, signers, { log: (line) => lines.push(line) });
+  assert.deepEqual(got.failed, []);
+  assert.deepEqual(Object.keys(got.imageByVersionId), ['signature-version-U-lead-1', 'signature-version-U-head-1']);
+  assert.deepEqual(world.vault.downloads, signers.map((s) => s.version.storagePath), 'อ่านจากคลังคนละครั้ง');
+
+  for (const signer of signers) {
+    const hit = got.imageByVersionId[signer.version.versionId];
+    assert.deepEqual(Object.keys(hit).sort(), ['bytes', 'h', 'sha', 'w']);
+    // ต้นฉบับ 640×240 ⇒ ย่อเข้ากรอบ (ความสูงชนก่อน) สัดส่วนเดิม
+    assert.deepEqual([hit.w, hit.h], [533, 200]);
+    assert.ok(hit.w <= SURVEY_SIGN_MAX_WIDTH && hit.h <= SURVEY_SIGN_MAX_HEIGHT);
+    const object = world.vault.objects.get(`survey-report/${surveyReportImagePath(hit.sha)}`);
+    assert.equal(object.contentType, 'image/jpeg');
+    assert.equal(sha256(object.body), hit.sha, 'sha = เนื้อไฟล์ที่เก็บ');
+    assert.equal(object.body.length, hit.bytes);
+    const meta = await sharp(object.body).metadata();
+    assert.equal(meta.format, 'jpeg');
+    assert.deepEqual([meta.width, meta.height], [533, 200]);
+    // มุมบนซ้ายของ PNG โปร่งใส = ขาว (bucket รับ JPEG — ไม่มีช่องโปร่งใสให้กลายเป็นดำ)
+    for (const channel of await pixel(object.body, 2, 2)) assert.ok(channel >= 250, `พื้นต้องขาว ได้ ${channel}`);
+  }
+  assert.equal(stored(world).length, 2, 'ลายเซ็นสองคน = สองไฟล์ ไม่มีอย่างอื่น');
+  assert.notEqual(got.imageByVersionId['signature-version-U-lead-1'].sha, got.imageByVersionId['signature-version-U-head-1'].sha);
+  // 🔴 ไม่มีที่อยู่ไฟล์ของคลังในผล · บรรทัด log ก็ไม่พก
+  assert.ok(!JSON.stringify(got).includes('users/') && !JSON.stringify(got).includes('storagePath'));
+  assert.equal(lines.length, 2);
+  assert.ok(lines.every((line) => line.ok === true && line.stored === true && line.ink > SURVEY_SIGN_INK_MIN_PIXELS));
+  assert.ok(!JSON.stringify(lines).includes('users/'));
+});
+
+test('สูตรของลายเซ็น: กรอบ 600×200 · คุณภาพ 90 · ด่านหมึก 160/50 · เพดานต่อไฟล์ 10 วิ · ลายเซ็นเล็กไม่ถูกขยาย', async () => {
+  assert.deepEqual([SURVEY_SIGN_MAX_WIDTH, SURVEY_SIGN_MAX_HEIGHT, SURVEY_SIGN_JPEG_QUALITY], [600, 200, 90]);
+  assert.deepEqual([SURVEY_SIGN_INK_LEVEL, SURVEY_SIGN_INK_MIN_PIXELS, SURVEY_SIGN_FILE_TIMEOUT_MS], [160, 50, 10_000]);
+  const small = await renderSurveySignature(makeSignaturePng({ width: 300, height: 90 }), { sharp });
+  assert.deepEqual([small.w, small.h], [300, 90]);
+  const wide = await renderSurveySignature(makeSignaturePng({ width: 1800, height: 300 }), { sharp });
+  assert.deepEqual([wide.w, wide.h], [600, 100]);
+  assert.ok(small.ink > SURVEY_SIGN_INK_MIN_PIXELS && wide.ink > SURVEY_SIGN_INK_MIN_PIXELS);
+  // ไบต์เดิม = sha เดิม (ส่งใหม่หลังดึงผลกลับใช้ไฟล์เดิมในถัง)
+  assert.equal((await renderSurveySignature(makeSignaturePng(), { sharp })).sha, (await renderSurveySignature(makeSignaturePng(), { sharp })).sha);
+});
+
+test('🔴 ลายเซ็นว่าง (โปร่งใสทั้งแผ่น) · จาง (เส้นเทาอ่อน) = sign_blank ถาวร — ไม่เก็บอะไร · ลายเซ็นปกติของอีกคนผ่าน', async () => {
+  for (const kind of ['blank', 'faint']) {
+    const world = signStore([{ userId: 'U-lead', png: makeSignaturePng({ kind }) }, 'U-head']);
+    const got = await prepareSign(world, [signerOf(world, 'U-lead', { name: 'Lead Assessor' }), signerOf(world, 'U-head', { seats: ['approver'] })]);
+    assert.deepEqual(got.failed, [{
+      userId: 'U-lead', name: 'Lead Assessor', seats: ['assessor'], versionId: 'signature-version-U-lead-1', reason: SG.BLANK, permanent: true,
+    }], kind);
+    assert.deepEqual(Object.keys(got.imageByVersionId), ['signature-version-U-head-1'], kind);
+    assert.equal(stored(world).length, 1, `${kind}: ลายเซ็นที่ไม่ผ่านต้องไม่ถูกเก็บ`);
+  }
+  // จุดเล็ก ๆ (หมึกไม่ถึงเกณฑ์) ก็ว่าง — เกณฑ์นับพิกเซลที่เข้มกว่า 160 ต้องถึง 50
+  const dot = await sharp({ create: { width: 300, height: 100, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite([{ input: { create: { width: 6, height: 6, channels: 4, background: '#000000' } }, left: 40, top: 40 }]).png().toBuffer();
+  assert.equal((await renderSurveySignature(dot, { sharp })).ink, 36);
+  const world = signStore([{ userId: 'U-dot', png: dot }]);
+  assert.equal((await prepareSign(world, [signerOf(world, 'U-dot')])).failed[0].reason, SG.BLANK);
+});
+
+test('🔴 เนื้อไฟล์ไม่ตรงกับ sha256 ที่บันทึกตอนอัปโหลด = sign_mismatch ถาวร — ไม่ย่อ ไม่เก็บ', async () => {
+  const world = signStore(['U-lead']);
+  const signer = signerOf(world, 'U-lead');
+  world.vault.files[signer.version.storagePath] = makeSignaturePng({ seed: 99 }); // ไฟล์ในคลังถูกสลับ
+  const got = await prepareSign(world, [signer]);
+  assert.deepEqual(got.failed.map((f) => [f.reason, f.permanent]), [[SG.MISMATCH, true]]);
+  assert.deepEqual(got.imageByVersionId, {});
+  assert.equal(stored(world).length, 0);
+  // แถวที่ไม่มี sha (ข้อมูลเพี้ยน) ก็ไม่ตรง
+  const world2 = signStore(['U-lead']);
+  const noSha = signerOf(world2, 'U-lead');
+  noSha.version.sha256 = null;
+  assert.equal((await prepareSign(world2, [noSha])).failed[0].reason, SG.MISMATCH);
+});
+
+test('🔴 ที่อยู่ไฟล์นอกโฟลเดอร์ของเจ้าของ = sign_path ถาวร และ **ไม่อ่านคลัง** (แถวถูกแก้ให้ชี้ลายเซ็นของคนอื่น)', async () => {
+  const world = signStore(['U-lead', 'U-head']);
+  const stolen = signerOf(world, 'U-lead');
+  stolen.version.storagePath = world.versions['U-head'].storagePath; // ชี้ไฟล์ของ U-head
+  stolen.version.sha256 = world.versions['U-head'].sha256;
+  const got = await prepareSign(world, [stolen]);
+  assert.deepEqual(got.failed.map((f) => [f.reason, f.permanent]), [[SG.PATH, true]]);
+  assert.deepEqual(world.vault.downloads, []);
+  for (const path of ['', null, undefined, '../users/U-lead/x.png', 'users/U-leadX/x.png', 'img/x.jpg']) {
+    const w = signStore(['U-lead']);
+    const row = signerOf(w, 'U-lead');
+    row.version.storagePath = path;
+    assert.equal((await prepareSign(w, [row])).failed[0].reason, SG.PATH, String(path));
+    assert.deepEqual(w.vault.downloads, []);
+  }
+});
+
+test('ไฟล์หายจากคลัง = sign_missing ถาวร · คลังตอบ error อื่น/โยน = sign_storage ไม่ถาวร · ไบต์ที่ไม่ใช่รูป = sign_undecodable ถาวร', async () => {
+  const gone = signStore(['U-lead']);
+  const signer = signerOf(gone, 'U-lead');
+  delete gone.vault.files[signer.version.storagePath];
+  assert.deepEqual((await prepareSign(gone, [signer])).failed.map((f) => [f.reason, f.permanent]), [[SG.MISSING, true]]);
+
+  const down = signStore(['U-lead']);
+  down.vault.files[signerOf(down, 'U-lead').version.storagePath] = new Error('storage 503');
+  assert.deepEqual((await prepareSign(down, [signerOf(down, 'U-lead')])).failed.map((f) => [f.reason, f.permanent]), [[SG.STORAGE, false]]);
+
+  const thrower = signStore(['U-lead']);
+  thrower.vault.files[signerOf(thrower, 'U-lead').version.storagePath] = () => { throw new Error('socket hang up'); };
+  assert.deepEqual((await prepareSign(thrower, [signerOf(thrower, 'U-lead')])).failed.map((f) => [f.reason, f.permanent]), [[SG.STORAGE, false]]);
+
+  // ไฟล์ที่ sha ตรงกับที่บันทึก แต่ถอดรหัสไม่ได้ (คลังรับไฟล์ที่หัวเป็น PNG เนื้อพัง)
+  const junk = Buffer.from('not an image at all');
+  const bad = signStore([{ userId: 'U-lead', png: junk }]);
+  const got = await prepareSign(bad, [signerOf(bad, 'U-lead')]);
+  assert.deepEqual(got.failed.map((f) => [f.reason, f.permanent]), [[SG.UNDECODABLE, true]]);
+  assert.equal(stored(bad).length, 0);
+});
+
+test('🔴 คลังค้างไม่ตอบ = sign_timeout เมื่อครบเพดานต่อไฟล์ (timeoutSignal) — ไม่ลากทั้งรอบค้าง · ได้ signal ไปตัดสาย · คนถัดไปยังถูกเตรียม', async () => {
+  const world = signStore(['U-lead', 'U-head']);
+  let seenSignal = null;
+  world.vault.files[signerOf(world, 'U-lead').version.storagePath] = (signal) => { seenSignal = signal; return new Promise(() => {}); };
+  const started = Date.now();
+  const got = await prepareSign(world, [signerOf(world, 'U-lead'), signerOf(world, 'U-head', { seats: ['approver'] })], { fileTimeoutMs: 40 });
+  assert.ok(Date.now() - started < 3000);
+  assert.deepEqual(got.failed.map((f) => [f.userId, f.reason, f.permanent]), [['U-lead', SG.TIMEOUT, false]]);
+  assert.ok(seenSignal && seenSignal.aborted, 'สายของคลังต้องถูกตัดเมื่อหมดเวลา');
+  assert.deepEqual(Object.keys(got.imageByVersionId), ['signature-version-U-head-1']);
+});
+
+test('งบของรอบหมดก่อนถึงคิว = sign_timeout (ไม่ถาวร) ไม่อ่านคลัง · งบเป็นจำนวน ms จากนี้ได้', async () => {
+  const world = signStore(['U-lead', 'U-head']);
+  const signers = [signerOf(world, 'U-lead'), signerOf(world, 'U-head', { seats: ['approver'] })];
+  let clock = 1_000_000_000_000;
+  const got = await prepareSign(world, signers, { deadline: clock - 1, now: () => clock });
+  assert.deepEqual(got.failed.map((f) => [f.reason, f.permanent]), [[SG.TIMEOUT, false], [SG.TIMEOUT, false]]);
+  assert.deepEqual(world.vault.downloads, []);
+  // งบ 15 วิจากนี้: คนแรกผ่าน แล้วนาฬิกาเดินเลยงบ — คนที่สองไม่ถูกเริ่ม
+  const world2 = signStore(['U-lead', 'U-head']);
+  // นาฬิกาถูกถามสามครั้ง: ตอนตั้งงบ (5 วิ ⇒ หมดที่ 20 วิ) · ก่อนคนแรก (6 วิ) · ก่อนคนที่สอง (30 วิ)
+  const ticks = [5_000, 6_000, 30_000];
+  const half = await prepareSign(world2, [signerOf(world2, 'U-lead'), signerOf(world2, 'U-head', { seats: ['approver'] })], {
+    deadline: 15_000, now: () => ticks.shift() ?? 30_000,
+  });
+  assert.deepEqual(Object.keys(half.imageByVersionId), ['signature-version-U-lead-1']);
+  assert.deepEqual(half.failed.map((f) => [f.userId, f.reason]), [['U-head', SG.TIMEOUT]]);
+});
+
+test('⭐ have = แผนที่ของรอบก่อน (object หรือ Map) — ฉบับที่มีแล้วไม่ถูกอ่านซ้ำ ไม่โหลด sharp และติดกลับมาในผล', async () => {
+  const world = signStore(['U-lead', 'U-head']);
+  const signers = [signerOf(world, 'U-lead'), signerOf(world, 'U-head', { seats: ['approver'] })];
+  const first = await prepareSign(world, signers);
+  world.vault.downloads.length = 0;
+  let loads = 0;
+  const loadSharp = async () => { loads += 1; return sharp; };
+  for (const have of [first.imageByVersionId, new Map(Object.entries(first.imageByVersionId))]) {
+    const again = await prepareSign(world, signers, { have, loadSharp });
+    assert.deepEqual(again, first);
+  }
+  assert.deepEqual(world.vault.downloads, []);
+  assert.equal(loads, 0, 'ไม่มีอะไรต้องย่อ = ไม่โหลด sharp');
+  // มีแค่ของคนเดียว = อ่านเฉพาะอีกคน
+  const partial = await prepareSign(world, signers, { have: { 'signature-version-U-lead-1': first.imageByVersionId['signature-version-U-lead-1'] } });
+  assert.deepEqual(partial, first);
+  assert.deepEqual(world.vault.downloads, [signers[1].version.storagePath]);
+  // ฉบับใน have ที่ไม่มี sha = ยังไม่ได้เตรียม
+  world.vault.downloads.length = 0;
+  await prepareSign(world, [signers[0]], { have: { 'signature-version-U-lead-1': { w: 1, h: 1 } } });
+  assert.equal(world.vault.downloads.length, 1);
+});
+
+test('คนเดียวสองที่นั่ง = แถวเดียว อ่านครั้งเดียว · ฉบับเดียวกันส่งซ้ำสองแถว (ผู้เรียกผิด) ก็เตรียมครั้งเดียว', async () => {
+  const world = signStore(['U-lead']);
+  const both = signerOf(world, 'U-lead', { seats: ['assessor', 'approver'] });
+  const got = await prepareSign(world, [both, { ...both, seats: ['approver'] }]);
+  assert.deepEqual(got.failed, []);
+  assert.deepEqual(Object.keys(got.imageByVersionId), ['signature-version-U-lead-1']);
+  assert.equal(world.vault.downloads.length, 1);
+  assert.equal(stored(world).length, 1);
+});
+
+test('"มีอยู่แล้ว" ในถัง = สำเร็จ (ผู้ลงนามคนเดิมบนเอกสารใบถัดไป) · อัปไม่ขึ้น = sign_storage ไม่ถาวร', async () => {
+  const world = signStore(['U-lead']);
+  const first = await prepareSign(world, [signerOf(world, 'U-lead')]);
+  const again = await prepareSign(world, [signerOf(world, 'U-lead')]);
+  assert.deepEqual(again, first);
+  assert.equal(stored(world).length, 1);
+
+  const broken = signStore(['U-lead']);
+  const base = broken.db.storage;
+  broken.db.storage = {
+    from: (bucket) => (bucket === 'signature-assets' ? base.from(bucket) : { upload: async () => ({ data: null, error: { message: 'bucket down', statusCode: '500' } }) }),
+  };
+  assert.deepEqual((await prepareSign(broken, [signerOf(broken, 'U-lead')])).failed.map((f) => [f.reason, f.permanent]), [[SG.STORAGE, false]]);
+});
+
+test('🔴 ด่านเขียนถาวร: `true` ตรงตัวเท่านั้นจึงเก็บ — ปิดอยู่ยังอ่าน ยังตรวจ ยังคืน sha (ไฟล์เสียยังถูกจับ) · ไม่ส่ง = ถามตัวตัดสินกลาง', async () => {
+  for (const storeAllowed of [false, 'true', 1, null]) {
+    const world = signStore(['U-lead', { userId: 'U-blank', png: makeSignaturePng({ kind: 'blank' }) }]);
+    const got = await prepareSign(world, [signerOf(world, 'U-lead'), signerOf(world, 'U-blank', { seats: ['approver'] })], { storeAllowed });
+    assert.match(got.imageByVersionId['signature-version-U-lead-1'].sha, /^[0-9a-f]{64}$/);
+    assert.equal(got.failed[0].reason, SG.BLANK);
+    assert.equal(stored(world).length, 0, String(storeAllowed));
+  }
+  const before = process.env.VERCEL_ENV;
+  try {
+    process.env.VERCEL_ENV = 'preview';
+    const off = signStore(['U-lead']);
+    await prepareSurveyReportSignatures(off.db, [signerOf(off, 'U-lead')], { log: quiet });
+    assert.equal(stored(off).length, 0, 'นอก production ต้องไม่เก็บ');
+    process.env.VERCEL_ENV = 'production';
+    const on = signStore(['U-lead']);
+    const got = await prepareSurveyReportSignatures(on.db, [signerOf(on, 'U-lead')], { log: quiet });
+    assert.deepEqual(stored(on), [`survey-report/${surveyReportImagePath(got.imageByVersionId['signature-version-U-lead-1'].sha)}`]);
+  } finally {
+    if (before === undefined) delete process.env.VERCEL_ENV;
+    else process.env.VERCEL_ENV = before;
+  }
+});
+
+test('🔴 คลังลายเซ็นอ่านอย่างเดียว: ตัวเตรียมไม่เขียน/ลบ `signature-assets` (ของปลอมโยนเมื่อถูกสั่ง) · ต้นทางเป็นคลังนี้เสมอ ไม่มีตัวเลือกชื่อคลัง', async () => {
+  const world = signStore(['U-lead']);
+  assert.throws(() => world.db.storage.from('signature-assets').upload('x', Buffer.alloc(1)), /อ่านอย่างเดียว/);
+  assert.throws(() => world.db.storage.from('signature-assets').remove(['x']), /อ่านอย่างเดียว/);
+  await prepareSign(world, [signerOf(world, 'U-lead')], { bucket: 'other-bucket' });
+  assert.deepEqual(stored(world).map((key) => key.split('/')[0]), ['other-bucket'], 'ตัวเลือก bucket = ถังของสำเนา ไม่ใช่คลังต้นทาง');
+  assert.equal(world.vault.downloads.length, 1);
+  const src = fs.readFileSync(path.join(WEBAPP, 'src/lib/service/surveyReportImages.js'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+  assert.equal((src.match(/storage\.from\(SIGNATURE_BUCKET\)\.download\(/g) || []).length, 1);
+  assert.doesNotMatch(src, /SIGNATURE_BUCKET\)\.(upload|remove|update|move|copy)\(/);
+  // เพดานเวลาของการอ่านคลังมาจาก `timeoutSignal` (ไม่ใช่ `AbortSignal.timeout` — unref บน Node 22 ของ CI)
+  assert.doesNotMatch(src, /AbortSignal\.timeout/);
+  assert.match(src, /\.jpeg\(\{ quality: SURVEY_SIGN_JPEG_QUALITY, mozjpeg: true \}\)/);
+});
+
+test('import sharp ล้ม = ทุกคนล้มแบบไม่ถาวร (sharp_unavailable) · แถวผิดรูป (ไม่มีฉบับ/ไม่มีผู้ใช้) = prepare_failed ไม่ถาวร — ไม่โยน', async () => {
+  const world = signStore(['U-lead', 'U-head']);
+  const signers = [signerOf(world, 'U-lead'), signerOf(world, 'U-head', { seats: ['approver'] })];
+  const noSharp = await prepareSign(world, signers, { loadSharp: async () => { throw new Error('Could not load the "sharp" module'); } });
+  assert.deepEqual(noSharp.failed.map((f) => [f.reason, f.permanent]), [[SG.SHARP_UNAVAILABLE, false], [SG.SHARP_UNAVAILABLE, false]]);
+  assert.deepEqual(world.vault.downloads, []);
+
+  const odd = await prepareSign(world, [{ seats: ['assessor'], userId: 'U-x', name: 'ไม่มีฉบับ' }, { ...signers[0], userId: null }]);
+  assert.deepEqual(odd.failed.map((f) => [f.reason, f.permanent]), [[SG.INTERNAL, false], [SG.INTERNAL, false]]);
+  assert.deepEqual(odd.imageByVersionId, {});
+
+  for (const bad of [undefined, null, 'x', {}, [null, 7]]) {
+    const got = await prepareSurveyReportSignatures(null, bad, { log: quiet });
+    assert.ok(Array.isArray(got.failed) && typeof got.imageByVersionId === 'object', JSON.stringify(bad));
+  }
+  // client ที่โยนทุกคำสั่ง · log ที่โยน — ยังได้ผล ไม่โยนเข้า route
+  const hostile = { get storage() { throw new Error('boom'); } };
+  const got = await prepareSurveyReportSignatures(hostile, signers, { log: () => { throw new Error('log พัง'); }, storeAllowed: true });
+  assert.deepEqual(got.failed.map((f) => f.permanent), [false, false]);
+  assert.deepEqual(SURVEY_SIGN_PERMANENT_REASONS, [SG.PATH, SG.MISSING, SG.MISMATCH, SG.UNDECODABLE, SG.BLANK]);
+});
+
+test('ลิสต์ว่าง = ไม่โหลด sharp ไม่แตะคลัง · `failed` เรียงตามลำดับของผู้ลงนาม', async () => {
+  let loads = 0;
+  const world = signStore(['U-lead', 'U-head']);
+  assert.deepEqual(await prepareSign(world, [], { loadSharp: async () => { loads += 1; return sharp; } }), { imageByVersionId: {}, failed: [] });
+  assert.equal(loads, 0);
+  const a = signerOf(world, 'U-lead');
+  const b = signerOf(world, 'U-head', { seats: ['approver'] });
+  delete world.vault.files[a.version.storagePath];
+  delete world.vault.files[b.version.storagePath];
+  assert.deepEqual((await prepareSign(world, [b, a])).failed.map((f) => f.userId), ['U-head', 'U-lead']);
+});
+

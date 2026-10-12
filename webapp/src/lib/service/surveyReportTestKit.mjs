@@ -9,6 +9,8 @@
 //      เป็นของสมมติ · `fixture.json` มีชื่อลูกค้าจริงและเบอร์โทรจริง จึงอยู่นอกรีโป (เทสต์ของจริงข้ามเองเมื่อไม่มีไฟล์)
 //   ③ `markedSurveyInputs`             อินพุตที่ทุกช่องพกเครื่องหมายไม่ซ้ำ — เทสต์ "รั่ว" grep หาในฉบับลูกค้า
 //      (ทั้ง view ในงวดนี้ และ HTML ในงวดถัดไป ใช้ชุดเดียวกัน)
+//   ⑥ `signedSurveyInputs` · `surveySignCases`  อินพุตชุดใดก็ได้ + กติกาลายเซ็นจริง (PR-SIG) — ผู้ลงนาม · ฉบับของลายเซ็น · รูปที่ "เตรียมแล้ว"
+//      (sha ปลอมที่นิ่ง) · กรณีของลายเซ็นที่ harness วัดจริงใน Chrome (`--stress`)
 import { createHash } from 'node:crypto';
 import { suggestedPackageSize } from './packageSizes.js';
 import { surveyZoneSize } from './survey.js';
@@ -615,3 +617,93 @@ export function surveyStressCases() {
     },
   ];
 }
+
+/* ── ⑥ ลายเซ็นจริงของผู้ลงนาม (PR-SIG · มติเจ้าของ 09/10/2026) ─────────────────────────────── */
+
+/** ฉบับของลายเซ็นปลอมของผู้ใช้หนึ่งคน — รูปเดียวกับที่ตัวโหลดคืนใน `inputs.signatures[userId]` */
+export const fakeSignatureVersion = (userId) => ({
+  versionId: `signature-version-${userId}-1`, versionNumber: 1,
+  storagePath: `users/${String(userId).replace(/[^a-zA-Z0-9_-]+/g, '_')}/signature-version-${userId}-1.png`,
+  sha256: `sha256:${fakeSha(`sign-source-${userId}`)}`, width: 640, height: 240,
+});
+
+/**
+ * อินพุตชุดใดก็ได้ + กติกาลายเซ็นจริงเปิด — รูปเดียวกับที่ `loadSurveyReportInputs` คืนตอนสวิตช์เปิด บวกรูปที่ขั้นออกเลขเตรียม
+ * @param inputs  อินพุตของตัวสร้างภาพนิ่ง (ไม่ถูกแก้) — ผู้ประเมิน/ผู้ส่งผลที่ไม่มี id ได้ id สมมติ (`U-assessor` · `U-approver`:
+ *                fixture ของจริงดึงมาก่อนมีคอลัมน์ id ของสองคนนี้)
+ * @param opts.have      ที่นั่งที่คนบนที่นั่งมีลายเซ็น (ค่าตั้งต้น ทั้งสอง) — ไม่อยู่ในลิสต์ = `null` (ยังไม่มีลายเซ็น)
+ * @param opts.same      `true` = คนเดียวสองที่นั่ง (ผู้ประเมินเป็นคนส่งผลเอง)
+ * @param opts.prepared  `false` = ยังไม่เตรียมรูปลายเซ็น (รอบตรวจ · ฉบับร่าง) — ไม่มี `signatureImageByVersionId`
+ * ⚠️ `signerEligible` เป็น `true` ทั้งสองที่นั่ง — บัญชีสมมติของชุดนี้คือบัญชีฝ่ายบริการกับหัวหน้าที่ส่งผล
+ */
+export function signedSurveyInputs(inputs, { have = ['assessor', 'approver'], same = false, prepared = true } = {}) {
+  const visit = inputs.visit ? { ...inputs.visit, assigneeId: inputs.visit.assigneeId || 'U-assessor' } : inputs.visit;
+  const approverId = same && visit ? visit.assigneeId : (inputs.request?.answeredById || 'U-approver');
+  const request = {
+    ...inputs.request, answeredById: approverId,
+    ...(same && visit ? { answeredByName: visit.assigneeName } : {}),
+  };
+  const signatures = {};
+  if (visit) signatures[visit.assigneeId] = have.includes('assessor') ? fakeSignatureVersion(visit.assigneeId) : null;
+  if (!Object.hasOwn(signatures, approverId)) signatures[approverId] = have.includes('approver') ? fakeSignatureVersion(approverId) : null;
+  const versions = Object.values(signatures).filter(Boolean);
+  return {
+    ...inputs, visit, request,
+    signatureRule: 'required',
+    signatures,
+    ...(prepared ? {
+      signatureImageByVersionId: Object.fromEntries(versions.map((v) => [v.versionId, {
+        sha: fakeSha(`sign-image-${v.versionId}`), w: 533, h: 200, bytes: 4000,
+      }])),
+    } : {}),
+    assigneeAccount: 'active',
+    // บัญชีของทั้งสองที่นั่งนั่งได้ (ผู้ประเมินเป็นบัญชีฝ่ายบริการ · ผู้ส่งผลมีสิทธิ์ส่งผล) — ธงที่ตัวโหลดตั้งหลังอ่านบัญชีจริง
+    //   ผู้เรียกที่อยากได้บัญชีที่นั่งไม่ได้ทับคีย์นี้เอง (`{ ...signedSurveyInputs(x), signerEligible: { … } }`)
+    signerEligible: { assessor: true, approver: true },
+  };
+}
+
+/* ชื่อที่ยาวพอจะตกเป็นสองบรรทัดในที่นั่งของภาคผนวก จ (กว้าง ~205px ที่ 12.5px ตัวหนา) — ชื่อสมมติ */
+const LONG_ASSESSOR = 'นายสมมติชัย ศรีสุวรรณวัฒนากุลพิพัฒน์';
+const LONG_APPROVER = 'นางสาวสมมติพร เจริญรุ่งเรืองกิจไพศาล';
+
+/**
+ * กรณีของลายเซ็นที่ต้องวัดจริงใน Chrome — harness (`--stress`) วัดด้วยไฟล์ลายเซ็นที่ผ่านตัวเตรียมจริง · เทสต์ใช้ sha ปลอม
+ * @returns `[{ name, mode, inputs(), sign, seats, known }]`
+ *   · `inputs()`  อินพุตตั้งต้น (ยังไม่มีกติกา) — ผู้เรียกต่อด้วย `signedSurveyInputs(inputs, sign)` หรือตัวเตรียมจริงของ harness
+ *   · `sign`      ตัวเลือกของ `signedSurveyInputs` (`same` · `have` · `prepared`)
+ *   · `seats`     จำนวนที่ต้องเห็นต่อบล็อกลงนามหนึ่งบล็อก `{ images, waits }` (การรับรองผลของทั้งสองฉบับ และภาคผนวก จ ของฉบับภายใน)
+ *   · `known`     ข้อที่ harness รู้ว่าจะฟ้อง (ข้อจำกัดที่ยังไม่แก้) — ต้องฟ้องจริงทุกรอบ ไม่ฟ้อง = กรณีนี้ล้าสมัย ต้องแก้ที่นี่
+ *   sign-closed  ฝ่ายขายปิดเรื่องแล้ว — ภาคผนวก จ ลงนามครบสามที่นั่ง (สองที่นั่งแรกเป็นรูป ที่นั่งฝ่ายขายยังเป็นคำ)
+ *   sign-same    คนเดียวสองที่นั่ง — รูปเดียวกันสองช่อง ไฟล์เดียวในถัง
+ *   sign-wrap    ชื่อผู้ลงนามยาวจนตกสองบรรทัด — แถวที่นั่งของภาคผนวก จ สูงเกินแผน (ข้อจำกัดที่รู้ · `surveyReportLayout.js`):
+ *                วัดใน Chrome 09/10 ได้ 179.3 เมื่อมีรูปลายเซ็น (เกิน 18.3) · 169.3 เมื่อพิมพ์คำแบบเดิม (เกิน 8.3 — เป็นมาก่อนงวดนี้)
+ *   sign-draft   ฉบับร่างก่อนออกเอกสาร — ช่องลายเซ็นเป็นกรอบประ: คนที่มีลายเซ็น "จะขึ้นเมื่อออกเอกสาร" · คนที่ยังไม่มี "ยังไม่มีลายเซ็น"
+ */
+export function surveySignCases() {
+  const twin = () => surveyReportInputsFromFixture(syntheticSurveyFixture());
+  return [
+    {
+      name: 'sign-closed', mode: 'freeze', sign: {}, seats: { images: 2, waits: 0 }, known: [],
+      inputs: () => {
+        const base = twin();
+        return { ...base, request: { ...base.request, closedAt: '2026-09-27T02:00:00.000+00:00', closedByName: 'Sale Requester' } };
+      },
+    },
+    { name: 'sign-same', mode: 'freeze', sign: { same: true }, seats: { images: 2, waits: 0 }, known: [], inputs: twin },
+    {
+      name: 'sign-wrap', mode: 'freeze', sign: {}, seats: { images: 2, waits: 0 },
+      known: [/^internal หน้า \d+ \(appendix\) ลงนาม: แผน 161 วัดได้ [\d.]+ — ต่างเกิน 8px$/],
+      inputs: () => {
+        const base = twin();
+        return {
+          ...base,
+          visit: { ...base.visit, assigneeName: LONG_ASSESSOR },
+          request: { ...base.request, answeredByName: LONG_APPROVER },
+        };
+      },
+    },
+    { name: 'sign-draft', mode: 'draft', sign: { have: ['approver'], prepared: false }, seats: { images: 0, waits: 2 }, known: [], inputs: twin },
+  ];
+}
+

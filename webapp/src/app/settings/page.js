@@ -73,7 +73,7 @@ export default function SettingsOverviewPage() {
       icon: <Signature size={16} />,
       label: "คนที่ยังไม่มีลายเซ็น",
       value: missingSignatures,
-      note: missingSignatures ? "อนุมัติเอกสารไม่ได้จนกว่าจะอัปโหลด" : "ผู้อนุมัติมีลายเซ็นครบแล้ว",
+      note: missingSignatures ? "ต้องอัปโหลดก่อนอนุมัติเอกสาร หรือลงนามรายงานการประเมินพื้นที่" : "ผู้ที่ต้องมีลายเซ็นมีครบแล้ว",
       tone: missingSignatures ? "warning" : undefined,
     },
     blockedDocuments !== null && {

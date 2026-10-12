@@ -9,7 +9,8 @@ import assert from 'node:assert/strict';
 import { buildSurveyReportSnapshot } from './surveyReportSnapshot.js';
 import { customerFreeTextWarnings, surveyReportSendWarnings, surveyReportView } from './surveyReportView.js';
 import {
-  fakeSha, markedSurveyInputs, stressSurveyInputs, surveyReportInputsFromFixture, surveyStressCases, syntheticSurveyFixture,
+  fakeSha, fakeSignatureVersion, markedSurveyInputs, signedSurveyInputs, stressSurveyInputs, surveyReportInputsFromFixture,
+  surveySignCases, surveyStressCases, syntheticSurveyFixture,
 } from './surveyReportTestKit.mjs';
 
 const snapshotOf = (inputs, mode = 'freeze') => {
@@ -700,3 +701,109 @@ test('คำเตือนก่อนส่ง: ผลนิ่ง (เที�
   const { snapshot } = buildSurveyReportSnapshot(bare, { mode: 'draft' });
   assert.deepEqual(unprintableOnly(surveyReportSendWarnings(surveyReportView(snapshot, { version: 'customer' }))), []);
 });
+
+/* ══ ลายเซ็นจริงของผู้ลงนาม (PR-SIG §4.1 · มติเจ้าของ 09/10/2026) ═══════════════════════════ */
+
+const PENDING = 'ลายเซ็นจะขึ้นเมื่อออกเอกสาร';
+const NO_SIGN = 'ยังไม่มีลายเซ็น';
+const signed = (opts, mode = 'freeze') => snapshotOf(signedSurveyInputs(twinInputs(), opts), mode);
+const signImg = (userId, seat) => ({ attId: null, sha: fakeSha(`sign-image-${fakeSignatureVersion(userId).versionId}`), w: 533, h: 200, sign: seat });
+
+test('🔴 ภาพนิ่งที่ไม่มีคีย์ `signatures` (ทุกฉบับที่ออกก่อนกติกานี้ · สวิตช์ปิด): ที่นั่งไม่มีคีย์ `img` — ออบเจกต์เดิมทุกคีย์ ตัวเรนเดอร์พิมพ์คำเดิม', () => {
+  for (const version of ['customer', 'internal']) {
+    const view = surveyReportView(twinSnapshot(), { version });
+    assert.deepEqual(Object.keys(view.signoff.assessor), ['title', 'role', 'mark', 'name', 'date']);
+    assert.deepEqual(Object.keys(view.signoff.approver), ['title', 'role', 'mark', 'name', 'date']);
+    assert.equal(view.signoff.assessor.mark, 'ลายเซ็นอิเล็กทรอนิกส์');
+  }
+  const internal = surveyReportView(twinSnapshot(), { version: 'internal' });
+  for (const seat of internal.appendix.signs) assert.deepEqual(Object.keys(seat), ['title', 'role', 'signed', 'name', 'date']);
+  // คีย์ที่มีแต่ไม่ใช่ object = ถือว่าไม่มี (ภาพนิ่งเพี้ยนต้องไม่ทำให้ที่นั่งหายไปครึ่งเดียว)
+  for (const junk of [null, 'x', 0]) {
+    const view = surveyReportView({ ...twinSnapshot(), signatures: junk }, { version: 'customer' });
+    assert.equal('img' in view.signoff.assessor, false, String(junk));
+  }
+});
+
+test('⭐ ภาพนิ่งที่ตรึงลายเซ็น: สองที่นั่งของการรับรองผลได้ `img` (รูปของที่นั่งนั้น) — ชื่อ วันที่ ตำแหน่ง เท่าเดิม', () => {
+  const plain = surveyReportView(twinSnapshot(), { version: 'customer' });
+  const view = surveyReportView(signed(), { version: 'customer' });
+  assert.deepEqual(view.signoff.assessor, { ...plain.signoff.assessor, mark: PENDING, img: signImg('U-lead', 'assessor') });
+  assert.deepEqual(view.signoff.approver, { ...plain.signoff.approver, mark: PENDING, img: signImg('U-head', 'approver') });
+  assert.deepEqual(view.signoff.customer, plain.signoff.customer, 'ที่นั่งลูกค้ายังเป็นแบบฟอร์มเปล่า');
+  // ส่วนอื่นของ view ไม่ขยับ
+  assert.deepEqual({ ...view, signoff: null }, { ...plain, signoff: null });
+});
+
+test('ภาคผนวก จ (ฉบับภายใน): สองที่นั่งแรกได้ลายเซ็นชุดเดียวกับการรับรองผล · ที่นั่งฝ่ายขายไม่แตะ (ทั้งยังไม่ปิดและปิดแล้ว)', () => {
+  const plain = surveyReportView(twinSnapshot(), { version: 'internal' });
+  const view = surveyReportView(signed(), { version: 'internal' });
+  assert.deepEqual(view.appendix.signs[0], { ...plain.appendix.signs[0], img: signImg('U-lead', 'assessor'), mark: PENDING });
+  assert.deepEqual(view.appendix.signs[1], { ...plain.appendix.signs[1], img: signImg('U-head', 'approver'), mark: PENDING });
+  assert.deepEqual(view.appendix.signs[2], plain.appendix.signs[2]);
+  assert.deepEqual(view.signoff, surveyReportView(signed(), { version: 'customer' }).signoff, 'การรับรองผลเท่ากันทั้งสองฉบับ');
+
+  const closed = surveySignCases().find((c) => c.name === 'sign-closed');
+  const done = surveyReportView(snapshotOf(signedSurveyInputs(closed.inputs(), closed.sign)), { version: 'internal' });
+  assert.deepEqual(done.appendix.signs.map((seat) => [seat.signed, 'img' in seat]), [[true, true], [true, true], [true, false]]);
+});
+
+test('ที่นั่งที่คนยังไม่มีลายเซ็น = `img: null` + "ยังไม่มีลายเซ็น" · มีลายเซ็นแต่ยังไม่เตรียมรูป (ร่าง) = sha ว่าง + "จะขึ้นเมื่อออกเอกสาร"', () => {
+  const view = surveyReportView(signed({ have: ['approver'], prepared: false }, 'draft'), { version: 'internal' });
+  assert.equal(view.signoff.assessor.img, null);
+  assert.equal(view.signoff.assessor.mark, NO_SIGN);
+  assert.deepEqual(view.signoff.approver.img, { attId: null, sha: null, w: null, h: null, sign: 'approver' });
+  assert.equal(view.signoff.approver.mark, PENDING);
+  assert.deepEqual(view.appendix.signs.slice(0, 2).map((seat) => [seat.img?.sign ?? null, seat.mark]), [[null, NO_SIGN], ['approver', PENDING]]);
+});
+
+test('คนเดียวสองที่นั่ง: สองที่นั่งได้รูปเดียวกัน แต่ละช่องบอกที่นั่งของตัวเอง', () => {
+  const view = surveyReportView(signed({ same: true }), { version: 'customer' });
+  assert.equal(view.signoff.assessor.img.sha, view.signoff.approver.img.sha);
+  assert.deepEqual([view.signoff.assessor.img.sign, view.signoff.approver.img.sign], ['assessor', 'approver']);
+  assert.equal(view.signoff.approver.name, 'Lead Assessor');
+});
+
+test('🔴 ฉบับไหนก็ไม่พก id ของผู้ใช้ · id ของฉบับลายเซ็น · sha ของไฟล์ต้นฉบับ — ของสามอย่างนี้อยู่ในภาพนิ่งเท่านั้น', () => {
+  const snapshot = signed();
+  assert.ok(JSON.stringify(snapshot.signatures).includes('signature-version-U-lead-1'), 'กันเทสต์ผ่านเพราะภาพนิ่งไม่มีของให้รั่ว');
+  for (const version of ['customer', 'internal']) {
+    const text = JSON.stringify(surveyReportView(snapshot, { version }));
+    for (const banned of ['signature-version', 'versionId', 'versionNumber', 'sourceSha256', 'sign-source', 'userId', 'U-lead', 'U-head', 'storagePath']) {
+      assert.ok(!text.includes(banned), `${version}: ${banned}`);
+    }
+  }
+  // ฉบับลูกค้ายังเป็นรายการอนุญาต: ลายเซ็นของที่นั่งที่ไม่ได้เอ่ยชื่อ (ภาพนิ่งรุ่นหน้า) ไม่ไหลเข้ามาเอง
+  const future = { ...snapshot, signatures: { ...snapshot.signatures, sales: { name: 'MK_SALES_SIGNER', img: { sha: fakeSha('sales-sign') } } } };
+  for (const version of ['customer', 'internal']) {
+    const text = JSON.stringify(surveyReportView(future, { version }));
+    assert.ok(!text.includes('MK_SALES_SIGNER') && !text.includes(fakeSha('sales-sign')), version);
+  }
+});
+
+test('🔴 คำเตือนก่อนส่งผล: คำของช่องลายเซ็นไม่ก่อคำเตือนใหม่ — ทุกสภาพของที่นั่ง ทุกกรณีของลายเซ็น ได้รายการเท่ากับใบที่ไม่มีกติกา', () => {
+  const base = surveyReportSendWarnings(surveyReportView(twinSnapshot(), { version: 'customer' }));
+  for (const [opts, mode] of [[{}, 'freeze'], [{ prepared: false }, 'check'], [{ have: [] }, 'draft'], [{ have: ['assessor'], prepared: false }, 'draft'], [{ same: true }, 'freeze']]) {
+    for (const version of ['customer', 'internal']) {
+      const view = surveyReportView(signed(opts, mode), { version });
+      assert.deepEqual(surveyReportSendWarnings(view), base, `${JSON.stringify(opts)} ${mode} ${version}`);
+    }
+  }
+  // รูปของช่องลายเซ็นอยู่ใต้คีย์ `img` ซึ่งตัวสแกนข้าม — sha ไม่ใช่ข้อความบนกระดาษ · แต่คำของ `mark` ยังถูกตรวจเหมือนข้อความอื่น
+  const view = surveyReportView(signed(), { version: 'customer' });
+  const poked = structuredClone(view);
+  poked.signoff.assessor.img.sha += '😀';
+  assert.deepEqual(surveyReportSendWarnings(poked), base);
+  poked.signoff.assessor.mark += '😀';
+  assert.equal(unprintableOnly(surveyReportSendWarnings(poked)).length, 1);
+});
+
+test('ไม่แก้ภาพนิ่ง · ผลนิ่ง · ลง JSON ได้ตรง ๆ (ภาพนิ่งที่ตรึงลายเซ็น)', () => {
+  const snapshot = signed();
+  const before = JSON.stringify(snapshot);
+  const a = surveyReportView(snapshot, { version: 'internal' });
+  assert.equal(JSON.stringify(snapshot), before);
+  assert.deepEqual(surveyReportView(snapshot, { version: 'internal' }), a);
+  assert.deepEqual(JSON.parse(JSON.stringify(a)), a);
+});
+
