@@ -163,7 +163,19 @@ test('วัสดุ FB เก่าที่ยังไม่ประทั�
 });
 
 // ── ด่านของ handler (สิทธิ์ · สถานะ · ราคา) ─────────────────────────────
+/* 🔴 **handler ทุกตัวในไฟล์นี้ต้องได้ `audit` ตัวจำลอง** — ตัวจริง (`recordAudit`) ต่อ Supabase ด้วย service key
+   🐞 2026-10-09: CI ตั้งคีย์ production ไว้ทั้ง job ⇒ เทสต์สองตัวที่ผ่านด่านเขียน audit จริงทุกรอบ
+   (ผู้ใช้ปลอม U1 "RD Staff" · SCT-1/FML-1) รวม 1,523 แถวใน 6 สัปดาห์ โดยไม่มีเทสต์ไหนแดง */
+const audits = [];
+const audit = async (entry) => { audits.push(entry); };
+const auditsDuring = async (run) => {
+  const from = audits.length;
+  const result = await run();
+  return { result, recorded: audits.slice(from) };
+};
+
 const handler = makeRegistryPriceHandler({
+  audit,
   kind: 'RM_F',
   stampColumn: 'scentId',
   entityType: 'scent',
@@ -204,15 +216,30 @@ test('ราคาว่าง/ติดลบ โดนตีกลับ', asy
   }
 });
 
-test('RD ใส่ราคาสำเร็จ — ได้เลข rev กลับ', async () => {
-  const res = await call({ user: RD });
+test('RD ใส่ราคาสำเร็จ — ได้เลข rev กลับ + audit หนึ่งรายการว่าใครใส่ราคาอะไร', async () => {
+  const { result: res, recorded } = await auditsDuring(() => call({ user: RD }));
   assert.equal(res.status, 200);
   const data = await res.json();
   assert.equal(data.revisionId, 'REV-1');
+  assert.equal(recorded.length, 1);
+  const [entry] = recorded;
+  assert.deepEqual([entry.user, entry.action, entry.entityType, entry.entityId], [RD, 'update', 'scent', 'SCT-1']);
+  assert.equal(entry.summary, 'ใส่ราคา F กลิ่น PF1093001 — rev F 2');
+  assert.deepEqual(entry.after.prices, { F: { price: 1200, revisionId: 'REV-1' } });
+});
+
+test('คำขอที่ถูกตีกลับ (สิทธิ์ · สถานะ · ราคา) ไม่ทิ้ง audit', async () => {
+  const { recorded } = await auditsDuring(async () => {
+    await call({ user: { id: 'U2', role: 'ae', department: 'SA' } });
+    await call({ user: RD, id: 'SCT-DRAFT' });
+    await call({ user: RD, body: { price: -5 } });
+  });
+  assert.deepEqual(recorded, []);
 });
 
 // ── ม-148 · ปุ่มราคาหน้าทะเบียนสูตร: F · B · FB ในจังหวะเดียว ──────────────────────
 const formulaHandler = (scentFor) => makeRegistryPriceHandler({
+  audit,
   kind: 'RM_FB',
   stampColumn: 'formulaId',
   slotsOf: (f) => priceSlotsFor({ scentId: f.scentId, formulaId: f.id }),
@@ -236,6 +263,11 @@ test('⭐ สูตรใส่ F · B · FB พร้อมกัน — F ล�
   assert.equal(supabase.calls.updates.find((u) => u.patch.scentId)?.patch.scentId, 'SCT-1');
   assert.equal(supabase.calls.rpcs.length, 3);
   assert.deepEqual(data.revisions.map((r) => r.key), ['F', 'B', 'FB']);
+  // audit ใบเดียวครอบทั้งสามช่อง — ลงที่สูตร (ตัวที่ผู้ใช้กดปุ่ม) ไม่ใช่กลิ่น
+  const entry = audits.at(-1);
+  assert.deepEqual([entry.entityType, entry.entityId], ['formula', 'FML-1']);
+  assert.match(entry.summary, /^ใส่ราคา F\/B\/FB สูตร /);
+  assert.deepEqual(Object.keys(entry.after.prices), ['F', 'B', 'FB']);
 });
 
 test('กลิ่นของสูตรใส่ราคาไม่ได้ = ตีกลับก่อนเขียนสักช่อง (ไม่เหลือราคาครึ่งชุด)', async () => {
@@ -250,6 +282,7 @@ test('กลิ่นของสูตรใส่ราคาไม่ได�
 test('🔴 สูตรหัวน้ำหอม 02-020 ที่กลิ่นเลิกใช้: ตีกลับด้วยเหตุจริง ไม่เขียนราคา B/FB ลงสูตร (ผู้ใช้ 2026-10-05)', async () => {
   // ตัวประกอบเดียวกับ route จริง (`formulaPriceSlots`) — เดิมช่องตกไป B/FB แล้วราคาเบสเข้าทะเบียนของหัวน้ำหอมได้
   const h = makeRegistryPriceHandler({
+    audit,
     kind: 'RM_FB',
     stampColumn: 'formulaId',
     slotsOf: (f) => formulaPriceSlots(f, { status: 'archived', code: 'PF859010103' }),
