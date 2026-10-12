@@ -28,7 +28,8 @@ import {
 import { SURVEY_REPORT_PX, paginateSurveyReport } from './surveyReportLayout.js';
 import { buildSurveyReportSnapshot } from './surveyReportSnapshot.js';
 import {
-  markedSurveyInputs, stressSurveyInputs, surveyReportInputsFromFixture, surveyStressCases, syntheticSurveyFixture, thaiText,
+  fakeSha, fakeSignatureVersion, markedSurveyInputs, signedSurveyInputs, stressSurveyInputs, surveyReportInputsFromFixture,
+  surveySignCases, surveyStressCases, syntheticSurveyFixture, thaiText,
 } from './surveyReportTestKit.mjs';
 import { surveyReportView } from './surveyReportView.js';
 
@@ -642,6 +643,11 @@ test('🔴 วัดจริงใน Chrome (แฝดสังเคราะ
     ['stress-local', stressSurveyInputs(STRESS), 'freeze'],
     // สามขนาด · สี่ขนาด · จำนวนสองหลัก · หน้า 1 ชิดเพดาน · ตีกลับ 10 × 300 · คำร้อง 4,000 ตัว · ตารางเริ่มหน้า 2 · ไม่มีผัง · รูปแนวตั้ง
     ...surveyStressCases().map((c) => [c.name, stressSurveyInputs(c.spec), c.mode]),
+    /* ลายเซ็นจริง (PR-SIG): ช่องรูปสูงตายตัวต้องไม่ขยับความสูงของการรับรองผล (217) กับภาคผนวก จ (161) — แฝดสังเคราะห์ ·
+       ชุดสุดขอบ · กรณีของลายเซ็นที่ไม่มีข้อจำกัดที่รู้ (ชื่อสองบรรทัด `sign-wrap` เกินแผนโดยรู้อยู่แล้ว — harness วัดและรายงานเอง) */
+    ['twin-signed', signedSurveyInputs(twin()), 'freeze'],
+    ['stress-signed', signedSurveyInputs(stressSurveyInputs(STRESS)), 'freeze'],
+    ...surveySignCases().filter((c) => !c.known.length).map((c) => [c.name, signedSurveyInputs(c.inputs(), c.sign), c.mode]),
   ];
   const browser = await launchBrowser();
   try {
@@ -712,3 +718,159 @@ test('🔴 ทุกอักขระของกระดาษมี glyph �
   assert.deepEqual(uncoveredChars('ก\u2010ข ‰ ≤'), ['\u2010', '‰', '≤']);
   assert.deepEqual(uncoveredChars('กว้าง × ยาว — 12.5 ม. · “คำ”'), []);
 });
+
+/* ══ ⑧ ลายเซ็นจริงของผู้ลงนาม (PR-SIG §4 · มติเจ้าของ 09/10/2026) ═══════════════════════════ */
+
+const SIG_WORDS = '<div class="sig-e">ลายเซ็นอิเล็กทรอนิกส์</div>';
+const SIG_IMG = '<img class="sig-img"';
+const SIG_WAIT = '<div class="sig-img wait">';
+const signSha = (userId) => fakeSha(`sign-image-${fakeSignatureVersion(userId).versionId}`);
+const signedTwin = (opts) => signedSurveyInputs(twin(), opts);
+/** HTML ของบล็อกลงนามภายใน (ภาคผนวก จ) */
+const signsHtml = (html) => {
+  const from = html.indexOf('<section class="sign-last" data-m="signs">');
+  return from === -1 ? '' : html.slice(from, html.indexOf('</section>', from));
+};
+
+test('🔴 ภาพนิ่งที่ไม่มีคีย์ `signatures`: กระดาษพิมพ์คำเดิม — ไม่มีช่องรูปลายเซ็นสักช่อง (ฉบับที่ออกแล้วและสวิตช์ปิดไม่ขยับ)', () => {
+  for (const [version, words] of [['customer', 2], ['internal', 4]]) {
+    const { html } = paper(twin(), version);
+    assert.equal(count(html, SIG_WORDS), words, version);
+    assert.equal(count(html, 'class="sig-img'), 0, version);
+    // ตัวเรนเดอร์ถามว่า "มีคีย์ไหม" จาก view — กระดาษของ view เดิมเท่ากันทุกไบต์ไม่ว่าจะมีกฎ CSS ใหม่หรือไม่
+    assert.equal(count(html, '<div class="sig su-signed">'), words, version);
+  }
+});
+
+test('⭐ การรับรองผล: สองที่นั่งเป็นรูปลายเซ็น (token ของที่นั่งนั้น) — ชื่อ วันที่ ตำแหน่งยังอยู่ · ที่นั่งลูกค้าเป็นแบบฟอร์มเดิม · ยังนับ su-signed ได้ 2', () => {
+  const plain = sheetHtml(paper(twin(), 'customer').html, 4);
+  const { html, view } = paper(signedTwin(), 'customer');
+  const page = sheetHtml(html, 4);
+  assert.equal(count(page, '<div class="sig su-signed">'), 2);
+  assert.equal(count(page, SIG_IMG), 2);
+  assert.equal(count(page, 'class="sig-e"'), 0, 'ไม่มีบรรทัดคำเดิมปนกับรูป');
+  assert.ok(page.includes(`<img class="sig-img" src="su-img:${signSha('U-lead')}" alt="ลายเซ็น Lead Assessor">`));
+  assert.ok(page.includes(`<img class="sig-img" src="su-img:${signSha('U-head')}" alt="ลายเซ็น Head Approver">`));
+  // ลำดับในที่นั่ง: หัว → ตำแหน่ง → รูป → ชื่อ → วันที่
+  const seat = page.split('<div class="sig su-signed">')[1];
+  const order = ['<h4>ผู้ประเมิน</h4>', '<div class="sig-role">', SIG_IMG, `<div class="sig-name">${view.signoff.assessor.name}</div>`, `<div class="sig-date">${view.signoff.assessor.date}</div>`]
+    .map((piece) => seat.indexOf(piece));
+  assert.ok(order.every((at, i) => at !== -1 && (i === 0 || at > order[i - 1])), JSON.stringify(order));
+  // ที่นั่งลูกค้าไม่ขยับสักตัวอักษร
+  const customerSeat = (text) => text.slice(text.lastIndexOf('<div class="sig">'));
+  assert.equal(customerSeat(page), customerSeat(plain));
+  assert.equal(count(customerSeat(page), SIG_IMG), 0);
+  // ทั้งกระดาษของฉบับลูกค้ามีรูปลายเซ็นสองที่เท่านั้น · ส่วนที่เหลือของกระดาษเท่าเดิม
+  assert.equal(count(html, SIG_IMG), 2);
+  assert.deepEqual(sheets(html), sheets(paper(twin(), 'customer').html));
+  for (const no of [1, 2, 3]) assert.equal(sheetHtml(html, no), sheetHtml(paper(twin(), 'customer').html, no), `หน้า ${no}`);
+});
+
+test('ภาคผนวก จ (ฉบับภายใน): สองที่นั่งแรกเป็นรูป · ที่นั่งฝ่ายขายไม่ขยับ — ยังไม่ปิดเรื่อง = ช่องว่างเดิม · ปิดแล้ว = บรรทัดคำเดิม', () => {
+  const plain = signsHtml(paper(twin(), 'internal').html);
+  const { html } = paper(signedTwin(), 'internal');
+  const block = signsHtml(html);
+  assert.equal(count(html, SIG_IMG), 4, 'การรับรองผล 2 + ภาคผนวก จ 2');
+  assert.equal(count(block, SIG_IMG), 2);
+  assert.ok(block.includes(`src="su-img:${signSha('U-lead')}" alt="ลายเซ็น Lead Assessor"`));
+  assert.ok(block.includes(`src="su-img:${signSha('U-head')}" alt="ลายเซ็น Head Approver"`));
+  assert.equal(count(block, '<div class="sig-sp" aria-hidden="true"></div>'), 1);
+  const salesSeat = (text) => text.slice(text.lastIndexOf('<div class="sig">'));
+  assert.equal(salesSeat(block), salesSeat(plain));
+
+  const closed = surveySignCases().find((c) => c.name === 'sign-closed');
+  const done = signsHtml(paper(signedSurveyInputs(closed.inputs(), closed.sign), 'internal').html);
+  assert.equal(count(done, '<div class="sig su-signed">'), 3);
+  assert.equal(count(done, SIG_IMG), 2);
+  assert.equal(count(done, SIG_WORDS), 1, 'ที่นั่งฝ่ายขายที่ปิดเรื่องแล้วยังเป็นคำ (ลายเซ็นของฝ่ายขายไม่อยู่ในงวดนี้)');
+});
+
+test('สามสภาพของช่องลายเซ็น: รูป · กรอบประ "จะขึ้นเมื่อออกเอกสาร" (มีลายเซ็น ยังไม่มีรูป) · กรอบประ "ยังไม่มีลายเซ็น" — ไม่มีสภาพไหนตกไปพิมพ์คำเดิม', () => {
+  // ฉบับร่างก่อนออกเอกสาร: ผู้ส่งผลมีลายเซ็น (ยังไม่เตรียมรูป) · ผู้ประเมินยังไม่มี
+  const draft = paper(signedTwin({ have: ['approver'], prepared: false }), 'internal', { mode: 'draft' });
+  assert.equal(count(draft.html, SIG_IMG), 0);
+  assert.equal(count(draft.html, `${SIG_WAIT}ยังไม่มีลายเซ็น</div>`), 2);
+  assert.equal(count(draft.html, `${SIG_WAIT}ลายเซ็นจะขึ้นเมื่อออกเอกสาร</div>`), 2);
+  assert.equal(count(draft.html, SIG_WORDS), 0);
+  assert.deepEqual(uncoveredChars('ลายเซ็นจะขึ้นเมื่อออกเอกสาร ยังไม่มีลายเซ็น'), [], 'คำของช่องต้องอยู่ในฟอนต์ที่ฝัง');
+
+  // ตัวตอบ src ของฉบับร่าง (route เอกสาร) รู้จักแต่ไฟล์แนบ — ลายเซ็นที่เตรียมแล้วก็ยังเป็นกรอบประ: รูปจริงไม่ขึ้นก่อนออกเอกสาร
+  const draftSrc = (img) => (img?.attId ? `/api/master/attachments/${img.attId}/file` : null);
+  const preview = paper(signedTwin(), 'customer', { imageSrc: draftSrc });
+  assert.equal(count(preview.html, SIG_IMG), 0);
+  assert.equal(count(preview.html, `${SIG_WAIT}ลายเซ็นจะขึ้นเมื่อออกเอกสาร</div>`), 2);
+
+  // ผู้เรียกส่ง src ตรง ๆ (harness · ใบตัวอย่าง): รูปขึ้น และตัวตอบได้รู้ว่าเป็นลายเซ็นของที่นั่งไหน
+  const asked = [];
+  const direct = paper(signedTwin(), 'customer', { imageSrc: (img) => { if (img.sign) asked.push(img.sign); return 'data:image/png;base64,AAAA'; } });
+  assert.deepEqual(asked, ['assessor', 'approver']);
+  assert.equal(count(direct.html, '<img class="sig-img" src="data:image/png;base64,AAAA"'), 2);
+});
+
+test('คนเดียวสองที่นั่ง = รูปเดียวกันสองช่อง · ชื่อใน alt ถูก escape', () => {
+  const { html } = paper(signedTwin({ same: true }), 'customer');
+  assert.equal(count(html, `<img class="sig-img" src="su-img:${signSha('U-lead')}" alt="ลายเซ็น Lead Assessor">`), 2);
+  assert.deepEqual(surveyReportImageShas(sheetHtml(html, 4)), [signSha('U-lead')]);
+
+  const hostile = signedTwin();
+  hostile.visit = { ...hostile.visit, assigneeName: 'A" onerror="x<b>' };
+  const page = sheetHtml(paper(hostile, 'customer').html, 4);
+  assert.ok(page.includes('alt="ลายเซ็น A&quot; onerror=&quot;x&lt;b&gt;">'));
+  assert.equal(page.includes('onerror="x'), false);
+});
+
+test('🔴 CSS ของช่องลายเซ็น: สามกฎในก้อนร่วม (ฉบับลูกค้าพิมพ์ด้วย) · สูงตายตัว วางแบบ contain · ไม่เอ่ยชิ้นของฉบับภายใน · รุ่นตัวเรนเดอร์ขยับ', () => {
+  const rules = [...SURVEY_REPORT_CSS.matchAll(/^([^{\n]*sig-img[^{]*)\{([^}]*)\}/gm)].map((m) => [m[1], m[2]]);
+  assert.deepEqual(rules.map(([selector]) => selector), [
+    '.surveyReport .sheet .sig-img', '.surveyReport .sheet .sig-img.wait', '.surveyReport .sheet .signoff .sig-img',
+  ]);
+  assert.match(rules[0][1], /height:28px;/);
+  assert.match(rules[0][1], /width:100%;/);
+  assert.match(rules[0][1], /object-fit:contain;/);
+  assert.match(rules[0][1], /margin:auto 0 4px;/);
+  assert.match(rules[0][1], /flex:none;/);
+  assert.equal(rules[2][1], 'height:45px;');
+  assert.equal(SURVEY_REPORT_INTERNAL_CSS.includes('sig-img'), false);
+  assert.equal(SURVEY_REPORT_CSS.includes('sign-last'), false, 'ก้อนร่วมห้ามเอ่ยชิ้นของฉบับภายใน — เทสต์รั่ว grep ทั้งไฟล์ของฉบับลูกค้า');
+  assert.equal(SURVEY_REPORT_RENDERER_VERSION, 'fm-ts-01@2026-10-09a');
+});
+
+test('🔴 ไม่รั่ว: กระดาษสองฉบับไม่มีชื่อคลัง · ที่อยู่ไฟล์ · id ของฉบับลายเซ็น · sha ต้นฉบับ · id ของผู้ใช้ — ฉบับลูกค้ามีแค่ sha ของสองที่นั่งเพิ่มจากรูปของตัวเอง', () => {
+  const { inputs, leak, allowed } = markedSurveyInputs();
+  const signedInputs = signedSurveyInputs(inputs);
+  const before = new Set(surveyReportImageShas(paper(inputs, 'customer').html));
+  for (const version of ['customer', 'internal']) {
+    const { html, snapshot } = paper(signedInputs, version);
+    assert.ok(JSON.stringify(snapshot.signatures).includes('U-MK-LEAD'), 'กันเทสต์ผ่านเพราะภาพนิ่งไม่มีของให้รั่ว');
+    for (const banned of [
+      'signature-assets', 'users/', 'versionId', 'versionNumber', 'sourceSha256', 'signature-version', 'storagePath',
+      'U-MK-LEAD', 'U-MK-HEAD', fakeSha('sign-source-U-MK-LEAD'), fakeSha('sign-source-U-MK-HEAD'),
+    ]) assert.equal(html.includes(banned), false, `${version}: ${banned}`);
+  }
+  const customer = paper(signedInputs, 'customer').html;
+  const extra = surveyReportImageShas(customer).filter((sha) => !before.has(sha));
+  assert.deepEqual(extra.sort(), [signSha('U-MK-LEAD'), signSha('U-MK-HEAD')].sort());
+  // ฉบับลูกค้าที่มีลายเซ็นยังผ่านชุดคำ/ชิ้นส่วนต้องห้ามเดิมทั้งชุด
+  for (const [key, marker] of Object.entries(leak)) assert.equal(customer.includes(marker), false, `ฉบับลูกค้ารั่ว ${key}`);
+  for (const word of [...CUSTOMER_FORBIDDEN, ...CUSTOMER_FORBIDDEN_MARKUP]) assert.equal(customer.includes(word), false, word);
+  for (const marker of Object.values(allowed)) assert.equal(customer.includes(marker), true);
+});
+
+test('ทองคำ (แฝดสังเคราะห์ + ลายเซ็น): ยัง 4 / 6 แผ่น คอลัมน์ "หน้า" 2, 3 — ลายเซ็นไม่เปลี่ยนแผนหน้า (ตัวจัดหน้าไม่อ่านช่องลายเซ็น)', () => {
+  for (const [version, pages] of [['customer', 4], ['internal', 6]]) {
+    const plain = paper(twin(), version);
+    const withSign = paper(signedTwin(), version);
+    assert.equal(withSign.layout.pageCount, pages);
+    assert.deepEqual(withSign.layout, plain.layout, version);
+    assert.equal(sheets(withSign.html).length, pages);
+  }
+  // กรณีของลายเซ็นทุกกรณีจัดหน้าได้ ไม่มีหน้าล้น · ชื่อยาว (sign-wrap) ก็ไม่เปลี่ยนจำนวนหน้า
+  for (const c of surveySignCases()) {
+    for (const version of ['customer', 'internal']) {
+      const got = paper(signedSurveyInputs(c.inputs(), c.sign), version, { mode: c.mode });
+      assert.deepEqual(got.layout.overflow, [], `${c.name}/${version}`);
+      assert.equal(count(got.html, SIG_IMG) + count(got.html, SIG_WAIT), (version === 'internal' ? 2 : 1) * (c.seats.images + c.seats.waits), `${c.name}/${version}`);
+    }
+  }
+});
+

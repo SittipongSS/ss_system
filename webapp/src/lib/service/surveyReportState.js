@@ -6,6 +6,7 @@
 //    `surveyReportRpcConflict`      ผลของการอ่านซ้ำเมื่อ RPC ตอบ "มีฉบับที่ใช้อยู่แล้ว" / `23505`
 // ③ `surveyReportPaperIssues`       ผลวัดจริงของ chromium ต่อฉบับ: อะไร **ห้ามตรึง** · อะไรแค่ลง log
 // ④ `surveyReportCustomerHtmlIssues` ยามกันรั่วของฉบับลูกค้า — ตรวจ HTML ที่กำลังจะตรึง (คอลัมน์เขียนครั้งเดียว)
+// ⑤ `surveyReportSignatureHtmlIssues` ยามลายเซ็น (PR-SIG) — ภาพนิ่งที่ถ่ายตอนกติกาลายเซ็นจริงเปิด ต้องได้รูปลายเซ็นครบทุกที่นั่งบนกระดาษ
 //
 // 🔴 ไฟล์นี้อยู่บนเส้น import ของ GET ใบประเมิน (ที่ช่างเปิด) · GET คำร้อง · ส่งผล · ดึงผลกลับ
 //   ⇒ **ห้าม import ของหนัก** (`sharp` · chromium · ตัวเรนเดอร์ที่พกฟอนต์ base64) — token ของรูปจึงประกาศซ้ำที่นี่
@@ -287,8 +288,12 @@ const INTERNAL_MARKUP = Object.freeze([
   ['ภาคผนวกภายใน', /data-kind="appendix"|class="leadrow"|<table class="kv">|class="sign-last"|data-m="signs"/],
 ]);
 
+/* ที่นั่งที่ฉบับลูกค้าพิมพ์ลายเซ็น — **สองคีย์ที่เอ่ยชื่อ** (PR-SIG §4.5) ไม่ไล่ทุกคีย์ของ `snapshot.signatures`:
+   ลายเซ็นของที่นั่งอื่นที่ภาพนิ่งรุ่นหน้าอาจพก (ฝ่ายขายในภาคผนวก จ) ต้องถูกยามกันรั่วปฏิเสธในฉบับลูกค้า */
+const SIGN_SEATS = Object.freeze([['assessor', 'ผู้ประเมิน'], ['approver', 'ผู้ตรวจสอบและอนุมัติ']]);
+
 /**
- * sha ของรูปที่ฉบับลูกค้าพิมพ์ได้ — **ภาพกว้างกับภาพผังของพื้นที่ที่ไม่ถูกตัด** เท่านั้น
+ * sha ของรูปที่ฉบับลูกค้าพิมพ์ได้ — **ภาพกว้างกับภาพผังของพื้นที่ที่ไม่ถูกตัด** + **ลายเซ็นของที่นั่งผู้ประเมินกับผู้ตรวจสอบและอนุมัติ**
  * 🔴 ห้ามสร้างชุดนี้จาก `images[].kind` — ลิสต์นั้นเก็บหนึ่งแถวต่อ sha พร้อม kind ที่เจอครั้งแรก · ภาพกว้างกับรูปจุด
  *   ย่อขนาดเดียวกัน (1000px) และของจริงมีไฟล์เดียวถูกใช้เป็นทั้งภาพกว้างและรูปจุด ⇒ ตัดด้วย kind = บล็อกเอกสารที่ถูกต้อง
  */
@@ -297,6 +302,10 @@ function customerImageShas(snapshot) {
   for (const zone of list(snapshot?.zones)) {
     if (!zone || (zone.status || 'ok') === 'cut') continue;
     for (const img of [...list(zone.wide), ...list(zone.plan)]) if (img?.sha) allowed.add(img.sha);
+  }
+  for (const [seat] of SIGN_SEATS) {
+    const sha = snapshot?.signatures?.[seat]?.img?.sha;
+    if (sha) allowed.add(sha);
   }
   return allowed;
 }
@@ -338,5 +347,48 @@ export function surveyReportCustomerHtmlIssues({ html, snapshot, layout } = {}) 
   if (!Number.isInteger(planned) || planned < 1) issues.push('ไม่มีแผนหน้าของฉบับลูกค้าให้เทียบจำนวนแผ่น');
   else if (sheets !== planned) issues.push(`ฉบับลูกค้ามี ${sheets} แผ่น แต่แผนหน้าของฉบับลูกค้ามี ${planned} หน้า`);
 
+  return issues;
+}
+
+/* ══ ⑤ ยามลายเซ็น (PR-SIG §4.5 · มติเจ้าของ 09/10/2026) ═══════════════════════════════════ */
+
+const SIGN_IMG_OPEN = '<img class="sig-img"';
+
+/**
+ * ตรวจ HTML ของฉบับหนึ่งว่า **ลายเซ็นขึ้นครบทุกที่นั่งที่ภาพนิ่งตรึงไว้** — ก่อนออกเลข (I5 · เรนเดอร์แห้ง) และอีกครั้งก่อนตรึง (P4b)
+ * กระดาษที่ตรึงแล้วแก้ไม่ได้: ที่นั่งที่ควรมีลายเซ็นแต่ตัวเรนเดอร์พิมพ์คำแทน (deploy คนละรุ่น · view เพี้ยน) ต้องไม่ถูกตรึง
+ *
+ * @param p.html      HTML ที่ยังเป็น token (`su-img:<sha>`) — ตัวที่จะตรึง
+ * @param p.snapshot  ภาพนิ่งของแถว
+ * @param p.version   `'internal'` = ฉบับภายใน (การรับรองผล + ภาคผนวก จ ⇒ รูปละสองที่) · ค่าอื่น = ฉบับลูกค้า (ที่เดียว)
+ * @returns ข้อความไทยของทุกข้อที่ผิด — `[]` = ผ่าน
+ *   ⭐ **ภาพนิ่งที่ไม่มีคีย์ `signatures` ผ่านเสมอ** (`[]`) — ฉบับที่ออกก่อนกติกานี้ และฉบับที่ออกตอนสวิตช์ปิด ตรึงด้วยคำตามเดิม
+ *      ("ไม่มีอะไรเขียนทับเอกสารที่ออกแล้ว")
+ *   มีคีย์: ① ที่นั่งที่พิมพ์ชื่อต้องมีรูปในภาพนิ่ง (ยามเดินตามที่นั่ง ไม่ใช่ตามลิสต์ผู้ลงนาม)
+ *          ② token `su-img:<sha>` ของทุกที่นั่งอยู่ใน HTML
+ *          ③ จำนวน `<img class="sig-img"` = จำนวนที่นั่งที่มีลายเซ็น (ฉบับภายใน = สองเท่า)
+ */
+export function surveyReportSignatureHtmlIssues({ html, snapshot, version } = {}) {
+  const signs = snapshot?.signatures;
+  if (!signs || typeof signs !== 'object') return [];
+  const source = String(html ?? '');
+  const issues = [];
+  const printed = {
+    assessor: !!snapshot?.visit?.assignee?.name,
+    approver: !!(snapshot?.request?.answeredAt && snapshot?.request?.answeredByName),
+  };
+  let signed = 0;
+  for (const [seat, label] of SIGN_SEATS) {
+    const sha = signs[seat]?.img?.sha || null;
+    if (!sha) {
+      if (printed[seat]) issues.push(`ที่นั่ง${label}ไม่มีรูปลายเซ็นในภาพนิ่ง`);
+      continue;
+    }
+    signed += 1;
+    if (!source.includes(`${IMAGE_TOKEN}${sha}`)) issues.push(`กระดาษไม่มีรูปลายเซ็นของ${label}`);
+  }
+  const want = signed * (version === 'internal' ? 2 : 1);
+  const found = countOf(source, SIGN_IMG_OPEN);
+  if (found !== want) issues.push(`กระดาษมีรูปลายเซ็น ${found} ที่ — ต้องมี ${want} ที่`);
   return issues;
 }

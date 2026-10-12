@@ -8,6 +8,14 @@
 //   I4 รูป: ใช้ของรอบตรวจ เติมเฉพาะที่ขาด    I5 ภาพนิ่งโหมด freeze + เรนเดอร์แห้งสองฉบับ + ยามกันรั่วของฉบับลูกค้า
 //   I5b วัดกระดาษจริงใน chromium (เฉพาะ POST)  I6 RPC ออกเลข + เขียนแถว   I7 อ่านแถวกลับ   I8 audit
 //
+// ⭐ **ลายเซ็นจริงของผู้ลงนาม** (PR-SIG §3.4 · มติเจ้าของ 09/10/2026 · เฉพาะตอนกติกาเปิด — `inputs.signatureRule`):
+//   I2 ฉบับของลายเซ็นที่เส้นส่งผลตรึงไว้ตอนกดส่ง (`opts.signatures`) ทับค่าที่อ่านใหม่ เมื่อที่นั่งยังเป็นคนเดิม
+//      (เจ้าตัวเปลี่ยน/ยกเลิกลายเซ็นระหว่างส่งผลกับออกเลข = ยังพิมพ์ฉบับที่หัวหน้าเห็นตอนกด)
+//   I3 ผู้ลงนามที่ยังไม่มีลายเซ็นมากับ `surveyReportFreezeIssues` (ชนิด `content` + `sign`) — `blocked()` ไม่ชวนดึงผลกลับเพราะข้อนี้
+//   I4b เตรียมไฟล์ลายเซ็น (หลังรูป) — เหตุถาวร = `blocked` ที่กดซ้ำได้หลังเจ้าตัวอัปโหลดใหม่ · ชั่วคราว = `images_failed`
+//   I5 ภาพนิ่งพกฉบับกับรูปของแต่ละที่นั่ง + ยามลายเซ็นบน HTML แห้งทั้งสองฉบับ   I8 audit จดที่นั่ง · ผู้ใช้ · ฉบับ (ไม่มีรูป ไม่มีที่อยู่ไฟล์)
+//   🔴 ไม่เขียนแถว `document_signature_evidence` — ตารางนั้นรับเฉพาะชนิดเอกสารของฝ่ายขาย · ฉบับถูกตรึงในภาพนิ่งของเอกสารเอง (แบบ FM-SA-04)
+//
 // 🔴 **ไม่มีทางโยน error เข้า route** — การส่งผลสำเร็จไปแล้วก่อนถึงตรงนี้ · ทุกทางล้มกลับมาเป็น `{ state: 'failed', code, reason }`
 //   และ **ไม่มีอะไรถูกเขียนก่อน I6 นอกจากรูป `img/<sha>.jpg`** (อ้างด้วยเนื้อไฟล์ รอบหน้าใช้ซ้ำ) ⇒ ตายขั้นไหนก็กดใหม่ได้
 //
@@ -32,11 +40,14 @@ import { paginateSurveyReport, surveyReportOverflowErrors } from './surveyReport
 import { parseSurveyReportNo, surveyReportYymm } from './surveyReportNumber';
 import { SURVEY_REPORT_NOT_PRODUCTION, loadSurveyReports, surveyReportStoreAllowed } from './surveyReportRows';
 import {
+  SURVEY_SIGN_ACCOUNT, SURVEY_SIGN_RULE, SURVEY_SIGN_SEATS, surveyReportSignFileLines, surveyReportSignerVersions, surveyReportSigners,
+} from './surveyReportSigners';
+import {
   SURVEY_REPORT_INPUT_LABELS, buildSurveyReportSnapshot, surveyReportFreezeIssues, surveyReportImageFiles,
 } from './surveyReportSnapshot';
 import {
   SURVEY_REPORT_REASONS, surveyReportCurrent, surveyReportCustomerHtmlIssues, surveyReportIsStale,
-  surveyReportRpcConflict, surveyReportRpcError,
+  surveyReportRpcConflict, surveyReportRpcError, surveyReportSignatureHtmlIssues,
 } from './surveyReportState';
 import { surveyReportSendWarnings, surveyReportView } from './surveyReportView';
 import { surveySpotSendError } from './surveySpotPhotos';
@@ -55,6 +66,11 @@ const READ_FAILED = 'อ่านข้อมูลเอกสารของ�
 const INTERNAL_FAILED = 'ออกเอกสารไม่สำเร็จ — กดออกเอกสารอีกครั้ง ถ้ายังไม่ได้ให้แจ้งผู้ดูแลระบบ';
 const RECALL_HINT = 'ถ้าต้องแก้ ให้ดึงผลกลับมาแก้แล้วส่งใหม่';
 const RETRY_HINT = 'แก้แล้วกดออกเอกสารอีกครั้ง';
+/* ผู้ลงนามยังไม่มีลายเซ็น (เหตุชนิด `content` ที่พก `sign`) — ทางออกคือเจ้าตัวเพิ่มลายเซ็น ไม่ใช่ดึงผลกลับ */
+const SIGN_ACCOUNT = `“${SURVEY_SIGN_ACCOUNT.label}”`;
+const SIGN_HINT = `ให้ผู้ที่มีชื่อในรายการเพิ่มลายเซ็นที่ ${SIGN_ACCOUNT} แล้วกดออกเอกสารอีกครั้ง`;
+const SIGN_NO_RECALL = 'ลายเซ็นเพิ่มได้เลยโดยไม่ต้องดึงผลกลับ';
+const SIGN_FILE_HINT = `ให้เจ้าของลายเซ็นอัปโหลดลายเซ็นใหม่ที่ ${SIGN_ACCOUNT} แล้วกดออกเอกสารอีกครั้ง`;
 
 /* เหตุถาวรของรูป (`SURVEY_IMAGE_FAILURE` ของ surveyReportImages) → คำที่หัวหน้าอ่านออก
    ⚠️ เขียนเป็นสตริงตรง ๆ ไม่ import ค่าคงที่ — โมดูลรูปโหลดแบบ lazy เท่านั้น · เทสต์ล็อกว่าครบทุกเหตุถาวรและ `timeout` ตรงกัน */
@@ -107,20 +123,69 @@ const failed = (code, reasons, { reason = null, retry = false, hold = false } = 
 /* ด่านที่ไม่ผ่าน → `blocked` · มีข้อชนิด `content` = ต้องดึงผลกลับมาแก้ (ใบล็อกแล้ว) · มีแต่ `system` = แก้แล้วกดซ้ำได้
    ⭐ ติดแค่ข้อกันเอกสาร (`hold` — ใบมีพื้นที่ประเมินจากแบบ · `SURVEY_REPORT_DRAWING_HOLD`) = ประโยคไม่มีท่อนทางออก และ `retry: false`:
       ไม่มีอะไรให้แก้ ดึงผลกลับก็ไม่ช่วย กดกี่ครั้งก็ไม่ออก — หายเมื่อระบบรุ่นที่รองรับออก · มีข้ออื่นปนอยู่ = ทางออกของข้อนั้นตามเดิม
-   ⚠️ ธง `hold` อ่านจากทุกแถวก่อนยุบข้อความซ้ำ — แถวซ้ำที่ไม่มีธงต้องไม่ทำให้ข้อกันกลายเป็นเหตุที่ "แก้แล้วกดซ้ำได้" */
+   ⚠️ ธง `hold` อ่านจากทุกแถวก่อนยุบข้อความซ้ำ — แถวซ้ำที่ไม่มีธงต้องไม่ทำให้ข้อกันกลายเป็นเหตุที่ "แก้แล้วกดซ้ำได้"
+   ⭐ ข้อ "ยังไม่มีลายเซ็น" (ชนิด `content` ที่พก `sign: true` — PR-SIG §2.3) **ไม่ใช่เหตุให้ดึงผลกลับ**: "ต้องดึงผลกลับ" = มีข้อชนิด
+      `content` ที่ **ไม่** พก `sign` เท่านั้น
+        มีข้อ content ที่ไม่ใช่ลายเซ็น              ทางออกเดิม (ดึงผลกลับ) · `retry: false` · มีข้อลายเซ็นปนอยู่ = นำด้วย "ลายเซ็นเพิ่มได้เลย…"
+        ไม่มีข้อแบบนั้น แต่มีข้อลายเซ็นอย่างน้อยหนึ่ง  ชวนเพิ่มลายเซ็นที่ “บัญชีของฉัน” แล้วกดซ้ำ · `retry: true`
+      ธง `sign` อ่านจากทุกแถวก่อนยุบข้อความซ้ำ เหมือน `hold` */
 function blocked(issues) {
   const all = list(issues).filter((i) => i?.text);
   const seen = new Set();
   const rows = all.filter((i) => !seen.has(i.text) && seen.add(i.text));
   const held = new Set(all.filter((i) => i.hold === true).map((i) => i.text));
-  const content = rows.some((i) => i.kind === 'content');
+  const signed = new Set(all.filter((i) => i.kind === 'content' && i.sign === true).map((i) => i.text));
+  const content = rows.some((i) => i.kind === 'content' && !signed.has(i.text));
+  const sign = rows.some((i) => signed.has(i.text));
   const holdOnly = rows.length > 0 && rows.every((i) => i.kind !== 'content' && held.has(i.text));
   const texts = rows.map((i) => i.text);
   const lead = `ออกเอกสารไม่ได้ — ${texts.join(' | ')}`;
   if (holdOnly) return failed('blocked', texts, { reason: lead, retry: false, hold: true });
-  return failed('blocked', texts, {
-    reason: `${lead} · ${content ? RECALL_HINT : RETRY_HINT}`,
-    retry: !content,
+  if (content) {
+    return failed('blocked', texts, { reason: `${lead} · ${sign ? `${SIGN_NO_RECALL} · ` : ''}${RECALL_HINT}`, retry: false });
+  }
+  return failed('blocked', texts, { reason: `${lead} · ${sign ? SIGN_HINT : RETRY_HINT}`, retry: true });
+}
+
+/* ── I2 ฉบับของลายเซ็นที่เส้นส่งผลตรึงไว้ ─────────────────────────────────────────── */
+
+/**
+ * ทับฉบับที่อ่านใหม่ด้วยฉบับที่เส้นส่งผลส่งต่อมา (`opts.signatures.signers`) — **เฉพาะที่นั่งที่ยังเป็นคนเดิม**
+ * ที่นั่งที่คนเปลี่ยนไปแล้ว (นัดถูกเปลี่ยนผู้ประเมินคั่นกลาง) ใช้ค่าที่อ่านใหม่ · คืนอินพุตก้อนใหม่ ไม่แก้ของเดิม
+ * ⚠️ อ่านลายเซ็นรอบนี้ไม่สำเร็จ (`inputs.signatures` ไม่ใช่ object) = ไม่ทับ — `unknown` หยุดขั้นออกเลขไปก่อนแล้ว
+ */
+function pinSignatures(inputs, handed) {
+  const rows = list(handed?.signers);
+  const store = inputs.signatures;
+  if (inputs.signatureRule !== SURVEY_SIGN_RULE || !rows.length || !store || typeof store !== 'object') return inputs;
+  const seatUser = new Map(surveyReportSigners(inputs).map((s) => [s.seat, s.userId]));
+  const next = { ...store };
+  for (const row of rows) {
+    const userId = row?.userId != null ? String(row.userId) : null;
+    const version = row?.version;
+    if (!userId || !version || typeof version !== 'object' || version.versionId == null) continue;
+    if (list(row.seats).some((seat) => seatUser.get(seat) === userId)) next[userId] = version;
+  }
+  return { ...inputs, signatures: next };
+}
+
+/* ── I4b ผลของการเตรียมไฟล์ลายเซ็น → เหตุ ─────────────────────────────────────── */
+
+function signatureFailure(failedSigners) {
+  const rows = list(failedSigners).filter(Boolean);
+  const permanent = surveyReportSignFileLines(rows, { permanent: true });
+  if (permanent.length) {
+    /* ตัวไฟล์ของลายเซ็นคือปัญหา (หาย · ไม่ตรงกับที่บันทึก · เปิดไม่ได้ · ว่าง/จาง) — ไม่เกี่ยวกับใบ ไม่ต้องดึงผลกลับ:
+       เจ้าของลายเซ็นอัปโหลดใหม่ แล้วกดออกเอกสารอีกครั้ง */
+    return failed('blocked', permanent, {
+      reason: `ออกเอกสารไม่ได้ — ${permanent.join(' | ')} · ${SIGN_FILE_HINT}`,
+      retry: true,
+    });
+  }
+  const transient = surveyReportSignFileLines(rows, { permanent: false });
+  return failed('images_failed', transient, {
+    reason: `${transient.join(' | ') || 'ดึงลายเซ็นของผู้ลงนามไม่สำเร็จ'} — ยังไม่ได้ออกเอกสาร กดอีกครั้ง`,
+    retry: true,
   });
 }
 
@@ -291,9 +356,16 @@ async function run(supabase, opts, ctx) {
   const {
     requestId = null, user = null, closedVisit = null, prepared = null, deadline = null, measure = null,
     storeAllowed, now, newId, prepareImages, imageOptions, render,
+    signatures = null, signatureRule, prepareSignatures, signatureOptions,
   } = opts;
   const renderHtml = typeof render === 'function' ? render : renderSurveyReportHTML;
   const { via } = ctx;
+  /* โมดูลรูป (sharp · Drive) โหลดแบบ lazy **จุดเดียว** — ขั้นรูป (I4) กับขั้นลายเซ็น (I4b) ใช้ตัวเดียวกัน */
+  let imagesLib = null;
+  const loadImagesLib = async () => {
+    if (!imagesLib) imagesLib = await import('./surveyReportImages');
+    return imagesLib;
+  };
 
   /* ── I0 ยามเขียนถาวร → คำร้อง ──────────────────────────────────────────────
      ⚠️ ยามมาก่อนการอ่านใด ๆ: เครื่องที่ไม่ใช่ production ไม่ควรแม้แต่เริ่มดึงรูป (อัปขึ้น bucket ของจริง) */
@@ -339,7 +411,13 @@ async function run(supabase, opts, ctx) {
      ไม่รับแถวที่ผู้เรียกอ่านไว้ก่อนเขียนคำตอบ: ช่างเขียนผลวัดแทรกได้ระหว่างอ่านด่านกับล็อก (`survey.js` อ่านแล้วค่อยเขียน)
      🔴 ชิ้นไหนอ่านไม่สำเร็จ = **ไม่ออก** — กระดาษที่ตรึงแล้วแก้ไม่ได้ ชื่อผู้ช่วยที่หายเพราะฐานสะดุดครั้งเดียวจะหายตลอดกาล */
   const takenAt = now().toISOString();
-  const { inputs, unknown } = await loadSurveyReportInputs(supabase, { request, closedVisit, takenAt });
+  /* `actor` = คนที่กดอยู่ตอนนี้ — เมื่อเขาคือผู้ส่งผลของใบ (เส้นส่งผลเสมอ · ปุ่ม "ออกเอกสาร" ที่ผู้ส่งกดเอง) สิทธิ์ส่งผลของที่นั่ง
+     ผู้ตรวจสอบและอนุมัติตัดสินจากเซสชันของเขา ไม่อ่านบัญชีซ้ำ · คนอื่นกด = ตัวโหลดอ่านบัญชีของผู้ส่งผลเอง (PR-SIG · `signerEligible`) */
+  const loaded = await loadSurveyReportInputs(supabase, { request, closedVisit, takenAt, signatureRule, actor: user });
+  const { unknown } = loaded;
+  /* ฉบับของลายเซ็นที่หัวหน้าเห็นตอนกดส่ง (S5) ชนะค่าที่อ่านใหม่ — เจ้าตัวเปลี่ยน/ยกเลิกลายเซ็นคั่นกลางไม่ทำให้เอกสารออกไม่ได้
+     (ไฟล์ของฉบับเก่าไม่ถูกลบ · สำเนา JPEG อยู่ในถังของเอกสารแล้ว) */
+  const inputs = pinSignatures(loaded.inputs, signatures);
   if (list(unknown).length) {
     const lines = unknown.map((name) => `อ่าน${SURVEY_REPORT_INPUT_LABELS[name] || ` ${name} `}ไม่สำเร็จ`);
     return failed('blocked', lines, {
@@ -373,7 +451,7 @@ async function run(supabase, opts, ctx) {
   const files = surveyReportImageFiles(inputs);
   let images;
   try {
-    const prepare = prepareImages || (await import('./surveyReportImages')).prepareSurveyReportImages;
+    const prepare = prepareImages || (await loadImagesLib()).prepareSurveyReportImages;
     images = await prepare(supabase, files, {
       ...(imageOptions && typeof imageOptions === 'object' ? imageOptions : {}),
       deadline: deadline ?? SURVEY_REPORT_IMAGE_BUDGET_MS[via],
@@ -391,11 +469,45 @@ async function run(supabase, opts, ctx) {
   }
   if (list(images.failed).length) return imageFailure(images.failed);
 
+  /* ── I4b ลายเซ็นของผู้ลงนาม (กติกาลายเซ็นจริงเปิดเท่านั้น) — หลังรูป ก่อนภาพนิ่ง ─────────────────────
+     ผ่าน I3 มาแล้ว = ทุกที่นั่งที่พิมพ์ชื่อมีลายเซ็น ⇒ ลิสต์นี้ไม่ว่าง · ฉบับที่เส้นส่งผลเตรียมไว้แล้ว (`have`) ไม่ถูกอ่านซ้ำ
+     ⚠️ กติกาปิด = ไม่เรียกอะไรเลย (ไม่โหลดโมดูลรูปเพิ่ม ไม่แตะคลังลายเซ็น) */
+  let signImages = null;
+  if (inputs.signatureRule === SURVEY_SIGN_RULE) {
+    const signers = surveyReportSignerVersions(inputs);
+    let signResult = { imageByVersionId: {}, failed: [] };
+    if (signers.length) {
+      try {
+        const prepareSign = prepareSignatures || (await loadImagesLib()).prepareSurveyReportSignatures;
+        signResult = await prepareSign(supabase, signers, {
+          ...(signatureOptions && typeof signatureOptions === 'object' ? signatureOptions : {}),
+          deadline: deadline ?? SURVEY_REPORT_IMAGE_BUDGET_MS[via],
+          have: signatures && typeof signatures === 'object' ? (signatures.imageByVersionId || null) : null,
+          storeAllowed: true, // คำตัดสินเดียวกับ I0 — เหมือนขั้นรูป
+        });
+      } catch (e) {
+        console.error(`[survey-report] เตรียมลายเซ็นของ ${label} ล้ม`, message(e));
+        signResult = null;
+      }
+    }
+    if (!signResult || typeof signResult !== 'object') {
+      return failed('images_failed', ['เตรียมลายเซ็นของผู้ลงนามไม่สำเร็จ'], {
+        reason: 'เตรียมลายเซ็นของผู้ลงนามไม่สำเร็จ — ยังไม่ได้ออกเอกสาร กดอีกครั้ง', retry: true,
+      });
+    }
+    if (list(signResult.failed).length) return signatureFailure(signResult.failed);
+    signImages = signResult.imageByVersionId || {};
+  }
+
   /* ── I5 ภาพนิ่ง + เรนเดอร์แห้งทั้งสองฉบับ (ยังไม่มีเลข) ─────────────────────────────────
      ทุกอย่างที่จะทำให้กระดาษออกไม่ได้ต้องโผล่ **ก่อน** เลขถูกกิน: ตัวเรนเดอร์โยน · หน้าล้น · ฉบับลูกค้ามีของภายใน */
-  const built = buildSurveyReportSnapshot({ ...inputs, imageByAttId: images.imageByAttId || {} }, { mode: 'freeze' });
+  const built = buildSurveyReportSnapshot({
+    ...inputs,
+    imageByAttId: images.imageByAttId || {},
+    ...(signImages ? { signatureImageByVersionId: signImages } : {}),
+  }, { mode: 'freeze' });
   if (!built.snapshot) {
-    // ด่านผ่านมาแล้วที่ I3 บนอินพุตเดียวกัน ⇒ เหลือเหตุเดียวคือรูปยังไม่ครบ
+    // ด่านผ่านมาแล้วที่ I3 บนอินพุตเดียวกัน ⇒ เหลือเหตุเดียวคือรูป (หรือลายเซ็น) ยังไม่ครบ
     return failed('images_failed', list(built.errors), {
       reason: `${list(built.errors).join(' | ') || 'รูปของเอกสารยังไม่ครบ'} กดออกเอกสารอีกครั้ง`, retry: true,
     });
@@ -421,6 +533,19 @@ async function run(supabase, opts, ctx) {
     console.error(`[survey-report] ยามกันรั่วของฉบับลูกค้าหยุดการออกเอกสารของ ${label}:`, leaks.join(' | '));
     return failed('paper_blocked', leaks, {
       reason: `ฉบับลูกค้ายังออกไม่ได้ — ${leaks.join(' | ')} · ยังไม่ได้ออกเลขเอกสาร แจ้งผู้ดูแลระบบ`,
+      retry: false,
+    });
+  }
+
+  /* 🔴 ยามลายเซ็น — ภาพนิ่งที่ตรึงฉบับของลายเซ็นไว้ ต้องได้รูปครบทุกที่นั่งบน HTML ของทั้งสองฉบับ · ตรวจซ้ำก่อนตรึง (P4b)
+     ภาพนิ่งที่ไม่มีคีย์ `signatures` (กติกาปิด) ผ่านเสมอ · ที่ติดตรงนี้คือความผิดของระบบ (ตัวเรนเดอร์/ตัวกรองไม่พิมพ์รูปที่ตรึงไว้) */
+  const signLeaks = VERSIONS.flatMap(([version, name]) => surveyReportSignatureHtmlIssues({
+    html: paper[version].html, snapshot: built.snapshot, version,
+  }).map((line) => `${name}: ${line}`));
+  if (signLeaks.length) {
+    console.error(`[survey-report] ยามลายเซ็นหยุดการออกเอกสารของ ${label}:`, signLeaks.join(' | '));
+    return failed('paper_blocked', signLeaks, {
+      reason: `ลายเซ็นบนเอกสารยังไม่ครบ — ${signLeaks.join(' | ')} · ยังไม่ได้ออกเลขเอกสาร แจ้งผู้ดูแลระบบ`,
       retry: false,
     });
   }
@@ -488,7 +613,13 @@ async function run(supabase, opts, ctx) {
     ? Number(rowRev)
     : (parseSurveyReportNo(docNo)?.rev ?? null);
 
-  /* ── I8 audit — 🔴 ส่งเฉพาะคีย์ที่นับไว้ ห้ามส่งแถว/ภาพนิ่ง/HTML (`after` ถูกเก็บตามตัว · lib/audit.js) ───── */
+  /* ── I8 audit — 🔴 ส่งเฉพาะคีย์ที่นับไว้ ห้ามส่งแถว/ภาพนิ่ง/HTML (`after` ถูกเก็บตามตัว · lib/audit.js) ─────
+     ⭐ เอกสารที่พิมพ์ลายเซ็นจริง: จดว่าที่นั่งไหนพิมพ์ลายเซ็นของใคร ฉบับไหน (ADR 0006 ข้อยกเว้น 09/10 — ลายเซ็นของผู้ประเมินถูกพิมพ์
+        โดยไม่มีการกดของเจ้าตัว ต้องมีรอยให้ย้อนดู) · **ไม่มีรูป ไม่มี base64 ไม่มีที่อยู่ไฟล์** · กติกาปิด = ไม่มีสองคีย์นี้ */
+  const signed = built.snapshot.signatures && typeof built.snapshot.signatures === 'object'
+    ? SURVEY_SIGN_SEATS.map((seat) => [seat, built.snapshot.signatures[seat]]).filter(([, hit]) => hit)
+      .map(([seat, hit]) => ({ seat, userId: hit.userId ?? null, versionId: hit.versionId ?? null, versionNumber: hit.versionNumber ?? null }))
+    : null;
   try {
     await ctx.audit({
       user,
@@ -498,9 +629,11 @@ async function run(supabase, opts, ctx) {
       after: {
         id: reportId, docNo, rev, requestId: request.id, via,
         imageCount: list(built.images).length, warningCount: warnings.length,
+        ...(signed ? { signCount: signed.length, signatures: signed } : {}),
       },
       summary: `ออกเอกสารประเมิน ${docNo} ของ ${label}`
         + (via === 'issue_only' ? ' (กดออกเอกสารภายหลัง)' : ' (พร้อมส่งผล)')
+        + (signed ? ` · พิมพ์ลายเซ็นที่บันทึกไว้ ${signed.length} ที่นั่ง` : '')
         + (warnings.length ? ` · คำเตือน ${warnings.length} ข้อ` : ''),
       request: ctx.req,
     });
@@ -556,9 +689,15 @@ async function reportFailure(ctx, result) {
  *                         → `{ issues: [{ version, kind: 'block' | 'log', text, page }], error: string | null }`
  *                         (HTML ยังเป็น token `su-img:<sha>` — ตัววัดแปลงจาก bucket เอง)
  * @param opts.req         `Request` ของ route (IP ใน audit) — ไม่บังคับ
+ * @param opts.signatures  ของที่เส้นส่งผลเตรียมไว้ก่อนเขียนคำตอบ (PR-SIG §3.3) — `{ signers, imageByVersionId }` หรือ `null`
+ *                         · `signers` = `surveyReportPrecheck(...).signers` ตอนกดส่ง (ฉบับของลายเซ็นที่ตรึง) ·
+ *                           `imageByVersionId` = ผลของ `prepareSurveyReportSignatures` รอบนั้น (ฉบับที่มีแล้วไม่ถูกอ่านซ้ำ)
+ *                         · ปุ่ม "ออกเอกสาร" ไม่ส่ง = ใช้ฉบับที่ใช้อยู่ ณ ตอนกด
+ * @param opts.signatureRule  กติกาลายเซ็นจริง: `'required'` | `'off'` | ไม่ส่ง = ตามสวิตช์ `SURVEY_REPORT_SIGNATURES` (ส่งต่อให้ตัวโหลด)
  * จุดเสียบของเทสต์และ harness: `storeAllowed` (ไม่ส่ง = `surveyReportStoreAllowed()` · `true` ตรงตัวเท่านั้นจึงเขียน) ·
  *   `audit` (ไม่ส่ง = `recordAudit`) · `now` (`() => Date`) · `newId` · `prepareImages` (แทนตัวเตรียมรูป) ·
  *   `imageOptions` (ตัวเลือกเสริมที่ส่งต่อให้ตัวเตรียมรูป เช่น `getFileStream`) ·
+ *   `prepareSignatures` (แทนตัวเตรียมลายเซ็น) · `signatureOptions` (ตัวเลือกเสริมของตัวเตรียมลายเซ็น เช่น `log`) ·
  *   `render` (แทน `renderSurveyReportHTML` ของเรนเดอร์แห้งที่ I5 — เทสต์ใช้จำลองตัวเรนเดอร์ที่พิมพ์ของภายในลงฉบับลูกค้า)
  *
  * @returns คีย์ครบทุกครั้ง: `{ state, code, docNo, rev, reused, reasons, reason, retry, warnings }`

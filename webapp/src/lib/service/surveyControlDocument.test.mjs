@@ -6,8 +6,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { surveyControlView as controlView } from './surveyControl.js';
-import { surveyDocumentView, surveyFilesSignature } from './surveyDocumentView.js';
-import { surveySendDocumentRefusal, surveySendDocumentRefusalList, surveySendUnseenWarnings } from './surveySendClose.js';
+import { SURVEY_SIGN_LINK, surveyDocumentView, surveyFilesSignature } from './surveyDocumentView.js';
+import {
+  surveySendConfirm, surveySendDocumentRefusal, surveySendDocumentRefusalList, surveySendUnseenWarnings,
+} from './surveySendClose.js';
 
 // ── ของตั้งต้น (ชุดเดียวกับ surveyControl.test.mjs) ─────────────────────────
 const SIZES = [
@@ -588,6 +590,91 @@ test('ดึงผลกลับ: บรรทัดใต้ปุ่มแล
     assert.equal(v.recallAction.hint, RECALL_HINT);
     assert.equal(v.recallAction.detail, `${RECALL_DETAIL} · อ่านสถานะเอกสารไม่สำเร็จ — ถ้าใบนี้มีเอกสาร SU เอกสารนั้นจะถูกแทนที่`);
   }
+});
+
+// ══ ลายเซ็นจริงของผู้ลงนาม (PR-SIG §5 · มติเจ้าของ 09/10/2026) ═════════════════════
+
+const SIGN_ASSESSOR = 'ผู้ประเมิน สมชาย ยังไม่มีลายเซ็นในระบบ — ให้เจ้าตัวเพิ่มที่ “บัญชีของฉัน” ก่อน';
+const SIGN_SENDER = 'ผู้ตรวจสอบและอนุมัติ หัวหน้า ก (ผู้ส่งผล) ยังไม่มีลายเซ็นในระบบ — เพิ่มที่ “บัญชีของฉัน” ก่อนส่งผล หรือให้หัวหน้าที่มีลายเซ็นแล้วเป็นผู้ส่งผล';
+
+test('🔴 ผู้ลงนามยังไม่มีลายเซ็น: ปุ่มส่งผลจาง · แถวด่านเอกสารกางบรรทัดที่เอ่ยชื่อ · ประโยคของ route · ลิงก์ไป “บัญชีของฉัน” เฉพาะเมื่อเป็นของคนดู', () => {
+  const send = (extra = {}) => ({ blockers: [SIGN_ASSESSOR, SIGN_SENDER], warnings: [], unknown: false, ...extra });
+  const mine = view({ document: headDoc({ signRule: true, send: send({ selfSign: true }) }) });
+  assert.equal(mine.send.show, true);
+  assert.equal(mine.send.allowed, false);
+  const row = docGate(mine);
+  assert.equal(row.ok, false);
+  assert.deepEqual(row.reasons, [SIGN_ASSESSOR, SIGN_SENDER], 'แถวด่าน "เอกสารประเมินออกได้" เอ่ยชื่อคนที่ต้องเพิ่มลายเซ็น');
+  const sentence = surveySendDocumentRefusal([SIGN_ASSESSOR, SIGN_SENDER].map((text) => ({ kind: 'content', text })));
+  assert.equal(mine.send.reason.detail, sentence, 'ประโยคเดียวกับที่ route ส่งผลตอบ 409');
+  assert.match(sentence, /^ออกเอกสารไม่ได้ — .*บัญชีของฉัน.* · ยังไม่ได้ส่งผล$/);
+  assert.deepEqual(mine.send.reason.items, [SIGN_ASSESSOR, SIGN_SENDER]);
+  assert.deepEqual(mine.send.reason.target, { kind: 'reload', label: 'ตรวจอีกครั้ง' });
+  assert.deepEqual(mine.send.reason.link, { href: '/account', label: 'ไปบัญชีของฉัน' });
+  assert.equal(mine.send.reason.link, SURVEY_SIGN_LINK);
+  assert.equal(mine.document.status.link, SURVEY_SIGN_LINK, 'กล่องสถานะของส่วนเอกสารขึ้นลิงก์เดียวกัน');
+
+  // หัวหน้าอีกคนเปิดใบเดียวกัน: รายการเดียวกัน ไม่มีลิงก์ (ไม่ใช่ลายเซ็นของเขา)
+  const other = view({ document: headDoc({ signRule: true, send: send() }) });
+  assert.equal(other.send.allowed, false);
+  assert.deepEqual(other.send.reason.items, [SIGN_ASSESSOR, SIGN_SENDER]);
+  assert.equal('link' in other.send.reason, false);
+  assert.equal('link' in other.document.status, false);
+
+  // ติดด่านอื่นด้วย: บรรทัดเหตุเป็นบรรทัดย่อที่ไม่เอ่ยเรื่องลายเซ็น ⇒ ไม่มีลิงก์ใต้ปุ่มส่งผล (ยังอยู่ที่ส่วนเอกสารเมื่อส่วนนั้นกางเหตุ)
+  const withGap = view({
+    zones: [measuredZone('z1', 'Studio 01')], document: headDoc({ signRule: true, send: send({ selfSign: true }) }),
+  });
+  assert.equal(withGap.send.allowed, false);
+  assert.match(withGap.send.reason.text, /^ยังส่งไม่ได้ — ติด /);
+  assert.equal('link' in withGap.send.reason, false);
+  assert.equal(withGap.document.status.link, SURVEY_SIGN_LINK);
+});
+
+test('ลายเซ็นครบ: `send.signers` ส่งต่อให้โมดัลยืนยัน (ที่นั่งกับชื่อ) — โมดัลเอ่ยชื่อผู้ลงนามต่อจากข้อออกเอกสาร · ไม่มีรายชื่อ = `send` รูปเดิม', () => {
+  const signers = [{ seats: ['assessor'], name: 'สมชาย' }, { seats: ['approver'], name: 'หัวหน้า ก' }];
+  const ready = view({ document: headDoc({ signRule: true, send: { ...OK, signers } }) });
+  assert.equal(ready.send.allowed, true);
+  assert.deepEqual(ready.send.signers, signers);
+  const confirm = surveySendConfirm({ docNo: 'RQ-AS-26090106', issuesDocument: ready.send.issuesDocument, signers: ready.send.signers });
+  const at = confirm.effects.findIndex((line) => line.startsWith('ออกเอกสารประเมิน (เลข SU) ไปพร้อมกัน'));
+  assert.equal(confirm.effects[at + 1], 'เอกสารจะพิมพ์ลายเซ็นที่บันทึกไว้ของ สมชาย (ผู้ประเมิน) และ หัวหน้า ก (ผู้ตรวจสอบและอนุมัติ)');
+
+  // server ไม่ส่งรายชื่อ (กติกาปิด · ยังมีคนไม่มีลายเซ็น) = ไม่มีคีย์ · รูปที่อ่านไม่ออกถูกทิ้ง
+  const plain = view({ document: headDoc({ send: OK }) });
+  assert.equal('signers' in plain.send, false);
+  assert.deepEqual(Object.keys(plain.send), Object.keys(view({ document: headDoc({ send: null }) }).send));
+  for (const odd of [[], 'x', [null, { seats: 'assessor', name: 'ก' }, { seats: ['assessor'], name: '  ' }, { seats: ['assessor'] }]]) {
+    assert.equal('signers' in view({ document: headDoc({ send: { ...OK, signers: odd } }) }).send, false, JSON.stringify(odd));
+  }
+  // คนที่ส่งผลไม่ได้ · ใบที่ล็อกแล้ว ไม่ได้รายชื่อ
+  assert.equal('signers' in view({ viewer: CREW, document: headDoc({ send: { ...OK, signers } }) }).send, false);
+  assert.equal('signers' in view({ request: sentRequest(), document: headDoc({ state: 'ready', current: currentRow(), send: { ...OK, signers } }) }).send, false);
+});
+
+test('🔴 ดึงผลกลับเมื่อกติกาลายเซ็นจริงเปิด: กล่องยืนยันบอกว่าส่งรอบใหม่ต้องมีลายเซ็น และฉบับที่ใช้อยู่จะเปิดไม่ได้ — กติกาปิด = ประโยคเดิมทุกตัวอักษร', () => {
+  const VOID = `${RECALL_DETAIL} · เอกสาร SU-26100001-0 จะถูกแทนที่ — ใช้ไม่ได้ทันที ห้ามใช้ฉบับที่ส่งลูกค้าไปแล้ว · ฉบับใหม่เป็น Rev ถัดไป`;
+  const NOTE = ' · ส่งผลรอบใหม่ต้องมีลายเซ็นของผู้ประเมินและผู้ส่งผลในระบบ — ยังไม่มี = ส่งรอบใหม่ไม่ได้';
+  const issued = (extra = {}) => headDoc({ state: 'ready', current: currentRow({ ready: { customer: true, internal: true } }), ...extra });
+
+  const on = view({ document: issued({ signRule: true }), request: sentRequest() });
+  assert.equal(on.recallAction.detail, `${VOID}${NOTE} และ SU-26100001-0 เปิดไม่ได้แล้ว`);
+  assert.equal(on.recallAction.hint, `${RECALL_HINT} · เอกสาร SU-26100001-0 จะถูกแทนที่`, 'บรรทัดใต้ปุ่มไม่เปลี่ยน');
+  // ไม่มีฉบับที่จะถูกแทนที่ (ตอบแล้วยังไม่มีเอกสาร) = บอกเฉพาะเรื่องลายเซ็น
+  const missing = view({ document: headDoc({ state: 'missing', issue: OK, signRule: true }), request: sentRequest() });
+  assert.equal(missing.recallAction.detail, `${RECALL_DETAIL}${NOTE}`);
+
+  // กติกาปิด · สวิตช์ออกเอกสารตอนส่งผลปิด · ธงที่ไม่ใช่ `true` ตรงตัว = ประโยคเดิม
+  for (const extra of [{}, { signRule: false }, { signRule: 'true' }, { signRule: true, issueAtSend: false }]) {
+    assert.equal(view({ document: issued(extra), request: sentRequest() }).recallAction.detail, VOID, JSON.stringify(extra));
+  }
+  // ใบที่มีพื้นที่ประเมินจากแบบไม่ถูกถามเรื่องลายเซ็น (เอกสารถูกพักไว้) ⇒ ไม่ขู่ว่าส่งรอบใหม่ไม่ได้
+  const drawing = view({
+    zones: [readyZone('z1', 'Studio 01', { method: 'drawing' })], document: issued({ signRule: true }), request: sentRequest(),
+  });
+  assert.doesNotMatch(drawing.recallAction.detail, /ลายเซ็น/);
+  // ไม่ส่ง `document` มา (หน้าคำร้อง) = ประโยคเดิม
+  assert.equal(view({ request: sentRequest() }).recallAction.detail, RECALL_DETAIL);
 });
 
 // ══ กล่องแจ้ง ═════════════════════════════════════════════════════════════

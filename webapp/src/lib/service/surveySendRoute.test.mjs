@@ -7,6 +7,8 @@
 //   ④ ขั้นออกเลขอยู่หลังกระดิ่งและ audit · โยนก็ยังตอบ 200 · รูปที่ตรวจไว้ไม่ถูกดึงซ้ำ · `p_answered_at` เป็นสตริงเดิม
 //   ⑤ ของที่มีผลแม้สวิตช์ปิด (§0): ฐานของส่วนต่างรอบก่อน + `meta.totals` บนแถวคำตอบ · `meta.closedBySend` บนเธรดของนัด
 //   ⑥ ซอร์ส: `runtime` · `maxDuration = 300` · ของหนักเข้ามาทาง `await import()` เท่านั้น
+//   ⑦ 🔴 ลายเซ็นจริงของผู้ลงนาม (PR-SIG · มติเจ้าของ 09/10/2026): ผู้ประเมิน/ผู้ส่งผลยังไม่มีลายเซ็น · ไฟล์ลายเซ็นใช้พิมพ์ไม่ได้ =
+//      ตีกลับพร้อมชื่อ **ก่อนเขียนอะไร** · ครบสองคน = ภาพนิ่งพกสองที่นั่ง + รูปลายเซ็นอยู่ในถังของเอกสาร · สวิตช์ลายเซ็นปิด = เส้นเดิมทุกก้าว
 //
 // 🔴 เทสต์ชุดนี้ **เรียก handler POST ตัวจริง** กับของปลอมทั้งหมด — ฐาน · RPC · ที่เก็บ · Drive ไม่มีอะไรแตะของจริง
 //    (dev DB = prod DB): ตัวอ่านผู้ใช้ · client · `lib/drive` ถูกแทนด้วย hook และ env ของ Supabase ถูกลบก่อน import
@@ -22,13 +24,14 @@ import { surveyReportPrecheck } from './surveyReportInputs.js';
 import {
   SURVEY_SEND_OLD_PAGE_ERROR, SURVEY_SEND_REPORT_FAILED, SURVEY_SEND_WARNINGS_CHANGED_ERROR, surveySendVisitStep,
 } from './surveySendClose.js';
-import { SURVEY_REPORT_NO_VISIT } from './surveyReportSnapshot.js';
+import { makeSignaturePng, signatureTables, withSignatureStorage } from './surveyReportSignWorld.mjs';
+import { SURVEY_REPORT_INPUT_LABELS, SURVEY_REPORT_NO_VISIT } from './surveyReportSnapshot.js';
 import { TEST_COMPANY, surveyReportInputsFromFixture, syntheticSurveyFixture } from './surveyReportTestKit.mjs';
 import { businessDate } from '../businessDate.js';
 
 for (const key of [
   'SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY',
-  'VERCEL_ENV', 'SURVEY_REPORT_ISSUE_AT_SEND',
+  'VERCEL_ENV', 'SURVEY_REPORT_ISSUE_AT_SEND', 'SURVEY_REPORT_SIGNATURES',
 ]) delete process.env[key];
 
 const WEBAPP = process.cwd();
@@ -65,6 +68,12 @@ const STUBS = {
     export async function prepareSurveyReportImages(supabase, files, opts) {
       mark({ files: files.map((f) => f.attId), deadline: opts?.deadline });
       return real.prepareSurveyReportImages(supabase, files, { ...opts, ...(T().imageOptions || {}) });
+    }
+    /* ตัวเตรียมลายเซ็นของเส้นส่งผล (S5 · PR-SIG) — ของจริง · จดการเรียกเป็นชื่อ 'signatures' แยกจากรอบตรวจรูป
+       ⚠️ ขั้นออกเลขเรียกตัวเตรียมตัวเดียวกันด้วยทางสัมพัทธ์ (ไม่ผ่านตัวห่อนี้) — การอ่านคลังของมันดูจาก signatureVault.downloads */
+    export async function prepareSurveyReportSignatures(supabase, signers, opts) {
+      (T().events ||= []).push({ op: 'call', name: 'signatures', signers: signers.map((s) => s.userId), deadline: opts?.deadline });
+      return real.prepareSurveyReportSignatures(supabase, signers, { log() {}, ...opts, ...(T().signOptions || {}) });
     }`),
   '@/lib/service/surveyReportInputs': wrap('inputs', fileUrl('src/lib/service/surveyReportInputs.js'), `
     export async function surveyReportPrecheck(supabase, opts) {
@@ -345,7 +354,9 @@ async function jpegFor(driveFileId) {
 }
 
 const flagOn = () => { process.env.VERCEL_ENV = 'production'; process.env.SURVEY_REPORT_ISSUE_AT_SEND = 'on'; };
-const flagOff = () => { delete process.env.VERCEL_ENV; delete process.env.SURVEY_REPORT_ISSUE_AT_SEND; };
+const flagOff = () => {
+  delete process.env.VERCEL_ENV; delete process.env.SURVEY_REPORT_ISSUE_AT_SEND; delete process.env.SURVEY_REPORT_SIGNATURES;
+};
 
 /** คำเตือนที่จอจะได้จาก GET แล้วส่งกลับมาเป็น `seenWarnings` — คิดด้วยตัวตรวจตัวจริงบนโลกเดียวกัน (อ่านอย่างเดียว) */
 async function seenWarningsOf(world) {
@@ -876,6 +887,439 @@ test('🔴 ขั้นออกเลขโยน: ยังตอบ 200 · re
   assert.equal(res.json.report.state, 'failed');
 });
 
+/* ══ 6b. ลายเซ็นจริงของผู้ลงนาม (PR-SIG §2–§3 · มติเจ้าของ 09/10/2026) ══════════════════════════════════
+   ผู้ประเมิน = `U-lead` "Lead Assessor" (คนบนนัดของแฝดสังเคราะห์) · ผู้ตรวจสอบและอนุมัติ = `U-head-now` "Head Presser" (คนที่กดส่ง)
+   🔴 ทุกการตีกลับของเรื่องลายเซ็นต้องเกิด **ก่อนเขียนอะไร** — ฐานปลอมไม่เห็นคำสั่งเขียน · นัดยังเปิด · ไม่มีแถวเธรด ไม่มี audit ไม่มี RPC */
+
+const ASSESSOR_ID = 'U-lead';
+const signOn = () => { process.env.SURVEY_REPORT_SIGNATURES = 'on'; };
+
+/** ใส่ตารางลายเซ็น + คลัง `signature-assets` (อ่านอย่างเดียว) ให้โลกปลอม — `users` รูปเดียวกับ `signatureTables` */
+function signWorld(world, users, files = {}) {
+  const seeded = signatureTables(users);
+  Object.assign(world.tables, seeded);
+  withSignatureStorage(world.db, { ...seeded.files, ...files });
+  return { versions: seeded.versions, vault: world.db.signatureVault };
+}
+/** โลกที่ยังไม่มีแม้แต่ตารางลายเซ็น แต่มีคลังไว้จับการอ่าน (สวิตช์ปิดต้องไม่แตะสักครั้ง) */
+const bareVault = (world) => withSignatureStorage(world.db, {}).signatureVault;
+
+/** ส่งผลแบบเปิดทั้งสองสวิตช์ — คำเตือนที่จอเห็นคิดไว้ก่อนเปิดสวิตช์ลายเซ็น (ไม่อ่านตารางลายเซ็น ไม่กินตัวนับ "ล้มกี่ครั้ง" ของเทสต์) */
+async function sendSigned(world, { body = {}, seams = {}, ...rest } = {}) {
+  const seenWarnings = body.seenWarnings ?? await seenWarningsOf(world);
+  signOn();
+  return sendOn(world, { ...rest, body: { ...body, seenWarnings }, seams });
+}
+const signTableReads = (world) => world.db.events.filter((e) => String(e.table || '').startsWith('user_signature'));
+const signUploads = (world, sha) => world.db.events.filter((e) => e.op === 'upload' && e.path === `img/${sha}.jpg`);
+
+test('🔴 สวิตช์ลายเซ็นปิด (สวิตช์ออกเอกสารเปิด): เส้นเดิมทุกก้าว — ไม่อ่านตารางลายเซ็น ไม่แตะคลัง · ภาพนิ่งไม่มีคีย์ `signatures`', async () => {
+  const world = makeWorld({ visit: 'in_progress' });
+  const vault = bareVault(world);
+  const { status, json } = await sendOn(world, { body: { closeVisitId: VISIT_ID } });
+  assert.equal(status, 200, json.error);
+  assert.equal(json.report.state, 'issued', json.report.reason);
+  assert.deepEqual(signTableReads(world), [], 'ไม่มีคำสั่งอ่านตารางลายเซ็นสักคำสั่ง');
+  assert.deepEqual(vault.downloads, [], 'ไม่อ่านคลังลายเซ็น');
+  assert.equal(world.calls('signatures').length, 0, 'ไม่เรียกตัวเตรียมลายเซ็น');
+  const [rpc] = world.db.events.filter((e) => e.op === 'rpc');
+  assert.equal('signatures' in rpc.args.p_row.snapshot, false);
+  assert.equal(rpc.args.p_row.images.some((img) => img.kind === 'sign'), false);
+  assert.equal(world.calls('issue')[0].opts.signatures, null, 'ไม่มีอะไรส่งต่อให้ขั้นออกเลข');
+  // จำนวนรูปที่อัปเท่าเดิม (ไม่มีสำเนาลายเซ็น)
+  assert.equal(world.db.events.filter((e) => e.op === 'upload').length, TWIN_FILES);
+});
+
+test('⭐ ลายเซ็นครบสองคน: ส่งผลแล้วออกเอกสาร — ภาพนิ่งพกสองที่นั่ง · รูปลายเซ็นอยู่ในถังของเอกสาร · คลังถูกอ่านไฟล์ละครั้ง ก่อนเขียน', async () => {
+  const world = makeWorld({ visit: 'in_progress' });
+  const { versions, vault } = signWorld(world, [ASSESSOR_ID, HEAD.id]);
+  const { status, json } = await sendSigned(world, { body: { closeVisitId: VISIT_ID } });
+  assert.equal(status, 200, json.error);
+  assert.equal(json.report.state, 'issued', json.report.reason);
+
+  // S5: ตัวเตรียมลายเซ็นถูกเรียกครั้งเดียว งบ 15 วิ · หลังตัวตรวจ ก่อนคำสั่งเขียนแรก
+  const [prep] = world.calls('signatures');
+  assert.equal(world.calls('signatures').length, 1);
+  assert.deepEqual(prep.signers, [ASSESSOR_ID, HEAD.id]);
+  assert.equal(prep.deadline, 15_000);
+  const at = (find) => world.db.events.findIndex(find);
+  const firstWrite = at((e) => WRITE_OPS.includes(e.op));
+  assert.ok(at((e) => e.op === 'call' && e.name === 'inputs') < world.db.events.indexOf(prep));
+  assert.ok(world.db.events.indexOf(prep) < firstWrite, 'ไฟล์ลายเซ็นถูกเตรียมก่อนเขียนอะไร');
+
+  // 🔴 คลังลายเซ็นถูกอ่านไฟล์ละครั้ง — ขั้นออกเลขใช้ของที่เส้นส่งผลเตรียมไว้ ไม่อ่านซ้ำ · ไม่มีใครเขียนคลัง (ของปลอมโยนถ้าเขียน)
+  assert.deepEqual([...vault.downloads].sort(), [versions[ASSESSOR_ID].storagePath, versions[HEAD.id].storagePath].sort());
+
+  // ภาพนิ่ง: สองที่นั่ง · คนและฉบับตรงกับที่ใช้อยู่ตอนกด · รูปเป็น sha ของสำเนา JPEG
+  const [rpc] = world.db.events.filter((e) => e.op === 'rpc');
+  const { signatures } = rpc.args.p_row.snapshot;
+  assert.deepEqual(Object.keys(signatures), ['assessor', 'approver']);
+  for (const [seat, userId, name] of [['assessor', ASSESSOR_ID, 'Lead Assessor'], ['approver', HEAD.id, 'Head Presser']]) {
+    const hit = signatures[seat];
+    assert.deepEqual(Object.keys(hit), ['userId', 'name', 'versionId', 'versionNumber', 'sourceSha256', 'img'], seat);
+    assert.equal(hit.userId, userId);
+    assert.equal(hit.name, name);
+    assert.equal(hit.versionId, versions[userId].id);
+    assert.equal(hit.versionNumber, 1);
+    assert.equal(hit.sourceSha256, versions[userId].sha256);
+    assert.match(hit.img.sha, /^[0-9a-f]{64}$/);
+    assert.ok(hit.img.w <= 600 && hit.img.h <= 200, 'ย่อให้อยู่ในกรอบ 600×200');
+    // รูปลายเซ็นถูกเก็บในถังของเอกสารครั้งเดียว (อ้างด้วยเนื้อไฟล์) และอยู่ในคอลัมน์ `images` ของแถว
+    const uploads = signUploads(world, hit.img.sha);
+    assert.equal(uploads.length, 1, `${seat}: อัปครั้งเดียว`);
+    assert.equal(uploads[0].bucket, 'survey-report');
+    assert.equal(uploads[0].options?.contentType, 'image/jpeg');
+    assert.ok(world.db.events.indexOf(uploads[0]) < firstWrite);
+    assert.ok(world.db.objects.has(`survey-report/img/${hit.img.sha}.jpg`));
+    assert.deepEqual(rpc.args.p_row.images.filter((img) => img.sha === hit.img.sha).map((img) => [img.kind, img.attId]), [['sign', null]]);
+  }
+  assert.notEqual(signatures.assessor.img.sha, signatures.approver.img.sha, 'ลายเซ็นคนละคน');
+  assert.equal(rpc.args.p_row.images.filter((img) => img.kind === 'sign').length, 2);
+  assert.equal(world.db.events.filter((e) => e.op === 'upload').length, TWIN_FILES + 2);
+  // แถวในฐานถือภาพนิ่งเดียวกัน
+  assert.deepEqual(world.reports()[0].snapshot.signatures, signatures);
+
+  // สิ่งที่ส่งต่อให้ขั้นออกเลข: ฉบับที่ตรึงตอนกด + รูปที่เตรียมแล้ว
+  const handed = world.calls('issue')[0].opts.signatures;
+  assert.deepEqual(handed.signers.map((s) => [s.userId, s.version.versionId]), [
+    [ASSESSOR_ID, versions[ASSESSOR_ID].id], [HEAD.id, versions[HEAD.id].id],
+  ]);
+  assert.deepEqual(Object.keys(handed.imageByVersionId).sort(), [versions[ASSESSOR_ID].id, versions[HEAD.id].id].sort());
+
+  // 🔴 ไม่มีอะไรของลายเซ็นออกไปกับคำตอบ · audit จดที่นั่ง ผู้ใช้ ฉบับ — ไม่มีรูป ไม่มีที่อยู่ไฟล์
+  const keys = keysDeep(json);
+  for (const banned of ['signatures', 'signers', 'versionId', 'storagePath', 'sourceSha256', 'imageByVersionId']) {
+    assert.equal(keys.has(banned), false, banned);
+  }
+  const text = JSON.stringify(json);
+  for (const leak of ['signature-assets', 'users/', versions[ASSESSOR_ID].id, signatures.assessor.img.sha]) {
+    assert.equal(text.includes(leak), false, leak);
+  }
+  const created = world.tables.audit_logs.find((a) => a.action === 'create' && a.entityType === 'service_survey_report');
+  assert.equal(created.after.signCount, 2);
+  assert.deepEqual(created.after.signatures, [
+    { seat: 'assessor', userId: ASSESSOR_ID, versionId: versions[ASSESSOR_ID].id, versionNumber: 1 },
+    { seat: 'approver', userId: HEAD.id, versionId: versions[HEAD.id].id, versionNumber: 1 },
+  ]);
+  assert.doesNotMatch(JSON.stringify(world.tables.audit_logs), /data:image|storagePath|users\/|signature-assets/);
+  assert.deepEqual(logged.error, []);
+});
+
+test('🔴 ผู้ประเมินยังไม่มีลายเซ็น: ตีกลับ 409 พร้อมชื่อและ “บัญชีของฉัน” ก่อนเขียนอะไร — นัดยังเปิด ไม่มีเธรด ไม่มี audit ไม่มี RPC', async () => {
+  const world = makeWorld({ visit: 'in_progress' });
+  const { vault } = signWorld(world, [HEAD.id]); // หัวหน้ามี · ผู้ประเมินไม่มี
+  const res = await sendSigned(world, { body: { closeVisitId: VISIT_ID } });
+  assertRefused(world, res, 'in_progress');
+  assert.equal(res.json.error,
+    'ออกเอกสารไม่ได้ — ผู้ประเมิน Lead Assessor ยังไม่มีลายเซ็นในระบบ — ให้เจ้าตัวเพิ่มที่ “บัญชีของฉัน” ก่อน · ยังไม่ได้ส่งผล');
+  assert.equal(world.db.events.filter((e) => e.op === 'rpc').length, 0);
+  assert.equal(world.reports().length, 0);
+  // ยังไม่ถึงขั้นเตรียมไฟล์ — คลังลายเซ็นไม่ถูกอ่าน · เขียนได้อย่างเดียวคือรูปของรอบตรวจ (อ้างด้วยเนื้อไฟล์ · กติกาเดิมของ S3)
+  assert.equal(world.calls('signatures').length, 0);
+  assert.deepEqual(vault.downloads, []);
+  assert.ok(world.db.events.filter((e) => e.op === 'upload').every((u) => /^img\/[0-9a-f]{64}\.jpg$/.test(u.path)));
+  assert.doesNotMatch(res.json.error, /U-lead|signature-version/, 'ประโยคไม่มีรหัสผู้ใช้/รหัสฉบับ');
+
+  // เจ้าตัวเพิ่มลายเซ็นแล้ว กดส่งอีกครั้ง = ผ่าน (ไม่มีอะไรค้างจากรอบที่ถูกตีกลับ)
+  const seeded = signatureTables([ASSESSOR_ID]);
+  world.tables.user_signatures.push(...seeded.user_signatures);
+  world.tables.user_signature_versions.push(...seeded.user_signature_versions);
+  Object.assign(vault.files, seeded.files);
+  world.db.events.length = 0;
+  const again = await sendSigned(world, { body: { closeVisitId: VISIT_ID } });
+  assert.equal(again.status, 200, again.json.error);
+  assert.equal(again.json.report.state, 'issued', again.json.report.reason);
+  assert.equal(world.reports()[0].snapshot.signatures.assessor.userId, ASSESSOR_ID);
+});
+
+test('🔴 หัวหน้าที่กดส่งยังไม่มีลายเซ็น: ตีกลับก่อนเขียนอะไร — ประโยคเสนอให้เพิ่มเอง หรือให้หัวหน้าที่มีลายเซ็นเป็นผู้ส่งผล', async () => {
+  const world = makeWorld({ visit: 'in_progress' });
+  signWorld(world, [ASSESSOR_ID]); // ผู้ประเมินมี · คนกดส่งไม่มี
+  const res = await sendSigned(world, { body: { closeVisitId: VISIT_ID } });
+  assertRefused(world, res, 'in_progress');
+  assert.equal(res.json.error,
+    'ออกเอกสารไม่ได้ — ผู้ตรวจสอบและอนุมัติ Head Presser (ผู้ส่งผล) ยังไม่มีลายเซ็นในระบบ — เพิ่มที่ “บัญชีของฉัน” ก่อนส่งผล หรือให้หัวหน้าที่มีลายเซ็นแล้วเป็นผู้ส่งผล · ยังไม่ได้ส่งผล');
+  assert.equal(world.db.events.filter((e) => e.op === 'rpc').length, 0);
+
+  // ทั้งสองคนไม่มี = สองบรรทัด ผู้ประเมินก่อน (ลำดับบนกระดาษ)
+  const none = makeWorld({ visit: 'in_progress' });
+  signWorld(none, []);
+  const both = await sendSigned(none, { body: { closeVisitId: VISIT_ID } });
+  assertRefused(none, both, 'in_progress');
+  assert.match(both.json.error, /^ออกเอกสารไม่ได้ — ผู้ประเมิน Lead Assessor ยังไม่มีลายเซ็นในระบบ .* \| ผู้ตรวจสอบและอนุมัติ Head Presser \(ผู้ส่งผล\) ยังไม่มีลายเซ็นในระบบ .* · ยังไม่ได้ส่งผล$/);
+
+  // หัวหน้าอีกคนที่มีลายเซ็นเป็นผู้ส่งแทน = ผ่าน และที่นั่งผู้ตรวจสอบและอนุมัติเป็นของเขา
+  const other = { ...HEAD, id: 'U-head-2', name: 'Second Head' };
+  const world2 = makeWorld({ visit: 'in_progress' });
+  const { versions } = signWorld(world2, [ASSESSOR_ID, other.id]);
+  const seenWarnings = await seenWarningsOf(world2);
+  signOn();
+  const ok = await sendOn(world2, { user: other, body: { seenWarnings, closeVisitId: VISIT_ID } });
+  assert.equal(ok.status, 200, ok.json.error);
+  assert.equal(ok.json.report.state, 'issued', ok.json.report.reason);
+  const { approver } = world2.reports()[0].snapshot.signatures;
+  assert.deepEqual([approver.userId, approver.name, approver.versionId], [other.id, 'Second Head', versions[other.id].id]);
+});
+
+/* ── บัญชีของคนบนนัดต้องเป็นบัญชีฝ่ายบริการ และชื่อใต้ลายเซ็นคือชื่อของบัญชีนั้น (ผลรีวิว 09/10/2026) ───────────────
+   🐞 `assigneeId` / `assigneeName` ของนัดเป็นสองช่องที่ผู้จัดคิวแก้แยกกันได้ (PATCH นัด) — เดิมเส้นนี้อ่านลายเซ็นของรหัสอะไรก็ตาม
+      ที่เจอบนนัด แล้วพิมพ์ใต้ชื่ออะไรก็ตามที่พิมพ์มา */
+const authAccount = (id, name, role) => ({ id, email: `${id}@example.test`, app_metadata: { role }, user_metadata: { name } });
+const LEAD_ACCOUNT = authAccount(ASSESSOR_ID, 'Lead Assessor', 'ts_senior');
+
+test('🔴 ผู้รับผิดชอบของนัดเป็นบัญชีนอกฝ่ายบริการที่มีลายเซ็น (CD): ตีกลับ 409 ก่อนเขียนอะไร — ไม่มีไฟล์ไหนถูกอ่านจากคลังลายเซ็น', async () => {
+  const cd = authAccount('U-cd', 'Commercial Director', 'commercial_director');
+  const world = makeWorld({ visit: 'in_progress', options: { users: { [ASSESSOR_ID]: LEAD_ACCOUNT, [cd.id]: cd } } });
+  // ผู้จัดคิวใส่รหัสของ CD ลงนัด พร้อมชื่อที่พิมพ์เอง (สองช่องนี้รับจาก body ตรง ๆ เมื่อกติกาปิด)
+  Object.assign(world.visit(), { assigneeId: cd.id, assigneeName: 'ชื่ออะไรก็ได้' });
+  const { vault, versions } = signWorld(world, [cd.id, HEAD.id]); // CD มีลายเซ็น (อนุมัติใบเสนอราคา) · หัวหน้าที่กดก็มี
+  assert.ok(versions[cd.id], 'CD มีลายเซ็นที่ใช้อยู่จริง');
+  const res = await sendSigned(world, { body: { closeVisitId: VISIT_ID } });
+  assertRefused(world, res, 'in_progress');
+  assert.equal(res.json.error,
+    'ออกเอกสารไม่ได้ — ผู้ประเมิน Commercial Director ไม่ใช่บัญชีฝ่ายบริการ — เอกสารพิมพ์ลายเซ็นของบัญชีนี้ไม่ได้ แจ้งผู้จัดคิวให้แก้ผู้รับผิดชอบของนัด · ยังไม่ได้ส่งผล');
+  // 🔴 ลายเซ็นของ CD ไม่ถูกแตะ: ตัวเตรียมไม่ถูกเรียก · คลังไม่ถูกอ่าน · ไม่มีสำเนาลายเซ็นในถังของเอกสาร
+  assert.equal(world.calls('signatures').length, 0);
+  assert.deepEqual(vault.downloads, []);
+  assert.equal(world.db.events.filter((e) => e.op === 'upload').length, TWIN_FILES, 'มีแต่รูปของรอบตรวจ (กติกาเดิมของ S3)');
+  assert.equal(world.db.events.filter((e) => e.op === 'rpc').length, 0);
+  assert.equal(world.reports().length, 0);
+  assert.doesNotMatch(res.json.error, /U-cd|signature-version|ชื่ออะไรก็ได้/, 'ประโยคไม่มีรหัสผู้ใช้ และเอ่ยชื่อของบัญชี ไม่ใช่ชื่อที่พิมพ์มา');
+});
+
+test('🔴 รหัสบนนัดชี้ช่างคนหนึ่ง แต่ชื่อบนนัดเป็นของอีกคน: กระดาษพิมพ์ชื่อของบัญชีที่รหัสชี้ คู่กับลายเซ็นของบัญชีนั้น — ไม่มีลายเซ็นของคนหนึ่งใต้ชื่อของอีกคน', async () => {
+  const other = authAccount('U-other', 'Somebody Else', 'ts');
+  const world = makeWorld({ visit: 'in_progress', options: { users: { [ASSESSOR_ID]: LEAD_ACCOUNT, [other.id]: other } } });
+  // PATCH ที่ส่งมาแค่ `assigneeId` — ชื่อเดิม "Lead Assessor" ค้างอยู่บนนัด
+  world.visit().assigneeId = other.id;
+  const { versions, vault } = signWorld(world, [other.id, HEAD.id]); // Lead Assessor ไม่มีลายเซ็น
+  const { status, json } = await sendSigned(world, { body: { closeVisitId: VISIT_ID } });
+  assert.equal(status, 200, json.error);
+  assert.equal(json.report.state, 'issued', json.report.reason);
+  const { snapshot } = world.reports()[0];
+  assert.deepEqual(
+    [snapshot.signatures.assessor.userId, snapshot.signatures.assessor.name, snapshot.signatures.assessor.versionId],
+    [other.id, 'Somebody Else', versions[other.id].id],
+  );
+  assert.equal(snapshot.visit.assignee.name, 'Somebody Else', 'ชื่อในกล่องการประเมินตรงกับชื่อใต้ลายเซ็น');
+  assert.ok(!JSON.stringify(snapshot).includes('Lead Assessor'), 'ชื่อที่ค้างบนนัดไม่ขึ้นกระดาษ');
+  assert.deepEqual([...vault.downloads].sort(), [versions[other.id].storagePath, versions[HEAD.id].storagePath].sort());
+  // แถวนัดในฐานไม่ถูกแก้ชื่อโดยเส้นส่งผล (เส้นนี้ปิดนัดอย่างเดียว)
+  assert.equal(world.visit().assigneeName, 'Lead Assessor');
+});
+
+test('🔴 ตัวตรวจอ่านชิ้นที่ไม่เกี่ยวกับลายเซ็นไม่สำเร็จ (ดีล · บัญชีของผู้ประเมิน) แต่รู้แน่ว่าผู้ลงนามยังไม่มีลายเซ็น: ยังตีกลับ 409 ก่อนเขียนอะไร', async () => {
+  /* 🐞 เดิม `unknown` ไม่ว่าง = ข้ามการตีกลับทั้งหมด ⇒ อ่านเลขที่ดีลพลาดครั้งเดียว ใบถูกตอบทั้งที่ผู้ประเมินไม่มีลายเซ็น
+     (เอกสารออกไม่ได้ และถ้าเจ้าตัวเพิ่มลายเซ็นไม่ได้ ใบค้าง "ตอบแล้วไม่มีเอกสาร") */
+  const LINE = 'ออกเอกสารไม่ได้ — ผู้ประเมิน Lead Assessor ยังไม่มีลายเซ็นในระบบ — ให้เจ้าตัวเพิ่มที่ “บัญชีของฉัน” ก่อน · ยังไม่ได้ส่งผล';
+
+  // ① เลขที่ดีลอ่านไม่สำเร็จหนึ่งครั้ง (ตั้งหลังคิดคำเตือนของจอ — ไม่ให้รอบนั้นกินตัวนับ)
+  const fail = {};
+  const deal = makeWorld({ visit: 'in_progress', options: { fail } });
+  const { vault } = signWorld(deal, [HEAD.id]); // หัวหน้ามี · ผู้ประเมินไม่มี
+  const seenWarnings = await seenWarningsOf(deal);
+  fail.sales_deals = { op: 'select', times: 1 };
+  const a = await sendSigned(deal, { body: { seenWarnings, closeVisitId: VISIT_ID } });
+  assertRefused(deal, a, 'in_progress');
+  assert.equal(a.json.error, LINE);
+  assert.equal(fail.sales_deals.times, 0, 'การอ่านดีลล้มจริงในรอบตรวจของเส้นส่งผล');
+  assert.ok(logged.error.some((line) => /อ่านไม่ครบ แต่ผู้ลงนามยังไม่มีลายเซ็น — ตีกลับ/.test(line) && /deal/.test(line)));
+  assert.deepEqual(vault.downloads, []);
+
+  // ② บัญชีของผู้ประเมินอ่านไม่สำเร็จ (`assigneeRole`) — ข้อ "ยังไม่มีลายเซ็น" ตัดสินจากตารางลายเซ็น ไม่ใช่จากบัญชี
+  const role = makeWorld({ visit: 'in_progress' });
+  signWorld(role, [HEAD.id]);
+  const warnings = await seenWarningsOf(role);
+  const origin = role.db.auth.admin.getUserById;
+  let failed = 0;
+  role.db.auth.admin.getUserById = async (id) => {
+    if (id === ASSESSOR_ID && failed === 0) { failed += 1; return { data: { user: null }, error: { status: 500, message: 'auth ล่ม' } }; }
+    return origin(id);
+  };
+  const b = await sendSigned(role, { body: { seenWarnings: warnings, closeVisitId: VISIT_ID } });
+  assertRefused(role, b, 'in_progress');
+  assert.equal(b.json.error, LINE);
+  assert.equal(failed, 1);
+
+  // ③ กลุ่มควบคุม: ชิ้นเดียวกันล้ม แต่ทุกคนมีลายเซ็นครบ = ไม่ตีกลับตามเดิม (ปัญหาของระบบไม่ขวางผล) แล้วเอกสารออกในคำขอเดียวกัน
+  const okFail = {};
+  const fine = makeWorld({ visit: 'in_progress', options: { fail: okFail } });
+  signWorld(fine, [ASSESSOR_ID, HEAD.id]);
+  const seen = await seenWarningsOf(fine);
+  okFail.sales_deals = { op: 'select', times: 1 };
+  const c = await sendSigned(fine, { body: { seenWarnings: seen, closeVisitId: VISIT_ID } });
+  assert.equal(c.status, 200, c.json.error);
+  assert.equal(c.json.report.state, 'issued', c.json.report.reason);
+  assert.equal(fine.reports()[0].snapshot.signatures.assessor.userId, ASSESSOR_ID);
+
+  // ④ ชิ้นที่ตัดสินเรื่องลายเซ็นเองอ่านไม่ได้ (นัด) = ไม่รู้ ⇒ ไม่ตีกลับ แม้ตัวตรวจจะคืนบรรทัดลายเซ็นมา
+  const blind = makeWorld({ visit: 'in_progress' });
+  signWorld(blind, [HEAD.id]);
+  const d = await sendSigned(blind, {
+    body: { seenWarnings: [], closeVisitId: VISIT_ID },
+    seams: {
+      precheck: async () => ({
+        blockers: [{ kind: 'content', sign: true, userId: ASSESSOR_ID, seats: ['assessor'], text: 'บรรทัดที่เชื่อไม่ได้เพราะอ่านนัดไม่สำเร็จ' }],
+        warnings: [], unknown: ['visits'], signers: [],
+      }),
+    },
+  });
+  assert.equal(d.status, 200, d.json.error);
+  assert.equal(blind.request().status, 'answered');
+});
+
+test('🔴 ไฟล์ลายเซ็นใช้พิมพ์ไม่ได้ (ว่าง · จาง · หายจากคลัง · ไม่ตรงกับที่บันทึก): ตีกลับพร้อมชื่อเจ้าของและเหตุ ก่อนเขียนอะไร', async () => {
+  const cases = [
+    [{ userId: ASSESSOR_ID, png: makeSignaturePng({ kind: 'blank' }) }, {}, 'ภาพลายเซ็นว่างหรือจางเกินไป'],
+    [{ userId: ASSESSOR_ID, png: makeSignaturePng({ kind: 'faint' }) }, {}, 'ภาพลายเซ็นว่างหรือจางเกินไป'],
+    [{ userId: ASSESSOR_ID, sha256: `sha256:${'0'.repeat(64)}` }, {}, 'ไฟล์ลายเซ็นไม่ตรงกับที่บันทึกไว้'],
+    [{ userId: ASSESSOR_ID, storagePath: 'users/someone-else/x.png' }, {}, 'ที่เก็บไฟล์ลายเซ็นไม่ถูกต้อง'],
+  ];
+  for (const [assessor, files, label] of cases) {
+    const world = makeWorld({ visit: 'in_progress' });
+    signWorld(world, [assessor, HEAD.id], files);
+    const res = await sendSigned(world, { body: { closeVisitId: VISIT_ID } });
+    assertRefused(world, res, 'in_progress');
+    assert.equal(res.json.error,
+      `ออกเอกสารไม่ได้ — ลายเซ็นของ Lead Assessor ใช้พิมพ์ไม่ได้ (${label}) — ให้เจ้าตัวอัปโหลดลายเซ็นใหม่ที่ “บัญชีของฉัน” · ยังไม่ได้ส่งผล`);
+    assert.equal(world.calls('signatures').length, 1);
+    assert.equal(world.db.events.filter((e) => e.op === 'rpc').length, 0);
+  }
+  // ไฟล์หายจากคลัง (แถวยังอยู่)
+  const gone = makeWorld({ visit: 'in_progress' });
+  const { versions, vault } = signWorld(gone, [ASSESSOR_ID, HEAD.id]);
+  delete vault.files[versions[HEAD.id].storagePath];
+  const res = await sendSigned(gone, { body: { closeVisitId: VISIT_ID } });
+  assertRefused(gone, res, 'in_progress');
+  assert.equal(res.json.error,
+    'ออกเอกสารไม่ได้ — ลายเซ็นของ Head Presser ใช้พิมพ์ไม่ได้ (ไฟล์ลายเซ็นหายจากที่เก็บ) — ให้เจ้าตัวอัปโหลดลายเซ็นใหม่ที่ “บัญชีของฉัน” · ยังไม่ได้ส่งผล');
+});
+
+test('🔴 อ่านตารางลายเซ็นไม่สำเร็จ: ไม่ตีกลับ (ปัญหาของระบบ) — ล้มครั้งเดียว = เอกสารออกครบสองที่นั่ง · ล้มตลอด = report ที่กดซ้ำได้', async () => {
+  const once = makeWorld({ visit: 'in_progress', options: { fail: { user_signatures: { op: 'select', times: 1 } } } });
+  const { versions } = signWorld(once, [ASSESSOR_ID, HEAD.id]);
+  const a = await sendSigned(once, { body: { closeVisitId: VISIT_ID } });
+  assert.equal(a.status, 200, a.json.error);
+  assert.equal(a.json.report.state, 'issued', a.json.report.reason);
+  assert.ok(logged.error.some((line) => /ตรวจเอกสารก่อนส่งผลอ่านไม่ครบ/.test(line) && /signatures/.test(line)));
+  // S5 ถูกข้าม ⇒ ไม่มีอะไรส่งต่อ · ขั้นออกเลขอ่านใหม่และเตรียมไฟล์เอง
+  assert.equal(once.calls('signatures').length, 0);
+  assert.equal(once.calls('issue')[0].opts.signatures, null);
+  const snap = once.reports()[0].snapshot.signatures;
+  assert.deepEqual([snap.assessor.versionId, snap.approver.versionId], [versions[ASSESSOR_ID].id, versions[HEAD.id].id]);
+  assert.ok(snap.assessor.img.sha && snap.approver.img.sha);
+
+  logged.error.length = 0;
+  const always = makeWorld({ visit: 'in_progress', options: { fail: { user_signatures: { op: 'select', times: 99 } } } });
+  signWorld(always, [ASSESSOR_ID, HEAD.id]);
+  const b = await sendSigned(always, { body: { closeVisitId: VISIT_ID } });
+  assert.equal(b.status, 200, b.json.error);
+  assert.equal(always.request().status, 'answered', 'ผลประเมินถึงฝ่ายขายแล้ว');
+  assert.equal(always.visit().status, 'done');
+  assert.deepEqual(Object.keys(b.json.report).sort(), ['code', 'reason', 'retry', 'state']);
+  assert.equal(b.json.report.state, 'failed');
+  assert.equal(b.json.report.retry, true);
+  assert.ok(b.json.report.reason.includes(SURVEY_REPORT_INPUT_LABELS.signatures), b.json.report.reason);
+  assert.doesNotMatch(b.json.report.reason, /ยังไม่มีลายเซ็น/, 'อ่านไม่สำเร็จต้องไม่กลายเป็น "ยังไม่มีลายเซ็น"');
+  assert.equal(always.reports().length, 0);
+  assert.equal(always.db.events.filter((e) => e.op === 'rpc').length, 0);
+});
+
+test('🔴 คลังลายเซ็นค้างตอนส่งผล (หมดเวลาต่อไฟล์): ไม่ตีกลับ · ขั้นออกเลขเตรียมเฉพาะไฟล์ที่ขาด แล้วออกเอกสารได้', async () => {
+  const world = makeWorld({ visit: 'in_progress' });
+  const { versions, vault } = signWorld(world, [ASSESSOR_ID, HEAD.id]);
+  const path = versions[ASSESSOR_ID].storagePath;
+  const png = vault.files[path];
+  let calls = 0;
+  vault.files[path] = () => { calls += 1; return calls === 1 ? new Promise(() => {}) : png; };
+  const { status, json } = await sendSigned(world, {
+    body: { closeVisitId: VISIT_ID }, seams: { signOptions: { fileTimeoutMs: 40, log() {} } },
+  });
+  assert.equal(status, 200, json.error);
+  assert.equal(json.report.state, 'issued', json.report.reason);
+  assert.ok(logged.warn.some((line) => /เตรียมลายเซ็นก่อนส่งผลไม่ครบ/.test(line) && /Lead Assessor: sign_timeout/.test(line)));
+  // ฉบับของทั้งสองคนยังถูกส่งต่อ (ตรึงตอนกด) — รูปที่เตรียมได้มีแค่ของหัวหน้า · ขั้นออกเลขอ่านเฉพาะไฟล์ของผู้ประเมินอีกครั้ง
+  const handed = world.calls('issue')[0].opts.signatures;
+  assert.deepEqual(handed.signers.map((s) => s.userId), [ASSESSOR_ID, HEAD.id]);
+  assert.deepEqual(Object.keys(handed.imageByVersionId), [versions[HEAD.id].id]);
+  assert.equal(vault.downloads.filter((p) => p === path).length, 2);
+  assert.equal(vault.downloads.filter((p) => p === versions[HEAD.id].storagePath).length, 1);
+  const snap = world.reports()[0].snapshot.signatures;
+  assert.ok(snap.assessor.img.sha && snap.approver.img.sha);
+});
+
+test('🔴 เจ้าตัวยกเลิก/เปลี่ยนลายเซ็นระหว่างตรวจกับออกเลข: เอกสารพิมพ์ฉบับที่หัวหน้าเห็นตอนกด — ใบที่ตอบแล้วไม่ค้างโดยไม่มีเอกสาร', async () => {
+  for (const change of ['revoke', 'replace']) {
+    const world = makeWorld({ visit: 'in_progress' });
+    const { versions, vault } = signWorld(world, [ASSESSOR_ID, HEAD.id]);
+    const pinned = versions[ASSESSOR_ID];
+    const { status, json } = await sendSigned(world, {
+      body: { closeVisitId: VISIT_ID },
+      seams: {
+        // ระหว่าง "ตอบใบ" กับ "ขั้นออกเลข" — ยกเลิก (ไม่มีฉบับที่ใช้อยู่) หรือเปลี่ยนเป็นฉบับใหม่ (ไฟล์ใหม่ เส้นใหม่)
+        issue: (supabase, opts, real) => {
+          const root = world.tables.user_signatures.find((r) => r.userId === ASSESSOR_ID);
+          if (change === 'revoke') root.activeVersionId = null;
+          else {
+            const next = signatureTables([{ userId: ASSESSOR_ID, versionNumber: 2, png: makeSignaturePng({ seed: 77 }) }]);
+            world.tables.user_signature_versions.push(...next.user_signature_versions);
+            Object.assign(vault.files, next.files);
+            root.activeVersionId = next.versions[ASSESSOR_ID].id;
+          }
+          return real(supabase, opts);
+        },
+      },
+    });
+    assert.equal(status, 200, json.error);
+    assert.equal(json.report.state, 'issued', `${change}: ${json.report.reason}`);
+    const { assessor } = world.reports()[0].snapshot.signatures;
+    assert.equal(assessor.versionId, pinned.id, change);
+    assert.equal(assessor.versionNumber, 1, change);
+    assert.equal(assessor.sourceSha256, pinned.sha256, change);
+    // ขั้นออกเลขไม่อ่านคลังอีก (ใช้รูปที่เตรียมก่อนเขียน) — ไฟล์ของฉบับใหม่ไม่ถูกแตะเลย
+    assert.deepEqual([...vault.downloads].sort(), [pinned.storagePath, versions[HEAD.id].storagePath].sort(), change);
+  }
+});
+
+test('🔴 เจ้าตัวเปลี่ยนลายเซ็นหลังเอกสารออกแล้ว: แถวที่ออกไปไม่ขยับ — ฉบับ · sha ต้นทาง · รูปในถังของเอกสารเป็นของวันที่ออก', async () => {
+  const world = makeWorld({ visit: 'in_progress' });
+  const { versions, vault } = signWorld(world, [ASSESSOR_ID, HEAD.id]);
+  const { json } = await sendSigned(world, { body: { closeVisitId: VISIT_ID } });
+  assert.equal(json.report.state, 'issued', json.report.reason);
+  const before = structuredClone(world.reports()[0]);
+  const objectsBefore = [...world.db.objects].sort();
+
+  // เปลี่ยนเป็นฉบับที่ 2 แล้วยกเลิกทิ้ง — ทั้งรากและคลังเปลี่ยน
+  const next = signatureTables([{ userId: ASSESSOR_ID, versionNumber: 2, png: makeSignaturePng({ seed: 91 }) }]);
+  world.tables.user_signature_versions.push(...next.user_signature_versions);
+  Object.assign(vault.files, next.files);
+  world.tables.user_signatures.find((r) => r.userId === ASSESSOR_ID).activeVersionId = null;
+
+  assert.deepEqual(world.reports()[0], before, 'ไม่มีอะไรเขียนทับแถวที่ออกแล้ว');
+  assert.equal(before.snapshot.signatures.assessor.versionId, versions[ASSESSOR_ID].id);
+  assert.deepEqual([...world.db.objects].sort(), objectsBefore, 'สำเนา JPEG ของวันที่ออกยังอยู่ในถังของเอกสาร');
+  assert.ok(world.db.objects.has(`survey-report/img/${before.snapshot.signatures.assessor.img.sha}.jpg`));
+  // เส้นส่งผลไม่มีคำสั่ง update/delete ของตารางเอกสารเลย
+  assert.deepEqual(world.db.events.filter((e) => e.table === 'service_survey_reports' && ['update', 'delete', 'upsert'].includes(e.op)), []);
+});
+
+test('ใบที่มีพื้นที่ประเมินจากแบบ: ไม่ถูกถามเรื่องลายเซ็น (เอกสารถูกพักไว้) — ส่งผลได้แม้ไม่มีใครมีลายเซ็น · คลังไม่ถูกแตะ', async () => {
+  const world = makeWorld({ visit: 'in_progress' });
+  const { vault } = signWorld(world, []);
+  world.tables.service_survey_zones[1].method = 'drawing';
+  const seenWarnings = await seenWarningsOf(world);
+  signOn();
+  const { status, json } = await sendOn(world, {
+    body: { seenWarnings, closeVisitId: VISIT_ID, methodMix: { onsite: 1, drawing: 1 }, surveyConfirm: 'needed' },
+  });
+  assert.equal(status, 200, json.error);
+  assert.equal(world.request().status, 'answered');
+  assert.equal(json.report.state, 'failed', 'เอกสารของใบจากแบบยังออกไม่ได้ (ข้อกันของงวด S1)');
+  assert.doesNotMatch(json.report.reason, /ลายเซ็น/);
+  assert.equal(world.calls('signatures').length, 0);
+  assert.deepEqual(vault.downloads, []);
+});
+
 /* ══ 7. ซอร์สของ route ═══════════════════════════════════════════════════════════ */
 
 test('ซอร์ส: runtime nodejs · maxDuration 300 · ของหนักเข้ามาทาง await import() เท่านั้น · ขั้นออกเลขอยู่หลัง audit', () => {
@@ -911,13 +1355,28 @@ test('ซอร์ส: runtime nodejs · maxDuration 300 · ของหนั�
   assert.ok(handler.lastIndexOf('recordAudit(') < order('surveySendIssue('), 'ขั้นออกเลขอยู่หลัง audit');
   assert.match(handler, /if \(issueAtSend && !Array\.isArray\(body\?\.seenWarnings\)\) return conflict\(SURVEY_SEND_OLD_PAGE_ERROR\);/);
   assert.match(handler, /if \(issueAtSend\) \{\s*const preflight = await surveySendPreflight\(/);
-  assert.match(handler, /if \(issueAtSend\) \{\s*const documentError = await surveySendDocumentError\(/);
+  assert.match(handler, /if \(issueAtSend\) \{\s*const documentCheck = await surveySendDocumentError\(/);
+  assert.match(handler, /if \(documentCheck\.error\) return conflict\(documentCheck\.error\);/);
   assert.match(handler, /const report = issueAtSend\s*\? await surveySendIssue\(/);
   for (const call of ['surveySendPreflight(', 'surveySendDocumentError(', 'surveySendIssue(']) {
     assert.equal(handler.split(call).length - 1, 1, `${call} ถูกเรียกที่เดียว`);
   }
   // หลังเขียนแล้วไม่มี 409 ของเอกสารอีก
   assert.doesNotMatch(handler.slice(order('surveySendWrites(')), /conflict\(/);
+
+  /* ── ลายเซ็นจริงของผู้ลงนาม (PR-SIG §3.3) ──
+     · เส้นนี้ไม่อ่านสวิตช์ลายเซ็นเอง และไม่เอ่ยชื่อตารางลายเซ็น/คลังลายเซ็น — ตัวตรวจเป็นคนอ่าน ตัวเตรียมเป็นคนแตะคลัง
+     · ตัวเตรียมลายเซ็นเข้ามาทาง `await import()` ของโมดูลรูป (ตัวเดียวกับรอบตรวจรูป) · เรียกที่เดียว ด้วยงบ `SURVEY_SEND_SIGN_MS`
+     · ฉบับที่ตรึงส่งต่อให้ขั้นออกเลข */
+  assert.doesNotMatch(code, /surveyReportSignFlag|surveyReportSignaturesOn|SURVEY_REPORT_SIGNATURES|user_signature|signature-assets/);
+  assert.equal(code.split('prepareSurveyReportSignatures(').length - 1, 1);
+  assert.match(code, /const \{ prepareSurveyReportSignatures \} = await import\('@\/lib\/service\/surveyReportImages'\);/);
+  assert.match(code, /prepareSurveyReportSignatures\(supabase, rows, \{ deadline: SURVEY_SEND_SIGN_MS \}\)/);
+  assert.match(code, /const refusal = surveySendSignatureRefusal\(failed\);\s*if \(refusal\) return \{ refusal, signatures: null \};/);
+  assert.equal(code.split('surveySendSignatures(').length - 1, 2, 'ประกาศหนึ่ง เรียกหนึ่ง (ใน S5)');
+  assert.match(handler, /signatures = documentCheck\.signatures;/);
+  assert.match(handler, /surveySendIssue\(supabase, \{ request: data, user, closedVisit, prepared, signatures, req \}\)/);
+  assert.match(code, /signatures: signatures \|\| null,/);
 
   // บรรทัดเธรดของปุ่ม "ออกเอกสาร" เป็นของ route เอกสารตัวเดียว — ไม่อยู่ในไฟล์ของเส้นส่งผล (ทั้งซอร์สดิบ)
   for (const file of [ROUTE, 'src/lib/service/surveySendClose.js', 'src/lib/costingUpdates.js', 'src/lib/sales/documentThread.js']) {

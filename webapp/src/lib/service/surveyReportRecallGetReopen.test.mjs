@@ -38,7 +38,8 @@ const STATIC_IMPORT = /^(?:import|export)\s(?:[^;'"]*?from\s+)?'([^']+)';/gm;
 
 /* ── env ของยามเขียนของถาวร / ธงออกเอกสารตอนส่งผล — ตั้งแล้วคืนค่าเดิมเสมอ ────────────────────────────── */
 async function withEnv(values, run) {
-  const keys = ['VERCEL_ENV', 'SURVEY_REPORT_ISSUE_AT_SEND'];
+  /* สวิตช์ลายเซ็นจริง (PR-SIG) อยู่ในชุดด้วย — ไม่ระบุ = ปิด ⇒ เทสต์เดิมทุกตัวรันแบบกติกาปิดไม่ว่าเครื่องที่รันตั้ง env อะไรไว้ */
+  const keys = ['VERCEL_ENV', 'SURVEY_REPORT_ISSUE_AT_SEND', 'SURVEY_REPORT_SIGNATURES'];
   const before = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
   for (const k of keys) {
     if (values[k] === undefined) delete process.env[k];
@@ -718,6 +719,69 @@ test('ธงออกเอกสารตอนส่งผลเปิด + �
     const crewDb = fakeDb(seed({ request: OPEN_REQ, reports: [] }));
     assert.deepEqual((await getSurvey(crewDb, CREW)).json.document, { access: 'none' });
     assert.deepEqual(crewDb.of('service_survey_reports'), []);
+  });
+});
+
+test('🔴 กติกาลายเซ็นจริงเปิด (PR-SIG): หัวหน้าได้ `signRule` + บรรทัดของตัวเองพร้อม `selfSign` · ฝ่ายขาย/ช่าง/Planner ไม่ได้คีย์ใหม่สักคีย์ — สอง GET', async () => {
+  const SIGN_KEYS = ['signRule', 'selfSign', 'signers', 'sign', 'self', 'userId', 'versionId', 'storagePath'];
+  const keysDeep = (value, out = new Set()) => {
+    if (Array.isArray(value)) value.forEach((v) => keysDeep(v, out));
+    else if (value && typeof value === 'object') for (const [k, v] of Object.entries(value)) { out.add(k); keysDeep(v, out); }
+    return out;
+  };
+  await withEnv({ ...PROD_ON, SURVEY_REPORT_SIGNATURES: 'on' }, async () => {
+    /* ใบยังไม่ส่ง · ฐานปลอมไม่มีแถวลายเซ็นของใคร ⇒ คนที่กำลังจะกดส่ง (หัวหน้าที่เปิดดู) ยังไม่มีลายเซ็น */
+    const db = fakeDb(seed({ request: OPEN_REQ, reports: [] }));
+    const { result } = await quiet(() => getSurvey(db, HEAD));
+    assert.equal(result.status, 200, result.json.error);
+    const doc = result.json.document;
+    assert.equal(doc.signRule, true);
+    assert.equal(doc.send.selfSign, true);
+    const mine = doc.send.blockers.filter((line) => line.includes('ยังไม่มีลายเซ็นในระบบ'));
+    assert.deepEqual(mine, [
+      'ผู้ตรวจสอบและอนุมัติ อานนท์ (ผู้ส่งผล) ยังไม่มีลายเซ็นในระบบ — เพิ่มที่ “บัญชีของฉัน” ก่อนส่งผล หรือให้หัวหน้าที่มีลายเซ็นแล้วเป็นผู้ส่งผล',
+    ]);
+    // ตัวตรวจอ่านตารางลายเซ็นด้วย SELECT ล้วน มีเพดาน — GET ไม่เขียน ไม่ออกเลข ไม่แตะที่เก็บไฟล์ (ของปลอมโยนถ้าแตะ)
+    assert.ok(db.reads('user_signatures').length >= 1);
+    assert.ok(db.reads('user_signatures').every((q) => q.limit != null));
+    assert.deepEqual(db.calls.filter((c) => c.write), []);
+    assert.deepEqual(db.rpcs, []);
+    // 🔴 รหัสผู้ใช้ของบรรทัดไม่ออก payload
+    for (const key of ['userId', 'versionId', 'storagePath']) assert.equal(keysDeep(doc).has(key), false, key);
+    assert.deepEqual(leaks(result.json), []);
+
+    // GET คำร้องของหัวหน้า: รู้ว่ากติกาเปิด แต่ไม่ตรวจที่เส้นนี้ (ไม่อ่านตารางลายเซ็น)
+    const requestDb = fakeDb(seed({ reports: READY() }));
+    const onRequest = (await getRequest(requestDb, HEAD)).json.surveyDocument;
+    assert.equal(onRequest.signRule, true);
+    assert.equal(onRequest.send, null);
+    assert.deepEqual(requestDb.of('user_signatures'), []);
+
+    // ฝ่ายขาย · ช่าง · Planner — ไม่มีคีย์ของลายเซ็น ไม่มี `send` / `issue` และไม่อ่านตารางลายเซ็น
+    for (const [user, request, reports] of [
+      [REQUESTER, OPEN_REQ, []], [REQUESTER, REQ, READY()], [CREW, OPEN_REQ, []], [PLANNER, OPEN_REQ, []], [PLANNER, REQ, READY()],
+    ]) {
+      const sheetDb = fakeDb(seed({ request, reports }));
+      const onSheet = (await getSurvey(sheetDb, user)).json.document;
+      const pageDb = fakeDb(seed({ request, reports }));
+      const page = await getRequest(pageDb, user);
+      // ช่างเปิดหน้าคำร้องไม่ได้ (403) — ไม่มี payload ให้ตรวจ · คนอื่นต้องได้คีย์ `surveyDocument`
+      const onPage = page.status === 200 ? page.json.surveyDocument : null;
+      if (user !== CREW) assert.ok(onPage, `${user.role}: GET คำร้องต้องตอบ 200`);
+      for (const payload of [onSheet, onPage].filter(Boolean)) {
+        for (const key of ['send', 'issue']) assert.equal(key in payload, false, `${user.role}: ${key}`);
+        for (const key of SIGN_KEYS) assert.equal(keysDeep(payload).has(key), false, `${user.role}: ${key}`);
+      }
+      assert.deepEqual([...sheetDb.of('user_signatures'), ...pageDb.of('user_signatures')], [], user.role);
+    }
+  });
+  // สวิตช์ลายเซ็นปิด (ค่าตั้งต้น): หัวหน้าไม่มีคีย์ใหม่ และไม่มีคำสั่งอ่านตารางลายเซ็น
+  await withEnv(PROD_ON, async () => {
+    const db = fakeDb(seed({ request: OPEN_REQ, reports: [] }));
+    const { result } = await quiet(() => getSurvey(db, HEAD));
+    assert.equal('signRule' in result.json.document, false);
+    assert.deepEqual(Object.keys(result.json.document.send).sort(), ['blockers', 'unknown', 'warnings']);
+    assert.deepEqual(db.of('user_signatures'), []);
   });
 });
 

@@ -15,14 +15,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { ROLE_LABELS } from '../permissions.js';
 import { renderSurveyReportHTML } from './surveyReportDocument.js';
-import { SURVEY_IMAGE_FAILURE } from './surveyReportImages.js';
+import { paginateSurveyReport } from './surveyReportLayout.js';
+import { SURVEY_IMAGE_FAILURE, SURVEY_SIGN_FAILURE } from './surveyReportImages.js';
 import { SURVEY_REPORT_STANDARD_KEY } from './surveyReportInputs.js';
 import {
   SURVEY_REPORT_IMAGE_BUDGET_MS, SURVEY_REPORT_ISSUE_CODES, issueSurveyReport, surveyReportPaperLineForReader,
 } from './surveyReportIssue.js';
 import { SURVEY_REPORT_COLUMNS, SURVEY_REPORT_NOT_PRODUCTION } from './surveyReportRows.js';
+import { makeSignaturePng, signatureTables, withSignatureStorage } from './surveyReportSignWorld.mjs';
 import { buildSurveyReportSnapshot, surveyReportImageFiles } from './surveyReportSnapshot.js';
-import { SURVEY_REPORT_REASONS, surveyReportPaperIssues, surveyReportState } from './surveyReportState.js';
+import {
+  SURVEY_REPORT_REASONS, surveyReportPaperIssues, surveyReportSignatureHtmlIssues, surveyReportState,
+} from './surveyReportState.js';
 import { surveyReportSendWarnings, surveyReportView } from './surveyReportView.js';
 import {
   TEST_COMPANY, fakeSha, stressSurveyInputs, surveyReportInputsFromFixture, syntheticSurveyFixture, thaiText,
@@ -232,8 +236,11 @@ function worldFrom(source, { helperIds = [], users = {}, options = {}, request =
       { documentKey: SURVEY_REPORT_STANDARD_KEY, status: 'published', versionNumber: 1, formCode: 'FM-TS-01', revision: '00', effectiveDate: '2026-09-29', titleEn: 'SITE SURVEY REPORT' },
     ],
   };
+  /* บัญชีของผู้ลงนามทั้งสองที่นั่งมีอยู่จริงในโลกนี้ — กติกาลายเซ็นจริงอ่านบัญชีเพื่อตัดสินว่าลายเซ็นของเขาขึ้นที่นั่งนั้นได้ไหม
+     (ผู้ประเมิน = บัญชีฝ่ายบริการ · ผู้ส่งผลบนแถว `U-head` = ผู้ช่วยผู้จัดการฝ่ายบริการ) */
   const people = {
     'U-lead': { id: 'U-lead', email: 'lead@example.test', app_metadata: { role: 'ts_senior' }, user_metadata: { name: 'Lead Assessor' } },
+    'U-head': { id: 'U-head', email: 'head@example.test', app_metadata: { role: 'ts_manager' }, user_metadata: { name: 'Head Approver' } },
     ...users,
   };
   const db = fakeDb(tables, { users: people, ...options });
@@ -306,6 +313,8 @@ test.beforeEach((t) => {
   errors.length = 0;
   t.mock.method(console, 'error', (...args) => { errors.push(args.map(String).join(' ')); });
   t.mock.method(console, 'warn', () => {});
+  // บรรทัดเวลาของตัวเตรียมลายเซ็นตัวจริง (เทสต์ของลายเซ็นใช้ sharp จริงกับคลังปลอม)
+  t.mock.method(console, 'info', () => {});
 });
 
 /* ══ 1. เดินครบ ═══════════════════════════════════════════════════════════════════ */
@@ -1375,6 +1384,330 @@ test('🔴 ไม่รั่ว: ผลที่แปลงเป็น JSON �
   }
 });
 
+/* ══ 9ข. ลายเซ็นจริงของผู้ลงนาม (PR-SIG §3.4 · มติเจ้าของ 09/10/2026) ═══════════════════════════════════ */
+
+const SIGNED = { signatureRule: 'required' };
+const LEAD_V = 'signature-version-U-lead-1';
+const HEAD_V = 'signature-version-U-head-1';
+/** โลกของแฝดสังเคราะห์ + ตารางลายเซ็นของ `users` + คลังลายเซ็นอ่านอย่างเดียว (ผู้ประเมิน U-lead · ผู้ส่งผลบนแถว U-head) */
+function signWorld(users = ['U-lead', 'U-head'], extra = {}) {
+  const world = twinWorld(extra);
+  const seeded = signatureTables(users);
+  Object.assign(world.tables, seeded);
+  withSignatureStorage(world.db, { ...seeded.files });
+  return { ...world, versions: seeded.versions, vault: world.db.signatureVault };
+}
+/** แถวผู้ลงนามแบบที่เส้นส่งผลส่งต่อ (`surveyReportPrecheck(...).signers`) จากแถวของฉบับ */
+const handed = (world, userId, seats, name) => {
+  const v = world.versions[userId];
+  return {
+    seats, userId, name,
+    version: { versionId: v.id, versionNumber: v.versionNumber, storagePath: v.storagePath, sha256: v.sha256, width: v.width, height: v.height },
+  };
+};
+const signQueried = (world) => queried(world, 'user_signatures') + queried(world, 'user_signature_versions');
+const SIGN_ACCOUNT_HINT = 'ให้ผู้ที่มีชื่อในรายการเพิ่มลายเซ็นที่ “บัญชีของฉัน” แล้วกดออกเอกสารอีกครั้ง';
+
+test('🔴 กติกาปิด (ค่าตั้งต้น · `off`): ไม่อ่านตารางลายเซ็น ไม่แตะคลัง · ภาพนิ่งไม่มีคีย์ signatures · audit ไม่มีคีย์ของลายเซ็น — แม้สองคนมีลายเซ็นครบ', async () => {
+  for (const opts of [{}, { signatureRule: 'off' }]) {
+    const world = signWorld();
+    const { result, audit } = await issue(world, opts);
+    assert.equal(result.state, 'issued');
+    assert.equal(signQueried(world), 0);
+    assert.deepEqual(world.vault.downloads, []);
+    assert.equal(world.vault.objects.size, 0);
+    assert.equal('signatures' in world.db.rpcLog[0].args.p_row.snapshot, false);
+    assert.equal(world.db.rpcLog[0].args.p_row.images.some((row) => row.kind === 'sign'), false);
+    assert.deepEqual(Object.keys(audit.rows[0].after), ['id', 'docNo', 'rev', 'requestId', 'via', 'imageCount', 'warningCount']);
+    assert.ok(!audit.rows[0].summary.includes('ลายเซ็น'));
+  }
+});
+
+test('⭐ กติกาเปิด เดินครบ (sharp จริง · คลังปลอม): ภาพนิ่งตรึงฉบับกับรูปของสองที่นั่ง · images มีแถว sign · สำเนา JPEG อยู่ในถังของเอกสาร · audit จดที่นั่ง ผู้ใช้ ฉบับ', async () => {
+  const world = signWorld();
+  const { result, audit } = await issue(world, SIGNED);
+  assert.equal(result.state, 'issued', result.reason);
+  assert.equal(result.docNo, FIRST_NO);
+
+  const { snapshot, images } = world.db.rpcLog[0].args.p_row;
+  const lead = snapshot.signatures.assessor;
+  const head = snapshot.signatures.approver;
+  assert.deepEqual([lead.userId, lead.name, lead.versionId, lead.versionNumber, lead.sourceSha256], ['U-lead', 'Lead Assessor', LEAD_V, 1, world.versions['U-lead'].sha256]);
+  assert.deepEqual([head.userId, head.name, head.versionId, head.sourceSha256], ['U-head', 'Head Approver', HEAD_V, world.versions['U-head'].sha256]);
+  assert.match(lead.img.sha, /^[0-9a-f]{64}$/);
+  assert.deepEqual([lead.img.w, lead.img.h], [533, 200]);
+  assert.notEqual(lead.img.sha, head.img.sha);
+  // ผู้ลงนาม = ผู้ประเมินกับผู้ส่งผลบนคำร้อง — ไม่ใช่คนกด (HEAD)
+  assert.ok(!JSON.stringify(snapshot.signatures).includes(HEAD.id));
+
+  const signRows = images.filter((row) => row.kind === 'sign');
+  assert.deepEqual(signRows.map((row) => [row.sha, row.attId]), [[lead.img.sha, null], [head.img.sha, null]]);
+  assert.equal(images.length, 8 + 2);
+  // สำเนา JPEG ของลายเซ็นเก็บที่ `img/<sha>.jpg` ถังเดียวกับรูปของเอกสาร · คลังลายเซ็นถูกอ่านคนละครั้ง ไม่ถูกเขียน
+  assert.deepEqual([...world.vault.objects.keys()].sort(), [`survey-report/img/${lead.img.sha}.jpg`, `survey-report/img/${head.img.sha}.jpg`].sort());
+  assert.deepEqual(world.vault.downloads, [world.versions['U-lead'].storagePath, world.versions['U-head'].storagePath]);
+  // 🔴 ที่อยู่ไฟล์ของคลังไม่ไปถึง RPC
+  const sent = JSON.stringify(world.db.rpcLog[0].args);
+  assert.ok(!sent.includes('users/') && !sent.includes('storagePath') && !sent.includes('signature-assets'));
+
+  // กระดาษของภาพนิ่งนี้ผ่านยามลายเซ็นทั้งสองฉบับ
+  for (const version of ['customer', 'internal']) {
+    const view = surveyReportView(snapshot, { version });
+    const html = renderSurveyReportHTML({ view, layout: paginateSurveyReport(view), docNo: FIRST_NO });
+    assert.deepEqual(surveyReportSignatureHtmlIssues({ html, snapshot, version }), [], version);
+  }
+
+  // I8 — audit: ที่นั่ง · ผู้ใช้ · ฉบับ (ไม่มีรูป ไม่มี base64 ไม่มีที่อยู่ไฟล์)
+  const after = audit.rows[0].after;
+  assert.equal(after.signCount, 2);
+  assert.deepEqual(after.signatures, [
+    { seat: 'assessor', userId: 'U-lead', versionId: LEAD_V, versionNumber: 1 },
+    { seat: 'approver', userId: 'U-head', versionId: HEAD_V, versionNumber: 1 },
+  ]);
+  assert.equal(after.imageCount, 10);
+  const text = JSON.stringify(audit.rows[0]);
+  for (const banned of ['data:image', 'base64', 'users/', 'storagePath', lead.img.sha, 'sha256:']) assert.ok(!text.includes(banned), banned);
+  assert.ok(audit.rows[0].summary.includes(' · พิมพ์ลายเซ็นที่บันทึกไว้ 2 ที่นั่ง'));
+  assert.ok(text.length < 2000);
+});
+
+test('สวิตช์ SURVEY_REPORT_SIGNATURES=on (ไม่ส่งตัวเลือก) = กติกาเปิดผ่านตัวโหลด — ขั้นออกเลขไม่อ่าน env เอง', async () => {
+  const before = process.env.SURVEY_REPORT_SIGNATURES;
+  process.env.SURVEY_REPORT_SIGNATURES = 'on';
+  try {
+    const world = signWorld();
+    const { result } = await issue(world);
+    assert.equal(result.state, 'issued', result.reason);
+    assert.ok(world.db.rpcLog[0].args.p_row.snapshot.signatures.assessor.img.sha);
+  } finally {
+    if (before === undefined) delete process.env.SURVEY_REPORT_SIGNATURES;
+    else process.env.SURVEY_REPORT_SIGNATURES = before;
+  }
+  assert.doesNotMatch(code(SOURCE), /process\.env|surveyReportSignFlag/);
+});
+
+test('🔴 I3: ผู้ลงนามยังไม่มีลายเซ็น = blocked ที่ **กดซ้ำได้** ชวนเพิ่มลายเซ็น ไม่ชวนดึงผลกลับ — ไม่ดึงรูป ไม่แตะคลัง ไม่เรียก RPC', async () => {
+  // ผู้ส่งผลบนแถว (U-head) ไม่มีลายเซ็น · คนกดออกเอกสารเป็นหัวหน้าคนที่สาม
+  const world = signWorld(['U-lead']);
+  const { result, prepareImages } = await issue(world, { ...SIGNED, via: 'issue_only', requestId: world.request().id });
+  const line = 'ผู้ตรวจสอบและอนุมัติ Head Approver (ผู้ส่งผล) ยังไม่มีลายเซ็นในระบบ — ให้เจ้าตัวเพิ่มที่ “บัญชีของฉัน” หรือดึงผลกลับแล้วให้หัวหน้าที่มีลายเซ็นส่งใหม่';
+  assert.deepEqual(result, {
+    state: 'failed', code: 'blocked', docNo: null, rev: null, reused: false,
+    reasons: [line], reason: `ออกเอกสารไม่ได้ — ${line} · ${SIGN_ACCOUNT_HINT}`, retry: true, warnings: [],
+  });
+  assert.ok(!result.reason.includes('ถ้าต้องแก้ ให้ดึงผลกลับมาแก้แล้วส่งใหม่'));
+  assert.equal(prepareImages.calls.length, 0);
+  assert.deepEqual(world.vault.downloads, []);
+  assert.equal(world.db.rpcLog.length, 0);
+  assert.equal(lastNo(world), 0);
+
+  // ไม่มีใครมีลายเซ็น = สองบรรทัด ผู้ประเมินก่อน
+  const none = signWorld([]);
+  const both = (await issue(none, SIGNED)).result;
+  assert.equal(both.reasons.length, 2);
+  assert.match(both.reasons[0], /^ผู้ประเมิน Lead Assessor ยังไม่มีลายเซ็นในระบบ/);
+  assert.equal(both.retry, true);
+});
+
+test('🔴 I3: ข้อลายเซ็น + ข้อของเนื้อหา = ยังต้องดึงผลกลับ (retry: false) แต่นำด้วย "ลายเซ็นเพิ่มได้เลย" · ข้อลายเซ็น + ข้อของระบบ = ชวนเพิ่มลายเซ็น (retry: true)', async () => {
+  const mixed = signWorld(['U-lead']);
+  mixed.tables.service_survey_zones[0].packageQty = null; // เนื้อหา: ยังไม่เคาะแพ็คเกจ
+  const a = (await issue(mixed, SIGNED)).result;
+  assert.equal(a.code, 'blocked');
+  assert.equal(a.retry, false);
+  assert.ok(a.reasons.some((line) => line.includes('ยังไม่มีลายเซ็นในระบบ')) && a.reasons.length >= 2);
+  assert.ok(a.reason.endsWith(' · ลายเซ็นเพิ่มได้เลยโดยไม่ต้องดึงผลกลับ · ถ้าต้องแก้ ให้ดึงผลกลับมาแก้แล้วส่งใหม่'), a.reason);
+  assert.equal(a.hold, undefined);
+
+  const system = signWorld(['U-lead']);
+  system.tables.document_standard_versions.length = 0; // ระบบ: ไม่มีมาตรฐานเอกสาร
+  const b = (await issue(system, SIGNED)).result;
+  assert.equal(b.retry, true);
+  assert.equal(b.reasons.length, 2);
+  assert.ok(b.reason.endsWith(` · ${SIGN_ACCOUNT_HINT}`), b.reason);
+
+  // ที่นั่งที่ไม่ได้ผูกบัญชี (content ไม่มี sign) = ทางออกเดิม ไม่มีท่อนลายเซ็น
+  const orphan = signWorld();
+  orphan.tables.service_visits[0].assigneeId = null;
+  const c = (await issue(orphan, SIGNED)).result;
+  assert.equal(c.retry, false);
+  assert.ok(c.reason.endsWith(' ไม่ได้ผูกกับบัญชีผู้ใช้ — ออกเอกสารไม่ได้ แจ้งผู้จัดคิวหรือผู้ดูแลระบบ · ถ้าต้องแก้ ให้ดึงผลกลับมาแก้แล้วส่งใหม่'), c.reason);
+});
+
+test('ใบที่มีพื้นที่ประเมินจากแบบ + กติกาเปิด: ยังติดแค่ข้อกันเอกสาร (hold) เหมือนเดิม — ไม่ถามลายเซ็น ไม่แตะคลัง', async () => {
+  const world = signWorld([]);
+  world.tables.service_survey_zones[1].method = 'drawing';
+  const { result } = await issue(world, SIGNED);
+  assert.equal(result.code, 'blocked');
+  assert.equal(result.hold, true);
+  assert.equal(result.retry, false);
+  assert.ok(!result.reason.includes('ลายเซ็น'));
+  assert.deepEqual(world.vault.downloads, []);
+});
+
+test('I2: อ่านลายเซ็นไม่สำเร็จ = blocked ที่กดซ้ำได้ ("อ่านลายเซ็นของผู้ลงนามไม่สำเร็จ") — ไม่กลายเป็น "ยังไม่มีลายเซ็น" · รอบถัดไปออกได้', async () => {
+  const world = signWorld(['U-lead', 'U-head'], { options: { fail: { user_signatures: { times: 1 } } } });
+  const first = (await issue(world, SIGNED)).result;
+  assert.equal(first.code, 'blocked');
+  assert.equal(first.retry, true);
+  assert.deepEqual(first.reasons, ['อ่านลายเซ็นของผู้ลงนามไม่สำเร็จ']);
+  assert.equal(first.reason, 'ออกเอกสารไม่ได้ — อ่านลายเซ็นของผู้ลงนามไม่สำเร็จ · กดออกเอกสารอีกครั้ง');
+  assert.equal(world.db.rpcLog.length, 0);
+  assert.equal((await issue(world, SIGNED)).result.state, 'issued');
+});
+
+test('⭐ I2: ฉบับที่เส้นส่งผลตรึงไว้ชนะ — เจ้าตัวยกเลิกลายเซ็นคั่นกลาง (รากไม่มีฉบับที่ใช้อยู่) ก็ยังออกได้ด้วยฉบับที่หัวหน้าเห็นตอนกด · รูปที่เตรียมแล้วไม่ถูกอ่านซ้ำ', async () => {
+  const world = signWorld(['U-lead', { userId: 'U-head', revoked: true }]);
+  const signers = [handed(world, 'U-lead', ['assessor'], 'Lead Assessor'), handed(world, 'U-head', ['approver'], 'Head Approver')];
+  const imageByVersionId = {
+    [LEAD_V]: { sha: fakeSha('s5-lead'), w: 533, h: 200, bytes: 4000 },
+    [HEAD_V]: { sha: fakeSha('s5-head'), w: 533, h: 200, bytes: 4100 },
+  };
+  // ไม่ส่งของที่ตรึงไว้ = ติดที่ผู้ส่งผลไม่มีลายเซ็น (สถานะปัจจุบันของราก)
+  assert.match((await issue(signWorld(['U-lead', { userId: 'U-head', revoked: true }]), SIGNED)).result.reasons[0], /Head Approver \(ผู้ส่งผล\) ยังไม่มีลายเซ็นในระบบ/);
+
+  const { result } = await issue(world, { ...SIGNED, signatures: { signers, imageByVersionId } });
+  assert.equal(result.state, 'issued', result.reason);
+  const { snapshot, images } = world.db.rpcLog[0].args.p_row;
+  assert.deepEqual([snapshot.signatures.approver.versionId, snapshot.signatures.approver.img.sha], [HEAD_V, fakeSha('s5-head')]);
+  assert.equal(snapshot.signatures.assessor.img.sha, fakeSha('s5-lead'));
+  assert.deepEqual(images.filter((row) => row.kind === 'sign').map((row) => row.sha), [fakeSha('s5-lead'), fakeSha('s5-head')]);
+  assert.deepEqual(world.vault.downloads, [], 'รูปของฉบับที่ตรึงมาจากรอบก่อนเขียนคำตอบ — ไม่อ่านคลังซ้ำ');
+});
+
+test('I2: ที่นั่งที่คนเปลี่ยนไปแล้วใช้ค่าที่อ่านใหม่ — ฉบับที่ตรึงของคนเก่าไม่ถูกยัดให้คนใหม่ · ฉบับที่ตรึงแต่รูปยังไม่ได้เตรียม (คลังค้างตอนส่ง) ถูกเตรียมที่นี่', async () => {
+  const world = signWorld(['U-lead', 'U-head', 'U-other']);
+  // เส้นส่งผลเห็นผู้ประเมินเป็น U-other · ตอนออกเลขนัดชี้ U-lead แล้ว
+  const stale = handed(world, 'U-other', ['assessor'], 'Old Assessor');
+  const headRow = handed(world, 'U-head', ['approver'], 'Head Approver');
+  const { result } = await issue(world, { ...SIGNED, signatures: { signers: [stale, headRow], imageByVersionId: {} } });
+  assert.equal(result.state, 'issued', result.reason);
+  const { signatures } = world.db.rpcLog[0].args.p_row.snapshot;
+  assert.deepEqual([signatures.assessor.userId, signatures.assessor.versionId], ['U-lead', LEAD_V]);
+  assert.equal(signatures.approver.versionId, HEAD_V);
+  assert.ok(!JSON.stringify(signatures).includes('U-other'));
+  assert.deepEqual(world.vault.downloads, [world.versions['U-lead'].storagePath, world.versions['U-head'].storagePath]);
+});
+
+test('🔴 I4b: ไฟล์ลายเซ็นใช้ไม่ได้ (ถาวร — ว่าง/จาง · หาย · ไม่ตรงกับที่บันทึก) = blocked ที่กดซ้ำได้ บอกชื่อกับเหตุ ให้เจ้าของอัปโหลดใหม่ — ไม่มีเลขถูกออก', async () => {
+  const blank = signWorld([{ userId: 'U-lead', png: makeSignaturePng({ kind: 'blank' }) }, 'U-head']);
+  const a = (await issue(blank, SIGNED)).result;
+  assert.deepEqual(a, {
+    state: 'failed', code: 'blocked', docNo: null, rev: null, reused: false,
+    reasons: ['ลายเซ็นของ Lead Assessor ใช้พิมพ์ไม่ได้ (ภาพลายเซ็นว่างหรือจางเกินไป)'],
+    reason: 'ออกเอกสารไม่ได้ — ลายเซ็นของ Lead Assessor ใช้พิมพ์ไม่ได้ (ภาพลายเซ็นว่างหรือจางเกินไป) · '
+      + 'ให้เจ้าของลายเซ็นอัปโหลดลายเซ็นใหม่ที่ “บัญชีของฉัน” แล้วกดออกเอกสารอีกครั้ง',
+    retry: true, warnings: [],
+  });
+  assert.equal(blank.db.rpcLog.length, 0);
+  assert.equal(lastNo(blank), 0);
+
+  const gone = signWorld();
+  delete gone.vault.files[gone.versions['U-head'].storagePath];
+  const b = (await issue(gone, SIGNED)).result;
+  assert.deepEqual(b.reasons, ['ลายเซ็นของ Head Approver ใช้พิมพ์ไม่ได้ (ไฟล์ลายเซ็นหายจากที่เก็บ)']);
+  assert.equal(b.retry, true);
+
+  // ทุกเหตุถาวรของตัวเตรียมได้รหัสกับทางออกเดียวกัน (ตัวเตรียมปลอม)
+  for (const reason of ['sign_path', 'sign_missing', 'sign_mismatch', 'sign_undecodable', 'sign_blank']) {
+    const world = signWorld();
+    const prepareSignatures = async () => ({ imageByVersionId: {}, failed: [{ userId: 'U-lead', name: 'Lead Assessor', seats: ['assessor'], versionId: LEAD_V, reason, permanent: true }] });
+    const got = (await issue(world, { ...SIGNED, prepareSignatures })).result;
+    assert.equal(got.code, 'blocked', reason);
+    assert.equal(got.retry, true, reason);
+    assert.match(got.reason, /^ออกเอกสารไม่ได้ — ลายเซ็นของ Lead Assessor ใช้พิมพ์ไม่ได้ \([^)]+\) · ให้เจ้าของลายเซ็นอัปโหลดลายเซ็นใหม่ที่ “บัญชีของฉัน” แล้วกดออกเอกสารอีกครั้ง$/, reason);
+    assert.ok(!got.reason.includes('เปิดไฟล์ลายเซ็นไม่ได้') || reason === 'sign_undecodable', `${reason} ต้องมีป้ายของตัวเอง`);
+    assert.equal(world.db.rpcLog.length, 0);
+  }
+  assert.ok(Object.values(SURVEY_SIGN_FAILURE).includes('sign_blank'));
+});
+
+test('I4b: ชั่วคราว (คลังค้าง · คลังล่ม) = images_failed กดซ้ำได้ บอกชื่อ · ตัวเตรียมโยนหรือคืนของผิดรูป = images_failed — ไม่มีเลขถูกออก', async () => {
+  const hang = signWorld();
+  hang.vault.files[hang.versions['U-lead'].storagePath] = () => new Promise(() => {});
+  const a = (await issue(hang, { ...SIGNED, signatureOptions: { fileTimeoutMs: 30, log: () => {} } })).result;
+  assert.deepEqual([a.code, a.retry, a.reason], ['images_failed', true, 'ดึงลายเซ็นของ Lead Assessor ไม่สำเร็จ — ยังไม่ได้ออกเอกสาร กดอีกครั้ง']);
+  assert.equal(hang.db.rpcLog.length, 0);
+
+  const down = signWorld();
+  down.vault.files[down.versions['U-lead'].storagePath] = new Error('storage 503');
+  down.vault.files[down.versions['U-head'].storagePath] = new Error('storage 503');
+  const b = (await issue(down, SIGNED)).result;
+  assert.equal(b.code, 'images_failed');
+  assert.deepEqual(b.reasons, ['ดึงลายเซ็นของ Lead Assessor ไม่สำเร็จ', 'ดึงลายเซ็นของ Head Approver ไม่สำเร็จ']);
+
+  for (const prepareSignatures of [async () => { throw new Error('boom'); }, async () => null, async () => 'x']) {
+    const world = signWorld();
+    const got = (await issue(world, { ...SIGNED, prepareSignatures })).result;
+    assert.deepEqual([got.code, got.retry], ['images_failed', true]);
+    assert.equal(got.reason, 'เตรียมลายเซ็นของผู้ลงนามไม่สำเร็จ — ยังไม่ได้ออกเอกสาร กดอีกครั้ง');
+    assert.equal(world.db.rpcLog.length, 0);
+  }
+  // ตัวเตรียมตอบว่าสำเร็จแต่ไม่คืนรูป = ภาพนิ่งโหมดตรึงปฏิเสธ (ไม่ถอยไปพิมพ์คำ)
+  const empty = signWorld();
+  const c = (await issue(empty, { ...SIGNED, prepareSignatures: async () => ({ imageByVersionId: {}, failed: [] }) })).result;
+  assert.equal(c.code, 'images_failed');
+  assert.match(c.reason, /^ลายเซ็นของ Lead Assessor ยังเตรียมไม่เสร็จ — ยังไม่ได้ออกเอกสาร \| ลายเซ็นของ Head Approver ยังเตรียมไม่เสร็จ/);
+  assert.equal(empty.db.rpcLog.length, 0);
+});
+
+test('I4b: ตัวเตรียมลายเซ็นได้ผู้ลงนามคนละแถว · งบเวลาเดียวกับขั้นรูป · ด่านเขียนถาวรเปิด · `have` = ของที่เส้นส่งผลเตรียม', async () => {
+  const world = signWorld();
+  const calls = [];
+  const prepareSignatures = async (supabase, signers, opts) => {
+    calls.push({ supabase, signers, opts });
+    return { imageByVersionId: Object.fromEntries(signers.map((s) => [s.version.versionId, { sha: fakeSha(s.version.versionId), w: 533, h: 200, bytes: 1 }])), failed: [] };
+  };
+  const have = { [LEAD_V]: { sha: fakeSha('x'), w: 1, h: 1, bytes: 1 } };
+  await issue(world, { ...SIGNED, prepareSignatures, signatures: { signers: [], imageByVersionId: have } });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].supabase, world.db);
+  assert.deepEqual(calls[0].signers.map((s) => [s.seats, s.userId, s.name, s.version.versionId]), [
+    [['assessor'], 'U-lead', 'Lead Assessor', LEAD_V], [['approver'], 'U-head', 'Head Approver', HEAD_V],
+  ]);
+  assert.equal(calls[0].opts.storeAllowed, true);
+  assert.equal(calls[0].opts.deadline, SURVEY_REPORT_IMAGE_BUDGET_MS.send);
+  assert.equal(calls[0].opts.have, have);
+  // ปุ่มออกเอกสาร = งบ 180 วิ · ไม่มีของส่งต่อ = have ว่าง
+  const pressed = signWorld();
+  await issue(pressed, { ...SIGNED, via: 'issue_only', requestId: pressed.request().id, prepareSignatures });
+  assert.equal(calls[1].opts.deadline, SURVEY_REPORT_IMAGE_BUDGET_MS.issue_only);
+  assert.equal(calls[1].opts.have, null);
+});
+
+test('🔴 I5: ยามลายเซ็นหยุดก่อนออกเลข — ตัวเรนเดอร์ที่พิมพ์คำแทนรูป (รุ่นเก่า) = paper_blocked กดซ้ำไม่ช่วย แจ้งผู้ดูแลระบบ', async () => {
+  const world = signWorld();
+  // ตัวเรนเดอร์ "รุ่นก่อน": ไม่รู้จักช่องลายเซ็น — ลบคีย์ `img` ของที่นั่งออกก่อนพิมพ์
+  const oldRenderer = (args) => {
+    const strip = (seat) => { const { img: _img, ...rest } = seat; return rest; };
+    const view = structuredClone(args.view);
+    view.signoff.assessor = strip(view.signoff.assessor);
+    view.signoff.approver = strip(view.signoff.approver);
+    if (view.appendix) view.appendix.signs = view.appendix.signs.map(strip);
+    return renderSurveyReportHTML({ ...args, view });
+  };
+  const { result } = await issue(world, { ...SIGNED, render: oldRenderer });
+  assert.equal(result.code, 'paper_blocked');
+  assert.equal(result.retry, false);
+  assert.match(result.reason, /^ลายเซ็นบนเอกสารยังไม่ครบ — ฉบับลูกค้า: กระดาษไม่มีรูปลายเซ็นของผู้ประเมิน \| .* · ยังไม่ได้ออกเลขเอกสาร แจ้งผู้ดูแลระบบ$/);
+  assert.ok(result.reasons.some((line) => line.startsWith('ฉบับภายใน: ')));
+  assert.equal(world.db.rpcLog.length, 0);
+  assert.equal(lastNo(world), 0);
+  assert.ok(errors.some((line) => line.includes('ยามลายเซ็น')));
+});
+
+test('คนเดียวสองที่นั่ง: อ่านคลังครั้งเดียว · สองที่นั่งตรึงฉบับเดียวกัน · audit จดสองที่นั่ง · images มีแถว sign แถวเดียว', async () => {
+  const world = signWorld(['U-lead'], { request: { answeredById: 'U-lead', answeredByName: 'Lead Assessor' } });
+  const { result, audit } = await issue(world, SIGNED);
+  assert.equal(result.state, 'issued', result.reason);
+  const { snapshot, images } = world.db.rpcLog[0].args.p_row;
+  assert.equal(snapshot.signatures.assessor.versionId, snapshot.signatures.approver.versionId);
+  assert.equal(images.filter((row) => row.kind === 'sign').length, 1);
+  assert.equal(world.vault.downloads.length, 1);
+  assert.deepEqual(audit.rows[0].after.signatures.map((row) => [row.seat, row.userId]), [['assessor', 'U-lead'], ['approver', 'U-lead']]);
+  assert.equal(audit.rows[0].after.signCount, 2);
+});
+
 /* ══ 10. ซอร์ส ═══════════════════════════════════════════════════════════════════ */
 
 test('ซอร์ส: ของหนักโหลดแบบ lazy ที่เดียว · ไม่มี chromium · ไม่เขียนตารางเอง (มีแต่ RPC) · ไม่มีชื่อชนิดเธรดของปุ่มออกเอกสาร', () => {
@@ -1382,8 +1715,8 @@ test('ซอร์ส: ของหนักโหลดแบบ lazy ที่
   const imports = [...src.matchAll(/^import\s+(?:[^;]*?\sfrom\s+)?'([^']+)';/gm)].map((m) => m[1]);
   assert.deepEqual(imports.sort(), [
     '@/lib/audit', '@/lib/id', './packageSizes', './survey', './surveyReportDocument', './surveyReportInputs',
-    './surveyReportLayout', './surveyReportNumber', './surveyReportRows', './surveyReportSnapshot', './surveyReportState',
-    './surveyReportView', './surveySpotPhotos', 'server-only',
+    './surveyReportLayout', './surveyReportNumber', './surveyReportRows', './surveyReportSigners', './surveyReportSnapshot',
+    './surveyReportState', './surveyReportView', './surveySpotPhotos', 'server-only',
   ].sort());
   assert.deepEqual([...src.matchAll(/import\(\s*'([^']+)'\s*\)/g)].map((m) => m[1]), ['./surveyReportImages']);
   for (const banned of ['sharp', 'htmlPdf', 'puppeteer', 'chromium', '@/lib/drive', 'surveyReportPaper']) {

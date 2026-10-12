@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { surveyReportSendWarnings } from './surveyReportView.js';
 import { SURVEY_REPORT_NOT_PRODUCTION } from './surveyReportRows.js';
+import { SURVEY_SIGN_ACCOUNT, SURVEY_SIGN_SEAT_LABEL, surveyReportSignersText } from './surveyReportSigners.js';
 import { SURVEY_REPORT_REASONS, SURVEY_REPORT_STATES } from './surveyReportState.js';
 import { surveySendConfirm } from './surveySendClose.js';
 import { SPOT_TRAY_LABEL } from './surveySpotPhotos.js';
@@ -861,6 +862,148 @@ test('กล่องยืนยันออกเอกสาร: ผลทุ
   assert.ok(other.effects.some((line) => line.startsWith('ช่องอื่นแก้ที่ต้นทาง')));
 });
 
+// ══ ลายเซ็นจริงของผู้ลงนาม (PR-SIG §5 · มติเจ้าของ 09/10/2026) ═════════════════════
+
+const SIGN_LINK = { href: '/account', label: 'ไปบัญชีของฉัน' };
+const SIGN_ASSESSOR = 'ผู้ประเมิน สมชาย ยังไม่มีลายเซ็นในระบบ — ให้เจ้าตัวเพิ่มที่ “บัญชีของฉัน” ก่อน';
+const SIGN_APPROVER = 'ผู้ตรวจสอบและอนุมัติ หัวหน้า ก (ผู้ส่งผล) ยังไม่มีลายเซ็นในระบบ — ให้เจ้าตัวเพิ่มที่ “บัญชีของฉัน” หรือดึงผลกลับแล้วให้หัวหน้าที่มีลายเซ็นส่งใหม่';
+const SIGN_FOOT = 'ให้ผู้ที่มีชื่อในรายการเพิ่มลายเซ็นที่ “บัญชีของฉัน” แล้วกด “ตรวจอีกครั้ง” — ไม่ต้องดึงผลกลับ';
+const signRow = (text, extra = {}) => ({ kind: 'content', text, sign: true, ...extra });
+
+test('ลิงก์ไป “บัญชีของฉัน” = ป้ายและที่อยู่ของโมดูลผู้ลงนาม', () => {
+  assert.deepEqual(SIGN_LINK, { href: SURVEY_SIGN_ACCOUNT.href, label: `ไป${SURVEY_SIGN_ACCOUNT.label}` });
+  assert.ok(SIGN_FOOT.includes(`“${SURVEY_SIGN_ACCOUNT.label}”`));
+});
+
+test('ยังไม่ส่งผล · ผู้ลงนามยังไม่มีลายเซ็น: ข้ออยู่ในรายการเหตุ · คนดูที่เป็นเจ้าของข้อได้ลิงก์ไป “บัญชีของฉัน” · คนอื่นไม่มีคีย์ `link`', () => {
+  const send = (extra = {}) => ({ blockers: [SIGN_ASSESSOR, SIGN_APPROVER], warnings: [], unknown: false, ...extra });
+  const mine = sheet({ document: headDoc({ send: send({ selfSign: true }), signRule: true }) });
+  assert.deepEqual(mine.status, {
+    tone: 'warning', text: 'เอกสารยังออกไม่ได้ — ติด 2 ข้อ', items: [SIGN_ASSESSOR, SIGN_APPROVER],
+    foot: 'แก้ตามรายการแล้วกด “ตรวจอีกครั้ง”', action: { kind: 'reload', label: 'ตรวจอีกครั้ง' }, link: SIGN_LINK,
+  });
+  assert.equal(mine.versions[0].status, mine.status, 'กล่องของฉบับที่เลือกเป็นก้อนเดียวกัน');
+
+  const other = sheet({ document: headDoc({ send: send(), signRule: true }) });
+  assert.deepEqual(Object.keys(other.status), ['tone', 'text', 'items', 'foot', 'action']);
+  assert.deepEqual(other.status.items, [SIGN_ASSESSOR, SIGN_APPROVER]);
+  // ธงต้องเป็น `true` ตรงตัว
+  for (const selfSign of ['true', 1, {}, false, null]) {
+    assert.equal('link' in sheet({ document: headDoc({ send: send({ selfSign }) }) }).status, false, JSON.stringify(selfSign));
+  }
+  // ไม่มีเหตุขวาง = ไม่มีลิงก์ แม้ธงจะหลุดมา · วัดยังไม่ครบ = กล่องพูดเรื่องวัด ไม่มีลิงก์
+  assert.equal('link' in sheet({ document: headDoc({ send: { ...OK_SEND, selfSign: true } }) }).status, false);
+  assert.equal('link' in sheet({ document: headDoc({ send: send({ selfSign: true }) }), zones: UNMEASURED }).status, false);
+  // ลิงก์นี้ไม่ใช่ลิงก์ของเอกสาร — นอกจาก `/account` แล้ว href ทั้งหมดยังเป็นชุดเดิม (ลิงก์ฉบับร่างเท่านั้น · ไม่มี `version=` ใหม่)
+  assert.deepEqual(hrefsIn(mine).filter((href) => href !== SIGN_LINK.href), hrefsIn(other));
+  assert.ok(hrefsIn(other).length > 0 && hrefsIn(other).every((href) => href.includes('draft=1')));
+});
+
+test('ดึงผลกลับแล้ว · ผู้ลงนามยังไม่มีลายเซ็น: รายการเดียวกัน + ลิงก์ของคนดูที่เป็นเจ้าของข้อ', () => {
+  const doc = (send) => headDoc({ state: 'recalled', history: HISTORY, nextDocNo: 'SU-26100001-1', send });
+  const mine = sheet({ document: doc({ blockers: [SIGN_APPROVER], warnings: [], unknown: false, selfSign: true }) });
+  assert.deepEqual(mine.status, {
+    tone: 'warning', text: 'SU-26100001-0 ถูกแทนที่แล้ว — ส่งผลอีกครั้งเพื่อออก SU-26100001-1', items: [SIGN_APPROVER],
+    foot: 'แก้ตามรายการแล้วกด “ตรวจอีกครั้ง”', action: { kind: 'reload', label: 'ตรวจอีกครั้ง' }, link: SIGN_LINK,
+  });
+  const other = sheet({ document: doc({ blockers: [SIGN_APPROVER], warnings: [], unknown: false }) });
+  assert.equal('link' in other.status, false);
+  // ไม่มีเหตุขวาง = กล่องเดิม ไม่มีลิงก์
+  assert.equal('link' in sheet({ document: doc({ ...OK_SEND, selfSign: true }) }).status, false);
+});
+
+test('🔴 ส่งผลแล้วยังไม่มีเอกสาร · ติดแค่ลายเซ็น: **ไม่สั่งให้ดึงผลกลับ** — เจ้าตัวเพิ่มลายเซ็นแล้วตรวจอีกครั้ง · ปุ่มออกเอกสารจาง', () => {
+  const doc = (blockers) => missingDoc({ issue: { blockers, warnings: [], unknown: false } });
+  const only = sheet({ document: doc([signRow(SIGN_ASSESSOR), signRow(SIGN_APPROVER)]), request: sentRequest() });
+  assert.deepEqual(only.status, {
+    tone: 'warning', text: 'ส่งผลแล้ว แต่ยังออกเอกสารไม่ได้ — ติด 2 ข้อ', items: [SIGN_ASSESSOR, SIGN_APPROVER],
+    foot: SIGN_FOOT, action: { kind: 'reload', label: 'ตรวจอีกครั้ง' },
+  });
+  assert.doesNotMatch(only.status.foot, /ดึงผลกลับมาแก้/);
+  assert.equal(buttons(only), 'draft | blocked | blocked');
+
+  // ถาดรูปจุดที่ยังไม่ผูกไม่เปลี่ยนทางออกของข้อลายเซ็น (ไม่มีข้อของเนื้อใบให้พูดถึง)
+  assert.equal(sheet({ document: doc([signRow(SIGN_ASSESSOR)]), request: sentRequest(), spotsUnlinked: true }).status.foot, SIGN_FOOT);
+  // ลายเซ็น + เหตุของระบบ = ยังไม่ต้องดึงผลกลับ
+  const withSystem = sheet({
+    document: doc([signRow(SIGN_ASSESSOR), { kind: 'system', text: 'ยังไม่มีข้อมูลบริษัทสำหรับหัวกระดาษ' }]), request: sentRequest(),
+  });
+  assert.equal(withSystem.status.foot, SIGN_FOOT);
+  assert.equal(withSystem.status.items.length, 2);
+  // ใบที่ยังวัดไม่ครบ: บรรทัดของปุ่มร่างต่อท้ายเหมือนสาขาอื่น
+  assert.equal(sheet({ document: doc([signRow(SIGN_ASSESSOR)]), request: sentRequest(), zones: UNMEASURED }).status.foot,
+    `${SIGN_FOOT} · ดูตัวอย่างได้เมื่อวัดครบทุกพื้นที่ (1/2)`);
+});
+
+test('ส่งผลแล้วยังไม่มีเอกสาร · ลายเซ็น + เหตุของเนื้อใบ: นำด้วย "ลายเซ็นเพิ่มได้เลย" แล้วตามด้วยทางออกเดิม (ดึงผลกลับ · ถาดรูปจุด)', () => {
+  const content = { kind: 'content', text: 'ฉบับลูกค้า: หน้า 2 ล้น' };
+  const doc = missingDoc({ issue: { blockers: [signRow(SIGN_ASSESSOR), content], warnings: [], unknown: false } });
+  assert.equal(sheet({ document: doc, request: sentRequest() }).status.foot,
+    'ลายเซ็นเพิ่มได้เลย (ไม่ต้องดึงผลกลับ) · ดึงผลกลับมาแก้แล้วส่งใหม่');
+  assert.equal(sheet({ document: doc, request: sentRequest(), spotsUnlinked: true }).status.foot,
+    'ลายเซ็นเพิ่มได้เลย (ไม่ต้องดึงผลกลับ) · รูปจุดผูกได้เลยที่ถาด “ยังไม่ได้ผูกจุด” ของพื้นที่นั้น (ไม่ต้องดึงผลกลับ) แล้วกด “ตรวจอีกครั้ง” · เรื่องอื่นต้องดึงผลกลับมาแก้แล้วส่งใหม่');
+  // ไม่มีข้อลายเซ็น = ทางออกเดิมทุกตัวอักษร (ธง `sign` บนข้อของระบบ หรือที่ไม่ใช่ `true` ไม่นับ)
+  for (const odd of [{ kind: 'system', text: 'เหตุของระบบ', sign: true }, { kind: 'content', text: 'เหตุของใบ', sign: 'yes' }]) {
+    const view = sheet({ document: missingDoc({ issue: { blockers: [content, odd], warnings: [], unknown: false } }), request: sentRequest() });
+    assert.equal(view.status.foot, 'ดึงผลกลับมาแก้แล้วส่งใหม่');
+  }
+});
+
+test('ส่งผลแล้วยังไม่มีเอกสาร: ลิงก์ไป “บัญชีของฉัน” เฉพาะเมื่อมีข้อลายเซ็นที่เป็นของคนดู · ธงอ่านจากทุกแถวก่อนยุบข้อความซ้ำ', () => {
+  const doc = (blockers) => missingDoc({ issue: { blockers, warnings: [], unknown: false } });
+  const mine = sheet({ document: doc([signRow(SIGN_ASSESSOR), signRow(SIGN_APPROVER, { self: true })]), request: sentRequest() });
+  assert.deepEqual(mine.status.link, SIGN_LINK);
+  assert.equal(mine.status.foot, SIGN_FOOT);
+  assert.equal('link' in sheet({ document: doc([signRow(SIGN_ASSESSOR), signRow(SIGN_APPROVER)]), request: sentRequest() }).status, false);
+  // `self` ที่ไม่ได้อยู่บนข้อลายเซ็น = ไม่นับ
+  assert.equal('link' in sheet({ document: doc([{ kind: 'content', text: 'เหตุของใบ', self: true }]), request: sentRequest() }).status, false);
+
+  // แถวซ้ำที่ไม่มีธงมาก่อน — ต้องไม่ทำให้ข้อลายเซ็นกลายเป็นเหตุให้ดึงผลกลับ และไม่ทำให้ลิงก์หาย
+  const folded = sheet({
+    document: doc([{ kind: 'content', text: SIGN_APPROVER }, signRow(SIGN_APPROVER, { self: true })]), request: sentRequest(),
+  });
+  assert.deepEqual(folded.status.items, [SIGN_APPROVER]);
+  assert.equal(folded.status.text, 'ส่งผลแล้ว แต่ยังออกเอกสารไม่ได้ — ติด 1 ข้อ');
+  assert.equal(folded.status.foot, SIGN_FOOT);
+  assert.deepEqual(folded.status.link, SIGN_LINK);
+  // เครื่องไม่ใช่ production พูดก่อน — ไม่มีรายการ ไม่มีลิงก์
+  const off = sheet({ document: missingDoc({ storeAllowed: false, issue: { blockers: [signRow(SIGN_APPROVER, { self: true })], warnings: [], unknown: false } }), request: sentRequest() });
+  assert.equal('link' in off.status, false);
+});
+
+test('กล่องยืนยันออกเอกสาร · ลายเซ็นจริง: เอ่ยชื่อผู้ลงนามทั้งสองที่นั่ง และบอกว่าไม่ใช่ลายเซ็นของคนกด — ไม่มี `issue.signers` = ไม่มีข้อนี้', () => {
+  const confirmOf = (signers) => sheet({
+    document: missingDoc({ issue: { ...OK_ISSUE, ...(signers === undefined ? {} : { signers }) } }), request: sentRequest(),
+  }).issue.confirm;
+  const plain = confirmOf(undefined);
+  assert.equal(plain.effects.length, 4);
+  assert.ok(plain.effects.every((line) => !line.includes('ลายเซ็น')));
+
+  const two = confirmOf([{ seats: ['assessor'], name: 'สมชาย' }, { seats: ['approver'], name: 'หัวหน้า ก' }]);
+  assert.deepEqual(two.effects, [
+    plain.effects[0],
+    plain.effects[1],
+    'พิมพ์ลายเซ็นที่บันทึกไว้ของ สมชาย (ผู้ประเมิน) และ หัวหน้า ก (ผู้ตรวจสอบและอนุมัติ) — เป็นลายเซ็นของผู้ประเมินและผู้ส่งผล ไม่ใช่ของผู้กดออกเอกสาร',
+    plain.effects[2],
+    plain.effects[3],
+  ]);
+  assert.ok(two.effects[2].includes(`(${SURVEY_SIGN_SEAT_LABEL.assessor})`) && two.effects[2].includes(`(${SURVEY_SIGN_SEAT_LABEL.approver})`));
+  assert.equal(new Set(two.effects).size, two.effects.length);
+
+  const same = confirmOf([{ seats: ['assessor', 'approver'], name: 'หัวหน้า ก' }]);
+  assert.equal(same.effects[2],
+    'พิมพ์ลายเซ็นที่บันทึกไว้ของ หัวหน้า ก ทั้งสองช่อง (ผู้ประเมิน และผู้ตรวจสอบและอนุมัติ) — เป็นลายเซ็นของผู้ประเมินและผู้ส่งผล ไม่ใช่ของผู้กดออกเอกสาร');
+  // วลีเดียวกับกล่องยืนยันส่งผล (ตัวสร้างตัวเดียว)
+  const phrase = surveyReportSignersText([{ seats: ['assessor'], name: 'สมชาย' }, { seats: ['approver'], name: 'หัวหน้า ก' }]);
+  assert.ok(two.effects[2].includes(phrase));
+  assert.ok(surveySendConfirm({ issuesDocument: true, signers: [{ seats: ['assessor'], name: 'สมชาย' }, { seats: ['approver'], name: 'หัวหน้า ก' }] })
+    .effects.some((line) => line === `เอกสารจะพิมพ์ลายเซ็นที่บันทึกไว้ของ ${phrase}`));
+  // รูปที่อ่านไม่ออก = ไม่มีข้อนี้ (ไม่พิมพ์ประโยคครึ่งท่อน)
+  for (const odd of [[], null, 'x', [{ seats: ['sales'], name: 'ก' }], [{ seats: ['assessor'], name: ' ' }]]) {
+    assert.deepEqual(confirmOf(odd).effects, plain.effects, JSON.stringify(odd));
+  }
+});
+
 const ISSUED_BADGE = { label: 'ออกแล้ว', tone: 'success' };
 
 test('ออกแล้ว · ไฟล์ยังไม่ถูกจัดทำ: จัดทำตอนเปิดครั้งแรก + ทางสำรอง · ลิงก์เปิดได้ทั้งคู่ · แถวเลขที่/ออกเมื่อ/ออกโดย', () => {
@@ -1368,7 +1511,14 @@ test('🔴 ไฟล์จอของเอกสารไม่ import ขอ�
   const source = readFileSync(new URL('./surveyDocumentView.js', import.meta.url), 'utf8');
   const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   const specs = [...code.matchAll(/(?:\bfrom\s+|\bimport\s*\(\s*|\brequire\s*\(\s*)['"]([^'"]+)['"]/g)].map((m) => m[1]);
-  assert.deepEqual(specs.sort(), ['./survey', '@/lib/format'], 'สเปก §3.1: import ได้แค่สองไฟล์นี้');
+  /* สเปก PR-3 §3.1: สองไฟล์ · PR-SIG §5 เพิ่มโมดูลผู้ลงนาม (ล้วน — ป้าย “บัญชีของฉัน” กับวลีผู้ลงนามมีที่เดียว) */
+  assert.deepEqual(specs.sort(), ['./survey', './surveyReportSigners', '@/lib/format'], 'import ได้แค่สามไฟล์นี้');
+  // โมดูลผู้ลงนามต้องล้วนจริง — ไม่งั้น bundle ของจอลากของฝั่ง server เข้ามาทางนี้
+  const signers = readFileSync(new URL('./surveyReportSigners.js', import.meta.url), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const signerSpecs = [...signers.matchAll(/(?:\bfrom\s+|\bimport\s*\(\s*|\bimport\s+)['"]([^'"]+)['"]/g)].map((m) => m[1]);
+  assert.deepEqual(signerSpecs, ['./surveyMethod']);
+  assert.doesNotMatch(signers, /process\.env|server-only|node:/);
   for (const banned of [
     'surveyReportState', 'surveyReportRows', 'surveyReportInputs', 'surveyReportIssue', 'surveyReportPaper',
     'pdfInspect', 'surveyControl', 'node:',

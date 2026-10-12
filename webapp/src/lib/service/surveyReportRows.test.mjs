@@ -14,6 +14,7 @@ import path from 'node:path';
 import { ROLES } from '../permissions.js';
 import { surveyPackageSizeSendError } from './packageSizes.js';
 import { surveySendError } from './survey.js';
+import { SURVEY_SIGN_RULE, SURVEY_SIGN_SEATS, surveyReportSignatureIssues } from './surveyReportSigners.js';
 import {
   SURVEY_REPORT_BUCKET,
   SURVEY_REPORT_COLUMNS,
@@ -36,7 +37,8 @@ const STATIC_IMPORT = /^(?:import|export)\s(?:[^;'"]*?from\s+)?'([^']+)';/gm;
 
 /* ── env ของยาม — ตั้งแล้วคืนค่าเดิมเสมอ (เทสต์อื่นในไฟล์อ่าน env ตัวเดียวกัน) ─────────────────────────── */
 async function withEnv(values, run) {
-  const keys = ['VERCEL_ENV', 'SURVEY_REPORT_ISSUE_AT_SEND'];
+  /* สวิตช์ลายเซ็นจริงอยู่ในชุดด้วย — ไม่ระบุ = ปิด (เทสต์เดิมทุกตัวรันแบบกติกาปิด ไม่ว่าเครื่องที่รันจะตั้ง env อะไรไว้) */
+  const keys = ['VERCEL_ENV', 'SURVEY_REPORT_ISSUE_AT_SEND', 'SURVEY_REPORT_SIGNATURES'];
   const before = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
   for (const k of keys) {
     if (values[k] === undefined) delete process.env[k];
@@ -837,12 +839,245 @@ test('🔴 ทุก role ในระบบ ทั้งสอง GET: คี�
   });
 });
 
+/* ══ 3d. กติกาลายเซ็นจริง (PR-SIG §5 · มติเจ้าของ 09/10/2026) ═══════════════════════════════════ */
+
+const SIGN_KEYS = ['signRule', 'selfSign', 'signers', 'sign', 'self'];
+/* ของที่ตัวตรวจถืออยู่แต่ห้ามออก payload — รหัสผู้ใช้ของบรรทัด · รหัสฉบับ · sha ต้นทาง · ที่อยู่ไฟล์ในคลังลายเซ็น */
+const SIGN_SECRET = {
+  versionId: 'signature-version-SECRET-1', storagePath: 'users/u-lead/signature-version-SECRET-1.png',
+  sha256: `sha256:${'c'.repeat(64)}`,
+};
+const SIGN_FORBIDDEN_KEYS = ['userId', 'version', 'versionId', 'versionNumber', 'storagePath', 'sha256', 'sourceSha256', 'width', 'height'];
+function assertNoSignLeak(payload, label) {
+  const keys = deepKeys(payload);
+  for (const key of SIGN_FORBIDDEN_KEYS) assert.equal(keys.has(key), false, `${label}: payload ต้องไม่มีคีย์ ${key}`);
+  const text = JSON.stringify(payload);
+  for (const value of [...Object.values(SIGN_SECRET), 'signature-assets', 'users/', 'u-lead', 'u-head']) {
+    assert.equal(text.includes(value), false, `${label}: payload ต้องไม่มีค่า ${value}`);
+  }
+}
+const version = (userId) => ({ ...SIGN_SECRET, versionNumber: 1, width: 640, height: 240, userId });
+const SIGNERS_BOTH = [
+  { seats: ['assessor'], userId: 'u-lead', name: 'สมชาย ผู้ประเมิน', version: version('u-lead') },
+  { seats: ['approver'], userId: 'u-head', name: 'อานนท์', version: version('u-head') },
+];
+const LINE_ASSESSOR = 'ผู้ประเมิน สมชาย ผู้ประเมิน ยังไม่มีลายเซ็นในระบบ — ให้เจ้าตัวเพิ่มที่ “บัญชีของฉัน” ก่อน';
+const LINE_APPROVER = 'ผู้ตรวจสอบและอนุมัติ อานนท์ (ผู้ส่งผล) ยังไม่มีลายเซ็นในระบบ — เพิ่มที่ “บัญชีของฉัน” ก่อนส่งผล หรือให้หัวหน้าที่มีลายเซ็นแล้วเป็นผู้ส่งผล';
+const signBlocker = (text, userId, seats) => ({ kind: 'content', sign: true, userId, seats, text });
+
+test('🔴 กติกาลายเซ็นปิด (ค่าตั้งต้น): payload ไม่มีคีย์ใหม่สักคีย์ แม้ตัวตรวจจะแนบธง/ผู้ลงนามมา · ตัวตรวจได้ `signatureRule: off`', async () => {
+  const result = {
+    blockers: [signBlocker(LINE_ASSESSOR, 'u-lead', ['assessor']), { kind: 'system', text: 'อ่านข้อมูลบริษัทไม่สำเร็จ' }],
+    warnings: [], unknown: [], signers: SIGNERS_BOTH,
+  };
+  for (const [env, request] of [[PROD_ON, OPEN_REQ], [PROD_OFF, REQ]]) {
+    const precheck = fakePrecheck(result);
+    const doc = await withEnv(env, () => surveyDocumentSummary(reportsDb([]), request, HEAD, {
+      withChecks: true, now: NOW, precheck, zones: [], filesByZone: {}, sizes: [], open: null,
+    }));
+    assert.deepEqual(Object.keys(doc), HEAD_KEYS, 'ไม่มีคีย์ `signRule`');
+    const keys = deepKeys(doc);
+    for (const key of SIGN_KEYS) assert.equal(keys.has(key), false, `กติกาปิดต้องไม่มีคีย์ ${key}`);
+    assertNoSignLeak(doc, 'กติกาปิด');
+    assert.equal(precheck.calls[0].signatureRule, 'off', 'สรุปถามสวิตช์เองครั้งเดียว แล้วส่งคำตอบให้ตัวตรวจ');
+  }
+  // ค่าที่ไม่ใช่ `required` = ปิด (รวม `true` · `on`) — เปิดได้ด้วยค่าเดียว
+  for (const signatureRule of ['off', 'on', true, 1, '']) {
+    const doc = await withEnv(PROD_ON, () => surveyDocumentSummary(reportsDb([]), OPEN_REQ, HEAD, {
+      withChecks: true, now: NOW, precheck: fakePrecheck(result), open: null, signatureRule,
+    }));
+    assert.equal('signRule' in doc, false, JSON.stringify(signatureRule));
+  }
+});
+
+test('กติกาลายเซ็นเปิด: `signRule` · ตัวตรวจได้ `required` — เปิดด้วยสวิตช์ (คำว่า on คำเดียว) หรือค่าที่ส่งตรง ๆ · ค่าตรงกับโมดูลผู้ลงนาม', async () => {
+  const run = (env, opts = {}) => {
+    const precheck = fakePrecheck({ blockers: [], warnings: [], unknown: [], signers: [] });
+    return withEnv(env, () => surveyDocumentSummary(reportsDb([]), OPEN_REQ, HEAD, { withChecks: true, now: NOW, precheck, open: null, ...opts }))
+      .then((doc) => ({ doc, args: precheck.calls[0] }));
+  };
+  const byEnv = await run({ ...PROD_ON, SURVEY_REPORT_SIGNATURES: 'on' });
+  assert.deepEqual(Object.keys(byEnv.doc), [...HEAD_KEYS, 'signRule']);
+  assert.equal(byEnv.doc.signRule, true);
+  assert.equal(byEnv.args.signatureRule, SURVEY_SIGN_RULE);
+  // ไม่มีข้อไหนติดและตัวตรวจไม่คืนผู้ลงนาม = ก้อน `send` เท่าเดิมทุกคีย์
+  assert.deepEqual(byEnv.doc.send, { blockers: [], warnings: [], unknown: false });
+
+  for (const value of ['1', 'true', 'required', 'off']) {
+    assert.equal('signRule' in (await run({ ...PROD_ON, SURVEY_REPORT_SIGNATURES: value })).doc, false, value);
+  }
+  const byOption = await run(PROD_ON, { signatureRule: SURVEY_SIGN_RULE });
+  assert.equal(byOption.doc.signRule, true);
+  // ค่าที่ส่งตรง ๆ ชนะสวิตช์ทั้งสองทาง
+  assert.equal('signRule' in (await run({ ...PROD_ON, SURVEY_REPORT_SIGNATURES: 'on' }, { signatureRule: 'off' })).doc, false);
+
+  // คีย์นี้ไม่ขึ้นกับการตรวจ: GET คำร้อง (ไม่ตรวจ) ของหัวหน้าก็ได้ · สวิตช์ออกเอกสารตอนส่งผลปิดก็ได้
+  const onRequest = await withEnv(PROD_OFF, () => surveyDocumentSummary(reportsDb([reportRow()]), REQ, HEAD, {
+    withVoids: true, now: NOW, signatureRule: SURVEY_SIGN_RULE,
+  }));
+  assert.equal(onRequest.signRule, true);
+  assert.equal(onRequest.send, null);
+});
+
+test('🔴 กติกาลายเซ็นเปิด · ก่อนส่งผล: ข้อ "ยังไม่มีลายเซ็น" อยู่ในเหตุขวาง · `selfSign` เฉพาะเมื่อเป็นของคนดู · ไม่มีรหัสผู้ใช้ออก payload', async () => {
+  const check = (blockers, user = HEAD, signers = []) => withEnv(PROD_ON, () => surveyDocumentSummary(reportsDb([]), OPEN_REQ, user, {
+    withChecks: true, now: NOW, open: null, signatureRule: SURVEY_SIGN_RULE,
+    precheck: fakePrecheck({ blockers, warnings: [], unknown: [], signers }),
+  }));
+
+  // ผู้ประเมิน (คนอื่น) ยังไม่มีลายเซ็น — ขวางการส่ง แต่ไม่ใช่ของคนดู
+  const other = await check([signBlocker(LINE_ASSESSOR, 'u-lead', ['assessor'])]);
+  assert.deepEqual(other.send, { blockers: [LINE_ASSESSOR], warnings: [], unknown: false });
+  assertNoSignLeak(other, 'assessor missing');
+
+  // ผู้ส่งผล = คนดูเอง ⇒ `selfSign` · ข้อของระบบไม่ขึ้นเป็นเหตุขวางเหมือนเดิม
+  const mine = await check([
+    signBlocker(LINE_ASSESSOR, 'u-lead', ['assessor']), signBlocker(LINE_APPROVER, 'u-head', ['approver']),
+    { kind: 'system', text: 'อ่านข้อมูลบริษัทไม่สำเร็จ' },
+  ]);
+  assert.deepEqual(mine.send, { blockers: [LINE_ASSESSOR, LINE_APPROVER], warnings: [], unknown: false, selfSign: true });
+  assertNoSignLeak(mine, 'approver missing');
+
+  // หัวหน้าอีกคนเปิดใบเดียวกัน: บรรทัดเดียวกัน (ข้อความไม่ขึ้นกับคนดู) แต่ไม่ใช่ของเขา
+  const colleague = await check([signBlocker(LINE_APPROVER, 'u-head', ['approver'])], { ...HEAD, id: 'u-head-2', name: 'วิชัย' });
+  assert.deepEqual(colleague.send, { blockers: [LINE_APPROVER], warnings: [], unknown: false });
+
+  // ธง `sign` ที่ไม่ใช่ `true` ตรงตัว หรืออยู่บนข้อของระบบ = ไม่นับ · ไม่มีรหัสผู้ใช้ = ไม่มีทางเป็นของคนดู
+  const odd = await check([
+    { kind: 'content', sign: 'yes', userId: 'u-head', text: 'ข้อแปลก 1' },
+    { kind: 'system', sign: true, userId: 'u-head', text: 'ข้อแปลก 2' },
+    { kind: 'content', sign: true, text: 'ข้อแปลก 3' },
+  ]);
+  assert.deepEqual(odd.send, { blockers: ['ข้อแปลก 1', 'ข้อแปลก 3'], warnings: [], unknown: false });
+});
+
+test('🔴 กติกาลายเซ็นเปิด: `signers` = ที่นั่งกับชื่อเท่านั้น — รหัสผู้ใช้ รหัสฉบับ sha และที่อยู่ไฟล์ในคลังไม่ออก payload', async () => {
+  const run = (request, env, signers) => withEnv(env, () => surveyDocumentSummary(reportsDb([]), request, HEAD, {
+    withChecks: true, now: NOW, zones: [], filesByZone: {}, sizes: [], open: null, signatureRule: SURVEY_SIGN_RULE,
+    precheck: fakePrecheck({ blockers: [], warnings: [], unknown: [], signers }),
+  }));
+  const EXPECTED = [{ seats: ['assessor'], name: 'สมชาย ผู้ประเมิน' }, { seats: ['approver'], name: 'อานนท์' }];
+
+  const send = await run(OPEN_REQ, PROD_ON, SIGNERS_BOTH);
+  assert.deepEqual(send.send, { blockers: [], warnings: [], unknown: false, signers: EXPECTED });
+  assertNoSignLeak(send, 'send.signers');
+  assertNoLeak(send, 'send.signers');
+
+  const issue = await run(REQ, PROD_OFF, SIGNERS_BOTH);
+  assert.equal(issue.state, 'missing');
+  assert.deepEqual(issue.issue.signers, EXPECTED);
+  assert.deepEqual(Object.keys(issue.issue), ['blockers', 'warnings', 'unknown', 'signers']);
+  assertNoSignLeak(issue, 'issue.signers');
+
+  // คนเดียวสองที่นั่ง = แถวเดียว ที่นั่งเรียงตามกระดาษ · ที่นั่งที่ไม่รู้จัก/แถวไม่มีชื่อถูกทิ้ง · ว่าง = ไม่มีคีย์
+  const same = await run(OPEN_REQ, PROD_ON, [
+    { seats: ['approver', 'assessor', 'customer'], userId: 'u-head', name: ' อานนท์ ', version: version('u-head') },
+    { seats: ['sales'], userId: 'u-x', name: 'ไม่ใช่ที่นั่งของเอกสาร', version: version('u-x') },
+    { seats: ['assessor'], userId: 'u-y', name: '  ', version: version('u-y') },
+    null,
+  ]);
+  assert.deepEqual(same.send.signers, [{ seats: [...SURVEY_SIGN_SEATS], name: 'อานนท์' }]);
+  for (const empty of [[], null, undefined, 'x']) assert.equal('signers' in (await run(OPEN_REQ, PROD_ON, empty)).send, false);
+});
+
+test('กติกาลายเซ็นเปิด · ใบตอบแล้วไม่มีเอกสาร: ข้อ "ยังไม่มีลายเซ็น" พกธง `sign` (+ `self` เมื่อเป็นของคนดู) · ธงอ่านจากทุกแถวก่อนยุบข้อความซ้ำ', async () => {
+  const sentApprover = 'ผู้ตรวจสอบและอนุมัติ อานนท์ (ผู้ส่งผล) ยังไม่มีลายเซ็นในระบบ — ให้เจ้าตัวเพิ่มที่ “บัญชีของฉัน” หรือดึงผลกลับแล้วให้หัวหน้าที่มีลายเซ็นส่งใหม่';
+  const zones = [{ id: 'z1', requestId: 'REQ-1', name: 'ล็อบบี้', packageSize: 'ZZ' }];
+  const doc = await withEnv(PROD_OFF, () => surveyDocumentSummary(reportsDb([]), REQ, HEAD, {
+    withChecks: true, now: NOW, zones, filesByZone: { z1: [] }, sizes: [], signatureRule: SURVEY_SIGN_RULE,
+    precheck: fakePrecheck({
+      blockers: [
+        { kind: 'content', text: LINE_ASSESSOR }, // แถวซ้ำที่ไม่มีธง มาก่อน
+        signBlocker(LINE_ASSESSOR, 'u-lead', ['assessor']),
+        signBlocker(sentApprover, 'u-head', ['approver']),
+        { kind: 'content', text: 'ฉบับลูกค้า: หน้า 2 ล้น' },
+        { kind: 'system', text: 'อ่านข้อมูลบริษัทไม่สำเร็จ' },
+      ],
+      warnings: [], unknown: [], signers: [],
+    }),
+  }));
+  const tail = doc.issue.blockers.slice(-4);
+  assert.deepEqual(tail, [
+    { kind: 'content', text: LINE_ASSESSOR, sign: true },
+    { kind: 'content', text: sentApprover, sign: true, self: true },
+    { kind: 'content', text: 'ฉบับลูกค้า: หน้า 2 ล้น' },
+    { kind: 'system', text: 'อ่านข้อมูลบริษัทไม่สำเร็จ' },
+  ]);
+  // ด่านส่งผลที่วิ่งซ้ำ (ไม่ใช่เรื่องลายเซ็น) ยังมีแค่สองคีย์
+  assert.ok(doc.issue.blockers.slice(0, -4).every((b) => Object.keys(b).join() === 'kind,text'));
+  assert.equal('signers' in doc.issue, false, 'ยังมีที่นั่งที่ไม่มีลายเซ็น = ไม่มีรายชื่อผู้ลงนาม');
+  assertNoSignLeak(doc, 'issue.blockers');
+});
+
+test('🔴 กติกาลายเซ็นเปิด: ผู้ขอ (ฝ่ายขาย) · ผู้บริหาร · ช่าง · Planner ไม่ได้คีย์ `send` · `issue` · `signRule` — ทั้งสอง GET', async () => {
+  await withEnv({ ...PROD_ON, SURVEY_REPORT_SIGNATURES: 'on' }, async () => {
+    for (const request of [REQ, OPEN_REQ]) {
+      for (const user of [REQUESTER, TEAMMATE, AE_SUP, EXEC, CREW, PLANNER, STRANGER]) {
+        const precheck = fakePrecheck({ blockers: [signBlocker(LINE_ASSESSOR, user.id, ['assessor'])], warnings: [], unknown: [], signers: SIGNERS_BOTH });
+        const onSurvey = await surveyDocumentSummary(reportsDb([]), request, user, { withChecks: true, now: NOW, precheck, zones: [], filesByZone: {}, sizes: [], open: null });
+        const onRequest = await surveyDocumentSummary(reportsDb([]), request, user, { withVoids: true, now: NOW, precheck });
+        for (const payload of [onSurvey, onRequest]) {
+          // `issue` เป็นชื่อธงใน `access` ด้วย — สองก้อนของตัวตรวจจึงดูที่ชั้นบนสุด · คีย์ของลายเซ็นไล่ทุกชั้น
+          for (const key of ['send', 'issue']) assert.equal(key in payload, false, `${user.role}: ${key}`);
+          const keys = deepKeys(payload);
+          for (const key of SIGN_KEYS) assert.equal(keys.has(key), false, `${user.role}: ${key}`);
+          assertNoSignLeak(payload, user.role);
+        }
+        assert.equal(precheck.calls.length, 0, `${user.role}: ตัวตรวจไม่ถูกเรียก`);
+      }
+    }
+  });
+});
+
+test('ต่อสายกับตัวตรวจจริง · กติกาลายเซ็นเปิด: ผู้ส่งผลที่ยังไม่มีลายเซ็นได้บรรทัดของ `surveyReportSignatureIssues` + `selfSign` · หัวหน้าอีกคนไม่ได้', async () => {
+  /* ฐานปลอม "ทุกตารางว่าง" = ไม่มีใครมีลายเซ็น · ใบยังไม่ส่ง ⇒ ที่นั่งผู้ตรวจสอบและอนุมัติ = คนที่กำลังจะกดส่ง (คนดู) */
+  const emptyDb = () => {
+    const tables = [];
+    const chain = new Proxy({}, {
+      get(_, key) {
+        if (key === 'then') return (resolve) => resolve({ data: [], error: null });
+        if (key === 'maybeSingle' || key === 'single') return () => Promise.resolve({ data: null, error: null });
+        return () => chain;
+      },
+    });
+    return { tables, from(table) { tables.push(table); return chain; } };
+  };
+  const expected = surveyReportSignatureIssues({
+    signatureRule: SURVEY_SIGN_RULE, answerPending: true, signatures: {},
+    // ผู้ส่งที่กำลังจะกดส่ง = นั่งที่นั่งผู้ตรวจสอบและอนุมัติได้ (ธงที่ตัวโหลดตั้งให้ผู้ส่งที่กำลังจะเขียน)
+    signerEligible: { assessor: null, approver: true },
+    request: { answeredAt: NOW.toISOString(), answeredById: HEAD.id, answeredByName: HEAD.name },
+  });
+  assert.equal(expected.length, 1);
+  assert.equal(expected[0].text, LINE_APPROVER);
+
+  const on = emptyDb();
+  const { result: head } = await quiet(() => withEnv({ ...PROD_ON, SURVEY_REPORT_SIGNATURES: 'on' },
+    () => surveyDocumentSummary(on, OPEN_REQ, HEAD, { withChecks: true, now: NOW })));
+  assert.equal(head.signRule, true);
+  assert.ok(head.send.blockers.includes(LINE_APPROVER), head.send.blockers.join(' | '));
+  assert.equal(head.send.selfSign, true);
+  assert.equal('signers' in head.send, false);
+  for (const table of ['user_signatures']) assert.ok(on.tables.includes(table), `ตัวโหลดต้องอ่าน ${table}`);
+  assertNoSignLeak({ ...head, access: null }, 'real precheck/sign');
+
+  // สวิตช์ปิด: ไม่มีบรรทัดลายเซ็น ไม่มีคีย์ และไม่อ่านตารางลายเซ็นสักคำสั่ง
+  const off = emptyDb();
+  const { result: plain } = await quiet(() => withEnv(PROD_ON, () => surveyDocumentSummary(off, OPEN_REQ, HEAD, { withChecks: true, now: NOW })));
+  assert.equal(plain.send.blockers.some((line) => line.includes('ลายเซ็น')), false);
+  assert.deepEqual(Object.keys(plain.send), ['blockers', 'warnings', 'unknown']);
+  assert.equal(off.tables.some((table) => table.startsWith('user_signature')), false);
+});
+
 /* ══ 4. น้ำหนักของโมดูล (§14 · มติ 24) ══════════════════════════════════════════════════════ */
 
 test('🔴 หัวไฟล์ไม่ import ของหนัก — ตัวตรวจ/ตัวอ่านประกอบโหลดด้วย `await import()` · อ่านอย่างเดียว · ทุก query มี limit', () => {
   const src = code(ROWS);
   const staticImports = [...src.matchAll(STATIC_IMPORT)].map((m) => m[1]).sort();
-  assert.deepEqual(staticImports, ['./surveyAccess', './surveyReportState', '@/lib/businessDate', '@/lib/requests/access'].sort());
+  /* `./surveyReportSignFlag` = ตัวอ่านสวิตช์ลายเซ็นจริง (PR-SIG §1 — ไฟล์เล็ก ไม่มี import อื่นนอกจาก `server-only`) */
+  assert.deepEqual(staticImports, [
+    './surveyAccess', './surveyReportSignFlag', './surveyReportState', '@/lib/businessDate', '@/lib/requests/access',
+  ].sort());
 
   /* ของที่โหลดตอนต้องตรวจจริงเท่านั้น — รายชื่อเป๊ะ: เพิ่มตัวใหม่ต้องตั้งใจ (และต้องไม่ใช่ sharp/chromium/ขั้นออกเลข) */
   const lazyImports = [...new Set([...src.matchAll(/\bimport\(\s*'([^']+)'\s*\)/g)].map((m) => m[1]))].sort();

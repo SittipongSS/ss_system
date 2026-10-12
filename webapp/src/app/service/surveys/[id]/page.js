@@ -945,6 +945,8 @@ export default function SurveySheetPage({ params }) {
        `seenWarnings`) · อ่านสถานะเอกสารไม่สำเร็จ = บอกผลแบบมีเงื่อนไข (กติกาโมดัลบอกผลลัพธ์ #1223) */
     issuesDocument: view.send.issuesDocument, replacesDocNo: view.send.replacesDocNo,
     warnings: view.send.seenWarnings, documentUnknown: view.send.documentUnknown,
+    // ลายเซ็นจริง (PR-SIG) — ผู้ลงนามที่เอกสารของการส่งครั้งนี้จะพิมพ์ลายเซ็น: โมดัลเอ่ยชื่อก่อนกด · ไม่มีคีย์ (กติกาปิด) = ไม่มีข้อนี้
+    signers: view.send.signers,
     // ส่งกลับให้ช่างแก้ค้างอยู่ = บอกก่อนกดว่าส่งแล้วช่างแก้ต่อไม่ได้ (review 26/09 · เตือน ไม่บล็อก)
     sendBackPending: view.send.sendBackPending,
     // ขนาดที่ตั้งไว้ก่อนมีข้อเสนอของระบบ (back-fill ST) = บอกก่อนกดว่าพื้นที่ไหนยังไม่ได้เทียบ (UAT PR-P 01/10 · เตือน ไม่บล็อก)
