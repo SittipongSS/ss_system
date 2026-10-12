@@ -94,6 +94,25 @@ export async function loadUserSignatureAdmin(supabase, userId) {
   });
 }
 
+/* เวอร์ชันลายเซ็นที่ใช้งานอยู่ของผู้ใช้หนึ่งคน — สำหรับเส้นที่ต้องมีลายเซ็นก่อนอนุมัติ
+   ⚠️ รากของตารางค้นด้วย `userId` ไม่ใช่ `id` — `id` คือรหัสของแถวลายเซ็นเอง (`signature-…` · mig 0122)
+      ไม่มีแถวไหนที่ `id` เท่ากับรหัสผู้ใช้
+   🐞 2026-10-12: เส้นอนุมัติราคาผลิต (`api/sa/costing/[id]/approve`) เคยค้นด้วย `.eq('id', userId)` ⇒ ไม่เจอแถวเลย
+      ⇒ ตอบ "กรุณาเพิ่มลายเซ็น…ก่อนอนุมัติ" กับผู้บริหารทุกคน แม้คนที่มีลายเซ็นแล้ว — อนุมัติราคาผลิตไม่ได้เลย
+      (ไม่มีใครเห็นเพราะตาราง costing_requests ยังว่าง และ `id` เป็นคอลัมน์จริง ด่าน check:columns จึงผ่าน)
+   ไม่โยน: supabase ไม่ throw ⇒ คืน `error` ให้ผู้เรียกแยก "อ่านไม่สำเร็จ" ออกจาก "ไม่มีลายเซ็น" เอง
+   @returns `{ versionId: string | null, error: object | null }` */
+export async function activeSignatureVersionId(supabase, userId) {
+  if (!userId) return { versionId: null, error: null };
+  const { data, error } = await supabase
+    .from('user_signatures')
+    .select('activeVersionId')
+    .eq('userId', userId)
+    .maybeSingle();
+  if (error) return { versionId: null, error };
+  return { versionId: data?.activeVersionId || null, error: null };
+}
+
 export function signatureRpcError(error) {
   const message = error?.message || String(error || '');
   if (message.includes('user_signature_active_stale')) {

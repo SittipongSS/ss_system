@@ -16,15 +16,9 @@ import { costingDecisionUpdate } from '@/lib/costingUpdates';
 import { appendUpdate } from '@/lib/master/updates';
 import { recordAudit } from '@/lib/audit';
 import { fmtNumber } from '@/lib/format';
+import { activeSignatureVersionId } from '@/lib/admin/userSignatures';
 
 export const dynamic = 'force-dynamic';
-
-async function activeSignatureId(supabase, userId) {
-  if (!userId) return null;
-  const { data } = await supabase
-    .from('user_signatures').select('activeVersionId').eq('id', userId).maybeSingle();
-  return data?.activeVersionId || null;
-}
 
 export async function POST(request, { params }) {
   const supabase = getSupabaseAdmin();
@@ -74,7 +68,13 @@ export async function POST(request, { params }) {
       }
     }
 
-    const signatureId = await activeSignatureId(supabase, user?.id);
+    // อ่านไม่สำเร็จ ≠ ไม่มีลายเซ็น — ห้ามบอกคนที่มีลายเซ็นแล้วให้ไปเพิ่มลายเซ็นเพราะฐานสะดุด (supabase ไม่ throw)
+    const signature = await activeSignatureVersionId(supabase, user?.id);
+    if (signature.error) {
+      console.error('[costing/approve] อ่านลายเซ็นของผู้อนุมัติไม่สำเร็จ:', signature.error?.message || signature.error);
+      return Response.json({ error: 'ตรวจลายเซ็นของผู้อนุมัติไม่สำเร็จ — ลองอีกครั้ง' }, { status: 500 });
+    }
+    const signatureId = signature.versionId;
     if (!signatureId) {
       return Response.json({
         error: 'กรุณาเพิ่มลายเซ็นอิเล็กทรอนิกส์ในบัญชีของฉันก่อนอนุมัติ',
