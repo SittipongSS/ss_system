@@ -13,6 +13,10 @@
 // 🔴 **ยามกันรั่วรอบสอง** — `surveyReportCustomerHtmlIssues` ตรวจ HTML ฉบับลูกค้า **ตัวที่กำลังจะตรึง** อีกครั้งก่อนเขียน:
 //   deploy ที่ตรึงอาจใหม่กว่าตัวที่ออกเลข (ตัวเรนเดอร์เปลี่ยนได้ระหว่างนั้น)
 //
+// 🔴 **ยามลายเซ็นรอบสอง** (PR-SIG §3.5) — `surveyReportSignatureHtmlIssues` ตรวจ HTML **ทั้งสองฉบับ** ที่กำลังจะตรึง:
+//   ภาพนิ่งที่ตรึงฉบับของลายเซ็นไว้ต้องได้รูปครบทุกที่นั่ง — ไม่งั้นไม่ตรึง (ตัวเรนเดอร์ของ deploy ที่ตรึงอาจเก่ากว่าตัวที่ออกเลข)
+//   ภาพนิ่งที่ไม่มีคีย์ `signatures` (ออกก่อนกติกานี้ · ออกตอนสวิตช์ปิด) ผ่านเสมอ ⇒ ตรึงด้วยคำตามเดิม — ไม่มีอะไรเขียนทับเอกสารที่ออกแล้ว
+//
 // 🔴 **ไฟล์ผูกกับฉบับด้วยคีย์เดียวตลอดเส้น** — HTML · PDF · ที่อยู่ไฟล์ · คอลัมน์ เดินด้วยกันในก้อนของฉบับนั้น
 //   (`papers[version]`) และชื่อคอลัมน์มาจากแผนที่ตายตัว ไม่ประกอบจากสตริง ⇒ ไม่มีทางที่ PDF ฉบับภายในไปลง
 //   `customer.pdf` (เทสต์ "write-side binding" ล็อกไว้)
@@ -42,7 +46,7 @@ import {
 import { surveyReportImagePath } from './surveyReportImages';
 import { paginateSurveyReport, surveyReportOverflowErrors } from './surveyReportLayout';
 import { SURVEY_REPORT_BUCKET, SURVEY_REPORT_NOT_PRODUCTION, surveyReportStoreAllowed } from './surveyReportRows';
-import { surveyReportCustomerHtmlIssues, surveyReportPaperIssues } from './surveyReportState';
+import { surveyReportCustomerHtmlIssues, surveyReportPaperIssues, surveyReportSignatureHtmlIssues } from './surveyReportState';
 import { surveyReportView } from './surveyReportView';
 
 /** สองฉบับของเอกสาร — ลำดับนี้คือลำดับที่พิมพ์และเก็บ */
@@ -558,6 +562,15 @@ async function runPaper(supabase, o) {
       return done('paper_failed', leaks.map((text) => `${LABEL.customer}: ${text}`));
     }
 
+    /* P4b (ต่อ) — 🔴 ยามลายเซ็นรอบสอง บน HTML **ทั้งสองฉบับ** ที่กำลังจะตรึง (หัวไฟล์) · ภาพนิ่งที่ไม่มีคีย์ `signatures` = `[]` */
+    const unsigned = SURVEY_REPORT_VERSIONS.flatMap((version) => surveyReportSignatureHtmlIssues({
+      html: docs[version].html, snapshot: row.snapshot, version,
+    }).map((text) => `${LABEL[version]}: ${text}`));
+    if (unsigned.length) {
+      console.error(`[survey-report] 🔴 ยามลายเซ็น: ไม่ตรึงกระดาษของ ${row.docNo} —`, unsigned.join(' | '));
+      return done('paper_failed', unsigned);
+    }
+
     /* P5 — ตรึงสองฉบับในคำสั่งเดียว · `frozenAt` ยังว่างเท่านั้น (คอลัมน์เขียนได้ครั้งเดียว · ห้ามเขียน '' — ตรวจว่างไปแล้วที่ P2) */
     const frozenAt = new Date(o.now()).toISOString();
     const freeze = await ctx.ask(() => supabase.from('service_survey_reports')
@@ -714,7 +727,7 @@ async function printFrozen(supabase, ctx, htmlByVersion, papers, failures) {
  * 🔑 **ทำกระดาษของเอกสารหนึ่งฉบับ (Rev) ให้ครบ** — วัดทั้งสองฉบับ · ตรึง HTML · เก็บ PDF (§4 P1–P7)
  *
  * ขั้นของแถวที่ยังไม่ตรึง: P2 เรนเดอร์สองฉบับ (แผนหน้าต้องไม่ล้น) → P3 รูปจากถัง → P4 พิมพ์ + วัด **ทั้งสองฉบับ**
- *   (ไม่ว่า `want` จะขออะไร) → P4b ยามกันรั่ว → P5 ตรึง (`frozenAt` ยังว่างเท่านั้น) → P6 เก็บ PDF ทั้งสองฉบับ → P7 audit
+ *   (ไม่ว่า `want` จะขออะไร) → P4b ยามกันรั่ว + ยามลายเซ็น → P5 ตรึง (`frozenAt` ยังว่างเท่านั้น) → P6 เก็บ PDF ทั้งสองฉบับ → P7 audit
  * ขั้นของแถวที่ตรึงแล้ว: อ่าน HTML ที่ตรึงของฉบับที่ `want` และยังไม่มี PDF → P3 → P4 → P6 → P7
  *   (คำขอฉบับลูกค้าไม่อ่าน `internalHtml` ไม่ดึงรูปจุด ไม่พิมพ์ฉบับภายใน)
  *

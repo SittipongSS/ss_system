@@ -36,6 +36,10 @@
 //   history[] { at, kind, byName, reason, totals }
 //   company { name, address, taxId, tel, line, website } · form { code, revision, effectiveDate }
 //   img = { attId, sha, w, h }
+//   signatures { assessor, approver }   ⭐ **คีย์เสริม — มีเฉพาะภาพนิ่งที่ถ่ายตอนกติกาลายเซ็นจริงเปิด** (PR-SIG · มติ 09/10/2026)
+//             แต่ละที่นั่ง = `null` หรือ { userId, name, versionId, versionNumber, sourceSha256, img: { sha, w, h } | null }
+//             ไม่มีคีย์ = ภาพนิ่งรุ่นก่อน/สวิตช์ปิด ⇒ กระดาษพิมพ์คำว่า "ลายเซ็นอิเล็กทรอนิกส์" เหมือนเดิมทุกไบต์ (ยังเป็น v1 — เพิ่มคีย์อย่างเดียว)
+//             🔴 ที่อยู่ไฟล์ในคลังลายเซ็น (`storagePath`) **ไม่เข้าภาพนิ่ง** — รูปที่พิมพ์คือสำเนา JPEG `img/<sha>.jpg` ในถังของเอกสารเอง
 import { isPreviewableImage } from '@/lib/master/attachmentTypes';
 import { normalizeTime } from '@/lib/format';
 import { sortPackageSizes } from './packageSizes';
@@ -46,6 +50,9 @@ import {
   surveyZoneName, surveyZoneSize,
 } from './survey';
 import { isDrawingZone, surveyMethodMix } from './surveyMethod';
+import {
+  SURVEY_SIGN_RULE, SURVEY_SIGN_SEATS, surveyReportSeatEligible, surveyReportSignatureIssues, surveyReportSigners,
+} from './surveyReportSigners';
 import { SPOT_TRAY_LABEL, spotPhotoGroups } from './surveySpotPhotos';
 import { visitTimeCredible } from './surveyVisitTime';
 import { VISIT_STATUS_LABELS } from './visitStatus';
@@ -220,6 +227,7 @@ export const SURVEY_REPORT_INPUT_LABELS = Object.freeze({
   visitThread: 'เธรดของนัดประเมิน',
   helpers: 'ชื่อผู้ช่วยบนนัด',
   assigneeRole: 'ตำแหน่งของผู้ประเมิน',
+  signatures: 'ลายเซ็นของผู้ลงนาม',
   history: 'ประวัติตีกลับและดึงกลับ',
   sizes: 'ทะเบียนขนาดแพ็คเกจ',
   company: 'ข้อมูลบริษัท',
@@ -240,6 +248,15 @@ const unreadText = (name) => `อ่าน${SURVEY_REPORT_INPUT_LABELS[name] || 
  *              ⇒ **ไม่ตีกลับการส่งผล** (ผลต้องถึงฝ่ายขาย) แต่ขั้นออกเลขไม่ออกจนกว่าจะหาย
  *   `system` + `hold: true`  ข้อเดียว: ใบมีพื้นที่ประเมินจากแบบ (`SURVEY_REPORT_DRAWING_HOLD`) — ไม่ตีกลับการส่งผลเหมือน `system`
  *              ทุกข้อ แต่ **ไม่มีอะไรให้คนแก้** · คีย์ `hold` มีเฉพาะข้อนี้ (ข้ออื่นมีแค่ `kind` กับ `text` เหมือนเดิม)
+ *   `content` (ไม่มี `sign`)   บัญชีของคนบนที่นั่งนั่งที่นั่งนั้นไม่ได้ — ผู้ประเมินไม่ใช่บัญชีฝ่ายบริการ · ผู้ส่งผลไม่ใช่ผู้มีสิทธิ์ส่งผล
+ *              (มากับ `surveyReportSignatureIssues` เหมือนกัน · เพิ่มลายเซ็นไม่ช่วย ต้องแก้ที่ตัวใบ)
+ *   `content` + `sign: true`  ผู้ลงนามยังไม่มีลายเซ็นในระบบ (`surveyReportSignatureIssues` · มติเจ้าของ 09/10/2026) — **เฉพาะตอนกติกา
+ *              ลายเซ็นจริงเปิด** (`inputs.signatureRule === 'required'`) · ตีกลับการส่งผลก่อนเขียนอะไรเหมือน `content` ทุกข้อ
+ *              แต่ **ไม่ต้องดึงผลกลับ**: เจ้าตัวเพิ่มลายเซ็นแล้วกดใหม่ได้เลย · บรรทัดพก `userId` กับ `seats` ด้วย (server เทียบกับคนดู —
+ *              ไม่ออก payload) · ต่อจากก้อนนัดทันที ลำดับของข้ออื่นไม่ขยับ
+ *              ⚠️ ถูกข้ามทั้งก้อนเมื่อ ① กติกาปิด ② ใบติดข้อกันเอกสารของใบจากแบบ (ออกเอกสารไม่ได้อยู่แล้ว — ตีกลับการส่งผลเพราะ
+ *                 ลายเซ็นเป็นเสียงรบกวน · **งวด S3 ถอดข้อกันเมื่อไรต้องตัดสินผู้ลงนามของใบจากแบบก่อน** เทสต์ล็อกคู่นี้ไว้)
+ *                 ③ อ่านลายเซ็นไม่สำเร็จ (ได้ "อ่านลายเซ็นของผู้ลงนามไม่สำเร็จ" ชนิด `system` แทน — ไม่มีวันกลายเป็น "ยังไม่มีลายเซ็น")
  *
  * ⭐ **ใบประเมินจากแบบทั้งใบไม่ถูกถามเรื่องนัด** (ไม่มี · ไม่มีวัน · ไม่มีผู้ประเมิน) — ไม่มีใครต้องไปหน้างาน · ใบผสมและใบที่
  *   ไม่เหลือพื้นที่ (ตัดหมด) ยังถูกถามเหมือนเดิม: `surveyMethodMix(...).mode` ตัวเดียวกับที่ตัวโหลดใช้ทิ้งนัด
@@ -294,6 +311,11 @@ export function surveyReportFreezeIssues(inputs = {}) {
       if (!dayOnly(visit.actualDate) && !dayOnly(visit.scheduledDate)) content('นัดประเมินไม่มีวันที่ประเมิน');
       if (!text(visit.assigneeName)) content('นัดประเมินไม่มีชื่อผู้ประเมิน');
     }
+  }
+
+  /* ผู้ลงนามที่ยังไม่มีลายเซ็น (กติกาลายเซ็นจริง · หัวฟังก์ชัน) — ต่อจากก้อนนัด · สามเงื่อนไขครบจึงถาม */
+  if (inputs.signatureRule === SURVEY_SIGN_RULE && mix.drawing === 0 && !unread('signatures')) {
+    out.push(...surveyReportSignatureIssues(inputs));
   }
 
   if (!unread('history') && !Array.isArray(inputs.history)) system(unreadText('history'));
@@ -441,6 +463,49 @@ function partsPart(parts) {
   }).filter(Boolean);
 }
 
+const preparedSignature = (inputs, versionId) => {
+  const store = inputs?.signatureImageByVersionId;
+  if (!store || !versionId) return null;
+  const hit = store instanceof Map ? store.get(versionId) : store[versionId];
+  return hit && hit.sha ? hit : null;
+};
+
+/**
+ * ก้อน `signatures` ของภาพนิ่ง (กติกาลายเซ็นจริงเปิดเท่านั้น) — หนึ่งช่องต่อที่นั่ง
+ *   ที่นั่งไม่พิมพ์ชื่อ หรือคนบนที่นั่งไม่มีลายเซ็น = `null` · มีลายเซ็น = ตรึงฉบับ (`versionId` · `versionNumber` · `sourceSha256`)
+ *   พร้อมรูปที่เตรียมแล้ว (`img`) ถ้าผู้เรียกเตรียมมา — ยังไม่เตรียม = `img: null` (รอบตรวจ · ฉบับร่าง)
+ *   🔴 **บัญชีที่นั่งที่นั่งนั้นไม่ได้ (หรือยังไม่รู้) = `null` เสมอ แม้มีลายเซ็นและมีรูปที่เตรียมแล้ว** (`surveyReportSeatEligible` ต้องเป็น
+ *      `true` ตรงตัว) — ยามชั้นสุดท้าย: ที่นั่งนั้นค้างอยู่ใน `waiting` ⇒ โหมดตรึงล้ม ไม่มีทางที่ลายเซ็นของบัญชีนอกฝ่ายบริการ
+ *      หรือของผู้ตอบที่ไม่ใช่หัวหน้าจะถูกตรึงลงกระดาษ ไม่ว่าด่านข้างบนจะถูกแก้หรือผู้เรียกส่งรูปอะไรมา
+ * @returns `{ value, images, waiting }` · `images` = แถวของคอลัมน์ `images` (`kind: 'sign'` · หนึ่งแถวต่อ sha) ·
+ *   `waiting` = ชื่อของคนบนที่นั่งที่พิมพ์ชื่อแต่ยังไม่มีรูปที่เตรียมแล้ว (ไม่ซ้ำ) — โหมดตรึงล้มด้วยรายชื่อนี้
+ * 🔴 `storagePath` ของฉบับ **ไม่ถูกหยิบ** — หยิบทีละคีย์ ไม่กระจายทั้งก้อน
+ */
+function signaturesPart(inputs) {
+  const value = Object.fromEntries(SURVEY_SIGN_SEATS.map((seat) => [seat, null]));
+  const images = [];
+  const waiting = [];
+  const store = inputs.signatures && typeof inputs.signatures === 'object' ? inputs.signatures : {};
+  for (const { seat, userId, name } of surveyReportSigners(inputs)) {
+    const allowed = surveyReportSeatEligible(inputs, seat) === true;
+    const version = allowed && userId && Object.hasOwn(store, userId) ? store[userId] : null;
+    const versionId = version && typeof version === 'object' && version.versionId != null ? String(version.versionId) : null;
+    const hit = versionId ? preparedSignature(inputs, versionId) : null;
+    if (!hit && !waiting.includes(name)) waiting.push(name);
+    if (!versionId) continue;
+    value[seat] = {
+      userId, name, versionId,
+      versionNumber: num(version.versionNumber),
+      sourceSha256: text(version.sha256),
+      img: hit ? { sha: hit.sha, w: num(hit.w), h: num(hit.h) } : null,
+    };
+    if (hit && !images.some((row) => row.sha === hit.sha)) {
+      images.push({ sha: hit.sha, attId: null, kind: 'sign', w: num(hit.w), h: num(hit.h), bytes: num(hit.bytes) });
+    }
+  }
+  return { value, images, waiting };
+}
+
 /**
  * @param inputs {
  *   takenAt        จุดเวลาที่ถ่ายภาพนิ่ง (ISO) — ผู้เรียกอ่านนาฬิกาเอง
@@ -462,10 +527,19 @@ function partsPart(parts) {
  *   company        `{ name, address, taxId, tel, line, website }`
  *   form           `{ code, revision, effectiveDate }` (เช่น FM-TS-01 · 00 · 29/09/2569)
  *   unknown        `string[]` ชื่อชิ้นที่ตัวโหลดอ่านไม่สำเร็จ (`SURVEY_REPORT_INPUT_LABELS`) — มี = โหมด freeze/check ไม่ออกภาพนิ่ง
+ *   ── กติกาลายเซ็นจริง (PR-SIG) — ตัวโหลดตั้งให้เมื่อสวิตช์เปิด · ไม่มีคีย์ = กระดาษแบบเดิม ──
+ *   signatureRule  `'required'` = กติกาเปิด: ผู้ลงนามทุกที่นั่งต้องมีลายเซ็น และภาพนิ่งได้คีย์ `signatures`
+ *   signatures     `{ [userId]: null | { versionId, versionNumber, storagePath, sha256, width, height } }` ฉบับที่ใช้อยู่ของผู้ลงนาม
+ *   signatureImageByVersionId  `{ [versionId]: { sha, w, h, bytes } }` (หรือ Map) ลายเซ็นที่ย่อและเก็บแล้ว — โหมด `freeze` บังคับ
+ *   answerPending · assigneeAccount   ใช้แต่งข้อความ "ยังไม่มีลายเซ็น" (`surveyReportSignatureIssues`)
+ *   signerEligible `{ assessor, approver }` (`true` | `false` | `null`) บัญชีของคนบนที่นั่งนั่งที่นั่งนั้นได้ไหม — ไม่ใช่ `true` = ไม่พิมพ์ลายเซ็น
  * }
  * @param opts.mode `'freeze'` (ค่าตั้งต้น) | `'check'` | `'draft'` — ดูหัวไฟล์
  * @returns `{ snapshot, images, warnings }` หรือ `{ errors }` (โหมด freeze/check เมื่อมีเหตุขัดข้อง)
  *   · `images` = `[{ sha, attId, kind, w, h, bytes }]` ไม่ซ้ำ sha — ลงคอลัมน์ `images` ของแถว
+ *     (ลายเซ็น = `kind: 'sign'` · `attId: null` — ⚠️ ไฟล์ `img/<sha>.jpg` ของลายเซ็นใช้ร่วมกันทุกเอกสารของผู้ลงนามคนนั้น:
+ *      ตัวล้างไฟล์ในวันหน้าต้องข้ามแถวชนิดนี้)
+ *   🔴 กติกาลายเซ็นจริงเปิด: โหมด `freeze` **ไม่มีวันถอยไปพิมพ์คำ** — ที่นั่งที่พิมพ์ชื่อแต่ยังไม่มีรูปลายเซ็นที่เตรียมแล้ว = `{ errors }`
  */
 export function buildSurveyReportSnapshot(inputs = {}, { mode = 'freeze' } = {}) {
   const blockers = surveyReportFreezeBlockers(inputs);
@@ -548,6 +622,26 @@ export function buildSurveyReportSnapshot(inputs = {}, { mode = 'freeze' } = {})
 
   if (needImages && missingImages) return { errors: [`รูป ${missingImages} รูปยังเตรียมไม่เสร็จ — ยังไม่ได้ออกเอกสาร`] };
 
+  /* ลายเซ็นของผู้ลงนาม — เฉพาะตอนกติกาเปิด (ปิด = ไม่มีคีย์ในภาพนิ่ง กระดาษพิมพ์คำเดิม)
+     🔴 ยามของโหมดตรึงเดินตาม **ที่นั่ง** ไม่ใช่ตามลิสต์ผู้ลงนามที่มีลายเซ็น: ที่นั่งที่พิมพ์ชื่อต้องมีรูป — ลิสต์ว่างด้วยเหตุใดก็ตาม
+        (ผู้เรียกลืมเตรียม · ด่านข้างบนถูกแก้) ต้องไม่กลายเป็นกระดาษที่ตรึงด้วยคำ
+     ⭐ **ใบที่มีพื้นที่ประเมินจากแบบไม่ถูกถามเรื่องลายเซ็นเลย** (ติดข้อกันเอกสาร — เงื่อนไขเดียวกับบรรทัดของด่านและ
+        `surveyReportSignerVersions`) ⇒ ไม่มีคีย์ `signatures` ฉบับร่างของใบแบบนั้นพิมพ์คำเดิมเหมือนกติกาปิด
+        🐞 เดิมถามแค่ว่ากติกาเปิดไหม: ฉบับร่างของใบจากแบบขึ้นกรอบ "ยังไม่มีลายเซ็น" / "ลายเซ็นจะขึ้นเมื่อออกเอกสาร" ทั้งที่เอกสารออกไม่ได้
+        (งวด S3 ถอดข้อกันเมื่อไร ต้องตัดสินผู้ลงนามของใบจากแบบก่อน — เทสต์ล็อกคู่นี้ไว้) */
+  const signs = inputs.signatureRule === SURVEY_SIGN_RULE && surveyMethodMix(inputs.zones).drawing === 0
+    ? signaturesPart(inputs) : null;
+  if (signs && needImages && signs.waiting.length) {
+    return { errors: signs.waiting.map((name) => `ลายเซ็นของ ${name} ยังเตรียมไม่เสร็จ — ยังไม่ได้ออกเอกสาร`) };
+  }
+  if (signs) {
+    for (const row of signs.images) {
+      if (seenSha.has(row.sha)) continue;
+      seenSha.add(row.sha);
+      images.push(row);
+    }
+  }
+
   const t = surveyTotals(rows);
   const c = surveyChangeCounts(rows);
   const company = inputs.company || {};
@@ -578,6 +672,7 @@ export function buildSurveyReportSnapshot(inputs = {}, { mode = 'freeze' } = {})
       tel: text(company.tel), line: text(company.line), website: text(company.website),
     },
     form: { code: text(form.code), revision: text(form.revision), effectiveDate: text(form.effectiveDate) },
+    ...(signs ? { signatures: signs.value } : {}),
   };
 
   return { snapshot, images, warnings };

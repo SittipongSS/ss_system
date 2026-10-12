@@ -75,7 +75,7 @@ export const SETTINGS_NAV = [
         icon: Signature,
         title: 'ความพร้อมลายเซ็น',
         shortTitle: 'ความพร้อมลายเซ็น',
-        blurb: 'ใครยังไม่มีลายเซ็นทั้งที่ต้องอนุมัติใบเสนอราคา/ใบสั่งขาย',
+        blurb: 'ใครยังไม่มีลายเซ็นทั้งที่ต้องอนุมัติใบเสนอราคา/ใบสั่งขาย หรือลงนามรายงานการประเมินพื้นที่',
         visible: (user) => canUser(user, 'users:view') || canUser(user, 'users:manage'),
       },
     ],

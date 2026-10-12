@@ -28,12 +28,19 @@
 //    · `surveySendConfirm({ method })` = หัวโมดัล ตัวเลือก และรายการผลของใบแบบนี้
 //    🔴 ทั้งสามตัว **อ่านจากแถวพื้นที่ ไม่อ่านสวิตช์** — ใบที่มีพื้นที่จากแบบไปแล้วต้องส่งผลได้แม้สวิตช์ถูกปิดทีหลัง ·
 //       ใบลงหน้างานล้วนได้ `null` / `''` / ผลเท่าเดิมทุกคีย์
+//
+// ⭐ **เอกสารพิมพ์ลายเซ็นจริงของผู้ลงนาม** (PR-SIG · มติเจ้าของ 09/10/2026 · เฉพาะตอนกติกาลายเซ็นจริงเปิด)
+//    · `surveySendConfirm({ signers })` = ข้อ "เอกสารจะพิมพ์ลายเซ็นที่บันทึกไว้ของ …" ต่อจากข้อออกเอกสาร (กติกา #1223:
+//      ลายเซ็นของผู้ประเมินถูกพิมพ์จากการกดของหัวหน้า ⇒ ต้องบอกชื่อก่อนกด)
+//    · `surveySendSignatureRefusal(failed)` = ประโยค 409 ของไฟล์ลายเซ็นที่ใช้พิมพ์ไม่ได้ — route ตอบ **ก่อนเขียนอะไร**
+//    🔴 ไฟล์นี้ไม่อ่านสวิตช์ลายเซ็นเอง — `signers` มาจากผลตรวจของ server (ว่างเมื่อกติกาปิด ⇒ ผลเท่าเดิมทุกตัวอักษร)
 import { fmtDate } from '@/lib/format';
 import { surveyZoneName } from './survey';
 import { isDrawingZone, surveyMethodMix, surveyNeedsVisit } from './surveyMethod';
 import {
   SURVEY_CONFIRM_LABEL, SURVEY_CONFIRM_MISSING, SURVEY_METHOD_LABEL, SURVEY_ZONE_TAG, surveyZoneNamesText,
 } from './surveyMethodSwitch';
+import { SURVEY_SIGN_ACCOUNT, surveyReportSignFileLines, surveyReportSignersText } from './surveyReportSigners';
 import { VISIT_STATUS_LABELS, isOpenVisit } from './visitStatus';
 
 /** สถานะที่ส่งผลปิดให้ได้ — ชุดเดียวกับ `isOpenVisit` (เงื่อนไขของคำสั่ง update ต้องตรงกับตัวตัดสิน) */
@@ -130,11 +137,15 @@ export const SURVEY_SEND_PAPER_HOLD_EFFECT = 'เอกสารประเม�
  *                     มีพื้นที่จากแบบ ⇒ ผลได้ `title` (หัวโมดัล) กับ `choice` (คำถาม "ต้องยืนยันหน้างานไหม" · `value` ว่างจนกว่า
  *                     หัวหน้าจะเลือก — ไม่เลือกให้ล่วงหน้า) · ข้อ "พื้นที่จากแบบ" กับป้ายบนทะเบียนต่อจากข้อส่งกลับ ·
  *                     ข้อปิดนัดของใบจากแบบทั้งใบ · ข้อ "เอกสารยังออกไม่ได้" แทนข้อออกเอกสาร · ป้ายปุ่มใช้กติกาเดิม
+ * @param signers      `view.send.signers` (`[{ seats, name }]` จาก `document.send.signers` ของ GET · PR-SIG §5) — ผู้ลงนามที่เอกสารฉบับนี้
+ *                     จะพิมพ์ **ลายเซ็นจริงที่บันทึกไว้** · มีเฉพาะตอนกติกาลายเซ็นจริงเปิดและทุกที่นั่งมีลายเซ็นแล้ว
+ *                     ⇒ ข้อ "เอกสารจะพิมพ์ลายเซ็นที่บันทึกไว้ของ …" ต่อจากข้อออกเอกสาร **เฉพาะเมื่อการส่งครั้งนี้ออกเอกสาร**
+ *                     (ลายเซ็นของผู้ประเมินถูกพิมพ์จากการกดของหัวหน้า — ต้องบอกชื่อก่อนกด) · ไม่ส่ง/ว่าง = ไม่มีข้อนี้
  */
 export function surveySendConfirm({
   docNo = null, closesVisit = null, sendBackPending = null, sizeReview = null,
   issuesDocument = false, replacesDocNo = null, warnings = null, documentUnknown = false,
-  method = null,
+  method = null, signers = null,
 } = {}) {
   /* ใบที่มีพื้นที่จากแบบ (งวด S2a) — ทุกกิ่งข้างล่างที่ถามสามตัวนี้ได้ `false` / `null` เมื่อไม่ส่ง `method`
      หรือใบไม่มีพื้นที่จากแบบ ⇒ ลิสต์และคีย์ของผลเท่าเดิมทุกตัวอักษร */
@@ -183,6 +194,9 @@ export function surveySendConfirm({
       ? `ออกเอกสารประเมินฉบับใหม่ (Rev ถัดไป) แทน ${replaced} ที่ใช้ไม่ได้แล้ว`
       : 'ออกเอกสารประเมิน (เลข SU) ไปพร้อมกัน')
       + ' — ฝ่ายขายดาวน์โหลดฉบับลูกค้าได้ที่หน้าคำร้อง · เอกสารที่ออกแล้วแก้ไม่ได้ (แก้ = ดึงผลกลับแล้วส่งใหม่เป็น Rev ถัดไป)');
+    /* ⭐ ลายเซ็นจริงของผู้ลงนาม (PR-SIG) — ต่อจากข้อออกเอกสารทันที และเฉพาะกิ่งนี้ (เอกสารจะออกจริง) · วลีเดียวกับกล่องยืนยัน "ออกเอกสาร" */
+    const signed = surveyReportSignersText(signers);
+    if (signed) effects.push(`เอกสารจะพิมพ์ลายเซ็นที่บันทึกไว้ของ ${signed}`);
   }
   for (const line of [...new Set(textList(warnings))]) effects.push(`ฉบับลูกค้าจะพิมพ์ตามที่กรอกไว้ — ${line}`);
   // ใบที่มีพื้นที่จากแบบบอกไปแล้วข้างบนว่าเอกสารยังไม่ออก — "อาจออกเลข SU ด้วย" จะขัดกับข้อนั้น
@@ -544,6 +558,10 @@ export function surveySendSiteVisitError(rows, { reachedSite = false, closesVisi
 /** งบเวลาของรอบตรวจรูปก่อนส่งผล (S3) — รอบเติมหลังล็อกมีงบของตัวเอง (`SURVEY_REPORT_IMAGE_BUDGET_MS.send`) */
 export const SURVEY_SEND_PREFLIGHT_MS = 60_000;
 
+/** งบเวลาของรอบเตรียมไฟล์ลายเซ็นก่อนส่งผล (S5 · PR-SIG §3.3) — อย่างมากสองไฟล์ ไฟล์ละไม่เกิน 1 MB · หมดงบ = ไม่ตีกลับ
+ *  (ขั้นออกเลขเตรียมซ้ำเอง) */
+export const SURVEY_SEND_SIGN_MS = 15_000;
+
 /** S2 — จอที่โหลดไว้ก่อนเปิดสวิตช์ไม่รู้ว่าการส่งผลออกเอกสารด้วย (ไม่ส่ง `seenWarnings`) ⇒ ต้องโหลดใหม่ให้เห็นก่อนกด */
 export const SURVEY_SEND_OLD_PAGE_ERROR = 'หน้านี้เป็นรุ่นเก่า — โหลดหน้าใหม่ก่อนส่งผล (การส่งผลจะออกเอกสาร SU ด้วย)';
 
@@ -627,6 +645,46 @@ export function surveySendDocumentRefusalList(blockers) {
   return items.length
     ? { lead: `${DOCUMENT_REFUSAL_HEAD}ติด ${items.length} ข้อ${DOCUMENT_REFUSAL_TAIL}`, items }
     : null;
+}
+
+/* ชิ้นของตัวตรวจที่ตัดสินว่า "ใครนั่งที่นั่งไหน · มีลายเซ็นไหม · ใบถูกถามเรื่องลายเซ็นไหม" — ตารางลายเซ็น · นัด (ที่นั่งผู้ประเมิน) ·
+   ผลวัด (ใบที่มีพื้นที่จากแบบไม่ถูกถาม) · ชิ้นใดชิ้นหนึ่งอ่านไม่สำเร็จ = บรรทัด "ยังไม่มีลายเซ็น" เชื่อไม่ได้ */
+const SIGN_DECIDING_PIECES = ['signatures', 'visits', 'zones'];
+
+/**
+ * S5 — ประโยค 409 ของ **ผู้ลงนามที่รู้แน่ว่ายังไม่มีลายเซ็น ทั้งที่ตัวตรวจอ่านชิ้นอื่นไม่ครบ** หรือ `null`
+ * @param check ผลของ `surveyReportPrecheck` (`{ blockers, unknown }`)
+ *
+ * 🔴 มติเจ้าของ 09/10: ผู้ลงนามยังไม่มีลายเซ็น = ตีกลับ **ก่อนเขียนอะไร** · กติกา "ตัวตรวจอ่านไม่ครบ = ไม่ตีกลับ" (ปัญหาของระบบไม่ขวางผล)
+ *    มีไว้กันเหตุที่ **เชื่อไม่ได้เพราะอ่านไม่ครบ** — แต่บรรทัด "ยังไม่มีลายเซ็น" ตัดสินจากตารางลายเซ็น นัด และผลวัดเท่านั้น:
+ *    สามชิ้นนั้นอ่านได้ครบ = รู้แน่ ⇒ ชิ้นอื่นที่ไม่เกี่ยว (ดีล · บริษัท · มาตรฐานเอกสาร · ชื่อผู้ช่วย · ตำแหน่ง) สะดุดต้องไม่เปิดทางให้ส่งผล
+ *    🐞 เดิมอ่านเลขที่ดีลพลาดครั้งเดียว ใบถูกตอบทั้งที่ผู้ประเมินไม่มีลายเซ็น — แล้วเอกสารออกไม่ได้ และถ้าเจ้าตัวเพิ่มลายเซ็นไม่ได้
+ *       (บัญชีถูกปิด) ใบค้าง "ตอบแล้วไม่มีเอกสาร" โดยดึงผลกลับแล้วส่งใหม่ก็ถูกตีกลับ
+ * ⚠️ `null` เมื่อ: อ่านครบ (ทางปกติของ S5 ตัดสินเอง) · `unknown` ผิดรูป · หนึ่งในสามชิ้นข้างบนอ่านไม่สำเร็จ · ไม่มีบรรทัดลายเซ็น
+ * ⚠️ เฉพาะบรรทัดที่พก `sign: true` — เหตุชนิด `content` ข้ออื่นยังไม่ตีกลับตอนอ่านไม่ครบ (กติกาเดิมของ S5)
+ */
+export function surveySendUnreadSignRefusal(check) {
+  const unknown = Array.isArray(check?.unknown) ? check.unknown : null;
+  if (!unknown || !unknown.length) return null;
+  if (unknown.some((name) => SIGN_DECIDING_PIECES.includes(name))) return null;
+  const sign = (Array.isArray(check.blockers) ? check.blockers : []).filter((b) => b?.kind === 'content' && b.sign === true);
+  return surveySendDocumentRefusal(sign);
+}
+
+/**
+ * S5 (PR-SIG §3.3) — ประโยค 409 ของ **ไฟล์ลายเซ็นที่ใช้พิมพ์ไม่ได้** (เหตุถาวร) หรือ `null` เมื่อไม่มี
+ * @param failed `failed` ของ `prepareSurveyReportSignatures` (`[{ userId, name, seats, versionId, reason, permanent }]`)
+ *
+ * 🔴 ตอบ **ก่อนเขียนอะไร** — ไฟล์หาย · ไม่ตรงกับที่บันทึก · เปิดไม่ได้ · ว่างหรือจาง: หลังตอบใบแล้วหัวหน้าทำอะไรกับไฟล์ของคนอื่นไม่ได้
+ *    ทางออกของทุกเหตุเหมือนกัน = เจ้าของลายเซ็นอัปโหลดใหม่ที่ “บัญชีของฉัน” (บรรทัดเอ่ยชื่อเจ้าของ · ป้ายเหตุจาก `surveyReportSignFileLines`
+ *    ตัวเดียวกับที่ขั้นออกเลขใช้)
+ * ⚠️ ล้มแบบชั่วคราว (คลังช้า · อัปสำเนาไม่ขึ้น · หมดงบ · โหลดตัวย่อรูปไม่ได้) ไม่นับ — ปัญหาของระบบไม่ขวางผลไปถึงฝ่ายขาย
+ * ⚠️ ไม่มีรหัสผู้ใช้ รหัสฉบับ หรือที่อยู่ไฟล์ในประโยค — มีแต่ชื่อกับเหตุ
+ */
+export function surveySendSignatureRefusal(failed) {
+  const lines = surveyReportSignFileLines(failed, { permanent: true });
+  if (!lines.length) return null;
+  return `${DOCUMENT_REFUSAL_HEAD}${lines.join(' | ')} — ให้เจ้าตัวอัปโหลดลายเซ็นใหม่ที่ “${SURVEY_SIGN_ACCOUNT.label}”${DOCUMENT_REFUSAL_TAIL}`;
 }
 
 /**

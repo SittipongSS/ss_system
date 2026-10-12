@@ -28,7 +28,9 @@ import { paginateSurveyReport } from './surveyReportLayout.js';
 import { SURVEY_REPORT_BUCKET, SURVEY_REPORT_NOT_PRODUCTION } from './surveyReportRows.js';
 import { buildSurveyReportSnapshot } from './surveyReportSnapshot.js';
 import { surveyReportState } from './surveyReportState.js';
-import { markedSurveyInputs, surveyReportInputsFromFixture, syntheticSurveyFixture } from './surveyReportTestKit.mjs';
+import {
+  fakeSha, fakeSignatureVersion, markedSurveyInputs, signedSurveyInputs, surveyReportInputsFromFixture, syntheticSurveyFixture,
+} from './surveyReportTestKit.mjs';
 import { surveyReportView } from './surveyReportView.js';
 
 /* ── ของปลอม ──────────────────────────────────────────────────────────── */
@@ -1393,6 +1395,117 @@ test('session.close ไม่รอเบราว์เซอร์ที่ย
 });
 
 /* ══ ซอร์ส ═══════════════════════════════════════════════════════════════ */
+
+/* ══ ⑧ ลายเซ็นจริงของผู้ลงนาม (PR-SIG §3.5 · มติเจ้าของ 09/10/2026) ═══════════════════════════════════ */
+
+const SIG_IMG = '<img class="sig-img"';
+const signShaOf = (userId) => fakeSha(`sign-image-${fakeSignatureVersion(userId).versionId}`);
+const signedSetup = (opts) => setup({ inputs: signedSurveyInputs(twin(), opts) });
+
+test('⭐ แถวที่ภาพนิ่งตรึงลายเซ็น: กระดาษที่ตรึงพกรูปลายเซ็นเป็น token (ลูกค้า 2 ที่ · ภายใน 4 ที่) · ตัวพิมพ์ได้ data URI · ready', async () => {
+  const backend = signedSetup();
+  assert.ok(backend.objects.has(`img/${signShaOf('U-lead')}.jpg`) && backend.objects.has(`img/${signShaOf('U-head')}.jpg`), 'ถังของเทสต์มีสำเนาลายเซ็น');
+  const renderer = fakeRenderer();
+  const got = await run(backend, renderer);
+  assert.deepEqual(got, { state: 'ready', code: null, reasons: [], captured: ['customer', 'internal'], ready: { customer: true, internal: true } });
+
+  const row = backend.row();
+  for (const [column, want] of [['customerHtml', 2], ['internalHtml', 4]]) {
+    assert.equal(row[column].split(SIG_IMG).length - 1, want, column);
+    for (const userId of ['U-lead', 'U-head']) assert.ok(row[column].includes(`${SIG_IMG} src="su-img:${signShaOf(userId)}"`), `${column}: ${userId}`);
+    assert.equal(row[column].includes('data:image/jpeg;base64,'), false, `${column} ต้องไม่ฝังรูป`);
+    assert.equal(row[column].includes('ลายเซ็นอิเล็กทรอนิกส์'), false, `${column}: ไม่มีบรรทัดคำเดิมในที่นั่งที่มีลายเซ็น`);
+  }
+  // ตัวพิมพ์ได้รูปจริงจากถัง (token ถูกแปลงครบ)
+  for (const print of renderer.prints) {
+    assert.equal(print.html.includes('su-img:'), false);
+    assert.ok(print.html.includes(`${SIG_IMG} src="${dataUri(signShaOf('U-lead'))}"`), print.version);
+  }
+  assert.deepEqual(row.snapshot, backend.snapshot, 'ภาพนิ่ง (รวมฉบับของลายเซ็น) ไม่ถูกแตะ');
+  // ยามกันรั่วของฉบับลูกค้ายอมรับลายเซ็นของสองที่นั่ง — ไม่มีบรรทัดของยามใน log และไฟล์ผูกกับฉบับถูกต้อง
+  assert.equal(tagIn(pdfOf(backend, 'customer').body), tagOfStored(row.customerHtml));
+  assert.equal(tagIn(pdfOf(backend, 'internal').body), tagOfStored(row.internalHtml));
+});
+
+test('🔴 แถวที่ออกก่อนกติกานี้ (ภาพนิ่งไม่มีคีย์ signatures) ตรึงด้วยคำตามเดิม — ยามลายเซ็นผ่านเสมอ ไม่มีอะไรเขียนทับเอกสารที่ออกแล้ว', async () => {
+  const backend = setup();
+  assert.equal('signatures' in backend.row().snapshot, false);
+  const got = await run(backend, fakeRenderer());
+  assert.equal(got.state, 'ready', (got.reasons || []).join(' | '));
+  const row = backend.row();
+  assert.equal(row.customerHtml.split('<div class="sig-e">ลายเซ็นอิเล็กทรอนิกส์</div>').length - 1, 2);
+  assert.equal(row.internalHtml.split('<div class="sig-e">ลายเซ็นอิเล็กทรอนิกส์</div>').length - 1, 4);
+  assert.equal(row.customerHtml.includes('class="sig-img'), false);
+  assert.equal(row.internalHtml.includes('class="sig-img'), false);
+});
+
+test('🔴 ยามลายเซ็นรอบสอง (P4b): ตัวเรนเดอร์ที่ตรึงพิมพ์คำแทนรูป (deploy รุ่นเก่ากว่าตัวที่ออกเลข) = paper_failed — วัดผ่านแล้วก็ไม่ตรึง ไม่อัป', async (t) => {
+  const lines = quiet(t);
+  const backend = signedSetup();
+  const renderer = fakeRenderer();
+  // ตัวเรนเดอร์รุ่นก่อน: ไม่รู้จักช่องลายเซ็น — ที่นั่งไม่มีคีย์ `img`
+  const oldRenderer = (args) => {
+    const strip = (seat) => { const { img: _img, ...rest } = seat; return rest; };
+    const view = structuredClone(args.view);
+    view.signoff.assessor = strip(view.signoff.assessor);
+    view.signoff.approver = strip(view.signoff.approver);
+    if (view.appendix) view.appendix.signs = view.appendix.signs.map(strip);
+    return renderSurveyReportHTML({ ...args, view });
+  };
+  const got = await run(backend, renderer, { renderHtml: oldRenderer });
+  assert.equal(got.state, 'issued');
+  assert.equal(got.code, 'paper_failed');
+  assert.deepEqual(got.reasons, [
+    'ฉบับลูกค้า: กระดาษไม่มีรูปลายเซ็นของผู้ประเมิน', 'ฉบับลูกค้า: กระดาษไม่มีรูปลายเซ็นของผู้ตรวจสอบและอนุมัติ',
+    'ฉบับลูกค้า: กระดาษมีรูปลายเซ็น 0 ที่ — ต้องมี 2 ที่',
+    'ฉบับภายใน: กระดาษไม่มีรูปลายเซ็นของผู้ประเมิน', 'ฉบับภายใน: กระดาษไม่มีรูปลายเซ็นของผู้ตรวจสอบและอนุมัติ',
+    'ฉบับภายใน: กระดาษมีรูปลายเซ็น 0 ที่ — ต้องมี 4 ที่',
+  ]);
+  assert.equal(renderer.prints.length, 2, 'วัดผ่านทั้งสองฉบับ — สิ่งที่กันคือยามก่อนตรึง');
+  assert.equal(backend.writes().length, 0, 'ไม่ตรึง ไม่อัป');
+  assert.equal(stateOf(backend), 'issued');
+  assert.deepEqual(backend.audits, []);
+  assert.ok(lines.some((line) => line.includes('ยามลายเซ็น')));
+  // ตัวเรนเดอร์ที่ถูกต้องรอบถัดไป = ตรึงได้ (ไม่มีอะไรค้างจากรอบที่ถูกกัน)
+  assert.equal((await run(backend, fakeRenderer())).state, 'ready');
+});
+
+test('🔴 ยามลายเซ็นรอบสอง: ฉบับภายในขาดรูปของภาคผนวก จ ฉบับเดียวก็ไม่ตรึงทั้งคู่ — สองฉบับตรึงพร้อมกันหรือไม่ตรึงเลย', async (t) => {
+  quiet(t);
+  const backend = signedSetup();
+  const dropAppendix = (args) => {
+    const html = renderSurveyReportHTML(args);
+    if (args.view.version !== 'internal') return html;
+    const from = html.indexOf('<section class="sign-last"');
+    return html.slice(0, from) + html.slice(from).replace(new RegExp(`${SIG_IMG}[^>]*>`, 'g'), '<div class="sig-e">ลายเซ็นอิเล็กทรอนิกส์</div>');
+  };
+  const got = await run(backend, fakeRenderer(), { renderHtml: dropAppendix });
+  assert.equal(got.code, 'paper_failed');
+  assert.deepEqual(got.reasons, ['ฉบับภายใน: กระดาษมีรูปลายเซ็น 2 ที่ — ต้องมี 4 ที่']);
+  assert.equal(backend.writes().length, 0);
+  assert.equal(backend.row().customerHtml, null);
+});
+
+test('สำเนาลายเซ็นหายจากถัง = image_missing เหมือนรูปอื่น — ไม่พิมพ์ ไม่ตรึง (ไม่ถอยไปพิมพ์คำ)', async (t) => {
+  quiet(t);
+  const backend = signedSetup();
+  backend.objects.delete(`img/${signShaOf('U-head')}.jpg`);
+  const renderer = fakeRenderer();
+  const got = await run(backend, renderer);
+  assert.equal(got.code, 'image_missing');
+  assert.equal(renderer.prints.length, 0);
+  assert.equal(backend.writes().length, 0);
+});
+
+test('คนเดียวสองที่นั่ง · ที่ตรึงแล้วขอทีละฉบับ: ฉบับลูกค้าดึงสำเนาลายเซ็นไฟล์เดียว พิมพ์สองช่อง', async () => {
+  const backend = signedSetup({ same: true });
+  assert.equal((await run(backend, fakeRenderer())).state, 'ready');
+  const row = backend.row();
+  assert.equal(row.customerHtml.split(`${SIG_IMG} src="su-img:${signShaOf('U-lead')}"`).length - 1, 2);
+  assert.equal(row.internalHtml.split(`${SIG_IMG} src="su-img:${signShaOf('U-lead')}"`).length - 1, 4);
+  const signDownloads = backend.ops('download').filter((call) => call.path === `img/${signShaOf('U-lead')}.jpg`);
+  assert.equal(signDownloads.length, 1, 'รูปเดียวกันดึงครั้งเดียวต่อรอบ');
+});
 
 const SOURCE = readFileSync(new URL('./surveyReportPaper.js', import.meta.url), 'utf8');
 const CODE = SOURCE.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');

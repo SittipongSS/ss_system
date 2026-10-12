@@ -24,6 +24,9 @@
 //            zones[].spots[{no,label,note,img}]   (เฉพาะจุดที่หัวหน้าเลือก),
 //            appendix{ref, decisions{by,rows,total,footnote}, scope{countLine,rows}, history[], notes[], signs[3]}
 //   · `img` = `{ attId, sha, w, h }` — ตัวเรนเดอร์แปลงเป็น src เอง (ตรึง: token `su-img:<sha>` · ร่าง: ลิงก์ไฟล์แนบ)
+//   · ⭐ ลายเซ็นจริง (PR-SIG · มติ 09/10/2026): ภาพนิ่งที่มีคีย์ `signatures` ⇒ ที่นั่งผู้ประเมินกับผู้ตรวจสอบและอนุมัติ (ทั้งการรับรองผล
+//     และสองที่นั่งแรกของภาคผนวก จ) ได้คีย์ `img` เพิ่ม — `{ attId: null, sha, w, h, sign: <ที่นั่ง> }` หรือ `null` (ยังไม่มีลายเซ็น)
+//     พร้อม `mark` = คำที่พิมพ์แทนเมื่อยังไม่มีรูป · **ภาพนิ่งที่ไม่มีคีย์นั้นได้ออบเจกต์เดิมทุกไบต์** (ตัวเรนเดอร์พิมพ์คำเดิม)
 //   · หน้าของพื้นที่ (คอลัมน์ "หน้า") ไม่อยู่ที่นี่ — มาจากตัวจัดหน้า (`layout.zonePage`) เพราะต้องจัดหน้าก่อนถึงรู้
 //
 // คำเตือนก่อนส่งผล (PR-2 §8) อยู่ท้ายไฟล์: `surveyReportSendWarnings(view)` — เตือนอย่างเดียว ไม่บล็อก
@@ -190,6 +193,27 @@ function zonePart(zone) {
 }
 
 const E_SIGN = 'ลายเซ็นอิเล็กทรอนิกส์';
+/* คำที่พิมพ์ในช่องลายเซ็นเมื่อยังไม่มีรูป (ฉบับร่างก่อนออกเอกสาร · ที่นั่งที่คนยังไม่มีลายเซ็น) — ภาษาไทยล้วน: อยู่ในฟอนต์ที่ฝัง
+   และตัวสแกนคำเตือนก่อนส่งผลอ่านสองคำนี้ด้วย (ต้องไม่ก่อคำเตือนใหม่) */
+const SIGN_PENDING = 'ลายเซ็นจะขึ้นเมื่อออกเอกสาร';
+const SIGN_NONE = 'ยังไม่มีลายเซ็น';
+
+/**
+ * ช่องลายเซ็นของที่นั่งหนึ่ง — **`null` เมื่อภาพนิ่งไม่มีคีย์ `signatures`** (ภาพนิ่งรุ่นก่อน/สวิตช์ปิด ⇒ ผู้เรียกไม่เติมอะไร ออบเจกต์เดิมทุกไบต์)
+ * มีคีย์: `{ img, mark }` — ที่นั่งมีลายเซ็น = รูป (sha ยังเป็น `null` ได้ก่อนออกเอกสาร) · ที่นั่งว่าง = `img: null`
+ * ⚠️ คีย์ชื่อ `img` โดยเจตนา: ตัวสแกนคำเตือนก่อนส่งผลข้ามคีย์นี้อยู่แล้ว (`IMAGE_KEYS`) — sha ไม่ใช่ข้อความบนกระดาษ
+ * 🔴 หยิบจาก **คีย์ที่เอ่ยชื่อ** (`assessor` · `approver`) เท่านั้น — ที่นั่งอื่นที่ภาพนิ่งรุ่นหน้าอาจพก (ฝ่ายขาย) ไม่มีทางถึงฉบับลูกค้าเอง
+ */
+function signatureOf(snapshot, seat) {
+  const signs = snapshot.signatures;
+  if (!signs || typeof signs !== 'object') return null;
+  const hit = signs[seat];
+  if (!hit || typeof hit !== 'object') return { img: null, mark: SIGN_NONE };
+  return {
+    img: { attId: null, sha: hit.img?.sha ?? null, w: hit.img?.w ?? null, h: hit.img?.h ?? null, sign: seat },
+    mark: SIGN_PENDING,
+  };
+}
 
 function signoffPart(snapshot) {
   const v = snapshot.visit || {};
@@ -199,10 +223,12 @@ function signoffPart(snapshot) {
     assessor: {
       title: 'ผู้ประเมิน', role: role ? `ฝ่ายบริการ · ${role}` : 'ฝ่ายบริการ', mark: E_SIGN,
       name: orDash(v.assignee?.name), date: dateText(v.actualDate || v.scheduledDate),
+      ...signatureOf(snapshot, 'assessor'),
     },
     approver: {
       title: 'ผู้ตรวจสอบและอนุมัติ', role: 'หัวหน้าฝ่ายบริการ', mark: E_SIGN,
       name: orDash(r.answeredByName), date: dateText(r.answeredAt),
+      ...signatureOf(snapshot, 'approver'),
     },
     // ที่นั่งลูกค้า: ลงชื่อ · (ชื่อตัวบรรจง) · วันที่ — เส้นให้เขียนเป็นของตัวเรนเดอร์ · ไม่มีบรรทัดตำแหน่ง (มติ 29/09)
     customer: { title: 'ลูกค้ารับทราบ', caption: 'ยืนยันข้อมูลหน้างาน ไม่ใช่การสั่งซื้อ' },
@@ -362,9 +388,16 @@ function appendixPart(snapshot, active) {
       { label: 'ผู้บันทึกผลวัด', lines: saverLines(active) },
       { label: 'นัดที่ทำไม่ได้ก่อนหน้า', lines: prior.length ? prior : [DASH] },
     ],
+    /* สองที่นั่งแรกได้ลายเซ็นชุดเดียวกับการรับรองผล (ภาพนิ่งมีคีย์ `signatures` เท่านั้น) · ที่นั่งฝ่ายขายไม่แตะ (สเปก PR-SIG §10) */
     signs: [
-      { title: 'ผู้ประเมิน', role: 'ส่งงานหน้างาน', signed: true, name: orDash(v.assignee?.name), date: assessorAt || DASH },
-      { title: 'หัวหน้าฝ่ายบริการ', role: 'ผู้เคาะและส่งผล', signed: true, name: orDash(r.answeredByName), date: sentAt },
+      {
+        title: 'ผู้ประเมิน', role: 'ส่งงานหน้างาน', signed: true, name: orDash(v.assignee?.name), date: assessorAt || DASH,
+        ...signatureOf(snapshot, 'assessor'),
+      },
+      {
+        title: 'หัวหน้าฝ่ายบริการ', role: 'ผู้เคาะและส่งผล', signed: true, name: orDash(r.answeredByName), date: sentAt,
+        ...signatureOf(snapshot, 'approver'),
+      },
       r.closedAt
         ? { title: 'ฝ่ายขาย', role: 'ผู้ขอ · รับผลและปิดเรื่อง', signed: true, name: orDash(r.closedByName), date: dateTimeText(r.closedAt) }
         : { title: 'ฝ่ายขาย', role: 'ผู้ขอ · รับผลและปิดเรื่อง', signed: false, name: orDash(r.requestedByName), date: 'ยังไม่ปิดเรื่อง ณ วันที่ออก' },

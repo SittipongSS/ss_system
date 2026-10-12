@@ -40,6 +40,16 @@
 //      ที่หัวหน้าเห็น) กับ `surveyConfirm` · ด่าน `surveySendMethodError` ตัดสิน **จากแถว ไม่ถามสวิตช์** (ใบที่มีพื้นที่จากแบบ
 //      ไปแล้วต้องส่งได้แม้สวิตช์ถูกปิดทีหลัง) · คำตอบลงคอลัมน์ `surveyConfirm` ของใบ และต่อท้ายบรรทัดเธรด / audit
 //      ⚠️ ใบลงหน้างานล้วน: ไม่ต้องส่งสองคีย์นี้ · คำสั่งตอบใบไม่มีคีย์ `surveyConfirm` · บรรทัดเธรดและ audit ตัวเดิมทุกตัวอักษร
+//
+// ⭐ **เอกสารพิมพ์ลายเซ็นจริงของผู้ประเมินกับผู้ส่งผล** (PR-SIG §2–§3.3 · มติเจ้าของ 09/10/2026 · สวิตช์ `SURVEY_REPORT_SIGNATURES`)
+//   🔑 เส้นนี้ **ไม่อ่านสวิตช์เอง** — ตัวตรวจเอกสาร (S5) อ่านผ่านตัวโหลดอินพุต แล้วตอบมาสองทาง:
+//      · ผู้ลงนามที่ยังไม่มีลายเซ็น = เหตุชนิด `content` ⇒ ตีกลับ 409 พร้อมชื่อและ “บัญชีของฉัน” **ก่อนเขียนอะไร** (กติกาเดียวกับใบเสนอราคา/ใบสั่งขาย)
+//      · `check.signers` (ไม่ว่าง = ทุกที่นั่งมีลายเซ็น) ⇒ เตรียมไฟล์ลายเซ็น **ก่อนเขียน** (`surveySendSignatures`): ไฟล์ที่ใช้พิมพ์ไม่ได้
+//        (หาย · ไม่ตรงกับที่บันทึก · เปิดไม่ได้ · ว่าง/จาง) ตีกลับ 409 พร้อมชื่อ · คลังช้า/ล่ม = ไม่ตีกลับ ขั้นออกเลขเตรียมซ้ำ
+//   🔑 ฉบับของลายเซ็นที่หัวหน้าเห็นตอนกด + รูปที่เตรียมแล้ว ส่งต่อให้ขั้นออกเลข (`signatures`) — เจ้าตัวเปลี่ยน/ยกเลิกลายเซ็นระหว่าง
+//      "ตรวจ" กับ "ออกเลข" ไม่ทำให้ใบที่ตอบแล้วออกเอกสารไม่ได้
+//   ⚠️ สวิตช์ปิด = `check.signers` ว่าง ⇒ ไม่มีคำสั่งอ่านตารางลายเซ็น ไม่แตะคลังลายเซ็น ไม่มีคีย์ใหม่ในภาพนิ่ง — เส้นเดิมทุกก้าว
+//   ⚠️ อ่านลายเซ็นไม่สำเร็จ = `unknown` ของตัวตรวจ ⇒ ไม่ตีกลับ (ปัญหาของระบบ) · ขั้นออกเลขอ่านใหม่ ล้มอีก = `report` ที่กดซ้ำได้
 import { recordAudit } from '@/lib/audit';
 import { appendRequestEvent } from '@/lib/sales/documentThread';
 import { appendUpdate } from '@/lib/master/updates';
@@ -58,10 +68,10 @@ import { surveyDrawingMethodEnabled } from '@/lib/service/surveyDrawingFlag';
 import { surveyMethodMix, surveyNeedsVisit } from '@/lib/service/surveyMethod';
 import { surveyReportIssueAtSend } from '@/lib/service/surveyReportRows';
 import {
-  SURVEY_SEND_OLD_PAGE_ERROR, SURVEY_SEND_PREFLIGHT_MS, SURVEY_SEND_REPORT_FAILED, SURVEY_SEND_REPORT_OFF,
+  SURVEY_SEND_OLD_PAGE_ERROR, SURVEY_SEND_PREFLIGHT_MS, SURVEY_SEND_REPORT_FAILED, SURVEY_SEND_REPORT_OFF, SURVEY_SEND_SIGN_MS,
   SURVEY_SEND_WARNINGS_CHANGED_ERROR, surveySendCloseBody, surveySendDiffBaseline, surveySendDocumentRefusal,
-  surveySendImageRefusal, surveySendMethodError, surveySendMethodText, surveySendReport, surveySendSiteVisitError,
-  surveySendUnseenWarnings, surveySendVisitStep, surveySendWrites,
+  surveySendImageRefusal, surveySendMethodError, surveySendMethodText, surveySendReport, surveySendSignatureRefusal,
+  surveySendSiteVisitError, surveySendUnreadSignRefusal, surveySendUnseenWarnings, surveySendVisitStep, surveySendWrites,
 } from '@/lib/service/surveySendClose';
 import {
   surveyChangeCounts, surveyChangeText, surveyPackagesText, surveySendError, surveyTotals, surveyTotalsDiff,
@@ -114,35 +124,89 @@ async function surveySendPreflight(supabase, requestId) {
 }
 
 /**
- * S5 — **เหตุที่เอกสารออกไม่ได้เพราะเนื้อของใบ** · คืนประโยค 409 หรือ `null` (ส่งผลต่อได้)
+ * S5 (ต่อ · PR-SIG §3.3) — **เตรียมไฟล์ลายเซ็นของผู้ลงนามก่อนเขียนอะไรทั้งสิ้น** · คืน `{ refusal, signatures }`
+ *
+ * @param signers `check.signers` ของตัวตรวจ — ลายเซ็นฉบับที่ใช้อยู่ของแต่ละคน ณ ตอนกด (ไม่ว่าง = กติกาลายเซ็นจริงเปิด + ทุกที่นั่งมีลายเซ็น)
+ *
+ * 🔴 ไฟล์ที่ **ใช้พิมพ์ไม่ได้** (หายจากคลัง · ไม่ตรงกับที่บันทึก · เปิดไม่ได้ · ว่างหรือจาง) ต้องเจอตอนที่ใบยังไม่ถูกตอบ — หลังตอบใบแล้วเอกสาร
+ *    จะออกไม่ได้จนกว่าเจ้าของลายเซ็นอัปโหลดใหม่ และหัวหน้าทำแทนไม่ได้ ⇒ `refusal` (409 พร้อมชื่อเจ้าของและเหตุ)
+ * 🔴 คลังช้า/ล่ม · อัปสำเนาไม่ขึ้น · หมดงบเวลา · โหลดตัวย่อรูปไม่ได้ · ตัวเตรียมโยน = **ไม่ตีกลับ** (ลง log แล้วส่งผลต่อ · ขั้นออกเลขเตรียมซ้ำเอง)
+ * ⭐ `signatures` = `{ signers, imageByVersionId }` ส่งต่อให้ขั้นออกเลข — **`signers` ไปด้วยเสมอ แม้เตรียมไฟล์ไม่ครบ**: ขั้นออกเลขตรึงฉบับตามที่
+ *    หัวหน้าเห็นตอนกด (เจ้าตัวเปลี่ยน/ยกเลิกลายเซ็นคั่นกลางไม่มีผล) และไม่อ่านไฟล์ที่เตรียมแล้วซ้ำ
+ * ⚠️ เขียนได้อย่างเดียวคือสำเนา `img/<sha>.jpg` (อ้างด้วยเนื้อไฟล์ เหมือนรูปของรอบตรวจ — ส่งผลไม่สำเร็จก็ไม่เสียอะไร) · คลังลายเซ็นถูกอ่านอย่างเดียว
+ * ⚠️ โมดูลรูปถูกโหลดไปแล้วโดยรอบตรวจรูป (S3) ในกิ่งเดียวกัน — `await import()` ตรงนี้ไม่เพิ่มของหนักให้เส้นไหน
+ */
+async function surveySendSignatures(supabase, signers, label) {
+  const rows = Array.isArray(signers) ? signers : [];
+  if (!rows.length) return { refusal: null, signatures: null };
+  let imageByVersionId = {};
+  try {
+    const { prepareSurveyReportSignatures } = await import('@/lib/service/surveyReportImages');
+    const prepared = await prepareSurveyReportSignatures(supabase, rows, { deadline: SURVEY_SEND_SIGN_MS });
+    const failed = Array.isArray(prepared?.failed) ? prepared.failed : [];
+    const refusal = surveySendSignatureRefusal(failed);
+    if (refusal) return { refusal, signatures: null };
+    if (failed.length) {
+      console.warn('[survey-report] เตรียมลายเซ็นก่อนส่งผลไม่ครบ — ส่งผลต่อ ขั้นออกเลขจะเตรียมซ้ำ', label,
+        failed.map((f) => `${f.name || 'ผู้ลงนาม'}: ${f.reason}`).join(' · '));
+    }
+    if (prepared?.imageByVersionId && typeof prepared.imageByVersionId === 'object') imageByVersionId = prepared.imageByVersionId;
+  } catch (e) {
+    console.error('[survey-report] เตรียมลายเซ็นก่อนส่งผลล้ม — ส่งผลต่อ', label, message(e));
+  }
+  return { refusal: null, signatures: { signers: rows, imageByVersionId } };
+}
+
+/**
+ * S5 — **เหตุที่เอกสารออกไม่ได้เพราะเนื้อของใบ** · คืน `{ error, signatures }` — `error` = ประโยค 409 หรือ `null` (ส่งผลต่อได้) ·
+ *   `signatures` = ของที่ส่งต่อให้ขั้นออกเลข (`surveySendSignatures`) หรือ `null`
  *
  * 1. นัดที่ค้างยังเป็นร่าง → ประโยคของ `surveySendVisitStep` เอง (ประโยคเดียวกับที่ลำดับการเขียนตอบ — ถ้าไม่ดักตรงนี้
  *    ตัวตรวจข้างล่างจะแทนด้วย "ไม่พบนัดประเมิน" ซึ่งชี้ผิดทาง) · ใบงานโต๊ะที่ยังมีนัดร่าง/นัดไว้ค้าง = ประโยคของงานโต๊ะ
  *    (`needsVisit` ตัวเดียวกับที่ด่านรูปจุดและลำดับการเขียนใช้ — สามที่ต้องตอบเรื่องนัดตรงกัน)
  * 2. server เจอคำเตือนที่จอไม่ได้ส่งมาใน `seenWarnings` → ให้โหลดหน้าใหม่ (หัวหน้าต้องได้อ่านก่อนเอกสารถูกตรึง)
- * 3. เหตุชนิด `content` ของตัวตรวจ (ผังเป็น PDF/HEIC/BMP · ไม่มีนัดที่ปิด/ไม่มีวัน/ไม่มีผู้ประเมิน · หน้าล้น) → ตีกลับ
- * 🔴 ตัวตรวจอ่านไม่ครบ (`unknown`) หรือโยน = **ข้ามข้อ 2 กับ 3** แล้วลง log — ปัญหาของระบบไม่ขวางการส่งผล
+ * 3. เหตุชนิด `content` ของตัวตรวจ (ผังเป็น PDF/HEIC/BMP · ไม่มีนัดที่ปิด/ไม่มีวัน/ไม่มีผู้ประเมิน · หน้าล้น ·
+ *    **ผู้ประเมินหรือผู้ส่งผลยังไม่มีลายเซ็น** เมื่อกติกาลายเซ็นจริงเปิด — บรรทัดเอ่ยชื่อและ “บัญชีของฉัน”) → ตีกลับ
+ * 4. ผ่านสามข้อแล้วและตัวตรวจคืนผู้ลงนาม (`check.signers`) → เตรียมไฟล์ลายเซ็น: ไฟล์ที่ใช้พิมพ์ไม่ได้ = ตีกลับพร้อมชื่อ (PR-SIG §3.3)
+ * 🔴 ตัวตรวจอ่านไม่ครบ (`unknown` — รวมอ่านตารางลายเซ็นไม่สำเร็จ) หรือโยน = **ข้ามข้อ 2–4** แล้วลง log — ปัญหาของระบบไม่ขวางการส่งผล
+ *    ⭐ ข้อยกเว้นเดียว: ผู้ลงนามที่ **รู้แน่** ว่ายังไม่มีลายเซ็น (ตารางลายเซ็น · นัด · ผลวัด อ่านได้ครบ) ยังตีกลับ แม้ชิ้นอื่นอ่านไม่สำเร็จ
+ *       (`surveySendUnreadSignRefusal`) — ดีล/บริษัท/มาตรฐานเอกสารสะดุดต้องไม่เปิดทางให้ใบถูกตอบโดยไม่มีลายเซ็น
  */
 async function surveySendDocumentError(supabase, {
   request, user, zones, filesByZone, open, today, nowIso, seenWarnings, needsVisit,
 }) {
+  const pass = { error: null, signatures: null };
   const step = surveySendVisitStep(open, { today, needsVisit });
-  if (step.action === 'block') return step.error;
+  if (step.action === 'block') return { error: step.error, signatures: null };
+  const label = request?.docNo || request?.id;
+  let check;
   try {
     const { surveyReportPrecheck } = await import('@/lib/service/surveyReportInputs');
     /* ทะเบียนขนาดไม่ได้ส่งต่อ (ตัวตรวจอ่านเอง) — ด่าน "ขนาดถูกลบ" ข้างบนอ่านแล้วส่งเข้าด่านในคำสั่งเดียว (ยามซอร์สล็อกบรรทัดนั้นไว้) */
-    const check = await surveyReportPrecheck(supabase, { request, user, zones, filesByZone, open, today, nowIso });
+    check = await surveyReportPrecheck(supabase, { request, user, zones, filesByZone, open, today, nowIso });
     const unknown = Array.isArray(check?.unknown) ? check.unknown : ['precheck'];
     if (unknown.length) {
-      console.error('[survey-report] ตรวจเอกสารก่อนส่งผลอ่านไม่ครบ — ส่งผลต่อ', request?.docNo || request?.id, unknown.join(' · '));
-      return null;
+      /* 🔴 ผู้ลงนามที่ **รู้แน่** ว่ายังไม่มีลายเซ็นยังต้องตีกลับ แม้ชิ้นอื่นที่ไม่เกี่ยวกับลายเซ็นอ่านไม่สำเร็จ (มติเจ้าของ 09/10:
+         ตีกลับก่อนเขียนอะไร) — ชิ้นที่ตัดสินเรื่องลายเซ็นเองอ่านไม่ได้ = ไม่รู้ ⇒ ไม่ตีกลับตามเดิม (`surveySendUnreadSignRefusal`) */
+      const signRefusal = surveySendUnreadSignRefusal(check);
+      if (signRefusal) {
+        console.error('[survey-report] ตรวจเอกสารก่อนส่งผลอ่านไม่ครบ แต่ผู้ลงนามยังไม่มีลายเซ็น — ตีกลับ', label, unknown.join(' · '));
+        return { error: signRefusal, signatures: null };
+      }
+      console.error('[survey-report] ตรวจเอกสารก่อนส่งผลอ่านไม่ครบ — ส่งผลต่อ', label, unknown.join(' · '));
+      return pass;
     }
-    if (surveySendUnseenWarnings(check.warnings, seenWarnings).length) return SURVEY_SEND_WARNINGS_CHANGED_ERROR;
-    return surveySendDocumentRefusal(check.blockers);
+    if (surveySendUnseenWarnings(check.warnings, seenWarnings).length) return { error: SURVEY_SEND_WARNINGS_CHANGED_ERROR, signatures: null };
+    const refusal = surveySendDocumentRefusal(check.blockers);
+    if (refusal) return { error: refusal, signatures: null };
   } catch (e) {
-    console.error('[survey-report] ตรวจเอกสารก่อนส่งผลล้ม — ส่งผลต่อ', request?.docNo || request?.id, message(e));
-    return null;
+    console.error('[survey-report] ตรวจเอกสารก่อนส่งผลล้ม — ส่งผลต่อ', label, message(e));
+    return pass;
   }
+  /* ข้อ 4 — นอก try ข้างบนโดยตั้งใจ: ตัวเตรียมลายเซ็นมี try/catch ของตัวเอง (ล้ม = ส่งผลต่อ **พร้อมฉบับที่ตรึงไว้**) ·
+     ถ้าอยู่ใน try เดียวกัน การล้มของมันจะทิ้งฉบับที่ตรึงไปด้วย */
+  const signed = await surveySendSignatures(supabase, check.signers, label);
+  return { error: signed.refusal, signatures: signed.signatures };
 }
 
 /**
@@ -151,13 +215,16 @@ async function surveySendDocumentError(supabase, {
  * ⚠️ ขั้นออกเลขสัญญาว่าไม่โยน และเขียน audit ของการล้มเอง — try/catch ตรงนี้กันสิ่งที่อยู่นอกสัญญานั้น
  *    (โหลดโมดูลไม่ได้ · บั๊ก) ซึ่งไม่มีใครเขียน audit ให้ ⇒ เขียนที่นี่ (§12 "ออกเอกสารไม่สำเร็จหลังส่งผล")
  * ⚠️ ไม่เขียนบรรทัดเธรดของเอกสาร — แถวคำตอบของการส่งผลครั้งนี้ยิงกระดิ่งถึงผู้ขอไปแล้ว (มติเจ้าของ 01/10 ข้อ 4)
+ * @param signatures ของที่ S5 เตรียมไว้ก่อนเขียน (`{ signers, imageByVersionId }` | `null`) — ส่งต่อให้ขั้นออกเลขตามตัว
  */
-async function surveySendIssue(supabase, { request, user, closedVisit, prepared, req }) {
+async function surveySendIssue(supabase, { request, user, closedVisit, prepared, signatures, req }) {
   try {
     const { issueSurveyReport, SURVEY_REPORT_IMAGE_BUDGET_MS } = await import('@/lib/service/surveyReportIssue');
     const result = await issueSurveyReport(supabase, {
       request, user, closedVisit: closedVisit || null, via: 'send', prepared,
       deadline: SURVEY_REPORT_IMAGE_BUDGET_MS.send, req,
+      // ฉบับของลายเซ็นที่ตรึงตอนกดส่ง + รูปที่เตรียมแล้ว (S5 · PR-SIG) — `null` เมื่อกติกาลายเซ็นจริงปิดหรือตัวตรวจถูกข้าม
+      signatures: signatures || null,
     });
     return surveySendReport(result);
   } catch (e) {
@@ -258,12 +325,16 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       if (siteVisitGate) return conflict(siteVisitGate);
     }
 
-    /* S5 — เรื่องของเอกสารที่ตีกลับได้ ต้องตีกลับ **ตรงนี้** (ก่อนปิดนัด/ตอบใบ) · หลังบรรทัดนี้ไม่มีอะไรของเอกสารตีกลับอีก */
+    /* S5 — เรื่องของเอกสารที่ตีกลับได้ ต้องตีกลับ **ตรงนี้** (ก่อนปิดนัด/ตอบใบ) · หลังบรรทัดนี้ไม่มีอะไรของเอกสารตีกลับอีก
+       ⭐ รวมเรื่องลายเซ็นของผู้ลงนาม (PR-SIG): ยังไม่มีลายเซ็น · ไฟล์ลายเซ็นใช้พิมพ์ไม่ได้ — ทั้งคู่ตอบพร้อมชื่อ ก่อนเขียนอะไร
+       · `signatures` = ฉบับที่ตรึงตอนกด + รูปที่เตรียมแล้ว ส่งต่อให้ขั้นออกเลข (S8) */
+    let signatures = null;
     if (issueAtSend) {
-      const documentError = await surveySendDocumentError(supabase, {
+      const documentCheck = await surveySendDocumentError(supabase, {
         request, user, zones, filesByZone, open, today, nowIso, seenWarnings: body.seenWarnings, needsVisit,
       });
-      if (documentError) return conflict(documentError);
+      if (documentCheck.error) return conflict(documentCheck.error);
+      signatures = documentCheck.signatures;
     }
 
     const patch = {
@@ -399,9 +470,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       request: req,
     });
     /* S8 — ออกเลขเอกสาร **หลัง** กระดิ่งและ audit (มติเจ้าของ 01/10 ข้อ 1) · ฝ่ายขายได้ผลไปแล้ว ⇒ ตรงนี้ล้มยังไงก็ตอบ 200
-       ⚠️ ไม่มีอะไรใหม่คั่นระหว่าง "ตอบใบ" กับ "กระดิ่ง" — รูปที่เตรียมไว้ (`prepared`) มาจากรอบตรวจก่อนเขียน */
+       ⚠️ ไม่มีอะไรใหม่คั่นระหว่าง "ตอบใบ" กับ "กระดิ่ง" — รูปที่เตรียมไว้ (`prepared`) กับลายเซ็น (`signatures`) มาจากรอบตรวจก่อนเขียน */
     const report = issueAtSend
-      ? await surveySendIssue(supabase, { request: data, user, closedVisit, prepared, req })
+      ? await surveySendIssue(supabase, { request: data, user, closedVisit, prepared, signatures, req })
       : SURVEY_SEND_REPORT_OFF;
     // จอบอกผลที่เกิดกับนัดด้วย — "ส่งผลแล้ว" เฉย ๆ ไม่บอกว่านัดบนตารางช่างปิดแล้ว · `report` = ผลของเอกสาร (S9 · จอรุ่นเก่าไม่อ่าน)
     return ok({ request: data, totals, closedVisit: closedVisit || null, report });

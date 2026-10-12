@@ -21,10 +21,12 @@ import {
   SURVEY_REPORT_INPUT_LABELS, SURVEY_REPORT_NO_VISIT, buildSurveyReportSnapshot, surveyReportFreezeIssues,
 } from './surveyReportSnapshot.js';
 import { surveyReportCustomerHtmlIssues } from './surveyReportState.js';
+import { signatureTables } from './surveyReportSignWorld.mjs';
+import { surveyReportSignerVersions } from './surveyReportSigners.js';
 import { customerFreeTextWarnings, surveyReportView } from './surveyReportView.js';
 import { surveySendCloseBody, surveySendVisitStep } from './surveySendClose.js';
 import {
-  TEST_COMPANY, TEST_FORM, stressSurveyInputs, surveyReportInputsFromFixture, syntheticSurveyFixture, thaiText,
+  TEST_COMPANY, TEST_FORM, fakeSha, stressSurveyInputs, surveyReportInputsFromFixture, syntheticSurveyFixture, thaiText,
 } from './surveyReportTestKit.mjs';
 
 const SOURCE = 'src/lib/service/surveyReportInputs.js';
@@ -166,8 +168,11 @@ function worldFrom(source, { visits = null, helperIds = [], users = {}, thread =
       { documentKey: 'quotation', status: 'published', versionNumber: 9, formCode: 'FM-SA-01', revision: '05', effectiveDate: '2026-01-01', titleEn: 'QUOTATION' },
     ],
   };
+  /* บัญชีของผู้ลงนามทั้งสองที่นั่ง — กติกาลายเซ็นจริงอ่านบัญชีเพื่อตัดสินว่าลายเซ็นของเขาขึ้นที่นั่งนั้นได้ไหม
+     (ผู้ประเมิน = บัญชีฝ่ายบริการ · ผู้ส่งผลบนแถว `U-head` = ผู้ช่วยผู้จัดการฝ่ายบริการ) */
   const people = {
     'U-lead': { id: 'U-lead', email: 'lead@example.test', app_metadata: { role: 'ts_senior' }, user_metadata: { name: 'Lead Assessor' } },
+    'U-head': { id: 'U-head', email: 'head@example.test', app_metadata: { role: 'ts_manager' }, user_metadata: { name: 'Head Approver' } },
     ...users,
   };
   return { db: fakeDb(tables, { users: people, ...options }), request, tables, source };
@@ -175,10 +180,16 @@ function worldFrom(source, { visits = null, helperIds = [], users = {}, thread =
 
 const twinWorld = (extra) => worldFrom(twin(), extra);
 
-/* ภาพนิ่งจากอินพุตของตัวโหลด — เติมรูปที่เตรียมแล้วของชุดทดสอบ (ขั้นออกเลขเป็นคนเติมของจริง) */
-const snapshotOf = (inputs, source, mode = 'freeze') => (
-  buildSurveyReportSnapshot({ ...inputs, imageByAttId: source.imageByAttId }, { mode })
-);
+/* ภาพนิ่งจากอินพุตของตัวโหลด — เติมรูปที่เตรียมแล้วของชุดทดสอบ (ขั้นออกเลขเป็นคนเติมของจริง)
+   กติกาลายเซ็นจริงเปิด: เติมรูปลายเซ็นที่ "เตรียมแล้ว" ของทุกฉบับที่ตัวโหลดอ่านได้ด้วย (ขั้น I4b ของจริง) */
+const snapshotOf = (inputs, source, mode = 'freeze') => buildSurveyReportSnapshot({
+  ...inputs,
+  imageByAttId: source.imageByAttId,
+  ...(inputs.signatures ? {
+    signatureImageByVersionId: Object.fromEntries(Object.values(inputs.signatures).filter(Boolean)
+      .map((v) => [v.versionId, { sha: fakeSha(v.versionId), w: 533, h: 200, bytes: 1 }])),
+  } : {}),
+}, { mode });
 
 /* ══ 1. ตัวโหลด: อ่านครบ ได้ภาพนิ่งเท่าของชุดทดสอบ ═════════════════════════════════════════ */
 
@@ -282,6 +293,12 @@ const FAILURES = [
   { name: 'sizes', fail: { service_package_sizes: { times: 1 } }, nulls: ['sizes'], back: (i) => i.sizes.length === 4 },
   { name: 'company', fail: { organization_setting_versions: { times: 1 } }, nulls: ['company'], back: (i) => i.company.taxId === TEST_COMPANY.taxId },
   { name: 'form', fail: { document_standard_versions: { times: 1 } }, nulls: ['form'], back: (i) => i.form.code === 'FM-TS-01' },
+  /* กติกาลายเซ็นจริงเปิด (`load`) — อ่านรากลายเซ็นพลาดต้องเป็น "อ่านไม่สำเร็จ" ไม่ใช่ "ยังไม่มีลายเซ็น" · รอบสองได้ฉบับของทั้งสองคนกลับมา */
+  {
+    name: 'signatures', fail: { user_signatures: { times: 1 } }, nulls: ['signatures'],
+    load: { signatureRule: 'required' }, seed: () => signatureTables(['U-lead', 'U-head']),
+    back: (i) => i.signatures['U-lead'].versionId === 'signature-version-U-lead-1' && i.signatures['U-head'].versionNumber === 1,
+  },
 ];
 
 test('ตารางความล้มเหลวครอบทุกชื่อที่มีป้าย — เพิ่มชิ้นใหม่ต้องเพิ่มแถวทดสอบ', () => {
@@ -293,8 +310,10 @@ for (const throws of [false, true]) {
     test(`🔴 อ่าน ${row.name} ไม่สำเร็จ (${throws ? 'throw' : '{ error }'}) = unknown เอ่ยชื่อ · ไม่ถูกมองเป็น "ไม่มี" · รอบถัดไปได้ค่ากลับมา`, async () => {
       const arm = (rules) => Object.fromEntries(Object.entries(rules || {}).map(([k, v]) => [k, { ...v, throws }]));
       const world = twinWorld({ ...HELPER_WORLD, options: { fail: arm(row.fail), authFail: arm(row.authFail) } });
+      if (row.seed) Object.assign(world.tables, row.seed());
+      const load = (extra = {}) => loadSurveyReportInputs(world.db, { request: world.request, takenAt: world.source.takenAt, ...row.load, ...extra });
 
-      const first = await loadSurveyReportInputs(world.db, { request: world.request, takenAt: world.source.takenAt });
+      const first = await load();
       assert.deepEqual(first.unknown, [row.name]);
       assert.deepEqual(first.inputs.unknown, [row.name]);
       for (const key of row.nulls) assert.equal(first.inputs[key], null, `${key} ต้องเป็น null`);
@@ -306,7 +325,7 @@ for (const throws of [false, true]) {
       // โหมดตรึงไม่ออกภาพนิ่งจากอินพุตที่มีชิ้นไม่ทราบ — กระดาษที่ตรึงแล้วเติมช่องที่หายทีหลังไม่ได้
       assert.deepEqual(snapshotOf(first.inputs, world.source).errors, [`อ่าน${label}ไม่สำเร็จ`]);
 
-      const second = await loadSurveyReportInputs(world.db, { request: world.request, takenAt: world.source.takenAt });
+      const second = await load();
       assert.deepEqual(second.unknown, []);
       assert.ok(row.back(second.inputs), 'รอบสองต้องได้ค่ากลับมา');
       assert.deepEqual(surveyReportFreezeIssues(second.inputs), []);
@@ -730,3 +749,451 @@ test('ภาพนิ่งโหมดตรวจออกไม่ได้ (
   assert.equal(result.blockers[0].kind, 'content');
   assert.ok(result.warnings.some((w) => /"เครื่อง"/.test(w) && /"ราคา"/.test(w)), JSON.stringify(result.warnings));
 });
+
+/* ══ 6. ลายเซ็นของผู้ลงนาม (PR-SIG §3.1 · มติเจ้าของ 09/10/2026) ═════════════════════════════ */
+
+const SIGN_KEYS = ['signatureRule', 'signatures', 'answerPending', 'assigneeAccount', 'signerEligible'];
+const signQueries = (db) => db.log.filter((q) => q.table === 'user_signatures' || q.table === 'user_signature_versions');
+const withSwitch = async (value, run) => {
+  const before = process.env.SURVEY_REPORT_SIGNATURES;
+  if (value === undefined) delete process.env.SURVEY_REPORT_SIGNATURES;
+  else process.env.SURVEY_REPORT_SIGNATURES = value;
+  try { return await run(); } finally {
+    if (before === undefined) delete process.env.SURVEY_REPORT_SIGNATURES;
+    else process.env.SURVEY_REPORT_SIGNATURES = before;
+  }
+};
+/** โลกของแฝดสังเคราะห์ + ตารางลายเซ็นของ `users` (ผู้ประเมิน U-lead · ผู้ส่งผลบนแถว U-head) */
+function signWorld(users = ['U-lead', 'U-head'], extra = {}) {
+  const world = twinWorld(extra);
+  const seeded = signatureTables(users);
+  Object.assign(world.tables, seeded);
+  return { ...world, versions: seeded.versions };
+}
+const loadSigned = (world, extra = {}) => loadSurveyReportInputs(world.db, {
+  request: world.request, takenAt: NOW, signatureRule: 'required', ...extra,
+});
+
+test('🔴 กติกาปิด (สวิตช์ไม่ตั้ง · `off` · ค่าแปลก): ไม่อ่านตารางลายเซ็นสักคำสั่ง และอินพุตไม่มีคีย์ของลายเซ็นเลย', async () => {
+  for (const [env, option] of [[undefined, undefined], [undefined, 'off'], ['on', 'off'], ['1', undefined], ['on', false], ['on', 'yes']]) {
+    const world = signWorld();
+    const { inputs, unknown } = await withSwitch(env, () => loadSurveyReportInputs(world.db, {
+      request: world.request, takenAt: NOW, signatureRule: option,
+    }));
+    const at = `env=${env} option=${option}`;
+    assert.deepEqual(unknown, [], at);
+    assert.equal(signQueries(world.db).length, 0, at);
+    for (const key of SIGN_KEYS) assert.equal(key in inputs, false, `${at}: ${key}`);
+    assert.equal('signatures' in snapshotOf(inputs, world.source).snapshot, false, at);
+  }
+});
+
+test('สวิตช์ SURVEY_REPORT_SIGNATURES=on + ไม่ส่งตัวเลือก = กติกาเปิด · `required` ที่ส่งมาตรง ๆ เปิดได้แม้สวิตช์ปิด (harness · สคริปต์ตรวจ)', async () => {
+  const byEnv = signWorld();
+  const a = await withSwitch('on', () => loadSurveyReportInputs(byEnv.db, { request: byEnv.request, takenAt: NOW }));
+  assert.equal(a.inputs.signatureRule, 'required');
+  assert.equal(signQueries(byEnv.db).length, 2);
+  // `null` = ไม่ได้ตัดสิน ⇒ ตามสวิตช์เหมือนไม่ส่ง
+  const byNull = signWorld();
+  assert.equal((await withSwitch('on', () => loadSurveyReportInputs(byNull.db, { request: byNull.request, takenAt: NOW, signatureRule: null }))).inputs.signatureRule, 'required');
+  const byOption = signWorld();
+  const b = await withSwitch(undefined, () => loadSigned(byOption));
+  assert.equal(b.inputs.signatureRule, 'required');
+  assert.deepEqual(b.inputs.signatures, a.inputs.signatures);
+});
+
+test('⭐ กติกาเปิด: อ่านรากด้วย userId แล้วอ่านฉบับด้วย id — สองคำสั่ง มีเพดาน ตารางล้วน · ได้ฉบับที่ใช้อยู่ของผู้ประเมินกับผู้ส่งผล', async () => {
+  const world = signWorld();
+  const { inputs, unknown } = await loadSigned(world);
+  assert.deepEqual(unknown, []);
+  assert.equal(inputs.signatureRule, 'required');
+  assert.equal(inputs.assigneeAccount, 'active');
+  assert.deepEqual(inputs.signerEligible, { assessor: true, approver: true }, 'บัญชีฝ่ายบริการ + ผู้ส่งผลที่เป็นหัวหน้า');
+  assert.equal('answerPending' in inputs, false, 'ใบที่ส่งไปแล้วไม่มีผู้ส่งที่กำลังจะเขียน');
+  for (const id of ['U-lead', 'U-head']) {
+    const v = world.versions[id];
+    assert.deepEqual(inputs.signatures[id], {
+      versionId: v.id, versionNumber: v.versionNumber, storagePath: v.storagePath, sha256: v.sha256, width: v.width, height: v.height,
+    });
+  }
+  assert.deepEqual(Object.keys(inputs.signatures).sort(), ['U-head', 'U-lead']);
+
+  const [roots, versions] = signQueries(world.db);
+  assert.equal(signQueries(world.db).length, 2);
+  assert.equal(roots.table, 'user_signatures');
+  assert.equal(roots.select, '"userId", "activeVersionId"');
+  assert.deepEqual(roots.filters, [['in', 'userId', ['U-lead', 'U-head']]], 'ถามด้วย userId ไม่ใช่ id ของราก');
+  assert.equal(roots.limit, 2);
+  assert.equal(versions.table, 'user_signature_versions');
+  assert.equal(versions.select, 'id, "versionNumber", "storagePath", sha256, width, height');
+  assert.deepEqual(versions.filters, [['in', 'id', ['signature-version-U-lead-1', 'signature-version-U-head-1']]]);
+  assert.equal(versions.limit, 2);
+  // 🔴 ตัวโหลดไม่แตะคลังไฟล์ (ฐานปลอมโยนเมื่อถูกถาม `storage`) และไม่มีคำสั่งเขียน
+  for (const q of world.db.log) assert.equal(q.op, 'select');
+  assert.doesNotMatch(code(SOURCE), /\.storage\b|\.download\(|signature-assets/);
+  // ผู้ลงนามพร้อมพิมพ์ = สองคน พร้อมฉบับ
+  assert.deepEqual(surveyReportSignerVersions(inputs).map((s) => [s.seats.join('+'), s.name, s.version.versionId]), [
+    ['assessor', 'Lead Assessor', 'signature-version-U-lead-1'], ['approver', 'Head Approver', 'signature-version-U-head-1'],
+  ]);
+  assert.deepEqual(surveyReportFreezeIssues(inputs), []);
+});
+
+test('ยังไม่มีลายเซ็น (ไม่มีราก) · ยกเลิกลายเซ็นแล้ว (รากไม่มีฉบับที่ใช้อยู่) = `null` ของคนนั้น — ไม่ใช่ unknown · ไม่อ่านตารางฉบับเมื่อไม่มีใครมี', async () => {
+  const none = signWorld([]);
+  const a = await loadSigned(none);
+  assert.deepEqual(a.unknown, []);
+  assert.deepEqual(a.inputs.signatures, { 'U-lead': null, 'U-head': null });
+  assert.deepEqual(signQueries(none.db).map((q) => q.table), ['user_signatures']);
+  assert.deepEqual(surveyReportFreezeIssues(a.inputs).map((i) => [i.kind, i.sign, i.userId]), [
+    ['content', true, 'U-lead'], ['content', true, 'U-head'],
+  ]);
+
+  const revoked = signWorld(['U-lead', { userId: 'U-head', revoked: true }]);
+  const b = await loadSigned(revoked);
+  assert.deepEqual(b.unknown, []);
+  assert.equal(b.inputs.signatures['U-head'], null);
+  assert.equal(b.inputs.signatures['U-lead'].versionId, 'signature-version-U-lead-1');
+  assert.deepEqual(signQueries(revoked.db)[1].filters, [['in', 'id', ['signature-version-U-lead-1']]]);
+  assert.deepEqual(surveyReportFreezeIssues(b.inputs).map((i) => i.text), [
+    'ผู้ตรวจสอบและอนุมัติ Head Approver (ผู้ส่งผล) ยังไม่มีลายเซ็นในระบบ — ให้เจ้าตัวเพิ่มที่ “บัญชีของฉัน” หรือดึงผลกลับแล้วให้หัวหน้าที่มีลายเซ็นส่งใหม่',
+  ]);
+});
+
+for (const throws of [false, true]) {
+  test(`🔴 อ่านตารางฉบับไม่สำเร็จ (${throws ? 'throw' : '{ error }'}) · รากชี้ฉบับที่ไม่มีแถว = unknown เอ่ยชื่อ signatures — ไม่มีวันกลายเป็น "ยังไม่มีลายเซ็น"`, async () => {
+    const broken = signWorld(['U-lead', 'U-head'], { options: { fail: { user_signature_versions: { times: 1, throws } } } });
+    const first = await loadSigned(broken);
+    assert.deepEqual(first.unknown, ['signatures']);
+    assert.equal(first.inputs.signatures, null);
+    assert.deepEqual(surveyReportFreezeIssues(first.inputs), [{ kind: 'system', text: 'อ่านลายเซ็นของผู้ลงนามไม่สำเร็จ' }]);
+    assert.deepEqual(surveyReportSignerVersions(first.inputs), []);
+    assert.deepEqual((await loadSigned(broken)).unknown, [], 'รอบถัดไปอ่านได้');
+
+    const dangling = signWorld();
+    dangling.tables.user_signature_versions = dangling.tables.user_signature_versions.filter((v) => v.createdById !== 'U-head');
+    const lost = await loadSigned(dangling);
+    assert.deepEqual(lost.unknown, ['signatures']);
+    assert.ok(!surveyReportFreezeIssues(lost.inputs).some((i) => i.sign));
+  });
+}
+
+test('🔴 ชิ้น signatures มีป้าย — ไม่มีป้าย = ตัวโหลดทิ้งชื่อนี้จาก unknown แล้วการอ่านที่ล้มกลายเป็น "ไม่มีใครมีลายเซ็น" เงียบ ๆ', async () => {
+  assert.equal(SURVEY_REPORT_INPUT_LABELS.signatures, 'ลายเซ็นของผู้ลงนาม');
+  const world = signWorld(['U-lead', 'U-head'], { options: { fail: { user_signatures: { times: 1 } } } });
+  const { inputs, unknown } = await loadSigned(world);
+  assert.ok(unknown.includes('signatures') && inputs.unknown.includes('signatures'));
+  // ลำดับใน unknown เดินตามตารางป้าย — signatures อยู่ถัดจากชิ้นของนัด
+  const order = Object.keys(SURVEY_REPORT_INPUT_LABELS);
+  assert.ok(order.indexOf('signatures') > order.indexOf('assigneeRole'));
+});
+
+test('คนเดียวสองที่นั่ง (หัวหน้าไปประเมินเองแล้วส่งผลเอง) = ถามคนเดียว เพดานหนึ่งแถว', async () => {
+  const world = signWorld(['U-lead']);
+  const { inputs } = await loadSigned(world, { request: { ...world.request, answeredById: 'U-lead', answeredByName: 'Lead Assessor' } });
+  assert.deepEqual(Object.keys(inputs.signatures), ['U-lead']);
+  assert.deepEqual(signQueries(world.db).map((q) => q.limit), [1, 1]);
+  assert.deepEqual(surveyReportSignerVersions(inputs).map((s) => s.seats), [['assessor', 'approver']]);
+});
+
+test('ผู้ส่งที่กำลังจะเขียน (`pendingAnswer`): ลายเซ็นของคนกด ไม่ใช่ของผู้ส่งรอบก่อนบนแถว · `answerPending: true`', async () => {
+  const world = signWorld(['U-lead', 'U-head']);
+  const request = { ...world.request, answeredAt: null, answeredById: null, answeredByName: null };
+  const { inputs } = await loadSigned(world, {
+    request, pendingAnswer: { answeredAt: NOW, answeredById: HEAD.id, answeredByName: HEAD.name },
+  });
+  assert.equal(inputs.answerPending, true);
+  assert.deepEqual(Object.keys(inputs.signatures).sort(), ['U-head-now', 'U-lead']);
+  assert.equal(inputs.signatures['U-head-now'], null);
+  assert.deepEqual(surveyReportFreezeIssues(inputs).map((i) => i.text), [
+    'ผู้ตรวจสอบและอนุมัติ Head Sender (ผู้ส่งผล) ยังไม่มีลายเซ็นในระบบ — เพิ่มที่ “บัญชีของฉัน” ก่อนส่งผล หรือให้หัวหน้าที่มีลายเซ็นแล้วเป็นผู้ส่งผล',
+  ]);
+});
+
+test('สถานะบัญชีของผู้ประเมิน: ใช้งาน · ถูกระงับ (banned_until อนาคต) · ถูกลบ (404) · อ่านไม่สำเร็จ = ไม่ทราบ — ไม่มี query เพิ่ม', async () => {
+  const lead = (extra) => ({ 'U-lead': { id: 'U-lead', app_metadata: { role: 'ts_senior' }, user_metadata: { name: 'Lead Assessor' }, ...extra } });
+  const accountOf = async (world) => (await loadSigned(world)).inputs.assigneeAccount;
+
+  const active = signWorld([]);
+  assert.equal(await accountOf(active), 'active');
+  // บัญชีผู้ประเมินถูกอ่านครั้งเดียว (ครั้งเดียวกับที่อ่านตำแหน่ง) · `U-head` = บัญชีของผู้ส่งผลของใบที่ตอบแล้ว (ตัดสินธงที่นั่งผู้ตรวจสอบและอนุมัติ)
+  assert.deepEqual(active.db.authLog, ['U-lead', 'U-head'], 'อ่านบัญชีผู้ประเมินครั้งเดียว — ครั้งเดียวกับที่อ่านตำแหน่ง');
+
+  // ระงับ ~100 ปี (ค่าที่ /api/users ตั้ง) = ถูกระงับ · วันที่ผ่านมาแล้ว = ใช้งานได้แล้ว
+  assert.equal(await accountOf(signWorld([], { users: lead({ banned_until: '2126-01-01T00:00:00Z' }) })), 'disabled');
+  assert.equal(await accountOf(signWorld([], { users: lead({ banned_until: '2026-01-01T00:00:00Z' }) })), 'active');
+
+  const gone = signWorld([]);
+  const { inputs } = await loadSurveyReportInputs(fakeDb(gone.tables, { users: {} }), { request: gone.request, takenAt: NOW, signatureRule: 'required' });
+  assert.equal(inputs.assigneeAccount, 'missing');
+  assert.equal(surveyReportFreezeIssues(inputs)[0].text,
+    'ผู้ประเมิน Lead Assessor ยังไม่มีลายเซ็นในระบบ และบัญชีถูกปิดหรือถูกลบแล้ว — เพิ่มลายเซ็นไม่ได้ แจ้งผู้ดูแลระบบ');
+
+  const failing = signWorld([], { options: { authFail: { 'U-lead': { times: 1 } } } });
+  const unknownRole = await loadSigned(failing);
+  assert.deepEqual(unknownRole.unknown, ['assigneeRole']);
+  assert.equal(unknownRole.inputs.assigneeAccount, null);
+});
+
+/* ── บัญชีของคนบนที่นั่งต้อง "นั่งที่นั่งนั้นได้" (ผลรีวิว 09/10/2026) ─────────────────────────────────────────
+   🐞 `visit.assigneeId` เป็นช่องที่แก้ได้ (PATCH นัด · เส้นมอบหมายของคำร้อง) และ `assigneeName` เขียนแยกจากรหัสได้ ·
+      ใบเก่าถูกตอบผ่านปุ่มทั่วไปโดยคนที่ไม่ใช่หัวหน้าได้ ⇒ เดิมตัวโหลดอ่านลายเซ็นของรหัสอะไรก็ตามที่เจอ แล้วพิมพ์ใต้ชื่ออะไรก็ตามที่พิมพ์มา */
+
+const account = (id, name, role, extra = {}) => ({ id, email: `${id}@example.test`, app_metadata: { role }, user_metadata: { name }, ...extra });
+const CD = account('U-cd', 'Commercial Director', 'commercial_director');
+const AE_SUP = account('U-aesup', 'Sales Supervisor', 'ae_supervisor');
+/** โลกที่นัดชี้ `assigneeId` ไปที่บัญชีอื่น (ชื่อบนนัดยังเป็นของเดิมหรือพิมพ์ใหม่ก็ได้) */
+function reassigned(assigneeId, { assigneeName = 'Lead Assessor', signed = [assigneeId, 'U-head'], users = {} } = {}) {
+  const world = signWorld(signed, { users });
+  Object.assign(world.tables.service_visits[0], { assigneeId, assigneeName });
+  return world;
+}
+
+test('🔴 ผู้ประเมินบนนัดเป็นบัญชีนอกฝ่ายบริการที่มีลายเซ็น (เช่น CD): ธงเป็น false · ด่านปฏิเสธด้วยบรรทัด content · ไม่มีผู้ลงนามให้เตรียม — ลายเซ็นของเขาไม่ถูกพิมพ์', async () => {
+  for (const outsider of [CD, AE_SUP, account('U-adm', 'System Admin', 'admin'), account('U-rd', 'Perfumer', 'rd')]) {
+    const world = reassigned(outsider.id, { assigneeName: 'ชื่ออะไรก็ได้', users: { [outsider.id]: outsider } });
+    const { inputs, unknown } = await loadSigned(world);
+    const at = outsider.app_metadata.role;
+    assert.deepEqual(unknown, [], at);
+    assert.deepEqual(inputs.signerEligible, { assessor: false, approver: true }, at);
+    assert.equal(inputs.signatures[outsider.id].versionId, `signature-version-${outsider.id}-1`, `${at}: บัญชีนั้นมีลายเซ็นจริง`);
+    const name = outsider.user_metadata.name;
+    assert.deepEqual(surveyReportFreezeIssues(inputs), [{
+      kind: 'content',
+      text: `ผู้ประเมิน ${name} ไม่ใช่บัญชีฝ่ายบริการ — เอกสารพิมพ์ลายเซ็นของบัญชีนี้ไม่ได้ แจ้งผู้จัดคิวให้แก้ผู้รับผิดชอบของนัด`,
+    }], at);
+    assert.deepEqual(surveyReportSignerVersions(inputs), [], `${at}: ไม่มีใครถูกส่งให้ตัวเตรียมไฟล์ลายเซ็น`);
+    const built = buildSurveyReportSnapshot({ ...inputs, signatureImageByVersionId: {} }, { mode: 'freeze' });
+    assert.equal(built.snapshot, undefined, at);
+  }
+  // ฝ่ายบริการทุกตำแหน่งนั่งที่นั่งผู้ประเมินได้ (ชุดเดียวกับที่ลงคิวได้ — `canBeServiceAssignee`)
+  for (const role of ['ts', 'ts_senior', 'ts_planner', 'ts_audit', 'ts_manager']) {
+    const crew = account('U-crew', 'Crew Member', role);
+    const world = reassigned(crew.id, { assigneeName: 'Crew Member', users: { [crew.id]: crew } });
+    assert.equal((await loadSigned(world)).inputs.signerEligible.assessor, true, role);
+  }
+  // ฝ่ายอ่านจาก `app_metadata.department` ก่อนตำแหน่ง — บัญชีที่ตั้งฝ่าย TS ไว้ตรง ๆ นับเป็นฝ่ายบริการ
+  const byDept = account('U-dept', 'Dept Tagged', null, { app_metadata: { role: null, department: 'TS' } });
+  assert.equal((await loadSigned(reassigned(byDept.id, { assigneeName: 'Dept Tagged', users: { [byDept.id]: byDept } }))).inputs.signerEligible.assessor, true);
+});
+
+test('🔴 ชื่อผู้ประเมินบนกระดาษ = ชื่อบนบัญชีที่ผูกกับนัด — รหัสชี้คนหนึ่ง ชื่อพิมพ์อีกคน ไม่มีทางได้ลายเซ็นของคนหนึ่งใต้ชื่อของอีกคน', async () => {
+  const other = account('U-other', 'Somebody Else', 'ts');
+  // PATCH ที่ส่งมาแค่ `assigneeId` (ชื่อเดิมค้าง) หรือพิมพ์ชื่อใหม่ทับ — ทั้งคู่ได้ชื่อของบัญชีที่รหัสชี้
+  for (const typed of ['Lead Assessor', 'Commercial Director', '  Lead Assessor  ']) {
+    const world = reassigned(other.id, { assigneeName: typed, users: { [other.id]: other } });
+    const { inputs } = await loadSigned(world);
+    assert.equal(inputs.visit.assigneeName, 'Somebody Else', typed);
+    assert.equal(inputs.visit.assigneeId, 'U-other');
+    assert.deepEqual(surveyReportSignerVersions(inputs).map((row) => [row.seats.join('+'), row.userId, row.name, row.version.versionId]), [
+      ['assessor', 'U-other', 'Somebody Else', 'signature-version-U-other-1'],
+      ['approver', 'U-head', 'Head Approver', 'signature-version-U-head-1'],
+    ], typed);
+    const snap = buildSurveyReportSnapshot(inputs, { mode: 'check' }).snapshot;
+    assert.equal(snap.visit.assignee.name, 'Somebody Else', 'ชื่อในกล่องการประเมินตรงกับชื่อใต้ลายเซ็น');
+    assert.deepEqual([snap.signatures.assessor.userId, snap.signatures.assessor.name], ['U-other', 'Somebody Else']);
+    assert.ok(!JSON.stringify(snap).includes(typed.trim() === 'Lead Assessor' ? 'Lead Assessor' : typed), typed);
+  }
+  // แถวนัดในฐานไม่ถูกแก้ และผู้เรียกที่ส่งนัดมาเอง (นัดที่การส่งผลจะปิด) ก็ไม่ถูกแก้ในที่
+  const world = reassigned(other.id, { users: { [other.id]: other } });
+  const closing = { ...world.tables.service_visits[0], status: 'done' };
+  const { inputs } = await loadSigned(world, { closedVisit: closing });
+  assert.equal(inputs.visit.assigneeName, 'Somebody Else');
+  assert.equal(closing.assigneeName, 'Lead Assessor');
+  assert.equal(world.tables.service_visits[0].assigneeName, 'Lead Assessor');
+
+  // ⚠️ ชื่อตรงกันอยู่แล้ว = อินพุตใช้แถวเดิม · บัญชีไม่มีชื่อ = ใช้ชื่อบนนัด (ไม่ถอยไปพิมพ์อีเมล)
+  const same = signWorld();
+  assert.equal((await loadSigned(same)).inputs.visit.assigneeName, 'Lead Assessor');
+  const nameless = account('U-nameless', '', 'ts');
+  const kept = await loadSigned(reassigned(nameless.id, { assigneeName: 'ชื่อบนนัด', users: { [nameless.id]: nameless } }));
+  assert.equal(kept.inputs.visit.assigneeName, 'ชื่อบนนัด');
+  assert.ok(!JSON.stringify(kept.inputs.visit).includes('@example.test'));
+  // นัดไม่มีชื่อผู้ประเมิน = ไม่เติมให้ — ข้อ "นัดประเมินไม่มีชื่อผู้ประเมิน" ของด่านยังทำงาน
+  const blank = await loadSigned(reassigned(other.id, { assigneeName: null, users: { [other.id]: other } }));
+  assert.equal(blank.inputs.visit.assigneeName, null);
+  assert.ok(surveyReportFreezeIssues(blank.inputs).some((i) => i.text === 'นัดประเมินไม่มีชื่อผู้ประเมิน'));
+});
+
+test('🔴 กติกาปิด: ชื่อผู้ประเมินเป็นของบนนัดตามเดิมทุกตัวอักษร — ไม่มีธง ไม่แทนชื่อ ไม่อ่านบัญชีของผู้ส่งผล', async () => {
+  const other = account('U-other', 'Somebody Else', 'ts');
+  const world = reassigned(other.id, { assigneeName: 'ชื่อที่พิมพ์มา', users: { [other.id]: other } });
+  const { inputs } = await loadSurveyReportInputs(world.db, { request: world.request, takenAt: NOW, signatureRule: 'off' });
+  assert.equal(inputs.visit.assigneeName, 'ชื่อที่พิมพ์มา');
+  assert.equal('signerEligible' in inputs, false);
+  assert.deepEqual(world.db.authLog, ['U-other'], 'อ่านบัญชีเดียว (ตำแหน่งของผู้ประเมิน) เหมือนก่อนมีกติกานี้');
+});
+
+test('🔴 ใบที่ตอบไปแล้วโดยคนที่ไม่ใช่ผู้มีสิทธิ์ส่งผล (ตอบผ่านปุ่มทั่วไปก่อน 24/09 · มีลายเซ็นเพราะอนุมัติใบเสนอราคา): ธงเป็น false · ด่านให้ดึงผลกลับ · ไม่มีผู้ลงนามให้เตรียม', async () => {
+  const LINE = (name) => `ผู้ตรวจสอบและอนุมัติ ${name} (ผู้ส่งผล) ไม่ใช่ผู้มีสิทธิ์ส่งผลประเมิน (หัวหน้าฝ่ายบริการ) — เอกสารพิมพ์ลายเซ็นของบัญชีนี้ไม่ได้ ดึงผลกลับแล้วให้หัวหน้าฝ่ายบริการส่งใหม่`;
+  for (const answerer of [AE_SUP, account('U-plan', 'Queue Planner', 'ts_planner'), account('U-ts', 'Field Crew', 'ts')]) {
+    const world = signWorld(['U-lead', answerer.id], { users: { [answerer.id]: answerer } });
+    const request = { ...world.request, answeredById: answerer.id, answeredByName: answerer.user_metadata.name };
+    const { inputs, unknown } = await loadSigned(world, { request });
+    const at = answerer.app_metadata.role;
+    assert.deepEqual(unknown, [], at);
+    assert.deepEqual(inputs.signerEligible, { assessor: true, approver: false }, at);
+    assert.ok(inputs.signatures[answerer.id], `${at}: ผู้ตอบมีลายเซ็นจริง`);
+    assert.deepEqual(surveyReportFreezeIssues(inputs), [{ kind: 'content', text: LINE(answerer.user_metadata.name) }], at);
+    assert.deepEqual(surveyReportSignerVersions(inputs), [], at);
+  }
+  // ผู้มีสิทธิ์ส่งผล: หัวหน้าฝ่ายบริการทั้งสามตำแหน่ง · แอดมิน · CD · CM — ตัวตัดสินเดียวกับปุ่มส่งผล (`canSendSurveyResult`)
+  for (const role of ['ts_manager', 'ts_audit', 'ts_senior', 'admin', 'commercial_director', 'commercial_manager']) {
+    const head = account('U-sender', 'Result Sender', role);
+    const world = signWorld(['U-lead', head.id], { users: { [head.id]: head } });
+    const { inputs } = await loadSigned(world, { request: { ...world.request, answeredById: head.id, answeredByName: 'Result Sender' } });
+    assert.equal(inputs.signerEligible.approver, true, role);
+    assert.equal(surveyReportSignerVersions(inputs).length, 2, role);
+  }
+  // บัญชีของผู้ตอบถูกลบไปแล้ว = ยืนยันสิทธิ์ไม่ได้ ⇒ นั่งไม่ได้ (ทางออกเดียวกัน: ดึงผลกลับให้หัวหน้าส่งใหม่) — ไม่ใช่ unknown
+  const gone = signWorld(['U-lead', 'U-head']);
+  const lost = await loadSurveyReportInputs(fakeDb(gone.tables, { users: { 'U-lead': account('U-lead', 'Lead Assessor', 'ts_senior') } }), {
+    request: gone.request, takenAt: NOW, signatureRule: 'required',
+  });
+  assert.deepEqual(lost.unknown, []);
+  assert.equal(lost.inputs.signerEligible.approver, false);
+  assert.deepEqual(surveyReportFreezeIssues(lost.inputs).map((i) => i.text), [LINE('Head Approver')]);
+});
+
+test('🔴 อ่านบัญชีของผู้ส่งผลไม่สำเร็จ = unknown เอ่ยชื่อ signatures (ไม่ใช่ "ไม่มีสิทธิ์") · ธงเป็น null · รอบถัดไปได้ค่ากลับมา', async () => {
+  for (const throws of [false, true]) {
+    const world = signWorld(['U-lead', 'U-head'], { options: { authFail: { 'U-head': { times: 1, throws } } } });
+    const first = await loadSigned(world);
+    assert.deepEqual(first.unknown, ['signatures'], String(throws));
+    assert.equal(first.inputs.signatures, null);
+    assert.deepEqual(first.inputs.signerEligible, { assessor: true, approver: null });
+    assert.deepEqual(surveyReportFreezeIssues(first.inputs), [{ kind: 'system', text: 'อ่านลายเซ็นของผู้ลงนามไม่สำเร็จ' }]);
+    assert.deepEqual(surveyReportSignerVersions(first.inputs), []);
+    const second = await loadSigned(world);
+    assert.deepEqual(second.unknown, []);
+    assert.deepEqual(second.inputs.signerEligible, { assessor: true, approver: true });
+  }
+  // อ่านบัญชีของผู้ประเมินไม่สำเร็จ = ชื่อ `assigneeRole` (ชิ้นเดิม) · ธงของผู้ประเมินเป็น null · ไม่มีผู้ลงนามให้เตรียม
+  const world = signWorld(['U-lead', 'U-head'], { options: { authFail: { 'U-lead': { times: 1 } } } });
+  const { inputs, unknown } = await loadSigned(world);
+  assert.deepEqual(unknown, ['assigneeRole']);
+  assert.deepEqual(inputs.signerEligible, { assessor: null, approver: true });
+  assert.deepEqual(surveyReportSignerVersions(inputs), []);
+  assert.deepEqual(surveyReportFreezeIssues(inputs), [{ kind: 'system', text: 'อ่านตำแหน่งของผู้ประเมินไม่สำเร็จ' }]);
+});
+
+test('ผู้ส่งผลคือคนที่กดอยู่ (`actor`) = สิทธิ์จากเซสชันของเขา ไม่อ่านบัญชีซ้ำ · คนเดียวกับผู้ประเมิน = ใช้บัญชีที่อ่านมาแล้ว · ผู้ส่งที่กำลังจะเขียน = true', async () => {
+  // เส้นส่งผล / ผู้ส่งกด "ออกเอกสาร" เอง: ขั้นออกเลขส่งผู้ใช้ของคำขอมา — ไม่มีคำสั่งอ่านบัญชีของผู้ส่งผลเพิ่ม
+  const sent = signWorld(['U-lead', 'U-head']);
+  const self = await loadSigned(sent, { actor: { id: 'U-head', role: 'ts_manager', department: 'TS' } });
+  assert.equal(self.inputs.signerEligible.approver, true);
+  assert.deepEqual(sent.db.authLog, ['U-lead']);
+  // เซสชันของคนที่ไม่มีสิทธิ์ส่งผล (ไม่ควรมาถึงได้ — ปุ่มถูกกันด้วยสิทธิ์เดียวกัน) ก็ยังตัดสินตามจริง
+  const weak = signWorld(['U-lead', 'U-head']);
+  assert.equal((await loadSigned(weak, { actor: { id: 'U-head', role: 'ts_planner', department: 'TS' } })).inputs.signerEligible.approver, false);
+  // คนกดเป็นหัวหน้าอีกคน (ไม่ใช่ผู้ส่งผลของใบ) = อ่านบัญชีของผู้ส่งผลจริง
+  const third = signWorld(['U-lead', 'U-head']);
+  assert.equal((await loadSigned(third, { actor: HEAD })).inputs.signerEligible.approver, true);
+  assert.deepEqual(third.db.authLog, ['U-lead', 'U-head']);
+
+  // ตัวตรวจ (GET ใบประเมิน · ปุ่ม "ออกเอกสาร") ส่งคนดูต่อให้ตัวโหลดเอง — หัวหน้าที่เปิดใบที่ตัวเองส่งไม่ทำให้เกิดคำสั่งอ่านบัญชีของตัวเอง
+  const mine = signWorld(['U-lead', 'U-head']);
+  const checked = await surveyReportPrecheck(mine.db, {
+    request: mine.request, user: { id: 'U-head', name: 'Head Approver', role: 'ts_manager', department: 'TS' },
+    today: TODAY, nowIso: NOW, signatureRule: 'required',
+  });
+  assert.deepEqual(checked.blockers, []);
+  assert.equal(checked.signers.length, 2);
+  assert.deepEqual(mine.db.authLog, ['U-lead']);
+
+  // คนเดียวสองที่นั่ง (หัวหน้าไปประเมินเองแล้วส่งผลเอง): บัญชีถูกอ่านครั้งเดียว
+  const same = signWorld(['U-lead']);
+  const both = await loadSigned(same, { request: { ...same.request, answeredById: 'U-lead', answeredByName: 'Lead Assessor' } });
+  assert.deepEqual(both.inputs.signerEligible, { assessor: true, approver: true }, 'ts_senior เป็นทั้งคนออกหน้างานและหัวหน้า');
+  assert.deepEqual(same.db.authLog, ['U-lead']);
+
+  // ผู้ส่งที่กำลังจะเขียน (รอบตรวจก่อนส่งผล · ฉบับร่าง): เส้นส่งผลตรวจสิทธิ์ของคนกดไปแล้ว — ไม่อ่านบัญชีของเขา
+  const pending = signWorld(['U-lead', HEAD.id]);
+  const draft = await loadSigned(pending, {
+    request: { ...pending.request, answeredAt: null, answeredById: null, answeredByName: null },
+    pendingAnswer: { answeredAt: NOW, answeredById: HEAD.id, answeredByName: HEAD.name },
+  });
+  assert.deepEqual(draft.inputs.signerEligible, { assessor: true, approver: true });
+  assert.deepEqual(pending.db.authLog, ['U-lead']);
+});
+
+test('🔴 ใบที่มีพื้นที่ประเมินจากแบบ: กติกาเปิดก็ **ไม่อ่านตารางลายเซ็นและบัญชีของผู้ส่งผลสักคำสั่ง** — ตารางล่มไม่ทำให้ฉบับร่างของใบที่ไม่ใช้ลายเซ็นล้ม', async () => {
+  const shapes = {
+    ผสม: (rows) => { rows[1].method = 'drawing'; },
+    จากแบบล้วน: (rows) => { for (const row of rows) row.method = 'drawing'; },
+  };
+  for (const [name, mark] of Object.entries(shapes)) {
+    // ตารางลายเซ็นล้มทุกครั้งที่ถูกถาม — ถ้าตัวโหลดยังอ่านอยู่ `signatures` จะเข้า unknown
+    const world = signWorld(['U-lead', 'U-head'], { options: { fail: { user_signatures: { times: 99 }, user_signature_versions: { times: 99 } } } });
+    mark(world.tables.service_survey_zones);
+    const { inputs, unknown } = await loadSigned(world);
+    assert.deepEqual(unknown, [], `${name}: ไม่มีชิ้นไหนอ่านไม่สำเร็จ`);
+    assert.equal(signQueries(world.db).length, 0, `${name}: ไม่ถามตารางลายเซ็น`);
+    assert.ok(!world.db.authLog.includes('U-head'), `${name}: ไม่อ่านบัญชีของผู้ส่งผล`);
+    assert.equal(inputs.signatureRule, 'required');
+    assert.deepEqual(inputs.signatures, {});
+    assert.deepEqual(inputs.signerEligible, { assessor: null, approver: null });
+    assert.equal(surveyReportFreezeIssues(inputs).some((i) => i.sign === true || /ลายเซ็น|ยืนยันบัญชี/.test(i.text)), false, name);
+    assert.deepEqual(surveyReportSignerVersions(inputs), []);
+    // ฉบับร่างของใบแบบนี้ไม่มีคีย์ `signatures` (พิมพ์คำเดิม)
+    assert.equal('signatures' in buildSurveyReportSnapshot(inputs, { mode: 'draft' }).snapshot, false, name);
+  }
+  // ชื่อบนนัดของใบผสมไม่ถูกแทน (ใบนี้ไม่ถูกถามเรื่องลายเซ็น — กระดาษเหมือนกติกาปิด)
+  const other = account('U-other', 'Somebody Else', 'ts');
+  const mixed = reassigned(other.id, { assigneeName: 'ชื่อที่พิมพ์มา', users: { [other.id]: other } });
+  mixed.tables.service_survey_zones[1].method = 'drawing';
+  assert.equal((await loadSigned(mixed)).inputs.visit.assigneeName, 'ชื่อที่พิมพ์มา');
+  // พื้นที่จากแบบที่ถูกตัดไม่กันเอกสาร ⇒ ใบนั้นถูกถามตามปกติ
+  const cut = signWorld(['U-lead', 'U-head']);
+  Object.assign(cut.tables.service_survey_zones[1], { method: 'drawing', status: 'cut', cutReason: 'ลูกค้าไม่ติดตั้ง' });
+  assert.equal(signQueries(cut.db).length, 0);
+  await loadSigned(cut);
+  assert.equal(signQueries(cut.db).length, 2);
+});
+
+test('รอบตรวจก่อนส่งผล: คืน `signers` (ฉบับที่จะพิมพ์) เมื่อครบ · บรรทัดลายเซ็นเป็น content + sign + userId เมื่อขาด · ไม่มีคำเตือนใหม่', async () => {
+  const off = sendWorld();
+  const base = await precheck(off, { signatureRule: 'off' });
+  assert.deepEqual(base.signers, []);
+
+  // คนกด (HEAD) กับผู้ประเมินมีลายเซ็นครบ
+  const ready = sendWorld();
+  Object.assign(ready.tables, signatureTables(['U-lead', HEAD.id]));
+  const ok = await precheck(ready, { signatureRule: 'required' });
+  assert.deepEqual(ok.blockers, []);
+  assert.deepEqual(ok.unknown, []);
+  assert.deepEqual(ok.warnings, base.warnings, 'คำของช่องลายเซ็นบนฉบับร่างไม่ก่อคำเตือนใหม่ — จอเทียบ seenWarnings ทั้งบรรทัด');
+  assert.deepEqual(ok.signers.map((s) => [s.seats, s.userId, s.name, s.version.versionId]), [
+    [['assessor'], 'U-lead', 'Lead Assessor', 'signature-version-U-lead-1'],
+    [['approver'], HEAD.id, HEAD.name, `signature-version-${HEAD.id}-1`],
+  ]);
+
+  // คนกดยังไม่มีลายเซ็น — ตีกลับได้ก่อนเขียน (ชนิด content) และบอกทางออกของใบที่ยังไม่ส่ง
+  const noHead = sendWorld();
+  Object.assign(noHead.tables, signatureTables(['U-lead']));
+  const refused = await precheck(noHead, { signatureRule: 'required' });
+  assert.deepEqual(refused.signers, []);
+  assert.deepEqual(refused.blockers, [{
+    kind: 'content', sign: true, userId: HEAD.id, seats: ['approver'],
+    text: 'ผู้ตรวจสอบและอนุมัติ Head Sender (ผู้ส่งผล) ยังไม่มีลายเซ็นในระบบ — เพิ่มที่ “บัญชีของฉัน” ก่อนส่งผล หรือให้หัวหน้าที่มีลายเซ็นแล้วเป็นผู้ส่งผล',
+  }]);
+  assert.deepEqual(refused.warnings, base.warnings);
+});
+
+test('🔴 รอบตรวจก่อนส่งผล: อ่านลายเซ็นไม่สำเร็จ = unknown + เหตุชนิด system เท่านั้น (เส้นส่งผลข้ามการตีกลับ) — ไม่มีเหตุชนิด content งอก', async () => {
+  const world = sendWorld({ extra: { options: { fail: { user_signatures: { times: 1 } } } } });
+  const result = await precheck(world, { signatureRule: 'required' });
+  assert.deepEqual(result.unknown, ['signatures']);
+  assert.deepEqual(result.blockers, [{ kind: 'system', text: 'อ่านลายเซ็นของผู้ลงนามไม่สำเร็จ' }]);
+  assert.deepEqual(result.signers, []);
+});
+
+test('ใบที่มีพื้นที่ประเมินจากแบบ: กติกาเปิดก็ไม่ถูกถามเรื่องลายเซ็น — ข้อกันเอกสารพูดแทน · ไม่มีผู้ลงนามให้เตรียม', async () => {
+  const source = twin();
+  source.zones[1].method = 'drawing';
+  const world = sendWorld({ source });
+  const result = await precheck(world, { signatureRule: 'required', zones: world.tables.service_survey_zones });
+  assert.equal(result.blockers.some((b) => b.sign), false);
+  assert.equal(result.blockers.some((b) => b.hold === true), true);
+  assert.deepEqual(result.signers, []);
+});
+

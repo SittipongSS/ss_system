@@ -15,6 +15,11 @@
  *        — ตรวจทั้งค่าที่เปลือกประกาศใน HTML และสีที่ Chrome คำนวณได้จริงบนชื่อเอกสารหน้า 1 (ทุกชุดอินพุต)
  *      และล้มเมื่อ (ทุกชุดอินพุต): จุดอ้างอิงของแผน (ตารางบน · ความสูงผัง · การรับรอง · ลงนาม) ต่างจากที่วัดเกิน 8px ·
  *      ขอบล่างจริงเกินที่แผนคิด · แผนรายงานหน้าล้น (`overflow`) · PDF มีฟอนต์อื่นนอกจาก Sarabun (อักขระที่ฟอนต์ฝังไม่มี)
+ *      · ⭐ ลายเซ็นจริง (PR-SIG · มติเจ้าของ 09/10/2026 — **ทุกรอบเรนเดอร์ด้วยกติกาเปิด** เว้นแต่ส่ง `--no-signatures`):
+ *        ลายเซ็นปลอมสองเส้น (PNG ที่สร้างในหน่วยความจำ) เดินผ่านตัวเตรียมลายเซ็นตัวจริง (`prepareSurveyReportSignatures` + sharp)
+ *        กับคลังปลอมอ่านอย่างเดียว แล้ว Chrome ต้องเห็น: การรับรองผลของแต่ละฉบับมีรูปลายเซ็นที่ถอดรหัสได้ 2 รูป · ภาคผนวก จ ของ
+ *        ฉบับภายในอีก 2 รูป · ช่องสูงตายตัว (45 / 28px) วางแบบ `contain` อยู่ในที่นั่ง · ชื่อกับวันที่ยังอยู่ · ที่นั่งลูกค้าเป็นแบบฟอร์มเดิม
+ *        · ยามลายเซ็นของ production (`surveyReportSignatureHtmlIssues`) ผ่านบนกระดาษแบบ token ของทั้งสองฉบับ
  *   ④ `--pipeline` (PR-2 §16 ข้อ 2) — **เดินสองขั้นของของจริงทั้งเส้น** ด้วยโค้ดชุดเดียวกับ production:
  *      ขั้นออกเลข (`issueSurveyReport`: ตัวโหลดอินพุต → ด่าน → ย่อรูปด้วย sharp จริง → วัดกระดาษใน Chrome → RPC) แล้ว
  *      ขั้นกระดาษ (`ensureSurveyReportPaper`: วัดสองฉบับ → ตรึง HTML → เก็บ PDF) · **ฐาน ที่เก็บไฟล์ และ Drive อยู่ในหน่วยความจำ**
@@ -41,6 +46,10 @@
  *   --stress             ชุดสุดขอบทุกกรณีของ `surveyStressCases()` (12 พื้นที่ · รูปเยอะ/แนวตั้ง · หมายเหตุยาว · ประวัติ 14 แถว ·
  *                        ขนาดรวมสาม/สี่ขนาด · หน้า 1 ชิดเพดาน · ตีกลับ 10 × 300 · คำร้อง 4,000 ตัว · ไม่มีผัง) — กรณีแรกลง `--out`
  *                        กรณีที่เหลือลง `--out/cases/<ชื่อ>` · `--case <ชื่อ>` = กรณีเดียว (ใช้กับ `--pipeline` ไม่ได้)
+ *                        ต่อด้วยกรณีของลายเซ็น `surveySignCases()`: `sign-closed` (ลงนามครบสามที่นั่ง) · `sign-same` (คนเดียวสองที่นั่ง) ·
+ *                        `sign-wrap` (ชื่อสองบรรทัด — ข้อจำกัดที่รู้: แถวที่นั่งของภาคผนวก จ เกินแผน ~18px ⇒ รายงานเป็น "ข้อที่รู้" ไม่ล้ม
+ *                        แต่ต้องฟ้องจริงทุกรอบ) · `sign-draft` (ฉบับร่าง — กรอบประแทนรูป)
+ *   --no-signatures      เรนเดอร์แบบกติกาลายเซ็นปิด (กระดาษของวันนี้: คำว่า "ลายเซ็นอิเล็กทรอนิกส์") — ไว้เทียบก่อน/หลัง
  *   --no-spot-links      ไม่ผูกรูปจุดตามลำดับอัป (ของจริงของ RQ-AS-26090186 ไม่มี `metadata.spotId`) ⇒ ต้องติดด่านตรึง
  *   --scale 2            PNG คมขึ้นสองเท่า (ค่าตั้งต้น 1 = 794×1123 เท่ากระดาน)
  *   --via send           (`--pipeline`) เดินแบบเส้นส่งผล: ตรวจรูปก่อน (S3) → ออกเลขโดยไม่วัดกระดาษ → ขั้นกระดาษ
@@ -61,8 +70,10 @@ import { pdfFonts, pdfPageCount } from '../src/lib/documents/pdfInspect.js';
 import { listAttachments } from '../src/lib/master/attachments.js';
 import { ROLE_LABELS } from '../src/lib/permissions.js';
 import { renderSurveyReportHTML, resolveImageTokens, surveyReportImageShas } from '../src/lib/service/surveyReportDocument.js';
-import { prepareSurveyReportImages, surveyReportImagePath } from '../src/lib/service/surveyReportImages.js';
-import { SURVEY_REPORT_STANDARD_KEY } from '../src/lib/service/surveyReportInputs.js';
+import {
+  prepareSurveyReportImages, prepareSurveyReportSignatures, surveyReportImagePath,
+} from '../src/lib/service/surveyReportImages.js';
+import { SURVEY_REPORT_STANDARD_KEY, loadSurveyReportInputs } from '../src/lib/service/surveyReportInputs.js';
 import { issueSurveyReport } from '../src/lib/service/surveyReportIssue.js';
 import {
   SURVEY_REPORT_PX, paginateSurveyReport, surveyReportOverflowErrors,
@@ -71,12 +82,14 @@ import {
   SURVEY_REPORT_VERSIONS, ensureSurveyReportPaper, measureSurveyReportPaper, surveyReportPdfPath, surveyReportPrintSession,
 } from '../src/lib/service/surveyReportPaper.js';
 import { SURVEY_REPORT_BUCKET, loadSurveyReports } from '../src/lib/service/surveyReportRows.js';
+import { makeSignaturePng, signatureTables, withSignatureStorage } from '../src/lib/service/surveyReportSignWorld.mjs';
+import { surveyReportSignerVersions } from '../src/lib/service/surveyReportSigners.js';
 import { buildSurveyReportSnapshot, surveyReportImageFiles } from '../src/lib/service/surveyReportSnapshot.js';
 import {
-  SURVEY_REPORT_FIT_MARGIN, surveyReportCustomerHtmlIssues, surveyReportState,
+  SURVEY_REPORT_FIT_MARGIN, surveyReportCustomerHtmlIssues, surveyReportSignatureHtmlIssues, surveyReportState,
 } from '../src/lib/service/surveyReportState.js';
 import {
-  stressSurveyInputs, surveyReportInputsFromFixture, surveyStressCases, syntheticSurveyFixture,
+  signedSurveyInputs, stressSurveyInputs, surveyReportInputsFromFixture, surveySignCases, surveyStressCases, syntheticSurveyFixture,
 } from '../src/lib/service/surveyReportTestKit.mjs';
 import { surveyReportSendWarnings, surveyReportView } from '../src/lib/service/surveyReportView.js';
 import { loadSurveyZones } from '../src/lib/service/surveyRepo.js';
@@ -99,7 +112,7 @@ export function parseArgs(argv) {
 const expand = (p) => resolve(String(p).replace(/^~(?=\/|$)/, homedir()));
 
 const USAGE = 'ใช้: render-survey-report.mjs (--fixture <json> [--photos <dir>] | --synthetic | --stress [--case <ชื่อ>]) --out <dir> '
-  + '[--doc-no SU-…] [--issued YYYY-MM-DD] [--assert] [--scale 2] [--no-spot-links] [--pipeline [--via send|issue_only]]';
+  + '[--doc-no SU-…] [--issued YYYY-MM-DD] [--assert] [--scale 2] [--no-spot-links] [--no-signatures] [--pipeline [--via send|issue_only]]';
 
 /* ── รูป ──────────────────────────────────────────────────────────────── */
 
@@ -152,6 +165,104 @@ function placeholder(img) {
   return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
 }
 
+/* ── ลายเซ็นของผู้ลงนาม (PR-SIG) ─────────────────────────────────────────── */
+
+/* ฉบับของลายเซ็นตามรูปที่ตัวโหลดคืน — จากแถวของตารางปลอม */
+const versionOfRow = (row) => ({
+  versionId: row.id, versionNumber: row.versionNumber, storagePath: row.storagePath, sha256: row.sha256, width: row.width, height: row.height,
+});
+
+/**
+ * 🔑 **อินพุตชุดใดก็ได้ + ลายเซ็นปลอมที่ผ่านตัวเตรียมตัวจริง** — สำหรับโหมดเรนเดอร์ (ไม่ผ่านฐานปลอม)
+ *   ผู้ลงนามของอินพุต (id สมมติเมื่อ fixture ไม่มี) ได้ PNG คนละเส้น (`makeSignaturePng` · พื้นโปร่งใส 640×240) ลงคลังปลอมอ่านอย่างเดียว
+ *   แล้ว `prepareSurveyReportSignatures` ตัวจริง (sharp) ตรวจ · ถมพื้นขาว · ย่อ · นับหมึก · เก็บสำเนา JPEG ลงถังในหน่วยความจำ
+ *   ⇒ สิ่งที่ Chrome วาดคือไฟล์รูปเดียวกับที่ production จะเก็บ ไม่ใช่กล่องสมมติ
+ * @param inputs  อินพุตของตัวสร้างภาพนิ่ง (ไม่ถูกแก้)
+ * @param sign    ตัวเลือกของ `signedSurveyInputs` (`same` · `have` · `prepared: false` = ฉบับร่าง ยังไม่เตรียมรูป)
+ * @returns `{ inputs, bySha, sources }` · `bySha` = `{ [sha]: data URI ของสำเนา JPEG }` · `sources` = `{ [userId]: PNG ต้นฉบับ }`
+ * 🔴 ด่านเขียนถาวรเสียบเป็นเปิดกับ **ถังในหน่วยความจำ** เท่านั้น (`withSignatureStorage({})` — ไม่มี client ของจริง)
+ */
+export async function harnessSignatures(inputs, sign = {}) {
+  const base = signedSurveyInputs(inputs, { ...sign, prepared: false });
+  const users = Object.entries(base.signatures).filter(([, version]) => version)
+    .map(([userId], index) => ({ userId, png: makeSignaturePng({ seed: index + 1 }) }));
+  const sources = Object.fromEntries(users.map((u) => [u.userId, u.png]));
+  if (sign.prepared === false) return { inputs: base, bySha: {}, sources };
+
+  const tables = signatureTables(users);
+  const store = withSignatureStorage({}, tables.files);
+  const signatures = { ...base.signatures };
+  for (const [userId, row] of Object.entries(tables.versions)) signatures[userId] = versionOfRow(row);
+  const ready = { ...base, signatures };
+  const prepared = await prepareSurveyReportSignatures(store, surveyReportSignerVersions(ready), {
+    storeAllowed: true, bucket: SURVEY_REPORT_BUCKET, log: () => {},
+  });
+  if (prepared.failed.length) {
+    throw new Error(`เตรียมลายเซ็นของ harness ไม่สำเร็จ — ${prepared.failed.map((f) => `${f.name}: ${f.reason}`).join(' · ')}`);
+  }
+  const bySha = {};
+  for (const hit of Object.values(prepared.imageByVersionId)) {
+    const object = store.signatureVault.objects.get(`${SURVEY_REPORT_BUCKET}/${surveyReportImagePath(hit.sha)}`);
+    bySha[hit.sha] = `data:image/jpeg;base64,${object.body.toString('base64')}`;
+  }
+  return { inputs: { ...ready, signatureImageByVersionId: prepared.imageByVersionId }, bySha, sources };
+}
+
+/* ความสูงของช่องลายเซ็นบนกระดาษ (px) — ค่าของกระดานที่ตกลงไว้ (สเปก PR-SIG §4.3) เขียนตายตัวที่นี่โดยเจตนา:
+   harness ต้องจับได้เมื่อ CSS ของแอปขยับ ไม่ใช่ถาม CSS ของแอปว่าสูงเท่าไร */
+export const SIGN_BOX_HEIGHT = Object.freeze({ signoff: 45, signs: 28 });
+
+/**
+ * ข้อที่ช่องลายเซ็นของฉบับหนึ่งต้องผ่าน — จากสิ่งที่ Chrome วัดได้จริง (`result.signs` ของ `renderVersion`)
+ * @param expect `{ images, waits }` ต่อบล็อกลงนามหนึ่งบล็อก (กติกาเปิด) · `null` = กติกาปิด: สองที่นั่งพิมพ์คำเดิม ไม่มีรูป ไม่มีกรอบประ
+ */
+export function signFailures(result, expect) {
+  const out = [];
+  const { version, signs } = result;
+  const blocks = [['signoff', 'การรับรองผล', 1], ['signs', 'ภาคผนวก จ', version === 'internal' ? 1 : 0]];
+  for (const [key, label, wantBlocks] of blocks) {
+    const found = signs?.[key] || [];
+    if (found.length !== wantBlocks) {
+      out.push(`${version}: ต้องมีบล็อก${label} ${wantBlocks} บล็อก — พบ ${found.length}`);
+      continue;
+    }
+    for (const seats of found) {
+      const images = seats.filter((seat) => seat.img);
+      const waits = seats.filter((seat) => seat.wait !== null);
+      const words = seats.filter((seat) => seat.words !== null);
+      const want = expect || { images: 0, waits: 0 };
+      if (images.length !== want.images) out.push(`${version} ${label}: ต้องมีรูปลายเซ็น ${want.images} ที่ — พบ ${images.length}`);
+      if (waits.length !== want.waits) out.push(`${version} ${label}: ต้องมีกรอบประแทนลายเซ็น ${want.waits} ที่ — พบ ${waits.length}`);
+      if (!expect && words.length < 2) out.push(`${version} ${label}: กติกาปิดต้องพิมพ์คำว่า "ลายเซ็นอิเล็กทรอนิกส์" ในสองที่นั่งแรก — พบ ${words.length}`);
+      for (const [index, seat] of seats.entries()) {
+        const at = `${version} ${label} ที่นั่ง ${index + 1} (${seat.title})`;
+        if (seat.img) {
+          const { decoded, natural, box, fit, inside } = seat.img;
+          if (!decoded) out.push(`${at}: รูปลายเซ็นถอดรหัสไม่ได้`);
+          if (fit !== 'contain') out.push(`${at}: รูปลายเซ็นต้องวางแบบ contain (ไม่ยืด ไม่ตัด) — ได้ ${fit}`);
+          if (Math.abs(box[1] - SIGN_BOX_HEIGHT[key]) > 0.5) out.push(`${at}: ช่องลายเซ็นต้องสูง ${SIGN_BOX_HEIGHT[key]}px — วัดได้ ${num(box[1])}`);
+          if (!inside) out.push(`${at}: ช่องลายเซ็นล้นออกนอกที่นั่ง`);
+          // รูปที่วาดจริง (หลัง contain) ต้องกว้างพอให้อ่านออก: ไม่ถูกบีบจนเหลือเส้นเดียว
+          const scale = Math.min(box[0] / natural[0], box[1] / natural[1]);
+          if (!(natural[0] * scale >= 40)) out.push(`${at}: รูปลายเซ็นถูกย่อจนเหลือกว้าง ${num(natural[0] * scale)}px`);
+        }
+        // สองที่นั่งแรก = ที่นั่งที่ระบบลงนาม: ชื่อกับวันที่ต้องยังอยู่
+        if (index < 2 && (!seat.name || seat.name === '—' || !seat.date)) out.push(`${at}: ชื่อหรือวันที่หาย (ชื่อ "${seat.name}" · วันที่ "${seat.date}")`);
+      }
+      // การรับรองผล: ที่นั่งที่สามเป็นแบบฟอร์มของลูกค้า — ลงชื่อ · ( ) · วันที่ ไม่มีรูป ไม่มีคำ
+      if (key === 'signoff') {
+        const customer = seats[2];
+        if (seats.length !== 3 || !customer?.form || customer.img || customer.wait !== null || customer.words !== null || customer.signed) {
+          out.push(`${version} ${label}: ที่นั่งลูกค้าต้องเป็นแบบฟอร์มเปล่า (ลงชื่อ · ชื่อตัวบรรจง · วันที่) ที่นั่งที่สาม`);
+        }
+      } else if (seats[2]?.img || seats[2]?.wait !== null) {
+        out.push(`${version} ${label}: ที่นั่งฝ่ายขายต้องไม่มีช่องลายเซ็น (ไม่อยู่ในงวดนี้)`);
+      }
+    }
+  }
+  return out;
+}
+
 /* ── เรนเดอร์ ─────────────────────────────────────────────────────────── */
 
 const SHEET = { width: 794, height: 1123 };
@@ -186,6 +297,36 @@ async function renderVersion(browser, pdfLib, { version, snapshot, bySha, dir, d
   const { page, brokenImages } = await pdfLib.openHtmlPage(browser, html);
   await page.setViewport({ ...SHEET, deviceScaleFactor: scale });
   const fit = await pdfLib.measureSheets(page);
+  /* ช่องลายเซ็นตามที่ Chrome วาดจริง — ทุกที่นั่งของบล็อกลงนาม (การรับรองผล · ภาคผนวก จ): รูปถอดรหัสได้ไหม ขนาดช่อง วิธีวาง อยู่ในที่นั่งไหม
+     ⚠️ ต้องวัดก่อนซ่อนแผ่นเพื่อถ่าย PNG (แผ่นที่ซ่อนวัดได้ 0) */
+  const signs = await page.evaluate(() => {
+    const text = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : '');
+    const seatsOf = (block) => [...block.querySelectorAll('.sig')].map((seat) => {
+      const img = seat.querySelector('img.sig-img');
+      const wait = seat.querySelector('.sig-img.wait');
+      const words = seat.querySelector('.sig-e');
+      const frame = seat.getBoundingClientRect();
+      const out = {
+        title: text(seat.querySelector('h4')), signed: seat.classList.contains('su-signed'),
+        name: text(seat.querySelector('.sig-name')), date: text(seat.querySelector('.sig-date') || seat.querySelector('.sig-wait')),
+        words: words ? text(words) : null, wait: wait ? text(wait) : null, form: !!seat.querySelector('.sig-form'), img: null,
+        height: Math.round(frame.height * 100) / 100,
+      };
+      if (img) {
+        const box = img.getBoundingClientRect();
+        out.img = {
+          decoded: img.complete && img.naturalWidth > 0, natural: [img.naturalWidth, img.naturalHeight],
+          box: [Math.round(box.width * 100) / 100, Math.round(box.height * 100) / 100], fit: getComputedStyle(img).objectFit,
+          inside: box.left >= frame.left - 0.5 && box.right <= frame.right + 0.5 && box.top >= frame.top - 0.5 && box.bottom <= frame.bottom + 0.5,
+        };
+      }
+      return out;
+    });
+    return {
+      signoff: [...document.querySelectorAll('.surveyReport .sheet [data-m="signoff"]')].map(seatsOf),
+      signs: [...document.querySelectorAll('.surveyReport .sheet [data-m="signs"]')].map(seatsOf),
+    };
+  });
   // สีที่ Chrome คำนวณได้จริงบนชื่อเอกสารหน้า 1 — ค่าในแท็ก `style` ถูก แต่กฎ CSS ถูกทับ/ตัวแปรขาด ก็จับได้
   const titleColor = await page.evaluate(() => {
     const title = document.querySelector('.surveyReport .sheet .dh-title');
@@ -205,7 +346,7 @@ async function renderVersion(browser, pdfLib, { version, snapshot, bySha, dir, d
   }
   await page.close();
   return {
-    version, view, layout, html, fit, brokenImages, placeholders, sheets: count, titleColor,
+    version, view, layout, html, fit, brokenImages, placeholders, sheets: count, titleColor, signs,
     pdfPages: pdfPageCount(pdf), pdfFonts: pdfFonts(pdf), pdfBytes: pdf.length, htmlBytes: Buffer.byteLength(html),
   };
 }
@@ -344,18 +485,38 @@ export const PIPELINE_USER = Object.freeze({ id: 'U-harness', name: 'Harness Pre
  * · Drive: `getFileStream(driveFileId)` คืน Buffer ของไฟล์ต้นฉบับ (`files` = `Map<driveFileId, Buffer | () => Promise<Buffer>>`) ·
  *   นับจำนวนครั้งที่แต่ละไฟล์ถูกดึงไว้ใน `drive.fetched`
  *
+ * · ⭐ ลายเซ็น (PR-SIG): ตาราง `user_signatures` · `user_signature_versions` ของผู้ประเมินกับผู้ส่งผล (PNG ปลอมคนละเส้น) + คลัง
+ *   `signature-assets` **อ่านอย่างเดียว** (`withSignatureStorage`) — ไปป์ไลน์เดินด้วยกติกาลายเซ็นจริงเปิดเสมอ
+ *   (`signatureRule: 'required'` ส่งตรง ๆ ไม่ผ่านสวิตช์) · `opts.signed` = ที่นั่งที่คนบนที่นั่งมีลายเซ็น (ค่าตั้งต้น ทั้งสอง)
+ *
  * @param source  อินพุตของชุดทดสอบ PR-1 (ไม่มี `imageByAttId` — รูปต้องผ่านตัวย่อรูปจริง)
  * @param opts.files  ไฟล์ต้นฉบับบน "Drive" · @param opts.clock `() => Date` นาฬิกาของฐาน (`issuedAt` ของแถว)
- * @returns `{ supabase, tables, objects, drive, rpcCalls, writes, request(), reports() }`
+ * @param opts.signed `['assessor', 'approver']` (ค่าตั้งต้น) — ที่นั่งที่ไม่อยู่ในลิสต์ = คนนั้นยังไม่มีลายเซ็น (ไม่มีราก)
+ * @returns `{ supabase, tables, objects, drive, rpcCalls, writes, signatures, request(), reports() }`
+ *   · `signatures` = `{ vault, versions, signers: { assessor, approver } }` (`vault.downloads` = ที่อยู่ไฟล์ที่ถูกอ่านจากคลัง ตามลำดับ)
  */
-export function surveyPipelineWorld(source, { files = new Map(), clock = () => new Date() } = {}) {
+export function surveyPipelineWorld(source, { files = new Map(), clock = () => new Date(), signed = ['assessor', 'approver'] } = {}) {
   const requestId = source.request.id;
   const helperIds = (source.helpers || []).map((_, i) => `U-helper-${i + 1}`);
   const assessorId = source.visit ? (source.visit.assigneeId || 'U-assessor') : null;
+  /* ผู้ส่งผลของคำร้องที่ตอบแล้ว — fixture ของจริงดึงมาก่อนมีคอลัมน์ id ⇒ ใส่ id สมมติ (เอกสารต้องผูกที่นั่งกับบัญชี) */
+  const approverId = source.request.answeredAt ? (source.request.answeredById || 'U-approver') : null;
+  const signTables = signatureTables([
+    ...(assessorId && signed.includes('assessor') ? [{ userId: assessorId, png: makeSignaturePng({ seed: 1 }), name: source.visit.assigneeName }] : []),
+    ...(approverId && approverId !== assessorId && signed.includes('approver')
+      ? [{ userId: approverId, png: makeSignaturePng({ seed: 2 }), name: source.request.answeredByName }] : []),
+  ]);
   const assessorRole = Object.keys(ROLE_LABELS).find((role) => ROLE_LABELS[role] === source.assigneeRoleLabel) || null;
+  /* บัญชีของผู้ลงนามเป็นของจริงตามบทบาท — ผู้ประเมิน = บัญชีฝ่ายบริการ · ผู้ส่งผล = ผู้ช่วยผู้จัดการฝ่ายบริการ
+     (ตัวโหลดอ่านบัญชีสองคนนี้เพื่อตัดสินว่าลายเซ็นของเขาขึ้นที่นั่งนั้นได้ไหม — `signerEligible` ของ `surveyReportInputs`) */
   const users = Object.fromEntries([
+    ...(approverId ? [[approverId, {
+      id: approverId, email: 'approver@example.test', app_metadata: { role: 'ts_manager', department: 'TS' },
+      user_metadata: { name: source.request.answeredByName },
+    }]] : []),
     ...(assessorId ? [[assessorId, {
-      id: assessorId, email: 'assessor@example.test', app_metadata: { role: assessorRole }, user_metadata: { name: source.visit.assigneeName },
+      id: assessorId, email: 'assessor@example.test', app_metadata: { role: assessorRole, department: 'TS' },
+      user_metadata: { name: source.visit.assigneeName },
     }]] : []),
     ...(source.helpers || []).map((h, i) => [helperIds[i], {
       id: helperIds[i], email: `helper${i + 1}@example.test`, app_metadata: { role: 'ts' }, user_metadata: { name: h.name },
@@ -367,8 +528,11 @@ export function surveyPipelineWorld(source, { files = new Map(), clock = () => n
   const tables = {
     dept_requests: [{
       ...source.request,
+      answeredById: approverId,
       siteId: source.site ? 'SITE-1' : null, customerId: source.customer ? 'CUS-1' : null, dealId: source.deal ? 'DEAL-1' : null,
     }],
+    user_signatures: signTables.user_signatures,
+    user_signature_versions: signTables.user_signature_versions,
     service_survey_reports: [],
     entity_number_counters: [],
     service_survey_zones: source.zones.map(({ zoneCode: _zoneCode, ...zone }) => ({ ...zone, requestId })),
@@ -462,6 +626,7 @@ export function surveyPipelineWorld(source, { files = new Map(), clock = () => n
       if (op === 'eq') return row[col] === val;
       if (op === 'in') return val.includes(row[col]);
       if (op === 'is') return (row[col] ?? null) === val;
+      if (op === 'not.is') return (row[col] ?? null) !== val;
       return true;
     });
     const run = () => {
@@ -507,6 +672,12 @@ export function surveyPipelineWorld(source, { files = new Map(), clock = () => n
       eq(col, val) { q.filters.push(['eq', col, val]); return chain; },
       in(col, val) { q.filters.push(['in', col, val]); return chain; },
       is(col, val) { q.filters.push(['is', col, val]); return chain; },
+      // `.not(col, 'is', null)` เท่านั้น (สคริปต์ตรวจของจริงใช้หาใบที่ส่งผลแล้ว) — ตัวกรองอื่นของ `not` ไม่มีใครใช้
+      not(col, op, val) {
+        if (op !== 'is') throw new Error(`โลกปลอมไม่รู้จัก .not(${col}, ${op})`);
+        q.filters.push(['not.is', col, val]);
+        return chain;
+      },
       order(col, opts = {}) { q.orders.push([col, opts.ascending !== false]); return chain; },
       limit(n) { q.limit = n; return chain; },
       maybeSingle() {
@@ -562,8 +733,12 @@ export function surveyPipelineWorld(source, { files = new Map(), clock = () => n
     },
   };
 
+  /* คลังลายเซ็น — อ่านอย่างเดียว · ถัง `survey-report` ยังเป็นของ `storage` ข้างบน (ถังเดียวกับรูปและ PDF) */
+  withSignatureStorage(supabase, { ...signTables.files });
+
   return {
     supabase, tables, objects, drive, rpcCalls, writes,
+    signatures: { vault: supabase.signatureVault, versions: signTables.versions, signers: { assessor: assessorId, approver: approverId } },
     request: () => tables.dept_requests[0],
     reports: () => tables.service_survey_reports,
   };
@@ -603,6 +778,7 @@ export function syntheticDriveFiles(source) {
 
 const PIPELINE_BUDGET_MS = 270_000; // งบของหนึ่งคำขอ — เท่ากับของ route เอกสาร (เพดานฟังก์ชัน 300 วิ เผื่อ 30)
 const PIPELINE_PREFLIGHT_MS = 60_000; // งบของรอบตรวจรูปก่อนส่งผล (S3)
+const PIPELINE_SIGN_MS = 15_000; // งบของการเตรียมไฟล์ลายเซ็นก่อนเขียนคำตอบ (S5 · `SURVEY_SEND_SIGN_MS` ของเส้นส่งผล)
 
 const plainIssue = (r) => ({
   state: r?.state ?? null, code: r?.code ?? null, docNo: r?.docNo ?? null, rev: r?.rev ?? null, reused: r?.reused ?? null,
@@ -616,6 +792,9 @@ const plainIssue = (r) => ({
  * @param opts.via           `'issue_only'` (ค่าตั้งต้น · ปุ่ม "ออกเอกสาร": วัดกระดาษก่อนออกเลข) | `'send'` (ตรวจรูปก่อน แล้วออกเลขไม่วัด)
  * @param opts.clock         `() => Date` นาฬิกาของขั้นออกเลขและขั้นกระดาษ
  * @param opts.loadRenderer  ตัวโหลดตัวพิมพ์ (เทสต์ส่งของปลอม) — ไม่ส่ง = `htmlPdf.js` + Chrome จาก `PUPPETEER_EXECUTABLE_PATH`
+ * @param opts.signatureRule กติกาลายเซ็นจริงของรอบ — ค่าตั้งต้น `'required'` (ส่งตรงให้ตัวโหลด ไม่ผ่านสวิตช์) · `'off'` = กระดาษแบบคำ
+ *                           ⭐ ทาง `send` จำลอง S5 ของเส้นส่งผลด้วย: เตรียมไฟล์ลายเซ็น **ก่อน** ออกเลข แล้วส่งต่อ (`signatures`) —
+ *                              ขั้นออกเลขต้องใช้ของที่ส่งต่อ ไม่อ่านคลังซ้ำ
  * @returns `{ via, states, first, second, docNo, reportId, audits, lines }`
  *   · `states`  สถานะจากแถว (§1) ก่อนเริ่ม · หลังขั้นออกเลข · หลังขั้นกระดาษ — ที่คาด `['missing', 'issued', 'ready']`
  *   · `first` / `second`  `{ issue, paper }` ของแต่ละรอบ (`paper` เป็น `null` เมื่อขั้นออกเลขล้ม)
@@ -623,7 +802,7 @@ const plainIssue = (r) => ({
  * 🔴 ยามเขียนถาวรถูกเสียบเป็น `true` ที่นี่ที่เดียว และ **เฉพาะกับ client ปลอม** — ห้ามส่ง client ของจริงเข้ามา
  */
 export async function runSurveyPipeline(world, {
-  via = 'issue_only', user = PIPELINE_USER, clock = () => new Date(), loadRenderer = null,
+  via = 'issue_only', user = PIPELINE_USER, clock = () => new Date(), loadRenderer = null, signatureRule = 'required',
 } = {}) {
   const { supabase } = world;
   const requestId = world.request().id;
@@ -632,6 +811,7 @@ export async function runSurveyPipeline(world, {
   const lines = [];
   const log = (line) => { lines.push(line); };
   const imageOptions = { getFileStream: world.drive.getFileStream, log };
+  const signatureOptions = { log };
   const session = surveyReportPrintSession(loadRenderer ? { loadRenderer } : {});
 
   const stateOf = async () => {
@@ -649,13 +829,24 @@ export async function runSurveyPipeline(world, {
       const prepared = await prepareSurveyReportImages(supabase, surveyReportImageFiles({ zones, filesByZone }), {
         ...imageOptions, deadline: PIPELINE_PREFLIGHT_MS, storeAllowed: true,
       });
+      /* S5 — ลายเซ็นของผู้ลงนาม ก่อนเขียนคำตอบ (ของจริง: `surveyReportPrecheck(...).signers` → เตรียมไฟล์ → เหตุถาวร = 409)
+         ที่นี่ใบถูกตอบแล้วใน fixture จึงอ่านผู้ลงนามจากตัวโหลดตรง ๆ แล้วส่งต่อให้ขั้นออกเลขแบบเดียวกับ route */
+      let signatures = null;
+      if (signatureRule === 'required') {
+        const { inputs } = await loadSurveyReportInputs(supabase, { request: world.request(), takenAt: clock().toISOString(), signatureRule });
+        const signers = surveyReportSignerVersions(inputs);
+        const ready = await prepareSurveyReportSignatures(supabase, signers, {
+          ...signatureOptions, deadline: PIPELINE_SIGN_MS, storeAllowed: true,
+        });
+        signatures = { signers, imageByVersionId: ready.imageByVersionId };
+      }
       return issueSurveyReport(supabase, {
-        request: world.request(), user, closedVisit: null, via: 'send', prepared,
-        storeAllowed: true, audit, now: clock, imageOptions,
+        request: world.request(), user, closedVisit: null, via: 'send', prepared, signatures, signatureRule,
+        storeAllowed: true, audit, now: clock, imageOptions, signatureOptions,
       });
     }
     return issueSurveyReport(supabase, {
-      requestId, user, via: 'issue_only', storeAllowed: true, audit, now: clock, imageOptions,
+      requestId, user, via: 'issue_only', storeAllowed: true, audit, now: clock, imageOptions, signatureRule, signatureOptions,
       // งบของตัววัด = งบของทั้งคำขอ (แบบเดียวกับ route เอกสาร) ไม่ใช่งบเติมรูปที่ขั้นออกเลขส่งต่อมา
       measure: ({ customerHtml, internalHtml }) => measureSurveyReportPaper(supabase, {
         customerHtml, internalHtml, deadline: PIPELINE_BUDGET_MS, session, log,
@@ -720,6 +911,8 @@ export function pipelinePapers(world, run) {
  * สถานะ `missing → issued → ready` · รอบสอง `reused` เลขเดิม · เลขรันถูกกินครั้งเดียว · ไฟล์ละหนึ่งครั้งจาก Drive ·
  * แถวตรึงแล้ว + ที่อยู่ไฟล์ของแต่ละฉบับเป็นของฉบับนั้น · ถังมีแต่ `img/` กับ PDF สองไฟล์ · HTML ที่ตรึงพก token ·
  * ยามกันรั่วของฉบับลูกค้าผ่าน · จำนวนหน้า PDF = แผนหน้า · ฟอนต์ Sarabun เท่านั้น · audit สองแถวไม่มีภาพนิ่ง/HTML
+ * ⭐ ลายเซ็น (แถวที่ภาพนิ่งมีคีย์ `signatures` = รอบที่กติกาเปิด): สองที่นั่งตรึงฉบับกับรูป · คลังลายเซ็นถูกอ่านไฟล์ละครั้ง (ทั้งสองรอบ ·
+ *   ทาง `send` อ่านตอน S5 แล้วขั้นออกเลขไม่อ่านซ้ำ) และไม่ถูกเขียน · กระดาษที่ตรึงผ่านยามลายเซ็นทั้งสองฉบับ · audit จดที่นั่ง/ผู้ใช้/ฉบับ
  */
 export function pipelineFailures(world, run) {
   const failures = [];
@@ -779,6 +972,34 @@ export function pipelineFailures(world, run) {
   const leaks = customer ? surveyReportCustomerHtmlIssues({ html: customer.html, snapshot: row.snapshot, layout: customer.layout }) : ['ไม่มีฉบับลูกค้า'];
   expect(leaks.length === 0, `ยามกันรั่วของฉบับลูกค้า — ${leaks.join(' | ')}`);
 
+  /* ลายเซ็นของผู้ลงนาม — เฉพาะแถวที่ภาพนิ่งตรึงลายเซ็น (รอบที่กติกาปิดไม่มีคีย์นี้ และคลังต้องไม่ถูกแตะเลย) */
+  const signs = row.snapshot?.signatures || null;
+  const vault = world.signatures?.vault;
+  if (!signs) {
+    expect(!vault || vault.downloads.length === 0, `กติกาลายเซ็นปิด แต่คลังลายเซ็นถูกอ่าน ${vault?.downloads.length} ครั้ง`);
+    expect(!images.some((img) => img.kind === 'sign'), 'กติกาลายเซ็นปิด แต่คอลัมน์ images มีแถวชนิด sign');
+  } else {
+    const seats = ['assessor', 'approver'].map((seat) => [seat, signs[seat]]);
+    for (const [seat, hit] of seats) {
+      expect(!!hit?.img?.sha && hit.userId === world.signatures.signers[seat],
+        `ที่นั่ง ${seat} ต้องตรึงลายเซ็นของ ${world.signatures.signers[seat]} พร้อมรูป — ได้ ${JSON.stringify(hit)}`);
+      expect(!hit?.img?.sha || images.some((img) => img.kind === 'sign' && img.sha === hit.img.sha && img.attId === null),
+        `คอลัมน์ images ต้องมีแถวชนิด sign ของที่นั่ง ${seat}`);
+    }
+    expect(!JSON.stringify(row.snapshot).includes('users/') && !JSON.stringify(images).includes('users/'), 'ที่อยู่ไฟล์ของคลังลายเซ็นต้องไม่เข้าภาพนิ่ง/คอลัมน์ images');
+    const wanted = [...new Set(Object.values(world.signatures.versions).map((v) => v.storagePath))];
+    expect(JSON.stringify([...vault.downloads].sort()) === JSON.stringify([...wanted].sort()),
+      `คลังลายเซ็นต้องถูกอ่านไฟล์ละครั้ง (${wanted.length} ไฟล์) — ถูกอ่าน ${vault.downloads.length} ครั้ง`);
+    for (const p of papers) {
+      const found = surveyReportSignatureHtmlIssues({ html: p.html, snapshot: row.snapshot, version: p.version });
+      expect(found.length === 0, `${p.version}: ยามลายเซ็น — ${found.join(' | ')}`);
+    }
+    const issuedAudit = run.audits.find((a) => a.action === 'create');
+    expect(issuedAudit?.after?.signCount === 2 && issuedAudit.after.signatures?.every((s) => s.seat && s.userId && s.versionId),
+      `audit ของการออกเลขต้องจดที่นั่ง ผู้ใช้ และฉบับของลายเซ็น — ได้ ${JSON.stringify(issuedAudit?.after?.signatures)}`);
+    expect(!/data:image|base64|users\//.test(JSON.stringify(run.audits)), 'audit ต้องไม่พกรูปหรือที่อยู่ไฟล์ของลายเซ็น');
+  }
+
   expect(run.audits.map((a) => `${a.action}:${a.entityType}`).join(',') === 'create:service_survey_report,update:service_survey_report',
     `audit ต้องมีสองแถว (ออกเลข · เก็บกระดาษ) — ได้ ${run.audits.map((a) => `${a.action}:${a.entityType}`).join(',') || '—'}`);
   const auditKeys = keysDeep(run.audits.map((a) => ({ before: a.before, after: a.after })));
@@ -789,15 +1010,26 @@ export function pipelineFailures(world, run) {
 
 /* ── main ─────────────────────────────────────────────────────────────── */
 
-/** ชุดที่จะเรนเดอร์ — `[{ label, inputs, bySha, mode, dir, golden }]` */
+/**
+ * ชุดที่จะเรนเดอร์ — `[{ label, inputs, bySha, mode, dir, golden, sign, seats, known }]`
+ *   · `sign`  ตัวเลือกของลายเซ็น (`harnessSignatures`) — ไม่มี = ผู้ลงนามทั้งสองที่นั่งมีลายเซ็นและเตรียมรูปแล้ว
+ *   · `seats` จำนวนรูป/กรอบประที่ต้องเห็นต่อบล็อกลงนาม — ไม่มี = รูป 2 ที่
+ *   · `known` ข้อที่รู้ว่าจะฟ้อง (ข้อจำกัดที่ยังไม่แก้ · `surveySignCases`) — ไม่นับเป็นล้ม แต่ต้องฟ้องจริง
+ */
 function loadRuns(args, outDir) {
   if (args.stress) {
     const wanted = typeof args.case === 'string' ? args.case : null;
-    const cases = surveyStressCases().filter((c) => !wanted || c.name === wanted);
-    if (!cases.length) throw new Error(`ไม่มีกรณี "${wanted}" — มี: ${surveyStressCases().map((c) => c.name).join(' · ')}`);
+    const all = [
+      ...surveyStressCases().map((c) => ({ name: c.name, mode: c.mode, inputs: () => stressSurveyInputs(c.spec) })),
+      // กรณีของลายเซ็น — อินพุตตั้งต้นของแต่ละกรณี + ตัวเลือกของลายเซ็น (กติกาปิดด้วย `--no-signatures` = เรนเดอร์อินพุตเดียวกันแบบคำ)
+      ...surveySignCases().map((c) => ({ name: c.name, mode: c.mode, inputs: c.inputs, sign: c.sign, seats: c.seats, known: c.known })),
+    ];
+    const cases = all.filter((c) => !wanted || c.name === wanted);
+    if (!cases.length) throw new Error(`ไม่มีกรณี "${wanted}" — มี: ${all.map((c) => c.name).join(' · ')}`);
     return cases.map((c, i) => ({
-      label: c.name, inputs: stressSurveyInputs(c.spec), bySha: {}, mode: c.mode,
+      label: c.name, inputs: c.inputs(), bySha: {}, mode: c.mode,
       dir: i === 0 || wanted ? outDir : join(outDir, 'cases', c.name), golden: false,
+      sign: c.sign, seats: c.seats, known: c.known,
     }));
   }
   if (args.synthetic) {
@@ -822,7 +1054,12 @@ async function mainRender(args, outDir) {
   const failures = [];
   try {
     for (const run of runs) {
-      const built = buildSurveyReportSnapshot(run.inputs, { mode: run.mode });
+      /* ลายเซ็นของผู้ลงนาม — ทุกรอบเรนเดอร์ด้วยกติกาลายเซ็นจริงเปิด (ไฟล์ลายเซ็นปลอมผ่านตัวเตรียมตัวจริง) เว้นแต่ `--no-signatures` */
+      const signed = args['no-signatures'] ? null : await harnessSignatures(run.inputs, run.sign);
+      const inputs = signed ? signed.inputs : run.inputs;
+      const bySha = signed ? { ...run.bySha, ...signed.bySha } : run.bySha;
+      const seats = signed ? (run.seats || { images: 2, waits: 0 }) : null;
+      const built = buildSurveyReportSnapshot(inputs, { mode: run.mode });
       if (built.errors) {
         console.error(`ตรึงไม่ได้ (${run.label}):`);
         for (const error of built.errors) console.error(`  · ${error}`);
@@ -832,22 +1069,40 @@ async function mainRender(args, outDir) {
       }
       mkdirSync(run.dir, { recursive: true });
       writeFileSync(join(run.dir, 'snapshot.json'), JSON.stringify(built.snapshot, null, 2));
+      // PNG ต้นฉบับของลายเซ็นปลอม (ก่อนถมพื้นขาว/ย่อ) — ไว้เทียบกับที่ขึ้นบนกระดาษ
+      for (const [userId, png] of Object.entries(signed?.sources || {})) writeFileSync(join(run.dir, `signature-${userId}.png`), png);
 
       const results = [];
       for (const version of ['customer', 'internal']) {
-        results.push(await renderVersion(browser, pdfLib, { version, snapshot: built.snapshot, bySha: run.bySha, dir: run.dir, docNo, issuedAt, scale }));
+        results.push(await renderVersion(browser, pdfLib, { version, snapshot: built.snapshot, bySha, dir: run.dir, docNo, issuedAt, scale }));
       }
 
-      console.log(`\nรายงานการประเมินพื้นที่ · ${run.label}${run.mode === 'draft' ? ' (โหมดร่าง)' : ''} · ${docNo} → ${run.dir}`);
+      console.log(`\nรายงานการประเมินพื้นที่ · ${run.label}${run.mode === 'draft' ? ' (โหมดร่าง)' : ''} · ${docNo} → ${run.dir}`
+        + ` · ลายเซ็น: ${signed ? (seats.images ? `รูปจริง ${seats.images} ที่นั่ง` : 'กรอบประ (ยังไม่ออกเอกสาร)') : 'ปิด (พิมพ์คำ)'}`);
       const fitReport = {};
       const issues = [];
       for (const result of results) {
         const { rows, issues: found } = report(result);
         fitReport[result.version] = {
           pageCount: result.layout.pageCount, zonePage: result.layout.zonePage, fonts: result.pdfFonts,
-          accent: paperAccentOf(result.html), titleColor: result.titleColor, pages: rows,
+          accent: paperAccentOf(result.html), titleColor: result.titleColor, pages: rows, signs: result.signs,
         };
-        issues.push(...found);
+        issues.push(...found, ...signFailures(result, seats));
+        for (const [key, label] of [['signoff', 'การรับรองผล'], ['signs', 'ภาคผนวก จ']]) {
+          for (const block of result.signs[key]) {
+            console.log(`  ${label}: ${block.map((seat) => `${seat.title} = ${seat.img ? `รูป ${seat.img.natural.join('×')} ในช่อง ${seat.img.box.join('×')} (${seat.img.fit})` : seat.wait !== null ? `กรอบประ "${seat.wait}"` : seat.words !== null ? `คำ "${seat.words}"` : seat.form ? 'แบบฟอร์มเปล่า' : 'ช่องว่าง'} · สูง ${seat.height}`).join(' | ')}`);
+          }
+        }
+        /* 🔴 ยามลายเซ็นของ production บนกระดาษแบบ token (ตัวที่จะถูกตรึงจริง) — เฉพาะภาพนิ่งโหมดตรึงที่ตรึงลายเซ็น */
+        if (signed && run.mode === 'freeze') {
+          const tokenHtml = renderSurveyReportHTML({ view: result.view, layout: result.layout, docNo, issuedAt: issuedAt || built.snapshot.request?.answeredAt });
+          issues.push(...surveyReportSignatureHtmlIssues({ html: tokenHtml, snapshot: built.snapshot, version: result.version })
+            .map((line) => `${result.version}: ยามลายเซ็น — ${line}`));
+          if (result.version === 'customer') {
+            issues.push(...surveyReportCustomerHtmlIssues({ html: tokenHtml, snapshot: built.snapshot, layout: result.layout })
+              .map((line) => `customer: ยามกันรั่ว — ${line}`));
+          }
+        }
       }
       writeFileSync(join(run.dir, 'fit.json'), JSON.stringify(fitReport, null, 2));
 
@@ -857,7 +1112,19 @@ async function mainRender(args, outDir) {
         console.log('\nคำเตือน (ไม่บล็อก):');
         for (const warning of warnings) console.log(`  · ${warning}`);
       }
-      const found = [...issues, ...(args.assert && run.golden ? goldenFailures(results, docNo) : [])];
+      /* ข้อที่รู้ว่าจะฟ้อง (ข้อจำกัดที่ยังไม่แก้ของกรณีนี้): ไม่นับเป็นล้ม แต่ **ต้องฟ้องจริง** — ไม่ฟ้องแล้ว = ข้อจำกัดหายไปหรือ
+         กรณีไม่ได้ทดสอบสิ่งที่อ้าง ⇒ ล้ม ให้คนมาแก้รายการ `known` ของกรณีนั้น
+         (ชื่อสองบรรทัดของ `sign-wrap` เกินแผนทั้งตอนพิมพ์คำ ~8px และตอนมีรูปลายเซ็น ~18px — รายการเดียวกันใช้ได้ทั้ง `--no-signatures`) */
+      const known = run.known || [];
+      const isKnown = (text) => known.some((pattern) => pattern.test(text));
+      const accepted = issues.filter(isKnown);
+      if (accepted.length) {
+        console.log('\nข้อที่รู้อยู่แล้ว (ไม่นับเป็นล้ม):');
+        for (const text of accepted) console.log(`  · ${text}`);
+      }
+      const stale = known.filter((pattern) => !issues.some((text) => pattern.test(text)))
+        .map((pattern) => `ข้อที่รู้อยู่แล้วไม่เกิดในรอบนี้ (${pattern}) — แก้รายการ known ของกรณี ${run.label}`);
+      const found = [...issues.filter((text) => !isKnown(text)), ...stale, ...(args.assert && run.golden ? goldenFailures(results, docNo) : [])];
       failures.push(...found.map((text) => (runs.length > 1 ? `[${run.label}] ${text}` : text)));
     }
   } finally {
@@ -890,7 +1157,8 @@ async function mainPipeline(args, outDir) {
 
   const world = surveyPipelineWorld(source, { files, clock });
   const started = performance.now();
-  const run = await runSurveyPipeline(world, { via, clock });
+  const signatureRule = args['no-signatures'] ? 'off' : 'required';
+  const run = await runSurveyPipeline(world, { via, clock, signatureRule });
   const tookMs = Math.round(performance.now() - started);
 
   mkdirSync(outDir, { recursive: true });
@@ -917,7 +1185,13 @@ async function mainPipeline(args, outDir) {
   writeFileSync(join(outDir, 'pipeline.json'), JSON.stringify({
     label, via, docNo: run.docNo, states: run.states, first: run.first, second: run.second,
     pages: Object.fromEntries(papers.map((p) => [p.version, { planned: p.layout.pageCount, pdf: p.pdfPages, bytes: p.pdf?.length || 0, fonts: p.pdfFonts }])),
-    images: (row?.images || []).map((img) => ({ sha: img.sha, w: img.w, h: img.h, bytes: img.bytes })),
+    images: (row?.images || []).map((img) => ({ sha: img.sha, kind: img.kind, w: img.w, h: img.h, bytes: img.bytes })),
+    signatures: row?.snapshot?.signatures
+      ? Object.fromEntries(Object.entries(row.snapshot.signatures).map(([seat, hit]) => [seat, hit && {
+        name: hit.name, versionId: hit.versionId, versionNumber: hit.versionNumber, img: hit.img,
+      }]))
+      : null,
+    signatureDownloads: world.signatures.vault.downloads.length,
     driveFetches: Object.fromEntries(world.drive.fetched),
     bucket: [...world.objects.keys()].sort(),
     audits: run.audits.map((a) => ({ action: a.action, entityType: a.entityType, summary: a.summary, after: a.after })),
@@ -941,6 +1215,9 @@ async function mainPipeline(args, outDir) {
     console.log(`  ${p.version}: แผน ${p.layout.pageCount} หน้า · PDF ${p.pdfPages ?? '?'} หน้า ${mb(p.pdf?.length)} · ฟอนต์ ${p.pdfFonts.names.join(' ') || '—'}`);
   }
   console.log(`  รูป: ${world.drive.fetched.size} ไฟล์จาก Drive → ${(row?.images || []).length} รูปในถัง · RPC ${world.rpcCalls.length} ครั้ง`);
+  console.log(`  ลายเซ็น: ${row?.snapshot?.signatures
+    ? `${['assessor', 'approver'].map((seat) => `${seat} = ${row.snapshot.signatures[seat]?.name || '—'}`).join(' · ')} · อ่านคลัง ${world.signatures.vault.downloads.length} ครั้ง`
+    : 'กติกาปิด (พิมพ์คำ)'}`);
   console.log(`  เวลา: รวม ${timing.totalMs} ms · ดึงรูป ${timing.imageFetchMs} · ย่อ ${timing.imageResizeMs} · อัปรูป ${timing.imageUploadMs} · พิมพ์+วัด ${timing.printMs} · เก็บ PDF ${timing.storeMs}`);
   if (run.first.issue.warnings.length) {
     console.log('\nคำเตือน (ไม่บล็อก):');

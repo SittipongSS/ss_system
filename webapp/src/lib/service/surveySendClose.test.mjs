@@ -8,9 +8,11 @@ import assert from 'node:assert/strict';
 import {
   SEND_CLOSABLE_VISIT_STATES,
   SURVEY_SEND_OLD_PAGE_ERROR,
+  SURVEY_SEND_PAPER_HOLD_EFFECT,
   SURVEY_SEND_PREFLIGHT_MS,
   SURVEY_SEND_REPORT_FAILED,
   SURVEY_SEND_REPORT_OFF,
+  SURVEY_SEND_SIGN_MS,
   SURVEY_SEND_WARNINGS_CHANGED_ERROR,
   closeSurveyVisitForSend,
   surveySendCloseBody,
@@ -23,10 +25,14 @@ import {
   surveySendImageRefusal,
   surveySendRefusalKeeps,
   surveySendReport,
+  surveySendSignatureRefusal,
+  surveySendUnreadSignRefusal,
   surveySendUnseenWarnings,
   surveySendVisitStep,
   surveySendWrites,
 } from './surveySendClose.js';
+import { SURVEY_SIGN_FAILURE, SURVEY_SIGN_PERMANENT_REASONS } from './surveyReportImages.js';
+import { SURVEY_SIGN_FAILURE_LABELS, surveyReportSignFileLines, surveyReportSignersText } from './surveyReportSigners.js';
 import { isOpenVisit } from './visitStatus.js';
 
 const TODAY = '2026-09-24';
@@ -392,6 +398,9 @@ test('⭐ โมดัลยืนยัน: ไม่ส่งสามตั�
     { warnings: null }, { warnings: [] }, { warnings: ['', '   ', null, 7] }, { issuesDocument: undefined, replacesDocNo: null, warnings: undefined },
     // PR-3: ตัวที่สี่ (`documentUnknown`) — ไม่ส่ง/ไม่ใช่ true ตรงตัว = ไม่มีข้อเพิ่ม
     { documentUnknown: false }, { documentUnknown: undefined }, { documentUnknown: null }, { documentUnknown: 'true' }, { documentUnknown: 1 },
+    // PR-SIG: ตัวที่ห้า (`signers`) — ไม่ส่ง/ว่าง = ไม่มีข้อเพิ่ม · มีรายชื่อแต่การส่งครั้งนี้ไม่ออกเอกสาร = ไม่มีข้อเพิ่มเหมือนกัน
+    { signers: null }, { signers: [] }, { signers: undefined },
+    { signers: [{ seats: ['assessor'], name: 'สมชาย' }, { seats: ['approver'], name: 'หัวหน้า ก' }] },
   ]) {
     assert.deepEqual(surveySendConfirm({ ...base, ...extra }), before, JSON.stringify(extra));
   }
@@ -638,4 +647,122 @@ test('การตีกลับที่การ์ดเก็บไว้ =
     assert.equal(surveySendRefusalKeeps(message), false, message);
   }
   for (const none of [null, undefined, '', 7, { message: one }, [one]]) assert.equal(surveySendRefusalKeeps(none), false);
+});
+
+/* ══ ลายเซ็นจริงของผู้ลงนาม (PR-SIG §3.3 · §5 · มติเจ้าของ 09/10/2026) ════════════════════════════ */
+
+const SIGNERS = [{ seats: ['assessor'], name: 'สมชาย' }, { seats: ['approver'], name: 'หัวหน้า ก' }];
+const ISSUE_LINE = 'ออกเอกสารประเมิน (เลข SU) ไปพร้อมกัน — ฝ่ายขายดาวน์โหลดฉบับลูกค้าได้ที่หน้าคำร้อง · เอกสารที่ออกแล้วแก้ไม่ได้ (แก้ = ดึงผลกลับแล้วส่งใหม่เป็น Rev ถัดไป)';
+
+test('โมดัลยืนยัน · ลายเซ็นจริง: เอ่ยชื่อผู้ลงนามต่อจากข้อออกเอกสารทันที — เฉพาะเมื่อการส่งครั้งนี้ออกเอกสาร · ป้ายปุ่มไม่เปลี่ยน', () => {
+  const warnings = ['หมายเหตุพื้นที่ 1 มีคำว่า "เครื่อง" — ตรวจข้อความก่อนส่ง'];
+  const base = { docNo: 'AS-26090001', closesVisit: closes(), issuesDocument: true, warnings };
+  const plain = surveySendConfirm(base);
+  const c = surveySendConfirm({ ...base, signers: SIGNERS });
+  const at = plain.effects.indexOf(ISSUE_LINE);
+  assert.ok(at > 0);
+  assert.deepEqual(c.effects, [
+    ...plain.effects.slice(0, at + 1),
+    'เอกสารจะพิมพ์ลายเซ็นที่บันทึกไว้ของ สมชาย (ผู้ประเมิน) และ หัวหน้า ก (ผู้ตรวจสอบและอนุมัติ)',
+    ...plain.effects.slice(at + 1),
+  ]);
+  assert.equal(c.confirmLabel, plain.confirmLabel);
+  assert.deepEqual(Object.keys(c), ['effects', 'confirmLabel']);
+  assert.equal(new Set(c.effects).size, c.effects.length, 'จอใช้ข้อความเป็น key ของข้อ');
+  assert.equal(c.effects[at + 1], `เอกสารจะพิมพ์ลายเซ็นที่บันทึกไว้ของ ${surveyReportSignersText(SIGNERS)}`);
+
+  // คนเดียวสองที่นั่ง (หัวหน้าไปประเมินเองแล้วส่งเอง)
+  const same = surveySendConfirm({ ...base, signers: [{ seats: ['assessor', 'approver'], name: 'หัวหน้า ก' }] });
+  assert.equal(same.effects[at + 1], 'เอกสารจะพิมพ์ลายเซ็นที่บันทึกไว้ของ หัวหน้า ก ทั้งสองช่อง (ผู้ประเมิน และผู้ตรวจสอบและอนุมัติ)');
+  // ส่งรอบใหม่หลังดึงกลับ — ต่อจากข้อ "ออกฉบับใหม่ (Rev ถัดไป)"
+  const again = surveySendConfirm({ docNo: 'AS-26090001', issuesDocument: true, replacesDocNo: 'SU-26100001-0', signers: SIGNERS });
+  assert.match(again.effects[2], /^ออกเอกสารประเมินฉบับใหม่ \(Rev ถัดไป\) แทน SU-26100001-0/);
+  assert.match(again.effects[3], /^เอกสารจะพิมพ์ลายเซ็นที่บันทึกไว้ของ สมชาย/);
+
+  // รูปที่อ่านไม่ออก = ไม่มีข้อนี้ (ไม่พิมพ์ประโยคครึ่งท่อน)
+  for (const odd of ['x', [{ seats: ['sales'], name: 'ก' }], [{ seats: ['assessor'], name: '  ' }], [null]]) {
+    assert.deepEqual(surveySendConfirm({ ...base, signers: odd }), plain, JSON.stringify(odd));
+  }
+});
+
+test('🔴 โมดัลยืนยัน · ลายเซ็นจริง: การส่งที่ไม่ออกเอกสารไม่อ้างว่าจะพิมพ์ลายเซ็น — สวิตช์ปิด · ใบที่มีพื้นที่จากแบบ · อ่านสถานะไม่สำเร็จ', () => {
+  const noLine = (c) => assert.ok(c.effects.every((line) => !line.includes('ลายเซ็น')), c.effects.join('\n'));
+  noLine(surveySendConfirm({ docNo: 'AS-26090001', issuesDocument: false, signers: SIGNERS }));
+  noLine(surveySendConfirm({ docNo: 'AS-26090001', documentUnknown: true, signers: SIGNERS }));
+  // ใบที่มีพื้นที่จากแบบ: เอกสารถูกพักไว้ — ข้อ "ยังออกไม่ได้" แทนข้อออกเอกสาร จึงไม่มีข้อผู้ลงนามตามมา
+  const drawing = surveySendConfirm({
+    docNo: 'AS-26090001', issuesDocument: true, signers: SIGNERS,
+    method: { mix: { onsite: 1, drawing: 1, mode: 'mixed' }, confirm: 'needed', openVisit: null },
+  });
+  assert.ok(drawing.effects.includes(SURVEY_SEND_PAPER_HOLD_EFFECT));
+  noLine(drawing);
+});
+
+test('🔴 ตัวตรวจอ่านไม่ครบ (S5): ผู้ลงนามที่รู้แน่ว่ายังไม่มีลายเซ็นยังตีกลับ — เว้นแต่ชิ้นที่ตัดสินเรื่องลายเซ็นเองอ่านไม่ได้ (ตารางลายเซ็น · นัด · ผลวัด)', () => {
+  const sign = { kind: 'content', sign: true, userId: 'U-lead', seats: ['assessor'], text: 'ผู้ประเมิน สมชาย ยังไม่มีลายเซ็นในระบบ — ให้เจ้าตัวเพิ่มที่ “บัญชีของฉัน” ก่อน' };
+  const other = { kind: 'content', text: 'พื้นที่ 1: ยังไม่มีภาพผังที่ลงเอกสารได้ (ต้องเป็นรูป JPG/PNG)' };
+  const system = { kind: 'system', text: 'อ่านเลขที่ดีลไม่สำเร็จ' };
+  const check = (unknown, blockers = [system, sign]) => ({ unknown, blockers, warnings: [], signers: [] });
+  const REFUSAL = `ออกเอกสารไม่ได้ — ${sign.text} · ยังไม่ได้ส่งผล`;
+
+  // ชิ้นที่ไม่เกี่ยวกับลายเซ็นล้ม = รู้แน่ ⇒ ตีกลับ
+  for (const piece of ['deal', 'company', 'form', 'helpers', 'assigneeRole', 'history', 'sizes', 'site', 'customer', 'files', 'zoneRegistry', 'visitThread']) {
+    assert.equal(surveySendUnreadSignRefusal(check([piece])), REFUSAL, piece);
+  }
+  assert.equal(surveySendUnreadSignRefusal(check(['deal', 'company'])), REFUSAL);
+  // ชิ้นที่ตัดสินเรื่องลายเซ็นล้ม (แม้ปนกับชิ้นอื่น) = ไม่รู้ ⇒ ไม่ตีกลับ (กติกาเดิม: ปัญหาของระบบไม่ขวางผล)
+  for (const piece of ['signatures', 'visits', 'zones']) {
+    assert.equal(surveySendUnreadSignRefusal(check([piece])), null, piece);
+    assert.equal(surveySendUnreadSignRefusal(check(['deal', piece])), null, piece);
+  }
+  // เฉพาะบรรทัดที่พก `sign: true` — เหตุชนิด content ข้ออื่นยังไม่ตีกลับตอนอ่านไม่ครบ และไม่ถูกลากเข้าประโยค
+  assert.equal(surveySendUnreadSignRefusal(check(['deal'], [system, other])), null);
+  assert.equal(surveySendUnreadSignRefusal(check(['deal'], [other, sign, system])), REFUSAL);
+  assert.equal(surveySendUnreadSignRefusal(check(['deal'], [{ ...sign, sign: 'yes' }, { ...sign, kind: 'system' }])), null);
+  // สองคนไม่มีลายเซ็น = สองบรรทัดในประโยคเดียว
+  const head = { kind: 'content', sign: true, userId: 'U-head', seats: ['approver'], text: 'ผู้ตรวจสอบและอนุมัติ สมหญิง (ผู้ส่งผล) ยังไม่มีลายเซ็นในระบบ' };
+  assert.equal(surveySendUnreadSignRefusal(check(['deal'], [sign, head])), `ออกเอกสารไม่ได้ — ${sign.text} | ${head.text} · ยังไม่ได้ส่งผล`);
+  // อ่านครบ = ทางปกติของ S5 ตัดสินเอง (ตัวนี้เงียบ) · ผลผิดรูป = เงียบ
+  assert.equal(surveySendUnreadSignRefusal(check([])), null);
+  for (const odd of [null, undefined, {}, { unknown: 'deal', blockers: [sign] }, { unknown: ['deal'] }, { unknown: ['deal'], blockers: 'x' }]) {
+    assert.equal(surveySendUnreadSignRefusal(odd), null, JSON.stringify(odd));
+  }
+  assert.doesNotMatch(REFUSAL, /U-lead/);
+});
+
+test('🔴 ไฟล์ลายเซ็นใช้พิมพ์ไม่ได้ (S5): ตีกลับเฉพาะเหตุถาวร พร้อมชื่อเจ้าของและเหตุ · ล้มชั่วคราวไม่ตีกลับ · งบ 15 วินาที', () => {
+  assert.equal(SURVEY_SEND_SIGN_MS, 15_000);
+  const row = (name, reason, permanent, extra = {}) => ({
+    userId: 'U-secret-id', name, seats: ['assessor'], versionId: 'signature-version-secret', reason, permanent, ...extra,
+  });
+  assert.equal(surveySendSignatureRefusal([row('สมชาย', SURVEY_SIGN_FAILURE.BLANK, true)]),
+    'ออกเอกสารไม่ได้ — ลายเซ็นของ สมชาย ใช้พิมพ์ไม่ได้ (ภาพลายเซ็นว่างหรือจางเกินไป) — ให้เจ้าตัวอัปโหลดลายเซ็นใหม่ที่ “บัญชีของฉัน” · ยังไม่ได้ส่งผล');
+  // ทุกเหตุถาวรมีป้ายของตัวเอง — ขึ้นต้น/ลงท้ายเหมือนประโยค 409 ของเอกสาร (จอและคนอ่านรู้ว่ายังไม่ได้ส่งผล)
+  for (const reason of SURVEY_SIGN_PERMANENT_REASONS) {
+    const text = surveySendSignatureRefusal([row('สมชาย', reason, true)]);
+    assert.ok(text.startsWith('ออกเอกสารไม่ได้ — ลายเซ็นของ สมชาย ใช้พิมพ์ไม่ได้ ('), reason);
+    assert.ok(text.includes(`(${SURVEY_SIGN_FAILURE_LABELS[reason]})`), reason);
+    assert.ok(text.endsWith(' · ยังไม่ได้ส่งผล'), reason);
+    assert.equal(surveySendDocumentRefusal([{ kind: 'content', text: 'x' }]).slice(0, 18), text.slice(0, 18));
+  }
+  // สองคน = สองบรรทัดในประโยคเดียว · ชั่วคราวที่ปนมาไม่ถูกเอ่ย
+  const both = surveySendSignatureRefusal([
+    row('สมชาย', SURVEY_SIGN_FAILURE.MISSING, true), row('หัวหน้า ก', SURVEY_SIGN_FAILURE.TIMEOUT, false),
+    row('วิชัย', SURVEY_SIGN_FAILURE.MISMATCH, true),
+  ]);
+  assert.equal(both, 'ออกเอกสารไม่ได้ — ลายเซ็นของ สมชาย ใช้พิมพ์ไม่ได้ (ไฟล์ลายเซ็นหายจากที่เก็บ) | ลายเซ็นของ วิชัย ใช้พิมพ์ไม่ได้ (ไฟล์ลายเซ็นไม่ตรงกับที่บันทึกไว้)'
+    + ' — ให้เจ้าตัวอัปโหลดลายเซ็นใหม่ที่ “บัญชีของฉัน” · ยังไม่ได้ส่งผล');
+  assert.deepEqual(surveyReportSignFileLines([row('สมชาย', SURVEY_SIGN_FAILURE.MISSING, true)]), ['ลายเซ็นของ สมชาย ใช้พิมพ์ไม่ได้ (ไฟล์ลายเซ็นหายจากที่เก็บ)']);
+  // 🔴 ไม่มีรหัสผู้ใช้ รหัสฉบับ หรือที่อยู่ไฟล์ในประโยค
+  assert.doesNotMatch(both, /U-secret-id|signature-version|users\//);
+
+  // ล้มชั่วคราวล้วน / ไม่มีอะไรล้ม / รูปแปลก = ไม่ตีกลับ
+  for (const reason of [SURVEY_SIGN_FAILURE.TIMEOUT, SURVEY_SIGN_FAILURE.STORAGE, SURVEY_SIGN_FAILURE.SHARP_UNAVAILABLE, SURVEY_SIGN_FAILURE.INTERNAL]) {
+    assert.equal(surveySendSignatureRefusal([row('สมชาย', reason, false)]), null, reason);
+  }
+  for (const none of [[], null, undefined, 'x', [null], [{ name: 'ก', reason: 'sign_blank', permanent: 'true' }]]) {
+    assert.equal(surveySendSignatureRefusal(none), null, JSON.stringify(none));
+  }
+  // การ์ดไม่เก็บการตีกลับนี้ (วันนี้เก็บเฉพาะรูปเปิดไม่ได้ — โมดัลเป็นคนบอก)
+  assert.equal(surveySendRefusalKeeps(both), false);
 });

@@ -19,6 +19,7 @@
 //   ติดด่าน = โชว์ปุ่มแล้วบอกเหตุ **เป็นตัวหนังสือเหนือปุ่ม** (`disabledReason` ของ
 //   `DocumentControlCard` ซึ่งวาดเป็น `<p role="status">` ไม่ใช่ tooltip)
 import { Fragment, useId, useState } from "react";
+import Link from "next/link";
 import { ArrowDown, Check, ChevronDown, Eye, FileText, ListChecks, Lock, X } from "lucide-react";
 import thaiText from "@/components/ThaiText";
 import Segmented from "@/components/ui/Segmented";
@@ -190,6 +191,11 @@ export default function SurveyControlCard({
               onReload={reasonReload}
               className={styles.reasonJump}
             />
+            {/* ลิงก์ออกจากหน้านี้ (`sendReason.link` · วันนี้มีแบบเดียว: "ไปบัญชีของฉัน" ของคนดูที่เป็นผู้ลงนามซึ่งยังไม่มีลายเซ็น — PR-SIG)
+                ตัวตัดสินเป็นคนใส่ การ์ดแค่วาด · เป็น `<Link>` ไม่ใช่ปุ่มพาไป: ปลายทางอยู่นอกใบนี้ */}
+            {sendReason.link ? (
+              <Link className={`text-action ${styles.reasonJump}`} href={sendReason.link.href}>{sendReason.link.label}</Link>
+            ) : null}
           </span>
         </span>
       ) : undefined,
@@ -508,9 +514,12 @@ export default function SurveyControlCard({
             {docStatus.foot ? <span className={styles.noticeLine}>{thaiText(docStatus.foot)}</span> : null}
             {/* ทางออกของกล่อง ("ตรวจอีกครั้ง" · "โหลดใหม่") = อ่านใบใหม่ — ตัวตรวจเอกสารอยู่ฝั่ง server · หน้าบอกผลของการกด
                 (อ่านไม่สำเร็จ · ตรวจแล้วยังติดเท่าเดิม) เพราะทั้งสองกรณีจอนี้ไม่ขยับ */}
-            {docStatus.action ? (
-              <span className={styles.noticeLine}>
+            {/* `docStatus.link` = ลิงก์ออกจากหน้านี้ข้างปุ่มตรวจซ้ำ ("ไปบัญชีของฉัน" — คนดูเป็นผู้ลงนามที่ยังไม่มีลายเซ็น · PR-SIG) · มีลิงก์ = แถวนี้
+                ใช้ช่องไฟของแถวปุ่ม (`.gapActions`) ให้สองตัวไม่ชิดกัน · ไม่มีลิงก์ = แถวเดิมทุก px */}
+            {docStatus.action || docStatus.link ? (
+              <span className={docStatus.link ? `${styles.noticeLine} ${styles.gapActions}` : styles.noticeLine}>
                 <JumpButton target={docStatus.action} onReload={recheckDocument} />
+                {docStatus.link ? <Link className="text-action" href={docStatus.link.href}>{docStatus.link.label}</Link> : null}
               </span>
             ) : null}
           </StatusNotice>

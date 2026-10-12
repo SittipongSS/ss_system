@@ -20,6 +20,7 @@
 import { businessDate } from '@/lib/businessDate';
 import { canAnswerRequest, canManageRequest } from '@/lib/requests/access';
 import { surveyDocAccess } from './surveyAccess';
+import { surveyReportSignaturesOn } from './surveyReportSignFlag';
 import { surveyReportCurrent, surveyReportIsStale, surveyReportState } from './surveyReportState';
 
 /** bucket ส่วนตัวของเอกสาร (0401 ⑥) — `img/<sha>.jpg` รูปที่ย่อแล้ว · `pdf/<reportId>/<version>.pdf` */
@@ -170,7 +171,35 @@ const byRevDesc = (a, b) => Number(b.rev) - Number(a.rev);
 const strings = (list) => (Array.isArray(list) ? list : []).filter((t) => typeof t === 'string');
 
 /* ผลตรวจที่ล้ม — `unknown: true` ไม่ใช่รายการว่างเฉย ๆ: "ตรวจไม่ได้" กับ "ไม่มีอะไรขวาง" ต้องหน้าตาไม่เหมือนกันบนจอ */
-const checkUnknown = () => ({ blockers: [], warnings: [], unknown: true });
+const checkUnknown = () => ({ blockers: [], warnings: [], unknown: true, signers: [] });
+
+/* ── กติกาลายเซ็นจริงของรายงาน (PR-SIG §5 · มติเจ้าของ 09/10/2026) ───────────────────────────────────────
+   ค่าของ `signatureRule` ที่ตัวตรวจ/ตัวโหลดรับ — ประกาศซ้ำเป็นสตริงตรง ๆ: โมดูลผู้ลงนาม (`surveyReportSigners`) ลากตัวตัดสินวิธีประเมิน
+   เข้าเส้น import ของทุก GET ที่ไฟล์นี้อยู่ ซึ่งไม่จำเป็น (เทสต์ล็อกว่าสองค่านี้ตรงกับ `SURVEY_SIGN_RULE` และชื่อที่นั่งของโมดูลนั้น) */
+const SIGN_RULE_ON = 'required';
+const SIGN_RULE_OFF = 'off';
+const SIGN_SEATS = ['assessor', 'approver'];
+
+/**
+ * กติกาลายเซ็นจริงของรอบนี้เปิดไหม — `'required'` = เปิด · ไม่ส่ง (`undefined` / `null`) = ถามสวิตช์ · ค่าอื่นทุกค่า = ปิด
+ * (รูปเดียวกับ `signatureRule` ของ `loadSurveyReportInputs` — เทสต์ส่งค่าตรง ๆ ได้ ไม่ต้องสลับ env)
+ */
+function signatureRuleOn(signatureRule) {
+  if (signatureRule === SIGN_RULE_ON) return true;
+  return signatureRule === undefined || signatureRule === null ? surveyReportSignaturesOn() : false;
+}
+
+/* ผู้ลงนามที่เอกสารจะพิมพ์ลายเซ็น → ของที่ออก payload ได้: **ที่นั่งกับชื่อเท่านั้น**
+   🔴 แถวของตัวตรวจ (`surveyReportSignerVersions`) พกรหัสผู้ใช้ รหัสฉบับ และ **ที่อยู่ไฟล์ในคลังลายเซ็น** — คัดทีละคีย์ ห้ามส่งแถวต่อ */
+function signerNames(rows) {
+  const out = [];
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const name = String(row?.name ?? '').trim();
+    const seats = SIGN_SEATS.filter((seat) => Array.isArray(row?.seats) && row.seats.includes(seat));
+    if (name && seats.length) out.push({ seats, name });
+  }
+  return out;
+}
 
 /**
  * ตรวจเนื้อเอกสารของใบ ณ ตอนนี้ — ตัวตรวจเดียวกับที่เส้นส่งผล (S5) และขั้นออกเลข (I2–I3) ใช้ ⇒ จอแค่พิมพ์ผล
@@ -189,7 +218,7 @@ const checkUnknown = () => ({ blockers: [], warnings: [], unknown: true });
  *                  **รวมด่านส่งผล** ที่ขั้นออกเลขวิ่งซ้ำหลังล็อก (I3 · ใบที่ตอบผ่านปุ่มทั่วไปก่อน 24/09 ไม่เคยผ่านมัน)
  *                  ⇒ ต้องมีผลวัด/ไฟล์/ทะเบียนในมือ จึงอ่านเองที่นี่แล้วส่งต่อให้ตัวตรวจ (ไม่อ่านซ้ำ)
  */
-async function documentChecks(supabase, { request, user, now, given, precheck, forIssue }) {
+async function documentChecks(supabase, { request, user, now, given, precheck, forIssue, signRule = false }) {
   const failed = (e) => console.error(`[surveyReport] ตรวจเนื้อเอกสารของ ${request?.docNo || request?.id} ไม่สำเร็จ`, e?.message || e);
   try {
     const nowIso = new Date(now).toISOString();
@@ -235,7 +264,11 @@ async function documentChecks(supabase, { request, user, now, given, precheck, f
     let result = null;
     try {
       const run = precheck || (await import('./surveyReportInputs')).surveyReportPrecheck;
-      result = await run(supabase, { request, user, zones, filesByZone, sizes, open, today, nowIso });
+      /* กติกาลายเซ็นจริงส่งต่อเป็นค่าตรง ๆ (ถามสวิตช์ครั้งเดียวต่อ GET ที่ `surveyDocumentSummary`) — ตัวตรวจกับคีย์ `signRule` ของสรุป
+         จึงตอบตรงกันเสมอ ไม่มีจังหวะที่สองฝั่งอ่านสวิตช์ได้คนละค่า */
+      result = await run(supabase, {
+        request, user, zones, filesByZone, sizes, open, today, nowIso, signatureRule: signRule ? SIGN_RULE_ON : SIGN_RULE_OFF,
+      });
     } catch (e) {
       failed(e);
     }
@@ -243,8 +276,21 @@ async function documentChecks(supabase, { request, user, now, given, precheck, f
 
     /* คัดเฉพาะ `kind` กับ `text` — ของอื่นที่ตัวตรวจอาจแนบมาในวันหน้าไม่ไหลออก payload เอง
        ⭐ ยกเว้นธง `hold` ของข้อกันเอกสาร (ใบมีพื้นที่ประเมินจากแบบ · `SURVEY_REPORT_DRAWING_HOLD`) — ติดไปเฉพาะเมื่อเป็น `true`
-          ตรงตัว: ข้ออื่นทุกข้อยังมีแค่สองคีย์ ⇒ payload ของใบลงหน้างานไม่เปลี่ยนสักไบต์ */
+          ตรงตัว: ข้ออื่นทุกข้อยังมีแค่สองคีย์ ⇒ payload ของใบลงหน้างานไม่เปลี่ยนสักไบต์
+       ⭐ และธงของข้อ "ผู้ลงนามยังไม่มีลายเซ็น" (PR-SIG §2.3 · เฉพาะตอนกติกาลายเซ็นจริงเปิด): `sign: true` = ไม่ต้องดึงผลกลับ เจ้าตัวเพิ่ม
+          ลายเซ็นแล้วกดใหม่ได้ · `self: true` = คนที่ต้องเพิ่มคือคนที่กำลังดูอยู่ (จอขึ้นลิงก์ไป “บัญชีของฉัน”)
+          🔴 **`userId` ของบรรทัดถูกใช้เทียบที่นี่แล้วทิ้ง — ไม่ออก payload** · สองธงอ่านจากทุกแถวก่อนยุบข้อความซ้ำ
+             (กติกาเดียวกับ `blocked()` ของขั้นออกเลข) */
+    const signTexts = new Set();
+    const selfTexts = new Set();
     if (usable) {
+      const viewerId = user?.id !== null && user?.id !== undefined && user.id !== '' ? String(user.id) : null;
+      for (const b of Array.isArray(result.blockers) ? result.blockers : []) {
+        if (!signRule || b?.kind !== 'content' || b.sign !== true) continue;
+        const text = String(b.text ?? '');
+        signTexts.add(text);
+        if (viewerId && b.userId !== null && b.userId !== undefined && String(b.userId) === viewerId) selfTexts.add(text);
+      }
       blockers.push(...(Array.isArray(result.blockers) ? result.blockers : [])
         .map((b) => ({
           kind: b?.kind === 'content' ? 'content' : 'system',
@@ -256,9 +302,15 @@ async function documentChecks(supabase, { request, user, now, given, precheck, f
 
     const seen = new Set();
     return {
-      blockers: blockers.filter((b) => (seen.has(b.text) ? false : seen.add(b.text))),
+      blockers: blockers.filter((b) => (seen.has(b.text) ? false : seen.add(b.text))).map((b) => (
+        b.kind === 'content' && signTexts.has(b.text)
+          ? { ...b, sign: true, ...(selfTexts.has(b.text) ? { self: true } : {}) }
+          : b
+      )),
       warnings: usable ? strings(result.warnings) : [],
       unknown: !usable || (Array.isArray(result.unknown) ? result.unknown.length > 0 : !!result.unknown),
+      /* ผู้ลงนามที่เอกสารจะพิมพ์ลายเซ็น (ว่างเมื่อกติกาปิด · ยังมีที่นั่งที่ไม่มีลายเซ็น · ใบมีพื้นที่จากแบบ) — ที่นั่งกับชื่อเท่านั้น */
+      signers: usable && signRule ? signerNames(result.signers) : [],
     };
   } catch (e) {
     failed(e);
@@ -278,8 +330,9 @@ async function documentChecks(supabase, { request, user, now, given, precheck, f
  *                                 ready: { customer, internal } },
  *               history: [{ docNo, rev, issuedAt, supersededAt, supersededReason }],   ← คีย์มีเฉพาะ access.history
  *               nextDocNo,                                ← คีย์มีเฉพาะ access.issue · เลขฐานเดิม R ถัดไปเมื่อไม่มีฉบับที่ใช้อยู่
- *               send:  null | { blockers: string[], warnings: string[], unknown },     ← คีย์มีเฉพาะ access.issue
- *               issue: null | { blockers: [{ kind, text, hold? }], warnings: string[], unknown },
+ *               send:  null | { blockers: string[], warnings: string[], unknown, selfSign?, signers? },   ← คีย์มีเฉพาะ access.issue
+ *               issue: null | { blockers: [{ kind, text, hold?, sign?, self? }], warnings: string[], unknown, signers? },
+ *               signRule: true,                           ← คีย์มีเฉพาะ access.issue **และ** กติกาลายเซ็นจริงเปิด
  *               unknown: true }                           ← เฉพาะเมื่ออ่านแถวเอกสารไม่สำเร็จ
  * ```
  *
@@ -291,7 +344,15 @@ async function documentChecks(supabase, { request, user, now, given, precheck, f
  * ⚠️ ทั้งสองตัวคิดเฉพาะ `withChecks` (GET ใบประเมิน) และเฉพาะคนที่ออกเอกสารได้ — ราคาคือการอ่านขนานของตัวโหลดข้อมูลเอกสาร
  * ⚠️ ตรวจล้ม = `unknown: true` ในก้อนนั้น ไม่ใช่ GET ล้ม
  *
- * 🔴 **ผู้ขอ (ฝ่ายขาย) ไม่ได้คีย์ `history` · `nextDocNo` · `send` · `issue`** — ไม่ใช่ค่าว่าง แต่ไม่มีคีย์เลย
+ * ⭐ **กติกาลายเซ็นจริง** (PR-SIG §5 · สวิตช์ `SURVEY_REPORT_SIGNATURES` — ถามผ่าน `surveyReportSignaturesOn` ครั้งเดียวต่อ GET และเฉพาะ
+ *    คนที่ออกเอกสารได้) — **คีย์ใหม่มีเฉพาะตอนเป็นจริง/ไม่ว่าง และเฉพาะตอนกติกาเปิด** · ปิด = payload เท่าเดิมทุกคีย์ทุกไบต์:
+ *    · `signRule: true`        การส่งผล/ออกเอกสารของระบบนี้ต้องมีลายเซ็นของผู้ประเมินและผู้ส่งผล (กล่องยืนยันดึงผลกลับอ่านคีย์นี้)
+ *    · `send.selfSign: true`   คนดูเป็นผู้ลงนามที่ยังไม่มีลายเซ็น (จอขึ้นลิงก์ไป “บัญชีของฉัน”)
+ *    · `send.signers` / `issue.signers`  `[{ seats, name }]` — ผู้ลงนามที่เอกสารจะพิมพ์ลายเซ็น · มีเฉพาะเมื่อทุกที่นั่งที่พิมพ์ชื่อมีลายเซ็นแล้ว
+ *    · `issue.blockers[].sign` = ข้อ "ยังไม่มีลายเซ็น" (ไม่ต้องดึงผลกลับ) · `.self` = ข้อนั้นเป็นของคนดูเอง
+ *    🔴 ไม่มีรหัสผู้ใช้ รหัสฉบับ sha หรือที่อยู่ไฟล์ของลายเซ็นใน payload — มีแต่ที่นั่ง ชื่อ และธง (เทสต์ไล่คีย์/ค่า)
+ *
+ * 🔴 **ผู้ขอ (ฝ่ายขาย) ไม่ได้คีย์ `history` · `nextDocNo` · `send` · `issue` · `signRule`** — ไม่ใช่ค่าว่าง แต่ไม่มีคีย์เลย
  * 🔴 ไม่มีคีย์ไหนพกภาพนิ่ง · HTML · id ของแถว · ที่อยู่ไฟล์ (เทสต์ไล่คีย์ทุกชั้นของ payload ทุกตำแหน่ง)
  *
  * @param opts.withChecks  คิด `send` / `issue` ด้วย (GET ใบประเมิน) — โหลดตัวตรวจด้วย `await import()` เฉพาะตอนนี้
@@ -301,10 +362,11 @@ async function documentChecks(supabase, { request, user, now, given, precheck, f
  * @param opts.now         นาฬิกาของสถานะ `issuing` และของตัวตรวจ (เทสต์ตรึงได้)
  * @param opts.zones · opts.filesByZone · opts.sizes · opts.open  แถวที่ route อ่านไว้แล้ว — ไม่ส่ง = อ่านเองตอนตรวจ
  * @param opts.precheck    ตัวตรวจแทน (เทสต์) — ไม่ส่ง = `surveyReportPrecheck` ของ `surveyReportInputs`
+ * @param opts.signatureRule  กติกาลายเซ็นจริง: `'required'` | `'off'` | ไม่ส่ง = ตามสวิตช์ (เทสต์ส่งค่าตรง ๆ) — ส่งต่อให้ตัวตรวจด้วย
  */
 export async function surveyDocumentSummary(supabase, request, user, {
   withChecks = false, withVoids = false, now = new Date(),
-  zones, filesByZone, sizes, open, precheck = null,
+  zones, filesByZone, sizes, open, precheck = null, signatureRule,
 } = {}) {
   if (!request?.id) return { access: 'none' };
   const granted = surveyDocAccess(user, request) || {};
@@ -346,22 +408,31 @@ export async function surveyDocumentSummary(supabase, request, user, {
       : null;
     out.send = null;
     out.issue = null;
+    /* ⭐ กติกาลายเซ็นจริง — ถามเฉพาะคนที่ออกเอกสารได้ (ผู้ขอ · ผู้บริหาร · ช่าง ไม่ถึงบรรทัดนี้ ⇒ ไม่มีคีย์ ไม่อ่านสวิตช์)
+       คีย์มีเฉพาะตอนเปิด: ปิด = payload เท่าเดิมทุกคีย์ */
+    const signRule = signatureRuleOn(signatureRule);
+    if (signRule) out.signRule = true;
 
     const wantSend = issueAtSend && !request.answeredAt && !request.cancelledAt;
     const wantIssue = state === 'missing';
     if (withChecks && (wantSend || wantIssue)) {
       const checks = await documentChecks(supabase, {
-        request, user, now, precheck, forIssue: wantIssue,
+        request, user, now, precheck, forIssue: wantIssue, signRule,
         given: { zones, filesByZone, sizes, open },
       }) || checkUnknown();
+      const signers = checks.signers.length ? { signers: checks.signers } : {};
       if (wantIssue) {
-        out.issue = { blockers: checks.blockers, warnings: checks.warnings, unknown: checks.unknown };
+        out.issue = { blockers: checks.blockers, warnings: checks.warnings, unknown: checks.unknown, ...signers };
       } else {
-        /* เส้นส่งผลตีกลับเฉพาะเรื่องเนื้อหา (มติ 9) — เรื่องของระบบไม่เคยขวางผลไปถึงฝ่ายขาย จึงไม่ขึ้นเป็นเหตุขวาง */
+        /* เส้นส่งผลตีกลับเฉพาะเรื่องเนื้อหา (มติ 9) — เรื่องของระบบไม่เคยขวางผลไปถึงฝ่ายขาย จึงไม่ขึ้นเป็นเหตุขวาง
+           · ข้อ "ยังไม่มีลายเซ็น" เป็นชนิด `content` จึงอยู่ในรายการนี้เอง (ข้อความล้วน) · `selfSign` = มีข้อที่เป็นของคนดู */
+        const content = checks.blockers.filter((b) => b.kind === 'content');
         out.send = {
-          blockers: checks.blockers.filter((b) => b.kind === 'content').map((b) => b.text),
+          blockers: content.map((b) => b.text),
           warnings: checks.warnings,
           unknown: checks.unknown,
+          ...(content.some((b) => b.self === true) ? { selfSign: true } : {}),
+          ...signers,
         };
       }
     }
