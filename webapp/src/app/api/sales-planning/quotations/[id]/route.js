@@ -24,7 +24,9 @@ import {
   customerMismatchMessage, customerMismatchedLines,
   enforceMasterPrices, normalizeManualLines, refreshFgLinesForDisplay,
 } from '@/lib/sales/quoteLines';
-import { LinePackError, lineMoneyRuleMessage, linePackIssues, linePackMessage } from '@/lib/sales/linePacks';
+import {
+  LinePackError, lineMoneyRuleMessage, linePackGateMessage, linePackIssues, linePackMessage,
+} from '@/lib/sales/linePacks';
 import { normalizePaymentPlan, validatePaymentPlan } from '@/lib/sales/paymentPlan';
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
 import { QUOTATION_DOC_LANGUAGES } from '@/lib/sales/quotationMasterTemplate';
@@ -317,7 +319,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   let newLines = null;
   const moneyChanged = 'lines' in body || 'discountType' in body || 'discountValue' in body || 'vatRate' in body;
   if (moneyChanged) {
-    /* เลขแพ็ค (mig 0407): ตัว normalize โยน LinePackError เมื่อค่าที่ส่งมาใช้ไม่ได้ หรือส่งมาขณะช่องปิด
+    /* เลขแพ็ค (mig 0407): ตัว normalize โยน LinePackError เมื่อค่าที่ส่งมาใช้ไม่ได้ (0 · 1.5 · 10000 · ข้อความ)
        ⇒ ตอบ 400 พร้อมเลขรายการ — ไม่ตัดทิ้งแล้วบันทึกต่อ (ยอดจะหดเงียบ) */
     try {
       newLines = 'lines' in body
@@ -340,10 +342,15 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     newLines = await enforceMasterPrices(supabase, newLines, before.lines || [], {
       customerId: before.customerId,
     });
-    /* ด่านเลขแพ็คบนบรรทัดชุดสุดท้ายที่จะส่งเข้า RPC — **ด่านเดียว** ของทางที่ส่งบรรทัดที่เก็บไว้กลับไปทั้งก้อน
-       (แก้แค่ VAT/ส่วนลดท้ายใบ ⇒ `before.lines` ไม่ผ่านตัว normalize) · ช่องปิด: บรรทัดไหนมีเลขแพ็ค = ปฏิเสธ ไม่ล้างให้
-       · ค่าตั้งต้นของตัวเลือกตั้งใจ: วันที่เปิดช่อง (งวด PR-3) การบันทึกเนื้อหาใบต้องมีเลขแพ็คทุกบรรทัดหมวด 02-001 (มติ A4) */
-    const packIssues = linePackIssues(newLines);
+    /* ด่านเลขแพ็คบนบรรทัดชุดสุดท้ายที่จะส่งเข้า RPC (หลัง sync ราคา · ก่อนเขียนอะไรลงฐาน)
+       ⭐ มติเจ้าของ 08/10 (A2–A4 · งวด PR-3): คำขอที่ **เขียนบรรทัดหรือยอด** ของใบ (ส่งบรรทัดมา · แก้ VAT · แก้ส่วนลดท้ายใบ) ต้องมีเลขแพ็ค 1–9,999
+       ทุกบรรทัดหมวด 02-001 และหมวดอื่นต้องไม่มี — ไม่ผ่าน = 400 บอกเลขรายการ · เซิร์ฟเวอร์ไม่ตั้ง ไม่ล้าง ไม่ตัดเลขแพ็คให้
+       ⇒ ใบเก่าหมวด 02-001 ที่ยังไม่ได้แยกแพ็ค บันทึกแค่ VAT ก็ต้องแยกก่อน (172 → 43 × 4 ยอดเท่าเดิม — ระบบไม่เดา)
+       · เลขรายการตรงกับแถวบนจอ: จอส่งบรรทัดมา = ลำดับที่ส่ง (ก่อนบรรทัดจำนวน 0 ถูกตัด) · ไม่ได้ส่ง = ลำดับที่หน้าใบเรียงบรรทัดที่เก็บไว้
+       · ทางนี้ยังเป็นด่านเดียวของบรรทัดที่เก็บไว้ซึ่งถูกส่งกลับไปทั้งก้อน (`before.lines` ไม่ผ่านตัว normalize)
+       🔴 คำขอที่ไม่เขียนบรรทัด/ยอด (หมายเหตุ · วันที่ · เงื่อนไขชำระ · งวด · ที่อยู่ · ผู้ติดต่อ · metadata · ภาษา) **ไม่ผ่านด่านนี้โดยเจตนา**
+          (แผน PR-3 §12 C4): ใบออกจากมือได้ทางยื่น / อนุมัติ / ส่ง เท่านั้น และทั้งสามมีด่านของตัวเอง — ขยายด่านมาที่นี่ = ใบเก่าแก้ที่อยู่ไม่ได้ */
+    const packIssues = linePackIssues(newLines, { numbering: 'lines' in body ? 'submitted' : 'stored' });
     if (packIssues.length) return badRequest(linePackMessage(packIssues));
     // ใบว่าง (0 รายการ) เก็บเป็นร่างได้ — ใส่รหัส FG ทีหลัง; การส่ง/รับใบมี guard ยอด>0 อยู่แล้ว
     if (!newLines.length && (body.status === 'sent' || before.status === 'sent')) {
@@ -428,6 +435,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         ? 'ใบเสนอราคานี้ยังไม่ได้รับการอนุมัติจากเจ้าของดีล — อนุมัติก่อนจึงจะส่งลูกค้าได้'
         : readiness.error);
     }
+    /* ด่านเลขแพ็คของ "ส่งลูกค้า" (มติ 08/10 ข้อ 3 · งวด PR-3): ใบที่บรรทัดหมวด 02-001 ยังไม่มีเลขแพ็คออกจากมือไม่ได้
+       อยู่ **หลัง** ด่านความพร้อมโดยเจตนา — ใบที่ยังไม่ได้ยื่น/ยังไม่อนุมัติต้องได้ข้อความของขั้นนั้นก่อน
+       (คำแนะนำ "ออก Rev." ใช้กับใบที่อนุมัติแล้วเท่านั้น) · ใบที่มาถึงตรงนี้อนุมัติแล้วจึงแก้ทับไม่ได้ ⇒ ข้อความบอกให้ออก Rev. */
+    const sendPackIssues = linePackIssues(finalLines, { numbering: 'stored' });
+    if (sendPackIssues.length) return badRequest(linePackGateMessage(sendPackIssues, 'send'));
   }
 
   // เขียน lines ทุกครั้งที่ยอดเปลี่ยน (ไม่เฉพาะตอน client ส่ง lines) — enforceMasterPrices

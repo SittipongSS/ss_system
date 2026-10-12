@@ -20,23 +20,36 @@
 //   ตัวเลือกเสริม (ใส่ร่วมกับแบบไหนก็ได้): --expect-min-lines=<QT>,<SO>  --expect-min-fingerprints=<QT>,<SO>
 //       ขั้นต่ำของ บรรทัด / ลายนิ้วมือ ที่ต้องอ่านได้ (ใบเสนอราคา,ใบสั่งขาย) — รอบหลัง deploy ใส่จำนวนของรอบก่อน merge
 //       (สคริปต์พิมพ์ตัวเลือกพร้อมจำนวนของรอบนี้ให้ท้ายผล) · จำนวนลดลง = อ่านไม่ครบ = exit 1
+//   งวด PR-3 · ประตูทางเดียว (docs/qt-pack-column.md) — หัวข้อ ⑥ รันเสมอ · ⑦ ⑧ รันเมื่อใส่ --pack-launch:
+//     ⑥ ฉบับ Rev. ไม่มีบรรทัดหมวด 02-001 ที่ขาดเลขแพ็ค เมื่อฉบับต้นทางมีเลขแพ็ค
+//     ⑦ ใบที่ยื่น/อนุมัติตั้งแต่วันเปิดช่อง ไม่มีบรรทัดหมวด 02-001 ที่ขาดเลขแพ็ค
+//     ⑧ ไม่มีการบันทึกใบเสนอราคา (audit_logs) ที่ทำเลขแพ็คของบรรทัดหมวด 02-001 หาย — พิมพ์เลขใบ · รายการ · เลขแพ็คเดิม · ยอดเดิม
+//   --pack-launch=<เวลา ISO มีเขตเวลา>   เวลาที่งวด PR-3 ขึ้น production (จดไว้ใน webapp/DEPLOY.md) เช่น 2026-10-12T10:00:00+07:00
+//   --audit-since=<เวลา ISO มีเขตเวลา>   ไล่ audit ตั้งแต่เวลานี้แทนวันเปิดช่อง (ค่าของรอบที่ผ่านล่าสุด — สคริปต์พิมพ์ให้ท้ายผล)
+//   --expect-min-packed=<QT>,<SO>   จำนวน **บรรทัดที่มีเลขแพ็ค** ของรอบก่อน — ใส่ทุกครั้งหลัง deploy และหลังถอยรุ่น
+//       น้อยกว่า = **ต้องดู** ไม่ใช่ "รุ่นเก่าเขียนทับ" เสมอ (ลบใบร่าง/ลบบรรทัดตามปกติก็ลดได้ · ของที่หายถูกชดเชยด้วยบรรทัดใหม่ก็ไม่ลด)
+//       · ใส่ --pack-launch ด้วย: ⑥–⑧ เป็นตัวตัดสิน จำนวนที่ลดเป็นข้อมูล (สคริปต์พิมพ์ว่าบรรทัดไหนถูกลบ)
+//       · ไม่ใส่ --pack-launch: จำนวนที่ลด = exit 1 เพราะยังบอกไม่ได้ว่าเพราะอะไร
 //
 // ⚠️ อ่านอย่างเดียว — มีแต่ .select() (คำขอ GET) ไม่มีการเขียนฐานเลย (dev DB = prod DB)
 import { readFileSync } from 'node:fs';
 import { createClient } from '@supabase/supabase-js';
 import { fetchAllResult } from '../src/lib/supabaseFetchAll.js';
 import {
-  checkRuleDiffs, fingerprintDiffs, headerTotalDiffs, lineMoneyDiffs, loadQuotationLineMoney,
-  loadSalesOrderLineMoney, packCopyDiffs, parityCoverageGaps, parseParityArgs,
+  checkRuleDiffs, fingerprintDiffs, headerTotalDiffs, lineMoneyDiffs, loadQuotationAuditSince, loadQuotationLineMoney,
+  loadSalesOrderLineMoney, packCopyDiffs, packLossInAudit, packedCoverageGaps, packedLineCount, parityCoverageGaps, parseParityArgs,
+  revisionPackLoss, sentWithoutPack,
 } from '../src/lib/sales/linePackParity.js';
 import { quotationApprovalFingerprint } from '../src/lib/sales/quotationApprovalFingerprint.js';
 import { salesOrderApprovalFingerprint } from '../src/lib/sales/salesOrderApprovalFingerprint.js';
 
-const { beforeMigration, floors, problems } = parseParityArgs(process.argv.slice(2));
+const { beforeMigration, floors, problems, packLaunch, auditSince } = parseParityArgs(process.argv.slice(2));
 if (problems.length) {
-  console.error(`${problems.join('\n')}\nใช้ได้: --before-migration · --expect-min-lines=<QT>,<SO> · --expect-min-fingerprints=<QT>,<SO>`);
+  console.error(`${problems.join('\n')}\nใช้ได้: --before-migration · --expect-min-lines=<QT>,<SO> · --expect-min-fingerprints=<QT>,<SO> · --expect-min-packed=<QT>,<SO> · --pack-launch=<เวลา ISO> · --audit-since=<เวลา ISO>`);
   process.exit(2);
 }
+/* เวลาที่รอบนี้เริ่มอ่าน — พิมพ์เป็น --audit-since ของรอบถัดไป (ก่อนอ่านแถวแรก: การบันทึกที่เกิดระหว่างรันจะถูกไล่ในรอบหน้า ไม่ตกหล่น) */
+const runStartedAt = new Date().toISOString();
 
 try {
   const env = readFileSync(new URL('../.env.local', import.meta.url), 'utf8');
@@ -93,8 +106,8 @@ const section = (title, count, total, list = []) => {
 };
 
 console.log(`ฐาน: ${new URL(url).host} · โหมด: ${beforeMigration ? 'ก่อนรัน 0407 (select *)' : 'หลังรัน 0407 (อ่านคอลัมน์ packQty ตามชื่อ)'}`);
-const packed = (rows) => rows.filter((r) => r.packQty !== null && r.packQty !== undefined).length;
-console.log(`บรรทัดใบเสนอราคา ${quotationLines.length} (มีเลขแพ็ค ${packed(quotationLines)}) · บรรทัดใบสั่งขาย ${salesOrderLines.length} (มีเลขแพ็ค ${packed(salesOrderLines)})`);
+const packedCounts = { packedQuotationLines: packedLineCount(quotationLines), packedSalesOrderLines: packedLineCount(salesOrderLines) };
+console.log(`บรรทัดใบเสนอราคา ${quotationLines.length} (มีเลขแพ็ค ${packedCounts.packedQuotationLines}) · บรรทัดใบสั่งขาย ${salesOrderLines.length} (มีเลขแพ็ค ${packedCounts.packedSalesOrderLines})`);
 
 for (const [name, rows] of [['บรรทัดใบเสนอราคา', quotationLines], ['บรรทัดใบสั่งขาย', salesOrderLines]]) {
   const money = lineMoneyDiffs(rows);
@@ -123,6 +136,29 @@ const orderFp = fingerprintDiffs(salesOrders, salesOrderApprovalFingerprint);
 section('⑤ ลายนิ้วมือการอนุมัติ · ใบสั่งขาย', orderFp.diffs.length, orderFp.checked, orderFp.diffs);
 console.log(`    ใบเสนอราคา ${quotations.length} ใบ มีลายนิ้วมือ ${quoteFp.checked} · ใบสั่งขาย ${salesOrders.length} ใบ มีลายนิ้วมือ ${orderFp.checked}`);
 
+/* ── ประตูทางเดียว (งวด PR-3): เลขแพ็คหายตรงไหน — ตัวจับที่ชี้บรรทัด (linePackParity.js · รีวิวเงิน 09/10) ─────────────────
+   ⑥ รันเสมอ (อ่านจากใบที่โหลดมาแล้ว) · ⑦ ⑧ ต้องรู้วันเปิดช่อง (--pack-launch) — ⑧ อ่าน audit_logs เพิ่ม (GET) ตั้งแต่ --audit-since / วันเปิดช่อง */
+const lossSample = (list) => JSON.stringify(list.slice(0, 5));
+const revLoss = revisionPackLoss(quotations);
+section('⑥ ฉบับ Rev. พกเลขแพ็คครบ (ต้นทางมีเลขแพ็ค ⇒ ไม่มีบรรทัดหมวด 02-001 ที่ขาด)', revLoss.diffs.length, revLoss.checked, revLoss.diffs);
+let auditRemoved = [];
+if (packLaunch) {
+  const unsent = sentWithoutPack(quotations, packLaunch);
+  section(`⑦ ใบที่ยื่น/อนุมัติตั้งแต่วันเปิดช่อง (${packLaunch}) ไม่มีบรรทัดหมวด 02-001 ที่ขาดเลขแพ็ค`, unsent.diffs.length, unsent.checked, unsent.diffs);
+  const scanFrom = auditSince || packLaunch;
+  const auditRows = await read('บันทึกการแก้ไขใบเสนอราคา (audit_logs)', loadQuotationAuditSince(supabase, scanFrom));
+  const loss = packLossInAudit(auditRows, { since: scanFrom });
+  section(`⑧ การบันทึกใบเสนอราคาตั้งแต่ ${scanFrom} ไม่ทำเลขแพ็คของบรรทัดหมวด 02-001 หาย`, loss.stripped.length, loss.compared, loss.stripped);
+  if (loss.stripped.length) {
+    console.error('    🔴 แต่ละรายการ = ใบที่ถูกบันทึกทับโดยรุ่นที่ไม่รู้จักเลขแพ็ค (รุ่นก่อนงวด PR-1 — dev server ของ worktree เก่า · preview ของแบรนช์เก่า · production ที่ถูกถอย)');
+    console.error('       rows[].packQty และ rows[].lineTotal คือค่าเดิมที่ต้องกู้คืน (ยอดปัจจุบันของบรรทัดอยู่ที่ rows[].now) — ใบทั้งก้อนก่อนบันทึกอยู่ที่ audit_logs.before ของ auditId นั้น');
+  }
+  auditRemoved = loss.removed;
+  console.log(`    อ่าน audit ${auditRows.length} แถว · เทียบบรรทัดก่อน–หลังได้ ${loss.compared} · บรรทัดที่มีเลขแพ็คถูกลบ/ย้ายหมวดด้วยการทำงานปกติ ${auditRemoved.reduce((sum, entry) => sum + entry.rows.length, 0)} บรรทัด${auditRemoved.length ? ` — ${lossSample(auditRemoved.map(({ number, how, rows }) => ({ number, how, rows: rows.map((row) => row.row) })))}` : ''}`);
+} else {
+  console.log('   ⑦ ⑧ ไม่ได้ตรวจ — ใส่ --pack-launch=<เวลาที่งวด PR-3 ขึ้น production> เพื่อหาใบที่ยื่น/อนุมัติโดยขาดเลขแพ็ค และการบันทึกที่ทำเลขแพ็คหาย');
+}
+
 /* ── ด่านความครบ: "ไม่มีจุดต่าง" ต้องมาจากการเทียบจริง (parityCoverageGaps — เทสต์ linePackParity.test.mjs) ────────── */
 const counts = {
   quotationLines: quotationLines.length,
@@ -136,12 +172,28 @@ const counts = {
 const gaps = parityCoverageGaps(counts, floors);
 for (const gap of gaps) console.error(`✗ เทียบไม่ครบ · ${gap.label}: ${gap.got} (ต้องไม่ต่ำกว่า ${gap.min})`);
 
+/* ── จำนวนบรรทัดที่มีเลขแพ็คเทียบกับรอบก่อน (packedCoverageGaps — ตรวจเมื่อใส่ --expect-min-packed) ──
+   น้อยกว่า = "ต้องดู" · มี --pack-launch: หัวข้อ ⑥–⑧ ชี้บรรทัดได้แล้ว จำนวนที่ลดจึงเป็นข้อมูล (ลบใบ/ลบบรรทัดตามปกติ)
+   · ไม่มี --pack-launch: ยังบอกไม่ได้ว่าเพราะอะไร = exit 1 */
+const packedGaps = packedCoverageGaps(packedCounts, floors);
+const packedDropBlocks = packedGaps.length > 0 && !packLaunch;
+for (const gap of packedGaps) {
+  const line = `${gap.label} น้อยกว่ารอบก่อน: ${gap.got} (รอบก่อน ${gap.min})`;
+  if (packedDropBlocks) console.error(`✗ ต้องดู · ${line}`);
+  else console.log(`ℹ️ ${line} — หัวข้อ ⑥–⑧ ไม่พบเลขแพ็คที่หายจากบรรทัดหมวด 02-001 ⇒ ลดลงเพราะลบใบ/ลบบรรทัด/ย้ายหมวดตามปกติ`);
+}
+
 if (differences) {
   console.error(`\n✗ พบจุดต่าง ${differences} จุด — อย่า deploy / อย่าเดินงวดถัดไปจนกว่าจะอธิบายได้ทุกจุด`);
 }
 if (gaps.length) {
   console.error(`\n✗ เทียบไม่ครบ ${gaps.length} หัวข้อ — ผลรอบนี้ใช้เป็นหลักฐานไม่ได้ (คีย์อ่านแถวไม่ได้ · ชี้ผิดฐาน · หรือข้อมูลหาย) ตรวจ .env.local แล้วรันใหม่`);
 }
-if (differences || gaps.length) process.exit(1);
+if (packedDropBlocks) {
+  console.error('\n✗ บรรทัดที่มีเลขแพ็คน้อยกว่ารอบก่อน — ต้องดูก่อนเดินงานต่อ: รันใหม่พร้อม --pack-launch=<เวลาที่งวด PR-3 ขึ้น production> ให้หัวข้อ ⑥–⑧ ชี้บรรทัด'
+    + ' · ลดลงเพราะลบใบร่าง/ลบบรรทัดตามปกติก็ได้ — ถ้าเป็นรุ่นเก่าบันทึกทับ (ยอดหดเหลือ จำนวน × ราคา) หัวข้อ ⑧ จะบอกเลขใบ รายการ และยอดเดิม (docs/qt-pack-column.md หัวข้อประตูทางเดียว)');
+}
+if (differences || gaps.length || packedDropBlocks) process.exit(1);
 console.log('\n✓ ไม่มีจุดต่าง — ยอดทุกบรรทัด · ยอดหัวใบ · ลายนิ้วมือทุกใบ ตรงกับที่เก็บไว้');
-console.log(`  ตรึงจำนวนของรอบนี้ในรอบถัดไป: --expect-min-lines=${counts.quotationLines},${counts.salesOrderLines} --expect-min-fingerprints=${counts.quotationFingerprints},${counts.salesOrderFingerprints}`);
+console.log(`  ตรึงจำนวนของรอบนี้ในรอบถัดไป: --expect-min-lines=${counts.quotationLines},${counts.salesOrderLines} --expect-min-fingerprints=${counts.quotationFingerprints},${counts.salesOrderFingerprints} --expect-min-packed=${packedCounts.packedQuotationLines},${packedCounts.packedSalesOrderLines}`);
+if (packLaunch) console.log(`  รอบถัดไปไล่ audit ต่อจากรอบนี้: --pack-launch=${packLaunch} --audit-since=${runStartedAt}`);

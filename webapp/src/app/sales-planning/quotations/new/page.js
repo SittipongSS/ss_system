@@ -23,6 +23,7 @@ import QuotationInstallments from "@/components/salesPlanning/QuotationInstallme
 import QuotationPaymentTerms from "@/components/salesPlanning/QuotationPaymentTerms";
 import QuotationNotes from "@/components/salesPlanning/QuotationNotes";
 import QuotationLineItems, { newManualLine, newProductLine } from "@/components/salesPlanning/QuotationLineItems";
+import useQuoteLinePackGate, { PACK_GATE_NOTICE_PROPS } from "@/components/salesPlanning/useQuoteLinePackGate";
 import { customerSelectOptions } from "@/components/master/customerOption";
 import { customerNameIn } from "@/lib/master/customerName";
 import { useCan } from "@/lib/roleContext";
@@ -302,6 +303,13 @@ function NewQuotationInner() {
   const addProductLine = () => setLines((current) => [...current, newProductLine()]);
   const addManualLine = () => setLines((current) => [...current, newManualLine()]);
 
+  /* ⭐ ช่อง "แพ็ค/เดือน" ของบรรทัดหมวด 02-001 (งวด PR-3 · มติเจ้าของ 08/10 ข้อ A2 "บังคับใส่" · docs/qt-pack-column.md)
+     hook ตัวเดียวกับหน้าใบ — หยุดก่อนส่งคำขอด้วยกฎเดียวกับเซิร์ฟเวอร์ · แถวที่ค้างแดงหลังกดบันทึกเท่านั้น
+     · ขณะยังมีบรรทัดที่ไม่มียอด (ช่องว่าง) ยอดรวมทุกจุดของหน้าขึ้นขีด — ไม่โชว์ยอดที่นับช่องว่างเป็นหนึ่งแพ็ค */
+  const packGate = useQuoteLinePackGate(lines, products, { editing: true });
+  const markPackGate = packGate.mark;
+  const packPending = packGate.pending;
+
   const paymentPlan = useMemo(() => (payment.type === "installment"
     ? { type: "installment", paymentMethod: payment.paymentMethod.trim() || null, installments: payment.installments.map((row) => ({ label: row.label, percent: Number(row.percent) || 0, note: row.note })) }
     : { type: "full", paymentMethod: payment.paymentMethod.trim() || null }), [payment]);
@@ -326,6 +334,12 @@ function NewQuotationInner() {
     const paymentValidation = validatePaymentPlan(paymentPlan);
     if (!paymentValidation.ok) {
       setError(paymentValidation.error);
+      return;
+    }
+    /* ด่านสุดท้ายก่อนส่ง: บรรทัดหมวด 02-001 ต้องมีเลขแพ็คครบ (เซิร์ฟเวอร์ตีกลับ 400 อยู่แล้ว — หยุดที่นี่ไม่ต้องเสียรอบ)
+       ⚠️ ข้อความของด่านนี้ **ไม่** ลง `error` — แถบของมันคิดสดจาก hook (`packGate.notice`) เลขรายการจึงตามแถวที่แก้/ลบ */
+    if (!markPackGate()) {
+      setError("");
       return;
     }
     setCreating(true);
@@ -382,7 +396,7 @@ function NewQuotationInner() {
       setError(e.message || "สร้างใบเสนอราคาไม่สำเร็จ");
       setCreating(false);
     }
-  }, [dealId, selectedDeal, customerId, contactIndex, contacts.length, billingAddressId, billingOptions.length, shippingAddressId, shippingOptions.length, lines, quoteDate, validUntil, discountType, discountValue, vatRate, payment, paymentPlan, notes, referenceNote, notesPresetVersionId, router]);
+  }, [dealId, selectedDeal, customerId, contactIndex, contacts.length, billingAddressId, billingOptions.length, shippingAddressId, shippingOptions.length, lines, quoteDate, validUntil, discountType, discountValue, vatRate, payment, paymentPlan, notes, referenceNote, notesPresetVersionId, router, markPackGate]);
 
   if (!canEdit) {
     return (
@@ -401,9 +415,9 @@ function NewQuotationInner() {
     </>
   );
   const summaryRows = [
-    { id: "subtotal", label: "รวมรายการ", value: fmtMoney(totals.subtotal) },
-    { id: "discount", label: "ส่วนลด", value: totals.discountAmount > 0 ? `-${fmtMoney(totals.discountAmount)}` : NA },
-    ...(vatRate > 0 ? [{ id: "vat", label: `VAT ${vatRate}%`, value: fmtMoney(totals.vatAmount) }] : []),
+    { id: "subtotal", label: "รวมรายการ", value: packPending ? NA : fmtMoney(totals.subtotal) },
+    { id: "discount", label: "ส่วนลด", value: !packPending && totals.discountAmount > 0 ? `-${fmtMoney(totals.discountAmount)}` : NA },
+    ...(vatRate > 0 ? [{ id: "vat", label: `VAT ${vatRate}%`, value: packPending ? NA : fmtMoney(totals.vatAmount) }] : []),
   ];
   // เช็คลิสต์เก็บเฉพาะ "เงื่อนไขที่บล็อกการบันทึกจริง" — เดิมมีแถว "เพิ่มรายการสินค้า"
   // ที่ตัวมันเองเขียนว่ายังไม่ต้องทำก็บันทึกได้ ⇒ เป็นวงกลมว่างที่ไม่มีวันต้องติ๊ก
@@ -426,7 +440,7 @@ function NewQuotationInner() {
           แพตเทิร์นเดียวกับ SO/ภาษี/ต้นทุน ถอดที่นั่นจะทำให้ใบเสนอราคาแปลกกว่าโมดูลอื่น */}
       <DocumentSummaryCard
         title="ยอดสุทธิใบเสนอราคา"
-        total={fmtMoney(totals.totalAmount)}
+        total={packPending ? NA : fmtMoney(totals.totalAmount)}
         rows={summaryRows}
       />
       <DocumentControlCard
@@ -468,6 +482,8 @@ function NewQuotationInner() {
       back={{ href: returnTo, label: returnLabel }}
     >
       {error && <div className={styles.errorPanel} role="alert">{error}</div>}
+      {/* ข้อค้างของช่อง "แพ็ค/เดือน" หลังกดบันทึก — แถบแยกจาก `error` เพราะข้อความคิดสดจากบรรทัดปัจจุบัน (แก้ครบแล้วหายเอง) */}
+      {packGate.notice && <div {...PACK_GATE_NOTICE_PROPS} className={styles.errorPanel} role="alert">{packGate.notice.text}</div>}
       {!loading && !eligible.length && (
         <div className={styles.emptyPanel}>ยังไม่มีดีลที่พร้อมออกใบเสนอราคา — ดีลต้องมีลูกค้า ยังไม่ Won/ไม่หลุด และเป็นดีลที่คุณแก้ไขได้ (ตามทีม/เจ้าของดีล) <Link href="/sa/deals" className="btn ghost sm"><ExternalLink size={13} /> ไปหน้าดีล</Link></div>
       )}
@@ -571,11 +587,12 @@ function NewQuotationInner() {
               vatRate={vatRate}
               onDiscountChange={({ type, value }) => { setDiscountType(type); setDiscountValue(value); }}
               onVatRateChange={setVatRate}
+              packErrorsShown={packGate.errorsShown}
             />
           </section>
 
           <section className={styles.card}>
-            <QuotationInstallments value={payment} onChange={setPayment} totalAmount={totals.totalAmount} />
+            <QuotationInstallments value={payment} onChange={setPayment} totalAmount={packPending ? null : totals.totalAmount} />
           </section>
 
           <section className={styles.card}>

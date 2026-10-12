@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   LINE_PACK_TEXT, LinePackError, PACK_LINE_CATEGORY, PACK_LINE_UNIT, PACK_QTY_INVALID, PACK_QTY_MAX, PACK_QTY_MIN,
-  QUOTE_PACK_INPUT_OPEN, lineCategoryCode, lineMoneyRuleMessage, linePackIssues, linePackMessage, lineTakesPacks,
-  lineUnitsTotal, packFactorOf, packLineUnit, packQtyValue, withPackColumn,
+  QUOTE_PACK_INPUT_OPEN, lineCategoryCode, lineMoneyRuleMessage, linePackGateMessage, linePackIssues, linePackMessage,
+  lineScreenRows, lineTakesPacks, lineUnitsTotal, packFactorOf, packLineUnit, packQtyValue, withPackColumn,
 } from './linePacks.js';
 import * as serviceOrders from './serviceOrders.js';
 import { SALE_UNITS } from '../master/units.js';
@@ -27,10 +27,25 @@ test('หมวดที่ต้องกรอก = หมวดแพ็ค�
   assert.ok(SALE_UNITS.includes(PACK_LINE_UNIT), 'หน่วยของบรรทัดที่มีเลขแพ็คต้องอยู่ในลิสต์หน่วยขาย (ใบพิมพ์แปลคำจากลิสต์นี้)');
 });
 
-test('🔴 ช่องกรอกยังปิด (งวด PR-1 / PR-2) — เปิดได้ที่บรรทัดเดียว และต้องมาพร้อมช่องกรอก + ด่านบังคับกรอกของงวด PR-3', () => {
-  assert.equal(QUOTE_PACK_INPUT_OPEN, false);
-  // อ่านจากข้อความต้นฉบับด้วย: ค่าต้องเป็นค่าคงที่ตรง ๆ ไม่ใช่ env / นิพจน์ ที่เปิดเองได้บน production
-  assert.match(SOURCE, /^export const QUOTE_PACK_INPUT_OPEN = false;$/m);
+/* ⭐ ย้ายความคาดหวังโดยเจตนา (งวด PR-3 · มติเจ้าของ 08/10 ข้อ A2–A4 · แผน IMPL_PLAN_PR3 §4 แถว 1 + §12 C2):
+   เดิมเทสต์นี้ยึด "สวิตช์ปิด" — วันนี้ช่องกรอก ด่านบังคับกรอก และสวิตช์ขึ้นพร้อมกัน จึงยึด "เปิด และห้ามกลับ" แทน (ไม่ได้ลบข้อยืนยันเดิม:
+   ค่ายังต้องเป็นค่าคงที่ตรง ๆ) · กิ่ง "ปิด" ยังถูกทดสอบครบด้วยตัวเลือกที่ระบุเอง (เทสต์ถัด ๆ ไป) ในฐานะคำตอบของรุ่น PR-1 / PR-2 */
+test('🔴 ช่องกรอกเปิดแล้ว (งวด PR-3) — ค่าคงที่ตรง ๆ = true · ประตูทางเดียว: คอมเมนต์ที่ค่าคงที่บอกว่าห้ามตั้งกลับ และทางฉุกเฉินคือรุ่น PR-2', () => {
+  assert.equal(QUOTE_PACK_INPUT_OPEN, true);
+  // อ่านจากข้อความต้นฉบับด้วย: ค่าต้องเป็นค่าคงที่ตรง ๆ ไม่ใช่ env / นิพจน์ ที่ปิดเองได้บน production
+  assert.match(SOURCE, /^export const QUOTE_PACK_INPUT_OPEN = true;$/m);
+  assert.equal((SOURCE.match(/QUOTE_PACK_INPUT_OPEN\s*=(?!=)/g) || []).length, 1, 'กำหนดค่าให้ชื่อนี้ได้ที่เดียว (บรรทัดประกาศ)');
+  assert.doesNotMatch(SOURCE, /QUOTE_PACK_INPUT_OPEN\s*=(?!=)(?!\s*true;)/, 'และค่านั้นคือ true');
+  assert.doesNotMatch(SOURCE, /process\.env/);
+  /* ประโยคหลักของประตูทางเดียวต้องอยู่ **ติดกับค่าคงที่** (คอมเมนต์ก้อนสุดท้ายก่อนบรรทัดประกาศ): คนที่คิดจะแก้ค่านี้ต้องอ่านเจอก่อน
+     — ในโค้ดตั้งแต่งวด PR-3 ค่า false ทำให้เซิร์ฟเวอร์บอกคนขายให้ลบเลขแพ็คเอง และจอมีช่องให้ลบได้จริง (ยอดหดเป็นแถวที่ฐานรับ) */
+  const before = SOURCE.slice(0, SOURCE.indexOf('export const QUOTE_PACK_INPUT_OPEN'));
+  const comment = before.slice(before.lastIndexOf('/*'));
+  assert.ok(comment.trimEnd().endsWith('*/'), 'คอมเมนต์ของสวิตช์ต้องอยู่ติดบรรทัดประกาศ');
+  assert.match(comment, /ประตูทางเดียว: ห้ามตั้งค่านี้กลับเป็น false ตราบที่ยังมีบรรทัดที่มีเลขแพ็ค — ทางฉุกเฉินคือ deploy รุ่น PR-2 กลับ ไม่ใช่สวิตช์นี้/);
+  assert.match(comment, /ถอนฟีเจอร์ = แก้โค้ด/);
+  // ไม่มีข้อความไหนในไฟล์บอกว่าตั้งกลับได้ (เดิมคอมเมนต์เขียนเหตุไว้อีกแบบ: "ใบนั้นจะแก้/ออก Rev. ไม่ได้อีก")
+  assert.doesNotMatch(SOURCE, /สวิตช์ฉุกเฉิน/);
 });
 
 test('🪤 linePacks.js เป็นใบของกราฟ import — เรียกได้แค่ categoryOf (salesPlanning.js เรียกไฟล์นี้ · วนไม่ได้)', () => {
@@ -122,7 +137,9 @@ test('lineUnitsTotal: ตัวคูณแพ็ค × จำนวน — "24"
 
 /* ── กฎของเซิร์ฟเวอร์ ───────────────────────────────────────────────────────────────────────────────── */
 
-test('linePackIssues ช่องปิด: ทุกค่าที่ไม่ว่างถูกปฏิเสธ (ค่าที่ถูกต้องด้วย) · null / undefined / ว่าง / ไม่มีคีย์ ไม่ถูกทักเลย', () => {
+/* ⭐ ย้ายความคาดหวังโดยเจตนา (งวด PR-3 · มติเจ้าของ 08/10 · แผน §4 แถว 2 + §12 C2): ตารางของกิ่ง "ปิด" อยู่ครบทุกแถว แต่ต้องขอด้วย
+   `{ open: false }` เอง — ค่าตั้งต้นคือสวิตช์จริงซึ่งเปิดแล้ว · กิ่งนี้คือ **คำตอบของรุ่น PR-1 / PR-2 (รุ่นที่ถอยกลับไปได้)** ไม่ใช่สถานะที่ตั้งได้ในโค้ดรุ่นนี้ */
+test('linePackIssues กิ่งปิด = คำตอบของรุ่น PR-1 / PR-2 (รุ่นที่ถอยกลับไปได้): ทุกค่าที่ไม่ว่างถูกปฏิเสธ (ค่าที่ถูกต้องด้วย) · null / undefined / ว่าง / ไม่มีคีย์ ไม่ถูกทักเลย', () => {
   const lines = [
     { fgCode: SDS }, // 1 ไม่มีคีย์
     { fgCode: SDS, packQty: null }, // 2 สิ่งที่ select * คืนหลังรัน 0407
@@ -137,11 +154,20 @@ test('linePackIssues ช่องปิด: ทุกค่าที่ไม่
   ];
   const closed = [6, 7, 8, 9, 10].map((row) => ({ index: row - 1, row, code: 'closed' }));
   assert.deepEqual(linePackIssues(lines, { open: false }), closed);
-  assert.deepEqual(linePackIssues(lines), closed, 'ค่าตั้งต้นของตัวเลือก = สวิตช์จริง (ปิด)');
-  assert.deepEqual(linePackIssues(lines.slice(0, 5)), []);
-  // ช่องปิดไม่ดูหมวด: บรรทัดหมวด 02-001 ที่ไม่มีเลขแพ็คไม่ถูกบังคับ
+  assert.deepEqual(linePackIssues(lines.slice(0, 5), { open: false }), []);
+  // กิ่งปิดไม่ดูหมวด: บรรทัดหมวด 02-001 ที่ไม่มีเลขแพ็คไม่ถูกบังคับ
   assert.deepEqual(linePackIssues([{ fgCode: SDS }, { fgCode: SDS, packQty: null }], { open: false, requireOnCategory: true }), []);
-  for (const notLines of [null, undefined, 'x', {}]) assert.deepEqual(linePackIssues(notLines), []);
+  for (const notLines of [null, undefined, 'x', {}]) {
+    assert.deepEqual(linePackIssues(notLines), []);
+    assert.deepEqual(linePackIssues(notLines, { open: false }), []);
+  }
+  /* ค่าตั้งต้นของตัวเลือก = สวิตช์จริง (เปิด): ลิสต์เดียวกันได้คำตอบของกิ่งเปิด — ห้าแถวหมวด 02-001 ที่ช่องว่างต้องกรอก ·
+     แถวที่มีเลขถูกต้องบนหมวด 02-001 ผ่าน · ค่าผิดรูปเป็น invalid (ไม่ใช่ closed อีกแล้ว) */
+  assert.deepEqual(linePackIssues(lines).map((issue) => [issue.row, issue.code]), [
+    [1, 'required'], [2, 'required'], [3, 'required'], [4, 'required'], [5, 'required'], [9, 'invalid'], [10, 'invalid'],
+  ]);
+  assert.deepEqual(linePackIssues(lines), linePackIssues(lines, { open: true }), 'ค่าตั้งต้น = เปิด');
+  assert.ok(!linePackIssues(lines).some((issue) => issue.code === 'closed'));
 });
 
 test('linePackIssues ช่องเปิด: ใช้ไม่ได้ = invalid · มีเลขบนหมวดอื่น = not_allowed · หมวด 02-001 ไม่มีเลข = required (ปิดข้อนี้ได้ตอนออก Rev./ตั้งต้นจากโครงการ)', () => {
@@ -198,18 +224,140 @@ test('linePackMessage: หนึ่งประโยคต่อหนึ่ง
 
 test('LINE_PACK_TEXT: ข้อความทั้งก้อนของกฎนี้ (แก้คำ = รัน check:thaiwrap ใหม่) · แช่แข็ง · หมวดในข้อความมาจากค่าคงที่', () => {
   assert.ok(Object.isFrozen(LINE_PACK_TEXT));
-  assert.deepEqual(
-    { closed: LINE_PACK_TEXT.closed, invalid: LINE_PACK_TEXT.invalid, required: LINE_PACK_TEXT.required, notAllowed: LINE_PACK_TEXT.notAllowed, moneyRule: LINE_PACK_TEXT.moneyRule },
-    {
-      closed: 'ยังไม่เปิดให้กรอก “แพ็ค/เดือน” — ลบตัวเลขในช่องนั้นออกแล้วบันทึกอีกครั้ง',
-      invalid: '“แพ็ค/เดือน” ต้องเป็นจำนวนเต็ม 1–9,999',
-      required: 'รายการหมวด 02-001 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ',
-      notAllowed: '“แพ็ค/เดือน” ใช้ได้เฉพาะรายการหมวด 02-001 — ลบตัวเลขในช่องนั้นออกก่อนบันทึก',
-      moneyRule: 'ยอดของรายการไม่ตรงกับสูตร แพ็ค × จำนวน × ราคา — ยังไม่ได้บันทึก แจ้งผู้ดูแลระบบ',
-    },
-  );
+  const { rows, ...texts } = LINE_PACK_TEXT;
+  assert.equal(typeof rows, 'function');
+  // ทั้งก้อน: ห้าคีย์ของงวด PR-1 (ไม่ขยับสักตัวอักษร) + สี่คีย์ของด่านยื่น / อนุมัติ / ส่ง (งวด PR-3 · แผน §12 C3)
+  assert.deepEqual(texts, {
+    closed: 'ยังไม่เปิดให้กรอก “แพ็ค/เดือน” — ลบตัวเลขในช่องนั้นออกแล้วบันทึกอีกครั้ง',
+    invalid: '“แพ็ค/เดือน” ต้องเป็นจำนวนเต็ม 1–9,999',
+    required: 'รายการหมวด 02-001 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ',
+    notAllowed: '“แพ็ค/เดือน” ใช้ได้เฉพาะรายการหมวด 02-001 — ลบตัวเลขในช่องนั้นออกก่อนบันทึก',
+    moneyRule: 'ยอดของรายการไม่ตรงกับสูตร แพ็ค × จำนวน × ราคา — ยังไม่ได้บันทึก แจ้งผู้ดูแลระบบ',
+    beforeSubmit: 'กด “แก้ไขข้อมูล” แล้วกรอกให้ครบก่อนยื่นอนุมัติ',
+    beforeApprove: 'กด “ตีกลับให้แก้ไข” ให้ผู้จัดทำกรอกให้ครบก่อน',
+    beforeApproveOwn: 'กด “ดึงกลับมาแก้ไข” แล้วกรอกให้ครบก่อนยื่นใหม่',
+    beforeSend: 'ออก Rev. แล้วกรอกในฉบับใหม่ก่อนส่งลูกค้า',
+  });
   assert.equal(LINE_PACK_TEXT.rows([2, 3]), 'รายการ 2, 3');
   assert.ok(LINE_PACK_TEXT.required.includes(PACK_LINE_CATEGORY) && LINE_PACK_TEXT.notAllowed.includes(PACK_LINE_CATEGORY));
+  // ค่าคงที่ระดับบนสุด เขียนเป็นข้อความตรง ๆ ในไฟล์ (กฎโปรเจกต์: ข้อความไทยอยู่ในก้อนข้อความ ไม่ประกอบกลางโค้ด)
+  for (const key of ['beforeSubmit', 'beforeApprove', 'beforeApproveOwn', 'beforeSend']) {
+    assert.ok(SOURCE.includes(`  ${key}: '${LINE_PACK_TEXT[key]}',`), `${key} ต้องเป็นข้อความตรง ๆ ในก้อน LINE_PACK_TEXT`);
+  }
+});
+
+/* ── เลขรายการที่คนเห็นบนจอ (งวด PR-3 · แผน §1 D2) ──────────────────────────────────────────────────────
+   🐞 ก่อนงวดนี้: จอส่ง [แพ็ค 2, จำนวน 0, ไม่มีแพ็ค] → บรรทัดจำนวน 0 ถูกตัด → ด่านบอก "รายการ 2" ทั้งที่บนจอคือแถวที่ 3 */
+
+test('lineScreenRows: ค่าตั้งต้น = ตำแหน่ง + 1 · submitted = sortOrder + 1 (ลำดับที่จอส่งมา) · stored = ลำดับที่หน้าใบเรียง (sortOrder น้อยไปมาก เท่ากัน = ตามอาร์เรย์)', () => {
+  const gaps = [{ sortOrder: 0 }, { sortOrder: 2 }, { sortOrder: 5 }];
+  assert.deepEqual(lineScreenRows(gaps), [1, 2, 3]);
+  assert.deepEqual(lineScreenRows(gaps, null), [1, 2, 3]);
+  assert.deepEqual(lineScreenRows(gaps, 'submitted'), [1, 3, 6], 'ช่องว่างของ sortOrder = บรรทัดจำนวน 0 ที่ถูกตัด — เลขบนจอยังนับมันอยู่');
+  assert.deepEqual(lineScreenRows(gaps, 'stored'), [1, 2, 3], 'ใบที่โหลดกลับมา: จอเรียงแล้วนับ 1, 2, 3 — ไม่ใช่ sortOrder + 1');
+  // stored: อาร์เรย์ไม่ได้เรียงมา (ฐานไม่รับประกันลำดับของแถวที่ฝัง) — เลขรายการตามลำดับที่จอจะเรียง
+  const shuffled = [{ id: 'c', sortOrder: 5 }, { id: 'a', sortOrder: 0 }, { id: 'b', sortOrder: 2 }];
+  assert.deepEqual(lineScreenRows(shuffled, 'stored'), [3, 1, 2]);
+  assert.deepEqual(lineScreenRows(shuffled), [1, 2, 3]);
+  // stored: เท่ากัน = ตามลำดับในอาร์เรย์ (การเรียงของจอเป็นแบบคงลำดับ) · ไม่มี sortOrder = 0 เหมือนที่จอใช้ (`sortOrder ?? 0`)
+  assert.deepEqual(lineScreenRows([{ sortOrder: 1 }, { sortOrder: 0 }, { sortOrder: 1 }, { sortOrder: 0 }], 'stored'), [3, 1, 4, 2]);
+  assert.deepEqual(lineScreenRows([{ sortOrder: 3 }, {}, { sortOrder: null }, { sortOrder: 1 }], 'stored'), [4, 1, 2, 3]);
+  assert.deepEqual(lineScreenRows([{ sortOrder: 'x' }, { sortOrder: 0 }], 'stored'), [1, 2], 'ค่าที่อ่านเป็นตัวเลขไม่ได้ = 0');
+  // submitted: sortOrder ที่ใช้ไม่ได้ (ไม่มี · ไม่ใช่จำนวนเต็ม · ติดลบ · ข้อความ) ถอยไปตำแหน่ง + 1 — ไม่มีวันได้เลข 0 / NaN
+  assert.deepEqual(lineScreenRows([{}, { sortOrder: 1.5 }, { sortOrder: -1 }, { sortOrder: '3' }, null, { sortOrder: 9 }], 'submitted'), [1, 2, 3, 4, 5, 10]);
+  for (const mode of [null, 'submitted', 'stored']) {
+    for (const notLines of [null, undefined, 'x', {}]) assert.deepEqual(lineScreenRows(notLines, mode), [], `${mode}: ${String(notLines)}`);
+    assert.deepEqual(lineScreenRows([], mode), []);
+    for (const row of lineScreenRows([{ sortOrder: 4 }, {}, { sortOrder: 0 }], mode)) assert.ok(Number.isInteger(row) && row >= 1);
+  }
+  // โหมดที่ไม่รู้จัก = ค่าตั้งต้น (ตำแหน่ง + 1)
+  assert.deepEqual(lineScreenRows(gaps, 'whatever'), [1, 2, 3]);
+  // ไม่แก้ของเดิม
+  const frozen = Object.freeze([Object.freeze({ sortOrder: 2 }), Object.freeze({ sortOrder: 0 })]);
+  assert.deepEqual(lineScreenRows(frozen, 'stored'), [2, 1]);
+});
+
+test('linePackIssues + numbering: `row` = เลขบนจอ · `index` ยังเป็นตำแหน่งในอาร์เรย์เสมอ — [แพ็ค 2, (จำนวน 0 ถูกตัด), ไม่มีแพ็ค] ได้ "รายการ 3" ไม่ใช่ 2', () => {
+  // รูปที่ตัว normalize คืนเมื่อจอส่งสามแถวแล้วแถวกลางจำนวน 0: เหลือสองบรรทัด sortOrder 0 และ 2
+  const kept = [{ fgCode: SDS, packQty: 2, sortOrder: 0 }, { fgCode: SDS, sortOrder: 2 }];
+  assert.deepEqual(linePackIssues(kept), [{ index: 1, row: 2, code: 'required' }], 'ค่าตั้งต้น (ไม่ส่ง numbering) = ตำแหน่ง + 1 เหมือนงวด PR-1');
+  assert.deepEqual(linePackIssues(kept, { numbering: 'submitted' }), [{ index: 1, row: 3, code: 'required' }]);
+  assert.equal(linePackMessage(linePackIssues(kept, { numbering: 'submitted' })), `รายการ 3: ${LINE_PACK_TEXT.required}`);
+  // บรรทัดที่เก็บไว้ sortOrder 0, 2, 5 (อาร์เรย์สลับลำดับ) → รายการ 1–3 ตามที่หน้าใบเรียง
+  const storedLines = [{ fgCode: SDS, sortOrder: 5 }, { fgCode: PERFUME, packQty: 2, sortOrder: 0 }, { fgCode: SDS, sortOrder: 2 }];
+  assert.deepEqual(linePackIssues(storedLines, { numbering: 'stored' }), [
+    { index: 0, row: 3, code: 'required' }, { index: 1, row: 1, code: 'not_allowed' }, { index: 2, row: 2, code: 'required' },
+  ]);
+  assert.equal(linePackMessage(linePackIssues(storedLines, { numbering: 'stored' })),
+    `รายการ 1: ${LINE_PACK_TEXT.notAllowed} · รายการ 2, 3: ${LINE_PACK_TEXT.required}`, 'เลขรายการในประโยคเรียงน้อยไปมาก แม้อาร์เรย์ไม่ได้เรียง');
+  // numbering ไม่เปลี่ยนว่าบรรทัดไหนผิดหรือผิดอะไร — เปลี่ยนแค่เลขที่บอก
+  for (const numbering of [null, 'submitted', 'stored']) {
+    assert.deepEqual(linePackIssues(storedLines, { numbering }).map((issue) => [issue.index, issue.code]), [[0, 'required'], [1, 'not_allowed'], [2, 'required']], String(numbering));
+    assert.deepEqual(linePackIssues(storedLines, { numbering, requireOnCategory: false }).map((issue) => issue.code), ['not_allowed']);
+    assert.deepEqual(linePackIssues(storedLines, { numbering, open: false }).map((issue) => [issue.index, issue.code]), [[1, 'closed']]);
+  }
+});
+
+test('linePackMessage: เลขรายการในหนึ่งประโยคเรียงน้อยไปมาก ไม่ว่ารายการปัญหาจะมาลำดับไหน', () => {
+  const message = linePackMessage([
+    { index: 0, row: 12, code: 'required' }, { index: 1, row: 3, code: 'required' }, { index: 2, row: 7, code: 'required' },
+    { index: 3, row: 9, code: 'invalid' }, { index: 4, row: 2, code: 'invalid' },
+  ]);
+  assert.equal(message, `รายการ 2, 9: ${LINE_PACK_TEXT.invalid} · รายการ 3, 7, 12: ${LINE_PACK_TEXT.required}`);
+});
+
+/* ── ข้อความของด่านยื่น / อนุมัติ / ส่ง (งวด PR-3 · แผน §3.5 + §12 C3) ───────────────────────────────── */
+
+test('linePackGateMessage: สี่ action — ข้อความของด่าน + " — " + สิ่งที่คนนั้นต้องกด · ไม่มีปัญหา = ข้อความว่าง · action อื่น = โยน (ไม่มีข้อความเปล่าที่ไม่บอกทางออก)', () => {
+  const issues = [{ index: 0, row: 1, code: 'required' }];
+  assert.equal(linePackGateMessage(issues, 'submit'), 'รายการ 1: รายการหมวด 02-001 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ — กด “แก้ไขข้อมูล” แล้วกรอกให้ครบก่อนยื่นอนุมัติ');
+  assert.equal(linePackGateMessage(issues, 'approve'), 'รายการ 1: รายการหมวด 02-001 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ — กด “ตีกลับให้แก้ไข” ให้ผู้จัดทำกรอกให้ครบก่อน');
+  assert.equal(linePackGateMessage(issues, 'approveOwn'), 'รายการ 1: รายการหมวด 02-001 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ — กด “ดึงกลับมาแก้ไข” แล้วกรอกให้ครบก่อนยื่นใหม่');
+  assert.equal(linePackGateMessage([{ index: 1, row: 2, code: 'required' }, { index: 2, row: 3, code: 'required' }], 'send'),
+    'รายการ 2, 3: รายการหมวด 02-001 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ — ออก Rev. แล้วกรอกในฉบับใหม่ก่อนส่งลูกค้า');
+  const ACTIONS = { submit: 'beforeSubmit', approve: 'beforeApprove', approveOwn: 'beforeApproveOwn', send: 'beforeSend' };
+  const mixed = [{ index: 4, row: 5, code: 'not_allowed' }, { index: 0, row: 1, code: 'required' }];
+  for (const [action, key] of Object.entries(ACTIONS)) {
+    // ท้ายข้อความ = คีย์ของ action นั้นเท่านั้น (สลับกัน = ชี้ปุ่มที่คนนั้นไม่มี) · หัวข้อความ = linePackMessage ทั้งก้อน (เลขรายการอยู่ครบ)
+    assert.equal(linePackGateMessage(mixed, action), `${linePackMessage(mixed)} — ${LINE_PACK_TEXT[key]}`, action);
+    assert.match(linePackGateMessage(mixed, action), /^รายการ 5: .* · รายการ 1: /, action);
+    for (const none of [[], null, undefined]) assert.equal(linePackGateMessage(none, action), '', `${action}: ไม่มีปัญหา`);
+  }
+  assert.equal(new Set(Object.values(ACTIONS).map((key) => LINE_PACK_TEXT[key])).size, 4, 'สี่ข้อความไม่ซ้ำกัน');
+  for (const bad of [undefined, null, '', 'save', 'Submit', 'approve ', 'reject', 'toString', 'constructor', '__proto__', 0]) {
+    assert.throws(() => linePackGateMessage(issues, bad), /unknown action/, `action=${String(bad)}`);
+    assert.throws(() => linePackGateMessage([], bad), /unknown action/, `action=${String(bad)} (ไม่มีปัญหาก็โยน — ผู้เรียกเขียนผิด)`);
+  }
+});
+
+test('🔴 ชื่อปุ่มในข้อความของด่านตรงกับป้ายของปุ่มจริงบนหน้าใบทุกตัวอักษร — เปลี่ยนชื่อปุ่ม = เทสต์นี้แดง ไม่ใช่ข้อความที่ชี้ปุ่มที่ไม่มี (แผน §12 C3)', () => {
+  const src = (relative) => readFileSync(new URL(relative, new URL('../../', import.meta.url)), 'utf8');
+  const quoted = (text) => [...text.matchAll(/“([^”]+)”/g)].map((match) => match[1]);
+  const page = src('app/sales-planning/quotations/[id]/page.js');
+  const buttons = src('components/ui/ActionButtons.js');
+  // ยื่นอนุมัติ → ปุ่ม "แก้ไขข้อมูล" ของหน้าใบ (id: "edit")
+  assert.deepEqual(quoted(LINE_PACK_TEXT.beforeSubmit), ['แก้ไขข้อมูล']);
+  assert.match(page, /id: "edit",\s*kind: "edit",\s*label: "แก้ไขข้อมูล",/);
+  // ผู้อนุมัติที่ไม่ใช่คนยื่น → ปุ่ม "ตีกลับให้แก้ไข" ของหน้าใบ (id: "reject" · โชว์เมื่อ canRejectSubmission)
+  assert.deepEqual(quoted(LINE_PACK_TEXT.beforeApprove), ['ตีกลับให้แก้ไข']);
+  assert.match(page, /id: "reject",\s*kind: "reject",\s*label: "ตีกลับให้แก้ไข",\s*variant: "outline",\s*visible: canRejectSubmission && !editMode,/);
+  // ผู้อนุมัติที่เป็นคนยื่นเอง → ปุ่ม "ดึงกลับมาแก้ไข" (kind withdraw ไม่มี label ของตัวเอง — ป้ายมาจากตาราง KINDS · โชว์เมื่อ canWithdrawSubmission)
+  assert.deepEqual(quoted(LINE_PACK_TEXT.beforeApproveOwn), ['ดึงกลับมาแก้ไข']);
+  assert.match(buttons, /withdraw: \{ tone: "neutral", Icon: Undo2, label: "ดึงกลับมาแก้ไข" \},/);
+  assert.match(page, /id: "withdraw",\s*kind: "withdraw",\s*variant: "outline",\s*visible: canWithdrawSubmission && !editMode,/);
+  // ส่งลูกค้า → ปุ่ม "ออก Rev." (kind revise — ป้ายจากตาราง KINDS)
+  assert.match(buttons, /revise: \{ tone: "neutral", Icon: Copy, label: "ออก Rev\." \},/);
+  assert.ok(LINE_PACK_TEXT.beforeSend.startsWith('ออก Rev. '), 'ข้อความของด่านส่งขึ้นต้นด้วยป้ายของปุ่ม');
+  assert.match(page, /id: "revise",\s*kind: "revise",\s*variant: "outline",\s*visible: canReviseDocument && !editMode,/);
+  /* เหตุที่ต้องมีสองข้อความของผู้อนุมัติ: คนยื่นตีกลับใบตัวเองไม่ได้ (canRejectQuotationSubmission ตัดคนยื่นออก) และดึงกลับได้เฉพาะคนยื่น */
+  const workflow = src('lib/sales/quotationWorkflow.js');
+  const bodyOf = (name) => {
+    const from = workflow.indexOf(`export function ${name}(`);
+    assert.ok(from >= 0, `หา ${name} ไม่เจอ`);
+    return workflow.slice(from, workflow.indexOf('\n}\n', from));
+  };
+  assert.match(bodyOf('canRejectQuotationSubmission'), /&& !isQuotationSubmitter\(quotation, userId\)/);
+  assert.match(bodyOf('canWithdrawQuotationSubmission'), /&& isQuotationSubmitter\(quotation, userId\);/);
 });
 
 test('LinePackError: Error ที่พก status 400 · รายการปัญหา · ข้อความที่บอกเลขรายการ', () => {

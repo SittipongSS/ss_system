@@ -31,14 +31,17 @@ export class QuotationDraftError extends Error {
   }
 }
 
-/* `packInputOpen` = ช่องสำหรับเทสต์เท่านั้น (ค่าตั้งต้น = สวิตช์จริง QUOTE_PACK_INPUT_OPEN) — ป้อนทั้งตัว normalize และด่านเลขแพ็ค
-   ข้างล่าง เพื่อให้เทสต์พิสูจน์ทางสร้างใบทั้งเส้นขณะช่อง "แพ็ค/เดือน" ยังปิดบน production
-   🔴 ห้ามมีผู้เรียกใน src/app หรือ src/lib ส่งค่านี้ (ยาม linePackWritePaths.test.mjs) */
+/* `packInputOpen` = ช่องสำหรับเทสต์เท่านั้น (ค่าตั้งต้น = สวิตช์จริง QUOTE_PACK_INPUT_OPEN ซึ่งเปิดแล้วตั้งแต่งวด PR-3) — ป้อนทั้งตัว normalize
+   และด่านเลขแพ็คข้างล่าง ให้เทสต์รันกิ่ง "ปิด" = คำตอบของรุ่น PR-1 / PR-2 ที่ถอยกลับไปได้
+   🔴 ห้ามมีผู้เรียกใน src/app หรือ src/lib ส่งค่านี้ (ยาม linePackWritePaths.test.mjs)
+   `serverBuiltLines` = บรรทัดของคำขอนี้ **เซิร์ฟเวอร์เป็นคนสร้าง ไม่มีคนกรอก** (สายสหมิตร: บรรทัดมาจาก PO) ⇒ ไม่บังคับเลขแพ็คของหมวด 02-001
+   ตอนสร้าง — ทางนั้นไม่มีจอให้พิมพ์เลขแพ็ค ปฏิเสธ = ทางตัน (บทเรียนด่านของดีล Won) และระบบไม่เดาเลขให้ (มติ A4)
+   ด่านจะทักตอนบันทึก/ยื่นครั้งถัดไป เหมือนตอนออก Rev. · ผู้เรียกที่ส่ง true มีสายสหมิตรทางเดียว (ยามเดียวกัน) */
 export async function createQuotationDraft({
-  supabase, user, deal, body = {}, request, packInputOpen = QUOTE_PACK_INPUT_OPEN,
+  supabase, user, deal, body = {}, request, packInputOpen = QUOTE_PACK_INPUT_OPEN, serverBuiltLines = false,
 }) {
   /* normalize ครั้งเดียว ใช้ทั้งด่านลูกค้าและตัว sync ราคา (ด่านลูกค้าอ่านอย่างเดียว)
-     เลขแพ็คที่ใช้ไม่ได้ / ส่งมาขณะช่องปิด = ปฏิเสธพร้อมเลขรายการ — ไม่ตัดทิ้ง ไม่สร้างใบ (mig 0407 · linePacks.js) */
+     เลขแพ็คที่ใช้ไม่ได้ (0 · 1.5 · 10000 · ข้อความ) = ปฏิเสธพร้อมเลขรายการ — ไม่ตัดทิ้ง ไม่สร้างใบ (mig 0407 · linePacks.js) */
   let manualLines;
   try {
     manualLines = normalizeManualLines(body.lines || [], { packInputOpen });
@@ -69,11 +72,12 @@ export async function createQuotationDraft({
     if (seedMismatch.length) throw new QuotationDraftError(customerMismatchMessage(seedMismatch));
     lines = await enforceMasterPrices(supabase, lines, [], { customerId: deal.customerId });
   }
-  /* ด่านเลขแพ็คบน **บรรทัดชุดสุดท้าย** ที่จะถูกเขียน (รวมบรรทัดที่ตั้งต้นจากโครงการ ซึ่งไม่ผ่านตัว normalize)
-     · ช่องปิด: มีเลขแพ็คมาถึงตรงนี้ทางไหนก็ตาม = ปฏิเสธ · ช่องเปิด (งวด PR-3): บรรทัดหมวด 02-001 ที่คนกรอกเองต้องมีเลขแพ็ค
-     · `requireOnCategory: !seeded` — บรรทัดที่ระบบตั้งต้นจากโครงการยังไม่มีใครกรอก ⇒ ไม่ปฏิเสธตอนสร้าง
-       ด่านจะทักตอนบันทึก/ส่งครั้งถัดไป เหมือนตอนออก Rev. (มติ 08/10 ข้อ 3) */
-  const packIssues = linePackIssues(lines, { open: packInputOpen, requireOnCategory: !seeded });
+  /* ด่านเลขแพ็คบน **บรรทัดชุดสุดท้าย** ที่จะถูกเขียน (รวมบรรทัดที่ตั้งต้นจากโครงการ ซึ่งไม่ผ่านตัว normalize) — ก่อนออกเลขใบ
+     ⭐ มติเจ้าของ 08/10 (A2–A4 · งวด PR-3): บรรทัดหมวด 02-001 ที่ **คนกรอกเอง** ต้องมีเลขแพ็ค 1–9,999 · หมวดอื่นห้ามมี — ปฏิเสธพร้อมเลขรายการ
+     ที่ตรงกับแถวบนจอ (`numbering: 'submitted'` — นับจากลำดับที่ส่งมา ก่อนบรรทัดจำนวน 0 ถูกตัด) · เซิร์ฟเวอร์ไม่ตั้ง/ไม่ล้างเลขให้
+     · บรรทัดที่เซิร์ฟเวอร์สร้างเอง (`seeded` จากโครงการ · `serverBuiltLines` ของสายสหมิตร) ยังไม่มีใครกรอก ⇒ ไม่บังคับตอนสร้าง
+       ด่านจะทักตอนบันทึก/ยื่นครั้งถัดไป เหมือนตอนออก Rev. (มติ 08/10 ข้อ 3) — ค่าผิดรูป/ผิดหมวดยังถูกปฏิเสธเสมอ */
+  const packIssues = linePackIssues(lines, { open: packInputOpen, requireOnCategory: !(seeded || serverBuiltLines), numbering: 'submitted' });
   if (packIssues.length) throw new QuotationDraftError(linePackMessage(packIssues), 400);
   if (body.status === 'sent' && !lines.length) {
     throw new QuotationDraftError('ต้องมีอย่างน้อย 1 รายการก่อนส่งลูกค้า');
