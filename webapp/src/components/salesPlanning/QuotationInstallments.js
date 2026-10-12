@@ -351,7 +351,8 @@ export default function QuotationInstallments({
                     /* ⚠️ ช่องกรอกต้องได้ค่าดิบ — จัดรูปแบบใน value แล้วผู้ใช้พิมพ์ต่อไม่ได้ */
                     : <input type="number" min="0" max="100" step="0.01" className="premium-input mono" value={row.percent} onChange={(event) => updateInstallment(index, { percent: event.target.value })} />
                   : <span className={`${styles.readonlyValue} mono`}>{pctText(100)}</span>}</td>
-                <td className="num mono">{fmtMoney(amounts[index]?.amount || 0)}</td>
+                {/* ยอดใบ `null` = ยังไม่มียอดให้แบ่ง (ตารางรายการมีช่อง "แพ็ค/เดือน" ที่ต้องกรอกค้างอยู่ — งวด PR-3) ⇒ ขีด ไม่ใช่ 0.00 */}
+                <td className="num mono">{totalAmount === null ? NA : fmtMoney(amounts[index]?.amount || 0)}</td>
                 <td>{split
                   ? disabled
                     ? <div className="readable-field is-compact"><ReadableText text={row.note} lines={3} empty={<span className="readable-field-empty">{NA}</span>} /></div>

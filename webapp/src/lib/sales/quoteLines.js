@@ -6,7 +6,7 @@ import { customerTaxSiblingIds, customerTaxSiblings } from '@/lib/master/custome
 import { quoteLineMoney, quoteLineNet, toMoney } from '@/lib/salesPlanning';
 import { DEFAULT_SALE_UNIT, saleUnitOf } from '@/lib/master/units';
 import {
-  LinePackError, PACK_QTY_INVALID, QUOTE_PACK_INPUT_OPEN, packLineUnit, packQtyValue,
+  LinePackError, PACK_QTY_INVALID, QUOTE_PACK_INPUT_OPEN, lineTakesPacks, packLineUnit, packQtyValue,
 } from '@/lib/sales/linePacks';
 import {
   productBrandName,
@@ -87,6 +87,24 @@ export function manualLineCategoryEdit(metadata, row) {
   const th = String(row.nameTh || '').trim();
   const en = String(row.nameEn || '').trim();
   return { ...rest, categoryCode: code, categoryName: th || en || code, categoryNameEn: en || th || code };
+}
+
+/**
+ * แพตช์ของบรรทัด "เพิ่มรายการเอง" เมื่อคนออกใบเปลี่ยนหมวด — metadata ชุดใหม่ของ manualLineCategoryEdit
+ * + **ล้างเลขแพ็คต่อหน้าคนที่เปลี่ยน** เมื่อบรรทัดถือเลขแพ็คอยู่แล้วหมวดใหม่ไม่ใช่ 02-001 (หรือ "ไม่ระบุ")
+ * (งวด PR-3 · มติเจ้าของ 08/10: เลขแพ็คมีได้เฉพาะหมวด 02-001 — ค้างไว้ = ตัวคูณที่มองไม่เห็น และเซิร์ฟเวอร์จะปฏิเสธตอนบันทึก)
+ * - บรรทัดที่ **ไม่ได้ถือค่า** (ไม่มีคีย์ · null · '' · ช่องว่างล้วน) ได้ `{ metadata }` อย่างเดียว — ไม่เติมคีย์ packQty ให้ใคร
+ * - หมวด 02-001 → 02-001 (หรือเปลี่ยน **เข้า** 02-001): เลขแพ็คอยู่ตามเดิม · ค่าที่ใช้ไม่ได้ก็ถูกล้างเมื่อออกจากหมวด
+ * 🔴 ตัวล้างเลขแพ็คมีสองตัว (ตัวนี้ · quoteLineFromProduct) และ **จอเท่านั้นที่เรียก** — เซิร์ฟเวอร์ไม่ล้าง ไม่ตัด ไม่แก้เลขแพ็ค
+ *   (ยาม linePackWritePaths.test.mjs ยึดรายชื่อผู้เรียกทั้งสอง: ไม่มีไฟล์ใต้ app/api หรือ lib)
+ * @param row แถว product_types ที่เลือก (null = ไม่ระบุ)
+ * @returns {{ metadata: object } | { metadata: object, packQty: null }}
+ */
+export function manualLineCategoryPatch(line, row) {
+  const metadata = manualLineCategoryEdit(line?.metadata, row);
+  const holdsPack = packQtyValue(line?.packQty) !== null;
+  if (holdsPack && !lineTakesPacks({ ...line, metadata })) return { metadata, packQty: null };
+  return { metadata };
 }
 
 /* ทะเบียนหมวดสำหรับหาชื่อ — **อ่านไม่ได้ = null** (ไม่รู้) ไม่ใช่ [] (รู้ว่าไม่มี)
@@ -250,6 +268,20 @@ export function masterPriceDrift(product, line) {
   if (!line?.productId || masterPriceState(product) !== 'priced') return null;
   const masterPrice = toMoney(product[QUOTE_PRICE_FIELD]);
   return masterPrice === toMoney(line.unitPrice) ? null : masterPrice;
+}
+
+/* จอ **สัญญาไม่ได้** ว่าบรรทัดนี้จะถูกบันทึกด้วยราคาที่เห็นอยู่ — ตอนบันทึก enforceMasterPrices อ่านราคาตรงจากตาราง products
+   (ไม่ผ่านด่านอนุมัติ) แล้วทับราคาของบรรทัดที่ผูกสินค้าเสมอ ⇒ ยอดที่จอพูดก่อนกดจะผิดได้สองกรณี:
+     · ราคาในทะเบียนขยับแล้วและจอเห็น (masterPriceDrift ≠ null — มีคำเตือนข้างช่องราคาอยู่แล้ว)
+     · จอ **ไม่รู้** ราคาทะเบียนตอนนี้ (masterPriceState 'unknown'): สินค้าไม่อยู่ในลิสต์ของหน้า หรือบทบาทนี้ไม่เห็นคอลัมน์ราคา
+       ⚠️ กรณีนี้เกิดตรงจังหวะที่อันตรายที่สุดพอดี — แก้ราคาสินค้าที่อนุมัติแล้ว สถานะกลับเป็นรออนุมัติ (resetApprovalOnEdit)
+          สินค้าจึงหลุดจากลิสต์ ทั้งที่ราคาใหม่มีผลกับการบันทึกครั้งถัดไปทันที
+   'unpriced' (รู้แน่ว่าทะเบียนยังไม่ตั้งราคา) ไม่นับ: เซิร์ฟเวอร์คงราคาเดิมของบรรทัดไว้ ยอดจึงเป็นไปตามที่จอเห็น
+   ใช้กับประโยคที่ **ยืนยันยอด** ก่อนกด (โมดัลบันทึกของใบเก่าที่กำลังแยกจำนวนเป็น แพ็ค × เดือน — resplitTotalNote · รีวิว 09/10)
+   บรรทัดที่ไม่ผูกสินค้า = false (ราคาที่พิมพ์คือราคาที่บันทึก) */
+export function masterPriceUncertain(product, line) {
+  if (!line?.productId) return false;
+  return masterPriceState(product) === 'unknown' || masterPriceDrift(product, line) !== null;
 }
 
 /**
@@ -500,6 +532,10 @@ export async function refreshFgLinesForDisplay(supabase, quotes = []) {
  *   ตามสินค้าตัวใหม่ แต่ข้อความที่คนพิมพ์เองห้ามถูกทับ (ธง `noteAuto` เป็นตัวแยก)
  * - ชื่อหมวดของสินค้าตัวเก่าต้องไม่ค้าง ถ้าตัวใหม่ไม่มีหมวดที่มีชื่อ (มติ 2026-09-22)
  * - ช่องอื่นของบรรทัด (จำนวน · ส่วนลด · โซน · รอบ) คงเดิม
+ * - ⭐ เลขแพ็ค (งวด PR-3 · มติเจ้าของ 08/10): บรรทัดที่ **ถือเลขแพ็คอยู่** แล้วถูกเปลี่ยนเป็นสินค้าที่ไม่ใช่หมวด 02-001 → ล้างเป็น null
+ *   ต่อหน้าคนที่เปลี่ยน (เดิมเลข 2 ค้างบนบรรทัดเทียน ยอด = 2 × จำนวน × ราคา โดยไม่มีช่องให้เห็น) · 02-001 → 02-001 เลขอยู่ตามเดิม
+ *   · บรรทัดที่ไม่ได้ถือค่า (ไม่มีคีย์ · null · '') คืนเหมือนเดิมทุกคีย์ — ไม่เติม `packQty` ให้ (แถวโซนของใบย้อนหลังไม่มีคีย์นี้
+ *   และ `packsPerRound` ของมันไม่ใช่ตัวคูณ ไม่ถูกอ่านที่นี่) · 🔴 จอเท่านั้นที่เรียกตัวนี้ — เซิร์ฟเวอร์ไม่ล้างเลขแพ็ค (ยาม linePackWritePaths)
  */
 export function quoteLineFromProduct(prevLine = {}, product = null) {
   const line = prevLine || {};
@@ -511,7 +547,7 @@ export function quoteLineFromProduct(prevLine = {}, product = null) {
     note: _note, noteEn: _noteEn, noteAuto: _noteAuto,
     categoryName: _categoryName, categoryNameEn: _categoryNameEn, categoryCode: _categoryCode, ...keptMeta
   } = prevMeta;
-  return {
+  const next = {
     ...line,
     productId: product.id,
     fgCode: product.fgCode || null,
@@ -527,17 +563,22 @@ export function quoteLineFromProduct(prevLine = {}, product = null) {
     unit: product.saleUnit || DEFAULT_SALE_UNIT,
     unitPrice: Number(product[QUOTE_PRICE_FIELD] || 0),
   };
+  // ล้างเฉพาะบรรทัดที่ถือค่าอยู่ และสินค้าตัวใหม่ไม่ใช่หมวดที่มีเลขแพ็ค — บรรทัดที่ไม่มีค่าไม่ได้คีย์เพิ่ม
+  if (packQtyValue(line.packQty) !== null && !lineTakesPacks(next, product)) next.packQty = null;
+  return next;
 }
 
 // normalize บรรทัดจาก client (สร้าง/แก้): คิดส่วนลดรายบรรทัด + ยอดสุทธิที่ server เสมอ
 /* ⭐ เลขแพ็ค (`packQty` · mig 0407 · docs/qt-pack-column.md) — คีย์เดียวที่ตัวนี้ **ไม่ทิ้งเงียบ**:
-   · ตรวจ **ทุกบรรทัดที่ส่งมา ก่อนกรองอะไรทิ้ง** (รวมบรรทัดจำนวน 0 ที่กำลังจะถูกตัด) — ค่าที่ใช้ไม่ได้ หรือมีค่าขณะช่องปิด
-     = โยน `LinePackError` ที่บอกเลขรายการ · ผู้เรียกทุกตัวต้องจับแล้วตอบ 400 (ยาม linePackWritePaths.test.mjs)
-   · `null` / `''` / `undefined` / ไม่มีคีย์ = ไม่ใช่เลขแพ็ค ผ่านเสมอ: หลังรัน 0407 ทุกบรรทัดที่ API คืนมี `packQty: null`
-     และจอส่งบรรทัดกลับมาทั้งก้อน — ปฏิเสธค่านี้ = บันทึกใบเสนอราคาไม่ได้ทั้งระบบ
+   · ตรวจ **ทุกบรรทัดที่ส่งมา ก่อนกรองอะไรทิ้ง** (รวมบรรทัดจำนวน 0 ที่กำลังจะถูกตัด) — ค่าที่ใช้ไม่ได้ (0 · 1.5 · 10000 · ข้อความ)
+     = โยน `LinePackError` ที่บอกเลขรายการตามลำดับที่จอส่งมา · ผู้เรียกทุกตัวต้องจับแล้วตอบ 400 (ยาม linePackWritePaths.test.mjs)
+   · `null` / `''` / `undefined` / ไม่มีคีย์ = ไม่ใช่เลขแพ็ค ผ่านเสมอ: ทุกบรรทัดที่ API คืนมี `packQty: null`
+     และจอส่งบรรทัดกลับมาทั้งก้อน — "หมวด 02-001 ต้องกรอก" / "หมวดอื่นห้ามมี" เป็นงานของด่าน linePackIssues บนบรรทัดชุดสุดท้าย ไม่ใช่ของตัวนี้
    · คืนคีย์ `packQty` (เป็นตัวเลข) **เฉพาะบรรทัดที่มีเลขแพ็ค** ⇒ บรรทัดเดิมได้คีย์ชุดเดิมลำดับเดิม และคำขอ INSERT ไม่เอ่ยชื่อคอลัมน์
-   🔴 `packInputOpen` เป็นช่องสำหรับเทสต์เท่านั้น (พิสูจน์ว่าเลขแพ็คเดินครบทุกทอดขณะช่องยังปิดบน production)
-     — ห้ามมีผู้เรียกใน src/app หรือ src/lib ส่งค่านี้ (ยามเดียวกัน) · เปิดช่องจริง = แก้ QUOTE_PACK_INPUT_OPEN ที่เดียว */
+   · `sortOrder` = ตำแหน่งในลิสต์ที่ส่งมา (ก่อนตัดบรรทัดจำนวน 0) — ด่านใช้ค่านี้นับเลขรายการให้ตรงกับจอ (lineScreenRows 'submitted')
+   🔴 `packInputOpen` เป็นช่องสำหรับเทสต์เท่านั้น: ตั้งแต่งวด PR-3 สวิตช์จริงเปิด (ค่าตั้งต้น = true) ช่องนี้จึงเหลือไว้ให้เทสต์รันกิ่ง "ปิด"
+     = คำตอบของรุ่น PR-1 / PR-2 ที่ถอยกลับไปได้ (ปฏิเสธเลขแพ็คทุกค่า ไม่ตัดทิ้ง) — ห้ามมีผู้เรียกใน src/app หรือ src/lib ส่งค่านี้ (ยามเดียวกัน)
+     และห้ามตั้ง QUOTE_PACK_INPUT_OPEN กลับเป็น false (เหตุอยู่ที่ linePacks.js) */
 export function normalizeManualLines(lines = [], { packInputOpen = QUOTE_PACK_INPUT_OPEN } = {}) {
   const packs = lines.map((line) => packQtyValue(line?.packQty));
   const packIssues = [];

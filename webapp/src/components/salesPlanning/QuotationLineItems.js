@@ -11,7 +11,7 @@ import { useEffect, useMemo, useState } from "react";
 import ReadableText from "@/components/ui/ReadableText";
 import { quoteTotals } from "@/lib/salesPlanning";
 import { fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
-import { lineNoteEdit, manualLineCategoryEdit, quoteLineFromProduct } from "@/lib/sales/quoteLines";
+import { lineNoteEdit, manualLineCategoryPatch, quoteLineFromProduct } from "@/lib/sales/quoteLines";
 import { cachedFetchJson } from "@/lib/apiCache";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import { findCategoryByCode } from "@/lib/master/productCategoryOptions";
@@ -23,6 +23,7 @@ import Textarea from "@/components/ui/Textarea";
 import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL, SERVICE_ROUNDS_UNIT, lineIsServicePackage } from "@/lib/sales/serviceOrders";
 import { packLineUnit } from "@/lib/sales/linePacks";
 import { PACK_COLUMN_LABEL, hasPackColumn, linePackQty } from "@/lib/sales/linePackView";
+import { quoteLinesPackView } from "@/lib/sales/linePackEdit";
 import {
   QuoteLineActionsHead, QuoteLineFgInfo, QuoteLineHeadCells, QuoteLineIndexCell, QuoteLineIndexHead,
   QuoteLineInstallationPoint, QuoteLineItemCell, QuoteLineMoneyCells, QuoteLineProductPicker, QuoteLineRemoveCell,
@@ -179,6 +180,13 @@ export default function QuotationLineItems({
   vatRate,
   onDiscountChange,
   onVatRateChange,
+  /* ⭐ งวด PR-3 (มติเจ้าของ 08/10 ข้อ A2 "บังคับใส่"): คนกดบันทึก/ยื่นแล้วและยังมีช่อง "แพ็ค/เดือน" ที่ต้องแก้ ⇒ แถวที่ค้างขึ้นขอบแดง
+     พร้อมข้อความใต้ช่อง · หน้าเป็นคนส่ง (`useQuoteLinePackGate().errorsShown`) — ค่าตั้งต้นปิด = ไม่มีอะไรแดงก่อนกด */
+  packErrorsShown = false,
+  /* ⭐ บรรทัดที่ **เก็บไว้** ของใบนี้ (หน้าใบส่ง `quote.lines` · หน้าสร้างไม่ส่ง) — ให้กฎฝั่งจอรู้ว่าบรรทัดไหนคือบรรทัดเก่าที่เก็บไว้โดยไม่มี
+     เลขแพ็คและยังไม่มีใครแตะ (บรรทัดชนิดเดียวที่ช่องว่างยังโชว์ยอดที่เก็บไว้ — มติ A4) · ตัดสินจากแถวที่เก็บ ไม่ใช่จากยอดอย่างเดียว
+     (บรรทัดที่เก็บเลขแพ็ค 1 แล้วถูกลบเลข ยอดเท่าเดิมพอดี แต่ถูกแก้แล้ว ⇒ ต้องเป็นขีด · รีวิว 09/10) */
+  storedLines = null,
 }) {
   // มาตรฐาน dropdown สินค้าทั้งระบบ: รหัส · แบรนด์ / ชื่อสินค้า · ปริมาตร
   // + ชื่อหมวดสินค้าต่อท้ายรหัส · แบรนด์ (มติผู้ใช้ 2026-09-22 — เฉพาะเอกสารขาย)
@@ -211,9 +219,19 @@ export default function QuotationLineItems({
     lineIndex === index ? { ...line, ...patch } : line
   )));
   const removeLine = (index) => onChange?.(lines.filter((_, lineIndex) => lineIndex !== index));
-  /* ⭐ คอลัมน์ "แพ็ค/เดือน" (mig 0407 · งวด PR-2): ขึ้นเมื่อมีบรรทัดที่มีเลขแพ็ค — โชว์อย่างเดียวทั้งโหมดอ่านและโหมดแก้
-     (ช่องกรอกเป็นของงวด PR-3) · ใบที่ไม่มีเลขแพ็คได้ตารางเดิมทุกช่อง */
-  const showPacks = hasPackColumn(lines);
+  /* ⭐ คอลัมน์ "แพ็ค/เดือน" (mig 0407 · docs/qt-pack-column.md)
+     · โหมดอ่าน/จออนุมัติ (งวด PR-2 — ไม่เปลี่ยน): ขึ้นเมื่อมีบรรทัดที่มีเลขแพ็ค โชว์อย่างเดียว · ใบที่ไม่มีเลขแพ็คได้ตารางเดิมทุกช่อง
+     · โหมดแก้ (งวด PR-3 · มติเจ้าของ 08/10 ข้อ A2–A4): กฎฝั่งจอ (`quoteLinesPackView`) คิดให้ทั้งตาราง — คอลัมน์ขึ้นเมื่อมีบรรทัด
+       หมวด 02-001 หรือบรรทัดที่ถือตัวเลขอยู่ · แต่ละบรรทัดได้ `packEdit` (ช่องกรอก/ขีด · ยอดเป็นขีดเมื่อยังไม่กรอก · สูตร · ยอดเดิม)
+       ⚠️ คิดเฉพาะตอน `editable` — โหมดอ่านไม่มี packEdit เลย เซลล์จึงเป็นของงวด PR-2 ทุกตัวอักษร */
+  const packView = useMemo(
+    () => (editable ? quoteLinesPackView(lines, products, { errorsShown: packErrorsShown, storedLines }) : null),
+    [editable, lines, products, packErrorsShown, storedLines],
+  );
+  const showPacks = packView ? packView.showColumn : hasPackColumn(lines);
+  const packRequired = Boolean(packView?.rows.some((row) => row.required));
+  /* ยังมีบรรทัดที่ไม่มียอด ⇒ ยอดรวมท้ายตารางขึ้นขีดทุกช่อง (ยอดที่นับช่องว่างเป็นหนึ่งแพ็ค = ค่าตั้งต้นเงียบ) · โหมดอ่าน = false เสมอ */
+  const packPending = Boolean(packView?.pending);
   const productOf = (line) => (line.productId ? products.find((item) => item.id === line.productId) || null : null);
 
   // ราคาขายในใบ = ราคาผลิต (costPrice) ทั้งระบบ (มติ 2026-07-19) — ตรงกับที่ server enforce ตอนบันทึก;
@@ -227,11 +245,13 @@ export default function QuotationLineItems({
 
   return (
     <>
+      {/* ใบเก่าที่บรรทัดหมวด 02-001 ยังไม่มีเลขแพ็ค (มติ A4: กรอกตอนแก้) — บอกก่อนกดว่าต้องแยกจำนวนเดิมอย่างไร · ไม่แดง */}
+      {packView?.resplitHint ? <p className={styles.packHint}>{packView.resplitHint}</p> : null}
       <QuoteLinesTable>
         <thead>
           <tr>
             <QuoteLineIndexHead />
-            <QuoteLineHeadCells showPacks={showPacks} />
+            <QuoteLineHeadCells showPacks={showPacks} packRequired={packRequired} />
             {editable && <QuoteLineActionsHead />}
           </tr>
         </thead>
@@ -254,9 +274,9 @@ export default function QuotationLineItems({
                   <ProductCategorySelect
                     categories={categories}
                     value={line.metadata?.categoryCode || ""}
-                    onChange={(code) => setLine(index, {
-                      metadata: manualLineCategoryEdit(line.metadata, code ? findCategoryByCode(categories, code) : null),
-                    })}
+                    /* เปลี่ยนหมวดออกจาก 02-001 (หรือเป็น "ไม่ระบุ") ขณะบรรทัดถือเลขแพ็ค = ล้างเลขนั้นตรงนี้ ต่อหน้าคนที่เปลี่ยน
+                       (ยอดบนจอเปลี่ยนตามทันที) — เซิร์ฟเวอร์ไม่ล้างให้ มันปฏิเสธ (manualLineCategoryPatch · quoteLines.js) */
+                    onChange={(code) => setLine(index, manualLineCategoryPatch(line, code ? findCategoryByCode(categories, code) : null))}
                     label={null}
                     ariaLabel={`หมวดสินค้า รายการ ${index + 1}`}
                   />
@@ -313,6 +333,7 @@ export default function QuotationLineItems({
                 onPatch={(patch) => setLine(index, patch)}
                 name={`รายการ ${index + 1}`}
                 showPacks={showPacks}
+                packEdit={packView?.rows[index]}
               />
               {editable && <QuoteLineRemoveCell name={`รายการ ${index + 1}`} onRemove={() => removeLine(index)} />}
             </tr>
@@ -324,11 +345,11 @@ export default function QuotationLineItems({
       {/* กล่องสรุปแบบแก้ได้ = ตัวเดียวกับฟอร์มคีย์ใบสั่งขายย้อนหลัง (QuoteLineTotalsEditor · มติเจ้าของ 25/09) */}
       <QuoteLineTotalsEditor
         values={{
-          subtotal: fmtMoney(totals.subtotal),
-          discount: totals.discountAmount > 0 ? `-${fmtMoney(totals.discountAmount)}` : null,
-          afterDiscount: totals.discountAmount > 0 ? fmtMoney(totals.subtotal - totals.discountAmount) : null,
-          vat: vatRate > 0 ? fmtMoney(totals.vatAmount) : null,
-          total: fmtMoney(totals.totalAmount),
+          subtotal: packPending ? null : fmtMoney(totals.subtotal),
+          discount: !packPending && totals.discountAmount > 0 ? `-${fmtMoney(totals.discountAmount)}` : null,
+          afterDiscount: !packPending && totals.discountAmount > 0 ? fmtMoney(totals.subtotal - totals.discountAmount) : null,
+          vat: !packPending && vatRate > 0 ? fmtMoney(totals.vatAmount) : null,
+          total: packPending ? null : fmtMoney(totals.totalAmount),
         }}
         discountType={discountType}
         discountValue={discountValue}

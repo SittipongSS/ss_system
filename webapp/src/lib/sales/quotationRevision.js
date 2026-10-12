@@ -3,9 +3,9 @@ import { normalizeManualLines } from '@/lib/sales/quoteLines';
 import { QUOTE_PACK_INPUT_OPEN } from '@/lib/sales/linePacks';
 import { normalizePaymentPlan, validatePaymentPlan } from '@/lib/sales/paymentPlan';
 
-/* `packInputOpen` = ช่องสำหรับเทสต์เท่านั้น (ค่าตั้งต้น = สวิตช์จริง) — ส่งต่อให้ตัว normalize ทั้งสองทาง
-   เพื่อให้เทสต์พิสูจน์ได้ว่าเลขแพ็ค (mig 0407) รอดทางออก Rev. ทั้งเส้น (normalize → ราคาทะเบียน → normalize)
-   ขณะช่องยังปิดบน production · route ไม่ส่งค่านี้ (ยาม linePackWritePaths.test.mjs) */
+/* `packInputOpen` = ช่องสำหรับเทสต์เท่านั้น (ค่าตั้งต้น = สวิตช์จริง ซึ่งเปิดแล้วตั้งแต่งวด PR-3) — ส่งต่อให้ตัว normalize ทั้งสองทาง
+   ให้เทสต์รันกิ่ง "ปิด" ของทางออก Rev. ทั้งเส้น (normalize → ราคาทะเบียน → normalize) = คำตอบของรุ่น PR-1 / PR-2 ที่ถอยกลับไปได้
+   · route ไม่ส่งค่านี้ (ยาม linePackWritePaths.test.mjs) */
 export function buildQuotationRevisionContent(quote, body = {}, { packInputOpen = QUOTE_PACK_INPUT_OPEN } = {}) {
   const lines = 'lines' in body
     ? normalizeManualLines(body.lines || [], { packInputOpen })

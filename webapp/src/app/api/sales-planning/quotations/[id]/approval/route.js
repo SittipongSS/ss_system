@@ -3,6 +3,8 @@ import { genId } from '@/lib/id';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canApproveQuotation, canViewSalesPlanning, dealAuditLabel } from '@/lib/salesPlanning';
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
+import { linePackGateMessage, linePackIssues } from '@/lib/sales/linePacks';
+import { isQuotationSubmitter } from '@/lib/sales/quotationWorkflow';
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
 import {
   approveQuotationWithSignatureEvidence,
@@ -67,6 +69,15 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   }
   // ยอด 0 อนุมัติได้ (มติผู้ใช้ 2026-07-18: บางใบลดจนเหลือ 0) — ต้องมีรายการเท่านั้น
   if (!(quote.lines?.length > 0)) return badRequest('ต้องมีอย่างน้อย 1 รายการก่อนอนุมัติ');
+
+  /* ด่านเลขแพ็คของ "อนุมัติ" (มติเจ้าของ 08/10 ข้อ 3 · งวด PR-3): อนุมัติ = ส่งลูกค้า (mig 0165 ตั้ง status 'sent' + ออกฉบับตรึง)
+     ⇒ ใบที่บรรทัดหมวด 02-001 ยังไม่มีเลขแพ็ค (ยื่นไว้ก่อนวันเปิดช่อง) อนุมัติไม่ได้ — ก่อนลงนาม ก่อนเขียนอะไรทั้งสิ้น
+     ตัดสินจากบรรทัดที่เก็บไว้ ไม่อ่านทะเบียนสินค้า · ผู้อนุมัติแก้ใบไม่ได้ ข้อความจึงบอก **ปุ่มที่คนนั้นมี**:
+     ผู้อนุมัติที่เป็นคนยื่นเองไม่มีปุ่ม "ตีกลับให้แก้ไข" (canRejectQuotationSubmission) มีแต่ "ดึงกลับมาแก้ไข" */
+  const packIssues = linePackIssues(quote.lines, { numbering: 'stored' });
+  if (packIssues.length) {
+    return badRequest(linePackGateMessage(packIssues, isQuotationSubmitter(quote, user.id) ? 'approveOwn' : 'approve'));
+  }
 
   let result;
   try {

@@ -17,6 +17,7 @@ import SaveStatus from "@/components/ui/SaveStatus";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import ReasonDialog from "@/components/ui/ReasonDialog";
 import StatusNotice from "@/components/ui/StatusNotice";
+import Button from "@/components/ui/Button";
 import Toast from "@/components/ui/Toast";
 import { ContextualRightRail } from "@/components/ui/DetailPage";
 import { DocumentControlCard, DocumentSummaryCard, RelatedDocumentCard } from "@/components/ui/DocumentControlPanel";
@@ -24,6 +25,7 @@ import QuotationInstallments from "@/components/salesPlanning/QuotationInstallme
 import QuotationPaymentTerms from "@/components/salesPlanning/QuotationPaymentTerms";
 import QuotationNotes from "@/components/salesPlanning/QuotationNotes";
 import QuotationLineItems, { newManualLine, newProductLine } from "@/components/salesPlanning/QuotationLineItems";
+import useQuoteLinePackGate, { PACK_GATE_NOTICE_PROPS } from "@/components/salesPlanning/useQuoteLinePackGate";
 import SignatureReadyNotice from "@/components/account/SignatureReadyNotice";
 import ContractCreateModal from "@/components/salesPlanning/ContractCreateModal";
 import QuotationWonDialog from "@/components/salesPlanning/QuotationWonDialog";
@@ -59,6 +61,8 @@ import {
 } from "@/lib/sales/quotationWorkflow";
 import { quotationCancelPromptDetail, quotationCancelToast } from "@/lib/sales/quotationCancel";
 import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity";
+import { masterPriceUncertain } from "@/lib/sales/quoteLines";
+import { LINE_PACK_EDIT_TEXT, resplitTotalNote } from "@/lib/sales/linePackEdit";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import { approvalPrompt } from "@/lib/approvalPrompt";
@@ -254,6 +258,23 @@ export default function QuotationEditorPage() {
   // เพราะ JSX ทั้งหน้าอ่านว่า "ช่องนี้แก้ได้ไหม" ไม่ใช่ "อยู่ในโหมดไหน"
   const editable = editMode;
 
+  /* ⭐ ช่อง "แพ็ค/เดือน" ของบรรทัดหมวด 02-001 (งวด PR-3 · มติเจ้าของ 08/10 ข้อ A2–A4 · docs/qt-pack-column.md)
+     hook ตัวเดียวกับหน้าสร้าง — สามปุ่มของหน้านี้ถามมันก่อนส่งคำขอ: บันทึก · ยื่นอนุมัติ · อนุมัติ (เซิร์ฟเวอร์ปฏิเสธทั้งสามอยู่แล้ว)
+     · แถวที่ค้างแดงหลังกดเท่านั้น · แถบแจ้ง (`packGate.notice`) คิดสดจากบรรทัดปัจจุบัน ไม่ลง `error`
+     · "ออก Rev." **ไม่** ถูกถาม: Rev. ก๊อปบรรทัดตามที่เป็น ด่านทักตอนบันทึก/ยื่นร่างฉบับใหม่ (มติข้อ 3) — โมดัลของมันบอกไว้ก่อนกด
+     ⚠️ ยอดรวมของหน้าขึ้นขีดเฉพาะตอนตารางเปิดแก้ (`packPending`) — โหมดอ่าน/จออนุมัติคงนิพจน์เดิมทุกตัว
+     · `storedLines` = บรรทัดที่เก็บไว้ (ตัวเดียวกับที่ส่งให้ตาราง): บรรทัดเก่าที่เก็บไว้โดยไม่มีเลขแพ็คเท่านั้นที่ช่องว่างยังโชว์ยอดที่เก็บ
+     · `scope` = ใบไหน + สถานะอนุมัติ + สถานะใบ: เปลี่ยนเมื่อไร (ตีกลับ · ดึงกลับ · ไปใบอื่น) แถบของการกดครั้งก่อนดับ —
+       ข้อความของแถบเอ่ยชื่อปุ่ม ("กด “ตีกลับให้แก้ไข”") จึงอยู่ได้เท่าที่ปุ่มนั้นยังอยู่บนหน้า (รีวิว 09/10) */
+  const packGate = useQuoteLinePackGate(lines, products, {
+    editing: editable,
+    storedLines: quote?.lines,
+    scope: `${id}|${quote?.approvalStatus || ""}|${quote?.status || ""}`,
+  });
+  const packPending = editable && packGate.pending;
+  /* ใบที่จะออก Rev. มีบรรทัดหมวด 02-001 ที่ยังไม่มีเลขแพ็ค ⇒ ฉบับใหม่มีงานต้องกรอกก่อนยื่น (ปุ่มออก Rev. อยู่นอกโหมดแก้ — `lines` คือบรรทัดที่เก็บไว้) */
+  const reviseNeedsPacks = packGate.issues.some((issue) => issue.code === "required");
+
   // ตัวเลือกที่อยู่ (0202) — แยกตามหน้าที่เหมือนหน้าสร้างใบ · preview ใช้กติกาเดียวกับ
   // ฝั่ง server (pickDocumentAddresses) จะได้ไม่โชว์คนละอย่างกับที่บันทึกจริง
   const pickedAddresses = pickDocumentAddresses(customer, {
@@ -342,6 +363,8 @@ export default function QuotationEditorPage() {
   // ต้องบันทึกก่อนเหมือนการอนุมัติ เพราะหลักฐานผูก fingerprint ของเนื้อหาที่บันทึกแล้ว
   const submitForApproval = () => {
     if (dirty) { setError("บันทึกการแก้ไขก่อนยื่นอนุมัติ"); return; }
+    // บรรทัดหมวด 02-001 ยังไม่มีเลขแพ็ค = เซิร์ฟเวอร์ไม่รับยื่น ⇒ ไม่เปิดโมดัล · แถบแจ้งบอกเลขรายการและพาไปโหมดแก้
+    if (!packGate.mark("submit")) { setError(""); return; }
     setConfirmState({
       title: "ยื่นอนุมัติใบเสนอราคา",
       description: `ยืนยันยื่นอนุมัติ ${quote.quoteNumber} หรือไม่`,
@@ -364,6 +387,9 @@ export default function QuotationEditorPage() {
   // เพราะ fingerprint อนุมัติจะ snapshot เนื้อหาที่บันทึกแล้ว.
   const approve = () => {
     if (dirty) { setError("บันทึกการแก้ไขก่อนอนุมัติ"); return; }
+    /* ใบที่ยื่นไว้ก่อนมีช่อง "แพ็ค/เดือน": เซิร์ฟเวอร์ไม่รับอนุมัติ ⇒ บอกปุ่มที่คนนี้มีจริง — ผู้อนุมัติที่เป็นคนยื่นเองไม่มีปุ่ม
+       "ตีกลับให้แก้ไข" (canRejectQuotationSubmission) จึงได้ข้อความของ "ดึงกลับมาแก้ไข" (ตัวเลือกเดียวกับ route อนุมัติ) */
+    if (!packGate.mark(canWithdrawSubmission ? "approveOwn" : "approve")) { setError(""); return; }
     setConfirmState({
       ...approvalPrompt({
         title: "อนุมัติใบเสนอราคา",
@@ -686,13 +712,27 @@ export default function QuotationEditorPage() {
         label: ["save", "revise"].includes(busy) ? "กำลังบันทึก…" : "บันทึก",
         disabled: !dirty,
         disabledReason: !dirty ? "ยังไม่มีข้อมูลที่เปลี่ยนแปลง" : undefined,
-        onClick: () => setConfirmState({
-          title: "บันทึกใบเสนอราคา",
-          description: `ยืนยันบันทึกการแก้ไข ${quote.quoteNumber} หรือไม่`,
-          detail: "ระบบจะอัปเดตข้อมูลฉบับร่างปัจจุบัน",
-          confirmLabel: "บันทึก",
-          action: save,
-        }),
+        onClick: () => {
+          // ช่อง "แพ็ค/เดือน" ยังค้าง = ไม่เปิดโมดัล ไม่ส่งคำขอ (แถวที่ค้างแดง + เลื่อนไปช่องแรก)
+          if (!packGate.mark()) { setError(""); return; }
+          /* ใบเก่าที่กำลังแยกจำนวนเดิมเป็น แพ็ค × เดือน: โมดัลบอกผลต่อยอดรวมทั้งสิ้นก่อนกด (เท่าเดิม / เปลี่ยนจาก–เป็น)
+             · เซิร์ฟเวอร์คิดราคาใหม่จากทะเบียนตอนบันทึก ⇒ มีแถวที่ราคาในทะเบียนขยับ **หรือจอไม่รู้ราคาทะเบียนของสินค้าบนแถว**
+               (สินค้าไม่อยู่ในลิสต์ — เพิ่งถูกแก้จึงรออนุมัติ) = จอสัญญายอดไม่ได้ ⇒ ไม่มีประโยคนี้ (`masterPriceUncertain` · รีวิว 09/10) */
+          const totalNote = resplitTotalNote({
+            storedLines: quote.lines,
+            products,
+            storedTotal: quote.totalAmount,
+            nextTotal: totals.totalAmount,
+            priceUncertain: lines.some((line) => masterPriceUncertain(products.find((item) => item.id === line.productId) || null, line)),
+          });
+          setConfirmState({
+            title: "บันทึกใบเสนอราคา",
+            description: `ยืนยันบันทึกการแก้ไข ${quote.quoteNumber} หรือไม่`,
+            detail: ["ระบบจะอัปเดตข้อมูลฉบับร่างปัจจุบัน", totalNote].filter(Boolean).join(" · "),
+            confirmLabel: "บันทึก",
+            action: save,
+          });
+        },
       }
     : needsSubmit && canEditDocument
       ? {
@@ -829,6 +869,21 @@ export default function QuotationEditorPage() {
         </StatusNotice>
       )}
 
+      {/* ข้อค้างของช่อง "แพ็ค/เดือน" หลังกด บันทึก / ยื่นอนุมัติ / อนุมัติ — แถบแยกจาก `error` เพราะข้อความคิดสดจากบรรทัดปัจจุบัน
+          (แก้หรือลบแถวแล้วเลขรายการตามทัน · แก้ครบแล้วหายเอง) · กดยื่นจากโหมดอ่าน = แนบทางเข้าโหมดแก้ ป้ายเดียวกับปุ่ม "แก้ไขข้อมูล" */}
+      {packGate.notice && (
+        <div {...PACK_GATE_NOTICE_PROPS}>
+          <StatusNotice
+            tone="error"
+            action={packGate.notice.action === "submit" && canEditDocument
+              ? <Button as={Link} href={`/sa/quotations/${id}?edit=1`} variant="quiet" size="sm">แก้ไขข้อมูล</Button>
+              : null}
+          >
+            {packGate.notice.text}
+          </StatusNotice>
+        </div>
+      )}
+
       {/* ตีกลับแล้ว = ผู้จัดทำต้องรู้ว่าต้องแก้อะไร ก่อนจะยื่นใหม่ (mig 0164) —
           trigger ล้างเหตุผลให้เองเมื่อยื่นซ้ำ กล่องนี้จึงหายไปเองไม่ต้องมีปุ่มปิด */}
       {rejectionNotice && (
@@ -957,6 +1012,8 @@ export default function QuotationEditorPage() {
               vatRate={form.vatRate}
               onDiscountChange={({ type, value }) => setF({ discountType: type, discountValue: value })}
               onVatRateChange={(rate) => setF({ vatRate: rate })}
+              packErrorsShown={packGate.errorsShown}
+              storedLines={quote?.lines}
             />
           </section>
 
@@ -965,7 +1022,7 @@ export default function QuotationEditorPage() {
             <QuotationInstallments
               value={payment}
               onChange={updatePayment}
-              totalAmount={totals.totalAmount}
+              totalAmount={packPending ? null : totals.totalAmount}
               disabled={!editable}
             />
           </section>
@@ -999,13 +1056,13 @@ export default function QuotationEditorPage() {
           <ContextualRightRail className={styles.sidebar} label="สรุปและจัดการใบเสนอราคา">
             <DocumentSummaryCard
               title="ยอดสุทธิใบเสนอราคา"
-              total={money(totals.totalAmount)}
+              total={packPending ? NA : money(totals.totalAmount)}
               status={statusMeta.label}
               statusColor={statusMeta.color}
               rows={[
-                { id: "subtotal", label: "รวมรายการ", value: money(totals.subtotal) },
-                { id: "discount", label: "ส่วนลด", value: totals.discountAmount > 0 ? `-${money(totals.discountAmount)}` : NA },
-                ...(form.vatRate > 0 ? [{ id: "vat", label: `VAT ${form.vatRate}%`, value: money(totals.vatAmount) }] : []),
+                { id: "subtotal", label: "รวมรายการ", value: packPending ? NA : money(totals.subtotal) },
+                { id: "discount", label: "ส่วนลด", value: !packPending && totals.discountAmount > 0 ? `-${money(totals.discountAmount)}` : NA },
+                ...(form.vatRate > 0 ? [{ id: "vat", label: `VAT ${form.vatRate}%`, value: packPending ? NA : money(totals.vatAmount) }] : []),
               ]}
             />
 
@@ -1250,7 +1307,8 @@ export default function QuotationEditorPage() {
         open={!!revisionForm}
         title="ออก Rev. ใบเสนอราคา"
         description={`ระบบจะเก็บ ${naText(quote?.quoteNumber)} เป็นฉบับเดิม และสร้างฉบับร่างใหม่`}
-        detail="เอกสารที่อนุมัติแล้วแก้ไขตรงไม่ได้ Revision ใหม่จะต้องตรวจข้อมูลและยื่นอนุมัติอีกครั้ง"
+        /* ใบเก่าที่บรรทัดหมวด 02-001 ไม่มีเลขแพ็ค: ออก Rev. แล้วฉบับเดิมเป็น "มีฉบับแก้ไขใหม่" ถาวร และฉบับใหม่ต้องกรอกก่อนยื่น — บอกก่อนกด */
+        detail={["เอกสารที่อนุมัติแล้วแก้ไขตรงไม่ได้ Revision ใหม่จะต้องตรวจข้อมูลและยื่นอนุมัติอีกครั้ง", reviseNeedsPacks ? LINE_PACK_EDIT_TEXT.reviseNote : null].filter(Boolean).join(" · ")}
         label="เหตุผลที่ออก Rev."
         value={revisionForm?.reason || ""}
         onChange={(reason) => setRevisionForm({ reason })}
