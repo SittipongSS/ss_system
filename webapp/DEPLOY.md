@@ -171,7 +171,8 @@ workflow จะไม่ deploy ให้ถ้า CI ของ `main` ยัง
   · deploy ของ production ที่ขึ้นหลังจากนั้นและก่อนงวด PR-3 ใช้ถอยได้เหมือนกัน (มีโค้ดงวด PR-2 ครบ) — ล่าสุดก่อนงวด PR-3 (จดจาก `/api/version` เมื่อ 12/10/2026):
   `id: dpl_ACS5StFXeuCHwyffHaB3u1SmRYkd · คอมมิต: 0457f624`
 - เวลาที่งวด PR-3 ขึ้น production (ค่า `--pack-launch` ของสคริปต์ข้างล่าง — ISO มีเขตเวลา):
-  `____-__-__T__:__:00+07:00` ⚠️ **ยังไม่ได้จด — จดทันทีหลัง deploy งวด PR-3**
+  `2026-10-12T11:56:00+07:00` (งวด PR-3 · #1896 · คอมมิต `66465e17` · `dpl_EjQkR2Fzn2YnJuMH8wyaezsNj8br`) · รอบเทียบแรกหลังขึ้น 12/10: `✓ ไม่มีจุดต่าง` — รอบถัดไปใส่
+  `--expect-min-lines=1239,461 --expect-min-fingerprints=580,256 --expect-min-packed=0,0 --pack-launch=2026-10-12T04:56:00.000Z --audit-since=2026-10-12T04:57:17.936Z`
 - หลัง deploy และหลัง rollback **ทุกครั้ง** — และเมื่อสงสัยว่ามีใครบันทึกใบจากรุ่นเก่า (อ่านอย่างเดียว · จากโฟลเดอร์ `webapp`):
   `node --import ./scripts/test-loader.mjs scripts/check-line-pack-parity.mjs --expect-min-lines=<QT>,<SO> --expect-min-fingerprints=<QT>,<SO> --expect-min-packed=<QT>,<SO> --pack-launch=<เวลาข้างบน> --audit-since=<ของรอบก่อน>`
   — ใส่ค่าที่สคริปต์พิมพ์ไว้ท้ายผลของรอบก่อน · ต้องจบด้วย `✓ ไม่มีจุดต่าง`
