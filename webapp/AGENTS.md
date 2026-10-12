@@ -92,3 +92,15 @@ await apiJson(`/api/pm/personal-tasks/${id}`, {                    // เขี�
   ทุกครั้ง — เทสต์ที่หลุดไปถึง client จริงจะได้ error ที่บอกเหตุ ไม่ใช่เขียน production เงียบ ๆ
   ยามของมันคือ `src/lib/testEnvGuard.test.mjs`
 - ใน `.github/workflows/ci.yml` คีย์ฐานข้อมูลตั้งที่ **step** ของด่านที่ต้องใช้เท่านั้น ห้ามย้ายกลับไประดับ job
+
+## ใบเสนอราคา "แพ็ค/เดือน" — ห้ามบันทึกจากโค้ดรุ่นก่อน `aec7c58c` (ประตูทางเดียว)
+
+**ทำไม** — ฐาน dev คือฐานจริง · รุ่นก่อนคอมมิต `aec7c58c` (ไม่มี `src/lib/sales/linePacks.js`) ส่งบรรทัดโดยไม่มี
+`packQty` และคิดยอด = จำนวน × ราคา ฐานรับเป็นแถวที่ถูกต้อง ⇒ บรรทัด ฿84,000 กลายเป็น ฿42,000 **โดยไม่มี error**
+
+- ก่อนเปิด dev server ของ worktree ไหนเพื่อแตะใบเสนอราคา: `git cat-file -e HEAD:webapp/src/lib/sales/linePacks.js`
+  — ไม่ผ่าน = รุ่นเก่า ⇒ รวม `main` ก่อน หรือ **ห้ามบันทึก / ออก Rev. / ยื่น / อนุมัติใบเสนอราคา** บนรุ่นนั้น
+- ห้าม rollback production ต่ำกว่า deployment ของงวด PR-2 ที่จดไว้ใน [DEPLOY.md](DEPLOY.md) · ห้ามแก้
+  `QUOTE_PACK_INPUT_OPEN` กลับเป็น `false` · ห้ามถอย migration 0407
+- หลัง deploy / rollback หรือสงสัยว่ามีรุ่นเก่าเขียนทับ: รัน `scripts/check-line-pack-parity.mjs` (อ่านอย่างเดียว)
+- รายละเอียด: [docs/qt-pack-column.md](../docs/qt-pack-column.md) หัวข้อ "ประตูทางเดียว"
