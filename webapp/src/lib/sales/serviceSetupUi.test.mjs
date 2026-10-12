@@ -761,10 +761,27 @@ test('0407 บรรทัดที่มีเลขแพ็ค: ctxLineOf ส
   /* ข้อความเดิมของบรรทัดที่ไม่มีเลขแพ็คอยู่หลัง `??` ครบทั้งนิพจน์ — ตัวช่วยคืน null เมื่อไม่มีเลขแพ็ค */
   assert.match(item, /const qtyText = linePackQtyText\(line\) \?\? \(line\.qty === null \|\| line\.qty === undefined \|\| line\.qty === ""\s*\? null\s*: `\$\{Number\.isFinite\(qty\) \? fmtNumber\(qty\) : String\(line\.qty\)\}\$\{line\.unit \? ` \$\{line\.unit\}` : ""\}`\);/);
   assert.match(item, /\{qtyText \? <span className=\{styles\.itemQty\}>ในใบ \{qtyText\}<\/span> : null\}/);
-  /* คำสั้นใต้ ⑥: บรรทัดที่มีเลขแพ็คบอกหน่วยรวม + หน่วยจากแคตตาล็อก · บรรทัดอื่นนิพจน์เดิม */
+  /* คำสั้นใต้ ⑥ (งวด PR-4): บรรทัดที่มีเลขแพ็คใช้คำของตัวเทียบ (`cross.short`) · บรรทัดอื่นนิพจน์เดิม */
   const cross = grid.slice(grid.indexOf('const CROSS_SHORT'), grid.indexOf('function TotalCell('));
-  assert.match(cross, /warn: \(line\) => \(lineHasPacks\(line\)\s*\? `≠ ในใบ \$\{fmtNumber\(lineUnitsTotal\(line\)\)\} \$\{SERVICE_SETUP_LINE_TEXT\.packUnit\} · ตรวจอีกครั้ง`\s*: `≠ ในใบ \$\{naText\(line\.qty === null \|\| line\.qty === undefined \? null : fmtNumber\(Number\(line\.qty\)\)\)\} · ตรวจอีกครั้ง`\),/);
-  /* 🔴 อ่านอย่างเดียว: ตารางงานบริการไม่มีช่องกรอก/ตัวส่งค่าเลขแพ็ค (งวด PR-4 เป็นเจ้าของ) */
+  assert.match(cross, /warn: \(line\) => `≠ ในใบ \$\{naText\(line\.qty === null \|\| line\.qty === undefined \? null : fmtNumber\(Number\(line\.qty\)\)\)\} · ตรวจอีกครั้ง`,/);
+  const total = grid.slice(grid.indexOf('function TotalCell('), grid.indexOf('function ZonePick('));
+  assert.match(total, /const short = cross\.short \?\? \(CROSS_SHORT\[cross\.tone\]\?\.\(line\) \|\| null\);/);
+  /* ชิป "ตามใบ" (งวด PR-4 · มติ A7) — ข้อเสนอที่คนแตะเอง: ⑤ ผ่าน onChange ของช่องเดิม · ④ ผ่าน setPacks ของแถวเดิม (ไม่มีทางเขียนร่างทางอื่น)
+     · โซนเดียวเท่านั้นที่มีปุ่ม ④ · หลายโซนบอกจำนวนที่เหลือ ไม่แบ่งให้เอง · โหมดอ่านไม่มีข้อเสนอ */
+  const roundsEdit = grid.slice(grid.indexOf('function RoundsEdit('), grid.indexOf('function StampedRoundsEdit('));
+  assert.match(roundsEdit, /const quoteMonths = lineQuoteSeeds\(ctxLineOf\(line\)\)\?\.months \?\? null;/);
+  assert.match(roundsEdit, /\{ key: "quote", label: SERVICE_QUOTE_LINK_TEXT\.monthsChip\(quoteMonths\), rounds: quoteMonths \}/);
+  assert.match(roundsEdit, /chip\.key === "monthly" && chip\.rounds !== quoteMonths/);
+  assert.match(roundsEdit, /if \(chip\) onChange\(String\(chip\.rounds\)\);/);
+  const zoneBlock = grid.slice(grid.indexOf('function ZoneBlock('));
+  assert.match(zoneBlock, /const quotePacks = editable \? lineQuoteSeeds\(ctxLineOf\(line\)\)\?\.packs \?\? null : null;/);
+  assert.match(zoneBlock, /quotePacks !== null && rows\.length === 1 && String\(quotePacks\) !== String\(row\.packsPerRound \?\? ""\)\.trim\(\)/);
+  assert.match(zoneBlock, /onClick=\{\(\) => setPacks\(index, String\(quotePacks\)\)\}/);
+  assert.match(zoneBlock, /quotePacks !== null && rows\.length > 1 && index === 0/);
+  for (const effect of grid.split('useEffect(').slice(1)) {
+    assert.doesNotMatch(effect.slice(0, effect.indexOf('}, [')), /quotePacks|quoteMonths|lineQuoteSeeds/, 'ไม่มี effect ที่เติมค่าตามใบเอง');
+  }
+  /* 🔴 เลขแพ็คของใบอ่านอย่างเดียว: ตารางงานบริการไม่มีช่องกรอก/ตัวส่งค่า packQty (ใบสั่งขายเป็นสำเนาของใบเสนอราคา) */
   for (const rel of UI_FILES.filter((file) => file.startsWith(FOLDER))) {
     assert.doesNotMatch(code(rel), /packQty\s*=[^=]|onPatch\([^)]*packQty|name="packQty"|<(?:Input|input|MoneyInput|Select)\b[^>]*packQty/, `${rel} ต้องไม่เขียนเลขแพ็ค`);
   }
@@ -778,7 +795,7 @@ test('30/09 ช่องตัวเลข/ป้ายจากแคตตา�
   assert.match(grid, /<span className=\{styles\.unit\}>\{SERVICE_SETUP_LINE_TEXT\.roundUnit\}<\/span>/);
   assert.match(grid, /SERVICE_SETUP_LINE_TEXT\.noRounds/);
   assert.match(grid, /SERVICE_SETUP_LINE_TEXT\.noPacks/);
-  assert.match(grid, /roundChipsFromPeriod\(period\)\.filter\(\(chip\) => chip\.key === "monthly"\)/, 'ชิป ทุกเดือน ≈ n อยู่ใต้ช่องจำนวนรอบบริการ');
+  assert.match(grid, /roundChipsFromPeriod\(period\)\.filter\(\(chip\) => chip\.key === "monthly" && chip\.rounds !== quoteMonths\)/, 'ชิป ทุกเดือน ≈ n อยู่ใต้ช่องจำนวนรอบบริการ');
   const read = grid.slice(grid.indexOf('function RoundsRead('), grid.indexOf('/* ── ⑥'));
   assert.match(read, /\{canEditRounds \? <StampedRoundsEdit line=\{line\} onRoundsSave=\{onRoundsSave\} \/> : null\}/, 'ดินสออยู่ช่อง ⑤ (จำนวนรอบบริการ · มติ 08/10) ของใบที่ประทับแล้ว');
   /* ดินสอพูดหน่วยเดียวกับตาราง: ล้างค่าไม่ได้ = "…อย่างน้อย 1 เดือน" (ใบ pipeline · `requiredMonths`) */

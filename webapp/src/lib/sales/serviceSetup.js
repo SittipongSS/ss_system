@@ -58,7 +58,6 @@ import { fmtDate, fmtMoney, fmtNumber, fmtYearMonth } from '@/lib/format';
 import { formatMonthLabel } from '@/lib/datePeriods';
 import { isSalesManager } from '@/lib/permissions';
 import { latestTimestamp, serviceAgingOf } from '@/lib/sales/serviceBackfillAging';
-import { lineUnitsTotal } from '@/lib/sales/linePacks';
 import { linePackQty, linePackQtyText } from '@/lib/sales/linePackView';
 
 /* ══ ค่าคงที่ ══════════════════════════════════════════════════════════════════════════════════════ */
@@ -1105,19 +1104,52 @@ export function serviceSetupFooterText(totals) {
   return `งานบริการทั้งใบ: ${fmtNumber(t.packageLines || 0)} รายการแพ็คเกจ · ${columnOrderParts(t).join(' · ')}`;
 }
 
+/* ── ตารางงานบริการ ↔ เลขแพ็คของใบ (mig 0407 · งวด PR-4 · มติเจ้าของ A7 "เติมให้กดรับ + เทียบให้") ───────────────
+   บรรทัดที่มีเลขแพ็ค: แพ็คในใบ = Σ ④ รอบละกี่แพ็ค (ทุกโซน) · จำนวนในใบ (เดือน) = ⑤ จำนวนรอบบริการ — เทียบ **แยกตัว**
+   ชิป "ตามใบ" คือข้อเสนอ ไม่ใช่ค่าตั้งต้น: ช่องนับว่ากรอกเมื่อคนแตะชิปเท่านั้น (กฎของ serviceSetupDraft.js) · ไม่ตรง = เตือน ไม่กั้น
+   ⚠️ literal ล้วน (กฎ 16) */
+export const SERVICE_QUOTE_LINK_TEXT = Object.freeze({
+  packsChip: (packs) => `ตามใบ ${fmtNumber(packs)} แพ็ค`,
+  monthsChip: (months) => `ตามใบ ${fmtNumber(months)} ${ROUND_UNIT}`,
+  packsLeft: (packs, left) => `ในใบ ${fmtNumber(packs)} แพ็ค · เหลือ ${fmtNumber(left)}`,
+  packsOver: (packs, over) => `ในใบ ${fmtNumber(packs)} แพ็ค · เกิน ${fmtNumber(over)}`,
+  packsFull: (packs) => `ในใบ ${fmtNumber(packs)} แพ็ค · ครบ`,
+  shortOk: 'ตรงกับในใบ',
+  shortPacks: 'แพ็ค ≠ ในใบ',
+  shortMonths: 'เดือน ≠ ในใบ',
+  shortBoth: 'แพ็ค · เดือน ≠ ในใบ',
+});
+
+/**
+ * ข้อเสนอ "ตามใบ" ของบรรทัดที่มีเลขแพ็ค — บรรทัดที่ไม่มีเลขแพ็ค / ไม่ใช่แพ็คเกจ = null (จอไม่วาดอะไร)
+ * → `{ packs, months }` · `months` = จำนวนในใบเมื่อเป็นจำนวนเต็ม 1–999 (ช่วงของ ⑤) ไม่งั้น null (ไม่เสนอเลขที่ช่องรับไม่ได้)
+ */
+export function lineQuoteSeeds(line) {
+  if (serviceLineRole(line) !== SERVICE_KIND_PACKAGE) return null;
+  const packs = linePackQty(line);
+  if (packs === null) return null;
+  const qty = Number(line?.qty);
+  return { packs, months: Number.isInteger(qty) && qty >= 1 && qty <= 999 ? qty : null };
+}
+
+/** หลายโซน: แพ็คในใบแบ่งไปแล้วเท่าไร — "ในใบ 3 แพ็ค · เหลือ 1" / "· ครบ" / "· เกิน 1" (`assigned` = Σ ④ ที่ใส่แล้ว) */
+export function quotePacksLeftText(packs, assigned) {
+  const used = Number(assigned) || 0;
+  if (used === packs) return SERVICE_QUOTE_LINK_TEXT.packsFull(packs);
+  return used < packs ? SERVICE_QUOTE_LINK_TEXT.packsLeft(packs, packs - used) : SERVICE_QUOTE_LINK_TEXT.packsOver(packs, used - packs);
+}
+
 /**
  * จำนวนในใบเทียบจำนวนแพ็คที่ตั้ง (ภาคผนวก A.4) — **ไม่บังคับให้เท่า** (จำนวนในใบบางทีคือจำนวนเดือน)
  * → `{ tone: 'ok' | 'warn' | 'info' | 'none', text }`
- * ⭐ บรรทัดที่มีเลขแพ็ค (mig 0407 · งวด PR-2): จำนวนในใบ = "2 แพ็ค × 12 เดือน" (`linePackQtyText`) และตัวเลขที่เทียบกับ
- *   รวมทั้งรายการ = **หน่วยรวม** `lineUnitsTotal` (แพ็ค × จำนวน = 24) — ใบบอกจำนวนแพ็คแล้ว ทางลัด "หน่วยเดือน = ระยะเวลา"
- *   จึงใช้กับบรรทัดที่ **ไม่มี** เลขแพ็คเท่านั้น · ประโยคสามแบบเดิมใช้ซ้ำ ไม่มีคำใหม่
- *   ⚠️ ชั่วคราวจนงวด PR-4: เทียบ **ยอดรวม** อย่างเดียว (3 × 8 ในใบ กับ 2 × 12 ในตาราง = 24 ทั้งคู่ = "ตรง") และยังเป็นคำแนะนำ ไม่กั้นอะไร
+ * ⭐ บรรทัดที่มีเลขแพ็ค (mig 0407 · งวด PR-4): เทียบ **แยกตัว** — แพ็คในใบกับ Σ ④ · จำนวนในใบ (เดือน) กับ ⑤ — ก่อนทางลัด
+ *   "หน่วยเดือน = ระยะเวลา" เสมอ (3 × 8 ในใบ กับ 2 × 12 ในตาราง = 24 ทั้งคู่ แต่ **ไม่ตรง**) · ผลของบรรทัดแบบนี้มี `short`
+ *   (คำสั้นใต้ ⑥) ติดมาด้วย · ยังเป็นคำเตือน ไม่กั้นอะไร (มติ A7) · บรรทัดที่ไม่มีเลขแพ็ค: ประโยคเดิมทุกตัวอักษร ไม่มีคีย์ `short`
  */
 export function lineQtyCrossCheck(line, lineTotals) {
   if (serviceLineRole(line) !== SERVICE_KIND_PACKAGE) return { tone: 'none', text: '' };
   const packText = linePackQtyText(line);
   const rawQty = Number(line?.qty);
-  const qtyNumber = packText !== null && Number.isFinite(rawQty) ? lineUnitsTotal(line) : rawQty;
   const qty = Number.isFinite(rawQty) ? fmtNumber(rawQty) : text(line?.qty) || '—';
   const unit = text(line?.unit);
   const qtyUnit = packText ?? (unit ? `${qty} ${unit}` : qty);
@@ -1128,10 +1160,31 @@ export function lineQtyCrossCheck(line, lineTotals) {
   if (lineTotals.packsTotal === null || lineTotals.packsTotal === undefined) {
     return { tone: 'none', text: `จำนวนในใบ ${qtyUnit} — ตรวจได้เมื่อใส่${PACKS_TERM}และ${SERVICE_SETUP_LINE_TEXT.roundsLabel}แล้ว` };
   }
-  if (Number.isFinite(qtyNumber) && qtyNumber === lineTotals.packsTotal) {
+  if (packText !== null) return packLineCrossCheck(line, lineTotals, packText);
+  if (Number.isFinite(rawQty) && rawQty === lineTotals.packsTotal) {
     return { tone: 'ok', text: `จำนวนในใบ ${qtyUnit} · ตรงกับทั้งรายการ ✓` };
   }
   return { tone: 'warn', text: `จำนวนในใบ ${qtyUnit} ≠ ทั้งรายการ ${fmtNumber(lineTotals.packsTotal)} แพ็ค — ตรวจอีกครั้ง (ไม่บังคับให้เท่า)` };
+}
+
+/* บรรทัดที่มีเลขแพ็ค และตารางมี ④ กับ ⑤ ครบแล้ว — จำนวนในใบที่ไม่ใช่ตัวเลข = เดือนไม่ตรงเสมอ (ไม่เทียบ 0 กับ 0) */
+function packLineCrossCheck(line, lineTotals, packText) {
+  const packs = linePackQty(line);
+  const months = Number(line?.qty);
+  const setPacks = Number(lineTotals.packsPerRound) || 0;
+  const setRounds = Number(lineTotals.rounds) || 0;
+  const packsOk = setPacks === packs;
+  const monthsOk = Number.isFinite(months) && setRounds === months;
+  if (packsOk && monthsOk) return { tone: 'ok', text: `ในใบ ${packText} · ตรงกับที่ตั้ง ✓`, short: SERVICE_QUOTE_LINK_TEXT.shortOk };
+  const parts = [];
+  if (!packsOk) parts.push(`แพ็คในใบ ${fmtNumber(packs)} ≠ ที่ตั้ง ${fmtNumber(setPacks)} แพ็ค`);
+  if (!monthsOk) {
+    const monthsText = Number.isFinite(months) ? fmtNumber(months) : text(line?.qty) || '—';
+    parts.push(`จำนวนในใบ ${monthsText} ${ROUND_UNIT} ≠ ${SERVICE_SETUP_LINE_TEXT.roundsLabel} ${fmtNumber(setRounds)}`);
+  }
+  const short = !packsOk && !monthsOk ? SERVICE_QUOTE_LINK_TEXT.shortBoth
+    : !packsOk ? SERVICE_QUOTE_LINK_TEXT.shortPacks : SERVICE_QUOTE_LINK_TEXT.shortMonths;
+  return { tone: 'warn', text: `${parts.join(' · ')} — ตรวจอีกครั้ง (ไม่บังคับให้เท่า)`, short };
 }
 
 /* ══ ข้อที่ยังขาด (ด่านยื่นอนุมัติ / ยื่นตรวจ) ═══════════════════════════════════════════════════════════ */

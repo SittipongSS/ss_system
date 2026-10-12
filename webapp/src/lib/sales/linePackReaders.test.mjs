@@ -326,9 +326,10 @@ const QTY_READERS = Object.freeze({
   // ── ตัวนับหน่วย ──
   'lib/pm/productionPlan.js': 'units',
   'lib/service/terms.js': 'units',
-  'lib/sales/serviceSetup.js': 'units',
   'lib/sales/forecastBreakdown.js': 'units',
   // ── ตัวโชว์ ──
+  /* งวด PR-4: ตัวเทียบของตารางงานบริการเทียบแพ็คกับ ④ และเดือนกับ ⑤ แยกตัว (ไม่นับหน่วยรวมอีก) ⇒ อ่านเลขแพ็คผ่านตัวช่วยฝั่งโชว์ */
+  'lib/sales/serviceSetup.js': 'display',
   'components/salesPlanning/QuotationLineItems.js': 'display',
   'components/salesPlanning/QuoteLineCells.js': 'display',
   'components/salesPlanning/serviceSetup/ServiceSetupGrid.js': 'display',
@@ -406,7 +407,7 @@ const UNITS_HELPER = /(?<![\w$])lineUnitsTotal\(/;
 const LOADER_PINS = Object.freeze([
   ['lib/pm/productionJobsRepo.js', 'sales_order_lines', 'lib/pm/productionPlan.js', UNITS_HELPER],
   ['app/api/sales-planning/sales-orders/[id]/service/route.js', 'sales_order_lines', 'lib/service/terms.js', UNITS_HELPER],
-  ['lib/sales/serviceSetupRepo.js', 'sales_order_lines', 'lib/sales/serviceSetup.js', UNITS_HELPER],
+  ['lib/sales/serviceSetupRepo.js', 'sales_order_lines', 'lib/sales/serviceSetup.js', DISPLAY_HELPERS],
   ['lib/sales/productSpecStore.js', 'quotation_lines', 'lib/sales/productSpecDocument.js', DISPLAY_HELPERS],
   ['lib/sales/productSpecDocOrder.js', 'sales_order_lines', 'lib/sales/productSpecStore.js', DISPLAY_HELPERS],
   ['lib/sales/productSpecFreeze.js', 'sales_order_lines', 'lib/sales/productSpecStore.js', DISPLAY_HELPERS],
@@ -690,12 +691,13 @@ test('GC ชนิดของแต่ละแถวในทะเบีย�
     }
   }
   /* ตัวนับที่ต้องมีครบ (ถอดออกจากทะเบียนเงียบ ๆ ไม่ได้) */
-  for (const file of ['lib/pm/productionPlan.js', 'lib/service/terms.js', 'lib/sales/serviceSetup.js', 'lib/sales/forecastBreakdown.js']) {
+  for (const file of ['lib/pm/productionPlan.js', 'lib/service/terms.js', 'lib/sales/forecastBreakdown.js']) {
     assert.equal(QTY_READERS[file], 'units', file);
   }
   assert.match(code('lib/excise/soFiling.js'), UNITS_HELPER, 'ใบยื่นสรรพสามิตนับหน่วยรวมของบรรทัด');
   assert.equal(readsQty(code('lib/excise/soFiling.js')), false, 'soFiling.js ไม่อ่าน line.qty ตรง ๆ แล้ว');
-  assert.ok(kinds.units >= 4 && kinds.display >= 8 && kinds.carry >= 7 && kinds.other >= 30, JSON.stringify(kinds));
+  assert.equal(QTY_READERS['lib/sales/serviceSetup.js'], 'display', 'ตัวเทียบของตารางงานบริการยังอยู่ในทะเบียน');
+  assert.ok(kinds.units >= 3 && kinds.display >= 9 && kinds.carry >= 7 && kinds.other >= 30, JSON.stringify(kinds));
 });
 
 test('GC 🔴 ไฟล์ที่ขึ้นทะเบียนว่าไม่ได้อ่านบรรทัดที่มีเลขแพ็ค (ตารางอื่น · ยกเว้น · ใต้โดเมนของตัวเอง) แตะ quotation_lines / sales_order_lines เองไม่ได้', () => {

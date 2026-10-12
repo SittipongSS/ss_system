@@ -35,12 +35,11 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import { NA, fmtNumber, naText } from "@/lib/format";
 import {
   SERVICE_KIND_NOT_SERVICE, SERVICE_KIND_OPTIONS, SERVICE_KIND_PACKAGE, SERVICE_PERIOD_MODE_LINE, SERVICE_PERIOD_TEXT, SERVICE_ROLE_UNSET,
-  SERVICE_SETUP_GRID_TEXT, SERVICE_SETUP_LIMITS, SERVICE_SETUP_LINE_TEXT, lineQtyCrossCheck, lineRoundsLowText, lineSetupTotals,
-  roundChipsFromPeriod, serviceRoundsText, validServicePeriod,
+  SERVICE_QUOTE_LINK_TEXT, SERVICE_SETUP_GRID_TEXT, SERVICE_SETUP_LIMITS, SERVICE_SETUP_LINE_TEXT, lineQtyCrossCheck, lineQuoteSeeds,
+  lineRoundsLowText, lineSetupTotals, quotePacksLeftText, roundChipsFromPeriod, serviceRoundsText, validServicePeriod,
 } from "@/lib/sales/serviceSetup";
 import { SERVICE_ROUNDS_EDIT_TEXT, normalizeServiceRounds } from "@/lib/sales/serviceRoundsEntry";
-import { lineUnitsTotal } from "@/lib/sales/linePacks";
-import { lineHasPacks, linePackQtyText } from "@/lib/sales/linePackView";
+import { linePackQtyText } from "@/lib/sales/linePackView";
 import { zonePickerOptions, zoneTakenMap } from "@/lib/service/zonePickerOptions";
 import { nextEnabledIndex } from "@/lib/ui/selectionNavigation";
 import { zonesBulkCapText } from "@/components/service/zonesBulkPlan";
@@ -307,9 +306,15 @@ function FgCell({ line, editable, fgOptions, error, onChange }) {
 
 /* ── ⑤ จำนวนรอบบริการ (หน่วยเดือน · มติเจ้าของ 08/10) — ช่อง + ชิป "ทุกเดือน ≈ n" จากช่วงบริการ (แตะแล้วใส่ค่า · ไม่มีค่าตั้งต้นเงียบ ๆ)
    ⚠️ ชิปเดียว (รายเดือน) ตามม็อก — คอลัมน์ ⑤ แคบ ชิปราย 2 สัปดาห์/ไตรมาสตัดบรรทัดกลางคำ · ความถี่อื่นพิมพ์เลขเอง
-   ⭐ โหมดแยกรายรายการที่รายการยังไม่มีช่วง (`periodWait`): ชิปเส้นประ "ทุกเดือน ≈ —" กดไม่ได้ + บอกเหตุที่ title (ม็อก PeriodSwitchPerLine) ── */
+   ⭐ โหมดแยกรายรายการที่รายการยังไม่มีช่วง (`periodWait`): ชิปเส้นประ "ทุกเดือน ≈ —" กดไม่ได้ + บอกเหตุที่ title (ม็อก PeriodSwitchPerLine)
+   ⭐ บรรทัดที่มีเลขแพ็ค (งวด PR-4 · มติ A7): ชิป "ตามใบ 12 เดือน" นำหน้า — จำนวนเดือนของใบเสนอราคา · แตะแล้วใส่ค่า (ข้อเสนอ ไม่ใช่ค่าตั้งต้น)
+     ชิป "ทุกเดือน ≈ n" ที่ให้เลขเดียวกันไม่วาดซ้ำ ── */
 function RoundsEdit({ line, period, periodWait, error, onChange }) {
-  const chips = roundChipsFromPeriod(period).filter((chip) => chip.key === "monthly");
+  const quoteMonths = lineQuoteSeeds(ctxLineOf(line))?.months ?? null;
+  const chips = [
+    ...(quoteMonths === null ? [] : [{ key: "quote", label: SERVICE_QUOTE_LINK_TEXT.monthsChip(quoteMonths), rounds: quoteMonths }]),
+    ...roundChipsFromPeriod(period).filter((chip) => chip.key === "monthly" && chip.rounds !== quoteMonths),
+  ];
   const current = positiveIntOrNull(line.rounds);
   const chipValue = chips.find((chip) => chip.rounds === current)?.key ?? null;
   return (
@@ -334,7 +339,7 @@ function RoundsEdit({ line, period, periodWait, error, onChange }) {
               if (chip) onChange(String(chip.rounds));
             }}
             options={chips.map((chip) => ({ value: chip.key, label: chip.label }))}
-            ariaLabel={`ตั้งจำนวนรอบจากช่วงบริการ รายการ ${line.lineNo}`}
+            ariaLabel={`ตั้งจำนวนรอบจาก${quoteMonths === null ? "" : "ใบเสนอราคาหรือ"}ช่วงบริการ รายการ ${line.lineNo}`}
           />
         </span>
       ) : periodWait ? (
@@ -408,13 +413,10 @@ function RoundsRead({ line, canEditRounds, onRoundsSave }) {
 
 /* ── ⑥ รวมแพ็คของรายการ = รอบละ (Σ ทุกโซน) × จำนวนรอบบริการ + เทียบจำนวนในใบ (ไม่บังคับให้เท่า)
    สูตรใต้ตัวเลข "1 × 6 เดือน" — ลำดับเดียวกับคอลัมน์ ④ × ⑤ · หน่วยจากแคตตาล็อก (มติเจ้าของ 08/10) ── */
-/* ⭐ บรรทัดที่มีเลขแพ็ค (mig 0407): ตัวเลขที่เทียบคือหน่วยรวมของบรรทัด (แพ็ค × จำนวน) จึงบอกหน่วย "แพ็ค" กำกับ
-   — "≠ ในใบ 24 แพ็ค" ไม่ใช่ "≠ ในใบ 12" (12 คือจำนวนเดือน) · บรรทัดอื่นข้อความเดิม */
+/* ⭐ บรรทัดที่มีเลขแพ็ค (งวด PR-4): ตัวเทียบส่งคำสั้นมาเอง (`cross.short` — "ตรงกับในใบ" · "แพ็ค ≠ ในใบ" · "เดือน ≠ ในใบ") · บรรทัดอื่นใช้ตารางนี้ */
 const CROSS_SHORT = Object.freeze({
   ok: () => "ตรงกับจำนวนในใบ",
-  warn: (line) => (lineHasPacks(line)
-    ? `≠ ในใบ ${fmtNumber(lineUnitsTotal(line))} ${SERVICE_SETUP_LINE_TEXT.packUnit} · ตรวจอีกครั้ง`
-    : `≠ ในใบ ${naText(line.qty === null || line.qty === undefined ? null : fmtNumber(Number(line.qty)))} · ตรวจอีกครั้ง`),
+  warn: (line) => `≠ ในใบ ${naText(line.qty === null || line.qty === undefined ? null : fmtNumber(Number(line.qty)))} · ตรวจอีกครั้ง`,
   info: () => "ในใบ = เดือน · ไม่เทียบแพ็ค",
 });
 
@@ -423,7 +425,7 @@ function TotalCell({ line, ctx }) {
   const totals = lineSetupTotals(ctxLine, ctx);
   const cross = lineQtyCrossCheck(ctxLine, totals);
   const blank = totals.packsTotal === null || !totals.packsPerRound;
-  const short = CROSS_SHORT[cross.tone]?.(line) || null;
+  const short = cross.short ?? (CROSS_SHORT[cross.tone]?.(line) || null);
   return (
     <div className={styles.total}>
       <StackLabel step="total" />
@@ -588,6 +590,9 @@ function ZoneBlock({
     );
   };
   const zonesError = highlightOf(zonesFieldId);
+  /* ④ ตามใบ (งวด PR-4 · มติ A7): โซนเดียว = ปุ่ม "ตามใบ 2 แพ็ค" (แตะแล้วใส่ค่า) · หลายโซน = ไม่แบ่งให้เอง บอกว่าแพ็คในใบเหลือเท่าไร */
+  const quotePacks = editable ? lineQuoteSeeds(ctxLineOf(line))?.packs ?? null : null;
+  const packsAssigned = rows.reduce((sum, row) => sum + (row.zoneId ? positiveIntOrNull(row.packsPerRound) || 0 : 0), 0);
   const roundsLow = lineRoundsLowText(positiveIntOrNull(line.rounds), period, { stage: editable ? "submit" : roundsLowStage });
 
   const roundsCell = editable ? (
@@ -666,6 +671,16 @@ function ZoneBlock({
               />
               <span className={styles.unit}>{SERVICE_SETUP_LINE_TEXT.packUnit}</span>
             </span>
+            {quotePacks !== null && rows.length === 1 && String(quotePacks) !== String(row.packsPerRound ?? "").trim() ? (
+              <span className={styles.note}>
+                <Button size="sm" variant="quiet" onClick={() => setPacks(index, String(quotePacks))}>
+                  {SERVICE_QUOTE_LINK_TEXT.packsChip(quotePacks)}
+                </Button>
+              </span>
+            ) : null}
+            {quotePacks !== null && rows.length > 1 && index === 0 ? (
+              <span className={styles.note} role="status">{quotePacksLeftText(quotePacks, packsAssigned)}</span>
+            ) : null}
             {packsError ? <span className={styles.error} role="alert">{packsError}</span> : null}
           </>
         ) : (
