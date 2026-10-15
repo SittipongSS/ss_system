@@ -17,6 +17,7 @@ import { useApiList } from "@/lib/excise/useApiList";
 import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { isSahamitDealOwner } from "@/lib/sahamit/dealOwner";
+import { deliveryBeforePo, lastDayOfMonth } from "@/lib/sahamit/dealDates";
 import { fmtDate, fmtMoney, fmtNumber, NA } from "@/lib/format";
 import { roundTotal, roundSkuCount, roundMatrix, compareRounds } from "@/lib/sahamit/forecastClient";
 import { productMetaText } from "@/lib/sahamit/productMeta";
@@ -356,20 +357,26 @@ function ForecastPageInner() {
   // สรุป line ที่เลือก (จำนวน + มูลค่าราคาผลิต) สำหรับแถบสร้างโครงการ
   const selection = useMemo(() => {
     let qty = 0, value = 0, unpriced = 0;
+    const early = []; // เดือนส่งของมาก่อนเดือนคาดได้รับ PO ⇒ วันเริ่มจะเลยวันสิ้นสุด (server ตีกลับ)
     for (const r of lineList) {
       if (!selectedLines.has(r.id)) continue;
       qty += r.qty;
+      if (deliveryBeforePo({ poMonth: dealMonth, demandMonth: r.month })) early.push(r);
       if (r.price == null) { unpriced += 1; continue; }
       value += r.amount;
     }
-    return { count: selectedLines.size, qty, value, unpriced };
-  }, [selectedLines, lineList]);
+    return { count: selectedLines.size, qty, value, unpriced, early };
+  }, [selectedLines, lineList, dealMonth]);
+  const earlyReason = selection.early.length
+    ? `${selection.early.length} รายการมีเดือนส่งของก่อนเดือนคาดได้รับ PO ${dealMonth} (${[...new Set(selection.early.map((r) => String(r.month).slice(0, 7)))].sort().join(", ")}) — วันเริ่มจะเลยวันสิ้นสุด เลือกเดือนคาดได้รับ PO ใหม่ หรือเอารายการนั้นออก`
+    : null;
 
   const createDeal = async () => {
     if (!selectedRound || !selectedLines.size) return;
     // ปุ่มพักอยู่แล้ว — ด่านซ้ำตรงนี้กันทางเข้าอื่น (Enter/คลิกค้างก่อนสายล้ม) ไม่ให้ยิงด้วยข้อมูลครึ่งเดียว
     if (dealPaused) { notifyToast.error(dealPausedReason); return; }
     if (!dealOwnerId) { notifyToast.error("ต้องเลือกผู้ดูแล (AE)"); return; }
+    if (earlyReason) { notifyToast.error(earlyReason); return; }
     setCreating(true);
     try {
       const json = await sahamitFetch(`/api/sahamit/forecast/rounds/${selectedRound.id}/create-sales-deal`, {
@@ -802,7 +809,12 @@ function ForecastPageInner() {
             <Select className="premium-select" value={dealMonth} onChange={(e) => setDealMonth(e.target.value)}>
               {closeMonthOptions.map((m) => <option key={m} value={m}>{m}</option>)}
             </Select>
+            {/* มติ 2026-10-15 — สองวันนี้ลงดีลอัตโนมัติ (lib/sahamit/dealDates) ต้องบอกก่อนกด ไม่ใช่ไปเจอทีหลังในดีล */}
+            <small className="form-note">
+              วันที่เริ่ม {fmtDate(lastDayOfMonth(dealMonth))} (วันคาดได้ PO) · วันที่สิ้นสุด = สิ้นเดือนส่งของของแต่ละรายการ
+            </small>
           </label>
+          {earlyReason && <p className="form-note">{earlyReason}</p>}
 
           {/* ปุ่มสร้างพัก = บอกเหตุเสมอ (เดิมดับเงียบตอนไม่มี AE ให้เลือก) — สายที่ต้องใช้ไม่มาก่อน แล้วค่อยเรื่องผู้ดูแล */}
           {submitPausedReason && <p className="form-note">{submitPausedReason}</p>}

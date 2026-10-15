@@ -4,14 +4,9 @@ import { canEditSalesPlanning, forecastAmount, isClosedStage, monthKey, toMoney 
 import { getSahamitContext, sahamitError, indexByFgCode, loadSahamitProducts, sahamitDealTitle } from '@/lib/sahamit/server';
 import { customerSnapshotName } from '@/lib/master/customerName';
 import { isSahamitDealOwner, SAHAMIT_DEAL_TEAM } from '@/lib/sahamit/dealOwner';
+import { deliveryBeforePo, fcDealDates, lastDayOfMonth } from '@/lib/sahamit/dealDates';
 
 export const dynamic = 'force-dynamic';
-
-function lastDayOfMonth(month) {
-  if (!/^\d{4}-\d{2}$/.test(String(month || ''))) return null;
-  const [year, mm] = month.split('-').map(Number);
-  return new Date(Date.UTC(year, mm, 0)).toISOString().slice(0, 10);
-}
 
 async function loadRound(supabase, customerId, id) {
   const { data: round, error } = await supabase
@@ -84,6 +79,16 @@ export async function POST(request, { params }) {
   });
   if (!picked.length) return Response.json({ error: 'รายการที่เลือกไม่มีจำนวนที่ผูกได้' }, { status: 400 });
 
+  // วันเริ่ม = วันคาดได้ PO · วันสิ้นสุด = เดือนส่งของ ⇒ เดือนส่งของมาก่อนเดือน PO = ดีลที่จบก่อนเริ่ม
+  // ตีกลับทั้งคำขอพร้อมบอกรายการ ให้เลือกเดือน PO ใหม่ (ไม่ข้ามเงียบ ๆ แล้วสร้างแค่บางใบ)
+  const earlyLines = picked.filter((line) => deliveryBeforePo({ poMonth: forecastMonth, demandMonth: line.month }));
+  if (earlyLines.length) {
+    const named = earlyLines.map((line) => `${line.fgCode} (${monthKey(line.month)})`).join(', ');
+    return Response.json({
+      error: `เดือนส่งของมาก่อนเดือนคาดได้รับ PO ${forecastMonth}: ${named} — เลือกเดือนคาดได้รับ PO ให้ไม่เกินเดือนส่งของ หรือเอารายการนั้นออก`,
+    }, { status: 400 });
+  }
+
   // กันซ้ำ: forecast line ที่เคยสร้างดีลไปแล้ว (ดีลยังไม่ถูกยกเลิก) จะไม่สร้างดีลซ้ำอีก.
   // ใช้ junction (sales_deal_forecast_lines.forecastLineId) เป็นกุญแจกันซ้ำ.
   const pickedLineIds = picked.map((line) => String(line.id));
@@ -118,6 +123,7 @@ export async function POST(request, { params }) {
     const qty = Number(line.qty || 0);
     const productName = line.productName || product?.name || line.fgCode;
     const demandMonth = monthKey(line.month);
+    const { startDate, endDate } = fcDealDates({ poMonth: forecastMonth, demandMonth });
 
     const title = sahamitDealTitle(product, productName);
 
@@ -134,6 +140,9 @@ export async function POST(request, { params }) {
       probability: 80,
       forecastMonth,
       expectedCloseDate: closeDate,
+      // มติ 2026-10-15: วันเริ่ม = วันคาดได้ PO · วันสิ้นสุด = สิ้นเดือนส่งของใน FC (lib/sahamit/dealDates)
+      startDate,
+      endDate,
       confirmedAt: null,
       lostReason: null,
       notes: `สร้างจาก FC สหมิตร รอบ #${round.roundNo} · ${line.fgCode} (${line.month})`,
