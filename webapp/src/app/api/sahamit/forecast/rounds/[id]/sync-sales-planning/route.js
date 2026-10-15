@@ -3,14 +3,9 @@ import { recordAudit } from '@/lib/audit';
 import { DEFAULT_PROBABILITY_BY_STAGE, canEditSalesPlanning, forecastAmount, isClosedStage, monthKey, toMoney } from '@/lib/salesPlanning';
 import { getSahamitContext, sahamitError, indexByFgCode, loadSahamitProducts } from '@/lib/sahamit/server';
 import { customerSnapshotName } from '@/lib/master/customerName';
+import { fcDealDates, lastDayOfMonth } from '@/lib/sahamit/dealDates';
 
 export const dynamic = 'force-dynamic';
-
-function lastDayOfMonth(month) {
-  if (!/^\d{4}-\d{2}$/.test(String(month || ''))) return null;
-  const [year, mm] = month.split('-').map(Number);
-  return new Date(Date.UTC(year, mm, 0)).toISOString().slice(0, 10);
-}
 
 function dealKey({ roundId, demandMonth, ownerName }) {
   return `${roundId}||${demandMonth}||${ownerName || ''}`;
@@ -195,6 +190,8 @@ export async function POST(request, { params }) {
       probability: DEFAULT_PROBABILITY_BY_STAGE.qualified,
       forecastMonth: bucket.closeMonth,
       expectedCloseDate: closeDate,
+      // มติ 2026-10-15 — กติกาเดียวกับ create-sales-deal (เส้นอัปเดตข้างบนไม่แตะวัน เหมือนที่ไม่แตะเดือน PO)
+      ...fcDealDates({ poMonth: bucket.closeMonth, demandMonth: bucket.demandMonth }),
       confirmedAt: null,
       lostReason: null,
       notes: `สร้างจาก FC สหมิตร รอบ #${round.roundNo} เดือนรับของ ${bucket.demandMonth}`,
