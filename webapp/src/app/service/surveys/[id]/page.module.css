@@ -117,6 +117,43 @@
   line-height: var(--lh-thai);
 }
 
+/* ── ของที่ต้องตอบก่อนกดยืนยัน (ประเมินจากแบบ · งวด S2b) ──
+   ไทล์ "ต้องเข้ายืนยันหน้างานภายหลังไหม" ของโมดัลส่งผล · ช่อง "วันที่จะส่งผลประเมิน" ของกล่องตัดพื้นที่และยกเลิกนัด
+   ลำดับในก้อน: ป้าย (ดอกจันบรรทัดเดียวกับป้าย — กฎฟอร์ม) → ตัวเลือก/ช่อง → เหตุที่ยังไม่ผ่าน → บรรทัดเงียบ
+   ⚠️ ไทล์เป็นของกลาง (`.option-tiles`) — สูงขั้นต่ำ 44px และหักเป็นคอลัมน์เดียวเองเมื่อกล่องแคบ (มือถือ) ไม่ต้องมีเส้นจอที่นี่ */
+.field {
+  display: grid;
+  gap: var(--space-1-5);
+  min-width: 0;
+}
+
+.fieldLabel {
+  margin: 0;
+  color: var(--text-1);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+/* ช่องวันกินเต็มกว้างของกล่อง (ของกลางกว้างตามเนื้อเมื่ออยู่นอก `.form-field`) */
+.field :global(.date-input-wrap) { width: 100%; }
+
+/* "ยังไม่ได้เลือกว่าต้องยืนยันหน้างานไหม" — เหตุที่ปุ่มยืนยันยังไม่ไป (คู่กับขอบแดงของไทล์ ไม่ใช่สีอย่างเดียว) */
+.fieldError {
+  margin: 0;
+  color: var(--red);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+/* บรรทัดเงียบใต้ไทล์ (ปุ่มของฝ่ายขายที่ยังไม่เปิดใช้) */
+.fieldNote {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}
+
 /* ⭐ "กดแล้วเกิดขึ้นทันที" ในโมดัลส่งผล (มติเจ้าของ 24/09 ข้อ 2) — รายการข้อ ๆ อ่านได้เร็ว ไม่ใช่ย่อหน้าเดียวยาว
    ⚠️ ข้อ "ปิดนัด SV-…" ยาวสองบรรทัดบนมือถือ — ปล่อยตัดบรรทัดตามปกติ (ห้าม nowrap: 390px ล้นแนวนอน) */
 .effects {
@@ -140,4 +177,24 @@
   color: var(--text-1);
   font-size: var(--fs-7);
   line-height: var(--lh-thai);
+}
+
+/* ช่องวัน (`DateInput` ของกลาง) บนจอสัมผัส / จอแคบ: ช่องสูงเต็มนิ้ว และปุ่มปฏิทินกว้าง-สูงเต็มนิ้ว (ของกลางเป็น 40px กับ 34×38)
+   🐞 UAT S2b S06 / S08 / S18: ของกดอย่างเดียวในกล่องที่เล็กกว่า 44px · เฉพาะกล่องของงวดนี้ — ของกลางไม่ถูกแตะ */
+.field :global(.date-input-text) { padding-right: calc(var(--ctl-h) + var(--space-1)); }
+
+.field :global(.date-input-picker) {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--ctl-h);
+}
+
+@media (pointer: coarse), (max-width: 680px) {
+  .field :global(.date-input-text) {
+    min-height: var(--ctl-h-touch);
+    padding-right: calc(var(--ctl-h-touch) + var(--space-1));
+  }
+
+  .field :global(.date-input-picker) { width: var(--ctl-h-touch); }
 }

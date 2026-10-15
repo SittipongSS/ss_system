@@ -1170,7 +1170,9 @@ test('⭐ ปุ่มส่งผลส่งรหัสนัดที่โ�
   const page = surveyPageCode();
   const send = page.slice(page.indexOf('const send = async'), page.indexOf('const recall = async'));
   /* PR-3 (มติ 10): `seenWarnings` ไปกับคำขอเฉพาะเมื่อโมดัลบอกเรื่องเอกสารไว้แล้ว — ส่งเสมอ = แท็บที่โหลดตอนสวิตช์ปิดผ่านด่านของ route เงียบ ๆ */
-  assert.match(send, /json: \{ closeVisitId: view\.send\.closesVisit\?\.id \?\? null, \.\.\.\(says \? \{ seenWarnings: seen \} : \{\}\) \}/,
+  /* งวด S2b: ไม่ตรึงปีกกาปิดของก้อน — หน้าใบประเมินต่อคีย์ของงานจากแบบเป็น spread อีกตัว **หลัง** `seenWarnings` ได้
+     (ส่วนที่ตรึงยังอยู่บรรทัดเดียวและลำดับเดิม: นัดที่จะปิด แล้วคำเตือนที่เห็นแล้ว) */
+  assert.match(send, /json: \{ closeVisitId: view\.send\.closesVisit\?\.id \?\? null, \.\.\.\(says \? \{ seenWarnings: seen \} : \{\}\)/,
     'รหัสนัดต้องมาจาก `send.closesVisit` ตัวเดียวกับที่โมดัลวาด · คำเตือนที่ส่งกลับคือชุดที่โมดัลกาง');
   assert.match(send, /const says = view\.send\.issuesDocument \|\| view\.send\.documentUnknown;\s*const seen = view\.send\.seenWarnings;/,
     '`seen` ต้องเป็นลิสต์ดิบของตัวตัดสิน (route เทียบตรงตัว) — ห้ามตัด/ขัดเกลาก่อนส่ง');

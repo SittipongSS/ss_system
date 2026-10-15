@@ -156,7 +156,9 @@ const M = {
   requestRead: (c) => c.table === 'dept_requests' && c.op === 'select' && c.cols === '*',
   zonesRead: (c) => c.table === 'service_survey_zones' && c.op === 'select' && has(c, 'eq', 'requestId') && !has(c, 'eq', 'id'),
   sendBackRead: (c) => c.table === 'entity_updates' && c.op === 'select' && has(c, 'in', 'kind'),
-  openVisitRead: (c) => c.table === 'service_visits' && c.op === 'select' && has(c, 'in', 'status'),
+  openVisitRead: (c) => c.table === 'service_visits' && c.op === 'select' && c.cols === '*' && has(c, 'in', 'status'),
+  // "ใบเคยมีนัดที่ไปถึงไซต์ไหม" — ถามเฉพาะเมื่อไม่มีนัดค้างและนัดล่าสุดไม่ใช่นัดที่ถึงไซต์
+  reachedRead: (c) => c.table === 'service_visits' && c.op === 'select' && c.cols === 'id' && has(c, 'in', 'status'),
   latestVisitRead: (c) => c.table === 'service_visits' && c.op === 'select' && c.cols === '*'
     && has(c, 'eq', 'requestId') && !has(c, 'eq', 'id') && !has(c, 'in', 'status'),
   namedVisitRead: (c) => c.table === 'service_visits' && c.op === 'select' && c.cols === '*' && has(c, 'eq', 'id') && has(c, 'eq', 'requestId'),
@@ -568,6 +570,7 @@ test('ด่าน ⑪: อ่านใบ · แถวพื้นที่ · 
 const VISIT_STATES = [null, 'draft', 'scheduled', 'in_progress', 'done', 'partial', 'unable', 'cancelled', 'rescheduled'];
 const CANCELLABLE = ['draft', 'scheduled'];
 const OPEN = ['draft', 'scheduled', 'in_progress'];
+const REACHED = ['done', 'partial'];
 const liveCrew = (v) => v === 'scheduled' || v === 'in_progress';
 const CANCEL_STEPS = ['2', '2-line', '2-audit'];
 const DIRECTIONS = {
@@ -609,7 +612,9 @@ const DIRECTIONS = {
   'พื้นที่แรกกลับเป็นลงหน้างาน (ใบกลับมาต้องมีนัด)': {
     seed: () => ({ zones: SHEETS.desk(), req: deskRequest() }),
     body: () => ({ changes: toOnsite('Z1') }),
-    steps: (v) => ['1', '3b', OPEN.includes(v) ? '4(sync)' : '4(clear)', '5', '6'],
+    // มติ 12/10 (O3): นัดล่าสุดไปถึงไซต์แล้ว (เข้าแล้ว / ทำไม่ครบ) = ขั้น 4 แตะปิดท้ายอย่างเดียว ไม่มีคอลัมน์วัน
+    // นัดค้าง = sync · นัดถึงไซต์แล้ว = keep ซึ่งเขียนคอลัมน์วันเข้าพื้นที่ชุดเดียวกับ sync (ไม่มีวันส่งผล) · ที่เหลือ = ล้าง
+    steps: (v) => ['1', '3b', OPEN.includes(v) || REACHED.includes(v) ? '4(sync)' : '4(clear)', '5', '6'],
     plan: () => ({ kind: 'switch', flip: 'to-visit', visitAction: 'none' }),
     bells: () => ({ crew: null, head: false }),
     visitAfter: (v) => v,
@@ -756,6 +761,72 @@ test('กลับเป็นลงหน้างาน: จุดถูกป
     `เปลี่ยนวิธีประเมินเป็น “ลงหน้างาน” 1 พื้นที่ (ล็อบบี้) — ${REASON} · ใบกลับไปรอลงคิว · ฝ่ายขายแจ้งวันที่หน้างานเข้าได้ในเธรดนี้`);
   assert.deepEqual(bellRows(db), []);
   assert.equal(rowOf(db, 'Z0').method, 'onsite', 'แถวที่ตัดไม่ถูกแตะเมื่อใบกลับมาต้องมีนัด');
+}));
+
+test('⭐ O3 (มติ 12/10) กลับเป็นลงหน้างานบนใบที่เคยเข้าพื้นที่แล้ว: วันส่งผลคงเดิม · คอลัมน์วันเข้าพื้นที่กลับไปตามนัด · เธรดไม่พูดว่ากลับไปรอลงคิว', flagged(async () => {
+  const SYNC_COLS = ['committedDueDate', 'committedDueTime', 'assigneeId', 'assigneeName', 'updatedAt'];
+  for (const status of REACHED) {
+    const db = world({ zones: SHEETS.desk(), visits: [visitRow(status, { scheduledDate: '2026-10-05' })], req: deskRequest() });
+    const out = await post(db, bodyFor(db, { changes: toOnsite('Z1') }));
+    assert.equal(out.status, 200, `${status}: ${out.json.error}`);
+    assert.deepEqual(out.json.plan, { kind: 'switch', flip: 'to-visit', visitAction: 'none' });
+    /* 🔴 `committedDueDate` ของใบงานโต๊ะคือ **วันส่งผล** (15/10) — ปล่อยค้างไว้ = หัวหน้าคำร้องอ่านเป็น "วันนัดเข้าพื้นที่ 15/10"
+       ทั้งที่นัดจริงเข้าไปแล้ว 05/10 (รีวิว 12/10) ⇒ วัน เวลา ช่าง กลับไปตามนัด · ไม่มีคีย์วันส่งผลในคำสั่ง */
+    const [, touch2] = db.calls.filter(M.touch);
+    assert.deepEqual(Object.keys(touch2.patch), SYNC_COLS, status);
+    const after = db.tables.dept_requests[0];
+    assert.deepEqual(
+      [after.committedDueDate, after.committedDueTime, after.assigneeId, after.assigneeName],
+      ['2026-10-05', '10:00', 'U-TECH', 'Phuwadol Aoonnankad'], status,
+    );
+    assert.equal(after.committedResultDate, '2026-10-15');
+    assert.equal(threadRows(db)[0].body, `เปลี่ยนวิธีประเมินเป็น “ลงหน้างาน” 1 พื้นที่ (ล็อบบี้) — ${REASON}`, status);
+    assert.equal(rowOf(db, 'Z1').method, 'onsite');
+    assert.equal(db.tables.service_visits[0].status, status, 'นัดเก่าไม่ถูกแตะ');
+    assert.deepEqual(bellRows(db), []);
+    // แถวสดที่ตอบกลับให้จอ: วันส่งผลยังอยู่
+    assert.equal(out.json.request.committedResultDate, '2026-10-15');
+    // นัดล่าสุดถึงไซต์เอง = ไม่ต้องถามฐานเรื่องนัดก่อนหน้า
+    assert.equal(db.calls.filter(M.reachedRead).length, 0, status);
+  }
+  /* 🔴 **เคยมีสักนัดที่ไปถึงไซต์** ไม่ใช่ "นัดล่าสุดถึงไหม" (รีวิว 12/10) — เข้าแล้ว / ทำไม่ครบ ตามด้วยนัดซ้ำที่ถูกยกเลิกหรือเข้าไม่ได้:
+     ด่านส่งผลให้ส่งจากรอบแรกได้ ⇒ วันส่งผลต้องไม่ถูกล้าง เธรดต้องไม่บอกฝ่ายขายว่าใบกลับไปรอลงคิว
+     · คอลัมน์วันเข้าพื้นที่ตามนัดล่าสุด (ตัวที่หน้าคำร้องอ่าน — สภาพเดียวกับใบลงหน้างานของวันนี้ที่มีนัดชุดนี้) */
+  for (const [first, last] of [['done', 'cancelled'], ['partial', 'cancelled'], ['done', 'unable'], ['partial', 'rescheduled']]) {
+    const name = `${first} → ${last}`;
+    const db = world({
+      zones: SHEETS.desk(), req: deskRequest(),
+      visits: [
+        visitRow(first, { scheduledDate: '2026-10-05' }),
+        visitRow(last, { id: 'V2', code: 'SV-26100020', scheduledDate: '2026-10-11', startTime: '14:00:00', createdAt: '2026-10-08T05:00:00+00:00' }),
+      ],
+    });
+    const out = await post(db, bodyFor(db, { changes: toOnsite('Z1') }));
+    assert.equal(out.status, 200, `${name}: ${out.json.error}`);
+    assert.equal(db.calls.filter(M.reachedRead).length, 1, name);
+    const [, touch2] = db.calls.filter(M.touch);
+    assert.deepEqual(Object.keys(touch2.patch), SYNC_COLS, name);
+    const after = db.tables.dept_requests[0];
+    assert.equal(after.committedResultDate, '2026-10-15', `${name}: วันส่งผลที่รับปากไว้คงเดิม`);
+    assert.deepEqual([after.committedDueDate, after.committedDueTime], ['2026-10-11', '14:00'], name);
+    assert.equal(threadRows(db)[0].body, `เปลี่ยนวิธีประเมินเป็น “ลงหน้างาน” 1 พื้นที่ (ล็อบบี้) — ${REASON}`, name);
+    assert.deepEqual(db.tables.service_visits.map((v) => v.status), [first, last], 'นัดไม่ถูกแตะ');
+  }
+  // อ่าน "เคยเข้าพื้นที่ไหม" ไม่สำเร็จ = 500 ก่อนเขียนอะไร — ห้ามตกเป็น "ไม่เคย" (ล้างวันส่งผลที่รับปากไว้)
+  const down = world({
+    zones: SHEETS.desk(), req: deskRequest(),
+    visits: [visitRow('done'), visitRow('cancelled', { id: 'V2', createdAt: '2026-10-08T05:00:00+00:00' })],
+  });
+  down.failOn(M.reachedRead);
+  await refused(down, bodyFor(down, { changes: toOnsite('Z1') }), 500, DB_DOWN);
+  assert.equal(down.tables.dept_requests[0].committedResultDate, '2026-10-15');
+  // ไม่เคยถึงไซต์ (เข้าไม่ได้ · ยกเลิก · เลื่อนแล้ว) = พฤติกรรมเดิม: ล้างวัน + ท้ายเธรด
+  for (const status of ['unable', 'cancelled', 'rescheduled']) {
+    const db = world({ zones: SHEETS.desk(), visits: [visitRow(status)], req: deskRequest() });
+    assert.equal((await post(db, bodyFor(db, { changes: toOnsite('Z1') }))).status, 200, status);
+    assert.equal(db.tables.dept_requests[0].committedResultDate, null, status);
+    assert.ok(threadRows(db)[0].body.endsWith(' · ใบกลับไปรอลงคิว · ฝ่ายขายแจ้งวันที่หน้างานเข้าได้ในเธรดนี้'), status);
+  }
 }));
 
 test('กลับเป็นลงหน้างานตอนมีนัดค้าง: วัน เวลา ช่าง ของนัดกลับขึ้นใบ — ไม่มีคีย์วันส่งผลในคำสั่ง (คำสัญญากับฝ่ายขายคงเดิม)', flagged(async () => {

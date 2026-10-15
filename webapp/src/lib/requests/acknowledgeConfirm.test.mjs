@@ -5,7 +5,7 @@
 //    ค่าที่คาดไว้ลอกมาจากโค้ดเดิมที่ origin/main f2162535
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { acknowledgeConfirmCopy } from './acknowledgeConfirm.js';
+import { acknowledgeConfirmCopy, acknowledgeDeskNext } from './acknowledgeConfirm.js';
 
 const BEFORE_AUTO = new Date('2026-08-15T03:00:00Z'); // ก่อนเดือนที่ระบบออกเลข PDR ให้เอง (2609)
 const AUTO = new Date('2026-09-23T03:00:00Z');
@@ -58,4 +58,23 @@ test('พัฒนาสูตร NPD: บอกล่วงหน้าว่�
   assert.match(detail, / · ระบบจะแตกสินค้าในแบบฟอร์ม PDR เป็นรายการส่งสูตร 2 รายการ \(หนึ่งรายการต่อคู่หมวด × กลิ่น\)$/);
   // ไม่มีคู่ให้แตก = ไม่พูดถึง
   assert.doesNotMatch(acknowledgeConfirmCopy({ ...npd, targets: [] }, { now: AUTO }).detail, /แตกสินค้า/);
+});
+
+/* ── งวด S2b: ใบที่ประเมินจากแบบทั้งใบ (งานโต๊ะ) — ไม่มีปุ่ม "ลงคิวเข้าพื้นที่" ให้ไปกด ─────────────── */
+test('⭐ งานโต๊ะ: กล่องยืนยันบอกก้าวจริง ("รับปากวันส่งผล" โดยหัวหน้า) ไม่สั่งให้ลงคิว · ใบที่ยังต้องมีนัดได้ประโยคเดิมทุกตัวอักษร', () => {
+  const base = { kind: 'site_survey', dept: 'TS', docNo: 'RQ-AS-26100345' };
+  const desk = { ...base, surveyNeedsVisit: false };
+  const next = 'ใบนี้ประเมินจากแบบ ไม่ต้องลงคิวเข้าพื้นที่ · หัวหน้าฝ่ายบริการกด "รับปากวันส่งผล" เมื่อรู้วันส่งผล';
+  assert.equal(acknowledgeDeskNext(desk), next);
+  assert.equal(acknowledgeConfirmCopy(desk).detail,
+    `ใบนี้จะเข้าคิวของ TS ทันที และนับเป็นงานที่ TS รับไว้แล้ว · ยังไม่ต้องระบุวันตอนนี้ — ${next}`);
+  assert.doesNotMatch(acknowledgeConfirmCopy(desk).detail, /ลงคิวเข้าพื้นที่"|เจ้าหน้าที่ที่จะไป/);
+  // false ตรงตัวเท่านั้น — ไม่มีธง / true / null = ใบที่ยังต้องมีนัด (ประโยคเดิม)
+  for (const flag of [undefined, null, true]) {
+    const req = { ...base, surveyNeedsVisit: flag };
+    assert.equal(acknowledgeDeskNext(req), null);
+    assert.equal(acknowledgeConfirmCopy(req).detail, acknowledgeConfirmCopy(base).detail);
+  }
+  // หัวข้อที่ไม่มีสถานที่ไม่เป็นงานโต๊ะ แม้มีธงค้างมา
+  assert.equal(acknowledgeDeskNext({ kind: 'formula_dev', variant: 'standard', dept: 'RD', surveyNeedsVisit: false }), null);
 });

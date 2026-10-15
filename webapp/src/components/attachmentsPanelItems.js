@@ -28,3 +28,28 @@ export function panelItemsByType(visibleItems, types) {
   }
   return byType;
 }
+
+/**
+ * ด่านไฟล์ของผู้เรียก (prop `fileGate` ของแผง · ประเมินจากแบบ งวด S2b) — คัดไฟล์ที่ผู้เรียกไม่รับออก **ก่อน** กติการาย docType
+ *   `fileGate`: `{ accept, test: (file) => boolean, rejectText, pickLabel?, hideDropHint? }` — แผงไม่รู้ว่าทำไมไม่รับ ผู้เรียกบอกเอง
+ *   (ช่องภาพแบบของพื้นที่จากแบบ = JPG/PNG เท่านั้น เพราะเอกสารประเมินวาดได้สองชนิดนี้)
+ * ⭐ ทางเข้าไฟล์ทุกทางของแผง (ปุ่ม · ลากมาวาง · Ctrl+V) เรียกตัวนี้ตัวเดียว ⇒ ไม่มีทางไหนหลุดด่าน
+ * ⚠️ ไฟล์ที่ผ่านยังอัปต่อ (ไม่ทิ้งทั้งชุด) · ข้อความ **หนึ่งครั้งต่อชุด** ไม่ว่าทิ้งกี่ไฟล์
+ * ⚠️ ไม่มีด่าน / ไม่มีตัวตัดสิน = คืนชุดเดิมทั้งชุด (แผงของผู้เรียกอื่นทุกตัวเดินเหมือนเดิม) · ตัวตัดสินที่โยน = ไฟล์นั้นไม่ผ่าน
+ * @returns `{ accepted: File[], rejectText: string|null }`
+ */
+export function panelFileGate(fileGate, files) {
+  const list = (Array.isArray(files) ? files : []).filter(Boolean);
+  if (!fileGate || typeof fileGate.test !== "function") return { accepted: list, rejectText: null };
+  const accepted = list.filter((file) => {
+    try {
+      return fileGate.test(file) === true;
+    } catch {
+      return false;
+    }
+  });
+  return {
+    accepted,
+    rejectText: accepted.length < list.length ? (String(fileGate.rejectText ?? "").trim() || "ไฟล์นี้แนบที่ช่องนี้ไม่ได้") : null,
+  };
+}

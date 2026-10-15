@@ -303,6 +303,10 @@ export async function runSurveyMethodPlan(supabase, {
     // 🔴 ต้องต่างจากค่าของขั้น 1 เสมอ (หัวไฟล์) — เครื่องเร็วพอจะได้มิลลิวินาทีเดียวกัน จึงบวกหนึ่งกันไว้
     let touchIso = new Date().toISOString();
     if (touchIso === nowIso) touchIso = new Date(Date.parse(nowIso) + 1).toISOString();
+    /* แผนที่ไม่สั่งวัน (`writes.dates` ว่าง) = แตะปิดท้ายอย่างเดียว
+       ⚠️ กรณี `keep` ของมติ 12/10 (O3 — ใบที่เคยเข้าพื้นที่แล้วมีพื้นที่กลับเป็นลงหน้างาน) **สั่งวัน**: คอลัมน์วันเข้าพื้นที่ (วัน เวลา ช่าง)
+          กลับไปตามนัดล่าสุดของใบ เหมือน `sync` · `committedResultDate` ไม่อยู่ใน patch = วันส่งผลที่รับปากไว้คงเดิม
+          (ตัวเขียนไม่ถามเองว่านัดไปถึงไซต์ไหม — เขียนตาม `writes.dates` ของแผนเท่านั้น) */
     const dates = writes.dates ? { ...writes.dates } : {};
     // แผนที่สร้างโดยไม่ได้ส่งเวลามา (`nowIso` ของแผนเป็น null) — เวลารับปากคือเวลาของ request นี้
     if ('dueCommittedAt' in dates && !dates.dueCommittedAt) dates.dueCommittedAt = nowIso;

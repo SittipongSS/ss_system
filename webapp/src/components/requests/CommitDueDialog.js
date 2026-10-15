@@ -26,24 +26,41 @@
 // ⚠️ เจ้าหน้าที่ **บังคับ** ⇒ ตัวเลือกไม่มีแถว "ยังไม่มอบหมาย" (`allowUnassigned={false}`)
 // ⚠️ ปุ่มส่ง = `GatedAction` ของเปลือก — กดได้เสมอ ขาดอะไรบอกครบทุกช่องในครั้งเดียว (`commitDueGaps` ·
 //    ตัวเดียวกับที่ server ตอบข้อแรก) ไม่ใช่ปุ่มจางที่ไม่บอกเหตุ (กฎฟอร์มของ repo)
-import { useId, useRef, useState } from "react";
+// ⭐ **งานโต๊ะ — ใบประเมินที่ประเมินจากแบบทั้งใบ** (mig 0408 · งวด S2b กลุ่ม D-1) ใช้โมดัลตัวนี้สองทรง คอลัมน์เดียวทั้งคู่:
+//    · รับปากวันส่งผล — เส้นประ "ผู้ขอต้องการผล …" · วันที่จะส่งผลประเมิน · หมายเหตุถึงฝ่ายขาย (ป้ายทั้งชุดมาจาก `commitDueLabels`)
+//    · เลื่อนวันส่งผล (`mode="reschedule"`) — หัว · ป้ายวัน · ด่าน · **ก้อนที่ส่ง** มาจาก `deskRescheduleView` ทั้งก้อน
+//      โมดัลไม่ประกอบก้อนของทรงนี้เอง (เหตุผลบังคับ — ใบนี้ไม่มีนัด เธรดของใบคือที่เดียวที่ฝ่ายขายรู้ว่าทำไมวันขยับ)
+//    ⚠️ `mode` เลือกได้แค่ "รับปาก ↔ เลื่อน" ของงานโต๊ะ — งานโต๊ะหรือไม่ ยังตัดสินจากใบ (`commitDueMode`) ผู้เรียกส่งเองไม่ได้
+//       ใบที่ไม่ใช่งานโต๊ะส่ง `mode="reschedule"` มา = ได้ทรงเดิมของมัน (หน้าใบยังใช้โมดัลเลื่อนวันเดิมกับใบพวกนั้น)
+//    ⚠️ โมดัลยังไม่ขึ้นข้อผิดพลาดเอง — 403 "รับปากได้เฉพาะหัวหน้าฝ่ายบริการ" และทุกคำตอบของ server ผู้เรียกเป็นคนทัก
+import { useEffect, useId, useRef, useState } from "react";
 import { CalendarPlus } from "lucide-react";
 import DateInput from "@/components/ui/DateInput";
 import Textarea from "@/components/ui/Textarea";
 import CrewLoadPicker from "@/components/service/CrewLoadPicker";
 import GatePanel from "@/components/service/GatePanel";
 import ScheduleModalShell from "@/components/service/ScheduleModalShell";
-import { JobFacts, ModalField, WishChip, focusFieldBox } from "@/components/service/ScheduleModalParts";
+import { JobFacts, KeepTogether, ModalField, WishChip, focusFieldBox } from "@/components/service/ScheduleModalParts";
 import TimeWindowField from "@/components/service/TimeWindowField";
 import useCrewLoad from "@/lib/service/useCrewLoad";
 import { surveyQueueStep } from "@/lib/service/surveyQueue";
 import { accessLine, commitDueGateView } from "@/lib/service/scheduleModal";
+import { dayText } from "@/lib/service/queueWords";
+import { naText } from "@/lib/format";
 import {
   COMMIT_DUE_REASON_MAX, WISH_APPLY_TEXT, WISH_SAME_TEXT,
   commitDueDefaults, commitDueGaps, commitDueHeader, commitDueJobRows, commitDueLabels, commitDueMode,
-  commitDueOutcome, commitDuePayload, commitDueWishes,
+  commitDueOutcome, commitDuePayload, commitDueWishes, deskRescheduleView,
 } from "@/lib/requests/commitDue";
 import styles from "./CommitDueDialog.module.css";
+
+/* ── ถ้อยคำของทรง "เลื่อนวันส่งผล" ที่ `deskRescheduleView` ไม่ได้ให้มา ─────────────────────────────
+   คำชุดเดียวกับโมดัลเลื่อนวันของหน้าใบ (`app/requests/[id]/page.js`) — คนที่เคยเลื่อนวันของหัวข้ออื่นอ่านแล้วเป็นเรื่องเดียวกัน
+   ⚠️ ป้ายเหตุผลไม่มีคำว่า "(ไม่บังคับ)" — ทรงนี้เหตุผลบังคับ (`reasonRequired`) ดอกจันมาจาก `ModalField` */
+const RESCHEDULE_SUBMIT = "บันทึกวันใหม่";
+const RESCHEDULE_REASON_LABEL = "เหตุผล";
+const RESCHEDULE_REASON_PLACEHOLDER = "บอกผู้ขอว่าทำไมต้องเลื่อน — จะได้ไปคุยกับลูกค้าต่อได้";
+const RESCHEDULE_HELD_LEAD = "เดิมรับปากไว้";
 
 /**
  * @param open        เปิดโมดัล — ปิดแล้วตัวฟอร์มถูกถอด (เปิดใหม่ = ค่าตั้งต้นใหม่จากใบ)
@@ -61,6 +78,8 @@ import styles from "./CommitDueDialog.module.css";
  * @param today       วันนี้แบบไทย 'YYYY-MM-DD' (ค่าตั้งต้นของหัวข้อที่ไม่ใช่ใบประเมิน · "อีก n วัน")
  * @param busy        กำลังส่ง — ล็อกทั้งฟอร์มและปุ่ม
  * @param onSubmit    `(payload) => Promise` — ผู้เรียกยิง `PATCH /api/sa/requests/[id]` แล้วปิดเองเมื่อสำเร็จ
+ * @param mode        "commit" (ค่าตั้งต้น) | "reschedule" — ทรงเลื่อนวันส่งผลของ **งานโต๊ะ** เท่านั้น (ดูหัวไฟล์)
+ * @param viewerName  ชื่อคนที่เปิดโมดัล — บรรทัดผลลัพธ์ของงานโต๊ะ ("ผู้รับผิดชอบ = …") · ไม่ส่ง = lib เขียน "คุณ"
  */
 export default function CommitDueDialog({ open, request, ...props }) {
   if (!open || !request) return null;
@@ -69,6 +88,8 @@ export default function CommitDueDialog({ open, request, ...props }) {
 
 function CommitDueForm({
   request,
+  mode = "commit",
+  viewerName = "",
   technicians = [],
   techniciansLoading = false,
   techniciansError = false,
@@ -96,11 +117,21 @@ function CommitDueForm({
   const load = form.date ? loadFor(form.date) : null;
 
   const gaps = commitDueGaps(request, form);
+  /* ⭐ ทรงเลื่อนวันส่งผล — มีเฉพาะงานโต๊ะ · `null` = ทรงรับปาก/ลงคิว/แจ้งกำหนดส่งตามเดิมทุกบรรทัด
+     หัว · ป้ายวัน · ด่าน · ก้อนที่ส่ง อ่านจากตัวนี้ตัวเดียว (ด่านชุดเดียวกับกิ่งงานโต๊ะของ route) */
+  const deskMode = commitDueMode(request) === "desk";
+  const reschedule = deskMode && mode === "reschedule" ? deskRescheduleView(request, form) : null;
   const header = commitDueHeader(request, { site });
   const jobRows = commitDueJobRows(request, { site, todayIso: today, siteLoad });
   const wishes = commitDueWishes(request, form);
   const gateView = commitDueGateView(request, form, { site, accessKnown, technicians });
-  const outcome = commitDueOutcome(request, form, { site, accessKnown, technicians, load, siteLoad });
+  /* ผู้รับผิดชอบในบรรทัดผลลัพธ์ของงานโต๊ะ — รับปาก = คนที่กด (route ตั้งเป็นผู้รับผิดชอบ) · เลื่อนวัน = คนเดิมบนใบ
+     (การเลื่อนไม่เปลี่ยนผู้รับผิดชอบ — เขียนชื่อคนกดตรงนี้จะบอกเกินจริง) */
+  const ownerName = reschedule ? request.assigneeName || viewerName : viewerName;
+  const promise = commitDueOutcome(request, form, { site, accessKnown, technicians, load, siteLoad, viewerName: ownerName });
+  /* ทรงเลื่อนวันมีด่านมากกว่าทรงรับปาก (วันเดิม · เหตุผลบังคับ) ⇒ ยังติดด่าน = บรรทัดใต้ปุ่มพูดด่านชุดเดียวกับปุ่ม
+     (ทรงเดียวกับที่ lib เขียนให้งานโต๊ะตอนรับปาก) · ผ่านครบ = ประโยคผลลัพธ์ของงานโต๊ะ */
+  const outcome = reschedule?.gaps.length ? { tone: "warn", lands: null, text: reschedule.gaps.join(" · ") } : promise;
   const access = siteMode
     ? accessLine(site, { date: form.date, startTime: form.time }, { known: accessKnown && !!site })
     : null;
@@ -112,8 +143,17 @@ function CommitDueForm({
   const dateRef = useRef(null);
   const assigneeRef = useRef(null);
 
+  /* 🐞 UAT S2b S18 (แป้นพิมพ์): ฟอร์มนี้ถูกเมานต์ **พร้อมกับตอนเปิด** (ตัวห่อคืน `null` ตอนปิด) ⇒ `Modal` เกิดมาในสภาพเปิด
+     และ effect ที่วางโฟกัส/ขัง Tab ของมันเดินในเรนเดอร์แรก ซึ่งกล่องยังไม่ถูก portal ลงหน้า (ไม่มีโหนดให้โฟกัส) แล้วไม่เดินอีกเลย
+     ⇒ โฟกัสค้างที่ปุ่มที่เปิดกล่อง และ Tab เดินอยู่ในหน้าข้างหลัง · เปิดเปลือก **หนึ่งเรนเดอร์ถัดจากเมานต์** — effect นั้นเดินตอนกล่องอยู่บนหน้าแล้ว
+     (เงาบอกว่าเนื้อเลื่อนได้อีกของเปลือกก็เริ่มทำงานด้วยเหตุเดียวกัน) */
+  const [shown, setShown] = useState(false);
+  useEffect(() => { setShown(true); }, []);
+
   const close = () => { if (!busy) onClose?.(); };
   const submit = () => onSubmit?.(commitDuePayload(request, form, { technicians }));
+  /* เลื่อนวัน: ส่งก้อนของ `deskRescheduleView` ทั้งก้อน — `{ action: 'reschedule', committedResultDate, reason }` */
+  const submitReschedule = () => onSubmit?.(reschedule.payload);
 
   /* ลิงก์แก้บนแผงด่าน — พาโฟกัสไปช่องที่ข้อนั้นติด (คนที่เลือกไว้ก่อน · ไม่มีก็คนแรก · ตัวเดียวกับโมดัลนัด) */
   const focusField = (field) => {
@@ -127,29 +167,40 @@ function CommitDueForm({
     </>
   ) : null;
 
+  /* วันที่รับปากไว้ก่อนเลื่อน — วันส่งผลก่อน ไม่มีค่อยดูวันบนใบ (ฐานเดียวกับ "วันเดิม" ของ `deskRescheduleView`) */
+  const heldDate = reschedule ? dayText(request.committedResultDate || request.committedDueDate) : "";
+  const dateHint = reschedule ? `${RESCHEDULE_HELD_LEAD} ${naText(heldDate)}` : labels.dateHint;
+
   const main = (
     <>
+      {/* ⭐ งานโต๊ะ: วันที่ผู้ขอต้องการผล เป็นเส้นประเหนือช่องวัน (ใบนี้มีวันเดียว จึงไม่มีชิป "ใช้ตามผู้ขอ" —
+          ค่าตั้งต้นของช่องคือวันนั้นอยู่แล้ว) · ผู้ขอไม่ระบุ / โหมดอื่น = `labels.wish` ว่าง ⇒ ไม่วาด */}
+      {labels.wish ? <p className={styles.wishLine}><KeepTogether text={labels.wish} /></p> : null}
+
       {/* ⭐ วัน (+ เวลาเริ่ม) — ช่องตัวเดียวกับโมดัลนัด · วันที่ผู้ขอต้องการเป็นชิป ไม่ใช่คำใบ้ที่ซ้ำค่าในช่อง
           ⚠️ ลงคิวเข้าพื้นที่เก็บได้แค่เวลาเริ่ม (`committedDueTime`) ⇒ เวลาจบเป็นช่องจาง "ไม่ระบุ" · เช้า/บ่ายเติมแค่เวลาเริ่ม
           ⚠️ แจ้งกำหนดส่ง (หัวข้ออื่น) = วันอย่างเดียว (`withTime={false}`) */}
-      <TimeWindowField
-        date={form.date || ""}
-        onDate={set("date")}
-        startTime={form.time || ""}
-        endTime=""
-        onTime={({ startTime }) => set("time")(startTime)}
-        withEnd={false}
-        withTime={siteMode}
-        dateLabel={labels.dateLabel}
-        timeLabel="เวลานัด (ไม่บังคับ)"
-        todayIso={today}
-        access={access}
-        dateRef={dateRef}
-        dateSlot={labels.dateHint ? <p className={styles.hint}>{labels.dateHint}</p> : null}
-        accessSlot={siteMode ? (
-          <WishChip wish={wishes.visit} onApply={apply} sameText={WISH_SAME_TEXT} applyText={WISH_APPLY_TEXT} />
-        ) : null}
-      />
+      {/* ที่ห่อไร้กล่อง (`display: contents` — การจัดวางเท่าเดิมทุกทรง) · งานโต๊ะติด `data-desk` ให้กฎเป้านิ้วของช่องวันเกาะ */}
+      <div className={styles.deskDate} data-desk={deskMode ? "" : undefined}>
+        <TimeWindowField
+          date={form.date || ""}
+          onDate={set("date")}
+          startTime={form.time || ""}
+          endTime=""
+          onTime={({ startTime }) => set("time")(startTime)}
+          withEnd={false}
+          withTime={siteMode}
+          dateLabel={reschedule ? reschedule.dateLabel : labels.dateLabel}
+          timeLabel="เวลานัด (ไม่บังคับ)"
+          todayIso={today}
+          access={access}
+          dateRef={dateRef}
+          dateSlot={dateHint ? <p className={styles.hint}>{dateHint}</p> : null}
+          accessSlot={siteMode ? (
+            <WishChip wish={wishes.visit} onApply={apply} sameText={WISH_SAME_TEXT} applyText={WISH_APPLY_TEXT} />
+          ) : null}
+        />
+      </div>
 
       {siteMode && (
         <>
@@ -187,24 +238,45 @@ function CommitDueForm({
     </>
   );
 
+  /* ช่องข้อความท้ายฟอร์ม — ช่องเดียว (`reason`) สองความหมาย: หมายเหตุของการรับปาก/ลงคิว (ไม่บังคับ · งานโต๊ะป้าย
+     "หมายเหตุถึงฝ่ายขาย" จาก `labels.noteLabel`) · เหตุผลของการเลื่อนวัน (บังคับ — `reschedule.reasonRequired`) */
+  const note = reschedule
+    ? { label: RESCHEDULE_REASON_LABEL, required: reschedule.reasonRequired, placeholder: RESCHEDULE_REASON_PLACEHOLDER }
+    : { label: `${labels.noteLabel || "หมายเหตุ"} (ไม่บังคับ)`, required: false, placeholder: labels.notePlaceholder };
+
   const tail = (
-    <ModalField label="หมายเหตุ (ไม่บังคับ)" htmlFor={reasonId}>
+    <ModalField label={note.label} required={note.required} htmlFor={reasonId}>
       <Textarea
         id={reasonId} maxLength={COMMIT_DUE_REASON_MAX}
         value={form.reason || ""}
-        placeholder={labels.notePlaceholder}
+        placeholder={note.placeholder}
+        required={note.required}
         onChange={(e) => set("reason")(e.target.value)}
       />
     </ModalField>
   );
 
+  /* ปุ่มหลักปุ่มเดียวของเปลือก — เลื่อนวัน: ด่านของ `deskRescheduleView` · ทรงอื่น: `commitDueGaps` ตามเดิม */
+  const primary = reschedule ? {
+    label: RESCHEDULE_SUBMIT,
+    busyLabel: "กำลังบันทึก…",
+    blocker: reschedule.gaps.join(" · "),
+    onClick: submitReschedule,
+  } : {
+    label: labels.submit,
+    busyLabel: "กำลังบันทึก…",
+    blocker: gaps.join(" · "),
+    onClick: submit,
+    icon: siteMode ? <CalendarPlus size={15} aria-hidden="true" /> : undefined,
+  };
+
   return (
     <ScheduleModalShell
-      open
+      open={shown}
       onClose={close}
       busy={busy}
       layout={siteMode ? "split" : "single"}
-      title={header.title}
+      title={reschedule ? reschedule.title : header.title}
       kind={header.kind}
       status={header.status}
       origin={header.origin}
@@ -213,13 +285,7 @@ function CommitDueForm({
       main={main}
       tail={tail}
       secondary={[{ key: "cancel", label: "ยกเลิก", variant: "quiet", onClick: close }]}
-      primary={{
-        label: labels.submit,
-        busyLabel: "กำลังบันทึก…",
-        blocker: gaps.join(" · "),
-        onClick: submit,
-        icon: siteMode ? <CalendarPlus size={15} aria-hidden="true" /> : undefined,
-      }}
+      primary={primary}
       outcome={outcome}
     />
   );

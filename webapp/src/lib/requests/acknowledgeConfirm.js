@@ -10,6 +10,18 @@ import {
 } from '@/lib/master/requestTypes';
 import { issuesPdrRefNoOnAcknowledge } from '@/lib/requests/pdrRefNo';
 import { planNpdWorkRows } from '@/lib/requests/npdWorkRows';
+import { commitDueLabels, commitDueMode } from '@/lib/requests/commitDue';
+
+/**
+ * ⭐ ใบประเมินที่ **ประเมินจากแบบทั้งใบ** (งานโต๊ะ · งวด S2b) — ก้าวถัดจากรับเรื่องไม่ใช่การลงคิว:
+ *   ใบออกจาก "คำร้องรอลงคิว" ของหน้าจัดคิว แล้วหัวหน้าฝ่ายบริการกด "รับปากวันส่งผล" ที่หน้าคำร้อง / ใบประเมิน
+ * คืนประโยคของก้าวถัดไป หรือ `null` เมื่อไม่ใช่งานโต๊ะ (ทุกใบเดิมของระบบ) — กล่องยืนยันและ toast หลังรับเรื่องใช้ตัวเดียวกัน
+ * ⚠️ ชื่อปุ่มมาจาก `commitDueLabels` (ไม่พิมพ์ซ้ำ) · งานโต๊ะถามผ่าน `commitDueMode` (ธง `surveyNeedsVisit === false` ตรงตัว)
+ */
+export function acknowledgeDeskNext(request) {
+  if (commitDueMode(request) !== 'desk') return null;
+  return `ใบนี้ประเมินจากแบบ ไม่ต้องลงคิวเข้าพื้นที่ · หัวหน้าฝ่ายบริการกด "${commitDueLabels(request).action}" เมื่อรู้วันส่งผล`;
+}
 
 /**
  * `{ title, description, detail, confirmLabel }` ของกล่องยืนยันรับเรื่อง
@@ -18,10 +30,14 @@ import { planNpdWorkRows } from '@/lib/requests/npdWorkRows';
 export function acknowledgeConfirmCopy(request, { now = new Date() } = {}) {
   const req = request || {};
   const scheduling = requestNeedsRef(req.kind, 'site');
+  const deskNext = acknowledgeDeskNext(req);
   const detail = `ใบนี้จะเข้าคิวของ ${req.dept} ทันที และนับเป็นงานที่ ${req.dept} รับไว้แล้ว`
     /* ⚠️ ชื่อปุ่มขั้นถัดไป **ต่างตามหัวข้อ** — ใบประเมินไม่มีปุ่มชื่อ "แจ้งกำหนดส่ง"
        บนจอเลย (ปุ่มจริงคือ "ลงคิวเข้าพื้นที่") ⇒ สั่งให้ไปกดปุ่มที่ไม่มีอยู่ */
-    + (scheduling
+    /* งานโต๊ะ (ประเมินจากแบบทั้งใบ): ไม่มีปุ่ม "ลงคิวเข้าพื้นที่" บนจอ ⇒ บอกก้าวจริงของใบนี้แทน */
+    + (deskNext
+      ? ` · ยังไม่ต้องระบุวันตอนนี้ — ${deskNext}`
+      : scheduling
       ? ' · ยังไม่ต้องระบุวันตอนนี้ — ใบจะไปอยู่สถานะ "รอกำหนดส่ง"'
         + ' แล้วกด "ลงคิวเข้าพื้นที่" เมื่อรู้วัน เวลา และเจ้าหน้าที่ที่จะไป'
       : ' · ยังไม่ต้องระบุวันกำหนดส่งตอนนี้ — ใบจะไปอยู่สถานะ "รอกำหนดส่ง"'

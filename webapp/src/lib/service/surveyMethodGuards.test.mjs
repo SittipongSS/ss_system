@@ -73,6 +73,7 @@ const RECALL_ROUTE = 'src/app/api/service/surveys/[id]/recall/route.js';
 const REQUEST_ROUTE = 'src/app/api/sa/requests/[id]/route.js';
 const CUSTOMER_ZONES_ROUTE = 'src/app/api/service/customers/[customerId]/zones/route.js';
 const SWITCH = 'src/lib/service/surveyMethodSwitch.js';
+const QUEUE_REPO = 'src/lib/service/surveyQueueRepo.js';
 const WRITES = 'src/lib/service/surveyMethodWrites.js';
 const DOCUMENT_ROUTE = 'src/app/api/service/surveys/[id]/document/route.js';
 const SCRIPT = 'scripts/check-survey-report-inputs.mjs';
@@ -237,7 +238,10 @@ test('🔴 สวิตช์ SURVEY_DRAWING_METHOD ถูกอ่านไฟ�
 
 test('คอลัมน์ของ mig 0408: จุดที่ระบุชื่อในคำสั่งอ่านเป็นลิสต์ปิด (สามจุดของพื้นที่ + หนึ่งจุดของคำร้อง) · ผู้เอ่ยชื่อรายคอลัมน์เป็นลิสต์ปิด', () => {
   const COLUMNS = 'id, "requestId", status, method';
-  assert.ok(read('src/lib/service/surveyQueueRepo.js').includes(`export const SURVEY_QUEUE_ZONE_COLUMNS = '${COLUMNS}';`));
+  /* งวด S2b: ตัวโหลดคิวอ่านเพิ่มสองคอลัมน์ (เหตุผล + เวลาของการสลับวิธี) — การ์ดของใบที่หัวหน้าสลับกลับเป็นลงหน้างานบอกที่มา
+     · `visitsRepo.js` ยังใช้สี่คอลัมน์ชุดเดิม */
+  const QUEUE_COLUMNS = `${COLUMNS}, "methodReason", "methodChangedAt"`;
+  assert.ok(read('src/lib/service/surveyQueueRepo.js').includes(`export const SURVEY_QUEUE_ZONE_COLUMNS = '${QUEUE_COLUMNS}';`));
   // visitsRepo: สองจุด (สถานะตีกลับของนัด + ตัวนับพื้นที่ของหน้างานของฉัน — งวด S2a เพิ่มจุดหลัง)
   const visits = stripComments(read('src/lib/service/visitsRepo.js'));
   assert.equal(visits.split(`.select('${COLUMNS}')`).length - 1, 2);
@@ -252,13 +256,16 @@ test('คอลัมน์ของ mig 0408: จุดที่ระบุช
      เพิ่มไฟล์ = เพิ่มในลิสต์นี้พร้อมเหตุ */
   const NAMED = {
     // แผนอ่านสองช่องนี้จากแถวเพื่อแยก "กดซ้ำของการกระทำเดิม" ออกจาก "มีคนอื่นสลับไปแล้ว" · ตัวเขียนเป็นคนประทับ
-    methodReason: [SWITCH, WRITES],
+    // + ตัวโหลดคิว (งวด S2b): บรรทัดที่มา "หัวหน้าเปลี่ยนเป็นลงหน้างาน: {เหตุผล}" บนการ์ดของผู้วางคิว — อ่านอย่างเดียว
+    methodReason: [SWITCH, WRITES, QUEUE_REPO],
     methodChangedByName: [SWITCH, WRITES],
     // เส้นแก้พื้นที่: ช่างเขียนทับพื้นที่ที่หัวหน้าเพิ่งสลับ ⇒ 409 (ไม่ใช่ 403) · ตัวเขียนเป็นคนประทับ
-    methodChangedAt: [ZONE_ROUTE, WRITES],
+    // + ตัวโหลดคิว (งวด S2b): เลือกพื้นที่ที่ถูกสลับล่าสุด — อ่านอย่างเดียว
+    methodChangedAt: [ZONE_ROUTE, WRITES, QUEUE_REPO],
     // เขียน: ส่งผล (เฉพาะใบที่มีพื้นที่จากแบบ) · ดึงกลับ/เปิดใหม่ (ล้างเป็น NULL) — อ่าน: ทะเบียนโซน · แบนเนอร์ของฝ่ายขาย · ด่าน/ข้อความตอนส่ง
+    // + หน้าใบประเมิน (งวด S2b): ใส่ตัวเลือกของสองไทล์ลง body ตอนส่งผล — เขียนผ่าน route ส่งผลเท่านั้น ไม่อ่านคอลัมน์
     surveyConfirm: [
-      REQUEST_ROUTE, CUSTOMER_ZONES_ROUTE, RECALL_ROUTE, SEND_ROUTE,
+      REQUEST_ROUTE, CUSTOMER_ZONES_ROUTE, RECALL_ROUTE, SEND_ROUTE, 'src/app/service/surveys/[id]/page.js',
       'src/lib/service/surveyJob.js', 'src/lib/service/surveySendClose.js',
     ],
     // ผูกใบยืนยันหน้างานกับใบต้นทาง = งวด S5 — ยังไม่มีโค้ดไหนแตะ (รวมโมดูลใบ)
@@ -423,19 +430,63 @@ test('🔴 ⑦ surveyMethodSwitch.js ดึงได้สี่โมดูล�
   assert.deepEqual(serverOnly, [METHOD_ROUTE, ZONE_ROUTE, 'src/app/api/service/visits/[id]/route.js'].sort());
 });
 
-test('⑧ งวด S2a ไม่มีจอ: ไม่มีไฟล์ใต้ src/components หรือ page.js ไหนดึงโมดูลสลับวิธี/ไฟล์เธรดตรง ๆ (งวด S2b เป็นคนต่อ แล้วแก้ลิสต์นี้)', () => {
+/* ═══ ⑧ จอที่ต่อกับโมดูลสลับวิธี — ลิสต์ปิดของงวด S2b ═══════════════════════════════════════════════════════════
+   งวด S2a ไม่มีจอ (ลิสต์ว่าง) · งวด S2b ต่อจอ: ไฟล์จอที่ดึง `surveyMethodSwitch` ได้คือไฟล์ที่สเปก S2b §3 กลุ่ม A–E ระบุชื่อเท่านั้น
+   (คำ · ค่าคงที่ · ตัวตัดสินของปุ่ม — ไฟล์ล้วน ไม่มีของ server) · เพิ่มจอ = เพิ่มในลิสต์นี้พร้อมเหตุ
+   🔴 ตัวเขียน · ตัวส่งกระดิ่ง · ตัวโหลดไฟล์เธรด เป็นของ server — **ไม่มีจอไหนดึงได้** ไม่ว่างวดไหน
+   ⚠️ ลิสต์นี้เป็น "เพดาน" (จอนอกลิสต์ห้ามดึง) — ข้อ "ฟังก์ชันจอทั้งสี่ต้องมีผู้เรียกนอก src/lib อย่างน้อยหนึ่งราย" เป็นของขั้นรวมงาน
+      (Integrate เติมหลังห้ากลุ่มต่อจอครบ — ตอนที่ชิ้นส่วนกลางลงก่อน จอยังไม่ได้เรียก) */
+const S2B_SWITCH_SCREENS = [
+  // A — หน้าใบประเมิน · โมดัลเปลี่ยนวิธี
+  'src/app/service/surveys/[id]/page.js',
+  'src/components/service/SurveyMethodDialog.js',
+  // B — รายการพื้นที่ · หน้าพื้นที่ · แผงแบบจากฝ่ายขาย
+  'src/components/service/SurveyZoneList.js',
+  'src/components/service/SurveyZonePage.js',
+  'src/components/service/SurveySalesDrawings.js',
+  // C — ตารางสรุปส่งผล · การ์ดจัดการผล
+  'src/components/service/SurveyResultTable.js',
+  'src/components/service/SurveyControlCard.js',
+  // D — หน้าคำร้อง
+  'src/components/requests/CommitDueDialog.js',
+  'src/app/requests/[id]/page.js',
+  'src/components/requests/details/SurveyRequestView.js',
+  'src/components/requests/details/SurveyDetail.js',
+  // E — หน้าจัดคิว · ป้ายปลายน้ำ
+  'src/components/service/ScheduleQueueCard.js',
+  'src/app/service/schedule/page.js',
+  'src/components/requests/SurveySiteFields.js',
+  'src/components/service/CustomerZonesPanel.js',
+  'src/components/salesPlanning/serviceSetup/ServiceSetupGrid.js',
+  'src/components/service/ZonesBulkModal.js',
+  'src/components/service/zonesBulkPlan.js',
+];
+
+test('⑧ งวด S2b: จอที่ดึงโมดูลสลับวิธีเป็นลิสต์ปิด (กลุ่ม A–E ของสเปก) · ตัวเขียน / กระดิ่ง / ไฟล์เธรด ไม่มีจอไหนดึง', () => {
   const screens = APP.filter(({ file }) => file.startsWith('src/components/') || /\/page\.js$/.test(file));
   assert.ok(screens.length > 100);
-  const wired = screens
-    .filter(({ code }) => /surveyMethod(?:Switch|Writes|Notify)\b|surveyThreadFiles\b/.test(code))
-    .map(({ file }) => file);
-  assert.deepEqual(wired, []);
-  // ฟังก์ชันจอของงวดนี้ยังไม่มีใครเรียกนอกไฟล์ของมันเอง — เรียกเมื่อไร = มีจอแล้ว ต้องเปิดดูจอจริงก่อนส่ง
+  const using = (pattern) => screens.filter(({ code }) => pattern.test(code)).map(({ file }) => file);
+  const outside = using(/surveyMethodSwitch\b/).filter((file) => !S2B_SWITCH_SCREENS.includes(file));
+  assert.deepEqual(outside, [], 'จอนอกลิสต์ของงวด S2b ดึงโมดูลสลับวิธี');
+  assert.deepEqual(using(/surveyMethod(?:Writes|Notify)\b|surveyThreadFiles\b/), [], 'ของ server ห้ามเข้า bundle ของจอ');
+  // เส้นคัดลอกไฟล์ของฝ่ายขาย (งวด S2b) ก็เป็นของ server — จอเรียกผ่านตัวช่วยฝั่งเบราว์เซอร์ `surveyPlanReuse` เท่านั้น
+  assert.deepEqual(using(/surveyPlanCopy\b/), []);
+  /* ฟังก์ชันจอของงวด S2a — ผู้เรียกนอก src/lib ต้องเป็นจอในลิสต์เท่านั้น (จอที่ต่อแล้วต้องถูกเปิดดูจริงก่อนส่ง) */
   for (const name of ['surveyDrawingZoneView', 'surveySalesDrawingsView', 'deskRescheduleView', 'surveyMethodSwitchGate']) {
     const users = hits(new RegExp(`\\b${name}\\b`));
     assert.ok(users.length >= 1, `${name} ต้องมีอยู่จริง`);
-    for (const file of users) assert.ok(file.startsWith('src/lib/'), `${name} ← ${file}`);
+    for (const file of users) {
+      assert.ok(file.startsWith('src/lib/') || S2B_SWITCH_SCREENS.includes(file), `${name} ← ${file}`);
+    }
+    /* จอของงวด S2b ต่อครบแล้ว — ตัวตัดสินทุกตัวต้องมีจอเรียกจริงอย่างน้อยหนึ่งจอ (ตัวตัดสินที่ไม่มีใครเรียก = จอวาดเอง) */
+    /* ด่านของปุ่ม "เปลี่ยนวิธีประเมิน" ถูกเรียกที่ตัวตัดสินของการ์ด (`surveyControl.js` → `view.method`) จอจึงอ่านผ่านคีย์นั้น
+       ไม่ได้เรียกชื่อฟังก์ชันเอง — ตรวจผู้ใช้คีย์แทน (ข้างล่าง) */
+    if (name === 'surveyMethodSwitchGate') continue;
+    assert.ok(users.some((file) => !file.startsWith('src/lib/')), `${name} ยังไม่มีจอไหนเรียก`);
   }
+  assert.match(stripComments(read('src/lib/service/surveyControl.js')), /method: surveyMethodSwitchGate\(request, \{ canSwitch: canDecide, enabled: methodOn \}\),/);
+  const gateReaders = screens.filter(({ code }) => /\bview\.method\.(?:show|allowed|reason)\b/.test(code)).map(({ file }) => file).sort();
+  assert.deepEqual(gateReaders, ['src/app/service/surveys/[id]/page.js', 'src/components/service/SurveyControlCard.js']);
 });
 
 test('ตะเข็บ C ↔ §2: ป้ายของทะเบียนโซน (confirmTag) คือค่าคงที่ SURVEY_ZONE_TAG ตัวเดียวกับที่จอสลับวิธีใช้', () => {

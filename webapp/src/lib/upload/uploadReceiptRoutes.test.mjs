@@ -212,3 +212,54 @@ test('ตัวช่วยของเส้นถอยการอัป: ท
   assert.deepEqual(tables, ['attachments', 'customers', 'entity_updates', 'products', 'quotations'],
     'collectReferencedIds กวาดแหล่งใหม่ — เพิ่มที่ driveFileReferenced (lib/master/attachments.js) ด้วย แล้วค่อยแก้ลิสต์นี้');
 });
+
+/* ── ผู้ออกใบรับเป็นลิสต์ปิด (ประเมินจากแบบ งวด S2b เพิ่มจุดที่สาม) ─────────────────────────────────────────
+   ใบรับคือสิ่งที่ทำให้ `driveFileId` จาก client เชื่อได้ ⇒ ทุกจุดที่ออกใบรับต้องได้ id จาก Drive เอง ไม่ใช่จากคำขอ
+   เพิ่มผู้ออกใบรับ = เพิ่มในลิสต์นี้พร้อมเหตุ และพร้อมบรรทัดที่พิสูจน์ว่า id มาจากไหน */
+import { readdirSync, statSync } from 'node:fs';
+import path from 'node:path';
+
+test('🔴 ผู้ออกใบรับการอัปเป็นลิสต์ปิดสามจุด — เส้นคัดลอกไฟล์ฝ่ายขายออกให้เฉพาะไฟล์ใหม่ที่ Drive เพิ่งสร้าง หลังด่านครบ', () => {
+  const SRC = fileURLToPath(new URL('../../', import.meta.url));
+  const files = [];
+  (function walk(dir) {
+    for (const entry of readdirSync(dir)) {
+      const full = path.join(dir, entry);
+      if (statSync(full).isDirectory()) walk(full);
+      else if (/\.js$/.test(entry)) files.push(full);
+    }
+  })(SRC);
+  const issuers = files
+    .filter((f) => /\brecordUploadReceipt\b/.test(strip(readFileSync(f, 'utf8'))))
+    .map((f) => path.relative(SRC, f).split(path.sep).join('/'))
+    .sort();
+  assert.deepEqual(issuers, [
+    'app/api/upload/commit/route.js',
+    'app/api/upload/route.js',
+    'lib/service/surveyPlanCopy.js', // คัดลอกไฟล์ของฝ่ายขายเป็นภาพแบบ — id ของไฟล์ใหม่จาก uploadForEntity
+    'lib/upload/receipts.js',
+  ]);
+
+  const COPY = strip(read('../service/surveyPlanCopy.js'));
+  // ออกใบรับจุดเดียว ด้วย id ของผลจาก Drive (`copy.id`) และผู้ใช้จาก session
+  assert.equal((COPY.match(/recordUploadReceipt\)\(supabase, \{/g) || []).length, 1);
+  assert.match(COPY, /copy = await drive\.uploadForEntity\(\{/);
+  assert.match(COPY, /driveFileId: copy\.id, userId: user\.id, entityType: ZONE_ENTITY, entityId: zone\.id,/);
+  // ลำดับ: ด่านสิทธิ์ → ที่มาของไฟล์เธรด → ถาม Drive → คัดลอก → ออกใบรับ → (ล้ม) ลบไฟล์ใหม่
+  order(COPY.slice(COPY.indexOf('export async function copySalesFileToZonePlan(')), [
+    'if (!canSendSurveyResult(user)) return answer(403, ERR.role);',
+    'if (found.refuse) return found.refuse;',
+    'meta = await drive.getFileMeta(file.driveFileId, DRIVE_META_FIELDS);',
+    'copy = await drive.uploadForEntity({',
+    'driveFileId: copy.id, userId: user.id,',
+    'await drive.deleteFile(copy.id);',
+    'return answer(503, ERR.copy);',
+  ], 'plan copy');
+  // ไฟล์เธรด: ใบรับของผู้โพสต์ถูกถามก่อนคืนไฟล์ให้ด่านถัดไป — ตรวจไม่ได้ = ปิด
+  order(COPY.slice(COPY.indexOf('async function threadSourceFile(')), [
+    'DRIVE_FILE_ID_PATTERN.test(att.driveFileId)',
+    'const verdict = await uploadReceiptStatus(supabase, { driveFileId: att.driveFileId, userId: authorId, now });',
+    "if (verdict.reason === 'unverifiable') return { refuse: answer(503, SURVEY_PLAN_COPY_ERRORS.receiptCheck) };",
+    "if (!(verdict.ok || verdict.reason === 'expired')) return provenance;",
+  ], 'thread provenance');
+});

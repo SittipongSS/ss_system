@@ -403,7 +403,7 @@ test('🐞 "ตรวจอีกครั้ง" / "โหลดใหม่" �
   assert.match(CARD, /\n {2}onRecheckDocument,\n/);
   assert.match(CARD, /const recheckDocument = onRecheckDocument \|\| onReload;\s*const reasonReload = sendReason\?\.key === "registry-unread" \? onReload : recheckDocument;/);
   const reason = between(CARD, 'disabledReason: sendReason ? (', 'onClick: onSend,');
-  assert.match(reason, /<JumpButton\s+target=\{sendReason\.target\}\s+onOpenZone=\{onOpenZone\}\s+onGoTab=\{onGoTab\}\s+onReload=\{reasonReload\}\s+className=\{styles\.reasonJump\}\s+\/>/);
+  assert.match(reason, /<JumpButton\s+target=\{sendReason\.target\}\s+onOpenZone=\{onOpenZone\}\s+onGoTab=\{onGoTab\}\s+onReload=\{reasonReload\}\s+onSwitchMethod=\{onSwitchMethod\}\s+className=\{styles\.reasonJump\}\s+\/>/);
 
   /* ตัวตัดสิน: ปุ่มสองที่ของเหตุเดียวกัน — ใบที่ติดเฉพาะเอกสาร บรรทัดเหตุมี `reload` "ตรวจอีกครั้ง" และ key ไม่ใช่ของทะเบียนขนาด ·
      กล่องสถานะมีรายการข้อ (จำนวนข้อของ toast) กับทางออกคำเดียวกัน */
@@ -771,7 +771,7 @@ test('CSS ของส่วนเอกสาร: ของที่กดไ�
   assert.doesNotMatch(CARD_CSS, /\.reasonJump \{[^}]*display: inline-flex/, 'ปุ่ม 44px ที่อยู่ในบรรทัดเดียวกับข้อความ = บรรทัดนั้นสูงกว่าเพื่อน');
   assert.match(CARD_CSS, /\.reason \{\s*display: flex;\s*align-items: flex-start;\s*gap: var\(--space-2\);\s*\}/, 'จอกว้างเหมือนเดิม');
   assert.match(CARD_CSS, /\.reasonJump \{\s*margin-inline-start: var\(--space-2\);\s*\}/, 'จอกว้างเหมือนเดิม — ช่องไฟอย่างเดียว');
-  assert.match(CARD, /onReload=\{reasonReload\}\s+className=\{styles\.reasonJump\}/, 'ปุ่มในบรรทัดเหตุถือคลาสนี้');
+  assert.match(CARD, /onReload=\{reasonReload\}\s+onSwitchMethod=\{onSwitchMethod\}\s+className=\{styles\.reasonJump\}/, 'ปุ่มในบรรทัดเหตุถือคลาสนี้');
   assert.match(CARD_CSS, /\.docSeg:global\(\.segmented\) \{\s*display: flex;/);
   assert.match(CARD_CSS, /\.docSeg:global\(\.segmented\) > button \{\s*flex: 1 1 0;\s*min-width: 0;\s*\}/);
   assert.match(CARD_CSS, /\.docPinned \{\s*margin-bottom: var\(--space-4\);\s*padding-bottom: var\(--space-3-5\);\s*border-bottom: 1px solid var\(--border\);\s*\}/);

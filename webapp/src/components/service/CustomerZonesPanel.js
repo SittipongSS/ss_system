@@ -29,8 +29,11 @@ import { TableScroll } from "@/components/ui/Table";
 import { REQUEST_STATUS_LABELS, REQUEST_STATUS_TONES } from "@/lib/requests/statuses";
 import { siteRefillBadge } from "@/lib/service/refill";
 import { surveyZonePackageText } from "@/lib/service/survey";
+// คำของวิธีประเมิน ("ประเมินจากแบบ") มาจากที่เดียว — แท็บนี้ไม่พิมพ์เอง (ประเมินจากแบบ · งวด S2b)
+import { SURVEY_METHOD_LABEL } from "@/lib/service/surveyMethodSwitch";
 import { floorLabel } from "@/lib/service/zoneCode";
 import { fmtDate, fmtNumber, naText } from "@/lib/format";
+import SurveyMethodChip from "./SurveyMethodChip";
 import styles from "./CustomerZonesPanel.module.css";
 
 /* ป้ายการขายมี **สามแบบ ไม่ใช่สองแบบ** — `zoneTermState` ตอบสามค่า และของที่
@@ -57,6 +60,33 @@ function SizeCell({ zone }) {
       </small>
     </>
   );
+}
+
+/* ── ผลล่าสุดมาจากแบบ (ประเมินจากแบบ · งวด S2b · แผน survey-desk-assessment §5) ──────────────────
+   ⭐ ทะเบียนบอกมาแล้วว่าแถวไหนเป็นผลจากแบบ: `zone.confirmTag` มีคำ **เฉพาะ** แถวที่ผลล่าสุดมาจากแบบ
+      (คำ = ป้ายที่พิมพ์ · "… รอยืนยันหน้างาน" เมื่อใบตอบว่าต้องยืนยัน) ⇒ แท็บนี้ไม่ถามวิธีประเมินเอง ถามแค่ว่า "มีป้ายไหม"
+   ⚠️ แถวที่ไม่มีคีย์นี้ (ผลลงหน้างาน · ยังไม่ประเมิน · แถวทะเบียนรุ่นก่อนงวด S2a) = ทุกช่องเป็นคำเดิมทุกตัวอักษร */
+const DRAWING_DATE_LABEL = `${SURVEY_METHOD_LABEL.drawing}เมื่อ`;
+
+/* บรรทัดรอบใต้วันที่ประเมินล่าสุด — `null` = ไม่มีบรรทัด
+   · ผลลงหน้างาน: คำเดิม (นับทุกรอบที่ไม่ถูกตัด)
+   · ผลจากแบบ: นับเฉพาะรอบที่ **ไปวัดจริง** (`onsiteSurveyCount`) — รอบจากแบบไม่ใช่รอบที่ช่างเข้าไป
+     0 หรือ 1 รอบ = ไม่มีบรรทัด ("ประเมินรอบแรก" ใต้วันที่ของผลจากแบบจะอ่านเป็นว่าไปวัดมาแล้ว) */
+function roundsText(zone) {
+  if (!zone.confirmTag) return zone.surveyCount > 1 ? `ประเมินมาแล้ว ${zone.surveyCount} รอบ` : "ประเมินรอบแรก";
+  const onsite = Number(zone.onsiteSurveyCount) || 0;
+  return onsite > 1 ? `ประเมินมาแล้ว ${onsite} รอบ` : null;
+}
+
+/* คำใต้ตัวเลข "ประเมินแล้วยังไม่ขาย" — มีพื้นที่ที่ตัวเลขมาจากแบบและยังรอยืนยันหน้างาน = บอกจำนวนไว้ด้วย
+   (เสนอราคาได้เหมือนเดิม — มติเจ้าของ D1 — แต่ฝ่ายขายต้องรู้ว่าตัวเลขชุดไหนยังขยับได้)
+   ⚠️ `awaitingConfirm` มาจากยอดรวมของทะเบียน (`registryTotals`) · ไม่มี / เป็น 0 = ประโยคเดิม */
+function unsoldNote(registry, unsold) {
+  if (!(unsold > 0)) return undefined;
+  const awaiting = Number(registry.awaitingConfirm) || 0;
+  return awaiting > 0
+    ? `มีตัวเลขครบแล้ว เสนอราคาได้ · ${fmtNumber(awaiting)} พื้นที่${SURVEY_METHOD_LABEL.drawing} รอยืนยันหน้างาน`
+    : "มีตัวเลขครบแล้ว เสนอราคาได้โดยไม่ต้องกลับไปวัดใหม่";
 }
 
 export default function CustomerZonesPanel({
@@ -96,8 +126,9 @@ export default function CustomerZonesPanel({
         {/* ⭐ กรณี ④ ของเมทริกซ์: วัดแล้วยังไม่ขาย = ของที่จ่ายค่าแรงไปแล้วแต่ยังไม่ได้เงิน
             ⇒ ต้องชูขึ้นก่อนใคร (แผน §5A · ม็อก §12) */}
         <Metric icon={<TriangleAlert size={16} aria-hidden="true" />} tone={unsold > 0 ? "warning" : undefined}
+          className={unsold > 0 && Number(registry.awaitingConfirm) > 0 ? styles.noteWrap : undefined}
           label="ประเมินแล้วยังไม่ขาย" value={Math.max(0, unsold)}
-          note={unsold > 0 ? "มีตัวเลขครบแล้ว เสนอราคาได้โดยไม่ต้องกลับไปวัดใหม่" : undefined} />
+          note={unsoldNote(registry, unsold)} />
       </MetricStrip>
 
       {sites.map((site) => {
@@ -164,6 +195,7 @@ export default function CustomerZonesPanel({
                   <tbody>
                     {site.zones.map((zone) => {
                       const badge = TERM_BADGE[zone.termState] || TERM_BADGE.none;
+                      const rounds = roundsText(zone);
                       return (
                         <tr key={zone.id}>
                           <td>
@@ -173,6 +205,8 @@ export default function CustomerZonesPanel({
                             <small className={`${styles.sub} mono`}>
                               {[zone.code, floorLabel(zone.floor)].filter(Boolean).join(" · ") || naText(null)}
                             </small>
+                            {/* ผลล่าสุดมาจากแบบ — ป้ายของทะเบียน (`confirmTag`) · ผลลงหน้างาน / ยังไม่ประเมิน = ไม่มีคำ ไม่วาดอะไร */}
+                            <SurveyMethodChip label={zone.confirmTag} className={styles.zoneTag} />
                           </td>
                           <td><SizeCell zone={zone} /></td>
                           <td className="num">
@@ -230,6 +264,8 @@ export default function CustomerZonesPanel({
                           <td>
                             {zone.surveyedAt ? (
                               <>
+                                {/* วันที่ของผลจากแบบไม่ใช่วันที่ช่างเข้าไปวัด ⇒ ป้ายกำกับเหนือวันที่ (เฉพาะแถวที่ทะเบียนติดป้ายจากแบบ) */}
+                                {zone.confirmTag ? <small className={styles.dateLabel}>{DRAWING_DATE_LABEL}</small> : null}
                                 {/* ปลายทางคือ **ใบคำร้อง** ไม่ใช่หน้าไซต์ — เปิดได้ทุกตำแหน่ง
                                     และตรงกับคำถาม "ประเมินล่าสุดโดยใบไหน" พอดี */}
                                 {zone.surveyRequestId ? (
@@ -237,9 +273,7 @@ export default function CustomerZonesPanel({
                                     {fmtDate(zone.surveyedAt)}
                                   </Link>
                                 ) : <span className="mono">{fmtDate(zone.surveyedAt)}</span>}
-                                <small className={styles.sub}>
-                                  {zone.surveyCount > 1 ? `ประเมินมาแล้ว ${zone.surveyCount} รอบ` : "ประเมินรอบแรก"}
-                                </small>
+                                {rounds ? <small className={styles.sub}>{rounds}</small> : null}
                               </>
                             ) : <span className={styles.muted}>ยังไม่เคยวัด</span>}
                             {/* 🔒 สถานะของตัวเอง ไม่ใช่ "ยังไม่วัด" — ยุบรวมแล้วสองใบจะสั่ง

@@ -14,7 +14,7 @@
 //   ⇒ `surveyDeskCommitPatch` (`surveyVisit.js`) ดึงมาไม่ได้: patch ของ "รับปากวันส่งผล" ประกอบเองข้างล่าง
 //     และเทสต์ข้อ ② เทียบกับตัวจริงทุกคีย์
 import { fmtDate } from '@/lib/format';
-import { VISIT_STATUS_LABELS } from '@/lib/service/visitStatus';
+import { VISIT_STATUS_LABELS, isClosedVisit } from '@/lib/service/visitStatus';
 import { surveyEditLockError, surveyZoneName } from '@/lib/service/survey';
 import { isDrawingZone, surveyMethodMix, surveyNeedsVisit, zoneMethod } from '@/lib/service/surveyMethod';
 
@@ -52,7 +52,46 @@ export const SURVEY_METHOD_ERRORS = {
 export const SURVEY_METHOD_BODY_ERROR = 'วิธีประเมินไม่ถูกต้อง'; // body ของ route ผิดรูป (changes · actionId · seenMix) — 400
 const REASON_TOO_LONG_ERROR = `เหตุผลยาวเกิน ${SURVEY_METHOD_REASON_MAX} ตัวอักษร`;
 const RESULT_DATE_BAD_ERROR = 'วันที่จะส่งผลประเมินไม่ถูกต้อง';
+
+/**
+ * ช่องไหนของโมดัลที่ `plan.errors` ชี้ — `{ reason, resultDate }`
+ * โมดัลใช้ตีขอบแดงให้ตรงช่องกับที่ toast พูด · ถามจากค่าคงที่ตัวเดียวกับที่แผนใส่ (ไม่นับจำนวน ไม่เทียบประโยคที่จอ)
+ * ⚠️ เพิ่มข้อผิดพลาดของช่องใหม่ในแผน = เพิ่มที่นี่ด้วย
+ */
+export function surveyMethodErrorFields(errors) {
+  const list = Array.isArray(errors) ? errors : [];
+  return {
+    reason: list.includes(SURVEY_METHOD_ERRORS.reason) || list.includes(REASON_TOO_LONG_ERROR),
+    resultDate: list.includes(SURVEY_METHOD_ERRORS.resultDate) || list.includes(RESULT_DATE_BAD_ERROR),
+  };
+}
+/**
+ * ประโยคของช่องที่ `plan.errors` ชี้ — `{ reason: string | null, resultDate: string | null }` (ข้อแรกของช่องนั้นตามลำดับของแผน)
+ * โมดัลพิมพ์ใต้ช่องที่ขึ้นขอบแดง: toast ของปุ่มหลักหายไปเอง ขอบแดงที่ไม่มีคำอธิบายอยู่ข้าง ๆ บอกอะไรไม่ได้ (UAT S2b S06)
+ * ⚠️ ชุดค่าคงที่เดียวกับ `surveyMethodErrorFields` — เพิ่มข้อผิดพลาดของช่องใหม่ในแผน = เพิ่มทั้งสองที่
+ */
+export function surveyMethodErrorTexts(errors) {
+  const list = Array.isArray(errors) ? errors : [];
+  const first = (...texts) => list.find((text) => texts.includes(text)) ?? null;
+  return {
+    reason: first(SURVEY_METHOD_ERRORS.reason, REASON_TOO_LONG_ERROR),
+    resultDate: first(SURVEY_METHOD_ERRORS.resultDate, RESULT_DATE_BAD_ERROR),
+  };
+}
 const CUT_CONFIRM_LABEL = 'ตัดพื้นที่และยกเลิกนัด';
+
+/* ── งวด S2b: คำที่จอของผู้วางคิว · ฝ่ายขาย · หัวหน้า ใช้ร่วมกัน (อยู่ที่นี่ที่เดียว — ไม่มีจอไหนพิมพ์เอง) ───────────────────
+   การ์ดคำร้องบนหน้าจัดคิวของใบงานโต๊ะ (แผน §3.2 ข้อ 1) · ที่มาของใบที่หัวหน้าสลับกลับเป็นลงหน้างาน (แผน §3.5) */
+export const SURVEY_QUEUE_DESK_CHIP = 'จากแบบ · ไม่ต้องลงคิว';
+export const SURVEY_METHOD_BACK_ORIGIN = (reason) => `หัวหน้าเปลี่ยนเป็นลงหน้างาน: ${reason}`;
+/* ⭐ **สวิตช์เดียวของ "ปุ่มขอยืนยันหน้างานมีจริงหรือยัง"** — เส้นของปุ่มมากับงวด S5 · ระหว่างนี้แถบแจ้งของฝ่ายขายกับกล่องส่งผลของ
+   หัวหน้าต่อประโยคเดียวกันนี้ท้ายคำที่เอ่ยถึงปุ่ม (ไม่งั้นทั้งสองฝ่ายถูกบอกให้กดปุ่มที่ยังไม่มี)
+   งวด S5 พลิกค่าคงที่ตัวเดียว ⇒ `action.ready` เป็นจริง และประโยคนี้หายจากทั้งสองจอพร้อมกัน */
+export const SURVEY_CONFIRM_ACTION_READY = false;
+export const SURVEY_CONFIRM_PENDING_NOTE = 'ปุ่ม “ขอยืนยันหน้างาน” ของฝ่ายขายจะเปิดใช้ในรอบถัดไป — ระหว่างนี้ฝ่ายขายเปิดคำร้องประเมินพื้นที่แบบลงหน้างานของพื้นที่เดิมได้';
+/* ใบงานโต๊ะ (ไม่เหลือพื้นที่ที่ต้องลงหน้างาน) — คนที่ไม่ใช่หัวหน้าฝ่ายเพิ่มพื้นที่ไม่ได้ (แผน §3.4)
+   เส้นเพิ่มพื้นที่ตอบประโยคนี้ และจอใบประเมินพิมพ์ประโยคเดียวกันให้ผู้วางคิวตรงที่ปุ่มเพิ่มพื้นที่เคยอยู่ */
+export const SURVEY_DESK_ADD_HEAD_ONLY = 'ใบนี้หัวหน้าประเมินจากแบบ — เพิ่มพื้นที่ได้เฉพาะหัวหน้าฝ่ายบริการ';
 
 /* ⭐ ชื่อขั้นบนรางของ **งานโต๊ะ** (ทุกพื้นที่ประเมินจากแบบ · แผน survey-desk-assessment §3.1) — ใบแบบนี้ไม่ลงคิว
    และไม่มีนัดเข้าพื้นที่ ⇒ ชื่อขั้นกลางสองขั้นของรางหน้างาน ("ลงคิว / นัด" · "เข้าพื้นที่") เล่าเรื่องที่ไม่ได้เกิด
@@ -110,6 +149,19 @@ const asMethod = (row, to) => ({ ...row, method: to });
 const isDateKey = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v);
 const OPEN_VISIT = ['draft', 'scheduled', 'in_progress'];
 const CANCELLABLE_VISIT = ['draft', 'scheduled'];
+/* นัด "ไปถึงไซต์แล้ว" — เข้าแล้ว / ทำไม่ครบ · `unable` (ไปแล้วเข้าไม่ได้) ไม่นับ
+   ⚠️ กติกาเดียวกับ `visitReachedSite` (`surveyQueue.js`) — ดึงตัวนั้นมาไม่ได้ (ไฟล์นี้ดึงได้สี่โมดูล ดูหัวไฟล์)
+      เทสต์ข้อ ④ เทียบกับตัวจริงทุกสถานะของนัด */
+const reachedSite = (visit) => isClosedVisit(visit) && visit?.status !== 'unable';
+/* มติเจ้าของ 12/10 (O3) — บรรทัดของกล่องผลลัพธ์เมื่อใบที่เคยเข้าพื้นที่แล้วมีพื้นที่กลับเป็นลงหน้างาน: ใบไม่ถอยไปรอลงคิว
+   `STAYS_LINE`          นัดล่าสุดของใบคือนัดที่ไปถึงไซต์ — หน้าคำร้องอ่านขั้นจากนัดนั้น ใบจึงอยู่ขั้นเดิมจริง
+   `staysRequeueLine`    นัดที่ไปถึงไซต์เป็นนัด **ก่อนหน้า** (นัดล่าสุดถูกยกเลิก / เข้าไม่ได้) — หน้าคำร้องและหน้าจัดคิวอ่านนัดล่าสุด
+                         แล้วขึ้น "ต้องลงคิวใหม่" (สถานะเดียวกับใบลงหน้างานของวันนี้ที่นัดซ้ำถูกยกเลิก) ⇒ **ไม่พิมพ์ว่า "ใบอยู่ขั้นเดิม"**
+   `BACK_ONSITE_KEEP`    ท้ายของบรรทัด "กลับเป็นลงหน้างาน" ในกรณี `keep` — ไม่พูดถึงการเข้าพื้นที่ที่ยังไม่มีใครนัด */
+const STAYS_LINE = 'ใบอยู่ขั้นเดิม — ใช้ผลจากรอบที่เข้าพื้นที่แล้วได้ · วันส่งผลที่รับปากไว้คงเดิม';
+const staysRequeueLine = (sv, label) => `วันส่งผลที่รับปากไว้คงเดิม — ใช้ผลจากรอบที่เข้าพื้นที่แล้วได้ · นัดล่าสุด ${sv} (${label}) ไม่ได้เข้าพื้นที่ ใบจึงขึ้น “ต้องลงคิวใหม่” ให้ผู้วางคิวลงนัดใหม่ได้`;
+const BACK_ONSITE_VISIT = 'ต้องวัดขนาดจริงแล้วบันทึกอีกครั้ง มีภาพกว้าง จุดติดตั้ง และรูปจุดตามปกติ · จุดที่มาร์กจากแบบยังอยู่ แต่ต้องเลือกจุดใหม่หลังเข้าพื้นที่';
+const BACK_ONSITE_KEEP = 'ตรวจขนาดกับผลจากรอบที่เข้าพื้นที่แล้วบันทึกอีกครั้ง มีภาพกว้าง จุดติดตั้ง และรูปจุดตามปกติ · จุดที่มาร์กจากแบบยังอยู่ แต่ต้องเลือกจุดใหม่';
 
 /**
  * ปุ่ม "เปลี่ยนวิธีประเมิน" — `{ show, allowed, reason }`
@@ -245,7 +297,10 @@ const deskCommitPatch = ({ date, actor, nowIso }) => ({
   assignedAt: nowIso,
 });
 
-/* นัดที่ยังค้างกลับมาเป็นนัดของใบ — วัน เวลา ช่าง กลับขึ้นใบ (สามคอลัมน์เดียวกับที่ PATCH ของนัดซิงก์)
+/* นัดของใบกลับมาเป็นเจ้าของคอลัมน์วันเข้าพื้นที่ — วัน เวลา ช่าง กลับขึ้นใบ (สามคอลัมน์เดียวกับที่ PATCH ของนัดซิงก์)
+   ใช้สองกรณี: `sync` (นัดที่ยังค้าง) และ `keep` (ใบเคยเข้าพื้นที่แล้ว — นัดล่าสุดของใบ ตัวที่หน้าคำร้องอ่าน)
+   🐞 `keep` เคยไม่เขียนอะไรเลย ⇒ `committedDueDate` ค้างเป็น **วันส่งผล** ที่ `deskCommitPatch` เขียนตอนใบเป็นงานโต๊ะ
+      พอใบต้องมีนัดอีก หัวหน้าคำร้องอ่านมันเป็น "วันนัดเข้าพื้นที่" — นัดที่ไม่มีใครนัด (รีวิว 12/10)
    ⚠️ **ไม่มี `committedResultDate`** — คำสัญญาวันส่งผลกับฝ่ายขายเปลี่ยนโดยคนเท่านั้น */
 const visitSyncPatch = (visit) => ({
   committedDueDate: visit.scheduledDate || null,
@@ -274,6 +329,11 @@ function visitAction({ kind, flip, visit, byThisAction }) {
  * @param changes     `[{ zoneId, method }]` — การสลับ (ใช้ไม่ได้พร้อม `cut`: มี `cut` = `changes` ไม่ถูกอ่าน)
  * @param cut         `{ zoneId, to: 'cut' }` — หัวหน้าตัดพื้นที่ลงหน้างานสุดท้าย
  * @param visit       นัดที่ route เลือกมาแล้ว · `cancelledByThisAction: true` = นัดที่ถูกยกเลิกโดยการกดครั้งนี้ (route พิสูจน์แล้ว)
+ *                    ⚠️ ไม่มีนัดค้าง = ต้องเป็น **นัดล่าสุดของใบ** (ตัวเดียวกับที่หน้าคำร้องอ่านขั้น) — ทิศ "กลับเป็นลงหน้างาน" ถามจากมันว่า
+ *                       ใบเคยเข้าพื้นที่แล้วหรือยัง (มติ 12/10 ข้อ O3 · ขั้น 4 ข้างล่าง)
+ * @param siteReached `true` = ใบมีนัดที่ **ไปถึงไซต์แล้ว** สักนัด (เข้าแล้ว / ทำไม่ครบ) ไม่ว่านัดล่าสุดจะเป็นอะไร — คำถามเดียวกับด่านส่งผล
+ *                    และ `siteVisitReached` ของใบประเมิน · route อ่านจากฐานเอง (อ่านไม่สำเร็จ = 500) · โมดัลส่งค่าของ GET
+ *                    ⚠️ ไม่ส่ง / `null` / `false` = ถามจาก `visit` ตัวเดียว (นัดล่าสุด) เหมือนเดิม
  * @param request     `{ id, docNo, committedResultDate, committedDueDate, answeredAt }`
  * @param sendBack    `surveySendBackState(...)` ของใบ
  * @param reason      เหตุผล (ของการตัด = เหตุผลที่ตัด)
@@ -287,7 +347,7 @@ function visitAction({ kind, flip, visit, byThisAction }) {
  * ⚠️ แผนที่ `stale` ไม่สั่งเขียนอะไรเลย (`writes` ว่าง) — route ตอบ 409 โมดัลขึ้นข้อความเดียวกัน
  */
 export function surveyMethodSwitchPlan({
-  rows, changes = [], cut = null, visit = null, request = {}, sendBack = null,
+  rows, changes = [], cut = null, visit = null, siteReached = null, request = {}, sendBack = null,
   reason = '', resultDate = '', hasDrawings = true, actor = null, nowIso = null,
 } = {}) {
   const all = list(rows).filter(Boolean);
@@ -374,12 +434,23 @@ export function surveyMethodSwitchPlan({
   let datesAction = 'none';
   if (kind === 'switch' || kind === 'cut') {
     if (flip === 'to-desk') datesAction = 'set';
-    else if (flip === 'to-visit') datesAction = OPEN_VISIT.includes(status) ? 'sync' : 'clear';
+    else if (flip === 'to-visit') {
+      /* ⭐ มติเจ้าของ 12/10 (O3) — ใบ **เคยมีนัดที่ไปถึงไซต์แล้ว** (เข้าแล้ว / ทำไม่ครบ): ไม่กลับไปรอลงคิว วันส่งผลที่รับปากไว้คงเดิม
+         🔴 ถามว่า "เคยมีสักนัดไหม" (`siteReached`) ไม่ใช่ "นัดล่าสุดถึงไหม" — ด่านส่งผลกับการ์ดของใบถามแบบแรก · นัดที่ถึงไซต์แล้ว
+            ตามด้วยนัดซ้ำที่ถูกยกเลิก (รวมนัดที่การสลับเป็นจากแบบยกเลิกเอง) หรือเข้าไม่ได้ เคยได้ `clear` ทั้งที่หัวหน้าส่งผลจากรอบแรกได้
+         ⇒ `keep`: `committedResultDate` ไม่อยู่ใน patch · คอลัมน์วันเข้าพื้นที่กลับไปตามนัดล่าสุดของใบ (`visitSyncPatch` — สภาพเดียวกับ
+           ใบลงหน้างานของวันนี้ที่มีนัดชุดเดียวกัน) · ไม่มีบรรทัด "รอลงคิว" ทั้งในกล่องและในเธรด
+         ต้องไปวัดใหม่จริง = ผู้วางคิวลงนัดใหม่ตามปกติ · ใบที่ไม่เคยมีนัดถึงไซต์ (ไม่มีนัด · ยกเลิก · เข้าไม่ได้) = ล้างวันเหมือนเดิม */
+      if (OPEN_VISIT.includes(status)) datesAction = 'sync';
+      else datesAction = reachedSite(visit) || siteReached === true ? 'keep' : 'clear';
+    }
   }
+  // `keep` ที่นัดล่าสุดไม่ใช่นัดที่ไปถึงไซต์ — หน้าคำร้องอ่านนัดล่าสุดแล้วขึ้น "ต้องลงคิวใหม่" (ดู `staysRequeueLine`)
+  const keepRequeue = datesAction === 'keep' && !!status && !reachedSite(visit);
   const dateOk = isDateKey(date);
   let datesPatch = null;
   if (datesAction === 'set' && dateOk && actor?.id != null) datesPatch = deskCommitPatch({ date, actor, nowIso });
-  else if (datesAction === 'sync') datesPatch = visitSyncPatch(visit);
+  else if (datesAction === 'sync' || (datesAction === 'keep' && status)) datesPatch = visitSyncPatch(visit);
   else if (datesAction === 'clear') datesPatch = { ...CLEAR_DATES_PATCH };
 
   const needs = { reason: kind !== 'none', resultDate: datesAction === 'set' };
@@ -436,11 +507,15 @@ export function surveyMethodSwitchPlan({
       lines.push(`เรื่องที่ส่งกลับให้ช่างแก้${sentBackCount ? ` ${sentBackCount} ข้อ` : ''} ถูกปิดไปด้วย`);
     }
     if (toOnsite.length) {
-      lines.push(`${toOnsite.length} พื้นที่กลับเป็นลงหน้างาน — ต้องวัดขนาดจริงแล้วบันทึกอีกครั้ง มีภาพกว้าง จุดติดตั้ง และรูปจุดตามปกติ · จุดที่มาร์กจากแบบยังอยู่ แต่ต้องเลือกจุดใหม่หลังเข้าพื้นที่`);
+      // ⚠️ `keep` = ไม่มีการเข้าพื้นที่รอบใหม่ที่นัดไว้ — บรรทัดนี้ต้องไม่พูดว่า "หลังเข้าพื้นที่" แล้วบรรทัดถัดไปบอกว่าใช้ผลรอบเดิมได้
+      lines.push(`${toOnsite.length} พื้นที่กลับเป็นลงหน้างาน — ${datesAction === 'keep' ? BACK_ONSITE_KEEP : BACK_ONSITE_VISIT}`);
     }
     if (datesAction === 'clear') {
       const cleared = req.committedResultDate ? ` (${fmtDate(req.committedResultDate)})` : '';
       lines.push(`ใบกลับไปขั้น “รอลงคิว” — วันส่งผลที่รับปากไว้${cleared} ถูกล้าง · ผู้วางคิวลงวันเข้าพื้นที่และวันส่งผลใหม่`);
+    }
+    if (datesAction === 'keep') {
+      lines.push(keepRequeue ? staysRequeueLine(sv, VISIT_STATUS_LABELS[status] || status) : STAYS_LINE);
     }
   }
 
