@@ -25,7 +25,9 @@ import Input from "@/components/ui/Input";
 import Segmented from "@/components/ui/Segmented";
 import { fmtNumber } from "@/lib/format";
 import { ZONE_TAKEN_SAME_LINE, registryIndex, zoneBrowserRows } from "@/lib/service/zonePickerOptions";
-import { ZONES_BULK_PACKS_INVALID, ZONES_BULK_PACKS_LABEL, zonesBulkConsequence, zonesBulkPlan } from "./zonesBulkPlan";
+import {
+  ZONES_BULK_PACKS_INVALID, ZONES_BULK_PACKS_LABEL, zoneAssessedSourceNote, zonesBulkAwaitingText, zonesBulkConsequence, zonesBulkPlan,
+} from "./zonesBulkPlan";
 import styles from "./ZonesBulkModal.module.css";
 
 const MODE_OPTIONS = [
@@ -98,6 +100,10 @@ export default function ZonesBulkModal({
      ไม่มีทั้งสองข้อ = ไม่ติด (ท้ายหน้าต่างไม่เคยพิมพ์ "null") */
   const reason = pressed ? (extraError || plan.error) : null;
   const blocked = Boolean(reason);
+  /* ⭐ ประเมินจากแบบ (งวด S2b): โซนที่ติ๊กซึ่งตัวเลขที่จะเติมให้มาจากแบบและยังรอยืนยันหน้างาน — **เตือนเท่านั้น** ไม่แตะ `blocked`
+     (ผลจากแบบเป็นผลประเมินจริง ใช้ตั้งงานบริการได้ · มติเจ้าของ D1) · ขึ้นทันทีที่ติ๊ก ไม่รอกด เพราะไม่ใช่ด่านของปุ่ม (ทรงเดียวกับ `siteError`)
+     ไม่มีโซนแบบนั้น / โหมด "เท่ากันทุกโซน" / ทะเบียนที่ไม่พกคีย์ (ใบย้อนหลัง) = null ⇒ ท้ายหน้าต่างเดิมทุกจุด */
+  const awaitingNote = zonesBulkAwaitingText(plan);
 
   const toggle = (ids, on) => setPicked((current) => {
     if (!on) {
@@ -132,6 +138,7 @@ export default function ZonesBulkModal({
       subtitle={subtitle}
       footer={(
         <div className={styles.foot}>
+          {awaitingNote ? <span className={styles.awaiting} role="status">{awaitingNote}</span> : null}
           <span className={styles.consequence} data-blocked={blocked ? "" : undefined} role={blocked ? "alert" : undefined}>
             {blocked ? `ยังเพิ่มไม่ได้ — ${reason}` : consequence(plan, { lineNo, mode })}
           </span>
@@ -244,7 +251,8 @@ export default function ZonesBulkModal({
                           />
                           <span>{zone.name || zone.code}</span>
                           {zone.code ? <span className={styles.zoneCode}>{zone.code}</span> : null}
-                          {assessed ? <span className={styles.zoneNote}>· ประเมินไว้ {fmtNumber(assessed)} แพ็ค</span> : null}
+                          {/* ตัวเลขที่มาจากแบบต่อท้ายด้วย " (จากแบบ)" — แถวทะเบียนที่ไม่พกป้าย (ผลลงหน้างาน · ใบย้อนหลัง) = คำเดิม */}
+                          {assessed ? <span className={styles.zoneNote}>· ประเมินไว้ {fmtNumber(assessed)} แพ็ค{zoneAssessedSourceNote(zone)}</span> : null}
                           {zone.why ? <span className={styles.zoneNote}>· {zone.why}</span> : null}
                         </label>
                       );

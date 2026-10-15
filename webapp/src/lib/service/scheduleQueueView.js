@@ -24,6 +24,10 @@ import {
   SURVEY_QUEUE_STEPS, SURVEY_QUEUE_STEP_BADGES, SURVEY_QUEUE_STEP_LABELS, acknowledgedText,
   liveSurveyVisitsByRequest, previousVisitText, surveyQueueStep,
 } from './surveyQueue';
+/* คำของ "ประเมินจากแบบ" (งวด S2b) — ไฟล์ล้วน คำอยู่ที่เดียว การ์ดไม่พิมพ์เอง */
+import {
+  SURVEY_METHOD_BACK_ORIGIN, SURVEY_METHOD_CHIP, SURVEY_METHOD_LABEL, SURVEY_QUEUE_DESK_CHIP,
+} from './surveyMethodSwitch';
 import { requestStatusView } from '@/lib/requests/statuses';
 import { acknowledgeRequestError } from '@/lib/requests/stages';
 import { commitDueLabels } from '@/lib/requests/commitDue';
@@ -111,9 +115,21 @@ export const INTAKE_UPSTREAM_LABEL = INTAKE_TAB_LABELS.plan;
    แถว "ที่มา" ในโมดัลลงคิว */
 export const REQUEST_ORIGIN_TEXT = 'คำร้องประเมินพื้นที่ · ยังไม่มีนัด';
 
+/* ── การ์ดของ **งานโต๊ะ** (ทุกพื้นที่ประเมินจากแบบ · mig 0408 · งวด S2b · แผน survey-desk-assessment §3.2 ข้อ 1) ──
+   ⭐ ใบแบบนี้ไม่ลงคิว ไม่มีนัด ไม่มีเจ้าหน้าที่ไปหน้างาน ⇒ การ์ดมีได้ขั้นเดียวคือ "รอรับเรื่อง" (`surveyQueueStep` ตัดใบออกหลังรับเรื่อง)
+      และต้องไม่พูดเรื่องวันเข้าพื้นที่ / คนว่าง / ลงคิว — พูดแต่ "วันที่ผู้ขอต้องการผล" กับใครทำก้าวถัดไป
+   ⚠️ ต้นเรื่องและคำสั่งของการ์ดประกอบจากคำเดิมของไฟล์นี้ + ค่าคงที่ของ `surveyMethodSwitch` — ไม่มีคำของวิธีประเมินพิมพ์ซ้ำที่นี่ */
+export const DESK_REQUEST_ORIGIN_TEXT = `คำร้องประเมินพื้นที่ · ${SURVEY_METHOD_LABEL.drawing}`;
+export const DESK_REQUEST_ACK_TEXT = 'ยังไม่มีใครรับเรื่อง — รับเรื่องแล้วหัวหน้าฝ่ายบริการรับปากวันส่งผล ไม่ต้องลงคิว';
+/* ผู้ขอไม่ได้ให้วันมา — คำเดียวของการ์ดลงหน้างาน (ไม่มีวันเข้า) และการ์ดงานโต๊ะ (ไม่มีวันต้องการผล) */
+const NO_WISH_DATE_TEXT = 'ผู้ขอไม่ระบุวันที่ต้องการ';
+
 /**
  * แถวการ์ดของคำร้องหนึ่งใบ — `null` ถ้าใบนี้ไม่ใช่ของกลุ่มนี้แล้ว (`surveyQueueStep` ตอบ null)
  *
+ * @param request      แถวจาก `loadSurveyQueueRequests` — พก `surveyNeedsVisit` (`false` ตรงตัว = งานโต๊ะ) และ
+ *                     `surveyMethodBack` (`{ reason }` ของใบที่หัวหน้าสลับกลับเป็นลงหน้างาน · ไม่ใช่ = null)
+ *                     ⚠️ ไม่ติดสองคีย์นี้มา = การ์ดเดิมทุกช่อง (ใบลงหน้างานของวันนี้ทุกใบ) · `methodChip` เป็น null
  * @param todayIso     วันนี้ของหน้าต่าง (วันไทย)
  * @param live         นัดที่อยู่บนตาราง (นับ "วันนั้นว่างกี่คน")
  * @param peopleInView เจ้าหน้าที่ในมุมมองตอนนี้ (กรองทีมแล้ว)
@@ -122,6 +138,8 @@ export function surveyRequestRow(request, { todayIso, sitesById = new Map(), liv
   const step = surveyQueueStep(request);
   if (!step) return null;
   const requeue = step === 'requeue';
+  /* งานโต๊ะ — ธงจากแถวพื้นที่ที่ตัวโหลดติดมา (`false` ตรงตัวเท่านั้น · กติกาเดียวกับ `surveyQueueStep` / `commitDueMode`) */
+  const desk = request.surveyNeedsVisit === false;
   const site = sitesById.get(request.siteId) || null;
   const labels = commitDueLabels(request, { requeue });
   const statusView = requestStatusView(request);
@@ -132,13 +150,20 @@ export function surveyRequestRow(request, { todayIso, sitesById = new Map(), liv
   const tag = { tone: requeue ? 'warning' : statusView.tone, label: SURVEY_QUEUE_STEP_LABELS[step] };
 
   // ── วัน: ใบที่ยังไม่มีนัดบอก "วันที่ผู้ขอต้องการ" · ใบที่นัดหลุดบอกวันที่เคยรับปาก ──
+  /* ⭐ งานโต๊ะไม่มีวันเข้าพื้นที่ ⇒ บรรทัดวันของการ์ดคือ **วันที่ผู้ขอต้องการผล** (คำเดิมของช่องภาระ "ต้องการผล …")
+        ไม่มีช่วงเวลา · "เลยวันที่ต้องการ" นับจากวันนั้น */
   const date = requeue ? request.committedDueDate : request.requestedDueDate;
   const time = toHHMM(requeue ? request.committedDueTime : request.requestedDueTime);
-  const dateLine = requeue
-    ? `นัดเดิม ${dayText(request.committedDueDate)}`
-    : (date ? `ต้องการเข้า ${dayText(date)}` : 'ผู้ขอไม่ระบุวันที่ต้องการ');
-  const timeLine = time ? `${requeue ? 'เวลา' : 'ช่วง'} ${time}` : '';
-  const rel = relDayText(date, todayIso, requeue ? 'วันนัดเดิมผ่านไปแล้ว' : 'เลยวันที่ต้องการ');
+  const wishResult = request.requestedResultDate;
+  const dateLine = desk
+    ? (wishResult ? `ต้องการผล ${dayText(wishResult)}` : NO_WISH_DATE_TEXT)
+    : requeue
+      ? `นัดเดิม ${dayText(request.committedDueDate)}`
+      : (date ? `ต้องการเข้า ${dayText(date)}` : NO_WISH_DATE_TEXT);
+  const timeLine = !desk && time ? `${requeue ? 'เวลา' : 'ช่วง'} ${time}` : '';
+  const rel = desk
+    ? relDayText(wishResult, todayIso, 'เลยวันที่ต้องการ')
+    : relDayText(date, todayIso, requeue ? 'วันนัดเดิมผ่านไปแล้ว' : 'เลยวันที่ต้องการ');
 
   // ── คน: ยังไม่มีเจ้าหน้าที่ ⇒ ช่องนี้บอกผู้ขอ + ค้างมากี่วัน (นับจากวันไทยที่ส่ง) ──
   const who = {
@@ -152,28 +177,41 @@ export function surveyRequestRow(request, { todayIso, sitesById = new Map(), liv
   };
 
   // ── ภาระ: วันส่งผลที่ผู้ขอต้องการ + วันนั้นว่างกี่คน (เฉพาะวันนี้เป็นต้นไป) ──
+  /* ⭐ งานโต๊ะ: วันส่งผลขึ้นไปอยู่บรรทัดวันแล้ว (ไม่พูดซ้ำ) และไม่มีใครต้องไปหน้างาน ⇒ ไม่นับคนว่าง */
   const resultDate = requeue
     ? (request.committedResultDate || request.requestedResultDate)
     : request.requestedResultDate;
-  const siteLoadText = resultDate
+  const siteLoadText = !desk && resultDate
     ? `${requeue && request.committedResultDate ? 'รับปากส่งผล' : 'ต้องการผล'} ${dayText(resultDate)}`
     : '';
   let dayLoad = null;
-  if (date && date >= todayIso && peopleInView.length) {
+  if (!desk && date && date >= todayIso && peopleInView.length) {
     const { free, total } = freeCrewOn(live, date, peopleInView);
     dayLoad = { text: `วันนั้นว่าง ${free.length} จาก ${total} คน`, tone: free.length ? 'ok' : 'warn', free };
   }
 
   // ── สิ่งที่ต้องทำ ──
+  /* 🔴 งานโต๊ะ: "แล้วจึงลงคิวเข้าพื้นที่" ไม่จริง (ใบนี้ไม่มีคิว) ⇒ ประโยคของตัวเอง บอกว่าก้าวถัดไปเป็นของหัวหน้า */
   const previous = request.surveyVisit;
   const instruction = step === 'acknowledge'
-    ? 'ยังไม่มีใครรับเรื่อง — รับเรื่องก่อน แล้วจึงลงคิวเข้าพื้นที่'
+    ? (desk ? DESK_REQUEST_ACK_TEXT : 'ยังไม่มีใครรับเรื่อง — รับเรื่องก่อน แล้วจึงลงคิวเข้าพื้นที่')
     : step === 'queue'
       ? `${acknowledgedText(request)} — เลือกวัน เวลา เจ้าหน้าที่ และวันส่งผล`
       : `${previousVisitText(previous)} — ลงคิวใหม่`;
   const badge = SURVEY_QUEUE_STEP_BADGES[step];
   const status = { label: badge.label, tone: badge.tone, text: instruction };
   const actionLabel = step === 'acknowledge' ? 'รับเรื่อง' : labels.action;
+
+  // ── ต้นเรื่อง + ป้ายวิธีประเมิน (งวด S2b) ──
+  /* · งานโต๊ะ: ป้าย "จากแบบ · ไม่ต้องลงคิว" ข้างป้ายขั้น + ต้นเรื่องบอกวิธี
+     · ใบที่หัวหน้าสลับกลับเป็นลงหน้างาน (ขั้นรอลงคิว): ต้นเรื่องบอกเหตุผลที่หัวหน้าให้ไว้ — การ์ดยังเป็นการ์ด "ขั้น 2/2" ธรรมดา
+       ⚠️ เฉพาะขั้น `queue` — ใบที่นัดหลุด (`requeue`) มีเรื่องของนัดเดิมให้บอกอยู่แล้ว
+     · นอกนั้น = คำเดิม และไม่มีป้าย (`methodChip: null` ⇒ การ์ดไม่วาดอะไรเพิ่ม) */
+  const methodChip = desk ? SURVEY_QUEUE_DESK_CHIP : null;
+  const backReason = step === 'queue' ? String(request.surveyMethodBack?.reason ?? '').trim() : '';
+  const origin = desk
+    ? DESK_REQUEST_ORIGIN_TEXT
+    : backReason ? SURVEY_METHOD_BACK_ORIGIN(backReason) : REQUEST_ORIGIN_TEXT;
 
   const row = {
     type: 'request',
@@ -206,7 +244,9 @@ export function surveyRequestRow(request, { todayIso, sitesById = new Map(), liv
     status,
     title: request.title || '',
     warns: [],
-    origin: REQUEST_ORIGIN_TEXT,
+    origin,
+    /* ป้ายวิธีประเมินข้างป้ายขั้น — มีเฉพาะงานโต๊ะ · null = การ์ดเดิม (การ์ดวาดผ่าน `SurveyMethodChip` ซึ่งไม่วาดอะไรเมื่อไม่มีคำ) */
+    methodChip,
     actionLabel,
     actionHint: step === 'acknowledge' ? '' : (labels.hint || ''),
     /* ⚠️ ด่านของปุ่มรับเรื่อง = ตัวเดียวกับที่ server ใช้ตีกลับ (GatedAction · โชว์เสมอ บอกเหตุตอนกด) */
@@ -223,10 +263,14 @@ export function surveyRequestRow(request, { todayIso, sitesById = new Map(), liv
       delete: false,
     },
   };
+  /* ⭐ ตาเห็นบนการ์ด = ต้องค้นเจอ (กฎ search haystack) — ป้ายวิธีประเมินอยู่ในคำค้นด้วย · งานโต๊ะเติมคำสั้น/คำเต็มของวิธี
+     ("จากแบบ" · "ประเมินจากแบบ") เป็นคำพ้องเหมือนที่คำสถานะของใบเป็นคำพ้องของป้ายขั้น
+     ⚠️ ค่าว่าง (`null` ของการ์ดลงหน้างาน) ถูก `queueHaystack` กรองทิ้ง ⇒ คำค้นของการ์ดเดิมไม่ขยับสักตัวอักษร */
   row.haystack = queueHaystack([
     row.code, row.kindLabel, tag.label, statusView.label, row.siteCode, row.siteName, row.customer,
     dateLine, timeLine, rel.text, who.text, who.sub, siteLoadText, dayLoad?.text,
     status.label, status.text, row.title, row.origin, actionLabel, row.actionHint,
+    row.methodChip, ...(desk ? [SURVEY_METHOD_CHIP.drawing, SURVEY_METHOD_LABEL.drawing] : []),
   ]);
   return row;
 }

@@ -72,6 +72,65 @@
   line-height: var(--lh-thai);
 }
 
+/* ใบผสม (ประเมินจากแบบ · งวด S2b): แถบนับเฉพาะพื้นที่ลงหน้างาน ⇒ คำของแถบ ("วัดแล้ว a / b พื้นที่ · จากแบบ k (หัวหน้ากรอกเอง)")
+   ต่อท้ายแถบ ตรงที่ "ตัดออก n" อยู่
+   ⚠️ คำนี้ยาวกว่าที่แถวเดียวในราง 330px รับไหว — `.meter small` ไม่ยอมหด ⇒ แถบเหลือไม่กี่พิกเซล
+      ⇒ แถบกินเต็มบรรทัด คำลงบรรทัดถัดไปและห่อได้ (ไม่ตัดทิ้ง) · ใบที่ไม่มีพื้นที่จากแบบไม่ถือคลาสนี้ = แถวเดียวเหมือนเดิม
+   ⚠️ กฎ `small` ข้างล่างต้องอยู่ **หลัง** `.meter small` — ความจำเพาะเท่ากัน ตัวหลังในไฟล์ชนะ */
+.meterNoted {
+  flex-wrap: wrap;
+  row-gap: var(--space-1);
+}
+
+.meterNoted .bar {
+  flex-basis: 100%;
+}
+
+.meterNoted small {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+/* ── แถววันส่งผลของงานโต๊ะ (ประเมินจากแบบ · งวด S2b · ม็อก B1) ─────────────────
+   วันที่ผู้ขอต้องการ (ซ้าย) + ปุ่มรับปาก/เลื่อนวันส่งผล (ขวา) ในกรอบเดียว ใต้กำหนดส่งผลและแถบวัด
+   ⚠️ ในราง 330px สองชิ้นอาจไม่พอบรรทัดเดียว ⇒ ห่อได้: ปุ่มลงบรรทัดของตัวเอง ชิดขวา (`margin-inline-start: auto`)
+      ไม่เกินสองบรรทัด — ประโยควันที่ผู้ขอต้องการสั้นพอบรรทัดเดียว ("ผู้ขอต้องการผล จ. 12 ต.ค.")
+   ⚠️ ไม่มีพื้นของตัวเอง (พื้นเดียวกับการ์ด) — ปุ่มเส้นขอบเปลี่ยนพื้นเป็น --panel-2 ตอนชี้ พื้นกรอบสีเดียวกันจะกลืนสถานะนั้น
+   ⚠️ **ปุ่มสูง 44px ทุกความกว้าง** (ปุ่มอื่นของการ์ดได้ 44px เฉพาะจอ ≤1050) — รางบนแท็บเล็ตแนวนอนก็ใช้นิ้ว และไฟล์นี้มีเส้นจอได้เส้นเดียว
+      จึงผูกกับชนิดตัวชี้ไม่ได้ · สองคลาส (`.deskDueBtn:global(.btn)`) ชนะ `min-height` ของ `.btn` ใน globals โดยไม่พึ่งลำดับไฟล์ */
+.deskDue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1-5) var(--space-2);
+  margin-top: var(--space-2-5);
+  padding: var(--space-1-5) var(--space-1-5) var(--space-1-5) var(--space-2-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.deskDueWish {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  min-width: 0;
+  color: var(--text-2);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+  font-variant-numeric: tabular-nums;
+}
+
+.deskDueWish > svg {
+  flex: none;
+  color: var(--text-3);
+}
+
+.deskDueBtn:global(.btn) {
+  flex: none;
+  min-height: var(--ctl-h-touch);
+  margin-inline-start: auto;
+}
+
 /* ── ③ กล่องแจ้ง: บรรทัดหลักฐานใต้เหตุผล (คนกด · เวลา · ผลเดิม) ─────────── */
 .noticeMeta {
   display: block;

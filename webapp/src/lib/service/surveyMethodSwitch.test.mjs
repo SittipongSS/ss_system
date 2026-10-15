@@ -18,6 +18,7 @@ import {
   SURVEY_DESK_RAIL_LABELS, surveyDeskRailSteps, surveyZoneAddedLabel,
   surveyMethodSwitchGate, surveyMethodSwitchPlan, surveyProgressText, surveyZoneNamesText,
 } from './surveyMethodSwitch.js';
+import { visitReachedSite } from './surveyQueue.js';
 import { surveyDeskCommitPatch } from './surveyVisit.js';
 
 const NOW = '2026-10-09T04:00:00.000Z';
@@ -72,6 +73,13 @@ const L5 = (label) => `นัด SV-26100011 (${label}) คงอยู่เป
 const L6 = 'นัด SV-26100011 วันที่ 13/10/2026 ของ Phuwadol Aoonnankad ยังอยู่ — ยังมีพื้นที่ที่ต้องวัด · ช่างได้รับแจ้งว่าไม่ต้องวัดพื้นที่นี้';
 const L8 = (n) => `${n} พื้นที่กลับเป็นลงหน้างาน — ต้องวัดขนาดจริงแล้วบันทึกอีกครั้ง มีภาพกว้าง จุดติดตั้ง และรูปจุดตามปกติ · จุดที่มาร์กจากแบบยังอยู่ แต่ต้องเลือกจุดใหม่หลังเข้าพื้นที่`;
 const L9 = 'ใบกลับไปขั้น “รอลงคิว” — วันส่งผลที่รับปากไว้ (15/10/2026) ถูกล้าง · ผู้วางคิวลงวันเข้าพื้นที่และวันส่งผลใหม่';
+const L_STAYS = 'ใบอยู่ขั้นเดิม — ใช้ผลจากรอบที่เข้าพื้นที่แล้วได้ · วันส่งผลที่รับปากไว้คงเดิม';
+// กรณี `keep`: บรรทัด "กลับเป็นลงหน้างาน" ไม่พูดถึงการเข้าพื้นที่รอบใหม่ (ไม่มีใครนัด)
+const L8_KEEP = (n) => `${n} พื้นที่กลับเป็นลงหน้างาน — ตรวจขนาดกับผลจากรอบที่เข้าพื้นที่แล้วบันทึกอีกครั้ง มีภาพกว้าง จุดติดตั้ง และรูปจุดตามปกติ · จุดที่มาร์กจากแบบยังอยู่ แต่ต้องเลือกจุดใหม่`;
+// กรณี `keep` ที่นัดที่ไปถึงไซต์เป็นนัดก่อนหน้า — หน้าคำร้องอ่านนัดล่าสุด ⇒ ไม่พูดว่า "ใบอยู่ขั้นเดิม"
+const L_STAYS_REQUEUE = (label) => `วันส่งผลที่รับปากไว้คงเดิม — ใช้ผลจากรอบที่เข้าพื้นที่แล้วได้ · นัดล่าสุด SV-26100011 (${label}) ไม่ได้เข้าพื้นที่ ใบจึงขึ้น “ต้องลงคิวใหม่” ให้ผู้วางคิวลงนัดใหม่ได้`;
+// คอลัมน์วันเข้าพื้นที่ตามนัดของ fixture — ไม่มี `committedResultDate`
+const VISIT_SYNC = { committedDueDate: '2026-10-13', committedDueTime: '10:00', assigneeId: 'U-TECH', assigneeName: 'Phuwadol Aoonnankad' };
 const L_CANCEL_ONLY = 'นัด SV-26100011 วันที่ 13/10/2026 ของ Phuwadol Aoonnankad จะถูกยกเลิก — ใบนี้ไม่มีพื้นที่ที่ต้องลงหน้างานแล้ว';
 const BELL_CANCEL = { kind: 'cancel', title: 'ยกเลิกนัด SV-26100011 — ใบนี้เปลี่ยนเป็นประเมินจากแบบ' };
 const BELL_ZONES = (names) => ({ kind: 'zones', title: `หัวหน้าเปลี่ยน “${names}” เป็นประเมินจากแบบ — ไม่ต้องวัดพื้นที่นี้` });
@@ -202,7 +210,7 @@ test('③ พื้นที่ลงหน้างานสุดท้าย�
 });
 
 /* ── 4) กลับเป็นลงหน้างาน ───────────────────────────────────────────────── */
-test('④ ใบจากแบบทั้งใบ พื้นที่แรกกลับเป็นลงหน้างาน: ไม่มีนัดค้าง = ล้างวัน · มีนัดค้าง = เอาวันของนัดกลับขึ้นใบ', () => {
+test('④ ใบจากแบบทั้งใบ พื้นที่แรกกลับเป็นลงหน้างาน: ไม่เคยถึงไซต์ = ล้างวัน · มีนัดค้าง = เอาวันของนัดกลับขึ้นใบ · เคยเข้าพื้นที่แล้ว = ใบอยู่ขั้นเดิม (O3)', () => {
   const unselect = [{ id: 'Z1', updatedAt: '2026-10-08T01:00:00+00:00', spots: [{ id: 's1', selected: false }, { id: 's2', selected: false }] }];
   const base = { rows: caseA(), changes: toOnsite('Z1') };
 
@@ -219,20 +227,91 @@ test('④ ใบจากแบบทั้งใบ พื้นที่แร
     },
   }, 'ไม่มีนัด');
 
-  // นัดที่ปิดไปแล้วไม่ใช่นัดค้าง → ล้างเหมือนกัน
-  for (const status of ['done', 'unable', 'cancelled']) {
-    assert.equal(plan({ ...base, visit: visit(status) }).dates.action, 'clear', status);
+  /* ⭐ มติเจ้าของ 12/10 (O3) — ตารางเต็ม: สถานะของนัดล่าสุด × วันบนใบ
+     ไม่เคยมีนัดถึงไซต์ (ไม่มีนัด · ยกเลิก · เข้าไม่ได้) = ล้างวัน กลับไปรอลงคิว (พฤติกรรมเดิม)
+     นัดค้าง = เอาวันของนัดกลับขึ้นใบ (เดิม) · นัดไปถึงไซต์แล้ว (เข้าแล้ว / ทำไม่ครบ) = **ใบอยู่ขั้นเดิม ไม่แตะวัน** */
+  const TABLE = [
+    [null, 'clear'], ['cancelled', 'clear'], ['unable', 'clear'],
+    ['draft', 'sync'], ['scheduled', 'sync'], ['in_progress', 'sync'],
+    ['done', 'keep'], ['partial', 'keep'],
+  ];
+  for (const [status, want] of TABLE) {
+    const got = plan({ ...base, visit: visitOf(status) });
+    assert.equal(got.dates.action, want, String(status));
+    assert.equal(got.flip, 'to-visit', String(status));
+    assert.equal(got.visit.action, 'none', String(status));
+    // "รอลงคิว" พูดเฉพาะตอนล้างวันจริง — กล่อง เธรด และสิ่งที่เขียน ไปด้วยกันเสมอ
+    const queued = got.lines.some((line) => line.includes('รอลงคิว')) || got.thread.includes('รอลงคิว');
+    assert.equal(queued, want === 'clear', `${status}: รอลงคิว`);
+    assert.equal(got.lines.includes(L_STAYS), want === 'keep', `${status}: บรรทัดอยู่ขั้นเดิม`);
+    // กติกา "ไปถึงไซต์แล้ว" ต้องเท่ากับตัวจริงของหน้าคำร้อง / หน้าจัดคิว (`visitReachedSite`) ทุกสถานะ
+    assert.equal(want === 'keep', visitReachedSite(visitOf(status)), `${status}: visitReachedSite`);
   }
-  /* ⚠️ จุดค้างของเจ้าของ (เอกสาร §12.6 ข้อ O3) — นัดล่าสุด **ไปถึงหน้างานแล้ว** (เข้าแล้ว / ทำไม่ครบ): แผนยังล้างวันและบอกว่า
-     "ใบกลับไปรอลงคิว" ตามสเปค §4.4 แต่หน้าคำร้องอ่านขั้นจากนัดที่ไปถึงแล้ว (ไม่ถอยไปขั้นลงคิว) · ข้อนี้จดพฤติกรรมวันนี้ไว้ —
-     เปลี่ยนเมื่อเจ้าของเคาะเท่านั้น (รางและขั้นของหน้าคำร้องอยู่นอกงวด S2a) */
+  for (const status of ['cancelled', 'unable']) {
+    const never = plan({ ...base, visit: visit(status) });
+    assert.deepEqual(never.lines, [L8(1), L9], status);
+    assert.deepEqual(never.writes.dates, { committedDueDate: null, committedDueTime: null, committedResultDate: null }, status);
+  }
   for (const status of ['done', 'partial']) {
-    const reached = plan({ ...base, visit: visit(status) });
-    assert.deepEqual(reached.lines, [L8(1), L9], status);
-    assert.ok(reached.thread.endsWith(' · ใบกลับไปรอลงคิว · ฝ่ายขายแจ้งวันที่หน้างานเข้าได้ในเธรดนี้'), status);
-    assert.deepEqual(reached.writes.dates, { committedDueDate: null, committedDueTime: null, committedResultDate: null }, status);
-    assert.equal(reached.visit.action, 'none', status);
+    expectPlan(plan({ ...base, visit: visit(status) }), {
+      kind: 'switch',
+      flip: 'to-visit',
+      datesAction: 'keep',
+      lines: [L8_KEEP(1), L_STAYS],
+      thread: T_ONSITE(1, 'ล็อบบี้'),
+      /* 🔴 วันส่งผลที่รับปากไว้ไม่อยู่ใน patch (คงเดิม) · คอลัมน์วันเข้าพื้นที่กลับไปตามนัด — ไม่งั้น `committedDueDate` ค้างเป็น
+         วันส่งผลของตอนเป็นงานโต๊ะ แล้วหัวหน้าคำร้องอ่านมันเป็น "วันนัดเข้าพื้นที่" (รีวิว 12/10) */
+      writes: { onsiteIds: ['Z1'], unselectSpotRows: unselect, dates: VISIT_SYNC },
+    }, `นัด ${status}`);
+    assert.equal('committedResultDate' in plan({ ...base, visit: visit(status) }).writes.dates, false, `${status}: ไม่แตะวันส่งผล`);
   }
+  // นัดที่ถูกยกเลิกโดยการกดนี้ (route พิสูจน์แล้ว) ไม่ใช่นัดที่ไปถึงไซต์
+  assert.equal(plan({ ...base, visit: visit('cancelled', { cancelledByThisAction: true }) }).dates.action, 'clear');
+
+  /* 🔴 **"เคยมีสักนัดที่ไปถึงไซต์"** (`siteReached`) ไม่ใช่ "นัดล่าสุดถึงไหม" (รีวิว 12/10) — นัดเข้าแล้ว / ทำไม่ครบ ตามด้วยนัดซ้ำที่ถูก
+     ยกเลิก (รวมนัดที่การสลับเป็นจากแบบยกเลิกเอง) หรือเข้าไม่ได้: ด่านส่งผลให้ส่งจากรอบแรกได้ ⇒ แผนต้องไม่ล้างวันส่งผล ไม่บอกว่ารอลงคิว
+     · หน้าคำร้องอ่านนัดล่าสุด (ขึ้น "ต้องลงคิวใหม่") ⇒ กล่องไม่พูดว่า "ใบอยู่ขั้นเดิม" · คอลัมน์วันเข้าพื้นที่ตามนัดล่าสุด (สภาพของ main) */
+  const LATER = [
+    ['done → cancelled', visit('cancelled'), 'ยกเลิก'],
+    ['partial → ยกเลิกโดยการสลับเป็นจากแบบ', visit('cancelled', { cancelledByThisAction: true }), 'ยกเลิก'],
+    ['done → unable', visit('unable'), 'ทำไม่ได้'],
+  ];
+  for (const [name, latest, label] of LATER) {
+    const got = plan({ ...base, visit: latest, siteReached: true });
+    expectPlan(got, {
+      kind: 'switch',
+      flip: 'to-visit',
+      datesAction: 'keep',
+      lines: [L8_KEEP(1), L_STAYS_REQUEUE(label)],
+      thread: T_ONSITE(1, 'ล็อบบี้'),
+      writes: { onsiteIds: ['Z1'], unselectSpotRows: unselect, dates: VISIT_SYNC },
+    }, name);
+    assert.equal(got.lines.some((line) => line.includes('รอลงคิว') || line.includes('ใบอยู่ขั้นเดิม')), false, name);
+    // ไม่บอก / บอกว่าไม่เคย = กติกาเดิมของนัดล่าสุด
+    for (const siteReached of [undefined, null, false]) {
+      assert.equal(plan({ ...base, visit: latest, siteReached }).dates.action, 'clear', `${name}: siteReached=${siteReached}`);
+    }
+  }
+  // `siteReached` ไม่เปลี่ยนกิ่งอื่น: นัดค้าง = sync · นัดล่าสุดถึงไซต์เอง = บรรทัด "ใบอยู่ขั้นเดิม" · ทิศเป็นจากแบบ = set
+  assert.equal(plan({ ...base, visit: visit('scheduled'), siteReached: true }).dates.action, 'sync');
+  assert.deepEqual(plan({ ...base, visit: visit('done'), siteReached: true }).lines, [L8_KEEP(1), L_STAYS]);
+  assert.equal(plan({ changes: toDrawing('Z1', 'Z2', 'Z3'), visit: visit('done'), siteReached: true }).dates.action, 'set');
+  // ไม่มีแถวนัดให้อ่าน (ไม่ควรเกิดเมื่อ siteReached จริง) = ไม่เขียนคอลัมน์วัน ไม่ล้าง
+  const noRow = plan({ ...base, visit: null, siteReached: true });
+  assert.equal(noRow.dates.action, 'keep');
+  assert.equal(noRow.writes.dates, null);
+  assert.deepEqual(noRow.lines, [L8_KEEP(1), L_STAYS]);
+  // หลายพื้นที่กลับพร้อมกัน / กลับทั้งใบ บนใบที่เคยเข้าพื้นที่แล้ว = กติกาเดียวกัน
+  const allBack = plan({ rows: caseA(), changes: toOnsite('Z1', 'Z2', 'Z3'), visit: visit('done') });
+  assert.equal(allBack.dates.action, 'keep');
+  assert.deepEqual(allBack.lines, [L8_KEEP(3), L_STAYS]);
+  assert.equal(allBack.thread, T_ONSITE(3, ALL));
+  assert.deepEqual(allBack.writes.dates, VISIT_SYNC);
+  /* ใบผสมที่เคยเข้าพื้นที่แล้ว (ไม่พลิก) — ไม่ใช่กรณีนี้: ไม่มีบรรทัดเรื่องขั้นของใบเลย เหมือนเดิม */
+  const mixedBack = plan({ rows: caseA({ Z3: { method: 'onsite' } }), changes: toOnsite('Z1'), visit: visit('done') });
+  assert.equal(mixedBack.flip, null);
+  assert.equal(mixedBack.dates.action, 'none');
+  assert.deepEqual(mixedBack.lines, [L8(1)]);
 
   // (ข) นัดกำลังทำ คนละวัน มีเวลา มีช่าง → sync: วัน เวลา ช่าง กลับขึ้นใบ · วันส่งผลไม่ถูกแตะ
   const inProgress = plan({ ...base, visit: visit('in_progress', { scheduledDate: '2026-10-20', startTime: '09:30:00' }) });

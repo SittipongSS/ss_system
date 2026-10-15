@@ -9,6 +9,13 @@
  *    ไม่สร้างปุ่มใหม่ และแต่ละปุ่มวาดครั้งเดียว (บทเรียนรางขวารุ่นแรก)
  * ⚠️ ลงทะเบียนที่ `details/index.js` (`viewForKind`) — เปลือกไม่เทียบชื่อหัวข้อเอง
  * 📄 บล็อก "เอกสารประเมินพื้นที่" (FM-TS-01 · PR-3) วาดจาก `job.document` — ดู `DocumentBlock` ข้างล่าง
+ * ✏️ **ประเมินจากแบบ** (mig 0408 · งวด S2b กลุ่ม D-3) — ทุกอย่างของวิธีนี้มาจากคีย์ของ `surveyJobView` ที่เป็น `null` / เท็จ
+ *    บนใบลงหน้างานล้วน ⇒ ใบของวันนี้ได้จอเดิมทุกจุด: แถบแจ้งเหนือตาราง (`zones.drawingBanner`) · ป้าย "จากแบบ" ใต้ชื่อพื้นที่
+ *    (ป้ายวิธีของแถว) · ช่องรูป "แบบ n" (`row.photosText` · `zones.photosTotalText`) · การ์ดฝั่งช่างที่ถูกถอด (`crewGate.hidden`)
+ *    · บล็อกเอกสารที่ถูกพักไว้ (`job.document` — lib ส่งประโยคมา ไม่มีปุ่ม) · ประโยคแทนปุ่มของคนที่รับปากวันส่งผลไม่ได้ (`stepNotes`)
+ *    · ทรงของตารางที่ยังไม่ส่งผล (`zones.table` · มติ 12/10): ใบจากแบบทั้งใบไม่มีคอลัมน์ "ภาพกว้าง" คอลัมน์สุดท้ายบอกจำนวนภาพแบบ
+ *      (`row.wideText` · `row.planText`) — ใบลงหน้างานล้วนได้ทรงของวันนี้ (มีภาพกว้าง · หัวคอลัมน์สุดท้าย "หน้างาน")
+ *    ⚠️ ไฟล์นี้ไม่ถามวิธีประเมินของแถวเอง และไม่พิมพ์คำของวิธีนี้เอง — วาดจากคีย์ข้างบนอย่างเดียว
  */
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -27,6 +34,8 @@ import GatedAction from "@/components/ui/GatedAction";
 import { kindMeta } from "@/components/ui/ActionButtons";
 import RichText from "@/components/ui/RichText";
 import ReadableText from "@/components/ui/ReadableText";
+import thaiText from "@/components/ThaiText";
+import SurveyMethodChip from "@/components/service/SurveyMethodChip";
 import { fmtNumber, naText } from "@/lib/format";
 import { requestKindLabel } from "@/lib/master/requestTypes";
 import { surveyJobView } from "@/lib/service/surveyJob";
@@ -158,8 +167,40 @@ function Cell({ label, num: isNum = false, children }) {
 /* null = อ่านรูปไม่สำเร็จ — "ไม่ทราบ" ไม่ใช่ขีด (ขีด = ไม่มีรูป) */
 const photoText = (count) => (count == null ? "ไม่ทราบ" : count ? `${count} รูป` : naText(null));
 
+/* ป้ายวิธีประเมินของแถว ("จากแบบ") — ใต้ชื่อพื้นที่ อยู่ในเซลล์แรก (จอแคบ = หัวการ์ดของพื้นที่นั้น)
+   คำมาจาก `surveyJobView` · แถวลงหน้างานไม่มีคำ ⇒ ไม่วาดอะไร (ตารางของใบลงหน้างานล้วนเหมือนเดิมทุกแถว) */
+function MethodTag({ row }) {
+  const { chip: methodLabel } = row;
+  return <SurveyMethodChip label={methodLabel} className={styles.methodTag} />;
+}
+
+/* ── แถบแจ้งเหนือตารางผล: "มี n พื้นที่ที่ประเมินจากแบบ — …" (`zones.drawingBanner`) ─────────────────────
+   ฝ่ายขายต้องรู้ก่อนเอาตัวเลขไปเสนอราคา ว่ากี่พื้นที่ไม่ได้วัดจากของจริง และหัวหน้าเลือกไว้ว่าต้องยืนยันหน้างานไหม
+   · ประโยค + บรรทัดรอง (`note` — ระหว่างที่ปุ่มของฝ่ายขายยังไม่เปิดใช้) มาจาก lib ทั้งคู่ · ไฟล์นี้ไม่พิมพ์เอง
+   🔴 ปุ่ม "ขอยืนยันหน้างาน" วาด **เฉพาะเมื่อ lib บอกว่าเส้นของปุ่มมีจริง** (`action.ready`) และเปลือกส่งตัวกดมา —
+      งวดนี้ทั้งสองอย่างยังไม่มี (มากับงวด S5) ⇒ ไม่มีปุ่ม ไม่ใช่ปุ่มจาง
+   ⭐ ส่งออกให้จอรายละเอียดรุ่นเก่า (`SurveyDetail`) วาดแถบตัวเดียวกัน — ตัวนั้นไม่ส่ง `onConfirm` จึงได้ประโยคล้วนเสมอ */
+export function SurveyDrawingBanner({ banner, onConfirm }) {
+  const confirm = banner.action?.ready === true && typeof onConfirm === "function" ? banner.action : null;
+  return (
+    <StatusNotice
+      tone="info"
+      action={confirm ? (
+        <Button variant="outline" onClick={onConfirm} className={`${styles.action} ${styles.bannerAction}`}>{confirm.label}</Button>
+      ) : null}
+    >
+      {thaiText(banner.text)}
+      {banner.note ? <span className={styles.bannerNote}>{thaiText(banner.note)}</span> : null}
+    </StatusNotice>
+  );
+}
+
+/* ⭐ ทรงของตารางเดินตามวิธีประเมิน (`zones.table` · มติเจ้าของ 12/10) — มีคอลัมน์ "ภาพกว้าง" ไหม · หัวคอลัมน์สุดท้ายชื่ออะไร
+      · ภาพกว้างรวม ถามจาก lib ทั้งหมด: ใบจากแบบทั้งใบที่ยังไม่ส่งผลไม่มีคอลัมน์ภาพกว้าง และคอลัมน์สุดท้ายบอกจำนวนภาพแบบ
+      (ช่องของแถวจากแบบ = `row.wideText` · `row.planText`) · ใบลงหน้างานล้วนได้ตารางของวันนี้ทุกช่อง
+   ⚠️ `table.lastLabel` เป็นทั้งหัวคอลัมน์และป้ายของเซลล์บนจอแคบ (`data-label`) — สองที่ต้องเป็นคำเดียวกันเสมอ */
 function ZonesTable({ zones }) {
-  const { rows, sent, totals, photos } = zones;
+  const { rows, sent, totals, photos, table } = zones;
   return (
     <TableScroll surface="embedded" cells="stacked" minWidth={860} className={styles.zoneShell}>
       <table className={styles.zoneTable}>
@@ -170,10 +211,10 @@ function ZonesTable({ zones }) {
             <th>ขนาด (ก × ย × ส)</th>
             <th className="num">ตร.ม.</th>
             <th className="num">ลบ.ม.</th>
-            {!sent && <th className="num">ภาพกว้าง</th>}
+            {table.wideColumn && <th className="num">ภาพกว้าง</th>}
             <th className="num">{sent ? "จุดติดตั้ง (เลือก / ทั้งหมด)" : "จุดติดตั้งได้"}</th>
             <th className="num">แพ็คเกจ</th>
-            <th>{sent ? "รูป" : "หน้างาน"}</th>
+            <th>{table.lastLabel}</th>
           </tr>
         </thead>
         <tbody>
@@ -185,16 +226,19 @@ function ZonesTable({ zones }) {
                 </span>
                 <span className="cell-sub">
                   {row.name}
-                  {row.added ? " · เพิ่มหน้างาน" : ""}
+                  {/* คำของพื้นที่ที่ถูกเพิ่มบนใบมาจาก lib: ลงหน้างาน = "เพิ่มหน้างาน" (คำเดิม) · จากแบบ = "เพิ่มโดย {ฝ่าย}" */}
+                  {row.addedLabel ? ` · ${row.addedLabel}` : ""}
                   {row.cut ? ` · ตัดออก${row.cutReason ? ` — ${row.cutReason}` : ""}` : ""}
                   {row.note ? ` · ${row.note}` : ""}
                 </span>
+                <MethodTag row={row} />
               </td>
               <Cell label="ชั้น">{naText(row.floor)}</Cell>
               <Cell label="ขนาด">{naText(row.size)}</Cell>
               <Cell label="ตร.ม." num>{naText(num(row.areaSqm))}</Cell>
               <Cell label="ลบ.ม." num>{naText(num(row.volumeCbm))}</Cell>
-              {!sent && <Cell label="ภาพกว้าง" num>{photoText(row.photosWide)}</Cell>}
+              {/* แถวจากแบบในใบผสม: ภาพกว้างไม่ใช่ของวิธีนี้ ⇒ lib ส่งขีดมา (`wideText`) · แถวลงหน้างาน = ตัวนับเดิม */}
+              {table.wideColumn && <Cell label="ภาพกว้าง" num>{row.wideText ?? photoText(row.photosWide)}</Cell>}
               <Cell label="จุดติดตั้ง" num>
                 {sent
                   ? naText(row.spotsTotal ? `${row.spotsSelected} / ${row.spotsTotal}` : null)
@@ -208,13 +252,17 @@ function ZonesTable({ zones }) {
                 {row.suggestedText ? <span className="cell-sub">{row.suggestedText}</span> : null}
                 {sent && row.packageNote ? <span className="cell-sub">{row.packageNote}</span> : null}
               </Cell>
-              <Cell label={sent ? "รูป" : "หน้างาน"}>
+              <Cell label={table.lastLabel}>
+                {/* แถวจากแบบ: "แบบ n" (`photosText`) — ภาพกว้าง/ผังเป็นหลักฐานของการลงหน้างาน ไม่ใช่ของวิธีนี้ · ไม่มี = ช่องเดิม
+                    · ใบที่ยังไม่ส่งผล: แถวจากแบบพิมพ์ `planText` ต่อจากป้ายสถานะ — ใบจากแบบทั้งใบ = จำนวนภาพแบบ · ใบผสม = ขีด
+                      (ช่องนี้ของใบผสมชื่อ "หน้างาน") · แถวลงหน้างานไม่มีคำนี้ */}
                 {sent ? (
-                  row.cut ? naText(null) : row.photosWide == null ? "ไม่ทราบ" : `ภาพกว้าง ${row.photosWide} · ผัง ${row.photosPlan}`
+                  row.photosText ?? (row.cut ? naText(null) : row.photosWide == null ? "ไม่ทราบ" : `ภาพกว้าง ${row.photosWide} · ผัง ${row.photosPlan}`)
                 ) : (
                   <>
                     {row.state ? <StatusBadge size="sm" tone={row.state.tone} label={row.state.label} /> : null}
                     {row.missingText ? <span className={styles.miss}>{row.missingText}</span> : null}
+                    {row.planText}
                   </>
                 )}
               </Cell>
@@ -233,7 +281,7 @@ function ZonesTable({ zones }) {
             <td />
             <Cell label="ตร.ม." num>{naText(num(totals.areaSqm || null))}</Cell>
             <Cell label="ลบ.ม." num>{naText(num(totals.volumeCbm || null))}</Cell>
-            {!sent && <Cell label="ภาพกว้าง" num>{photoText(photos.wide)}</Cell>}
+            {table.wideColumn && <Cell label="ภาพกว้าง" num>{photoText(table.wideTotal)}</Cell>}
             <Cell label="จุดติดตั้ง" num>
               {sent
                 ? naText(totals.spotsTotal ? `${totals.spotsSelected} / ${totals.spotsTotal}` : null)
@@ -245,8 +293,9 @@ function ZonesTable({ zones }) {
               {zones.packageMixText ? <span className="cell-sub">{zones.packageMixText}</span> : null}
             </Cell>
             <Cell label={sent ? "รูป" : "หัวหน้า"}>
+              {/* ใบที่มีพื้นที่จากแบบ: แถวรวมพูดภาษาเดียวกับแถว (`photosTotalText` — "แบบ k" / "ภาพกว้าง w · ผัง p · แบบ k") */}
               {sent
-                ? (photos.wide == null ? "ไม่ทราบ" : `ภาพกว้าง ${photos.wide} · ผัง ${photos.plan}`)
+                ? (zones.photosTotalText ?? (photos.wide == null ? "ไม่ทราบ" : `ภาพกว้าง ${photos.wide} · ผัง ${photos.plan}`))
                 : (zones.headGate.ok ? "หัวหน้าเคาะแล้ว" : "หัวหน้ายังไม่เคาะ")}
             </Cell>
           </tr>
@@ -382,9 +431,11 @@ function DocumentBlock({ doc, sheetHref, onRefresh }) {
  * @param attachments การ์ดไฟล์แนบของคำร้อง
  * @param onRefresh ขอให้เปลือกอ่านใบใหม่ **เบื้องหลัง** (ไม่ล้างจอ) — บล็อกเอกสารเรียกเมื่อครบเวลารอไฟล์ · view ไม่ยิง API เอง
  * @param refreshStalled เปลือกอ่านใบเบื้องหลังพังติดกันจนเลิกตรวจซ้ำเองแล้ว — ส่งต่อให้ `surveyJobView` (บล็อกเอกสารเลิกสัญญาว่าตรวจให้เอง)
+ * @param stepNotes ประโยคที่ขึ้น **แทนปุ่มของก้าวปัจจุบัน** บนแถบตอนนี้ (เปลือกตัดสิน — เช่น งานประเมินจากแบบที่คนดูรับปากวันส่งผลไม่ได้)
+ * @param onDrawingConfirm ตัวกดของปุ่ม "ขอยืนยันหน้างาน" บนแถบแจ้ง — ยังไม่มีผู้ส่ง (งวด S5) ⇒ ปุ่มไม่ถูกวาด
  */
 export default function SurveyRequestView({
-  request, today, viewer = {}, people = [], peopleLoading = false,
+  request, today, viewer = {}, people = [], peopleLoading = false, stepNotes = [], onDrawingConfirm,
   actions = {}, busy = false, thread = null, attachments = null, onRefresh, refreshStalled = false,
 }) {
   const job = useMemo(
@@ -568,6 +619,12 @@ export default function SurveyRequestView({
             {bandPrimary?.disabled && typeof bandPrimary.disabledReason === "string" ? (
               <p className={styles.blocked} role="status"><Lock size={13} aria-hidden="true" />{bandPrimary.disabledReason}</p>
             ) : null}
+            {/* ประโยคแทนปุ่มของก้าวนี้ (งานประเมินจากแบบ: รับปากวันส่งผลเป็นของหัวหน้าฝ่ายบริการ) — ไม่มีสิทธิ์ = ไม่มีปุ่ม
+                แต่แถบต้องบอกว่าก้าวนี้เป็นของใคร ไม่ใช่ช่องว่าง · ลิสต์ว่างบนใบอื่นทุกใบ
+                ⚠️ ห่อด้วย span ตัวเดียว — `.wait` เป็น flex: ชิ้นคำที่ `thaiText` ซอยไว้จะกลายเป็นคอลัมน์แยกกันถ้าวางตรง ๆ */}
+            {stepNotes.map((text) => (
+              <p key={text} className={styles.wait} role="status"><span>{thaiText(text)}</span></p>
+            ))}
             {bandSecondary.map((action) => (
               <ActionControl key={action.id} action={action} busy={busy} className={styles.bandAction} />
             ))}
@@ -606,7 +663,9 @@ export default function SurveyRequestView({
           ) : null}
 
           {/* ⭐ เอกสารประเมินพื้นที่ (PR-3) — **ไม่ผูกกับ `zones.sent`**: ใบที่ถูกดึงผลกลับไม่มีแถบตัวเลข แต่ยังต้องบอกว่า
-              ฉบับก่อนถูกแทนที่แล้ว ⇒ บล็อกขึ้นเป็นอย่างแรกของการ์ด · 🔄 แทนช่องที่หก "เอกสารผลประเมิน · ยังไม่ออก" ที่เขียนค้างไว้ */}
+              ฉบับก่อนถูกแทนที่แล้ว ⇒ บล็อกขึ้นเป็นอย่างแรกของการ์ด · 🔄 แทนช่องที่หก "เอกสารผลประเมิน · ยังไม่ออก" ที่เขียนค้างไว้
+              ✏️ ใบที่มีพื้นที่จากแบบ (งวด S2b): เอกสารถูกพักไว้ — lib ส่งบล็อกที่มีแต่ประโยคของข้อพัก ไม่มีปุ่ม ไม่มีลิงก์ไปใบประเมิน
+                 (ทั้งฝ่ายขายและหัวหน้า) ⇒ บล็อกวาดตามนั้นเอง · `job.document` เป็น `null` = ไม่วาดอะไร · ไฟล์นี้ไม่มีประโยคไหนชี้ให้ไปกดออกเอกสาร */}
           {job.document ? <DocumentBlock doc={job.document} sheetHref={surveyHref} onRefresh={onRefresh} /> : null}
 
           {site ? (
@@ -640,13 +699,19 @@ export default function SurveyRequestView({
             </StatusNotice>
           ) : null}
 
+          {/* ✏️ ใบที่ส่งผลแล้วและมีพื้นที่จากแบบ — แถบแจ้งอยู่ติดเหนือตารางที่มันพูดถึง (`null` = ไม่มีแถบ) */}
+          {zones.drawingBanner ? <SurveyDrawingBanner banner={zones.drawingBanner} onConfirm={onDrawingConfirm} /> : null}
+
           {zones.rows.length ? <ZonesTable zones={zones} /> : (
             <p className={styles.empty}>ยังไม่มีพื้นที่ที่ต้องประเมิน</p>
           )}
 
+          {/* ใบจากแบบทั้งใบไม่มีพื้นที่ของช่างเลย (`crewGate.hidden`) ⇒ ไม่วาดการ์ดฝั่งช่าง การ์ดฝั่งหัวหน้ากินทั้งแถว */}
           {!zones.sent && zones.rows.length ? (
-            <div className={styles.gates}>
-              <GateCard icon={Route} title={`ฝั่งช่าง · ${zones.crewGate.labels.join(" · ")}`} gate={zones.crewGate} />
+            <div className={styles.gates} data-single={zones.crewGate.hidden ? "1" : undefined}>
+              {zones.crewGate.hidden ? null : (
+                <GateCard icon={Route} title={`ฝั่งช่าง · ${zones.crewGate.labels.join(" · ")}`} gate={zones.crewGate} />
+              )}
               <GateCard icon={UserRound} title={`ฝั่งหัวหน้า · ${zones.headGate.labels.join(" · ")}`} gate={zones.headGate} />
             </div>
           ) : null}

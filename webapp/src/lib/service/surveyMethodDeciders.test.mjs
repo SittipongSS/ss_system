@@ -204,7 +204,8 @@ test('ตัวโหลดคิว: อ่านพื้นที่ครั
   await loadSurveyQueueRequests(db, { visits: [] });
   const reads = db.of('service_survey_zones');
   assert.equal(reads.length, 1);
-  assert.equal(SURVEY_QUEUE_ZONE_COLUMNS, 'id, "requestId", status, method');
+  // งวด S2b เพิ่มสองคอลัมน์ท้าย (เหตุผล + เวลาของการสลับวิธี — บรรทัดที่มาบนการ์ดของใบที่สลับกลับเป็นลงหน้างาน)
+  assert.equal(SURVEY_QUEUE_ZONE_COLUMNS, 'id, "requestId", status, method, "methodReason", "methodChangedAt"');
   assert.deepEqual(db.opsOf(reads[0], 'select'), [[SURVEY_QUEUE_ZONE_COLUMNS]]);
   assert.deepEqual(
     db.opsOf(reads[0], 'in').map(([col, ids]) => [col, [...ids].sort()]),

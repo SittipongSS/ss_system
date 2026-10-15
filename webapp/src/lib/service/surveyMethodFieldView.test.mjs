@@ -19,6 +19,7 @@ import {
   surveyDrawingZoneView,
   surveyFieldBarView,
   surveyJobHeaderView,
+  surveyNextStep,
   surveySalesDrawingsView,
   surveySheetTotalsText,
   surveyDefaultZoneId,
@@ -26,6 +27,7 @@ import {
   surveyZoneFooterView,
   surveyZoneListView,
   surveyZoneNeighbors,
+  surveyZoneResaveText,
   surveyZoneSections,
   surveyZoneStateBadge,
 } from './surveyFieldView.js';
@@ -528,13 +530,16 @@ test('บรรทัดรวมท้ายแถบแท็บ: ซ่อน
   const crewLine = surveySheetTotalsText({ zones, filesByZone: files, hideDrawing: true });
   assert.equal(crewLine, 'รวม 78 ตร.ม. · 228 ลบ.ม. · ภาพกว้าง 3 · จุด 5');
   assert.equal(crewLine, `รวม ${submit.totalsText.figures} · ${submit.totalsText.counts}`, 'จอเดียวกันสองที่บอกเลขเดียวกัน');
+  /* งวด S2b §2.5 i — ตัวเลขพื้นที่/ปริมาตรยังเป็นของทั้งใบ (48 + 120 + 30) แต่ภาพกว้าง/จุดนับเฉพาะพื้นที่ลงหน้างาน:
+     ภาพกว้างที่ค้างบนพื้นที่จากแบบ (1) กับจุดของมัน (2) ไม่ลงเอกสาร จึงไม่ถูกนับ · ต่อ "ภาพแบบ k" = รูปแบบที่ลงเอกสารได้ */
   assert.equal(surveySheetTotalsText({ zones, filesByZone: files }),
-    'รวม 198 ตร.ม. · 708 ลบ.ม. · ภาพกว้าง 4 · จุด 7', 'หัวหน้านับทุกพื้นที่ (48 + 120 + 30)');
+    'รวม 198 ตร.ม. · 708 ลบ.ม. · ภาพกว้าง 3 · จุด 5 · ภาพแบบ 0', 'หัวหน้า: ตัวเลขทั้งใบ · ภาพกว้าง/จุดเฉพาะลงหน้างาน');
   assert.equal(surveySheetTotalsText({ zones, filesByZone: files, hideDrawing: false }),
     surveySheetTotalsText({ zones, filesByZone: files }));
   // จากแบบทั้งใบ: จอช่างไม่มีพื้นที่ให้รวม = ไม่มีบรรทัด (ไม่ใช่ "รวม 0")
   assert.equal(surveySheetTotalsText({ zones: caseA(), filesByZone: caseAFiles(), hideDrawing: true }), null);
-  assert.equal(surveySheetTotalsText({ zones: caseA(), filesByZone: caseAFiles() }), 'รวม 168 ตร.ม. · 624 ลบ.ม. · ภาพกว้าง 0 · จุด 0');
+  // จอหัวหน้า: จากแบบทั้งใบไม่มีตัวนับภาพกว้าง/จุด (วิธีนี้ไม่ขอสองอย่างนั้น) — เหลือ "ภาพแบบ k"
+  assert.equal(surveySheetTotalsText({ zones: caseA(), filesByZone: caseAFiles() }), 'รวม 168 ตร.ม. · 624 ลบ.ม. · ภาพแบบ 1');
 });
 
 test('หัวงาน (`surveyJobHeaderView`) ไม่มีตัวนับพื้นที่ของตัวเอง — ไม่มีคำว่า "วัดแล้ว" ให้เพี้ยนบนใบจากแบบ', () => {
@@ -633,6 +638,9 @@ test('หน้าพื้นที่จากแบบ: ผู้วางค
 
 const REUSE_LABEL = 'ใช้รูปนี้เป็นภาพแบบของพื้นที่นี้';
 const REUSE_NO = 'ไฟล์นี้ลงเอกสารไม่ได้ — แคปหน้าที่ต้องการเป็น PNG แล้วแนบ';
+/* งวด S2b — ขนาด · คนแนบ · วันไทยของเวลาที่แนบ (แถวของ `requestFile` / `threadFile` ข้างบน) */
+const SALES_META = '1.7 MB · Lalida Chaiwanna · พ. 7 ต.ค.';
+const THREAD_META = '879 KB · Lalida Chaiwanna · พ. 7 ต.ค.';
 
 test('แบบจากฝ่ายขาย (กรณี A): แปลนสองรูปใช้เป็นภาพแบบได้ · PDF กดไม่ได้พร้อมเหตุ', () => {
   const view = surveySalesDrawingsView({ requestFiles: salesFiles(), threadFiles: [], zone: shop() });
@@ -640,18 +648,22 @@ test('แบบจากฝ่ายขาย (กรณี A): แปลนส�
     label: 'แบบจากฝ่ายขาย',
     empty: null,
     unknown: false,
+    countText: '3 ไฟล์',
     files: [
       {
         key: 'request:ATT-1', name: 'แปลนชั้น 1.jpg', href: '/api/master/attachments/ATT-1/file', image: true,
         source: 'request', sourceLabel: null, reuse: { label: REUSE_LABEL, enabled: true, reason: null },
+        ref: { kind: 'request', attachmentId: 'ATT-1' }, typeText: 'JPG', metaText: SALES_META,
       },
       {
         key: 'request:ATT-2', name: 'แปลนชั้น 2.jpg', href: '/api/master/attachments/ATT-2/file', image: true,
         source: 'request', sourceLabel: null, reuse: { label: REUSE_LABEL, enabled: true, reason: null },
+        ref: { kind: 'request', attachmentId: 'ATT-2' }, typeText: 'JPG', metaText: SALES_META,
       },
       {
         key: 'request:ATT-3', name: 'แบบตกแต่งทั้งร้าน.pdf', href: '/api/master/attachments/ATT-3/file', image: false,
         source: 'request', sourceLabel: null, reuse: { label: REUSE_LABEL, enabled: false, reason: REUSE_NO },
+        ref: { kind: 'request', attachmentId: 'ATT-3' }, typeText: 'PDF', metaText: SALES_META,
       },
     ],
   });
@@ -671,7 +683,9 @@ test('แบบจากฝ่ายขาย: ไฟล์จากเธรด
   assert.deepEqual(view.files[4], {
     key: 'thread:EU-9:1', name: 'แปลนแก้ไข.jpg', href: '/api/updates/EU-9/file?i=1', image: true,
     source: 'thread', sourceLabel: 'จากเธรด', reuse: { label: REUSE_LABEL, enabled: true, reason: null },
+    ref: { kind: 'thread', updateId: 'EU-9', index: 1 }, typeText: 'JPG', metaText: THREAD_META,
   });
+  assert.equal(view.countText, '5 ไฟล์');
   assert.deepEqual([view.files[3].href, view.files[3].image, view.files[3].reuse.enabled, view.files[3].reuse.reason],
     ['/api/updates/EU-9/file?i=0', false, false, REUSE_NO]);
   assert.deepEqual(view.files.slice(0, 3).map((f) => f.sourceLabel), [null, null, null]);
@@ -693,7 +707,7 @@ test('แบบจากฝ่ายขาย: ปุ่ม "ใช้รูป�
   assert.equal(surveySalesDrawingsView(input).files.every((f) => f.reuse === null), true, 'ไม่ส่งพื้นที่มา = ไม่มีปุ่ม');
 });
 
-test('แบบจากฝ่ายขาย: TIFF เป็นรูปที่เปิดดูได้แต่ใช้เป็นภาพแบบไม่ได้ · เอกสาร Google เปิดที่ลิงก์ของมันและไม่มีวันกดใช้ได้', () => {
+test('แบบจากฝ่ายขาย: TIFF เบราว์เซอร์วาดไม่ขึ้น = แผ่นลิงก์เปิดแท็บใหม่ และใช้เป็นภาพแบบไม่ได้ · เอกสาร Google เปิดที่ลิงก์ของมันและไม่มีวันกดใช้ได้', () => {
   const view = surveySalesDrawingsView({
     requestFiles: [
       requestFile('ATT-4', 'scan.tiff', 'image/tiff'),
@@ -707,7 +721,7 @@ test('แบบจากฝ่ายขาย: TIFF เป็นรูปที�
     zone: shop(),
   });
   assert.deepEqual(view.files.map((f) => [f.key, f.href, f.image, f.reuse.enabled, f.reuse.reason]), [
-    ['request:ATT-4', '/api/master/attachments/ATT-4/file', true, false, REUSE_NO],
+    ['request:ATT-4', '/api/master/attachments/ATT-4/file', false, false, REUSE_NO],
     ['request:ATT-5', 'https://docs.google.com/document/d/abc', false, false, REUSE_NO],
     ['request:ATT-6', 'https://docs.google.com/spreadsheets/d/xyz', false, false, REUSE_NO],
   ], 'แถวที่ไม่มีรหัส/ไม่มีที่อยู่ให้เปิดไม่ถูกลิสต์ (ลิงก์ที่ไม่มีปลายทาง)');
@@ -715,12 +729,13 @@ test('แบบจากฝ่ายขาย: TIFF เป็นรูปที�
 
 test('แบบจากฝ่ายขาย: ไม่มีไฟล์เลย = คำชวนขอในเธรด · อ่านไม่สำเร็จ ≠ ไม่มีไฟล์', () => {
   const none = surveySalesDrawingsView({ requestFiles: [], threadFiles: [], zone: shop() });
-  assert.deepEqual(none, { label: 'แบบจากฝ่ายขาย', empty: 'ยังไม่มีไฟล์แบบจากฝ่ายขาย — ขอในเธรดของคำร้อง', unknown: false, files: [] });
+  assert.deepEqual(none, { label: 'แบบจากฝ่ายขาย', empty: 'ยังไม่มีไฟล์แบบจากฝ่ายขาย — ขอในเธรดของคำร้อง', unknown: false, countText: '0 ไฟล์', files: [] });
   assert.deepEqual(surveySalesDrawingsView(), none);
 
   for (const unknown of [{ requestFiles: true }, { threadFiles: true }]) {
     const view = surveySalesDrawingsView({ requestFiles: [], threadFiles: [], zone: shop(), unknown });
     assert.deepEqual([view.unknown, view.empty, view.files], [true, null, []], '🔴 อ่านไม่ออกห้ามบอกว่า "ยังไม่มีไฟล์"');
+    assert.equal(view.countText, null, 'อ่านไม่ครบ = ไม่นับ');
   }
   const partial = surveySalesDrawingsView({ requestFiles: salesFiles(), threadFiles: [], unknown: { threadFiles: true } });
   assert.deepEqual([partial.unknown, partial.empty, partial.files.length], [true, null, 3]);
@@ -844,4 +859,103 @@ test('ป้ายที่มาของพื้นที่ที่ถู�
   assert.equal(surveyZoneListView({ zones: sheet, filesByZone: mixedFiles() }).rows[1].addedLabel, 'เพิ่มโดย TS');
   assert.equal(surveyDrawingZoneView({ zone: shop({ status: 'added' }), files: [], canDecide: true, dept: 'TS' }).addedLabel, 'เพิ่มโดย TS');
   assert.equal(surveyDrawingZoneView({ zone: shop(), files: [], canDecide: true }).addedLabel, null);
+});
+
+/* ── UAT ถ่ายจอ S2b · บทบาทช่าง (12/10) ─────────────────────────────────────────────────────────── */
+
+const RESAVE = 'พื้นที่นี้เพิ่งกลับมาเป็นลงหน้างาน — ตรวจขนาดกับของจริงแล้วกดบันทึกอีกครั้ง';
+/* ห้อง MD ที่เคยเป็นจากแบบแล้วถูกสลับกลับ — ของครบทุกข้อจากรอบก่อน เหลือแค่ "ยังไม่ถูกบันทึกหลังสลับ" */
+const mdBack = (extra = {}) => md({ method: 'onsite', methodChangedAt: '2026-10-08T02:00:00.000Z', ...extra });
+
+test('🔑 เพิ่งสลับกลับมาเป็นลงหน้างาน: ปุ่มบันทึกเปิดทั้งที่ไม่มีค่าค้าง + ประโยคของด่านอยู่บนหน้าพื้นที่ · หัวข้อขนาดไม่ติ๊กเขียว', () => {
+  assert.equal(surveyZoneResaveText(mdBack(), mdFilesFull()), RESAVE);
+
+  const foot = surveyZoneFooterView({ zone: mdBack(), files: mdFilesFull(), viewerKind: 'crew' });
+  assert.equal(foot.tone, 'dirty');
+  assert.equal(foot.head, RESAVE);
+  assert.equal(foot.sub, 'ขาด: ขนาด');
+  assert.deepEqual(foot.save, { show: true, label: 'บันทึกพื้นที่นี้', enabled: true, reason: null, emphasis: 'primary' });
+  assert.equal(foot.resave, true);
+
+  const size = surveyZoneSections({ zone: mdBack(), files: mdFilesFull() }).size;
+  assert.deepEqual(size, { mark: 'todo', chip: null, note: RESAVE });
+  // พิมพ์แก้ขนาดแล้ว = ป้าย "ยังไม่บันทึก" ตามเดิม ประโยคยังอยู่จนกว่าจะบันทึก
+  const typing = surveyZoneSections({
+    zone: mdBack(), files: mdFilesFull(), dirty: true, draft: { ...mdBack(), parts: [part('p2', 6.5, 5, 2.8)] },
+  }).size;
+  assert.equal(typing.chip.text, 'ยังไม่บันทึก');
+  assert.equal(typing.note, RESAVE);
+
+  // แถวของรายการ: ขนาดที่ด่านยังไม่รับไม่ขึ้นเป็นตัวเลขของแถว
+  const row = surveyZoneListView({ zones: [mdBack()], filesByZone: { z2: mdFilesFull() }, visit: { status: 'in_progress' } }).rows[0];
+  assert.equal(row.areaText, null);
+  assert.equal(row.missingText, 'ขาด: ขนาด');
+});
+
+/* UAT S06 รอบหัวหน้า (`desk-back-to-onsite` · `o3-desk-back-after-visit`): กล่องผลลัพธ์ของโมดัลบอก "ต้องวัดขนาดจริงแล้วบันทึกอีกครั้ง"
+   แต่ใบของหัวหน้าไม่ถาม และทำตามไม่ได้ (ปุ่มบันทึกดับ) — ทางแก้ของรอบช่างไม่ผูกกับบทบาท: ข้อนี้ตรึงว่าหัวหน้าได้ครบทุกผิวเหมือนกัน
+   รวมตอนนัดปิดไปแล้ว (มติ 12/10 ข้อ O3: ใบอยู่ขั้นเดิม หัวหน้าตรวจแล้วกดบันทึกยืนยันเองได้) */
+test('🔑 เพิ่งสลับกลับมาเป็นลงหน้างาน — ใบของหัวหน้าพูดตรงกับกล่องผลลัพธ์: แถวรายการ · หัวข้อขนาด · ท้ายหน้า · ป้ายหัว (นัดเปิดหรือปิดแล้วก็เหมือนกัน)', () => {
+  for (const viewerKind of ['head', 'senior']) {
+    const foot = surveyZoneFooterView({ zone: mdBack(), files: mdFilesFull(), viewerKind });
+    assert.equal(foot.head, RESAVE, viewerKind);
+    assert.equal(foot.sub, 'ขาด: ขนาด', viewerKind);
+    assert.deepEqual(foot.save, { show: true, label: 'บันทึกพื้นที่นี้', enabled: true, reason: null, emphasis: 'primary' }, viewerKind);
+    assert.equal(foot.resave, true, viewerKind);
+  }
+  assert.deepEqual(surveyZoneStateBadge({ zone: mdBack(), files: mdFilesFull() }), {
+    key: 'todo', tone: 'warning', text: 'ยังไม่ครบ', added: false, addedLabel: null,
+  });
+  for (const status of ['in_progress', 'done', 'partial']) {
+    const row = surveyZoneListView({
+      zones: [mdBack(), shop()], filesByZone: { z2: mdFilesFull() }, canDecide: true, visit: { status },
+    }).rows[0];
+    assert.equal(row.state, 'todo', status);
+    assert.equal(row.detail, 'missing', status);
+    assert.equal(row.missingText, 'ขาด: ขนาด', status);
+    assert.equal(row.areaText, null, status);
+    assert.equal(row.sizeText, null, status);
+    assert.deepEqual(row.marks.find((m) => m.key === 'size'), mark('size', 'ขนาด', false, null), status);
+    // ของหัวหน้าไม่ขึ้นซ้อนบนแถวที่ยังขาดของหน้างาน
+    assert.equal(row.tags.headPending, false, status);
+  }
+  // บันทึกยืนยันหลังสลับแล้ว = ทุกผิวกลับเป็น "ครบ" พร้อมกัน
+  const saved = mdBack({ surveyedAt: '2026-10-08T03:00:00.000Z' });
+  assert.equal(surveyZoneListView({ zones: [saved], filesByZone: { z2: mdFilesFull() }, canDecide: true, visit: { status: 'done' } }).rows[0].missingText, null);
+  assert.equal(surveyZoneStateBadge({ zone: saved, files: mdFilesFull() }).text, 'วัดแล้ว');
+});
+
+test('เพิ่งสลับกลับมา — ที่ไม่เข้าทางนี้: บันทึกหลังสลับแล้ว · ขนาดยังไม่ครบ · ตัดออก · จากแบบ · คนอ่านอย่างเดียว · แถวที่ไม่เคยสลับ', () => {
+  const saved = mdBack({ surveyedAt: '2026-10-08T03:00:00.000Z' });
+  assert.equal(surveyZoneResaveText(saved, mdFilesFull()), null);
+  assert.ok(surveyZoneFooterView({ zone: saved, files: mdFilesFull() }).head.startsWith('บันทึกครบแล้ว'));
+  assert.equal(surveyZoneSections({ zone: saved, files: mdFilesFull() }).size.chip.text, 'บันทึกแล้ว');
+
+  assert.equal(surveyZoneResaveText(mdBack({ parts: [] }), mdFilesFull()), null);
+  assert.equal(surveyZoneResaveText(mdBack({ status: 'cut', cutReason: 'ปิดปรับปรุง' }), mdFilesFull()), null);
+  assert.equal(surveyZoneResaveText(lobby({ methodChangedAt: '2026-10-08T02:00:00.000Z' }), []), null);
+
+  const reader = surveyZoneFooterView({ zone: mdBack(), files: mdFilesFull(), viewerKind: 'readonly' });
+  assert.ok(reader.head.startsWith('บันทึกแล้ว ·'), reader.head);
+  assert.equal(reader.resave, false);
+
+  for (const as of Object.values(VARIANTS)) {
+    const foot = surveyZoneFooterView({ zone: as(md()), files: mdFilesFull() });
+    assert.equal(foot.save.enabled, false);
+    assert.equal(foot.save.reason, 'ยังไม่ได้แก้อะไร');
+    assert.equal(foot.resave, false);
+    assert.equal('note' in surveyZoneSections({ zone: as(md()), files: mdFilesFull() }).size, false);
+  }
+});
+
+test('🐞 "ถัดไป" ของช่าง (hideDrawing) ไม่พาเข้าพื้นที่จากแบบที่รายการซ่อนไว้ — คนอื่นเดินตามลำดับเหมือนเดิม', () => {
+  const sheet = [md(), lobby(), shop()];
+  const files = { z2: mdFilesFull() };
+  // นัดยังไม่เริ่ม (ส่งงานไม่ได้) · ไม่มีพื้นที่ลงหน้างานอื่นที่ขาด
+  assert.equal(surveyNextStep({ zones: sheet, filesByZone: files, zoneId: 'z2', hideDrawing: true }).target, null);
+  assert.equal(surveyNextStep({ zones: sheet, filesByZone: files, zoneId: 'z2' }).label, 'ถัดไป: โถงต้อนรับ');
+  // ช่างที่ตามลิงก์เข้าพื้นที่จากแบบ: ไม่ถูกพาไล่พื้นที่จากแบบตัวถัดไป · พื้นที่ลงหน้างานที่อยู่ถัดไปยังไปได้
+  assert.equal(surveyNextStep({ zones: sheet, filesByZone: files, zoneId: 'd1', hideDrawing: true }).target, null);
+  const next = surveyNextStep({ zones: [lobby(), md()], filesByZone: files, zoneId: 'd1', hideDrawing: true });
+  assert.equal(next.label, 'ถัดไป: ห้อง MD');
 });

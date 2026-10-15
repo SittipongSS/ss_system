@@ -40,7 +40,13 @@ test('ปุ่มถ่ายรูปไม่บังคับกล้อ�
 /* ══ ภาพผังย้ายไปแท็บสรุปส่งผล (มติเจ้าของ 25/09 · แผน §10.5 S2) ═══════════════════ */
 test('ภาพผัง: ช่องอัปอยู่คอลัมน์ของตารางสรุป (เฉพาะคนที่ server ยอมให้อัป) · การ์ดพื้นที่ของช่างไม่มีช่องผังแล้ว', () => {
   const zonePage = code(read('../../components/service/SurveyZonePage.js'));
-  assert.doesNotMatch(zonePage, /SURVEY_DOC_PLAN|survey_plan/, 'ผังเป็นของหัวหน้า — หน้าพื้นที่ของช่างเหลือภาพกว้าง + ภาพจุด');
+  /* งวด S2b: พื้นที่ "จากแบบ" มีช่องภาพแบบบนหน้าพื้นที่ (หัวหน้าเท่านั้นที่แก้ได้) — กิ่งลงหน้างานของช่างยังไม่มีช่องผังเหมือนเดิม
+     ⇒ ตรวจเฉพาะกิ่งลงหน้างาน (ตั้งแต่ `{!drawing ? (` ถึงหัวข้อภาพแบบของกิ่งจากแบบ) */
+  const onsiteFrom = zonePage.indexOf('{!drawing ? (');
+  const onsiteTo = zonePage.indexOf('<Section area="plan"');
+  assert.ok(onsiteFrom > 0 && onsiteTo > onsiteFrom, 'หน้าพื้นที่ต้องแยกกิ่งลงหน้างาน / จากแบบ');
+  assert.doesNotMatch(zonePage.slice(onsiteFrom, onsiteTo), /SURVEY_DOC_PLAN|PLAN_DOC_TYPES|survey_plan|fileGate/,
+    'ผังเป็นของหัวหน้า — หน้าพื้นที่ของช่างเหลือภาพกว้าง + ภาพจุด');
 
   const table = code(read('../../components/service/SurveyResultTable.js'));
   assert.match(table, /SURVEY_DOC_PLAN/);

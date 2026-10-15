@@ -382,6 +382,50 @@ test('กลับเป็นลงหน้างาน: เขียนที
   assert.equal(db.calls.filter(M.cutMark).length, 0, 'ใบกลับมาต้องมีนัด — แถวที่ตัดไม่ถูกแตะ');
 });
 
+/* ⭐ มติเจ้าของ 12/10 (O3) — ใบที่นัดล่าสุดไปถึงไซต์แล้ว: พื้นที่กลับเป็นลงหน้างาน แต่ใบอยู่ขั้นเดิม */
+for (const [status, reached] of [['done', true], ['partial', true], ['unable', false], ['cancelled', false]]) {
+  test(`กลับเป็นลงหน้างาน × นัดล่าสุด ${status}: ${reached ? 'วันส่งผลคงเดิม · วันเข้าพื้นที่กลับไปตามนัด · เธรดไม่พูดว่ากลับไปรอลงคิว' : 'ไม่เคยถึงไซต์ — ล้างวัน · เธรดบอกว่ากลับไปรอลงคิว (เดิม)'}`, async () => {
+    const seed = Object.values(SCENARIOS)[1].seed();
+    const db = fakeDb({ ...seed, service_visits: [visitRow(status)] });
+    const before = clone(db.tables.dept_requests[0]);
+    const rec = recorder();
+    const body = { changes: toOnsite('Z1', 'Z2'), reason: REASON, resultDate: '' };
+    const { value: { plan, result } } = await quiet(() => attempt(db, body, rec));
+    assert.deepEqual(result, { ok: true });
+    assert.equal(plan.dates.action, reached ? 'keep' : 'clear');
+
+    const [touch1, touch2] = db.calls.filter(M.touch);
+    const state = visible(db, rec);
+    if (reached) {
+      /* ขั้น 4 = คอลัมน์วันเข้าพื้นที่กลับไปตามนัด (วัน เวลา ช่าง) — **ไม่มีคีย์วันส่งผล** · ใบงานโต๊ะถือ `committedDueDate` เป็นวันส่งผล
+         ปล่อยค้าง = หัวหน้าคำร้องอ่านเป็นวันนัดเข้าพื้นที่ (รีวิว 12/10) · และยังต่างจากค่าของขั้น 1 — หัวไฟล์ของตัวเขียน */
+      assert.deepEqual(Object.keys(touch2.patch), ['committedDueDate', 'committedDueTime', 'assigneeId', 'assigneeName', 'updatedAt']);
+      assert.notEqual(touch2.patch.updatedAt, touch1.patch.updatedAt);
+      assert.deepEqual(state.request, {
+        committedDueDate: '2026-10-13', committedDueTime: '10:00',
+        committedResultDate: before.committedResultDate, assigneeId: 'U-TECH', assigneeName: 'Phuwadol Aoonnankad',
+        dueCommittedAt: null, answeredAt: null,
+      });
+      assert.equal(state.request.committedResultDate, '2026-10-15');
+      assert.equal(state.thread[0].body, `เปลี่ยนวิธีประเมินเป็น “ลงหน้างาน” 2 พื้นที่ (ล็อบบี้ · ห้องประชุม) — ${REASON}`);
+    } else {
+      assert.deepEqual({ ...touch2.patch, updatedAt: null }, { committedDueDate: null, committedDueTime: null, committedResultDate: null, updatedAt: null });
+      assert.ok(state.thread[0].body.endsWith(' · ใบกลับไปรอลงคิว · ฝ่ายขายแจ้งวันที่หน้างานเข้าได้ในเธรดนี้'));
+    }
+    assert.equal(state.thread[0].body.includes('รอลงคิว'), !reached);
+    assert.equal(state.thread.length, 1);
+    assert.deepEqual(state.thread[0].meta, {
+      key: KEY, kind: 'switch', flip: 'to-visit', toDrawing: [], toOnsite: ['Z1', 'Z2'], cancelledVisitId: null, resultDate: null,
+    });
+    // พื้นที่ถูกสลับจริงทั้งสองทาง · นัดเก่าไม่ถูกแตะ · ไม่มีกระดิ่ง
+    assert.deepEqual(state.zones.map((z) => z.method), ['drawing', 'onsite', 'onsite', 'drawing']);
+    assert.deepEqual(state.visits, [{ id: 'V1', status }]);
+    assert.deepEqual(state.bells, []);
+    // audit ของใบ: `after` ไม่มีวันที่ถูกล้างเมื่อใบอยู่ขั้นเดิม
+    assert.equal(rec.audits.at(-1).after.committedResultDate, reached ? '2026-10-15' : null);
+  });
+}
+
 test('ใบยังผสม: ขั้น 4 ยังวิ่งเป็น "แตะปิดท้าย" อย่างเดียว ไม่มีคอลัมน์วัน', async () => {
   const db = fakeDb({
     dept_requests: [requestRow()],

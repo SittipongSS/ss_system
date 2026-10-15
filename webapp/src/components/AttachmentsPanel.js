@@ -57,7 +57,7 @@ import { useFileIntake } from "@/lib/ui/useFileIntake";
 import { businessDate } from "@/lib/businessDate";
 import PhotoThumb from "@/components/ui/PhotoThumb";
 import { apiFetch, apiJson } from "@/lib/apiFetch";
-import { panelItemsByType, panelVisibleItems } from "./attachmentsPanelItems";
+import { panelFileGate, panelItemsByType, panelVisibleItems } from "./attachmentsPanelItems";
 import styles from "./AttachmentsPanel.module.css";
 
 // เช็คขนาดก่อนอัป (กันเสียแบนด์วิดท์อัปแล้วโดน server ปฏิเสธ). server บังคับซ้ำเสมอ.
@@ -178,6 +178,17 @@ export default function AttachmentsPanel({
      ⭐ ใบสั่งขาย (มติ 25/09): แนบได้ทั้งทีม แต่ลบได้เฉพาะคนแนบเอง+แอดมิน — API ปฏิเสธอยู่แล้ว
        ที่นี่คือไม่ยื่นปุ่มที่กดแล้วจะเจอ 403 */
   canDeleteItem,
+  /* ⭐ **ด่านไฟล์ของผู้เรียก** (ประเมินจากแบบ · งวด S2b) — `{ accept, test: (file) => boolean, rejectText, pickLabel?, hideDropHint? }`
+     ช่องที่รับได้แคบกว่ากติกาของ docType (ภาพแบบของพื้นที่จากแบบ = JPG/PNG เท่านั้น — เอกสารประเมินวาดได้สองชนิดนี้ ส่วนช่องผังของ
+     พื้นที่ลงหน้างานซึ่งเป็น docType เดียวกันยังรับเท่าเดิม จึงเขียนเป็นกติกาของ docType ไม่ได้)
+     · ไฟล์ที่ `test` ไม่ผ่านถูกทิ้ง **ก่อน** กติการาย docType ครบทุกทางเข้า (ปุ่ม · ลากมาวาง · Ctrl+V) แจ้ง `rejectText` หนึ่งครั้งต่อชุด
+       ไฟล์ที่ผ่านยังอัปต่อ · `accept` ใช้กับช่องเลือกไฟล์ · `pickLabel` แทนคำบนแผ่นสุดท้าย · `hideDropHint` ซ่อนคำใบ้ลากวาง/วาง
+       (ลากและวางยังใช้ได้และยังผ่านด่าน)
+     ⚠️ ไม่ส่ง = แผงเดิมทุกจุด · server ตรวจซ้ำเสมอ — ที่นี่แค่กันไม่ให้อัปไบต์ขึ้น Drive ฟรี ๆ */
+  fileGate = null,
+  /* ตัวเลขที่ผู้เรียกขยับเมื่อรายการไฟล์เปลี่ยนจากนอกแผง (ปุ่ม "ใช้รูปนี้เป็นภาพแบบ…" แนบไฟล์ผ่านเส้นคัดลอก) — เปลี่ยน = โหลดรายการใหม่
+     ⚠️ 0 (ค่าตั้งต้น) ไม่โหลดซ้ำ — รอบแรกเป็นของ effect เดิม */
+  reloadKey = 0,
 }) {
   const types = (docTypes && docTypes.length ? docTypes : ATTACHMENT_TYPES[entityType]) || [];
   // แถวที่ปิดเนื้อหาไว้ลบไม่ได้ด้วย — คนที่เปิดดูไม่ได้ ไม่ควรทำลายหลักฐานได้
@@ -257,6 +268,28 @@ export default function AttachmentsPanel({
     fetchItems();
   }, [fetchItems]);
 
+  /* อ่านใหม่เฉพาะตอนเลข **เปลี่ยน** — แผงที่เมานต์ตอนเลขไม่ใช่ศูนย์แล้ว (ผู้เรียกนับต่อทั้งหน้า แผงถูกเมานต์ใหม่ทุกพื้นที่)
+     ได้รอบแรกจาก effect ข้างบนอยู่แล้ว · ยิงอีกรอบ = GET ซ้ำสองเส้นคู่กัน และ toast ล้มเหลวสองครั้ง */
+  const seenReloadKey = useRef(reloadKey);
+  useEffect(() => {
+    if (reloadKey === seenReloadKey.current) return;
+    seenReloadKey.current = reloadKey;
+    fetchItems();
+  }, [reloadKey, fetchItems]);
+
+  /* ด่านไฟล์ของผู้เรียก — เก็บใน ref เพราะตัวรับลากวาง (`acceptFiles`) ตรึง deps ไว้ไม่ให้ listener หลุด
+     ส่วนผู้เรียกส่งออบเจ็กต์ใหม่ทุกการวาดได้ */
+  const fileGateRef = useRef(fileGate);
+  useEffect(() => {
+    fileGateRef.current = fileGate;
+  }, [fileGate]);
+  const gateFiles = (files) => {
+    const { accepted, rejectText } = panelFileGate(fileGateRef.current, files);
+    if (rejectText) notifyToast.error(rejectText);
+    return accepted;
+  };
+  const hideDropHint = fileGate?.hideDropHint === true;
+
   // แจ้งรายการเอกสารปัจจุบันกลับไปให้ parent (เช่น เพื่อบังคับแนบก่อนยื่น).
   useEffect(() => {
     onItemsChange?.(rawItems, { loaded });
@@ -334,7 +367,7 @@ export default function AttachmentsPanel({
      ใช้กติกาของมัน · ⚠️ ช่องเลือกไฟล์ใช้ร่วมทุกการ์ด ⇒ ตั้ง `accept` ก่อนเปิดทุกครั้ง
      ไม่งั้นการ์ดที่รับทุกชนิดเปิดตัวเลือกที่ถูกบีบเหลือแค่รูปตามการ์ดก่อนหน้า */
   const defaultAccept = photoCapture ? PHOTO_ACCEPT_ATTR : UPLOAD_ACCEPT_ATTR;
-  const acceptFor = (typeKey) => docTypeFileRule(typeKey)?.accept || defaultAccept;
+  const acceptFor = (typeKey) => fileGate?.accept || docTypeFileRule(typeKey)?.accept || defaultAccept;
   const cardAccept = acceptFor(types.length === 1 ? types[0]?.key : null);
   const pickForType = (typeKey, group = null) => {
     pendingTypeRef.current = typeKey;
@@ -354,7 +387,7 @@ export default function AttachmentsPanel({
     pendingTypeRef.current = null;
     pendingGroupRef.current = null;
     if (cardFileRef.current) cardFileRef.current.value = "";
-    const files = splitByFileRule(typeKey, picked);
+    const files = splitByFileRule(typeKey, gateFiles(picked));
     if (!files.length || !typeKey) return;
     const ok = files.filter((f) => !tooLarge(f));
     if (!ok.length) return;
@@ -366,7 +399,7 @@ export default function AttachmentsPanel({
   // เพราะเดาไม่ได้ว่าผู้ใช้ตั้งใจวางลงการ์ดไหน)
   const acceptFiles = useCallback(async (fileList) => {
     const typeKey = types[0]?.key || "other";
-    const files = splitByFileRule(typeKey, Array.from(fileList || []).filter(Boolean));
+    const files = splitByFileRule(typeKey, gateFiles(Array.from(fileList || []).filter(Boolean)));
     if (!files.length || !canEdit) return;
     const ok = files.filter((f) => !tooLarge(f));
     if (!ok.length) return;
@@ -780,6 +813,9 @@ export default function AttachmentsPanel({
               </div>
             );
           }
+          /* คำบนแผ่นสุดท้าย — ด่านของผู้เรียกแทนได้ (`fileGate.pickLabel`) เฉพาะแผ่นที่ไม่อยู่ในแถวรายกลุ่ม
+             (แถวรายกลุ่มมีชื่ออ่านจอของตัวเองที่ประกอบจากคำกลาง — คำที่ตาเห็นกับที่ได้ยินต้องเป็นคำเดียวกัน) */
+          const addLabel = group ? tile.label : (fileGate?.pickLabel || tile.label);
           return (
             <button
               key={tile.key}
@@ -790,8 +826,8 @@ export default function AttachmentsPanel({
               aria-label={group?.label ? `${tile.label} · ${group.label}` : undefined}
             >
               <Camera size={22} aria-hidden="true" />
-              {tile.label}
-              {group ? null : <small className={`${styles.tileHint} ${styles.pointerOnly}`}>{tile.hint}</small>}
+              {addLabel}
+              {group || hideDropHint ? null : <small className={`${styles.tileHint} ${styles.pointerOnly}`}>{tile.hint}</small>}
             </button>
           );
         })}
@@ -1005,7 +1041,7 @@ export default function AttachmentsPanel({
           {/* ⚠️ คำสั้น "ลากมาวาง · Ctrl+V" ไม่ใช่ประโยคเต็ม — กล่องนี้ไปโผล่ในรางขวา
               ที่กว้างแค่ 292px ด้วย · ประโยคเต็ม 40 ตัวอักษรบวกปุ่มแล้วตกบรรทัด
               ⇒ กล่องเดียวกันสูงไม่เท่ากันสองที่ในหน้าเดียว (ผู้ใช้ทักเอง) */}
-          {canEdit && fileUploads && (
+          {canEdit && fileUploads && !hideDropHint && (
             <p className={`mr-auto text-[10px] text-[var(--text-3)] ${photoCapture ? styles.pointerOnly : ""}`}>
               ลากมาวาง · Ctrl+V
             </p>
@@ -1361,7 +1397,7 @@ export default function AttachmentsPanel({
       )}
       {/* คำเดียวกับโหมด inline — ผู้ใช้ต้องรู้ว่าทำได้ ไม่งั้นความสามารถนี้ก็เท่ากับไม่มี
           (คนที่แจ้ง IS-26080013 คือคนที่ไม่รู้ว่ามีอยู่ในบางจอมาตลอด) */}
-      {canEdit && !loading && (
+      {canEdit && !loading && !hideDropHint && (
         <p className="mt-3 text-[10px] text-[var(--text-3)]">
           ลากไฟล์มาวาง หรือวางรูปจากคลิปบอร์ด (Ctrl+V) ได้
         </p>

@@ -504,9 +504,9 @@ test('GET · หัวหน้า + สวิตช์เปิด: ได้�
   });
 });
 
-test('GET · ช่าง / ผู้จัดคิว: threadFiles ว่าง · siteVisitReached null · ไม่มีการอ่านเพิ่มสักคำขอ (สวิตช์เปิดและมีพื้นที่จากแบบ)', async () => {
+test('GET · ช่าง: threadFiles ว่าง · siteVisitReached null · ไม่มีการอ่านเพิ่มสักคำขอ (สวิตช์เปิดและมีพื้นที่จากแบบ)', async () => {
   await withFlag('on', async () => {
-    for (const user of [tech, planner]) {
+    for (const user of [tech]) {
       const db = sheet({ zones: [sheetZone('A'), sheetZone('B', { method: 'drawing', sortOrder: 2 })], visits: [visit('done')] });
       const { status, json } = await get(db, user);
       assert.equal(status, 200, json.error);
@@ -517,6 +517,52 @@ test('GET · ช่าง / ผู้จัดคิว: threadFiles ว่า�
       assert.deepEqual(reachedReads(db), [], user.id);
     }
   });
+});
+
+/* งวด S2b · มติเจ้าของ O4 — ผู้วางคิวเห็นพื้นที่จากแบบแบบอ่านอย่างเดียว พร้อมแผง "แบบจากฝ่ายขาย"
+   ⇒ อ่านเธรดเฉพาะใบที่มีพื้นที่จากแบบอยู่แล้ว (หนึ่งคำสั่งอ่าน) · ใบลงหน้างานล้วนยังไม่มีการอ่านเพิ่ม แม้สวิตช์เปิด */
+test('GET · ผู้วางคิว: ใบที่มีพื้นที่จากแบบ = ได้ไฟล์ในเธรด (อ่านหนึ่งครั้ง) · ใบลงหน้างานล้วน = ว่างและไม่อ่าน · ไม่ถามนัดที่เข้าพื้นที่แล้วทั้งสองแบบ', async () => {
+  for (const flag of ['on', undefined]) {
+    await withFlag(flag, async () => {
+      const mixed = sheet({ zones: [sheetZone('A'), sheetZone('B', { method: 'drawing', sortOrder: 2 })], visits: [visit('done')] });
+      const withDrawing = await get(mixed, planner);
+      assert.equal(withDrawing.status, 200, withDrawing.json.error);
+      assert.deepEqual(withDrawing.json.threadFiles, [{
+        updateId: 'EU-1', index: 0, fileName: 'plan-1.png', mimeType: 'image/png', sizeBytes: 2048,
+        createdAt: '2026-10-02T03:00:00+00:00', authorName: 'ฝ่ายขาย',
+      }], String(flag));
+      assert.equal(threadReads(mixed).length, 1, String(flag));
+      assert.equal(withDrawing.json.siteVisitReached, null);
+      assert.deepEqual(reachedReads(mixed), []);
+
+      const onsite = sheet({ zones: [sheetZone('A'), sheetZone('B', { sortOrder: 2 })], visits: [visit('done')] });
+      const plain = await get(onsite, planner);
+      assert.equal(plain.status, 200, plain.json.error);
+      assert.deepEqual(plain.json.threadFiles, [], String(flag));
+      assert.deepEqual(threadReads(onsite), [], String(flag));
+      assert.equal(plain.json.siteVisitReached, null);
+      assert.deepEqual(reachedReads(onsite), []);
+      // พื้นที่จากแบบที่ถูกตัดไปแล้วไม่นับ — ไม่เหลือพื้นที่จากแบบให้เขาอ่าน
+      const cut = sheet({ zones: [sheetZone('A'), sheetZone('B', { method: 'drawing', status: 'cut', sortOrder: 2 })] });
+      assert.deepEqual((await get(cut, planner)).json.threadFiles, []);
+      assert.deepEqual(threadReads(cut), []);
+    });
+  }
+});
+
+/* ⚠️ CD / CM ได้ `true` — `canEditService` นับผู้กำกับงานบริการ (`SERVICE_OVERSEER_ROLES`) เป็นคนในโมดูล (สเปก S2b §2.5 l เขียนว่า false
+   ซึ่งไม่ตรงกับตัวตัดสินจริง) · ไม่กระทบจอ: สองตำแหน่งนี้เป็นหัวหน้า (`canDecide`) จอจึงไม่เคยอ่านคีย์นี้ให้เขา */
+test('GET · canEditService มีในคำตอบเสมอ และเท่ากับตัวตัดสินกลาง: ผู้วางคิว · หัวหน้า · แอดมิน · CD / CM = true · ช่าง = false', async () => {
+  const admin = { id: 'U-ADMIN', name: 'แอดมิน', role: 'admin' };
+  const cd = { id: 'U-CD', name: 'CD', role: 'commercial_director', department: 'SA' };
+  const cm = { id: 'U-CM', name: 'CM', role: 'commercial_manager', department: 'SA' };
+  for (const [user, expected] of [[planner, true], [head, true], [admin, true], [tech, false], [cd, true], [cm, true]]) {
+    const { status, json } = await get(sheet(), user);
+    assert.equal(status, 200, `${user.id}: ${json.error}`);
+    assert.equal(json.canEditService, expected, user.id);
+    // ผู้วางคิวคือคนเดียวในชุดนี้ที่ "แก้งานของฝ่ายได้แต่ไม่ใช่หัวหน้า" — คู่ที่จอใช้แยกเขาออกจากช่าง
+    assert.equal(json.canEditService && !json.canDecide, user === planner, user.id);
+  }
 });
 
 test('GET · สวิตช์ปิด: ใบลงหน้างานล้วนไม่อ่านอะไรเพิ่ม · ใบที่มีพื้นที่จากแบบอยู่แล้ว หัวหน้ายังได้ไฟล์ในเธรด', async () => {
@@ -599,14 +645,15 @@ test('GET · เรื่องส่งกลับ: ใบจากแบบ�
   }
 });
 
-test('GET · คีย์เดิมของคำตอบอยู่ครบและลำดับเดิม — เพิ่มมาสามคีย์เท่านั้น ทุกคนดู ทุกค่าสวิตช์', async () => {
+test('GET · คีย์เดิมของคำตอบอยู่ครบและลำดับเดิม — เพิ่มมาสี่คีย์เท่านั้น ทุกคนดู ทุกค่าสวิตช์', async () => {
   const keysFor = async (flag, user) => withFlag(flag, async () => Object.keys((await get(sheet(), user)).json));
   const TODAY = [
     'request', 'zones', 'filesByZone', 'visit', 'crew', 'site', 'customer', 'recall', 'sendBack', 'unknown',
     'canWrite', 'canDecide', 'canLinkSpotPhotos', 'requestFiles', 'packageSizes', 'document', 'writeBlockedReason',
     'canOpenRequest', 'onVisit',
   ];
-  const NEW = ['drawingMethodEnabled', 'threadFiles', 'siteVisitReached'];
+  // สามคีย์ของงวด S2a + `canEditService` ของงวด S2b (มติ O4 — จอแยกผู้วางคิวออกจากช่าง)
+  const NEW = ['canEditService', 'drawingMethodEnabled', 'threadFiles', 'siteVisitReached'];
   for (const flag of [undefined, 'on']) {
     for (const user of [head, tech, planner]) {
       const keys = await keysFor(flag, user);

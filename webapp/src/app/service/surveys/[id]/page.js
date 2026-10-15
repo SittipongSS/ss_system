@@ -37,7 +37,9 @@ import SurveyControlCard from "@/components/service/SurveyControlCard";
 import SurveyFieldBar from "@/components/service/SurveyFieldBar";
 import SurveyFieldWorkspace, { SurveyBarColumn } from "@/components/service/SurveyFieldWorkspace";
 import SurveyJobHeader from "@/components/service/SurveyJobHeader";
+import SurveyMethodDialog, { newSurveyActionId, surveyFlipBasis, surveyFlipLinesAt } from "@/components/service/SurveyMethodDialog";
 import SurveyResultTable from "@/components/service/SurveyResultTable";
+import SurveySalesDrawings from "@/components/service/SurveySalesDrawings";
 import SurveySendBackCard from "@/components/service/SurveySendBackCard";
 import SurveySheetLayout from "@/components/service/SurveySheetLayout";
 import SurveySubmitDialog from "@/components/service/SurveySubmitDialog";
@@ -46,9 +48,12 @@ import SurveyZonePage from "@/components/service/SurveyZonePage";
 import useLiveZoneFiles from "@/components/service/useLiveZoneFiles";
 import useSurveyClock from "@/components/service/useSurveyClock";
 import useSurveyZoneRoute, { surveyZoneHeadingId } from "@/components/service/useSurveyZoneRoute";
+import CommitDueDialog from "@/components/requests/CommitDueDialog";
 import ConfirmDialog, { confirmAction } from "@/components/ui/ConfirmDialog";
 import Button from "@/components/ui/Button";
+import DateInput from "@/components/ui/DateInput";
 import Input from "@/components/ui/Input";
+import OptionTiles from "@/components/ui/OptionTiles";
 import ReasonDialog from "@/components/ui/ReasonDialog";
 import StatusBadge from "@/components/ui/StatusBadge";
 import StatusNotice from "@/components/ui/StatusNotice";
@@ -62,16 +67,22 @@ import useOnScreenKeyboard from "@/lib/ui/useOnScreenKeyboard";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { allowNextLeave, useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import {
-  surveyAddZoneError, surveyChangeCounts, surveyChangeText, surveyCrewGaps,
+  SURVEY_ZONE_STALE_CODE, surveyAddZoneError, surveyChangeCounts, surveyChangeText, surveyCrewGaps, surveyEditLockError,
   surveySendBackDoneError, surveySendBackError, surveySendBackItems, surveyTotals,
 } from "@/lib/service/survey";
 import { surveyControlView, surveyPackagesLabel } from "@/lib/service/surveyControl";
 import {
-  SURVEY_RAIL_QUERY, SURVEY_SPLIT_QUERY, surveyAboutView, surveyDefaultZoneId, surveyDiscardConfirm, surveyDueLine,
-  surveyEscapeView, surveyFieldBarView, surveyJobHeaderView, surveyLeaveConfirm, surveyNextStep, surveySendBackItemsView,
-  surveySheetHref, surveySheetNotices, surveySheetTotalsText, surveyVisitBadge, surveyZoneListView, surveyZoneNeighbors,
-  surveyZoneTitle,
+  SURVEY_RAIL_QUERY, SURVEY_SPLIT_QUERY, surveyAboutView, surveyDefaultZoneId, surveyDiscardConfirm, surveyDrawingZoneView,
+  surveyDueLine, surveyEscapeView, surveyFieldBarView, surveyJobHeaderView, surveyLeaveConfirm, surveyNextStep,
+  surveySalesDrawingsView, surveySendBackItemsView, surveySheetHref, surveySheetNotices, surveySheetTotalsText,
+  surveyVisitBadge, surveyZoneListView, surveyZoneNeighbors, surveyZoneResaveText, surveyZoneTitle,
 } from "@/lib/service/surveyFieldView";
+import { isDrawingZone } from "@/lib/service/surveyMethod";
+import {
+  SURVEY_DESK_ADD_HEAD_ONLY, SURVEY_METHOD_ERRORS, SURVEY_METHOD_RESULT_DATE_LABEL,
+} from "@/lib/service/surveyMethodSwitch";
+import { reuseSalesFileAsPlan } from "@/lib/service/surveyPlanReuse";
+import { commitDueLabels, deskDueAction } from "@/lib/requests/commitDue";
 import {
   surveyFilesSignature, surveyIssueDoneToast, surveyIssueErrorSticky, surveyRecallDoneText, surveyRecheckToast,
 } from "@/lib/service/surveyDocumentView";
@@ -89,6 +100,17 @@ import styles from "./page.module.css";
 /* เหตุผลที่ตัดพื้นที่ออก — ขั้นต่ำเดียวกับ server (ฝ่ายขายจะเห็นข้อความนี้ · ไม่ได้ไปหน้างานเอง) */
 const CUT_REASON_MIN = 5;
 const CUT_REASON_MAX = 500;
+
+/* ── ประเมินจากแบบ (งวด S2b) — ของที่หน้านี้ต้องรู้เอง ──────────────────────────────────────
+   `FLIP_*`            รหัสคำตอบของเส้นตัดพื้นที่ เมื่อหัวหน้าตัดพื้นที่ลงหน้างานสุดท้ายขณะนัดยังเปิด (สวิตช์ปิด = server ไม่ส่งรหัสนี้เลย)
+                       · หน้าแยกด้วยรหัส ไม่เทียบประโยค
+   `OPEN_VISIT_STATES` นัดที่ยัง "เปิดอยู่" — โมดัลส่งผลของใบจากแบบพูดว่า "ไม่มีนัดที่เปิดอยู่" ได้ต่อเมื่อไม่มีจริง
+   `ADD_HEAD_ONLY`     ด่านเพิ่มพื้นที่ของใบงานโต๊ะสำหรับคนที่ไม่ใช่หัวหน้า — ถูกถามแค่ "มีหรือไม่มี" ไม่เคยถูกพิมพ์
+                       (ประโยคที่ผู้วางคิวเห็นคือ `SURVEY_DESK_ADD_HEAD_ONLY` ตัวเดียวกับที่ server ตอบ) */
+const FLIP_CONFIRM_CODE = "survey_flip_confirm";
+const FLIP_RETRY_CODE = "survey_flip_retry";
+const OPEN_VISIT_STATES = ["draft", "scheduled", "in_progress"];
+const ADD_HEAD_ONLY = "head-only";
 
 /* ── เอกสารประเมินพื้นที่ (FM-TS-01 · เลข SU · PR-3) — ของที่จอจำไว้เอง เพราะไม่มี GET ไหนคืน ──────────────
    `round`       เวลาตอบ (`answeredAt`) ของรอบที่สี่คีย์ถัดไปเป็นของมัน — ตัวตัดสินไม่ใช้ของรอบอื่น (`surveyDocumentView`)
@@ -157,6 +179,23 @@ export default function SurveySheetPage({ params }) {
   const [cutReason, setCutReason] = useState("");
   const [cutBusy, setCutBusy] = useState(false);
   const [cutError, setCutError] = useState("");
+  /* ── ประเมินจากแบบ (งวด S2b) — ทุกชิ้นข้างล่างเกิดได้เฉพาะเมื่อสวิตช์เปิดหรือใบมีพื้นที่จากแบบ (ใบเดิม = ค่าตั้งต้นตลอด) ──
+     `flipBox`      กล่องยืนยัน "ตัดพื้นที่และยกเลิกนัด" — **เนื้อที่คัดลอกจากคำตอบ 409 ของเส้นตัดตอนเปิด** + วันส่งผลที่พิมพ์ + เลขการกด
+                    (`actionId`) · กล่องต้องไม่วาดใหม่จากใบที่อ่านเบื้องหลัง: รอบที่ตัดติดแล้วแต่ผลที่ตามมาไม่ครบ แถวถูกตัดไปแล้ว
+                    ใบสดไม่มีเนื้อกล่องให้อีก (ท่าเดียวกับ `issueDialog`) · `dead` = ใบถูกแก้จากที่อื่น เหลือปุ่ม "ปิด"
+     `methodOpen`   โมดัล "วิธีประเมินรายพื้นที่" (ตัวโมดัลถือฟอร์มเอง — หน้ารู้แค่เปิด/ปิด)
+     `sendChoice`   คำตอบ "ต้องยืนยันหน้างานไหม" ในโมดัลส่งผล — ไม่เลือกให้ล่วงหน้า · ไม่บันทึกแยก · ล้างทุกครั้งที่โมดัลเปิด/ปิด
+     `planReloadKey` นับรอบที่ช่องภาพแบบต้องอ่านรายการใหม่ (หลัง "ใช้รูปนี้เป็นภาพแบบของพื้นที่นี้") · `reuseBusyKey` ไฟล์ที่กำลังคัดลอก
+     `deskDueDialog` โมดัลวันส่งผลของงานโต๊ะ — จำว่าเปิดเป็น "รับปาก" หรือ "เลื่อน" (ใบที่อ่านใหม่ระหว่างกล่องเปิดต้องไม่สลับทรงของกล่อง) */
+  const [flipBox, setFlipBox] = useState(null);
+  const [flipBusy, setFlipBusy] = useState(false);
+  const [methodOpen, setMethodOpen] = useState(false);
+  const [sendChoice, setSendChoice] = useState(null);
+  const [sendChoiceMissing, setSendChoiceMissing] = useState(false);
+  const [planReloadKey, setPlanReloadKey] = useState(0);
+  const [reuseBusyKey, setReuseBusyKey] = useState(null);
+  const [deskDueDialog, setDeskDueDialog] = useState(null);
+  const [deskDueBusy, setDeskDueBusy] = useState(false);
   /* หัวหน้าแจ้งช่างให้กลับไปเก็บงาน (แผน §5.4) — เหตุผลบังคับ เพราะช่างจะเห็นข้อความนี้
      ในกระดิ่งแล้วต้องรู้ว่าต้องไปทำอะไร โดยไม่ต้องโทรถามกลับ
      ⚠️ ปุ่มอยู่ในการ์ดควบคุม **ครั้งเดียวต่อใบ** — ไม่ใช่ปุ่มต่อข้อเหมือนเช็คลิสต์เดิม */
@@ -287,10 +326,98 @@ export default function SurveySheetPage({ params }) {
       setToast({ kind: "success", msg: "ตัดพื้นที่ออกแล้ว — เอากลับเข้าใบได้จากเมนูบนหัวพื้นที่" });
       await load({ background: true });
     } catch (e) {
+      /* ⭐ หัวหน้าตัดพื้นที่ลงหน้างานสุดท้ายขณะนัดยังเปิด (งวด S2b) — server ยังไม่ได้เขียนอะไร และส่งเนื้อของกล่องยืนยันมากับ 409
+         ⇒ ไม่ใช่ข้อผิดพลาด: กล่องเหตุผลหลบ (พื้นที่กับเหตุผลยังถืออยู่) แล้วกล่องยืนยันบอกผลทุกข้อก่อนกด
+         ⚠️ แยกด้วย `code` ไม่เทียบประโยค · สวิตช์ปิด = server ไม่ส่งรหัสนี้ ⇒ กิ่งนี้ไม่มีวันเดิน */
+      if (e.data?.code === FLIP_CONFIRM_CODE && e.data?.flip) {
+        openFlipBox(cutting, cutReason.trim(), e.data.flip);
+        return;
+      }
       setCutError(e.message || "ตัดพื้นที่ออกไม่สำเร็จ");
     } finally {
       setCutBusy(false);
     }
+  };
+
+  /* ── กล่องยืนยัน "ตัดพื้นที่และยกเลิกนัด" (งวด S2b · แผน §3.3) ─────────────────────────────────────
+     เนื้อกล่อง = สิ่งที่ server คิดจากแผนตัวเดียวกับที่มันจะเขียน (`flip.lines` · ช่องที่ต้องกรอก · ป้ายปุ่ม · นัดที่จะยกเลิก)
+     — หน้าคัดลอกไว้ตอนเปิด ไม่คิดเอง · เลขการกด (`actionId`) ใหม่ทุกครั้งที่เปิดกล่อง
+     ⭐ `basis` = ชุดอินพุตของแผนที่ให้บรรทัดตรงกับของ server ทุกตัวอักษร (`surveyFlipBasis` ของไฟล์โมดัล — แผนอยู่ที่นั่นที่เดียว)
+        ใช้คิดบรรทัดใหม่เมื่อหัวหน้าแก้วันส่งผลในช่อง (UAT S2b S08: บรรทัดเคยพูดวันของตอนเปิดกล่องค้างไว้) · ไม่ตรง = null = บรรทัดของ server */
+  const openFlipBox = (zone, reason, flip) => setFlipBox({
+    zoneId: zone.id,
+    title: `ตัด ${surveyZoneTitle(zone)} ออกจากใบนี้`,
+    message: `พื้นที่สุดท้ายที่ต้องวัด และนัด ${flip.visit?.code || flip.visit?.id} ยังเปิดอยู่ — ตัดออกได้ โดยนัดจะถูกยกเลิกไปด้วย`,
+    lines: textLines(flip.lines),
+    basis: surveyFlipBasis({
+      rows: data?.zones || [], cut: { zoneId: zone.id, to: "cut" }, visit: data?.visit || null,
+      request: data?.request || null, sendBack: data?.sendBack, reason,
+    }, flip),
+    needsDate: flip.needs?.resultDate === true,
+    confirmLabel: flip.confirmLabel,
+    visitId: flip.visit?.id ?? null,
+    reason,
+    resultDate: flip.defaults?.resultDate || "",
+    dateMissing: false,
+    actionId: newSurveyActionId(),
+    dead: false,
+    pinned: false,
+  });
+  /* แก้วันส่งผล = body เปลี่ยน ⇒ เลขการกดใหม่ (สัญญาของ `surveyMethodActionId`: ส่ง body เดิมซ้ำเท่านั้นจึงใช้เลขเดิม)
+     🔴 **รอบที่ตัดติดแล้วแต่ผลที่ตามมาไม่ครบ (`pinned`) แก้วันไม่ได้** — server พิสูจน์ว่า "การกดนี้เป็นคนยกเลิกนัด" ด้วยเลขการกดเดิม
+        เลขใหม่ = นัดที่เพิ่งยกเลิกถูกมองเป็นเรื่องเก่า บรรทัดในเธรดกับกระดิ่งของช่างหาย ⇒ ช่องวันถูกปิด และตัวนี้ไม่รับค่า */
+  const setFlipDate = (value) => setFlipBox((prev) => (prev && !prev.pinned
+    ? { ...prev, resultDate: value, dateMissing: false, actionId: newSurveyActionId(), lines: prev.basis ? surveyFlipLinesAt(prev.basis, value) : prev.lines }
+    : prev));
+  /* ปิดกล่องยืนยัน = เลิกตัด (กล่องเหตุผลที่หลบอยู่ปิดไปด้วย) — ยังไม่ได้ยืนยัน ไม่มีอะไรถูกเขียน */
+  const closeFlipBox = () => {
+    setFlipBox(null);
+    setCutting(null);
+    setCutReason("");
+  };
+  /* ⭐ กด "ตัดพื้นที่และยกเลิกนัด" — ยิงเส้นตัดเดิมพร้อมคำยืนยัน (`flip`) · ล้ม = โยนให้กล่องบอกตรงนั้น (ไม่ใช่ toast ที่หายไป)
+     · ตัดติดแล้วแต่ผลที่ตามมาไม่ครบ (`survey_flip_retry`) = กล่องคงเนื้อเดิมและ **เลขการกดเดิม** — กดซ้ำด้วย body เดิมคือทางทำต่อให้จบ
+       (server กันซ้ำด้วยเลขนี้) · ใบอ่านใหม่เบื้องหลัง แต่กล่องไม่วาดจากใบนั้น (แถวถูกตัดไปแล้ว)
+     · 400 (วันส่งผล) = ฟอร์มอยู่ครบ แก้วันแล้วได้เลขการกดใหม่ (ที่ช่องวัน)
+     · 409 อื่น (ใบถูกแก้จากที่อื่น) = อ่านใบใหม่ กล่องเหลือปุ่ม "ปิด" */
+  const confirmFlipCut = async () => {
+    const box = flipBox;
+    if (!box) return;
+    // ช่องวันว่าง = บอกในกล่องด้วยประโยคเดียวกับ server โดยไม่ต้องยิงไปให้ถูกตีกลับ (ช่องขึ้นขอบแดง + ประโยคใต้ช่อง)
+    // ⚠️ **คืน false ไม่โยน** — ข้อผิดพลาดที่โยนเข้ากล่องค้างอยู่จนกดรอบถัดไป (UAT S2b S08: พิมพ์วันแล้ว ขอบแดงหาย แต่ประโยคแดงยังอยู่)
+    //    ประโยคของช่องนี้ผูกกับ `dateMissing` ซึ่ง `setFlipDate` ล้างทันทีที่พิมพ์
+    if (box.needsDate && !box.resultDate) {
+      setFlipBox((prev) => (prev ? { ...prev, dateMissing: true } : prev));
+      return false;
+    }
+    setFlipBusy(true);
+    try {
+      await apiJson(`/api/service/surveys/${id}/zones/${box.zoneId}`, {
+        method: "PATCH",
+        json: {
+          status: "cut",
+          cutReason: box.reason,
+          flip: { actionId: box.actionId, committedResultDate: box.resultDate, cancelVisitId: box.visitId },
+        },
+        fallbackError: "ตัดพื้นที่ออกไม่สำเร็จ",
+      });
+    } catch (e) {
+      if (e.data?.code === FLIP_RETRY_CODE) {
+        // ตรึงกล่องไว้ที่ body เดิม: วันส่งผลกับเลขการกดห้ามเปลี่ยนจนกว่ารอบนี้จะจบ (ดู `setFlipDate`)
+        setFlipBox((prev) => (prev ? { ...prev, pinned: true } : prev));
+        void load({ background: true });
+      } else if (e.status === 409) {
+        setFlipBox((prev) => (prev ? { ...prev, dead: true } : prev));
+        void load({ background: true });
+      }
+      throw e;
+    } finally {
+      setFlipBusy(false);
+    }
+    closeFlipBox();
+    setToast({ kind: "success", msg: "ตัดพื้นที่ออกแล้ว — เอากลับเข้าใบได้จากเมนูบนหัวพื้นที่" });
+    await load({ background: true });
+    return true;
   };
 
   const restoreZone = async (zone) => {
@@ -326,14 +453,18 @@ export default function SurveySheetPage({ params }) {
         });
         savedIds.push(String(zoneId));
       } catch (e) {
-        failure = { zoneId: String(zoneId), message: e.message };
+        // `code` ไปกับคำตอบถึงตาราง — ตารางแยก "พื้นที่ถูกแก้จากที่อื่น" ด้วยรหัส ไม่เทียบประโยค (งวด S2b)
+        failure = { zoneId: String(zoneId), message: e.message, code: e.data?.code ?? null };
         break;
       }
     }
     setBusyZone(null);
     await load({ background: true });
     if (failure) {
-      setToast({ kind: "error", msg: failure.message });
+      /* ชนรุ่นของแถว = ตารางพิมพ์ประโยคนี้บนแถวที่ชนเอง (ใบถูกอ่านใหม่แล้ว กดบันทึกซ้ำได้) — toast ซ้ำอีกที = ประโยคเดียวสองที่
+         ⚠️ เฉพาะใบที่มีพื้นที่จากแบบ (เงื่อนไขเดียวกับตาราง: `mix.drawing`) — ใบลงหน้างานล้วนต้องเหมือนเดิมทุกจุด: toast + บรรทัดรวมเหนือตาราง */
+      const staleOnRow = failure.code === SURVEY_ZONE_STALE_CODE && view.mix.drawing > 0;
+      if (!staleOnRow) setToast({ kind: "error", msg: failure.message });
     } else {
       setToast({ kind: "success", msg: `บันทึกการเคาะแล้ว ${savedIds.length} พื้นที่` });
     }
@@ -386,6 +517,9 @@ export default function SurveySheetPage({ params }) {
         ⇒ แท็บแบบนั้นไม่ส่งคีย์ · route ตอบ "หน้านี้เป็นรุ่นเก่า" · `catch` ข้างล่างอ่านใบใหม่ แล้วโมดัลวาดบรรทัดเอกสารกับคำเตือนให้อ่านก่อนกดซ้ำ
      🔑 ลิสต์ที่ส่งคือ `view.send.seenWarnings` **ดิบ** (ชุดเดียวกับที่โมดัลกาง) — route เทียบตรงตัว ห้ามตัด/ขัดเกลา
      ⚠️ toast พูดแค่เลขกับนัด (ช่องเดียว หายเร็ว) — เหตุที่เอกสารไม่ออก · ข้อที่ยังไม่ได้อ่าน ไปอยู่ที่ส่วนเอกสารบนการ์ด (`afterSend`) */
+  /* ⭐ **ใบที่มีพื้นที่จากแบบส่งอีกสองคีย์** (งวด S2b) — `methodMix` = สัดส่วนวิธีที่โมดัลเห็น (route เทียบกับแถวจริง: มีคนสลับวิธีหลังเปิด
+     หน้า = 409 "วิธีประเมินของใบเปลี่ยนไปแล้ว") · `surveyConfirm` = คำตอบ "ต้องยืนยันหน้างานไหม" ที่หัวหน้าเลือกในโมดัล
+     ⚠️ สองคีย์นี้อยู่ใต้ `view.send.confirm.required` เท่านั้น — ใบลงหน้างานล้วนส่งคำขอเท่าเดิมทุกคีย์ */
   const send = async () => {
     const says = view.send.issuesDocument || view.send.documentUnknown;
     const seen = view.send.seenWarnings;
@@ -393,7 +527,7 @@ export default function SurveySheetPage({ params }) {
     try {
       const res = await apiJson(`/api/service/surveys/${id}/send`, {
         method: "POST",
-        json: { closeVisitId: view.send.closesVisit?.id ?? null, ...(says ? { seenWarnings: seen } : {}) },
+        json: { closeVisitId: view.send.closesVisit?.id ?? null, ...(says ? { seenWarnings: seen } : {}), ...(view.send.confirm.required ? { methodMix: view.send.confirm.mix, surveyConfirm: sendChoice } : {}) },
         fallbackError: "ส่งผลไม่สำเร็จ",
       });
       setSending(false);
@@ -406,6 +540,17 @@ export default function SurveySheetPage({ params }) {
     } finally {
       setSendBusy(false);
     }
+  };
+
+  /* ปุ่มยืนยันของโมดัลส่งผล — ใบที่มีพื้นที่จากแบบต้องตอบ "ต้องยืนยันหน้างานไหม" ก่อน (ไม่มีค่าตั้งต้น · กฎฟอร์ม "ไม่เลือกแทนคน")
+     ⚠️ ยังไม่เลือก = **คืน `false` ไม่โยน** — ของที่โยนออกจากปุ่มนี้ถูกนับเป็นการตีกลับของ server (`rememberSendRefusal`)
+        เหตุขึ้นใต้ไทล์ (`role="alert"`) และไทล์ขึ้นขอบแดง · กล่องยังเปิด ยังไม่มีคำขอไหนถูกยิง */
+  const confirmSend = () => {
+    if (view.send.confirm.required && !sendChoice) {
+      setSendChoiceMissing(true);
+      return false;
+    }
+    return send();
   };
 
   /* ดึงผลกลับ = เอกสารฉบับที่ใช้อยู่ถูกแทนที่ทันที — toast เอ่ยเลขที่เพิ่งใช้ไม่ได้ (`supersededReport` ของ route · ไม่มี = ประโยคเดิม)
@@ -664,6 +809,78 @@ export default function SurveySheetPage({ params }) {
     }
   };
 
+  /* ── ประเมินจากแบบ (งวด S2b): ปุ่มเปลี่ยนวิธี · ใช้ไฟล์ฝ่ายขายเป็นภาพแบบ · วันส่งผลของงานโต๊ะ ─────────────────────
+     ⚠️ ประกาศ **หลัง `recall`** เหมือนชุดเอกสาร — ช่วง `send` → `recall` ถูกตรึงว่าไม่มี toast โทน error */
+
+  /* เปิดโมดัล "วิธีประเมินรายพื้นที่" **แล้วอ่านใบใหม่เสมอ** — โมดัลคิดผลจากแถวพื้นที่ · นัด · เรื่องส่งกลับ ชุดล่าสุด (ท่าเดียวกับโมดัลส่งผล) */
+  const openMethodDialog = () => {
+    setMethodOpen(true);
+    load({ background: true });
+  };
+  /* ปุ่ม "เปลี่ยนวิธีประเมิน" บนการ์ด — กดได้เสมอ: ติดด่าน (ยังไม่รับเรื่อง · ส่งผลไปแล้ว) = บอกเหตุของตัวตัดสินตอนกด
+     (`view.method.reason` — หน้าไม่พิมพ์ประโยคเอง) · ไม่มีสิทธิ์/สวิตช์ปิด = การ์ดไม่วาดปุ่มนี้เลย (`view.method.show`) */
+  const switchMethod = () => (view.method.allowed
+    ? openMethodDialog()
+    : setToast({ kind: "warning", msg: view.method.reason }));
+  /* ปิดโมดัลโดยไม่ได้บันทึก = **อ่านใบใหม่เสมอ** — รอบที่ตอบ `partial` (แถวพื้นที่ลงแล้ว เธรด/กระดิ่งยังไม่ครบ) หรือคำตอบหายกลางทาง
+     เขียนฐานไปแล้วทั้งที่โมดัลยังให้กดซ้ำ ⇒ ปิดแล้วใบข้างหลังต้องไม่ค้างเป็นของเก่า (ท่าเดียวกับ `openMethodDialog`) */
+  const closeMethodDialog = () => {
+    setMethodOpen(false);
+    load({ background: true });
+  };
+  /* โมดัลบันทึกสำเร็จ — หน้าไม่วาดจากคำตอบ (แถวที่ route คืนอาจว่าง) ⇒ อ่านใบใหม่เสมอ */
+  const methodDone = ({ plan } = {}) => {
+    setMethodOpen(false);
+    setToast({ kind: "success", msg: plan?.kind === "cancel-only" ? "ยกเลิกนัดแล้ว" : "บันทึกวิธีประเมินแล้ว" });
+    load({ background: true });
+  };
+
+  /* ⭐ "ใช้รูปนี้เป็นภาพแบบของพื้นที่นี้" (มติเจ้าของ §10 ข้อ 6) — server คัดลอกไฟล์ของฝ่ายขายเป็นไฟล์ใหม่ของพื้นที่ แล้วแนบผ่านเส้นไฟล์แนบ
+     เส้นเดียวของระบบ (`reuseSalesFileAsPlan` — ด่านทุกข้ออยู่ฝั่ง server) · สำเร็จ = ช่องภาพแบบอ่านรายการใหม่ (`planReloadKey`) + อ่านใบใหม่
+     ⚠️ ล้ม = toast ด้วยประโยคที่ได้กลับมา (ไฟล์เธรดก่อนมีใบรับ · ใบล็อก · พื้นที่ถูกสลับกลับ) — ไม่แปลซ้ำ · กดได้ทีละไฟล์ */
+  const reusePlan = async (zoneId, file) => {
+    if (reuseBusyKey || !file?.ref) return;
+    setReuseBusyKey(file.key);
+    try {
+      const out = await reuseSalesFileAsPlan({ requestId: id, zoneId, ref: file.ref });
+      if (!out.ok) {
+        /* ล้ม ≠ ไม่มีอะไรถูกเขียน: คำตอบของเส้นแนบอาจหายกลางทางทั้งที่แถวลงแล้ว และ 409 แปลว่าใบที่ถืออยู่เก่า
+           ⇒ ช่องภาพแบบกับใบอ่านใหม่ทุกครั้ง — ปุ่มที่เหลือเดินตามของจริง ไม่ชวนให้กดซ้ำจนได้ภาพแบบสองใบ */
+        setToast({ kind: "error", msg: out.error });
+        setPlanReloadKey((n) => n + 1);
+        await load({ background: true });
+        return;
+      }
+      setPlanReloadKey((n) => n + 1);
+      setToast({ kind: "success", msg: "ใช้รูปนี้เป็นภาพแบบแล้ว" });
+      await load({ background: true });
+    } finally {
+      setReuseBusyKey(null);
+    }
+  };
+
+  /* ⭐ "รับปากวันส่งผล" / "เลื่อนวันส่งผล" ของใบงานโต๊ะ — โมดัลตัวเดียวกับหน้าคำร้อง (`CommitDueDialog`) · เส้นเดียวกัน (`PATCH` ใบคำร้อง)
+     ⚠️ โมดัลไม่บอก error เอง ⇒ ล้ม = toast · โมดัลยังเปิดพร้อมของที่พิมพ์ไว้ (ท่าเดียวกับหน้าคำร้อง) */
+  const submitDeskDue = async (payload) => {
+    const mode = deskDueDialog?.mode;
+    setDeskDueBusy(true);
+    try {
+      await apiJson(`/api/sa/requests/${id}`, {
+        method: "PATCH", json: payload, fallbackError: "บันทึกวันส่งผลไม่สำเร็จ",
+      });
+      setDeskDueDialog(null);
+      setToast({
+        kind: "success",
+        msg: mode === "reschedule" ? "เลื่อนวันแล้ว" : commitDueLabels({ ...data?.request, surveyNeedsVisit: false }).okMsg,
+      });
+      await load({ background: true });
+    } catch (e) {
+      setToast({ kind: "error", msg: e.message });
+    } finally {
+      setDeskDueBusy(false);
+    }
+  };
+
   const zones = useMemo(() => data?.zones || [], [data]);
   /* ⭐ **ไฟล์รายพื้นที่ชุดสด** (แผน §10.5 S2) — ก้อนจาก GET + รายการที่แผงไฟล์แนบรายงานขึ้นมา
      หลังอัป/ลบ ⇒ อัปผังที่ตารางสรุปแล้ว ด่าน "ภาพผัง" บนการ์ดจัดการผลและปุ่มส่งผลขยับทันที
@@ -733,6 +950,11 @@ export default function SurveySheetPage({ params }) {
        ⇒ ส่วนเอกสารบนการ์ด · แถวด่าน "เอกสารประเมินออกได้" · บรรทัดเอกสารในโมดัลส่งผล/ดึงกลับ มาจากตัวตัดสินตัวเดียวกันนี้ */
     document: data?.document ?? null,
     documentLocal: docLocal,
+    /* ⭐ ประเมินจากแบบ (งวด S2b) — สองคีย์จาก GET ล้วน (server เป็นคนอ่านสวิตช์และนัด · จอไม่เดา)
+       `drawingMethodEnabled` เปิด = ตัวตัดสินให้ปุ่ม "เปลี่ยนวิธีประเมิน" (`view.method`) · `siteVisitReached` = ใบมีนัดที่เข้าพื้นที่แล้วไหม
+       (`null` = ไม่ได้อ่าน/อ่านไม่สำเร็จ ⇒ ไม่มีบรรทัดเหตุของเรื่องนี้) — เหตุ "ยังไม่มีใครเข้าพื้นที่" มาอยู่ใน `view.send.reason` เอง */
+    drawingMethodEnabled: data?.drawingMethodEnabled === true,
+    siteVisitReached: data?.siteVisitReached ?? null,
     dirtyZoneIds,
     pendingDecisionZoneIds,
     tab,
@@ -742,6 +964,21 @@ export default function SurveySheetPage({ params }) {
   }), [data, zones, filesByZone, dirtyZoneIds, pendingDecisionZoneIds, tab, docLocal, packageSizes]);
 
   const canDecide = data?.canDecide === true;
+  /* ⭐ มติเจ้าของ 26/09 "ช่างเห็นแค่งานตัวเอง" — ช่าง (เขียนผลวัดได้ · ไม่ได้เคาะ) ไม่มีจอสรุปส่งผลแล้ว
+     ลิงก์เก่า `?tab=result` พากลับหน้างาน (ชั้นใบใต้พื้นที่ต้องเป็น URL แท็บหน้างานอยู่แล้ว — กับดักประวัติ)
+     🐞 UAT 01/10: ถาม `canWrite` **ดิบของ server** (ช่างของนัดใบนี้ — ไม่ดูการล็อก) ไม่ใช่ `view.flags.canWrite` (หักล็อกแล้ว)
+        ⇒ เดิมใบที่ส่งผลแล้ว ธงเป็น false ช่างเปิด `?tab=result` ได้ (และได้แถว "สรุปส่งผล · ดูอย่างเดียว")
+     🔄 งวด S2b: บรรทัดนี้ย้ายขึ้นมาจากข้างล่าง (ตัวอักษรเดิม) — `hideDrawing` ต้องรู้ก่อนพื้นที่ตั้งต้นของบานขวาถูกคิด */
+  const crewOnly = !!data && data.canWrite === true && !canDecide;
+  /* ⭐ **ใครเห็นพื้นที่จากแบบ** (งวด S2b · มติเจ้าของ O4 09/10) — ผู้วางคิวกับช่างมาถึงหน้านี้ด้วยธงคู่เดียวกัน (`canWrite` · ไม่ได้เคาะ)
+     ตัวแยกคือ `canEditService` ของ GET (ถือสิทธิ์แก้งานบริการ — server ตัดสินจากความสามารถ ไม่ใช่ชื่อตำแหน่ง · จอไม่รู้ role ของตัวเอง)
+       หัวหน้า    เห็นทุกพื้นที่ กรอกพื้นที่จากแบบได้
+       ผู้วางคิว   เห็นทุกพื้นที่ **อ่านอย่างเดียว** บนพื้นที่จากแบบ (`planReader`) — พื้นที่ลงหน้างานยังทำได้เท่าเดิม
+       ช่าง       พื้นที่จากแบบไม่ใช่งานของเขา ⇒ ไม่อยู่ในรายการ/ตัวเลื่อน/พื้นที่ตั้งต้น (`hideDrawing`) มีบรรทัดบอกจำนวนแทน
+     ⚠️ `hideDrawing` ไปที่ **สี่ตัวเท่านั้น**: รายการพื้นที่ · พื้นที่ตั้งต้น · ตัวเลื่อน ‹ › · "ถัดไป" ของท้ายหน้าพื้นที่ (ทางเดินตามลำดับ —
+        UAT 12/10) — แถบของช่าง · ด่านแจ้งหัวหน้า ได้ทั้งใบเหมือนเดิม (ตัวตัดสินพวกนั้นตัดพื้นที่จากแบบออกเองอยู่แล้ว) · ใบที่ไม่มีพื้นที่จากแบบ = สองธงนี้ไม่เปลี่ยนอะไรเลย */
+  const planReader = crewOnly && data?.canEditService === true;
+  const hideDrawing = crewOnly && !planReader;
 
   /* ── เอกสารประเมินพื้นที่ (PR-3): ลายเซ็นของชุดไฟล์ + การอ่านใบซ้ำ ─────────────────────────────────
      `liveSig` = ชุดไฟล์ที่จอถืออยู่ตอนนี้ (**ก้อนเดียวกับที่ส่งให้ตัวตัดสิน** — กล่อง "ส่งผลรอบล่าสุดถูกตีกลับ" เทียบกับตัวนี้)
@@ -878,9 +1115,18 @@ export default function SurveySheetPage({ params }) {
   }, []);
   const resetDraft = useCallback(() => setDraftEpoch((n) => n + 1), []);
   const zoneIds = useMemo(() => zones.map((z) => String(z.id)), [zones]);
+  /* พื้นที่ที่บานขวาเปิดเอง = "งานถัดไป" ของคนดู (งวด S2b)
+     · `editable` — หัวหน้าที่เคาะได้แต่เขียนผลวัดไม่ได้ (CD / CM) ก็มีงานบนพื้นที่จากแบบ ⇒ ได้พื้นที่แรกที่ยังขาดเหมือนกัน
+       (ใบที่ไม่มีพื้นที่จากแบบ: ท่อนหลังเป็นเท็จ = ค่าเดิม)
+     · `drawingEditable` — ผู้วางคิวเห็นพื้นที่จากแบบแต่กรอกไม่ได้ ⇒ พื้นที่จากแบบไม่ถูกเลือกเป็นงานถัดไปของเขา */
+  const defaultEditable = view.flags.canWrite || (canDecide && !view.flags.locked && view.mix.drawing > 0);
+  /* ⚠️ ใบที่ไม่มีพื้นที่จากแบบ = **คำสั่งเดิมทุกตัวอักษร** (สามตัวเลือกใหม่ไม่เปลี่ยนผลบนใบแบบนั้นอยู่แล้ว — แยกกิ่งไว้ให้เห็นกับตา
+     และเทสต์เดิมของตัวตัดสินยังตรึงบรรทัดนี้: หน้าต้องส่งธงที่หักล็อกแล้ว ไม่ใช่ `canWrite` ดิบของ server) */
   const defaultZoneId = useMemo(
-    () => surveyDefaultZoneId(zones, filesByZone, { editable: view.flags.canWrite }),
-    [zones, filesByZone, view.flags.canWrite],
+    () => (view.mix.drawing > 0
+      ? surveyDefaultZoneId(zones, filesByZone, { editable: defaultEditable, hideDrawing, drawingEditable: canDecide })
+      : surveyDefaultZoneId(zones, filesByZone, { editable: view.flags.canWrite })),
+    [zones, filesByZone, view.flags.canWrite, view.mix.drawing, defaultEditable, hideDrawing, canDecide],
   );
   const route = useSurveyZoneRoute({
     requestId: id,
@@ -938,6 +1184,19 @@ export default function SurveySheetPage({ params }) {
     }),
   });
 
+  /* ⭐ **ใบที่มีพื้นที่จากแบบ: โมดัลส่งผลถามว่า "ต้องยืนยันหน้างานไหม"** (งวด S2b · แผน §3.2) — ตัวตัดสินได้ `method` เฉพาะเมื่อการ์ดบอกว่า
+     ต้องถาม (`view.send.confirm.required`) · ไม่ต้อง = `null` ⇒ ผลของ `surveySendConfirm` เท่าเดิมทุกคีย์ (ไม่มีหัวใหม่ ไม่มีไทล์)
+     · `view.mix` (มี `mode`) ไม่ใช่ `view.send.confirm.mix` — ตัวหลังเป็นก้อนที่ส่งกลับ route ไม่มีโหมดของใบ
+     · `openVisit` = นัดที่ยังเปิดจริง — ข้อ "ไม่มีนัดที่เปิดอยู่" พูดได้ต่อเมื่อไม่มี
+     · `sendChoice` ล้างทุกครั้งที่โมดัลเปิด/ปิด — ไม่มีคำตอบค้างจากรอบก่อน ไม่มีค่าตั้งต้น */
+  useEffect(() => {
+    setSendChoice(null);
+    setSendChoiceMissing(false);
+  }, [sending]);
+  const sendOpenVisit = data?.visit && OPEN_VISIT_STATES.includes(data.visit.status)
+    ? { code: data.visit.code, status: data.visit.status } : null;
+  const sendMethod = view.send.confirm.required
+    ? { mix: view.mix, confirm: sendChoice, openVisit: sendOpenVisit } : null;
   /* ⭐ ข้อความโมดัลส่งผล — ผลทุกข้อของการกด รวม "ปิดนัด SV-… ไปพร้อมกัน" (มติเจ้าของ 24/09 ข้อ 2) */
   const sendConfirm = surveySendConfirm({
     docNo: data?.request?.docNo, closesVisit: view.send.closesVisit,
@@ -947,11 +1206,22 @@ export default function SurveySheetPage({ params }) {
     warnings: view.send.seenWarnings, documentUnknown: view.send.documentUnknown,
     // ลายเซ็นจริง (PR-SIG) — ผู้ลงนามที่เอกสารของการส่งครั้งนี้จะพิมพ์ลายเซ็น: โมดัลเอ่ยชื่อก่อนกด · ไม่มีคีย์ (กติกาปิด) = ไม่มีข้อนี้
     signers: view.send.signers,
+    method: sendMethod,
     // ส่งกลับให้ช่างแก้ค้างอยู่ = บอกก่อนกดว่าส่งแล้วช่างแก้ต่อไม่ได้ (review 26/09 · เตือน ไม่บล็อก)
     sendBackPending: view.send.sendBackPending,
     // ขนาดที่ตั้งไว้ก่อนมีข้อเสนอของระบบ (back-fill ST) = บอกก่อนกดว่าพื้นที่ไหนยังไม่ได้เทียบ (UAT PR-P 01/10 · เตือน ไม่บล็อก)
     sizeReview: view.send.sizeReview,
   });
+  /* ของโมดัลส่งผลบนใบที่มีพื้นที่จากแบบ — หัวกล่อง (ไม่มี = ไม่ทับหัวตั้งต้นบนแท็ก) · ไทล์สองใบ (คำบนไทล์และคำกำกับเป็นของตัวตัดสิน)
+     · เลือกแล้วเหตุ "ยังไม่ได้เลือก…" หายทันที */
+  const sendTitle = sendConfirm.title ? { title: sendConfirm.title } : null;
+  const sendChoiceOptions = sendConfirm.choice
+    ? sendConfirm.choice.options.map(({ value, label, hint }) => ({ value, label, description: hint }))
+    : [];
+  const pickSendChoice = (value) => {
+    setSendChoice(value);
+    setSendChoiceMissing(false);
+  };
   /* เหตุหลายข้อที่ขวางการส่งผล (ติดเฉพาะเอกสารประเมิน) — โมดัลที่เหลือปุ่ม "ปิด" วาดเป็นรายการ · ใบที่ล็อกไปแล้วไม่มีเหตุให้วาด */
   const sendBlockedItems = view.send.show && !view.send.allowed ? view.send.reason?.items || [] : [];
   /* กล่องยืนยัน "ออกเอกสาร" — ปุ่มเดินตามใบสด (`view.document.issue.allowed`) · ระหว่างที่คำขอยังวิ่ง = คงเนื้อเดิม (ดู `issueBusy`)
@@ -985,8 +1255,15 @@ export default function SurveySheetPage({ params }) {
   });
   /* ⭐ ตัวนับ "n ข้อ" ระหว่างพิมพ์ — ตัวแยกบรรทัดตัวเดียวกับ server (แผน §10.5 S3) ⇒ ตาเห็นกี่ข้อ ช่างได้กี่ข้อ */
   const sendBackItems = surveySendBackItems(sendBackNote);
-  /* 🔑 ด่านตัวเดียวกับ server — ไม่มีสิทธิ์ = ไม่โชว์ปุ่ม · เหตุที่เขียนไม่ได้อยู่ในการ์ด */
-  const addGate = surveyAddZoneError(data?.request, { canWrite: data?.canWrite === true });
+  /* 🔑 ด่านตัวเดียวกับ server — ไม่มีสิทธิ์ = ไม่โชว์ปุ่ม · เหตุที่เขียนไม่ได้อยู่ในการ์ด
+     ⭐ **ใบงานโต๊ะ** (ไม่เหลือพื้นที่ที่ต้องลงหน้างาน · งวด S2b · แผน §2 แถว 14) — server ให้เพิ่มพื้นที่ได้เฉพาะหัวหน้าฝ่าย และไม่ถามเรื่องนัด
+        ⇒ หัวหน้าที่เขียนผลวัดไม่ได้ (CD / CM) ก็เพิ่มได้ · คนอื่นไม่มีปุ่ม (ผู้วางคิวได้บรรทัดเหตุแทน — `addBlockedNote` ข้างล่าง)
+        ใบที่ยังต้องมีนัด = ด่านเดิมทุกตัวอักษร
+     ⚠️ ค่านี้ถูกถามแค่ "มีหรือไม่มี" — ไม่มีที่ไหนพิมพ์มัน */
+  const deskSheet = view.needsVisit === false;
+  const addGate = deskSheet
+    ? (canDecide ? surveyEditLockError(data?.request) : ADD_HEAD_ONLY)
+    : surveyAddZoneError(data?.request, { canWrite: data?.canWrite === true });
   /* 🔑 ด่านตัวเดียวกับ route แจ้งว่าแก้แล้ว + ค่าที่ยังพิมพ์ค้าง (server มองไม่เห็น จอต้องกันเอง) */
   const fixedGate = surveySendBackDoneError(data?.request, {
     canWrite: view.flags.canWrite,
@@ -1025,11 +1302,7 @@ export default function SurveySheetPage({ params }) {
   /* ⚠️ หัวหน้าที่ไม่ได้อยู่บนนัด (เปิดมาเคาะแพ็คเกจ) ไม่ใช่คนส่งงาน — ปุ่มของเขาอยู่การ์ด
      จัดการผลประเมิน · Senior ที่ออกหน้างานเองยังได้แถบ (`onVisit` มาจาก server) */
   const actsAsCrew = !canDecide || data?.onVisit === true;
-  /* ⭐ มติเจ้าของ 26/09 "ช่างเห็นแค่งานตัวเอง" — ช่าง (เขียนผลวัดได้ · ไม่ได้เคาะ) ไม่มีจอสรุปส่งผลแล้ว
-     ลิงก์เก่า `?tab=result` พากลับหน้างาน (ชั้นใบใต้พื้นที่ต้องเป็น URL แท็บหน้างานอยู่แล้ว — กับดักประวัติ)
-     🐞 UAT 01/10: ถาม `canWrite` **ดิบของ server** (ช่างของนัดใบนี้ — ไม่ดูการล็อก) ไม่ใช่ `view.flags.canWrite` (หักล็อกแล้ว)
-        ⇒ เดิมใบที่ส่งผลแล้ว ธงเป็น false ช่างเปิด `?tab=result` ได้ (และได้แถว "สรุปส่งผล · ดูอย่างเดียว") */
-  const crewOnly = !!data && data.canWrite === true && !canDecide;
+  /* ช่างไม่มีจอสรุปส่งผล (`crewOnly` — ประกาศไว้ข้างบนคู่กับ `canDecide`) ⇒ ลิงก์เก่า `?tab=result` พากลับหน้างาน */
   useEffect(() => {
     if (crewOnly && tab === "result") applyTab("field");
   }, [crewOnly, tab, applyTab]);
@@ -1097,6 +1370,17 @@ export default function SurveySheetPage({ params }) {
   const req = data?.request || {};
   const site = data?.site || null;
   const visit = data?.visit || null;
+  /* คำของ "เพิ่มพื้นที่" (ปุ่มท้ายรายการ · ปุ่มใต้สถานะว่าง · หัวกล่อง · บรรทัดรองของกล่อง) — ใบงานโต๊ะ: หัวหน้าเพิ่มที่โต๊ะ ไม่มีใครอยู่หน้างาน
+     ⇒ ไม่ใช่ "ที่เจอหน้างาน" และป้ายที่ฝ่ายขายเห็นบนแถวเป็น "เพิ่มโดย {ฝ่าย}" (งวด S2b) · ใบที่ยังต้องมีนัด = คำเดิมทั้งสามที่ */
+  const addWords = deskSheet
+    ? {
+      label: "เพิ่มพื้นที่",
+      detail: `ฝ่ายขายจะเห็นป้าย “เพิ่มโดย ${req.dept || "TS"}” บนแถวนี้ — ไม่ต้องขออนุมัติก่อน`,
+    }
+    : {
+      label: "เพิ่มพื้นที่ที่เจอหน้างาน",
+      detail: "ฝ่ายขายจะเห็นป้าย “เจ้าหน้าที่เพิ่มหน้างาน” บนแถวนี้ — ไม่ต้องขออนุมัติก่อน",
+    };
   /* ⭐ ป้ายนัดข้างรหัสคำร้อง (แถวย้อน) — สถานะนัดคำเดียวกับหน้าคำร้อง (นัดไว้ · กำลังทำ · เข้าแล้ว · ทำไม่ได้)
      · ใบที่ส่งผลไปแล้วแต่นัดยังไม่ถูกปิด = "นัดยังไม่ปิด" สีอำพัน (ใบก่อนมติ 24/09 ข้อ 2 ที่นัดค้างมา — ถอดเมื่อไร
        นัดพวกนั้นค้างในคิวโดยไม่มีใครเห็น) · 🐞 ป้ายนี้ต้องถาม `sent` ก่อนเสมอ — กติกาอยู่ใน `surveyVisitBadge` (เทสต์ด้วยข้อมูล) */
@@ -1105,6 +1389,8 @@ export default function SurveySheetPage({ params }) {
   const headerView = surveyJobHeaderView({
     request: data?.request || null, customer: data?.customer || null, site, visit, crew: data?.crew || [],
     unknown: data?.unknown || {},
+    /* ใบที่มีพื้นที่จากแบบ: ข้อแรกของหัวงานเป็น "วิธีประเมิน" (งวด S2b) — ใบลงหน้างานล้วน = หัวงานเดิมทุกข้อ (ตัวตัดสินดู `mix.drawing`) */
+    method: { mix: view.mix, needsVisit: view.needsVisit },
   });
   const aboutView = surveyAboutView({
     /* ⚠️ `canWrite` ดิบ (ไม่หักล็อก) — ตัวนี้ถามว่า "เป็นช่างของใบนี้ไหม" (แถว "สรุปส่งผล" เฉพาะคนดูอย่างเดียว) ตัวเดียวกับ `crewOnly` */
@@ -1142,9 +1428,19 @@ export default function SurveySheetPage({ params }) {
   const cardInList = tab === "field" && canDecide && !railWide;
   const cardInFlow = tab === "result" && canDecide && !railWide;
   const viewerKind = !view.flags.canWrite ? "readonly" : !canDecide ? "crew" : data?.onVisit === true ? "senior" : "head";
+  /* ⭐ **พื้นที่จากแบบที่เปิดอยู่** (งวด S2b) — คิดครั้งเดียว ใช้ทั้งชนิดคนดูของหน้าพื้นที่และปุ่มของแผงแบบจากฝ่ายขาย
+     · พื้นที่ลงหน้างาน = `null` ⇒ ทุกอย่างข้างล่างตกทางเดิม
+     · `editable` = หัวหน้า + ใบยังไม่ล็อก + พื้นที่ยังไม่ถูกตัด (ตัวตัดสิน) — หัวหน้าที่เขียนผลวัดไม่ได้ (CD / CM) ก็กรอกพื้นที่จากแบบได้
+       ⇒ ชนิดคนดูของพื้นที่จากแบบมาจากตัวนี้ ไม่ใช่จาก `canWrite` (ไม่งั้นได้ช่องกรอกแต่ไม่มีปุ่มบันทึก)
+     · ผู้วางคิว / ช่างที่ตามลิงก์มา = อ่านอย่างเดียว พร้อมบรรทัดเหตุของตัวตัดสิน (หน้าพื้นที่วาดเอง) */
+  const shownDrawing = shownZone ? surveyDrawingZoneView({
+    zone: shownZone, files: filesByZone[shownZone.id] || [], canDecide, locked: view.flags.locked, dept: req.dept,
+  }) : null;
+  const drawingZoneEditable = shownDrawing?.editable === true;
   const listView = surveyZoneListView({
     zones, filesByZone, selectedZoneId: split ? route.shown : null, dirtyZoneId,
     sendBack: data?.sendBack || null, canDecide, split, visit, locked: view.flags.locked,
+    hideDrawing, dept: req.dept,
   });
   const zoneTitles = Object.fromEntries(zones.map((z) => [String(z.id), surveyZoneTitle(z)]));
   const nextStep = shownZone ? surveyNextStep({
@@ -1152,6 +1448,8 @@ export default function SurveySheetPage({ params }) {
     // "ถัดไป: ส่งงาน" เฉพาะคนที่ทำหน้าที่ช่าง — 🐞 review 26/09: หัวหน้าที่ไม่ได้ไปหน้างานไล่ตรวจถึงพื้นที่สุดท้ายแล้วได้ปุ่มส่งงานแทนช่าง
     // (ทาง `?submit=1` ที่หัวหน้าตั้งใจส่งแทนยังใช้ `canSubmitField` เต็มตามเดิม)
     canSubmit: canSubmitField && actsAsCrew,
+    // ช่างไม่มีพื้นที่จากแบบในรายการ ⇒ "ถัดไป" ตามลำดับต้องไม่พาเข้าไป (UAT S22/S13 · 12/10)
+    hideDrawing,
   }) : null;
   /* "ถัดไป" ของท้ายหน้าพื้นที่ — พื้นที่ที่ยังขาด (ตัวต่อสายถามก่อนทิ้งเอง) หรือกล่องส่งงาน */
   const goNext = (target) => {
@@ -1159,10 +1457,56 @@ export default function SurveySheetPage({ params }) {
     else if (target?.kind === "submit") openSubmit(null);
   };
 
+  /* ── แผง "แบบจากฝ่ายขาย" (งวด S2b · แผน §3.2 ข้อ 3) ─────────────────────────────────────────────
+     ⭐ ขึ้นเฉพาะใบที่มีพื้นที่จากแบบ และเฉพาะคนที่เห็นพื้นที่พวกนั้น (หัวหน้า · ผู้วางคิว) — ช่างไม่มีแผงนี้ · ใบลงหน้างานล้วนไม่มีแผงนี้
+     ⭐ **ปุ่ม "ใช้รูปนี้เป็นภาพแบบของพื้นที่นี้" เป็นของหัวหน้าที่เปิดพื้นที่จากแบบที่ยังแก้ได้เท่านั้น** (`reuseZone`) —
+        ผู้วางคิว · หน้ารายการ (ไม่มีพื้นที่เปิดอยู่) · พื้นที่ลงหน้างาน · ใบที่ล็อกแล้ว = แกลเลอรีอ่านอย่างเดียว: ไม่ส่ง `onReuse` / `busyKey`
+        และ `zoneTitle` เป็น `null` (ไม่พึ่งแค่ `reuse: null` ของตัวตัดสิน)
+     · สองบาน (≥1000) = เต็มกว้างเหนือสองบาน · หน้าเดียว (<1000) = เหนือรายการพื้นที่ (ย่อ) และในหัวข้อภาพแบบของหน้าพื้นที่เต็มจอ */
+  const showDrawings = (canDecide || planReader) && view.mix.drawing > 0;
+  const drawingsView = showDrawings ? surveySalesDrawingsView({
+    requestFiles: data?.requestFiles, threadFiles: data?.threadFiles, zone: shownZone, unknown: data?.unknown,
+    editable: drawingZoneEditable,
+  }) : null;
+  const reuseZone = canDecide && drawingZoneEditable ? shownZone : null;
+  const reuseProps = reuseZone ? {
+    zoneTitle: surveyZoneTitle(reuseZone),
+    busyKey: reuseBusyKey,
+    onReuse: (file) => reusePlan(reuseZone.id, file),
+  } : null;
+  /* สามที่วาง ของชิ้นเดียวกัน: เหนือสองบาน · ในหัวข้อภาพแบบของหน้าพื้นที่เต็มจอ (สองที่นี้ได้ปุ่มเมื่อ `reuseProps` มี) ·
+     เหนือรายการพื้นที่ของหน้าเดียว — **ไม่มีปุ่มเสมอ** (ไม่มีพื้นที่ไหนเปิดอยู่ให้รูปไปลง) */
+  const drawingsAbovePanes = showDrawings && split
+    ? <SurveySalesDrawings view={drawingsView} {...reuseProps} /> : null;
+  const drawingsInZone = showDrawings && !split && shownDrawing
+    ? <SurveySalesDrawings view={drawingsView} compact {...reuseProps} /> : null;
+  const drawingsAboveList = showDrawings && !split
+    ? <SurveySalesDrawings view={drawingsView} compact /> : null;
+
+  /* ── วันส่งผลของใบงานโต๊ะ (งวด S2b) — ใบที่ประเมินจากแบบทั้งใบไม่มีการลงคิว: หัวหน้า "รับปากวันส่งผล" แล้ว "เลื่อนวันส่งผล" ได้จากการ์ด
+     ปุ่มมีหรือไม่ · เป็นปุ่มไหน มาจาก `deskDueAction` (ฐานเดียวกับ route) · ใบที่ยังต้องมีนัด / คนที่ไม่ใช่หัวหน้า = `null` (การ์ดไม่วาดแถว) */
+  const deskRequest = { ...req, surveyNeedsVisit: view.needsVisit };
+  const deskAction = deskDueAction(deskRequest, { canCommit: canDecide });
+  const deskDue = deskAction ? {
+    wish: commitDueLabels(deskRequest).wish,
+    label: deskAction.label,
+    onClick: () => setDeskDueDialog({ mode: deskAction.kind }),
+  } : null;
+
+  /* บรรทัดบริบทใต้ชื่อโมดัลเปลี่ยนวิธี — "RQ-… · ไซต์ · นัด SV-… วัน เวลา" จากหัวงานตัวเดียวกับที่จออยู่ (ไม่มีนัด = ไม่มีท่อนนัด)
+     ⚠️ ท่อนนัดเป็นก้อนเดียว ไม่มีจุดคั่นระหว่างเลขนัดกับวัน (สเปก A-2 · ม็อก B2) — หัวงานคั่นสองชิ้นนั้นด้วย " · " ซึ่งที่นี่เป็นตัวคั่นของท่อน */
+  const visitFact = visit ? headerView.facts.find((fact) => fact.key === "visit") : null;
+  const methodSubtitle = [
+    headerView.request.docNo, headerView.site.name, visitFact?.value ? `นัด\u00a0${visitFact.value.split(" · ").join(" ")}` : null,
+  ].filter(Boolean).join(" · ");
+
   const controlCard = (
     <SurveyControlCard
       view={view}
       busy={sendBusy || recallBusy || sendBackBusy}
+      /* ประเมินจากแบบ (งวด S2b) — ปุ่ม "เปลี่ยนวิธีประเมิน" (การ์ดวาดเมื่อ `view.method.show`) · แถววันส่งผลของงานโต๊ะ (`null` = ไม่มีแถว) */
+      onSwitchMethod={switchMethod}
+      deskDue={deskDue}
       /* เปิดโมดัล **แล้วอ่านใบใหม่เสมอ** (PR-3) — โมดัลต้องวาดจากสวิตช์ออกเอกสาร · ด่าน · คำเตือน ชุดล่าสุด
          (แท็บที่เปิดค้างไว้ข้ามการเปิดสวิตช์ ไม่มีเหตุการณ์โฟกัสให้ตัวอ่านซ้ำอัตโนมัติทำงาน) */
       onSend={() => { setSending(true); load({ background: true }); }}
@@ -1204,7 +1548,9 @@ export default function SurveySheetPage({ params }) {
     ticks: sendBackTicks,
     doneBlocker: fixedGate,
     split,
-    zoneSaveEnabled: split && zoneOpen && dirtyZoneIds.includes(String(shownZone.id)),
+    zoneSaveEnabled: split && zoneOpen && (dirtyZoneIds.includes(String(shownZone.id))
+      // เพิ่งสลับกลับมาเป็นลงหน้างาน: ปุ่มบันทึกของบานขวาเปิด (กรมท่า) ทั้งที่ไม่มีค่าค้าง — แถบถอยเหมือนกัน
+      || (view.flags.canWrite && !!surveyZoneResaveText(shownZone, filesByZone[shownZone.id] || []))),
     // หัวหน้าที่ไปหน้างานเองเห็นการ์ดจัดการผลบนจอเดียวกัน (ในรายการหรือราง) — ส่งผลกดได้ = ปุ่มนั้นเป็นกรมท่าปุ่มเดียว
     cardPrimary: canDecide && view.send.show && view.send.allowed,
     nowKey,
@@ -1246,7 +1592,8 @@ export default function SurveySheetPage({ params }) {
         <div className={styles.resultBack}>
           <Button variant="quiet" className={styles.resultBackBtn} icon={<ArrowLeft size={16} aria-hidden="true" />}
             onClick={() => goTab("field")}>
-            หน้างาน
+            {/* ชื่อเดียวกับแท็บแรก — ใบที่มีพื้นที่จากแบบไม่ใช่ "หน้างาน" ทั้งใบ (ตัวตัดสิน · ใบเดิม = "หน้างาน") */}
+            {view.fieldTabLabel}
           </Button>
           <p className={styles.resultBackText}>สรุปส่งผล · ดูอย่างเดียว</p>
         </div>
@@ -1263,7 +1610,7 @@ export default function SurveySheetPage({ params }) {
             <div className={styles.listFoot}>
               <Button variant="outline" icon={<MapPinPlus size={15} aria-hidden="true" />}
                 onClick={() => setAdding(true)}>
-                เพิ่มพื้นที่ที่เจอหน้างาน
+                {addWords.label}
               </Button>
             </div>
           )}
@@ -1288,6 +1635,11 @@ export default function SurveySheetPage({ params }) {
           onSaveDecisions={saveDecisions}
           drafts={decisionDrafts}
           onDraftsChange={setDecisionDrafts}
+          /* ประเมินจากแบบ (งวด S2b) — ตารางวาดแถว/หัวคอลัมน์ของพื้นที่จากแบบจากสามตัวนี้ (ใบลงหน้างานล้วน = ตารางเดิม)
+             ⚠️ การบันทึกที่ชนรุ่นของแถวไม่มี prop แยก — เดินทางกลับในค่าที่ `onSaveDecisions` คืน (`failure.code`) */
+          mix={view.mix}
+          request={req}
+          locked={view.flags.locked}
           /* ⭐ **บรรทัดนี้คือของที่ฝ่ายขายจะได้ไปพร้อมกระดิ่ง** — TS ตัด/เพิ่มเองได้
              โดยไม่ต้องขออนุมัติ (มติข้อ 6) ⇒ ที่นี่คือจุดที่เขาเห็นก่อนกดส่งว่าตัวเอง
              เปลี่ยนอะไรไปบ้างจากที่ฝ่ายขายขอมา · ขึ้นเสมอ ไม่ใช่เฉพาะตอนมีการเปลี่ยน */
@@ -1310,14 +1662,16 @@ export default function SurveySheetPage({ params }) {
      ⚠️ นัดยังเปิด (`submit`) = หัวงานอยู่บนตามเดิม — ช่างยังต้องใช้หัวงาน (โทร · นำทาง · เวลาเข้า) · สองบาน = หัวงานเป็นแถบบาง อยู่บนเสมอ */
   const headerLast = tab === "field" && !split && sendBackView?.mode === "report" && !!sendBackCard;
   /* บนสุดของรายการ: กล่องแจ้ง (คนที่ไม่มีการ์ด) → การ์ดส่งกลับของช่าง (A-5: งานตอนนี้ของเขา) → การ์ดจัดการผล (หัวหน้า · controlFirst) */
-  const listBefore = noticeStack || sendBackCard || (cardInList && controlFirst) ? (
+  const listBefore = noticeStack || sendBackCard || (cardInList && controlFirst) || drawingsAboveList ? (
     <>
       {noticeStack}
       {sendBackCard}
       {cardInList && controlFirst ? controlCard : null}
+      {/* หน้าเดียว: แบบจากฝ่ายขายอยู่ติดเหนือรายการพื้นที่ (แกลเลอรีอ่านอย่างเดียว — ปุ่มใช้รูปอยู่ในหน้าพื้นที่) */}
+      {drawingsAboveList}
     </>
   ) : null;
-  const fieldMain = (
+  const fieldWorkspace = (
     <SurveyFieldWorkspace
       mode={split ? "split" : "pages"}
       zoneOpen={zoneOpen}
@@ -1328,6 +1682,10 @@ export default function SurveySheetPage({ params }) {
           onOpen={route.open}
           /* ⭐ ปุ่มท้ายรายการ ไม่ใช่บนหัวจอ (ม็อกจอ 06) · 🔑 ด่านตัวเดียวกับ server — ไม่มีสิทธิ์ = ไม่มีแถว */
           onAdd={addGate ? undefined : () => setAdding(true)}
+          /* ใบงานโต๊ะ (งวด S2b): ปุ่มเขียนว่า "เพิ่มพื้นที่" (ไม่ส่ง = คำเดิมของรายการ) · ผู้วางคิวไม่มีปุ่ม ได้บรรทัดเหตุตรงที่ปุ่มเคยอยู่
+             (ประโยคเดียวกับที่ server ตอบ) — ช่างไม่มีบรรทัดนี้ · ใบล็อกแล้วไม่มีใครเพิ่มได้ จึงไม่มีเหตุให้บอก */
+          addLabel={deskSheet ? addWords.label : null}
+          addBlockedNote={planReader && view.needsVisit === false && !view.flags.locked ? SURVEY_DESK_ADD_HEAD_ONLY : null}
           /* ทางออกทั้งงาน — เปิดกล่องส่งงานที่เลือก "ไปแล้วเข้าไม่ได้" ไว้ให้ (กล่องยังถามเหตุผลก่อนปิดนัด) */
           escape={escape}
           onEscape={canReportUnable ? () => openSubmit("unable") : undefined}
@@ -1355,13 +1713,23 @@ export default function SurveySheetPage({ params }) {
           oneColumn={rail || (split && !railWide)}
           headingId={surveyZoneHeadingId(shownZone.id)}
           requestCode={req.docNo || null}
-          neighbors={surveyZoneNeighbors(zones, shownZone.id, filesByZone)}
+          neighbors={surveyZoneNeighbors(zones, shownZone.id, filesByZone, { hideDrawing })}
           titles={zoneTitles}
           onGoZone={route.open}
           onList={split ? undefined : route.toList}
           next={nextStep}
           onNext={goNext}
-          viewerKind={viewerKind}
+          /* พื้นที่จากแบบ: ชนิดคนดูมาจากตัวตัดสินของพื้นที่นั้น (หัวหน้าที่แก้ได้ = มีปุ่มบันทึก · นอกนั้นอ่านอย่างเดียว) —
+             พื้นที่ลงหน้างาน = ค่าเดิม (งวด S2b) */
+          viewerKind={shownDrawing ? (drawingZoneEditable ? "head" : "readonly") : viewerKind}
+          /* ของที่หน้าพื้นที่ใช้วาดพื้นที่จากแบบ (งวด S2b) — พื้นที่ลงหน้างานไม่อ่านสักตัว:
+             สิทธิ์เคาะ · ใบล็อกไหม · ฝ่ายของใบ (ป้าย "เพิ่มโดย …") · แผงแบบจากฝ่ายขายของหน้าเต็มจอ · ตัวนับให้ช่องภาพแบบอ่านรายการใหม่ */
+          canDecide={canDecide}
+          locked={view.flags.locked}
+          dept={req.dept}
+          drawings={drawingsInZone}
+          salesReuseOffered={!!reuseProps && drawingsView?.files.some((file) => file.reuse?.enabled === true) === true}
+          planReloadKey={planReloadKey}
           onSave={(payload) => saveZone(shownZone.id, payload)}
           onCut={(zone) => { setCutting(zone); setCutReason(""); setCutError(""); }}
           onRestore={restoreZone}
@@ -1380,10 +1748,22 @@ export default function SurveySheetPage({ params }) {
         />
       ) : split ? (
         <EmptyState icon={Search}>
-          {zones.length ? "ไม่มีพื้นที่ที่ต้องวัดแล้ว — พื้นที่ที่ตัดออกเปิดดูได้จากรายการ" : "ใบนี้ยังไม่มีพื้นที่ที่ต้องประเมิน"}
+          {/* ช่างไม่เหลือพื้นที่ให้วัดเพราะที่เหลือเป็นจากแบบทั้งหมด = บรรทัดของตัวตัดสิน — สองประโยคเดิมเป็นเท็จทั้งคู่ในกรณีนี้ */}
+          {listView.emptyReason === "drawing" ? listView.drawingNote
+            : zones.length ? "ไม่มีพื้นที่ที่ต้องวัดแล้ว — พื้นที่ที่ตัดออกเปิดดูได้จากรายการ" : "ใบนี้ยังไม่มีพื้นที่ที่ต้องประเมิน"}
         </EmptyState>
       ) : null}
     />
+  );
+  /* สองบาน: แผงแบบจากฝ่ายขายเต็มกว้างเหนือสองบาน (เปิดไว้ตั้งต้น · ปุ่มใช้รูปชี้ไปพื้นที่ที่บานขวาเปิดอยู่)
+     ⚠️ **ห่อด้วย fragment เสมอ แม้ไม่มีแผง** — สองบานต้องอยู่ตำแหน่งเดิมของต้นไม้ทุกสภาพ: แผงโผล่/หาย (หมุนจอข้ามเส้น 1000 ·
+        เพิ่งสลับพื้นที่แรกเป็นจากแบบ) แล้วสองบานถูกถอด-ใส่ใหม่ = ร่างที่พิมพ์ค้างในหน้าพื้นที่หายโดยไม่ถาม
+        (fragment ไม่มี DOM ของตัวเอง ⇒ ใบที่ไม่มีแผงได้ DOM เดิมทุกจุด) */
+  const fieldMain = (
+    <>
+      {drawingsAbovePanes}
+      {fieldWorkspace}
+    </>
   );
 
   return (
@@ -1423,7 +1803,8 @@ export default function SurveySheetPage({ params }) {
             onChange={goTab}
             ariaLabel="มุมมองของใบประเมิน"
             tabs={[
-              { key: "field", label: "หน้างาน" },
+              /* ชื่อแท็บแรกมาจากตัวตัดสิน — "หน้างาน" (ใบลงหน้างานล้วน) / "ข้อมูลพื้นที่" (ใบที่มีพื้นที่จากแบบ · งวด S2b) */
+              { key: "field", label: view.fieldTabLabel },
               { key: "result", label: "สรุปส่งผล" },
             ]}
           />
@@ -1461,9 +1842,10 @@ export default function SurveySheetPage({ params }) {
             ส่วนของที่เพิ่มมาคือยอดที่โตขึ้น ไม่มีใครเสียหาย) */}
       <ConfirmDialog
         open={adding}
-        title="เพิ่มพื้นที่ที่เจอหน้างาน"
+        /* หัวกล่องกับป้ายที่ฝ่ายขายจะเห็นเดินตามใบ (`addWords`) — ใบงานโต๊ะไม่มีใคร "เจอหน้างาน" */
+        title={addWords.label}
         message="พื้นที่นี้จะเข้าทะเบียนของลูกค้าทันทีพร้อมรหัส และเข้าไปอยู่ในผลที่ส่งให้ฝ่ายขาย"
-        detail="ฝ่ายขายจะเห็นป้าย “เจ้าหน้าที่เพิ่มหน้างาน” บนแถวนี้ — ไม่ต้องขออนุมัติก่อน"
+        detail={addWords.detail}
         confirmLabel="เพิ่มพื้นที่"
         busy={addBusy}
         onConfirm={draftReady ? addZone : undefined}
@@ -1504,9 +1886,12 @@ export default function SurveySheetPage({ params }) {
           ⚠️ ตัดต้องบอกเหตุผลเสมอ — ของที่หายไปจากสิ่งที่ SA จะเสนอราคาคือของที่ลูกค้าจะถาม และ SA ไม่ได้ไปหน้างาน
           ⭐ บอกผลก่อนกด: ฝ่ายขายเห็นเหตุผล · ย้อนได้ (เอากลับเข้าใบ) — โทนเตือน ไม่ใช่ลบ (ไม่มีข้อมูลหาย) */}
       <ReasonDialog
-        open={!!cutting}
+        /* กล่องยืนยัน "ตัดพื้นที่และยกเลิกนัด" ขึ้นแทน = กล่องนี้หลบ (พื้นที่กับเหตุผลยังถืออยู่ — คำยืนยันใช้ทั้งคู่) */
+        open={!!cutting && !flipBox}
         title={cutting ? `ตัด ${surveyZoneTitle(cutting)} ออกจากใบนี้` : "ตัดพื้นที่ออก"}
-        description="เข้าห้องนี้ไม่ได้ หรือไม่ต้องวัด — ตัดได้โดยไม่ต้องมีขนาดหรือรูป"
+        /* พื้นที่จากแบบไม่มีใครไปถึงห้อง ⇒ ไม่เล่าเรื่องหน้างาน เหลือบรรทัดผล (`detail`) · พื้นที่ลงหน้างานคำเดิมทุกตัวอักษร */
+        description={cutting && isDrawingZone(cutting)
+          ? undefined : "เข้าห้องนี้ไม่ได้ หรือไม่ต้องวัด — ตัดได้โดยไม่ต้องมีขนาดหรือรูป"}
         detail="ฝ่ายขายจะเห็นเหตุผลนี้ · เอากลับเข้าใบได้"
         label="เหตุผลที่ตัดออก"
         value={cutReason}
@@ -1524,6 +1909,56 @@ export default function SurveySheetPage({ params }) {
         onConfirm={cutZone}
         onClose={() => !cutBusy && setCutting(null)}
       />
+
+      {/* ── หัวหน้าตัดพื้นที่ลงหน้างานสุดท้ายขณะนัดยังเปิด (งวด S2b · แผน §3.3) ────────────────────────────
+          ⭐ **บอกผลทุกข้อก่อนกด** (กติกาโมดัลบอกผลลัพธ์ #1223) — ใบกลายเป็นงานประเมินจากแบบ · นัดถูกยกเลิก · ช่างได้รับแจ้ง ·
+             วันส่งผลที่หัวหน้ารับปาก · บรรทัดถึงฝ่ายขาย: รายการมาจากแผนของ server ตัวเดียวกับที่มันจะเขียน (หน้าไม่แต่งประโยคผลเอง)
+          🔑 เกิดได้ทางเดียว: เส้นตัดตอบรหัส `survey_flip_confirm` (สวิตช์เปิด + หัวหน้า) — ไม่มีรหัสนี้ กล่องนี้ไม่มีวันเปิด
+          ⚠️ เนื้อกล่องคือชุดที่คัดลอกไว้ตอนเปิด (`flipBox`) · ล้ม = error ขึ้นในกล่องนี้ · ใบถูกแก้จากที่อื่น = ปุ่มเดียว "ปิด" */}
+      <ConfirmDialog
+        open={!!flipBox}
+        tone="warning"
+        title={flipBox?.title}
+        message={flipBox?.message}
+        confirmLabel={flipBox?.dead ? "ปิด" : flipBox?.confirmLabel}
+        hideCancel={flipBox?.dead === true}
+        busy={flipBusy}
+        onConfirm={flipBox && !flipBox.dead ? confirmFlipCut : undefined}
+        onClose={() => !flipBusy && closeFlipBox()}
+      >
+        {flipBox && !flipBox.dead ? (
+          <>
+            {flipBox.lines.length ? (
+              <div className={styles.effects}>
+                <p className={styles.effectsTitle}>กดแล้วเกิดขึ้นทันที</p>
+                <ul className={styles.effectList}>
+                  {flipBox.lines.map((line) => <li key={line}>{thaiText(line)}</li>)}
+                </ul>
+              </div>
+            ) : null}
+            {flipBox.needsDate ? (
+              <div className={styles.field}>
+                <label className={styles.fieldLabel} htmlFor="survey-flip-result-date">
+                  {SURVEY_METHOD_RESULT_DATE_LABEL}<span className="required-mark" aria-hidden="true"> *</span>
+                </label>
+                <DateInput
+                  id="survey-flip-result-date"
+                  value={flipBox.resultDate}
+                  onChange={setFlipDate}
+                  required
+                  weekday
+                  disabled={flipBusy || flipBox.pinned}
+                  invalid={flipBox.dateMissing}
+                  aria-describedby={flipBox.dateMissing ? "survey-flip-result-date-error" : undefined}
+                />
+                {flipBox.dateMissing ? (
+                  <p className={styles.fieldError} id="survey-flip-result-date-error" role="alert">{SURVEY_METHOD_ERRORS.resultDate}</p>
+                ) : null}
+              </div>
+            ) : null}
+          </>
+        ) : null}
+      </ConfirmDialog>
 
       {/* 🔴 ลบทิ้งได้เฉพาะพื้นที่ที่ช่างเพิ่มเอง — ของที่ SA ขอมาใช้ "ตัดออก" พร้อมเหตุผล */}
       <ConfirmDialog
@@ -1543,9 +1978,15 @@ export default function SurveySheetPage({ params }) {
           ⚠️ รายการข้อมาจาก `surveySendConfirm` ซึ่งอ่าน `view.send.closesVisit` — ตัวตัดสินเดียวกับที่ route
              ใช้ปิดนัดจริง ⇒ โมดัลสัญญาอย่างหนึ่งแล้ว server ทำอีกอย่างไม่ได้
           ⚠️ ส่งไม่ผ่าน (ด่าน/นัดเปลี่ยน) = error ขึ้นในกล่องนี้ และกล่องวาดใหม่จากใบที่เพิ่งอ่าน (`send()`) */}
+      {/* ⭐ **ใบที่มีพื้นที่จากแบบ** (งวด S2b · แผน §3.2 · ม็อก B3) — หัวกล่องเป็นของตัวตัดสิน (`sendConfirm.title`) · กล่องกว้างขึ้นหนึ่งขั้น ·
+          คำถามบังคับ "ต้องเข้ายืนยันหน้างานภายหลังไหม" เป็นไทล์สองใบ **เหนือ** รายการผล (ไม่มีใบที่ถูกเลือกไว้ · เลือกแล้วรายการผลเปลี่ยนตาม)
+          ⚠️ ใบลงหน้างานล้วน: `sendConfirm` ไม่มี `title` / `choice` ⇒ หัวเดิม · ขนาดเดิม · เนื้อเดิมทุกจุด
+          ⚠️ หัวตั้งต้นคงเป็นตัวหนังสือบนแท็กนี้ (เทสต์สามไฟล์หากล่องนี้จากบรรทัดนั้น) — หัวของใบจากแบบทับด้วย `sendTitle` ที่ตามหลัง */}
       <ConfirmDialog
         open={sending}
         title="ส่งผลประเมินให้ฝ่ายขาย"
+        {...sendTitle}
+        size={sendConfirm.choice ? "md" : "sm"}
         /* 🔑 เหตุผลเต็มของด่าน server — ไม่ใช่บรรทัดย่อของราง (บรรทัดย่อมีไว้ให้ราง
            กว้าง 330px อ่านได้ ไม่ได้มีไว้แทนเหตุผล) */
         /* ⚠️ ใบถูกล็อกระหว่างที่กล่องเปิด (หัวหน้าอีกคนส่งไปก่อน) = บอกสถานะล่าสุด ไม่ใช่ตัวเลขชวนส่ง */
@@ -1558,18 +1999,43 @@ export default function SurveySheetPage({ params }) {
         confirmLabel={view.send.allowed ? sendConfirm.confirmLabel : "ปิด"}
         hideCancel={!view.send.allowed}
         busy={sendBusy}
-        onConfirm={view.send.allowed ? send : undefined}
+        /* `confirmSend` = ยังไม่ตอบคำถามของใบจากแบบ → บอกใต้ไทล์ ไม่ยิง · ตอบแล้ว/ไม่ต้องถาม → `send()` ตัวเดิม */
+        onConfirm={view.send.allowed ? confirmSend : undefined}
         /* การตีกลับที่พกรายชื่อไฟล์ (รูปเปิดไม่ได้) ต้องอยู่ต่อหลังปิดกล่อง — เก็บไว้ให้กล่องแจ้งบนการ์ด (PR-3) */
         onError={rememberSendRefusal}
         onClose={() => !sendBusy && setSending(false)}
       >
         {view.send.allowed ? (
-          <div className={styles.effects}>
-            <p className={styles.effectsTitle}>กดแล้วเกิดขึ้นทันที</p>
-            <ul className={styles.effectList}>
-              {sendConfirm.effects.map((line) => <li key={line}>{thaiText(line)}</li>)}
-            </ul>
-          </div>
+          <>
+            {sendConfirm.choice ? (
+              <div className={styles.field}>
+                <p className={styles.fieldLabel}>
+                  {sendConfirm.choice.question}<span className="required-mark" aria-hidden="true"> *</span>
+                </p>
+                <OptionTiles
+                  options={sendChoiceOptions}
+                  value={sendChoice}
+                  onChange={pickSendChoice}
+                  invalid={sendChoiceMissing}
+                  disabled={sendBusy}
+                  ariaLabel={sendConfirm.choice.question}
+                />
+                {sendChoiceMissing ? (
+                  <p className={styles.fieldError} role="alert">{sendConfirm.choice.missing}</p>
+                ) : null}
+                {/* ไทล์เอ่ยถึงปุ่ม "ขอยืนยันหน้างาน" ของฝ่ายขายที่ยังไม่เปิดใช้ — บรรทัดนี้กันหัวหน้าไปรับปากแทน (หายเองเมื่อปุ่มมีจริง) */}
+                {sendConfirm.choice.pendingNote ? (
+                  <p className={styles.fieldNote}>{thaiText(sendConfirm.choice.pendingNote)}</p>
+                ) : null}
+              </div>
+            ) : null}
+            <div className={styles.effects}>
+              <p className={styles.effectsTitle}>กดแล้วเกิดขึ้นทันที</p>
+              <ul className={styles.effectList}>
+                {sendConfirm.effects.map((line) => <li key={line}>{thaiText(line)}</li>)}
+              </ul>
+            </div>
+          </>
         ) : sendBlockedItems.length ? (
           <ul className={styles.effectList}>
             {sendBlockedItems.map((line) => <li key={line}>{thaiText(line)}</li>)}
@@ -1671,6 +2137,40 @@ export default function SurveySheetPage({ params }) {
           </div>
         ) : null}
       </ConfirmDialog>
+
+      {/* ── เปลี่ยนวิธีประเมินรายพื้นที่ (งวด S2b · แผน §3.3 · ม็อก B2) ────────────────────────────────────
+          🔑 เมานต์เฉพาะคนที่มีปุ่ม (`view.method.show` — สวิตช์เปิด + หัวหน้า + ใบยังไม่จบ) ⇒ ใบของวันนี้ไม่มีโมดัลนี้ในต้นไม้เลย
+             (`methodOpen` พ่วงไว้ให้กล่องที่กำลังบอกว่า "ใบถูกแก้จากที่อื่น" ไม่หายไปพร้อมปุ่ม ตอนใบที่อ่านใหม่ทำให้ปุ่มหมดสิทธิ์)
+          ⚠️ ตัวโมดัลคิดผลจากแถวพื้นที่ · นัด · เรื่องส่งกลับ ชุดเดียวกับที่ server จะใช้ และยิงเส้นสลับวิธีเอง — หน้าแค่เปิด/ปิด · toast · อ่านใบใหม่ */}
+      {view.method.show || methodOpen ? (
+        <SurveyMethodDialog
+          open={methodOpen}
+          requestId={id}
+          request={req}
+          zones={zones}
+          visit={visit}
+          siteReached={data?.siteVisitReached ?? null}
+          sendBack={data?.sendBack || null}
+          subtitle={methodSubtitle}
+          onClose={closeMethodDialog}
+          onDone={methodDone}
+          /* ใบถูกแก้จากที่อื่นระหว่างกล่องเปิด = อ่านใบใหม่เบื้องหลัง กล่องยังอยู่บอกเหตุ (เหลือปุ่ม "ปิด") */
+          onStale={reloadSheet}
+        />
+      ) : null}
+
+      {/* ── วันส่งผลของใบงานโต๊ะ (งวด S2b) — โมดัลตัวเดียวกับหน้าคำร้อง ทรง "รับปาก" / "เลื่อน" ตามที่เปิดมา ──
+          ⚠️ `surveyNeedsVisit: false` ตรงตัว = ทรงงานโต๊ะของโมดัล (วันส่งผลอย่างเดียว · ไม่มีช่าง ไม่มีด่านนัด) — ปุ่มที่เปิดกล่องนี้มีเฉพาะใบงานโต๊ะ
+          ⚠️ ไม่ส่งรายชื่อเจ้าหน้าที่ — ทรงนี้ไม่มีตัวเลือกคน */}
+      <CommitDueDialog
+        open={!!deskDueDialog}
+        request={{ ...req, surveyNeedsVisit: false }}
+        mode={deskDueDialog?.mode}
+        today={businessDate()}
+        busy={deskDueBusy}
+        onClose={() => !deskDueBusy && setDeskDueDialog(null)}
+        onSubmit={submitDeskDue}
+      />
 
       <Toast toast={toast} onClose={() => setToast(null)} />
     </Workspace>

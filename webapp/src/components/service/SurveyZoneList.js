@@ -9,9 +9,18 @@
 // ⚠️ ความคืบหน้าพูดที่เดียว ("วัดแล้ว 2 / 3 พื้นที่" บนหัวรายการ · pain B6) · ทุกคำมาจาก `surveyZoneListView`
 // ⚠️ จัดวางสองแบบ **ข้อมูลชุดเดียวกัน**: ซ้อนแถว (≤680 · บานซ้าย) กับคอลัมน์ (681–999 หน้ารายการ · AT-1) — CSS ตัดสิน
 //   จาก `data-layout` ของรายการเอง (`split`) + จุดตัด 680 (ไม่มีอะไรหายตามขนาดจอ · บทเรียนที่ถูกตีกลับ 16/09)
-import { Ban, Check, ChevronRight, Circle, CircleAlert, MapPinPlus, Minus, Plus } from "lucide-react";
+//
+// ⭐ **ประเมินจากแบบ (งวด S2b §3 B-1 · บอร์ด B1)** — ทุกอย่างมาจาก `surveyZoneListView` เหมือนเดิม จอไม่ถามวิธีของแถวเอง:
+//   · ป้ายวิธีท้ายบรรทัดรหัส (คีย์ป้ายวิธีของแถว — ใบที่ไม่มีพื้นที่จากแบบได้ค่าว่างทุกแถว = ไม่มีอะไรโผล่)
+//   · รายการที่มีแถวจากแบบ: หัว "พื้นที่" (ไม่ใช่ทุกแถวที่ "ต้องวัด") · ไม่มีแถบหัวคอลัมน์และซ้อนแถวทุกความกว้าง
+//     (แถวจากแบบมีสองข้อ แถวลงหน้างานสามข้อ ⇒ หัวคอลัมน์ชุดเดียวไม่ตรงกับทั้งสอง · ข้อแต่ละข้อพูดชื่อตัวเองข้างวง)
+//   · บรรทัดเงียบของช่าง (`drawingNote`) ใต้แถว — พื้นที่จากแบบไม่อยู่ในรายการของเขา
+// ⚠️ ผู้วางคิวเห็นแถวจากแบบครบ (มติ O4) โดยไฟล์นี้ไม่รู้ว่าใครดู — view ส่งแถวมาเอง
+import { Ban, Check, ChevronRight, Circle, CircleAlert, MapPinPlus, Minus, PencilRuler, Plus } from "lucide-react";
+import SurveyMethodChip from "@/components/service/SurveyMethodChip";
 import Button from "@/components/ui/Button";
 import { SURVEY_UNKNOWN_TEXT } from "@/lib/service/surveyControl";
+import { SURVEY_METHOD_CHIP } from "@/lib/service/surveyMethodSwitch";
 import { NA, naText } from "@/lib/format";
 import styles from "./SurveyZoneList.module.css";
 
@@ -19,6 +28,13 @@ import styles from "./SurveyZoneList.module.css";
 export const surveyZoneRowId = (zoneId) => `survey-zone-row-${zoneId}`;
 /** id ของหัวรายการ — พื้นที่ที่เปิดอยู่หายไป (ถูกลบ) โฟกัสกลับมาที่นี่ */
 export const SURVEY_ZONE_LIST_TITLE_ID = "survey-zone-list-title";
+
+/* คำบนป้ายวิธีของแถวจากแบบ — ใช้ถามว่า "รายการนี้โชว์แถวจากแบบอยู่ไหม" (จอไม่อ่านคอลัมน์วิธีของแถวเอง) */
+const { drawing: DRAWING_WORD } = SURVEY_METHOD_CHIP;
+const showsDrawingRow = (rows) => rows.some((row) => {
+  const { chip: methodLabel } = row;
+  return methodLabel === DRAWING_WORD;
+});
 
 function Mark({ mark }) {
   return (
@@ -40,23 +56,32 @@ function Mark({ mark }) {
  * @param split    สองบาน — แถวที่เลือกได้ `aria-current` (บานขวาคือพื้นที่นั้น)
  * @param onOpen   `(zoneId) => void` — เปิดพื้นที่ (ตัวต่อสายถามก่อนทิ้งค่าค้างเอง)
  * @param onAdd    เปิดฟอร์ม "เพิ่มพื้นที่ที่เจอหน้างาน" · ไม่ส่ง = ไม่มีแถว (ไม่มีสิทธิ์ = ไม่โชว์)
+ * @param addLabel คำบนปุ่มเพิ่ม (ใบงานโต๊ะ = "เพิ่มพื้นที่" — ไม่มีใครอยู่หน้างาน) · ไม่ส่ง = คำเดิม
+ * @param addBlockedNote ประโยคเดียวที่ขึ้น **แทนที่ปุ่มเพิ่ม เฉพาะตอนไม่มีปุ่ม** (ผู้วางคิวบนใบงานโต๊ะ: เพิ่มได้เฉพาะหัวหน้า)
+ *                 · ไม่ส่ง = ไม่มีบรรทัด · ไฟล์นี้ไม่รู้ว่าใครดู — ผู้เรียกตัดสิน
  * @param escape   `surveyEscapeView(...)` — แถว "มาถึงแล้วแต่เข้าไม่ได้?" + ปุ่ม "ไปแล้วเข้าไม่ได้" ใต้รายการ (§10.5 S8)
  * @param onEscape เปิดกล่องส่งงานที่เลือก "ไปแล้วเข้าไม่ได้" ไว้ให้ · ไม่ส่ง/`show` เป็นเท็จ = ไม่มีแถว
  * @param before / children  ของที่ผู้เรียกวางเหนือ/ใต้รายการในบานเดียวกัน (การ์ดส่งกลับของช่าง · การ์ดจัดการผลบนสองบานที่ยังไม่มีราง)
  */
 export default function SurveyZoneList({
-  view, split = false, onOpen, onAdd, escape = null, onEscape, before = null, children = null,
+  view, split = false, onOpen, onAdd, addLabel = null, addBlockedNote = null,
+  escape = null, onEscape, before = null, children = null,
 }) {
   const rows = view?.rows || [];
+  /* มีแถวจากแบบ = ข้อของแต่ละแถวพูดชื่อตัวเอง (ซ้อนแถว) — การจัดแบบคอลัมน์ต้องมีหัวคอลัมน์ชุดเดียวที่ตรงกับทุกแถว */
+  const labelled = showsDrawingRow(rows);
+  const layout = split ? "split" : (labelled ? "stack" : "pages");
   return (
-    <div className={styles.wrap} data-layout={split ? "split" : "pages"}>
+    <div className={styles.wrap} data-layout={layout}>
       {before}
       <section className={styles.panel} aria-labelledby={SURVEY_ZONE_LIST_TITLE_ID}>
         <header className={styles.head}>
-          <h2 id={SURVEY_ZONE_LIST_TITLE_ID} className={styles.title} tabIndex={-1}>พื้นที่ที่ต้องวัด</h2>
+          <h2 id={SURVEY_ZONE_LIST_TITLE_ID} className={styles.title} tabIndex={-1}>
+            {labelled ? "พื้นที่" : "พื้นที่ที่ต้องวัด"}
+          </h2>
           <span className={styles.progress}>{view?.progressText || ""}</span>
         </header>
-        {rows.length ? (
+        {rows.length && !labelled ? (
           <div className={styles.cols} aria-hidden="true">
             <span>พื้นที่</span>
             <span>ขนาด</span>
@@ -66,67 +91,86 @@ export default function SurveyZoneList({
         ) : null}
         {rows.length ? (
           <ul className={styles.rows}>
-            {rows.map((row) => (
-              <li key={row.id}>
-                <button
-                  type="button"
-                  id={surveyZoneRowId(row.id)}
-                  className={styles.row}
-                  data-state={row.state}
-                  data-detail={row.detail}
-                  aria-current={split && row.selected ? "true" : undefined}
-                  onClick={() => onOpen?.(row.id)}
-                >
-                  <span className={styles.lead} data-state={row.state} aria-hidden="true">
-                    {row.state === "done" ? <Check size={16} />
-                      : row.state === "cut" ? <Minus size={16} />
-                        : row.index}
-                  </span>
-                  <span className={styles.ident}>
-                    <span className={styles.codeLine}>
-                      <span className={styles.code}>{row.codeUnknown ? SURVEY_UNKNOWN_TEXT : naText(row.code)}</span>
-                      {row.areaText ? <span className={styles.area}>{row.areaText}</span> : null}
+            {rows.map((row) => {
+              const { chip: methodLabel } = row;
+              return (
+                <li key={row.id}>
+                  <button
+                    type="button"
+                    id={surveyZoneRowId(row.id)}
+                    className={styles.row}
+                    data-state={row.state}
+                    data-detail={row.detail}
+                    aria-current={split && row.selected ? "true" : undefined}
+                    onClick={() => onOpen?.(row.id)}
+                  >
+                    <span className={styles.lead} data-state={row.state} aria-hidden="true">
+                      {row.state === "done" ? <Check size={16} />
+                        : row.state === "cut" ? <Minus size={16} />
+                          : row.index}
                     </span>
-                    <span className={styles.name}>{row.title}</span>
-                    {row.tags.editing ? <span className={styles.editing}>กำลังแก้ · ยังไม่บันทึก</span> : null}
-                  </span>
-                  {row.detail === "cut" ? (
-                    <span className={styles.cutText}>ตัดออก — {naText(row.cutReason)}</span>
-                  ) : (
-                    <span className={styles.marks}>
-                      {row.marks.map((mark) => <Mark key={mark.key} mark={mark} />)}
+                    <span className={styles.ident}>
+                      <span className={styles.codeLine} data-tagged={methodLabel ? "" : undefined}>
+                        <span className={styles.code}>{row.codeUnknown ? SURVEY_UNKNOWN_TEXT : naText(row.code)}</span>
+                        {row.areaText ? <span className={styles.area}>{row.areaText}</span> : null}
+                        {/* วิธีประเมินของแถว — คำและหน้าตามาจาก view (ใบที่ไม่มีพื้นที่จากแบบ = ไม่มีป้าย) */}
+                        <SurveyMethodChip variant={row.method} label={methodLabel} className={styles.method} />
+                      </span>
+                      <span className={styles.name}>{row.title}</span>
+                      {row.tags.editing ? <span className={styles.editing}>กำลังแก้ · ยังไม่บันทึก</span> : null}
                     </span>
-                  )}
-                  {row.detail === "missing" ? (
-                    <span className={styles.missing}>
-                      <CircleAlert size={13} aria-hidden="true" />
-                      {row.missingText}
-                    </span>
-                  ) : null}
-                  {row.tags.added || row.tags.sentBack || row.tags.headPending ? (
-                    <span className={styles.tags}>
-                      {row.tags.sentBack ? <span className={styles.tag} data-tone="warning">ส่งกลับให้แก้</span> : null}
-                      {row.tags.headPending ? <span className={styles.tag} data-tone="info">หัวหน้ายังไม่เคาะ</span> : null}
-                      {row.tags.added ? <span className={styles.tag} data-tone="accent">เพิ่มหน้างาน</span> : null}
-                    </span>
-                  ) : null}
-                  <ChevronRight size={18} className={styles.chev} aria-hidden="true" />
-                </button>
-              </li>
-            ))}
+                    {row.detail === "cut" ? (
+                      <span className={styles.cutText}>ตัดออก — {naText(row.cutReason)}</span>
+                    ) : (
+                      <span className={styles.marks}>
+                        {row.marks.map((mark) => <Mark key={mark.key} mark={mark} />)}
+                      </span>
+                    )}
+                    {row.detail === "missing" ? (
+                      <span className={styles.missing}>
+                        <CircleAlert size={13} aria-hidden="true" />
+                        {row.missingText}
+                      </span>
+                    ) : null}
+                    {row.tags.added || row.tags.sentBack || row.tags.headPending ? (
+                      <span className={styles.tags}>
+                        {row.tags.sentBack ? <span className={styles.tag} data-tone="warning">ส่งกลับให้แก้</span> : null}
+                        {row.tags.headPending ? <span className={styles.tag} data-tone="info">หัวหน้ายังไม่เคาะ</span> : null}
+                        {/* คำของป้ายที่มามาจาก view — ลงหน้างาน = คำเดิม · จากแบบ = "เพิ่มโดย {ฝ่าย}" (ไม่มีใครอยู่หน้างาน) */}
+                        {row.tags.added ? <span className={styles.tag} data-tone="accent">{row.addedLabel}</span> : null}
+                      </span>
+                    ) : null}
+                    <ChevronRight size={18} className={styles.chev} aria-hidden="true" />
+                  </button>
+                </li>
+              );
+            })}
           </ul>
-        ) : (
+        ) : view?.emptyReason === "drawing" ? null : (
           <p className={styles.empty}>
             <MapPinPlus size={16} aria-hidden="true" />
             ใบนี้ยังไม่มีพื้นที่ที่ต้องประเมิน — ฝ่ายขายเป็นคนระบุพื้นที่ตอนเปิดใบ
           </p>
         )}
-        {/* ⭐ ท้ายรายการ ไม่ใช่บนหัวจอ — ช่างรู้ว่ามีพื้นที่เกินมาก็ต่อเมื่อไล่ของในใบจนหมดแล้ว */}
+        {/* บรรทัดเงียบของช่าง — พื้นที่จากแบบไม่อยู่ในรายการของเขา (ไม่ใช่งานของเขา) แต่ต้องรู้ว่าใบมีมากกว่าที่เห็น
+            · ช่างไม่เหลือแถวให้วัดเพราะที่เหลือเป็นจากแบบทั้งหมด (`emptyReason`) = บรรทัดนี้ขึ้น **แทน** ประโยคใบว่างข้างบน
+              ("ยังไม่มีพื้นที่" เป็นเท็จในกรณีนั้น) */}
+        {view?.drawingNote ? (
+          <p className={styles.quiet}>
+            <PencilRuler size={16} aria-hidden="true" />
+            {view.drawingNote}
+          </p>
+        ) : null}
+        {/* ⭐ ท้ายรายการ ไม่ใช่บนหัวจอ — ช่างรู้ว่ามีพื้นที่เกินมาก็ต่อเมื่อไล่ของในใบจนหมดแล้ว
+            ⚠️ คำตั้งต้นต้องอยู่ในไฟล์นี้เป็นข้อความ JSX — ข้อความส่งงานของช่างชี้มาที่ปุ่มชื่อนี้ (ยามที่ `survey.test.mjs`) */}
         {onAdd ? (
           <button type="button" className={styles.add} onClick={onAdd}>
             <span className={styles.addMark} aria-hidden="true"><Plus size={16} /></span>
-            เพิ่มพื้นที่ที่เจอหน้างาน
+            {addLabel ?? <>เพิ่มพื้นที่ที่เจอหน้างาน</>}
           </button>
+        ) : addBlockedNote ? (
+          /* ไม่มีปุ่ม + ผู้เรียกบอกเหตุ = ประโยคเดียวตรงที่ปุ่มจะอยู่ (ติดด่านข้อมูล = บอกเหตุ · กติกา ui-visibility) */
+          <p className={styles.quiet}>{addBlockedNote}</p>
         ) : null}
       </section>
       {/* ⭐ **ทางออกของทั้งงานอยู่ใต้รายการ ไม่ซ่อนในกล่องส่งงาน** (pain B9 · ม็อก A-1 · AO-2 · AT-1 · AW-1) — 🐞 เดิม

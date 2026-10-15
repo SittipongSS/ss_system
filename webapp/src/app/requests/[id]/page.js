@@ -124,7 +124,9 @@ import { surveyQueueStep } from "@/lib/service/surveyQueue";
 import { surveyReopenDocumentLine } from "@/lib/service/surveyDocumentView";
 /* ⭐ โมดัลลงคิว/แจ้งกำหนดส่ง + ข้อความกล่องรับเรื่อง — ตัวเดียวกับหน้าจัดคิว (มติเจ้าของ 23/09) */
 import CommitDueDialog from "@/components/requests/CommitDueDialog";
-import { commitDueLabels } from "@/lib/requests/commitDue";
+import { commitDueLabels, deskDueAction } from "@/lib/requests/commitDue";
+/* ชื่อขั้นของรางเมื่อใบประเมินเป็นงานโต๊ะ (ประเมินจากแบบทั้งใบ · งวด S2b กลุ่ม D-2) — ตัวแปลงคำล้วน ไม่มีของ server */
+import { surveyDeskRailSteps } from "@/lib/service/surveyMethodSwitch";
 import { acknowledgeConfirmCopy } from "@/lib/requests/acknowledgeConfirm";
 
 const STATUS_TONE = {
@@ -209,6 +211,10 @@ export default function RequestDetailPage() {
   /* ⭐ ฟอร์มอยู่ใน `CommitDueDialog` (ตัวเดียวกับหน้าจัดคิว · มติเจ้าของ 23/09) — หน้านี้ถือแค่เปิด/ปิด
      ⚠️ ค่าตั้งต้นของฟอร์มเกิดใหม่ทุกครั้งที่เปิด (`commitDueDefaults`) ไม่ค้างจากรอบก่อน */
   const [dueDialogOpen, setDueDialogOpen] = useState(false);
+  /* ⭐ **งานโต๊ะ** (ใบประเมินที่ประเมินจากแบบทั้งใบ · งวด S2b) — โมดัลตัวเดียวกันมีทรง "เลื่อนวันส่งผล" ด้วย
+     หน้านี้ถือแค่ว่าเปิดทรงไหน ("commit" | "reschedule") · ก้อนที่ส่งของทั้งสองทรงโมดัลเอามาจาก lib
+     ⚠️ ปิดโมดัลทุกทาง = กลับเป็น "commit" (`closeDueDialog`) ⇒ ปุ่มหลักเปิดทรงตั้งต้นเสมอ ไม่ต้องตั้งเองทุกจุด */
+  const [dueDialogMode, setDueDialogMode] = useState("commit");
   /* วันนี้ — จับใน effect ตามกฎ react-hooks/purity (ห้ามอ่านนาฬิการะหว่าง render)
      ⭐ ใช้ตัวเดียวสำหรับคอลัมน์ "ค้างมา" ของตารางสรุปทุกหัวข้อ (มติผู้ใช้ 2026-08-25)
      ⚠️ ส่งลงไปเป็น prop ไม่ให้ตารางอ่านเอง — สามตารางอ่านนาฬิกาคนละครั้งจะได้เลข
@@ -561,6 +567,22 @@ export default function RequestDetailPage() {
         ⇒ ถาม `surveyQueueStep` **ตัวเดียวกับการ์ดบนหน้าจัดคิว** (มติเจ้าของ 23/09) — สองจอตอบตรงกันเสมอ */
   const needsRequeue = surveyQueueStep(req) === "requeue";
   const dueDialogLabels = commitDueLabels(req, { requeue: needsRequeue });
+  /* ⭐ **งานโต๊ะ — ใบประเมินที่ประเมินจากแบบทั้งใบ** (mig 0408 · งวด S2b กลุ่ม D-2) — ไม่ลงคิว ไม่มีนัด ไม่มีช่าง
+     ⇒ ก้าวที่สองของฝ่ายคือ "หัวหน้ารับปากวันส่งผล" และเปลี่ยนวันทีหลังด้วย "เลื่อนวันส่งผล" (เหตุผลบังคับ)
+     · ธง `surveyNeedsVisit` ติดมากับใบจากตัวโหลดคำร้อง — นับเฉพาะ `false` ตรงตัว (ไม่มีธง = ต้องมีนัด = ใบเดิมทุกใบ)
+       และถามผ่าน `isScheduling` (ทะเบียนหัวข้อ) ไม่เทียบชื่อหัวข้อกลางหน้า (กติกา ม-34)
+     · `deskDue` = ปุ่มวันส่งผลของคนที่กำลังดู — ตัวตัดสินเดียวกับการ์ดจัดการผลบนใบประเมิน และฐานเดียวกับ route
+       (`deskDueAction`: `commit` ขณะยังรอวัน · `reschedule` เมื่อรับปากไว้แล้ว) · กดได้เฉพาะหัวหน้าฝ่ายบริการของฝ่ายเจ้าของใบ
+     · คนของฝ่ายที่ไม่ใช่หัวหน้า (ผู้วางคิว · ช่าง) ไม่มีปุ่มของก้าวรับปาก ⇒ ได้ประโยค `plannerNote` แทนปุ่ม (ไม่ใช่การ์ดว่าง)
+     ⚠️ ใบที่ไม่ใช่งานโต๊ะ: `deskJob` เท็จ ⇒ ตัวข้างล่างเป็น null ทุกตัว และหน้าเดินเส้นเดิมทุกบรรทัด */
+  const deskJob = isScheduling && req.surveyNeedsVisit === false;
+  const head = canSendSurveyResult({ role, department });
+  const deskDue = deskJob ? deskDueAction(req, { canCommit: head && owner }) : null;
+  const deskReschedule = deskDue?.kind === "reschedule" ? deskDue : null;
+  const deskPlannerNote = deskJob && owner && !head && deskDueAction(req, { canCommit: true })?.kind === "commit"
+    ? dueDialogLabels.plannerNote
+    : null;
+  const closeDueDialog = () => { setDueDialogOpen(false); setDueDialogMode("commit"); };
   const dueLabels = requestKindMeta(req.kind)?.form || {};
   // เลือกเนื้อของหน้าจากทะเบียน ไม่ใช่ `kind === '...'` กลางหน้า (ม-34)
   const KindDetail = detailForKind(req.kind);
@@ -983,7 +1005,10 @@ export default function RequestDetailPage() {
   // ⭐ ตรรกะการประกอบรางอยู่ที่ lib — เทสต์ครอบได้ (บั๊กป้ายซ้ำ/ไฮไลต์ผิดขั้นเกิดตอน
   // มันฝังอยู่ใน JSX ซึ่ง CI มองไม่เห็น)
   const { steps: railSteps, index: workflowIndex } = requestRailSteps(req, { hasItems });
-  const workflowSteps = workflowStepsFromIndex(railSteps, workflowIndex, req.status === "cancelled");
+  /* งานโต๊ะ: ชื่อขั้นเป็นชุดของงานประเมินจากแบบ (ส่งคำร้อง → รับเรื่อง → รับปากวันส่งผล → ประเมินจากแบบ → ส่งผล → ปิดเรื่อง)
+     ชุดเดียวกับรางบนใบประเมิน · เปลี่ยนแค่คำ — ลำดับ รหัสขั้น และตัวชี้ขั้นปัจจุบันไม่ขยับ */
+  const railShown = deskJob ? surveyDeskRailSteps(railSteps) : railSteps;
+  const workflowSteps = workflowStepsFromIndex(railShown, workflowIndex, req.status === "cancelled");
 
   /* ⭐ **แผงจัดการคือศูนย์กลางการควบคุม — เปิดโหมดแก้แล้วแผงต้องเปลี่ยนตาม**
      (มติผู้ใช้ 2026-08-09) · ระหว่างแก้แบบฟอร์ม PDR ปุ่มของทั้งใบ (ส่ง/ลบ/แก้ข้อมูล)
@@ -1144,7 +1169,10 @@ export default function RequestDetailPage() {
          ⚠️ **คนแจ้งวันคือฝ่าย ไม่ใช่คนบันทึก feedback** — `outcome` เป็นก้าวของผู้ขอ
          (`HOP_OWNER`) ส่วน `commit-due` กันด้วย `canAnswerRequest` ⇒ ถามวันในโมดัล
          บันทึกคำตอบไม่ได้ มันจะเป็นฟอร์มที่กรอกแล้วยิงไม่ผ่านด่าน 403 */
-      : owner && (requestAwaitingDue(req) || needsRequeue)
+      /* ⭐ งานโต๊ะ (งวด S2b): ก้าวนี้คือ "รับปากวันส่งผล" และเป็นของหัวหน้าฝ่ายบริการคนเดียว (`deskDue` · ด่านเดียวกับ route)
+         — ผู้วางคิว/ช่างของฝ่ายไม่มีปุ่ม (ไม่มีสิทธิ์ = ไม่โชว์) และได้ประโยค `deskPlannerNote` บนแผงแทน
+         ⚠️ งานโต๊ะไม่มี "ลงคิวใหม่" (ไม่มีนัดให้หาย) ⇒ ไม่ถาม `needsRequeue` ในกิ่งนี้ */
+      : (deskJob ? deskDue?.kind === "commit" : owner && (requestAwaitingDue(req) || needsRequeue))
         ? {
           id: "commit-due",
           /* ป้าย/คำใบ้มาจาก `commitDueLabels` ตัวเดียวกับปุ่มบนการ์ดหน้าจัดคิว (ลงคิวใหม่ · รอบแก้ · หัวข้อ) */
@@ -1275,6 +1303,8 @@ export default function RequestDetailPage() {
   const editBlocker = (requestUsesPdr(req) ? req._editPdrBlocker : req._editBlocker) || null;
   // ป้ายอุปสรรคของคนที่กำลังดู (ช่อง `notices` ของแผงจัดการ) — เหตุที่แก้ไม่ได้ · สินค้า NPD ที่ยังไม่มีแถวงาน
   const controlNotices = [
+    // งานโต๊ะ: คนของฝ่ายที่รับปากวันส่งผลไม่ได้ — ประโยคนี้ขึ้นแทนปุ่มของก้าวนั้น (หน้าของหัวข้อได้ประโยคเดียวกันทาง `stepNotes`)
+    deskPlannerNote,
     editBlocker && !canEditInfo && !canEditPdrNow ? editBlocker : null,
     // ปุ่มหลักจางด้วยเหตุเดียวกันอยู่แล้ว (การ์ดเขียนเหตุไว้เหนือปุ่ม) — ไม่พูดประโยคเดิมซ้ำสองบรรทัด
     primaryAction?.disabled && primaryAction?.disabledReason === npdRowsNotice ? null : npdRowsNotice,
@@ -1456,21 +1486,30 @@ export default function RequestDetailPage() {
         // (ส่งกลิ่น/ตอบแล้ว) การเลื่อนวันเป็นการแก้คำสัญญา ไม่ใช่การเดินหน้า
         id: "reschedule",
         /* 🐞 ปุ่มเขียน "เลื่อนวันกำหนดส่ง" แต่โมดัลที่เปิดเขียน "เลื่อนวันนัดเข้าพื้นที่" (บรีฟ B2 ข้อ 3) — คำเดียวกันทั้งคู่ */
-        label: isScheduling ? "เลื่อนวันนัดเข้าพื้นที่" : "เลื่อนวันกำหนดส่ง",
+        /* ⭐ งานโต๊ะ (งวด S2b): ป้าย "เลื่อนวันส่งผล" มาจาก `deskDueAction` และเปิด **โมดัลกลางในทรงเลื่อนวัน** —
+           🔴 ห้ามพาไปโมดัลเลื่อนวันข้างล่าง: ตัวนั้นส่ง `committedDueDate` ซึ่งกิ่งงานโต๊ะของ route ไม่อ่าน
+              (อ่านแค่ `committedResultDate` + เหตุผลบังคับ) และเส้นเดิมขยับ/สร้างนัดให้ใบที่ไม่มีใครต้องไปหน้างาน */
+        label: deskJob ? deskReschedule?.label : isScheduling ? "เลื่อนวันนัดเข้าพื้นที่" : "เลื่อนวันกำหนดส่ง",
         kind: "edit",
         icon: CalendarClock,
-        onClick: () => setReschedule({
-          date: req.committedDueDate || businessDate(),
-          // วันส่งผลเลื่อนพร้อมกันได้ (mig 0368) — ใบที่ไม่มีหัวข้อนี้ถือค่าว่างไว้เฉย ๆ
-          resultDate: req.committedResultDate || "",
-          reason: "",
-        }),
+        onClick: deskJob
+          ? () => { setDueDialogMode("reschedule"); setDueDialogOpen(true); }
+          : () => setReschedule({
+            date: req.committedDueDate || businessDate(),
+            // วันส่งผลเลื่อนพร้อมกันได้ (mig 0368) — ใบที่ไม่มีหัวข้อนี้ถือค่าว่างไว้เฉย ๆ
+            resultDate: req.committedResultDate || "",
+            reason: "",
+          }),
         // เห็นเฉพาะฝ่ายที่รับงานไปแล้ว — `canAnswer` คุมทั้งสิทธิ์และ
         // "ใบยังเดินอยู่" ให้แล้ว · ห้ามหลวมกว่า `rescheduleRequestError`
         // ⚠️ **ต้องมีวันเดิมก่อน** (มติผู้ใช้ 2026-08-19) — ใบที่ยังไม่เคยแจ้งวันใช้
         // ปุ่ม "แจ้งกำหนดส่ง" · ปล่อยให้เลื่อนได้ตั้งแต่ยังไม่มีวัน = ทางลัดที่เธรด
         // จะเขียนว่า "เลื่อนจาก (ไม่เคยระบุ)" ทั้งที่นี่คือการให้วันครั้งแรก
-        visible: canAnswer && !!req.acknowledgedAt && !!req.committedDueDate,
+        /* งานโต๊ะ: เห็นเฉพาะหัวหน้าฝ่ายบริการ และเฉพาะตอนที่ route รับการเลื่อนจริง (`deskReschedule` — รับเรื่องแล้ว ·
+           มีวันที่รับปากไว้ · ยังไม่ส่งผล · ใบยังเดิน) · ใบอื่นทุกใบ = เงื่อนไขเดิม */
+        visible: deskJob
+          ? !!deskReschedule
+          : canAnswer && !!req.acknowledgedAt && !!req.committedDueDate,
       },
       {
         /* ⭐ **ยังไม่จบ** (มติผู้ใช้ 2026-08-20 · ปิดสองฝั่ง) — ถอนตราปิดของฝั่งที่กด
@@ -1983,6 +2022,8 @@ export default function RequestDetailPage() {
           people={directory}
           peopleLoading={directoryLoading}
           actions={requestActions}
+          /* ประโยคที่ขึ้นแทนปุ่มของก้าวปัจจุบัน (งานโต๊ะ: คนของฝ่ายที่รับปากวันส่งผลไม่ได้) — ใบอื่น = ลิสต์ว่าง */
+          stepNotes={deskPlannerNote ? [deskPlannerNote] : []}
           busy={saving}
           thread={threadBlock}
           attachments={attachmentsBlock}
@@ -2285,11 +2326,14 @@ export default function RequestDetailPage() {
         techniciansError={!technicians.length && directoryError}
         today={today}
         busy={saving}
-        onClose={() => setDueDialogOpen(false)}
+        /* งานโต๊ะ: ทรงของโมดัล (รับปาก ↔ เลื่อนวันส่งผล) — ใบอื่นเป็น "commit" เสมอ และโมดัลไม่อ่านค่านี้
+           ⚠️ ไม่ส่ง `viewerName` — หน้านี้ไม่มีชื่อของคนที่ล็อกอินอยู่ในมือ ⇒ บรรทัดผลลัพธ์เขียน "คุณ" (คำของ lib) */
+        mode={dueDialogMode}
+        onClose={closeDueDialog}
         onSubmit={(payload) => call("", {
           method: "PATCH",
           body: JSON.stringify(payload),
-        }, dueDialogLabels.okMsg).then((ok) => { if (ok) setDueDialogOpen(false); })}
+        }, dueDialogMode === "reschedule" ? "เลื่อนวันแล้ว" : dueDialogLabels.okMsg).then((ok) => { if (ok) closeDueDialog(); })}
       />
 
       {/* ⭐ เลื่อนวันกำหนดส่ง — **ไม่แก้เงียบ ๆ** วันนี้คือคำสัญญาที่ให้ฝ่ายขายไปแล้ว
@@ -2299,8 +2343,10 @@ export default function RequestDetailPage() {
           ของ API ด้วย · เพิ่มช่องที่นี่โดยไม่เพิ่มในลิสต์ = พิมพ์แล้วหายเงียบ
           ⚠️ ของที่ผูก (ดีล · ใบสั่งขาย · รายการ · หัวข้อ) แก้ทางนี้ไม่ได้ และ
           ข้อความในโมดัลบอกทางออกไว้ ไม่ใช่ปล่อยให้หาเอง */}
+      {/* 🔴 งานโต๊ะเปิดโมดัลนี้ไม่ได้ (งวด S2b) — ปุ่มของมันเปิดโมดัลกลางในทรงเลื่อนวันแทน · `!deskJob` กันอีกชั้น:
+          ใบที่กลายเป็นงานโต๊ะระหว่างที่โมดัลนี้เปิดค้างอยู่ (หัวหน้าเปลี่ยนวิธีจากอีกจอ) ต้องปิดเอง ไม่ใช่ให้กดส่งก้อนผิดรูป */}
       <Modal
-        open={!!reschedule} onClose={() => setReschedule(null)} size="sm" dismissible={!saving}
+        open={!!reschedule && !deskJob} onClose={() => setReschedule(null)} size="sm" dismissible={!saving}
         title={isScheduling ? "เลื่อนวันนัดเข้าพื้นที่" : "เลื่อนวันกำหนดส่ง"}
       >
         {reschedule && (

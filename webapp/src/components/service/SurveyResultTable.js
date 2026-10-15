@@ -35,7 +35,13 @@
 //   ในแถว และบอกด้วยไอคอน ไม่ใช่สีขอบอย่างเดียว (WCAG 1.4.1)
 // ⭐ **รูปของแต่ละจุดอยู่ใต้จุดนั้น** (PR-S · มติเจ้าของ 28–30/09) — หัวหน้าเลือกจุดจากรูปของจุด ไม่ใช่เทียบกองรูปรวมเอง
 //   (`surveyResultSpotCell` · ผูกด้วย `metadata.spotId`) · รูปจุดที่ยังไม่ผูกขึ้นเป็นบรรทัดอำพันท้ายช่อง ไม่หายเงียบ
-import { Fragment, useCallback, useMemo, useState } from "react";
+// ⭐ **แถวของพื้นที่ที่ประเมินจากแบบ** (งวด S2b · กลุ่ม C) — ตัวเลขของแถวนั้นไม่ได้มาจากช่าง ⇒ แถววาดอีกทรง:
+//   บรรทัดที่มา ("จากแบบ · ใคร เมื่อไร") ใต้ชื่อพื้นที่ · ไม่มีแถบรูปจากช่าง · ช่องผังเป็น "ภาพแบบของพื้นที่" (JPG/PNG) ·
+//   จุดติดตั้งไม่บังคับ และไม่มีการเลือกจุด · ช่องแพ็คเกจเหมือนเดิมทุกจุด
+//   🔑 ตารางไม่อ่านคอลัมน์วิธีประเมินเอง — ถาม `surveyResultMethodCell` (`source` ว่าง = แถวลงหน้างาน **วาดทางเดิมทุกตัวอักษร**)
+//      และ `surveyDrawingZoneView` (ด่านแนบภาพแบบ · ไฟล์ที่ลงเอกสารได้) · หัวคอลัมน์เปลี่ยนตาม `mix` ของตัวตัดสินการ์ด
+//   ⚠️ ใบที่ไม่มีพื้นที่จากแบบ (และทุกใบตอนสวิตช์ปิด): ไม่มีแถวไหนเข้าทางใหม่ หัวคอลัมน์คำเดิม — จอเดิมทุกจุด
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, Check, Circle, CircleCheck, ClipboardList, Lightbulb, Link2, Minus, Pencil, Plus, Undo2 } from "lucide-react";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
@@ -47,16 +53,21 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { TableScroll } from "@/components/ui/Table";
 import Textarea from "@/components/ui/Textarea";
-import { SURVEY_DOC_PLAN, surveyResultMissing, surveyZoneName } from "@/lib/service/survey";
-import { SURVEY_UNKNOWN_TEXT, surveyResultSpotCell, surveyResultZoneCell } from "@/lib/service/surveyControl";
-import { surveyZoneTitle } from "@/lib/service/surveyFieldView";
+import {
+  SURVEY_DOC_PLAN, SURVEY_ZONE_STALE_CODE, SURVEY_ZONE_STALE_TEXT, surveyResultMissing, surveyZoneName,
+} from "@/lib/service/survey";
+import {
+  SURVEY_UNKNOWN_TEXT, surveyResultMethodCell, surveyResultSpotCell, surveyResultZoneCell,
+} from "@/lib/service/surveyControl";
+import { surveyDrawingZoneView, surveyZoneTitle } from "@/lib/service/surveyFieldView";
+import { isJpgOrPngFile } from "@/lib/service/surveyMethod";
 import {
   surveyDecisionDraft, surveyDecisionDirty, surveyDecisionError, surveyDecisionPayload,
   surveyPackageCell, surveyPendingDecisions,
 } from "@/lib/service/surveyDecision";
 import { packageSizeLegendText } from "@/lib/service/packageSizeForm";
 import { PACKAGE_QTY_MAX, PACKAGE_SIZE_REGISTRY_UNREAD } from "@/lib/service/packageSizes";
-import { fmtNumber, naText } from "@/lib/format";
+import { NA, fmtNumber, naText } from "@/lib/format";
 import styles from "./SurveyResultTable.module.css";
 
 /* วัดโหมดเคาะ (2026-09-15 · มีช่องเหตุผล + ปุ่มรับข้อเสนอ + บรรทัดขาดอะไร): ดูอย่างเดียวรวม 573px
@@ -80,15 +91,36 @@ const PLAN_DOC_TYPES = [{ key: SURVEY_DOC_PLAN, label: "ภาพผังที
 /* ภาพย่อใต้ชิปของจุด — ช่องเลือกจุดแคบ ⇒ สามรูปต่อจุด ที่เหลือบอกด้วย "+n" (ท่าเดียวกับช่องพื้นที่) */
 const SPOT_THUMBS = 3;
 
+/* คำบนแผ่นเลือกไฟล์ของช่องภาพแบบ (พื้นที่จากแบบ) — คำเดียวกับช่องภาพแบบของหน้าพื้นที่ (สเปก S2b N17 · ม็อก B1)
+   ไม่มีใครยืนอยู่ในห้องให้ "ถ่าย" ⇒ ไม่ใช้คำตั้งต้นของแผ่น ("ถ่าย / เลือกรูป") */
+const DRAWING_PICK_LABEL = "เลือกรูปจากเครื่อง";
+
 /* ── ช่องภาพผังของพื้นที่หนึ่งแถว ────────────────────────────────────────────
    ⭐ **component ระดับไฟล์ ไม่ใช่ฟังก์ชันในลูป** — แผงไฟล์แนบยิง `onItemsChange` ใน effect ที่ขึ้นกับ
    ตัวตนของฟังก์ชัน ⇒ ต้องได้ตัวรายงานที่คงที่ต่อพื้นที่ (`useCallback`) ไม่ใช่ลูกศรใหม่ทุกครั้งที่วาด
    ⚠️ ตัวนับ ("ขึ้นแล้ว n รูป" / "ยังไม่มี · ต้องมี") มาจาก **ก้อนรวมของหน้า** ไม่ใช่รายการในแผง —
-   ตัวเดียวกับที่ด่านส่งผลอ่าน ⇒ ตารางกับการ์ดจัดการผลบอกเลขเดียวกันเสมอ */
-function PlanPhotos({ zoneId, count, canUploadPlan, onFiles, intakeFirst }) {
+   ตัวเดียวกับที่ด่านส่งผลอ่าน ⇒ ตารางกับการ์ดจัดการผลบอกเลขเดียวกันเสมอ
+   ⭐ `drawing` = ผลของ `surveyDrawingZoneView` ของแถวจากแบบ (แถวลงหน้างานไม่ส่ง ⇒ ช่องเดิมทุกจุด) — ช่องนี้กลายเป็น
+      "ภาพแบบของพื้นที่": รับเฉพาะ JPG/PNG (ด่านไฟล์ของแผง — กระดาษวาดได้สองชนิดนี้) · คำใบ้และเหตุของไฟล์ที่ลงเอกสารไม่ได้
+      มาจากตัวตัดสินตัวเดียวกับหน้าพื้นที่ ⇒ หัวหน้าเห็นประโยคเดียวกันทั้งสองแท็บ */
+function PlanPhotos({ zoneId, count, canUploadPlan, onFiles, intakeFirst, drawing = null }) {
   const handleItems = useCallback((items, meta) => {
     onFiles?.(zoneId, items, meta);
   }, [onFiles, zoneId]);
+  const accept = drawing?.plan.accept || null;
+  const rejectText = drawing?.plan.rejectText || null;
+  /* ด่านไฟล์ชุดเดียวกับช่องภาพแบบของหน้าพื้นที่ — ครบสามทางเข้า (ปุ่ม · ลากมาวาง · Ctrl+V) · server ตรวจซ้ำที่ด่านส่งผล
+     ⚠️ ไฟล์จากเบราว์เซอร์ถือ `name` / `type` ส่วนตัวตัดสินอ่านรูปของแถวไฟล์แนบ (`fileName` / `mimeType`) ⇒ แปลงก่อนถาม
+        (ส่งไฟล์ดิบเข้าไปตรง ๆ = ทุกไฟล์ไม่ผ่าน รวม JPG/PNG) */
+  const fileGate = useMemo(() => (accept ? {
+    accept,
+    test: (file) => isJpgOrPngFile({ fileName: file?.name, mimeType: file?.type }),
+    rejectText,
+    pickLabel: DRAWING_PICK_LABEL,
+    hideDropHint: true,
+  } : null), [accept, rejectText]);
+  /* ไฟล์ที่แนบไว้ในช่องนี้แต่ลงเอกสารไม่ได้ (PDF · TIFF …) — ยังอยู่ในช่อง ลบได้ แต่ไม่ปลดด่าน ⇒ บอกเหตุที่ตัวไฟล์ */
+  const rejected = drawing ? drawing.plan.files.filter((f) => !f.printable) : [];
   return (
     <>
       <AttachmentsPanel
@@ -102,6 +134,8 @@ function PlanPhotos({ zoneId, count, canUploadPlan, onFiles, intakeFirst }) {
         onItemsChange={handleItems}
         /* Ctrl+V ลอย ๆ ตกที่แถวที่หัวหน้ากำลังทำ (แผงนี้อัปขึ้นระบบทันที ของที่ไปผิดแถวคือของที่ต้องตามลบ) */
         intakeWeight={intakeFirst ? 0 : 1}
+        /* แถวลงหน้างาน = `null` ⇒ แผงรับไฟล์ตามกติกาของ docType เหมือนเดิม */
+        fileGate={fileGate}
       />
       {count > 0 ? (
         <span className={styles.planState} data-tone="ok">
@@ -110,9 +144,17 @@ function PlanPhotos({ zoneId, count, canUploadPlan, onFiles, intakeFirst }) {
       ) : (
         <span className={styles.planState} data-tone="miss">
           ยังไม่มี · ต้องมี
-          {canUploadPlan ? <small>มาร์กจุดที่เลือกลงบนผังก่อนแนบ</small> : null}
+          {canUploadPlan
+            ? <small>{drawing ? drawing.plan.hint : "มาร์กจุดที่เลือกลงบนผังก่อนแนบ"}</small>
+            : null}
         </span>
       )}
+      {rejected.map((f) => (
+        <span key={f.id} className={styles.planReject}>
+          <AlertTriangle size={12} aria-hidden="true" />
+          <span><b>{naText(f.name)}</b> {f.note}</span>
+        </span>
+      ))}
     </>
   );
 }
@@ -121,6 +163,9 @@ function PlanPhotos({ zoneId, count, canUploadPlan, onFiles, intakeFirst }) {
    (เขียนไว้ก่อนตารางย้ายเข้าการ์ดเมื่อ 2026-09-15) ⇒ คำบรรยายแยกจากตารางที่มันอธิบาย
    ⚠️ ข้อความมาจาก `surveyChangeText` ตัวเดิม ตารางไม่ได้นับเอง — จอ TS · จอ SA ·
    กระดิ่ง ต้องเล่าตัวเลขชุดเดียวกัน */
+/* ชื่อช่องจุดของพื้นที่จากแบบ — หัวคอลัมน์ของใบจากแบบทั้งใบ และป้ายช่องตอนตารางพับเป็นการ์ด (จอแคบ) ใช้คำเดียวกัน */
+const DRAWING_SPOT_LABEL = "จุดติดตั้งโดยประมาณ";
+
 export default function SurveyResultTable({
   zones = [], filesByZone = {}, canDecide = false, busyZone, onSaveDecisions,
   drafts = {}, onDraftsChange, caption = null,
@@ -145,6 +190,14 @@ export default function SurveyResultTable({
   /* `(zoneId)` — ไปถาด "ยังไม่ได้ผูกจุด" ของพื้นที่นั้นบนแท็บหน้างาน (หน้าสลับแท็บ · เปิดพื้นที่ · เลื่อนถึงถาด)
      🐞 UAT 01/10: เดิมเป็นตัวหนังสือเฉย ๆ ⇒ หัวหน้าต้องสลับแท็บ เปิดพื้นที่ แล้วเลื่อนหาถาดเอง · ไม่ส่ง = บอกทางเป็นตัวหนังสือ */
   onOpenSpotTray,
+  /* ── ประเมินจากแบบ (งวด S2b) — สามตัวนี้ไม่ส่ง = ตารางเดิมทุกจุด ──
+     `mix`     กี่พื้นที่ลงหน้างาน กี่พื้นที่จากแบบ + โหมดของใบ (`view.mix` ของการ์ดควบคุม) — คุมแค่ **คำบนหัวคอลัมน์**
+               (แถวไหนเป็นแถวจากแบบ ถามตัวตัดสินรายแถว ไม่ได้ดูจากตัวนี้)
+     `request` แถวคำร้อง — ผู้ประเมินทางสุดท้ายของบรรทัดที่มา (คนส่งผล) และฝ่ายของป้าย "เพิ่มโดย …"
+     `locked`  ใบล็อกแล้ว (ส่งผล · ยกเลิก · ปิด) — ช่องภาพแบบของแถวจากแบบแนบ/ลบไม่ได้ */
+  mix = null,
+  request = null,
+  locked = false,
 }) {
   /* ร่างของหัวหน้า — key = id ของพื้นที่ · ค่าที่ไม่มีในนี้แปลว่า "ยังไม่ถูกแตะ"
      ⚠️ ห้ามเติมค่าตั้งต้นลงไปตอนเปิดจอ — ของที่เติมไว้ล่วงหน้าแยกไม่ออกจากของที่คนพิมพ์
@@ -155,6 +208,18 @@ export default function SurveyResultTable({
   const setDrafts = onDraftsChange;
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  /* พื้นที่ที่การบันทึกรอบล่าสุดชนกับการแก้จากที่อื่น (`{ zoneId, message }`) — เหตุขึ้น **บนแถวนั้น** ไม่ใช่บรรทัดรวมเหนือตาราง
+     · ล้างเมื่อกดบันทึกรอบใหม่หรือกด "ยกเลิก" */
+  const [staleRow, setStaleRow] = useState(null);
+  /* 🐞 UAT S2b S04b: ประโยคของการชนขึ้น "บนแถว" ที่เดียว (ไม่มี toast) — แต่ปุ่ม "บันทึกการเคาะ" อยู่หัวการ์ด แถวที่ชนอยู่ไกลลงไป
+     (มือถือห่างกัน ~1,700px) ⇒ กดแล้วจอนิ่ง อ่านเหมือนปุ่มไม่ทำอะไร และโฟกัสหล่นไป body (ปุ่มถูกดับระหว่างรอ)
+     ⇒ พาแถวที่ชนขึ้นกลางจอและให้ประโยคนั้นรับโฟกัส (ประโยคยังอยู่ที่เดียว · โปรแกรมอ่านจอได้ยินจาก `role="alert"` ตามเดิม) */
+  const staleRef = useRef(null);
+  useEffect(() => {
+    if (!staleRow) return;
+    staleRef.current?.scrollIntoView({ block: "center" });
+    staleRef.current?.focus({ preventScroll: true });
+  }, [staleRow]);
   /* แถวที่หัวหน้ากำลังทำ (โฟกัสล่าสุดอยู่ในแถวไหน) — เจ้าของ Ctrl+V ตอนไม่มีอะไรโฟกัส */
   const [activeZone, setActiveZone] = useState(null);
   const patchDraft = useCallback((id, patch) => {
@@ -173,6 +238,7 @@ export default function SurveyResultTable({
 
   const saveAll = async () => {
     setSaveError("");
+    setStaleRow(null);
     const items = pending.rows
       .map((zone) => ({ zoneId: String(zone.id), payload: surveyDecisionPayload(zone, drafts[zone.id]) }))
       .filter((it) => it.payload);
@@ -190,14 +256,35 @@ export default function SurveyResultTable({
           return next;
         });
       }
-      if (result?.failure) setSaveError(result.failure.message || "บันทึกการเคาะไม่สำเร็จ");
+      /* 🔑 **ชนกับการแก้จากที่อื่น** (`zone_stale` · 409 ของเส้นรายพื้นที่) — ประโยคของ server ขึ้นบนแถวของพื้นที่นั้น
+         (หน้าอ่านใบใหม่ให้แล้วและไม่ขึ้น toast ของรหัสนี้ ⇒ ประโยคเดียว ที่เดียว) · ร่างของพื้นที่ที่ยังไม่ลงอยู่ครบ
+         (ล้างเฉพาะ `savedIds` ข้างบน) ⇒ หัวหน้าตรวจค่าที่เพิ่งโหลดแล้วกด "บันทึกการเคาะ" อีกครั้งได้เลย
+         ⚠️ รหัสมาทางผลของ `onSaveDecisions` (`result.failure.code`) ทางเดียว — ไม่มี prop แยกให้สองทางพูดไม่ตรงกัน
+         · เหตุอื่นทุกแบบ = บรรทัดรวมเหนือตารางเหมือนเดิม
+         ⚠️ **เฉพาะใบที่มีพื้นที่จากแบบ** (`mix.drawing` — เงื่อนไขเดียวกับที่หน้าใช้งด toast) · ใบลงหน้างานล้วน = toast + บรรทัดรวมเหมือนเดิมทุกจุด */
+      const failure = result?.failure || null;
+      if (failure?.code === SURVEY_ZONE_STALE_CODE && failure.zoneId && (mix?.drawing || 0) > 0) {
+        setStaleRow({ zoneId: String(failure.zoneId), message: failure.message || SURVEY_ZONE_STALE_TEXT });
+      } else if (failure) {
+        setSaveError(failure.message || "บันทึกการเคาะไม่สำเร็จ");
+      }
     } finally {
       setSaving(false);
     }
   };
 
   /* "ยกเลิก" = คืนร่างทั้งใบเป็นค่าที่อยู่ในฐาน — ไม่ยิงอะไรทั้งนั้น */
-  const discardAll = () => { setDrafts?.({}); setSaveError(""); };
+  const discardAll = () => { setDrafts?.({}); setSaveError(""); setStaleRow(null); };
+
+  /* ── คำบนหัวคอลัมน์ตามวิธีประเมินของใบ (งวด S2b) ────────────────────────────────────────
+     · ไม่มีพื้นที่จากแบบ (`mix` ไม่ส่ง / `mix.drawing` เป็น 0) ⇒ หัวเดิมทุกตัวอักษร
+     · ผสม ⇒ ช่องแรกเหลือ "พื้นที่" (ใครวัดบอกรายแถว: แถบรูปจากช่าง / บรรทัดที่มา) · ช่องเลือกจุดไม่มีหมายเหตุ "จากจุดที่ช่างแจ้ง"
+     · จากแบบทั้งใบ ⇒ ช่องผังกับช่องจุดใช้คำของพื้นที่จากแบบ (`planTitle` · `spotNote` จากตัวตัดสินตัวเดียวกับแถว)
+     ⚠️ "ผลวัดจากช่าง" เป็นหัวคอลัมน์ ไม่ใช่บรรทัดรายแถว ⇒ ต้องถอดทันทีที่มีแถวจากแบบอยู่ใต้มัน */
+  const drawnSome = (mix?.drawing || 0) > 0;
+  const drawnHead = mix?.mode === "drawing"
+    ? zones.map((zone) => surveyResultMethodCell(zone, request)).find((cell) => cell.source) || null
+    : null;
 
   /* แถบบนหัวการ์ด — ขึ้นเมื่อมีของค้างเท่านั้น (ปุ่มที่กดแล้วไม่เกิดอะไรคือปุ่มที่ไม่ควรมี)
      ⚠️ อยู่ใน `actions` ของ DetailCard ⇒ อยู่บรรทัดเดียวกับชื่อการ์ดบนจอกว้าง
@@ -260,14 +347,26 @@ export default function SurveyResultTable({
           </colgroup>
           <thead>
             <tr>
-              <th>พื้นที่ · ผลวัดจากช่าง</th>
+              {/* มีพื้นที่จากแบบในใบ = ช่องนี้ไม่ใช่ "ผลวัดจากช่าง" ทั้งคอลัมน์แล้ว (ดู `drawnSome` ข้างบน) */}
+              <th>{drawnSome ? "พื้นที่" : "พื้นที่ · ผลวัดจากช่าง"}</th>
               {/* ดอกจัน = ของที่ต้องมีก่อนส่งผล — ขึ้นเฉพาะคนที่เคาะได้ (คนอ่านอย่างเดียวไม่มีอะไรต้องทำตาม)
                   ⚠️ ซ่อนจาก screen reader — "ต้องมี" พูดอยู่แล้วในบรรทัด "ยังขาด" ของแถวที่ติด */}
-              <th>ภาพผังที่มาร์กจุดแล้ว{canDecide ? <span className={styles.star} aria-hidden="true">*</span> : null}</th>
               <th>
-                เลือกจุดที่จะติดตั้ง{canDecide ? <span className={styles.star} aria-hidden="true">*</span> : null}
-                <span className={styles.thNote}> · จากจุดที่ช่างแจ้ง</span>
+                {drawnHead ? drawnHead.planTitle : "ภาพผังที่มาร์กจุดแล้ว"}
+                {canDecide ? <span className={styles.star} aria-hidden="true">*</span> : null}
               </th>
+              {drawnHead ? (
+                /* ใบจากแบบทั้งใบ: จุดติดตั้งไม่บังคับ ⇒ ไม่มีดอกจัน และไม่มีการ "เลือก" */
+                <th>
+                  {DRAWING_SPOT_LABEL}
+                  <span className={styles.thNote}> · {drawnHead.spotNote}</span>
+                </th>
+              ) : (
+                <th>
+                  เลือกจุดที่จะติดตั้ง{canDecide ? <span className={styles.star} aria-hidden="true">*</span> : null}
+                  {drawnSome ? null : <span className={styles.thNote}> · จากจุดที่ช่างแจ้ง</span>}
+                </th>
+              )}
               <th>
                 แพ็คเกจ{canDecide ? <span className={styles.star} aria-hidden="true">*</span> : null}
                 <span className={styles.thNote}> · ขนาด และจำนวนต่อเดือน</span>
@@ -287,10 +386,21 @@ export default function SurveyResultTable({
               const spotCell = surveyResultSpotCell(zone, files);
               const busy = busyZone === zone.id || saving;
               const zoneCode = zone.zoneCodeUnknown === true ? SURVEY_UNKNOWN_TEXT : naText(zone.zoneCode);
+              /* 🔑 **ที่มาของผลของแถวนี้** (ประเมินจากแบบ) — `m.source` ว่าง = แถวลงหน้างาน ⇒ ทุกช่องข้างล่างวาดทางเดิม
+                 · มีค่า = แถวจากแบบ: บรรทัดที่มาแทนแถบรูปจากช่าง · ช่องผังเป็นภาพแบบ · จุดไม่บังคับ (ตารางไม่อ่านคอลัมน์วิธีเอง) */
+              const m = surveyResultMethodCell(zone, request);
+              /* แถวจากแบบ: ช่องภาพแบบทั้งช่อง (ใครแนบได้ · ไฟล์ไหนลงเอกสารได้ · คำใบ้) จากตัวตัดสินของหน้าพื้นที่
+                 ⚠️ `editable` ของตัวนี้ ไม่ใช่ `canUploadPlan` ของใบ — หัวหน้าที่เป็นผู้บริหาร (CD/CM) แนบภาพแบบได้ ตามกติกา
+                    ของ server สำหรับพื้นที่จากแบบ ทั้งที่เขียนผลวัดหน้างานไม่ได้ */
+              const drawing = m.source ? surveyDrawingZoneView({ zone, files, canDecide, locked }) : null;
               /* ⚠️ "เพิ่มหน้างาน" ต้องอ่านออกจาก `status` ไม่ใช่จาก `!zoneId` — พื้นที่ที่
-                 ช่างเพิ่มได้รหัส ZN ทันที ส่วนพื้นที่ใหม่ของ SA รอถึงตอนกดส่งใบ */
-              const tags = [zone.status === "added" ? "ช่างเพิ่มหน้างาน" : null,
+                 ช่างเพิ่มได้รหัส ZN ทันที ส่วนพื้นที่ใหม่ของ SA รอถึงตอนกดส่งใบ
+                 ⭐ แถวจากแบบที่ถูกเพิ่มบนใบ: หัวหน้าเพิ่มที่โต๊ะ ไม่ใช่ช่าง ⇒ ป้ายจากตัวตัดสิน (`m.addedLabel` — "เพิ่มโดย {ฝ่าย}")
+                    แถวลงหน้างานคงคำเดิมของตารางนี้ */
+              const tags = [m.source ? m.addedLabel : (zone.status === "added" ? "ช่างเพิ่มหน้างาน" : null),
                 zone.zoneId ? null : "พื้นที่ใหม่"].filter(Boolean).join(" · ");
+              /* การบันทึกรอบล่าสุดของแถวนี้ชนกับการแก้จากที่อื่น — ประโยคของ server (ดู `saveAll`) */
+              const staleText = staleRow && staleRow.zoneId === String(zone.id) ? staleRow.message : null;
 
               /* 🔑 **ทุกค่าที่วาดมาจากร่าง ไม่ใช่จากแถว** — ไม่งั้นกดเพิ่มแล้วตัวเลขไม่ขยับ
                  จนกว่าจะบันทึก ซึ่งคือจอที่ดูเหมือนปุ่มเสีย */
@@ -335,6 +445,8 @@ export default function SurveyResultTable({
                     </span>
                     {/* ชื่อ + ชั้นครั้งเดียว — ตัวเดียวกับรายการ/หน้าพื้นที่ (🐞 ชื่อที่มีชั้นอยู่แล้วเคยขึ้น "ชั้น 5 · ชั้น 05") */}
                     <b className={styles.zoneName}>{surveyZoneTitle(zone)}</b>
+                    {/* แถวจากแบบ: ใครประเมิน เมื่อไร ("จากแบบ · ชื่อ วันที่") — ขึ้นต้นด้วยคำของวิธีอยู่แล้ว จึงไม่มีป้ายวิธีแยกอีกชิ้น */}
+                    {m.source ? <span className={styles.source}>{m.source}</span> : null}
                     {tags ? <span className={styles.sub}>{tags}</span> : null}
                     {!cut && (cell.figures || cell.dims) ? (
                       <span className={styles.figures}>
@@ -345,7 +457,9 @@ export default function SurveyResultTable({
                     ) : null}
                     {/* หลายส่วน = บรรทัดแรกบอกจำนวนส่วน บรรทัดนี้บอกขนาดรายส่วน */}
                     {!cut && cell.partsText && cell.dims ? <span className={styles.dimsLine}>{cell.dims}</span> : null}
-                    {!cut ? (
+                    {/* ⚠️ **แถวจากแบบไม่มีแถบรูปจากช่าง และไม่มีตัวนับภาพกว้าง/ภาพจุด** — ช่างไม่ได้วัดอะไรที่นี่ · พื้นที่ที่สลับมาจาก
+                        ลงหน้างานยังมีรูปเดิมค้างอยู่ได้ (หน้าพื้นที่เรียกว่า "ไฟล์เดิม — ไม่ลงเอกสาร") วาดแถบนี้ = รูปชุดนั้นขึ้นเป็นผลของช่าง */}
+                    {!cut && !m.source ? (
                       <div className={styles.thumbs} role="group" aria-label={`รูปจากช่าง ${surveyZoneName(zone)}`}>
                         {cell.thumbs.map((t) => (
                           <Fragment key={t.file.id}>
@@ -375,11 +489,19 @@ export default function SurveyResultTable({
                   ) : (
                     <>
                       {/* ── ภาพผังที่มาร์กจุดแล้ว — ของหัวหน้า ขึ้นระบบทันที ─────────── */}
-                      <td data-label="ภาพผัง" className={styles.planCell}>
+                      <td data-label={m.source && m.planTitle ? m.planTitle : "ภาพผัง"} className={styles.planCell}>
+                        {/* แถวจากแบบ: ช่องนี้คือ "ภาพแบบของพื้นที่" — ชื่อช่องอยู่ในแถวเอง เพราะหัวคอลัมน์ของใบผสมยังเป็นคำของแถวลงหน้างาน
+                            · ใบจากแบบทั้งใบ หัวคอลัมน์พูดคำนี้แล้ว (`data-in-head` ⇒ CSS ซ่อนบนตาราง แล้วคืนที่จอ ≤680 ซึ่งหัวตารางหายไป) */}
+                        {m.planTitle ? (
+                          <span className={styles.planTitle} data-in-head={drawnHead ? "1" : undefined}>{m.planTitle}</span>
+                        ) : null}
+                        {/* ตัวนับของแถวจากแบบ = ไฟล์ที่ **ลงเอกสารได้** (JPG/PNG) เท่านั้น — ตัวเดียวกับด่าน "ภาพแบบของพื้นที่" ของการส่งผล
+                            (PDF/TIFF แนบไว้ได้แต่ไม่ปลดด่าน) · แถวลงหน้างานนับไฟล์ผังทุกชนิดเหมือนเดิม */}
                         <PlanPhotos
                           zoneId={zone.id}
-                          count={cell.photos.plan}
-                          canUploadPlan={canUploadPlan}
+                          count={drawing ? drawing.plan.files.filter((f) => f.printable).length : cell.photos.plan}
+                          canUploadPlan={drawing ? drawing.editable : canUploadPlan}
+                          drawing={drawing}
                           onFiles={onFiles}
                           intakeFirst={activeZone === zone.id}
                         />
@@ -388,8 +510,24 @@ export default function SurveyResultTable({
                       {/* ── เลือกจุดที่จะติดตั้ง — ติ๊กจากที่ช่างแจ้งมา ────────────────
                           ⚠️ `ui-cell-wide` — 🐞 UAT 01/10: ใบที่ล็อก/คนดูอย่างเดียว ชิปเป็นตัวหนังสือ (ไม่มีปุ่ม) ⇒ ข้อยกเว้น
                              "เซลล์ที่มีคอนโทรล" ของ Table.module.css ไม่โดน ⇒ เพดาน 220px ตัดชื่อจุด + ภาพย่อของจุด (ท่าเดียวกับช่องพื้นที่) */}
-                      <td data-label="เลือกจุด" className="ui-cell-wide">
-                        {spots.length === 0 ? (
+                      <td data-label={m.source ? DRAWING_SPOT_LABEL : "เลือกจุด"} className="ui-cell-wide">
+                        {m.source ? (
+                          /* ⭐ แถวจากแบบ: จุดติดตั้งเป็นตำแหน่งคร่าว ๆ ที่หัวหน้าพิมพ์เองจากแบบ — **ไม่บังคับ และไม่มีการเลือก**
+                             (ด่าน "เลือกจุด" ไม่ใช้กับพื้นที่จากแบบ) ⇒ ไม่มีจุด = ขีด + "ไม่บังคับ" ไม่ใช่คำเตือน "ช่างยังไม่แจ้งจุด"
+                             · มีจุด = ชื่อจุดเป็นตัวหนังสือ (ไม่มีปุ่มติ๊ก · ไม่มีภาพย่อ — จุดของพื้นที่จากแบบไม่มีรูป · ไม่มีบรรทัด "ยังไม่ได้ผูกจุด") */
+                          <>
+                            {spots.length === 0 ? (
+                              <span>{NA}</span>
+                            ) : (
+                              <div className={styles.spots}>
+                                {spots.map((s) => (
+                                  <span key={s.id} className={styles.spotChip}>{naText(s.label)}</span>
+                                ))}
+                              </div>
+                            )}
+                            <span className={styles.sub}>{m.spotNote}</span>
+                          </>
+                        ) : spots.length === 0 ? (
                           <span className={styles.warnText}>ช่างยังไม่แจ้งจุดสักจุด</span>
                         ) : (
                           <>
@@ -444,8 +582,9 @@ export default function SurveyResultTable({
                             <span className={styles.sub}>เลือก {picked} / {spots.length}</span>
                           </>
                         )}
-                        {/* รูปจุดที่ยังไม่ผูก (ถ่ายก่อนมีแถวของจุด · จุดถูกลบ) — ต้องเห็น ไม่ใช่หายเงียบ · ผูกได้ที่หน้าพื้นที่ */}
-                        {spotCell.unlinkedCount ? (
+                        {/* รูปจุดที่ยังไม่ผูก (ถ่ายก่อนมีแถวของจุด · จุดถูกลบ) — ต้องเห็น ไม่ใช่หายเงียบ · ผูกได้ที่หน้าพื้นที่
+                            ⚠️ เฉพาะแถวลงหน้างาน — รูปจุดที่ค้างอยู่บนพื้นที่จากแบบเป็นไฟล์เดิมก่อนสลับวิธี ไม่มีถาดให้ไปผูก */}
+                        {!m.source && spotCell.unlinkedCount ? (
                           <div className={styles.spotLoose}>
                             <span className={styles.warnText}>
                               ยังไม่ได้ผูกจุด {fmtNumber(spotCell.unlinkedCount)} รูป{canLinkSpots && !onOpenSpotTray ? " — ผูกที่แท็บหน้างาน" : ""}
@@ -632,9 +771,20 @@ export default function SurveyResultTable({
                 {/* ⚠️ แยกแถวแล้ว screen reader ไล่ทีละแถวจะได้ยินคำเตือนโดยไม่รู้ว่าของพื้นที่ไหน
                     (WCAG 1.3.1) ⇒ เติมชื่อพื้นที่แบบซ่อนจากตา · ไม่ใช้ `headers` ชี้ไป td
                     เพราะสเปกให้ชี้ได้แค่ th และ screen reader หลายตัวไม่อ่าน */}
-                {(missText || rowError) && (
+                {(missText || rowError || staleText) && (
                   <tr data-miss-row="1">
                     <td colSpan={4}>
+                      {/* 🔑 บันทึกรอบล่าสุดชนกับการแก้จากที่อื่น — เหตุอยู่บนแถวที่ชน (`role="alert"`: เกิดหลังกดปุ่ม ต้องถูกประกาศ)
+                          ร่างของแถวยังอยู่ครบ กด "บันทึกการเคาะ" อีกครั้งได้ */}
+                      {staleText ? (
+                        <span className={styles.rowMiss} data-block="1" role="alert" ref={staleRef} tabIndex={-1}>
+                          <span className={styles.srOnly}>
+                            {`${surveyZoneName(zone)} บันทึกไม่ได้: `}
+                          </span>
+                          <AlertTriangle size={12} aria-hidden="true" />
+                          {staleText}
+                        </span>
+                      ) : null}
                       {rowError ? (
                         <span className={styles.rowMiss} data-block="1">
                           <span className={styles.srOnly}>
@@ -669,7 +819,13 @@ export default function SurveyResultTable({
              ได้โดยไม่ถาม (เบราว์เซอร์ไม่ให้ขวางปุ่มย้อน · สองบานถามแล้วผ่านตัวต่อสายประวัติ) ⇒ บอกเฉพาะทางที่ถามจริงทุกจอ */}
       {canDecide ? (
         <p className={styles.footnote}>
-          {canUploadPlan ? "ภาพผังขึ้นระบบทันที ไม่ต้องบันทึก · " : ""}
+          {/* (งวด S2b) หัวหน้าที่แนบภาพแบบของแถวจากแบบได้แต่ไม่มีสิทธิ์อัปผังของใบ (CD / CM) ก็ต้องรู้กติกาเดียวกัน
+              — ด่านเดียวกับ `drawing.editable` ของแถว (หัวหน้า · ใบยังไม่ล็อก) · ใบที่ไม่มีแถวจากแบบ = เงื่อนไขเดิม */}
+          {/* 🐞 UAT S2b S04 — ใบจากแบบทั้งใบไม่มี "ภาพผัง" (คอลัมน์ชื่อ "ภาพแบบของพื้นที่") ⇒ คำของรูปตามชนิดของใบ:
+              ไม่มีแถวจากแบบ = คำเดิมตรงตัว · จากแบบทั้งใบ = ภาพแบบ · ใบผสม = ทั้งสองอย่าง */}
+          {canUploadPlan || (drawnSome && !locked)
+            ? `${drawnHead ? "ภาพแบบ" : drawnSome ? "ภาพผังและภาพแบบ" : "ภาพผัง"}ขึ้นระบบทันที ไม่ต้องบันทึก · `
+            : ""}
           การเคาะต้องกด “บันทึกการเคาะ” · กดลิงก์ออก รีเฟรช หรือปิดแท็บก่อนบันทึก ระบบจะถามก่อนทิ้ง
         </p>
       ) : null}

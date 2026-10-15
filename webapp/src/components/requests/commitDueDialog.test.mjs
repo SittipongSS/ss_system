@@ -5,6 +5,9 @@
 //    สองชุดเพี้ยนหากันเสมอ (วันหนึ่งหน้าหนึ่งลืมส่ง `committedResultDate` · อีกหน้าเลือกคนโดยไม่เห็นภาระ)
 // ⚠️ ไฟล์พวกนี้เป็น JSX (import ใต้ raw Node ไม่ได้) ⇒ ยามอ่านซอร์ส · ตรรกะจริงเทสต์ที่
 //    `lib/requests/commitDue.test.mjs` · `lib/service/useCrewLoad.test.mjs`
+// ⭐ งวด S2b (ประเมินจากแบบ): โมดัลตัวเดียวกันมีทรงของ **งานโต๊ะ** สองทรง (รับปากวันส่งผล · เลื่อนวันส่งผล) และถูกวาง
+//    บนหน้าที่สามคือใบประเมิน (การ์ดจัดการผลของหัวหน้า) — ยามของสองทรงนั้นอยู่ที่ `lib/requests/requestDeskScreen.test.mjs`
+//    ไฟล์นี้ล็อกว่าทรงเดิม (ลงคิว · แจ้งกำหนดส่ง) ยังส่งก้อนเดิมทางเดิม และหน้าทั้งสามใช้ component ตัวเดียว
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -13,6 +16,7 @@ const read = (url) => readFileSync(new URL(url, import.meta.url), 'utf8');
 const dialog = read('./CommitDueDialog.js');
 const requestPage = read('../../app/requests/[id]/page.js');
 const schedulePage = read('../../app/service/schedule/page.js');
+const sheetPage = read('../../app/service/surveys/[id]/page.js');
 
 /* ตัดคอมเมนต์ทิ้ง — คอมเมนต์ที่เล่าประวัติยังพูดถึงของเดิมได้ */
 const code = (source) => source
@@ -20,8 +24,9 @@ const code = (source) => source
   .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
   .replace(/^\s*\/\/.*$/gm, '');
 
-test('⭐ สองหน้าใช้โมดัลตัวเดียว — import เดียวกัน · วางคนละจุดแต่เป็น component เดียว', () => {
-  for (const [name, src] of [['หน้าใบ', requestPage], ['หน้าจัดคิว', schedulePage]]) {
+test('⭐ สามหน้าใช้โมดัลตัวเดียว — import เดียวกัน · วางคนละจุดแต่เป็น component เดียว', () => {
+  /* หน้าใบประเมินเข้ามาในงวด S2b — หัวหน้ารับปาก/เลื่อนวันส่งผลของงานโต๊ะจากการ์ดจัดการผลได้ด้วย (ฟอร์มเดียวกัน = component เดียว) */
+  for (const [name, src] of [['หน้าใบ', requestPage], ['หน้าจัดคิว', schedulePage], ['หน้าใบประเมิน', sheetPage]]) {
     assert.match(src, /import CommitDueDialog from "@\/components\/requests\/CommitDueDialog";/, name);
     assert.equal((code(src).match(/<CommitDueDialog\b/g) || []).length, 1, `${name}: วางโมดัลที่เดียว`);
   }
@@ -64,7 +69,9 @@ test('⭐ โมดัล: ตัวเลือกคนเห็นภาร�
   assert.match(live, /const jobRows = commitDueJobRows\(request, \{ site, todayIso: today, siteLoad \}\);/);
   assert.match(live, /const wishes = commitDueWishes\(request, form\);/);
   assert.match(live, /const gateView = commitDueGateView\(request, form, \{ site, accessKnown, technicians \}\);/);
-  assert.match(live, /const outcome = commitDueOutcome\(request, form, \{ site, accessKnown, technicians, load, siteLoad \}\);/);
+  // บรรทัดผลลัพธ์: บริบทชุดเดิม + ชื่อผู้รับผิดชอบของงานโต๊ะ (โหมดอื่น lib ไม่อ่านคีย์นี้) · ทรงเลื่อนวันที่ยังติดด่านพูดด่านชุดเดียวกับปุ่ม
+  assert.match(live, /const promise = commitDueOutcome\(request, form, \{ site, accessKnown, technicians, load, siteLoad, viewerName: ownerName \}\);/);
+  assert.match(live, /const outcome = reschedule\?\.gaps\.length \? \{ tone: "warn", lands: null, text: reschedule\.gaps\.join\(" · "\) \} : promise;/);
   assert.match(live, /const load = form\.date \? loadFor\(form\.date\) : null;/);
   assert.match(live, /load=\{load\}/, 'ตัวเลือกคนกับบรรทัดผลลัพธ์อ่านภาระชุดเดียวกัน');
   // 🐞 คำใบ้ที่สัญญาว่า "ขึ้นตารางเสมอ" ผิดทุกครั้งที่ด่าน ④ ไม่ผ่าน — ผลของการเลือกอยู่ที่บรรทัดผลลัพธ์เท่านั้น
@@ -81,8 +88,12 @@ test('⭐ โมดัล: ตัวเลือกคนเห็นภาร�
    ค่าในก้อนล็อกด้วยค่าจริงที่ `lib/requests/commitDue.test.mjs` (commitDuePayload) */
 test('🔒 ก้อน PATCH: ส่งทางเดียวผ่าน commitDuePayload · ชิปผู้ขอแค่เติมช่องของฟอร์ม · ไม่มีช่องใหม่', () => {
   const live = code(dialog);
-  assert.equal((live.match(/onSubmit\?\.\(/g) || []).length, 1, 'ทางส่งทางเดียว');
+  /* ทางส่งสองทาง แต่ละทางก้อนมาจาก lib ทั้งก้อน: รับปาก/ลงคิว/แจ้งกำหนดส่ง = `commitDuePayload` (ทางเดิม) ·
+     เลื่อนวันส่งผลของงานโต๊ะ = `payload` ของ `deskRescheduleView` (งวด S2b) — โมดัลไม่ประกอบก้อนเองสักทาง */
+  assert.equal((live.match(/onSubmit\?\.\(/g) || []).length, 2, 'ทางส่งสองทาง: ทรงเดิม + ทรงเลื่อนวันของงานโต๊ะ');
   assert.equal((live.match(/commitDuePayload\(/g) || []).length, 1);
+  assert.match(live, /const submitReschedule = \(\) => onSubmit\?\.\(reschedule\.payload\);/);
+  assert.doesNotMatch(live, /action:\s*["'`]/, 'ชื่อ action ของก้อนอยู่ที่ lib เท่านั้น');
   // ชิป "ใช้ตามผู้ขอ" เติมค่าผ่านฟอร์มเดิม (patch ของ lib = date/time/resultDate) — ไม่ใช่ส่งตรง
   assert.match(live, /const apply = \(patch\) => setForm\(\(prev\) => \(\{ \.\.\.prev, \.\.\.patch \}\)\);/);
   assert.equal((live.match(/<WishChip wish=\{wishes\.(visit|result)\} onApply=\{apply\}/g) || []).length, 2);
@@ -131,8 +142,12 @@ test('ลำดับช่อง: ซ้าย งานนี้ → ด่า
   };
   const order = [at('<TimeWindowField'), at('label={labels.resultLabel}'), at('<CrewLoadPicker')];
   assert.deepEqual([...order].sort((a, b) => a - b), order);
-  assert.match(tail, /label="หมายเหตุ \(ไม่บังคับ\)"/);
-  assert.match(tail, /placeholder=\{labels\.notePlaceholder\}/);
+  /* ช่องข้อความท้ายฟอร์ม — ป้ายของทรงเดิมยังเป็น "หมายเหตุ (ไม่บังคับ)" (งานโต๊ะ: `labels.noteLabel` + ท้ายเดิม) ·
+     ตัวอย่างในช่องยังมาจาก lib · ทรงเลื่อนวันใช้ช่องเดียวกันเป็น "เหตุผล" (บังคับ) */
+  const note = live.slice(live.indexOf('const note = reschedule'), live.indexOf('const tail = ('));
+  assert.match(note, /label: `\$\{labels\.noteLabel \|\| "หมายเหตุ"\} \(ไม่บังคับ\)`, required: false, placeholder: labels\.notePlaceholder \}/);
+  assert.match(tail, /<ModalField label=\{note\.label\} required=\{note\.required\} htmlFor=\{reasonId\}>/);
+  assert.match(tail, /placeholder=\{note\.placeholder\}/);
   assert.match(live, /aside=\{aside\}\s+main=\{main\}\s+tail=\{tail\}/);
   // แจ้งกำหนดส่ง (หัวข้ออื่น) = คอลัมน์เดียว วันอย่างเดียว
   assert.match(live, /layout=\{siteMode \? "split" : "single"\}/);

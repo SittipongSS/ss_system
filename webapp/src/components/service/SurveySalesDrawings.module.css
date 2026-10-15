@@ -1,0 +1,295 @@
+/* แผง "แบบจากฝ่ายขาย" ของใบประเมินพื้นที่ (ประเมินจากแบบ · งวด S2b §3 B-3 · บอร์ด B1)
+   ⭐ การ์ดไฟล์เรียงด้วยกริด `auto-fill` — จำนวนคอลัมน์ตาม **ความกว้างที่แผงได้จริง** ไม่ใช่ขนาดจอ:
+      แผงเต็มบาน ≥1200 = สามใบต่อแถว · หน้ารายการของแท็บเล็ต 768 = สองใบ · มือถือ 375 และในหน้าพื้นที่ (ครึ่งบาน) = ใบเดียว
+      (รางของหัวหน้า · สองบาน · หน้าเดียว ให้ความกว้างต่างกันที่จอเดียวกัน — จุดตัดจอมองไม่เห็นเรื่องพวกนี้)
+   ⚠️ จุดตัดจอมีจุดเดียวคือ 680 (ชุดของระบบ): การ์ดไฟล์เปลี่ยนจาก "รูปซ้าย · รายละเอียดขวา" เป็น "รูปบน · รายละเอียดล่าง"
+   ⚠️ ทุกอย่างที่กดได้สูงระดับนิ้ว (44px) — หัวหน้าเปิดบนแท็บเล็ตได้ */
+
+/* ── เนื้อ (ทั้งในการ์ดพับได้และบล็อกธรรมดา) ───────────────────────────────── */
+.cardBody {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--panel-inset);
+}
+
+/* บล็อกธรรมดา (`compact`) — ในหน้าพื้นที่ / เหนือรายการบนจอแคบ: หัวหนึ่งแถว ไม่พับ */
+.block {
+  display: grid;
+  gap: var(--space-2-5);
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel-2);
+}
+
+.blockHead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1-5) var(--space-2);
+}
+
+.blockTitle {
+  margin: 0;
+  color: var(--text-1);
+  font-size: var(--fs-7);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-thai);
+}
+
+/* บรรทัดแรกของเนื้อ — วิธีใช้ชิดซ้าย · "พื้นที่ที่เปิดอยู่: …" ชิดขวา (ที่ไม่พอ = ตกลงมาทั้งชิ้น ไม่ตัดชื่อพื้นที่) */
+.lead {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-0-5) var(--space-3);
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+.target {
+  min-width: 0;
+  color: var(--text-1);
+  font-weight: var(--fw-semibold);
+  overflow-wrap: anywhere;
+}
+
+.empty {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+}
+
+/* ── กริดการ์ดไฟล์ ─────────────────────────────────────────────────────────
+   `min(100%, …)` = ที่แคบกว่าความกว้างต่ำสุดของการ์ด การ์ดหดตามที่ ไม่ดันแผงให้กว้างกว่าจอ
+   🐞 UAT S2b S01 (1440): แผงเต็มบาน ~1,040px ได้สี่ใบต่อแถว ใบละ 241px — บรรทัดรายละเอียดหักสามบรรทัด วันที่ขาดกลาง ("พ. 7" / "ต.ค.")
+      สเปก B-3 · บอร์ด B1 = **ไม่เกินสามใบต่อแถว** ⇒ ความกว้างต่ำสุดของช่อง = ค่าที่มากกว่าระหว่าง `--file-min` กับหนึ่งในสามของแผง
+      (หักช่องไฟสองช่อง) — แผงกว้างแค่ไหนก็ไม่มีวันได้ใบที่สี่ · แผงแคบยังได้สอง/หนึ่งใบตาม `--file-min` เหมือนเดิม */
+.grid {
+  --file-min: 240px;
+  --file-third: calc((100% - 2 * var(--space-3)) / 3);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, max(var(--file-min), var(--file-third))), 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* รูปกับรายละเอียดแบ่งครึ่งการ์ด — แบบแปลนต้องใหญ่พอให้จำได้ว่าแผ่นไหน (ม็อก B1) · ปุ่มใช้รูปกินเต็มความกว้างใต้ทั้งสอง */
+.file {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+  gap: var(--space-2-5);
+  min-width: 0;
+  padding: var(--space-2-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel-solid);
+}
+
+/* ช่องรูป/ไฟล์ — ปุ่ม (รูป: ขยายในหน้า) หรือลิงก์ (ไฟล์อื่น: แท็บใหม่) · สัดส่วนคงที่ ⇒ การ์ดในแถวเดียวกันสูงเท่ากัน */
+.media {
+  position: relative;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: var(--space-1-5);
+  min-width: 0;
+  min-height: var(--ctl-h-touch);
+  aspect-ratio: 4 / 3;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-3);
+  color: var(--text-2);
+  font-family: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.media:hover { border-color: var(--border-strong); }
+.media:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+
+.media[data-kind="doc"] { padding: var(--space-2); }
+
+/* contain ไม่ใช่ cover — แบบแปลนถูกครอบขอบแล้วอ่านผิดห้อง */
+.thumbImg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.zoomMark {
+  position: absolute;
+  inset-inline-end: var(--space-1);
+  inset-block-end: var(--space-1);
+  display: grid;
+  place-items: center;
+  padding: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--panel-solid);
+  color: var(--text-2);
+}
+
+/* คำห่อได้ในตัว ไอคอนอยู่ข้างคำเสมอ — ไม่ตกไปอยู่บรรทัดของตัวเองใต้คำ (UAT S2b S01 · ช่องแคบ ~105px) */
+.docOpen {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  gap: var(--space-1);
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  text-align: center;
+}
+
+.info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-0-5);
+  min-width: 0;
+}
+
+/* ชื่อไฟล์ห่อบรรทัดได้ ไม่ตัดท้าย — "แปลนชั้น 1.jpg" กับ "แปลนชั้น 2.jpg" ต่างกันที่ท้ายชื่อ */
+.name {
+  max-width: 100%;
+  color: var(--text-1);
+  font-size: var(--fs-7);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  max-width: 100%;
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ชิ้นของบรรทัดรายละเอียด (ชนิด · ขนาด · คน · วัน) — ก้อนละชิ้น ห่อบรรทัดระหว่างชิ้น · ชิ้นที่ยาวกว่าบรรทัด (ชื่อคนยาว) ยังห่อในตัวได้ */
+.metaPart {
+  display: inline-block;
+  max-inline-size: 100%;
+}
+
+.docOpen > span { min-width: 0; }
+.docOpen > svg { flex: none; }
+
+.info .source { margin-top: var(--space-1); }
+
+/* ── ปุ่ม "ใช้รูปนี้เป็นภาพแบบของพื้นที่นี้" — เต็มความกว้างของการ์ด ใต้รูปกับรายละเอียด ───────────── */
+.reuse {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: var(--space-1-5);
+  min-width: 0;
+}
+
+.blocked {
+  --blocked-icon-size: 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1-5);
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+.blocked > svg {
+  flex: none;
+  margin-top: calc((var(--fs-5) * var(--lh-thai) - var(--blocked-icon-size)) / 2);
+  color: var(--amber);
+}
+
+.blocked > span { min-width: 0; }
+
+/* คำบนปุ่มยาว ("ใช้รูปนี้เป็นภาพแบบของพื้นที่นี้") — การ์ดแคบ = ห่อสองบรรทัดได้ ไม่ล้นการ์ด
+   ⚠️ สองคลาส (.reuse .reuseBtn) ชนะ `.btn` ของ globals โดยไม่พึ่งลำดับไฟล์ */
+.reuse .reuseBtn {
+  width: 100%;
+  min-height: var(--ctl-h-touch);
+  height: auto;
+  padding-block: var(--space-1);
+  justify-content: center;
+  white-space: normal;
+  line-height: var(--lh-thai);
+  text-align: center;
+}
+
+/* ติดด่าน / กำลังคัดลอก: หน้าตาเท่าปุ่มที่ดับของระบบ แต่ยังถือโฟกัส (aria-disabled — ดูคอมเมนต์ในไฟล์ JS) */
+.reuse .reuseBtn[aria-disabled="true"] {
+  opacity: var(--op-disabled);
+  cursor: not-allowed;
+}
+
+/* ── กล่องขยายรูป ───────────────────────────────────────────────────────── */
+.zoom {
+  display: grid;
+  gap: var(--space-3);
+  justify-items: center;
+}
+
+.zoomFrame {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 160px;
+  border-radius: var(--radius);
+  background: var(--panel-3);
+}
+
+.zoomImg {
+  display: block;
+  max-width: 100%;
+  max-height: 70dvh;
+  object-fit: contain;
+}
+
+.zoomLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  min-height: var(--ctl-h-touch);
+  color: var(--accent-ink);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.zoomLink:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; border-radius: var(--radius); }
+
+/* การ์ดในแถวเดียวกันสูงเท่ากัน (กริดยืดให้) แต่ชื่อไฟล์ยาวสั้นไม่เท่ากัน ⇒ ปุ่มใช้รูปของแต่ละใบเคยอยู่คนละระดับ (UAT S2b S01)
+   ⇒ การ์ดที่มีปุ่ม: แถวบน (รูป + รายละเอียด) รับความสูงที่เหลือ ปุ่มเกาะขอบล่างของการ์ด · การ์ดที่ไม่มีปุ่ม (หน้ารายการ · ผู้วางคิว) = เดิม
+   ⚠️ บนมือถือ (≤680) การ์ดเป็นคอลัมน์เดียว (รูป · รายละเอียด · ปุ่ม สามแถว) — ก้อนมือถือข้างล่างล้างแม่แบบแถวนี้คืน */
+.file:has(> .reuse) {
+  grid-template-rows: 1fr auto;
+  align-content: normal;
+}
+
+.file:has(> .reuse) > .media,
+.file:has(> .reuse) > .info { align-self: start; }
+.file:has(> .reuse) > .reuse { align-self: end; }
+
+/* ── มือถือ: รูปอยู่บน รายละเอียดอยู่ล่าง ปุ่มใช้รูปเต็มความกว้าง ─────────────────── */
+@media (max-width: 680px) {
+  .file { grid-template-columns: minmax(0, 1fr); }
+  .file:has(> .reuse) { grid-template-rows: none; align-content: start; }
+  .media { aspect-ratio: 16 / 9; }
+}

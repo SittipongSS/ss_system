@@ -10,7 +10,7 @@ import { fetchAll } from '@/lib/supabaseFetchAll';
 import { fetchAllInChunks } from '@/lib/supabaseInChunks';
 import { SERVICE_DEPARTMENT } from '@/lib/permissions';
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
-import { surveyNeedsVisit } from './surveyMethod';
+import { isDrawingZone, surveyNeedsVisit } from './surveyMethod';
 import {
   SITE_REQUEST_KINDS, liveSurveyVisitsByRequest, pickSurveyVisit, surveyQueueStep,
 } from './surveyQueue';
@@ -32,8 +32,32 @@ export const SURVEY_QUEUE_REQUEST_COLUMNS = [
 export const SURVEY_QUEUE_VISIT_COLUMNS = 'id, code, status, "requestId", "scheduledDate", "createdAt"';
 
 /* แถวพื้นที่ของใบ — แค่พอตอบว่า "ใบนี้ต้องมีนัดไหม" (`surveyNeedsVisit`: สถานะตัด + วิธีประเมิน · mig 0408)
+   + เหตุผลและเวลาของการสลับวิธีครั้งล่าสุด (งวด S2b) — การ์ดของใบที่หัวหน้าสลับกลับเป็นลงหน้างานบอกผู้วางคิวว่าทำไมใบกลับมาลงคิว
    ⚠️ ไม่เอาผลวัด/จุดติดตั้ง — การ์ดไม่ใช้ และ `parts`/`spots` เป็น jsonb ก้อนใหญ่ */
-export const SURVEY_QUEUE_ZONE_COLUMNS = 'id, "requestId", status, method';
+export const SURVEY_QUEUE_ZONE_COLUMNS = 'id, "requestId", status, method, "methodReason", "methodChangedAt"';
+
+const isCutZone = (zone) => (zone?.status || 'ok') === 'cut';
+/**
+ * 🔑 ที่มาของใบที่ **หัวหน้าสลับกลับเป็นลงหน้างาน** (แผน survey-desk-assessment §3.5 · งวด S2b) — `{ reason }` หรือ `null`
+ *   เหตุผลมาจากพื้นที่ลงหน้างานที่ยังอยู่ในใบ ซึ่งถูกสลับ **ล่าสุด** และมีเหตุผล (`methodChangedAt` ไม่ว่าง + `methodReason` ไม่ว่าง)
+ *   ⚠️ พื้นที่ที่ไม่เคยสลับ (`methodChangedAt` ว่าง — ทุกแถวเดิมของระบบ) ไม่นับ ⇒ ใบลงหน้างานของวันนี้ได้ `null` เสมอ
+ *   ⚠️ ใบที่ไม่ต้องมีนัด (งานโต๊ะ) = `null` — ไม่มีการ์ดลงคิวให้บอกที่มา
+ *   ⚠️ เทียบเวลาเป็นมิลลิวินาที ไม่เทียบสตริง (`…+00:00` กับ `…Z` คือขณะเดียวกัน) · เวลาที่อ่านไม่ออกไม่ถูกเลือก
+ * @param zones แถวพื้นที่ของใบเดียว (คอลัมน์ `SURVEY_QUEUE_ZONE_COLUMNS`)
+ */
+export function surveyQueueMethodBack(zones) {
+  const rows = (Array.isArray(zones) ? zones : []).filter(Boolean);
+  if (surveyNeedsVisit(rows) === false) return null;
+  let latest = null;
+  for (const zone of rows) {
+    if (isCutZone(zone) || isDrawingZone(zone)) continue;
+    const reason = String(zone.methodReason ?? '').trim();
+    const at = Date.parse(String(zone.methodChangedAt ?? ''));
+    if (!reason || !Number.isFinite(at)) continue;
+    if (!latest || at > latest.at) latest = { at, reason };
+  }
+  return latest ? { reason: latest.reason } : null;
+}
 
 /**
  * คำร้องประเมินพื้นที่ของฝ่าย TS ที่การ์ด "คำร้องรอลงคิว" ต้องแสดง
@@ -41,7 +65,7 @@ export const SURVEY_QUEUE_ZONE_COLUMNS = 'id, "requestId", status, method';
  * @param visits นัดของรายการงาน (ร่าง + นัดเปิด + ปิดใน 14 วัน) — ชุดเดียวกับที่ route ส่งให้จอ
  *               ⚠️ ชุดนี้มีนัดที่ยังมีชีวิตครบทุกใบอยู่แล้ว (`REQUEST_SLOT_VISIT_STATES` ⊆ ชุดสถานะ
  *               ของรายการงาน — เทสต์ล็อกไว้) ⇒ "ลงคิวแล้วหรือยัง" ไม่ต้องยิงถามเพิ่ม
- * @returns แถวคำร้อง + `surveyVisit` (null ได้) + `surveyNeedsVisit` (boolean เสมอ)
+ * @returns แถวคำร้อง + `surveyVisit` (null ได้) + `surveyNeedsVisit` (boolean เสมอ) + `surveyMethodBack` (`{ reason }` | null — งวด S2b)
  *          — เฉพาะแถวที่ `surveyQueueStep` ไม่ใช่ null
  * @throws  error ของ Supabase ตัวแรก (ผ่าน fetchAll) — route แยก try ของตัวเอง
  *          ⚠️ ห้ามกลืนเป็นอาร์เรย์ว่าง: ว่าง = "ไม่มีใบรอลงคิว" ซึ่งโกหกเมื่อ query พัง
@@ -78,6 +102,8 @@ export async function loadSurveyQueueRequests(supabase, { visits = [] } = {}) {
     surveyVisit: liveByRequest.get(row.id) || null,
     // ใบที่ยังไม่มีแถวพื้นที่ = ต้องมีนัด (กติกาของ `surveyNeedsVisit` — ไม่มีแถวไม่ใช่งานโต๊ะ)
     surveyNeedsVisit: surveyNeedsVisit(zonesByRequest.get(row.id) || []),
+    // ใบที่หัวหน้าสลับกลับเป็นลงหน้างาน — เหตุผลของการสลับครั้งล่าสุด (การ์ดพิมพ์เป็นบรรทัดที่มา) · ไม่ใช่ = null
+    surveyMethodBack: surveyQueueMethodBack(zonesByRequest.get(row.id) || []),
   }));
 
   /* ⭐ ถามประวัตินัดเฉพาะใบที่ "รับเรื่องแล้ว + มีวันแล้ว + ไม่มีนัดที่ยังมีชีวิต" — ใบกลุ่มนี้
