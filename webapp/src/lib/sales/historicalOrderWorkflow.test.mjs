@@ -594,6 +594,38 @@ test('ของเสริม: แพ็คต่อรอบมาจากแ
   assert.deepEqual(junk.lineZones.map((z) => z.packsPerRound), [null, 3]);
 });
 
+/* ⭐ งวด PR-5 (mig 0409 · มติเจ้าของ 08/10 ข้อ A1 · แผน IMPL_PLAN_PR5 §2.9): แถวโซนของเสริมพก **เลขแพ็คของบรรทัด** (`packQty` —
+   sales_order_lines."packQty") คู่กับจำนวน ⇒ โมดัลอนุมัติ · การ์ดโซน · โหมดแก้ของวิซาร์ด พูด "2 แพ็ค × 12 เดือน" ได้จากแถวเดียว (page.js ไม่ต้องแก้)
+   · บรรทัดที่เก็บก่อนงวดนี้ (คอลัมน์ว่าง) = null — คีย์มีเสมอ · ไม่เดาจากแพ็คต่อรอบ (คนละเลข) · ค่าที่เก็บไม่ได้ = null ไม่ใช่ตัวคูณ */
+test('PR-5 ของเสริม: แถวโซนพกเลขแพ็คของบรรทัด (packQty) — ตัวเลขจากคอลัมน์ของบรรทัด · ว่าง = null · ไม่ยืมจากแพ็คต่อรอบ', async () => {
+  const withPacks = extrasOrder();
+  /* SOL-1 (รายการแรกบนใบ) = 2 แพ็ค × 12 เดือน × 3,600 · SOL-2 = บรรทัดที่เก็บก่อนงวดนี้ (ไม่มีคอลัมน์ในแถวที่โหลดมา) */
+  withPacks.lines = withPacks.lines.map((line) => (line.id === 'SOL-1'
+    ? { ...line, packQty: 2, qty: 12, unit: 'เดือน', unitPrice: 3600, lineTotal: 86400 }
+    : line));
+  const extras = await loadHistoricalOrderExtras(fakeDb({ tables: extrasTables() }).supabase, withPacks, { todayIso: '2026-09-22' });
+  assert.deepEqual(extras.lineZones.map((z) => [z.lineId, z.packQty, z.qty, z.unit, z.packsPerRound, z.rounds]), [
+    ['SOL-1', 2, 12, 'เดือน', 2, 12],
+    ['SOL-2', null, 48, 'แพ็คเกจ', 1, 12],
+  ]);
+  assert.ok(extras.lineZones.every((z) => 'packQty' in z), 'คีย์มีเสมอ (null = บรรทัดไม่มีเลขแพ็ค) — ผู้อ่านไม่ต้องเดาว่าไม่ได้โหลด');
+  // คีย์เดิมของแถวอยู่ครบ (ตำแหน่งของเลขแพ็ค = ข้างจำนวน)
+  assert.deepEqual(Object.keys(extras.lineZones[0]), [
+    'lineId', 'zoneId', 'zoneCode', 'zoneName', 'zoneActive', 'siteId', 'siteCode', 'siteName', 'siteActive', 'productId',
+    'fgCode', 'packQty', 'qty', 'unit', 'unitPrice', 'discountAmount', 'rounds', 'packsPerRound', 'lineTotal', 'installationPoint',
+  ]);
+  // ใบที่ไม่มีบรรทัดไหนมีเลขแพ็ค (ทุกใบก่อนงวดนี้) = null ทุกแถว แม้แถวโซนของงานบริการมีแพ็คต่อรอบ 2 / 1
+  const legacy = await loadHistoricalOrderExtras(fakeDb({ tables: extrasTables() }).supabase, extrasOrder(), { todayIso: '2026-09-22' });
+  assert.deepEqual(legacy.lineZones.map((z) => [z.packQty, z.packsPerRound]), [[null, 2], [null, 1]]);
+  // ค่าที่เก็บไม่ได้ (0 · เศษ · เกินช่วง · ข้อความ) = null — สตริงตัวเลขที่ใช้ได้ (PostgREST บางทางคืนข้อความ) = ตัวเลข
+  for (const [stored, expected] of [[0, null], [1.5, null], [10000, null], ['abc', null], ['', null], [null, null], ['3', 3], [1, 1], [9999, 9999]]) {
+    const order = extrasOrder();
+    order.lines = order.lines.map((line) => ({ ...line, packQty: stored }));
+    const got = await loadHistoricalOrderExtras(fakeDb({ tables: extrasTables() }).supabase, order, { todayIso: '2026-09-22' });
+    assert.deepEqual(got.lineZones.map((z) => z.packQty), [expected, expected], JSON.stringify(stored));
+  }
+});
+
 test('ของเสริม: อ่านแถวโซนของงานบริการไม่ขึ้น = โยน (ผู้เรียกตั้ง extrasError) ไม่ใช่ "ยังไม่มีแพ็คต่อรอบ"', async () => {
   const broken = fakeDb({ tables: { ...extrasTables(), sales_order_line_zones: { data: null, error: { message: 'alloc boom' } } } });
   await assert.rejects(loadHistoricalOrderExtras(broken.supabase, extrasOrder(), { todayIso: '2026-09-22' }),

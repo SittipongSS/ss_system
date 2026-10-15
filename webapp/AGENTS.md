@@ -103,4 +103,9 @@ await apiJson(`/api/pm/personal-tasks/${id}`, {                    // เขี�
 - ห้าม rollback production ต่ำกว่า deployment ของงวด PR-2 ที่จดไว้ใน [DEPLOY.md](DEPLOY.md) · ห้ามแก้
   `QUOTE_PACK_INPUT_OPEN` กลับเป็น `false` · ห้ามถอย migration 0407
 - หลัง deploy / rollback หรือสงสัยว่ามีรุ่นเก่าเขียนทับ: รัน `scripts/check-line-pack-parity.mjs` (อ่านอย่างเดียว)
+- **ใบสั่งขายย้อนหลัง (งวด PR-5 · migration 0409)** — หลังรัน 0409 โค้ดรุ่นที่ยังไม่มีไฟล์ migration นั้น **บันทึกใบสั่งขายย้อนหลังไม่ได้เลย**:
+  ฐานตอบ `historical_so_line_pack_qty_invalid` ซึ่งรุ่นนั้นโชว์เป็นข้อความกลาง "ดำเนินการกับเอกสารไม่สำเร็จ กรุณาลองใหม่…" —
+  **ดัง ไม่ใช่ยอดหดเงียบ และเป็นผลที่ตั้งใจ** (ไม่มีอะไรถูกบันทึก · กดซ้ำไม่ช่วย) ⇒ รวม `main` · ก่อนคีย์ใบสั่งขายย้อนหลังจาก worktree ไหน:
+  `git cat-file -e HEAD:webapp/supabase/migrations/0409_historical_so_line_pack_qty.sql` — ไม่ผ่าน = รุ่นเก่า ·
+  **ห้ามถอย migration 0409 ขณะมีใบสั่งขายย้อนหลังที่ยังไม่อนุมัติถือเลข "แพ็ค/เดือน"**
 - รายละเอียด: [docs/qt-pack-column.md](../docs/qt-pack-column.md) หัวข้อ "ประตูทางเดียว"

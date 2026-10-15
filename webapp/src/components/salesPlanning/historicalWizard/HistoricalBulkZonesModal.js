@@ -7,7 +7,18 @@
 // ⭐ PR-D (mig 0394 · DD4): ห่อหน้าต่างกลางของงานบริการ (`components/service/ZonesBulkModal`) — หน้าต่างเดียวสองงาน
 //   · ตัวกลางถือ: ค้น → ติ๊ก (ทีละโซน / ทั้งไซต์ / ทุกโซนที่เห็น) · รอบละกี่แพ็ค [ตามผลประเมินของแต่ละโซน | เท่ากันทุกโซน] ·
 //     ท้ายหน้าต่างบอกผลก่อนกด · `pressed`
-//   · ตัวห่อถือ: แพ็คเกจ * · จำนวน (ต่อบรรทัด · ว่างได้) · ราคา/หน่วย (อ่านอย่างเดียว) · จำนวนรอบบริการ (ทุกบรรทัด) *
+//   · ตัวห่อถือ: แพ็คเกจ * · แพ็ค/เดือน (ทุกบรรทัด · ว่างได้ — งวด PR-5) · จำนวน (ต่อบรรทัด · ว่างได้) · ราคา/หน่วย (อ่านอย่างเดียว) ·
+//     จำนวนรอบบริการ (ทุกบรรทัด) *
+//   · ⭐ งวด PR-5 (D8 · มติเจ้าของ 08/10 ข้อ A2 + ข้อ 5 "ไม่มีค่าตั้งต้นเงียบ" · mig 0409): ช่อง "แพ็ค/เดือน (ทุกบรรทัด)" ระหว่างแพ็คเกจกับจำนวน —
+//     เลขเดียวลงทุกบรรทัดที่จะเพิ่ม · **ไม่บังคับ ไม่มีค่าตั้งต้น** (ว่าง = แต่ละบรรทัดได้ช่องว่างให้ใส่ในตาราง ยอดของบรรทัดนั้นยังเป็นขีด)
+//     · ช่องข้อความ (`type="text" inputMode="numeric"`) เก็บทุกตัวอักษรเหมือนช่องในตาราง — ห้าม MoneyInput / type="number" / maxLength
+//     · ใส่แล้วใช้ได้ = คำใบ้ใต้ช่องจำนวนพูดหน่วย "เดือน" (`historicalBulkQtyUnit`) และท้ายหน้าต่างพูดยอด เลข × จำนวน × ราคา
+//       ว่างอยู่ = ท้ายหน้าต่าง **ไม่พูดยอดเงิน** (จำนวน × ราคา ตอนเลขยังว่าง = ค่าคูณ 1 ที่ไม่มีใครใส่ — R6)
+//     · ผัง (รีวิว 12/10 — CSS `.bulkFields`): ช่องเลือกแพ็คเกจต้องเป็น **ลูกตัวแรก** ของกริด — ได้แถวของตัวเองเต็มกว้าง (รหัส FG ทั้งตัว + ชื่อ)
+//       แล้วสามช่องตัวเลข แพ็ค/เดือน · จำนวน · ราคา/หน่วย อยู่แถวถัดไป (ลำดับเดียวกับคอลัมน์ของตาราง) · เดิมสี่ช่องแถวเดียว รหัส FG ถูกตัดห้าหลักท้าย
+//     🔴 ช่องนี้เป็น "ช่องตั้งต้นของแถวใหม่" ที่ขึ้นทะเบียนไว้ (ยาม linePackReaders GE): ไฟล์นี้ไม่เขียนคีย์ของเลขนั้นเอง และส่งค่าให้ได้เฉพาะ
+//        ตัวตั้งค่าของช่องเอง + ห้าตัวของ lib (historicalBulkPackIssue · historicalBulkFieldsIssue · historicalBulkQtyUnit ·
+//        historicalBulkConsequence · historicalBulkAddRows) — ส่งให้ตัวที่หก = แดง · ไฟล์นี้คุยกับ historicalIntakeForm เท่านั้น (R8)
 //   · ⭐ มติเจ้าของ 08/10 รอบสอง (จอฝ่ายขายที่เหลือ — แพ็คก่อนจำนวนรอบบริการ เหมือนตารางงานบริการของใบใหม่ #1878):
 //     แพ็คเกจ · จำนวน · ราคา/หน่วย วาดเหนือแถว "รอบละกี่แพ็ค (ทุกบรรทัด)" ของตัวกลาง (`renderFields`) ·
 //     **จำนวนรอบบริการ (ทุกบรรทัด) * ย้ายลงมาอยู่ใต้แถวนั้น** (`renderAfterPacks` — ช่องเสริมของตัวกลาง) · หน่วยท้ายช่อง = "เดือน"
@@ -17,7 +28,7 @@
 // ⭐ โซนที่อยู่ในใบแล้ว / ปิดใช้งาน **เห็นแต่ติ๊กไม่ได้ พร้อมเหตุ** (`historicalBulkTaken` → `taken` ของตัวกลาง)
 //   ⚠️ โซนที่อยู่ในใบแล้ววาดแบบไม่ติ๊ก (ตัวกลางติ๊กให้เฉพาะโซนของรายการเดียวกัน) — ยอมรับใน DD4
 // 🔴 กฎบ้าน 3 (แดงหลังกด): ข้อความติดด่านขึ้นหลังกด "เพิ่ม n บรรทัด" เท่านั้น · ⚠️ ถอยจาก 25/09 ที่ปุ่มปิดและบอกเหตุทันที
-//    **โดยตั้งใจ** (IMPL_PLAN_D §0.2 ข้อ 3) · ลำดับเหตุ (M1): ช่องของตัวห่อ (แพ็คเกจ → จำนวน → จำนวนรอบบริการ · `historicalBulkFieldsIssue`)
+//    **โดยตั้งใจ** (IMPL_PLAN_D §0.2 ข้อ 3) · ลำดับเหตุ (M1): ช่องของตัวห่อ (แพ็คเกจ → แพ็ค/เดือน [งวด PR-5] → จำนวน → จำนวนรอบบริการ · `historicalBulkFieldsIssue`)
 //    ก่อน แล้วค่อยของตัวกลาง (ยังไม่เลือกโซน / รอบละกี่แพ็คผิด) — ⚠️ หลังมติ 08/10 รอบสอง ช่องจำนวนรอบบริการอยู่ใต้แถวแพ็ค แต่ลำดับเหตุ
 //    ยังเป็นของเดิม (สัญญาของตรรกะ ไม่ใช่ของผัง) ⇒ ผิดทั้งสองช่อง ท้ายหน้าต่างพูดเรื่องจำนวนรอบบริการก่อน · กรอบแดงขึ้นทั้งสองช่องอยู่แล้ว
 // ⚠️ จำนวนเว้นว่างได้ (ใส่ทีละบรรทัดทีหลัง) แต่ใส่แล้วต้องเป็นจำนวนเต็ม > 0 — ด่านเดียวกับแผน (ไม่เดาจำนวนแทนผู้คีย์)
@@ -33,7 +44,8 @@ import { fmtMoney } from "@/lib/format";
 import { QUOTE_PRICE_FIELD } from "@/lib/sales/quoteLines";
 import {
   HISTORICAL_SERVICE_TEXT, REGISTRY_LOAD_FAILED, historicalBulkAddRows, historicalBulkConsequence, historicalBulkFieldsIssue,
-  historicalBulkQtyIssue, historicalBulkRegistrySites, historicalBulkRoundsIssue, historicalBulkTaken,
+  historicalBulkPackIssue, historicalBulkQtyIssue, historicalBulkQtyUnit, historicalBulkRegistrySites, historicalBulkRoundsIssue,
+  historicalBulkTaken,
 } from "@/lib/sales/historicalIntakeForm";
 import styles from "./HistoricalOrderWizard.module.css";
 
@@ -45,6 +57,8 @@ export default function HistoricalBulkZonesModal({
   assessedByZone = null, assessState = "idle", onAdd,
 }) {
   const [productId, setProductId] = useState("");
+  /* งวด PR-5: เลขของช่อง "แพ็ค/เดือน (ทุกบรรทัด)" — ข้อความตามที่พิมพ์ (ว่าง = ยังไม่ใส่ · ไม่มีค่าตั้งต้น) */
+  const [packQty, setPackQty] = useState("");
   const [qty, setQty] = useState("");
   const [rounds, setRounds] = useState("");
 
@@ -52,6 +66,7 @@ export default function HistoricalBulkZonesModal({
   useEffect(() => {
     if (!open) return;
     setProductId("");
+    setPackQty("");
     setQty("");
     setRounds("");
   }, [open]);
@@ -66,9 +81,10 @@ export default function HistoricalBulkZonesModal({
 
   const product = productId ? productsById.get(productId) || null : null;
   const unitPrice = product ? Number(product[QUOTE_PRICE_FIELD]) : null;
+  const packIssue = historicalBulkPackIssue(packQty);
   const qtyIssue = historicalBulkQtyIssue(qty);
   const roundsIssue = historicalBulkRoundsIssue(rounds);
-  const extraError = historicalBulkFieldsIssue({ productId, qty, rounds });
+  const extraError = historicalBulkFieldsIssue({ productId, packQty, qty, rounds });
   const assessNote = assessState === "loading" ? T.assessLoading : (assessState === "error" ? T.assessFailed : null);
 
   return (
@@ -106,12 +122,28 @@ export default function HistoricalBulkZonesModal({
               />
               {pressed && !productId ? <small data-bad="yes">{T.noPackage}</small> : null}
             </div>
+            {/* ⭐ งวด PR-5 (D8): เลขเดียวของทุกบรรทัดที่จะเพิ่ม — ว่างได้ · ช่องข้อความที่เก็บทุกตัวอักษร (ค่าที่ใช้ไม่ได้อยู่ในช่องให้เห็น) ·
+                แดงหลังกดเหมือนช่องอื่นของตัวห่อ · ป้าย/คำใบ้/aria จากแคตตาล็อก (ไฟล์นี้ไม่สะกดชื่อคอลัมน์เอง) */}
+            <div className={styles.field}>
+              <span>{T.packQtyLabel}</span>
+              <Input
+                type="text" inputMode="numeric" pattern="[0-9]*" autoComplete="off" className="numeric-input"
+                value={packQty}
+                invalid={pressed && Boolean(packIssue)}
+                onChange={(event) => setPackQty(event.target.value)}
+                aria-label={T.packQtyAria}
+              />
+              <small data-bad={pressed && packIssue ? "yes" : undefined}>
+                {(pressed && packIssue) || T.packQtyHint}
+              </small>
+            </div>
             <div className={styles.field}>
               <span>{T.qtyLabel}</span>
               {/* กรอบแดง = คลาส is-invalid (MoneyInput ไม่แปลง aria-invalid เป็นกรอบ — review 29/09) · แดงหลังกดเหมือนช่องรอบ */}
               <MoneyInput min="0" autoComplete="off" className={pressed && qtyIssue ? "is-invalid" : ""} value={qty} onChange={(value) => setQty(value ?? "")} aria-label="จำนวนต่อบรรทัด" aria-invalid={pressed && qtyIssue ? "true" : undefined} />
               <small data-bad={pressed && qtyIssue ? "yes" : undefined}>
-                {(pressed && qtyIssue) || T.qtyHint(product?.saleUnit)}
+                {/* งวด PR-5 (R8): เลขข้างบนใช้ได้แล้ว = จำนวนคือจำนวนเดือน ⇒ คำใบ้พูดหน่วย "เดือน" — ตัวตัดสินอยู่ที่ lib */}
+                {(pressed && qtyIssue) || T.qtyHint(historicalBulkQtyUnit(packQty, product?.saleUnit))}
               </small>
             </div>
             <div className={styles.field}>
@@ -147,11 +179,11 @@ export default function HistoricalBulkZonesModal({
         </div>
       )}
       consequence={(plan, { mode }) => historicalBulkConsequence({
-        count: plan.count, qty, unitPrice, mode, packs: plan.packs, assessed: plan.assessed, blank: plan.blank, rounds,
+        count: plan.count, packQty, qty, unitPrice, mode, packs: plan.packs, assessed: plan.assessed, blank: plan.blank, rounds,
       })}
       confirmLabel={T.confirm}
       onAdd={(planRows) => onAdd?.(historicalBulkAddRows({
-        zoneIds: planRows.map((row) => row.zoneId), sites, zonesBySite, rows, qty, rounds,
+        zoneIds: planRows.map((row) => row.zoneId), sites, zonesBySite, rows, packQty, qty, rounds,
         packsByZone: new Map(planRows.map((row) => [row.zoneId, row.packsPerRound])),
       }), productId)}
     />

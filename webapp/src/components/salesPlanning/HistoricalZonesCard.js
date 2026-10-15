@@ -15,13 +15,15 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import { TableScroll } from "@/components/ui/Table";
 import { fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
 import { historicalPacksCellText, historicalPacksRoundsText, historicalRoundsCellText, historicalZoneState } from "@/lib/sales/historicalOrderCopy";
+import { linePackQtyText } from "@/lib/sales/linePackView";
 import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL } from "@/lib/sales/serviceOrders";
 
 /**
  * @param order          ใบ (อ่าน `status` · `lines` เป็นตัวถอยเมื่อของเสริมไม่มา)
  * @param lineZones      ของเสริมจาก GET ของใบ — `[{ lineId, zoneId, zoneCode, zoneName, siteCode, siteName, siteId,
- *                       fgCode, qty, unit, unitPrice, discountAmount, rounds, packsPerRound, lineTotal }]` (loadHistoricalOrderExtras)
+ *                       fgCode, packQty, qty, unit, unitPrice, discountAmount, rounds, packsPerRound, lineTotal }]` (loadHistoricalOrderExtras)
  *                       · `packsPerRound` (PR-D · mig 0394) = แพ็คต่อรอบของโซน จาก `sales_order_line_zones` · null = ไม่รู้
+ *                       · `packQty` (งวด PR-5 · mig 0409) = เลขคอลัมน์ "แพ็ค/เดือน" ของบรรทัด (ตัวคูณเงิน) · null = บรรทัดที่คีย์ก่อนมีช่อง
  * @param plannedSiteIds ไซต์ที่ฝ่าย TS ตั้งรอบแล้ว (historicalServiceProgress) · `null` = ยังไม่รู้
  * @param loadingPlans   กำลังยิงเส้นสรุปงานบริการอยู่ — สถานะรายโซนพูดว่า "กำลังตรวจ" ไม่ใช่ "ยังไม่ตั้ง"
  * @param extrasError    ของเสริมของใบโหลดไม่ขึ้น (หน้าใบส่งมาให้) — ต้องดัง ไม่ใช่การ์ดว่าง
@@ -29,6 +31,10 @@ import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL } from "@/lib/sales/serviceOr
  * ⭐ มติเจ้าของ 23/09: บรรทัดของใบย้อนหลังคือบรรทัดของใบเสนอราคา ⇒ การ์ดพูด **รายการ · จำนวน + หน่วย**
  *   ของบรรทัดนั้น (12 แพ็คเกจ) ไม่ใช่ "N แพ็ค" ที่อ่านได้สองความหมาย (1 ชุด × 12 เดือน เคยถูกคีย์ทั้ง 1 และ 12)
  *   ราคาต่อหน่วย/ส่วนลดอยู่ที่ตารางรายการข้างบน — การ์ดนี้ตอบ "ของลงโซนไหน · TS ตั้งรอบหรือยัง"
+ *   ⭐ งวด PR-5 (มติเจ้าของ 08/10 ข้อ A1 · mig 0409 · แผน R5): บรรทัดที่มีเลขคอลัมน์ "แพ็ค/เดือน" ช่องจำนวนพูด "2 แพ็ค × 12 เดือน" — วลีของ
+ *     ตัวอ่านกลาง (`linePackQtyText` · คำเดียวกับเอกสารและหน้าต่างอนุมัติ) เพราะจำนวนของบรรทัดนั้นคือจำนวนเดือน และเงิน = เลขนั้น × จำนวน × ราคา
+ *     · บรรทัดที่ไม่มีเลขนั้น (คีย์ก่อนงวดนี้) = ข้อความเดิมทุกตัวอักษร ("12 แพ็คเกจ" — ตัวช่วยคืน null แล้วถอยไปนิพจน์เดิม)
+ *     · เจ็ดคอลัมน์เท่าเดิม (ไม่มีคอลัมน์ใหม่) · การ์ดยังไม่ประกอบคำว่าแพ็ค/เดือนเอง และไม่เขียนคีย์ของเลขนั้น
  * ⭐ PR-D (มติเจ้าของ 26/09 A3/O9 · mig 0394): คอลัมน์แพ็คต่อรอบ = ช่องของ **โซน** คนละช่องกับจำนวนของบรรทัด
  *   · มติเจ้าของ 29/09 ("ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง"): หัว = คำของใบใหม่ (`SERVICE_PACKS_LABEL` · `SERVICE_ROUNDS_LABEL` ·
  *     การ์ดไม่สะกดเอง)
@@ -51,7 +57,10 @@ export default function HistoricalZonesCard({
     const qty = zone.qty ?? line?.qty;
     if (qty === null || qty === undefined || !String(qty).trim() || !Number.isFinite(Number(qty))) return NA;
     const unit = zone.unit || line?.unit || "";
-    return `${fmtNumber(Number(qty))}${unit ? ` ${unit}` : ""}`;
+    /* งวด PR-5: บรรทัดที่มีเลขคอลัมน์ "แพ็ค/เดือน" → วลีของตัวอ่านกลาง · ต้นทางเดียวกับจำนวนที่เพิ่งอ่าน (ของเสริมที่พกจำนวนมา ไม่งั้นบรรทัดของใบ)
+       ⇒ เลขคูณกับจำนวนมาจากแถวเดียวกันเสมอ · ไม่มีเลขนั้น = null ⇒ ข้อความเดิม */
+    const source = zone.qty === null || zone.qty === undefined ? line : zone;
+    return linePackQtyText(source) ?? `${fmtNumber(Number(qty))}${unit ? ` ${unit}` : ""}`;
   };
   const meta = zones.length
     ? historicalPacksRoundsText(zones).meta

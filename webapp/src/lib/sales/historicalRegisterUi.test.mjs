@@ -1005,22 +1005,51 @@ const LINE_ITEMS = 'components/salesPlanning/QuotationLineItems.js';
 /* ⭐ มติ 26/09 (A3/O9 · PR-D mig 0394): "แพ็คต่อรอบ" กลับมาเป็น **ช่องของตัวเองต่อโซน** — ไม่ใช่จำนวนของบรรทัด (มติ 23/09 ยังจริง:
    จำนวน = เงิน 1 ชุด × 12 เดือน) ⇒ คำว่า "แพ็ค" บนขั้น ② มาจาก `HISTORICAL_SERVICE_TEXT` ที่เดียว (§0.2 ข้อ 14) · ไฟล์จอ
    ของขั้นไม่สะกดคำนี้เอง (เหลือได้แค่ "แพ็คเกจ") · รูปที่อนุญาตตรึงที่ตัวข้อความ */
-test('⭐ 23/09 → 26/09: ขั้น ② ไม่เหลือ "แพ็ค" ที่สะกดเอง · ยอดที่พิมพ์เอง · รอบในสัญญา — ช่องเงินทุกช่องมาจากเซลล์กลาง', () => {
+/* ⭐ ย้ายความคาดหวังโดยเจตนา (งวด PR-5 · มติเจ้าของ 23/09 "ต้องไม่ควรแตกต่างจาก form ใบเสนอราคา" + 08/10 ข้อ A1–A2 "หัวคอลัมน์เขียนเป็น แพ็ค/เดือน" ·
+   ข้อวินิจฉัย 7 · มติเจ้าของ 12/10 ข้อ A8 · แผน IMPL_PLAN_PR5 §5 แถว G10 [ครึ่งของยามจอ] / §2.10): เดิมรูปของคำว่า "แพ็ค" ที่ข้อความของขั้น ② พูดได้มี
+   สี่รูป (รอบละกี่แพ็ค · แพ็ค/รอบ · ประเมินไว้ n แพ็ค · รวมทั้งรายการ n แพ็ค) — วันนี้เพิ่ม **รูปที่ห้า: ชื่อหัวคอลัมน์ "แพ็ค/เดือน"** (เลขแพ็คของบรรทัด —
+   ตัวคูณเงิน) ซึ่งข้อความของแคตตาล็อกประกอบจาก `PACK_COLUMN_LABEL` เสมอ: ชิปรับค่า + คำเตือนของแถว (`quoteLink` — PR-5 D1(ก)) และช่องของหน้าต่างเพิ่ม
+   หลายโซน (`bulk.packQty*` · `bulk.subtitle`) · รายการ `said` ไล่ข้อความใหม่ครบทุกตัว
+   ไม่ได้คลายด่าน: "n แพ็ค" เปล่า ๆ และ "แพ็คต่อรอบ" ยังแดง (ตัวจับถูกทดสอบกับตัวเองข้างล่าง) · สามไฟล์จอของขั้นยังสะกดคำว่าแพ็คเองไม่ได้ ·
+   ขั้น ② ยังไม่มีตัวแปร/ช่องชื่อ `packs` · ยอดที่พิมพ์เอง · รอบในสัญญา */
+test('⭐ 23/09 → 26/09 → PR-5: ขั้น ② ไม่เหลือ "แพ็ค" ที่สะกดเอง · ยอดที่พิมพ์เอง · รอบในสัญญา — ช่องเงินทุกช่องมาจากเซลล์กลาง · รูปที่ห้าของคำ = หัวคอลัมน์ “แพ็ค/เดือน” จากค่าคงที่', () => {
   const src = code(STEP_ZONES);
   assert.doesNotMatch(src, /lineAmount|\bpacks\b|grossAmount|totalPacks/);
   assert.doesNotMatch(src, />แพ็ค<|>ยอด<|รอบในสัญญา|ก่อน VAT/);
   assert.doesNotMatch(src, /import MoneyInput/, 'ช่องเงินทุกช่องมาจากเซลล์กลาง ไม่ใช่ช่องของขั้นนี้เอง');
   for (const file of [STEP_ZONES, LINE_SERVICE, BULK]) {
     assert.doesNotMatch(code(file), /แพ็ค(?!เกจ)/, `${file}: คำว่า "แพ็ค…" ต้องมาจาก HISTORICAL_SERVICE_TEXT`);
+    /* งวด PR-5: สามไฟล์นี้ไม่ import ค่าคงที่ของหัวคอลัมน์มาประกอบคำเอง — ข้อความสำเร็จรูปมาจากแคตตาล็อกของ lib เท่านั้น */
+    assert.doesNotMatch(code(file), /PACK_COLUMN_LABEL|PACK_WORD|linePackView|lib\/sales\/linePacks/, `${file}: ไม่ประกอบชื่อคอลัมน์เอง`);
   }
   const T = intakeForm.HISTORICAL_SERVICE_TEXT;
+  const Q = T.quoteLink;
   assert.equal(T.packsUnit, 'แพ็ค', 'หน่วยท้ายช่องแพ็คต่อรอบ');
   const said = [T.packsLabel, T.packsAria('รายการ 1'), T.assessed(2), T.useAssessedAria(2, 'รายการ 1'), T.lineTotal(24),
-    T.assessFailed, T.bulk.subtitle, T.bulk.packsLabel, T.bulk.assessLoading, T.bulk.assessFailed].join(' | ');
-  const allowed = /รอบละกี่แพ็ค|แพ็ค\/รอบ|ประเมินไว้ \d+ แพ็ค|ผลประเมิน \d+ แพ็ค|ทั้งรายการ \d+ แพ็ค/g;
+    T.assessFailed, T.bulk.subtitle, T.bulk.packsLabel, T.bulk.assessLoading, T.bulk.assessFailed,
+    /* งวด PR-5 — ข้อความใหม่ทุกตัวที่จอของขั้น ② วาด */
+    Q.packsSeed(2), Q.packsSeedAria(2, 'รายการ 1'), Q.roundsSeed(12), Q.roundsSeedAria(12, 'รายการ 1'), Q.packsDiffer(2, 1), Q.monthsDiffer(12, 6), Q.suffix,
+    T.bulk.packQtyLabel, T.bulk.packQtyHint, T.bulk.packQtyAria, T.bulk.qtyHint('เดือน')].join(' | ');
+  const allowed = /รอบละกี่แพ็ค|แพ็ค\/รอบ|แพ็ค\/เดือน|ประเมินไว้ \d+ แพ็ค|ผลประเมิน \d+ แพ็ค|ทั้งรายการ \d+ แพ็ค/g;
   assert.doesNotMatch(said.replace(allowed, ''), /แพ็ค(?!เกจ)/,
-    'รูปที่อนุญาต: รอบละกี่แพ็ค · แพ็ค/รอบ · ประเมินไว้ n แพ็ค · รวมทั้งรายการ n แพ็ค (+ หน่วยท้ายช่อง)');
+    'รูปที่อนุญาต: รอบละกี่แพ็ค · แพ็ค/รอบ · แพ็ค/เดือน (หัวคอลัมน์) · ประเมินไว้ n แพ็ค · รวมทั้งรายการ n แพ็ค (+ หน่วยท้ายช่อง)');
   assert.doesNotMatch(said, /แพ็คต่อรอบ/, 'มติ 29/09: ป้ายเดียวกับใบใหม่ — "รอบละกี่แพ็ค"');
+  /* ตัวจับยังจับของที่ห้าม (ทดสอบกับตัวเอง): "n แพ็ค" เปล่า · คำที่ติดกับ "แพ็ค" · และปล่อยรูปที่ห้าเมื่อเขียนครบคำเท่านั้น */
+  for (const loose of ['2 แพ็ค', 'จำนวนแพ็ค 2', 'แพ็คต่อเดือน', 'ตามแพ็ค: 2', 'แพ็ค / เดือน']) {
+    assert.match(loose.replace(allowed, ''), /แพ็ค(?!เกจ)/, `ต้องยังจับ "${loose}"`);
+  }
+  for (const fine of ['ตาม “แพ็ค/เดือน”: 2', 'แพ็ค/เดือน (ทุกบรรทัด)', 'แพ็คเกจ']) {
+    assert.doesNotMatch(fine.replace(allowed, ''), /แพ็ค(?!เกจ)/, `ต้องไม่จับ "${fine}"`);
+  }
+  /* ถ้อยคำของรูปที่ห้า — ตัวข้อความ (ผู้คีย์เห็นคำเดียวกับหัวคอลัมน์ของตาราง) */
+  assert.equal(Q.packsSeed(2), 'ตาม “แพ็ค/เดือน”: 2');
+  assert.equal(Q.roundsSeed(12), 'ตามจำนวน: 12 เดือน');
+  assert.equal(Q.packsSeedAria(2, 'รายการ 1'), 'ใช้เลข “แพ็ค/เดือน” 2 ในช่องรอบละกี่แพ็คของรายการ 1');
+  assert.equal(Q.roundsSeedAria(12, 'รายการ 1'), 'ใช้จำนวน 12 เดือนในช่องจำนวนรอบบริการของรายการ 1');
+  assert.equal(T.bulk.packQtyLabel, 'แพ็ค/เดือน (ทุกบรรทัด)');
+  assert.equal(T.bulk.packQtyHint, 'เว้นว่างได้ — ใส่ทีละบรรทัดในตาราง');
+  assert.equal(T.bulk.packQtyAria, 'แพ็ค/เดือนของทุกบรรทัดที่จะเพิ่ม');
+  assert.match(T.bulk.subtitle, /^ติ๊กโซนแล้วใส่แพ็คเกจ · แพ็ค\/เดือน · จำนวน · รอบละกี่แพ็ค · จำนวนรอบบริการทีเดียว — /);
 });
 
 /* ⭐ PR-D (mig 0394 · r2 S12 · IMPL_PLAN_D DD1–DD2): แถบผูกของบรรทัด = ไซต์ · โซน * | รอบละกี่แพ็ค * (ชิป "ประเมินไว้ n แพ็ค" [ใช้])
@@ -1028,9 +1057,12 @@ test('⭐ 23/09 → 26/09: ขั้น ② ไม่เหลือ "แพ็�
    — คำตามมติเจ้าของ 29/09 ("ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง")
    — มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ: หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ (ลำดับของเดิม: จำนวนรอบบริการก่อนรอบละกี่แพ็ค)
    🔴 แดงหลังกด "ถัดไป" เท่านั้น — ข้อความใต้ช่องมาจาก `bad` (issues ที่เปิดเผยแล้ว) ช่องเดียวกับช่องอื่นของบรรทัด */
+/* ⭐ ย้ายความคาดหวังโดยเจตนา (งวด PR-5 · มติเจ้าของ 12/10 ข้อ A8 "ปุ่มรับค่า + เตือน" · แผน IMPL_PLAN_PR5 §5 แถว G18 / §2.6): เดิมขั้น ② import
+   `{ HistoricalLineServiceTotal }` จากไฟล์ช่องงานบริการ — วันนี้ import ชิปรับค่า `HistoricalSeedChip` เพิ่มหนึ่งชื่อ (ชิป "ตาม … [ใช้]" ของ PR-5 D1(ก))
+   ไม่ได้คลายด่าน: ลำดับแถบผูก · ช่อง/ชิปผลประเมินของ PR-D · "แดงหลังกดถัดไป" ยึดเท่าเดิมทุกข้อ และเพิ่มยามของชิปใหม่ + บรรทัดเตือนในเทสต์ถัดไป */
 test('PR-D ⭐ ขั้น ②: "รอบละกี่แพ็ค *" + ชิปผลประเมิน → "จำนวนรอบบริการ *" บังคับ (เดือน) → "รวมทั้งรายการ n แพ็ค" — แดงหลังกด ถัดไป', () => {
   const src = code(STEP_ZONES);
-  assert.match(src, /import HistoricalLineServiceFields, \{ HistoricalLineServiceTotal \} from "\.\/HistoricalLineServiceFields";/);
+  assert.match(src, /import HistoricalLineServiceFields, \{ HistoricalLineServiceTotal, HistoricalSeedChip \} from "\.\/HistoricalLineServiceFields";/);
   const bind = slice(src, '<div className={styles.lineBind}>', '{warn ? (');
   let at = -1;
   /* มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ: หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ
@@ -1088,6 +1120,20 @@ test('PR-D ⭐ ขั้น ②: "รอบละกี่แพ็ค *" + ช�
   const total = slice(css, '.lineBindTotal {', '}');
   assert.doesNotMatch(total, /min-height|align-self/, 'ไม่มีกล่องสูงเท่าช่องกรอก');
   assert.match(total, /flex-basis: 100%;/);
+  /* ⭐ งวด PR-5 (วัดกับคอมโพเนนต์จริง 12/10 — mockups/qt-pack-column/pr5-proof/screen · ความเสี่ยง R6 ของแผน): คอลัมน์ "แพ็ค/เดือน" ทำให้เซลล์ "รายการ"
+     ของขั้น ② แคบลง 76px ⇒ ที่กล่อง 903–925px (ยังเป็นตาราง) เนื้อของแถบผูกเหลือ 91–112px — แคบกว่าช่องตัวเลข 96px + หน่วยท้ายช่อง
+     🐞 ก่อนแก้: หน่วย "เดือน" ของช่องจำนวนรอบบริการล้นเซลล์ 15px (จอ 1233) · "รวมทั้งรายการ n แพ็ค" (nowrap) ล้นแถบ 18px
+     ⇒ ในแถบผูกเท่านั้น: หน่วยพับลงใต้ช่อง · ช่องกว้างไม่เกินแถบ · บรรทัดรวมขึ้นบรรทัดใหม่ได้ — ถอดกฎใดกฎหนึ่ง = ล้นกลับมา (ไม่มีเทสต์เรนเดอร์ในชุดนี้ จึงยึดที่ชีต)
+     🔴 และต้องไม่แก้ด้วยความกว้างของตาราง/คอลัมน์ของขั้นนี้เอง — ตารางเป็นของใบเสนอราคาทุกคอลัมน์ (มติ 23/09) */
+  assert.match(css, /\.lineBind \.packsField,\n\.lineBindRounds > div > span:nth-child\(2\) \{ flex-wrap: wrap; \}/);
+  assert.match(css, /\.lineBind \.packsField input,\n\.lineBindRounds > div > span:nth-child\(2\) input \{ max-width: 100%; \}/);
+  assert.match(total, /white-space: normal;/);
+  assert.doesNotMatch(total, /white-space: nowrap/, 'บรรทัดรวมขึ้นบรรทัดใหม่ได้ในแถบแคบ');
+  const cssCode = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(cssCode, /linesTable|colPack|colQty|colPrice|colAmount|table-layout|:has\(th/, 'ชีตของฟอร์มนี้ไม่มีความกว้างตาราง/คอลัมน์ของตัวเอง');
+  /* ช่อง + หน่วยของเซลล์ร่วมยังเป็นลูกตัวที่สองของกล่องช่อง (กฎข้างบนเลือกด้วยตำแหน่ง เพราะอ้างคลาสของชีตใบเสนอราคาข้ามโฟลเดอร์ไม่ได้) */
+  assert.match(slice(code(CELLS), 'export function QuoteLineServiceRounds', undefined),
+    /<div className=\{styles\.serviceRounds\}>\s*<span>\{SERVICE_ROUNDS_LABEL\}[^\n]*<\/span>\s*<span className=\{styles\.roundsField\}>\s*<Input/);
   assert.doesNotMatch(line, /lineIsServicePackage|hasServicePackageLine|effectiveServiceFgCode|orderHasServiceRounds/,
     'ไม่มีตัวตัดสินเงินในช่องนี้ (§0.2 ข้อ 13)');
   assert.doesNotMatch(line, /style=\{\{/);
@@ -1100,6 +1146,95 @@ test('PR-D ⭐ ขั้น ②: "รอบละกี่แพ็ค *" + ช�
   assert.equal(intakeForm.historicalLineServiceView({ zoneId: 'ZN-1', packsPerRound: '2', rounds: '' }, null).totalText, null,
     'รอบยังว่าง = ไม่พูดตัวเลขทั้งรายการ');
   assert.equal(intakeForm.historicalLineServiceView({ zoneId: 'ZN-1' }, null).assessed, null, 'ยังโหลด/พัง = ไม่มีชิป');
+});
+
+/* ⭐ งวด PR-5 D1(ก) (มติเจ้าของ 12/10 ข้อ A8 "ปุ่มรับค่า + เตือน" · แผน IMPL_PLAN_PR5 §1.1 / §2.6 · T21): คู่เงินของแถว (แพ็ค/เดือน · จำนวน) กับ
+   คู่งานบริการ (รอบละกี่แพ็ค · จำนวนรอบบริการ) เป็น **สี่ช่องแยกกัน** — สองช่องงานบริการได้ชิป "ตาม … [ใช้]" (ข้อเสนอ: ค่าเข้าแถวเมื่อกดเท่านั้น)
+   และคู่ที่ไม่เท่ากันได้บรรทัดเตือนสีกลางใต้แถบผูก (ไม่ใช่ข้อผิด — ไม่แดง ไม่กั้น)
+   🔴 สามทางที่พังเงียบ: ชิปเขียนค่าตอนวาด (= ค่าตั้งต้นเงียบที่มติข้อ 5 ห้าม) · ชิปยังกดได้ระหว่างตรวจ/บันทึก (แผนที่กลับมาเป็นของค่าเก่า) ·
+      คำเตือนกลายเป็นสีแดง/ด่าน (เจ้าของเลือก "เตือน" ไม่ใช่ "บังคับให้เท่า") */
+test('PR-5 D1(ก) ⭐ ขั้น ②: ชิปรับค่าใต้สองช่องงานบริการ (กดจึงเขียน · ปิดระหว่างตรวจ) + บรรทัดเตือนคู่ไม่เท่ากันใต้แถบผูก (สีกลาง ไม่กั้น)', () => {
+  const src = code(STEP_ZONES);
+  assert.match(src, /const link = historicalLineQuoteLink\(row, name\);/, 'ตัวตัดสินและถ้อยคำอยู่ที่ lib — ขั้นไม่เทียบเลขเอง');
+  assert.equal((src.match(/historicalLineQuoteLink\(/g) || []).length, 1);
+  assert.deepEqual([...src.matchAll(/\blink\.(\w+)/g)].map((m) => m[1]), ['packsSeed', 'roundsSeed', 'mismatch', 'mismatch'],
+    'ขั้นใช้ผลของตัวตัดสินสามช่อง ตามลำดับที่วาด (ชิปแพ็ค → ชิปรอบ → คำเตือน) — ไม่แกะ .value มาเขียนเอง');
+  assert.doesNotMatch(src, /Seed\??\.value|seed\.value/, 'ค่าที่ชิปเขียนถูกส่งผ่าน onUse ของชิปเท่านั้น');
+  const bind = slice(src, '<div className={styles.lineBind}>', '{warn ? (');
+  /* ลำดับแถบผูกคงเดิม และชิปอยู่กับช่องของมัน: ชิปแพ็คเป็น prop ของช่องรอบละกี่แพ็ค · ชิปรอบอยู่ในกล่องของช่องจำนวนรอบบริการ หลังช่อง ก่อนข้อผิด */
+  const fields = slice(bind, '<HistoricalLineServiceFields', '/>');
+  assert.match(fields, /\n\s*seed=\{link\.packsSeed\}\n/);
+  assert.match(fields, /disabled=\{busy\}/);
+  const roundsBox = slice(bind, '<div className={styles.lineBindRounds}>', '<HistoricalLineServiceTotal view={service} />');
+  const chip = '<HistoricalSeedChip seed={link.roundsSeed} onUse={(value) => patchRow(row.key, { rounds: value })} disabled={busy} />';
+  assert.ok(roundsBox.includes(chip), 'ชิป "ตามจำนวน" เขียนช่องจำนวนรอบบริการของแถวนั้น (ผูกด้วย key) และปิดเมื่อ busy');
+  assert.ok(roundsBox.indexOf('<QuoteLineServiceRounds') < roundsBox.indexOf(chip), 'ชิปอยู่ใต้ช่อง');
+  assert.ok(roundsBox.indexOf(chip) < roundsBox.indexOf('{bad.rounds ?'), 'ข้อผิดของช่อง (แดง) อยู่ท้ายสุดของกล่อง');
+  assert.equal((src.match(/<HistoricalSeedChip\b/g) || []).length, 1, 'ขั้นวาดชิปเองตัวเดียว (ชิปแพ็คอยู่ในไฟล์ช่องงานบริการ)');
+  /* บรรทัดเตือน: หลังแถบผูก ก่อนคำเตือนรอบขายซ้อน · คลาสสีกลางตัวเดียวกับบรรทัดรองของเซลล์ · ไม่ใช่ cellBad / StatusNotice / ด่าน */
+  const warnLine = '{link.mismatch ? <span className={styles.cellSub}>⚠️ {link.mismatch}</span> : null}';
+  assert.ok(bind.includes(warnLine));
+  assert.ok(bind.indexOf('<HistoricalLineServiceTotal view={service} />') < bind.indexOf(warnLine), 'อยู่ใต้แถบผูกทั้งแถบ');
+  assert.equal((src.match(/link\.mismatch \?/g) || []).length, 1);
+  assert.doesNotMatch(src, /mismatch[^\n]*(?:cellBad|invalid|disabled=|StatusNotice)/, 'คำเตือนไม่แดง ไม่ปิดอะไร');
+  const css = read('components/salesPlanning/historicalWizard/HistoricalOrderWizard.module.css');
+  assert.doesNotMatch(slice(css, '.cellSub {', '}'), /--red/, '.cellSub เป็นสีกลาง');
+
+  /* ตัวชิป: หน้าตาเดียวกับชิปผลประเมิน (กล่อง assessChip + ปุ่มเงียบ "ใช้") · เขียนเมื่อกดเท่านั้น · ไม่มี seed = ไม่วาด · ไม่ใช่ด่าน */
+  const line = code(LINE_SERVICE);
+  const chipFn = slice(line, 'export function HistoricalSeedChip(', '\n}\n');
+  assert.match(chipFn, /export function HistoricalSeedChip\(\{ seed = null, onUse, disabled = false \}\) \{/);
+  assert.match(chipFn, /return seed \? \(\s*<span className=\{styles\.assessChip\}>\s*\{seed\.text\}/);
+  assert.match(chipFn, /<Button\s+size="sm" variant="quiet"\s+disabled=\{disabled\}\s+onClick=\{\(\) => onUse\?\.\(seed\.value\)\}\s+aria-label=\{seed\.aria\}\s*>\s*\{T\.useAssessed\}\s*<\/Button>/);
+  assert.match(chipFn, /\) : null;/);
+  assert.equal((chipFn.match(/onUse/g) || []).length, 2, 'onUse ถูกเอ่ยสองที่: พารามิเตอร์ กับใน onClick — ไม่มีการเรียกตอนวาด');
+  assert.doesNotMatch(chipFn, /tone="danger"|invalid|useEffect|useState/, 'ชิปเป็นตัวช่วย ไม่ใช่ด่าน และไม่มี effect ที่เขียนค่าเอง');
+  /* ช่องรอบละกี่แพ็ครับ seed แล้ววาดชิปตัวเดียวกัน หลังชิปผลประเมิน ก่อนข้อผิด · ปิดด้วยธงเดียวกับช่อง (busy) */
+  assert.match(line, /value, onChange, view = null, error = null, name = "", disabled = false, seed = null,/);
+  const mount = '<HistoricalSeedChip seed={seed} onUse={onChange} disabled={disabled} />';
+  assert.ok(line.includes(mount));
+  assert.ok(line.indexOf('{view?.assessed ? (') < line.indexOf(mount) && line.indexOf(mount) < line.indexOf('{error ? <span className={styles.cellBad}>'));
+  assert.equal((line.match(/<HistoricalSeedChip\b/g) || []).length, 1);
+  assert.doesNotMatch(line, /useEffect|useState/, 'ไฟล์ช่องงานบริการไม่มี state/effect — ค่าเข้าแถวทาง onChange ของผู้เรียกทางเดียว');
+
+  /* 🔴 รีวิว 12/10 (G4) — "ข้อเสนอเข้าแถวโดยไม่มีใครกด" มีมากกว่าสองรูปที่ข้อข้างบนจับ (onClick ที่เรียกทันที · patchRow ตอนวาด): ตัวกลายพันธุ์สี่ตัวรอดทั้งชุดเทสต์ —
+     ① `if (seed && !value) onChange?.(seed.value);` เป็นคำสั่งแรกของช่อง (เขียนตอนวาด) · ② ช่องโชว์ข้อเสนอขณะ state ยังว่าง (`value={value || seed?.value || ""}`
+     — ผู้คีย์เห็นเลขที่ไม่ได้ถูกเก็บ) · ③ ชิปถูกซ่อนเมื่อมีชิปผลประเมิน (`{view?.assessed ? null : <HistoricalSeedChip … />}` — เอกสารบอกว่าสองชิปซ้อนกันโดยตั้งใจ) ·
+     ④ `setRows(…)` ตอนวาดในขั้น ② (ยึดที่ quoteLineCells.test.mjs) = ทางเลือก "พิมพ์ครั้งเดียว" ที่เจ้าของไม่ได้เลือก (มติ A8: กดจึงรับ)
+     ⇒ ยึดไฟล์ช่องงานบริการทั้งไฟล์: `onChange` ถูกเรียกสองที่พอดี (พิมพ์ในช่อง · กดปุ่ม "ใช้" ของชิปผลประเมิน) + ส่งต่อให้ชิปรับค่าหนึ่งที่ · `seed.value` ถูกอ่านที่เดียว
+       คือ onClick ของชิป · ช่องโชว์ state ล้วน · ชิปรับค่าเป็นลูกตรงของกล่อง (ไม่มีเงื่อนไขครอบ) ระหว่างชิปผลประเมินกับข้อผิด */
+  assert.deepEqual([...line.matchAll(/onChange\?\.\(([^\n]*?)\)\}/g)].map((m) => m[1]), ['event.target.value', 'String(view.assessed)'],
+    'ช่องงานบริการเรียก onChange สองที่พอดี: ข้อความที่พิมพ์ · เลขของชิปผลประเมินตอนกด "ใช้"');
+  assert.equal((line.match(/onChange\?\.\(/g) || []).length, 2, 'การเรียก onChange ตัวที่สาม (เช่นเขียนข้อเสนอตอนวาด) = แดง');
+  assert.doesNotMatch(line, /(?<![?.\w])onChange\(/, 'ไม่มีการเรียก onChange แบบไม่มี ?. หลุดจากตัวนับข้างบน');
+  assert.ok(line.includes('onChange={(event) => onChange?.(event.target.value)}') && line.includes('onClick={() => onChange?.(String(view.assessed))}'),
+    'ทั้งสองที่อยู่ในตัวจัดการเหตุการณ์ (ลูกศร) — ไม่มีการเขียนตอนวาด');
+  assert.equal((line.match(/\bonChange\b/g) || []).length, 5, 'onChange ถูกเอ่ยห้าที่: พารามิเตอร์ · ชื่อ prop ของช่อง · สองการเรียก · ส่งต่อให้ชิปรับค่า (onUse={onChange})');
+  assert.deepEqual(line.match(/\bseed\??\.\w+/g), ['seed.text', 'seed.value', 'seed.aria'], 'ข้อเสนอถูกอ่านในตัวชิปเท่านั้น: ข้อความ · ค่า (ใน onClick) · aria — ช่องไม่อ่าน seed.value เอง');
+  assert.match(line, /\n\s*value=\{value \?\? ""\}\n/, 'ช่องโชว์ค่าของแถวล้วน ๆ — ข้อเสนอที่ยังไม่ถูกกดไม่ปรากฏในช่อง');
+  assert.match(line, /\) : null\}\n\s*<HistoricalSeedChip seed=\{seed\} onUse=\{onChange\} disabled=\{disabled\} \/>\n\s*\{error \? <span className=\{styles\.cellBad\}>/,
+    'ชิปรับค่าเป็นลูกตรงของกล่อง ต่อจากชิปผลประเมิน ก่อนข้อผิด — ไม่มีเงื่อนไขครอบ (สองชิปขึ้นพร้อมกันได้ ตามที่เอกสารเขียน)');
+  /* ฝั่งขั้น ②: ชิป "ตามจำนวน" ก็เป็นลูกตรงของกล่องจำนวนรอบบริการ ต่อจากช่อง ก่อนข้อผิด — ไม่มีเงื่อนไขครอบ */
+  assert.match(roundsBox, /\n\s*<HistoricalSeedChip seed=\{link\.roundsSeed\} onUse=\{\(value\) => patchRow\(row\.key, \{ rounds: value \}\)\} disabled=\{busy\} \/>\n\s*\{bad\.rounds \? <span className=\{styles\.cellBad\}>/);
+  assert.doesNotMatch(roundsBox, /[?:&|]\s*<HistoricalSeedChip/, 'ชิปไม่อยู่ในนิพจน์เงื่อนไข');
+
+  /* ของจริงของตัวตัดสินที่ขั้นวาด (พฤติกรรมเต็มอยู่ที่ historicalIntakeForm.test.mjs — T11) */
+  const row = { packQty: '2', qty: '12', packsPerRound: '', rounds: '' };
+  const snapshot = JSON.stringify(row);
+  const offered = intakeForm.historicalLineQuoteLink(row, 'รายการ 1');
+  assert.deepEqual(offered, {
+    packsSeed: { value: '2', text: 'ตาม “แพ็ค/เดือน”: 2', aria: 'ใช้เลข “แพ็ค/เดือน” 2 ในช่องรอบละกี่แพ็คของรายการ 1' },
+    roundsSeed: { value: '12', text: 'ตามจำนวน: 12 เดือน', aria: 'ใช้จำนวน 12 เดือนในช่องจำนวนรอบบริการของรายการ 1' },
+    mismatch: null,
+  });
+  assert.equal(JSON.stringify(row), snapshot, 'ตัวตัดสินคืนข้อมูลอย่างเดียว ไม่แตะแถว (ไม่มีค่าเข้า state โดยไม่กด)');
+  assert.deepEqual(intakeForm.historicalLineQuoteLink({ ...row, packsPerRound: '2', rounds: '12' }, 'รายการ 1'),
+    { packsSeed: null, roundsSeed: null, mismatch: null }, 'กดรับครบสองชิป = ชิปหาย ไม่มีคำเตือน');
+  const differs = intakeForm.historicalLineQuoteLink({ ...row, packsPerRound: '1', rounds: '6' }, 'รายการ 1');
+  assert.equal(differs.mismatch, '“แพ็ค/เดือน” 2 ≠ รอบละกี่แพ็ค 1 · จำนวน 12 ≠ จำนวนรอบบริการ 6 — ตรวจอีกครั้ง (ไม่บังคับให้เท่า)');
+  assert.ok(differs.packsSeed && differs.roundsSeed, 'ยังเสนอค่าให้กดรับเมื่อคู่ไม่เท่ากัน');
+  assert.deepEqual(intakeForm.historicalLineQuoteLink({ packQty: '', qty: '', packsPerRound: '2', rounds: '12' }, 'รายการ 1'),
+    { packsSeed: null, roundsSeed: null, mismatch: null }, 'ต้นทางยังว่าง = ไม่มีชิป ไม่มีคำเตือน');
 });
 
 /* ⭐ PR-D (DD3): ผลประเมินรายโซนไม่มากับตัวโหลดรายไซต์ (V9) ⇒ อ่านเส้นทะเบียนของลูกค้า **แยก** ครั้งเดียวต่อการเปลี่ยนลูกค้า
@@ -1144,7 +1279,13 @@ test('PR-D 🔴 DD17: เปิดแก้ใบที่อ่านของ�
 test('⭐ 25/09: ขั้น ② = ตารางรายการตารางเดียวแบบใบเสนอราคา (# · … · ปุ่มลบ) · แถวผูกกับ key ไม่ใช่ zoneId', () => {
   const src = code(STEP_ZONES);
   assert.equal((src.match(/<QuoteLinesTable\b/g) || []).length, 1, 'บรรทัดทั้งใบอยู่ในตารางเดียว');
-  assert.match(src, /<QuoteLinesTable>\s*\n\s*<thead>\s*\n\s*<tr>\s*\n\s*<QuoteLineIndexHead \/>\s*\n\s*<QuoteLineHeadCells \/>\s*\n\s*<QuoteLineActionsHead \/>/);
+  /* ⭐ ย้ายความคาดหวังโดยเจตนา (งวด PR-5 · มติเจ้าของ 23/09 "ต้องไม่ควรแตกต่างจาก form ใบเสนอราคา" + 08/10 ข้อ A1–A2 · ข้อวินิจฉัย 7 ·
+     แผน IMPL_PLAN_PR5 §5 แถว G5): เดิมหัวของขั้น ② คือ `<QuoteLineHeadCells />` เปล่า (ไม่มีคอลัมน์ "แพ็ค/เดือน") — วันนี้เป็นแท็กเดียวกับตารางของ
+     ใบเสนอราคา **ทุกตัวอักษร** (prop คู่ของคอลัมน์) · ไม่ได้คลายด่าน: ยังเป็นตารางเดียว ลำดับ # · หัวกลาง · ช่องปุ่มลบ · ไม่มีหัวของตัวเอง
+     (ความเท่ากันกับใบเสนอราคายึดที่ quoteLineCells.test.mjs) · แถวว่างยังกินเจ็ดช่อง — ตารางว่างยังไม่มีคอลัมน์นั้น */
+  assert.match(src, /<QuoteLinesTable>\s*\n\s*<thead>\s*\n\s*<tr>\s*\n\s*<QuoteLineIndexHead \/>\s*\n\s*<QuoteLineHeadCells showPacks=\{showPacks\} packRequired=\{packRequired\} \/>\s*\n\s*<QuoteLineActionsHead \/>/);
+  assert.match(read(LINE_ITEMS), /<QuoteLineHeadCells showPacks=\{showPacks\} packRequired=\{packRequired\} \/>/, 'แท็กเดียวกับตารางของใบเสนอราคา');
+  assert.doesNotMatch(src, /<QuoteLineHeadCells \/>|<th\b/, 'ไม่มีหัวเปล่าของก่อนงวด PR-5 ค้าง และไม่มีหัวคอลัมน์ที่ขั้นวาดเอง');
   assert.doesNotMatch(src, /ZONE_LINES_MIN_WIDTH|zoneCol|ราว 1270/);
   assert.doesNotMatch(read('components/salesPlanning/historicalWizard/HistoricalOrderWizard.module.css'), /\.zoneCol\b/);
   /* บรรทัดของตารางมาจากตัวตัดสินที่ตรึงด้วยเทสต์ (ชื่อบรรทัด · ลบได้ไหม) · ไม่ขึ้นกับทะเบียนหรือคำค้น */
@@ -1396,7 +1537,8 @@ test('⭐ 25/09 → PR-D: หน้าต่างเพิ่มหลายโ
   for (const call of ['setQuery("")', 'setPicked([])', 'setPressed(false)']) assert.ok(sharedReset.includes(call), `ตัวกลางเปิดใหม่ต้องล้าง ${call}`);
   const reset = slice(bulk, 'useEffect(() => {', '}, [open]);');
   assert.match(reset, /if \(!open\) return;/);
-  for (const call of ['setProductId("")', 'setQty("")', 'setRounds("")']) {
+  /* งวด PR-5: + ช่อง "แพ็ค/เดือน (ทุกบรรทัด)" ของตัวห่อ — เลขของรอบก่อนค้างข้ามการเปิดใหม่ = ตัวคูณเงินที่ไม่มีใครพิมพ์ในรอบนี้ */
+  for (const call of ['setProductId("")', 'setPackQty("")', 'setQty("")', 'setRounds("")']) {
     assert.ok(reset.includes(call), `เปิดใหม่ต้องล้าง ${call}`);
   }
   assert.doesNotMatch(bulk, /apiJson|apiFetch|fetch\(/, 'หน้าต่างไม่โหลดทะเบียนเอง — สองชุดข้อมูล = สองคำตอบ');
@@ -1465,13 +1607,22 @@ test('⭐ 25/09 → PR-D: หน้าต่างเพิ่มหลายโ
    (แพ็คเกจ → จำนวน → รอบ) ก่อน แล้วค่อยของตัวกลาง (ยังไม่เลือกโซน / แพ็คต่อรอบผิด) · ท้ายหน้าต่างไม่เคยพิมพ์ "null"
    มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ: หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ
    ⇒ ประโยคผลก่อนกดพูดแพ็คก่อน แล้วค่อย "จำนวนรอบบริการ n เดือน" · ⚠️ ลำดับเหตุ (M1) ไม่เปลี่ยนแม้ช่องจำนวนรอบบริการย้ายลงไปใต้แถวแพ็ค */
-test('⭐ 25/09 → PR-D: ปุ่มยืนยันของหน้าต่างเพิ่มหลายโซนบอกผลก่อนกด · ติดด่าน = เหตุท้ายหน้าต่างหลังกด (ช่องของตัวห่อก่อน)', () => {
+/* ⭐ ย้ายความคาดหวังโดยเจตนา (งวด PR-5 · มติเจ้าของ 08/10 ข้อ A2 "บังคับใส่" + ข้อ 5 "ไม่มีค่าตั้งต้นเงียบ" · แผน IMPL_PLAN_PR5 §5 แถว G12 [ครึ่งของยามจอ] ·
+   G18 · §2.7 / §2.7.1): เดิม (ก) ตัวห่อส่ง `{ productId, qty, rounds }` ให้ด่านช่อง และ `count, qty, unitPrice, …` ให้ประโยคผลก่อนกด
+   (ข) ประโยคผลก่อนกดพูดยอด `บรรทัดละ 12 × ฿3,500.00 = ฿42,000.00` จาก จำนวน × ราคา แม้หน้าต่างไม่รู้เลขแพ็คของบรรทัด
+   — วันนี้ (ก) ตัวห่อส่งเลขของช่อง "แพ็ค/เดือน (ทุกบรรทัด)" ต่อไปด้วย (เขียนแบบ shorthand เสมอ — ไฟล์จอไม่เขียนคีย์ของเลขนั้นเอง · ยาม GE)
+   (ข) ยอดเงินพูดได้เมื่อรู้ **เลขแพ็ค + จำนวน + ราคา** ครบเท่านั้น (เลขแพ็คว่างแล้วพูด "12 × ราคา" = ค่าคูณ 1 ที่ไม่มีใครใส่ — R6)
+   ไม่ได้คลายด่าน: ประโยคเดิมยังมีชีวิตเป็นรูป "รู้ครบ" ที่เลขแพ็ค 1 (`1 × 12 × ฿3,500.00 = ฿42,000.00` — ยอดเดิมทุกสตางค์) · ท่อนงานบริการท้ายประโยค
+   (แพ็คก่อนจำนวนรอบบริการ) ไม่ขยับ · ลำดับเหตุ M1 ยังเป็นช่องของตัวห่อก่อน — เพิ่มช่องเลขแพ็คเข้าลำดับตามที่อยู่บนจอ (แพ็คเกจ → แพ็ค/เดือน → จำนวน → รอบ)
+   (แปดรูปของท่อนเงิน + ยามบั๊ก 25/09 ตัวเต็มอยู่ที่ historicalIntakeForm.test.mjs — T12 / G19) */
+test('⭐ 25/09 → PR-D → PR-5: ปุ่มยืนยันของหน้าต่างเพิ่มหลายโซนบอกผลก่อนกด (ยอดเงินเมื่อรู้เลขแพ็ค + จำนวน + ราคาครบ) · ติดด่าน = เหตุท้ายหน้าต่างหลังกด (ช่องของตัวห่อก่อน)', () => {
   const bulk = code(BULK);
-  assert.match(bulk, /const extraError = historicalBulkFieldsIssue\(\{ productId, qty, rounds \}\);/);
+  assert.match(bulk, /const extraError = historicalBulkFieldsIssue\(\{ productId, packQty, qty, rounds \}\);/);
+  assert.match(bulk, /const packIssue = historicalBulkPackIssue\(packQty\);/, 'ด่านเลขแพ็คตัวเดียวกับแผน (จำนวนเต็ม 1–9,999 · ว่างได้)');
   assert.match(bulk, /const qtyIssue = historicalBulkQtyIssue\(qty\);/, 'ด่านจำนวนตัวเดียวกับแผน (จำนวนเต็ม > 0 · ว่างได้)');
   assert.match(bulk, /const roundsIssue = historicalBulkRoundsIssue\(rounds\);/);
   const consequence = slice(bulk, 'consequence={(plan, { mode }) => historicalBulkConsequence({', '})}');
-  assert.match(consequence, /count: plan\.count, qty, unitPrice, mode, packs: plan\.packs, assessed: plan\.assessed, blank: plan\.blank, rounds,/);
+  assert.match(consequence, /count: plan\.count, packQty, qty, unitPrice, mode, packs: plan\.packs, assessed: plan\.assessed, blank: plan\.blank, rounds,/);
   assert.doesNotMatch(bulk, /disabled=\{Boolean\(blocked\)\}|const blocked =/, 'ปุ่มปิดก่อนกด = เหตุขึ้นก่อนกด (ถอดแล้ว)');
 
   const shared = code(SHARED_BULK);
@@ -1490,12 +1641,102 @@ test('⭐ 25/09 → PR-D: ปุ่มยืนยันของหน้าต
   assert.equal(intakeForm.historicalBulkFieldsIssue({ productId: 'P', qty: '1.5', rounds: '' }), intakeForm.HISTORICAL_LINE_MESSAGES.qty);
   assert.equal(intakeForm.historicalBulkFieldsIssue({ productId: 'P', qty: '', rounds: '' }), 'ยังไม่ใส่จำนวนรอบบริการ');
   assert.equal(intakeForm.historicalBulkFieldsIssue({ productId: 'P', qty: '', rounds: '12' }), null);
+  /* งวด PR-5: ช่องเลขแพ็คเข้าลำดับหลังแพ็คเกจ ก่อนจำนวน · ว่าง = ไม่ใช่ข้อผิด · ข้อความเดียวกับแผน */
+  assert.equal(intakeForm.historicalBulkFieldsIssue({ productId: '', packQty: '1.5', qty: '1.5', rounds: '' }), 'เลือกแพ็คเกจก่อน');
+  assert.equal(intakeForm.historicalBulkFieldsIssue({ productId: 'P', packQty: '1.5', qty: '1.5', rounds: '' }), intakeForm.HISTORICAL_LINE_MESSAGES.packQty);
+  assert.equal(intakeForm.historicalBulkFieldsIssue({ productId: 'P', packQty: '2', qty: '1.5', rounds: '' }), intakeForm.HISTORICAL_LINE_MESSAGES.qty);
+  assert.equal(intakeForm.historicalBulkFieldsIssue({ productId: 'P', packQty: '', qty: '', rounds: '12' }), null);
+  assert.equal(intakeForm.historicalBulkPackIssue(''), null);
+  for (const typed of ['0', '1.5', '10000', 'abc']) assert.equal(intakeForm.historicalBulkPackIssue(typed), intakeForm.HISTORICAL_LINE_MESSAGES.packQty, typed);
+  assert.equal(intakeForm.HISTORICAL_LINE_MESSAGES.packQty, '“แพ็ค/เดือน” ต้องเป็นจำนวนเต็ม 1–9,999');
   assert.equal(intakeForm.historicalBulkQtyIssue('1.5'), intakeForm.HISTORICAL_LINE_MESSAGES.qty);
   assert.equal(intakeForm.historicalBulkQtyIssue(''), null);
-  assert.equal(intakeForm.historicalBulkConsequence({ count: 3, qty: '12', unitPrice: 3500, mode: 'equal', packs: 2, rounds: '12' }),
-    'จะเพิ่ม 3 บรรทัด · บรรทัดละ 12 × ฿3,500.00 = ฿42,000.00 · รวม ฿126,000.00 · แต่ละครั้งเท่ากันทุกบรรทัด ครั้งละ 2 แพ็ค · จำนวนรอบบริการ 12 เดือน');
-  assert.match(intakeForm.historicalBulkConsequence({ count: 3, qty: '', unitPrice: 3500, mode: 'assessed', assessed: 2, blank: 1, rounds: '' }),
-    /จำนวนใส่ทีละบรรทัดในตาราง · รอบละกี่แพ็ค: ตามผลประเมิน 2 โซน · ยังว่าง 1 โซน$/);
+  const TAIL = ' · แต่ละครั้งเท่ากันทุกบรรทัด ครั้งละ 2 แพ็ค · จำนวนรอบบริการ 12 เดือน';
+  const sentence = (extra) => intakeForm.historicalBulkConsequence({ count: 3, qty: '12', unitPrice: 3500, mode: 'equal', packs: 2, rounds: '12', ...extra });
+  /* ประโยคเดิมยังมีชีวิตที่เลขแพ็ค 1 — ยอดเดิมทุกสตางค์ (42,000 · รวม 126,000) */
+  assert.equal(sentence({ packQty: '1' }), `จะเพิ่ม 3 บรรทัด · บรรทัดละ 1 × 12 × ฿3,500.00 = ฿42,000.00 · รวม ฿126,000.00${TAIL}`);
+  /* ตัวอย่างของเจ้าของ 08/10: 2 แพ็ค × 12 เดือน × 3,500 = 84,000 ต่อบรรทัด */
+  assert.equal(sentence({ packQty: '2' }), `จะเพิ่ม 3 บรรทัด · บรรทัดละ 2 × 12 × ฿3,500.00 = ฿84,000.00 · รวม ฿252,000.00${TAIL}`);
+  /* 🔴 เลขแพ็คว่าง (การเรียกแบบเดิม) = ไม่พูดยอดเงิน — บอกจำนวนที่ทุกบรรทัดได้ และบอกว่าเลขแพ็คใส่ทีละบรรทัด */
+  assert.equal(sentence({}), `จะเพิ่ม 3 บรรทัด · บรรทัดละจำนวน 12 · “แพ็ค/เดือน” ใส่ทีละบรรทัดในตาราง${TAIL}`);
+  assert.doesNotMatch(sentence({}), /฿/);
+  assert.doesNotMatch(sentence({ packQty: '1.5' }), /฿/, 'เลขแพ็คที่ใช้ไม่ได้นับเป็นยังไม่ให้ (ปุ่มติดด่านอยู่แล้ว)');
+  /* ท่อนงานบริการของโหมดตามผลประเมินไม่ขยับ · ท่อนหน้าเป็นไปตามว่าหน้าต่างรู้อะไร (ข้อความเดิม "จำนวนใส่ทีละบรรทัดในตาราง" = รูปที่รู้แต่เลขแพ็ค) */
+  const assessed = (extra) => intakeForm.historicalBulkConsequence({ count: 3, qty: '', unitPrice: 3500, mode: 'assessed', assessed: 2, blank: 1, rounds: '', ...extra });
+  assert.equal(assessed({}), 'จะเพิ่ม 3 บรรทัด · จำนวนและ “แพ็ค/เดือน” ใส่ทีละบรรทัดในตาราง · รอบละกี่แพ็ค: ตามผลประเมิน 2 โซน · ยังว่าง 1 โซน');
+  assert.match(assessed({ packQty: '2' }),
+    /^จะเพิ่ม 3 บรรทัด · “แพ็ค\/เดือน” 2 ทุกบรรทัด · จำนวนใส่ทีละบรรทัดในตาราง · รอบละกี่แพ็ค: ตามผลประเมิน 2 โซน · ยังว่าง 1 โซน$/);
+});
+
+/* ⭐ งวด PR-5 (D8 · มติเจ้าของ 08/10 ข้อ A2 + ข้อ 5 · แผน IMPL_PLAN_PR5 §2.7 · R8 · T21): ช่อง "แพ็ค/เดือน (ทุกบรรทัด)" ของหน้าต่างเพิ่มหลายโซน
+   🔴 สี่ทางที่พังเงียบ: ช่องเป็น MoneyInput / type="number" / มี maxLength (เบราว์เซอร์กรองหรือตัดเลขที่พิมพ์ — เลขคูณเงินกลายเป็นเลขที่ไม่มีใครพิมพ์
+      · บทเรียนรีวิว 09/10 ของช่องในตาราง) · ช่องมีค่าตั้งต้น · ช่องแดงก่อนกด · ตัวห่อเขียนคีย์ของเลขนั้นเองหรือส่งให้ตัวอื่นนอกห้าตัวของ lib */
+test('PR-5 ⭐ หน้าต่างเพิ่มหลายโซน: ช่อง “แพ็ค/เดือน (ทุกบรรทัด)” — ช่องข้อความระหว่างแพ็คเกจกับจำนวน · ว่างได้ ไม่มีค่าตั้งต้น · แดงหลังกด · คำใบ้หน่วยของจำนวนจาก lib', () => {
+  const bulk = code(BULK);
+  assert.match(bulk, /const \[packQty, setPackQty\] = useState\(""\);/, 'เริ่มที่ว่าง — ไม่มีค่าตั้งต้น');
+  const above = slice(bulk, 'renderFields={({ pressed }) => (', 'renderAfterPacks={');
+  /* ลำดับช่องของตัวห่อเหนือแถวรอบละกี่แพ็ค: แพ็คเกจ → แพ็ค/เดือน → จำนวน → ราคา/หน่วย (ลำดับใน source = ลำดับ Tab) */
+  let at = -1;
+  for (const piece of ['{T.packageLabel}', '{T.packQtyLabel}', '{T.qtyLabel}', '{T.priceLabel}']) {
+    const next = above.indexOf(piece);
+    assert.ok(next > at, `ลำดับช่องของตัวห่อผิดที่ ${piece}`);
+    at = next;
+  }
+  assert.match(above, /<span>\{T\.packQtyLabel\}<\/span>/, 'ไม่มีดอกจัน — ช่องนี้ไม่บังคับ (ว่าง = ใส่ทีละบรรทัดในตาราง)');
+  /* คอนโทรลที่ผูกกับเลขแพ็คมีตัวเดียว และเป็น Input ข้อความที่เก็บทุกตัวอักษร */
+  const controls = [...bulk.matchAll(/<(Input|MoneyInput|SearchableSelect|Select|input|select|textarea)\b[\s\S]*?\/>/g)];
+  assert.equal(controls.length, 4, 'คอนโทรลของตัวห่อ: แพ็คเกจ · แพ็ค/เดือน · จำนวน · จำนวนรอบบริการ (ทุกตัวปิดในตัว)');
+  const tags = controls.filter((m) => /\bpackQty\b/.test(m[0]));
+  assert.equal(tags.length, 1, 'คอนโทรลเดียวที่เอ่ยเลขแพ็ค');
+  assert.equal(tags[0][1], 'Input');
+  const tag = tags[0][0];
+  for (const attribute of ['type="text"', 'inputMode="numeric"', 'pattern="[0-9]*"', 'autoComplete="off"', 'className="numeric-input"',
+    'value={packQty}', 'invalid={pressed && Boolean(packIssue)}', 'onChange={(event) => setPackQty(event.target.value)}', 'aria-label={T.packQtyAria}']) {
+    assert.ok(tag.includes(attribute), `ช่องแพ็ค/เดือนของหน้าต่างต้องมี ${attribute}`);
+  }
+  assert.doesNotMatch(tag, /maxLength|\bmax=|\bmin=|type="number"|placeholder|defaultValue|\bstep=|aria-required|required/,
+    'ห้ามตัวกรอง/เพดานของเบราว์เซอร์ · ไม่มี placeholder/ค่าตั้งต้น · ไม่บังคับ');
+  assert.doesNotMatch(slice(tag, 'onChange={(event) =>', '}'), /replace|slice|trim|parse|Number\(|Math\.|\?|&&|\|\|/, 'onChange เก็บข้อความทั้งก้อน ไม่กรอง ไม่แปลง');
+  assert.ok(above.indexOf(tag) > above.indexOf('{T.packQtyLabel}') && above.indexOf(tag) < above.indexOf('{T.qtyLabel}'));
+  /* ใต้ช่อง: แดงหลังกดเท่านั้น (ข้อความของแผน) · ก่อนกดเป็นคำใบ้ "เว้นว่างได้" */
+  assert.match(above, /<small data-bad=\{pressed && packIssue \? "yes" : undefined\}>\s*\{\(pressed && packIssue\) \|\| T\.packQtyHint\}\s*<\/small>/);
+  /* R8: คำใบ้หน่วยของช่องจำนวนถามตัวตัดสินของ lib — เลขแพ็คใช้ได้แล้ว = "เดือน" · ไฟล์จอไม่ import linePacks เอง */
+  assert.ok(above.includes('{(pressed && qtyIssue) || T.qtyHint(historicalBulkQtyUnit(packQty, product?.saleUnit))}'));
+  assert.doesNotMatch(bulk, /T\.qtyHint\(product\?\.saleUnit\)/, 'คำใบ้แบบเดิม (หน่วยทะเบียนเสมอ) ไม่ค้าง');
+  assert.doesNotMatch(bulk, /lib\/sales\/linePacks|packLineUnit|packQtyValue/, 'ตัวห่อคุยกับ historicalIntakeForm เท่านั้น');
+  assert.equal(intakeForm.historicalBulkQtyUnit('2', 'แพ็คเกจ'), 'เดือน');
+  assert.equal(intakeForm.historicalBulkQtyUnit('', 'แพ็คเกจ'), 'แพ็คเกจ');
+  assert.equal(intakeForm.historicalBulkQtyUnit('1.5', 'แพ็คเกจ'), 'แพ็คเกจ', 'เลขที่ใช้ไม่ได้ = ยังเป็นหน่วยของทะเบียน');
+  assert.equal(intakeForm.HISTORICAL_SERVICE_TEXT.bulk.qtyHint('เดือน'), 'หน่วย: เดือน · เว้นว่างได้ — ใส่ทีละบรรทัดทีหลัง');
+  /* 🔴 ตัวห่อไม่เขียนคีย์ของเลขแพ็คเอง (shorthand เท่านั้น) และส่งค่าให้ได้เฉพาะตัวตั้งค่าของช่อง + ห้าตัวของ lib (ทะเบียนเต็มอยู่ที่ยาม GE ของ linePackReaders) */
+  assert.doesNotMatch(bulk, /\bpackQty\s*:/, 'ไฟล์จอไม่เขียนคีย์ packQty: เอง');
+  const uses = [
+    'const [packQty, setPackQty] = useState("");', 'historicalBulkPackIssue(packQty)', 'historicalBulkFieldsIssue({ productId, packQty, qty, rounds })',
+    'value={packQty}', 'historicalBulkQtyUnit(packQty, product?.saleUnit)', 'historicalBulkConsequence({\n        count: plan.count, packQty, qty,',
+    'historicalBulkAddRows({\n        zoneIds: planRows.map((row) => row.zoneId), sites, zonesBySite, rows, packQty, qty, rounds,',
+  ];
+  for (const use of uses) assert.equal(bulk.split(use).length - 1, 1, `ตัวห่อต้องมี (ครั้งเดียว): ${use}`);
+  assert.equal((bulk.match(/\bpackQty\b/g) || []).length, uses.length, 'ทุกที่ที่ตัวห่อเอ่ยเลขแพ็คอยู่ในรายการปิดนี้ (state · ช่อง · ห้าตัวของ lib) — ที่ที่แปด = แดง');
+  assert.equal((bulk.match(/setPackQty\(/g) || []).length, 2, 'ตัวตั้งค่าถูกเรียกสองที่: ล้างตอนเปิดใหม่ · onChange ของช่อง');
+  assert.doesNotMatch(bulk, /(?:onPatch|setLine|patchRow|setRows|apiFetch|apiJson)\b[^\n]*packQty/);
+  /* แถวที่เกิดจากหน้าต่าง: เลขเดียวลงทุกบรรทัด · ว่าง = ช่องว่างให้ใส่ทีละบรรทัด (ยอดของบรรทัดนั้นยังเป็นขีด) */
+  const rows = intakeForm.historicalBulkAddRows({ ...REG, zoneIds: ['ZN-1', 'ZN-3'], rows: [], packQty: '2', qty: '12', rounds: '12' });
+  assert.deepEqual(rows.map((row) => [row.zoneId, row.packQty, row.qty]), [['ZN-1', '2', '12'], ['ZN-3', '2', '12']]);
+  const blank = intakeForm.historicalBulkAddRows({ ...REG, zoneIds: ['ZN-3'], rows: [], qty: '12', rounds: '12' });
+  assert.equal(blank[0].packQty, '');
+  assert.deepEqual(intakeForm.historicalZoneLineAmount({ ...blank[0], productId: 'P', unitPrice: 3500 }), { known: false, lineTotal: null, reason: 'pack', qtyNote: null });
+
+  /* 🐞 รีวิว 12/10 (วัดกับ bundle ก่อน/หลัง): ช่องที่สี่แบ่งแถวเดียวกับช่องเลือกแพ็คเกจ ⇒ กล่องข้อความของช่องเลือกเหลือ 140px (เดิม 206) รหัส FG 20 ตัวอักษร
+     (146px) ถูกตัดเป็น "FG-0521-02-001-00…" — หลักท้ายคือส่วนที่แยกแพ็คเกจสองตัวของลูกค้ารายเดียวกัน และหน้าต่างไม่มีบรรทัดรหัส/ชื่อใต้ช่องเลือก
+     ⇒ แพ็คเกจได้แถวของตัวเองเต็มกว้าง (ลูกตัวแรกของกริด — ทุกช่องของแถว ไม่ผูกกับจำนวนช่อง จึงไม่ต้องมีเงื่อนไขความกว้าง) · สามช่องตัวเลขอยู่แถวถัดไป
+     ช่องละ 250 เท่าก่อนงวดนี้ (พื้นของช่อง 12rem ⇒ สามช่องในหน้าต่างกว้างสุด — 11rem ได้สี่ช่อง ช่องละ 184: ข้อความแดงของช่องนี้ตัดช่วงเลขเป็นสองบรรทัด)
+     ความกว้างจริงวัดที่ฉาก S11 ของหลักฐานจอ (รหัส FG ไม่ถูกตัดทั้งจอ 1440 และ 390) — ที่นี่ยึดว่ากฎยังอยู่และช่องเลือกยังเป็นลูกตัวแรก */
+  const css = read('components/salesPlanning/historicalWizard/HistoricalOrderWizard.module.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(css, /\.bulkFields \{\s*display: grid;\s*grid-template-columns: repeat\(auto-fit, minmax\(min\(100%, 12rem\), 1fr\)\);/, 'พื้นของช่อง 12rem — สามช่องต่อแถวในหน้าต่างกว้างสุด');
+  assert.match(css, /\.bulkFields > \.field:first-child \{ grid-column: 1 \/ -1; \}/, 'ช่องเลือกแพ็คเกจได้แถวของตัวเองเต็มกว้าง');
+  assert.doesNotMatch(slice(css, '.bulkFields {', '.bulkFoot {'), /@media|@container|span 2/, 'ไม่มีเงื่อนไขความกว้าง: 1 / -1 ใช้ได้ทุกจำนวนช่อง (จอแคบ = ซ้อนกันเหมือนเดิม)');
+  assert.match(above, /<div className=\{styles\.bulkFields\}>\s*<div className=\{styles\.field\}>\s*<span>\{T\.packageLabel\} <b className=\{styles\.req\}>\*<\/b><\/span>\s*<SearchableSelect/,
+    'ลูกตัวแรกของกริดคือช่องเลือกแพ็คเกจ (กฎ :first-child ข้างบนเลือกด้วยตำแหน่ง)');
 });
 
 /* 🔴 กฎบ้าน 3 ที่ตัวห่อ (L8): ช่องของตัวห่อแดงหลังกดเท่านั้น — ของเดิมช่องจำนวนแดงทันทีที่พิมพ์ 1.5 */
@@ -1542,8 +1783,12 @@ test('PR-D 🔴 หน้าต่างเพิ่มหลายโซน: �
   assert.equal((shared.match(/renderAfterPacks\(/g) || []).length, 1);
   assert.doesNotMatch(code('components/salesPlanning/serviceSetup/SalesOrderServiceLines.js'), /renderAfterPacks|renderFields/,
     'ตารางงานบริการของใบสั่งขายไม่ใช้ช่องเสริมทั้งสอง (หน้าต่างของใบ pipeline ไม่เปลี่ยน)');
-  /* ช่องรอบ: จำนวนเต็ม ≥ 1 · หน่วยจากแคตตาล็อก · ปิด autoComplete (กฎบ้าน) · ช่องจำนวนก็ปิด */
-  const roundsField = slice(bulk, '<Input', '/>');
+  /* ช่องรอบ: จำนวนเต็ม ≥ 1 · หน่วยจากแคตตาล็อก · ปิด autoComplete (กฎบ้าน) · ช่องจำนวนก็ปิด
+     ⭐ ย้ายความคาดหวังโดยเจตนา (งวด PR-5 · แผน IMPL_PLAN_PR5 §2.7 — D8): เดิม `<Input` ตัวแรกของไฟล์คือช่องรอบ — วันนี้ตัวแรกคือช่อง "แพ็ค/เดือน (ทุกบรรทัด)"
+     (อยู่เหนือแถวรอบละกี่แพ็ค) ⇒ ยามอ่านช่องรอบจากก้อนใต้แถวแพ็ค (`renderAfterPacks`) ที่มันอยู่จริง · ไม่ได้คลายด่าน: attribute ของช่องรอบยึดเท่าเดิม
+     และ `<Input` ในไฟล์มีสองตัวพอดี (ช่องแพ็ค/เดือน · ช่องรอบ — ยามของช่องแรกอยู่ที่เทสต์ "PR-5 ⭐ หน้าต่างเพิ่มหลายโซน") */
+  assert.equal((bulk.match(/<Input\b/g) || []).length, 2);
+  const roundsField = slice(below, '<Input', '/>');
   assert.match(roundsField, /type="number" min="1" step="1" inputMode="numeric" placeholder="—" autoComplete="off"/);
   assert.match(bulk, /<MoneyInput min="0" autoComplete="off"/);
   assert.match(bulk, /\{T\.roundsLabel\} <b className=\{styles\.req\}>\*<\/b>/);
@@ -1585,7 +1830,9 @@ test('🔴 25/09 → PR-D: หน้าต่างเพิ่มหลาย�
   assert.match(props, /\bonAdd\b/);
   assert.doesNotMatch(props, /\bonChange\b|\bsetRows\b|\bonRowsChange\b/, 'หน้าต่างได้ rows ไว้อ่าน ห้ามได้ทางเขียน');
   const add = slice(bulk, 'onAdd={(planRows) => onAdd?.(historicalBulkAddRows({', '}), productId)}');
-  assert.match(add, /zoneIds: planRows\.map\(\(row\) => row\.zoneId\), sites, zonesBySite, rows, qty, rounds,/);
+  /* ⭐ ย้ายความคาดหวังโดยเจตนา (งวด PR-5 · แผน IMPL_PLAN_PR5 §2.7 / §5 แถว G18 — ข้อนี้ไม่อยู่ในรายการของแผน ดูรายงานส่งมอบ U3): เดิมตัวห่อส่ง
+     `…rows, qty, rounds,` — วันนี้ส่งเลขของช่อง "แพ็ค/เดือน (ทุกบรรทัด)" ต่อไปด้วย (shorthand) · ไม่ได้คลายด่าน: ยังต่อท้ายเท่านั้น ไม่มีทางเขียนแถวเดิม */
+  assert.match(add, /zoneIds: planRows\.map\(\(row\) => row\.zoneId\), sites, zonesBySite, rows, packQty, qty, rounds,/);
   assert.match(add, /packsByZone: new Map\(planRows\.map\(\(row\) => \[row\.zoneId, row\.packsPerRound\]\)\),/);
   const zones = code(STEP_ZONES);
   assert.match(slice(zones, '<HistoricalBulkZonesModal', '/>'),

@@ -19,6 +19,8 @@ import {
   QUOTE_DISCOUNT_TYPES, QUOTE_VAT_OPTIONS, inSalesEditScope, quoteLineMoney, quoteTotals, toMoney,
 } from '@/lib/salesPlanning';
 import { QUOTE_PRICE_FIELD } from '@/lib/sales/quoteLines';
+import { LINE_PACK_TEXT, PACK_QTY_INVALID, packLineUnit, packQtyValue } from '@/lib/sales/linePacks';
+import { PACK_COLUMN_LABEL } from '@/lib/sales/linePackView';
 import { ownerLockedToSelf } from '@/lib/sales/dealOwner';
 import { EXTERNAL_DOC_KINDS } from '@/lib/sales/contracts';
 import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL, SERVICE_ROUND_CATEGORY, lineIsServicePackage } from '@/lib/sales/serviceOrders';
@@ -59,12 +61,19 @@ export const HISTORICAL_REQUIRED_MESSAGES = Object.freeze({
 /* ข้อความรายช่องของบรรทัดโซน — ก้อนเดียวที่แผนตีกลับ และเทสต์อ้าง
    ⭐ PR-D (mig 0394 · r2 S12 · มติ 26/09 A3/O9): จำนวนรอบบริการบังคับ (`roundsMissing`) + ช่องแพ็คต่อรอบ (`packsPerRound`) ของแต่ละบรรทัด
      (`packsMissing` · `packs` · `packsStaleForm`) — จำนวนแพ็คที่ TS ใช้ต่อการเข้าโซนหนึ่งครั้ง
-     **คนละช่องกับ "จำนวน"** (จำนวน = เงิน: 1 ชุด × 12 เดือน · มติ 23/09) ⇒ ไม่แตะยอดใดเลย
+     **คนละช่องกับคู่เงินของบรรทัด** (เลขแพ็ค `packQty` × จำนวน × ราคา/หน่วย) ⇒ ไม่แตะยอดใดเลย
+   ⭐ งวด PR-5 (mig 0409 · มติเจ้าของ 08/10 ข้อ A1–A2 + ข้อวินิจฉัย 7 "ฟอร์มใบย้อนหลังเดินตามฟอร์มใบเสนอราคา"): เลขแพ็คของบรรทัด
+     (`packQty` — ช่องที่หัวคอลัมน์คือ `PACK_COLUMN_LABEL`) **บังคับทุกบรรทัด** เป็นจำนวนเต็ม 1–9,999 (`packQtyMissing` · `packQty` ·
+     `packQtyStaleForm`) · ตัวอ่านคือ `packQtyValue` ตัวเดียวกับใบเสนอราคา (ไม่ใช่ `historicalPacksValue` ของแพ็คต่อรอบ ซึ่งรับ "02" / "2.0")
+     · คำของหัวคอลัมน์มาจาก `PACK_COLUMN_LABEL` ด้วย template เสมอ — ห้ามพิมพ์คำนั้นซ้ำที่นี่ (ด่าน check:thaiwrap)
    ⭐ มติเจ้าของ 29/09 (ใบใหม่และใบย้อนหลัง): ป้ายช่อง = `SERVICE_PACKS_LABEL` "รอบละกี่แพ็ค" (คำของใบใหม่)
    ⚠️ `packs` = คำเดียวกับ ZONES_BULK_PACKS_INVALID ของหน้าต่างเพิ่มหลายโซน และ service_setup_packs_invalid ของใบใหม่
      (เทสต์ยึด — lib ไม่ import components) */
 export const HISTORICAL_LINE_MESSAGES = Object.freeze({
-  staleForm: 'ฟอร์มรุ่นก่อน (แพ็ค · ยอดที่พิมพ์เอง) — โหลดหน้าใหม่ แล้วคีย์โซนนี้เป็น จำนวน × ราคา/หน่วย แบบใบเสนอราคา',
+  staleForm: 'ฟอร์มรุ่นก่อน (แพ็ค · ยอดที่พิมพ์เอง) — โหลดหน้าใหม่ แล้วคีย์รายการนี้ใหม่แบบใบเสนอราคา',
+  packQtyMissing: `ยังไม่ใส่ “${PACK_COLUMN_LABEL}” (จำนวนเต็ม 1–9,999)`,
+  packQty: LINE_PACK_TEXT.invalid,
+  packQtyStaleForm: `ฟอร์มรุ่นก่อน (ยังไม่มีช่อง “${PACK_COLUMN_LABEL}”) — โหลดหน้าใหม่ แล้วใส่ “${PACK_COLUMN_LABEL}” ให้ครบทุกรายการ`,
   qty: 'จำนวนต้องเป็นจำนวนเต็มมากกว่า 0',
   unpriced: 'แพ็คเกจนี้ยังไม่ตั้งราคาในฐานข้อมูลสินค้า — ตั้งราคาที่ทะเบียนสินค้าก่อน แล้วค่อยบันทึก',
   priceUnknown: 'อ่านราคาของแพ็คเกจจากฐานข้อมูลสินค้าไม่ได้ — ลองใหม่อีกครั้ง (ถ้ายังไม่ได้ แจ้งผู้ดูแลระบบ)',
@@ -88,14 +97,20 @@ export const HISTORICAL_SERVICE_LIMITS = Object.freeze({ packsMin: 1, packsMax: 
  * ⭐ ตัวเดียวที่แผน (server) และฟอร์ม (ยอดก่อนมีแผน) คิดเงิน ⇒ จอกับฐานพูดเลขเดียวกันโดยโครงสร้าง
  * ⭐ ส่วนลดท้ายใบ (มติเจ้าของ 25/09 — "ส่วนลดรายบรรทัด รายใบก็ควรครบ") = ช่อง "หัก ส่วนลด" ของใบเสนอราคา
  *   คิดจากยอดรวมหลังส่วนลดรายบรรทัด แล้ว VAT คิดจากยอดหลังหักส่วนลด (quoteTotals) · ผู้เรียกต้องตรวจจำนวน/ราคามาแล้ว
- * @param rows `[{ qty, unitPrice, discountType, discountValue }]`
+ * ⭐ งวด PR-5 (mig 0409 · มติเจ้าของ 08/10 ข้อ A1): เลขแพ็คของบรรทัด (`packQty`) เป็นตัวคูณของยอดก่อนลด — ส่งค่า **ตัวเดียวกัน** เข้า
+ *   ทั้งยอดรายบรรทัดและยอดทั้งใบ (ส่งข้างเดียว = บรรทัดกับยอดรวมไม่เท่ากัน) · ไม่มีคีย์ / ว่าง / ค่าที่ใช้ไม่ได้ = คูณ 1 (packFactorOf)
+ *   ⇒ แถวที่ไม่มีเลขแพ็คได้ผลเดิมทุกช่อง · `packsPerRound` (แพ็คต่อรอบของงานบริการ) ไม่ถูกอ่านที่นี่ ไม่มีวันคูณเงิน
+ * @param rows `[{ packQty, qty, unitPrice, discountType, discountValue }]`
  * @param discount `{ discountType, discountValue }` ของท้ายใบ — ไม่ส่ง = ไม่ลด
  * @returns `{ lines: [{ discountType, discountValue, gross, discountAmount, lineTotal }], subtotal, discountAmount, vatAmount, totalAmount }`
  */
 export function historicalLinesMoney(rows = [], vatRate = 0, discount = {}) {
-  const lines = (rows || []).map((row) => quoteLineMoney({ qty: row?.qty, unitPrice: row?.unitPrice, discountType: row?.discountType, discountValue: row?.discountValue }));
+  const lines = (rows || []).map((row) => quoteLineMoney({
+    packQty: row?.packQty, qty: row?.qty, unitPrice: row?.unitPrice, discountType: row?.discountType, discountValue: row?.discountValue,
+  }));
   const discountType = QUOTE_DISCOUNT_TYPES.includes(discount?.discountType) ? discount.discountType : null;
   const totals = quoteTotals((rows || []).map((row, index) => ({
+    packQty: row?.packQty,
     qty: row?.qty,
     unitPrice: row?.unitPrice,
     discountType: lines[index].discountType,
@@ -143,7 +158,7 @@ export function isCalendarDate(value) {
 const inDocRange = (value) => isCalendarDate(value) && value >= DOC_DATE_MIN && value <= DOC_DATE_MAX;
 
 /* 🚫 ตัวแบ่งยอดตาม VAT (`splitHistoricalAmounts` — หารทุกบรรทัดด้วย 1.07 เมื่อ "ราคารวม VAT แล้ว") ถูกลบตามมติ 23/09
-   ยอดบรรทัดของใบย้อนหลังต้องเป็น จำนวน × ราคา/หน่วย − ส่วนลด เหมือนใบเสนอราคา ⇒ ใช้ historicalLinesMoney แทน */
+   ยอดบรรทัดของใบย้อนหลังต้องเป็น เลขแพ็ค × จำนวน × ราคา/หน่วย − ส่วนลด เหมือนใบเสนอราคา (เลขแพ็คเข้าสูตรตั้งแต่งวด PR-5) ⇒ ใช้ historicalLinesMoney แทน */
 
 
 /* JSON ที่เรียงคีย์ทุกชั้น — ลายนิ้วมือต้องไม่ขึ้นกับลำดับคีย์ที่ client ส่งมา */
@@ -161,15 +176,18 @@ function stableStringify(value) {
    ⭐ **ตัดสินเท่าฐานข้อต่อข้อ** — ข้อไหน RPC ของ 0374/0379 ตีกลับ ที่นี่ต้องตีกลับด้วย (พร้อมข้อความไทยรายช่อง):
         เอกสารแทนสัญญา  ↔ historical_so_check_contract     (ชนิด · เลขอ้างอิง ≤200 · วันเริ่ม ≤ วันสิ้นสุด · เริ่มไม่เกินวันนี้)
         โซน × แพ็คเกจ   ↔ historical_so_check_lines (0379)  (โซนของลูกค้าในใบ ยังใช้งาน · ไม่ซ้ำ · สินค้าหมวด 02-001 · จำนวนเต็ม
-                                                          · ยอดบรรทัด = จำนวน × ราคา/หน่วย − ส่วนลด ตามสูตรใบเสนอราคา)
+                                                          · ยอดบรรทัด = เลขแพ็ค × จำนวน × ราคา/หน่วย − ส่วนลด ตามสูตรใบเสนอราคา)
                          + 0394/P4–P5 (PR-D)               (รอบบริการบังคับ · แพ็คต่อรอบจำนวนเต็ม 1–9999 ทุกบรรทัด)
+                         + 0409/H1–H2 · W0–W2 (PR-5)       (เลขแพ็คของบรรทัด — ตารางคู่แฝดข้างล่าง)
         วันวางบิลของงวด ↔ historical_so_write_children (0394/P7c) (รูปวันที่ · ปี 2000–2100 · งวดยกมาห้ามมี)
         ราคา/หน่วย     ↔ historical_so_write_children (0379) (ราคา = ราคาผลิตในทะเบียน ณ ตอนบันทึก · ยังไม่ตั้งราคา = ตีกลับ)
         งวด            ↔ historical_so_check_installments (งวดยกมา ≤1 · ผลรวม = ยอดใบ · ช่วงครอบต่อเนื่องเต็มสัญญา)
         ใบ ฿0          ↔ zero_value_note_required / zero_value_has_installments
    ⭐ **บรรทัดโซน = บรรทัดใบเสนอราคา** (มติเจ้าของ 23/09 — "3500 x 1 ชุด x 12 เดือน · ต้องไม่ต่างจากฟอร์มใบเสนอราคา"):
-        จำนวน × ราคา/หน่วย − ส่วนลดรายการ = จำนวนเงิน · ราคามาจากทะเบียน (ค่าที่จอส่งมาไม่ถูกอ่าน) · หน่วยมาจากสินค้า
-        · "1 ชุด 12 เดือน" = จำนวน 12 (แพ็คเกจ) × 3,500 = 42,000 เหมือนที่คีย์ในใบเสนอราคา
+        เลขแพ็ค × จำนวน × ราคา/หน่วย − ส่วนลดรายการ = จำนวนเงิน · ราคามาจากทะเบียน (ค่าที่จอส่งมาไม่ถูกอ่าน) · หน่วยมาจากสินค้า
+        · ⭐ งวด PR-5 (มติเจ้าของ 08/10 ข้อ A1–A2 · ข้อวินิจฉัย 7 · mig 0409): บรรทัดมีช่องเลขแพ็คของตัวเอง (`packQty`) แบบใบเสนอราคา
+          ตัวอย่างของเจ้าของ 2 แพ็ค × 12 เดือน × 3,500 = 84,000 · 1 แพ็ค × 12 เดือน × 3,500 = 42,000 (ยอดเดิมของ "1 ชุด 12 เดือน" ทุกสตางค์)
+          · จำนวน = จำนวนเดือน · เลขแพ็คบังคับทุกบรรทัด ไม่มีค่าตั้งต้น · `packsPerRound` (แพ็คต่อรอบของงานบริการ) ยังเป็นคนละช่อง ไม่คูณเงิน
         🐞 ก่อนมติ: ช่อง "แพ็ค" + ยอดที่พิมพ์เอง + ปุ่มลัด "ราคา × แพ็ค × เดือน" ⇒ ผู้คีย์สามคนคีย์สามแบบ
            (1 × 42,000 · 12 × 3,500 · ปุ่มลัดเสนอ 3,500 × 12 × 12 = 504,000) — ถอดทั้งชุด
       ส่วนที่ฐานตรวจไม่ได้ (role/ทีมอยู่ใน Supabase Auth) ตัดสินที่นี่ที่เดียว แล้ว route เรียกตัวนี้ทั้งตอนพรีวิวและบันทึก:
@@ -184,7 +202,29 @@ function stableStringify(value) {
           ⇒ แก้ใบ = **คำเตือน** (endBeforeTodayEditing) · ฐานไม่ตรวจข้อนี้โดยเจตนาด้วยเหตุผลเดียวกัน (0374 §7a):
           ใบที่ค้างรออนุมัติข้ามวันสิ้นสุดต้องยังอนุมัติได้ · กฎที่เหลือ (ช่วงครอบเต็มสัญญา ฯลฯ) ยังตรวจเท่าเดิม
    ⚠️ บริสุทธิ์ — ไม่อ่านฐาน ไม่อ่านนาฬิกา · ของที่ตัวเขียน (historicalOrderCommit) โหลดมาเข้าทาง `ctx`
-   ⚠️ ยอดคิดด้วยสูตรใบเสนอราคา (historicalLinesMoney) · ค่าที่ส่งเข้า RPC คือค่าที่ผ่านตัวนี้แล้ว ไม่ใช่ค่าดิบจากจอ */
+   ⚠️ ยอดคิดด้วยสูตรใบเสนอราคา (historicalLinesMoney) · ค่าที่ส่งเข้า RPC คือค่าที่ผ่านตัวนี้แล้ว ไม่ใช่ค่าดิบจากจอ
+
+   ── คู่แฝด JS ↔ SQL ของเลขแพ็คของบรรทัด (งวด PR-5 · mig 0409 — ฟังก์ชันสี่ตัวถูกปะในที่ ไม่ได้เขียนทับทั้งก้อน) ─────────────────
+     กฎ                 │ ฝั่ง JS (ไฟล์นี้ + linePacks.js + salesPlanning.js)              │ ฝั่ง SQL
+     ช่วงของค่า         │ packQtyValue: จำนวนเต็ม 1–9999 (ข้อความ 1–4 หลักไม่ขึ้นต้นด้วย 0   │ H1 / W0: ตัวเลข JSON · เท่ากับ trunc ของตัวเอง · 1–9999
+                        │ หรือตัวเลขจำนวนเต็ม)                                             │ + CHECK sales_order_lines_pack_qty_range (0407)
+     รูปที่ส่ง          │ ตัวเลข JSON ทุกบรรทัด (plan.lines[i].packQty)                    │ jsonb_typeof = number ทั้งสองตัว — 2 · 2.0 · 2e0 ผ่าน ·
+                        │                                                                  │ สตริง · true · อาร์เรย์ · อ็อบเจกต์ ถูกตีกลับ
+     บังคับตอนบันทึก    │ error zones.<i>.packQty + linesMoneyOk เท็จ                      │ W0: ทุกบรรทัด ก่อน DELETE (ไม่มีคีย์ / null ถูกตีกลับ)
+     ไม่มีค่า / NULL    │ packFactorOf = 1 — ถึงได้เฉพาะแถวที่เก็บแล้วซึ่งอ่านกลับมา       │ H2: COALESCE(pack, 1) — ถึงได้เฉพาะขั้นส่ง / อนุมัติ
+                        │                                                                  │ (แถวที่คอลัมน์ว่างมาถึงเป็น JSON null)
+     ยอดก่อนลด          │ round2(แพ็ค × จำนวน × ราคา) ปัดครั้งเดียวหลังคูณครบ              │ H2 + CHECK sales_order_lines_line_money_rule (0407)
+     ส่วนลดแบบ %        │ % ของยอดก่อนลดนั้น ไม่เกินยอด                                    │ v_expect คิดจาก v_line_gross (0379)
+     ส่วนลดแบบบาท       │ ยอดทั้งรายการ ไม่คูณเลขแพ็ค (มติ A5)                             │ เหมือนกัน
+     ค่าคลาดเคลื่อน     │ ตรงทุกสตางค์                                                     │ payload: ส่วนลดและยอดต่างจากสูตรได้ไม่เกิน 0.01 ·
+                        │                                                                  │ แถวที่เก็บแล้ว (ขั้นส่ง / อนุมัติ): ตรวจแค่ยอดไม่เกิน
+                        │                                                                  │ ยอดก่อนลด + 0.01 — ตัวที่ตรึงแถวกับสูตรคือ CHECK ของ 0407
+     หน่วยที่เก็บ       │ p_lines[i].unit = เดือน (packLineUnit)                           │ ตัวเขียน: หน่วยของ payload ก่อน แล้วหน่วยขาย แล้ว ชิ้น (0379)
+     ยอดหัวใบ           │ subtotal = Σ lineTotal (quoteTotals)                             │ สร้าง / แก้ / อนุมัติ เทียบภายใน 0.01 (0374)
+     หมวดของสินค้า      │ lineIsServicePackage(product)                                    │ 0379 (ไม่เปลี่ยน · ตรวจหลังกฎเงิน)
+   ⚠️ S1 / A1 (ขั้นส่ง / อนุมัติ) ส่งเลขแพ็คที่เก็บไว้กลับเข้าตัวตรวจ — ไม่มีคู่ฝั่ง JS (สองขั้นนั้นไม่ผ่านแผนนี้)
+   ⚠️ ฐานที่ยังไม่รัน 0409: บรรทัดที่เลขแพ็ค ≥ 2 ถูกตัวตรวจรุ่นเดิมตีกลับ (ยอดไม่ตรงสูตรเดิม) · เลขแพ็ค 1 ทุกบรรทัด = ใบร่างถูกเก็บโดยไม่มีเลขแพ็ค
+      ⇒ เข็มขัดหลังบันทึกของ historicalOrderCommit ตอบ 503 (historicalPackQtyDropped) */
 
 const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const MAX_INT4 = 2147483647; // serviceRounds เป็น integer ในฐาน — เกินนี้ cast แล้ว error
@@ -227,11 +267,12 @@ const pick = (source, key) => (source instanceof Map ? source.get(key) : source?
 /**
  * @param input `{ customerId, ownerId, team, contract: { docKind, ref, startDate, endDate }, refs,
  *   vatRate, discountType, discountValue (ส่วนลดท้ายใบ), notes,
- *   zones: [{ zoneId, productId, qty, discountType, discountValue, rounds, packsPerRound }],
+ *   zones: [{ zoneId, productId, packQty, qty, discountType, discountValue, rounds, packsPerRound }],
  *   opening: null | { amount, coversTo, paidOn, note, evidence? },
  *   installments: [{ label, amount, dueDate, coversFrom, coversTo, note?, billingDate? }], acknowledgeDuplicates }`
- *   - โซนหนึ่งแถว = บรรทัดใบเสนอราคาหนึ่งบรรทัด: จำนวน · ส่วนลดรายการ (ไม่ลด/percent/amount) · จำนวนรอบบริการ (บังคับ)
- *     + แพ็คต่อรอบ (PR-D · บังคับ · 1–9999 · คนละช่องกับจำนวน) — ไม่มีคีย์ = ฟอร์มรุ่นก่อน
+ *   - โซนหนึ่งแถว = บรรทัดใบเสนอราคาหนึ่งบรรทัด: เลขแพ็คของบรรทัด (`packQty` · งวด PR-5 · บังคับ · จำนวนเต็ม 1–9999 —
+ *     ไม่มีคีย์ = ฟอร์มรุ่นก่อน) · จำนวน · ส่วนลดรายการ (ไม่ลด/percent/amount) · จำนวนรอบบริการ (บังคับ)
+ *     + แพ็คต่อรอบ (PR-D · บังคับ · 1–9999 · คนละช่องกับคู่เงินของบรรทัด) — ไม่มีคีย์ = ฟอร์มรุ่นก่อน
  *   - งวดที่ยังต้องเก็บ: `billingDate` วันวางบิล ไม่บังคับ (PR-D · mig 0394/P7) · งวดยกมาไม่มีวันวางบิล
  *     ⚠️ **ไม่มีราคา/ยอดจากจอ** — ราคา/หน่วยอ่านจาก `ctx.products[].costPrice` (QUOTE_PRICE_FIELD) เสมอ
  *   - vatRate = ตัวเลือกของใบเสนอราคา (0 "รวม VAT แล้ว" · 7 "+ VAT 7% ท้ายใบ") · opening.coversFrom = วันเริ่มสัญญาเสมอ
@@ -446,11 +487,35 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
       push(`${product.fgCode || 'สินค้านี้'} ไม่ใช่แพ็คเกจบริการ (หมวด ${SERVICE_ROUND_CATEGORY}) — ใบย้อนหลังคีย์ได้เฉพาะแพ็คเกจบริการ`, 'productId');
     }
 
-    /* ── บรรทัดแบบใบเสนอราคา: จำนวน × ราคา/หน่วย (ทะเบียน) − ส่วนลดรายการ (มติเจ้าของ 23/09) ──
+    /* ── บรรทัดแบบใบเสนอราคา: เลขแพ็ค × จำนวน × ราคา/หน่วย (ทะเบียน) − ส่วนลดรายการ (มติเจ้าของ 23/09 · สูตรตามมติ 08/10 ข้อ A1) ──
        🪤 แท็บรุ่นก่อนส่ง `packs` + `lineAmount` (ยอดที่พิมพ์เอง) — ห้ามเดาว่า packs คือจำนวน
           (1 แพ็ค × 12 เดือน เคยถูกคีย์ทั้งเป็น 1 และ 12) ⇒ ตีกลับให้โหลดหน้าใหม่ */
     const staleForm = row.qty === undefined && (has(row, 'packs') || has(row, 'lineAmount'));
     if (staleForm) { push(HISTORICAL_LINE_MESSAGES.staleForm); linesMoneyOk = false; }
+    /* ── เลขแพ็คของบรรทัด (`packQty` · งวด PR-5 · mig 0409 · มติเจ้าของ 08/10 ข้อ A2 "บังคับใส่") — ตัวคูณของเงิน บังคับทุกบรรทัด ──
+       ตัวอ่าน = `packQtyValue` ตัวเดียวกับใบเสนอราคา (จำนวนเต็ม 1–9,999 · ไม่แปลงค่าให้) — ⚠️ ห้ามใช้ `historicalPacksValue` (รับ "02" / "2.0")
+       และห้ามใช้ `toMoney` (0 กับ 1.5 กลายเป็นตัวคูณ)
+       🪤 ไม่มีคีย์ = แท็บที่เปิดค้างจากก่อน deploy (จอของเขาไม่มีช่องนี้) ⇒ บอกให้โหลดหน้าใหม่ ไม่ใช่ "ยังไม่ใส่" ที่ส่งเขาไปหาช่องที่ไม่มี
+          · แถวรุ่น 0374 (`staleForm` ข้างบน) ได้ข้อความเดียวของมันพอ
+       ⚠️ R1 (แผน PR-5 §1.3): ช่องว่างรายงานเฉพาะแถวที่สินค้าเป็นแพ็คเกจหมวด 02-001 — ขั้น ② วาดช่องนี้เฉพาะแถวแบบนั้น และกฎเหล็กของฟอร์มคือ
+          ห้ามถามข้อที่ไม่มีช่องให้ตอบบนจอ (แถวที่ยังไม่เลือก/เลือกผิดหมวดติดข้อ `productId` อยู่แล้ว) · ค่าที่พิมพ์มาแต่ใช้ไม่ได้รายงานเสมอ
+       🔴 เลขแพ็คที่ยังไม่ใช่จำนวนเต็มที่ใช้ได้ = **ยังคิดเงินไม่ได้ทุกกรณี** (`linesMoneyOk` เท็จ) — ไม่มีวันถอยไปคิดแบบคูณ 1 เงียบ ๆ
+          (ยอดศูนย์ทั้งก้อน ⇒ พรีวิวไม่ส่งยอด · จอขึ้นขีดพร้อมเหตุ)
+       ⚠️ ฐานตรวจซ้ำ: 0409/H1 (ตัวตรวจบรรทัด — มีคีย์แล้วต้องเป็นตัวเลขจำนวนเต็ม 1–9999) · 0409/W0 (ตัวเขียน — ทุกบรรทัดต้องพก ก่อนลบของเดิม)
+          ⇒ ค่าที่ส่งเข้า RPC เป็น **ตัวเลข** เสมอ ไม่ใช่สตริงของช่องกรอก · ชื่อตัวแปรไม่ใช่ `packQty` โดยเจตนา (ยาม linePackWritePaths: ใน lib
+          ตั้งเลขแพ็คเป็น null ได้เฉพาะตัวล้างสองตัวของ quoteLines.js) */
+    let packValue = null;
+    if (!staleForm) {
+      if (!has(row, 'packQty')) push(HISTORICAL_LINE_MESSAGES.packQtyStaleForm, 'packQty');
+      else {
+        const parsed = packQtyValue(row.packQty);
+        if (parsed === PACK_QTY_INVALID) push(HISTORICAL_LINE_MESSAGES.packQty, 'packQty');
+        else if (parsed === null) {
+          if (product && lineIsServicePackage(product)) push(HISTORICAL_LINE_MESSAGES.packQtyMissing, 'packQty');
+        } else packValue = parsed;
+      }
+    }
+    if (packValue === null) linesMoneyOk = false;
     /* จำนวนว่าง = ตีกลับ ไม่ใช่ 1 (ใบเสนอราคานับว่างเป็น 1) — การเดาจำนวนแทนผู้คีย์คือบั๊กที่มติ 23/09 แก้ */
     const qty = toNumber(row.qty);
     const qtyOk = Number.isInteger(qty) && qty > 0;
@@ -516,7 +581,10 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
       productId: productId || null,
       fgCode: product?.fgCode || null,
       description: text(product?.productDescription) || null,
+      /* หน่วยของบรรทัดในแผน = หน่วยขายของทะเบียนเสมอ (D6) — "เดือน" ของบรรทัดที่มีเลขแพ็คถูกใส่ตอนประกอบ `p_lines` เท่านั้น
+         (historicalServiceRpcArgs) · เปลี่ยนตรงนี้ = `historicalZonesWithPlanPrices` เขียนหน่วยของแถวบนจอทับ แล้วลิสต์สินค้าถูกโหลดใหม่ทุกครั้งที่ตรวจ */
       unit: text(product?.saleUnit) || DEFAULT_SALE_UNIT,
+      packQty: packValue,
       qty: qtyOk ? qty : null,
       unitPrice,
       // ส่วนลดรายการตามที่จอส่ง — ทำให้เป็นค่าที่บันทึกได้จริงตอนคิดเงิน (quoteLineMoney) ข้างล่าง
@@ -531,7 +599,7 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
   const moneyOk = linesMoneyOk && vatOk && discountOk && draftLines.length > 0;
   const money = moneyOk
     ? historicalLinesMoney(draftLines.map((line) => ({
-      qty: line.qty, unitPrice: line.unitPrice, discountType: line.rawDiscountType, discountValue: line.rawDiscountValue,
+      packQty: line.packQty, qty: line.qty, unitPrice: line.unitPrice, discountType: line.rawDiscountType, discountValue: line.rawDiscountValue,
     })), vatRate, { discountType, discountValue })
     : null;
   const lines = draftLines.map(({ rawDiscountType, rawDiscountValue, ...line }, index) => {
@@ -778,9 +846,14 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
  * @param mode 'create' | 'update'
  *   - create: ยังไม่มีหลักฐานงวดยกมา (ไฟล์ต้องอยู่ใต้โฟลเดอร์ของใบ ซึ่งยังไม่เกิด)
  *   - update: ส่งหลักฐานงวดยกมา **ทั้งชุดเสมอ** — ตัวเขียนของฐานเขียนงวดใหม่ทั้งชุด ไม่ส่ง = หลักฐานเดิมหาย
- * ⚠️ ไม่ส่งรหัส FG/คำอธิบาย/หน่วย — ฐานอ่านจากทะเบียนสินค้าเอง (ไม่รับจาก payload)
- * ⭐ บรรทัดส่งรูปเดียวกับบรรทัดใบเสนอราคาที่ถูกก๊อปลงใบสั่งขาย (0363): จำนวน · ราคา/หน่วย · ส่วนลด 3 ช่อง · ยอดบรรทัด
+ * ⚠️ ไม่ส่งรหัส FG — ฐานอ่านจากทะเบียนสินค้าเองเสมอ · คำอธิบายก็ไม่ส่ง (ตัวเขียนของ 0379 รับจาก payload ก่อนถ้ามี — ที่นี่ปล่อยให้ถอยไป
+ *   ทะเบียน) · **หน่วยส่งตั้งแต่งวด PR-5**: บรรทัดที่มีเลขแพ็คเก็บหน่วย "เดือน" (`packLineUnit` · ข้อวินิจฉัย 6) — ตัวเขียนรับหน่วยของ
+ *   payload ก่อน แล้วจึงหน่วยขายของทะเบียน (0379) · หน่วยของบรรทัดในแผนเองยังเป็นหน่วยขายของทะเบียน (ดูบรรทัดร่างของแผน)
+ * ⭐ บรรทัดส่งรูปเดียวกับบรรทัดใบเสนอราคาที่ถูกก๊อปลงใบสั่งขาย (0363): เลขแพ็ค · จำนวน · ราคา/หน่วย · ส่วนลด 3 ช่อง · ยอดบรรทัด
  *   ตัวเขียนของ 0379 บังคับให้มี discountAmount/discountValue และราคา = ราคาในทะเบียน ณ ตอนบันทึก
+ *   · งวด PR-5 (mig 0409/W0–W2): ทุกบรรทัดพก `packQty` เป็น **ตัวเลข JSON** จำนวนเต็ม 1–9999 (สตริง "2" ถูกตีกลับ) — แผนที่มาถึงตัวนี้ไม่มี error
+ *     จึงมีเลขแพ็คครบทุกบรรทัดแล้ว · ลายนิ้วมือของคำขอ (historicalServiceFingerprintSource) ครอบสองคีย์ใหม่ด้วย ⇒ การสร้างที่ส่งซ้ำด้วยรหัสการคีย์
+ *     จากก่อน deploy ตอบ intake_key_conflict (ยอมรับ — แบบเดียวกับ 0394)
  * ⚠️ p_intake_key/p_intake_hash/p_actor_* /p_new_deal/p_expected_updated_at ประกอบที่ route (ต้องมีตัวตน/เวลา)
  */
 export function historicalServiceRpcArgs(plan, mode = 'create') {
@@ -831,6 +904,10 @@ export function historicalServiceRpcArgs(plan, mode = 'create') {
     p_lines: lines.map((line) => ({
       zoneId: line.zoneId,
       productId: line.productId,
+      /* งวด PR-5 (0409/W0–W2): เลขแพ็คเป็นตัวเลข — ตัวเขียนของฐานตีกลับบรรทัดที่ไม่พกก่อนลบของเดิม แล้วเก็บลง sales_order_lines."packQty"
+         · หน่วยที่เก็บของบรรทัดที่มีเลขแพ็ค = "เดือน" (จำนวน = จำนวนเดือน · มติ A1) */
+      packQty: line.packQty,
+      unit: packLineUnit(line, line.unit),
       qty: line.qty,
       unitPrice: line.unitPrice,
       discountType: line.discountType,

@@ -9,7 +9,14 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { commitHistoricalOrder, sanitizeHistoricalEvidence } from './historicalOrderCommit.js';
+import { commitHistoricalOrder, historicalPackQtyDropped, sanitizeHistoricalEvidence } from './historicalOrderCommit.js';
+import {
+  HISTORICAL_ALIGNMENT_MISSING_SAVED, HISTORICAL_PACK_QTY_NOT_STORED_REPLAYED, HISTORICAL_PACK_QTY_NOT_STORED_SAVED,
+} from './historicalOrderCopy.js';
+import { HISTORICAL_LINE_MESSAGES } from './historicalOrderPlan.js';
+import { LINE_PACK_TEXT } from './linePacks.js';
+import { historicalSaveExit } from './historicalIntakeForm.js';
+import { historicalSaveResultView } from './historicalReviewView.js';
 import { PRIVATE_EVIDENCE_BUCKET, privateEvidenceObjectPath } from '../upload/privateEvidence.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -139,8 +146,10 @@ const body = (extra = {}) => ({
   notes: null,
   zones: [
     /* ⭐ PR-D (mig 0394): แพ็คต่อรอบของแต่ละบรรทัด (คนละช่องกับจำนวน) · รอบบริการบังคับ */
-    { zoneId: 'Z-1002-01', productId: 'P-PKG', qty: 72, discountType: null, discountValue: 0, rounds: 12, packsPerRound: 2 },
-    { zoneId: 'Z-1044-01', productId: 'P-PKG', qty: 48, discountType: null, discountValue: 0, rounds: 12, packsPerRound: 1 },
+    /* ⭐ งวด PR-5 (mig 0409 · มติเจ้าของ 08/10 ข้อ A1–A2 · แผน IMPL_PLAN_PR5 §5 แถว G16): เลขแพ็คของบรรทัด (`packQty`) บังคับทุกบรรทัด
+         ⇒ ชุดตั้งต้นพก `packQty: 1` (คูณ 1 = ยอดเดิมของไฟล์นี้ทุกสตางค์ — 144,000 / 154,080) · เลขแพ็คอื่นทดสอบที่เทสต์ของงวด PR-5 ท้ายไฟล์ */
+    { zoneId: 'Z-1002-01', productId: 'P-PKG', packQty: 1, qty: 72, discountType: null, discountValue: 0, rounds: 12, packsPerRound: 2 },
+    { zoneId: 'Z-1044-01', productId: 'P-PKG', packQty: 1, qty: 48, discountType: null, discountValue: 0, rounds: 12, packsPerRound: 1 },
   ],
   opening: { amount: 115560, coversTo: '2026-09-30', paidOn: '2026-09-15', note: 'เก็บผ่าน Express แล้ว ม.ค.–ก.ย.' },
   installments: [
@@ -162,7 +171,11 @@ const created = (extra = {}) => ({
       id: REPLAY_ID, orderNumber: 'SO-26090191-0', origin: 'historical', status: 'draft', dealId: 'DEAL-NEW',
       historicalInvoiceRef: 'IV-2601-0412',
     },
-    lines: [{ id: 'SOL-1', serviceZoneId: 'Z-1002-01', sortOrder: 1 }, { id: 'SOL-2', serviceZoneId: 'Z-1044-01', sortOrder: 2 }],
+    /* งวด PR-5 (แผน §5 แถว G16): แถวที่ RPC คืน (`to_jsonb(l)` ของบรรทัดที่เพิ่งเขียน) พกเลขแพ็คที่ตัวเขียนของ 0409 เก็บ — เข็มขัดหลังบันทึก
+       (historicalPackQtyDropped) เทียบกับแผนรายตำแหน่ง · ตัวเขียนรุ่นก่อน 0409 คืนแถวที่คอลัมน์นี้เป็น null (เทสต์ของงวด PR-5 ท้ายไฟล์) */
+    lines: [
+      { id: 'SOL-1', serviceZoneId: 'Z-1002-01', sortOrder: 1, packQty: 1 }, { id: 'SOL-2', serviceZoneId: 'Z-1044-01', sortOrder: 2, packQty: 1 },
+    ],
     installments: [{ id: 'SOI-1', kind: 'opening' }, { id: 'SOI-2', kind: 'regular' }],
     contract: { id: 'CTR-H1', status: 'draft', externalDocKind: 'customer_po', externalRef: 'PO-SPW-2026-0118' },
     deal: { id: 'DEAL-NEW', code: 'DL-260900513', customerName: 'บจก. สยามพิวรรธน์', ownerName: 'พิมพ์ชนก รัตนา' },
@@ -171,12 +184,15 @@ const created = (extra = {}) => ({
   },
   error: null,
 });
-const updated = () => ({
+/* งวด PR-5 (แผน §5 แถว G16): RPC แก้ใบคืน **หนึ่งแถวต่อบรรทัดของคำขอ** (สองโซน = สองแถว) พร้อมเลขแพ็คที่เก็บ — ของเดิมคืนแถวเดียว
+   ซึ่งเข็มขัดหลังบันทึกจะอ่านบรรทัดที่สองว่า "เลขแพ็คหาย" แล้วตอบ 503 ทุกเทสต์ของทางแก้ใบ · `extra` ไว้ให้เทสต์ของงวด PR-5 แทนแถวที่คืน */
+const updated = (extra = {}) => ({
   data: {
     order: { id: EDIT_ID, orderNumber: 'SO-26090200-0', origin: 'historical', status: 'draft' },
-    lines: [{ id: 'SOL-1' }],
+    lines: [{ id: 'SOL-1', packQty: 1 }, { id: 'SOL-2', packQty: 1 }],
     installments: [{ id: 'SOI-1', kind: 'opening' }],
     contract: { id: 'CTR-HEDIT', status: 'draft' },
+    ...extra,
   },
   error: null,
 });
@@ -341,7 +357,7 @@ test('R7: พรีวิวที่ "ยอดเองยังผิด" ต
   const bad = fakeDb({ rpc: [created()] });
   const res = await run(bad, {
     preview: true, intakeKey: undefined,
-    zones: [{ zoneId: 'Z-1002-01', productId: 'P-PKG', qty: '', discountType: null, discountValue: 0, rounds: 12, packsPerRound: 2 }],
+    zones: [{ zoneId: 'Z-1002-01', productId: 'P-PKG', packQty: 1, qty: '', discountType: null, discountValue: 0, rounds: 12, packsPerRound: 2 }],
   });
   assert.equal(res.status, 400);
   assert.equal(res.body.money, null, 'ยอดคิดไม่ได้ = ยังไม่รู้ ห้ามส่งศูนย์');
@@ -397,8 +413,8 @@ test('R7: ใบยอด 0 บาทจริงยังคืนยอดม�
     preview: true, intakeKey: undefined,
     /* ใบ ฿0 แบบใบเสนอราคา = ส่วนลดเต็มจำนวน */
     zones: [
-      { zoneId: 'Z-1002-01', productId: 'P-PKG', qty: 72, discountType: 'percent', discountValue: 100, rounds: 12, packsPerRound: 2 },
-      { zoneId: 'Z-1044-01', productId: 'P-PKG', qty: 48, discountType: 'percent', discountValue: 100, rounds: 12, packsPerRound: 1 },
+      { zoneId: 'Z-1002-01', productId: 'P-PKG', packQty: 1, qty: 72, discountType: 'percent', discountValue: 100, rounds: 12, packsPerRound: 2 },
+      { zoneId: 'Z-1044-01', productId: 'P-PKG', packQty: 1, qty: 48, discountType: 'percent', discountValue: 100, rounds: 12, packsPerRound: 1 },
     ],
     opening: null,
     installments: [],
@@ -527,10 +543,14 @@ test('สร้าง: RPC ครั้งเดียว · อาร์กิ�
   assert.equal(args.p_header.totalAmount, 154080);
   assert.deepEqual(args.p_contract, { docKind: 'customer_po', ref: 'PO-SPW-2026-0118', startDate: '2026-01-01', endDate: '2026-12-31' });
   assert.deepEqual(args.p_lines.map((l) => l.zoneId), ['Z-1002-01', 'Z-1044-01']);
+  /* ⭐ ย้ายความคาดหวังโดยเจตนา (งวด PR-5 · มติเจ้าของ 08/10 ข้อ A1–A2 · ข้อวินิจฉัย 6–7 · แผน IMPL_PLAN_PR5 §5 แถว G8 / §6.2 T13):
+     เดิมบรรทัดที่ส่งฐานมี 10 คีย์ — วันนี้ 12: + `packQty` (เลขแพ็คของบรรทัด เป็นตัวเลข · 0409/W0–W2) + `unit` (หน่วยที่เก็บของบรรทัดที่มีเลขแพ็ค
+     = "เดือน") · ไม่ได้คลายด่าน: ทั้งก้อนยังยึดแบบเท่ากันทุกคีย์ · ยอด/จำนวนเท่าเดิม (เลขแพ็ค 1) */
   assert.deepEqual(args.p_lines[0], {
-    zoneId: 'Z-1002-01', productId: 'P-PKG', qty: 72, unitPrice: 1200, discountType: null, discountValue: 0,
+    zoneId: 'Z-1002-01', productId: 'P-PKG', packQty: 1, unit: 'เดือน', qty: 72, unitPrice: 1200, discountType: null, discountValue: 0,
     discountAmount: 0, lineTotal: 86400, serviceRounds: 12, packsPerRound: 2,
   });
+  assert.deepEqual(args.p_lines.map((l) => [l.packQty, typeof l.packQty, l.unit]), [[1, 'number', 'เดือน'], [1, 'number', 'เดือน']]);
   /* ⭐ PR-D (0394/P5–P6): แพ็คต่อรอบรายบรรทัดไปเป็นตัวเลข — ตัวเขียนของฐานสร้างแถวโซนของงานบริการจากคีย์นี้ */
   assert.deepEqual(args.p_lines.map((l) => l.packsPerRound), [2, 1]);
   // intake = ของที่คอลัมน์เก็บไม่ได้แต่ฟอร์มแก้ต้องได้คืน: ตัวเลือก VAT + ชนิด/ค่าส่วนลดท้ายใบ (มติ 25/09 · ไม่ลด = null/0)
@@ -936,7 +956,10 @@ test('🔴 บันทึกการยืนยันใบที่อาจ
 const updatedTwo = () => ({
   data: {
     order: { id: EDIT_ID, orderNumber: 'SO-26090200-0', origin: 'historical', status: 'draft' },
-    lines: [{ id: 'SOL-A', serviceZoneId: 'Z-1002-01', sortOrder: 1 }, { id: 'SOL-B', serviceZoneId: 'Z-1044-01', sortOrder: 2 }],
+    /* งวด PR-5 (แผน §5 แถว G16): แถวที่คืนพกเลขแพ็คที่เก็บ (เข็มขัดหลังบันทึกเทียบกับแผน) */
+    lines: [
+      { id: 'SOL-A', serviceZoneId: 'Z-1002-01', sortOrder: 1, packQty: 1 }, { id: 'SOL-B', serviceZoneId: 'Z-1044-01', sortOrder: 2, packQty: 1 },
+    ],
     installments: [{ id: 'SOI-1', kind: 'opening' }, { id: 'SOI-2', kind: 'regular' }],
     contract: { id: 'CTR-HEDIT', status: 'draft' },
   },
@@ -1104,4 +1127,289 @@ test('0395: RPC พบใบซ้ำที่เพิ่งลงฐาน (�
   assert.equal(edited.status, 409);
   assert.deepEqual(edited.body.duplicates.map((d) => d.id), ['SOR-OLD', 'SOR-RACE']);
   assert.deepEqual(edited.audits, []);
+});
+
+// ── งวด PR-5: เลขแพ็คของบรรทัด (mig 0409) — ด่านของแผนก่อนถึง RPC · เข็มขัดหลังบันทึก · CHECK ของ 0407 ─────────────────────────
+/* แถวที่ตัวเขียน **รุ่นก่อน 0409** คืน: บรรทัดถูกเก็บครบ แต่คอลัมน์เลขแพ็คว่าง (ตัวเขียนเดิมไม่มีคอลัมน์นี้ใน INSERT — รับคีย์เงียบ ๆ แล้วทิ้ง) */
+const DROPPED_LINES = [
+  { id: 'SOL-1', serviceZoneId: 'Z-1002-01', sortOrder: 1, packQty: null }, { id: 'SOL-2', serviceZoneId: 'Z-1044-01', sortOrder: 2, packQty: null },
+];
+
+/* แท็บที่เปิดค้างจากก่อนมีช่องเลขแพ็ค (บรรทัดไม่มีคีย์) = 400 "ฟอร์มรุ่นก่อน" ก่อนถึง RPC — ไม่ปล่อยไปตายที่ historical_so_line_pack_qty_invalid
+   ของ 0409/W0 และไม่ถูกคิดแบบคูณ 1 · ช่องว่าง/ค่าที่ใช้ไม่ได้ = 400 ที่ช่องเดียวกัน · พรีวิวของทุกกรณี = ยอดยังไม่รู้ (money null) */
+test('PR-5: บรรทัดไม่มีคีย์เลขแพ็ค / ว่าง / ผิดรูป = 400 ที่ zones.<i>.packQty · ไม่เรียก RPC · พรีวิวไม่ส่งยอด (ไม่มียอดแบบคูณ 1)', async () => {
+  const noKey = body().zones.map(({ packQty, ...zone }) => zone);
+  const withPack = (value) => body().zones.map((zone, i) => (i ? zone : { ...zone, packQty: value }));
+  const cases = [
+    [noKey, HISTORICAL_LINE_MESSAGES.packQtyStaleForm],
+    [withPack(''), HISTORICAL_LINE_MESSAGES.packQtyMissing],
+    [withPack('1.5'), HISTORICAL_LINE_MESSAGES.packQty],
+    [withPack(0), HISTORICAL_LINE_MESSAGES.packQty],
+    [withPack('02'), HISTORICAL_LINE_MESSAGES.packQty],
+  ];
+  for (const [zones, detail] of cases) {
+    for (const preview of [false, true]) {
+      const db = fakeDb({ rpc: [created()] });
+      const res = await run(db, { zones, preview, ...(preview ? { intakeKey: undefined } : {}) });
+      assert.equal(res.status, 400, detail);
+      const hit = res.body.errors.find((e) => e.field === 'zones.0.packQty');
+      assert.ok(hit, `${detail}: ${JSON.stringify(res.body.errors)}`);
+      assert.equal(hit.detail, detail);
+      assert.equal(hit.message, `รายการ 1 (ชั้น G ล็อบบี้): ${detail}`);
+      assert.equal(db.calls.rpc.length, 0, detail);
+      if (preview) assert.equal(res.body.money, null, `${detail}: ยอดยังคิดไม่ได้ = ไม่ส่งยอด`);
+      else assert.equal(Object.prototype.hasOwnProperty.call(res.body, 'money'), false);
+    }
+  }
+  /* ทางแก้ใบก็ด่านเดียวกัน — **ทุกกรณีของตารางข้างบน** ไม่ใช่แค่ "ไม่มีคีย์" (รีวิว 12/10 · G1)
+     🔴 ตัวเขียนของฐานลบแล้วเขียนบรรทัดใหม่ทุกครั้งที่แก้ใบ ⇒ ถ้าวันหนึ่งแผนผ่อนด่านนี้เฉพาะตอนแก้ (ไฟล์แผนแยกสร้าง/แก้อยู่แล้ว — ข้อสัญญาสิ้นสุดของมติข้อ 9
+        เป็น error ตอนสร้างแต่เป็นคำเตือนตอนแก้) ผู้คีย์ที่ลบเลขในช่องของบรรทัด 2 × 12 × 3,500 จะบันทึกได้เป็น ×1 เงียบ ๆ — ฐานไม่ช่วย เพราะเลข 1 ที่ถูกเติมให้
+        เป็นตัวเลขที่ 0409/W0 รับ · เดิมครึ่งนี้ยิงแค่ `noKey` ตัวกลายพันธุ์ "แก้ใบ = เติม 1 ให้ช่องว่าง/ค่าผิดรูป" จึงรอดทั้งชุดเทสต์ */
+  for (const [zones, detail] of cases) {
+    for (const preview of [false, true]) {
+      const edit = fakeDb({ loaded: editRow(), deals: [containerDeal()], rpc: [updated()] });
+      const res = await runEdit(edit, { zones, preview });
+      assert.equal(res.status, 400, `แก้ใบ · ${detail}`);
+      const hit = res.body.errors.find((e) => e.field === 'zones.0.packQty');
+      assert.ok(hit, `แก้ใบ · ${detail}: ${JSON.stringify(res.body.errors)}`);
+      assert.equal(hit.detail, detail, 'แก้ใบได้ประโยคเดียวกับสร้าง');
+      assert.equal(hit.message, `รายการ 1 (ชั้น G ล็อบบี้): ${detail}`);
+      assert.equal(edit.calls.rpc.length, 0, `แก้ใบ · ${detail}: ไม่มีอะไรถึงตัวเขียน (ของเดิมไม่ถูกลบ ไม่มีเลข 1 ถูกเติมให้)`);
+      assert.equal(res.audits.length, 0);
+      if (preview) assert.equal(res.body.money, null, `แก้ใบ · ${detail}: ยอดยังคิดไม่ได้ = ไม่ส่งยอด`);
+      else assert.equal(Object.prototype.hasOwnProperty.call(res.body, 'money'), false);
+    }
+  }
+});
+
+test('PR-5: เลขแพ็คไหลถึง RPC เป็นตัวเลขพร้อมหน่วยที่เก็บ "เดือน" (สร้างและแก้) · ยอดคูณเลขแพ็ค · ลายนิ้วมือของคำขอเปลี่ยนตามเลขแพ็ค', async () => {
+  /* 2 แพ็ค × 72 × 1,200 = 172,800 + 1 × 48 × 1,200 = 57,600 → ยอดรวม 230,400 · VAT 16,128 · รวม 246,528 */
+  const extra = {
+    zones: body().zones.map((zone, i) => (i ? zone : { ...zone, packQty: '2' })),
+    opening: { ...body().opening, amount: 208008 },
+  };
+  const stored = created({ lines: [{ id: 'SOL-1', serviceZoneId: 'Z-1002-01', packQty: 2 }, { id: 'SOL-2', serviceZoneId: 'Z-1044-01', packQty: 1 }] });
+  const db = fakeDb({ rpc: [stored] });
+  const res = await run(db, extra);
+  assert.equal(res.status, 201, JSON.stringify(res.body));
+  const { args } = db.calls.rpc[0];
+  assert.deepEqual(args.p_lines.map((l) => [l.packQty, typeof l.packQty, l.unit, l.qty, l.lineTotal]),
+    [[2, 'number', 'เดือน', 72, 172800], [1, 'number', 'เดือน', 48, 57600]]);
+  assert.deepEqual([args.p_header.subtotal, args.p_header.vatAmount, args.p_header.totalAmount], [230400, 16128, 246528]);
+  const base = fakeDb({ rpc: [created()] });
+  await run(base);
+  assert.notEqual(args.p_intake_hash, base.calls.rpc[0].args.p_intake_hash, 'เลขแพ็คอยู่ในลายนิ้วมือของคำขอ');
+
+  const edit = fakeDb({ loaded: editRow(), deals: [containerDeal()], rpc: [updated({ lines: [{ id: 'SOL-1', packQty: 2 }, { id: 'SOL-2', packQty: 1 }] })] });
+  const res2 = await runEdit(edit, extra);
+  assert.equal(res2.status, 200, JSON.stringify(res2.body));
+  assert.deepEqual(edit.calls.rpc[0].args.p_lines.map((l) => [l.packQty, l.unit]), [[2, 'เดือน'], [1, 'เดือน']]);
+});
+
+test('PR-5 เข็มขัด historicalPackQtyDropped: ส่งเลขไปแล้วแถวที่คืนมาไม่มี = หาย · จับคู่รายตำแหน่ง · แผนที่บรรทัดไม่มีเลข ไม่นับ', () => {
+  const plan = (...packs) => ({ lines: packs.map((packQty) => ({ packQty })) });
+  const rows = (...packs) => packs.map((packQty, index) => (packQty === undefined ? { id: `SOL-${index}` } : { id: `SOL-${index}`, packQty }));
+  // เก็บครบ
+  assert.equal(historicalPackQtyDropped(rows(1, 2), plan(1, 2)), false);
+  assert.equal(historicalPackQtyDropped(rows(2), plan(2)), false);
+  // หาย: null · ไม่มีคีย์ · แถวไม่ครบ · ไม่มีแถวเลย
+  assert.equal(historicalPackQtyDropped(rows(null, null), plan(1, 1)), true);
+  assert.equal(historicalPackQtyDropped(rows(undefined, undefined), plan(1, 1)), true);
+  assert.equal(historicalPackQtyDropped(rows(1, null), plan(1, 1)), true, 'บรรทัดเดียวหายก็นับ');
+  assert.equal(historicalPackQtyDropped(rows(1), plan(1, 1)), true, 'แถวที่คืนมาน้อยกว่าบรรทัดของแผน');
+  assert.equal(historicalPackQtyDropped([], plan(1)), true);
+  assert.equal(historicalPackQtyDropped(null, plan(1)), true);
+  // แผนที่บรรทัดไม่มีเลขแพ็ค (ไม่ได้ส่งอะไรไป) ไม่ใช่ "หาย" — ไม่ตอบ 503 เท็จ
+  assert.equal(historicalPackQtyDropped(rows(null), plan(null)), false);
+  assert.equal(historicalPackQtyDropped(rows(undefined), { lines: [{}] }), false);
+  assert.equal(historicalPackQtyDropped([], { lines: [] }), false);
+  assert.equal(historicalPackQtyDropped([], null), false);
+  // เลขแพ็คที่ฐานเก็บเป็น 0 ไม่มีทางเกิด (CHECK 1–9999) — ค่าที่ไม่ใช่ null/undefined = เก็บแล้ว (ไม่ตีความค่า)
+  assert.equal(historicalPackQtyDropped(rows(1), plan(2)), false, 'เข็มขัดถามว่า "หายไหม" ไม่ใช่ "เท่ากันไหม" — ยอดผิดเป็นงานของ CHECK');
+
+  /* 🔴 รีวิว 12/10 (M1 · พิสูจน์บน SQL ตัวจริงใน PGlite): การสร้างที่ฐานตอบว่าเป็น **การส่งซ้ำ** คืนแถวที่ใบถือ **ตอนนี้** — ใบร่างอาจถูกเปิดแก้จากอีกแท็บ
+     หลังคำตอบรอบแรกหาย (RPC แก้ใบไม่เขียนแฮชของการคีย์ทับ ใบที่ถูกแก้จึงยังตอบว่าส่งซ้ำ) ⇒ จำนวนบรรทัดต่างจากแผนของคำขอนี้ได้โดยที่ทุกแถวมีเลขครบ
+     กฎรายตำแหน่งข้างบนเคยตอบ `true` กับกรณีนั้น = 503 "ถูกเก็บไว้โดยไม่มีเลข … ต้องยกเลิกแล้วคีย์ใหม่" กับใบร่างที่ดีทุกบรรทัด (ก่อนงวด PR-5 ปุ่มเดียวกันได้ 200)
+     ⇒ ทางส่งซ้ำตัดสินเท่าที่ประโยคอ้าง: มีแถวที่เก็บไว้ซึ่งเลขว่าง · ข้อยืนยันรายตำแหน่งข้างบน **ไม่ขยับสักข้อ** — มันคือกฎของการเขียนรอบนี้เอง (ค่าตั้งต้น) */
+  const replay = { replayed: true };
+  assert.equal(historicalPackQtyDropped(rows(2), plan(2, 1), replay), false, 'ส่งซ้ำ: ใบถูกแก้จนเหลือบรรทัดเดียวและบรรทัดนั้นมีเลข — ไม่ใช่ "เลขหาย"');
+  assert.equal(historicalPackQtyDropped(rows(1, 2, 3), plan(1, 1), replay), false, 'ส่งซ้ำ: ใบมีบรรทัดมากกว่าแผน ทุกแถวมีเลข');
+  assert.equal(historicalPackQtyDropped(rows(1, 2), plan(1, 2), replay), false);
+  assert.equal(historicalPackQtyDropped(rows(null, null), plan(1, 1), replay), true, 'ส่งซ้ำ: ใบเดิมถูกเก็บโดยไม่มีเลข = ประโยคของการส่งซ้ำเป็นจริง');
+  assert.equal(historicalPackQtyDropped(rows(null), plan(2, 1), replay), true, 'ส่งซ้ำ: บรรทัดน้อยกว่าแผน แต่แถวที่เหลือเลขว่าง');
+  assert.equal(historicalPackQtyDropped(rows(1, null, 3), plan(1), replay), true, 'ส่งซ้ำ: แถวที่เกินแผนก็นับ — ใบร่างใบเดียวกัน');
+  assert.equal(historicalPackQtyDropped(rows(undefined), plan(1), replay), true);
+  assert.equal(historicalPackQtyDropped([], plan(1), replay), false, 'ส่งซ้ำที่ไม่มีแถวคืนมา: ไม่มีแถวไหนให้อ้างว่าเลขว่าง');
+  assert.equal(historicalPackQtyDropped(null, plan(1), replay), false);
+  assert.equal(historicalPackQtyDropped(rows(null), plan(null), replay), false, 'แผนที่ไม่ได้ส่งเลข ไม่นับ — ทั้งสองทาง');
+  assert.equal(historicalPackQtyDropped(rows(1), plan(1, 1), { replayed: false }), true, 'replayed เท็จ = กฎรายตำแหน่งของการเขียนรอบนี้ (แถวน้อยกว่า = หาย)');
+  assert.equal(historicalPackQtyDropped(rows(1), plan(1, 1), {}), true);
+});
+
+/* 🔴 0409 ไม่เพิ่มคอลัมน์ ⇒ CI ไม่รู้ว่ารันแล้วหรือยัง · ตัวเขียนรุ่นก่อน 0409 รับคีย์เลขแพ็คเงียบ ๆ แล้วเก็บ NULL ⇒ บอกผู้คีย์ทันที
+   · ประโยคต้องบอกว่า "บันทึกแล้ว" และบอกทางออกที่ทำได้จริง: ใบร่างนั้นคือสิ่งที่ทำให้ 0409 รันครั้งแรกไม่ผ่าน ⇒ ยกเลิก → รัน → คีย์ใหม่
+     (ห้ามบอกให้เปิดใบร่างมาบันทึกใหม่หลังรัน — ทางนั้นไม่มีอยู่จริง) */
+test('PR-5 🔴 ฐานยังไม่รัน 0409: บันทึกได้แต่เลขแพ็คไม่ถูกเก็บ = 503 historical_pack_qty_not_stored · บอกว่าใบร่างลงฐานแล้ว + ทางออกจริง · audit ยังลง', async () => {
+  const db = fakeDb({ rpc: [created({ lines: DROPPED_LINES })] });
+  const res = await run(db);
+  assert.equal(res.status, 503);
+  assert.deepEqual(res.body, {
+    error: HISTORICAL_PACK_QTY_NOT_STORED_SAVED, code: 'historical_pack_qty_not_stored', orderId: REPLAY_ID, replayed: false,
+  });
+  for (const phrase of ['บันทึกใบร่างแล้ว', 'ไม่ถูกเก็บ', 'migration 0409', 'ส่งอนุมัติไม่ได้', 'ต้องยกเลิก', 'แจ้งผู้ดูแลระบบ', '“แพ็ค/เดือน”']) {
+    assert.ok(res.body.error.includes(phrase), phrase);
+  }
+  assert.doesNotMatch(res.body.error, /บันทึกขั้น ② ใหม่หลังรัน/, 'คำแนะนำที่ด่านรันครั้งแรกของ 0409 ทำให้เป็นไปไม่ได้');
+  assert.doesNotMatch(res.body.error, /เปิดใบร่าง/);
+  // การเขียนเกิดแล้ว ⇒ audit ของใบ + สัญญา + ดีลยังลงครบ
+  assert.deepEqual(res.audits.map((a) => a.entityType), ['sales_order', 'sales_contract', 'sales_deal']);
+  assert.equal(db.calls.rpc.length, 1);
+  // จอ: 503 = ชนิด schema — โชว์ประโยคของ server ทั้งประโยค ไม่มีปุ่ม/คำใบ้ "กดอีกครั้ง"
+  const exit = historicalSaveExit({ status: res.status, data: res.body });
+  assert.deepEqual([exit.kind, exit.message, exit.hint, exit.canRetry, exit.goToStep], ['schema', HISTORICAL_PACK_QTY_NOT_STORED_SAVED, null, false, null]);
+
+  /* บรรทัดเดียวหายก็ตอบ (ตัวเขียนที่เก็บบางบรรทัดไม่มีอยู่จริง แต่เข็มขัดไม่เดา) */
+  const partial = fakeDb({ rpc: [created({ lines: [{ id: 'SOL-1', packQty: 1 }, { id: 'SOL-2' }] })] });
+  assert.equal((await run(partial)).body.code, 'historical_pack_qty_not_stored');
+  /* ฐานที่รันแล้ว (แถวพกเลข) = ผลเดิม */
+  const ok = await run(fakeDb({ rpc: [created()] }));
+  assert.deepEqual([ok.status, ok.body.replayed, ok.body.code], [201, false, undefined]);
+});
+
+/* R9: การสร้างที่ฐานตอบว่าเป็นการส่งซ้ำ — แถวถูกเก็บไว้ตั้งแต่รอบก่อน ตอนนี้ฐานอาจรัน 0409 ไปแล้วก็ได้ ⇒ ประโยคไม่พูดเรื่อง migration
+   และบอกตรง ๆ ว่ากดซ้ำไม่ช่วย (ทุกครั้งที่กดได้ใบเดิมที่ไม่มีเลขแพ็คกลับมา) */
+test('PR-5 🔴 ส่งซ้ำ (replayed) ที่ใบเดิมไม่มีเลขแพ็ค = 503 ประโยคของการส่งซ้ำ — กดบันทึกซ้ำไม่ช่วย · ไม่พูดเรื่อง migration · ไม่ลง audit ซ้ำ', async () => {
+  const db = fakeDb({ rpc: [created({ replayed: true, dealCreated: false, lines: DROPPED_LINES })], auditRow: { id: 'AUD-1' } });
+  const res = await run(db);
+  assert.equal(res.status, 503);
+  assert.deepEqual(res.body, {
+    error: HISTORICAL_PACK_QTY_NOT_STORED_REPLAYED, code: 'historical_pack_qty_not_stored', orderId: REPLAY_ID, replayed: true,
+  });
+  for (const phrase of ['กดบันทึกซ้ำไม่ช่วย', 'แจ้งผู้ดูแลระบบ', 'ส่งอนุมัติไม่ได้', 'ต้องยกเลิก', 'คีย์ใหม่', '“แพ็ค/เดือน”']) {
+    assert.ok(res.body.error.includes(phrase), phrase);
+  }
+  assert.doesNotMatch(res.body.error, /migration 0409/, 'ประโยคของการส่งซ้ำไม่ตัดสินว่า migration รันแล้วหรือยัง');
+  assert.notEqual(HISTORICAL_PACK_QTY_NOT_STORED_REPLAYED, HISTORICAL_PACK_QTY_NOT_STORED_SAVED);
+  assert.equal(res.audits.length, 0, 'รอบแรกลง audit ไปแล้ว — ส่งซ้ำไม่เขียนซ้ำ');
+  /* ส่งซ้ำที่ใบเดิมมีเลขแพ็คครบ = 200 ตามเดิม */
+  const fine = fakeDb({ rpc: [created({ replayed: true, dealCreated: false })], auditRow: { id: 'AUD-1' } });
+  assert.deepEqual([(await run(fine)).status], [200]);
+
+  /* 🔴 รีวิว 12/10 (M1) — ฐานที่รัน 0409 แล้ว ทุกอย่างปกติ: คำตอบ 201 ของรอบแรกหาย (ฟอร์มยังไม่รู้เลขใบ) → ใบร่างถูกเปิดจากทะเบียนในอีกแท็บ
+     ลบรายการ 2 แล้วบันทึก → กดบันทึกซ้ำด้วยฟอร์มเดิม (สองบรรทัด · รหัสการคีย์เดิม · ลายนิ้วมือเดิม) ⇒ ฐานตอบว่าส่งซ้ำพร้อมแถว **ปัจจุบัน** หนึ่งแถวที่มีเลข
+     ต้องได้ 200 ตามเดิม — เดิมเข็มขัดจับคู่รายตำแหน่งแล้วตอบ 503 "ถูกเก็บไว้โดยไม่มีเลข … ต้องยกเลิกแล้วคีย์ใหม่" (ประโยคเท็จ: ทุกแถวมีเลข และมันสั่งยกเลิกใบร่างที่ดี) */
+  const editedElsewhere = fakeDb({
+    rpc: [created({ replayed: true, dealCreated: false, lines: [{ id: 'SOL-9', serviceZoneId: 'Z-1002-01', sortOrder: 1, packQty: 2 }] })], auditRow: { id: 'AUD-1' },
+  });
+  const kept = await run(editedElsewhere);
+  assert.deepEqual([kept.status, kept.body.replayed, kept.body.code, kept.body.lines.length], [200, true, undefined, 1], JSON.stringify(kept.body));
+  assert.equal(editedElsewhere.calls.rpc[0].args.p_lines.length, 2, 'คำขอนี้ส่งสองบรรทัด — แถวที่คืนมาน้อยกว่าเพราะใบถูกแก้ ไม่ใช่เพราะเลขหาย');
+  /* ใบที่ถูกแก้แล้ว **ยังมีแถวเลขว่าง** (แก้บนฐานที่ยังไม่รัน 0409) = ประโยคของการส่งซ้ำ — ตัดสินจากแถวที่เก็บ ไม่ใช่จากจำนวนแถว */
+  const editedNull = fakeDb({
+    rpc: [created({ replayed: true, dealCreated: false, lines: [{ id: 'SOL-9', serviceZoneId: 'Z-1002-01', sortOrder: 1, packQty: null }] })], auditRow: { id: 'AUD-1' },
+  });
+  const lost = await run(editedNull);
+  assert.deepEqual([lost.status, lost.body.error, lost.body.replayed], [503, HISTORICAL_PACK_QTY_NOT_STORED_REPLAYED, true]);
+  /* กฎรายตำแหน่งของ **การเขียนรอบนี้เอง** ไม่ถูกคลาย: สร้างที่ไม่ใช่การส่งซ้ำแล้วแถวคืนมาน้อยกว่าบรรทัดของคำขอ = 503 ของการเขียน */
+  const shortFresh = await run(fakeDb({ rpc: [created({ lines: [{ id: 'SOL-1', serviceZoneId: 'Z-1002-01', sortOrder: 1, packQty: 1 }] })] }));
+  assert.deepEqual([shortFresh.status, shortFresh.body.error, shortFresh.body.replayed], [503, HISTORICAL_PACK_QTY_NOT_STORED_SAVED, false]);
+});
+
+test('PR-5 🔴 แก้ใบบนฐานที่ยังไม่รัน 0409 = 503 ประโยคของการเขียนรอบนี้ (แก้ใบไม่มีการส่งซ้ำ) · audit ของการแก้ยังลง', async () => {
+  const db = fakeDb({ loaded: editRow(), deals: [containerDeal()], rpc: [updated({ lines: [{ id: 'SOL-1', packQty: null }, { id: 'SOL-2', packQty: null }] })] });
+  const res = await runEdit(db);
+  assert.equal(res.status, 503);
+  assert.deepEqual(res.body, {
+    error: HISTORICAL_PACK_QTY_NOT_STORED_SAVED, code: 'historical_pack_qty_not_stored', orderId: EDIT_ID, replayed: false,
+  });
+  assert.equal(res.audits.length, 1, 'แก้ใบสำเร็จแล้ว — audit ต้องลง');
+  /* แถวที่คืนมาน้อยกว่าบรรทัดของคำขอ (ตัวสร้างชุดเดิมของไฟล์นี้ก่อนงวด PR-5) ก็คือ "หาย" */
+  const short = fakeDb({ loaded: editRow(), deals: [containerDeal()], rpc: [updated({ lines: [{ id: 'SOL-1', packQty: 1 }] })] });
+  assert.equal((await runEdit(short)).status, 503);
+  const ok = await runEdit(fakeDb({ loaded: editRow(), deals: [containerDeal()], rpc: [updated()] }));
+  assert.equal(ok.status, 200);
+});
+
+/* 🔴 รีวิว 12/10 (M2 · พิสูจน์บน SQL ตัวจริงใน PGlite) — เฉพาะลำดับที่ห้าม (โค้ดงวด PR-5 ถึงฐานก่อน 0409) บนทางแก้ใบ:
+   กดครั้งแรก = เขียนสำเร็จ (เวลาของใบขยับ) แล้วเข็มขัดตอบ 503 · body ของ 503 มีสี่คีย์พอดี **ไม่มีเวลาใหม่ของใบ** (รูปเดียวกับเข็มขัดของ 0394) และฟอร์มรับ
+   `updatedAt` จากคำตอบที่สำเร็จเท่านั้น ⇒ กดซ้ำจากแท็บเดิมส่งเวลาเดิม → RPC โยน `workflow_stale` **ก่อนเขียน** → 409 "ใบถูกแก้จากที่อื่นหลังคุณเปิด" + ปุ่ม "โหลดใบล่าสุด"
+   ⚠️ เอกสารเคยเขียนว่า "เข็มขัดตอบ 503 ที่จังหวะนั้นทุกครั้ง" — ไม่จริงกับการกดครั้งที่สองของทางนี้ · สิ่งที่จริงและเทสต์นี้ยึด: **ไม่มีรอบไหนผ่านจังหวะบันทึก**
+     (503 หรือ 409) ใบร่างจึงเดินไม่ถึงจังหวะส่งอนุมัติ · และการกดครั้งที่สองไม่เขียนอะไร ไม่ลง audit
+   ถ้าวันหนึ่ง body ของ 503 พกเวลาใหม่และฟอร์มรับไปใช้ (ทุกครั้งที่กด = 503 เดิม + การเขียนและ audit อีกรอบ) เทสต์นี้กับประโยคในเอกสาร ("ถ้าสลับลำดับ") ต้องขยับพร้อมกัน */
+test('PR-5 🔴 แก้ใบบนฐานที่ยังไม่รัน 0409 แล้วกดบันทึกซ้ำจากแท็บเดิม: ครั้งแรก 503 ของเข็มขัด (body ไม่พกเวลาใหม่ของใบ) · ครั้งที่สอง 409 workflow_stale + "โหลดใบล่าสุด" · ไม่เขียน ไม่ลง audit · ไม่มีรอบไหนผ่านจังหวะบันทึก', async () => {
+  const NEXT_UPDATED_AT = '2026-09-22T03:00:01.000Z';
+  const db = fakeDb({
+    loaded: editRow(), deals: [containerDeal()],
+    rpc: [
+      updated({
+        order: { id: EDIT_ID, orderNumber: 'SO-26090200-0', origin: 'historical', status: 'draft', updatedAt: NEXT_UPDATED_AT },
+        lines: [{ id: 'SOL-1', packQty: null }, { id: 'SOL-2', packQty: null }],
+      }),
+      /* 0374: `IF v_order."updatedAt" <> p_expected_updated_at THEN RAISE 'workflow_stale'` — ก่อน DELETE/INSERT ใด ๆ */
+      { data: null, error: { code: 'P0001', message: 'workflow_stale' } },
+    ],
+  });
+  const first = await runEdit(db);
+  assert.equal(first.status, 503);
+  assert.deepEqual(Object.keys(first.body).sort(), ['code', 'error', 'orderId', 'replayed'], 'body ของ 503 ไม่พกใบ/เวลาใหม่ — ฟอร์มจึงยังถือเวลาเดิม');
+  assert.equal(first.body.error, HISTORICAL_PACK_QTY_NOT_STORED_SAVED);
+  assert.equal(first.audits.length, 1);
+  /* ฟอร์มกดอีกครั้ง: ก้อนเดิม เวลาเดิม (`editBody` — ฟอร์มไม่ได้เวลาใหม่มาจาก 503) */
+  const second = await runEdit(db);
+  assert.equal(db.calls.rpc.length, 2);
+  assert.equal(db.calls.rpc[1].args.p_expected_updated_at, db.calls.rpc[0].args.p_expected_updated_at);
+  assert.notEqual(db.calls.rpc[1].args.p_expected_updated_at, NEXT_UPDATED_AT);
+  assert.deepEqual([second.status, second.body.code], [409, 'workflow_stale']);
+  assert.equal(second.audits.length, 0, 'การกดครั้งที่สองไม่เขียนอะไร');
+  const exit = historicalSaveExit({ status: second.status, data: second.body });
+  assert.deepEqual([exit.kind, exit.canRetry], ['blocked', false]);
+  const panel = historicalSaveResultView(exit, { stage: 'persist', currentStep: 'review' });
+  assert.deepEqual([panel.title, panel.action], ['ส่งไม่สำเร็จ — ใบถูกแก้จากที่อื่นหลังคุณเปิด', { key: 'reload', label: 'โหลดใบล่าสุด' }]);
+  /* ทั้งสองรอบ: ไม่มีคำตอบสำเร็จ ⇒ ตัวเดินจังหวะของฟอร์มไม่ไปต่อจาก "บันทึกใบ" (ส่งอนุมัติไม่ถึง) */
+  for (const res of [first, second]) assert.ok(res.status >= 400 && !res.body.order, `สถานะ ${res.status}`);
+});
+
+/* ลำดับของเข็มขัดสองตัว: ฐานที่ยังไม่รัน 0394 (ไม่มีแถวแพ็คต่อรอบ) ตอบก่อนเสมอ — ฐานแบบนั้นไม่มี 0409 แน่นอน และทางออกของมันคือรัน 0394 ก่อน */
+test('PR-5: เข็มขัดของ 0394 ยังมาก่อน — ไม่มีทั้งแถวแพ็คต่อรอบและเลขแพ็ค = 503 ของ 0394', async () => {
+  const db = fakeDb({ rpc: [created({ lines: DROPPED_LINES })], savedLineZones: [] });
+  const res = await run(db);
+  assert.equal(res.status, 503);
+  assert.equal(res.body.code, 'historical_service_alignment_missing');
+  assert.equal(res.body.error, HISTORICAL_ALIGNMENT_MISSING_SAVED);
+  const edit = fakeDb({ loaded: editRow(), deals: [containerDeal()], rpc: [updated({ lines: DROPPED_LINES })], savedLineZones: [] });
+  assert.equal((await runEdit(edit)).body.code, 'historical_service_alignment_missing');
+  /* อ่านแถวแพ็คต่อรอบกลับไม่ขึ้น (ไม่รู้ ≠ ยังไม่รัน) → เข็มขัดของ 0409 ยังทำงานจากแถวที่ RPC คืน (ไม่อ่านฐานเพิ่ม) */
+  const flaky = fakeDb({ rpc: [created({ lines: DROPPED_LINES })], savedLineZonesError: { code: '57014', message: 'timeout' } });
+  assert.equal((await run(flaky)).body.code, 'historical_pack_qty_not_stored');
+});
+
+/* CHECK สองตัวของ 0407 บนบรรทัดใบสั่งขาย (กฎเงินของบรรทัด · ช่วงเลขแพ็ค) ที่หลุดมาเป็น 23514 ดิบ — ต้องได้ข้อความไทยของกฎนั้น
+   ไม่ใช่ข้อความกลาง 500 "กรุณาลองใหม่" (กดซ้ำได้ผลเดิมทุกครั้ง) · 23514 ของ CHECK อื่นยังผ่านตัวแปลกลางตามเดิม */
+test('PR-5: 23514 ของ CHECK 0407 (กฎเงินของบรรทัด · ช่วงเลขแพ็ค) = 500 historical_so_line_money_rule พร้อมข้อความของกฎ — ทั้งสร้างและแก้', async () => {
+  for (const constraint of ['sales_order_lines_line_money_rule', 'sales_order_lines_pack_qty_range']) {
+    const error = { code: '23514', message: `new row for relation "sales_order_lines" violates check constraint "${constraint}"` };
+    const db = fakeDb({ rpc: [{ data: null, error }] });
+    const res = await run(db);
+    assert.deepEqual([res.status, res.body], [500, { error: LINE_PACK_TEXT.moneyRule, code: 'historical_so_line_money_rule' }], constraint);
+    assert.equal(res.audits.length, 0);
+    const edit = fakeDb({ loaded: editRow(), deals: [containerDeal()], rpc: [{ data: null, error }] });
+    const edited = await runEdit(edit);
+    assert.deepEqual([edited.status, edited.body], [500, { error: LINE_PACK_TEXT.moneyRule, code: 'historical_so_line_money_rule' }], constraint);
+    assert.equal(edited.audits.length, 0);
+    /* ⭐ ย้ายความคาดหวังโดยเจตนา (งวด PR-5 · มติผู้นำงาน 15/10/2026 — รีวิว 12/10 ข้อ M3 + U1 ทาง (ก)): เดิมยึดว่าจอพาไปขั้น ② (`'zones'` · `unmapped` เท็จ)
+       → วันนี้รหัสนี้ไม่อยู่ในรายการรหัสของขั้น ② = กิ่ง `unmapped` (ประโยคของ server + แจ้งผู้ดูแลระบบพร้อมรหัส ไม่มีปุ่ม — แผงยึดที่ historicalIntakeForm.test.mjs)
+       เพราะ 500 นี้คือ JS กับ SQL คิดยอดไม่ตรงกัน ไม่ใช่ของที่ผู้คีย์แก้ได้ · ที่ยังกันอยู่: คำตอบของ server ข้างบนเท่าเดิมทุกไบต์ · ไม่เสนอ "บันทึกอีกครั้ง" */
+    const exit = historicalSaveExit({ status: res.status, data: res.body });
+    assert.deepEqual([exit.kind, exit.goToStep, exit.canRetry, exit.unmapped], ['blocked', 'review', false, true]);
+  }
+  /* 23514 ของ CHECK ที่ไม่ใช่สองตัวนี้ไม่ถูกแย่ง — ยังได้รหัสของตารางแปลกลาง */
+  const other = fakeDb({ rpc: [{ data: null, error: { code: '23514', message: 'violates check constraint "sales_orders_origin_shape"' } }] });
+  const mapped = await run(other);
+  assert.deepEqual([mapped.status, mapped.body.code], [409, 'sales_orders_origin_shape']);
+  /* รหัสของฐานจาก 0409 (ตัวตรวจ/ตัวเขียน) ผ่านตัวแปลกลาง: 400 พร้อมข้อความไทยที่เอ่ยชื่อช่อง */
+  const sql = fakeDb({ rpc: [{ data: null, error: { code: 'P0001', message: 'historical_so_line_pack_qty_invalid' } }] });
+  const rejected = await run(sql);
+  assert.deepEqual([rejected.status, rejected.body.code], [400, 'historical_so_line_pack_qty_invalid']);
+  assert.match(rejected.body.error, /“แพ็ค\/เดือน”/);
+  assert.deepEqual(historicalSaveExit({ status: 400, data: rejected.body }).goToStep, 'zones');
 });
