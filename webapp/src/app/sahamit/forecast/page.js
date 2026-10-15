@@ -15,8 +15,8 @@ import Tabs from "@/components/ui/Tabs";
 import Modal from "@/components/Modal";
 import { useApiList } from "@/lib/excise/useApiList";
 import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
-import { userTeams } from "@/lib/permissions";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
+import { isSahamitDealOwner } from "@/lib/sahamit/dealOwner";
 import { fmtDate, fmtMoney, fmtNumber, NA } from "@/lib/format";
 import { roundTotal, roundSkuCount, roundMatrix, compareRounds } from "@/lib/sahamit/forecastClient";
 import { productMetaText } from "@/lib/sahamit/productMeta";
@@ -48,8 +48,8 @@ function ForecastPageInner() {
   // forecast line ที่ถูกสร้างเป็นโครงการไปแล้ว (กันสร้างซ้ำตั้งแต่ UI)
   const { data: mappedLineIds, loading: lMapped, error: mappedError, staleError: mappedStale, errorDetail: mappedDetail, loaded: mappedLoaded, reload: reloadMapped } = useApiList("/api/sahamit/forecast/mapped-lines");
   const mappedSet = useMemo(() => new Set((mappedLineIds || []).map(String)), [mappedLineIds]);
-  // ผู้ดูแลดีลสหมิตร = AE ทีม KA เท่านั้น (server เช็คซ้ำใน create-sales-deal)
-  const aeList = useMemo(() => (assignables || []).filter((u) => u.role === "ae" && userTeams(u).includes("KA")), [assignables]);
+  // ผู้ดูแลดีลสหมิตร = AE / Senior AE ทีม KA เท่านั้น — ด่านตัวเดียวกับ server (create-sales-deal)
+  const aeList = useMemo(() => (assignables || []).filter(isSahamitDealOwner), [assignables]);
   const canEdit = useCan("sahamit:edit");
 
   /* ── โหลดพัง ≠ ไม่มีรอบ · และลิสต์รองล้มต้องไม่กลายเป็น "ไม่มีหมวด / ฿0 / ยังไม่มีใครสร้างดีล / ไม่มี AE" ────────
@@ -161,9 +161,9 @@ function ForecastPageInner() {
   const dealPausedReason = dealBlocked.length
     ? `ยังสร้างแผนการขายไม่ได้ — ดึงข้อมูลไม่ได้: ${dealBlocked.map((s) => s.label).join(" · ")} (ดูข้อความด้านบน)`
     : dealPending ? "กำลังโหลดข้อมูลที่ใช้สร้างแผนการขาย…" : null;
-  // รายชื่อมาครบแล้วแต่ไม่มี AE ทีม KA สักคน = คำตอบจริง (ไม่ใช่ความล้ม) — ปุ่มยังพัก แต่ต้องบอกว่าเพราะอะไร
+  // รายชื่อมาครบแล้วแต่ไม่มี AE / Senior AE ทีม KA สักคน = คำตอบจริง (ไม่ใช่ความล้ม) — ปุ่มยังพัก แต่ต้องบอกว่าเพราะอะไร
   const submitPausedReason = dealPausedReason
-    || (usersLoaded && !aeList.length ? "ยังไม่มี AE ทีม KA ให้เลือกเป็นผู้ดูแล" : null);
+    || (usersLoaded && !aeList.length ? "ยังไม่มี AE / Senior AE ทีม KA ให้เลือกเป็นผู้ดูแล" : null);
   const router = useRouter();
   const searchParams = useSearchParams();
   const [selectedNo, setSelectedNo] = useState(null);
@@ -181,7 +181,7 @@ function ForecastPageInner() {
   // เลือก forecast line (ราย line = สินค้า×เดือน ของรอบที่ดู) → สร้าง "1 โครงการ" เข้าแผนการขาย
   const [selectedLines, setSelectedLines] = useState(() => new Set());
   const [dealMonth, setDealMonth] = useState(thisMonth()); // เดือนคาดได้รับ PO (Sales Forecast Month)
-  const [dealOwnerId, setDealOwnerId] = useState(""); // ผู้ดูแล (AE) (role=ae เท่านั้น)
+  const [dealOwnerId, setDealOwnerId] = useState(""); // ผู้ดูแล (AE / Senior AE ทีม KA)
   const [creating, setCreating] = useState(false);
   const [dealModalOpen, setDealModalOpen] = useState(false); // modal ยืนยันสร้างแผนการขาย
 
