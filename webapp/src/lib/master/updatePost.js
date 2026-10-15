@@ -18,6 +18,23 @@ import { apiFetch } from "@/lib/apiFetch";
 // แม้รอบแรกอัปขึ้น Drive สำเร็จไปแล้วและล้มตอนส่งข้อความ ⇒ ไฟล์รอบแรกกลายเป็นไฟล์กำพร้า
 // บน Drive (ไม่มีแถวไหนชี้ถึง · รอ `/api/cron/drive-orphans` มากวาด) และจ่าย egress ซ้ำฟรี ๆ
 // ⇒ ผู้เรียกส่ง `{ file, ref }` เข้ามาได้ · ใบที่พก `ref` มาแล้ว = อัปเสร็จแล้ว ข้ามไป
+//
+// ⚠️ **ข้อยกเว้นเดียว: server ตีกลับตัว ref เอง** (400 + `code: 'file_ref'` จากด่านใบรับของ
+// `POST /api/updates`) — ref ที่จำไว้ใช้ไม่ได้แล้ว (ใบรับหมดอายุ/ไม่ใช่ของผู้ส่ง) ส่งซ้ำกี่รอบ
+// ก็โดนตีกลับเหมือนเดิม ⇒ error ที่โยนออกไปติดธง `refRejected` ให้ผู้เรียกลืม ref
+// (`forgetUploadRefs`) แล้วการกดส่งครั้งถัดไปอัปไฟล์ใหม่ · ล้มแบบอื่นทุกแบบ (ต่อไม่ติด ·
+// 503 ตรวจใบรับไม่ได้ · 4xx อื่น) **ไม่ติดธง** — ref ยังดีอยู่ กติกาห้ามอัปซ้ำยังใช้เต็ม
+
+// ⚠️ ต้องตรงกับ `FILE_REF_ERROR_CODE` ใน `lib/upload/driveRefGate.js` — ไม่ import มาเพราะ
+// ไฟล์นั้นเป็นด่านฝั่ง server (ลากชั้นใบรับเข้า bundle ของเบราว์เซอร์) · เทสต์
+// `updatePostRetry.test.mjs` อ่านซอร์สสองฝั่งเทียบกันให้
+export const FILE_REF_ERROR_CODE = 'file_ref';
+
+/**
+ * ลืม ref ที่จำไว้ของไฟล์ที่ค้างในช่องพิมพ์ — คง `file` และช่องอื่นไว้ครบ
+ * เรียกเมื่อ error จาก `postUpdateWithFiles` ติดธง `refRejected` เท่านั้น
+ */
+export const forgetUploadRefs = (list = []) => list.map((p) => ({ ...p, ref: undefined }));
 
 /**
  * อัปไฟล์ทีละใบขึ้น Drive แล้วคืน ref ที่พร้อมแนบไปกับข้อความ
@@ -51,6 +68,7 @@ export async function uploadUpdateFiles({ entityType, entityId, files = [], onUp
 /**
  * ส่งอัปเดตหนึ่งข้อความ (ข้อความอย่างเดียว · ไฟล์อย่างเดียว · หรือทั้งคู่)
  * @throws {Error} ข้อความจริงจาก server — ผู้เรียกเป็นคนเลือกว่าจะแสดงยังไง
+ *   `err.refRejected === true` = server ตีกลับ ref ของไฟล์แนบ ผู้เรียกที่จำ ref ไว้ต้องลืมทิ้ง
  */
 export async function postUpdateWithFiles({
   entityType, entityId, body = '', files = [], onUploaded, ...rest
@@ -78,6 +96,11 @@ export async function postUpdateWithFiles({
     throw new Error(`ส่งข้อความไม่สำเร็จ — ${err.message} · กดส่งอีกครั้งได้`);
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'ส่งอัปเดตไม่สำเร็จ');
+  if (!res.ok) {
+    const err = new Error(data.error || 'ส่งอัปเดตไม่สำเร็จ');
+    // เฉพาะ 400 ที่บอกว่าตัว ref ถูกตีกลับ — 503 ของด่านเดียวกันไม่มี `code` (ลองใหม่ด้วย ref เดิมได้)
+    err.refRejected = res.status === 400 && data.code === FILE_REF_ERROR_CODE;
+    throw err;
+  }
   return data;
 }

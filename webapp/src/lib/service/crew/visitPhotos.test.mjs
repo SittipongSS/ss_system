@@ -26,7 +26,18 @@ const visitRow = (o = {}) => ({
   scheduledDate: TODAY, actualDate: TODAY, assigneeId: 'U-TECH', assistantIds: ['U-MATE'],
   attachments: [P1], customerSignatureUrl: null, updatedAt: '2026-09-28T01:00:00.000Z', ...o,
 });
-const seed = (visit = {}, opts) => fakeDb({ service_visits: [visitRow(visit)] }, opts);
+/* ทะเบียนใบรับการอัปโหลด (`upload_receipts`) — ด่านที่มาของรูปถามใบรับของ **คนเรียก** สำหรับรูปที่นัดยังไม่ได้เก็บ
+   `owned(user)` = P2 เป็นไฟล์ที่คนนั้นอัปเองเมื่อชั่วโมงก่อน (ทางปกติของจอ) · `seed(…, …, receipts)` = ตั้งใบรับเอง */
+// สวิตช์ผ่อนด่านใบรับต้องไม่ติดมาจากเครื่องที่รันเทสต์ — ชุดนี้ตรวจโหมดบังคับ
+delete process.env.UPLOAD_RECEIPT_MODE;
+const HOUR_MS = 60 * 60 * 1000;
+const idOf = (photo) => photo.url.split('/d/')[1].split('/')[0];
+const receipt = (photo, owner, o = {}) => ({
+  driveFileId: idOf(photo), userId: owner.id, entityType: 'service_visit', entityId: 'V1',
+  createdAt: new Date(Date.now() - HOUR_MS).toISOString(), claimedBy: null, claimedAt: null, ...o,
+});
+const seed = (visit = {}, opts, receipts = []) => fakeDb({ service_visits: [visitRow(visit)], upload_receipts: receipts }, opts);
+const owned = (user, visit = {}, opts) => seed(visit, opts, [receipt(P2, user)]);
 const post = (db, user, body) => callRoute(POST, {
   user, db, method: 'POST', path: '/api/service/visits/V1/photos', params: { id: 'V1' }, body,
 });
@@ -34,6 +45,8 @@ const del = (db, user, key) => callRoute(DELETE, {
   user, db, method: 'DELETE', path: `/api/service/visits/V1/photos?h=${encodeURIComponent(key ?? '')}`, params: { id: 'V1' },
 });
 const visitWrites = (db) => db.writes('service_visits');
+const receiptReads = (db) => db.calls.filter((c) => c.table === 'upload_receipts' && !c.write);
+const receiptOf = (db, photo) => db.tables.upload_receipts.find((r) => r.driveFileId === idOf(photo));
 const urls = (list) => (list || []).map((a) => a.url);
 
 /* ═══ ตรรกะล้วน ═══ */
@@ -55,7 +68,7 @@ test('แนบรูปได้เฉพาะงานที่ยังเ�
 
 /* ═══ ต่อสายถึง handler จริง ═══ */
 test('⭐ เพิ่มรูป = เขียนเฉพาะคอลัมน์รูป + updatedAt ภายใต้ด่าน updatedAt · คืนชุดล่าสุด', async () => {
-  const db = seed();
+  const db = owned(tech);
   const { status, json } = await post(db, tech, P2);
   assert.equal(status, 200, json.error);
   assert.deepEqual(urls(json.attachments), [P1.url, P2.url]);
@@ -64,6 +77,7 @@ test('⭐ เพิ่มรูป = เขียนเฉพาะคอลั�
   assert.deepEqual(write.filters, [['eq', 'id', 'V1'], ['eq', 'updatedAt', '2026-09-28T01:00:00.000Z']]);
   assert.notEqual(json.updatedAt, '2026-09-28T01:00:00.000Z');
   assert.equal(db.writes('audit_logs').length, 1);
+  assert.equal(receiptOf(db, P2).claimedBy, 'service_visits:V1', 'ใบรับของรูปที่ลงแถวแล้วถูกประทับด้วยนัดนี้');
 });
 
 test('🔴 ด่าน updatedAt: มีคนเขียนแทรก = อ่านใหม่แล้วเพิ่มบนชุดล่าสุด (รูปของผู้ช่วยไม่หาย) · แทรกสองรอบ = 409', async () => {
@@ -78,7 +92,7 @@ test('🔴 ด่าน updatedAt: มีคนเขียนแทรก = อ
     }
     return undefined;
   };
-  const once = seed({}, { hook: racer(1) });
+  const once = owned(tech, {}, { hook: racer(1) });
   const ok = await post(once, tech, P2);
   assert.equal(ok.status, 200, ok.json.error);
   assert.deepEqual(urls(ok.json.attachments), [P1.url, `${P3.url}&n=1`, P2.url], 'รูปที่แทรกเข้ามาต้องอยู่ครบ');
@@ -86,11 +100,12 @@ test('🔴 ด่าน updatedAt: มีคนเขียนแทรก = อ
   assert.equal(visitWrites(once)[1].filters.at(-1)[2], '2026-09-28T01:01:00.000Z', 'รอบสองใช้ updatedAt ของแถวที่อ่านใหม่');
 
   raced = 0;
-  const twice = seed({}, { hook: racer(2) });
+  const twice = owned(tech, {}, { hook: racer(2) });
   const busy = await post(twice, tech, P2);
   assert.equal(busy.status, 409);
   assert.equal(busy.json.error, PHOTO_RACE_ERROR);
   assert.equal(twice.tables.service_visits[0].attachments.some((a) => a.url === P2.url), false, 'ไม่เขียนทับ');
+  assert.equal(receiptOf(twice, P2).claimedBy, null, 'รูปไม่ได้ลงแถว = ใบรับยังไม่ถูกประทับ (กดใหม่ได้)');
 });
 
 test('ส่งรูปเดิมซ้ำ = 200 ชุดเดิม ไม่เขียน ไม่ลง audit · รูปไม่มี URL / URL ยาวเกิน = 400', async () => {
@@ -100,6 +115,7 @@ test('ส่งรูปเดิมซ้ำ = 200 ชุดเดิม ไม
   assert.deepEqual(urls(again.json.attachments), [P1.url]);
   assert.deepEqual(visitWrites(db), []);
   assert.equal(db.writes('audit_logs').length, 0);
+  assert.deepEqual(receiptReads(db), [], 'รูปที่นัดเก็บอยู่แล้วไม่ถามทะเบียนใบรับ');
   const empty = await post(db, tech, { url: '  ', kind: 'before' });
   assert.equal(empty.status, 400);
   const long = await post(db, tech, { url: `https://drive.google.com/${'x'.repeat(1000)}`, kind: 'before' });
@@ -163,7 +179,7 @@ test('🔴 ช่างแนบ/ลบรูปได้เฉพาะงา�
   }
   // หัวหน้า: ด่านเดิมของเส้นรูป (`photoEditError`) — นัดที่ยังไม่เริ่มแนบได้ · ยกเลิกไม่ได้ (เทสต์ข้างบน)
   for (const head of [senior, planner]) {
-    const db = seed(future);
+    const db = owned(head, future);
     const add = await post(db, head, P2);
     assert.equal(add.status, 200, `${head.role}: ${add.json.error}`);
     assert.deepEqual(urls(add.json.attachments), [P1.url, P2.url]);
@@ -175,4 +191,62 @@ test('ใบของคนอื่น = 403 เดิม (ด่านรา�
   const { status } = await post(db, tech, P2);
   assert.equal(status, 403);
   assert.deepEqual(visitWrites(db), []);
+});
+
+/* ═══ ด่านที่มาของรูป (รอบสองของมติเจ้าของ 08/10/2569 · docs/upload-receipts.md) ═══
+   🐞 เดิมเส้นนี้เก็บ URL อะไรก็ได้ แล้ว `visits/[id]/file` สตรีมไฟล์ตาม id ในสตริงนั้น — ทุกเคส "ต้องไม่ผ่าน" เคยได้ 200 */
+const RECEIPT_ERROR = 'ไฟล์นี้ไม่ได้มาจากการอัปโหลดของคุณในช่วง 24 ชั่วโมงที่ผ่านมา — อัปโหลดไฟล์ใหม่แล้วแนบอีกครั้ง';
+const SHAPE_ERROR = 'ไฟล์แนบต้องเป็นไฟล์ที่อัปโหลดผ่านระบบ — ลบไฟล์ออกแล้วแนบใหม่อีกครั้ง';
+const IN_USE_ERROR = 'ไฟล์นี้ถูกใช้กับรายการอื่นไปแล้ว — ลบไฟล์ออกแล้วแนบใหม่อีกครั้ง';
+const turnedAway = async (db, body, { status = 400, error, code = 'file_ref' }) => {
+  const res = await post(db, tech, body);
+  assert.equal(res.status, status, JSON.stringify(res.json));
+  assert.equal(res.json.error, error);
+  assert.equal(res.json.code ?? null, code);
+  assert.deepEqual(db.calls.filter((c) => c.write), [], 'ต้องไม่เขียนอะไรเลย (แถวนัด · ใบรับ · audit)');
+  assert.deepEqual(urls(db.tables.service_visits[0].attachments), [P1.url]);
+};
+
+test('🔴 รูปที่ไม่มีใบรับ · ใบรับของคนอื่น · ใบรับหมดอายุ = 400 พร้อม code · ไม่เขียนอะไรเลย', async () => {
+  await turnedAway(seed(), P2, { error: RECEIPT_ERROR });
+  await turnedAway(owned(mate), P2, { error: RECEIPT_ERROR });
+  const stale = new Date(Date.now() - 25 * HOUR_MS).toISOString();
+  await turnedAway(seed({}, undefined, [receipt(P2, tech, { createdAt: stale })]), P2, { error: RECEIPT_ERROR });
+});
+
+test('🔴 ใบรับที่ระเบียนอื่นใช้ไปแล้ว = 400 · ใบรับที่นัดนี้ประทับไว้เอง (ถอดรูปแล้วแนบกลับ) = ผ่าน', async () => {
+  for (const claimedBy of ['service_visits:V2', 'attachments:ATT-1']) {
+    await turnedAway(seed({}, undefined, [receipt(P2, tech, { claimedBy })]), P2, { error: IN_USE_ERROR });
+  }
+  const stale = new Date(Date.now() - 72 * HOUR_MS).toISOString();
+  const db = seed({}, undefined, [receipt(P2, mate, { claimedBy: 'service_visits:V1', createdAt: stale })]);
+  const back = await post(db, tech, P2);
+  assert.equal(back.status, 200, back.json.error);
+  assert.deepEqual(urls(back.json.attachments), [P1.url, P2.url]);
+  assert.deepEqual(db.writes('upload_receipts'), [], 'ไม่ประทับซ้ำ');
+});
+
+test('🔴 ลิงก์ที่ไม่ใช่ไฟล์ Drive ใบเดียว = 400 โดยไม่ถามทะเบียนใบรับ · อ่านทะเบียนไม่ได้ = 503 ไม่ติด code', async () => {
+  for (const url of [
+    'https://drive.example/photo-9',
+    'https://evil.example/file/d/1VictimFileEEEEEEEE/view',
+    `https://drive.google.com/open?id=1VictimFileEEEEEEEE&x=/d/${idOf(P2)}`,
+    '/api/service/visits/V2/file?h=abc',
+  ]) {
+    const db = owned(tech);
+    await turnedAway(db, { url, name: 'สัญญา.pdf', kind: 'other' }, { error: SHAPE_ERROR });
+    assert.deepEqual(receiptReads(db), [], url);
+  }
+  const down = owned(tech, {}, {
+    hook: (q) => (q.table === 'upload_receipts' ? { data: null, error: { message: 'connection reset' } } : undefined),
+  });
+  await turnedAway(down, P2, { status: 503, code: null, error: 'ตรวจที่มาของไฟล์ไม่ได้ในขณะนี้ — ลองแนบอีกครั้ง' });
+});
+
+test('งานที่แนบรูปไม่ได้แล้วตอบ 409 เดิมก่อนถามทะเบียนใบรับ', async () => {
+  const db = seed({ status: 'done' });
+  const res = await post(db, planner, P2);
+  assert.equal(res.status, 409);
+  assert.equal(res.json.error, PHOTO_CLOSED_ERROR);
+  assert.deepEqual(receiptReads(db), []);
 });

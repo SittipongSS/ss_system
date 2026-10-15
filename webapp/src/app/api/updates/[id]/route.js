@@ -1,5 +1,6 @@
 // ── แก้ / ลบ ข้อความในเธรดอัปเดต (mig 0163) ──────────────────────────────
 // PATCH  { action: 'edit', body?, attachments? } | { action: 'acknowledge' }
+//        `attachments` ตอนแก้ = เลือกจากไฟล์ที่ข้อความถืออยู่เท่านั้น (ถอดไฟล์ได้ เพิ่มไฟล์ไม่ได้)
 // DELETE soft delete (แถวไม่หาย — เหลือรอยว่าเคยมีข้อความ)
 //
 // ด่านทั้งหมดมาจาก lib/master/updateAccess.js (canMutateUpdate): เจ้าของข้อความ
@@ -9,11 +10,10 @@ import { getCurrentUser } from '@/lib/authUser';
 import {
   canMutateUpdate, canViewUpdates, loadUpdateParent, updateEntityConfig,
 } from '@/lib/master/updateAccess';
-import {
-  isAuthorableKind, kindAcceptsDueDate, sanitizeUpdateAttachments,
-} from '@/lib/master/updateTypes';
+import { isAuthorableKind, kindAcceptsDueDate } from '@/lib/master/updateTypes';
 import { findUpdate } from '@/lib/master/updates';
 import { recordAudit } from '@/lib/audit';
+import { FILE_REF_ERROR_CODE, REF_SHAPE_TEXT } from '@/lib/upload/driveRefGate';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +23,30 @@ async function loadContext(supabase, id) {
   if (!row) return { row: null, parent: null };
   const parent = await loadUpdateParent(supabase, row.entityType, row.entityId);
   return { row, parent };
+}
+
+/* 🔴 ไฟล์ของข้อความตอนแก้ = **ชุดย่อยของไฟล์ที่แถวถืออยู่** (รอบสองของมติเจ้าของ 08/10/2569)
+   🐞 เดิมรับ `attachments` จาก client ทั้งชุดแล้วเขียนทับ ⇒ แก้ข้อความของตัวเองให้ชี้ `driveFileId` ของไฟล์คนอื่น
+      แล้วเปิดอ่านผ่าน /api/updates/[id]/file ได้ (ช่องเดียวกับตอนโพสต์)
+   · จับคู่ด้วย `driveFileId` · ตัวที่แถวเก็บไว้โดยไม่มี id (รุ่นเก่า) จับคู่ด้วย `fileUrl` ที่ตรงกันทุกตัวอักษร
+   · ของที่เขียนกลับคือ **ตัวที่แถวเก็บไว้ทั้งก้อน** เรียงตามที่ส่งมา — ไม่มีช่องไหนของคำขอถูกเก็บ
+   · ตัวที่แถวเก็บไว้หนึ่งตัวถูกเลือกได้ครั้งเดียว ⇒ ส่งซ้ำ / ส่งตัวที่แถวไม่มี / ส่งที่ไม่ใช่ array = null (ตีกลับทั้งคำขอ)
+   ⚠️ ไม่ถามใบรับ — ไม่มีไฟล์ใหม่เข้ามาทางนี้ ไฟล์เดิมที่อายุเกิน 24 ชั่วโมงจึงไม่ถูกตีกลับ */
+function keptAttachments(stored, incoming) {
+  if (!Array.isArray(incoming)) return null;
+  const left = Array.isArray(stored) ? [...stored] : [];
+  const kept = [];
+  for (const item of incoming) {
+    if (!item || typeof item !== 'object') return null;
+    const at = left.findIndex((have) => {
+      if (!have || typeof have !== 'object') return false;
+      if (have.driveFileId) return have.driveFileId === item.driveFileId;
+      return typeof have.fileUrl === 'string' && !!have.fileUrl && have.fileUrl === item.fileUrl;
+    });
+    if (at < 0) return null;
+    kept.push(...left.splice(at, 1));
+  }
+  return kept;
 }
 
 export async function PATCH(request, { params }) {
@@ -50,8 +74,11 @@ export async function PATCH(request, { params }) {
       }
       const text = String(body.body ?? '').trim();
       const attachments = updateEntityConfig(row.entityType)?.attachments && 'attachments' in body
-        ? sanitizeUpdateAttachments(body.attachments)
+        ? keptAttachments(row.attachments, body.attachments)
         : (row.attachments || []);
+      if (!attachments) {
+        return Response.json({ error: REF_SHAPE_TEXT, code: FILE_REF_ERROR_CODE }, { status: 400 });
+      }
       if (!text && !attachments.length) {
         return Response.json({ error: 'ต้องมีข้อความหรือไฟล์แนบ' }, { status: 400 });
       }

@@ -40,7 +40,7 @@ import { canQuoteItem, quotedIdOf, quoteView } from "@/lib/master/updateQuote";
 import styles from "./UpdateThread.module.css";
 import Textarea from "@/components/ui/Textarea";
 import { useFileIntake } from "@/lib/ui/useFileIntake";
-import { postUpdateWithFiles } from "@/lib/master/updatePost";
+import { postUpdateWithFiles, forgetUploadRefs } from "@/lib/master/updatePost";
 import PhotoThumb from "@/components/ui/PhotoThumb";
 import { threadPollDelay, threadSignature } from "@/lib/ui/threadPollSchedule";
 import { apiFetch } from "@/lib/apiFetch";
@@ -407,7 +407,13 @@ export default function UpdateThread({
       setText(""); setPending([]); setDueDate(""); setReplyTo(null); setPicked([]);
       await load();
       onPosted?.();
-    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+    } catch (e) {
+      /* ⚠️ server ตีกลับตัว ref (ใบรับหมดอายุ/ไม่ใช่ของผู้ส่ง) — ลืม ref ที่จำไว้ ไม่งั้นกดส่ง
+         กี่รอบก็ส่ง ref เดิมไปโดนตีกลับซ้ำ · ไฟล์กับข้อความที่พิมพ์ยังอยู่ กดส่งอีกครั้ง = อัปใหม่
+         ล้มแบบอื่น (ต่อไม่ติด ฯลฯ) ไม่เข้าเงื่อนไขนี้ — ref ยังดี ห้ามอัปซ้ำ */
+      if (e.refRejected) setPending(forgetUploadRefs);
+      setErr(e.message);
+    } finally { setBusy(false); }
   };
 
   const mutate = async (id, init, okThen) => {
