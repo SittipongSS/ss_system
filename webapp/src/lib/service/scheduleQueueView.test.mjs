@@ -10,9 +10,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  DESK_REQUEST_ACK_TEXT, DESK_REQUEST_ORIGIN_TEXT,
   GATE_FIX, INTAKE_UPSTREAM_LABEL, REQUEST_ORIGIN_TEXT, buildScheduleQueue, dayText, draftsInRange, gateItemView,
   originText, ownerTone, relDayText, siteLoadText, surveyRequestRow, weekChipText,
 } from './scheduleQueueView.js';
+import {
+  SURVEY_METHOD_BACK_ORIGIN, SURVEY_METHOD_CHIP, SURVEY_METHOD_LABEL, SURVEY_QUEUE_DESK_CHIP,
+} from './surveyMethodSwitch.js';
+import { surveyQueueMethodBack } from './surveyQueueRepo.js';
 import * as queueWords from './queueWords.js';
 import { evaluateVisitGate, gateBlockedItems } from './visitGate.js';
 import { ALL_TEAMS } from './crewTeams.js';
@@ -415,6 +420,179 @@ test('⭐ ค้นหาเจอทุกอย่างที่ตาเห�
   assert.deepEqual(find('เลยวันที่ต้องการ'), ['R-queue']);
   assert.deepEqual(find('ลงคิวเข้าพื้นที่'), ['R-ack', 'R-queue'], 'คำสั่งบนการ์ด + ปุ่ม');
   assert.deepEqual(find('คำร้องประเมินพื้นที่'), ['R-requeue', 'R-ack', 'R-queue']);
+});
+
+/* ═══ ประเมินจากแบบ (งวด S2b · กลุ่ม E-1) ═══════════════════════════════════════════════
+   ⭐ งานโต๊ะ (ทุกพื้นที่ประเมินจากแบบ) ไม่ลงคิว ⇒ การ์ดมีได้ขั้นเดียวคือ "รอรับเรื่อง" พร้อมป้าย "จากแบบ · ไม่ต้องลงคิว"
+      และต้องไม่พูดเรื่องวันเข้าพื้นที่ / คนว่าง / ลงคิว · ใบที่หัวหน้าสลับกลับเป็นลงหน้างานบอกเหตุผลที่บรรทัดต้นเรื่อง
+   ⚠️ ธงสองตัว (`surveyNeedsVisit` · `surveyMethodBack`) มาจากตัวโหลด `loadSurveyQueueRequests` — ไม่ติดมา = การ์ดเดิมทุกช่อง */
+const deskRequest = survey({
+  id: 'R-desk', docNo: 'AS-26090015', status: 'pending', title: 'ประเมินจากแบบ 3 ห้องประชุม',
+  requestedByName: 'วิภา ขายเก่ง', submittedAt: '2026-09-21T03:00:00.000Z',
+  // วันเข้าพื้นที่ที่ค้างมาจากตอนยื่น — การ์ดงานโต๊ะต้องไม่หยิบมาพูด
+  requestedDueDate: '2026-09-25', requestedDueTime: '10:00', requestedResultDate: '2026-09-29',
+  surveyNeedsVisit: false, surveyMethodBack: null,
+});
+const backRequest = survey({
+  id: 'R-back', docNo: 'AS-26090016', status: 'acknowledged',
+  acknowledgedAt: '2026-09-22T01:00:00.000Z', acknowledgedByName: 'หัวหน้า TS',
+  requestedByName: 'ธนา ขายดี', requestedDueDate: '2026-09-30', submittedAt: '2026-09-20T03:00:00.000Z',
+  surveyNeedsVisit: true, surveyMethodBack: { reason: 'แบบไม่ตรงหน้างาน ต้องวัดเพดานจริง' },
+});
+const rowOf = (request, extra = {}) => surveyRequestRow(request, { todayIso: TODAY, sitesById, live: [], peopleInView: crewPeople, ...extra });
+
+test('⭐ S2b การ์ดงานโต๊ะรอรับเรื่อง: ป้าย "จากแบบ · ไม่ต้องลงคิว" · บรรทัดวัน = วันที่ต้องการผล · ไม่นับคนว่าง · คำสั่งไม่พูดถึงการลงคิว', () => {
+  const row = rowOf(deskRequest);
+  assert.equal(row.step, 'acknowledge', 'งานโต๊ะที่ยังไม่รับเรื่องยังเป็นการ์ด "รับเรื่อง" เหมือนทุกใบ');
+  assert.equal(row.methodChip, SURVEY_QUEUE_DESK_CHIP);
+  assert.equal(row.methodChip, 'จากแบบ · ไม่ต้องลงคิว');
+  assert.deepEqual(row.tag, { tone: 'warning', label: 'รอรับเรื่อง' }, 'ป้ายขั้นไม่เปลี่ยน — ป้ายวิธีเป็นป้ายที่สองข้าง ๆ');
+  // บรรทัดวัน: วันที่ผู้ขอต้องการผล (ไม่ใช่วันเข้าพื้นที่) · ไม่มีช่วงเวลา · ระยะห่างนับจากวันนั้น
+  assert.equal(row.dateLine, 'ต้องการผล อ. 29 ก.ย.');
+  assert.equal(row.timeLine, '');
+  assert.deepEqual(row.rel, { text: 'อีก 7 วัน', tone: '' });
+  // ช่องภาระ: วันส่งผลขึ้นไปอยู่บรรทัดวันแล้ว · ไม่มีใครต้องไปหน้างาน ⇒ ไม่นับคนว่าง แม้มีคนในมุมมองและวันเข้าที่ยังมาไม่ถึง
+  assert.equal(row.siteLoadText, '');
+  assert.equal(row.dayLoad, null);
+  assert.deepEqual(row.status, { label: 'ขั้น 1/2', tone: 'warning', text: DESK_REQUEST_ACK_TEXT });
+  assert.equal(DESK_REQUEST_ACK_TEXT, 'ยังไม่มีใครรับเรื่อง — รับเรื่องแล้วหัวหน้าฝ่ายบริการรับปากวันส่งผล ไม่ต้องลงคิว');
+  assert.equal(row.origin, DESK_REQUEST_ORIGIN_TEXT);
+  assert.equal(DESK_REQUEST_ORIGIN_TEXT, `คำร้องประเมินพื้นที่ · ${SURVEY_METHOD_LABEL.drawing}`);
+  assert.equal(row.origin, 'คำร้องประเมินพื้นที่ · ประเมินจากแบบ');
+  // ปุ่มเดียว: รับเรื่อง (ด่านตัวเดียวกับ server) — ไม่มีปุ่มลงคิว ไม่มีคำใบ้ ไม่มีปฏิทิน
+  assert.equal(row.actionLabel, 'รับเรื่อง');
+  assert.equal(row.actionHint, '');
+  assert.deepEqual(row.actions, {
+    acknowledge: true, commitDue: false, release: false, open: false, assign: false, report: false, calendar: false, delete: false,
+  });
+  assert.equal(row.ackBlocker, acknowledgeRequestError(row.request) || '');
+  // ช่องที่ไม่เกี่ยวกับวิธีประเมินยังเป็นของการ์ดคำร้องตามเดิม
+  assert.equal(row.code, 'AS-26090015');
+  assert.equal(row.href, '/requests/R-desk');
+  assert.equal(row.who.text, 'ผู้ขอ วิภา ขายเก่ง');
+  assert.equal(row.who.sub, 'ส่งเมื่อ จ. 21 ก.ย. · ค้างมา 1 วัน');
+  assert.equal(row.title, 'ประเมินจากแบบ 3 ห้องประชุม');
+  // ทั้งการ์ดไม่มีคำของงานหน้างาน
+  assert.doesNotMatch(row.haystack, /ลงคิวเข้าพื้นที่|ต้องการเข้า|วันนั้นว่าง|ช่วง 10:00/);
+
+  // ผู้ขอไม่ได้ให้วันส่งผล = คำเดิมของการ์ด · ไม่เดาระยะห่าง
+  const noDate = rowOf({ ...deskRequest, requestedResultDate: null });
+  assert.equal(noDate.dateLine, 'ผู้ขอไม่ระบุวันที่ต้องการ');
+  assert.deepEqual(noDate.rel, { text: '', tone: '' });
+  assert.equal(noDate.dayLoad, null);
+  // เลยวันที่ต้องการผลแล้ว = เตือน ด้วยหางเดิม "เลยวันที่ต้องการ"
+  assert.deepEqual(rowOf({ ...deskRequest, requestedResultDate: '2026-09-20' }).rel, { text: 'เลยวันที่ต้องการ 2 วัน', tone: 'warn' });
+});
+
+test('⭐ S2b ค้นหาเจอทุกอย่างที่ตาเห็นบนการ์ดงานโต๊ะ (ป้ายวิธี · คำสั้น · คำเต็ม) · รับเรื่องแล้วใบออกจากกลุ่มและตัวเลขบนแถบ', () => {
+  const requests = [...surveyRequests, deskRequest];
+  const find = (search) => build({ bucket: 'waiting', surveyRequests: requests, search }).groups
+    .flatMap((g) => g.rows).filter((r) => r.type === 'request').map((r) => r.id);
+  assert.deepEqual(find('จากแบบ'), ['R-desk']);
+  assert.deepEqual(find('ไม่ต้องลงคิว'), ['R-desk']);
+  assert.deepEqual(find('จากแบบ · ไม่ต้องลงคิว'), ['R-desk'], 'ป้ายทั้งคำ');
+  assert.deepEqual(find('ประเมินจากแบบ'), ['R-desk']);
+  assert.deepEqual(find(SURVEY_METHOD_CHIP.drawing), ['R-desk']);
+  assert.deepEqual(find('รับปากวันส่งผล'), ['R-desk'], 'คำสั่งบนการ์ด');
+  assert.deepEqual(find('ต้องการผล อ. 29 ก.ย.'), ['R-ack', 'R-desk'], 'วันเดียวกันของสองใบ — ใบหน้างานอยู่ช่องภาระ ใบงานโต๊ะอยู่บรรทัดวัน');
+  assert.deepEqual(find('ลงคิวเข้าพื้นที่'), ['R-ack', 'R-queue'], 'การ์ดงานโต๊ะไม่ถูกเรียกว่างานลงคิว');
+  // เรียงในกลุ่ม: นัดหลุด → รอรับเรื่อง (สองใบ ตามวันที่ต้องการแล้ววันส่ง) → รอลงคิว · บรรทัดย่อยนับรวมใบงานโต๊ะ
+  const group = build({ bucket: 'waiting', surveyRequests: requests }).groups.find((g) => g.key === 'requests');
+  assert.deepEqual(group.rows.map((r) => r.id), ['R-requeue', 'R-ack', 'R-desk', 'R-queue']);
+  assert.equal(group.sub, 'รอรับเรื่อง 2 · รอลงคิว 1 · ไม่มีนัดบนตาราง 1');
+  assert.equal(build({ bucket: 'waiting', surveyRequests: requests }).requestCount, 4);
+  // รับเรื่องแล้ว = ไม่ใช่การ์ดอีก (ไม่มีนัดให้ลง) ⇒ ตัวเลขบนแถบต้นทางงานลดลงเอง — หน้าไม่ต้องนับเอง
+  const acked = { ...deskRequest, status: 'acknowledged', acknowledgedAt: '2026-09-22T02:00:00.000Z' };
+  assert.equal(rowOf(acked), null);
+  const after = build({ bucket: 'waiting', surveyRequests: [...surveyRequests, acked] });
+  assert.equal(after.requestCount, 3);
+  assert.equal(after.rows.some((r) => r.id === 'R-desk'), false);
+});
+
+test('⭐ S2b ใบที่หัวหน้าสลับกลับเป็นลงหน้างาน: บรรทัดต้นเรื่องบอกเหตุผล · ยังเป็นการ์ด "ขั้น 2/2" ธรรมดา · ค้นเหตุผลเจอ', () => {
+  const row = rowOf(backRequest);
+  assert.equal(row.step, 'queue');
+  assert.equal(row.origin, SURVEY_METHOD_BACK_ORIGIN('แบบไม่ตรงหน้างาน ต้องวัดเพดานจริง'));
+  assert.equal(row.origin, 'หัวหน้าเปลี่ยนเป็นลงหน้างาน: แบบไม่ตรงหน้างาน ต้องวัดเพดานจริง');
+  assert.equal(row.methodChip, null, 'ใบกลับมาเป็นงานหน้างานแล้ว — ไม่มีป้ายจากแบบ');
+  assert.deepEqual(row.tag, { tone: 'warning', label: 'รอลงคิว' });
+  assert.equal(row.status.label, 'ขั้น 2/2');
+  assert.equal(row.status.text, 'รับเรื่องแล้ว โดย หัวหน้า TS — เลือกวัน เวลา เจ้าหน้าที่ และวันส่งผล');
+  assert.equal(row.dateLine, 'ต้องการเข้า พ. 30 ก.ย.');
+  assert.equal(row.actionLabel, 'ลงคิวเข้าพื้นที่');
+  assert.equal(row.actions.commitDue, true);
+  assert.equal(row.actions.acknowledge, false);
+  // ทุกช่องนอกจากต้นเรื่อง (และคำค้นที่ตามต้นเรื่อง) เท่ากับการ์ดของใบเดียวกันที่ไม่เคยสลับ
+  const { origin, haystack, request, ...rest } = row;
+  const { origin: plainOrigin, haystack: plainHaystack, request: plainRequest, ...plainRest } = rowOf({ ...backRequest, surveyMethodBack: null });
+  assert.deepEqual(rest, plainRest);
+  assert.equal(plainOrigin, REQUEST_ORIGIN_TEXT);
+  assert.ok(origin && haystack && request && plainHaystack && plainRequest);
+
+  const find = (search) => build({ bucket: 'waiting', surveyRequests: [...surveyRequests, backRequest], search }).groups
+    .flatMap((g) => g.rows).filter((r) => r.type === 'request').map((r) => r.id);
+  assert.deepEqual(find('วัดเพดานจริง'), ['R-back']);
+  assert.deepEqual(find('หัวหน้าเปลี่ยนเป็นลงหน้างาน'), ['R-back']);
+  assert.deepEqual(find('จากแบบ'), [], 'ใบที่กลับมาลงหน้างานไม่ถูกค้นเจอด้วยคำของงานโต๊ะ');
+
+  // เหตุผลว่าง / มีแต่ช่องว่าง = ต้นเรื่องเดิม (ไม่พิมพ์ "หัวหน้าเปลี่ยนเป็นลงหน้างาน: " ลอย ๆ)
+  assert.equal(rowOf({ ...backRequest, surveyMethodBack: { reason: '   ' } }).origin, REQUEST_ORIGIN_TEXT);
+  assert.equal(rowOf({ ...backRequest, surveyMethodBack: {} }).origin, REQUEST_ORIGIN_TEXT);
+  // เฉพาะขั้นรอลงคิว — ใบที่นัดหลุดบอกเรื่องของนัดเดิมที่บรรทัดคำสั่งอยู่แล้ว ต้นเรื่องคงเดิม
+  const requeued = rowOf({ ...surveyRequests[2], surveyNeedsVisit: true, surveyMethodBack: { reason: 'แบบไม่ตรงหน้างาน ต้องวัดเพดานจริง' } });
+  assert.equal(requeued.step, 'requeue');
+  assert.equal(requeued.origin, REQUEST_ORIGIN_TEXT);
+
+  /* ตะเข็บกับตัวโหลด: รูปของ `surveyMethodBack` ที่การ์ดอ่าน = รูปที่ `surveyQueueMethodBack` คืนจริง (`{ reason }` | null) */
+  const loaded = surveyQueueMethodBack([
+    { id: 'Z1', status: 'ok', methodReason: 'แบบไม่ตรงหน้างาน ต้องวัดเพดานจริง', methodChangedAt: '2026-09-22T02:00:00.000Z' },
+    { id: 'Z2', status: 'ok' },
+  ]);
+  assert.deepEqual(loaded, { reason: 'แบบไม่ตรงหน้างาน ต้องวัดเพดานจริง' });
+  assert.equal(rowOf({ ...backRequest, surveyMethodBack: loaded }).origin, row.origin);
+  assert.equal(surveyQueueMethodBack([{ id: 'Z1', status: 'ok' }]), null, 'ใบลงหน้างานที่ไม่เคยสลับ = null ⇒ ต้นเรื่องเดิม');
+});
+
+/* 🔴 สวิตช์ปิด / ใบลงหน้างานล้วน = การ์ดของวันนี้ทุกช่อง — เทียบกับผลของโค้ดก่อนงวด S2b ที่จดไว้ทั้งแถว
+   (ค่าที่เพิ่มมีคีย์เดียวคือ `methodChip: null` · คำค้นไม่ขยับสักตัวอักษร) */
+test('🔴 S2b การ์ดของใบลงหน้างานเท่ากับของวันนี้ทุกช่อง — ไม่ติดธงมา / ติดธง "ต้องมีนัด" มา ได้แถวเดียวกัน', () => {
+  const today = {
+    type: 'request', id: 'R-ack', visit: null, bucket: 'waiting', group: 'requests', step: 'acknowledge',
+    gate: null, ready: false, stale: false, tag: { tone: 'warning', label: 'รอรับเรื่อง' }, readyText: '',
+    code: 'AS-26090011', href: '/requests/R-ack', kind: 'survey', kindLabel: 'ประเมินพื้นที่',
+    siteCode: 'ST-1001 · BKK-C', siteName: 'เซ็นทรัลเวิลด์', customer: 'บจก. เซ็นทรัล',
+    dateLine: 'ต้องการเข้า ศ. 25 ก.ย.', timeLine: 'ช่วง 10:00', rel: { text: 'อีก 3 วัน', tone: '' },
+    who: { text: 'ผู้ขอ วิภา ขายเก่ง', tone: '', sub: 'ส่งเมื่อ ส. 19 ก.ย. · ค้างมา 3 วัน', linkId: null },
+    siteLoadText: 'ต้องการผล อ. 29 ก.ย.',
+    dayLoad: { text: 'วันนั้นว่าง 2 จาก 2 คน', tone: 'ok', free: crewPeople },
+    gateItems: [],
+    status: { label: 'ขั้น 1/2', tone: 'warning', text: 'ยังไม่มีใครรับเรื่อง — รับเรื่องก่อน แล้วจึงลงคิวเข้าพื้นที่' },
+    title: 'ประเมินล็อบบี้ชั้น 1', warns: [], origin: 'คำร้องประเมินพื้นที่ · ยังไม่มีนัด',
+    actionLabel: 'รับเรื่อง', actionHint: '', ackBlocker: '', deleteBlocker: '',
+    actions: {
+      acknowledge: true, commitDue: false, release: false, open: false, assign: false, report: false, calendar: false, delete: false,
+    },
+    haystack: 'as-26090011 ประเมินพื้นที่ รอรับเรื่อง รอรับเรื่อง st-1001 · bkk-c เซ็นทรัลเวิลด์ บจก. เซ็นทรัล ต้องการเข้า ศ. 25 ก.ย. ช่วง 10:00 อีก 3 วัน ผู้ขอ วิภา ขายเก่ง ส่งเมื่อ ส. 19 ก.ย. · ค้างมา 3 วัน ต้องการผล อ. 29 ก.ย. วันนั้นว่าง 2 จาก 2 คน ขั้น 1/2 ยังไม่มีใครรับเรื่อง — รับเรื่องก่อน แล้วจึงลงคิวเข้าพื้นที่ ประเมินล็อบบี้ชั้น 1 คำร้องประเมินพื้นที่ · ยังไม่มีนัด รับเรื่อง',
+  };
+  const { request, site, ...row } = rowOf(surveyRequests[0]);
+  assert.deepEqual(row, { ...today, methodChip: null });
+  assert.equal(request, surveyRequests[0]);
+  assert.equal(site, sitesById.get('S1'));
+
+  // สามขั้นของใบลงหน้างาน: ธงจากตัวโหลด (`surveyNeedsVisit: true` · `surveyMethodBack: null`) ไม่เปลี่ยนอะไรบนการ์ด
+  for (const base of surveyRequests.slice(0, 3)) {
+    const { request: plainRequest, ...plain } = rowOf(base);
+    const { request: flaggedRequest, ...flagged } = rowOf({ ...base, surveyNeedsVisit: true, surveyMethodBack: null });
+    assert.deepEqual(flagged, plain, base.id);
+    assert.equal(plain.methodChip, null, base.id);
+    assert.equal(plain.origin, REQUEST_ORIGIN_TEXT, base.id);
+    assert.doesNotMatch(plain.haystack, /จากแบบ|ไม่ต้องลงคิว/, base.id);
+    assert.ok(plainRequest && flaggedRequest);
+  }
+  // ธงที่ไม่ใช่ `false` ตรงตัวไม่ทำให้ใบเป็นงานโต๊ะ (กติกาเดียวกับ surveyQueueStep / commitDueMode)
+  for (const flag of [null, undefined, 0, '', 'false']) {
+    assert.equal(rowOf({ ...surveyRequests[0], surveyNeedsVisit: flag }).methodChip, null, String(flag));
+  }
 });
 
 /* ⭐ mig 0392 (D15): โซนที่ไม่มีรอบขายเป็นงานของ SA (ฝ่ายขายเลือกโซนในใบ · TS ผูกไม่ได้แล้ว) ⇒ ร่างไปอยู่ "รอฝ่ายอื่น"

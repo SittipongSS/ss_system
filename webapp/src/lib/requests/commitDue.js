@@ -17,6 +17,7 @@
 import { requestKindMeta, requestNeedsRef } from '@/lib/master/requestTypes';
 import { dueIsStale } from '@/lib/requests/dueRound';
 import { NA, fmtDate } from '@/lib/format';
+import { requestAwaitingDue } from '@/lib/requests/statuses';
 import { businessDate } from '@/lib/businessDate';
 import {
   SURVEY_DESK_RESCHEDULE_REASON_ERROR, SURVEY_VISIT_KIND, surveyDeskResultDate, surveyScheduleGaps, surveyVisitDraft,
@@ -416,4 +417,24 @@ export function deskRescheduleView(request, form) {
     gaps,
     payload: { action: 'reschedule', committedResultDate: f.date, reason: f.reason },
   };
+}
+
+/**
+ * ⭐ ปุ่มวันส่งผลของ **งานโต๊ะ** บนจอของหัวหน้า (งวด S2b §2.5 g) — การ์ดจัดการผลและหน้าคำร้องถามตัวนี้ตัวเดียว
+ *   `null` = ไม่มีปุ่ม · `{ kind: 'commit', label: 'รับปากวันส่งผล' }` = ยังไม่ได้รับปากวัน (หรือวันที่รับปากเป็นของรอบก่อน)
+ *   · `{ kind: 'reschedule', label: 'เลื่อนวันส่งผล' }` = รับปากไว้แล้ว เปลี่ยนวันได้ (เหตุผลบังคับ — `deskRescheduleView`)
+ * มีปุ่มต่อเมื่อครบทุกข้อ: ใบประเมินพื้นที่ที่เป็นงานโต๊ะ (`commitDueMode(request) === 'desk'` — ธง `surveyNeedsVisit === false` ตรงตัว) ·
+ *   รับเรื่องแล้ว · ยังไม่ส่งผล · ไม่ถูกยกเลิก/ปิด (รวมผู้ขอปิดฝั่งตัวเองไปแล้ว) · คนดูรับปากได้ (`canCommit` — หัวหน้าฝ่ายบริการ)
+ * ⚠️ `kind` ใช้ฐานเดียวกับ route: `requestAwaitingDue` จริง = ก้าวรับปาก (`commit-due`) · ไม่จริง = เลื่อน (`reschedule`)
+ *    ⇒ ปุ่มกับ route เห็นตรงกันเสมอ (ปุ่ม "เลื่อน" บนใบที่ route ยังรอรับปาก = 409)
+ * ⚠️ ไม่มีสิทธิ์ = ไม่มีปุ่ม (กติกา ui-visibility) — ผู้วางคิวได้ประโยค `plannerNote` ของ `commitDueLabels` แทน
+ */
+export function deskDueAction(request, { canCommit = false } = {}) {
+  if (canCommit !== true || !request) return null;
+  // งานโต๊ะ = หัวข้อที่มีสถานที่ (ใบประเมินพื้นที่) + ธงจากแถวพื้นที่ — ถามผ่าน `commitDueMode` ตามกติกาของไฟล์ (ไม่เทียบชื่อหัวข้อเอง)
+  if (commitDueMode(request) !== 'desk') return null;
+  if (request.status !== 'acknowledged' || request.answeredAt || request.cancelledAt || request.closedAt) return null;
+  return requestAwaitingDue(request)
+    ? { kind: 'commit', label: DESK_COMMIT_ACTION }
+    : { kind: 'reschedule', label: DESK_RESCHEDULE_TITLE };
 }

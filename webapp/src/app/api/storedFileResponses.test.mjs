@@ -48,6 +48,7 @@ const STREAM_ROUTES = {
   'sales-planning/quotations/[id]/route.js': { kind: 'system', why: 'ฝังลายเซ็นเป็น data URI ลงเอกสารที่ตรึง — ตอบเป็น JSON ไม่ส่งไบต์ออก' },
   'sales-planning/sales-orders/[id]/route.js': { kind: 'system', why: 'อ่านลายเซ็นมาฝังในเอกสาร SO ฝั่ง server — ตอบเป็น JSON ไม่ส่งไบต์ออก' },
   'service/surveys/[id]/send/route.js': { kind: 'system', why: 'เตรียมรูปประเมินพื้นที่ (ย่อ/แปลงด้วย sharp) ก่อนตรึงเอกสาร — ตอบเป็น JSON ไม่ส่งไบต์ออก' },
+  'service/surveys/[id]/zones/[zoneId]/plan-from-sales/route.js': { kind: 'system', why: 'คัดลอกไฟล์ของฝ่ายขายเป็นภาพแบบของพื้นที่จากแบบ (surveyPlanCopy · งวด S2b) — ไบต์ถูกอ่านแล้วอัปกลับขึ้น Drive เป็นไฟล์ใหม่ ไม่ส่งออกให้เบราว์เซอร์ · ชนิดไฟล์ใหม่มาจาก Drive (JPG/PNG เท่านั้น) · ตอบเป็น JSON' },
 };
 /* เส้นของไฟล์นี้ (สี่เส้นที่เคยส่ง header เอง/redirect ดิบ) — ตรวจละเอียดกว่าทะเบียนรวม */
 const HARDENED = [

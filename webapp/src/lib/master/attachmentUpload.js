@@ -15,6 +15,10 @@ import { apiFetch } from "@/lib/apiFetch";
 // สเต็ปแรกอยู่ใน lib/master/uploadFile.js — เบราว์เซอร์ยิงไบต์ขึ้น Drive เอง ไม่ผ่าน
 // function (เพดาน request body ของโฮสติ้งคือ 4.5 MB)
 //
+// ⭐ **ขั้นสองแยกเป็น `attachUploadedFile`** (ประเมินจากแบบ · งวด S2b) — มีผู้เรียกที่สองซึ่งได้ไฟล์บน Drive มาโดยไม่ได้อัปไบต์เอง:
+//    ปุ่ม "ใช้รูปนี้เป็นภาพแบบของพื้นที่นี้" ให้ server คัดลอกไฟล์ของฝ่ายขายเป็นไฟล์ใหม่ (`lib/service/surveyPlanReuse.js`)
+//    แล้วแนบผ่านขั้นสองตัวเดียวกันนี้ — ด่านของเส้นไฟล์แนบ (สิทธิ์ · ใบรับ · "มีแถวอื่นถือ") จึงเดินครบเหมือนอัปเอง
+//
 // คืน { ok, error, attachment } — ไม่ toast เอง ผู้เรียกเป็นคนเลือกว่าจะแสดงยังไง
 // `attachment` = แถวที่ route เพิ่งสร้าง (body 201) · อ่านไม่ออก = null (ไฟล์บันทึกแล้ว — ไม่ใช่ error)
 //   ผู้เรียกที่ต้องผูก id ต่อ (รูปปฏิทินวางบิลของลูกค้า → `years[YYYY].fileId`) ใช้ตัวนี้แทนการเดาจากรายการก่อน/หลัง
@@ -33,6 +37,27 @@ export async function uploadAttachment({
     return { ok: false, error: err?.message || 'อัปโหลดไฟล์ไม่สำเร็จ' };
   }
 
+  return attachUploadedFile({
+    entityType,
+    entityId,
+    docType,
+    url,
+    driveFileId,
+    fileName: file.name,
+    mimeType: file.type || null,
+    sizeBytes: file.size,
+    metadata,
+  });
+}
+
+/**
+ * ขั้นสองของการแนบ: บันทึกแถว metadata ให้ไฟล์ที่ **ขึ้น Drive แล้ว** (และผู้เรียกถือใบรับการอัปของไฟล์นั้น)
+ * ⚠️ ขั้นนี้ล้ม = **ลบไฟล์ที่เพิ่งขึ้นทิ้ง** (`DELETE /api/upload` — เส้นถอยที่ตรวจใบรับเอง) ไม่งั้นเหลือไฟล์กำพร้าบน Drive
+ * @returns `{ ok, error, attachment }` — `attachment` = แถวที่ route เพิ่งสร้าง · อ่านไม่ออก = `null` (ไฟล์บันทึกแล้ว ไม่ใช่ error)
+ */
+export async function attachUploadedFile({
+  entityType, entityId, docType, url, driveFileId, fileName, mimeType, sizeBytes, metadata = null,
+}) {
   const res = await apiFetch('/api/master/attachments', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -42,9 +67,9 @@ export async function uploadAttachment({
       docType,
       fileUrl: url,
       driveFileId,
-      fileName: file.name,
-      mimeType: file.type || null,
-      sizeBytes: file.size,
+      fileName,
+      mimeType: mimeType || null,
+      sizeBytes,
       metadata,
     }),
   });

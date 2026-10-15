@@ -38,7 +38,8 @@ import { fmtDate } from '@/lib/format';
 import { surveyZoneName } from './survey';
 import { isDrawingZone, surveyMethodMix, surveyNeedsVisit } from './surveyMethod';
 import {
-  SURVEY_CONFIRM_LABEL, SURVEY_CONFIRM_MISSING, SURVEY_METHOD_LABEL, SURVEY_ZONE_TAG, surveyZoneNamesText,
+  SURVEY_CONFIRM_ACTION_READY, SURVEY_CONFIRM_LABEL, SURVEY_CONFIRM_MISSING, SURVEY_CONFIRM_PENDING_NOTE, SURVEY_METHOD_LABEL,
+  SURVEY_ZONE_TAG, surveyZoneNamesText,
 } from './surveyMethodSwitch';
 import { SURVEY_SIGN_ACCOUNT, surveyReportSignFileLines, surveyReportSignersText } from './surveyReportSigners';
 import { VISIT_STATUS_LABELS, isOpenVisit } from './visitStatus';
@@ -198,7 +199,11 @@ export function surveySendConfirm({
     const signed = surveyReportSignersText(signers);
     if (signed) effects.push(`เอกสารจะพิมพ์ลายเซ็นที่บันทึกไว้ของ ${signed}`);
   }
-  for (const line of [...new Set(textList(warnings))]) effects.push(`ฉบับลูกค้าจะพิมพ์ตามที่กรอกไว้ — ${line}`);
+  /* ⚠️ ใบที่มีพื้นที่จากแบบ: การส่งรอบนี้ไม่ออกเอกสาร ⇒ ไม่มีฉบับลูกค้าให้ "พิมพ์ตามที่กรอกไว้" — ข้อนี้จะขัดกับข้อกันเอกสารข้างบน
+     (🐞 UAT S2b S05 `hold-with-warnings` · server คิด `warnings` เสมอไม่ว่าเอกสารถูกพักหรือไม่) · งวด S3 ถอดข้อกันเมื่อไร ถอดกิ่งนี้ด้วย */
+  if (!byDrawing) {
+    for (const line of [...new Set(textList(warnings))]) effects.push(`ฉบับลูกค้าจะพิมพ์ตามที่กรอกไว้ — ${line}`);
+  }
   // ใบที่มีพื้นที่จากแบบบอกไปแล้วข้างบนว่าเอกสารยังไม่ออก — "อาจออกเลข SU ด้วย" จะขัดกับข้อนั้น
   if (documentUnknown === true && !byDrawing) {
     effects.push('อ่านสถานะเอกสารประเมินไม่สำเร็จ — ถ้าระบบเปิดออกเอกสารตอนส่งผลอยู่ การส่งครั้งนี้จะออกเลข SU ด้วย');
@@ -214,6 +219,8 @@ export function surveySendConfirm({
       question: 'ต้องเข้ายืนยันหน้างานภายหลังไหม',
       value: confirm,
       missing: SURVEY_CONFIRM_MISSING,
+      /* ไทล์ "ต้องยืนยันหน้างาน" เอ่ยถึงปุ่มของฝ่ายขายที่ยังไม่มีจนถึงงวด S5 — จอพิมพ์ประโยคนี้ใต้ไทล์ (งวด S5 = `null`) */
+      pendingNote: SURVEY_CONFIRM_ACTION_READY ? null : SURVEY_CONFIRM_PENDING_NOTE,
       options: [
         {
           value: 'needed',

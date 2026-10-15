@@ -126,6 +126,9 @@
 
 .surveyWrap tr[data-cut] > td { color: var(--text-3); }
 
+/* ป้ายวิธีประเมิน ("จากแบบ" · งวด S2b) ใต้ชื่อพื้นที่ — ขึ้นบรรทัดของตัวเองใต้บรรทัดรอง (`cell-sub` เป็น block) */
+.surveyMethodTag { margin-top: var(--space-1); }
+
 /* แถบนัดของเจ้าหน้าที่บนใบประเมิน — สถานะก่อน แล้วรายละเอียดตามหลังในบรรทัดเดียว */
 .surveyUnable {
   color: var(--amber);

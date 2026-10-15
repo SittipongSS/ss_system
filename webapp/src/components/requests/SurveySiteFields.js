@@ -20,9 +20,12 @@ import Input from "@/components/ui/Input";
 import OptionTiles from "@/components/ui/OptionTiles";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import ServiceSiteModal from "@/components/service/ServiceSiteModal";
+import SurveyMethodChip from "@/components/service/SurveyMethodChip";
 import { apiJson } from "@/lib/apiFetch";
 import { naText } from "@/lib/format";
 import { surveyZonePackageText } from "@/lib/service/survey";
+// คำของวิธีประเมิน ("จากแบบ") มาจากที่เดียว — ฟอร์มไม่พิมพ์เอง (ประเมินจากแบบ · งวด S2b)
+import { SURVEY_METHOD_CHIP } from "@/lib/service/surveyMethodSwitch";
 import { zoneNameKey } from "@/lib/service/surveyRequest";
 import { sitePickSummary, zonePickList } from "@/lib/service/zonePickState";
 import { floorLabel, normalizeFloor } from "@/lib/service/zoneCode";
@@ -211,14 +214,20 @@ export default function SurveySiteFields({
   );
 
   /* บรรทัดสรุปใต้ชื่อสถานที่ — "4 พื้นที่ · วัดแล้ว 2 · ขายแล้ว 1" (ม็อก §11)
-     ⭐ ทำให้คนเลือกไซต์ได้ถูกตั้งแต่ก่อนกด ไม่ต้องกดเข้าไปดูทีละใบ */
+     ⭐ ทำให้คนเลือกไซต์ได้ถูกตั้งแต่ก่อนกด ไม่ต้องกดเข้าไปดูทีละใบ
+     ⭐ สถานที่ที่มีพื้นที่ซึ่งผลล่าสุดมาจากแบบ (ประเมินจากแบบ · งวด S2b · แผน §5): ท่อนกลางแยกเป็น
+        "วัดหน้างาน n · จากแบบ k" (n ไม่นับ k — `sitePickSummary` แยกสองช่องมาให้แล้ว) — พื้นที่จากแบบไม่ถูกเรียกว่า "วัดแล้ว"
+        ⚠️ ไม่มีพื้นที่จากแบบ (`sum.drawing` เป็น 0) = ประโยคเดิมทุกตัวอักษร */
   const summaryOf = (siteRow) => {
     const entry = (registry?.sites || []).find((x) => x.id === siteRow.id);
     if (!entry || !entry.zoneCount) return null;
     const sum = sitePickSummary(entry);
+    const assessed = sum.drawing > 0
+      ? [sum.measured ? `วัดหน้างาน ${sum.measured}` : null, `${SURVEY_METHOD_CHIP.drawing} ${sum.drawing}`]
+      : [sum.measured ? `วัดแล้ว ${sum.measured}` : null];
     return [
       `${sum.zones} พื้นที่`,
-      sum.measured ? `วัดแล้ว ${sum.measured}` : null,
+      ...assessed,
       sum.sold ? `ขายแล้ว ${sum.sold}` : null,
       sum.pending ? `มีใบสั่งวัดค้าง ${sum.pending}` : null,
     ].filter(Boolean).join(" · ");
@@ -524,6 +533,9 @@ export default function SurveySiteFields({
                   }}
                 >
                   <b>{tile.name}</b>
+                  {/* ป้ายวิธีของผลล่าสุด ("ประเมินจากแบบ" / "ประเมินจากแบบ · รอยืนยันหน้างาน") — คำมาจาก `zonePickState` (`tile.tag`)
+                      ผลลงหน้างาน / ยังไม่ประเมิน = ไม่มีคำ ⇒ ไม่วาดอะไร · ไทล์ยังเป็นปุ่มเดียว ป้ายอยู่ข้างใน (ไม่ใช่ปุ่มซ้อนปุ่ม) */}
+                  <SurveyMethodChip label={tile.tag} className={styles.zoneTileMethod} />
                   <small className={styles.hint}>
                     {[tile.code, floorLabel(tile.floor)].filter(Boolean).join(" · ")}
                   </small>

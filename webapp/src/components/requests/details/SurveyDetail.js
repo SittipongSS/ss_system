@@ -13,6 +13,11 @@
 //
 // ⚠️ พื้นที่ที่ถูก **ตัด** (`status='cut'`) ยังอยู่ในตาราง แต่ไม่เข้ายอดรวม — หายไป
 // เฉย ๆ แปลว่าคนอ่านไม่มีทางรู้ว่าเคยขอให้วัดแล้วเจ้าหน้าที่ตัดทิ้งเพราะอะไร
+//
+// ✏️ **ประเมินจากแบบ** (mig 0408 · งวด S2b กลุ่ม D-4) — ถามจาก `surveyRequestDrawingSummary` ตัวเดียว:
+//   `banner` = แถบแจ้งเหนือตาราง (ตัวเดียวกับหน้าคำร้องแบบไทม์ไลน์) · `rows[id]` = พื้นที่จากแบบ **เท่านั้น** (ป้ายวิธี + คำของแถวที่ถูกเพิ่ม)
+//   · ใบลงหน้างานล้วนได้ `{ banner: null, rows: {} }` ⇒ จอนี้วาดเหมือนเดิมทุกตัวอักษร (คำ "เจ้าหน้าที่เพิ่มหน้างาน" ของแถวลงหน้างานไม่ถูกแตะ)
+//   · ใบที่ประเมินจากแบบทั้งใบ (`surveyNeedsVisit === false`) ไม่วาดบรรทัดนัดของเจ้าหน้าที่ — ใบนี้ไม่มีใครต้องเข้าพื้นที่
 import Link from "next/link";
 import { ClipboardList } from "lucide-react";
 import { DetailCard } from "@/components/ui/DetailPage";
@@ -23,6 +28,9 @@ import {
   surveyChangeCounts, surveyChangeText, surveyPackageMixText, surveyTotals, surveyZonePackageText,
   surveyZoneSuggestedDiffText, surveyZoneSummary,
 } from "@/lib/service/survey";
+import { surveyRequestDrawingSummary } from "@/lib/service/surveyJob";
+import SurveyMethodChip from "@/components/service/SurveyMethodChip";
+import { SurveyDrawingBanner } from "./SurveyRequestView";
 import styles from "./details.module.css";
 
 const STATUS_LABEL = { ok: "", cut: "ตัดออก", added: "เจ้าหน้าที่เพิ่มหน้างาน" };
@@ -56,8 +64,12 @@ const VISIT_STATE = {
 export default function SurveyDetail({ request, canWorkSurvey = false }) {
   const zones = request.surveyZones || [];
   const site = request.surveySite || null;
-  const visit = request.surveyVisit || null;
+  /* ใบที่ประเมินจากแบบทั้งใบ (`false` ตรงตัว) ไม่วาดบรรทัดนัด — ป้ายของมัน ("อยู่บนตารางเจ้าหน้าที่" · "เข้าพื้นที่แล้ว" …)
+     จะพูดสวนกับแถบแจ้งข้างล่าง · ไม่มีธง / ค่าอื่น = ใบที่ต้องมีนัด = บรรทัดเดิม */
+  const visit = request.surveyNeedsVisit === false ? null : request.surveyVisit || null;
   if (!zones.length && !site) return null;
+  /* เรื่อง "ประเมินจากแบบ" ของใบ — ว่าง (`{ banner: null, rows: {} }`) บนใบลงหน้างานล้วน */
+  const summary = surveyRequestDrawingSummary(request);
   const totals = surveyTotals(zones);
   const measured = zones.some((z) => surveyZoneSummary(z).volumeCbm > 0);
   /* "ที่ขอไป" เทียบ "ที่ได้กลับมา" (มติข้อ 6 · แผน §9 ข้อ 2)
@@ -151,6 +163,9 @@ export default function SurveyDetail({ request, canWorkSurvey = false }) {
         </StatusNotice>
       )}
 
+      {/* ✏️ ใบที่ส่งผลแล้วและมีพื้นที่จากแบบ — แถบตัวเดียวกับหน้าคำร้องแบบไทม์ไลน์ (ประโยคล้วน ไม่มีปุ่ม) */}
+      {summary.banner ? <SurveyDrawingBanner banner={summary.banner} /> : null}
+
       <TableScroll surface="embedded" cells="stacked" minWidth={640}>
         <table>
           <thead>
@@ -167,6 +182,11 @@ export default function SurveyDetail({ request, canWorkSurvey = false }) {
           <tbody>
             {zones.map((zone, index) => {
               const s = surveyZoneSummary(zone);
+              /* มีรายการเฉพาะพื้นที่จากแบบ — ป้ายวิธี + คำของแถวที่ถูกเพิ่มบนใบ ("เพิ่มโดย {ฝ่าย}": หัวหน้าเพิ่มที่โต๊ะ
+                 ไม่มีใครอยู่หน้างาน) · แถวลงหน้างาน (ไม่มีรายการ) และแถวจากแบบที่ไม่ได้ถูกเพิ่ม ใช้คำเดิมของจอนี้ */
+              const entry = summary.rows[zone.id] || null;
+              const { chip: methodLabel } = entry || {};
+              const statusLabel = entry?.addedLabel || STATUS_LABEL[s.status];
               return (
                 <tr key={zone.id} data-cut={s.status === "cut" ? "1" : undefined}>
                   <td>
@@ -177,10 +197,11 @@ export default function SurveyDetail({ request, canWorkSurvey = false }) {
                       {zone.zoneId
                         ? (zone.zoneCode || "พื้นที่นี้ถูกลบจากทะเบียนแล้ว")
                         : "พื้นที่ใหม่ — ได้รหัส ZN ตอนกดส่งใบ"}
-                      {STATUS_LABEL[s.status] ? ` · ${STATUS_LABEL[s.status]}` : ""}
+                      {statusLabel ? ` · ${statusLabel}` : ""}
                       {zone.cutReason ? ` · ${zone.cutReason}` : ""}
                       {zone.note ? ` · ${zone.note}` : ""}
                     </span>
+                    <SurveyMethodChip label={methodLabel} className={styles.surveyMethodTag} />
                   </td>
                   {measured && <td className="num">{naText(num(s.areaSqm))}</td>}
                   {measured && <td className="num">{naText(num(s.volumeCbm))}</td>}

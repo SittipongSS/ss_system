@@ -344,14 +344,147 @@ test('แถวพื้นที่ · อ่านรูปไม่สำเ�
   }
 });
 
+/* ── 4ข) ตารางของใบที่ยังไม่ส่งผล เดินตามวิธี (มติเจ้าของ 12/10 · S2b-followups ข้อ 2) ──────────────
+   ⭐ ฝ่ายขายกับผู้วางคิวเห็นตารางนี้บนหน้าคำร้อง: ใบจากแบบทั้งใบเคยมีคอลัมน์ "ภาพกว้าง" (ขีดทุกแถว) กับ "หน้างาน" (ว่างทุกแถว)
+     จากแบบทั้งใบ   ไม่มีคอลัมน์ภาพกว้าง · หัวคอลัมน์สุดท้าย "แบบ" · ช่องของแถว "แบบ n" (คำเดียวกับตารางผล) · ยังไม่มี = ขีด
+     ผสม           คอลัมน์ของวันนี้ครบ · แถวจากแบบขีดในช่องภาพกว้าง และบอกจำนวนภาพแบบในช่องสุดท้าย
+     ลงหน้างานล้วน  ทรงของวันนี้ทุกช่อง (ตรึงอีกชั้นที่ `surveyMethodGolden.test.mjs`)
+   กติกาอยู่ที่ `zones.table` (ทรงของตาราง) + `row.wideText` / `row.planText` (ช่องของแถวจากแบบ) — จอแค่วาด */
+const WIDE = { docType: 'survey_wide' };
+const PLAN = { docType: 'survey_plan' };
+const SENT_TABLE = { wideColumn: false, wideTotal: null, lastLabel: 'รูป' };
+const tableCells = (view) => view.zones.rows.map((r) => [r.id, r.wideText, r.planText]);
+
+test('⭐ ตารางพื้นที่ · ใบจากแบบทั้งใบที่ยังไม่ส่งผล: ไม่มีคอลัมน์ภาพกว้าง · หัวคอลัมน์สุดท้าย "แบบ" · ช่องของแถว "แบบ n" / ขีด', () => {
+  const files = { z1: [PLAN, PLAN], z2: [WIDE] };   // z2: ภาพกว้างที่ค้างจากตอนยังเป็นพื้นที่ลงหน้างาน
+  const stages = {
+    'รอรับเรื่อง': { status: 'pending', acknowledgedAt: null, acknowledgedByName: null },
+    'รอแจ้งวันส่งผล': {},
+    'กำลังประเมิน': PROMISED,
+    'เลยวันส่งผล': { ...PROMISED, committedResultDate: '2026-10-07' },
+  };
+  for (const [who, viewer] of VIEWERS) {
+    for (const [stage, over] of Object.entries(stages)) {
+      const view = job(ask({ ...over, surveyFilesByZone: files }), viewer);
+      const at = `${who} · ${stage}`;
+      assert.equal(view.zones.sent, false, at);
+      assert.deepEqual(view.zones.table, { wideColumn: false, wideTotal: null, lastLabel: 'แบบ' }, at);
+      assert.deepEqual(tableCells(view), [['z1', '—', 'แบบ 2'], ['z2', '—', '—'], ['z3', '—', '—']], at);
+      // คีย์เดิมของแถวไม่ถูกแตะ: ตัวนับรูปยังเป็นของจริง (ภาพกว้างที่ค้างยังนับได้ — แค่ไม่มีช่องให้พิมพ์)
+      assert.deepEqual(view.zones.rows.map((r) => [r.photosWide, r.photosPlan]), [[0, 2], [1, 0], [0, 0]], at);
+      // พื้นที่จากแบบไม่มีป้ายสถานะหน้างาน ⇒ ช่องสุดท้ายมีแต่จำนวนภาพแบบ
+      assert.deepEqual(view.zones.rows.map((r) => [r.state, r.missingText]), [[null, null], [null, null], [null, null]], at);
+    }
+  }
+});
+
+test('ตารางพื้นที่ · ใบจากแบบทั้งใบ: แถวที่ถูกตัดยังขึ้นป้าย "ตัดออก" ไม่มีจำนวนภาพแบบ · พื้นที่ลงหน้างานที่ถูกตัดไม่ดึงคอลัมน์ภาพกว้างกลับมา', () => {
+  const rows = [
+    ...zones(DRAWING),
+    { id: 'z4', zoneName: 'ห้องครัว', status: 'cut', cutReason: 'ลูกค้าไม่เอาแล้ว', ...DRAWING, parts: [], spots: [] },
+    { id: 'z5', zoneName: 'ทางเดิน ชั้น 2', status: 'cut', cutReason: 'ลูกค้าไม่เอาแล้ว', parts: [], spots: [] },
+  ];
+  const view = job(ask({ ...PROMISED, surveyZones: rows, surveyFilesByZone: { z3: [PLAN], z4: [PLAN], z5: [WIDE] } }));
+  assert.deepEqual(view.zones.table, { wideColumn: false, wideTotal: null, lastLabel: 'แบบ' });
+  assert.deepEqual(tableCells(view), [
+    ['z1', '—', '—'], ['z2', '—', '—'], ['z3', '—', 'แบบ 1'],
+    // แถวจากแบบที่ถูกตัด: ป้าย "ตัดออก" อยู่ในช่องสุดท้ายแล้ว — ไม่พิมพ์จำนวนภาพแบบทับ (ตารางผลก็ไม่พิมพ์ช่องรูปของแถวที่ตัด)
+    ['z4', '—', null],
+    // แถวลงหน้างานที่ถูกตัด: ไม่ใช่แถวจากแบบ ⇒ คีย์ของแถวจากแบบว่างทั้งคู่
+    ['z5', null, null],
+  ]);
+  assert.deepEqual(view.zones.rows.slice(3).map((r) => r.state), [
+    { label: 'ตัดออก', tone: 'neutral' }, { label: 'ตัดออก', tone: 'neutral' },
+  ]);
+});
+
+test('⭐ ตารางพื้นที่ · ใบผสมที่ยังไม่ส่งผล: คอลัมน์ของวันนี้ครบ · แถวจากแบบขีดทั้งช่องภาพกว้างและช่อง "หน้างาน" · ภาพกว้างรวมนับเฉพาะพื้นที่ลงหน้างาน', () => {
+  // z3 (จากแบบ) มีภาพกว้างค้างหนึ่งรูปจากตอนยังลงหน้างาน — แถวพิมพ์ขีด แถวรวมจึงต้องไม่นับรูปนั้น
+  const files = { z1: [WIDE, WIDE, PLAN], z2: [WIDE], z3: [WIDE, PLAN] };
+  for (const [who, viewer] of VIEWERS) {
+    const view = job(ask({ surveyVisit: visit(), surveyZones: mixedZones(), surveyFilesByZone: files }), viewer);
+    assert.deepEqual(view.zones.table, { wideColumn: true, wideTotal: 3, lastLabel: 'หน้างาน' }, who);
+    // 🔴 มติ 12/10 ข้อ 2: ช่องสุดท้ายของใบผสมชื่อ "หน้างาน" (หัวคอลัมน์ + ป้ายบนจอแคบ) — แถวจากแบบต้องไม่พิมพ์ "แบบ 1" ใต้ป้ายนั้น
+    assert.deepEqual(tableCells(view), [['z1', null, null], ['z2', null, null], ['z3', '—', '—']], who);
+    // แถวลงหน้างานยังเป็นแถวของวันนี้: ตัวนับภาพกว้าง + ป้ายสถานะหน้างาน
+    assert.deepEqual(view.zones.rows.map((r) => [r.photosWide, r.state?.label ?? null]), [[2, 'ยังไม่ครบ'], [1, 'ยังไม่ครบ'], [1, null]], who);
+    // คีย์เดิมของแถวรวมไม่ถูกแตะ (ตารางผลยังอ่านตัวนี้)
+    assert.deepEqual(view.zones.photos, { wide: 4, plan: 2 }, who);
+  }
+  // แถวจากแบบที่ยังไม่มีภาพแบบ = ขีด · พื้นที่ลงหน้างานที่ถูกตัดไม่ถูกนับในภาพกว้างรวม (เหมือนวันนี้)
+  const cutOne = mixedZones().map((z, i) => (i === 1 ? { ...z, status: 'cut', cutReason: 'ลูกค้าไม่เอาแล้ว' } : z));
+  const view = job(ask({ surveyVisit: visit(), surveyZones: cutOne, surveyFilesByZone: { z1: [WIDE], z2: [WIDE, WIDE] } }));
+  assert.deepEqual(view.zones.table, { wideColumn: true, wideTotal: 1, lastLabel: 'หน้างาน' });
+  assert.deepEqual(tableCells(view), [['z1', null, null], ['z2', null, null], ['z3', '—', '—']]);
+});
+
+test('🔴 ตารางพื้นที่ · ใบลงหน้างานล้วน: ทรงของวันนี้ทุกช่อง — ยังไม่ส่ง = มีคอลัมน์ภาพกว้าง หัว "หน้างาน" · ส่งแล้ว = หัว "รูป" · ไม่มีคีย์ของแถวจากแบบสักแถว', () => {
+  const files = { z1: [WIDE, WIDE, PLAN], z2: [WIDE] };
+  for (const way of [{}, { method: 'onsite' }, { method: null }]) {
+    for (const [who, viewer] of VIEWERS) {
+      const work = job(ask({ surveyZones: zones(way), surveyVisit: visit(), surveyFilesByZone: files }), viewer);
+      // ภาพกว้างรวม = ตัวเลขเดิมของแถวรวม (`photos.wide`) ทุกตัว
+      assert.deepEqual(work.zones.table, { wideColumn: true, wideTotal: 3, lastLabel: 'หน้างาน' }, who);
+      assert.equal(work.zones.table.wideTotal, work.zones.photos.wide, who);
+      assert.deepEqual(tableCells(work), [['z1', null, null], ['z2', null, null], ['z3', null, null]], who);
+      const sent = job(ask({ ...SENT, surveyZones: zones(way), surveyVisit: visit({ status: 'done' }), surveyFilesByZone: files }), viewer);
+      assert.deepEqual(sent.zones.table, SENT_TABLE, who);
+      assert.deepEqual(tableCells(sent), [['z1', null, null], ['z2', null, null], ['z3', null, null]], who);
+    }
+  }
+  // ตัดออกหมดทั้งใบ (แม้ทุกแถวเป็นจากแบบ) ไม่ใช่ "ใบจากแบบทั้งใบ" — ตารางของใบที่ตัดหมดของวันนี้ (กติกาเดียวกับการ์ดของช่าง)
+  const allCut = job(ask({ surveyZones: zones({ ...DRAWING, status: 'cut', cutReason: 'ลูกค้าไม่เอาแล้ว' }) }));
+  assert.equal(allCut.stage, 'no-zones');
+  assert.deepEqual(allCut.zones.table, { wideColumn: true, wideTotal: 0, lastLabel: 'หน้างาน' });
+});
+
+test('ตารางพื้นที่ · ส่งผลแล้ว: ตารางผลของงวด S2b ไม่ขยับทุกวิธี — ทรงเดียว (ไม่มีภาพกว้าง หัว "รูป") · คีย์ของตารางที่ยังทำอยู่ว่าง · ถูกดึงกลับ = กลับเป็นตารางที่ยังทำอยู่', () => {
+  const files = { z1: [WIDE, PLAN], z3: [PLAN, PLAN] };
+  const cases = {
+    'จากแบบทั้งใบ': ask({ ...SENT, surveyConfirm: 'needed', surveyFilesByZone: files }),
+    'ผสม': ask({ ...SENT, surveyConfirm: 'needed', surveyVisit: visit({ status: 'done' }), surveyZones: mixedZones(), surveyFilesByZone: files }),
+    'ลงหน้างานล้วน': ask({ ...SENT, surveyVisit: visit({ status: 'done' }), surveyZones: zones(), surveyFilesByZone: files }),
+  };
+  for (const [name, request] of Object.entries(cases)) {
+    const view = job(request);
+    assert.equal(view.zones.sent, true, name);
+    assert.deepEqual(view.zones.table, SENT_TABLE, name);
+    assert.deepEqual(tableCells(view), [['z1', null, null], ['z2', null, null], ['z3', null, null]], name);
+  }
+  // ช่องรูปของตารางผล (คีย์ของงวด S2b) ยังเป็นคำเดิม — "แบบ 0" ของตารางผลไม่ถูกเปลี่ยนเป็นขีด
+  assert.deepEqual(job(cases['จากแบบทั้งใบ']).zones.rows.map((r) => r.photosText), ['แบบ 1', 'แบบ 0', 'แบบ 2']);
+  assert.equal(job(cases['จากแบบทั้งใบ']).zones.photosTotalText, 'แบบ 3');
+  assert.deepEqual(job(cases['ผสม']).zones.rows.map((r) => r.photosText), [null, null, 'แบบ 2']);
+  // ผลถูกดึงกลับมาแก้ (ไม่มี answeredAt แล้ว) = ใบยังทำอยู่ ⇒ ตารางเดินตามวิธีอีกครั้ง
+  const recalled = job(ask({ ...PROMISED, surveyFilesByZone: files, surveyRecall: { at: '2026-10-14T05:00:00Z', byName: 'Arnon Aunsapwilai', reason: 'แก้ขนาด', totals: null } }));
+  assert.deepEqual(recalled.zones.table, { wideColumn: false, wideTotal: null, lastLabel: 'แบบ' });
+  assert.deepEqual(tableCells(recalled), [['z1', '—', 'แบบ 1'], ['z2', '—', '—'], ['z3', '—', 'แบบ 2']]);
+});
+
+test('ตารางพื้นที่ · อ่านรูปไม่สำเร็จ: ช่องแบบของแถวจากแบบ = "ไม่ทราบ" (ไม่เดาว่ายังไม่มี) · ภาพกว้างรวมของใบผสม = ไม่ทราบ', () => {
+  const desk = job(ask({ ...PROMISED, surveyUnknown: { files: true } }));
+  assert.deepEqual(desk.zones.table, { wideColumn: false, wideTotal: null, lastLabel: 'แบบ' });
+  assert.deepEqual(tableCells(desk), [['z1', '—', 'ไม่ทราบ'], ['z2', '—', 'ไม่ทราบ'], ['z3', '—', 'ไม่ทราบ']]);
+  const mixed = job(ask({ surveyVisit: visit(), surveyZones: mixedZones(), surveyUnknown: { files: true } }));
+  assert.deepEqual(mixed.zones.table, { wideColumn: true, wideTotal: null, lastLabel: 'หน้างาน' });
+  // ใบผสม: ช่อง "หน้างาน" ของแถวจากแบบเป็นขีดเสมอ — ไม่ใช่ช่องที่นับรูป จึงไม่มีอะไรให้ "ไม่ทราบ"
+  assert.deepEqual(tableCells(mixed), [['z1', null, null], ['z2', null, null], ['z3', '—', '—']]);
+  // ใบลงหน้างานล้วน: ภาพกว้างรวม = null ตัวเดิม (จอเขียน "ไม่ทราบ" อยู่แล้ว)
+  const onsite = job(ask({ surveyVisit: visit(), surveyZones: zones(), surveyUnknown: { files: true } }));
+  assert.deepEqual(onsite.zones.table, { wideColumn: true, wideTotal: null, lastLabel: 'หน้างาน' });
+  assert.equal(onsite.zones.photos.wide, null);
+});
+
 /* ── 5) แถบแจ้งเหนือตารางผล ──────────────────────────────────────────────────────── */
-const NEEDED_TEXT = 'มี 3 พื้นที่ที่ประเมินจากแบบ — ใช้ตัวเลขเสนอราคาได้เลย · เมื่อพื้นที่พร้อม กด “ขอยืนยันหน้างาน” เพื่อให้ TS เข้าวัดจริง';
+const NEEDED_TEXT ='มี 3 พื้นที่ที่ประเมินจากแบบ — ใช้ตัวเลขเสนอราคาได้เลย · เมื่อพื้นที่พร้อม กด “ขอยืนยันหน้างาน” เพื่อให้ TS เข้าวัดจริง';
 const NOT_NEEDED_TEXT = 'มี 3 พื้นที่ที่ประเมินจากแบบ — TS แจ้งว่าไม่ต้องยืนยันหน้างาน ใช้ผลนี้เป็นผลสุดท้าย';
 
 test('⭐ แถบแจ้ง · ใบที่ส่งผลแล้วและมีพื้นที่จากแบบ: ต้องยืนยัน = ประโยค + ปุ่ม (ยังกดไม่ได้จนถึงงวด S5) · ไม่ต้องยืนยัน = ประโยคล้วน', () => {
   for (const [who, viewer] of VIEWERS) {
     assert.deepEqual(job(ask({ ...SENT, surveyConfirm: 'needed' }), viewer).zones.drawingBanner, {
       text: NEEDED_TEXT,
+      // งวด S2b: ประโยคข้างบนเอ่ยถึงปุ่มที่ยังไม่มีจนถึงงวด S5 — จอพิมพ์ประโยคนี้ต่อท้าย (สวิตช์ `SURVEY_CONFIRM_ACTION_READY`)
+      note: 'ปุ่ม “ขอยืนยันหน้างาน” ของฝ่ายขายจะเปิดใช้ในรอบถัดไป — ระหว่างนี้ฝ่ายขายเปิดคำร้องประเมินพื้นที่แบบลงหน้างานของพื้นที่เดิมได้',
       action: { label: 'ขอยืนยันหน้างาน', ready: false },
     }, who);
     assert.deepEqual(job(ask({ ...SENT, surveyConfirm: 'not_needed' }), viewer).zones.drawingBanner, {
@@ -676,4 +809,75 @@ test('🔴 งานโต๊ะที่ส่งผลแล้วถูกด
     const late = job(ask({ ...PROMISED }), viewer, LATER);
     assert.equal(late.stage, 'desk-overdue', who);
   }
+});
+
+/* ── มติเจ้าของ 12/10 (O3) — รอยต่อหน้าคำร้องกับเธรดของการสลับกลับเป็นลงหน้างาน ──────────── */
+test('⭐ O3 · ใบที่นัดเคยถึงไซต์แล้วมีพื้นที่สลับกลับเป็นลงหน้างาน: หน้าคำร้องอยู่ขั้นส่งผล วันส่งผลยังขึ้น ไม่มีคำว่า "รอลงคิว" — ตรงกับเธรดที่ไม่พูดว่าใบกลับไปรอลงคิว', () => {
+  const reached = [
+    ['เข้าแล้ว', visit({ status: 'done', actualDate: '2026-10-08', actualStartTime: '10:12:00', actualEndTime: '11:40:00' })],
+    ['ทำไม่ครบ', visit({ status: 'partial', actualDate: '2026-10-08', actualStartTime: '10:12:00', actualEndTime: '11:40:00' })],
+  ];
+  // แผนของ O3 ไม่เขียนคอลัมน์วันสักช่อง ⇒ แถวคำร้องยังถือวันที่รับปากไว้ (PROMISED) ตามเดิม
+  const back = (rows) => rows.map((z, i) => (i === 0
+    ? { ...z, method: 'onsite', methodReason: 'แบบไม่ตรงหน้างาน ต้องเข้าวัดจริง', methodChangedAt: '2026-10-09T02:55:00Z' }
+    : z));
+  const shapes = [
+    ['กลับหนึ่งพื้นที่ (ใบผสม)', back(zones(DRAWING))],
+    ['กลับทั้งใบ', zones({ method: 'onsite', methodChangedAt: '2026-10-09T02:55:00Z' })],
+  ];
+  for (const [visitName, closed] of reached) {
+    for (const [shape, rows] of shapes) {
+      for (const [who, viewer] of VIEWERS) {
+        const tag = `${visitName} · ${shape} · ${who}`;
+        const view = job(ask({ ...PROMISED, surveyVisit: closed, surveyZones: rows }), viewer);
+        assert.ok(!['queue', 'requeue', 'desk-queue', 'desk-working', 'desk-overdue'].includes(view.stage), `${tag}: ขั้น ${view.stage}`);
+        assert.equal(view.now.step, 'ตอนนี้ · ส่งผล', tag);
+        assert.equal(view.now.due.value, 'พฤ. 15 ต.ค. 2026', tag);
+        assert.doesNotMatch(JSON.stringify([view.now, view.status, view.steps.map((s) => [s.when, s.sub, s.badge])]),
+          /รอลงคิว|ต้องลงคิวใหม่|ยังไม่ได้ลงคิว/, tag);
+        // รางหกขั้น: ลงคิว/นัด กับ เข้าพื้นที่ ผ่านแล้ว · ขั้นส่งผลเป็นขั้นปัจจุบัน
+        assert.deepEqual(view.steps.map((s) => s.state), ['done', 'done', 'done', 'done', 'current', 'pending'], tag);
+      }
+    }
+  }
+  // คู่เทียบ: นัดล่าสุดไม่ถึงไซต์ (เข้าไม่ได้) และแผนล้างวันแล้ว ⇒ หน้าคำร้องพูดเรื่องลงคิวใหม่ ตรงกับหางเธรด "ใบกลับไปรอลงคิว"
+  const cleared = job(ask({ committedDueDate: null, committedResultDate: null, surveyVisit: visit({ status: 'unable' }), surveyZones: back(zones(DRAWING)) }));
+  assert.equal(cleared.stage, 'requeue');
+  const never = job(ask({ committedDueDate: null, committedResultDate: null, surveyVisit: null, surveyZones: back(zones(DRAWING)) }));
+  assert.equal(never.stage, 'queue');
+  assert.equal(never.status.label, 'รอลงคิว');
+});
+
+/* 🐞 UAT S2b S06 (o3-desk-back-after-visit · 12/10) — พื้นที่ที่กลับมาเป็นลงหน้างานหลังนัดที่เข้าพื้นที่แล้วปิดไปแล้ว และขาดแค่
+   "บันทึกอีกครั้ง": หน้าคำร้องเคยขึ้น "ช่างส่งงานแล้ว แต่ของหน้างานยังขาด · กด ส่งกลับให้ช่างแก้" ทั้งที่ไม่มีอะไรให้ช่างเก็บ */
+test('⭐ O3 · เหลือแค่บันทึกอีกครั้งของพื้นที่ที่กลับมาเป็นลงหน้างาน (นัดปิดแล้ว): แถบ "ตอนนี้" พูดงานของหัวหน้า ไม่ใช่ของช่าง', () => {
+  const rows = zones(DRAWING).map((z, i) => (i === 0
+    ? {
+      ...z, method: 'onsite', methodReason: 'แบบไม่ตรงหน้างาน ต้องเข้าวัดจริง', methodChangedAt: '2026-10-09T02:55:00Z',
+      surveyedAt: '2026-10-08T04:00:00Z', spots: [{ id: 's1', name: 'จุดที่ 1.1' }],
+    }
+    : z));
+  const files = { z1: [{ docType: 'survey_wide', mimeType: 'image/jpeg', fileName: 'w.jpg' }, spotFile('s1')] };
+  const closed = visit({ status: 'done', actualDate: '2026-10-08', actualStartTime: '10:12:00', actualEndTime: '11:40:00' });
+  for (const [who, viewer] of VIEWERS) {
+    const view = job(ask({ ...PROMISED, surveyVisit: closed, surveyZones: rows, surveyFilesByZone: files }), viewer);
+    assert.equal(view.stage, 'awaiting-decision', who);
+    assert.equal(view.now.headline, 'รอหัวหน้าตรวจขนาดแล้วบันทึกอีกครั้ง', who);
+    assert.equal(view.now.next, 'หัวหน้า TS เปิดพื้นที่ที่กลับมาเป็นลงหน้างานที่ใบประเมิน ตรวจขนาดแล้วกด “บันทึกพื้นที่นี้” → เคาะแล้วกด “ส่งผลให้ฝ่ายขาย”', who);
+    assert.match(view.now.sub, /เหลือ Lobby ชั้น 1/, who);
+    assert.doesNotMatch(JSON.stringify(view.now), /ช่างส่งงานแล้ว|ส่งกลับให้ช่างแก้|วัดครบแล้ว|กำลังวัดหน้างาน/, who);
+    assert.equal(view.zones.rows[0].missingText, 'กลับมาเป็นลงหน้างาน — รอตรวจขนาดแล้วบันทึกอีกครั้ง', who);
+    // การ์ดฝั่งช่างใต้ตารางต้องไม่สวนกับแถบ: ไม่มีช่างทำอยู่ ⇒ ไม่ขึ้น "กำลังทำ · เหลือ …" (🐞 UAT S06 รอบตรวจซ้ำ 12/10)
+    assert.deepEqual(view.zones.crewGate.badge, { label: 'รอหัวหน้า', tone: 'warning' }, who);
+    assert.equal(view.zones.crewGate.text, 'รอหัวหน้าตรวจขนาดแล้วบันทึกอีกครั้ง', who);
+  }
+  // บันทึกหลังสลับแล้ว = กลับไปถ้อยคำเดิมของขั้นหัวหน้า
+  const saved = rows.map((z, i) => (i === 0 ? { ...z, surveyedAt: '2026-10-09T03:05:00Z' } : z));
+  const after = job(ask({ ...PROMISED, surveyVisit: closed, surveyZones: saved, surveyFilesByZone: files }), HEAD);
+  assert.notEqual(after.now.headline, 'รอหัวหน้าตรวจขนาดแล้วบันทึกอีกครั้ง');
+  assert.notEqual(after.zones.crewGate.badge.label, 'รอหัวหน้า');
+  // นัดยังเปิด (ช่างอยู่หน้างาน) = ทางเดิม ช่างเป็นคนเก็บ
+  const open = job(ask({ ...PROMISED, surveyVisit: visit({ status: 'in_progress' }), surveyZones: rows, surveyFilesByZone: files }), HEAD);
+  assert.equal(open.stage, 'measuring');
+  assert.equal(open.zones.crewGate.badge.label, 'กำลังทำ');
 });

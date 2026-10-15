@@ -18,10 +18,19 @@
 // ⚠️ **ui-visibility**: ไม่มีสิทธิ์ = ไม่โชว์ปุ่ม (`view.send.show` / `recallAction.show`) ·
 //   ติดด่าน = โชว์ปุ่มแล้วบอกเหตุ **เป็นตัวหนังสือเหนือปุ่ม** (`disabledReason` ของ
 //   `DocumentControlCard` ซึ่งวาดเป็น `<p role="status">` ไม่ใช่ tooltip)
+//
+// ⭐ **ประเมินจากแบบ (งวด S2b · กลุ่ม C)** — สี่ชิ้นที่การ์ดวาดเพิ่ม ทุกชิ้นแขวนกับคีย์ของตัวตัดสิน ไม่มีกติกาใหม่ที่นี่:
+//   ① ปุ่ม "เปลี่ยนวิธีประเมิน" (`view.method.show`) ② แถบวัดของงานโต๊ะ (`progress.desk`) + คำของแถบบนใบผสม (`progress.text`)
+//   ③ แถววันส่งผลของงานโต๊ะ (`deskDue` — หน้าเป็นคนคิดจาก `deskDueAction`) ④ บล็อกด่านไม่วาดเมื่อ `view.gatesHidden`
+//   ⚠️ ใบที่ไม่มีพื้นที่จากแบบ และทุกใบตอนสวิตช์ปิด: `method.show` เท็จ · `progress.desk` ว่าง · `progress.drawing` 0 ·
+//      `deskDue` ว่าง · `gatesHidden` เท็จ ⇒ การ์ดเดิมทุกจุด (ของใหม่ **ไม่ถูกวาด** ไม่ใช่วาดแล้วจาง)
 import { Fragment, useId, useState } from "react";
 import Link from "next/link";
-import { ArrowDown, Check, ChevronDown, Eye, FileText, ListChecks, Lock, X } from "lucide-react";
+import {
+  ArrowDown, ArrowLeftRight, CalendarDays, Check, ChevronDown, Eye, FileText, ListChecks, Lock, X,
+} from "lucide-react";
 import thaiText from "@/components/ThaiText";
+import Button from "@/components/ui/Button";
 import Segmented from "@/components/ui/Segmented";
 import StatusBadge from "@/components/ui/StatusBadge";
 import StatusNotice from "@/components/ui/StatusNotice";
@@ -29,17 +38,21 @@ import { DocumentActionGroup, DocumentControlCard, WorkflowRail } from "@/compon
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import { naText } from "@/lib/format";
 import { SURVEY_RAIL_QUERY } from "@/lib/service/surveyFieldView";
+import { SURVEY_METHOD_BUTTON } from "@/lib/service/surveyMethodSwitch";
 import { toneColor } from "@/lib/ui/tone";
 import useMediaQuery from "@/lib/ui/useMediaQuery";
 import styles from "./SurveyControlCard.module.css";
 
 /* ปุ่มพาไปจุดที่แก้ได้จริง — `target` มาจากตัวตัดสิน ไม่ได้คิดที่นี่ (กฎ "ไปไหนถึงจะ
    แก้ข้อนี้ได้" มีชุดเดียว อยู่ใน `surveyControl.js`) · การ์ดแค่แปลงเป็นปุ่ม */
-function JumpButton({ target, onOpenZone, onGoTab, onReload, className }) {
+function JumpButton({ target, onOpenZone, onGoTab, onReload, onSwitchMethod, className }) {
   if (!target) return null;
   const go = () => {
     if (target.kind === "zone") onOpenZone?.(target.zoneId);
     else if (target.kind === "tab") onGoTab?.(target.tab);
+    /* `method` = ทางออกของเหตุ "ใบยังมีพื้นที่ลงหน้างานแต่ไม่มีนัดที่เข้าพื้นที่" / "ใบจากแบบที่ยังมีนัดเปิดค้าง" (ตาราง §2 แถว 17 · 17a)
+       — ตัวจัดการตัวเดียวกับปุ่ม "เปลี่ยนวิธีประเมิน" ของการ์ด (หน้าเปิดโมดัล หรือบอกเหตุตอนกด) · 🐞 เดิมไม่มีสาขานี้ = ปุ่มกดแล้วเงียบ */
+    else if (target.kind === "method") onSwitchMethod?.();
     /* `reload` = อ่านใบใหม่ (ทะเบียนขนาดแพ็คเกจมากับ GET ใบประเมิน) — ทางออกเดียวของเหตุ "อ่านทะเบียนไม่สำเร็จ" */
     else if (target.kind === "reload") onReload?.();
   };
@@ -75,6 +88,13 @@ export default function SurveyControlCard({
   visitHref = null,
   dueLine = null,
   inPane = false,
+  /* "เปลี่ยนวิธีประเมิน" — หน้าตัดสินตอนกด: เปิดโมดัล หรือบอกเหตุที่ยังเปลี่ยนไม่ได้ (`view.method.reason`) เป็น toast
+     ⚠️ การ์ดไม่ทำปุ่มนี้จางและไม่วาดบรรทัดเหตุถาวร — ดูเหตุที่จุดที่ประกอบปุ่ม */
+  onSwitchMethod,
+  /* แถววันส่งผลของงานโต๊ะ — `{ wish, label, onClick }` หรือ `null` (ไม่ใช่งานโต๊ะ · ส่งผลแล้ว · คนดูรับปากวันไม่ได้)
+     `wish` = "ผู้ขอต้องการผล {วัน}" (ผู้ขอไม่ระบุ = ว่าง ไม่พิมพ์) · `label` = "รับปากวันส่งผล" / "เลื่อนวันส่งผล"
+     ⚠️ หน้าเป็นคนถามตัวตัดสิน (`deskDueAction` · `commitDueLabels`) แล้วส่งผลมา — การ์ดไม่คิดว่ามีปุ่มไหม ปุ่มไหน */
+  deskDue = null,
 }) {
   /* ปุ่มคลี่สองตัวในการ์ด — state อยู่ที่การ์ด ไม่ใช่ที่หน้า (หน้าถือ state ของปุ่ม
      ทุกปุ่มเมื่อไร ก็จะได้ state ปุ่มละก้อนเหมือนหน้าโครงการรุ่นก่อน) */
@@ -108,23 +128,54 @@ export default function SurveyControlCard({
      สักขีด (สูง 0px) และ `aria-valuemax={0}` เท่ากับ `aria-valuemin` ซึ่ง ARIA ห้าม
      ⇒ โปรแกรมอ่านหน้าจอประกาศ progressbar ที่ไม่มีความหมาย · พาดหัวสถานะ
      ("ยังไม่มีพื้นที่ที่ต้องประเมิน" / "ถูกตัดออกหมด") พูดครบอยู่แล้ว */
-  const meter = (flags.cancelled || !progress.total) ? null : (
-    <span className={`${styles.meter} ${progress.complete ? styles.meterDone : ""}`.trim()}>
+  /* ⭐ **แถบเดียว สามที่มาของตัวเลข** (ประเมินจากแบบ · งวด S2b) — ตัวตัดสินเป็นคนบอกว่าใบนี้นับอะไร การ์ดวาดแถบทรงเดิม:
+     · `progress.desk` (ใบจากแบบทั้งใบ) — ขีดละหนึ่งพื้นที่จากแบบ เติมเมื่อพื้นที่นั้นผ่านทุกข้อของมัน · เลขคู่เดียวกับพาดหัว
+       "กำลังประเมินจากแบบ — x/N พื้นที่" ⇒ ชื่อของแถบคือพาดหัวนั้นเอง (ไม่มีอะไรถูก "วัด" บนใบนี้)
+       🐞 ไม่มีทางนี้ = ใบงานโต๊ะไม่มีแถบเลย: ตัวนับงานหน้างาน (`progress.total`) ของมันเป็น 0 เสมอ
+     · ใบผสม (`progress.drawing` > 0) — แถบยังนับเฉพาะพื้นที่ลงหน้างาน ⇒ ชื่อและคำใต้แถบคือ `progress.text`
+       ("วัดแล้ว a / b พื้นที่ · จากแบบ k …") ไม่งั้นใบสามพื้นที่ที่มีสองขีดอ่านเหมือนพื้นที่หาย
+     · ใบลงหน้างานล้วน — ของเดิมทุกตัวอักษร */
+  const drawMeter = ({ label, done, total, complete, note = null }) => (
+    <span className={[styles.meter, complete ? styles.meterDone : null, note ? styles.meterNoted : null].filter(Boolean).join(" ")}>
       <span
         className={styles.bar}
         role="progressbar"
-        aria-label={`วัดแล้ว ${progress.done} จาก ${progress.total} พื้นที่`}
+        aria-label={label}
         aria-valuemin={0}
-        aria-valuemax={progress.total}
-        aria-valuenow={progress.done}
+        aria-valuemax={total}
+        aria-valuenow={done}
       >
-        {Array.from({ length: progress.total }, (_, i) => (
-          <i key={i} data-ok={i < progress.done ? "1" : undefined} />
+        {Array.from({ length: total }, (_, i) => (
+          <i key={i} data-ok={i < done ? "1" : undefined} />
         ))}
       </span>
+      {note ? <small>{note}</small> : null}
       {progress.cut ? <small>ตัดออก {progress.cut}</small> : null}
     </span>
   );
+  const deskMeter = progress.desk;
+  const mixedText = progress.drawing > 0 ? progress.text : null;
+  /* 🐞 UAT S2b S05 / S06 / S08 รอบ 2: ใบผสมที่กำลังทำ บรรทัดรองของสถานะขึ้นต้นด้วยประโยคเดียวกันนี้อยู่แล้ว ("วัดแล้ว 0 / 2 พื้นที่ ·
+     จากแบบ 1 (หัวหน้ากรอกเอง) · เหลือ …") ⇒ ใต้แถบซ้ำอีกรอบห่างกันสามบรรทัด · พูดแล้วข้างบน = ใต้แถบไม่พูดซ้ำ (ชื่อของแถบยังเป็นประโยคนี้)
+     ใบผสมที่พร้อมส่ง (บรรทัดรองเป็นยอดรวม) ยังได้คำใต้แถบตามสเปก C-2 */
+  const mixedSaid = !!mixedText && typeof status.sub === "string" && status.sub.startsWith(mixedText);
+  const meter = flags.cancelled
+    ? null
+    : deskMeter
+      /* ⚠️ ตัวหาร 0 ไม่วาด — เหตุเดียวกับ `!progress.total` ของทางเดิม (ARIA ห้าม valuemax เท่ากับ valuemin) */
+      ? (deskMeter.total ? drawMeter({
+        label: status.headline,
+        done: deskMeter.done,
+        total: deskMeter.total,
+        complete: deskMeter.done >= deskMeter.total,
+      }) : null)
+      : !progress.total ? null : drawMeter({
+        label: mixedText || `วัดแล้ว ${progress.done} จาก ${progress.total} พื้นที่`,
+        done: progress.done,
+        total: progress.total,
+        complete: progress.complete,
+        note: mixedSaid ? null : mixedText,
+      });
 
   // ── ③ กล่องแจ้ง ────────────────────────────────────────────────────────
   const noticeNodes = notices.length ? (
@@ -189,6 +240,7 @@ export default function SurveyControlCard({
               onOpenZone={onOpenZone}
               onGoTab={onGoTab}
               onReload={reasonReload}
+              onSwitchMethod={onSwitchMethod}
               className={styles.reasonJump}
             />
             {/* ลิงก์ออกจากหน้านี้ (`sendReason.link` · วันนี้มีแบบเดียว: "ไปบัญชีของฉัน" ของคนดูที่เป็นผู้ลงนามซึ่งยังไม่มีลายเซ็น — PR-SIG)
@@ -214,6 +266,20 @@ export default function SurveyControlCard({
       disabled: !recallAction.allowed,
       disabledReason: view.recallBlockedReason || undefined,
       onClick: onRecall,
+    });
+  }
+  /* ⭐ "เปลี่ยนวิธีประเมิน" (ประเมินจากแบบ) — ขึ้นตาม `view.method.show` ตัวเดียว (สวิตช์เปิด + หัวหน้า + ใบยังไม่จบ):
+     ผู้วางคิว · ช่าง · ทุกคนตอนสวิตช์ปิด **ไม่มีปุ่มนี้เลย** (ไม่ใช่ปุ่มจาง)
+     ⚠️ **ไม่ส่ง `disabled` / `disabledReason`** แม้ `view.method.allowed` เป็นเท็จ (ยังไม่รับเรื่อง · ส่งผลไปแล้ว) — หน้าบอกเหตุตอนกด
+        บรรทัดเหตุถาวรเหนือปุ่มจะดันการ์ดของใบที่ส่งผลแล้วให้สูงเกินรางที่ปักหมุด (ดูคำอธิบายเรื่องความสูงที่ `gateFullList` · `gapRest`)
+     ⚠️ `kind: "edit"` ให้สี/ความหมาย (ปุ่มรอง) · ไอคอนลูกศรสลับทับดินสอของ kind — งานนี้คือสลับวิธี ไม่ใช่แก้ข้อความ */
+  if (view.method.show) {
+    secondaryActions.push({
+      id: "method",
+      kind: "edit",
+      icon: ArrowLeftRight,
+      label: SURVEY_METHOD_BUTTON,
+      onClick: onSwitchMethod,
     });
   }
   /* ช่างที่ยังวัดไม่ครบ — ปุ่มเดียวที่เขาต้องการคือ "ไปพื้นที่ที่ยังไม่ครบ"
@@ -310,74 +376,79 @@ export default function SurveyControlCard({
   const gapRest = gapShown.slice(1);
 
   const gatesSection = flags.cancelled ? null : (
-    <section className={styles.sec} aria-label={view.gatesTitle}>
-      <p className={styles.secTitle}><span>{view.gatesTitle}</span>{gateBadge}</p>
-      {/* ⭐ **ด่านที่ติดรวมเป็นกลุ่มต่อพื้นที่ ไม่ใช่กำแพงหกแถว** — คนที่กดส่งไม่ได้
-          มีคำถามเดียว: "ต้องไปทำอะไรที่ไหน" · เรียงตามข้อ = เขาต้องประกอบเอง */}
-      {gapFirst.length ? <ul className={styles.gapList}>{gapFirst.map(gapRow)}</ul> : null}
-      {/* ⭐ **พื้นที่ที่ติดเกินอันแรกอยู่หลังปุ่มคลี่** — 🐞 กางครบสามอันแล้วการ์ดสูง
-          เกินเพดานรางที่ปักหมุดได้ (`--pinned-box-max` 721px) ตั้งแต่ใบที่มีสามพื้นที่
-          ซึ่งเป็นใบธรรมดาที่สุด ⇒ รางได้สกรอลล์ของตัวเอง แล้ว "ขั้นตอนของใบ" กับ
-          "เอกสารที่เกี่ยวข้อง" หลุดสายตา (วัดจริง 2026-09-16 ที่ 1440×900: 721/721)
-          ⚠️ อันแรกยังกางเสมอ — คนที่กดส่งไม่ได้ต้องเห็น "ไปทำอะไรที่ไหน" ทันทีอย่างน้อย
-             หนึ่งที่ โดยไม่ต้องกดอะไรก่อน */}
-      {gapRest.length ? (
-        <>
-          <p className={styles.more}>
-            <button
-              type="button"
-              className="text-action"
-              aria-expanded={gapsOpen}
-              aria-controls={gapsId}
-              onClick={() => setGapsOpen((v) => !v)}
-            >
-              {gapsOpen ? "ซ่อนพื้นที่ที่เหลือ" : `ดูอีก ${zoneGaps.rows.length - 1} พื้นที่ที่ติด`}
-            </button>
-          </p>
-          <ul className={styles.gapList} id={gapsId} hidden={!gapsOpen}>{gapRest.map(gapRow)}</ul>
-          {gapsOpen && zoneGaps.hidden
-            ? <p className={styles.more}>อีก {zoneGaps.hidden} พื้นที่ยังติด — ชื่อครบอยู่ในรายการด่านข้างล่าง</p>
-            : null}
-        </>
-      ) : null}
-      {/* ⭐ **ด่านที่ติดแต่ไม่มีพื้นที่ให้ชี้ (แถวเอกสารประเมิน) — บล็อกเอ่ยชื่อด่านนั้นเอง** (`view.gateNotes` · ตัวตัดสินเลือกแถวและถ้อยคำ)
-          🐞 UAT PR-3 (S03 ที่ราง): ป้าย "ติด 1 / 8 ข้อ" ไม่มีแถวไหนบอกว่าข้อไหน ยืนอยู่ระหว่าง "ติด 2 ข้อ" ของกล่องเหตุกับของส่วนเอกสาร
-          ⇒ แถวนี้บอกว่า 1 ข้อนั้นคือด่านเอกสาร เหตุของมันอยู่ที่ส่วนเอกสาร · ไม่พิมพ์เหตุ/จำนวนซ้ำ (รายการครบอยู่แล้วสองที่)
-          ⚠️ วาดทั้งก่อนและหลังส่งผล (แถวรายพื้นที่ข้างบนมีเฉพาะก่อนส่ง) — ใบที่ส่งแล้วด่านที่ติดได้มีแถวนี้แถวเดียว */}
-      {view.gateNotes.length ? (
-        <ul className={styles.gapList}>
-          {view.gateNotes.map((row) => (
-            <li key={row.key} className={styles.gapRow}>
-              <span className={styles.mark} aria-hidden="true"><X size={12} /></span>
-              <div>
-                <p className={styles.gapName}><b>{row.label}</b></p>
-                <small>{thaiText(row.note)}</small>
-              </div>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      <p className={styles.secLinks}>
-        {/* ปุ่มส่งกลับมีครั้งเดียวต่อใบ — ไม่ใช่ปุ่มต่อข้อเหมือนของเดิม
-            🔄 ขึ้นตาม `sendBackAction.show` ไม่ใช่ "ยังมีของช่างค้าง" (§10.5 S4) — ฝั่งช่างครบแล้ว
-            หัวหน้ายังขอรูปเพิ่มได้ (ม็อก A-5/AW-2) · คำบนปุ่มมาจากตัวตัดสินตัวเดียวกัน */}
-        {sendBackAction.show ? (
-          <button type="button" className="text-action" onClick={() => onSendBack?.()}>
-            {sendBackAction.label}
-          </button>
+    /* ⭐ **ใบจากแบบทั้งใบที่คนดูไม่ได้เคาะ (ผู้วางคิว · ช่างของนัดเก่า) ไม่มีบล็อกนี้เลย** (`view.gatesHidden` · ประเมินจากแบบ) —
+       ไม่มีของให้ช่างเก็บ: วาดไว้ = หัวข้อ "ของที่ช่างต้องเก็บ" กับลิสต์ว่าง · ชื่อของก้อนนี้บนปุ่มคลี่ก็ว่างคู่กัน (`fold.labels.gates`)
+       ⚠️ ธงมาจากตัวตัดสินตัวเดียว การ์ดไม่ดูวิธีประเมินหรือสิทธิ์เอง · ใบลงหน้างานและใบผสม = เท็จเสมอ ⇒ บล็อกเดิมทุกจุด */
+    view.gatesHidden ? null : (
+      <section className={styles.sec} aria-label={view.gatesTitle}>
+        <p className={styles.secTitle}><span>{view.gatesTitle}</span>{gateBadge}</p>
+        {/* ⭐ **ด่านที่ติดรวมเป็นกลุ่มต่อพื้นที่ ไม่ใช่กำแพงหกแถว** — คนที่กดส่งไม่ได้
+            มีคำถามเดียว: "ต้องไปทำอะไรที่ไหน" · เรียงตามข้อ = เขาต้องประกอบเอง */}
+        {gapFirst.length ? <ul className={styles.gapList}>{gapFirst.map(gapRow)}</ul> : null}
+        {/* ⭐ **พื้นที่ที่ติดเกินอันแรกอยู่หลังปุ่มคลี่** — 🐞 กางครบสามอันแล้วการ์ดสูง
+            เกินเพดานรางที่ปักหมุดได้ (`--pinned-box-max` 721px) ตั้งแต่ใบที่มีสามพื้นที่
+            ซึ่งเป็นใบธรรมดาที่สุด ⇒ รางได้สกรอลล์ของตัวเอง แล้ว "ขั้นตอนของใบ" กับ
+            "เอกสารที่เกี่ยวข้อง" หลุดสายตา (วัดจริง 2026-09-16 ที่ 1440×900: 721/721)
+            ⚠️ อันแรกยังกางเสมอ — คนที่กดส่งไม่ได้ต้องเห็น "ไปทำอะไรที่ไหน" ทันทีอย่างน้อย
+               หนึ่งที่ โดยไม่ต้องกดอะไรก่อน */}
+        {gapRest.length ? (
+          <>
+            <p className={styles.more}>
+              <button
+                type="button"
+                className="text-action"
+                aria-expanded={gapsOpen}
+                aria-controls={gapsId}
+                onClick={() => setGapsOpen((v) => !v)}
+              >
+                {gapsOpen ? "ซ่อนพื้นที่ที่เหลือ" : `ดูอีก ${zoneGaps.rows.length - 1} พื้นที่ที่ติด`}
+              </button>
+            </p>
+            <ul className={styles.gapList} id={gapsId} hidden={!gapsOpen}>{gapRest.map(gapRow)}</ul>
+            {gapsOpen && zoneGaps.hidden
+              ? <p className={styles.more}>อีก {zoneGaps.hidden} พื้นที่ยังติด — ชื่อครบอยู่ในรายการด่านข้างล่าง</p>
+              : null}
+          </>
         ) : null}
-        <button
-          type="button"
-          className="text-action"
-          aria-expanded={gatesOpen}
-          aria-controls={gatesId}
-          onClick={() => setGatesOpen((v) => !v)}
-        >
-          {gatesOpen ? "ซ่อนรายการด่าน" : `ดู${flags.sent ? "" : "ด่าน"}ทั้ง ${gates.length} ข้อ`}
-        </button>
-      </p>
-      {gateFullList}
-    </section>
+        {/* ⭐ **ด่านที่ติดแต่ไม่มีพื้นที่ให้ชี้ (แถวเอกสารประเมิน) — บล็อกเอ่ยชื่อด่านนั้นเอง** (`view.gateNotes` · ตัวตัดสินเลือกแถวและถ้อยคำ)
+            🐞 UAT PR-3 (S03 ที่ราง): ป้าย "ติด 1 / 8 ข้อ" ไม่มีแถวไหนบอกว่าข้อไหน ยืนอยู่ระหว่าง "ติด 2 ข้อ" ของกล่องเหตุกับของส่วนเอกสาร
+            ⇒ แถวนี้บอกว่า 1 ข้อนั้นคือด่านเอกสาร เหตุของมันอยู่ที่ส่วนเอกสาร · ไม่พิมพ์เหตุ/จำนวนซ้ำ (รายการครบอยู่แล้วสองที่)
+            ⚠️ วาดทั้งก่อนและหลังส่งผล (แถวรายพื้นที่ข้างบนมีเฉพาะก่อนส่ง) — ใบที่ส่งแล้วด่านที่ติดได้มีแถวนี้แถวเดียว */}
+        {view.gateNotes.length ? (
+          <ul className={styles.gapList}>
+            {view.gateNotes.map((row) => (
+              <li key={row.key} className={styles.gapRow}>
+                <span className={styles.mark} aria-hidden="true"><X size={12} /></span>
+                <div>
+                  <p className={styles.gapName}><b>{row.label}</b></p>
+                  <small>{thaiText(row.note)}</small>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <p className={styles.secLinks}>
+          {/* ปุ่มส่งกลับมีครั้งเดียวต่อใบ — ไม่ใช่ปุ่มต่อข้อเหมือนของเดิม
+              🔄 ขึ้นตาม `sendBackAction.show` ไม่ใช่ "ยังมีของช่างค้าง" (§10.5 S4) — ฝั่งช่างครบแล้ว
+              หัวหน้ายังขอรูปเพิ่มได้ (ม็อก A-5/AW-2) · คำบนปุ่มมาจากตัวตัดสินตัวเดียวกัน */}
+          {sendBackAction.show ? (
+            <button type="button" className="text-action" onClick={() => onSendBack?.()}>
+              {sendBackAction.label}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="text-action"
+            aria-expanded={gatesOpen}
+            aria-controls={gatesId}
+            onClick={() => setGatesOpen((v) => !v)}
+          >
+            {gatesOpen ? "ซ่อนรายการด่าน" : `ดู${flags.sent ? "" : "ด่าน"}ทั้ง ${gates.length} ข้อ`}
+          </button>
+        </p>
+        {gateFullList}
+      </section>
+    )
   );
 
   // ── ⑥ ขั้นของใบ — ชุด 6 ขั้นเดียวกับหน้าคำร้อง ────────────────────────
@@ -673,10 +744,27 @@ export default function SurveyControlCard({
       statusColor={toneColor(status.tone)}
       statusSub={(
         <>
-          <span className={styles.statusSub}>{status.sub}</span>
+          {/* บรรทัดรองว่างได้ (ใบงานโต๊ะที่ยังไม่ได้กรอกอะไร: พาดหัว "ยังไม่ได้กรอกขนาด" พูดครบแล้ว) — ไม่วาดบรรทัดเปล่า */}
+          {status.sub ? <span className={styles.statusSub}>{status.sub}</span> : null}
           {/* กำหนดส่งผล (ม็อก AW-2) — เดิมเป็นช่อง "TS จะส่งผล" ของหัวใบที่ถอดไปในชุด S9 · คำมาจาก `surveyDueLine` */}
           {dueLine ? <span className={styles.due} data-late={dueLine.late ? "" : undefined}>{dueLine.text}</span> : null}
           {meter}
+          {/* ⭐ แถววันส่งผลของงานโต๊ะ (ประเมินจากแบบ · ม็อก B1) — วันที่ผู้ขอต้องการ + ปุ่มรับปาก/เลื่อนวัน อยู่ใต้กำหนดส่งผลของการ์ด
+              เพราะเป็นเรื่องเดียวกัน (วันที่ใบนี้สัญญากับฝ่ายขาย) · ใบที่ต้องลงคิวไม่มีแถวนี้ — วันของมันมาจากการลงคิว
+              ⚠️ อยู่ในบล็อกสถานะ ซึ่งเป็นชิ้นแรกของการ์ดทั้งใน DOM และบนจอทุกขนาด ⇒ ลำดับ Tab ตรงกับที่ตาเห็น
+                 (ช่องเนื้อของการ์ดกลางถูกสลับลำดับด้วย CSS ที่จอ ≤1050 — ปุ่มที่วางไว้ตรงนั้นจะ Tab ถึงก่อนปุ่มส่งผลที่อยู่เหนือมัน)
+              ⚠️ ปุ่มรอง ไม่ใช่กรมท่า — ปุ่มหลักของการ์ดคือ "ส่งผลให้ฝ่ายขาย" · ไม่มีสิทธิ์รับปากวัน = หน้าไม่ส่ง `deskDue` มา (ไม่มีแถว) */}
+          {deskDue ? (
+            <span className={styles.deskDue}>
+              <span className={styles.deskDueWish}>
+                <CalendarDays size={14} aria-hidden="true" />
+                {deskDue.wish ? <span>{deskDue.wish}</span> : null}
+              </span>
+              <Button variant="outline" className={styles.deskDueBtn} onClick={deskDue.onClick}>
+                {deskDue.label}
+              </Button>
+            </span>
+          ) : null}
         </>
       )}
       notices={noticeNodes}

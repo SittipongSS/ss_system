@@ -1,0 +1,298 @@
+/* โมดัล "วิธีประเมินรายพื้นที่" (ประเมินจากแบบ · งวด S2b · ม็อก B2)
+   เปลือกเป็น `Modal size="md" sheetOnPhone` — ≥681: กล่องกลางจอ แถวพื้นที่บรรทัดเดียว (ชื่อซ้าย · ตัวเลือกขวา)
+   ≤680: แผ่นเต็มจอ แถวพื้นที่ซ้อนสองบรรทัด (ชื่อ แล้วตัวเลือกเต็มกว้าง) · ปุ่มท้ายเต็มกว้าง ปุ่มหลักอยู่ท้าย
+   ⚠️ เป้านิ้ว: ทุกของที่กดได้สูง ≥ `--ctl-h` (40px) และ ≥ `--ctl-h-touch` (44px) บนจอสัมผัสหรือจอ ≤680
+   ⚠️ สีมาจากโทเคนล้วน — แถวที่เลือกต่างจากที่บันทึกใช้โทน info (`--blue`) คู่กับคำ "ยังไม่บันทึก" (ไม่ใช่สีอย่างเดียว) */
+
+/* 🐞 UAT S2b S06 / S08 (375): บรรทัดบริบทใต้ชื่อยาวสองบรรทัด ("RQ-… · ไซต์ · นัด SV-… วัน เวลา") ⇒ หัวโมดัล (flex) บีบกากบาทปิด
+   เหลือ 19×28 — กากบาทไม่หด (เฉพาะโมดัลนี้ · กฎกลาง `.drawer-close` ไม่ถูกแตะ)
+   ⚠️ เกาะจากเนื้อของโมดัล (`:has(.body)`) ไม่ใส่คลาสของไฟล์นี้บนกล่องโมดัล — ตัวเลือกของ UAT นับ "ของในโมดัลนี้" จากคลาสของไฟล์นี้ */
+:global(.drawer):has(.body) > :global(.drawer-header) > :global(.drawer-close) { flex: none; }
+
+/* เนื้อเรียงลงมา: กล่องพื้นที่ → เหตุผล → วันส่งผล (เมื่อแผนขอ) · ผลของการกดอยู่ในแถบท้ายที่นิ่ง (ดู `.foot`) */
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+/* ที่ห่อ `aria-live` ของกล่องผล อยู่เสมอ (โปรแกรมอ่านจอประกาศตอนบรรทัดเปลี่ยน) — ว่าง = ไม่กินที่ ไม่กิน gap ของแถบท้าย */
+.live:empty { display: none; }
+
+/* ── กล่องพื้นที่: หัว (ตัวนับ + ทางลัดทั้งใบ) แล้วหนึ่งแถวต่อพื้นที่ ──
+   ⚠️ ไม่ใช้ `overflow: hidden` ตัดมุม — วงโฟกัสของปุ่มริมกล่องจะถูกตัด · มุมบนโค้งที่หัวเอง */
+.zones {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.zonesHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-1-5) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  background: var(--panel-2);
+}
+
+.counts {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ทางลัดห่อลงใต้ตัวนับเมื่อไม่พอบรรทัด (มือถือ) — ไม่ดันกล่องล้นแนวนอน */
+.shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* "ทั้งใบ: ประเมินจากแบบ" — ปุ่มมีขอบพื้นโปร่งของกลาง · คำบนปุ่มไม่หักกลางวลี (ปุ่มทั้งปุ่มตกบรรทัดแทน) */
+.shortcut { white-space: nowrap; }
+
+.rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-inline-start: 3px solid transparent;
+}
+
+.row + .row { border-top: 1px solid var(--border); }
+
+.row:last-child { border-end-start-radius: var(--radius-md); border-end-end-radius: var(--radius-md); }
+
+/* แถวที่เลือกต่างจากวิธีที่บันทึกอยู่ */
+.row[data-changed] {
+  border-inline-start-color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.num {
+  display: grid;
+  place-items: center;
+  width: var(--space-7);
+  height: var(--space-7);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* ชื่อพื้นที่ห่อบรรทัดได้ (ชื่อยาว + ชั้น) — ไม่ตัดท้ายด้วยจุดไข่ปลา: หัวหน้าต้องรู้ว่ากำลังสลับห้องไหน */
+.title {
+  color: var(--text);
+  font-size: var(--fs-7);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+}
+
+.sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-0-5) var(--space-2);
+  min-width: 0;
+}
+
+.code {
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+  font-variant-numeric: tabular-nums;
+}
+
+.unsaved {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--blue);
+  font-size: var(--fs-4);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  white-space: nowrap;
+}
+
+/* ตัวเลือกวิธีของแถว — แถบของกลาง (`.segmented`) ยกความสูงเป็นเป้านิ้ว
+   ⚠️ สองคลาส (`.seg:global(.segmented)`) — ชนะ `.segmented > button` ของ globals โดยไม่พึ่งลำดับไฟล์ */
+.seg:global(.segmented) > button {
+  min-height: var(--ctl-h);
+  padding-inline: var(--space-3);
+  font-size: var(--fs-6);
+  white-space: nowrap;
+}
+
+/* ── ช่องกรอก: ป้าย (ดอกจันบรรทัดเดียวกับป้าย) → ตัวเลือกสำเร็จรูป → ช่อง ── */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  min-width: 0;
+}
+
+.label {
+  color: var(--text);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+.field :global(.date-input-wrap) { width: 100%; }
+
+/* ตัวเลือกเหตุผลสำเร็จรูป — หน้าตาของกลาง (`.choice-chip` · เลือกอยู่ = `data-on`) ยกความสูงเป็นเป้านิ้ว · ห่อบรรทัดได้ */
+.presets :global(.choice-chip) {
+  min-height: var(--ctl-h);
+  padding-inline: var(--space-3);
+  border-radius: var(--radius-full);
+}
+
+/* ใต้ช่อง: เหตุของขอบแดง (ซ้าย) + ตัวนับตัวอักษร (ขวา) */
+.fieldMeta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.fieldError {
+  margin: 0;
+  color: var(--red);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+.count {
+  flex: none;
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+  font-variant-numeric: tabular-nums;
+}
+
+.count[data-over] { color: var(--red); font-weight: var(--fw-semibold); }
+
+/* ── ผลของการกด ("กดแล้วเกิดขึ้นทันที") — กล่องโทน info: ข้อมูลก่อนตัดสินใจ ไม่ใช่คำเตือน
+   อยู่ในแถบท้ายที่นิ่ง เหนือปุ่มหลัก: เห็นเสมอก่อนกด ไม่ว่าเนื้อจะเลื่อนอยู่ตรงไหน ── */
+.outcome {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--blue) 34%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--blue) 9%, var(--panel-solid));
+}
+
+.outcomeTitle {
+  margin: 0;
+  color: var(--blue);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+/* จุดหน้าข้อต้องเห็น (reset กลางถอด list-style ของ ul) — ข้อยาวสองสามบรรทัดบนมือถือต้องนับข้อออก */
+.outcomeList {
+  margin: 0;
+  padding-inline-start: var(--space-5);
+  list-style: disc;
+  display: grid;
+  gap: var(--space-1);
+  color: var(--text);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+}
+
+/* ── แถบท้ายที่นิ่ง (`footer` ของ Modal): ผลของการกด → ข้อความล้มเหลว → ปุ่ม ──
+   `.drawer-footer` เป็น flex แถวเดียว ⇒ ก้อนนี้กินเต็มกว้างแล้วเรียงเองเป็นคอลัมน์ */
+.foot {
+  flex: 1 1 100%;
+  min-inline-size: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.footBtns {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* จอสัมผัส: ทุกของที่กดได้สูงเต็มนิ้ว */
+@media (pointer: coarse) {
+  .seg:global(.segmented) > button,
+  .presets :global(.choice-chip),
+  .shortcut,
+  .footBtns :global(.btn) { min-height: var(--ctl-h-touch); }
+}
+
+/* จอแคบ: แถวพื้นที่ซ้อนสองบรรทัด (เลข + ชื่อ แล้วตัวเลือกเต็มกว้างสองช่องเท่ากัน) · ปุ่มท้ายเต็มกว้าง */
+@media (max-width: 680px) {
+  .row { grid-template-columns: auto minmax(0, 1fr); }
+
+  .seg:global(.segmented) {
+    grid-column: 1 / -1;
+    display: flex;
+  }
+
+  .seg:global(.segmented) > button {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: var(--ctl-h-touch);
+  }
+
+  .presets :global(.choice-chip),
+  .shortcut { min-height: var(--ctl-h-touch); }
+
+  .footBtns :global(.btn) {
+    flex: 1;
+    min-width: 0;
+    min-height: var(--ctl-h-touch);
+  }
+}
+
+/* ช่องวัน (`DateInput` ของกลาง) บนจอสัมผัส / จอแคบ: ช่องสูงเต็มนิ้ว และปุ่มปฏิทินกว้าง-สูงเต็มนิ้ว (ของกลางเป็น 40px กับ 34×38)
+   🐞 UAT S2b S06 / S08 / S18: ของกดอย่างเดียวในกล่องที่เล็กกว่า 44px · เฉพาะกล่องของงวดนี้ — ของกลางไม่ถูกแตะ */
+.field :global(.date-input-text) { padding-right: calc(var(--ctl-h) + var(--space-1)); }
+
+.field :global(.date-input-picker) {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--ctl-h);
+}
+
+@media (pointer: coarse), (max-width: 680px) {
+  .field :global(.date-input-text) {
+    min-height: var(--ctl-h-touch);
+    padding-right: calc(var(--ctl-h-touch) + var(--space-1));
+  }
+
+  .field :global(.date-input-picker) { width: var(--ctl-h-touch); }
+}

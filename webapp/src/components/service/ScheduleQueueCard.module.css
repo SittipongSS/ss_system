@@ -44,6 +44,14 @@
   background: var(--kind, var(--accent-ink));
 }
 .tag { margin-left: auto; flex: none; }
+/* ── ป้ายวิธีประเมินของการ์ดงานโต๊ะ ("จากแบบ · ไม่ต้องลงคิว" · ประเมินจากแบบ งวด S2b) ──
+   ต่อจากป้ายขั้นที่มุมขวา · แผงรายการงานกว้าง ~24rem ⇒ รหัส + ชนิดงาน + ป้ายขั้น + ป้ายนี้ไม่พอบรรทัดเดียว
+   ⇒ หัวการ์ดตกบรรทัดได้ **เฉพาะการ์ดที่มีป้ายนี้** (`data-tagged`) แล้วป้ายลงไปอยู่ใต้บรรทัดรหัส ชิดซ้าย
+   ⚠️ การ์ดที่ไม่มีป้าย (ทุกใบของวันนี้) ไม่ได้แอตทริบิวต์ ⇒ หัวการ์ดยังเป็นบรรทัดเดียวแบบเดิมทุกจุด
+   ⚠️ คำบนป้ายห้ามถูกตัดเป็น "…" (Tag ตั้งต้นเป็น nowrap + ellipsis) — แคบกว่าคำ = ตกบรรทัดในป้าย */
+.top[data-tagged="yes"] { flex-wrap: wrap; row-gap: var(--space-1); }
+.methodTag { flex: none; max-width: 100%; }
+.methodTag > span { white-space: normal; overflow-wrap: anywhere; }
 
 .site { display: flex; flex-direction: column; min-width: 0; margin: 0; }
 .site > .mono { font-weight: var(--fw-semibold); }

@@ -15,6 +15,18 @@ import { AlertTriangle, ChevronDown, Navigation, Phone } from "lucide-react";
 import Button from "@/components/ui/Button";
 import styles from "./SurveyJobHeader.module.css";
 
+/* ประโยคที่ห่อบรรทัดได้เฉพาะที่ช่องว่าง — แต่ละคำเป็นก้อนของตัวเอง (หักข้างในต่อเมื่อคำเดียวยาวกว่าบรรทัด) ·
+   จุดคั่นเกาะท้ายคำก่อนหน้า (บรรทัดใหม่ไม่ขึ้นต้นด้วย "·" — กติกาเดียวกับแถวทีม) */
+function KeptWords({ text }) {
+  const words = String(text).split(" · ").join("\u00a0· ").split(" ");
+  return words.map((word, index) => (
+    <span key={index}>
+      <span className={styles.kept}>{word}</span>
+      {index < words.length - 1 ? " " : null}
+    </span>
+  ));
+}
+
 /* ค่าของข้อเท็จจริงหนึ่งช่อง — ทีม (วงอักษรย่อ · "คุณ" · ผู้ช่วย) · นัด (+ เวลาจริง) · ให้เข้า (+ คำเตือน) · ที่เหลือเป็นข้อความ */
 function FactValue({ fact }) {
   if (fact.key === "crew" && fact.people?.length) {
@@ -37,7 +49,10 @@ function FactValue({ fact }) {
       {fact.value}
       {/* เวลาจริงไม่หักกลางช่วง ("10:12–" / "11:46") — ทั้งก้อนลงบรรทัดใหม่แทน
           ⚠️ จุดคั่นติดท้ายค่าก่อนหน้าด้วย NBSP (กติกาเดียวกับแถวทีม) — 🐞 UAT 25/09 จอ 390: บรรทัดที่สองขึ้นต้นด้วย "· เข้าแล้ว …" */}
-      {fact.sub ? <>{"\u00a0· "}<span className={styles.stamp}>{fact.sub}</span></> : null}
+      {fact.sub && fact.key !== "method" ? <>{"\u00a0· "}<span className={styles.stamp}>{fact.sub}</span></> : null}
+      {/* บรรทัดรองของ "วิธีประเมิน" เป็นประโยค ("ทั้งใบ 3 พื้นที่ · ไม่ลงคิว ไม่มีนัดบนตารางเจ้าหน้าที่") — ห่อได้ที่ช่องว่างเท่านั้น
+          🐞 UAT S2b S04 / S08 / S18 (375): เบราว์เซอร์หักกลางวลี "ไม่ลง / คิว" */}
+      {fact.sub && fact.key === "method" ? <>{"\u00a0· "}<span className={styles.stamp}><KeptWords text={fact.sub} /></span></> : null}
       {/* ⚠️ คำเตือนช่วงเข้าไซต์เป็นประโยคเต็ม ("นัด 10:00 อยู่นอกช่วงนี้ — โทรเช็กคุณแหวนก่อน") — ไม่พึ่งสีอย่างเดียว */}
       {fact.warn ? (
         <span className={styles.warn}>

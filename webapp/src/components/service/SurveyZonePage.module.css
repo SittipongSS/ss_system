@@ -152,6 +152,26 @@
 .body > [data-area="spots"] { grid-area: spots; }
 .body > [data-area="note"] { grid-area: note; }
 .body > [data-area="cut"] { grid-area: cut; }
+/* พื้นที่จากแบบ (งวด S2b · บอร์ด B1): ช่องภาพแบบอยู่ช่องเดิมของภาพกว้าง ⇒ ① ③ ซ้าย · ② ④ ขวา โดยไม่มีแม่แบบกริดชุดที่สอง
+   (คอลัมน์เดียว/มือถือ: กฎ `[data-area] { grid-area: auto }` ข้างล่างคลุมตัวนี้ด้วย — ลำดับตาม DOM) */
+.body > [data-area="plan"] { grid-area: wide; }
+
+/* 🐞 UAT S2b S01 (768 หน้าเต็มจอ): หัวข้อภาพแบบสูงมาก (ช่องรูป + แผง "แบบจากฝ่ายขาย" ทั้งแผง ~1,460px) แต่กินแถวกริดแถวเดียวคู่กับ
+   การ์ดขนาด ⇒ การ์ด ③ ถูกดันลงไปเริ่มใต้แถวนั้น เหลือคอลัมน์ซ้ายว่างกว่าพันพิกเซล
+   ⇒ พื้นที่จากแบบ: ช่องภาพแบบกินสองแถว และ**แถวที่สองเป็นตัวรับความสูงที่เหลือ** (`1fr`) — แถวแรกสูงเท่าการ์ดขนาดพอดี
+   การ์ด ③ จึงต่อใต้การ์ด ① ทันที (① ③ ซ้าย · ② ④ ขวา ตามบอร์ด B1) · พื้นที่ลงหน้างานไม่มี `[data-area="plan"]` = แม่แบบเดิม
+   ⚠️ ตัวเลือกนี้หนักกว่า `.body` ล้วนของกฎมือถือ ⇒ มือถือ (≤680) ล้างคืนด้วยตัวเลือกเดียวกันในก้อนของมัน (ท้ายไฟล์)
+      · บานแคบ (`data-cols="1"`) หนักกว่าอยู่แล้ว จึงยังชนะ */
+.body:has(> [data-area="plan"]) {
+  grid-template-areas:
+    "size wide"
+    "spots wide"
+    "spots note"
+    "spots cut";
+  grid-template-rows: auto 1fr auto auto;
+}
+
+.page[data-cols="1"] .body:has(> [data-area="plan"]) { grid-template-rows: none; }
 
 /* บานขวาที่แคบเกินสองคอลัมน์ (`oneColumn` — JS ตัดสิน · §10.5 S9): ข้างรางของหัวหน้า (≥1200) และสองบาน 1000–1199 — คอลัมน์เดียวเหมือนมือถือ
    ⚠️ รางกิน 348px + รายการ 336px ⇒ บานเหลือ ~460px ที่ 1200 · สองคอลัมน์ต้องการ ~620px (ถึงที่ ~1360 ซึ่งไม่ใช่เส้นของระบบ)
@@ -516,6 +536,145 @@
   line-height: var(--lh-thai);
 }
 
+/* ══ พื้นที่ที่ประเมินจากแบบ (งวด S2b · บอร์ด B1) ═══════════════════════════════════════════════
+   ⚠️ ทุกคลาสในช่วงนี้ถูกใช้เฉพาะเมื่อพื้นที่เป็นจากแบบ — พื้นที่ลงหน้างานไม่แตะสักกฎ */
+
+/* เหตุที่แก้ไม่ได้ (คนดูไม่ใช่หัวหน้า) — ระยะเดียวกับกล่องแจ้งเหนือเนื้อ */
+.reason { margin: var(--space-3) var(--space-3) 0; }
+
+/* ไฟล์ในช่องภาพแบบที่ลงเอกสารไม่ได้ (PDF/TIFF) — ชี้ที่ตัวไฟล์ด้วยโทนอันตราย · ชื่อไฟล์ยาวห่อบรรทัดได้ ไม่ตัดท้าย */
+.flags {
+  display: grid;
+  gap: var(--space-1-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.flag,
+.gap {
+  --flag-icon-size: 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1-5);
+  margin: 0;
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+.flag {
+  padding: var(--space-2) var(--space-2-5);
+  border: 1px solid var(--red);
+  border-radius: var(--radius);
+  background: var(--red-soft);
+  color: var(--text-1);
+}
+
+/* ไอคอนกลางบรรทัดแรกของข้อความ (ข้อความห่อได้หลายบรรทัด — `align-items: center` จะพาไอคอนไปกลางก้อน) */
+.flag > svg,
+.gap > svg {
+  flex: none;
+  margin-top: calc((var(--fs-5) * var(--lh-thai) - var(--flag-icon-size)) / 2);
+}
+
+.flag > svg { color: var(--red); }
+.flag > span,
+.gap > span { min-width: 0; overflow-wrap: anywhere; }
+.flag b { margin-inline-end: var(--space-1); font-weight: var(--fw-semibold); }
+
+/* ด่านภาพแบบยังไม่ผ่าน — สีอำพันชุดเดียวกับบรรทัด "ขาด: …" ของรายการพื้นที่ */
+.gap {
+  color: var(--amber);
+  font-weight: var(--fw-semibold);
+}
+
+/* ③ จุดของพื้นที่จากแบบ — แถวละจุด ไม่มีแผ่นรูปคั่น */
+.spotRows {
+  display: grid;
+  gap: var(--space-2-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ปุ่มลบจุด (พื้นที่จากแบบ — ปุ่มตรง ๆ แทนเมนู ⋯) สูงเท่าช่องชื่อ 44px และเริ่มที่ขอบบนเดียวกัน
+   ⚠️ `.iconBtn` ดึงขอบบน/ล่างเข้า 4px ไว้ให้แถวหัวของ "ส่วน" (สูง 40px) — ในแถวของจุดต้องไม่ดึง */
+.spot > .iconBtn { margin-block: 0; }
+
+/* ไฟล์เดิมก่อนเปลี่ยนเป็นประเมินจากแบบ — ลิสต์พับท้ายช่องภาพแบบ (ไม่ใช่งานหลักของหน้า: ไม่ลงเอกสาร ไม่นับในด่าน)
+   ⚠️ หัวพับสูงระดับนิ้วและโฟกัสได้ด้วยคีย์บอร์ด (`summary` ของเบราว์เซอร์) · ลูกศรหมุนเมื่อกาง */
+.old {
+  border-top: 1px solid var(--border);
+}
+
+.oldHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  min-height: var(--ctl-h-touch);
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  list-style: none;
+  cursor: pointer;
+}
+
+.oldHead::-webkit-details-marker { display: none; }
+.oldHead:hover { color: var(--text-1); }
+.oldHead:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; border-radius: var(--radius); }
+.oldHead > span { min-width: 0; }
+
+.oldChev {
+  flex: none;
+  color: var(--text-3);
+  transition: transform var(--motion-medium) var(--ease-standard);
+}
+
+.old[open] .oldChev { transform: rotate(90deg); }
+
+.oldList {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.oldItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.oldItem + .oldItem { border-top: 1px solid var(--border); }
+
+/* ชื่อไฟล์ = ปุ่มเปิดแท็บใหม่ (หน้านี้ไม่มีลิงก์ — ดูคอมเมนต์ที่ SurveyZonePage.js) · ชื่อยาวห่อบรรทัดได้ */
+.oldOpen {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: var(--ctl-h-touch);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  padding: var(--space-1) 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-1);
+  font-family: inherit;
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+  text-align: start;
+  cursor: pointer;
+}
+
+.oldOpen > svg { flex: none; color: var(--text-3); }
+.oldOpen:hover .oldName { text-decoration: underline; text-underline-offset: 3px; }
+.oldOpen:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; border-radius: var(--radius); }
+.oldName { min-width: 0; overflow-wrap: anywhere; }
+
+.oldItem .iconBtn:disabled { color: var(--text-3); cursor: progress; }
+
 /* ── ทางออกท้ายเนื้อ ("เข้าห้องนี้ไม่ได้ / ไม่ต้องวัด · ตัดพื้นที่นี้ออก") ─────────────── */
 .cutRow {
   display: flex;
@@ -741,4 +900,12 @@
   .footActs { flex: 1 1 auto; }
   .nextBtn { flex: 0 1 auto; }
   .saveBtn { flex: 1 1 auto; justify-content: center; }
+}
+
+/* มือถือ: พื้นที่จากแบบก็คอลัมน์เดียวตามลำดับ DOM (ล้างแม่แบบสองคอลัมน์ของ `.body:has(> [data-area="plan"])` ข้างบน) */
+@media (max-width: 680px) {
+  .body:has(> [data-area="plan"]) {
+    grid-template-areas: none;
+    grid-template-rows: none;
+  }
 }

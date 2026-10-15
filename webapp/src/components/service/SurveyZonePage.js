@@ -21,12 +21,22 @@
 //   🔄 กองรูป "ภาพจุดติดตั้ง" ที่แยกจากรายการจุดหายไป · รูปเก่าที่ไม่มี spotId (หรือชี้จุดที่ลบไปแล้ว) ลงถาด
 //      "ยังไม่ได้ผูกจุด" ท้ายหัวข้อ — คนที่ผูกได้ (`canLinkSpots` ของ server) แตะชื่อจุดที่ตรงกับรูป
 //   ⚠️ ลบจุดที่มีรูป = ถามก่อน แล้วรูปย้ายลงถาดเอง (ไม่มีไฟล์ถูกลบ · `spotPhotoGroups` จัดให้)
+//
+// ⭐ **พื้นที่ที่ประเมินจากแบบ** (งวด S2b §3 B-2 · บอร์ด B1 · mig 0408) — หน้าเดียวกัน หัวข้อคนละชุด: ① ขนาด ② ภาพแบบของพื้นที่
+//   ③ จุดติดตั้งโดยประมาณ ④ หมายเหตุ · ไม่มีภาพกว้าง จุดไม่มีรูป (ไม่มีใครยืนอยู่ในห้อง)
+//   🔑 แยกทางด้วย `surveyDrawingZoneView(...)` ตัวเดียว — `null` = พื้นที่ลงหน้างาน **เดินโค้ดเดิมทุกบรรทัด** · จอไม่อ่านคอลัมน์วิธีของแถวเอง
+//   🔑 แก้ได้ไหมมาจาก `drawing.editable` (หัวหน้า · ใบยังไม่ล็อก · ยังไม่ถูกตัด) ไม่ใช่ `canWrite` — ด่านเดียวกับ server:
+//      หัวหน้าที่เป็น CD/CM กรอกได้แม้เขียนผลวัดหน้างานไม่ได้ · ผู้วางคิว/ช่างที่เปิดมาถึงเห็นครบแต่แก้ไม่ได้ (มติ O4)
+//      แก้ไม่ได้ = ไม่มีช่อง ไม่มีปุ่ม (ไม่ใช่ปุ่มจาง) + บรรทัดเหตุหนึ่งบรรทัดใต้หัว (`readOnlyReason`)
+//   ⚠️ ภาพแบบรับเฉพาะ JPG/PNG (`fileGate`) — กระดาษวาดได้สองชนิดนี้ · ไฟล์ที่ลงเอกสารไม่ได้ซึ่งค้างอยู่ในช่องถูกชี้ที่ตัวไฟล์
+//   ⚠️ ภาพกว้าง/ภาพจุดที่ค้างมาจากตอนยังลงหน้างาน = ลิสต์พับ "ไฟล์เดิม…" ลบได้อย่างเดียว (ไม่ลงเอกสาร ไม่นับในด่าน)
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Ban, Check, ChevronRight, CircleAlert, MessageSquarePlus, Pencil, Plus, RefreshCw, Save, Scissors,
+  Ban, Check, ChevronRight, CircleAlert, ExternalLink, MessageSquarePlus, Pencil, Plus, RefreshCw, Save, Scissors,
   Trash2, Undo2,
 } from "lucide-react";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import thaiText from "@/components/ThaiText";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
@@ -35,17 +45,23 @@ import RowActionMenu from "@/components/ui/RowActionMenu";
 import StatusBadge from "@/components/ui/StatusBadge";
 import StatusNotice from "@/components/ui/StatusNotice";
 import Textarea from "@/components/ui/Textarea";
+import { notifyToast } from "@/components/ui/Toast";
+import SurveyMethodChip from "@/components/service/SurveyMethodChip";
 import SurveyZonePager from "@/components/service/SurveyZonePager";
+import { apiJson } from "@/lib/apiFetch";
+import { photoDeleteConfirm } from "@/lib/master/attachmentPhotoTiles";
 import {
-  SURVEY_DOC_SPOT, SURVEY_DOC_WIDE, surveyZoneLatestRow, surveyZoneNextBase, surveyZoneSavePayload, surveyZoneStaleReply,
+  SURVEY_DOC_PLAN, SURVEY_DOC_SPOT, SURVEY_DOC_WIDE, surveyZoneLatestRow, surveyZoneNextBase, surveyZoneSavePayload,
+  surveyZoneStaleReply,
 } from "@/lib/service/survey";
 import {
   SURVEY_UNKNOWN_TEXT, surveyDraftSync, surveyZoneChangedSections, surveyZoneDraftSignature,
 } from "@/lib/service/surveyControl";
 import {
-  SURVEY_DIM_FIELDS, surveyDraftSummary, surveyNextDimField, surveyPartsView, surveyZoneActions,
+  SURVEY_DIM_FIELDS, surveyDraftSummary, surveyDrawingZoneView, surveyNextDimField, surveyPartsView, surveyZoneActions,
   surveyZoneFooterView, surveyZoneSections, surveyZoneStateBadge, surveyZoneTitle,
 } from "@/lib/service/surveyFieldView";
+import { isJpgOrPngFile } from "@/lib/service/surveyMethod";
 import {
   SPOT_TRAY_LABEL, spotDraftPhotos, spotLinkChoices, spotPhotoGroups, spotRemovalNotice, spotRowLabel, spotTrayView,
 } from "@/lib/service/surveySpotPhotos";
@@ -61,6 +77,11 @@ const spotNoteId = (zoneId, spotId) => `survey-spot-note-${zoneId}-${spotId}`;
 const BADGE_ICONS = { error: CircleAlert, conflict: RefreshCw, dirty: Pencil, done: Check };
 /* ชนิดไฟล์ของหัวข้อจุด — ค่าคงที่ระดับไฟล์ (อาร์เรย์ใหม่ทุกครั้งที่วาด = แผงผูกตัวรับ Ctrl+V ใหม่ทุกรอบ) */
 const SPOT_DOC_TYPES = [{ key: SURVEY_DOC_SPOT, label: "ภาพจุดติดตั้ง" }];
+/* ชนิดไฟล์ของช่องภาพแบบ (พื้นที่จากแบบ) — ค่าคงที่ระดับไฟล์ด้วยเหตุเดียวกัน · ช่องผังของพื้นที่ลงหน้างานอยู่ที่ตารางสรุปส่งผล ไม่ใช่ที่นี่ */
+const PLAN_DOC_TYPES = [{ key: SURVEY_DOC_PLAN, label: "ภาพแบบของพื้นที่" }];
+/* 🐞 แผงไฟล์แนบส่ง `File` ของเบราว์เซอร์ (name / type) มาให้ด่าน แต่ตัวตัดสินอ่านทรงของแถวไฟล์แนบ (fileName / mimeType)
+   ⇒ ต้องแปลงก่อนถาม ไม่งั้นทุกไฟล์ถูกทิ้ง รวม JPG/PNG — ตัวแปลงเดียวกับตารางสรุปส่งผล */
+const planFileTest = (file) => isJpgOrPngFile({ fileName: file?.name, mimeType: file?.type });
 
 /* หัวข้อหนึ่งหัวข้อ — วงเลข (อำพันเมื่อค้าง · ติ๊กเขียวเมื่อบันทึกแล้ว/รูปขึ้นแล้ว) · ชื่อ · คำกำกับ · ป้ายขวา
    ⚠️ `h3` — h1 = รหัสคำร้อง · h2 = ชื่อพื้นที่ (ผังหัวข้อของหน้าต้องเรียงชั้น) */
@@ -106,6 +127,13 @@ function Section({ area, id, number, icon: Icon, title, hint, state, children })
  *                      ใบเปิด = คนที่เขียนได้ · ใบที่ส่งผลแล้ว = หัวหน้าฝ่าย (Q1a — metadata อย่างเดียว แนบ/ลบยังล็อก)
  * @param spotsNote     บรรทัดแจ้งบนสุดของหัวข้อจุด (สตริงเดียว · ไม่ส่ง = ไม่มี) — ใบที่ส่งผลแล้วหัวหน้ายังผูก/ย้ายรูปจุดได้ ⇒ หน้าบอกว่า
  *                      ทำแล้วเอกสารประเมิน (SU) เปลี่ยนไหม · ประโยคมาจากตัวตัดสินของเอกสาร (`view.document.relinkNote`) หน้านี้แค่วาด
+ * ── พื้นที่จากแบบ (งวด S2b) — ไม่ส่งสักตัว = หน้าเดิมทุกจุด (พื้นที่ลงหน้างานไม่อ่านค่าพวกนี้เลย นอกจาก `dept`) ──
+ * @param canDecide     หัวหน้า (คนเดียวที่กรอกพื้นที่จากแบบได้) · @param locked ใบล็อกแล้ว (ส่งผล · ยกเลิก · ปิด)
+ * @param dept          ฝ่ายของใบ — คำของป้ายที่มา "เพิ่มโดย {ฝ่าย}" ของพื้นที่จากแบบที่ถูกเพิ่ม
+ * @param drawings      แผง "แบบจากฝ่ายขาย" (node) — หน้าเต็มจอวางไว้ใต้ช่องภาพแบบ · สองบานแผงอยู่เหนือบานแล้ว ผู้เรียกจึงไม่ส่ง
+ * @param salesReuseOffered แผง "แบบจากฝ่ายขาย" มีไฟล์ที่ปุ่ม "ใช้รูปนี้เป็นภาพแบบของพื้นที่นี้" กดได้อย่างน้อยหนึ่งไฟล์ (หน้าใบเป็นคนบอก) —
+ *                      บรรทัด "หรือกด … ที่ไฟล์ในแผง" ขึ้นเฉพาะตอนนี้ (🐞 UAT S2b S01: แผงว่าง "0 ไฟล์" แต่บรรทัดยังชี้ไปที่ปุ่มที่ไม่มี)
+ * @param planReloadKey ตัวเลขที่หน้าขยับเมื่อปุ่ม "ใช้รูปนี้เป็นภาพแบบของพื้นที่นี้" แนบไฟล์สำเร็จ — ช่องภาพแบบโหลดรายการใหม่
  */
 export default function SurveyZonePage({
   zone,
@@ -134,6 +162,12 @@ export default function SurveyZonePage({
   spotsNote = null,
   jumpToTray = false,
   onTrayShown,
+  canDecide = false,
+  locked = false,
+  dept = null,
+  drawings = null,
+  salesReuseOffered = false,
+  planReloadKey = 0,
 }) {
   const [parts, setParts] = useState(() => (Array.isArray(zone.parts) && zone.parts.length ? zone.parts : [emptyPart()]));
   const [spots, setSpots] = useState(() => (Array.isArray(zone.spots) ? zone.spots : []));
@@ -159,6 +193,11 @@ export default function SurveyZonePage({
     onFilesChange?.(zone.id, items, meta);
   }, [onFilesChange, zone.id]);
   const shownFiles = liveFiles ?? files;
+  /* พื้นที่จากแบบ: ไฟล์เดิมที่กำลังลบ (ปุ่มของไฟล์นั้นดับระหว่างรอ) · รอบอ่านรายการใหม่ของช่องภาพแบบ · รายการล่าสุดหลังกล่องยืนยันปิด */
+  const [removingFile, setRemovingFile] = useState(null);
+  const [filesEpoch, setFilesEpoch] = useState(0);
+  const shownFilesRef = useRef(shownFiles);
+  shownFilesRef.current = shownFiles;
 
   /* ⚠️ ยิงคู่ true/false ต่อหนึ่งชุด และสองชุดวิ่งซ้อนได้ ⇒ นับ ไม่ใช่ธง (สัญญาของ `onBusyChange`) */
   const handleBusy = useCallback((isBusy) => {
@@ -167,7 +206,11 @@ export default function SurveyZonePage({
   }, [onUploadBusy]);
 
   const isCut = (zone.status || "ok") === "cut";
-  const edit = canWrite && !isCut;
+  /* 🔑 **ทางแยกเดียวของหน้า** — `null` = พื้นที่ลงหน้างาน (โค้ดเดิมทุกบรรทัด) · มีค่า = หัวข้อชุดของพื้นที่จากแบบ
+     แก้ได้ไหม: พื้นที่จากแบบถามตัวตัดสิน (`editable` = หัวหน้า · ใบยังไม่ล็อก · ยังไม่ถูกตัด) ไม่ใช่ `canWrite` ของผลวัดหน้างาน */
+  const drawing = surveyDrawingZoneView({ zone, files: shownFiles, canDecide, locked, dept });
+  const edit = drawing ? drawing.editable : (canWrite && !isCut);
+  const { chip: methodLabel = null } = drawing || {};
 
   // ── ค่าที่พิมพ์ค้าง ยังไม่ลงฐาน ──────────────────────────────────────────
   /* 🐞 review 30/09 — **แถวจุดที่มีรูปแล้วเป็นแถวจริง แม้ยังว่าง** — แผ่นถ่ายรูปอยู่บนแถวใหม่ที่ยังว่าง (ถ่ายก่อน พิมพ์ชื่อทีหลัง)
@@ -181,7 +224,11 @@ export default function SurveyZonePage({
   const draft = { parts, spots, note, photoSpotIds: spotDraft.ownerIds };
   const savedSig = useMemo(() => surveyZoneDraftSignature(zone), [zone]);
   const draftSig = surveyZoneDraftSignature(draft);
-  const dirty = !isCut && draftSig !== savedSig && draftSig !== sentSig;
+  /* 🔴 **พื้นที่จากแบบที่คนนี้แก้ไม่ได้ ไม่มีร่าง** (งวด S2b) — ช่างพิมพ์ค้างไว้แล้วหัวหน้าสลับห้องนั้นเป็นประเมินจากแบบ:
+     ช่องกับปุ่มบันทึกหายไปแล้ว ร่างที่ค้างจึงบันทึกก็ไม่ได้ ทิ้งก็ไม่ได้ และจะถูกวาดเป็น "ขนาดของพื้นที่" ทั้งที่ไม่เคยลงฐาน
+     ⇒ ธงค้างเป็น false ทันที (แถบล่างกับด่านส่งงานเลิกนับ) และ effect ข้างล่างรับแถวจากฐานลงช่อง */
+  const frozen = !!drawing && !edit;
+  const dirty = !isCut && !frozen && draftSig !== savedSig && draftSig !== sentSig;
   const draftSummary = dirty ? surveyDraftSummary(draft, zone) : "";
   const unlinkPhotos = dirty ? spotDraft.unsavedPhotos : 0;
 
@@ -231,6 +278,9 @@ export default function SurveyZonePage({
     else if (savedSig !== prevSaved) setConflict(false);
   }, [savedSig, adoptRow]);
 
+  /* พื้นที่กลายเป็น "จากแบบ · อ่านอย่างเดียว" ระหว่างที่เปิดอยู่ = ทิ้งร่าง วาดจากแถวในฐาน (ดู `frozen` ข้างบน) */
+  useEffect(() => { if (frozen) adoptRow(zoneRef.current); }, [frozen, adoptRow]);
+
   /* หน้าต้องรู้ว่าพื้นที่นี้มีค่าค้างไหม (และค้างอะไร — คำในกล่อง "ทิ้งค่าที่ยังไม่บันทึก?")
      ⚠️ ต้องแจ้ง `false` ตอนถูกถอดด้วย ไม่งั้นพื้นที่ที่ย้ายออกไปแล้วล็อกปุ่มส่งค้าง */
   useEffect(() => { onDirtyChange?.(zone.id, dirty, draftSummary, unlinkPhotos); }, [dirty, draftSummary, unlinkPhotos, zone.id, onDirtyChange]);
@@ -264,6 +314,9 @@ export default function SurveyZonePage({
       const changed = surveyZoneChangedSections(baseSig, draft);
       if (!changed) return plan.payload;
       const keys = Object.keys(changed).filter((k) => changed[k]);
+      /* 🔄 เพิ่งสลับกลับมาเป็นลงหน้างาน (`footer.resave`): ด่านขนาดรอการบันทึกหลังสลับ ⇒ ส่งขนาดที่อยู่บนจอไปด้วยเสมอ
+         แม้ไม่ได้แก้ตัวเลข (server ประทับ `surveyedAt` ใหม่ทุกครั้งที่บันทึก) — ไม่งั้นกดแล้วไม่มีคำขอ ด่านไม่มีวันผ่าน */
+      if (footer.resave && !keys.includes("parts")) keys.push("parts");
       return keys.length ? Object.fromEntries(keys.map((k) => [k, plan.payload[k]])) : null;
     };
     let payload = pick(baseRef.current?.sig);
@@ -324,8 +377,12 @@ export default function SurveyZonePage({
   const zoneCode = zone.zoneCodeUnknown ? SURVEY_UNKNOWN_TEXT : zone.zoneCode || null;
   const partsView = useMemo(() => surveyPartsView(parts), [parts]);
   const sections = surveyZoneSections({ zone, files: shownFiles, draft, dirty });
-  const badge = surveyZoneStateBadge({ zone, files: shownFiles, dirty, error, conflict });
-  const actions = surveyZoneActions({ zone, canWrite });
+  const badge = surveyZoneStateBadge({ zone, files: shownFiles, dirty, error, conflict, dept });
+  /* ทางออกของพื้นที่จากแบบเป็นของคนที่กรอกมันได้ (หัวหน้าบนใบที่ยังไม่ล็อก) — ไม่ใช่ `canWrite` ของผลวัดหน้างาน
+     ⚠️ ไม่ใช้ `drawing.editable` ตรง ๆ: ค่านั้นเป็นเท็จบนแถวที่ถูกตัดแล้ว (เนื้อแก้ไม่ได้) แต่ "เอากลับเข้าใบ" ต้องยังอยู่ —
+        ใบงานโต๊ะทุกแถวที่ถูกตัดเป็นจากแบบ (แผน §1) ⇒ ถ้าหายไป พื้นที่ที่ตัดผิดจะไม่มีทางกลับเข้าใบจากจอไหนเลย
+        แถวที่ยังไม่ถูกตัดได้ค่าเท่า `editable` พอดี (ผู้วางคิว · ช่าง · ใบล็อก = ไม่มีทางออกสักทาง) */
+  const actions = surveyZoneActions({ zone, canWrite: drawing ? (canDecide && !locked) : canWrite });
   /* ความสูงหัวที่ติดบน → `--survey-zone-head-h` ของ <html> ให้ `scroll-padding-top` กันช่องที่โฟกัสไม่ให้จมใต้หัว (WCAG 2.4.11)
      🐞 review 26/09: Shift+Tab ไปช่องที่อยู่ใต้หัว (~130–160px ห่อได้หลายบรรทัด) เบราว์เซอร์ไม่เลื่อนเพราะช่องยัง "อยู่ในจอ"
      ⚠️ วัดจริงด้วย ResizeObserver — หัวสูงไม่คงที่ (ชื่อยาวห่อ · ป้ายสถานะ) · ถอดค่าตอนหน้าพื้นที่ถูกถอด */
@@ -395,7 +452,8 @@ export default function SurveyZonePage({
   /* ลบจุด — จุดที่มีรูปถามก่อน ("รูปจะย้ายไปกลุ่มยังไม่ได้ผูกจุด") · ไม่มีรูป = ลบเลย (ยังเป็นร่าง กดบันทึกถึงจะลงฐาน)
      ⚠️ ไม่มีโค้ดย้ายรูป — id ของจุดหายจากรายการ รูปก็ตกถาดเองที่ `spotPhotoGroups` (ไม่มีไฟล์ไหนถูกลบ) */
   const removeSpot = async (spot) => {
-    const notice = spotRemovalNotice({ spot, files: shownFiles });
+    /* พื้นที่จากแบบ: จุดไม่มีรูปของตัวเอง (ไม่มีแผ่นถ่ายรูป ไม่มีถาด) ⇒ ไม่มีอะไรให้ถาม — ลบแถวร่างได้เลย */
+    const notice = drawing ? null : spotRemovalNotice({ spot, files: shownFiles });
     if (notice && !(await confirmAction({
       title: "ลบจุดนี้?", description: notice, confirmLabel: "ลบจุด", cancelLabel: "เก็บไว้",
     }))) return;
@@ -404,7 +462,8 @@ export default function SurveyZonePage({
 
   /* ── ③ แถวของจุดหนึ่งจุด (ของที่แผงวาดเหนือแผ่นรูปของจุดนั้น) — เลข · ชื่อ (+ บันทึก) · เมนู ⋯ ─────────── */
   const spotRow = (spot, i) => {
-    const noteShown = !!String(spot.note || "").trim() || noteOpen.has(spot.id);
+    /* พื้นที่จากแบบ: แถว = ชื่อ + บันทึก สองช่องกางไว้เลย (ไม่มีรูป ไม่มีเมนู — เหลือทางเดียวคือลบ จึงเป็นปุ่มตรง ๆ) */
+    const noteShown = !!drawing || !!String(spot.note || "").trim() || noteOpen.has(spot.id);
     return (
       <div className={styles.spot} data-mode={edit ? undefined : "read"}>
         <span className={styles.spotNo} aria-hidden="true">{i + 1}</span>
@@ -436,7 +495,12 @@ export default function SurveyZonePage({
             </>
           )}
         </div>
-        {edit ? (
+        {edit && drawing ? (
+          <button type="button" className={styles.iconBtn} data-tone="danger" aria-label={`ลบจุดที่ ${i + 1}`}
+            onClick={() => removeSpot(spot)}>
+            <Trash2 size={15} aria-hidden="true" />
+          </button>
+        ) : edit ? (
           <RowActionMenu
             className={styles.spotMenu}
             label={`จัดการจุดที่ ${i + 1}`}
@@ -509,6 +573,28 @@ export default function SurveyZonePage({
     };
   };
 
+  /* ── ไฟล์เดิมของพื้นที่จากแบบ (ภาพกว้าง/ภาพจุดจากตอนยังลงหน้างาน) — เปิดดู · ลบ (เฉพาะคนที่แก้ได้) ──────────────
+     ⚠️ เปิดด้วยปุ่ม ไม่ใช่ลิงก์ — หน้านี้ห้ามมีลิงก์ (ตัวเฝ้าค่าค้างโหลดหน้าใหม่เมื่อกดลิงก์ · ยามที่ `surveyFieldScreen.test.mjs`)
+        แท็บใหม่ = หน้านี้กับค่าที่พิมพ์ค้างอยู่ที่เดิม
+     ⚠️ ลบแล้วรายงานรายการใหม่ขึ้นหน้าทันที (รายการพื้นที่ · การ์ดจัดการผลนับไฟล์ชุดเดียวกัน) แล้วให้ช่องภาพแบบอ่านรายการจริง
+        อีกรอบ (`filesEpoch`) — แผงนั้นถือรายการของตัวเอง ถ้าไม่อ่านใหม่ การลบภาพแบบครั้งถัดไปจะรายงานไฟล์ที่เพิ่งลบกลับมา */
+  const openFile = (file) => window.open(file.href, "_blank", "noopener,noreferrer");
+  const removeOldFile = async (file) => {
+    if (!(await confirmAction(photoDeleteConfirm({ fileName: file.name })))) return;
+    setRemovingFile(file.id);
+    try {
+      await apiJson(`/api/master/attachments/${file.id}`, { method: "DELETE", fallbackError: "ลบไม่สำเร็จ" });
+      const left = shownFilesRef.current.filter((f) => f.id !== file.id);
+      setLiveFiles(left);
+      onFilesChange?.(zone.id, left, { loaded: true });
+      setFilesEpoch((n) => n + 1);
+    } catch (e) {
+      notifyToast.error(e?.message || "ลบไม่สำเร็จ");
+    } finally {
+      setRemovingFile(null);
+    }
+  };
+
   const photoPanel = (docType, label, weight) => (
     <div className={styles.photos}>
       {/* ⚠️ `intakeWeight` = ใครได้ Ctrl+V ตอนไม่มีอะไรโฟกัส (0 = ได้ก่อน) — ภาพกว้างเป็นของที่ต้องมี จึงได้ก่อน */}
@@ -542,9 +628,13 @@ export default function SurveyZonePage({
             <h2 id={headingId} className={styles.title} tabIndex={-1}>{title}</h2>
           </div>
           <div className={styles.badges}>
+            {/* วิธีประเมิน — คุณสมบัติของพื้นที่ ไม่ใช่สถานะ (ป้ายคนละชนิดกับป้ายสถานะข้าง ๆ) · พื้นที่ลงหน้างานไม่มีป้ายนี้ */}
+            <SurveyMethodChip label={methodLabel} size="md" />
             <StatusBadge tone={badge.tone} icon={BadgeIcon}>{badge.text}</StatusBadge>
             {/* ที่มาของพื้นที่ — คนละแกนกับสถานะ (SA ต้องรู้ว่าไม่ได้ขอเอง · มติข้อ 6) */}
-            {badge.added ? <StatusBadge tone="accent">เพิ่มหน้างาน</StatusBadge> : null}
+            {!drawing && badge.added ? <StatusBadge tone="accent">เพิ่มหน้างาน</StatusBadge> : null}
+            {/* พื้นที่จากแบบที่ถูกเพิ่ม: ไม่มีใครอยู่หน้างาน ⇒ คำมาจากตัวตัดสิน ("เพิ่มโดย {ฝ่าย}") */}
+            {drawing && badge.addedLabel ? <StatusBadge tone="accent">{badge.addedLabel}</StatusBadge> : null}
           </div>
           {layout === "pane" ? (
             <SurveyZonePager
@@ -555,6 +645,11 @@ export default function SurveyZonePage({
         </div>
       </header>
 
+      {/* พื้นที่จากแบบที่คนดูไม่ใช่หัวหน้า (ผู้วางคิว · ช่างที่ตามลิงก์มา) — **เหตุหนึ่งบรรทัด** แทนที่ช่องกรอกทั้งหน้า
+          ประโยคเดียวกับที่ server ตอบเมื่อพยายามบันทึก · ไม่มีข้อความ "เฉพาะหัวหน้า" ซ้ำที่อื่นในหน้านี้ */}
+      {drawing?.readOnlyReason ? (
+        <StatusNotice tone="info" className={styles.reason}>{drawing.readOnlyReason}</StatusNotice>
+      ) : null}
       {/* 🔴 **มีคนแก้แถวนี้ระหว่างที่ค่าของเรายังไม่ได้บันทึก** — บอกตรง ๆ แล้วให้ทางออกสองทาง */}
       {conflict && !isCut ? (
         <p className={styles.conflict} role="status">
@@ -587,8 +682,12 @@ export default function SurveyZonePage({
       ) : (
         <div className={styles.body}>
           {/* ── ① ขนาด ─────────────────────────────────────────────── */}
-          <Section area="size" id={sectionId("size")} number={1} title="ขนาด"
+          <Section area="size" id={sectionId("size")} number={1} title={drawing ? drawing.size.label : "ขนาด"}
             hint={edit ? "หน่วย ม. · ต้องมี" : "หน่วย ม."} state={sections.size}>
+            {/* พื้นที่จากแบบ: ตัวเลขมาจากแบบ ไม่ได้มาจากตลับเมตร — บอกคนกรอกว่าอ่านจากไหน (คนที่แก้ไม่ได้ไม่ต้องอ่านคำสั่ง) */}
+            {drawing && edit ? <p className={styles.hint}>{drawing.size.hint}</p> : null}
+            {/* 🔄 เพิ่งสลับกลับมาเป็นลงหน้างาน — ประโยคของด่านขนาดอยู่ที่หัวข้อที่ต้องตรวจ (มือถือซ่อนบรรทัดสถานะของท้ายหน้า) */}
+            {edit && sections.size.note ? <StatusNotice tone="warning">{sections.size.note}</StatusNotice> : null}
             {partsView.rows.map((row, i) => {
               const part = parts[i];
               const open = labelOpen.has(part.id);
@@ -678,6 +777,10 @@ export default function SurveyZonePage({
             </div>
           </Section>
 
+          {/* ⚠️ หัวข้อ ② ③ มีสองชุด — **ชุดลงหน้างานอยู่ก่อนและไม่ถูกแตะ** (ยามซอร์สหลายตัวอ่านหัวข้อจุดชุดแรกของไฟล์) ·
+              ชุดของพื้นที่จากแบบอยู่ถัดลงไป (`<Section area="plan"` → ก่อนหัวข้อหมายเหตุ) */}
+          {!drawing ? (
+          <>
           {/* ── ② ภาพกว้าง ─────────────────────────────────────────── */}
           <Section area="wide" id={sectionId("wide")} number={2} title="ภาพกว้าง"
             hint="ต้องมีอย่างน้อย 1 รูป" state={sections.wide}>
@@ -719,16 +822,112 @@ export default function SurveyZonePage({
               </>
             ) : null}
           </Section>
+          </>
+          ) : (
+          <>
+          {/* ── ② ภาพแบบของพื้นที่ (พื้นที่จากแบบ) — รูปเดียวของพื้นที่นี้บนเอกสารประเมิน ⇒ ต้องเป็น JPG/PNG ─────────
+              ⚠️ ไม่มีหัวข้อภาพกว้าง · แผงไฟล์แนบตัวเดียวกับรูปอื่นของหน้า (ลูปอัป · กล่องดูรูป · ลบในกล่อง) แต่ผ่านด่านไฟล์
+                 ของผู้เรียก (`fileGate`): ปุ่มเลือก · ลากวาง · Ctrl+V ทิ้งไฟล์ที่ไม่ใช่ JPG/PNG พร้อมประโยคเดียว
+              ⚠️ ไม่มีคำใบ้เรื่องลากวาง/วางจากคลิปบอร์ด (`hideDropHint`) — ทางที่บอกคือเลือกรูป หรือปุ่มของแผงแบบจากฝ่ายขาย */}
+          <Section area="plan" id={sectionId("plan")} number={2} title={drawing.plan.label} state={sections.plan}>
+            {edit ? <p className={styles.hint}>{thaiText(drawing.plan.hint)}</p> : null}
+            <div className={styles.photos}>
+              <AttachmentsPanel
+                entityType="service_survey_zone" entityId={zone.id} canEdit={edit} showCount={false}
+                title="" inlineUpload docTypes={PLAN_DOC_TYPES}
+                photoCapture photoTiles
+                fileGate={{
+                  accept: drawing.plan.accept, test: planFileTest, rejectText: drawing.plan.rejectText,
+                  pickLabel: "เลือกรูปจากเครื่อง", hideDropHint: true,
+                }}
+                reloadKey={planReloadKey + filesEpoch}
+                onItemsChange={handleItems}
+                onBusyChange={handleBusy}
+                intakeWeight={0}
+              />
+            </div>
+            {/* ไฟล์ที่แนบไว้แต่ลงเอกสารไม่ได้ (PDF/TIFF ที่ค้างมาก่อนสลับวิธี) — ชี้ที่ตัวไฟล์ตรงนี้ ไม่ใช่รอไปเจอตอนส่งผล
+                · ไฟล์ยังอยู่ในแผงข้างบน (เปิด/ลบได้ที่นั่น) ที่นี่บอกแค่ว่าไฟล์ไหนไม่นับ และต้องทำอะไรต่อ */}
+            {drawing.plan.files.some((file) => !file.printable) ? (
+              <ul className={styles.flags}>
+                {drawing.plan.files.filter((file) => !file.printable).map((file) => (
+                  <li key={file.id} className={styles.flag}>
+                    <CircleAlert size={14} aria-hidden="true" />
+                    <span><b>{file.name}</b> {thaiText(file.note)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {/* ประโยคของด่านข้อผังตัวเดียวกับที่บล็อกการส่งผล — ยังขาดเมื่อไร พูดที่ช่องนี้ */}
+            {drawing.plan.missing ? (
+              <p className={styles.gap}>
+                <CircleAlert size={14} aria-hidden="true" />
+                <span>{thaiText(drawing.plan.missing)}</span>
+              </p>
+            ) : null}
+            {/* อีกทางหนึ่งของคนที่แนบได้ — มีแผงให้ชี้เมื่อไรถึงพูด (สองบาน: แผงอยู่เหนือบาน · หน้าเต็มจอ: แผงอยู่ใต้บรรทัดนี้) */}
+            {edit && drawing.plan.missing && salesReuseOffered ? (
+              <p className={styles.hint}>หรือกด “ใช้รูปนี้เป็นภาพแบบของพื้นที่นี้” ที่ไฟล์ในแผง “แบบจากฝ่ายขาย”</p>
+            ) : null}
+            {layout === "page" && drawings ? drawings : null}
+            {/* ภาพกว้าง/ภาพจุดที่ค้างมาจากตอนพื้นที่นี้ยังลงหน้างาน — ไม่ลงเอกสาร ไม่นับในด่าน · พับไว้ (ไม่ใช่งานหลักของหน้า)
+                ซ่อนเงียบไม่ได้: ไฟล์ที่ไม่มีใครเห็นคือไฟล์ที่ลบไม่ได้ · ลบได้อย่างเดียว ไม่มีอัป ไม่มีผูกจุด */}
+            {drawing.oldFiles ? (
+              <details className={styles.old}>
+                <summary className={styles.oldHead}>
+                  <ChevronRight size={16} className={styles.oldChev} aria-hidden="true" />
+                  <span>{thaiText(drawing.oldFiles.label)}</span>
+                </summary>
+                <ul className={styles.oldList}>
+                  {drawing.oldFiles.files.map((file) => (
+                    <li key={file.id} className={styles.oldItem}>
+                      <button type="button" className={styles.oldOpen} onClick={() => openFile(file)}>
+                        <span className={styles.oldName}>{file.name}</span>
+                        <ExternalLink size={14} aria-hidden="true" />
+                        <span className="sr-only">(เปิดแท็บใหม่)</span>
+                      </button>
+                      {edit ? (
+                        <button type="button" className={styles.iconBtn} data-tone="danger" aria-label={`ลบ ${file.name}`}
+                          disabled={removingFile === file.id} onClick={() => removeOldFile(file)}>
+                          <Trash2 size={15} aria-hidden="true" />
+                        </button>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
+          </Section>
+
+          {/* ── ③ จุดติดตั้งโดยประมาณ (พื้นที่จากแบบ) — แถวละจุด: ชื่อ + บันทึก · **ไม่มีรูป** (ไม่มีแผงรูปจุด ไม่มีถาด) ─────
+              ไม่บังคับ · ลบจุดไม่ต้องถามเรื่องรูป · อ่านอย่างเดียว = ชื่อกับบันทึกเป็นตัวหนังสือ (แถวตัวเดียวกับหน้าลงหน้างาน) */}
+          <Section area="spots" id={sectionId("spots")} number={3} title={drawing.spots.label} state={sections.spots}>
+            {edit ? <p className={styles.hint}>{drawing.spots.hint}</p> : null}
+            {spots.length ? (
+              <ul className={styles.spotRows}>
+                {spots.map((spot, i) => <li key={spot.id}>{spotRow(spot, i)}</li>)}
+              </ul>
+            ) : null}
+            {spots.length === 0 && !edit ? <p className={styles.empty}>{naText(null)}</p> : null}
+            {edit ? (
+              <button type="button" className={styles.addRow} onClick={() => setSpots((rows) => [...rows, emptySpot()])}>
+                <Plus size={16} aria-hidden="true" />
+                เพิ่มจุด
+              </button>
+            ) : null}
+          </Section>
+          </>
+          )}
 
           {/* ── ④ หมายเหตุพื้นที่ ──────────────────────────────────── */}
           {/* 🔄 เดิมชื่อ "บันทึกหน้างาน" — ชนกับปุ่ม "บันทึกหน้างาน" บนงานวันนี้ (คำเดียวกันสองความหมาย · pain B8) */}
-          <Section area="note" id={sectionId("note")} number={4} title="หมายเหตุพื้นที่"
+          <Section area="note" id={sectionId("note")} number={4} title={drawing ? drawing.note.label : "หมายเหตุพื้นที่"}
             hint="ไม่บังคับ" state={sections.note}>
             {edit ? (
               <Textarea
                 touch value={note} rows={3} maxLength={1000}
                 aria-labelledby={sectionId("note")}
-                placeholder="เช่น ลูกค้าขอให้เลี่ยงมุมเตียงที่ 2"
+                placeholder={drawing ? "เช่น ความสูงฝ้าอ่านจากแบบตกแต่ง" : "เช่น ลูกค้าขอให้เลี่ยงมุมเตียงที่ 2"}
                 onChange={(e) => setNote(e.target.value)}
               />
             ) : (
@@ -740,14 +939,15 @@ export default function SurveyZonePage({
           {actions.cut || actions.remove ? (
             <p className={styles.cutRow} data-area="cut">
               <Ban size={15} aria-hidden="true" />
+              {/* พื้นที่จากแบบ: ปุ่มอย่างเดียว — คำนำ ("เข้าห้องนี้ไม่ได้ / ไม่ต้องวัด") เป็นเรื่องของคนที่ยืนอยู่หน้างาน */}
               {actions.remove ? (
                 <>
-                  <span>เพิ่มผิดพื้นที่?</span>
+                  {drawing ? null : <span>เพิ่มผิดพื้นที่?</span>}
                   <button type="button" className={styles.cutBtn} onClick={() => onRemove?.(zone)}>ลบพื้นที่นี้ทิ้ง</button>
                 </>
               ) : (
                 <>
-                  <span>เข้าห้องนี้ไม่ได้ / ไม่ต้องวัด</span>
+                  {drawing ? null : <span>เข้าห้องนี้ไม่ได้ / ไม่ต้องวัด</span>}
                   <button type="button" className={styles.cutBtn} onClick={() => onCut?.(zone)}>ตัดพื้นที่นี้ออก</button>
                 </>
               )}

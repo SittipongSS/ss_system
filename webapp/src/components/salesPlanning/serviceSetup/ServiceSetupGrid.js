@@ -42,7 +42,7 @@ import { SERVICE_ROUNDS_EDIT_TEXT, normalizeServiceRounds } from "@/lib/sales/se
 import { linePackQtyText } from "@/lib/sales/linePackView";
 import { zonePickerOptions, zoneTakenMap } from "@/lib/service/zonePickerOptions";
 import { nextEnabledIndex } from "@/lib/ui/selectionNavigation";
-import { zonesBulkCapText } from "@/components/service/zonesBulkPlan";
+import { zoneAssessedSourceNote, zonesBulkCapText } from "@/components/service/zonesBulkPlan";
 import ServiceFgPicker from "./ServiceFgPicker";
 import ServiceLinePeriod from "./ServiceLinePeriod";
 import {
@@ -488,7 +488,9 @@ function ZonePick({
       </div>
       {assessed !== null ? (
         <span className={styles.note}>
-          ผลประเมิน {fmtNumber(assessed)} แพ็ค
+          {/* ผลล่าสุดของโซนมาจากแบบ (ทะเบียนติดป้ายมา) = ต่อ " (จากแบบ)" ท้ายตัวเลข — บอกที่มาเท่านั้น ไม่เคยห้าม ปุ่ม "ใช้" ยังกดได้ตามเดิม
+              (ประเมินจากแบบ · งวด S2b · คำและกติกาเดียวกับชิปโซนในหน้าต่างเพิ่มหลายโซน) */}
+          ผลประเมิน {fmtNumber(assessed)} แพ็ค{zoneAssessedSourceNote(zone)}
           {String(assessed) !== packsText ? (
             <Button size="sm" variant="quiet" onClick={() => onPacks(index, String(assessed))}>ใช้เป็นรอบละ</Button>
           ) : null}

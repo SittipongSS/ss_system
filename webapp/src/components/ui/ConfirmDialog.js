@@ -90,6 +90,8 @@ export default function ConfirmDialog({
      ฟอร์มจริง (เช่น "แจ้งกำหนดส่ง") ไม่ใช่ยัดลงกล่องยืนยันจนกลายเป็นฟอร์มปลอมที่
      ไม่มีใครตรวจค่า · ผู้เรียกที่ไม่ส่ง `children` ได้กล่องเดิมทุก px */
   children,
+  /* ความกว้างของกล่อง — ค่าเดียวกับ `Modal` · ไม่ส่ง = "sm" ตัวเดิมของทุกผู้เรียก (งวด S2b: กล่องส่งผลที่มีไทล์สองใบขอ "md") */
+  size = "sm",
 }) {
   const [internalBusy, setInternalBusy] = useState(false);
   const [internalError, setInternalError] = useState("");
@@ -156,7 +158,7 @@ export default function ConfirmDialog({
       open={open}
       onClose={close}
       title={title}
-      size="sm"
+      size={size}
       dismissible={!pending && !hideCancel}
       initialFocusRef={hideCancel ? confirmRef : cancelRef}
       /* กล่องเปิดที่บรรทัดแรกเสมอ — ปุ่มที่ได้โฟกัสแรกอยู่ท้ายเนื้อ กล่องที่ยาวกว่าจอมือถือจึงเคยเปิดมากลางเนื้อ (ดู `Modal`) */
