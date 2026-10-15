@@ -45,7 +45,7 @@ import {
   SURVEY_DOC_STALE_TEXT, SURVEY_SIGN_LINK, surveyDocumentView, surveyFilesSignature, surveyRequestEnded, surveyWarningKinds,
 } from '@/lib/service/surveyDocumentView';
 import {
-  isDrawingZone, surveyDrawingAssessor, surveyMethodMix, surveyNeedsVisit, zoneMethod,
+  isDrawingZone, surveyDrawingAssessor, surveyMethodMix, surveyNeedsVisit, surveyZoneNeedsResave, zoneMethod,
 } from '@/lib/service/surveyMethod';
 import {
   SURVEY_METHOD_BUTTON, SURVEY_METHOD_CHIP, surveyDeskRailSteps, surveyMethodSwitchGate, surveyProgressText,
@@ -56,10 +56,13 @@ import {
   surveySendVisitStep,
 } from '@/lib/service/surveySendClose';
 import { spotPhotoGroups, surveySpotGates } from '@/lib/service/surveySpotPhotos';
-import { VISIT_STATUS_LABELS } from '@/lib/service/visitStatus';
+import { VISIT_STATUS_LABELS, isClosedVisit } from '@/lib/service/visitStatus';
 
 /** ค่าที่จอต้องเขียนเมื่ออ่านข้อมูลชิ้นนั้นไม่สำเร็จ — ไม่ใช่ขีด ไม่ใช่ 0 */
 export const SURVEY_UNKNOWN_TEXT = 'ไม่ทราบ';
+/* พาดหัวของใบที่เหลือแค่ "บันทึกอีกครั้ง" ของพื้นที่ที่กลับมาเป็นลงหน้างานหลังนัดปิดแล้ว (มติ O3) — การ์ดของใบประเมินกับแถบ "ตอนนี้"
+   ของหน้าคำร้องพิมพ์ตัวเดียวกัน · คำตามประโยคของด่านขนาด ("ตรวจขนาดกับของจริงแล้วกดบันทึกอีกครั้ง") */
+export const SURVEY_RESAVE_HEADLINE = 'รอหัวหน้าตรวจขนาดแล้วบันทึกอีกครั้ง';
 
 /** ป้ายของชิ้นที่อ่านได้/อ่านไม่ได้ — ใช้เขียนกล่องแจ้ง "อ่านไม่สำเร็จ" ให้บอกว่าชิ้นไหน */
 export const SURVEY_UNKNOWN_LABELS = {
@@ -641,6 +644,18 @@ export function surveyControlView({
   const leftZones = active.filter((r) => surveyFieldMissing(r, files[r.id] || []).length > 0);
   const totals = surveyTotals(rows);
   const allGates = surveyGateChecklist(rows, files);
+  /* 🔄 **พื้นที่ที่กลับมาเป็นลงหน้างานหลังนัดที่เข้าพื้นที่แล้วปิดไปแล้ว** (มติเจ้าของ O3 · 12/10: ใบอยู่ขั้นเดิม ใช้ผลจากรอบที่เข้าพื้นที่แล้ว)
+     — ของที่ขาดมีข้อเดียวคือ "บันทึกพื้นที่นี้อีกครั้งหลังสลับ" และไม่มีนัดเปิดให้ช่างคนไหนกลับไป ⇒ เป็นงานของหัวหน้า ไม่ใช่ "รอช่างเก็บงาน"
+     🐞 UAT S2b S06 (o3-desk-back-after-visit): การ์ดขึ้น "กำลังวัดหน้างาน · รอช่างเก็บงาน · ช่างต้องเก็บ: ขนาด" ทั้งที่ไม่มีใครวัดอยู่
+     ⚠️ เฉพาะแถวที่ขนาดครบสามช่องแล้ว และขาดของฝั่งช่างแค่ข้อขนาด · นัดยังเปิด / ไม่มีนัด / นัดทำไม่ได้ = ทางเดิม (ช่างเป็นคนเก็บ)
+     ⚠️ แถวที่ไม่เคยสลับวิธี (`methodChangedAt` ว่าง = ทุกแถวเดิม) ไม่เข้าทางนี้ ⇒ ใบลงหน้างานล้วนเท่าเดิมทุกตัวอักษร */
+  const visitReachedClosed = isClosedVisit(visit) && visit?.status !== 'unable';
+  const resaveByHead = (row) => {
+    if (!visitReachedClosed || !surveyZoneNeedsResave(row)) return false;
+    const missing = surveyZoneFacts(row, files[row.id] || []).missingCrew;
+    return missing.length === 1 && missing[0].key === 'size' && surveyZoneSize(row.parts).complete;
+  };
+  const resaveOnly = leftZones.length > 0 && leftZones.every(resaveByHead);
   /* ⭐ **ส่งผลแล้วนัดจะเป็นยังไง** — ตัวตัดสินตัวเดียวกับที่ route ส่งผลใช้ปิดนัดจริง (มติ 24/09 ข้อ 2)
      ⚠️ `visit` ต้องเป็นนัดที่ยังค้างถ้ามี (GET ใช้ `preferOpen`) — ไม่งั้นโมดัลบอกคนละนัดกับที่ปิดจริง
      🔄 คำนวณก่อนด่าน — ด่านรูปจุดของการส่งผลขึ้นกับว่าส่งผลนี้ปิดนัดที่ยังเปิดไหม (`surveySpotGates`)
@@ -706,8 +721,14 @@ export function surveyControlView({
   const crewGates = mix.onsite === 0 && mix.drawing > 0
     ? []
     : surveyGateChecklist(rows.filter((r) => !isDrawingZone(r)), files).filter((g) => g.owner === 'crew');
+  /* 🐞 UAT S2b S04 — ใบจากแบบทั้งใบ: ข้อ "รูปจุดผูกกับจุดครบ" ขึ้นเป็นแถว "0/0 ผ่าน" ทั้งที่ใบนี้ไม่มีใครถ่ายรูปจุด (บอร์ด B1 · B3 มีสี่ข้อ ไม่มีข้อนี้)
+     ⇒ บนใบที่ไม่เหลือพื้นที่ลงหน้างาน ข้อของรูปจุดที่ **ไม่มีอะไรให้นับและผ่านอยู่** ไม่ถูกวาดเป็นแถวด่าน
+     ⚠️ กรองเฉพาะ**รายการที่วาด** — ปุ่มส่งผล · เหตุที่ส่งไม่ได้ · ส่วนเอกสาร ยังถามจาก `spotSendGates` ชุดเต็มเหมือนเดิม
+     ⚠️ ข้อที่ติด (รูปจุดเก่าที่ค้างในถาดจากตอนยังลงหน้างาน) หรือมีของให้นับ ยังขึ้นตามเดิม · ใบลงหน้างาน/ใบผสม ไม่ถูกแตะ */
+  const deskOnlySheet = mix.onsite === 0 && mix.drawing > 0;
+  const shownSpotSendGates = deskOnlySheet ? spotSendGates.filter((g) => !(g.ok && g.total === 0)) : spotSendGates;
   const ownGates = canDecide
-    ? [...headGates, ...spotSendGates]
+    ? [...headGates, ...shownSpotSendGates]
     : [...crewGates, ...spotCrewGates];
   const documentView = surveyDocumentView({
     document,
@@ -734,7 +755,10 @@ export function surveyControlView({
   const docBlockers = docSend
     ? (Array.isArray(docSend.blockers) ? docSend.blockers : []).filter((t) => typeof t === 'string' && t.trim() !== '')
     : [];
+  /* ⚠️ ข้อกันเอกสารของใบที่มีพื้นที่ประเมินจากแบบ (`hold: true`) **ไม่ใช่ด่านที่ติด** — ไม่มีอะไรให้ใครแก้ และส่วนเอกสารเล่าเรื่องนี้
+     เองด้วยโทนข้อมูล ⇒ ไม่นับเป็นเหตุของแถวด่าน (🐞 UAT S2b S05: ใบที่ส่งแล้วขึ้น "ติด 1 / 4 ข้อ" ที่หัวหน้าแก้ไม่ได้) */
   const docIssueBlockers = (isRecord(document?.issue) && Array.isArray(document.issue.blockers) ? document.issue.blockers : [])
+    .filter((b) => b?.hold !== true)
     .map((b) => String(b?.text ?? '').trim()).filter(Boolean);
   /* ⭐ **จำนวนข้อคงที่ทุกสถานะ** (กติกาเดียวกับแถวแพ็คเกจข้างบน · มติ 7) — สวิตช์เปิด = มีแถวนี้ทั้งก่อนและหลังส่ง ·
      สวิตช์ปิด = ไม่มีทั้งก่อนและหลัง · หลังส่ง แถวติดเฉพาะเอกสารค้างผิดรอบ (`stale`) หรือออกเอกสารไม่ได้เพราะมีเหตุขวาง */
@@ -746,7 +770,12 @@ export function surveyControlView({
   /* เหตุของแถวทีละข้อ — แถวที่ผ่าน = ไม่มี · เอกสารค้างผิดรอบ = ประโยคเดียว · นอกนั้นเหตุชุดสดของ server ตามลำดับ */
   const docGateReasons = docGateOk ? []
     : !docSend && docState === 'stale' ? [SURVEY_DOC_STALE_TEXT] : docGateList;
-  const documentGate = docSend || docAfterSend
+  /* ⭐ **ใบที่มีพื้นที่จากแบบ (เอกสารถูกพักไว้ · งวด S1): แถว "เอกสารประเมินออกได้" ที่ผ่าน ไม่ถูกวาด** — เครื่องหมายถูก 1/1
+     เหนือส่วนเอกสารที่บอกว่า "ยังออกไม่ได้" คือสองประโยคเถียงกันเรื่องกระดาษใบเดียว (🐞 UAT S2b S04 · S05 · รูป payload ของ production)
+     · แถวยังขึ้นเมื่อ **ติดจริง** (เหตุของเนื้อใบที่ตีกลับการส่งผล · เอกสารค้างผิดรอบ) — เหตุพวกนั้นหัวหน้าแก้ได้
+     ⚠️ ใบลงหน้างานล้วน: `mix.drawing === 0` ⇒ แถวเดิมทุกสถานะ (จำนวนข้อคงที่เหมือนเดิม) · งวด S3 ถอดข้อกันเมื่อไร ถอดกิ่งนี้ด้วย */
+  const docGateHeld = mix.drawing > 0 && docGateOk;
+  const documentGate = (docSend || docAfterSend) && !docGateHeld
     ? {
       key: 'document',
       owner: 'head',
@@ -808,6 +837,8 @@ export function surveyControlView({
     key: 'ready', tone: 'info', headline: 'พร้อมส่งผลให้ฝ่ายขาย',
     sub: `${fmtNumber(totals.zones)} พื้นที่ · ${fmtNumber(totals.areaSqm)} ตร.ม. · ${surveyPackagesLabel(totals, packageSizes)}`,
   });
+  /* ข้อเท็จจริงรายพื้นที่ของใบจากแบบทั้งใบ — พาดหัวของงานโต๊ะกับมาตรวัด (`progress.desk`) อ่านชุดเดียวกัน · ใบอื่นไม่คำนวณ */
+  const deskFacts = mix.mode === 'drawing' ? active.map((r) => surveyZoneFacts(r, files[r.id] || [])) : [];
   let status;
   if (cancelled) {
     /* ⚠️ **ไม่มีคอลัมน์ "ยกเลิกโดยใคร" บน `dept_requests`** — มีแต่ `cancelledAt` กับ
@@ -874,7 +905,6 @@ export function surveyControlView({
        ⚠️ อยู่ **ก่อน** สาขาของนัดทั้งหมด — นัดที่ยังติดใบจากตอนลงหน้างานไม่พาใบกลับไป "ยังไม่เริ่มงานหน้างาน"
           (นัดค้างเป็นเหตุใต้ปุ่มส่งผล — `visit-open-desk`) · อยู่ **หลัง** "ดึงผลกลับมาแก้" เหมือนทุกสถานะของงาน
        ⚠️ ด่านอื่นของการส่งที่ไม่ผูกกับพื้นที่ (ทะเบียนขนาดอ่านไม่ขึ้น · เอกสารประเมิน) ยังติด = ยังไม่ "พร้อมส่ง" และไม่มีชื่อให้เอ่ย */
-    const deskFacts = active.map((r) => surveyZoneFacts(r, files[r.id] || []));
     const deskLeft = deskFacts.filter((f) => !f.ready).map((f) => f.zoneName);
     if (!deskFacts.some((f) => f.sizeComplete)) {
       status = { key: 'desk-empty', tone: 'neutral', headline: 'ยังไม่ได้กรอกขนาด', sub: '' };
@@ -895,6 +925,13 @@ export function surveyControlView({
     /* ⚠️ บรรทัดรองใช้คำ "วัดแล้ว" ชุดเดียวกับหัวลิสต์ · ป้ายการ์ด · รางขั้นตอน — เคยเขียน
        "กรอกล่วงหน้าแล้ว" แล้วรางเถียงกับตัวเองบนจอเดียว */
     status = { key: 'not-started', tone: 'neutral', headline: 'ยังไม่เริ่มงานหน้างาน', sub: measuredSub };
+  } else if (!progress.complete && resaveOnly) {
+    /* ขั้นของใบยังเป็นของหัวหน้า (`awaiting-decision`) — ธง `resave` ให้หน้าคำร้องพูดประโยคเดียวกัน ไม่ใช่ "วัดครบแล้ว — รอหัวหน้าเคาะ" */
+    status = {
+      key: 'awaiting-decision', tone: 'warning', resave: true,
+      headline: SURVEY_RESAVE_HEADLINE,
+      sub: measuredSub,
+    };
   } else if (!progress.complete) {
     status = { key: 'measuring', tone: 'warning', headline: 'กำลังวัดหน้างาน', sub: measuredSub };
   } else if (crewNotSubmitted && spotCrewFailed) {
@@ -974,12 +1011,15 @@ export function surveyControlView({
     const facts = surveyZoneFacts(row, files[row.id] || []);
     const name = surveyZoneName(row);
     const spotHere = spotFailed.filter((g) => g.zoneIds.includes(row.id));
-    const crew = [...facts.missingCrew.filter((g) => gateKeys.has(g.key)), ...spotHere.filter((g) => g.owner === 'crew')];
+    /* 🔄 แถวที่เหลือแค่ "บันทึกอีกครั้งหลังกลับมาเป็นลงหน้างาน" และนัดปิดไปแล้ว — ข้อขนาดย้ายไปฝั่งหัวหน้า (`resaveByHead`) */
+    const resave = resaveByHead(row);
+    const crew = [...(resave ? [] : facts.missingCrew.filter((g) => gateKeys.has(g.key))), ...spotHere.filter((g) => g.owner === 'crew')];
     /* ⭐ ของหัวหน้าขึ้นเฉพาะคนที่ส่งผลได้ (ประเมินจากแบบ) — ข้อ "ขนาด" ของพื้นที่จากแบบเป็นของหัวหน้า แต่คีย์ของมันอยู่ในชุดข้อของช่างด้วย
        ⇒ ไม่กันไว้ พื้นที่จากแบบจะขึ้น "หัวหน้าต้องทำ: ขนาด" ในกลุ่ม "ของที่ช่างต้องเก็บ"
        ⚠️ พื้นที่ลงหน้างาน: ของหัวหน้า (ผัง · เลือกจุด · แพ็คเกจ) ไม่เคยอยู่ในชุดข้อของช่าง ⇒ คนที่ส่งผลไม่ได้ได้ลิสต์ว่างเหมือนเดิม */
     const head = canDecide
       ? [
+        ...(resave ? facts.missingCrew.filter((g) => gateKeys.has(g.key)) : []),
         ...facts.missingHead.filter((g) => gateKeys.has(g.key)),
         ...sizeGone.filter((g) => g.zoneIds.includes(row.id)),
       ]
@@ -999,7 +1039,9 @@ export function surveyControlView({
     /* ⭐ **พื้นที่จากแบบ: ขนาดกับภาพแบบ หัวหน้ากรอก/แนบที่หน้าพื้นที่เอง** (ประเมินจากแบบ) — พาไปพื้นที่ ไม่ใช่แท็บสรุป
        (ตารางสรุปไม่มีช่องกรอกขนาด) · เหลือแต่แพ็คเกจจึงไปแท็บสรุปเหมือนพื้นที่ลงหน้างาน
        ⚠️ พื้นที่ลงหน้างาน: `onZonePage` ว่างเสมอ ⇒ กฎสองบรรทัดข้างล่างให้ผลเดิม */
-    const onZonePage = isDrawingZone(row) ? head.filter((g) => g.key === 'size' || g.key === 'plan') : [];
+    const onZonePage = isDrawingZone(row)
+      ? head.filter((g) => g.key === 'size' || g.key === 'plan')
+      : resave ? head.filter((g) => g.key === 'size') : [];
     if (crew.length || headSpot.length || onZonePage.length) {
       targets.push({ kind: 'zone', zoneId: row.id, label: `เปิด ${name}` });
     }
@@ -1122,7 +1164,13 @@ export function surveyControlView({
          🐞 UAT PR-3 (S03): ประโยคเต็มต่อเหตุด้วย " | " — ในกล่องกว้าง 298px อ่านเป็นก้อนเดียว · `text`/`detail` ยังเป็นประโยคเต็มของ route */
       const docList = documentOnly ? surveySendDocumentRefusalList(docBlockers.map((text) => ({ kind: 'content', text }))) : null;
       const docListed = !!docList && docList.items.length > 1;
-      const stuckNames = [...new Set(failed.flatMap((g) => g.zones))];
+      /* 🐞 UAT S2b S01 รอบ 2: บรรทัดนี้เรียงชื่อตามลำดับของด่าน ส่วนบรรทัดรอง "เหลือ …" สามบรรทัดเหนือมันเรียงตามใบ — สองพื้นที่เดิม
+         สลับลำดับกันบนการ์ดใบเดียว ⇒ ใบที่มีพื้นที่จากแบบเรียงตามใบเหมือนกัน
+         ⚠️ ใบลงหน้างานล้วน = ลำดับเดิมทุกตัวอักษร (กลุ่ม J ต้องเท่าเดิม) */
+      const sheetNames = active.map(surveyZoneName);
+      const sheetRank = (name) => { const at = sheetNames.indexOf(name); return at === -1 ? sheetNames.length : at; };
+      const gateNames = [...new Set(failed.flatMap((g) => g.zones))];
+      const stuckNames = mix.drawing > 0 ? [...gateNames].sort((a, b) => sheetRank(a) - sheetRank(b)) : gateNames;
       /* ⭐ **"รอช่างเก็บงาน" ตัดสินจากแถวรายพื้นที่ ไม่ใช่จากเจ้าของรายข้อ** (ประเมินจากแบบ) — แถวรายพื้นที่ถามเจ้าของ
          ทีละพื้นที่ (`ownerOf`): พื้นที่จากแบบที่ยังไม่มีขนาดเป็นงานของหัวหน้า ทั้งที่ข้อ "ขนาด" ของใบผสมประกาศเป็นของช่าง
          🐞 เดิมอ่าน `owner` ของข้อ ⇒ ใบผสมที่ขาดขนาดเฉพาะพื้นที่จากแบบขึ้น "รอช่างเก็บงาน" ทั้งที่ช่างแก้ไม่ได้
@@ -1267,7 +1315,9 @@ export function surveyControlView({
      🐞 โมดัลยืนยันเปิดได้เฉพาะตอนส่งได้ ⇒ ถ้าอยู่แต่ในโมดัล ข้อ 2..n อ่านไม่ได้เลยขณะที่ยังมีด่านติด
      ⚠️ บรรทัดปิดท้ายบอกที่แก้ **ตามชนิดของบรรทัด** — คำเตือนไม่ได้มีแค่หมายเหตุพื้นที่ (ชื่อลูกค้า · ไซต์ · บริษัท · ชื่อพื้นที่ก็มี)
         · หมายเหตุพื้นที่แก้ได้เฉพาะคนที่เขียนผลวัดได้ (CD/CM ส่งผลได้แต่เขียนไม่ได้ — `canUploadPlan` ข้างล่างเล่าเรื่องเดียวกัน) */
-  const warningItems = [...new Set(send.seenWarnings.filter((line) => line.trim() !== ''))];
+  /* ⚠️ ใบที่มีพื้นที่จากแบบ: การส่งผลรอบนี้ไม่ออกเอกสาร (ข้อกันเอกสาร · งวด S1) ⇒ ไม่มี "ฉบับลูกค้า" ให้ตรวจข้อความ — ไม่ขึ้นกล่องนี้
+     (🐞 UAT S2b S05: กล่อง "ตรวจข้อความบนฉบับลูกค้าก่อนส่งผล" ใต้ประโยค "เอกสาร…ยังออกไม่ได้") · งวด S3 ถอดข้อกันเมื่อไร ถอดกิ่งนี้ด้วย */
+  const warningItems = mix.drawing > 0 ? [] : [...new Set(send.seenWarnings.filter((line) => line.trim() !== ''))];
   if (warningItems.length) {
     const kinds = surveyWarningKinds(warningItems);
     const where = [
@@ -1372,6 +1422,12 @@ export function surveyControlView({
     ? { id: leftZones[0].id, name: surveyZoneName(leftZones[0]) }
     : null;
 
+  /* มาตรวัดของงานโต๊ะ (งวด S2b) — เลขคู่เดียวกับพาดหัว "กำลังประเมินจากแบบ — x/N พื้นที่": x = พื้นที่ที่ผ่านทุกข้อ · N = พื้นที่จากแบบ
+     ⚠️ คำนวณเสมอเมื่อใบเป็นจากแบบทั้งใบ ไม่ว่าสถานะจะตกสาขาไหน (ส่งแล้ว · ดึงกลับ) — การ์ดวาดแถบจากคีย์นี้ · ใบอื่น = `null` */
+  const deskProgress = mix.mode === 'drawing'
+    ? { done: deskFacts.filter((f) => f.ready).length, total: mix.drawing }
+    : null;
+
   const gatesSentFailed = sent ? gates.filter((g) => g.key === 'document' && !g.ok).length : 0;
   const gatesTitle = canDecide ? 'ด่านก่อนส่งผล' : 'ของที่ช่างต้องเก็บ';
   /* ใบจากแบบทั้งใบไม่มีของให้ช่างเก็บ (แผน §3.2 ข้อ 6) — คนที่ไม่ได้เคาะ (ผู้วางคิว · ช่างของนัดเก่า) ได้ลิสต์ว่างใต้หัวข้อ
@@ -1391,6 +1447,7 @@ export function surveyControlView({
       /* พื้นที่จากแบบ (ไม่อยู่ใน `done` / `total` — ไม่ใช่ของที่ช่าง "วัดแล้ว") + คำของมิเตอร์ที่จอพิมพ์ได้เลย */
       drawing: progress.drawing || 0,
       text: progressText,
+      desk: deskProgress,
     },
     /* ── วิธีประเมินของใบ (ประเมินจากแบบ · งวด S2a) — จอวาดจากสี่คีย์นี้ ไม่คิดจากแถวพื้นที่เอง ──
        `method`        ปุ่ม "เปลี่ยนวิธีประเมิน" `{ show, allowed, reason }` — ตัวตัดสินตัวเดียวกับ route สลับวิธี · ไม่ใช่หัวหน้า

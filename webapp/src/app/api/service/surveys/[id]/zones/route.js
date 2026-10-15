@@ -24,6 +24,7 @@ import { canDoFieldWork, canEditService, canSendSurveyResult } from '@/lib/permi
 import { genId } from '@/lib/id';
 import { surveyAddZoneError, surveyEditLockError } from '@/lib/service/survey';
 import { SURVEY_METHOD_DRAWING, isDrawingZone, surveyNewZoneMethod } from '@/lib/service/surveyMethod';
+import { SURVEY_DESK_ADD_HEAD_ONLY } from '@/lib/service/surveyMethodSwitch';
 import { normalizeAddedZone, surveyRowNameClash, zoneNameKey } from '@/lib/service/surveyRequest';
 import { loadSiteZones, loadSurveyZones, loadZoneSurveyLocks, materializeSurveyZones } from '@/lib/service/surveyRepo';
 import { busySurveyRequests } from '@/lib/service/zonePickState';
@@ -33,7 +34,8 @@ import { visitWriteAccess } from '@/lib/service/visitAccess';
 export const dynamic = 'force-dynamic';
 
 // ใบงานโต๊ะ (ไม่เหลือพื้นที่ที่ต้องลงหน้างาน) — คนที่ไม่ใช่หัวหน้าฝ่ายกดเพิ่มพื้นที่ (แผน survey-desk-assessment §2 แถว 14)
-const DESK_ADD_HEAD_ONLY = 'ใบนี้หัวหน้าประเมินจากแบบ — เพิ่มพื้นที่ได้เฉพาะหัวหน้าฝ่ายบริการ';
+// ⭐ ประโยคอยู่ที่ `surveyMethodSwitch.js` ที่เดียว — จอใบประเมินพิมพ์ประโยคเดียวกันให้ผู้วางคิว (งวด S2b)
+const DESK_ADD_HEAD_ONLY = SURVEY_DESK_ADD_HEAD_ONLY;
 
 // POST { name, floor, note? }
 export const POST = withUser(async ({ user, supabase, req, ctx }) => {

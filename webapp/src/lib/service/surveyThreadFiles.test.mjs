@@ -182,7 +182,12 @@ test('ด่านของตัวโหลด = ด่านเดียว�
 test('GET ใบประเมิน: ไฟล์ในเธรดยิงขนานในรอบเดียวกับชิ้นอื่น เฉพาะหัวหน้าตามเงื่อนไข · พัง = unknown.threadFiles', () => {
   const route = code('../../app/api/service/surveys/[id]/route.js');
   assert.match(route, /Promise\.all\(\[[\s\S]*?loadSurveyRequestFiles\(supabase, request, user\)[\s\S]*?loadSurveyThreadFiles\(supabase, request, user\)[\s\S]*?\]\)/);
-  assert.match(route, /const wantsThreadFiles = canDecide && \(drawingMethodEnabled \|\| surveyMethodMix\(zones\)\.drawing > 0\);/);
+  /* งวด S2b (มติ O4): หัวหน้าตามเงื่อนไขเดิม **หรือ** คนที่แก้งานของฝ่ายได้ (ผู้วางคิว) บนใบที่มีพื้นที่จากแบบอยู่แล้ว
+     — สัดส่วนของใบคำนวณครั้งเดียว · ช่างไม่เข้าทั้งสองกิ่ง */
+  assert.match(route, /const mix = surveyMethodMix\(zones\);\s*const wantsThreadFiles = \(canDecide && \(drawingMethodEnabled \|\| mix\.drawing > 0\)\) \|\| \(canEditAll && mix\.drawing > 0\);/);
+  assert.equal((route.match(/surveyMethodMix\(zones\)/g) || []).length, 1);
+  assert.match(route, /const wantsSiteVisit = canDecide && drawingMethodEnabled && !request\.answeredAt;/, 'นัดที่เข้าพื้นที่แล้วยังเป็นของหัวหน้าเท่านั้น');
+  assert.match(route, /canEditService: canEditAll,/);
   assert.match(route, /wantsThreadFiles \? loadSurveyThreadFiles\(supabase, request, user\) : NO_THREAD_FILES,/);
   assert.match(route, /if \(threadFiles\.unknown\) context\.unknown\.threadFiles = true;/);
   assert.match(route, /threadFiles: threadFiles\.files,/);

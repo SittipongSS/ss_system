@@ -462,3 +462,83 @@ test('แผงกรองที่ต้นทางที่เดียว �
   assert.match(source, /onItemsChange\?\.\(rawItems, \{ loaded \}\);/);
   assert.equal([...source.matchAll(/\brawItems\b/g)].length, 4, 'ประกาศ · ตัวคัด · แจ้งผู้เรียก · deps ของ effect');
 });
+
+/* ══ ด่านไฟล์ของผู้เรียก `fileGate` + `reloadKey` (ประเมินจากแบบ · งวด S2b §2.3) ═══════════════════════════
+   ⭐ ช่องภาพแบบของพื้นที่จากแบบรับเฉพาะ JPG/PNG (กระดาษวาดได้สองชนิดนี้) — ด่านต้องกันครบสามทางเข้า:
+      ปุ่มเลือกไฟล์ · ลากมาวาง · Ctrl+V · ไฟล์ที่ผ่านยังอัปต่อ · แจ้งเหตุหนึ่งครั้งต่อชุด
+   🔴 ผู้เรียกที่ไม่ส่ง prop สองตัวนี้ต้องได้แผงเดิมทุกจุด (ตัวคัดคืนชุดเดิม ไม่มีข้อความ) */
+import { panelFileGate } from './attachmentsPanelItems.js';
+import { isJpgOrPngFile } from '../lib/service/surveyMethod.js';
+
+const PLAN_REJECT = 'ไฟล์นี้ลงเอกสารไม่ได้ (PDF/TIFF) — แคปเป็น PNG แล้วแนบใหม่';
+const planGate = {
+  accept: 'image/jpeg,image/png',
+  test: (file) => isJpgOrPngFile({ fileName: file.name, mimeType: file.type }),
+  rejectText: PLAN_REJECT,
+  pickLabel: 'เลือกรูปแบบ',
+  hideDropHint: true,
+};
+const fakeFile = (name, type) => ({ name, type, size: 1024 });
+
+test('fileGate · ตัวคัด: TIFF กับ PDF ถูกทิ้งพร้อมข้อความของผู้เรียกหนึ่งครั้ง · PNG/JPG ผ่านและยังอยู่ในชุดที่อัป', () => {
+  const png = fakeFile('plan.png', 'image/png');
+  const jpg = fakeFile('plan.jpg', 'image/jpeg');
+  const tiff = fakeFile('plan.tiff', 'image/tiff');
+  const pdf = fakeFile('plan.pdf', 'application/pdf');
+  assert.deepEqual(panelFileGate(planGate, [tiff]), { accepted: [], rejectText: PLAN_REJECT });
+  assert.deepEqual(panelFileGate(planGate, [pdf]), { accepted: [], rejectText: PLAN_REJECT });
+  // ชุดผสม: ของที่ผ่านอัปต่อ ลำดับเดิม · ข้อความเดียวแม้ถูกทิ้งสองไฟล์
+  const mixed = panelFileGate(planGate, [png, tiff, jpg, pdf]);
+  assert.deepEqual(mixed.accepted, [png, jpg]);
+  assert.equal(mixed.rejectText, PLAN_REJECT);
+  assert.deepEqual(panelFileGate(planGate, [png]), { accepted: [png], rejectText: null });
+  // TIFF ที่ตั้งชื่อลงท้าย .png — ตัวตัดสินของผู้เรียกดูชนิดก่อนชื่อ
+  assert.deepEqual(panelFileGate(planGate, [fakeFile('plan.png', 'image/tiff')]).accepted, []);
+  // ลากวางจากบางเบราว์เซอร์ไม่มีชนิด ⇒ ดูนามสกุล
+  assert.deepEqual(panelFileGate(planGate, [fakeFile('plan.PNG', '')]).accepted.length, 1);
+});
+
+test('fileGate · ไม่มีด่าน / ด่านไม่มีตัวตัดสิน = ชุดเดิมทั้งชุด ไม่มีข้อความ (พฤติกรรมของวันนี้)', () => {
+  const files = [fakeFile('a.tiff', 'image/tiff'), fakeFile('b.pdf', 'application/pdf')];
+  for (const gate of [null, undefined, {}, { accept: 'image/png' }, { test: 'ไม่ใช่ฟังก์ชัน' }]) {
+    const out = panelFileGate(gate, files);
+    assert.deepEqual(out.accepted, files);
+    assert.equal(out.rejectText, null);
+  }
+  assert.deepEqual(panelFileGate(planGate, []), { accepted: [], rejectText: null });
+  assert.deepEqual(panelFileGate(planGate, null), { accepted: [], rejectText: null });
+  // ตัวตัดสินที่โยน = ไฟล์นั้นไม่ผ่าน (ปิดไว้ก่อน) ไม่ใช่ล้มทั้งชุด
+  const boom = panelFileGate({ test: () => { throw new Error('x'); }, rejectText: 'ไม่รับ' }, files);
+  assert.deepEqual(boom, { accepted: [], rejectText: 'ไม่รับ' });
+});
+
+test('fileGate · แผง: ทางเข้าไฟล์ทั้งสอง (ปุ่ม · ลากวาง/Ctrl+V) ผ่านตัวคัด **ก่อน** กติการาย docType · ช่องเลือกไฟล์ใช้ accept ของด่าน', () => {
+  const source = code(fs.readFileSync(FILE, 'utf8'));
+  assert.match(source, /fileGate = null,/);
+  assert.match(source, /reloadKey = 0,/);
+  const pick = source.slice(source.indexOf('const handleCardFile = async'), source.indexOf('const acceptFiles = useCallback'));
+  assert.match(pick, /const files = splitByFileRule\(typeKey, gateFiles\(picked\)\);/);
+  const drop = source.slice(source.indexOf('const acceptFiles = useCallback'), source.indexOf('const intake = useFileIntake'));
+  assert.match(drop, /const files = splitByFileRule\(typeKey, gateFiles\(Array\.from\(fileList \|\| \[\]\)\.filter\(Boolean\)\)\);/);
+  // ลากวางกับ Ctrl+V ใช้ตัวรับเดียวกัน (`useFileIntake` → `acceptFiles`) ⇒ สองทางนั้นผ่านด่านเดียว
+  assert.match(source, /onFiles: acceptFiles,/);
+  assert.equal([...source.matchAll(/\bgateFiles\(/g)].length, 2, 'ปุ่ม · ลากวาง/วาง');
+  // แจ้งเหตุหนึ่งครั้งต่อชุด — ตัวคัดคืนข้อความเดียว แผงยิง toast ที่เดียว
+  assert.match(source, /const \{ accepted, rejectText \} = panelFileGate\(fileGateRef\.current, files\);\s*if \(rejectText\) notifyToast\.error\(rejectText\);\s*return accepted;/);
+  assert.match(source, /const acceptFor = \(typeKey\) => fileGate\?\.accept \|\| docTypeFileRule\(typeKey\)\?\.accept \|\| defaultAccept;/);
+});
+
+test('fileGate · แผง: ป้ายแผ่นสุดท้ายและคำใบ้ลากวางเปลี่ยนเฉพาะเมื่อด่านขอ · reloadKey เปลี่ยน = โหลดรายการใหม่ (0 = ไม่โหลดซ้ำ)', () => {
+  const source = code(fs.readFileSync(FILE, 'utf8'));
+  assert.match(source, /const addLabel = group \? tile\.label : \(fileGate\?\.pickLabel \|\| tile\.label\);/);
+  assert.match(source, /<Camera size=\{22\} aria-hidden="true" \/>\s*\{addLabel\}/);
+  assert.match(source, /\{group \|\| hideDropHint \? null : <small className=\{`\$\{styles\.tileHint\} \$\{styles\.pointerOnly\}`\}>\{tile\.hint\}<\/small>\}/);
+  assert.match(source, /const hideDropHint = fileGate\?\.hideDropHint === true;/);
+  // คำใบ้สองบรรทัดของโหมด inline และแผงเต็ม ซ่อนตามธงเดียวกัน — ไม่มีธง = เงื่อนไขเดิม
+  assert.match(source, /\{canEdit && fileUploads && !hideDropHint && \(\s*<p className=\{`mr-auto/);
+  assert.match(source, /\{canEdit && !loading && !hideDropHint && \(\s*<p className="mt-3/);
+  /* 🐞 review S2b — แผงที่เมานต์ตอนเลขไม่ใช่ศูนย์ (ผู้เรียกนับต่อทั้งหน้า แผงเมานต์ใหม่ทุกพื้นที่) ต้องไม่ยิงซ้ำกับรอบเมานต์:
+     โหลดใหม่เฉพาะตอนเลข **เปลี่ยนจากที่เห็นล่าสุด** */
+  assert.match(source, /const seenReloadKey = useRef\(reloadKey\);\s*useEffect\(\(\) => \{\s*if \(reloadKey === seenReloadKey\.current\) return;\s*seenReloadKey\.current = reloadKey;\s*fetchItems\(\);\s*\}, \[reloadKey, fetchItems\]\);/);
+  assert.doesNotMatch(source, /if \(reloadKey\) fetchItems\(\)/);
+});

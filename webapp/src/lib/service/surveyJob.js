@@ -9,7 +9,7 @@
 //    ใบประเมินบอก "วัดแล้วกี่พื้นที่ ขาดอะไร" เท่ากันเสมอ
 // ⚠️ **ชื่อขั้นไม่ได้เขียนที่นี่** — มาจาก `requestRailSteps` (ทะเบียน `fieldRail`) ตัวเดียวกับการ์ดของ TS
 // ⚠️ ไฟล์นี้ต้อง **ไม่มี import ฝั่ง server** — จอ client เรียกตรง
-import { fmtNumber, fmtTime, isoDateToWeekdayText } from '@/lib/format';
+import { NA, fmtNumber, fmtTime, isoDateToWeekdayText } from '@/lib/format';
 import { requestKindMeta } from '@/lib/master/requestTypes';
 import { requestAssignee } from '@/lib/requests/assign';
 import { requestClosure, requestClosureLine, requestClosureStarted } from '@/lib/requests/closure';
@@ -25,8 +25,12 @@ import {
 } from './survey';
 import { surveyControlView, surveyPackagesLabel, surveySendBackAskText, surveyZoneFacts } from './surveyControl';
 import { surveyRequestDocumentView } from './surveyDocumentView';
-import { isDrawingZone, surveyMethodMix, surveyNeedsVisit, zoneMethod } from './surveyMethod';
-import { SURVEY_DESK_RAIL_LABELS, SURVEY_METHOD_CHIP, surveyProgressText, surveyZoneAddedLabel } from './surveyMethodSwitch';
+import { isDrawingZone, surveyMethodMix, surveyNeedsVisit, surveyZoneNeedsResave, zoneMethod } from './surveyMethod';
+import {
+  SURVEY_CONFIRM_ACTION_READY, SURVEY_CONFIRM_PENDING_NOTE, SURVEY_DESK_RAIL_LABELS, SURVEY_METHOD_CHIP, surveyProgressText,
+  surveyZoneAddedLabel,
+} from './surveyMethodSwitch';
+import { SURVEY_SEND_PAPER_HOLD_EFFECT } from './surveySendClose';
 import { VISIT_STATUS_LABELS, holdsRequestSlot, isClosedVisit } from './visitStatus';
 
 const join = (...parts) => parts.flat().filter(Boolean).join(' · ');
@@ -202,7 +206,18 @@ function sizeText(parts) {
   return list.map((part, i) => `${String(part.label || '').trim() || `ส่วน ${i + 1}`} ${part.text}`).join(' + ');
 }
 
-function zoneRows(zones, filesByZone, { sent, filesUnknown = false, dept = 'TS' }) {
+/* จำนวนภาพแบบของแถวจากแบบบนตารางที่ยังไม่ส่งผล — null = อ่านรูปไม่สำเร็จ ("ไม่ทราบ" ไม่ใช่ขีด: ขีด = ยังไม่มีรูป) */
+const zonePlanText = (count) => {
+  if (count == null) return 'ไม่ทราบ';
+  return count ? `แบบ ${count}` : NA;
+};
+
+/* คำของช่อง "หน้างาน" บนตารางพื้นที่ สำหรับแถวที่เหลือแค่บันทึกอีกครั้งหลังกลับมาเป็นลงหน้างาน (ย่อจากประโยคของด่านขนาด) */
+export const SURVEY_ZONE_RESAVE_TEXT = 'กลับมาเป็นลงหน้างาน — รอตรวจขนาดแล้วบันทึกอีกครั้ง';
+const zoneResaveOnly = (zone, facts) => surveyZoneNeedsResave(zone)
+  && facts.missingCrew.length === 1 && facts.missingCrew[0].key === 'size' && facts.sizeComplete === true;
+
+function zoneRows(zones, filesByZone, { sent, filesUnknown = false, dept = 'TS', allDrawing = false }) {
   return zones.map((zone) => {
     const facts = surveyZoneFacts(zone, filesByZone[zone.id] || []);
     const drawing = isDrawingZone(zone);
@@ -242,7 +257,10 @@ function zoneRows(zones, filesByZone, { sent, filesUnknown = false, dept = 'TS' 
       suggestedText: surveyZoneSuggestedDiffText(facts, { unit: false }),
       packageNote: String(zone.packageNote || '').trim() || null,
       state,
-      missingText: facts.cut || filesUnknown ? null : facts.missingText,
+      /* 🔄 แถวที่เพิ่งกลับมาเป็นลงหน้างานและขาดแค่ "บันทึกอีกครั้ง": ขนาดพิมพ์อยู่ในแถวเดียวกัน — "ขาด: ขนาด" ข้างตัวเลขอ่านว่าระบบพัง
+         (🐞 UAT S2b S06 · มติ O3) ⇒ บอกสิ่งที่ค้างจริง · แถวที่ไม่เคยสลับวิธีได้คำเดิม */
+      missingText: facts.cut || filesUnknown ? null
+        : zoneResaveOnly(zone, facts) ? SURVEY_ZONE_RESAVE_TEXT : facts.missingText,
       /* หมายเหตุของพื้นที่ — ของผู้ขอ (พื้นที่ใหม่) หรือของช่างหน้างาน · ฝ่ายขายเปิดใบประเมินไม่ได้ ⇒ ต้องอ่านได้ที่นี่ */
       note: String(zone.note || '').trim() || null,
       /* ── วิธีประเมินของแถว (mig 0408 · งวด S2a) — ถ้อยคำอยู่ที่นี่ จอแค่วาด ──
@@ -254,8 +272,42 @@ function zoneRows(zones, filesByZone, { sent, filesUnknown = false, dept = 'TS' 
       chip: drawing ? SURVEY_METHOD_CHIP.drawing : null,
       photosText: drawing && !facts.cut && !filesUnknown ? `แบบ ${facts.photos.plan}` : null,
       addedLabel: surveyZoneAddedLabel(zone, dept),
+      /* ── ช่องของแถวจากแบบบนตารางที่ **ยังไม่ส่งผล** (มติเจ้าของ 12/10 · ทรงของตารางอยู่ที่ `surveyZoneTable`) ──
+         `wideText`  ช่อง "ภาพกว้าง" — ภาพกว้างเป็นหลักฐานของการลงหน้างาน ไม่ใช่ของวิธีนี้ ⇒ ขีดเสมอ
+                     (แม้มีรูปค้างจากตอนที่พื้นที่ยังลงหน้างาน — ตัวนับ `photosWide` ยังเป็นของจริง แค่ไม่ถูกพิมพ์)
+         `planText`  ช่องสุดท้าย — **ใบจากแบบทั้งใบ** (`allDrawing` · หัวคอลัมน์ "แบบ"): จำนวนภาพแบบ "แบบ n" (คำเดียวกับตารางผล)
+                     · ยังไม่มีสักรูป = ขีด · อ่านรูปไม่สำเร็จ = "ไม่ทราบ"
+                     · **ใบผสม** (หัวคอลัมน์ / ป้ายบนจอแคบยังเป็น "หน้างาน"): ขีดเสมอ — ช่องของงานหน้างานไม่เกี่ยวกับแถวจากแบบ
+                       (มติ 12/10 ข้อ 2 · เดิมพิมพ์ "แบบ 2" ใต้ป้าย "หน้างาน" · รีวิว 12/10)
+                     · แถวที่ถูกตัด = null (ช่องนั้นมีป้าย "ตัดออก" อยู่แล้ว)
+         ⚠️ ทั้งคู่ `null` บนแถวลงหน้างานทุกแถว และบนตารางผล (ส่งแล้ว) ⇒ จอวาดช่องเดิม */
+      wideText: drawing && !sent ? NA : null,
+      planText: drawing && !sent && !facts.cut
+        ? (allDrawing ? zonePlanText(filesUnknown ? null : facts.photos.plan) : NA)
+        : null,
     };
   });
+}
+
+/* ── ทรงของตารางพื้นที่บนหน้าคำร้อง ตามวิธีประเมิน (มติเจ้าของ 12/10 · S2b-followups ข้อ 2) ─────────────────────────
+   ⭐ ฝ่ายขายกับผู้วางคิวอ่านตารางนี้ระหว่างที่ใบยังทำอยู่ — ใบจากแบบทั้งใบเคยมีคอลัมน์ "ภาพกว้าง" (ขีดทุกแถว) กับ
+      "หน้างาน" (ว่างทุกแถว) ซึ่งเป็นช่องของงานที่ไม่มีใครทำ (UAT 12/10 · ผู้วางคิวข้อ 9 · ฝ่ายขายข้อ 10)
+     ส่งผลแล้ว             ตารางผลของวันนี้ทุกวิธี — ไม่มีคอลัมน์ภาพกว้าง · หัวคอลัมน์สุดท้าย "รูป"
+     ยังไม่ส่ง · จากแบบทั้งใบ  ไม่มีคอลัมน์ภาพกว้าง · หัวคอลัมน์สุดท้าย "แบบ" (ช่องของแถว = `row.planText`)
+     ยังไม่ส่ง · ผสม          คอลัมน์ของวันนี้ · ภาพกว้างรวมนับเฉพาะพื้นที่ลงหน้างาน (แถวจากแบบพิมพ์ขีด — รวมแล้วต้องเท่าที่แถวพิมพ์)
+                            · ช่องสุดท้ายของแถวจากแบบ = ขีด (`row.planText` — `zoneRows` ถามโหมดเดียวกันผ่าน `allDrawing`)
+     ยังไม่ส่ง · ลงหน้างานล้วน ทรงของวันนี้ทุกช่อง · ภาพกว้างรวม = `photos.wide` ตัวเดิม
+   คืน `{ wideColumn, wideTotal, lastLabel }` — `lastLabel` = หัวคอลัมน์สุดท้าย **และ** ป้ายของเซลล์นั้นบนจอแคบ (`data-label`)
+   · `wideTotal` null = อ่านรูปไม่สำเร็จ (จอเขียน "ไม่ทราบ") หรือตารางไม่มีคอลัมน์นี้
+   ⚠️ "จากแบบทั้งใบ" ถามจาก `mix.mode` (นับเฉพาะพื้นที่ที่ยังใช้อยู่) — ใบที่ถูกตัดออกหมดได้ตารางของวันนี้ กติกาเดียวกับการ์ดของช่าง */
+const ZONE_TABLE_LAST = { sent: 'รูป', work: 'หน้างาน', drawing: 'แบบ' };
+function surveyZoneTable(rows, mix, { sent = false, filesUnknown = false } = {}) {
+  if (sent) return { wideColumn: false, wideTotal: null, lastLabel: ZONE_TABLE_LAST.sent };
+  if (mix.mode === 'drawing') return { wideColumn: false, wideTotal: null, lastLabel: ZONE_TABLE_LAST.drawing };
+  const wideTotal = filesUnknown ? null
+    // แถวของ `zoneRows` พกวิธีของตัวเอง (`row.method`) — ถามผ่านตัวตัดสินกลางตัวเดียวกับแถวพื้นที่จริง
+    : rows.filter((row) => !row.cut && !isDrawingZone(row)).reduce((sum, row) => sum + row.photosWide, 0);
+  return { wideColumn: true, wideTotal, lastLabel: ZONE_TABLE_LAST.work };
 }
 
 function gateCard(gates, owner) {
@@ -286,13 +338,57 @@ function surveyDrawingBanner(request, { show = false, count = 0, dept = 'TS' } =
   if (request.surveyConfirm === 'needed') {
     return {
       text: `${lead} — ใช้ตัวเลขเสนอราคาได้เลย · เมื่อพื้นที่พร้อม กด “${CONFIRM_ACTION_LABEL}” เพื่อให้ ${dept} เข้าวัดจริง`,
-      action: { label: CONFIRM_ACTION_LABEL, ready: false },
+      /* งวด S2b: ประโยคข้างบนเอ่ยถึงปุ่มที่ยังไม่มีจนถึงงวด S5 ⇒ จอพิมพ์ `note` ต่อท้าย (สวิตช์เดียวกับกล่องส่งผลของหัวหน้า) */
+      note: SURVEY_CONFIRM_ACTION_READY ? null : SURVEY_CONFIRM_PENDING_NOTE,
+      action: { label: CONFIRM_ACTION_LABEL, ready: SURVEY_CONFIRM_ACTION_READY },
     };
   }
   if (request.surveyConfirm === 'not_needed') {
     return { text: `${lead} — ${dept} แจ้งว่าไม่ต้องยืนยันหน้างาน ใช้ผลนี้เป็นผลสุดท้าย`, action: null };
   }
   return null;
+}
+
+/* ── ช่องรูปของแถวรวมบนตารางผล เมื่อใบมีพื้นที่จากแบบ (งวด S2b §2.5 d) ─────────────────────────────────────────
+   แถวจากแบบพิมพ์ "แบบ n" ในช่องรูปของตัวเอง ⇒ แถวรวมต้องพูดภาษาเดียวกัน ไม่งั้นรวม "ผัง" ของสองวิธีเป็นเลขเดียวที่ไม่มีแถวไหนใช้
+     ไม่มีพื้นที่จากแบบ / อ่านรูปไม่สำเร็จ  `null` (จอวาดช่องเดิม — ไม่เดาว่า "แบบ 0")
+     จากแบบทั้งใบ                        "แบบ k"
+     ผสม                               "ภาพกว้าง w · ผัง p · แบบ k" — w · p นับเฉพาะพื้นที่ลงหน้างาน (ภาพกว้างที่ค้างบนพื้นที่จากแบบไม่ลงเอกสาร)
+   ⚠️ นับจากแถวของ `zoneRows` (ไม่นับแถวที่ถูกตัด) — เลขเดียวกับที่แต่ละแถวพิมพ์ */
+function surveyPhotosTotalText(rows, zones, mix, { filesUnknown = false } = {}) {
+  if (filesUnknown || !(mix.drawing > 0)) return null;
+  const sum = (list, key) => list.reduce((n, r) => n + (Number(r[key]) || 0), 0);
+  // แถวของ `zoneRows` เรียงตาม `zones` ตัวต่อตัว — วิธีของแถวถามจากแถวพื้นที่จริงผ่านตัวตัดสินกลาง
+  const live = rows.map((row, i) => ({ row, drawing: isDrawingZone(zones[i]) })).filter((x) => !x.row.cut);
+  const drawingRows = live.filter((x) => x.drawing).map((x) => x.row);
+  const onsiteRows = live.filter((x) => !x.drawing).map((x) => x.row);
+  const plans = `แบบ ${sum(drawingRows, 'photosPlan')}`;
+  if (mix.onsite === 0) return plans;
+  return `ภาพกว้าง ${sum(onsiteRows, 'photosWide')} · ผัง ${sum(onsiteRows, 'photosPlan')} · ${plans}`;
+}
+
+/**
+ * สรุปเรื่อง "ประเมินจากแบบ" ของคำร้อง สำหรับจอรายละเอียดรุ่นเก่า (`SurveyDetail`) ที่ไม่ได้วาดจาก `surveyJobView` (งวด S2b §2.5 d)
+ *   `banner` — แถบแจ้งตัวเดียวกับ `zones.drawingBanner` ของ `surveyJobView` (กติกาเดียวกัน: ใบส่งผลแล้ว · ไม่ถูกยกเลิก ·
+ *              นับพื้นที่จากแบบที่ยังใช้อยู่) · ไม่เข้าเงื่อนไข = `null`
+ *   `rows`   — `{ [id ของแถวพื้นที่]: { ป้ายวิธี, addedLabel } }` **เฉพาะพื้นที่จากแบบ** (พื้นที่ลงหน้างานไม่มีรายการ)
+ *              ⇒ คำร้องลงหน้างานล้วนได้ `{ banner: null, rows: {} }` และจอรุ่นเก่าพิมพ์คำของตัวเองเหมือนเดิมทุกแถว
+ * ⚠️ อ่านจาก `request.surveyZones` อย่างเดียว — ไม่มีแถวติดมา = ไม่มีอะไรให้สรุป (ไม่เดา)
+ */
+export function surveyRequestDrawingSummary(request) {
+  const zones = Array.isArray(request?.surveyZones) ? request.surveyZones : [];
+  const dept = request?.dept || 'TS';
+  const rows = {};
+  for (const zone of zones) {
+    if (!zone?.id || !isDrawingZone(zone)) continue;
+    rows[zone.id] = { chip: SURVEY_METHOD_CHIP.drawing, addedLabel: surveyZoneAddedLabel(zone, dept) };
+  }
+  if (!request) return { banner: null, rows };
+  const cancelled = !!request.cancelledAt || request.status === 'cancelled';
+  return {
+    banner: surveyDrawingBanner(request, { show: !!request.answeredAt && !cancelled, count: surveyMethodMix(zones).drawing, dept }),
+    rows,
+  };
 }
 
 /* ── ข้อเท็จจริงรายวัน 6 ช่อง (การ์ดรายละเอียดคำร้อง) ───────────────────────────────────
@@ -604,7 +700,11 @@ export function surveyJobView({
         control.recall?.byName && `โดย ${control.recall.byName}`,
       ));
     } else {
-      sendStep.lines.push('เคาะภาพผัง · จุดติดตั้ง · แพ็คเกจ แล้วส่งผลให้ฝ่ายขาย');
+      /* 🐞 UAT S2b S18 — ใบงานโต๊ะไม่มีภาพผังที่มาร์กจุดและไม่มีจุดติดตั้งให้เคาะ: ของที่หัวหน้าทำคือสามข้อของการ์ดด่าน
+         ("ขนาด · ภาพแบบ · แพ็คเกจ") · ใบที่ยังต้องมีนัด (ลงหน้างานล้วน · ผสม) = คำเดิมตรงตัว */
+      sendStep.lines.push(deskJob
+        ? 'เคาะขนาด · ภาพแบบ · แพ็คเกจ แล้วส่งผลให้ฝ่ายขาย'
+        : 'เคาะภาพผัง · จุดติดตั้ง · แพ็คเกจ แล้วส่งผลให้ฝ่ายขาย');
     }
   }
   steps.push(sendStep);
@@ -770,12 +870,21 @@ export function surveyJobView({
       next: `ช่างกด “ส่งงาน” ที่ใบประเมิน → ${headWho} เคาะแล้วส่งผล`,
       turn: { side: dept, who: crewWho, note: crewNote },
     },
-    'awaiting-decision': {
-      headline: 'วัดครบแล้ว — รอหัวหน้าเคาะ',
-      sub: join(measuredText, visit?.actualEndTime && `ช่างส่งงาน ${dayTime(visit.actualEndDate || visit.actualDate || visit.scheduledDate, visit.actualEndTime)}`),
-      next: `${headWho} เคาะภาพผัง จุดติดตั้ง แพ็คเกจ แล้วกด “ส่งผลให้ฝ่ายขาย”`,
-      turn: { side: dept, who: headWho },
-    },
+    /* 🔄 `control.status.resave` — เหลือแค่พื้นที่ที่กลับมาเป็นลงหน้างานหลังนัดปิดแล้ว (มติ O3): ยังไม่ "วัดครบ" และไม่มีอะไรให้ช่างเก็บ
+       ⇒ พาดหัวตัวเดียวกับการ์ดของใบประเมิน + ก้าวถัดไปที่ทำได้จริง (🐞 UAT S2b S06: เดิมตก "ช่างส่งงานแล้ว แต่ของหน้างานยังขาด") */
+    'awaiting-decision': control.status?.resave === true
+      ? {
+        headline: control.status.headline,
+        sub: join(measuredText, progress.leftText && `เหลือ ${progress.leftText}`),
+        next: `${headWho} เปิดพื้นที่ที่กลับมาเป็นลงหน้างานที่ใบประเมิน ตรวจขนาดแล้วกด “บันทึกพื้นที่นี้” → เคาะแล้วกด “ส่งผลให้ฝ่ายขาย”`,
+        turn: { side: dept, who: headWho },
+      }
+      : {
+        headline: 'วัดครบแล้ว — รอหัวหน้าเคาะ',
+        sub: join(measuredText, visit?.actualEndTime && `ช่างส่งงาน ${dayTime(visit.actualEndDate || visit.actualDate || visit.scheduledDate, visit.actualEndTime)}`),
+        next: `${headWho} เคาะภาพผัง จุดติดตั้ง แพ็คเกจ แล้วกด “ส่งผลให้ฝ่ายขาย”`,
+        turn: { side: dept, who: headWho },
+      },
     'crew-gaps': {
       headline: 'ช่างส่งงานแล้ว แต่ของหน้างานยังขาด',
       sub: join(measuredText, progress.leftText && `ขาดที่ ${progress.leftText}`, gapText),
@@ -862,7 +971,8 @@ export function surveyJobView({
     && ['measuring', 'awaiting-submit', 'awaiting-decision', 'crew-gaps', 'sent-back', 'ready', 'recalled', 'sent', 'closed'].includes(stage);
 
   /* ── ตารางพื้นที่ + ด่านสองฝั่ง ─────────────────────────────────────────────── */
-  const rows = zoneRows(zones, filesByZone, { sent, filesUnknown, dept });
+  // `allDrawing` = เงื่อนไขเดียวกับหัวคอลัมน์ "แบบ" ของ `surveyZoneTable` (`mix.mode`) — ช่องของแถวกับหัวคอลัมน์ต้องไปด้วยกัน
+  const rows = zoneRows(zones, filesByZone, { sent, filesUnknown, dept, allDrawing: mix.mode === 'drawing' });
   const crew = gateCard(gates, 'crew');
   const head = gateCard(gates, 'head');
   const crewStarted = visit?.status === 'in_progress' || reachedSite(visit);
@@ -889,6 +999,9 @@ export function surveyJobView({
         canDecide: viewer.canDecide === true,
       },
       pollStopped: refreshStalled === true,
+      /* งวด S2b: ใบที่มีพื้นที่จากแบบ (ตัวนับเดียวกับแถบแจ้งเหนือตารางผล) เอกสารยังถูกพักไว้จนถึงงวด S3 — บล็อกบอกเหตุนี้
+         แทนการชี้ให้ไปกด "ออกเอกสาร" ที่กดแล้วไม่ออก · ใบที่ไม่มีพื้นที่จากแบบ = `null` = บล็อกเดิมทุกตัวอักษร */
+      drawingHold: mix.drawing > 0 ? SURVEY_SEND_PAPER_HOLD_EFFECT : null,
     }),
     steps: timeline,
     index: Math.min(index, timeline.length),
@@ -934,6 +1047,11 @@ export function surveyJobView({
       /* สัดส่วนขนาดของทั้งใบ ("SM 1 · ST 1") — จำนวนรวมเท่ากันแต่ขนาดต่าง = ราคาต่าง · ยังไม่เคาะสักพื้นที่ = '' */
       packageMixText: surveyPackageMixText(totals.packagesBySize),
       photos,
+      /* งวด S2b: ช่องรูปของแถวรวม เมื่อใบมีพื้นที่จากแบบ (`null` = ไม่มีพื้นที่จากแบบ หรืออ่านรูปไม่สำเร็จ ⇒ จอวาดช่องเดิม) */
+      photosTotalText: surveyPhotosTotalText(rows, zones, mix, { filesUnknown }),
+      /* มติ 12/10: ทรงของตารางตามวิธีประเมิน — มีคอลัมน์ภาพกว้างไหม · หัวคอลัมน์สุดท้ายชื่ออะไร · ภาพกว้างรวม (`surveyZoneTable`)
+         ใบลงหน้างานล้วน = ทรงของวันนี้ทุกช่อง · จอไม่ตัดสินเอง */
+      table: surveyZoneTable(rows, mix, { sent, filesUnknown }),
       measured: { done: progress.done, total: progress.total },
       progressText: join(measuredText, !sent && totals.areaSqm ? `รวมตอนนี้ ${num(totals.areaSqm)} ตร.ม. · ${num(totals.volumeCbm)} ลบ.ม.` : ''),
       changeText: surveyChangeText(changeCounts, { actor: dept }),
@@ -945,10 +1063,16 @@ export function surveyJobView({
         /* ใบจากแบบทั้งใบไม่มีพื้นที่ของช่างเลย — การ์ดนี้เหลือแค่ป้าย "ไม่มีพื้นที่" ⇒ จอถอดทั้งการ์ดได้
            ⚠️ ถามจาก `mix.mode` ไม่ใช่ "ไม่ต้องมีนัด": ใบที่ถูกตัดออกหมด (`empty`) ยังขึ้นการ์ดเหมือนใบที่ตัดหมดของวันนี้ */
         hidden: mix.mode === 'drawing',
+        /* 🔄 `control.status.resave` (มติ O3) — เหลือแค่พื้นที่ที่กลับมาเป็นลงหน้างานหลังนัดปิดแล้ว: ไม่มีช่างคนไหนทำอยู่
+           งานที่ค้างคือหัวหน้าตรวจขนาดแล้วบันทึกอีกครั้ง ⇒ การ์ดนี้ห้ามขึ้น "กำลังทำ · เหลือ …" สวนกับแถบ "ตาใคร: หัวหน้า"
+           (🐞 UAT S2b S06 `o3-desk-back-after-visit`) — พูดประโยคเดียวกับพาดหัวของใบ */
         badge: !crew.hasActive ? { label: 'ไม่มีพื้นที่', tone: 'neutral' }
           : filesUnknown ? { label: 'ไม่ทราบ', tone: 'neutral' }
-            : crew.ok ? { label: 'ครบ', tone: 'success' } : crewStarted ? { label: 'กำลังทำ', tone: 'info' } : { label: 'ยังไม่เริ่ม', tone: 'neutral' },
+            : crew.ok ? { label: 'ครบ', tone: 'success' }
+              : control.status?.resave === true ? { label: 'รอหัวหน้า', tone: 'warning' }
+                : crewStarted ? { label: 'กำลังทำ', tone: 'info' } : { label: 'ยังไม่เริ่ม', tone: 'neutral' },
         text: filesUnknown ? 'อ่านรูปรายพื้นที่ไม่สำเร็จ — ไม่ทราบว่าครบไหม'
+          : control.status?.resave === true ? control.status.headline
           : progress.total
             ? join(`ครบ ${progress.done} / ${progress.total} พื้นที่`, progress.leftText && `เหลือ ${progress.leftText}`)
             : '',

@@ -25,3 +25,39 @@
   line-height: var(--lh-thai);
   overflow-wrap: anywhere;
 }
+
+/* งานโต๊ะ (ประเมินจากแบบทั้งใบ): "ผู้ขอต้องการผล {วัน}" เหนือช่องวัน — เส้นประ = ความต้องการของผู้ขอ ไม่ใช่ช่องกรอก
+   และไม่ใช่ปุ่ม (ชิป "ใช้ตามผู้ขอ" ของการลงคิวเป็นกรอบทึบ) · ยาวแค่ไหนก็ตัดบรรทัดในกล่อง ไม่ดันโมดัล */
+.wishLine {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+}
+
+/* ที่ห่อช่องวันของงานโต๊ะ — ไม่มีกล่องของตัวเอง (`display: contents`: การจัดวางของเปลือกเท่าเดิม) มีไว้ให้กฎข้างล่างเกาะ */
+.deskDate { display: contents; }
+
+/* ช่องวัน (`DateInput` ของกลาง) บนจอสัมผัส / จอแคบ: ช่องสูงเต็มนิ้ว และปุ่มปฏิทินกว้าง-สูงเต็มนิ้ว (ของกลางเป็น 40px กับ 34×38)
+   🐞 UAT S2b S06 / S08 / S18: ของกดอย่างเดียวในกล่องที่เล็กกว่า 44px · เฉพาะกล่องของงวดนี้ — ของกลางไม่ถูกแตะ */
+.deskDate[data-desk] :global(.date-input-text) { padding-right: calc(var(--ctl-h) + var(--space-1)); }
+
+.deskDate[data-desk] :global(.date-input-picker) {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--ctl-h);
+}
+
+@media (pointer: coarse), (max-width: 680px) {
+  .deskDate[data-desk] :global(.date-input-text) {
+    min-height: var(--ctl-h-touch);
+    padding-right: calc(var(--ctl-h-touch) + var(--space-1));
+  }
+
+  .deskDate[data-desk] :global(.date-input-picker) { width: var(--ctl-h-touch); }
+}

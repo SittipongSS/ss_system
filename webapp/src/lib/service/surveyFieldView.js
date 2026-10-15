@@ -54,9 +54,9 @@ import {
   surveyZoneFacts,
 } from './surveyControl';
 import { accessConflict, accessWindowText } from './sites';
-import { isDrawingZone, isJpgOrPngFile, zoneMethod } from './surveyMethod';
+import { isDrawingZone, isJpgOrPngFile, surveyZoneNeedsResave, zoneMethod } from './surveyMethod';
 import {
-  SURVEY_METHOD_CHIP, SURVEY_METHOD_LABEL, surveyProgressText, surveyZoneAddedLabel,
+  SURVEY_METHOD_CHIP, SURVEY_METHOD_LABEL, SURVEY_METHOD_RESULT_DATE_LABEL, surveyProgressText, surveyZoneAddedLabel,
 } from './surveyMethodSwitch';
 import { SPOT_TRAY_LABEL, spotGapNote, surveySpotPhotoGaps, surveySpotSubmitError } from './surveySpotPhotos';
 import { accessWarnText, dayText, relDayText, thaiDayOf } from './queueWords';
@@ -134,6 +134,22 @@ const drawingMissingKeys = (facts) => new Set(facts.missing.map((g) => g.key).fi
    ลงหน้างาน = สามข้อของช่าง · จากแบบ = ขนาด + ภาพแบบ (ของหัวหน้า) — ถามแยกกันเมื่อไร ป้ายหัวบอก "ครบ" บนแถวที่รายการบอก "ขาด" */
 const zonePageMarks = (zone) => (isDrawingZone(zone) ? DRAWING_MARKS : CREW_MARKS);
 const zonePageGapKeys = (zone, facts) => (isDrawingZone(zone) ? drawingMissingKeys(facts) : crewMissingKeys(facts));
+
+/**
+ * 🔄 **พื้นที่ที่เพิ่งสลับกลับมาเป็นลงหน้างาน และด่านขนาดค้างเพราะ "ยังไม่ถูกบันทึกหลังสลับ" เท่านั้น** (UAT S22 · 12/10)
+ * คืน **ประโยคของด่านขนาด** (`SURVEY_GATES` — ตัวเดียวกับที่ route ใช้) หรือ `null`
+ *
+ * ⭐ ตัวเลขที่ค้างบนแถวครบสามช่องแล้ว ⇒ ไม่มีอะไรให้ "แก้" — ทางผ่านด่านคือกดบันทึกยืนยัน ⇒ หน้าพื้นที่ต้อง (ก) บอกประโยคนี้
+ *   ให้ตาเห็น (ข) เปิดปุ่มบันทึกทั้งที่ไม่มีค่าค้าง (ค) ไม่ติ๊กเขียว "บันทึกแล้ว" บนหัวข้อขนาด — ทั้งสามถามตัวนี้ตัวเดียว
+ *   🐞 เดิม: ปุ่มบันทึกดับ ("ยังไม่ได้แก้อะไร") + ติ๊กเขียวครบสามหัวข้อ + ป้าย "ยังไม่ครบ" โดยไม่มีเหตุบนจอ — ช่างต้องแก้ตัวเลขหลอก ๆ ถึงจะผ่าน
+ * ⚠️ ขนาดยังไม่ครบ = `null` (ด่านพูดเรื่องช่องที่ขาดอยู่แล้ว และปุ่มบันทึกเปิดเองเมื่อพิมพ์) · พื้นที่จากแบบ / ตัดออก = `null`
+ */
+export function surveyZoneResaveText(zone = {}, files = []) {
+  if (!surveyZoneNeedsResave(zone)) return null;
+  const facts = surveyZoneFacts(zone, list(files));
+  if (facts.cut || !facts.sizeComplete) return null;
+  return facts.missingCrew.find((g) => g.key === 'size')?.text || null;
+}
 /* ป้ายสถานะ "ครบ" ของพื้นที่จากแบบ — ห้ามใช้ "วัดแล้ว" (ไม่มีใครไปวัด) */
 const DRAWING_ZONE_DONE_TEXT = 'ครบแล้ว';
 /* ด่านรูปจุด (G1 · มติ 01/10) ต่อพื้นที่ — `zoneId → "จุด 1.3 ยังไม่มีรูป · ยังไม่ได้ผูกจุด 2 รูป"` · ไม่มีเรื่อง = ไม่มีคีย์
@@ -512,7 +528,10 @@ export function surveyZoneListView({
        · พื้นที่จากแบบไม่มีในผลของตัวนับ (ไม่มีใครไปถ่ายรูปจุด) ⇒ `null` เอง */
     const spotNote = facts.cut || dirty === id ? null : (spotGaps.get(id) || null);
     const state = facts.cut ? 'cut' : (missing.size || spotNote ? 'todo' : 'done');
-    const areaText = facts.sizeComplete ? `${fmtNumber(facts.areaSqm)} ตร.ม.` : null;
+    /* ขนาดที่ด่านยังไม่รับ (เพิ่งสลับกลับมาเป็นลงหน้างาน — ตัวเลขเป็นของตอนประเมินจากแบบ) ไม่ขึ้นเป็นขนาดของแถว:
+       จอแคบเคยพิมพ์ "28 ตร.ม." เหนือ "ขาด: ขนาด" ขณะที่คอลัมน์ขนาดของจอกว้างเป็น "—" (UAT S22) */
+    const sized = facts.sizeComplete && !missing.has('size');
+    const areaText = sized ? `${fmtNumber(facts.areaSqm)} ตร.ม.` : null;
     const values = {
       size: areaText, wide: facts.photos.wide || null, spots: facts.spotsTotal || null, plan: facts.photos.plan || null,
     };
@@ -527,7 +546,7 @@ export function surveyZoneListView({
       state,
       selected: selected === id,
       areaText,
-      sizeText: facts.sizeComplete ? figuresText(facts.areaSqm, facts.volumeCbm) : null,
+      sizeText: sized ? figuresText(facts.areaSqm, facts.volumeCbm) : null,
       /* วงเปล่ากับติ๊ก — ค่าข้างติ๊กคือของที่นับได้ (ภาพกว้าง 2 · จุด 3 · ภาพแบบ 1) ขนาดใช้ ตร.ม.
          ⚠️ "ภาพแบบ" นับไฟล์ในช่องผังทุกชนิด แต่ติ๊กเฉพาะเมื่อมีรูป JPG/PNG (ด่านของ server) — "ภาพแบบ 1" ที่ยังไม่ติ๊ก
             = มีไฟล์ที่ลงเอกสารไม่ได้ (PDF/TIFF) ค้างอยู่ */
@@ -579,14 +598,18 @@ export function surveyZoneListView({
  * คนดูแก้ได้ = พื้นที่แรกที่ยังขาด (งานถัดไปของเขา) · นอกนั้น/ครบหมด = พื้นที่แรกที่ยังอยู่ในใบ
  *   "ยังขาด" = `zonePageGapKeys`: ลงหน้างาน = ของช่าง (เดิม) · จากแบบ = ขนาด/ภาพแบบของหัวหน้า
  * @param hideDrawing จอของช่าง (ชุดเดียวกับ `surveyZoneListView`) — พื้นที่จากแบบไม่อยู่ในรายการของเขา จึงไม่ถูกเปิดเอง
+ * @param drawingEditable คนดูกรอกพื้นที่จากแบบได้ไหม (งวด S2b · มติ O4) — `false` = ผู้วางคิว: เห็นพื้นที่จากแบบแบบอ่านอย่างเดียว
+ *   ⇒ พื้นที่จากแบบ **ไม่ถูกเลือกเป็น "พื้นที่แรกที่ยังขาด"** (ไม่ใช่งานถัดไปของเขา) · ทางถอย (พื้นที่แรกที่ยังอยู่ในใบ) ไม่เปลี่ยน
+ *   และเป็นพื้นที่จากแบบได้ — เขาเปิดอ่านได้ · ไม่ส่ง = `true` = ผลเดิมของผู้เรียกทุกตัว
  * ⚠️ ไม่มีพื้นที่ที่ยังอยู่ในใบเลย (หรือช่างไม่เหลือพื้นที่ให้เปิด) = `null` (บานขวาว่าง ไม่ใช่เปิดพื้นที่ที่ถูกตัด)
  */
-export function surveyDefaultZoneId(zones = [], filesByZone = {}, { editable = false, hideDrawing = false } = {}) {
+export function surveyDefaultZoneId(zones = [], filesByZone = {}, { editable = false, hideDrawing = false, drawingEditable = true } = {}) {
   const files = filesMap(filesByZone);
   const active = list(zones).filter((z) => z?.id && !isCutRow(z) && !(hideDrawing === true && isDrawingZone(z)));
   if (!active.length) return null;
   if (editable) {
-    const todo = active.find((z) => zonePageGapKeys(z, surveyZoneFacts(z, list(files[z.id]))).size > 0);
+    const todo = active.find((z) => !(drawingEditable === false && isDrawingZone(z))
+      && zonePageGapKeys(z, surveyZoneFacts(z, list(files[z.id]))).size > 0);
     if (todo) return String(todo.id);
   }
   return String(active[0].id);
@@ -638,9 +661,14 @@ export function surveyZoneNeighbors(zones = [], zoneId = null, filesByZone = {},
  * ⚠️ ค่าค้าง = บอกเหตุ "บันทึกก่อน" แต่ **ยังบอกปลายทาง** (ม็อก: "ถัดไป: ส่งงาน / บันทึกก่อน")
  *
  * @param canSubmit คนดูมีปุ่มส่งงานบนแถบไหม (ช่าง/Senior ที่อยู่บนนัด · นัดยังเปิด)
+ * @param hideDrawing จอของช่าง (ชุดเดียวกับ `surveyZoneListView`) — ทาง ③ ข้ามพื้นที่จากแบบ: มันไม่อยู่ในรายการของเขา
+ *   🐞 UAT S22/S13 (12/10): ช่างที่นัดยังไม่เริ่มได้ปุ่ม "ถัดไป: คลังหลังร้าน" ที่พาเข้าพื้นที่จากแบบซึ่งรายการซ่อนไว้
+ *   (ทาง ① ไม่ต้องกรอง — `missingCrew` ของพื้นที่จากแบบว่างเสมอ)
  * @returns `{ target: {kind:'zone', id, name, back} | {kind:'submit'} | null, blocker, label }`
  */
-export function surveyNextStep({ zones = [], filesByZone = {}, zoneId = null, dirty = false, canSubmit = false } = {}) {
+export function surveyNextStep({
+  zones = [], filesByZone = {}, zoneId = null, dirty = false, canSubmit = false, hideDrawing = false,
+} = {}) {
   const files = filesMap(filesByZone);
   const rows = list(zones).filter((z) => z?.id);
   const here = rows.findIndex((z) => String(z.id) === idOf(zoneId));
@@ -657,7 +685,7 @@ export function surveyNextStep({ zones = [], filesByZone = {}, zoneId = null, di
   } else if (canSubmit) {
     target = { kind: 'submit' };
   } else {
-    const after = withIndex.find(({ z, i }) => i > here && !isCutRow(z));
+    const after = withIndex.find(({ z, i }) => i > here && !isCutRow(z) && !(hideDrawing === true && isDrawingZone(z)));
     if (after) target = { kind: 'zone', id: String(after.z.id), name: names.get(String(after.z.id)), back: false };
   }
   const label = !target ? null
@@ -924,6 +952,8 @@ export function surveyZoneActions({ zone = {}, canWrite = false } = {}) {
  * ⭐ **พื้นที่จากแบบ** (หัวข้อของ `surveyDrawingZoneView`): `wide: null` (ไม่มีหัวข้อภาพกว้าง) · เพิ่ม `plan` = ภาพแบบ —
  *   ติ๊กเมื่อด่านข้อผังผ่าน (มีรูป JPG/PNG) นับเฉพาะรูปที่ลงเอกสารได้ · จุดไม่บังคับและไม่มีรูป ⇒ ไม่มีป้าย "ยังไม่มี" และไม่ต่อจำนวนรูป
  *   ⚠️ พื้นที่ลงหน้างานได้สี่คีย์เดิมทุกตัวอักษร (ไม่มีคีย์ `plan`)
+ * 🔄 **พื้นที่ที่เพิ่งสลับกลับมาเป็นลงหน้างาน** (`surveyZoneResaveText`): หัวข้อขนาดไม่ติ๊กเขียวและไม่มีป้าย "บันทึกแล้ว" จนกว่าจะบันทึก
+ *   หลังสลับ — `size.note` = ประโยคของด่าน (จอวางเป็นกล่องแจ้งในหัวข้อขนาด) · พิมพ์แก้แล้ว = ป้าย "ยังไม่บันทึก" ตามเดิม · แถวอื่น `note` ไม่มี
  */
 export function surveyZoneSections({ zone = {}, files = [], draft = null, dirty = false } = {}) {
   const d = draft || zone || {};
@@ -966,8 +996,12 @@ export function surveyZoneSections({ zone = {}, files = [], draft = null, dirty 
       text: photos.spot ? `${fmtNumber(savedSpots)} จุด · ${fmtNumber(photos.spot)} รูป` : `${fmtNumber(savedSpots)} จุด`,
     };
   }
+  const resave = surveyZoneResaveText(zone, files);
+  const sizeDirty = dirty && partsSig(d) !== partsSig(zone);
   return {
-    size: typed(dirty && partsSig(d) !== partsSig(zone), savedParts > 0),
+    size: resave
+      ? { ...(sizeDirty ? typed(true, true) : { mark: 'todo', chip: null }), note: resave }
+      : typed(sizeDirty, savedParts > 0),
     wide: uploaded(photos.wide),
     spots,
     note: typed(dirty && noteSig(d) !== noteSig(zone), savedNote, { optional: true }),
@@ -1005,6 +1039,9 @@ export function surveyZoneFooterView({
     || list(zone?.spots).some((s) => !isBlankSurveySpot(s));
   const stamp = [zone?.surveyedByName || null, zone?.surveyedAt ? stampText(zone.surveyedAt) : null]
     .filter(Boolean).join(' · ');
+  /* 🔄 เพิ่งสลับกลับมาเป็นลงหน้างาน: ด่านขนาดรอ "บันทึกอีกครั้ง" ทั้งที่ไม่มีค่าค้าง ⇒ ปุ่มบันทึกเปิด และบรรทัดสถานะพูดประโยคของด่าน
+     (เฉพาะคนที่บันทึกได้ — คนอ่านอย่างเดียวได้บรรทัด "บันทึกแล้ว · ใคร/เมื่อไร" เดิม) */
+  const resave = readOnly ? null : surveyZoneResaveText(zone, files);
 
   let tone;
   let head;
@@ -1029,6 +1066,10 @@ export function surveyZoneFooterView({
     tone = 'dirty';
     head = draftSummary ? `กดบันทึกเพื่อเก็บ ${draftSummary}` : 'มีค่าที่ยังไม่บันทึก — กดบันทึกพื้นที่นี้';
     sub = photoLine;
+  } else if (resave) {
+    tone = 'dirty';
+    head = resave;
+    sub = gapText;
   } else if (saved) {
     tone = 'saved';
     head = `${gaps.size === 0 ? 'บันทึกครบแล้ว' : 'บันทึกแล้ว'}${stamp ? ` · ${stamp}` : ''}`;
@@ -1043,7 +1084,7 @@ export function surveyZoneFooterView({
     sub = gapText;
   }
 
-  const canSave = !busy && dirty && !saveBlocker;
+  const canSave = !busy && !saveBlocker && (dirty || !!resave);
   return {
     tone,
     head,
@@ -1053,9 +1094,12 @@ export function surveyZoneFooterView({
       show: !readOnly && !facts.cut,
       label: 'บันทึกพื้นที่นี้',
       enabled: canSave,
-      reason: busy ? 'กำลังบันทึก…' : (!dirty ? 'ยังไม่ได้แก้อะไร' : (saveBlocker ? String(saveBlocker) : null)),
+      reason: busy ? 'กำลังบันทึก…'
+        : (!dirty && !resave ? 'ยังไม่ได้แก้อะไร' : (saveBlocker ? String(saveBlocker) : null)),
       emphasis: canSave ? 'primary' : 'quiet',
     },
+    /* ไม่มีค่าค้างแต่ต้องบันทึกยืนยันขนาดหลังสลับ — หน้าพื้นที่ส่ง `parts` ที่อยู่บนจอไปด้วยเสมอ (server ประทับเวลาบันทึกใหม่) */
+    resave: !!resave,
   };
 }
 
@@ -1577,6 +1621,14 @@ function phoneDial(text) {
   };
 }
 
+/* นัดที่ "ยังเปิด" ในสายตาของหัวงาน — ร่างนับด้วย (นัดที่ผู้วางคิวร่างค้างไว้ยังเป็นนัดของใบ · ชุดเดียวกับที่แผนสลับวิธีเรียกว่าเปิด) */
+const HEADER_OPEN_VISIT = ['draft', 'scheduled', 'in_progress'];
+/* วันที่ `YYYY-MM-DD` ของช่องวัน — ค่าว่าง/ผิดรูป = '' (ให้ `naText` พิมพ์ขีด ไม่ใช่พิมพ์ค่าดิบ) */
+const dayKey = (value) => {
+  const day = String(value ?? '').slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : '';
+};
+
 /**
  * 🔑 **หัวงานของจอหน้างาน** (แทนหัวใบ 470px ของจอเดิม · pain B1) — ของที่ช่างต้องใช้ก่อนเดินเข้าตึก
  *
@@ -1587,10 +1639,19 @@ function phoneDial(text) {
  * ⚠️ ชื่อตัวเองเป็น "คุณ" (`crew[].you` มาจาก server — จอไม่รู้ user id ของตัวเอง)
  *
  * @param crew `[{ id, name, lead, you, gone? }]` จาก GET · ไม่มี (GET รุ่นก่อน) = ถอยไปใช้ชื่อคนไปบนนัด
+ * @param method `{ mix, needsVisit }` จาก `surveyControlView` (งวด S2b) — ไม่ส่ง หรือใบไม่มีพื้นที่จากแบบ = ผลเดิมทุกคีย์
+ *   มีพื้นที่จากแบบ ⇒ ข้อแรกเป็น "วิธีประเมิน":
+ *   · ผสม            `ลงหน้างาน a · จากแบบ k` — ข้อของนัดอยู่ครบ
+ *   · จากแบบทั้งใบ    `ประเมินจากแบบ` + "ทั้งใบ n พื้นที่"
+ *       ไม่มีนัดที่ยังเปิด ⇒ ต่อ "· ไม่ลงคิว ไม่มีนัดบนตารางเจ้าหน้าที่" และข้อของนัด (นัด · ทีม · คำเตือนช่วงให้เข้า) ถูกแทนด้วย
+ *         ผู้รับผิดชอบ · ผู้ขอต้องการผล · วันที่จะส่งผลประเมิน (ไม่มีนัดและไม่มีทีมให้พูดถึง)
+ *       ยังมีนัดเปิดอยู่ (ร่าง · นัดไว้ · กำลังทำ) ⇒ ข้อของนัดอยู่ครบ และ **ไม่** พูดว่าไม่มีนัด — เกิดได้จริง: ช่างอยู่หน้างานแล้ว
+ *         หัวหน้าสลับห้องสุดท้ายเป็นจากแบบ (นัดที่กำลังทำไม่ถูกยกเลิก) หรือนัดที่ค้างบนใบ · หัวหน้ายังต้องเห็นเลขนัด ทีม และเวลา
+ *   ⚠️ "ยังมีนัดเปิดไหม" ดูจากนัดที่ส่งมา ไม่ใช่จาก `needsVisit` — ตัวนั้นอ่านแถวพื้นที่อย่างเดียว บอกไม่ได้ว่านัดยังค้างอยู่
  * @returns `{ site:{code,name,title,href,address,unknown}, call, nav, facts:[{key,label,value,sub?,warn?,people?}], request }`
  */
 export function surveyJobHeaderView({
-  request = null, customer = null, site = null, visit = null, crew = [], unknown = {},
+  request = null, customer = null, site = null, visit = null, crew = [], unknown = {}, method = null,
 } = {}) {
   const siteUnknown = unknown?.site === true;
   const phone = String(site?.contactPhone ?? '').trim();
@@ -1632,6 +1693,28 @@ export function surveyJobHeaderView({
     : (unknown?.visit === true ? SURVEY_UNKNOWN_TEXT : naText(null));
   const siteValue = (text) => (site ? naText(text) : (siteUnknown ? SURVEY_UNKNOWN_TEXT : naText(null)));
 
+  /* ── วิธีประเมิน (งวด S2b) — เฉพาะใบที่มีพื้นที่จากแบบ · ไม่ส่ง `method` = ไม่มีข้อนี้และข้อของนัดอยู่ครบ ── */
+  const mixOnsite = Number(method?.mix?.onsite) || 0;
+  const mixDrawing = Number(method?.mix?.drawing) || 0;
+  const allDrawing = mixDrawing > 0 && mixOnsite === 0;
+  const openVisit = HEADER_OPEN_VISIT.includes(visit?.status);
+  const deskOnly = allDrawing && !openVisit;
+  let methodFact = null;
+  if (allDrawing) {
+    methodFact = {
+      key: 'method',
+      label: 'วิธีประเมิน',
+      value: SURVEY_METHOD_LABEL.drawing,
+      sub: `ทั้งใบ ${fmtNumber(mixDrawing)} พื้นที่${deskOnly ? ' · ไม่ลงคิว ไม่มีนัดบนตารางเจ้าหน้าที่' : ''}`,
+    };
+  } else if (mixDrawing > 0) {
+    methodFact = {
+      key: 'method',
+      label: 'วิธีประเมิน',
+      value: `${SURVEY_METHOD_CHIP.onsite} ${fmtNumber(mixOnsite)} · ${SURVEY_METHOD_CHIP.drawing} ${fmtNumber(mixDrawing)}`,
+    };
+  }
+
   return {
     site: {
       code: site?.code || null,
@@ -1649,16 +1732,25 @@ export function surveyJobHeaderView({
       : null,
     nav: mapUrl ? { href: mapUrl, label: 'นำทาง' } : null,
     facts: [
-      { key: 'visit', label: 'นัด', value: visitValue, sub: visit ? visitProgressText(visit) : null },
-      {
-        key: 'crew',
-        label: 'ทีม',
-        value: people.length
-          ? people.map((p) => `${p.text}${p.helper ? ' (ผู้ช่วย)' : ''}`).join(' · ')
-          : naText(null),
-        people,
-      },
-      { key: 'access', label: 'ให้เข้า', value: siteValue(site ? accessWindowText(site) : ''), warn },
+      ...(methodFact ? [methodFact] : []),
+      ...(deskOnly
+        ? [
+          { key: 'assignee', label: 'ผู้รับผิดชอบ', value: naText(String(request?.assigneeName ?? '').trim()) },
+          { key: 'wantedResult', label: 'ผู้ขอต้องการผล', value: naText(dayText(dayKey(request?.requestedResultDate))) },
+          { key: 'resultDate', label: SURVEY_METHOD_RESULT_DATE_LABEL, value: naText(dayText(dayKey(request?.committedResultDate))) },
+        ]
+        : [
+          { key: 'visit', label: 'นัด', value: visitValue, sub: visit ? visitProgressText(visit) : null },
+          {
+            key: 'crew',
+            label: 'ทีม',
+            value: people.length
+              ? people.map((p) => `${p.text}${p.helper ? ' (ผู้ช่วย)' : ''}`).join(' · ')
+              : naText(null),
+            people,
+          },
+        ]),
+      { key: 'access', label: 'ให้เข้า', value: siteValue(site ? accessWindowText(site) : ''), warn: deskOnly ? null : warn },
       { key: 'note', label: 'ฝากมา', value: siteValue(site?.accessNote) },
       /* ช่องเบอร์ที่ไม่มีเบอร์ให้กด ("โทรหา รปภ. หน้าตึก") = ไม่มีปุ่มโทร แต่ข้อความต้องไม่หายจากหัว (review 26/09) */
       ...(phone && !dial ? [{ key: 'phone', label: 'ติดต่อ', value: [contact, phone].filter(Boolean).join(' · ') }] : []),
@@ -1690,9 +1782,22 @@ export function surveyJobHeaderView({
  * @returns ข้อความ หรือ `null` เมื่อไม่มีพื้นที่ที่ยังอยู่ในใบ (ศูนย์ทุกช่องอ่านเหมือน "วัดแล้วได้ศูนย์")
  */
 export function surveySheetTotalsText({ zones = [], filesByZone = {}, hideDrawing = false } = {}) {
-  const totals = sheetTotals(list(zones), filesMap(filesByZone), { onsiteOnly: hideDrawing === true });
+  const rows = list(zones);
+  const files = filesMap(filesByZone);
+  const totals = sheetTotals(rows, files, { onsiteOnly: hideDrawing === true });
   if (!totals.zones) return null;
-  return `รวม ${figuresText(totals.areaSqm, totals.volumeCbm)} · ภาพกว้าง ${totals.wide} · จุด ${totals.spots}`;
+  const figures = figuresText(totals.areaSqm, totals.volumeCbm);
+  /* ⭐ งวด S2b — ใบที่มีพื้นที่จากแบบ (และคนดูเห็นมัน): พื้นที่จากแบบไม่มีภาพกว้างและจุดไม่มีรูป ⇒ ตัวนับสองตัวนั้นนับเฉพาะพื้นที่
+     ลงหน้างาน (ไฟล์ภาพกว้างที่ค้างจากก่อนสลับวิธี "ไม่ลงเอกสาร" จึงไม่ถูกนับ) แล้วต่อ "ภาพแบบ k" = รูปแบบที่ลงเอกสารได้ของพื้นที่จากแบบ
+     · จากแบบทั้งใบ = ไม่มีสองตัวนั้นเลย · ตัวเลขพื้นที่/ปริมาตรยังเป็นของทั้งใบ
+     ⚠️ ไม่มีพื้นที่จากแบบ = บรรทัดเดิมทุกตัวอักษร (เทสต์เทียบค่าที่จดไว้) */
+  const drawing = hideDrawing === true ? [] : rows.filter((z) => z?.id && !isCutRow(z) && isDrawingZone(z));
+  if (!drawing.length) return `รวม ${figures} · ภาพกว้าง ${totals.wide} · จุด ${totals.spots}`;
+  const plans = drawing.reduce((n, z) => n
+    + list(files[z.id]).filter((f) => f?.id && f.docType === SURVEY_DOC_PLAN && isJpgOrPngFile(f)).length, 0);
+  if (drawing.length === totals.zones) return `รวม ${figures} · ${PLAN_GATE.drawingShort} ${plans}`;
+  const onsite = sheetTotals(rows, files, { onsiteOnly: true });
+  return `รวม ${figures} · ภาพกว้าง ${onsite.wide} · จุด ${onsite.spots} · ${PLAN_GATE.drawingShort} ${plans}`;
 }
 
 /**
@@ -1819,14 +1924,45 @@ export function surveyRequestFilesView(rows = [], { unknown = false } = {}) {
 /* ชนิดไฟล์ของคำร้องที่ฟอร์มขอประเมินจากแบบจะติดให้ไฟล์แบบ (งวด S4) — ใบเก่าแนบแบบมาเป็น `other` ⇒ ใช้แค่จัดลำดับ ไม่ใช้กรอง */
 const SALES_SPEC_DOC = 'spec';
 const SALES_REUSE_LABEL = 'ใช้รูปนี้เป็นภาพแบบของพื้นที่นี้';
-const SALES_REUSE_BLOCKED = 'ไฟล์นี้ลงเอกสารไม่ได้ — แคปหน้าที่ต้องการเป็น PNG แล้วแนบ';
+/* ขนาดไฟล์ — รูปเดียวกับแผงไฟล์แนบ (`formatSize` ใน `AttachmentsPanel`) · ไม่รู้ขนาด = '' */
+const fileSizeText = (bytes) => {
+  const n = Number(bytes);
+  if (bytes === null || bytes === undefined || bytes === '' || !Number.isFinite(n) || n < 0) return '';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+};
+/* ชนิดไฟล์จากนามสกุลของชื่อจริง (ตัวใหญ่) — ไม่มีนามสกุล = `null` (เอกสาร Google · ไฟล์ที่ไม่มีชื่อ) */
+const fileTypeText = (fileName) => {
+  const m = /\.([A-Za-z0-9]{1,8})$/.exec(String(fileName ?? '').trim());
+  return m ? m[1].toUpperCase() : null;
+};
+/* "2.0 KB · สมชาย · พ. 8 ต.ค." — ชิ้นไหนไม่มีก็ข้าม · ไม่มีสักชิ้น = `null` · วันเป็นวันไทยของเวลาที่แนบ */
+const fileMetaText = (row, person) => [
+  fileSizeText(row?.sizeBytes),
+  String(person ?? '').trim(),
+  dayText(thaiDayOf(row?.createdAt)),
+].filter(Boolean).join(' · ') || null;
+export const SALES_REUSE_BLOCKED = 'ไฟล์นี้ลงเอกสารไม่ได้ — แคปหน้าที่ต้องการเป็น PNG แล้วแนบ';
+/* รูปที่ **เบราว์เซอร์วาดเป็นภาพย่อได้** — แคบกว่าชุด "รูปที่เปิดดูได้" ของระบบ (`isPreviewableImage`): TIFF / HEIC ถูกนับเป็นรูป
+   แต่ Chrome วาดไม่ขึ้น ⇒ ในแผงเป็นแผ่นลิงก์ "เปิดในแท็บใหม่" เหมือน PDF
+   🐞 UAT S2b S01 รอบ 2: TIFF ได้ช่องภาพย่อที่ขึ้น "เปิดไม่ได้" (อ่านเป็นไฟล์เสีย) และต้องกดสองทีกว่าจะเจอลิงก์เปิดไฟล์
+   ⚠️ ตัดสินจาก mime ก่อน ไม่มีค่อยดูนามสกุล — ลำดับเดียวกับ `isPreviewableImage` */
+const UNDRAWN_IMAGE_MIME = ['image/tiff', 'image/heic', 'image/heif'];
+const UNDRAWN_IMAGE_EXT = ['tif', 'tiff', 'heic', 'heif'];
+const drawnInPage = (row) => {
+  if (!isPreviewableImage(row)) return false;
+  const mime = String(row?.mimeType || '').toLowerCase();
+  if (mime) return !UNDRAWN_IMAGE_MIME.includes(mime);
+  return !UNDRAWN_IMAGE_EXT.includes(String(row?.fileName || '').toLowerCase().split('.').pop());
+};
 
 /**
  * 🔑 **แผง "แบบจากฝ่ายขาย"** — ทุกไฟล์ที่ฝ่ายขายส่งมาให้ประเมิน: ไฟล์แนบของคำร้อง + ไฟล์ในเธรดของคำร้อง
  *   ลำดับ: ไฟล์สเปกของคำร้อง → ไฟล์อื่นของคำร้อง → ไฟล์จากเธรด (ลำดับเดิมในแต่ละกลุ่ม)
  *
- * ⭐ `image` = เปิดดูเป็นรูปได้ (กดขยายในหน้า) · นอกนั้นเปิดแท็บใหม่ — ชุด "รูปที่เปิดดูได้" ของระบบ ซึ่ง **กว้างกว่า** ชุดที่ลงเอกสารได้
- *   (TIFF เปิดดูได้แต่กระดาษวาดไม่ขึ้น) ⇒ `image` กับ `reuse.enabled` เป็นคนละคำถาม ห้ามใช้แทนกัน
+ * ⭐ `image` = เบราว์เซอร์วาดเป็นภาพย่อได้ (กดขยายในหน้า — `drawnInPage`) · นอกนั้นเป็นแผ่นลิงก์เปิดแท็บใหม่ (PDF · TIFF · HEIC)
+ *   ⚠️ ยัง **กว้างกว่า** ชุดที่ลงเอกสารได้ (WEBP / GIF วาดได้แต่ลงกระดาษไม่ได้) ⇒ `image` กับ `reuse.enabled` เป็นคนละคำถาม ห้ามใช้แทนกัน
  * ⭐ `reuse` = ปุ่ม "ใช้รูปนี้เป็นภาพแบบของพื้นที่นี้" (มติเจ้าของ §10 ข้อ 6) — มี **เฉพาะเมื่อพื้นที่ที่เปิดอยู่ประเมินจากแบบและยังอยู่ในใบ**
  *   · กดได้เมื่อไฟล์เป็น JPG/PNG (`isJpgOrPngFile` ตัวเดียวกับด่านภาพแบบ) · ไม่ได้ = ปุ่มจางพร้อมเหตุ
  *   🔴 พื้นที่ลงหน้างาน **ไม่มีปุ่มนี้** — กติกา 29/08 (ไฟล์ฝ่ายขายใช้เป็นภาพผังที่มาร์กจุดไม่ได้) ยังอยู่ครบ
@@ -1840,10 +1976,17 @@ const SALES_REUSE_BLOCKED = 'ไฟล์นี้ลงเอกสารไม
  *
  * @param requestFiles `requestFiles` ของ GET ใบประเมิน · @param threadFiles `threadFiles` ของ GET (`{ updateId, index, fileName, mimeType }`)
  * @param zone    พื้นที่ที่หน้าพื้นที่เปิดอยู่ (ไม่มี = แผงบนหน้ารายการ — ไม่มีปุ่ม) · @param unknown `unknown` ของ GET
- * @returns `{ label, empty, unknown, files: [{ key, name, href, image, source, sourceLabel, reuse }] }`
+ * @param editable (งวด S2b) ค่า `surveyDrawingZoneView(...).editable` ของพื้นที่เดียวกัน — `false` = ทุกไฟล์ไม่มีปุ่ม (`reuse: null`):
+ *   ผู้วางคิวเห็นแผงครบแต่แนบแทนหัวหน้าไม่ได้ (มติ O4) · หัวหน้าบนใบที่ล็อกแล้วก็เช่นกัน · ไม่ส่ง = `true` (ผลเดิม)
+ * ⭐ คีย์ของงวด S2b ต่อไฟล์: `ref` = ตัวชี้ที่ส่งให้เส้นคัดลอก (`{ kind:'request', attachmentId }` / `{ kind:'thread', updateId, index }`) ·
+ *   `typeText` = นามสกุลตัวใหญ่ (`JPG` · `PNG` · `PDF` — ไม่มี = `null`) · `metaText` = ขนาด · คนแนบ · วัน (ชิ้นที่ไม่มีถูกข้าม)
+ *   และ `countText` ที่ชั้นบน = "n ไฟล์" (อ่านไม่สำเร็จ = `null` — ไม่นับของที่อ่านไม่ครบ)
+ * @returns `{ label, empty, unknown, countText, files: [{ key, name, href, image, source, sourceLabel, reuse, ref, typeText, metaText }] }`
  */
-export function surveySalesDrawingsView({ requestFiles = [], threadFiles = [], zone = null, unknown = {} } = {}) {
-  const canReuse = !!zone && isDrawingZone(zone) && !isCutRow(zone);
+export function surveySalesDrawingsView({
+  requestFiles = [], threadFiles = [], zone = null, unknown = {}, editable = true,
+} = {}) {
+  const canReuse = editable !== false && !!zone && isDrawingZone(zone) && !isCutRow(zone);
   const reuse = (row, copyable = true) => {
     if (!canReuse) return null;
     const enabled = copyable && isJpgOrPngFile(row);
@@ -1863,10 +2006,13 @@ export function surveySalesDrawingsView({ requestFiles = [], threadFiles = [], z
       key: `request:${row.id}`,
       name: attachmentName(row),
       href,
-      image: !google && isPreviewableImage(row),
+      image: !google && drawnInPage(row),
       source: 'request',
       sourceLabel: null,
       reuse: reuse(row, !row.kind),
+      ref: { kind: 'request', attachmentId: String(row.id) },
+      typeText: fileTypeText(row.fileName),
+      metaText: fileMetaText(row, row.uploadedByName),
     });
   }
   for (const row of list(threadFiles)) {
@@ -1876,10 +2022,13 @@ export function surveySalesDrawingsView({ requestFiles = [], threadFiles = [], z
       key: `thread:${updateId}:${row.index}`,
       name: attachmentName(row),
       href: `/api/updates/${encodeURIComponent(updateId)}/file?i=${row.index}`,
-      image: isPreviewableImage(row),
+      image: drawnInPage(row),
       source: 'thread',
       sourceLabel: 'จากเธรด',
       reuse: reuse(row),
+      ref: { kind: 'thread', updateId, index: row.index },
+      typeText: fileTypeText(row.fileName),
+      metaText: fileMetaText(row, row.authorName),
     });
   }
 
@@ -1888,6 +2037,7 @@ export function surveySalesDrawingsView({ requestFiles = [], threadFiles = [], z
     label: 'แบบจากฝ่ายขาย',
     empty: !files.length && !unread ? 'ยังไม่มีไฟล์แบบจากฝ่ายขาย — ขอในเธรดของคำร้อง' : null,
     unknown: unread,
+    countText: unread ? null : `${fmtNumber(files.length)} ไฟล์`,
     files,
   };
 }

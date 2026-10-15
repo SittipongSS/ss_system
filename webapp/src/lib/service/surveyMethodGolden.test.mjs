@@ -1038,6 +1038,8 @@ function stripControl(view, at, { flagOn = false } = {}) {
   take(view, 'gatesHidden', false, at);
   take(view.progress, 'drawing', 0, at);
   take(view.progress, 'text', `วัดแล้ว ${view.progress.done} / ${view.progress.total} พื้นที่`, at);
+  // งวด S2b: มาตรวัดของงานโต๊ะ — ใบลงหน้างานล้วนไม่มี
+  take(view.progress, 'desk', null, at);
   take(view.send, 'confirm', { required: false, mix: { onsite: 2, drawing: 0 }, mode: 'onsite' }, at);
   return view;
 }
@@ -1048,9 +1050,20 @@ function stripJobZones(zones, at) {
     take(row, 'chip', null, at);
     take(row, 'photosText', null, at);
     take(row, 'addedLabel', null, at);
+    // มติ 12/10: ช่องของแถวจากแบบบนตารางที่ยังไม่ส่งผล (ภาพกว้าง = ขีด · ช่องสุดท้าย = "แบบ n") — แถวลงหน้างานไม่มี
+    take(row, 'wideText', null, at);
+    take(row, 'planText', null, at);
   }
   take(zones.crewGate, 'hidden', false, at);
   take(zones, 'drawingBanner', null, at);
+  // งวด S2b: ช่องรูปของแถวรวมเมื่อใบมีพื้นที่จากแบบ — ใบลงหน้างานล้วนไม่มี
+  take(zones, 'photosTotalText', null, at);
+  /* มติ 12/10: ทรงของตารางตามวิธีประเมิน (`zones.table`) — ใบลงหน้างานล้วนต้องได้ **ตารางของโค้ดก่อนงวดตรงตัว**:
+       ยังไม่ส่ง  มีคอลัมน์ภาพกว้าง (เดิม `!sent`) · หัวคอลัมน์สุดท้าย "หน้างาน" · ภาพกว้างรวม = `photos.wide` ตัวเดิม
+       ส่งแล้ว    ไม่มีคอลัมน์ภาพกว้าง · หัวคอลัมน์สุดท้าย "รูป" (เดิม `sent ? "รูป" : "หน้างาน"`) */
+  take(zones, 'table', zones.sent
+    ? { wideColumn: false, wideTotal: null, lastLabel: 'รูป' }
+    : { wideColumn: true, wideTotal: zones.photos.wide, lastLabel: 'หน้างาน' }, at);
   return zones;
 }
 function stripLabels(labels, at) {

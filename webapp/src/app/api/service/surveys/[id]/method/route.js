@@ -81,6 +81,20 @@ async function requestHasDrawings(supabase, requestId) {
   }
 }
 
+/**
+ * ใบนี้ **เคยมีนัดที่ไปถึงไซต์แล้วสักนัดไหม** (เข้าแล้ว / ทำไม่ครบ) — `{ reached, error }`
+ * คำถามเดียวกับด่านส่งผล และ `siteVisitReached` ของ GET ใบประเมิน (ตัวที่โมดัลส่งให้แผน) ⇒ กล่องผลลัพธ์กับสิ่งที่เขียนถามเรื่องเดียวกัน
+ * 🔴 ถามเพิ่มจากนัดล่าสุด เพราะนัดที่ถึงไซต์แล้วตามด้วยนัดซ้ำที่ถูกยกเลิก / เข้าไม่ได้ ยังเป็นใบที่ "เข้าพื้นที่แล้ว" (มติ 12/10 ข้อ O3)
+ * ⚠️ supabase ไม่ throw — คืน `error` ให้ผู้เรียกตอบ 500 (อ่านไม่สำเร็จห้ามตกเป็น "ไม่เคย" = ล้างวันส่งผลที่รับปากไว้)
+ */
+async function surveySiteReached(supabase, requestId) {
+  const { data, error } = await supabase
+    .from('service_visits').select('id')
+    .eq('requestId', requestId).in('status', ['done', 'partial']).limit(1);
+  if (error) return { reached: false, error };
+  return { reached: Array.isArray(data) && data.length > 0, error: null };
+}
+
 // POST { actionId, changes: [{ zoneId, method }], reason, committedResultDate?, cancelVisitId?, seenMix: { onsite, drawing } }
 export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const { id } = await ctx.params;
@@ -141,12 +155,22 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       if (!proof.proved) return staleAnswer();
       visit = { ...named, cancelledByThisAction: true };
     } else {
+      /* ไม่มีนัดค้าง = นัดล่าสุดของใบ (ตัวเดียวกับที่ใบประเมินส่งให้โมดัล และที่หน้าคำร้องอ่านขั้น) — แผนเอาวันของมันกลับขึ้นใบ
+         เมื่อใบเคยเข้าพื้นที่แล้ว (มติ 12/10 ข้อ O3 · "เคยไหม" ถามแยกข้างล่าง) */
       visit = await findSurveyVisit(supabase, id);
+    }
+    /* นัดล่าสุดไม่ใช่นัดที่ไปถึงไซต์ (ยกเลิก · เข้าไม่ได้ · เลื่อน) — ถามว่ามีนัด **ก่อนหน้า** ที่ไปถึงไหม · ใบที่ไม่มีนัดเลย / มีนัดค้าง /
+       นัดล่าสุดถึงไซต์เอง ไม่ต้องถาม (คำตอบไม่เปลี่ยนแผน) · อ่านไม่สำเร็จ = 500 ก่อนเขียนอะไร */
+    let siteReached = null;
+    if (!open && visit && visit.status !== 'done' && visit.status !== 'partial') {
+      const earlier = await surveySiteReached(supabase, id);
+      if (earlier.error) return fail(earlier.error.message, 500);
+      siteReached = earlier.reached;
     }
 
     const nowIso = new Date().toISOString();
     const plan = surveyMethodSwitchPlan({
-      rows, changes: changes.value, visit, request, sendBack, reason, resultDate, hasDrawings,
+      rows, changes: changes.value, visit, siteReached, request, sendBack, reason, resultDate, hasDrawings,
       actor: { id: user.id, name: user.name }, nowIso,
     });
     if (plan.stale) return staleAnswer();

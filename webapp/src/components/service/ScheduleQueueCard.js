@@ -16,6 +16,9 @@
 // ⭐ **ปุ่ม "ลบนัด"** (มติเจ้าของ 24/09 "ไม่มีปุ่มลบรอบนอกรอบด้วย") — เฉพาะงานนอกรอบที่ยังไม่ปิด
 //    (`row.actions.delete` จาก `visitDeleteButton`) · เหตุที่ลบไม่ได้บอกตอนกด (`row.deleteBlocker` =
 //    ด่านตัวเดียวกับที่ API ตีกลับ) · สีแดงแบบเส้นขอบ = การกระทำรอง ไม่ใช่ปุ่มหลักของการ์ด · วางท้ายสุด
+// ⭐ **ป้ายวิธีประเมิน** (ประเมินจากแบบ · งวด S2b) — การ์ดคำร้องของใบงานโต๊ะพก `row.methodChip` (คำมาจาก
+//    `scheduleQueueView` ทั้งคำ) ⇒ วาดข้างป้ายขั้นด้วย `SurveyMethodChip` · การ์ดอื่นทุกใบค่านี้ว่าง = ไม่วาดอะไร
+//    และหัวการ์ดไม่ได้แอตทริบิวต์เพิ่ม (หน้าตาเดิมทุกจุด) · การ์ดนี้ไม่ตัดสินเองว่าใบไหนเป็นงานโต๊ะ
 import Link from "next/link";
 import { AlertTriangle, CalendarCheck, CalendarPlus, CalendarSearch, Check, FileText, Inbox, Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
@@ -25,6 +28,7 @@ import { gateBlocker } from "@/lib/service/visitGate";
 import { GATE_FIX } from "@/lib/service/scheduleQueueView";
 import { naText } from "@/lib/format";
 import GateOrderChips from "./GateOrderChips";
+import SurveyMethodChip from "./SurveyMethodChip";
 import styles from "./ScheduleQueueCard.module.css";
 
 const TONE_CLASS = { warn: "warn", bad: "bad", ok: "ok" };
@@ -47,11 +51,14 @@ export default function ScheduleQueueCard({
   const isRequest = row.type === "request";
   /* ป้ายหัวการ์ด (เฉพาะรอจัด) กับบรรทัดผ่านด่านประกอบมาจาก scheduleQueueView — ให้คำค้นเห็นคำเดียวกัน */
   const tag = row.tag;
+  /* ป้ายวิธีประเมินของใบงานโต๊ะ ("จากแบบ · ไม่ต้องลงคิว") — ว่าง = การ์ดเดิม */
+  const methodLabel = row.methodChip || null;
   const toneOf = (tone) => (TONE_CLASS[tone] ? styles[TONE_CLASS[tone]] : "");
 
   return (
     <li className={styles.card} id={`queue-row-${row.id}`} data-stale={row.stale ? "yes" : undefined}>
-      <div className={styles.top}>
+      {/* มีป้ายวิธี = หัวการ์ดตกบรรทัดได้ (ป้ายลงไปอยู่ใต้บรรทัดรหัสบนแผงแคบ) · ไม่มี = บรรทัดเดียวแบบเดิม */}
+      <div className={styles.top} data-tagged={methodLabel ? "yes" : undefined}>
         {isRequest ? (
           /* ใบยังไม่มีนัด ⇒ รหัสพาไปหน้าใบ (อ่านเต็ม · ตีกลับ · เธรด) ไม่ใช่เปิดโมดัลนัด */
           <Link href={row.href} className={`linklike ${styles.code}`} data-queue-code={row.id}>
@@ -69,6 +76,8 @@ export default function ScheduleQueueCard({
         )}
         <span className={`${styles.kind} ${styles[`kind_${row.kind}`] || ""}`}>{row.kindLabel}</span>
         {tag && <StatusBadge size="sm" tone={tag.tone} label={tag.label} className={styles.tag} />}
+        {/* วิธีประเมินเป็นคุณสมบัติของใบ ไม่ใช่สถานะ ⇒ ป้ายแบบ Tag ต่อจากป้ายขั้น (ไม่ส่ง variant = หน้าตาของ "จากแบบ") */}
+        <SurveyMethodChip label={methodLabel} className={styles.methodTag} />
       </div>
 
       <p className={styles.site}>

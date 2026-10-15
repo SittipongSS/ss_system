@@ -153,3 +153,47 @@ test('query พัง = โยน error ต่อ ไม่ใช่คืนอ
     (e) => e === boom,
   );
 });
+
+/* ── งวด S2b (ประเมินจากแบบ §2.5 e): ที่มาของใบที่หัวหน้าสลับกลับเป็นลงหน้างาน ─────────────────────────────
+   การ์ดลงคิวของใบแบบนี้ต้องบอกผู้วางคิวว่าทำไมใบกลับมา ("หัวหน้าเปลี่ยนเป็นลงหน้างาน: {เหตุผล}") — เหตุผลอ่านจากแถวพื้นที่
+   ในคำสั่งอ่านเดิม (ไม่มีคำสั่งอ่านเพิ่ม) · ใบของวันนี้ที่ไม่เคยสลับได้ `null` */
+import { SURVEY_QUEUE_ZONE_COLUMNS } from './surveyQueueRepo.js';
+
+test('⭐ surveyMethodBack ติดทุกแถว: ใบที่สลับกลับเป็นลงหน้างาน = { reason } ของการสลับล่าสุด · ใบที่ไม่เคยสลับ = null · ไม่มีคำสั่งอ่านเพิ่ม', async () => {
+  const zone = (id, requestId, o = {}) => ({ id, requestId, status: 'ok', method: 'onsite', methodReason: null, methodChangedAt: null, ...o });
+  const db = fakeDb({
+    dept_requests: requests,
+    service_visits: history,
+    service_survey_zones: [
+      zone('Z1', 'R-queue', { methodReason: 'ลูกค้าขอให้เข้าวัดจริง', methodChangedAt: '2026-09-20T03:00:00+00:00' }),
+      zone('Z2', 'R-queue', { methodReason: 'แบบไม่ตรงหน้างาน ต้องวัดใหม่', methodChangedAt: '2026-09-20T09:00:00.000Z' }),
+      zone('Z3', 'R-pending'),
+      // แถวก่อน mig 0408 — ไม่มีคีย์ของวิธีประเมินเลย
+      { id: 'Z4', requestId: 'R-lost', status: 'ok' },
+    ],
+  });
+  const got = await loadSurveyQueueRequests(db, { visits: queueVisits });
+  const byId = Object.fromEntries(got.map((r) => [r.id, r]));
+  assert.deepEqual(byId['R-queue'].surveyMethodBack, { reason: 'แบบไม่ตรงหน้างาน ต้องวัดใหม่' });
+  assert.equal(byId['R-pending'].surveyMethodBack, null);
+  assert.equal(byId['R-lost'].surveyMethodBack, null);
+  assert.equal(byId['R-cancelled'].surveyMethodBack, null, 'ใบที่ยังไม่มีแถวพื้นที่');
+  for (const row of got) assert.ok(Object.hasOwn(row, 'surveyMethodBack'), row.id);
+  // คำสั่งอ่านแถวพื้นที่ยังมีชุดเดียว (ซอยก้อนตาม id) และระบุคอลัมน์ — เพิ่มมาสองคอลัมน์ท้าย
+  const zoneQueries = db.log.filter((x) => x.table === 'service_survey_zones');
+  assert.equal(zoneQueries.length, 1);
+  assert.equal(zoneQueries[0].select, SURVEY_QUEUE_ZONE_COLUMNS);
+  assert.equal(SURVEY_QUEUE_ZONE_COLUMNS, 'id, "requestId", status, method, "methodReason", "methodChangedAt"');
+});
+
+test('surveyMethodBack: ใบที่กลายเป็นงานโต๊ะ (ไม่ต้องมีนัด) ไม่ถือที่มา — และใบแบบนั้นที่รับเรื่องแล้วไม่ใช่การ์ดลงคิวอยู่แล้ว', async () => {
+  const db = fakeDb({
+    dept_requests: [req({ id: 'R-desk-pending', status: 'pending', acknowledgedAt: null })],
+    service_survey_zones: [
+      { id: 'Z1', requestId: 'R-desk-pending', status: 'ok', method: 'drawing', methodReason: 'ฝ่ายขายมีแบบครบ', methodChangedAt: '2026-09-20T03:00:00Z' },
+      { id: 'Z2', requestId: 'R-desk-pending', status: 'cut', method: 'onsite', methodReason: 'เคยสลับกลับ', methodChangedAt: '2026-09-21T03:00:00Z' },
+    ],
+  });
+  const got = await loadSurveyQueueRequests(db, { visits: [] });
+  assert.deepEqual(got.map((r) => [r.id, r.surveyNeedsVisit, r.surveyMethodBack]), [['R-desk-pending', false, null]]);
+});

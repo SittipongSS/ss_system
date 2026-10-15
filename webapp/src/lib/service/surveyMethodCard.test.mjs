@@ -17,7 +17,7 @@ import { surveyNeedsVisit } from './surveyMethod.js';
 import {
   SURVEY_METHOD_BUTTON, SURVEY_METHOD_ERRORS, surveyMethodSwitchGate,
 } from './surveyMethodSwitch.js';
-import { surveySendSiteVisitError, surveySendVisitStep } from './surveySendClose.js';
+import { SURVEY_SEND_PAPER_HOLD_EFFECT, surveySendSiteVisitError, surveySendVisitStep } from './surveySendClose.js';
 import { SURVEY_REPORT_DRAWING_HOLD } from './surveyReportSnapshot.js';
 
 // ── ของตั้งต้น ───────────────────────────────────────────────────────────
@@ -683,7 +683,7 @@ const sheet = (document, extra = {}) => surveyDocumentView({
 test('⭐ ส่วนเอกสาร · ติดแค่ข้อกันเอกสาร: ประโยคของข้อกันอย่างเดียว — ไม่ชวนกดซ้ำ ไม่ชวนดึงผลกลับ · ปุ่มออกเอกสารจาง', () => {
   const view = sheet(missingDoc([HOLD]));
   assert.deepEqual(view.status, {
-    tone: 'warning', text: SURVEY_REPORT_DRAWING_HOLD, items: [], foot: null, action: null,
+    tone: 'info', text: SURVEY_REPORT_DRAWING_HOLD, items: [], foot: null, action: null,
   });
   assert.equal(view.status.text, 'เอกสารประเมินของใบที่ประเมินจากแบบยังออกไม่ได้ — ระบบกำลังปรับแบบเอกสาร');
   assert.equal(view.issue.allowed, false, 'กดซ้ำไม่ช่วย — ปุ่มไม่ถูกเสนอเป็นทางออก');
@@ -733,17 +733,27 @@ test('ส่วนเอกสาร · ข้อกัน + เหตุอื�
   assert.equal(sheet(missingDoc([])).issue.allowed, true);
 });
 
-test('การ์ดของใบจากแบบที่ส่งผลแล้ว: ส่วนเอกสารพูดประโยคของข้อกันอย่างเดียว · แถวด่านเอกสารยังบอกว่าติด', () => {
+test('การ์ดของใบจากแบบที่ส่งผลแล้ว: ส่วนเอกสารพูดประโยคของข้อกันอย่างเดียว · ไม่มีแถวด่านเอกสาร (ข้อกันไม่ใช่ด่านที่ติด)', () => {
   const zones = [drawingReady('z1', 'Lobby')];
   const v = card(zones, { request: sentRequest(), document: missingDoc([HOLD]) });
   assert.equal(v.document.show, true);
+  /* ก่อนและหลังส่งผล กล่องนี้พูดประโยคเดียวกัน โทนเดียวกัน (ประโยคของโมดัลยืนยันส่งผล — มีท่อน "ผลถึงฝ่ายขายตามปกติ") */
   assert.deepEqual(v.document.status, {
-    tone: 'warning', text: SURVEY_REPORT_DRAWING_HOLD, items: [], foot: null, action: null,
+    tone: 'info', text: SURVEY_SEND_PAPER_HOLD_EFFECT, items: [], foot: null, action: null,
   });
   assert.equal(v.document.issue.allowed, false);
-  const gate = v.gates.find((g) => g.key === 'document');
-  assert.equal(gate.ok, false);
-  assert.deepEqual(gate.reasons, [SURVEY_REPORT_DRAWING_HOLD]);
+  /* 🐞 UAT S2b S05 (รูป payload ของ production — `issueAtSend: true`): แถว "เอกสารประเมินออกได้" เคยขึ้น "ติด 1 / 4 ข้อ" บนใบที่ส่งแล้ว
+     ซึ่งหัวหน้าแก้อะไรไม่ได้ ขณะที่ส่วนเอกสารเล่าเรื่องเดียวกันด้วยโทนข้อมูล ⇒ ข้อกันเอกสารไม่เป็นแถวด่าน ทั้งก่อนและหลังส่ง */
+  assert.equal(v.gates.find((g) => g.key === 'document'), undefined);
+  assert.equal(v.gates.every((g) => g.ok), true);
+  assert.deepEqual(v.gateNotes, []);
+  // ก่อนส่ง (server บอกว่าไม่มีเหตุของเนื้อใบ): ไม่มีแถว "เอกสารประเมินออกได้ 1/1" เหนือประโยค "ยังออกไม่ได้"
+  const before = card(zones, { document: { ...missingDoc([]), state: 'not_sent', send: { blockers: [], warnings: ['หมายเหตุพื้นที่ 1 มีคำว่า "เครื่อง"'], unknown: false }, issue: null } });
+  assert.equal(before.gates.find((g) => g.key === 'document'), undefined);
+  assert.equal(before.notices.some((n) => n.key === 'document-warnings'), false, 'รอบนี้ไม่ออกเอกสาร — ไม่มีฉบับลูกค้าให้ตรวจ');
+  // เหตุของเนื้อใบที่ตีกลับการส่งผลจริง ยังขึ้นเป็นแถวที่ติด (หัวหน้าแก้ได้)
+  const blocked = card(zones, { document: { ...missingDoc([]), state: 'not_sent', send: { blockers: ['ผังของ Lobby เป็นไฟล์ที่พิมพ์ไม่ได้'], warnings: [], unknown: false }, issue: null } });
+  assert.equal(blocked.gates.find((g) => g.key === 'document').ok, false);
   assert.equal(v.status.key, 'sent', 'ผลถึงฝ่ายขายตามปกติ — ข้อกันไม่เปลี่ยนสถานะของใบ');
 });
 
@@ -828,6 +838,19 @@ test('🔴 ส่วนเอกสารก่อนส่งผลของใ
   // คำของโมดัลยืนยันกับของส่วนเอกสารเป็นตัวเดียวกัน
   assert.ok(card(desk, { document: notSent() }).send.allowed);
 
+  /* 🐞 UAT S2b S01 / S06 / S22 — ใบที่**ยังกรอกไม่ครบ**ก็ต้องได้ประโยคพักเอกสาร: เดิมสาขา "ยังไม่ครบทุกพื้นที่" มาก่อน ⇒ กล่องพูดแค่
+     "ดูตัวอย่างได้เมื่อวัดครบทุกพื้นที่ (1/2)" (คำว่าวัดบนใบที่ไม่มีใครวัด และไม่บอกว่าเอกสารถูกพัก) · เหตุของปุ่มร่างที่จางย้ายไปท้ายกล่อง
+     ด้วยคำ "มีขนาดครบ" · ใบลงหน้างานล้วนที่ยังวัดไม่ครบ = ประโยคเดิมตรงตัว */
+  {
+    const inWork = [...MEASURED.slice(0, 1), { ...MEASURED[0], id: 'z-empty', parts: [] }];
+    const held = surveyDocumentView({ document: notSent({ issueAtSend: false, send: null }), request: request(), zones: inWork, canDecide: true, drawingHold: HOLD_EFFECT });
+    assert.deepEqual(held.status, { tone: 'info', text: HOLD_EFFECT, items: [], foot: 'ดูตัวอย่างได้เมื่อมีขนาดครบทุกพื้นที่ (1/2)', action: null });
+    assert.doesNotMatch(JSON.stringify(held.status), /วัดครบ/);
+    assert.equal(held.versions.every((v) => !v.preview || v.preview.blocked === true), true, 'ปุ่มร่างยังจางจนกว่าขนาดครบ');
+    const today = surveyDocumentView({ document: notSent({ issueAtSend: false, send: null }), request: request(), zones: inWork, canDecide: true });
+    assert.deepEqual(today.status, { tone: 'info', text: 'ดูตัวอย่างได้เมื่อวัดครบทุกพื้นที่ (1/2)', items: [], foot: null, action: null });
+  }
+
   // ดึงผลกลับมาแก้: ไม่สัญญา Rev ถัดไป
   const recalled = surveyDocumentView({
     document: { ...notSent(), state: 'recalled', history: [{ docNo: 'SU-26100001-R00', state: 'recalled' }], nextDocNo: 'SU-26100001-R01' },
@@ -849,4 +872,39 @@ test('surveyResultMethodCell · `addedLabel`: พื้นที่จากแ�
   assert.equal(surveyResultMethodCell(onsiteReady('z1', 'Studio 01', { status: 'added' }), request()).addedLabel, 'เพิ่มหน้างาน');
   assert.equal(surveyResultMethodCell(drawingReady('z1', 'Lobby'), request()).addedLabel, null);
   assert.equal(surveyResultMethodCell(drawingReady('z1', 'Lobby', { status: 'cut' }), request()).addedLabel, null);
+});
+
+/* UAT S06 รอบหัวหน้า + มติ 12/10 ข้อ O3 — พื้นที่ที่สลับกลับเป็นลงหน้างานบนใบที่เคยเข้าพื้นที่แล้ว: การ์ดของหัวหน้าต้องพูดเรื่องเดียวกับ
+   กล่องผลลัพธ์ของโมดัล ("ต้องวัดขนาดจริงแล้วบันทึกอีกครั้ง") และพาไปหน้าพื้นที่ที่กดบันทึกยืนยันได้ */
+test('🔑 พื้นที่ที่เพิ่งกลับเป็นลงหน้างาน (นัดปิดแล้ว): การ์ดของหัวหน้าเอ่ยชื่อพื้นที่ · เหตุเต็มคือประโยคของด่านขนาด · ปุ่มพาไปพื้นที่นั้น — บันทึกหลังสลับแล้วข้อขนาดผ่าน', () => {
+  const RESAVE = 'พื้นที่นี้เพิ่งกลับมาเป็นลงหน้างาน — ตรวจขนาดกับของจริงแล้วกดบันทึกอีกครั้ง';
+  const SWITCHED = '2026-10-09T03:00:00.000Z';
+  const back = (extra = {}) => onsiteReady('z1', 'Studio 01', {
+    methodChangedAt: SWITCHED, surveyedAt: '2026-10-08T03:00:00.000Z', surveyedByName: 'ช่าง ก', ...extra,
+  });
+  for (const status of ['done', 'partial']) {
+    const v = card([back(), drawingReady('z2', 'Lobby')], { visit: scheduled({ status }) });
+    assert.equal(v.send.allowed, false, status);
+    /* มติ O3 (12/10) + 🐞 UAT S2b S06: นัดปิดแล้ว ไม่มีช่างคนไหนให้รอ — ข้อที่ค้างคือ "บันทึกอีกครั้ง" ของหัวหน้าเอง */
+    assert.equal(v.send.reason.text, 'ยังส่งไม่ได้ — ติด 1 ข้อ ที่ Studio 01', status);
+    assert.equal(v.send.reason.key, 'head-gaps', status);
+    assert.equal(v.send.reason.detail, `ยังส่งผลไม่ได้ — Studio 01: ${RESAVE}`, status);
+    assert.deepEqual(v.send.reason.target, { kind: 'zone', zoneId: 'z1', label: 'เปิด Studio 01' }, status);
+    assert.deepEqual(v.zoneGaps.rows.map((r) => [r.zoneId, r.crewText, r.headText, r.targets]), [
+      ['z1', null, 'หัวหน้าต้องทำ: ขนาด', [{ kind: 'zone', zoneId: 'z1', label: 'เปิด Studio 01' }]],
+    ], status);
+    assert.deepEqual(v.gates.find((g) => g.key === 'size').zones, ['Studio 01'], status);
+    assert.equal(v.zoneGaps.crewPending, false, status);
+    assert.equal(v.status.key, 'awaiting-decision', status);
+    assert.equal(v.status.resave, true, status);
+    assert.equal(v.status.headline, 'รอหัวหน้าตรวจขนาดแล้วบันทึกอีกครั้ง', status);
+    assert.match(v.status.sub, /เหลือ Studio 01/, status);
+    assert.doesNotMatch(`${v.status.headline} ${v.status.sub} ${v.send.reason.text}`, /กำลังวัดหน้างาน|รอช่าง/, status);
+
+    // หัวหน้า (หรือช่าง) กดบันทึกพื้นที่หลังสลับ = ด่านขนาดผ่าน การ์ดไม่เอ่ยถึงพื้นที่นี้อีก
+    const after = card([back({ surveyedAt: '2026-10-09T03:05:00.000Z' }), drawingReady('z2', 'Lobby')], { visit: scheduled({ status }) });
+    assert.equal(after.gates.find((g) => g.key === 'size').ok, true, status);
+    assert.deepEqual(after.zoneGaps.rows, [], status);
+    assert.equal(after.send.allowed, true, status);
+  }
 });

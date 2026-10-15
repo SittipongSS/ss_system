@@ -164,6 +164,20 @@
 /* ภาพกว้างยังไม่มี = ด่านของช่างติด — สีเดียวกับบรรทัด "ยังขาด" */
 .thumbCap [data-low] { color: var(--amber); font-weight: var(--fw-semibold); }
 
+/* ── แถวของพื้นที่ที่ประเมินจากแบบ (งวด S2b) ────────────────────────────────
+   บรรทัดที่มาของผล ("จากแบบ · ใคร เมื่อไร") ใต้ชื่อพื้นที่ — แทนแถบรูปจากช่างของแถวลงหน้างาน
+   โทน info = ข้อเท็จจริง ไม่ใช่คำเตือน · คำขึ้นต้นด้วย "จากแบบ" เอง จึงไม่ได้บอกด้วยสีอย่างเดียว (WCAG 1.4.1)
+   ⚠️ ชื่อคน + วันที่ยาวกว่าช่อง 13rem ได้ ⇒ ห่อบรรทัดในช่อง ไม่ดันคอลัมน์ ไม่ตัดทิ้ง */
+.source {
+  display: block;
+  margin-top: var(--space-0-5);
+  color: var(--blue);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+}
+
 /* ── ช่องภาพผัง ───────────────────────────────────────────────────────────
    🔑 ขนาดรูปย่อของแผงไฟล์แนบกลางคุมผ่านสองตัวแปรนี้ (ท่าเดียวกับการ์ดพื้นที่) — ค่าปริยาย
    ของแผงคือจัตุรัส 148px ซึ่งกินความสูงของแถวทั้งแถว */
@@ -183,6 +197,37 @@
 .planState[data-tone="ok"] { flex-direction: row; align-items: center; gap: var(--space-1); color: var(--green); font-weight: var(--fw-semibold); }
 .planState[data-tone="miss"] { color: var(--red); font-weight: var(--fw-semibold); }
 .planState small { color: var(--text-3); font-size: var(--fs-2); font-weight: var(--fw-normal); }
+
+/* ชื่อช่องในแถวจากแบบ ("ภาพแบบของพื้นที่") — หัวคอลัมน์ของใบผสมยังเป็นคำของแถวลงหน้างาน แถวจึงบอกเองว่าช่องนี้รับอะไร
+   · `data-in-head` = ใบจากแบบทั้งใบ หัวคอลัมน์พูดคำเดียวกันแล้ว ⇒ ไม่ซ้ำในตาราง (คืนที่จอ ≤680 ซึ่งหัวตารางถูกซ่อน — ดูมีเดียท้ายไฟล์) */
+.planTitle {
+  display: block;
+  margin-bottom: var(--space-1);
+  color: var(--text-2);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+.planTitle[data-in-head] { display: none; }
+
+/* ไฟล์ในช่องภาพแบบที่ลงเอกสารไม่ได้ (PDF · TIFF …) — เหตุของ server ขวางการส่งผล ⇒ แดง คู่กับไอคอน (ไม่ใช่สีอย่างเดียว)
+   ⚠️ ชื่อไฟล์ไม่มีช่องว่างให้ตัดบรรทัด ⇒ `overflow-wrap: anywhere` (ช่องนี้เป็นเซลล์ที่มีเพดานกว้างและตัดส่วนที่ล้น) */
+.planReject {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+  color: var(--red);
+  font-size: var(--fs-2);
+  line-height: var(--lh-thai);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.planReject > svg { flex: none; margin-block-start: var(--space-0-5); }
+.planReject > span { min-width: 0; }
+.planReject b { font-weight: var(--fw-semibold); }
 
 .sub {
   display: block;
@@ -618,5 +663,15 @@ button.spotChip[data-on] > svg { color: var(--accent-ink); }
   .body tr[data-dirty] { box-shadow: inset 2px 0 0 var(--blue); padding-inline-start: var(--space-2-5); }
 
   .rowMiss { max-inline-size: none; }
+
+  /* หัวตารางหายไปแล้ว ⇒ ชื่อช่องของแถวจากแบบมาจากป้ายของเซลล์ (`data-label` = "ภาพแบบของพื้นที่" — JS ใส่ให้แถวจากแบบทุกแถว)
+     🐞 UAT S2b S04 (375): เดิมคืน `.planTitle` กลับมาด้วย ⇒ "ภาพแบบของพื้นที่" ขึ้นสองครั้งติดกัน (ป้ายเทา + ชื่อช่องตัวหนา)
+     ⇒ บนจอซ้อนแถว ชื่อช่องในเซลล์ไม่ขึ้นเลย ทั้งใบจากแบบทั้งใบและแถวจากแบบของใบผสม — ป้ายของเซลล์พูดคำนั้นแล้วครั้งเดียว */
+  .planTitle,
+  .planTitle[data-in-head] { display: none; }
+
+  /* แถวย่อย (ยังขาด · บันทึกชน) ของแถวที่มีร่างค้าง เยื้องเท่าแถวแม่ — แถวแม่ถูกดันเข้า `--space-2-5` ให้ขีดฟ้า (กฎข้างบน)
+     แถวย่อยเคยเริ่มชิดขอบการ์ด ไอคอนเตือนเกือบทับเส้นขอบ (UAT S2b S04b · 375) */
+  .body tr[data-dirty] + tr[data-miss-row] { padding-inline-start: var(--space-2-5); }
 
 }
