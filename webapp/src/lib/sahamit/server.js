@@ -109,18 +109,8 @@ export async function loadSahamitProducts(supabase, customerId) {
     });
 }
 
-// ชื่อดีลสหมิตรฟอร์แมตเดียวทั้งโมดูล (มติ 2026-07-19): SHM_แบรนด์_ชื่อสินค้า ปริมาตร
-// — แบรนด์ EN ก่อน TH, ปริมาตรจาก master; ส่วนที่ไม่มีข้อมูลละไว้ (ไม่มี underscore ค้าง)
-// และไม่เติมปริมาตรซ้ำถ้าชื่อ (เช่นจากไฟล์ FC/PO) มีอยู่แล้ว.
-export function sahamitDealTitle(product, fallbackName) {
-  const name = fallbackName || product?.name || product?.fgCode || 'สินค้า';
-  const brand = product?.brandNameEn || product?.brandNameTh || null;
-  const volumeLabel = Number(product?.volume) > 0 ? `${product.volume}${product.volumeUnit || 'ml'}` : null;
-  const nameWithVolume = volumeLabel && !String(name).includes(volumeLabel)
-    ? `${name} ${volumeLabel}`
-    : name;
-  return ['SHM', brand, nameWithVolume].filter(Boolean).join('_');
-}
+// ชื่อดีลสหมิตร — ย้ายไปเป็นสูตรล้วนที่ lib/sahamit/dealTitle.js (เทสต์ได้) ส่งออกซ้ำให้ผู้เรียกเดิม
+export { sahamitDealTitle } from '@/lib/sahamit/dealTitle';
 
 // Build a fgCode → product index (case-insensitive, trimmed).
 export function indexByFgCode(products) {
