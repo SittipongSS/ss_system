@@ -11,6 +11,8 @@
 // 🔴 ไฟล์ **ไม่สร้างฟังก์ชัน ไม่ GRANT ไม่เขียนแถวข้อมูล และไม่เอ่ยข้อความ FUNCTION ตามด้วย public.** — ยาม "นิยามล่าสุด" ของ
 //    saveQuotationContentColumns · serviceRoundsCopyPaths · soServiceSetupCopyPaths · salesOrderRevisionCarry หาเจ้าของนิยามด้วย
 //    ข้อความนั้น ⇒ เจ้าของต้องยังเป็น 0343 / 0363 / 0376 · migration หลังจากนี้ที่เขียนสามตัวนี้ทับทั้งก้อนต้องพก "packQty" ไปด้วย
+// 🪤 ตัวสะดุดของไฟล์หลังจากนี้มีสองชุดในไฟล์นี้: สามตัวของ 0407 และ **T27** = ฟังก์ชันของใบสั่งขายย้อนหลังสี่ตัวที่ 0409 ปะ (งวด PR-5 ·
+//    ตัวตรวจ/ตัวเขียนบรรทัด · ขั้นส่ง · ขั้นอนุมัติ) — นิยามทับทั้งก้อนต้องพกชิ้นของ 0409 ไปด้วย · ยามของ 0409 เอง: historicalPackQtyMigration.test.mjs
 // ⚠️ อ่าน **ตัวหนังสือ SQL + ไฟล์ตัวอย่าง JSON อย่างเดียว** — ห้าม import โมดูลของแอป ⇒ ยามนี้เขียวได้ด้วยตัวเองแม้ฝั่ง JS ยังไม่มา
 // ⚠️ พฤติกรรมจริงพิสูจน์บนฮาร์เนส PGlite นอก repo (mockups/so-service-lines/pglite-harness/harness-0407.mjs — รันไฟล์สองรอบ
 //    + รอบสามบนฐานที่มีข้อมูล · เทียบผลกับฐานที่ไม่มี 0407 · ทุกทางก๊อปพก NULL / 1 / 2 · บล็อกถอยกลับของหัวไฟล์ ·
@@ -374,7 +376,9 @@ test('🔴 ไฟล์ไม่เอ่ยข้อความ FUNCTION ต�
     assert.ok(bare.length > 0);
     for (const m of bare) assert.ok(m[1] === "'" && (m[2] === "'" || m[2] === '('), `${fn}: ต้องอ้างเป็นสตริงเท่านั้น (เจอ ${m[0]})`);
   }
-  /* ก่อน 0407 ไม่มี migration ไหนรู้จักคอลัมน์นี้ ⇒ ตัวเขียนบรรทัดของใบสั่งขายย้อนหลัง (0379 + แพตช์ 0394) เขียน NULL ต่อไป */
+  /* ก่อน 0407 ไม่มี migration ไหนรู้จักคอลัมน์นี้ · 0407 เองตั้งใจไม่แตะฟังก์ชันของใบสั่งขายย้อนหลัง ⇒ ตัวเขียนบรรทัดของมัน
+     (0379 + แพตช์ 0394) เขียน NULL **ถึงแค่ก่อน 0409** — 0409 (งวด PR-5) ปะสี่ตัวของใบย้อนหลังให้คูณ · บังคับ · เก็บ "packQty"
+     (ยามของมัน: historicalPackQtyMigration.test.mjs · ตัวสะดุดของไฟล์หลังจากนั้น: T27 ข้างล่าง) */
   const mentions = migrationNames().filter((n) => n < FILE && read(n).includes('packQty'));
   assert.deepEqual(mentions, [], 'ก่อน 0407 ต้องไม่มีไฟล์ไหนเอ่ยถึง packQty');
 });
@@ -429,6 +433,135 @@ test('🔴 migration หลัง 0407 ที่นิยามสามตั�
         }
       }
     }
+  }
+});
+
+/* ── T27 (งวด PR-5 · mig 0409): ฟังก์ชันของใบสั่งขายย้อนหลังสี่ตัว ───────────────────────────────────────────────────────────
+   0409 ปะสี่ตัวที่รันอยู่ (pg_get_functiondef · ไม่มี CREATE) ให้ใบย้อนหลังพก "แพ็ค/เดือน": ตัวตรวจบรรทัดคูณแพ็ค (H1 · H2) ·
+   ตัวเขียนบรรทัดบังคับทุกบรรทัดแล้วเก็บ "packQty" (W0 · W1 · W2) · ขั้นส่ง/ขั้นอนุมัติส่งเลขแพ็คของแถวที่เก็บแล้วให้ตัวตรวจ (S1 · A1)
+   ⇒ ไฟล์หลัง 0409 ที่นิยามตัวไหน "ทับทั้งก้อน" จากเนื้อเก่า (ท่าที่ 0379 ทำกับ 0374) = ชิ้นพวกนี้หายโดยไม่มี error:
+     · ตัวตรวจ/ตัวเขียนหาย → ใบที่มีแพ็คถูกคิดและเขียนทับด้วยยอดคูณ 1 (แพ็ค = 1 คือเลขแพ็คหายเงียบ ยอดเท่าเดิม ไม่มีอะไรฟ้อง)
+     · ขั้นส่ง/อนุมัติหาย → บรรทัดที่เก็บไว้ 2 × 12 × 3,500 = 84,000 ส่ง/อนุมัติไม่ได้อีก (historical_so_line_money_mismatch — พิสูจน์บน
+       ฮาร์เนส critic-probe-0409-money C-4) และข้อความของรหัสนั้นบอกให้ "โหลดหน้าฟอร์มใหม่" ซึ่งไม่ช่วยอะไร
+   ยามของ 0409 เอง (historicalPackQtyMigration.test.mjs) ตรึง "เจ้าของนิยามล่าสุด" ของสี่ตัว — แดงทันทีที่มีไฟล์ใหม่นิยามทับ (เนื้อที่มัน
+   ประกอบไม่ใช่เนื้อที่รันแล้ว) · ตัวสะดุดนี้บอกต่อว่า "นิยามใหม่ต้องมีอะไร" ⇒ ย้ายหมุดเจ้าของนิยามเฉย ๆ โดยไม่พกชิ้นของ 0409 ไปด้วยไม่ได้
+   (โหมดพังที่ยามแบบนี้มีไว้กัน = ทะเบียนที่อ่านเนื้อซึ่งไม่ได้รันแล้วและเขียวตลอด — ดูคอมเมนต์ของทะเบียนคอลัมน์ข้างล่าง)
+   🐞 รีวิว money-sql 12/10 (F2): แผนรุ่นแรกครอบแค่ตัวตรวจ + ตัวเขียน · ขั้นส่งไม่มีหมุดเจ้าของนิยามที่ไหนเลย (ยาม 0394 ตรึงแค่อนุมัติ/ตัวตรวจ/ตัวเขียน) */
+const HISTORICAL_FILE = '0409_historical_so_line_pack_qty.sql';
+const HISTORICAL_OWNER = Object.freeze({
+  historical_so_check_lines: '0379_historical_so_quote_lines.sql',
+  historical_so_write_children: '0379_historical_so_quote_lines.sql',
+  submit_historical_sales_order: '0374_historical_so_approval_flow.sql',
+  approve_historical_sales_order: '0374_historical_so_approval_flow.sql',
+});
+const PACK_CODE = 'historical_so_line_pack_qty_invalid';
+/* INSERT ของบรรทัดใบสั่งขายในนิยามหนึ่งก้อน (คอมเมนต์ถูกตัดแล้ว): [1] รายการคอลัมน์ · [2] ที่เหลือจนจบคำสั่ง (รายการค่า + FROM) */
+const lineInsert = (def) => /INSERT\s+INTO\s+public\.sales_order_lines\s*\(([^)]*)\)([^;]*);/i.exec(def) || ['', '', ''];
+/* ด่านเข้มต้องมาก่อน DELETE ตัวแรกของฟังก์ชัน — ตีกลับแล้วบรรทัด/งวดเดิมอยู่ครบ */
+const gateBeforeDelete = (def) => {
+  const gate = def.indexOf(PACK_CODE);
+  const del = def.search(/DELETE\s+FROM/i);
+  return gate >= 0 && (del < 0 || gate < del);
+};
+/* แถวที่เก็บแล้วซึ่งขั้นส่ง/อนุมัติประกอบเป็น jsonb ให้ตัวตรวจ ต้องพกเลขแพ็คของคอลัมน์จริง (คีย์ต้องชื่อ packQty — ตัวตรวจอ่านคีย์นี้) */
+const storedRowCarriesPack = (def) => /'packQty'\s*,\s*(?:[A-Za-z_]\w*\.)?"packQty"/.test(def);
+const HISTORICAL_PIECES = Object.freeze({
+  historical_so_check_lines: [
+    [`ด่านช่วงของเลขแพ็ค (H1 · รหัส ${PACK_CODE})`, (def) => def.includes(PACK_CODE)],
+    /* gross = round(COALESCE(แพ็ค, 1) × จำนวน × ราคา, 2): ไม่มี COALESCE = บรรทัดที่ไม่มีคีย์ได้ gross เป็น NULL แล้วไม่ถูกตรวจเลย
+       · ปัดครั้งเดียวหลังคูณ (round ต้องครอบตัวคูณ) — เท่ากฎเงินของ 0407 และ quoteLineNet */
+    ['gross ที่คูณ COALESCE(…packQty…, 1) ข้างใน round (H2)', (def) => /round\(\s*COALESCE\([^;]*?packQty[^;]*?,\s*1\s*\)\s*\*/.test(def)],
+  ],
+  historical_so_write_children: [
+    [`ด่านเข้มของเลขแพ็ค (รหัส ${PACK_CODE}) ก่อน DELETE ตัวแรก (W0)`, gateBeforeDelete],
+    ['"packQty" ในรายการคอลัมน์ของ INSERT บรรทัด (W1)', (def) => lineInsert(def)[1].includes('"packQty"')],
+    ["->>'packQty' ในรายการค่าของ INSERT บรรทัด (W2)", (def) => lineInsert(def)[2].includes("->>'packQty'")],
+  ],
+  submit_historical_sales_order: [[`'packQty', l."packQty" ในแถวที่เก็บแล้วซึ่งส่งให้ตัวตรวจ (S1)`, storedRowCarriesPack]],
+  approve_historical_sales_order: [[`'packQty', l."packQty" ในแถวที่เก็บแล้วซึ่งส่งให้ตัวตรวจ (A1)`, storedRowCarriesPack]],
+});
+const HISTORICAL_FNS = Object.freeze(Object.keys(HISTORICAL_PIECES));
+const historicalRedefinitionProblems = (name, sql) => HISTORICAL_FNS.flatMap((fn) => definitionsOf(sql, fn)
+  .flatMap((def) => HISTORICAL_PIECES[fn].filter(([, has]) => !has(def))
+    .map(([label]) => `${name} นิยาม ${fn} ทับทั้งก้อน แต่ไม่มี ${label} — ชิ้นของ 0409 หายเงียบ ๆ (ใบย้อนหลังที่มีเลขแพ็คจะถูกคิด/เขียนทับแบบคูณ 1 หรือส่ง/อนุมัติไม่ได้)`)));
+
+test('🔴 T27 — migration หลัง 0409 ที่นิยามฟังก์ชันใบสั่งขายย้อนหลังสี่ตัวทับทั้งก้อน ต้องพกชิ้นของ 0409 ไปด้วย (ตัวตรวจ H1 · H2 · ตัวเขียน W0 · W1 · W2 · ขั้นส่ง S1 · ขั้นอนุมัติ A1)', () => {
+  const problems = (sql) => historicalRedefinitionProblems('x.sql', sql);
+  /* ตัวสแกนต้องจับของจริงได้ก่อน: นิยามเต็มของ 0379 / 0374 คือ "เนื้อเก่า" ที่ไฟล์ใหม่จะลอกไปแก้ ⇒ ต้องถูกจับครบทุกชิ้น
+     · ปะด้วยแถวของ 0409 ทีละแถว (ท่าเดียวกับวงปะของไฟล์) ปัญหาต้องหายทีละชิ้นจนหมด — ชิ้นหนึ่งต่อแถวปะหนึ่งแถว */
+  const rows0409 = patchRows(read(HISTORICAL_FILE));
+  assert.deepEqual(rows0409.map((r) => r.marker), ['0409/H1', '0409/H2', '0409/W0', '0409/W1', '0409/W2', '0409/S1', '0409/A1']);
+  for (const fn of HISTORICAL_FNS) {
+    const sql = read(HISTORICAL_OWNER[fn]);
+    const from = sql.lastIndexOf(`CREATE OR REPLACE FUNCTION public.${fn}(`);
+    const to = sql.indexOf('\n$$;', from);
+    assert.ok(from >= 0 && to > from, `${HISTORICAL_OWNER[fn]}: ไม่พบนิยาม ${fn}`);
+    let block = sql.slice(from, to + 4);
+    const mine = rows0409.filter((r) => r.fn === fn);
+    assert.equal(mine.length, HISTORICAL_PIECES[fn].length, `${fn}: ชิ้นที่ตัวสแกนถาม = แถวที่ 0409 ปะ`);
+    assert.equal(problems(block).length, mine.length, `${fn}: นิยามเก่าใน ${HISTORICAL_OWNER[fn]} (ไม่มีชิ้นของ 0409) ต้องถูกจับครบทุกชิ้น`);
+    mine.forEach((row, index) => {
+      assert.equal([...block.matchAll(toJsRegExp(row.anchor))].length, 1, `${row.marker}: anchor ต้องเจอครั้งเดียวในนิยามของ ${HISTORICAL_OWNER[fn]}`);
+      block = block.replace(toJsRegExp(row.anchor, ''), toJsReplacement(row.replacement));
+      assert.equal(problems(block).length, mine.length - index - 1, `${row.marker}: ปะแถวนี้แล้วปัญหาต้องหายไปหนึ่งชิ้นพอดี`);
+    });
+    assert.deepEqual(problems(block), [], `${fn}: นิยามที่ปะครบแล้วต้องผ่าน`);
+  }
+  /* แล้วข้อความจำลอง — ขาดทีละชิ้น · ชิ้นที่อยู่แต่ในคอมเมนต์ · สองก้อนในไฟล์เดียว · ของที่ไม่ใช่นิยาม */
+  const def = (fn, body) => `CREATE OR REPLACE FUNCTION public.${fn}(p text)\nRETURNS jsonb LANGUAGE plpgsql AS $$\nBEGIN\n${body}\nEND;\n$$;\n`;
+  const GATE = `IF bad THEN RAISE EXCEPTION '${PACK_CODE}'; END IF;`;
+  const GROSS = `v_line_gross := round(COALESCE((v_item->>'packQty')::numeric, 1) * v_qty * v_unit_price, 2);`;
+  const DELETE = 'DELETE FROM public.sales_order_installments WHERE "salesOrderId" = p_order_id;';
+  const INSERT = `INSERT INTO public.sales_order_lines (id, qty, "packQty") SELECT 'x', (e.l->>'qty')::numeric, (e.l->>'packQty')::numeric::integer FROM jsonb_array_elements(p_lines) AS e(l);`;
+  const ROWS_JSON = `SELECT jsonb_agg(jsonb_build_object('qty', l.qty, 'packQty', l."packQty")) INTO v_lines FROM public.sales_order_lines l;`;
+  const good = {
+    historical_so_check_lines: `${GATE}\n${GROSS}`,
+    historical_so_write_children: `${GATE}\n${DELETE}\n${INSERT}`,
+    submit_historical_sales_order: ROWS_JSON,
+    approve_historical_sales_order: ROWS_JSON,
+  };
+  for (const fn of HISTORICAL_FNS) {
+    const pieces = HISTORICAL_PIECES[fn].length;
+    assert.deepEqual(problems(def(fn, good[fn])), [], `${fn}: นิยามที่พกครบต้องผ่าน`);
+    assert.equal(problems(def(fn, 'RETURN NULL;')).length, pieces, `${fn}: นิยามที่ไม่มีชิ้นไหนเลยต้องถูกจับครบ`);
+    const commented = `${good[fn].split('\n').map((line) => `-- ${line}`).join('\n')}\n/* ${good[fn]} */\nRETURN NULL;`;
+    assert.equal(problems(def(fn, commented)).length, pieces, `${fn}: ชิ้นที่อยู่แต่ในคอมเมนต์ไม่นับ`);
+    assert.equal(problems(`${def(fn, good[fn])}\n${def(fn, 'RETURN NULL;')}`).length, pieces, `${fn}: นิยามสองก้อนในไฟล์เดียว ก้อนที่ขาดต้องถูกจับ`);
+    assert.equal(problems(def(fn, good[fn]).replace('CREATE OR REPLACE FUNCTION', 'create function')).length, 0, 'ตัวพิมพ์เล็กก็คือคำสั่งเดียวกัน');
+    assert.equal(problems(def(fn, 'RETURN NULL;').replace('CREATE OR REPLACE FUNCTION', 'create function')).length, pieces);
+    /* ไม่ใช่นิยาม: COMMENT / GRANT / คอมเมนต์ / ชื่อที่ยาวกว่า */
+    assert.deepEqual(problems(`COMMENT ON FUNCTION public.${fn}(text) IS 'x';\nGRANT EXECUTE ON FUNCTION public.${fn}(text) TO service_role;\n`
+      + `-- CREATE OR REPLACE FUNCTION public.${fn}(\n${def(`${fn}_v2`, 'RETURN NULL;')}`), []);
+  }
+  const lacking = [
+    ['historical_so_check_lines', GROSS, /H1/, 'ตัวตรวจไม่มีด่านช่วง'],
+    ['historical_so_check_lines', `${GATE}\nv_line_gross := round(v_qty * v_unit_price, 2);`, /H2/, 'ตัวตรวจไม่คูณแพ็ค'],
+    ['historical_so_check_lines', `${GATE}\nv_line_gross := round((v_item->>'packQty')::numeric * v_qty * v_unit_price, 2);`, /H2/, 'ตัวตรวจคูณแพ็คโดยไม่มี COALESCE (ไม่มีคีย์ = gross เป็น NULL)'],
+    ['historical_so_check_lines', `${GATE}\nv_line_gross := COALESCE((v_item->>'packQty')::numeric, 1) * round(v_qty * v_unit_price, 2);`, /H2/, 'ตัวตรวจปัดก่อนคูณแพ็ค (ปัดรายหน่วย)'],
+    ['historical_so_write_children', `${DELETE}\n${INSERT}`, /W0/, 'ตัวเขียนไม่มีด่านเข้ม'],
+    ['historical_so_write_children', `${DELETE}\n${GATE}\n${INSERT}`, /W0/, 'ด่านเข้มอยู่หลัง DELETE'],
+    ['historical_so_write_children', `${GATE}\n${DELETE}\n${INSERT.replace(', "packQty")', ')')}`, /W1/, 'INSERT ไม่มีคอลัมน์'],
+    ['historical_so_write_children', `${GATE}\n${DELETE}\n${INSERT.replace("(e.l->>'packQty')::numeric::integer", 'NULL::integer')}`, /W2/, 'INSERT เขียน NULL ลงคอลัมน์'],
+    ['historical_so_write_children', `IF (e.l->>'packQty') IS NULL THEN RAISE EXCEPTION '${PACK_CODE}'; END IF;\n${DELETE}\n${INSERT.replace("(e.l->>'packQty')::numeric::integer", 'NULL::integer')}`,
+      /W2/, "->>'packQty' อยู่แต่ในด่าน ไม่อยู่ในรายการค่าของ INSERT"],
+    ['submit_historical_sales_order', ROWS_JSON.replace(`, 'packQty', l."packQty"`, ''), /S1/, 'ขั้นส่งไม่พกเลขแพ็ค'],
+    ['submit_historical_sales_order', ROWS_JSON.replace(`'packQty', l."packQty"`, `'packs', l."packQty"`), /S1/, 'ขั้นส่งตั้งชื่อคีย์ผิด (ตัวตรวจไม่เห็น)'],
+    ['approve_historical_sales_order', ROWS_JSON.replace(`, 'packQty', l."packQty"`, ''), /A1/, 'ขั้นอนุมัติไม่พกเลขแพ็ค'],
+    ['approve_historical_sales_order', ROWS_JSON.replace(`'packQty', l."packQty"`, `'packQty', l."serviceRounds"`), /A1/, 'ขั้นอนุมัติส่งคอลัมน์อื่นเป็นเลขแพ็ค'],
+  ];
+  for (const [fn, body, piece, label] of lacking) {
+    const found = problems(def(fn, body));
+    assert.equal(found.length, 1, `${label}: ต้องถูกจับหนึ่งชิ้นพอดี (ได้ ${found.length})`);
+    assert.match(found[0], piece, `${label}: ข้อความต้องบอกชิ้นที่ขาด`);
+    assert.ok(found[0].includes(fn));
+  }
+  /* โฟลเดอร์จริง: เจ้าของนิยามของสี่ตัว (ถึง 0409) คือไฟล์ที่ใช้เป็น "เนื้อเก่า" ข้างบน · ไฟล์หลัง 0409 ที่นิยามทับต้องผ่านตัวสแกน */
+  for (const fn of HISTORICAL_FNS) {
+    assert.equal(migrationNames().filter((n) => n < HISTORICAL_FILE && definesFn(read(n), fn)).pop(), HISTORICAL_OWNER[fn], `เจ้าของนิยามล่าสุดของ ${fn} ก่อน 0409`);
+  }
+  assert.equal(HISTORICAL_FNS.filter((fn) => definesFn(read(HISTORICAL_FILE), fn)).length, 0, '0409 ไม่นิยามตัวไหน (ปะด้วย pg_get_functiondef)');
+  for (const name of migrationNames().filter((n) => n > HISTORICAL_FILE)) {
+    assert.deepEqual(historicalRedefinitionProblems(name, read(name)), []);
   }
 });
 

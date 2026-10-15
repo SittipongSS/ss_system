@@ -30,6 +30,10 @@
 //    ⇒ ฝั่งคำถามกับฝั่งช่องต้องอ่าน **ธง/ชุดตัวเลือกตัวเดียวกัน** เสมอ
 import { NA, fmtDate, fmtMoney, fmtNumber, naText } from '@/lib/format';
 import { QUOTE_DISCOUNT_TYPES, QUOTE_VAT_OPTIONS, quoteLineMoney } from '@/lib/salesPlanning';
+import { LINE_PACK_TEXT, PACK_QTY_INVALID, packLineUnit, packQtyValue } from '@/lib/sales/linePacks';
+import { PACK_COLUMN_LABEL } from '@/lib/sales/linePackView';
+import { quoteLinesPackView } from '@/lib/sales/linePackEdit';
+import { HISTORICAL_QUOTE_SERVICE_SUFFIX, historicalQuoteServiceDiff } from '@/lib/sales/historicalOrderCopy';
 import { ownerLockedToSelf } from '@/lib/sales/dealOwner';
 import { externalDocKindLabel } from '@/lib/sales/contracts';
 import { addDays, dueDateByRule, monthEdge, splitCoverageByMonths } from '@/lib/sales/paymentCoverage';
@@ -79,15 +83,20 @@ const nextKey = (prefix) => { seq += 1; return `${prefix}-${seq}`; };
 
 /**
  * แถวโซน = หนึ่งบรรทัดของใบ = **หนึ่งบรรทัดของใบเสนอราคา** (มติเจ้าของ 23/09)
- * ช่องเดียวกับตารางรายการของใบเสนอราคา: สินค้า (รหัส · คำอธิบาย · หน่วย · ราคา/หน่วยจากทะเบียน) ·
- * จำนวน · ส่วนลดรายการ — บวกของที่ใบย้อนหลังมีเพิ่มสองอย่างเท่านั้น: โซนที่ผูก และจำนวนรอบบริการ
+ * ช่องเดียวกับตารางรายการของใบเสนอราคา: สินค้า (รหัส · คำอธิบาย · หน่วย · ราคา/หน่วยจากทะเบียน) · เลขแพ็คของบรรทัด (`packQty`) ·
+ * จำนวน · ส่วนลดรายการ — บวกของที่ใบย้อนหลังมีเพิ่ม: โซนที่ผูก · รอบละกี่แพ็ค (`packsPerRound`) · จำนวนรอบบริการ (`rounds`)
+ * ⭐ งวด PR-5 (mig 0409 · มติเจ้าของ 08/10 ข้อ A1–A2 · ข้อวินิจฉัย 7 "ฟอร์มใบย้อนหลังเดินตามฟอร์มใบเสนอราคา"): `packQty` = ช่องเลขแพ็คของ
+ *   ตารางใบเสนอราคา (หัวคอลัมน์ `PACK_COLUMN_LABEL`) — **เริ่มว่าง** ('' = ยังไม่พิมพ์ · ไม่มีค่าตั้งต้น · ระบบไม่เดาเลขให้) และเก็บทุกตัวอักษร
+ *   ที่คนพิมพ์ (ค่าที่ใช้ไม่ได้เป็นสถานะของช่อง ไม่ถูกกรองทิ้ง) · จำนวนเงิน = เลขแพ็ค × จำนวน × ราคา/หน่วย − ส่วนลด และบนบรรทัดที่มีเลขแพ็ค
+ *   จำนวน = **จำนวนเดือน** (มติ A1) · ช่องนี้เขียนโดยเซลล์ร่วมของตารางรายการที่เดียว (`onPatch` ของ QuoteLineCells — ขั้น ② ไม่เขียนคีย์นี้เอง)
  * ⭐ มติเจ้าของ 25/09: บรรทัดเกิดจากปุ่ม "เพิ่มรายการ" แบบใบเสนอราคา (ยังไม่มีโซน — เลือกในบรรทัด) หรือ
  *   "เพิ่มหลายโซน" · **`key` คือตัวตนของแถว** ไม่ใช่ `zoneId` (แถวใหม่ยังไม่มีโซน และเปลี่ยนโซนในบรรทัดได้)
  * ⚠️ จำนวนเริ่มที่ **ว่าง** (ใบเสนอราคาเริ่มที่ 1) — จำนวนที่เดาให้คือบั๊กที่มติ 23/09 แก้ · ว่าง = แผนตีกลับ
  * ⚠️ `fgCode` · `description` · `unit` · `unitPrice` มีไว้ **โชว์** อย่างเดียว (มาจาก `quoteLineFromProduct`)
  *   ไม่ถูกส่งขึ้น API — server อ่านราคา/หน่วยจากทะเบียนเอง · `key` มีไว้ให้ React เท่านั้น
  * ⭐ PR-D (mig 0394 · มติ 26/09 A3/O9): `packsPerRound` "แพ็คต่อรอบ" ของโซน — **เริ่มว่าง** (ผลประเมินเป็นชิปให้กดใช้
- *   `historicalLineServiceView` ไม่ใช่ค่าที่เติมให้เงียบ ๆ) · คนละช่องกับ `qty` (จำนวน = เงิน) · `rounds` บังคับแล้ว
+ *   `historicalLineServiceView` ไม่ใช่ค่าที่เติมให้เงียบ ๆ) · **คนละช่องกับ `packQty`** (คู่เงิน) ไม่มีวันคูณเงิน · `rounds` บังคับแล้ว
+ *   · PR-5 D1(ก): สองช่องของงานบริการมีชิปรับค่าจากคู่เงินของแถวเดียวกัน (`historicalLineQuoteLink`) — ค่าเข้า state เมื่อกดเท่านั้น
  * ⭐ `_lineKind: 'product'` + หน่วยตั้งต้น `DEFAULT_SALE_UNIT` = **บรรทัดสินค้าใหม่ของใบเสนอราคา** (`newProductLine`)
  *   🐞 รีวิว 23/09: แถวที่ติ๊กโซนแล้วแต่ยังไม่เลือกแพ็คเกจ (ทางปกติของบรรทัดใหม่ที่ยังไม่เลือกแพ็คเกจ)
  *      ไม่มี `_lineKind` ⇒ เซลล์เปิดดรอปดาวน์หน่วยให้เลือก ทั้งที่ใบเสนอราคาล็อกเป็น "หน่วย: ชิ้น" ตั้งแต่ยังไม่เลือก
@@ -103,6 +112,7 @@ export const emptyHistoricalZone = (defaults = {}) => ({
   description: text(defaults.description),
   unit: text(defaults.unit) || DEFAULT_SALE_UNIT,
   unitPrice: defaults.unitPrice === undefined || defaults.unitPrice === null ? '' : defaults.unitPrice,
+  packQty: text(defaults.packQty),
   qty: defaults.qty === undefined || defaults.qty === null ? '' : defaults.qty,
   discountType: QUOTE_DISCOUNT_TYPES.includes(defaults.discountType) ? defaults.discountType : null,
   discountValue: QUOTE_DISCOUNT_TYPES.includes(defaults.discountType) ? (defaults.discountValue ?? 0) : 0,
@@ -159,8 +169,12 @@ export function emptyHistoricalWizard(defaults = {}) {
  * ใบที่โหลดมา → state ของฟอร์ม (โหมดแก้ใบ = ฟอร์มตัวเดียวกับตอนสร้าง)
  * ⚠️ อ่านค่าจาก **ใบจริง** ไม่ใช่จากแผนที่พรีวิวคืน — ผู้คีย์ต้องเห็นสิ่งที่ลงฐานไปแล้ว
  * ⚠️ ตัวเลือก VAT เก็บไม่ได้ในคอลัมน์ ⇒ อยู่ใน `metadata.historicalIntake` (RPC เขียนให้)
- * ⭐ บรรทัดโซนเติมกลับ **ช่องต่อช่องแบบใบเสนอราคา** — จำนวน · หน่วย · ราคา/หน่วย · ส่วนลด (ชนิด/ค่า) · รอบ
+ * ⭐ บรรทัดโซนเติมกลับ **ช่องต่อช่องแบบใบเสนอราคา** — เลขแพ็ค · จำนวน · หน่วย · ราคา/หน่วย · ส่วนลด (ชนิด/ค่า) · รอบ
  *   (ไม่มี "ยอดที่พิมพ์เอง" ให้เติมกลับอีกแล้ว — `metadata.grossAmount` ของรุ่น 0374 ไม่ถูกอ่าน)
+ * ⭐ งวด PR-5: เลขแพ็คมาจากคอลัมน์ของบรรทัดตรง ๆ (`line.packQty` — เก็บ 2 = ช่องขึ้น "2" · NULL = ช่องว่าง ให้ผู้คีย์ใส่เอง)
+ *   🔴 ห้ามเดาจาก `lineZones.packsPerRound` (แพ็คต่อรอบของงานบริการ — คนละเลข) และห้ามเติม 1 ให้ · แถวของฟอร์มไม่มี `id` / `lineTotal`
+ *   ⇒ ไม่มี "ยอดเดิม" และไม่มีคำแนะนำแยกจำนวนเดิมของใบเสนอราคา (ใบย้อนหลังที่ยังแก้ได้ไม่มีบรรทัดที่เก็บไว้โดยไม่มีเลขแพ็ค — ด่านรันครั้งแรก
+ *   ของ 0409 กันไว้ และตัวเขียนหลัง 0409 ไม่เก็บ NULL)
  * ⭐ PR-D: แพ็คต่อรอบมาจาก `order.lineZones` (GET ใบ — แถวโซนของงานบริการที่ `loadHistoricalOrderExtras` อ่าน) จับคู่ด้วย
  *   **id บรรทัด** (ไม่ใช่โซน — แถวของบรรทัดอื่นบนโซนเดียวกันต้องไม่ถูกยืม) · ไม่มี = ว่าง (ใบก่อน 0394 → ขั้น ② ถามใหม่)
  *   ⚠️ GET ที่อ่านของเสริมไม่ขึ้นคืน `lineZones: []` + `extrasError` — ผู้เรียกต้องไม่ hydrate จากก้อนนั้น (DD17 · D4)
@@ -191,6 +205,7 @@ export function wizardStateFromOrder(order = {}, { contract = null, installments
     description: line.description,
     unit: line.unit,
     unitPrice: line.unitPrice,
+    packQty: line.packQty,
     qty: line.qty,
     discountType: line.discountType,
     discountValue: line.discountValue,
@@ -389,12 +404,15 @@ export function historicalWizardBody(state = {}, options = {}) {
     discountType: QUOTE_DISCOUNT_TYPES.includes(state.discountType) ? state.discountType : null,
     discountValue: QUOTE_DISCOUNT_TYPES.includes(state.discountType) ? text(state.discountValue) : '',
     notes: text(state.notes) || null,
-    /* บรรทัดโซน = บรรทัดใบเสนอราคา: สินค้า · จำนวน · ส่วนลดรายการ (+ โซน · รอบ · แพ็คต่อรอบ) — **ไม่ส่งราคา/ยอด**
+    /* บรรทัดโซน = บรรทัดใบเสนอราคา: สินค้า · เลขแพ็ค · จำนวน · ส่วนลดรายการ (+ โซน · รอบ · แพ็คต่อรอบ) — **ไม่ส่งราคา/ยอด/หน่วย**
        ราคา/หน่วยเป็นของทะเบียนสินค้า (server อ่านเอง) · ยอดบรรทัดเป็นของสูตร ไม่ใช่ของที่จอคิด
-       ⭐ PR-D: `packsPerRound` ส่ง **เสมอ** (ว่าง = "") — แผนแยก "ยังไม่ใส่" ออกจาก "ฟอร์มรุ่นก่อน" ด้วยการมี/ไม่มีคีย์ */
+       ⭐ PR-D: `packsPerRound` ส่ง **เสมอ** (ว่าง = "") — แผนแยก "ยังไม่ใส่" ออกจาก "ฟอร์มรุ่นก่อน" ด้วยการมี/ไม่มีคีย์
+       ⭐ งวด PR-5: `packQty` ก็ส่ง **เสมอ** เป็นข้อความตามที่พิมพ์ (ว่าง = "") ด้วยเหตุเดียวกัน — แผนเป็นคนอ่านด้วย `packQtyValue`
+          (ไม่แปลงเป็นตัวเลขที่นี่: "1.5" ต้องไปถึงแผนเป็น "1.5" แล้วถูกตีกลับ ไม่ใช่ถูกปัดเงียบ ๆ) */
     zones: list(state.zones).map((row) => ({
       zoneId: text(row?.zoneId) || null,
       productId: text(row?.productId) || null,
+      packQty: text(row?.packQty),
       qty: text(row?.qty),
       discountType: QUOTE_DISCOUNT_TYPES.includes(row?.discountType) ? row.discountType : null,
       discountValue: QUOTE_DISCOUNT_TYPES.includes(row?.discountType) ? text(row?.discountValue) : '',
@@ -672,6 +690,8 @@ export const HISTORICAL_MONEY_UNKNOWN = Object.freeze({
      เหตุจริงโผล่ตอนกด "ถัดไป" เท่านั้น ⇒ ข้อความเดียวกับที่แผนตีกลับ (HISTORICAL_LINE_MESSAGES.qty) */
   qty: `${HISTORICAL_LINE_MESSAGES.qty} — แก้จำนวนของบรรทัดนั้นในขั้น ② ก่อน ระบบจึงคิดยอดใบได้`,
   price: 'แพ็คเกจของบางบรรทัดยังไม่ตั้งราคาในฐานข้อมูลสินค้า — ตั้งราคาที่ทะเบียนสินค้าก่อน ระบบจึงคิดยอดใบได้',
+  /* งวด PR-5: เลขแพ็คของบรรทัดยังว่าง/ใช้ไม่ได้ = ยังไม่มียอด (ไม่ใช่คูณ 1) — เหตุนี้ขึ้นเมื่อเป็นเหตุเดียวที่เหลือของแถว (ตรวจท้ายสุด · R3) */
+  pack: `ใส่ “${PACK_COLUMN_LABEL}” ของทุกบรรทัดในขั้น ② ให้ครบ (จำนวนเต็ม 1–9,999) ก่อน ระบบจึงคิดยอดใบได้`,
   discount: `${HISTORICAL_DISCOUNT_MESSAGES.value} — แก้ส่วนลดท้ายใบในกล่องสรุป (ขั้น ②) ก่อน ระบบจึงคิดยอดใบได้`,
   discountPercent: `${HISTORICAL_DISCOUNT_MESSAGES.percent} — แก้ส่วนลดท้ายใบในกล่องสรุป (ขั้น ②) ก่อน ระบบจึงคิดยอดใบได้`,
 });
@@ -694,7 +714,10 @@ function headerDiscountInput(state = {}) {
    · ด่านเดียวกับแผน: จำนวนว่าง/ไม่ใช่จำนวนเต็ม = ยังคิดไม่ได้ (ไม่ใช่ 1 แบบใบเสนอราคา — มติ 23/09)
    · ว่าง ≠ ผิดรูป: ว่าง = "ยังไม่ได้ใส่" (lines) · 1.5 / 0 = "ใส่แล้วแต่ใช้ไม่ได้" (qty) — คนละคำตอบ คนละทางแก้
    · ราคาว่าง = แถวยังไม่ได้ผ่าน quoteLineFromProduct (ยังไม่รู้ราคา) ≠ ราคา 0 ในทะเบียน (รู้แล้วว่ายังไม่ตั้ง)
-   @returns `{ input }` (ป้อน quoteLineMoney ได้เลย) หรือ `{ reason }` = คีย์ของ HISTORICAL_MONEY_UNKNOWN */
+   · ⭐ งวด PR-5 (มติเจ้าของ 08/10 ข้อ A2 · ข้อ 5 "ไม่มีค่าตั้งต้นเงียบ"): เลขแพ็คของแถวต้องเป็นจำนวนเต็ม 1–9,999 (`packQtyValue` ตัวเดียวกับ
+     แผนและใบเสนอราคา) ไม่งั้นแถวนั้น **ยังไม่มียอด** (เหตุ `pack`) — เซลล์ ยอดท้ายตาราง ขั้น ③ และยอดใน body ได้เลขเดียวกันจากด่านนี้
+     ⇒ ไม่มีจุดไหนโชว์หรือส่งยอดแบบคูณ 1 · ตรวจ **ท้ายสุด** (R3): ข้อความสดใต้ช่องจำนวน ("1.5" / "0") ยังขึ้นเหมือนเดิมแม้ช่องเลขแพ็คยังว่าง
+   @returns `{ input }` (ป้อน quoteLineMoney ได้เลย — พกเลขแพ็คเป็นตัวเลข) หรือ `{ reason }` = คีย์ของ HISTORICAL_MONEY_UNKNOWN */
 function zoneRowMoneyInput(row) {
   if (!text(row?.productId) || text(row?.qty) === '') return { reason: 'lines' };
   const qty = Number(row.qty);
@@ -702,13 +725,16 @@ function zoneRowMoneyInput(row) {
   if (text(row?.unitPrice) === '') return { reason: 'lines' };
   const price = Number(row.unitPrice);
   if (!Number.isFinite(price) || price <= 0) return { reason: 'price' };
-  return { input: { qty, unitPrice: price, discountType: row.discountType, discountValue: row.discountValue } };
+  const pack = packQtyValue(row?.packQty);
+  if (typeof pack !== 'number') return { reason: 'pack' };
+  return { input: { packQty: pack, qty, unitPrice: price, discountType: row.discountType, discountValue: row.discountValue } };
 }
 
 /**
  * จำนวนเงินของแถวโซนหนึ่งแถว — ค่าที่เซลล์ "จำนวนเงิน" ของขั้น ② พูด (สูตรใบเสนอราคา `quoteLineMoney`)
  * ⚠️ `known` เท็จ = เซลล์พูดขีด ไม่ใช่ 0.00 — ใบเสนอราคานับจำนวนว่างเป็น 1 แต่ใบย้อนหลังตีกลับ
- *   (แถวที่ยังไม่เลือกแพ็คเกจ / ยังไม่ใส่จำนวน / จำนวนไม่ใช่จำนวนเต็ม > 0 / แพ็คเกจยังไม่ตั้งราคา ยังไม่มียอดให้พูด)
+ *   (แถวที่ยังไม่เลือกแพ็คเกจ / ยังไม่ใส่จำนวน / จำนวนไม่ใช่จำนวนเต็ม > 0 / แพ็คเกจยังไม่ตั้งราคา / เลขแพ็คยังว่างหรือใช้ไม่ได้ ยังไม่มียอดให้พูด)
+ * ⭐ งวด PR-5: แถวที่มีเลขแพ็ค `lineTotal` = เลขแพ็ค × จำนวน × ราคา − ส่วนลด (สูตรกลาง · เลขเดียวกับที่เซลล์ร่วมคิดจากแถวด้วย `quoteLineNet`)
  * @returns `{ known: true, lineTotal }` หรือ `{ known: false, lineTotal: null, reason, qtyNote }`
  *   - reason: คีย์ของ HISTORICAL_MONEY_UNKNOWN (ตัวเดียวกับที่ยอดใบใช้บอกเหตุ)
  *   - qtyNote: ข้อความใต้ช่องจำนวนของแถวนั้น (เฉพาะจำนวนผิดรูป — เหตุอื่นเห็นได้จากช่องเองอยู่แล้ว)
@@ -719,6 +745,40 @@ export function historicalZoneLineAmount(row = {}) {
     return { known: false, lineTotal: null, reason, qtyNote: reason === 'qty' ? HISTORICAL_LINE_MESSAGES.qty : null };
   }
   return { known: true, lineTotal: quoteLineMoney(input).lineTotal };
+}
+
+/* ── คอลัมน์เลขแพ็คของขั้น ② (งวด PR-5 · มติเจ้าของ 23/09 "ต้องไม่ต่างจาก form ใบเสนอราคา" + 08/10 ข้อ A2 · ข้อวินิจฉัย 7) ──────────────
+   ขั้น ② วาดช่องเลขแพ็คด้วยเซลล์ร่วมและกฎฝั่งจอ **ตัวเดียวกับตารางของใบเสนอราคา** (`quoteLinesPackView` — คอลัมน์ขึ้นเมื่อมีแถวหมวด 02-001 ·
+   ไม่มีค่าตั้งต้น · ช่องเก็บทุกตัวอักษร · ยอดเป็นขีดจนกว่าคิดได้) ⇒ JSX ของขั้นส่ง prop ชุดเดียวกับใบเสนอราคาทุกตัวอักษร
+   ของที่ต่างจากใบเสนอราคามีสองข้อ และอยู่ที่นี่ (ฟังก์ชันล้วน — ชุดเทสต์ไม่มีตัวเรนเดอร์ React จึงยึดการตัดสินใน JSX ไม่ได้):
+   ① **แดงเมื่อไร** (R2) — ข้อผิดของเลขแพ็คเป็นข้อของแผน (ไม่มีกฎชุดที่สองที่จอ) ⇒ โหมดแดงของคอลัมน์เปิดขณะที่ข้อที่ขั้นได้รับ (กรองด้วย
+      `revealedSteps` มาแล้ว) ยังมีข้อที่ชี้ช่องเลขแพ็ค: แดงตั้งแต่การกดที่เจอ จนไม่เหลือข้อ · แถวที่เพิ่มระหว่างยังแดง = แดงทันที
+      (ธง "เคยกดแล้ว" เปล่า ๆ จะทำให้ทุกแถวที่เพิ่มทีหลังแดงตลอดกาล) · ไม่ใช้ `useQuoteLinePackGate` (ตัวนั้นพกแถบแจ้งและการพาไปหาช่องของตัวเอง)
+   ② **สูตร/คำอธิบายส่วนลดใต้ยอด** (D14) — เซลล์ร่วมวาดสองบรรทัดนั้นทุกครั้งที่กฎส่งมา แม้ยอดของแถวยังเป็นขีด (จำนวนว่าง: ใบเสนอราคานับเป็น 1
+      ใบย้อนหลังยังไม่มียอด) ⇒ แถวที่ยังไม่รู้ยอดได้ `formula` / `discountCaption` เป็น null — ไม่มีสูตร "2 × 1 × 3,500.00" ใต้ขีด
+   ⚠️ ข้อต่างหลังกด "ถัดไป" ที่ยอมรับไว้สองข้อ (ข้อวินิจฉัยของผู้นำงาน 12/10 — แผน PR-5 §2.4 · Q-L2 ทาง ก): (ก) ข้อของเลขแพ็คเป็นข้อของแผน
+      จึงขึ้น **ช้าไปหนึ่งการกด** เมื่อมีข้อที่จอตรวจเองหยุดการกดไว้ก่อน (เช่นยังไม่เลือก VAT) — เหมือนข้อของจำนวน / จำนวนรอบบริการวันนี้ ·
+      (ข) ไม่มีการพาไปหาช่อง: ช่องรายแถวของตารางไม่มีจุดยึดบน DOM (`hist-f-zones-<i>-…`) — สิ่งที่ผู้คีย์เห็นคือยอดท้ายตารางเป็นขีดพร้อมเหตุ
+      `pack` และก้อนแดงหัวขั้นที่ไล่ทุกแถว · ไม่ทำเป็นข้อ "กระจก" ฝั่งจอ (จะเป็นกฎชุดที่สองของฟอร์มนี้) */
+const PACK_ISSUE_FIELD = /^zones\.\d+\.packQty$/;
+
+/** โหมดแดงของคอลัมน์เลขแพ็ค: มีข้อของแผนที่เปิดเผยแล้วชี้ช่องเลขแพ็คของแถวไหนสักแถว (`zones.<i>.packQty`) */
+export function historicalPackErrorsShown(issues = []) {
+  return list(issues).some((issue) => PACK_ISSUE_FIELD.test(text(issue?.field)));
+}
+
+/**
+ * กฎฝั่งจอของคอลัมน์เลขแพ็คทั้งตารางของขั้น ② = `quoteLinesPackView(rows, products, { errorsShown })` ทุกช่อง
+ * เว้น `rows[i].formula` / `rows[i].discountCaption` เป็น null บนแถวที่ยังไม่รู้ยอด (`historicalZoneLineAmount(rows[i]).known` เท็จ)
+ * ⚠️ ไม่ส่ง `storedLines` — แถวของฟอร์มนี้ไม่มีบรรทัดที่เก็บไว้ให้เทียบ (ดู `wizardStateFromOrder`)
+ */
+export function historicalZonesPackView(rows = [], products = [], { errorsShown = false } = {}) {
+  const view = quoteLinesPackView(rows, products, { errorsShown });
+  const source = list(rows);
+  return {
+    ...view,
+    rows: view.rows.map((row, index) => (historicalZoneLineAmount(source[index]).known ? row : { ...row, formula: null, discountCaption: null })),
+  };
 }
 
 /**
@@ -1518,6 +1578,8 @@ export function historicalLinesSummary(zones = []) {
    ⭐ **ที่เดียวของคำว่า "แพ็ค" ในฟอร์มใบย้อนหลัง** (§0.2 ข้อ 14 — มติ 23/09 "จำนวนของบรรทัดไม่ใช่แพ็ค" ยังจริง ·
      มติ 26/09 A3/O9 นำแพ็คต่อรอบกลับมาเป็นช่องของตัวเอง) ⇒ component ไม่สะกดคำนี้เอง อ่านจากก้อนนี้เท่านั้น
      รูปที่อนุญาต: "รอบละกี่แพ็ค" · "แพ็ค/รอบ" · "ประเมินไว้ n แพ็ค" · "รวมทั้งรายการ n แพ็ค" (+ หน่วยท้ายช่อง "แพ็ค")
+     ⭐ งวด PR-5 เพิ่มรูปที่ห้า: ชื่อหัวคอลัมน์เลขแพ็คของบรรทัด (`PACK_COLUMN_LABEL` — ประกอบด้วย template เสมอ ไม่พิมพ์คำซ้ำที่นี่)
+       ใช้ในก้อน `quoteLink` (PR-5 D1(ก) — ชิปรับค่า + คำเตือนของแถว) และช่องเลขแพ็คของหน้าต่างเพิ่มหลายโซน (`bulk.packQty*`)
    ⚠️ `bulk` = คำของหน้าต่าง "เพิ่มหลายโซน" ของใบย้อนหลัง (ตัวห่อของ components/service/ZonesBulkModal — D27)
    ⭐ มติเจ้าของ 29/09 ("ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง"): คำ + ลำดับเดียวกับใบใหม่ (serviceOrders.js)
    ⭐ มติเจ้าของ 08/10 รอบสอง (จอฝ่ายขายที่เหลือ — ตามตารางงานบริการของใบใหม่ #1878): ลำดับ = `SERVICE_PACKS_LABEL` "รอบละกี่แพ็ค" ก่อน
@@ -1536,10 +1598,26 @@ export const HISTORICAL_SERVICE_TEXT = Object.freeze({
   lineTotal: (n) => `รวมทั้งรายการ ${fmtNumber(n)} แพ็ค`,
   assessFailed: `อ่านผลประเมินของโซนไม่สำเร็จ — ใส่${SERVICE_PACKS_LABEL}เองได้ (ไม่กระทบการเลือกโซน)`,
   assessRetry: 'ลองอ่านผลประเมินอีกครั้ง',
+  /* PR-5 D1(ก) (มติเจ้าของ 12/10 ข้อ A8 "ปุ่มรับค่า + เตือน") — ชิปของสองช่องงานบริการ รับค่าจากคู่เงินของแถวเดียวกัน (ปุ่ม "ใช้" คือ
+     `useAssessed` ตัวเดิม) + คำเตือนเมื่อสองคู่ไม่เท่ากัน (ไม่แดง ไม่กั้น) · `suffix` = คำเดียวกับตารางงานบริการของใบใหม่และประโยคทั้งใบ
+     (`HISTORICAL_QUOTE_SERVICE_SUFFIX` ของ historicalOrderCopy) */
+  quoteLink: Object.freeze({
+    packsSeed: (n) => `ตาม “${PACK_COLUMN_LABEL}”: ${fmtNumber(n)}`,
+    packsSeedAria: (n, name) => `ใช้เลข “${PACK_COLUMN_LABEL}” ${fmtNumber(n)} ในช่อง${SERVICE_PACKS_LABEL}ของ${name}`,
+    roundsSeed: (n) => `ตามจำนวน: ${fmtNumber(n)} ${SERVICE_ROUNDS_UNIT}`,
+    roundsSeedAria: (n, name) => `ใช้จำนวน ${fmtNumber(n)} ${SERVICE_ROUNDS_UNIT}ในช่อง${SERVICE_ROUNDS_LABEL}ของ${name}`,
+    packsDiffer: (pack, perRound) => `“${PACK_COLUMN_LABEL}” ${fmtNumber(pack)} ≠ ${SERVICE_PACKS_LABEL} ${fmtNumber(perRound)}`,
+    monthsDiffer: (months, rounds) => `จำนวน ${fmtNumber(months)} ≠ ${SERVICE_ROUNDS_LABEL} ${fmtNumber(rounds)}`,
+    suffix: HISTORICAL_QUOTE_SERVICE_SUFFIX,
+  }),
   bulk: Object.freeze({
     title: 'เพิ่มหลายโซน',
-    subtitle: `ติ๊กโซนแล้วใส่แพ็คเกจ · จำนวน · ${SERVICE_PACKS_LABEL} · ${SERVICE_ROUNDS_LABEL}ทีเดียว — ได้หนึ่งบรรทัดต่อโซน แก้ทีละบรรทัดต่อได้ในตาราง · บรรทัดที่มีอยู่แล้วไม่ถูกแตะ`,
+    subtitle: `ติ๊กโซนแล้วใส่แพ็คเกจ · ${PACK_COLUMN_LABEL} · จำนวน · ${SERVICE_PACKS_LABEL} · ${SERVICE_ROUNDS_LABEL}ทีเดียว — ได้หนึ่งบรรทัดต่อโซน แก้ทีละบรรทัดต่อได้ในตาราง · บรรทัดที่มีอยู่แล้วไม่ถูกแตะ`,
     packageLabel: 'แพ็คเกจ',
+    /* งวด PR-5 (D8): เลขแพ็คของทุกบรรทัดที่จะเพิ่ม — ไม่บังคับ (ว่าง = ใส่ทีละบรรทัดในตาราง ไม่มีค่าตั้งต้น) */
+    packQtyLabel: `${PACK_COLUMN_LABEL} (ทุกบรรทัด)`,
+    packQtyHint: 'เว้นว่างได้ — ใส่ทีละบรรทัดในตาราง',
+    packQtyAria: `${PACK_COLUMN_LABEL}ของทุกบรรทัดที่จะเพิ่ม`,
     qtyLabel: 'จำนวน (ต่อบรรทัด)',
     qtyHint: (unit) => `หน่วย: ${naText(unit)} · เว้นว่างได้ — ใส่ทีละบรรทัดทีหลัง`,
     priceLabel: 'ราคา/หน่วย',
@@ -1614,15 +1692,50 @@ export function historicalLineServiceView(row = {}, assessedByZone = null) {
   };
 }
 
+/**
+ * PR-5 D1(ก) (มติเจ้าของ 12/10 ข้อ A8 "ปุ่มรับค่า + เตือน") — สิ่งที่แถบงานบริการของแถวหนึ่ง **เสนอ** และ **เตือน** จากคู่เงินของแถวเดียวกัน
+ * (เลขแพ็คของบรรทัด → รอบละกี่แพ็ค · จำนวน (เดือน) → จำนวนรอบบริการ) — สี่ช่องยังแยกกัน ตัวนี้คืนข้อมูลอย่างเดียว ไม่แตะแถว
+ * · ชิป = **ข้อเสนอ ไม่ใช่ค่าตั้งต้น**: ค่าเข้า state เมื่อผู้คีย์กด "ใช้" เท่านั้น · เสนอเมื่อต้นทางเป็นเลขที่ใช้ได้ และช่องปลายทางยังไม่ใช่เลขนั้น
+ *   (ต้นทางของชิปจำนวนรอบบริการอ่านด้วยตัวอ่านของช่องนั้นเอง `historicalRoundsValue` ⇒ ค่าที่เสนอคือค่าที่ช่องรับได้เสมอ)
+ * · 🔴 มติผู้นำงาน 15/10/2026 (รีวิว 12/10 ข้อ F1): ชิป "ตามจำนวน" เสนอ **เฉพาะแถวที่เลขแพ็คใช้ได้** — จำนวนของบรรทัดที่ยังไม่มีเลขแพ็คไม่ได้แปลว่าเดือน
+ *   (24 ที่พับไว้ = 2 แพ็ค × 12 เดือน) · กฎเดียวกับคำเตือนของคู่เดือน (`historicalQuoteServiceDiff`) และตัวเสนอของใบสั่งขายใหม่ (`lineQuoteSeeds`)
+ *   ⇒ เลขแพ็คว่าง/ใช้ไม่ได้ = ไม่มีชิปทั้งสองตัว
+ * · คำเตือน = สองคู่ที่เทียบได้แล้วไม่เท่ากัน (กติกาเดียวกับขั้น ④ และหน้าต่างอนุมัติ — `historicalQuoteServiceDiff`) · ไม่แดง ไม่กั้นอะไร
+ * @param name ชื่อบรรทัด ("รายการ N" — `historicalZoneLines().name`) สำหรับ aria ของชิป
+ * @returns `{ packsSeed: { value, text, aria } | null, roundsSeed: { value, text, aria } | null, mismatch: string | null }`
+ *   — `value` = ข้อความที่จะเขียนลงช่องเมื่อกด
+ */
+export function historicalLineQuoteLink(row = {}, name = '') {
+  const T = HISTORICAL_SERVICE_TEXT.quoteLink;
+  const parsed = packQtyValue(row?.packQty);
+  const pack = typeof parsed === 'number' ? parsed : null;
+  const months = historicalRoundsValue(row?.qty);
+  const packsSeed = pack !== null && text(row?.packsPerRound) !== String(pack)
+    ? { value: String(pack), text: T.packsSeed(pack), aria: T.packsSeedAria(pack, name) }
+    : null;
+  const roundsSeed = pack !== null && months !== null && text(row?.rounds) !== String(months)
+    ? { value: String(months), text: T.roundsSeed(months), aria: T.roundsSeedAria(months, name) }
+    : null;
+  const diff = historicalQuoteServiceDiff(row || {});
+  const parts = [
+    ...(diff.packs ? [T.packsDiffer(pack, Number(text(row?.packsPerRound)))] : []),
+    ...(diff.months ? [T.monthsDiffer(Number(text(row?.qty)), Number(text(row?.rounds)))] : []),
+  ];
+  return { packsSeed, roundsSeed, mismatch: parts.length ? `${parts.join(' · ')} — ${T.suffix}` : null };
+}
+
 /* ── "เพิ่มหลายโซน" (มติ 25/09 — แทนช่อง "ใช้แพ็คเกจเดียวกันทุกโซน") ─────────────────────────────
    ⭐ หนึ่งโซนที่ติ๊ก = หนึ่งบรรทัดใหม่ต่อท้ายตาราง · ลำดับตามทะเบียน (ไซต์ → โซน) ไม่ใช่ลำดับที่ติ๊ก
    ⚠️ ข้ามเงียบไม่ได้: โซนที่อยู่ในใบแล้ว/ปิดใช้งาน ถูกปิดไว้ในหน้าต่างตั้งแต่ต้น (เห็นเหตุ) · ที่นี่กันซ้ำอีกชั้น
    ⚠️ แพ็คเกจเติมที่จอด้วย `quoteLineFromProduct` ตัวเดียวกับช่องเลือกในบรรทัด (ไฟล์นี้ไม่ลากทะเบียนสินค้ามา)
    ⭐ PR-D (D27 · DD4): หน้าต่างเป็นตัวห่อของ `components/service/ZonesBulkModal` — ตัวกลางถือ ค้น/ติ๊ก/แพ็คต่อรอบ
      [ตามผลประเมิน | เท่ากันทุกโซน] · ตัวห่อถือ แพ็คเกจ · จำนวน · จำนวนรอบบริการ (ทุกบรรทัด) ⇒ ตัวแปลงข้างล่างคือสะพานสองฝั่ง
-     `rounds` + `packsByZone` (Map zoneId → แพ็คต่อรอบ|null จากแถวของตัวกลาง) ไม่ส่ง = ผลเท่าเดิมทุกช่อง (W1) */
+     `rounds` + `packsByZone` (Map zoneId → แพ็คต่อรอบ|null จากแถวของตัวกลาง) ไม่ส่ง = ผลเท่าเดิมทุกช่อง (W1)
+   ⭐ งวด PR-5 (D8): `packQty` = เลขแพ็คของทุกบรรทัดที่จะเพิ่ม (ช่องของตัวห่อ · ไม่บังคับ) — ไม่ส่ง / ว่าง = แถวได้ช่องว่างให้ใส่ทีละบรรทัด
+     (ไม่มีค่าตั้งต้น) · หน้าต่างส่งค่านี้ได้เฉพาะห้าตัวของไฟล์นี้: historicalBulkPackIssue · historicalBulkFieldsIssue ·
+     historicalBulkQtyUnit · historicalBulkConsequence · historicalBulkAddRows (ยาม linePackReaders — ตัวที่หกแดง) */
 export function historicalBulkAddRows({
-  zoneIds = [], sites = [], zonesBySite = {}, rows = [], qty = '', rounds = '', packsByZone = null,
+  zoneIds = [], sites = [], zonesBySite = {}, rows = [], packQty = '', qty = '', rounds = '', packsByZone = null,
 } = {}) {
   const picked = new Set(list(zoneIds).map(text).filter(Boolean));
   const taken = new Set(list(rows).map((row) => text(row?.zoneId)).filter(Boolean));
@@ -1637,7 +1750,9 @@ export function historicalBulkAddRows({
       const id = text(zone?.id);
       if (!picked.has(id) || taken.has(id) || zone?.isActive === false) continue;
       taken.add(id);
-      out.push(emptyHistoricalZone({ zoneId: id, siteId: site?.id, qty: text(qty), rounds: text(rounds), packsPerRound: packsOf(id) }));
+      out.push(emptyHistoricalZone({
+        zoneId: id, siteId: site?.id, packQty: text(packQty), qty: text(qty), rounds: text(rounds), packsPerRound: packsOf(id),
+      }));
     }
   }
   return out;
@@ -1690,6 +1805,18 @@ export function historicalBulkQtyIssue(qty = '') {
   return Number.isInteger(value) && value > 0 ? null : HISTORICAL_LINE_MESSAGES.qty;
 }
 
+/** เลขแพ็คของทุกบรรทัด (งวด PR-5 · D8) ของหน้าต่าง "เพิ่มหลายโซน" — ว่างได้ (ใส่ทีละบรรทัดทีหลัง) · ใส่แล้วต้องเป็นจำนวนเต็ม 1–9,999
+ *  (ตัวอ่านและข้อความเดียวกับแผน: `packQtyValue` · `LINE_PACK_TEXT.invalid`) */
+export function historicalBulkPackIssue(packQty = '') {
+  return packQtyValue(packQty) === PACK_QTY_INVALID ? LINE_PACK_TEXT.invalid : null;
+}
+
+/** หน่วยในคำใบ้ของช่องจำนวนของหน้าต่าง (R8): เลขแพ็คของหน้าต่างใช้ได้แล้ว = "เดือน" (จำนวน = จำนวนเดือน · มติ A1) · นอกนั้นหน่วยขายของแพ็คเกจ
+ *  — ที่เดียวที่เลขแพ็คของหน้าต่างพบ `packLineUnit` (ตัว component ไม่ import linePacks เอง) */
+export function historicalBulkQtyUnit(packQty = '', saleUnit = null) {
+  return packLineUnit({ packQty }, saleUnit);
+}
+
 /** จำนวนรอบบริการ (ทุกบรรทัด) ของหน้าต่างเพิ่มหลายโซน — **บังคับ** (PR-D) · ข้อความเดียวกับแผน */
 export function historicalBulkRoundsIssue(rounds = '') {
   if (!text(rounds)) return HISTORICAL_LINE_MESSAGES.roundsMissing;
@@ -1697,52 +1824,74 @@ export function historicalBulkRoundsIssue(rounds = '') {
 }
 
 /**
- * ด่านช่องของตัวห่อ (ข้อแรกที่ติด): แพ็คเกจ → จำนวน → รอบ — ผู้เรียกส่งเป็น `extraError` ของตัวกลาง
+ * ด่านช่องของตัวห่อ (ข้อแรกที่ติด): แพ็คเกจ → เลขแพ็ค (งวด PR-5 · ลำดับช่องบนจอ) → จำนวน → รอบ — ผู้เรียกส่งเป็น `extraError` ของตัวกลาง
+ * · ไม่ส่ง `packQty` = คำตอบเดิมทุกกรณี (ช่องว่างไม่ใช่ข้อผิด)
  * ⚠️ มติ 08/10 รอบสอง ย้ายช่องจำนวนรอบบริการลงไปอยู่ใต้แถวรอบละกี่แพ็คของตัวกลาง (`renderAfterPacks`) — **ลำดับเหตุไม่เปลี่ยน** (M1:
  *   ช่องของตัวห่อก่อนของตัวกลาง เป็นสัญญาของตรรกะ ไม่ใช่ของผัง) ⇒ ผิดทั้งรอบและแพ็ค ท้ายหน้าต่างพูดเรื่องรอบก่อน
  * ⚠️ ข้อความขึ้นหลังกด "เพิ่ม n บรรทัด" เท่านั้น (กฎบ้าน: แดงหลังกด — ตัวกลางถือ `pressed`) · null = ช่องของตัวห่อผ่าน
  */
-export function historicalBulkFieldsIssue({ productId = '', qty = '', rounds = '' } = {}) {
+export function historicalBulkFieldsIssue({ productId = '', packQty = '', qty = '', rounds = '' } = {}) {
   if (!text(productId)) return HISTORICAL_SERVICE_TEXT.bulk.noPackage;
-  return historicalBulkQtyIssue(qty) || historicalBulkRoundsIssue(rounds);
+  return historicalBulkPackIssue(packQty) || historicalBulkQtyIssue(qty) || historicalBulkRoundsIssue(rounds);
 }
 
 /**
  * ผลของปุ่ม "เพิ่ม N บรรทัด" ก่อนกด (กฎบ้าน: บอกผลลัพธ์ก่อนคลิก)
  * ⭐ PR-D: ตัวห่อส่ง `mode` ('assessed' | 'equal') + ตัวเลขจากแผนของตัวกลาง (`packs` · `assessed` · `blank`) + `rounds`
  *   ⇒ ต่อท้ายด้วย รอบละกี่แพ็ค → จำนวนรอบบริการ n เดือน (มติเจ้าของ 08/10 รอบสอง: แพ็คก่อนจำนวนรอบบริการ · หน่วย `SERVICE_ROUNDS_UNIT`
- *   · ประโยคแพ็คแบบ `zonesBulkConsequence` ของหน้าต่างกลาง แต่พูด "บรรทัด") · ไม่ส่ง `mode` = ประโยคเดิมทุกตัวอักษร
- *   (pin ของ historicalRegisterUi ยังเขียวที่คลื่น W1)
+ *   · ประโยคแพ็คแบบ `zonesBulkConsequence` ของหน้าต่างกลาง แต่พูด "บรรทัด") · ไม่ส่ง `mode` = ไม่มีท่อนของงานบริการ (ทางของคลื่น W1)
+ * ⭐ งวด PR-5 (D8 · R6 · มติเจ้าของ 08/10 ข้อ A2 "บังคับใส่" + ข้อ 5 "ไม่มีค่าตั้งต้นเงียบ"): ท่อนเงินมีแปดรูป ตามว่าหน้าต่างรู้ เลขแพ็ค (P) ·
+ *   จำนวน (Q) · ราคาทะเบียน หรือยัง — **ยอดเงินพูดได้เมื่อรู้ครบทั้งสามเท่านั้น** (เลขแพ็คว่างแล้วพูด "12 × ราคา = ยอด" คือค่าคูณ 1 ที่ไม่มีใครใส่)
+ *       P และ Q · มีราคา    "บรรทัดละ 2 × 12 × ฿1,200.00 = ฿28,800.00 · รวม ฿86,400.00"   (สูตรกลาง quoteLineMoney)
+ *       P และ Q · ไม่มีราคา "บรรทัดละ <หัวคอลัมน์เลขแพ็ค> 2 · จำนวน 12" + ท้าย "ยังไม่ตั้งราคา…"
+ *       Q อย่างเดียว        "บรรทัดละจำนวน 12 · <หัวคอลัมน์เลขแพ็ค> ใส่ทีละบรรทัดในตาราง" (+ ท้าย เมื่อไม่มีราคา)
+ *       P อย่างเดียว        "<หัวคอลัมน์เลขแพ็ค> 2 ทุกบรรทัด · จำนวนใส่ทีละบรรทัดในตาราง"
+ *       ไม่รู้ทั้งคู่       "จำนวนและ <หัวคอลัมน์เลขแพ็ค> ใส่ทีละบรรทัดในตาราง"
+ *   · ท้าย "ยังไม่ตั้งราคา…" ต่อเมื่อจำนวนใช้ได้และแพ็คเกจไม่มีราคา (เงื่อนไขเดิม) · ค่าที่พิมพ์แต่ใช้ไม่ได้ ("1.5") นับเป็นยังไม่ให้ (ปุ่มติดด่านของ
+ *     historicalBulkFieldsIssue อยู่แล้ว)
+ *   🐞 รีวิว 25/09 (ยังยึดอยู่ — เข้มขึ้น): ประโยคห้ามอ้างค่ารายบรรทัดที่แถวไม่ได้รับ และห้ามพูด "ใส่ทีละบรรทัด" กับค่าที่ทุกแถวได้รับจริง
+ *     ⇒ มี Q = บอกจำนวนนั้นเสมอ · มี P = บอกเลขแพ็คนั้นเสมอ · สิ่งที่ประโยคบอก = สิ่งที่ `historicalBulkAddRows` ใส่ลงแถว
  */
 export function historicalBulkConsequence({
-  count = 0, qty = '', unitPrice = null, mode = null, packs = null, assessed = 0, blank = 0, rounds = '',
+  count = 0, packQty = '', qty = '', unitPrice = null, mode = null, packs = null, assessed = 0, blank = 0, rounds = '',
 } = {}) {
   if (!count) return 'ยังไม่ได้เลือกโซน';
   const q = Number(text(qty));
   const price = Number(unitPrice);
   const qtyOk = text(qty) !== '' && Number.isInteger(q) && q > 0;
-  const priced = qtyOk && Number.isFinite(price) && price > 0;
-  const each = priced ? quoteLineMoney({ qty: q, unitPrice: price }).lineTotal : null;
+  const parsedPack = packQtyValue(packQty);
+  const pack = typeof parsedPack === 'number' ? parsedPack : null;
+  const hasPrice = Number.isFinite(price) && price > 0;
   const head = `จะเพิ่ม ${fmtNumber(count)} บรรทัด`;
   const unpricedNote = 'แพ็คเกจนี้ยังไม่ตั้งราคาในฐานข้อมูลสินค้า จึงยังไม่มียอด';
+  const ending = qtyOk && !hasPrice ? ` — ${unpricedNote}` : '';
+  const packLabel = `“${PACK_COLUMN_LABEL}”`;
+  let money;
+  if (pack !== null && qtyOk) {
+    if (hasPrice) {
+      const each = quoteLineMoney({ packQty: pack, qty: q, unitPrice: price }).lineTotal;
+      money = `บรรทัดละ ${fmtNumber(pack)} × ${fmtNumber(q)} × ${fmtMoney(price)} = ${fmtMoney(each)} · รวม ${fmtMoney((toSatang(each) * count) / 100)}`;
+    } else {
+      money = `บรรทัดละ ${packLabel} ${fmtNumber(pack)} · จำนวน ${fmtNumber(q)}`;
+    }
+  } else if (qtyOk) {
+    money = `บรรทัดละจำนวน ${fmtNumber(q)} · ${packLabel} ใส่ทีละบรรทัดในตาราง`;
+  } else if (pack !== null) {
+    money = `${packLabel} ${fmtNumber(pack)} ทุกบรรทัด · จำนวนใส่ทีละบรรทัดในตาราง`;
+  } else {
+    money = `จำนวนและ ${packLabel} ใส่ทีละบรรทัดในตาราง`;
+  }
   if (mode === 'assessed' || mode === 'equal') {
-    const money = priced
-      ? `บรรทัดละ ${fmtNumber(q)} × ${fmtMoney(price)} = ${fmtMoney(each)} · รวม ${fmtMoney((toSatang(each) * count) / 100)}`
-      : (qtyOk ? `บรรทัดละจำนวน ${fmtNumber(q)}` : 'จำนวนใส่ทีละบรรทัดในตาราง');
     const packsText = mode === 'equal'
       ? `แต่ละครั้งเท่ากันทุกบรรทัด ครั้งละ ${naText(packs === null || packs === undefined ? null : fmtNumber(packs))} แพ็ค`
       : `${SERVICE_PACKS_LABEL}: ตามผลประเมิน ${fmtNumber(Number(assessed) || 0)} โซน · ยังว่าง ${fmtNumber(Number(blank) || 0)} โซน`;
     const roundsValue = historicalRoundsValue(rounds);
     const parts = [head, money, packsText, ...(roundsValue === null ? [] : [`${SERVICE_ROUNDS_LABEL} ${fmtNumber(roundsValue)} ${SERVICE_ROUNDS_UNIT}`])];
-    return `${parts.join(' · ')}${qtyOk && !priced ? ` — ${unpricedNote}` : ''}`;
+    return `${parts.join(' · ')}${ending}`;
   }
-  if (priced) {
-    return `${head} · บรรทัดละ ${fmtNumber(q)} × ${fmtMoney(price)} = ${fmtMoney(each)} · รวม ${fmtMoney((toSatang(each) * count) / 100)}`;
-  }
-  /* 🐞 รีวิว 25/09: จำนวนใส่แล้วแต่แพ็คเกจยังไม่ตั้งราคา เคยพูด "จำนวนใส่ทีละบรรทัด" ทั้งที่ทุกบรรทัดได้จำนวนนั้นไปจริง
-     ⇒ บอกจำนวนที่แต่ละบรรทัดได้ + เหตุที่ยังไม่มียอด (แผนตีกลับแพ็คเกจที่ยังไม่ตั้งราคาอยู่แล้ว) */
-  if (qtyOk) return `${head} · บรรทัดละจำนวน ${fmtNumber(q)} — ${unpricedNote}`;
-  return `${head} — จำนวนใส่ทีละบรรทัดในตาราง`;
+  /* ไม่มี `mode`: ไม่รู้ทั้งคู่คงขีดคั่นเดิม ("จะเพิ่ม 3 บรรทัด — …ใส่ทีละบรรทัดในตาราง") · นอกนั้นคั่นด้วยจุดกลางเหมือนเดิม */
+  if (pack === null && !qtyOk) return `${head} — ${money}`;
+  return `${head} · ${money}${ending}`;
 }
 
 /* ── error รายช่องของบรรทัด → ใต้ช่องของแถวนั้น (มติ 25/09 — "error ขึ้นที่เดียว") ────────────────────
@@ -1752,11 +1901,14 @@ export function historicalBulkConsequence({
    ⇒ แผนชี้ช่อง (`zones.<i>.<ช่อง>` + `detail` ไม่มีป้ายบรรทัด) · จอผูกข้อความกับ `key` ของแถว **ตอนได้คำตอบ**
      (ลำดับของ body = ลำดับของ state ตอนส่ง — ช่องถูกปิดระหว่างตรวจ) · แก้ช่องไหน ข้อความของช่องนั้นหายทันที */
 const LINE_FIELD = /^zones\.(\d+)(?:\.([A-Za-z]+))?$/;
-/* ⭐ PR-D: `packsPerRound` เป็นช่องของตัวเอง (ข้อความใต้ช่องรอบละกี่แพ็ค · แก้ช่องนั้นแล้วข้อหาย) และอยู่ในชุด "ทั้งแถว" */
+/* ⭐ PR-D: `packsPerRound` เป็นช่องของตัวเอง (ข้อความใต้ช่องรอบละกี่แพ็ค · แก้ช่องนั้นแล้วข้อหาย) และอยู่ในชุด "ทั้งแถว"
+   ⭐ งวด PR-5: `packQty` (เลขแพ็คของบรรทัด) ก็เป็นช่องของตัวเอง — ข้อของแผนที่ชี้ `zones.<i>.packQty` ลงช่อง `packQty` ของแถว (ไม่ใช่ช่อง
+     "ทั้งแถว") และดับเมื่อช่องนั้นของแถวนั้นถูกแก้ · อยู่ในชุด "ทั้งแถว" ด้วย (ข้อทั้งแถวดับเมื่อเลขแพ็คเปลี่ยน)
+     ⚠️ ขั้น ② ไม่วาดข้อความของช่องนี้ซ้ำใต้เซลล์ — เซลล์ร่วมวาดคำสั้นของกฎฝั่งจอเอง ("ต้องกรอก" …) และประโยคของแผนอยู่ในก้อนแดงหัวขั้น */
 const LINE_SLOT_KEYS = Object.freeze({
-  zoneId: ['zoneId'], productId: ['productId'], qty: ['qty'], rounds: ['rounds'], packsPerRound: ['packsPerRound'],
+  zoneId: ['zoneId'], productId: ['productId'], packQty: ['packQty'], qty: ['qty'], rounds: ['rounds'], packsPerRound: ['packsPerRound'],
 });
-const LINE_ALL_KEYS = ['zoneId', 'productId', 'qty', 'rounds', 'packsPerRound', 'discountType', 'discountValue'];
+const LINE_ALL_KEYS = ['zoneId', 'productId', 'packQty', 'qty', 'rounds', 'packsPerRound', 'discountType', 'discountValue'];
 const INSTALLMENT_FIELD = /^installments\.(\d+)(?:\.([A-Za-z]+))?$/;
 
 /** issue ของ server → ผูก `rowKey` ของแถวที่มันชี้ (เรียกทันทีที่ได้คำตอบ ด้วย `state.zones` / `state.installments` ชุดที่ส่งไปตรวจ)
@@ -1773,7 +1925,7 @@ export function historicalIssuesWithRowKeys(issues = [], zones = [], installment
   });
 }
 
-/** ข้อความรายแถวสำหรับวาดใต้ช่อง — `Map<rowKey, { zoneId?, productId?, qty?, rounds?, packsPerRound?, row? }>` (ข้อแรกของแต่ละช่อง) */
+/** ข้อความรายแถวสำหรับวาดใต้ช่อง — `Map<rowKey, { zoneId?, productId?, packQty?, qty?, rounds?, packsPerRound?, row? }>` (ข้อแรกของแต่ละช่อง) */
 export function historicalLineIssues(issues = []) {
   const byRow = new Map();
   for (const issue of list(issues)) {
@@ -2563,6 +2715,13 @@ const HISTORICAL_LINE_CODES = new Set([
   'historical_so_check_lines', 'historical_so_header_invalid',
   /* PR-D (mig 0394/P4–P5): รอบบริการบังคับ · แพ็คต่อรอบ 1–9999 ทุกบรรทัด — ช่องอยู่ขั้น ② */
   'historical_so_line_rounds_required', 'historical_so_line_packs_invalid',
+  /* งวด PR-5 (mig 0409/H1 · W0): เลขแพ็คของบรรทัดบังคับทุกบรรทัด — ช่องอยู่ขั้น ②
+     (`historical_pack_qty_not_stored` ไม่อยู่ที่นี่: มากับ 503 ซึ่งตกชนิด `schema` อยู่แล้ว — ข้อความของ server ทั้งประโยค ไม่มีปุ่มลองใหม่)
+     🔴 มติผู้นำงาน 15/10/2026 (รีวิว 12/10 ข้อ M3 + U1 ทาง (ก)): `historical_so_line_money_rule` (500 · CHECK กฎเงินของ 0407 ที่ตัวเขียนแปลเอง —
+        historicalOrderCommit) **ไม่อยู่ที่นี่โดยเจตนา** — ถึงได้เมื่อ JS กับ SQL คิดยอดไม่ตรงกันเท่านั้น (ตัวตรวจของฐานตอบ 400 ด้วยสูตรเดียวกันก่อนเสมอ)
+        = ความผิดของระบบ ไม่ใช่ของที่ผู้คีย์พิมพ์ผิด ⇒ ตกกิ่ง `unmapped`: ประโยคของ server + "แจ้งผู้ดูแลระบบพร้อมรหัส …" ไม่มีปุ่มพาไปขั้น ②
+        (ของเดิมพูด "แก้ข้อมูลตามข้อความนี้แล้วกดส่งใหม่" + ปุ่มขั้น ② ในกล่องเดียวกับ "แจ้งผู้ดูแลระบบ" ของ server — สองคำสั่งที่ไม่ไปทางเดียวกัน) */
+  'historical_so_line_pack_qty_invalid',
 ]);
 
 const HISTORICAL_MONEY_CODES = new Set([

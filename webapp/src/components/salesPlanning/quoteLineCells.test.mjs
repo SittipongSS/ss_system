@@ -10,14 +10,16 @@
 // 🔴 ส่วนใหญ่เป็นยาม source (ชุดเทสต์ของรีโปนี้ไม่มีตัวเรนเดอร์ React) — ส่วนที่เป็นตัวเลขเรียกฟังก์ชันจริง
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { QUOTE_DISCOUNT_TYPES, QUOTE_VAT_OPTIONS, quoteLineMoney, quoteLineNet } from '../../lib/salesPlanning.js';
 import {
-  HISTORICAL_LINE_MESSAGES, emptyHistoricalZone, historicalTotalsView, historicalZoneLineAmount,
+  HISTORICAL_LINE_MESSAGES, HISTORICAL_MONEY_UNKNOWN, emptyHistoricalZone, historicalMoneyView, historicalPackErrorsShown,
+  historicalTotalsView, historicalWizardBody, historicalZoneLineAmount, historicalZonesPackView,
 } from '../../lib/sales/historicalIntakeForm.js';
+import { planHistoricalServiceOrder } from '../../lib/sales/historicalOrderPlan.js';
 import { quoteLineFromProduct, quoteLineLocks } from '../../lib/sales/quoteLines.js';
 import { DEFAULT_SALE_UNIT } from '../../lib/master/units.js';
 import { SERVICE_ROUNDS_LABEL, SERVICE_ROUNDS_UNIT } from '../../lib/sales/serviceOrders.js';
@@ -36,6 +38,8 @@ const code = (rel) => read(rel)
 const CELLS = 'components/salesPlanning/QuoteLineCells.js';
 const LINE_ITEMS = 'components/salesPlanning/QuotationLineItems.js';
 const ZONES = 'components/salesPlanning/historicalWizard/WizardZonesStep.js';
+const LINE_SERVICE = 'components/salesPlanning/historicalWizard/HistoricalLineServiceFields.js';
+const INTAKE_LIB = 'lib/sales/historicalIntakeForm.js';
 
 /* 🪤 ตัวปิดท้ายที่หาไม่เจอเคยเงียบแล้วตัดถึงท้ายไฟล์ ⇒ ยามดูทั้งไฟล์แทนก้อนเดียว · ส่ง `to` มาแล้วไม่เจอ = แดง */
 function slice(text, from, to) {
@@ -185,40 +189,101 @@ test('⭐ 25/09: โหมดของกล่องสรุปมาทาง
 
 /* ⭐ ย้ายความคาดหวังโดยเจตนา (งวด PR-3 · มติเจ้าของ 08/10 ข้อ A2 "บังคับใส่" + ข้อวินิจฉัย 5): ยอดของเซลล์ยังมาจาก quoteLineNet ตัวเดียว
    เพิ่มเหตุที่ "ยังไม่พูดยอด" อีกหนึ่งข้อ — ช่อง "แพ็ค/เดือน" ของบรรทัดที่ต้องกรอกยังว่าง (`packEdit?.pending`) · ไม่ได้คลายยาม: สูตรไม่เปลี่ยน */
-test('⭐ จำนวนเงินของเซลล์ = quoteLineNet (สูตรเดียวกับ server) · ใบย้อนหลังพูดขีดเมื่อยังคิดไม่ได้ · ช่องแพ็คที่ต้องกรอกยังว่าง = ขีด', () => {
+/* ⭐ ย้ายความคาดหวังโดยเจตนา (งวด PR-5 · มติเจ้าของ 23/09 "ต้องไม่ควรแตกต่างจาก form ใบเสนอราคา" + 08/10 ข้อ A1–A2 · ข้อวินิจฉัย 7 ·
+   แผน IMPL_PLAN_PR5 §5 แถว G2 / G16): เดิมตัวอย่างของเจ้าของคือแถวที่ **ไม่มีเลขแพ็ค** — `{ productId, qty: 12, unitPrice: 3500 }` = 42,000 (จำนวน × ราคา)
+   — วันนี้แถวของขั้น ② ถือเลขแพ็คของบรรทัดเอง (บังคับ · ไม่มีค่าตั้งต้น) ⇒ ตัวอย่างเดิมพกเลขแพ็ค 1 (ยอดเดิมทุกสตางค์) · เลขแพ็ค 2 = 84,000
+   (ตัวอย่างของเจ้าของ 08/10: 2 แพ็ค × 12 เดือน × 3,500) · แถวที่เลขแพ็คยังว่าง **ยังไม่มียอด** (ขีด) — ไม่ใช่ยอดแบบคูณ 1
+   ไม่ได้คลายด่าน: เซลล์ยังคิดยอดที่เดียวด้วย quoteLineNet · ขั้น ② ยังถามตัวตัดสินตัวเดียวกับยอดใบ · ความจริงเดิม (ไม่มีเลขแพ็ค = จำนวน × ราคา)
+   ยังถูกยึดที่สูตรกลางของบรรทัดที่อ่านกลับมาจากฐาน (`quoteLineNet({ qty: 12, unitPrice: 3500 })` ข้างล่าง) */
+test('⭐ จำนวนเงินของเซลล์ = quoteLineNet (สูตรเดียวกับ server) · ใบย้อนหลังพูดขีดเมื่อยังคิดไม่ได้ · ช่องแพ็คที่ต้องกรอกยังว่าง = ขีด (งวด PR-5: ทั้งขั้น ②)', () => {
   const cells = code(CELLS);
   assert.match(cells, /\{amountPending \|\| packEdit\?\.pending \? NA : fmtMoney\(quoteLineNet\(line\)\.lineTotal\)\}/);
   assert.equal((cells.match(/quoteLineNet\(/g) || []).length, 1, 'เซลล์คิดยอดที่เดียว');
   assert.match(code(ZONES), /const amount = historicalZoneLineAmount\(row\);[\s\S]*amountPending=\{!amount\.known\}/,
     'ขั้น ② ต้องถามตัวตัดสินตัวเดียวกับยอดใบ (historicalMoneyView) ว่าแถวนี้พูดยอดได้หรือยัง');
-  /* ตัวอย่างของเจ้าของ: 1 ชุด × 12 เดือน = จำนวน 12 (แพ็คเกจ) × 3,500 = 42,000 */
+  /* สูตรกลางของบรรทัดที่ไม่มีเลขแพ็ค (บรรทัดที่อ่านกลับมาจากฐานของใบก่อนงวดนี้) ไม่เปลี่ยน: จำนวน 12 × 3,500 = 42,000 */
   assert.equal(quoteLineNet({ qty: 12, unitPrice: 3500 }).lineTotal, 42000);
-  assert.deepEqual(historicalZoneLineAmount({ productId: 'P', qty: 12, unitPrice: 3500 }), { known: true, lineTotal: 42000 });
+  /* แถวของขั้น ②: เลขแพ็ค 1 = ยอดเดิมของตัวอย่างเดิม · เลขแพ็ค 2 = ตัวอย่างของเจ้าของ 08/10 (ทั้งแบบตัวเลขและข้อความที่ช่องเก็บ) */
+  assert.deepEqual(historicalZoneLineAmount({ productId: 'P', packQty: 1, qty: 12, unitPrice: 3500 }), { known: true, lineTotal: 42000 });
+  assert.deepEqual(historicalZoneLineAmount({ productId: 'P', packQty: 2, qty: 12, unitPrice: 3500 }), { known: true, lineTotal: 84000 });
+  assert.deepEqual(historicalZoneLineAmount({ productId: 'P', packQty: '2', qty: '12', unitPrice: 3500 }), { known: true, lineTotal: 84000 });
+  assert.equal(quoteLineNet({ productId: 'P', packQty: '2', qty: '12', unitPrice: 3500 }).lineTotal, 84000, 'เซลล์ร่วมอ่านแถวเดียวกันได้เลขเดียวกัน');
+  /* 🔴 เลขแพ็คยังว่าง/ใช้ไม่ได้ = ยังไม่มียอด (เหตุ `pack`) — ของเดิมแถวแบบนี้คือ "รู้ยอด 42,000" · ห้ามกลับไปเป็นยอดแบบคูณ 1 */
+  for (const packQty of [undefined, '', '   ', null, '0', '1.5', '10000', 'abc']) {
+    assert.deepEqual(historicalZoneLineAmount({ productId: 'P', packQty, qty: 12, unitPrice: 3500 }),
+      { known: false, lineTotal: null, reason: 'pack', qtyNote: null }, JSON.stringify(packQty));
+  }
 });
 
 /* ⭐ เลขที่เซลล์พูด (quoteLineNet ของแถวบนจอ) = เลขที่ยอดไซต์/ยอดใบนับ (historicalZoneLineAmount) = เลขที่
    server บันทึก (quoteLineMoney ผ่าน historicalLinesMoney) — ทุกสตางค์ บนกริดเดียวกับที่ PGlite ของ 0379 ใช้ */
-test('⭐ กริดความตรงกัน: เซลล์ · ยอดไซต์ · สูตรบันทึก ให้ยอดบรรทัดเดียวกันทุกสตางค์', () => {
+/* ⭐ ย้ายความคาดหวังโดยเจตนา (งวด PR-5 · มติเจ้าของ 08/10 ข้อ A1–A2 · แผน IMPL_PLAN_PR5 §5 แถว G2): เดิมกริดเป็นแถวที่ไม่มีเลขแพ็ค (สามตัวเท่ากันที่
+   จำนวน × ราคา) — วันนี้แถวของขั้น ② ต้องมีเลขแพ็ค ⇒ กริดเดิมทั้ง 1,200 จุด **คูณมิติของเลขแพ็ค** (1 · 2 · 43 — ทั้งข้อความที่ช่องเก็บและตัวเลข)
+   เลขแพ็ค 1 = ยอดของกริดเดิมทุกสตางค์ (ยึดไว้ด้วย) · และแถวที่เลขแพ็คยังว่าง "ยังไม่มียอด" **ทั้งสามที่**: เซลล์ (ขีด) · ยอดท้ายตาราง (ขีด + เหตุ) ·
+   ตัวตัดสินการบันทึก (แผนตีกลับที่ช่องนั้น ยอดใบของแผน = 0) · ไม่ได้คลายด่าน: ความตรงกันสามทางยังยึดทุกสตางค์ บนจุดมากขึ้นสามเท่า */
+test('⭐ กริดความตรงกัน: เซลล์ · ยอดไซต์ · สูตรบันทึก ให้ยอดบรรทัดเดียวกันทุกสตางค์ — มิติเลขแพ็ค 1 / 2 / 43 (งวด PR-5) · เลขแพ็คว่าง = ยังไม่มียอดทั้งสามที่', () => {
   const discounts = [
     [null, 0], ['percent', 0], ['percent', 5], ['percent', 7.5], ['percent', 12.5], ['percent', 33.333], ['percent', 100],
     ['amount', 0.01], ['amount', 100.555], ['amount', 10_000_000],
   ];
   let checked = 0;
-  for (let qty = 1; qty <= 24; qty += 1) {
-    for (const unitPrice of [3500, 1200, 10.10, 1.005, 33.33]) {
-      for (const [discountType, discountValue] of discounts) {
-        const row = { productId: 'P', qty, unitPrice, discountType, discountValue };
-        const cell = quoteLineNet(row).lineTotal;
-        const site = historicalZoneLineAmount(row);
-        const saved = quoteLineMoney(row).lineTotal;
-        assert.equal(site.known, true);
-        assert.equal(site.lineTotal, cell, JSON.stringify(row));
-        assert.equal(saved, cell, JSON.stringify(row));
-        checked += 1;
+  for (const pack of [1, 2, 43]) {
+    for (let qty = 1; qty <= 24; qty += 1) {
+      for (const unitPrice of [3500, 1200, 10.10, 1.005, 33.33]) {
+        for (const [discountType, discountValue] of discounts) {
+          /* แถวบนจอถือเลขแพ็คเป็น **ข้อความ** ตามที่พิมพ์ (ช่องเก็บทุกตัวอักษร) — เซลล์ร่วมคิดจากแถวนี้ตรง ๆ */
+          const row = { productId: 'P', packQty: String(pack), qty, unitPrice, discountType, discountValue };
+          const cell = quoteLineNet(row).lineTotal;
+          const site = historicalZoneLineAmount(row);
+          const saved = quoteLineMoney({ ...row, packQty: pack }).lineTotal;   // แผนส่งเลขแพ็คเป็นตัวเลข (planHistoricalServiceOrder)
+          assert.equal(site.known, true);
+          assert.equal(site.lineTotal, cell, JSON.stringify(row));
+          assert.equal(saved, cell, JSON.stringify(row));
+          /* เลขแพ็ค 1 = ยอดของกริดเดิม (แถวที่ไม่มีเลขแพ็ค) ทุกสตางค์ — ไม่มียอดไหนของกริดเดิมถูกจับใหม่ */
+          if (pack === 1) assert.equal(cell, quoteLineNet({ productId: 'P', qty, unitPrice, discountType, discountValue }).lineTotal, JSON.stringify(row));
+          checked += 1;
+        }
       }
     }
   }
-  assert.equal(checked, 24 * 5 * 10);
+  assert.equal(checked, 3 * 24 * 5 * 10);
+
+  /* 🔴 เลขแพ็คยังว่าง: สามที่ต้องตอบ "ยังไม่มียอด" พร้อมกัน — ที่ไหนสักที่ตอบ 42,000 = ยอดแบบคูณ 1 ที่ไม่มีใครใส่ */
+  const PRD = { id: 'PRD-1', fgCode: 'FG-SNS-02-001-0012', productDescription: 'แพ็คเกจรายเดือน', saleUnit: 'แพ็คเกจ', costPrice: 3500 };
+  const blank = emptyHistoricalZone(quoteLineFromProduct({ zoneId: 'ZN-1', siteId: 'ST-1', qty: '12', rounds: '12', packsPerRound: '2' }, PRD));
+  assert.equal(blank.packQty, '');
+  /* ① เซลล์: เหตุของขั้น ② (`amountPending`) และเหตุของกฎฝั่งจอ (`packEdit.pending`) เป็นจริงทั้งคู่ ⇒ ขีด · ไม่มีสูตรใต้ขีด */
+  assert.deepEqual(historicalZoneLineAmount(blank), { known: false, lineTotal: null, reason: 'pack', qtyNote: null });
+  const view = historicalZonesPackView([blank], [PRD]);
+  assert.deepEqual([view.showColumn, view.rows[0].state, view.rows[0].pending, view.rows[0].formula], [true, 'missing', true, null]);
+  /* ② ยอดท้ายตาราง / ขั้น ③ */
+  const state = { zones: [blank], vatRate: 7, discountType: null, discountValue: '' };
+  const money = historicalMoneyView(state, null);
+  assert.deepEqual([money.ok, money.reason], [false, HISTORICAL_MONEY_UNKNOWN.pack]);
+  assert.deepEqual(Object.values(historicalTotalsView(money, 7).values).filter((value) => value !== null && value !== undefined), [], 'กล่องสรุปเป็นขีดทุกช่อง');
+  /* ③ ตัวตัดสินการบันทึก (ตัวเดียวกับพรีวิว): ตีกลับที่ช่องเลขแพ็คของแถวนั้น และยอดใบของแผนเป็น 0 — ไม่มียอด 42,000 ถูกส่ง/บันทึก */
+  const body = historicalWizardBody({
+    ...state, customerId: 'CUS-1', ownerId: 'USR-AE', team: 'KA',
+    contract: { docKind: 'customer_po', ref: 'PO-1', startDate: '2026-01-01', endDate: '2026-12-31' }, refs: {}, notes: '',
+    hasOpening: false, opening: {}, openingEvidence: [], installments: [],
+  }, {});
+  assert.equal(body.zones[0].packQty, '', 'ฟอร์มส่งคีย์เลขแพ็คเสมอ (ว่าง = ยังไม่ใส่)');
+  const plan = planHistoricalServiceOrder(body, {
+    actor: { id: 'USR-AE', role: 'ae', team: 'KA', teams: ['KA'] },
+    customer: { id: 'CUS-1', name: 'ลูกค้า', approvalStatus: 'approved', isActive: true },
+    owner: { ok: true, ownerId: 'USR-AE', ownerName: 'AE', team: 'KA', teams: ['KA'] },
+    products: [PRD], zones: [{ id: 'ZN-1', siteId: 'ST-1', name: 'ล็อบบี้', isActive: true }],
+    sites: [{ id: 'ST-1', code: 'ST-1', name: 'ไซต์', customerId: 'CUS-1', kind: 'customer', isActive: true }], todayIso: '2026-10-12',
+  });
+  const packIssue = plan.errors.find((error) => error.field === 'zones.0.packQty');
+  assert.equal(packIssue?.detail, HISTORICAL_LINE_MESSAGES.packQtyMissing);
+  assert.equal(plan.header.totalAmount, 0, 'แผนที่เลขแพ็คยังว่างไม่มียอดใบ (ไม่ใช่ 12 × 3,500)');
+  assert.equal(historicalPackErrorsShown(plan.errors), true, 'และข้อนี้คือสิ่งที่เปิดโหมดแดงของคอลัมน์หลังกด "ถัดไป"');
+  /* ใส่เลขแพ็คแล้วสามที่กลับมาตอบเลขเดียวกัน */
+  const filled = { ...blank, packQty: '2' };
+  assert.equal(historicalZoneLineAmount(filled).lineTotal, 84000);
+  assert.equal(quoteLineNet(filled).lineTotal, 84000);
+  assert.equal(historicalMoneyView({ ...state, zones: [filled] }, null).subtotal, 84000);
 });
 
 test('⭐ ช่องจำนวนรอบบริการ = ช่องของการ์ดสัญญาบริการใบสั่งขาย (จำนวนเต็ม ≥ 1 · เว้นว่างได้ · หน่วย "เดือน" จากค่าคงที่)', () => {
@@ -315,42 +380,118 @@ test('⭐ ขั้น ② ส่ง registryPriceOnly + เหตุของ�
      เซลล์เงิน:  showPacks={showPacks} packEdit={packView?.rows[index]}
    ถอดข้อความ prop เหล่านั้นออก = ได้แท็ก/ชุด prop ของขั้น ② · ขั้น ② ไม่เอ่ยชื่อของช่องกรอกสักชื่อ · ค่าตั้งต้นของทุก prop = ปิด
    ⇒ prop ที่สาม หรือค่าตั้งต้นที่เปิดเอง = แดง (จนงวด PR-5 มาถอดยามนี้พร้อมส่ง prop จากขั้น ②) */
-test('⭐ หัวตารางของขั้น ② = หัวตารางของใบเสนอราคา (# · ห้าคอลัมน์ · ช่องปุ่มลบ) · ต่างกันได้แค่ prop ของช่อง “แพ็ค/เดือน” ที่ขึ้นทะเบียน · ไม่มีพื้นความกว้างของตัวเอง', () => {
+/* ⭐ ย้ายความคาดหวังโดยเจตนา (งวด PR-5 · มติเจ้าของ 23/09 "ต้องไม่ควรแตกต่างจาก form ใบเสนอราคา" + 08/10 ข้อ A1–A2 · ข้อวินิจฉัย 7 ·
+   แผน IMPL_PLAN_PR5 §5 แถว G1 · §11 F3 / F4): เดิม "สองฟอร์มต่างกันได้แค่ prop ของช่องแพ็ค/เดือนที่ขึ้นทะเบียน — อยู่ฝั่งใบเสนอราคาฝั่งเดียว ·
+   ขั้น ② ไม่เอ่ยชื่อของช่องนั้นสักชื่อ ทั้งโค้ดและคอมเมนต์ · แถวของขั้น ② ไม่มีคีย์ packQty" — วันนี้ขั้น ② ส่ง prop ชุดนั้นเอง ⇒ ยึด **ความเท่ากันตรงตัว**:
+     · หัวตารางของสองฟอร์มเป็นแท็กเดียวกันทุกตัวอักษร (ไม่ใช่ "เท่ากันหลังถอด prop")
+     · เซลล์เงิน: ชื่อ prop ของใบเสนอราคา ⊂ ของขั้น ② และส่วนต่างคือสี่ตัวของใบย้อนหลังที่มีอยู่ก่อนงวดนี้เท่านั้น · prop คู่ของคอลัมน์เป็นสองตัวท้าย
+       เขียนเหมือนกันทุกตัวอักษรในสองไฟล์
+     · กฎฝั่งจอ: ใบเสนอราคาเรียก quoteLinesPackView · ขั้น ② เรียกตัวห่อของ lib (historicalZonesPackView) ซึ่งเรียกตัวเดียวกันนั้นครั้งเดียว
+       (ความเท่ากันเชิงพฤติกรรมยึดที่ historicalIntakeForm.test.mjs — T10)
+   ไม่ได้คลายด่าน — **ตัวจับยังอยู่ ไม่ได้ถูกถอด**: เดิมห้ามเจ็ดชื่อในไฟล์ดิบของขั้น ② · ห้าชื่อในนั้นกลายเป็น prop ของขั้น ② เอง จึงเหลือสี่ชื่อที่
+   **โค้ด (ตัดคอมเมนต์แล้ว)** ของขั้น ② และของช่องงานบริการของบรรทัดห้ามเอ่ย: คีย์ของเลขแพ็ค · กฎรายบรรทัดของใบเสนอราคา · hook ของใบเสนอราคา ·
+   prop โหมดแดงของใบเสนอราคา ⇒ ตัวเขียนตัวที่สองแบบ shorthand (`patchRow(row.key, { packQty })`) แดงที่นี่ (ยาม GE ของ linePackReaders ยึดอีกชั้น)
+   + R7: ช่องเลขแพ็คของเซลล์ร่วมปิดเมื่อ `editable` เท็จ และใบเสนอราคาคิดกฎฝั่งจอเฉพาะตอน `editable` (สองข้อรวมกัน = DOM ของใบเสนอราคาไม่เปลี่ยน) */
+test('⭐ หัวตารางของขั้น ② = หัวตารางของใบเสนอราคา **ทุกตัวอักษร** รวม prop ของช่อง “แพ็ค/เดือน” (งวด PR-5) · เซลล์เงินรับ prop คู่เดียวกัน · ขั้น ② ไม่เขียน/ไม่เอ่ยคีย์ของเลขแพ็ค · ไม่มีพื้นความกว้างของตัวเอง', () => {
   const headOf = (src) => slice(src, '<thead>', '</thead>')
     .replace(/\{editable && (<QuoteLineActionsHead \/>)\}/, '$1')
     .match(/<[A-Za-z]+[^>]*\/?>/g)
     .filter((tag) => /^<QuoteLine/.test(tag));
-  const quote = headOf(slice(code(LINE_ITEMS), 'export default function QuotationLineItems', undefined));
-  const zones = headOf(code(ZONES));
-  const CANONICAL = ['<QuoteLineIndexHead />', '<QuoteLineHeadCells />', '<QuoteLineActionsHead />'];
-  const HEAD_PACK_PROPS = ' showPacks={showPacks} packRequired={packRequired}';
+  const quoteSrc = slice(code(LINE_ITEMS), 'export default function QuotationLineItems', undefined);
+  const zonesSrc = code(ZONES);
+  const quote = headOf(quoteSrc);
+  const zones = headOf(zonesSrc);
+  const CANONICAL = ['<QuoteLineIndexHead />', '<QuoteLineHeadCells showPacks={showPacks} packRequired={packRequired} />', '<QuoteLineActionsHead />'];
   assert.deepEqual(zones, CANONICAL);
-  assert.deepEqual(quote, ['<QuoteLineIndexHead />', `<QuoteLineHeadCells${HEAD_PACK_PROPS} />`, '<QuoteLineActionsHead />']);
-  assert.deepEqual(quote.map((tag) => tag.replace(HEAD_PACK_PROPS, '')), zones);
+  assert.deepEqual(quote, CANONICAL);
+  assert.deepEqual(quote, zones, 'หัวตารางของสองฟอร์ม = แท็กเดียวกันทุกตัวอักษร');
 
-  /* เซลล์เงิน: ชื่อ prop ของสองฟอร์ม — ส่วนของช่องแพ็ค/เดือนมีแค่สองตัวที่ขึ้นทะเบียน และอยู่ฝั่งใบเสนอราคาฝั่งเดียว */
+  /* เซลล์เงิน: ชื่อ prop ของใบเสนอราคาเป็นสับเซตของขั้น ② · ส่วนต่าง = สี่ตัวของใบย้อนหลังเดิม (ไม่มีตัวที่ห้า) · prop คู่ของคอลัมน์อยู่ท้ายทั้งสองไฟล์ */
   const propsOf = (src) => [...slice(src, '<QuoteLineMoneyCells', '/>').matchAll(/\n\s*([A-Za-z]+)(?==|\n)/g)].map((m) => m[1]);
-  const quoteCells = slice(slice(code(LINE_ITEMS), 'export default function QuotationLineItems', undefined), '<QuoteLineMoneyCells', '/>');
-  assert.deepEqual(propsOf(slice(code(LINE_ITEMS), 'export default function QuotationLineItems', undefined)),
-    ['line', 'product', 'editable', 'onPatch', 'name', 'showPacks', 'packEdit']);
-  assert.deepEqual(propsOf(code(ZONES)), ['line', 'product', 'editable', 'onPatch', 'name', 'driftNote', 'amountPending', 'registryPriceOnly', 'qtyNote']);
-  assert.match(quoteCells, /\n\s*showPacks=\{showPacks\}\n\s*packEdit=\{packView\?\.rows\[index\]\}\n/);
-  const PACK_PROPS = /\b(?:showPacks|packRequired|packEdit|packErrorsShown|packQty|linePackEdit|useQuoteLinePackGate)\b/;
-  assert.doesNotMatch(read(ZONES), PACK_PROPS, 'ขั้น ② ของใบย้อนหลังไม่เอ่ยชื่อของช่องแพ็ค/เดือนเลย ทั้งโค้ดและคอมเมนต์ (งวด PR-5)');
-  assert.match('<QuoteLineHeadCells showPacks={showPacks} />', PACK_PROPS, 'ตัวจับจับของจริงได้');
-  assert.doesNotMatch('packsPerRound · showPacksPerRound', PACK_PROPS, 'และไม่จับ "แพ็คต่อรอบ" ของโซน (คนละช่อง)');
-  /* ค่าตั้งต้นปิดทุกตัว ⇒ ผู้เรียกที่ไม่ส่ง (ขั้น ②) ได้ตารางเดิมของก่อนมีคอลัมน์นี้ */
+  const quoteProps = propsOf(quoteSrc);
+  const zoneProps = propsOf(zonesSrc);
+  assert.deepEqual(quoteProps, ['line', 'product', 'editable', 'onPatch', 'name', 'showPacks', 'packEdit']);
+  assert.deepEqual(zoneProps, ['line', 'product', 'editable', 'onPatch', 'name', 'driftNote', 'amountPending', 'registryPriceOnly', 'qtyNote', 'showPacks', 'packEdit']);
+  for (const prop of quoteProps) assert.ok(zoneProps.includes(prop), `ขั้น ② ต้องส่ง ${prop} เหมือนใบเสนอราคา`);
+  assert.deepEqual(zoneProps.filter((prop) => !quoteProps.includes(prop)), ['driftNote', 'amountPending', 'registryPriceOnly', 'qtyNote']);
+  const PACK_PAIR = /\n\s*showPacks=\{showPacks\}\n\s*packEdit=\{packView\?\.rows\[index\]\}\n\s*$/;
+  for (const [file, src] of [[LINE_ITEMS, quoteSrc], [ZONES, zonesSrc]]) {
+    assert.match(slice(src, '<QuoteLineMoneyCells', '/>'), PACK_PAIR, `${file}: prop คู่ของคอลัมน์เป็นสองตัวท้าย เขียนตรงตัว`);
+    assert.equal((src.match(/showPacks=\{showPacks\}/g) || []).length, 2, `${file}: หัวและเซลล์รับ showPacks ตัวเดียวกัน`);
+    assert.equal((src.match(/\bpackEdit=/g) || []).length, 1, file);
+  }
+  assert.match(slice(zonesSrc, '<QuoteLineMoneyCells', '/>'), /\n\s*editable=\{!busy\}\n\s*onPatch=\{\(patch\) => patchRow\(row\.key, patch\)\}\n/,
+    'ตัวเขียนของเลขแพ็ค (onPatch ของเซลล์ร่วม) ลงแถวผ่าน patchRow ตัวเดิม · ช่องปิดระหว่างตรวจ/บันทึก (R7)');
+
+  /* กฎฝั่งจอ: ใบเสนอราคา = quoteLinesPackView เฉพาะตอน editable (R7) · ขั้น ② = ตัวห่อของ lib ที่เรียกตัวเดียวกันครั้งเดียว ไม่ส่งบรรทัดที่เก็บไว้ */
+  assert.match(code(LINE_ITEMS), /editable \? quoteLinesPackView\(/, 'ใบเสนอราคาคิดกฎฝั่งจอเฉพาะโหมดแก้ ⇒ ไม่มี packEdit ตอน editable เท็จ');
+  assert.equal((code(LINE_ITEMS).match(/quoteLinesPackView\(/g) || []).length, 1);
+  assert.match(zonesSrc, /const packErrors = historicalPackErrorsShown\(issues\);/);
+  assert.match(zonesSrc, /const packView = useMemo\(\(\) => historicalZonesPackView\(rows, products, \{ errorsShown: packErrors \}\), \[rows, products, packErrors\]\);/);
+  assert.match(zonesSrc, /const showPacks = packView\.showColumn;/);
+  const REQUIRED = 'const packRequired = Boolean(packView?.rows.some((row) => row.required));';
+  assert.ok(zonesSrc.includes(REQUIRED) && quoteSrc.includes(REQUIRED), 'ดอกจันของหัวคอลัมน์คิดด้วยนิพจน์เดียวกันทุกตัวอักษร');
+  assert.equal((zonesSrc.match(/historicalZonesPackView\(/g) || []).length, 1);
+  assert.doesNotMatch(zonesSrc, /(?<![\w$])quoteLinesPackView\(|storedLines|resplitHint/, 'ขั้น ② ไม่เรียกกฎดิบเอง และไม่มีบรรทัดที่เก็บไว้/คำแนะนำแยกจำนวน (D17)');
+  const wrapper = slice(code(INTAKE_LIB), 'export function historicalZonesPackView(', '\n}\n');
+  assert.equal((wrapper.match(/quoteLinesPackView\(/g) || []).length, 1, 'ตัวห่อเรียกกฎของใบเสนอราคาครั้งเดียว');
+  assert.match(wrapper, /const view = quoteLinesPackView\(rows, products, \{ errorsShown \}\);/);
+  assert.doesNotMatch(wrapper, /storedLines/);
+
+  /* 🔴 ตัวจับ (ยังอยู่): โค้ดของฟอร์มใบสั่งขายย้อนหลังห้ามเอ่ยสี่ชื่อนี้ — ตัวเขียนตัวที่สองของเลขแพ็ค · กฎ/hook/โหมดแดงของใบเสนอราคา
+     🔴 รีวิว 12/10 (G3): ขอบเขต = **ทุกไฟล์ .js ของโฟลเดอร์ฟอร์ม** (อ่านจากโฟลเดอร์ — ไฟล์ใหม่ถูกครอบเอง) เว้นหน้าต่างเพิ่มหลายโซนซึ่งเป็นช่องตั้งต้นที่ขึ้นทะเบียน
+     (ยาม GE ของ linePackReaders ยึดว่ามันส่งค่าให้ใครได้บ้าง) · เดิมสองไฟล์ (ขั้น ② + ช่องงานบริการ) — เปลือกของฟอร์มที่ประกอบ body ของพรีวิวและบันทึกอยู่นอกขอบเขต:
+     `const packQty = zone.packQty || "1"; return { ...zone, packQty };` ตรงนั้น = ช่องว่างถูกส่งเป็น 1 แล้วยอดคูณ 1 ถูกโชว์และถูกเก็บ โดยยามทุกตัวยังเขียว */
+  const WIZARD_BAN = /\b(?:packQty|linePackEdit|useQuoteLinePackGate|packErrorsShown)\b/;
+  const WIZARD_DIR = 'components/salesPlanning/historicalWizard';
+  const WIZARD_SEED_INPUT = `${WIZARD_DIR}/HistoricalBulkZonesModal.js`;
+  const WIZARD_SHELL = `${WIZARD_DIR}/HistoricalOrderWizard.js`;
+  const wizardFiles = readdirSync(join(SRC, WIZARD_DIR)).filter((name) => name.endsWith('.js') && !/\.test\./.test(name)).map((name) => `${WIZARD_DIR}/${name}`).sort();
+  assert.ok(wizardFiles.length >= 11, `โฟลเดอร์ฟอร์มมีไฟล์ .js แค่ ${wizardFiles.length} — อ่านโฟลเดอร์ไม่ครบ`);
+  for (const file of [ZONES, LINE_SERVICE, WIZARD_SHELL, WIZARD_SEED_INPUT]) assert.ok(wizardFiles.includes(file), `ต้องเห็น ${file} ในโฟลเดอร์ฟอร์ม`);
+  assert.match(code(WIZARD_SEED_INPUT), WIZARD_BAN, 'ไฟล์ที่เว้นไว้คือไฟล์ที่ถือช่องตั้งต้นจริง (ถ้าช่องย้ายไฟล์ ข้อยกเว้นนี้ต้องย้ายตาม ไม่ใช่ค้างไว้)');
+  for (const file of wizardFiles.filter((name) => name !== WIZARD_SEED_INPUT)) {
+    assert.doesNotMatch(code(file), WIZARD_BAN, `${file}: โค้ดห้ามเอ่ยคีย์ของเลขแพ็ค / กฎรายบรรทัด / hook / prop โหมดแดงของใบเสนอราคา`);
+  }
+  for (const caught of ['patchRow(row.key, { packQty })', 'const packQty = String(n);', 'row.packQty', 'packErrorsShown={x}', 'useQuoteLinePackGate(',
+    'import { linePackEditView } from "@/lib/sales/linePackEdit";',
+    'state.zones.map((zone) => { const packQty = zone.packQty || "1"; return { ...zone, packQty }; })']) {
+    assert.match(caught, WIZARD_BAN, `ตัวจับต้องจับ ${caught}`);
+  }
+  for (const allowed of ['packsPerRound', 'packView', 'packEdit', 'showPacks', 'packRequired', 'historicalPackErrorsShown', 'historicalZonesPackView',
+    'link.packsSeed', 'packErrors', 'HistoricalSeedChip', 'historicalLineQuoteLink']) {
+    assert.doesNotMatch(allowed, WIZARD_BAN, `ตัวจับต้องไม่จับ ${allowed}`);
+  }
+  /* และขั้น ② ไม่มีทางเขียนแถวนอกตัวจัดการเหตุการณ์: ทุก patchRow( อยู่หลังลูกศรของ handler (เขียนตอนวาด = ค่าตั้งต้นเงียบ / วนเรนเดอร์) */
+  const patchCalls = [...zonesSrc.matchAll(/(.{3})patchRow\(/g)].map((m) => m[1]);
+  assert.ok(patchCalls.length >= 5, `ต้องเจอการเรียก patchRow จริง (เจอ ${patchCalls.length})`);
+  assert.deepEqual([...new Set(patchCalls)], ['=> '], 'patchRow ถูกเรียกจาก handler เท่านั้น');
+  /* 🔴 รีวิว 12/10 (G4): ตัวแก้แถวอีกตัว (`setRows`) กฎเดียวกัน — `{row.rounds ? null : void setRows(rows.map(…))}` ตอนวาด = ค่าเข้าแถวโดยไม่มีใครกด
+     (ตัวกลายพันธุ์นี้รอดทั้งชุดเทสต์เมื่อกฎข้างบนดูแค่ patchRow) · และแถวไปถึง state ของฟอร์มได้ทางเดียวคือผ่าน setRows (`onChange({ zones: … })` ที่เดียว) */
+  const setCalls = [...zonesSrc.matchAll(/(.{3})setRows\(/g)].map((m) => m[1]);
+  assert.ok(setCalls.length >= 5, `ต้องเจอการเรียก setRows จริง (เจอ ${setCalls.length})`);
+  assert.deepEqual([...new Set(setCalls)], ['=> '], 'setRows ถูกเรียกจากตัวจัดการ/ตัวช่วยที่เป็นลูกศรเท่านั้น — ไม่มีการเรียกตอนวาด');
+  assert.deepEqual(zonesSrc.match(/[^\n]*onChange\(\{ zones:[^\n]*/g), ['  const setRows = (next) => onChange({ zones: next });'],
+    'แถวของขั้น ② ถูกส่งขึ้นฟอร์มที่เดียว (ตัวของ setRows) — ไม่มีทางเขียนแถวที่เลี่ยงสองตัวแก้แถวข้างบน');
+
+  /* ค่าตั้งต้นของสอง prop ที่เซลล์กลางยังปิด ⇒ ผู้เรียกอื่นที่ไม่ส่งได้ตารางของก่อนมีคอลัมน์นี้ */
   assert.match(code(CELLS), /export function QuoteLineHeadCells\(\{ showPacks = false, packRequired = false \}\) \{/);
   const signature = slice(code(CELLS), 'export function QuoteLineMoneyCells({', '}) {');
   assert.match(signature, /\bshowPacks = false, packEdit = null,/);
-  /* ขั้น ② เรียกตัวตั้งบรรทัดจากสินค้าตัวเดียวกัน: แถวของมันไม่ถือเลขแพ็ค ⇒ ได้อ็อบเจกต์เดิม ไม่มีคีย์ packQty งอก (packsPerRound ไม่ใช่ตัวคูณ) */
+
+  /* แถวของขั้น ② ถือเลขแพ็คของบรรทัดเอง เริ่มที่ว่าง — เลือกแพ็คเกจหมวด 02-001 แล้วยังว่าง (ไม่มีค่าตั้งต้น) · แพ็คต่อรอบของโซนเป็นอีกช่อง ไม่คูณเงิน */
   const zoneRow = emptyHistoricalZone({ zoneId: 'ZN-1', siteId: 'ST-1', packsPerRound: '2' });
+  assert.equal(zoneRow.packQty, '');
   const picked = quoteLineFromProduct(zoneRow, { id: 'PRD-35', fgCode: 'FG-SNS-02-001-0012', saleUnit: 'แพ็คเกจ', costPrice: 3500 });
-  assert.equal('packQty' in picked, false);
+  assert.equal(picked.packQty, '', 'เลือกแพ็คเกจไม่เติมเลขแพ็คให้');
   assert.equal(picked.packsPerRound, '2');
-  assert.equal(quoteLineNet({ ...picked, qty: 12 }).lineTotal, 42000, 'แพ็คต่อรอบของโซนไม่คูณเงิน: 12 × 3,500');
-  assert.match(code(ZONES), /<QuoteLinesTable>/, 'พื้นเดียวกับใบเสนอราคา (QUOTE_LINES_MIN_WIDTH)');
-  assert.doesNotMatch(code(ZONES), /ZONE_LINES_MIN_WIDTH|zoneCol|minWidth=/);
+  assert.equal(quoteLineNet({ ...picked, qty: 12 }).lineTotal, 42000, 'แพ็คต่อรอบของโซนไม่คูณเงิน: 12 × 3,500 (เลขแพ็คว่าง = สูตรกลางคูณ 1 — แต่ขั้น ② ยังไม่พูดยอดนี้ ดูกริดข้างบน)');
+  assert.equal(quoteLineNet({ ...picked, qty: 12, packQty: '2' }).lineTotal, 84000, 'ตัวคูณคือเลขแพ็คของบรรทัดเท่านั้น');
+  assert.match(zonesSrc, /<QuoteLinesTable>/, 'พื้นเดียวกับใบเสนอราคา (QUOTE_LINES_MIN_WIDTH)');
+  assert.doesNotMatch(zonesSrc, /ZONE_LINES_MIN_WIDTH|zoneCol|minWidth=/);
+  /* ตารางว่าง = ยังไม่มีคอลัมน์ ⇒ เจ็ดช่องทั้งสองฟอร์ม */
+  assert.match(zonesSrc, /<QuoteLinesEmptyRow colSpan=\{7\}>/);
+  assert.doesNotMatch(zonesSrc, /colSpan=\{8\}|colSpan=\{showPacks/);
 });
 
 /* ══ คอลัมน์ "แพ็ค/เดือน" (mig 0407 · งวด PR-2 โชว์ · งวด PR-3 ช่องกรอก · docs/qt-pack-column.md) ══════════════════════
@@ -407,9 +548,18 @@ test('⭐ เซลล์ “แพ็ค/เดือน” ของตาร�
   const tag = slice(inputBranch, '<Input', '/>');
   for (const attribute of [
     'type="text"', 'inputMode="numeric"', 'pattern="[0-9]*"', 'autoComplete="off"', 'className="numeric-input"',
-    'value={packEdit.value}', 'invalid={Boolean(packEdit.note)}', 'aria-required={packEdit.required ? "true" : undefined}',
+    'value={packEdit.value}', 'disabled={!editable}', 'invalid={Boolean(packEdit.note)}', 'aria-required={packEdit.required ? "true" : undefined}',
     'aria-label={`${PACK_COLUMN_LABEL} ${name}`}', 'aria-describedby={packEdit.note || packEdit.hint ? packNoteId : undefined}', 'title={PACK_INPUT_TITLE}',
   ]) assert.ok(tag.includes(attribute), `ช่องแพ็ค/เดือนต้องมี ${attribute}`);
+  /* ⭐ R7 (งวด PR-5 · รีวิวจอ 12/10 · แผน IMPL_PLAN_PR5 §1.3 R7 / §11 F3): ช่องนี้ปิดเมื่อ `editable` เท็จ เหมือนคอนโทรลอื่นของแถว — ขั้น ② ของใบสั่งขาย
+     ย้อนหลังส่ง `editable={!busy}` ระหว่างตรวจ/บันทึก (พิมพ์เลขแพ็คระหว่างตรวจได้ = แผนที่กลับมาเป็นของเลขเก่า ทับฟอร์มที่ถือเลขใหม่)
+     · ใบเสนอราคาไม่ถึงกิ่งนี้ตอน `editable` เท็จ (กฎฝั่งจอคิดเฉพาะโหมดแก้ — ยึดข้างล่างและที่ยามหัวตาราง) ⇒ DOM ของใบเสนอราคาไม่เปลี่ยน
+     · attribute เดียว อยู่ถัดจาก value · ไม่มีเงื่อนไขอื่นพ่วง (ช่องต้องไม่ปิดเพราะเหตุอื่นที่คนกรอกมองไม่เห็น) */
+  assert.match(tag, /\n\s*value=\{packEdit\.value\}\n\s*disabled=\{!editable\}\n\s*invalid=/);
+  assert.equal((tag.match(/\bdisabled=/g) || []).length, 1);
+  assert.match(code(LINE_ITEMS), /\(editable \? quoteLinesPackView\(lines, products, \{ errorsShown: packErrorsShown, storedLines \}\) : null\)/);
+  /* คอนโทรลอื่นของแถวปิดด้วยธงเดียวกันอยู่แล้ว (จำนวน · ราคา · ชนิดส่วนลด · ค่าส่วนลด) — ช่องเลขแพ็คเคยเป็นตัวเดียวที่ไม่ปิด */
+  assert.equal((money.match(/disabled=\{!editable(?: \|\| [^}]+)?\}/g) || []).length, 5, 'ห้าคอนโทรลของเซลล์เงินปิดเมื่อ editable เท็จ');
   /* 🔴 §12 C1 (เงิน): ห้าม maxLength / max / type="number" — เบราว์เซอร์ตัด "10000" ที่วางลงมาเป็น "1000" ก่อนที่ใครจะเห็น (วัดใน Chrome 09/10)
      · ไม่มี placeholder และไม่มีค่าตั้งต้น (กติกาฟอร์ม: ไม่มีค่าตั้งต้นเงียบให้การตัดสินใจ) */
   assert.doesNotMatch(tag, /maxLength|\bmax=|\bmin=|type="number"|placeholder|defaultValue|\bstep=/);

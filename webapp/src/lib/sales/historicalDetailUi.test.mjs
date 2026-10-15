@@ -27,6 +27,7 @@ import { historicalApprovalPrompt } from '../approvalPrompt.js';
 import { historicalOverrideNote } from './historicalOrderCopy.js';
 import * as orderCopyLib from './historicalOrderCopy.js';
 import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL } from './serviceOrders.js';
+import { linePackQtyText } from './linePackView.js';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '../..');
 /* ตัดคอมเมนต์โดยคงจำนวนบรรทัด — ตัวอย่างในคอมเมนต์ต้องไม่ทำให้ยามผ่านเอง */
@@ -359,6 +360,39 @@ test('⭐ 23/09 + PR-D: การ์ดโซนพูดรายการ · �
   assert.match(card, /`\$\{fmtNumber\(zones\.length\)\} โซน — /, 'บรรทัดหัวนับโซน ไม่นับแพ็ค');
   /* ตารางรายการของหน้าใบบอกไซต์ · โซนของแต่ละบรรทัด (บรรทัดของสี่โซนหน้าตาเหมือนกันทุกช่อง) */
   assert.match(code(PAGE), /showInstallationPoint=\{historical\}/);
+});
+
+/* ⭐ งวด PR-5 (มติเจ้าของ 08/10 ข้อ A1 "2 แพ็ค × 12 เดือน × ฿3,500 = ฿84,000" · mig 0409 · แผน IMPL_PLAN_PR5 §2.9 · R5 · T22): บรรทัดของใบย้อนหลังที่มี
+   เลขแพ็คของบรรทัด (`packQty` — ตัวคูณเงิน) ช่อง "จำนวน" ของการ์ดต้องพูด **"2 แพ็ค × 12 เดือน"** — ของเดิมพูด "12 เดือน" (หน่วยที่เก็บของบรรทัดแพ็ค) ซึ่ง
+   คูณราคาแล้วไม่เท่าจำนวนเงินในแถวเดียวกัน · บรรทัดที่ไม่มีเลขแพ็ค (ใบที่คีย์ก่อนงวดนี้) = ข้อความเดิมทุกตัวอักษร ("12 แพ็คเกจ")
+   🔴 สองทางที่พังเงียบ: การ์ดประกอบวลีเอง (คำเพี้ยนจากเอกสาร/หน้าต่างอนุมัติ · "N แพ็ค" เปล่ากลับมา — มติ 23/09) ·
+      วลีของบรรทัดแพ็คถูกใช้กับบรรทัดเก่า ("1 แพ็ค × 12 เดือน" บนบรรทัดที่ไม่เคยมีเลขแพ็ค = เลขที่ไม่มีใครคีย์)
+   ⇒ วลีมาจากตัวอ่านกลาง `linePackQtyText` (คืน null เมื่อไม่มีเลขแพ็ค) แล้วถอยไปนิพจน์เดิมด้วย `??` · เจ็ดคอลัมน์ / minWidth / ข้อห้ามสะกดคำ ไม่ขยับ */
+test('PR-5 ⭐ การ์ดโซน: ช่องจำนวนของบรรทัดที่มีเลขแพ็ค = วลีของตัวอ่านกลาง ("2 แพ็ค × 12 เดือน") · บรรทัดเก่า = ข้อความเดิม · การ์ดไม่ประกอบคำเอง ไม่เพิ่มคอลัมน์', () => {
+  const card = code(ZONES_CARD);
+  assert.match(card, /import \{ linePackQtyText \} from "@\/lib\/sales\/linePackView";/);
+  const fn = slice(card, 'const qtyText = (zone) => {', '\n  };');
+  /* ทางขีดและตัวอ่านจำนวน/หน่วยของเดิมอยู่ครบ ลำดับเดิม — เพิ่มสองบรรทัดท้ายเท่านั้น */
+  assert.match(fn, /const line = lineOf\(zone\);\s*const qty = zone\.qty \?\? line\?\.qty;\s*if \(qty === null \|\| qty === undefined \|\| !String\(qty\)\.trim\(\) \|\| !Number\.isFinite\(Number\(qty\)\)\) return NA;\s*const unit = zone\.unit \|\| line\?\.unit \|\| "";/);
+  /* ต้นทางของเลขแพ็ค = แถวเดียวกับที่จำนวนถูกอ่าน (ของเสริมที่พกจำนวนมา ไม่งั้นบรรทัดของใบ) ⇒ ตัวคูณกับจำนวนไม่มาจากคนละแถว */
+  assert.match(fn, /const source = zone\.qty === null \|\| zone\.qty === undefined \? line : zone;/);
+  assert.ok(fn.includes('return linePackQtyText(source) ?? `${fmtNumber(Number(qty))}${unit ? ` ${unit}` : ""}`;'),
+    'วลีของตัวอ่านกลางก่อน แล้วถอยไปนิพจน์เดิมทั้งก้อนด้วย ??');
+  assert.equal((card.match(/linePackQtyText\(/g) || []).length, 1);
+  assert.doesNotMatch(card, /\bpackQty\b|linePackQty\(|PACK_WORD|PACK_COLUMN_LABEL/, 'การ์ดไม่อ่าน/เขียนคีย์ของเลขแพ็คเอง และไม่ประกอบวลีจากค่าคงที่เอง');
+  /* ของเดิมที่ต้องไม่ขยับ: เจ็ดหัว · เซลล์จำนวนที่เดิม · ไม่มีคอลัมน์ใหม่ · ไม่สะกดคำว่าแพ็ค/เดือนในโค้ด */
+  assert.equal((slice(card, '<thead>', '</thead>').match(/<th\b/g) || []).length, 7);
+  assert.match(card, /minWidth=\{760\}/);
+  assert.match(card, /<td className="num">\{qtyText\(zone\)\}<\/td>/);
+  assert.doesNotMatch(card, /เดือน/);
+  assert.deepEqual([...card.matchAll(/แพ็ค[^\s<]*/g)].map((m) => m[0]), []);
+
+  /* ของจริงของตัวอ่านกลางที่การ์ดเรียก */
+  assert.equal(linePackQtyText({ packQty: 2, qty: 12, unit: 'เดือน' }), '2 แพ็ค × 12 เดือน');
+  assert.equal(linePackQtyText({ packQty: 1, qty: 12, unit: 'เดือน' }), '1 แพ็ค × 12 เดือน', 'เลขแพ็ค 1 ก็เป็นเลขที่คีย์ — ต้องเห็น');
+  for (const packQty of [null, undefined, '', 0, 'abc']) {
+    assert.equal(linePackQtyText({ packQty, qty: 12, unit: 'แพ็คเกจ' }), null, `ไม่มีเลขแพ็ค (${JSON.stringify(packQty)}) = null ⇒ การ์ดพูดข้อความเดิม "12 แพ็คเกจ"`);
+  }
 });
 
 test('การ์ดสัญญาแสดง "เอกสารแทนสัญญา" ของใบย้อนหลังที่ยังไม่อนุมัติ (ร่างยังไม่มีเลข CT)', () => {
