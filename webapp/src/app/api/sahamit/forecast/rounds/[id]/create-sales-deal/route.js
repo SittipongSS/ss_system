@@ -125,7 +125,8 @@ export async function POST(request, { params }) {
     const demandMonth = monthKey(line.month);
     const { startDate, endDate } = fcDealDates({ poMonth: forecastMonth, demandMonth });
 
-    const title = sahamitDealTitle(product, productName);
+    // มติ 2026-10-15 — เดือนส่งของท้ายชื่อ: สินค้าเดียวกันคนละเดือนต้องแยกชื่อกันได้
+    const title = sahamitDealTitle(product, productName, { month: demandMonth });
 
     const dealRow = {
       id: genId('DEAL'),
