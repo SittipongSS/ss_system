@@ -1,9 +1,9 @@
 import { genId } from '@/lib/id';
-import { userTeams } from '@/lib/permissions';
 import { recordAudit } from '@/lib/audit';
 import { canEditSalesPlanning, forecastAmount, isClosedStage, monthKey, toMoney } from '@/lib/salesPlanning';
 import { getSahamitContext, sahamitError, indexByFgCode, loadSahamitProducts, sahamitDealTitle } from '@/lib/sahamit/server';
 import { customerSnapshotName } from '@/lib/master/customerName';
+import { isSahamitDealOwner, SAHAMIT_DEAL_TEAM } from '@/lib/sahamit/dealOwner';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,7 +33,7 @@ async function loadRound(supabase, customerId, id) {
 }
 
 // สร้างดีล "1 forecast line = 1 ดีล" (line = สินค้า×เดือน) จากรายการที่เลือก.
-// เจ้าของดีล = AE (role=ae) ที่เลือกจาก dropdown เท่านั้น. เลือกหลาย line →
+// เจ้าของดีล = AE / Senior AE ทีม KA ที่เลือกจาก dropdown เท่านั้น. เลือกหลาย line →
 // สร้างหลายดีล (ดีลละ line, junction 1 แถว/ดีล).
 export async function POST(request, { params }) {
   const ctx = await getSahamitContext();
@@ -47,18 +47,19 @@ export async function POST(request, { params }) {
   const forecastMonth = monthKey(body.forecastMonth);
   if (!forecastMonth) return Response.json({ error: 'ต้องระบุเดือนคาดได้รับ PO (forecastMonth)' }, { status: 400 });
 
-  // เจ้าของดีลต้องเป็น AE ทีม KA เท่านั้น — ตรวจจาก app_metadata ฝั่ง server
+  // เจ้าของดีลต้องเป็นคนถือดีลได้ (AE / Senior AE) ทีม KA เท่านั้น — ตรวจจาก app_metadata ฝั่ง server
   if (!body.ownerId) return Response.json({ error: 'ต้องเลือกผู้ดูแล (AE)' }, { status: 400 });
   const { data: ownerRes, error: ownerErr } = await supabase.auth.admin.getUserById(String(body.ownerId));
   const owner = ownerRes?.user;
   if (ownerErr || !owner) return Response.json({ error: 'ไม่พบผู้ใช้ AE ที่เลือก' }, { status: 400 });
   // อยู่ KA เป็นทีมรองก็ถือดีลสหมิตรได้ — ด่านนี้ถามว่า "อยู่ KA ไหม" ไม่ใช่ "KA เป็นทีมหลักไหม"
-  if (owner.app_metadata?.role !== 'ae' || !userTeams(owner.app_metadata).includes('KA')) {
-    return Response.json({ error: 'ผู้ดูแลต้องเป็น AE ทีม KA เท่านั้น' }, { status: 400 });
+  // ด่านตัวเดียวกับดรอปดาวน์บนจอ (lib/sahamit/dealOwner.js) — เดิมเทียบ `role !== 'ae'` ทำให้ Senior AE ตกหล่น
+  if (!isSahamitDealOwner(owner.app_metadata)) {
+    return Response.json({ error: 'ผู้ดูแลต้องเป็น AE หรือ Senior AE ทีม KA เท่านั้น' }, { status: 400 });
   }
   const ownerId = owner.id;
   const ownerName = owner.user_metadata?.name || owner.email || null;
-  const ownerTeam = 'KA'; // บังคับจากเงื่อนไขข้างบนแล้ว
+  const ownerTeam = SAHAMIT_DEAL_TEAM; // บังคับจากเงื่อนไขข้างบนแล้ว
 
   // เลือกได้ 2 แบบ: lineIds (ราย line, แม่นสุด) หรือ fgCodes (ทุกเดือนของสินค้านั้น)
   const lineIds = new Set((Array.isArray(body.lineIds) ? body.lineIds : []).map((v) => String(v || '')).filter(Boolean));
