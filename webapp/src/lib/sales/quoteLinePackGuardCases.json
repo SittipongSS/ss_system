@@ -1,0 +1,276 @@
+{
+  "_about": "Category twin of the quotation pack guard (mig 0410 · PR-G). ONE list for both sides: lineTakesPacks(line, null) of linePacks.js (JS — the rule of every server gate) and the category expression that 0410 copies nine times (the trigger T2 with NEW., the gates and the two header SELECTs with l.). takesPacks = what BOTH sides answer for that line (proven on PGlite 0.5.8 = PostgreSQL 18.3 with the expression cut out of the migration, 15/10/2026). linePacks.test.mjs runs the JS side on every row; quotationPackGuardMigration.test.mjs checks that the migration carries categoryExpression verbatim. Changing lineCategoryCode / categoryOf so that a row flips = the database guard no longer matches the server gates: write a new migration for the trigger (0410 is frozen once run).",
+  "categoryExpression": "COALESCE(CASE WHEN COALESCE(NEW.\"productId\", '') <> '' OR COALESCE(NEW.\"fgCode\", '') <> '' THEN substring(NEW.\"fgCode\" from '[0-9]{2}-[0-9]{3}') = '02-001' ELSE jsonb_typeof(NEW.metadata -> 'categoryCode') = 'string' AND NEW.metadata ->> 'categoryCode' = '02-001' END, false)",
+  "cases": [
+    {
+      "id": "product-fg02",
+      "note": "product + FG 02-001",
+      "line": {
+        "productId": "P-021",
+        "fgCode": "FG-0521-02-001-00012",
+        "metadata": {}
+      },
+      "takesPacks": true
+    },
+    {
+      "id": "deleted-product-fg02",
+      "note": "no product (deleted from the registry · audit_logs recovery) + FG 02-001",
+      "line": {
+        "productId": null,
+        "fgCode": "FG-0521-02-001-00012",
+        "metadata": {}
+      },
+      "takesPacks": true
+    },
+    {
+      "id": "product-fgnull-meta02",
+      "note": "product + FG NULL + metadata 02-001 (the product branch wins — metadata is not read)",
+      "line": {
+        "productId": "P-021",
+        "fgCode": null,
+        "metadata": {
+          "categoryCode": "02-001"
+        }
+      },
+      "takesPacks": false
+    },
+    {
+      "id": "product-fgempty-meta02",
+      "note": "product + FG \"\" + metadata 02-001",
+      "line": {
+        "productId": "P-021",
+        "fgCode": "",
+        "metadata": {
+          "categoryCode": "02-001"
+        }
+      },
+      "takesPacks": false
+    },
+    {
+      "id": "typed-meta02",
+      "note": "typed line: metadata.categoryCode 02-001",
+      "line": {
+        "productId": null,
+        "fgCode": null,
+        "metadata": {
+          "categoryCode": "02-001"
+        }
+      },
+      "takesPacks": true
+    },
+    {
+      "id": "typed-fgempty-meta02",
+      "note": "typed line: FG \"\" + metadata 02-001 (\"\" = absent)",
+      "line": {
+        "productId": null,
+        "fgCode": "",
+        "metadata": {
+          "categoryCode": "02-001"
+        }
+      },
+      "takesPacks": true
+    },
+    {
+      "id": "typed-productempty-meta02",
+      "note": "typed line: productId \"\" + metadata 02-001 (\"\" = absent)",
+      "line": {
+        "productId": "",
+        "fgCode": null,
+        "metadata": {
+          "categoryCode": "02-001"
+        }
+      },
+      "takesPacks": true
+    },
+    {
+      "id": "typed-code-number",
+      "note": "typed line: categoryCode is the number 2001",
+      "line": {
+        "productId": null,
+        "fgCode": null,
+        "metadata": {
+          "categoryCode": 2001
+        }
+      },
+      "takesPacks": false
+    },
+    {
+      "id": "typed-code-array",
+      "note": "typed line: categoryCode is [\"02-001\"]",
+      "line": {
+        "productId": null,
+        "fgCode": null,
+        "metadata": {
+          "categoryCode": [
+            "02-001"
+          ]
+        }
+      },
+      "takesPacks": false
+    },
+    {
+      "id": "typed-code-object",
+      "note": "typed line: categoryCode is an object",
+      "line": {
+        "productId": null,
+        "fgCode": null,
+        "metadata": {
+          "categoryCode": {
+            "code": "02-001"
+          }
+        }
+      },
+      "takesPacks": false
+    },
+    {
+      "id": "typed-code-space",
+      "note": "typed line: categoryCode \" 02-001\" (no trimming)",
+      "line": {
+        "productId": null,
+        "fgCode": null,
+        "metadata": {
+          "categoryCode": " 02-001"
+        }
+      },
+      "takesPacks": false
+    },
+    {
+      "id": "typed-code-empty",
+      "note": "typed line: categoryCode \"\"",
+      "line": {
+        "productId": null,
+        "fgCode": null,
+        "metadata": {
+          "categoryCode": ""
+        }
+      },
+      "takesPacks": false
+    },
+    {
+      "id": "typed-meta-string",
+      "note": "typed line: metadata is the JSON string \"02-001\"",
+      "line": {
+        "productId": null,
+        "fgCode": null,
+        "metadata": "02-001"
+      },
+      "takesPacks": false
+    },
+    {
+      "id": "typed-meta-array",
+      "note": "typed line: metadata is an array",
+      "line": {
+        "productId": null,
+        "fgCode": null,
+        "metadata": [
+          "02-001"
+        ]
+      },
+      "takesPacks": false
+    },
+    {
+      "id": "typed-meta-null",
+      "note": "typed line: metadata is JSON null",
+      "line": {
+        "productId": null,
+        "fgCode": null,
+        "metadata": null
+      },
+      "takesPacks": false
+    },
+    {
+      "id": "typed-no-code",
+      "note": "typed line: no categoryCode",
+      "line": {
+        "productId": null,
+        "fgCode": null,
+        "metadata": {}
+      },
+      "takesPacks": false
+    },
+    {
+      "id": "fg-02-0011",
+      "note": "FG 02-0011 (the first 2-3 digit match is 02-001)",
+      "line": {
+        "productId": null,
+        "fgCode": "FG-0521-02-0011-00012",
+        "metadata": {}
+      },
+      "takesPacks": true
+    },
+    {
+      "id": "fg-thai-digits",
+      "note": "FG written in Thai digits (ASCII digits only on both sides)",
+      "line": {
+        "productId": null,
+        "fgCode": "FG-๐๕๒๑-๐๒-๐๐๑-๐๐๐๑๒",
+        "metadata": {}
+      },
+      "takesPacks": false
+    },
+    {
+      "id": "fg-code-alone",
+      "note": "FG is \"02-001\" alone",
+      "line": {
+        "productId": null,
+        "fgCode": "02-001",
+        "metadata": {}
+      },
+      "takesPacks": true
+    },
+    {
+      "id": "fg03-meta02",
+      "note": "FG 03-001 + metadata 02-001 (fgCode decides)",
+      "line": {
+        "productId": null,
+        "fgCode": "FG-0521-03-001-00001",
+        "metadata": {
+          "categoryCode": "02-001"
+        }
+      },
+      "takesPacks": false
+    },
+    {
+      "id": "fg-no-code-meta02",
+      "note": "FG without a code + metadata 02-001 (fgCode decides: no category)",
+      "line": {
+        "productId": null,
+        "fgCode": "XX",
+        "metadata": {
+          "categoryCode": "02-001"
+        }
+      },
+      "takesPacks": false
+    },
+    {
+      "id": "fg-12-0013",
+      "note": "FG 12-0013 (the first match is 12-001)",
+      "line": {
+        "productId": null,
+        "fgCode": "FG-0521-12-0013-00001",
+        "metadata": {}
+      },
+      "takesPacks": false
+    },
+    {
+      "id": "registry02-line03",
+      "note": "product registered as 02-001 + line FG 03-001 (the registry is never read — only the line)",
+      "line": {
+        "productId": "P-022",
+        "fgCode": "FG-0521-03-001-00001",
+        "metadata": {}
+      },
+      "takesPacks": false
+    },
+    {
+      "id": "registry03-line02",
+      "note": "product registered as 03-001 + line FG 02-001 (the registry is never read — only the line)",
+      "line": {
+        "productId": "P-031",
+        "fgCode": "FG-0521-02-001-00012",
+        "metadata": {}
+      },
+      "takesPacks": true
+    }
+  ]
+}

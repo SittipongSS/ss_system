@@ -422,3 +422,34 @@ test('lineMoneyRuleMessage: 23514 ของ CHECK สี่ตัวของ 04
   assert.equal(lineMoneyRuleMessage({ message: 'quotation_lines_line_money_rule' }), null);
   for (const nothing of [null, undefined, {}, 'x']) assert.equal(lineMoneyRuleMessage(nothing), null);
 });
+
+/* ── ยามในฐานของ mig 0410 (งวด PR-G) — ฝั่ง JS ของสองเรื่องที่ trigger อาศัย ─────────────────────────────────────── */
+
+/* ข้อความ MESSAGE สามแบบของ 0410 ตามตัวอักษร (rewrite · revision · ห้ามล้าง) — อ่านจากไฟล์ migration ไม่พิมพ์ซ้ำ ('' → ') */
+const GUARD_SQL = readFileSync(new URL('../../../supabase/migrations/0410_quotation_line_pack_guard.sql', import.meta.url), 'utf8');
+const GUARD_MESSAGES = [...GUARD_SQL.matchAll(/'(ไม่ได้บันทึก:(?:[^']|'')*)'/g)].map((m) => m[1].replaceAll("''", "'"));
+const GUARD_CASES = JSON.parse(readFileSync(new URL('./quoteLinePackGuardCases.json', import.meta.url), 'utf8'));
+
+test('🔴 กฎหมวดของ 0410 = lineTakesPacks(line, null) ทุกกรณีของ quoteLinePackGuardCases.json (คู่แฝด JS ↔ SQL — ฝั่ง SQL พิสูจน์บน PGlite · ยาม quotationPackGuardMigration ยึดว่าไฟล์ถือนิพจน์นี้)', () => {
+  assert.ok(GUARD_CASES.cases.length >= 20);
+  for (const row of GUARD_CASES.cases) {
+    assert.equal(lineTakesPacks(row.line, null), row.takesPacks,
+      `${row.id} (${row.note}): ฝั่ง JS ตอบไม่ตรงกับ trigger ของ 0410 — แก้ lineCategoryCode / categoryOf แล้วกรณีนี้พลิก = ยามในฐานไม่ตรงกับด่านของเซิร์ฟเวอร์ ⇒ ต้องมี migration ใหม่ของ trigger`);
+    assert.equal(lineCategoryCode(row.line, null) === PACK_LINE_CATEGORY, row.takesPacks);
+  }
+  assert.ok(GUARD_CASES.cases.some((c) => c.takesPacks) && GUARD_CASES.cases.some((c) => !c.takesPacks), 'มีทั้งสองคำตอบ');
+  /* trigger ไม่อ่านทะเบียนสินค้า — ด่านของเซิร์ฟเวอร์ก็เรียกแบบไม่ส่งสินค้า (product = null) จึงเป็นกฎเดียวกัน */
+  const recoded = GUARD_CASES.cases.find((c) => c.id === 'registry02-line03');
+  assert.equal(lineTakesPacks(recoded.line, null), false);
+  assert.equal(lineTakesPacks(recoded.line, { fgCode: SDS }), true, 'ส่งสินค้าเข้าไป = คนละคำตอบ — ด่านที่ฐานเห็นต้องเป็นแบบไม่ส่ง');
+});
+
+test('🔴 lineMoneyRuleMessage ปล่อยข้อความของ 0410 ผ่าน (null) ทั้ง P0001 และแม้ได้รหัส 23514 — route จึงโชว์ข้อความไทยของฐานตรงตัว ไม่ถูกแปลงเป็นข้อความกฎเงิน', () => {
+  assert.equal(GUARD_MESSAGES.length, 3, 'ข้อความสามแบบของ 0410');
+  for (const message of GUARD_MESSAGES) {
+    assert.match(message, /\[quotation_line_pack_(lost|cleared)\]$/);
+    assert.equal(lineMoneyRuleMessage({ code: 'P0001', message }), null);
+    assert.equal(lineMoneyRuleMessage({ code: '23514', message }), null, 'ข้อความไม่มีชื่อ CHECK ของ 0407 — ไม่ถูกตีความเป็นกฎเงิน');
+    assert.notEqual(message, LINE_PACK_TEXT.moneyRule);
+  }
+});
