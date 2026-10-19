@@ -113,7 +113,7 @@ test('หน้ารายการดีล: ยอดรออนุมัต
   assert.ok(guard > 0 && setAt > guard, 'setPendingPeriod ต้องอยู่หลัง isLatest()');
   assert.match(page, /sumDealDisplay\(group\.deals, pendingPeriod\)/, 'หัวกลุ่มใช้ตัวรวมเดียวกับ KPI');
   assert.doesNotMatch(page, /group\.pendingApproval \+= pendingApprovalAmountOf/, 'ห้ามกลับไปบวกรออนุมัติทุกใบโดยไม่คัดงวด');
-  assert.match(page, /\[groupBy, filteredDeals, projects, customers, ownerNameOf, sortKey, pendingPeriod\]/);
+  assert.match(page, /\[groupBy, filteredDeals, projects, customers, arIndex, ownerNameOf, sortKey, pendingPeriod\]/);
 });
 
 test('หน้ารายการดีล: ยอดรออนุมัติเป็นชิ้นแยก (PendingApprovalAmount) ไม่บวกเข้ายอดรวม', () => {

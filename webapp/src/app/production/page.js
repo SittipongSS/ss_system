@@ -22,6 +22,7 @@ import Workspace, { ListPanel, WorkspaceSection } from "@/components/ui/Workspac
 import { isBusinessDay, toLocalISODate } from "@/lib/pm/dateHelpers";
 import { overridesByDate } from "@/lib/pm/productionLines";
 import { JOB_STATUS_LABELS } from "@/lib/pm/productionPlan";
+import { productionJobsHref } from "@/lib/pm/productionJobsLink";
 import {
   capacityGlance,
   productionAttention,
@@ -170,7 +171,9 @@ export default function ProductionOverviewPage() {
               icon={Hammer}
               tone={counts.draft > 0 ? "warning" : "neutral"}
               hint="สร้างจากใบสั่งขายที่อนุมัติแล้ว"
-              onClick={() => router.push("/production/jobs")}
+              /* 🐞 H8 (ตรวจตัวกรอง 08/10): เดิมพาไปคิวเปล่า ⇒ เปิดมาเจองานเปิดทั้งโรงงาน ไม่ใช่ N งานบนการ์ด
+                 ⇒ ลิงก์ที่กรองไว้แล้ว ตัวเดียวกับป้ายเมนู (`productionJobsLink.js` · เทสต์เทียบเลขกับแถว) */
+              onClick={() => router.push(productionJobsHref("draft"))}
             />
             <KpiCard
               label="วางคิวแล้ว"
@@ -186,7 +189,7 @@ export default function ProductionOverviewPage() {
               icon={PlayCircle}
               tone="accent"
               hint="เดินอยู่บนไลน์ตอนนี้"
-              onClick={() => router.push("/production/jobs")}
+              onClick={() => router.push(productionJobsHref("running"))}
             />
             <KpiCard
               label="กำลังผลิตสัปดาห์นี้"

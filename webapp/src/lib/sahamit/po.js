@@ -98,3 +98,58 @@ export function poStageRollup(stages) {
   for (const s of active) { const i = STAGE_ORDER.indexOf(s); if (i >= 0 && i < min) min = i; }
   return STAGE_ORDER[min];
 }
+
+// ── สถานะของใบ PO ที่ "ป้ายในตาราง" โชว์ — ตัวเดียวที่ป้าย ตัวกรอง และการเรียงของหน้า PO ใช้ร่วมกัน ──
+//
+// 🐞 (ตรวจตัวกรองทั้งระบบ 08/10 · H7) ตัวกรอง "สถานะ" ของ /sahamit/po ใช้ `poRollupStatus` (สถานะส่งของบนตัว PO:
+//    รอส่ง/ส่งบางส่วน/ส่งครบ) แต่ป้ายในตารางใช้ขั้นผลิตจากบรรทัดวัสดุ (`poStageRollup`: รอวัสดุ/พร้อมผลิต/…/ปิดงาน)
+//    ⇒ คำบนตัวเลือกไม่มีบนป้ายสักใบ (วัดของจริง 19/10: 112 ใบ ไม่ตรงทั้ง 112 · "รอส่ง" = ป้าย "รอวัสดุ" 90 ใบ)
+//    และใบที่ปิดงานแล้ว (บรรทัด `closed`) ถูกจัดเป็น "รอส่ง"
+// ⭐ คืน `{ key, label, color }` · มีบรรทัดวัสดุ (`/api/sahamit/material` = บรรทัดที่ยังไม่ยกเลิก) ⇒ ขั้นต่ำสุดของบรรทัด ·
+//    ไม่มี (ทุกบรรทัดยกเลิก · ไม่มีบรรทัด · สายวัสดุโหลดไม่ขึ้น) ⇒ ถอยไปสถานะส่งของของตัว PO — ทางเดียวกับป้ายเดิม
+//    `key` ใส่คำนำหน้าแหล่ง (`stage:` / `po:`) — "delivered" มีทั้งสองชุดแต่คำต่างกัน (ส่งแล้ว / ส่งครบ)
+export function poDisplayStatus(po, materialRows = []) {
+  if (materialRows && materialRows.length) {
+    const stage = poStageRollup(materialRows.map((r) => lineStage(r.status, !!r.tracking?.pmArrivedAt, !!r.tracking?.rmArrivedAt)));
+    return { key: `stage:${stage}`, label: STAGE_LABEL[stage], color: STAGE_COLOR[stage] };
+  }
+  const status = poRollupStatus(po);
+  return { key: `po:${status}`, label: PO_STATUS_LABEL[status], color: 'text-3' };
+}
+
+// ลำดับของตัวเลือกตัวกรอง/การเรียง = ทางเดินของงาน (ขั้นผลิตก่อน แล้วค่อยสถานะส่งของที่ใช้ตอนไม่มีบรรทัดวัสดุ) · ยกเลิกท้ายสุด
+export const PO_DISPLAY_STATUS_ORDER = [
+  ...STAGE_ORDER.map((s) => `stage:${s}`),
+  ...Object.keys(PO_STATUS_LABEL).filter((s) => s !== 'cancelled').map((s) => `po:${s}`),
+  'stage:cancelled', 'po:cancelled',
+];
+
+/** ตัวเลือกของตัวกรองสถานะจากสถานะของใบที่มีอยู่จริง — `{ value: คำบนป้าย, label: คำบนป้าย }` ไม่ซ้ำคำ เรียงตามทางเดินของงาน */
+export function poStatusOptions(statuses = []) {
+  const rank = (key) => {
+    const i = PO_DISPLAY_STATUS_ORDER.indexOf(key);
+    return i < 0 ? PO_DISPLAY_STATUS_ORDER.length : i;
+  };
+  const seen = new Map();
+  for (const s of [...statuses].sort((a, b) => rank(a.key) - rank(b.key))) {
+    if (s?.label && !seen.has(s.label)) seen.set(s.label, { value: s.label, label: s.label });
+  }
+  return [...seen.values()];
+}
+
+// ── มิติที่สองของตัวกรองหน้า PO: "การส่งของ" (สถานะส่งของบนตัว PO · `poRollupStatus`) ──
+//
+// 🐞 (รอบตรวจ 19/10 ของ H7) ตัวกรอง "สถานะ" ย้ายไปใช้คำบนป้าย (ขั้นผลิต) แล้ว ⇒ ใบที่ส่งไปบางบรรทัดแต่อีกบรรทัดยังรอ
+//    ขึ้นป้าย "รอวัสดุ" (ขั้นต่ำสุด) และไม่มีตัวเลือกไหนแยกใบ "ส่งบางส่วน" ออกมาได้อีก · ภาพรวม `/sahamit` ยังนับ
+//    ตามการส่งของ (รายการ "PO ที่ต้องการการติดตาม" = รอส่ง + ส่งบางส่วน · พายสถานะ PO) ⇒ เลขบนภาพรวมสร้างซ้ำบนหน้า PO ไม่ได้
+// ⭐ คืนเป็นมิติแยก **คนละหมวด** กับ "สถานะ" (ชื่อหมวดบอกว่ากรองเรื่องอะไร) — ไม่ปนคำสองชุดในตัวเลือกเดียวกันอีก
+//    ตัวเลือก = คำของ `PO_STATUS_LABEL` · ค่า = คีย์ของ `poRollupStatus` ตัวเดียวกับที่ภาพรวมใช้นับ
+export function poDeliveryOptions(pos = []) {
+  const present = new Set((pos || []).map(poRollupStatus));
+  return Object.keys(PO_STATUS_LABEL).filter((k) => present.has(k)).map((k) => ({ value: k, label: PO_STATUS_LABEL[k] }));
+}
+
+/** ใบนี้ผ่านตัวเลือก "การส่งของ" ที่เลือกไว้ไหม — ไม่ได้เลือกอะไร = ผ่าน */
+export function poMatchesDelivery(po, selected = []) {
+  return !selected?.length || selected.includes(poRollupStatus(po));
+}

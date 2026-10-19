@@ -105,6 +105,22 @@ export function waitingOnMeVisitCount(visits = [], todayIso = businessDate()) {
   return open.overdue + open.today;
 }
 
+/* ⭐ **ช่วงวันที่ป้ายเมนู "งานวันนี้" นับ = ช่วงที่หน้างานวันนี้โหลด** (ตรวจตัวกรอง 08/10 · H12)
+   🐞 หน้าเรียก `my-visits?scope=mine` โดยไม่ส่ง back/ahead ⇒ API ตีความเป็น 0/0 (วันนี้วันเดียว — ทางเดิมของ
+      route คงไว้จนจอใหม่ของแผน operation-crew PR-3) ⇒ กลุ่ม "ค้างอยู่" ไม่เคยขึ้น ขณะที่ป้ายเมนูนับนัดค้าง
+      ย้อน 14 วัน (ป้าย 5 · หน้า "วันนี้ 2")
+   ⇒ หน้าขอช่วงเองชัด ๆ: ย้อน `WAITING_ON_ME_BACK_DAYS` วัน (ตัวเดียวกับที่ `api/nav/counts` ย้อน) ถึงวันนี้
+   ⚠️ `ahead = 0` ตั้งใจ — ป้ายไม่นับพรุ่งนี้ (แผน ไม่ใช่ของค้าง) และการ์ดวันข้างหน้าจะมีปุ่ม "เริ่มงาน" ที่ด่านวันนัด
+      (`crew/jobStart.js` FUTURE_STAMP_ERROR) ตีกลับ 409 ทุกครั้ง · นัดที่เลยวันแล้วเริ่มงาน/ปิดงานได้ตามปกติ */
+export const WAITING_ON_ME_BACK_DAYS = 14;
+
+/** query ของหน้างานวันนี้ (`/api/service/my-visits?…`) — `assignee` = ดูงานของเจ้าหน้าที่คนอื่น (`?user=`) */
+export function todayPageVisitsQuery({ assignee = '' } = {}) {
+  const params = new URLSearchParams({ scope: 'mine', back: String(WAITING_ON_ME_BACK_DAYS), ahead: '0' });
+  if (assignee) params.set('assignee', assignee);
+  return params.toString();
+}
+
 // ── ค่าตั้งต้นของฟอร์มปิดงาน ─────────────────────────────────────────────
 // ⭐ วันที่เข้าจริง = วันนี้ (ไม่ใช่วันที่นัด — คนปิดงานตอนที่ทำเสร็จจริง)
 // 🔴 **เวลาเข้าจริงคือเวลาที่ประทับไว้เท่านั้น ห้ามเติมจากเวลานัด/นาฬิกาเครื่อง** (มติ 2026-08-02 ข้อ 5)

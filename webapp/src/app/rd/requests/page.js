@@ -21,6 +21,9 @@ import QueueCountStrip from "@/components/requests/QueueCountStrip";
 import { useQueueBoard } from "@/lib/requests/useQueueBoard";
 import { businessDate } from "@/lib/businessDate";
 import { DEPT_QUEUE_TAB_KEYS, deptQueueRows, deptQueueTabs, queueCounts } from "@/lib/requests/queueBoard";
+import { isMonthKey, requestClosedInMonth } from "@/lib/requests/deptOverview";
+import Button from "@/components/ui/Button";
+import { fmtMonthYear } from "@/lib/format";
 import { compareRequestUrgency } from "@/lib/deptRequests";
 import { apiFetch } from "@/lib/apiFetch";
 
@@ -100,10 +103,19 @@ export default function RdRequestsPage() {
   /* ⚠️ เรียงความเร่งไว้เป็น **ลำดับตั้งต้นของข้อมูล** เท่านั้น — ตัวที่ตัดสินลำดับบนจอ
      คือปุ่ม "เรียง" ในพาเนล (`sortRequestRows`) · ที่ยังเรียงตรงนี้เพราะ `queueCounts`
      และการ์ดอื่นที่กินชุดนี้คาดหวังลำดับความเร่ง */
+  /* ⭐ `?closed=YYYY-MM` — ลิงก์จากการ์ด "ปิดเดือนนี้" บนหน้าภาพรวม (ตรวจตัวกรอง 08/10 · H11) · การ์ดนับใบที่
+     ปิดครบในเดือนนั้น ⇒ กดแล้วต้องเจอใบชุดนั้น ไม่ใช่ประวัติตลอดกาลรวมใบยกเลิก · ตัวตัดสินตัวเดียวกับการ์ด
+     (`requestClosedInMonth`) · ใช้ได้ในแท็บประวัติเท่านั้น — สลับแท็บ = `setTab` เขียน URL ใหม่ ⇒ ตัวกรองหลุดเอง
+     ⚠️ อยู่ใน URL ไม่ใช่ state — กดล้าง = เขียน URL ใหม่ ⇒ ปุ่มย้อนกลับของเบราว์เซอร์พากลับมาที่ตัวกรองได้ */
+  const closedParam = searchParams.get("closed");
+  const closedMonth = tab === "history" && isMonthKey(closedParam) ? closedParam : null;
   const rows = useMemo(
-    () => deptQueueRows(requests, { dept: DEPT, tab }).slice().sort(compareRequestUrgency),
-    [requests, tab],
+    () => deptQueueRows(requests, { dept: DEPT, tab })
+      .filter((r) => !closedMonth || requestClosedInMonth(r, closedMonth))
+      .sort(compareRequestUrgency),
+    [requests, tab, closedMonth],
   );
+  const closedMonthText = closedMonth ? fmtMonthYear(`${closedMonth}-01`, { locale: "th" }) : "";
 
   const counts = queueCounts(rows, { todayIso: businessDate() });
 
@@ -154,14 +166,24 @@ export default function RdRequestsPage() {
         icon={<FlaskConical size={17} aria-hidden="true" />}
         sectionTitle="รายการคำร้องถึงฝ่ายวิจัยและพัฒนา"
         toolbarEnd={(
-          <ViewSwitcher
-            value={board.view} onChange={board.setView}
-            modes={["table", "list"]} ariaLabel="มุมมองคิวคำร้อง"
-          />
+          <>
+            {closedMonth && (
+              /* ตัวกรองที่ใช้อยู่เป็นปุ่มกดล้าง — ทรงเดียวกับ "กรอง: <ตัวเลข> ×" ของแถบตัวเลข */
+              <Button size="sm" onClick={() => router.replace("/rd/requests?tab=history", { scroll: false })}>
+                กรอง: ปิดใน {closedMonthText} ×
+              </Button>
+            )}
+            <ViewSwitcher
+              value={board.view} onChange={board.setView}
+              modes={["table", "list"]} ariaLabel="มุมมองคิวคำร้อง"
+            />
+          </>
         )}
         /* ประวัติโชว์ "วันที่ปิดเรื่อง" สองฝั่งแทนกำหนดส่ง (ม-145 · preset `history`) */
         columns={tab === "history" ? "history" : "queue"}
-        emptyText={tab === "history" ? `ยังไม่มีเรื่องของ ${DEPT} ที่จบแล้ว` : null}
+        emptyText={closedMonth
+          ? `ยังไม่มีเรื่องของ ${DEPT} ที่ปิดใน ${closedMonthText}`
+          : tab === "history" ? `ยังไม่มีเรื่องของ ${DEPT} ที่จบแล้ว` : null}
         loading={loading} loadError={loadError} reload={reload}
       />
       </div>

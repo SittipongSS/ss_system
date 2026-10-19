@@ -138,6 +138,21 @@ export function refillWatchlist(sites = []) {
     });
 }
 
+/**
+ * แผง "ไซต์ที่น้ำหอมกำลังจะหมด" = **ปลายทางของการ์ด "เครื่องที่ต้องเข้าเติม"** (ตรวจตัวกรอง 08/10 · H14)
+ *
+ * 🐞 การ์ดเคยพาไป `/database/sites` — ทะเบียนไซต์ไม่มีข้อมูลการเติมและไม่มีตัวกรองนี้ ⇒ กดเลข N แล้วเจอทะเบียน
+ *    ทั้งหมด · ส่วนแผงนี้บนหน้าเดียวกันคือชุดเดียวกับการ์ดอยู่แล้ว แต่ตัดเหลือ 8 ไซต์แล้วชี้ "ที่เหลืออยู่ในทะเบียนไซต์"
+ * ⭐ `machines` = ผลรวมคอลัมน์ "เครื่องที่ต้องเติม" ของทุกแถว = เลขบนการ์ด (`refillTotals` overdue + soon —
+ *    `needsAttention` = overdue + soon ที่ refill.js) · `all` = แสดงครบทุกไซต์ (การ์ดเปิดแบบนี้)
+ */
+export function refillWatchView(sites = [], { all = false, limit = 8 } = {}) {
+  const list = refillWatchlist(sites);
+  const machines = list.reduce((sum, site) => sum + (site.refill?.needsAttention || 0), 0);
+  const truncated = !all && list.length > limit;
+  return { rows: truncated ? list.slice(0, limit) : list, sites: list.length, machines, truncated };
+}
+
 // รวมจำนวนเครื่องที่ต้องเข้าเติม — ตัวเลขเดียวบนการ์ดหัวหน้าจอ
 export function refillTotals(sites = []) {
   let overdue = 0;

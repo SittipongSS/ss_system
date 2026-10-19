@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   serviceCounts,
   serviceAttention,
   refillWatchlist,
+  refillWatchView,
   refillTotals,
   todayByTechnician,
 } from './overview.js';
@@ -134,4 +136,42 @@ test('todayByTechnician เอาเฉพาะนัดของวันน�
   ], TODAY);
   assert.equal(rows.length, 1);
   assert.equal(rows[0].count, 1);
+});
+
+/* ══ การ์ด "เครื่องที่ต้องเข้าเติม" ↔ แผง "ไซต์ที่น้ำหอมกำลังจะหมด" (ตรวจตัวกรองทั้งระบบ 08/10 · H14) ══════
+   🐞 การ์ดพาไปทะเบียนไซต์ (ไม่มีข้อมูลการเติม ไม่มีตัวกรอง) ⇒ กดเลข N เจอทุกไซต์ · ตอนนี้เปิดแผงบนหน้าเดียวกัน */
+const site = (id, overdue, soon, extra = {}) => ({
+  id, name: id, refill: { needsAttention: overdue + soon, overdue, soon, unknown: 0, earliestDue: '2026-07-10' }, ...extra,
+});
+const fleet = [
+  ...Array.from({ length: 10 }, (_, i) => site(`S${i}`, i % 3, 1)),
+  site('COVERED', 0, 0),
+  site('CLOSED', 4, 0, { isActive: false }),
+];
+
+test('🔴 เลขบนการ์ด = ผลรวมคอลัมน์ "เครื่องที่ต้องเติม" ของแผงที่การ์ดเปิด (ครบทุกไซต์)', () => {
+  const totals = refillTotals(fleet);
+  const card = totals.overdue + totals.soon;
+  const opened = refillWatchView(fleet, { all: true, limit: 8 });
+  assert.equal(opened.machines, card);
+  assert.equal(opened.rows.reduce((n, r) => n + r.refill.needsAttention, 0), card, 'ทุกแถวที่เห็นรวมกันได้เลขการ์ด');
+  assert.equal(opened.rows.length, totals.sites);
+  assert.equal(opened.truncated, false);
+  // ตั้งต้น (ไม่ได้มาจากการ์ด) ย่อเหลือ 8 แถว แต่ป้ายยังบอกยอดทั้งหมด
+  const folded = refillWatchView(fleet, { limit: 8 });
+  assert.equal(folded.rows.length, 8);
+  assert.equal(folded.truncated, true);
+  assert.equal(folded.machines, card);
+});
+
+test('🔴 ยามอ่านซอร์ส: การ์ดเปิดแผงบนหน้า ไม่ใช่ทะเบียนไซต์ · ป้ายแผงบอกจำนวนเครื่อง', () => {
+  const live = (source) => source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/^\s*\/\/.*$/gm, '');
+  const page = live(readFileSync(new URL('../../app/service/page.js', import.meta.url), 'utf8'));
+  const card = page.match(/label="เครื่องที่ต้องเข้าเติม"(?:(?!\/>)[\s\S])*\/>/)?.[0] || '';
+  assert.match(card, /value=\{refill\.overdue \+ refill\.soon\}/);
+  assert.match(card, /onClick=\{openWatchlist\}/);
+  assert.doesNotMatch(card, /database\/sites/);
+  assert.match(page, /id=\{WATCHLIST_ID\}/);
+  assert.match(page, /\$\{watch\.machines\} เครื่อง/);
+  assert.match(page, /setWatchAll\(true\);\s*document\.getElementById\(WATCHLIST_ID\)/);
 });

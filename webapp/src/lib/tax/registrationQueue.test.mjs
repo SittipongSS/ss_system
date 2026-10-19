@@ -1,8 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
-  AGE_LATE_DAYS, ageAnchor, ageInDays, ageLabel, ageTone, hasFactoryFacts, lateRegistrations,
-  registrationAge, registrationProductFacts,
+  AGE_LATE_DAYS, LATE_REGISTRATIONS_HREF, ageAnchor, ageInDays, ageLabel, ageTone, hasFactoryFacts,
+  isLateRegistration, lateRegistrations, registrationAge, registrationProductFacts, wantsLateOnly,
 } from "./registrationQueue.js";
 import { EXCISE_VAT_RATE } from "./exciseBilling.js";
 
@@ -73,6 +74,50 @@ test("ค้างนาน = เฉพาะใบที่รอฝ่าย R
 test("ไม่มีแถวก็ต้องไม่ระเบิด", () => {
   assert.deepEqual(lateRegistrations([], "2026-08-28"), []);
   assert.deepEqual(lateRegistrations(undefined, "2026-08-28"), []);
+});
+
+/* ── H2 (ตรวจตัวเลข 2026-10-08): แถบ "ค้างรออนุมัติเกิน 8 วัน · 9 ใบ" เปิดคิวรออนุมัติทั้งหมด 17 ใบ ── */
+test("H2: เลขบนแถบค้างนาน = แถวที่คิวเหลือเมื่อเปิดจากลิงก์ของแถบ", () => {
+  const today = "2026-08-28";
+  const rows = [
+    { id: "late-34", status: "pending_legal", updatedAt: "2026-07-25" },
+    { id: "late-8", status: "pending_legal", updatedAt: "2026-08-20" },   // ขอบพอดี 8 วัน = นับ
+    { id: "fresh-7", status: "pending_legal", updatedAt: "2026-08-21" },  // 7 วัน = ยังไม่ค้าง
+    { id: "fresh-0", status: "pending_legal", updatedAt: "2026-08-28" },
+    { id: "old-draft", status: "draft", createdAt: "2026-01-01" },
+    { id: "old-rejected", status: "rejected", updatedAt: "2026-01-01" },
+  ];
+  // คิวเปิดจากลิงก์: สถานะ + อายุ — ตัวกรองสองชั้นเดียวกับที่หน้า /tax/registrations ใช้
+  const url = new URL(LATE_REGISTRATIONS_HREF, "http://x");
+  assert.equal(url.pathname, "/tax/registrations");
+  const status = url.searchParams.get("status");
+  const lateOnly = wantsLateOnly(url.searchParams);
+  assert.equal(status, "pending_legal");
+  assert.equal(lateOnly, true);
+  const opened = rows.filter((r) => r.status === status && (!lateOnly || isLateRegistration(r, today)));
+  assert.deepEqual(opened.map((r) => r.id), ["late-34", "late-8"]);
+  assert.equal(opened.length, lateRegistrations(rows, today).length);
+  // 🐞 ของเดิมเปิดแค่ `?status=pending_legal` ⇒ ได้ 4 ใบ ไม่ใช่ 2
+  assert.equal(rows.filter((r) => r.status === status).length, 4);
+});
+
+test("isLateRegistration: เฉพาะใบรอ RA · ไม่มีวันที่ = ไม่นับ (ไม่เดา)", () => {
+  assert.equal(isLateRegistration({ status: "pending_legal", updatedAt: "2026-08-01" }, "2026-08-28"), true);
+  assert.equal(isLateRegistration({ status: "approved", approvedAt: "2026-01-01" }, "2026-08-28"), false);
+  assert.equal(isLateRegistration({ status: "pending_legal" }, "2026-08-28"), false);
+  assert.equal(isLateRegistration(null, "2026-08-28"), false);
+  assert.equal(wantsLateOnly(new URLSearchParams("status=pending_legal")), false);
+  assert.equal(wantsLateOnly(null), false);
+});
+
+test("H2: จอใช้ลิงก์/ตัวตัดสินตัวเดียวกันนี้ (แถบบนภาพรวม · ตัวกรองในคิว · ไฟล์ที่โหลด)", () => {
+  const dash = readFileSync(new URL("../../app/tax/page.js", import.meta.url), "utf8");
+  assert.match(dash, /onClick=\{\(\) => router\.push\(LATE_REGISTRATIONS_HREF\)\}/);
+  const queue = readFileSync(new URL("../../app/tax/registrations/page.js", import.meta.url), "utf8");
+  assert.match(queue, /if \(wantsLateOnly\(params\)\) setLateOnly\(true\);/);
+  assert.match(queue, /if \(lateOnly && !isLateRegistration\(r, todayIso\)\) return false;/);
+  // ตัวกรองอายุไม่มีคู่ฝั่ง server ⇒ ไฟล์ต้องได้ id ของแถวที่เห็น ไม่ใช่รออนุมัติทั้งกอง
+  assert.match(queue, /searching: !!search\.trim\(\) \|\| lateOnly/);
 });
 
 // ── ตัวเลขสินค้าบนคิว (ให้เท่ารายงาน) ─────────────────────────────────────
