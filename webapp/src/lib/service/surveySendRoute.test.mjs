@@ -1303,21 +1303,149 @@ test('🔴 เจ้าตัวเปลี่ยนลายเซ็นหล
   assert.deepEqual(world.db.events.filter((e) => e.table === 'service_survey_reports' && ['update', 'delete', 'upsert'].includes(e.op)), []);
 });
 
-test('ใบที่มีพื้นที่ประเมินจากแบบ: ไม่ถูกถามเรื่องลายเซ็น (เอกสารถูกพักไว้) — ส่งผลได้แม้ไม่มีใครมีลายเซ็น · คลังไม่ถูกแตะ', async () => {
-  const world = makeWorld({ visit: 'in_progress' });
-  const { vault } = signWorld(world, []);
-  world.tables.service_survey_zones[1].method = 'drawing';
-  const seenWarnings = await seenWarningsOf(world);
-  signOn();
-  const { status, json } = await sendOn(world, {
-    body: { seenWarnings, closeVisitId: VISIT_ID, methodMix: { onsite: 1, drawing: 1 }, surveyConfirm: 'needed' },
+/* ══ 6c. งวด S3 — ใบที่มีพื้นที่ประเมินจากแบบส่งผลแล้วออกเอกสารได้ (ถอดข้อกันเอกสาร · สเปก S3 §2.3–§2.6 · §4) ══════════════
+   ⭐ route ส่งผลเปลี่ยนแค่ "ส่งผ่าน" สองค่า: คำตอบ "ต้องยืนยันหน้างานไหม" ที่ด่าน S2a ตรวจแล้ว → ตัวตรวจ · ค่าสวิตช์ประเมินจากแบบ →
+      ตัวตรวจและขั้นออกเลข — ไม่มีด่านใหม่ ไม่มีลำดับใหม่
+   🔴 ข้อ "ยังไม่ได้เลือกว่าต้องยืนยันหน้างานไหม" ของตัวตรวจต้องไม่ตีกลับการส่งผล (ทั้งกติกาลายเซ็นเปิดและปิด) — route ตอบเรื่องนี้เองที่ด่าน S2a */
+
+/* หัวหน้าที่กดส่ง (`HEAD`) สลับพื้นที่เป็นจากแบบทั้งก้อนหลังช่างบันทึก ⇒ ผู้ประเมินจากแบบของพื้นที่ = ชื่อของเขา (ทาง ② · ไม่มี id) */
+function deskZones(world, indexes) {
+  for (const i of indexes) {
+    Object.assign(world.tables.service_survey_zones[i], {
+      method: 'drawing', methodChangedAt: '2026-09-26T02:50:00.000+00:00', methodChangedByName: HEAD.name,
+      methodReason: 'ลูกค้าส่งแบบมาแล้ว',
+    });
+  }
+  return world;
+}
+/* ใบผสม: พื้นที่ 2 จากแบบ · นัดของช่างยังเปิด (การส่งผลปิดให้) — ใบจากแบบล้วน: ไม่มีนัด */
+const mixedWorld = () => deskZones(makeWorld({ visit: 'in_progress' }), [1]);
+const deskWorld = () => deskZones(makeWorld({ visit: 'none' }), [0, 1]);
+const MIXED_BODY = Object.freeze({ closeVisitId: VISIT_ID, methodMix: { onsite: 1, drawing: 1 }, surveyConfirm: 'needed' });
+const DESK_BODY = Object.freeze({ methodMix: { onsite: 0, drawing: 2 }, surveyConfirm: 'not_needed' });
+/* ตัวตรวจตัวจริง แต่จดตัวเลือกที่ route ส่งมา */
+const spyPrecheck = (seen) => ({ precheck: (supabase, opts, real) => { seen.push(opts); return real(supabase, opts); } });
+const withDrawingFlag = async (value, fn) => {
+  const before = process.env.SURVEY_DRAWING_METHOD;
+  if (value === undefined) delete process.env.SURVEY_DRAWING_METHOD;
+  else process.env.SURVEY_DRAWING_METHOD = value;
+  try { return await fn(); } finally {
+    if (before === undefined) delete process.env.SURVEY_DRAWING_METHOD;
+    else process.env.SURVEY_DRAWING_METHOD = before;
+  }
+};
+
+test('⭐ งวด S3: ใบผสมที่เลือกแล้ว ส่งผลแล้วออกเอกสาร · กติกาลายเซ็นเปิด = ลายเซ็นของสองที่นั่งถูกเตรียมก่อนเขียนคำตอบ', async () => {
+  const world = mixedWorld();
+  const { versions } = signWorld(world, [ASSESSOR_ID, HEAD.id]);
+  const { status, json } = await sendSigned(world, { body: { ...MIXED_BODY } });
+  assert.equal(status, 200, json.error);
+  assert.equal(json.report.state, 'issued', json.report.reason);
+  assert.equal(world.request().surveyConfirm, 'needed');
+
+  // ตัวเตรียมลายเซ็นได้สองคน ก่อนคำสั่งเขียนแรก
+  const [prep] = world.calls('signatures');
+  assert.deepEqual(prep.signers, [ASSESSOR_ID, HEAD.id]);
+  const firstWrite = world.db.events.findIndex((e) => WRITE_OPS.includes(e.op));
+  assert.ok(world.db.events.indexOf(prep) < firstWrite, 'ไฟล์ลายเซ็นถูกเตรียมก่อนเขียนอะไร');
+
+  const [rpc] = world.db.events.filter((e) => e.op === 'rpc');
+  const { snapshot } = rpc.args.p_row;
+  assert.equal(snapshot.assessment.mode, 'mixed');
+  assert.equal(snapshot.request.surveyConfirm, 'needed');
+  assert.deepEqual([snapshot.signatures.assessor.userId, snapshot.signatures.approver.userId], [ASSESSOR_ID, HEAD.id]);
+  assert.equal(snapshot.signatures.assessor.versionId, versions[ASSESSOR_ID].id);
+  assert.equal(world.visit().status, 'done', 'การส่งผลปิดนัดของพื้นที่ลงหน้างานให้');
+});
+
+test('🔴 งวด S3: กติกาลายเซ็นปิด — ใบจากแบบล้วนและใบผสมส่งผลแล้วออกเอกสารได้ (ด่าน "ยังไม่ได้เลือก…" ไม่ตีกลับรอบตรวจก่อนส่ง)', async () => {
+  for (const [label, make, body, mode] of [['จากแบบล้วน', deskWorld, DESK_BODY, 'drawing'], ['ผสม', mixedWorld, MIXED_BODY, 'mixed']]) {
+    const world = make();
+    const vault = bareVault(world);
+    const { status, json } = await sendOn(world, { body: { ...body } });
+    assert.equal(status, 200, `${label}: ${json.error}`);
+    assert.equal(json.report.state, 'issued', `${label}: ${json.report.reason}`);
+    assert.equal(world.request().surveyConfirm, body.surveyConfirm, label);
+    const [rpc] = world.db.events.filter((e) => e.op === 'rpc');
+    assert.equal(rpc.args.p_row.snapshot.assessment.mode, mode, label);
+    assert.equal(rpc.args.p_row.snapshot.request.surveyConfirm, body.surveyConfirm, label);
+    assert.equal('signatures' in rpc.args.p_row.snapshot, false, `${label}: กติกาปิด = ไม่มีคีย์ลายเซ็น`);
+    assert.deepEqual(signTableReads(world), [], label);
+    assert.deepEqual(vault.downloads, [], label);
+    assert.equal(keysDeep(json).has('hold'), false, label);
+  }
+});
+
+test('🔴 งวด S3: ใบที่มีพื้นที่จากแบบแต่ไม่ส่งคำตอบมา = route ตีกลับเองที่ด่าน S2a (400) ก่อนตัวตรวจ ก่อนเขียนอะไร', async () => {
+  for (const [label, make, body] of [['จากแบบล้วน', deskWorld, DESK_BODY], ['ผสม', mixedWorld, MIXED_BODY]]) {
+    const world = make();
+    const { surveyConfirm: _choice, ...noChoice } = body;
+    const { status, json } = await sendOn(world, { body: noChoice });
+    assert.equal(status, 400, label);
+    assert.equal(json.error, 'ยังไม่ได้เลือกว่าต้องยืนยันหน้างานไหม', label);
+    assert.equal(world.calls('inputs').length, 0, `${label}: ตัวตรวจเอกสารไม่ถูกเรียก`);
+    assert.deepEqual(world.writes(), [], label);
+    assert.equal(world.request().answeredAt, null);
+  }
+});
+
+test('งวด S3: ตัวตรวจได้คำตอบจาก body (ส่งผ่าน) และค่าสวิตช์ · ขั้นออกเลขได้ค่าสวิตช์ — ใบลงหน้างานไม่ส่งคำตอบต่อ', async () => {
+  for (const flag of [undefined, 'on']) {
+    await withDrawingFlag(flag, async () => {
+      const seen = [];
+      const world = mixedWorld();
+      const { status, json } = await sendOn(world, { body: { ...MIXED_BODY }, seams: spyPrecheck(seen) });
+      assert.equal(status, 200, json.error);
+      assert.equal(json.report.state, 'issued', json.report.reason);
+      assert.equal(seen.length, 1);
+      assert.equal(seen[0].surveyConfirm, 'needed');
+      assert.equal(seen[0].drawingMethodEnabled, flag === 'on');
+      assert.equal(world.calls('issue')[0].opts.drawingMethodEnabled, flag === 'on');
+    });
+  }
+  // ใบลงหน้างานล้วน: ไม่มีคำตอบให้ส่งต่อ (คำสั่งตอบใบก็ไม่เขียนคอลัมน์นี้) แม้ body จะมีมา
+  const seen = [];
+  const onsite = makeWorld({ visit: 'in_progress' });
+  const { status, json } = await sendOn(onsite, {
+    body: { closeVisitId: VISIT_ID, surveyConfirm: 'needed' }, seams: spyPrecheck(seen),
   });
   assert.equal(status, 200, json.error);
-  assert.equal(world.request().status, 'answered');
-  assert.equal(json.report.state, 'failed', 'เอกสารของใบจากแบบยังออกไม่ได้ (ข้อกันของงวด S1)');
-  assert.doesNotMatch(json.report.reason, /ลายเซ็น/);
-  assert.equal(world.calls('signatures').length, 0);
-  assert.deepEqual(vault.downloads, []);
+  assert.equal(seen[0].surveyConfirm, null);
+  assert.equal(seen[0].drawingMethodEnabled, false);
+  assert.equal('surveyConfirm' in onsite.request(), false, 'ใบลงหน้างาน: แถวไม่ได้คอลัมน์ใหม่');
+});
+
+test('⭐ งวด S3 §2.6: ใบจากแบบล้วน + กติกาเปิด + ผู้ส่งผลเป็นผู้ประเมินจากแบบคนเดียว = ผู้ลงนามแถวเดียวสองที่นั่ง · ลายเซ็นเดียวลงทั้งสองช่อง', async () => {
+  const world = deskWorld();
+  const { versions, vault } = signWorld(world, [HEAD.id]);
+  const { status, json } = await sendSigned(world, { body: { ...DESK_BODY } });
+  assert.equal(status, 200, json.error);
+  assert.equal(json.report.state, 'issued', json.report.reason);
+
+  // สิ่งที่ส่งต่อให้ขั้นออกเลข (ผู้ลงนามของรอบตรวจ): แถวเดียว ที่นั่ง assessor + approver
+  const handed = world.calls('issue')[0].opts.signatures;
+  assert.deepEqual(handed.signers.map((row) => [row.userId, row.seats]), [[HEAD.id, ['assessor', 'approver']]]);
+  assert.deepEqual(world.calls('signatures')[0].signers, [HEAD.id]);
+  assert.deepEqual(vault.downloads, [versions[HEAD.id].storagePath], 'คลังถูกอ่านครั้งเดียว');
+
+  const [rpc] = world.db.events.filter((e) => e.op === 'rpc');
+  const { snapshot, images } = rpc.args.p_row;
+  assert.equal(snapshot.assessment.mode, 'drawing');
+  assert.equal(snapshot.assessment.drawingById, HEAD.id);
+  assert.deepEqual(snapshot.signatures.assessor, snapshot.signatures.approver, 'ที่นั่งที่ 1 = สำเนาของผู้อนุมัติ');
+  assert.equal(images.filter((img) => img.kind === 'sign').length, 1);
+
+  // ผู้ประเมินจากแบบเป็นคนอื่น (สลับโดยหัวหน้าอีกคน) = ที่นั่งผู้อนุมัติที่เดียว · ที่นั่งที่ 1 ไม่มีลายเซ็น
+  const other = deskWorld();
+  other.tables.service_survey_zones.forEach((zone) => { zone.methodChangedByName = 'Head Other'; });
+  signWorld(other, [HEAD.id]);
+  const second = await sendSigned(other, { body: { ...DESK_BODY } });
+  assert.equal(second.status, 200, second.json.error);
+  assert.equal(second.json.report.state, 'issued', second.json.report.reason);
+  assert.deepEqual(other.calls('issue')[0].opts.signatures.signers.map((row) => row.seats), [['approver']]);
+  const [otherRpc] = other.db.events.filter((e) => e.op === 'rpc');
+  assert.equal(otherRpc.args.p_row.snapshot.signatures.assessor, null);
+  assert.equal(otherRpc.args.p_row.snapshot.assessment.drawingById, null);
 });
 
 /* ══ 7. ซอร์สของ route ═══════════════════════════════════════════════════════════ */
@@ -1375,7 +1503,7 @@ test('ซอร์ส: runtime nodejs · maxDuration 300 · ของหนั�
   assert.match(code, /const refusal = surveySendSignatureRefusal\(failed\);\s*if \(refusal\) return \{ refusal, signatures: null \};/);
   assert.equal(code.split('surveySendSignatures(').length - 1, 2, 'ประกาศหนึ่ง เรียกหนึ่ง (ใน S5)');
   assert.match(handler, /signatures = documentCheck\.signatures;/);
-  assert.match(handler, /surveySendIssue\(supabase, \{ request: data, user, closedVisit, prepared, signatures, req \}\)/);
+  assert.match(handler, /surveySendIssue\(supabase, \{ request: data, user, closedVisit, prepared, signatures, req, drawingMethodEnabled \}\)/);
   assert.match(code, /signatures: signatures \|\| null,/);
 
   // บรรทัดเธรดของปุ่ม "ออกเอกสาร" เป็นของ route เอกสารตัวเดียว — ไม่อยู่ในไฟล์ของเส้นส่งผล (ทั้งซอร์สดิบ)

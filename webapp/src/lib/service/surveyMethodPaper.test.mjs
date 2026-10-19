@@ -1,13 +1,15 @@
-// ── ประเมินจากแบบ — งวด S1 ฝั่งกระดาษ (แผน survey-desk-assessment §2 แถว 30–32 · §7 แถว S1) ─────────────────
+// ── ประเมินจากแบบ — ฝั่งกระดาษ: งวด S1 (แผน survey-desk-assessment §2 แถว 30–32) + งวด S3 (ถอดข้อกันเอกสาร) ─────────────
 //
-// ⭐ ล็อกเก้าเรื่อง — ทุกข้อเป็นกิ่งที่ **ข้อมูลจริงยังเดินไม่ถึง** (งวดนี้ไม่มีเส้นไหนทำให้แถวเป็นจากแบบได้) จึงพิสูจน์ด้วยของปลอมล้วน:
-//   ① รูปที่กระดาษพิมพ์ของพื้นที่จากแบบ = ภาพแบบรูปเดียว — ภาพกว้าง/รูปจุดที่ค้างบนแถวไม่ถูกดึง ไม่ถูกนับ ไม่ขวาง
-//   ② ใบที่มีพื้นที่จากแบบ **ออกเอกสารไม่ได้** จนกว่าแบบเอกสารจะปรับ (งวด S3) — เหตุชนิด `system` ที่พก `hold: true`
-//   ③ ใบจากแบบล้วนไม่ถูกถามหานัด · ใบผสมและใบที่ไม่เหลือพื้นที่ยังถูกถามเหมือนเดิม
-//   ④ ตัวโหลด: ใบจากแบบล้วนไม่มีนัดให้รับรอง — ทั้งนัดในฐานและนัดที่ผู้เรียกส่งมา
-//   ⑤ รอบตรวจก่อนส่งผล: นัดที่ยังเปิดบนใบจากแบบล้วน = ประโยคของ `surveySendVisitStep` · การกันเอกสารไม่ตีกลับการส่งผล
-//   ⑥ ปุ่ม "ออกเอกสาร": ติดแค่การกัน = ไม่ชวนให้กดซ้ำ (กดกี่ครั้งก็ไม่ออก — ต้องรอรุ่นใหม่ของระบบ)
-//   ⑦ `document.issue.blockers` ของจอ: คีย์ `hold` มีเฉพาะข้อที่กัน
+// ⭐ ล็อกเก้าเรื่อง — พิสูจน์ด้วยของปลอมล้วน:
+//   ① รูปที่กระดาษพิมพ์ของพื้นที่จากแบบ = ภาพแบบรูปเดียว (JPG/PNG ล่าสุด — ชุดเดียวกับด่านส่งผล · งวด S3 §2.4) —
+//      ภาพกว้าง/รูปจุดที่ค้างบนแถวไม่ถูกดึง ไม่ถูกนับ ไม่ขวาง
+//   ② ใบที่มีพื้นที่จากแบบ **ออกเอกสารได้** (งวด S3 ถอดข้อกันเอกสารของงวด S1) — ไม่มีเหตุข้อไหนพกคีย์ `hold`
+//      · ใบที่ส่งผลแล้วต้องมีคำตอบ "ต้องยืนยันหน้างานไหม" (ไม่ถามในรอบตรวจก่อนส่ง)
+//   ③ ใบจากแบบล้วนไม่ถูกถามหานัด · ใบผสมและใบที่ไม่เหลือพื้นที่ยังถูกถามเหมือนเดิม (บรรทัดไม่พบนัดมีหางเมื่อสวิตช์เปิด)
+//   ④ ตัวโหลด: ใบจากแบบล้วนไม่มีนัดให้รับรอง — ทั้งนัดในฐานและนัดที่ผู้เรียกส่งมา (นัดพวกนั้นไปอยู่ `otherVisits`)
+//   ⑤ รอบตรวจก่อนส่งผล: นัดที่ยังเปิดบนใบจากแบบล้วน = ประโยคของ `surveySendVisitStep`
+//   ⑥ ปุ่ม "ออกเอกสาร": ใบจากแบบที่ครบออกได้ · เหตุของระบบ = ชวนกดซ้ำ · เหตุของเนื้อใบ = ชวนดึงผลกลับ (กติกาเดียวกับใบลงหน้างาน)
+//   ⑦ `document.issue.blockers` ของจอ: มีแค่ `kind` กับ `text` (ไม่มีคีย์ `hold` อีกแล้ว)
 //   ⑧ ฉบับร่างของ route เอกสาร: นัดที่ค้างบนใบจากแบบล้วนไม่ถูกพิมพ์เป็นผู้ประเมิน
 //   ⑨ สคริปต์ตรวจของจริง (`check-survey-report-inputs.mjs`) ถามตัวตัดสินนัดด้วย `needsVisit` ตัวเดียวกับ route ส่งผล
 //
@@ -25,21 +27,26 @@ import { fakeDb } from './crew/routeTestKit.mjs';
 const { GET } = await import('../../app/api/service/surveys/[id]/document/route.js');
 const { ROLE_LABELS } = await import('../permissions.js');
 const { SURVEY_REPORT_STANDARD_KEY, loadSurveyReportInputs, surveyReportPrecheck } = await import('./surveyReportInputs.js');
+const { SURVEY_GATES } = await import('./survey.js');
 const { issueSurveyReport } = await import('./surveyReportIssue.js');
 const { surveyDocumentSummary } = await import('./surveyReportRows.js');
+const SNAPSHOT = await import('./surveyReportSnapshot.js');
 const {
-  SURVEY_REPORT_DRAWING_HOLD, SURVEY_REPORT_NO_VISIT, buildSurveyReportSnapshot, surveyReportFreezeBlockers,
-  surveyReportFreezeIssues, surveyReportImageFiles,
-} = await import('./surveyReportSnapshot.js');
+  SURVEY_REPORT_CONFIRM_MISSING, SURVEY_REPORT_NO_VISIT, SURVEY_REPORT_NO_VISIT_TAIL, buildSurveyReportSnapshot,
+  surveyReportFreezeBlockers, surveyReportFreezeIssues, surveyReportImageFiles,
+} = SNAPSHOT;
 const { TEST_COMPANY, surveyReportInputsFromFixture, syntheticSurveyFixture } = await import('./surveyReportTestKit.mjs');
 const { surveySendDocumentRefusal } = await import('./surveySendClose.js');
 const { SPOT_TRAY_LABEL } = await import('./surveySpotPhotos.js');
 const { checkSurveyReportInputs, readOnlyClient } = await import('../../../scripts/check-survey-report-inputs.mjs');
 
-/* ── ข้อความตรงตัว (ลอกจากแผน — เปลี่ยนคำในโค้ดเมื่อไร เทสต์นี้ต้องแดง) ─────────────────────────── */
-const HOLD = 'เอกสารประเมินของใบที่ประเมินจากแบบยังออกไม่ได้ — ระบบกำลังปรับแบบเอกสาร';
-const HOLD_ISSUE = { kind: 'system', hold: true, text: HOLD };
+/* ── ข้อความตรงตัว (ลอกจากแผน/สเปก S3 — เปลี่ยนคำในโค้ดเมื่อไร เทสต์นี้ต้องแดง) ─────────────────────────── */
+/* ประโยคของข้อกันเอกสารที่งวด S3 ถอดออก — เก็บไว้ยืนยันว่าไม่มีที่ไหนพูดมันอีก */
+const OLD_HOLD = 'เอกสารประเมินของใบที่ประเมินจากแบบยังออกไม่ได้ — ระบบกำลังปรับแบบเอกสาร';
 const NO_VISIT = 'ไม่พบนัดประเมินพื้นที่ของใบนี้';
+const NO_VISIT_TAIL = ' — พื้นที่ที่ไม่ได้ลงหน้างานให้เปลี่ยนเป็น “ประเมินจากแบบ”';
+const CONFIRM_MISSING = 'ยังไม่ได้เลือกว่าต้องยืนยันหน้างานไหม';
+const NO_DRAWING = (name) => `${name}: ยังไม่มีภาพแบบของพื้นที่ (ต้องเป็นรูป JPG/PNG — ไฟล์ PDF/TIFF ลงเอกสารไม่ได้)`;
 const NO_FORM = 'ไม่พบมาตรฐานเอกสารของรายงานการประเมินพื้นที่';
 const deskBlock = (code) => `ใบนี้ประเมินจากแบบทั้งใบ แต่นัด ${code} ยังเปิดอยู่ — กด “เปลี่ยนวิธีประเมิน” แล้วยืนยันยกเลิกนัดก่อนส่งผล (ระบบจะไม่ปิดนัดที่ยังไม่มีใครไปเป็น “เข้าแล้ว” ให้)`;
 
@@ -52,10 +59,13 @@ const HEAD = Object.freeze({ id: 'U-head-now', name: 'Head Presser', role: 'ts_m
 /**
  * อินพุตของตัวสร้างภาพนิ่ง โดยตั้งวิธีประเมินรายพื้นที่ตามลำดับ
  * @param methods `['drawing', 'onsite']` — ตำแหน่งที่เป็น `undefined` = **ไม่มีคีย์ `method` เลย** (แถวก่อน mig 0408)
+ * ⭐ ใบที่มีพื้นที่ `'drawing'` ได้คำตอบ "ไม่ต้องยืนยันหน้างาน" บนคำร้อง (ใบที่ส่งผลผ่านด่าน S2a มาแล้วมีเสมอ — งวด S3 §2.3 ข้อ 2)
+ *    ใบลงหน้างานไม่มีคีย์นี้ (เหมือนแถวของวันนี้)
  */
 function twin(methods = [], opts) {
   const inputs = surveyReportInputsFromFixture(syntheticSurveyFixture(), opts);
   inputs.zones.forEach((zone, i) => { if (methods[i] !== undefined) zone.method = methods[i]; });
+  if (methods.includes('drawing')) inputs.request.surveyConfirm = 'not_needed';
   return inputs;
 }
 const ALL_DRAWING = ['drawing', 'drawing'];
@@ -111,7 +121,7 @@ function worldFrom(source, { visits = null, request = {}, hook = null } = {}) {
   return { db, source, request: db.tables.dept_requests[0] };
 }
 
-const UNSENT = Object.freeze({ status: 'in_progress', answeredAt: null, answeredById: null, answeredByName: null });
+const UNSENT = Object.freeze({ status: 'in_progress', answeredAt: null, answeredById: null, answeredByName: null, surveyConfirm: null });
 /* คำสั่งอ่านเธรดของนัด / บัญชีของคนบนนัด — ใบที่ไม่มีนัดให้รับรองต้องไม่ยิงสักตัว */
 const threadReads = (db) => db.calls.filter((q) => q.table === 'entity_updates'
   && q.filters.some(([, col, val]) => col === 'entityType' && val === 'service_visit'));
@@ -131,9 +141,12 @@ test.beforeEach((t) => {
 
 /* ══ 1. รูปที่กระดาษพิมพ์ของพื้นที่จากแบบ ═══════════════════════════════════════════════════ */
 
-test('ค่าคงที่ของการกันเอกสารตรงกับแผนทุกตัวอักษร', () => {
-  assert.equal(SURVEY_REPORT_DRAWING_HOLD, HOLD);
+test('ค่าคงที่ตรงกับสเปกทุกตัวอักษร · งวด S3 ถอดค่าคงที่ของข้อกันเอกสารออกจากโมดูลแล้ว', () => {
   assert.equal(SURVEY_REPORT_NO_VISIT, NO_VISIT);
+  assert.equal(SURVEY_REPORT_NO_VISIT_TAIL, NO_VISIT_TAIL);
+  assert.equal(SURVEY_REPORT_CONFIRM_MISSING, CONFIRM_MISSING);
+  assert.equal('SURVEY_REPORT_DRAWING_HOLD' in SNAPSHOT, false);
+  assert.equal(Object.values(SNAPSHOT).includes(OLD_HOLD), false);
 });
 
 test('⭐ รูปที่กระดาษพิมพ์: พื้นที่จากแบบได้ภาพแบบรูปเดียว — ภาพกว้างกับรูปจุดที่ค้างบนแถวไม่ถูกดึง · พื้นที่ลงหน้างานเท่าเดิม', () => {
@@ -159,9 +172,9 @@ test('ภาพนิ่งโหมดร่างของพื้นที�
   // พื้นที่ลงหน้างานในใบเดียวกันไม่ถูกแตะ
   assert.deepEqual(z2.wide.map((img) => img.attId), ['att-z2-w1']);
   assert.deepEqual(z2.spots.map((s) => s.photos.map((img) => img.attId)), [['att-z2-s1'], ['att-z2-s2']]);
-  // รูปร่างของภาพนิ่งไม่เพิ่มคีย์ (งวด S3 เป็นคนเพิ่ม)
+  // รูปร่างของภาพนิ่งเท่ากันทุกพื้นที่ — งวด S3 เพิ่มคีย์วิธีประเมินให้ทุกพื้นที่ (ลงหน้างานก็มี)
   assert.deepEqual(Object.keys(z1), Object.keys(z2));
-  assert.equal('method' in z1, false);
+  assert.deepEqual([z1.method, z2.method], ['drawing', 'onsite']);
 });
 
 test('🔴 รูปจุดที่ยังไม่ผูก + ภาพกว้าง HEIC: พื้นที่ลงหน้างานได้สองข้อของวันนี้ · พื้นที่จากแบบไม่ได้สักข้อ', () => {
@@ -178,25 +191,80 @@ test('🔴 รูปจุดที่ยังไม่ผูก + ภาพก
   assert.deepEqual(surveyReportFreezeIssues(build(['onsite', 'onsite'])), onsite);
 
   // พื้นที่ 1 จากแบบ: รูปจุด 1 รูปกับภาพกว้าง HEIC 2 รูปของมันไม่ถูกนับ — เหลือรูปจุด 2 รูปของพื้นที่ 2
-  assert.deepEqual(surveyReportFreezeIssues(build(MIXED)), [HOLD_ISSUE, { kind: 'content', text: unlinked(2) }]);
-  assert.deepEqual(surveyReportFreezeIssues(build(ALL_DRAWING)), [HOLD_ISSUE]);
+  assert.deepEqual(surveyReportFreezeIssues(build(MIXED)), [{ kind: 'content', text: unlinked(2) }]);
+  assert.deepEqual(surveyReportFreezeIssues(build(ALL_DRAWING)), []);
 });
 
-test('ภาพแบบรูปล่าสุดของพื้นที่จากแบบเป็น HEIC = ยังขวาง (ภาพแบบคือรูปเดียวที่กระดาษพิมพ์) · ไม่ซ้ำด้วยข้อ "ยังไม่มีภาพผัง"', () => {
-  const inputs = twin(ALL_DRAWING);
-  editFiles(inputs, 'SVZ-syn-1', asHeic('survey_plan', 'plan.heic'));
-  assert.deepEqual(surveyReportFreezeIssues(inputs), [
-    HOLD_ISSUE,
-    { kind: 'content', text: 'รูป 1 รูปเป็น HEIC/BMP — แปลงเป็น JPG แล้วอัปใหม่ (plan.heic)' },
-  ]);
+/* ── ไฟล์ภาพแบบของพื้นที่จากแบบ (งวด S3 §2.4 — ด่านส่งผลกับกระดาษใช้ไฟล์ชุดเดียวกัน) ──────────────────────
+   แต่ละแถว = ไฟล์หมวดผังของพื้นที่ 2 ("ห้องที่2") · `drawing` / `onsite` = ผลเมื่อพื้นที่นั้นเป็นจากแบบ / ลงหน้างาน
+   🔴 คอลัมน์ `onsite` คือของวันนี้ทุกตัวอักษร (กิ่งลงหน้างานของ `zoneFiles` และข้อภาพผังไม่ถูกแตะในงวด S3) — เคสคุม */
+const PLAN_OLD = '2026-09-26T01:00:00+00:00';
+const PLAN_NEW = '2026-09-26T05:00:00+00:00';
+const planFile = (id, mimeType, createdAt, fileName = `${id}.jpg`) => ({ id, docType: 'survey_plan', fileName, mimeType, createdAt, metadata: {} });
+const ROOM2 = 'ห้องที่2';
+const HEIC_LINE = 'รูป 1 รูปเป็น HEIC/BMP — แปลงเป็น JPG แล้วอัปใหม่ (plan.heic)';
+const PLAN_CASES = [
+  {
+    name: 'JPG เก่า + TIFF ใหม่',
+    files: [planFile('P-jpg', 'image/jpeg', PLAN_OLD), planFile('P-tif', 'image/tiff', PLAN_NEW, 'scan.tif')],
+    drawing: { plan: 'P-jpg', issues: [], warns: [`${ROOM2}: ไฟล์ scan.tif ไม่ใช่ JPG/PNG — ไม่ลงเอกสาร`] },
+    onsite: { plan: 'P-tif', issues: [], warns: [`${ROOM2}: มีภาพผัง 2 รูป — เอกสารพิมพ์รูปล่าสุดรูปเดียว`] },
+  },
+  {
+    name: 'TIFF อย่างเดียว',
+    files: [planFile('P-tif', 'image/tiff', PLAN_NEW, 'scan.tif')],
+    drawing: { plan: null, issues: [NO_DRAWING(ROOM2)], warns: [NO_DRAWING(ROOM2), `${ROOM2}: ไฟล์ scan.tif ไม่ใช่ JPG/PNG — ไม่ลงเอกสาร`] },
+    onsite: { plan: 'P-tif', issues: [], warns: [] },
+  },
+  {
+    name: 'HEIC อย่างเดียว',
+    files: [planFile('P-heic', 'image/heic', PLAN_NEW, 'plan.heic')],
+    drawing: { plan: null, issues: [NO_DRAWING(ROOM2)], warns: [NO_DRAWING(ROOM2), `${ROOM2}: ไฟล์ plan.heic ไม่ใช่ JPG/PNG — ไม่ลงเอกสาร`] },
+    onsite: { plan: null, issues: [HEIC_LINE], warns: [HEIC_LINE] },
+  },
+  {
+    name: 'PDF อย่างเดียว',
+    files: [planFile('P-pdf', 'application/pdf', PLAN_NEW, 'plan.pdf')],
+    drawing: { plan: null, issues: [NO_DRAWING(ROOM2)], warns: [NO_DRAWING(ROOM2), `${ROOM2}: ไฟล์ plan.pdf ไม่ใช่ JPG/PNG — ไม่ลงเอกสาร`] },
+    onsite: {
+      plan: null,
+      issues: [`${ROOM2}: ยังไม่มีภาพผังที่ลงเอกสารได้ (ต้องเป็นรูป JPG/PNG)`],
+      warns: [`${ROOM2}: ยังไม่มีภาพผังที่ลงเอกสารได้ (ต้องเป็นรูป JPG/PNG)`, `${ROOM2}: ไฟล์ plan.pdf ไม่ใช่รูป — ไม่ลงเอกสาร`],
+    },
+  },
+  {
+    name: 'JPG สองรูป',
+    files: [planFile('P-a', 'image/jpeg', PLAN_OLD), planFile('P-b', 'image/jpeg', PLAN_NEW)],
+    drawing: { plan: 'P-b', issues: [], warns: [`${ROOM2}: มีภาพแบบ 2 รูป — เอกสารพิมพ์รูปล่าสุดรูปเดียว`] },
+    onsite: { plan: 'P-b', issues: [], warns: [`${ROOM2}: มีภาพผัง 2 รูป — เอกสารพิมพ์รูปล่าสุดรูปเดียว`] },
+  },
+];
 
-  // ไม่มีภาพแบบที่พิมพ์ได้เลย (PDF) = ข้อเดิมของภาพผัง — ด่านนี้ไม่เปลี่ยนตามวิธีประเมิน
-  const pdf = twin(ALL_DRAWING);
-  editFiles(pdf, 'SVZ-syn-2', (f) => (f.docType === 'survey_plan' ? { ...f, fileName: 'plan.pdf', mimeType: 'application/pdf' } : f));
-  assert.deepEqual(surveyReportFreezeIssues(pdf), [
-    HOLD_ISSUE,
-    { kind: 'content', text: 'ห้องที่2: ยังไม่มีภาพผังที่ลงเอกสารได้ (ต้องเป็นรูป JPG/PNG)' },
-  ]);
+test('⭐ งวด S3 §2.4 ไฟล์ภาพแบบ: JPG/PNG ล่าสุดเท่านั้น · ไม่มี = บรรทัด "ยังไม่มีภาพแบบ" (ไม่มีบรรทัด HEIC) · ลงหน้างานเท่าวันนี้', () => {
+  const planGate = SURVEY_GATES.find((gate) => gate.key === 'plan');
+  for (const row of PLAN_CASES) {
+    for (const method of ['drawing', 'onsite']) {
+      const want = row[method];
+      const label = `${row.name} · ${method}`;
+      const inputs = twin([undefined, method]);
+      const zone = inputs.zones[1];
+      inputs.filesByZone[zone.id] = [...inputs.filesByZone[zone.id].filter((f) => f.docType !== 'survey_plan'), ...row.files];
+
+      const issues = surveyReportFreezeIssues(inputs);
+      assert.deepEqual(issues, want.issues.map((text) => ({ kind: 'content', text })), label);
+      assert.deepEqual(
+        surveyReportImageFiles(inputs).filter((f) => f.zoneId === zone.id && f.kind === 'plan').map((f) => f.attId),
+        want.plan ? [want.plan] : [], `${label}: รูปที่กระดาษพิมพ์`,
+      );
+      assert.deepEqual(buildSurveyReportSnapshot(inputs, { mode: 'draft' }).warnings, want.warns, `${label}: คำเตือน`);
+      if (method === 'drawing') {
+        // 🔑 ด่านส่งผลกับกระดาษตอบตรงกัน — ด่านผ่าน ⇔ เหตุที่ตรึงไม่ได้ไม่มีบรรทัดภาพแบบ
+        const gateOk = planGate.missing(zone, inputs.filesByZone[zone.id]) === null;
+        assert.equal(gateOk, !issues.some((issue) => issue.text === NO_DRAWING(ROOM2)), `${label}: ด่าน ⇔ กระดาษ`);
+        assert.equal(issues.some((issue) => issue.text.includes('HEIC')), false, `${label}: พื้นที่จากแบบไม่มีบรรทัด HEIC`);
+      }
+    }
+  }
 });
 
 test('คำเตือน "ไม่ใช่รูป — ไม่ลงเอกสาร" ของพื้นที่จากแบบ: เฉพาะไฟล์หมวดภาพแบบ — PDF ในหมวดภาพกว้าง/รูปจุดไม่ถูกเอ่ย', () => {
@@ -207,7 +275,7 @@ test('คำเตือน "ไม่ใช่รูป — ไม่ลงเ�
       { id: 'att-x-s', docType: 'survey_spot', fileName: 'spot.pdf', mimeType: 'application/pdf', createdAt: '2026-09-26T03:00:01+00:00', metadata: {} },
       { id: 'att-x-p', docType: 'survey_plan', fileName: 'old-plan.pdf', mimeType: 'application/pdf', createdAt: '2026-09-26T01:00:00+00:00', metadata: {} },
     );
-    return buildSurveyReportSnapshot(inputs, { mode: 'draft' }).warnings.filter((line) => line.includes('ไม่ใช่รูป'));
+    return buildSurveyReportSnapshot(inputs, { mode: 'draft' }).warnings.filter((line) => line.endsWith('— ไม่ลงเอกสาร'));
   };
   const name = 'พื้นที่โซนต้อนรับลูกค้าและสนามเทนนิส';
   assert.deepEqual(build(), [
@@ -215,7 +283,8 @@ test('คำเตือน "ไม่ใช่รูป — ไม่ลงเ�
     `${name}: ไฟล์ spot.pdf ไม่ใช่รูป — ไม่ลงเอกสาร`,
     `${name}: ไฟล์ old-plan.pdf ไม่ใช่รูป — ไม่ลงเอกสาร`,
   ], 'พื้นที่ลงหน้างาน: เท่าวันนี้');
-  assert.deepEqual(build(MIXED), [`${name}: ไฟล์ old-plan.pdf ไม่ใช่รูป — ไม่ลงเอกสาร`]);
+  // พื้นที่จากแบบ: ประโยคของงวด S3 §2.4 ("ไม่ใช่ JPG/PNG") เฉพาะไฟล์หมวดภาพแบบ
+  assert.deepEqual(build(MIXED), [`${name}: ไฟล์ old-plan.pdf ไม่ใช่ JPG/PNG — ไม่ลงเอกสาร`]);
 });
 
 /* ══ 2. เหตุที่ตรึงไม่ได้: การกันเอกสาร + ข้อของนัด ═══════════════════════════════════════════ */
@@ -247,39 +316,41 @@ test('🔴 ใบลงหน้างานล้วน: เหตุที่�
   assert.equal(deepKeys(surveyReportFreezeIssues(brokenOnsite())).has('hold'), false);
 });
 
-test('⭐ มีพื้นที่จากแบบแม้พื้นที่เดียว = ข้อกันเอกสาร ชนิด system พก `hold: true` — อยู่ก่อนข้อจุดเวลา ต่อจากข้อหัวข้อผิด', () => {
+test('⭐ งวด S3: มีพื้นที่จากแบบแม้พื้นที่เดียว ไม่มีข้อกันเอกสารอีกแล้ว — ลิสต์ของใบผสมคือลิสต์ของวันนี้ ลบเฉพาะของที่พื้นที่จากแบบไม่มี', () => {
   const mixed = surveyReportFreezeIssues(brokenOnsite(MIXED));
   assert.deepEqual(mixed, [
-    HOLD_ISSUE,
     BROKEN_TODAY[0],
     BROKEN_TODAY[1],
     BROKEN_TODAY[2],
     { kind: 'content', text: `รูปจุดติดตั้ง 2 รูปยังไม่ได้ผูกจุด — ผูกในถาด "${SPOT_TRAY_LABEL}" ก่อน` },
   ]);
-  assert.equal(mixed.filter((issue) => 'hold' in issue).length, 1, 'คีย์ `hold` มีเฉพาะข้อที่กัน');
+  assert.equal(deepKeys(mixed).has('hold'), false);
+  assert.equal(mixed.some((issue) => issue.text === OLD_HOLD), false);
 
   const wrongKind = brokenOnsite(MIXED);
   wrongKind.request.kind = 'costing';
-  assert.deepEqual(surveyReportFreezeIssues(wrongKind).slice(0, 3), [
-    { kind: 'system', text: 'ใบนี้ไม่ใช่คำร้องประเมินพื้นที่' }, HOLD_ISSUE, BROKEN_TODAY[0],
+  assert.deepEqual(surveyReportFreezeIssues(wrongKind).slice(0, 2), [
+    { kind: 'system', text: 'ใบนี้ไม่ใช่คำร้องประเมินพื้นที่' }, BROKEN_TODAY[0],
   ]);
 });
 
-test('พื้นที่จากแบบที่ถูกตัดไม่นับ — ใบที่เหลือแต่พื้นที่ลงหน้างานไม่ถูกกัน', () => {
+test('พื้นที่จากแบบที่ถูกตัดไม่นับ — ใบที่เหลือแต่พื้นที่ลงหน้างานเดินเหมือนใบลงหน้างาน', () => {
   const inputs = twin(MIXED);
   inputs.zones[0].status = 'cut';
   assert.deepEqual(surveyReportFreezeIssues(inputs), []);
 });
 
-test('⭐ ใบจากแบบล้วน: ไม่ถูกถามหานัด ไม่ถูกถามวันประเมิน/ผู้ประเมินของนัด — เหลือแค่ข้อที่กัน', () => {
+test('⭐ ใบจากแบบล้วน: ไม่ถูกถามหานัด ไม่ถูกถามวันประเมิน/ผู้ประเมินของนัด — ตรึงได้ (ไม่เหลือข้อไหน)', () => {
   const noVisit = twin(ALL_DRAWING);
   noVisit.visit = null;
-  assert.deepEqual(surveyReportFreezeIssues(noVisit), [HOLD_ISSUE]);
+  assert.deepEqual(surveyReportFreezeIssues(noVisit), []);
+  // สวิตช์เปิดก็ไม่มีบรรทัดไม่พบนัด (ใบนี้ไม่ต้องมีนัด)
+  assert.deepEqual(surveyReportFreezeIssues({ ...noVisit, drawingMethodEnabled: true }), []);
 
   // นัดที่หลุดเข้ามา (ตัวโหลดไม่ส่ง แต่ผู้เรียกอื่นส่งได้) ก็ไม่ถูกตรวจ
   const stray = twin(ALL_DRAWING);
   stray.visit = { code: 'SV-X', status: 'scheduled', scheduledDate: null, actualDate: null, assigneeName: null };
-  assert.deepEqual(surveyReportFreezeIssues(stray), [HOLD_ISSUE]);
+  assert.deepEqual(surveyReportFreezeIssues(stray), []);
 
   // ใบลงหน้างานที่นัดเดียวกันนี้ได้สองข้อของวันนี้
   const onsite = twin();
@@ -290,10 +361,11 @@ test('⭐ ใบจากแบบล้วน: ไม่ถูกถามห�
   ]);
 });
 
-test('🔴 ใบผสมที่ไม่มีนัด: ยังได้ "ไม่พบนัดประเมิน" (content) **และ** ข้อที่กัน · ใบที่ไม่เหลือพื้นที่ยังถูกถามหานัดเหมือนเดิม', () => {
+test('🔴 ใบผสมที่ไม่มีนัด: ยังได้ "ไม่พบนัดประเมิน" (content) — หางเฉพาะสวิตช์เปิด · ใบที่ไม่เหลือพื้นที่ยังถูกถามหานัดเหมือนเดิม', () => {
   const mixed = twin(MIXED);
   mixed.visit = null;
-  assert.deepEqual(surveyReportFreezeIssues(mixed), [HOLD_ISSUE, { kind: 'content', text: NO_VISIT }]);
+  assert.deepEqual(surveyReportFreezeIssues(mixed), [{ kind: 'content', text: NO_VISIT }]);
+  assert.deepEqual(surveyReportFreezeIssues({ ...mixed, drawingMethodEnabled: true }), [{ kind: 'content', text: NO_VISIT + NO_VISIT_TAIL }]);
 
   // ตัดหมดทั้งใบ — ไม่ว่าแถวที่ตัดเป็นวิธีไหน โหมดคือ "ไม่เหลือพื้นที่" ไม่ใช่งานโต๊ะ
   for (const methods of [[], ALL_DRAWING]) {
@@ -310,18 +382,69 @@ test('อ่านนัดไม่สำเร็จบนใบจากแ�
   const inputs = twin(ALL_DRAWING);
   inputs.visit = null;
   inputs.unknown = ['visits'];
-  assert.deepEqual(surveyReportFreezeIssues(inputs), [HOLD_ISSUE, { kind: 'system', text: 'อ่านนัดประเมินไม่สำเร็จ' }]);
+  assert.deepEqual(surveyReportFreezeIssues(inputs), [{ kind: 'system', text: 'อ่านนัดประเมินไม่สำเร็จ' }]);
 });
 
-test('ตัวสร้างภาพนิ่ง: โหมดตรึง/ตรวจปฏิเสธใบที่มีพื้นที่จากแบบด้วยข้อที่กัน · โหมดร่างยังสร้างได้ (ตัวอย่างบนจอ)', () => {
+test('⭐ งวด S3 ตัวสร้างภาพนิ่ง: ใบที่มีพื้นที่จากแบบตรึงได้ทั้งโหมดตรึงและโหมดตรวจ · ไม่มีประโยคของข้อกันในคำเตือน', () => {
   for (const methods of [MIXED, ALL_DRAWING]) {
     const inputs = twin(methods);
-    assert.deepEqual(surveyReportFreezeBlockers(inputs), [HOLD]);
-    assert.deepEqual(buildSurveyReportSnapshot(inputs, { mode: 'freeze' }), { errors: [HOLD] });
-    assert.deepEqual(buildSurveyReportSnapshot(inputs, { mode: 'check' }), { errors: [HOLD] });
-    const draft = buildSurveyReportSnapshot(inputs, { mode: 'draft' });
-    assert.equal(draft.snapshot.zones.length, 2);
-    assert.ok(draft.warnings.includes(HOLD));
+    assert.deepEqual(surveyReportFreezeBlockers(inputs), [], JSON.stringify(methods));
+    for (const mode of ['freeze', 'check', 'draft']) {
+      const built = buildSurveyReportSnapshot(inputs, { mode });
+      assert.equal(built.errors, undefined, `${mode}: ${(built.errors || []).join(' | ')}`);
+      assert.equal(built.snapshot.zones.length, 2);
+      assert.equal(built.warnings.includes(OLD_HOLD), false);
+    }
+  }
+});
+
+/* ── ตารางของงวด S3: โหมด × นัด × คำตอบ "ต้องยืนยันหน้างานไหม" (§2.3 ข้อ 2–3) ───────────────────────────
+   แต่ละแถว = `{ name, inputs, want }` · `want` = ลิสต์เหตุที่ตรึงไม่ได้ทั้งลิสต์ (ไม่ใช่แค่ว่ามีบรรทัดหนึ่ง) */
+const VISIT_DONE = Object.freeze({
+  code: 'SV-26090013', status: 'done', scheduledDate: '2026-09-25', actualDate: '2026-09-25', assigneeName: 'Lead Assessor',
+});
+function confirmCase(methods, { visit = 'done', choice = 'not_needed', pending = false, flag = false } = {}) {
+  const inputs = twin(methods);
+  inputs.visit = visit === 'done' ? { ...inputs.visit, ...VISIT_DONE } : null;
+  inputs.request.surveyConfirm = choice;
+  if (pending) inputs.answerPending = true;
+  if (flag) inputs.drawingMethodEnabled = true;
+  return inputs;
+}
+const CONFIRM_LINE = { kind: 'content', text: CONFIRM_MISSING };
+const S3_FREEZE_TABLE = [
+  { name: 'จากแบบล้วน · ส่งแล้ว · เลือกแล้ว · ภาพแบบ JPG', inputs: () => confirmCase(ALL_DRAWING, { visit: 'none' }), want: [] },
+  { name: 'จากแบบล้วน · ไม่มีนัด · สวิตช์เปิด', inputs: () => confirmCase(ALL_DRAWING, { visit: 'none', flag: true }), want: [] },
+  { name: 'ผสม · ไม่มีนัด · สวิตช์ปิด', inputs: () => confirmCase(MIXED, { visit: 'none' }), want: [{ kind: 'content', text: NO_VISIT }] },
+  { name: 'ผสม · ไม่มีนัด · สวิตช์เปิด', inputs: () => confirmCase(MIXED, { visit: 'none', flag: true }), want: [{ kind: 'content', text: NO_VISIT + NO_VISIT_TAIL }] },
+  { name: 'ผสม · นัด done', inputs: () => confirmCase(MIXED), want: [] },
+  { name: 'ลงหน้างานล้วน · ไม่มีนัด (ใบลงหน้างานที่ไม่มีนัดยังตีกลับ)', inputs: () => confirmCase([], { visit: 'none', choice: null }), want: [{ kind: 'content', text: NO_VISIT }] },
+  { name: 'ลงหน้างานล้วน · ไม่มีนัด · สวิตช์เปิด', inputs: () => confirmCase([], { visit: 'none', choice: null, flag: true }), want: [{ kind: 'content', text: NO_VISIT + NO_VISIT_TAIL }] },
+  { name: 'จากแบบล้วน · ส่งแล้ว · ไม่มีคำตอบ', inputs: () => confirmCase(ALL_DRAWING, { visit: 'none', choice: null }), want: [CONFIRM_LINE] },
+  { name: 'ผสม · ส่งแล้ว · คำตอบแปลก', inputs: () => confirmCase(MIXED, { choice: 'yes' }), want: [CONFIRM_LINE] },
+  { name: 'จากแบบล้วน · รอบตรวจก่อนส่ง (answerPending) · ไม่มีคำตอบ', inputs: () => confirmCase(ALL_DRAWING, { visit: 'none', choice: null, pending: true }), want: [] },
+  { name: 'ผสม · รอบตรวจก่อนส่ง · ไม่มีคำตอบ', inputs: () => confirmCase(MIXED, { choice: null, pending: true }), want: [] },
+  { name: 'ลงหน้างานล้วน · ส่งแล้ว · ไม่มีคำตอบ', inputs: () => confirmCase([], { choice: null }), want: [] },
+  { name: 'ลงหน้างานล้วน · ส่งแล้ว · คำตอบแปลก', inputs: () => confirmCase(['onsite', 'onsite'], { choice: 'yes' }), want: [] },
+  {
+    name: 'จากแบบล้วน · ยังไม่ส่ง (ไม่มีผู้ส่ง) · ไม่มีคำตอบ = ไม่ถามคำตอบ',
+    inputs: () => {
+      const inputs = confirmCase(ALL_DRAWING, { visit: 'none', choice: null });
+      Object.assign(inputs.request, { answeredAt: null, answeredById: null, answeredByName: null });
+      return inputs;
+    },
+    want: [{ kind: 'system', text: 'ยังไม่ได้ส่งผลให้ฝ่ายขาย — ยังออกเอกสารไม่ได้' }],
+  },
+];
+
+test('⭐ งวด S3 ตาราง โหมด × นัด × คำตอบ: เหตุที่ตรึงไม่ได้ทั้งลิสต์ · ไม่มีข้อไหนพกคีย์ `hold` (ไล่ทุกแถว)', () => {
+  for (const row of S3_FREEZE_TABLE) {
+    const issues = surveyReportFreezeIssues(row.inputs());
+    assert.deepEqual(issues, row.want, row.name);
+    assert.equal(deepKeys(issues).has('hold'), false, row.name);
+    // โหมดตรวจของตัวสร้างพูดคำเดียวกัน (ภาพนิ่งไม่ออกเมื่อมีเหตุ)
+    const checked = buildSurveyReportSnapshot(row.inputs(), { mode: 'check' });
+    assert.deepEqual(checked.errors, row.want.length ? row.want.map((i) => i.text) : undefined, row.name);
   }
 });
 
@@ -345,7 +468,9 @@ test('⭐ ตัวโหลด: ใบจากแบบล้วนไม่�
   assert.deepEqual(inputs.priorUnable, [{ date: '2026-09-20', reason: 'ไซต์ปิดปรับปรุง' }]);
   assert.equal(threadReads(world.db).length, 0);
   assert.equal(world.db.calls.filter((q) => q.table === 'service_visits').length, 1, 'นัดยังอ่านครั้งเดียว');
-  assert.deepEqual(surveyReportFreezeIssues(inputs), [HOLD_ISSUE]);
+  // งวด S3: นัดที่ไม่ได้รับรองไปอยู่ภาคผนวก (ยกเว้น `unable` ที่มีแถวของตัวเอง) · ไม่มีเหตุของนัด
+  assert.deepEqual(inputs.otherVisits, [{ code: 'SV-done', status: 'done', date: '2026-09-25', planned: false }]);
+  assert.deepEqual(surveyReportFreezeIssues(inputs), []);
 });
 
 test('🔴 ตัวโหลด: นัดที่ผู้เรียกส่งมา (`closedVisit`) ถูกทิ้งด้วยเมื่อใบเป็นจากแบบล้วน — ไม่มีผู้เรียกไหนยัดนัดเข้าใบงานโต๊ะได้', async () => {
@@ -357,6 +482,20 @@ test('🔴 ตัวโหลด: นัดที่ผู้เรียกส�
   assert.equal(inputs.visitClosedBySend, false);
   assert.deepEqual(inputs.helpers, []);
   assert.equal(inputs.assigneeRoleLabel, null);
+
+  // งวด S3: นัดที่การส่งผลนี้ปิด (ทิ้งจากการรับรอง) ยังไปอยู่ `otherVisits` เป็นนัดที่เข้าแล้ว — คู่กับนัดที่ยังนัดไว้
+  assert.deepEqual(inputs.otherVisits, [
+    { code: 'SV-open', status: 'scheduled', date: '2026-09-25', planned: true },
+    { code: 'SV-closing', status: 'done', date: '2026-10-01', planned: false },
+  ]);
+  assert.deepEqual(surveyReportFreezeIssues(inputs), []);
+
+  // ฐานมีนัด `done` + ผู้เรียกส่งนัดที่การส่งผลนี้ปิด = ทั้งสองอยู่ในภาคผนวก (เก่าก่อน) · ไม่มีนัดรับรอง ไม่มีเหตุของนัด
+  const both = worldFrom(twin(ALL_DRAWING), { visits: [visitRow('done', 'done')] });
+  const twoVisits = await load(both, { closedVisit });
+  assert.equal(twoVisits.inputs.visit, null);
+  assert.deepEqual(twoVisits.inputs.otherVisits.map((v) => [v.code, v.planned]), [['SV-done', false], ['SV-closing', false]]);
+  assert.deepEqual(surveyReportFreezeIssues(twoVisits.inputs), []);
 
   // แถวผลวัดที่ผู้เรียกอ่านไว้แล้ว (ไม่อ่านซ้ำ) ก็ตัดสินจากชุดนั้น
   const given = worldFrom(twin(), { visits: [visitRow('open', 'scheduled')] });
@@ -407,14 +546,16 @@ const precheck = (world, extra = {}) => surveyReportPrecheck(world.db, {
   request: world.request, user: HEAD, today: TODAY, nowIso: NOW, ...extra,
 });
 
-test('⭐ รอบตรวจ: ใบจากแบบล้วนที่ไม่มีนัดค้าง — เหลือแค่ข้อที่กัน (system) ⇒ **ไม่ตีกลับการส่งผล**', async () => {
+test('⭐ รอบตรวจ: ใบจากแบบล้วนที่ไม่มีนัดค้าง — ไม่มีเหตุ ⇒ พร้อมส่ง (ยังไม่ถามคำตอบ "ต้องยืนยันหน้างานไหม" ก่อนหัวหน้าเลือก)', async () => {
   const source = twin(ALL_DRAWING);
   const world = worldFrom(source, { visits: [], request: UNSENT });
-  const result = await precheck(world, { open: null, zones: source.zones });
-  assert.deepEqual(result.unknown, []);
-  assert.deepEqual(result.blockers, [HOLD_ISSUE]);
-  assert.equal(surveySendDocumentRefusal(result.blockers), null);
-  assert.ok(Array.isArray(result.warnings));
+  for (const extra of [{}, { surveyConfirm: 'needed' }, { surveyConfirm: 'not_needed' }, { drawingMethodEnabled: true }]) {
+    const result = await precheck(world, { open: null, zones: source.zones, ...extra });
+    assert.deepEqual(result.unknown, [], JSON.stringify(extra));
+    assert.deepEqual(result.blockers, [], JSON.stringify(extra));
+    assert.equal(surveySendDocumentRefusal(result.blockers), null);
+    assert.ok(Array.isArray(result.warnings));
+  }
 });
 
 test('⭐ รอบตรวจ: ใบจากแบบล้วน + นัด `scheduled` ที่ยังเปิด — ข้อแรกคือประโยคของ `surveySendVisitStep` (content) · นัดไม่ถูกรับรอง', async () => {
@@ -422,7 +563,7 @@ test('⭐ รอบตรวจ: ใบจากแบบล้วน + นั�
   const open = visitRow('open', 'scheduled', { code: 'SV-26100009' });
   const world = worldFrom(source, { visits: [open], request: UNSENT });
   const result = await precheck(world, { open, zones: source.zones });
-  assert.deepEqual(result.blockers, [{ kind: 'content', text: deskBlock('SV-26100009') }, HOLD_ISSUE]);
+  assert.deepEqual(result.blockers, [{ kind: 'content', text: deskBlock('SV-26100009') }]);
   assert.equal(surveySendDocumentRefusal(result.blockers), `ออกเอกสารไม่ได้ — ${deskBlock('SV-26100009')} · ยังไม่ได้ส่งผล`);
 });
 
@@ -437,7 +578,7 @@ test('รอบตรวจ: ไม่ได้ส่งแถวผลวัด
   // ตัวโหลดอ่านแถวเองแล้วยังทิ้งนัด — ผู้เรียกที่ลืมส่งแถวมาไม่ทำให้นัดถูกพิมพ์ลงใบงานโต๊ะ
   const open = visitRow('open', 'scheduled', { code: 'SV-26100011' });
   const scheduled = await precheck(worldFrom(twin(ALL_DRAWING), { visits: [open], request: UNSENT }), { open });
-  assert.deepEqual(scheduled.blockers, [HOLD_ISSUE]);
+  assert.deepEqual(scheduled.blockers, []);
 });
 
 test('🔴 รอบตรวจ: ใบลงหน้างาน + นัด `scheduled` ที่ยังเปิด = พร้อมส่งเหมือนเดิม — มีหรือไม่มีคีย์ method ได้ผลเดียวกัน', async () => {
@@ -455,43 +596,61 @@ test('🔴 รอบตรวจ: ใบลงหน้างาน + นัด 
 
 /* ══ 5. ปุ่ม "ออกเอกสาร": ประโยคของขั้นออกเลข ════════════════════════════════════════════════ */
 
-const issue = (world) => issueSurveyReport(world.db, {
-  requestId: world.request.id, user: HEAD, via: 'issue_only', storeAllowed: true, now: () => new Date(NOW),
-  audit: async () => {}, prepareImages: async () => { throw new Error('ต้องไม่เดินถึงขั้นรูป'); },
-});
+/* ขั้นออกเลขบนฐานปลอมของไฟล์นี้ (ไม่มี RPC จริง) — ตัวเตรียมรูปโยนเสมอ: ใบที่ผ่านด่าน I3 ทุกข้อจะหยุดที่ขั้นรูป (`images_failed`)
+   ⇒ "ไปถึงขั้นรูป" = ไม่มีเหตุที่ตรึงไม่ได้ · ผลเต็มเส้น (ออกเลขจริง) อยู่ใน `surveyReportIssue.test.mjs` */
+const issue = (world, extra = {}) => {
+  const reached = [];
+  const run = issueSurveyReport(world.db, {
+    requestId: world.request.id, user: HEAD, via: 'issue_only', storeAllowed: true, now: () => new Date(NOW),
+    audit: async () => {},
+    prepareImages: async (supabase, files) => { reached.push(...files.map((f) => f.attId)); throw new Error('หยุดที่ขั้นรูป'); },
+    ...extra,
+  });
+  // ไฟล์ที่ไปถึงขั้นรูปติดไปกับผลแบบไม่ถูกไล่ — คีย์ของผลยังเป็นชุดของขั้นออกเลขล้วน
+  return run.then((result) => Object.defineProperty(result, 'reachedImages', { value: reached, enumerable: false }));
+};
 const RESULT_KEYS = ['state', 'code', 'docNo', 'rev', 'reused', 'reasons', 'reason', 'retry', 'warnings'];
 
-test('⭐ ออกเอกสาร: ติดแค่ข้อที่กัน = `blocked` ไม่ชวนกดซ้ำ ไม่ชวนดึงผลกลับ · `retry: false` · พก `hold: true` · ไม่ออกเลข', async () => {
-  const world = worldFrom(twin(ALL_DRAWING));
-  const result = await issue(world);
-  assert.equal(result.state, 'failed');
-  assert.equal(result.code, 'blocked');
-  assert.deepEqual(result.reasons, [HOLD]);
-  assert.equal(result.reason, `ออกเอกสารไม่ได้ — ${HOLD}`);
-  assert.equal(result.reason.includes('กดออกเอกสารอีกครั้ง'), false);
-  assert.equal(result.reason.includes('ดึงผลกลับ'), false);
-  assert.equal(result.retry, false);
-  assert.equal(result.hold, true);
-  assert.deepEqual(Object.keys(result), [...RESULT_KEYS, 'hold']);
-  assert.equal(world.db.tables.service_survey_reports.length, 0);
+test('⭐ งวด S3 ออกเอกสาร: ใบจากแบบล้วนที่ส่งแล้ว เลือกแล้ว ภาพแบบเป็น JPG — ผ่านทุกด่าน (ไปถึงขั้นรูป) · ดึงแค่ภาพแบบ', async () => {
+  for (const visits of [[], undefined]) {
+    const world = worldFrom(twin(ALL_DRAWING), { visits });
+    const result = await issue(world);
+    assert.equal(result.code, 'images_failed', result.reason);
+    assert.deepEqual(result.reachedImages, ['att-z1-p1', 'att-z2-p1'], 'ภาพกว้างกับรูปจุดไม่ถูกดึง');
+    assert.equal('hold' in result, false);
+    assert.equal(world.db.tables.service_survey_reports.length, 0);
+  }
+  // สวิตช์เปิดก็เหมือนกัน (ใบจากแบบล้วนไม่มีบรรทัดไม่พบนัด)
+  const flagged = await issue(worldFrom(twin(ALL_DRAWING), { visits: [] }), { drawingMethodEnabled: true });
+  assert.equal(flagged.code, 'images_failed', flagged.reason);
+
+  // ใบผสมที่มีนัด `done` ก็ผ่าน
+  const mixed = await issue(worldFrom(twin(MIXED)));
+  assert.equal(mixed.code, 'images_failed', mixed.reason);
 });
 
-test('ออกเอกสาร: ข้อที่กัน + เหตุของระบบข้ออื่น = คำชวนกดซ้ำของวันนี้ · ข้อที่กัน + เหตุของเนื้อใบ = คำชวนดึงผลกลับของวันนี้', async () => {
+test('ออกเอกสาร: ใบที่มีพื้นที่จากแบบเดินกติกาเดียวกับใบลงหน้างาน — เหตุของระบบ = ชวนกดซ้ำ · เหตุของเนื้อใบ = ชวนดึงผลกลับ · ไม่มีคีย์ `hold`', async () => {
   const system = worldFrom(twin(ALL_DRAWING));
   system.db.tables.document_standard_versions.length = 0;
   const a = await issue(system);
-  assert.deepEqual(a.reasons, [HOLD, NO_FORM]);
-  assert.equal(a.reason, `ออกเอกสารไม่ได้ — ${HOLD} | ${NO_FORM} · แก้แล้วกดออกเอกสารอีกครั้ง`);
+  assert.deepEqual(a.reasons, [NO_FORM]);
+  assert.equal(a.reason, `ออกเอกสารไม่ได้ — ${NO_FORM} · แก้แล้วกดออกเอกสารอีกครั้ง`);
   assert.equal(a.retry, true);
   assert.deepEqual(Object.keys(a), RESULT_KEYS);
 
-  // ใบผสมที่ไม่มีนัด `done` — พื้นที่ลงหน้างานยังต้องมีนัดให้รับรอง
-  const content = worldFrom(twin(MIXED), { visits: [] });
-  const b = await issue(content);
-  assert.deepEqual(b.reasons, [HOLD, NO_VISIT]);
-  assert.equal(b.reason, `ออกเอกสารไม่ได้ — ${HOLD} | ${NO_VISIT} · ถ้าต้องแก้ ให้ดึงผลกลับมาแก้แล้วส่งใหม่`);
-  assert.equal(b.retry, false);
-  assert.deepEqual(Object.keys(b), RESULT_KEYS);
+  // ใบผสมที่ไม่มีนัด `done` — พื้นที่ลงหน้างานยังต้องมีนัดให้รับรอง · หางของบรรทัดตามตัวเลือกที่ route ส่งมา
+  for (const [flag, line] of [[undefined, NO_VISIT], [true, NO_VISIT + NO_VISIT_TAIL]]) {
+    const b = await issue(worldFrom(twin(MIXED), { visits: [] }), { drawingMethodEnabled: flag });
+    assert.deepEqual(b.reasons, [line]);
+    assert.equal(b.reason, `ออกเอกสารไม่ได้ — ${line} · ถ้าต้องแก้ ให้ดึงผลกลับมาแก้แล้วส่งใหม่`);
+    assert.equal(b.retry, false);
+    assert.deepEqual(Object.keys(b), RESULT_KEYS);
+  }
+
+  // ใบที่ส่งแล้วแต่ไม่มีคำตอบ (แถวที่ถูกแก้มือ) — เนื้อใบ: ต้องดึงผลกลับ
+  const unanswered = await issue(worldFrom(twin(ALL_DRAWING), { visits: [], request: { surveyConfirm: null } }));
+  assert.deepEqual(unanswered.reasons, [CONFIRM_MISSING]);
+  assert.equal(unanswered.retry, false);
 });
 
 test('🔴 ออกเอกสาร: ใบลงหน้างานที่ติดเหตุของระบบ ได้ประโยคเดิมทุกตัวอักษร — ผลไม่มีคีย์ `hold`', async () => {
@@ -513,11 +672,11 @@ const summary = (world, extra = {}) => surveyDocumentSummary(world.db, world.req
   withChecks: true, now: new Date('2026-10-01T09:00:00.000Z'), ...extra,
 });
 
-test('⭐ `document.issue.blockers`: คีย์ `hold` ติดไปเฉพาะข้อที่กัน — ข้ออื่นมีแค่ `kind` กับ `text` · ค่าที่ไม่ใช่ `true` ตรงตัวไม่นับ', async () => {
+test('⭐ งวด S3 `document.issue.blockers`: มีแค่ `kind` กับ `text` เสมอ — ธง `hold` ที่ตัวตรวจ (รุ่นใดก็ตาม) แนบมาไม่ไหลออก payload', async () => {
   const world = worldFrom(twin());
   const fake = async () => ({
     blockers: [
-      { kind: 'system', hold: true, text: HOLD, inputs: { secret: 1 } },
+      { kind: 'system', hold: true, text: OLD_HOLD, inputs: { secret: 1 } },
       { kind: 'system', hold: 'yes', text: 'เหตุของระบบข้ออื่น' },
       { kind: 'content', hold: false, text: 'เหตุของเนื้อใบ' },
     ],
@@ -526,17 +685,31 @@ test('⭐ `document.issue.blockers`: คีย์ `hold` ติดไปเฉ�
   const doc = await summary(world, { precheck: fake });
   assert.equal(doc.state, 'missing');
   assert.deepEqual(doc.issue.blockers, [
-    { kind: 'system', text: HOLD, hold: true },
+    { kind: 'system', text: OLD_HOLD },
     { kind: 'system', text: 'เหตุของระบบข้ออื่น' },
     { kind: 'content', text: 'เหตุของเนื้อใบ' },
   ]);
-  assert.deepEqual(doc.issue.blockers.map((b) => Object.keys(b).join()), ['kind,text,hold', 'kind,text', 'kind,text']);
+  assert.deepEqual(doc.issue.blockers.map((b) => Object.keys(b).join()), ['kind,text', 'kind,text', 'kind,text']);
 });
 
-test('ต่อสายกับตัวตรวจจริง: ใบจากแบบล้วนได้ข้อที่กันพร้อม `hold` · 🔴 ใบลงหน้างานไล่ทุกคีย์ของ payload แล้วไม่มี `hold`', async () => {
-  const drawing = await summary(worldFrom(twin(ALL_DRAWING)));
-  assert.equal(drawing.state, 'missing');
-  assert.deepEqual(drawing.issue.blockers, [{ kind: 'system', text: HOLD, hold: true }]);
+test('ต่อสายกับตัวตรวจจริง: ใบจากแบบล้วน/ผสมที่ครบ = ไม่มีเหตุ · ค่าสวิตช์ส่งผ่านถึงตัวตรวจ · 🔴 ไม่มีคีย์ `hold` ทุกชั้นของ payload', async () => {
+  for (const methods of [ALL_DRAWING, MIXED]) {
+    const drawing = await summary(worldFrom(twin(methods)));
+    assert.equal(drawing.state, 'missing');
+    assert.deepEqual(drawing.issue.blockers, [], JSON.stringify(methods));
+    assert.equal(drawing.issue.unknown, false);
+    assert.equal(deepKeys(drawing).has('hold'), false);
+  }
+  // ใบผสมที่ไม่มีนัด: หางของบรรทัดไม่พบนัดตามตัวเลือก (GET ใบประเมินส่งค่าสวิตช์มา)
+  for (const [flag, line] of [[undefined, NO_VISIT], [false, NO_VISIT], [true, NO_VISIT + NO_VISIT_TAIL]]) {
+    const doc = await summary(worldFrom(twin(MIXED), { visits: [] }), { drawingMethodEnabled: flag });
+    assert.deepEqual(doc.issue.blockers, [{ kind: 'content', text: line }], String(flag));
+  }
+  // ตัวตรวจที่เสียบได้รับค่าสวิตช์ตรงตัว
+  const seen = [];
+  await summary(worldFrom(twin()), { drawingMethodEnabled: true, precheck: async (db, opts) => { seen.push(opts.drawingMethodEnabled); return { blockers: [], warnings: [], unknown: [] }; } });
+  await summary(worldFrom(twin()), { precheck: async (db, opts) => { seen.push(opts.drawingMethodEnabled); return { blockers: [], warnings: [], unknown: [] }; } });
+  assert.deepEqual(seen, [true, false]);
 
   for (const methods of [[], ['onsite', 'onsite']]) {
     const world = worldFrom(twin(methods));
@@ -547,7 +720,7 @@ test('ต่อสายกับตัวตรวจจริง: ใบจา
   }
 });
 
-test('`document.send` (สวิตช์ออกเอกสารตอนส่งผลเปิด): ข้อที่กันไม่ขึ้นเป็นเหตุขวางการส่งผล — ลิสต์เป็นข้อความของเนื้อใบล้วนเหมือนเดิม', async (t) => {
+test('`document.send` (สวิตช์ออกเอกสารตอนส่งผลเปิด): ใบจากแบบล้วนที่ยังไม่ส่งไม่มีเหตุขวางการส่งผล (ยังไม่ถามคำตอบก่อนหัวหน้าเลือก)', async (t) => {
   const before = { VERCEL_ENV: process.env.VERCEL_ENV, SURVEY_REPORT_ISSUE_AT_SEND: process.env.SURVEY_REPORT_ISSUE_AT_SEND };
   t.after(() => {
     for (const [key, value] of Object.entries(before)) {
@@ -588,8 +761,10 @@ test('⭐ ฉบับร่าง: ใบจากแบบล้วนที�
     assert.ok(res.text.includes('ฉบับร่าง'));
     assert.ok(res.text.includes('Head Presser'), 'ผู้ตรวจสอบและอนุมัติ = หัวหน้าที่กำลังดู');
     assert.equal(res.text.includes('Lead Assessor'), false, `คนบนนัดที่ค้างต้องไม่ขึ้นกระดาษ (${query || 'ฉบับลูกค้า'})`);
-    assert.equal(res.text.includes('SV-26100012'), false);
+    assert.equal(res.text.includes(OLD_HOLD), false);
   }
+  // ฉบับลูกค้าไม่เอ่ยนัด · ฉบับภายในเอ่ยรหัสนัดได้เฉพาะในภาคผนวก "นัดของใบนี้" (งวด S3 §2.2 `otherVisits`) — ไม่ใช่ในฐานะผู้ประเมิน
+  assert.equal((await draft(desk)).text.includes('SV-26100012'), false);
   assert.equal(desk.db.calls.filter((q) => q.write).length, 0);
   assert.equal(desk.db.tables.service_visits[0].status, 'scheduled', 'ดูร่างไม่ปิดและไม่ยกเลิกนัด');
   assert.equal(threadReads(desk.db).length, 0);
@@ -612,7 +787,7 @@ test('สคริปต์ตรวจอินพุต: ใบจากแบ
   const desk = await check(worldFrom(twin(ALL_DRAWING), { visits: stray(), request: UNSENT }));
   assert.equal(desk.error, null);
   assert.deepEqual(desk.visit, { action: 'block', code: 'SV-26100013', error: deskBlock('SV-26100013') });
-  assert.deepEqual(desk.issues, { content: [deskBlock('SV-26100013')], system: [HOLD] });
+  assert.deepEqual(desk.issues, { content: [deskBlock('SV-26100013')], system: [] }, 'งวด S3: ไม่มีข้อกันเอกสาร');
   assert.equal(desk.verdict.refusedByDocument, deskBlock('SV-26100013'));
   assert.equal(desk.verdict.newlyRefused, false);
 

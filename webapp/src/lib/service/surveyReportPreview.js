@@ -8,7 +8,12 @@
 // 🔴 **ฝั่ง client** — ไฟล์นี้ถูก import จากจอตั้งค่า (ผ่าน `lib/documents/standardPreview.js`)
 //   · สายเรนเดอร์ทั้งสายไม่มี `node:` / `server-only` / แพ็กเกจนอก `src` สักตัว (เทสต์เดินตามสาย import คุมไว้)
 //   · **ห้าม import `surveyReportTestKit.mjs`** — ชุดนั้นใช้ `node:crypto` และเป็นของเทสต์/harness ไม่ใช่โค้ดของแอป
-//     ⇒ อินพุตตัวอย่างข้างล่างเขียนมือ (สองพื้นที่ ชื่อสมมติทั้งหมด ไม่มีข้อมูลลูกค้าจริง)
+//     ⇒ อินพุตตัวอย่างข้างล่างเขียนมือ (สามพื้นที่ ชื่อสมมติทั้งหมด ไม่มีข้อมูลลูกค้าจริง)
+//
+// 🔑 ประเมินจากแบบ (งวด S3 · สเปก §3 กลุ่ม C): ชุดตัวอย่างเป็น **ใบผสม** — พื้นที่ 1–2 ลงหน้างาน · พื้นที่ 3 ประเมินจากแบบ ·
+//   คำร้องเลือก "ต้องยืนยันหน้างาน" ⇒ ใบตัวอย่างโชว์แบบของใบผสมครบ: แถว "วิธีประเมิน" ในกล่องการประเมิน · กล่องหมายเหตุ (มีหาง
+//   "อาจปรับ") · บรรทัดย่อยใต้ชื่อในตาราง · ป้ายใต้หัวพื้นที่ · ส่วน "แบบที่ใช้ประเมิน / DRAWING"
+//   ⚠️ แถว "วิธีประเมิน" ขึ้นเพราะชุดตัวอย่างเป็นใบผสม — กระดาษของใบลงหน้างานล้วนไม่มีแถวนี้ (มติ O3 = ข) · จอตั้งค่าไม่ต้องแก้ (O6)
 //   · ห้าม import `surveyReportInputs.js` / `surveyReportState.js` / `surveyReportPaper.js` (ฝั่ง server)
 //
 // 🔑 จากมาตรฐานที่กำลังดู/กำลังแก้ กระดาษรับแค่ **บรรทัดแบบฟอร์ม** (รหัส · Revision · วันที่มีผล) — ตรงกับของจริง:
@@ -32,6 +37,7 @@
 import { COMPANY_PROFILE_FALLBACK } from '@/lib/companyProfile';
 import { resolveDocumentForm } from '@/lib/documentStandards';
 import { SURVEY_DOC_PLAN, SURVEY_DOC_SPOT, SURVEY_DOC_WIDE } from './survey';
+import { SURVEY_METHOD_DRAWING } from './surveyMethod';
 import { renderSurveyReportHTML } from './surveyReportDocument';
 import { paginateSurveyReport } from './surveyReportLayout';
 import { buildSurveyReportSnapshot } from './surveyReportSnapshot';
@@ -95,13 +101,18 @@ const SAMPLE_SIZES = [
   { code: 'XL', nameEn: 'Extra Large', maxCbm: null, autoSuggest: true },
 ];
 
+/* แถวในหน่วยความจำของชุดตัวอย่าง + วิธีประเมิน — ไม่ใช่การเขียนฐาน: วิธีมาทางพารามิเตอร์ แบบเดียวกับ `asMethod` ของโมดูลแผน
+   (ยาม "เขียน method ได้เฉพาะสองเส้นพื้นที่กับตัวเขียนของแผน" ใน surveyMethodGuards.test.mjs นับรูป `method: <ค่าตายตัว>` เป็นการเขียน) */
+const withMethod = (row, method) => ({ ...row, method });
+
 // `spotId` = จุดที่รูปนี้ผูกอยู่ (เฉพาะรูปจุด — ภาพนิ่งผูกรูปกับจุดด้วย `metadata.spotId` เท่านั้น ไม่เดาจากลำดับ)
 const sampleFile = (id, docType, createdAt, spotId = null) => ({
   id, docType, fileName: `${id}.jpg`, mimeType: 'image/jpeg', sizeBytes: 1, createdAt, metadata: spotId ? { spotId } : {},
 });
 
-/* สองพื้นที่ — พื้นที่แรกส่วนเดียว (ขนาดพับอยู่ในหัวพื้นที่) · พื้นที่สองสองส่วน (ตารางส่วนข้างภาพผัง)
-   ⇒ ใบตัวอย่างโชว์ทั้งสองทรงของหน้ารายพื้นที่ และใช้สองขนาดแพ็คเกจ (แถวรวมมีช่อง "ขนาดแพ็ค")
+/* สามพื้นที่ — พื้นที่แรกส่วนเดียว (ขนาดพับอยู่ในหัวพื้นที่) · พื้นที่สองสองส่วน (ตารางส่วนข้างภาพผัง) ·
+   พื้นที่สามประเมินจากแบบ (งวด S3 — หัวหน้ากรอกผลจากแบบ: ภาพแบบหนึ่งรูป ไม่มีภาพกว้าง ไม่มีจุด)
+   ⇒ ใบตัวอย่างโชว์ทั้งสามทรงของหน้ารายพื้นที่ และใช้สองขนาดแพ็คเกจ (แถวรวมมีช่อง "ขนาดแพ็ค")
    ⚠️ หมายเหตุพื้นที่ไม่มีคำที่ระบบเตือนในฉบับลูกค้า (เครื่อง · รุ่น · ราคา · จุดติดตั้ง) — ตัวอย่างต้องไม่สอนให้พิมพ์คำพวกนั้น
    · จุดติดตั้ง: พื้นที่ละหนึ่งจุดที่หัวหน้าเลือกแล้ว พร้อมรูป — พิมพ์เฉพาะฉบับภายใน (ฉบับลูกค้าไม่มีทางได้จุด)
      ใบจริงออกไม่ได้ถ้ายังไม่เคาะจุด ⇒ ใบตัวอย่างของฉบับภายในต้องไม่ขึ้น "จุดที่ติดตั้งได้ 0" */
@@ -128,6 +139,17 @@ function sampleZones() {
       note: 'ผนังกระจกหนึ่งด้าน ระบบปรับอากาศแยกจากโถงกลาง',
       surveyedByName: 'ตัวอย่าง ผู้ประเมิน', surveyedAt: onSurveyDay('04:35'),
     },
+    // ประเมินจากแบบ — หัวหน้าบันทึกผลจากแบบเอง · ไม่มีคอลัมน์ของการสลับ = ไม่เคยสลับ ⇒ ผู้ประเมินจากแบบ = ผู้บันทึก
+    // (`surveyDrawingAssessor`) · ไม่มีจุด (จุดโดยประมาณไม่บังคับ)
+    withMethod({
+      id: 'preview-zone-3', requestId: 'preview-request', zoneId: 'preview-registry-3', zoneCode: 'ZN-0001-00003',
+      zoneName: 'ห้องรับรองชั้น 3', floor: '3', status: 'ok', cutReason: null, sortOrder: 2,
+      parts: [{ id: 'preview-part-3a', label: 'ห้องรับรอง', widthM: 6, lengthM: 5, heightM: 3 }],
+      spots: [],
+      packageSize: 'SM', packageSizeSuggested: 'SM', packageSizeManual: false, packageQty: 1, packageNote: null,
+      note: null,
+      surveyedByName: 'ตัวอย่าง หัวหน้าฝ่ายบริการ', surveyedAt: onSurveyDay('07:00'),
+    }, SURVEY_METHOD_DRAWING),
   ];
 }
 
@@ -143,6 +165,10 @@ const SAMPLE_FILES = {
     sampleFile('preview-z2-wide-2', SURVEY_DOC_WIDE, onSurveyDay('04:23')),
     sampleFile('preview-z2-plan-1', SURVEY_DOC_PLAN, onSurveyDay('04:30')),
     sampleFile('preview-z2-spot-1', SURVEY_DOC_SPOT, onSurveyDay('04:32'), 'preview-spot-2a'),
+  ],
+  // พื้นที่จากแบบ — ภาพแบบรูปเดียว (JPG)
+  'preview-zone-3': [
+    sampleFile('preview-z3-plan-1', SURVEY_DOC_PLAN, onSurveyDay('06:50')),
   ],
 };
 
@@ -167,6 +193,8 @@ export function surveyReportPreviewInputs(standard) {
       requestedResultDate: SAMPLE_ISSUED_DAY, committedResultDate: SAMPLE_ISSUED_DAY,
       answeredAt: SAMPLE_SENT_AT, answeredById: 'preview-approver', answeredByName: 'ตัวอย่าง ผู้อนุมัติ',
       closedAt: null, closedByName: null,
+      // คำตอบตอนส่งผลของใบที่มีพื้นที่จากแบบ (งวด S3) — กล่องหมายเหตุของใบตัวอย่างมีหาง "ขนาดและจำนวนอาจปรับเมื่อวัดหน้างาน"
+      surveyConfirm: 'needed',
     },
     deal: { code: 'DL-26090001' },
     customer: { id: 'preview-customer', arCode: 'AR-0000', name: 'บริษัท ตัวอย่าง จำกัด' },
@@ -191,6 +219,7 @@ export function surveyReportPreviewInputs(standard) {
     zoneRegistry: [
       { id: 'preview-registry-1', code: 'ZN-0001-00001', floor: '1', building: null },
       { id: 'preview-registry-2', code: 'ZN-0001-00002', floor: '2', building: null },
+      { id: 'preview-registry-3', code: 'ZN-0001-00003', floor: '3', building: null },
     ],
     filesByZone: SAMPLE_FILES,
     sizes: SAMPLE_SIZES,

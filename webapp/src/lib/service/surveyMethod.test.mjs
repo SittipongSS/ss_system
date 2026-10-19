@@ -5,7 +5,8 @@ import * as leaf from './surveyMethod.js';
 import {
   SURVEY_METHOD_DRAWING, SURVEY_METHOD_ONSITE,
   isDrawingZone, isJpgOrPngFile, surveyConfirmState, surveyDrawingAssessor, surveyDropSupersededDrawing,
-  surveyMethodMix, surveyNeedsVisit, surveyNewZoneMethod, surveyZoneChangeFlips, surveyZoneNeedsResave, zoneMethod,
+  surveyMethodMix, surveyNeedsVisit, surveyNewZoneMethod, surveyZoneChangeFlips, surveyZoneNeedsResave,
+  surveyZoneSavedAsDrawing, zoneMethod,
 } from './surveyMethod.js';
 
 /* แถว `service_survey_zones` สามแบบที่ทุกเทสต์ใช้
@@ -255,52 +256,92 @@ test('🔑 surveyDrawingAssessor: ไล่ ① คนบันทึกหล�
   const cases = [
     ['① เกิดมาเป็นจากแบบ · บันทึกแล้ว',
       dw({ methodChangedAt: null, surveyedAt: T0, surveyedByName: 'หัวหน้า ก', methodChangedByName: null }), sentBy,
-      { name: 'หัวหน้า ก', at: T0 }],
+      { name: 'หัวหน้า ก', at: T0, byId: null }],
     ['① เกิดมาเป็นจากแบบ · ไม่มีคีย์ methodChangedAt',
       dw({ surveyedAt: T0, surveyedByName: 'หัวหน้า ก' }), null,
-      { name: 'หัวหน้า ก', at: T0 }],
+      { name: 'หัวหน้า ก', at: T0, byId: null }],
+    // งวด S3 §2.1: ทาง ① คืนบัญชีของคนบันทึก (เป็นสตริงเสมอ) — ทาง ② ไม่มีคอลัมน์ id ของคนสลับ
+    ['① บันทึกแล้ว มี surveyedById (เลข → สตริง)',
+      dw({ surveyedAt: T0, surveyedByName: 'หัวหน้า ก', surveyedById: 42 }), sentBy,
+      { name: 'หัวหน้า ก', at: T0, byId: '42' }],
+    ['② บันทึกก่อนสลับ: surveyedById ของช่างต้องไม่ติดมา',
+      dw({ methodChangedAt: T1, methodChangedByName: 'หัวหน้า ข', surveyedAt: T0, surveyedByName: 'ช่าง ค', surveyedById: 'U-ช่าง' }),
+      { ...sentBy, answeredById: 'U-ส่ง' },
+      { name: 'หัวหน้า ข', at: T1, byId: null }],
+    ['③ คนส่งผล มี answeredById',
+      dw(), { ...sentBy, answeredById: 7 },
+      { name: 'หัวหน้า ส่งผล', at: '2026-10-09T09:00:00Z', byId: '7' }],
+    ['③ answeredById ว่าง = null',
+      dw(), { ...sentBy, answeredById: '' },
+      { name: 'หัวหน้า ส่งผล', at: '2026-10-09T09:00:00Z', byId: null }],
     ['③ เกิดมาเป็นจากแบบ · ยังไม่เคยบันทึก',
       dw({ methodChangedAt: null, surveyedAt: null, surveyedByName: null }), sentBy,
-      { name: 'หัวหน้า ส่งผล', at: '2026-10-09T09:00:00Z' }],
+      { name: 'หัวหน้า ส่งผล', at: '2026-10-09T09:00:00Z', byId: null }],
     ['① สลับแล้วบันทึกทีหลัง',
       dw({ methodChangedAt: T0, methodChangedByName: 'หัวหน้า ข', surveyedAt: T1, surveyedByName: 'หัวหน้า ก' }), sentBy,
-      { name: 'หัวหน้า ก', at: T1 }],
+      { name: 'หัวหน้า ก', at: T1, byId: null }],
     ['② สลับแล้วยังไม่บันทึก',
       dw({ methodChangedAt: T0, methodChangedByName: 'หัวหน้า ข', surveyedAt: null, surveyedByName: null }), sentBy,
-      { name: 'หัวหน้า ข', at: T0 }],
+      { name: 'หัวหน้า ข', at: T0, byId: null }],
     /* 🔴 ช่างวัดไว้ตอนยังเป็นลงหน้างาน แล้วหัวหน้าสลับเป็นจากแบบ — ชื่อช่างต้องไม่ขึ้นเป็นผู้ประเมินจากแบบ */
     ['② บันทึกไว้ก่อนสลับ (ชื่อช่างหน้างาน)',
       dw({ methodChangedAt: T1, methodChangedByName: 'หัวหน้า ข', surveyedAt: T0, surveyedByName: 'ช่าง ค' }), sentBy,
-      { name: 'หัวหน้า ข', at: T1 }],
+      { name: 'หัวหน้า ข', at: T1, byId: null }],
     ['② เวลาเท่ากันพอดี = ยังไม่นับว่าบันทึกหลังสลับ',
       dw({ methodChangedAt: T0, methodChangedByName: 'หัวหน้า ข', surveyedAt: T0, surveyedByName: 'ช่าง ค' }), sentBy,
-      { name: 'หัวหน้า ข', at: T0 }],
+      { name: 'หัวหน้า ข', at: T0, byId: null }],
     ['② บันทึกหลังสลับแต่ไม่มีชื่อคนบันทึก',
       dw({ methodChangedAt: T0, methodChangedByName: 'หัวหน้า ข', surveyedAt: T1, surveyedByName: '   ' }), sentBy,
-      { name: 'หัวหน้า ข', at: T0 }],
+      { name: 'หัวหน้า ข', at: T0, byId: null }],
     ['② อ่านเวลาไม่ออก = พิสูจน์ไม่ได้ว่าบันทึกหลังสลับ',
       dw({ methodChangedAt: 'ไม่ใช่เวลา', methodChangedByName: 'หัวหน้า ข', surveyedAt: T1, surveyedByName: 'ช่าง ค' }), sentBy,
-      { name: 'หัวหน้า ข', at: 'ไม่ใช่เวลา' }],
+      { name: 'หัวหน้า ข', at: 'ไม่ใช่เวลา', byId: null }],
     ['③ บันทึกไว้ก่อนสลับ และไม่มีชื่อคนสลับ',
       dw({ methodChangedAt: T1, methodChangedByName: '', surveyedAt: T0, surveyedByName: 'ช่าง ค' }), sentBy,
-      { name: 'หัวหน้า ส่งผล', at: '2026-10-09T09:00:00Z' }],
+      { name: 'หัวหน้า ส่งผล', at: '2026-10-09T09:00:00Z', byId: null }],
     ['③ ส่งผลแล้วแต่ไม่มีเวลา',
       dw(), { answeredByName: 'หัวหน้า ส่งผล' },
-      { name: 'หัวหน้า ส่งผล', at: null }],
-    ['ไม่มีชื่อใครเลย', dw(), { answeredByName: null, answeredAt: null }, { name: null, at: null }],
-    ['ไม่มีชื่อใครเลย · request null', dw(), null, { name: null, at: null }],
-    ['ไม่มีชื่อใครเลย · ไม่ส่ง request', dw(), undefined, { name: null, at: null }],
+      { name: 'หัวหน้า ส่งผล', at: null, byId: null }],
+    ['ไม่มีชื่อใครเลย', dw(), { answeredByName: null, answeredAt: null }, { name: null, at: null, byId: null }],
+    ['ไม่มีชื่อใครเลย · request null', dw(), null, { name: null, at: null, byId: null }],
+    ['ไม่มีชื่อใครเลย · ไม่ส่ง request', dw(), undefined, { name: null, at: null, byId: null }],
   ];
   for (const [name, row, request, want] of cases) {
     assert.deepEqual(surveyDrawingAssessor(row, request), want, name);
   }
-  assert.deepEqual(surveyDrawingAssessor(dw()), { name: null, at: null }, 'เรียกด้วยอาร์กิวเมนต์เดียว');
+  assert.deepEqual(surveyDrawingAssessor(dw()), { name: null, at: null, byId: null }, 'เรียกด้วยอาร์กิวเมนต์เดียว');
 });
 
 test('surveyDrawingAssessor: ตัดช่องว่างหัวท้ายของชื่อทุกทาง', () => {
   assert.equal(surveyDrawingAssessor(dw({ surveyedAt: T0, surveyedByName: '  หัวหน้า ก ' })).name, 'หัวหน้า ก');
   assert.equal(surveyDrawingAssessor(dw({ methodChangedAt: T0, methodChangedByName: ' หัวหน้า ข  ' })).name, 'หัวหน้า ข');
   assert.equal(surveyDrawingAssessor(dw(), { answeredByName: '\tหัวหน้า ส่งผล\n' }).name, 'หัวหน้า ส่งผล');
+});
+
+/* งวด S3 §2.1 — ทาง ① ของ surveyDrawingAssessor ยกออกมาเป็นตัวตัดสินที่ส่งออก (กระดาษใช้แยกแถวภาคผนวก 5 / 6) */
+test('🔑 surveyZoneSavedAsDrawing: จริงเฉพาะแถวจากแบบที่บันทึกหลังเป็นจากแบบ (หรือเกิดมาเป็นจากแบบ)', () => {
+  const cases = [
+    ['เกิดมาเป็นจากแบบ · บันทึกแล้ว', dw({ surveyedAt: T0 }), true],
+    ['เกิดมาเป็นจากแบบ · methodChangedAt ว่าง', dw({ surveyedAt: T0, methodChangedAt: '' }), true],
+    ['บันทึกหลังสลับ', dw({ methodChangedAt: T0, surveyedAt: T1 }), true],
+    ['บันทึกก่อนสลับ', dw({ methodChangedAt: T1, surveyedAt: T0 }), false],
+    ['เวลาเท่ากันพอดี', dw({ methodChangedAt: T0, surveyedAt: T0 }), false],
+    ['อ่านเวลาสลับไม่ออก', dw({ methodChangedAt: 'ไม่ใช่เวลา', surveyedAt: T1 }), false],
+    ['อ่านเวลาบันทึกไม่ออก', dw({ methodChangedAt: T0, surveyedAt: 'ไม่ใช่เวลา' }), false],
+    ['ยังไม่เคยบันทึก', dw({ surveyedAt: null }), false],
+    ['ไม่มีชื่อคนบันทึกก็ยังนับ (ตัวตัดสินดูแค่เวลา)', dw({ surveyedAt: T1, surveyedByName: '' }), true],
+    ['แถวลงหน้างาน', on({ surveyedAt: T1, methodChangedAt: T0 }), false],
+    ['แถวเก่าไม่มีคีย์ method', old({ surveyedAt: T1 }), false],
+    ['null', null, false],
+    ['undefined', undefined, false],
+  ];
+  for (const [name, row, want] of cases) assert.equal(surveyZoneSavedAsDrawing(row), want, name);
+});
+
+test('surveyZoneSavedAsDrawing: เทียบเป็นเวลาจริง ไม่ใช่สตริง', () => {
+  const row = dw({ methodChangedAt: '2026-10-09T04:00:00Z', surveyedAt: '2026-10-09T10:00:00+07:00' });   // 03:00Z ก่อนสลับ
+  assert.equal(surveyZoneSavedAsDrawing(row), false);
+  assert.equal(surveyZoneSavedAsDrawing({ ...row, surveyedAt: '2026-10-09T11:30:00+07:00' }), true);   // 04:30Z
 });
 
 /* ผลลัพธ์ต้องเทียบเวลาแบบเดียวกับด่านบันทึกใหม่ — ไม่ใช่เทียบสตริง */
@@ -311,7 +352,7 @@ test('🪤 surveyDrawingAssessor: "บันทึกหลังสลับ" �
   });
   assert.equal(surveyDrawingAssessor(row).name, 'หัวหน้า ข');
   const after = { ...row, surveyedAt: '2026-10-09T11:30:00+07:00', surveyedByName: 'หัวหน้า ก' };   // = 04:30Z
-  assert.deepEqual(surveyDrawingAssessor(after), { name: 'หัวหน้า ก', at: '2026-10-09T11:30:00+07:00' });
+  assert.deepEqual(surveyDrawingAssessor(after), { name: 'หัวหน้า ก', at: '2026-10-09T11:30:00+07:00', byId: null });
 });
 
 test('surveyDrawingAssessor: แถวลงหน้างานไม่มีผู้ประเมินจากแบบ (null) แม้มีชื่อครบ', () => {
@@ -440,6 +481,8 @@ test('ชื่อที่ส่งออกครบตามสเปค S1 �
     'surveyZoneChangeFlips', 'surveyZoneNeedsResave', 'surveyDrawingAssessor', 'isJpgOrPngFile',
     // งวด S2a §2.1
     'surveyConfirmState', 'surveyDropSupersededDrawing',
+    // งวด S3 §2.1
+    'surveyZoneSavedAsDrawing',
   ];
   for (const name of fns) assert.equal(typeof leaf[name], 'function', name);
   assert.equal(typeof leaf.SURVEY_METHOD_ONSITE, 'string');

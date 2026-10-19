@@ -1069,6 +1069,72 @@ test('ต่อสายกับตัวตรวจจริง · กติ�
   assert.equal(off.tables.some((table) => table.startsWith('user_signature')), false);
 });
 
+/* ══ 3ข. งวด S3 — ใบที่มีพื้นที่ประเมินจากแบบ (ถอดข้อกันเอกสาร · ค่าสวิตช์เป็นตัวเลือก) ═════════════════════════ */
+
+test('🔴 งวด S3: `issue.blockers` / `send.blockers` ไม่มีคีย์ `hold` — ธงที่ตัวตรวจ (รุ่นใดก็ตาม) แนบมาถูกทิ้ง · ข้อมีแค่ `kind` กับ `text`', async () => {
+  const blockers = [
+    { kind: 'system', hold: true, text: 'ข้อที่เคยกันเอกสาร' },
+    { kind: 'content', hold: true, text: 'ข้อของเนื้อใบที่พกธงมา' },
+    { kind: 'system', text: 'เหตุของระบบ' },
+  ];
+  const run = (request, env) => withEnv(env, () => surveyDocumentSummary(reportsDb([]), request, HEAD, {
+    withChecks: true, now: NOW, zones: [], filesByZone: {}, sizes: [], open: null,
+    precheck: fakePrecheck({ blockers, warnings: [], unknown: [] }),
+  }));
+  const issue = await run(REQ, PROD_OFF);
+  // ข้อแรกเป็นด่านส่งผลที่ขั้นออกเลขวิ่งซ้ำ (ใบเปล่าของเทสต์นี้) — ต่อด้วยข้อของตัวตรวจตามลำดับ
+  assert.deepEqual(issue.issue.blockers.slice(-3), [
+    { kind: 'system', text: 'ข้อที่เคยกันเอกสาร' },
+    { kind: 'content', text: 'ข้อของเนื้อใบที่พกธงมา' },
+    { kind: 'system', text: 'เหตุของระบบ' },
+  ]);
+  for (const b of issue.issue.blockers) assert.deepEqual(Object.keys(b), ['kind', 'text']);
+  assert.equal(deepKeys(issue).has('hold'), false);
+  const send = await run(OPEN_REQ, PROD_ON);
+  assert.deepEqual(send.send.blockers, ['ข้อของเนื้อใบที่พกธงมา']);
+  assert.equal(deepKeys(send).has('hold'), false);
+  // ซอร์ส: ไม่มีธงนี้เหลือในโมดูล
+  assert.doesNotMatch(code(ROWS), /\bhold\b/);
+});
+
+test('งวด S3: `drawingMethodEnabled` ส่งถึงตัวตรวจทั้ง `send` และ `issue` — `true` ตรงตัวเท่านั้น · ไม่ส่ง = `false` · ไฟล์นี้ไม่อ่านสวิตช์', async () => {
+  for (const [request, env, key] of [[OPEN_REQ, PROD_ON, 'send'], [REQ, PROD_OFF, 'issue']]) {
+    for (const [given, want] of [[true, true], [false, false], [undefined, false], ['on', false], [1, false]]) {
+      const precheck = fakePrecheck({ blockers: [], warnings: [], unknown: [] });
+      const doc = await withEnv(env, () => surveyDocumentSummary(reportsDb([]), request, HEAD, {
+        withChecks: true, now: NOW, zones: [], filesByZone: {}, sizes: [], open: null, precheck,
+        ...(given === undefined ? {} : { drawingMethodEnabled: given }),
+      }));
+      assert.ok(doc[key], key);
+      assert.equal(precheck.calls.length, 1, `${key} · ${String(given)}`);
+      assert.strictEqual(precheck.calls[0].drawingMethodEnabled, want, `${key} · ${String(given)}`);
+    }
+  }
+  // payload ไม่มีคีย์ใหม่ (ค่าสวิตช์ไม่ออก payload ทางนี้ — GET ใบประเมินตอบเองที่คีย์ของมัน)
+  const plain = await withEnv(PROD_ON, () => surveyDocumentSummary(reportsDb([]), OPEN_REQ, HEAD, {
+    withChecks: true, now: NOW, zones: [], filesByZone: {}, sizes: [], open: null, drawingMethodEnabled: true,
+    precheck: fakePrecheck({ blockers: [], warnings: [], unknown: [] }),
+  }));
+  assert.equal(deepKeys(plain).has('drawingMethodEnabled'), false);
+  assert.doesNotMatch(read(ROWS), /surveyDrawingFlag|surveyDrawingMethodEnabled|SURVEY_DRAWING_METHOD/);
+});
+
+test('⭐ งวด S3 §2.6: ใบจากแบบล้วนที่ผู้ส่งผลเป็นผู้ประเมินจากแบบคนเดียว — ผู้ลงนามแถวเดียวสองที่นั่งออก payload เป็นที่นั่งตามกระดาษกับชื่อ', async () => {
+  const both = [{ seats: ['assessor', 'approver'], userId: 'u-head', name: 'อานนท์', version: version('u-head') }];
+  const run = (request, env, signers) => withEnv(env, () => surveyDocumentSummary(reportsDb([]), request, HEAD, {
+    withChecks: true, now: NOW, zones: [], filesByZone: {}, sizes: [], open: null, signatureRule: SURVEY_SIGN_RULE,
+    precheck: fakePrecheck({ blockers: [], warnings: [], unknown: [], signers }),
+  }));
+  const send = await run(OPEN_REQ, PROD_ON, both);
+  assert.deepEqual(send.send.signers, [{ seats: ['assessor', 'approver'], name: 'อานนท์' }]);
+  assertNoSignLeak(send, 'S3 send.signers');
+  const issue = await run(REQ, PROD_OFF, both);
+  assert.deepEqual(issue.issue.signers, [{ seats: ['assessor', 'approver'], name: 'อานนท์' }]);
+  // ผู้ประเมินจากแบบเป็นคนอื่น = ที่นั่งผู้อนุมัติที่เดียว
+  const approverOnly = await run(OPEN_REQ, PROD_ON, [{ ...both[0], seats: ['approver'] }]);
+  assert.deepEqual(approverOnly.send.signers, [{ seats: ['approver'], name: 'อานนท์' }]);
+});
+
 /* ══ 4. น้ำหนักของโมดูล (§14 · มติ 24) ══════════════════════════════════════════════════════ */
 
 test('🔴 หัวไฟล์ไม่ import ของหนัก — ตัวตรวจ/ตัวอ่านประกอบโหลดด้วย `await import()` · อ่านอย่างเดียว · ทุก query มี limit', () => {
