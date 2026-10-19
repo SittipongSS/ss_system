@@ -168,7 +168,8 @@
   z-index: var(--z-inline-menu); margin: 0; padding: var(--space-1); list-style: none;
   max-height: 240px; overflow-y: auto;
   border: 1px solid var(--border); border-radius: var(--radius-lg);
-  background: var(--panel); box-shadow: var(--shadow-md);
+  /* ลอยทับรายการอัปเดตเหนือช่องพิมพ์ ⇒ พื้นทึบ (--panel โปร่ง 4–6% ตัวหนังสือข้างหลังทะลุ) */
+  background: var(--panel-float); box-shadow: var(--shadow-md);
 }
 .mentionItem {
   display: flex; align-items: center; gap: var(--space-2); width: 100%;

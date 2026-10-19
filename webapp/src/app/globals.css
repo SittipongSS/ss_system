@@ -211,8 +211,9 @@
      · ของที่ลอยทับเนื้อหา **ต้องคู่กับ backdrop-filter** เท่านั้น (Toast · .form-actions)
      เอาไปใช้กับแผงลอยที่ไม่มี blur ตัวอักษรข้างหลังจะทะลุ
      ขึ้นมาปนกับรายการในแผง (เจอจริงที่ dropdown เลือกลูกค้า 2026-07-26 ผู้ใช้ส่งภาพมา)
-     ⚠️ scripts/audit-ui.mjs บังคับกฎนี้แล้ว: แผงที่ position:fixed / sticky หรือ z-index ≥ 1000
-     ห้ามใช้ var(--panel) ถ้าไม่มี backdrop-filter (ยกเว้นรายตัว = .topnav ที่ลูกทึบปิดเต็ม) */
+     ⚠️ scripts/audit-ui.mjs บังคับกฎนี้แล้ว: แผงที่ position:fixed / sticky หรือหยิบชั้นซ้อนจาก
+     สเกลกลาง (z-index: var(--z-…) — รวมเมนู position:absolute) ห้ามใช้ var(--panel) ถ้าไม่มี
+     backdrop-filter (ยกเว้นรายตัว = .topnav ที่ลูกทึบปิดเต็ม) */
   --panel-float: #fffdf9;
   /* พื้นการ์ดแบบทึบ 100% — สีเดียวกับ --panel ที่ผสมกับ --bg แล้ว ใช้กับสิ่งที่ตรึงไว้
      แล้วมีเนื้อหาเลื่อนผ่านข้างใต้ (คอลัมน์แรกที่ freeze) ซึ่งใช้ --panel โปร่ง 6% ไม่ได้
@@ -1281,9 +1282,6 @@ button, select, input, textarea {
 /* เส้นคั่นหลังโลโก้มีไว้คั่นป้าย "ระบบ › เมนู" ซึ่งหน้าแรกไม่มี — ซ่อนเส้น **คงระยะเดิม**
    (โลโก้ต้องอยู่ตำแหน่งเดียวกับทุกหน้า) */
 .app-container.home-context .topnav-brand { border-right-color: transparent; }
-/* เมนูบัญชีลอยทับแถบกรมท่า ⇒ ต้องทึบ (--panel โปร่ง 6% จะให้กรมท่าทะลุขึ้นมา) */
-.app-container.home-context .account-menu-popover { background: var(--panel-float); }
-
 /* ลิงก์ข้ามไปเนื้อหา — ชิ้นแรกของหัว โผล่เมื่อโฟกัสด้วยคีย์บอร์ดเท่านั้น */
 .topnav-skip {
   position: absolute;
@@ -3272,6 +3270,10 @@ h1, h2, h3, h4, h5, h6 {
 }
 .account-menu-chevron { flex: 0 0 auto; transition: transform var(--motion-fast) ease; }
 .account-menu-chevron.open { transform: rotate(180deg); }
+/* 🐞 2026-10-19 พื้นเคยเป็น var(--panel) (โปร่ง 6% สว่าง · 4% มืด) — เมนูลอยทับแถบระบบกรมท่า
+   และหัวหน้า ตัวหนังสือ/ปุ่มข้างหลังทะลุขึ้นมาปนกับรายการทุกหน้า · /home ได้ --panel-float จากกฎ
+   `.home-context` ที่แปะไว้หน้าเดียว (#1731) หน้าอื่นจึงโปร่งต่อ ⇒ ทึบที่กฎตัวหลักนี้ ห้ามแปะรายหน้า
+   (floatingPanelSurface.test.mjs ล็อกไว้) */
 .account-menu-popover {
   position: absolute;
   top: calc(100% + 6px);
@@ -3284,7 +3286,7 @@ h1, h2, h3, h4, h5, h6 {
   padding: var(--space-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  background: var(--panel);
+  background: var(--panel-float);
   box-shadow: var(--shadow-lg);
 }
 .account-menu-item {
