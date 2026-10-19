@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  pendingReworkRows, reworkHopError, reworkSlotFrom, reworkSlots, reworkTargetError,
+  pendingReworkRows, reworkHopError, reworkSlotFor, reworkSlotFrom, reworkSlots, reworkTargetError,
 } from './rework.js';
 import { normalizeDeliveryRows } from './delivery.js';
 
@@ -101,8 +101,11 @@ test('targetItemId ที่ใช้ไม่ได้ ต้องตีกล
 test('⭐ สายพัฒนากลิ่นเดินก้าว "ส่งของ" บนรางไม่ได้ — ต้องผ่านโมดัลส่งกลิ่น', () => {
   // ประทับ readyAt เฉย ๆ = แถวหลุดจากคิวรอเติมทั้งที่ producedScentId ยังว่าง
   // ⇒ ถึงขั้นใส่ราคาโดนตีกลับ 400 และไม่มีทางกลับมาเติมได้อีก
-  assert.match(reworkHopError(rework, 'ready'), /ส่งกลิ่น/);
-  assert.match(reworkHopError(source, 'ready'), /ส่งกลิ่น/);
+  assert.match(reworkHopError(rework, 'ready'), /หน้าต่างส่งงานของพัฒนากลิ่น/);
+  assert.match(reworkHopError(source, 'ready'), /หน้าต่างส่งงานของพัฒนากลิ่น/);
+  // 🐞 IS-26100001 — ข้อความเคยชี้ปุ่ม "ส่งกลิ่น" ซึ่งเปลี่ยนชื่อเป็น "ส่งงาน" ไปแล้ว (ม-120) ⇒ คนหาปุ่มไม่เจอ
+  assert.doesNotMatch(reworkHopError(rework, 'ready'), /"ส่งกลิ่น"/);
+  assert.match(reworkHopError(rework, 'ready'), /ปุ่ม "ส่งงาน"/);
 
   // ก้าวอื่นของสายเดียวกันยังเดินได้ตามปกติ
   for (const hop of ['ack', 'pickup', 'send', 'outcome']) {
@@ -111,4 +114,18 @@ test('⭐ สายพัฒนากลิ่นเดินก้าว "ส�
   // สายอื่นไม่ถูกแตะ — ขอราคา/พัฒนาผลิตภัณฑ์ยังส่งของบนรางเหมือนเดิม
   assert.equal(reworkHopError({ lineKind: 'product_dev' }, 'ready'), null);
   assert.equal(reworkHopError({ lineKind: 'material' }, 'ready'), null);
+});
+
+test('⭐ ปุ่ม "ส่งงาน" ที่แถวรอบแก้ = โมดัลส่งกลิ่นแท็บของแถวนั้นแถวเดียว (IS-26100001)', () => {
+  const slot = reworkSlotFor(items, 'DRI-2');
+  assert.equal(slot.targetItemId, 'DRI-2');
+  assert.equal(slot.briefId, 'BRF-1');
+  assert.equal(slot.derivedFromScentId, 'SCENT-1');
+  // บรีฟเดียวกันมีรอบแก้อีกแถว — ไม่ลากมาด้วย (ปุ่มหัวบรีฟยกทั้งก้อน · ปุ่มที่แถวยกแถวเดียว)
+  const other = { ...rework, id: 'DRI-3', sortOrder: 3 };
+  assert.equal(reworkSlotFor([...items, other], 'DRI-2').targetItemId, 'DRI-2');
+  // แถวต้นทาง/แถวที่ส่งไปแล้ว/ไม่ระบุ = ไม่มีช่องให้เติม (จอบอกให้โหลดใหม่)
+  assert.equal(reworkSlotFor(items, 'DRI-1'), null);
+  assert.equal(reworkSlotFor([source, { ...rework, readyAt: '2026-10-19' }], 'DRI-2'), null);
+  assert.equal(reworkSlotFor(items, null), null);
 });
