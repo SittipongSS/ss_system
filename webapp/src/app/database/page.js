@@ -21,7 +21,7 @@ import { CHART_LINE_TYPE, CHART_CATEGORICAL } from "@/lib/chartTheme";
 import { brandLabel } from "@/lib/master/brands";
 import { productIdentity } from "@/lib/master/productIdentity";
 import { NA, naText } from "@/lib/format";
-import { PENDING_APPROVAL_HREF } from "@/lib/master/pendingApprovalLinks";
+import { PENDING_APPROVAL_HREF, isPendingApproval, pendingApprovalCount } from "@/lib/master/pendingApprovalLinks";
 
 const teamsOf = (c) => (c?.teams?.length ? c.teams : c?.team ? [c.team] : []);
 
@@ -166,42 +166,54 @@ export default function DatabaseOverview() {
 
   const countOf = (list) => ({
     approved: list.filter((x) => approvalStatusOf(x) === "approved").length,
-    pending: list.filter((x) => approvalStatusOf(x) === "pending").length,
     inactive: list.filter((x) => x.isActive === false).length,
     total: list.length
   });
   const pStats = countOf(products);
   const cStats = countOf(customers);
+  /* ⭐ การ์ด "รออนุมัติ" นับจากทะเบียนเต็ม **ไม่ผ่านตัวกรองทีม/ช่วงเวลาของหน้านี้** — ตัวนับเดียวกับป้ายเมนู
+     และตาราง `?count=` ที่การ์ดเปิด (รวมใบเลิกใช้ · H3) ⇒ การ์ด = ป้าย = แถวที่เปิดเจอ ทุกสถานะตัวกรอง
+     🐞 เดิมนับจากชุดที่ผ่านตัวกรองแล้ว แต่ลิงก์ส่งตัวกรองตามไปไม่ได้ (ทะเบียนสินค้าไม่มีตัวกรองทีม · ทั้งสองไม่มีช่วงเวลา)
+        ⇒ กรองทีม X แล้วการ์ดบอก 1 แต่เปิดเจอ 3 · ตอนตัวกรองติดอยู่ hint ใต้เลขบอกว่าการ์ดนี้ไม่ตามตัวกรอง */
+  const pendingAll = {
+    products: pendingApprovalCount(rawProducts || []),
+    customers: pendingApprovalCount(rawCustomers || []),
+  };
+  const pageFiltered = timeframe.length + teamFilter.length > 0;
+  const pendingHint = pageFiltered ? "นับทุกใบ ไม่ขึ้นกับตัวกรอง" : undefined;
 
   const queue = useMemo(() => {
     // คนอยู่หลายทีมได้ ⇒ อนุมัติของทุกทีมที่ตัวเองสังกัด
     const canApproveProduct = (p) => canApprove && (isSuperuser(role) || myTeams.includes(p?.team));
     const canApproveCustomer = (c) => canApprove && (isSuperuser(role) || teamsOf(c).some((t) => myTeams.includes(t)));
+    /* แต่ละแถวพาไป **หน้าของใบนั้น** (ปุ่มอนุมัติ/ตีกลับอยู่ที่การ์ดจัดการ ไม่ดู isActive) — ไม่ใช่ทะเบียนทั้งกอง
+       🐞 เดิมพาไป /database/products เปล่า (M19) ⇒ ไล่หาเอง และใบเลิกใช้ที่ยังรออนุมัติถูกทะเบียนเปล่าซ่อน = หาไม่เจอเลย (H3) */
     const q = [];
-    products.filter((x) => approvalStatusOf(x) === "pending").forEach((x) => {
+    products.filter(isPendingApproval).forEach((x) => {
       const mine = canApproveProduct(x);
       if (canApprove && !mine) return;
       q.push({
         id: `p-${x.id}`, tone: "warning", badge: "สินค้า",
         title: productIdentity(x).text,
         subtitle: x.customerName || brandLabel(x.brandName, x.brandNameEn) || "รออนุมัติสินค้า",
-        cta: mine ? "อนุมัติ" : "ดู", onClick: () => router.push("/database/products"),
+        cta: mine ? "อนุมัติ" : "ดู", onClick: () => router.push(`/database/products/${x.id}`),
       });
     });
-    customers.filter((x) => approvalStatusOf(x) === "pending").forEach((x) => {
+    customers.filter(isPendingApproval).forEach((x) => {
       const mine = canApproveCustomer(x);
       if (canApprove && !mine) return;
       q.push({
         id: `c-${x.id}`, tone: "warning", badge: "ลูกค้า",
         title: `${naText(x.arCode)} · ${x.name || ""}`.trim(),
         subtitle: "รออนุมัติลูกค้า",
-        cta: mine ? "อนุมัติ" : "ดู", onClick: () => router.push("/database/customers"),
+        cta: mine ? "อนุมัติ" : "ดู", onClick: () => router.push(`/database/customers/${x.id}`),
       });
     });
     return q;
   }, [products, customers, canApprove, role, myTeams, router]);
 
   /* ตัวกรองนี้คุม **ทั้งหน้า** (KPI · กราฟ · คิวรออนุมัติ) ไม่ใช่รายการใดรายการหนึ่ง
+     — ยกเว้นการ์ด "รออนุมัติ" สองใบ (`pendingAll` ข้างบน: เลขต้องเท่าป้ายเมนูและตารางที่มันเปิด)
      ⇒ อยู่ที่ headerRight ของ Workspace ไม่ห่อ `.toolbar` (มติผู้ใช้ 2026-09-15 · ข้อเท็จจริง F3
      ของด่าน LIST_PANEL_SHAPE) · แผงเปิดผ่าน portal จึงไม่ล้นขอบขวา */
   const filter = (
@@ -255,8 +267,8 @@ export default function DatabaseOverview() {
           <KpiCard label="สินค้าทั้งหมด" value={productsFailed ? NA : pStats.total} hint={productsFailed ? "ดึงข้อมูลไม่ได้ — ดูข้อความด้านบน" : undefined} icon={Package} tone="accent" onClick={() => router.push("/database/products")} />
           <KpiCard label="ลูกค้าทั้งหมด" value={customersFailed ? NA : cStats.total} hint={customersFailed ? "ดึงข้อมูลไม่ได้ — ดูข้อความด้านบน" : undefined} icon={Building2} tone="info" onClick={() => router.push("/database/customers")} />
           {/* 🐞 สองใบนี้เคยเปิดทะเบียนทั้งกอง (H3) — "รออนุมัติ 3" ต้องเปิดเจอ 3 ใบ ⇒ ลิงก์ชุดเดียวกับป้ายบนเมนู */}
-          <KpiCard label="สินค้ารออนุมัติ" value={productsFailed ? NA : pStats.pending} hint={productsFailed ? "ดึงข้อมูลไม่ได้ — ดูข้อความด้านบน" : undefined} icon={Hourglass} tone="warning" onClick={() => router.push(PENDING_APPROVAL_HREF.products)} />
-          <KpiCard label="ลูกค้ารออนุมัติ" value={customersFailed ? NA : cStats.pending} hint={customersFailed ? "ดึงข้อมูลไม่ได้ — ดูข้อความด้านบน" : undefined} icon={Hourglass} tone="danger" onClick={() => router.push(PENDING_APPROVAL_HREF.customers)} />
+          <KpiCard label="สินค้ารออนุมัติ" value={productsFailed ? NA : pendingAll.products} hint={productsFailed ? "ดึงข้อมูลไม่ได้ — ดูข้อความด้านบน" : pendingHint} icon={Hourglass} tone="warning" onClick={() => router.push(PENDING_APPROVAL_HREF.products)} />
+          <KpiCard label="ลูกค้ารออนุมัติ" value={customersFailed ? NA : pendingAll.customers} hint={customersFailed ? "ดึงข้อมูลไม่ได้ — ดูข้อความด้านบน" : pendingHint} icon={Hourglass} tone="danger" onClick={() => router.push(PENDING_APPROVAL_HREF.customers)} />
         </div>
 
         {/* Charts Section 1 */}

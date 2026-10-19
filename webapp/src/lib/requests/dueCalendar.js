@@ -7,7 +7,9 @@
 //
 // ⚠️ **ข้อจำกัดที่รู้อยู่ตั้งแต่ตอนเลือกแบบ** — วันที่ทำ 8 จาก 15 ใบในคิวจริง *ยังไม่มี
 // ใครให้วัน* ⇒ ปฏิทินจะโล่งกว่าความจริงมาก · จึงต้องคู่กับตัวเลข "ยังไม่ได้ให้วัน"
-// ที่กดไปคิวได้เสมอ (`undated`) ไม่งั้นคนอ่านจะสรุปว่าสัปดาห์นี้ว่าง
+// ที่กดไปคิวได้เสมอ ไม่งั้นคนอ่านจะสรุปว่าสัปดาห์นี้ว่าง · ตัวเลขบนจอ (ปุ่ม "ยังไม่ได้ให้วัน" /
+// "เลยกำหนดแล้ว") มาจาก `deptCountByTurn` (`lib/requests/deptOverview.js`) ซึ่งนับเฉพาะตาฝ่าย
+// (มติเจ้าของ 2026-10-19 · ตรวจตัวเลข M6) — **ไม่ใช่** `undated`/`overdue` ข้างล่างที่รวมสองตา
 import { liveDueDate } from '@/lib/requests/dueRound';
 import { requestClosureStarted } from '@/lib/requests/closure';
 import { addDays, dayOfWeek, weekStartOf } from '@/lib/datePeriods';
@@ -94,6 +96,8 @@ export function dueCalendar(rows = [], { startIso, todayIso = null } = {}) {
     // จำนวนใบที่ตกอยู่ในสัปดาห์นี้จริง ๆ — ใช้บนหัวข้อ ไม่ใช่ `dated` ทั้งคิว
     inWeek: days.reduce((n, day) => n + day.items.length, 0),
     dated,
+    // ⚠️ สองตัวนี้รวมทั้งตาฝ่ายและตาผู้ขอ — ไม่มีจอไหนอ่านแล้ว (ปุ่มบนปฏิทินใช้ `deptCountByTurn`)
+    // คงไว้ให้เทสต์ "แยกตาแล้วไม่มีใบหาย" เทียบผลรวมเท่านั้น · ห้ามเอาไปโชว์เป็นตัวเลขของฝ่าย
     undated,
     overdue,
   };

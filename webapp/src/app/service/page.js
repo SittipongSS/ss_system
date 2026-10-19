@@ -33,6 +33,7 @@ import {
   serviceCounts,
   todayByTechnician,
 } from "@/lib/service/overview";
+import { QUEUE_RANGE_TODAY, scheduleQueueHref } from "@/lib/service/scheduleQueueLink";
 import { canEditService } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import styles from "./page.module.css";
@@ -73,7 +74,10 @@ export default function ServiceOverviewPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
-  const todayIso = useMemo(() => businessDate(), []);
+  /* "วันนี้" จากนาฬิกาไทย — เป็น state ที่เลื่อนตอนกลับมามองแท็บ (ดู `useRevalidateOnFocus` ข้างล่าง) ไม่ใช่ค่าที่ตรึงตอนเมานต์
+     🐞 เดิม `useMemo(() => businessDate(), [])` ⇒ แท็บที่เปิดค้างข้ามเที่ยงคืน ดึงนัดใหม่แต่ยังนับ "นัดวันนี้" ของเมื่อวาน
+        (= นัดที่กลายเป็นค้างไปแล้ว) ขณะที่การ์ดพาไป `range=today` ของวันใหม่ ⇒ เลขบนการ์ด ≠ แถวที่เปิดเจอ (H15 · รีวิว 19/10) */
+  const [todayIso, setTodayIso] = useState(() => businessDate());
   const range = useMemo(
     () => ({ from: shiftDays(todayIso, -LOOKBACK_DAYS), to: shiftDays(todayIso, 6) }),
     [todayIso],
@@ -110,7 +114,13 @@ export default function ServiceOverviewPage() {
     }
   }, [range.from, range.to, startRun]);
   useEffect(() => { load(); }, [load]);
-  useRevalidateOnFocus(load);
+  /* กลับมามองแท็บ: อ่านนาฬิกาไทยใหม่ก่อน — ข้ามวันแล้ว = เลื่อน "วันนี้" (ช่วงที่ดึงขยับตาม ⇒ effect ข้างบนโหลดใหม่ทั้งแผง
+     และการ์ด/คำใบ้/แผงวันนี้นับด้วยวันเดียวกับรายการที่การ์ดเปิด) · วันเดิม = ดึงเบื้องหลังตามปกติ */
+  useRevalidateOnFocus((opts) => {
+    const nowIso = businessDate();
+    if (nowIso !== todayIso) setTodayIso(nowIso);
+    else load(opts);
+  });
 
   const sitesById = useMemo(() => new Map(visitSites.map((s) => [s.id, s])), [visitSites]);
 
@@ -174,8 +184,10 @@ export default function ServiceOverviewPage() {
       {loading ? <SkeletonRows rows={6} /> : loadError ? null : (
         <>
           {/* ⭐ การ์ดพาไปที่ **กองในรายการงาน** ที่นับเลขเดียวกับการ์ด — กดแล้วต้องเจอตัวเลขที่เห็น
-              ไม่ใช่ปฏิทินสัปดาห์ที่ต้องนับเอง · "นัดวันนี้" ลงที่ 7 วันด้วย (กลุ่ม "วันนี้" ขึ้นก่อน
-              และหัวกลุ่มนับเท่าการ์ด) เพราะรายการงานไม่มีช่วง "เฉพาะวันนี้"
+              ไม่ใช่ปฏิทินสัปดาห์ที่ต้องนับเอง · ลิงก์ประกอบด้วย `scheduleQueueHref` ตัวเดียวกับที่หน้าจัดคิวอ่านกลับ
+              🐞 H15 (ตรวจตัวกรอง 08/10): "นัดวันนี้ 3" เคยลงที่ช่วง 7 วัน (12 แถว · กลุ่ม "วันนี้" ขึ้นก่อน) เพราะรายการงาน
+                 ไม่มีช่วง "เฉพาะวันนี้" ⇒ มติเจ้าของ 19/10: เปิดรายการ **วันนี้วันเดียว** (`range=today` · ป้าย "กรอง: นัดวันนี้ … ×")
+                 เลขบนการ์ดกับตัวกรองใช้ตัวตัดสินเดียว (`isVisitToday`) และ "วันนี้" จากนาฬิกาไทยทั้งสองฝั่ง (`businessDate`)
               ⚠️ นัดค้างย้อนดูแค่ LOOKBACK_DAYS — นัดที่ค้างเกินนั้นมีในรายการงานแต่ไม่ถูกนับบนการ์ด */}
           <div className={styles.kpiGrid}>
             <KpiCard
@@ -184,7 +196,7 @@ export default function ServiceOverviewPage() {
               icon={AlertTriangle}
               tone={counts.overdue > 0 ? "danger" : "success"}
               hint="เลยวันนัดแล้วยังไม่ปิดงาน"
-              onClick={() => router.push("/service/schedule?tab=overdue")}
+              onClick={() => router.push(scheduleQueueHref({ tab: "overdue" }))}
             />
             <KpiCard
               label="นัดวันนี้"
@@ -192,7 +204,7 @@ export default function ServiceOverviewPage() {
               icon={CalendarClock}
               tone="accent"
               hint={fmtDate(todayIso)}
-              onClick={() => router.push("/service/schedule?tab=scheduled&range=7d")}
+              onClick={() => router.push(scheduleQueueHref({ tab: "scheduled", range: QUEUE_RANGE_TODAY }))}
             />
             {/* ⚠️ คำใบ้ "ยังไม่มอบหมาย" อยู่ **ใน** ปุ่มการ์ด (KpiCard ทั้งใบเป็น <button> เดียว) ⇒ ทำเป็น
                 ลิงก์ของตัวเองไม่ได้ (ห้ามปุ่มซ้อนปุ่ม) · การ์ดจึงไป 7 วันตามเลขบนการ์ด — ที่นั่นมีช่วง
@@ -203,7 +215,7 @@ export default function ServiceOverviewPage() {
               icon={CalendarDays}
               tone="info"
               hint={counts.unassigned > 0 ? `ยังไม่มอบหมายเจ้าหน้าที่ ${counts.unassigned} นัด` : "มอบหมายเจ้าหน้าที่ครบแล้ว"}
-              onClick={() => router.push("/service/schedule?tab=scheduled&range=7d")}
+              onClick={() => router.push(scheduleQueueHref({ tab: "scheduled", range: "7d" }))}
             />
             <KpiCard
               label="เครื่องที่ต้องเข้าเติม"

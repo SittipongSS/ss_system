@@ -29,6 +29,7 @@ import useApprovalDecision from "@/components/database/useApprovalDecision";
 import { categoryOf, categoryFlags, categoryInfoOf } from "@/lib/master/categoryOf";
 import { categoryNameBoth } from "@/lib/master/productCategoryOptions";
 import { filterProducts, productCategoryCode, productCategoryLabel } from "@/lib/master/productFilter";
+import { isPendingApproval, pendingApprovalCount } from "@/lib/master/pendingApprovalLinks";
 import { missingRetailPriceProducts } from "@/lib/tax/taxableProducts";
 import {
   CODE_MODE_AUTO, DEFAULT_CODE_MODE, customerCodeSegment, fgCodeError,
@@ -73,6 +74,9 @@ export default function ProductRegistry() {
   // already team-scoped, but the explicit check keeps the rule consistent.)
   // กฎเดียวกับหน้าลูกค้าและหน้ารายละเอียด — อยู่ที่ lib/master/approvalControl ที่เดียว
   const canApproveRow = (rec) => canApproveMasterRecord(role, myTeams, rec);
+  /* ใบที่บัญชีนี้กดอนุมัติ/ตีกลับได้ตรงนี้ — คิวข้างทะเบียน · ปุ่มบนการ์ด · ปุ่มในตาราง ถามตัวเดียวกัน
+     ⚠️ "รออนุมัติ" มาจาก `isPendingApproval` ตัวเดียวกับเลขบนการ์ด/ป้ายเมนู ไม่เขียนเงื่อนไขสด (H3) */
+  const canDecideRow = (rec) => isPendingApproval(rec) && canApproveRow(rec);
   const [products, setProducts] = useState(() => apiCache.get(MANAGE_KEY) ?? []);
   const [productTypes, setProductTypes] = useState(() => apiCache.get("/api/master/product-types") ?? []);
   const [customers, setCustomers] = useState(() => apiCache.get("/api/master/customers") ?? []);
@@ -310,7 +314,8 @@ export default function ProductRegistry() {
 
   const q = search.trim().toLowerCase();
   const counts = {
-    pending: products.filter((p) => approvalStatusOf(p) === "pending").length,
+    // ⚠️ ตัวนับเดียวกับป้ายเมนู/การ์ดภาพรวม และเท่าแถวของตัวกรอง "รออนุมัติ" (รวมใบเลิกใช้ · H3)
+    pending: pendingApprovalCount(products),
     approved: products.filter((p) => approvalStatusOf(p) === "approved").length,
     taxable: products.filter((p) => p.isExciseTaxable !== false).length,
     inactive: products.filter((p) => p.isActive === false).length,
@@ -337,9 +342,7 @@ export default function ProductRegistry() {
   });
 
   // Pending records this user may approve — surfaced at the top as a queue.
-  const approvalQueue = products.filter(
-    (p) => approvalStatusOf(p) === "pending" && canApproveRow(p),
-  );
+  const approvalQueue = products.filter(canDecideRow);
 
   // Default ordering: by product code (FG Code). The first column shows both the
   // description and the FG code, so it sorts by code to match the "(FG Code)" header.
@@ -511,7 +514,8 @@ export default function ProductRegistry() {
             const flags = categoryFlags(p.categoryCode || categoryOf(p.fgCode), productTypes);
             const isExciseCat = flags.isExcise;
             const status = approvalStatusOf(p);
-            const showActions = status === "pending" && canApproveRow(p);
+            const showActions = canDecideRow(p);
+            // จางเฉพาะใบเลิกใช้ที่ไม่มีปุ่มอนุมัติ — เหตุผลเดียวกับแถวในมุมมองตาราง (H3)
             const inactive = p.isActive === false;
             const cat = categoryLabelOf(p);
             return (
@@ -519,7 +523,7 @@ export default function ProductRegistry() {
                  <ApprovalActions> (สองปุ่ม) ตอน pending && canApproveRow และ `<a>` ห้ามมี
                  interactive descendant · <CostVatLines> ข้างล่างเป็น div/ข้อความล้วน จึงไม่นับ
                  ⇒ ทางเข้าจริงคือ <Link> ที่บล็อกรหัส+ชื่อ ส่วน onClick ของการ์ดเป็นทางลัดเมาส์ */
-              <ClickableCard key={p.id} href={detailHref(p)} className="glass-panel clickable-row cursor-pointer p-4 flex flex-col gap-2" style={inactive ? { opacity: 0.6 } : undefined}>
+              <ClickableCard key={p.id} href={detailHref(p)} className="glass-panel clickable-row cursor-pointer p-4 flex flex-col gap-2" style={inactive && !showActions ? { opacity: 0.6 } : undefined}>
                 <div className="flex items-start justify-between gap-2">
                   {/* 🪤 ชื่อสินค้ายังเป็น <div> ไม่ใช่ <strong> ต่างจากมุมมองตาราง — `.linklike-block > strong`
                          จะเติมเส้นใต้จาง ๆ เข้ามา = หน้าตาการ์ดเปลี่ยน (เหตุผลเต็มอยู่ที่ทะเบียนลูกค้า)
@@ -601,13 +605,16 @@ export default function ProductRegistry() {
                    ⚠️ ตัวนี้เป็น **สตริง** และ **บังชื่อ** `detailHref` ระดับคอมโพเนนต์ซึ่งเป็น
                       *ฟังก์ชัน* (คนละมุมมองใช้คนละตัว · ฝั่งการ์ดเรียก `detailHref(p)`) */
                 const detailHref = `/database/products/${p.id}`;
+                /* ใบเลิกใช้จางทั้งแถว — **ยกเว้นแถวที่มีปุ่มอนุมัติ** (ใบเลิกใช้ที่ยังรออนุมัติขึ้นในตาราง `?count=` · H3)
+                   ปุ่มที่จางตามแถวอ่านเป็น "กดไม่ได้" และตัวอักษรต่ำกว่า AA · ป้าย "เลิกใช้" ข้างปุ่มบอกสถานะแทน */
+                const showActions = canDecideRow(p);
                 return (
                   /* แถวเป็น DetailRow: onClick ของ <tr> เหลือเป็น **ทางลัดของเมาส์** ส่วนทางเข้าจริง
                      ของคีย์บอร์ด/โปรแกรมอ่านหน้าจอคือ <Link> ในเซลล์แรก (ท่าเดียวกับหน้าดีล/ลีด/โครงการ)
                      🗑️ ทางลัดเคยเป็น `open(p)` (window.location = โหลดหน้าใหม่ทั้งใบ) — ย้ายมาเป็น
                      router.push ของ DetailRow แล้ว และ `open()` ถูกลบทิ้งในรอบการ์ด 2026-09-02
                      (การ์ดจอแนวตั้งเป็นที่เรียกสุดท้ายของมัน) */
-                  <DetailRow key={p.id} href={detailHref} className="clickable-row" style={p.isActive === false ? { opacity: "var(--op-muted)" } : undefined}>
+                  <DetailRow key={p.id} href={detailHref} className="clickable-row" style={p.isActive === false && !showActions ? { opacity: "var(--op-muted)" } : undefined}>
                     <td>
                       {/* รหัสบน · ชื่อ EN·TH ล่าง (มติผู้ใช้ 2026-08-12 — ทุกตารางทรงเดียว)
                           prefetch={false}: ทะเบียนสินค้ายาว — กัน RSC prefetch ต่อแถว */}
@@ -644,17 +651,19 @@ export default function ProductRegistry() {
                       )}
                     </td>
                     <td onClick={(e) => e.stopPropagation()}>
-                      {approvalStatusOf(p) === "pending" && canApproveRow(p) ? (
-                        <ApprovalActions onDecide={(status) => decide(p, status)} />
-                      ) : (
-                        <div className="flex flex-col gap-1 items-start">
+                      {/* ป้าย "เลิกใช้" อยู่นอกทางแยก ปุ่มอนุมัติ/ป้ายสถานะ — ใบเลิกใช้ที่ยังรออนุมัติขึ้นในตัวกรอง "รออนุมัติ" (H3)
+                          ⇒ ปุ่มอนุมัติต้องไม่กลบป้ายเลิกใช้ · แถวที่มีปุ่มชิดขวาตามแถบปุ่ม (`.action-bar` ชิดขวา) */}
+                      <div className={`flex flex-col gap-1 ${showActions ? "items-end" : "items-start"}`}>
+                        {showActions ? (
+                          <ApprovalActions onDecide={(status) => decide(p, status)} />
+                        ) : (
                           <ApprovalBadge status={approvalStatusOf(p)} />
-                          {p.isActive === false && <span className="status-pill" style={{ background: "var(--panel-2)", color: "var(--text-3)" }}>เลิกใช้</span>}
-                          {approvalStatusOf(p) === "rejected" && p.rejectionReason && (
-                            <div className="text-[11px] text-[var(--text-3)] mt-1 max-w-[200px] whitespace-normal">เหตุผล: {p.rejectionReason}</div>
-                          )}
-                        </div>
-                      )}
+                        )}
+                        {p.isActive === false && <span className="status-pill" style={{ background: "var(--panel-2)", color: "var(--text-3)" }}>เลิกใช้</span>}
+                        {approvalStatusOf(p) === "rejected" && p.rejectionReason && (
+                          <div className="text-[11px] text-[var(--text-3)] mt-1 max-w-[200px] whitespace-normal">เหตุผล: {p.rejectionReason}</div>
+                        )}
+                      </div>
                     </td>
                   </DetailRow>
                 );

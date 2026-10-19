@@ -12,7 +12,7 @@ import { MARKETING_OVERSEER_ROLES } from '@/lib/permissions';
 import { businessDate } from '@/lib/businessDate';
 import { teamNameOf } from '@/lib/master/teams';
 import {
-  LEAD_CHANNEL_LABELS, LEAD_STATUS_LABELS, SERVICE_INTEREST_LABELS, leadLostText,
+  LEAD_CHANNEL_LABELS, LEAD_STATUS_LABELS, SERVICE_INTEREST_LABELS, leadActiveFollowUpAt, leadLostText,
 } from '@/lib/sales/leads';
 
 /* 🔴 ไฟล์นี้มี **ชื่อ เบอร์โทร อีเมล ของลูกค้า** — ต่างจากแท็บ KPI ที่เห็นแต่ตัวเลขรวม
@@ -83,7 +83,12 @@ export function leadReportRow(lead = {}, { teamNames = null } = {}) {
     screenedAt: day(lead.screenedAt),
     assignedAt: day(lead.assignedAt),
     firstContactAt: day(lead.firstContactAt),
-    followUpAt: day(lead.followUpAt),
+    /* ⭐ อ่านผ่าน `leadActiveFollowUpAt` ตัวเดียวกับตาราง/ตัวกรอง/การ์ดค้างคิว (มติเจ้าของ 19/10)
+       🐞 ใบที่ปิดแล้ว (qualified/disqualified) ยังค้าง `followUpAt` ของรอบก่อน — การปิดไม่ล้างคอลัมน์
+       (บน prod ~126 ใบ) ⇒ ไฟล์เคยโชว์วันเก่าที่ตารางซ่อนไปแล้ว · กรองในไฟล์ "วันติดตามต่อ < วันนี้"
+       ได้ใบที่จบไปแล้วปนมาเป็น "เลยกำหนด" ไม่ตรงกับเลขบนการ์ด
+       ⚠️ แก้ฝั่งอ่านเท่านั้น ไม่ล้างคอลัมน์/ไม่ backfill (มติเดียวกัน) — ช่องว่าง = ไม่มีคำสัญญาที่ยังเดิน */
+    followUpAt: day(leadActiveFollowUpAt(lead)),
     meetingAt: day(lead.meetingAt),
     /* ใช้ตัวเดียวกับหน้ารายละเอียด — อ่านออกทั้งใบใหม่ (รหัส + ข้อความ) และใบเก่า
        ที่มีแต่ข้อความ · ใบที่ยังไม่ปิดจะได้ค่าว่าง ไม่ใช่ขีด (ในไฟล์ ช่องว่าง = ยังไม่มี) */
