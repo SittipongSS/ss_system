@@ -155,6 +155,27 @@ export async function createSurveyVisit(supabase, {
   return { visit: data, error: null };
 }
 
+/* ข้อความของ "นัดเพิ่งปิดระหว่างขยับวัน" — อ่านแถวใหม่แล้วบอกทางที่ใช้ได้จริง (รีวิว S2b ข้อ V17 ต่อ)
+   ⚠️ ใบได้วันใหม่ไปแล้ว ⇒ "เลื่อนวันอีกครั้ง" ด้วยวันเดิมโดนตีกลับ (วันเดิมกับที่แจ้งไว้แล้ว) — ทางกู้คือ "ลงคิวใหม่" (ใช้วันเดิมได้)
+   · นัดที่ไปถึงแล้ว (ส่งงาน) ไม่ต้องลงนัดใหม่ */
+const REACHED_VISIT_STATES = ['done', 'partial'];
+async function movedVisitError(supabase, visit) {
+  const code = visit.code || visit.id;
+  // อ่านพลาด = ใช้ข้อความ "ยังไม่มีนัด" (ข้อความกลาง · ผู้ใช้เปิดใบดูสถานะนัดจริงได้)
+  const { data: current, error: readError } = await supabase
+    .from('service_visits').select('id, status').eq('id', visit.id).maybeSingle();
+  const status = readError ? null : (current?.status ?? null);
+  if (REACHED_VISIT_STATES.includes(status)) {
+    return { status, message: `นัด ${code} เพิ่งส่งงานแล้ว — ใบได้วันใหม่แล้ว ไม่ต้องลงนัดใหม่` };
+  }
+  /* ⚠️ "เข้าไม่ได้" ก็ใช้ข้อความ "ลงคิวใหม่ (วันเดิม)" — ใบได้วันใหม่ก่อนนัดจะตาม ⇒ วันบนใบไม่ใช่วันของนัดที่เข้าไม่ได้ ⇒ route ของนัด
+     ไม่ถอยขั้น (`surveyStepBackPlan` ถามว่าวันบนใบเป็นของนัดนั้นไหม) ใบจึงยังถือวันใหม่โดยไม่มีนัดเปิด = ปุ่ม "ลงคิวใหม่" */
+  return {
+    status,
+    message: `นัด ${code} เพิ่งปิดหรือถูกยกเลิกระหว่างที่กด — ใบได้วันใหม่แล้วแต่ยังไม่มีนัด · กด “ลงคิวใหม่” ที่ใบ (ใช้วันเดิมได้)`,
+  };
+}
+
 /**
  * ขยับนัดที่มีอยู่ให้ตรงกับวันใหม่บนใบ — คืน `{ visit, error, needsNew }`
  *
@@ -177,9 +198,19 @@ export async function moveSurveyVisit(supabase, { requestId, date, time }) {
   if (!visit) return { visit: null, error: null, needsNew: true };
   const patch = { scheduledDate: date, updatedAt: new Date().toISOString() };
   if (time !== undefined) patch.startTime = time ? toHHMM(time) : null;
+  /* 🔴 **เขียนเฉพาะเมื่อนัดยังเปิด** (รีวิว S2b ข้อ V17 ต่อ · 19/10) — ช่างกด "ไปแล้วเข้าไม่ได้" / หัวหน้าเปลี่ยนทุกพื้นที่เป็น
+     ประเมินจากแบบ (ยกเลิกนัด) คั่นระหว่างอ่านกับเขียน = วันใหม่ไปลงบนนัดที่ปิดแล้ว ประวัติการเข้าจริงโดนทับ
+     ⚠️ ไม่โดนแถว = **ไม่** คืน `needsNew` — ผู้เรียกจะสร้างนัดใบใหม่ทันที ทั้งที่นัดอาจเพิ่งส่งงาน (ไม่ต้องมีนัดใหม่) หรือใบเพิ่ง
+        กลายเป็นงานโต๊ะ ⇒ คืน error ที่บอกทางกู้จริง (`movedVisitError`) ให้ขึ้นบนจอ */
   const { data, error } = await supabase
-    .from('service_visits').update(patch).eq('id', visit.id).select().maybeSingle();
+    .from('service_visits').update(patch)
+    .eq('id', visit.id).in('status', REQUEST_SLOT_VISIT_STATES).select().maybeSingle();
   if (error) return { visit: null, error: error.message, needsNew: false };
+  if (!data) {
+    const moved = await movedVisitError(supabase, visit);
+    // `closedStatus` = ให้ผู้เรียกถามต่อได้ (นัดที่ถูกยกเลิกอาจมาจากหัวหน้าเปลี่ยนทั้งใบเป็นจากแบบ)
+    return { visit: null, error: moved.message, needsNew: false, closedStatus: moved.status };
+  }
   return { visit: data, error: null, needsNew: false };
 }
 
@@ -199,6 +230,9 @@ export const SURVEY_DESK_RESCHEDULE_FORBIDDEN = 'เลื่อนวันส�
 export const SURVEY_DESK_RESCHEDULE_REASON_ERROR = 'ต้องบอกเหตุผลที่เลื่อนวันส่งผล';
 /* 🔴 นัดที่ปิด/ยกเลิกไปแล้วของใบงานโต๊ะ เปิดกลับจากโมดัลนัดไม่ได้ — เปิดได้เมื่อไร ใบที่ไม่มีใครต้องไป
    จะขึ้นตารางช่างเอง แล้วนัดนั้นเขียนวันทับคำสัญญาวันส่งผล (`visits/[id]/route.js`) */
+/* 🔴 ใบเพิ่งกลายเป็นงานโต๊ะระหว่างคำขอแจ้ง/เลื่อนวัน (หัวหน้าเปลี่ยนทุกพื้นที่เป็นจากแบบ ซึ่งยกเลิกนัดให้) — เส้นสร้างนัดใหม่ถามซ้ำแล้วไม่สร้าง */
+export const SURVEY_DESK_FLIPPED_NO_VISIT =
+  'ใบลงวันแล้ว แต่ใบเพิ่งเปลี่ยนเป็นประเมินจากแบบทั้งใบ — ไม่ได้ลงนัดเข้าพื้นที่ · ให้หัวหน้าฝ่ายบริการตรวจวันส่งผลบนใบอีกครั้ง';
 export const SURVEY_DESK_REVIVE_ERROR = 'ใบนี้ประเมินจากแบบทั้งใบ — เปิดนัดกลับไม่ได้ ให้หัวหน้าเปลี่ยนวิธีประเมินเป็นลงหน้างานก่อน';
 
 /**

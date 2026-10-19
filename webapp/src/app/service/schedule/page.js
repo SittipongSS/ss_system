@@ -595,13 +595,23 @@ export default function ServiceSchedulePage() {
   const [pendingSuggestion, setPendingSuggestion] = useState(null);
   const saveVisit = async (form) => {
     const editing = !!formVisit;
+    /* 🔴 `expectedStatus` = สถานะตอนเปิดฟอร์ม (รีวิว S2b ข้อ V17) — ฟอร์มส่งสถานะเดิมกลับทั้งก้อน ⇒ เปิดค้างไว้ระหว่างที่ช่าง
+       เริ่มงาน/หัวหน้ายกเลิก แล้วกดบันทึก = เขียนสถานะเก่าทับ · server ตอบ 409 เมื่อไม่ตรงกับฐาน */
     const res = await apiFetch(editing ? `/api/service/visits/${formVisit.id}` : "/api/service/visits", {
       method: editing ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
+      body: JSON.stringify(editing ? { ...form, expectedStatus: formVisit.status } : form),
     });
     const data = await res.json().catch(() => null);
-    if (!res.ok) throw new Error(data?.error || "บันทึกไม่สำเร็จ");
+    if (!res.ok) {
+      /* 409 = นัดเปลี่ยนไปแล้ว — อ่านตาราง/คิวใหม่ให้เห็นสถานะจริง (โมดัลยังเปิดพร้อมข้อความ ปิดแล้วเปิดใหม่ได้ค่าสด)
+         ⚠️ ฟอร์มยังถือ `expectedStatus` เดิม ⇒ กดบันทึกซ้ำก็ยัง 409 ไม่เขียนทับ */
+      if (res.status === 409) {
+        load({ background: true, keep: true });
+        loadQueue({ background: true, keep: true });
+      }
+      throw new Error(data?.error || "บันทึกไม่สำเร็จ");
+    }
 
     // ⭐ ปิดงานแล้ว server เสนอนัดรอบถัดไปมา — **ถามก่อนสร้าง** ไม่สร้างให้เอง
     const suggestion = data?.nextVisitSuggestion;
@@ -665,7 +675,8 @@ export default function ServiceSchedulePage() {
       const res = await apiFetch(`/api/service/visits/${row.visit.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "scheduled" }),
+        // ปล่อยได้จากร่างเท่านั้น — มีคนปล่อย/ยกเลิกไปก่อนระหว่างที่กล่องเปิด = 409 ไม่ใช่ปล่อยทับ
+        body: JSON.stringify({ status: "scheduled", expectedStatus: "draft" }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || "ปล่อยขึ้นตารางไม่สำเร็จ");

@@ -18,7 +18,8 @@ test('แถบบอกตำแหน่งเก็บแค่ id แล้�
 });
 
 test('ปล่อยจากการ์ดส่งแค่สถานะ ไม่ส่งทั้งฟอร์มจากสำเนา', () => {
-  assert.match(page, /body: JSON\.stringify\(\{ status: "scheduled" \}\)/);
+  // + `expectedStatus: "draft"` (รีวิว S2b ข้อ V17) — มีคนปล่อย/ยกเลิกไปก่อนระหว่างที่กล่องเปิด = 409 ไม่ปล่อยทับ
+  assert.match(page, /body: JSON\.stringify\(\{ status: "scheduled", expectedStatus: "draft" \}\)/);
   assert.doesNotMatch(page, /visitToForm\(row\.visit\)/);
 });
 

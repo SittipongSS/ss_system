@@ -196,6 +196,9 @@ export default function TodayPage() {
       await load();
     } catch (e) {
       setToast({ kind: "error", msg: e.message });
+      /* ⭐ ไม่ผ่านแล้วอ่านคิวใหม่เบื้องหลัง — นัดอาจเพิ่งถูกยกเลิก/เลื่อน (409 ของ route) ถ้าไม่อ่านใหม่ แถวยังขึ้นปุ่ม
+         "เริ่มงาน" ของสถานะเก่าให้กดซ้ำได้เรื่อย ๆ · เบื้องหลัง = ไม่ล้างจอ ไม่ทับข้อความ error ข้างบน */
+      load({ background: true });
     } finally {
       setStarting(null);
     }
