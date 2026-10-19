@@ -388,6 +388,8 @@ const REQUEST_PART_GOLDEN = {
   committedDueTime: '12:00', requestedResultDate: '2026-09-25', committedResultDate: '2026-09-25',
   answeredAt: '2026-09-26T03:01:26.314+00:00', answeredById: 'U-head', answeredByName: 'Head Approver',
   closedAt: null, closedByName: null,
+  // + งวด S3 (#1916): คีย์เพิ่มแบบไม่ทำลาย — ใบที่ไม่ได้ตอบเรื่องยืนยันหน้างาน = null (ค่าของ main ก่อน S4)
+  surveyConfirm: null,
 };
 const snapshotOf = (variant) => {
   const inputs = surveyReportInputsFromFixture(syntheticSurveyFixture());
