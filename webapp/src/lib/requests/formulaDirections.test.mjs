@@ -134,3 +134,17 @@ test('⭐ ลำดับตาราง: แถวของกลิ่นเ�
   assert.equal(direction.get('HR'), undefined);
   assert.equal(direction.get('WT'), undefined);
 });
+
+test('⭐ คอนเฟิร์มแถวที่แค่ผูกสูตรไว้ / สูตรของลูกค้าอื่น = ไม่ปลุกสูตรกำลังพัฒนาให้เอง (รีวิว ม-157)', () => {
+  const bound = R('A', { producedFormulaId: 'FS', producedFormulaAction: 'bind', readyAt: '2026-10-01', sentAt: '2026-10-02' });
+  const plan = formulaConfirmPlan({ row: bound, items: [bound], formulas: [F('FS'), F('HOLD', { status: 'active' })], customerId: 'CUS-A' });
+  assert.equal(plan.activate, false);
+  assert.deepEqual(plan.archive.map((f) => f.id), []); // ไม่พลิก = ไม่ต้องเลิกใช้ตัวเดิม
+  const foreignRow = R('B', { producedFormulaId: 'FX', readyAt: '2026-10-01', sentAt: '2026-10-02' });
+  const foreign = formulaConfirmPlan({
+    row: foreignRow, items: [foreignRow], formulas: [F('FX', { customerId: 'CUS-B' })], customerId: 'CUS-A',
+  });
+  assert.equal(foreign.activate, false);
+  // แถวที่ answerStatus ว่าง (ข้อมูลเก่า) ยังส่ง direction เพิ่มได้
+  assert.equal(addDirectionError(req, { ...rr1, answerStatus: null }, [r1, rr1]), null);
+});

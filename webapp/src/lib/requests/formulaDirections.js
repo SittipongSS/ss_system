@@ -44,7 +44,7 @@ export function addDirectionError(request, row, items = []) {
   if (row.lineKind !== 'product_dev') return 'ส่ง direction เพิ่มได้เฉพาะรายการพัฒนาสูตร';
   if (request && !REQUEST_OPEN_STATUSES.includes(request.status)) return 'คำร้องนี้ไม่ได้เปิดอยู่ — ส่ง direction เพิ่มไม่ได้';
   if (!row.readyAt) return 'ส่งงานรายการนี้ก่อน — direction เพิ่มเติมในหน้าต่างส่งงานได้เลย';
-  if (row.outcome || row.answerStatus !== 'pending') {
+  if (row.outcome || ['done', 'declined'].includes(row.answerStatus)) {
     return 'รายการนี้ลูกค้าตอบแล้ว — สูตรใหม่หลังจากนี้คือรอบแก้ (บันทึก "ลูกค้าขอให้แก้")';
   }
   const confirmed = confirmedSibling(row, items);
@@ -115,10 +115,12 @@ export function formulaConfirmPlan({ row, items = [], formulas = [], customerId 
     };
   }
 
-  const activate = chosen.status === 'developing';
+  const foreign = (f) => !!(customerId && f?.customerId && f.customerId !== customerId);
+  /* ⚠️ **ไม่ปลุกสูตรที่แถวแค่ผูกไว้ / สูตรของลูกค้าอื่น** (รีวิว ม-157) — แถวเก่าผูกสูตรกำลังพัฒนาของคนอื่นได้ (ก่อน 0411
+     ตัวตนนับ developing: สูตรจากพัฒนากลิ่น ม-148 · สูตรที่ RD ถอยกลับไปพัฒนา) · ปลุกให้เอง = เปลี่ยนทะเบียนของคนที่ตั้งใจพักไว้ */
+  const activate = chosen.status === 'developing' && row.producedFormulaAction !== 'bind' && !foreign(chosen);
   const archive = [];
   let replaced = null;
-  const foreign = (f) => !!(customerId && f?.customerId && f.customerId !== customerId);
   const holder = findFormulaByIdentity(formulas, { categoryCode: row.categoryCode, scentId: row.scentId });
   if (activate && holder && holder.id !== chosen.id) {
     if (holder.status === 'draft') {

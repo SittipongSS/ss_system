@@ -165,11 +165,25 @@ export async function PATCH(request, { params }) {
      · แผนตัวเดียวกับที่โมดัลบอกก่อนกด (`formulaConfirmPlan`) */
   let confirmPlan = null;
   if (hop === 'outcome' && body.outcome === 'confirmed' && row.lineKind === 'product_dev' && row.producedFormulaId) {
-    let registryFormulas;
-    try {
-      registryFormulas = await loadFormulas(supabase, { status: null });
-    } catch (e) {
-      return Response.json({ error: `อ่านทะเบียนสูตรไม่สำเร็จ — ลองบันทึกอีกครั้ง (${e.message})` }, { status: 500 });
+    /* ⚠️ **อ่านเฉพาะสูตรของคู่นี้ + สูตรที่แถวของคู่นี้ถือ** ไม่ใช่ทั้งทะเบียน (รีวิว ม-157) — อ่านทั้งตารางชนเพดาน 1,000 แถว
+       ของ PostgREST เมื่อทะเบียนโต ⇒ ตัวที่เลือกหลุดหน้าแรก = แผน "ไม่มีอะไรทำ" แล้วสูตรค้างกำลังพัฒนาเงียบ ๆ */
+    const pairFormulaIds = [...new Set((before.items || [])
+      .filter((i) => i.lineKind === 'product_dev' && i.categoryCode === row.categoryCode && i.scentId === row.scentId)
+      .map((i) => i.producedFormulaId).filter(Boolean))];
+    const [byPair, byId] = await Promise.all([
+      supabase.from('formulas').select('*').eq('categoryCode', row.categoryCode).eq('scentId', row.scentId).limit(500),
+      supabase.from('formulas').select('*').in('id', pairFormulaIds),
+    ]);
+    if (byPair.error || byId.error) {
+      return Response.json({
+        error: `อ่านทะเบียนสูตรไม่สำเร็จ — ลองบันทึกอีกครั้ง (${(byPair.error || byId.error).message})`,
+      }, { status: 500 });
+    }
+    const registryFormulas = [...new Map([...(byPair.data || []), ...(byId.data || [])].map((f) => [f.id, f])).values()];
+    if (!registryFormulas.some((f) => f.id === row.producedFormulaId)) {
+      return Response.json({
+        error: 'ไม่พบสูตรของรายการนี้ในทะเบียน (อาจถูกลบไปแล้ว) — ให้ RD ตรวจที่ทะเบียนสูตรก่อน แล้วค่อยบันทึกคอนเฟิร์ม',
+      }, { status: 409 });
     }
     confirmPlan = formulaConfirmPlan({
       row, items: before.items || [], formulas: registryFormulas, customerId: before.customerId || null,
@@ -183,11 +197,12 @@ export async function PATCH(request, { params }) {
   // และเส้นวัด lead time จะติดลบทั้งแถว
   const today = businessDate();
 
+  // ⚠️ อยู่นอก try — catch ต้องรู้ว่าคำขอนี้สร้างสูตรไปแล้วหรือยัง (เก็บกวาดสูตรที่ไม่มีแถวถือ · รีวิว ม-157)
+  let createdFormula = null;
   try {
     const patch = { ...hopPatch(hop, body, user, today, { lineKind: row.lineKind }), updatedAt: nowIso };
 
     let deliveryWarning = null;
-    let createdFormula = null;
     let deliveredFormula = null;
     let expectedFormulaAction = null;
     let guardFormulaAction = false;
@@ -324,6 +339,28 @@ export async function PATCH(request, { params }) {
       }, { status: 409 });
     }
 
+    /* ⚠️ **สองจอคอนเฟิร์มคนละ direction ของคู่เดียวกันพร้อมกัน** (รีวิว ม-157) — ด่าน `outcome IS NULL` กันได้แค่แถวตัวเอง ·
+       แผนคิดจากสแนปช็อตก่อนเขียน ⇒ ทั้งคู่ผ่าน แล้วต่างคนต่างเลิกใช้ตัวที่อีกฝั่งเลือก · อ่านคู่สดหลังเขียนแถว เจออีกแถวคอนเฟิร์มแล้ว
+       (หรืออ่านไม่ได้) = ถอยผลของแถวนี้ ก่อนแตะทะเบียน · สองฝั่งถอยพร้อมกันได้ = ไม่มีอะไรเปลี่ยน กดใหม่ได้ */
+    if (hop === 'outcome' && confirmPlan?.kind === 'apply') {
+      const { data: rivals, error: rivalError } = await supabase.from('dept_request_items')
+        .select('id').eq('requestId', id).eq('lineKind', 'product_dev')
+        .eq('categoryCode', row.categoryCode).eq('scentId', row.scentId)
+        .eq('outcome', 'confirmed').neq('id', itemId);
+      if (rivalError || rivals?.length) {
+        const { error: undoError } = await supabase.from('dept_request_items').update({
+          outcome: null, outcomeAt: null, outcomeById: null, outcomeByName: null, outcomeNote: null,
+          confirmedQty: null, updatedAt: nowIso,
+        }).eq('id', itemId).eq('outcome', 'confirmed');
+        if (undoError) console.error('[requests] ถอยผลคอนเฟิร์มที่ชนกันไม่สำเร็จ:', itemId, undoError.message);
+        return Response.json({
+          error: rivalError
+            ? 'ตรวจรายการอื่นของกลิ่นนี้ไม่สำเร็จ — ยังไม่ได้บันทึก ลองกดอีกครั้ง'
+            : 'อีก direction ของกลิ่นนี้เพิ่งถูกคอนเฟิร์มจากอีกหน้าจอ — ยังไม่ได้บันทึก โหลดหน้าใหม่',
+        }, { status: 409 });
+      }
+    }
+
     // ── ลูกค้าขอให้แก้ = เกิดแถวใหม่เอง ─────────────────────────────────
     // ⭐ ไม่ใช่ปุ่มแยก — มันเป็น **ผลลัพธ์** ของการบันทึกคำตอบ ไม่ใช่การกระทำ
     // ถ้าให้คนกดเอง จะมีช่วงที่คำร้องค้างโดยไม่มีใครเห็นว่ายังมีงานเหลือ
@@ -429,12 +466,26 @@ export async function PATCH(request, { params }) {
           }
         }
       }
+      /* ⚠️ ตัวเดิมที่เพิ่งเลิกใช้อาจเป็นสูตรที่ **ใบอื่น**คอนเฟิร์มไว้และยังรอใส่ราคา (สองใบพัฒนาคู่เดียวกัน · รีวิว ม-157) —
+         ไม่บล็อก (ของใหม่แทนของเก่าตามมติ) แต่ต้องถึงตาคน ไม่งั้นราคาไปลงสูตรที่เลิกใช้แล้วโดยไม่มีใครรู้ */
+      const notes = [];
+      if (replaced && archived.some((f) => f.id === replaced.id)) {
+        const { data: waiting } = await supabase.from('dept_request_items')
+          .select('requestId').eq('producedFormulaId', replaced.id).eq('outcome', 'confirmed')
+          .is('answeredRevisionId', null).neq('requestId', id).limit(20);
+        const otherIds = [...new Set((waiting || []).map((w) => w.requestId))];
+        if (otherIds.length) {
+          const { data: others } = await supabase.from('dept_requests').select('id, "docNo"').in('id', otherIds).limit(20);
+          notes.push(`${formulaName(replaced)} ที่เพิ่งเลิกใช้ยังรอใส่ราคาในคำร้อง `
+            + `${(others || []).map((o) => o.docNo || o.id).join(', ') || otherIds.join(', ')} — แจ้ง RD ว่าจะใส่ราคาตัวไหน`);
+        }
+      }
       const reason = notChosenReason(chosen);
       const closed = [];
       for (const sibling of close) {
         const { data: hit, error: closeError } = await supabase.from('dept_request_items')
           .update({ answerStatus: 'declined', declineReason: reason, updatedAt: nowIso })
-          .eq('id', sibling.id).is('outcome', null).eq('answerStatus', 'pending')
+          .eq('id', sibling.id).is('outcome', null).or('answerStatus.is.null,answerStatus.eq.pending')
           .select('id');
         if (closeError) problems.push(`ปิด ${rowText(sibling)} ไม่สำเร็จ (${closeError.message})`);
         else if (hit?.length) closed.push(sibling);
@@ -450,7 +501,10 @@ export async function PATCH(request, { params }) {
       confirmText = (activate && activated ? ` · สูตร ${formulaName(chosen)} ใช้งานได้` : '')
         + (archived.length ? ` · เลิกใช้ ${archived.map((f) => formulaName(f)).join(', ')}` : '')
         + (closed.length ? ` · ปิดรายการอื่นของกลิ่นนี้ ${closed.length} รายการ (ไม่ถูกเลือก)` : '');
-      if (problems.length) confirmWarning = `บันทึกคอนเฟิร์มแล้ว แต่${problems.join(' · ')}`;
+      if (problems.length || notes.length) {
+        confirmWarning = [problems.length ? `บันทึกคอนเฟิร์มแล้ว แต่${problems.join(' · ')}` : null, ...notes]
+          .filter(Boolean).join(' · ');
+      }
     }
 
     // ── วันส่งลูกค้าไหลกลับขึ้นทะเบียนกลิ่น (ม-66 · mig 0224) ─────────────
@@ -565,6 +619,18 @@ export async function PATCH(request, { params }) {
     const warning = [deliveryWarning, confirmWarning].filter(Boolean).join(' · ');
     return Response.json(warning ? { ...saved, _warning: warning } : saved);
   } catch (e) {
+    /* ⭐ **สูตรที่คำขอนี้สร้างแต่ไม่มีแถวถือ = ลบทิ้ง** (รีวิว ม-157) — เขียนแถวโยน error (เน็ตสะดุด/หมดเวลา) แล้วสูตรกำลังพัฒนาค้าง
+       ⇒ กดซ้ำชน "รหัสสูตรนี้ถูกใช้ไปแล้ว" (ตัวตนไม่นับกำลังพัฒนาแล้ว จึงไม่ผูกตัวค้างให้เองเหมือนเดิม) · อ่านแถวไม่ได้ = ไม่ลบ
+       (ไม่รู้ว่าแถวถือมันอยู่ไหม) */
+    if (createdFormula) {
+      const { data: held, error: heldError } = await supabase.from('dept_request_items')
+        .select('"producedFormulaId"').eq('id', itemId).maybeSingle();
+      if (!heldError && held?.producedFormulaId !== createdFormula.id) {
+        const { error: orphanError } = await supabase.from('formulas').delete()
+          .eq('id', createdFormula.id).eq('status', 'developing');
+        if (orphanError) console.error('[requests] ลบสูตรที่ไม่มีแถวถือไม่สำเร็จ:', createdFormula.id, orphanError.message);
+      }
+    }
     /* ม-157: สูตรที่ส่งเป็น "กำลังพัฒนา" ข้างตัวที่ใช้งานอยู่ได้ก็ต่อเมื่อรัน mig 0411 แล้ว — ดัชนีเดิมตีกลับด้วยข้อความ
        "มีสูตรอยู่แล้ว" (`translateScentConflict`) ซึ่งชี้ผิดทาง ⇒ บอกตรง ๆ ว่าฐานยังไม่พร้อม */
     if (formulaDelivery && String(e?.message || '').startsWith('หมวดสินค้านี้กับกลิ่นนี้มีสูตรอยู่แล้ว')) {

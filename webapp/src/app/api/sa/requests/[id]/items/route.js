@@ -424,6 +424,22 @@ async function postFormulaDirections({ supabase, user, before, request }) {
     }));
     const { error: insertError } = await supabase.from('dept_request_items').insert(rows);
     if (insertError) throw insertError;
+    /* ⚠️ **คอนเฟิร์มแทรกระหว่างตรวจกับเขียน** (รีวิว ม-157) — ด่านอ่านสแนปช็อตครั้งเดียว · คู่นี้ถูกคอนเฟิร์มไปแล้ว = แถวใหม่ไม่มีวันถูก
+       คอนเฟิร์มได้อีก (ค้างถาวร) ⇒ อ่านสดหลังเขียน เจอ = ถอยแถวแล้วถอยสูตร (ผ่าน catch) */
+    const { data: settledNow, error: recheckError } = await supabase.from('dept_request_items')
+      .select('id').eq('requestId', id).eq('lineKind', 'product_dev')
+      .eq('categoryCode', anchor.categoryCode).eq('scentId', anchor.scentId)
+      .or('outcome.eq.confirmed,answerStatus.eq.done');
+    if (recheckError || settledNow?.length) {
+      const { error: rowUndoError } = await supabase.from('dept_request_items').delete().in('id', rows.map((r) => r.id));
+      if (rowUndoError) {
+        console.error('[request items] ถอยแถว direction ไม่สำเร็จ', rowUndoError.message);
+        created.length = 0; // แถวยังถือสูตรอยู่ — ห้ามลบสูตรตาม
+      }
+      throw new Error(recheckError
+        ? 'ตรวจรายการอื่นของกลิ่นนี้ไม่สำเร็จ — ยังไม่ได้ส่ง ลองกดอีกครั้ง'
+        : 'ลูกค้าเพิ่งคอนเฟิร์มสูตรของกลิ่นนี้ — ส่ง direction เพิ่มไม่ได้แล้ว โหลดหน้าใหม่');
+    }
   } catch (e) {
     for (const formula of created) {
       const { error: undoError } = await supabase.from('formulas').delete().eq('id', formula.id).eq('status', 'developing');
