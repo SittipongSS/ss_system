@@ -947,9 +947,8 @@ export async function PATCH(request, { params }) {
             inspiration: row.inspiration,
             likedNotes: row.likedNotes,
             dislikedNotes: row.dislikedNotes,
-            scentotypes: row.scentotypes,
-            // ข้อความต่อท้าย Scentotype รายตัว (mig 0222 · ข้อ 2.1.4 บนกระดาษ)
-            scentotypeNotes: row.scentotypeNotes || {},
+            // ⛔ ไม่เขียน scentotypes/scentotypeNotes — 2.1.5 ถอดแล้ว (มติผู้ใช้ 2026-10-19) ⇒ บรีฟเก่า
+            //    ที่เคยติ๊กไว้ยังเก็บค่าเดิมในฐาน ไม่ถูกทับเป็นว่างตอนบันทึก
             performance: row.performance,
             updatedAt: nowIso,
           };

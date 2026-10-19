@@ -2,7 +2,7 @@
 // ── PDR แบบอ่านอย่างเดียว บนหน้ารายละเอียดคำร้อง ────────────────────────
 //
 // 🔴 **ช่องโหว่ที่ปิด:** ผมสร้างฝั่งกรอกครบแต่ไม่ได้สร้างฝั่งอ่าน ⇒ RD เปิดคำร้องขึ้นมา
-// เห็นแค่ชื่อเรื่อง ไม่เห็นบรีฟกลิ่น ไม่เห็น Scentotype ไม่เห็น Target Cost = ทำงานต่อ
+// เห็นแค่ชื่อเรื่อง ไม่เห็นบรีฟกลิ่น ไม่เห็น Performance ไม่เห็น Target Cost = ทำงานต่อ
 // ไม่ได้เลย · คนกรอกกรอกครั้งเดียว แต่คนอ่านอ่านทุกครั้งที่หยิบงาน
 //
 // ⭐ **หัวข้อ ป้ายชื่อ และลำดับ อ่านจาก `lib/requests/pdrFields.js` ทั้งหมด** — จอนี้
@@ -12,7 +12,7 @@
 // ⚠️ ช่องที่ไม่ได้กรอก **ไม่แสดงเลย** ไม่ใช่แสดงเป็นขีด — ฟอร์มมี 21 ช่องและส่วนใหญ่
 // ไม่บังคับ ⇒ แสดงช่องว่างครบทุกช่องจะกลบของที่กรอกจริงจนหาไม่เจอ
 // (เอกสารทำกลับกัน — ที่นั่นช่องว่างต้องพิมพ์เป็นเส้นให้เขียนมือ)
-import { scentPerformanceLabel, scentotypeLabel } from "@/lib/requests/kinds/rd/scentBriefTypes";
+import { scentPerformanceLabel } from "@/lib/requests/kinds/rd/scentBriefTypes";
 import { PDR_BRIEF_LABELS, PDR_SECTIONS, pdrSectionRows } from "@/lib/requests/pdrFields";
 import { pdrTargetFacts, pdrTargetSizeText } from "@/lib/requests/pdrTargets";
 import { requestPdrScentSource, requestUsesScentBriefs } from "@/lib/master/requestTypes";
@@ -182,21 +182,17 @@ function BriefFacts({ brief: b }) {
     <>
       {/* บรีฟเป็นช่องหลักของก้อนนี้ — ว่างก็ต้องเห็นว่าว่าง (N/A) ไม่ใช่หายไป */}
       {/* ⚠️ ป้าย + เลขข้อจากทะเบียน `PDR_BRIEF_LABELS` — ชุดเดียวกับฟอร์มและเอกสาร
-          (2.1.4 Performance · 2.1.5 Scentotype ตามไฟล์ของ AE · มติผู้ใช้ 2026-09-11) */}
+          (2.1.4 Performance ตามไฟล์ของ AE · 2.1.5 Scentotype ถอดแล้ว มติผู้ใช้ 2026-10-19 —
+          บรีฟเก่าที่เคยติ๊กไว้ก็ไม่โชว์) */}
       <Facts rows={[
         [L.brief.label, b.brief],
         [numberedBrief("inspiration"), b.inspiration],
         [numberedBrief("likedNotes"), b.likedNotes],
         [numberedBrief("dislikedNotes"), b.dislikedNotes],
         [L.researchTopic.label, b.researchTopic],
-        // ⭐ ข้อความต่อท้าย Scentotype รายตัว (mig 0222)
-        ...(b.scentotypes || []).map((t) => [
-          `${L.scentotypes.label} — ${scentotypeLabel(t)}`, (b.scentotypeNotes || {})[t],
-        ]),
       ]} />
       <dl className={styles.pdrFacts}>
         <Chips label={numberedBrief("performance")} values={b.performance} textOf={scentPerformanceLabel} />
-        <Chips label={numberedBrief("scentotypes")} values={b.scentotypes} textOf={scentotypeLabel} />
       </dl>
     </>
   );

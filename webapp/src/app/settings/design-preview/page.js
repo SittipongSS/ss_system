@@ -161,7 +161,7 @@ const BADGE_TONES = STATUS_TONES;
 const BADGE_FAMILIES = [
   { cls: "ui-badge", count: 168 },
   { cls: "status-pill", count: 43 },
-  { cls: "chip", count: 21 },   // 📉 23 → 20 (2026-09-16) หน้าแรกเดิมถูกลบตาม ADR 0016 · 📈 20 → 21 ชิประบบที่ยังไม่เปิดใช้บนสารบัญหน้าแรก
+  { cls: "chip", count: 20 },   // 📉 23 → 20 (2026-09-16) หน้าแรกเดิมถูกลบตาม ADR 0016 · 📈 20 → 21 ชิประบบที่ยังไม่เปิดใช้บนสารบัญหน้าแรก · 📉 21 → 20 (2026-10-19) ถอดชิป Scentotype ใน PDR
 ];
 
 const ROWS = [
