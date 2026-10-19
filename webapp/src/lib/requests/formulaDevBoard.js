@@ -19,6 +19,7 @@ import { hopLabel } from '@/lib/requests/hops';
 import { rowIdleStamps, rowTrackSteps } from '@/lib/requests/rowTrack';
 import { reworkBriefOf } from '@/lib/requests/rework';
 import { productDevLabel } from '@/lib/requests/rowLabel';
+import { formulaDevRowOrder } from '@/lib/requests/formulaDirections';
 
 const OUTCOME_TONE = { confirmed: 'success', revise: 'neutral', rejected: 'danger' };
 
@@ -30,8 +31,12 @@ const OUTCOME_TONE = { confirmed: 'success', revise: 'neutral', rejected: 'dange
  */
 export function formulaDevBoard(items = []) {
   const all = items || [];
+  /* ⭐ แถวของกลิ่นเดียวกันอยู่ติดกัน + ป้าย direction (ม-157) — รอบแก้/direction เพิ่มเกิดทีหลังได้ `sortOrder` ท้ายสุด
+     เรียงตามเลขล้วน ๆ แล้วไปอยู่ใต้กลิ่นอื่นทั้งใบ */
+  const { order, direction } = formulaDevRowOrder(all);
   return all
     .filter((i) => i?.lineKind === 'product_dev')
+    .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
     .map((item) => {
       const stage = rowStage(item);
       const parent = item.derivedFromItemId ? all.find((i) => i?.id === item.derivedFromItemId) || null : null;
@@ -58,6 +63,8 @@ export function formulaDevBoard(items = []) {
         prices: rowPriceLines(item),
         // ⭐ รอบแก้ต้องอ่านออกจากตารางว่าเป็นรอบแก้ ไม่ต้องเปิดการ์ดดู
         rework: !!item.derivedFromItemId,
+        // ⭐ direction ที่เท่าไรของชุด (ม-157) — null = ชุดนี้มีตัวเดียว (ไม่ต้องมีป้าย)
+        direction: direction.get(item.id) || null,
         // ⭐ โจทย์ของรอบนี้ — คอมเมนต์ลูกค้าจากแถวต้นทาง (มติผู้ใช้ 2026-08-25)
         reworkBrief: reworkBriefOf(item, all),
         // รอบแก้แก้จากสูตรตัวไหน (ค่าสดของแถวต้นทาง) — แถวรอบแก้ที่ยังไม่ส่งบอกได้ว่ากำลังแก้อะไร แทนประโยค "ยังไม่มีสูตร" ลอย ๆ
