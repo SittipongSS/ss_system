@@ -111,8 +111,18 @@ export default function TaxDashboard() {
 
   /* ⭐ ใบที่ค้างเกินเกณฑ์ — ตัวเลขที่หน้านี้ต้องกล้าโชว์
      ตรวจระบบ 2026-08-28: ทะเบียน 17 ใบค้าง "รออนุมัติ" ทั้งหมด เก้าใบค้าง 28–34 วัน
-     ทั้งที่เอกสารครบทุกใบ — จอเดิมมีแต่ตัวเลข "รออนุมัติ 17" ซึ่งอ่านเหมือนงานปกติ */
-  const late = useMemo(() => lateRegistrations(regs, todayIso), [regs, todayIso]);
+     ทั้งที่เอกสารครบทุกใบ — จอเดิมมีแต่ตัวเลข "รออนุมัติ 17" ซึ่งอ่านเหมือนงานปกติ
+
+     ⭐ แถบค้างนาน **ไม่สนตัวเลือกช่วงเวลา** (มติเจ้าของ 19/10/2026 · ตรวจตัวเลข H2 รอบสอง)
+     🐞 เดิมนับจาก `regs` (ตัดด้วยวันสร้างใบตาม "เดือนนี้/ไตรมาสนี้") แต่ลิงก์ของแถบเปิดคิวที่ไม่มี
+        ช่วงเวลา ⇒ เลือก "เดือนนี้" แล้วแถบบอก 1 ใบ กดไปเจอ 9 ใบ · และใบที่ค้างนานส่วนใหญ่สร้าง
+        ก่อนช่วงที่เลือกอยู่แล้ว ⇒ ยิ่งค้างนานยิ่งหลุดจากแถบ ตรงข้ามกับที่แถบมีไว้เตือน
+     ⇒ นับจาก `rawRegs` ทั้งกอง — API ไม่มีตัวกรองช่วงเวลา (กรองที่จอ) และผ่าน applyExciseListScope
+        ตัวเดียวกับที่คิวโหลด ⇒ เลขบนแถบ = แถวที่ `?late=1` เปิดได้ ไม่ว่าเลือกช่วงไหน
+     ⚠️ hint "ค้างเกิน … ใบ" บนการ์ด "รออนุมัติ" ยังนับในช่วงที่เลือก (`lateInPeriod`) — เป็นส่วนย่อย
+        ของเลขบนการ์ดนั้นซึ่งเป็น KPI ตามช่วง ห้ามเอาเลขทั้งกองไปแปะ (ได้ "รออนุมัติ 1 · ค้างเกิน 9 ใบ") */
+  const late = useMemo(() => lateRegistrations(rawRegs, todayIso), [rawRegs, todayIso]);
+  const lateInPeriod = useMemo(() => lateRegistrations(regs, todayIso), [regs, todayIso]);
   const oldestLate = late[0]?.days ?? null;
 
   const o = {
@@ -221,7 +231,9 @@ export default function TaxDashboard() {
         {/* ⭐ แถบค้างนาน — ขึ้นบนสุดเมื่อมีของค้าง เพราะเป็นสิ่งเดียวบนหน้านี้ที่
             "ต้องลงมือวันนี้" · ไม่มีของค้างก็ไม่ขึ้นเลย ไม่ใช่แถบเขียวกินที่ */}
         {/* 🐞 กดแล้วเคยเปิด "รออนุมัติ" ทั้งกอง (H2) — ลิงก์พา `late=1` ไปด้วย ⇒ คิวกรองด้วย
-            `isLateRegistration` ตัวเดียวกับที่แถบนับ เลขบนแถบ = แถวที่เปิดได้ */}
+            `isLateRegistration` ตัวเดียวกับที่แถบนับ เลขบนแถบ = แถวที่เปิดได้
+            ⭐ นับทั้งกองไม่สนช่วงเวลา (มติ 19/10 · ดู `late` ข้างบน) ⇒ ตอนเลือกช่วงอื่นต้องบอกบนแถบ
+               ไม่งั้นเลขบนแถบกับ hint ของการ์ด "รออนุมัติ" ที่นับตามช่วงจะดูเหมือนขัดกันเอง */}
         {late.length > 0 && (
           <button
             type="button"
@@ -235,6 +247,7 @@ export default function TaxDashboard() {
               </div>
               <div className={styles.alertNote}>
                 ใบที่นานที่สุดค้างมา {ageLabel(oldestLate)} — เอกสารครบแล้วรอฝ่าย RA ตรวจอย่างเดียว
+                {timeRange !== "all" && " · นับทุกใบที่ค้าง ไม่ขึ้นกับช่วงเวลาที่เลือก"}
               </div>
             </div>
             <ChevronRight size={18} className={styles.alertIcon} />
@@ -269,8 +282,8 @@ export default function TaxDashboard() {
                 value={r.pending_legal}
                 /* ตัวเลข "รออนุมัติ" ตัวเดียวอ่านเหมือนงานปกติเสมอ — ต้องบอกด้วยว่า
                    ในนั้นค้างเกินเกณฑ์กี่ใบ ไม่งั้นคิวที่ตายแล้วดูเหมือนคิวที่เดินอยู่ */
-                hint={late.length ? `ค้างเกิน ${AGE_LATE_DAYS} วัน ${late.length} ใบ` : undefined}
-                tone={late.length ? "danger" : "warning"}
+                hint={lateInPeriod.length ? `ค้างเกิน ${AGE_LATE_DAYS} วัน ${lateInPeriod.length} ใบ` : undefined}
+                tone={lateInPeriod.length ? "danger" : "warning"}
                 icon={Clock3}
                 onClick={() => goReg("pending_legal")}
               />

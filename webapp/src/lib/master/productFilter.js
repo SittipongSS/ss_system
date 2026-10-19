@@ -8,7 +8,7 @@
 // ทุกฟังก์ชันบริสุทธิ์ ไม่มี React ไม่มี DB — เรียกได้ทั้งสองฝั่ง
 import { categoryOf, categoryFlags } from '@/lib/master/categoryOf';
 import { categoryNameBoth } from '@/lib/master/productCategoryOptions';
-import { approvalStatusOf } from '@/lib/master/approvalStatus';
+import { passesApprovalFilters } from '@/lib/master/pendingApprovalLinks';
 import { isMissingRetailPrice } from '@/lib/tax/taxableProducts';
 
 /** รหัสหมวดของสินค้า — ใช้ค่าที่บันทึกไว้ก่อน ถอยไปถอดจาก fgCode ให้แถวเก่า */
@@ -52,6 +52,8 @@ function searchHaystack(product, productTypes) {
  *   เพราะยื่นไม่ได้จนกว่าจะเติมราคา) บ้านมันจึงอยู่ที่นี่
  *   ⚠️ ไม่มีราคา = ภาษีคิดออกมา 0 ⇒ ถ้าขายแล้วยื่นจะยื่นขาดโดยไม่มีอะไรฟ้อง
  * @param showInactive true = รวมสินค้าที่เลิกใช้
+ *   ⚠️ ใบที่รออนุมัติไม่ถูกซ่อนเพราะเลิกใช้ ขณะกรองสถานะ "รออนุมัติ" (มติเจ้าของ 19/10 · H3) —
+ *   ตาราง `?count=products` ต้องได้ครบทุกใบที่ป้ายเมนู/การ์ดภาพรวมนับ (`passesApprovalFilters`)
  * @param productTypes ทะเบียนหมวด — ต้องส่งมาด้วย ไม่งั้นค้นชื่อหมวดไม่เจอ
  *   และตัวกรองขึ้นทะเบียนจะตัดทุกแถวทิ้ง (categoryFlags หาไม่เจอ = ไม่ใช่สรรพสามิต)
  */
@@ -61,8 +63,7 @@ export function filterProducts(products = [], {
 } = {}) {
   const q = String(search || '').trim().toLowerCase();
   return products.filter((p) => {
-    if (!showInactive && p.isActive === false) return false;
-    if (statuses.length && !statuses.includes(approvalStatusOf(p))) return false;
+    if (!passesApprovalFilters(p, { statuses, showInactive })) return false;
     if (missingRetailPrice && !isMissingRetailPrice({ ...p, categoryCode: productCategoryCode(p) }, productTypes)) {
       return false;
     }

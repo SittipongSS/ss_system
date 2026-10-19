@@ -14,12 +14,23 @@ import { overdueDays } from './myVisits';
 import { gateNeedsOthers, gatePassed } from './visitGate';
 import { isClosedVisit, isDraftVisit, isLiveVisit, isOpenVisit } from './visitStatus';
 import { minutesOf, toHHMM } from './sites';
+import { QUEUE_RANGE_TODAY, isVisitToday } from './scheduleQueueLink';
 
-// ── ถังของรายการงาน ────────────────────────────────────────────────────────
-export const QUEUE_BUCKETS = Object.freeze(['waiting', 'overdue', 'scheduled', 'closed']);
-export const QUEUE_BUCKET_LABELS = Object.freeze({ waiting: 'รอจัด', overdue: 'ค้าง', scheduled: 'จัดแล้ว', closed: 'ปิดแล้ว' });
-/* หน่วยของตัวเลขบนถัง — ร่างยังไม่ใช่นัด (ยังไม่ถึงมือใคร) จึงนับเป็น "ใบ" */
-export const QUEUE_BUCKET_UNITS = Object.freeze({ waiting: 'ใบ', overdue: 'นัด', scheduled: 'นัด', closed: 'นัด' });
+// ── ถัง · ช่วง · "นัดวันนี้" · ลิงก์ — อยู่ที่ scheduleQueueLink.js (ไฟล์เบา ให้หน้าภาพรวมใช้ได้โดยไม่ลากด่านเข้า bundle)
+//    re-export ที่นี่ ⇒ ผู้เรียกเดิม import จากไฟล์นี้ได้เหมือนเดิม
+export {
+  QUEUE_BUCKETS,
+  QUEUE_BUCKET_LABELS,
+  QUEUE_BUCKET_UNITS,
+  QUEUE_LINK_RANGES,
+  QUEUE_RANGES,
+  QUEUE_RANGE_LABELS,
+  QUEUE_RANGE_TODAY,
+  QUEUE_RANGE_TODAY_LABEL,
+  isVisitToday,
+  queueRangeFrom,
+  scheduleQueueHref,
+} from './scheduleQueueLink';
 
 /* ร่างที่ติดด่านและวันเสนอไกลกว่านี้ พับเข้ากลุ่ม "far" (ซ่อนหลังปุ่ม)
    ⭐ รอบบริการสร้างร่างล่วงหน้า 90 วัน ⇒ ไม่พับ = เม็ดตัวเลขของ "รอจัด" ไม่มีวันลงถึง 0
@@ -30,10 +41,6 @@ export const QUEUE_SOON_DAYS = 14;
 /* นัดที่ปิดแล้วโผล่ในแท็บ "ปิดแล้ว" ย้อนหลังกี่วัน — server ตัดช่วงโหลดด้วยเลขเดียวกัน
    ⇒ จอกับ API ต้องอ่านค่าจากที่นี่ที่เดียว ไม่งั้นแท็บจะว่างทั้งที่มีนัดปิดอยู่จริง */
 export const QUEUE_CLOSED_DAYS = 14;
-
-// ── ช่วงของถัง "จัดแล้ว" ──────────────────────────────────────────────────
-export const QUEUE_RANGES = Object.freeze(['all', '7d', 'unassigned']);
-export const QUEUE_RANGE_LABELS = Object.freeze({ all: 'ทั้งหมด', '7d': '7 วัน', unassigned: 'ยังไม่มีเจ้าหน้าที่' });
 
 // ── กลุ่มย่อยของถัง "รอจัด" — ลำดับนี้คือลำดับบนจอ ─────────────────────────
 /* ⭐ `requests` = คำร้องประเมินพื้นที่ที่ยังไม่มีนัด (มติเจ้าของ 23/09) — ขึ้น **ก่อนทุกกลุ่ม**
@@ -174,9 +181,11 @@ export function waitingGroupOf(gate, visit, win) {
  *  · all        = ทุกใบ
  *  · 7d         = วันนัด ≤ วันนี้ + 6       (= serviceCounts().week)
  *  · unassigned = ไม่มีเจ้าหน้าที่ และ ≤ วันนี้ + 6 (= serviceCounts().unassigned)
+ *  · today      = นัดวันนี้ (`isVisitToday` = serviceCounts().today) — ช่วงที่มากับลิงก์ของการ์ด "นัดวันนี้"
  *  ⚠️ ขอบ 7 วันของ "ยังไม่มีเจ้าหน้าที่" จงใจ — นัดไกล ๆ ยังไม่มอบหมายก็ปกติ (ตารางคนยังไม่นิ่ง)
  *  ช่วงที่ไม่รู้จัก = ทั้งหมด (ค่าจาก URL ที่พิมพ์ผิดต้องไม่ทำให้รายการว่าง) */
 export function inQueueRange(visit, range, win) {
+  if (range === QUEUE_RANGE_TODAY) return isVisitToday(visit, asWindow(win).todayIso);
   if (range !== '7d' && range !== 'unassigned') return true;
   const date = dateOf(visit);
   const inWeek = !!date && date <= asWindow(win).weekUntil;

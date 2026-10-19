@@ -155,7 +155,7 @@ test('ตัวนับทุกตัวใช้กติกาเดีย�
 /* จออ่านคอลัมน์ตรงไม่ได้ — ต้องผ่าน `leadActiveFollowUpAt` (ยามของบั๊กนี้: ช่องในตาราง
    และแถว "ติดตามต่อ" บนการ์ดสรุปของหน้าใบ เคยอ่าน `lead.followUpAt` ตรงทั้งคู่) */
 test('หน้าลีด (ตาราง + หน้าใบ) ไม่อ่าน lead.followUpAt ตรง', () => {
-  for (const file of ['../../app/sales-planning/leads/page.js', '../../app/sales-planning/leads/[id]/page.js']) {
+  for (const file of ['../../app/sales-planning/leads/page.js', '../../app/sales-planning/leads/[id]/page.js', './leadReport.js']) {
     const src = readFileSync(new URL(file, import.meta.url), 'utf8');
     assert.doesNotMatch(src, /\blead\.followUpAt\b/, `${file} อ่าน lead.followUpAt ตรง — ต้องผ่าน leadActiveFollowUpAt`);
     assert.match(src, /leadActiveFollowUpAt\(lead\)/, `${file} ต้องเรียก leadActiveFollowUpAt`);
