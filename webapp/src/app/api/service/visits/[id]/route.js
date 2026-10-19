@@ -13,7 +13,7 @@ import {
 } from '@/lib/service/visitStatus';
 import { VISIT_DELETE_BLOCK_LABELS, VISIT_DELETE_CREW_ERROR, visitDeleteBlock } from '@/lib/service/visitDelete';
 import { SURVEY_DESK_REVIVE_ERROR, SURVEY_VISIT_KIND, findSurveyVisit } from '@/lib/service/surveyVisit';
-import { surveyStepBackBody, surveyStepBackPlan } from '@/lib/service/surveyStepBack';
+import { surveyStepBackBody, surveyUnableNoticeBody, surveyUnableOutcome } from '@/lib/service/surveyStepBack';
 import { surveyVisitAssigneePatch } from '@/lib/service/surveyVisitAssignee';
 import {
   SEND_BACK_DONE_KIND, surveyEditLockError, surveyFieldProgress, surveyFieldSubmitError, surveySendBackDoneBody,
@@ -24,7 +24,7 @@ import { appendVisitCancelLine } from '@/lib/service/surveyMethodWrites';
 import { surveySpotSubmitError } from '@/lib/service/surveySpotPhotos';
 import { notifySurveyFieldDone } from '@/lib/service/surveyFieldDoneNotify';
 import {
-  findPlan, loadVisitCrew, loadVisitItems, requireVisit, visitCrewRole, visitFieldRecordCount,
+  findPlan, findVisit, loadVisitCrew, loadVisitItems, requireVisit, visitCrewRole, visitFieldRecordCount,
 } from '@/lib/service/visitsRepo';
 import { findSite, loadAssets, loadAssetsByIds, loadZones } from '@/lib/service/sitesRepo';
 import { evaluateVisitGate, gateBlocker, gatePassed, gateVisitBeforeChange } from '@/lib/service/visitGate';
@@ -40,7 +40,8 @@ import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { commitAssetMove } from '@/lib/service/assetMoveCommit';
 import { fmtDate } from '@/lib/format';
 import { stampVisitInput, stampVisitTimes } from '@/lib/service/visitStamp';
-import { visitMoveDecision } from '@/lib/service/crew/jobStart';
+import { VISIT_EDITED_MEANWHILE_ERROR, visitMoveDecision, visitStatusChangedError } from '@/lib/service/crew/jobStart';
+import { changedVisitColumns } from '@/lib/service/visitWriteDiff';
 import { businessDate } from '@/lib/businessDate';
 
 export const dynamic = 'force-dynamic';
@@ -99,6 +100,33 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   }
 });
 
+/* CHECK ของ service_visits ที่ล้มได้จาก "สองคนเขียนช่องคู่กันพร้อมกัน" เท่านั้น (ข้อมูลที่ผู้ใช้กรอก ด่าน normalize จับไว้ก่อนแล้ว)
+   ⚠️ CHECK อื่นล้ม = ไม่ใช่การชน กดซ้ำก็ล้มซ้ำ ⇒ ไม่ตอบ "โหลดใหม่แล้วลองอีกครั้ง" (คงข้อความเดิมของฐาน) */
+const RACE_CHECKS = [
+  'service_visits_time_window', 'service_visits_actual_time_window', 'service_visits_actual_end_date_after',
+  'service_visits_done_needs_actual_date',
+];
+
+/* คำเขียนนัดไม่โดนแถวไหน (สถานะในฐานเปลี่ยนระหว่างคำขอ) — อ่านแถวใหม่แล้วถามด่านรับงานซ้ำ **ก่อน** ตอบ
+   ⭐ หัวงานกับผู้ช่วยกด "เริ่มงาน" พร้อมกัน: คนช้ากว่าเจอใบที่ "กำลังทำ" แล้ว = no-op 200 แบบเดียวกับกดซ้ำ (แผน C7 —
+      ผู้ช่วยต้องได้เข้างาน ไม่ใช่ toast ทางตัน) · ใบที่ถูกยกเลิก/เลื่อน = ข้อความของด่านนั้นเอง · อื่น ๆ = บอกสถานะจริง
+   ⚠️ ยังไม่ได้เขียนอะไรเลย ⇒ อ่านพลาดก็ตอบ 409 กลางได้ (กดใหม่ได้ปลอดภัย) */
+async function staleWriteAnswer(supabase, id, body, ownWorkOnly, before) {
+  let fresh;
+  try {
+    fresh = await findVisit(supabase, id);
+  } catch {
+    return conflict('สถานะของนัดนี้เพิ่งถูกเปลี่ยน — ยังไม่ได้บันทึกอะไร · โหลดหน้าใหม่แล้วดูสถานะล่าสุด');
+  }
+  if (!fresh) return conflict(visitStatusChangedError(null));
+  const decision = visitMoveDecision(fresh, body, { ownWorkOnly, today: businessDate() });
+  if (decision?.noop) return ok({ visit: fresh, nextVisitSuggestion: null, steppedBackRequest: false, retrieval: null });
+  if (decision?.error) return decision.forbidden ? forbidden(decision.error) : conflict(decision.error);
+  // สถานะเท่าเดิม = ช่องอื่นที่คำเขียนถาม (วันนัดของปุ่มเริ่มงาน) ขยับ — ไม่ใช่ "สถานะเปลี่ยน"
+  if (fresh.status === before?.status) return conflict(VISIT_EDITED_MEANWHILE_ERROR);
+  return conflict(visitStatusChangedError(fresh.status));
+}
+
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const { id } = await ctx.params;
   try {
@@ -107,6 +135,17 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const before = access.visit;
 
     const body = await req.json().catch(() => ({}));
+
+    /* 🔴 **ฟอร์มที่เปิดค้าง** (รีวิว S2b ข้อ V17 · 19/10) — โมดัลแก้นัดส่งทั้งฟอร์มกลับ รวมสถานะตอนเปิดฟอร์ม ⇒ เปิดไว้ก่อน
+       ช่างกดเริ่มงาน/ก่อนหัวหน้ายกเลิก แล้วกดบันทึกทีหลัง = เขียนสถานะเก่าทับ (งานที่เริ่มแล้วถอยเป็น "นัดไว้" · นัดที่ยกเลิก
+       ฟื้น) · ยามตอนเขียน (`.eq('status', before.status)`) จับไม่ได้ เพราะ `before` อ่านใหม่ทุกคำขอ ⇒ ผู้ส่งบอกสถานะที่ตัวเองเห็น
+       มาเป็น `expectedStatus` ไม่ตรงกับฐาน = 409 ก่อนด่านอื่นทั้งหมด · ไม่ส่งมา = ไม่ถาม (ปุ่มของช่างอ่านสถานะสดอยู่แล้ว)
+       ⚠️ ถอดออกจาก body ก่อนไปต่อ — ไม่ใช่คอลัมน์ */
+    if ('expectedStatus' in body) {
+      const expected = body.expectedStatus;
+      delete body.expectedStatus;
+      if (expected && expected !== before.status) return conflict(visitStatusChangedError(before.status));
+    }
 
     /* ── เจ้าหน้าที่หน้างานแก้ได้เฉพาะ "ผลของการไป" ไม่ใช่ "แผนว่าจะไปเมื่อไร/ใครไป" ────
        ⭐ มติผู้ใช้ 2026-08-30: Operation = *ปิดงานของตัวเอง* · การจัดคิวเป็นของ
@@ -258,6 +297,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         if (override.length < 10) {
           return badRequest('การข้ามด่านต้องระบุเหตุผลอย่างน้อย 10 ตัวอักษร — เหตุผลนี้จะติดกับใบถาวร');
         }
+        // เพดานเดียวกับ CHECK ของฐาน (mig 0302 · 10–500) — ไม่งั้นข้อความยาวไปถึงฐานแล้วกลายเป็น error ดิบ
+        if (override.length > 500) return badRequest('เหตุผลการข้ามด่านยาวได้ไม่เกิน 500 ตัวอักษร');
         gateTrail = {
           gateOverrideById: user.id ? String(user.id) : null,
           gateOverrideByName: user.name || null,
@@ -407,10 +448,23 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       }
     }
 
-    const { data, error: updateError } = await supabase
+    /* 🔴 **เขียนเฉพาะเมื่อสถานะในฐานยังเท่ากับตอนอ่าน** (รีวิว S2b ข้อ V17 · 19/10) — ทุกด่านข้างบนตัดสินจาก `before`
+       ที่อ่านไว้ตอนต้นคำขอ และ `patch` ถือสถานะครบทุกครั้ง ⇒ ช่างกด "เริ่มงาน" พร้อมกับที่หัวหน้ายกเลิกนัด (เปลี่ยนวิธี
+       ประเมิน · ยกเลิกเอง) เคยทำให้นัดที่ยกเลิกแล้วกลับมาเป็น "กำลังทำ" · ไม่โดนแถวไหน = อ่านแถวใหม่แล้วตัดสินซ้ำ
+       (`staleWriteAnswer`) ก่อนเขียนอะไรต่อ
+       ⚠️ `maybeSingle` ไม่ใช่ `single` — ศูนย์แถวต้องไม่กลายเป็น error 500 "ไม่ใช่หนึ่งแถว"
+       ⭐ **เขียนเฉพาะช่องที่เปลี่ยนจริง** (`changedVisitColumns`) — ช่องที่ผู้เรียกไม่ได้แตะมาจาก `before` ทั้งก้อน ⇒ เขียนกลับ
+          = ทับคนที่แก้ช่องนั้นในเสี้ยววินาทีเดียวกัน (ฝ่ายขายเลื่อนวัน/เปลี่ยนคนบนใบพอดีกับช่างกดเริ่มงาน) · ตัดตรงนี้
+          ตัวเดียว หลังทุกด่านที่อ่าน `patch` แล้ว (ด่านเปิดนัดกลับ · นัดถอนเครื่อง) */
+    const written = changedVisitColumns(patch, before);
+    let writeQuery = supabase
       .from('service_visits')
-      .update({ ...patch, updatedAt: nowIso })
-      .eq('id', id).select().single();
+      .update({ ...written, updatedAt: nowIso })
+      .eq('id', id).eq('status', before.status);
+    /* ⭐ กด "เริ่มงาน" ถามวันนัดด้วย — ด่านรับงานตัดสิน "ถึงวันนัดหรือยัง" จาก `before.scheduledDate` แต่คำเขียนไม่แตะวันแล้ว
+       ⇒ มีคนเลื่อนนัดไปวันหน้าคั่นกลาง = ได้นัด "กำลังทำ" ของวันข้างหน้า (หลุดแถบงานวันนี้ของช่าง) · ไม่โดนแถว = ตัดสินซ้ำ */
+    if (body.stamp === 'start' && before.scheduledDate) writeQuery = writeQuery.eq('scheduledDate', before.scheduledDate);
+    const { data, error: updateError } = await writeQuery.select().maybeSingle();
     /* 🐞 **แก้สถานะก็ชน index ได้ ไม่ใช่แค่ตอนสร้าง** (mig 0316) — เปิดนัดที่ปิดไปแล้ว
        กลับมาเป็น "นัดไว้" ในขณะที่ใบนั้นมีนัดอื่นเปิดอยู่ = สองนัดเปิดพร้อมกัน ⇒ DB
        ตีกลับ · ปล่อยข้อความดิบขึ้นจอ (`duplicate key value violates unique constraint …`
@@ -420,8 +474,14 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       if (String(updateError.message || '').includes('service_visits_survey_open_request_uk')) {
         return conflict('ใบคำร้องนี้มีนัดที่ยังไม่ปิดอยู่แล้ว — ปิดหรือยกเลิกนัดนั้นก่อน ถึงจะเปิดนัดนี้กลับมาได้');
       }
+      /* ⭐ CHECK ของแถว (23514) ล้มหลังด่านทั้งหมดผ่านแล้ว = ค่าในฐานขยับระหว่างคำขอ (คนอื่นเขียนช่องคู่กันพอดี) ไม่ใช่ข้อมูล
+         ที่ผู้ใช้กรอกผิด (ด่าน normalize จับไว้ก่อนแล้ว) ⇒ 409 บอกให้โหลดใหม่ ไม่ใช่ข้อความ Postgres ดิบกับ 500 */
+      if (updateError.code === '23514' && RACE_CHECKS.some((name) => String(updateError.message || '').includes(name))) {
+        return conflict(VISIT_EDITED_MEANWHILE_ERROR);
+      }
       return fail(updateError.message, 500);
     }
+    if (!data) return staleWriteAnswer(supabase, id, body, access.ownWorkOnly, before);
 
     /* ── นัดประเมินพื้นที่: ใบต้นเรื่องต้องตามวันด้วย (เฟส 2) ────────────────
        🐞 ก่อนหน้านี้ซิงก์ **ทางเดียว** — เลื่อนวันบนใบขยับนัดให้ แต่แก้วันที่หน้าจัดคิวเจ้าหน้าที่
@@ -430,12 +490,13 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
        ⚠️ เขียนกลับเฉพาะ **วัน/เวลา** — สถานะของใบเป็นเรื่องของก้าวคำร้อง ไม่ใช่ของนัด */
     /* จอของช่างต้องบอกผลจริงหลังกดปิด — "ทำไม่ได้แล้ว" เฉย ๆ ไม่ได้บอกว่าใบเดินต่อยังไง */
     let steppedBackRequest = false;
+    let unableNotice = false;
     if (data.requestId && data.kind === 'survey') {
       const nextDate = data.scheduledDate || null;
       const nextTime = data.startTime ? String(data.startTime).slice(0, 5) : null;
       const { data: reqRow } = await supabase
         .from('dept_requests')
-        .select('id, status, "committedDueDate", "committedDueTime", "answeredAt", "cancelledAt"')
+        .select('id, status, "committedDueDate", "committedDueTime", "dueCommittedAt", "answeredAt", "cancelledAt"')
         .eq('id', data.requestId).maybeSingle();
 
       /* 🔴 **ถอยกลับขั้น "ลงคิว" เมื่อช่างไปแล้วเข้าไม่ได้** (§5E ② · มติข้อ 23)
@@ -443,32 +504,62 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
          ⇒ ใบไหลกลับเข้าคิว "รับแล้ว ยังไม่ลงวัน" เอง · นัดเดิมค้างเป็น `unable` ในประวัติ
          ⚠️ ต้องอยู่ **ก่อน** บล็อกซิงก์วันข้างล่าง และบล็อกนั้นต้องไม่เขียนวันกลับมาทับ */
       /* 🔴 **ใบที่ประเมินจากแบบทั้งใบไม่ถอยขั้น** (mig 0408 · แผน §2 แถว 36 ③) — วันบนใบคือวันส่งผลที่หัวหน้ารับปาก
-         ล้างเมื่อไร ใบไหลเข้าคิว "รอลงคิว" ของผู้จัดคิวทั้งที่ไม่มีใครต้องไป · ตัวตัดสินยังเป็น `surveyStepBackPlan`
+         ล้างเมื่อไร ใบไหลเข้าคิว "รอลงคิว" ของผู้จัดคิวทั้งที่ไม่มีใครต้องไป · ตัวตัดสินเป็น `surveyUnableOutcome`
+         (ถอยขั้น · แค่แจ้งเมื่อวันบนใบเป็นของการนัดรอบใหม่ · ไม่ทำอะไร)
          ⚠️ ถามแถวพื้นที่เฉพาะเมื่อ **จะถอยขั้นจริง** — PATCH อื่นของนัดประเมินไม่อ่านเพิ่ม */
-      const stepBack = surveyStepBackPlan({ visit: data, before, request: reqRow })
-        ? surveyStepBackPlan({ visit: data, before, request: reqRow, needsVisit: await needsVisitOf() })
+      const outcome = surveyUnableOutcome({ visit: data, before, request: reqRow })
+        ? surveyUnableOutcome({ visit: data, before, request: reqRow, needsVisit: await needsVisitOf() })
         : null;
-      if (stepBack) {
-        steppedBackRequest = true;
-        const { error: backError } = await supabase.from('dept_requests')
-          .update({ ...stepBack.patch, updatedAt: nowIso }).eq('id', data.requestId);
-        if (backError) {
-          console.error('[service-visits] ถอยขั้นใบประเมินไม่สำเร็จ:', backError.message);
+      /* 🔴 **ใบมีนัดอื่นเปิดอยู่ = วันบนใบเป็นของนัดนั้น ไม่ถอย ไม่แจ้ง** (รีวิว S2b ข้อ V17 ต่อ) — นัดใหม่ที่เกิดคั่นกลาง (เลื่อนวัน →
+         สร้างนัดใหม่ · ลงคิวใหม่) ถือวันบนใบไปแล้ว ⇒ ล้าง = นัดบนตารางแต่ใบไม่มีวัน · อ่านพลาด = เดินตามเดิม (ลง log) */
+      let otherOpen = null;
+      if (outcome) {
+        try {
+          otherOpen = await findSurveyVisit(supabase, data.requestId, { openOnly: true });
+        } catch (e) {
+          console.error('[service-visits] อ่านนัดที่เปิดอยู่ของใบก่อนถอยขั้นไม่สำเร็จ:', e?.message);
+        }
+      }
+      /* บรรทัดในเธรดคือตัวที่แจกกระดิ่ง — SA ต้องได้ทั้ง "ยังไม่ได้คำตอบ" และ **เหตุผล**
+         ไม่ใช่รู้แค่ว่าวันหายไปเฉย ๆ (แผน §5E ②)
+         🐞 **ห้ามส่ง `user.id` เข้าเธรดของใบคำร้อง** — `notifyThreadUpdate` แจกกระดิ่ง
+         ให้ "คนที่เคยโพสต์" ด้วย ⇒ ช่างที่กดปิดนัดเป็น "เข้าไม่ได้" กลายเป็น past
+         author ของใบนั้น**ถาวร** แล้วได้กระดิ่งทุกความเคลื่อนไหวของใบตลอดไป
+         🔴 และกระดิ่งนั้นพาไป `/requests/[id]` ซึ่ง role `ts` **เปิดไม่ได้ (403)**
+           — ได้ toast `forbidden` อังกฤษเปล่า ๆ · เป็นรูสายพันธุ์เดียวกับที่
+           `send-back` ปิดไปแล้ว (ยิงกระดิ่งของช่างแยก + href ไปจอที่เขาเปิดได้)
+         ⇒ เก็บ **ชื่อ** ไว้ให้ SA อ่านว่าใครแจ้ง แต่ไม่ผูก `authorId` */
+      const postUnable = (body) => appendUpdate(supabase, {
+        entityType: 'dept_request', entityId: data.requestId, kind: 'unable', body,
+        user: { name: user?.name || null, department: user?.department || null },
+      });
+      if (outcome && !(otherOpen && otherOpen.id !== id)) {
+        if (outcome.kind === 'stepBack') {
+          /* ⭐ เขียนเฉพาะเมื่อวันบนใบยังเป็นวันที่ตัดสินไว้ **และ** ยังเป็นการแจ้งวันครั้งเดียวกัน (`dueCommittedAt` — ลงคิวใหม่
+             ด้วยวันเดิมก็ประทับเวลาใหม่) — ฝ่ายขายเขียนวันลงใบคั่นระหว่างอ่านกับเขียน = ไม่ล้าง แค่แจ้ง */
+          let backQuery = supabase.from('dept_requests')
+            .update({ ...outcome.patch, updatedAt: nowIso })
+            .eq('id', data.requestId).eq('committedDueDate', outcome.previousDueDate);
+          backQuery = reqRow.dueCommittedAt
+            ? backQuery.eq('dueCommittedAt', reqRow.dueCommittedAt) : backQuery.is('dueCommittedAt', null);
+          const { data: backRows, error: backError } = await backQuery.select('id');
+          if (backError) {
+            console.error('[service-visits] ถอยขั้นใบประเมินไม่สำเร็จ:', backError.message);
+            // ถอยไม่สำเร็จ ฝ่ายขายก็ยังต้องได้เหตุผลที่เข้าไม่ได้
+            unableNotice = true;
+            await postUnable(surveyUnableNoticeBody({ code: data.code, reason: outcome.reason, failed: true }));
+          } else if (!(backRows || []).length) {
+            unableNotice = true;
+            await postUnable(surveyUnableNoticeBody({ code: data.code, reason: outcome.reason }));
+          } else {
+            steppedBackRequest = true;
+            unableNotice = true;
+            await postUnable(surveyStepBackBody(outcome));
+          }
         } else {
-          /* บรรทัดในเธรดคือตัวที่แจกกระดิ่ง — SA ต้องได้ทั้ง "ยังไม่ได้คำตอบ" และ **เหตุผล**
-             ไม่ใช่รู้แค่ว่าวันหายไปเฉย ๆ (แผน §5E ②) */
-          /* 🐞 **ห้ามส่ง `user.id` เข้าเธรดของใบคำร้อง** — `notifyThreadUpdate` แจกกระดิ่ง
-             ให้ "คนที่เคยโพสต์" ด้วย ⇒ ช่างที่กดปิดนัดเป็น "เข้าไม่ได้" กลายเป็น past
-             author ของใบนั้น**ถาวร** แล้วได้กระดิ่งทุกความเคลื่อนไหวของใบตลอดไป
-             🔴 และกระดิ่งนั้นพาไป `/requests/[id]` ซึ่ง role `ts` **เปิดไม่ได้ (403)**
-               — ได้ toast `forbidden` อังกฤษเปล่า ๆ · เป็นรูสายพันธุ์เดียวกับที่
-               `send-back` ปิดไปแล้ว (ยิงกระดิ่งของช่างแยก + href ไปจอที่เขาเปิดได้)
-             ⇒ เก็บ **ชื่อ** ไว้ให้ SA อ่านว่าใครแจ้ง แต่ไม่ผูก `authorId` */
-          await appendUpdate(supabase, {
-            entityType: 'dept_request', entityId: data.requestId, kind: 'unable',
-            body: surveyStepBackBody(stepBack),
-            user: { name: user?.name || null, department: user?.department || null },
-          });
+          // วันบนใบเป็นของการนัดรอบใหม่ — ไม่ถอย แต่ฝ่ายขายต้องได้เหตุผล
+          unableNotice = true;
+          await postUnable(surveyUnableNoticeBody({ code: data.code, reason: outcome.reason, heldDate: outcome.heldDate }));
         }
       }
 
@@ -481,7 +572,13 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
          วันจะถูกเขียนกลับลงใบที่ปิดไปแล้ว แล้วใบโผล่กลับเข้าคิว "นัดแล้ว" เองเงียบ ๆ
          ⚠️ ใช้ตัวตัดสินของผลประเมินตัวเดียวกัน (`surveyEditLockError`) ไม่เขียนเงื่อนไขซ้ำ */
       const requestClosedOff = !!surveyEditLockError(reqRow);
-      const changed = holdsRequestSlot(data) && reqRow && !requestClosedOff
+      /* 🔴 **ซิงก์เฉพาะเมื่อคำขอนี้ขยับวัน/เวลาของนัดเอง หรือฟื้นนัดกลับมา** (รีวิว S2b ข้อ V17 ต่อ · 19/10) — เดิมซิงก์ทุกครั้งที่วัน
+         บนใบไม่ตรงกับนัด ⇒ ฝ่ายขายเลื่อนวันบนใบ (ใบได้วันใหม่ก่อน นัดตามทีหลังในคำขอเดียวกัน) แล้วช่างกดเริ่มงานคั่นกลาง
+         = วันเดิมของนัดถูกเขียนกลับลงใบ พร้อมบรรทัด "TS เลื่อนวันนัด…" ที่ไม่มีใครทำ
+         ⚠️ แลกกับ: แก้ช่องอื่นของนัดไม่ "ซ่อม" วันที่ไม่ตรงกันค้างจากรอบก่อนให้แล้ว (ต้องแก้วันจริงถึงจะซิงก์) */
+      const touchedSlot = 'scheduledDate' in written || 'startTime' in written
+        || ('status' in written && !holdsRequestSlot(before));
+      const changed = touchedSlot && holdsRequestSlot(data) && reqRow && !requestClosedOff
         && (String(reqRow.committedDueDate ?? '') !== String(nextDate ?? '')
           || String(reqRow.committedDueTime ?? '').slice(0, 5) !== String(nextTime ?? ''));
       /* 🔴 **ใบที่ประเมินจากแบบทั้งใบไม่รับวันจากนัด** (mig 0408 · แผน §2 แถว 36 ②) — นัดที่ค้าง "กำลังทำ" ตอนใบ
@@ -634,7 +731,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       if (plan) suggestion = nextAfterDone(plan, data, { holidays: await holidaySet(supabase) });
     }
     return ok({
-      visit: data, nextVisitSuggestion: suggestion, steppedBackRequest,
+      visit: data, nextVisitSuggestion: suggestion, steppedBackRequest, unableNotice,
       // จอของช่างบอกผลที่เกิดกับทะเบียน — "ปิดแล้ว" เฉย ๆ ไม่บอกว่าเครื่องออกจากไซต์หรือยัง
       retrieval: retrieval ? { moved: retrieved.moved.length, failed: retrieved.failed } : null,
     });
@@ -676,8 +773,23 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     const block = visitDeleteBlock(before, { fieldRecords: fieldRecords.count });
     if (block && !force) return conflict(block.message);
 
-    const { error } = await supabase.from('service_visits').delete().eq('id', id);
+    /* 🔴 **ลบเฉพาะเมื่อสถานะยังเท่ากับตอนอ่าน** (รีวิว S2b ข้อ V17 ต่อ · 19/10) — ด่านลบตัดสินจาก `before` · ช่างกดรับงานแล้ว
+       ลงของที่ใช้คั่นกลาง = นัดที่กำลังทำถูกลบพร้อมแถวลูก (CASCADE) เงียบ ๆ ⇒ ไม่โดนแถว = 409 บอกสถานะจริง
+       ⚠️ แอดมินที่ข้ามด่าน (`?force=1`) ลบตามที่สั่ง ไม่ถามสถานะ */
+    let deleteQuery = supabase.from('service_visits').delete().eq('id', id);
+    if (!force) deleteQuery = deleteQuery.eq('status', before.status);
+    const { data: deletedRows, error } = await deleteQuery.select('id');
     if (error) return fail(error.message, 500);
+    if (!force && !(deletedRows || []).length) {
+      let current;
+      try {
+        current = await findVisit(supabase, id);
+      } catch {
+        // อ่านพลาด ≠ "ถูกลบไปแล้ว" — ไม่รู้ก็บอกว่าไม่รู้
+        return conflict('สถานะของนัดนี้เพิ่งถูกเปลี่ยน — ยังไม่ได้ลบ · โหลดหน้าใหม่แล้วดูสถานะล่าสุด');
+      }
+      return conflict(visitStatusChangedError(current?.status ?? null));
+    }
 
     // เธรด + แจ้งเตือนไม่มี FK — ไม่กวาดคู่กัน = กระดิ่งมีแถวที่กดแล้วไปเจอนัดที่ไม่มีแล้ว
     // (entity อื่นทั้ง 12 ตัวเรียกตัวนี้ตอนลบอยู่แล้ว นัดเข้าบริการเป็นตัวเดียวที่ตกหล่น)
