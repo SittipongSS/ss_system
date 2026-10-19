@@ -339,6 +339,24 @@ export function leadFollowUpState(followUpAt, todayKey = businessDayKey(new Date
   return due === todayKey ? 'today' : 'ahead';
 }
 
+/** สถานะที่ใบจบแล้ว — เปิดลูกค้าแล้ว (งานย้ายไปเป็นดีล) / ไม่ไปต่อ */
+export const LEAD_CLOSED_STATUSES = ['qualified', 'disqualified'];
+
+/** วันติดตามต่อที่ **ยังมีผล** ของใบ — `null` = ใบนี้ไม่มีวันติดตามให้โชว์/ทาสี/เรียง/นับ
+ *
+ *  ⭐ ที่เดียวที่ตัดสินว่า "ใบนี้ยังมีคำสัญญาติดตามอยู่ไหม" — จออ่าน `lead.followUpAt`
+ *  ตรง ๆ ไม่ได้ ต้องผ่านตัวนี้ แล้วค่อยส่งต่อให้ `leadFollowUpState` ทาสี
+ *  🐞 ใบที่ปิดแล้ว (qualified/disqualified) ยังค้าง `followUpAt` ของรอบก่อน — การปิดไม่ล้าง
+ *  คอลัมน์ (มีแค่ bounce/meeting ที่ล้าง) ⇒ ตารางคิวเคยโชว์วันเก่าเป็น **ตัวแดงเลยกำหนด**
+ *  บนใบที่จบไปแล้ว ทั้งที่ตัวเรียงไม่นับวันนั้นมาตั้งแต่ #1848 (สองมาตรฐานบนแถวเดียว)
+ *  ⚠️ ไม่ล้างคอลัมน์ตอนปิด: ใบเก่าบน prod ค้างอยู่แล้วหลายสิบใบ และกฎฝั่งอ่านครอบทั้งของเก่า
+ *  และของใหม่ด้วยที่เดียว · ดึงกลับ (`reopen`) บังคับวันใหม่/ล้างเองอยู่แล้ว
+ */
+export function leadActiveFollowUpAt(lead) {
+  if (!lead?.followUpAt || LEAD_CLOSED_STATUSES.includes(lead.status)) return null;
+  return lead.followUpAt;
+}
+
 export const LEAD_EDIT_LOCKED_STATUSES = ['qualified', 'disqualified'];
 
 /* ── ลำดับของตารางลีด (หน้า /sa/leads) ────────────────────────────────────
@@ -369,8 +387,10 @@ function leadStatusRank(status) {
 }
 
 function leadFollowUpMs(lead) {
-  if (!lead.followUpAt || LEAD_EDIT_LOCKED_STATUSES.includes(lead.status)) return null;
-  const ms = Date.parse(lead.followUpAt);
+  // กติกาเดียวกับที่จอใช้โชว์วัน — ใบที่ปิดแล้วอยู่ก้อน "ไม่มีวันติดตาม" ทั้งลำดับและหน้าตา
+  const followUpAt = leadActiveFollowUpAt(lead);
+  if (!followUpAt) return null;
+  const ms = Date.parse(followUpAt);
   return Number.isNaN(ms) ? null : ms;
 }
 

@@ -37,7 +37,7 @@ import {
   LEAD_CHANNELS, LEAD_CHANNEL_LABELS, channelGroupOf, LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_LOST_LABELS, leadLostText,
   LEAD_SLA_STAGES, leadSlaNote, leadBudgetText, SERVICE_INTEREST_LABELS,
   canEditLead, canDeleteLead, canCreateLead, canCreateDealFromLead, slaPendingTone, leadFollowUpState,
-  LEAD_SORT_DEFAULT, leadSortDefaultDir, sortLeads,
+  leadActiveFollowUpAt, LEAD_SORT_DEFAULT, leadSortDefaultDir, sortLeads,
 } from "@/lib/sales/leads";
 import { canExportLeadReport } from "@/lib/sales/leadReport";
 import {
@@ -91,6 +91,24 @@ function channelBadge(channel) {
     <span className={["ui-badge", "ui-badge-cell", "ui-badge-w-channel", styles[group]].filter(Boolean).join(" ")}>
       {LEAD_CHANNEL_LABELS[channel] || channel}
     </span>
+  );
+}
+
+/* ช่อง "ติดตามต่อ / รับเมื่อ" — วันติดตามมาจาก `leadActiveFollowUpAt` (กติกาเดียวกับตัวเรียง)
+   ⇒ ใบที่ปิดแล้วโชว์ "รับเมื่อ" เหมือนใบที่ไม่มีวันติดตาม ไม่ใช่วันเก่าตัวแดง
+   `todayKey` ตัวเดียวกับตัวกรอง/การ์ดค้างคิว — แถวกับตัวเลขบนการ์ดแบ่ง "เลย/วันนี้" ตรงกัน */
+function followUpCell(lead, todayKey) {
+  const followUpAt = leadActiveFollowUpAt(lead);
+  if (!followUpAt) return fmtDateTime(lead.createdAt);
+  return (
+    <>
+      {/* เลยกำหนดแล้วต้องเห็นตั้งแต่กวาดตา — ทวงประจำวันเห็นใบนี้อยู่แล้ว
+          แต่ตารางเป็นที่ที่คนเปิดดูเองตอนวางแผนวัน */}
+      <strong className={styles.followUp} data-tone={leadFollowUpState(followUpAt, todayKey)}>
+        {fmtDate(followUpAt)}
+      </strong>
+      <span className={styles.followUpSub}>รับเมื่อ {fmtDate(lead.createdAt)}</span>
+    </>
   );
 }
 
@@ -771,16 +789,7 @@ export default function LeadsPage() {
                         )}
                       </td>
                     <td style={{ whiteSpace: "nowrap", fontSize: "var(--fs-6)", color: "var(--text-2)" }}>
-                      {lead.followUpAt ? (
-                        <>
-                          {/* เลยกำหนดแล้วต้องเห็นตั้งแต่กวาดตา — ทวงประจำวันเห็นใบนี้อยู่แล้ว
-                              แต่ตารางเป็นที่ที่คนเปิดดูเองตอนวางแผนวัน */}
-                          <strong className={styles.followUp} data-tone={leadFollowUpState(lead.followUpAt)}>
-                            {fmtDate(lead.followUpAt)}
-                          </strong>
-                          <span className={styles.followUpSub}>รับเมื่อ {fmtDate(lead.createdAt)}</span>
-                        </>
-                      ) : fmtDateTime(lead.createdAt)}
+                      {followUpCell(lead, todayKey)}
                     </td>
                     <td className="num" onClick={(event) => event.stopPropagation()}>
                       {/* กติกาว่าปุ่มไหนโผล่มาจาก lifecycle ตัวเดียวกับหน้ารายละเอียด —

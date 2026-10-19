@@ -14,8 +14,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   LEAD_TRANSITIONS, TRANSITION_TO_STATUS, LEAD_FOLLOW_UP_ACTIONS, leadFollowUpError,
-  leadBouncePatch, leadFollowUpState,
+  leadBouncePatch, leadFollowUpState, leadActiveFollowUpAt, LEAD_CLOSED_STATUSES,
 } from './leads.js';
+import { summarizeLeadQueue } from './leadDigest.js';
+import { EMPTY_LEAD_FILTERS, leadFacetCounts } from './leadListFilter.js';
+import { leadWorkloadFrom } from './leadWorkload.js';
 
 const routeSrc = readFileSync(
   new URL('../../app/api/sales-planning/leads/[id]/transition/route.js', import.meta.url), 'utf8',
@@ -77,6 +80,50 @@ test('leadFollowUpState: เลย=late · วันนี้=today · ยัง
 test('เทียบด้วยวันไทย ไม่ใช่ UTC ดิบ', () => {
   assert.equal(leadFollowUpState('2026-08-26T00:00:00Z', '2026-08-26'), 'today',
     '00:00Z คือ 07:00 ไทยของวันเดียวกัน ต้องยังไม่เลย');
+});
+
+/* ── ใบที่ปิดแล้วไม่มีวันติดตามที่มีผล ─────────────────────────────────────── */
+
+/* 🐞 2026-10-19: ตารางคิวโชว์ `followUpAt` เก่าของใบที่ปิดแล้วเป็นตัวแดง "เลยกำหนด"
+   — การปิดไม่ล้างคอลัมน์ และช่องในตารางเรียก `leadFollowUpState(lead.followUpAt)` โดยไม่ดูสถานะ
+   ทั้งที่ตัวเรียงไม่นับวันนั้นมาตั้งแต่ #1848 ⇒ กติกาย้ายไปอยู่ `leadActiveFollowUpAt` ที่เดียว */
+const STALE = '2026-08-01T00:00:00Z';
+const TODAY = '2026-10-19';
+
+test('leadActiveFollowUpAt: ใบปิดแล้ว = ไม่มีวันติดตาม · ใบที่ยังเดิน = วันเดิม', () => {
+  assert.deepEqual(LEAD_CLOSED_STATUSES, ['qualified', 'disqualified']);
+  for (const status of LEAD_CLOSED_STATUSES) {
+    assert.equal(leadActiveFollowUpAt({ status, followUpAt: STALE }), null, `${status} ต้องไม่มีวันติดตาม`);
+  }
+  assert.equal(leadActiveFollowUpAt({ status: 'contacted', followUpAt: STALE }), STALE);
+  assert.equal(leadActiveFollowUpAt({ status: 'contacted', followUpAt: null }), null);
+  assert.equal(leadActiveFollowUpAt(null), null);
+  // ใบที่ยังเดินแล้วเลยวัน ยังแดงเหมือนเดิม — แก้แค่ใบที่จบแล้ว
+  assert.equal(leadFollowUpState(leadActiveFollowUpAt({ status: 'contacted', followUpAt: STALE }), TODAY), 'late');
+});
+
+test('ตัวนับทุกตัวไม่นับใบปิดที่ค้างวันเก่าเป็น "เลยวันติดตาม"', () => {
+  const closed = ['qualified', 'disqualified'].map((status) => ({
+    id: status, status, assigneeId: 'u1', team: 'ODM', followUpAt: STALE,
+  }));
+  const open = { id: 'open', status: 'contacted', assigneeId: 'u1', team: 'ODM', followUpAt: STALE };
+  const rows = [...closed, open];
+  // การ์ดค้างคิว / สรุปเช้า
+  assert.equal(summarizeLeadQueue(rows, { asOf: `${TODAY}T05:00:00Z`, holidays: new Set() }).followUp.late.count, 1);
+  // ตัวเลขท้ายตัวเลือก "เลยวันติดตาม" ในแผงกรอง
+  assert.equal(leadFacetCounts(rows, EMPTY_LEAD_FILTERS, TODAY).follow.late, 1);
+  // ภาระงานตอนมอบหมาย ("เลยติดตาม")
+  assert.equal(leadWorkloadFrom(rows, TODAY).u1.lateFollowUp, 1);
+});
+
+/* จออ่านคอลัมน์ตรงไม่ได้ — ต้องผ่าน `leadActiveFollowUpAt` (ยามของบั๊กนี้: ช่องในตาราง
+   และแถว "ติดตามต่อ" บนการ์ดสรุปของหน้าใบ เคยอ่าน `lead.followUpAt` ตรงทั้งคู่) */
+test('หน้าลีด (ตาราง + หน้าใบ) ไม่อ่าน lead.followUpAt ตรง', () => {
+  for (const file of ['../../app/sales-planning/leads/page.js', '../../app/sales-planning/leads/[id]/page.js']) {
+    const src = readFileSync(new URL(file, import.meta.url), 'utf8');
+    assert.doesNotMatch(src, /\blead\.followUpAt\b/, `${file} อ่าน lead.followUpAt ตรง — ต้องผ่าน leadActiveFollowUpAt`);
+    assert.match(src, /leadActiveFollowUpAt\(lead\)/, `${file} ต้องเรียก leadActiveFollowUpAt`);
+  }
 });
 
 /* ── การล้างคอลัมน์ ──────────────────────────────────────────────────────── */
