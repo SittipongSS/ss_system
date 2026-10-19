@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   MAX_SCENT_BRIEFS, briefHasContent, briefLinkError, briefsDroppedByMerge, defaultBriefLabel, normalizeScentBriefs, scentBriefNameError, switchBriefMode,
 } from './scentBriefs.js';
-import { SCENTOTYPE_VALUES, SCENT_PERFORMANCE_VALUES } from './kinds/rd/scentBriefTypes.js';
+import { SCENT_PERFORMANCE_VALUES } from './kinds/rd/scentBriefTypes.js';
 
 const ok = { label: 'แนวสดชื่น' };
 
@@ -38,24 +38,18 @@ test('ชื่อเรียกว่างได้ (เติม "กลิ�
   assert.match(normalizeScentBriefs([{ label: 'Fresh' }, { label: 'fresh' }]).error, /ซ้ำ/);
 });
 
-test('Scentotype และ Performance เลือกได้หลายอย่าง · ค่าที่ไม่รู้จักถูกตีกลับ', () => {
-  const { briefs, error } = normalizeScentBriefs([{
-    ...ok,
-    scentotypes: [SCENTOTYPE_VALUES[0], SCENTOTYPE_VALUES[2]],
-    performance: SCENT_PERFORMANCE_VALUES,
-  }]);
+test('Performance เลือกได้หลายอย่าง · ค่าที่ไม่รู้จักถูกตีกลับ', () => {
+  const { briefs, error } = normalizeScentBriefs([{ ...ok, performance: SCENT_PERFORMANCE_VALUES }]);
   assert.equal(error, null);
-  assert.equal(briefs[0].scentotypes.length, 2);
   assert.equal(briefs[0].performance.length, SCENT_PERFORMANCE_VALUES.length);
 
-  assert.match(normalizeScentBriefs([{ ...ok, scentotypes: ['ไม่มีตัวนี้'] }]).error, /ไม่รู้จัก/);
   assert.match(normalizeScentBriefs([{ ...ok, performance: ['หอมมาก'] }]).error, /ไม่รู้จัก/);
-  assert.match(normalizeScentBriefs([{ ...ok, scentotypes: 'cheerer' }]).error, /ต้องเป็นรายการ/);
+  assert.match(normalizeScentBriefs([{ ...ok, performance: 'lasting' }]).error, /ต้องเป็นรายการ/);
 });
 
 test('เลือกซ้ำตัวเดิมไม่ใช่ข้อมูลผิด — เก็บครั้งเดียว', () => {
-  const { briefs } = normalizeScentBriefs([{ ...ok, scentotypes: ['cheerer', 'cheerer'] }]);
-  assert.deepEqual(briefs[0].scentotypes, ['cheerer']);
+  const { briefs } = normalizeScentBriefs([{ ...ok, performance: ['lasting', 'lasting'] }]);
+  assert.deepEqual(briefs[0].performance, ['lasting']);
 });
 
 test('ความยาวช่องต้องไม่หลวมกว่า CHECK ของ 0213', () => {
@@ -77,24 +71,18 @@ test('direction ต้องชี้บรีฟที่อยู่ในใ�
   assert.match(briefLinkError('B9', mine), /ไม่ได้อยู่ในคำร้องใบนี้/);
 });
 
-// ── 2.1.4 Scentotype มีเส้นให้เขียนต่อหลังทุกตัว (mig 0222) ───────────────
-test('เก็บข้อความต่อท้าย Scentotype เฉพาะตัวที่ติ๊กไว้', () => {
+// ── 2.1.5 Scentotype ถอดแล้ว (มติผู้ใช้ 2026-10-19) ─────────────────────────
+// ⚠️ ฟอร์มที่ยังถือบรีฟเก่าไว้ส่ง scentotypes กลับมาได้ — ต้องไม่ตีกลับ (บันทึกใบเก่าไม่ได้)
+//    และต้องไม่ส่งต่อ ⇒ API ไม่มีอะไรไปเขียนทับค่าเก่าในฐาน
+test('⛔ Scentotype ที่ส่งมาถูกทิ้งเงียบ — ไม่ตีกลับ ไม่ส่งต่อ', () => {
   const { briefs, error } = normalizeScentBriefs([{
     label: 'กลิ่นที่ 1',
-    scentotypes: ['cheerer', 'admirer'],
-    // ⚠️ ตัวที่ไม่ได้ติ๊กต้องถูกทิ้ง — ไม่งั้นเหลือข้อมูลผีที่ไม่มีใครเห็นบนจอ
-    scentotypeNotes: { cheerer: 'สดใส วัยรุ่น', discoverer: 'ไม่ได้ติ๊ก' },
+    scentotypes: ['cheerer', 'ไม่มีตัวนี้'],
+    scentotypeNotes: { cheerer: 'ก'.repeat(500) },
   }], { expected: 1 });
   assert.equal(error, null);
-  assert.deepEqual(briefs[0].scentotypeNotes, { cheerer: 'สดใส วัยรุ่น' });
-});
-
-test('ติ๊กแล้วไม่เขียนต่อได้ — กระดาษก็เว้นเส้นไว้ได้', () => {
-  const { briefs, error } = normalizeScentBriefs([{
-    label: 'กลิ่นที่ 1', scentotypes: ['cheerer'], scentotypeNotes: { cheerer: '  ' },
-  }], { expected: 1 });
-  assert.equal(error, null);
-  assert.deepEqual(briefs[0].scentotypeNotes, {});
+  assert.equal('scentotypes' in briefs[0], false);
+  assert.equal('scentotypeNotes' in briefs[0], false);
 });
 
 // ── สลับโหมดบรีฟ: รวม ↔ รายกลิ่น (มติผู้ใช้ 2026-08-08) ──────────────────
@@ -102,7 +90,7 @@ test('ติ๊กแล้วไม่เขียนต่อได้ — ก
 // 🐞 ปุ่มสลับของเดิมเรียก `Array.from({length:n}, () => ({label:''}))` ⇒ **ล้างทุกก้อน
 // ทุกครั้ง** แม้แต่ตอนแยก 1 → 3 ซึ่งไม่มีเหตุผลให้ทิ้งอะไรเลย
 test('⭐ แยกบรีฟรายกลิ่นต้องคงก้อนแรกไว้ แล้วเติมก้อนว่างให้ครบ', () => {
-  const typed = { label: 'แนวสดชื่น', brief: 'ซิตรัส-กรีน', scentotypes: ['cheerer'] };
+  const typed = { label: 'แนวสดชื่น', brief: 'ซิตรัส-กรีน', performance: ['lasting'] };
   const next = switchBriefMode([typed], { merge: false, scentCount: 3 });
   assert.equal(next.length, 3);
   assert.deepEqual(next[0], typed, 'ก้อนแรกต้องไม่ถูกแตะ');
@@ -132,10 +120,10 @@ test('briefHasContent ครอบทุกช่องที่กรอกไ�
   assert.equal(briefHasContent({ label: 'แนวสดชื่น' }), true);
   assert.equal(briefHasContent({ researchTopic: 'ความคงตัว' }), true);
   assert.equal(briefHasContent({ dislikedNotes: 'มัสก์หนัก' }), true);
-  assert.equal(briefHasContent({ scentotypes: ['cheerer'] }), true);
   assert.equal(briefHasContent({ performance: ['lasting'] }), true);
-  assert.equal(briefHasContent({ scentotypeNotes: { cheerer: 'สว่าง' } }), true);
-  assert.equal(briefHasContent({ scentotypes: [], scentotypeNotes: { cheerer: ' ' } }), false);
+  assert.equal(briefHasContent({ performance: [] }), false);
+  // ⛔ Scentotype ถอดแล้ว — ค่าเก่าที่ติดมากับบรีฟไม่นับเป็นเนื้อ (ไม่มีจอไหนโชว์)
+  assert.equal(briefHasContent({ scentotypes: ['cheerer'], scentotypeNotes: { cheerer: 'สว่าง' } }), false);
 });
 
 // ── บังคับตั้งชื่อบรีฟก่อนกดส่ง (มติผู้ใช้ 2026-08-10) ────────────────────

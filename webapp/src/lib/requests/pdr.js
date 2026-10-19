@@ -118,7 +118,7 @@ export function normalizePdr(input) {
 
   /* ⭐ ข้อความเขียนต่อ (1.15 Archetype) — `{ key: ข้อความ }` · เก็บเฉพาะตัวที่**ยังติ๊กอยู่**
      ⚠️ ติ๊กออกแล้วข้อความต้องหายตาม — ไม่งั้นติ๊กกลับวันหลังจะได้ข้อความเก่าที่ไม่มีใครเห็น
-     ว่ายังค้างอยู่ (แพตเทิร์นเดียวกับ scentotypeNotes ของบรีฟ · `normalizeScentBriefs`) */
+     ว่ายังค้างอยู่ (แพตเทิร์นเดิมของ scentotypeNotes ในบรีฟ ซึ่งถอดไปแล้ว 2026-10-19) */
   for (const field of PDR_FIELDS.filter((f) => f.type === 'notes' && f.column)) {
     const ticked = new Set(columns[FIELD_TO_COLUMN[field.of]] || []);
     const input = raw[field.key] && typeof raw[field.key] === 'object' && !Array.isArray(raw[field.key])

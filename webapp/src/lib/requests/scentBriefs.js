@@ -12,7 +12,7 @@
 // ⚠️ ความยาวทุกช่องต้องไม่หลวมกว่า CHECK ของ 0213 — หลวมกว่าเมื่อไรก็ได้ error ดิบ
 // จาก Postgres ที่ผู้ใช้อ่านไม่รู้เรื่อง แทนข้อความไทยที่บอกว่าต้องแก้ตรงไหน
 import {
-  SCENTOTYPE_VALUES, SCENT_PERFORMANCE_VALUES,
+  SCENT_PERFORMANCE_VALUES,
 } from '@/lib/requests/kinds/rd/scentBriefTypes';
 
 // เพดานเดียวกับบรรทัดคำร้อง — ใบที่ขอเป็นร้อยกลิ่นคือข้อมูลผิด ไม่ใช่งานจริง
@@ -24,7 +24,7 @@ export const MAX_SCENT_BRIEFS = 40;
 //    ยาวสุด 3 และ 120 ตัวอักษร (31 บรีฟ) ⇒ ไม่มีบรีฟเก่าที่แก้ไม่ได้เพราะเพดานใหม่
 export const BRIEF_LIMITS = {
   label: 200, brief: 4000, researchTopic: 200,
-  inspiration: 2000, likedNotes: 2000, dislikedNotes: 2000, scentotypeNote: 200,
+  inspiration: 2000, likedNotes: 2000, dislikedNotes: 2000,
 };
 const LIMITS = BRIEF_LIMITS;
 
@@ -40,8 +40,8 @@ const DEFAULT_LABEL_RE = /^กลิ่นที่ \d+$/;
  * ก้อนนี้มีอะไรที่คนพิมพ์ไว้แล้วไหม — ใช้ตอนสลับโหมดบรีฟ (รวม ↔ รายกลิ่น)
  *
  * ⭐ **`label` นับด้วย** — "แนวสดชื่น" ที่ AE ตั้งชื่อไว้คือของที่พิมพ์เอง เท่ากับบรีฟ
- * ⚠️ ต้องครอบทุกช่องที่กรอกได้จริง รวม array (Scentotype/Performance) และข้อความ
- * ต่อท้าย Scentotype — ตกช่องไหนไป ช่องนั้นจะถูกทิ้งเงียบตอนรวบบรีฟ
+ * ⚠️ ต้องครอบทุกช่องที่กรอกได้จริง รวม array (Performance) — ตกช่องไหนไป ช่องนั้น
+ * จะถูกทิ้งเงียบตอนรวบบรีฟ
  */
 export function briefHasContent(brief = {}) {
   if (!brief) return false;
@@ -49,9 +49,7 @@ export function briefHasContent(brief = {}) {
   for (const key of TEXT_FIELDS) {
     if (String(brief[key] ?? '').trim()) return true;
   }
-  if ((brief.scentotypes || []).length) return true;
-  if ((brief.performance || []).length) return true;
-  return Object.values(brief.scentotypeNotes || {}).some((v) => String(v ?? '').trim());
+  return (brief.performance || []).length > 0;
 }
 
 /**
@@ -153,28 +151,11 @@ export function normalizeScentBriefs(input, { scentCount = null } = {}) {
       brief[field] = value || null;
     }
 
-    const types = normalizeChoices(raw.scentotypes, SCENTOTYPE_VALUES, at, 'Scentotype');
-    if (types.error) return { briefs: [], error: types.error };
+    // ⛔ 2.1.5 Scentotype ถอดแล้ว (มติผู้ใช้ 2026-10-19) — `scentotypes`/`scentotypeNotes` ที่ส่งมา
+    //    ถูกทิ้งที่นี่ และ API ไม่เขียนสองคอลัมน์นั้นอีก ⇒ ค่าเก่าในฐานไม่ถูกทับ (ดู scentBriefTypes.js)
     const perf = normalizeChoices(raw.performance, SCENT_PERFORMANCE_VALUES, at, 'Performance');
     if (perf.error) return { briefs: [], error: perf.error };
-    brief.scentotypes = types.value;
     brief.performance = perf.value;
-
-    // ⭐ **ข้อความต่อท้าย Scentotype รายตัว** (mig 0222) — กระดาษ FM-RD-01 ข้อ 2.1.4
-    // มีเส้นให้เขียนต่อหลังทุกตัว (`CHEERER ____`) · เก็บเฉพาะตัวที่ **ติ๊กไว้จริง**
-    // ⇒ ติ๊กออกแล้วข้อความหายตาม ไม่ค้างเป็นข้อมูลผีที่ไม่มีใครเห็นบนจอ
-    const notes = raw.scentotypeNotes && typeof raw.scentotypeNotes === 'object'
-      ? raw.scentotypeNotes : {};
-    const kept = {};
-    for (const type of brief.scentotypes) {
-      const text = String(notes[type] ?? '').trim();
-      if (!text) continue;
-      if (text.length > LIMITS.scentotypeNote) {
-        return { briefs: [], error: `${at}: ข้อความของ Scentotype ยาวเกิน ${LIMITS.scentotypeNote} ตัวอักษร` };
-      }
-      kept[type] = text;
-    }
-    brief.scentotypeNotes = kept;
 
     briefs.push(brief);
   }
