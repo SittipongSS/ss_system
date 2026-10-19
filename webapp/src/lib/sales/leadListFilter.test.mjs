@@ -22,25 +22,31 @@ const LEADS = [
   lead('A1', { status: 'assigned', assigneeId: 'u1' }),
   lead('A2', { status: 'assigned', assigneeId: 'u2', team: 'SV' }),
   lead('N1', { status: 'new', team: null, assigneeId: null, channel: 'meta' }),
-  // ใบปิด/นัดแล้วที่ค้าง followUpAt เก่า — ต้องไม่ถูกนับเป็น "เลยวันติดตาม"
+  // ใบปิดที่ค้าง followUpAt เก่า — ต้องไม่ถูกนับเป็น "เลยวันติดตาม" (การปิดไม่ล้างคอลัมน์)
   lead('D1', { status: 'disqualified', followUpAt: '2026-09-01T00:00:00Z' }),
-  lead('M1', { status: 'meeting', followUpAt: '2026-09-01T00:00:00Z' }),
+  // ใบนัดแล้วที่บันทึกการติดตามหลังประชุมแล้วเลยวัน — คำสัญญาจริง (การกดนัดล้างวันเดิมทิ้ง วันนี้มาจาก
+  // followup หลังประชุมเท่านั้น) ⇒ ตารางทาสีแดง ต้องอยู่ใน "เลยวันติดตาม" ด้วย (🐞 รอบตรวจ 19/10)
+  lead('M1', { status: 'meeting', followUpAt: '2026-09-01T00:00:00Z', assigneeId: 'u2' }),
+  // ใบนัดแล้วไม่มีวันติดตาม — นาฬิกาคือวันประชุม ไม่ใช่ "ยังไม่มีวันติดตาม"
+  lead('M2', { status: 'meeting', followUpAt: null }),
   // ปิดแล้วของ u1 อีกหลายใบ — ตัวการของ "การ์ดบอก 1 ตารางขึ้น 72"
   ...Array.from({ length: 5 }, (_, i) => lead(`Q${i}`, { status: 'qualified' })),
 ];
 const rows = (filters) => filterLeadRows(LEADS, { ...EMPTY_LEAD_FILTERS, ...filters }, TODAY).map((l) => l.id).sort();
 
-test('มิติวันติดตาม: แบ่งเฉพาะใบติดต่อแล้ว ครบสี่ช่องไม่ซ้อน', () => {
+test('มิติวันติดตาม: ใบติดต่อแล้วทุกใบ + ใบนัดแล้วที่มีวันติดตาม ครบสี่ช่องไม่ซ้อน', () => {
   assert.equal(leadFollowKey(LEADS[0], TODAY), 'late');
   assert.equal(leadFollowKey(LEADS[1], TODAY), 'today');
   assert.equal(leadFollowKey(LEADS[2], TODAY), 'ahead');
   assert.equal(leadFollowKey(LEADS[3], TODAY), 'none');
-  for (const id of ['D1', 'M1', 'A1', 'N1']) {
+  assert.equal(leadFollowKey(LEADS.find((l) => l.id === 'M1'), TODAY), 'late');
+  for (const id of ['D1', 'M2', 'A1', 'N1']) {
     assert.equal(leadFollowKey(LEADS.find((l) => l.id === id), TODAY), null, `${id} ไม่อยู่ในมิตินี้`);
   }
   const counts = leadFacetCounts(LEADS, EMPTY_LEAD_FILTERS, TODAY);
   const sum = LEAD_FOLLOW_FILTERS.reduce((n, f) => n + (counts.follow[f] || 0), 0);
-  assert.equal(sum, counts.status.contacted, 'สี่ค่ารวมกันต้องเท่าจำนวนติดต่อแล้ว');
+  const metWithDate = LEADS.filter((l) => l.status === 'meeting' && l.followUpAt).length;
+  assert.equal(sum, counts.status.contacted + metWithDate, 'สี่ค่ารวม = ติดต่อแล้ว + นัดแล้วที่มีวันติดตาม');
 });
 
 /* 🐞 กด "รอติดต่อกลับ · u1 1" แล้วได้ทุกใบของ u1 รวมใบปิด */
@@ -49,11 +55,14 @@ test('การ์ด → กดคนในขั้นรอติดต่อ
   assert.deepEqual(rows(pick), ['A1']);
 });
 
-test('การ์ด → แถบเตือน/ป้ายเลยวันติดตาม ได้เฉพาะใบที่เลย (ไม่ใช่ทุกใบติดต่อแล้ว)', () => {
-  assert.deepEqual(rows(leadQueuePick({ status: 'contacted', follow: 'late' })), ['L1']);
-  assert.deepEqual(rows(leadQueuePick({ status: 'contacted', follow: 'today' })), ['L2']);
-  assert.deepEqual(rows(leadQueuePick({ status: 'contacted', follow: 'none' })), ['L4']);
-  assert.deepEqual(rows(leadQueuePick({ status: 'contacted', follow: 'late', assigneeId: 'u1' })), ['L1']);
+test('การ์ด → แถบเตือน/ป้ายเลยวันติดตาม ได้เฉพาะใบที่เลย (ไม่ใช่ทุกใบติดต่อแล้ว) รวมใบนัดแล้วที่เลย', () => {
+  assert.deepEqual(rows(leadQueuePick({ follow: 'late' })), ['L1', 'M1']);
+  assert.deepEqual(rows(leadQueuePick({ follow: 'today' })), ['L2']);
+  assert.deepEqual(rows(leadQueuePick({ follow: 'none' })), ['L4']);
+  assert.deepEqual(rows(leadQueuePick({ follow: 'late', assigneeId: 'u1' })), ['L1']);
+  assert.deepEqual(rows(leadQueuePick({ follow: 'late', assigneeId: 'u2' })), ['M1']);
+  // ปุ่มชื่อขั้น "ติดตามต่อ" = ทั้งสี่ช่อง
+  assert.deepEqual(rows(leadQueuePick({ follow: LEAD_FOLLOW_FILTERS })), ['L1', 'L2', 'L3', 'L4', 'M1']);
 });
 
 /* 🐞 ตัวกรองค้างจากการกดครั้งก่อน — การกดใหม่ต้องแทนที่ทั้งชุด */
@@ -71,15 +80,18 @@ test('ทุกปุ่มบนการ์ดค้างคิว: เลข
   const s = summarizeLeadQueue(LEADS, { asOf: `${TODAY}T03:00:00Z`, holidays: new Set() });
   assert.equal(rows(leadQueuePick({ status: 'new' })).length, s.screen.count);
   assert.equal(rows(leadQueuePick({ status: 'assigned' })).length, s.contact.count);
-  assert.equal(rows(leadQueuePick({ status: 'contacted' })).length, s.followUp.count);
-  assert.equal(rows(leadQueuePick({ status: 'contacted', follow: 'late' })).length, s.followUp.late.count);
-  assert.equal(rows(leadQueuePick({ status: 'contacted', follow: 'today' })).length, s.followUp.dueToday);
-  assert.equal(rows(leadQueuePick({ status: 'contacted', follow: 'none' })).length, s.followUp.noPlan);
+  // ⚠️ ปุ่มของขั้นติดตามต้องเป็นปุ่มเดียวกับที่การ์ดส่งจริง (ยามซอร์สท้ายไฟล์) — ไม่ใช่ status: 'contacted'
+  assert.equal(rows(leadQueuePick({ follow: LEAD_FOLLOW_FILTERS })).length, s.followUp.count);
+  assert.equal(rows(leadQueuePick({ follow: 'late' })).length, s.followUp.late.count);
+  assert.equal(rows(leadQueuePick({ follow: 'today' })).length, s.followUp.dueToday);
+  assert.equal(rows(leadQueuePick({ follow: 'none' })).length, s.followUp.noPlan);
+  assert.ok(s.followUp.late.count > rows(leadQueuePick({ status: 'contacted', follow: 'late' })).length,
+    'ชุดทดสอบต้องมีใบนัดแล้วที่เลย — ไม่งั้นเทสต์นี้แยกกติกาสองแบบไม่ออก');
   for (const o of s.contact.owners) {
     assert.equal(rows(leadQueuePick({ status: 'assigned', assigneeId: o.key })).length, o.count, o.key);
   }
   for (const o of s.followUp.late.owners) {
-    assert.equal(rows(leadQueuePick({ status: 'contacted', follow: 'late', assigneeId: o.key })).length, o.count, o.key);
+    assert.equal(rows(leadQueuePick({ follow: 'late', assigneeId: o.key })).length, o.count, o.key);
   }
 });
 
@@ -108,6 +120,10 @@ test('การ์ดค้างคิวส่งทุกการกดผ�
   for (const follow of ['late', 'today', 'none']) {
     assert.match(src, new RegExp(`follow: "${follow}"`), `ไม่มีปุ่มพาไป follow=${follow}`);
   }
+  // ขั้นติดตามรวมใบนัดแล้วที่มีวันติดตาม ⇒ ปุ่มในแถวนั้นเลือกด้วยมิติวันติดตาม ห้ามผูกสถานะ "ติดต่อแล้ว"
+  const live = src.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(live, /status: "contacted"/, 'ปุ่มของขั้นติดตามต้องไม่ตั้งสถานะ — ใบนัดแล้วที่นับอยู่จะหายจากตาราง');
+  assert.match(live, /onPick\?\.\(\{ follow: LEAD_FOLLOW_FILTERS \}\)/);
   const page = readFileSync(new URL('../../app/sales-planning/leads/page.js', import.meta.url), 'utf8');
   assert.match(page, /onPick=\{pickFromQueue\}/);
   assert.match(page, /filterLeadRows\(/);

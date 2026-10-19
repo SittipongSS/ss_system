@@ -15,9 +15,10 @@ import { readFileSync } from 'node:fs';
 import {
   LEAD_TRANSITIONS, TRANSITION_TO_STATUS, LEAD_FOLLOW_UP_ACTIONS, leadFollowUpError,
   leadBouncePatch, leadFollowUpState, leadActiveFollowUpAt, LEAD_CLOSED_STATUSES,
+  LEAD_FOLLOW_UP_STATUSES, leadFollowUpKey,
 } from './leads.js';
-import { summarizeLeadQueue } from './leadDigest.js';
-import { EMPTY_LEAD_FILTERS, leadFacetCounts } from './leadListFilter.js';
+import { leadQueueNotice, summarizeLeadQueue } from './leadDigest.js';
+import { EMPTY_LEAD_FILTERS, filterLeadRows, leadFacetCounts, leadQueuePick } from './leadListFilter.js';
 import { leadWorkloadFrom } from './leadWorkload.js';
 
 const routeSrc = readFileSync(
@@ -102,18 +103,53 @@ test('leadActiveFollowUpAt: ใบปิดแล้ว = ไม่มีวั�
   assert.equal(leadFollowUpState(leadActiveFollowUpAt({ status: 'contacted', followUpAt: STALE }), TODAY), 'late');
 });
 
-test('ตัวนับทุกตัวไม่นับใบปิดที่ค้างวันเก่าเป็น "เลยวันติดตาม"', () => {
+/* 🐞 (รอบตรวจ 19/10) ใบนัดแล้วที่ "บันทึกการติดตาม" หลังประชุมแล้วเลยวัน: ตารางทาสีแดง (ผ่าน
+   leadActiveFollowUpAt) แต่ตัวกรอง "เลยวันติดตาม" กับการ์ดค้างคิวนับเฉพาะ `contacted` ⇒ แถวแดงที่หา
+   ด้วยตัวกรองชื่อเดียวกันไม่เจอ · ของจริงบน prod: ใบนัดแล้วมีวันติดตาม 3 ใบ ทั้งสามมาจาก followup
+   หลังวันประชุม (เลยแล้ว 1 ใบ) ⇒ กติกาเดียว: ใบไหนมีวันที่มีผล ใบนั้นอยู่ในทุกตัวนับ */
+test('leadActiveFollowUpAt: ใบนัดแล้วที่บันทึกการติดตามหลังประชุม = วันที่มีผล · ขั้นก่อนติดต่อไม่มีวันติดตาม', () => {
+  assert.deepEqual(LEAD_FOLLOW_UP_STATUSES, ['contacted', 'meeting']);
+  assert.equal(leadActiveFollowUpAt({ status: 'meeting', followUpAt: STALE }), STALE);
+  assert.equal(leadActiveFollowUpAt({ status: 'meeting', followUpAt: null }), null);
+  // ขั้นที่ใช้นาฬิกา SLA ของระบบ — ค่าที่หลงค้าง (ถ้ามี) ไม่ใช่คำสัญญา และต้องไม่ทำให้ใบนับซ้ำสองขั้นบนการ์ด
+  for (const status of ['new', 'screened', 'assigned']) {
+    assert.equal(leadActiveFollowUpAt({ status, followUpAt: STALE }), null, status);
+  }
+  // `meeting` ตั้งวันได้จริงผ่าน followup (สถานะไม่ขยับ) — ถ้าวันนี้ถูกถอด ใบนัดแล้วจะไม่มีทางมีวันติดตาม
+  assert.ok(LEAD_TRANSITIONS.meeting.includes('followup'));
+  assert.equal(TRANSITION_TO_STATUS.followup, null);
+  // ช่องในมิติวันติดตาม: ใบนัดแล้วไม่มีวัน ≠ "ยังไม่มีวันติดตาม" (วันประชุมคือนาฬิกาของมัน)
+  assert.equal(leadFollowUpKey({ status: 'meeting', followUpAt: STALE }, TODAY), 'late');
+  assert.equal(leadFollowUpKey({ status: 'meeting', followUpAt: null }, TODAY), null);
+  assert.equal(leadFollowUpKey({ status: 'contacted', followUpAt: null }, TODAY), 'none');
+  assert.equal(leadFollowUpKey({ status: 'disqualified', followUpAt: STALE }, TODAY), null);
+});
+
+test('ตัวนับทุกตัวใช้กติกาเดียวกับช่องในตาราง: ไม่นับใบปิด · นับใบนัดแล้วที่เลยวันติดตาม', () => {
   const closed = ['qualified', 'disqualified'].map((status) => ({
     id: status, status, assigneeId: 'u1', team: 'ODM', followUpAt: STALE,
   }));
   const open = { id: 'open', status: 'contacted', assigneeId: 'u1', team: 'ODM', followUpAt: STALE };
-  const rows = [...closed, open];
-  // การ์ดค้างคิว / สรุปเช้า
-  assert.equal(summarizeLeadQueue(rows, { asOf: `${TODAY}T05:00:00Z`, holidays: new Set() }).followUp.late.count, 1);
+  const met = { id: 'met', status: 'meeting', assigneeId: 'u1', team: 'ODM', followUpAt: STALE };
+  const metNoDate = { id: 'met-no-date', status: 'meeting', assigneeId: 'u1', team: 'ODM', followUpAt: null };
+  const rows = [...closed, open, met, metNoDate];
+  // แถวที่ตารางทาสี "เลย" (ช่องในตารางอ่าน leadActiveFollowUpAt แล้วส่ง leadFollowUpState)
+  const red = rows.filter((l) => leadActiveFollowUpAt(l) && leadFollowUpState(leadActiveFollowUpAt(l), TODAY) === 'late')
+    .map((l) => l.id).sort();
+  assert.deepEqual(red, ['met', 'open']);
+  // ตัวกรอง "เลยวันติดตาม" ได้แถวชุดเดียวกัน
+  assert.deepEqual(filterLeadRows(rows, leadQueuePick({ follow: 'late' }), TODAY).map((l) => l.id).sort(), red);
   // ตัวเลขท้ายตัวเลือก "เลยวันติดตาม" ในแผงกรอง
-  assert.equal(leadFacetCounts(rows, EMPTY_LEAD_FILTERS, TODAY).follow.late, 1);
+  assert.equal(leadFacetCounts(rows, EMPTY_LEAD_FILTERS, TODAY).follow.late, red.length);
+  // การ์ดค้างคิว — ขั้นติดตามรวมใบนัดแล้วที่มีวัน · ใบนัดแล้วไม่มีวันไม่อยู่ในขั้นนี้
+  const s = summarizeLeadQueue(rows, { asOf: `${TODAY}T05:00:00Z`, holidays: new Set() });
+  assert.equal(s.followUp.late.count, red.length);
+  assert.equal(s.followUp.count, 2);
+  assert.equal(s.total, 2);
+  // แถบเตือน: ตีกลับอัตโนมัติแตะเฉพาะใบติดต่อแล้ว — ห้ามบอกว่าใบนัดแล้วจะถูกส่งกลับคิว
+  assert.deepEqual(leadQueueNotice(s), { kind: 'late', count: 2, autoBounce: 1, tone: 'danger' });
   // ภาระงานตอนมอบหมาย ("เลยติดตาม")
-  assert.equal(leadWorkloadFrom(rows, TODAY).u1.lateFollowUp, 1);
+  assert.equal(leadWorkloadFrom(rows, TODAY).u1.lateFollowUp, red.length);
 });
 
 /* จออ่านคอลัมน์ตรงไม่ได้ — ต้องผ่าน `leadActiveFollowUpAt` (ยามของบั๊กนี้: ช่องในตาราง

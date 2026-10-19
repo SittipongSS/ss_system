@@ -94,9 +94,11 @@ function channelBadge(channel) {
   );
 }
 
-/* ช่อง "ติดตามต่อ / รับเมื่อ" — วันติดตามมาจาก `leadActiveFollowUpAt` (กติกาเดียวกับตัวเรียง)
-   ⇒ ใบที่ปิดแล้วโชว์ "รับเมื่อ" เหมือนใบที่ไม่มีวันติดตาม ไม่ใช่วันเก่าตัวแดง
-   `todayKey` ตัวเดียวกับตัวกรอง/การ์ดค้างคิว — แถวกับตัวเลขบนการ์ดแบ่ง "เลย/วันนี้" ตรงกัน */
+/* ช่อง "ติดตามต่อ / รับเมื่อ" — วันติดตามมาจาก `leadActiveFollowUpAt` (กติกาเดียวกับตัวเรียง ตัวกรอง
+   "วันติดตาม" และการ์ดค้างคิว ผ่าน `leadFollowUpKey`) ⇒ ใบที่ปิดแล้วโชว์ "รับเมื่อ" เหมือนใบที่ไม่มีวันติดตาม
+   ไม่ใช่วันเก่าตัวแดง · ใบนัดแล้วที่บันทึกการติดตามหลังประชุมโชว์วันนั้น และนับในตัวกรอง/การ์ดด้วย
+   `todayKey` ตัวเดียวกับตัวกรอง — แถวกับตัวเลขในแผงกรองแบ่ง "เลย/วันนี้" ตรงกัน
+   (การ์ดค้างคิวอ่านนาฬิกาเองตอนเรนเดอร์ — ต่างได้เฉพาะตอนข้ามเที่ยงคืนโดยไม่รีโหลด) */
 function followUpCell(lead, todayKey) {
   const followUpAt = leadActiveFollowUpAt(lead);
   if (!followUpAt) return fmtDateTime(lead.createdAt);
@@ -672,7 +674,8 @@ export default function LeadsPage() {
                   selected: statusFilter, onChange: setStatusFilter,
                 },
                 {
-                  /* นับเฉพาะใบ "ติดต่อแล้ว" — นิยามเดียวกับการ์ดค้างคิว (สี่ค่ารวมกัน = จำนวนติดต่อแล้ว) */
+                  /* นับใบที่มีนาฬิกาติดตาม (ติดต่อแล้วทุกใบ + นัดแล้วที่มีวันติดตาม) — `leadFollowUpKey` ตัวเดียวกับ
+                     การ์ดค้างคิวและช่องในตาราง (สี่ค่ารวมกัน = เลขขั้น "ติดตามต่อ" บนการ์ด) */
                   key: "follow", label: "วันติดตาม", icon: CalendarClock,
                   options: LEAD_FOLLOW_FILTERS.map((f) => ({ value: f, label: `${LEAD_FOLLOW_FILTER_LABELS[f]} (${countBy.follow[f] || 0})` })),
                   selected: followFilter, onChange: setFollowFilter,
