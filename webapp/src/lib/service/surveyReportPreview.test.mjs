@@ -10,6 +10,9 @@
 //      และลงวันที่ไม่ก่อนวันที่มีผลของแบบฟอร์มที่ seed ไว้ (ใบของแบบฟอร์มที่ยังไม่มีผล = ใบที่มีจริงไม่ได้)
 //   ⑤ `buildStandardPreviewHTML('siteSurvey', …)` ไปเครื่องยนต์ของ FM-TS-01 ไม่ตกไปเครื่องยนต์ใบเสนอราคา
 //      และสาย import ทั้งสายใช้ฝั่ง client ได้ (ไม่มี node: / server-only / แพ็กเกจนอก src / ชุดทดสอบ · ไม่มีกิ่งที่ถูกข้าม)
+//   ⑦ ประเมินจากแบบ (งวด S3 · สเปก §3 กลุ่ม C): ชุดตัวอย่างเป็นใบผสม — พื้นที่ 3 ประเมินจากแบบ · "ต้องยืนยันหน้างาน"
+//      ⇒ ใบตัวอย่างโชว์แถว "วิธีประเมิน" · กล่องหมายเหตุพร้อมหาง · บรรทัดย่อย · ป้ายใต้หัวพื้นที่ · ส่วน "แบบที่ใช้ประเมิน / DRAWING"
+//      ทั้งสองฉบับ · ฉบับลูกค้าผ่านยามกันรั่ว · จำนวนหน้าล็อกใหม่
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
@@ -29,7 +32,7 @@ import {
 } from './surveyReportPreview.js';
 import { surveyReportSignerVersions } from './surveyReportSigners.js';
 import { buildSurveyReportSnapshot, surveyReportFreezeIssues } from './surveyReportSnapshot.js';
-import { surveyReportSignatureHtmlIssues } from './surveyReportState.js';
+import { surveyReportCustomerHtmlIssues, surveyReportSignatureHtmlIssues } from './surveyReportState.js';
 import { surveyReportSendWarnings, surveyReportView } from './surveyReportView.js';
 
 // แถวที่ mig 0401 ⑦ seed ไว้ (รูปของแถว `document_standard_versions`) — วันที่มีผลเป็น ISO ค.ศ.
@@ -127,18 +130,19 @@ test('รูปในใบตัวอย่างเป็น data URI ล้�
   const sources = imageSources(html);
   assert.ok(sources.length > 0);
   for (const src of sources) assert.match(src, /^data:image\//, src.slice(0, 60));
-  // ทุกกล่องรูปมีรูป: ภาพกว้างทุกรูป + ผังทุกพื้นที่ — ไม่มีกล่อง "ไม่มีภาพ/ไม่มีผัง" บนใบตัวอย่าง
+  // ทุกกล่องรูปมีรูป: ภาพกว้างทุกรูป + ผัง/ภาพแบบทุกพื้นที่ — ไม่มีกล่อง "ไม่มีภาพ/ไม่มีผัง" บนใบตัวอย่าง
+  // (สองพื้นที่ลงหน้างาน: ภาพกว้างสอง + ผัง · พื้นที่จากแบบ: ภาพแบบอย่างเดียว ไม่มีภาพกว้าง)
   const boxes = view.zones.reduce((sum, zone) => sum + zone.wide.length + (zone.plan ? 1 : 0), 0);
   assert.equal(count(html, `src="${SURVEY_REPORT_PREVIEW_IMAGE}"`), boxes);
-  assert.equal(boxes, 6);
+  assert.equal(boxes, 7);
   assert.equal(count(html, '<span class="ph-none">'), 0);
 });
 
 /* ══ ④ ชุดตัวอย่างออกเอกสารได้จริง ═══════════════════════════════════════════ */
 
-test('ชุดตัวอย่าง: สองพื้นที่ · ไม่มีเหตุที่ตรึงไม่ได้ · ไม่มีคำเตือนก่อนส่ง · ไม่มีหน้าล้น', () => {
+test('ชุดตัวอย่าง: สามพื้นที่ (ใบผสม) · ไม่มีเหตุที่ตรึงไม่ได้ · ไม่มีคำเตือนก่อนส่ง · ไม่มีหน้าล้น', () => {
   const inputs = surveyReportPreviewInputs(SEEDED);
-  assert.equal(inputs.zones.length, 2);
+  assert.equal(inputs.zones.length, 3);
   assert.deepEqual(inputs.form, { code: 'FM-TS-01', revision: '00', effectiveDate: '29/09/2569' });
   // ⭐ ตัวสร้างภาพนิ่งเพิ่มช่องบังคับเมื่อไร ข้อนี้ล้ม — เติมช่องในชุดตัวอย่าง (อย่าปล่อยใบตัวอย่างพิมพ์ขีด)
   assert.deepEqual(surveyReportFreezeIssues(inputs), []);
@@ -151,11 +155,12 @@ test('ชุดตัวอย่าง: สองพื้นที่ · ไ�
   assert.deepEqual(surveyReportSendWarnings(view), []);
 
   assert.equal(view.version, 'customer');
-  assert.equal(view.zones.length, 2);
-  assert.equal(view.table.total.label, 'รวม 2 พื้นที่');
-  // สองทรงของหน้ารายพื้นที่: ส่วนเดียว (ขนาดอยู่ในหัวพื้นที่) กับสองส่วน (ตารางส่วนข้างผัง)
+  assert.equal(view.zones.length, 3);
+  assert.equal(view.table.total.label, 'รวม 3 พื้นที่');
+  // สามทรงของหน้ารายพื้นที่: ส่วนเดียว (ขนาดอยู่ในหัวพื้นที่) · สองส่วน (ตารางส่วนข้างผัง) · ประเมินจากแบบ (ส่วนเดียว ภาพแบบ)
   assert.equal(view.zones[0].parts, null);
   assert.equal(view.zones[1].parts.rows.length, 2);
+  assert.equal(view.zones[2].parts, null);
   assert.notEqual(view.table.total.sizeMix, '—', 'ใช้สองขนาดแพ็คเกจ — แถวรวมโชว์ช่องขนาดแพ็ค');
 });
 
@@ -332,9 +337,9 @@ test('ใบตัวอย่างลงวันที่ไม่ก่อ�
   // วันประเมินต้องเป็นวันที่ไซต์ตัวอย่างเปิดให้เข้า (0 = อาทิตย์ … 6 = เสาร์)
   assert.ok(inputs.site.accessDays.includes(new Date(`${surveyed}T00:00:00Z`).getUTCDay()), `${surveyed} ไม่ใช่วันเข้าพื้นที่`);
   // จุดเวลาหน้างานทั้งชุด (บันทึกพื้นที่ · รูป) ตกในวันประเมินตามเวลาไทย — วันที่ตั้งที่เดียว ไม่มีตัวไหนค้างวันเก่า
-  // (สองพื้นที่ + รูปพื้นที่ละสี่: ภาพกว้างสอง · ผัง · รูปจุด)
+  // (สามพื้นที่ + รูป: พื้นที่ลงหน้างานละสี่ — ภาพกว้างสอง · ผัง · รูปจุด · พื้นที่จากแบบหนึ่ง — ภาพแบบ)
   const stamps = [...inputs.zones.map((zone) => zone.surveyedAt), ...Object.values(inputs.filesByZone).flat().map((file) => file.createdAt)];
-  assert.equal(stamps.length, 10);
+  assert.equal(stamps.length, 12);
   for (const stamp of stamps) assert.equal(businessDate(stamp), surveyed, stamp);
   assert.ok(businessDate(inputs.request.submittedAt) <= surveyed, 'คำร้องต้องส่งก่อนวันประเมิน');
 });
@@ -353,6 +358,63 @@ test('ใบตัวอย่างตั้งต้นเป็นฉบั�
   const inputs = surveyReportPreviewInputs(SEEDED);
   for (const name of [inputs.customer.name, inputs.site.name, inputs.site.contactName, inputs.visit.assigneeName, inputs.request.answeredByName]) {
     assert.match(name, /ตัวอย่าง/, name);
+  }
+});
+
+/* ══ ⑦ ประเมินจากแบบ (งวด S3) — ใบตัวอย่างเป็นใบผสม ════════════════════════════════ */
+
+const S3_NOTICE_TAIL = '· ขนาดและจำนวนอาจปรับเมื่อวัดหน้างาน';
+
+test('⭐ ใบตัวอย่างโชว์แบบของใบผสมครบทั้งสองฉบับ: แถว "วิธีประเมิน" · กล่องหมายเหตุพร้อมหาง · บรรทัดย่อย · ป้าย · ส่วน "แบบที่ใช้ประเมิน / DRAWING"', () => {
+  const inputs = surveyReportPreviewInputs(SEEDED);
+  assert.equal(inputs.request.surveyConfirm, 'needed');
+  assert.deepEqual(inputs.zones.map((zone) => zone.method ?? 'onsite'), ['onsite', 'onsite', 'drawing']);
+  const desk = inputs.zones[2];
+  assert.deepEqual(
+    [desk.zoneName, desk.floor, desk.parts.map((p) => [p.widthM, p.lengthM, p.heightM]), desk.packageSize, desk.packageQty, desk.surveyedByName],
+    ['ห้องรับรองชั้น 3', '3', [[6, 5, 3]], 'SM', 1, 'ตัวอย่าง หัวหน้าฝ่ายบริการ'],
+  );
+  // พื้นที่จากแบบมีภาพแบบรูปเดียว — ไม่มีภาพกว้าง ไม่มีรูปจุด (มติ D5)
+  assert.deepEqual(inputs.filesByZone['preview-zone-3'].map((file) => [file.id, file.docType]), [['preview-z3-plan-1', 'survey_plan']]);
+
+  for (const audience of DOCUMENT_AUDIENCES) {
+    const { html, view, layout, warnings } = buildSurveyReportPreview(SEEDED, { audience });
+    assert.deepEqual(warnings, [], audience);
+    assert.deepEqual(layout.overflow, [], audience);
+    assert.deepEqual(surveyReportOverflowErrors(layout), [], audience);
+    // กล่องการประเมิน: แถววิธีประเมินหนึ่งแถว (สัดส่วนของใบผสม) — ใบลงหน้างานล้วนไม่มีแถวนี้ (มติ O3 = ข)
+    assert.equal(view.survey.methodText, 'ลงหน้างาน 2 พื้นที่ · ประเมินจากแบบ 1 พื้นที่', audience);
+    assert.equal(count(html, '<dt>วิธีประเมิน</dt>'), 1, audience);
+    // กล่องหมายเหตุสองบรรทัด — บรรทัดที่สองคือหางของ "ต้องยืนยันหน้างาน"
+    assert.equal(view.notice.lines.length, 2, audience);
+    assert.equal(view.notice.lines[1], S3_NOTICE_TAIL, audience);
+    for (const line of view.notice.lines) assert.ok(html.includes(line), `${audience}: ${line}`);
+    // ตาราง: บรรทัดย่อยเฉพาะแถวของพื้นที่จากแบบ
+    assert.deepEqual(view.table.rows.map((row) => row.methodLine?.text ?? null), [null, null, 'ประเมินจากแบบ'], audience);
+    // หน้าพื้นที่จากแบบ: ป้ายใต้หัว · ส่วนภาพแบบ · ไม่มีส่วนภาพกว้าง
+    assert.equal(view.zones[2].tag, 'ประเมินจากแบบ · ตัวอย่าง หัวหน้าฝ่ายบริการ · 29/09/2026', audience);
+    assert.deepEqual([view.zones[2].planTitle.th, view.zones[2].planTitle.en], ['แบบที่ใช้ประเมิน', 'DRAWING'], audience);
+    assert.equal(count(html, '<span> / DRAWING</span>'), 1, audience);
+    assert.equal(count(html, 'ภาพกว้าง<span> / WIDE PHOTOS</span>'), 2, `${audience}: ส่วนภาพกว้างเฉพาะสองพื้นที่ลงหน้างาน`);
+    assert.ok(layout.pages.filter((page) => page.zoneIndex === 2).every((page) => page.wide === null), audience);
+  }
+});
+
+test('ใบตัวอย่าง (ใบผสม): จำนวนหน้าล็อกใหม่ · ฉบับลูกค้าผ่านยามกันรั่วของ production (กระดาษแบบ token)', () => {
+  // ลูกค้า: หน้าสรุป · สามหน้าพื้นที่ · การรับรองผล — ภายใน: ตารางต่อหน้า 2 (กล่องหมายเหตุดันตารางลง) · พื้นที่ 1 มีหน้า (ต่อ) ของจุด · ภาคผนวกสองหน้า
+  const kinds = (audience) => buildSurveyReportPreview(SEEDED, { audience }).layout.pages.map((page) => page.kind).join(',');
+  assert.equal(kinds('external'), 'summary,zone,zone,zone,signoff');
+  assert.equal(kinds('internal'), 'summary,summaryCont,zone,zoneCont,zone,zone,signoff,appendix,appendix');
+
+  // ยามกันรั่วของฉบับลูกค้า (ตัวเดียวกับที่ขั้นกระดาษใช้) บนกระดาษแบบ token ของภาพนิ่งชุดตัวอย่าง
+  const built = buildSurveyReportSnapshot(surveyReportPreviewInputs(SEEDED), { mode: 'draft' });
+  const view = surveyReportView(built.snapshot, { version: 'customer' });
+  const layout = paginateSurveyReport(view);
+  const html = renderSurveyReportHTML({ view, layout, docNo: SURVEY_REPORT_PREVIEW_DOC_NO });
+  assert.deepEqual(surveyReportCustomerHtmlIssues({ html, snapshot: built.snapshot, layout }), []);
+  // ฉบับลูกค้าไม่มีของภายในของวิธีประเมิน (เหตุผลการสลับ · ผู้สลับ · นัดที่ไม่ได้รับรอง)
+  for (const key of ['methodReason', 'methodChangedByName', 'otherVisits', 'spotList', 'drawingById']) {
+    assert.ok(!JSON.stringify(view).includes(`"${key}"`), `ฉบับลูกค้าต้องไม่มีคีย์ ${key}`);
   }
 });
 
@@ -429,8 +491,10 @@ function walkImports(entry, { root = SRC, read = (path) => readFileSync(path, 'u
 test('สาย import ของใบตัวอย่างใช้ฝั่ง client ได้: ไม่มี node: · server-only · แพ็กเกจเปล่า · ชุดทดสอบ · ตัวโหลดฝั่ง server', () => {
   const { files, specs, bare, unresolved } = walkImports(join(SRC, 'lib/service/surveyReportPreview.js'));
   // เดินถึงตัวเรนเดอร์และเปลือกเอกสารจริง (กันเทสต์ผ่านเพราะ regex จับ import ไม่ได้สักบรรทัด)
+  // งวด S3: ภาพนิ่งดึง `businessDate` (วันไทยของวันที่ประเมินจากแบบ) — ไฟล์นั้นต้องอยู่ในสายและเป็นตรรกะล้วน (ข้อ node: ข้างล่าง)
   for (const must of ['lib/service/surveyReportDocument.js', 'lib/service/surveyReportSnapshot.js', 'lib/service/surveyReportView.js',
-    'lib/service/surveyReportLayout.js', 'lib/documents/documentShell.js', 'lib/documents/documentAudience.js', 'lib/documentStandards.js']) {
+    'lib/service/surveyReportLayout.js', 'lib/documents/documentShell.js', 'lib/documents/documentAudience.js', 'lib/documentStandards.js',
+    'lib/businessDate.js', 'lib/service/surveyMethod.js']) {
     assert.ok(files.includes(must), `สายไม่ถึง ${must}`);
   }
   for (const [spec, from] of specs) {

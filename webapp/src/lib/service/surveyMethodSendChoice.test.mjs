@@ -48,7 +48,10 @@ const { POST } = await import('../../app/api/service/surveys/[id]/send/route.js'
 /* ข้อความที่ผู้ใช้เห็น — เขียนตรงตัวที่นี่โดยตั้งใจ (แผน §3.2) */
 const MOVED = 'วิธีประเมินของใบเปลี่ยนไปแล้ว — โหลดหน้าใหม่แล้วตรวจอีกครั้ง';
 const MISSING = 'ยังไม่ได้เลือกว่าต้องยืนยันหน้างานไหม';
-const HOLD = 'เอกสารประเมิน (เลข SU) ของใบที่ประเมินจากแบบยังออกไม่ได้ — ระบบกำลังปรับแบบเอกสาร · ผลถึงฝ่ายขายตามปกติ';
+/* งวด S3 — ใบที่มีพื้นที่จากแบบออกเอกสารได้แล้ว: ข้อเอกสารคือข้อเดียวกับใบลงหน้างาน (ประโยคเดิมตรงตัว) */
+const ISSUE = 'ออกเอกสารประเมิน (เลข SU) ไปพร้อมกัน — ฝ่ายขายดาวน์โหลดฉบับลูกค้าได้ที่หน้าคำร้อง · เอกสารที่ออกแล้วแก้ไม่ได้ (แก้ = ดึงผลกลับแล้วส่งใหม่เป็น Rev ถัดไป)';
+const ISSUE_REV = 'ออกเอกสารประเมินฉบับใหม่ (Rev ถัดไป) แทน SU-26100007-1 ที่ใช้ไม่ได้แล้ว — ฝ่ายขายดาวน์โหลดฉบับลูกค้าได้ที่หน้าคำร้อง · เอกสารที่ออกแล้วแก้ไม่ได้ (แก้ = ดึงผลกลับแล้วส่งใหม่เป็น Rev ถัดไป)';
+const UNKNOWN_DOC = 'อ่านสถานะเอกสารประเมินไม่สำเร็จ — ถ้าระบบเปิดออกเอกสารตอนส่งผลอยู่ การส่งครั้งนี้จะออกเลข SU ด้วย';
 const NO_VISIT = 'ไม่มีการปิดนัด — ใบนี้ไม่มีนัดที่เปิดอยู่';
 const TAG_AWAITING = 'ทะเบียนพื้นที่ของลูกค้าขึ้นป้าย “ประเมินจากแบบ · รอยืนยันหน้างาน” จนกว่า TS จะส่งผลของใบยืนยันหน้างาน';
 const TAG_FINAL = 'ทะเบียนพื้นที่ของลูกค้าขึ้นป้าย “ประเมินจากแบบ” (ไม่ต้องยืนยันหน้างาน)';
@@ -269,24 +272,28 @@ test('🔴 surveySendConfirm: ไม่ส่ง method / method ว่าง / 
   });
 });
 
-test('⭐ surveySendConfirm · จากแบบทั้งใบ × คำตอบ (ยังไม่เลือก · ต้อง · ไม่ต้อง) × นัด (ไม่มี · กำลังทำ)', () => {
+test('⭐ surveySendConfirm · จากแบบทั้งใบ × คำตอบ (ยังไม่เลือก · ต้อง · ไม่ต้อง) × นัด (ไม่มี · กำลังทำ) × สวิตช์ออกเอกสาร (ปิด · เปิด)', () => {
   const tagOf = { needed: [TAG_AWAITING], not_needed: [TAG_FINAL] };
   for (const confirm of [null, 'needed', 'not_needed']) {
     const tag = tagOf[confirm] || [];
+    // สวิตช์ออกเอกสารตอนส่งผลปิด = ไม่มีข้อเอกสารเลย (เหมือนใบลงหน้างาน)
     const none = surveySendConfirm({ docNo: DOC, method: { mix: mix(0, 3), confirm, openVisit: null } });
     assert.deepEqual(none, {
-      effects: [...BASE, zonesLine(3), ...tag, NO_VISIT, HOLD, END],
+      effects: [...BASE, zonesLine(3), ...tag, NO_VISIT, END],
       confirmLabel: 'ส่งผล',
       title: 'ส่งผลประเมินจากแบบให้ฝ่ายขาย',
       choice: CHOICE(confirm),
     }, String(confirm));
+    // สวิตช์เปิด = ข้อออกเอกสารตัวเดียวกับใบลงหน้างาน ต่อจากข้อเรื่องนัด (งวด S3 ถอดข้อพักเอกสาร)
+    const issuing = surveySendConfirm({ docNo: DOC, issuesDocument: true, method: { mix: mix(0, 3), confirm, openVisit: null } });
+    assert.deepEqual(issuing.effects, [...BASE, zonesLine(3), ...tag, NO_VISIT, ISSUE, END], String(confirm));
 
     const started = surveySendConfirm({
-      docNo: DOC, closesVisit: STARTED,
+      docNo: DOC, closesVisit: STARTED, issuesDocument: true,
       method: { mix: mix(0, 3), confirm, openVisit: { code: 'SV-26100011', status: 'in_progress' } },
     });
     assert.deepEqual(started, {
-      effects: [...BASE, zonesLine(3), ...tag, 'นัด SV-26100011 ที่ช่างกดเริ่มงานไว้จะถูกปิดเป็น “เข้าแล้ว”', HOLD, END],
+      effects: [...BASE, zonesLine(3), ...tag, 'นัด SV-26100011 ที่ช่างกดเริ่มงานไว้จะถูกปิดเป็น “เข้าแล้ว”', ISSUE, END],
       confirmLabel: 'ส่งผลและปิดนัด',
       title: 'ส่งผลประเมินจากแบบให้ฝ่ายขาย',
       choice: CHOICE(confirm),
@@ -301,55 +308,77 @@ test('surveySendConfirm · จากแบบทั้งใบที่ยั�
     const view = surveySendConfirm({
       docNo: DOC, method: { mix: mix(0, 2), confirm: 'not_needed', openVisit: { code: 'SV-26100011', status } },
     });
-    assert.deepEqual(view.effects, [...BASE, zonesLine(2), TAG_FINAL, HOLD, END], status);
+    assert.deepEqual(view.effects, [...BASE, zonesLine(2), TAG_FINAL, END], status);
     assert.equal(view.confirmLabel, 'ส่งผล');
+    const issuing = surveySendConfirm({
+      docNo: DOC, issuesDocument: true, method: { mix: mix(0, 2), confirm: 'not_needed', openVisit: { code: 'SV-26100011', status } },
+    });
+    assert.deepEqual(issuing.effects, [...BASE, zonesLine(2), TAG_FINAL, ISSUE, END], status);
   }
 });
 
-test('⭐ surveySendConfirm · ใบผสม: หัวเดิมของการส่งผล · ข้อปิดนัดของวันนี้ทุกตัวอักษร · ไม่มีข้อ "ไม่มีการปิดนัด"', () => {
+test('⭐ surveySendConfirm · ใบผสม: หัวเดิมของการส่งผล · ข้อปิดนัดของวันนี้ทุกตัวอักษร · ไม่มีข้อ "ไม่มีการปิดนัด" · ข้อออกเอกสารเดิม', () => {
   const visitLine = surveySendConfirm({ docNo: DOC, closesVisit: BOOKED }).effects[2];
   assert.equal(visitLine, 'ปิดนัด SV-26100011 เป็น “เข้าแล้ว” ไปพร้อมกัน — ช่างยังไม่เคยกดเริ่มงาน · บันทึกวันเข้าเป็น 13/10/2026 ไม่มีเวลาเข้าจริง');
 
   const closing = surveySendConfirm({
-    docNo: DOC, closesVisit: BOOKED,
+    docNo: DOC, closesVisit: BOOKED, issuesDocument: true,
     method: { mix: mix(2, 1), confirm: 'needed', openVisit: { code: 'SV-26100011', status: 'scheduled' } },
   });
   assert.deepEqual(closing, {
-    effects: [...BASE, zonesLine(1), TAG_AWAITING, visitLine, HOLD, END],
+    effects: [...BASE, zonesLine(1), TAG_AWAITING, visitLine, ISSUE, END],
     confirmLabel: 'ส่งผลและปิดนัด',
     title: 'ส่งผลให้ฝ่ายขาย',
     choice: CHOICE('needed'),
   });
 
-  // ใบผสมที่นัดปิดไปแล้ว (ช่างส่งงานเอง) — ไม่มีข้อเรื่องนัดเลย
+  // ใบผสมที่นัดปิดไปแล้ว (ช่างส่งงานเอง) · สวิตช์ออกเอกสารปิด — ไม่มีข้อเรื่องนัด ไม่มีข้อเอกสาร
   const closed = surveySendConfirm({ docNo: DOC, method: { mix: mix(2, 1), confirm: null, openVisit: null } });
-  assert.deepEqual(closed.effects, [...BASE, zonesLine(1), HOLD, END]);
+  assert.deepEqual(closed.effects, [...BASE, zonesLine(1), END]);
   assert.equal(closed.title, 'ส่งผลให้ฝ่ายขาย');
   assert.deepEqual(closed.choice, CHOICE(null));
 });
 
-test('🔴 surveySendConfirm · ใบที่มีพื้นที่จากแบบ: ข้อ "เอกสารยังออกไม่ได้" แทนข้อออกเอกสารเสมอ — สวิตช์ออกเอกสารเปิดหรือปิดก็ตาม', () => {
+/* ⭐ งวด S3 — เอกสารของใบที่มีพื้นที่จากแบบไม่ถูกพักแล้ว ⇒ ข้อเรื่องเอกสาร (ออกเอกสาร · Rev ถัดไป · คำเตือนของฉบับลูกค้า ·
+   อ่านสถานะเอกสารไม่สำเร็จ · ผู้ลงนาม) **เป็นชุดเดียวกับใบลงหน้างานทุกตัวอักษร ทุกรูปของอาร์กิวเมนต์** — ใบที่มีพื้นที่จากแบบต่างแค่ข้อของวิธีประเมิน
+   (จำนวนพื้นที่จากแบบ · ป้ายบนทะเบียน · ข้อนัดของใบจากแบบทั้งใบ) และหัว/ไทล์ของโมดัล */
+test('🔴 surveySendConfirm · ใบที่มีพื้นที่จากแบบ: ข้อเรื่องเอกสาร = ของใบลงหน้างานตรงตัว — สวิตช์ออกเอกสารเปิด/ปิด · Rev ถัดไป · ไม่รู้สถานะ · คำเตือน · ผู้ลงนาม', () => {
+  const docArgs = [
+    {}, { issuesDocument: true }, { issuesDocument: true, replacesDocNo: 'SU-26100007-1' }, { documentUnknown: true },
+    { issuesDocument: true, documentUnknown: true },
+    { issuesDocument: true, warnings: ['หมายเหตุยาวเกินกรอบ', 'หมายเหตุยาวเกินกรอบ', 'ชื่อลูกค้า มีอักขระที่เอกสารพิมพ์ไม่ได้'] },
+    { warnings: ['หมายเหตุยาวเกินกรอบ'] },
+    { issuesDocument: true, signers: [{ seats: ['assessor', 'approver'], name: 'Arnon' }] },
+    { issuesDocument: false, signers: [{ seats: ['approver'], name: 'Arnon' }] },
+  ];
+  // ข้อที่มีเฉพาะใบที่มีพื้นที่จากแบบ — ตัดออกแล้วที่เหลือต้องเท่าใบลงหน้างาน
+  const methodOnly = new Set([zonesLine(1), zonesLine(2), TAG_AWAITING, TAG_FINAL, NO_VISIT]);
   for (const sheet of [mix(0, 2), mix(1, 1)]) {
-    for (const doc of [
-      {}, { issuesDocument: true }, { issuesDocument: true, replacesDocNo: 'SU-26100007-1' }, { documentUnknown: true },
-      { issuesDocument: true, documentUnknown: true },
-    ]) {
-      const view = surveySendConfirm({ docNo: DOC, ...doc, method: { mix: sheet, confirm: 'needed', openVisit: null } });
+    for (const doc of docArgs) {
       const at = `${sheet.mode} · ${JSON.stringify(doc)}`;
-      assert.equal(view.effects.filter((line) => line === HOLD).length, 1, at);
-      assert.equal(view.effects.some((line) => line.startsWith('ออกเอกสารประเมิน')), false, at);
-      // "อาจออกเลข SU ด้วย" จะขัดกับข้อบน — ไม่ขึ้นบนใบที่มีพื้นที่จากแบบ
-      assert.equal(view.effects.some((line) => line.includes('จะออกเลข SU ด้วย')), false, at);
+      const onsite = surveySendConfirm({ docNo: DOC, ...doc });
+      const view = surveySendConfirm({ docNo: DOC, ...doc, method: { mix: sheet, confirm: 'needed', openVisit: null } });
+      assert.deepEqual(view.effects.filter((line) => !methodOnly.has(line)), onsite.effects, at);
+      assert.equal(view.confirmLabel, onsite.confirmLabel, at);
+      // ไม่มีประโยคพักเอกสารของงวด S1/S2b หลงเหลือ
+      assert.equal(view.effects.some((line) => line.includes('ยังออกไม่ได้')), false, at);
       assert.equal(view.effects.at(-1), END, at);
     }
   }
+  // ตัวอย่างเขียนตรงตัวหนึ่งรูปต่อสาขา — กันทั้งชุดบนเขียวเพราะสองฝั่งเพี้ยนไปพร้อมกัน
+  const at = (doc, sheet = mix(0, 2)) => surveySendConfirm({ docNo: DOC, ...doc, method: { mix: sheet, confirm: 'needed', openVisit: null } }).effects;
+  assert.deepEqual(at({ issuesDocument: true }), [...BASE, zonesLine(2), TAG_AWAITING, NO_VISIT, ISSUE, END]);
+  assert.deepEqual(at({ issuesDocument: true, replacesDocNo: 'SU-26100007-1' }), [...BASE, zonesLine(2), TAG_AWAITING, NO_VISIT, ISSUE_REV, END]);
+  assert.deepEqual(at({ documentUnknown: true }, mix(1, 1)), [...BASE, zonesLine(1), TAG_AWAITING, UNKNOWN_DOC, END]);
+  assert.deepEqual(at({}), [...BASE, zonesLine(2), TAG_AWAITING, NO_VISIT, END], 'สวิตช์ปิด = ไม่มีข้อเอกสาร');
 });
 
-test('surveySendConfirm · ใบที่มีพื้นที่จากแบบ: ข้อขนาด / ส่งกลับ มาก่อน · คำเตือนของฉบับลูกค้าไม่ขึ้น (รอบนี้ไม่ออกเอกสาร) · ป้ายปุ่มกติกาเดิม', () => {
+test('surveySendConfirm · ใบที่มีพื้นที่จากแบบ: ข้อขนาด / ส่งกลับ มาก่อน · คำเตือนของฉบับลูกค้าขึ้นทีละข้อเหมือนใบลงหน้างาน (งวด S3 ออกเอกสารแล้ว) · ป้ายปุ่มกติกาเดิม', () => {
   const view = surveySendConfirm({
     docNo: DOC,
     sizeReview: { text: 'ล็อบบี้ ใช้ขนาด ST ตั้งแต่ก่อนมีข้อเสนอของระบบ' },
     sendBackPending: { itemCount: 2 },
+    issuesDocument: true,
     warnings: ['หมายเหตุยาวเกินกรอบ', 'หมายเหตุยาวเกินกรอบ'],
     method: { mix: mix(1, 2), confirm: 'not_needed', openVisit: null },
   });
@@ -359,12 +388,11 @@ test('surveySendConfirm · ใบที่มีพื้นที่จาก�
     'เรื่องที่ส่งกลับให้ช่างแก้ 2 ข้อ ยังรอช่างแจ้งว่าแก้แล้ว — ส่งผลแล้วช่างแก้ต่อไม่ได้ (ดึงผลกลับมาแก้ = เรื่องนี้กลับมารอช่างอีกครั้ง)',
     zonesLine(2),
     TAG_FINAL,
-    HOLD,
+    ISSUE,
+    'ฉบับลูกค้าจะพิมพ์ตามที่กรอกไว้ — หมายเหตุยาวเกินกรอบ',
     END,
   ]);
-  /* 🐞 UAT S2b S05 (hold-with-warnings): "ฉบับลูกค้าจะพิมพ์ตามที่กรอกไว้ — …" ต่อจากข้อ "เอกสาร…ยังออกไม่ได้" = สัญญากระดาษที่รอบนี้ไม่ออก */
-  assert.equal(view.effects.some((line) => line.includes('ฉบับลูกค้า')), false);
-  // ใบลงหน้างานล้วน: คำเตือนชุดเดียวกันยังขึ้นทีละข้อเหมือนเดิม
+  // ใบลงหน้างานล้วน: คำเตือนชุดเดียวกันขึ้นทีละข้อ — ประโยคเดียวกับใบที่มีพื้นที่จากแบบ
   assert.deepEqual(
     surveySendConfirm({ docNo: DOC, warnings: ['หมายเหตุยาวเกินกรอบ', 'หมายเหตุยาวเกินกรอบ'] }).effects
       .filter((line) => line.includes('ฉบับลูกค้าจะพิมพ์')),
@@ -375,9 +403,9 @@ test('surveySendConfirm · ใบที่มีพื้นที่จาก�
 
 test('surveySendConfirm · คำตอบที่ไม่ใช่สองค่า = ยังไม่เลือก (value ว่าง · ไม่มีข้อป้ายทะเบียน) — โมดัลไม่เดาแทนหัวหน้า', () => {
   for (const confirm of [undefined, '', 'yes', true, 'NEEDED', 'toString', {}]) {
-    const view = surveySendConfirm({ docNo: DOC, method: { mix: mix(0, 1), confirm, openVisit: null } });
+    const view = surveySendConfirm({ docNo: DOC, issuesDocument: true, method: { mix: mix(0, 1), confirm, openVisit: null } });
     assert.deepEqual(view.choice, CHOICE(null), JSON.stringify(confirm));
-    assert.deepEqual(view.effects, [...BASE, zonesLine(1), NO_VISIT, HOLD, END], JSON.stringify(confirm));
+    assert.deepEqual(view.effects, [...BASE, zonesLine(1), NO_VISIT, ISSUE, END], JSON.stringify(confirm));
   }
 });
 

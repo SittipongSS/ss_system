@@ -8,7 +8,6 @@ import assert from 'node:assert/strict';
 import {
   SEND_CLOSABLE_VISIT_STATES,
   SURVEY_SEND_OLD_PAGE_ERROR,
-  SURVEY_SEND_PAPER_HOLD_EFFECT,
   SURVEY_SEND_PREFLIGHT_MS,
   SURVEY_SEND_REPORT_FAILED,
   SURVEY_SEND_REPORT_OFF,
@@ -685,17 +684,55 @@ test('โมดัลยืนยัน · ลายเซ็นจริง: �
   }
 });
 
-test('🔴 โมดัลยืนยัน · ลายเซ็นจริง: การส่งที่ไม่ออกเอกสารไม่อ้างว่าจะพิมพ์ลายเซ็น — สวิตช์ปิด · ใบที่มีพื้นที่จากแบบ · อ่านสถานะไม่สำเร็จ', () => {
-  const noLine = (c) => assert.ok(c.effects.every((line) => !line.includes('ลายเซ็น')), c.effects.join('\n'));
-  noLine(surveySendConfirm({ docNo: 'AS-26090001', issuesDocument: false, signers: SIGNERS }));
-  noLine(surveySendConfirm({ docNo: 'AS-26090001', documentUnknown: true, signers: SIGNERS }));
-  // ใบที่มีพื้นที่จากแบบ: เอกสารถูกพักไว้ — ข้อ "ยังออกไม่ได้" แทนข้อออกเอกสาร จึงไม่มีข้อผู้ลงนามตามมา
-  const drawing = surveySendConfirm({
-    docNo: 'AS-26090001', issuesDocument: true, signers: SIGNERS,
-    method: { mix: { onsite: 1, drawing: 1, mode: 'mixed' }, confirm: 'needed', openVisit: null },
+test('🔴 โมดัลยืนยัน · ลายเซ็นจริง: การส่งที่ไม่ออกเอกสารไม่อ้างว่าจะพิมพ์ลายเซ็น — สวิตช์ปิด · อ่านสถานะไม่สำเร็จ (ใบลงหน้างาน · ใบผสม · จากแบบทั้งใบ)', () => {
+  const noLine = (c, at) => assert.ok(c.effects.every((line) => !line.includes('ลายเซ็น')), `${at}\n${c.effects.join('\n')}`);
+  const sheets = [
+    ['ลงหน้างาน', null],
+    ['ผสม', { mix: { onsite: 1, drawing: 1, mode: 'mixed' }, confirm: 'needed', openVisit: null }],
+    ['จากแบบทั้งใบ', { mix: { onsite: 0, drawing: 2, mode: 'drawing' }, confirm: 'not_needed', openVisit: null }],
+  ];
+  for (const [at, method] of sheets) {
+    noLine(surveySendConfirm({ docNo: 'AS-26090001', issuesDocument: false, signers: SIGNERS, method }), at);
+    noLine(surveySendConfirm({ docNo: 'AS-26090001', documentUnknown: true, signers: SIGNERS, method }), at);
+  }
+});
+
+/* ══ งวด S3 — ใบที่มีพื้นที่ประเมินจากแบบออกเอกสารได้แล้ว: ข้อผู้ลงนามตามข้อออกเอกสารเหมือนใบลงหน้างาน (สเปก S3 §2.6) ══
+   แถวผู้ลงนามมาจาก server (`document.send.signers` — กลุ่ม A) · ตัวตัดสินไม่มีกิ่งของวิธีประเมิน */
+test('⭐ โมดัลยืนยัน · ลายเซ็นจริง × ใบที่มีพื้นที่จากแบบ: แถวสองที่นั่ง = "ทั้งสองช่อง" · แถวที่นั่งเดียว = ผู้ตรวจสอบและอนุมัติ · ใบผสม = สองคน', () => {
+  const DRAWING = { mix: { onsite: 0, drawing: 3, mode: 'drawing' }, confirm: 'needed', openVisit: null };
+  const MIXED = { mix: { onsite: 2, drawing: 1, mode: 'mixed' }, confirm: 'needed', openVisit: null };
+  const lineAfterIssue = (c) => {
+    const at = c.effects.indexOf(ISSUE_LINE);
+    assert.ok(at > 0, c.effects.join('\n'));
+    return c.effects[at + 1];
+  };
+  // จากแบบทั้งใบ · ผู้ประเมินจากแบบคือผู้ส่งผล (ช่องที่ 1 ใช้ลายเซ็นของผู้อนุมัติ) — server ส่งแถวเดียวสองที่นั่ง
+  const both = surveySendConfirm({
+    docNo: 'RQ-AS-26100345', issuesDocument: true, method: DRAWING,
+    signers: [{ seats: ['assessor', 'approver'], name: 'Arnon' }],
   });
-  assert.ok(drawing.effects.includes(SURVEY_SEND_PAPER_HOLD_EFFECT));
-  noLine(drawing);
+  assert.equal(lineAfterIssue(both), 'เอกสารจะพิมพ์ลายเซ็นที่บันทึกไว้ของ Arnon ทั้งสองช่อง (ผู้ประเมิน และผู้ตรวจสอบและอนุมัติ)');
+  // จากแบบทั้งใบ · หัวหน้าอีกคนประเมิน (ช่องที่ 1 เป็นคำ ไม่ใช่ลายเซ็น) — server ส่งแถวที่นั่งเดียว
+  const approverOnly = surveySendConfirm({
+    docNo: 'RQ-AS-26100345', issuesDocument: true, method: DRAWING,
+    signers: [{ seats: ['approver'], name: 'Arnon' }],
+  });
+  assert.equal(lineAfterIssue(approverOnly), 'เอกสารจะพิมพ์ลายเซ็นที่บันทึกไว้ของ Arnon (ผู้ตรวจสอบและอนุมัติ)');
+  // ใบผสม: ผู้ประเมินของนัด + ผู้ส่งผล — ประโยคเดียวกับใบลงหน้างาน
+  const mixed = surveySendConfirm({ docNo: 'RQ-AS-26100352', issuesDocument: true, method: MIXED, signers: SIGNERS });
+  assert.equal(lineAfterIssue(mixed), 'เอกสารจะพิมพ์ลายเซ็นที่บันทึกไว้ของ สมชาย (ผู้ประเมิน) และ หัวหน้า ก (ผู้ตรวจสอบและอนุมัติ)');
+  // ข้อผู้ลงนามอยู่ตำแหน่งเดียวกับใบลงหน้างาน (ต่อจากข้อออกเอกสารทันที) — ไม่มีข้อไหนบอกว่าเอกสารยังออกไม่ได้
+  for (const c of [both, approverOnly, mixed]) {
+    assert.equal(c.effects.filter((line) => line.startsWith('เอกสารจะพิมพ์ลายเซ็น')).length, 1);
+    assert.equal(c.effects.some((line) => line.includes('ยังออกไม่ได้')), false, c.effects.join('\n'));
+    assert.equal(c.effects.at(-1), 'ใบจะจบเมื่อฝ่ายขายกด “ปิดเรื่อง”');
+  }
+});
+
+test('🔴 งวด S3: ไฟล์นี้ไม่ส่งออกค่าคงที่ของข้อพักเอกสารอีกแล้ว — ไม่มีชื่อส่งออกไหนพูดถึง HOLD', async () => {
+  const mod = await import('./surveySendClose.js');
+  assert.deepEqual(Object.keys(mod).filter((name) => /HOLD/.test(name)), []);
 });
 
 test('🔴 ตัวตรวจอ่านไม่ครบ (S5): ผู้ลงนามที่รู้แน่ว่ายังไม่มีลายเซ็นยังตีกลับ — เว้นแต่ชิ้นที่ตัดสินเรื่องลายเซ็นเองอ่านไม่ได้ (ตารางลายเซ็น · นัด · ผลวัด)', () => {

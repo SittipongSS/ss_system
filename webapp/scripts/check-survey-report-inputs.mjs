@@ -33,6 +33,15 @@
  *   · อ่านเพิ่มแค่สองตาราง (`user_signatures` · `user_signature_versions`) ผ่านตัวโหลดเดียวกับ route — **ไม่แตะคลังไฟล์ลายเซ็น**
  *     ⇒ ไฟล์ลายเซ็นที่ว่าง/จาง/หาย **ไม่ถูกจับที่นี่** (ถูกจับตอนกดส่งผลหรือออกเอกสาร)
  *   · ใบที่ยังไม่ส่งผล: ที่นั่งผู้ตรวจสอบและอนุมัติยังไม่มีตัวตน (คือหัวหน้าที่จะกดส่ง) — ไม่ถูกรายงาน และบรรทัดของเขาไม่ถูกนับ
+ *
+ * ⭐ **ประเมินจากแบบ (งวด S3)**
+ *   · ทุกใบพิมพ์บรรทัด `วิธีประเมิน: ลงหน้างาน {a} · จากแบบ {b}` (นับเฉพาะพื้นที่ที่ไม่ถูกตัด)
+ *   · `--drawing-method on|off` (ค่าตั้งต้น off) = ค่าสวิตช์ `SURVEY_DRAWING_METHOD` ที่ส่งให้ตัวตรวจ/ตัวโหลดเป็น `drawingMethodEnabled`
+ *     — **สคริปต์ไม่อ่านสวิตช์เอง** (ไม่ import โมดูลสวิตช์ · เทสต์ล็อกไว้) · ผลเดียวคือหางของบรรทัด "ไม่พบนัด"
+ *   · `--r0 [RQ-… | SU-… | id …]` = รายการ R0 ก่อน merge งวด S3 (สเปก S3 §4) แทนการตรวจรายใบ: จำนวนแถวเอกสาร · แถวที่มีเลขแต่ยังไม่ตรึง
+ *     กระดาษ · ใบที่ส่งผลแล้วมีพื้นที่จากแบบแต่ยังไม่มีแถวเอกสาร (ใบที่ติดข้อกัน — ภาพแบบรายพื้นที่ + คำตอบ "ต้องยืนยันหน้างานไหม") ·
+ *     และของใบที่ระบุ (ไม่ระบุ = `R0_DEFAULT_REFS`): สถานะ · วิธีประเมินรายพื้นที่ · นัดทุกใบพร้อมสถานะ · มีแถวเอกสารไหม
+ *     ⇒ วางผลใน PR · เป็นข้อมูล ไม่ใช่ด่าน (มติ O3 = ข: กระดาษของใบลงหน้างานไม่เปลี่ยน)
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -41,8 +50,8 @@ import { businessDate } from '../src/lib/businessDate.js';
 import { listAttachments } from '../src/lib/master/attachments.js';
 import { surveyPackageSizeSendError } from '../src/lib/service/packageSizes.js';
 import { loadPackageSizesOrNull } from '../src/lib/service/packageSizesRepo.js';
-import { surveySendError } from '../src/lib/service/survey.js';
-import { surveyNeedsVisit } from '../src/lib/service/surveyMethod.js';
+import { SURVEY_DOC_PLAN, surveySendError } from '../src/lib/service/survey.js';
+import { isDrawingZone, surveyMethodMix, surveyNeedsVisit, zoneMethod } from '../src/lib/service/surveyMethod.js';
 import { loadSurveyReportInputs, surveyReportPrecheck } from '../src/lib/service/surveyReportInputs.js';
 import { paginateSurveyReport, surveyReportOverflowErrors } from '../src/lib/service/surveyReportLayout.js';
 import { SURVEY_SIGN_SEAT_LABEL, surveyReportSeatEligible, surveyReportSigners } from '../src/lib/service/surveyReportSigners.js';
@@ -129,21 +138,23 @@ export function readOnlyClient(client) {
  * @param opts.now      นาฬิกาของรอบ (ค่าตั้งต้น = ตอนนี้) — "วันนี้" ของด่านคิดตามเวลาไทย (`businessDate`)
  * @param opts.signers  `true` = ตรวจด้วยกติกาลายเซ็นจริง (`signatureRule: 'required'` — ไม่ผ่านสวิตช์) แล้วเติม `report.signers`
  *                      · ไม่ส่ง = ตรวจตามสวิตช์ของเครื่องที่รัน และรายงานไม่มีคีย์ `signers`
- * @returns `{ request, mode, error, unknown, visit, gates, issues, overflow, warnings, images, verdict }` (+ `signers` · `signHold` เมื่อ `opts.signers`)
+ * @param opts.drawingMethodEnabled  ค่าสวิตช์ประเมินจากแบบ (`--drawing-method` · ค่าตั้งต้น `false`) ส่งต่อให้ตัวตรวจกับตัวโหลด (งวด S3)
+ * @returns `{ request, mode, error, unknown, method, visit, gates, issues, overflow, warnings, images, verdict }` (+ `signers` เมื่อ `opts.signers`)
+ *   · `method`   `{ onsite, drawing }` จำนวนพื้นที่ที่ไม่ถูกตัดรายวิธี (`surveyMethodMix`) · `null` = อ่านผลวัดไม่ได้
  *   · `mode`     `'send'` = ใบยังไม่ส่งผล (ถามว่า S4/S5 จะว่ายังไง) · `'issue'` = ส่งผลแล้ว (ถามว่าปุ่ม "ออกเอกสาร" จะติดอะไร)
  *   · `gates`    `[{ name, error }]` ด่านที่มีอยู่ก่อน PR-2 — `error: null` = ผ่าน
  *   · `issues`   `{ content: string[], system: string[] }` เหตุของเอกสารจาก `surveyReportPrecheck` ตัวเดียวกับที่ route ใช้
  *   · `overflow` `{ customer: { pages, errors }, internal: { pages, errors } }` หรือ `null` เมื่อยังจัดหน้าไม่ได้
  *   · `verdict`  `{ refusedByGates, refusedByDocument, newlyRefused, skipped }` — `newlyRefused` = วันนี้ส่งได้ แต่เปิดสวิตช์แล้วถูกตีกลับ
  */
-export async function checkSurveyReportInputs(supabase, { request, now = new Date(), signers = false } = {}) {
+export async function checkSurveyReportInputs(supabase, { request, now = new Date(), signers = false, drawingMethodEnabled = false } = {}) {
   const report = {
     request: {
       id: request?.id ?? null, docNo: request?.docNo ?? null, title: request?.title ?? null,
       answered: !!request?.answeredAt, cancelled: !!request?.cancelledAt, kind: request?.kind ?? null,
     },
     mode: request?.answeredAt ? 'issue' : 'send',
-    error: null, unknown: [], visit: { action: 'none', code: null, error: null },
+    error: null, unknown: [], method: null, visit: { action: 'none', code: null, error: null },
     gates: [], issues: { content: [], system: [] }, overflow: null, warnings: [], images: [],
     verdict: { refusedByGates: false, refusedByDocument: null, newlyRefused: false, skipped: false },
   };
@@ -157,6 +168,8 @@ export async function checkSurveyReportInputs(supabase, { request, now = new Dat
   const send = report.mode === 'send';
   // กติกาลายเซ็นจริงของรอบ — ส่งตรงให้ตัวตรวจกับตัวโหลด (ชุดเดียวกัน) เฉพาะเมื่อขอ `--signers`
   const rule = signers ? { signatureRule: 'required' } : {};
+  // ค่าสวิตช์ประเมินจากแบบ — ส่งตรง (สคริปต์ไม่อ่านสวิตช์) · `true` ตรงตัวเท่านั้นที่เปิด
+  const drawing = { drawingMethodEnabled: drawingMethodEnabled === true };
 
   try {
     /* ── ชุดเดียวกับที่ route ส่งผลอ่านสำหรับด่านหกข้อ (S4) ───────────────────────────── */
@@ -164,6 +177,8 @@ export async function checkSurveyReportInputs(supabase, { request, now = new Dat
     const lists = await Promise.all(zones.map((z) => listAttachments('service_survey_zone', z.id, supabase)));
     const filesByZone = Object.fromEntries(zones.map((z, i) => [z.id, lists[i] || []]));
     const sizes = await loadPackageSizesOrNull(supabase);
+    const mix = surveyMethodMix(zones);
+    report.method = { onsite: mix.onsite, drawing: mix.drawing };
     // ใบที่ส่งผลแล้วไม่มีนัดให้ปิดแทนช่าง (`closesVisit: false` — กติกาเดียวกับขั้นออกเลข I3)
     const open = send ? await findSurveyVisit(supabase, request.id, { openOnly: true }) : null;
     // ใบประเมินจากแบบทั้งใบ = ไม่ต้องมีนัด (ตัวตัดสินเดียวกับ route ส่งผล) — นัดที่ยังเปิดบนใบแบบนั้นถูกบล็อก ไม่ถูกปิดให้
@@ -178,7 +193,7 @@ export async function checkSurveyReportInputs(supabase, { request, now = new Dat
 
     /* ── คำตัดสินของ server เอง (S5 · `document.send` / `document.issue` ของ GET ใบประเมิน) ─────────── */
     const check = await surveyReportPrecheck(supabase, {
-      request, user: PENDING_HEAD, zones, filesByZone, sizes, open, today, nowIso, ...rule,
+      request, user: PENDING_HEAD, zones, filesByZone, sizes, open, today, nowIso, ...rule, ...drawing,
     });
     report.unknown = [...check.unknown];
     report.warnings = [...check.warnings];
@@ -198,13 +213,9 @@ export async function checkSurveyReportInputs(supabase, { request, now = new Dat
       request,
       closedVisit: step.action === 'close' ? { ...open, ...step.patch } : null,
       pendingAnswer: send ? { answeredAt: nowIso, answeredById: PENDING_HEAD.id, answeredByName: PENDING_HEAD.name } : null,
-      zones, filesByZone, sizes, takenAt: nowIso, ...rule,
+      zones, filesByZone, sizes, takenAt: nowIso, ...rule, ...drawing,
     });
-    if (signers) {
-      report.signers = signerRows(inputs, { send });
-      // ใบที่มีพื้นที่ประเมินจากแบบยังออกเอกสารไม่ได้ — ตัวตรวจจึงไม่ถามเรื่องลายเซ็น (รายชื่อผู้ลงนามยังแสดงให้เห็น)
-      report.signHold = blockers.some((issue) => issue?.hold === true);
-    }
+    if (signers) report.signers = signerRows(inputs, { send });
     report.images = surveyReportImageFiles(inputs).map(({ attId, kind, file }) => ({
       attId, kind, fileName: file?.fileName ?? null, mimeType: file?.mimeType ?? null,
       sizeBytes: file?.sizeBytes ?? null, onDrive: !!file?.driveFileId,
@@ -273,6 +284,146 @@ export async function loadOpenSurveyRequests(supabase, { limit = OPEN_SURVEY_LIM
   return { requests: data || [], capped: (data || []).length >= limit, error: null };
 }
 
+/* ── R0 ก่อน merge งวด S3 (สเปก S3 §4 · `--r0`) — SELECT เท่านั้น · ทุกคำสั่งมีเพดาน ──────────────────────────── */
+
+/** ใบที่ R0 พิมพ์รายละเอียดเมื่อไม่ระบุใบ — สองใบที่เป็นงานจากแปลนจริงแต่ยังเป็นใบลงหน้างาน + ใบของเอกสารจริงใบแรก */
+export const R0_DEFAULT_REFS = Object.freeze(['RQ-AS-26090217', 'RQ-AS-26100312', 'SU-26100001-0']);
+/** แถวเอกสารที่อ่านต่อรอบ — เพดานของ PostgREST (กติกา check:rowcap) · ถึงเพดาน = บอกให้เห็น ไม่สรุปเงียบ */
+export const R0_REPORT_LIMIT = 1000;
+// นัดของหนึ่งใบที่อ่านต่อรอบ — เท่าตัวโหลดอินพุต (หนึ่งใบไม่มีนัดถึงเท่านี้)
+const R0_VISIT_LIMIT = 200;
+// ไม่อ่านภาพนิ่ง/HTML/PDF — "ตรึงแล้วไหม" ดูจาก `frozenAt` (ขั้นกระดาษเติม HTML กับ `frozenAt` ในคำสั่งเดียว)
+const R0_REPORT_COLUMNS = 'id, "requestId", "docNo", status, "frozenAt", "issuedAt"';
+const R0_VISIT_COLUMNS = 'id, code, status, "scheduledDate", "actualDate", "createdAt"';
+
+const isCutZone = (z) => (z?.status || 'ok') === 'cut';
+const zoneLabel = (z, i) => `พื้นที่ ${i + 1} ${String(z?.zoneName ?? '').trim() || '—'}`;
+
+/* รายละเอียดของใบหนึ่งใบ (`RQ-…` · `SU-…` = ใบของเอกสารนั้น · id) — คืน `{ ref, error }` หรือข้อมูลของใบ */
+async function r0Sheet(supabase, ref, rows, capped) {
+  const key = String(ref ?? '').trim();
+  let lookup = key;
+  if (/^SU-/i.test(key)) {
+    const row = rows.find((r) => r.docNo === key);
+    if (!row) return { ref: key, error: `ไม่พบเอกสาร ${key}${capped ? ' (แถวเอกสารถึงเพดาน — อาจมีแต่อ่านไม่ถึง)' : ''}` };
+    lookup = row.requestId;
+  }
+  const found = await findSurveyRequest(supabase, lookup);
+  if (found.error || !found.request) return { ref: key, error: found.error || 'ไม่พบใบคำร้อง' };
+  const request = found.request;
+  const zones = await loadSurveyZones(supabase, request.id);
+  const { data, error } = await supabase
+    .from('service_visits').select(R0_VISIT_COLUMNS).eq('requestId', request.id)
+    .order('createdAt', { ascending: true }).order('id', { ascending: true }).limit(R0_VISIT_LIMIT);
+  if (error) return { ref: key, error: `อ่านนัดไม่สำเร็จ — ${message(error)}` };
+  return {
+    ref: key, error: null, docNo: request.docNo ?? null, id: request.id, status: request.status ?? null,
+    answered: !!request.answeredAt, cancelled: !!request.cancelledAt, surveyConfirm: request.surveyConfirm ?? null,
+    zones: zones.map((z, i) => ({ label: zoneLabel(z, i), method: zoneMethod(z), cut: isCutZone(z) })),
+    visits: (data || []).map((v) => ({ code: v.code ?? null, status: v.status ?? null, date: v.actualDate || v.scheduledDate || null })),
+    reports: rows.filter((r) => r.requestId === request.id)
+      .map((r) => ({ docNo: r.docNo ?? null, status: r.status ?? null, frozen: !!r.frozenAt })),
+  };
+}
+
+/**
+ * 🔑 **รายการ R0** (สเปก S3 §4) — คืน `{ error, reports, held, heldCapped, sheets }` (ไม่พิมพ์เอง)
+ *   · `reports`  `{ count, capped, unfrozen: [{ docNo, requestId, status, issuedAt }] }` — แถวที่มีเลขแต่ยังไม่ตรึงกระดาษ
+ *   · `held`     ใบที่ส่งผลแล้ว (ไม่ถูกยกเลิก) มีพื้นที่จากแบบ และยังไม่มีแถวเอกสารของรอบปัจจุบัน (แถว `superseded` ไม่นับ) — `[{ docNo, id, surveyConfirm, plans: [{ zone, files }] }]`
+ *                (`files` = ภาพแบบของพื้นที่จากแบบ `{ fileName, mimeType }`) · `heldCapped` = ชุดใบที่ส่งผลแล้วถึงเพดาน
+ *   · `sheets`   รายละเอียดของใบที่ระบุ (`r0Sheet`) — ใบที่อ่านไม่ได้มี `error` ของตัวเอง ไม่ล้มทั้งรายการ
+ * ⚠️ แถวเอกสารถึงเพดาน = "ยังไม่มีแถวเอกสาร" ของ `held` อาจผิด — บรรทัดสรุปบอกไว้
+ */
+export async function releaseCheckR0(supabase, { refs = R0_DEFAULT_REFS, limit = R0_REPORT_LIMIT } = {}) {
+  const out = { error: null, reports: { count: 0, capped: false, unfrozen: [] }, held: [], heldCapped: false, sheets: [] };
+  const { data, error } = await supabase
+    .from('service_survey_reports').select(R0_REPORT_COLUMNS)
+    .order('issuedAt', { ascending: false }).order('id', { ascending: true }).limit(limit);
+  if (error) { out.error = `อ่านแถวเอกสาร (service_survey_reports) ไม่สำเร็จ — ${message(error)}`; return out; }
+  const rows = data || [];
+  const capped = rows.length >= limit;
+  out.reports = {
+    count: rows.length, capped,
+    unfrozen: rows.filter((r) => r.docNo && !r.frozenAt)
+      .map((r) => ({ docNo: r.docNo, requestId: r.requestId ?? null, status: r.status ?? null, issuedAt: r.issuedAt ?? null })),
+  };
+  /* ใบที่ "มีแถวเอกสาร" = มีแถวของรอบปัจจุบัน — แถว `superseded` (เลขรอบก่อนที่ดึงผลกลับแล้ว) ไม่นับ: ใบที่ส่งใหม่ระหว่างข้อกันของ S2b
+     ยังไม่มีเอกสารของรอบนี้ ต้องขึ้นรายการให้เจ้าของอ่านก่อนกดออกเอกสาร (R1 ข้อ 4) */
+  const withRow = new Set(rows.filter((r) => r.status !== 'superseded').map((r) => r.requestId));
+
+  const answered = await loadAnsweredSurveyRequests(supabase);
+  if (answered.error) { out.error = `อ่านใบที่ส่งผลแล้วไม่สำเร็จ — ${answered.error}`; return out; }
+  out.heldCapped = answered.capped;
+  try {
+    // ทีละใบ — อ่านผลวัดของใบที่ส่งผลแล้วทุกใบ (มีเพดานที่ชุดใบ) แล้วอ่านไฟล์เฉพาะพื้นที่จากแบบของใบที่ติด
+    for (const request of answered.requests) {
+      if (withRow.has(request.id)) continue;
+      const zones = await loadSurveyZones(supabase, request.id);
+      if (surveyMethodMix(zones).drawing === 0) continue;
+      const plans = [];
+      for (const [i, z] of zones.entries()) {
+        if (isCutZone(z) || !isDrawingZone(z)) continue;
+        const files = await listAttachments('service_survey_zone', z.id, supabase);
+        plans.push({
+          zone: zoneLabel(z, i),
+          files: files.filter((f) => f.docType === SURVEY_DOC_PLAN).map((f) => ({ fileName: f.fileName ?? null, mimeType: f.mimeType ?? null })),
+        });
+      }
+      out.held.push({ docNo: request.docNo ?? null, id: request.id, surveyConfirm: request.surveyConfirm ?? null, plans });
+    }
+  } catch (e) {
+    out.error = `อ่านผลวัด/ไฟล์ของใบที่ส่งผลแล้วไม่สำเร็จ — ${message(e)}`;
+    return out;
+  }
+  for (const ref of refs) {
+    try {
+      out.sheets.push(await r0Sheet(supabase, ref, rows, capped));
+    } catch (e) {
+      out.sheets.push({ ref: String(ref), error: `อ่านใบนี้ไม่สำเร็จ — ${message(e)}` });
+    }
+  }
+  return out;
+}
+
+const CONFIRM_TEXT = Object.freeze({ needed: 'ต้องยืนยันหน้างาน', not_needed: 'ไม่ต้องยืนยันหน้างาน' });
+// ยังไม่ได้ตอบ — คำเดียวทั้งรายการใบที่ติดและรายละเอียดรายใบ
+const NO_CONFIRM_TEXT = 'ยังไม่ได้เลือกว่าต้องยืนยันหน้างานไหม';
+const METHOD_TEXT = Object.freeze({ onsite: 'ลงหน้างาน', drawing: 'ประเมินจากแบบ' });
+/* `YYYY-MM-DD` หรือ timestamptz → "dd/mm/yyyy" (วันไทย) · ว่าง = ขีด */
+const dayText = (value) => {
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(String(value ?? '')) ? String(value) : (value ? businessDate(value) : null);
+  return day ? day.split('-').reverse().join('/') : '—';
+};
+
+/** ผลของ `releaseCheckR0` → บรรทัดข้อความ (วางใน PR) */
+export function r0Lines(r) {
+  const out = ['\n══ R0 — ก่อน merge งวด S3 (อ่านอย่างเดียว · สเปก S3 §4) ══'];
+  if (r.error) { out.push(`  ❌ ${r.error}`); return out; }
+  out.push(`  แถวเอกสาร (service_survey_reports): ${r.reports.count} แถว${r.reports.capped ? ` (ถึงเพดาน ${R0_REPORT_LIMIT} — อาจมีมากกว่านี้ · สองข้อถัดไปอาจไม่ครบ)` : ''}`);
+  out.push(`  มีเลขแต่ยังไม่ตรึงกระดาษ: ${r.reports.unfrozen.length || '— (ไม่มี)'}`);
+  for (const row of r.reports.unfrozen) out.push(`    ${row.docNo} · ${row.status || '—'} · ออก ${dayText(row.issuedAt)}`);
+  out.push(`  ใบที่ส่งผลแล้ว มีพื้นที่ประเมินจากแบบ และยังไม่มีแถวเอกสาร: ${r.held.length || '— (ไม่มี)'}`
+    + (r.heldCapped ? ` (ชุดใบที่ส่งผลแล้วถึงเพดาน ${OPEN_SURVEY_LIMIT} ใบ — อาจมีมากกว่านี้)` : ''));
+  for (const sheet of r.held) {
+    out.push(`    ${sheet.docNo || sheet.id} · ${CONFIRM_TEXT[sheet.surveyConfirm] || NO_CONFIRM_TEXT}`);
+    for (const plan of sheet.plans) {
+      const files = plan.files.map((f) => `${f.fileName || '?'} (${f.mimeType || '?'})`).join(' · ');
+      out.push(`      ${plan.zone}: ${files || '— ไม่มีภาพแบบ'}`);
+    }
+  }
+  out.push(`  ใบที่ขอดู: ${r.sheets.length || '—'}`);
+  for (const sheet of r.sheets) {
+    if (sheet.error) { out.push(`    ❌ ${sheet.ref}: ${sheet.error}`); continue; }
+    const head = `${sheet.docNo || sheet.id}${sheet.ref !== sheet.docNo ? ` (จาก ${sheet.ref})` : ''}`;
+    out.push(`    ${head} · ${sheet.answered ? 'ส่งผลแล้ว' : 'ยังไม่ส่งผล'}${sheet.cancelled ? ' · ถูกยกเลิก' : ''} · สถานะ ${sheet.status || '—'}`
+      + `${sheet.answered ? ` · ${CONFIRM_TEXT[sheet.surveyConfirm] || NO_CONFIRM_TEXT}` : ''}`);
+    out.push(`      พื้นที่: ${sheet.zones.map((z) => `${z.label} — ${METHOD_TEXT[z.method]}${z.cut ? ' (ตัดแล้ว)' : ''}`).join(' · ') || '— (ไม่มี)'}`);
+    out.push(`      นัด: ${sheet.visits.map((v) => `${v.code || '—'} ${v.status || '—'} ${dayText(v.date)}`).join(' · ') || '— (ไม่มี)'}`);
+    out.push(`      แถวเอกสาร: ${sheet.reports.map((x) => `${x.docNo} ${x.status || '—'} · ${x.frozen ? 'ตรึงแล้ว' : 'ยังไม่ตรึง'}`).join(' · ') || '— (ยังไม่มี)'}`);
+  }
+  return out;
+}
+
 /* ── พิมพ์ ───────────────────────────────────────────────────────────────────── */
 
 const kb = (bytes) => (Number.isFinite(Number(bytes)) && bytes !== null ? `${Math.round(Number(bytes) / 1024)} KB` : '—');
@@ -299,8 +450,12 @@ export function reportLines(r) {
   if (r.error) { out.push(`  ❌ ${r.error}`); return out; }
 
   out.push(`  ชิ้นที่อ่านไม่สำเร็จ: ${r.unknown.length ? r.unknown.join(' · ') : '— (อ่านครบ)'}`);
+  if (r.method) out.push(`  วิธีประเมิน: ลงหน้างาน ${r.method.onsite} · จากแบบ ${r.method.drawing}`);
   if (r.mode === 'send') {
-    out.push(`  นัดที่ยังเปิด: ${r.visit.code ? `${r.visit.code} → ${r.visit.action === 'close' ? 'จะถูกปิดพร้อมส่งผล' : r.visit.action === 'block' ? 'เป็นร่าง — ส่งผลไม่ได้' : 'ไม่แตะ'}` : '— (ไม่มี)'}`);
+    /* นัดที่บล็อกการส่งมีได้หลายเหตุ (นัดร่าง · นัดที่ยังเปิดบนใบจากแบบล้วน) — เหตุจริงของ `surveySendVisitStep` อยู่บรรทัดถัดไป */
+    const step = { close: 'จะถูกปิดพร้อมส่งผล', block: 'บล็อกการส่งผล — เหตุอยู่บรรทัดถัดไป' }[r.visit.action] || 'ไม่แตะ';
+    out.push(`  นัดที่ยังเปิด: ${r.visit.code ? `${r.visit.code} → ${step}` : '— (ไม่มี)'}`);
+    if (r.visit.action === 'block' && r.visit.error) out.push(`    ✗ ${r.visit.error}`);
   }
   out.push('  ด่านที่มีอยู่แล้ว (ก่อน PR-2):');
   for (const gate of r.gates) out.push(`    ${gate.error ? '✗' : '✓'} ${gate.name}${gate.error ? ` — ${gate.error}` : ''}`);
@@ -324,7 +479,7 @@ export function reportLines(r) {
   for (const text of r.warnings) out.push(`    ⚠ ${text}`);
 
   if (r.signers) {
-    out.push(`  ผู้ลงนาม (กติกาลายเซ็นจริง)${r.signHold ? ' — ใบมีพื้นที่ประเมินจากแบบ: ยังออกเอกสารไม่ได้ จึงยังไม่ถูกถามเรื่องลายเซ็น' : ''}:`);
+    out.push('  ผู้ลงนาม (กติกาลายเซ็นจริง):');
     for (const row of r.signers) {
       const mark = row.barred ? '✗' : row.signature === 'ready' ? '✓' : row.signature === 'unknown' ? '?' : '✗';
       out.push(`    ${mark} ${row.label} ${row.name} — ${signerText(row)}`);
@@ -354,7 +509,7 @@ export function reportLines(r) {
 export function summaryLines(reports, { capped = false, limit = OPEN_SURVEY_LIMIT } = {}) {
   const send = reports.filter((r) => r.mode === 'send' && !r.error);
   const issue = reports.filter((r) => r.mode === 'issue' && !r.error);
-  // วันนี้ (สวิตช์ปิด) ส่งผลได้ไหม — ติดด่านเดิม หรือนัดยังเป็นร่าง = ส่งไม่ได้อยู่แล้ว
+  // วันนี้ (สวิตช์ปิด) ส่งผลได้ไหม — ติดด่านเดิม หรือนัดที่ยังเปิดบล็อกการส่ง (นัดร่าง · นัดบนใบจากแบบล้วน) = ส่งไม่ได้อยู่แล้ว
   const blockedToday = (r) => r.verdict.refusedByGates || r.visit.action === 'block';
   const ready = send.filter((r) => !blockedToday(r));
   const count = (fn) => ready.filter(fn).length;
@@ -362,7 +517,7 @@ export function summaryLines(reports, { capped = false, limit = OPEN_SURVEY_LIMI
     `\n══ สรุป ${reports.length} ใบ${capped ? ` (ถึงเพดาน ${limit} ใบ — อาจมีมากกว่านี้)` : ''} ══`,
     `  อ่าน/ตรวจไม่สำเร็จ: ${reports.filter((r) => r.error).length}`,
     `  ยังไม่ส่งผล: ${send.length} ใบ`,
-    `    วันนี้ก็ส่งไม่ได้ (ติดด่านเดิม · นัดเป็นร่าง): ${send.length - ready.length}`,
+    `    วันนี้ก็ส่งไม่ได้ (ติดด่านเดิม · นัดที่ยังเปิดบล็อกการส่ง): ${send.length - ready.length}`,
     `    วันนี้ส่งได้: ${ready.length}`,
     `      🔴 จะถูกตีกลับเพิ่มเมื่อเปิดสวิตช์ (S5): ${count((r) => r.verdict.newlyRefused)}`,
     `      อ่านไม่ครบ (route ข้ามการตีกลับ): ${count((r) => r.verdict.skipped)}`,
@@ -411,20 +566,35 @@ function signerSummaryLines(reports) {
   ];
 }
 
+const USAGE = 'ใช้: node --import ./scripts/test-loader.mjs scripts/check-survey-report-inputs.mjs <id | RQ-…> [...] | --open | --answered '
+  + '[--signers] [--drawing-method on|off] [--json] · หรือ --r0 [RQ-… | SU-… | id …] [--json]';
+
 /**
  * ทั้งรอบ — เทสต์เรียกตรงด้วย client ปลอม · รันจริงผ่านท้ายไฟล์
  * @returns exit code: 0 = ตรวจครบ (ไม่ว่าผลของใบจะเป็นอะไร — สคริปต์นี้รายงาน ไม่ใช่ด่าน) · 1 = หาใบไม่เจอ/อ่านไม่ได้ · 2 = ใช้ผิด
  */
 export async function main({ argv = [], supabase, log = console.log, now = new Date() } = {}) {
+  // `--drawing-method on|off` กินค่าถัดไป (ค่านั้นไม่ใช่ชื่อใบ) · ค่าอื่น/ไม่มีค่า = ใช้ผิด
+  const methodAt = argv.indexOf('--drawing-method');
+  const methodValue = methodAt >= 0 ? argv[methodAt + 1] : 'off';
   const flags = new Set(argv.filter((a) => a.startsWith('--')));
-  const refs = argv.filter((a) => !a.startsWith('--'));
+  const refs = argv.filter((a, i) => !a.startsWith('--') && !(methodAt >= 0 && i === methodAt + 1));
   const json = flags.has('--json');
   const signers = flags.has('--signers');
-  if ((!refs.length && !flags.has('--open') && !flags.has('--answered')) || flags.has('--help')) {
-    log('ใช้: node --import ./scripts/test-loader.mjs scripts/check-survey-report-inputs.mjs <id | RQ-…> [...] | --open | --answered [--signers] [--json]');
+  const r0 = flags.has('--r0');
+  if ((!refs.length && !flags.has('--open') && !flags.has('--answered') && !r0) || flags.has('--help')
+    || (methodValue !== 'on' && methodValue !== 'off')) {
+    log(USAGE);
     return flags.has('--help') ? 0 : 2;
   }
+  const drawingMethodEnabled = methodValue === 'on';
   const client = readOnlyClient(supabase);
+  if (r0) {
+    const result = await releaseCheckR0(client, { refs: refs.length ? refs : R0_DEFAULT_REFS });
+    if (json) log(JSON.stringify(result, null, 2));
+    else r0Lines(result).forEach((line) => log(line));
+    return result.error ? 1 : 0;
+  }
   const requests = [];
   let capped = false;
   for (const ref of refs) {
@@ -452,7 +622,7 @@ export async function main({ argv = [], supabase, log = console.log, now = new D
 
   const reports = [];
   // ทีละใบ — ใบหนึ่งยิงสิบกว่าคำสั่งขนานกันอยู่แล้ว ไม่ต้องถล่มฐานของจริงพร้อมกันทุกใบ
-  for (const request of requests) reports.push(await checkSurveyReportInputs(client, { request, now, signers }));
+  for (const request of requests) reports.push(await checkSurveyReportInputs(client, { request, now, signers, drawingMethodEnabled }));
 
   if (json) {
     log(JSON.stringify({ reports, capped }, null, 2));

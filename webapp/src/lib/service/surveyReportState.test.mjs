@@ -21,8 +21,8 @@ import {
   surveyReportRpcConflict, surveyReportRpcError, surveyReportSignatureHtmlIssues, surveyReportState,
 } from './surveyReportState.js';
 import {
-  fakeSha, fakeSignatureVersion, markedSurveyInputs, signedSurveyInputs, surveyReportInputsFromFixture, surveySignCases,
-  syntheticSurveyFixture,
+  drawingSurveyFixture, fakeSha, fakeSignatureVersion, markedSurveyInputs, mixedSurveyFixture, signedSurveyInputs,
+  surveyReportInputsFromFixture, surveySignCases, syntheticSurveyFixture,
 } from './surveyReportTestKit.mjs';
 import { surveyReportView } from './surveyReportView.js';
 
@@ -606,6 +606,72 @@ test('🔴 ยามลายเซ็นเดินตามที่นั่
   // คนเดียวสองที่นั่ง: sha เดียวสองช่อง = นับสองที่นั่ง
   const same = paper(signedSurveyInputs(twin(), { same: true }), 'internal');
   assert.deepEqual(signCheck(same, 'internal'), []);
+});
+
+/* ══ งวด S3 — ใบที่มีพื้นที่ประเมินจากแบบ (สเปก S3 §3 กลุ่ม B · §2.6) ═══════════════════════════════════ */
+
+/** แฝดที่พื้นที่ `which` เป็นจากแบบ (หัวหน้า `switcher` สลับหลังช่างบันทึก) · ทุกพื้นที่จากแบบ = ไม่มีนัด */
+function s3Inputs({ which = [1], switcher = 'Head Approver' } = {}) {
+  const inputs = twin();
+  for (const i of which) {
+    Object.assign(inputs.zones[i], {
+      method: 'drawing', methodChangedAt: '2026-09-26T02:50:00.000+00:00', methodChangedByName: switcher, methodReason: 'ลูกค้าส่งแบบมาแล้ว',
+    });
+  }
+  if (which.length === inputs.zones.length) inputs.visit = null;
+  inputs.request = { ...inputs.request, surveyConfirm: 'needed' };
+  return inputs;
+}
+
+test('🔴 S3 ยามกันรั่ว: รายการจุดโดยประมาณ (`class="sp-list"`) ในฉบับลูกค้า = ชิ้นของฉบับภายใน — ตัวเรนเดอร์พิมพ์ลงฉบับภายในเท่านั้น', () => {
+  const customer = paper(s3Inputs({ which: [0, 1] }), 'customer');
+  const internal = paper(s3Inputs({ which: [0, 1] }), 'internal');
+  assert.ok(internal.html.includes('<ul class="sp-list">'), 'ฉบับภายในของใบจากแบบต้องมีรายการ — ไม่งั้นยามตาบอด');
+  assert.equal(customer.html.includes('sp-list'), false);
+  assert.deepEqual(surveyReportCustomerHtmlIssues(customer), []);
+  const inject = (extra) => customer.html.replace('</main>', `${extra}</main>`);
+  for (const piece of ['<ul class="sp-list">', '<ul class="sp-list"><li class="none">ยังไม่ระบุจุดติดตั้ง</li></ul>']) {
+    assert.deepEqual(
+      surveyReportCustomerHtmlIssues({ html: inject(piece), snapshot: customer.snapshot, layout: customer.layout }),
+      ['ฉบับลูกค้ามีชิ้นของฉบับภายใน (ส่วนจุดติดตั้ง)'], piece,
+    );
+  }
+  // HTML ฉบับภายในของใบจากแบบที่ถูกส่งมาเป็นฉบับลูกค้า: รายการจุดถูกนับในกลุ่มส่วนจุด (ไม่มีการ์ดรูปให้จับ)
+  const got = surveyReportCustomerHtmlIssues({ html: internal.html, snapshot: internal.snapshot, layout: customer.layout });
+  assert.ok(got.some((line) => line.startsWith('ฉบับลูกค้ามีชิ้นของฉบับภายใน (') && line.includes('ส่วนจุดติดตั้ง')), got.join(' | '));
+});
+
+test('S3 ฉบับลูกค้าของสาม fixture (ลงหน้างาน · ผสม · จากแบบล้วน) และของแฝดที่สลับพื้นที่ ผ่านยามกันรั่ว', () => {
+  const sets = [
+    ['แฝด', twin()], ['ผสม', surveyReportInputsFromFixture(mixedSurveyFixture())],
+    ['จากแบบล้วน', surveyReportInputsFromFixture(drawingSurveyFixture())],
+    ['แฝดผสม', s3Inputs()], ['แฝดจากแบบ', s3Inputs({ which: [0, 1] })],
+  ];
+  for (const [label, inputs] of sets) {
+    const p = paper(inputs, 'customer');
+    assert.deepEqual(surveyReportCustomerHtmlIssues(p), [], label);
+    // กันผ่านเพราะกระดาษไม่มีรูป — ภาพผัง/ภาพแบบยังอยู่
+    assert.ok(surveyReportImageShas(p.html).length > 0, label);
+  }
+});
+
+test('🔴 S3 ยามลายเซ็นของใบที่มีพื้นที่จากแบบ: ที่นั่งที่ 1 คัดลอก (2 / 4) · ที่นั่งที่ 1 เป็นบรรทัดคำ (1 / 2) · ใบผสมลงนามครบ (2 / 4) — ผ่าน · ตัดรูปที่นั่งที่ 1 ออก = ติดบรรทัดจำนวน', () => {
+  const copied = signedSurveyInputs(s3Inputs({ which: [0, 1] }));
+  const words = signedSurveyInputs(s3Inputs({ which: [0, 1], switcher: 'หัวหน้า อีกคน' }));
+  const mixed = signedSurveyInputs(s3Inputs());
+  for (const [label, inputs, images] of [['คัดลอก', copied, 2], ['บรรทัดคำ', words, 1], ['ผสม', mixed, 2]]) {
+    for (const [version, times] of [['customer', 1], ['internal', 2]]) {
+      const p = paper(inputs, version);
+      assert.equal(p.html.split('<img class="sig-img"').length - 1, images * times, `${label}/${version}`);
+      assert.deepEqual(signCheck(p, version), [], `${label}/${version}`);
+    }
+  }
+  // ที่นั่งที่ 1 ของใบคัดลอกถือรูปเดียวกับที่นั่งที่ 2 — ตัวเรนเดอร์ทำรูปที่นั่งที่ 1 หาย = ยามติดที่จำนวน (token ยังอยู่ที่ที่นั่งที่ 2)
+  const p = paper(copied, 'customer');
+  assert.equal(p.snapshot.signatures.assessor.img.sha, p.snapshot.signatures.approver.img.sha);
+  const seat1 = p.html.indexOf('<img class="sig-img"');
+  const gone = `${p.html.slice(0, seat1)}<div class="sig-e">ลายเซ็นอิเล็กทรอนิกส์</div>${p.html.slice(p.html.indexOf('>', seat1) + 1)}`;
+  assert.deepEqual(signCheck(p, 'customer', gone), ['กระดาษมีรูปลายเซ็น 1 ที่ — ต้องมี 2 ที่']);
 });
 
 /* ══ ไฟล์นี้ต้องเบา ════════════════════════════════════════════════════ */

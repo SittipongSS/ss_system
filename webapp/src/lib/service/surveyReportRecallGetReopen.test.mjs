@@ -1186,7 +1186,7 @@ test('ซอร์สของเส้นดึงกลับ: ยามกด
 
 test('ซอร์สของสอง GET และ hook "ยังไม่จบ": ตัวเลือกของสรุป · สรุปล้มไม่ลาก GET · hook แคบเฉพาะ site_survey ที่ตอบแล้ว', () => {
   const survey = code(SURVEY_ROUTE);
-  assert.match(survey, /surveyDocumentSummary\(supabase, request, user, \{ withChecks: true, zones \}\)\.catch\(/);
+  assert.match(survey, /surveyDocumentSummary\(supabase, request, user, \{ withChecks: true, zones, drawingMethodEnabled \}\)\.catch\(/);
   assert.match(survey, /document: reportDoc,/);
   /* อยู่ในรอบขนานเดียวกับของประกอบอื่น — ไม่เพิ่มรอบเดินทางให้จอช่าง */
   const parallel = survey.slice(survey.indexOf('await Promise.all(['), survey.indexOf('const filesByZone'));

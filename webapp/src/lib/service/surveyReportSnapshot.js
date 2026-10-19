@@ -20,7 +20,8 @@
 //   v, takenAt
 //   request { id, docNo, title, body, requestedById, requestedByName, team, submittedAt, assignedByName,
 //             requestedDueDate/Time, committedDueDate/Time, requestedResultDate, committedResultDate,
-//             answeredAt/ById/ByName, closedAt/ByName }
+//             answeredAt/ById/ByName, closedAt/ByName,
+//             surveyConfirm ('needed' | 'not_needed' | null — งวด S3) }
 //   deal { code } · customer { id, arCode, name }
 //   site { code, name, address, contactName, contactPhone, accessText, accessNote }
 //   visit { code, statusLabel, scheduledDate, startTime, endTime, actualDate, actualStartTime, actualEndTime,
@@ -30,16 +31,25 @@
 //             parts[{letter,label,widthM,lengthM,heightM,areaSqm,volumeCbm}], wide[img], plan[img ≤ 1],
 //             spots[{id,no,label,note,selected,photos[img ≤ 1]}],          (เฉพาะรูปที่กระดาษพิมพ์ — ดู `zoneFiles`)
 //             packageSize, packageSizeSuggested, packageSizeManual, packageQty, packageNote,
-//             note, surveyedByName, surveyedAt }
+//             note, surveyedByName, surveyedAt,
+//             ── งวด S3 (เพิ่มคีย์ · ยัง v1) ──
+//             method ('onsite' | 'drawing' — `zoneMethod`, รวมพื้นที่ที่ตัด), methodReason, methodChangedByName, methodChangedAt,
+//             drawingBy, drawingAt (ผู้ประเมินจากแบบของพื้นที่ — `surveyDrawingAssessor` · null บนพื้นที่ลงหน้างานและพื้นที่ที่ตัด) }
 //   totals { zones, cutZones, addedZones, areaSqm, volumeCbm, packageQty, packagesBySize, spotsSelected }
 //   change { requested, cut, added, assessed }
 //   history[] { at, kind, byName, reason, totals }
 //   company { name, address, taxId, tel, line, website } · form { code, revision, effectiveDate }
+//   assessment { mode ('onsite' | 'drawing' | 'mixed' | 'empty'), onsiteZones, drawingZones, totalZones,
+//                drawingBy[] (ชื่อผู้ประเมินจากแบบ ไม่ซ้ำ ตามลำดับพื้นที่), drawingAt ('YYYY-MM-DD' วันไทยของ answeredAt | null),
+//                drawingById (บัญชีผู้ส่งผลเมื่อเขาเป็นผู้ประเมินจากแบบคนเดียวของใบจากแบบล้วน — `surveyDrawingSeatSigner` | null) }   งวด S3
+//   otherVisits[] { code, statusLabel, date, planned }   นัดของใบจากแบบล้วนที่ไม่ได้รับรอง (ภาคผนวกฉบับภายใน · งวด S3)
+//   ⭐ ภาพนิ่งก่อนงวด S3 ไม่มี `assessment` / `zones[].method` ⇒ ตัวกรองอ่านเป็นลงหน้างานทั้งใบ — กระดาษเหมือนเดิมทุกตัวอักษร
 //   img = { attId, sha, w, h }
 //   signatures { assessor, approver }   ⭐ **คีย์เสริม — มีเฉพาะภาพนิ่งที่ถ่ายตอนกติกาลายเซ็นจริงเปิด** (PR-SIG · มติ 09/10/2026)
 //             แต่ละที่นั่ง = `null` หรือ { userId, name, versionId, versionNumber, sourceSha256, img: { sha, w, h } | null }
 //             ไม่มีคีย์ = ภาพนิ่งรุ่นก่อน/สวิตช์ปิด ⇒ กระดาษพิมพ์คำว่า "ลายเซ็นอิเล็กทรอนิกส์" เหมือนเดิมทุกไบต์ (ยังเป็น v1 — เพิ่มคีย์อย่างเดียว)
 //             🔴 ที่อยู่ไฟล์ในคลังลายเซ็น (`storagePath`) **ไม่เข้าภาพนิ่ง** — รูปที่พิมพ์คือสำเนา JPEG `img/<sha>.jpg` ในถังของเอกสารเอง
+import { businessDate } from '@/lib/businessDate';
 import { isPreviewableImage } from '@/lib/master/attachmentTypes';
 import { normalizeTime } from '@/lib/format';
 import { sortPackageSizes } from './packageSizes';
@@ -49,9 +59,10 @@ import {
   surveyChangeCounts, surveyPartLetter, surveyRecallRecord, surveySendBackState, surveyTotals,
   surveyZoneName, surveyZoneSize,
 } from './survey';
-import { isDrawingZone, surveyMethodMix } from './surveyMethod';
+import { isDrawingZone, isJpgOrPngFile, surveyDrawingAssessor, surveyMethodMix, zoneMethod } from './surveyMethod';
 import {
-  SURVEY_SIGN_RULE, SURVEY_SIGN_SEATS, surveyReportSeatEligible, surveyReportSignatureIssues, surveyReportSigners,
+  SURVEY_SIGN_RULE, SURVEY_SIGN_SEATS, surveyDrawingSeatSigner, surveyReportSeatEligible, surveyReportSignatureIssues,
+  surveyReportSigners,
 } from './surveyReportSigners';
 import { SPOT_TRAY_LABEL, spotPhotoGroups } from './surveySpotPhotos';
 import { visitTimeCredible } from './surveyVisitTime';
@@ -124,8 +135,12 @@ const oldestFirst = (a, b) => {
  *
  * ⭐ **พื้นที่ประเมินจากแบบ (`isDrawingZone` · mig 0408) พิมพ์แค่ภาพแบบ** — ไม่มีใครไปถ่ายภาพกว้างหรือรูปจุดที่หน้างาน
  *   ไฟล์สองหมวดนั้นที่ค้างบนแถว (ถ่ายไว้ก่อนสลับวิธี) จึง **ไม่ถูกมองเลย**: ไม่พิมพ์ ไม่ดึง ไม่นับว่ายังไม่ผูก ไม่ขวางเพราะ HEIC
- *   และไม่ถูกเตือนว่าไม่ใช่รูป · จุดยังคืนครบทุกจุดตามลำดับ (เลขจุด `k.n` นับจากทุกจุด) แต่ไม่มีรูป · ภาพแบบเดินกติกาเดิมทุกข้อ
+ *   และไม่ถูกเตือนว่าไม่ใช่รูป · จุดยังคืนครบทุกจุดตามลำดับ (เลขจุด `k.n` นับจากทุกจุด) แต่ไม่มีรูป
  *   ⚠️ ไม่งั้นรูปจุดที่ไม่มีวันถูกพิมพ์จะขวางการออกเอกสารของใบที่ไม่มีใครต้องไปผูกมัน
+ *   🔑 **ภาพแบบ = ชุดเดียวกับด่านส่งผล** (งวด S3 §2.4 · `isJpgOrPngFile` ตัวเดียวกับ `SURVEY_GATES.plan`): รูป JPG/PNG ล่าสุดของหมวดผัง
+ *     ไฟล์ผังชนิดอื่น (PDF · TIFF · HEIC · BMP · WEBP · GIF) "ไม่ใช่ไฟล์ของกระดาษ" เฉย ๆ — เป็น `notImages` ไม่ใช่ `undecodable`
+ *     🐞 เดิมกระดาษเลือกรูปล่าสุดที่ "เปิดดูได้" (TIFF นับ) ขณะที่ด่านส่งผลผ่านเมื่อมี JPG/PNG ใดก็ได้ ⇒ JPG เก่า + TIFF ใหม่
+ *        ผ่านด่าน แต่กระดาษได้ไฟล์ที่วาดไม่ขึ้น
  */
 function zoneFiles(row, files) {
   const all = list(files);
@@ -137,14 +152,15 @@ function zoneFiles(row, files) {
   const planCount = plans.filter(printable).length;
 
   if (isDrawingZone(row)) {
+    const drawn = all.filter((f) => f?.docType === SURVEY_DOC_PLAN && isJpgOrPngFile(f)).sort(oldestFirst);
     return {
       wide: [],
-      plan,
-      planCount,
+      plan: drawn[drawn.length - 1] || null,
+      planCount: drawn.length,
       spotRows: spotPhotoGroups({ spots: list(row?.spots) }).rows.map((r) => ({ spot: r.spot, photo: null, photoCount: 0 })),
       unlinked: [],
-      undecodable: newestPlan && isUndecodable(newestPlan) ? [newestPlan] : [],
-      notImages: all.filter((f) => f?.docType === SURVEY_DOC_PLAN && !isPreviewableImage(f)),
+      undecodable: [],
+      notImages: all.filter((f) => f?.docType === SURVEY_DOC_PLAN && !isJpgOrPngFile(f)),
     };
   }
 
@@ -201,16 +217,24 @@ const preparedImage = (inputs, attId) => {
 
 /* ── เหตุที่ตรึงไม่ได้ ───────────────────────────────────────────────── */
 
-/** ไม่มีนัดให้เอกสารรับรอง — ตัวตรวจก่อนส่งผล (`surveyReportPrecheck`) แทนข้อนี้ด้วยเหตุของนัดร่างเมื่อนัดที่ค้างยังเป็นร่าง */
+/** ไม่มีนัดให้เอกสารรับรอง — ตัวตรวจก่อนส่งผล (`surveyReportPrecheck`) แทนข้อนี้ด้วยเหตุของนัดร่างเมื่อนัดที่ค้างยังเป็นร่าง
+ *  ⚠️ บรรทัดจริงอาจมีหาง `SURVEY_REPORT_NO_VISIT_TAIL` ต่อท้าย ⇒ ผู้กรองบรรทัดนี้เทียบด้วย "ขึ้นต้นด้วย" ไม่ใช่เท่ากันตรงตัว */
 export const SURVEY_REPORT_NO_VISIT = 'ไม่พบนัดประเมินพื้นที่ของใบนี้';
 
 /**
- * 🔴 **กันเอกสารของใบที่มีพื้นที่ประเมินจากแบบ** (แผน survey-desk-assessment §2 แถว 32) — กระดาษรุ่นนี้ยังพิมพ์ทุกพื้นที่
- *   เป็น "ลงหน้างาน" (ผู้ประเมิน = คนบนนัด · ช่องภาพกว้าง/รูปจุด) ⇒ ออกไป = เอกสารที่อ้างการเข้าพื้นที่ที่ไม่เคยเกิด
- *   ข้อนี้เป็นชนิด `system` ที่พก `hold: true` ข้อเดียวของระบบ: ผลยังถึงฝ่ายขายตามปกติ (ไม่ตีกลับการส่งผล) แต่ขั้นออกเลขไม่ออก
- *   และ **กดซ้ำไม่ช่วย** — หายเมื่อแบบเอกสารรองรับพื้นที่จากแบบ (งวด S3 ถอดข้อนี้ออก)
+ * หางของบรรทัดไม่พบนัด (งวด S3 §2.3 ข้อ 3) — ต่อท้ายเฉพาะเมื่อ `inputs.drawingMethodEnabled === true`
+ * (สวิตช์ประเมินจากแบบเปิด — ผู้เรียกฝั่ง route อ่านสวิตช์แล้วส่งค่ามา ไฟล์นี้ไม่อ่านเอง) · สวิตช์ปิดไม่มีใครสลับได้ คำแนะนำจะเป็นเท็จ
  */
-export const SURVEY_REPORT_DRAWING_HOLD = 'เอกสารประเมินของใบที่ประเมินจากแบบยังออกไม่ได้ — ระบบกำลังปรับแบบเอกสาร';
+export const SURVEY_REPORT_NO_VISIT_TAIL = ' — พื้นที่ที่ไม่ได้ลงหน้างานให้เปลี่ยนเป็น “ประเมินจากแบบ”';
+
+/**
+ * ใบที่ส่งผลแล้ว มีพื้นที่จากแบบ แต่ไม่มีคำตอบ "ต้องยืนยันหน้างานไหม" (งวด S3 §2.3 ข้อ 2) — ข้อความเดียวกับที่ route ส่งผลตีกลับเอง
+ * (`SURVEY_CONFIRM_MISSING` ของ `surveyMethodSwitch.js` — ไฟล์กระดาษไม่ดึงโมดูลนั้น เทสต์ล็อกว่าสองค่าเท่ากัน)
+ */
+export const SURVEY_REPORT_CONFIRM_MISSING = 'ยังไม่ได้เลือกว่าต้องยืนยันหน้างานไหม';
+
+/** คำตอบ "ต้องยืนยันหน้างานไหม" ที่รู้จัก — ค่าอื่นทุกค่า = ยังไม่เลือก */
+const SURVEY_CONFIRM_CHOICES = Object.freeze(['needed', 'not_needed']);
 
 /**
  * ชื่อชิ้นที่ตัวโหลด (`loadSurveyReportInputs` · PR-2) อ่านไม่สำเร็จ → คำที่คนอ่านออก
@@ -246,20 +270,26 @@ const unreadText = (name) => `อ่าน${SURVEY_REPORT_INPUT_LABELS[name] || 
  *   `system`   ของนอกใบ — แก้ได้โดยไม่ต้องดึงผลกลับ: หัวข้อผิด · จุดเวลา · ลูกค้า/สถานที่ · รหัสพื้นที่ในทะเบียน · ประวัติ/ทะเบียนขนาด
  *              ที่อ่านไม่ได้ · บริษัท · มาตรฐานเอกสาร · ทุกชิ้นใน `inputs.unknown`
  *              ⇒ **ไม่ตีกลับการส่งผล** (ผลต้องถึงฝ่ายขาย) แต่ขั้นออกเลขไม่ออกจนกว่าจะหาย
- *   `system` + `hold: true`  ข้อเดียว: ใบมีพื้นที่ประเมินจากแบบ (`SURVEY_REPORT_DRAWING_HOLD`) — ไม่ตีกลับการส่งผลเหมือน `system`
- *              ทุกข้อ แต่ **ไม่มีอะไรให้คนแก้** · คีย์ `hold` มีเฉพาะข้อนี้ (ข้ออื่นมีแค่ `kind` กับ `text` เหมือนเดิม)
  *   `content` (ไม่มี `sign`)   บัญชีของคนบนที่นั่งนั่งที่นั่งนั้นไม่ได้ — ผู้ประเมินไม่ใช่บัญชีฝ่ายบริการ · ผู้ส่งผลไม่ใช่ผู้มีสิทธิ์ส่งผล
  *              (มากับ `surveyReportSignatureIssues` เหมือนกัน · เพิ่มลายเซ็นไม่ช่วย ต้องแก้ที่ตัวใบ)
  *   `content` + `sign: true`  ผู้ลงนามยังไม่มีลายเซ็นในระบบ (`surveyReportSignatureIssues` · มติเจ้าของ 09/10/2026) — **เฉพาะตอนกติกา
  *              ลายเซ็นจริงเปิด** (`inputs.signatureRule === 'required'`) · ตีกลับการส่งผลก่อนเขียนอะไรเหมือน `content` ทุกข้อ
  *              แต่ **ไม่ต้องดึงผลกลับ**: เจ้าตัวเพิ่มลายเซ็นแล้วกดใหม่ได้เลย · บรรทัดพก `userId` กับ `seats` ด้วย (server เทียบกับคนดู —
  *              ไม่ออก payload) · ต่อจากก้อนนัดทันที ลำดับของข้ออื่นไม่ขยับ
- *              ⚠️ ถูกข้ามทั้งก้อนเมื่อ ① กติกาปิด ② ใบติดข้อกันเอกสารของใบจากแบบ (ออกเอกสารไม่ได้อยู่แล้ว — ตีกลับการส่งผลเพราะ
- *                 ลายเซ็นเป็นเสียงรบกวน · **งวด S3 ถอดข้อกันเมื่อไรต้องตัดสินผู้ลงนามของใบจากแบบก่อน** เทสต์ล็อกคู่นี้ไว้)
- *                 ③ อ่านลายเซ็นไม่สำเร็จ (ได้ "อ่านลายเซ็นของผู้ลงนามไม่สำเร็จ" ชนิด `system` แทน — ไม่มีวันกลายเป็น "ยังไม่มีลายเซ็น")
+ *              ⚠️ ถูกข้ามทั้งก้อนเมื่อ ① กติกาปิด ② อ่านลายเซ็นไม่สำเร็จ (ได้ "อ่านลายเซ็นของผู้ลงนามไม่สำเร็จ" ชนิด `system` แทน —
+ *                 ไม่มีวันกลายเป็น "ยังไม่มีลายเซ็น") · ใบที่มีพื้นที่จากแบบถูกถามเหมือนใบลงหน้างาน (งวด S3 §2.6 — ผู้ลงนามของใบจากแบบล้วน
+ *                 คือผู้ส่งผล ดู `surveyDrawingSeatSigner`)
+ *   🔑 คีย์ของทุกข้อมีแค่ `kind` กับ `text` (บรรทัดลายเซ็นมี `sign` · `userId` · `seats` เพิ่ม) — **ไม่มีข้อไหนพก `hold`** (งวด S3 ถอดข้อกัน
+ *      เอกสารของใบจากแบบแล้ว: ใบแบบนั้นออกเอกสารได้ด้วยกระดาษที่บอกว่าประเมินจากแบบ)
  *
  * ⭐ **ใบประเมินจากแบบทั้งใบไม่ถูกถามเรื่องนัด** (ไม่มี · ไม่มีวัน · ไม่มีผู้ประเมิน) — ไม่มีใครต้องไปหน้างาน · ใบผสมและใบที่
  *   ไม่เหลือพื้นที่ (ตัดหมด) ยังถูกถามเหมือนเดิม: `surveyMethodMix(...).mode` ตัวเดียวกับที่ตัวโหลดใช้ทิ้งนัด
+ *   · บรรทัดไม่พบนัดได้หาง `SURVEY_REPORT_NO_VISIT_TAIL` เมื่อ `inputs.drawingMethodEnabled === true` (ผู้เรียกส่งค่าสวิตช์มา)
+ * ⭐ **ใบที่ส่งผลแล้วมีพื้นที่จากแบบต้องมีคำตอบ "ต้องยืนยันหน้างานไหม"** (`SURVEY_REPORT_CONFIRM_MISSING` · ชนิด `content`) —
+ *   ไม่ถามเมื่อ `inputs.answerPending === true` (รอบตรวจก่อนส่งผล: หัวหน้ายังไม่ได้เลือก และ route ส่งผลตีกลับคำตอบที่ขาดเองด้วยข้อความเดียวกัน)
+ *   ⇒ ข้อนี้กันแค่แถวที่ถูกแก้มือตอนกด "ออกเอกสาร"
+ * ⭐ **ภาพแบบของพื้นที่จากแบบ** ใช้ชุดเดียวกับด่านส่งผล (`zoneFiles`) และมีข้อความของตัวเอง — ไฟล์ HEIC ของพื้นที่จากแบบไม่ใช่
+ *   "รูปที่ต้องแปลง" (ไม่มีบรรทัด HEIC มาปิดข้อนี้)
  *
  * 🔴 **อ่านไม่สำเร็จ ≠ ไม่มี** (`inputs.unknown` · กติกา supabase-never-throws) — ชิ้นที่อ่านพลาดเป็น `null` เหมือนชิ้นที่ไม่มีเป๊ะ
  *   ⇒ ข้อ "ไม่มี/ไม่พบ" ของชิ้นนั้นถูกข้าม แล้วบอกว่า "อ่าน…ไม่สำเร็จ" (ชนิด `system`) แทน · ไม่งั้นฐานสะดุดครั้งเดียวตอนอ่านนัด
@@ -294,11 +324,15 @@ export function surveyReportFreezeIssues(inputs = {}) {
   const mix = surveyMethodMix(inputs.zones);
 
   if (request.kind && request.kind !== 'site_survey') system('ใบนี้ไม่ใช่คำร้องประเมินพื้นที่');
-  if (mix.drawing > 0) out.push({ kind: 'system', hold: true, text: SURVEY_REPORT_DRAWING_HOLD });
   if (!text(inputs.takenAt)) system('ไม่มีจุดเวลาของภาพนิ่ง');
   // ยังไม่ส่งผล: ไม่มีอะไรบนใบให้แก้ (รอบตรวจก่อนส่งใส่ผู้ส่งที่กำลังจะเขียนมาแล้ว — ข้อนี้ไม่ขึ้น)
   if (!request.answeredAt) system('ยังไม่ได้ส่งผลให้ฝ่ายขาย — ยังออกเอกสารไม่ได้');
   else if (!text(request.answeredByName)) content('ไม่มีชื่อผู้ตรวจสอบและอนุมัติ (ผู้ส่งผล)');
+  /* ใบที่ส่งผลแล้ว (ไม่ใช่รอบตรวจก่อนส่ง) ที่มีพื้นที่จากแบบต้องมีคำตอบ — `answerPending` มีทั้งตอนกติกาลายเซ็นเปิดและปิด (ตัวโหลด) */
+  if (mix.drawing > 0 && request.answeredAt && inputs.answerPending !== true
+    && !SURVEY_CONFIRM_CHOICES.includes(request.surveyConfirm)) {
+    content(SURVEY_REPORT_CONFIRM_MISSING);
+  }
   if (!unread('customer') && !text(inputs.customer?.name)) system('ไม่พบข้อมูลลูกค้าของใบนี้');
   if (!unread('site') && !text(inputs.site?.name)) system('ไม่พบข้อมูลสถานที่ของใบนี้');
 
@@ -306,15 +340,17 @@ export function surveyReportFreezeIssues(inputs = {}) {
   const visit = inputs.visit;
   if (mix.mode !== 'drawing') {
     if (!visit) {
-      if (!unread('visits')) content(SURVEY_REPORT_NO_VISIT);
+      if (!unread('visits')) {
+        content(inputs.drawingMethodEnabled === true ? `${SURVEY_REPORT_NO_VISIT}${SURVEY_REPORT_NO_VISIT_TAIL}` : SURVEY_REPORT_NO_VISIT);
+      }
     } else {
       if (!dayOnly(visit.actualDate) && !dayOnly(visit.scheduledDate)) content('นัดประเมินไม่มีวันที่ประเมิน');
       if (!text(visit.assigneeName)) content('นัดประเมินไม่มีชื่อผู้ประเมิน');
     }
   }
 
-  /* ผู้ลงนามที่ยังไม่มีลายเซ็น (กติกาลายเซ็นจริง · หัวฟังก์ชัน) — ต่อจากก้อนนัด · สามเงื่อนไขครบจึงถาม */
-  if (inputs.signatureRule === SURVEY_SIGN_RULE && mix.drawing === 0 && !unread('signatures')) {
+  /* ผู้ลงนามที่ยังไม่มีลายเซ็น (กติกาลายเซ็นจริง · หัวฟังก์ชัน) — ต่อจากก้อนนัด · สองเงื่อนไขครบจึงถาม */
+  if (inputs.signatureRule === SURVEY_SIGN_RULE && !unread('signatures')) {
     out.push(...surveyReportSignatureIssues(inputs));
   }
 
@@ -342,8 +378,11 @@ export function surveyReportFreezeIssues(inputs = {}) {
     undecodable.push(...f.undecodable);
     /* ภาพผังเป็นด่านของการส่งผลอยู่แล้ว (`SURVEY_GATES.plan`) แต่ด่านนั้นนับไฟล์ตามหมวด ไม่ดูว่าพิมพ์ได้ไหม (PDF ก็ผ่าน)
        และใบที่ส่งไปก่อนมีด่านอาจไม่มีผังเลย ⇒ กระดาษจะได้กรอบผังว่าง ๆ ซึ่งฉบับลูกค้าอ่านเป็นหน้าพัง
-       ผังรูปล่าสุดเป็น HEIC/BMP = ข้อความของด่าน HEIC พูดแทนแล้ว (ไม่ซ้ำสองบรรทัด) */
-    if (!f.plan && !f.undecodable.some((file) => file?.docType === SURVEY_DOC_PLAN)) {
+       ผังรูปล่าสุดเป็น HEIC/BMP = ข้อความของด่าน HEIC พูดแทนแล้ว (ไม่ซ้ำสองบรรทัด)
+       ⭐ พื้นที่จากแบบ: ข้อความของภาพแบบ — `undecodable` ของมันว่างเสมอ (§2.4) ไฟล์ HEIC จึงปิดข้อนี้ไม่ได้ */
+    if (isDrawingZone(row)) {
+      if (!f.plan) content(`${name}: ยังไม่มีภาพแบบของพื้นที่ (ต้องเป็นรูป JPG/PNG — ไฟล์ PDF/TIFF ลงเอกสารไม่ได้)`);
+    } else if (!f.plan && !f.undecodable.some((file) => file?.docType === SURVEY_DOC_PLAN)) {
       content(`${name}: ยังไม่มีภาพผังที่ลงเอกสารได้ (ต้องเป็นรูป JPG/PNG)`);
     }
   }
@@ -378,6 +417,8 @@ function requestPart(r = {}) {
     answeredById: r.answeredById != null ? String(r.answeredById) : null,
     answeredByName: text(r.answeredByName),
     closedAt: r.closedAt || null, closedByName: text(r.closedByName),
+    // งวด S3 — คำตอบของหัวหน้าตอนส่งผล · ค่าที่ไม่รู้จัก = ยังไม่เลือก (null)
+    surveyConfirm: SURVEY_CONFIRM_CHOICES.includes(r.surveyConfirm) ? r.surveyConfirm : null,
   };
 }
 
@@ -480,13 +521,18 @@ const preparedSignature = (inputs, versionId) => {
  * @returns `{ value, images, waiting }` · `images` = แถวของคอลัมน์ `images` (`kind: 'sign'` · หนึ่งแถวต่อ sha) ·
  *   `waiting` = ชื่อของคนบนที่นั่งที่พิมพ์ชื่อแต่ยังไม่มีรูปที่เตรียมแล้ว (ไม่ซ้ำ) — โหมดตรึงล้มด้วยรายชื่อนี้
  * 🔴 `storagePath` ของฉบับ **ไม่ถูกหยิบ** — หยิบทีละคีย์ ไม่กระจายทั้งก้อน
+ * ⭐ **ใบจากแบบล้วน** (`assessment.mode === 'drawing'` · งวด S3 §2.6) — ที่นั่งที่ 1 ไม่มีบัญชีบนนัด: ไม่ถูกถามเรื่องลายเซ็นและไม่เข้า `waiting`
+ *   · `assessment.drawingById` มีค่า (ผู้ส่งผลคือผู้ประเมินจากแบบคนเดียว) ⇒ ที่นั่งที่ 1 = สำเนาของที่นั่งผู้อนุมัติ (รูปเดียวกัน แถว `images` แถวเดียว)
+ *   · ไม่มีค่า ⇒ `null` (กระดาษพิมพ์ชื่อกับคำ "ลายเซ็นอิเล็กทรอนิกส์")
  */
-function signaturesPart(inputs) {
+function signaturesPart(inputs, assessment) {
   const value = Object.fromEntries(SURVEY_SIGN_SEATS.map((seat) => [seat, null]));
   const images = [];
   const waiting = [];
   const store = inputs.signatures && typeof inputs.signatures === 'object' ? inputs.signatures : {};
+  const desk = assessment?.mode === 'drawing';
   for (const { seat, userId, name } of surveyReportSigners(inputs)) {
+    if (desk && seat === 'assessor') continue;
     const allowed = surveyReportSeatEligible(inputs, seat) === true;
     const version = allowed && userId && Object.hasOwn(store, userId) ? store[userId] : null;
     const versionId = version && typeof version === 'object' && version.versionId != null ? String(version.versionId) : null;
@@ -503,8 +549,52 @@ function signaturesPart(inputs) {
       images.push({ sha: hit.sha, attId: null, kind: 'sign', w: num(hit.w), h: num(hit.h), bytes: num(hit.bytes) });
     }
   }
+  if (desk) value.assessor = assessment.drawingById && value.approver ? { ...value.approver } : null;
   return { value, images, waiting };
 }
+
+/* ── งวด S3: วิธีประเมิน ──────────────────────────────────────────────── */
+
+/**
+ * วันไทย `YYYY-MM-DD` ของจุดเวลา — ว่าง / อ่านไม่ออก = `null` (ไม่ throw · ไม่อ่านนาฬิกา)
+ * ⚠️ ห้ามส่งค่าว่างเข้า `businessDate`: `null` ได้ 1970-01-01 · `undefined` อ่านนาฬิกา · สตริงที่อ่านไม่ออก throw
+ */
+function thaiDayOf(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return businessDate(date);
+}
+
+/**
+ * ก้อน `assessment` (งวด S3 §2.5) — นับเฉพาะพื้นที่ที่ไม่ถูกตัด (`surveyMethodMix`)
+ * @param zones ผลของตัวแปลงพื้นที่ (มี `status` · `method` · `drawingBy` แล้ว)
+ */
+function assessmentPart(inputs, rows, zones) {
+  const mix = surveyMethodMix(rows);
+  const drawingBy = [];
+  for (const z of zones) {
+    if (isCut(z) || !isDrawingZone(z) || !z.drawingBy || drawingBy.includes(z.drawingBy)) continue;
+    drawingBy.push(z.drawingBy);
+  }
+  return {
+    mode: mix.mode,
+    onsiteZones: mix.onsite,
+    drawingZones: mix.drawing,
+    totalZones: mix.onsite + mix.drawing,
+    drawingBy,
+    drawingAt: thaiDayOf(inputs.request?.answeredAt),
+    drawingById: surveyDrawingSeatSigner(inputs)?.userId ?? null,
+  };
+}
+
+/* นัดของใบจากแบบล้วนที่เอกสารไม่รับรอง (ตัวโหลด: `inputs.otherVisits`) — `null` (อ่านนัดไม่ได้) และไม่มี = `[]` */
+const otherVisitsPart = (rows) => list(rows).filter(Boolean).map((v) => ({
+  code: text(v.code),
+  statusLabel: VISIT_STATUS_LABELS[v.status] || null,
+  date: dayOnly(v.date),
+  planned: v.planned === true,
+}));
 
 /**
  * @param inputs {
@@ -583,9 +673,14 @@ export function buildSurveyReportSnapshot(inputs = {}, { mode = 'freeze' } = {})
     /* 🔑 ภาพนิ่งพกเฉพาะรูปที่กระดาษพิมพ์ (ชุดของ `zoneFiles`) — `plan` กับ `spots[].photos` ยังเป็นลิสต์ (รูปร่าง v1)
        แต่มีได้อย่างมากหนึ่งรูป · รูปที่ไม่พิมพ์เหลือเป็นคำเตือนให้หัวหน้ารู้ว่ากระดาษเลือกรูปไหน
        คำเตือนเดินตามลำดับบนกระดาษ: ผัง → จุด → ไฟล์ที่ไม่ลงเอกสาร */
+    const drawing = isDrawingZone(row);
     const wide = f.wide.map((file) => imgOf(file, 'wide'));
     const plan = f.plan ? [imgOf(f.plan, 'plan')] : [];
-    if (f.planCount > 1) warnings.push(`${name}: มีภาพผัง ${f.planCount} รูป — เอกสารพิมพ์รูปล่าสุดรูปเดียว`);
+    if (f.planCount > 1) {
+      warnings.push(drawing
+        ? `${name}: มีภาพแบบ ${f.planCount} รูป — เอกสารพิมพ์รูปล่าสุดรูปเดียว`
+        : `${name}: มีภาพผัง ${f.planCount} รูป — เอกสารพิมพ์รูปล่าสุดรูปเดียว`);
+    }
     /* ⭐ เลขจุด `k.n` นับจาก **ทุกจุด** ของพื้นที่ (เลือกหรือไม่เลือก) — ตรงกับเลขที่หัวหน้ามาร์กบนภาพผัง
        ⇒ ฉบับภายในที่พิมพ์เฉพาะจุดที่เลือกจะเห็นเลขข้ามได้ (1.1, 1.3) ซึ่งถูกต้อง
        ⚠️ จุดที่ไม่เลือกไม่พกรูป — ไม่มีฉบับไหนพิมพ์ */
@@ -599,7 +694,13 @@ export function buildSurveyReportSnapshot(inputs = {}, { mode = 'freeze' } = {})
         label: text(r.spot?.label), note: text(r.spot?.note), selected, photos,
       };
     });
-    for (const file of f.notImages) warnings.push(`${name}: ไฟล์ ${file.fileName || file.id} ไม่ใช่รูป — ไม่ลงเอกสาร`);
+    for (const file of f.notImages) {
+      warnings.push(drawing
+        ? `${name}: ไฟล์ ${file.fileName || file.id} ไม่ใช่ JPG/PNG — ไม่ลงเอกสาร`
+        : `${name}: ไฟล์ ${file.fileName || file.id} ไม่ใช่รูป — ไม่ลงเอกสาร`);
+    }
+    // ผู้ประเมินจากแบบของพื้นที่ — ตัวเดียวกับจอ (`surveyDrawingAssessor`) · พื้นที่ลงหน้างานและพื้นที่ที่ตัด = null
+    const who = !cut && drawing ? surveyDrawingAssessor(row, inputs.request || null) : null;
 
     return {
       id: row.id ?? null, no,
@@ -617,6 +718,13 @@ export function buildSurveyReportSnapshot(inputs = {}, { mode = 'freeze' } = {})
       packageQty: Number(row.packageQty) > 0 ? Number(row.packageQty) : null,
       packageNote: text(row.packageNote),
       note: text(row.note), surveyedByName: text(row.surveyedByName), surveyedAt: row.surveyedAt || null,
+      // ── งวด S3 (เพิ่มคีย์) — ค่าของวิธีมาจาก `zoneMethod` เสมอ ไม่เทียบคอลัมน์เอง ──
+      method: zoneMethod(row),
+      methodReason: text(row.methodReason),
+      methodChangedByName: text(row.methodChangedByName),
+      methodChangedAt: row.methodChangedAt || null,
+      drawingBy: who?.name ?? null,
+      drawingAt: who?.at ?? null,
     };
   });
 
@@ -625,12 +733,9 @@ export function buildSurveyReportSnapshot(inputs = {}, { mode = 'freeze' } = {})
   /* ลายเซ็นของผู้ลงนาม — เฉพาะตอนกติกาเปิด (ปิด = ไม่มีคีย์ในภาพนิ่ง กระดาษพิมพ์คำเดิม)
      🔴 ยามของโหมดตรึงเดินตาม **ที่นั่ง** ไม่ใช่ตามลิสต์ผู้ลงนามที่มีลายเซ็น: ที่นั่งที่พิมพ์ชื่อต้องมีรูป — ลิสต์ว่างด้วยเหตุใดก็ตาม
         (ผู้เรียกลืมเตรียม · ด่านข้างบนถูกแก้) ต้องไม่กลายเป็นกระดาษที่ตรึงด้วยคำ
-     ⭐ **ใบที่มีพื้นที่ประเมินจากแบบไม่ถูกถามเรื่องลายเซ็นเลย** (ติดข้อกันเอกสาร — เงื่อนไขเดียวกับบรรทัดของด่านและ
-        `surveyReportSignerVersions`) ⇒ ไม่มีคีย์ `signatures` ฉบับร่างของใบแบบนั้นพิมพ์คำเดิมเหมือนกติกาปิด
-        🐞 เดิมถามแค่ว่ากติกาเปิดไหม: ฉบับร่างของใบจากแบบขึ้นกรอบ "ยังไม่มีลายเซ็น" / "ลายเซ็นจะขึ้นเมื่อออกเอกสาร" ทั้งที่เอกสารออกไม่ได้
-        (งวด S3 ถอดข้อกันเมื่อไร ต้องตัดสินผู้ลงนามของใบจากแบบก่อน — เทสต์ล็อกคู่นี้ไว้) */
-  const signs = inputs.signatureRule === SURVEY_SIGN_RULE && surveyMethodMix(inputs.zones).drawing === 0
-    ? signaturesPart(inputs) : null;
+     ⭐ ใบที่มีพื้นที่ประเมินจากแบบถูกถามเหมือนใบลงหน้างาน (งวด S3 §2.6) — ใบจากแบบล้วน: ที่นั่งที่ 1 ตาม `signaturesPart` */
+  const assessment = assessmentPart(inputs, rows, zones);
+  const signs = inputs.signatureRule === SURVEY_SIGN_RULE ? signaturesPart(inputs, assessment) : null;
   if (signs && needImages && signs.waiting.length) {
     return { errors: signs.waiting.map((name) => `ลายเซ็นของ ${name} ยังเตรียมไม่เสร็จ — ยังไม่ได้ออกเอกสาร`) };
   }
@@ -672,6 +777,9 @@ export function buildSurveyReportSnapshot(inputs = {}, { mode = 'freeze' } = {})
       tel: text(company.tel), line: text(company.line), website: text(company.website),
     },
     form: { code: text(form.code), revision: text(form.revision), effectiveDate: text(form.effectiveDate) },
+    // งวด S3 — `answerPending` ของตัวโหลดไม่เข้าภาพนิ่ง (เป็นเรื่องของรอบตรวจ ไม่ใช่ของกระดาษ)
+    assessment,
+    otherVisits: otherVisitsPart(inputs.otherVisits),
     ...(signs ? { signatures: signs.value } : {}),
   };
 

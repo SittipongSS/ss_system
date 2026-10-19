@@ -132,12 +132,31 @@ export function surveyZoneNeedsResave(row) {
 }
 
 /**
+ * พื้นที่จากแบบนี้ถูกบันทึก **หลังจากมันเป็นจากแบบ** ไหม (หรือเกิดมาเป็นจากแบบแล้วบันทึก) — ทาง ① ของ `surveyDrawingAssessor`
+ * (งวด S3 §2.1) ใช้ได้ทั้งแถว `service_survey_zones` และพื้นที่ในภาพนิ่ง (ภาพนิ่งเก็บ `method` · `surveyedAt` · `methodChangedAt`)
+ *   แถวลงหน้างาน · ยังไม่เคยบันทึก ⇒ `false`
+ *   `methodChangedAt` ว่าง ⇒ `true` (เกิดมาเป็นจากแบบ)
+ *   นอกนั้น ⇒ เวลาบันทึก **มากกว่า** เวลาสลับ — เท่ากันพอดี / อ่านไม่ออก = `false`
+ * ⚠️ ดูแค่เวลา ไม่ดูว่ามีชื่อคนบันทึกไหม — กระดาษใช้แยก "ผู้กรอกผลจากแบบ" ออกจาก "ผู้บันทึกผลวัดก่อนสลับ"
+ *    เพื่อไม่ให้ชื่อช่างหน้างานขึ้นเป็นผู้ประเมินจากแบบ
+ */
+export function surveyZoneSavedAsDrawing(row) {
+  if (!isDrawingZone(row)) return false;
+  if (!text(row.surveyedAt)) return false;
+  return !text(row.methodChangedAt) || ms(row.surveyedAt) > ms(row.methodChangedAt);
+}
+
+// บัญชีผู้ใช้เป็นสตริงเสมอ (คอลัมน์อาจคืนเลข) · ว่าง = null
+const idOf = (v) => (text(v) ? String(v).trim() : null);
+
+/**
  * ใครคือผู้ประเมินของพื้นที่ **จากแบบ** — ตัวเดียวที่ทั้งกระดาษและจอใช้ (ไม่งั้นสองที่ขึ้นคนละชื่อ)
- * แถวลงหน้างาน = `null` · แถวจากแบบ = `{ name, at }` จากทางแรกที่มีชื่อ:
- *   ① คนที่บันทึกแถว **หลังจากมันเป็นจากแบบ** (`methodChangedAt` ว่าง = เกิดมาเป็นจากแบบ)
- *   ② คนที่สลับวิธี
- *   ③ คนที่ส่งผลของใบ (`answeredByName`)
- *   ไม่มีชื่อเลย = `{ name: null, at: null }`
+ * แถวลงหน้างาน = `null` · แถวจากแบบ = `{ name, at, byId }` จากทางแรกที่มีชื่อ:
+ *   ① คนที่บันทึกแถว **หลังจากมันเป็นจากแบบ** (`surveyZoneSavedAsDrawing`) — `byId` = `surveyedById`
+ *   ② คนที่สลับวิธี — `byId` = `null` เสมอ (ไม่มีคอลัมน์ id ของคนสลับ)
+ *   ③ คนที่ส่งผลของใบ (`answeredByName`) — `byId` = `answeredById`
+ *   ไม่มีชื่อเลย = `{ name: null, at: null, byId: null }`
+ * `byId` เป็นสตริงเสมอ ว่าง = `null` (งวด S3 §2.1 — ตัวตัดสินที่นั่งลงนามของใบจากแบบล้วนใช้เทียบกับคนส่งผล)
  *
  * 🔴 **`surveyedByName` ที่บันทึกไว้ก่อนสลับคือชื่อช่างหน้างาน** — ห้ามขึ้นเป็นผู้ประเมินจากแบบ
  *    ⇒ ทาง ① ต้องพิสูจน์ได้ว่าบันทึกหลังสลับ (เวลาเท่ากัน / อ่านไม่ออก = ไม่นับ ตกไปทาง ②)
@@ -146,17 +165,15 @@ export function surveyDrawingAssessor(row, request = null) {
   if (!isDrawingZone(row)) return null;
 
   const savedBy = text(row.surveyedByName);
-  const savedAsDrawing = text(row.surveyedAt) !== ''
-    && (!text(row.methodChangedAt) || ms(row.surveyedAt) > ms(row.methodChangedAt));
-  if (savedAsDrawing && savedBy) return { name: savedBy, at: row.surveyedAt };
+  if (surveyZoneSavedAsDrawing(row) && savedBy) return { name: savedBy, at: row.surveyedAt, byId: idOf(row.surveyedById) };
 
   const switchedBy = text(row.methodChangedByName);
-  if (switchedBy) return { name: switchedBy, at: row.methodChangedAt || null };
+  if (switchedBy) return { name: switchedBy, at: row.methodChangedAt || null, byId: null };
 
   const sentBy = text(request?.answeredByName);
-  if (sentBy) return { name: sentBy, at: request.answeredAt || null };
+  if (sentBy) return { name: sentBy, at: request.answeredAt || null, byId: idOf(request.answeredById) };
 
-  return { name: null, at: null };
+  return { name: null, at: null, byId: null };
 }
 
 /**

@@ -136,7 +136,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       loadSurveySheetContext(supabase, request, zones),
       loadSurveyRequestFiles(supabase, request, user),
       loadPackageSizesOrNull(supabase),
-      surveyDocumentSummary(supabase, request, user, { withChecks: true, zones }).catch((e) => {
+      surveyDocumentSummary(supabase, request, user, { withChecks: true, zones, drawingMethodEnabled }).catch((e) => {
         console.error('[survey] สรุปเอกสารประเมินของใบล้ม', id, e?.message || e);
         return { access: 'none', unknown: true };
       }),

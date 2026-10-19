@@ -668,11 +668,26 @@ test('🔴 ดึงผลกลับเมื่อกติกาลายเ
   for (const extra of [{}, { signRule: false }, { signRule: 'true' }, { signRule: true, issueAtSend: false }]) {
     assert.equal(view({ document: issued(extra), request: sentRequest() }).recallAction.detail, VOID, JSON.stringify(extra));
   }
-  // ใบที่มีพื้นที่ประเมินจากแบบไม่ถูกถามเรื่องลายเซ็น (เอกสารถูกพักไว้) ⇒ ไม่ขู่ว่าส่งรอบใหม่ไม่ได้
-  const drawing = view({
-    zones: [readyZone('z1', 'Studio 01', { method: 'drawing' })], document: issued({ signRule: true }), request: sentRequest(),
-  });
-  assert.doesNotMatch(drawing.recallAction.detail, /ลายเซ็น/);
+  /* งวด S3 §2.6 — ใบผสมได้บรรทัดเดียวกับใบลงหน้างานตรงตัว (สองที่นั่ง) · ⭐ ใบจากแบบทั้งใบถามเฉพาะลายเซ็นของผู้ส่งผล (มติเจ้าของ 19/10/2026 —
+     ไม่มีผู้ประเมินบนนัด) · ทั้งตอนมีฉบับที่จะถูกแทนที่ และตอนตอบแล้วยังไม่มีเอกสาร (ใบที่ส่งระหว่างที่เอกสารถูกพัก) · กติกาปิด = ประโยคเดิม ไม่เอ่ยลายเซ็น */
+  const SENDER_NOTE = ' · ส่งผลรอบใหม่ต้องมีลายเซ็นของผู้ส่งผลในระบบ — ยังไม่มี = ส่งรอบใหม่ไม่ได้';
+  for (const [kind, zones, note] of [
+    ['จากแบบทั้งใบ', [readyZone('z1', 'Studio 01', { method: 'drawing' })], SENDER_NOTE],
+    ['จากแบบทั้งใบ (สองพื้นที่ + พื้นที่ลงหน้างานที่ถูกตัด)', [
+      readyZone('z1', 'Studio 01', { method: 'drawing' }), readyZone('z2', 'Studio 02', { method: 'drawing' }),
+      readyZone('z3', 'Studio 03', { status: 'cut' }),
+    ], SENDER_NOTE],
+    ['ผสม', [readyZone('z1', 'Studio 01'), readyZone('z2', 'Studio 02', { method: 'drawing' })], NOTE],
+  ]) {
+    const drawingOn = view({ zones, document: issued({ signRule: true }), request: sentRequest() });
+    assert.equal(drawingOn.recallAction.detail, `${VOID}${note} และ SU-26100001-0 เปิดไม่ได้แล้ว`, kind);
+    const drawingMissing = view({ zones, document: headDoc({ state: 'missing', issue: OK, signRule: true }), request: sentRequest() });
+    assert.equal(drawingMissing.recallAction.detail, `${RECALL_DETAIL}${note}`, kind);
+    const drawingOff = view({ zones, document: issued({ signRule: false }), request: sentRequest() });
+    assert.equal(drawingOff.recallAction.detail, VOID, kind);
+  }
+  // ใบลงหน้างานล้วน (ค่าตั้งต้นของ `view`) = ประโยคเดิมตรงตัว ไม่ใช่ประโยคของใบจากแบบ
+  assert.doesNotMatch(on.recallAction.detail, /ลายเซ็นของผู้ส่งผลในระบบ/);
   // ไม่ส่ง `document` มา (หน้าคำร้อง) = ประโยคเดิม
   assert.equal(view({ request: sentRequest() }).recallAction.detail, RECALL_DETAIL);
 });

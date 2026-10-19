@@ -4,7 +4,7 @@
 //   · สถานะของใบจากแบบ (ยังไม่กรอกขนาด → กำลังประเมิน → พร้อมส่ง) ไม่ใช่ "กำลังวัดหน้างาน 0 / 0"
 //   · พื้นที่จากแบบที่ยังขาดขนาดเป็นงานของหัวหน้า — ไม่ถูกโยนให้ช่าง ไม่ขึ้น "รอช่างเก็บงาน"
 //   · แถว 17 (นัดค้างบนใบงานโต๊ะ) · แถว 17a (พื้นที่ลงหน้างานยังไม่มีนัดที่เข้าพื้นที่) เป็นเหตุใต้ปุ่มส่งผลพร้อมทางออก
-//   · ข้อกันเอกสาร (`hold`) บนส่วนเอกสาร: ประโยคเดียว ไม่ชวนกดซ้ำ ไม่ชวนดึงผลกลับ
+//   · ส่วนเอกสาร (งวด S3 ถอดข้อพักเอกสาร): ใบที่มีพื้นที่จากแบบเดินกติกาเดียวกับใบลงหน้างาน — แถวด่าน · กล่องคำเตือน · ปุ่มออกเอกสาร
 // 🔴 **ใบลงหน้างานล้วนต้องได้ค่าเดิมทุกคีย์** — ข้อสุดท้ายของหมวดการ์ดเทียบทั้งก้อนหลังตัดคีย์ใหม่ออก
 //   (ยามอีกชั้น = เทสต์ชุดเดิมใน `surveyControl.test.mjs` · `surveyControlDocument.test.mjs` ที่ไม่ถูกแก้สักข้อ)
 // ⚠️ การ์ดไม่อ่านสวิตช์ `SURVEY_DRAWING_METHOD` เอง — route ส่ง `drawingMethodEnabled` มา · ไฟล์นี้จำลองทั้งสองค่า
@@ -17,8 +17,7 @@ import { surveyNeedsVisit } from './surveyMethod.js';
 import {
   SURVEY_METHOD_BUTTON, SURVEY_METHOD_ERRORS, surveyMethodSwitchGate,
 } from './surveyMethodSwitch.js';
-import { SURVEY_SEND_PAPER_HOLD_EFFECT, surveySendSiteVisitError, surveySendVisitStep } from './surveySendClose.js';
-import { SURVEY_REPORT_DRAWING_HOLD } from './surveyReportSnapshot.js';
+import { surveySendSiteVisitError, surveySendVisitStep } from './surveySendClose.js';
 
 // ── ของตั้งต้น ───────────────────────────────────────────────────────────
 const SIZES = [
@@ -665,96 +664,106 @@ test('🔴 ใบลงหน้างานล้วน: ถ้อยคำข�
   assert.deepEqual(none.gates.map((g) => [g.key, g.total]), [['size', 0], ['wide', 0], ['spots', 0], ['spotPhotos', 0], ['spotLinked', 0]]);
 });
 
-// ══ 9. ส่วนเอกสาร — ข้อกันของใบที่มีพื้นที่จากแบบ ═══════════════════════════
+// ══ 9. ส่วนเอกสาร — ใบที่มีพื้นที่จากแบบออกเอกสารเหมือนใบลงหน้างาน (งวด S3 ถอดข้อพักเอกสาร) ══════════════
+//
+// ⭐ ก่อนงวด S3 ส่วนนี้พูดประโยคพักเอกสารและซ่อนแถวด่าน "เอกสารประเมินออกได้" / กล่องคำเตือนของฉบับลูกค้า บนใบที่มีพื้นที่จากแบบ
+//    ⇒ ตอนนี้ทุกอย่างเดินกติกาเดียวกับใบลงหน้างาน — ต่างแค่สองประโยคที่ `surveyDocumentView.test.mjs` ตรึงไว้ (มีขนาดครบ · ภาพผัง/ภาพแบบ)
 
 const ANSWERED = '2026-10-08T04:00:00.000Z';
 const sentRequest = () => request({ status: 'answered', answeredAt: ANSWERED, answeredByName: 'หัวหน้า ก' });
 const ACCESS = { customer: true, internal: true, issue: true, draft: true, history: true };
+const OK_CHECK = { blockers: [], warnings: [], unknown: false };
 const missingDoc = (blockers, extra = {}) => ({
   access: ACCESS, issueAtSend: true, storeAllowed: true, state: 'missing', current: null, history: [], nextDocNo: null,
-  send: null, issue: { blockers, warnings: [], unknown: false }, ...extra,
+  send: null, issue: { ...OK_CHECK, blockers }, ...extra,
 });
-const HOLD = { kind: 'system', text: SURVEY_REPORT_DRAWING_HOLD, hold: true };
+const notSent = (extra = {}) => ({
+  access: ACCESS, issueAtSend: true, storeAllowed: true, state: 'not_sent', current: null, history: [], nextDocNo: null,
+  send: OK_CHECK, issue: null, ...extra,
+});
 const MEASURED = [{ id: 'z1', status: 'ok', method: 'drawing', parts: [part(4, 5, 3)] }];
-const sheet = (document, extra = {}) => surveyDocumentView({
-  document, request: sentRequest(), zones: MEASURED, canDecide: true, failedGates: [], spotsUnlinked: false, ...extra,
+/* สามใบที่ยอดเท่ากัน — จากแบบทั้งใบ · ผสม · ลงหน้างาน (ใบที่มีพื้นที่ลงหน้างานมีนัดที่เข้าแล้ว) */
+const SHEETS = {
+  desk: [drawingReady('z1', 'Lobby'), drawingReady('z2', 'Lounge')],
+  mixed: [onsiteReady('z1', 'Lobby'), drawingReady('z2', 'Lounge')],
+  onsite: [onsiteReady('z1', 'Lobby'), onsiteReady('z2', 'Lounge')],
+};
+const sheetCard = (kind, extra = {}) => card(SHEETS[kind], { visit: kind === 'desk' ? null : scheduled({ status: 'done' }), ...extra });
+const FLAG_OFF = (words) => `ส่งผลก่อน แล้วกด “ออกเอกสาร” ที่นี่ — ระบบตรวจเอกสารตอนกดออก (ถ้าติดเรื่อง${words} นัด หรือหน้าล้น ต้องดึงผลกลับมาแก้)`;
+
+test('⭐ ส่งผลแล้วยังไม่มีเอกสาร (เช่นใบที่ส่งตอนเอกสารถูกพัก): ส่วนเอกสารชวนกด "ออกเอกสาร" · ปุ่มกดได้ · แถวด่านเอกสารผ่าน — เท่าใบลงหน้างาน', () => {
+  const onsite = sheetCard('onsite', { request: sentRequest(), document: missingDoc([]) });
+  for (const kind of ['desk', 'mixed']) {
+    const v = sheetCard(kind, { request: sentRequest(), document: missingDoc([]) });
+    assert.equal(v.document.show, true, kind);
+    assert.deepEqual(v.document.status, {
+      tone: 'info', text: 'ส่งผลแล้ว แต่ยังไม่มีเอกสาร — กด “ออกเอกสาร” เพื่อออกเลขที่ SU', items: [], foot: null, action: null,
+    }, kind);
+    assert.equal(v.document.issue.allowed, true, kind);
+    assert.deepEqual(v.document, onsite.document, `${kind}: ส่วนเอกสารทั้งก้อนเท่าใบลงหน้างาน`);
+    assert.deepEqual(v.gates.find((g) => g.key === 'document'), onsite.gates.find((g) => g.key === 'document'), kind);
+    assert.equal(v.gates.find((g) => g.key === 'document').ok, true, kind);
+    assert.equal(v.status.key, 'sent', kind);
+    assert.doesNotMatch(JSON.stringify(v), /ยังออกไม่ได้ — ระบบ|ผลถึงฝ่ายขายตามปกติ/, kind);
+  }
 });
 
-test('⭐ ส่วนเอกสาร · ติดแค่ข้อกันเอกสาร: ประโยคของข้อกันอย่างเดียว — ไม่ชวนกดซ้ำ ไม่ชวนดึงผลกลับ · ปุ่มออกเอกสารจาง', () => {
-  const view = sheet(missingDoc([HOLD]));
-  assert.deepEqual(view.status, {
-    tone: 'info', text: SURVEY_REPORT_DRAWING_HOLD, items: [], foot: null, action: null,
-  });
-  assert.equal(view.status.text, 'เอกสารประเมินของใบที่ประเมินจากแบบยังออกไม่ได้ — ระบบกำลังปรับแบบเอกสาร');
-  assert.equal(view.issue.allowed, false, 'กดซ้ำไม่ช่วย — ปุ่มไม่ถูกเสนอเป็นทางออก');
-  assert.doesNotMatch(JSON.stringify(view.status), /ตรวจอีกครั้ง|กดออกเอกสาร|ดึงผลกลับ|ติด \d+ ข้อ/);
-  assert.deepEqual(view.badge, { label: 'ยังไม่ออก', tone: 'warning' });
-
-  // แถวซ้ำที่ไม่มีธงไม่ทำให้ข้อกันกลายเป็นเหตุที่ "แก้แล้วกดซ้ำได้" (กติกาเดียวกับ route ออกเอกสาร)
-  const dup = sheet(missingDoc([{ kind: 'system', text: SURVEY_REPORT_DRAWING_HOLD }, HOLD]));
-  assert.deepEqual(dup.status, view.status);
-  assert.equal(dup.issue.allowed, false);
-
-  // ข้อผิดพลาดที่จอจำไว้ ("กดออกเอกสารอีกครั้ง") ไม่ชนะข้อกันสดของ server
-  const remembered = sheet(missingDoc([HOLD]), {
-    local: { round: ANSWERED, issueError: { code: 'internal', message: 'ออกเอกสารไม่สำเร็จ — กดออกเอกสารอีกครั้ง', retry: true } },
-  });
-  assert.deepEqual(remembered.status, view.status);
-  assert.equal(remembered.issue.allowed, false);
-
-  // ค่าที่ไม่ใช่ `true` ตรงตัวไม่นับเป็นข้อกัน — ได้กล่องเดิมของเหตุระบบ
-  const notHold = sheet(missingDoc([{ kind: 'system', text: SURVEY_REPORT_DRAWING_HOLD, hold: 'yes' }]));
-  assert.equal(notHold.status.text, 'ส่งผลแล้ว แต่ยังออกเอกสารไม่ได้ — ติด 1 ข้อ');
-  assert.equal(notHold.status.foot, 'แก้ตามรายการแล้วกด “ตรวจอีกครั้ง” — ไม่ต้องดึงผลกลับ');
-});
-
-test('ส่วนเอกสาร · ข้อกัน + เหตุอื่น: คำแนะนำเดิมของเหตุอื่นนั้น (ดึงผลกลับ / ตรวจอีกครั้ง) · ข้อกันอยู่ในรายการด้วย', () => {
-  const content = { kind: 'content', text: 'Lobby ยังไม่มีภาพแบบของพื้นที่' };
-  const withContent = sheet(missingDoc([HOLD, content]));
-  assert.deepEqual(withContent.status, {
-    tone: 'warning', text: 'ส่งผลแล้ว แต่ยังออกเอกสารไม่ได้ — ติด 2 ข้อ',
-    items: [SURVEY_REPORT_DRAWING_HOLD, content.text],
-    foot: 'ดึงผลกลับมาแก้แล้วส่งใหม่',
-    action: { kind: 'reload', label: 'ตรวจอีกครั้ง' },
-  });
-  assert.equal(withContent.issue.allowed, false);
-
+test('ส่งผลแล้ว · เหตุที่ออกเอกสารไม่ได้: รายการ + ทางออกเดิม (ดึงผลกลับ / ตรวจอีกครั้ง) · แถวด่านเอกสารติดพร้อมเหตุ — เท่าใบลงหน้างาน', () => {
+  const content = { kind: 'content', text: 'Lounge: ยังไม่มีภาพแบบของพื้นที่' };
   const system = { kind: 'system', text: 'ยังไม่มีข้อมูลบริษัทสำหรับหัวกระดาษ' };
-  const withSystem = sheet(missingDoc([system, HOLD]));
-  assert.equal(withSystem.status.text, 'ส่งผลแล้ว แต่ยังออกเอกสารไม่ได้ — ติด 2 ข้อ');
-  assert.equal(withSystem.status.foot, 'แก้ตามรายการแล้วกด “ตรวจอีกครั้ง” — ไม่ต้องดึงผลกลับ');
-  assert.deepEqual(withSystem.status.action, { kind: 'reload', label: 'ตรวจอีกครั้ง' });
+  for (const kind of ['desk', 'mixed']) {
+    const withContent = sheetCard(kind, { request: sentRequest(), document: missingDoc([content]) });
+    assert.deepEqual(withContent.document.status, {
+      tone: 'warning', text: 'ส่งผลแล้ว แต่ยังออกเอกสารไม่ได้ — ติด 1 ข้อ', items: [content.text],
+      foot: 'ดึงผลกลับมาแก้แล้วส่งใหม่', action: { kind: 'reload', label: 'ตรวจอีกครั้ง' },
+    }, kind);
+    assert.equal(withContent.document.issue.allowed, false, kind);
+    const gate = withContent.gates.find((g) => g.key === 'document');
+    assert.equal(gate.ok, false, kind);
+    assert.deepEqual(gate.reasons, [content.text], kind);
 
-  // 🔴 ใบที่ไม่มีข้อกัน: กล่องเดิมทุกตัวอักษร
-  assert.deepEqual(sheet(missingDoc([system])).status, {
-    tone: 'warning', text: 'ส่งผลแล้ว แต่ยังออกเอกสารไม่ได้ — ติด 1 ข้อ', items: [system.text],
-    foot: 'แก้ตามรายการแล้วกด “ตรวจอีกครั้ง” — ไม่ต้องดึงผลกลับ', action: { kind: 'reload', label: 'ตรวจอีกครั้ง' },
-  });
-  assert.equal(sheet(missingDoc([])).issue.allowed, true);
+    const withSystem = sheetCard(kind, { request: sentRequest(), document: missingDoc([system]) });
+    assert.equal(withSystem.document.status.foot, 'แก้ตามรายการแล้วกด “ตรวจอีกครั้ง” — ไม่ต้องดึงผลกลับ', kind);
+    assert.deepEqual(withSystem.document, sheetCard('onsite', { request: sentRequest(), document: missingDoc([system]) }).document, kind);
+  }
 });
 
-test('การ์ดของใบจากแบบที่ส่งผลแล้ว: ส่วนเอกสารพูดประโยคของข้อกันอย่างเดียว · ไม่มีแถวด่านเอกสาร (ข้อกันไม่ใช่ด่านที่ติด)', () => {
-  const zones = [drawingReady('z1', 'Lobby')];
-  const v = card(zones, { request: sentRequest(), document: missingDoc([HOLD]) });
-  assert.equal(v.document.show, true);
-  /* ก่อนและหลังส่งผล กล่องนี้พูดประโยคเดียวกัน โทนเดียวกัน (ประโยคของโมดัลยืนยันส่งผล — มีท่อน "ผลถึงฝ่ายขายตามปกติ") */
-  assert.deepEqual(v.document.status, {
-    tone: 'info', text: SURVEY_SEND_PAPER_HOLD_EFFECT, items: [], foot: null, action: null,
-  });
-  assert.equal(v.document.issue.allowed, false);
-  /* 🐞 UAT S2b S05 (รูป payload ของ production — `issueAtSend: true`): แถว "เอกสารประเมินออกได้" เคยขึ้น "ติด 1 / 4 ข้อ" บนใบที่ส่งแล้ว
-     ซึ่งหัวหน้าแก้อะไรไม่ได้ ขณะที่ส่วนเอกสารเล่าเรื่องเดียวกันด้วยโทนข้อมูล ⇒ ข้อกันเอกสารไม่เป็นแถวด่าน ทั้งก่อนและหลังส่ง */
-  assert.equal(v.gates.find((g) => g.key === 'document'), undefined);
-  assert.equal(v.gates.every((g) => g.ok), true);
-  assert.deepEqual(v.gateNotes, []);
-  // ก่อนส่ง (server บอกว่าไม่มีเหตุของเนื้อใบ): ไม่มีแถว "เอกสารประเมินออกได้ 1/1" เหนือประโยค "ยังออกไม่ได้"
-  const before = card(zones, { document: { ...missingDoc([]), state: 'not_sent', send: { blockers: [], warnings: ['หมายเหตุพื้นที่ 1 มีคำว่า "เครื่อง"'], unknown: false }, issue: null } });
-  assert.equal(before.gates.find((g) => g.key === 'document'), undefined);
-  assert.equal(before.notices.some((n) => n.key === 'document-warnings'), false, 'รอบนี้ไม่ออกเอกสาร — ไม่มีฉบับลูกค้าให้ตรวจ');
-  // เหตุของเนื้อใบที่ตีกลับการส่งผลจริง ยังขึ้นเป็นแถวที่ติด (หัวหน้าแก้ได้)
-  const blocked = card(zones, { document: { ...missingDoc([]), state: 'not_sent', send: { blockers: ['ผังของ Lobby เป็นไฟล์ที่พิมพ์ไม่ได้'], warnings: [], unknown: false }, issue: null } });
-  assert.equal(blocked.gates.find((g) => g.key === 'document').ok, false);
-  assert.equal(v.status.key, 'sent', 'ผลถึงฝ่ายขายตามปกติ — ข้อกันไม่เปลี่ยนสถานะของใบ');
+test('🔴 ก่อนส่งผล: "พร้อมแล้ว" · แถวด่าน "เอกสารประเมินออกได้" · กล่องคำเตือนของฉบับลูกค้า · โมดัลบอกว่าออกเอกสาร — เท่าใบลงหน้างาน', () => {
+  const warn = 'หมายเหตุพื้นที่ 1 มีคำว่า "เครื่อง" — เอกสารฉบับลูกค้าไม่ระบุเครื่อง รุ่น หรือราคา ตรวจข้อความก่อนส่ง';
+  const document = notSent({ send: { ...OK_CHECK, warnings: [warn] } });
+  const onsite = sheetCard('onsite', { document });
+  for (const kind of ['desk', 'mixed']) {
+    const v = sheetCard(kind, { document });
+    assert.equal(v.send.allowed, true, kind);
+    assert.deepEqual(v.document.status, { tone: 'info', text: 'พร้อมแล้ว — กดส่งผลเพื่อออกเลขที่เอกสาร', items: [], foot: null, action: null }, kind);
+    assert.deepEqual(v.document, onsite.document, kind);
+    const gate = v.gates.find((g) => g.key === 'document');
+    assert.equal(gate.ok, true, kind);
+    assert.deepEqual(gate, onsite.gates.find((g) => g.key === 'document'), kind);
+    // กล่องคำเตือน (การส่งรอบนี้ออกฉบับลูกค้าแล้ว) — ก้อนเดียวกับใบลงหน้างาน · คำเตือนชุดดิบกลับไปกับคำขอ
+    assert.deepEqual(notice(v, 'document-warnings'), notice(onsite, 'document-warnings'), kind);
+    assert.deepEqual(notice(v, 'document-warnings').items, [warn], kind);
+    assert.deepEqual(v.send.seenWarnings, [warn], kind);
+    assert.equal(v.send.issuesDocument, true, kind);
+
+    // เหตุของเนื้อใบที่ตีกลับการส่งผล — แถวติด และปุ่มส่งผลจาง (กติกาเดิม)
+    const blocked = sheetCard(kind, { document: notSent({ send: { ...OK_CHECK, blockers: ['ผังของ Lobby เป็นไฟล์ที่พิมพ์ไม่ได้'] } }) });
+    assert.equal(blocked.gates.find((g) => g.key === 'document').ok, false, kind);
+    assert.equal(blocked.send.allowed, false, kind);
+    assert.equal(blocked.document.status.text, 'เอกสารยังออกไม่ได้ — ติด 1 ข้อ', kind);
+  }
+});
+
+test('ก่อนส่งผล · สวิตช์ออกเอกสารตอนส่งผลปิด: ใบที่มีพื้นที่จากแบบเอ่ย "ภาพผัง/ภาพแบบ" · ใบลงหน้างานได้ประโยคเดิมตรงตัว · ไม่มีแถวด่านเอกสารทั้งคู่', () => {
+  const document = notSent({ issueAtSend: false, send: null });
+  for (const kind of ['desk', 'mixed']) {
+    const v = sheetCard(kind, { document });
+    assert.equal(v.document.status.text, FLAG_OFF('ภาพผัง/ภาพแบบ'), kind);
+    assert.equal(v.gates.find((g) => g.key === 'document'), undefined, kind);
+  }
+  const onsite = sheetCard('onsite', { document });
+  assert.equal(onsite.document.status.text, FLAG_OFF('ภาพผัง'));
+  assert.equal(onsite.gates.find((g) => g.key === 'document'), undefined);
 });
 
 // ══ 10. รอบแก้หลังรีวิว S2a — รางของงานโต๊ะ · หัวข้อด่านของคนที่ไม่ได้เคาะ · ส่วนเอกสารก่อนส่ง ═══════════
@@ -819,47 +828,23 @@ test('ใบจากแบบทั้งใบ · คนที่ไม่ไ�
   }
 });
 
-test('🔴 ส่วนเอกสารก่อนส่งผลของใบที่มีพื้นที่จากแบบ: ประโยคเดียวกับโมดัลยืนยันส่งผล — ไม่สัญญาเลขที่เอกสาร · ใบลงหน้างานได้ประโยคเดิม', () => {
-  const HOLD_EFFECT = 'เอกสารประเมิน (เลข SU) ของใบที่ประเมินจากแบบยังออกไม่ได้ — ระบบกำลังปรับแบบเอกสาร · ผลถึงฝ่ายขายตามปกติ';
-  const notSent = (extra = {}) => ({
-    access: ACCESS, issueAtSend: true, storeAllowed: true, state: 'not_sent', current: null, history: [], nextDocNo: null,
-    send: { blockers: [], warnings: [], unknown: false }, issue: null, ...extra,
-  });
-  const desk = [drawingReady('z1', 'Lobby')];
-  const mixed = [onsiteReady('z1', 'Studio 01'), drawingReady('z2', 'Lounge')];
-  for (const zones of [desk, mixed]) {
-    for (const document of [notSent(), notSent({ issueAtSend: false, send: null }), notSent({ send: { blockers: [SURVEY_REPORT_DRAWING_HOLD], warnings: [], unknown: false } })]) {
-      const v = card(zones, { document, visit: zones === mixed ? scheduled({ status: 'done' }) : null });
-      assert.equal(v.document.show, true);
-      assert.deepEqual(v.document.status, { tone: 'info', text: HOLD_EFFECT, items: [], foot: null, action: null });
-      assert.doesNotMatch(JSON.stringify(v.document.status), /ออกเลขที่เอกสาร|กด “ออกเอกสาร”|ตรวจอีกครั้ง/);
-    }
-  }
-  // คำของโมดัลยืนยันกับของส่วนเอกสารเป็นตัวเดียวกัน
-  assert.ok(card(desk, { document: notSent() }).send.allowed);
+test('🔴 ส่วนเอกสารของใบที่มีพื้นที่จากแบบที่ยังกรอกไม่ครบ / ดึงผลกลับ: "มีขนาดครบ" (ไม่ใช้คำว่าวัด) · สัญญา Rev ถัดไปตามปกติ · ใบลงหน้างานได้ประโยคเดิม', () => {
+  /* ใบที่ยังกรอกไม่ครบ: เหตุของปุ่มร่างพูดว่า "มีขนาดครบ" (คำเดียวกับคำตีกลับของ route ฉบับร่าง) · ใบลงหน้างานที่ยังวัดไม่ครบ = ประโยคเดิม */
+  const inWork = card([drawingReady('z1', 'Lobby'), drawingEmpty('z2', 'Lounge')], { document: notSent({ issueAtSend: false, send: null }) });
+  assert.deepEqual(inWork.document.status, { tone: 'info', text: 'ดูตัวอย่างได้เมื่อมีขนาดครบทุกพื้นที่ (1/2)', items: [], foot: null, action: null });
+  assert.doesNotMatch(JSON.stringify(inWork.document.status), /วัดครบ/);
+  assert.equal(inWork.document.versions.every((v) => !v.preview || v.preview.blocked === true), true, 'ปุ่มร่างยังจางจนกว่าขนาดครบ');
+  const today = surveyDocumentView({ document: notSent({ issueAtSend: false, send: null }), request: request(), zones: [MEASURED[0], { ...MEASURED[0], id: 'z-empty', parts: [] }], canDecide: true });
+  assert.deepEqual(today.status, { tone: 'info', text: 'ดูตัวอย่างได้เมื่อวัดครบทุกพื้นที่ (1/2)', items: [], foot: null, action: null });
 
-  /* 🐞 UAT S2b S01 / S06 / S22 — ใบที่**ยังกรอกไม่ครบ**ก็ต้องได้ประโยคพักเอกสาร: เดิมสาขา "ยังไม่ครบทุกพื้นที่" มาก่อน ⇒ กล่องพูดแค่
-     "ดูตัวอย่างได้เมื่อวัดครบทุกพื้นที่ (1/2)" (คำว่าวัดบนใบที่ไม่มีใครวัด และไม่บอกว่าเอกสารถูกพัก) · เหตุของปุ่มร่างที่จางย้ายไปท้ายกล่อง
-     ด้วยคำ "มีขนาดครบ" · ใบลงหน้างานล้วนที่ยังวัดไม่ครบ = ประโยคเดิมตรงตัว */
-  {
-    const inWork = [...MEASURED.slice(0, 1), { ...MEASURED[0], id: 'z-empty', parts: [] }];
-    const held = surveyDocumentView({ document: notSent({ issueAtSend: false, send: null }), request: request(), zones: inWork, canDecide: true, drawingHold: HOLD_EFFECT });
-    assert.deepEqual(held.status, { tone: 'info', text: HOLD_EFFECT, items: [], foot: 'ดูตัวอย่างได้เมื่อมีขนาดครบทุกพื้นที่ (1/2)', action: null });
-    assert.doesNotMatch(JSON.stringify(held.status), /วัดครบ/);
-    assert.equal(held.versions.every((v) => !v.preview || v.preview.blocked === true), true, 'ปุ่มร่างยังจางจนกว่าขนาดครบ');
-    const today = surveyDocumentView({ document: notSent({ issueAtSend: false, send: null }), request: request(), zones: inWork, canDecide: true });
-    assert.deepEqual(today.status, { tone: 'info', text: 'ดูตัวอย่างได้เมื่อวัดครบทุกพื้นที่ (1/2)', items: [], foot: null, action: null });
+  // ดึงผลกลับมาแก้: สัญญา Rev ถัดไปเหมือนใบลงหน้างาน (เอกสารของใบแบบนี้ออกได้แล้ว)
+  const recalledDoc = { ...notSent(), state: 'recalled', history: [{ docNo: 'SU-26100001-R00', state: 'recalled' }], nextDocNo: 'SU-26100001-R01' };
+  for (const kind of ['desk', 'mixed', 'onsite']) {
+    const recalled = sheetCard(kind, { document: recalledDoc });
+    assert.equal(recalled.document.status.text, 'SU-26100001-R00 ถูกแทนที่แล้ว — ส่งผลอีกครั้งเพื่อออก SU-26100001-R01', kind);
   }
 
-  // ดึงผลกลับมาแก้: ไม่สัญญา Rev ถัดไป
-  const recalled = surveyDocumentView({
-    document: { ...notSent(), state: 'recalled', history: [{ docNo: 'SU-26100001-R00', state: 'recalled' }], nextDocNo: 'SU-26100001-R01' },
-    request: request(), zones: MEASURED, canDecide: true, drawingHold: HOLD_EFFECT,
-  });
-  assert.equal(recalled.status.text, `SU-26100001-R00 ถูกแทนที่แล้ว — ${HOLD_EFFECT}`);
-  assert.doesNotMatch(recalled.status.text, /R01|ส่งผลอีกครั้ง/);
-
-  // 🔴 ใบลงหน้างานล้วน: ประโยคเดิมทุกตัวอักษร · ไม่ส่ง `drawingHold` = เหมือนเดิม
+  // 🔴 ใบลงหน้างานล้วน: ประโยคเดิมทุกตัวอักษร · ตัวตัดสินที่ไม่ได้ `hasDrawing` = เหมือนเดิม
   const onsite = card([onsiteReady('z1', 'Studio 01')], { document: notSent(), visit: scheduled({ status: 'done' }) });
   assert.equal(onsite.document.status.text, 'พร้อมแล้ว — กดส่งผลเพื่อออกเลขที่เอกสาร');
   const plain = surveyDocumentView({ document: notSent(), request: request(), zones: MEASURED, canDecide: true });
@@ -907,4 +892,22 @@ test('🔑 พื้นที่ที่เพิ่งกลับเป็น
     assert.deepEqual(after.zoneGaps.rows, [], status);
     assert.equal(after.send.allowed, true, status);
   }
+});
+
+test('🐞 ใบจากแบบทั้งใบ ครบทุกพื้นที่ · ติดเฉพาะเอกสาร (เช่นกติกาลายเซ็นเปิด ผู้ส่งยังไม่มีลายเซ็น): บรรทัดรองบอกว่าเหลือแก้เรื่องเอกสาร — ไม่ว่างเปล่า', () => {
+  const sign = 'ยังไม่มีลายเซ็นของ หัวหน้า ก — บันทึกลายเซ็นที่หน้าโปรไฟล์ก่อนส่งผล';
+  const v = sheetCard('desk', { document: notSent({ send: { ...OK_CHECK, blockers: [sign] } }) });
+  assert.equal(v.send.allowed, false);
+  assert.deepEqual(v.status, {
+    key: 'desk-working', tone: 'warning', headline: 'กำลังประเมินจากแบบ — 2/2 พื้นที่',
+    sub: 'เหลือแก้ข้อที่ทำให้เอกสารประเมินออกไม่ได้', // คำเดียวกับใบลงหน้างานที่ติดเฉพาะเอกสาร (`documentOnly`)
+  });
+  // ด่านอื่นที่ไม่ผูกกับพื้นที่ติดด้วย (ทะเบียนขนาดอ่านไม่ขึ้น) = ไม่ใช่ "ติดเฉพาะเอกสาร" ⇒ บรรทัดรองว่างตามเดิม
+  const both = sheetCard('desk', { packageSizes: null, document: notSent({ send: { ...OK_CHECK, blockers: [sign] } }) });
+  assert.equal(both.status.sub, '');
+  // ยังมีพื้นที่ค้าง = เอ่ยชื่อพื้นที่ (เรื่องที่ต้องทำก่อน) ไม่ใช่เรื่องเอกสาร
+  const left = card([drawingReady('z1', 'Lobby'), drawingEmpty('z2', 'Lounge', { parts: [part(4, 5, 3)] })], {
+    visit: null, document: notSent({ send: { ...OK_CHECK, blockers: [sign] } }),
+  });
+  assert.equal(left.status.sub, 'เหลือ Lounge');
 });
