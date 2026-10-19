@@ -136,3 +136,20 @@ export function poStatusOptions(statuses = []) {
   }
   return [...seen.values()];
 }
+
+// ── มิติที่สองของตัวกรองหน้า PO: "การส่งของ" (สถานะส่งของบนตัว PO · `poRollupStatus`) ──
+//
+// 🐞 (รอบตรวจ 19/10 ของ H7) ตัวกรอง "สถานะ" ย้ายไปใช้คำบนป้าย (ขั้นผลิต) แล้ว ⇒ ใบที่ส่งไปบางบรรทัดแต่อีกบรรทัดยังรอ
+//    ขึ้นป้าย "รอวัสดุ" (ขั้นต่ำสุด) และไม่มีตัวเลือกไหนแยกใบ "ส่งบางส่วน" ออกมาได้อีก · ภาพรวม `/sahamit` ยังนับ
+//    ตามการส่งของ (รายการ "PO ที่ต้องการการติดตาม" = รอส่ง + ส่งบางส่วน · พายสถานะ PO) ⇒ เลขบนภาพรวมสร้างซ้ำบนหน้า PO ไม่ได้
+// ⭐ คืนเป็นมิติแยก **คนละหมวด** กับ "สถานะ" (ชื่อหมวดบอกว่ากรองเรื่องอะไร) — ไม่ปนคำสองชุดในตัวเลือกเดียวกันอีก
+//    ตัวเลือก = คำของ `PO_STATUS_LABEL` · ค่า = คีย์ของ `poRollupStatus` ตัวเดียวกับที่ภาพรวมใช้นับ
+export function poDeliveryOptions(pos = []) {
+  const present = new Set((pos || []).map(poRollupStatus));
+  return Object.keys(PO_STATUS_LABEL).filter((k) => present.has(k)).map((k) => ({ value: k, label: PO_STATUS_LABEL[k] }));
+}
+
+/** ใบนี้ผ่านตัวเลือก "การส่งของ" ที่เลือกไว้ไหม — ไม่ได้เลือกอะไร = ผ่าน */
+export function poMatchesDelivery(po, selected = []) {
+  return !selected?.length || selected.includes(poRollupStatus(po));
+}

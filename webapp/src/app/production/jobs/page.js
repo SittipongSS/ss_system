@@ -5,7 +5,7 @@
 // ⭐ ตัวเชื่อมที่สำคัญที่สุด: คอลัมน์ "ของครบ?" มาจาก `productionReadiness()` ของ
 //    ของเข้า PM/RM ที่ PC กรอกไว้แล้ว — โมดูลนี้เป็นปลายทางของข้อมูลชิ้นนั้น
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { AlertTriangle, Hammer, Plus } from "lucide-react";
@@ -26,6 +26,7 @@ import {
 import {
   PRODUCTION_JOB_FILTERS,
   filterProductionJobs,
+  productionJobsClearedHref,
   productionJobsFilterFrom,
 } from "@/lib/pm/productionJobsLink";
 import styles from "./page.module.css";
@@ -53,11 +54,13 @@ export default function ProductionJobsPage() {
      ⚠️ อ่านจาก `useSearchParams` ไม่ใช่ `window.location` ใน initializer ของ useState — เดิมอ่านครั้งเดียวตอนเมานต์
         ⇒ อยู่บนหน้านี้แล้วกดป้ายเมนู (ไปหน้าเดิม คอมโพเนนต์ไม่เมานต์ใหม่) ตัวกรองไม่ติด · `useSearchParams` ให้ query
         ของ URL ที่ router กำลังพาไปเสมอ และเฝ้าค่าได้ (แพตเทิร์นเดียวกับ `?count=` ของคิว RD)
-     ⚠️ ตั้งเมื่อลิงก์เปลี่ยนเท่านั้น (ไม่เฝ้าทุกเรนเดอร์) — กดล้างตัวกรองแล้วต้องไม่เด้งกลับ */
+     ⭐ ตัวกรอง **อยู่ใน URL ที่เดียว** ไม่มีสำเนาใน state — ปุ่ม × เขียน URL ใหม่ (`productionJobsClearedHref`)
+     🐞 (รอบตรวจ 19/10) เดิมคัดลอกค่าจากลิงก์ลง state แล้ว × ล้างแค่ state ⇒ URL ยังมี `?count=` อยู่ · กดป้ายเมนูซ้ำ
+        = URL เดิม ⇒ ค่าที่อ่านได้ไม่เปลี่ยน effect ไม่รัน ⇒ คิวโชว์งานทั้งโรงงานทั้งที่ป้ายบอก N งาน */
+  const router = useRouter();
   const searchParams = useSearchParams();
-  const linkFilter = productionJobsFilterFrom(searchParams);
-  const [queueFilter, setQueueFilter] = useState(linkFilter);
-  useEffect(() => { setQueueFilter(linkFilter); }, [linkFilter]);
+  const queueFilter = productionJobsFilterFrom(searchParams);
+  const clearQueueFilter = () => router.replace(productionJobsClearedHref(searchParams), { scroll: false });
   const [formJob, setFormJob] = useState(undefined); // undefined = ปิด · null = สร้าง
   const [toast, setToast] = useState(null);
 
@@ -148,7 +151,7 @@ export default function ProductionJobsPage() {
             </div>
             {queueFilter && (
               /* ตัวกรองที่ใช้อยู่เป็นปุ่มกดล้าง — ต้นแบบเดียวกับคิวคำร้อง */
-              <Button size="sm" onClick={() => setQueueFilter(null)}>
+              <Button size="sm" onClick={clearQueueFilter}>
                 กรอง: {PRODUCTION_JOB_FILTERS[queueFilter].label} ×
               </Button>
             )}

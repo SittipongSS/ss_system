@@ -15,7 +15,7 @@ import { useApiList } from "@/lib/excise/useApiList";
 import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { fmtDate, fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
-import { poTotalQty, poLineCount, PO_STATUS_LABEL, lineStage, STAGE_LABEL, STAGE_COLOR, effectivePoQty, poDisplayStatus, poStatusOptions, PO_DISPLAY_STATUS_ORDER } from "@/lib/sahamit/po";
+import { poTotalQty, poLineCount, PO_STATUS_LABEL, lineStage, STAGE_LABEL, STAGE_COLOR, effectivePoQty, poDisplayStatus, poStatusOptions, PO_DISPLAY_STATUS_ORDER, poDeliveryOptions, poMatchesDelivery } from "@/lib/sahamit/po";
 import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
 import { ppcOf, casesText } from "@/lib/sahamit/units";
 import { destinationLabel, DESTINATIONS } from "@/components/sahamit/destinations";
@@ -182,6 +182,7 @@ export default function PoPage() {
   const [openPo, setOpenPo] = useState({});
   const [search, setSearch] = useState("");
   const [statusSel, setStatusSel] = useState([]);  // คำบนป้ายสถานะ (poDisplayStatus().label) ที่เลือกไว้
+  const [deliverySel, setDeliverySel] = useState([]); // คีย์ poRollupStatus ของหมวด "การส่งของ" (ตัวเดียวกับที่ภาพรวมนับ)
   const [destSel, setDestSel] = useState([]);       // destination keys
   const canEdit = useCan("sahamit:edit");
   const [view, setView] = useState("grouped"); // grouped (รายใบ) | table (รายบรรทัด)
@@ -226,6 +227,9 @@ export default function PoPage() {
      ⚠️ ค่าของตัวเลือก = **คำบนป้าย** (ไม่ใช่คีย์) — สองแหล่งมีคำเดียวกันได้ ("ยกเลิก") ⇒ ตัวเลือกเดียว และ
         "ตัวเลือกที่เห็น = คำที่ป้ายเขียน" จริงตามตัวอักษร (sahamitPoStatus.test.mjs) */
   const statusOptions = useMemo(() => poStatusOptions(pos.map(statusOf)), [pos, statusOf]);
+  /* หมวด "การส่งของ" แยกจาก "สถานะ" — ใบส่งบางส่วนที่ป้ายเป็น "รอวัสดุ" ยังแยกได้ และเลขของภาพรวม /sahamit
+     (PO ที่ต้องการการติดตาม = รอส่ง + ส่งบางส่วน) สร้างซ้ำที่นี่ได้ (รอบตรวจ 19/10 ของ H7 · sahamitPoStatus.test.mjs) */
+  const deliveryOptions = useMemo(() => poDeliveryOptions(pos), [pos]);
   const destOptions = useMemo(() => {
     const present = new Set(pos.map((p) => p.destination).filter(Boolean));
     return DESTINATIONS.filter((d) => present.has(d.key)).map((d) => ({ value: d.key, label: d.label }));
@@ -233,9 +237,10 @@ export default function PoPage() {
 
   // PO ที่ผ่านคำค้น + ตัวกรอง. คำค้นครอบคลุม เลข PO, สถานที่ส่ง, และรหัส/ชื่อสินค้าในบรรทัด
   const filteredPos = useMemo(() => {
-    if (!q && !statusSel.length && !destSel.length) return pos;
+    if (!q && !statusSel.length && !deliverySel.length && !destSel.length) return pos;
     return pos.filter((po) => {
       if (statusSel.length && !statusSel.includes(statusOf(po).label)) return false;
+      if (!poMatchesDelivery(po, deliverySel)) return false;
       if (destSel.length && !destSel.includes(po.destination)) return false;
       if (q) {
         /* ชื่อสินค้ามีสองแหล่ง: ชื่อที่บันทึกไว้กับบรรทัด PO (`l.productName` — มากับสาย PO เอง) และชื่อปัจจุบันจากรายการ
@@ -249,10 +254,10 @@ export default function PoPage() {
       }
       return true;
     });
-  }, [pos, q, statusSel, destSel, prodIdx, statusOf]);
+  }, [pos, q, statusSel, deliverySel, destSel, prodIdx, statusOf]);
 
-  const filterCount = statusSel.length + destSel.length;
-  const clearFilters = () => { setStatusSel([]); setDestSel([]); };
+  const filterCount = statusSel.length + deliverySel.length + destSel.length;
+  const clearFilters = () => { setStatusSel([]); setDeliverySel([]); setDestSel([]); };
 
   // แบ่งหน้ามุมมอง "รายใบ" (รีเซ็ตกลับหน้า 1 เมื่อค้น/กรองเปลี่ยน)
   // เรียงมุมมองรายใบก่อนแบ่งหน้า (sort เดียวกับปุ่ม/หัวตาราง)
@@ -265,7 +270,7 @@ export default function PoPage() {
     }[sortKey]);
     return [...filteredPos].sort((a, b) => { const ka = key(a), kb = key(b); return (ka < kb ? -1 : ka > kb ? 1 : 0) * s; });
   }, [filteredPos, sortKey, sortDir, priceByFg, statusOf]);
-  const grouped = usePagination(sortedGroupedPos, { resetKey: `${q}|${statusSel.join(",")}|${destSel.join(",")}|${sortKey}|${sortDir}` });
+  const grouped = usePagination(sortedGroupedPos, { resetKey: `${q}|${statusSel.join(",")}|${deliverySel.join(",")}|${destSel.join(",")}|${sortKey}|${sortDir}` });
 
   const toggle = (id) => setOpenPo((s) => ({ ...s, [id]: !s[id] }));
 
@@ -321,6 +326,7 @@ export default function PoPage() {
               onClear={clearFilters}
               groups={[
                 { key: "status", label: "สถานะ", options: statusOptions, selected: statusSel, onChange: setStatusSel },
+                { key: "delivery", label: "การส่งของ", options: deliveryOptions, selected: deliverySel, onChange: setDeliverySel },
                 { key: "dest", label: "สถานที่ส่ง", options: destOptions, selected: destSel, onChange: setDestSel },
               ]}
             />

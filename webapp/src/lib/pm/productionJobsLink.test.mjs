@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  PRODUCTION_JOB_FILTERS, filterProductionJobs, productionJobsFilterFrom, productionJobsHref,
+  PRODUCTION_JOB_FILTERS, filterProductionJobs, productionJobsClearedHref, productionJobsFilterFrom, productionJobsHref,
 } from './productionJobsLink.js';
 import { productionCounts } from './productionOverview.js';
 
@@ -59,6 +59,31 @@ test('ตัวอ่าน query: ไม่มี/ไม่รู้จัก =
   }
 });
 
+/* 🐞 (รอบตรวจ 19/10) ปุ่ม × เคยล้างแค่ state ⇒ URL ค้าง `?count=productionJobs` · กดป้ายเมนูซ้ำ = URL เดิม ⇒ ตัวกรองไม่กลับมา
+   จำลองทางเดินของผู้ใช้ด้วย URL ล้วน (หน้าคิวไม่มีสำเนาตัวกรองใน state แล้ว — ยามซอร์สข้างล่าง) */
+test('🔴 × ล้างตัวกรองที่ URL — กดป้ายเมนูซ้ำแล้วตัวกรองต้องกลับมา', () => {
+  for (const key of Object.keys(PRODUCTION_JOB_FILTERS)) {
+    const badge = productionJobsHref(key);
+    const opened = new URL(badge, 'http://localhost');
+    assert.equal(productionJobsFilterFrom(opened.searchParams), key);
+    const cleared = productionJobsClearedHref(opened.searchParams);
+    assert.equal(cleared, '/production/jobs');
+    assert.equal(productionJobsFilterFrom(new URL(cleared, 'http://localhost').searchParams), null, `${key}: × แล้วต้องไม่เหลือตัวกรอง`);
+    // ป้ายเป็นคนละ URL กับหลังล้าง ⇒ router พาไปจริง ตัวอ่านได้ค่าใหม่
+    assert.notEqual(cleared, badge);
+    assert.equal(queueRowsFor(badge, loaded).length, productionCounts(loaded)[key]);
+  }
+});
+
+test('ล้างตัวกรองถอดเฉพาะพารามิเตอร์ของตัวกรอง — query อื่นคงไว้', () => {
+  assert.equal(productionJobsClearedHref('count=productionJobs&x=1'), '/production/jobs?x=1');
+  assert.equal(productionJobsClearedHref(new URLSearchParams('filter=running&x=1')), '/production/jobs?x=1');
+  // `count=` ของคนอื่น (ไม่ใช่คีย์ของคิวนี้) ไม่ใช่ตัวกรองของหน้านี้ — ไม่ถอด
+  assert.equal(productionJobsClearedHref('count=other'), '/production/jobs?count=other');
+  assert.equal(productionJobsClearedHref(''), '/production/jobs');
+  assert.equal(productionJobsClearedHref(null), '/production/jobs');
+});
+
 /* ── ยามอ่านซอร์ส (จอเป็น JSX) — การ์ดต้องส่งลิงก์ที่กรองแล้ว · หน้าคิวต้องอ่านลิงก์ด้วย useSearchParams ── */
 const live = (source) => source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 const overview = live(readFileSync(new URL('../../app/production/page.js', import.meta.url), 'utf8'));
@@ -72,7 +97,13 @@ test('🔴 การ์ดภาพรวมส่งลิงก์ที่ก
 });
 
 test('🔴 หน้าคิวอ่านตัวกรองจาก useSearchParams — ไม่ใช่ window.location ตอนเมานต์ (กดป้ายเมนูขณะอยู่บนหน้าแล้วตัวกรองไม่ติด)', () => {
-  assert.match(queue, /const linkFilter = productionJobsFilterFrom\(searchParams\);/);
+  assert.match(queue, /const queueFilter = productionJobsFilterFrom\(searchParams\);/);
   assert.match(queue, /filterProductionJobs\(jobs, queueFilter\)/);
   assert.doesNotMatch(queue, /window\.location\.search/);
+});
+
+test('🔴 ตัวกรองอยู่ใน URL ที่เดียว — × เขียน URL ใหม่ ไม่มีสำเนาใน state ที่ล้างแยกได้', () => {
+  assert.doesNotMatch(queue, /setQueueFilter|useState\(linkFilter\)/, 'สำเนาใน state = URL กับตัวกรองเพี้ยนกันได้');
+  assert.match(queue, /const clearQueueFilter = \(\) => router\.replace\(productionJobsClearedHref\(searchParams\), \{ scroll: false \}\);/);
+  assert.match(queue, /<Button size="sm" onClick=\{clearQueueFilter\}>/);
 });

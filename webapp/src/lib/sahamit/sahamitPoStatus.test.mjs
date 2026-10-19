@@ -5,7 +5,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { poDisplayStatus, poRollupStatus, poStatusOptions, PO_STATUS_LABEL } from './po.js';
+import {
+  poDeliveryOptions, poDisplayStatus, poMatchesDelivery, poRollupStatus, poStatusOptions, PO_STATUS_LABEL,
+} from './po.js';
 
 const po = (poNumber, lineStatuses) => ({
   id: poNumber, poNumber, lines: lineStatuses.map((status, i) => ({ id: `${poNumber}-${i}`, status })),
@@ -74,6 +76,35 @@ test('คำซ้ำจากสองแหล่ง ("ยกเลิก") �
   assert.deepEqual(options.map((o) => o.label), ['รอส่ง', 'ยกเลิก']);
 });
 
+/* ── หมวด "การส่งของ" (รอบตรวจ 19/10 ของ H7) ─────────────────────────────────────────────────────────────
+   🐞 พอตัวกรอง "สถานะ" เป็นคำบนป้าย (ขั้นผลิต) ใบที่ส่งไปบางบรรทัดขึ้น "รอวัสดุ" (ขั้นต่ำสุด) และไม่มีตัวเลือกไหนแยกใบ
+      "ส่งบางส่วน" ได้อีก · ภาพรวม /sahamit ยังนับตาม `poRollupStatus` ⇒ เลขบนภาพรวมสร้างซ้ำบนหน้า PO ไม่ได้ */
+const partly = po('PO-PART', ['delivered', 'open']);
+const partlyMaterial = [mat('PO-PART', 'delivered', true), mat('PO-PART', 'open')];
+
+test('🔴 ใบส่งบางส่วนที่ป้ายเป็น "รอวัสดุ" ยังกรองด้วยการส่งของได้', () => {
+  assert.equal(poDisplayStatus(partly, partlyMaterial).label, 'รอวัสดุ');
+  const all = [...pos, partly];
+  assert.deepEqual(all.filter((p) => poMatchesDelivery(p, ['partial'])).map((p) => p.poNumber), ['PO-PART']);
+  // ไม่เลือกอะไร = ไม่กรอง
+  assert.equal(all.filter((p) => poMatchesDelivery(p, [])).length, all.length);
+});
+
+test('🔴 ตัวเลือก "การส่งของ" = คำของ PO_STATUS_LABEL ที่มีจริง · รอส่ง+ส่งบางส่วน = ชุด "PO ที่ต้องการการติดตาม" ของภาพรวม', () => {
+  const all = [...pos, partly];
+  assert.deepEqual(poDeliveryOptions(all), [
+    { value: 'open', label: 'รอส่ง' }, { value: 'partial', label: 'ส่งบางส่วน' },
+    { value: 'delivered', label: 'ส่งครบ' }, { value: 'cancelled', label: 'ยกเลิก' },
+  ]);
+  // ภาพรวม /sahamit นับรายการติดตามด้วยกติกานี้ (ยามซอร์สข้างล่างจับถ้าภาพรวมเปลี่ยนกติกา)
+  const dashboardFollowUp = all.filter((p) => ['open', 'partial'].includes(poRollupStatus(p))).map((p) => p.poNumber);
+  const picked = all.filter((p) => poMatchesDelivery(p, ['open', 'partial'])).map((p) => p.poNumber);
+  assert.deepEqual(picked, dashboardFollowUp);
+  assert.ok(picked.includes('PO-CLOSED'), 'ใบปิดงานแล้วที่ตัว PO ยังเป็นรอส่ง — ภาพรวมนับ ตัวกรองต้องเจอเหมือนกัน');
+  const dashboard = readFileSync(new URL('../../app/sahamit/page.js', import.meta.url), 'utf8');
+  assert.match(dashboard, /\["open", "partial"\]\.includes\(poRollupStatus\(p\)\)/, 'กติกาของภาพรวมเปลี่ยน — แก้หมวด "การส่งของ" ให้ตรงด้วย');
+});
+
 /* ── ยามอ่านซอร์ส (จอเป็น JSX) — ป้าย ตัวกรอง และการเรียงของหน้าใช้ตัวเดียวกัน ── */
 test('🔴 หน้า /sahamit/po: ป้าย ตัวกรอง และการเรียงอ่านสถานะจาก poDisplayStatus ตัวเดียว', () => {
   const live = (source) => source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/^\s*\/\/.*$/gm, '');
@@ -82,5 +113,12 @@ test('🔴 หน้า /sahamit/po: ป้าย ตัวกรอง แล�
   assert.match(page, /if \(statusSel\.length && !statusSel\.includes\(statusOf\(po\)\.label\)\) return false;/);
   assert.match(page, /const statusOptions = useMemo\(\(\) => poStatusOptions\(pos\.map\(statusOf\)\), \[pos, statusOf\]\);/);
   assert.match(page, /const shown = poDisplayStatus\(po, lines\);/);
-  assert.doesNotMatch(page, /poRollupStatus\(/, 'ห้ามมีตัวตัดสินสถานะชุดที่สองบนหน้านี้');
+  assert.doesNotMatch(page, /poRollupStatus\(/, 'ห้ามมีตัวตัดสินสถานะชุดที่สองบนหน้านี้ — การส่งของผ่าน poMatchesDelivery/poDeliveryOptions');
+  // หมวด "การส่งของ" แยกจาก "สถานะ" และเข้าร่วมตัวนับ/ปุ่มล้าง/รีเซ็ตหน้าเหมือนหมวดอื่น
+  assert.match(page, /\{ key: "delivery", label: "การส่งของ", options: deliveryOptions, selected: deliverySel, onChange: setDeliverySel \}/);
+  assert.match(page, /const deliveryOptions = useMemo\(\(\) => poDeliveryOptions\(pos\), \[pos\]\);/);
+  assert.match(page, /if \(!poMatchesDelivery\(po, deliverySel\)\) return false;/);
+  assert.match(page, /const filterCount = statusSel\.length \+ deliverySel\.length \+ destSel\.length;/);
+  assert.match(page, /setDeliverySel\(\[\]\)/);
+  assert.match(page, /\$\{deliverySel\.join\(","\)\}/);
 });

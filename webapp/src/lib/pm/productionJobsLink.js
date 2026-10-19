@@ -33,6 +33,18 @@ export function productionJobsFilterFrom(search) {
   return Object.hasOwn(PRODUCTION_JOB_FILTERS, key) ? key : null;
 }
 
+/** ลิงก์ของปุ่ม "×" ล้างตัวกรอง — หน้าคิวเดิม **ถอดเฉพาะพารามิเตอร์ของตัวกรอง** query อื่นคงไว้
+ *  🐞 (รอบตรวจ 19/10) ปุ่ม × เคยล้างแค่ state ⇒ URL ยังเป็น `?count=productionJobs` · กดป้ายเมนูซ้ำ = ไป URL เดิม
+ *     ⇒ ตัวอ่านได้ค่าเดิม ไม่มีอะไรเปลี่ยน คิวโชว์งานทั้งโรงงานทั้งที่ป้ายบอก N งาน
+ *  ⇒ ตัวกรองอยู่ใน URL ที่เดียว: × เขียน URL ใหม่ (router.replace) · ป้าย/การ์ดพาไป URL ที่มีตัวกรอง */
+export function productionJobsClearedHref(search) {
+  const params = new URLSearchParams(search ? String(search) : '');
+  if (params.get('count') === NAV_COUNT_KEY) params.delete('count');
+  params.delete('filter');
+  const rest = params.toString();
+  return rest ? `/production/jobs?${rest}` : '/production/jobs';
+}
+
 export function filterProductionJobs(jobs = [], filter) {
   const rule = PRODUCTION_JOB_FILTERS[filter];
   return rule ? jobs.filter(rule.match) : jobs;
