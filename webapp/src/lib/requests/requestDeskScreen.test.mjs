@@ -15,7 +15,6 @@ import {
 } from './commitDue.js';
 import { requestRailSteps } from './requestRail.js';
 import { surveyJobView, surveyRequestDrawingSummary } from '../service/surveyJob.js';
-import { SURVEY_SEND_PAPER_HOLD_EFFECT } from '../service/surveySendClose.js';
 import {
   SURVEY_CONFIRM_ACTION_READY, SURVEY_CONFIRM_PENDING_NOTE, SURVEY_METHOD_CHIP, surveyDeskRailSteps,
 } from '../service/surveyMethodSwitch.js';
@@ -464,26 +463,36 @@ test('D-3 การ์ดด่าน: ใบจากแบบทั้งใ�
   assert.equal(job(onsite(PROMISED)).zones.crewGate.hidden, false);
 });
 
-test('🔴 D-3 บล็อกเอกสาร: วาดจาก `job.document` อย่างเดียว — ใบที่มีพื้นที่จากแบบได้ประโยคของข้อพัก ไม่มีปุ่ม ไม่มีลิงก์ไปใบประเมิน', () => {
+test('🔴 D-3 บล็อกเอกสาร: วาดจาก `job.document` อย่างเดียว — ใบที่มีพื้นที่จากแบบได้บล็อกของใบลงหน้างาน (งวด S3 ถอดข้อพักเอกสาร)', () => {
   assert.equal((VIEW.match(/<DocumentBlock\b/g) || []).length, 1);
   assert.match(VIEW, /\{job\.document \? <DocumentBlock doc=\{job\.document\} sheetHref=\{surveyHref\} onRefresh=\{onRefresh\} \/> : null\}/);
-  // จอไม่มีประโยคของตัวเองเรื่องออกเอกสาร (ทั้งชวนกดและทวงหัวหน้า) และไม่รู้จักข้อพัก — ทุกคำมาจาก lib
-  assert.doesNotMatch(VIEW, /ออกเอกสาร|แจ้งหัวหน้า|drawingHold|SURVEY_SEND_PAPER_HOLD/);
+  // จอไม่มีประโยคของตัวเองเรื่องออกเอกสาร (ทั้งชวนกดและทวงหัวหน้า) และไม่รู้จักวิธีประเมินของใบ — ทุกคำมาจาก lib
+  assert.doesNotMatch(VIEW, /ออกเอกสาร|แจ้งหัวหน้า|drawingHold|SURVEY_SEND_PAPER_HOLD|hasDrawing/);
   const block = VIEW.slice(VIEW.indexOf('function DocumentBlock('), VIEW.indexOf('export default function SurveyRequestView'));
   assert.match(block, /\{doc\.text \? <StatusNotice tone=\{doc\.text\.tone\}>\{doc\.text\.text\}<\/StatusNotice> : null\}/);
   assert.match(block, /const hasActions = doc\.buttons\.length > 0 \|\| !!sheetLink \|\| !!doc\.foot;/);
   assert.match(block, /const sheetLink = doc\.sheetLink && sheetHref;/);
 
+  // ใบที่ส่งผลไปตอนเอกสารถูกพัก = "ยังไม่มีเอกสาร" เหมือนใบอื่น: หัวหน้าถูกชี้ไปกดออกเอกสาร (+ ลิงก์) · ฝ่ายขายทวงหัวหน้าในเธรด
   const surveyDocument = { access: { customer: true }, state: 'missing', current: null, storeAllowed: true };
-  for (const [who, viewer] of [['ฝ่ายขาย', SALES], ['หัวหน้า', HEAD]]) {
-    for (const request of [desk({ ...SENT, surveyDocument }), mixed({ ...SENT, surveyDocument })]) {
-      const doc = job(request, viewer).document;
-      assert.deepEqual(doc.text, { tone: 'info', text: SURVEY_SEND_PAPER_HOLD_EFFECT }, who);
-      assert.deepEqual([doc.buttons, doc.sheetLink, doc.foot, doc.waitText], [[], false, null, null], who);
+  const headDocument = { access: { customer: true, internal: true, issue: true, history: true }, state: 'missing', current: null, storeAllowed: true };
+  for (const [who, viewer, doc] of [['ฝ่ายขาย', SALES, surveyDocument], ['หัวหน้า', HEAD, headDocument]]) {
+    const today = job(onsite({ ...SENT, surveyDocument: doc }), viewer).document;
+    for (const request of [desk({ ...SENT, surveyDocument: doc }), mixed({ ...SENT, surveyDocument: doc })]) {
+      assert.deepEqual(job(request, viewer).document, today, who);
     }
   }
-  // ใบลงหน้างาน = บล็อกเดิม (ไม่ใช่ประโยคของข้อพัก)
-  assert.notEqual(job(onsite({ ...SENT, surveyDocument })).document.text.text, SURVEY_SEND_PAPER_HOLD_EFFECT);
+  const sales = job(desk({ ...SENT, surveyDocument }), SALES).document;
+  assert.deepEqual(sales.text, { tone: 'info', text: 'ยังไม่มีเอกสารของใบนี้ — แจ้งหัวหน้าฝ่ายบริการให้กดออกเอกสาร (เขียนในเธรดด้านล่างได้)' });
+  assert.deepEqual([sales.buttons.length, sales.sheetLink], [1, false]);
+  const head = job(mixed({ ...SENT, surveyDocument: headDocument }), HEAD).document;
+  assert.deepEqual(head.text, { tone: 'info', text: 'ยังไม่มีเอกสารของใบนี้ — กด “ออกเอกสาร” ที่ใบประเมิน' });
+  assert.equal(head.sheetLink, true);
+  // ผู้วางคิวยังไม่มีบล็อก (ไม่มีสิทธิ์เอกสาร) — ใบจากแบบไม่เปลี่ยนกติกานี้
+  const PLANNER = { canWork: true };
+  for (const request of [desk({ ...SENT, surveyDocument: { access: 'none', voids: null } }), mixed({ ...SENT, surveyDocument: { access: 'none', voids: null } })]) {
+    assert.equal(job(request, PLANNER).document, null);
+  }
 });
 
 test('D-3 ประโยคแทนปุ่มบนแถบตอนนี้: วาดจาก `stepNotes` ของเปลือก (ไม่ส่ง = ไม่มีอะไร) · หน้าของหัวข้อยังไม่ยิง API เอง', () => {

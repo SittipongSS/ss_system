@@ -102,7 +102,7 @@ import ScentDeliveryFields, {
   emptyDeliveryRow, reworkDeliveryRow,
 } from "@/components/requests/ScentDeliveryFields";
 import Tabs from "@/components/ui/Tabs";
-import { reworkSlots } from "@/lib/requests/rework";
+import { reworkHopError, reworkSlotFor, reworkSlots } from "@/lib/requests/rework";
 import DateInput from "@/components/ui/DateInput";
 import { businessDate } from "@/lib/businessDate";
 import {
@@ -737,7 +737,24 @@ export default function RequestDetailPage() {
         : null)
       || (confirmPreview?.kind === "blocked" ? confirmPreview.error : null))
     : null;
-  const openHop = (item, hop, outcome = null) => setHopDraft({
+  /* ⭐ **ก้าวส่งงานของพัฒนากลิ่นไม่ใช่กล่องก้าวทั่วไป** (IS-26100001) — server ปฏิเสธก้าวนี้บนรางเสมอ (`reworkHopError`) เพราะกลิ่นต้อง
+     เข้าทะเบียนพร้อมการส่ง ⇒ ปุ่ม "ส่งงาน" ที่แถวรอบแก้ (ตารางสรุป · แถบท้ายเธรด) ต้องเปิดโมดัลส่งกลิ่นด้วยแท็บของแถวนั้น
+     🐞 เดิมเปิดกล่องเปล่า (ไม่มีฟอร์มกลิ่น) แล้วกดบันทึกได้ error ชี้ปุ่มชื่อเก่า ⇒ แถวรอบแก้ค้าง 11 จาก 13 แถวทั้งระบบ
+     ⚠️ ถามด่านตัวเดียวกับ server ไม่เขียนเงื่อนไขซ้ำที่จอ */
+  const openHop = (item, hop, outcome = null) => (reworkHopError(item, hop)
+    ? openReworkDelivery(item)
+    : openHopModal(item, hop, outcome));
+  const openReworkDelivery = (item) => {
+    const slot = reworkSlotFor(req?.items || [], item?.id);
+    if (!slot) {
+      setToast({ kind: "error", msg: "รายการนี้ส่งไปแล้วหรือไม่ใช่รอบแก้ที่รอส่ง — โหลดหน้าใหม่" });
+      load({ background: true });
+      return;
+    }
+    setDelivery([reworkDeliveryRow(slot)]);
+    setDeliveryTab(0);
+  };
+  const openHopModal = (item, hop, outcome = null) => setHopDraft({
     item,
     hop,
     outcome,

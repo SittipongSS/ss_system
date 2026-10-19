@@ -15,7 +15,8 @@ import {
   SURVEY_REPORT_PX, paginateSurveyReport, surveyReportMixLines, surveyReportOverflowErrors,
 } from './surveyReportLayout.js';
 import {
-  seededRandom, stressSurveyInputs, surveyReportInputsFromFixture, syntheticSurveyFixture, thaiText,
+  drawingSurveyFixture, mixedSurveyFixture, seededRandom, stressSurveyInputs, surveyReportInputsFromFixture, surveyStressCases,
+  syntheticSurveyFixture, thaiText,
 } from './surveyReportTestKit.mjs';
 
 /* `mode: 'draft'` = อินพุตที่ตรึงไม่ได้โดยตั้งใจ (พื้นที่ไม่มีภาพผัง) — แผนหน้ายังต้องจัดได้ (ตัวอย่างก่อนส่ง) */
@@ -796,4 +797,262 @@ test('🔴 property: สุ่ม 150 ใบ (0–30 จุด · หมาย�
     assertSound(customer, views.customer, `ใบที่ ${i} ลูกค้า`);
     assertSound(internal, views.internal, `ใบที่ ${i} ภายใน`);
   }
+});
+
+/* ══ งวด S3 §2.8 — ใบที่มีพื้นที่ประเมินจากแบบ ═══════════════════════════════════════════════
+   🔴 ทองคำของใบลงหน้างาน: แผนหน้าของแฝดสังเคราะห์ที่ดัมพ์จาก main `954861d8` **ก่อนแก้** (ห้ามแก้ตัวเลขให้เทสต์ผ่าน)
+   — หลังงวด S3 เท่ากันทุกคีย์ ยกเว้นหน้า 1 ได้ `survey: { method: [], names: [] }` กับ `notice: null` เพิ่ม */
+const MAIN_ONSITE_LAYOUT = {
+  customer: {"pages":[{"kind":"summary","table":true,"start":true,"tableTop":447,"rows":{"from":0,"to":2},"total":true,"mix":["SM 1 · ST 1"],"spotNote":false,"bottom":636,"limit":1050,"cont":null,"no":1},{"kind":"zone","zoneIndex":0,"zoneNo":1,"wide":{"from":0,"to":2},"plan":true,"planHeight":531,"note":true,"bottom":1014,"limit":1014,"first":true,"no":2,"cont":{"page":3,"text":"ต่อหน้า 3 · พื้นที่ 2 ห้องที่2"}},{"kind":"zone","zoneIndex":1,"zoneNo":2,"wide":{"from":0,"to":1},"plan":true,"planHeight":531,"note":true,"bottom":1014,"limit":1014,"first":false,"no":3,"cont":{"page":4,"text":"ต่อหน้า 4 · การรับรองผลประเมิน"}},{"kind":"signoff","bottom":1048,"limit":1050,"cont":null,"no":4}],"zonePage":{"1":2,"2":3},"pageCount":4,"overflow":[]},
+  internal: {"pages":[{"kind":"summary","table":true,"start":true,"tableTop":720,"rows":{"from":0,"to":2},"total":true,"mix":["SM 1 · ST 1"],"spotNote":true,"bottom":957,"limit":1050,"cont":null,"no":1},{"kind":"zone","zoneIndex":0,"zoneNo":1,"wide":{"from":0,"to":2},"plan":true,"planHeight":255,"spots":{"from":0,"to":1},"note":true,"bottom":1014,"limit":1014,"first":true,"no":2,"cont":{"page":3,"text":"ต่อหน้า 3 · พื้นที่ 2 ห้องที่2"}},{"kind":"zone","zoneIndex":1,"zoneNo":2,"wide":{"from":0,"to":1},"plan":true,"planHeight":255,"spots":{"from":0,"to":2},"note":true,"bottom":1014,"limit":1014,"first":false,"no":3,"cont":{"page":4,"text":"ต่อหน้า 4 · การรับรองผลประเมิน"}},{"kind":"signoff","bottom":1048,"limit":1050,"cont":null,"no":4},{"kind":"appendix","first":true,"blocks":[{"type":"decisions","continued":false,"rows":{"from":0,"to":2},"empty":false,"last":true,"mix":["SM 1 · ST 1"],"foot":["ขนาดที่ระบบเสนอ: ไม่เกิน 300 ลบ.ม. = SM · ไม่เกิน 2,400 = ST · เกิน 2,400 = XL · XS หัวหน้าเลือกเอง · จำนวนเสนอ 1 แพ็ค · หัวหน้าแก้ได้"]},{"type":"scope","continued":false,"rows":{"from":0,"to":1},"empty":false,"last":true},{"type":"history","continued":false,"rows":{"from":0,"to":1},"empty":false,"last":true}],"limit":1014,"bottom":701,"cont":{"page":6,"text":"ต่อหน้า 6 · ง. หมายเหตุภายใน · จ. การลงนามภายใน"},"no":5},{"kind":"appendix","first":false,"blocks":[{"type":"notes","continued":false,"rows":[{"index":0,"lines":{"from":0,"to":2},"continued":false},{"index":1,"lines":{"from":0,"to":1},"continued":false},{"index":2,"lines":{"from":0,"to":2},"continued":false},{"index":3,"lines":{"from":0,"to":1},"continued":false}],"last":true},{"type":"signs"}],"limit":1048,"bottom":1048,"cont":null,"no":6}],"zonePage":{"1":2,"2":3},"pageCount":6,"overflow":[]},
+};
+
+test('🔴 S3 ทองคำใบลงหน้างาน: แผนหน้าเท่ากับของ main ทุกคีย์ — หน้า 1 เพิ่มแค่ survey ว่างกับ notice null', () => {
+  const got = layoutsOf(twin());
+  for (const version of ['customer', 'internal']) {
+    const layout = structuredClone(got[version]);
+    assert.deepEqual(layout.pages[0].survey, { method: [], names: [] }, version);
+    assert.equal(layout.pages[0].notice, null, version);
+    delete layout.pages[0].survey;
+    delete layout.pages[0].notice;
+    for (const page of layout.pages.slice(1)) assert.equal('survey' in page || 'notice' in page, false, `${version} หน้า ${page.no}`);
+    assert.deepEqual(JSON.parse(JSON.stringify(layout)), MAIN_ONSITE_LAYOUT[version], version);
+  }
+});
+
+const S3_SWITCH = '2026-09-26T02:50:00.000+00:00';
+function s3Inputs({ which = [1], confirm = 'needed', switcher = 'Head Approver' } = {}) {
+  const inputs = twin();
+  for (const i of which) Object.assign(inputs.zones[i], { method: 'drawing', methodChangedAt: S3_SWITCH, methodChangedByName: switcher });
+  if (which.length === inputs.zones.length) inputs.visit = null;
+  inputs.request = { ...inputs.request, surveyConfirm: confirm };
+  return inputs;
+}
+
+test('S3 หน้า 1: บรรทัดของกล่องการประเมินและกล่องหมายเหตุพกไปกับหน้า 1 · กล่องหมายเหตุดันตารางลงทั้งสองฉบับ', () => {
+  const s = SURVEY_REPORT_PX.summary;
+  const onsite = layoutsOf(twin());
+  for (const [confirm, lines] of [['needed', 2], ['not_needed', 1]]) {
+    const mixed = layoutsOf(s3Inputs({ confirm }));
+    for (const version of ['customer', 'internal']) {
+      const page = mixed[version].pages[0];
+      assert.deepEqual(page.notice, mixed.views[version].notice.lines, version);
+      assert.equal(page.notice.length, lines);
+      // สัดส่วนตกสองบรรทัด ตัวคั่นค้างท้ายบรรทัดบน (สเปก V17)
+      assert.deepEqual(page.survey.method, ['ลงหน้างาน 1 พื้นที่ ·', 'ประเมินจากแบบ 1 พื้นที่'], version);
+      assert.deepEqual(page.survey.names, ['Head Approver']);
+      // ใบผสม: วิธี 2 + วันที่ + เวลา + ผู้ประเมิน + บรรทัดนำ + ชื่อ 1 = 7 บรรทัด ⇒ กล่องโต 7 × 20 − 125 = 15 · บวกกล่องหมายเหตุ
+      // (ช่องไฟเหนือกล่องหมายเหตุ = ช่องไฟของ `.content` ของฉบับนั้น — ลูกค้า 16 · ภายใน 12 · วัดใน Chrome 15/10)
+      const notice = s.noticeGap[version] + s.noticePad + lines * s.noticeLine;
+      assert.equal(page.tableTop, onsite[version].pages[0].tableTop + notice + (7 * s.partyLine - s.surveyRoom), `${version} · ${confirm}`);
+    }
+  }
+  const desk = layoutsOf(s3Inputs({ which: [0, 1] }));
+  assert.deepEqual(desk.customer.pages[0].survey, { method: ['ประเมินจากแบบ'], names: ['Head Approver'] });
+  for (const page of desk.customer.pages.slice(1)) assert.equal('survey' in page, false);
+});
+
+test('S3 กล่องการประเมิน: หกบรรทัดไม่โต · บรรทัดที่เจ็ดดันตารางลง (เทอมใหม่แทนการโตของกล่องลูกค้าเมื่อมากกว่า)', () => {
+  const s = SURVEY_REPORT_PX.summary;
+  const { views } = layoutsOf(s3Inputs({ which: [0, 1] }));
+  const base = layoutsOf(twin()).customer.pages[0].tableTop;
+  const notice = s.noticeGap.customer + s.noticePad + 2 * s.noticeLine;
+  const withNames = (names) => {
+    const view = structuredClone(views.customer);
+    view.survey.assessorName = names.join(' · ');
+    return paginateSurveyReport(view).pages[0];
+  };
+  // จากแบบล้วน: วิธี 1 + วันที่ + เวลา + ชื่อ — ชื่อสั้นสามคนพับได้ไม่เกินสามบรรทัด
+  const three = withNames(['หัวหน้า ก', 'หัวหน้า ข', 'หัวหน้า ค']);
+  assert.ok(three.survey.names.length <= 3);
+  assert.equal(three.tableTop, base + notice, 'ไม่เกินหกบรรทัด = ไม่โต');
+  const many = withNames(['หัวหน้าฝ่ายบริการ ก', 'หัวหน้าฝ่ายบริการ ข', 'หัวหน้าฝ่ายบริการ ค', 'หัวหน้าฝ่ายบริการ ง', 'หัวหน้าฝ่ายบริการ จ']);
+  const count = many.survey.method.length + 2 + many.survey.names.length;
+  assert.ok(count >= 7, String(count));
+  assert.equal(many.tableTop, base + notice + (count * s.partyLine - s.surveyRoom));
+  for (const line of many.survey.names) assert.ok(!line.startsWith('·'), 'ตัวคั่นค้างท้ายบรรทัด');
+});
+
+test('S3 แถวตารางจากแบบ: บวกบรรทัดย่อย 18 ใต้ชื่อ · ชื่อวัดโดยไม่มีหางชั้น', () => {
+  const s = SURVEY_REPORT_PX.summary;
+  const onsite = layoutsOf(twin());
+  const mixed = layoutsOf(s3Inputs());
+  // แถว 2 ("ห้องที่2 · ชั้น GF" บรรทัดเดียว) → "ห้องที่2" + บรรทัดย่อย ⇒ สูงขึ้น 18 พอดี
+  const gap = (l) => l.customer.pages[0].bottom - l.customer.pages[0].tableTop;
+  assert.equal(gap(mixed), gap(onsite) + s.subLine);
+});
+
+test('S3 หน้าพื้นที่จากแบบ: ไม่มีส่วนภาพกว้าง (wide null ทุกหน้า · ไม่มีหน้าต่อจากแถวรูป) · หัวสูงขึ้นเท่าป้าย', () => {
+  const z = SURVEY_REPORT_PX.zone;
+  const onsite = layoutsOf(twin());
+  const mixed = layoutsOf(s3Inputs());
+  for (const version of ['customer', 'internal']) {
+    const pages = mixed[version].pages.filter((p) => p.zoneIndex === 1);
+    assert.ok(pages.length >= 1, version);
+    for (const page of pages) assert.equal(page.wide, null, version);
+    const before = onsite[version].pages.find((p) => p.kind === 'zone' && p.zoneIndex === 1);
+    const after = pages[0];
+    /* ผัง = ช่อง − หัว (− ป้าย) − ส่วนผัง − (จุด · หมายเหตุ) ⇒ เทียบกับใบลงหน้างาน: ได้ที่ของส่วนภาพกว้างคืน เสียที่ให้ป้าย */
+    const wideBlock = z.gap + z.sectionHead + z.photoBox + z.wideCaption;
+    if (version === 'customer') assert.equal(after.planHeight, before.planHeight + wideBlock - z.tagLine);
+    // พื้นที่ลงหน้างานบนใบผสมยังมีภาพกว้าง
+    assert.notEqual(mixed[version].pages.find((p) => p.zoneIndex === 0).wide, null);
+  }
+});
+
+test('S3 รายการจุดโดยประมาณ (ฉบับภายใน): แถวละจุด · ไม่มีจุดที่เลือก = แถวเดียว {0,0} · 8 จุดยาวล้นไปหน้า (ต่อ) ได้โดยไม่ติดเพดานสามแถว', () => {
+  const none = s3Inputs();
+  for (const spot of none.zones[1].spots || []) spot.selected = false;
+  const empty = layoutsOf(none);
+  const page = empty.internal.pages.find((p) => p.kind === 'zone' && p.zoneIndex === 1);
+  assert.deepEqual(page.spots, { from: 0, to: 0 });
+  assert.equal('spots' in empty.customer.pages.find((p) => p.kind === 'zone' && p.zoneIndex === 1), false, 'ฉบับลูกค้าไม่มีคีย์ spots');
+
+  const many = s3Inputs();
+  many.zones[1].spots = Array.from({ length: 8 }, (_, i) => ({
+    id: `S${i}`, label: `จุด ${i + 1} ${thaiText(40)}`, note: thaiText(160), selected: true,
+  }));
+  many.zones[1].note = thaiText(900);
+  const got = layoutsOf(many, 'draft');
+  const zonePages = got.internal.pages.filter((p) => p.zoneIndex === 1);
+  const covered = zonePages.filter((p) => p.spots).map((p) => [p.spots.from, p.spots.to]);
+  assert.equal(covered[0][0], 0);
+  assert.equal(covered[covered.length - 1][1], 8, 'ทุกจุดถูกวาง');
+  for (let i = 1; i < covered.length; i += 1) assert.equal(covered[i][0], covered[i - 1][1], 'ต่อกันไม่ซ้ำไม่ขาด');
+  assert.deepEqual(got.internal.overflow, []);
+  assert.deepEqual(got.customer.overflow, []);
+});
+
+/* ที่นั่งผู้ประเมินจากแบบ — โมเดลที่วัดใน Chrome 15/10 (เทสต์วัดจริงของ surveyReportDocument.test.mjs):
+   ชื่อที่สองขึ้นไป +20.75 (บรรทัด 18.75 + ช่องไฟ 2) · ชื่อที่ตกบรรทัด +18.75 · หักที่ว่างของที่นั่ง 188: ช่องรูป 35.5 · บรรทัดคำ 62.5 */
+const LONG_HEADS = ['นายสมมติชัย ศรีสุวรรณวัฒนากุลพิพัฒน์', 'นางสาวสมมติพร เจริญรุ่งเรืองกิจไพศาล', 'นายทดสอบ ยาวมากมายหลายพยางค์ดีเยี่ยม'];
+
+test('S3 การรับรองผล: ที่นั่งผู้ประเมินจากแบบ — ความสูงตามจำนวนชื่อ ชื่อที่ตกบรรทัด และช่องรูป/บรรทัดคำ · ใบลงหน้างาน/ใบผสมไม่มีคีย์ height', () => {
+  const p = SURVEY_REPORT_PX.signoff;
+  const signoff = (layout) => layout.pages.find((page) => page.kind === 'signoff');
+  assert.equal('height' in signoff(layoutsOf(twin()).customer), false);
+  assert.equal('height' in signoff(layoutsOf(s3Inputs()).customer), false, 'ใบผสม: ที่นั่งที่ 1 = คนบนนัด');
+  const desk = layoutsOf(s3Inputs({ which: [0, 1] }));
+  assert.equal(signoff(desk.customer).height, p.height, 'ชื่อเดียว');
+  const heightWith = (names, img) => {
+    const view = structuredClone(desk.views.customer);
+    view.signoff.assessor.names = names;
+    if (img) view.signoff.assessor.img = { attId: null, sha: null, w: null, h: null, sign: 'assessor' };
+    else delete view.signoff.assessor.img;
+    const page = signoff(paginateSurveyReport(view));
+    assert.equal(page.bottom, signoff(desk.customer).bottom, 'ชิดล่างเท่าเดิม');
+    return page.height;
+  };
+  const short3 = ['ก', 'ข', 'ค'];
+  const short5 = ['ก', 'ข', 'ค', 'ง', 'จ'];
+  // บรรทัดคำ (ภาพนิ่งไม่มีลายเซ็น): สามชื่อยังอยู่ในที่ว่าง (วัดได้ 217) · ห้าชื่อ 237.5
+  assert.equal(heightWith(short3, false), p.height);
+  assert.equal(heightWith(short5, false), p.height + Math.ceil(4 * (p.nameLine + p.nameGap) - p.spare.words));
+  // ช่องรูป (รูปลายเซ็น/กรอบประ): สองชื่อ 217 · สามชื่อ 223 · ห้าชื่อ 264.5 (ปัดขึ้น)
+  assert.equal(heightWith(['ก', 'ข'], true), p.height);
+  assert.equal(heightWith(short3, true), 223);
+  assert.equal(heightWith(short5, true), 265);
+  // ชื่อยาวสามคน คนละสองบรรทัด (วัดได้ 279.25)
+  assert.equal(heightWith(LONG_HEADS, true), 280);
+});
+
+test('S3 ภาคผนวก จ: ใบจากแบบล้วนที่ชื่อผู้ประเมินจากแบบต่อกันหลายบรรทัด กันที่ให้บล็อก จ — ใบลงหน้างานไม่มีคีย์ height', () => {
+  const a = SURVEY_REPORT_PX.appendix;
+  const signsOf = (layout) => layout.pages.flatMap((page) => page.blocks || []).find((block) => block.type === 'signs');
+  assert.deepEqual(signsOf(layoutsOf(twin()).internal), { type: 'signs' });
+  assert.deepEqual(signsOf(layoutsOf(s3Inputs()).internal), { type: 'signs' }, 'ใบผสม: ที่นั่งแรกของ จ = คนบนนัด');
+  const desk = layoutsOf(s3Inputs({ which: [0, 1] }));
+  assert.deepEqual(signsOf(desk.internal), { type: 'signs' }, 'ชื่อเดียวบรรทัดเดียว');
+  const view = structuredClone(desk.views.internal);
+  view.signoff.assessor.names = LONG_HEADS;
+  view.appendix.signs[0].name = LONG_HEADS.join(' · ');
+  const layout = paginateSurveyReport(view);
+  const block = signsOf(layout);
+  assert.ok(block.height >= a.signs + 2 * a.signsNameLine, String(block.height));
+  assert.deepEqual(layout.overflow, []);
+});
+
+test('S3 บรรทัดอธิบายจุดใต้ตาราง (ฉบับภายใน): ใบลงหน้างาน 28 ตายตัว · ใบที่มีพื้นที่จากแบบนับบรรทัดของข้อความ', () => {
+  const s = SURVEY_REPORT_PX.summary;
+  const bottomWith = (view, text) => {
+    const copy = structuredClone(view);
+    if (text) copy.table.spotNote.text = text;
+    return paginateSurveyReport(copy).pages[0].bottom;
+  };
+  const long = thaiText(130);   // สองบรรทัดในคอลัมน์ 702 — หน้า 1 ของใบจากแบบล้วนยังพอ (ตารางไม่แตกไปหน้าต่อ)
+  const onsite = layoutsOf(twin()).views.internal;
+  assert.equal(bottomWith(onsite, long), bottomWith(onsite), 'ใบลงหน้างาน: 28 ตายตัวแบบวันนี้');
+  const desk = layoutsOf(s3Inputs({ which: [0, 1] })).views.internal;
+  const grown = bottomWith(desk, long) - bottomWith(desk);
+  assert.equal(grown, s.spotNoteLine, String(grown));
+  assert.equal(paginateSurveyReport({ ...structuredClone(desk), table: { ...desk.table, spotNote: { ...desk.table.spotNote, text: long } } })
+    .pages[0].kind, 'summary');
+});
+
+test('S3 กล่องการประเมิน: ชื่อเดี่ยวที่ยาวเกินช่อง (ตัดที่ตัวคั่นไม่ได้) นับบรรทัดที่เบราว์เซอร์ตัดจริง — วัดใน Chrome ตารางตรงแผน ±1', () => {
+  const s = SURVEY_REPORT_PX.summary;
+  const { views } = layoutsOf(s3Inputs({ which: [0, 1] }));
+  const base = layoutsOf(twin()).customer.pages[0].tableTop;
+  const notice = s.noticeGap.customer + s.noticePad + 2 * s.noticeLine;
+  const view = structuredClone(views.customer);
+  view.survey.assessorName = LONG_HEADS.join(' · ');
+  const page = paginateSurveyReport(view).pages[0];
+  // แผนพิมพ์ชื่อละบรรทัด (ตัวคั่นค้างท้าย) แต่แต่ละชื่อยาว ~220px ในช่อง 171 ⇒ บนกระดาษคนละสองบรรทัด
+  assert.equal(page.survey.names.length, 3);
+  const printed = 1 + 2 + 6;
+  assert.equal(page.tableTop, base + notice + (printed * s.partyLine - s.surveyRoom), 'วัดได้ 571.36 (แผน 572) ในเทสต์วัดจริง');
+  // ใบผสม: หัวหน้าบนนัดที่ชื่อยาวก็นับบรรทัดจริง
+  const mixed = structuredClone(layoutsOf(s3Inputs()).views.customer);
+  mixed.survey.assessorName = LONG_HEADS[0];
+  const mixedPage = paginateSurveyReport(mixed).pages[0];
+  assert.equal(mixedPage.tableTop, base + notice + ((2 + 2 + 2 + 1 + 1) * s.partyLine - s.surveyRoom));
+});
+
+test('S3 แผงภายในของใบจากแบบล้วน: "ผู้ประเมินจากแบบ {ชื่อ}" นับด้วยตัวนับของชื่อ (ลงบรรทัดเดียวใน Chrome) · ใบลงหน้างาน/ใบผสมใช้ตัวประเมินเดิม', () => {
+  const s = SURVEY_REPORT_PX.summary;
+  // ชื่องานสั้น — ชื่องานยาวของแฝดกินสองบรรทัดในแถวเดียวกันอยู่แล้ว (แถวสูงตามคอลัมน์ที่สูงกว่า)
+  const top = (inputs) => layoutsOf({ ...inputs, request: { ...inputs.request, title: 'งานสั้น' } }).internal.pages[0].tableTop;
+  // ชื่อที่ตัวประเมินกลางนับเป็นสองบรรทัด (195.8 ในช่อง 190) แต่ Chrome ลงบรรทัดเดียว — แผงไม่สูงขึ้น
+  const near = s3Inputs({ which: [0, 1], switcher: 'Other Desk Head' });
+  const short = s3Inputs({ which: [0, 1], switcher: 'Head Approver' });
+  assert.equal(top(near), top(short));
+  // ชื่อที่ยาวเกินจริง ("Arnon Aunsapwilai" — วัดได้สองบรรทัด) ยังนับสองบรรทัด
+  const long = s3Inputs({ which: [0, 1], switcher: 'Arnon Aunsapwilai' });
+  assert.equal(top(long), top(short) + s.panelLine);
+});
+
+test('S3 ไม่มีหน้าล้น: ทุกชุดสุดขอบที่มีพื้นที่จากแบบ + fixture ผสม / จากแบบล้วน — สองฉบับ · หน้าพื้นที่จากแบบไม่มีแถวภาพกว้างทุกหน้า', () => {
+  const sets = [
+    ['fixture ผสม', surveyReportInputsFromFixture(mixedSurveyFixture()), 'freeze'],
+    ['fixture จากแบบ', surveyReportInputsFromFixture(drawingSurveyFixture()), 'freeze'],
+    ...surveyStressCases().map((c) => [c.name, stressSurveyInputs(c.spec), c.mode]),
+  ];
+  let drawing = 0;
+  for (const [label, inputs, mode] of sets) {
+    const got = layoutsOf(inputs, mode);
+    if (!got.views.customer.zones.some((zone) => zone.method === 'drawing')) continue;
+    drawing += 1;
+    for (const version of ['customer', 'internal']) {
+      assert.deepEqual(got[version].overflow, [], `${label}/${version}`);
+      got.views[version].zones.forEach((zone, i) => {
+        if (zone.method !== 'drawing') return;
+        for (const page of got[version].pages.filter((p) => p.zoneIndex === i)) assert.equal(page.wide, null, `${label}/${version} พื้นที่ ${zone.no}`);
+      });
+    }
+  }
+  assert.ok(drawing >= 2, `ต้องมีชุดที่มีพื้นที่จากแบบให้ตรวจ (${drawing})`);
+});
+
+test('S3 หัวพื้นที่ที่มีป้าย: หน้าของพื้นที่จากแบบพก `headHeight` (หัวลงหน้างาน + tagLine · ชื่อหลายบรรทัดด้วย) · หน้าลงหน้างานไม่มีคีย์นี้', () => {
+  const z = SURVEY_REPORT_PX.zone;
+  const got = layoutsOf(stressSurveyInputs(surveyStressCases().find((c) => c.name === 'drawing-longname').spec), 'freeze');
+  for (const version of ['customer', 'internal']) {
+    const heads = (i) => got[version].pages.filter((p) => p.zoneIndex === i).map((p) => p.headHeight);
+    // ชื่อ ~100 ตัว = สามบรรทัดของหัว · ~70 ตัว = สองบรรทัด — วัดใน Chrome (harness `--stress --case drawing-longname`) 97 / 73 ตรงแผน
+    assert.deepEqual(heads(0), [z.head + 2 * z.headLine + z.tagLine], `${version} พื้นที่ 1`);
+    assert.deepEqual(heads(1), [z.head + z.headLine + z.tagLine], `${version} พื้นที่ 2`);
+    for (const page of got[version].pages.filter((p) => p.zoneIndex === 2)) assert.equal('headHeight' in page, false, `${version} พื้นที่ลงหน้างาน`);
+  }
+  const onsite = layoutsOf(surveyReportInputsFromFixture(syntheticSurveyFixture()), 'freeze');
+  for (const version of ['customer', 'internal']) assert.ok(onsite[version].pages.every((p) => !('headHeight' in p)), version);
 });

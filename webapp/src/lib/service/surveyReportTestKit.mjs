@@ -11,9 +11,12 @@
 //      (ทั้ง view ในงวดนี้ และ HTML ในงวดถัดไป ใช้ชุดเดียวกัน)
 //   ⑥ `signedSurveyInputs` · `surveySignCases`  อินพุตชุดใดก็ได้ + กติกาลายเซ็นจริง (PR-SIG) — ผู้ลงนาม · ฉบับของลายเซ็น · รูปที่ "เตรียมแล้ว"
 //      (sha ปลอมที่นิ่ง) · กรณีของลายเซ็นที่ harness วัดจริงใน Chrome (`--stress`)
+//   ⑦ `drawingSurveyFixture` · `mixedSurveyFixture`  ใบประเมินจากแบบทั้งใบ / ใบผสม (งวด S3 · BRIEF §B Case A / B) — รูปร่างเดียวกับ ②
+//      ผ่าน `surveyReportInputsFromFixture` ตัวเดียวกัน · harness เรียกด้วย `--synthetic drawing` / `--synthetic mixed`
 import { createHash } from 'node:crypto';
 import { suggestedPackageSize } from './packageSizes.js';
 import { surveyZoneSize } from './survey.js';
+import { surveyMethodMix } from './surveyMethod.js';
 
 /** ชุดตั้งต้นของทะเบียนขนาดแพ็คเกจ (0398) — XS ห้องน้ำ (เลือกเอง) · SM ≤ 300 · ST ≤ 2,400 · XL เกิน 2,400 */
 export const PACKAGE_SIZE_SEED = Object.freeze([
@@ -49,6 +52,13 @@ const KINDS = [['wide', 'survey_wide'], ['plan', 'survey_plan'], ['spot', 'surve
 /** sha ปลอมที่นิ่ง (64 hex) จาก id ไฟล์ — ใช้เมื่อผู้เรียกไม่ได้ส่งรูปจริงมา */
 export const fakeSha = (seed) => createHash('sha256').update(String(seed)).digest('hex');
 
+/* คีย์ที่ fixture มีจริงเท่านั้น (ค่า `undefined` = fixture ไม่มีคอลัมน์นั้น) — คอลัมน์ของงวดประเมินจากแบบ (mig 0408) ติดไปกับอินพุต
+   เฉพาะเมื่อ fixture มี ⇒ fixture ที่ดึงก่อนมีคอลัมน์ (ของจริง RQ-AS-26090186 · แฝดสังเคราะห์) ได้อินพุตเท่าเดิมทุกคีย์ */
+const present = (entries) => Object.fromEntries(entries.filter(([, value]) => value !== undefined));
+
+/* นัดที่ทำไม่ได้ / ร่าง ไม่ใช่ "นัดของใบที่เอกสารไม่รับรอง" (กติกาเดียวกับ `otherVisitsOf` ของตัวโหลด) · นัดที่เข้าพื้นที่แล้ว = วันเข้าจริง */
+const TOOK_PLACE = ['done', 'partial'];
+
 /**
  * @param fixture รูปร่างของ `mockups/survey-report-doc/real/fixture.json`
  * @param opts.sizes      ทะเบียนขนาด (ไม่ส่ง = ชุดตั้งต้น 0398)
@@ -57,11 +67,21 @@ export const fakeSha = (seed) => createHash('sha256').update(String(seed)).diges
  *                        (ภาพนิ่งจะติดด่าน "ยังไม่ได้ผูกจุด") · หรือ `{ [attachmentId]: spotId }`
  * @param opts.photos     `{ 'z1-wide-1': { sha, w, h, bytes } }` รูปจริงที่ harness อ่านจากดิสก์ — ไม่ส่ง = sha ปลอมที่นิ่ง
  * @param opts.withImages `false` = ไม่ส่งรูปที่เตรียมแล้ว (จำลองรอบตรวจก่อนเตรียมรูป)
+ * @param opts.drawingMethodEnabled  ค่าสวิตช์ประเมินจากแบบที่อินพุตพก (`inputs.drawingMethodEnabled` ของตัวโหลด) — ไม่ส่ง =
+ *                        `true` สำหรับ fixture ของงวด S3 (แถวจากแบบเกิดได้เฉพาะตอนสวิตช์เปิด) · fixture เก่าไม่มีคีย์นี้
+ *
+ * ⭐ **คอลัมน์ของงวด S3** (ติดไปเฉพาะเมื่อ fixture มี — `present`): `request.surveyConfirm` · `zones[].method` · `methodReason` ·
+ *   `methodChangedByName` · `methodChangedAt` (`{ iso }` หรือ ISO) · `surveyedById` · และเมื่อ fixture มีคอลัมน์ใดของงวดนี้
+ *   อินพุตได้ `otherVisits` กับ `drawingMethodEnabled` แบบที่ตัวโหลดคืน
+ * ⭐ **ใบประเมินจากแบบทั้งใบ** (ทุกพื้นที่ที่ไม่ถูกตัดเป็นจากแบบ) เดินแบบตัวโหลด: ไม่มีนัดให้รับรอง (`visit: null` · ไม่มีผู้ช่วย ·
+ *   ไม่มีตำแหน่ง) · นัดที่ไม่ใช่ทำไม่ได้/ร่าง ไปอยู่ `otherVisits` (`{ code, status, date, planned }` ตามลำดับใน fixture)
+ *   ⚠️ โลกในหน่วยความจำของ harness (`surveyPipelineWorld`) สร้างแถวนัดจาก `visit` กับ `priorUnable` เท่านั้น —
+ *      fixture จากแบบล้วนที่มีนัดจะได้ `otherVisits` ในโหมดเรนเดอร์ แต่ `[]` ในไปป์ไลน์ (fixture ของงวดนี้ไม่มีนัด จึงไม่ต่าง)
  */
 export function surveyReportInputsFromFixture(fixture, {
   sizes = PACKAGE_SIZE_SEED, spotLinks = 'order', photos = null, withImages = true,
   company = TEST_COMPANY, form = TEST_FORM, assigneeRoleLabel = 'เจ้าหน้าที่บริการอาวุโส (Senior)',
-  takenAt = null,
+  takenAt = null, drawingMethodEnabled,
 } = {}) {
   const fr = fixture.request || {};
   const request = {
@@ -75,10 +95,24 @@ export function surveyReportInputsFromFixture(fixture, {
     answeredAt: isoAt(fr.answeredAt), answeredById: fr.answeredById || null, answeredByName: fr.answeredByName || null,
     closedAt: isoAt(fr.closedAt), closedByName: fr.closedByName || null,
     cancelledAt: isoAt(fr.cancelledAt),
+    ...present([['surveyConfirm', fr.surveyConfirm]]),
   };
 
+  const fixtureZones = fixture.zones || [];
+  // fixture ของงวด S3 = มีคอลัมน์ใดคอลัมน์หนึ่งของวิธีประเมิน หรือคำตอบ "ต้องยืนยันหน้างานไหม"
+  const s3 = fr.surveyConfirm !== undefined || fixtureZones.some((z) => z.method !== undefined);
+  // ประเมินจากแบบทั้งใบ — ตัวตัดสินเดียวกับตัวโหลด (`surveyMethodMix(...).mode === 'drawing'`)
+  const desk = surveyMethodMix(fixtureZones.map((z) => ({ method: z.method, status: z.status || 'ok' }))).mode === 'drawing';
+
   const visits = Array.isArray(fixture.visits) ? fixture.visits : [];
-  const done = [...visits].reverse().find((v) => v.status === 'done') || visits[visits.length - 1] || null;
+  const done = desk ? null : ([...visits].reverse().find((v) => v.status === 'done') || visits[visits.length - 1] || null);
+  const otherVisits = !desk ? [] : visits.filter((v) => v.status !== 'unable' && v.status !== 'draft').map((v) => {
+    const took = TOOK_PLACE.includes(v.status);
+    return {
+      code: v.code || null, status: v.status || null,
+      date: isoDay(took ? (v.actualDate || v.scheduledDate) : v.scheduledDate) || null, planned: !took,
+    };
+  });
   const visit = done && {
     code: done.code, status: done.status,
     scheduledDate: isoDay(done.scheduledDate), startTime: done.startTime || null, endTime: done.endTime || null,
@@ -109,6 +143,11 @@ export function surveyReportInputsFromFixture(fixture, {
       packageSizeManual: z.packageSizeManual === true,
       note: z.note ?? null, surveyedByName: z.surveyedByName || null, surveyedAt: isoAt(z.surveyedAt),
       sortOrder: index,
+      ...present([
+        ['method', z.method], ['methodReason', z.methodReason], ['methodChangedByName', z.methodChangedByName],
+        ['methodChangedAt', z.methodChangedAt === undefined ? undefined : isoAt(z.methodChangedAt)],
+        ['surveyedById', z.surveyedById],
+      ]),
     };
     /* ของจริงถูกเคาะก่อนมีขนาดแพ็คเกจ — เติมค่าที่ระบบจะเสนอ (มติ 01/10 ข้อ 7: 278.08 → SM · 671.67 → ST)
        เหมือนที่หัวหน้าจะกดรับข้อเสนอบนแท็บสรุป */
@@ -163,9 +202,11 @@ export function surveyReportInputsFromFixture(fixture, {
     } : null,
     visit,
     visitClosedBySend: false,
-    assigneeRoleLabel,
+    // ไม่มีนัด = ไม่มีบัญชีผู้ประเมินให้อ่านตำแหน่ง (ตัวโหลดคืน null เหมือนกัน)
+    assigneeRoleLabel: visit ? assigneeRoleLabel : null,
     helpers,
     priorUnable,
+    ...(s3 ? { otherVisits } : {}),
     zones,
     zoneRegistry,
     filesByZone,
@@ -174,6 +215,7 @@ export function surveyReportInputsFromFixture(fixture, {
     history,
     company,
     form,
+    ...(s3 || typeof drawingMethodEnabled === 'boolean' ? { drawingMethodEnabled: drawingMethodEnabled ?? true } : {}),
   };
 }
 
@@ -270,6 +312,177 @@ export function syntheticSurveyFixture() {
           plan: [photo('att-z2-p1', '9049.jpg', 66848, '2026-09-26T02:33:39.948177+00:00')],
         },
       },
+    ],
+  };
+}
+
+/* ── ⑦ ใบประเมินจากแบบ (งวด S3) — ตัวเลขของ BRIEF §B (mockups/survey-desk-assessment/BRIEF.md · ห้ามแก้ตัวเลข) ─────────────
+   คนบนใบเป็นชื่อเดียวกับกระดานของงวดนี้ (ทีมขาย · หัวหน้าฝ่ายบริการ · ช่าง) · ผู้ติดต่อ เบอร์โทร เลขดีล เป็นของสมมติ
+   ⭐ id ของผู้ใช้ตั้งไว้ครบ (`answeredById` · `surveyedById` · `assigneeId`) — ที่นั่งลงนามของใบจากแบบล้วนตัดสินด้วยบัญชี (S3 §2.6) */
+
+/** หัวหน้าฝ่ายบริการของกระดาน — ผู้ประเมินจากแบบและผู้ส่งผลของทั้งสองใบ */
+export const DRAWING_HEAD = Object.freeze({ id: 'U-arnon', name: 'Arnon Aunsapwilai' });
+/** ช่างที่ลงหน้างานของใบผสม (นัด SV-26100011) */
+export const DRAWING_CREW = Object.freeze({ id: 'U-phuwadol', name: 'Phuwadol Aoonnankad' });
+const DRAWING_SALES = Object.freeze({ id: 'U-lalida', name: 'Lalida Chaiwanna' });
+
+/**
+ * **Case A — ประเมินจากแบบทั้งใบ** `RQ-AS-26100345` (ฝ่ายขายยื่นเป็น "ประเมินจากแบบ")
+ *   สามพื้นที่จากแบบ ไม่มีนัด · หัวหน้า (Arnon) กรอกผลจากแบบเองทุกพื้นที่แล้วส่งผล ศ. 09/10/2026 14:20 · เลือก "ต้องยืนยันหน้างาน"
+ *   ภาพแบบพื้นที่ละรูป (JPG — ใช้รูปของฝ่ายขาย) · ไม่มีภาพกว้าง ไม่มีรูปจุด · พื้นที่ 2 มีจุดโดยประมาณหนึ่งจุด (ไม่มีรูป)
+ *   รวม 3 พื้นที่ · 174 ตร.ม. · 642 ลบ.ม. · XS 1 · SM 1 · ST 1 (ลำดับของทะเบียนขนาด) · 3 แพ็ค/เดือน
+ */
+export function drawingSurveyFixture() {
+  const saved = (time) => at(`2026-10-09T${time}:00.000+00:00`); // เวลา UTC — ไทย = +7 ชม.
+  const zone = (no, code, zoneName, floor, [widthM, lengthM, heightM], size, extra = {}) => ({
+    no, surveyZoneId: `SVZ-drw-${no}`, zoneId: `SZN-drw-${no}`, zoneCode: code, zoneName, floor, floorOnSurveyRow: floor, building: null,
+    status: 'ok', cutReason: null,
+    parts: [{ label: null, widthM, lengthM, heightM }],
+    spots: [],
+    packageQty: 1, packageNote: null, packageSize: size.code, packageSizeSuggested: size.suggested, packageSizeManual: size.code !== size.suggested,
+    note: null,
+    method: 'drawing', methodReason: null, methodChangedByName: null, methodChangedAt: null, // ยื่นมาเป็นจากแบบ — ไม่เคยสลับ
+    surveyedByName: DRAWING_HEAD.name, surveyedById: DRAWING_HEAD.id,
+    ...extra,
+  });
+  return {
+    request: {
+      id: 'DR-drawing-0345', docNo: 'RQ-AS-26100345', kind: 'site_survey', status: 'answered',
+      title: 'ประเมินพื้นที่ตามแปลน ร้านใหม่ สาขาทองหล่อ',
+      body: 'ลูกค้าจะเปิดร้านใหม่ปลายเดือน ต.ค. ตอนนี้กำลังตกแต่ง ยังเข้าพื้นที่ไม่ได้ ขอประเมินจากแปลนเพื่อออกใบเสนอราคา',
+      team: 'SV', requestedById: DRAWING_SALES.id, requestedByName: DRAWING_SALES.name,
+      submittedAt: at('2026-10-07T03:10:00.000+00:00'),
+      assignedByName: null,
+      // ใบจากแบบไม่มีวันเข้าพื้นที่ — ฟอร์มมีวันเดียวคือวันที่ต้องการผล (หัวหน้ารับปาก จ. 12/10 เมื่อ พฤ. 8 ต.ค.)
+      requestedDueDate: null, requestedDueTime: null, committedDueDate: null, committedDueTime: null,
+      requestedResultDate: '12/10/2026', committedResultDate: '12/10/2026',
+      answeredById: DRAWING_HEAD.id, answeredByName: DRAWING_HEAD.name, answeredAt: at('2026-10-09T07:20:00.000+00:00'),
+      closedByName: null, closedAt: null, cancelledAt: null,
+      surveyConfirm: 'needed',
+    },
+    thread: [
+      { kind: 'submit', authorName: DRAWING_SALES.name, at: at('2026-10-07T03:10:01.000+00:00'), body: 'ส่งเคสถึง TS — 3 พื้นที่ · ประเมินจากแบบ', meta: {} },
+      { kind: 'answer', authorName: DRAWING_HEAD.name, at: at('2026-10-09T07:20:00.500+00:00'), body: 'TS ตอบเรื่องนี้แล้ว', meta: {} },
+    ],
+    customer: { arCode: 'AR-1036', name: 'บริษัท เอสล่า จำกัด' },
+    deal: { code: 'DL-261000345' },
+    site: {
+      code: 'ST-1036-02-BKK-1188', name: 'สาขาทองหล่อ',
+      address: '88 ซอยสุขุมวิท 55 แขวงคลองตันเหนือ เขตวัฒนา กรุงเทพมหานคร 10110',
+      contactName: 'คุณสมมติ', contactPhone: '0800000000',
+      accessFrom: '10:00', accessTo: '20:00', accessDays: [1, 2, 3, 4, 5, 6], accessNote: null,
+      siteNote: 'โน้ตภายในของไซต์ — ห้ามพิมพ์',
+    },
+    visits: [],
+    zones: [
+      zone(1, 'ZN-1188-10301', 'โถงต้อนรับ', '1', [8, 6, 3], { code: 'SM', suggested: 'SM' }, {
+        surveyedAt: saved('03:40'),
+        photos: { plan: [photo('att-drw-z1-p1', 'แปลนชั้น 1.jpg', 1800000, '2026-10-09T03:35:00.000+00:00')] },
+      }),
+      zone(2, 'ZN-1188-10302', 'โซนขายหน้าร้าน', '1', [12, 10, 4], { code: 'ST', suggested: 'ST' }, {
+        spots: [{ id: 'spot-drw-2a', label: 'ข้างเคาน์เตอร์แคชเชียร์', note: null, selected: true }],
+        surveyedAt: saved('04:25'),
+        photos: { plan: [photo('att-drw-z2-p1', 'แปลนชั้น 1.jpg', 1800000, '2026-10-09T04:15:00.000+00:00')] },
+      }),
+      // ห้องน้ำ = XS ที่หัวหน้าเลือกเอง (ระบบเสนอ SM จากปริมาตร 18 ลบ.ม.)
+      zone(3, 'ZN-1188-10303', 'ห้องน้ำลูกค้า', '2', [3, 2, 3], { code: 'XS', suggested: 'SM' }, {
+        surveyedAt: saved('05:10'),
+        photos: { plan: [photo('att-drw-z3-p1', 'แปลนชั้น 2.jpg', 1200000, '2026-10-09T05:02:00.000+00:00')] },
+      }),
+    ],
+  };
+}
+
+/**
+ * **Case B — ใบผสม** `RQ-AS-26100352` (ฝ่ายขายยื่นเป็นลงหน้างาน · ห้องหนึ่งยังก่อสร้าง)
+ *   พื้นที่ 1–2 ลงหน้างาน: ช่าง (Phuwadol) วัดในนัด SV-26100011 อ. 13/10/2026 10:12–11:48
+ *   พื้นที่ 3 หัวหน้า (Arnon) สลับเป็นจากแบบ ศ. 09/10 พร้อมเหตุผล แล้วกรอกผลจากแบบ พ. 14/10 · ส่งผล พ. 14/10 · "ต้องยืนยันหน้างาน"
+ *   รวม 3 พื้นที่ · 273 ตร.ม. · 819 ลบ.ม. · SM 2 · ST 1 · 3 แพ็ค/เดือน
+ */
+export function mixedSurveyFixture() {
+  const zone = (no, code, zoneName, [widthM, lengthM, heightM], size, extra = {}) => ({
+    no, surveyZoneId: `SVZ-mix-${no}`, zoneId: `SZN-mix-${no}`, zoneCode: code, zoneName, floor: '5', floorOnSurveyRow: '5', building: null,
+    status: 'ok', cutReason: null,
+    parts: [{ label: null, widthM, lengthM, heightM }],
+    packageQty: 1, packageNote: null, packageSize: size, packageSizeSuggested: size, packageSizeManual: false,
+    note: null,
+    method: 'onsite', methodReason: null, methodChangedByName: null, methodChangedAt: null,
+    surveyedByName: DRAWING_CREW.name, surveyedById: DRAWING_CREW.id,
+    ...extra,
+  });
+  return {
+    request: {
+      id: 'DR-mixed-0352', docNo: 'RQ-AS-26100352', kind: 'site_survey', status: 'answered',
+      title: 'ประเมินพื้นที่ สำนักงานใหม่ ชั้น 5',
+      body: 'ลูกค้าย้ายสำนักงานมาชั้น 5 ขอประเมินพื้นที่ส่วนกลางทั้งชั้นเพื่อออกใบเสนอราคา',
+      team: 'SV', requestedById: DRAWING_SALES.id, requestedByName: DRAWING_SALES.name,
+      submittedAt: at('2026-10-06T02:30:00.000+00:00'),
+      assignedByName: null,
+      requestedDueDate: '13/10/2026', requestedDueTime: '10:00', committedDueDate: '13/10/2026', committedDueTime: '10:00',
+      requestedResultDate: '15/10/2026', committedResultDate: '15/10/2026',
+      answeredById: DRAWING_HEAD.id, answeredByName: DRAWING_HEAD.name, answeredAt: at('2026-10-14T04:00:00.000+00:00'),
+      closedByName: null, closedAt: null, cancelledAt: null,
+      surveyConfirm: 'needed',
+    },
+    thread: [
+      { kind: 'submit', authorName: DRAWING_SALES.name, at: at('2026-10-06T02:30:01.000+00:00'), body: 'ส่งเคสถึง TS — 3 พื้นที่', meta: {} },
+      { kind: 'comment', authorName: DRAWING_SALES.name, at: at('2026-10-09T02:40:00.000+00:00'), body: 'โซนคาเฟ่ยังก่อสร้างถึงปลายเดือน', meta: {} },
+      { kind: 'answer', authorName: DRAWING_HEAD.name, at: at('2026-10-14T04:00:00.500+00:00'), body: 'TS ตอบเรื่องนี้แล้ว', meta: {} },
+    ],
+    customer: { arCode: 'AR-1051', name: 'บริษัท ลานนาเฮิร์บ จำกัด' },
+    deal: { code: 'DL-261000352' },
+    site: {
+      code: 'ST-1051-01-BKK-1203', name: 'สำนักงานสาทร',
+      address: '195 ถนนสาทรใต้ แขวงยานนาวา เขตสาทร กรุงเทพมหานคร 10120',
+      contactName: 'คุณสมมติ', contactPhone: '0800000000',
+      accessFrom: '08:30', accessTo: '17:30', accessDays: [1, 2, 3, 4, 5], accessNote: 'แลกบัตรที่ล็อบบี้ชั้น G',
+      siteNote: 'โน้ตภายในของไซต์ — ห้ามพิมพ์',
+    },
+    visits: [{
+      code: 'SV-26100011', kind: 'survey', status: 'done',
+      scheduledDate: '13/10/2026', startTime: '10:00', endTime: null,
+      actualDate: '13/10/2026', actualStartTime: '10:12', actualEndTime: '11:48', actualEndDate: null,
+      assigneeId: DRAWING_CREW.id, assigneeName: DRAWING_CREW.name, helpers: [], unableReason: null,
+    }],
+    zones: [
+      zone(1, 'ZN-1203-10311', 'ล็อบบี้', [9, 7, 3], 'SM', {
+        spots: [{ id: 'spot-mix-1a', label: 'ผนังข้างประตูลิฟต์', note: null, selected: true }],
+        surveyedAt: at('2026-10-13T03:45:00.000+00:00'),
+        photos: {
+          wide: [
+            photo('att-mix-z1-w1', 'mix-z1-wide-1.jpg', 1200000, '2026-10-13T03:20:00.000+00:00'),
+            photo('att-mix-z1-w2', 'mix-z1-wide-2.jpg', 1150000, '2026-10-13T03:21:00.000+00:00'),
+          ],
+          spot: [photo('att-mix-z1-s1', 'mix-z1-spot-1.jpg', 1100000, '2026-10-13T03:30:00.000+00:00')],
+          plan: [photo('att-mix-z1-p1', 'mix-z1-plan.jpg', 60000, '2026-10-13T03:40:00.000+00:00')],
+        },
+      }),
+      zone(2, 'ZN-1203-10312', 'ห้องประชุมใหญ่', [15, 10, 3], 'ST', {
+        spots: [
+          { id: 'spot-mix-2a', label: 'มุมห้องฝั่งหน้าต่าง', note: null, selected: true },
+          { id: 'spot-mix-2b', label: 'ผนังด้านจอประชุม', note: null, selected: true },
+        ],
+        surveyedAt: at('2026-10-13T04:30:00.000+00:00'),
+        photos: {
+          wide: [
+            photo('att-mix-z2-w1', 'mix-z2-wide-1.jpg', 1300000, '2026-10-13T04:05:00.000+00:00'),
+            photo('att-mix-z2-w2', 'mix-z2-wide-2.jpg', 1250000, '2026-10-13T04:06:00.000+00:00'),
+          ],
+          spot: [
+            photo('att-mix-z2-s1', 'mix-z2-spot-1.jpg', 1000000, '2026-10-13T04:15:00.000+00:00'),
+            photo('att-mix-z2-s2', 'mix-z2-spot-2.jpg', 1050000, '2026-10-13T04:16:00.000+00:00'),
+          ],
+          plan: [photo('att-mix-z2-p1', 'mix-z2-plan.jpg', 65000, '2026-10-13T04:25:00.000+00:00')],
+        },
+      }),
+      // สลับเป็นจากแบบ ศ. 09/10 10:15 (ไทย) แล้วหัวหน้ากรอกผลจากแบบ พ. 14/10 09:30 — บันทึกหลังสลับ = ผู้ประเมินจากแบบคือ Arnon
+      zone(3, 'ZN-1203-10313', 'โซนคาเฟ่พนักงาน', [10, 6, 3], 'SM', {
+        spots: [],
+        method: 'drawing', methodReason: 'หน้างานยังก่อสร้าง — โซนคาเฟ่ตกแต่งถึงปลายเดือน ต.ค.',
+        methodChangedByName: DRAWING_HEAD.name, methodChangedAt: at('2026-10-09T03:15:00.000+00:00'),
+        surveyedByName: DRAWING_HEAD.name, surveyedById: DRAWING_HEAD.id, surveyedAt: at('2026-10-14T02:30:00.000+00:00'),
+        photos: { plan: [photo('att-mix-z3-p1', 'แบบโซนคาเฟ่.jpg', 900000, '2026-10-14T02:20:00.000+00:00')] },
+      }),
     ],
   };
 }
@@ -481,24 +694,55 @@ export const thaiText = (length) => FILLER.repeat(Math.ceil(length / FILLER.leng
  * @param spec.history จำนวนแถวประวัติ (สลับ ดึงกลับ/ตีกลับ/แจ้งแก้แล้ว) · `spec.helpers` จำนวนผู้ช่วย
  * @param spec.sendBack `{ items, length }` — แถวตีกลับทุกแถวมี `items` ข้อ ข้อละ `length` ตัวอักษร (เพดานของแอป 10 × 300)
  * @param spec.body   รายละเอียดคำร้อง (string) · `spec.title` ชื่องาน
+ *
+ * ⭐ **งวด S3 (ประเมินจากแบบ — เพิ่มอย่างเดียว ชุดเดิมไม่ขยับสักคีย์)**
+ * @param spec.base   ชุดตั้งต้น `'onsite'` (ค่าตั้งต้น = แฝดสังเคราะห์) · `'drawing'` · `'mixed'` (⑦) — ไม่ส่ง `spec.zones` = ใช้พื้นที่
+ *                    ไฟล์ และนัดของชุดตั้งต้นทั้งก้อน (เช่น ใบจากแบบที่ยังไม่ส่งผล)
+ * @param spec.request ช่องของคำร้องที่ทับชุดตั้งต้น (เช่น `{ answeredAt: null, … }`) · `spec.takenAt` จุดเวลาของภาพนิ่ง
+ * @param spec.zones[].method `'drawing'` = พื้นที่ประเมินจากแบบ: ไม่มีภาพกว้าง ไม่มีรูปจุด (`wide` ไม่ถูกอ่าน) · จุดตั้งต้น 0 (จุดโดยประมาณ
+ *                    ใส่ได้ด้วย `spots`) · ภาพแบบตามค่า `plan`
+ *   · ผู้ประเมินจากแบบ = `assessor` (ชื่อ · ไม่ส่ง = ผู้ส่งผลของชุดตั้งต้น "Head Approver" — ใบจากแบบล้วนจึงได้ที่นั่งที่ 1 เป็นคนเดียวกัน)
+ *   · ใบผสม: พื้นที่จากแบบถูก **สลับ** มาจากลงหน้างาน (`methodChangedAt` ก่อนเวลาบันทึก) · ใบจากแบบล้วน: เกิดมาเป็นจากแบบ (ไม่เคยสลับ)
+ *   · `presaved: true` = ช่างบันทึกไว้ก่อนหัวหน้าสลับ แล้วไม่มีใครบันทึกใหม่ (เวลาสลับหลังเวลาบันทึก · ผู้บันทึก "Crew Saver")
+ *   ใบที่มีพื้นที่จากแบบ: คำร้องได้ `surveyConfirm: 'needed'` (ทับได้ด้วย `spec.request`) · อินพุตได้ `otherVisits: []` กับ
+ *   `drawingMethodEnabled: true` · ใบจากแบบล้วนไม่มีนัด (ไม่มีผู้ช่วย ไม่มีตำแหน่ง) — แบบเดียวกับตัวโหลด
  */
+const STRESS_BASES = Object.freeze({
+  onsite: () => syntheticSurveyFixture(), drawing: () => drawingSurveyFixture(), mixed: () => mixedSurveyFixture(),
+});
+const STRESS_SWITCHED_AT = '2026-09-24T03:00:00.000+00:00'; // หัวหน้าสลับพื้นที่ของใบผสมเป็นจากแบบ (ก่อนทุกเวลาบันทึก)
+const STRESS_PRESAVED_SWITCH_AT = '2026-09-26T03:00:30.000+00:00'; // หลังเวลาบันทึกทุกตัวของชุดนี้ (≤ 02:59) · ก่อนส่งผล 03:01
+const STRESS_SWITCH_REASON = 'หน้างานยังก่อสร้าง — ประเมินจากแบบแปลนที่ลูกค้าส่งมา';
+
 export function stressSurveyInputs(spec = {}) {
-  const base = surveyReportInputsFromFixture(syntheticSurveyFixture());
+  const baseKey = spec.base || 'onsite';
+  if (!STRESS_BASES[baseKey]) throw new Error(`ไม่มีชุดตั้งต้น "${baseKey}" — มี: ${Object.keys(STRESS_BASES).join(' · ')}`);
+  const base = surveyReportInputsFromFixture(STRESS_BASES[baseKey]());
+  const request = {
+    ...base.request, body: spec.body ?? base.request.body, title: spec.title ?? base.request.title, ...(spec.request || {}),
+  };
+  const takenAt = spec.takenAt ?? base.takenAt;
+  // ไม่ส่งพื้นที่ = ใช้ใบของชุดตั้งต้นทั้งก้อน (ชุดเดิมของไฟล์นี้ส่งพื้นที่ทุกกรณี จึงไม่เดินทางนี้)
+  if (!Array.isArray(spec.zones)) return { ...base, takenAt, request };
+
   const zones = [];
   const zoneRegistry = [];
   const filesByZone = {};
   const imageByAttId = {};
   const stamp = (n) => `2026-09-26T02:${String(10 + (n % 50)).padStart(2, '0')}:00.000+00:00`;
+  const drawingSheet = spec.zones.some((z) => z.method === 'drawing');
+  const desk = drawingSheet && surveyMethodMix(spec.zones.map((z) => ({ method: z.method, status: z.status || 'ok' }))).mode === 'drawing';
 
-  (spec.zones || []).forEach((z, index) => {
+  spec.zones.forEach((z, index) => {
     const id = `SVZ-st-${index + 1}`;
     const zoneId = `SZN-st-${index + 1}`;
     const cut = z.status === 'cut';
+    const drawing = z.method === 'drawing';
     const partCount = cut ? 0 : Math.max(1, z.parts || 1);
     const parts = Array.from({ length: partCount }, (_, i) => ({
       id: `p${i}`, label: null, widthM: 4 + (i % 5), lengthM: 3 + (i % 4), heightM: 3,
     }));
-    const spotCount = cut ? 0 : (z.spots ?? 1);
+    const spotCount = cut ? 0 : (z.spots ?? (drawing ? 0 : 1));
     const selected = z.selected ?? spotCount;
     const spots = Array.from({ length: spotCount }, (_, i) => ({
       id: `sp-${index + 1}-${i + 1}`, label: `จุดที่ ${i + 1}`,
@@ -507,6 +751,20 @@ export function stressSurveyInputs(spec = {}) {
     const volume = surveyZoneSize(parts).volumeCbm;
     const offer = cut ? null : suggestedPackageSize(volume, base.sizes);
     const picked = cut ? null : (z.size || offer?.code || null);
+    /* วิธีประเมิน (งวด S3) — พื้นที่ลงหน้างานของชุดเดิมไม่ได้คีย์ไหนเพิ่ม */
+    let method = {};
+    if (drawing) {
+      const switchedAt = z.presaved ? STRESS_PRESAVED_SWITCH_AT : (desk ? null : STRESS_SWITCHED_AT);
+      const assessor = z.presaved ? { name: 'Crew Saver', id: null }
+        : { name: z.assessor || request.answeredByName || 'Head Approver', id: z.assessor ? `U-desk-${index + 1}` : (request.answeredById || 'U-head') };
+      method = {
+        method: 'drawing',
+        methodReason: switchedAt ? STRESS_SWITCH_REASON : null,
+        methodChangedByName: switchedAt ? (z.switchedBy || base.request.answeredByName || 'Head Approver') : null,
+        methodChangedAt: switchedAt,
+        surveyedByName: assessor.name, surveyedById: assessor.id,
+      };
+    }
     zones.push({
       id, zoneId, zoneCode: `ZN-9001-${String(10000 + index)}`, zoneName: z.name || `ห้อง ${index + 1}`,
       floor: z.floor ?? null, status: z.status || 'ok', cutReason: cut ? (z.cutReason || 'ลูกค้าไม่ติดตั้งพื้นที่นี้') : null,
@@ -514,6 +772,7 @@ export function stressSurveyInputs(spec = {}) {
       packageQty: cut ? null : (z.qty ?? 1), packageSize: picked, packageSizeSuggested: offer?.code ?? null,
       packageSizeManual: Boolean(z.size && z.size !== offer?.code), packageNote: z.packageNote ?? null,
       note: z.note ?? null, surveyedByName: 'Crew Saver', surveyedAt: stamp(index), sortOrder: index,
+      ...method,
     });
     zoneRegistry.push({ id: zoneId, code: `ZN-9001-${String(10000 + index)}`, floor: z.floor ?? null, building: null });
     const files = [];
@@ -523,9 +782,10 @@ export function stressSurveyInputs(spec = {}) {
       imageByAttId[fileId] = { sha: fakeSha(fileId), w: tall ? 1051 : 1400, h: tall ? 1400 : 1051, bytes: 1000 };
     };
     if (!cut) {
-      for (let i = 0; i < (z.wide ?? 1); i += 1) add(`st-z${index + 1}-w${i + 1}`, 'survey_wide');
+      // พื้นที่จากแบบ: ภาพแบบอย่างเดียว — ไม่มีภาพกว้าง ไม่มีรูปจุด (มติ D5)
+      for (let i = 0; i < (drawing ? 0 : (z.wide ?? 1)); i += 1) add(`st-z${index + 1}-w${i + 1}`, 'survey_wide');
       for (let i = 0; i < (z.plan ?? 1); i += 1) add(`st-z${index + 1}-p${i + 1}`, 'survey_plan');
-      spots.forEach((s, i) => add(`st-z${index + 1}-s${i + 1}`, 'survey_spot', { spotId: s.id }));
+      if (!drawing) spots.forEach((s, i) => add(`st-z${index + 1}-s${i + 1}`, 'survey_spot', { spotId: s.id }));
     }
     filesByZone[id] = files;
   });
@@ -553,9 +813,13 @@ export function stressSurveyInputs(spec = {}) {
 
   return {
     ...base,
-    request: { ...base.request, body: spec.body ?? base.request.body, title: spec.title ?? base.request.title },
-    helpers: Array.from({ length: spec.helpers || 0 }, (_, i) => ({ id: `U-h${i}`, name: `Helper Number ${i + 1}` })),
+    takenAt,
+    request: drawingSheet && !Object.hasOwn(spec.request || {}, 'surveyConfirm') ? { ...request, surveyConfirm: 'needed' } : request,
+    helpers: desk ? [] : Array.from({ length: spec.helpers || 0 }, (_, i) => ({ id: `U-h${i}`, name: `Helper Number ${i + 1}` })),
     zones, zoneRegistry, filesByZone, imageByAttId, history,
+    // ใบจากแบบล้วนไม่มีนัดให้รับรอง (ตัวโหลด: `visit: null` · ไม่มีตำแหน่ง) · ใบที่มีพื้นที่จากแบบได้คีย์ของงวด S3 แบบที่ตัวโหลดคืน
+    ...(desk ? { visit: null, assigneeRoleLabel: null } : {}),
+    ...(drawingSheet ? { otherVisits: [], drawingMethodEnabled: true } : {}),
   };
 }
 
@@ -574,6 +838,17 @@ const TWO_LINE_NAME = 'ห้องทำงานฝ่ายขายและ
  *   sendback   ตีกลับ 10 ข้อ × 300 ตัว (แถวเดียวสูงกว่าหน้า — แบ่งกลางเหตุผล) + รายละเอียดคำร้อง 4,000 ตัวย่อหน้าเดียว
  *   tallhead   พื้นที่ 1 มี 20 ส่วน — แถวแรกไม่พอใต้หัวหน้า 1 ของฉบับภายใน ⇒ ตารางเริ่มหน้า 2
  *   noplan     พื้นที่ที่ไม่มีภาพผัง/ไม่มีภาพกว้าง (โหมดร่าง) — กล่อง "ไม่มีผัง" เตี้ย
+ *   ── งวด S3 (ประเมินจากแบบ) — **ต่อท้ายเท่านั้น** กรณีข้างบนเป็นใบลงหน้างานล้วนที่ต้องได้กระดาษเท่ากับ main ทุกตัวอักษร
+ *      (สเปก S3 §5.3 ขั้น 1 เทียบทีละกรณี · กรณีแรกต้องอยู่แรกเสมอ — ตัวที่ harness เขียนลงราก `--out`)
+ *   drawing-draft     ใบจากแบบ (Case A) ที่ยังไม่ส่งผล — ไม่มีวันที่ส่ง ไม่มีคำตอบ "ต้องยืนยันหน้างานไหม" (โหมดร่าง)
+ *   drawing-added     ใบผสมที่พื้นที่จากแบบเป็นพื้นที่ที่เพิ่มเข้ามา (`added`)
+ *   drawing-presaved  ช่างบันทึกพื้นที่ไว้ก่อนหัวหน้าสลับเป็นจากแบบ แล้วไม่มีใครบันทึกใหม่
+ *   drawing-ten       10 พื้นที่จากแบบ + กล่องหมายเหตุ — เพดานของหน้า 1
+ *   mixed-names       ใบผสม ผู้ประเมินจากแบบสามคน ชื่อยาว — กล่องการประเมินโตหลายบรรทัด
+ *   drawing-spots     จุดโดยประมาณ 8 จุด (มีหมายเหตุทุกจุด) + หมายเหตุพื้นที่ยาว — รายการจุดของฉบับภายใน
+ *   drawing-parts     พื้นที่จากแบบสองส่วน — ตารางส่วนข้างภาพแบบ
+ *   drawing-longname  พื้นที่จากแบบชื่อยาว (~100 ตัว = สองบรรทัด · ~70 ตัว = กว้างกว่าที่ข้างรหัส/ขนาด) — หัวที่มีป้ายต้องคงแถว
+ *                     ชิป·ชื่อ·รหัส·ขนาดเป็นแถวเดียว ป้ายใต้แถว (เดิม flex-wrap ทั้งหัว: ชิปโดดแถวเดียว แผนนับขาด ~17.5px)
  */
 export function surveyStressCases() {
   return [
@@ -615,8 +890,56 @@ export function surveyStressCases() {
       name: 'noplan', mode: 'draft',
       spec: { zones: [{ name: 'ห้องน้ำชาย', floor: '2', wide: 0, spots: 0, plan: 0 }, { wide: 2, plan: 0, parts: 4, note: thaiText(80) }, { wide: 1 }] },
     },
+    /* ── งวด S3 — ต่อท้ายเท่านั้น (หัวฟังก์ชัน) ── */
+    {
+      name: 'drawing-draft', mode: 'draft',
+      spec: {
+        base: 'drawing', takenAt: '2026-10-09T06:00:00.000+00:00', // ศ. 09/10 13:00 — ก่อนกดส่ง
+        request: { status: 'in_progress', answeredAt: null, answeredById: null, answeredByName: null, surveyConfirm: null },
+      },
+      /* ลายเซ็นใน harness (`--stress` · คีย์ชุดเดียวกับ `surveySignCases`): ฉบับร่างไม่มีรูป — ที่นั่งที่ 1 เป็นคำ (ยังไม่มีผู้ส่งผลให้คัดลอก)
+         · ที่นั่งที่ 2 เป็นกรอบประ · ใบที่ยังไม่ส่งผลไม่มีผู้ตรวจสอบและอนุมัติ ⇒ ชื่อกับวันที่ของที่นั่งที่ 2 เป็นขีด **ตามตั้งใจ**
+         (ข้อ "ชื่อหรือวันที่หาย" ของ harness ต้องฟ้องทุกรอบ — ไม่ฟ้อง = กรณีนี้ไม่ได้ทดสอบใบที่ยังไม่ส่งแล้ว) */
+      sign: { prepared: false },
+      seats: { images: 0, waits: 1 },
+      known: [/^(customer|internal) (การรับรองผล|ภาคผนวก จ) ที่นั่ง 2 \([^)]+\): ชื่อหรือวันที่หาย \(ชื่อ "—" · วันที่ "—"\)$/],
+    },
+    { name: 'drawing-added', mode: 'freeze', spec: { zones: [{}, {}, { method: 'drawing', status: 'added' }] } },
+    { name: 'drawing-presaved', mode: 'freeze', spec: { zones: [{}, { method: 'drawing', presaved: true }] } },
+    { name: 'drawing-ten', mode: 'freeze', spec: { zones: tenZones().map(() => ({ method: 'drawing' })) } },
+    {
+      name: 'mixed-names', mode: 'freeze',
+      spec: {
+        zones: [
+          {},
+          { method: 'drawing', assessor: LONG_DESK_NAMES[0] },
+          { method: 'drawing', assessor: LONG_DESK_NAMES[1] },
+          { method: 'drawing', assessor: LONG_DESK_NAMES[2] },
+        ],
+      },
+    },
+    {
+      name: 'drawing-spots', mode: 'freeze',
+      spec: { zones: [{ method: 'drawing', spots: 8, spotNotes: true, note: thaiText(400) }, { method: 'drawing' }] },
+    },
+    { name: 'drawing-parts', mode: 'freeze', spec: { zones: [{ method: 'drawing', parts: 2 }, { method: 'drawing' }] } },
+    {
+      name: 'drawing-longname', mode: 'freeze',
+      spec: {
+        zones: [
+          { method: 'drawing', name: 'โถงต้อนรับและพื้นที่นั่งรอของลูกค้าด้านหน้าอาคารสำนักงานใหญ่ฝั่งทิศตะวันออก ติดกับทางเดินไปห้องประชุมใหญ่', floor: '1' },
+          { method: 'drawing', name: 'พื้นที่นั่งรอของลูกค้าด้านหน้าอาคารสำนักงานใหญ่ฝั่งทิศตะวันออกติดทางเดิน', floor: '2' },
+          {},
+        ],
+      },
+    },
   ];
 }
+
+/* ผู้ประเมินจากแบบชื่อยาวสามคน (ชื่อสมมติ) — `mixed-names` */
+const LONG_DESK_NAMES = Object.freeze([
+  'นายสมมติชัย ศรีสุวรรณวัฒนากุลพิพัฒน์', 'นางสาวสมมติพร เจริญรุ่งเรืองกิจไพศาล', 'นายสมมติศักดิ์ วงศ์ประเสริฐสุขสวัสดิ์',
+]);
 
 /* ── ⑥ ลายเซ็นจริงของผู้ลงนาม (PR-SIG · มติเจ้าของ 09/10/2026) ─────────────────────────────── */
 
@@ -679,9 +1002,15 @@ const LONG_APPROVER = 'นางสาวสมมติพร เจริญ�
  *   sign-wrap    ชื่อผู้ลงนามยาวจนตกสองบรรทัด — แถวที่นั่งของภาคผนวก จ สูงเกินแผน (ข้อจำกัดที่รู้ · `surveyReportLayout.js`):
  *                วัดใน Chrome 09/10 ได้ 179.3 เมื่อมีรูปลายเซ็น (เกิน 18.3) · 169.3 เมื่อพิมพ์คำแบบเดิม (เกิน 8.3 — เป็นมาก่อนงวดนี้)
  *   sign-draft   ฉบับร่างก่อนออกเอกสาร — ช่องลายเซ็นเป็นกรอบประ: คนที่มีลายเซ็น "จะขึ้นเมื่อออกเอกสาร" · คนที่ยังไม่มี "ยังไม่มีลายเซ็น"
+ *   ── งวด S3 (ประเมินจากแบบ · สเปก §2.6 มติ O1) — `pipeline: true` = harness เดินกรณีนี้ผ่านไปป์ไลน์ได้ด้วย (`--pipeline --case <ชื่อ>`)
+ *   sign-drawing        ใบจากแบบล้วน (Case A) — ผู้ส่งผลคือผู้ประเมินจากแบบคนเดียว ⇒ ที่นั่งที่ 1 ได้ลายเซ็นเดียวกับที่นั่งที่ 2 (ไฟล์เดียว)
+ *   sign-drawing-other  ใบจากแบบล้วน — หัวหน้าอีกคนกรอกผลจากแบบ แล้ว Arnon ส่งผล ⇒ ที่นั่งที่ 1 พิมพ์ชื่อกับคำ "ลายเซ็นอิเล็กทรอนิกส์"
+ *                       (ไม่ใช่กรอบ "ยังไม่มีลายเซ็น" — ไม่มีใครต้องไปเพิ่ม) · รูปเหลือที่นั่งเดียวต่อบล็อก
+ *   sign-mixed          ใบผสม (Case B) — ผู้ประเมิน = ช่างบนนัด · ผู้ตรวจสอบและอนุมัติ = ผู้ส่งผล ลงนามครบสองที่นั่ง (กติกาเดียวกับใบลงหน้างาน)
  */
 export function surveySignCases() {
   const twin = () => surveyReportInputsFromFixture(syntheticSurveyFixture());
+  const drawing = () => surveyReportInputsFromFixture(drawingSurveyFixture());
   return [
     {
       name: 'sign-closed', mode: 'freeze', sign: {}, seats: { images: 2, waits: 0 }, known: [],
@@ -704,6 +1033,25 @@ export function surveySignCases() {
       },
     },
     { name: 'sign-draft', mode: 'draft', sign: { have: ['approver'], prepared: false }, seats: { images: 0, waits: 2 }, known: [], inputs: twin },
+    /* ── งวด S3 — ต่อท้าย (หัวฟังก์ชัน) ── */
+    { name: 'sign-drawing', mode: 'freeze', sign: {}, seats: { images: 2, waits: 0 }, known: [], pipeline: true, inputs: drawing },
+    {
+      name: 'sign-drawing-other', mode: 'freeze', sign: {}, seats: { images: 1, waits: 0 }, known: [], pipeline: true,
+      inputs: () => {
+        const base = drawing();
+        return {
+          ...base,
+          zones: base.zones.map((z) => ({ ...z, surveyedByName: OTHER_DESK_HEAD.name, surveyedById: OTHER_DESK_HEAD.id })),
+        };
+      },
+    },
+    {
+      name: 'sign-mixed', mode: 'freeze', sign: {}, seats: { images: 2, waits: 0 }, known: [], pipeline: true,
+      inputs: () => surveyReportInputsFromFixture(mixedSurveyFixture()),
+    },
   ];
 }
+
+/* หัวหน้าอีกคนที่กรอกผลจากแบบ (ชื่อสมมติ) — `sign-drawing-other` */
+const OTHER_DESK_HEAD = Object.freeze({ id: 'U-other-head', name: 'Other Desk Head' });
 

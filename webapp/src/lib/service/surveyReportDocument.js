@@ -55,7 +55,17 @@ import { surveyReportFileName } from './surveyReportNumber';
      ⇒ รุ่นนี้ต่างจากรุ่นก่อนแค่กฎ CSS สามข้อที่ไม่มีใครใช้เมื่อไม่มีรูป — ความสูงไม่ขยับ (harness `--assert` 4 / 6 หน้าเท่าเดิม)
    🔴 ก่อนถอยโค้ดกลับไปรุ่นก่อนหน้า: เปิดเอกสารที่ออกตอนสวิตช์เปิดและยังไม่ตรึงให้ครบทุกใบก่อน — ตัวเรนเดอร์รุ่นเก่าไม่รู้จักคีย์
       `signatures` จะตรึงใบนั้นด้วยคำตลอดไป (docs/survey-report-doc.md) */
-export const SURVEY_REPORT_RENDERER_VERSION = 'fm-ts-01@2026-10-09a';
+/* 2026-10-15a — ใบที่มีพื้นที่ประเมินจากแบบ (งวด S3 · มติเจ้าของ D1 D4 D5 · O1 · O3 = ข)
+   · ใบผสม / จากแบบล้วน: แถว "วิธีประเมิน" ในกล่องการประเมิน · กล่องหมายเหตุ (`.dnote`) · บรรทัดย่อยใต้ชื่อในตาราง (`.zsub`) ·
+     ป้ายใต้หัวพื้นที่ (`.zh-tag`) · ส่วน "แบบที่ใช้ประเมิน / DRAWING" · ไม่มีส่วนภาพกว้าง · ที่นั่งผู้ประเมินจากแบบชื่อละบรรทัด ·
+     ฉบับภายใน: รายการจุดโดยประมาณ (`.sp-list`) แทนการ์ดรูป
+   · 🔴 **ใบลงหน้างานล้วนได้กระดาษของรุ่นก่อนทุกตัวอักษร** — ทุกชิ้นใหม่เป็นกิ่งที่ถามค่าจากแบบ (`page.survey.method` · `page.notice` ·
+     `row.methodLine` · `zone.tag` · `zone.spotList` · `seat.names`) ซึ่งใบลงหน้างานไม่มี · CSS ใหม่เป็นกฎ **เพิ่ม** บนชื่อคลาสใหม่เท่านั้น
+     (ไม่มีกฎเดิมถูกแก้/ย้าย/ลบ) ⇒ markup ของแผ่นเท่าเดิมทุกไบต์ ภาพหน้าเท่าเดิมทุกพิกเซล — เทสต์ทองคำ sha256 ของแผ่น
+     (`surveyReportDocument.test.mjs`) + harness (`same-paper.mjs` ของสเปก S3 §5.3) เป็นคนยืนยัน
+   · ขึ้นรุ่นเพราะกระดาษจากแบบ/ผสมเป็นของใหม่ และ CSS ที่ฝังไปกับไฟล์เปลี่ยน — กระดาษที่ตรึงแล้ว (ลงหน้างานทุกใบ) ไม่ถูกแตะ
+   🔴 อย่าถอยโค้ดกลับรุ่นก่อนหน้าเมื่อมีกระดาษจากแบบออกไปแล้ว — ปิดสวิตช์ `SURVEY_DRAWING_METHOD` แทน (สเปก S3 §4) */
+export const SURVEY_REPORT_RENDERER_VERSION = 'fm-ts-01@2026-10-15a';
 
 /* ── สีชื่อเอกสาร: เดินตามผู้อ่านของฉบับ (มติเจ้าของ 08/10/2026 — แทนมติ "teal ตายตัว" ของกระดาน) ──────────
    ฉบับลูกค้าออกนอกบริษัท ⇒ terracotta (สีตั้งต้นของใบเสนอราคา) · ฉบับภายใน ⇒ steel (สีตั้งต้นของใบสั่งขาย)
@@ -122,7 +132,16 @@ export function surveyReportImageShas(html) {
        ภาคผนวก จ 28 + เว้นล่าง 4 = 32px เท่าบรรทัด `.sig-e` เดิม (18 + 14) และเท่าช่องว่าง `.sig-sp` ของที่นั่งที่ยังไม่เกิด
        การรับรองผล 45px (≈ 12 มม. เท่าใบเสนอราคา) — ที่นั่งสูงขั้นต่ำ 188 เนื้อใน 152.5 ยังเหลือ ⇒ `signoff.height` 217 กับ
        `appendix.signs` 161 ของแผนหน้าไม่ขยับ · พื้นขาวโดยเจตนา (ไฟล์ลายเซ็นถูกถมพื้นขาวเสมอ) · `.wait` = ยังไม่มีรูป (ร่าง/ไม่มีลายเซ็น)
-       ⚠️ อยู่ก้อนร่วมเพราะฉบับลูกค้าพิมพ์สองที่นั่งนี้ด้วย — ตัวเลือกจึงห้ามเอ่ยชิ้นของฉบับภายใน (`.sign-last`) */
+       ⚠️ อยู่ก้อนร่วมเพราะฉบับลูกค้าพิมพ์สองที่นั่งนี้ด้วย — ตัวเลือกจึงห้ามเอ่ยชิ้นของฉบับภายใน (`.sign-last`)
+     · งวด S3 (กระดาน C1–C5 ของ mockups/survey-desk-assessment) — **กฎเพิ่มท้ายก้อนเท่านั้น บนชื่อคลาสใหม่** (ใบลงหน้างานไม่มี
+       element ไหนตรงกฎเหล่านี้ ⇒ ภาพหน้าเท่า main ทุกพิกเซล · สเปก S3 §2.9 ข้อ 4):
+       `.dnote` กล่องหมายเหตุ — ไม่มี margin ของตัวเอง ช่องไฟเหนือกล่องคือ gap ของ `.content` (สเปกตั้งต้นเขียน margin-top 12
+         ซึ่งจะซ้อนกับ gap เป็น 28 / 24) · เส้นซ้ายสีชื่อเอกสาร (`--accent`) ตามกระดาน C1
+       `.zsub` บรรทัดย่อยใต้ชื่อในตาราง (12px ห้ามตัด) · `.zh.zh-tagged` หัวพื้นที่ที่มีป้าย — กล่องธรรมดา (เส้นล่างเดิม) ที่ห่อ
+         `.zh-row` แถว flex ของหัวลงหน้างานทุกค่า (ชิป·ชื่อ·รหัส·ขนาด ไม่ตัดแถว) แล้วตามด้วย `.zh-tag` เป็นบรรทัดของตัวเอง
+         ⇒ ความสูง = หัวลงหน้างาน + `tagLine` เสมอ · เดิมเปิด flex-wrap ทั้งหัว: ชื่อยาวเกินที่ข้างชิปถูกดันลงแถวใหม่ทั้งก้อน
+         (ชิปเลขอยู่แถวเดียวโดด รหัส/ขนาดตกแถวสาม) แผนนับขาด ~17.5px (แก้กฎ `.zh` เดิมไม่ได้ จึงติดคลาสเพิ่มเฉพาะหัวที่มีป้าย)
+       `.sp-list` (ก้อนฉบับภายใน) รายการจุดโดยประมาณของพื้นที่จากแบบ แถวละจุด 12.5px × 1.6 */
 const BOARD_CSS = `
 .frame{
   --navy:#1f3551; --text:#202833; --muted:#647080; --line:#cfd5da;
@@ -255,6 +274,13 @@ const BOARD_CSS = `
 .frame .sig-img{flex:none; display:block; width:100%; height:28px; margin:auto 0 4px; object-fit:contain; background:#fff; border-radius:2px;}
 .frame .sig-img.wait{display:flex; align-items:center; justify-content:center; border:1px dashed var(--line-strong); font-size:12px; font-style:italic; line-height:1.5; color:var(--muted);}
 .frame .signoff .sig-img{height:45px;}
+.frame .dnote{padding:7px 13px; background:var(--soft); border-left:2px solid var(--accent); font-size:12.5px; line-height:1.6;}
+.frame .zsub{display:block; font-size:12px; line-height:1.5; white-space:nowrap; color:var(--muted);}
+.frame .zsub b{font-weight:500; color:var(--text);}
+.frame .zh.zh-tagged{display:block;}
+.frame .zh-row{display:flex; align-items:baseline; gap:10px;}
+.frame .zh-tag{padding-left:32px; font-size:12px; line-height:1.5; color:var(--muted);}
+.frame .zh-tag b{font-weight:600; color:var(--text);}
 `;
 
 const BOARD_INTERNAL_CSS = `
@@ -304,6 +330,9 @@ const BOARD_INTERNAL_CSS = `
 .frame .sig-wait{font-size:12px; line-height:1.5; color:var(--muted);}
 .frame .sig-sp{flex:none; height:18px; margin:10px 0 4px;}
 .frame .sign-last{margin-top:auto; margin-bottom:10px;}
+.frame .sp-list{list-style:none; font-size:12.5px; line-height:1.6;}
+.frame .sp-list b{font-weight:700; color:var(--navy);}
+.frame .sp-list li.none{color:var(--muted);}
 `;
 
 const scoped = (css) => css.replace(/\.frame/g, '.surveyReport .sheet');
@@ -397,10 +426,16 @@ const heading = (th, en, { cont = false } = {}) => (
   `<h3 class="h">${esc(th)}${cont ? CONT_TH : ''}<span> / ${esc(en)}${cont ? CONT_EN : ''}</span></h3>`
 );
 
+/* บรรทัดย่อยใต้ชื่อของแถวจากแบบ (งวด S3 · กระดาน C4): "[ชั้น 5 · ]ประเมินจากแบบ" ห้ามตัด — แผนหน้านับ `summary.subLine`
+   แถวลงหน้างานไม่มี `methodLine` ⇒ สตริงว่าง (แถวพิมพ์เหมือนวันนี้ทุกตัวอักษร) */
+const methodLineHtml = (line) => (line
+  ? `<div class="zsub">${line.floor ? `<span class="zsub-f">${esc(line.floor)}</span> · ` : ''}<b>${esc(line.text)}</b></div>`
+  : '');
+
 /** รหัสบน · ชื่อล่าง — ชั้นเกาะคำสุดท้ายของชื่อ (ชื่อยาวตัดในชื่อ ไม่ทิ้ง "GF" ไว้บรรทัดเดียว · R-C-1:286-288) */
 const entity = (row) => (
   `<span class="ent-code">${esc(row.zoneCode)}</span><span class="ent-name">${esc(row.name)}`
-  + `${row.floorText ? nw(`&nbsp;${esc(row.floorText)}`) : ''}</span>`
+  + `${row.floorText ? nw(`&nbsp;${esc(row.floorText)}`) : ''}</span>${methodLineHtml(row.methodLine)}`
 );
 
 const th = (col) => (
@@ -465,9 +500,26 @@ function footerHtml(ctx, page) {
 
 /* ── หน้า 1 (และหน้าต่อของตาราง) ─────────────────────────────────────────────────────────── */
 
-function partyHtml(view) {
+const lnHtml = (values) => list(values).map((line) => `<span class="ln">${esc(line)}</span>`).join('');
+
+/* ช่อง "ผู้ประเมิน" ของกล่องการประเมิน — บรรทัดชื่อของใบที่มีพื้นที่จากแบบมาจากแผนหน้า (`page.survey.names` · แผนนับไว้แล้ว)
+     ลงหน้างาน (`method` ว่าง)  ชื่อหัวหน้าบนนัด แบบวันนี้ทุกตัวอักษร (เบราว์เซอร์ตัดบรรทัดเอง)
+     ผสม                      หัวหน้าบนนัด · "ประเมินจากแบบโดย" · ชื่อผู้ประเมินจากแบบทีละบรรทัด
+     จากแบบล้วน               ชื่อผู้ประเมินจากแบบทีละบรรทัด */
+function assessorHtml(s, box) {
+  if (!list(box.method).length) return esc(s.assessorName);
+  const names = lnHtml(box.names);
+  return s.drawingLead ? `${lnHtml([s.assessorName, s.drawingLead])}${names}` : names;
+}
+
+/* 🔴 งวด S3 — แถว "วิธีประเมิน" พิมพ์เฉพาะใบที่มีพื้นที่จากแบบ (แผนหน้าให้ `page.survey.method` มีบรรทัด) · ใบลงหน้างาน
+   ได้กล่องสามแถวของวันนี้ทุกตัวอักษร (มติ O3 = ข) — `partyHtml` จึงรับแผนของหน้า 1 */
+function partyHtml(view, page = {}) {
   const p = view.party || {};
   const s = view.survey || {};
+  const box = page.survey || {};
+  const method = list(box.method).length ? `
+              <dt>วิธีประเมิน</dt><dd>${lnHtml(box.method)}</dd>` : '';
   return `
         <section class="party">
           <div class="pbox">
@@ -482,13 +534,21 @@ function partyHtml(view) {
           </div>
           <div class="pbox">
             <h2>การประเมิน<span> / SURVEY</span></h2>
-            <dl class="pdl dt84">
+            <dl class="pdl dt84">${method}
               <dt>วันที่</dt><dd>${esc(s.dateText)}</dd>
               <dt>เวลา</dt><dd>${soft(s.timeText)}</dd>
-              <dt>ผู้ประเมิน</dt><dd>${esc(s.assessorName)}</dd>
+              <dt>ผู้ประเมิน</dt><dd>${assessorHtml(s, box)}</dd>
             </dl>
           </div>
         </section>`;
+}
+
+/* กล่องหมายเหตุใต้กล่องคู่ (งวด S3 · ทั้งสองฉบับ) — บรรทัดจากแผนหน้า 1 (`page.notice`) · ไม่มี = สตริงว่าง
+   ช่องไฟเหนือกล่อง = ช่องไฟของ `.content` (ลูกค้า 16 · ภายใน 12) ไม่มี margin ของตัวเอง — แผนนับ `summary.noticeGap` ต่อฉบับ */
+function noticeHtml(page) {
+  if (!list(page.notice).length) return '';
+  return `
+        <div class="dnote" data-m="notice">${lnHtml(page.notice)}</div>`;
 }
 
 function panelHtml(view) {
@@ -622,14 +682,18 @@ function wideSection(ctx, zone, range) {
             </section>`;
 }
 
+/* คำของส่วนผัง — ตั้งต้น = คำของวันนี้ (view รุ่นก่อนงวด S3 ไม่มี `planTitle`) · พื้นที่จากแบบ = "แบบที่ใช้ประเมิน / DRAWING" */
+const PLAN_TITLE = Object.freeze({ th: 'ผังพื้นที่', en: 'PLAN', empty: 'ไม่มีผัง', alt: 'ผังพื้นที่' });
+
 function planSection(ctx, zone) {
   const src = zone.plan ? ctx.imageSrc(zone.plan) : null;
+  const t = zone.planTitle || PLAN_TITLE;
   /* ไม่มีภาพผังในภาพนิ่ง (โหมดร่าง) = กล่องเตี้ยไม่ยืด — แผนหน้าคิดความสูงแบบเดียวกัน (`zone.planNone`)
      ⚠️ ดูที่ `zone.plan` ไม่ใช่ `src`: ผังที่มีในภาพนิ่งแต่ยังไม่มี src (รูปยังไม่เตรียม) ยังจองที่เต็มตามแผน */
   const none = !zone.plan;
   const box = src
-    ? `<div class="ph-box zp-plan" data-m="plan"><img src="${esc(src)}" alt="ผังพื้นที่ ${esc(zone.no)}"></div>`
-    : `<div class="ph-box zp-plan${none ? ' none' : ''}" data-m="plan"><span class="ph-none">ไม่มีผัง</span></div>`;
+    ? `<div class="ph-box zp-plan" data-m="plan"><img src="${esc(src)}" alt="${esc(t.alt)} ${esc(zone.no)}"></div>`
+    : `<div class="ph-box zp-plan${none ? ' none' : ''}" data-m="plan"><span class="ph-none">${esc(t.empty)}</span></div>`;
   const figure = `<figure class="ph">${box}</figure>`;
   /* พื้นที่สองส่วนขึ้นไป: ตารางส่วนอยู่ขวาของผัง (R-C-2:418-435) — ผังคงความสูงเต็ม */
   const parts = zone.parts ? `
@@ -646,7 +710,7 @@ function planSection(ctx, zone) {
               ${figure}`;
   return `
             <section class="zs zs-plan${none ? ' none' : ''}">
-              <h5 class="zs-h">ผังพื้นที่<span> / PLAN</span></h5>${parts}
+              <h5 class="zs-h">${esc(t.th)}<span> / ${esc(t.en)}</span></h5>${parts}
             </section>`;
 }
 
@@ -655,7 +719,9 @@ function planSection(ctx, zone) {
 function spotSection(ctx, zone, range) {
   const title = ctx.view.table?.spotNote?.lead;
   const spots = slice(zone.spots, range);
-  if (!title || !spots.length) return '';
+  if (!title) return '';
+  if (zone.spotList) return spotListSection(zone, spots);
+  if (!spots.length) return '';
   const cards = spots.map((spot) => `
               <figure class="ph sp">
                 ${shotBox(ctx, spot.img, `จุด ${spot.no} ${spot.label}`, { empty: 'ไม่มีภาพ', badge: `<span class="sp-b">${esc(spot.no)}</span>` })}
@@ -667,6 +733,32 @@ function spotSection(ctx, zone, range) {
               <div class="zs-grid">${cards}
               </div>
             </section>`;
+}
+
+/* จุดโดยประมาณของพื้นที่จากแบบ (งวด S3 · ฉบับภายในเท่านั้น — เรียกผ่านสองเงื่อนไขเดิมของ `spotSection`) — รายการแถวละจุด
+   ไม่มีกล่องรูป ไม่มี `.ph.sp` · ไม่มีจุดที่เลือกเลย = แถวเดียวของประโยค `empty` · แผนหน้านับแถวละจุด (`zone.spotListLine`) */
+function spotListSection(zone, spots) {
+  const none = !list(zone.spots).length;
+  if (!spots.length && !none) return '';
+  const items = none
+    ? `
+                <li class="none">${esc(zone.spotList.empty)}</li>`
+    : spots.map((spot) => `
+                <li><b>${esc(spot.no)}</b> · ${esc(spot.label)}${spot.note ? ` — ${esc(spot.note)}` : ''}</li>`).join('');
+  return `
+            <section class="zs">
+              <h5 class="zs-h">${esc(zone.spotList.title)}</h5>
+              <ul class="sp-list">${items}
+              </ul>
+            </section>`;
+}
+
+/* ป้ายบรรทัดที่สองในหัวพื้นที่จากแบบ (งวด S3 · กระดาน C2): "ประเมินจากแบบ" ตัวหนา ที่เหลือสีจาง · ไม่มีป้าย = สตริงว่าง */
+function zoneTagHtml(tag) {
+  if (!tag) return '';
+  const [lead, ...rest] = String(tag).split(' · ');
+  return `
+              <div class="zh-tag" data-m="ztag"><b>${esc(lead)}</b>${rest.length ? ` · ${esc(rest.join(' · '))}` : ''}</div>`;
 }
 
 function zoneContent(ctx, page) {
@@ -681,16 +773,26 @@ function zoneContent(ctx, page) {
   const named = zone.name != null;
   const tail = [named ? zone.floorText : '', cont ? CONT_TH.trim() : ''].filter(Boolean).join(' ');
   const title = `${esc(named ? zone.name : zone.title)}${tail ? nw(`&nbsp;${esc(tail)}`) : ''}`;
+  /* 🔴 หัวพื้นที่ลงหน้างานคง `<div class="zh">` ของวันนี้ทุกตัวอักษร — คลาส/เครื่องหมายวัดใหม่ติดเฉพาะหัวที่มีป้าย
+     (หน้าหลักและหน้า "(ต่อ)" — แผนหน้านับป้ายทั้งสองหน้า) */
+  const cells = `
+              <span class="chip-n">${esc(zone.no)}</span>
+              <h4 class="zh-t">${title}</h4>
+              <span class="zh-c">${esc(zone.zoneCode)}</span>
+              <span class="zh-m">${meta}</span>`;
+  /* หัวที่มีป้าย: แถวของหัวลงหน้างานห่อใน `.zh-row` แล้วป้ายเป็นบรรทัดของตัวเองใต้แถว — แถวไม่ตัดเป็นหลายแถวเมื่อชื่อยาว */
+  const head = zone.tag
+    ? `<div class="zh zh-tagged" data-m="zhead">
+              <div class="zh-row">${cells}
+              </div>${zoneTagHtml(zone.tag)}
+            </div>`
+    : `<div class="zh">${cells}
+            </div>`;
   return `
         <section class="zpage">
           ${heading('2. รายละเอียดรายพื้นที่', 'ZONE DETAILS', { cont: cont || !page.first })}
           <div class="zp" data-zone="${esc(zone.no)}">
-            <div class="zh">
-              <span class="chip-n">${esc(zone.no)}</span>
-              <h4 class="zh-t">${title}</h4>
-              <span class="zh-c">${esc(zone.zoneCode)}</span>
-              <span class="zh-m">${meta}</span>
-            </div>${page.wide ? wideSection(ctx, zone, page.wide) : ''}${page.plan ? planSection(ctx, zone) : ''}${page.spots ? spotSection(ctx, zone, page.spots) : ''}${page.note && zone.note ? `
+            ${head}${page.wide ? wideSection(ctx, zone, page.wide) : ''}${page.plan ? planSection(ctx, zone) : ''}${page.spots ? spotSection(ctx, zone, page.spots) : ''}${page.note && zone.note ? `
             <p class="note"><b>หมายเหตุพื้นที่ — </b>${esc(zone.note)}</p>` : ''}
           </div>
         </section>`;
@@ -711,12 +813,18 @@ function signatureSlot(ctx, seat) {
     : `<div class="sig-img wait">${esc(seat.mark)}</div>`;
 }
 
+/* ชื่อบนที่นั่ง — ที่นั่ง "ผู้ประเมินจากแบบ" ของใบจากแบบล้วน (งวด S3) มี `names` = ชื่อละบรรทัด · ที่นั่งอื่นบรรทัดเดียวแบบวันนี้ */
+const seatNameHtml = (seat) => (Array.isArray(seat.names)
+  ? seat.names.map((name) => `<div class="sig-name">${esc(name)}</div>`).join(`
+              `)
+  : `<div class="sig-name">${esc(seat.name)}</div>`);
+
 const signedSeat = (ctx, seat) => `
             <div class="sig su-signed">
               <h4>${esc(seat.title)}</h4>
               <div class="sig-role">${esc(seat.role)}</div>
               ${signatureSlot(ctx, seat)}
-              <div class="sig-name">${esc(seat.name)}</div>
+              ${seatNameHtml(seat)}
               <div class="sig-date">${esc(seat.date)}</div>
             </div>`;
 
@@ -913,7 +1021,7 @@ function appendixContent(ctx, page) {
 function pageContent(ctx, page) {
   switch (page.kind) {
     case 'summary':
-      return `${partyHtml(ctx.view)}${panelHtml(ctx.view)}${summarySection(ctx, page, { cont: false })}`;
+      return `${partyHtml(ctx.view, page)}${noticeHtml(page)}${panelHtml(ctx.view)}${summarySection(ctx, page, { cont: false })}`;
     case 'summaryCont':
       // `start` = ตารางเพิ่งเริ่มที่หน้านี้ (หน้า 1 ไม่มีตาราง) ⇒ หัวข้อไม่มี "(ต่อ)"
       return summarySection(ctx, page, { cont: !page.start });

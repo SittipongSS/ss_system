@@ -16,6 +16,11 @@
 //   ตะเข็บ A ↔ D: ผู้เรียก `surveySendBackOnSheet` ทุกจุดส่ง `needsVisit` แล้ว (ลิสต์ "ยังไม่ส่ง" ว่าง)
 //   ใหม่ ⑦ โมดูลแผน `surveyMethodSwitch.js` ดึงได้สี่โมดูล · ⑧ ของงวดหลัง (S2b จอ · S5 ผูกใบยืนยัน) ยังไม่มีในโค้ด
 //
+// ⭐ งวด S3 (กระดาษของใบที่มีพื้นที่จากแบบ · สเปก S3 §3 Integrate ข้อ 3):
+//   ④ ผู้ถามสวิตช์ + route เอกสาร (ฉบับร่าง) · สองสคริปต์ของกระดาษรับค่าเป็นตัวเลือก ไม่ดึงโมดูลสวิตช์
+//   ⑤ ผู้เอ่ยชื่อคอลัมน์ + ภาพนิ่ง / ตัวกรอง / ตัวโหลด / ตัวอย่างกระดาษ (อ่านจากแถวหรืออยู่ในหน่วยความจำ — ไม่มีคำสั่งอ่านใหม่)
+//   ⑥ ภาพนิ่งยังรุ่น 1 (คีย์เพิ่มแบบไม่ทำลาย) · ไม่มีคีย์ hold ในโค้ดของกระดาษ · ภาพนิ่ง/ตัวกรองเป็นโมดูลล้วน · ตัวเรนเดอร์ไม่มีตัวเลือกสี
+//
 // ⚠️ อ่านซอร์สเป็นข้อความหลังตัดคอมเมนต์ — ⛔ สตริง/regex ในไฟล์นี้ห้ามมีทับตามด้วยดอกจันติดกัน
 //    (ตัวตัดคอมเมนต์ของยามตัวอื่นจะกลืนโค้ดตั้งแต่จุดนั้น)
 // ⚠️ ยามตรวจ **ข้อความ** จึงจับได้แค่รูปที่รู้จัก — พฤติกรรมจริงของแต่ละกติกามีเทสต์ของตัวเองใน `surveyMethod*.test.mjs`
@@ -75,6 +80,10 @@ const CUSTOMER_ZONES_ROUTE = 'src/app/api/service/customers/[customerId]/zones/r
 const SWITCH = 'src/lib/service/surveyMethodSwitch.js';
 const QUEUE_REPO = 'src/lib/service/surveyQueueRepo.js';
 const WRITES = 'src/lib/service/surveyMethodWrites.js';
+// งวด S3 — กระดาษ: ภาพนิ่งหยิบคอลัมน์ของการสลับวิธีจากแถว (`select('*')` ของตัวโหลด) · ตัวกรองพิมพ์ภาคผนวก ง · ตัวโหลดใส่คำตอบลงผู้ส่งที่กำลังจะเขียน
+const PAPER_SNAPSHOT = 'src/lib/service/surveyReportSnapshot.js';
+const PAPER_VIEW = 'src/lib/service/surveyReportView.js';
+const PAPER_INPUTS = 'src/lib/service/surveyReportInputs.js';
 const DOCUMENT_ROUTE = 'src/app/api/service/surveys/[id]/document/route.js';
 const SCRIPT = 'scripts/check-survey-report-inputs.mjs';
 
@@ -210,7 +219,8 @@ test('🔴 สวิตช์ SURVEY_DRAWING_METHOD ถูกอ่านไฟ�
   assert.deepEqual(hits(/SURVEY_DRAWING_METHOD/), [FLAG], 'ชื่อสวิตช์ต้องไม่โผล่ในโค้ดไฟล์อื่น (รวม NEXT_PUBLIC_ ที่พาไปถึงเบราว์เซอร์)');
   const importers = hits(/surveyDrawingFlag/, { except: [FLAG] });
   // งวด S2a: สี่ route — ด่านส่งผลแถว 17a · เส้นสลับวิธี · GET ของใบ (ส่งค่าให้จอ) · กล่องยืนยันตอนหัวหน้าตัดพื้นที่สุดท้ายที่ต้องวัด
-  assert.deepEqual(importers, [METHOD_ROUTE, SHEET_ROUTE, SEND_ROUTE, ZONE_ROUTE].sort(), 'ผู้ใช้สวิตช์ใหม่ = เพิ่มในลิสต์นี้ และต้องอยู่ใต้ src/app/api/');
+  // + งวด S3: route เอกสาร — ฉบับร่างส่งค่าสวิตช์ให้ตัวโหลดอินพุต (`drawingMethodEnabled`) เหมือนรอบตรวจตอนส่งผล
+  assert.deepEqual(importers, [METHOD_ROUTE, SHEET_ROUTE, SEND_ROUTE, ZONE_ROUTE, DOCUMENT_ROUTE].sort(), 'ผู้ใช้สวิตช์ใหม่ = เพิ่มในลิสต์นี้ และต้องอยู่ใต้ src/app/api/');
   for (const file of importers) assert.ok(file.startsWith('src/app/api/'), file);
   // ถามผ่าน surveyDrawingMethodEnabled() เท่านั้น — ไม่มีไฟล์ไหนดึงชื่ออื่นจากโมดูลสวิตช์ และไม่มีโค้ดฝั่งจอ/โมดูลล้วนเรียกตัวถาม
   assert.deepEqual(hits(/\bsurveyDrawingMethodEnabled\b/, { except: [FLAG] }), importers);
@@ -232,6 +242,13 @@ test('🔴 สวิตช์ SURVEY_DRAWING_METHOD ถูกอ่านไฟ�
   const control = stripComments(read('src/lib/service/surveyControl.js'));
   assert.equal(callsOf(control, 'surveySendSiteVisitError').length, 1);
   assert.doesNotMatch(control, /surveyDrawingFlag|process\.env/, 'การ์ดเป็นฟังก์ชันล้วน — รับค่าสวิตช์เป็นอาร์กิวเมนต์');
+
+  // งวด S3: สองสคริปต์ของกระดาษรับค่าสวิตช์เป็นตัวเลือก (`drawingMethodEnabled`) — ไม่ดึงโมดูลสวิตช์ ไม่อ่าน env ของมัน
+  for (const script of ['scripts/render-survey-report.mjs', SCRIPT]) {
+    const code = stripComments(read(script));
+    assert.doesNotMatch(code, /surveyDrawingFlag|surveyDrawingMethodEnabled|SURVEY_DRAWING_METHOD/, script);
+    assert.match(code, /\bdrawingMethodEnabled\b/, `${script}: ต้องส่งค่าสวิตช์ให้ตัวโหลดเอง`);
+  }
 });
 
 /* ═══ ⑤ คอลัมน์ใหม่ที่ถูกเอ่ยชื่อในคำสั่งอ่าน ═════════════════════════════════════════════════ */
@@ -257,16 +274,23 @@ test('คอลัมน์ของ mig 0408: จุดที่ระบุช
   const NAMED = {
     // แผนอ่านสองช่องนี้จากแถวเพื่อแยก "กดซ้ำของการกระทำเดิม" ออกจาก "มีคนอื่นสลับไปแล้ว" · ตัวเขียนเป็นคนประทับ
     // + ตัวโหลดคิว (งวด S2b): บรรทัดที่มา "หัวหน้าเปลี่ยนเป็นลงหน้างาน: {เหตุผล}" บนการ์ดของผู้วางคิว — อ่านอย่างเดียว
-    methodReason: [SWITCH, WRITES, QUEUE_REPO],
-    methodChangedByName: [SWITCH, WRITES],
+    // + กระดาษ (งวด S3): ภาพนิ่งเก็บเหตุผล/คนสลับ/เวลาสลับ · ตัวกรองพิมพ์แถว "วิธีประเมินรายพื้นที่" ของฉบับภายใน — อ่านอย่างเดียว
+    methodReason: [SWITCH, WRITES, QUEUE_REPO, PAPER_SNAPSHOT, PAPER_VIEW],
+    methodChangedByName: [SWITCH, WRITES, PAPER_SNAPSHOT, PAPER_VIEW],
     // เส้นแก้พื้นที่: ช่างเขียนทับพื้นที่ที่หัวหน้าเพิ่งสลับ ⇒ 409 (ไม่ใช่ 403) · ตัวเขียนเป็นคนประทับ
     // + ตัวโหลดคิว (งวด S2b): เลือกพื้นที่ที่ถูกสลับล่าสุด — อ่านอย่างเดียว
-    methodChangedAt: [ZONE_ROUTE, WRITES, QUEUE_REPO],
+    methodChangedAt: [ZONE_ROUTE, WRITES, QUEUE_REPO, PAPER_SNAPSHOT, PAPER_VIEW],
     // เขียน: ส่งผล (เฉพาะใบที่มีพื้นที่จากแบบ) · ดึงกลับ/เปิดใหม่ (ล้างเป็น NULL) — อ่าน: ทะเบียนโซน · แบนเนอร์ของฝ่ายขาย · ด่าน/ข้อความตอนส่ง
     // + หน้าใบประเมิน (งวด S2b): ใส่ตัวเลือกของสองไทล์ลง body ตอนส่งผล — เขียนผ่าน route ส่งผลเท่านั้น ไม่อ่านคอลัมน์
     surveyConfirm: [
       REQUEST_ROUTE, CUSTOMER_ZONES_ROUTE, RECALL_ROUTE, SEND_ROUTE, 'src/app/service/surveys/[id]/page.js',
       'src/lib/service/surveyJob.js', 'src/lib/service/surveySendClose.js',
+      // + กระดาษ (งวด S3): ภาพนิ่ง (`request.surveyConfirm`) · ตัวกรอง (กล่องหมายเหตุ · แถว "ยืนยันหน้างานภายหลัง") ·
+      //   รอบตรวจก่อนส่งผลรับคำตอบจากกล่องส่งผลเป็นตัวเลือก — ไม่มีคำสั่งอ่านที่เอ่ยชื่อคอลัมน์
+      PAPER_SNAPSHOT, PAPER_VIEW, PAPER_INPUTS,
+      // + ตัวอย่างกระดาษของหน้าตั้งค่า (งวด S3 กลุ่ม C): คำร้องตัวอย่างในหน่วยความจำพก `surveyConfirm: 'needed'`
+      //   ให้กล่องหมายเหตุพิมพ์ท้ายประโยค — ไม่อ่านคอลัมน์ ไม่เขียนฐาน
+      'src/lib/service/surveyReportPreview.js',
     ],
     // ผูกใบยืนยันหน้างานกับใบต้นทาง = งวด S5 — ยังไม่มีโค้ดไหนแตะ (รวมโมดูลใบ)
     surveyConfirmOfId: [],
@@ -284,18 +308,49 @@ test('คอลัมน์ของ mig 0408: จุดที่ระบุช
 
 /* ═══ ⑥ กระดาษ ═══════════════════════════════════════════════════════════════════════════ */
 
-test('ภาพนิ่งของเอกสารประเมินยังรุ่น 1 — งวด S1/S2a ไม่เพิ่มคีย์ลงภาพนิ่ง (งวด S3 เป็นคนขยับรุ่น)', () => {
+test('ภาพนิ่งของเอกสารประเมินยังรุ่น 1 — งวด S3 เพิ่มคีย์แบบไม่ทำลาย (รุ่นไม่ขยับ) · ไฟล์กระดาษไม่ดึงโมดูลสลับวิธี', () => {
   assert.equal(SURVEY_REPORT_SNAPSHOT_VERSION, 1);
-  // งวด S2a ไม่แตะกระดาษ: ไฟล์ของเอกสารไม่รู้จักโมดูลสลับวิธีเลย
+  // ไฟล์ของเอกสารไม่รู้จักโมดูลสลับวิธีเลย (งวด S3 ถามวิธีผ่าน surveyMethod.js · ข้อความ "ยังไม่ได้เลือก…" ก๊อปเป็นค่าคงที่ของตัวเอง)
   const paper = APP.filter(({ file }) => /\/surveyReport\w*\.js$/.test(file));
   assert.ok(paper.length >= 5);
   for (const { file, code } of paper) assert.doesNotMatch(code, /surveyMethod(?:Switch|Writes|Notify)\b/, file);
 });
 
-test('route ออกเอกสารส่งธง hold ต่อเฉพาะตอนผลมีธงนั้น — ผลอื่นทุกแบบได้คีย์ชุดเดิม', () => {
+/* งวด S3 ถอดข้อกันเอกสารของ S1 (ค่าคงที่ · ธง `hold` · ผู้อ่านธงทุกตัว) — คำว่า hold ต้องไม่เหลือเป็นคีย์/ตัวแปรในโค้ดของกระดาษ
+   ⚠️ ใช้ขอบคำ: route เอกสารดึง `printPlaceholderHtml` ซึ่งมีตัวอักษร h-o-l-d อยู่กลางคำ */
+test('งวด S3: route ออกเอกสารไม่ส่งธง hold แล้ว — ผลออกเอกสารทุกแบบได้คีย์ชุดเดียว', () => {
   const route = stripComments(read(DOCUMENT_ROUTE));
-  assert.match(route, /\.\.\.\(issued\.hold === true \? \{ hold: true \} : \{\}\)/);
-  assert.doesNotMatch(route, /hold: issued\.hold/);
+  assert.doesNotMatch(route, /\bhold\b/);
+  assert.match(route, /printPlaceholderHtml/, 'ตัวอย่างของคำที่มีตัวอักษรชุดนี้กลางคำยังอยู่ — ยามต้องใช้ขอบคำ');
+});
+
+test('งวด S3: ไม่มีคีย์ hold ถูกสร้างหรืออ่านในไฟล์กระดาษ · หน้าจอเอกสาร · route เอกสาร · สองสคริปต์', () => {
+  const files = [
+    ...APP.filter(({ file }) => /^src\/lib\/service\/surveyReport\w*\.js$/.test(file)).map(({ file }) => file),
+    'src/lib/service/surveyDocumentView.js', DOCUMENT_ROUTE, 'scripts/render-survey-report.mjs', SCRIPT,
+  ];
+  assert.ok(files.length >= 14, 'ต้องเดินเจอไฟล์กระดาษจริง');
+  for (const file of files) {
+    const code = stripComments(read(file));
+    assert.doesNotMatch(code, /\bhold\b/, file);
+    assert.doesNotMatch(code, /DRAWING_HOLD|drawingHold|PAPER_HOLD|signHold/, file);
+  }
+});
+
+test('งวด S3: ภาพนิ่ง/ตัวกรองของกระดาษเป็นโมดูลล้วน — ไม่ดึง server-only ไม่ดึงตัวอ่านสวิตช์ · ตัวเรนเดอร์ไม่มีตัวเลือกสี', () => {
+  for (const file of [PAPER_SNAPSHOT, PAPER_VIEW]) {
+    const code = stripComments(read(file));
+    assert.doesNotMatch(code, /server-only|from 'node:|from "node:/, file);
+    assert.doesNotMatch(code, /surveyDrawingFlag|surveyDrawingMethodEnabled|process\.env/, file);
+    // ทุก import ของไฟล์ — ไม่มีโมดูลไหนที่มีคำว่า Repo / Writes / Flag (ตัวแตะฐานและตัวอ่านสวิตช์)
+    const imports = [...code.matchAll(/^import [\s\S]*? from '([^']+)';$/gm)].map((m) => m[1]);
+    assert.ok(imports.length >= 5, `${file}: ต้องอ่าน import ได้จริง`);
+    for (const from of imports) assert.doesNotMatch(from, /Repo$|Writes$|Flag$|server/, `${file} ← ${from}`);
+  }
+  const renderer = stripComments(read('src/lib/service/surveyReportDocument.js'));
+  const signature = renderer.match(/export function renderSurveyReportHTML\(\{([\s\S]*?)\} = \{\}\)/);
+  assert.ok(signature, 'ต้องเจอหัวฟังก์ชันของตัวเรนเดอร์');
+  assert.doesNotMatch(signature[1], /accentKey/, 'สีมาจากฉบับของ view ทางเดียว');
 });
 
 /* ═══ ตะเข็บข้ามกลุ่ม (พฤติกรรมจริงของฟังก์ชันที่กลุ่มหนึ่งประกาศ อีกกลุ่มเรียก) ═════════════════ */

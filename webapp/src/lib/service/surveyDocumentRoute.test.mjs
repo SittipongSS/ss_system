@@ -34,6 +34,8 @@ import sharp from 'sharp';
 for (const key of [
   'SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'NEXT_PUBLIC_SUPABASE_ANON_KEY',
   'SURVEY_REPORT_ISSUE_AT_SEND', 'SURVEY_REPORT_SIGNATURES', 'PUPPETEER_EXECUTABLE_PATH',
+  // งวด S3: route นี้อ่านสวิตช์ประเมินจากแบบแล้ว — ค่าจากเครื่องที่รันเทสต์ต้องไม่ไหลเข้ามา
+  'SURVEY_DRAWING_METHOD',
 ]) delete process.env[key];
 
 register('data:text/javascript,' + encodeURIComponent(`
@@ -1140,6 +1142,111 @@ test('POST: ใบเก่าที่มีพื้นที่ไม่ค�
   assert.equal(world.rpcCalls().length, 0);
   assert.equal(world.driveCalls.length, 0, 'ตีกลับก่อนดึงรูป');
   assert.equal(world.renderer.launches, 0);
+});
+
+/* ══ 6ข. งวด S3 — ใบที่มีพื้นที่ประเมินจากแบบ (ถอดข้อกันเอกสาร · สเปก S3 กลุ่ม A) ═══════════════════════════ */
+
+/* หัวหน้าที่ตอบใบ (`U-head`) สลับพื้นที่เป็นจากแบบหลังช่างบันทึก · ใบที่ตอบแล้วต้องมีคำตอบ "ต้องยืนยันหน้างานไหม" */
+function deskWorld(indexes, { visits = true, request = {} } = {}) {
+  const world = makeWorld({ request: { surveyConfirm: 'not_needed', ...request } });
+  for (const i of indexes) {
+    Object.assign(world.tables.service_survey_zones[i], {
+      method: 'drawing', methodChangedAt: '2026-09-26T02:50:00.000+00:00', methodChangedByName: 'Head Approver',
+      methodReason: 'ลูกค้าส่งแบบมาแล้ว',
+    });
+  }
+  if (!visits) world.tables.service_visits.length = 0;
+  return world;
+}
+const withDrawingFlag = async (value, fn) => {
+  if (value === undefined) delete process.env.SURVEY_DRAWING_METHOD;
+  else process.env.SURVEY_DRAWING_METHOD = value;
+  try { return await fn(); } finally { delete process.env.SURVEY_DRAWING_METHOD; }
+};
+
+test('⭐ งวด S3 POST: ใบจากแบบล้วน (ไม่มีนัด) และใบผสม ที่ตอบแล้วและเลือกแล้ว ออกเลขได้ · ภาพนิ่งบอกวิธีประเมิน · ไม่มีคีย์ `hold`', async () => {
+  for (const [label, world, mode] of [
+    ['จากแบบล้วน', deskWorld([0, 1], { visits: false }), 'drawing'],
+    ['ผสม', deskWorld([1]), 'mixed'],
+  ]) {
+    const res = await post(world, HEAD);
+    assert.equal(res.status, 200, `${label}: ${res.json?.error}`);
+    assert.equal(res.json.report.docNo, FIRST_NO, label);
+    assert.equal(keysDeep(res.json).has('hold'), false, label);
+    const row = world.report();
+    assert.equal(row.snapshot.assessment.mode, mode, label);
+    assert.equal(row.snapshot.request.surveyConfirm, 'not_needed', label);
+    assert.ok(row.frozenAt, `${label}: กระดาษถูกตรึง`);
+  }
+});
+
+test('🔴 งวด S3 POST: ใบที่มีพื้นที่จากแบบที่ออกไม่ได้ = 409 รูปคีย์เดิม (`code` · `reasons` · `retry`) — body ไม่มีคีย์ `hold` · ไม่มีเลข', async () => {
+  // เหตุของระบบ (ไม่มีมาตรฐานเอกสาร) = กดซ้ำได้
+  const system = deskWorld([0, 1], { visits: false });
+  system.tables.document_standard_versions.length = 0;
+  const a = await post(system, HEAD);
+  assert.equal(a.status, 409);
+  assert.deepEqual(Object.keys(a.json).sort(), ['code', 'error', 'reasons', 'retry']);
+  assert.equal(a.json.code, 'blocked');
+  assert.equal(a.json.retry, true);
+  assert.equal(a.json.error, 'ออกเอกสารไม่ได้ — ไม่พบมาตรฐานเอกสารของรายงานการประเมินพื้นที่ · แก้แล้วกดออกเอกสารอีกครั้ง');
+
+  // เหตุของเนื้อใบ (ตอบแล้วแต่ไม่มีคำตอบ) = ต้องดึงผลกลับ
+  const content = deskWorld([1], { request: { surveyConfirm: null } });
+  const b = await post(content, HEAD);
+  assert.equal(b.status, 409);
+  assert.deepEqual(Object.keys(b.json).sort(), ['code', 'error', 'reasons', 'retry']);
+  assert.deepEqual(b.json.reasons, ['ยังไม่ได้เลือกว่าต้องยืนยันหน้างานไหม']);
+  assert.equal(b.json.retry, false);
+  for (const world of [system, content]) {
+    assert.equal(world.rpcCalls().length, 0);
+    assert.equal(world.reports().length, 0);
+    assert.equal(world.threadRows().length, 0);
+  }
+});
+
+test('งวด S3 POST: ค่าสวิตช์ประเมินจากแบบส่งถึงขั้นออกเลข — ใบผสมที่ไม่มีนัดได้หางของบรรทัดไม่พบนัดเฉพาะตอนเปิด (`on`)', async () => {
+  const noVisit = 'ไม่พบนัดประเมินพื้นที่ของใบนี้';
+  const tail = ' — พื้นที่ที่ไม่ได้ลงหน้างานให้เปลี่ยนเป็น “ประเมินจากแบบ”';
+  for (const [flag, line] of [[undefined, noVisit], ['off', noVisit], ['1', noVisit], ['on', noVisit + tail], [' ON ', noVisit + tail]]) {
+    await withDrawingFlag(flag, async () => {
+      const world = deskWorld([1], { visits: false });
+      const res = await post(world, HEAD);
+      assert.equal(res.status, 409, String(flag));
+      assert.deepEqual(res.json.reasons, [line], String(flag));
+      assert.equal(res.json.retry, false);
+    });
+  }
+});
+
+test('⭐ งวด S3 ฉบับร่าง: ใบที่มีพื้นที่จากแบบ (ยังไม่ถูกตัด) ที่ขนาดไม่ครบ พูดว่า "มีขนาดครบ" · ใบลงหน้างานยังพูดว่า "วัดครบ"', async () => {
+  const cases = [
+    { name: 'ผสม · พื้นที่จากแบบขาดขนาด', drawing: [0], gap: 0, want: 'ดูตัวอย่างได้เมื่อมีขนาดครบทุกพื้นที่ (1/2)' },
+    { name: 'ผสม · พื้นที่ลงหน้างานขาดขนาด', drawing: [0], gap: 1, want: 'ดูตัวอย่างได้เมื่อมีขนาดครบทุกพื้นที่ (1/2)' },
+    { name: 'จากแบบล้วน', drawing: [0, 1], gap: 1, want: 'ดูตัวอย่างได้เมื่อมีขนาดครบทุกพื้นที่ (1/2)' },
+    { name: 'ลงหน้างานล้วน', drawing: [], gap: 1, want: 'ดูตัวอย่างได้เมื่อวัดครบทุกพื้นที่ (1/2)' },
+    { name: 'พื้นที่จากแบบถูกตัด = ใบลงหน้างาน', drawing: [0], gap: 1, cut: 0, want: 'ดูตัวอย่างได้เมื่อวัดครบทุกพื้นที่ (0/1)' },
+  ];
+  for (const row of cases) {
+    const world = deskWorld(row.drawing);
+    world.tables.service_survey_zones[row.gap].parts[0].heightM = null;
+    if (row.cut !== undefined) world.tables.service_survey_zones[row.cut].status = 'cut';
+    const res = await get(world, HEAD, '?draft=1&format=html');
+    assert.equal(res.status, 409, row.name);
+    assert.equal(res.json.error, row.want, row.name);
+    assert.deepEqual(world.writes(), [], row.name);
+  }
+});
+
+test('route (ซอร์ส · งวด S3): อ่านสวิตช์ประเมินจากแบบรูปเดียวที่ยามรู้จัก · ส่งให้ตัวโหลดของร่างและขั้นออกเลข · ไม่มีธง `hold` เหลือ', () => {
+  const src = code(ROUTE);
+  assert.match(src, /import \{ surveyDrawingMethodEnabled \} from '@\/lib\/service\/surveyDrawingFlag';/);
+  assert.match(src, /loadSurveyReportInputs\(supabase, \{\s*request, closedVisit: closing, pendingAnswer, zones, takenAt: nowIso, drawingMethodEnabled: surveyDrawingMethodEnabled\(\),\s*\}\)/);
+  const issueCall = src.slice(src.indexOf('await issueSurveyReport(supabase, {'));
+  assert.match(issueCall.slice(0, issueCall.indexOf('});')), /drawingMethodEnabled: surveyDrawingMethodEnabled\(\),/);
+  assert.equal(src.split('surveyDrawingMethodEnabled()').length - 1, 2, 'อ่านสองที่: ร่าง · ออกเอกสาร');
+  assert.doesNotMatch(src, /\bhold\b/);
+  assert.doesNotMatch(raw(ROUTE), /SURVEY_DRAWING_METHOD/, 'ไม่อ่าน env เอง');
 });
 
 /* ══ 7. บรรทัดแจ้งผู้ขอ (`report_issued` · มติ 34) ═══════════════════════════════════════ */

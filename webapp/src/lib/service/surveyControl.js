@@ -52,8 +52,7 @@ import {
   surveyZoneAddedLabel,
 } from '@/lib/service/surveyMethodSwitch';
 import {
-  SURVEY_SEND_PAPER_HOLD_EFFECT, surveySendDocumentRefusal, surveySendDocumentRefusalList, surveySendSiteVisitError,
-  surveySendVisitStep,
+  surveySendDocumentRefusal, surveySendDocumentRefusalList, surveySendSiteVisitError, surveySendVisitStep,
 } from '@/lib/service/surveySendClose';
 import { spotPhotoGroups, surveySpotGates } from '@/lib/service/surveySpotPhotos';
 import { VISIT_STATUS_LABELS, isClosedVisit } from '@/lib/service/visitStatus';
@@ -739,8 +738,11 @@ export function surveyControlView({
     canWrite,
     failedGates: ownGates.filter((g) => !g.ok).map((g) => g.short),
     spotsUnlinked: spotSendGates.some((g) => g.key === 'spotLinked' && !g.ok),
-    // ใบที่มีพื้นที่จากแบบ — เอกสารถูกพักไว้ (งวด S1) ⇒ ส่วนเอกสารต้องไม่สัญญาเลขที่เอกสารก่อนส่ง
-    drawingHold: mix.drawing > 0 ? SURVEY_SEND_PAPER_HOLD_EFFECT : null,
+    /* ใบที่มีพื้นที่จากแบบ (ตัวนับเดียวกับการ์ด — ไม่นับพื้นที่ที่ถูกตัด) — เอกสารออกตามตารางเดียวกับใบลงหน้างาน (งวด S3)
+       ต่างแค่คำของเหตุปุ่มร่าง ("มีขนาดครบ") กับประโยคก่อนส่งตอนสวิตช์ออกเอกสารปิด */
+    hasDrawing: mix.drawing > 0,
+    /* ใบจากแบบทั้งใบ (สัดส่วนเดียวกับ `recallSignNote` ข้างล่าง) — กล่องยืนยันออกเอกสารเอ่ยลายเซ็นของผู้ส่งผลคนเดียว (มติเจ้าของ 19/10/2026) */
+    allDrawing: mix.mode === 'drawing',
   });
   const docAccess = isRecord(document?.access) ? document.access : null;
   /* สถานะของเอกสารหลังหักของที่จอรู้เอง (อ่านไม่สำเร็จ = `unknown` · การส่งรอบนี้ออกเอกสารล้ม = `missing`) — ตัวเดียวกับส่วนเอกสาร */
@@ -755,10 +757,7 @@ export function surveyControlView({
   const docBlockers = docSend
     ? (Array.isArray(docSend.blockers) ? docSend.blockers : []).filter((t) => typeof t === 'string' && t.trim() !== '')
     : [];
-  /* ⚠️ ข้อกันเอกสารของใบที่มีพื้นที่ประเมินจากแบบ (`hold: true`) **ไม่ใช่ด่านที่ติด** — ไม่มีอะไรให้ใครแก้ และส่วนเอกสารเล่าเรื่องนี้
-     เองด้วยโทนข้อมูล ⇒ ไม่นับเป็นเหตุของแถวด่าน (🐞 UAT S2b S05: ใบที่ส่งแล้วขึ้น "ติด 1 / 4 ข้อ" ที่หัวหน้าแก้ไม่ได้) */
   const docIssueBlockers = (isRecord(document?.issue) && Array.isArray(document.issue.blockers) ? document.issue.blockers : [])
-    .filter((b) => b?.hold !== true)
     .map((b) => String(b?.text ?? '').trim()).filter(Boolean);
   /* ⭐ **จำนวนข้อคงที่ทุกสถานะ** (กติกาเดียวกับแถวแพ็คเกจข้างบน · มติ 7) — สวิตช์เปิด = มีแถวนี้ทั้งก่อนและหลังส่ง ·
      สวิตช์ปิด = ไม่มีทั้งก่อนและหลัง · หลังส่ง แถวติดเฉพาะเอกสารค้างผิดรอบ (`stale`) หรือออกเอกสารไม่ได้เพราะมีเหตุขวาง */
@@ -770,12 +769,8 @@ export function surveyControlView({
   /* เหตุของแถวทีละข้อ — แถวที่ผ่าน = ไม่มี · เอกสารค้างผิดรอบ = ประโยคเดียว · นอกนั้นเหตุชุดสดของ server ตามลำดับ */
   const docGateReasons = docGateOk ? []
     : !docSend && docState === 'stale' ? [SURVEY_DOC_STALE_TEXT] : docGateList;
-  /* ⭐ **ใบที่มีพื้นที่จากแบบ (เอกสารถูกพักไว้ · งวด S1): แถว "เอกสารประเมินออกได้" ที่ผ่าน ไม่ถูกวาด** — เครื่องหมายถูก 1/1
-     เหนือส่วนเอกสารที่บอกว่า "ยังออกไม่ได้" คือสองประโยคเถียงกันเรื่องกระดาษใบเดียว (🐞 UAT S2b S04 · S05 · รูป payload ของ production)
-     · แถวยังขึ้นเมื่อ **ติดจริง** (เหตุของเนื้อใบที่ตีกลับการส่งผล · เอกสารค้างผิดรอบ) — เหตุพวกนั้นหัวหน้าแก้ได้
-     ⚠️ ใบลงหน้างานล้วน: `mix.drawing === 0` ⇒ แถวเดิมทุกสถานะ (จำนวนข้อคงที่เหมือนเดิม) · งวด S3 ถอดข้อกันเมื่อไร ถอดกิ่งนี้ด้วย */
-  const docGateHeld = mix.drawing > 0 && docGateOk;
-  const documentGate = (docSend || docAfterSend) && !docGateHeld
+  /* ⭐ ใบที่มีพื้นที่จากแบบได้แถวนี้ตามกติกาเดียวกับใบลงหน้างาน (งวด S3 ถอดข้อพักเอกสาร — เอกสารของใบแบบนี้ออกได้แล้ว) */
+  const documentGate = docSend || docAfterSend
     ? {
       key: 'document',
       owner: 'head',
@@ -909,10 +904,14 @@ export function surveyControlView({
     if (!deskFacts.some((f) => f.sizeComplete)) {
       status = { key: 'desk-empty', tone: 'neutral', headline: 'ยังไม่ได้กรอกขนาด', sub: '' };
     } else if (deskLeft.length || sendGatesFailed) {
+      /* ทุกพื้นที่ครบ · ติดเฉพาะเหตุของเอกสาร (งวด S3 — ใบจากแบบถูกถามเรื่องลายเซ็นแล้ว เช่นผู้ส่งยังไม่มีลายเซ็น) ⇒ บรรทัดรองคำเดียวกับ
+         ใบลงหน้างานที่ติดเฉพาะเอกสาร (`documentOnly` ข้างล่าง) · 🐞 เดิมบรรทัดรองว่าง พาดหัว "x/x พื้นที่" สีอำพันโดยไม่บอกว่าติดอะไร */
+      const deskDocOnly = !deskLeft.length && !!docReason && allGates.every((g) => g.ok)
+        && sizeGates.every((g) => g.ok) && spotSendGates.every((g) => g.ok);
       status = {
         key: 'desk-working', tone: 'warning',
         headline: `กำลังประเมินจากแบบ — ${deskFacts.length - deskLeft.length}/${mix.drawing} พื้นที่`,
-        sub: deskLeft.length ? `เหลือ ${surveyNameList(deskLeft)}` : '',
+        sub: deskLeft.length ? `เหลือ ${surveyNameList(deskLeft)}` : deskDocOnly ? 'เหลือแก้ข้อที่ทำให้เอกสารประเมินออกไม่ได้' : '',
       };
     } else {
       status = readyStatus();
@@ -1282,9 +1281,12 @@ export function surveyControlView({
      ถูกตีกลับถ้าผู้ประเมินหรือผู้ส่งผลยังไม่มีลายเซ็น ⇒ กล่องยืนยันต้องบอกก่อนกด (#1223) · ไม่มี GET ไหนตรวจลายเซ็นให้ใบที่ตอบแล้วและมีเอกสาร
      ครบ (`surveyDocumentSummary` ตรวจเฉพาะใบที่ยังไม่ส่ง/ยังไม่มีเอกสาร) จึงบอกเป็นกติกา ไม่ใช่ผลตรวจ
      ⚠️ เฉพาะเมื่อ server บอกว่ากติกาเปิด (`signRule`) **และ** ส่งผลแล้วออกเอกสารด้วย (`issueAtSend`) — สองธงต้องเป็น `true` ตรงตัว
-     ⚠️ ใบที่มีพื้นที่ประเมินจากแบบไม่ถูกถามเรื่องลายเซ็น (เอกสารของใบแบบนั้นถูกพักไว้) ⇒ ไม่มีบรรทัดนี้ */
-  const recallSignNote = isRecord(document) && document.signRule === true && document.issueAtSend === true && mix.drawing === 0
-    ? ` · ส่งผลรอบใหม่ต้องมีลายเซ็นของผู้ประเมินและผู้ส่งผลในระบบ — ยังไม่มี = ส่งรอบใหม่ไม่ได้${voidsDocNo ? ` และ ${voidsDocNo} เปิดไม่ได้แล้ว` : ''}`
+     · ใบผสมได้บรรทัดเดียวกับใบลงหน้างาน (งวด S3 §2.6 — สองที่นั่ง: ผู้ประเมินบนนัด · ผู้ส่งผล)
+     · ⭐ **ใบจากแบบทั้งใบ** (`mix.mode === 'drawing'` — สัดส่วนเดียวกับที่โมดัลส่งผลถาม) ถามเฉพาะลายเซ็นของผู้ส่งผล (มติเจ้าของ 19/10/2026):
+       ไม่มีนัด ไม่มีผู้ประเมินบนนัดให้ด่านถาม — ที่นั่งที่ 1 ใช้ลายเซ็นของผู้ส่งเมื่อคนเดียวกันกรอกผล ไม่งั้นพิมพ์คำ */
+  const recallSigners = mix.mode === 'drawing' ? 'ผู้ส่งผล' : 'ผู้ประเมินและผู้ส่งผล';
+  const recallSignNote = isRecord(document) && document.signRule === true && document.issueAtSend === true
+    ? ` · ส่งผลรอบใหม่ต้องมีลายเซ็นของ${recallSigners}ในระบบ — ยังไม่มี = ส่งรอบใหม่ไม่ได้${voidsDocNo ? ` และ ${voidsDocNo} เปิดไม่ได้แล้ว` : ''}`
     : '';
 
   // ── กล่องแจ้ง ───────────────────────────────────────────────────────────
@@ -1314,10 +1316,9 @@ export function surveyControlView({
   /* ⭐ **คำเตือนของข้อความบนฉบับลูกค้า** (มติเจ้าของ 01/10 ข้อ 3: เตือน ไม่บล็อก · PR-3 มติ 28) — กาง **ทุกข้อ** บนการ์ด
      🐞 โมดัลยืนยันเปิดได้เฉพาะตอนส่งได้ ⇒ ถ้าอยู่แต่ในโมดัล ข้อ 2..n อ่านไม่ได้เลยขณะที่ยังมีด่านติด
      ⚠️ บรรทัดปิดท้ายบอกที่แก้ **ตามชนิดของบรรทัด** — คำเตือนไม่ได้มีแค่หมายเหตุพื้นที่ (ชื่อลูกค้า · ไซต์ · บริษัท · ชื่อพื้นที่ก็มี)
-        · หมายเหตุพื้นที่แก้ได้เฉพาะคนที่เขียนผลวัดได้ (CD/CM ส่งผลได้แต่เขียนไม่ได้ — `canUploadPlan` ข้างล่างเล่าเรื่องเดียวกัน) */
-  /* ⚠️ ใบที่มีพื้นที่จากแบบ: การส่งผลรอบนี้ไม่ออกเอกสาร (ข้อกันเอกสาร · งวด S1) ⇒ ไม่มี "ฉบับลูกค้า" ให้ตรวจข้อความ — ไม่ขึ้นกล่องนี้
-     (🐞 UAT S2b S05: กล่อง "ตรวจข้อความบนฉบับลูกค้าก่อนส่งผล" ใต้ประโยค "เอกสาร…ยังออกไม่ได้") · งวด S3 ถอดข้อกันเมื่อไร ถอดกิ่งนี้ด้วย */
-  const warningItems = mix.drawing > 0 ? [] : [...new Set(send.seenWarnings.filter((line) => line.trim() !== ''))];
+        · หมายเหตุพื้นที่แก้ได้เฉพาะคนที่เขียนผลวัดได้ (CD/CM ส่งผลได้แต่เขียนไม่ได้ — `canUploadPlan` ข้างล่างเล่าเรื่องเดียวกัน)
+     · ใบที่มีพื้นที่จากแบบได้กล่องนี้เหมือนกัน (งวด S3 — การส่งผลของใบแบบนี้ออกฉบับลูกค้าแล้ว) */
+  const warningItems = [...new Set(send.seenWarnings.filter((line) => line.trim() !== ''))];
   if (warningItems.length) {
     const kinds = surveyWarningKinds(warningItems);
     const where = [
