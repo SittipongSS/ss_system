@@ -28,7 +28,7 @@ import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import { VISIT_KIND_LABELS, visitTimeText } from "@/lib/service/rounds";
 import {
   refillTotals,
-  refillWatchlist,
+  refillWatchView,
   serviceAttention,
   serviceCounts,
   todayByTechnician,
@@ -45,6 +45,7 @@ import { apiFetch } from "@/lib/apiFetch";
 const LOOKBACK_DAYS = 120;
 const ATTENTION_LIMIT = 8;
 const WATCHLIST_LIMIT = 8;
+const WATCHLIST_ID = "refill-watchlist";
 
 const REASON_TONE = { overdue: "danger", overlap: "danger", time: "warning", day: "warning", unassigned: "warning" };
 
@@ -117,7 +118,17 @@ export default function ServiceOverviewPage() {
   const refill = useMemo(() => refillTotals(sites), [sites]);
   const attention = useMemo(() => serviceAttention(visits, sitesById, todayIso), [visits, sitesById, todayIso]);
   const today = useMemo(() => todayByTechnician(visits, todayIso), [visits, todayIso]);
-  const watchlist = useMemo(() => refillWatchlist(sites), [sites]);
+  /* แผงไซต์ที่น้ำหอมกำลังจะหมด = ปลายทางของการ์ด "เครื่องที่ต้องเข้าเติม" — การ์ดกดแล้วเปิดแผงนี้ครบทุกไซต์
+     (H14 ตรวจตัวกรอง 08/10 · ดู `refillWatchView`) · ตั้งต้นย่อเหลือ WATCHLIST_LIMIT */
+  const [watchAll, setWatchAll] = useState(false);
+  const watch = useMemo(
+    () => refillWatchView(sites, { all: watchAll, limit: WATCHLIST_LIMIT }),
+    [sites, watchAll],
+  );
+  const openWatchlist = useCallback(() => {
+    setWatchAll(true);
+    document.getElementById(WATCHLIST_ID)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
 
   const queueItems = useMemo(() => attention.slice(0, ATTENTION_LIMIT).map((row) => {
     const worst = row.reasons.find((r) => REASON_TONE[r.kind] === "danger") || row.reasons[0];
@@ -204,7 +215,9 @@ export default function ServiceOverviewPage() {
                 : refill.soon > 0
                   ? `ใกล้หมด ${refill.soon} เครื่อง · ${refill.sites} ไซต์`
                   : "ทุกไซต์มีนัดครอบแล้ว"}
-              onClick={() => router.push("/database/sites")}
+              /* 🐞 H14 (ตรวจตัวกรอง 08/10): เดิมพาไปทะเบียนไซต์ — ไม่มีข้อมูลการเติมและไม่มีตัวกรองนี้ ⇒ เลข N เปิดมาเจอ
+                 ทุกไซต์ · ปลายทางที่นับชุดเดียวกันคือแผง "ไซต์ที่น้ำหอมกำลังจะหมด" ข้างล่าง ⇒ เปิดแผงนั้นครบทุกไซต์ */
+              onClick={openWatchlist}
             />
           </div>
 
@@ -267,22 +280,32 @@ export default function ServiceOverviewPage() {
           </ListPanel>
 
           <ListPanel
+            id={WATCHLIST_ID}
             icon={<Droplets size={17} aria-hidden="true" />}
             title="ไซต์ที่น้ำหอมกำลังจะหมด"
-            /* "แสดง N จาก M" ย้ายจากคำอธิบายขึ้นป้ายจำนวน — เลขอยู่ที่เดียว (ด่าน LP9) */
-            subtitle={watchlist.length > WATCHLIST_LIMIT
-              ? "ประเมินจากขนาดขวดและอัตราใช้ต่อวัน — ที่เหลืออยู่ในทะเบียนไซต์"
+            /* "แสดง N จาก M" ย้ายจากคำอธิบายขึ้นป้ายจำนวน — เลขอยู่ที่เดียว (ด่าน LP9)
+               ⚠️ ป้ายบอกจำนวนเครื่องด้วย = เลขบนการ์ด "เครื่องที่ต้องเข้าเติม" (ผลรวมคอลัมน์ "เครื่องที่ต้องเติม")
+               🐞 เดิมคำอธิบายบอก "ที่เหลืออยู่ในทะเบียนไซต์" — ทะเบียนไม่มีข้อมูลการเติม หาไม่เจอ ⇒ ขยายในแผงนี้แทน */
+            subtitle={watch.truncated
+              ? "ประเมินจากขนาดขวดและอัตราใช้ต่อวัน — เรียงจากไซต์ที่หมดก่อน กด “ดูทั้งหมด” เพื่อดูครบทุกไซต์"
               : "ประเมินจากขนาดขวดและอัตราใช้ต่อวัน — ไซต์ที่มีนัดครอบแล้วไม่อยู่ในรายการนี้"}
-            count={watchlist.length > WATCHLIST_LIMIT
-              ? `${WATCHLIST_LIMIT} จาก ${watchlist.length} ไซต์`
-              : `${watchlist.length} ไซต์`}
+            count={watch.truncated
+              ? `${WATCHLIST_LIMIT} จาก ${watch.sites} ไซต์ · ${watch.machines} เครื่อง`
+              : `${watch.sites} ไซต์ · ${watch.machines} เครื่อง`}
             actions={(
-              <Button as={Link} href="/database/sites" size="sm" icon={<MapPin size={15} aria-hidden="true" />}>
-                ทะเบียนไซต์
-              </Button>
+              <>
+                {watch.sites > WATCHLIST_LIMIT && (
+                  <Button size="sm" onClick={() => setWatchAll((v) => !v)} aria-expanded={watchAll}>
+                    {watchAll ? "ย่อ" : "ดูทั้งหมด"}
+                  </Button>
+                )}
+                <Button as={Link} href="/database/sites" size="sm" icon={<MapPin size={15} aria-hidden="true" />}>
+                  ทะเบียนไซต์
+                </Button>
+              </>
             )}
           >
-            {watchlist.length === 0 ? (
+            {watch.sites === 0 ? (
               <EmptyState plain icon={Droplets}>ทุกไซต์มีนัดครอบก่อนน้ำหอมหมดแล้ว 🎉</EmptyState>
             ) : (
               <TableScroll>
@@ -297,7 +320,7 @@ export default function ServiceOverviewPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {watchlist.slice(0, WATCHLIST_LIMIT).map((site) => (
+                    {watch.rows.map((site) => (
                       <tr key={site.id}>
                         <th scope="row">
                           {/* 🐞 เดิมเป็น <button> สี --accent: ไม่มี href (เปิดแท็บใหม่ไม่ได้) ·

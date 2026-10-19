@@ -1269,7 +1269,10 @@ export default function ServiceSchedulePage() {
               <Pager
                 page={pagination.page}
                 pageCount={pagination.pageCount}
-                total={pagination.total}
+                /* ยอดเป็น **ใบ/นัด** ไม่ใช่ช่องของการแบ่งหน้า — กลุ่มที่พับกินหนึ่งช่อง (หัวกลุ่ม) แต่ใบข้างในยังนับ
+                   🐞 H13 (ตรวจตัวกรอง 08/10): เดิมส่ง `pagination.total` (= ช่อง) ⇒ แท็บ "รอจัด 33" ป้ายแผง "33 ใบ"
+                      แต่ตัวแบ่งหน้าบอก "ทั้งหมด 14 ใบ" เมื่อพับ "รอฝ่ายอื่น" 20 ใบไว้ · ตัวเดียวกับป้ายจำนวนของแผง */
+                total={queueView.listedCount}
                 onPage={pagination.setPage}
                 pageSize={pagination.pageSize}
                 onPageSize={pagination.setPageSize}

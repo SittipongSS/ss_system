@@ -2,7 +2,7 @@
 import { TableScroll } from "@/components/ui/Table";
 import DetailRow from "@/components/ui/DetailRow";
 import { notifyToast } from "@/components/ui/Toast";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { ShoppingCart, Plus, ChevronRight, ChevronDown, Pencil, Download, Search, ArrowUp, ArrowDown, AlertCircle } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
@@ -15,7 +15,7 @@ import { useApiList } from "@/lib/excise/useApiList";
 import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { fmtDate, fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
-import { poTotalQty, poLineCount, poRollupStatus, PO_STATUS_LABEL, lineStage, poStageRollup, STAGE_LABEL, STAGE_COLOR, effectivePoQty } from "@/lib/sahamit/po";
+import { poTotalQty, poLineCount, PO_STATUS_LABEL, lineStage, STAGE_LABEL, STAGE_COLOR, effectivePoQty, poDisplayStatus, poStatusOptions, PO_DISPLAY_STATUS_ORDER } from "@/lib/sahamit/po";
 import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
 import { ppcOf, casesText } from "@/lib/sahamit/units";
 import { destinationLabel, DESTINATIONS } from "@/components/sahamit/destinations";
@@ -181,7 +181,7 @@ export default function PoPage() {
   ) : null;
   const [openPo, setOpenPo] = useState({});
   const [search, setSearch] = useState("");
-  const [statusSel, setStatusSel] = useState([]);  // poRollupStatus keys
+  const [statusSel, setStatusSel] = useState([]);  // คำบนป้ายสถานะ (poDisplayStatus().label) ที่เลือกไว้
   const [destSel, setDestSel] = useState([]);       // destination keys
   const canEdit = useCan("sahamit:edit");
   const [view, setView] = useState("grouped"); // grouped (รายใบ) | table (รายบรรทัด)
@@ -208,11 +208,24 @@ export default function PoPage() {
   }, [products]);
   const prodIdx = useMemo(() => indexProducts(products), [products]);
 
-  // ตัวเลือกตัวกรอง (สถานะ/สถานที่ส่ง) จำกัดเฉพาะที่มีจริงใน PO ปัจจุบัน
-  const statusOptions = useMemo(() => {
-    const present = new Set(pos.map(poRollupStatus));
-    return Object.keys(PO_STATUS_LABEL).filter((k) => present.has(k)).map((k) => ({ value: k, label: PO_STATUS_LABEL[k] }));
-  }, [pos]);
+  // material lines grouped by PO number (คัดเฉพาะบรรทัด active แล้วจาก API)
+  const matByPo = useMemo(() => {
+    const m = new Map();
+    for (const r of material) {
+      if (!m.has(r.poNumber)) m.set(r.poNumber, []);
+      m.get(r.poNumber).push(r);
+    }
+    return m;
+  }, [material]);
+  /* ⭐ สถานะของใบ = **คำบนป้ายในตาราง** (`poDisplayStatus`) — ตัวกรอง/การเรียงใช้ตัวเดียวกับป้าย
+     🐞 H7 (ตรวจตัวกรอง 08/10): ตัวกรองเดิมใช้ `poRollupStatus` (รอส่ง/ส่งครบ) ส่วนป้ายเป็นขั้นผลิต (รอวัสดุ/ปิดงาน)
+        ⇒ เลือก "รอส่ง" แล้วได้ 90 ใบที่ป้ายเขียน "รอวัสดุ" · ใบปิดงานแล้วถูกนับเป็น "รอส่ง" */
+  const statusOf = useCallback((po) => poDisplayStatus(po, matByPo.get(po.poNumber)), [matByPo]);
+
+  /* ตัวเลือกตัวกรอง (สถานะ/สถานที่ส่ง) จำกัดเฉพาะที่มีจริงใน PO ปัจจุบัน · เรียงตามทางเดินของงาน
+     ⚠️ ค่าของตัวเลือก = **คำบนป้าย** (ไม่ใช่คีย์) — สองแหล่งมีคำเดียวกันได้ ("ยกเลิก") ⇒ ตัวเลือกเดียว และ
+        "ตัวเลือกที่เห็น = คำที่ป้ายเขียน" จริงตามตัวอักษร (sahamitPoStatus.test.mjs) */
+  const statusOptions = useMemo(() => poStatusOptions(pos.map(statusOf)), [pos, statusOf]);
   const destOptions = useMemo(() => {
     const present = new Set(pos.map((p) => p.destination).filter(Boolean));
     return DESTINATIONS.filter((d) => present.has(d.key)).map((d) => ({ value: d.key, label: d.label }));
@@ -222,7 +235,7 @@ export default function PoPage() {
   const filteredPos = useMemo(() => {
     if (!q && !statusSel.length && !destSel.length) return pos;
     return pos.filter((po) => {
-      if (statusSel.length && !statusSel.includes(poRollupStatus(po))) return false;
+      if (statusSel.length && !statusSel.includes(statusOf(po).label)) return false;
       if (destSel.length && !destSel.includes(po.destination)) return false;
       if (q) {
         /* ชื่อสินค้ามีสองแหล่ง: ชื่อที่บันทึกไว้กับบรรทัด PO (`l.productName` — มากับสาย PO เอง) และชื่อปัจจุบันจากรายการ
@@ -236,7 +249,7 @@ export default function PoPage() {
       }
       return true;
     });
-  }, [pos, q, statusSel, destSel, prodIdx]);
+  }, [pos, q, statusSel, destSel, prodIdx, statusOf]);
 
   const filterCount = statusSel.length + destSel.length;
   const clearFilters = () => { setStatusSel([]); setDestSel([]); };
@@ -248,21 +261,11 @@ export default function PoPage() {
     const s = sortDir === "asc" ? 1 : -1;
     const key = (po) => ({
       po: po.poNumber || "", doc: po.docDate || "", recv: po.receivedDate || "", due: po.dueDate || "",
-      qty: poTotalQty(po), value: poExVat(po, priceByFg), status: poRollupStatus(po),
+      qty: poTotalQty(po), value: poExVat(po, priceByFg), status: PO_DISPLAY_STATUS_ORDER.indexOf(statusOf(po).key),
     }[sortKey]);
     return [...filteredPos].sort((a, b) => { const ka = key(a), kb = key(b); return (ka < kb ? -1 : ka > kb ? 1 : 0) * s; });
-  }, [filteredPos, sortKey, sortDir, priceByFg]);
+  }, [filteredPos, sortKey, sortDir, priceByFg, statusOf]);
   const grouped = usePagination(sortedGroupedPos, { resetKey: `${q}|${statusSel.join(",")}|${destSel.join(",")}|${sortKey}|${sortDir}` });
-
-  // material lines grouped by PO number (คัดเฉพาะบรรทัด active แล้วจาก API)
-  const matByPo = useMemo(() => {
-    const m = new Map();
-    for (const r of material) {
-      if (!m.has(r.poNumber)) m.set(r.poNumber, []);
-      m.get(r.poNumber).push(r);
-    }
-    return m;
-  }, [material]);
 
   const toggle = (id) => setOpenPo((s) => ({ ...s, [id]: !s[id] }));
 
@@ -405,10 +408,10 @@ function PoGroup({ po, lines, priceByFg, prodIdx, isOpen, onToggle, onSaved, can
 
   // สถานะหัว PO: รวมจากบรรทัด (ผ่านวัสดุ); ถ้าไม่มีบรรทัด active → สถานะเดิม
   // ⚠️ สายวัสดุไม่มีของในมือ ⇒ `lines` ว่างทุกใบ ⇒ ตกมาที่สถานะส่งของของตัว PO (ข้อมูลจริงจากสาย PO) — ป้ายหัวจอบอกไว้แล้ว
-  const hasLines = lines.length > 0;
-  const poStage = hasLines ? poStageRollup(lines.map((r) => lineStage(r.status, !!r.tracking?.pmArrivedAt, !!r.tracking?.rmArrivedAt))) : null;
-  const stageLabel = hasLines ? STAGE_LABEL[poStage] : PO_STATUS_LABEL[poRollupStatus(po)];
-  const stageColor = hasLines ? (C[STAGE_COLOR[poStage]] || C["text-3"]) : "var(--text-3)";
+  // ⭐ ตัวเดียวกับตัวกรอง/การเรียงของหน้า (`poDisplayStatus`) — คำบนป้าย = คำบนตัวเลือกตัวกรอง (H7)
+  const shown = poDisplayStatus(po, lines);
+  const stageLabel = shown.label;
+  const stageColor = C[shown.color] || C["text-3"];
 
   return (
     <>

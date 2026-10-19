@@ -742,3 +742,22 @@ test('D15 ร่างของไซต์ที่โซนยังไม่�
   const bad = run().rows.find((r) => r.id === 'D-sa');
   assert.equal(bad.gateItems.some((g) => 'orders' in g), false);
 });
+
+test('🔴 ยอดรายการของแท็บรอจัด = เลขบนแท็บ แม้กลุ่ม "รอฝ่ายอื่น" ถูกพับ (ตรวจตัวกรอง 08/10 · H13)', () => {
+  // ร่างติดด่าน SA เพิ่ม 5 ใบ ⇒ กลุ่ม "รอฝ่ายอื่น" ใหญ่ (กลุ่มที่พับได้)
+  const more = Array.from({ length: 5 }, (_, i) => v({
+    id: `D-sa${i}`, code: `SV-2${i}`, status: 'draft', scheduledDate: '2026-09-25', siteId: 'S-BAD', assigneeId: 'U1', assigneeName: 'สมชาย ใจดี',
+  }));
+  const view = buildScheduleQueue({
+    visits: [...visits, ...more], sitesById, gateContext, workload, todayIso: TODAY, teamFilter: ALL_TEAMS,
+    crewByUser, crewPeople, teamNames, bucket: 'waiting',
+  });
+  const others = view.groups.find((g) => g.key === 'others');
+  assert.equal(others.collapsible, true);
+  assert.equal(others.rows.length, 6);
+  assert.equal(view.listedCount, view.counts.waiting, 'ยอดที่ตัวแบ่งหน้า/ป้ายแผงโชว์ = เลขบนแท็บ');
+  // ช่องของการแบ่งหน้า (ทรงเดียวกับ flatRows ของหน้า) — พับ = หนึ่งช่อง ⇒ ใช้เป็น "ยอด" ไม่ได้
+  const slots = view.groups.flatMap((g) => (g.collapsible ? [{ head: true }] : g.rows));
+  assert.equal(slots.length, view.counts.waiting - others.rows.length + 1);
+  assert.notEqual(slots.length, view.counts.waiting);
+});
