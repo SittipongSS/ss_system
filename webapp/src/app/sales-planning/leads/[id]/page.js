@@ -29,7 +29,7 @@ import useDealOwners from "@/lib/sales/useDealOwners";
 import { livePersonName } from "@/lib/ui/personName";
 import { fmtDate, fmtDateTime, fmtMoney, naText, NA } from "@/lib/format";
 
-import { CHANNEL_GROUP_COLORS, leadBudgetText, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS, MEETING_MODE_LABELS, SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, canCreateDealFromLead, channelGroupOf, leadLostText, leadFollowUpState, leadBounceHistory, leadHandoffContext, LEAD_FOLLOW_UP_ACTIONS } from "@/lib/sales/leads";
+import { CHANNEL_GROUP_COLORS, leadBudgetText, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS, MEETING_MODE_LABELS, SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, canCreateDealFromLead, channelGroupOf, leadLostText, leadFollowUpState, leadActiveFollowUpAt, leadBounceHistory, leadHandoffContext, LEAD_FOLLOW_UP_ACTIONS } from "@/lib/sales/leads";
 import styles from "./page.module.css";
 import Textarea from "@/components/ui/Textarea";
 import LeadFormFields, { leadFormBlocker } from "@/components/salesPlanning/LeadFormFields";
@@ -554,9 +554,11 @@ function LeadFollowUpCard({ lead, holidays }) {
   // นาฬิกาเดินเฉพาะขั้น "ติดต่อแล้ว" — ขั้นอื่นมี SLA ของตัวเองอยู่บนแถบคิวแล้ว
   if (lead.status !== "contacted") return null;
 
-  const state = lead.followUpAt ? leadFollowUpState(lead.followUpAt) : null;
-  const daysLate = lead.followUpAt
-    ? businessDaysWaiting(lead.followUpAt, new Date().toISOString(), holidays || new Set())
+  // ผ่านตัวกลางเหมือนทุกจอ (ใบ contacted ได้ค่าเดิมเสมอ) — ไม่มีจอไหนอ่าน `followUpAt` ตรง
+  const followUpAt = leadActiveFollowUpAt(lead);
+  const state = followUpAt ? leadFollowUpState(followUpAt) : null;
+  const daysLate = followUpAt
+    ? businessDaysWaiting(followUpAt, new Date().toISOString(), holidays || new Set())
     : null;
   const left = autoBounceCountdown(daysLate);
   const touches = (lead.events || []).filter((e) => LEAD_FOLLOW_UP_ACTIONS.includes(e.kind));
@@ -565,7 +567,7 @@ function LeadFollowUpCard({ lead, holidays }) {
     {/* 🔴 ไม่มีวันติดตาม = ไม่มีนาฬิกาจับเลย ทั้งการทวงและการส่งกลับข้ามใบนี้ทั้งคู่
         (ดู `planAutoBounce`: ไม่มีจุดเริ่ม = ไม่แตะ) ⇒ ต้องพูดออกมาตรง ๆ ไม่ใช่
         ปล่อยการ์ดว่างซึ่งอ่านได้ว่า "ไม่มีอะไรต้องทำ" */}
-    {!lead.followUpAt ? (
+    {!followUpAt ? (
       <p className={styles.followUpNote}>
         ใบนี้ยังไม่มีวันติดตาม — ระบบจะไม่ทวงและไม่ส่งกลับคิวคัดกรอง
         กด “ติดตามต่อ” เพื่อกำหนดวันที่จะกลับไปหาลูกค้า
@@ -574,7 +576,7 @@ function LeadFollowUpCard({ lead, holidays }) {
       <>
         <div className={styles.summaryRow}>
           <span>นัดติดตามไว้</span>
-          <strong className={styles.followUpValue} data-tone={state}>{fmtDate(lead.followUpAt)}</strong>
+          <strong className={styles.followUpValue} data-tone={state}>{fmtDate(followUpAt)}</strong>
         </div>
         <div className={styles.summaryRow}>
           <span>สถานะ</span>
@@ -603,6 +605,7 @@ function LeadFollowUpCard({ lead, holidays }) {
 }
 
 function LeadSummary({ lead }) {
+  const followUpAt = leadActiveFollowUpAt(lead);
   return <DetailCard icon={Inbox} eyebrow="Lead summary" title="สรุปลีด">
     <div className={styles.summaryRow}><span>สถานะ</span><strong>{LEAD_STATUS_LABELS[lead.status] || lead.status}</strong></div>
     <div className={styles.summaryRow}><span>กลุ่มช่องทาง</span><strong style={{ color: CHANNEL_GROUP_COLORS[channelGroupOf(lead.channel)] }}>{LEAD_CHANNEL_LABELS[lead.channel] || lead.channel}</strong></div>
@@ -619,11 +622,13 @@ function LeadSummary({ lead }) {
         ไม่เห็นว่าตัวเองนัดวันไหนไว้ ต้องไล่ดูในไทม์ไลน์ ซึ่งเป็นโรคเดียวกับที่
         `disqualifiedReason` เคยเป็น (เขียนแล้วไม่มีใครอ่าน)
         ⚠️ โทนสีมาจาก `leadFollowUpState` ที่เดียวร่วมกับตารางคิว — เกณฑ์ต้องตรงกับที่
-        ระบบใช้ทวงจริง ไม่งั้นจอแดงคนละวันกับที่กระดิ่งเด้ง */}
-    {lead.followUpAt && (
+        ระบบใช้ทวงจริง ไม่งั้นจอแดงคนละวันกับที่กระดิ่งเด้ง
+        ⚠️ วันมาจาก `leadActiveFollowUpAt` — ใบที่ปิดแล้วไม่มีแถวนี้ (การปิดไม่ล้างคอลัมน์
+        ⇒ อ่านตรงแล้วใบที่จบไปแล้วขึ้นวันเก่าตัวแดง) · วันที่เคยนัดไว้ยังอยู่ในประวัติ */}
+    {followUpAt && (
       <div className={styles.summaryRow}>
         <span>ติดตามต่อ</span>
-        <strong className={styles.followUpValue} data-tone={leadFollowUpState(lead.followUpAt)}>{fmtDate(lead.followUpAt)}</strong>
+        <strong className={styles.followUpValue} data-tone={leadFollowUpState(followUpAt)}>{fmtDate(followUpAt)}</strong>
       </div>
     )}
   </DetailCard>;

@@ -339,6 +339,49 @@ export function leadFollowUpState(followUpAt, todayKey = businessDayKey(new Date
   return due === todayKey ? 'today' : 'ahead';
 }
 
+/** สถานะที่ใบจบแล้ว — เปิดลูกค้าแล้ว (งานย้ายไปเป็นดีล) / ไม่ไปต่อ */
+export const LEAD_CLOSED_STATUSES = ['qualified', 'disqualified'];
+
+/** สถานะที่ `followUpAt` เป็น **คำสัญญาที่ยังเดินอยู่** — `contact`/`followup`/`reopen` เขียนวันนี้
+ *  ⭐ `meeting` อยู่ในลิสต์: การกด "นัดประชุม" ล้างวันติดตามทิ้ง ⇒ วันที่ใบนัดแล้วถืออยู่มาจาก
+ *  "บันทึกการติดตาม" **หลังประชุม** เท่านั้น (LEAD_TRANSITIONS.meeting มี `followup`) = นัดลูกค้าไว้จริง
+ *  (ตรวจ prod 19/10: ใบนัดแล้วที่มีวันติดตาม 3 ใบ ทั้งสามได้วันจากเหตุการณ์ followup หลังวันประชุม)
+ *  ⚠️ ไม่รวม `new`/`screened`/`assigned` — ขั้นพวกนั้นใช้นาฬิกา SLA ของระบบ ไม่ใช่วันที่ AE รับปาก
+ *  (ทุกทางที่พาใบกลับไปขั้นนั้นล้าง `followUpAt` อยู่แล้ว) · ใส่เข้ามาเมื่อไร ใบเดียวจะนับซ้ำสองแถว
+ *  บนการ์ดค้างคิว (ขั้นของตัวเอง + ขั้นติดตาม) */
+export const LEAD_FOLLOW_UP_STATUSES = ['contacted', 'meeting'];
+
+/** วันติดตามต่อที่ **ยังมีผล** ของใบ — `null` = ใบนี้ไม่มีวันติดตามให้โชว์/ทาสี/เรียง/นับ
+ *
+ *  ⭐ ที่เดียวที่ตัดสินว่า "ใบนี้ยังมีคำสัญญาติดตามอยู่ไหม" — จออ่าน `lead.followUpAt`
+ *  ตรง ๆ ไม่ได้ ต้องผ่านตัวนี้ แล้วค่อยส่งต่อให้ `leadFollowUpState` ทาสี
+ *  ผู้ใช้: ช่องในตาราง · ตัวเรียง · หน้าใบ · มิติวันติดตามของตัวกรอง (`leadFollowUpKey`) ·
+ *  การ์ดค้างคิว (`summarizeLeadQueue`) · ภาระงานตอนมอบหมาย (`leadWorkloadFrom`)
+ *  🐞 ใบที่ปิดแล้ว (qualified/disqualified) ยังค้าง `followUpAt` ของรอบก่อน — การปิดไม่ล้าง
+ *  คอลัมน์ (มีแค่ bounce/meeting ที่ล้าง) ⇒ ตารางคิวเคยโชว์วันเก่าเป็น **ตัวแดงเลยกำหนด**
+ *  บนใบที่จบไปแล้ว ทั้งที่ตัวเรียงไม่นับวันนั้นมาตั้งแต่ #1848 (สองมาตรฐานบนแถวเดียว)
+ *  🐞 (รอบตรวจ 19/10) ใบนัดแล้วที่เลยวันติดตามหลังประชุม: ตารางทาสีแดง แต่ตัวกรอง "เลยวันติดตาม"
+ *  และการ์ดค้างคิวนับเฉพาะ `contacted` ⇒ แถวแดงที่หาด้วยตัวกรองที่ชื่อเดียวกันไม่เจอ ·
+ *  ตอนนี้ตัวนับทุกตัวอ่านผ่านตัวนี้
+ *  ⚠️ ไม่ล้างคอลัมน์ตอนปิด: ใบเก่าบน prod ค้างอยู่แล้วหลายสิบใบ และกฎฝั่งอ่านครอบทั้งของเก่า
+ *  และของใหม่ด้วยที่เดียว · ดึงกลับ (`reopen`) บังคับวันใหม่/ล้างเองอยู่แล้ว
+ */
+export function leadActiveFollowUpAt(lead) {
+  if (!lead?.followUpAt || !LEAD_FOLLOW_UP_STATUSES.includes(lead.status)) return null;
+  return lead.followUpAt;
+}
+
+/** ช่องของใบในมิติ "วันติดตาม" — `late` · `today` · `ahead` · `none` · `null` = ใบนี้ไม่มีนาฬิกาติดตาม
+ *  ⭐ ตัวเดียวที่ตัวกรองตาราง (`leadListFilter`) และการ์ดค้างคิว (`summarizeLeadQueue`) ใช้แบ่ง
+ *  ⇒ "เลยวันติดตาม" บนการ์ด = ตัวเลือกในแผงกรอง = แถวที่ตารางทาสีแดง
+ *  ⚠️ `none` เฉพาะ `contacted` — ติดต่อแล้วแต่ไม่มีวัน = ไม่มีอะไรทวงให้ · ใบนัดแล้วที่ไม่มีวันติดตาม
+ *  มีวันประชุมเป็นนาฬิกาของมันเอง ไม่ใช่ "ยังไม่มีวันติดตาม" */
+export function leadFollowUpKey(lead, todayKey) {
+  const due = leadActiveFollowUpAt(lead);
+  if (due) return leadFollowUpState(due, todayKey);
+  return lead?.status === 'contacted' ? 'none' : null;
+}
+
 export const LEAD_EDIT_LOCKED_STATUSES = ['qualified', 'disqualified'];
 
 /* ── ลำดับของตารางลีด (หน้า /sa/leads) ────────────────────────────────────
@@ -369,8 +412,10 @@ function leadStatusRank(status) {
 }
 
 function leadFollowUpMs(lead) {
-  if (!lead.followUpAt || LEAD_EDIT_LOCKED_STATUSES.includes(lead.status)) return null;
-  const ms = Date.parse(lead.followUpAt);
+  // กติกาเดียวกับที่จอใช้โชว์วัน — ใบที่ปิดแล้วอยู่ก้อน "ไม่มีวันติดตาม" ทั้งลำดับและหน้าตา
+  const followUpAt = leadActiveFollowUpAt(lead);
+  if (!followUpAt) return null;
+  const ms = Date.parse(followUpAt);
   return Number.isNaN(ms) ? null : ms;
 }
 
