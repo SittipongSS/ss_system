@@ -43,6 +43,9 @@ import { REQUEST_DEPT_LABELS } from "@/lib/master/requestTypes";
 import { deptsInSharedQueue } from "@/lib/requests/modules";
 import { compareRequestUrgency } from "@/lib/deptRequests";
 import { apiFetch } from "@/lib/apiFetch";
+import {
+  dealRequestsLinkLabel, filterByDealRequestsLink, readDealRequestsLink, requestsQueueHref,
+} from "@/lib/requests/dealLink";
 
 // คิวมีได้ฝ่ายละแท็บ — ปกติคนหนึ่งอยู่ฝ่ายเดียวจึงเห็นแท็บเดียว แต่ admin ตอบแทน
 // ได้ทั้งสองฝ่าย (break-glass) ต้องเห็นครบทั้งคู่ ไม่ใช่เห็นแต่ RD แล้วคิว PC หายไปเฉย ๆ
@@ -111,9 +114,11 @@ export default function RequestsPage() {
      ⇒ ในประวัติทุกช่องเป็นศูนย์และแถบถูกซ่อน · ตัวกรองที่ค้างมาจากคิวจะให้ตารางว่าง
      พร้อมคำแนะนำ "กดตัวเลขซ้ำ" ที่ไม่มีตัวเลขให้กด */
   // `next` ว่าง = ถอด `?tab=` ออก — ใช้กับ "ในคิว" ของทีม/ทั้งหมด (เหตุผลอยู่ที่ตัวสลับ)
+  /* ⚠️ **พาตัวกรองดีลไปด้วย** (ตรวจตัวเลข H1 2026-10-19) — เลขบนแท็บนับจากชุดที่กรองดีลแล้ว ถ้ากดแท็บแล้ว
+     `?dealId=` หลุด ชุดจะกลายเป็นทั้งคิวเงียบ ๆ ทั้งที่เลขบนแท็บที่เพิ่งกดพูดถึงดีลเดียว · ถอดได้ที่ปุ่ม × เท่านั้น */
   const setTab = (next) => {
     if (next === "history") board.setCountFilter(null);
-    router.replace(next ? `/requests?tab=${next}` : "/requests", { scroll: false });
+    router.replace(requestsQueueHref({ tab: next, link: dealLink }), { scroll: false });
   };
 
   // ⭐ ตัวสลับขอบเขต — **กรองที่ API ไม่ใช่ที่จอ** (กับดักข้อ 9 ของแผน)
@@ -123,8 +128,11 @@ export default function RequestsPage() {
   // เพราะหน้านี้ส่ง `?scope=mine` มาเสมอ ⇒ ด่านฝั่ง API ไม่มีวันได้ทำงาน
   // กติกาตั้งต้นปัจจุบันอยู่ในบล็อกข้างล่าง (`defaultScope`) ซึ่งกันเคสนั้นไว้ด้วยการ
   // ไม่ให้ superuser/ผู้สังเกตการณ์ตกมาที่ "ของฉัน"
-  /* ลิงก์จากหน้าดีล (`?dealId=`) — ต้องอ่านก่อนตั้งค่าขอบเขต ดูเหตุผลใต้บล็อกนี้ */
-  const dealIdParam = searchParams.get("dealId");
+  /* ลิงก์จากหน้าดีล (`?dealId=` · หมุดไทม์ไลน์ `&step=` · ใบกลางของโครงการ `?project=`) — ต้องอ่านก่อน
+     ตั้งค่าขอบเขต ดูเหตุผลใต้บล็อกนี้ · ตัวอ่านกับตัวประกอบลิงก์อยู่คู่กันที่ `lib/requests/dealLink.js`
+     ⚠️ **อ่านสดจาก URL ไม่ใช่ตั้งครั้งเดียว** — ต่างจากขอบเขต: ปุ่ม × ถอดตัวกรองด้วยการเขียน URL ใหม่ */
+  const dealLink = useMemo(() => readDealRequestsLink(searchParams), [searchParams]);
+  const dealIdParam = dealLink?.dealId || null;
   /* ⭐ **ลิงก์ที่ระบุแท็บมาเปิดที่ขอบเขต "ของฉัน" เสมอ** (มติผู้ใช้ 2026-08-15) —
      แท็บบทบาทมีผลเฉพาะขอบเขตนี้ (ดู `visibleQueueRows`) · เปิด `?tab=todo` ด้วย
      ขอบเขตกว้างเมื่อไร แท็บถูกซ่อนและพารามิเตอร์ถูกเมินเงียบ ๆ ⇒ คนส่งลิงก์กับคนกดเปิด
@@ -150,7 +158,7 @@ export default function RequestsPage() {
        ปิดแล้วจึงเห็นประวัติของทั้งระบบ ไม่ใช่ "ของฉัน" ที่แทบว่าง (กับดัก #1038) */
     if (tabKeys.includes(wanted) && wanted !== "history") return "mine";
     const allowed = REQUEST_SCOPES.filter((s) => canUseScope(me, s));
-    if (dealIdParam) return allowed[allowed.length - 1] || "mine";
+    if (dealLink) return allowed[allowed.length - 1] || "mine";
     return defaultScope(allowed, me, "requests") || "mine";
   });
   const [activeScope, setActiveScope] = useState("mine");
@@ -201,14 +209,19 @@ export default function RequestsPage() {
      ⚠️ **ไม่ใช่ตัวกรองใน `RequestQueuePanel`** — แผงกรองของพาเนลถอดหมวด "ฝ่าย"
      ออกแล้ว (ดูไฟล์นั้น) · ตัวคุมมิติเดียวกันสองที่ = ติ๊ก RD ที่หนึ่ง PC ที่หนึ่ง
      แล้วได้ตารางว่างโดยไม่มีอะไรบอกว่าใครตัดทิ้ง */
+  /* ⭐ **ตัวกรองดีล/ขั้นจากลิงก์ อยู่ชั้นเดียวกับทีมและฝ่าย** (ตรวจตัวเลข H1 · H16 · 2026-10-19)
+     🐞 เดิมกรองดีลเฉพาะสาขา "ของฉัน · ที่ฉันเปิด" — แต่ `?dealId=` บังคับขอบเขตกว้างสุด (ทีม/ทั้งหมด) ⇒
+     กด "เปิดหน้าคำร้อง" จากดีลแล้วได้คิวทั้งบริษัท 224 เรื่อง · หมุด "คำร้องค้าง 2" ก็พามาที่เดียวกัน
+     ⇒ กรองที่ชุดหลักก่อนทุกอย่างท้ายน้ำ (แท็บ · แถบตัวเลข · ตัวสลับฝ่าย · การ์ดเริ่มที่นี่ · ตาราง) */
+  const linkedRequests = useMemo(
+    () => filterByDealRequestsLink(scopedRequests, dealLink),
+    [scopedRequests, dealLink],
+  );
   const [deptFilter, setDeptFilter] = useState("all");
   const requests = useMemo(
-    () => (deptFilter === "all" ? scopedRequests : scopedRequests.filter((r) => r.dept === deptFilter)),
-    [scopedRequests, deptFilter],
+    () => (deptFilter === "all" ? linkedRequests : linkedRequests.filter((r) => r.dept === deptFilter)),
+    [linkedRequests, deptFilter],
   );
-  /* ⚠️ แถวของแท็บ "ที่ฉันเปิด" มาจาก `queueTabRows` ตัวเดียวกับเลขบนแท็บ (ม-145) —
-     แท็บนี้ตัดใบที่จบแล้วออก ถ้าหน้านี้กรอง `_mine` เองอีกชุด เลขบนแท็บกับตารางจะขัดกัน */
-  const mine = useMemo(() => queueTabRows(requests, { tab: "mine", myDepts }), [requests, myDepts]);
   /* ⭐ **ตัวสลับ "ในคิว / ประวัติ" ของขอบเขตทีม/ทั้งหมด** (ม-145) — แท็บบทบาทยังซ่อน
      (ม-106) แต่ใบที่จบแล้วต้องออกจากคิวทุกขอบเขต ⇒ สองตัวเลือกที่อ่านจาก `?tab=`
      ตัวเดียวกับแท็บบทบาท (ไม่เพิ่มคีย์แท็บที่สี่ — R-4) */
@@ -277,10 +290,8 @@ export default function RequestsPage() {
   const newRequestDefaults = useMemo(() => (dealParam?.projectId
     ? { projectId: dealParam.projectId, dealId: dealParam.id }
     : null), [dealParam]);
-  const visibleMine = useMemo(
-    () => (dealIdParam ? mine.filter((r) => r.dealId === dealIdParam) : mine),
-    [mine, dealIdParam],
-  );
+  // ป้ายตัวกรองดีล — รหัสดีลจากใบที่โหลดมาเติมฟอร์มอยู่แล้ว (ยังไม่มา = ใช้ id ไปก่อน)
+  const dealLinkLabel = dealRequestsLinkLabel(dealLink, { dealCode: dealParam?.code });
 
   // prefill ปุ่มเปิดคำร้อง — `returnTo` พากลับมาที่คิวหลังกดยกเลิก
   const newRequestQuery = (() => {
@@ -290,9 +301,8 @@ export default function RequestsPage() {
     return `?${q.toString()}`;
   })();
 
-  /* ⚠️ แท็บ "ที่ฉันเปิด" มีเส้นทางของตัวเอง (กรองด้วย `?dealId=` ตอนมาจากหน้าดีล)
-     — ใช้ได้เฉพาะขอบเขต "ของฉัน" · ขอบเขตทีม/ทั้งหมดต้องผ่าน `tabRows` เสมอ ไม่งั้น
-     ใบของเพื่อนร่วมทีมโดนกรองทิ้งอีกชั้นแล้วหน้าว่างเหมือนเดิม */
+  /* ⚠️ ~~แท็บ "ที่ฉันเปิด" มีเส้นทางของตัวเอง (กรองด้วย `?dealId=`)~~ — ถอดแล้ว (H1 2026-10-19): ตัวกรองดีล
+     อยู่ที่ชุดหลัก (`linkedRequests`) ⇒ ทุกแท็บ ทุกขอบเขต ได้ชุดเดียวกันโดยไม่ต้องมีสาขาพิเศษ */
   /* ── ตัวเลือกของตัวสลับฝ่าย ────────────────────────────────────────────
      ⚠️ **นับจากชุดที่มุมมองนี้จะแสดงจริง (ก่อนกรองฝ่าย)** — เลขข้างชิปต้องทำนาย
      ได้ว่ากดแล้วจะเห็นกี่ใบ · นับจากทั้งขอบเขตจะได้ "RD 12" แล้วกดไปเจอ 3 ใบ
@@ -301,12 +311,10 @@ export default function RequestsPage() {
      `requestFacetOptions`) — ฝ่ายที่ไม่มีใบเลยคือปุ่มที่กดแล้วได้ตารางว่างเสมอ
      ⚠️ **ฝ่ายที่เลือกอยู่ต้องอยู่ในลิสต์เสมอ แม้เหลือศูนย์ใบ** — ไม่งั้นสลับแท็บแล้ว
      ปุ่มที่กดค้างไว้หายไปจากจอ พร้อมกับตารางที่ว่างโดยไม่มีอะไรบอกว่ายังกรองอยู่ */
-  const deptCountBase = useMemo(() => {
-    const base = visibleQueueRows(scopedRequests, { scope: activeScope, tab, myDepts });
-    return (roleTabsApply && tab === "mine" && dealIdParam)
-      ? base.filter((r) => r.dealId === dealIdParam)
-      : base;
-  }, [scopedRequests, activeScope, tab, myDepts, roleTabsApply, dealIdParam]);
+  const deptCountBase = useMemo(
+    () => visibleQueueRows(linkedRequests, { scope: activeScope, tab, myDepts }),
+    [linkedRequests, activeScope, tab, myDepts],
+  );
   const deptOptions = useMemo(() => {
     /* ⭐ **ทุกฝ่ายในทะเบียนขึ้นครบเสมอ แม้เหลือศูนย์ใบ** (มติผู้ใช้ 2026-08-30) —
        ของเดิมสร้างจากแถวล้วนตามกติกา `requestFacetOptions` ⇒ วันที่ TS ไม่มีใบค้าง
@@ -342,7 +350,7 @@ export default function RequestsPage() {
     ? null
     : `${deptFilter}${REQUEST_DEPT_LABELS[deptFilter]?.name ? ` · ${REQUEST_DEPT_LABELS[deptFilter].name}` : ""}`;
 
-  const rows = (roleTabsApply && tab === "mine") ? visibleMine : tabRows;
+  const rows = tabRows;
   const counts = queueCounts(rows, { todayIso: today });
 
   /* ⭐ **แถบเตือนใบตีกลับ** (แบบ จ · 2026-08-11) — ตัวเลขบนแถบบอกว่ามีกี่ใบ แต่
@@ -458,6 +466,18 @@ export default function RequestsPage() {
         {activeScope === "team" && (
           <MyTeamsFilter teams={myTeams.teams} selected={myTeams.selected} onChange={myTeams.setSelected} />
         )}
+        {/* ⭐ ตัวกรองดีล/ขั้นที่มากับลิงก์ — ป้ายที่กดล้างได้ (ทรงเดียวกับ "กรอง: รอฉันลงมือ ×" ของทะเบียน QT)
+            อยู่แถวเดียวกับขอบเขต เพราะคุมทั้งหน้า ไม่ใช่แค่ตาราง · ตัวกรองที่มองไม่เห็นคือตัวกรองที่ผู้ใช้
+            กล่าวหาว่าข้อมูลหาย (ของเดิมบอกแค่ในคำโปรยของแท็บ "ที่ฉันเปิด" ขอบเขตอื่นไม่บอกเลย) */}
+        {dealLink && (
+          <Button
+            size="sm"
+            onClick={() => router.replace(requestsQueueHref({ tab: urlTab }), { scroll: false })}
+            title="ล้างตัวกรองนี้ แล้วดูคำร้องทั้งหมดในขอบเขตนี้"
+          >
+            กรอง: {dealLinkLabel} ×
+          </Button>
+        )}
         {activeScope !== scope && (
           <span className="toolbar-label">
             สิทธิ์ไม่พอสำหรับ &quot;{SCOPE_LABELS[scope]}&quot; — แสดง &quot;{SCOPE_LABELS[activeScope]}&quot; แทน
@@ -527,6 +547,8 @@ export default function RequestsPage() {
            พาเนลพูดถึงคิวทั้งก้อน ซึ่งอ่านเหมือนระบบว่างทั้งที่แค่กรองอยู่ */
         emptyText={deptLabel
           ? `ไม่มีคำร้องถึงฝ่าย ${deptLabel} ในมุมมองนี้ — กด "ทุกฝ่าย" เพื่อดูทั้งหมด`
+          : dealLink
+            ? `ไม่มีคำร้องตามตัวกรอง "${dealLinkLabel}" ในมุมมองนี้ — กดป้าย "กรอง" ด้านบนเพื่อดูทั้งหมด`
           : tab === "history"
             ? "ยังไม่มีเรื่องที่จบแล้วในมุมมองนี้"
             /* ทีม/ทั้งหมด "ในคิว" — ข้อความตั้งต้นของพาเนลพูดถึง "ของคุณ"/"ฝ่ายคุณ" ซึ่งไม่ใช่

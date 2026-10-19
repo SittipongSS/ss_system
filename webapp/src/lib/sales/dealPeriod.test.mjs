@@ -62,7 +62,10 @@ test('ขาดวันรับของ = ไม่มีวันรับ�
   assert.equal(dealDeliveryState({ stage: 'lost', endDate: '2026-11-30' }), 'known');
   const page = readFileSync(join(process.cwd(), 'src/app/sales-planning/deals/page.js'), 'utf8');
   assert.doesNotMatch(page, /dealDeliveryUnknown/, 'หน้าดีลต้องใช้ dealMissingDelivery ทั้งแถบเตือนและตัวกรอง');
-  assert.match(page, /deliveryFilter\.includes\(dealDeliveryState\(deal\)\)/);
+  // ตัวตัดสินของตารางย้ายไป lib/sales/dealListFilter.js (H5 2026-10-19) — ตัวเดียวกับเลขท้ายตัวเลือก
+  assert.match(page, /delivery: deliveryFilter/);
+  const listFilter = readFileSync(join(process.cwd(), 'src/lib/sales/dealListFilter.js'), 'utf8');
+  assert.match(listFilter, /filters\.delivery\.includes\(dealDeliveryState\(deal\)\)/);
   assert.match(page, /inScopeDeal\(d\) && dealMissingDelivery\(d\)/);
   // ล้างตัวกรองทั้งหมดต้องล้างวันรับของด้วย · ปุ่มบนแถบเตือนล้างตัวกรอง/คำค้นอื่นก่อน (จำนวนบนแถบจะได้ตรงกับตาราง)
   assert.match(page, /onClear=\{\(\) => \{[^}]*setDeliveryFilter\(\[\]\)/);

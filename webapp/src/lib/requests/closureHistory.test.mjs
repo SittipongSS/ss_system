@@ -340,10 +340,14 @@ test('หมุดไทม์ไลน์: ใบที่ปิดฝั่ง
   assert.equal(stepPinSummary(byStep, 's1').open, 1);
 });
 
-test('ตัวสลับ "ในคิว" ถอด ?tab= ออก — รีเฟรช/ย้อนกลับไม่บีบขอบเขตเป็น "ของฉัน"', () => {
+test('ตัวสลับ "ในคิว" ถอด ?tab= ออก — รีเฟรช/ย้อนกลับไม่บีบขอบเขตเป็น "ของฉัน"', async () => {
   const page = readFileSync(new URL('../../app/requests/page.js', import.meta.url), 'utf8');
   assert.match(page, /onChange=\{\(v\) => setTab\(v === "history" \? "history" : null\)\}/);
-  assert.match(page, /router\.replace\(next \? `\/requests\?tab=\$\{next\}` : "\/requests"/);
+  // ตัวประกอบ URL ย้ายไป `requestsQueueHref` (H1 2026-10-19 — พาตัวกรองดีลไปด้วย) · `tab: null` ยังต้องถอด ?tab= ออก
+  assert.match(page, /router\.replace\(requestsQueueHref\(\{ tab: next, link: dealLink \}\)/);
+  const { requestsQueueHref } = await import('./dealLink.js');
+  assert.equal(requestsQueueHref({ tab: null }), '/requests');
+  assert.equal(new URL(requestsQueueHref({ tab: null, link: { dealId: 'D-1' } }), 'http://x').searchParams.has('tab'), false);
   // ช่องกำหนดส่งของใบที่มีฝั่งปิดแล้วเป็นขีด ไม่ใช่ "ยังไม่ให้วัน" (ตรงกับตัวกรอง)
   const panel = readFileSync(new URL('../../components/requests/RequestQueuePanel.js', import.meta.url), 'utf8');
   assert.match(panel, /if \(requestClosureStarted\(ask\) \|\| requestSettled\(ask\)\) return <span className=\{styles\.muted\}>\{NA\}<\/span>;/);

@@ -9,7 +9,8 @@
 // (route เหลือหน้าที่ query + ประกอบข้อความ)
 
 import { businessDaysWaiting } from '@/lib/sales/handoffQueue';
-import { leadFollowUpState } from '@/lib/sales/leads';
+import { leadFollowUpKey } from '@/lib/sales/leads';
+import { AUTO_BOUNCE_STATUSES } from '@/lib/sales/leadAutoBounce';
 import { businessDayKey } from '@/lib/datePeriods';
 
 /* จำนวนคนที่เอ่ยชื่อในการ์ดก่อนยุบเป็น "อีก N คน" — การ์ด Chat ที่ยาวเกินจะถูกอ่านผ่าน
@@ -46,7 +47,8 @@ function groupBy(leads, keyOf, labelOf, asOf, holidays) {
 }
 
 /**
- * @param leads    แถวจาก sales_leads ที่สถานะยังค้าง (new / screened / assigned / contacted)
+ * @param leads    แถวจาก sales_leads ที่สถานะยังค้าง (new / screened / assigned / contacted · meeting ที่มีวันติดตาม)
+ *                 ส่งใบสถานะอื่นมาด้วยได้ — แต่ละขั้นคัดของตัวเอง
  * @param asOf     เวลาที่ใช้เป็น "วันนี้"
  * @param holidays Set ของวันหยุด (นับวันทำการ)
  * @param nameOf   (assigneeId) → ชื่อปัจจุบัน · ไม่เจอให้คืนค่าว่างแล้วจะถอยไปชื่อในแถว
@@ -69,16 +71,19 @@ export function summarizeLeadQueue(leads = [], {
      ⭐ ขั้นนี้ไม่เคยอยู่ในสรุปมาก่อน ทั้งที่เป็นขั้นที่ลีดค้างนานที่สุดในระบบจริง
      (ตรวจ prod 2026-08-25: `contacted` 106 ใบ เทียบกับ `assigned` 9 ใบ)
      ⚠️ ต่างจากขั้นอื่นตรงที่ **นาฬิกาเป็นวันที่ AE รับปากลูกค้าไว้เอง** ไม่ใช่ SLA กลาง
-     ⇒ "เลยกำหนด" ที่นี่คือเลยวันที่ตัวเองนัด ไม่ใช่เลย 1 วันทำการ */
-  const followUp = of('contacted');
+     ⇒ "เลยกำหนด" ที่นี่คือเลยวันที่ตัวเองนัด ไม่ใช่เลย 1 วันทำการ
+     ⭐ สมาชิกของขั้น = ใบที่มีนาฬิกาติดตาม (`leadFollowUpKey` ตัวเดียวกับตัวกรองและช่องในตาราง):
+     ใบ "ติดต่อแล้ว" ทุกใบ + ใบ "นัดแล้ว" ที่บันทึกการติดตามหลังประชุม
+     🐞 (19/10) เดิมเอาเฉพาะ `contacted` ⇒ ใบนัดแล้วที่เลยวันติดตามแดงในตาราง แต่การ์ดไม่นับ */
   const todayKey = businessDayKey(asOf);
-  const stateOf = (lead) => (lead.followUpAt ? leadFollowUpState(lead.followUpAt, todayKey) : null);
-  const dueToday = followUp.filter((l) => stateOf(l) === 'today');
-  const overdue = followUp.filter((l) => stateOf(l) === 'late');
+  const followKey = (lead) => leadFollowUpKey(lead, todayKey);
+  const followUp = leads.filter((lead) => followKey(lead) != null);
+  const dueToday = followUp.filter((l) => followKey(l) === 'today');
+  const overdue = followUp.filter((l) => followKey(l) === 'late');
   /* 🔴 ใบที่ติดต่อแล้วแต่ **ไม่มีวันติดตามเลย** — ของก่อน mig 0289 ที่ไม่มีนาฬิกาจับ
      ตีกลับอัตโนมัติก็ไม่แตะ (planAutoBounce ข้ามใบที่ไม่มีจุดเริ่ม) ⇒ นอนเงียบตลอดกาล
      ถ้าไม่นับแยกไว้ หน้าจอจะขึ้น "เลยวันติดตาม 0" ทั้งที่มีใบรออยู่ร้อยกว่าใบ */
-  const noPlan = followUp.filter((l) => !l.followUpAt);
+  const noPlan = followUp.filter((l) => followKey(l) === 'none');
 
   return {
     total: screen.length + spread.length + contact.length + followUp.length,
@@ -106,6 +111,9 @@ export function summarizeLeadQueue(leads = [], {
       noPlan: noPlan.length,
       late: {
         count: overdue.length,
+        /* ใบที่เลยแล้ว **ที่ตีกลับอัตโนมัติจะดึงออก** — ใบนัดแล้วไม่โดน (leadAutoBounce: ถึงขั้นนัด =
+           สำเร็จในอัตราแปลงแล้ว) ⇒ แถบเตือนพูดเรื่องส่งกลับคิวได้เฉพาะจำนวนนี้ */
+        autoBounce: overdue.filter((l) => AUTO_BOUNCE_STATUSES.includes(l.status)).length,
         oldest: oldestOf(overdue),
         owners: groupBy(
           overdue,
@@ -151,13 +159,18 @@ export function describeOwners(entries = [], max = DIGEST_MAX_OWNERS) {
    ⚠️ **เรื่องเดียว** ไม่ใช่ทุกเรื่องที่เข้าเงื่อนไข — ซ้อนกันหลายแถบคือกลับไปเป็น
    กำแพงตัวเลขอีกแบบหนึ่ง ซึ่งเป็นสิ่งที่แถบนี้มีไว้แก้
    ลำดับความด่วน:
-     1. `late`   — เลยวันที่รับปากลูกค้าไว้แล้ว **และมีนาฬิกาเดินอยู่** (ตีกลับอัตโนมัติ)
+     1. `late`   — เลยวันที่รับปากลูกค้าไว้แล้ว **และมีนาฬิกาเดินอยู่** (ตีกลับอัตโนมัติ — เฉพาะใบ
+                   "ติดต่อแล้ว" · ใบนัดแล้วนับรวมในเลขแต่ไม่ถูกส่งกลับ ⇒ แถบแยกพูดด้วย `autoBounce`)
      2. `noPlan` — ติดต่อแล้วแต่ไม่มีวันติดตามเลย ⇒ **ไม่มีอะไรทวงให้** นอนได้ตลอดกาล
    ข้อ 2 ดังน้อยกว่าเพราะไม่มีเส้นตาย แต่ปล่อยไว้แล้วเงียบกว่าข้อ 1 มาก */
 export function leadQueueNotice(summary) {
   const followUp = summary?.followUp;
   if (!followUp) return null;
-  if (followUp.late?.count > 0) return { kind: 'late', count: followUp.late.count, tone: 'danger' };
+  if (followUp.late?.count > 0) {
+    /* `autoBounce` = ใบที่ตีกลับอัตโนมัติจะดึงออกจริง (ไม่รวมใบนัดแล้ว) — ไม่มีค่ามา = 0 ไม่ใช่ทั้งหมด
+       (ห้ามบอกว่าระบบจะทำอะไรกับใบที่ไม่มีใครยืนยัน · กติกาเดียวกับ `autoBounced` ด้านบน) */
+    return { kind: 'late', count: followUp.late.count, autoBounce: followUp.late.autoBounce ?? 0, tone: 'danger' };
+  }
   if (followUp.noPlan > 0) return { kind: 'noPlan', count: followUp.noPlan, tone: 'warning' };
   return null;
 }

@@ -9,7 +9,7 @@
 //
 // ⚠️ **ไม่มีฟิลด์ใหม่ในฐานข้อมูลเลย** — ทุกอย่างคำนวณจากสิ่งที่ `/api/sa/requests`
 // ส่งมาอยู่แล้ว (`items` · `acknowledgedById/Name` · `committedDueDate` · `closedAt`)
-import { requestNextStep, requestDueText } from '@/lib/requests/queueBoard';
+import { deptQueueRows, queueCounts, requestNextStep, requestDueText } from '@/lib/requests/queueBoard';
 import { FACET_NONE } from '@/lib/requests/queueList';
 import { requestAssignee } from '@/lib/requests/assign';
 import { requestClosedOn } from '@/lib/requests/closure';
@@ -104,13 +104,69 @@ export const DEPT_PIPELINE_STAGES = [
   { key: 'closed', label: 'ปิดเดือนนี้', tone: 'good' },
 ];
 
+/* ⭐ **ตาใครมาก่อนสถานะดิบ** (ตรวจตัวกรอง 08/10 · H10) — แต่ละขั้นต้องเท่ากับแถวที่ลิงก์ของการ์ด
+   (`DEPT_STAGE_QUEUE`) เปิดให้เห็นเป๊ะ: รอรับเรื่อง/กำลังปรุง = แท็บ "รอ <ฝ่าย> ตอบ" (ตาฝ่าย) กรองด้วย
+   ตัวเลขของแถบ · ส่งแล้ว รอผู้ขอ = แท็บ "รอผู้ขอทำต่อ" (ตาผู้ขอ) ทั้งแท็บ
+   🐞 ของเดิมถาม `pending` ก่อนถามตาใคร ⇒ ใบ `pending` ที่ตกเป็นตาผู้ขอ (มีตราตอบแล้ว) ถูกนับ "รอรับเรื่อง"
+      แต่ไปอยู่แท็บรอผู้ขอ — กดการ์ดแล้วหาไม่เจอ */
 export function requestStageKey(request) {
   if (!request) return null;
   if (request.status === 'closed') return 'closed';
   const next = requestNextStep(request);
   if (!next) return null;                      // ยกเลิก/จบแบบอื่น — ไม่อยู่ในสายพาน
-  if (request.status === 'pending') return 'unacked';
-  return next.owner === 'dept' ? 'working' : 'waiting';
+  if (next.owner !== 'dept') return 'waiting';
+  return request.status === 'pending' ? 'unacked' : 'working';
+}
+
+/**
+ * ใบนี้ "ปิดในเดือน" `monthKey` (`YYYY-MM` เวลาไทย) ไหม — ตัวเดียวที่ขั้น "ปิดเดือนนี้" ของสายพาน
+ * กับตัวกรองเดือนของแท็บประวัติ (`/rd/requests?tab=history&closed=YYYY-MM`) ใช้ร่วมกัน
+ *
+ * ⚠️ ปิดครบ (`closed`) เท่านั้น — ใบยกเลิกอยู่แท็บประวัติด้วยแต่ไม่ใช่ "ปิด" (คนละคำ คนละผล · ดู closure.js)
+ * ⚠️ เดือนที่ใบจบจริง = ตราหลังสุด (`requestClosedOn`) ตัดด้วยวันไทย — ผู้ขอปิด ส.ค. ฝ่ายกด ก.ย. = ปิดเดือน ก.ย. (ม-145)
+ */
+export function requestClosedInMonth(request, monthKey) {
+  if (request?.status !== 'closed' || !monthKey) return false;
+  return String(businessDayKey(requestClosedOn(request)) || '').slice(0, 7) === monthKey;
+}
+
+/** `YYYY-MM` ที่ใช้เป็นค่าตัวกรองเดือนได้ — อย่างอื่น (ว่าง · พิมพ์มาผิด) = ไม่กรอง */
+export const isMonthKey = (value) => /^\d{4}-(0[1-9]|1[0-2])$/.test(String(value ?? ''));
+
+/* ── การ์ดสายพาน → คิวของฝ่ายที่กรองไว้แล้ว (ตรวจตัวกรอง 08/10 · H10 H11) ──────────
+   🐞 ของเดิมทุกการ์ดพาไปแค่แท็บ ⇒ "รอรับเรื่อง 2" เปิดแท็บรอฝ่ายตอบทั้งแท็บ (95 ใบ) · "ปิดเดือนนี้ 45"
+      เปิดประวัติตลอดกาลรวมใบยกเลิก (145 ใบ)
+   ⭐ ตัวกรองเป็นของที่คิวรู้จักอยู่แล้ว: `count` = คีย์แถบตัวเลข (`matchesQueueCount`) · `closed` = เดือน
+      (`requestClosedInMonth`) ⇒ เลขบนการ์ด = แถวที่ปลายทางโชว์ (deptOverview.test.mjs เทียบให้) */
+export const DEPT_STAGE_QUEUE = Object.freeze({
+  unacked: Object.freeze({ tab: 'todo', count: 'unacked' }),
+  working: Object.freeze({ tab: 'todo', count: 'working' }),
+  waiting: Object.freeze({ tab: 'waiting' }),
+  closed: Object.freeze({ tab: 'history', closedMonth: true }),
+});
+
+export function deptStageQueueHref(stageKey, { queueHref = '/rd/requests', month } = {}) {
+  const link = DEPT_STAGE_QUEUE[stageKey];
+  if (!link) return queueHref;
+  const params = new URLSearchParams({ tab: link.tab });
+  if (link.count) params.set('count', link.count);
+  if (link.closedMonth && isMonthKey(month)) params.set('closed', month);
+  return `${queueHref}?${params}`;
+}
+
+/**
+ * "เลยวันที่รับปากไว้" แยกตามตาใคร — ป้ายเตือนบนหน้าภาพรวม (ตรวจตัวกรอง 08/10 · H9)
+ *
+ * 🐞 ป้ายเคยนับจากทุกใบของฝ่ายแล้วพาไปแท็บรอฝ่ายตอบ ⇒ "เลย 57 ใบ" เปิดมาเจอ 24 (อีก 33 ใบส่งแล้ว
+ *    รอผู้ขอ อยู่อีกแท็บ) · นับแยกด้วยแท็บเดียวกับคิว (`deptQueueRows`) และตัวเลข "เลยกำหนด" ตัวเดียวกับ
+ *    แถบในคิว (`queueCounts`) ⇒ ปุ่มแต่ละปุ่มพาไปแถวที่เลขของมันบอกเป๊ะ · `total` = ผลรวมสองแท็บ
+ *    (ใบในประวัติไม่มีทาง "เลยกำหนด" — ตัวนับไม่นับใบที่จบแล้ว) ⇒ ตรงกับ "เลยกำหนดแล้ว N ใบ" ของปฏิทิน
+ */
+export function deptOverdueByTurn(rows = [], { dept, todayIso = null } = {}) {
+  const overdueIn = (tab) => queueCounts(deptQueueRows(rows, { dept, tab }), { todayIso }).overdue;
+  const deptTurn = overdueIn('todo');
+  const requesterTurn = overdueIn('waiting');
+  return { dept: deptTurn, requester: requesterTurn, total: deptTurn + requesterTurn };
 }
 
 /**
@@ -129,12 +185,9 @@ export function deptPipeline(rows = [], { todayIso = null, month = null } = {}) 
     const key = requestStageKey(request);
     const stage = byKey.get(key);
     if (!stage) continue;
-    if (key === 'closed') {
-      /* เดือนที่ใบจบจริง (ตราหลังสุด · เวลาไทย) — ม-145 · ผู้ขอปิด ส.ค. ฝ่ายกด ก.ย. = ปิดเดือน ก.ย.
-         ตรงกับแท็บประวัติที่สายพานนี้ลิงก์ไป (เดิมอ่าน `closedAt` ตัด UTC ⇒ ใบหายจากทั้งสองเดือน) */
-      const closedMonth = String(businessDayKey(requestClosedOn(request)) || '').slice(0, 7);
-      if (!closedMonth || (monthKey && closedMonth !== monthKey)) continue;
-    }
+    /* เดือนที่ใบจบจริง (ตราหลังสุด · เวลาไทย) — ม-145 · ตัวเดียวกับตัวกรองเดือนของแท็บประวัติที่การ์ดลิงก์ไป
+       (เดิมอ่าน `closedAt` ตัด UTC ⇒ ใบหายจากทั้งสองเดือน) */
+    if (key === 'closed' && !requestClosedInMonth(request, monthKey)) continue;
     stage.requests += 1;
     const lines = requestLineCount(request);
     if (lines) stage.lines += lines; else stage.noLines += 1;

@@ -18,7 +18,9 @@ import ReportExportActions from "@/components/excise/ReportExportActions";
 import DateInput from "@/components/ui/DateInput";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { Building2 } from "lucide-react";
-import { ageLabel, ageTone, registrationAge } from "@/lib/tax/registrationQueue";
+import {
+  AGE_LATE_DAYS, ageLabel, ageTone, isLateRegistration, registrationAge, wantsLateOnly,
+} from "@/lib/tax/registrationQueue";
 import DataList from "@/components/excise/DataList";
 import FilterBar from "@/components/excise/FilterBar";
 import StatusBadge from "@/components/excise/StatusBadge";
@@ -79,11 +81,17 @@ export default function RegistrationsPage() {
     [myDept],
   );
   const [filter, setFilter] = useState(() => (deptOf(role) === "RA" ? "pending_legal" : "all"));
+  /* ⭐ "ค้างรออนุมัติเกินเกณฑ์" — มาจากแถบบนหน้าภาพรวม (`?late=1` · ตรวจตัวเลข H2 2026-10-19)
+     🐞 เดิมแถบบอก 9 ใบแต่คิวเปิดรออนุมัติทั้งหมด 17 ใบ — คิวไม่มีตัวกรองอายุเลย
+     ⚠️ ตัดสินด้วย `isLateRegistration` ตัวเดียวกับที่แถบนับ · ตั้งครั้งเดียวตอนเปิดหน้า (เหมือน `?status=`)
+        แล้วโชว์เป็นป้าย "กรอง: … ×" ที่กดล้างได้ — ตัวกรองที่มองไม่เห็นคือตัวกรองที่คนกล่าวหาว่าข้อมูลหาย */
+  const [lateOnly, setLateOnly] = useState(false);
   useEffect(() => {
     setUserName(localStorage.getItem("userName") || "SA User");
     const params = new URLSearchParams(window.location.search);
     const s = params.get("status");
     if (s && REGISTRATION_FILTERS.some((f) => f.key === s)) setFilter(s);
+    if (wantsLateOnly(params)) setLateOnly(true);
     // Legacy ?open=<id> deep-link → go straight to the detail page.
     const openId = params.get("open");
     if (openId) router.replace(`/tax/registrations/${openId}`);
@@ -191,6 +199,7 @@ export default function RegistrationsPage() {
       if (filter === "mine") {
         if (!isTaxWaitingOnMe(r, "registration", myDept)) return false;
       } else if (filter !== "all" && r.status !== filter) return false;
+      if (lateOnly && !isLateRegistration(r, todayIso)) return false;
       if (customerIds.length && !customerIds.includes(r.customerId)) return false;
       // ช่วงวันที่นับจาก **วันที่สร้าง** เหมือนที่รายงานเดิมใช้ (ตัดเป็นวันก่อนเทียบ)
       const day = (r.createdAt || "").slice(0, 10);
@@ -202,11 +211,11 @@ export default function RegistrationsPage() {
         r.metadata?.brandNameTh, r.metadata?.brandNameEn]
         .some((v) => (v || "").toLowerCase().includes(q));
     });
-  }, [regs, filter, search, myDept, customerIds, from, to]);
+  }, [regs, filter, search, myDept, customerIds, from, to, lateOnly, todayIso]);
 
   /* เลือกไว้แล้วตัวกรองขยับ → ที่เลือกอาจไม่อยู่บนจอแล้ว ⇒ ล้างทิ้ง
      ไม่งั้นจะโหลดแถวที่มองไม่เห็นออกไปโดยไม่รู้ตัว */
-  useEffect(() => { setSelected(new Set()); }, [filter, search, customerIds, from, to]);
+  useEffect(() => { setSelected(new Set()); }, [filter, search, customerIds, from, to, lateOnly]);
 
   // After saving the form: a freshly created draft opens its full detail page so
   // the user lands on the attachment cards and can submit once they're complete.
@@ -270,9 +279,10 @@ export default function RegistrationsPage() {
     from,
     to,
   }), [filter, myDept, customerIds, from, to]);
+  /* ตัวกรองอายุไม่มีคู่ฝั่ง server (เหมือนคำค้น) ⇒ ส่ง id ของแถวที่เห็น ไม่งั้นไฟล์ได้รออนุมัติทั้งกอง */
   const exportIds = useMemo(
-    () => queueExportIds({ selected, visibleIds: allIds, searching: !!search.trim() }),
-    [selected, allIds, search],
+    () => queueExportIds({ selected, visibleIds: allIds, searching: !!search.trim() || lateOnly }),
+    [selected, allIds, search, lateOnly],
   );
 
   const selectColumn = {
@@ -482,6 +492,11 @@ export default function RegistrationsPage() {
           searchPlaceholder="ค้นหา FG / ลูกค้า / เลขผู้เสียภาษี / ผู้ยื่น / เลขอนุมัติ..."
           searchLabel="ค้นหาการขึ้นทะเบียน"
         >
+          {lateOnly && (
+            <Button size="sm" onClick={() => setLateOnly(false)}>
+              กรอง: ค้างรออนุมัติเกิน {AGE_LATE_DAYS} วัน ×
+            </Button>
+          )}
           <FilterPopover
             count={customerIds.length}
             onOpen={() => setPickerReady(true)}
@@ -520,7 +535,7 @@ export default function RegistrationsPage() {
         card={card}
         /* เรียงเก่าสุดขึ้นก่อน — คิวงานที่เรียงตามรหัสสินค้าไม่ได้ตอบว่า "ทำอันไหนก่อน" */
         initialSort={{ key: "age", dir: "desc" }}
-        empty={search || filter !== "all" ? "ไม่พบรายการ" : "ยังไม่มีการขึ้นทะเบียน"}
+        empty={search || filter !== "all" || lateOnly ? "ไม่พบรายการ" : "ยังไม่มีการขึ้นทะเบียน"}
         emptyIcon={ClipboardCheck}
       />
       )}

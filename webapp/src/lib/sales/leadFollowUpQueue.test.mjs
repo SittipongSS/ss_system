@@ -82,7 +82,20 @@ test('แถบเตือน: เลยวันนัดมาก่อน �
     lead({ id: 'a', followUpAt: '2026-08-20T00:00:00Z' }),   // เลยแล้ว
     lead({ id: 'b', followUpAt: null }),                       // ไม่มีนาฬิกา
   ], opts);
-  assert.deepEqual(leadQueueNotice(s), { kind: 'late', count: 1, tone: 'danger' });
+  assert.deepEqual(leadQueueNotice(s), { kind: 'late', count: 1, autoBounce: 1, tone: 'danger' });
+});
+
+/* ใบนัดแล้วที่เลยวันติดตามหลังประชุมนับในแถบ แต่ตีกลับอัตโนมัติไม่แตะใบนัดแล้ว (leadAutoBounce)
+   ⇒ แถบต้องรู้ว่ากี่ใบที่จะถูกส่งกลับจริง ไม่งั้นประโยค "ระบบจะส่งกลับคิวคัดกรอง" โกหกใบพวกนั้น */
+test('แถบเตือน: ใบนัดแล้วที่เลยวันติดตามนับในแถบ แต่ไม่นับเป็นใบที่จะถูกตีกลับ', () => {
+  const s = summarizeLeadQueue([
+    lead({ id: 'a', status: 'meeting', followUpAt: '2026-08-20T00:00:00Z' }),
+  ], opts);
+  assert.equal(s.followUp.count, 1);
+  assert.equal(s.followUp.noPlan, 0);
+  assert.deepEqual(leadQueueNotice(s), { kind: 'late', count: 1, autoBounce: 0, tone: 'danger' });
+  // ใบนัดแล้วที่ไม่มีวันติดตาม ไม่อยู่ในขั้นนี้เลย — ไม่ใช่ "ยังไม่มีวันติดตาม"
+  assert.equal(summarizeLeadQueue([lead({ status: 'meeting', followUpAt: null })], opts).total, 0);
 });
 
 test('แถบเตือน: ไม่มีใบเลยกำหนด แต่มีใบที่ไม่มีวันติดตาม ต้องยังเตือน', () => {

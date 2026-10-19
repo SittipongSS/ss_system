@@ -198,7 +198,8 @@ test('🔴 ไม่ส่ง from/to = ทรงคำตอบเดิมท�
   assert.deepEqual(json.visits.map((x) => x.id), ['V-LATE', 'V-TODAY'], 'นัดค้างยังปนอยู่ใน visits');
   const queries = supabase.visitQueries();
   assert.equal(queries.length, 1, 'คำขอเดียว ไม่มีตัวโหลดนัดค้าง/ส่งกลับ');
-  // ไม่ส่ง back/ahead = วันนี้วันเดียว เหมือนของที่ใช้อยู่จริง (คงไว้จนจอใหม่ขึ้น — การ์ดวันหน้าจะมีปุ่มเริ่มงานที่โดน 409)
+  // ไม่ส่ง back/ahead = วันนี้วันเดียว (คงไว้จนจอใหม่ขึ้น — ค่าตั้งต้น ±14 จะพาการ์ดวันหน้าที่ปุ่มเริ่มงานโดน 409 มาด้วย)
+  // หน้างานวันนี้ส่งช่วงเองแล้ว — ดูเทสต์ "ช่วงวันของหน้างานวันนี้ = ช่วงของป้ายเมนู" ข้างล่าง
   assert.deepEqual(supabase.opsOf(queries[0], 'gte'), [['scheduledDate', day]]);
   assert.deepEqual(supabase.opsOf(queries[0], 'lte'), [['scheduledDate', day]]);
   assert.equal(supabase.opsOf(queries[0], 'in').length, 0, 'แบบเดิมไม่กรองสถานะที่ server (groupVisits ตัดเอง)');
@@ -270,4 +271,48 @@ test('🔴 ช่างขอคิวคนอื่น/ทั้งฝ่า�
   const team = await myVisitsAs(planner, 'scope=team');
   assert.equal(team.json.scope, 'team');
   assert.equal(team.supabase.opsOf(team.supabase.visitQueries()[0], 'or').length, 0);
+});
+
+/* ══ ป้ายเมนู "งานวันนี้" ↔ หน้างานวันนี้ (ตรวจตัวกรองทั้งระบบ 08/10 · H12) ══════════════════════════
+   🐞 หน้าเรียก `?scope=mine` เฉย ๆ ⇒ ได้วันนี้วันเดียว · ป้ายเมนูนับนัดค้างย้อน 14 วัน + วันนี้ ⇒ ป้าย 5 หน้า "วันนี้ 2" */
+const { WAITING_ON_ME_BACK_DAYS, todayPageVisitsQuery, waitingOnMeVisitCount } = await import('./myVisits.js');
+const { readFileSync } = await import('node:fs');
+
+test('🔴 ช่วงวันของหน้างานวันนี้ = ช่วงของป้ายเมนู — ย้อน 14 วันถึงวันนี้ ไม่ล่วงหน้า', async () => {
+  const day = businessDate();
+  assert.equal(todayPageVisitsQuery(), 'scope=mine&back=14&ahead=0');
+  const { json, supabase } = await myVisitsAs(tech, todayPageVisitsQuery());
+  const [q] = supabase.visitQueries();
+  assert.deepEqual(supabase.opsOf(q, 'gte'), [['scheduledDate', addDays(day, -WAITING_ON_ME_BACK_DAYS)]]);
+  assert.deepEqual(supabase.opsOf(q, 'lte'), [['scheduledDate', day]], 'ไม่ล่วงหน้า — การ์ดวันหน้ามีปุ่มเริ่มงานที่ด่านวันนัดตีกลับ');
+  assert.deepEqual(Object.keys(json).sort(), ['scope', 'sites', 'visits'], 'ยังเป็นทรงคำตอบเดิมที่หน้าอ่าน');
+  // ดูงานแทนคนอื่น (?user=) — ช่วงเดียวกัน กรองคนนั้น
+  const cover = await myVisitsAs(planner, todayPageVisitsQuery({ assignee: 'U-X' }));
+  const [cq] = cover.supabase.visitQueries();
+  assert.deepEqual(cover.supabase.opsOf(cq, 'gte'), [['scheduledDate', addDays(day, -WAITING_ON_ME_BACK_DAYS)]]);
+  assert.deepEqual(cover.supabase.opsOf(cq, 'or'), [['assigneeId.eq.U-X,assistantIds.cs.["U-X"]']]);
+});
+
+test('🔴 เลขหัวหน้างานวันนี้ (ค้าง + วันนี้) = เลขป้ายเมนู บนนัดชุดเดียวกัน', () => {
+  const day = '2026-10-19';
+  const at = (n, status = 'scheduled') => ({ id: `V${n}${status}`, scheduledDate: addDays(day, n), status, assigneeId: 'U1' });
+  const all = [at(-20), at(-14), at(-10), at(-3, 'done'), at(-1, 'in_progress'), at(0), at(0, 'done'), at(1), at(9), at(-2, 'cancelled')];
+  const inWindow = (from, to) => all.filter((x) => x.scheduledDate >= addDays(day, from) && x.scheduledDate <= addDays(day, to));
+  const badge = waitingOnMeVisitCount(inWindow(-WAITING_ON_ME_BACK_DAYS, 14), day);     // api/nav/counts โหลด −14…+14
+  const page = openCount(groupVisits(inWindow(-WAITING_ON_ME_BACK_DAYS, 0), day));       // หน้างานวันนี้โหลด −14…0
+  assert.equal(page.overdue + page.today, badge);
+  assert.deepEqual({ overdue: page.overdue, today: page.today, badge }, { overdue: 3, today: 1, badge: 4 });
+  // ของเดิม (วันนี้วันเดียว) — หัวหน้าเห็น 1 ขณะที่ป้ายบอก 4
+  const old = openCount(groupVisits(inWindow(0, 0), day));
+  assert.notEqual(old.overdue + old.today, badge);
+});
+
+test('🔴 ยามอ่านซอร์ส: หน้าใช้ todayPageVisitsQuery · ป้ายเมนูย้อนด้วยค่าคงที่ตัวเดียวกัน · ไม่มีป้าย "พรุ่งนี้" ที่เป็น 0 เสมอ', () => {
+  const live = (source) => source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/^\s*\/\/.*$/gm, '');
+  const page = live(readFileSync(new URL('../../app/service/today/page.js', import.meta.url), 'utf8'));
+  const nav = live(readFileSync(new URL('../../app/api/nav/counts/route.js', import.meta.url), 'utf8'));
+  assert.match(page, /apiFetch\(`\/api\/service\/my-visits\?\$\{todayPageVisitsQuery\(\{ assignee: viewingOther \? viewUserId : "" \}\)\}`\)/);
+  assert.doesNotMatch(page, /my-visits\?scope=mine/);
+  assert.doesNotMatch(page, /พรุ่งนี้ \{counts\.tomorrow\}/);
+  assert.match(nav, /from: shift\(-WAITING_ON_ME_BACK_DAYS\), to: shift\(14\), assigneeId: String\(user\.id\)/);
 });

@@ -32,6 +32,7 @@ import { cachedFetchJson } from "@/lib/apiCache";
 import Link from "next/link";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { requestsByStepKey, stepPinSummary } from "@/lib/deptRequests";
+import { stepPinHref } from "@/lib/requests/dealLink";
 import { requestKindLabel } from "@/lib/master/requestTypes";
 import { businessDate } from "@/lib/businessDate";
 import { apiFetch } from "@/lib/apiFetch";
@@ -73,13 +74,16 @@ function ActualLine({ plan, actual }) {
 // บรีฟกลิ่น / ขอ Mock-up / ขอราคา PM / ติดตามของเข้า ไม่ใช่งานลอย ๆ แต่เป็น
 // "วิธีทำ" ของขั้นที่มีอยู่แล้ว จึงแปะป้ายกลับที่ขั้นนั้น ไม่สร้าง task ใหม่ซ้อน
 // ป้ายเดียวใช้ได้ทั้งมุมมองตารางและมุมมองรายการ (ทั้งสองอยู่ในไฟล์นี้)
+// ⭐ หลายใบ = เปิดคิวที่กรอง **ดีล + ขั้นนี้** (ตรวจตัวเลข H1 · H16 · 2026-10-19) — เดิมส่งแค่ `?dealId=`
+// ⇒ ป้าย "คำร้องค้าง 2" เปิดไปเจอคิวทั้งบริษัท (H1) หรือทุกใบของดีล (H16) · ลิงก์มาจาก `stepPinHref`
+// ตัวเดียวกับที่เทสต์เทียบเลขบนป้ายกับแถวที่เปิดได้ (lib/requests/dealLink.test.mjs)
 function StepPin({ pin }) {
   if (!pin) return null;
   const many = pin.total > 1;
   return (
     <Link
       className="timeline-step-pin"
-      href={many ? `/requests?dealId=${pin.first.dealId || ""}` : `/requests/${pin.first.id}`}
+      href={many ? stepPinHref(pin) : `/requests/${pin.first.id}`}
       title={`${requestKindLabel(pin.first.kind)}${pin.first.docNo ? ` · ${pin.first.docNo}` : ""}`
         + ` · ${pin.open ? `ค้าง ${pin.open} จาก ` : ""}${pin.total} เรื่องผูกกับขั้นนี้`}
     >

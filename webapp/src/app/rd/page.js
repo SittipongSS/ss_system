@@ -23,7 +23,7 @@ import Button from "@/components/ui/Button";
 import ViewSwitcher from "@/components/ui/ViewSwitcher";
 import { businessDate } from "@/lib/businessDate";
 import {
-  nextUpRows, queueCounts, requestClosureStarted, requestNextStep, requestSettled, startHereRequest,
+  nextUpRows, requestClosureStarted, requestNextStep, requestSettled, startHereRequest,
 } from "@/lib/requests/queueBoard";
 import { useQueueBoard } from "@/lib/requests/useQueueBoard";
 import RequestQueuePanel from "@/components/requests/RequestQueuePanel";
@@ -34,7 +34,7 @@ import AlertBanner from "@/components/ui/AlertBanner";
 import { Metric, MetricStrip } from "@/components/ui/Workspace";
 import { apiFetch } from "@/lib/apiFetch";
 import {
-  deptPipeline, ownerWorkload, stageNote, stageValue,
+  deptOverdueByTurn, deptPipeline, deptStageQueueHref, ownerWorkload, stageNote, stageValue,
 } from "@/lib/requests/deptOverview";
 
 const DEPT = "RD";
@@ -68,7 +68,9 @@ export default function RdOverviewPage() {
     () => requests.filter((r) => r.dept === DEPT && r.status !== "draft"),
     [requests],
   );
-  const counts = queueCounts(deptRows, { todayIso: today });
+  /* ⭐ "เลยวันที่รับปากไว้" แยกตามตาใคร (ตรวจตัวกรอง 08/10 · H9) — ปุ่มแต่ละปุ่มพาไปแท็บของมันพร้อมตัวกรอง
+     "เลยกำหนด" ⇒ เลขบนปุ่ม = แถวที่เปิดเจอ · 🐞 เดิมนับรวมสองแท็บแล้วพาไปแท็บรอ RD ตอบเปล่า ๆ (57 → เจอ 24) */
+  const overdue = deptOverdueByTurn(requests, { dept: DEPT, todayIso: today });
   /* ใบของฝ่ายที่ยังเป็นคำสัญญาค้าง — ปฏิทินรับแต่ชุดนี้ (ม-145): ใบที่จบแล้ว (ตัวตัดสินเดียว
      กับแท็บประวัติ) และใบที่มีฝั่งปิดแล้ว (ตัวเดียวกับช่องกำหนดส่ง/แถบตัวเลขที่เลิกนับ
      "เลยกำหนด") ไม่ใช่คำสัญญาที่ต้องตามอีก */
@@ -139,17 +141,26 @@ export default function RdOverviewPage() {
       {/* ⚠️ **เลยกำหนดเป็นธง ไม่ใช่ขั้นของงาน** — ใบที่เลยวันที่ฝ่ายรับปากไว้เองอยู่
           ในขั้น "กำลังปรุง" อยู่แล้ว · แยกเป็นแถบเตือนที่กดไปคิวได้ ดีกว่ายัดเป็น
           ช่องที่ห้าแล้วทำให้สายพานอ่านเหมือนมีห้าขั้น */}
-      {!loading && !loadError && counts.overdue > 0 && (
+      {!loading && !loadError && overdue.total > 0 && (
         <AlertBanner
           tone="danger"
           icon={AlarmClock}
           action={(
-            <Button size="sm" onClick={() => router.push("/rd/requests?tab=todo")}>
-              ดูใบที่เลยกำหนด
-            </Button>
+            <>
+              {overdue.dept > 0 && (
+                <Button size="sm" onClick={() => router.push("/rd/requests?tab=todo&count=overdue")}>
+                  รอ RD {overdue.dept} ใบ
+                </Button>
+              )}
+              {overdue.requester > 0 && (
+                <Button size="sm" onClick={() => router.push("/rd/requests?tab=waiting&count=overdue")}>
+                  ส่งแล้ว รอผู้ขอ {overdue.requester} ใบ
+                </Button>
+              )}
+            </>
           )}
         >
-          <strong>เลยวันที่รับปากไว้ {counts.overdue} ใบ</strong>
+          <strong>เลยวันที่รับปากไว้ {overdue.total} ใบ</strong>
           {" — วันที่นี้ RD เป็นคนให้เอง ไม่ใช่วันที่ลูกค้าขอ"}
         </AlertBanner>
       )}
@@ -170,11 +181,9 @@ export default function RdOverviewPage() {
                 value={`${value} ${unit}`}
                 note={stageNote(stage)}
                 tone={stage.tone === "neutral" ? undefined : stage.tone}
-                onClick={() => router.push(stage.key === "waiting"
-                  ? "/rd/requests?tab=waiting"
-                  : stage.key === "closed"
-                    ? "/rd/requests?tab=history"
-                    : "/rd/requests?tab=todo")}
+                /* 🐞 H10 H11 (ตรวจตัวกรอง 08/10): เดิมพาไปแค่แท็บ ⇒ "รอรับเรื่อง 2" เปิดทั้งแท็บ 95 ใบ ·
+                   "ปิดเดือนนี้ 45" เปิดประวัติตลอดกาล 145 ใบ · ลิงก์มาจากทะเบียน `DEPT_STAGE_QUEUE` ที่เทสต์เทียบเลขให้ */
+                onClick={() => router.push(deptStageQueueHref(stage.key, { queueHref: "/rd/requests", month: today.slice(0, 7) }))}
               />
             );
           })}
