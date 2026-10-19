@@ -816,10 +816,16 @@ test('quoteLineFromProduct 🔴 บรรทัดที่ไม่ได้ถ
   }
 });
 
-test('quoteLineFromProduct 🔴 แถวโซนของใบสั่งขายย้อนหลัง: ผลเท่ากับค่าที่ตรึงไว้ทุกคีย์ ไม่มีคีย์ packQty — `packsPerRound` ของแถวไม่ใช่ตัวคูณและไม่ถูกอ่าน (ฟอร์มย้อนหลังคงเดิมจนงวด PR-5)', () => {
+/* ⭐ ย้ายความคาดหวังโดยเจตนา (งวด PR-5 · มติเจ้าของ 23/09 "ต้องไม่ควรแตกต่างจาก form ใบเสนอราคา" + 08/10 ข้อ A1–A2 · ข้อวินิจฉัย 7 ·
+   แผน IMPL_PLAN_PR5 §5 แถว G14): เดิมแถวโซนของฟอร์มใบสั่งขายย้อนหลัง **ไม่มีคีย์ `packQty`** และเลือกแพ็คเกจแล้วก็ยังไม่มี — วันนี้แถวถือคีย์นี้เอง
+   ตั้งแต่เกิด (เริ่มที่ '' — ช่องเลขแพ็คของตารางใบเสนอราคา ไม่มีค่าตั้งต้น) · ไม่ได้คลายด่าน: ทุกข้อเดิมยังยึดอยู่ในรูปที่เข้มเท่าเดิมหรือกว่า —
+   ผลของ `quoteLineFromProduct` ยังเท่ากับค่าที่ตรึงไว้ทุกคีย์ (คีย์ของแถวหลังเลือกแพ็คเกจ = คีย์ของแถวเปล่า + metadata) · ตัวนี้ **ไม่เติมและไม่เขียนทับ**
+   เลขแพ็ค (ช่องว่างยังว่าง · เลขที่พิมพ์ไว้อยู่ต่อเมื่อเปลี่ยนแพ็คเกจ 02-001 → 02-001) · `packsPerRound` ยังไม่ใช่ตัวคูณและไม่ถูกอ่าน */
+test('quoteLineFromProduct 🔴 แถวโซนของใบสั่งขายย้อนหลัง (งวด PR-5): แถวถือ `packQty` เอง เริ่มที่ว่าง — เลือกแพ็คเกจแล้วยังว่าง · เลขที่พิมพ์ไว้อยู่ต่อ (02-001 → 02-001) · `packsPerRound` ไม่ใช่ตัวคูณและไม่ถูกอ่าน', () => {
   const row = emptyHistoricalZone({ siteId: 'S1', zoneId: 'Z1' });
-  assert.equal('packQty' in row, false, 'แถวของฟอร์มย้อนหลังไม่มีคีย์ packQty');
-  assert.equal(row.packsPerRound, '', 'แพ็คต่อรอบของโซนเริ่มว่าง (คนละช่องกับเลขแพ็คของบรรทัดใบเสนอราคา)');
+  assert.equal('packQty' in row, true, 'แถวของฟอร์มย้อนหลังถือคีย์ packQty ตั้งแต่เกิด');
+  assert.equal(row.packQty, '', 'เริ่มว่าง — ไม่มีค่าตั้งต้น (ไม่ใช่ 1 · ไม่ใช่ null)');
+  assert.equal(row.packsPerRound, '', 'แพ็คต่อรอบของโซนเริ่มว่าง (คนละช่องกับเลขแพ็คของบรรทัด)');
   const expectedOf = (source, product) => {
     const { note: _n, noteEn: _ne, noteAuto: _na, categoryName: _c, categoryNameEn: _ce, categoryCode: _cc, ...keptMeta } = source.metadata || {};
     return {
@@ -836,20 +842,33 @@ test('quoteLineFromProduct 🔴 แถวโซนของใบสั่งข
       unitPrice: product.costPrice,
     };
   };
-  // ทั้งเลือกแพ็คเกจ (หมวด 02-001) และ — ถ้าทะเบียนมีของหมวดอื่นหลุดมา — สินค้าหมวดอื่น: ผลเท่าเดิม ไม่มีคีย์เพิ่ม
+  // ช่องเลขแพ็คยังว่าง: ทั้งเลือกแพ็คเกจ (หมวด 02-001) และ — ถ้าทะเบียนมีของหมวดอื่นหลุดมา — สินค้าหมวดอื่น: ผลเท่าค่าที่ตรึงไว้ ช่องยังว่าง
   for (const perRound of ['', '1', '2', '43', 2]) {
     for (const product of [SDS, SDS_B, CANDLE]) {
       const source = { ...row, packsPerRound: perRound, qty: '12', rounds: '12' };
       const next = quoteLineFromProduct(source, product);
       assert.deepEqual(next, expectedOf(source, product), `packsPerRound=${JSON.stringify(perRound)} · ${product.id}`);
-      assert.equal('packQty' in next, false, 'ไม่มีคีย์ packQty งอกขึ้นมา');
+      assert.equal(next.packQty, '', 'ช่องเลขแพ็คไม่ถูกเติมให้ (ไม่มีค่าตั้งต้น) และไม่ถูกเขียนทับ');
       assert.equal(next.packsPerRound, perRound, 'packsPerRound ไม่ถูกแตะ');
-      // ยอดของแถวไม่ถูกคูณด้วย packsPerRound (สูตรเงินอ่าน packQty อย่างเดียว)
+      // ยอดของแถวไม่ถูกคูณด้วย packsPerRound (สูตรเงินอ่าน packQty อย่างเดียว · ช่องว่าง = คูณ 1 ในสูตรกลาง — จอของฟอร์มนี้ขึ้นขีดด้วยด่านของตัวเอง)
       assert.equal(quoteLineNet(next).lineTotal, 12 * product.costPrice);
     }
   }
-  // คีย์ของแถวหลังเลือกแพ็คเกจ = คีย์ของแถวเปล่า + metadata (ชื่อ/แบรนด์/หมวดของสินค้า) เท่านั้น — เหมือนก่อนงวด PR-3
+  // เลขแพ็คที่พิมพ์ไว้: เปลี่ยนแพ็คเกจ 02-001 → 02-001 เลขอยู่ตามเดิมทุกตัวอักษร (ข้อความที่คนพิมพ์ ไม่ถูกแปลงเป็นตัวเลข) และคูณยอด
+  for (const typed of ['2', ' 43 ', '1']) {
+    const source = { ...quoteLineFromProduct(row, SDS), packQty: typed, packsPerRound: '7', qty: '12', rounds: '12' };
+    const next = quoteLineFromProduct(source, SDS_B);
+    assert.deepEqual(next, expectedOf(source, SDS_B), `packQty=${JSON.stringify(typed)}`);
+    assert.equal(next.packQty, typed);
+    assert.equal(next.packsPerRound, '7');
+    assert.equal(quoteLineNet(next).lineTotal, Number(typed) * 12 * SDS_B.costPrice, 'เลขแพ็ค × จำนวน × ราคา — packsPerRound 7 ไม่เข้าสูตร');
+  }
+  // กติกาเดิมของตัวล้าง (งวด PR-3) ใช้กับแถวนี้เหมือนทุกบรรทัด: เลขที่ถืออยู่ถูกล้างเมื่อเปลี่ยนเป็นสินค้านอกหมวด 02-001
+  // (ช่องเลือกของฟอร์มใบย้อนหลังเสนอเฉพาะหมวด 02-001 จึงไม่มีทางเกิดจากจอ — ยึดไว้ว่าถ้าเกิด เลขไม่ค้างเป็นตัวคูณที่มองไม่เห็น)
+  assert.equal(quoteLineFromProduct({ ...quoteLineFromProduct(row, SDS), packQty: '2', qty: '12' }, CANDLE).packQty, null);
+  // คีย์ของแถวหลังเลือกแพ็คเกจ = คีย์ของแถวเปล่า + metadata (ชื่อ/แบรนด์/หมวดของสินค้า) เท่านั้น — ไม่มีคีย์อื่นงอก
   assert.deepEqual(Object.keys(quoteLineFromProduct(row, SDS)).sort(), [...Object.keys(row), 'metadata'].sort());
+  assert.equal(quoteLineFromProduct(row, SDS).packQty, '');
 });
 
 test('manualLineCategoryPatch ⭐ เปลี่ยนหมวดของบรรทัดพิมพ์เองออกจาก 02-001 (หรือเป็น "ไม่ระบุ"): metadata ชุดใหม่ + เลขแพ็คถูกล้างเป็น null · ยอดขยับตาม', () => {

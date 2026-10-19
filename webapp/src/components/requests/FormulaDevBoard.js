@@ -23,7 +23,7 @@ import ReadableText from "@/components/ui/ReadableText";
 import { TableScroll } from "@/components/ui/Table";
 import RegistryCell from "./RegistryCell";
 import RowActionMenu from "@/components/ui/RowActionMenu";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import { fmtDate, fmtNumber } from "@/lib/format";
 import styles from "./briefBoard.module.css";
 import { dueCellTracker } from "@/lib/requests/dueCell";
@@ -43,9 +43,12 @@ const money = (n) => fmtNumber(n, { minimumFractionDigits: 2 });
    กรอกจำนวนแค่ 4% (วัด 2026-08-25) ⇒ คอลัมน์ว่างทั้งแถวในเกือบทุกใบ
    ⚠️ **"สถานะ" กับ "ผลลัพธ์จากลูกค้า" ถูกถอด** — ทั้งคู่คิดจาก `stage` ตัวเดียวกับ
    ที่รางวาด · ผลลัพธ์กลายเป็นชิปในเซลล์ชื่อเมื่อลูกค้าตอบจริง (ว่าง 97% ของแถว) */
+/* ⭐ `onAddDirection` (ม-157) — "ส่ง direction เพิ่ม" ในเมนู ⋯ ของแถวที่ส่งสูตรแล้วและลูกค้ายังไม่ตอบ (ฝ่ายที่ตอบเท่านั้น ·
+   ผู้เรียกส่ง null ให้คนอื่น) · แถวที่ลูกค้าตอบแล้ว = ไม่มีของให้ทำ (สูตรใหม่หลังจากนั้นคือรอบแก้) จึงไม่โชว์ ·
+   ด่านที่เหลือ (คู่นี้คอนเฟิร์มไปแล้ว) บอกเหตุตอนกด */
 export default function FormulaDevBoard({
   rows = [], renderStep = null, renderDetail = null,
-  onEditRegistry = null, onDeleteRow = null, canEditRegistry = false, today = null, due = null,
+  onEditRegistry = null, onDeleteRow = null, onAddDirection = null, canEditRegistry = false, today = null, due = null,
 }) {
   // ยังไม่มีแถว = ยังไม่มีอะไรให้สรุป
   if (!rows.length) return null;
@@ -59,7 +62,7 @@ export default function FormulaDevBoard({
   // ⭐ ปุ่มแก้อยู่ท้ายแถว รวมกับปุ่มลงมือ (มติผู้ใช้ 2026-08-18)
   const canEdit = !!(canEditRegistry && onEditRegistry);
   const canDelete = !!(canEditRegistry && onDeleteRow);
-  const showActions = !!renderStep || canEdit || canDelete;
+  const showActions = !!renderStep || canEdit || canDelete || !!onAddDirection;
   const cols = 3 + (showQty ? 1 : 0) + (showPrice ? 1 : 0) + (showActions ? 1 : 0) + (due ? 1 : 0);
   /* ⚠️ **สร้างใหม่ทุกเรนเดอร์** — ตัวนี้จำว่าพิมพ์วันไปแล้วหรือยัง (กติกา "วันธรรมดา
      พิมพ์แถวแรกแถวเดียว") · ยกออกไปนอกฟังก์ชันเมื่อไร ตารางรอบสองจะไม่พิมพ์เลย */
@@ -105,6 +108,8 @@ export default function FormulaDevBoard({
                         extra={(
                           <>
                             {r.rework && <span className="ui-badge">รอบแก้</span>}
+                            {/* ⭐ direction ที่เท่าไรของชุด (ม-157) — โผล่เฉพาะชุดที่มี ≥ 2 ตัว */}
+                            {r.direction && <span className="ui-badge">direction {r.direction.no}</span>}
                             {/* ⭐ ผลลัพธ์จากลูกค้าเป็น **ชิปติดชื่อ** ไม่ใช่คอลัมน์
                                 (มติผู้ใช้ 2026-08-25) — มีค่าจริงแค่ 3% ของแถว ·
                                 คอลัมน์ที่ว่าง 97% กินที่ของสิ่งที่มีค่าทุกแถว */}
@@ -139,6 +144,10 @@ export default function FormulaDevBoard({
                         <RowActionMenu
                           label={`การจัดการอื่นของ ${r.registry?.code || r.name}`}
                           items={[
+                            onAddDirection && r.formulaId && !r.outcome && !r.settled && {
+                              id: "direction", icon: Plus, label: "ส่ง direction เพิ่ม",
+                              onClick: () => onAddDirection(r),
+                            },
                             canEdit && r.registry && {
                               id: "edit", icon: Pencil, label: "แก้ในทะเบียนสูตร",
                               onClick: () => onEditRegistry(r.registry),

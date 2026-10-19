@@ -49,6 +49,19 @@ test('หาสูตรซ้ำ: ข้ามตัวที่เลิกใ
   assert.equal(findFormulaByIdentity(rows, { categoryCode: '01-002', scentId: 'SCT-9' })?.id, 'FML-now');
 });
 
+test('⭐ หาสูตรซ้ำ: ข้ามตัวที่กำลังพัฒนาด้วย — direction ที่รอลูกค้าเลือกอยู่พร้อมกันหลายตัวได้ (mig 0411 · ม-157)', () => {
+  const rows = [
+    formula({ id: 'FML-dir1', status: 'developing', categoryCode: '01-002', scentId: 'SCT-9' }),
+    formula({ id: 'FML-dir2', status: 'developing', categoryCode: '01-002', scentId: 'SCT-9' }),
+  ];
+  assert.equal(findFormulaByIdentity(rows, { categoryCode: '01-002', scentId: 'SCT-9' }), null);
+  const withActive = [...rows, formula({ id: 'FML-now', status: 'active', categoryCode: '01-002', scentId: 'SCT-9' })];
+  assert.equal(findFormulaByIdentity(withActive, { categoryCode: '01-002', scentId: 'SCT-9' })?.id, 'FML-now');
+  // ร่างยังจองตัวตน (ดัชนีนับร่าง)
+  const withDraft = [...rows, formula({ id: 'FML-draft', status: 'draft', categoryCode: '01-002', scentId: 'SCT-9' })];
+  assert.equal(findFormulaByIdentity(withDraft, { categoryCode: '01-002', scentId: 'SCT-9' })?.id, 'FML-draft');
+});
+
 test('รหัสสูตรยังห้ามซ้ำ แต่เป็นเลขที่อ้างอิง ไม่ใช่ตัวตน', () => {
   const rows = [formula()];
   assert.equal(findFormulaByCode(rows, ' pf638010202-p1 ')?.id, 'FML-1');

@@ -375,7 +375,8 @@ test('🔑 route ปิดนัด: ตรวจก่อนเขียนใ�
   const switchAt = route.indexOf('retrievalKindSwitchError(before, value, { hasResults');
   const planAt = route.indexOf('retrievalPlan({');
   const blockedAt = route.indexOf('retrievalBlockedMessage(retrieval.blocked)');
-  const updateAt = route.indexOf('.update({ ...patch, updatedAt: nowIso })');
+  // ก้อนที่เขียนผ่าน `changedVisitColumns` (เขียนเฉพาะช่องที่เปลี่ยน · รีวิว S2b ข้อ V17 ต่อ)
+  const updateAt = route.indexOf('.update({ ...written, updatedAt: nowIso })');
   const commitAt = route.indexOf('commitAssetMove(supabase, {');
   assert.ok(switchAt > 0 && planAt > switchAt && blockedAt > planAt, 'ด่านต้องมาก่อน');
   assert.ok(updateAt > blockedAt, 'ตีกลับเครื่องที่ติดด่านก่อนเขียนใบ ไม่ใช่ปิดใบแล้วค่อยบอก');

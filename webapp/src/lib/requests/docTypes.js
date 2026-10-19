@@ -7,20 +7,28 @@
 /* ⭐ `short` / `summary` = ของ **แผ่นเลือก** บนฟอร์ม (มติผู้ใช้ 2026-08-09 —
    กติกาเดียวกับหัวข้อคำร้อง: ชุดตายตัว ≤6 ต้องกางให้เห็น ไม่ใช่ซ่อนในดรอปดาวน์)
    ⚠️ `label` **ห้ามเปลี่ยน** — มันคือชื่อที่บอร์ด/เอกสาร/ประวัติใช้อยู่ · `short`
-   เป็นแค่ชื่อสั้นบนแผ่น ส่วน `summary` คือคำขยายบรรทัดเดียวใต้ชื่อ */
+   เป็นแค่ชื่อสั้นบนแผ่น ส่วน `summary` คือคำขยายบรรทัดเดียวใต้ชื่อ
+   ⭐ **เลิกขอชนิดไหน = ติด `retired: true` ห้ามลบแถว** (ม-156) — แถวเก่าในฐานยังถือ
+   `docType` นั้นอยู่ · ลบออกจากลิสต์แล้ว `docTypeLabel` จะคืนรหัสดิบ ("coa") ให้บอร์ด/
+   ประวัติ/แท็บเอกสารของดีล แทนชื่อที่คนขอเห็นตอนเลือก
+   ชนิดที่เลิกแล้ว **ไม่อยู่บนแผ่นเลือก และตัวตรวจไม่รับ** (ดู `docVocabulary`) */
 export const REQUEST_DOC_TYPES = [
   { value: 'ifra', label: 'IFRA Certificate', short: 'IFRA', summary: 'ใบรับรองมาตรฐาน IFRA' },
-  { value: 'coa', label: 'COA — Certificate of Analysis', short: 'COA', summary: 'ผลวิเคราะห์ประจำล็อต' },
+  /* ⭐ แทนที่ COA (ม-156 · 2026-10-19) — คนขอพิมพ์ "Spec / Product Spec" ลง "อื่น ๆ"
+     เองอยู่แล้วราว 10 แถวบน prod ⇒ ชนิดนี้คือของที่ขอกันจริง */
+  { value: 'spec_sheet', label: 'Specification Sheet', short: 'Specification Sheet', summary: 'ข้อมูลจำเพาะของสินค้า' },
   { value: 'msds', label: 'MSDS / SDS', short: 'MSDS / SDS', summary: 'ข้อมูลความปลอดภัยของสาร' },
   // ⭐ ทางออกที่ต้องมี — ชนิดที่ยังไม่อยู่ในลิสต์เกิดได้เสมอ และการไม่มีทางออก
   // แปลว่าคนจะเลือกชนิดที่ใกล้เคียงที่สุดแล้วอธิบายในรายละเอียด ซึ่งทำให้ตัวเลข
   // "ขอ IFRA กี่ครั้ง" ผิดไปโดยไม่มีใครรู้
   { value: 'other', label: 'อื่น ๆ — ระบุในรายละเอียด', short: 'อื่น ๆ', summary: 'ต้องระบุรายละเอียด' },
+  // ⏹ เลิกขอแล้ว (ม-156) — เหลือไว้ให้ใบเก่า 9 แถว (ทุกใบปิด/ยกเลิกแล้ว) ยังอ่านชื่อออก
+  { value: 'coa', label: 'COA — Certificate of Analysis', short: 'COA', summary: 'ผลวิเคราะห์ประจำล็อต', retired: true },
 ];
 
 const BY_VALUE = new Map(REQUEST_DOC_TYPES.map((t) => [t.value, t]));
 
-export const REQUEST_DOC_TYPE_VALUES = REQUEST_DOC_TYPES.map((t) => t.value);
+export const REQUEST_DOC_TYPE_VALUES = REQUEST_DOC_TYPES.filter((t) => !t.retired).map((t) => t.value);
 
 // ⚠️ ชนิดที่ไม่รู้จัก **คืนค่าดิบ ไม่ใช่ค่าว่าง** — ของเก่าที่บันทึกด้วยชุดอื่นต้อง
 // ยังอ่านออก (บทเรียนเดียวกับ requestItemStatusLabel)
@@ -43,10 +51,12 @@ export function docTypeNeedsDetail(value) {
 // "ใบกำกับภาษี" โผล่ขึ้นมา ซึ่งไม่ใช่ของที่ RD ออกให้ได้
 export function docVocabulary({ lineKind, types, detailValue = 'other' }) {
   const byValue = new Map(types.map((t) => [t.value, t]));
+  // ชื่ออ่านได้ทุกชนิด · เลือก/ส่งได้เฉพาะชนิดที่ยังไม่เลิก (`retired`)
+  const offered = types.filter((t) => !t.retired);
   return {
     lineKind,
-    types,
-    values: types.map((t) => t.value),
+    types: offered,
+    values: offered.map((t) => t.value),
     // ⚠️ ชนิดที่ไม่รู้จักคืนค่าดิบ ไม่ใช่ค่าว่าง — ของเก่าที่บันทึกด้วยชุดอื่นต้องยังอ่านออก
     label: (value) => byValue.get(value)?.label || String(value ?? '') || '—',
     needsDetail: (value) => value === detailValue,

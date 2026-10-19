@@ -109,6 +109,13 @@ test('PR-D ⭐ การ์ดโซน: เซลล์แพ็คต่อร
   assert.ok(qty > 0 && packs > qty && rounds > packs && money > rounds, 'เซลล์จำนวนรอบบริการต้องอยู่ระหว่างรอบละกี่แพ็คกับจำนวนเงิน');
   const head = slice(card, '<thead>', '</thead>');
   assert.ok(head.indexOf('{SERVICE_PACKS_LABEL}') < head.indexOf('{SERVICE_ROUNDS_LABEL}'), 'หัวคอลัมน์เรียงเหมือนเซลล์');
+  /* ⭐ งวด PR-5 (mig 0409 · แผน IMPL_PLAN_PR5 §2.9 · R5 · T22): บรรทัดที่มีเลขแพ็คของบรรทัดได้ช่อง "จำนวน" เป็นวลี "2 แพ็ค × 12 เดือน" จากตัวอ่านกลาง
+     — **ในเซลล์เดิม** ไม่ใช่คอลัมน์ใหม่: เจ็ดหัว · 760 · ลำดับเซลล์ข้างบน ไม่ขยับ · คอลัมน์ "รอบละกี่แพ็ค" (ช่องของโซน) ยังเป็นคนละช่องกับเลขนั้น
+     (ยามตัวเต็มของวลีอยู่ที่ historicalDetailUi.test.mjs) */
+  assert.equal((head.match(/<th\b/g) || []).length, 7);
+  assert.equal((row.match(/<td\b/g) || []).length, 7);
+  assert.match(card, /return linePackQtyText\(source\) \?\? `/);
+  assert.doesNotMatch(row, /linePackQtyText|packQty/, 'แถวไม่มีเซลล์ของเลขแพ็คแยก — วลีอยู่ในตัวช่วยของเซลล์จำนวน');
 });
 
 test('PR-D ⭐ ของจริงของ lib ที่การ์ดเรียก: "2 แพ็ค/รอบ" · ไม่รู้ = ขีด · หัวรวมขึ้นเมื่อรู้อย่างน้อยหนึ่งโซน', () => {

@@ -16,7 +16,7 @@ const base = {
 test('ไม่มีแท็บไหนขาด ⟺ ด่านส่งผ่าน (ทุกหัวข้อ ทุกช่องที่ถอดออกทีละตัว)', () => {
   const forms = [
     base,
-    { ...base, kind: 'document', items: [{ docType: 'coa' }] },
+    { ...base, kind: 'document', items: [{ docType: 'spec_sheet' }] },
     // ⚠️ แถวต้องผ่านตัวตรวจจริง (หมวดตรงรูปแบบ + มีกลิ่น) — แถวเปล่าไม่นับแล้ว
     { ...base, kind: 'formula_dev', items: [{ categoryCode: '01-001', scentId: 'SC-1' }] },
     { ...base, kind: 'scent_dev', salesOrderId: 'SO-1' },

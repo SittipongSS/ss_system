@@ -281,6 +281,49 @@ test('ใบที่ประทับแล้ว + บรรทัดที�
   assert.equal(out.allocation.complete, true);
 });
 
+/* ⭐ งวด PR-5 (mig 0409 · ข้อวินิจฉัย D9 ของแผน IMPL_PLAN_PR5 §3.6): ใบสั่งขาย **ย้อนหลัง** ที่บรรทัดมีเลขแพ็ค — ตัวนับของแท็บงานบริการไม่ต้องแก้
+   · สถานะที่คอมเมนต์ของ lib/service/terms.js เคยกลัว (ใบยังไม่ประทับ แต่ term เก็บ "แพ็คต่อรอบ" ⇒ เทียบ แพ็ค × เดือน กับ แพ็คต่อรอบ = คนละหน่วย)
+     เกิดไม่ได้: การอนุมัติใบย้อนหลัง (0394/P3) เปิดรอบขายผ่านตัวกลางของ 0392 ซึ่งเขียน packageQty = แพ็คต่อรอบ และประทับใบในทรานแซกชันเดียวกัน
+     ⇒ ใบที่มี term = ใบที่ประทับแล้ว = ของค้าง 0 เสมอ · ใบที่ยังไม่อนุมัติไม่มี term เลย
+   · ที่เปลี่ยนจริง: ใบย้อนหลังที่ยังไม่อนุมัติพูดยอดที่ขายเป็นหน่วยรวม (2 × 12 = 24 แพ็ค · ยังไม่ลงโซน 24 — เดิม 12) เหมือนใบ pipeline */
+test('PR-5 (D9): ใบสั่งขายย้อนหลังที่บรรทัดมีเลขแพ็ค 2 × 12 — อนุมัติแล้ว (ประทับ · term = แพ็คต่อรอบ 2) = 24 แพ็ค เหลือ 0 · ยังไม่อนุมัติ (ไม่มี term) = เหลือ 24', async () => {
+  const { ORIGIN_HISTORICAL } = await import('./historicalOrders.js');
+  /* บรรทัดที่ตัวเขียนของ 0409 เก็บ: เลขแพ็ค 2 · จำนวน 12 · หน่วย "เดือน" · จำนวนรอบบริการ 12 — แพ็คต่อรอบ 2 อยู่ที่แถวโซนของงานบริการ */
+  const packLine = line({ packQty: 2, qty: 12, unit: 'เดือน', serviceRounds: 12 });
+  // อนุมัติแล้ว: ตัวกลางเปิดรอบขาย packageQty = แพ็คต่อรอบ (2) + ประทับใบ ⇒ ของค้าง 0 (ไม่ใช่ 24 − 2 = 22)
+  const approved = { ...stamped, origin: ORIGIN_HISTORICAL };
+  const done = salesOrderServiceSummary({
+    order: approved, lines: [packLine], terms: [term({ packageQty: 2 })], zonesById, sitesById, todayIso: TODAY,
+  });
+  assert.equal(done.stamped, true);
+  assert.deepEqual(done.allocation.fg.map((g) => [g.qty, g.unit, g.remaining]), [[24, 'แพ็ค', 0]]);
+  assert.equal(done.allocation.remaining, 0);
+  assert.equal(done.allocation.complete, true);
+  assert.equal(done.allocation.sites[0].terms[0].packageQty, 2, 'รอบขายของโซนพูดแพ็คต่อรอบ (ไม่ใช่เลขแพ็ค × เดือน)');
+  // ยังไม่อนุมัติ (ร่าง / รออนุมัติ): ไม่มี term · ไม่ประทับ ⇒ ขายไว้ 24 แพ็ค ยังไม่ลงโซน 24 (ก่อนงวดนี้บรรทัดเดียวกันไม่มีเลขแพ็ค = 12)
+  for (const status of ['draft', 'pending_approval']) {
+    const pending = salesOrderServiceSummary({
+      order: { id: 'SO1', status, supersededById: null, origin: ORIGIN_HISTORICAL }, lines: [packLine], terms: [], zonesById, sitesById, todayIso: TODAY,
+    });
+    assert.equal(pending.stamped, false, status);
+    assert.deepEqual(pending.allocation.fg.map((g) => [g.qty, g.unit, g.remaining]), [[24, 'แพ็ค', 24]], status);
+    assert.equal(pending.allocation.remaining, 24, status);
+  }
+  // บรรทัดย้อนหลังที่เก็บก่อนงวดนี้ (ไม่มีเลขแพ็ค · จำนวน 12 หน่วยขายของทะเบียน) = ตัวเลขเดิมทุกตัว
+  const legacy = salesOrderServiceSummary({
+    order: { id: 'SO1', status: 'draft', supersededById: null, origin: ORIGIN_HISTORICAL },
+    lines: [line({ qty: 12, unit: 'แพ็คเกจ', serviceRounds: 12 })], terms: [], zonesById, sitesById, todayIso: TODAY,
+  });
+  assert.deepEqual(legacy.allocation.fg.map((g) => [g.qty, g.unit, g.remaining]), [[12, 'แพ็คเกจ', 12]]);
+  // ค่าตรึงของใบ pipeline (24 − 5 = 19 · เทสต์ข้างบน) ไม่ถูกแตะโดยงวดนี้ — ที่มาของใบไม่เข้าตัวนับ
+  const pipeline = salesOrderServiceSummary({ order: live, lines: [packLine], terms: [term({ packageQty: 5 })], zonesById, sitesById, todayIso: TODAY });
+  assert.deepEqual(pipeline.allocation.fg.map((g) => [g.qty, g.unit, g.remaining]), [[24, 'แพ็ค', 19]]);
+  /* ซอร์ส: ตัวนับของค้าง (remainingOfLine) ยังเป็นสูตรเดิม — งวดนี้แก้เฉพาะคอมเมนต์ของมัน */
+  const terms = readFileSync(new URL('../service/terms.js', import.meta.url), 'utf8');
+  assert.match(terms, /function remainingOfLine\(line = \{\}, allocated = 0\) \{\s*const entry = typeof allocated === 'object' && allocated\s*\? allocated\s*: \{ qty: Number\(allocated\) \|\| 0, whole: false \};\s*if \(entry\.whole\) return 0;\s*const qty = lineUnitsTotal\(line\);\s*if \(!Number\.isFinite\(qty\) \|\| qty <= 0\) return entry\.qty > 0 \? 0 : 1;\s*return Math\.max\(0, qty - entry\.qty\);\s*\}/);
+  assert.doesNotMatch(terms, /งวด PR-5 เป็นเจ้าของ|ถึงตอนนั้นต้องแก้ที่นี่ด้วย/, 'คอมเมนต์ที่บอกว่ายังค้างงานของงวด PR-5 ต้องไม่เหลือ');
+});
+
 test('🔴 เลขแพ็คว่าง = สรุปงานบริการเท่ากับวันนี้ทุกคีย์ (ไม่มีคีย์ · packQty: null) — ทั้งใบเดิมและใบที่ประทับแล้ว', () => {
   const lines = [line({ qty: 3 }), line({ id: 'L2', fgCode: 'FG-2-02-001-2', qty: 12, unit: 'เดือน', serviceRounds: 6 })];
   for (const order of [live, stamped]) {

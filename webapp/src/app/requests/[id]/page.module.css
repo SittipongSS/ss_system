@@ -37,6 +37,13 @@
   color: var(--text-3);
 }
 
+/* ประโยคบอกผลเหนือฟอร์มสูตรในโมดัลส่งงาน — เดิมบรรทัดสุดท้ายชิดหัวส่วน "ตัวตนสูตร" ของฟอร์มจนอ่านเป็นก้อนเดียว (ม-157) */
+.formulaHints {
+  display: grid;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+}
+
 .fieldError {
   margin-top: var(--space-1);
   font-size: var(--fs-6);

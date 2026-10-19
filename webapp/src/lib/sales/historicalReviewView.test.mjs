@@ -8,6 +8,9 @@ import {
   historicalSaveResultView, historicalSaveStages, historicalSubmitToast, historicalWarningGroups,
 } from './historicalReviewView.js';
 import { historicalSaveExit, HISTORICAL_SAVE_BUTTON_LABEL } from './historicalIntakeForm.js';
+import {
+  HISTORICAL_ALIGNMENT_MISSING_SAVED, HISTORICAL_PACK_QTY_NOT_STORED_REPLAYED, HISTORICAL_PACK_QTY_NOT_STORED_SAVED,
+} from './historicalOrderCopy.js';
 import { HISTORICAL_APPROVER_LABEL } from './historicalOrders.js';
 
 const apiError = (status, data) => Object.assign(new Error(data?.error || 'x'), { status, data });
@@ -84,9 +87,12 @@ test('⭐ แถวตรวจ: ข้อเดียวกับหน้า�
   assert.equal(rowOf(rows, 'signedFile').value, 'PO-7781.pdf');
   assert.equal(rowOf(rows, 'refs').value, 'QT-OLD-1 · IV-2601-0412');
   assert.equal(rowOf(rows, 'zones').value, '2 โซน — ST-01 อาคาร A 2 โซน');
+  /* ⭐ ย้ายความคาดหวังโดยเจตนา (งวด PR-5 · มติเจ้าของ 12/10 ข้อ A8 "ปุ่มรับค่า + เตือน" · แผน IMPL_PLAN_PR5 §5 แถว G17): เดิมแถวนี้มีเจ็ดคีย์ —
+     วันนี้แปด: + `warn` (คำเตือนเมื่อคู่เงินของบรรทัดไม่ตรงกับคู่ของงานบริการ — PR-5 D1(ก)) · ไม่ได้คลายด่าน: ทั้งแถวยังยึดแบบเท่ากันทุกคีย์
+     เจ็ดคีย์เดิมเท่าเดิมทุกตัวอักษร · คู่ที่ตรงกัน / เทียบไม่ได้ (แผนชุดนี้ไม่พกจำนวนและเลขแพ็ค) = `warn: null` · กรณีไม่ตรงอยู่ที่เทสต์ของงวด PR-5 ข้างล่าง */
   assert.deepEqual(rowOf(rows, 'packs'), {
     key: 'packs', label: 'รอบละกี่แพ็ค · จำนวนรอบบริการ', value: 'รวม 3 แพ็ค/รอบ · 12 เดือน/โซน',
-    sub: 'Lobby 2 แพ็ค/รอบ × 12 เดือน · ทางเดิน 1 แพ็ค/รอบ × 12 เดือน', tone: null, step: 'zones', field: 'zones',
+    sub: 'Lobby 2 แพ็ค/รอบ × 12 เดือน · ทางเดิน 1 แพ็ค/รอบ × 12 เดือน', tone: null, warn: null, step: 'zones', field: 'zones',
   });
   assert.equal(rowOf(rows, 'remaining').sub, null, 'ไม่มีวันวางบิลสักงวด = ไม่พูด');
   assert.match(rowOf(rows, 'opening').value, /หลักฐาน 2 ไฟล์/);
@@ -148,6 +154,60 @@ test('⭐ แถวแพ็ค · จำนวนรอบบริการ: �
   assert.deepEqual([empty.value, empty.sub, empty.tone], ['—', null, null]);
   for (const row of [mixed, six, missing]) assert.doesNotMatch(`${row.value} ${row.sub}`, /(?<!กี่)แพ็ค(?!เกจ|\/รอบ)/);
   for (const row of [mixed, six, missing]) assert.doesNotMatch(`${row.value} ${row.sub}`, /\d\s*รอบ/, 'ไม่มี "n รอบ" — จำนวนรอบบริการพูด "n เดือน"');
+});
+
+/* ⭐ PR-5 D1(ก) (มติเจ้าของ 12/10 ข้อ A8 "ปุ่มรับค่า + เตือน" · แผน IMPL_PLAN_PR5 §2.9): คู่เงินของบรรทัด (เลขแพ็ค · จำนวน) กับคู่ของงานบริการ
+   (รอบละกี่แพ็ค · จำนวนรอบบริการ) ไม่เท่ากัน = กลุ่มคำเตือน `packService` — คิดจากบรรทัดของแผน (ไม่ใช่จาก `warningItems`) ·
+   ประโยคเดียวกับหน้าต่างอนุมัติ · อยู่ในแถวแพ็คต่อรอบ · บรรทัดใต้ปุ่มนับเป็นหนึ่งข้อ · **ไม่กั้นอะไร** (ไม่ใช่ error ของแผน ไม่เปลี่ยนสีของแถว) */
+const packLine = (extra = {}) => ({ ...PLAN.lines[0], packQty: 2, qty: 12, packsPerRound: 2, serviceRounds: 12, ...extra });
+const MISMATCH = 'รายการ 1: “แพ็ค/เดือน” ≠ รอบละกี่แพ็ค · รายการ 2: จำนวน ≠ จำนวนรอบบริการ — ตรวจอีกครั้ง (ไม่บังคับให้เท่า)';
+
+test('PR-5 D1(ก) ⭐ กลุ่มคำเตือน packService: มาจากบรรทัดของแผน · ชี้ขั้น ② · คู่ตรงกัน / เทียบไม่ได้ = ไม่มีกลุ่ม · ไม่ไหลลงแถว "คำเตือนอื่น"', () => {
+  const differ = plan({ lines: [packLine({ packsPerRound: 1 }), packLine({ zoneId: 'Z-2', zoneName: 'ทางเดิน', serviceRounds: 6 })] });
+  const groups = historicalWarningGroups(differ, { todayIso: '2026-09-25' });
+  assert.deepEqual(groups, [{ topic: 'packService', step: 'zones', text: MISMATCH }]);
+  // คู่ตรงกันทุกบรรทัด = ไม่มีกลุ่ม · แผนชุดตั้งต้น (ไม่พกเลขแพ็ค/จำนวน — เทียบไม่ได้) = ไม่มีกลุ่ม · ไม่มีแผน = ไม่พัง
+  assert.deepEqual(historicalWarningGroups(plan({ lines: [packLine(), packLine()] })), []);
+  assert.deepEqual(historicalWarningGroups(plan()), []);
+  assert.deepEqual(historicalWarningGroups(null), []);
+  assert.deepEqual(historicalWarningGroups({ warnings: [] }), []);
+  // อยู่ร่วมกับกลุ่มอื่นตามลำดับของแถวตรวจ (สัญญา → โซน → แพ็คต่อรอบ → งวด) · ไม่ถูกนับเป็น "คำเตือนอื่น"
+  const mixed = historicalWarningGroups(plan({
+    lines: differ.lines,
+    warningItems: [
+      { topic: 'overdue', text: 'y', seq: 2, dueDate: '2026-02-01' },
+      { topic: 'liveTerm', text: 'x', index: 0, orderNumber: 'SO-1', endDate: null },
+      { topic: 'contractEnded', text: 'สัญญาสิ้นสุดแล้ว' },
+    ],
+  }), { todayIso: '2026-09-25' });
+  assert.deepEqual(mixed.map((g) => [g.topic, g.step]), [['contractEnded', 'contract'], ['liveTerm', 'zones'], ['packService', 'zones'], ['overdue', 'money']]);
+  // แผนรุ่นก่อนที่ไม่มี warningItems: คำเตือนเดิมยังเป็น "คำเตือนอื่น" ครบ + กลุ่มนี้ (คิดจากบรรทัด ไม่ขึ้นกับรุ่นของคำเตือน)
+  assert.deepEqual(historicalWarningGroups({ warnings: ['ก'], lines: differ.lines }).map((g) => g.topic), ['packService', 'other']);
+});
+
+test('PR-5 D1(ก) ⭐ แถวตรวจ "รอบละกี่แพ็ค · จำนวนรอบบริการ" พกคำเตือนเป็น `warn` (สีของแถวไม่เปลี่ยน) · บรรทัดใต้ปุ่มนับเป็นหนึ่งข้อ และยังพร้อมส่ง', () => {
+  const differ = plan({ lines: [packLine({ packsPerRound: 1 }), packLine({ zoneId: 'Z-2', zoneName: 'ทางเดิน', serviceRounds: 6 })] });
+  const rows = historicalReviewChecklist(differ, { contractFiles: { count: 1, names: ['PO-7781.pdf'] }, evidenceFileCount: 2, todayIso: '2026-09-25' });
+  assert.deepEqual(rowOf(rows, 'packs'), {
+    key: 'packs', label: 'รอบละกี่แพ็ค · จำนวนรอบบริการ', value: 'รวม 3 แพ็ค/รอบ · 6–12 เดือน/โซน',
+    sub: 'Lobby 1 แพ็ค/รอบ × 12 เดือน · ทางเดิน 2 แพ็ค/รอบ × 6 เดือน', tone: null, warn: MISMATCH, step: 'zones', field: 'zones',
+  });
+  assert.deepEqual(rows.map((r) => r.key), ['contract', 'signedFile', 'refs', 'zones', 'packs', 'opening', 'remaining', 'verdict'], 'ไม่มีแถว "คำเตือนอื่น" งอก');
+  assert.equal(rowOf(rows, 'zones').warn, null, 'คำเตือนอยู่ที่แถวแพ็คต่อรอบแถวเดียว');
+  assert.equal(rowOf(rows, 'verdict').tone, 'ok', 'ไม่กระทบผลตรวจยอด/ช่วง');
+  // คู่ตรงกัน = warn null (เจ็ดคีย์ที่เหลือเท่ากับแถวของแผนที่ตรงกัน)
+  const agree = historicalReviewChecklist(plan({ lines: [packLine(), packLine({ zoneId: 'Z-2', zoneName: 'ทางเดิน' })] }));
+  assert.equal(rowOf(agree, 'packs').warn, null);
+  // แถวที่ขาดแพ็คต่อรอบ: เหลืองเพราะขาด (ของเดิม) — คู่ที่เทียบไม่ได้ไม่ทำให้เกิดคำเตือนซ้อน
+  const missing = rowOf(historicalReviewChecklist(plan({ lines: [packLine({ packsPerRound: null })] })), 'packs');
+  assert.deepEqual([missing.tone, missing.warn], ['warn', null]);
+  // บรรทัดใต้ปุ่ม: นับกลุ่มนี้เป็นหนึ่งข้อ · ยัง "พร้อมส่ง" (คำเตือนไม่บล็อก)
+  const groups = historicalWarningGroups(differ, { todayIso: '2026-09-25' });
+  assert.deepEqual(historicalReviewFootNote({ plan: differ, warningGroups: groups }), {
+    text: 'พร้อมส่ง · คำเตือน 1 ข้อ (ไม่บล็อก) อยู่ในการ์ด “สิ่งที่ผู้อนุมัติจะตรวจ”', tone: null,
+  });
+  assert.deepEqual(historicalReviewFootNote({ plan: plan({ lines: [packLine()] }), warningGroups: historicalWarningGroups(plan({ lines: [packLine()] })) }),
+    { text: 'พร้อมส่ง — ไม่มีคำเตือน', tone: null });
 });
 
 /* ⭐ H1 (IMPL_PLAN_D §3.3): วันวางบิลไม่บังคับ — แถวงวดที่ยังต้องเก็บบอกว่าตั้งไว้กี่งวด (คำเดียวกับหน้าต่างอนุมัติ) */
@@ -231,6 +291,8 @@ test('🔴 ผลที่ล้ม: ทางออกไม่เกินห�
     apiError(409, { code: 'historical_so_contract_file_missing', error: 'ไม่มีไฟล์' }),
     apiError(403, { error: 'ไม่มีสิทธิ์' }),
     apiError(503, { error: 'ยังไม่ได้รัน 0374' }),
+    apiError(503, { code: 'historical_pack_qty_not_stored', error: HISTORICAL_PACK_QTY_NOT_STORED_SAVED, orderId: 'SOR-H1', replayed: false }),
+    apiError(503, { code: 'historical_pack_qty_not_stored', error: HISTORICAL_PACK_QTY_NOT_STORED_REPLAYED, orderId: 'SOR-H1', replayed: true }),
     apiError(409, { code: 'something_new', error: 'ใหม่' }),
   ];
   for (const error of cases) {
@@ -282,6 +344,42 @@ test('⭐ ผลที่ล้มแต่ละชนิดบอกสิ่�
   /* รหัสที่รู้ขั้น ยังบอกให้แก้ตามข้อความ ไม่ใช่แจ้งผู้ดูแล */
   assert.doesNotMatch(historicalSaveResultView(blocked).body, /แจ้งผู้ดูแลระบบ/);
   assert.equal(historicalSaveResultView(null), null);
+});
+
+/* 🔴 มติผู้นำงาน 12/10/2026 (งวด PR-5 · แผน IMPL_PLAN_PR5 §3.4 · ฉาก S21 ของหลักฐานจอ): 503 ของเข็มขัดหลังบันทึกของ 0409
+   (`historical_pack_qty_not_stored`) — แผงบันทึกพูดประโยคของ server **ตามที่มันเขียน** ไม่มีอะไรห่อ
+   🐞 ของเดิม: กิ่ง 503 ห่อทุกประโยคเป็น "ระบบยังไม่พร้อม — … · ลองส่งอีกครั้งในไม่กี่นาที" ⇒ ประโยคของการส่งซ้ำที่บอกว่า "กดบันทึกซ้ำไม่ช่วย"
+      ถูกต่อท้ายด้วยคำชวนลองใหม่ (สองคำสั่งที่ขัดกันในกล่องเดียว) · และใบร่างลงฐานไปแล้ว — "ระบบยังไม่พร้อม" อ่านเหมือนยังไม่มีอะไรถูกบันทึก
+   ⚠️ แคบเท่ารหัสนี้รหัสเดียว: 503 ตัวอื่น (ฐานยังไม่รัน 0374 ที่ไม่มีรหัส · เข็มขัดของ 0394) เท่าเดิมทุกไบต์ — เทสต์นี้ตรึงทั้งสองฝั่ง */
+test('PR-5 🔴 แผงบันทึก: 503 ของเข็มขัด 0409 = ประโยคของ server ทั้งประโยคตามที่เขียน — ไม่มีคำนำ ไม่มีคำชวนลองใหม่ ไม่มีปุ่ม · 503 ตัวอื่นเท่าเดิมทุกไบต์', () => {
+  const NOT_STORED = 'historical_pack_qty_not_stored';
+  for (const [sentence, replayed] of [[HISTORICAL_PACK_QTY_NOT_STORED_SAVED, false], [HISTORICAL_PACK_QTY_NOT_STORED_REPLAYED, true]]) {
+    const exit = historicalSaveExit(apiError(503, { code: NOT_STORED, error: sentence, orderId: 'SOR-H1', replayed }));
+    /* ผลของ 503 พกรหัสมาถึงแผง (กิ่ง 503 ของ historicalSaveExit กระจาย `base` ที่มี `code`) — ไม่งั้นแผงแยกเข็มขัดนี้ออกจาก 503 ตัวอื่นไม่ได้ */
+    assert.deepEqual([exit.kind, exit.code, exit.message, exit.hint, exit.canRetry], ['schema', NOT_STORED, sentence, null, false]);
+    for (const extra of [
+      {}, { stage: 'persist' }, { stage: 'persist', orderNumber: 'SO-26100001-0' },
+      { stage: 'contractFiles', orderNumber: 'SO-26100001-0', failedFile: { name: 'PO.pdf', kind: 'contract', key: 'k' }, currentStep: 'review' },
+    ]) {
+      assert.deepEqual(historicalSaveResultView(exit, extra), { title: 'ส่งไม่สำเร็จ', body: sentence, action: null }, JSON.stringify(extra));
+    }
+    const said = JSON.stringify(historicalSaveResultView(exit, { stage: 'persist', orderNumber: 'SO-26100001-0' }));
+    assert.doesNotMatch(said, /ระบบยังไม่พร้อม|ลองส่งอีกครั้ง|ลองอีกครั้ง|ในไม่กี่นาที|อีกครั้ง/, 'ไม่มีคำนำ / คำชวนลองใหม่รอบประโยคของเข็มขัด');
+    /* บรรทัดใต้ปุ่มก็ไม่ชวนกดต่อ (canRetry เท็จ) — ชี้กล่องแดงที่พูดประโยคนี้ */
+    assert.equal(historicalReviewFootNote({ plan: PLAN, failed: { orderNumber: 'SO-26100001-0', exit } }).text, 'ส่งไม่สำเร็จ — ดูกล่องแดงเหนือแถบนี้');
+  }
+  /* ประโยคของการส่งซ้ำเป็นตัวที่ชนกับคำชวนตรง ๆ — ยึดว่ามันยังพูดอย่างนั้น (เปลี่ยนประโยคแล้วเทสต์นี้ต้องถูกอ่านใหม่) */
+  assert.match(HISTORICAL_PACK_QTY_NOT_STORED_REPLAYED, /กดบันทึกซ้ำไม่ช่วย/);
+
+  /* 503 ตัวอื่น — เท่าเดิมทุกไบต์ */
+  assert.deepEqual(historicalSaveResultView(historicalSaveExit(apiError(503, { error: 'ยังไม่ได้รัน 0374' }))),
+    { title: 'ส่งไม่สำเร็จ', body: 'ระบบยังไม่พร้อม — ยังไม่ได้รัน 0374 · ลองส่งอีกครั้งในไม่กี่นาที', action: null });
+  assert.deepEqual(
+    historicalSaveResultView(historicalSaveExit(apiError(503, { code: 'historical_service_alignment_missing', error: HISTORICAL_ALIGNMENT_MISSING_SAVED, orderId: 'SOR-H1' })), { stage: 'persist', orderNumber: 'SO-26100001-0' }),
+    { title: 'ส่งไม่สำเร็จ', body: `ระบบยังไม่พร้อม — ${HISTORICAL_ALIGNMENT_MISSING_SAVED} · ลองส่งอีกครั้งในไม่กี่นาที`, action: null },
+  );
+  assert.deepEqual(historicalSaveResultView(historicalSaveExit(apiError(503, { code: 'something_else_503', error: 'ฐานยังไม่พร้อม' }))),
+    { title: 'ส่งไม่สำเร็จ', body: 'ระบบยังไม่พร้อม — ฐานยังไม่พร้อม · ลองส่งอีกครั้งในไม่กี่นาที', action: null });
 });
 
 test('⭐ ถ้อยคำหลังส่ง: เรียกผู้อนุมัติว่า "ผู้จัดการฝ่ายขาย" (มติ 25/09 ข้อ 2) · ไม่นับ Actual', () => {

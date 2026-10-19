@@ -1,17 +1,12 @@
 import { genId } from '@/lib/id';
-import { userTeams } from '@/lib/permissions';
 import { recordAudit } from '@/lib/audit';
 import { canEditSalesPlanning, forecastAmount, isClosedStage, monthKey, toMoney } from '@/lib/salesPlanning';
 import { getSahamitContext, sahamitError, indexByFgCode, loadSahamitProducts, sahamitDealTitle } from '@/lib/sahamit/server';
 import { customerSnapshotName } from '@/lib/master/customerName';
+import { isSahamitDealOwner, SAHAMIT_DEAL_TEAM } from '@/lib/sahamit/dealOwner';
+import { deliveryBeforePo, fcDealDates, lastDayOfMonth } from '@/lib/sahamit/dealDates';
 
 export const dynamic = 'force-dynamic';
-
-function lastDayOfMonth(month) {
-  if (!/^\d{4}-\d{2}$/.test(String(month || ''))) return null;
-  const [year, mm] = month.split('-').map(Number);
-  return new Date(Date.UTC(year, mm, 0)).toISOString().slice(0, 10);
-}
 
 async function loadRound(supabase, customerId, id) {
   const { data: round, error } = await supabase
@@ -33,7 +28,7 @@ async function loadRound(supabase, customerId, id) {
 }
 
 // สร้างดีล "1 forecast line = 1 ดีล" (line = สินค้า×เดือน) จากรายการที่เลือก.
-// เจ้าของดีล = AE (role=ae) ที่เลือกจาก dropdown เท่านั้น. เลือกหลาย line →
+// เจ้าของดีล = AE / Senior AE ทีม KA ที่เลือกจาก dropdown เท่านั้น. เลือกหลาย line →
 // สร้างหลายดีล (ดีลละ line, junction 1 แถว/ดีล).
 export async function POST(request, { params }) {
   const ctx = await getSahamitContext();
@@ -47,18 +42,19 @@ export async function POST(request, { params }) {
   const forecastMonth = monthKey(body.forecastMonth);
   if (!forecastMonth) return Response.json({ error: 'ต้องระบุเดือนคาดได้รับ PO (forecastMonth)' }, { status: 400 });
 
-  // เจ้าของดีลต้องเป็น AE ทีม KA เท่านั้น — ตรวจจาก app_metadata ฝั่ง server
+  // เจ้าของดีลต้องเป็นคนถือดีลได้ (AE / Senior AE) ทีม KA เท่านั้น — ตรวจจาก app_metadata ฝั่ง server
   if (!body.ownerId) return Response.json({ error: 'ต้องเลือกผู้ดูแล (AE)' }, { status: 400 });
   const { data: ownerRes, error: ownerErr } = await supabase.auth.admin.getUserById(String(body.ownerId));
   const owner = ownerRes?.user;
   if (ownerErr || !owner) return Response.json({ error: 'ไม่พบผู้ใช้ AE ที่เลือก' }, { status: 400 });
   // อยู่ KA เป็นทีมรองก็ถือดีลสหมิตรได้ — ด่านนี้ถามว่า "อยู่ KA ไหม" ไม่ใช่ "KA เป็นทีมหลักไหม"
-  if (owner.app_metadata?.role !== 'ae' || !userTeams(owner.app_metadata).includes('KA')) {
-    return Response.json({ error: 'ผู้ดูแลต้องเป็น AE ทีม KA เท่านั้น' }, { status: 400 });
+  // ด่านตัวเดียวกับดรอปดาวน์บนจอ (lib/sahamit/dealOwner.js) — เดิมเทียบ `role !== 'ae'` ทำให้ Senior AE ตกหล่น
+  if (!isSahamitDealOwner(owner.app_metadata)) {
+    return Response.json({ error: 'ผู้ดูแลต้องเป็น AE หรือ Senior AE ทีม KA เท่านั้น' }, { status: 400 });
   }
   const ownerId = owner.id;
   const ownerName = owner.user_metadata?.name || owner.email || null;
-  const ownerTeam = 'KA'; // บังคับจากเงื่อนไขข้างบนแล้ว
+  const ownerTeam = SAHAMIT_DEAL_TEAM; // บังคับจากเงื่อนไขข้างบนแล้ว
 
   // เลือกได้ 2 แบบ: lineIds (ราย line, แม่นสุด) หรือ fgCodes (ทุกเดือนของสินค้านั้น)
   const lineIds = new Set((Array.isArray(body.lineIds) ? body.lineIds : []).map((v) => String(v || '')).filter(Boolean));
@@ -82,6 +78,16 @@ export async function POST(request, { params }) {
       : fgCodesSel.has(String(line.fgCode || '').trim().toLowerCase());
   });
   if (!picked.length) return Response.json({ error: 'รายการที่เลือกไม่มีจำนวนที่ผูกได้' }, { status: 400 });
+
+  // วันเริ่ม = วันคาดได้ PO · วันสิ้นสุด = เดือนส่งของ ⇒ เดือนส่งของมาก่อนเดือน PO = ดีลที่จบก่อนเริ่ม
+  // ตีกลับทั้งคำขอพร้อมบอกรายการ ให้เลือกเดือน PO ใหม่ (ไม่ข้ามเงียบ ๆ แล้วสร้างแค่บางใบ)
+  const earlyLines = picked.filter((line) => deliveryBeforePo({ poMonth: forecastMonth, demandMonth: line.month }));
+  if (earlyLines.length) {
+    const named = earlyLines.map((line) => `${line.fgCode} (${monthKey(line.month)})`).join(', ');
+    return Response.json({
+      error: `เดือนส่งของมาก่อนเดือนคาดได้รับ PO ${forecastMonth}: ${named} — เลือกเดือนคาดได้รับ PO ให้ไม่เกินเดือนส่งของ หรือเอารายการนั้นออก`,
+    }, { status: 400 });
+  }
 
   // กันซ้ำ: forecast line ที่เคยสร้างดีลไปแล้ว (ดีลยังไม่ถูกยกเลิก) จะไม่สร้างดีลซ้ำอีก.
   // ใช้ junction (sales_deal_forecast_lines.forecastLineId) เป็นกุญแจกันซ้ำ.
@@ -117,8 +123,10 @@ export async function POST(request, { params }) {
     const qty = Number(line.qty || 0);
     const productName = line.productName || product?.name || line.fgCode;
     const demandMonth = monthKey(line.month);
+    const { startDate, endDate } = fcDealDates({ poMonth: forecastMonth, demandMonth });
 
-    const title = sahamitDealTitle(product, productName);
+    // มติ 2026-10-15 — เดือนส่งของท้ายชื่อ: สินค้าเดียวกันคนละเดือนต้องแยกชื่อกันได้
+    const title = sahamitDealTitle(product, productName, { month: demandMonth });
 
     const dealRow = {
       id: genId('DEAL'),
@@ -133,6 +141,9 @@ export async function POST(request, { params }) {
       probability: 80,
       forecastMonth,
       expectedCloseDate: closeDate,
+      // มติ 2026-10-15: วันเริ่ม = วันคาดได้ PO · วันสิ้นสุด = สิ้นเดือนส่งของใน FC (lib/sahamit/dealDates)
+      startDate,
+      endDate,
       confirmedAt: null,
       lostReason: null,
       notes: `สร้างจาก FC สหมิตร รอบ #${round.roundNo} · ${line.fgCode} (${line.month})`,

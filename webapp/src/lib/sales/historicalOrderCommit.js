@@ -9,6 +9,7 @@
 //        → ตัวตัดสินเดียว (planHistoricalServiceOrder — ล็อก AE/Senior AE เป็นตัวเอง + ขอบเขตของดีลที่ใบจะเข้าไปอยู่จริง
 //          ตัดสินทั้งตอนพรีวิวและตอนบันทึก) → พรีวิวจบตรงนี้ (ไม่แตะ RPC) → ใบที่อาจซ้ำต้องยืนยัน
 //        → (แก้ใบ) กรองหลักฐานงวดยกมา → RPC ในทรานแซกชันเดียว → audit
+//        → เข็มขัดหลังบันทึกสองตัว (ฐานยังไม่รัน 0394 · ฐานยังไม่รัน 0409 — historicalPackQtyDropped) ตอบ 503 พร้อมบอกว่าใบร่างลงฐานแล้ว
 //
 // ⭐ ใบเกิดเป็น **ร่าง** (0374) — ส่งอนุมัติเป็นอีกคำสั่ง · ที่นี่ไม่ส่ง ไม่อนุมัติ ไม่แตะรอบขายของโซน
 // ⚠️ ห้าม import ตัวหยุดยอดงวดของขั้นอนุมัติ · ตัวคิดยอดงวดสดตามแผน · ตัวตรึงฉบับเอกสาร — งวดของใบย้อนหลัง
@@ -29,7 +30,10 @@ import { sanitizeEvidenceAttachments } from '@/lib/sales/orderConfirmationDocs';
 import { PRIVATE_EVIDENCE_BUCKET, missingStoredEvidence, privateEvidencePrefix } from '@/lib/upload/privateEvidence';
 import { historicalDuplicateMatches, historicalDuplicateReviewRecord } from '@/lib/sales/historicalDuplicates';
 import { loadScheduleRule } from '@/lib/sales/installmentScheduleServer';
-import { HISTORICAL_ALIGNMENT_MISSING_SAVED } from '@/lib/sales/historicalOrderCopy';
+import {
+  HISTORICAL_ALIGNMENT_MISSING_SAVED, HISTORICAL_PACK_QTY_NOT_STORED_REPLAYED, HISTORICAL_PACK_QTY_NOT_STORED_SAVED,
+} from '@/lib/sales/historicalOrderCopy';
+import { lineMoneyRuleMessage } from '@/lib/sales/linePacks';
 import {
   HISTORICAL_DEAL_TITLE, HISTORICAL_FLOW_SCHEMA_MISSING_MESSAGE, canKeyHistoricalSalesOrder, historicalOrderEditable,
   historicalOrderIdOf, historicalRefsOf, historicalRowsOnly, historicalSchemaMissing, isHistoricalOrder, isOpeningInstallment,
@@ -52,7 +56,8 @@ const coded = (code, extra = {}) => ({ error: workflowErrorMessage(code), code, 
  * ⇒ คืน `money` มาพร้อม 400 ของ **พรีวิว** · สถานะ 400 กับ `errors[]` คงรูปเดิมเป๊ะ (ผู้เรียก/เทสต์ยึดไว้)
  *
  * ⚠️ **ห้ามตอบยอดที่ยังคิดไม่ได้** — แผนตั้งบล็อกเงินเป็นศูนย์ทั้งก้อนเมื่อด่านเงินไม่ผ่าน
- *   (จำนวนของโซนว่าง/ไม่ใช่จำนวนเต็ม · แพ็คเกจยังไม่ตั้งราคาในทะเบียน · ยังไม่เลือก VAT · ไม่มีโซนเลย) ⇒ ส่งศูนย์ไปให้จอ
+ *   (จำนวนของโซนว่าง/ไม่ใช่จำนวนเต็ม · เลขแพ็คของบรรทัดยังไม่ใส่/ใช้ไม่ได้ (งวด PR-5 — ไม่มีวันถอยไปคิดแบบคูณ 1) · แพ็คเกจยังไม่ตั้งราคาในทะเบียน
+ *   · ยังไม่เลือก VAT · ไม่มีโซนเลย) ⇒ ส่งศูนย์ไปให้จอ
  *   = จอพิมพ์ "0 บาท" เป็นยอดใบ ซึ่งเป็นคำตอบผิด · ตัวแยกคือ `zeroValue` ของแผนเอง ซึ่งนิยามว่า
  *   `moneyOk && totalAmount === 0` ⇒ **ยอดเชื่อได้ ⟺ totalAmount > 0 หรือ zeroValue จริง**
  *   (อ่านจากผลของแผนตัวเดียวกัน ไม่ใช่คิดเงื่อนไขใหม่ที่นี่ — เทสต์ยิงแผนจริงตรึงข้อนี้ไว้) */
@@ -99,6 +104,38 @@ async function serviceAlignmentMissing(supabase, orderId, lines) {
 const alignmentMissingReply = (orderId) => reply(503, {
   error: HISTORICAL_ALIGNMENT_MISSING_SAVED, code: 'historical_service_alignment_missing', orderId,
 });
+
+/* ── ฐานรัน 0409 แล้วหรือยัง (งวด PR-5 · เข็มขัดตัวที่สอง) — เทียบบรรทัดที่ RPC คืนกับแผน ไม่อ่านฐานเพิ่ม ──────────────────────
+   0409 ไม่เพิ่มคอลัมน์ ⇒ CI/check:columns ไม่รู้ว่ารันแล้วหรือยัง (เหมือน 0394) · ตัวเขียนรุ่นก่อน 0409 รับคีย์เลขแพ็คเงียบ ๆ แล้วเก็บ NULL
+   ⇒ **ส่งเลขไปแล้วแต่แถวที่คืนมาไม่มี** = เลขแพ็คของบรรทัดนั้นหาย → 503 บอกผู้คีย์ทันที (ประโยคและทางออกอยู่ที่ historicalOrderCopy)
+   ⭐ แถวที่ RPC คืน = `to_jsonb(l)` เรียง sortOrder = ลำดับบรรทัดของแผน (ข้อสมมุติเดียวกับ `lineZonesAfter` ข้างบน) ⇒ จับคู่ด้วยตำแหน่ง
+   ⚠️ รายงาน **หลังเขียน** — ใบร่างลงฐานไปแล้ว กันไม่ได้ · ตัวกันจริงคือลำดับ "รัน 0409 ก่อน merge" (webapp/DEPLOY.md)
+   ⚠️ แผนที่บรรทัดไม่มีเลขแพ็ค (null) ไม่นับ — แผนที่มาถึงตัวเขียนไม่มี error จึงมีเลขครบ ส่วนนี้กันผู้เรียกที่ส่งแผนรูปอื่นมาไม่ให้ตอบ 503 เท็จ
+   🔴 การสร้างที่ฐานตอบว่าเป็น **การส่งซ้ำ** (`replayed`) ตัดสินอีกแบบ (รีวิว 12/10 · พิสูจน์บน SQL ตัวจริงใน PGlite): แถวที่คืนมาคือแถวที่ใบถือ **ตอนนี้**
+      ไม่ใช่แถวของคำขอนี้ — ใบร่างอาจถูกเปิดแก้จากอีกแท็บไปแล้วหลังคำตอบรอบแรกหาย (RPC แก้ใบไม่เขียนแฮชของการคีย์ทับ ใบที่ถูกแก้จึงยังตอบว่าส่งซ้ำ)
+      ⇒ จำนวน/ลำดับบรรทัดไม่ตรงกับแผนได้โดยที่ทุกแถวมีเลขครบ · จับคู่รายตำแหน่งตรงนี้ = 503 ที่บอกว่า "ถูกเก็บไว้โดยไม่มีเลข … ต้องยกเลิกแล้วคีย์ใหม่"
+      กับใบร่างที่ดีทุกบรรทัด ⇒ ทางนี้ตัดสินเท่าที่ประโยคของการส่งซ้ำอ้างเท่านั้น: **มีแถวที่เก็บไว้ซึ่งเลขแพ็คว่าง** (แถวน้อย/มากกว่าแผนไม่ใช่ "หาย")
+      · การเขียนรอบนี้เอง (`replayed` เท็จ) ยังจับคู่รายตำแหน่งเหมือนเดิม — ตัวเขียนของฐานโยนถ้าจำนวนแถวที่ INSERT ≠ จำนวนบรรทัดของคำขอ (0379) แถวน้อยกว่าจึงเกิดไม่ได้
+        แต่ถ้าเกิด เข็มขัดไม่เดา */
+export function historicalPackQtyDropped(lines, plan, { replayed = false } = {}) {
+  const stored = Array.isArray(lines) ? lines : [];
+  const sent = Array.isArray(plan?.lines) ? plan.lines : [];
+  const missing = (row) => row?.packQty === null || row?.packQty === undefined;
+  if (replayed) return sent.some((line) => typeof line?.packQty === 'number') && stored.some(missing);
+  return sent.some((line, index) => typeof line?.packQty === 'number' && missing(stored[index]));
+}
+const packQtyNotStoredReply = (orderId, replayed) => reply(503, {
+  error: replayed ? HISTORICAL_PACK_QTY_NOT_STORED_REPLAYED : HISTORICAL_PACK_QTY_NOT_STORED_SAVED,
+  code: 'historical_pack_qty_not_stored',
+  orderId,
+  replayed,
+});
+/* CHECK ของ 0407 บนบรรทัดใบสั่งขาย (กฎเงินของบรรทัด · ช่วงเลขแพ็ค) ที่หลุดมาเป็น 23514 ดิบ — แผนคิดสูตรเดียวกับฐานจึงไม่ควรเจอ
+   แต่ถ้าเจอ ผู้คีย์ต้องได้ข้อความไทยของกฎนั้น (lineMoneyRuleMessage ตัวเดียวกับทางเขียนของใบเสนอราคา) ไม่ใช่ข้อความกลาง 500 ที่ชวนให้ลองใหม่ */
+const moneyRuleReply = (error) => {
+  const message = lineMoneyRuleMessage(error);
+  return message ? reply(500, { error: message, code: 'historical_so_line_money_rule' }) : null;
+};
 
 /* 23505 ของ primary key ใบสั่งขาย = สองคำขอรหัสเดียวกันชนกันพอดี ⇒ ยิงซ้ำหนึ่งครั้งได้ใบเดิม/ชนกัน */
 const isOrderPkeyCollision = (error) => String(error?.code || '') === '23505'
@@ -375,6 +412,8 @@ export async function commitHistoricalOrder({
     /* 🪤 RPC จับ 23505 ของดีลภาชนะเองแล้ว (ข้อ ⑩) — ถ้าหลุดมาได้ ห้ามตอบข้อความของการย้ายเจ้าของ
        ("มีดีลของ AE คนนั้นอยู่แล้ว") เพราะผู้คีย์ไม่ได้ย้ายอะไร · กดบันทึกอีกครั้งก็ผ่าน */
     if (raw.includes('sales_deals_historical_container_uk')) return reply(409, coded('historical_so_container_deal_race'));
+    const moneyRule = moneyRuleReply(error);
+    if (moneyRule) return moneyRule;
     const mapped = documentWorkflowError(error, { context: `historical sales order ${intakeKey}` });
     return reply(mapped.status, { error: mapped.message, ...(mapped.code ? { code: mapped.code } : {}) });
   }
@@ -438,6 +477,9 @@ export async function commitHistoricalOrder({
   }
 
   if (await serviceAlignmentMissing(supabase, order.id, lines)) return alignmentMissingReply(order.id);
+  /* เข็มขัด 0409 (ต่อจากเข็มขัด 0394) — การสร้างที่ฐานตอบว่าเป็นการส่งซ้ำได้ประโยคของมันเอง (R9: กดซ้ำไม่ช่วย · ไม่พูดเรื่อง migration)
+     และถูกตัดสินจากแถวที่ใบถืออยู่ตอนนี้ ไม่จับคู่รายตำแหน่งกับแผนของคำขอนี้ (ใบร่างที่ถูกแก้จากที่อื่นเหลือบรรทัดน้อยลงไม่ใช่ "เลขหาย") */
+  if (historicalPackQtyDropped(lines, plan, { replayed })) return packQtyNotStoredReply(order.id, replayed);
   return reply(replayed ? 200 : 201, { order, lines, installments, contract, deal, dealCreated, replayed });
 }
 
@@ -487,6 +529,8 @@ async function updateOrder({
     if (historicalSchemaMissing(error)) return reply(503, { error: HISTORICAL_FLOW_SCHEMA_MISSING_MESSAGE });
     /* 0395: ใบที่อาจซ้ำที่อีกคำขอเพิ่งลงฐานระหว่างการแก้ใบนี้ = 409 พร้อมรายการใหม่ (ดู duplicateRaceReply) */
     if (duplicateRaceReply && errorText(error).includes('historical_so_duplicate_unacknowledged')) return duplicateRaceReply();
+    const moneyRule = moneyRuleReply(error);
+    if (moneyRule) return moneyRule;
     const mapped = documentWorkflowError(error, { context: `historical sales order update ${orderId}` });
     return reply(mapped.status, { error: mapped.message, ...(mapped.code ? { code: mapped.code } : {}) });
   }
@@ -512,6 +556,12 @@ async function updateOrder({
   });
 
   if (await serviceAlignmentMissing(supabase, orderId, lines)) return alignmentMissingReply(orderId);
+  /* เข็มขัด 0409 — การแก้ใบคือการเขียนรอบนี้เองเสมอ (ไม่มีการส่งซ้ำ)
+     ⚠️ 503 นี้ตอบได้ **ครั้งเดียวต่อการเปิดใบหนึ่งครั้ง** (รีวิว 12/10): การเขียนสำเร็จแล้ว `updatedAt` ของใบขยับ แต่ body ของ 503 ไม่พกเวลาใหม่
+        (รูปเดียวกับเข็มขัดของ 0394 ข้างบน) และฟอร์มรับเวลาใหม่จากคำตอบที่สำเร็จเท่านั้น ⇒ กดบันทึกซ้ำจากแท็บเดิม = RPC โยน `workflow_stale` ก่อนเขียนอะไร
+        (409 "เอกสารถูกเปลี่ยนจากอีกหน้าต่าง" + ปุ่ม "โหลดใบล่าสุด") ไม่ใช่ประโยคนี้อีกรอบ — ไม่มีการเขียนซ้ำ ไม่มี audit ซ้ำ และใบร่างยังส่งอนุมัติไม่ได้เหมือนเดิม
+        (โหลดใบใหม่แล้วบันทึก = 503 นี้อีกครั้ง) · เอกสาร: docs/qt-pack-column.md "ถ้าสลับลำดับ" · เทสต์ยึดลำดับ 503 → 409 ไว้ */
+  if (historicalPackQtyDropped(lines, plan)) return packQtyNotStoredReply(orderId, false);
   return reply(200, {
     order, lines, installments, contract, deal: existing.deal || null, dealCreated: false, replayed: false,
   });

@@ -5,9 +5,15 @@
 // ⭐ มติเจ้าของ 08/10 รอบสอง (จอฝ่ายขายที่เหลือ — ตามตารางงานบริการของใบใหม่ #1878): ช่องนี้อยู่ **ก่อน** "จำนวนรอบบริการ *"
 //   ในแถบผูก (ผู้เรียกวาง: ไซต์ · โซน → ช่องนี้ → จำนวนรอบบริการ) แล้วตามด้วย "รวมทั้งรายการ n แพ็ค"
 //
-// ⭐ มติ 26/09 (A3/O9): "แพ็คต่อรอบ" เป็น **ช่องของตัวเองต่อโซน** — ไม่ใช่จำนวนของบรรทัด (มติ 23/09 ยังจริง: จำนวน = เงิน
-//   1 ชุด × 12 เดือน) ⇒ ฐานเก็บใน `sales_order_line_zones.packsPerRound` (หนึ่งแถวต่อบรรทัด — 0394/P6) แล้วรอบขายของโซน
-//   ตอนอนุมัติได้ `packageQty` = แพ็คต่อรอบ (0394/P3 ผ่าน `sales_order_open_service_terms`)
+// ⭐ มติ 26/09 (A3/O9): "แพ็คต่อรอบ" เป็น **ช่องของตัวเองต่อโซน** — ไม่ใช่จำนวนของบรรทัด และ **ไม่คูณเงิน** ⇒ ฐานเก็บใน
+//   `sales_order_line_zones.packsPerRound` (หนึ่งแถวต่อบรรทัด — 0394/P6) แล้วรอบขายของโซนตอนอนุมัติได้ `packageQty` = แพ็คต่อรอบ
+//   (0394/P3 ผ่าน `sales_order_open_service_terms`)
+//   ⭐ งวด PR-5 (มติเจ้าของ 08/10 ข้อ A1–A2 · mig 0409): เงินของบรรทัด = เลขคอลัมน์ "แพ็ค/เดือน" × จำนวน (เดือน) × ราคา/หน่วย — เลขนั้น
+//     อยู่ในเซลล์เงินของตาราง (เซลล์ร่วมกับใบเสนอราคา) คนละช่องกับช่องนี้ · ของเดิมเขียนว่า "จำนวน = เงิน 1 ชุด × 12 เดือน"
+// ⭐ PR-5 D1(ก) (มติเจ้าของ 12/10 ข้อ A8 "ปุ่มรับค่า + เตือน"): ชิป `HistoricalSeedChip` — "ตาม … [ใช้]" ใต้ช่อง เสนอเลขจากคู่เงินของแถวเดียวกัน
+//   (ผู้เรียกส่ง `seed` จาก `historicalLineQuoteLink`) · **ข้อเสนอ ไม่ใช่ค่าตั้งต้น**: ค่าเข้าช่องเมื่อกด "ใช้" เท่านั้น · หน้าตาเดียวกับชิปผลประเมิน
+//   (สีกลาง ไม่ใช่ด่าน) · ปิดระหว่างตรวจ/บันทึกเหมือนช่องที่มันเขียน · ตัวเดียวกันวางใต้ช่องจำนวนรอบบริการด้วย (ขั้น ② เป็นคนวาง)
+//   🔴 โค้ดของไฟล์นี้ไม่เอ่ยชื่อคีย์ของเลขคอลัมน์นั้น — ค่าที่ชิปเขียนคือ `seed.value` ที่ lib คิดให้ (ยาม quoteLineCells.test · linePackReaders GE)
 // ⭐ จำนวนเต็ม 1–9999 (ขอบเดียวกับ CHECK ของ 0392 · ZONES_BULK_PACKS_* · HISTORICAL_SERVICE_LIMITS) · หน่วย "แพ็ค"
 // ⭐ ชิป "ประเมินไว้ n แพ็ค" + ปุ่ม "ใช้" = ตัวช่วยเติมค่า **ไม่ใช่ด่าน** (สีกลาง ไม่แดง) — ผลประเมินอ่านที่ขั้น ② จากเส้น
 //   ทะเบียนของลูกค้า (DD3) · ยังโหลด/อ่านไม่ได้ = ไม่มีชิป (ผู้เรียกส่ง view ที่คิดด้วย null)
@@ -23,11 +29,35 @@ const T = HISTORICAL_SERVICE_TEXT;
 const assessedAriaOf = T.useAssessedAria;
 
 /**
+ * ชิปรับค่าของช่องงานบริการ (PR-5 D1(ก)) — "ตาม … " + ปุ่ม "ใช้" · ไม่มี `seed` = ไม่วาดอะไร
+ * @param seed `{ value, text, aria }` จาก `historicalLineQuoteLink` (null = ไม่มีข้อเสนอ: ต้นทางยังใช้ไม่ได้ หรือช่องเป็นเลขนั้นอยู่แล้ว)
+ * @param onUse `(value) => void` — เรียกเมื่อกดเท่านั้น (ไม่เขียนตอนวาด) · @param disabled ระหว่างตรวจ/บันทึก
+ */
+export function HistoricalSeedChip({ seed = null, onUse, disabled = false }) {
+  return seed ? (
+    <span className={styles.assessChip}>
+      {seed.text}
+      <Button
+        size="sm" variant="quiet"
+        disabled={disabled}
+        onClick={() => onUse?.(seed.value)}
+        aria-label={seed.aria}
+      >
+        {T.useAssessed}
+      </Button>
+    </span>
+  ) : null;
+}
+
+/**
  * @param value ค่าในช่อง (ข้อความ — ตามที่พิมพ์) · @param onChange `(text) => void`
  * @param view ผลของ `historicalLineServiceView(row, assessedByZone)` — `{ assessed, canUse, total, totalText }`
  * @param error ข้อความผิดของช่องนี้ (หลังกด "ถัดไป") · @param name ชื่อบรรทัด ("รายการ n") · @param disabled ระหว่างบันทึก
+ * @param seed ข้อเสนอจากคู่เงินของแถว (PR-5 D1(ก) — ดู `HistoricalSeedChip`) · ไม่ส่ง = ช่องของ PR-D ทุกตัวอักษร
  */
-export default function HistoricalLineServiceFields({ value, onChange, view = null, error = null, name = "", disabled = false }) {
+export default function HistoricalLineServiceFields({
+  value, onChange, view = null, error = null, name = "", disabled = false, seed = null,
+}) {
   return (
     <div className={styles.lineBindPacks}>
       <span className={styles.lineBindLabel}>{T.packsLabel} <b className={styles.req}>*</b></span>
@@ -58,6 +88,7 @@ export default function HistoricalLineServiceFields({ value, onChange, view = nu
           ) : null}
         </span>
       ) : null}
+      <HistoricalSeedChip seed={seed} onUse={onChange} disabled={disabled} />
       {error ? <span className={styles.cellBad}>{error}</span> : null}
     </div>
   );

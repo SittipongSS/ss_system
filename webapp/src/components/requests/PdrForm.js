@@ -37,7 +37,7 @@ import { isScentUsable } from "@/lib/master/scents";
 import { scentUsableByCustomer } from "@/lib/master/registryShares";
 import { unitOptions } from "@/lib/master/units";
 import {
-  BRAND_ARCHETYPES, SCENTOTYPES, SCENT_PERFORMANCE,
+  BRAND_ARCHETYPES, SCENT_PERFORMANCE,
 } from "@/lib/requests/kinds/rd/scentBriefTypes";
 import { BRIEF_LIMITS, briefsDroppedByMerge, switchBriefMode } from "@/lib/requests/scentBriefs";
 import {
@@ -79,7 +79,7 @@ const numbered = (key, text = label(key)) => <><No no={FIELD[key]?.no} />{text}<
 const sectionTitle = (key) => [SECTION[key].paperNo, SECTION[key].title].filter(Boolean).join(" ");
 
 
-// ⭐ ติ๊กได้หลายอัน — chip ที่กดสลับได้ ชุดเดียวกับ Scentotype/Performance ในบรีฟ
+// ⭐ ติ๊กได้หลายอัน — chip ที่กดสลับได้ ชุดเดียวกับ Performance ในบรีฟ
 // ⚠️ **ไม่ติ๊กไว้ล่วงหน้า** (มติผู้ใช้เรื่องหมวดเอกสาร) — ค่าเริ่มต้นที่ติ๊กไว้ให้
 // แปลว่าไม่มีใครตัดสินใจ แล้วเสียงลืมติ๊กของที่ควรมีจริงจะกลืนหายไปกับค่าเริ่มต้น
 function ChipPicker({ label, options, value, onChange, disabled, hint, children = null }) {
@@ -815,14 +815,14 @@ export default function PdrForm({
           </div>
           {/* ⭐ 1.15 Archetype ของแบรนด์ (มติผู้ใช้ 2026-09-11) — ไฟล์ของ AE วางไว้ที่ 2.1.6
               ในกล่องบรีฟ แต่มันเป็นบุคลิกของ **แบรนด์** และใบพัฒนาสูตร NPD ไม่มีบรีฟ ⇒ ระดับใบ
-              ⭐ ติ๊กแล้วมีช่องเขียนต่อตามตัวที่ติ๊ก (ท่าเดียวกับ Scentotype) · เว้นว่างได้
+              ⭐ ติ๊กแล้วมีช่องเขียนต่อตามตัวที่ติ๊ก · เว้นว่างได้
               ⚠️ ข้อความของตัวที่ติ๊กออกถูกทิ้งตอนบันทึก (`normalizePdr`) */}
           <ChipPicker
             label={numbered("archetypes")} options={BRAND_ARCHETYPES} disabled={disabled}
             value={archetypes} onChange={(v) => set({ archetypes: v })}
           >
             {BRAND_ARCHETYPES.filter((t) => archetypes.includes(t.value)).map((t) => (
-              <div key={t.value} className={styles.scentotypeNote}>
+              <div key={t.value} className={styles.choiceNote}>
                 <label htmlFor={`pdr-archetype-${t.value}`}>{t.label}</label>
                 <Input
                   id={`pdr-archetype-${t.value}`} disabled={disabled}
@@ -959,43 +959,6 @@ export default function PdrForm({
                   );
                 })}
               </div>
-            </div>
-            {/* เลือกได้หลายอย่างทั้งคู่ (มติผู้ใช้) — chip ที่กดสลับได้ ไม่ใช่ดรอปดาวน์
-                ⭐ **2.1.4 Performance มาก่อน 2.1.5 Scentotype** ตามไฟล์ PDR ของ AE (มติผู้ใช้
-                2026-09-11) · **Scentotype มีเส้นให้เขียนต่อหลังทุกตัวบนกระดาษ** ⇒ ติ๊ก
-                แล้วมีช่องข้อความโผล่ตามตัวที่ติ๊ก (mig 0222) · ไม่ติ๊ก = ไม่มีช่อง
-                ⚠️ ข้อความของตัวที่ถูกติ๊กออกจะถูกทิ้งตอนบันทึก (ดู scentBriefs.js) */}
-            <div className="form-group">
-              <span className={styles.fieldLabel}>
-                <No no={PDR_BRIEF_LABELS.scentotypes.no} />{PDR_BRIEF_LABELS.scentotypes.label}
-              </span>
-              <div className={styles.mentionPicker}>
-                {SCENTOTYPES.map((t) => {
-                  const on = (brief.scentotypes || []).includes(t.value);
-                  return (
-                    <button
-                      key={t.value} type="button" disabled={disabled} aria-pressed={on}
-                      className={`chip ${on ? styles.tierChipOn : styles.tierChip}`}
-                      onClick={() => toggle(i, "scentotypes", t.value)}
-                    >
-                      {on ? "✓ " : ""}{t.label}
-                    </button>
-                  );
-                })}
-              </div>
-              {SCENTOTYPES.filter((t) => (brief.scentotypes || []).includes(t.value)).map((t) => (
-                <div key={t.value} className={styles.scentotypeNote}>
-                  <label htmlFor={`brief-${i}-st-${t.value}`}>{t.label}</label>
-                  <Input
-                    id={`brief-${i}-st-${t.value}`} disabled={disabled} maxLength={BRIEF_LIMITS.scentotypeNote}
-                    value={(brief.scentotypeNotes || {})[t.value] || ""}
-                    placeholder="เขียนต่อได้ (เว้นว่างได้)"
-                    onChange={(e) => setBrief(i, {
-                      scentotypeNotes: { ...(brief.scentotypeNotes || {}), [t.value]: e.target.value },
-                    })}
-                  />
-                </div>
-              ))}
             </div>
           </div>
         ))}

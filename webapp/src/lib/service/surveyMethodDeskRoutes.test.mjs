@@ -732,8 +732,10 @@ test('🔴 เลื่อนวันใบลงหน้างาน (มี�
       filters: [['eq', 'id', 'REQ-1']],
       payload: { updatedAt: NOW, committedDueDate: '2026-10-13', dueCommittedAt: NOW },
     }], shape);
+    // + เฉพาะนัดที่ยังเปิด (รีวิว S2b ข้อ V17 ต่อ · 19/10)
     assert.deepEqual(db.writes('service_visits').map((c) => ({ write: c.write, filters: c.filters, payload: c.payload })), [{
-      write: 'update', filters: [['eq', 'id', 'SVV-1']], payload: { scheduledDate: '2026-10-13', updatedAt: NOW },
+      write: 'update', filters: [['eq', 'id', 'SVV-1'], ['in', 'status', ['draft', 'scheduled', 'in_progress']]],
+      payload: { scheduledDate: '2026-10-13', updatedAt: NOW },
     }], shape);
     assert.deepEqual(auditSummaries(db), [`เลื่อนวันนัดเข้าพื้นที่ ${TODAY} → 2026-10-13`], shape);
     logs[shape] = writeLog(db);
@@ -826,7 +828,9 @@ test('done → in_progress: 409 จากด่านเดิมที่อย
 
 test('🔴 ปิดนัดของใบงานโต๊ะเป็น "เข้าไม่ได้": นัดถูกปิดตามที่ขอ · ศูนย์คำสั่งเขียนลง dept_requests · ไม่มีบรรทัดถอยขั้น', async () => {
   for (const [shape, rows] of Object.entries(DESK_SHAPES)) {
-    const db = world({ rows: rows(), req: promised(), visits: [running()] });
+    /* นัดอยู่วันเดียวกับวันบนใบ (D1) — ไม่งั้นกติกา "วันบนใบต้องเป็นของนัดนี้" (รีวิว S2b ข้อ V17 ต่อ) ตัดสินก่อน
+       แล้วด่านงานโต๊ะไม่ได้ถูกถามเลย · เทสต์นี้ต้องการพิสูจน์ด่านงานโต๊ะ */
+    const db = world({ rows: rows(), req: promised(), visits: [running({ scheduledDate: D1 })] });
     const { status, json } = await patchVisit(db, PLANNER, { status: 'unable', unableReason: UNABLE_REASON });
     assert.equal(status, 200, `${shape}: ${json.error}`);
     assert.equal(json.visit.status, 'unable', shape);
@@ -865,9 +869,10 @@ test('🔴 ใบลงหน้างาน: ปิดนัดเป็น "�
     const { status, json } = await patchVisit(db, PLANNER, { status: 'unable', unableReason: UNABLE_REASON });
     assert.equal(status, 200, `${shape}: ${json.error}`);
     assert.equal(json.steppedBackRequest, true, shape);
+    // + ล้างเฉพาะเมื่อวันบนใบยังเป็นวันที่ตัดสินไว้ (รีวิว S2b ข้อ V17 ต่อ)
     assert.deepEqual(requestWrites(db), [{
       write: 'update',
-      filters: [['eq', 'id', 'REQ-1']],
+      filters: [['eq', 'id', 'REQ-1'], ['eq', 'committedDueDate', TODAY], ['eq', 'dueCommittedAt', '2026-10-05T02:00:00+00:00']],
       payload: { committedDueDate: null, committedDueTime: null, updatedAt: NOW },
     }], shape);
     const [line] = threadRows(db, 'dept_request', 'unable');
@@ -1049,8 +1054,9 @@ test('🔴 action อื่นของใบประเมินไม่ถ�
     const db = world({ rows: rows(), req: promised(), visits: [running()] });
     const { status, json } = await patchRequest(db, HEAD, { action: 'assign', assigneeId: 'u-senior', assigneeName: 'หัวหน้าช่าง' });
     assert.equal(status, 200, json.error);
+    // + เฉพาะนัดที่ยังเปิด (รีวิว S2b ข้อ V17 ต่อ · 19/10)
     assert.deepEqual(db.writes('service_visits').map((c) => ({ filters: c.filters, payload: c.payload })), [{
-      filters: [['eq', 'id', 'SVV-1']],
+      filters: [['eq', 'id', 'SVV-1'], ['in', 'status', ['draft', 'scheduled', 'in_progress']]],
       payload: { assigneeId: 'u-senior', assigneeName: 'หัวหน้าช่าง', updatedAt: NOW },
     }]);
     /* เทียบกับก้าวแจ้งวันของใบรูปเดียวกัน: ก้าวนั้นอ่านแถวพื้นที่เพิ่มหนึ่งครั้งเพื่อแยกงานโต๊ะ · มอบหมายไม่อ่านเพิ่ม
@@ -1058,7 +1064,8 @@ test('🔴 action อื่นของใบประเมินไม่ถ�
     const commit = world({ rows: rows() });
     const committed = await patchRequest(commit, committer, commitBody);
     assert.equal(committed.status, 200, committed.json.error);
-    assert.equal(zoneReads(commit) - zoneReads(db), 1);
+    /* ใบลงหน้างานที่ยังไม่มีนัด อ่านเพิ่มอีกครั้งก่อนสร้างนัด (ถามซ้ำว่าใบเพิ่งกลายเป็นงานโต๊ะไหม · รีวิว S2b ข้อ V17 ต่อ) */
+    assert.equal(zoneReads(commit) - zoneReads(db), rows === onsiteRows ? 2 : 1);
   }
 });
 
@@ -1093,7 +1100,7 @@ test('🔒 ซอร์ส: สองเส้นถามตัวตัดส�
   const write = patch.indexOf(".from('service_visits')\n      .update(");
   assert.ok(desk > 0 && other > desk && write > other, 'ลำดับ: ด่านงานโต๊ะ → ถามหานัดอื่น → เขียนแถวนัด');
   // ตัวถอยขั้นและตัวซิงก์วันถามคำตอบเดียวกัน
-  assert.match(patch, /surveyStepBackPlan\(\{[^}]*needsVisit: await needsVisitOf\(\)[^}]*\}\)/);
+  assert.match(patch, /surveyUnableOutcome\(\{[^}]*needsVisit: await needsVisitOf\(\)[^}]*\}\)/);
   assert.match(patch, /if \(changed && await needsVisitOf\(\)\) \{/);
 });
 
@@ -1132,4 +1139,238 @@ test('🔑 askActionUpdate: `desk` เปลี่ยนเฉพาะบรร
   );
   // ก้าวอื่นของใบงานโต๊ะไม่มีบรรทัดพิเศษ
   assert.deepEqual(askActionUpdate('acknowledge', ask, { desk: true }), askActionUpdate('acknowledge', ask, {}));
+});
+
+/* ═══ นัดปิด/ถูกยกเลิกระหว่างที่ใบขยับวัน/เปลี่ยนคน (รีวิว S2b ข้อ V17 ต่อ · 19/10) ═══════════════════════
+   🐞 สองเส้นนี้ถามหานัดที่เปิดอยู่ (`findSurveyVisit` openOnly) แล้วเขียนด้วย `.eq('id')` อย่างเดียว ⇒ ช่างกด "ไปแล้วเข้าไม่ได้"
+      หรือหัวหน้าเปลี่ยนทุกพื้นที่เป็นประเมินจากแบบ (ยกเลิกนัด) คั่นกลาง = วันใหม่/คนใหม่ไปลงบนนัดที่ปิดแล้ว
+   ⭐ เขียนเฉพาะนัดที่ยังเปิด · ไม่โดนแถว = บอกบนจอ ไม่สร้างนัดใหม่เอง (อาจเป็นใบที่เพิ่งกลายเป็นงานโต๊ะ) */
+const closeOnFirstVisitWrite = (status) => {
+  let done = false;
+  return (q, api) => {
+    if (!done && q.table === 'service_visits' && q.write === 'update') {
+      done = true;
+      Object.assign(api.tables.service_visits[0], { status });
+    }
+    return undefined;
+  };
+};
+
+test('🔴 เลื่อนวันใบลงหน้างาน ขณะที่นัดเพิ่งถูกยกเลิก — นัดที่ยกเลิกไม่ได้วันใหม่ · ไม่สร้างนัดใบใหม่เอง · ชี้ปุ่ม "ลงคิวใหม่"', async () => {
+  const db = world({ req: queued(), visits: [visit()], hook: closeOnFirstVisitWrite('cancelled') });
+  const { status, json } = await patchRequest(db, PLANNER, { action: 'reschedule', committedDueDate: '2026-10-13' });
+  assert.equal(status, 200, json.error);
+  const [write] = db.writes('service_visits');
+  assert.deepEqual(write.filters, [['eq', 'id', 'SVV-1'], ['in', 'status', ['draft', 'scheduled', 'in_progress']]]);
+  assert.equal(db.rows('service_visits').length, 1, 'ไม่มีนัดใบใหม่');
+  assert.equal(db.rows('service_visits')[0].scheduledDate, TODAY, 'นัดที่ยกเลิกไม่ได้วันใหม่');
+  assert.match(json._warning, /เพิ่งปิดหรือถูกยกเลิก/);
+  // ใบได้วันใหม่ไปแล้ว ⇒ "เลื่อนวันอีกครั้ง" ด้วยวันเดิมโดนตีกลับ — ทางกู้คือ "ลงคิวใหม่" (ใช้วันเดิมได้)
+  assert.match(json._warning, /กด “ลงคิวใหม่” ที่ใบ \(ใช้วันเดิมได้\)/);
+  assert.doesNotMatch(json._warning, /เลื่อนวันอีกครั้ง/);
+});
+
+test('เลื่อนวันใบลงหน้างาน ขณะที่ช่างเพิ่งส่งงาน — นัดที่ส่งแล้วไม่ได้วันใหม่ · บอกว่าไม่ต้องลงนัดใหม่', async () => {
+  const db = world({ req: queued(), visits: [running()], hook: closeOnFirstVisitWrite('done') });
+  const { status, json } = await patchRequest(db, PLANNER, { action: 'reschedule', committedDueDate: '2026-10-13' });
+  assert.equal(status, 200, json.error);
+  assert.equal(db.rows('service_visits').length, 1);
+  assert.match(json._warning, /เพิ่งส่งงานแล้ว — ใบได้วันใหม่แล้ว ไม่ต้องลงนัดใหม่/);
+});
+
+test('🔴 ใบเพิ่งเปลี่ยนเป็นประเมินจากแบบทั้งใบระหว่างเลื่อนวัน (นัดเดิมถูกยกเลิก) — ไม่สร้างนัดลงหน้างานให้ใบที่ไม่มีใครต้องไป', async () => {
+  let flipped = false;
+  const db = world({
+    req: queued(), visits: [visit()],
+    hook: (q, api) => {
+      if (!flipped && q.table === 'dept_requests' && q.write === 'update') {
+        flipped = true;
+        for (const z of api.tables.service_survey_zones) z.method = 'drawing';
+        Object.assign(api.tables.service_visits[0], { status: 'cancelled' });
+      }
+      return undefined;
+    },
+  });
+  const { status, json } = await patchRequest(db, PLANNER, { action: 'reschedule', committedDueDate: '2026-10-13' });
+  assert.equal(status, 200, json.error);
+  assert.ok(flipped, 'ตัวจำลองต้องทำงานจริง');
+  assert.equal(db.rows('service_visits').length, 1, 'ไม่มีนัดใบใหม่');
+  assert.match(json._warning, /ใบเพิ่งเปลี่ยนเป็นประเมินจากแบบทั้งใบ — ไม่ได้ลงนัดเข้าพื้นที่/);
+});
+
+test('🔴 ใบลงหน้างานที่เพิ่งยกเลิกนัดเพราะสถานะ "ช่างกดเริ่มงาน" ไม่ใช่การกดเลื่อนวัน: PATCH ของนัดไม่ซิงก์วันเก่ากลับลงใบที่ฝ่ายขายเพิ่งเลื่อน', async () => {
+  // ฝ่ายขายเลื่อนวัน: ใบได้วันใหม่ก่อน นัดตามทีหลัง · ช่างกดเริ่มงานคั่นกลาง ⇒ PATCH ของนัดเห็นใบ ≠ นัด แต่คำขอนี้ไม่ได้แตะวัน
+  let moved = false;
+  const db = world({
+    req: queued(), visits: [visit()],
+    hook: (q, api) => {
+      if (!moved && q.table === 'service_visits' && q.write === 'update') {
+        moved = true;
+        Object.assign(api.tables.dept_requests[0], { committedDueDate: '2026-10-13' });
+      }
+      return undefined;
+    },
+  });
+  const { status, json } = await patchVisit(db, CREW, { status: 'in_progress', stamp: 'start' });
+  assert.equal(status, 200, json.error);
+  assert.deepEqual(db.writes('dept_requests'), [], 'ไม่เขียนวันเก่ากลับลงใบ');
+  assert.deepEqual(threadRows(db, 'dept_request', 'reschedule'), [], 'ไม่มีบรรทัด "TS เลื่อนวันนัด" ที่ไม่มีใครทำ');
+  assert.equal(db.rows('dept_requests')[0].committedDueDate, '2026-10-13');
+});
+
+test('🔴 เปลี่ยนผู้รับผิดชอบบนใบ ขณะที่นัดเพิ่งปิดเป็น "เข้าไม่ได้" — ชื่อใหม่ไม่ไปลงนัดที่ปิดแล้ว · ไม่เตือน', async () => {
+  const db = world({ req: promised(), visits: [running()], hook: closeOnFirstVisitWrite('unable') });
+  const { status, json } = await patchRequest(db, HEAD, { action: 'assign', assigneeId: 'u-senior', assigneeName: 'หัวหน้าช่าง' });
+  assert.equal(status, 200, json.error);
+  const [write] = db.writes('service_visits');
+  assert.deepEqual(write.filters, [['eq', 'id', 'SVV-1'], ['in', 'status', ['draft', 'scheduled', 'in_progress']]]);
+  assert.equal(db.rows('service_visits')[0].assigneeId, 'u-tech');
+  // ผลเดียวกับนัดที่ปิดก่อนอ่าน (ไม่มีอะไรให้ทำต่อ) ⇒ ไม่เตือน
+  assert.equal(json._warning, undefined);
+});
+
+test('เลื่อนวันใบลงหน้างาน ขณะที่ช่างเพิ่งแจ้ง "เข้าไม่ได้" — ใบยังถือวันใหม่ (ถอยขั้นไม่ล้างวันของนัดอื่น) ⇒ ชี้ "ลงคิวใหม่" ใช้วันเดิมได้', async () => {
+  const db = world({ req: queued(), visits: [running()], hook: closeOnFirstVisitWrite('unable') });
+  const { status, json } = await patchRequest(db, PLANNER, { action: 'reschedule', committedDueDate: '2026-10-13' });
+  assert.equal(status, 200, json.error);
+  assert.equal(db.rows('dept_requests')[0].committedDueDate, '2026-10-13');
+  assert.match(json._warning, /กด “ลงคิวใหม่” ที่ใบ \(ใช้วันเดิมได้\)/);
+});
+
+/* ═══ ถอยขั้นเมื่อ "เข้าไม่ได้" ชนกับการเลื่อนวันบนใบ (รีวิว S2b ข้อ V17 ต่อ · 19/10) ══════════════════════════ */
+
+test('🔴 ช่างแจ้ง "เข้าไม่ได้" หลังฝ่ายขายเลื่อนวันบนใบไปแล้ว (นัดยังไม่ทันตาม) — ไม่ล้างวันใหม่ · ไม่มีบรรทัด "ใบกลับไปขั้นลงคิว"', async () => {
+  let moved = false;
+  const db = world({
+    req: queued(), visits: [running()],
+    hook: (q, api) => {
+      if (!moved && q.table === 'service_visits' && q.write === 'update') {
+        moved = true;
+        // เลื่อนวันบนใบประทับ dueCommittedAt ใหม่เสมอ (route ของใบ)
+        Object.assign(api.tables.dept_requests[0], { committedDueDate: '2026-10-13', dueCommittedAt: '2026-10-09T03:00:00+00:00' });
+      }
+      return undefined;
+    },
+  });
+  const { status, json } = await patchVisit(db, PLANNER, { status: 'unable', unableReason: UNABLE_REASON });
+  assert.equal(status, 200, json.error);
+  assert.equal(json.steppedBackRequest, false);
+  assert.equal(json.unableNotice, true);
+  assert.deepEqual(requestWrites(db), []);
+  assert.equal(db.rows('dept_requests')[0].committedDueDate, '2026-10-13');
+  // ไม่ถอย แต่ฝ่ายขายยังได้เหตุผล (ไม่งั้นช่างกลับไปไซต์ที่บอกว่าปิดซ้ำ)
+  const lines = threadRows(db, 'dept_request', 'unable');
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0].body, `เข้าพื้นที่ไม่ได้ (นัด SV-26100001) — ใบยังถือวัน 2026-10-13 ที่ยังไม่มีนัดเข้าพื้นที่ · รอ TS ลงคิวใหม่ — ${UNABLE_REASON}`);
+  assert.equal(lines[0].authorId, null);
+});
+
+test('🔴 ฝ่ายขายเขียนวันใหม่คั่นระหว่างที่ route อ่านใบกับเขียนถอยขั้น — คำเขียนไม่โดนแถว · ไม่ลงเธรด', async () => {
+  let wrote = false;
+  const db = world({
+    req: queued(), visits: [running()],
+    hook: (q, api) => {
+      if (!wrote && q.table === 'dept_requests' && q.write === 'update') {
+        wrote = true;
+        Object.assign(api.tables.dept_requests[0], { committedDueDate: '2026-10-13', dueCommittedAt: '2026-10-09T03:00:00+00:00' });
+      }
+      return undefined;
+    },
+  });
+  const { status, json } = await patchVisit(db, PLANNER, { status: 'unable', unableReason: UNABLE_REASON });
+  assert.equal(status, 200, json.error);
+  assert.ok(wrote, 'ตัวจำลองต้องทำงานจริง');
+  assert.equal(json.steppedBackRequest, false);
+  assert.equal(db.rows('dept_requests')[0].committedDueDate, '2026-10-13');
+  assert.deepEqual(threadRows(db, 'dept_request', 'unable').map((r) => r.body),
+    [`เข้าพื้นที่ไม่ได้ (นัด SV-26100001) — ใบไม่ได้ถอยขั้น เพราะวันบนใบเพิ่งถูกเปลี่ยน — ${UNABLE_REASON}`]);
+});
+
+test('🔴 "ลงคิวใหม่" ด้วยวันเดิมคั่นระหว่างอ่านกับเขียนถอยขั้น (วันเท่าเดิม แต่ประทับเวลาแจ้งวันใหม่) — ไม่ล้างวันของนัดใหม่', async () => {
+  let requeued = false;
+  const db = world({
+    req: queued(), visits: [running()],
+    hook: (q, api) => {
+      if (!requeued && q.table === 'dept_requests' && q.write === 'update') {
+        requeued = true;
+        Object.assign(api.tables.dept_requests[0], { dueCommittedAt: '2026-10-09T03:00:00+00:00' });
+      }
+      return undefined;
+    },
+  });
+  const { status, json } = await patchVisit(db, PLANNER, { status: 'unable', unableReason: UNABLE_REASON });
+  assert.equal(status, 200, json.error);
+  assert.ok(requeued);
+  assert.equal(json.steppedBackRequest, false);
+  assert.equal(db.rows('dept_requests')[0].committedDueDate, TODAY, 'วันของการลงคิวใหม่อยู่ครบ');
+});
+
+test('🔴 วันไม่ตรงเพราะซิงก์ค้าง (นัดถูกย้ายทีหลัง ใบไม่ตาม) = ถอยขั้นตามเดิม · ฝ่ายขายได้บรรทัดถอยขั้น', async () => {
+  const db = world({
+    req: queued({ committedDueDate: '2026-10-08' }),
+    visits: [running({ updatedAt: '2026-10-07T02:00:00.000Z' })],
+  });
+  const { status, json } = await patchVisit(db, PLANNER, { status: 'unable', unableReason: UNABLE_REASON });
+  assert.equal(status, 200, json.error);
+  assert.equal(json.steppedBackRequest, true);
+  assert.equal(db.rows('dept_requests')[0].committedDueDate, null);
+  assert.equal(threadRows(db, 'dept_request', 'unable').length, 1);
+});
+
+test('ผู้จัดคิวแก้วันพร้อมตั้ง "เข้าไม่ได้" ในกดเดียว — วันบนใบเป็นวันเดิมของนัดนี้ ⇒ ถอยขั้นตามเดิม', async () => {
+  const db = world({ req: queued(), visits: [running()] });
+  const { status, json } = await patchVisit(db, PLANNER, {
+    status: 'unable', unableReason: UNABLE_REASON, scheduledDate: '2026-10-08', rescheduleReason: 'วันที่ไปจริง',
+  });
+  assert.equal(status, 200, json.error);
+  assert.equal(json.steppedBackRequest, true);
+  assert.equal(db.rows('dept_requests')[0].committedDueDate, null);
+});
+
+test('🔴 ใบมีนัดอื่นเปิดอยู่ (นัดใหม่ถือวันบนใบ) — นัดเก่าที่ถูกตั้งเป็น "เข้าไม่ได้" ไม่ล้างวันของนัดใหม่', async () => {
+  const fresh = visit({ id: 'SVV-2', code: 'SV-26100002', createdAt: '2026-10-06T02:00:00.000Z' });
+  const db = world({ req: queued(), visits: [running(), fresh] });
+  const { status, json } = await patchVisit(db, PLANNER, { status: 'unable', unableReason: UNABLE_REASON });
+  assert.equal(status, 200, json.error);
+  assert.equal(json.steppedBackRequest, false);
+  assert.equal(json.unableNotice, false, 'นัดใหม่ถือวันอยู่ — เรื่องของนัดเก่าไม่ต้องปลุกฝ่ายขาย');
+  assert.deepEqual(requestWrites(db), []);
+  assert.deepEqual(threadRows(db, 'dept_request', 'unable'), []);
+  assert.equal(db.rows('dept_requests')[0].committedDueDate, TODAY);
+});
+
+test('🔴 นัดถูกยกเลิกระหว่างเลื่อนวันเพราะหัวหน้าเปลี่ยนทั้งใบเป็นจากแบบ — คำเตือนของใบงานโต๊ะ ไม่ชี้ปุ่ม "ลงคิวใหม่" ที่ใบงานโต๊ะไม่มี', async () => {
+  let flipped = false;
+  const db = world({
+    req: queued(), visits: [visit()],
+    hook: (q, api) => {
+      if (!flipped && q.table === 'service_visits' && q.write === 'update') {
+        flipped = true;
+        for (const z of api.tables.service_survey_zones) z.method = 'drawing';
+        Object.assign(api.tables.service_visits[0], { status: 'cancelled' });
+      }
+      return undefined;
+    },
+  });
+  const { status, json } = await patchRequest(db, PLANNER, { action: 'reschedule', committedDueDate: '2026-10-13' });
+  assert.equal(status, 200, json.error);
+  assert.ok(flipped);
+  assert.equal(db.rows('service_visits').length, 1);
+  assert.match(json._warning, /ใบเพิ่งเปลี่ยนเป็นประเมินจากแบบทั้งใบ — ไม่ได้ลงนัดเข้าพื้นที่ · ให้หัวหน้าฝ่ายบริการตรวจวันส่งผลบนใบอีกครั้ง/);
+  assert.doesNotMatch(json._warning, /ลงคิวใหม่/);
+});
+
+test('เขียนถอยขั้นล้ม (error จากฐาน) — ฝ่ายขายยังได้บรรทัดเข้าไม่ได้พร้อมเหตุผล', async () => {
+  const db = world({
+    req: queued(), visits: [running()],
+    hook: (q) => (q.table === 'dept_requests' && q.write === 'update'
+      ? { data: null, error: { message: 'connection reset' } } : undefined),
+  });
+  const { result: { status, json }, lines } = await quiet(() => patchVisit(db, PLANNER, { status: 'unable', unableReason: UNABLE_REASON }));
+  assert.ok(lines.some((line) => line.includes('ถอยขั้นใบประเมินไม่สำเร็จ')), 'ลง log ว่าเขียนไม่สำเร็จ');
+  assert.equal(status, 200, json.error);
+  assert.equal(json.steppedBackRequest, false);
+  assert.equal(json.unableNotice, true);
+  assert.deepEqual(threadRows(db, 'dept_request', 'unable').map((r) => r.body),
+    [`เข้าพื้นที่ไม่ได้ (นัด SV-26100001) — ถอยใบกลับขั้นลงคิวไม่สำเร็จ วันบนใบยังค้าง · รอ TS ลงคิวใหม่ — ${UNABLE_REASON}`]);
 });

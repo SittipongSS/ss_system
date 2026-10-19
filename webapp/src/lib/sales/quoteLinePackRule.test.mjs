@@ -211,19 +211,52 @@ test('คีย์ชื่อคล้าย (packsPerRound · packs ของ�
   assert.deepEqual(historicalLinesMoney(rows, 7), historicalLinesMoney([{ qty: 12, unitPrice: 3500 }], 7));
 });
 
-test('🔴 ใบสั่งขายย้อนหลัง (งวด PR-5 ยังไม่มา): historicalLinesMoney ไม่อ่าน packQty — บรรทัดและยอดรวมได้ค่าเดียวกับไม่มีคีย์ และตรงกันเอง', () => {
+/* ⭐ ย้ายความคาดหวังโดยเจตนา (งวด PR-5 · มติเจ้าของ 23/09 "ต้องไม่ควรแตกต่างจาก form ใบเสนอราคา" + 08/10 ข้อ A1–A2 · ข้อวินิจฉัย 7 ·
+   แผน IMPL_PLAN_PR5 §5 แถว G6): เดิม `historicalLinesMoney` **ไม่อ่าน** `packQty` (แถวที่มีคีย์หลงมาได้ยอดเท่ากับไม่มีคีย์) — วันนี้เลขแพ็คของบรรทัด
+   เป็นตัวคูณของยอดก่อนลด เหมือนสูตรกลางของใบเสนอราคา · ไม่ได้คลายด่าน: ความจริงเดิมยังอยู่ครบเป็นกรณีของมันเอง — แถวที่ **ไม่มีคีย์** ได้อ็อบเจกต์
+   เดิมทุกช่อง · ค่าที่ไม่ใช่เลขแพ็ค (ว่าง · null · "0" · "1.5" · 10000) = คูณ 1 · `packsPerRound` อย่างเดียวไม่คูณอะไร · และข้อที่เข้มขึ้น:
+   บรรทัดกับยอดรวมต้องคูณ **ตัวเดียวกัน** (ส่งเลขแพ็คเข้าข้างเดียว = บรรทัดกับยอดรวมพูดคนละเลข) */
+test('🔴 ใบสั่งขายย้อนหลัง (งวด PR-5): historicalLinesMoney คูณเลขแพ็คของบรรทัด — บรรทัดและยอดรวมคูณตัวเดียวกัน · ไม่มีคีย์ / ค่าที่ไม่ใช่เลขแพ็ค = ผลเดิม', () => {
   const plain = [{ qty: 12, unitPrice: 3500, discountType: 'amount', discountValue: 1000 }, { qty: 3, unitPrice: 33.33 }];
-  const stray = plain.map((row) => ({ ...row, packQty: 2, packsPerRound: 2 }));
-  const expected = historicalLinesMoney(plain, 7, { discountType: 'percent', discountValue: 10 });
-  const got = historicalLinesMoney(stray, 7, { discountType: 'percent', discountValue: 10 });
-  assert.deepEqual(got, expected, 'ทั้งบรรทัดและยอดรวมเท่ากับตอนไม่มีคีย์');
-  assert.equal(got.lines[0].lineTotal, 41000, 'ไม่ถูกคูณ 2');
-  // บรรทัดกับยอดรวมต้องพูดเลขเดียวกันเสมอ (เดิมบรรทัดรับทั้งแถว แต่ยอดรวมรับสี่ช่อง — คูณคนละแบบได้)
+  const header = { discountType: 'percent', discountValue: 10 };
+  const expected = historicalLinesMoney(plain, 7, header);
+  assert.equal(expected.lines[0].lineTotal, 41000, 'ไม่มีเลขแพ็ค: 12 × 3,500 − 1,000 (ค่าที่ตรึงไว้เดิม)');
+
+  // เลขแพ็ค 2 บนบรรทัดแรก: 2 × 12 × 3,500 − 1,000 = 83,000 (ส่วนลดบาทไม่คูณแพ็ค — มติ A5) · ยอดรวม / VAT / ยอดทั้งสิ้นตามไปด้วย
+  const packed = [{ ...plain[0], packQty: 2 }, plain[1]];
+  const got = historicalLinesMoney(packed, 7, header);
+  assert.equal(got.lines[0].lineTotal, 83000);
+  assert.equal(got.lines[0].gross, 84000);
+  assert.equal(got.lines[1].lineTotal, expected.lines[1].lineTotal, 'บรรทัดที่ไม่มีเลขแพ็คไม่ขยับ');
+  // บรรทัดกับยอดรวมพูดเลขเดียวกันเสมอ (สูตรกลาง quoteTotals บนแถวชุดเดียวกัน)
   assert.equal(got.subtotal, Math.round(got.lines.reduce((sum, line) => sum + line.lineTotal, 0) * 100) / 100);
+  assert.deepEqual(
+    { subtotal: got.subtotal, discountAmount: got.discountAmount, vatAmount: got.vatAmount, totalAmount: got.totalAmount },
+    quoteTotals(packed, { vatRate: 7, ...header }),
+  );
+  assert.deepEqual([got.subtotal, got.discountAmount, got.vatAmount, got.totalAmount], [83099.99, 8310, 5235.3, 80025.29]);
+  assert.notDeepEqual(got, expected);
+  // สตริงจากช่องกรอกก็คูณ (ตัวอ่านกลาง packFactorOf)
+  assert.deepEqual(historicalLinesMoney([{ ...plain[0], packQty: '2' }, plain[1]], 7, header), got);
+  // ตัวคืนค่าไม่พกคีย์ packQty (ห้าคีย์เดิมของ quoteLineMoney) — ผู้เรียกเป็นคนถือเลขแพ็คของบรรทัดเอง
+  assert.deepEqual(Object.keys(got.lines[0]).sort(), ['discountAmount', 'discountType', 'discountValue', 'gross', 'lineTotal']);
+
+  /* ความจริงเดิมที่ยังอยู่: ค่าที่ไม่ใช่เลขแพ็ค = คูณ 1 = ผลของแถวที่ไม่มีคีย์ ทั้งบรรทัดและยอดรวม */
+  for (const notPack of ['', '   ', null, undefined, '0', '1.5', 10000, 0, 'abc', true]) {
+    const rows = plain.map((row) => ({ ...row, packQty: notPack }));
+    assert.deepEqual(historicalLinesMoney(rows, 7, header), expected, `packQty=${JSON.stringify(notPack)}`);
+  }
+  /* แพ็คต่อรอบของงานบริการอย่างเดียวไม่เปลี่ยนอะไร — และไม่ถูกอ่านแม้อยู่คู่กับเลขแพ็ค */
+  assert.deepEqual(historicalLinesMoney(plain.map((row) => ({ ...row, packsPerRound: 2 })), 7, header), expected);
+  assert.deepEqual(historicalLinesMoney(packed.map((row) => ({ ...row, packsPerRound: 7 })), 7, header), got);
   assert.deepEqual(historicalLinesMoney([null, undefined, {}], 0).lines, [quoteLineMoney({}), quoteLineMoney({}), quoteLineMoney({})]);
 });
 
-test('🔴 แผนใบสั่งขายย้อนหลัง: แถวโซนที่มี packQty หลงมา ไม่ทำให้บรรทัดของแผน/อาร์กิวเมนต์ RPC มีคีย์นี้ และยอดไม่ถูกคูณ', () => {
+/* ⭐ ย้ายความคาดหวังโดยเจตนา (งวด PR-5 · มติเจ้าของ 23/09 + 08/10 ข้อ A1–A2 · ข้อวินิจฉัย 6–7 · แผน IMPL_PLAN_PR5 §5 แถว G7): เดิมแถวโซนที่มี
+   `packQty` หลงมา **ไม่ไปถึง** บรรทัดของแผนและอาร์กิวเมนต์ RPC (ตัวเขียนของฐานเขียน NULL) — วันนี้เลขแพ็คเป็นช่องบังคับของฟอร์ม: ไปถึงบรรทัดของแผน
+   เป็นตัวเลข · คูณยอด · ไปถึง `p_lines` เป็นตัวเลขพร้อมหน่วยที่เก็บ "เดือน" (ตัวเขียนของ 0409 เก็บลงคอลัมน์) · ไม่ได้คลายด่าน: ยอดเดิมของเทสต์
+   (12 × 1,200 = 14,400) ยังตรึงอยู่เป็นกรณีเลขแพ็ค 1 · แถวที่ **ไม่มีคีย์** ไม่ได้ถูกคิดแบบคูณ 1 อีกแล้ว — ถูกตีกลับ (เข้มขึ้น) */
+test('🔴 แผนใบสั่งขายย้อนหลัง (งวด PR-5): เลขแพ็คของแถวโซนไปถึงบรรทัดของแผนและอาร์กิวเมนต์ RPC เป็นตัวเลข และคูณยอด · ไม่มีคีย์ = ตีกลับ ไม่ใช่คูณ 1', () => {
   const customer = { id: 'CUS-1', name: 'บจก. ตัวอย่าง', approvalStatus: 'approved', isActive: true };
   const product = { id: 'P-PKG', fgCode: 'FG-SNS-02-001-0012', productDescription: 'แพ็คเกจกลิ่นรายเดือน', saleUnit: 'แพ็คเกจ', costPrice: 1200 };
   const ctx = {
@@ -235,27 +268,46 @@ test('🔴 แผนใบสั่งขายย้อนหลัง: แถ�
     sites: [{ id: 'ST-1', code: 'ST-1', name: 'สาขาหนึ่ง', customerId: 'CUS-1', kind: 'customer', isActive: true }],
     containerDeals: [], existingHistorical: [], liveTermsByZone: null, todayIso: '2026-09-22', selfOrderId: null,
   };
-  const input = (zoneExtra) => ({
+  const input = (zoneExtra, openingAmount = 14400) => ({
     customerId: 'CUS-1', ownerId: 'U-1',
     contract: { docKind: 'customer_po', ref: 'PO-1', startDate: '2026-01-01', endDate: '2026-12-31' },
     refs: { quote: null, express: null, invoice: 'IV-1' },
     vatRate: 0, notes: null,
     zones: [{ zoneId: 'Z-1', productId: 'P-PKG', qty: 12, discountType: null, discountValue: 0, rounds: 12, packsPerRound: 2, ...zoneExtra }],
-    opening: { amount: 14400, coversTo: '2026-12-31', paidOn: '2026-09-15', note: 'เก็บครบแล้ว' },
+    opening: { amount: openingAmount, coversTo: '2026-12-31', paidOn: '2026-09-15', note: 'เก็บครบแล้ว' },
     installments: [],
   });
-  const plain = planHistoricalServiceOrder(input({}), ctx);
-  const stray = planHistoricalServiceOrder(input({ packQty: 2 }), ctx);
-  assert.equal(plain.lines.length, 1);
-  assert.equal(plain.lines[0].lineTotal, 14400, '12 × 1,200 — ตัวตั้งของเทสต์ต้องเป็นแผนที่คิดเงินได้จริง');
-  assert.equal(stray.lines[0].lineTotal, 14400, 'packQty ที่หลงมาไม่คูณยอด');
-  assert.deepEqual(stray.lines, plain.lines);
-  assert.deepEqual(stray.header, plain.header);
-  for (const line of [...plain.lines, ...stray.lines]) assert.equal('packQty' in line, false);
-  assert.deepEqual(stray.errors, [], 'แผนต้องผ่านครบ ไม่งั้นข้อข้างล่างไม่ได้พิสูจน์อะไร');
-  const args = historicalServiceRpcArgs(stray);
+  // ความจริงเดิม (ยอดที่ตรึงไว้): เลขแพ็ค 1 = 12 × 1,200 = 14,400 ทุกสตางค์
+  const one = planHistoricalServiceOrder(input({ packQty: 1 }), ctx);
+  assert.deepEqual(one.errors, [], 'แผนต้องผ่านครบ ไม่งั้นข้อข้างล่างไม่ได้พิสูจน์อะไร');
+  assert.equal(one.lines.length, 1);
+  assert.deepEqual([one.lines[0].packQty, one.lines[0].lineTotal, one.header.subtotal], [1, 14400, 14400]);
+
+  // เลขแพ็ค 2: 2 × 12 × 1,200 = 28,800 — บรรทัดของแผน · หัวใบ · อาร์กิวเมนต์ของฐาน
+  const two = planHistoricalServiceOrder(input({ packQty: 2 }, 28800), ctx);
+  assert.deepEqual(two.errors, []);
+  assert.equal(two.lines[0].packQty, 2);
+  assert.equal(two.lines[0].lineTotal, 28800);
+  assert.deepEqual([two.header.subtotal, two.header.totalAmount], [28800, 28800]);
+  assert.equal(two.lines[0].unit, 'แพ็คเกจ', 'หน่วยของบรรทัดในแผน = หน่วยขายของทะเบียน (D6 — เปลี่ยน = ลิสต์สินค้าของจอถูกโหลดใหม่ทุกครั้งที่ตรวจ)');
+  const args = historicalServiceRpcArgs(two);
   assert.ok(Array.isArray(args.p_lines) && args.p_lines.length === 1);
-  assert.doesNotMatch(JSON.stringify(args), /packQty/, 'อาร์กิวเมนต์ RPC ของใบย้อนหลังไม่เอ่ยชื่อคอลัมน์ — ตัวเขียนของฐานเขียน NULL ต่อไป');
+  assert.equal(args.p_lines[0].packQty, 2);
+  assert.equal(typeof args.p_lines[0].packQty, 'number', 'ฐานรับเฉพาะ JSON number (0409/H1 · W0)');
+  assert.equal(args.p_lines[0].unit, 'เดือน', 'หน่วยที่เก็บของบรรทัดที่มีเลขแพ็ค (ข้อวินิจฉัย 6)');
+  assert.equal(args.p_lines[0].lineTotal, 28800);
+  // ช่องกรอกส่งข้อความ "2" — แผนทำเป็นตัวเลขก่อนส่งฐาน
+  const typed = planHistoricalServiceOrder(input({ packQty: '2' }, 28800), ctx);
+  assert.deepEqual(typed.lines, two.lines);
+  assert.equal(typeof historicalServiceRpcArgs(typed).p_lines[0].packQty, 'number');
+
+  // แพ็คต่อรอบของงานบริการ (packsPerRound 2) ไม่ใช่ตัวคูณ — เปลี่ยนเป็น 7 ยอดเท่าเดิม
+  assert.equal(planHistoricalServiceOrder(input({ packQty: 2, packsPerRound: 7 }, 28800), ctx).lines[0].lineTotal, 28800);
+
+  // เข้มขึ้น: แถวที่ไม่มีคีย์เลขแพ็ค (ฟอร์มรุ่นก่อน) ไม่ถูกคิดแบบคูณ 1 — ตีกลับที่ช่องของมัน และไม่มียอด
+  const missing = planHistoricalServiceOrder(input({}), ctx);
+  assert.deepEqual(missing.errors.filter((e) => e.field === 'zones.0.packQty').length, 1);
+  assert.deepEqual([missing.lines[0].packQty, missing.lines[0].lineTotal, missing.header.subtotal], [null, 0, 0]);
 });
 
 test('บรรทัดที่ไม่มีเลขแพ็ค (และเลขแพ็ค 1) ได้ยอดก่อนลดเท่ากับ round2(จำนวน × ราคา) ทุกบิต — ตารางทศนิยมที่ floating point เพี้ยนง่าย', () => {

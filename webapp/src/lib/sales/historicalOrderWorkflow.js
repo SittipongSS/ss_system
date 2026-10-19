@@ -42,6 +42,7 @@ import {
 } from '@/lib/sales/historicalOrderCopy';
 import { loadLiveTermsByZone, sanitizeHistoricalEvidence } from '@/lib/sales/historicalOrderCommit';
 import { SERVICE_PACKS_LABEL } from '@/lib/sales/serviceOrders';
+import { linePackQty } from '@/lib/sales/linePackView';
 
 const text = (value) => (value === null || value === undefined ? '' : String(value)).trim();
 const reply = (status, body) => ({ status, body });
@@ -327,6 +328,8 @@ export async function approveHistoricalOrder({
  * @param order  แถวใบพร้อม `lines` · `installments` (ดิบ) · `serviceContract` (ถ้าโหลดมาแล้ว)
  * @returns {Promise<{ lineZones, serviceContract, serviceContractFiles, openingEvidence, liveTermWarnings, duplicateCheck }>}
  *   `lineZones[].packsPerRound` = แพ็คต่อรอบของโซน (sales_order_line_zones · mig 0394/P6) — ไม่มีแถว/โซนไม่ตรงบรรทัด = null
+ *   `lineZones[].packQty` = เลขแพ็คของบรรทัด (sales_order_lines."packQty" · งวด PR-5 · mig 0409) — จำนวนเต็ม 1–9999 หรือ null
+ *   (บรรทัดที่เก็บก่อนงวดนี้) · ตัวอ่านของแถวนี้ (โมดัลอนุมัติ · การ์ดโซน · ฟอร์มแก้) พูดจำนวนของบรรทัดที่มีเลขแพ็คด้วยตัวช่วยของ linePackView
  *   `duplicateCheck` = `{ candidates, statusById }` — ใบที่อาจซ้ำ **ตอนนี้** + สถานะปัจจุบันของใบย้อนหลังทุกใบของลูกค้า
  *   (มติ 26/09 ข้อ 1: ใบที่เกิดหลังผู้คีย์ยืนยัน = เตือนผู้อนุมัติ ไม่บล็อก · ใบที่ผู้คีย์ยืนยันไว้แล้วถูกยกเลิก/ลบไป = บอกด้วย)
  */
@@ -379,9 +382,11 @@ export async function loadHistoricalOrderExtras(supabase, order, { todayIso = bu
       siteName: site?.name || null,
       siteActive: site ? site.isActive !== false : null,
       productId: line.productId || null,
-      /* บรรทัดแบบใบเสนอราคา (มติ 23/09): จำนวน · หน่วย · ราคา/หน่วย · ส่วนลด · จำนวนเงิน — จำนวน/หน่วยของบรรทัดเป็นเงิน
-         (1 ชุด × 12 เดือน) · แพ็คต่อรอบของโซนมาจาก `sales_order_line_zones` (`packsPerRound`, mig 0394) — คนละช่องกับจำนวน */
+      /* บรรทัดแบบใบเสนอราคา (มติ 23/09 · สูตรตามมติ 08/10 ข้อ A1): เลขแพ็ค · จำนวน · หน่วย · ราคา/หน่วย · ส่วนลด · จำนวนเงิน — คู่เงินของบรรทัด
+         (2 แพ็ค × 12 เดือน × ราคา) · แพ็คต่อรอบของโซนมาจาก `sales_order_line_zones` (`packsPerRound`, mig 0394) — คนละช่องกับคู่เงิน
+         · งวด PR-5: `packQty` = เลขแพ็คที่เก็บของบรรทัด (`linePackQty` — ค่าที่ใช้ไม่ได้/ว่าง = null · ไม่เดาจากแพ็คต่อรอบ) */
       fgCode: line.fgCode || null,
+      packQty: linePackQty(line),
       qty: line.qty ?? null,
       unit: line.unit || null,
       unitPrice: line.unitPrice ?? null,

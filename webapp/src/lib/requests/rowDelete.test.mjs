@@ -40,3 +40,9 @@ test('⭐ ม-148 พัฒนากลิ่นที่ส่งเป็น�
 test('รอบแก้ที่ส่งสูตรแล้วไม่ถูกบล็อกที่ด่านล้วน — route อ่านทะเบียนแล้วถอยการส่งให้ (ม-147)', () => {
   assert.equal(deleteRequestRowError(req(), { id: 'b', derivedFromItemId: 'a', producedFormulaId: 'FML-B' }), null);
 });
+
+test('⭐ แถวแรกของชุด direction ลบไม่ได้ขณะยังมี direction เพิ่มชี้อยู่ (ม-157 · FK ไม่ cascade) · direction เพิ่มลบได้ตามปกติ', () => {
+  const request = req({ items: [{ id: 'root' }, { id: 'extra', directionOfItemId: 'root' }] });
+  assert.match(deleteRequestRowError(request, { id: 'root' }), /direction เพิ่มอยู่ 1 รายการ/);
+  assert.equal(deleteRequestRowError(request, { id: 'extra', directionOfItemId: 'root' }), null);
+});

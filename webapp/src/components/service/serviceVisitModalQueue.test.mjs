@@ -77,9 +77,10 @@ test('🔒 ก้อนที่ส่งเท่าของเดิมทุ
      server ตรวจ `{...before, ...body}`) ไม่งั้นนัดที่ส่งงานข้ามวันแก้จากโมดัลไม่ได้ · ก้อนที่ **ส่ง** ยังเป็น `payload` เดิม */
   assert.match(live, /normalizeVisitInput\(\s*visitFormCheckInput\(payload, editing \? visit : null\),\s*editing && visit\?\.kind \? \{ existingKind: visit\.kind \} : \{\},\s*\)/);
   assert.match(live, /if \(rescheduling && !form\.rescheduleReason\.trim\(\)\) \{/);
-  // จอแม่ยิงก้อนที่ได้ตรง ๆ (POST สร้าง · PATCH แก้) — ไม่แตะก้อน
+  // จอแม่ยิงก้อนที่ได้ตรง ๆ (POST สร้าง · PATCH แก้) — ไม่แตะช่องในก้อน
+  /* 🔄 รีวิว S2b ข้อ V17 (19/10): PATCH แนบ `expectedStatus` (สถานะตอนเปิดฟอร์ม · ไม่ใช่คอลัมน์ server ถอดทิ้ง) เพิ่มคีย์เดียว */
   const page = read('../../app/service/schedule/page.js');
-  assert.match(page, /method: editing \? "PATCH" : "POST",\s*headers: \{ "Content-Type": "application\/json" \},\s*body: JSON\.stringify\(form\),/);
+  assert.match(page, /method: editing \? "PATCH" : "POST",\s*headers: \{ "Content-Type": "application\/json" \},\s*body: JSON\.stringify\(editing \? \{ \.\.\.form, expectedStatus: formVisit\.status \} : form\),/);
 });
 
 test('🔒 ทุกปุ่มที่ visitModalView ประกาศมีตัวกดในโมดัล (ไม่มีปุ่มที่กดแล้วไม่เกิดอะไร)', async () => {

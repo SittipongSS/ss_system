@@ -306,6 +306,9 @@ export default function ServiceSiteDetailPage({ params }) {
       await load();
     } catch (e) {
       setToast({ kind: "error", msg: e.message });
+      /* ⭐ ลบไม่ผ่านแล้วอ่านใหม่ — นัดอาจเพิ่งเปลี่ยนสถานะ (ช่างรับงานพอดี · 409 ของ route) แถวกับกล่องยืนยันต้องไม่ค้างสถานะเก่า */
+      setPendingDelete(null);
+      load();
     } finally {
       setBusy(false);
     }

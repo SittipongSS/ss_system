@@ -7,6 +7,7 @@
 //   (sync_sales_order_actual กรอง origin = 'pipeline') · เทสต์ไล่ทุกสตริงที่ไฟล์นี้คืนออกไป
 // ⚠️ pure — ไม่อ่านฐาน ไม่อ่านนาฬิกา ("วันนี้" รับเข้ามาเป็น `todayIso` จากนาฬิกาไทยของผู้เรียก)
 //   ฝั่งจอ import ได้: import เฉพาะ format · ป้ายของสัญญา · historicalOrders · paymentCoverage · paymentNotRequired
+//   · linePackView (งวด PR-5 — คำและตัวอ่านของเลขแพ็คของบรรทัด: ไฟล์ล้วน ใช้ร่วมกับตัวอ่านของใบเสนอราคาทุกจอ)
 import { NA, fmtDate, fmtMoney, fmtNumber } from '@/lib/format';
 import { externalDocKindLabel } from '@/lib/sales/contracts';
 import {
@@ -17,6 +18,7 @@ import { addDays, coverageContinuityErrors, isConfirmed, paidThrough } from '@/l
 import { historicalDuplicateApprovalRows, historicalDuplicateReviewOf } from '@/lib/sales/historicalDuplicates';
 import { paymentNotRequired, salesOrderMoneyOutcome } from '@/lib/sales/salesOrderPayments';
 import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL, SERVICE_ROUNDS_UNIT } from '@/lib/sales/serviceOrders';
+import { PACK_COLUMN_LABEL, linePackQty, linePackQtyText } from '@/lib/sales/linePackView';
 
 const text = (value) => (value === null || value === undefined ? '' : String(value)).trim();
 const list = (value) => (Array.isArray(value) ? value.filter(Boolean) : []);
@@ -34,23 +36,31 @@ function orderedRows(installments) {
 }
 
 /**
- * บรรทัดหนึ่งบรรทัด **ตามลำดับคอลัมน์ของใบเสนอราคา** — จำนวน (หน่วย) × ราคา/หน่วย [− ส่วนลดรายการ] = จำนวนเงิน
+ * บรรทัดหนึ่งบรรทัด **ตามลำดับคอลัมน์ของใบเสนอราคา** — [เลขแพ็ค ×] จำนวน (หน่วย) × ราคา/หน่วย [− ส่วนลดรายการ] = จำนวนเงิน
  * ⭐ มติเจ้าของ 23/09: ผู้อนุมัติต้องเห็นบรรทัดแบบเดียวกับที่ผู้คีย์คีย์ (ไม่ใช่ "N แพ็ค" ที่อ่านได้สองความหมาย)
- * @param line `{ qty, unit, unitPrice, discountAmount, lineTotal }` (บรรทัดใบสั่งขาย หรือแถวโซนจาก GET ของใบ)
+ * ⭐ งวด PR-5 (mig 0409 · มติเจ้าของ 08/10 ข้อ A1 — คำของเจ้าของ "2 แพ็ค × 12 เดือน × ฿3,500 = ฿84,000"): บรรทัดที่ **มีเลขแพ็ค**
+ *   พูดจำนวนด้วยวลีกลางของเลขแพ็ค (`linePackQtyText` — ตัวเดียวกับทุกตัวอ่านของใบเสนอราคา/ใบสั่งขาย) · บรรทัดที่ไม่มีเลขแพ็ค
+ *   (ทุกบรรทัดที่เก็บก่อนงวดนี้) = ประโยคเดิมทุกตัวอักษร — ของเดิมพูด "12 เดือน × ฿3,500.00 = ฿84,000.00" กับบรรทัดที่เก็บ 84,000
+ * @param line `{ packQty?, qty, unit, unitPrice, discountAmount, lineTotal }` (บรรทัดใบสั่งขาย หรือแถวโซนจาก GET ของใบ)
  */
 export function quoteLineText(line = {}) {
   const discount = Number(line?.discountAmount) || 0;
-  return `${fmtNumber(Number(line?.qty) || 0)} ${text(line?.unit) || 'หน่วย'} × ${fmtMoney(Number(line?.unitPrice) || 0)}`
+  const qtyText = linePackQtyText(line) ?? `${fmtNumber(Number(line?.qty) || 0)} ${text(line?.unit) || 'หน่วย'}`;
+  return `${qtyText} × ${fmtMoney(Number(line?.unitPrice) || 0)}`
     + `${discount > 0 ? ` − ส่วนลด ${fmtMoney(discount)}` : ''} = ${fmtMoney(Number(line?.lineTotal) || 0)}`;
 }
 
-/* บรรทัดที่หน้าตาเหมือนกันรวมเป็นกลุ่มเดียว (สินค้า · จำนวน · หน่วย · ราคา · ส่วนลด) — ใบย้อนหลังส่วนใหญ่คือ
-   แพ็คเกจเดียวกันทุกโซน ⇒ โมดัลพูด "12 แพ็คเกจ × 3,500 = 42,000 (4 โซน)" บรรทัดเดียวแทนสี่บรรทัดที่ซ้ำกัน */
+/* บรรทัดที่หน้าตาเหมือนกันรวมเป็นกลุ่มเดียว (สินค้า · เลขแพ็ค · จำนวน · หน่วย · ราคา · ส่วนลด) — ใบย้อนหลังส่วนใหญ่คือ
+   แพ็คเกจเดียวกันทุกโซน ⇒ โมดัลพูด "12 แพ็คเกจ × 3,500 = 42,000 (4 โซน)" บรรทัดเดียวแทนสี่บรรทัดที่ซ้ำกัน
+   ⭐ งวด PR-5: เลขแพ็คอยู่ในคีย์ของกลุ่ม — สองบรรทัดที่ต่างกันแค่เลขแพ็ค (1 กับ 2) มียอดต่างกัน ห้ามถูกรวมเป็นบรรทัดเดียวที่พูดยอดของตัวแรก */
 const LINE_GROUPS_SHOWN = 3;
 function lineGroups(lines) {
   const groups = new Map();
   for (const line of list(lines)) {
-    const key = [text(line.fgCode), Number(line.qty) || 0, text(line.unit), Number(line.unitPrice) || 0, Number(line.discountAmount) || 0].join('|');
+    const key = [
+      text(line.fgCode), Number(line.qty) || 0, text(line.unit), Number(line.unitPrice) || 0, Number(line.discountAmount) || 0,
+      linePackQty(line) ?? '',
+    ].join('|');
     const group = groups.get(key) || { fgCode: text(line.fgCode) || null, line, count: 0 };
     group.count += 1;
     groups.set(key, group);
@@ -259,9 +269,9 @@ export function historicalCoverageSegments(installments = [], { start = null, en
      อ่านเหมือน "ไม่มีเรื่องต้องตรวจ" ซึ่งตรงข้ามกับความจริง
    @param order   ใบ (orderNumber · customerName · customer.arCode · totalAmount · subtotal · vatAmount · lines · notes)
    @param extras  `{ installments, contract, contractFiles, lineZones, liveTermWarnings, signedFile, extrasError }`
-     · lineZones: `[{ zoneId, zoneCode, zoneName, siteId, siteCode, siteName, fgCode?, qty?, unit?, unitPrice?,
+     · lineZones: `[{ zoneId, zoneCode, zoneName, siteId, siteCode, siteName, fgCode?, packQty?, qty?, unit?, unitPrice?,
        discountAmount?, lineTotal?, rounds?, packsPerRound? }]` (หนึ่งแถวต่อบรรทัด — ของเสริมจาก loadHistoricalOrderExtras ·
-       packsPerRound: number|null จาก sales_order_line_zones · mig 0394)
+       packsPerRound: number|null จาก sales_order_line_zones · mig 0394 · packQty: เลขแพ็คของบรรทัด number|null · mig 0409)
      · liveTermWarnings: สตริง หรือ `{ zoneCode|zoneName, orderNumber, endDate }`
    @returns `{ subject, checklist, effects }` — effects ไม่รวม HISTORICAL_STATUS_NOTE (ตัวสร้างโมดัลเติมเอง) */
 /* ── ประโยคของข้อเท็จจริงที่ผู้อนุมัติตรวจ — **ตัวเดียว** ของหน้าต่างอนุมัติ (`historicalApprovalFacts`) และขั้น ④ ของฟอร์มคีย์ใบ
@@ -319,7 +329,7 @@ export function historicalBillingDatesText(installments = []) {
 }
 
 /* ── รอบบริการ · แพ็คต่อรอบของโซน (PR-D · มติเจ้าของ 26/09 A3/O9 · mig 0394) ─────────────────────────────
-   ⭐ แพ็คต่อรอบเป็นช่องของ **โซน** (sales_order_line_zones.packsPerRound) คนละช่องกับจำนวนของบรรทัด (เงิน: 1 ชุด × 12 เดือน)
+   ⭐ แพ็คต่อรอบเป็นช่องของ **โซน** (sales_order_line_zones.packsPerRound) คนละช่องกับคู่เงินของบรรทัด (เลขแพ็ค × จำนวน — งวด PR-5)
      — อนุมัติแล้วเป็น packageQty ของรอบขาย (0394/P3 เปิดผ่าน sales_order_open_service_terms) ⇒ ผู้คีย์ (ขั้น ④)
      ผู้อนุมัติ (โมดัล) และการ์ดโซนหน้าใบอ่านตัวเลขชุดเดียวกันจากตัวนี้
    ⭐ มติเจ้าของ 29/09 ("ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง"): ป้าย = `SERVICE_PACKS_LABEL` "รอบละกี่แพ็ค"
@@ -328,6 +338,8 @@ export function historicalBillingDatesText(installments = []) {
      "Lobby 2 แพ็ค/รอบ × 12 เดือน") · เปลี่ยนแค่คำและลำดับ — ตัวเลขชุดเดิม (`historicalServiceTotals`) · 1 เดือน = 1 รอบ
    🔴 คำที่ยอม: "รอบละกี่แพ็ค" · "แพ็ค/รอบ" เท่านั้น — "N แพ็ค" เปล่า ๆ อ่านได้สองความหมาย (มติ 23/09 · เทสต์ไล่ทุกสตริง)
      ("แพ็ค/รอบ" = แพ็คต่อการเข้าโซนหนึ่งครั้ง — คำของแพ็ค ไม่ใช่หน่วยของจำนวนรอบบริการ จึงคงเดิม)
+     ⭐ งวด PR-5 เพิ่มสองรูปของเลขแพ็คของบรรทัด: ชื่อหัวคอลัมน์ (`PACK_COLUMN_LABEL`) และวลี "n แพ็ค × m เดือน" ของ `linePackQtyText`
+     (ตามด้วยจำนวนเดือนเสมอ ⇒ อ่านได้ความหมายเดียว) · "N แพ็ค" เปล่า ๆ ยังห้ามเหมือนเดิม
    ⚠️ ค่าที่ไม่ใช่จำนวนเต็มบวก = **ไม่รู้** (null) ไม่ใช่ 0 — ใบที่คีย์ก่อนมีช่องไม่มีแถวโซนของงานบริการ */
 const positiveInt = (value) => {
   if (value === null || value === undefined || typeof value === 'boolean' || text(value) === '') return null;
@@ -438,6 +450,65 @@ export function historicalRoundsSoldText(lines = []) {
   return roundsPerZoneText(historicalServiceTotals(lines)) || null;
 }
 
+/* ── PR-5 D1(ก) — คู่เงินของบรรทัดเทียบคู่ของงานบริการ (มติเจ้าของ 12/10 ข้อ A8 "ปุ่มรับค่า + เตือน") ─────────────────────────
+   แถวหนึ่งของใบย้อนหลังมีสองคู่ที่มักเป็นเลขเดียวกัน: คู่เงิน (เลขแพ็คของบรรทัด `packQty` · จำนวน `qty` = จำนวนเดือน) กับคู่ของ TS
+   (`packsPerRound` รอบละกี่แพ็ค · `rounds` / `serviceRounds` จำนวนรอบบริการ) — สี่ช่องแยกกัน ไม่มีช่องไหนถูกเติมให้เงียบ ๆ
+   ⇒ ต่างกัน = **คำเตือน ไม่ใช่ด่าน** (ไม่แดง · ไม่กั้นถัดไป / บันทึก / อนุมัติ) ขึ้นสามที่ด้วยกติกาตัวเดียวนี้: แถวของขั้น ②
+   (`historicalLineQuoteLink`) · แถวตรวจของขั้น ④ (`historicalWarningGroups` — หัวข้อ packService) · หน้าต่างอนุมัติ (`historicalApprovalFacts`)
+   ⭐ แบบเดียวกับตารางงานบริการของใบใหม่ (มติ A7 · serviceSetup.js — lineQuoteSeeds / packLineCrossCheck): เทียบ **แยกตัว** และเทียบเฉพาะ
+      บรรทัดที่ **มีเลขแพ็ค** — บรรทัดที่ไม่มีเลขแพ็ค (ทุกบรรทัดที่เก็บก่อนงวดนี้) จำนวนไม่ใช่จำนวนเดือน (เคยคีย์รวม เช่น 72) จึงไม่เทียบอะไรเลย
+      ⇒ ใบเก่าได้รายการตรวจเดิมทุกบรรทัด
+   ⚠️ ข้างใดข้างหนึ่งของคู่ไม่ใช่จำนวนเต็มบวก = เทียบไม่ได้ = ไม่เตือน (ช่องว่างมีด่านของมันเองอยู่แล้ว) */
+const QUOTE_SERVICE_PACKS_PAIR = `“${PACK_COLUMN_LABEL}” ≠ ${SERVICE_PACKS_LABEL}`;
+const QUOTE_SERVICE_MONTHS_PAIR = `จำนวน ≠ ${SERVICE_ROUNDS_LABEL}`;
+/* ท้ายประโยคคำเตือน — คำเดียวกับตารางงานบริการของใบใหม่ (serviceSetup.js · packLineCrossCheck) · ฟอร์มคีย์ใบอ่านตัวนี้ (quoteLink.suffix) */
+export const HISTORICAL_QUOTE_SERVICE_SUFFIX = 'ตรวจอีกครั้ง (ไม่บังคับให้เท่า)';
+
+/**
+ * PR-5 D1(ก) — หนึ่งแถว: คู่ไหนต่างกัน
+ * @param row `{ packQty, qty, packsPerRound, rounds | serviceRounds }` — แถวของฟอร์ม (ข้อความในช่อง) · บรรทัดของแผน · แถวโซนของเสริม
+ * @returns `{ packs: boolean, months: boolean }` — เทียบคู่หนึ่งเมื่อสองข้างเป็นจำนวนเต็มบวก (เลขแพ็คอ่านด้วย `linePackQty`)
+ *   และบรรทัดมีเลขแพ็ค · นอกนั้น false
+ */
+export function historicalQuoteServiceDiff(row = {}) {
+  const pack = linePackQty(row);
+  if (pack === null) return { packs: false, months: false };
+  const perRound = positiveInt(row?.packsPerRound);
+  const months = positiveInt(row?.qty);
+  const rounds = positiveInt(row?.rounds ?? row?.serviceRounds);
+  return {
+    packs: perRound !== null && perRound !== pack,
+    months: months !== null && rounds !== null && months !== rounds,
+  };
+}
+
+/* "รายการ 1, 3" · เกิน `maxRows` = "รายการ 1, 2, 3, 4, 5 และอีก 12 รายการ" */
+function mismatchRowsText(numbers, maxRows) {
+  const shown = numbers.slice(0, maxRows).map((n) => fmtNumber(n)).join(', ');
+  const rest = numbers.length - maxRows;
+  return `รายการ ${shown}${rest > 0 ? ` และอีก ${fmtNumber(rest)} รายการ` : ''}`;
+}
+
+/**
+ * PR-5 D1(ก) — ทั้งใบ: บรรทัดไหนที่คู่เงินกับคู่ของงานบริการต่างกัน (ประโยคเดียวของขั้น ④ และหน้าต่างอนุมัติ)
+ * @param rows แถวตามลำดับของตาราง (เลขรายการ = ตำแหน่ง + 1 — เลขเดียวกับคอลัมน์ "#")
+ * @returns `{ packs: number[], months: number[], text: string | null }` — text null = ไม่มีคู่ไหนที่เทียบได้แล้วต่างกัน
+ */
+export function historicalQuoteServiceMismatch(rows = [], { maxRows = 5 } = {}) {
+  const packs = [];
+  const months = [];
+  (Array.isArray(rows) ? rows : []).forEach((row, index) => {
+    const diff = historicalQuoteServiceDiff(row || {});
+    if (diff.packs) packs.push(index + 1);
+    if (diff.months) months.push(index + 1);
+  });
+  const parts = [
+    ...(packs.length ? [`${mismatchRowsText(packs, maxRows)}: ${QUOTE_SERVICE_PACKS_PAIR}`] : []),
+    ...(months.length ? [`${mismatchRowsText(months, maxRows)}: ${QUOTE_SERVICE_MONTHS_PAIR}`] : []),
+  ];
+  return { packs, months, text: parts.length ? `${parts.join(' · ')} — ${HISTORICAL_QUOTE_SERVICE_SUFFIX}` : null };
+}
+
 /* ── ตัวกลางตีกลับการอนุมัติใบย้อนหลัง (mig 0394/P3 → sales_order_open_service_terms) ──────────────────────
    ⭐ ฐานโยน `sales_order_service_setup_incomplete` DETAIL = '<ชนิด>:<บรรทัด>[:<โซน>]' คั่นจุลภาค (0392 §5 + 0394/P9c)
      ⇒ ผู้อนุมัติต้องเห็น "รายการ n" (ลำดับบนใบ) ไม่ใช่รหัสบรรทัด · ทางออกเดียว = ตีกลับให้ผู้คีย์บันทึกขั้น ② ใหม่
@@ -460,6 +531,23 @@ const SETUP_ISSUES_SHOWN = 5;
 export const HISTORICAL_ALIGNMENT_MISSING_SAVED = `บันทึกใบร่างแล้ว แต่ฐานข้อมูลยังไม่ได้รัน migration 0394 (ช่อง${SERVICE_PACKS_LABEL}ของใบย้อนหลัง)`
   + ` — ค่า${SERVICE_PACKS_LABEL}ของใบนี้ยังไม่ถูกเก็บ · แจ้งผู้ดูแลระบบ แล้วเปิดใบร่างบันทึกขั้น ② ใหม่หลังรันแล้ว`;
 export const HISTORICAL_ALIGNMENT_HINT = 'หากเพิ่งอัปเดตระบบ ฐานข้อมูลอาจยังไม่ได้รัน migration 0394 — แจ้งผู้ดูแลระบบก่อนตีกลับ';
+
+/* ── ฐานที่ยังไม่รัน 0409 (งวด PR-5 · เข็มขัดหลังบันทึกของ historicalOrderCommit — historicalPackQtyDropped) ─────────────────────
+   0409 ไม่เพิ่มคอลัมน์เหมือน 0394 ⇒ CI มองไม่เห็นว่ารันแล้วหรือยัง · ตัวเขียนรุ่นก่อน 0409 รับคีย์เลขแพ็คเงียบ ๆ แล้วเก็บ NULL:
+   บรรทัดที่เลขแพ็ค ≥ 2 ถูกตัวตรวจรุ่นเดิมตีกลับ (ยอดไม่ตรงสูตรเดิม — ไม่มีอะไรลงฐาน) แต่ใบที่เลขแพ็คเป็น 1 ทุกบรรทัด **ลงฐานเป็นใบร่างที่ไม่มี
+   เลขแพ็ค** ⇒ บันทึก → 503 ด้วยประโยคข้างล่าง (เข็มขัดรายงานหลังเขียน — กันไม่ได้ · ตัวกันคือลำดับ "รัน 0409 ก่อน merge")
+   🔴 ประโยคต้องบอกทางออกที่ **ทำได้จริง**: ใบร่างนั้นคือสิ่งที่ทำให้ 0409 รันครั้งแรกไม่ผ่าน (ด่าน mig_0409_historical_in_flight นับใบร่าง)
+      ⇒ ห้ามบอกให้เปิดใบร่างมาบันทึกใหม่หลังรัน (ทางนั้นไม่มีอยู่จริง — เทสต์ยึด) · ทางออก = ยกเลิกใบร่าง → ผู้ดูแลรัน → คีย์ใบใหม่
+      · ใบร่างนั้นส่งอนุมัติจากจอไม่ได้ด้วย: ฟอร์มคีย์ใบบันทึกก่อนส่งเสมอ และจังหวะบันทึก **ไม่เคยผ่าน** — เข็มขัดตอบ 503 ทุกครั้งที่ RPC ตอบสำเร็จ
+        (สร้าง · สร้างที่ถูกตอบว่าส่งซ้ำ · แก้ใบครั้งแรกหลังเปิด) · ทางแก้ใบที่กดซ้ำจากแท็บเดิมได้ 409 `workflow_stale` แทน (ฟอร์มยังถือเวลาเดิมของใบ —
+        ไม่มีอะไรถูกเขียน · ดูคอมเมนต์ที่เข็มขัดใน historicalOrderCommit) ⇒ ไม่มีรอบไหนเดินถึงจังหวะส่งอนุมัติ
+   ⭐ สองประโยค (R9): การเขียนรอบนี้เอง (สร้างที่ไม่ใช่การส่งซ้ำ · แก้ใบทุกครั้ง) กับการสร้างที่ฐานตอบว่าเป็นการส่งซ้ำ (`replayed`) —
+      แถวของการส่งซ้ำถูกเก็บไว้ก่อนหน้า ตอนนี้ฐานอาจรัน 0409 ไปแล้วก็ได้ ⇒ ประโยคนั้นไม่พูดเรื่อง migration และบอกตรง ๆ ว่ากดซ้ำไม่ช่วย */
+export const HISTORICAL_PACK_QTY_NOT_STORED_SAVED = `บันทึกใบร่างแล้ว แต่เลข “${PACK_COLUMN_LABEL}” ไม่ถูกเก็บ (ฐานข้อมูลยังไม่ได้รัน migration 0409)`
+  + ' — หยุดคีย์ใบสั่งขายย้อนหลังไว้ก่อนแล้วแจ้งผู้ดูแลระบบ'
+  + ' · ใบร่างนี้ส่งอนุมัติไม่ได้ และต้องยกเลิกก่อนผู้ดูแลจึงรัน migration ได้ แล้วคีย์ใบนี้ใหม่หลังรัน';
+export const HISTORICAL_PACK_QTY_NOT_STORED_REPLAYED = `ใบร่างของการคีย์รอบนี้ถูกเก็บไว้โดยไม่มีเลข “${PACK_COLUMN_LABEL}” — กดบันทึกซ้ำไม่ช่วย`
+  + ' · แจ้งผู้ดูแลระบบ: ใบร่างนี้ส่งอนุมัติไม่ได้ ต้องยกเลิกแล้วคีย์ใหม่';
 
 /**
  * ข้อความ 409 ของการอนุมัติที่ตัวกลางตีกลับ
@@ -546,6 +634,12 @@ export function historicalApprovalFacts(order, {
       checklist.push(`⚠️ ${PACKS_MISSING_TEXT} ${fmtNumber(service.totals.packsMissing)} รายการ (ใบนี้คีย์ก่อนมีช่องนี้)`
         + ' — ระบบจะไม่ยอมให้อนุมัติ ตีกลับให้ผู้คีย์บันทึกขั้น ② ใหม่');
     }
+  }
+  /* PR-5 D1(ก) — คู่เงินของบรรทัดไม่ตรงกับคู่ของงานบริการ = เตือนผู้อนุมัติ (ไม่กั้น · มติ A8) · ต่อจากแถวแพ็คต่อรอบ
+     · ของเสริมโหลดไม่ขึ้น = ไม่มีแถวนี้ (แถว "โหลดไม่ขึ้น" ข้างบนบอกแล้วว่าไม่รู้ — ไม่รู้ ≠ ตรงกัน และ ≠ ไม่ตรง) */
+  if (!extrasError) {
+    const mismatch = historicalQuoteServiceMismatch(list(lineZones));
+    if (mismatch.text) checklist.push(`⚠️ ${mismatch.text}`);
   }
   /* บรรทัดของใบ = ของจริงที่จะอนุมัติ · ไม่มี (ของเสริมโหลดไม่ขึ้นและใบไม่พกบรรทัดมา) ⇒ ถอยไปแถวโซน */
   const priced = list(order?.lines).filter((l) => l.serviceZoneId || l.productId);
