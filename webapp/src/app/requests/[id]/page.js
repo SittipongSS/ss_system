@@ -2847,14 +2847,16 @@ export default function RequestDetailPage() {
                 (แถวยังไม่มีให้แนบตอนนี้ — ต่างจากแท็บแรกที่แถวมีอยู่แล้ว) */}
             {formulaTabs && extraTab >= 0 && hopDraft.extra?.[extraTab] && (
               <>
-                <p className={styles.fieldHint}>
-                  <strong>{directionLabel(extraTab)}</strong> = รายการใหม่ของ {itemText(hopDraft.item)} — เดินขั้น
-                  รับของ · ส่งลูกค้า · ผลลูกค้า แยกจาก direction อื่น · ลูกค้าคอนเฟิร์มตัวไหน ตัวนั้นใช้งาน ที่เหลือปิดให้เอง
-                  · ไฟล์ประกอบแนบที่การ์ดรายการหลังส่ง
-                </p>
-                {formulaReworkNote(directionShapeOf(hopDraft.item)) && (
-                  <p className={styles.fieldHint}>{formulaReworkNote(directionShapeOf(hopDraft.item))}</p>
-                )}
+                <div className={styles.formulaHints}>
+                  <p className={styles.fieldHint}>
+                    <strong>{directionLabel(extraTab)}</strong> = รายการใหม่ของ {itemText(hopDraft.item)} — เดินขั้น
+                    รับของ · ส่งลูกค้า · ผลลูกค้า แยกจาก direction อื่น · ลูกค้าคอนเฟิร์มตัวไหน ตัวนั้นใช้งาน ที่เหลือปิดให้เอง
+                    · ไฟล์ประกอบแนบที่การ์ดรายการหลังส่ง
+                  </p>
+                  {formulaReworkNote(directionShapeOf(hopDraft.item)) && (
+                    <p className={styles.fieldHint}>{formulaReworkNote(directionShapeOf(hopDraft.item))}</p>
+                  )}
+                </div>
                 <FormulaForm
                   key={`direction-${extraTab}`}
                   mode="create" canSetCode codeRequired
@@ -2876,15 +2878,17 @@ export default function RequestDetailPage() {
               <>
                 {/* ⚠️ ประโยค "สูตรเข้าทะเบียนทันที" จริงเฉพาะแผนสร้าง/รอบแก้ — แผนผูกของเดิม/ติดร่าง ประโยคบอกผลข้างล่างพูดแทน
                     (สองประโยคขัดกันบนจอเดียว = คนเชื่อตัวใหญ่ · รีวิว ม-147) */}
-                {["create", "revise"].includes(formulaPreviewFor(hopDraft.item).plan.kind) && (
-                  <p className={styles.fieldHint}>
-                    บันทึกแล้ว<strong>สูตรเข้าทะเบียนทันที</strong> — ฟอร์มเดียวกับหน้าทะเบียนสูตร
-                    · ลูกค้า · กลิ่น · หมวด ยกมาจากรายการนี้เอง ({itemText(hopDraft.item)}) จึงเทาไว้
-                  </p>
-                )}
-                {formulaReworkNote(hopDraft.item) && (
-                  <p className={styles.fieldHint}>{formulaReworkNote(hopDraft.item)}</p>
-                )}
+                <div className={styles.formulaHints}>
+                  {formulaPreviewFor(hopDraft.item).plan.kind === "create" && (
+                    <p className={styles.fieldHint}>
+                      บันทึกแล้ว<strong>สูตรเข้าทะเบียนทันที</strong> — ฟอร์มเดียวกับหน้าทะเบียนสูตร
+                      · ลูกค้า · กลิ่น · หมวด ยกมาจากรายการนี้เอง ({itemText(hopDraft.item)}) จึงเทาไว้
+                    </p>
+                  )}
+                  {formulaReworkNote(hopDraft.item) && (
+                    <p className={styles.fieldHint}>{formulaReworkNote(hopDraft.item)}</p>
+                  )}
+                </div>
                 <FormulaForm
                   mode="create" canSetCode codeRequired
                   value={hopDraft.formula} disabled={saving}
