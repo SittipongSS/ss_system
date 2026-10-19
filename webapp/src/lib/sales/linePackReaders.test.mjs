@@ -419,6 +419,7 @@ const QTY_READERS = Object.freeze({
   'lib/salesPlanningReverse.js': 'other:sales_deal_forecast_lines',
   'app/api/sa/requests/route.js': 'other:dept_request_items',
   'lib/requests/formulaDevBoard.js': 'other:dept_request_items',
+  'lib/requests/formulaDirections.js': 'other:dept_request_items',
   'lib/requests/hops.js': 'other:dept_request_items',
   'lib/requests/lines.js': 'other:dept_request_items',
   'lib/requests/productDevLabel.js': 'other:dept_request_items',

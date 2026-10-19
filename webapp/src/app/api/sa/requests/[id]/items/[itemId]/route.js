@@ -37,8 +37,9 @@ import {
   countProductsUsingFormula, createFormula, findScent, loadFormulas, updateFormula,
 } from '@/lib/master/scentFormulaAdmin';
 import {
-  formulaActionFor, formulaBindWarning, planFormulaDelivery, reworkParentFormulaId, reworkUndoDecision,
+  formulaActionFor, formulaBindWarning, formulaName, planFormulaDelivery, reworkParentFormulaId, reworkUndoDecision,
 } from '@/lib/requests/formulaRework';
+import { formulaConfirmPlan, notChosenReason } from '@/lib/requests/formulaDirections';
 import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { recordAudit } from '@/lib/audit';
 import { canAnswerRequestsFor } from '@/lib/permissions';
@@ -159,26 +160,56 @@ export async function PATCH(request, { params }) {
     }
   }
 
+  /* ── ลูกค้าคอนเฟิร์มแถวพัฒนาสูตร = ทะเบียน + direction อื่นตามไปด้วย (ม-157) ─────────────────────────
+     ⭐ ตัดสิน **ก่อนเขียนแถว** — ตีกลับ (คู่นี้คอนเฟิร์มไปแล้ว · ตัวเดิมเป็นร่าง/ของลูกค้าอื่น) ต้องไม่ทิ้งผลลูกค้าครึ่งทาง
+     · แผนตัวเดียวกับที่โมดัลบอกก่อนกด (`formulaConfirmPlan`) */
+  let confirmPlan = null;
+  if (hop === 'outcome' && body.outcome === 'confirmed' && row.lineKind === 'product_dev' && row.producedFormulaId) {
+    /* ⚠️ **อ่านเฉพาะสูตรของคู่นี้ + สูตรที่แถวของคู่นี้ถือ** ไม่ใช่ทั้งทะเบียน (รีวิว ม-157) — อ่านทั้งตารางชนเพดาน 1,000 แถว
+       ของ PostgREST เมื่อทะเบียนโต ⇒ ตัวที่เลือกหลุดหน้าแรก = แผน "ไม่มีอะไรทำ" แล้วสูตรค้างกำลังพัฒนาเงียบ ๆ */
+    const pairFormulaIds = [...new Set((before.items || [])
+      .filter((i) => i.lineKind === 'product_dev' && i.categoryCode === row.categoryCode && i.scentId === row.scentId)
+      .map((i) => i.producedFormulaId).filter(Boolean))];
+    const [byPair, byId] = await Promise.all([
+      supabase.from('formulas').select('*').eq('categoryCode', row.categoryCode).eq('scentId', row.scentId).limit(500),
+      supabase.from('formulas').select('*').in('id', pairFormulaIds),
+    ]);
+    if (byPair.error || byId.error) {
+      return Response.json({
+        error: `อ่านทะเบียนสูตรไม่สำเร็จ — ลองบันทึกอีกครั้ง (${(byPair.error || byId.error).message})`,
+      }, { status: 500 });
+    }
+    const registryFormulas = [...new Map([...(byPair.data || []), ...(byId.data || [])].map((f) => [f.id, f])).values()];
+    if (!registryFormulas.some((f) => f.id === row.producedFormulaId)) {
+      return Response.json({
+        error: 'ไม่พบสูตรของรายการนี้ในทะเบียน (อาจถูกลบไปแล้ว) — ให้ RD ตรวจที่ทะเบียนสูตรก่อน แล้วค่อยบันทึกคอนเฟิร์ม',
+      }, { status: 409 });
+    }
+    confirmPlan = formulaConfirmPlan({
+      row, items: before.items || [], formulas: registryFormulas, customerId: before.customerId || null,
+    });
+    if (confirmPlan.kind === 'blocked') return Response.json({ error: confirmPlan.error }, { status: 409 });
+  }
+
   const nowIso = new Date().toISOString();
   // ⚠️ วันของก้าวต้องเป็น **วันไทย** ไม่ใช่วัน UTC — ระหว่างเที่ยงคืนถึง 07:00 น.
   // ของไทย UTC ยังเป็นเมื่อวาน ⇒ ก้าวที่กดตอนเช้ามืดจะถูกบันทึกล่วงหน้าไปหนึ่งวัน
   // และเส้นวัด lead time จะติดลบทั้งแถว
   const today = businessDate();
 
+  // ⚠️ อยู่นอก try — catch ต้องรู้ว่าคำขอนี้สร้างสูตรไปแล้วหรือยัง (เก็บกวาดสูตรที่ไม่มีแถวถือ · รีวิว ม-157)
+  let createdFormula = null;
   try {
     const patch = { ...hopPatch(hop, body, user, today, { lineKind: row.lineKind }), updatedAt: nowIso };
 
     let deliveryWarning = null;
-    let archivedFormula = null;
-    let createdFormula = null;
     let deliveredFormula = null;
     let expectedFormulaAction = null;
     let guardFormulaAction = false;
     if (formulaDelivery) {
-      /* ⭐ **รอบแก้ = สูตรใหม่ที่ชี้กลับสูตรเดิม · เก็บสูตรเดิมเป็นเลิกใช้** (ม-147 · เหตุผลที่ `formulaRework.js`)
-         ⚠️ **หมวด × กลิ่นคู่นี้อาจมีสูตรอื่นอยู่แล้ว** (ไม่ใช่ต้นทาง) ⇒ ผูกกับตัวนั้น ไม่ใช่ตีกลับให้ผู้ใช้ไปแก้เอง
-         (ล้มแล้วแถวจะค้างตลอดกาล — บทเรียนเดียวกับ "จัดระเบียบ" ของ 0171) · แต่ **ต้องบอก** ว่าฟอร์มไม่ได้ใช้
-         🐞 เดิมผูกเงียบ ๆ ทุกกรณี รวมรอบแก้ ⇒ สูตรรอบแก้ไม่เคยเกิด และของที่ RD กรอกหายไม่มีใครรู้ */
+      /* ⭐ **ทุกการส่ง = สูตรใหม่ "กำลังพัฒนา"** (ม-157 · เหตุผลที่ `formulaRework.js`) — รอบแก้ชี้กลับต้นทาง · ตัวที่ใช้งานอยู่
+         ของคู่นี้ยังใช้งานจนลูกค้าคอนเฟิร์ม · ทางผูกเหลือกรณีเดียว: สูตรของคู่นี้เป็นของลูกค้ารายอื่น (แชร์มา) และ **ต้องบอก**
+         ว่าฟอร์มไม่ได้ใช้ (🐞 เดิมผูกเงียบ ๆ ⇒ ของที่ RD กรอกหายไม่มีใครรู้) */
       /* ⚠️ **อ่านบันทึกการกระทำของแถวสด ๆ ก่อนแตะทะเบียน** (รีวิว ม-147 รอบหก) — สองอย่างในคำสั่งเดียว:
          · mig 0358 ยังไม่รัน = ตีกลับตรงนี้ **ก่อน**สร้าง/เก็บสูตร (ไม่งั้นทาง create สร้างสูตรแล้วล้มตอนเขียนแถว = สูตรกำพร้าทุกครั้งที่กด)
          · ค่าที่แผนใช้ต้องเป็นของตอนนี้ ไม่ใช่ของตอนโหลดใบ (อีกแท็บประกาศเจตนาแทรกได้) */
@@ -221,7 +252,9 @@ export async function PATCH(request, { params }) {
           scentId: row.scentId,
           customerId: before.customerId || scent?.customerId || null,
           dealId: before.dealId || null,
-        }, user, { accepted: true });
+          /* ⭐ **กำลังพัฒนา จนลูกค้าคอนเฟิร์ม** (ม-157) — ไม่จองตัวตน หมวด × กลิ่น (mig 0411) ⇒ direction อื่นของคู่เดียวกัน
+             ยืนข้างกันได้ · ตัวที่ใช้งานอยู่ (ถ้ามี) ยังใช้งานจนลูกค้าเลือก · พลิกเป็นใช้งานที่ก้าวผลลูกค้า (`formulaConfirmPlan`) */
+        }, user, { accepted: true, developing: true });
       };
       // ต้นทางยังเป็นร่าง ฯลฯ — ตีกลับ **ก่อนเขียนอะไร** พร้อมทางออก (ไม่ใช่ 500 จาก CHECK ทุกครั้งที่กดซ้ำ)
       if (plan.kind === 'blocked') return Response.json({ error: plan.error }, { status: 409 });
@@ -246,64 +279,9 @@ export async function PATCH(request, { params }) {
             request,
           });
         }
-      } else if (plan.kind === 'revise') {
-        /* ⚠️ **เก็บก่อน สร้างทีหลัง** — ดัชนีตัวตนไม่ให้มีสูตรใช้งานสองตัวของคู่เดียว · ไม่มี transaction ⇒ สร้างล้ม
-           (รหัสซ้ำ · ช่องไม่ผ่าน) ต้องคืนสถานะสูตรเดิม ไม่งั้นคู่นี้ไม่มีสูตรใช้งานเลยทั้งที่ยังไม่ได้ส่งอะไร */
-        /* ⚠️ **ประกาศเจตนา `revise` ลงแถวก่อนแตะทะเบียน** (รีวิว ม-147 รอบสี่) — ทะเบียนถูกแก้ก่อนเขียนแถว ⇒ เขียนแถวล้มแล้ว
-           ส่งซ้ำ แผนรอบนั้นไม่ใช่ revise แล้ว (ผูกสูตรกำพร้าของตัวเอง) · ไม่มีบันทึก = ลบรายการถอยไม่ได้ ต้นทางค้างเลิกใช้ถาวร
-           · `producedFormulaId` ยังว่าง ⇒ ทางลบยังไม่ถอยอะไร · mig 0358 ยังไม่รัน = ล้มตรงนี้ ก่อนทะเบียนถูกแตะ */
-        const { data: intentRows, error: intentError } = await supabase.from('dept_request_items')
-          .update({ producedFormulaAction: 'revise', updatedAt: nowIso })
-          .eq('id', itemId).is('readyAt', null).select('id');
-        if (intentError) throw intentError;
-        if (!intentRows?.length) {
-          return Response.json({ error: 'รายการนี้เพิ่งถูกส่งไปแล้ว — โหลดหน้าใหม่' }, { status: 409 });
-        }
-        /* ล้างเจตนาเมื่อความพยายามนี้จบโดย **ทะเบียนเหมือนเดิม** (เก็บไม่ลง · สร้างล้มแล้วคืนสำเร็จ) — เจตนาค้าง = ส่งรอบหลัง
-           ถูกบันทึกเป็น revise ทั้งที่ไม่ได้เก็บอะไร แล้วลบรายการไปคืนต้นทางที่คนเลิกใช้เองทีหลัง (รีวิว ม-147 รอบห้า)
-           · เงื่อนไข "ยังไม่ถูกส่ง" กันลบเจตนาของอีกคำขอที่ส่งสำเร็จไปแล้ว · ล้างไม่ได้ไม่ throw (แค่ log) */
-        const clearIntent = async () => {
-          const { error: clearError } = await supabase.from('dept_request_items')
-            .update({ producedFormulaAction: null, updatedAt: nowIso })
-            .eq('id', itemId).is('readyAt', null).is('producedFormulaId', null).eq('producedFormulaAction', 'revise');
-          if (clearError) console.error('[requests] ล้างเจตนา revise ไม่สำเร็จ:', itemId, clearError.message);
-        };
-        try {
-          await updateFormula(supabase, existing.id, { status: 'archived' });
-        } catch (archiveError) {
-          // เน็ตสะดุดอาจซ่อนการเก็บที่ลงไปแล้ว — อ่านสถานะจริงก่อนตัดสินว่าทะเบียนเหมือนเดิม
-          const { data: nowParent } = await supabase.from('formulas').select('id, status').eq('id', existing.id).maybeSingle();
-          if (nowParent && nowParent.status !== 'archived') await clearIntent();
-          throw archiveError;
-        }
-        // ⚠️ audit ทันทีที่เก็บสำเร็จ ไม่ใช่หลังสร้าง — สร้างล้ม+คืนล้ม (หรือกดส่งพร้อมกันสองคน) ต้องยังมีร่องรอยว่าใครเก็บ
-        await recordAudit({
-          user, action: 'update', entityType: 'formula', entityId: existing.id,
-          before: existing, after: { ...existing, status: 'archived' },
-          summary: `เลิกใช้สูตร ${existing.code || existing.name} — ส่งรอบแก้ของ ${rowText(row)} (${before.docNo || id})`,
-          request,
-        });
-        try {
-          formula = await create();
-        } catch (createError) {
-          const restored = await updateFormula(supabase, existing.id, { status: existing.status }).then(() => true, (restoreError) => {
-            console.error('[requests] คืนสถานะสูตรต้นทางไม่สำเร็จ:', existing.id, restoreError?.message);
-            return false;
-          });
-          if (restored) {
-            await recordAudit({
-              user, action: 'update', entityType: 'formula', entityId: existing.id,
-              before: { ...existing, status: 'archived' }, after: existing,
-              summary: `คืนสถานะสูตร ${existing.code || existing.name} — ส่งรอบแก้ไม่สำเร็จ (${before.docNo || id})`,
-              request,
-            });
-            await clearIntent();
-          }
-          // คืนไม่สำเร็จ = ต้นทางค้างเลิกใช้จากความพยายามนี้ ⇒ **เก็บเจตนาไว้** ส่งรอบหลังจะบันทึก revise ถอยได้ (`formulaActionFor`)
-          throw createError;
-        }
-        archivedFormula = existing;
       } else {
+        /* ⚠️ ม-147 เคยเก็บต้นทางเป็นเลิกใช้ **ตอนส่ง** (แผน `revise`) — ม-157 ย้ายไปตอนลูกค้าคอนเฟิร์ม: เก็บตอนส่ง = direction
+           ที่สองของรอบเดียวกันไม่มีที่ยืน และลูกค้ายังไม่ได้เลือกอะไรเลย · แถวที่ส่งแบบเก่า (`revise`) ยังถอยได้ที่ DELETE */
         formula = await create();
       }
       patch.producedFormulaId = formula.id;
@@ -311,11 +289,8 @@ export async function PATCH(request, { params }) {
       if (plan.kind !== 'bind') createdFormula = formula;
       // จำว่าการส่งนี้ทำอะไรกับทะเบียน (mig 0358) — ลบรายการทีหลังถอยได้เฉพาะ `revise` · เดาจากทะเบียนทีหลังไม่ได้
       patch.producedFormulaAction = formulaActionFor({ plan, row: rowNow, items: before.items || [] });
-      /* ⚠️ แผน bind/create คิดจากบันทึกที่อ่านก่อนหน้า — อีกคำขอประกาศเจตนา revise แทรกได้ (สองแท็บ) ⇒ เขียนเฉพาะเมื่อบันทึกยังเป็น
-         ค่าที่แผนใช้ ไม่งั้นทับ revise ของอีกคนแล้วลบรายการถอยไม่ได้ (รีวิว ม-147 รอบห้า)
-         ⚠️ **แผน revise ไม่ใส่เงื่อนไขนี้** (รอบหก) — มาถึงตรงนี้ได้แปลว่าคำขอนี้เก็บ+สร้างเองสำเร็จ ⇒ 'revise' ถูกเสมอ · อีกแท็บที่
-         ล้มแล้ว `clearIntent` ล้างเจตนาทิ้งไประหว่างนั้นได้ ⇒ ใส่เงื่อนไข = 409 ทั้งที่ทะเบียนเปลี่ยนแล้ว + บันทึกหาย */
-      guardFormulaAction = plan.kind !== 'revise';
+      /* ⚠️ แผนคิดจากบันทึกที่อ่านก่อนหน้า ⇒ เขียนเฉพาะเมื่อบันทึกยังเป็นค่าที่แผนใช้ (สองแท็บ · รีวิว ม-147 รอบห้า) */
+      guardFormulaAction = true;
       expectedFormulaAction = rowNow.producedFormulaAction;
       /* ⚠️ **ไม่ต่อ "→ รหัสสูตร" ท้ายป้ายแล้ว** (2026-09-15 · ผู้ใช้: ตารางดูยาก) — ป้ายคือ "สิ่งที่ขอ" · รหัสที่ต่อไว้คือรหัสตอนส่ง
          ทะเบียนเปลี่ยนแล้วแถวโชว์สองรหัส และรอบแก้ยกป้ายไปทั้งดุ้นจนลูกศรซ้อน · สูตรที่ได้อ่านสดจากทะเบียน (`RegistryCell`) */
@@ -341,26 +316,49 @@ export async function PATCH(request, { params }) {
       /* อีกหน้าจอบันทึกรายการด้วยสูตรที่คำขอนี้เพิ่งสร้าง (ส่งซ้ำผูกสูตรกำพร้าของตัวเอง) = การส่งสำเร็จแล้วจริง ⇒ ไม่เรียกว่า
          "สูตรค้าง" (คนจะไปเลิกใช้สูตรที่รายการถืออยู่) · ร่องรอยการเก็บสูตรเดิมมีแค่คำขอนี้ที่รู้ ⇒ ลงเธรดให้ (รีวิว ม-147 รอบเจ็ด) */
       if (still?.readyAt && createdFormula && still.producedFormulaId === createdFormula.id) {
-        if (archivedFormula) {
-          await appendUpdate(supabase, {
-            entityType: 'dept_request', entityId: id, kind: 'update',
-            body: `ส่งงาน — ${rowText(row)} · สูตรเดิม ${archivedFormula.code || archivedFormula.name} เปลี่ยนเป็นเลิกใช้`,
-            user,
-          }).catch(() => {});
-        }
         return Response.json({ error: 'รายการนี้ถูกบันทึกจากอีกหน้าจอด้วยสูตรเดียวกันแล้ว — โหลดหน้าใหม่' }, { status: 409 });
       }
       const reason = stillError ? 'บันทึกรายการไม่สำเร็จ'
         : !still ? 'รายการนี้ถูกลบไปแล้ว'
           : still.readyAt ? 'รายการนี้เพิ่งถูกบันทึกไปแล้ว'
             : 'มีการส่งรายการนี้จากอีกหน้าจอพร้อมกัน';
+      /* ⭐ สูตรที่คำขอนี้เพิ่งสร้าง (กำลังพัฒนา · ยังไม่มีใครอ้าง) ไม่มีแถวไหนถือ ⇒ ลบทิ้งให้ (ม-157) — ค้างไว้ = กดส่งซ้ำชน
+         "รหัสสูตรนี้ถูกใช้ไปแล้ว" · ลบไม่ได้ (มีคนอ้างระหว่างนั้น/เน็ตสะดุด) จึงบอกให้ไปดูที่ทะเบียน */
+      let orphanKept = false;
+      if (createdFormula && still?.producedFormulaId !== createdFormula.id) {
+        const { error: undoError } = await supabase.from('formulas').delete()
+          .eq('id', createdFormula.id).eq('status', 'developing');
+        orphanKept = !!undoError;
+        if (undoError) console.error('[requests] ลบสูตรที่ไม่มีแถวถือไม่สำเร็จ:', createdFormula.id, undoError.message);
+      }
       return Response.json({
         error: `${reason} — โหลดหน้าใหม่`
-          + (archivedFormula || createdFormula
-            ? ` (สูตร${createdFormula ? ` ${createdFormula.code || createdFormula.name} ที่เพิ่งสร้าง` : ''}`
-              + `${archivedFormula ? ` · ${archivedFormula.code || archivedFormula.name} ที่เพิ่งเลิกใช้` : ''} ยังอยู่ในทะเบียน — ตรวจที่หน้ารายการทะเบียนสูตร)`
+          + (orphanKept
+            ? ` (สูตร ${createdFormula.code || createdFormula.name} ที่เพิ่งสร้างยังอยู่ในทะเบียน — ตรวจที่หน้ารายการทะเบียนสูตร)`
             : ''),
       }, { status: 409 });
+    }
+
+    /* ⚠️ **สองจอคอนเฟิร์มคนละ direction ของคู่เดียวกันพร้อมกัน** (รีวิว ม-157) — ด่าน `outcome IS NULL` กันได้แค่แถวตัวเอง ·
+       แผนคิดจากสแนปช็อตก่อนเขียน ⇒ ทั้งคู่ผ่าน แล้วต่างคนต่างเลิกใช้ตัวที่อีกฝั่งเลือก · อ่านคู่สดหลังเขียนแถว เจออีกแถวคอนเฟิร์มแล้ว
+       (หรืออ่านไม่ได้) = ถอยผลของแถวนี้ ก่อนแตะทะเบียน · สองฝั่งถอยพร้อมกันได้ = ไม่มีอะไรเปลี่ยน กดใหม่ได้ */
+    if (hop === 'outcome' && confirmPlan?.kind === 'apply') {
+      const { data: rivals, error: rivalError } = await supabase.from('dept_request_items')
+        .select('id').eq('requestId', id).eq('lineKind', 'product_dev')
+        .eq('categoryCode', row.categoryCode).eq('scentId', row.scentId)
+        .eq('outcome', 'confirmed').neq('id', itemId);
+      if (rivalError || rivals?.length) {
+        const { error: undoError } = await supabase.from('dept_request_items').update({
+          outcome: null, outcomeAt: null, outcomeById: null, outcomeByName: null, outcomeNote: null,
+          confirmedQty: null, updatedAt: nowIso,
+        }).eq('id', itemId).eq('outcome', 'confirmed');
+        if (undoError) console.error('[requests] ถอยผลคอนเฟิร์มที่ชนกันไม่สำเร็จ:', itemId, undoError.message);
+        return Response.json({
+          error: rivalError
+            ? 'ตรวจรายการอื่นของกลิ่นนี้ไม่สำเร็จ — ยังไม่ได้บันทึก ลองกดอีกครั้ง'
+            : 'อีก direction ของกลิ่นนี้เพิ่งถูกคอนเฟิร์มจากอีกหน้าจอ — ยังไม่ได้บันทึก โหลดหน้าใหม่',
+        }, { status: 409 });
+      }
     }
 
     // ── ลูกค้าขอให้แก้ = เกิดแถวใหม่เอง ─────────────────────────────────
@@ -412,6 +410,101 @@ export async function PATCH(request, { params }) {
         updatedAt: nowIso,
       }).eq('id', row.producedFormulaId).eq('status', 'developing');
       if (formulaError) console.error('[requests] เปลี่ยนสถานะสูตรเป็น active ไม่สำเร็จ:', formulaError.message);
+    }
+
+    /* ── ลูกค้าคอนเฟิร์มแถวพัฒนาสูตร (ม-157) — ตัวที่ได้ใช้งาน · ตัวเดิม + direction อื่นเลิกใช้ · แถวที่ค้างปิดเป็น "ไม่ถูกเลือก" ──
+       ⚠️ **แถวบันทึกผลไปแล้ว ⇒ ห้ามโยนต่อจากนี้** (เหตุผลเดียวกับบล็อกกลิ่นข้างบน) — ขั้นไหนล้มบอกผ่าน `_warning` พร้อมทางทำเอง
+       ⚠️ **เลิกใช้ก่อน แล้วพลิก** — ดัชนีตัวตนยอมตัวใช้งานได้ตัวเดียว · พลิกไม่สำเร็จ = คืนตัวเดิมเป็นใช้งาน ไม่งั้นคู่นี้ไม่มีสูตรใช้งานเลย */
+    let confirmText = '';
+    let confirmWarning = null;
+    if (hop === 'outcome' && confirmPlan?.kind === 'apply') {
+      const { chosen, activate, archive, close, replaced } = confirmPlan;
+      const where = `${rowText(row)} (${before.docNo || id})`;
+      const problems = [];
+      const archived = [];
+      for (const f of archive) {
+        try {
+          await updateFormula(supabase, f.id, { status: 'archived' });
+          archived.push(f);
+          await recordAudit({
+            user, action: 'update', entityType: 'formula', entityId: f.id,
+            before: f, after: { ...f, status: 'archived' },
+            summary: `เลิกใช้สูตร ${formulaName(f)} — ลูกค้าคอนเฟิร์ม ${formulaName(chosen)} ของ ${where}`, request,
+          });
+        } catch (e) {
+          problems.push(`เลิกใช้ ${formulaName(f)} ไม่สำเร็จ (${e.message}) — เลิกใช้เองที่ทะเบียนสูตร`);
+        }
+      }
+      let activated = !activate;
+      if (activate) {
+        const { data: flipped, error: flipError } = await supabase.from('formulas')
+          .update({ status: 'active', updatedAt: nowIso })
+          .eq('id', chosen.id).eq('status', 'developing').select('id');
+        activated = !flipError && !!flipped?.length;
+        if (activated) {
+          await recordAudit({
+            user, action: 'update', entityType: 'formula', entityId: chosen.id,
+            before: chosen, after: { ...chosen, status: 'active' },
+            summary: `สูตร ${formulaName(chosen)} ใช้งานได้ — ลูกค้าคอนเฟิร์ม ${where}`, request,
+          });
+        } else {
+          problems.push(`เปลี่ยน ${formulaName(chosen)} เป็นใช้งานไม่สำเร็จ (${flipError?.code === '23505'
+            ? 'หมวด × กลิ่นนี้ยังมีสูตรใช้งานอยู่' : flipError?.message || 'สถานะในทะเบียนไม่ใช่กำลังพัฒนาแล้ว'}) — เปิดใช้เองที่ทะเบียนสูตร`);
+          if (replaced && archived.some((f) => f.id === replaced.id)) {
+            const restored = await updateFormula(supabase, replaced.id, { status: replaced.status })
+              .then(() => true, () => false);
+            if (restored) {
+              archived.splice(archived.findIndex((f) => f.id === replaced.id), 1);
+              await recordAudit({
+                user, action: 'update', entityType: 'formula', entityId: replaced.id,
+                before: { ...replaced, status: 'archived' }, after: replaced,
+                summary: `คืนสูตร ${formulaName(replaced)} เป็นใช้งาน — เปิดใช้ ${formulaName(chosen)} ไม่สำเร็จ (${where})`, request,
+              });
+            } else {
+              problems.push(`คืน ${formulaName(replaced)} เป็นใช้งานไม่สำเร็จ — เปิดใช้เองที่ทะเบียนสูตร`);
+            }
+          }
+        }
+      }
+      /* ⚠️ ตัวเดิมที่เพิ่งเลิกใช้อาจเป็นสูตรที่ **ใบอื่น**คอนเฟิร์มไว้และยังรอใส่ราคา (สองใบพัฒนาคู่เดียวกัน · รีวิว ม-157) —
+         ไม่บล็อก (ของใหม่แทนของเก่าตามมติ) แต่ต้องถึงตาคน ไม่งั้นราคาไปลงสูตรที่เลิกใช้แล้วโดยไม่มีใครรู้ */
+      const notes = [];
+      if (replaced && archived.some((f) => f.id === replaced.id)) {
+        const { data: waiting } = await supabase.from('dept_request_items')
+          .select('requestId').eq('producedFormulaId', replaced.id).eq('outcome', 'confirmed')
+          .is('answeredRevisionId', null).neq('requestId', id).limit(20);
+        const otherIds = [...new Set((waiting || []).map((w) => w.requestId))];
+        if (otherIds.length) {
+          const { data: others } = await supabase.from('dept_requests').select('id, "docNo"').in('id', otherIds).limit(20);
+          notes.push(`${formulaName(replaced)} ที่เพิ่งเลิกใช้ยังรอใส่ราคาในคำร้อง `
+            + `${(others || []).map((o) => o.docNo || o.id).join(', ') || otherIds.join(', ')} — แจ้ง RD ว่าจะใส่ราคาตัวไหน`);
+        }
+      }
+      const reason = notChosenReason(chosen);
+      const closed = [];
+      for (const sibling of close) {
+        const { data: hit, error: closeError } = await supabase.from('dept_request_items')
+          .update({ answerStatus: 'declined', declineReason: reason, updatedAt: nowIso })
+          .eq('id', sibling.id).is('outcome', null).or('answerStatus.is.null,answerStatus.eq.pending')
+          .select('id');
+        if (closeError) problems.push(`ปิด ${rowText(sibling)} ไม่สำเร็จ (${closeError.message})`);
+        else if (hit?.length) closed.push(sibling);
+      }
+      if (closed.length) {
+        await recordAudit({
+          user, action: 'update', entityType: 'dept_request', entityId: id,
+          before: { items: closed.map((c) => ({ id: c.id, answerStatus: c.answerStatus })) },
+          after: { items: closed.map((c) => ({ id: c.id, answerStatus: 'declined', declineReason: reason })) },
+          summary: `ปิด ${closed.length} รายการเป็น "ไม่ถูกเลือก" — ${reason} (${where})`, request,
+        });
+      }
+      confirmText = (activate && activated ? ` · สูตร ${formulaName(chosen)} ใช้งานได้` : '')
+        + (archived.length ? ` · เลิกใช้ ${archived.map((f) => formulaName(f)).join(', ')}` : '')
+        + (closed.length ? ` · ปิดรายการอื่นของกลิ่นนี้ ${closed.length} รายการ (ไม่ถูกเลือก)` : '');
+      if (problems.length || notes.length) {
+        confirmWarning = [problems.length ? `บันทึกคอนเฟิร์มแล้ว แต่${problems.join(' · ')}` : null, ...notes]
+          .filter(Boolean).join(' · ');
+      }
     }
 
     // ── วันส่งลูกค้าไหลกลับขึ้นทะเบียนกลิ่น (ม-66 · mig 0224) ─────────────
@@ -511,8 +604,8 @@ export async function PATCH(request, { params }) {
       entityId: id,
       kind: hopUpdateKind(hop, body.outcome),
       body: `${label} — ${rowText(row)}${formulaSuffix}${unreadyReason ? ` · ${unreadyReason}` : ''}`
-        // รอบแก้เก็บสูตรเดิม — ผลข้างเคียงที่ทะเบียนเห็น ต้องมีร่องรอยในใบด้วย
-        + (archivedFormula ? ` · สูตรเดิม ${archivedFormula.code || archivedFormula.name} เปลี่ยนเป็นเลิกใช้` : ''),
+        // คอนเฟิร์มพลิก/เลิกใช้สูตรและปิดแถวอื่น — ผลข้างเคียงที่ทะเบียนเห็น ต้องมีร่องรอยในใบด้วย (ม-157)
+        + confirmText,
       user,
     }).catch(() => {});
 
@@ -523,8 +616,28 @@ export async function PATCH(request, { params }) {
     });
 
     const saved = await findRequest(supabase, id);
-    return Response.json(deliveryWarning ? { ...saved, _warning: deliveryWarning } : saved);
+    const warning = [deliveryWarning, confirmWarning].filter(Boolean).join(' · ');
+    return Response.json(warning ? { ...saved, _warning: warning } : saved);
   } catch (e) {
+    /* ⭐ **สูตรที่คำขอนี้สร้างแต่ไม่มีแถวถือ = ลบทิ้ง** (รีวิว ม-157) — เขียนแถวโยน error (เน็ตสะดุด/หมดเวลา) แล้วสูตรกำลังพัฒนาค้าง
+       ⇒ กดซ้ำชน "รหัสสูตรนี้ถูกใช้ไปแล้ว" (ตัวตนไม่นับกำลังพัฒนาแล้ว จึงไม่ผูกตัวค้างให้เองเหมือนเดิม) · อ่านแถวไม่ได้ = ไม่ลบ
+       (ไม่รู้ว่าแถวถือมันอยู่ไหม) */
+    if (createdFormula) {
+      const { data: held, error: heldError } = await supabase.from('dept_request_items')
+        .select('"producedFormulaId"').eq('id', itemId).maybeSingle();
+      if (!heldError && held?.producedFormulaId !== createdFormula.id) {
+        const { error: orphanError } = await supabase.from('formulas').delete()
+          .eq('id', createdFormula.id).eq('status', 'developing');
+        if (orphanError) console.error('[requests] ลบสูตรที่ไม่มีแถวถือไม่สำเร็จ:', createdFormula.id, orphanError.message);
+      }
+    }
+    /* ม-157: สูตรที่ส่งเป็น "กำลังพัฒนา" ข้างตัวที่ใช้งานอยู่ได้ก็ต่อเมื่อรัน mig 0411 แล้ว — ดัชนีเดิมตีกลับด้วยข้อความ
+       "มีสูตรอยู่แล้ว" (`translateScentConflict`) ซึ่งชี้ผิดทาง ⇒ บอกตรง ๆ ว่าฐานยังไม่พร้อม */
+    if (formulaDelivery && String(e?.message || '').startsWith('หมวดสินค้านี้กับกลิ่นนี้มีสูตรอยู่แล้ว')) {
+      return Response.json({
+        error: 'ระบบยังไม่พร้อมส่งสูตรรอบนี้ (ฐานข้อมูลยังไม่อัปเดต mig 0411) — แจ้งผู้ดูแลระบบ',
+      }, { status: 503 });
+    }
     // ดัชนีคู่ซ้ำ (mig 0356): รับเรื่องแถวที่คู่ หมวด × กลิ่น ซ้ำกับแถวที่รับไปแล้ว — ข้อความไทย ไม่ใช่ error ดิบของ DB
     if (e?.code === '23505' && /product_pair_uk/.test(e.message || '')) {
       return Response.json({
@@ -686,9 +799,10 @@ export async function DELETE(request, { params }) {
           user, action: 'delete', entityType: 'formula', entityId: produced.id, before: produced, request,
           summary: `ลบสูตรรอบแก้ ${registryRemoved} — ลบรายการ ${rowText(row)} (${before.docNo || id})`,
         });
+        // ตัวที่จองตัวตนเท่านั้น (ใช้งาน/ร่าง) — direction ที่กำลังพัฒนาไม่กันการคืน (mig 0411 · ม-157)
         const { data: holder, error: holderError } = await supabase.from('formulas')
           .select('id, code, name').eq('categoryCode', parent.categoryCode).eq('scentId', parent.scentId)
-          .neq('status', 'archived').limit(1).maybeSingle();
+          .in('status', ['draft', 'active']).limit(1).maybeSingle();
         const restored = !holderError && !holder
           && await updateFormula(supabase, parent.id, { status: 'active' }).then(() => true, () => false);
         if (restored) {
