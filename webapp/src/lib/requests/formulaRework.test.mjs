@@ -17,90 +17,85 @@ test('สูตรต้นทางของรอบแก้มาจาก�
   assert.equal(reworkParentFormulaId({ ...reworkRow, derivedFromItemId: 'DRI-X' }, items), null);
 });
 
-test('⭐ รอบแก้ที่เจอสูตรต้นทางใช้งานอยู่ = เก็บสูตรเดิม แล้วสร้างสูตรใหม่ชี้กลับ (ไม่ผูกเข้าสูตรเดิมเงียบ ๆ)', () => {
-  for (const status of ['active', 'developing']) {
-    const plan = planFormulaDelivery({ row: reworkRow, items, existing: F('FML-A', { status }), clientDerivedFrom: 'FML-Z' });
-    assert.deepEqual(plan, { kind: 'revise', derivedFromFormulaId: 'FML-A', archiveId: 'FML-A' });
-  }
+test('⭐ ม-157: รอบแก้ที่ต้นทางใช้งานอยู่ = สร้างสูตรใหม่ (กำลังพัฒนา) ชี้กลับ · ต้นทาง **ไม่ถูกเก็บตอนส่ง** — เลิกใช้ตอนลูกค้าคอนเฟิร์ม', () => {
+  const plan = planFormulaDelivery({ row: reworkRow, items, existing: F('FML-A'), clientDerivedFrom: 'FML-Z' });
+  assert.equal(plan.kind, 'create');
+  assert.equal(plan.derivedFromFormulaId, 'FML-A');
+  assert.equal(plan.replaces.id, 'FML-A');
+  // ไม่มีแผน "เก็บตอนส่ง" อีกแล้ว — direction ที่สองต้องยืนได้ข้างตัวแรก
+  assert.notEqual(plan.kind, 'revise');
 });
 
-test('⭐ ต้นทางยังเป็นร่าง = ตีกลับก่อนเขียน (เก็บร่างไม่ได้ · ร่างไม่มีรหัสชน CHECK)', () => {
+test('⭐ ร่างจองตัวตนอยู่ = ตีกลับก่อนเขียน (คอนเฟิร์มทีหลังเลิกใช้ร่างไม่ได้ · ร่างไม่มีรหัสชน CHECK)', () => {
   for (const code of [null, 'X-1']) {
-    const plan = planFormulaDelivery({ row: reworkRow, items, existing: F('FML-A', { status: 'draft', code }) });
-    assert.equal(plan.kind, 'blocked');
-    assert.match(plan.error, /ยังเป็นร่าง.*รับเข้าทะเบียน/);
+    const parent = planFormulaDelivery({ row: reworkRow, items, existing: F('FML-A', { status: 'draft', code }) });
+    assert.equal(parent.kind, 'blocked');
+    assert.match(parent.error, /สูตรต้นทาง .*ยังเป็นร่าง.*รับเข้าทะเบียน/);
+    const other = planFormulaDelivery({ row: parentRow, items, existing: F('FML-Q', { status: 'draft', code }) });
+    assert.equal(other.kind, 'blocked');
+    assert.match(other.error, /หมวด × กลิ่นนี้มีสูตร .*ยังเป็นร่าง/);
   }
 });
 
-test('รอบแก้ที่สูตรต้นทางถูกเลิกใช้ไปแล้ว = สร้างใหม่ชี้กลับ · ไม่เชื่อค่าจากฟอร์ม', () => {
+test('รอบแก้ที่คู่นี้ไม่มีตัวใช้งานแล้ว = สร้างใหม่ชี้กลับ · ไม่เชื่อค่าจากฟอร์ม', () => {
   assert.deepEqual(
     planFormulaDelivery({ row: reworkRow, items, existing: null, clientDerivedFrom: 'FML-Z' }),
-    { kind: 'create', derivedFromFormulaId: 'FML-A' },
+    { kind: 'create', derivedFromFormulaId: 'FML-A', replaces: null },
   );
 });
 
-test('ส่งซ้ำหลังรอบก่อนสร้างสูตรได้แต่เขียนรายการไม่ได้ (สูตรกำพร้า) = ผูกเงียบ ไม่เก็บอะไรเพิ่ม', () => {
-  assert.deepEqual(
-    planFormulaDelivery({ row: reworkRow, items, existing: F('FML-B', { derivedFromFormulaId: 'FML-A', sourceRequest: null }) }),
-    { kind: 'bind', formulaId: 'FML-B', warn: false },
-  );
-  // ใบนี้ถือสูตรนั้นอยู่เอง = เงียบเหมือนกัน
-  assert.equal(planFormulaDelivery({
-    row: reworkRow, items, existing: F('FML-B', { derivedFromFormulaId: 'FML-A', sourceRequest: { id: 'REQ-1' } }),
-  }).warn, false);
+test('⭐ สูตรที่ใช้งานอยู่ไม่ใช่ต้นทาง (ใบอื่น/คืนด้วยมือ) = ยังสร้างใหม่ได้ · ตัวนั้นถูกแทนตอนคอนเฟิร์ม ไม่ผูกทิ้งฟอร์มอีกต่อไป', () => {
+  const rework = planFormulaDelivery({ row: reworkRow, items, existing: F('FML-Q') });
+  assert.equal(rework.kind, 'create');
+  assert.equal(rework.replaces.id, 'FML-Q');
+  const plain = planFormulaDelivery({ row: parentRow, items, existing: F('FML-Q'), clientDerivedFrom: 'FML-Z' });
+  assert.deepEqual(plain, { kind: 'create', derivedFromFormulaId: 'FML-Z', replaces: F('FML-Q') });
 });
 
-test('⭐ รอบแก้ของต้นทางเดียวกันแต่ใบอื่นทำไว้ = ผูกพร้อมคำเตือน ไม่เงียบ', () => {
+test('⭐ สูตรของคู่นี้เป็นของลูกค้าอื่น (แชร์มา · ม-150): แถวปกติผูก+แชร์ · รอบแก้/direction เพิ่ม ตีกลับ', () => {
+  const foreign = F('FML-Q', { customerId: 'CUS-B', customerName: 'บริษัท บี' });
   assert.deepEqual(
-    planFormulaDelivery({
-      row: reworkRow, items, existing: F('FML-B', { derivedFromFormulaId: 'FML-A', sourceRequest: { id: 'REQ-9' } }),
-    }),
-    { kind: 'bind', formulaId: 'FML-B', warn: true },
-  );
-});
-
-test('สูตรอื่นใช้งานอยู่ (ไม่ใช่ต้นทาง) = ผูกพร้อมคำเตือน ไม่เก็บสูตรของใครทิ้ง', () => {
-  assert.deepEqual(
-    planFormulaDelivery({ row: reworkRow, items, existing: F('FML-Q') }),
+    planFormulaDelivery({ row: parentRow, items, existing: foreign, customerId: 'CUS-A' }),
     { kind: 'bind', formulaId: 'FML-Q', warn: true },
   );
-  // แถวปกติที่คู่นี้มีสูตรแล้ว — เดิมเงียบ ตอนนี้เตือน
-  assert.deepEqual(
-    planFormulaDelivery({ row: parentRow, items, existing: F('FML-Q') }),
-    { kind: 'bind', formulaId: 'FML-Q', warn: true },
-  );
-  assert.match(formulaBindWarning({ code: 'F-001' }), /มีสูตร F-001 .*ไม่ได้ใช้/);
+  assert.match(formulaBindWarning(foreign), /ใช้สูตร FML-Q ของ บริษัท บี .*ไม่ได้ใช้/);
+  for (const row of [reworkRow, { ...parentRow, id: 'DRI-9', directionOfItemId: 'DRI-1' }]) {
+    const plan = planFormulaDelivery({ row, items, existing: foreign, customerId: 'CUS-A' });
+    assert.equal(plan.kind, 'blocked');
+    assert.match(plan.error, /เป็นของ บริษัท บี .*ทับสูตรของลูกค้าอื่นไม่ได้/);
+  }
+  // ลูกค้าเดียวกัน = สร้างใหม่ตามปกติ
+  assert.equal(planFormulaDelivery({ row: reworkRow, items, existing: F('FML-A', { customerId: 'CUS-A' }), customerId: 'CUS-A' }).kind, 'create');
 });
 
 test('แถวปกติไม่มีสูตร = สร้างใหม่ ใช้ "แก้มาจากสูตร" ที่ RD เลือกเอง', () => {
   assert.deepEqual(
     planFormulaDelivery({ row: parentRow, items, existing: null, clientDerivedFrom: 'FML-Z' }),
-    { kind: 'create', derivedFromFormulaId: 'FML-Z' },
+    { kind: 'create', derivedFromFormulaId: 'FML-Z', replaces: null },
   );
 });
 
-test('⭐ ประโยคก่อนกดมาจากแผนตัวเดียวกับ server — หลังคืนสูตรเดิมด้วยมือไม่สัญญาว่าจะได้สูตรใหม่', () => {
-  // ปกติ: ต้นทางใช้งานอยู่ = รอบแก้ + ล็อกต้นทาง
+test('⭐ ประโยคก่อนกดมาจากแผนตัวเดียวกับ server — บอกว่าสูตรเป็น "กำลังพัฒนา" และตัวเดิมเลิกใช้ตอนคอนเฟิร์ม', () => {
   const normal = formulaDeliveryPreview({ row: reworkRow, items, formulas: [F('FML-A')] });
-  assert.equal(normal.plan.kind, 'revise');
+  assert.equal(normal.plan.kind, 'create');
   assert.equal(normal.lockLineage, true);
-  assert.match(normal.note, /ได้สูตรใหม่ที่ชี้กลับ FML-A .*เลิกใช้/);
-  // คืนสูตรเดิม F0 ด้วยมือ (ต้นทางของรอบนี้ FML-A เลิกใช้) — server จะผูก F0 ⇒ จอต้องเตือน ไม่ล็อก
-  const reverted = formulaDeliveryPreview({
-    row: reworkRow, items, formulas: [F('FML-A', { status: 'archived' }), F('FML-0')],
+  assert.match(normal.note, /ได้สูตรใหม่ที่ชี้กลับ FML-A .*"กำลังพัฒนา" จนลูกค้าคอนเฟิร์ม .*FML-A ยังใช้งานอยู่ระหว่างรอ .*เลิกใช้/);
+  // direction ที่สองของรอบเดียวกัน: ตัวแรก (กำลังพัฒนา) ไม่จองตัวตน ⇒ ตัวที่ถูกแทนยังเป็นต้นทาง
+  const second = formulaDeliveryPreview({
+    row: { ...reworkRow, id: 'DRI-3', directionOfItemId: 'DRI-2' }, items,
+    formulas: [F('FML-A'), F('FML-B', { status: 'developing', derivedFromFormulaId: 'FML-A' })],
   });
-  assert.equal(reverted.plan.kind, 'bind');
-  assert.equal(reverted.lockLineage, false);
-  assert.match(reverted.note, /มีสูตร FML-0 .*ไม่ได้ใช้/);
-  // แถวปกติไม่มีสูตร = ไม่มีประโยคพิเศษ
-  assert.equal(formulaDeliveryPreview({ row: { ...parentRow, producedFormulaId: null }, items: [], formulas: [] }).note, null);
+  assert.equal(second.plan.kind, 'create');
+  assert.equal(second.plan.replaces.id, 'FML-A');
+  // คู่นี้ไม่มีตัวใช้งาน = ไม่มีประโยค "ตัวเดิม"
+  const fresh = formulaDeliveryPreview({ row: { ...parentRow, producedFormulaId: null }, items: [], formulas: [] });
+  assert.match(fresh.note, /"กำลังพัฒนา" จนลูกค้าคอนเฟิร์ม$/);
 });
 
-test('ประโยครอบแก้บอกรหัสสินค้า FG ที่ผูกสูตรต้นทาง (รูปจริง usedByProducts = [{ id, fgCode }] · หลาย FG ได้ — ม-150)', () => {
+test('ประโยคบอกรหัสสินค้า FG ที่ผูกตัวที่จะถูกแทน (รูปจริง usedByProducts = [{ id, fgCode }] · หลาย FG ได้ — ม-150)', () => {
   const held = formulaDeliveryPreview({
     row: reworkRow, items, formulas: [F('FML-A', { usedByProducts: [{ id: 'PRD-1', fgCode: 'FG-0123' }] })],
   });
-  assert.equal(held.plan.kind, 'revise');
   assert.match(held.note, /สินค้า FG-0123 ผูกสูตรนี้อยู่ — ขอราคา FB ของสินค้านั้น/);
   const many = formulaDeliveryPreview({
     row: reworkRow, items,

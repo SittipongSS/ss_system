@@ -112,6 +112,10 @@ export default function FormulaDevDetail({
         canEditRegistry={registrar}
         onEditRegistry={(registry) => setEditRegistry(registry)}
         onDeleteRow={(row) => setDeleteRow(row)}
+        /* ม-157 — ส่ง direction เพิ่ม: ฝ่ายที่ตอบเท่านั้น (เปลือกส่ง null ให้คนอื่น) · แถวของ board ชี้กลับ item ดิบด้วย id */
+        onAddDirection={rowStep?.onAddDirection && !rowStep.requestPending
+          ? (boardRow) => { const item = itemsById.get(boardRow.id); if (item) rowStep.onAddDirection(item); }
+          : null}
         renderStep={renderStep}
         renderDetail={(boardRow) => {
           const item = itemsById.get(boardRow.id);
