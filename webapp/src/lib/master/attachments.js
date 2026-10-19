@@ -313,7 +313,14 @@ export async function driveFileHeld(supabase, fileId, { excludeId, excludeIds } 
  * ⚠️ **ตรวจไม่ได้ = ถือว่ามีคนอ้าง** (`referenced: true` พร้อม `error`) — supabase ไม่ throw อ่าน `{ error }` ทุกคำถาม ·
  *    id ผิดรูป = `referenced: true` โดยไม่ยิงคำถามเลย
  * @param excludeId / excludeIds แถว attachments ของผู้ถามเอง — ส่งต่อให้ `driveFileHeld` (ดูที่นั่น) · ไม่มีผลกับสองแหล่ง jsonb
- * ⚠️ `sales_orders.confirmAttachments` กับรูปของนัดช่างยังไม่อยู่ในนี้ (ของจริงวันนี้ไม่มีใบไหนเก็บเป็น id ไฟล์ Drive) — ที่กันไว้
+ * ⚠️ **ไฟล์ของนัดช่าง (`service_visits.attachments[].url` + `customerSignatureUrl`) ตั้งใจไม่ถามที่นี่** ทั้งที่
+ *    `collectReferencedIds` อ่านแล้ว (ข้อยกเว้นเดียวของกฎข้างบน): ไฟล์ของนัดถูกกันด้วยใบรับการอัปโหลดที่ถูกจองเป็น
+ *    `'service_visits:<id>'` ตอนบันทึกนัด — เส้นถอยการอัปไม่ทิ้งไฟล์ที่ใบรับมีปลายทางรับไปแล้ว · ส่วนฟังก์ชันนี้อยู่บนทางร้อน
+ *    ของการแนบไฟล์ทุกครั้ง (POST /api/attachments) ⇒ เพิ่มอีกสองคำถามแบบ "ตรวจไม่ได้ = ถือว่ามีคนอ้าง" ให้ทุกการแนบ
+ *    ไม่คุ้มกับสิ่งที่ใบรับกันให้อยู่แล้ว (ตัวกวาดต้องอ่านเพราะรายงานไฟล์กำพร้าไม่ดูใบรับ)
+ *    ⚠️ การจองใบรับเป็น best-effort (พลาด = log `🔴`) — ครั้งที่จองไม่ติด คนอัปยังถอย/แนบไฟล์ของ **ตัวเอง** ที่อื่นได้ภายใน
+ *    24 ชั่วโมง (ไม่ใช่ไฟล์ของคนอื่น) · จดไว้เป็นความเสี่ยงที่เหลือใน docs/upload-receipts.md
+ * ⚠️ `sales_orders.confirmAttachments` ยังไม่อยู่ในนี้ (ของจริงวันนี้ไม่มีใบไหนเก็บเป็น id ไฟล์ Drive) — ที่กันไว้
  *    ก่อนคือใบรับการอัปโหลด: ถอยได้เฉพาะไฟล์ที่ตัวเองอัปใน 24 ชั่วโมงและยังไม่มีปลายทางรับไป
  * @returns {Promise<{ referenced: boolean, where: string|null, error: object|null }>}
  */

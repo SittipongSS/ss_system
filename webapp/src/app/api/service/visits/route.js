@@ -83,6 +83,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     const row = {
       id: genId('SVV'),
       ...value,
+      /* 🔒 นัดเกิดใหม่ไม่มีรูปหน้างาน/ลายเซ็น — ค่าที่ผู้เรียกส่งมาถูกทิ้งเสมอ (ไม่มีจอไหนส่ง) · สองช่องนี้เขียนได้จาก
+         PATCH ของนัดกับ `visits/[id]/photos` ซึ่งมีด่านใบรับการอัปโหลด (docs/upload-receipts.md) ⇒ เส้นสร้างต้องไม่เป็น
+         ทางอ้อมที่เก็บลิงก์ไฟล์ของคนอื่นโดยไม่ผ่านด่าน */
+      attachments: [],
+      customerSignatureUrl: null,
       ...(planSlotDate ? { planSlotDate } : {}),
       /* ⭐ ด่าน ①② ตรวจจริงตั้งแต่ PR-C ⇒ ต้องป้อนบริบท ไม่งั้นทุกใบเกิดเป็นร่าง */
       status: initialVisitStatus(value, gateContextForSite(gateCtx, value.siteId, { site })),

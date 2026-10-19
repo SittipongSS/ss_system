@@ -20,8 +20,14 @@ import {
 } from '@/lib/requests/closure';
 import { requestActorSide } from '@/lib/requests/replyTurn';
 import { recordAudit } from '@/lib/audit';
+import { FILE_REF_ERROR_CODE, REF_SHAPE_TEXT, verifyDriveRefs } from '@/lib/upload/driveRefGate';
 
 export const dynamic = 'force-dynamic';
+
+// ไฟล์ของข้อความใหม่ต้องมาครบทั้ง id ไฟล์และลิงก์ — ตัวที่มีแต่ลิงก์ (ไม่มี `driveFileId`) ไม่มีใบรับให้ถาม จึงไม่รับ
+function incompleteFileRef(a) {
+  return typeof a.driveFileId !== 'string' || !a.driveFileId || typeof a.fileUrl !== 'string' || !a.fileUrl;
+}
 
 export async function GET(request) {
   try {
@@ -80,6 +86,31 @@ export async function POST(request) {
     // ข้อความว่างได้ถ้ามีไฟล์ (โพสต์รูปล้วน) แต่ว่างทั้งคู่ไม่ได้
     if (!text && !attachments.length) {
       return Response.json({ error: 'ต้องพิมพ์ข้อความหรือแนบไฟล์' }, { status: 400 });
+    }
+
+    /* 🔴 ที่มาของไฟล์ต้องพิสูจน์ได้ก่อนเขียนแถว (รอบสองของมติเจ้าของ 08/10/2569 · ด่านอยู่ที่ lib/upload/driveRefGate.js)
+       🐞 เดิมตรวจแค่รูปของ payload ⇒ ส่ง `driveFileId` ของไฟล์คนอื่นมาโพสต์ในเธรดไหนก็ได้ที่ตัวเองโพสต์ได้ แล้วเปิดอ่าน
+          ไฟล์นั้นผ่าน /api/updates/[id]/file ได้ทันที
+       ⚠️ อยู่ **หลัง** ด่านสิทธิ์ (คนโพสต์ไม่ได้ต้องไม่ได้ใช้เส้นนี้ถามว่า id ไหนมีใบรับ) และ **ก่อน** `appendUpdate` —
+          ตัวใดตัวหนึ่งไม่ผ่าน = ไม่เขียนอะไรเลย
+       ⚠️ เธรดไม่ประทับใบรับ (ไม่มี `claimDriveRefs`) — ไม่มีเส้นไหนทิ้งไฟล์ของเธรด และ POST /api/attachments กับ
+          DELETE /api/upload ปฏิเสธไฟล์ที่แถวของเธรดถืออยู่แล้ว · ใบรับที่ปลายทางอื่นประทับไปแล้วจึงไม่ถูกตีกลับที่นี่
+          (`refuseClaimed: false`) — จอส่งซ้ำหลังคำตอบหายต้องยังผ่าน
+       ⚠️ ด่านอยู่ที่ route ไม่ใช่ใน `appendUpdate` — ผู้เรียกฝั่ง server ที่เหลือไม่ส่งไฟล์ ไม่ต้องถามใบรับ */
+    if (attachments.some(incompleteFileRef)) {
+      return Response.json({ error: REF_SHAPE_TEXT, code: FILE_REF_ERROR_CODE }, { status: 400 });
+    }
+    const refGate = await verifyDriveRefs(supabase, {
+      refs: attachments.map(({ driveFileId, fileUrl }) => ({ driveFileId, fileUrl })),
+      userId: user?.id,
+      storedIds: new Set(),
+      refuseClaimed: false,
+      route: 'POST /api/updates',
+      logContext: { entityType, entityId, rule: 'thread-file' },
+    });
+    if (refGate.error) {
+      const { status, error: refError, code } = refGate.error;
+      return Response.json({ error: refError, ...(code ? { code } : {}) }, { status });
     }
 
     // ไม่ส่ง kind มา = ชนิดตั้งต้นของ entity · ส่งมาแต่ไม่ใช่ชนิดที่คนเลือกได้ = ตีกลับ

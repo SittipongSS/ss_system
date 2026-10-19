@@ -304,16 +304,20 @@ const driveIdFromUrl = (url) => {
 // 🔴 เพิ่มที่เก็บไฟล์ใหม่ที่นี่เมื่อไร ต้องเพิ่มใน `driveFileReferenced` (src/lib/master/attachments.js) ด้วย —
 //    ตัวนั้นถามรายไฟล์ก่อนเส้นถอยการอัป (DELETE /api/upload) ทิ้งไฟล์ · สองลิสต์ไม่ตรงกัน = ทิ้งไฟล์ที่ที่เก็บใหม่ยังอ้างอยู่ได้
 //    (เทสต์ src/lib/upload/uploadReceiptRoutes.test.mjs ล้มเมื่อฟังก์ชันนี้เริ่มอ่านตารางใหม่)
-async function collectReferencedIds(supabase) {
+// ⚠️ ข้อยกเว้นเดียว = `service_visits` (รูปหน้างาน + ลายเซ็นลูกค้า) — อ่านที่นี่แต่ **ตั้งใจไม่เพิ่ม** ใน `driveFileReferenced`:
+//    ไฟล์ของนัดถูกกันจากเส้นถอยการอัปด้วยใบรับที่ถูกจองเป็น 'service_visits:<id>' อยู่แล้ว (เหตุผลเต็มอยู่ที่คอมเมนต์ของตัวนั้น)
+// export ไว้ให้เทสต์เรียกด้วยฐานปลอม (driveMaintenanceVisits.test.mjs) — ผู้เรียกจริงมีตัวเดียวคือ auditOrphanDriveItems
+export async function collectReferencedIds(supabase) {
   const refs = new Set();
   const add = (id) => { if (id) refs.add(String(id)); };
 
-  const [attachments, updates, quotations, customers, products] = await Promise.all([
+  const [attachments, updates, quotations, customers, products, visits] = await Promise.all([
     fetchAll(() => supabase.from('attachments').select('id, driveFileId, fileUrl, metadata').order('id')),
     fetchAll(() => supabase.from('entity_updates').select('id, attachments').order('id')),
     fetchAll(() => supabase.from('quotations').select('id, "wonAttachments"').order('id')),
     fetchAll(() => supabase.from('customers').select('id, "driveFolderId"').order('id')),
     fetchAll(() => supabase.from('products').select('id, "driveFolderId"').order('id')),
+    fetchAll(() => supabase.from('service_visits').select('id, attachments, "customerSignatureUrl"').order('id')),
   ]);
 
   for (const row of attachments) {
@@ -332,6 +336,12 @@ async function collectReferencedIds(supabase) {
   }
   for (const row of customers) add(row.driveFolderId);
   for (const row of products) add(row.driveFolderId);
+  // นัดช่างเก็บไฟล์เป็น **URL** ไม่มี driveFileId: รูปหน้างานอยู่ใน attachments[].url · ลายเซ็นลูกค้าอยู่ช่องของตัวเอง
+  // (แถวรูปแปลก — null / ไม่ใช่ array / สมาชิกไม่ใช่ object — ข้ามไป ไม่ล้มทั้งรายงาน)
+  for (const row of visits) {
+    for (const att of Array.isArray(row?.attachments) ? row.attachments : []) add(driveIdFromUrl(att?.url));
+    add(driveIdFromUrl(row?.customerSignatureUrl));
+  }
   return refs;
 }
 
