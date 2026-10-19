@@ -178,10 +178,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       /* ⭐ เปิดใช้สูตรที่เลิกใช้ (เช่นคืนสูตรเดิมหลังลูกค้าไม่เอารอบแก้ · ม-147) — หมวด × กลิ่นมีสูตรใช้งานได้ตัวเดียว
          (`formulas_identity_uk`) ⇒ บอกชื่อตัวที่ต้องเลิกใช้ก่อน · 🐞 เดิมชนดัชนีแล้วได้ "เปิดสูตรเดิมแทนการสร้างซ้ำ"
          ซึ่งพูดถึงการสร้าง ไม่ใช่การเปิดใช้ */
-      if (next === 'active' && formula.status === 'archived' && formula.categoryCode && formula.scentId) {
+      /* ⭐ ม-157 (mig 0411) — สูตร "กำลังพัฒนา" ไม่จองตัวตนแล้ว ⇒ หลายตัวอยู่พร้อมกันได้ · ด่านนี้จึงนับเฉพาะตัวที่จอง
+         (ใช้งาน/ร่าง) และครอบการพลิก กำลังพัฒนา → ใช้งาน ด้วย (เดิมไม่มีทางชน เพราะคู่หนึ่งมีกำลังพัฒนาได้ตัวเดียว) */
+      if (next === 'active' && ['archived', 'developing'].includes(formula.status) && formula.categoryCode && formula.scentId) {
         const { data: holder, error: holderError } = await supabase.from('formulas')
           .select('id, code, name, status').eq('categoryCode', formula.categoryCode).eq('scentId', formula.scentId)
-          .neq('status', 'archived').neq('id', id).limit(1).maybeSingle();
+          .in('status', ['draft', 'active']).neq('id', id).limit(1).maybeSingle();
         if (holderError) return fail(holderError.message, 500);
         if (holder) {
           // ร่างเลิกใช้ไม่ได้ ("ลบทิ้งแทน") — ชี้ทางที่ทำได้จริง ไม่ใช่ทางที่ด่านถัดไปจะตีกลับ

@@ -80,7 +80,8 @@ export function planNpdWorkRows({ targets = [], items = [], rowsWithFiles = null
       continue;
     }
     // ถอน/ปฏิเสธ ตัดสินที่แถวต้นทาง — แถวรอบแก้ตามแถวต้นทางของมัน (ต้นทางมีลูก = เดินแล้ว ⇒ ปฏิเสธ)
-    if (row.derivedFromItemId) continue;
+    // · direction เพิ่ม (ม-157) ก็เช่นกัน — แถวแรกของชุดส่งแล้วเสมอ ⇒ ปฏิเสธที่แถวแรก
+    if (row.derivedFromItemId || row.directionOfItemId) continue;
     if (lineageMoved(row, items)) blocked.push({ row, reason: 'moved' });
     /* ⚠️ **แถวที่มีไฟล์แนบแล้วถอนเงียบ ๆ ไม่ได้** (รีวิว ม-144) — ถอน = กวาดไฟล์ทิ้งด้วย (ไม่มีถังขยะ)
        ทั้งที่ไฟล์เข้ามาได้ตั้งแต่ก่อนส่งสูตร (โมดัลส่งงานอัปไฟล์ลงแถวทันที · การ์ดรูป/สเปกของแถว) */
