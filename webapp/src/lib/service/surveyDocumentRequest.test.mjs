@@ -256,6 +256,47 @@ test('🐞 UAT · กำลังออก แต่เปลือกเลิ�
   assert.deepEqual(ready(true), ready(false));
 });
 
+/* ⭐ งวด S3 — ใบที่มีพื้นที่ประเมินจากแบบ: บล็อกเดียวกับใบลงหน้างานทุกกลุ่มคนดู (เอกสารของใบแบบนี้ไม่ถูกพักแล้ว)
+   · ใบที่ส่งผลไประหว่างที่เอกสารถูกพัก = "ยังไม่มีเอกสาร": หัวหน้าถูกชี้ไปกดที่ใบประเมิน · ฝ่ายขาย/ผู้บริหารได้ประโยคทวงหัวหน้า · Planner ไม่มีบล็อก */
+const DRAWING_ZONES = {
+  desk: [{
+    id: 'z1', zoneName: 'Reception ชั้น 1', zoneCode: 'ZN-1160-10254', zoneFloor: '01', status: 'ok', method: 'drawing',
+    parts: [{ id: 'p', widthM: 8, lengthM: 6, heightM: 3 }], spots: [],
+  }],
+  mixed: [
+    request().surveyZones[0],
+    {
+      id: 'z2', zoneName: 'ห้องรับรอง ชั้น 3', zoneCode: 'ZN-1160-10255', zoneFloor: '03', status: 'ok', method: 'drawing',
+      parts: [{ id: 'p', widthM: 6, lengthM: 5, heightM: 3 }], spots: [],
+    },
+  ],
+};
+
+test('⭐ งวด S3 · ใบจากแบบทั้งใบ / ใบผสม: บล็อกบนหน้าคำร้องเท่าใบลงหน้างาน — ผู้ขอ · ผู้บริหาร · หัวหน้า · Planner × ทุกสถานะ', () => {
+  const states = ['missing', 'issuing', 'issued', 'frozen', 'ready', 'recalled', 'stale'];
+  const docFor = (who, state) => (who === 'planner' ? { access: 'none', voids: null } : payload(who, state, who === 'head'
+    ? { history: state === 'recalled' ? [{ docNo: 'SU-26090001-0' }] : [], nextDocNo: null, send: null, issue: null, voids: null }
+    : {}));
+  for (const who of ['sales', 'exec', 'head', 'planner']) {
+    for (const state of states) {
+      const onsite = blockOf(docFor(who, state), VIEWER[who]);
+      for (const [kind, surveyZones] of Object.entries(DRAWING_ZONES)) {
+        assert.deepEqual(blockOf(docFor(who, state), VIEWER[who], { surveyZones }), onsite, `${who} · ${state} · ${kind}`);
+      }
+    }
+  }
+  // ตัวอย่างตรงตัวของสถานะที่เคยถูกพัก — กันทั้งตารางบนเขียวเพราะสองฝั่งเพี้ยนไปพร้อมกัน
+  const sales = blockOf(payload('sales', 'missing'), VIEWER.sales, { surveyZones: DRAWING_ZONES.desk });
+  assert.deepEqual(sales.text, { tone: 'info', text: NO_DOC_THREAD });
+  const head = blockOf(payload('head', 'missing', { history: [], nextDocNo: null, send: null, issue: null, voids: null }), VIEWER.head, { surveyZones: DRAWING_ZONES.mixed });
+  assert.deepEqual(head.text, { tone: 'info', text: 'ยังไม่มีเอกสารของใบนี้ — กด “ออกเอกสาร” ที่ใบประเมิน' });
+  assert.equal(head.sheetLink, true);
+  assert.equal(blockOf({ access: 'none', voids: null }, VIEWER.planner, { surveyZones: DRAWING_ZONES.desk }), null, 'Planner ยังไม่มีบล็อก');
+  const ready = blockOf(payload('sales', 'ready'), VIEWER.sales, { surveyZones: DRAWING_ZONES.desk });
+  assert.deepEqual(ready.buttons.map((b) => [b.id, b.href]), [['customer', '/api/service/surveys/r1/document?version=customer&download=1']]);
+  assert.equal(ready.foot, SALES_FOOT);
+});
+
 /* ══ ② เปลือก — กติกาโหลด (§5.3) ═══════════════════════════════════════════════════════ */
 
 /* ค่าคงที่ตัวเลขของเปลือก อ่านจากซอร์ส (`const NAME = 15_000;`) */

@@ -544,8 +544,9 @@ test('ซอร์ส: การ์ดและ route ส่ง needsVisit จ�
   assert.ok(at('surveySpotSendError(') > 0 && at('surveySpotSendError(') < at('surveyDrawingMethodEnabled()'));
   assert.ok(at('surveyDrawingMethodEnabled()') < at('surveySendSiteVisitError('));
   assert.ok(at('surveySendSiteVisitError(') < at('surveySendWrites('));
-  // สองจุดเท่านั้น: ด่าน 17a กับการผูก `expectUpdatedAt` (ทั้งคู่ปิดอยู่ = เส้นเดิม)
-  assert.equal(route.split('surveyDrawingMethodEnabled()').length - 1, 2);
+  // สามจุดเท่านั้น: ด่าน 17a · การผูก `expectUpdatedAt` (ทั้งคู่ปิดอยู่ = เส้นเดิม) · ค่าที่ส่งผ่านให้ตัวตรวจเอกสารกับขั้นออกเลข (งวด S3)
+  assert.equal(route.split('surveyDrawingMethodEnabled()').length - 1, 3);
+  assert.match(handler, /const drawingMethodEnabled = surveyDrawingMethodEnabled\(\);/);
   assert.equal(route.split('surveySendSiteVisitError(').length - 1, 1);
   for (const rel of ['src/app/api/service/surveys/[id]/send/route.js', 'src/lib/service/surveySendClose.js', 'src/lib/service/surveyControl.js']) {
     assert.doesNotMatch(code(rel), /process\.env\.SURVEY_DRAWING_METHOD/, rel);

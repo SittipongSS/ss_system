@@ -31,6 +31,7 @@ import {
   COMPANY_ADDRESS, COMPANY_LINE, COMPANY_OFFICE_TEL, COMPANY_TAX_ID, COMPANY_WEBSITE,
 } from '@/lib/documentBrand';
 import { estimateTextLines, textWidthMm } from '@/lib/sales/productSpecLayout';
+import { isDrawingZone } from './surveyMethod';
 import { surveyReportCompanyLines } from './surveyReportView';
 
 const PX_MM = 25.4 / 96;
@@ -208,6 +209,21 @@ export const SURVEY_REPORT_PX = Object.freeze({
     font: 12.5,
     /* บรรทัด "ต่อหน้า 2 · …" ใต้ตารางหน้า 1 (เว้นบน 6 + 18) · บรรทัดอธิบายจุดของฉบับภายใน (เว้นบน 8 + 20) */
     contLine: 24, spotNote: 28,
+    /* ── งวด S3 (ใบที่มีพื้นที่ประเมินจากแบบเท่านั้น — ใบลงหน้างานไม่แตะค่าไหนข้างล่าง) ──
+       ✅ วัดใน Chrome 15/10/2026 (`fm-ts-01@2026-10-15a` · เทสต์วัดจริงของ surveyReportDocument.test.mjs — แฝดสังเคราะห์ที่สลับ
+          พื้นที่เป็นจากแบบ: ผสม · จากแบบล้วน · ไม่ต้องยืนยัน · ชื่อยาวสามคน · จุด 8 จุด · หลายส่วน · สิบพื้นที่ — และ harness
+          `render-survey-report.mjs --synthetic mixed|drawing --assert` กับ `--stress --assert` (กรณีของงวด S3): ทุกจุดอ้างอิง
+          (ตารางบน · ผัง · รับรอง · ลงนาม · กล่องหมายเหตุ · หัวพื้นที่) ห่างแผนไม่เกิน 3px
+       กล่อง "การประเมิน": ค่าของแถวกว้าง 171 · ที่ว่างของกล่อง 125 (บรรทัดชื่อ 25 + 5 × 20 ⇒ หกบรรทัดลงกล่องของวันนี้ ·
+         บรรทัดที่เจ็ดดันกล่องลง 15 — วัดได้ 14.8) · ชื่อเดี่ยวที่ยาวเกินช่องเบราว์เซอร์ตัดเอง นับด้วยตัวประเมิน (`surveyBoxPrinted`)
+       กล่องหมายเหตุ: ช่องไฟเหนือกล่อง = ช่องไฟของ `.content` (ลูกค้า 16 · ภายใน 12 — กล่องไม่มี margin ของตัวเอง; สเปกเขียน
+         margin-top 12 ซึ่งจะซ้อนกับช่องไฟอีกชั้น) + padding 14 + 20/บรรทัด — วัดได้ 70 / 66 (สองบรรทัด) · บรรทัดย่อย
+         "ประเมินจากแบบ" ใต้ชื่อในตาราง 18 · บรรทัดอธิบายจุดของใบที่มีพื้นที่จากแบบ: เว้นบน 8 + 20/บรรทัด
+         (ใบลงหน้างานยังเป็น `spotNote` 28 ตายตัว) */
+    surveyValueWidth: 171, surveyRoom: 125,
+    noticeGap: Object.freeze({ customer: 16, internal: 12 }), noticePad: 14, noticeLine: 20,
+    subLine: 18,
+    spotNoteTop: 8, spotNoteLine: 20,
   }),
 
   zone: Object.freeze({
@@ -228,6 +244,11 @@ export const SURVEY_REPORT_PX = Object.freeze({
     notePad: 12, noteLine: 20, noteWidth: 680, noteFont: 12.5,
     /* หน้า (ต่อ): แต่ละส่วนซ้อนได้ไม่เกิน 3 แถวต่อหน้า (RC2:264-267) */
     contRowsPerSection: 3,
+    /* ── งวด S3 (พื้นที่ประเมินจากแบบ) — วัดใน Chrome 15/10/2026 (ดูหมายเหตุของ `summary`) ──
+       ป้ายใต้หัวพื้นที่ ("ประเมินจากแบบ · … · …" 12px × 1.5) 18 — สเปกตั้งต้น 20 · วัดได้หัว 49 = 31 + 18
+       รายการจุดโดยประมาณของฉบับภายใน: แถวละจุด 20/บรรทัด ที่ 12.5px ไม่มีช่องไฟระหว่างแถว
+       (`perRow` กับ `contRowsPerSection` ไม่ใช้กับรายการนี้) */
+    tagLine: 18, spotListLine: 20, spotListFont: 12.5,
   }),
 
   /* การรับรองผล: หัวข้อ 29 + ที่นั่ง 188 ชิดล่าง (RC4:204-217) — วัดใน Chrome ได้ 217 เท่าภาพกระดาน R-C-4 (830–1048)
@@ -236,7 +257,16 @@ export const SURVEY_REPORT_PX = Object.freeze({
         ช่องรูปสูงตายตัว ขนาดของไฟล์ลายเซ็นจึงเปลี่ยนความสูงไม่ได้ · วัดใน Chrome (harness 09/10): 217 เท่าเดิมทั้งมีและไม่มีลายเซ็น
         · บรรทัดที่ตก: ตำแหน่งสองบรรทัด (ของจริง "… อาวุโส (Senior)") หรือชื่อสองบรรทัด = ยังอยู่ใน 188 (170.5 / 171.25) ·
           ตกทั้งคู่ = 189.25 (เกิน 1.25px — วัดได้ 218.3 ในกรณี `sign-wrap` · หน้าของตัวเอง ชิดล่าง ไม่มีอะไรให้ชน) */
-  signoff: Object.freeze({ height: 217 }),
+  signoff: Object.freeze({
+    height: 217,
+    /* งวด S3: ที่นั่ง "ผู้ประเมินจากแบบ" (ใบจากแบบล้วน) พิมพ์ชื่อละบรรทัด (`.sig-name` สูง 18.75 + ช่องไฟของที่นั่ง 2) · ชื่อที่ยาวเกิน
+       ที่นั่ง (เนื้อในกว้าง ~201 ที่ 12.5px ตัวหนา) เบราว์เซอร์ตัดเอง +18.75 ต่อบรรทัด · ที่นั่งสูงขั้นต่ำ 188 มีที่ว่างเหลือ
+       35.5 เมื่อมีช่องรูป (รูปลายเซ็นหรือกรอบประ — คีย์ `img`) · 62.5 เมื่อพิมพ์บรรทัดคำ (ภาพนิ่งไม่มี `signatures`)
+       ✅ วัดใน Chrome 15/10/2026: มีรูป สองชื่อ 217 · สามชื่อ 223 · ห้าชื่อ 264.5 · ชื่อยาวสามคน (คนละสองบรรทัด) 279.25 ·
+          บรรทัดคำ สามชื่อ 217 · ชื่อยาวสามคน 252.25 — สเปกตั้งต้น "217 + (ชื่อ − 2) × 19" นับเกิน 13–19px และนับขาดเมื่อชื่อยาว */
+    nameLine: 18.75, nameGap: 2, nameWidth: 201, nameFont: 12.5,
+    spare: Object.freeze({ image: 35.5, words: 62.5 }),
+  }),
 
   appendix: Object.freeze({
     gap: 16,
@@ -259,6 +289,12 @@ export const SURVEY_REPORT_PX = Object.freeze({
           (ที่นั่งที่ลงนามด้วยคำเตี้ยกว่าที่นั่งว่าง 10px) พอมีรูปลายเซ็นเป็นเกิน ~18px · แถวชิดล่างจึงยืดขึ้นข้างบน ไม่เลยเส้นท้ายกระดาษ
           เว้นแต่หน้าสุดท้ายของภาคผนวกเต็มพอดี · harness มีกรณี `sign-wrap` วัดไว้ให้เห็นทุกรอบ (ยังไม่แก้ในงวดนี้) */
     signs: 161, signsBottom: 1048,
+    /* งวด S3: ที่นั่งแรกของ จ บนใบจากแบบล้วนพิมพ์ชื่อผู้ประเมินจากแบบต่อกันด้วย " · " (เนื้อในกว้าง ~205 ที่ 12.5px ตัวหนา) —
+       หลายคนตกหลายบรรทัด ⇒ แผนกันที่ให้บรรทัดที่เกินบรรทัดแรก บรรทัดละ 18.75 · ที่นั่งที่พิมพ์บรรทัดคำ (ไม่มีช่องรูป) เตี้ยกว่าที่นั่ง
+       ที่มีช่องรูปหรือที่นั่งว่าง 10 ⇒ เมื่อมีที่นั่งอื่นที่สูงกว่า สิบพิกเซลแรกของบรรทัดที่เกินไม่ทำให้แถวสูงขึ้น
+       ✅ วัดใน Chrome 15/10: ชื่อยาวสามคน (สี่บรรทัด) มีรูป 216.75 · บรรทัดคำ 206.75 · ห้าชื่อสั้น (สองบรรทัด) มีรูป 179.25
+       ใบลงหน้างาน/ใบผสมไม่ถามค่านี้ (ข้อจำกัด `sign-wrap` ของชื่อเดี่ยวยาวยังเป็นของเดิม) */
+    signsNameWidth: 205, signsNameLine: 18.75, signsWordsSlack: 10,
   }),
 });
 
@@ -273,8 +309,46 @@ const REFERENCE_COMPANY_LINES = surveyReportCompanyLines({
   address: COMPANY_ADDRESS, taxId: COMPANY_TAX_ID, tel: COMPANY_OFFICE_TEL, line: COMPANY_LINE, website: COMPANY_WEBSITE,
 });
 
+/**
+ * บรรทัดของกล่อง "การประเมิน" ที่แผนตัดเอง (งวด S3) — `{ method, names }`
+ *   ใบลงหน้างาน: `{ method: [], names: [] }` (ไม่มีแถว "วิธีประเมิน" · ชื่อผู้ประเมินเบราว์เซอร์ตัดเองแบบวันนี้)
+ *   ใบผสม: `method` = สัดส่วน · `names` = ผู้ประเมินจากแบบ (พิมพ์ใต้บรรทัดนำ "ประเมินจากแบบโดย")
+ *   จากแบบล้วน: `method` = "ประเมินจากแบบ" · `names` = ผู้ประเมินจากแบบ (แทนค่าของผู้ประเมิน)
+ */
+function surveyBoxLines(view, px) {
+  const s = px.summary;
+  const survey = view.survey || {};
+  if (survey.methodText == null) return { method: [], names: [] };
+  const method = dottedLines(survey.methodText, s.surveyValueWidth, s.partyFont);
+  const names = survey.drawingLead != null
+    ? dottedLines(survey.drawingNames, s.surveyValueWidth, s.partyFont)
+    : dottedLines(survey.assessorName, s.surveyValueWidth, s.partyFont);
+  return { method, names };
+}
+
+/* บรรทัดบนกระดาษของบรรทัดจากแผนในกล่องการประเมิน — ลงบรรทัดเดียว (วัดแบบเดียวกับ `dottedLines`) = 1 · ชื่อเดี่ยวที่ยาวเกินช่อง
+   (ไม่มีตัวคั่นให้ตัด) ตัวเรนเดอร์ปล่อยให้เบราว์เซอร์ตัดเอง ⇒ นับด้วยตัวประเมิน
+   🐞 วัดใน Chrome 15/10: ชื่อไทยยาว ~220px สามคน นับเป็นสามบรรทัด จริงหกบรรทัด ⇒ ตารางหน้า 1 ต่ำกว่าแผน 58px ฉบับภายในล้นขอบ */
+function surveyBoxPrinted(lines, s) {
+  return lines.reduce((sum, line) => sum
+    + (widthOf(line, s.partyFont) <= s.surveyValueWidth ? 1 : linesOf(line, s.surveyValueWidth, s.partyFont)), 0);
+}
+
+/* จำนวนบรรทัดของกล่อง "การประเมิน" — แถววิธี + วันที่ + เวลา + ผู้ประเมิน (ลงหน้างาน 1 · ผสม หัวหน้าบนนัด + บรรทัดนำ + ชื่อ ·
+   จากแบบล้วน ชื่อ) · ใบลงหน้างาน = สามแถวของวันนี้เสมอ (ไม่ถามความยาวชื่อ — แผนของวันนี้ไม่ถาม) */
+function surveyBoxLineCount(view, box, px) {
+  const s = px.summary;
+  const survey = view.survey || {};
+  if (survey.methodText == null) return 3;
+  const names = surveyBoxPrinted(box.names, s);
+  const assessor = survey.drawingLead != null ? surveyBoxPrinted([survey.assessorName], s) + 1 + names : names;
+  return surveyBoxPrinted(box.method, s) + 2 + assessor;
+}
+
 /* ตำแหน่งบนสุดของตาราง = ค่าที่วัดจาก fixture จริง ± บรรทัดที่ต่างจาก fixture นั้น
-   (ชื่อลูกค้า/ที่อยู่ยาวขึ้น · ที่อยู่บริษัทยาวขึ้น · แผงภายในมีผู้ช่วยหลายคนหรือชื่องานยาว) */
+   (ชื่อลูกค้า/ที่อยู่ยาวขึ้น · ที่อยู่บริษัทยาวขึ้น · แผงภายในมีผู้ช่วยหลายคนหรือชื่องานยาว)
+   งวด S3: กล่องคู่ (ลูกค้า | การประเมิน) โตตามกล่องที่สูงกว่า — ใบลงหน้างานกล่องการประเมินมีสามบรรทัด ⇒ เทอมใหม่ติดลบ โตเท่าวันนี้
+   · กล่องหมายเหตุ (ทั้งสองฉบับ) ดันตารางลงอีกก้อน */
 function summaryTableTop(view, px) {
   const s = px.summary;
   const internal = view.version === 'internal';
@@ -287,13 +361,25 @@ function summaryTableTop(view, px) {
   const partyLines = linesOf(party.customerName, s.partyNameWidth, s.partyNameFont)
     + [party.siteName, party.siteCode, party.address, party.contact]
       .reduce((sum, value) => sum + linesOf(value, s.partyValueWidth, s.partyFont), 0);
-  top += Math.max(0, partyLines - s.basePartyLines) * s.partyLine;
+  const box = surveyBoxLines(view, px);
+  const surveyGrowth = surveyBoxLineCount(view, box, px) * s.partyLine - s.surveyRoom;
+  top += Math.max(0, (partyLines - s.basePartyLines) * s.partyLine, surveyGrowth);
+
+  const notice = Array.isArray(view.notice?.lines) ? view.notice.lines : null;
+  if (notice) top += s.noticeGap[internal ? 'internal' : 'customer'] + s.noticePad + notice.length * s.noticeLine;
 
   if (internal) {
     const rows = view.panel?.rows || [];
     const stack = (lines, width) => (lines || []).reduce((sum, line) => sum + linesOf(line, width, s.panelFont), 0);
+    /* งวด S3 — ใบจากแบบล้วน: คอลัมน์ขวาพิมพ์ "ผู้ประเมินจากแบบ {ชื่อ}" ซึ่งยาวเกือบเต็มช่อง 190 — ตัวประเมินกลาง (เผื่อ 3%) นับเป็นสองบรรทัด
+       ทั้งที่ Chrome ลงบรรทัดเดียว ("ผู้ประเมินจากแบบ Other Desk Head": คิดได้ 195.8 · วัดได้ตารางสูงกว่าแผน 20.7) ⇒ ใช้ตัวนับของชื่อ
+       (`nameLinesOf` — สอบเทียบกับ Chrome แล้ว นับต่ำ 0) เฉพาะใบจากแบบล้วน · ใบลงหน้างาน/ใบผสมใช้ตัวประเมินเดิมทุกบรรทัด (แผนของวันนี้) */
+    const desk = view.survey?.methodText != null && view.survey?.drawingLead == null;
+    const right = (lines) => (desk
+      ? (lines || []).reduce((sum, line) => sum + nameLinesOf(line, s.panelRightWidth, s.panelFont), 0)
+      : stack(lines, s.panelRightWidth));
     const panelLines = rows.reduce((sum, row) => sum + Math.max(
-      stack(row.lines, s.panelLeftWidth), stack(row.rlines, s.panelRightWidth), 1,
+      stack(row.lines, s.panelLeftWidth), right(row.rlines), 1,
     ), 0);
     const strip = view.panel?.sentLine ? `${view.panel.sentLine.lead} · ${view.panel.sentLine.text}` : '';
     const stripLines = linesOf(strip, s.panelStripWidth, s.panelFont);
@@ -310,7 +396,17 @@ function summaryRowHeight(row, version, px) {
   const name = row.floorText ? `${row.name}${NBSP}${glue(row.floorText)}` : row.name;
   const nameLines = nameLinesOf(name, s.nameWidth[version], s.font);
   const dimLines = Math.max(1, (row.dims || []).length);
-  return Math.ceil(s.rowPad + Math.max(s.codeLine + nameLines * s.textLine, dimLines * s.textLine));
+  // แถวจากแบบ (งวด S3): บรรทัดย่อย "[ชั้น ·] ประเมินจากแบบ" ใต้ชื่อ (nowrap) — ชื่อวัดโดยไม่มีหางชั้น (`floorText` ว่าง)
+  const sub = row.methodLine ? s.subLine : 0;
+  return Math.ceil(s.rowPad + Math.max(s.codeLine + nameLines * s.textLine + sub, dimLines * s.textLine));
+}
+
+/* บรรทัดอธิบายจุดใต้ตารางของฉบับภายใน — ใบลงหน้างาน 28 ตายตัว (วันนี้) · ใบที่มีพื้นที่จากแบบ ข้อความยาวขึ้น นับบรรทัดจริง */
+function spotNoteHeight(view, px) {
+  const s = px.summary;
+  if (!(view.zones || []).some(isDrawingZone)) return s.spotNote;
+  const note = view.table?.spotNote || {};
+  return s.spotNoteTop + s.spotNoteLine * linesOf(`${note.lead ?? ''} ${note.text ?? ''}`, px.column, s.font);
 }
 
 function layoutSummary(view, px) {
@@ -320,8 +416,13 @@ function layoutSummary(view, px) {
   const rows = view.table?.rows || [];
   const heights = rows.map((row) => summaryRowHeight(row, version, px));
   const mix = surveyReportMixLines(view.table?.total?.sizeMix, s.mixWidth, s.font);
-  const tail = s.total + (mix.length - 1) * s.textLine + (internal ? s.spotNote : 0);
+  const tail = s.total + (mix.length - 1) * s.textLine + (internal ? spotNoteHeight(view, px) : 0);
   const firstTop = summaryTableTop(view, px);
+  // งวด S3 — บรรทัดของกล่องการประเมินกับกล่องหมายเหตุ พกไปกับหน้า 1 เท่านั้น (ตัวเรนเดอร์พิมพ์ตามนี้ ไม่ตัดบรรทัดเอง)
+  const firstExtra = {
+    survey: surveyBoxLines(view, px),
+    notice: Array.isArray(view.notice?.lines) ? [...view.notice.lines] : null,
+  };
   const contTop = px.contentTop + (internal ? px.band : 0) + px.heading;
 
   const pages = [];
@@ -344,6 +445,7 @@ function layoutSummary(view, px) {
       pages.push({
         kind: 'summary', table: false, rows: range(0, 0), total: false, spotNote: false,
         bottom: Math.ceil(firstTop - s.headAbove[version]), limit: px.contLimit, cont: { type: 'summary' },
+        ...firstExtra,
       });
       first = false;
       continue;
@@ -364,6 +466,7 @@ function layoutSummary(view, px) {
       bottom: Math.ceil(y + (last ? tail : s.contLine)),
       limit: px.limit,
       cont: last ? null : { type: 'summary' },
+      ...(first ? firstExtra : {}),
     });
     from = to;
     first = false;
@@ -386,9 +489,22 @@ function zoneHeadHeight(zone, cont, px) {
   const name = zone.name ?? zone.title;
   const tail = [zone.name == null ? '' : zone.floorText, cont ? '(ต่อ)' : ''].filter(Boolean).join(' ');
   const title = tail ? `${name}${NBSP}${glue(tail)}` : name;
-  if (widthOf(title, z.headFont) <= room) return z.head;
+  // งวด S3: ป้าย "ประเมินจากแบบ · …" บรรทัดที่สองในเส้นล่างของหัว (หน้าหลักและหน้า "(ต่อ)" — นับทั้งคู่ ฝั่งปลอดภัย)
+  const tag = zone.tag ? z.tagLine : 0;
+  if (widthOf(title, z.headFont) <= room) return z.head + tag;
   const lines = Math.max(2, linesOf(title, Math.max(120, room), z.headFont));
-  return z.head + (lines - 1) * z.headLine;
+  return z.head + (lines - 1) * z.headLine + tag;
+}
+
+/* รายการจุดโดยประมาณของพื้นที่จากแบบ (ฉบับภายใน · งวด S3) — แถวละจุด · ไม่มีจุดที่เลือก = แถวเดียวของประโยค `empty` */
+function spotListHeights(zone, px) {
+  const z = px.zone;
+  const spots = zone.spots || [];
+  if (!spots.length) return [Math.ceil(z.spotListLine)];
+  return spots.map((spot) => {
+    const line = [`${spot.no} · ${spot.label}`, spot.note].filter(Boolean).join(' — ');
+    return Math.ceil(linesOf(line, px.column, z.spotListFont) * z.spotListLine);
+  });
 }
 
 function spotRowHeights(spots, px) {
@@ -411,11 +527,17 @@ function layoutZone(zone, zoneIndex, view, px) {
   const lane = px.contLimit - (px.contentTop + (internal ? px.band : 0) + px.heading);
   const top = px.contLimit - lane;
 
-  const wideCount = (zone.wide || []).length;
-  const wideRows = Math.max(1, chunk(wideCount, z.perRow)); // ไม่มีรูปกว้าง = กล่อง "ไม่มีภาพกว้าง" หนึ่งแถว
+  /* 🔑 พื้นที่จากแบบ (งวด S3): ไม่มีส่วนภาพกว้างเลย (สูงศูนย์ ไม่มีกล่องเทา) · จุดเป็นรายการ แถวละจุด ไม่มีรูป
+     พื้นที่ลงหน้างานที่ไม่มีรูปกว้างยังได้กล่อง "ไม่มีภาพกว้าง" แบบวันนี้ */
+  const drawing = isDrawingZone(zone);
+  const list = internal && drawing && Boolean(zone.spotList);
+  const wideCount = drawing ? 0 : (zone.wide || []).length;
+  const wideRows = drawing ? 0 : Math.max(1, chunk(wideCount, z.perRow)); // ไม่มีรูปกว้าง = กล่อง "ไม่มีภาพกว้าง" หนึ่งแถว
   const wideRowH = z.photoBox + z.wideCaption;
   const spots = internal ? (zone.spots || []) : [];
-  const spotH = spotRowHeights(spots, px);
+  const spotH = list ? spotListHeights(zone, px) : spotRowHeights(spots, px);
+  const spotGap = list ? 0 : z.rowGap;
+  const spotsPerRow = list ? 1 : z.perRow;
   const noteH = zone.note
     ? z.notePad + linesOf(`หมายเหตุพื้นที่ — ${zone.note}`, z.noteWidth, z.noteFont) * z.noteLine
     : 0;
@@ -426,7 +548,7 @@ function layoutZone(zone, zoneIndex, view, px) {
   const planMin = Math.max(hasPlan ? z.planMin : z.planNone, partsH);
   const headH = zoneHeadHeight(zone, false, px);
 
-  const spotsBlock = (rows) => (rows ? z.gap + z.sectionHead + spotH.slice(0, rows).reduce((a, b) => a + b, 0) + (rows - 1) * z.rowGap : 0);
+  const spotsBlock = (rows) => (rows ? z.gap + z.sectionHead + spotH.slice(0, rows).reduce((a, b) => a + b, 0) + (rows - 1) * spotGap : 0);
   const wideBlock = (rows) => {
     if (!rows) return 0;
     return z.gap + z.sectionHead + (wideCount ? rows * wideRowH + (rows - 1) * z.rowGap : z.emptyBox);
@@ -434,7 +556,7 @@ function layoutZone(zone, zoneIndex, view, px) {
   const planRoom = (on) => lane - headH - wideBlock(on.wide) - (z.gap + z.sectionHead)
     - spotsBlock(on.spots) - (on.note ? z.gap + noteH : 0);
 
-  const on = { wide: 1, spots: spotH.length ? 1 : 0, note: noteH > 0 };
+  const on = { wide: wideRows ? 1 : 0, spots: spotH.length ? 1 : 0, note: noteH > 0 };
   /* ผังเหลือไม่ถึงขั้นต่ำ ⇒ ย้ายของออกไปหน้า (ต่อ) ตามลำดับ:
      ① ฉบับภายใน: ส่วนจุดทั้งส่วนพร้อมหมายเหตุ (หมายเหตุปิดท้ายพื้นที่ จึงตามส่วนจุดไป) ② หมายเหตุ ③ ส่วนภาพกว้าง */
   if (planRoom(on) < planMin && on.spots) { on.spots = 0; on.note = false; }
@@ -460,7 +582,7 @@ function layoutZone(zone, zoneIndex, view, px) {
   const planHeight = hasPlan ? Math.max(planMin, Math.floor(room)) : z.planNone;
   const planBlock = hasPlan ? planHeight : planMin;
   const wideTo = Math.min(wideCount, on.wide * z.perRow);
-  const spotTo = Math.min(spots.length, on.spots * z.perRow);
+  const spotTo = Math.min(spots.length, on.spots * spotsPerRow);
   const pages = [{
     kind: 'zone', zoneIndex, zoneNo: zone.no,
     wide: on.wide ? range(0, wideTo) : null,
@@ -470,6 +592,8 @@ function layoutZone(zone, zoneIndex, view, px) {
     note: on.note,
     bottom: Math.ceil(top + lane - room + planBlock),
     limit: px.contLimit,
+    // หัวพื้นที่ที่มีป้าย (งวด S3): ความสูงที่แผนนับ — harness เทียบกับจุดอ้างอิง `zhead` (ชื่อหลายบรรทัดด้วย) · ใบลงหน้างานไม่มีคีย์นี้
+    ...(zone.tag ? { headHeight: headH } : {}),
   }];
 
   /* ของที่เหลือ → หน้า (ต่อ): แถวรูปกว้าง แล้วแถวจุด แล้วหมายเหตุ — ผังไม่พิมพ์ซ้ำ */
@@ -478,7 +602,7 @@ function layoutZone(zone, zoneIndex, view, px) {
     queue.push({ section: 'wide', from: r * z.perRow, to: Math.min(wideCount, (r + 1) * z.perRow), height: wideCount ? wideRowH : z.emptyBox });
   }
   for (let r = on.spots; r < spotH.length; r += 1) {
-    queue.push({ section: 'spots', from: r * z.perRow, to: Math.min(spots.length, (r + 1) * z.perRow), height: spotH[r] });
+    queue.push({ section: 'spots', from: r * spotsPerRow, to: Math.min(spots.length, (r + 1) * spotsPerRow), height: spotH[r] });
   }
   if (noteH > 0 && !on.note) queue.push({ section: 'note', height: noteH });
 
@@ -488,6 +612,7 @@ function layoutZone(zone, zoneIndex, view, px) {
   let rowsInSection = { wide: 0, spots: 0 };
   const open = () => {
     page = { kind: 'zoneCont', zoneIndex, zoneNo: zone.no, wide: null, note: false, limit: px.contLimit };
+    if (zone.tag) page.headHeight = contHead;
     if (internal) page.spots = null;
     y = contHead;
     rowsInSection = { wide: 0, spots: 0 };
@@ -496,9 +621,12 @@ function layoutZone(zone, zoneIndex, view, px) {
   queue.forEach((item, k) => {
     const cost = () => {
       if (item.section === 'note') return z.gap + item.height;
-      return rowsInSection[item.section] ? z.rowGap + item.height : z.gap + z.sectionHead + item.height;
+      const gap = item.section === 'spots' ? spotGap : z.rowGap;
+      return rowsInSection[item.section] ? gap + item.height : z.gap + z.sectionHead + item.height;
     };
-    const full = () => item.section !== 'note' && rowsInSection[item.section] >= z.contRowsPerSection;
+    // รายการจุดของพื้นที่จากแบบไม่มีเพดานแถวต่อหน้า — แถวเตี้ย ไหลจนเต็มหน้า
+    const full = () => item.section !== 'note' && !(list && item.section === 'spots')
+      && rowsInSection[item.section] >= z.contRowsPerSection;
     /* แถวรูปแถวสุดท้ายกับหมายเหตุไปด้วยกัน — หมายเหตุไม่ขึ้นหน้าใหม่ตัวเดียว (เดิมฉบับภายในได้หน้าที่มีแต่หมายเหตุ) */
     const next = queue[k + 1];
     const company = item.section !== 'note' && next?.section === 'note' ? z.gap + next.height : 0;
@@ -533,11 +661,25 @@ function entityRowHeight(row, nameWidth, others, a) {
   return Math.ceil(a.rowPad + Math.max(a.codeLine + nameLines * a.textLine, otherLines * a.textLine));
 }
 
+/* จ บนใบจากแบบล้วน (งวด S3): ชื่อผู้ประเมินจากแบบที่ต่อกันตกหลายบรรทัด ⇒ แถวที่นั่งสูงขึ้น · ใบอื่น = 0 (แผนของวันนี้ทุกตัวเลข)
+   แถวสูงตามที่นั่งที่สูงสุด: ที่นั่งแรกที่พิมพ์บรรทัดคำ (ไม่มีคีย์ `img`) เตี้ยกว่าที่นั่งที่มีช่องรูป/ที่นั่งว่าง `signsWordsSlack` */
+function drawingSignsExtra(view, px) {
+  if (!Array.isArray(view.signoff?.assessor?.names)) return 0;
+  const a = px.appendix;
+  const seats = view.appendix?.signs || [];
+  const first = seats[0] || {};
+  const lines = seatNameLines(first.name, a.signsNameWidth, px.signoff.nameFont);
+  const tall = (seat) => !seat?.signed || Object.hasOwn(seat, 'img');
+  const slack = !Object.hasOwn(first, 'img') && seats.slice(1).some(tall) ? a.signsWordsSlack : 0;
+  return Math.max(0, (lines - 1) * a.signsNameLine - slack);
+}
+
 function layoutAppendix(view, px) {
   const a = px.appendix;
   const ap = view.appendix;
   const startY = px.contentTop + px.band + a.lead; // แถว "ภาคผนวก — ข้อมูลภายใน" จบที่นี่
-  const lastLimit = a.signsBottom - a.signs - a.gap; // บล็อกเหนือ จ ต้องจบก่อนนี้
+  const signsExtra = drawingSignsExtra(view, px);
+  const lastLimit = a.signsBottom - a.signs - signsExtra - a.gap; // บล็อกเหนือ จ ต้องจบก่อนนี้
 
   const pages = [];
   let page = null;
@@ -755,7 +897,7 @@ function layoutAppendix(view, px) {
     }
     if (y > lastLimit) open(); // ท่อนสุดท้ายกินที่ของ จ ⇒ จ ขึ้นหน้าของตัวเอง (ยังชิดล่าง ยังเป็นหน้าสุดท้าย)
   }
-  page.blocks.push({ type: 'signs' });
+  page.blocks.push({ type: 'signs', ...(signsExtra ? { height: Math.ceil(a.signs + signsExtra) } : {}) });
   page.bottom = a.signsBottom;
   page.limit = a.signsBottom;
 
@@ -774,6 +916,24 @@ function layoutAppendix(view, px) {
 
 /* ── ประกอบทั้งเล่ม ──────────────────────────────────────────────────── */
 
+/* บรรทัดบนกระดาษของชื่อหนึ่งชื่อในที่นั่ง (ตัวหนา) — ลงบรรทัดเดียว = 1 · ยาวเกินที่นั่ง = ตัวประเมิน */
+const seatNameLines = (name, widthPx, fontPx) => (
+  widthOf(name, fontPx) <= widthPx ? 1 : linesOf(name, widthPx, fontPx)
+);
+
+/**
+ * ความสูงของบล็อกการรับรองผลเมื่อที่นั่งที่ 1 พิมพ์ชื่อผู้ประเมินจากแบบชื่อละบรรทัด (งวด S3 · ใบจากแบบล้วน)
+ * ชื่อที่สองขึ้นไปบวก `nameLine + nameGap` · ชื่อที่ตกบรรทัดบวก `nameLine` ต่อบรรทัดที่เกิน · หักที่ว่างของที่นั่งสูงขั้นต่ำ 188
+ * (มีช่องรูป = คีย์ `img` อยู่ในที่นั่ง — ตัวเรนเดอร์ถามแบบเดียวกันว่าจะวาดช่องรูปหรือบรรทัดคำ)
+ */
+function drawingSeatHeight(seat, px) {
+  const p = px.signoff;
+  const names = seat.names.length ? seat.names : ['—'];
+  const wraps = names.reduce((sum, name) => sum + seatNameLines(name, p.nameWidth, p.nameFont) - 1, 0);
+  const spare = Object.hasOwn(seat, 'img') ? p.spare.image : p.spare.words;
+  return p.height + Math.max(0, Math.ceil((names.length - 1) * (p.nameLine + p.nameGap) + wraps * p.nameLine - spare));
+}
+
 const zoneRangeText = (from, to) => (from >= to ? `พื้นที่ ${from}` : `พื้นที่ ${from}–${to}`);
 
 /**
@@ -782,21 +942,25 @@ const zoneRangeText = (from, to) => (from >= to ? `พื้นที่ ${from}
  * @returns `{ pages, zonePage, pageCount, overflow }`
  *   · `pages[i]` = `{ no, kind, …, bottom, limit, cont }` — `no` เริ่มที่ 1
  *       summary / summaryCont  `table` (หน้านี้พิมพ์ตารางไหม — `false` = หน้า 1 ที่แถวแรกไม่พอ ตารางเริ่มหน้าถัดไป)
+ *                              · หน้า 1 เท่านั้น (งวด S3): `survey { method: string[], names: string[] }` — บรรทัดของกล่องการประเมิน
+ *                              (ใบลงหน้างาน `[]` ทั้งคู่ = ไม่มีแถววิธีประเมิน) · `notice` = บรรทัดของกล่องหมายเหตุ หรือ `null`
  *                              · `start` (หน้าแรกที่ตารางขึ้น — หัวข้อไม่มี "(ต่อ)") · `tableTop` (ขอบบนของหัวตาราง)
  *                              · `rows {from,to}` (ดัชนีของ `view.table.rows`) · `total` · `mix` (บรรทัดของช่องขนาดในแถวรวม
  *                              — มีเมื่อ `total`) · `spotNote`
  *       zone                   `zoneIndex` (ดัชนีของ `view.zones`) · `zoneNo` · `first` (หน้าพื้นที่หน้าแรกของเล่ม —
  *                              หัวข้อไม่มี "(ต่อ)") · `wide {from,to}|null` (ดัชนีรูป) · `plan: true` · `planHeight`
  *                              · `spots {from,to}|null` (ฉบับภายในเท่านั้น — ฉบับลูกค้าไม่มีคีย์นี้) · `note`
+ *                              · พื้นที่จากแบบ (งวด S3): `wide` เป็น `null` ทุกหน้า · `spots` ของฉบับภายในนับ **รายการจุด** แถวละจุด
+ *                              (`{0,0}` = ส่วนรายการอยู่หน้านี้แต่ไม่มีจุดที่เลือก ⇒ ตัวเรนเดอร์พิมพ์ประโยค `spotList.empty`)
  *       zoneCont               เหมือน zone แต่ไม่มีผัง
- *       signoff                —
+ *       signoff                `height` (งวด S3 · มีเฉพาะเมื่อที่นั่งที่ 1 พิมพ์ชื่อละบรรทัด) = ความสูงของบล็อกการรับรองตามแผน
  *       appendix               `first` · `blocks[]`:
  *                              `{ type: 'decisions'|'scope', continued, rows, empty, last }` (+ `mix` · `foot` บนท่อนสุดท้ายของ ก
  *                                — บรรทัดของช่องขนาดในแถวรวม และบรรทัดของเชิงอรรถ)
  *                              · `{ type: 'history', continued, rows, empty, last, skip?, stop? }` — แถวแรกเริ่มที่ตัวอักษร `skip`
  *                                ของเหตุผล (ท่อนที่ต่อจากหน้าก่อน) · แถวสุดท้ายจบที่ตัวอักษร `stop` (ต่อหน้าถัดไป)
  *                              · `{ type: 'notes', continued, rows: [{ index, lines {from,to}, continued, skip?, stop? }], last }`
- *                              · `{ type: 'signs' }`
+ *                              · `{ type: 'signs' }` (+ `height` เมื่อชื่อผู้ประเมินจากแบบของใบจากแบบล้วนตกหลายบรรทัด · งวด S3)
  *       `bottom` = ขอบล่างของบล็อกสุดท้ายตามที่ประเมิน (harness เทียบกับที่วัดจริง) · `limit` = งบของหน้า
  *       `cont` = `{ page, text }` บรรทัด "ต่อหน้า n · …" หรือ `null`
  *   · `zonePage` = `{ [zoneNo]: เลขหน้า }` หน้าแรกของแต่ละพื้นที่ — คอลัมน์ "หน้า" ของตารางหน้า 1
@@ -818,7 +982,13 @@ export function paginateSurveyReport(view, { px = SURVEY_REPORT_PX } = {}) {
   const firstZone = pages.find((p) => p.kind === 'zone');
   for (const p of pages) if (p.kind === 'zone') p.first = p === firstZone;
 
-  pages.push({ kind: 'signoff', bottom: px.limit - 2, limit: px.limit, cont: null });
+  /* การรับรองผล — หน้าของตัวเอง ชิดล่าง · งวด S3: ที่นั่งผู้ประเมินจากแบบที่มีหลายชื่อสูงขึ้น (ยืดขึ้นข้างบน) ⇒ พก `height`
+     เฉพาะเมื่อที่นั่งพิมพ์ชื่อละบรรทัด (ใบลงหน้างานได้หน้ารูปเดิมทุกคีย์) */
+  const seat = view?.signoff?.assessor;
+  pages.push({
+    kind: 'signoff', bottom: px.limit - 2, limit: px.limit, cont: null,
+    ...(Array.isArray(seat?.names) ? { height: drawingSeatHeight(seat, px) } : {}),
+  });
   if (internal && view.appendix) pages.push(...layoutAppendix(view, px));
 
   pages.forEach((p, i) => { p.no = i + 1; });

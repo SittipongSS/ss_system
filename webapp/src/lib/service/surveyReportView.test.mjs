@@ -9,8 +9,8 @@ import assert from 'node:assert/strict';
 import { buildSurveyReportSnapshot } from './surveyReportSnapshot.js';
 import { customerFreeTextWarnings, surveyReportSendWarnings, surveyReportView } from './surveyReportView.js';
 import {
-  fakeSha, fakeSignatureVersion, markedSurveyInputs, signedSurveyInputs, stressSurveyInputs, surveyReportInputsFromFixture,
-  surveySignCases, surveyStressCases, syntheticSurveyFixture,
+  drawingSurveyFixture, fakeSha, fakeSignatureVersion, markedSurveyInputs, mixedSurveyFixture, signedSurveyInputs, stressSurveyInputs,
+  surveyReportInputsFromFixture, surveySignCases, surveyStressCases, syntheticSurveyFixture,
 } from './surveyReportTestKit.mjs';
 
 const snapshotOf = (inputs, mode = 'freeze') => {
@@ -37,8 +37,9 @@ function allKeys(value, out = new Set()) {
 
 test('🔴 ฉบับลูกค้า: คีย์ชั้นบนสุดเป็นรายการอนุญาตตายตัว', () => {
   const view = surveyReportView(marked().snapshot, { version: 'customer' });
-  assert.deepEqual(Object.keys(view).sort(), ['head', 'party', 'signoff', 'survey', 'table', 'version', 'zones']);
+  assert.deepEqual(Object.keys(view).sort(), ['head', 'notice', 'party', 'signoff', 'survey', 'table', 'version', 'zones']);
   assert.equal(view.version, 'customer');
+  assert.equal(view.notice, null, 'งวด S3: ใบลงหน้างานไม่มีกล่องหมายเหตุ');
 });
 
 test('🔴 ฉบับลูกค้า: ไม่มีคีย์ของฉบับภายในที่ชั้นไหนเลย (จุด · แผงภายใน · ภาคผนวก · แถบภายใน · ข้อเสนอของระบบ)', () => {
@@ -117,6 +118,8 @@ test('หน้า 1 ของจริง: หัว · กล่องลู�
   });
   assert.deepEqual(view.survey, {
     dateText: 'ศ. 25/09/2026', timeText: '12:00 น. (ตามนัด)', assessorName: 'Lead Assessor',
+    // งวด S3 — ใบลงหน้างานไม่มีแถว "วิธีประเมิน" (มติ O3 = ข)
+    methodText: null, drawingLead: null, drawingNames: null,
   });
 });
 
@@ -125,11 +128,11 @@ test('ตารางหน้า 1 ของจริง: ขนาดแพ็
   assert.deepEqual(view.table.rows, [
     {
       no: 1, zoneCode: 'ZN-1159-10253', name: 'พื้นที่โซนต้อนรับลูกค้าและสนามเทนนิส', floorText: '· ชั้น GF',
-      dims: [{ key: null, text: '8 × 7.9 × 4.4' }], sqm: '63.2', cbm: '278.08', size: 'SM', qty: '1',
+      dims: [{ key: null, text: '8 × 7.9 × 4.4' }], sqm: '63.2', cbm: '278.08', size: 'SM', qty: '1', methodLine: null,
     },
     {
       no: 2, zoneCode: 'ZN-1159-10523', name: 'ห้องที่2', floorText: '· ชั้น GF',
-      dims: [{ key: null, text: '7.7 × 14.3 × 6.1' }], sqm: '110.11', cbm: '671.67', size: 'ST', qty: '1',
+      dims: [{ key: null, text: '7.7 × 14.3 × 6.1' }], sqm: '110.11', cbm: '671.67', size: 'ST', qty: '1', methodLine: null,
     },
   ]);
   assert.deepEqual(view.table.total, {
@@ -148,7 +151,12 @@ test('แถวรวม: ทุกพื้นที่ขนาดเดีย
 test('หน้าพื้นที่ของจริง: หัวพื้นที่พับขนาดไว้ในบรรทัดเดียวเมื่อมีส่วนเดียว · รูปกว้างมีคำกำกับ n/N · ผัง · หมายเหตุ', () => {
   const view = surveyReportView(twinSnapshot(), { version: 'customer' });
   const [z1, z2] = view.zones;
-  assert.deepEqual(Object.keys(z1).sort(), ['floorText', 'name', 'no', 'note', 'parts', 'plan', 'sizeLine', 'title', 'wide', 'zoneCode']);
+  assert.deepEqual(Object.keys(z1).sort(), [
+    'floorText', 'method', 'name', 'no', 'note', 'parts', 'plan', 'planTitle', 'sizeLine', 'tag', 'title', 'wide', 'zoneCode',
+  ]);
+  // งวด S3 — ใบลงหน้างาน: ไม่พิมพ์อะไรเพิ่ม · หัวส่วนผังเป็นคำของวันนี้
+  assert.deepEqual([z1.method, z1.tag], ['onsite', null]);
+  assert.deepEqual(z1.planTitle, { th: 'ผังพื้นที่', en: 'PLAN', empty: 'ไม่มีผัง', alt: 'ผังพื้นที่' });
   assert.equal(z1.title, 'พื้นที่โซนต้อนรับลูกค้าและสนามเทนนิส · ชั้น GF');
   // หัวพื้นที่พิมพ์ชื่อแล้วตามชั้นแบบห้ามตัดบรรทัด (แบบเดียวกับช่องชื่อของตารางหน้า 1)
   assert.deepEqual([z1.name, z1.floorText], ['พื้นที่โซนต้อนรับลูกค้าและสนามเทนนิส', '· ชั้น GF']);
@@ -284,7 +292,7 @@ test('หมายเหตุที่ไม่มีคำต้องห้�
 test('ฉบับภายใน: ฉบับลูกค้าทั้งชุด + แถบ · แผงภายใน · จุด · ภาคผนวก', () => {
   const view = surveyReportView(twinSnapshot(), { version: 'internal' });
   assert.deepEqual(Object.keys(view).sort(), [
-    'appendix', 'band', 'head', 'panel', 'party', 'signoff', 'survey', 'table', 'version', 'zones',
+    'appendix', 'band', 'head', 'notice', 'panel', 'party', 'signoff', 'survey', 'table', 'version', 'zones',
   ]);
   assert.deepEqual(view.band, {
     title: 'ฉบับภายใน — ห้ามส่งลูกค้า', right: 'INTERNAL ONLY · มีข้อมูลการเคาะผลและข้อมูลภายใน',
@@ -807,3 +815,283 @@ test('ไม่แก้ภาพนิ่ง · ผลนิ่ง · ลง JS
   assert.deepEqual(JSON.parse(JSON.stringify(a)), a);
 });
 
+
+/* ══ งวด S3 §2.7 — ใบที่มีพื้นที่ประเมินจากแบบ ═══════════════════════════════════════════════ */
+
+const S3_SWITCH = '2026-09-26T02:50:00.000+00:00';   // หลังช่างบันทึกพื้นที่ทั้งสองของแฝด (02:00 · 02:40)
+/** แฝดที่พื้นที่ `which` เป็นจากแบบ — `switcher` สลับหลังช่างบันทึก (ไม่บันทึกใหม่) */
+function s3Inputs({ which = [1], confirm = 'needed', switcher = 'Head Approver', reason = 'ลูกค้าส่งแบบมาแล้ว' } = {}) {
+  const inputs = surveyReportInputsFromFixture(syntheticSurveyFixture());
+  for (const i of which) {
+    Object.assign(inputs.zones[i], { method: 'drawing', methodChangedAt: S3_SWITCH, methodChangedByName: switcher, methodReason: reason });
+  }
+  if (which.length === inputs.zones.length) inputs.visit = null;
+  inputs.request = { ...inputs.request, surveyConfirm: confirm };
+  return inputs;
+}
+const s3View = (opts, version = 'customer', mode = 'freeze') => surveyReportView(snapshotOf(s3Inputs(opts), mode), { version });
+const NOTICE_1 = 'พื้นที่ที่ระบุ “ประเมินจากแบบ” ประเมินจากแบบที่ได้รับ ยังไม่ได้วัดและตรวจจุดติดตั้งจากพื้นที่จริง';
+const NOTICE_2 = '· ขนาดและจำนวนอาจปรับเมื่อวัดหน้างาน';
+const noteOf = (view, label) => view.appendix.notes.find((n) => n.label === label);
+const TODAY_NOTES = ['รายละเอียดคำร้อง (ฝ่ายขาย)', 'เวลาเข้าไซต์', 'ผู้บันทึกผลวัด', 'นัดที่ทำไม่ได้ก่อนหน้า'];
+
+test('🔴 S3 ใบลงหน้างาน (O3 = ข): คีย์ใหม่ทุกตัวว่าง — แฝด · ภาพนิ่งก่อนงวด S3 · ใบที่สลับไปจากแบบแล้วกลับ', () => {
+  const plain = twinSnapshot();
+  const pre = structuredClone(plain);
+  delete pre.assessment; delete pre.otherVisits; delete pre.request.surveyConfirm;
+  for (const z of pre.zones) for (const k of ['method', 'methodReason', 'methodChangedByName', 'methodChangedAt', 'drawingBy', 'drawingAt']) delete z[k];
+  const back = surveyReportInputsFromFixture(syntheticSurveyFixture());
+  Object.assign(back.zones[1], { method: 'onsite', methodChangedAt: S3_SWITCH, methodChangedByName: 'Head Approver', methodReason: 'ลูกค้าให้วัดจริง' });
+  for (const [label, snap] of [['แฝด', plain], ['ก่อนงวด S3', pre], ['สลับแล้วกลับ', snapshotOf(back)]]) {
+    for (const version of ['customer', 'internal']) {
+      const view = surveyReportView(snap, { version });
+      const at = `${label} · ${version}`;
+      assert.deepEqual([view.survey.methodText, view.survey.drawingLead, view.survey.drawingNames, view.notice], [null, null, null, null], at);
+      for (const row of view.table.rows) assert.equal(row.methodLine, null, at);
+      for (const zone of view.zones) {
+        assert.deepEqual([zone.method, zone.tag, zone.spotList ?? null], ['onsite', null, null], at);
+        assert.equal(zone.planTitle.th, 'ผังพื้นที่', at);
+      }
+      assert.equal(view.signoff.customer.caption, 'ยืนยันข้อมูลหน้างาน ไม่ใช่การสั่งซื้อ', at);
+      assert.equal('names' in view.signoff.assessor, false, at);
+      if (version === 'internal') assert.deepEqual(view.appendix.notes.map((n) => n.label), TODAY_NOTES, at);
+    }
+  }
+  // ทุกฉบับของทั้งสามภาพนิ่ง: ข้อความที่พิมพ์เท่ากับแฝด (ตัวสลับแล้วกลับต่างกันแค่ภาพนิ่ง)
+  for (const version of ['customer', 'internal']) {
+    assert.deepEqual(surveyReportView(pre, { version }), surveyReportView(plain, { version }), version);
+  }
+});
+
+test('S3 ใบผสม: กล่องการประเมิน · กล่องหมายเหตุ · แถวตาราง · หัวพื้นที่ · ที่นั่งลูกค้า (สองฉบับเท่ากัน)', () => {
+  for (const version of ['customer', 'internal']) {
+    const view = s3View({}, version);
+    assert.deepEqual(view.survey, {
+      dateText: 'ศ. 25/09/2026', timeText: '12:00 น. (ตามนัด)', assessorName: 'Lead Assessor',
+      methodText: 'ลงหน้างาน 1 พื้นที่ · ประเมินจากแบบ 1 พื้นที่', drawingLead: 'ประเมินจากแบบโดย', drawingNames: 'Head Approver',
+    }, version);
+    assert.equal(view.head.surveyDate, '25/09/2026', 'ใบผสมใช้วันของนัด');
+    assert.deepEqual(view.notice, { lines: [NOTICE_1, NOTICE_2] }, version);
+    const [r1, r2] = view.table.rows;
+    assert.deepEqual([r1.floorText, r1.methodLine], ['· ชั้น GF', null]);
+    assert.deepEqual([r2.floorText, r2.methodLine], ['', { floor: 'ชั้น GF', text: 'ประเมินจากแบบ' }]);
+    const [z1, z2] = view.zones;
+    assert.deepEqual([z1.method, z1.tag, z1.planTitle.th], ['onsite', null, 'ผังพื้นที่']);
+    assert.deepEqual([z2.method, z2.tag, z2.wide], ['drawing', 'ประเมินจากแบบ · Head Approver · 26/09/2026', []]);
+    assert.deepEqual(z2.planTitle, { th: 'แบบที่ใช้ประเมิน', en: 'DRAWING', empty: 'ไม่มีภาพแบบ', alt: 'แบบที่ใช้ประเมิน' });
+    assert.ok(z1.wide.length > 0, 'พื้นที่ลงหน้างานยังมีภาพกว้าง');
+    assert.equal(view.signoff.customer.caption, 'รับทราบผลประเมิน ไม่ใช่การสั่งซื้อ');
+    assert.equal(view.signoff.assessor.name, 'Lead Assessor', 'ใบผสม: ที่นั่งที่ 1 = คนบนนัด');
+  }
+  assert.deepEqual(s3View({ confirm: 'not_needed' }).notice, { lines: [NOTICE_1] });
+  // ยังไม่เลือก (โหมดร่าง — ด่านของใบที่ส่งแล้วไม่ยอมให้ตรึง)
+  assert.deepEqual(s3View({ confirm: null }, 'customer', 'draft').notice, { lines: [NOTICE_1] });
+});
+
+test('S3 ใบผสม ฉบับภายใน: จุด · บรรทัดใต้ตาราง · รายการจุดโดยประมาณ · ภาคผนวก ก/ข/ง', () => {
+  const inputs = s3Inputs();
+  inputs.zones[1].status = 'added';
+  const view = surveyReportView(snapshotOf(inputs), { version: 'internal' });
+  const onsiteSpots = view.table.rows[0].spots;
+  assert.equal(view.table.rows[1].spots, '—');
+  assert.equal(view.table.total.spots, onsiteSpots, 'แถวรวม = ผลรวมของพื้นที่ลงหน้างาน');
+  assert.equal(view.table.spotNote.text,
+    'คือตำแหน่งที่หน้างานรองรับการติดตั้ง · ตำแหน่งติดตั้งจริงกำหนดอีกครั้งตอนเข้าติดตั้ง · พื้นที่จากแบบ: ตำแหน่งโดยประมาณ ยังไม่ยืนยันหน้างาน');
+  assert.equal(view.zones[0].spotList, null);
+  assert.deepEqual(view.zones[1].spotList, {
+    title: 'จุดติดตั้งโดยประมาณจากแบบ — ยังไม่ยืนยันหน้างาน', empty: 'ยังไม่ระบุจุดติดตั้ง — กำหนดเมื่อเข้าหน้างาน',
+  });
+  for (const spot of view.zones[1].spots) assert.equal(spot.img, null);
+  assert.deepEqual(view.appendix.decisions.rows.map((r) => r.spots), [onsiteSpots, '—']);
+  assert.equal(view.appendix.decisions.total.spots, onsiteSpots);
+  assert.deepEqual(view.appendix.scope.rows.map((r) => r.status), ['เพิ่มโดย TS']);
+  assert.deepEqual(view.appendix.notes.map((n) => n.label), [
+    'รายละเอียดคำร้อง (ฝ่ายขาย)', 'เวลาเข้าไซต์', 'วิธีประเมินรายพื้นที่', 'ยืนยันหน้างานภายหลัง', 'ผู้บันทึกผลวัด', 'ผู้กรอกผลจากแบบ',
+    'นัดที่ทำไม่ได้ก่อนหน้า',
+  ]);
+  assert.deepEqual(noteOf(view, 'วิธีประเมินรายพื้นที่').lines, ['ห้องที่2 — จากแบบ · ลูกค้าส่งแบบมาแล้ว · Head Approver 26/09/2026']);
+  assert.deepEqual(noteOf(view, 'ยืนยันหน้างานภายหลัง').lines, ['ต้องยืนยันหน้างาน']);
+  // ช่างบันทึกก่อนสลับ หัวหน้าสลับ ไม่บันทึกใหม่ ⇒ ชื่อช่างอยู่แถว 5 พร้อมคำต่อท้าย · ไม่อยู่แถว 6 · ป้ายพื้นที่เอ่ยหัวหน้า
+  const saved = noteOf(view, 'ผู้บันทึกผลวัด').lines;
+  assert.equal(saved.length, 2);
+  assert.match(saved[1], /^ห้องที่2 — Crew Saver · 26\/09\/2026 \d\d:\d\d · ก่อนเปลี่ยนเป็นประเมินจากแบบ$/);
+  assert.deepEqual(noteOf(view, 'ผู้กรอกผลจากแบบ').lines, ['—']);
+  assert.match(view.zones[1].tag, /Head Approver/);
+  // พื้นที่ที่สลับกลับเป็นลงหน้างานบนใบผสม = "ลงหน้างาน"
+  const back = s3Inputs();
+  Object.assign(back.zones[0], { methodChangedAt: S3_SWITCH, methodChangedByName: 'Head Approver', methodReason: null });
+  assert.deepEqual(noteOf(surveyReportView(snapshotOf(back), { version: 'internal' }), 'วิธีประเมินรายพื้นที่').lines[0],
+    'พื้นที่โซนต้อนรับลูกค้าและสนามเทนนิส — ลงหน้างาน · Head Approver 26/09/2026');
+  // พื้นที่ลงหน้างานที่เพิ่มบนใบผสม = เพิ่มหน้างาน
+  const both = s3Inputs();
+  both.zones[0].status = 'added';
+  both.zones[1].status = 'added';
+  assert.deepEqual(surveyReportView(snapshotOf(both), { version: 'internal' }).appendix.scope.rows.map((r) => r.status),
+    ['เพิ่มหน้างาน', 'เพิ่มโดย TS']);
+});
+
+test('S3 จากแบบล้วน: วันที่ = วันไทยที่ส่งผล · เวลา ขีด · ผู้ประเมินจากแบบ · ที่นั่งที่ 1 · แผงภายใน · ภาคผนวก', () => {
+  const view = s3View({ which: [0, 1] }, 'internal');
+  assert.equal(view.head.surveyDate, '26/09/2026');
+  assert.deepEqual(view.survey, {
+    dateText: 'ส. 26/09/2026', timeText: '—', assessorName: 'Head Approver',
+    methodText: 'ประเมินจากแบบ', drawingLead: null, drawingNames: null,
+  });
+  assert.deepEqual(view.table.rows.map((r) => [r.floorText, r.methodLine?.text, r.spots]), [['', 'ประเมินจากแบบ', '—'], ['', 'ประเมินจากแบบ', '—']]);
+  assert.equal(view.table.total.spots, '—');
+  assert.equal(view.table.spotNote.text, 'พื้นที่จากแบบ: ตำแหน่งโดยประมาณ ยังไม่ยืนยันหน้างาน');
+  assert.deepEqual(view.signoff.assessor, {
+    title: 'ผู้ประเมินจากแบบ', role: 'ฝ่ายบริการ · หัวหน้าฝ่ายบริการ', mark: 'ลายเซ็นอิเล็กทรอนิกส์',
+    name: 'Head Approver', date: '26/09/2026', names: ['Head Approver'],
+  });
+  assert.equal(view.signoff.customer.caption, 'รับทราบผลประเมินจากแบบ ไม่ใช่การสั่งซื้อ');
+  const panel = Object.fromEntries(view.panel.rows.map((r) => [r.rlabel, r.rlines]));
+  assert.deepEqual(panel['งานหน้างาน'], ['ประเมินจากแบบทั้งใบ']);
+  assert.deepEqual(panel['ทีม'], ['ผู้ประเมินจากแบบ Head Approver']);
+  assert.deepEqual(panel['นัดไว้ · จริง'], ['—']);
+  assert.deepEqual(panel['วันนัด ขอ / รับ'], ['—']);
+  assert.deepEqual(view.appendix.decisions.rows.map((r) => r.spots), ['—', '—']);
+  assert.equal(view.appendix.decisions.total.spots, '—');
+  assert.deepEqual(noteOf(view, 'เวลาเข้าไซต์').lines, ['—']);
+  assert.equal(noteOf(view, 'ผู้บันทึกผลวัด').lines.length, 2, 'ช่างบันทึกทั้งสองพื้นที่ก่อนสลับ');
+  assert.deepEqual([view.appendix.signs[0].title, view.appendix.signs[0].role, view.appendix.signs[0].name, view.appendix.signs[0].date],
+    ['ผู้ประเมิน', 'ประเมินจากแบบ', 'Head Approver', '26/09/2026']);
+  // สองหัวหน้า = ชื่อละบรรทัดบนที่นั่ง · ต่อด้วยจุดกลางในกล่องการประเมิน
+  const two = s3Inputs({ which: [0, 1] });
+  two.zones[0].methodChangedByName = 'หัวหน้า ก';
+  const twoView = surveyReportView(snapshotOf(two), { version: 'internal' });
+  assert.deepEqual(twoView.signoff.assessor.names, ['หัวหน้า ก', 'Head Approver']);
+  assert.equal(twoView.survey.assessorName, 'หัวหน้า ก · Head Approver');
+  assert.deepEqual(Object.fromEntries(twoView.panel.rows.map((r) => [r.rlabel, r.rlines])).ทีม,
+    ['ผู้ประเมินจากแบบ หัวหน้า ก', 'ผู้ประเมินจากแบบ Head Approver']);
+});
+
+test('S3 จากแบบล้วน ฉบับร่างก่อนส่ง (answeredAt ว่าง): สามจุดที่ใช้วันประเมินพิมพ์ขีด · กล่องหมายเหตุบรรทัดเดียว · แถวยืนยันเป็นขีด', () => {
+  const inputs = s3Inputs({ which: [0, 1], confirm: null });
+  inputs.request = { ...inputs.request, answeredAt: null };
+  const view = surveyReportView(buildSurveyReportSnapshot(inputs, { mode: 'draft' }).snapshot, { version: 'internal' });
+  assert.equal(view.head.surveyDate, '—');
+  assert.equal(view.survey.dateText, '—');
+  assert.equal(view.signoff.assessor.date, '—');
+  assert.equal(view.appendix.signs[0].date, '—');
+  assert.deepEqual(view.notice, { lines: [NOTICE_1] });
+  assert.deepEqual(noteOf(view, 'ยืนยันหน้างานภายหลัง').lines, ['—']);
+});
+
+test('S3 นัดหน้างานของใบนี้ (จากแบบล้วน): นัดที่เกิด · นัดที่ไม่เกิด (วันนัด) · ไม่มีวัน · ไม่มีนัด = ไม่มีแถว', () => {
+  const inputs = s3Inputs({ which: [0, 1] });
+  inputs.otherVisits = [
+    { code: 'SV-26100011', status: 'done', date: '2026-10-13', planned: false },
+    { code: 'SV-26100012', status: 'cancelled', date: '2026-10-20', planned: true },
+    { code: 'SV-26100013', status: 'scheduled', date: null, planned: true },
+  ];
+  const view = surveyReportView(snapshotOf(inputs), { version: 'internal' });
+  assert.deepEqual(noteOf(view, 'นัดหน้างานของใบนี้').lines, [
+    'นัด SV-26100011 เข้าแล้ว 13/10/2026 — ผลในเอกสารนี้ประเมินจากแบบ',
+    'นัด SV-26100012 ยกเลิก · นัดไว้ 20/10/2026 — ผลในเอกสารนี้ประเมินจากแบบ',
+    'นัด SV-26100013 นัดไว้ — ผลในเอกสารนี้ประเมินจากแบบ',
+  ]);
+  assert.deepEqual(view.appendix.notes.map((n) => n.label).slice(-2), ['นัดหน้างานของใบนี้', 'นัดที่ทำไม่ได้ก่อนหน้า']);
+  assert.equal(noteOf(s3View({ which: [0, 1] }, 'internal'), 'นัดหน้างานของใบนี้'), undefined);
+});
+
+test('🔴 S3 ฉบับลูกค้าไม่อ่าน methodReason · คนสลับ · otherVisits · drawingById · ไม่มี spotList / ภาคผนวก', () => {
+  const inputs = s3Inputs({ which: [0, 1], reason: 'MK_REASON_ลับ', switcher: 'Head Approver' });
+  inputs.otherVisits = [{ code: 'MK_VISIT_CODE', status: 'done', date: '2026-10-13', planned: false }];
+  const view = surveyReportView(snapshotOf(inputs), { version: 'customer' });
+  const json = JSON.stringify(view);
+  for (const marker of ['MK_REASON_ลับ', 'MK_VISIT_CODE', 'U-head', 'วิธีประเมินรายพื้นที่']) assert.ok(!json.includes(marker), marker);
+  const keys = allKeys(view);
+  for (const banned of ['spotList', 'spots', 'appendix', 'panel', 'drawingById', 'methodReason', 'otherVisits']) {
+    assert.ok(!keys.has(banned), banned);
+  }
+});
+
+test('S3 ลายเซ็นของใบจากแบบล้วน: ที่นั่งที่ 1 ได้รูปเมื่อภาพนิ่งคัดลอกมา · ไม่ได้ = บรรทัดคำ "ลายเซ็นอิเล็กทรอนิกส์" (ไม่มีคีย์ img — ไม่ใช่กรอบประ ไม่ใช่ "ยังไม่มีลายเซ็น")', () => {
+  const desk = (seat1) => {
+    const inputs = signedSurveyInputs(s3Inputs({ which: [0, 1], switcher: seat1 ? 'Head Approver' : 'หัวหน้า อีกคน' }));
+    return snapshotOf(inputs);
+  };
+  for (const version of ['customer', 'internal']) {
+    const copied = surveyReportView(desk(true), { version });
+    assert.ok(copied.signoff.assessor.img?.sha, version);
+    assert.equal(copied.signoff.assessor.img.sha, copied.signoff.approver.img.sha, version);
+    const words = surveyReportView(desk(false), { version });
+    // ที่นั่งไม่มีบันทึกลายเซ็น = แบบที่นั่งฝ่ายขายของภาคผนวก จ: ไม่มีคีย์ `img` ⇒ ตัวเรนเดอร์พิมพ์บรรทัดคำเดิม (ไม่ใช่กรอบประ "รอ")
+    assert.equal(Object.hasOwn(words.signoff.assessor, 'img'), false, version);
+    assert.equal(words.signoff.assessor.mark, 'ลายเซ็นอิเล็กทรอนิกส์', version);
+    assert.ok(words.signoff.approver.img?.sha, version);
+    if (version === 'internal') {
+      assert.equal(copied.appendix.signs[0].img.sha, copied.appendix.signs[1].img.sha);
+      assert.equal(Object.hasOwn(words.appendix.signs[0], 'img'), false);
+      assert.equal(Object.hasOwn(words.appendix.signs[0], 'mark'), false, 'ภาคผนวก จ: คำตั้งต้นของตัวเรนเดอร์ (ลายเซ็นอิเล็กทรอนิกส์)');
+    }
+  }
+});
+
+test('S3 คำเตือนก่อนส่ง: อีโมจิในชื่อหัวหน้าจากแบบ = "ชื่อผู้ประเมินจากแบบ" (ใบผสม) · ป้ายพื้นที่ · ข้อความของระบบไม่ถูกเตือน', () => {
+  assert.deepEqual(surveyReportSendWarnings(s3View({})).filter((w) => w.includes('อักขระ')), []);
+  assert.deepEqual(surveyReportSendWarnings(s3View({ which: [0, 1] })).filter((w) => w.includes('อักขระ')), []);
+  const lines = surveyReportSendWarnings(s3View({ switcher: 'หัวหน้า 😀' })).filter((w) => w.includes('😀'));
+  assert.deepEqual(lines.map((w) => w.split(' มีอักขระ')[0]), ['ชื่อผู้ประเมินจากแบบ', 'ชื่อผู้ประเมินจากแบบของพื้นที่ 2']);
+});
+
+test('S3 ที่นั่งที่ 1 ของใบจากแบบล้วน = ผู้ประเมินจากแบบรายพื้นที่ ไม่ใช่ผู้ส่งผล เมื่อเป็นคนละคน · ที่นั่งที่ 2 = ผู้ส่งผล', () => {
+  for (const version of ['customer', 'internal']) {
+    const view = s3View({ which: [0, 1], switcher: 'หัวหน้า อีกคน' }, version);
+    assert.deepEqual(view.signoff.assessor.names, ['หัวหน้า อีกคน'], version);
+    assert.equal(view.signoff.assessor.name, 'หัวหน้า อีกคน');
+    assert.equal(view.signoff.approver.name, 'Head Approver');
+    assert.equal(view.survey.assessorName, 'หัวหน้า อีกคน');
+    if (version === 'internal') assert.equal(view.appendix.signs[0].name, 'หัวหน้า อีกคน');
+  }
+});
+
+test('S3 ใบจากแบบล้วนที่มีนัดที่เข้าแล้ว: กระดาษไม่รับรองนัดนั้นที่ไหนเลย — พิมพ์ในภาคผนวก ง แถว "นัดหน้างานของใบนี้" เท่านั้น', () => {
+  const inputs = s3Inputs({ which: [0, 1] });
+  inputs.otherVisits = [{ code: 'SV-26090099', status: 'done', date: '2026-09-25', planned: false }];
+  const snapshot = snapshotOf(inputs);
+  // แม้ภาพนิ่งจะพกนัดมา (ภาพนิ่งที่ประกอบผิด) ตัวกรองของใบจากแบบล้วนก็ไม่อ่าน — วัน เวลา หัวหน้า ผู้ช่วย ของนัดไม่ขึ้นกระดาษ
+  const stale = { ...snapshot, visit: twinSnapshot().visit };
+  for (const snap of [snapshot, stale]) {
+    for (const version of ['customer', 'internal']) {
+      const view = surveyReportView(snap, { version });
+      assert.equal(view.head.surveyDate, '26/09/2026', version);
+      assert.deepEqual([view.survey.dateText, view.survey.timeText, view.survey.assessorName], ['ส. 26/09/2026', '—', 'Head Approver']);
+      assert.equal(view.signoff.assessor.date, '26/09/2026');
+      const json = JSON.stringify(view);
+      for (const word of ['Lead Assessor', 'ตามนัด', '25/09/2026']) {
+        if (version === 'internal' && word === '25/09/2026') continue; // วันของนัดอยู่ในแถว "นัดหน้างานของใบนี้" ของภาคผนวก
+        assert.equal(json.includes(word), false, `${version}: ${word}`);
+      }
+      if (version === 'internal') {
+        const panel = Object.fromEntries(view.panel.rows.map((r) => [r.rlabel, r.rlines]));
+        assert.deepEqual([panel['งานหน้างาน'], panel['นัดไว้ · จริง'], panel['วันนัด ขอ / รับ']], [['ประเมินจากแบบทั้งใบ'], ['—'], ['—']]);
+        assert.deepEqual(noteOf(view, 'นัดหน้างานของใบนี้').lines, ['นัด SV-26090099 เข้าแล้ว 25/09/2026 — ผลในเอกสารนี้ประเมินจากแบบ']);
+        assert.deepEqual(noteOf(view, 'เวลาเข้าไซต์').lines, ['—']);
+        assert.equal(view.appendix.signs[0].role, 'ประเมินจากแบบ');
+      }
+    }
+  }
+});
+
+test('S3 แผงภายใน "วันนัด ขอ / รับ": ขีดเฉพาะใบจากแบบล้วน — ใบผสมและใบลงหน้างานพิมพ์วันของคำร้องเหมือนวันนี้', () => {
+  const pick = (view) => Object.fromEntries(view.panel.rows.map((r) => [r.rlabel, r.rlines]))['วันนัด ขอ / รับ'];
+  const onsite = pick(surveyReportView(twinSnapshot(), { version: 'internal' }));
+  assert.notDeepEqual(onsite, ['—']);
+  assert.deepEqual(pick(s3View({}, 'internal')), onsite, 'ใบผสม');
+  assert.deepEqual(pick(s3View({ which: [0, 1] }, 'internal')), ['—']);
+});
+
+test('S3 คำเตือนก่อนส่ง: สาม fixture (ลงหน้างาน · ผสม · จากแบบล้วน) ไม่มีคำเตือน · ข้อความของระบบ (กล่องหมายเหตุ ป้าย คำของที่นั่ง) ไม่ก่อคำเตือน', () => {
+  for (const [label, fixture] of [['ลงหน้างาน', syntheticSurveyFixture()], ['ผสม', mixedSurveyFixture()], ['จากแบบล้วน', drawingSurveyFixture()]]) {
+    const snap = snapshotOf(surveyReportInputsFromFixture(fixture));
+    for (const version of ['customer', 'internal']) {
+      const view = surveyReportView(snap, { version });
+      const got = surveyReportSendWarnings(view);
+      // แฝดของจริงมีคำเตือนสองข้อจากหมายเหตุที่ช่างพิมพ์ ("เครื่อง" · "จุดติดตั้ง") — ของเดิม ไม่ใช่ของงวด S3
+      if (label === 'ลงหน้างาน') assert.ok(got.length === 2 && got.every((w) => w.startsWith('หมายเหตุพื้นที่ ')), got.join(' | '));
+      else assert.deepEqual(got, [], `${label}/${version}`);
+    }
+  }
+});

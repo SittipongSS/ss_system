@@ -30,7 +30,6 @@ import {
   SURVEY_CONFIRM_ACTION_READY, SURVEY_CONFIRM_PENDING_NOTE, SURVEY_DESK_RAIL_LABELS, SURVEY_METHOD_CHIP, surveyProgressText,
   surveyZoneAddedLabel,
 } from './surveyMethodSwitch';
-import { SURVEY_SEND_PAPER_HOLD_EFFECT } from './surveySendClose';
 import { VISIT_STATUS_LABELS, holdsRequestSlot, isClosedVisit } from './visitStatus';
 
 const join = (...parts) => parts.flat().filter(Boolean).join(' · ');
@@ -999,9 +998,7 @@ export function surveyJobView({
         canDecide: viewer.canDecide === true,
       },
       pollStopped: refreshStalled === true,
-      /* งวด S2b: ใบที่มีพื้นที่จากแบบ (ตัวนับเดียวกับแถบแจ้งเหนือตารางผล) เอกสารยังถูกพักไว้จนถึงงวด S3 — บล็อกบอกเหตุนี้
-         แทนการชี้ให้ไปกด "ออกเอกสาร" ที่กดแล้วไม่ออก · ใบที่ไม่มีพื้นที่จากแบบ = `null` = บล็อกเดิมทุกตัวอักษร */
-      drawingHold: mix.drawing > 0 ? SURVEY_SEND_PAPER_HOLD_EFFECT : null,
+      /* ใบที่มีพื้นที่จากแบบได้บล็อกเดียวกับใบลงหน้างาน (งวด S3 ถอดข้อพักเอกสาร) — ไม่มีอาร์กิวเมนต์ของวิธีประเมิน */
     }),
     steps: timeline,
     index: Math.min(index, timeline.length),

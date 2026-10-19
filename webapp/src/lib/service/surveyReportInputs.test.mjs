@@ -1116,38 +1116,30 @@ test('ผู้ส่งผลคือคนที่กดอยู่ (`actor
   assert.deepEqual(pending.db.authLog, ['U-lead']);
 });
 
-test('🔴 ใบที่มีพื้นที่ประเมินจากแบบ: กติกาเปิดก็ **ไม่อ่านตารางลายเซ็นและบัญชีของผู้ส่งผลสักคำสั่ง** — ตารางล่มไม่ทำให้ฉบับร่างของใบที่ไม่ใช้ลายเซ็นล้ม', async () => {
-  const shapes = {
-    ผสม: (rows) => { rows[1].method = 'drawing'; },
-    จากแบบล้วน: (rows) => { for (const row of rows) row.method = 'drawing'; },
-  };
-  for (const [name, mark] of Object.entries(shapes)) {
-    // ตารางลายเซ็นล้มทุกครั้งที่ถูกถาม — ถ้าตัวโหลดยังอ่านอยู่ `signatures` จะเข้า unknown
-    const world = signWorld(['U-lead', 'U-head'], { options: { fail: { user_signatures: { times: 99 }, user_signature_versions: { times: 99 } } } });
-    mark(world.tables.service_survey_zones);
-    const { inputs, unknown } = await loadSigned(world);
-    assert.deepEqual(unknown, [], `${name}: ไม่มีชิ้นไหนอ่านไม่สำเร็จ`);
-    assert.equal(signQueries(world.db).length, 0, `${name}: ไม่ถามตารางลายเซ็น`);
-    assert.ok(!world.db.authLog.includes('U-head'), `${name}: ไม่อ่านบัญชีของผู้ส่งผล`);
-    assert.equal(inputs.signatureRule, 'required');
-    assert.deepEqual(inputs.signatures, {});
-    assert.deepEqual(inputs.signerEligible, { assessor: null, approver: null });
-    assert.equal(surveyReportFreezeIssues(inputs).some((i) => i.sign === true || /ลายเซ็น|ยืนยันบัญชี/.test(i.text)), false, name);
-    assert.deepEqual(surveyReportSignerVersions(inputs), []);
-    // ฉบับร่างของใบแบบนี้ไม่มีคีย์ `signatures` (พิมพ์คำเดิม)
-    assert.equal('signatures' in buildSurveyReportSnapshot(inputs, { mode: 'draft' }).snapshot, false, name);
-  }
-  // ชื่อบนนัดของใบผสมไม่ถูกแทน (ใบนี้ไม่ถูกถามเรื่องลายเซ็น — กระดาษเหมือนกติกาปิด)
-  const other = account('U-other', 'Somebody Else', 'ts');
-  const mixed = reassigned(other.id, { assigneeName: 'ชื่อที่พิมพ์มา', users: { [other.id]: other } });
+test('⭐ งวด S3 §2.6: ใบที่มีพื้นที่ประเมินจากแบบอ่านตารางลายเซ็นเหมือนใบลงหน้างาน — ผสม: สองคน · จากแบบล้วน: ผู้ส่งผลคนเดียว', async () => {
+  const mixed = signWorld(['U-lead', 'U-head']);
   mixed.tables.service_survey_zones[1].method = 'drawing';
-  assert.equal((await loadSigned(mixed)).inputs.visit.assigneeName, 'ชื่อที่พิมพ์มา');
-  // พื้นที่จากแบบที่ถูกตัดไม่กันเอกสาร ⇒ ใบนั้นถูกถามตามปกติ
-  const cut = signWorld(['U-lead', 'U-head']);
-  Object.assign(cut.tables.service_survey_zones[1], { method: 'drawing', status: 'cut', cutReason: 'ลูกค้าไม่ติดตั้ง' });
-  assert.equal(signQueries(cut.db).length, 0);
-  await loadSigned(cut);
-  assert.equal(signQueries(cut.db).length, 2);
+  const a = await loadSigned(mixed);
+  assert.deepEqual(a.unknown, []);
+  assert.equal(signQueries(mixed.db).length, 2);
+  assert.deepEqual(Object.keys(a.inputs.signatures).sort(), ['U-head', 'U-lead']);
+  assert.deepEqual(a.inputs.signerEligible, { assessor: true, approver: true });
+
+  const desk = signWorld(['U-lead', 'U-head']);
+  for (const row of desk.tables.service_survey_zones) row.method = 'drawing';
+  const b = await loadSigned(desk);
+  assert.deepEqual(b.unknown, []);
+  assert.equal(b.inputs.visit, null);
+  assert.deepEqual(Object.keys(b.inputs.signatures), ['U-head'], 'ถามแค่รหัสผู้ส่งผล');
+  assert.equal(signQueries(desk.db)[0].limit, 1);
+  assert.deepEqual(b.inputs.signerEligible, { assessor: null, approver: true });
+  assert.ok(!desk.db.authLog.includes('U-lead'), 'ไม่อ่านบัญชีของคนบนนัดที่ไม่ได้รับรอง');
+
+  // ใบผสม: ชื่อผู้ประเมินบนกระดาษ = ชื่อบนบัญชี (กติกาเดียวกับใบลงหน้างาน)
+  const other = account('U-other', 'Somebody Else', 'ts');
+  const renamed = reassigned(other.id, { assigneeName: 'ชื่อที่พิมพ์มา', users: { [other.id]: other } });
+  renamed.tables.service_survey_zones[1].method = 'drawing';
+  assert.equal((await loadSigned(renamed)).inputs.visit.assigneeName, 'Somebody Else');
 });
 
 test('รอบตรวจก่อนส่งผล: คืน `signers` (ฉบับที่จะพิมพ์) เมื่อครบ · บรรทัดลายเซ็นเป็น content + sign + userId เมื่อขาด · ไม่มีคำเตือนใหม่', async () => {
@@ -1187,13 +1179,156 @@ test('🔴 รอบตรวจก่อนส่งผล: อ่านลา�
   assert.deepEqual(result.signers, []);
 });
 
-test('ใบที่มีพื้นที่ประเมินจากแบบ: กติกาเปิดก็ไม่ถูกถามเรื่องลายเซ็น — ข้อกันเอกสารพูดแทน · ไม่มีผู้ลงนามให้เตรียม', async () => {
+test('งวด S3 §2.6: รอบตรวจของใบผสม (กติกาเปิด) คืนผู้ลงนามสองแถว · ไม่มีข้อไหนพก hold', async () => {
   const source = twin();
   source.zones[1].method = 'drawing';
   const world = sendWorld({ source });
-  const result = await precheck(world, { signatureRule: 'required', zones: world.tables.service_survey_zones });
-  assert.equal(result.blockers.some((b) => b.sign), false);
-  assert.equal(result.blockers.some((b) => b.hold === true), true);
-  assert.deepEqual(result.signers, []);
+  Object.assign(world.tables, signatureTables(['U-lead', HEAD.id]));
+  const result = await precheck(world, { signatureRule: 'required', zones: world.tables.service_survey_zones, surveyConfirm: 'needed' });
+  assert.deepEqual(result.blockers, [], JSON.stringify(result.blockers));
+  assert.equal(result.blockers.some((b) => 'hold' in b), false);
+  assert.deepEqual(result.signers.map((s) => [s.seats, s.userId]), [[['assessor'], 'U-lead'], [['approver'], HEAD.id]]);
 });
 
+/* ══ งวด S3 §2.2 — คีย์ใหม่ของตัวโหลด ════════════════════════════════════════════════════════ */
+
+/** โลกของใบจากแบบล้วน (หรือผสมเมื่อ `mixed`) พร้อมนัดตามที่ให้ */
+function drawingWorld(visits, { mixed = false, extra = {} } = {}) {
+  const world = twinWorld({ visits, ...extra });
+  world.tables.service_survey_zones.forEach((row, i) => { if (!mixed || i === 1) row.method = 'drawing'; });
+  return world;
+}
+
+test('⭐ otherVisits: ใบจากแบบล้วน = ทุกนัดยกเว้น unable/draft + นัดที่การส่งผลนี้ปิด · เก่าก่อน · planned และวันตามสถานะ', async () => {
+  const visits = [
+    visitRow('D', 'done', { scheduledDate: '2026-09-10', actualDate: '2026-09-11', createdAt: '2026-09-01T00:00:00.000+00:00' }),
+    visitRow('P', 'partial', { scheduledDate: '2026-09-12', actualDate: null, createdAt: '2026-09-02T00:00:00.000+00:00' }),
+    visitRow('C', 'cancelled', { scheduledDate: '2026-09-30', createdAt: '2026-09-03T00:00:00.000+00:00' }),
+    visitRow('R', 'rescheduled', { scheduledDate: '2026-09-14', createdAt: '2026-09-04T00:00:00.000+00:00' }),
+    visitRow('S', 'scheduled', { scheduledDate: '2026-09-15', createdAt: '2026-09-05T00:00:00.000+00:00' }),
+    visitRow('U', 'unable', { scheduledDate: '2026-09-13', unableReason: 'เข้าไม่ได้', createdAt: '2026-09-06T00:00:00.000+00:00' }),
+    visitRow('X', 'draft', { scheduledDate: '2026-09-16', createdAt: '2026-09-07T00:00:00.000+00:00' }),
+    visitRow('I', 'in_progress', { scheduledDate: '2026-09-25', createdAt: '2026-09-08T00:00:00.000+00:00' }),
+  ];
+  const world = drawingWorld(visits);
+  // นัด I ถูกปิดพร้อมการส่งผลนี้ (แถวหลังปิด)
+  const closedVisit = { ...visits[7], status: 'done', actualDate: '2026-09-26' };
+  const { inputs, unknown } = await loadSurveyReportInputs(world.db, { request: world.request, closedVisit, takenAt: NOW });
+  assert.deepEqual(unknown, []);
+  assert.equal(inputs.visit, null, 'ใบจากแบบล้วนไม่รับรองนัด');
+  assert.deepEqual(inputs.otherVisits, [
+    { code: 'SV-D', status: 'done', date: '2026-09-11', planned: false },
+    { code: 'SV-P', status: 'partial', date: '2026-09-12', planned: false },
+    { code: 'SV-R', status: 'rescheduled', date: '2026-09-14', planned: true },
+    { code: 'SV-S', status: 'scheduled', date: '2026-09-15', planned: true },
+    { code: 'SV-I', status: 'done', date: '2026-09-26', planned: false },
+    { code: 'SV-C', status: 'cancelled', date: '2026-09-30', planned: true },
+  ]);
+  assert.deepEqual(inputs.priorUnable, [{ date: '2026-09-13', reason: 'เข้าไม่ได้' }], 'นัดที่ทำไม่ได้อยู่ที่เดิม');
+  // ไม่มีนัดเลย = []
+  const none = drawingWorld([]);
+  assert.deepEqual((await loadSurveyReportInputs(none.db, { request: none.request, takenAt: NOW })).inputs.otherVisits, []);
+});
+
+test('otherVisits: ใบผสม / ลงหน้างาน = [] · อ่านนัดไม่สำเร็จ = null (visits อยู่ใน unknown) · ไม่มีคำสั่งอ่านเพิ่ม', async () => {
+  const visits = [visitRow('D', 'done', { actualDate: '2026-09-11' }), visitRow('C', 'cancelled')];
+  const mixed = drawingWorld(visits, { mixed: true });
+  assert.deepEqual((await loadSurveyReportInputs(mixed.db, { request: mixed.request, takenAt: NOW })).inputs.otherVisits, []);
+  const onsite = twinWorld({ visits });
+  const got = await loadSurveyReportInputs(onsite.db, { request: onsite.request, takenAt: NOW });
+  assert.deepEqual(got.inputs.otherVisits, []);
+  const desk = drawingWorld(visits);
+  await loadSurveyReportInputs(desk.db, { request: desk.request, takenAt: NOW });
+  assert.equal(desk.db.log.filter((q) => q.table === 'service_visits').length, 1, 'แถวนัดชุดเดิม ไม่มีคำสั่งอ่านเพิ่ม');
+  const broken = drawingWorld(visits, { extra: { options: { fail: { service_visits: { times: 1 } } } } });
+  const failed = await loadSurveyReportInputs(broken.db, { request: broken.request, takenAt: NOW });
+  assert.deepEqual(failed.unknown, ['visits']);
+  assert.equal(failed.inputs.otherVisits, null);
+});
+
+test('drawingMethodEnabled เดินตามตัวเลือกเท่านั้น (true ตรงตัว) · ซอร์สของตัวโหลดไม่อ่านสวิตช์', async () => {
+  for (const [option, want] of [[true, true], [false, false], [undefined, false], ['true', false], [1, false]]) {
+    const world = twinWorld();
+    const { inputs } = await loadSurveyReportInputs(world.db, { request: world.request, takenAt: NOW, drawingMethodEnabled: option });
+    assert.equal(inputs.drawingMethodEnabled, want, String(option));
+  }
+  assert.doesNotMatch(fs.readFileSync(path.join(process.cwd(), SOURCE), 'utf8'), /surveyDrawingFlag|surveyDrawingMethodEnabled/);
+});
+
+test('🔴 answerPending อยู่ระดับบนของอินพุตทั้งตอนกติกาลายเซ็นเปิดและปิด — เฉพาะรอบตรวจก่อนส่งของใบที่ยังไม่ตอบ', async () => {
+  for (const rule of ['off', 'required']) {
+    const pending = sendWorld();
+    const a = await loadSurveyReportInputs(pending.db, {
+      request: pending.request, takenAt: NOW, signatureRule: rule,
+      pendingAnswer: { answeredAt: NOW, answeredById: HEAD.id, answeredByName: HEAD.name },
+    });
+    assert.equal(a.inputs.answerPending, true, rule);
+    const answered = twinWorld();
+    const b = await loadSurveyReportInputs(answered.db, { request: answered.request, takenAt: NOW, signatureRule: rule });
+    assert.equal('answerPending' in b.inputs, false, rule);
+  }
+});
+
+test('🔴 ด่าน §2.3 ข้อ 2 ผ่านรอบตรวจ ทั้งกติกาเปิดและปิด: ใบยังไม่ตอบไม่ได้บรรทัด "ยังไม่ได้เลือก…" · ใบที่ตอบแล้วแต่ไม่มีคำตอบได้ (content)', async () => {
+  const MISSING = 'ยังไม่ได้เลือกว่าต้องยืนยันหน้างานไหม';
+  for (const rule of ['off', 'required']) {
+    for (const surveyConfirm of [undefined, 'needed', 'not_needed']) {
+      const source = twin();
+      source.zones[1].method = 'drawing';
+      const world = sendWorld({ source });
+      Object.assign(world.tables, signatureTables(['U-lead', HEAD.id]));
+      const result = await precheck(world, { signatureRule: rule, zones: world.tables.service_survey_zones, surveyConfirm });
+      assert.equal(result.blockers.some((b) => b.text === MISSING), false, `${rule} · ${surveyConfirm}`);
+      assert.deepEqual(result.blockers.filter((b) => b.kind === 'content'), [], `${rule} · ${surveyConfirm}`);
+    }
+    // ตอบแล้ว (ปุ่มออกเอกสาร) แต่แถวไม่มีคำตอบ
+    const answered = twinWorld();
+    answered.tables.service_survey_zones[1].method = 'drawing';
+    const result = await surveyReportPrecheck(answered.db, {
+      request: { ...answered.request, surveyConfirm: null }, user: HEAD, open: null, today: TODAY, nowIso: NOW, signatureRule: rule,
+    });
+    assert.deepEqual(result.blockers.filter((b) => b.text === MISSING), [{ kind: 'content', text: MISSING }], rule);
+  }
+});
+
+test('รอบตรวจ: บรรทัดไม่พบนัดที่มีหางยังถูกแทนด้วยเหตุของนัดร่าง (เทียบขึ้นต้น) · ไม่มีนัดเลย + สวิตช์เปิด = บรรทัดมีหาง', async () => {
+  const draft = openVisit({ status: 'draft' });
+  const world = sendWorld({ open: draft });
+  const result = await precheck(world, { drawingMethodEnabled: true });
+  assert.deepEqual(result.blockers, [{ kind: 'content', text: surveySendVisitStep(draft, { today: TODAY, needsVisit: true }).error }]);
+  const none = await precheck(sendWorld({ open: null }), { drawingMethodEnabled: true });
+  assert.deepEqual(none.blockers, [{ kind: 'content', text: `${SURVEY_REPORT_NO_VISIT} — พื้นที่ที่ไม่ได้ลงหน้างานให้เปลี่ยนเป็น “ประเมินจากแบบ”` }]);
+  const off = await precheck(sendWorld({ open: null }));
+  assert.deepEqual(off.blockers, [{ kind: 'content', text: SURVEY_REPORT_NO_VISIT }]);
+});
+
+test('งวด S3 §2.2: คำตอบจากกล่องส่งผลลงผู้ส่งที่กำลังจะเขียน — ภาพนิ่งของรอบตรวจมีคำตอบจริง ⇒ กล่องหมายเหตุมีจำนวนบรรทัดจริง', async () => {
+  const source = twin();
+  source.zones[1].method = 'drawing';
+  const world = sendWorld({ source });
+  const lines = async (pendingAnswer) => {
+    // รูปเดียวกับรอบตรวจ: นัดที่การส่งผลนี้จะปิด + ผู้ส่งที่กำลังจะเขียน
+    const { inputs } = await loadSurveyReportInputs(world.db, {
+      request: world.request, closedVisit: closingOf(world.open), pendingAnswer, zones: world.tables.service_survey_zones, takenAt: NOW,
+    });
+    const { snapshot, errors } = buildSurveyReportSnapshot(inputs, { mode: 'check' });
+    assert.equal(errors, undefined, (errors || []).join(' | '));
+    return { confirm: snapshot.request.surveyConfirm, notice: surveyReportView(snapshot, { version: 'customer' }).notice.lines.length };
+  };
+  const base = { answeredAt: NOW, answeredById: HEAD.id, answeredByName: HEAD.name };
+  // ตัวโหลดทับทุกคีย์ของผู้ส่งที่กำลังจะเขียน (ไม่ได้คัดชื่อ) — คีย์คำตอบจึงถึงภาพนิ่ง
+  assert.deepEqual(await lines({ ...base, surveyConfirm: 'needed' }), { confirm: 'needed', notice: 2 });
+  assert.deepEqual(await lines({ ...base, surveyConfirm: 'not_needed' }), { confirm: 'not_needed', notice: 1 });
+  // การ์ดของใบไม่ส่งคำตอบ (หัวหน้ายังไม่เลือก) — แผนนับกล่องบรรทัดเดียว
+  assert.deepEqual(await lines(base), { confirm: null, notice: 1 });
+
+  // รอบตรวจ: ใส่คำตอบลงผู้ส่งที่กำลังจะเขียนเฉพาะสองค่าที่รู้จัก และเฉพาะใบที่ยังไม่ตอบ
+  const src = code(SOURCE);
+  assert.match(src, /\.\.\.\(SEND_CONFIRM_CHOICES\.includes\(surveyConfirm\) \? \{ surveyConfirm \} : \{\}\),/);
+  assert.match(src, /const SEND_CONFIRM_CHOICES = Object\.freeze\(\['needed', 'not_needed'\]\);/);
+  assert.match(src, /const pendingAnswer = request && !request\.answeredAt/);
+  for (const surveyConfirm of ['needed', 'not_needed', 'yes', null, undefined]) {
+    const result = await precheck(sendWorld({ source }), { zones: world.tables.service_survey_zones, surveyConfirm });
+    assert.deepEqual(result.blockers, [], String(surveyConfirm));
+  }
+});

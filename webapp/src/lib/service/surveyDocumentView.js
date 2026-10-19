@@ -48,9 +48,6 @@ const VERSION_NOTES = {
   internal: 'มีแถบ “ฉบับภายใน — ห้ามส่งลูกค้า” ทุกหน้า · เฉพาะหัวหน้าฝ่ายบริการและผู้บริหาร',
 };
 
-/* คำบรรยายฉบับลูกค้าตอนเอกสารถูกพักไว้ (ใบที่มีพื้นที่ประเมินจากแบบ) — ท่อนแรกของประโยคปกติ ไม่มีท่อน "ดาวน์โหลดได้" */
-const VERSION_NOTE_HELD = VERSION_NOTES.customer.split(' · ')[0];
-
 /* ป้ายสถานะ — ทุกป้ายมีคำ ไม่พึ่งสีอย่างเดียว (สเปก §7) · `unknown` = อ่านไม่สำเร็จ ไม่ใช่ "ยังไม่ออก" */
 const BADGES = Object.freeze({
   unknown: Object.freeze({ label: 'ไม่ทราบ', tone: 'neutral' }),
@@ -266,14 +263,17 @@ function sectionPlacement({ answered, ended, state }) {
 }
 
 /* เนื้อของกล่องยืนยัน "ออกเอกสาร" (สเปก §4.4) — จอคัดลอกไปเก็บตอนเปิดกล่อง (มติ 25) */
-function issueConfirm(doc, request) {
+function issueConfirm(doc, request, allDrawing) {
   const next = trimmed(doc.nextDocNo);
   const approver = trimmed(request?.answeredByName);
   const warnings = shownLines(doc.issue?.warnings);
   const kinds = surveyWarningKinds(warnings);
   /* ⭐ ลายเซ็นจริง (PR-SIG) — ปุ่มนี้ให้หัวหน้าคนที่สามพิมพ์ลายเซ็นของผู้ประเมินกับผู้ส่งผลได้ ⇒ กล่องต้องเอ่ยชื่อและบอกว่า **ไม่ใช่ลายเซ็น
-     ของคนกด** (#1223 · ADR 0006 ข้อยกเว้น 09/10) · `issue.signers` มีเฉพาะเมื่อกติกาเปิดและทุกที่นั่งมีลายเซ็น — ไม่มี = ไม่มีข้อนี้ */
+     ของคนกด** (#1223 · ADR 0006 ข้อยกเว้น 09/10) · `issue.signers` มีเฉพาะเมื่อกติกาเปิดและทุกที่นั่งมีลายเซ็น — ไม่มี = ไม่มีข้อนี้
+     ⭐ **ใบจากแบบทั้งใบ** (`allDrawing` — มติเจ้าของ 19/10/2026 กติกาเดียวกับบรรทัดลายเซ็นตอนดึงผลกลับ `recallSignNote` ของ `surveyControl.js`)
+        เอ่ยเฉพาะผู้ส่งผล: ไม่มีนัด ไม่มีผู้ประเมินบนนัด — ลายเซ็นที่ลงที่นั่งที่ 1 คือของผู้ส่งผลเอง · ใบลงหน้างาน/ใบผสม = ประโยคเดิมตรงตัว */
   const signed = surveyReportSignersText(doc.issue?.signers);
+  const signedBy = allDrawing === true ? 'ผู้ส่งผล' : 'ผู้ประเมินและผู้ส่งผล';
   return {
     title: 'ออกเอกสารประเมินพื้นที่',
     message: 'ออกเอกสารจากผลที่ส่งให้ฝ่ายขายไปแล้ว — ไม่ส่งผลซ้ำ ตัวเลขไม่เปลี่ยน',
@@ -284,7 +284,7 @@ function issueConfirm(doc, request) {
         : 'ออกเลขเอกสาร SU ใหม่ — เลขถาวร เอกสารที่ออกแล้วแก้ไม่ได้',
       `ตรึงฉบับลูกค้าและฉบับภายในจากข้อมูลในใบตอนนี้${approver ? ` · ผู้ตรวจสอบและอนุมัติบนเอกสาร = ${approver} (ผู้ส่งผล)` : ''}`,
       ...(signed
-        ? [`พิมพ์ลายเซ็นที่บันทึกไว้ของ ${signed} — เป็นลายเซ็นของผู้ประเมินและผู้ส่งผล ไม่ใช่ของผู้กดออกเอกสาร`]
+        ? [`พิมพ์ลายเซ็นที่บันทึกไว้ของ ${signed} — เป็นลายเซ็นของ${signedBy} ไม่ใช่ของผู้กดออกเอกสาร`]
         : []),
       'ผู้ขอ (ฝ่ายขาย) ได้รับแจ้งในกระดิ่งและเธรดของคำร้อง — ดาวน์โหลดฉบับลูกค้าได้ที่หน้าคำร้อง',
       ...warnings.map((line) => `${WARNING_EFFECT_PREFIX}${line}`),
@@ -298,15 +298,14 @@ function issueConfirm(doc, request) {
   };
 }
 
-/* เหตุที่ปุ่ม "ออกเอกสาร" จะตีกลับ ชุดสดจาก server — `[{ kind: 'content' | 'system', text, hold, sign, self }]` ไม่ซ้ำ
-   ⭐ `hold` = ข้อกันเอกสารของใบที่มีพื้นที่ประเมินจากแบบ (`hold: true` ตรงตัวใน payload · mig 0408) — ไม่มีอะไรให้แก้ กดซ้ำไม่ช่วย
+/* เหตุที่ปุ่ม "ออกเอกสาร" จะตีกลับ ชุดสดจาก server — `[{ kind: 'content' | 'system', text, sign, self }]` ไม่ซ้ำ
    ⭐ `sign` = ผู้ลงนามยังไม่มีลายเซ็น (`sign: true` ตรงตัวบนข้อชนิด `content` · PR-SIG §2.3) — **ไม่ต้องดึงผลกลับ** เจ้าตัวเพิ่มลายเซ็นแล้ว
       ตรวจอีกครั้งได้เลย · `self` = ข้อนั้นเป็นของคนดูเอง (`self: true` ตรงตัว — server เทียบรหัสผู้ใช้ให้ ไม่ส่งรหัสมา)
-   ⚠️ ธงอ่านจาก **ทุกแถวก่อนยุบข้อความซ้ำ** (กติกาเดียวกับ `blocked` ของ surveyReportIssue) — แถวซ้ำที่ไม่มีธงต้องไม่ทำให้ข้อกัน
-      กลายเป็นเหตุที่ "แก้แล้วกดซ้ำได้" และต้องไม่ทำให้ข้อลายเซ็นกลายเป็นเหตุให้ดึงผลกลับ */
+   ⚠️ ธงอ่านจาก **ทุกแถวก่อนยุบข้อความซ้ำ** (กติกาเดียวกับ `blocked` ของ surveyReportIssue) — แถวซ้ำที่ไม่มีธงต้องไม่ทำให้ข้อลายเซ็น
+      กลายเป็นเหตุให้ดึงผลกลับ
+   ⚠️ งวด S3 ถอดข้อกันเอกสารของใบที่มีพื้นที่ประเมินจากแบบ — ไม่มีธงอื่นบนแถวให้อ่าน (คีย์ที่ไม่รู้จักถูกทิ้ง เหตุชนิด `system` ธรรมดา) */
 function issueBlockers(check) {
   const rows = (Array.isArray(check?.blockers) ? check.blockers : []).filter(isRecord);
-  const held = new Set(rows.filter((b) => b.hold === true).map((b) => trimmed(b.text)));
   const signs = rows.filter((b) => b.kind === 'content' && b.sign === true);
   const signed = new Set(signs.map((b) => trimmed(b.text)));
   const mine = new Set(signs.filter((b) => b.self === true).map((b) => trimmed(b.text)));
@@ -316,7 +315,6 @@ function issueBlockers(check) {
     .filter((b) => b.text && !seen.has(b.text) && seen.add(b.text))
     .map((b) => ({
       ...b,
-      hold: b.kind !== 'content' && held.has(b.text),
       sign: b.kind === 'content' && signed.has(b.text),
       self: b.kind === 'content' && mine.has(b.text),
     }));
@@ -373,18 +371,21 @@ const sectionBase = (state) => ({
  * @param canDecide     คนดูเป็นคนส่งผลได้ (การ์ดวาดให้คนกลุ่มนี้เท่านั้น) — ไม่ใช่ = ซ่อนทั้งส่วน
  * @param failedGates   ชื่อย่อของด่านส่งผลที่ยังติด **ไม่รวมแถวเอกสารเอง** (ส่วนนี้ต้องไม่อ้างตัวเองเป็นเหตุ)
  * @param spotsUnlinked ยังมีรูปจุดค้างในถาด "ยังไม่ได้ผูกจุด" — ทางออกของเหตุชนิดนี้ไม่ต้องดึงผลกลับ (มติ 9)
- * @param drawingHold   ประโยคของข้อกันเอกสาร เมื่อใบมีพื้นที่ที่ประเมินจากแบบ (ยังอยู่ในใบ) · ไม่มี = `null`
- *                      เอกสารของใบแบบนี้ถูกพักไว้ ⇒ ก่อนส่งผล (และตอนดึงกลับมาแก้) กล่องสถานะพูดประโยคเดียวกับโมดัลยืนยันส่งผล
- *                      ไม่สัญญาเลขที่เอกสาร · ผู้เรียกส่งประโยคมา (รายการ import ของไฟล์นี้ถูกล็อก — ดูหัวไฟล์) · งวด S3 ถอดพร้อมข้อกัน
+ * @param hasDrawing    ใบมีพื้นที่ที่ประเมินจากแบบ (ยังอยู่ในใบ · `surveyMethodMix(แถว).drawing > 0` ของผู้เรียก) — `true` ตรงตัวเท่านั้น
+ *                      เอกสารของใบแบบนี้ออกตามตารางสถานะเดียวกับใบลงหน้างาน (งวด S3 ถอดข้อพักเอกสาร) ต่างกันแค่สองประโยค:
+ *                      เหตุของปุ่มร่างพูดว่า "มีขนาดครบ" (ไม่มีใครวัดพื้นที่จากแบบ — คำเดียวกับคำตีกลับของ route ฉบับร่าง) และประโยคก่อนส่ง
+ *                      ตอนสวิตช์ออกเอกสารตอนส่งผลปิดเอ่ย "ภาพผัง/ภาพแบบ" · ไม่ส่ง / `false` = ผลเดิมทุกตัวอักษร
+ * @param allDrawing    ทุกพื้นที่ที่ยังอยู่ในใบเป็นจากแบบ (`surveyMethodMix(แถว).mode === 'drawing'` ของผู้เรียก) — `true` ตรงตัวเท่านั้น
+ *                      ต่างแค่ประโยคลายเซ็นในกล่องยืนยัน "ออกเอกสาร": เอ่ยเฉพาะผู้ส่งผล (มติเจ้าของ 19/10/2026) · ไม่ส่ง / `false` = ผลเดิมทุกตัวอักษร
  * ⚠️ `canWrite` ที่ผู้เรียกส่งมาตามสเปก §3.1 ไม่มีกติกาข้อไหนของส่วนนี้ใช้ (บรรทัด "แก้หมายเหตุได้ไหม" อยู่ที่กล่องแจ้งของการ์ด)
  */
 export function surveyDocumentView({
   document = null, request = null, zones = [], local = null,
-  canDecide = false, failedGates = [], spotsUnlinked = false, drawingHold = null,
+  canDecide = false, failedGates = [], spotsUnlinked = false, hasDrawing = false, allDrawing = false,
 } = {}) {
   const doc = isRecord(document) ? document : null;
   const access = doc && isRecord(doc.access) ? doc.access : null;
-  const hold = trimmed(drawingHold) || null;
+  const byDrawing = hasDrawing === true;
   const round = roundLocal(local, request);
   const state = resolvedState(doc, round);
   const base = sectionBase(state);
@@ -429,9 +430,9 @@ export function surveyDocumentView({
   const offProduction = doc.storeAllowed === false;
   const canDraft = access.draft === true;
   const draft = surveyDraftReadiness(zones);
-  /* ⚠️ ใบที่มีพื้นที่ประเมินจากแบบ (`hold`): ไม่มีใคร "วัด" พื้นที่นั้น — หัวหน้ากรอกขนาดจากแบบ ⇒ บรรทัดนี้พูดว่า "มีขนาดครบ"
-     (กติกาเจ้าของ: ไม่ใช้คำว่าวัดกับพื้นที่จากแบบ) · ใบลงหน้างานล้วน = ประโยคเดิมตรงตัว (ตรงกับของ route ฉบับร่าง) */
-  const draftLine = hold
+  /* ⚠️ ใบที่มีพื้นที่ประเมินจากแบบ: ไม่มีใคร "วัด" พื้นที่นั้น — หัวหน้ากรอกขนาดจากแบบ ⇒ บรรทัดนี้พูดว่า "มีขนาดครบ"
+     (กติกาเจ้าของ: ไม่ใช้คำว่าวัดกับพื้นที่จากแบบ) · ใบลงหน้างานล้วน = ประโยคเดิมตรงตัว (ทั้งสองแบบตรงกับคำตีกลับของ route ฉบับร่าง) */
+  const draftLine = byDrawing
     ? `ดูตัวอย่างได้เมื่อมีขนาดครบทุกพื้นที่ (${draft.done}/${draft.total})`
     : `ดูตัวอย่างได้เมื่อวัดครบทุกพื้นที่ (${draft.done}/${draft.total})`;
   /* ปุ่มร่างที่ขึ้นแต่กดไม่ได้ ต้องมีเหตุในกล่องสถานะ — กล่องพูดเรื่องอื่นอยู่ = ต่อบรรทัดนี้ที่ท้ายกล่อง */
@@ -458,13 +459,7 @@ export function surveyDocumentView({
     const blockers = check ? shownLines(check.blockers) : [];
     const stuck = shownLines(failedGates);
     const stuckText = `ยังติด ${stuck.length} ด่าน: ${stuck.join(' · ')}`;
-    if (hold) {
-      /* 🐞 เดิมกล่องนี้สัญญา "กดส่งผลเพื่อออกเลขที่เอกสาร" อยู่หลังโมดัลยืนยันที่บอกว่าเอกสารยังออกไม่ได้ — พูดประโยคเดียวกัน
-         ⚠️ มาก่อนรายการเหตุของ server: ข้อกันนี้ไม่มีอะไรให้แก้ ปุ่ม "ตรวจอีกครั้ง" ไม่ช่วย
-         ⚠️ **มาก่อน "ยังไม่ครบทุกพื้นที่" ด้วย** (UAT S2b S01): ใบที่กำลังกรอกอยู่ก็ต้องรู้ว่าเอกสารถูกพักไว้ — เดิมประโยคนี้ขึ้น
-            เฉพาะเมื่อขนาดครบทุกพื้นที่แล้ว · เหตุของปุ่มร่างที่จางต่อเป็นบรรทัดท้ายกล่อง (`draftFoot`) เหมือนสถานะอื่น */
-      status = note('info', hold, { foot: draftFoot });
-    } else if (!draft.ready) {
+    if (!draft.ready) {
       status = note('info', draftLine);
     } else if (blockers.length) {
       /* ข้อ "ยังไม่มีลายเซ็น" อยู่ในรายการนี้เอง (เหตุของ server ตามตัวอักษร) — คนดูที่เป็นเจ้าของข้อนั้นได้ลิงก์ไปเพิ่ม (`send.selfSign`) */
@@ -481,8 +476,9 @@ export function surveyDocumentView({
         ? 'ตรวจเอกสารล่วงหน้าไม่สำเร็จ — ส่งผลได้ ระบบตรวจอีกครั้งตอนส่ง'
         : 'พร้อมแล้ว — กดส่งผลเพื่อออกเลขที่เอกสาร');
     } else {
-      /* สวิตช์ปิด = ยังไม่มีการตรวจเอกสารก่อนส่ง ⇒ ห้ามบอกว่า "พร้อมแล้ว" (สเปก §10) */
-      status = note('info', 'ส่งผลก่อน แล้วกด “ออกเอกสาร” ที่นี่ — ระบบตรวจเอกสารตอนกดออก (ถ้าติดเรื่องภาพผัง นัด หรือหน้าล้น ต้องดึงผลกลับมาแก้)');
+      /* สวิตช์ปิด = ยังไม่มีการตรวจเอกสารก่อนส่ง ⇒ ห้ามบอกว่า "พร้อมแล้ว" (สเปก §10)
+         · ใบที่มีพื้นที่จากแบบ: รูปของพื้นที่จากแบบคือ "ภาพแบบ" (ตัวตรวจเดียวกับภาพผัง — สเปก S3 §2.4) ⇒ เอ่ยทั้งสองคำ */
+      status = note('info', `ส่งผลก่อน แล้วกด “ออกเอกสาร” ที่นี่ — ระบบตรวจเอกสารตอนกดออก (ถ้าติดเรื่อง${byDrawing ? 'ภาพผัง/ภาพแบบ' : 'ภาพผัง'} นัด หรือหน้าล้น ต้องดึงผลกลับมาแก้)`);
     }
     preview = draftPreview;
   } else if (state === 'recalled') {
@@ -491,13 +487,10 @@ export function surveyDocumentView({
     /* 🐞 ใบที่ดึงกลับมาแก้คือใบที่หัวหน้าแก้ไฟล์บ่อยที่สุด — เหตุที่เอกสารฉบับใหม่ออกไม่ได้ต้องกางที่นี่เหมือนสถานะ `not_sent`
        (ไม่งั้นกล่องนี้สั่ง "ส่งผลอีกครั้ง" ทั้งที่ปุ่มส่งจาง และเหตุเหลือแค่บรรทัดเดียวในแถวด่าน) · วัดไม่ครบพูดก่อน เหมือน `not_sent` */
     const check = isRecord(doc.send) ? doc.send : null;
-    const blockers = check && draft.ready && !hold ? shownLines(check.blockers) : [];
-    // ใบที่มีพื้นที่จากแบบ: ฉบับถัดไปยังออกไม่ได้ (ข้อกันของงวด S1) — ไม่สัญญา Rev ถัดไป
-    const text = hold
-      ? `${head}${hold}`
-      : flagOn
-        ? `${head}ส่งผลอีกครั้งเพื่อออก ${next}`
-        : `${head}ส่งผลอีกครั้ง แล้วกด “ออกเอกสาร” เพื่อออก ${next}`;
+    const blockers = check && draft.ready ? shownLines(check.blockers) : [];
+    const text = flagOn
+      ? `${head}ส่งผลอีกครั้งเพื่อออก ${next}`
+      : `${head}ส่งผลอีกครั้ง แล้วกด “ออกเอกสาร” เพื่อออก ${next}`;
     status = blockers.length
       ? note('warning', text, {
         items: blockers, foot: `แก้ตามรายการแล้วกด “${RECHECK.label}”`, action: RECHECK, ...signLink(check.selfSign),
@@ -526,18 +519,6 @@ export function surveyDocumentView({
       let allowed = false;
       if (offProduction) {
         status = note('warning', NOT_PRODUCTION_TEXT, { foot: draftFoot });
-      } else if (blockers.length && blockers.every((b) => b.hold)) {
-        /* ⭐ **ติดแค่ข้อกันเอกสารของใบที่มีพื้นที่ประเมินจากแบบ** (ธง `hold` จาก server) — ประโยคของข้อกันอย่างเดียว:
-           ไม่มีอะไรให้แก้ ดึงผลกลับก็ไม่ช่วย กดกี่ครั้งก็ไม่ออก (หายเมื่อระบบรุ่นที่รองรับออก) ⇒ ไม่มีปุ่ม "ตรวจอีกครั้ง"
-           ไม่มีบรรทัดทางออก และปุ่ม "ออกเอกสาร" จาง (`allowed` ยังเป็นเท็จ) · เหตุของปุ่มที่จางคือประโยคนี้เอง
-           🐞 เดิมได้กล่องของเหตุระบบ: "ติด 1 ข้อ · แก้ตามรายการแล้วกด ตรวจอีกครั้ง" — ชวนให้แก้สิ่งที่ไม่มีอะไรให้แก้
-           ⚠️ มีเหตุอื่นปนอยู่ = สาขาถัดไป (ทางออกของเหตุนั้นตามเดิม · ข้อกันอยู่ในรายการด้วย) — กติกาเดียวกับ route ออกเอกสาร
-           ⚠️ บรรทัดของปุ่มร่างที่จาง (`draftFoot`) ยังต่อท้ายได้ — เป็นเหตุของอีกปุ่มหนึ่ง ไม่ใช่คำแนะนำให้แก้เอกสาร */
-        /* 🐞 UAT S2b S05 รอบ 2: ก่อนส่งผลกล่องนี้เป็นโทน info พร้อมประโยคเต็ม ("… · ผลถึงฝ่ายขายตามปกติ") — ส่งผลแล้วกลับเป็นกล่องเตือน
-           สีอำพัน ประโยคสั้นของ server ท่อน "ผลถึงฝ่ายขายตามปกติ" หายตรงจังหวะที่คนอยากรู้ที่สุด และโทนเตือนชวนให้หาอะไรแก้
-           ⇒ ข้อกันเดียวกัน = ประโยคเดียวกัน โทนเดียวกัน ทั้งก่อนและหลังส่ง (`hold` ของผู้เรียก) · ผู้เรียกไม่ส่งประโยคมา = ประโยคของ server */
-        const [first, ...more] = blockers.map((b) => b.text);
-        status = note('info', hold || first, { items: hold ? [] : more, foot: draftFoot });
       } else if (blockers.length) {
         /* ⭐ "ต้องดึงผลกลับ" = มีข้อชนิด `content` ที่ **ไม่ใช่** ข้อลายเซ็น (PR-SIG §2.3 — กติกาเดียวกับ `blocked()` ของขั้นออกเลข)
              ติดแค่ลายเซ็น (จะมีเหตุของระบบปนหรือไม่ก็ตาม)  ⇒ เจ้าตัวเพิ่มลายเซ็นแล้วตรวจอีกครั้ง ไม่ต้องดึงผลกลับ
@@ -570,7 +551,7 @@ export function surveyDocumentView({
         status = note('info', `ส่งผลแล้ว แต่ยังไม่มีเอกสาร — กด “ออกเอกสาร” เพื่อออก${next ? ` ${next}` : 'เลขที่ SU'}`, { foot: draftFoot });
         allowed = true;
       }
-      out.issue = { allowed, confirm: issueConfirm(doc, request) };
+      out.issue = { allowed, confirm: issueConfirm(doc, request, allDrawing) };
       preview = draftPreview;
     }
   } else if (ISSUED_STATES.includes(state)) {
@@ -623,9 +604,7 @@ export function surveyDocumentView({
   out.versions = SURVEY_DOC_VERSIONS.filter((key) => access[key] === true).map((key) => ({
     key,
     label: VERSION_LABELS[key],
-    /* ข้อกันเอกสารของใบจากแบบ และยังไม่มีฉบับที่ออกแล้ว: ไม่มีไฟล์ให้ใครดาวน์โหลด ⇒ ไม่บอกว่า "ฝ่ายขายดาวน์โหลดได้ที่หน้าคำร้อง"
-       (อยู่เหนือประโยค "ยังออกไม่ได้" พอดี — UAT S2b S01 / S06 / S11) · เหลือท่อนที่บอกว่าฉบับนี้มีอะไร */
-    note: hold && key === 'customer' && !ISSUED_STATES.includes(state) ? VERSION_NOTE_HELD : VERSION_NOTES[key],
+    note: VERSION_NOTES[key],
     status: statusOf ? statusOf(key) : status,
     preview: preview(key),
     download: download(key),
@@ -691,18 +670,13 @@ function missingTextForOthers({ threadOpen, threadLocked }) {
  * @param request        แถว `dept_requests`
  * @param viewer         `{ canOpenSheet, isRequesterSide, canDecide }` — เปิดใบประเมินได้ · อยู่ฝั่งผู้ขอ (`_mine`) · ส่งผลได้
  *                       ⚠️ ใช้ตัดสิน **ข้อความ** เท่านั้น (ช่องทางแจ้ง · บล็อก "ไม่ทราบ") ไม่เคยใช้ตัดสินลิงก์
- * @param drawingHold    (งวด S2b) ประโยค "เอกสารของใบที่ประเมินจากแบบยังออกไม่ได้" เมื่อใบมีพื้นที่จากแบบที่ยังใช้อยู่ · ไม่มี = `null`
- *                       ⭐ เอกสารของใบแบบนี้ถูกพักไว้จนถึงงวด S3 — การส่งผลไม่ออกเอกสาร และปุ่ม "ออกเอกสาร" ก็ไม่ออกให้
- *                       ⇒ สถานะที่ **ยังไม่มีเอกสารออก** (`missing` · และ `issuing` ซึ่ง server เดาจากนาฬิกา 180 วินาทีหลังส่งผล)
- *                       ได้บล็อกที่พูดประโยคนี้ ไม่มีปุ่ม ไม่มีลิงก์ไปใบประเมิน: ไม่บอกฝ่ายขายให้ไปทวงหัวหน้า และไม่บอกหัวหน้าให้
- *                       ไปกดปุ่มที่กดแล้วไม่ออก · ป้ายเป็น "ยังไม่ออก" ทั้งสองสถานะ (ไม่มีอะไร "กำลังออก")
- *                       ⚠️ เอกสารที่ออกไปแล้ว (ใบที่สลับวิธีหลังออกเอกสาร) · ฉบับที่ถูกแทนที่ · ใช้ไม่ได้ · **ไม่ทราบ** ได้บล็อกเดิม
- *                          — "ไม่ทราบ" คืออ่านแถวเอกสารไม่ได้ จึงบอกไม่ได้ว่าไม่มีเอกสาร · `null` = ผลเดิมทุกตัวอักษร
+ * ⭐ ใบที่มีพื้นที่ประเมินจากแบบได้บล็อกเดียวกับใบลงหน้างานทุกสถานะ (งวด S3 ถอดข้อพักเอกสาร) — ใบที่ส่งผลไประหว่างที่เอกสารถูกพัก
+ *    เป็น `missing` เหมือนใบอื่น: หัวหน้าได้ "กด “ออกเอกสาร” ที่ใบประเมิน" · ฝ่ายขายได้ประโยคทวงหัวหน้าตามช่องทางที่ใช้ได้จริง
  * @param pollStopped    เปลือกเลิกตรวจซ้ำแล้ว (อ่านใบพังติดกันครบเพดาน · `refreshStalled` ของ `app/requests/[id]`)
  *                       ⇒ สถานะ "กำลังออก" บนจอเป็นของเก่าที่ไม่มีใครตรวจต่อ — บล็อกกลายเป็น "ไม่ทราบ" (ดูสาขา `issuing`)
  */
 export function surveyRequestDocumentView({
-  surveyDocument = null, request = null, viewer = {}, pollStopped = false, drawingHold = null,
+  surveyDocument = null, request = null, viewer = {}, pollStopped = false,
 } = {}) {
   const doc = isRecord(surveyDocument) ? surveyDocument : null;
   const access = doc && isRecord(doc.access) ? doc.access : null;
@@ -799,12 +773,6 @@ export function surveyRequestDocumentView({
       buttons,
       sheetLink: waitingHere && isHead && viewer?.canOpenSheet === true,
     });
-  }
-
-  /* งวด S2b — เอกสารของใบที่มีพื้นที่จากแบบถูกพักไว้ (ดู `drawingHold` ที่หัวฟังก์ชัน) */
-  const hold = trimmed(drawingHold);
-  if (hold && (state === 'missing' || state === 'issuing')) {
-    return block({ state: 'missing', badge: BADGES.missing, text: { tone: 'info', text: hold } });
   }
 
   if (state === 'missing') {

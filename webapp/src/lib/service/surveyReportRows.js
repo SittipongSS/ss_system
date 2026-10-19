@@ -218,7 +218,9 @@ function signerNames(rows) {
  *                  **รวมด่านส่งผล** ที่ขั้นออกเลขวิ่งซ้ำหลังล็อก (I3 · ใบที่ตอบผ่านปุ่มทั่วไปก่อน 24/09 ไม่เคยผ่านมัน)
  *                  ⇒ ต้องมีผลวัด/ไฟล์/ทะเบียนในมือ จึงอ่านเองที่นี่แล้วส่งต่อให้ตัวตรวจ (ไม่อ่านซ้ำ)
  */
-async function documentChecks(supabase, { request, user, now, given, precheck, forIssue, signRule = false }) {
+async function documentChecks(supabase, {
+  request, user, now, given, precheck, forIssue, signRule = false, drawingMethodEnabled = false,
+}) {
   const failed = (e) => console.error(`[surveyReport] ตรวจเนื้อเอกสารของ ${request?.docNo || request?.id} ไม่สำเร็จ`, e?.message || e);
   try {
     const nowIso = new Date(now).toISOString();
@@ -268,16 +270,16 @@ async function documentChecks(supabase, { request, user, now, given, precheck, f
          จึงตอบตรงกันเสมอ ไม่มีจังหวะที่สองฝั่งอ่านสวิตช์ได้คนละค่า */
       result = await run(supabase, {
         request, user, zones, filesByZone, sizes, open, today, nowIso, signatureRule: signRule ? SIGN_RULE_ON : SIGN_RULE_OFF,
+        drawingMethodEnabled: drawingMethodEnabled === true,
       });
     } catch (e) {
       failed(e);
     }
     const usable = !!result && typeof result === 'object';
 
-    /* คัดเฉพาะ `kind` กับ `text` — ของอื่นที่ตัวตรวจอาจแนบมาในวันหน้าไม่ไหลออก payload เอง
-       ⭐ ยกเว้นธง `hold` ของข้อกันเอกสาร (ใบมีพื้นที่ประเมินจากแบบ · `SURVEY_REPORT_DRAWING_HOLD`) — ติดไปเฉพาะเมื่อเป็น `true`
-          ตรงตัว: ข้ออื่นทุกข้อยังมีแค่สองคีย์ ⇒ payload ของใบลงหน้างานไม่เปลี่ยนสักไบต์
-       ⭐ และธงของข้อ "ผู้ลงนามยังไม่มีลายเซ็น" (PR-SIG §2.3 · เฉพาะตอนกติกาลายเซ็นจริงเปิด): `sign: true` = ไม่ต้องดึงผลกลับ เจ้าตัวเพิ่ม
+    /* คัดเฉพาะ `kind` กับ `text` — ของอื่นที่ตัวตรวจอาจแนบมาในวันหน้าไม่ไหลออก payload เอง (ใบที่มีพื้นที่ประเมินจากแบบก็สองคีย์ —
+       งวด S3 ไม่มีข้อกันเอกสารของใบแบบนั้นแล้ว)
+       ⭐ ยกเว้นธงของข้อ "ผู้ลงนามยังไม่มีลายเซ็น" (PR-SIG §2.3 · เฉพาะตอนกติกาลายเซ็นจริงเปิด): `sign: true` = ไม่ต้องดึงผลกลับ เจ้าตัวเพิ่ม
           ลายเซ็นแล้วกดใหม่ได้ · `self: true` = คนที่ต้องเพิ่มคือคนที่กำลังดูอยู่ (จอขึ้นลิงก์ไป “บัญชีของฉัน”)
           🔴 **`userId` ของบรรทัดถูกใช้เทียบที่นี่แล้วทิ้ง — ไม่ออก payload** · สองธงอ่านจากทุกแถวก่อนยุบข้อความซ้ำ
              (กติกาเดียวกับ `blocked()` ของขั้นออกเลข) */
@@ -295,7 +297,6 @@ async function documentChecks(supabase, { request, user, now, given, precheck, f
         .map((b) => ({
           kind: b?.kind === 'content' ? 'content' : 'system',
           text: String(b?.text ?? ''),
-          ...(b?.hold === true ? { hold: true } : {}),
         }))
         .filter((b) => b.text.trim()));
     }
@@ -309,7 +310,8 @@ async function documentChecks(supabase, { request, user, now, given, precheck, f
       )),
       warnings: usable ? strings(result.warnings) : [],
       unknown: !usable || (Array.isArray(result.unknown) ? result.unknown.length > 0 : !!result.unknown),
-      /* ผู้ลงนามที่เอกสารจะพิมพ์ลายเซ็น (ว่างเมื่อกติกาปิด · ยังมีที่นั่งที่ไม่มีลายเซ็น · ใบมีพื้นที่จากแบบ) — ที่นั่งกับชื่อเท่านั้น */
+      /* ผู้ลงนามที่เอกสารจะพิมพ์ลายเซ็น (ว่างเมื่อกติกาปิด · ยังมีที่นั่งที่ไม่มีลายเซ็น) — ที่นั่งกับชื่อเท่านั้น
+         ใบจากแบบล้วนที่ผู้ส่งผลเป็นผู้ประเมินจากแบบคนเดียว = แถวเดียวสองที่นั่ง (งวด S3 §2.6 · `surveyReportSignerVersions`) */
       signers: usable && signRule ? signerNames(result.signers) : [],
     };
   } catch (e) {
@@ -331,7 +333,7 @@ async function documentChecks(supabase, { request, user, now, given, precheck, f
  *               history: [{ docNo, rev, issuedAt, supersededAt, supersededReason }],   ← คีย์มีเฉพาะ access.history
  *               nextDocNo,                                ← คีย์มีเฉพาะ access.issue · เลขฐานเดิม R ถัดไปเมื่อไม่มีฉบับที่ใช้อยู่
  *               send:  null | { blockers: string[], warnings: string[], unknown, selfSign?, signers? },   ← คีย์มีเฉพาะ access.issue
- *               issue: null | { blockers: [{ kind, text, hold?, sign?, self? }], warnings: string[], unknown, signers? },
+ *               issue: null | { blockers: [{ kind, text, sign?, self? }], warnings: string[], unknown, signers? },
  *               signRule: true,                           ← คีย์มีเฉพาะ access.issue **และ** กติกาลายเซ็นจริงเปิด
  *               unknown: true }                           ← เฉพาะเมื่ออ่านแถวเอกสารไม่สำเร็จ
  * ```
@@ -340,7 +342,6 @@ async function documentChecks(supabase, { request, user, now, given, precheck, f
  *            คำเตือนที่จอต้องส่งกลับมาเป็น `seenWarnings` · ตัวตรวจเดียวกับ S5 ของเส้นส่งผล
  * ⭐ `issue` — สถานะ `missing` (ตอบแล้ว ไม่มีเอกสาร): ทุกเหตุที่ปุ่ม "ออกเอกสาร" จะตีกลับ + คำเตือนของกล่องยืนยัน
  *            `kind: 'content'` = ต้องดึงผลกลับมาแก้แล้วส่งใหม่ · `'system'` = แก้แล้วกดออกเอกสารซ้ำได้
- *            · `hold: true` (คีย์มีเฉพาะข้อกันเอกสารของใบที่มีพื้นที่ประเมินจากแบบ) = ไม่มีอะไรให้แก้ กดซ้ำไม่ช่วย
  * ⚠️ ทั้งสองตัวคิดเฉพาะ `withChecks` (GET ใบประเมิน) และเฉพาะคนที่ออกเอกสารได้ — ราคาคือการอ่านขนานของตัวโหลดข้อมูลเอกสาร
  * ⚠️ ตรวจล้ม = `unknown: true` ในก้อนนั้น ไม่ใช่ GET ล้ม
  *
@@ -363,10 +364,12 @@ async function documentChecks(supabase, { request, user, now, given, precheck, f
  * @param opts.zones · opts.filesByZone · opts.sizes · opts.open  แถวที่ route อ่านไว้แล้ว — ไม่ส่ง = อ่านเองตอนตรวจ
  * @param opts.precheck    ตัวตรวจแทน (เทสต์) — ไม่ส่ง = `surveyReportPrecheck` ของ `surveyReportInputs`
  * @param opts.signatureRule  กติกาลายเซ็นจริง: `'required'` | `'off'` | ไม่ส่ง = ตามสวิตช์ (เทสต์ส่งค่าตรง ๆ) — ส่งต่อให้ตัวตรวจด้วย
+ * @param opts.drawingMethodEnabled  ค่าสวิตช์ประเมินจากแบบ (`true` ตรงตัว = เปิด · ค่าตั้งต้น `false`) ส่งต่อให้ตัวตรวจ (งวด S3 §2.2) —
+ *                         ไฟล์นี้ไม่อ่านสวิตช์เอง (GET ใบประเมินอ่านแล้วส่งมา) · ผลเดียว: หางของบรรทัดไม่พบนัดใน `send` / `issue`
  */
 export async function surveyDocumentSummary(supabase, request, user, {
   withChecks = false, withVoids = false, now = new Date(),
-  zones, filesByZone, sizes, open, precheck = null, signatureRule,
+  zones, filesByZone, sizes, open, precheck = null, signatureRule, drawingMethodEnabled = false,
 } = {}) {
   if (!request?.id) return { access: 'none' };
   const granted = surveyDocAccess(user, request) || {};
@@ -417,7 +420,7 @@ export async function surveyDocumentSummary(supabase, request, user, {
     const wantIssue = state === 'missing';
     if (withChecks && (wantSend || wantIssue)) {
       const checks = await documentChecks(supabase, {
-        request, user, now, precheck, forIssue: wantIssue, signRule,
+        request, user, now, precheck, forIssue: wantIssue, signRule, drawingMethodEnabled,
         given: { zones, filesByZone, sizes, open },
       }) || checkUnknown();
       const signers = checks.signers.length ? { signers: checks.signers } : {};

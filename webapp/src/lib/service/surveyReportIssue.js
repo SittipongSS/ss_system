@@ -109,38 +109,32 @@ const issued = ({ docNo, rev, reused, warnings = [], reportId = null }) => withR
  * @param reasons  เหตุทีละข้อ (ข้อความไทย)
  * @param reason   ประโยคเต็มที่ขึ้นจอได้เลย — ไม่ส่ง = เหตุต่อกันด้วย ` | `
  * @param retry    กด "ออกเอกสาร" ซ้ำโดยไม่ต้องดึงผลกลับแล้วมีโอกาสผ่านไหม
- * @param hold     ติดแค่ข้อกันเอกสาร (`blocked`) — ผลได้คีย์ `hold: true` **เฉพาะตอนนี้** · ผลอื่นทุกแบบไม่มีคีย์นี้เลย
+ * คีย์ของผลชุดเดียวทุกแบบ — ไม่มีคีย์เสริม (งวด S3 ถอดธงของข้อกันเอกสารของใบจากแบบออกแล้ว)
  */
-const failed = (code, reasons, { reason = null, retry = false, hold = false } = {}) => {
+const failed = (code, reasons, { reason = null, retry = false } = {}) => {
   const lines = unique(list(reasons).map((t) => String(t ?? '').trim()).filter(Boolean));
   return withReportId({
     state: 'failed', code, docNo: null, rev: null, reused: false,
     reasons: lines, reason: reason || lines.join(' | ') || INTERNAL_FAILED, retry, warnings: [],
-    ...(hold ? { hold: true } : {}),
   }, null);
 };
 
 /* ด่านที่ไม่ผ่าน → `blocked` · มีข้อชนิด `content` = ต้องดึงผลกลับมาแก้ (ใบล็อกแล้ว) · มีแต่ `system` = แก้แล้วกดซ้ำได้
-   ⭐ ติดแค่ข้อกันเอกสาร (`hold` — ใบมีพื้นที่ประเมินจากแบบ · `SURVEY_REPORT_DRAWING_HOLD`) = ประโยคไม่มีท่อนทางออก และ `retry: false`:
-      ไม่มีอะไรให้แก้ ดึงผลกลับก็ไม่ช่วย กดกี่ครั้งก็ไม่ออก — หายเมื่อระบบรุ่นที่รองรับออก · มีข้ออื่นปนอยู่ = ทางออกของข้อนั้นตามเดิม
-   ⚠️ ธง `hold` อ่านจากทุกแถวก่อนยุบข้อความซ้ำ — แถวซ้ำที่ไม่มีธงต้องไม่ทำให้ข้อกันกลายเป็นเหตุที่ "แก้แล้วกดซ้ำได้"
+   ⭐ ใบที่มีพื้นที่ประเมินจากแบบเดินกติกาเดียวกัน (งวด S3 — ไม่มีข้อกันเอกสารอีกแล้ว): ติดแต่ `system` = "แก้แล้วกดออกเอกสารอีกครั้ง"
    ⭐ ข้อ "ยังไม่มีลายเซ็น" (ชนิด `content` ที่พก `sign: true` — PR-SIG §2.3) **ไม่ใช่เหตุให้ดึงผลกลับ**: "ต้องดึงผลกลับ" = มีข้อชนิด
       `content` ที่ **ไม่** พก `sign` เท่านั้น
         มีข้อ content ที่ไม่ใช่ลายเซ็น              ทางออกเดิม (ดึงผลกลับ) · `retry: false` · มีข้อลายเซ็นปนอยู่ = นำด้วย "ลายเซ็นเพิ่มได้เลย…"
         ไม่มีข้อแบบนั้น แต่มีข้อลายเซ็นอย่างน้อยหนึ่ง  ชวนเพิ่มลายเซ็นที่ “บัญชีของฉัน” แล้วกดซ้ำ · `retry: true`
-      ธง `sign` อ่านจากทุกแถวก่อนยุบข้อความซ้ำ เหมือน `hold` */
+      ธง `sign` อ่านจากทุกแถวก่อนยุบข้อความซ้ำ — แถวซ้ำที่ไม่มีธงต้องไม่ทำให้ข้อลายเซ็นกลายเป็นเหตุให้ดึงผลกลับ */
 function blocked(issues) {
   const all = list(issues).filter((i) => i?.text);
   const seen = new Set();
   const rows = all.filter((i) => !seen.has(i.text) && seen.add(i.text));
-  const held = new Set(all.filter((i) => i.hold === true).map((i) => i.text));
   const signed = new Set(all.filter((i) => i.kind === 'content' && i.sign === true).map((i) => i.text));
   const content = rows.some((i) => i.kind === 'content' && !signed.has(i.text));
   const sign = rows.some((i) => signed.has(i.text));
-  const holdOnly = rows.length > 0 && rows.every((i) => i.kind !== 'content' && held.has(i.text));
   const texts = rows.map((i) => i.text);
   const lead = `ออกเอกสารไม่ได้ — ${texts.join(' | ')}`;
-  if (holdOnly) return failed('blocked', texts, { reason: lead, retry: false, hold: true });
   if (content) {
     return failed('blocked', texts, { reason: `${lead} · ${sign ? `${SIGN_NO_RECALL} · ` : ''}${RECALL_HINT}`, retry: false });
   }
@@ -356,7 +350,7 @@ async function run(supabase, opts, ctx) {
   const {
     requestId = null, user = null, closedVisit = null, prepared = null, deadline = null, measure = null,
     storeAllowed, now, newId, prepareImages, imageOptions, render,
-    signatures = null, signatureRule, prepareSignatures, signatureOptions,
+    signatures = null, signatureRule, prepareSignatures, signatureOptions, drawingMethodEnabled = false,
   } = opts;
   const renderHtml = typeof render === 'function' ? render : renderSurveyReportHTML;
   const { via } = ctx;
@@ -413,7 +407,10 @@ async function run(supabase, opts, ctx) {
   const takenAt = now().toISOString();
   /* `actor` = คนที่กดอยู่ตอนนี้ — เมื่อเขาคือผู้ส่งผลของใบ (เส้นส่งผลเสมอ · ปุ่ม "ออกเอกสาร" ที่ผู้ส่งกดเอง) สิทธิ์ส่งผลของที่นั่ง
      ผู้ตรวจสอบและอนุมัติตัดสินจากเซสชันของเขา ไม่อ่านบัญชีซ้ำ · คนอื่นกด = ตัวโหลดอ่านบัญชีของผู้ส่งผลเอง (PR-SIG · `signerEligible`) */
-  const loaded = await loadSurveyReportInputs(supabase, { request, closedVisit, takenAt, signatureRule, actor: user });
+  /* `drawingMethodEnabled` = ค่าสวิตช์ประเมินจากแบบที่ route ส่งมา (ไฟล์นี้ไม่อ่านสวิตช์เอง) — ผลเดียวคือหางของบรรทัดไม่พบนัด */
+  const loaded = await loadSurveyReportInputs(supabase, {
+    request, closedVisit, takenAt, signatureRule, actor: user, drawingMethodEnabled: drawingMethodEnabled === true,
+  });
   const { unknown } = loaded;
   /* ฉบับของลายเซ็นที่หัวหน้าเห็นตอนกดส่ง (S5) ชนะค่าที่อ่านใหม่ — เจ้าตัวเปลี่ยน/ยกเลิกลายเซ็นคั่นกลางไม่ทำให้เอกสารออกไม่ได้
      (ไฟล์ของฉบับเก่าไม่ถูกลบ · สำเนา JPEG อยู่ในถังของเอกสารแล้ว) */
@@ -694,6 +691,8 @@ async function reportFailure(ctx, result) {
  *                           `imageByVersionId` = ผลของ `prepareSurveyReportSignatures` รอบนั้น (ฉบับที่มีแล้วไม่ถูกอ่านซ้ำ)
  *                         · ปุ่ม "ออกเอกสาร" ไม่ส่ง = ใช้ฉบับที่ใช้อยู่ ณ ตอนกด
  * @param opts.signatureRule  กติกาลายเซ็นจริง: `'required'` | `'off'` | ไม่ส่ง = ตามสวิตช์ `SURVEY_REPORT_SIGNATURES` (ส่งต่อให้ตัวโหลด)
+ * @param opts.drawingMethodEnabled  ค่าสวิตช์ประเมินจากแบบ (`true` ตรงตัว = เปิด · ค่าตั้งต้น `false`) ส่งต่อให้ตัวโหลด (งวด S3 §2.2) —
+ *                         **ไฟล์นี้ไม่อ่านสวิตช์เอง** (อ่านได้เฉพาะ route ใต้ `src/app/api/`) · ผลเดียว: หางของบรรทัดไม่พบนัด
  * จุดเสียบของเทสต์และ harness: `storeAllowed` (ไม่ส่ง = `surveyReportStoreAllowed()` · `true` ตรงตัวเท่านั้นจึงเขียน) ·
  *   `audit` (ไม่ส่ง = `recordAudit`) · `now` (`() => Date`) · `newId` · `prepareImages` (แทนตัวเตรียมรูป) ·
  *   `imageOptions` (ตัวเลือกเสริมที่ส่งต่อให้ตัวเตรียมรูป เช่น `getFileStream`) ·
@@ -704,8 +703,6 @@ async function reportFailure(ctx, result) {
  *   · `state: 'issued'` — `docNo` · `rev` · `reused` (`true` = มีฉบับที่ใช้อยู่แล้ว ไม่ได้ออกเลขใหม่) · `warnings` · `code: null`
  *   · `state: 'failed'` — `code` (หนึ่งใน `SURVEY_REPORT_ISSUE_CODES`) · `reasons` (ทีละข้อ) · `reason` (ประโยคเต็มขึ้นจอได้เลย
  *     รวมคำแนะนำทางออกแล้ว — ผู้เรียกไม่ต้องต่อท้ายเอง) · `retry` (กดออกเอกสารซ้ำได้โดยไม่ต้องดึงผลกลับ)
- *     · `hold: true` — คีย์เสริม **เฉพาะ** `blocked` ที่ติดแค่ข้อกันเอกสารของใบที่มีพื้นที่ประเมินจากแบบ (ไม่มีทางออกให้คนกด:
- *       `reason` ไม่มีท่อนคำแนะนำ · `retry: false`) — ผลอื่นทุกแบบไม่มีคีย์นี้
  *   · `reportId` ติดมากับผลที่ `issued` แบบ **ไม่ถูกไล่** (ดู `withReportId`) — ใช้เรียกขั้นกระดาษ ห้ามใส่ลง payload/เธรด
  *
  * ⚠️ ล้มด้วย `via: 'send'` = เขียน audit ของคำร้อง "ออกเอกสารประเมินไม่สำเร็จหลังส่งผล …" ด้วย (ยกเว้น `answer_changed`)

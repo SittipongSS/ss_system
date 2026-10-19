@@ -13,7 +13,7 @@ import { SURVEY_SIGN_FAILURE, SURVEY_SIGN_PERMANENT_REASONS } from './surveyRepo
 import {
   SURVEY_SIGN_ACCOUNT, SURVEY_SIGN_FAILURE_LABELS, SURVEY_SIGN_RULE, SURVEY_SIGN_SEATS, SURVEY_SIGN_SEAT_LABEL,
   surveyReportSeatEligible, surveyReportSignFileLines, surveyReportSignatureIssues, surveyReportSignerVersions, surveyReportSigners,
-  surveyReportSignersText,
+  surveyDrawingSeatSigner, surveyReportSignersText,
 } from './surveyReportSigners.js';
 import { buildSurveyReportSnapshot } from './surveyReportSnapshot.js';
 import { surveyReportView } from './surveyReportView.js';
@@ -190,13 +190,113 @@ test('คนเดียวสองที่นั่ง = แถวเดี�
   ]);
 });
 
-test('🔴 ใบที่มีพื้นที่ประเมินจากแบบ (ข้อกันเอกสาร) ไม่มีผู้ลงนามให้เตรียม — พื้นที่จากแบบที่ถูกตัดไม่นับ', () => {
+test('ใบผสม: ถามสองที่นั่งเหมือนใบลงหน้างาน (งวด S3 §2.6) — พื้นที่จากแบบไม่ทำให้ใบถูกข้ามอีกต่อไป', () => {
   const mixed = inputs({ zones: [{ id: 'Z1', status: 'ok' }, { id: 'Z2', status: 'ok', method: 'drawing' }] });
-  assert.deepEqual(surveyReportSignerVersions(mixed), []);
+  assert.deepEqual(surveyReportSignerVersions(mixed), surveyReportSignerVersions(inputs()));
+  assert.equal(surveyReportSignerVersions(mixed).length, 2);
   const cut = inputs({ zones: [{ id: 'Z1', status: 'ok' }, { id: 'Z2', status: 'cut', method: 'drawing' }] });
   assert.equal(surveyReportSignerVersions(cut).length, 2);
-  // ตัวหาบรรทัดไม่ดูข้อกัน — คนที่ข้ามคือ `surveyReportFreezeIssues` (เทสต์ของภาพนิ่งล็อกไว้)
   assert.equal(surveyReportSignatureIssues({ ...mixed, signatures: {} }).length, 2);
+});
+
+/* ══ ③ข ใบประเมินจากแบบทั้งใบ — ที่นั่งที่ 1 (งวด S3 §2.6 · มติ O1) ═══════════════════════════════════
+   ใบจากแบบล้วนไม่มีนัด ⇒ ที่นั่งที่พิมพ์ชื่อมีแค่ผู้ส่งผล · ที่นั่งที่ 1 ได้ลายเซ็นของผู้ส่งผลเมื่อผู้ประเมินจากแบบคนเดียวของทุกพื้นที่คือเขา */
+const T_SWITCH = '2026-10-09T03:00:00.000Z';
+const T_SAVE = '2026-10-09T05:00:00.000Z';
+const dz = (id, over = {}) => ({ id, status: 'ok', method: 'drawing', ...over });
+/** ใบจากแบบล้วน — ผู้ส่งผล U-head "Head Approver" */
+function desk(zones, over = {}) {
+  return inputs({ visit: null, zones, have: ['U-head'], ...over });
+}
+
+test('🔑 surveyDrawingSeatSigner: ตาราง §2.6', () => {
+  const sender = { userId: 'U-head', name: 'Head Approver' };
+  const cases = [
+    ['ทุกพื้นที่ผู้ส่งผลบันทึกหลังสลับ (id ตรง)',
+      desk([dz('Z1', { methodChangedAt: T_SWITCH, methodChangedByName: 'Head Approver', surveyedAt: T_SAVE, surveyedByName: 'Head Approver', surveyedById: 'U-head' }),
+        dz('Z2', { surveyedAt: T_SAVE, surveyedByName: 'Head Approver', surveyedById: 'U-head' })]),
+      sender],
+    ['สลับทั้งใบ ไม่บันทึกใหม่ ชื่อคนสลับ = ชื่อผู้ส่งผล',
+      desk([dz('Z1', { methodChangedAt: T_SWITCH, methodChangedByName: 'Head Approver', surveyedAt: '2026-10-08T03:00:00Z', surveyedByName: 'ช่าง ค', surveyedById: 'U-crew' }),
+        dz('Z2', { methodChangedAt: T_SWITCH, methodChangedByName: 'Head Approver' })]),
+      sender],
+    ['หัวหน้า A สลับ หัวหน้า B ส่ง',
+      desk([dz('Z1', { methodChangedAt: T_SWITCH, methodChangedByName: 'Head A' })]),
+      null],
+    ['พื้นที่หนึ่งหัวหน้าอีกคนบันทึก',
+      desk([dz('Z1', { surveyedAt: T_SAVE, surveyedByName: 'Head Approver', surveyedById: 'U-head' }),
+        dz('Z2', { surveyedAt: T_SAVE, surveyedByName: 'Head Other', surveyedById: 'U-other' })]),
+      null],
+    ['บันทึกด้วยชื่อเดียวกันแต่คนละบัญชี (id ชนะ)',
+      desk([dz('Z1', { surveyedAt: T_SAVE, surveyedByName: 'Head Approver', surveyedById: 'U-twin' })]),
+      null],
+    ['แถวมีชื่อ ไม่มี id ชื่อตรง',
+      desk([dz('Z1', { surveyedAt: T_SAVE, surveyedByName: 'Head Approver' })]),
+      sender],
+    ['ชื่อต่างกันแค่ช่องว่างหัวท้าย = ตรง',
+      desk([dz('Z1', { methodChangedAt: T_SWITCH, methodChangedByName: '  Head Approver ' })]),
+      sender],
+    ['ชื่อต่างกันเกินช่องว่างหัวท้าย',
+      desk([dz('Z1', { methodChangedAt: T_SWITCH, methodChangedByName: 'Head  Approver' })]),
+      null],
+    ['ไม่มีชื่อใครบนแถว = ทาง ③ คือผู้ส่งผลเอง',
+      desk([dz('Z1')]),
+      sender],
+    ['พื้นที่จากแบบที่ถูกตัดไม่ถูกถาม',
+      desk([dz('Z1'), dz('Z2', { status: 'cut', surveyedAt: T_SAVE, surveyedByName: 'Head Other', surveyedById: 'U-other' })]),
+      sender],
+    ['ใบผสม',
+      inputs({ zones: [{ id: 'Z1', status: 'ok' }, dz('Z2')] }),
+      null],
+    ['ใบลงหน้างาน', inputs(), null],
+    ['ยังไม่ส่งผล และไม่มีผู้ส่งที่กำลังจะเขียน',
+      desk([dz('Z1')], { request: { id: 'DR-1', answeredAt: null, answeredById: null, answeredByName: null } }),
+      null],
+    ['ผู้ส่งผลไม่มี id',
+      desk([dz('Z1')], { request: { id: 'DR-1', answeredAt: 'x', answeredById: null, answeredByName: 'Head Approver' } }),
+      null],
+    ['ผู้ส่งผลไม่มีชื่อ',
+      desk([dz('Z1')], { request: { id: 'DR-1', answeredAt: 'x', answeredById: 'U-head', answeredByName: '  ' } }),
+      null],
+    ['ไม่มีพื้นที่เลย', desk([]), null],
+  ];
+  for (const [name, i, want] of cases) assert.deepEqual(surveyDrawingSeatSigner(i), want, name);
+  // id บนใบเป็นเลข = สตริง
+  assert.deepEqual(
+    surveyDrawingSeatSigner(desk([dz('Z1')], { request: { id: 'DR-1', answeredAt: 'x', answeredById: 7, answeredByName: 'Head Approver' } })),
+    { userId: '7', name: 'Head Approver' },
+  );
+  // ไม่ถามกติกาลายเซ็น — ตอบเรื่องคนอย่างเดียว
+  assert.deepEqual(surveyDrawingSeatSigner(desk([dz('Z1')], { signatureRule: undefined })), sender);
+  assert.equal(surveyDrawingSeatSigner(null), null);
+  assert.equal(surveyDrawingSeatSigner(undefined), null);
+});
+
+test('⭐ ใบจากแบบล้วน: ผู้ส่งผลที่เป็นผู้ประเมินจากแบบคนเดียว = แถวเดียวสองที่นั่ง · ไม่ใช่ = ที่นั่งผู้อนุมัติอย่างเดียว', () => {
+  const two = desk([dz('Z1')]);
+  assert.deepEqual(surveyReportSigners(two), [{ seat: 'approver', userId: 'U-head', name: 'Head Approver' }], 'ลิสต์ที่นั่งไม่เปลี่ยน');
+  assert.deepEqual(surveyReportSignerVersions(two), [
+    { seats: ['assessor', 'approver'], userId: 'U-head', name: 'Head Approver', version: version('V-U-head') },
+  ]);
+  assert.equal(surveyReportSignersText(surveyReportSignerVersions(two)),
+    'Head Approver ทั้งสองช่อง (ผู้ประเมิน และผู้ตรวจสอบและอนุมัติ)');
+
+  const one = desk([dz('Z1', { methodChangedAt: T_SWITCH, methodChangedByName: 'Head A' })]);
+  assert.deepEqual(surveyReportSignerVersions(one), [
+    { seats: ['approver'], userId: 'U-head', name: 'Head Approver', version: version('V-U-head') },
+  ]);
+  assert.equal(surveyReportSignersText(surveyReportSignerVersions(one)), 'Head Approver (ผู้ตรวจสอบและอนุมัติ)');
+
+  // สิทธิ์ของที่นั่งที่ 1 บนใบนี้ = สิทธิ์ส่งผล — ไม่ถามธงผู้ประเมิน (ใบนี้ไม่มีบัญชีบนนัด)
+  assert.equal(surveyReportSignerVersions({ ...two, signerEligible: { assessor: null, approver: true } }).length, 1);
+  assert.deepEqual(surveyReportSignerVersions({ ...two, signerEligible: { assessor: null, approver: false } }), []);
+  assert.deepEqual(surveyReportSignerVersions({ ...two, signerEligible: { assessor: true, approver: null } }), []);
+  // ผู้ส่งผลยังไม่มีลายเซ็น = ว่าง · บรรทัดเดียว ประโยคเดียวของที่นั่งผู้อนุมัติ
+  const none = desk([dz('Z1')], { have: [] });
+  assert.deepEqual(surveyReportSignerVersions(none), []);
+  assert.deepEqual(surveyReportSignatureIssues(none).map((r) => r.seats), [['approver']]);
+  // กติกาปิด = ว่างเหมือนเดิม
+  assert.deepEqual(surveyReportSignerVersions(desk([dz('Z1')], { signatureRule: 'off' })), []);
 });
 
 test('ไม่แก้อินพุต · ผลนิ่ง · แถวที่คืนไม่ใช่ตัวเดียวกับของอินพุต (ผู้เรียกแก้ `seats` แล้วของเดิมไม่เพี้ยน)', () => {
@@ -371,4 +471,23 @@ test('🔴 ซอร์ส: ไม่อ่าน env · ไม่มี node: /
   assert.doesNotMatch(src, /process\.env|server-only|node:|import\(|require\(/);
   // ไม่มีชื่อคลัง/คอลัมน์ที่อยู่ไฟล์ถูกอ่านที่นี่ — ที่อยู่ไฟล์เดินทางอยู่ในก้อน `version` ทั้งก้อน ไม่ถูกแกะ
   assert.doesNotMatch(src, /signature-assets|\.storagePath/);
+});
+
+test('🔴 งวด S3 §2.6 (ซอร์ส): ข้อข้ามเรื่องลายเซ็นของใบที่มีพื้นที่จากแบบถูกถอดทั้งหมดในไฟล์ของกระดาษ — ไม่มีการนับพื้นที่จากแบบในทางของลายเซ็น', () => {
+  const src = (name) => readFileSync(new URL(`./${name}`, import.meta.url), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+  const DRAWING_COUNT = /drawing\s*(?:>|===|!==|<)\s*0|\.drawing\s*>\s*0/;
+  // ตัวตัดสินผู้ลงนาม: ไม่นับพื้นที่จากแบบเลย (ถามแค่ "จากแบบทั้งใบไหม" ผ่าน `.mode` ของตัวตัดสินที่นั่งที่ 1)
+  assert.doesNotMatch(src('surveyReportSigners.js'), DRAWING_COUNT);
+  // ตัวโหลด: ทั้ง `sheetSigns` และตัวอ่านลายเซ็นไม่ข้ามใบจากแบบอีกแล้ว
+  const inputs = src('surveyReportInputs.js');
+  assert.doesNotMatch(inputs, DRAWING_COUNT);
+  assert.doesNotMatch(inputs, /\bsheetSigns\b/);
+  // ภาพนิ่ง: ด่านลายเซ็นของการตรึง และกิ่งลายเซ็นของตัวสร้าง ถามแค่กติกา (+ ชิ้นที่อ่านพลาด)
+  const snapshot = src('surveyReportSnapshot.js');
+  assert.match(snapshot, /if \(inputs\.signatureRule === SURVEY_SIGN_RULE && !unread\('signatures'\)\) \{/);
+  assert.match(snapshot, /const signs = inputs\.signatureRule === SURVEY_SIGN_RULE \? signaturesPart\(inputs, assessment\) : null;/);
+  // ที่เดียวที่ภาพนิ่งนับพื้นที่จากแบบคือข้อ "ยังไม่ได้เลือกว่าต้องยืนยันหน้างานไหม" (§2.3 ข้อ 2) — ไม่ใช่เรื่องลายเซ็น
+  assert.deepEqual([...snapshot.matchAll(/mix\.drawing > 0/g)].length, 1);
+  assert.match(snapshot, /if \(mix\.drawing > 0 && request\.answeredAt && inputs\.answerPending !== true/);
 });

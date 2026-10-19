@@ -3,7 +3,7 @@
 // ⭐ ไฟล์นี้ล็อกคีย์และค่าคงที่ที่งวด S2b เพิ่มให้ view-model ของงวด S2a:
 //   ค่าคงที่ (ชิปคิว · บรรทัดที่มา · ประโยคปุ่มขอยืนยันที่ยังไม่มี · ประโยคเพิ่มพื้นที่) · แผงแบบจากฝ่ายขาย (`editable` · `ref` · ชนิด · รายละเอียด)
 //   · มาตรวัดของงานโต๊ะ · หัวงาน (ข้อ "วิธีประเมิน") · แถวรวมรูป · สรุปของจอรายละเอียดรุ่นเก่า · บรรทัดที่มาบนคิว ·
-//   ปุ่มวันส่งผลของงานโต๊ะ · บรรทัดรวมท้ายแถบแท็บ · บล็อกเอกสารที่ถูกพัก · พื้นที่ที่เปิดเองของผู้วางคิว
+//   ปุ่มวันส่งผลของงานโต๊ะ · บรรทัดรวมท้ายแถบแท็บ · บล็อกเอกสาร (งวด S3: เท่าใบลงหน้างาน) · พื้นที่ที่เปิดเองของผู้วางคิว
 // 🔴 ทุกข้อมีคู่ "ใบลงหน้างานล้วน = ค่าว่าง / ผลเดิม" — ใบที่ไม่มีพื้นที่จากแบบต้องได้จอเดิมทุกจุด
 //    (ลายนิ้วมือของผลเดิมทั้งก้อนอยู่ที่ `surveyMethodGolden.test.mjs`)
 import test from 'node:test';
@@ -19,7 +19,7 @@ import {
 import { surveyControlView } from './surveyControl.js';
 import { surveyJobView, surveyRequestDrawingSummary } from './surveyJob.js';
 import { surveyRequestDocumentView } from './surveyDocumentView.js';
-import { SURVEY_SEND_PAPER_HOLD_EFFECT, surveySendConfirm } from './surveySendClose.js';
+import { surveySendConfirm } from './surveySendClose.js';
 import { surveyQueueMethodBack } from './surveyQueueRepo.js';
 import { commitDueLabels, deskDueAction } from '../requests/commitDue.js';
 import { requestAwaitingDue } from '../requests/statuses.js';
@@ -438,93 +438,67 @@ test('surveySheetTotalsText: ไม่มีพื้นที่จากแบ
   assert.equal(surveySheetTotalsText({ zones: cutDrawing, filesByZone: mixedFiles }), 'รวม 78 ตร.ม. · 228 ลบ.ม. · ภาพกว้าง 3 · จุด 2');
 });
 
-/* ══ บล็อกเอกสารที่ถูกพัก (§2.5 j) ══════════════════════════════════════════════════════════ */
+/* ══ บล็อกเอกสารบนหน้าคำร้อง (§2.5 j · งวด S3 ถอดข้อพักเอกสาร) ═══════════════════════════════════════
+   ⭐ ใบที่มีพื้นที่จากแบบได้บล็อกเดียวกับใบลงหน้างานทุกสถานะ ทุกคนดู — ใบที่ส่งผลไประหว่างที่เอกสารถูกพักเป็น `missing`
+      เหมือนใบอื่น: หัวหน้าถูกชี้ไปกด "ออกเอกสาร" ที่ใบประเมิน (ปุ่มนั้นออกให้แล้ว) · ฝ่ายขายได้ประโยคทวงหัวหน้าตามช่องทางจริง */
 
-const HOLD = SURVEY_SEND_PAPER_HOLD_EFFECT;
-const docInput = (state, over = {}) => ({
-  surveyDocument: { access: { customer: true, internal: true, issue: true, history: true }, state, current: null, history: [], storeAllowed: true, ...over.doc },
-  request: { id: 'r1', status: 'answered', answeredAt: '2026-10-14T03:00:00Z', ...over.request },
-  viewer: { canOpenSheet: true, isRequesterSide: false, canDecide: true, ...over.viewer },
+const DOC_ACCESS = {
+  head: { customer: true, internal: true, issue: true, draft: true, history: true },
+  sales: { customer: true, internal: false, issue: false, draft: false, history: false },
+};
+const docOf = (who, state) => ({
+  access: DOC_ACCESS[who], state, storeAllowed: true,
+  current: ['issued', 'frozen', 'ready', 'stale'].includes(state)
+    ? { docNo: 'SU-26100001-0', issuedAt: '2026-10-14T03:00:05Z', issuedByName: 'Arnon', ready: { customer: true, internal: false } }
+    : null,
+  history: who === 'head' && state === 'recalled' ? [{ docNo: 'SU-26100001-0' }] : [],
 });
+const requestBlock = (surveyZones, surveyDocument, viewer, refreshStalled = false, over = {}) => surveyJobView({
+  request: ask({ ...SENT, surveyDocument, surveyZones, ...over }), today: TODAY, viewer, refreshStalled,
+}).document;
 
-test('บล็อกเอกสาร · drawingHold ว่าง = ผลเดิมทุกสถานะ (ทั้งหัวหน้าและฝ่ายขาย)', () => {
-  const current = { docNo: 'SU-26100001-R0', issuedAt: '2026-10-14T03:00:05Z', issuedByName: 'Arnon', ready: { customer: true, internal: true } };
-  for (const state of ['not_sent', 'recalled', 'issuing', 'missing', 'issued', 'frozen', 'ready', 'stale']) {
-    for (const viewer of [{}, { isRequesterSide: true, canDecide: false, canOpenSheet: false }]) {
-      const withDoc = ['issued', 'frozen', 'ready', 'stale'].includes(state) ? { current } : {};
-      const input = docInput(state, { doc: withDoc, viewer });
-      const today = surveyRequestDocumentView(input);
-      for (const drawingHold of [null, undefined, '', '   ']) {
-        assert.deepEqual(surveyRequestDocumentView({ ...input, drawingHold }), today, `${state} · ${JSON.stringify(drawingHold)}`);
+test('⭐ บล็อกเอกสาร · ใบจากแบบทั้งใบ / ใบผสม = บล็อกของใบลงหน้างาน — ทุกสถานะ × หัวหน้า/ฝ่ายขาย × เปลือกยังตรวจ/เลิกตรวจ × ใบเปิด/ปิด', () => {
+  const states = ['missing', 'issuing', 'issued', 'frozen', 'ready', 'recalled', 'stale', 'not_sent'];
+  for (const state of states) {
+    for (const [who, viewer] of [['head', HEAD], ['sales', SALES]]) {
+      for (const stalled of [false, true]) {
+        for (const over of [{}, { status: 'closed', closedAt: '2026-10-15T00:00:00Z' }]) {
+          const at = `${state} · ${who} · ${stalled} · ${over.status || 'answered'}`;
+          const onsite = requestBlock(zones(), docOf(who, state), viewer, stalled, over);
+          for (const surveyZones of [zones(DRAWING), mixedZones()]) {
+            assert.deepEqual(requestBlock(surveyZones, docOf(who, state), viewer, stalled, over), onsite, at);
+          }
+        }
       }
     }
   }
+  // ตัวอย่างตรงตัว — กันทั้งตารางบนเขียวเพราะสองฝั่งเพี้ยนไปพร้อมกัน
+  const head = requestBlock(zones(DRAWING), docOf('head', 'missing'), HEAD);
+  assert.deepEqual(head.text, { tone: 'info', text: 'ยังไม่มีเอกสารของใบนี้ — กด “ออกเอกสาร” ที่ใบประเมิน' });
+  assert.equal(head.sheetLink, true, 'หัวหน้าได้ลิงก์ไปใบประเมิน ที่ที่ปุ่มออกเอกสารอยู่');
+  assert.deepEqual(head.badge, { label: 'ยังไม่ออก', tone: 'warning' });
+  const sales = requestBlock(mixedZones(), docOf('sales', 'missing'), SALES);
+  assert.deepEqual(sales.text, { tone: 'info', text: 'ยังไม่มีเอกสารของใบนี้ — แจ้งหัวหน้าฝ่ายบริการให้กดออกเอกสาร (เขียนในเธรดด้านล่างได้)' });
+  assert.equal(sales.buttons.length, 1);
+  assert.equal(sales.buttons[0].blocked, sales.text.text);
+  // "กำลังออก" กลับมาเป็นสถานะของตัวเอง (เดิมถูกกลืนเป็น "ยังไม่ออก" ตอนเอกสารถูกพัก)
+  assert.deepEqual(requestBlock(zones(DRAWING), docOf('sales', 'issuing'), SALES).badge, { label: 'กำลังออก', tone: 'info' });
+  const ready = requestBlock(zones(DRAWING), docOf('sales', 'ready'), SALES);
+  assert.equal(ready.docNo, 'SU-26100001-0');
+  assert.equal(ready.buttons[0].href, '/api/service/surveys/r1/document?version=customer&download=1');
+  assert.doesNotMatch(JSON.stringify([head, sales, ready]), /ยังออกไม่ได้ — ระบบ|ผลถึงฝ่ายขายตามปกติ/);
 });
 
-test('⭐ บล็อกเอกสาร · มีพื้นที่จากแบบ: "ยังไม่มีเอกสาร" และ "กำลังออก" กลายเป็นประโยคพักเอกสาร — ไม่มีปุ่ม ไม่มีลิงก์ไปใบประเมิน ไม่ชี้ให้ไปกดออกเอกสาร', () => {
-  for (const viewer of [{}, { isRequesterSide: true, canDecide: false, canOpenSheet: false }]) {
-    for (const state of ['missing', 'issuing']) {
-      for (const pollStopped of [false, true]) {
-        const input = docInput(state, { viewer });
-        const view = surveyRequestDocumentView({ ...input, drawingHold: HOLD, pollStopped });
-        assert.deepEqual(view, {
-          state: 'missing',
-          badge: { label: 'ยังไม่ออก', tone: 'warning' },
-          docNo: null, issuedText: null, issuedByName: null,
-          text: { tone: 'info', text: HOLD },
-          foot: null, waitText: null, buttons: [], sheetLink: false,
-        }, `${state} · ${JSON.stringify(viewer)} · ${pollStopped}`);
-        // ของเดิมชี้สองทางตัน: ฝ่ายขาย "แจ้งหัวหน้า…ให้กดออกเอกสาร" · หัวหน้า "กด “ออกเอกสาร” ที่ใบประเมิน"
-        assert.doesNotMatch(JSON.stringify(view), /กดออกเอกสาร|กด “ออกเอกสาร”|กำลังออก/);
-      }
-    }
-  }
-  const before = surveyRequestDocumentView(docInput('missing'));
-  assert.match(before.text.text, /กด “ออกเอกสาร” ที่ใบประเมิน/, 'ตัวเทียบ: ไม่มีการพัก = ประโยคเดิม');
-  assert.equal(before.sheetLink, true);
-});
-
-test('บล็อกเอกสาร · มีพื้นที่จากแบบ: เอกสารที่ออกไปแล้ว · ถูกแทนที่ · ใช้ไม่ได้ · ไม่ทราบ · ยังไม่ส่ง · ใบที่จบแล้ว ได้บล็อกเดิม', () => {
-  const current = { docNo: 'SU-26100001-R0', issuedAt: '2026-10-14T03:00:05Z', issuedByName: 'Arnon', ready: { customer: true, internal: true } };
-  const cases = [
-    docInput('issued', { doc: { current } }),
-    docInput('frozen', { doc: { current } }),
-    docInput('ready', { doc: { current } }),
-    docInput('stale', { doc: { current } }),
-    docInput('recalled', { doc: { history: [{ docNo: 'SU-26100001-R0' }] } }),
-    docInput('not_sent'),
-    // ไม่ทราบ = อ่านแถวเอกสารไม่ได้ — บอกไม่ได้ว่าไม่มีเอกสาร จึงไม่พูดประโยคพัก
-    { ...docInput('missing'), surveyDocument: { access: 'none', unknown: true } },
-    docInput('ซึ่งไม่ใช่สถานะ'),
-    // ใบที่จบแล้วและไม่มีวันได้เอกสาร (ยกเลิก · ปิดโดยไม่เคยส่งผล) = ไม่มีบล็อก เหมือนเดิม
-    docInput('missing', { request: { status: 'closed', closedAt: '2026-10-15T00:00:00Z', answeredAt: null } }),
-    docInput('missing', { request: { status: 'cancelled', cancelledAt: '2026-10-15T00:00:00Z' } }),
-  ];
-  assert.equal(surveyRequestDocumentView({ ...cases[8], drawingHold: HOLD }), null);
-  assert.equal(surveyRequestDocumentView({ ...cases[9], drawingHold: HOLD }), null);
-  // ใบที่ส่งผลแล้วและฝ่ายขายปิดเรื่อง ยังเป็นใบที่ "รอเอกสาร" ⇒ ได้ประโยคพักเหมือนใบที่ยังเปิด
-  const settled = docInput('missing', { request: { status: 'closed', closedAt: '2026-10-15T00:00:00Z' } });
-  assert.deepEqual(surveyRequestDocumentView({ ...settled, drawingHold: HOLD }).text, { tone: 'info', text: HOLD });
-  for (const input of cases) {
-    assert.deepEqual(surveyRequestDocumentView({ ...input, drawingHold: HOLD }), surveyRequestDocumentView(input), input.surveyDocument.state || 'unknown');
-  }
-  assert.equal(surveyRequestDocumentView({ ...cases[6], drawingHold: HOLD }).state, 'unknown');
-});
-
-test('surveyJobView ป้อน drawingHold เอง: ใบที่มีพื้นที่จากแบบที่ยังใช้อยู่ได้ประโยคพัก · ใบลงหน้างาน / พื้นที่จากแบบถูกตัดหมด = บล็อกเดิม', () => {
-  const surveyDocument = { access: { customer: true }, state: 'missing', current: null, storeAllowed: true };
-  const block = (request) => surveyJobView({ request, today: TODAY, viewer: SALES }).document;
-  for (const surveyZones of [zones(DRAWING), mixedZones()]) {
-    const view = block(ask({ ...SENT, surveyDocument, surveyZones }));
-    assert.deepEqual([view.text, view.buttons, view.sheetLink], [{ tone: 'info', text: HOLD }, [], false]);
-  }
-  const onsite = block(ask({ ...SENT, surveyDocument, surveyZones: zones() }));
-  assert.match(onsite.text.text, /แจ้งหัวหน้าฝ่ายบริการ/);
-  assert.notEqual(onsite.text.text, HOLD);
-  const cutOnly = mixedZones().map((z, i) => (i === 2 ? { ...z, status: 'cut' } : z));
-  assert.deepEqual(block(ask({ ...SENT, surveyDocument, surveyZones: cutOnly })), onsite);
-  // ตัวนับเดียวกับแถบแจ้งเหนือตารางผล
-  assert.match(readFileSync(new URL('./surveyJob.js', import.meta.url), 'utf8'), /drawingHold: mix\.drawing > 0 \? SURVEY_SEND_PAPER_HOLD_EFFECT : null,/);
+test('🔴 surveyJobView ไม่ส่งอะไรเรื่องวิธีประเมินให้บล็อกเอกสาร · ไม่ import โมดูลส่งผล', () => {
+  const src = readFileSync(new URL('./surveyJob.js', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(src, /from '\.\/surveySendClose'/);
+  const from = src.indexOf('document: surveyRequestDocumentView({');
+  assert.ok(from > 0, 'หาการเรียกบล็อกเอกสารไม่เจอ');
+  const call = src.slice(from, src.indexOf('}),', from));
+  assert.deepEqual([...call.matchAll(/^\s*(\w+)(?::|,$)/gm)].map((m) => m[1]), ['document', 'surveyDocument', 'request', 'viewer', 'canOpenSheet', 'isRequesterSide', 'canDecide', 'pollStopped']);
+  // ตัวตัดสินเองก็ไม่มีพารามิเตอร์ของวิธีประเมิน — คีย์ที่ไม่รู้จักไม่เปลี่ยนผล
+  const input = { surveyDocument: docOf('head', 'missing'), request: { id: 'r1', status: 'answered', answeredAt: SENT.answeredAt }, viewer: { canOpenSheet: true, canDecide: true } };
+  assert.deepEqual(surveyRequestDocumentView({ ...input, hasDrawing: true }), surveyRequestDocumentView(input));
 });
 
 /* ══ พื้นที่ที่เปิดเอง (§2.5 m) ═════════════════════════════════════════════════════════════ */
