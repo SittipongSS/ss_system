@@ -146,6 +146,8 @@ export default function ScheduleQueueCard({
           </p>
         ))}
         <p className={styles.origin}>{row.origin}</p>
+        {/* "ฝ่ายขายขอ: ประเมินจากแบบ" (งวด 4) — มีเฉพาะใบที่ยื่นเป็นจากแบบ · คลาสเดียวกับต้นเรื่อง ไม่มี CSS ใหม่ */}
+        {row.asked && <p className={styles.origin}>{row.asked}</p>}
       </div>
 
       <div className={styles.actions}>

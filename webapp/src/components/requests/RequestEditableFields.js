@@ -10,7 +10,7 @@ import Textarea from "@/components/ui/Textarea";
 import DocumentLines from "@/components/requests/DocumentLines";
 import ProductDevLines from "@/components/requests/ProductDevLines";
 import { BILLING_DOC_VOCABULARY } from "@/lib/requests/kinds/fn/billingDocTypes";
-import { requestLineShape, requestUsesPdr, requestKindMeta } from "@/lib/master/requestTypes";
+import { requestFormCopy, requestLineShape, requestUsesPdr, requestKindMeta } from "@/lib/master/requestTypes";
 import { billAmountFor, billFieldInit } from "@/lib/requests/billingQuotations";
 import { fmtNumber, fmtPercent } from "@/lib/format";
 import styles from "./requestForm.module.css";
@@ -46,8 +46,9 @@ import styles from "./requestForm.module.css";
 
 /** ชื่อเรื่อง + รายละเอียด — ช่องรายละเอียดหายไปเองเมื่อหัวข้อนั้นใช้ PDR */
 export function RequestTitleBodyFields({ value = {}, onChange, disabled = false, idPrefix = "req" }) {
-  const kind = value.kind || "";
-  const copy = requestKindMeta(kind)?.form || {};
+  /* ⭐ ข้อความของ **ทั้งใบ** (หัวข้อ ทับด้วยรูปแบบที่เลือก · ประเมินจากแบบ งวด 4) — placeholder ของรายละเอียด
+     เดินตามวิธีที่เลือก ("หน้างานจะเข้าได้ประมาณเมื่อไร · แบบที่แนบเป็นฉบับล่าสุดหรือยัง …") ไม่ใช่ของหัวข้อเฉย ๆ */
+  const copy = requestFormCopy(value);
   // ⚠️ ถาม **ทั้งใบ** ไม่ใช่ `kind` — พัฒนาสูตรมีสองรูปแบบ และรูปแบบ NPD คือตัวที่
   // แทนช่อง "รายละเอียด" ด้วยแบบฟอร์ม PDR (รูปแบบ standard ยังมีช่องนี้เหมือนเดิม)
   const hasPdr = requestUsesPdr(value);
@@ -106,11 +107,18 @@ export function RequestDueUrgentFields({
      ⚠️ ป้ายมาจากทะเบียนหัวข้อ (`form.resultDueLabel`) · **ไม่มีป้าย = หัวข้อนี้ไม่มี
         วันที่สอง** ⇒ ช่องไม่กาง (ห้ามเทียบชื่อหัวข้อที่นี่ — ratchet) */
   resultDueLabel = null,
+  /* ⭐ **รูปแบบที่มีแต่วันรับผล** (ประเมินจากแบบ งวด 4 · S4 B-4) — ไม่มีการนัดเข้าพื้นที่ ⇒ ก้อนแรกทั้งก้อน
+     (วันที่ · ช่วงเวลา · คำอธิบาย) ไม่วาด เหลือวันรับผล + ความเร่งด่วน · ค่าตั้งต้น = หน้าตาเดิมทุกหัวข้อ
+     ⚠️ ด่านจริงไม่ถามช่องนี้แล้ว (`requestShapeError` ของรูปแบบนั้น) — ซ่อนช่องอย่างเดียวไม่พอ ต้องคู่กับด่าน */
+  hideDue = false,
+  // คำอธิบายใต้วันรับผล — ไม่ส่ง = ประโยคเดิม (ใบที่มีวันเข้าพื้นที่ด้วย)
+  resultDueHint = null,
 }) {
   const set = (patch) => onChange?.({ ...value, ...patch });
 
   return (
     <>
+      {!hideDue && (
       <div className="form-group">
         {/* ⭐ บังคับทุกหัวข้อ (มติผู้ใช้ 2026-08-08) — ด่านจริงอยู่ `requestShapeError`
             ตัวเดียวกับ server · ป้ายแค่บอกล่วงหน้าว่าช่องนี้ข้ามไม่ได้ */}
@@ -136,6 +144,7 @@ export function RequestDueUrgentFields({
         )}
         <small className={styles.hint}>{dueHint}</small>
       </div>
+      )}
       {/* ⭐ **วันส่งผล — ช่องของตัวเอง ไม่ใช่ข้อความในรายละเอียด** (มติผู้ใช้ 2026-09-21)
           ⚠️ **บังคับเท่ากับวันแรก** — ใบที่บอกแค่ว่าอยากให้ไปวันไหน ไม่ได้บอกว่า
              ฝ่ายขายต้องใช้ตัวเลขวันไหน ซึ่งเป็นข้อมูลที่ฝ่ายปลายทางใช้จัดลำดับงาน
@@ -148,7 +157,7 @@ export function RequestDueUrgentFields({
             onChange={(v) => set({ requestedResultDate: v })}
           />
           <small className={styles.hint}>
-            คนละวันกับวันที่เข้าพื้นที่ — วันนี้คือวันที่ต้องได้ตัวเลขไปเสนอราคา
+            {resultDueHint || "คนละวันกับวันที่เข้าพื้นที่ — วันนี้คือวันที่ต้องได้ตัวเลขไปเสนอราคา"}
           </small>
         </div>
       )}

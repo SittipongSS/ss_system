@@ -38,8 +38,9 @@ export { REQUEST_KINDS };
 
 // ของที่คำร้องอ้างถึงได้ → ช่องใน body + ข้อความตอนขาด
 // ⚠️ ที่เดียวของระบบ: เพิ่มของใหม่ต้องแก้ที่นี่แล้วทั้งฟอร์มและ API ได้ตามกันเอง
+/* ⭐ ป้ายเดียวทั้งสองวิธี (มติเจ้าของ 12/10 · S4 O1) — ใบประเมินจากแบบไม่มีใคร "เข้าไป" */
 export const SITE_REQUIRED_ERROR =
-  'ต้องเลือกสถานที่ที่จะให้เข้าไปประเมิน — ไม่มีในทะเบียนให้กด “สร้างสถานที่ใหม่” ในฟอร์มนี้';
+  'ต้องเลือกสถานที่ที่จะให้ประเมิน — ไม่มีในทะเบียนให้กด “สร้างสถานที่ใหม่” ในฟอร์มนี้';
 
 export const REQUEST_NEEDS = {
   // ⭐ **โครงการเป็นของที่ server derive จากดีล ไม่ใช่ของที่ client ส่งมา** —
@@ -195,6 +196,117 @@ export function requestKindLabelFull(subject) {
   const key = requestVariantKey(subject);
   if (!key || key === requestDefaultVariant(kind)) return label;
   return `${label} · ${requestVariantLabel(subject)}`;
+}
+
+/* ── วิธีที่ผู้ขอเลือกตอนยื่น (ประเมินจากแบบ งวด 4 · S4 §2.3) ─────────────────────────────
+ *
+ * ⭐ ทุกตัวอ่านจากทะเบียน ไม่เทียบชื่อหัวข้อ · `subject` = ทั้งใบ/ทั้งฟอร์ม (ratchet เดียวกับตัวอ่านรูปทรง)
+ * 🔴 **`requestVariantChosen` ≠ `requestVariantKey`** — ตัวหลังตกไปที่รูปแบบตั้งต้นเมื่อว่าง (แถวเก่า
+ *    ของ mig 0351) · ตัวแรกตอบ "ผู้ใช้เลือกแล้วจริงไหม" ⇒ ปุ่มที่ถูกเลือก · ด่านบังคับเลือก · ข้อความใต้ปุ่ม
+ *    ต้องใช้ตัวแรก ไม่งั้นฟอร์มใหม่ขึ้น "ลงหน้างาน" ถูกเลือกไว้ให้เงียบ ๆ
+ * ⚠️ `count` ของด่านไฟล์มีสามสถานะ: ตัวเลข = เทียบ · `null` = ยังไม่รู้ (รายการไฟล์ยังโหลด/โหลดพัง) ⇒
+ *    **ไม่ถือว่าขาด** · `undefined` = ผู้เรียกไม่ได้ส่ง ⇒ ผู้เรียกเติมเอง · ห้ามเขียน `count ?? fallback`
+ */
+export function requestVariantFieldLabel(kind) {
+  return REQUEST_KINDS[kind]?.variantLabel || 'รูปแบบงาน';
+}
+
+export function requestVariantRequired(kind) {
+  return !!REQUEST_KINDS[kind]?.variantRequired;
+}
+
+export function requestVariantLockAfterSubmit(kind) {
+  return !!REQUEST_KINDS[kind]?.variantLockAfterSubmit;
+}
+
+export function requestVariantLockText(kind) {
+  return REQUEST_KINDS[kind]?.variantLockText || null;
+}
+
+// ป้ายบรรทัดอ่านอย่างเดียวหลังส่ง — "สิ่งที่ผู้ขอขอ" ไม่ใช่วิธีปัจจุบัน (หัวหน้าสลับรายพื้นที่ได้)
+export function requestVariantAskedLabel(kind) {
+  return REQUEST_KINDS[kind]?.variantAskedLabel || requestVariantFieldLabel(kind);
+}
+
+// รูปแบบที่ใบ/ฟอร์มนี้ **เลือกไว้จริง** — ค่าที่ทะเบียนรู้จักเท่านั้น · ว่าง/เพี้ยน = null (ไม่ตกไปค่าตั้งต้น)
+export function requestVariantChosen(subject) {
+  const variants = requestVariants(subject?.kind);
+  const asked = String(subject?.variant ?? '').trim();
+  return variants && asked && Object.prototype.hasOwnProperty.call(variants, asked) ? asked : null;
+}
+
+// ข้อความใต้ปุ่มเลือก — ของรูปแบบที่ **เลือกแล้ว** เท่านั้น
+export function requestVariantNotice(subject) {
+  const chosen = requestVariantChosen(subject);
+  return chosen ? requestVariants(subject.kind)[chosen].notice || null : null;
+}
+
+/* ข้อความฟอร์มของใบนี้ = ของหัวข้อ ทับด้วยของรูปแบบ (ยังไม่เลือก = รูปแบบตั้งต้น = ข้อความลงหน้างาน)
+   ⚠️ จอใช้ตัวนี้แทน `meta.form` — ไม่งั้น placeholder ไม่ตามวิธีที่เลือก */
+export function requestFormCopy(subject) {
+  const kind = typeof subject === 'string' ? subject : subject?.kind;
+  const meta = REQUEST_KINDS[kind];
+  const key = requestVariantKey(subject);
+  const variantForm = key ? meta?.variants?.[key]?.form : null;
+  return Object.freeze({ ...(meta?.form || {}), ...(variantForm || {}) });
+}
+
+// ฟอร์มมีวันเดียว (วันรับผล) ไม่มีวันเข้าพื้นที่ · ว่าง = รูปแบบตั้งต้น ⇒ false
+export function requestResultDateOnly(subject) {
+  return !!shapeOf(subject)?.resultDateOnly;
+}
+
+// ช่องไฟล์บังคับของรูปแบบนี้ `{ docType, label, hint, accept, rejectText }` หรือ null
+export function requestRequiredFiles(subject) {
+  return shapeOf(subject)?.requiredFiles || null;
+}
+
+export function requestRequiredFilesError(subject, { count } = {}) {
+  const rf = requestRequiredFiles(subject);
+  if (!rf || count == null || count >= 1) return null;
+  return `ยังไม่ได้แนบไฟล์ในช่อง “${rf.label}” — ${requestVariantLabel(subject)}ต้องมีอย่างน้อย 1 ไฟล์`;
+}
+
+/* ไฟล์นี้เข้าช่องไฟล์บังคับได้ไหม — ตรงนามสกุล **หรือ** ชนิด MIME ที่ประกาศใน `rf.accept`
+   (ไฟล์ที่ลากมาวางบางตัวไม่มี `type` ⇒ ต้องดูนามสกุลด้วย) · ใช้เป็น `fileGate.test` ของทั้งสองโหมด
+   ⚠️ server ตรวจชนิดไฟล์ซ้ำเสมอ — ที่นี่แค่กันไม่ให้อัปไบต์ที่ช่องนี้ไม่รับขึ้น Drive ฟรี ๆ */
+export function requestRequiredFileAccepts(rf, file) {
+  if (!rf || !file) return false;
+  const tokens = String(rf.accept || '').split(',').map((t) => t.trim().toLowerCase()).filter(Boolean);
+  const name = String(file.name || '').toLowerCase();
+  const dot = name.lastIndexOf('.');
+  const ext = dot >= 0 ? name.slice(dot) : '';
+  const type = String(file.type || '').toLowerCase();
+  return (ext !== '' && tokens.includes(ext)) || (type !== '' && tokens.includes(type));
+}
+
+/* นับไฟล์ของช่องไฟล์บังคับจากรายการแถว `attachments` — **ตัวนับเดียว** ของ server (route ส่งคำร้อง) และจอ
+   (`RequiredFilesBlock` โหมด saved) · เอกสาร Google (`metadata.kind`) ไม่นับ เพราะไม่ใช่ไฟล์แบบที่หัวหน้าเปิดอ่านได้
+   (กติกาเดียวกับ `requestHasDrawings` ของ S2a) · แถวที่ถูกปิดเนื้อหา (`restricted`) ยังนับ — ไฟล์มีอยู่จริง
+   ⚠️ ทั้งแถวดิบจาก `listAttachments` และคำตอบของ GET /api/master/attachments ถือเครื่องหมายไว้ที่ `metadata.kind`
+      (ไม่มีคีย์ `kind` แบน ๆ) */
+export function requestRequiredFileCount(rows, rf) {
+  if (!rf) return 0;
+  return (Array.isArray(rows) ? rows : []).filter((row) => row && !row.metadata?.kind && row.docType === rf.docType).length;
+}
+
+/* 🔴 ใบที่มีแต่วันรับผล: คอลัมน์ `requestedDueDate` ยังต้องมีค่า (ด่านแก้ใบทั่วไปบังคับ) ⇒ server เขียน
+   กระจกของวันรับผลลงไป · ตัวอ่าน "วันที่ผู้ขออยากให้เข้า" ทุกตัวต้องผ่าน `surveyWishedVisit`
+   (lib/service/surveyIntake.js) ซึ่งไม่เคยอ่านกระจกนี้เป็นวันเข้าพื้นที่ */
+export function requestNormalizeDates(body) {
+  if (!requestResultDateOnly(body)) return body;
+  return { ...body, requestedDueDate: body.requestedResultDate || null, requestedDueTime: null };
+}
+
+/* ⭐ **ข้อความเดียวตอนกดส่งร่าง** (แผน §3.1 ข้อ 3) — ประโยคที่เข้าเงื่อนไขต่อกันด้วย " · "
+   route ส่งคำร้อง (409) กับด่านก่อนกดบนหน้าคำร้องเรียกตัวเดียวกัน ⇒ ข้อความตรงกันเสมอ */
+export function requestSubmitGapsError(subject, { count } = {}) {
+  const gaps = [requestRequiredFilesError(subject, { count })];
+  if (requestResultDateOnly(subject) && !String(subject?.requestedResultDate ?? '').trim()) {
+    gaps.push(`ต้องระบุ${requestFormCopy(subject).resultDueLabel}`);
+  }
+  const text = gaps.filter(Boolean).join(' · ');
+  return text || null;
 }
 
 export function requestKindHint(subject) {
@@ -478,6 +590,12 @@ export function requestShapeError(kind, body = {}) {
      **แก้ไม่ได้สักใบ** ("ไม่มีรูปแบบให้เลือก") · หัวข้อที่ไม่มีรูปแบบไม่มีใครอ่านค่านี้อยู่แล้ว */
   const variantError = meta.variants ? requestVariantError(kind, body.variant) : null;
   if (variantError) return variantError;
+  /* ⭐ **หัวข้อที่บังคับเลือกวิธี** (ประเมินจากแบบ งวด 4) — ปุ่มวิธีคือช่องแรกของแท็บแรก ⇒ ถามก่อนของที่ต้องอ้าง
+     ⚠️ ถาม `requestVariantChosen` ไม่ใช่ `requestVariantKey` (ตัวหลังเติมค่าตั้งต้นให้ ⇒ ด่านไม่มีวันยิง)
+     ทางแก้ใบส่ง `variant: requestVariantKey(before)` มาเสมอ ⇒ ใบเก่าที่ไม่มีค่าไม่ติดด่านนี้ */
+  if (meta.variantRequired && !requestVariantChosen({ kind, variant: body.variant })) {
+    return meta.variantRequiredError;
+  }
 
   // ── ของที่หัวข้อนี้ต้องอ้างถึง (มติผู้ใช้ 2026-08-03 รอบสอง) ────────────
   // ถามก่อนทุกข้อเพราะอยู่ต้นฟอร์ม — ตีกลับเรื่องท้าย ๆ ก่อนทั้งที่ข้อแรกยังไม่ครบ
@@ -577,6 +695,15 @@ export function requestShapeError(kind, body = {}) {
      ⚠️ **คำที่ล็อกไว้คือ "วันที่ต้องการรับงาน"** (มติผู้ใช้ 2026-08-19) — ของเดิมเขียนว่า
      "ต้องการคำตอบ" ซึ่งจริงเฉพาะหัวข้อสอบถาม · หัวข้อที่ฝ่ายต้องส่ง *ของ* (กลิ่น ·
      สูตร · เอกสาร) ไม่ได้รอคำตอบ แต่รองาน ⇒ ป้ายเดิมอ่านผิดความหมายเกินครึ่งระบบ */
+  /* ⭐ **รูปแบบที่มีแต่วันรับผล** (ประเมินจากแบบ — ไม่มีการนัดเข้าพื้นที่) ถามวันรับผลแทน และ **ไม่ถาม**
+     `requestedDueDate` · server เขียนกระจกของวันรับผลลงคอลัมน์นั้นเอง (`requestNormalizeDates`) */
+  if (shape.resultDateOnly) {
+    const label = requestFormCopy({ kind, variant: body.variant }).resultDueLabel;
+    const result = String(body.requestedResultDate ?? '').trim();
+    if (!result) return `ต้องระบุ${label}`;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(result)) return `${label}ไม่ถูกต้อง`;
+    return null;
+  }
   const due = String(body.requestedDueDate ?? '').trim();
   if (!due) return 'ต้องระบุวันที่ต้องการรับงาน';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) return 'วันที่ต้องการรับงานไม่ถูกต้อง';

@@ -52,6 +52,8 @@ import {
   requestPdrRowsPickScent, requestUsesDeliveredRows, requestUsesScentBriefs,
   requestVariantKey, requestVariantLabel,
   requestShapeError,
+  requestResultDateOnly, requestRequiredFileCount, requestRequiredFiles, requestSubmitGapsError,
+  requestVariantFieldLabel,
 } from '@/lib/master/requestTypes';
 import {
   closureStatus, reopenRequestError, reopenWaitClearPatch, reopenWaitSideError, requestClosure,
@@ -85,6 +87,13 @@ import {
 } from '@/lib/service/surveyRequest';
 import { loadSurveySite, loadSurveyZones, materializeSurveyZones } from '@/lib/service/surveyRepo';
 import { surveyNeedsVisit } from '@/lib/service/surveyMethod';
+import { surveyDrawingMethodEnabled } from '@/lib/service/surveyDrawingFlag';
+import {
+  SURVEY_RESEED_ASSESSED_ERROR, SURVEY_RESEED_MISMATCH_ERROR, surveyVariantRefusal,
+} from '@/lib/service/surveyIntake';
+import { reseedSurveyZoneMethods } from '@/lib/service/surveyIntakeSeed';
+import { surveyDeskReadyTitle } from '@/lib/service/surveyMethodSwitch';
+import { notifySurveyDeskReady } from '@/lib/service/surveyMethodNotify';
 import { loadSurveyRequestExtras } from '@/lib/service/surveyRequestExtras';
 /* ⚠️ เอกสารประเมิน (mig 0401): import ได้เฉพาะตัวอ่านแถว (`surveyReportRows`) — เส้นนี้เป็นของคำร้อง **ทุกหัวข้อ**
    ⇒ ห้ามลาก sharp / chromium / ตัวเรนเดอร์เข้ามาที่หัวไฟล์ (สเปก PR-2 มติ 24 · ด่าน `check-doc-tracing.mjs`) */
@@ -249,6 +258,9 @@ export async function GET(request, { params }) {
         ...row,
         ...surveyExtras,
         ...(surveyDocument ? { surveyDocument } : {}),
+        /* ⭐ ค่าสวิตช์ "ประเมินจากแบบ" ให้ฟอร์มแก้ใบ (S4 A-7) — จอรู้ทางนี้ทางเดียว (สวิตช์อ่านได้ที่ server เท่านั้น)
+           ⚠️ เฉพาะหัวข้อที่มีสถานที่ · หัวข้ออื่นไม่มีคีย์นี้ */
+        ...(requestNeedsRef(row.kind, 'site') ? { drawingMethodEnabled: surveyDrawingMethodEnabled() } : {}),
         // ⚠️ **ที่นี่ `_mine` = "จัดการใบนี้ได้"** (เจ้าของใบ · เพื่อนร่วมทีม · admin)
         // ไม่ใช่ "ฉันเปิดเอง" — หน้ารายละเอียดใช้ธงนี้ตัดสินว่าจะโชว์ปุ่มไหน ส่วน
         // รายการใช้ชื่อเดียวกันแทน "ฉันเปิดเอง" (ดูคอมเมนต์ที่ route ของรายการ)
@@ -308,6 +320,11 @@ export async function PATCH(request, { params }) {
   let summary = '';
   // ป้ายรูปแบบใหม่เมื่อ action `update` สลับรูปแบบงาน — ส่งต่อให้ประโยคในเธรด
   let variantChange = null;
+  // ป้ายของช่องที่ถูกสลับ ("วิธีประเมิน" ของประเมินพื้นที่ · ว่าง = "รูปแบบงาน") — ประโยคเธรดของการสลับ
+  let variantField = null;
+  /* ร่างประเมินพื้นที่: ตั้งวิธีของแถวพื้นที่ให้ตรงกับใบหลังหัวใบบันทึกแล้ว (S4 A-5 ⑥) — ล้มแล้วไม่ throw
+     แต่ต้องบอก (`_warning`) ท่าเดียวกับ `npdRowsWarning` */
+  let reseedWarning = null;
   // รายการเปลี่ยนแปลงของ PDR — ใช้ตอนเขียนเธรดท้าย handler
   let pdrChanges = null;
   /* แผนเขียน **บรรทัด** ของ action 'update' — ประกอบตอนตรวจ แล้วเขียนหลังหัวใบผ่าน
@@ -352,6 +369,23 @@ export async function PATCH(request, { params }) {
       const err = submitRequestError(before, before.items);
       if (err) return Response.json({ error: err }, { status: 409 });
 
+      /* ⭐ **ช่องไฟล์บังคับ + วันรับผล = ข้อความเดียวตอนกดส่ง** (ประเมินจากแบบ งวด 4 · แผน §3.1 ข้อ 3 · S4 A-6)
+         ประโยคมาจาก `requestSubmitGapsError` ตัวเดียวกับด่านก่อนกดบนหน้าคำร้อง ⇒ จอกับ server พูดตรงกัน
+         ⚠️ นับไฟล์ด้วย `requestRequiredFileCount` (ตัวนับเดียว) — แถวดิบของ `listAttachments` ถือเครื่องหมายเอกสาร
+            Google ไว้ที่ `metadata.kind` · รูปแบบที่ไม่มีช่องไฟล์บังคับไม่อ่านไฟล์เลย
+         🔴 อ่านไฟล์พัง (`listAttachments` โยน) = 500 ยังไม่ได้เขียนอะไร — ไม่ใช่ "ไม่มีไฟล์" และไม่ใช่ "ผ่าน" */
+      const requiredFiles = requestRequiredFiles(before);
+      let requiredFileCount;
+      if (requiredFiles) {
+        try {
+          requiredFileCount = requestRequiredFileCount(await listAttachments('dept_request', id), requiredFiles);
+        } catch (e) {
+          return Response.json({ error: e?.message || String(e) }, { status: 500 });
+        }
+      }
+      const gapsError = requestSubmitGapsError(before, { count: requiredFileCount });
+      if (gapsError) return Response.json({ error: gapsError }, { status: 409 });
+
       // ⭐ ติ๊กว่า "มีภาพประกอบบรรจุภัณฑ์" แล้วต้องแนบจริง (มติผู้ใช้ · mig 0217)
       //
       // ⚠️ **บังคับตอนกดส่ง ไม่ใช่ตอนเปิดใบ** — หน้า `/requests/new` แนบไฟล์ไม่ได้
@@ -379,6 +413,20 @@ export async function PATCH(request, { params }) {
       if (requestNeedsRef(before.kind, 'site')) {
         if (!before.siteId) {
           return Response.json({ error: 'ใบนี้ยังไม่มีสถานที่ — แก้ใบแล้วเลือกสถานที่ก่อนส่ง' }, { status: 409 });
+        }
+        /* ⭐ **ตาข่ายของการตั้งวิธีรายพื้นที่** (ประเมินจากแบบ งวด 4 · S4 A-6 ③) — บันทึกร่างที่ตั้งวิธีของแถวไม่สำเร็จ
+           ตอบ 200 + คำเตือนไปแล้ว ⇒ ก่อนส่งตั้งให้ตรงกับ `variant` ของใบอีกรอบ (ไม่มีงาน = ไม่เขียน)
+           ⚠️ **ก่อน** `materializeSurveyZones` และก่อนออกเลขที่ ⇒ ล้มตรงนี้กดส่งใหม่ได้เลย
+           🔴 ใบจากแบบที่แถวมีผลลงหน้างาน = ตีกลับ ไม่เขียนทับ · ใบลงหน้างานที่แถวจากแบบมีผลของหัวหน้าแล้ว = ประทับในนาม
+              ผู้กดส่งให้ช่างวัดใหม่ (มติ 19/10 O8 = ข — ทางเดียวกับตอนบันทึกร่าง) */
+        const reseed = await reseedSurveyZoneMethods(supabase, {
+          requestId: id, variant: before.variant, actorName: user?.name ?? null,
+        });
+        if (reseed.error) {
+          return Response.json({ error: 'ตั้งวิธีประเมินของพื้นที่ไม่สำเร็จ — กด “ส่งคำร้อง” อีกครั้ง' }, { status: 409 });
+        }
+        if (reseed.skipped === 'assessed') {
+          return Response.json({ error: SURVEY_RESEED_MISMATCH_ERROR }, { status: 409 });
         }
         const { error: zoneError } = await materializeSurveyZones(supabase, {
           requestId: id, siteId: before.siteId, user,
@@ -615,6 +663,12 @@ export async function PATCH(request, { params }) {
       const variantPick = requestEditVariant(before, body.variant);
       if (variantPick.error) return Response.json({ error: variantPick.error }, { status: 400 });
       if (variantPick.variant !== undefined) next.variant = variantPick.variant;
+      /* ⭐ **ขอสลับไปประเมินจากแบบขณะสวิตช์ปิด = ตีกลับ** (ประเมินจากแบบ งวด 4 · S4 A-5 ①)
+         ⚠️ ใบที่เป็นประเมินจากแบบอยู่แล้ว (`current`) บันทึกต่อได้ — สวิตช์ที่ถูกปิดทีหลังต้องไม่ทำให้ร่างเดิมแก้ไม่ได้ */
+      const variantRefusal = requestNeedsRef(before.kind, 'site')
+        ? surveyVariantRefusal({ variant: next.variant, enabled: surveyDrawingMethodEnabled(), current: before.variant })
+        : null;
+      if (variantRefusal) return Response.json({ error: variantRefusal }, { status: 409 });
       /* ⭐ **รูปทรงของใบหลังบันทึกนี้** — บรรทัดต้องตัดสินด้วยรูปแบบปลายทาง ไม่ใช่ของเดิม
          🐞 เดิมใช้ `before` ⇒ standard → NPD: ฟอร์มล้างแถวเหลือ `[]` แล้วตกด่าน "ต้องมีรายการ
             อย่างน้อย 1 รายการ" · NPD → standard: แถวที่เพิ่งกรอกถูกข้าม แล้วตกด่านเดียวกัน
@@ -624,7 +678,7 @@ export async function PATCH(request, { params }) {
       if (switching) {
         // ⚠️ ด่านคนตัวเดียวกับที่จอเทาปุ่ม (`requestVariantSideLock`) — ฝ่ายปลายทางแก้หัวใบได้
         //    ตอนรอรับเรื่อง แต่สลับรูปแบบไม่ได้ (PDR ช่วงนั้นเป็นของผู้ขอ)
-        const sideLock = requestVariantSideLock(canManageRequest(user, before));
+        const sideLock = requestVariantSideLock(canManageRequest(user, before), before.kind);
         if (sideLock) return Response.json({ error: sideLock }, { status: 403 });
         /* ⭐ **สลับเข้า NPD หลังส่งแล้ว = ต้องผ่านกฎตอนกดส่งของ NPD ในบันทึกเดียวกัน** (ผลรีวิวรอบสอง)
            🐞 ไม่ตรวจ ⇒ ก้าวนี้บันทึก (รายการเดิมถูกลบ) แล้วก้าว PDR ตกด่าน "ต้องมีสินค้า/กลิ่น" ⇒
@@ -676,7 +730,12 @@ export async function PATCH(request, { params }) {
             บล็อกอ้างอิง QT/SO ข้างล่างเขียนเตือนไว้
          ⚠️ ถามทะเบียน (`requestNeedsRef(..., 'site')`) ไม่ใช่เทียบ kind ตรง ๆ (ม-34)
          ⚠️ ไม่ส่งคีย์มา = ไม่แตะของเดิม (ผู้เรียกที่แก้แค่ช่องอื่น) */
-      if (requestNeedsRef(before.kind, 'site') && body.requestedDueTime !== undefined) {
+      /* ⭐ **ใบที่มีแต่วันรับผล** (ประเมินจากแบบ — รูปแบบของใบ *หลัง* บันทึกนี้ · S4 A-5 ③) ไม่มีการนัด ⇒ ไม่มีช่วงเวลา
+         และวันรับผลไม่เทียบกับวันเข้าพื้นที่ · `requestedDueDate` = กระจกของวันรับผล (เขียนข้างล่าง ก่อนด่านรูปทรง) */
+      const resultOnly = requestNeedsRef(before.kind, 'site') && requestResultDateOnly(target);
+      if (resultOnly) {
+        next.requestedDueTime = null;
+      } else if (requestNeedsRef(before.kind, 'site') && body.requestedDueTime !== undefined) {
         const parsed = normalizeSurveyTime(body.requestedDueTime);
         if (parsed.error) return Response.json({ error: parsed.error }, { status: 400 });
         next.requestedDueTime = parsed.value;
@@ -691,10 +750,16 @@ export async function PATCH(request, { params }) {
       if (requestNeedsRef(before.kind, 'site') && body.requestedResultDate !== undefined) {
         const parsed = normalizeSurveyRequestedResult(
           body.requestedResultDate,
-          next.requestedDueDate || before.requestedDueDate,
+          resultOnly ? null : (next.requestedDueDate || before.requestedDueDate),
         );
         if (parsed.error) return Response.json({ error: parsed.error }, { status: 400 });
         next.requestedResultDate = parsed.value;
+      }
+      /* 🔴 server เขียนกระจกเอง ไม่เชื่อค่าที่ฟอร์มส่งมา — คอลัมน์ต้องมีค่า (ด่านแก้ใบทั่วไปบังคับ) ·
+         ตัวอ่าน "วันที่ผู้ขออยากให้เข้า" ทุกตัวผ่าน `surveyWishedVisit` ซึ่งไม่อ่านกระจกนี้เป็นวันเข้าพื้นที่
+         ⚠️ สลับกลับเป็นลงหน้างาน: ฟอร์มล้างกระจกทิ้ง ⇒ ไม่กรอกวันเข้าพื้นที่ใหม่ = ด่านรูปทรงตีกลับ */
+      if (resultOnly) {
+        next.requestedDueDate = next.requestedResultDate ?? before.requestedResultDate ?? null;
       }
 
       /* ── บรรทัด (มติผู้ใช้ 2026-08-24) ───────────────────────────────────
@@ -811,13 +876,27 @@ export async function PATCH(request, { params }) {
         if (switchError) return Response.json({ error: switchError }, { status: 409 });
       }
 
+      /* ⭐ **ร่างประเมินพื้นที่ที่เปลี่ยนวิธี: ถามแถวพื้นที่ก่อนเขียนหัวใบ** (ประเมินจากแบบ งวด 4 · S4 A-5 ⑤ · O8)
+         ⭐ มติเจ้าของ 19/10 (O8 = ข): สลับ **เป็นลงหน้างาน** บนร่างที่ถูกตีกลับหลังหัวหน้าบันทึกผลจากแบบแล้ว = **รับ** —
+            ขั้นตั้งวิธีหลังบันทึกหัวใบประทับแถวที่มีผลว่า "สลับแล้ว" ในนามฝ่ายขาย ⇒ ด่านขนาดของช่างบังคับวัดใหม่
+         🔴 สลับ **เป็นจากแบบ** ทั้งที่แถวมีผลลงหน้างาน = 409 **ไม่บันทึกอะไรเลย** รวมทั้ง `variant` (ตราในนามฝ่ายขายจะขึ้นชื่อ
+            ฝ่ายขายเป็นผู้ประเมินจากแบบของตัวเลขที่ช่างวัด) — ทางออก: คงวิธีเดิม ส่งคำร้อง แล้วให้หัวหน้า TS สลับรายพื้นที่
+         ⚠️ อ่านพัง = 500 ยังไม่ได้เขียนอะไร กดใหม่ได้ · บันทึกที่ไม่ได้เปลี่ยนวิธีไม่อ่านเลย */
+      if (switching && before.status === 'draft' && requestNeedsRef(before.kind, 'site')) {
+        const dry = await reseedSurveyZoneMethods(supabase, { requestId: id, variant: next.variant, dryRun: true });
+        if (dry.error) return Response.json({ error: dry.error }, { status: 500 });
+        if (dry.skipped === 'assessed') return Response.json({ error: SURVEY_RESEED_ASSESSED_ERROR }, { status: 409 });
+      }
+
       Object.assign(patch, next);
       /* ⭐ **สลับรูปแบบต้องเห็นในเธรด** — มันเปลี่ยนรูปของทั้งใบ (ตารางรายการหาย ·
          แบบฟอร์ม PDR โผล่) ⇒ คนที่เปิดใบวันถัดมาต้องอ่านออกว่าใครเปลี่ยนตอนไหน
          ไม่ใช่เห็นแค่ "แก้ข้อมูลคำร้อง" เหมือนแก้ชื่อเรื่อง */
       if (switching) {
         const label = requestVariantLabel({ kind: before.kind, variant: next.variant });
-        summary = `สลับรูปแบบงานเป็น ${label} · ${before.docNo || before.id}`;
+        // ป้ายช่องมาจากทะเบียน ("วิธีประเมิน" ของประเมินพื้นที่) — พัฒนาสูตรได้ "รูปแบบงาน" เท่าเดิม
+        variantField = requestVariantFieldLabel(before.kind);
+        summary = `สลับ${variantField}เป็น ${label} · ${before.docNo || before.id}`;
         // 🐞 เดิมลงแค่ audit — คอมเมนต์ข้างบนบอกว่า "ต้องเห็นในเธรด" แต่เธรดขึ้นประโยคแก้ทั่วไป
         variantChange = label;
       } else {
@@ -1505,6 +1584,25 @@ export async function PATCH(request, { params }) {
       summary += ` · รายการ: ${parts.join(' · ')}`;
     }
 
+    /* ── ร่างประเมินพื้นที่: วิธีของแถวพื้นที่ตามใบ (ประเมินจากแบบ งวด 4 · S4 A-5 ⑥) ─────────────
+       ⭐ **ทุกการบันทึกร่าง ไม่ใช่เฉพาะตอนสลับ** — ทำให้การกดบันทึกซ้ำซ่อมรอบที่ล้มได้เอง (ไม่มีงาน = ไม่เขียน)
+       ⚠️ เขียน **หลัง** หัวใบผ่านแล้วเท่านั้น (เหตุผลเดียวกับ `lineWrites`) · ล้มแล้วไม่ throw — หัวใบบันทึกไปแล้วจริง
+          ⇒ บอกผ่าน `_warning` · ฟอร์มแก้ปิดไปแล้วตอนคำเตือนขึ้น ประโยคจึงเอ่ยปุ่มที่อยู่บนจอ
+       ⚠️ `'switched'` (หัวหน้าสลับรายพื้นที่ไปแล้ว) = เงียบ · `'assessed'` เกิดได้เฉพาะมีคนบันทึกผลแทรกหลังด่านข้างบน (ทิศจากแบบ)
+       ⭐ ทิศลงหน้างาน: แถวจากแบบที่มีผลถูกประทับในนามผู้กดบันทึก (O8 = ข · 19/10) — `actorName` ลง `methodChangedByName` */
+    if (action === 'update' && requestNeedsRef(before.kind, 'site') && (patch.status ?? before.status) === 'draft') {
+      const reseed = await reseedSurveyZoneMethods(supabase, {
+        requestId: id, variant: patch.variant ?? before.variant, actorName: user?.name ?? null,
+      });
+      if (reseed.error) {
+        console.error('[requests] ตั้งวิธีประเมินของพื้นที่ไม่สำเร็จ:', reseed.error);
+        reseedWarning = 'บันทึกคำร้องแล้ว แต่ตั้งวิธีประเมินของพื้นที่ไม่สำเร็จ — กด “แก้ไข” แล้ว “บันทึกการแก้ไข” อีกครั้ง '
+          + '(หรือกด “ส่งคำร้อง” ระบบจะตั้งให้ก่อนส่ง)';
+      } else if (reseed.skipped === 'assessed') {
+        reseedWarning = SURVEY_RESEED_MISMATCH_ERROR;
+      }
+    }
+
     /* ── รับเรื่องที่ใบ ⇒ ประทับลงแถวที่ยังไม่มี ─────────────────────────────
        ⚠️ `.is('ackAt', null)` **ไม่ใช่ `.eq('ackAt', null)`** — PostgREST แปล `eq`
        เป็น `= NULL` ซึ่งไม่เคยจริง ⇒ อัปเดตศูนย์แถวแบบเงียบ ๆ (กับดักเดิมของรีโปนี้)
@@ -1638,6 +1736,17 @@ export async function PATCH(request, { params }) {
 
     const after = await findRequest(supabase, id);
 
+    /* ⭐ **กระดิ่งหัวหน้าตอนส่งใบที่ไม่ต้องมีนัด** (ประเมินจากแบบ งวด 4 · แผน §5 · S4 A-6 ⑤) — ใบที่ทุกพื้นที่
+       ประเมินจากแบบ ไม่มีใครต้องลงคิว ⇒ หัวหน้า TS ต้องรู้ว่ามีงานโต๊ะรอ (กระดิ่งส่งคำร้องเดิมไม่เปลี่ยน)
+       ⚠️ ตัดสินจาก **แถวพื้นที่** (`surveyNeedsVisit` · `findRequest` โหลดมาแล้ว ไม่อ่านซ้ำ) ไม่ใช่จาก `variant`
+       ⚠️ fire-and-forget — กระดิ่งพลาดไม่เปลี่ยนคำตอบ · กุญแจของการกดครั้งนี้ (ไม่มีกุญแจ = ไม่ยิง) */
+    if (action === 'submit' && requestNeedsRef(before.kind, 'site') && after
+      && !surveyNeedsVisit(after.surveyZones)) {
+      notifySurveyDeskReady(supabase, {
+        request: after, actor: user, title: surveyDeskReadyTitle(after), key: `submit|${nowIso}`,
+      });
+    }
+
     /* ⭐ **ยกเลิกใบประเมิน = เก็บกวาดพื้นที่ที่ใบนี้สร้างไว้** (§5E ③ · มติข้อ 24)
        🐞 ก่อนหน้านี้ยกเลิกแล้วโซนค้างในทะเบียนของลูกค้าถาวร ⇒ ไปโผล่เป็นไทล์ให้ติ๊ก
          ในใบรอบหน้า และนับอยู่ในแท็บ "พื้นที่บริการ" ทั้งที่ไม่เคยมีใครไปวัดจริง
@@ -1709,6 +1818,7 @@ export async function PATCH(request, { params }) {
         // ส่วน body อาจไม่ส่งคีย์มาเลย แล้วเธรดจะเขียนว่า "มอบหมายให้ undefined"
         assigneeName: patch.assigneeName ?? null,
         variantChange,
+        variantField,
       },
       user,
       mentions,
@@ -1717,8 +1827,8 @@ export async function PATCH(request, { params }) {
     return Response.json({
       ...after,
       // ครึ่งหลังของงานล้ม — จอต้องทักเป็นคำเตือน ไม่ใช่ขึ้น "สำเร็จ" เฉย ๆ
-      ...(visitWarning || npdRowsWarning || ackRowsWarning
-        ? { _warning: [visitWarning, npdRowsWarning, ackRowsWarning].filter(Boolean).join(' · ') } : {}),
+      ...(visitWarning || npdRowsWarning || ackRowsWarning || reseedWarning
+        ? { _warning: [visitWarning, npdRowsWarning, ackRowsWarning, reseedWarning].filter(Boolean).join(' · ') } : {}),
       _mine: canManageRequest(user, after),
       _canEditPdr: canEditPdr(user, after),
       // ต้องคืนคู่กับ `_editPdrBlocker` เสมอ — จอตัดสินว่าจะโชว์ปุ่มแก้แบบกดไม่ได้

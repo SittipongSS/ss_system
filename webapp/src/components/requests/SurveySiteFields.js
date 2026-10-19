@@ -26,6 +26,8 @@ import { naText } from "@/lib/format";
 import { surveyZonePackageText } from "@/lib/service/survey";
 // คำของวิธีประเมิน ("จากแบบ") มาจากที่เดียว — ฟอร์มไม่พิมพ์เอง (ประเมินจากแบบ · งวด S2b)
 import { SURVEY_METHOD_CHIP } from "@/lib/service/surveyMethodSwitch";
+// คำของรายการพื้นที่ตามวิธีที่ฝ่ายขายเลือก ("วัดซ้ำ" / "ประเมินซ้ำ") — ไฟล์ล้วน ใช้ได้ทั้งจอและ server (ประเมินจากแบบ · งวด 4)
+import { SURVEY_ZONE_REPEAT_TEXT, surveyZoneWording } from "@/lib/service/surveyIntake";
 import { zoneNameKey } from "@/lib/service/surveyRequest";
 import { sitePickSummary, zonePickList } from "@/lib/service/zonePickState";
 import { floorLabel, normalizeFloor } from "@/lib/service/zoneCode";
@@ -45,8 +47,14 @@ export default function SurveySiteFields({
   /* โหมดอ่านอย่างเดียว (ทางแก้ใบ) — บล็อกนี้แสดงของที่ใบถืออยู่ แต่แก้ไม่ได้
      ⚠️ เหตุผลอยู่ที่ผู้เรียก (`RequestForm`) — ทางแก้ใบเขียนได้แค่หัวใบ */
   readOnly = false,
+  /* ⭐ วิธีประเมินที่ฟอร์มเลือกไว้ (`requestVariantChosen` ของใบ · ยังไม่เลือก = null) — ประเมินจากแบบ งวด 4 (S4 B-7b)
+     ฟอร์มที่บอกว่า "ไม่มีการนัดเข้าพื้นที่" ต้องไม่ชวน "วัดซ้ำ" / "ไม่เคยวัด" ในรายการพื้นที่ของตัวเอง
+     ⚠️ ชื่อพร็อพคือ `variant` ไม่ใช่ `method` — ยามของวิธีประเมิน (surveyMethodGuards) · ค่านี้คือ "สิ่งที่ฝ่ายขายขอ"
+        ไม่ใช่วิธีของแถวพื้นที่ */
+  variant = null,
 }) {
   const siteId = value.siteId || "";
+  const wording = surveyZoneWording(variant);
   const zones = value.zones || [];
   const [sites, setSites] = useState([]);
   const [siteZones, setSiteZones] = useState([]);
@@ -174,7 +182,7 @@ export default function SurveySiteFields({
   const restZones = siteZones.filter((z) => !takenZoneIds.has(z.id));
   /* ไทล์พื้นที่เดิมพร้อมสถานะสองแกน — เรียงตามความสำคัญที่ม็อกกำหนด
      (⭐ วัดแล้วยังไม่ขาย ขึ้นก่อน · 🔒 ที่ล็อกอยู่ล่างสุด แต่ยังต้องเห็น) */
-  const pickTiles = zonePickList(restZones, takenZoneIds);
+  const pickTiles = zonePickList(restZones, takenZoneIds, { wording });
   const lockedCount = pickTiles.filter((t) => t.locked).length;
   const pickableCount = pickTiles.length - lockedCount;
 
@@ -280,7 +288,7 @@ export default function SurveySiteFields({
   return (
     <>
       <div className="form-group col-span-2">
-        <span className={styles.fieldLabel}>สถานที่ที่จะให้เข้าไปประเมิน</span>
+        <span className={styles.fieldLabel}>สถานที่ที่จะให้ประเมิน</span>
         {!customerId ? (
           /* ⚠️ **ต้องบอกว่าดีลอยู่ที่ไหน ไม่ใช่แค่ว่าต้องมีดีล** — บล็อกนี้ย้ายมาอยู่แท็บ
              "รายละเอียด" แล้ว (มติ 2026-09-02) ส่วนช่องดีลอยู่แท็บ "งาน" ⇒ ข้อความเดิม
@@ -313,7 +321,7 @@ export default function SurveySiteFields({
             onChange={pickSite}
             disabled={disabled}
             placeholder="เลือกสถานที่"
-            ariaLabel="สถานที่ที่จะให้เข้าไปประเมิน"
+            ariaLabel="สถานที่ที่จะให้ประเมิน"
           />
         ) : (
           <OptionTiles
@@ -321,7 +329,7 @@ export default function SurveySiteFields({
             value={siteId}
             onChange={pickSite}
             disabled={disabled}
-            ariaLabel="สถานที่ที่จะให้เข้าไปประเมิน"
+            ariaLabel="สถานที่ที่จะให้ประเมิน"
           />
         )}
         {/* ⭐ จังหวะแรกต้องบอกว่าลูกค้ารายนี้มีของเดิมเท่าไร ไม่ใช่เริ่มที่ช่องเปล่า
@@ -390,7 +398,7 @@ export default function SurveySiteFields({
                     <b>{zoneName(row)}</b>
                     <small className={styles.hint}>
                       {row.zoneId
-                        ? `${siteZones.find((z) => z.id === row.zoneId)?.code || row.zoneId} · วัดซ้ำพื้นที่เดิม`
+                        ? `${siteZones.find((z) => z.id === row.zoneId)?.code || row.zoneId} · ${SURVEY_ZONE_REPEAT_TEXT[wording]}`
                         : `พื้นที่ใหม่ · ${floorLabel(row.floor) || "ยังไม่ระบุชั้น"} — ได้รหัส ZN ตอนกดส่งใบ`}
                       {row.note ? ` · ${row.note}` : ""}
                     </small>

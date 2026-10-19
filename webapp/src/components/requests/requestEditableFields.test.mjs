@@ -107,3 +107,49 @@ test('ปุ่มแก้เหลือปุ่มเดียว — ไม
   assert.doesNotMatch(page, /label: "แก้ข้อมูลคำร้อง"/);
   assert.match(page, /label: "แก้ไข"/);
 });
+
+/* ══ ประเมินจากแบบ งวด 4 (S4 B-4) — ฟอร์มวันเดียว ══════════════════════════════════════════════
+   ใบที่เลือก "ประเมินจากแบบ" ไม่มีการนัดเข้าพื้นที่ ⇒ ช่องวันเข้าพื้นที่ + ช่วงเวลา หายทั้งก้อน เหลือวันรับผล
+   ⚠️ ไฟล์นี้มี JSX — ราวเทสต์ของรีโปเรนเดอร์ไม่ได้ ⇒ คุมด้วยรูปของซอร์ส (กิ่งที่ห่อแต่ละก้อน) */
+const dueFieldsSource = () => {
+  const src = read(SHARED);
+  const start = src.indexOf('export function RequestDueUrgentFields');
+  const end = src.indexOf('\nexport function', start + 1);
+  assert.ok(start > -1 && end > start, 'หา RequestDueUrgentFields ไม่เจอ');
+  return src.slice(start, end);
+};
+
+test('S4: hideDue ซ่อนวันเข้าพื้นที่ + ช่วงเวลาทั้งก้อน · วันรับผลกับความเร่งด่วนยังอยู่ · ค่าตั้งต้น = หน้าตาเดิม', () => {
+  const src = dueFieldsSource();
+  // ค่าตั้งต้นต้องเป็น "เหมือนวันนี้" — ผู้เรียกที่ไม่รู้จักพร็อพใหม่ได้ markup เดิม
+  assert.match(src, /hideDue = false,/);
+  assert.match(src, /resultDueHint = null,/);
+  const gateAt = src.indexOf('{!hideDue && (');
+  assert.ok(gateAt > -1, 'ก้อนวันเข้าพื้นที่ต้องอยู่ใต้กิ่ง !hideDue');
+  // ก้อนที่ถูกห่อ = ตั้งแต่กิ่งจนถึงก้อนวันรับผล
+  const resultAt = src.indexOf('{resultDueLabel && (');
+  assert.ok(resultAt > gateAt, 'วันรับผลต้องอยู่นอก (หลัง) กิ่ง !hideDue');
+  const gated = src.slice(gateAt, resultAt);
+  assert.match(gated, /\$\{idPrefix\}-due`/, 'ช่องวันเข้าพื้นที่อยู่ในกิ่ง');
+  assert.match(gated, /<TimeInput\b/, 'ช่วงเวลาอยู่ในกิ่ง');
+  assert.match(gated, /\{dueHint\}/, 'คำอธิบายของวันเข้าพื้นที่อยู่ในกิ่ง');
+  const rest = src.slice(resultAt);
+  assert.match(rest, /\$\{idPrefix\}-result-due`/, 'วันรับผลไม่ถูกซ่อนด้วย hideDue');
+  assert.match(rest, /ความเร่งด่วน/, 'ความเร่งด่วนไม่ถูกซ่อนด้วย hideDue');
+  assert.doesNotMatch(rest, /hideDue/, 'hideDue คุมแค่ก้อนแรก');
+});
+
+test('S4: resultDueHint แทนประโยคเดิมใต้วันรับผล · ไม่ส่ง = ประโยคเดิมทุกตัวอักษร', () => {
+  const src = dueFieldsSource();
+  assert.match(
+    src,
+    /\{resultDueHint \|\| "คนละวันกับวันที่เข้าพื้นที่ — วันนี้คือวันที่ต้องได้ตัวเลขไปเสนอราคา"\}/,
+  );
+});
+
+test('S4: placeholder ของรายละเอียดเดินตามวิธีที่เลือก — อ่าน requestFormCopy(ทั้งใบ) ไม่ใช่ meta.form ของหัวข้อ', () => {
+  const src = read(SHARED);
+  const body = src.slice(src.indexOf('export function RequestTitleBodyFields'), src.indexOf('export function RequestDueUrgentFields'));
+  assert.match(body, /const copy = requestFormCopy\(value\);/);
+  assert.doesNotMatch(body, /requestKindMeta\(kind\)\?\.form/);
+});

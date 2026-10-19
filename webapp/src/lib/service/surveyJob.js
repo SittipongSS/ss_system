@@ -31,6 +31,10 @@ import {
   surveyZoneAddedLabel,
 } from './surveyMethodSwitch';
 import { SURVEY_SEND_PAPER_HOLD_EFFECT } from './surveySendClose';
+/* ประเมินจากแบบ งวด 4 (S4 C-4/C-5) — "ฝ่ายขายขออะไร" กับ "ผู้ขออยากให้เข้าวันไหน" มีตัวอ่านเดียว (pure · ไม่มีของ server) */
+import {
+  SURVEY_NO_VISIT_WISH_LINE, SURVEY_NO_VISIT_WISH_TEXT, surveyFiledAsDrawing, surveySalesAskedLine, surveyWishedVisit,
+} from './surveyIntake';
 import { VISIT_STATUS_LABELS, holdsRequestSlot, isClosedVisit } from './visitStatus';
 
 const join = (...parts) => parts.flat().filter(Boolean).join(' · ');
@@ -398,7 +402,11 @@ export function surveyRequestDrawingSummary(request) {
 function dateFacts(request, visit, today, assignee, { finished = false, deskJob = false } = {}) {
   const copy = requestKindMeta(request.kind)?.form || {};
   const dept = request.dept || 'TS';
-  const wanted = String(request.requestedDueDate || '').trim();
+  /* 🔴 **วันที่อยากให้เข้าพื้นที่อ่านผ่าน `surveyWishedVisit` เท่านั้น** (S4 C-5) — ใบที่ยื่นเป็นประเมินจากแบบเก็บ
+     `requestedDueDate` = กระจกของวันรับผล ⇒ อ่านคอลัมน์ตรง ๆ = ใบที่หัวหน้าสลับกลับเป็นลงหน้างานขึ้นวันรับผลเป็นวันที่ขอให้เข้า
+     · ไม่มีวันที่ขอ ⇒ บรรทัดเทียบ "ตรงกับที่ขอ / ช้ากว่าที่ขอ" ใต้วันนัดหายไปเอง */
+  const wish = surveyWishedVisit(request);
+  const wanted = wish.known ? String(wish.date).trim() : '';
   const committed = liveDueDate(request) || '';
   const wantedResult = String(request.requestedResultDate || '').trim();
   const committedResult = String(request.committedResultDate || '').trim();
@@ -435,7 +443,10 @@ function dateFacts(request, visit, today, assignee, { finished = false, deskJob 
     {
       key: 'requestedDue',
       label: `ผู้ขอ: ${copy.dueLabel || 'วันที่ต้องการ'}`,
-      value: wanted ? join(dayYear(wanted), clock(request.requestedDueTime)) : '',
+      // ยื่นเป็นประเมินจากแบบ = ไม่มีใครขอวันเข้า (ฟอร์มมีวันเดียว) — บอกตรง ๆ แทนช่องว่างที่อ่านเหมือนข้อมูลหาย
+      value: surveyFiledAsDrawing(request)
+        ? SURVEY_NO_VISIT_WISH_TEXT
+        : (wanted ? join(dayYear(wanted), clock(wish.time)) : ''),
       sub: null,
     },
     {
@@ -530,6 +541,9 @@ export function surveyJobView({
   /* นัดที่ไม่ได้เข้าพื้นที่และไม่มีชีวิตแล้ว (ทำไม่ได้ · ยกเลิก · เลื่อนแล้ว) — เป็น **ประวัติ** เสมอ */
   const visitDead = !!visit && !holdsRequestSlot(visit) && !reachedSite(visit);
   const dept = request.dept || 'TS';
+  /* 🔴 วันที่ผู้ขออยากให้เข้า — ตัวอ่านเดียว (`surveyWishedVisit` · S4 C-5) ห้ามอ่าน `requestedDueDate` ตรง ๆ ในไฟล์นี้:
+     ใบที่ยื่นเป็นประเมินจากแบบเก็บกระจกของวันรับผลไว้ในคอลัมน์นั้น */
+  const wish = surveyWishedVisit(request);
   const assignee = requestAssignee(request);
   const helpers = helperNames(visit, people, peopleLoading);
   const totals = surveyTotals(zones);
@@ -569,11 +583,14 @@ export function surveyJobView({
     id: 'draft',
     when: request.submittedAt ? stampText(request.submittedAt) : 'ยังไม่ได้ส่ง',
     people: [person(request.requestedByName, request.team ? `ทีม ${request.team}` : null)],
-    lines: [join(
+    /* ⭐ "ฝ่ายขายขอ: ประเมินจากแบบ" (S4 C-4) — สิ่งที่ผู้ขอยื่น ไม่ใช่วิธีปัจจุบัน (หัวหน้าสลับรายพื้นที่ได้) · ใบลงหน้างาน = null
+       ⇒ `steps` ของผลลัพธ์เท่าของวันนี้ (บรรทัดว่างถูกกรองที่ `timeline` อยู่แล้ว) */
+    lines: [surveySalesAskedLine(request), join(
       // งานโต๊ะไม่มีวันเข้าพื้นที่ (กติกาเดียวกับช่องวันของ `dateFacts`) — เหลือวันที่ต้องการผล
-      !deskJob && request.requestedDueDate && `ขอเข้า ${dayTime(request.requestedDueDate, request.requestedDueTime)}`,
+      // ยื่นเป็นประเมินจากแบบ = ไม่มีวันที่ขอให้เข้า (คอลัมน์ถือกระจกของวันรับผล · `surveyWishedVisit`)
+      !deskJob && wish.known && `ขอเข้า ${dayTime(wish.date, wish.time)}`,
       request.requestedResultDate && `ขอผล ${dayText(request.requestedResultDate)}`,
-    )],
+    )].filter(Boolean),
   });
   steps.push({
     id: 'pending',
@@ -601,7 +618,7 @@ export function surveyJobView({
       if (requeue) queueStep.badge = { label: 'ต้องลงคิวใหม่', tone: 'warning' };
     } else {
       const liveDue = liveDueDate(request);
-      const gap = liveDue && request.requestedDueDate ? committedVsRequested(liveDue, request.requestedDueDate) : null;
+      const gap = liveDue && wish.known ? committedVsRequested(liveDue, wish.date) : null;
       if (gap && stage !== 'overdue' && !finished) queueStep.lines.push({ text: gap.text, tone: gap.tone });
     }
   } else if (request.acknowledgedAt && !finished) {
@@ -783,9 +800,13 @@ export function surveyJobView({
   const deskSize = gates.find((gate) => gate.key === 'size') || null;
   const deskLateBy = stage === 'desk-overdue' ? daysBetween(deskResultDate, today) : 0;
   const nowByStage = {
+    /* 🔴 ร่างที่ทุกพื้นที่เกิดมาจากแบบ (S4 สร้างแถวพื้นที่ตอนเปิดใบ) = ไม่มีการลงคิวเข้าพื้นที่ ⇒ ใช้คำของงานโต๊ะ
+       (ตัดสินจากธงพื้นที่ `deskJob` ไม่ใช่ `variant` — กติกาเดียวกับราง/ขั้นรอรับเรื่อง) · ลงหน้างาน = ประโยคเดิมทุกตัวอักษร */
     draft: {
       headline: 'ยังไม่ส่งคำร้อง',
-      sub: `ส่งแล้ว ${dept} จะรับเรื่องและลงคิวเข้าพื้นที่`,
+      sub: deskJob
+        ? `ส่งแล้ว ${headWho} จะรับเรื่องแล้วแจ้งวันส่งผล — ใบนี้ประเมินจากแบบ ไม่มีการเข้าพื้นที่`
+        : `ส่งแล้ว ${dept} จะรับเรื่องและลงคิวเข้าพื้นที่`,
       next: 'กด “ส่งคำร้อง” เมื่อกรอกครบ',
       turn: { side: requesterLabel, who: requesterWho },
     },
@@ -829,7 +850,10 @@ export function surveyJobView({
       headline: 'รอลงคิวเข้าพื้นที่',
       sub: join(
         request.acknowledgedByName && `รับเรื่องแล้วโดย ${request.acknowledgedByName}`,
-        request.requestedDueDate && `ผู้ขออยากให้เข้า ${dayTime(request.requestedDueDate, request.requestedDueTime)}`,
+        // ยื่นเป็นประเมินจากแบบแล้วหัวหน้าสลับกลับเป็นลงหน้างาน = ไม่มีใครขอวันเข้า ⇒ บอกว่าไม่ได้ระบุ ไม่ใช่วันรับผล (S4 C-5)
+        wish.known
+          ? `ผู้ขออยากให้เข้า ${dayTime(wish.date, wish.time)}`
+          : (surveyFiledAsDrawing(request) && SURVEY_NO_VISIT_WISH_LINE),
       ),
       next: `${dept} เลือกวัน เวลา และเจ้าหน้าที่ แล้วกด “ลงคิวเข้าพื้นที่”`,
       turn: { side: dept, who: assignee.name || `ผู้วางคิว ${dept}` },

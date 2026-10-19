@@ -16,6 +16,15 @@
 //   ตะเข็บ A ↔ D: ผู้เรียก `surveySendBackOnSheet` ทุกจุดส่ง `needsVisit` แล้ว (ลิสต์ "ยังไม่ส่ง" ว่าง)
 //   ใหม่ ⑦ โมดูลแผน `surveyMethodSwitch.js` ดึงได้สี่โมดูล · ⑧ ของงวดหลัง (S2b จอ · S5 ผูกใบยืนยัน) ยังไม่มีในโค้ด
 //
+// ⭐ งวด S4 (ฝ่ายขายเลือกวิธีตอนยื่น · สเปก S4 §3 Integrate ข้อ 1) ขยายลิสต์ปิดอีกรอบ — ไฟล์ละหนึ่งเหตุ:
+//   ② ผู้เขียน `method` + `surveyIntakeSeed.js` (แถวที่เกิดตอนเปิดใบ + ร่างที่เปลี่ยนวิธี) — สี่จุดเขียน สองจุด onsite
+//      (มติเจ้าของ 19/10 · O8 = ข: จุดที่สี่ = ตราการสลับของแถวจากแบบที่มีผลแล้ว ในนามฝ่ายขาย — จุดเดียวที่ประทับ)
+//   ④ ผู้ถามสวิตช์ + สาม route ของคำร้อง (สร้าง · GET/แก้/ส่ง · ตัวเลือกของฟอร์มสร้าง)
+//   ⑤ ผู้เอ่ยชื่อคอลัมน์: ตัวตั้งวิธีอ่าน `method` / `spots` / `"methodChangedAt"` / `"methodReason"` / `"surveyedAt"` / `"updatedAt"`
+//      และประทับสามช่องของการสลับที่จุดเดียว (O8 = ข)
+//   ⑦ ผู้ดึงตัวส่งกระดิ่ง + route ของคำร้อง (กระดิ่ง "งานโต๊ะพร้อม" ถึงหัวหน้าตอนส่งใบที่ยื่นเป็นจากแบบ)
+//   ใหม่ ⑨ `variant` (สิ่งที่ฝ่ายขายขอ) ไม่ถูกอ่านโดยด่าน/คิว/ราง/ส่งผล/กระดาษ — ไฟล์พวกนั้นอ่านแถวพื้นที่เท่านั้น
+//
 // ⚠️ อ่านซอร์สเป็นข้อความหลังตัดคอมเมนต์ — ⛔ สตริง/regex ในไฟล์นี้ห้ามมีทับตามด้วยดอกจันติดกัน
 //    (ตัวตัดคอมเมนต์ของยามตัวอื่นจะกลืนโค้ดตั้งแต่จุดนั้น)
 // ⚠️ ยามตรวจ **ข้อความ** จึงจับได้แค่รูปที่รู้จัก — พฤติกรรมจริงของแต่ละกติกามีเทสต์ของตัวเองใน `surveyMethod*.test.mjs`
@@ -77,6 +86,10 @@ const QUEUE_REPO = 'src/lib/service/surveyQueueRepo.js';
 const WRITES = 'src/lib/service/surveyMethodWrites.js';
 const DOCUMENT_ROUTE = 'src/app/api/service/surveys/[id]/document/route.js';
 const SCRIPT = 'scripts/check-survey-report-inputs.mjs';
+/* งวด S4 (ฝ่ายขายเลือกวิธีตอนยื่น · สเปก S4 §3 Integrate ข้อ 1) — ไฟล์ใหม่ไฟล์เดียวที่เขียน method + สาม route ของคำร้องที่ถามสวิตช์ */
+const INTAKE_SEED = 'src/lib/service/surveyIntakeSeed.js';
+const REQUESTS_ROUTE = 'src/app/api/sa/requests/route.js';
+const FORM_OPTIONS_ROUTE = 'src/app/api/sa/requests/form-options/route.js';
 
 test('ตัวตัดคอมเมนต์ของไฟล์นี้ทำงานจริง (ยามที่อ่านคอมเมนต์เป็นโค้ด = ยามที่ไม่ได้เฝ้าอะไร)', () => {
   const open = '/' + '*';
@@ -114,11 +127,38 @@ test('โมดูลใบ surveyMethod.js ไม่ดึงโมดูลไ
 test('🔴 เขียน `method` ได้เฉพาะสองเส้นพื้นที่กับตัวเขียนของแผนสลับวิธี · ค่า onsite เขียนได้ที่ตัวเขียนที่เดียว', () => {
   const write = /\bmethod\s*(?::|=(?!=))\s*(?:SURVEY_METHOD_\w+|['"`](?:drawing|onsite)['"`])/;
   // งวด S2a เพิ่ม `surveyMethodWrites.js` — ตัวเดียวที่ลงมือเขียนตามแผน (`runSurveyMethodPlan`) ทั้งสองทิศ
-  assert.deepEqual(hits(write, { except: [LEAF] }), [ZONE_ROUTE, ZONES_ROUTE, WRITES].sort());
+  // งวด S4 เพิ่ม `surveyIntakeSeed.js` — แถวที่เกิดตอนเปิดใบ + ร่างที่ฝ่ายขายเปลี่ยนวิธี (ประทับเฉพาะแถวจากแบบที่มีผล · O8 = ข)
+  assert.deepEqual(hits(write, { except: [LEAF] }), [ZONE_ROUTE, ZONES_ROUTE, WRITES, INTAKE_SEED].sort());
 
-  // ค่า onsite ถูกเขียนที่ตัวเขียนของแผนที่เดียว — สองเส้นพื้นที่ยังไม่ส่งคีย์นี้ (ใบลงหน้างานได้ payload เท่าก่อน mig)
+  // ค่า onsite ถูกเขียนที่ตัวเขียนของแผน + ตัวตั้งวิธีของร่าง — สองเส้นพื้นที่ยังไม่ส่งคีย์นี้ (ใบลงหน้างานได้ payload เท่าก่อน mig)
   const writesOnsite = /\bmethod\s*(?::|=(?!=))\s*(?:SURVEY_METHOD_ONSITE|['"`]onsite['"`])/;
-  assert.deepEqual(hits(writesOnsite, { except: [LEAF] }), [WRITES]);
+  assert.deepEqual(hits(writesOnsite, { except: [LEAF] }), [WRITES, INTAKE_SEED].sort());
+  /* ตัวตั้งวิธีของงวด S4: สี่จุด (ค่าที่ต่อท้ายแถวตอน insert · สองแขนของคำสั่งแก้ร่าง · ตราของแถวที่มีผล) · onsite สองจุด
+     (แขนกลับเป็นลงหน้างาน · ตรา) — ⚠️ ทุกจุดเขียนชื่อค่าคงที่ตรง ๆ: `method: want` จะหลบ regex ข้างบน แล้วลิสต์นี้เฝ้าอะไรไม่ได้ */
+  const seed = stripComments(read(INTAKE_SEED));
+  assert.equal((seed.match(new RegExp(write.source, 'g')) || []).length, 4);
+  assert.equal((seed.match(new RegExp(writesOnsite.source, 'g')) || []).length, 2);
+  assert.doesNotMatch(seed, /\bmethod\s*:\s*(?!SURVEY_METHOD_)\w/, 'ตัวตั้งวิธีเขียน method ด้วยชื่อค่าคงที่เท่านั้น');
+  /* 🔴 ตรา (มติเจ้าของ 19/10 · O8 = ข) มี **จุดเดียว** และเป็นทรงเดียวกับที่หัวหน้าสลับกลับเป็นลงหน้างาน: onsite + สามช่อง + ปลดเลือกจุด
+     · เหตุผลเป็นค่าคงที่ของฝ่ายขายเสมอ (ตัวโหลดคิวใช้แยกจากการสลับของหัวหน้า) · ไม่มีทางเขียนตราทิศจากแบบ
+     ⇒ แถวที่ไม่มีผลยังอ่านเป็น "เกิดมาแบบนั้น" — พฤติกรรมจริงล็อกที่ `surveyIntakeSeed.test.mjs` */
+  assert.equal((seed.match(/\bmethodChangedAt\s*:/g) || []).length, 1);
+  assert.equal((seed.match(/\bmethodChangedByName\s*:/g) || []).length, 1);
+  assert.equal((seed.match(/\bmethodReason\s*:/g) || []).length, 1);
+  assert.doesNotMatch(seed, /"methodChangedAt"\s*:/);
+  assert.match(seed, /method: SURVEY_METHOD_ONSITE,\s*methodReason: SURVEY_INTAKE_SWITCH_REASON,\s*methodChangedAt: updatedAt,\s*methodChangedByName: text\(actorName\) \|\| null,\s*spots: unselectedSpots\(row\),\s*updatedAt,\s*\}/);
+  assert.doesNotMatch(seed, /method: SURVEY_METHOD_DRAWING,\s*methodReason/, 'ไม่มีตราทิศจากแบบ');
+  // ตัวตั้งวิธีเป็นของ server: ผู้ดึงอยู่ใต้ src/app/api/ เท่านั้น (จอไม่เคยเขียนวิธีของแถวพื้นที่เอง)
+  const seedImporters = hits(/surveyIntakeSeed\b/, { except: [INTAKE_SEED] });
+  assert.deepEqual(seedImporters, [REQUESTS_ROUTE, REQUEST_ROUTE].sort());
+  for (const file of seedImporters) assert.ok(file.startsWith('src/app/api/'), file);
+  /* ตัว insert ของแถวพื้นที่รับคีย์จากตัวตั้งวิธีมาต่อท้าย — ไม่มีค่าของวิธีเป็นสตริงเอง · ไฟล์ตัดสินคำของรายการพื้นที่ก็เช่นกัน
+     (zonePickState เทียบ `assessMethod` ของทะเบียนโซนกับค่าคงที่มาตั้งแต่งวด S2b — นั่นคือการอ่าน ไม่ใช่สตริงค่าวิธี) */
+  for (const file of ['src/lib/service/surveyRepo.js', 'src/lib/service/zonePickState.js']) {
+    const code = stripComments(read(file));
+    assert.doesNotMatch(code, /['"`](?:drawing|onsite)['"`]/, file);
+    assert.doesNotMatch(code, write, file);
+  }
   // ตัวเขียน: สามจุด (กลับเป็นลงหน้างาน · เป็นจากแบบ · แถวที่ตัดไปแล้วตามใบที่กลายเป็นงานโต๊ะ) — ทุกจุดอยู่บนตารางพื้นที่
   const writes = stripComments(read(WRITES));
   assert.equal((writes.match(new RegExp(write.source, 'g')) || []).length, 3);
@@ -210,7 +250,12 @@ test('🔴 สวิตช์ SURVEY_DRAWING_METHOD ถูกอ่านไฟ�
   assert.deepEqual(hits(/SURVEY_DRAWING_METHOD/), [FLAG], 'ชื่อสวิตช์ต้องไม่โผล่ในโค้ดไฟล์อื่น (รวม NEXT_PUBLIC_ ที่พาไปถึงเบราว์เซอร์)');
   const importers = hits(/surveyDrawingFlag/, { except: [FLAG] });
   // งวด S2a: สี่ route — ด่านส่งผลแถว 17a · เส้นสลับวิธี · GET ของใบ (ส่งค่าให้จอ) · กล่องยืนยันตอนหัวหน้าตัดพื้นที่สุดท้ายที่ต้องวัด
-  assert.deepEqual(importers, [METHOD_ROUTE, SHEET_ROUTE, SEND_ROUTE, ZONE_ROUTE].sort(), 'ผู้ใช้สวิตช์ใหม่ = เพิ่มในลิสต์นี้ และต้องอยู่ใต้ src/app/api/');
+  // งวด S4: + สาม route ของคำร้อง — สร้าง (ตีกลับ drawing ตอนปิด) · GET/แก้/ส่ง (คีย์ drawingMethodEnabled ของฟอร์มแก้) · ตัวเลือกของฟอร์มสร้าง
+  assert.deepEqual(
+    importers,
+    [METHOD_ROUTE, SHEET_ROUTE, SEND_ROUTE, ZONE_ROUTE, REQUESTS_ROUTE, REQUEST_ROUTE, FORM_OPTIONS_ROUTE].sort(),
+    'ผู้ใช้สวิตช์ใหม่ = เพิ่มในลิสต์นี้ และต้องอยู่ใต้ src/app/api/',
+  );
   for (const file of importers) assert.ok(file.startsWith('src/app/api/'), file);
   // ถามผ่าน surveyDrawingMethodEnabled() เท่านั้น — ไม่มีไฟล์ไหนดึงชื่ออื่นจากโมดูลสวิตช์ และไม่มีโค้ดฝั่งจอ/โมดูลล้วนเรียกตัวถาม
   assert.deepEqual(hits(/\bsurveyDrawingMethodEnabled\b/, { except: [FLAG] }), importers);
@@ -247,7 +292,10 @@ test('คอลัมน์ของ mig 0408: จุดที่ระบุช
   assert.equal(visits.split(`.select('${COLUMNS}')`).length - 1, 2);
   /* ลิสต์คอลัมน์ในสตริงที่มีคำว่า method เป็นคอลัมน์ (คั่นด้วยจุลภาค) — มีได้แค่สองไฟล์นั้น */
   const namedInList = /['"`][^'"`\n]*,\s*method\s*(?:,[^'"`\n]*)?['"`]/;
-  assert.deepEqual(hits(namedInList), ['src/lib/service/surveyQueueRepo.js', 'src/lib/service/visitsRepo.js']);
+  // งวด S4: + ตัวตั้งวิธีของร่าง (อ่าน method / methodChangedAt / surveyedAt ก่อนตัดสินว่าจะเขียนไหม)
+  //   O8 = ข (19/10): + spots (ปลดเลือกจุดตอนประทับ) · methodReason (แยกตราของฝ่ายขายจากการสลับของหัวหน้า) · updatedAt (ผูกรุ่นที่อ่าน)
+  assert.deepEqual(hits(namedInList), ['src/lib/service/surveyQueueRepo.js', 'src/lib/service/visitsRepo.js', INTAKE_SEED].sort());
+  assert.ok(read(INTAKE_SEED).includes(`.select('id, method, spots, "methodChangedAt", "methodReason", "surveyedAt", "updatedAt"')`));
 
   // surveyConfirm ถูกระบุชื่อในคำสั่งอ่านจุดเดียว: คำร้องที่ค้างของทะเบียนโซนลูกค้า (ป้าย "รอยืนยันหน้างาน")
   assert.deepEqual(hits(/select\([^)]*surveyConfirm[^)]*\)/), [CUSTOMER_ZONES_ROUTE]);
@@ -257,11 +305,13 @@ test('คอลัมน์ของ mig 0408: จุดที่ระบุช
   const NAMED = {
     // แผนอ่านสองช่องนี้จากแถวเพื่อแยก "กดซ้ำของการกระทำเดิม" ออกจาก "มีคนอื่นสลับไปแล้ว" · ตัวเขียนเป็นคนประทับ
     // + ตัวโหลดคิว (งวด S2b): บรรทัดที่มา "หัวหน้าเปลี่ยนเป็นลงหน้างาน: {เหตุผล}" บนการ์ดของผู้วางคิว — อ่านอย่างเดียว
-    methodReason: [SWITCH, WRITES, QUEUE_REPO],
-    methodChangedByName: [SWITCH, WRITES],
+    // + ตัวตั้งวิธีของร่าง (O8 = ข · 19/10): ประทับตราของฝ่ายขาย + อ่านเพื่อแยกตราของตัวเองจาก "หัวหน้าสลับแล้ว"
+    methodReason: [SWITCH, WRITES, QUEUE_REPO, INTAKE_SEED],
+    methodChangedByName: [SWITCH, WRITES, INTAKE_SEED],
     // เส้นแก้พื้นที่: ช่างเขียนทับพื้นที่ที่หัวหน้าเพิ่งสลับ ⇒ 409 (ไม่ใช่ 403) · ตัวเขียนเป็นคนประทับ
     // + ตัวโหลดคิว (งวด S2b): เลือกพื้นที่ที่ถูกสลับล่าสุด — อ่านอย่างเดียว
-    methodChangedAt: [ZONE_ROUTE, WRITES, QUEUE_REPO],
+    // + ตัวตั้งวิธีของร่าง (งวด S4): แถวที่หัวหน้าสลับแล้วไม่ถูกตั้งทับ (`'switched'`) · ประทับแถวจากแบบที่มีผล (O8 = ข · 19/10)
+    methodChangedAt: [ZONE_ROUTE, WRITES, QUEUE_REPO, INTAKE_SEED],
     // เขียน: ส่งผล (เฉพาะใบที่มีพื้นที่จากแบบ) · ดึงกลับ/เปิดใหม่ (ล้างเป็น NULL) — อ่าน: ทะเบียนโซน · แบนเนอร์ของฝ่ายขาย · ด่าน/ข้อความตอนส่ง
     // + หน้าใบประเมิน (งวด S2b): ใส่ตัวเลือกของสองไทล์ลง body ตอนส่งผล — เขียนผ่าน route ส่งผลเท่านั้น ไม่อ่านคอลัมน์
     surveyConfirm: [
@@ -427,7 +477,9 @@ test('🔴 ⑦ surveyMethodSwitch.js ดึงได้สี่โมดูล�
   }
   // ตัวเขียนกับตัวส่งกระดิ่งเป็นของ server: มีแต่ route / โมดูล server ด้วยกันดึง — ไม่มีไฟล์ใต้ components หรือ page.js
   const serverOnly = hits(/surveyMethod(?:Writes|Notify)\b/, { except: [WRITES, 'src/lib/service/surveyMethodNotify.js'] });
-  assert.deepEqual(serverOnly, [METHOD_ROUTE, ZONE_ROUTE, 'src/app/api/service/visits/[id]/route.js'].sort());
+  // งวด S4: + route ของคำร้อง — กระดิ่ง `notifySurveyDeskReady` ถึงหัวหน้าตอนส่งใบที่ทุกพื้นที่เป็นจากแบบ (สเปก S4 A-6 ⑤)
+  assert.deepEqual(serverOnly, [METHOD_ROUTE, ZONE_ROUTE, 'src/app/api/service/visits/[id]/route.js', REQUEST_ROUTE].sort());
+  assert.deepEqual(importsOf(stripComments(read(REQUEST_ROUTE))).filter((m) => /surveyMethod(?:Writes|Notify)\b/.test(m)), ['@/lib/service/surveyMethodNotify']);
 });
 
 /* ═══ ⑧ จอที่ต่อกับโมดูลสลับวิธี — ลิสต์ปิดของงวด S2b ═══════════════════════════════════════════════════════════
@@ -513,4 +565,45 @@ test('ตะเข็บ C ↔ §2: ป้ายของทะเบียน�
   assert.equal(onsite.confirmTag, null);
   // ทะเบียนดึงป้ายจากค่าคงที่ ไม่พิมพ์ข้อความเอง
   assert.match(stripComments(read('src/lib/service/zoneRegistry.js')), /confirmTag: SURVEY_ZONE_TAG\[confirm\] \|\| null/);
+});
+
+/* ═══ งวด S4: ⑨ `variant` = สิ่งที่ฝ่ายขายขอ — ด่าน/คิว/ราง/ส่งผล/กระดาษ ไม่อ่าน ══════════════════════════════
+   หัวหน้าสลับวิธีรายพื้นที่ได้หลังรับเรื่อง (S2a) โดย `variant` ไม่ขยับ ⇒ ตัวตัดสินที่อ่าน `variant` จะขัดกับแถวพื้นที่
+   (ใบ RQ-AS-26100312: variant = standard · ทุกพื้นที่จากแบบ) · ตัวตอบ "ต้องไปไหม" มีตัวเดียว = `surveyNeedsVisit`
+   ข้อยกเว้นที่ตั้งใจ: `survey.js` รับ **พารามิเตอร์** ชื่อ variant (ข้อความ 409 ใบเปล่าของ route ปิดนัด · V14) ไม่ใช่การอ่าน `.variant` */
+test('⑨ งวด S4: ไฟล์ด่าน · คิว · ราง · ส่งผล · กระดาษ · ตัวเลือกพื้นที่ ไม่อ่าน `.variant` (จำนวนเท่าก่อนงวด S4 = 0)', () => {
+  const gates = [
+    'src/lib/service/survey.js',
+    'src/lib/service/surveyQueue.js',
+    'src/lib/requests/requestRail.js',
+    'src/lib/service/surveySendClose.js',
+    'src/lib/service/zonePickState.js',
+    'src/lib/service/surveyMethod.js',
+    'src/lib/service/surveyMethodSwitch.js',
+    ...APP.filter(({ file }) => /^src\/lib\/service\/surveyReport\w*\.js$/.test(file)).map(({ file }) => file),
+  ];
+  assert.ok(gates.length >= 12, 'ต้องเจอไฟล์กระดาษจริง');
+  for (const file of gates) {
+    const code = stripComments(read(file));
+    assert.doesNotMatch(code, /\.variant\b/, file);
+    assert.doesNotMatch(code, /\bvariant\s*\]/, `${file} — อ่านผ่าน ['variant'] ก็นับ`);
+  }
+  // survey.js: พารามิเตอร์ตัวเดียว ใช้ที่ข้อความใบเปล่า — ไม่เข้าด่านรายพื้นที่
+  const survey = stripComments(read('src/lib/service/survey.js'));
+  assert.equal((survey.match(/\bvariant\b/g) || []).length, 2, 'ประกาศพารามิเตอร์ + เทียบหนึ่งครั้งในกิ่งใบเปล่า');
+  assert.match(survey, /export function surveyFieldSubmitError\(rows = \[\], filesByZone = \{\}, \{ variant = null \} = \{\}\)/);
+  // กระดาษอ่าน "วันที่อยากให้เข้า" ผ่านตัวอ่านเดียว (D-7) — ไม่อ่านคอลัมน์ requestedDueDate ตรง ๆ
+  const snapshot = stripComments(read('src/lib/service/surveyReportSnapshot.js'));
+  assert.match(snapshot, /requestedDueDate: dayOnly\(wish\.date\), requestedDueTime: hhmm\(wish\.time\),/);
+  assert.doesNotMatch(snapshot, /r\.requestedDueDate|r\.requestedDueTime/);
+});
+
+test('⑨ งวด S4: ตัวอ่าน "ฝ่ายขายขออะไร" (`surveyIntake.js`) เป็นโมดูลล้วน — ไม่อ่านสวิตช์ ไม่แตะฐาน · ดึงได้โมดูลเดียว', () => {
+  const code = stripComments(read('src/lib/service/surveyIntake.js'));
+  assert.deepEqual(importsOf(code), ['@/lib/service/surveyMethodSwitch']);
+  assert.doesNotMatch(code, /process\.env|supabase|\.from\(|surveyDrawingFlag/);
+  // survey.js / surveyMethod.js อยู่ต้นน้ำของมัน (ผ่านโมดูลสลับวิธี) — ดึงกลับ = วงจร import ค่าเป็น undefined เงียบ ๆ
+  for (const upstream of ['src/lib/service/survey.js', LEAF, 'src/lib/service/visitStatus.js', 'src/lib/format.js']) {
+    assert.doesNotMatch(stripComments(read(upstream)), /surveyIntake\b/, upstream);
+  }
 });

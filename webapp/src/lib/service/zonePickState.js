@@ -32,13 +32,34 @@ const HOT_REASON = {
 const AWAITING_NOTE = ' · ตัวเลขจากแบบ รอยืนยันหน้างาน';
 const confirmOf = (zone) => zone.confirm || 'none';
 
+/* ── คำที่ "สัญญาว่าจะวัด" ของฟอร์มฝ่ายขาย (ประเมินจากแบบ งวด 4 · S4 B-7b · O11) ─────────────
+   ⭐ ฟอร์มที่เลือก "ประเมินจากแบบ" เพิ่งบอกว่าไม่มีการนัดเข้าพื้นที่ ⇒ ไทล์ต้องไม่ชวนไป "วัด" ในรอบนี้
+   ⚠️ เปลี่ยนแค่สามประโยคนี้ — ที่เหลือเป็น **ข้อเท็จจริงของพื้นที่** ("วัดแล้วยังไม่ขาย" · "วัดมาแล้ว n รอบ" ·
+      "มีใบสั่งวัดค้าง") ไม่ใช่คำสัญญาของใบนี้ จึงเท่าเดิมทุกวิธี
+   ⚠️ ไฟล์นี้ไม่รู้จักวิธีของใบ — ผู้เรียกส่ง "คำ" มาเอง (`surveyZoneWording` ใน lib/service/surveyIntake.js)
+      ไม่ส่ง / `measure` = ข้อความเดิมทุกตัวอักษร (ฝั่ง server ทุกตัวเรียกแบบนี้) */
+const PROMISE_TEXT = {
+  measure: {
+    never: 'ยังไม่เคยวัด',
+    debt: 'ขายแล้วแต่ไม่เคยวัด — วัดเก็บไว้ได้ในรอบนี้',
+    renew: 'เคยขาย รอบจบแล้ว — วัดซ้ำเพื่อต่ออายุได้',
+  },
+  assess: {
+    never: 'ยังไม่เคยประเมิน',
+    debt: 'ขายแล้วแต่ไม่เคยประเมิน — ประเมินเก็บไว้ได้ในรอบนี้',
+    renew: 'เคยขาย รอบจบแล้ว — ประเมินซ้ำเพื่อต่ออายุได้',
+  },
+};
+const promiseOf = (wording) => PROMISE_TEXT[wording] || PROMISE_TEXT.measure;
+
 /**
  * สถานะของพื้นที่เดิมหนึ่งรายการ — คืนของที่จอต้องใช้ครบในตัวเดียว
  *
  * @param zone       แถวจากทะเบียนพื้นที่ (`zoneRegistryRow`)
  * @param pickedIds  id ที่ติ๊กไว้แล้วในใบที่กำลังกรอก
+ * @param wording    `'measure'` (ค่าตั้งต้น · ข้อความเดิม) | `'assess'` (ฟอร์มที่เลือกประเมินจากแบบ) — ดู `PROMISE_TEXT`
  */
-export function zonePickState(zone = {}, pickedIds = new Set()) {
+export function zonePickState(zone = {}, pickedIds = new Set(), { wording = 'measure' } = {}) {
   const picked = pickedIds instanceof Set ? pickedIds.has(zone.id) : !!pickedIds?.[zone.id];
   const surveyState = zone.pendingRequest ? 'pending' : (zone.surveyedAt ? 'done' : 'none');
   const soldState = zone.termState || 'none';
@@ -75,7 +96,7 @@ export function zonePickState(zone = {}, pickedIds = new Set()) {
     return {
       ...base(zone, { picked, surveyState, soldState }),
       kind: 'debt', locked: false,
-      reason: 'ขายแล้วแต่ไม่เคยวัด — วัดเก็บไว้ได้ในรอบนี้',
+      reason: promiseOf(wording).debt,
       sort: ORDER.debt,
     };
   }
@@ -83,7 +104,7 @@ export function zonePickState(zone = {}, pickedIds = new Set()) {
   return {
     ...base(zone, { picked, surveyState, soldState }),
     kind: 'plain', locked: false,
-    reason: reasonOf(surveyState, soldState, zone),
+    reason: reasonOf(surveyState, soldState, zone, wording),
     sort: ORDER.plain,
   };
 }
@@ -115,21 +136,21 @@ function base(zone, { picked, surveyState, soldState }) {
 
 const onsiteRounds = (zone) => zone.onsiteSurveyCount ?? (zone.surveyCount || 0);
 
-function reasonOf(surveyState, soldState, zone) {
+function reasonOf(surveyState, soldState, zone, wording) {
   const awaiting = confirmOf(zone) === 'awaiting' ? AWAITING_NOTE : '';
   if (surveyState === 'done' && soldState === 'active') {
     // รอบจากแบบไม่ใช่ "วัดมาแล้ว" — นับเฉพาะรอบที่ไปวัดจริง
     const rounds = onsiteRounds(zone);
     return (rounds > 1 ? `มีเครื่องอยู่ · วัดมาแล้ว ${rounds} รอบ` : 'มีเครื่องอยู่') + awaiting;
   }
-  if (surveyState === 'done' && soldState === 'ended') return `เคยขาย รอบจบแล้ว — วัดซ้ำเพื่อต่ออายุได้${awaiting}`;
-  return 'ยังไม่เคยวัด';
+  if (surveyState === 'done' && soldState === 'ended') return `${promiseOf(wording).renew}${awaiting}`;
+  return promiseOf(wording).never;
 }
 
-/** รายการพื้นที่เดิมของไซต์หนึ่ง เรียงตามความสำคัญที่ม็อกกำหนด */
-export function zonePickList(zones = [], pickedIds = new Set()) {
+/** รายการพื้นที่เดิมของไซต์หนึ่ง เรียงตามความสำคัญที่ม็อกกำหนด · `wording` ส่งต่อให้ทุกไทล์ (ดู `PROMISE_TEXT`) */
+export function zonePickList(zones = [], pickedIds = new Set(), { wording = 'measure' } = {}) {
   return (Array.isArray(zones) ? zones : [])
-    .map((z) => zonePickState(z, pickedIds))
+    .map((z) => zonePickState(z, pickedIds, { wording }))
     .sort((a, b) => a.sort - b.sort || String(a.name || '').localeCompare(String(b.name || ''), 'th'));
 }
 
