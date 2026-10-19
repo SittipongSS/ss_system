@@ -6,14 +6,19 @@
 //
 // ⚠️ จับคู่ด้วย `stepKey` ไม่ใช่ `projectTaskId` — `mergeTemplateTasks` ลบ/สร้าง task
 // ใหม่ตอน resync แม่แบบ ผูก id ตรง ๆ แล้วหมุดหลุดเงียบ (ดู lib/pm/schedule.js)
-import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
-import { requestClosure } from '@/lib/requests/closure';
+import { requestSettled } from '@/lib/requests/queueBoard';
 
 /* ใบที่ยังไม่จบ = ยังเดินอยู่ **หรือปิดไปฝั่งเดียว** (ม-145 · มติปิดสองฝั่ง 2026-08-20)
    🐞 เดิมนับแค่ pending/acknowledged ⇒ ใบ `answered` ที่รอผู้ขอกดปิดเงียบบนหมุดไทม์ไลน์
-   ขณะที่การ์ดคำร้องบนหน้าเดียวกันจัดมันไว้ "กำลังดำเนินการ" ป้าย "รอ SA ปิด" */
-const stillOpen = (r) => (REQUEST_OPEN_STATUSES.includes(r.status) || r.status === 'answered')
-  && !requestClosure(r).complete;
+   ขณะที่การ์ดคำร้องบนหน้าเดียวกันจัดมันไว้ "กำลังดำเนินการ" ป้าย "รอ SA ปิด"
+   ⭐ **ตัวตัดสินเดียวกับ "ในคิว / ประวัติ" ของหน้า /requests** (`requestSettled` · ตรวจตัวเลข H16 2026-10-19) —
+   หมุด "คำร้องค้าง 2" พาไปคิวที่กรองดีล+ขั้นไว้ (`lib/requests/dealLink.js`) ⇒ "ค้าง" ของหมุดกับ "ในคิว"
+   ของปลายทางต้องเป็นนิยามเดียวกันเชิงโครงสร้าง ไม่ใช่สองสูตรที่บังเอิญได้เลขเท่ากัน (เดิมเขียนสถานะเองอีกชุด) */
+const stillOpen = (r) => !requestSettled(r);
+
+/* ใบที่ปักหมุดได้ — มีขั้นปลายทาง และ **ไม่ใช่ร่าง** (ร่างยังไม่ถูกส่ง = ยังไม่ใช่งานของใคร
+   ไม่ควรโผล่บนไทม์ไลน์ของทีม) · ตัวกรอง `?step=` ของหน้า /requests ใช้ตัวนี้ตัวเดียวกัน */
+export const isStepPinnable = (r) => !!r?.stepKey && r.status !== 'draft';
 
 // คืน Map(stepKey → คำร้อง[]) · เรียงเรื่องที่ยังค้างขึ้นก่อนเสมอ เพราะหมุดมีไว้
 // เตือนว่า "ขั้นนี้มีเรื่องรออยู่" ไม่ใช่ไว้ดูประวัติ
@@ -25,9 +30,7 @@ const stillOpen = (r) => (REQUEST_OPEN_STATUSES.includes(r.status) || r.status =
 export function requestsByStepKey(requests = []) {
   const byStep = new Map();
   for (const r of requests) {
-    if (!r?.stepKey) continue;
-    // คำร้องร่างยังไม่ถูกส่ง = ยังไม่ใช่งานของใคร ไม่ควรโผล่บนไทม์ไลน์ของทีม
-    if (r.status === 'draft') continue;
+    if (!isStepPinnable(r)) continue;
     const list = byStep.get(r.stepKey) || [];
     list.push(r);
     byStep.set(r.stepKey, list);
@@ -42,17 +45,30 @@ export function requestsByStepKey(requests = []) {
   return byStep;
 }
 
-// สรุปหมุดของขั้นเดียว → { total, open, first } หรือ null ถ้าไม่มีอะไรผูกอยู่
+// สรุปหมุดของขั้นเดียว → { total, open, first, stepKey, dealId, projectId } หรือ null ถ้าไม่มีอะไรผูกอยู่
 // UI ใช้ `open` ตัดสินสี: มีเรื่องค้าง = เตือน, ปิดครบแล้ว = เงียบ ๆ
 //
 // `taskDealId` = ดีลของขั้นที่กำลังวาด (task ติดป้าย `dealId` ตั้งแต่ mig 0090):
 //   · คำร้องมีดีล + ขั้นมีดีล → ต้องเป็นดีลเดียวกัน (กันหมุดข้าม segment)
 //   · คำร้อง **ไม่มีดีล** (หัวข้อของกลางอย่างติดตามของเข้า) → ขึ้นทุกขั้นเหมือนเดิม
 //   · ขั้นไม่มีดีล (task กลางของโครงการ) → ไม่รับหมุดที่เป็นของดีลใดดีลหนึ่ง
+//
+// ⭐ `stepKey` · `dealId` · `projectId` = **ตัวยึดของลิงก์หมุด** (`stepPinHref` · ตรวจตัวเลข H16 2026-10-19) —
+// ป้าย "คำร้องค้าง 2" ต้องพาไปเจอ 2 ใบนั้น ไม่ใช่ทุกใบของดีล ⇒ ลิงก์ต้องพาชุดที่หมุดนับไปด้วยทั้งชุด
+// `projectId` มีค่าเฉพาะเมื่อในชุดมีคำร้องของกลาง (ไม่มีดีล) — ปลายทางรับใบของกลางของโครงการนั้นเพิ่ม
+// (หน้าดีลไม่เคยโหลดใบของกลาง ⇒ ฝั่งหน้าดีลเป็น null เสมอ ลิงก์จึงไม่ดึงใบที่หมุดไม่ได้นับ)
 export function stepPinSummary(byStep, stepKey, taskDealId = null) {
   const all = stepKey ? byStep?.get(stepKey) : null;
   const list = (all || []).filter((r) => !r.dealId || r.dealId === taskDealId);
   if (!list.length) return null;
   const open = list.filter(stillOpen).length;
-  return { total: list.length, open, first: list[0] };
+  const shared = list.find((r) => !r.dealId && r.projectId);
+  return {
+    total: list.length,
+    open,
+    first: list[0],
+    stepKey,
+    dealId: taskDealId || null,
+    projectId: shared?.projectId || null,
+  };
 }

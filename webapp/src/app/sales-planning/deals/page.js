@@ -64,6 +64,7 @@ import { DEAL_DELETE_LEAD_NOTE, canLinkLeadRole, dealLeadLinkBlocker } from "@/l
 import LeadSourcePicker from "@/components/salesPlanning/LeadSourcePicker";
 import { missingDealFieldsMessage } from "@/lib/sales/dealRequiredFields";
 import { canExportForecastReport } from "@/lib/sales/forecastBreakdown";
+import { DEAL_REVIEW_LIST_URL, dealPassesListFilters, reviewOptionCount } from "@/lib/sales/dealListFilter";
 /* มูลค่าที่ขึ้นจอของดีลหนึ่งใบ — Won ใช้ยอด Actual (SO อนุมัติแล้ว) นอกนั้นใช้ยอดคาดการณ์
    ตัวเดียวกันทั้งคอลัมน์มูลค่า · การเรียง · ยอดหัวกลุ่ม · KPI (lib/sales/dealAmountDisplay)
    ⭐ ยอด SO "รออนุมัติ" วางเป็นชิ้นแยก (PendingApprovalAmount) เสมอ — ไม่บวกเข้าตัวเลขหลัก
@@ -116,6 +117,9 @@ export default function SalesPlanningPipelinePage() {
   const [rangeError, setRangeError] = useState("");
   const [downloadError, setDownloadError] = useState("");
   const [deals, setDeals] = useState([]);
+  /* ชุด "รอเติมข้อมูล" ทุกงวด — ที่มาของเลขท้ายตัวเลือก (ตรวจตัวเลข H5 2026-10-19 · lib/sales/dealListFilter.js)
+     ⚠️ ตอนติ๊กอยู่ไม่ต้องโหลดแยก — ตารางโหลดดีลทุกงวดอยู่แล้ว (นับจาก `deals` ตรง ๆ) · null = ยังไม่รู้ ⇒ ไม่โชว์เลข */
+  const [reviewDeals, setReviewDeals] = useState(null);
   /* งวด + เวลาที่ใช้คัดยอด SO "รออนุมัติ" เข้ายอดหัวกลุ่ม/KPI (มติผู้ใช้ 2026-09-14)
      ยอดรออนุมัติลงเดือนปัจจุบันเวลาไทยเสมอ ⇒ นับเฉพาะเมื่อเดือนนั้นอยู่ในงวดที่หน้าโชว์
      (lib/sales/dealAmountDisplay → pendingPeriodMatcher) · เดือนสิงหาที่ปิดไปแล้วไม่มีวันเห็นยอดนี้
@@ -227,7 +231,7 @@ export default function SalesPlanningPipelinePage() {
     if (!opts?.background) setLoading(true);
     setError("");
     try {
-      const [dealsRes, customersRes, projectsRes] = await Promise.all([
+      const [dealsRes, customersRes, projectsRes, reviewRes] = await Promise.all([
         /* ตัวกรอง "รอเติมข้อมูล" ต้องดึงทุกเดือนจริง ๆ (deal backfill มี forecastMonth=null
            จึงตกทุกช่วงที่กรอง) — ต่างจากติ๊ก "ทุกเดือน" ที่แปลว่า *ทุกเดือนของปีที่เลือก*
            เดิมสองอย่างนี้ยิง URL เดียวกัน = ติ๊กทุกเดือนแล้วได้ดีลทุกปีมาปนกัน */
@@ -236,7 +240,11 @@ export default function SalesPlanningPipelinePage() {
           : `/api/sales-planning/deals?${axisQuery}`),
         apiFetch("/api/master/customers"),
         apiFetch("/api/pm/projects"),
+        /* นอกตัวกรอง "รอเติมข้อมูล" ชุดที่โหลดมาเป็นของงวดเดียว ⇒ เลขท้ายตัวเลือกต้องนับจากชุดทุกงวดอีกคำขอ
+           (คัดที่ฐาน เล็ก) · พังก็แค่ไม่โชว์เลข ไม่ล้มทั้งหน้า */
+        reviewOnly ? null : apiFetch(DEAL_REVIEW_LIST_URL).catch(() => null),
       ]);
+      const reviewData = reviewRes?.ok ? await reviewRes.json().catch(() => null) : null;
       if (!dealsRes.ok) {
         const txt = await dealsRes.text();
         let errStr = "โหลดดีลไม่สำเร็จ";
@@ -254,6 +262,7 @@ export default function SalesPlanningPipelinePage() {
       // (เขียนบางตัวแล้วทิ้งตัวที่เหลือ = จอกลายเป็นลูกผสมของสองเดือน)
       if (!isLatest()) return;
       try { setDeals(dTxt ? JSON.parse(dTxt) : []); } catch(e) { setDeals([]); }
+      setReviewDeals(reviewOnly ? null : (Array.isArray(reviewData) ? reviewData : null));
       setPendingPeriod({ inPeriod: pendingPeriodMatcher({ month, allMonths, reviewOnly, period: dealPeriod }), now: new Date() });
       setCustomers(custData);
       setProjects(projData);
@@ -297,33 +306,32 @@ export default function SalesPlanningPipelinePage() {
     return true;
   }, [activeScope, me, teamFilter]);
 
-  const filteredDeals = useMemo(() => {
+  /* ⭐ ตัวกรองของตาราง = ตัวตัดสินเดียวกับเลขท้ายตัวเลือก "รอเติมข้อมูล" (`dealPassesListFilters` · H5)
+     ขอบเขตกับคำค้นเป็นของหน้า (อ่านทะเบียนคน/ลูกค้าที่โหลดไว้) แต่ส่งเข้าตัวตัดสินตัวเดียวกัน */
+  const matchesSearch = useCallback((deal) => {
     const q = query.trim().toLowerCase();
-    const result = deals.filter((deal) => {
-      if (!inScopeDeal(deal)) return false;
-      if (dueFilter.length) {
-        const due = forecastDueState(deal, currentMonth);
-        const key = due.overdue ? "overdue" : (due.missing ? "missing" : "ontime");
-        if (!dueFilter.includes(key)) return false;
-      }
-      if (reviewOnly && !deal.metadata?.needsReview) return false;
-      /* วันรับของ: ยังไม่ระบุ / ระบุแล้ว (มติผู้ใช้ 2026-09-22 — กอง "ยังไม่ระบุวันรับของ" ต้องไล่ได้จากจอ)
-         ⚠️ ดีลแพ้ที่ไม่มีวันรับของไม่อยู่ทั้งสองกลุ่ม (dealDeliveryState = null) — "ระบุแล้ว" ต้องไม่โชว์แถวที่ไม่มีเดือนรับของ */
-      if (deliveryFilter.length && !deliveryFilter.includes(dealDeliveryState(deal))) return false;
-      if (stageFilter.length && !stageFilter.includes(deal.stage)) return false;
-      if (typeFilter.length && !typeFilter.includes(dealTypeOf(deal))) return false;
-      if (!q) return true;
-      /* ⭐ **รหัสดีลต้องค้นเจอ** (มติผู้ใช้ 2026-09-07) — ตาเห็นบนแถวแล้วต้องพิมพ์หาได้
-         ไม่งั้นคนที่ถือรหัสจากไฟล์ Excel/ใบเสนอราคาต้องไล่หาด้วยตาเอง
-         ⚠️ ยังรับรูป `DL-26080006-0` ด้วย — หัวหน้ารายละเอียดเคยโชว์รูปนั้น (ต่อ `-0`
-            ตามกติกา revision ที่ดีลไม่มี · เลิกแล้ว 2026-09-07) คนที่ก๊อปเก็บไว้ก่อนหน้า
-            หรือส่งต่อกันในแชต ต้องยังหาเจอ */
-      return [
-        deal.code, deal.code ? entityCodeDisplay(deal.code, 0) : null,
-        deal.title, customerSearchText(deal.customerId, deal.customerName, arIndex),
-        ownerNameOf(deal), deal.notes, deal.formulaName,
-      ].some((v) => (v || "").toLowerCase().includes(q));
-    });
+    if (!q) return true;
+    /* ⭐ **รหัสดีลต้องค้นเจอ** (มติผู้ใช้ 2026-09-07) — ตาเห็นบนแถวแล้วต้องพิมพ์หาได้
+       ไม่งั้นคนที่ถือรหัสจากไฟล์ Excel/ใบเสนอราคาต้องไล่หาด้วยตาเอง
+       ⚠️ ยังรับรูป `DL-26080006-0` ด้วย — หัวหน้ารายละเอียดเคยโชว์รูปนั้น (ต่อ `-0`
+          ตามกติกา revision ที่ดีลไม่มี · เลิกแล้ว 2026-09-07) คนที่ก๊อปเก็บไว้ก่อนหน้า
+          หรือส่งต่อกันในแชต ต้องยังหาเจอ */
+    return [
+      deal.code, deal.code ? entityCodeDisplay(deal.code, 0) : null,
+      deal.title, customerSearchText(deal.customerId, deal.customerName, arIndex),
+      ownerNameOf(deal), deal.notes, deal.formulaName,
+    ].some((v) => (v || "").toLowerCase().includes(q));
+  }, [query, arIndex, ownerNameOf]);
+  const listFilters = useMemo(() => ({
+    review: reviewOnly, due: dueFilter, delivery: deliveryFilter, stage: stageFilter, type: typeFilter,
+  }), [reviewOnly, dueFilter, deliveryFilter, stageFilter, typeFilter]);
+  const listCtx = useMemo(
+    () => ({ inScope: inScopeDeal, matchesSearch, currentMonth }),
+    [inScopeDeal, matchesSearch, currentMonth],
+  );
+
+  const filteredDeals = useMemo(() => {
+    const result = deals.filter((deal) => dealPassesListFilters(deal, listFilters, listCtx));
 
     const mul = sortDir === "desc" ? -1 : 1;
     return result.sort((a, b) => {
@@ -337,7 +345,7 @@ export default function SalesPlanningPipelinePage() {
       // asc = เก่า→ใหม่ ให้ desc (ค่าตั้งต้น) โชว์ล่าสุดก่อน — เดิมกลับทิศ ทำให้เปิดหน้ามาเจอดีลเก่าสุด
       return ((a.updatedAt || a.createdAt || "") < (b.updatedAt || b.createdAt || "") ? -1 : 1) * mul;
     });
-  }, [deals, query, inScopeDeal, dueFilter, currentMonth, stageFilter, typeFilter, deliveryFilter, reviewOnly, sortKey, sortDir, ownerNameOf]);
+  }, [deals, listFilters, listCtx, sortKey, sortDir]);
 
   /* จับกลุ่มจากรายการที่กรอง+เรียงแล้ว (ลำดับในกลุ่ม = ลำดับที่ผู้ใช้เลือกเรียงไว้)
      · กุญแจกลุ่มใช้ id ก่อน (กันชื่อซ้ำ) — แบรนด์เป็นข้อความอิสระจึง normalize ตัวพิมพ์
@@ -390,7 +398,7 @@ export default function SalesPlanningPipelinePage() {
       if (sortKey === "name") return a.label.localeCompare(b.label, "th");
       return (b.total - a.total) || a.label.localeCompare(b.label, "th");
     });
-  }, [groupBy, filteredDeals, projects, customers, ownerNameOf, sortKey, pendingPeriod]);
+  }, [groupBy, filteredDeals, projects, customers, arIndex, ownerNameOf, sortKey, pendingPeriod]);
 
   const allCollapsed = !!groupedDeals?.length && groupedDeals.every((g) => collapsedGroups.has(g.key));
   const toggleGroup = (key) => setCollapsedGroups((prev) => {
@@ -399,7 +407,12 @@ export default function SalesPlanningPipelinePage() {
     return next;
   });
 
-  const reviewCount = useMemo(() => deals.filter((d) => d.metadata?.needsReview).length, [deals]);
+  /* 🐞 เดิมนับ `deals` (ชุดของงวดที่เลือก · ไม่สนขอบเขต) แต่ติ๊กแล้วตารางโหลดทุกงวดแล้วกรองขอบเขต ⇒ คนละชุด (H5)
+     ตอนนี้ = ชุดรอเติมข้อมูลทุกงวดที่ผ่านตัวกรองอื่นทุกตัว = แถวที่ติ๊กแล้วจะได้ */
+  const reviewCount = useMemo(
+    () => reviewOptionCount(reviewOnly ? deals : reviewDeals, listFilters, listCtx),
+    [reviewOnly, deals, reviewDeals, listFilters, listCtx],
+  );
   /* ดีลที่ยังไม่มีวันรับของในงวด+ขอบเขตที่ดูอยู่ (ไม่นับดีลแพ้) — แถบเตือนให้ AE กรอก · ไฟล์ FC แกนรับของกองไว้ "ยังไม่ระบุวันรับของ" */
   const noDelivery = useMemo(() => {
     const list = deals.filter((d) => inScopeDeal(d) && dealMissingDelivery(d));
@@ -1053,7 +1066,7 @@ export default function SalesPlanningPipelinePage() {
                 },
                 {
                   key: "review", label: "ข้อมูลดีล", icon: AlertTriangle,
-                  options: [{ value: "needsReview", label: `รอเติมข้อมูล${reviewCount ? ` (${reviewCount})` : ""}` }],
+                  options: [{ value: "needsReview", label: `รอเติมข้อมูล${reviewCount != null ? ` (${reviewCount})` : ""}` }],
                   selected: reviewFilter, onChange: setReviewFilter,
                 },
               ]}

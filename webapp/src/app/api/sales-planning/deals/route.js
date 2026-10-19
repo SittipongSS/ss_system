@@ -37,6 +37,7 @@ import { prepareDealValueItems, saveDealValueItems } from '@/lib/sales/dealValue
 import { missingDealDatesAfterWrite } from '@/lib/sales/dealRequiredFields';
 import { clientDealMetadataOnCreate, isLegacyWonCreate, legacyWonCreateError } from '@/lib/sales/legacyDealSwitch';
 import { businessDate } from '@/lib/businessDate';
+import { wantsReviewOnly } from '@/lib/sales/dealListFilter';
 
 export const dynamic = 'force-dynamic';
 
@@ -64,6 +65,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
      delivery = เดือนรับของ (endDate · demandMonth · ไม่มีวันรับของ = กองของงวดที่ปิด) — กติกาซับซ้อนกว่าที่ PostgREST
      เขียนได้ตรง ๆ ⇒ อ่านตามสิทธิ์/ขั้นแล้วคัดด้วยตัวตัดสินกลาง `dealInReportPeriod` (ดีลทั้งตาราง ~500 แถว) */
   const axis = normalizeDealAxis(params.get('axis'));
+  /* ⭐ `?review=1` = เฉพาะดีล "รอเติมข้อมูล" ทุกงวด (ตรวจตัวเลข H5 2026-10-19) — ที่มาของเลขท้ายตัวเลือกในแผงกรอง
+     (`lib/sales/dealListFilter.js`) · คัดที่ฐาน ไม่ต้องลากดีลทั้งตารางมานับ · ธงตัวเดียวกับ `isNeedsReviewDeal` */
+  const reviewOnly = wantsReviewOnly(params);
 
   /* ⚠️ **อ่านทุกหน้า ไม่ใช่หน้าแรก** — Supabase ตั้ง Max rows = 1000 และ PostgREST
      ตัดผลลัพธ์ **โดยไม่มี error** ⇒ วันที่ดีลเกินพันใบ ลิสต์นี้จะหายไปเงียบ ๆ พร้อม
@@ -78,6 +82,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const applyFilters = (q0) => {
     let q = applyDealScope(q0, user);
     if (stage && stage !== 'all') q = q.eq('stage', normalizeStage(stage));
+    if (reviewOnly) q = q.eq('metadata->>needsReview', 'true');
     /* งวดที่ query = **อ่านชุดที่ใหญ่กว่าไว้ก่อน** แล้วคัดจริงด้วยตัวตัดสินกลางด้านล่าง (ทั้งสองแกน)
        แกนปิด: ช่วงวัน = วันคาดปิดในช่วง · รายเดือน/ทุกเดือน = เดือน FC ในงวด **หรือ** วันคาดปิดในงวด
        (ตัวตัดสินถอยไปใช้เดือนของวันคาดปิดเมื่อไม่มีเดือน FC — query เดิม `forecastMonth IN` อย่างเดียว

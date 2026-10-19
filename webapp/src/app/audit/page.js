@@ -16,7 +16,9 @@ import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
 import { TableScroll } from "@/components/ui/Table";
 import Modal from "@/components/Modal";
+import StatusNotice from "@/components/ui/StatusNotice";
 import { apiFetch } from "@/lib/apiFetch";
+import { auditActorOptions, auditCountText, auditTruncated } from "@/lib/auditList";
 
 // ป้ายภาษาไทยของ entity / action ที่ audit log บันทึก (ตอนนี้ครอบ customer/product/order).
 const ENTITY_LABELS = {
@@ -47,6 +49,10 @@ export default function AuditLogPage() {
   const canView = useCan("audit:view");
 
   const [rows, setRows] = useState([]);
+  /* ยอดจริงตามตัวกรอง (API นับ `count: 'exact'`) — ไม่ใช่ `rows.length` ซึ่งชนเพดาน 500 ทุกช่วงเวลา (H4)
+     · ทะเบียนผู้ใช้สำหรับตัวเลือก "ผู้ทำ" มากับคำตอบเดียวกัน */
+  const [total, setTotal] = useState(null);
+  const [directory, setDirectory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [months, setMonths] = useState("6");
   const [entityType, setEntityType] = useState("");
@@ -71,9 +77,11 @@ export default function AuditLogPage() {
         if (res.ok) {
           const data = await res.json();
           setRows(data.rows || []);
+          setTotal(Number.isFinite(data.total) ? data.total : null);
+          if (Array.isArray(data.actors)) setDirectory(data.actors);
         }
       } catch (e) {
-        if (e.name !== "AbortError") setRows([]);
+        if (e.name !== "AbortError") { setRows([]); setTotal(null); }
       } finally {
         setLoading(false);
       }
@@ -81,12 +89,11 @@ export default function AuditLogPage() {
     return () => { ctrl.abort(); clearTimeout(t); };
   }, [canView, months, entityType, action, actor, q]);
 
-  // ตัวเลือก "คนทำ" derive จากผลลัพธ์ปัจจุบัน (actorId → ชื่อ).
-  const actorOpts = useMemo(() => {
-    const m = new Map();
-    for (const r of rows) if (r.actorId && !m.has(r.actorId)) m.set(r.actorId, r.actorName || r.actorId);
-    return [...m.entries()];
-  }, [rows]);
+  /* ตัวเลือก "ผู้ทำ" = ทะเบียนผู้ใช้ทั้งระบบ + ผู้ทำที่เห็นในแถว (บัญชีที่ถูกลบ)
+     🐞 เดิมสร้างจากแถวที่โหลดมาอย่างเดียว ⇒ ชนเพดาน 500 แล้วคนที่ทำรายการเก่ากว่านั้นไม่มีให้เลือก (H4) */
+  const actorOpts = useMemo(() => auditActorOptions(directory, rows), [directory, rows]);
+  // ยอดจริงเกินที่โหลดมา = ตารางเห็นแค่ช่วงล่าสุด · ป้าย/ท้ายตารางต้องพูดอย่างนั้น ไม่ใช่เรียก 500 ว่า "ทั้งหมด"
+  const truncated = auditTruncated({ shown: rows.length, total });
 
   const sort = useSortableTable(rows, {
     createdAt: (r) => (r.createdAt ? new Date(r.createdAt).getTime() : null),
@@ -94,7 +101,7 @@ export default function AuditLogPage() {
     action: (r) => r.action || "",
     entityType: (r) => r.entityType || "",
   });
-  const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
+  const { page, setPage, pageSize, setPageSize, pageCount, total: pagedTotal, pageRows } =
     usePagination(sort.sorted, { resetKey: `${rows.length}|${sort.sortKey}|${sort.sortDir}` });
 
   const gate = accessState(role, canView);
@@ -127,7 +134,7 @@ export default function AuditLogPage() {
         icon={<History size={17} aria-hidden="true" />}
         title="รายการบันทึก"
         subtitle="กรองตามช่วงเวลา ประเภทข้อมูล การกระทำ และผู้ทำ แล้วเปิดดูค่าก่อน/หลัง"
-        count={loading && rows.length === 0 ? null : `${total} รายการ`}
+        count={loading && rows.length === 0 ? null : auditCountText({ shown: rows.length, total })}
         loading={loading && rows.length === 0}
         skeletonRows={7}
         toolbar={(
@@ -174,6 +181,11 @@ export default function AuditLogPage() {
           </>
         )}
       >
+        {truncated && (
+          <StatusNotice tone="info">
+            ตารางนี้แสดงเฉพาะรายการล่าสุดตามเพดานการโหลด — กรองช่วงเวลา ประเภท ผู้ทำ หรือค้นหา เพื่อดูรายการที่เก่ากว่า
+          </StatusNotice>
+        )}
         <TableScroll surface="embedded" family="list" aria-busy={loading}>
           <table className="premium-table">
             <thead>
@@ -223,7 +235,10 @@ export default function AuditLogPage() {
           </table>
         </TableScroll>
         {pageRows.length > 0 && (
-          <Pager page={page} pageCount={pageCount} total={total} onPage={setPage} pageSize={pageSize} onPageSize={setPageSize} />
+          <Pager
+            page={page} pageCount={pageCount} total={pagedTotal} onPage={setPage} pageSize={pageSize} onPageSize={setPageSize}
+            itemLabel={truncated ? "รายการล่าสุดที่โหลดมา" : "รายการ"}
+          />
         )}
       </ListPanel>
 
