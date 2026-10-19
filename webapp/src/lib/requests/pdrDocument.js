@@ -22,7 +22,7 @@ import { quotationDocLabels } from '@/lib/sales/quotationMasterTemplate';
 import {
   resolveDocumentAccentKey, resolveDocumentForm, resolveDocumentTitleTh,
 } from '@/lib/documentStandards';
-import { SCENTOTYPES, SCENT_PERFORMANCE } from '@/lib/requests/kinds/rd/scentBriefTypes';
+import { SCENT_PERFORMANCE } from '@/lib/requests/kinds/rd/scentBriefTypes';
 import {
   PDR_BRIEF_LABELS, PDR_SECTIONS, pdrFieldText, pdrSectionGroups,
 } from '@/lib/requests/pdrFields';
@@ -79,7 +79,7 @@ const LINE = '<span class="fill"></span>';
 // · N/A บอกชัดว่า **ระบบถามแล้วแต่ไม่มีคำตอบ** ⇒ RD อ่านแล้วรู้ทันทีว่าต้องไปถามต่อ
 // ⚠️ **ยกเว้นช่องลงนาม** — ลายเซ็น ชื่อที่ยังไม่รู้ และวันที่ เว้นไว้ให้เขียนมือบนกระดาษเสมอ
 // (ช่องลงนามของเปลือก: "ลงชื่อ" · (____) · "วันที่ __/__/__") พิมพ์ N/A ทับเมื่อไรก็เซ็นไม่ได้
-// · `LINE` ยังใช้กับช่องที่ตั้งใจให้เขียนต่อ (1.10 · 2.9 · Scentotype)
+// · `LINE` ยังใช้กับช่องที่ตั้งใจให้เขียนต่อ (1.10 · 2.9)
 const NA = '<span class="na">N/A</span>';
 const cell = (v) => (v == null || String(v).trim() === '' ? NA : esc(v));
 
@@ -200,7 +200,7 @@ function tickLine(field, text) {
 
 /* ⭐ ช่องติ๊กที่มีข้อความเขียนต่อ (1.15 Archetype · 12 ตัวเลือก) — พิมพ์ครบทุกตัวเหมือนช่องติ๊ก
    อื่น แต่ **สามคอลัมน์** (12 บรรทัดเรียงลงกินครึ่งแผ่น) · ตัวที่ติ๊กเต็มแถวพร้อมข้อความต่อท้าย
-   (ท่าเดียวกับ Scentotype บนกระดาษ: "☑ CAREGIVER — ดูแลแขกเหมือนคนในบ้าน") */
+   ("☑ CAREGIVER — ดูแลแขกเหมือนคนในบ้าน") */
 const NOTES_OF = Object.fromEntries(
   PDR_SECTIONS.flatMap((s) => s.fields).filter((f) => f.type === 'notes').map((f) => [f.of, f]),
 );
@@ -340,11 +340,11 @@ const productCost = (row, { scentSource }) => {
 
 // ── 2.1 บรีฟกลิ่น — สองคอลัมน์เหมือนกระดาษ ───────────────────────────────
 //
-// ⭐ กระดาษวาง "กลิ่นที่ต้องการ / บรีฟกลิ่น" ไว้คอลัมน์ซ้าย แล้ว 2.1.1–2.1.5 เรียงลง
+// ⭐ กระดาษวาง "กลิ่นที่ต้องการ / บรีฟกลิ่น" ไว้คอลัมน์ซ้าย แล้ว 2.1.1–2.1.4 เรียงลง
 // คอลัมน์ขวาในกล่องเดียวกัน — เรียงเป็นแถวเดี่ยวเหมือนหัวข้ออื่นจะอ่านคนละจังหวะกับกระดาษ
 //
-// ⚠️ Performance (2.1.4) และ Scentotype (2.1.5) พิมพ์ครบทุกตัวเลือกพร้อมช่องติ๊ก ·
-// Scentotype มีเส้นให้เขียนต่อหลังทุกตัวบนกระดาษ ⇒ ตัวที่ติ๊กแล้วพิมพ์ข้อความต่อท้าย (mig 0222)
+// ⚠️ Performance (2.1.4) พิมพ์ครบทุกตัวเลือกพร้อมช่องติ๊ก
+// ⛔ 2.1.5 Scentotype ถอดแล้ว (มติผู้ใช้ 2026-10-19) — ไม่พิมพ์ทุกใบ รวมใบเก่าที่เคยติ๊กไว้
 //
 // 🐞 **บรีฟยาวเคยถูกตัดทิ้งบนกระดาษจริง** (ตรวจ 2026-09-23 · PDR จริง 35 ใบ · อ่านอย่างเดียว) — กล่องบรีฟเป็นก้อน
 //    ตัดกลางไม่ได้ และต้นทุนเดิมนับ 75 ตัว/บรรทัด (ความกว้างช่องตาราง) ทั้งที่คอลัมน์บรีฟกว้างแค่ ~88mm และไม่นับ
@@ -353,7 +353,7 @@ const productCost = (row, { scentSource }) => {
 //    และ 2.1.1–2.1.3 อีกช่องละ 2,000 ⇒ สูงกว่าหนึ่งแผ่นได้จริง
 // ⇒ (1) ต้นทุนกล่องคิดด้วยตัวประมาณบรรทัดของ Sarabun ชุดเดียวกับ FM-SA-04 (`estimateTextLines`) บนความกว้างคอลัมน์ที่วัดจริง
 //   (2) กล่องที่สูงกว่าหนึ่งแผ่นเปล่า **ต่อข้ามแผ่นเป็นกล่องสองคอลัมน์ของบรีฟเดียวกัน** (`splitBrief`) — หัวกล่อง
-//       "… (ต่อ)" · ซ้ายต่อบรีฟ · ขวาต่อ 2.1.1–2.1.5 · ข้อความยาวตัดที่ขอบคำ — ไม่มีข้อความไหนหายจากกระดาษ
+//       "… (ต่อ)" · ซ้ายต่อบรีฟ · ขวาต่อ 2.1.1–2.1.4 · ข้อความยาวตัดที่ขอบคำ — ไม่มีข้อความไหนหายจากกระดาษ
 //   ⭐ มติผู้ใช้ 2026-09-23 (ดูภาพก่อน/หลัง RQ-SB-26090185): รอบแรกแตกบรีฟยาวเป็นแถวตาราง ⇒ ผู้ใช้ถาม "แยกทำไม บรีฟ
 //      มันจัดกลุ่มอยู่มั้ย" — บรีฟต้องยังเป็นกล่องเดียวกันทั้งก้อน แม้ข้ามแผ่น
 
@@ -391,32 +391,17 @@ const paperBrief = (brief = {}) => ({
   ...brief, ...Object.fromEntries(BRIEF_TEXT_KEYS.map((key) => [key, paperText(brief[key])])),
 });
 
-function scentotypeList(brief = {}) {
-  const picked = new Set(brief.scentotypes || []);
-  const notes = brief.scentotypeNotes || {};
-  return `<ul class="opts">${SCENTOTYPES.map((t) => {
-    const on = picked.has(t.value);
-    const note = on ? String(notes[t.value] || '').trim() : '';
-    return `<li${on ? ' class="on"' : ''}>${on ? TICK_ON : TICK_OFF} ${esc(t.label)} ${note ? esc(note) : LINE}</li>`;
-  }).join('')}</ul>`;
-}
-// บรรทัดของ Scentotype ทั้งชุด — ตัวที่มีข้อความเขียนต่อตกบรรทัดได้ (โน้ต ≤ 200 ตัว)
-const scentotypeLines = (brief = {}, widthMm) => SCENTOTYPES.reduce((sum, t) => {
-  const note = (brief.scentotypes || []).includes(t.value) ? String(brief.scentotypeNotes?.[t.value] || '').trim() : '';
-  return sum + (note ? textLines(`${TICK_ON} ${t.label} ${note}`, widthMm) : 1);
-}, 0);
-
 const briefTitle = (index, total) => (total > 1 ? `บรีฟกลิ่นที่ ${index + 1}` : 'กลิ่นที่ต้องการ / บรีฟกลิ่น');
 
 /* ── กล่องบรีฟ = ชิ้นสองสาย (ซ้าย · ขวา) ──────────────────────────────────────────
-   ซ้าย: บรีฟ (pre-wrap) → "หากต้องการให้ทำวิจัย ระบุ" · ขวา: 2.1.1 → 2.1.2 → 2.1.3 → 2.1.4 → 2.1.5
+   ซ้าย: บรีฟ (pre-wrap) → "หากต้องการให้ทำวิจัย ระบุ" · ขวา: 2.1.1 → 2.1.2 → 2.1.3 → 2.1.4
    กล่องที่ลงหนึ่งแผ่นเปล่าได้ = ท่อนเดียว (หน้าตาเดิม) · สูงกว่านั้น = ตัวแบ่งหน้าเติมทีละท่อนเท่าที่แผ่นเหลือ
    (`splitBrief`) — ทุกท่อนเป็นกล่องสองคอลัมน์ของบรีฟเดียวกัน หัวกล่องท่อนต่อมี "(ต่อ)" · ข้อย่อยที่ถูกตัดกลาง
    ขึ้นป้ายเดิม + "(ต่อ)" บนท่อนถัดไป · ท่อนต่อที่ซ้ายหมดแล้วเหลือแค่หัวกล่อง (ขวายังต่อ) — กล่องยังเป็นกล่องเดิม
    ⚠️ ความสูงคิดจากชิ้นชุดเดียวกับที่วาด (`briefPieceMm`) ⇒ ท่อนที่ตัดสินว่า "พอ" คือท่อนที่วาดแล้วพอจริง */
 
-// ⚠️ ป้าย + เลขข้อจากทะเบียน `PDR_BRIEF_LABELS` — 2.1.4 Performance · 2.1.5 Scentotype
-//    ตามไฟล์ของ AE (มติผู้ใช้ 2026-09-11 · สลับกับลำดับเดิม)
+// ⚠️ ป้าย + เลขข้อจากทะเบียน `PDR_BRIEF_LABELS` — 2.1.4 Performance ตามไฟล์ของ AE
+//    (มติผู้ใช้ 2026-09-11) · 2.1.5 Scentotype ถอดแล้ว (มติผู้ใช้ 2026-10-19)
 function briefFlow(brief = {}, index = 0, total = 1) {
   const L = PDR_BRIEF_LABELS;
   const paper = (key) => L[key].paper || L[key].label;
@@ -431,8 +416,6 @@ function briefFlow(brief = {}, index = 0, total = 1) {
       sub(L.dislikedNotes.no, paper('dislikedNotes'), brief.dislikedNotes),
       { kind: 'opts', no: L.performance.no, label: L.performance.label,
         html: optionList(SCENT_PERFORMANCE, brief.performance), lines: SCENT_PERFORMANCE.length },
-      { kind: 'opts', no: L.scentotypes.no, label: L.scentotypes.label,
-        html: scentotypeList(brief), lines: scentotypeLines(brief, BRIEF_COL_MM) },
     ],
   };
 }
@@ -493,7 +476,7 @@ function splitBrief(item, roomMm) {
   const left = fillColumn(flow.left, inner - briefHeadMm(flow));
   const right = fillColumn(flow.right, inner);
   if (!flow.cont && !left.placed.length) return null;
-  // 🐞 ผลตรวจก่อน merge: ท่อนแรกที่ขวาว่าง (2.1.1 ยังเริ่มไม่ได้) อ่านเหมือน 2.1.1–2.1.5 ไม่ได้กรอก ⇒ ยกไปแผ่นใหม่เหมือนกัน
+  // 🐞 ผลตรวจก่อน merge: ท่อนแรกที่ขวาว่าง (2.1.1 ยังเริ่มไม่ได้) อ่านเหมือน 2.1.1–2.1.4 ไม่ได้กรอก ⇒ ยกไปแผ่นใหม่เหมือนกัน
   if (!flow.cont && flow.right.length && !right.placed.length) return null;
   if (!left.placed.length && !right.placed.length) return null;
   if (!left.rest.length && !right.rest.length) return null;
@@ -965,9 +948,9 @@ export function renderPdrDocument({
       .pdr .tickHead em { color: var(--doc-muted); font-size: 7.4pt; font-style: normal; font-weight: 400; }
       .pdr .tickText { display: block; padding-left: 4.5mm; }
 
-      /* 2.1 — ซ้าย: บรีฟกลิ่น · ขวา: 2.1.1–2.1.5 (วางตามกระดาษ) · เส้นชุดเดียวกับตาราง kv
+      /* 2.1 — ซ้าย: บรีฟกลิ่น · ขวา: 2.1.1–2.1.4 (วางตามกระดาษ) · เส้นชุดเดียวกับตาราง kv
          ⚠️ **สองคอลัมน์กว้างเท่ากันเสมอ** (minmax(0, 1fr)) + ข้อความทุกชิ้นตัดคำกลางได้ (overflow-wrap: anywhere)
-         🐞 ผลตรวจก่อน merge: 1fr = minmax(auto, 1fr) ⇒ URL/รหัสยาวไม่มีจุดตัดในชื่อบรีฟหรือโน้ต Scentotype ถ่างคอลัมน์ตัวเอง
+         🐞 ผลตรวจก่อน merge: 1fr = minmax(auto, 1fr) ⇒ URL/รหัสยาวไม่มีจุดตัดในชื่อบรีฟหรือข้อความเขียนต่อ ถ่างคอลัมน์ตัวเอง
             (ซ้าย 69 / ขวา 116mm) ขณะที่ตัวประมาณ/ตัวตัดคิดคอลัมน์ละ 88.2mm ⇒ กล่องสูงกว่าที่จอง 45–83mm ถูกตัดทิ้ง */
       .pdr .briefBlock { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
         border: 0.2mm solid var(--doc-line); break-inside: avoid; }

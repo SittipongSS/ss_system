@@ -6,7 +6,7 @@
 // SearchableSelect เอง** — fallback เป็นการตัดสินใจของช่องนั้น ไม่ใช่ของชิป
 // · AE ไม่ใช้ชิป (มติผู้ใช้: ชื่อยาว คนเยอะ)
 //
-// ญาติร่วมภาษา: ชิป Scentotype/Performance ในแบบฟอร์ม PDR (`.tierChip`)
+// ญาติร่วมภาษา: ชิป Performance/Archetype ในแบบฟอร์ม PDR (`.tierChip`)
 // — ฝั่งนั้นเป็น multi-select ของ ChipPicker ใน PdrForm ตัวนี้เป็น single
 //
 // `data-ghost` = ตัวเลือกเชิง "ไม่ระบุ" เส้นประ (ผู้เรียกส่ง `ghost: true`)

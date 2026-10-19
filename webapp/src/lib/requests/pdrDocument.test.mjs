@@ -123,7 +123,7 @@ test('toolbar: false ตัดแถบเครื่องมือออก�
 // ── หน้าตาตามกระดาษ FM-RD-01 ────────────────────────────────────────────
 const BRIEF = {
   brief: 'กลิ่นเปิดสดชื่นแนวส้ม', inspiration: 'เช้าวันหยุด',
-  scentotypes: ['cheerer'], scentotypeNotes: { cheerer: 'สดใส' }, performance: ['lasting'],
+  performance: ['lasting'],
 };
 const sheets = (html) => (html.match(/class="sheet explicit-page"/g) || []).length;
 
@@ -224,10 +224,10 @@ test('ตัวเลือกพิมพ์ครบทุกตัวพร�
   const html = render({ request: { docNo: 'SB-1', status: 'pending', pdrTexture: 'premium' } });
   assert.match(html, /<li class="on">☑ PREMIUM<\/li>/);
   assert.match(html, /<li>☐ STANDARD<\/li>/);
-  // 2.1.4/2.1.5 ของบรีฟก็ต้องครบทั้งชุดเหมือนกัน
+  // 2.1.4 ของบรีฟก็ต้องครบทั้งชุดเหมือนกัน
   const withBrief = render({ briefs: [BRIEF] });
-  for (const label of ['CHEERER', 'ADMIRER', 'DISCOVERER', 'ENCHANTER', 'COUNSELOR']) {
-    assert.ok(withBrief.includes(label), `ขาด Scentotype ${label}`);
+  for (const label of ['กลิ่นติดทน', 'กลิ่นฟุ้งกระจาย', 'กลิ่นค้างอากาศ', 'Impact แรก']) {
+    assert.ok(withBrief.includes(label), `ขาด Performance ${label}`);
   }
 });
 
@@ -305,16 +305,23 @@ test('⭐ พัฒนาสูตร NPD: ไม่มีกล่องบร�
   assert.match(html, /นับจากกลิ่นของสินค้าในข้อ 2/);
 });
 
-test('พัฒนากลิ่น: กล่องสินค้าพิมพ์ 2.1 ว่า "ตามบรีฟ" · บรีฟพิมพ์ 2.1.4 Performance ก่อน 2.1.5 Scentotype', () => {
+test('พัฒนากลิ่น: กล่องสินค้าพิมพ์ 2.1 ว่า "ตามบรีฟ" · บรีฟพิมพ์ 2.1.4 Performance', () => {
   const html = render({
     request: { kind: 'scent_dev', docNo: 'SB-1', status: 'pending', targets: [{ ...TARGET, scentId: null }] },
     briefs: [BRIEF],
   });
   assert.match(html, /ตามบรีฟกลิ่นข้อ 2\.1 ด้านบน/);
   assert.equal(html.includes('ไม่มีบรีฟกลิ่น'), false);
-  const perf = html.indexOf('<span class="no">2.1.4</span>Performance');
-  const st = html.indexOf('<span class="no">2.1.5</span>Scentotype');
-  assert.ok(perf > 0 && st > perf, 'ลำดับต้องเป็น 2.1.4 Performance → 2.1.5 Scentotype');
+  assert.ok(html.indexOf('<span class="no">2.1.4</span>Performance') > 0);
+});
+
+// ⛔ 2.1.5 Scentotype ถอดแล้ว (มติผู้ใช้ 2026-10-19) — บรีฟเก่าที่เคยติ๊กไว้ยังมีค่าในฐาน แต่กระดาษต้องไม่พิมพ์
+test('⛔ ไม่พิมพ์ข้อ 2.1.5 Scentotype — แม้บรีฟเก่ามีค่าค้างในฐาน', () => {
+  const html = render({
+    request: { kind: 'scent_dev', docNo: 'SB-1', status: 'pending' },
+    briefs: [{ ...BRIEF, scentotypes: ['cheerer'], scentotypeNotes: { cheerer: 'โน้ตเก่าในฐาน' } }],
+  });
+  assert.equal(/2\.1\.5|Scentotype|CHEERER|โน้ตเก่าในฐาน/.test(html), false);
 });
 
 test('1.7 ที่อยู่ลูกค้าจากทะเบียน · 1.7.1 เปิดสวิตช์ = "ที่อยู่เดียวกับลูกค้า" · สวิตช์ไม่มีแถวของตัวเอง', () => {
@@ -518,7 +525,7 @@ test('หัวกล่อง/ตำแหน่งของช่องลง�
 test('CSS ที่ตัวจองพึ่ง: กล่องบรีฟสองคอลัมน์เท่ากันเสมอ · ข้อความตัดคำกลางได้ · ชื่อผู้เซ็นตัดในช่อง', () => {
   const html = render({ briefs: [BRIEF] });
   const rules = cssRules(html);
-  // 🐞 ผลตรวจก่อน merge: 1fr ให้ URL ยาวในชื่อบรีฟ/โน้ต Scentotype ถ่างคอลัมน์ (69/116mm) ⇒ กล่องสูงเกินที่จอง 45–83mm
+  // 🐞 ผลตรวจก่อน merge: 1fr ให้ URL ยาวในชื่อบรีฟ/โน้ต Scentotype (ถอดแล้ว) ถ่างคอลัมน์ (69/116mm) ⇒ กล่องสูงเกินที่จอง 45–83mm
   assert.equal(declOf(rules, '.pdr .briefBlock', 'grid-template-columns'), 'minmax(0, 1fr) minmax(0, 1fr)');
   for (const selector of ['.pdr .briefBlock h4', '.pdr .opts li', '.pdr .subHead', '.pdr .subBody', '.pdr .signatures strong']) {
     assert.equal(declOf(rules, selector, 'overflow-wrap'), 'anywhere', `${selector} ต้องตัดคำกลางได้`);
@@ -550,19 +557,17 @@ const LATIN_RUN = 'Anticipation movement air a quiet spark getting closer effort
 const fillTo = (src, n) => src.repeat(Math.ceil(n / src.length)).slice(0, n);
 const numbered = (n) => Array.from({ length: n }, (_, i) => `- บรรทัดที่ ${i + 1}`).join('\n');
 
-/* ความสูงกล่องบรีฟที่วัดจริง (headless Chrome · zoom 1 · จอ = สื่อพิมพ์ · 2026-09-23) — ตัวจองต้อง ≥ ทุกกรณี
-   (จองต่ำ = กล่องล้นแผ่นแล้วถูกตัดเงียบ ๆ) */
-test('🔴 ต้นทุนกล่องบรีฟ ≥ ความสูงที่วัดจริง (สั้น · ไทยยาว · ขึ้นบรรทัดถี่ · คอลัมน์ขวายาว · โน้ต Scentotype)', () => {
+/* ความสูงกล่องบรีฟที่วัดจริง (headless Chrome · zoom 1 · จอ = สื่อพิมพ์) — ตัวจองต้อง ≥ ทุกกรณี
+   (จองต่ำ = กล่องล้นแผ่นแล้วถูกตัดเงียบ ๆ)
+   ⭐ วัดใหม่ 2026-10-19 หลังถอด 2.1.5 Scentotype (กล่องเตี้ยลง ~30mm) · วิธีวัดเดิมให้ผลตรงรอบ 2026-09-23 ±0.1mm
+   (89.91 · 133.45 · 167.68 · 192.61 · 163.27) ⇒ ตัวเลขชุดนี้เทียบกันได้ */
+test('🔴 ต้นทุนกล่องบรีฟ ≥ ความสูงที่วัดจริง (สั้น · ไทยยาว · ขึ้นบรรทัดถี่ · คอลัมน์ขวายาว · ชื่อบรีฟยาว)', () => {
   const MEASURED = [
-    [{ brief: 'กลิ่นเปิดสดชื่นแนวส้ม', inspiration: 'เช้าวันหยุด', scentotypes: ['cheerer'], scentotypeNotes: { cheerer: 'สดใส' }, performance: ['lasting'] }, 89.96],
-    [{ brief: fillTo(THAI_RUN, 1500), inspiration: fillTo(THAI_RUN, 400) }, 133.35],
-    [{ brief: numbered(30) }, 167.75],
-    [{ brief: 'สั้น', inspiration: fillTo(LATIN_RUN, 900), likedNotes: fillTo(THAI_RUN, 600) }, 192.62],
-    [{
-      label: fillTo(THAI_RUN, 120),
-      scentotypes: ['cheerer', 'admirer', 'discoverer', 'enchanter', 'counselor'],
-      scentotypeNotes: { cheerer: fillTo(THAI_RUN, 200), admirer: fillTo(LATIN_RUN, 200), discoverer: fillTo(THAI_RUN, 200), enchanter: fillTo(LATIN_RUN, 200), counselor: fillTo(THAI_RUN, 200) },
-    }, 163.25],
+    [{ brief: 'กลิ่นเปิดสดชื่นแนวส้ม', inspiration: 'เช้าวันหยุด', performance: ['lasting'] }, 59.72],
+    [{ brief: fillTo(THAI_RUN, 1500), inspiration: fillTo(THAI_RUN, 400) }, 133.45],
+    [{ brief: numbered(30) }, 167.68],
+    [{ brief: 'สั้น', inspiration: fillTo(LATIN_RUN, 900), likedNotes: fillTo(THAI_RUN, 600) }, 162.42],
+    [{ label: fillTo(THAI_RUN, 120) }, 59.72],
   ];
   for (const [brief, mm] of MEASURED) {
     const est = pdrBriefBlockMm(brief, 0, 1);
@@ -612,11 +617,9 @@ test('🔴 บรีฟที่สูงกว่าหนึ่งแผ่น
   }
   // ข้อย่อยที่ถูกตัดกลาง ป้ายซ้ำบนท่อนถัดไปพร้อม "(ต่อ)"
   assert.ok(segments.slice(1).some((seg) => /<\/span>(แรงบันดาลใจ|ช่วงกลิ่นที่ชื่นชอบ)[^<]* \(ต่อ\)<\/span>/.test(seg.body)));
-  // 2.1.4/2.1.5 ยังพิมพ์ครบทุกตัวเลือก ครั้งเดียว
+  // 2.1.4 ยังพิมพ์ครบทุกตัวเลือก ครั้งเดียว
   assert.equal((html.match(/<span class="no">2\.1\.4<\/span>Performance/g) || []).length, 1);
-  assert.equal((html.match(/<span class="no">2\.1\.5<\/span>Scentotype/g) || []).length, 1);
   assert.match(html, /<li class="on">☑ กลิ่นติดทน/);
-  for (const label of ['CHEERER', 'ADMIRER', 'DISCOVERER', 'ENCHANTER', 'COUNSELOR']) assert.ok(html.includes(label));
 });
 
 test('บรีฟที่ลงหนึ่งแผ่นได้ยังเป็นกล่องสองคอลัมน์ตามกระดาษ', () => {

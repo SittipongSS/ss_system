@@ -82,8 +82,6 @@ const PDR_PREVIEW_BRIEF = {
   inspiration: 'เช้าวันหยุดในสวนส้มหลังฝนตก',
   likedNotes: 'ซิตรัส · ดอกไม้ขาว · มัสก์',
   dislikedNotes: 'กลิ่นหวานจัด · วานิลลาเข้ม',
-  scentotypes: ['cheerer', 'discoverer'],
-  scentotypeNotes: { cheerer: 'สดใส เข้าถึงง่าย' },
   performance: ['lasting', 'diffusive'],
 };
 
