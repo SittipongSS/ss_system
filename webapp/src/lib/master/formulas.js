@@ -85,11 +85,17 @@ export function formulaIdentityKey({ categoryCode, scentId } = {}) {
   return `${category}::${scent}`;
 }
 
+/* ⭐ **สถานะที่ไม่จองตัวตน** (mig 0411 · ม-157) — เลิกใช้ (0207) + **กำลังพัฒนา**: direction ที่ส่งให้ลูกค้าเลือก
+   อยู่พร้อมกันหลายตัวต่อคู่ได้ · คู่หนึ่งยังมีตัวใช้งาน/ร่างได้ตัวเดียว ⇒ QT · SO · สินค้า · ราคา FB เห็นโลกเดิม
+   ⚠️ ต้องตรงกับ WHERE ของ `formulas_identity_uk` เป๊ะ */
+export const FORMULA_IDENTITY_FREE_STATUSES = ['archived', 'developing'];
+
+/** สูตรที่ **จองตัวตน** ของคู่ หมวด × กลิ่น (ใช้งาน/ร่าง) — ไม่นับเลิกใช้และกำลังพัฒนา */
 export function findFormulaByIdentity(formulas = [], identity = {}) {
   const key = formulaIdentityKey(identity);
   if (!key) return null;
   return formulas.find((f) => (
-    f.status !== 'archived' && formulaIdentityKey(f) === key
+    !FORMULA_IDENTITY_FREE_STATUSES.includes(f.status) && formulaIdentityKey(f) === key
   )) || null;
 }
 

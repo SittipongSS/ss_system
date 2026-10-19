@@ -48,6 +48,7 @@ import EntityDocumentsPanel from "@/components/salesPlanning/EntityDocumentsPane
 import ExciseStatusBadge from "@/components/excise/StatusBadge";
 import UiStatusBadge from "@/components/ui/StatusBadge";
 import RequestQueuePanel from "@/components/requests/RequestQueuePanel";
+import { dealRequestsHref } from "@/lib/requests/dealLink";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import DealForecastSourceCard from "@/components/salesPlanning/DealForecastSourceCard";
@@ -1311,7 +1312,7 @@ export default function DealOverviewPage() {
                     quotations={data.quotations || []}
                     returnTo={`/sales-planning/deals/${deal.id}`}
                   />
-                  <Button as={Link} size="sm" href={`/requests?dealId=${deal.id}`} icon={<ExternalLink size={13} aria-hidden="true" />}>
+                  <Button as={Link} size="sm" href={dealRequestsHref(deal.id)} icon={<ExternalLink size={13} aria-hidden="true" />}>
                     เปิดหน้าคำร้อง
                   </Button>
                 </>
@@ -1652,7 +1653,7 @@ export default function DealOverviewPage() {
                     ทะเบียนที่ชนิดนั้นอ้าง (กลิ่น/สูตร/วัสดุ/ดีล) ครบก่อน จึงไม่ยก
                     โมดัลมาซ้อนบนหน้าดีลอีก */}
                 {canEdit && (
-                  <Link className="btn sm" href={`/requests?dealId=${deal.id}`} title="เปิดคำร้องถึงฝ่ายอื่นในนามดีลนี้">
+                  <Link className="btn sm" href={dealRequestsHref(deal.id)} title="เปิดคำร้องถึงฝ่ายอื่นในนามดีลนี้">
                     <MessageSquare size={13} aria-hidden="true" /> เปิดคำร้อง
                   </Link>
                 )}

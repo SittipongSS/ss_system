@@ -329,3 +329,66 @@ test('รหัสของ 0394 (ใบย้อนหลัง · งานบ
      (historicalSetupIncompleteMessage · route อนุมัติแยกกิ่งก่อนถึงตารางนี้) */
   assert.ok(!WORKFLOW_ERROR_CODES.includes('sales_order_service_setup_incomplete'));
 });
+
+/* ⭐ งวด PR-5 (mig 0409 · มติเจ้าของ 08/10 ข้อ A1–A2 · แผน IMPL_PLAN_PR5 §3.5): เลขแพ็คของบรรทัดใบสั่งขายย้อนหลัง
+   · รหัสใหม่ของฐาน `historical_so_line_pack_qty_invalid` (ตัวตรวจ H1 · ตัวเขียน W0) — **คนละรหัสกับ** `historical_so_line_packs_invalid`
+     (แพ็คต่อรอบของงานบริการ · ส่งผู้คีย์ไปคนละช่อง) · ด่านของไฟล์เจ็ดตัวมีข้อความไทยครบ (เหมือน mig_0394_*)
+   · ข้อความของ `historical_so_line_money_mismatch` พูดสูตรที่มีเลขแพ็ค และบอกทางที่สอง (ฐานอาจยังไม่รัน 0409 — ตัวตรวจรุ่นเดิมไม่คูณเลขแพ็ค)
+   ⚠️ ไม่อ่านไฟล์ 0409 ที่นี่ — ยาม "ทุกรหัสที่ 0409 โยนมีในตาราง" อยู่ที่เทสต์ของ migration (หน่วย SQL ของ PR เดียวกัน) */
+test('รหัสของ 0409 (ใบย้อนหลัง · เลขแพ็คของบรรทัด) แปลเป็นไทยพร้อมสถานะและทางออก · ข้อความยอดไม่ตรงพูดสูตรใหม่', () => {
+  const PATCH_DRIFT = 'ฟังก์ชันใบย้อนหลังบนฐานไม่ตรงกับที่ migration 0409 คาด — แจ้งผู้ดูแลระบบ';
+  const expected = {
+    historical_so_line_pack_qty_invalid: [
+      'ทุกรายการต้องใส่ “แพ็ค/เดือน” (จำนวนเต็ม 1–9,999) — กลับไปขั้น ② ใส่ให้ครบแล้วบันทึกอีกครั้ง (หน้าที่เปิดค้างจากก่อนมีช่องนี้ ให้โหลดหน้าใหม่)', 400,
+    ],
+    historical_so_line_money_mismatch: [
+      'ยอดเงินของรายการไม่ตรงกับ “แพ็ค/เดือน” × จำนวน × ราคา/หน่วย − ส่วนลด — โหลดหน้าฟอร์มใหม่แล้วบันทึกอีกครั้ง'
+        + ' · ถ้ายังไม่ผ่าน แจ้งผู้ดูแลระบบ (ฐานข้อมูลอาจยังไม่ได้รัน migration 0409)', 400,
+    ],
+    mig_0409_needs_functions: [PATCH_DRIFT, 409],
+    mig_0409_needs_0407: ['ต้องรัน migration 0407 ก่อน 0409', 409],
+    mig_0409_needs_chain: [PATCH_DRIFT, 409],
+    mig_0409_historical_in_flight: [
+      'ยังมีใบสั่งขายย้อนหลังที่ยังไม่อนุมัติค้างอยู่ — อนุมัติ/ยกเลิกให้จบก่อนรัน migration 0409', 409,
+    ],
+    mig_0409_patch_overload: [PATCH_DRIFT, 409],
+    mig_0409_patch_anchor: [PATCH_DRIFT, 409],
+    mig_0409_verify: [PATCH_DRIFT, 409],
+  };
+  for (const [code, [message, status]] of Object.entries(expected)) {
+    assert.deepEqual(documentWorkflowError({ message: `P0001: ${code}` }), { code, message, status }, code);
+    assert.equal(workflowErrorMessage(code), message, code);
+    assert.ok(WORKFLOW_ERROR_CODES.includes(code), code);
+  }
+  /* RAISE ของไฟล์ต่อคำอธิบาย / เลขใบ / ชื่อฟังก์ชันท้ายรหัส — ตัวแปลหาด้วย includes จึงยังจับได้ */
+  assert.equal(documentWorkflowError({ message: 'mig_0409_historical_in_flight — ใบย้อนหลังที่ยังไม่อนุมัติ 1 ใบ: SO-26100001-0=draft' }).code, 'mig_0409_historical_in_flight');
+  assert.equal(documentWorkflowError({ message: 'mig_0409_patch_anchor: historical_so_write_children 0409/W0 (0)' }).code, 'mig_0409_patch_anchor');
+  assert.equal(documentWorkflowError({ message: 'mig_0409_verify body historical_so_check_lines' }).code, 'mig_0409_verify');
+  assert.equal(documentWorkflowError({ message: 'mig_0409_needs_chain: approve_historical_sales_order' }).status, 409);
+  /* เลขแพ็คของบรรทัด ≠ แพ็คต่อรอบของงานบริการ ≠ ข้อมูลรายการผิดแบบอื่น — สามรหัส สามข้อความ สามทางออก */
+  assert.equal(documentWorkflowError({ message: 'historical_so_line_pack_qty_invalid' }).code, 'historical_so_line_pack_qty_invalid');
+  assert.equal(documentWorkflowError({ message: 'historical_so_line_packs_invalid' }).code, 'historical_so_line_packs_invalid');
+  assert.equal(documentWorkflowError({ message: 'historical_so_line_invalid' }).code, 'historical_so_line_invalid');
+  const packQty = workflowErrorMessage('historical_so_line_pack_qty_invalid');
+  assert.match(packQty, /“แพ็ค\/เดือน”/);
+  assert.doesNotMatch(packQty, /รอบละกี่แพ็ค/, 'ข้อความของเลขแพ็คของบรรทัดต้องไม่ส่งผู้คีย์ไปช่องรอบละกี่แพ็ค');
+  assert.match(packQty, /ขั้น ②/);
+  assert.match(packQty, /โหลดหน้าใหม่/);
+  assert.doesNotMatch(workflowErrorMessage('historical_so_line_packs_invalid'), /แพ็ค\/เดือน/);
+  /* ข้อความยอดไม่ตรง: สูตรใหม่ + สองทางออก (หน้าที่เปิดค้าง · ฐานที่ยังไม่รัน 0409) — ของเดิมพูด "จำนวน × ราคา/หน่วย − ส่วนลด" อย่างเดียว */
+  const mismatch = workflowErrorMessage('historical_so_line_money_mismatch');
+  assert.ok(mismatch.includes('“แพ็ค/เดือน” × จำนวน × ราคา/หน่วย'));
+  assert.match(mismatch, /โหลดหน้าฟอร์มใหม่/);
+  assert.match(mismatch, /migration 0409/);
+  /* สองรหัสของงวดนี้ที่ **ไม่ได้มาจากฐาน** ไม่อยู่ในตารางนี้ — ตัวเขียนของใบย้อนหลังตั้งเอง (ข้อความของมันยึดที่ historicalOrderCommit.test.mjs) */
+  assert.ok(!WORKFLOW_ERROR_CODES.includes('historical_so_line_money_rule'));
+  assert.ok(!WORKFLOW_ERROR_CODES.includes('historical_pack_qty_not_stored'));
+  /* CHECK ของ 0407 ไม่มีในตารางนี้ — historicalOrderCommit แปลเองก่อนถึงตัวแปลกลาง (ตัวแปลกลาง log รหัสที่ไม่รู้จัก — ปิดเสียงช่วงเรียก) */
+  const original = console.error;
+  console.error = () => {};
+  try {
+    assert.equal(documentWorkflowError({ code: '23514', message: 'violates check constraint "sales_order_lines_line_money_rule"' }).code, undefined);
+  } finally {
+    console.error = original;
+  }
+});

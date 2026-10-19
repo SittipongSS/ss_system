@@ -5,10 +5,13 @@
 //   — กระดาษที่ตรึงแล้วแก้ไม่ได้ ช่องโหว่บนกระดาษจึงซ่อมทีหลังไม่ได้ ④ ตัวสร้างไม่อ่านนาฬิกาและไม่แตะฐาน
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { surveyReportSignatureIssues } from './surveyReportSigners.js';
+import { SURVEY_CONFIRM_MISSING } from './surveyMethodSwitch.js';
 import {
-  SURVEY_REPORT_DRAWING_HOLD,
+  SURVEY_REPORT_CONFIRM_MISSING,
   SURVEY_REPORT_INPUT_LABELS,
+  SURVEY_REPORT_NO_VISIT_TAIL,
   SURVEY_REPORT_NO_VISIT,
   SURVEY_REPORT_SNAPSHOT_VERSION,
   buildSurveyReportSnapshot,
@@ -21,6 +24,7 @@ import {
   PACKAGE_SIZE_SEED,
   fakeSha,
   markedSurveyInputs,
+  signedSurveyInputs,
   surveyReportInputsFromFixture,
   syntheticSurveyFixture,
 } from './surveyReportTestKit.mjs';
@@ -35,7 +39,7 @@ test('ภาพนิ่ง v1: หัวข้อครบตามสเปก
   assert.equal(errors, undefined);
   assert.equal(SURVEY_REPORT_SNAPSHOT_VERSION, 1);
   assert.deepEqual(Object.keys(snapshot).sort(), [
-    'change', 'company', 'customer', 'deal', 'form', 'history', 'request', 'site', 'sizes',
+    'assessment', 'change', 'company', 'customer', 'deal', 'form', 'history', 'otherVisits', 'request', 'site', 'sizes',
     'takenAt', 'totals', 'v', 'visit', 'zones',
   ]);
   assert.equal(snapshot.v, 1);
@@ -43,12 +47,16 @@ test('ภาพนิ่ง v1: หัวข้อครบตามสเปก
   assert.deepEqual(Object.keys(snapshot.request).sort(), [
     'answeredAt', 'answeredById', 'answeredByName', 'assignedByName', 'body', 'closedAt', 'closedByName',
     'committedDueDate', 'committedDueTime', 'committedResultDate', 'docNo', 'id', 'requestedById',
-    'requestedByName', 'requestedDueDate', 'requestedDueTime', 'requestedResultDate', 'submittedAt', 'team', 'title',
+    'requestedByName', 'requestedDueDate', 'requestedDueTime', 'requestedResultDate', 'submittedAt', 'surveyConfirm', 'team', 'title',
   ]);
   assert.deepEqual(Object.keys(snapshot.zones[0]).sort(), [
-    'areaSqm', 'building', 'cutReason', 'floor', 'id', 'name', 'no', 'note', 'packageNote', 'packageQty',
+    'areaSqm', 'building', 'cutReason', 'drawingAt', 'drawingBy', 'floor', 'id', 'method', 'methodChangedAt',
+    'methodChangedByName', 'methodReason', 'name', 'no', 'note', 'packageNote', 'packageQty',
     'packageSize', 'packageSizeManual', 'packageSizeSuggested', 'parts', 'plan', 'spots', 'status',
     'surveyedAt', 'surveyedByName', 'volumeCbm', 'wide', 'zoneCode',
+  ]);
+  assert.deepEqual(Object.keys(snapshot.assessment).sort(), [
+    'drawingAt', 'drawingBy', 'drawingById', 'drawingZones', 'mode', 'onsiteZones', 'totalZones',
   ]);
   assert.deepEqual(Object.keys(snapshot.visit).sort(), [
     'actualDate', 'actualEndDate', 'actualEndTime', 'actualStartTime', 'assignee', 'closedBySend', 'code',
@@ -761,57 +769,67 @@ test('ลำดับ: บรรทัดลายเซ็นต่อจาก
   assert.deepEqual(withRule.map((line) => (line.includes('ยังไม่มีลายเซ็น') ? 'sign' : 'x')), ['x', 'sign', 'sign', 'x', 'x']);
 });
 
-test('🔴 ใบติดข้อกันของใบจากแบบ ⇔ ไม่ถูกถามเรื่องลายเซ็น — ถอดข้อกัน (งวด S3) เมื่อไรต้องตัดสินผู้ลงนามของใบจากแบบก่อน', () => {
-  const hasHold = (issues) => issues.some((i) => i.hold === true);
-  const hasSign = (issues) => issues.some((i) => i.sign === true);
+/* ── งวด S3 §2.6: ใบที่มีพื้นที่ประเมินจากแบบถูกถามเรื่องลายเซ็น (แทนเทสต์ "ข้อกัน ⇔ ไม่ถามลายเซ็น" ของ PR-SIG) ── */
+/** ใบจากแบบล้วนของแฝด — ไม่มีนัด · `seat1` = ผู้ส่งผลเป็นผู้ประเมินจากแบบคนเดียว (ชื่อคนสลับ = ชื่อผู้ส่งผล) */
+function deskTwin({ seat1 = true, ...opts } = {}) {
+  const inputs = signedTwin(opts);
+  for (const zone of inputs.zones) {
+    Object.assign(zone, {
+      method: 'drawing', methodChangedAt: '2026-09-26T02:50:00.000+00:00',   // หลังช่างบันทึก (02:40) = ทาง ② ทุกพื้นที่
+      methodChangedByName: seat1 ? inputs.request.answeredByName : 'หัวหน้า อีกคน',
+    });
+  }
+  inputs.visit = null;
+  inputs.request = { ...inputs.request, surveyConfirm: 'needed' };
+  return inputs;
+}
+
+test('⭐ ใบผสมถามสองที่นั่งเหมือนใบลงหน้างาน · ใบจากแบบล้วนถามที่นั่งผู้อนุมัติที่เดียว — ไม่มีข้อไหนพก hold', () => {
+  const seatsAsked = (issues) => issues.filter((i) => i.sign === true).flatMap((i) => i.seats);
   const onsite = signedTwin({ have: [] });
   const mixed = signedTwin({ have: [] });
   mixed.zones[1].method = 'drawing';
-  const desk = signedTwin({ have: [] });
-  for (const zone of desk.zones) zone.method = 'drawing';
-  desk.visit = null;
-  for (const [name, inputs] of [['ลงหน้างาน', onsite], ['ผสม', mixed], ['จากแบบล้วน', desk]]) {
-    const issues = surveyReportFreezeIssues(inputs);
-    assert.equal(hasHold(issues), name !== 'ลงหน้างาน', name);
-    assert.equal(hasSign(issues), !hasHold(issues), `${name}: ข้อกันกับบรรทัดลายเซ็นต้องไม่มาคู่กัน และต้องมีอย่างใดอย่างหนึ่ง`);
+  mixed.request = { ...mixed.request, surveyConfirm: 'not_needed' };
+  const desk = deskTwin({ have: [] });
+  assert.deepEqual(seatsAsked(surveyReportFreezeIssues(onsite)), ['assessor', 'approver']);
+  assert.deepEqual(seatsAsked(surveyReportFreezeIssues(mixed)), ['assessor', 'approver']);
+  assert.deepEqual(seatsAsked(surveyReportFreezeIssues(desk)), ['approver']);
+  for (const inputs of [onsite, mixed, desk]) {
+    for (const issue of surveyReportFreezeIssues(inputs)) assert.equal('hold' in issue, false, issue.text);
   }
-  assert.equal(surveyReportFreezeIssues(mixed).find((i) => i.hold).text, SURVEY_REPORT_DRAWING_HOLD);
-  // พื้นที่จากแบบที่ถูกตัดไม่กันเอกสาร ⇒ ถูกถามเรื่องลายเซ็นตามปกติ
-  const cut = signedTwin({ have: [] });
-  Object.assign(cut.zones[1], { method: 'drawing', status: 'cut', cutReason: 'ลูกค้าไม่ติดตั้ง' });
-  assert.equal(hasHold(surveyReportFreezeIssues(cut)), false);
-  assert.equal(hasSign(surveyReportFreezeIssues(cut)), true);
 });
 
-test('🔴 ใบที่มีพื้นที่ประเมินจากแบบ: ภาพนิ่ง **ไม่มีคีย์ `signatures`** แม้กติกาเปิด — ฉบับร่างเท่ากับตอนกติกาปิดทุกไบต์ (พิมพ์คำเดิม ไม่ขึ้นกรอบลายเซ็น)', () => {
-  /* 🐞 เดิมถามแค่ว่ากติกาเปิดไหม ⇒ ฉบับร่างของใบจากแบบ (ซึ่งออกเอกสารไม่ได้อยู่แล้ว) ขึ้นกรอบ "ยังไม่มีลายเซ็น" /
-     "ลายเซ็นจะขึ้นเมื่อออกเอกสาร" ขณะที่การ์ดไม่พูดเรื่องลายเซ็นสักบรรทัด */
-  const shapes = {
-    'ผสม · ทุกคนมีลายเซ็น': () => { const i = signedTwin({ prepared: false }); i.zones[1].method = 'drawing'; return i; },
-    'ผสม · ผู้ประเมินไม่มีลายเซ็น': () => { const i = signedTwin({ have: ['U-head'], prepared: false }); i.zones[1].method = 'drawing'; return i; },
-    'จากแบบล้วน (ไม่มีนัด)': () => {
-      const i = signedTwin({ have: [], prepared: false });
-      for (const zone of i.zones) zone.method = 'drawing';
-      i.visit = null;
-      return i;
-    },
-  };
-  for (const [name, make] of Object.entries(shapes)) {
-    const on = buildSurveyReportSnapshot(make(), { mode: 'draft' });
-    const off = buildSurveyReportSnapshot({ ...make(), signatureRule: undefined }, { mode: 'draft' });
-    assert.equal('signatures' in on.snapshot, false, name);
-    assert.deepEqual(on.snapshot, off.snapshot, `${name}: ภาพนิ่งเท่ากับกติกาปิด`);
-    assert.deepEqual(on.images, off.images, name);
-    for (const version of ['customer', 'internal']) {
-      const view = surveyReportView(on.snapshot, { version });
-      assert.deepEqual(view, surveyReportView(off.snapshot, { version }), `${name} · ${version}`);
-      for (const seat of ['assessor', 'approver']) assert.equal('img' in view.signoff[seat], false, `${name} · ${version} · ${seat}: ที่นั่งพิมพ์คำเดิม`);
-    }
-  }
-  // พื้นที่จากแบบที่ถูกตัดไม่กันเอกสาร ⇒ ใบนั้นยังถูกถามตามปกติ และภาพนิ่งมีคีย์
-  const cut = signedTwin({ prepared: false });
-  Object.assign(cut.zones[1], { method: 'drawing', status: 'cut', cutReason: 'ลูกค้าไม่ติดตั้ง' });
-  assert.equal('signatures' in buildSurveyReportSnapshot(cut, { mode: 'draft' }).snapshot, true);
+test('⭐ ลายเซ็นของใบจากแบบล้วน: ที่นั่งที่ 1 = สำเนาของผู้อนุมัติเฉพาะเมื่อ drawingById มีค่า · ไม่งั้น null · ไม่เคยค้างรอรูป', () => {
+  const copied = buildSurveyReportSnapshot(deskTwin(), { mode: 'freeze' });
+  assert.equal(copied.errors, undefined, (copied.errors || []).join(' | '));
+  assert.equal(copied.snapshot.assessment.drawingById, 'U-head');
+  assert.deepEqual(copied.snapshot.signatures.assessor, copied.snapshot.signatures.approver);
+  assert.notEqual(copied.snapshot.signatures.assessor, copied.snapshot.signatures.approver, 'สำเนา ไม่ใช่ตัวเดียวกัน');
+  assert.equal(copied.snapshot.signatures.approver.img.sha, SIGN_SHA.head);
+  assert.deepEqual(copied.images.filter((r) => r.kind === 'sign').map((r) => r.sha), [SIGN_SHA.head], 'รูปเดียว แถวเดียว');
+
+  const words = buildSurveyReportSnapshot(deskTwin({ seat1: false }), { mode: 'freeze' });
+  assert.equal(words.errors, undefined, (words.errors || []).join(' | '));
+  assert.equal(words.snapshot.assessment.drawingById, null);
+  assert.equal(words.snapshot.signatures.assessor, null);
+  assert.equal(words.snapshot.signatures.approver.img.sha, SIGN_SHA.head);
+
+  // ผู้อนุมัติไม่มีลายเซ็น (ฉบับร่าง): ทั้งสองที่นั่ง null · ไม่มีชื่อผู้ประเมินในข้อความรอรูป
+  const none = buildSurveyReportSnapshot(deskTwin({ have: [], prepared: false }), { mode: 'draft' });
+  assert.deepEqual(none.snapshot.signatures, { assessor: null, approver: null });
+  // ยังไม่เตรียมรูป: โหมดตรึงล้มด้วยชื่อผู้ส่งผลคนเดียว
+  assert.deepEqual(buildSurveyReportSnapshot(deskTwin({ prepared: false }), { mode: 'freeze' }).errors,
+    ['ลายเซ็นของ Head Approver ยังเตรียมไม่เสร็จ — ยังไม่ได้ออกเอกสาร']);
+});
+
+test('ใบผสม: ภาพนิ่งมีคีย์ `signatures` สองที่นั่งเหมือนใบลงหน้างาน', () => {
+  const inputs = signedTwin();
+  inputs.zones[1].method = 'drawing';
+  inputs.request = { ...inputs.request, surveyConfirm: 'needed' };
+  const { snapshot, errors } = buildSurveyReportSnapshot(inputs, { mode: 'draft' });
+  assert.equal(errors, undefined);
+  assert.equal(snapshot.signatures.assessor.img.sha, SIGN_SHA.lead);
+  assert.equal(snapshot.signatures.approver.img.sha, SIGN_SHA.head);
 });
 
 test('🔴 บัญชีที่นั่งที่นั่งนั้นไม่ได้ (หรือยังไม่รู้) ไม่มีวันถูกตรึงลายเซ็น — แม้มีลายเซ็นและรูปถูกเตรียมมาแล้ว', () => {
@@ -852,9 +870,10 @@ test('🔴 อ่านลายเซ็นไม่สำเร็จ ≠ ย�
   const inputs = signedTwin({ have: [], signatures: null, unknown: ['signatures'] });
   assert.deepEqual(surveyReportFreezeIssues(inputs), [{ kind: 'system', text: 'อ่านลายเซ็นของผู้ลงนามไม่สำเร็จ' }]);
   assert.equal(SURVEY_REPORT_INPUT_LABELS.signatures, 'ลายเซ็นของผู้ลงนาม');
-  // ใบจากแบบที่อ่านลายเซ็นพลาดด้วย: ยังบอกว่าอ่านไม่สำเร็จ (ท้ายลิสต์) คู่กับข้อกัน
+  // ใบผสมที่อ่านลายเซ็นพลาด: บรรทัดเดียวกัน (งวด S3 ถอดข้อกันของใบจากแบบแล้ว)
   inputs.zones[0].method = 'drawing';
-  assert.deepEqual(surveyReportFreezeIssues(inputs).map((i) => [i.kind, i.hold === true]), [['system', true], ['system', false]]);
+  inputs.request = { ...inputs.request, surveyConfirm: 'needed' };
+  assert.deepEqual(surveyReportFreezeIssues(inputs), [{ kind: 'system', text: 'อ่านลายเซ็นของผู้ลงนามไม่สำเร็จ' }]);
 });
 
 test('ที่นั่งที่พิมพ์ชื่อแต่ไม่ได้ผูกบัญชี: โหมดตรึงปฏิเสธ (content ไม่มี sign) · โหมดร่างออกได้ ที่นั่งเป็น null', () => {
@@ -876,3 +895,238 @@ test('🔴 ยามของโหมดตรึงเดินตามที
   assert.equal(got.errors.length, 2);
 });
 
+
+/* ══ งวด S3 — ข้อของด่าน (§2.3) · ชุดไฟล์ของพื้นที่จากแบบ (§2.4) · คีย์ใหม่ของภาพนิ่ง (§2.5) ═══════════════════════════ */
+
+const S3_SWITCH = '2026-09-26T02:50:00.000+00:00';   // หลังช่างบันทึกทั้งสองพื้นที่ของแฝด (02:00 · 02:40)
+/** แฝดที่พื้นที่ `which` เป็นจากแบบ (ทาง ② — หัวหน้าสลับหลังช่างบันทึก) · `confirm` = คำตอบบนใบ */
+function s3Twin({ which = [1], switcher = 'Head Approver', ...over } = {}) {
+  const confirm = Object.hasOwn(over, 'confirm') ? over.confirm : 'needed';
+  delete over.confirm;
+  const inputs = twin();
+  for (const i of which) {
+    Object.assign(inputs.zones[i], {
+      method: 'drawing', methodChangedAt: S3_SWITCH, methodChangedByName: switcher, methodReason: 'ลูกค้าส่งแบบมาแล้ว',
+    });
+  }
+  if (which.length === inputs.zones.length) inputs.visit = null;
+  inputs.request = { ...inputs.request, surveyConfirm: confirm };
+  return { ...inputs, ...over };
+}
+const planFile = (id, mimeType, createdAt, fileName = `${id}`) => ({
+  id, docType: 'survey_plan', mimeType, fileName, createdAt,
+});
+
+test('S3 §2.3: ค่าคงที่ใหม่ — ข้อความเดียวกับที่ route ส่งผลใช้ · หางของบรรทัดไม่พบนัด', () => {
+  assert.equal(SURVEY_REPORT_CONFIRM_MISSING, SURVEY_CONFIRM_MISSING);
+  assert.equal(SURVEY_REPORT_NO_VISIT_TAIL, ' — พื้นที่ที่ไม่ได้ลงหน้างานให้เปลี่ยนเป็น “ประเมินจากแบบ”');
+});
+
+test('S3 §2.3 ข้อ 2: ใบที่ส่งแล้วมีพื้นที่จากแบบแต่ไม่มีคำตอบ = content · รอบตรวจก่อนส่ง (answerPending) ไม่ถาม · ใบลงหน้างานไม่ถาม', () => {
+  const missing = { kind: 'content', text: SURVEY_REPORT_CONFIRM_MISSING };
+  const has = (inputs) => surveyReportFreezeIssues(inputs).some((i) => i.text === SURVEY_REPORT_CONFIRM_MISSING);
+  for (const confirm of [null, undefined, '', 'maybe', 'Needed']) {
+    assert.deepEqual(surveyReportFreezeIssues(s3Twin({ confirm })), [missing], `ผสม · ${confirm}`);
+    assert.equal(has(s3Twin({ which: [0, 1], confirm })), true, `จากแบบล้วน · ${confirm}`);
+    assert.equal(has(s3Twin({ confirm, answerPending: true })), false, `รอบตรวจ · ${confirm}`);
+    assert.equal(has(s3Twin({ which: [], confirm })), false, `ลงหน้างาน · ${confirm}`);
+  }
+  for (const confirm of ['needed', 'not_needed']) assert.deepEqual(surveyReportFreezeIssues(s3Twin({ confirm })), [], confirm);
+  // ยังไม่ส่งผล: บรรทัด "ยังไม่ได้ส่งผล" พูดแทน ไม่มีข้อนี้
+  const unsent = s3Twin({ confirm: null });
+  unsent.request = { ...unsent.request, answeredAt: null };
+  assert.equal(has(unsent), false);
+  // ตำแหน่ง: ต่อจากข้อชื่อผู้ส่งผลทันที
+  const nameless = s3Twin({ confirm: null });
+  nameless.request = { ...nameless.request, answeredByName: null };
+  assert.deepEqual(surveyReportFreezeIssues(nameless).map((i) => i.text).slice(0, 2),
+    ['ไม่มีชื่อผู้ตรวจสอบและอนุมัติ (ผู้ส่งผล)', SURVEY_REPORT_CONFIRM_MISSING]);
+  // พื้นที่จากแบบที่ถูกตัดไม่นับ
+  const cut = s3Twin({ confirm: null });
+  Object.assign(cut.zones[1], { status: 'cut', cutReason: 'ลูกค้าไม่ติดตั้ง' });
+  assert.equal(has(cut), false);
+});
+
+test('S3 §2.3 ข้อ 3: บรรทัดไม่พบนัดมีหางเฉพาะเมื่อ drawingMethodEnabled === true · ใบลงหน้างานไม่มีนัดยังตีกลับ', () => {
+  for (const [label, which] of [['ลงหน้างาน', []], ['ผสม', [1]]]) {
+    const base = { ...s3Twin({ which }), visit: null };
+    const line = (opt) => surveyReportFreezeIssues({ ...base, ...opt }).filter((i) => i.text.startsWith(SURVEY_REPORT_NO_VISIT));
+    assert.deepEqual(line({}), [{ kind: 'content', text: SURVEY_REPORT_NO_VISIT }], label);
+    assert.deepEqual(line({ drawingMethodEnabled: false }), [{ kind: 'content', text: SURVEY_REPORT_NO_VISIT }], label);
+    assert.deepEqual(line({ drawingMethodEnabled: 'true' }), [{ kind: 'content', text: SURVEY_REPORT_NO_VISIT }], label);
+    assert.deepEqual(line({ drawingMethodEnabled: true }),
+      [{ kind: 'content', text: `${SURVEY_REPORT_NO_VISIT}${SURVEY_REPORT_NO_VISIT_TAIL}` }], label);
+  }
+  // จากแบบล้วนไม่ถูกถามหานัด
+  assert.deepEqual(surveyReportFreezeIssues({ ...s3Twin({ which: [0, 1] }), drawingMethodEnabled: true }), []);
+});
+
+test('S3 §2.4: ภาพแบบของพื้นที่จากแบบ = JPG/PNG ล่าสุด (ชุดเดียวกับด่านส่งผล) · ไฟล์อื่นไม่ใช่ HEIC ที่ต้องแปลง', () => {
+  const PLAN_LINE = 'ยังไม่มีภาพแบบของพื้นที่ (ต้องเป็นรูป JPG/PNG — ไฟล์ PDF/TIFF ลงเอกสารไม่ได้)';
+  const withPlans = (files, which = [1]) => {
+    const inputs = s3Twin({ which });
+    const zone = inputs.zones[1];
+    inputs.filesByZone = { ...inputs.filesByZone, [zone.id]: files };
+    inputs.imageByAttId = { ...inputs.imageByAttId };
+    for (const f of files) inputs.imageByAttId[f.id] = { sha: fakeSha(f.id), w: 800, h: 600, bytes: 10 };
+    return { inputs, name: inputs.zones[1].name || zone.id };
+  };
+  const OLD = '2026-09-20T00:00:00.000+00:00';
+  const NEW = '2026-09-25T00:00:00.000+00:00';
+  const cases = [
+    ['JPG เก่า + TIFF ใหม่', [planFile('P-jpg', 'image/jpeg', OLD), planFile('P-tif', 'image/tiff', NEW, 'scan.tif')],
+      { plan: 'P-jpg', line: false, warn: ['ไฟล์ scan.tif ไม่ใช่ JPG/PNG — ไม่ลงเอกสาร'] }],
+    ['TIFF อย่างเดียว', [planFile('P-tif', 'image/tiff', NEW, 'scan.tif')], { plan: null, line: true }],
+    ['HEIC อย่างเดียว', [planFile('P-heic', 'image/heic', NEW, 'a.heic')], { plan: null, line: true }],
+    ['PDF อย่างเดียว', [planFile('P-pdf', 'application/pdf', NEW, 'a.pdf')], { plan: null, line: true }],
+    ['ไม่มีไฟล์', [], { plan: null, line: true }],
+    ['JPG สองรูป', [planFile('P-1', 'image/jpeg', OLD), planFile('P-2', 'image/png', NEW)],
+      { plan: 'P-2', line: false, warn: ['มีภาพแบบ 2 รูป — เอกสารพิมพ์รูปล่าสุดรูปเดียว'] }],
+  ];
+  for (const [label, files, want] of cases) {
+    const { inputs } = withPlans(files);
+    const zoneName = buildSurveyReportSnapshot(inputs, { mode: 'draft' }).snapshot.zones[1].name;
+    const issues = surveyReportFreezeIssues(inputs).map((i) => i.text);
+    assert.equal(issues.includes(`${zoneName}: ${PLAN_LINE}`), want.line, `${label}: บรรทัดภาพแบบ`);
+    assert.equal(issues.some((t) => t.includes('HEIC/BMP')), false, `${label}: ไม่มีบรรทัด HEIC`);
+    assert.equal(issues.some((t) => t.includes('ภาพผัง')), false, `${label}: ไม่ใช้ประโยคของภาพผัง`);
+    assert.deepEqual(surveyReportImageFiles(inputs).filter((r) => r.zoneId === inputs.zones[1].id).map((r) => r.attId),
+      want.plan ? [want.plan] : [], `${label}: ไฟล์ที่ดึง`);
+    if (!want.line) {
+      const built = buildSurveyReportSnapshot(inputs, { mode: 'freeze' });
+      assert.equal(built.errors, undefined, `${label}: ${(built.errors || []).join(' | ')}`);
+      assert.deepEqual(built.snapshot.zones[1].plan.map((p) => p.attId), [want.plan], label);
+      assert.deepEqual(built.snapshot.zones[1].wide, [], label);
+      const warns = buildSurveyReportSnapshot(inputs, { mode: 'draft' }).warnings.filter((w) => w.startsWith(`${zoneName}:`));
+      assert.deepEqual(warns, (want.warn || []).map((w) => `${zoneName}: ${w}`), `${label}: คำเตือน`);
+    }
+  }
+  // ไฟล์ชุดเดียวกันบนพื้นที่ลงหน้างาน = ของวันนี้ (TIFF ใหม่สุดเป็นรูปที่เปิดดูได้ ⇒ รูปล่าสุดคือ TIFF)
+  const onsite = withPlans([planFile('P-jpg', 'image/jpeg', OLD), planFile('P-tif', 'image/tiff', NEW, 'scan.tif')], []);
+  assert.deepEqual(surveyReportImageFiles(onsite.inputs).filter((r) => r.kind === 'plan' && r.zoneId === onsite.inputs.zones[1].id)
+    .map((r) => r.attId), ['P-tif']);
+  const heic = withPlans([planFile('P-heic', 'image/heic', NEW, 'a.heic')], []);
+  assert.ok(surveyReportFreezeIssues(heic.inputs).some((i) => i.text.includes('HEIC/BMP')), 'ลงหน้างาน: HEIC ยังขวางด้วยบรรทัดเดิม');
+});
+
+test('S3 §2.5: คีย์ใหม่ต่อโหมด — ลงหน้างาน · ผสม · จากแบบล้วน · พื้นที่จากแบบที่ถูกตัด', () => {
+  const on = buildSurveyReportSnapshot(twin(), { mode: 'freeze' }).snapshot;
+  assert.deepEqual(on.assessment, {
+    mode: 'onsite', onsiteZones: 2, drawingZones: 0, totalZones: 2, drawingBy: [], drawingAt: '2026-09-26', drawingById: null,
+  });
+  assert.deepEqual(on.zones.map((z) => [z.method, z.drawingBy, z.drawingAt, z.methodReason]), [['onsite', null, null, null], ['onsite', null, null, null]]);
+  assert.equal(on.request.surveyConfirm, null);
+  assert.deepEqual(on.otherVisits, []);
+
+  const mixed = buildSurveyReportSnapshot(s3Twin(), { mode: 'draft' }).snapshot;
+  assert.equal(mixed.assessment.mode, 'mixed');
+  assert.deepEqual([mixed.assessment.onsiteZones, mixed.assessment.drawingZones, mixed.assessment.totalZones], [1, 1, 2]);
+  assert.deepEqual(mixed.assessment.drawingBy, ['Head Approver']);
+  assert.equal(mixed.assessment.drawingById, null, 'ใบผสมไม่มีที่นั่งที่ 1 แบบใบจากแบบ');
+  assert.equal(mixed.request.surveyConfirm, 'needed');
+  assert.deepEqual(
+    [mixed.zones[1].method, mixed.zones[1].methodReason, mixed.zones[1].methodChangedByName, mixed.zones[1].methodChangedAt,
+      mixed.zones[1].drawingBy, mixed.zones[1].drawingAt],
+    ['drawing', 'ลูกค้าส่งแบบมาแล้ว', 'Head Approver', S3_SWITCH, 'Head Approver', S3_SWITCH],
+  );
+
+  const desk = buildSurveyReportSnapshot(s3Twin({ which: [0, 1] }), { mode: 'draft' }).snapshot;
+  assert.equal(desk.assessment.mode, 'drawing');
+  assert.deepEqual(desk.assessment.drawingBy, ['Head Approver'], 'ชื่อไม่ซ้ำ');
+  assert.equal(desk.assessment.drawingById, 'U-head', 'ชื่อคนสลับ = ชื่อผู้ส่งผล');
+  assert.equal(buildSurveyReportSnapshot(s3Twin({ which: [0, 1], switcher: 'หัวหน้า อีกคน' }), { mode: 'draft' }).snapshot
+    .assessment.drawingById, null);
+
+  // พื้นที่จากแบบที่ถูกตัด: มี method แต่ไม่มีผู้ประเมิน · ไม่นับในก้อน assessment
+  const cutIn = s3Twin({ which: [0, 1] });
+  Object.assign(cutIn.zones[1], { status: 'cut', cutReason: 'ลูกค้าไม่ติดตั้ง', methodChangedByName: 'หัวหน้า อีกคน' });
+  const cut = buildSurveyReportSnapshot(cutIn, { mode: 'draft' }).snapshot;
+  assert.deepEqual([cut.zones[1].method, cut.zones[1].drawingBy, cut.zones[1].drawingAt], ['drawing', null, null]);
+  assert.deepEqual([cut.assessment.drawingZones, cut.assessment.totalZones, cut.assessment.drawingBy], [1, 1, ['Head Approver']]);
+
+  // drawingBy เรียงตามลำดับพื้นที่ ไม่ซ้ำ ทิ้ง null
+  const order = s3Twin({ which: [0, 1] });
+  order.zones[0].methodChangedByName = 'ข หัวหน้า';
+  order.zones[1].methodChangedByName = 'ก หัวหน้า';
+  assert.deepEqual(buildSurveyReportSnapshot(order, { mode: 'draft' }).snapshot.assessment.drawingBy, ['ข หัวหน้า', 'ก หัวหน้า']);
+});
+
+test('S3 §2.5: assessment.drawingAt = วันไทยของ answeredAt · ค่าว่าง/อ่านไม่ออก = null ไม่ throw ไม่อ่านนาฬิกา', () => {
+  const at = (answeredAt) => {
+    const inputs = s3Twin({ which: [0, 1] });
+    inputs.request = { ...inputs.request, answeredAt };
+    return buildSurveyReportSnapshot(inputs, { mode: 'draft' }).snapshot.assessment.drawingAt;
+  };
+  assert.equal(at('2026-10-09T17:30:00Z'), '2026-10-10');
+  assert.equal(at('2026-10-09T16:59:59Z'), '2026-10-09');
+  for (const empty of [null, undefined, '', 'not a date']) assert.equal(at(empty), null, String(empty));
+  // ไม่อ่านนาฬิกา — ภาพนิ่งของอินพุตเดิมเท่ากันทุกครั้ง
+  const inputs = s3Twin({ which: [0, 1] });
+  inputs.request = { ...inputs.request, answeredAt: undefined };
+  assert.deepEqual(buildSurveyReportSnapshot(inputs, { mode: 'draft' }), buildSurveyReportSnapshot(clone(inputs), { mode: 'draft' }));
+});
+
+test('S3 §2.5: otherVisits จาก inputs.otherVisits (ป้ายสถานะไทย · วันล้วน) · ไม่มี/null = [] · answerPending ไม่เข้าภาพนิ่ง', () => {
+  const inputs = s3Twin({ which: [0, 1], answerPending: true });
+  inputs.otherVisits = [
+    { code: 'SV-1', status: 'done', date: '2026-09-20', planned: false },
+    { code: 'SV-2', status: 'cancelled', date: '2026-09-28T00:00:00Z', planned: true },
+    { code: null, status: 'weird', date: null, planned: 'yes' },
+    null,
+  ];
+  const snap = buildSurveyReportSnapshot(inputs, { mode: 'draft' }).snapshot;
+  assert.deepEqual(snap.otherVisits, [
+    { code: 'SV-1', statusLabel: 'เข้าแล้ว', date: '2026-09-20', planned: false },
+    { code: 'SV-2', statusLabel: 'ยกเลิก', date: '2026-09-28', planned: true },
+    { code: null, statusLabel: null, date: null, planned: false },
+  ]);
+  assert.equal(JSON.stringify(snap).includes('answerPending'), false);
+  for (const none of [null, undefined, []]) {
+    assert.deepEqual(buildSurveyReportSnapshot({ ...inputs, otherVisits: none }, { mode: 'draft' }).snapshot.otherVisits, []);
+  }
+});
+
+/* ══ งวด S3 §2.9: ใบลงหน้างานล้วน — คีย์เดิมของภาพนิ่งเท่ากับของ main ทุกค่า (ลบคีย์ใหม่ออกแล้วเทียบ) ═══════════════════
+   🔑 ค่าทองคำ = sha256 ของ JSON (เรียงคีย์) ของภาพนิ่งที่ `buildSurveyReportSnapshot` ของ **main `954861d8`** (ก่อนงวด S3) สร้างจาก
+      อินพุตชุดเดียวกัน — วัดเมื่อ 15/10/2026 ด้วย `git archive 954861d8` ลงโฟลเดอร์นอกรีโปแล้วรันตัวสร้างทั้งสองรุ่นกับชุดทดสอบเดียวกัน
+      (ทุกเคสของ `surveyStressCases` · ฉบับลงนาม · แฝดสังเคราะห์ เท่ากันทุกตัวรวมคำเตือนและแถวรูป)
+   ⚠️ ชุดทดสอบ (แฝดสังเคราะห์) เปลี่ยนเมื่อไร ค่าทองคำต้องวัดใหม่จาก main รุ่นก่อนงวด S3 ด้วยวิธีเดียวกัน — ห้ามคัดลอกจากผลของโค้ดปัจจุบัน */
+const S3_NEW_TOP_KEYS = ['assessment', 'otherVisits'];
+const S3_NEW_ZONE_KEYS = ['method', 'methodReason', 'methodChangedByName', 'methodChangedAt', 'drawingBy', 'drawingAt'];
+function withoutS3Keys(snapshot) {
+  const out = structuredClone(snapshot);
+  for (const key of S3_NEW_TOP_KEYS) delete out[key];
+  delete out.request.surveyConfirm;
+  for (const zone of out.zones) for (const key of S3_NEW_ZONE_KEYS) delete zone[key];
+  return out;
+}
+const canonical = (v) => (Array.isArray(v) ? v.map(canonical)
+  : (v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonical(v[k])])) : v));
+const shaOf = (value) => createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
+
+test('🔴 งวด S3 §2.9: ใบลงหน้างานล้วน — ลบคีย์ใหม่ออกแล้ว ภาพนิ่งเท่ากับของ main ก่อนงวด S3 ทุกค่า (ค่าทองคำ) · คีย์ใหม่มีค่าของใบลงหน้างาน', () => {
+  const cases = [
+    { name: 'แฝดสังเคราะห์ · ตรึง', inputs: () => twin(), mode: 'freeze', sha: '7daf8116520103e00be3968da4e79a82c8d827769aeef24f4b97e60465c5a970' },
+    { name: 'แฝดสังเคราะห์ · ร่าง', inputs: () => twin(), mode: 'draft', sha: '7daf8116520103e00be3968da4e79a82c8d827769aeef24f4b97e60465c5a970' },
+    { name: 'รูปจุดไม่ผูก · ร่าง', inputs: () => twin({ spotLinks: null }), mode: 'draft', sha: '9b3d160f774b5e967a08bd60e18014557fe713cd8bfd375408294be789b3b53d' },
+    { name: 'ชุดมาร์ก · ร่าง', inputs: () => markedSurveyInputs().inputs, mode: 'draft', sha: 'f9677dbae02ef5db62213aa8618d08c70cff9cc636f0dd9426ccb0218d42e1dc' },
+    { name: 'ลงนามสองคน · ตรึง', inputs: () => signedSurveyInputs(twin()), mode: 'freeze', sha: 'e5dcd68f5f50c550e8b7303ffd4fd2e58bc207e5c3f7304e503f71b56020234b' },
+  ];
+  for (const row of cases) {
+    const built = buildSurveyReportSnapshot(row.inputs(), { mode: row.mode });
+    assert.equal(built.errors, undefined, `${row.name}: ${(built.errors || []).join(' | ')}`);
+    const { snapshot } = built;
+    assert.equal(shaOf(withoutS3Keys(snapshot)), row.sha, row.name);
+    // คีย์ใหม่ของใบลงหน้างาน: ไม่มีอะไรของวิธีจากแบบ
+    assert.equal(snapshot.assessment.drawingZones, 0, row.name);
+    assert.deepEqual(snapshot.assessment.drawingBy, [], row.name);
+    assert.equal(snapshot.assessment.drawingById, null, row.name);
+    assert.deepEqual(snapshot.otherVisits, [], row.name);
+    assert.equal(snapshot.request.surveyConfirm, null, row.name);
+    for (const zone of snapshot.zones) {
+      assert.deepEqual(S3_NEW_ZONE_KEYS.map((key) => zone[key]), ['onsite', null, null, null, null, null], `${row.name} · ${zone.name}`);
+    }
+    // รันซ้ำด้วยอินพุตเดิม = ภาพนิ่งเดิม (ไม่อ่านนาฬิกา)
+    assert.deepEqual(buildSurveyReportSnapshot(row.inputs(), { mode: row.mode }).snapshot, snapshot, `${row.name}: รันซ้ำ`);
+  }
+});

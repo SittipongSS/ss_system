@@ -44,12 +44,19 @@ export default function AccountMenu({
     callback?.();
   };
 
+  /* 🐞 2026-10-19 จอ ≤900px ซ่อนชื่อ+บทบาท (`.account-menu-identity` display:none) เหลือแต่อักษรย่อ
+     กับลูกศรซึ่ง aria-hidden ทั้งคู่ ⇒ ปุ่มไม่มีชื่อเลยสำหรับโปรแกรมอ่านจอ (WCAG 4.1.2)
+     ⇒ ตั้งชื่อเองจากข้อความชุดเดียวกับที่ตาเห็นบนจอกว้าง เรียงลำดับเดิม (2.5.3 Label in Name —
+     สั่งด้วยเสียงว่าชื่อตัวเองก็ยังกดเจอ) · ชื่อเดียวกันทุกความกว้าง ไม่ขึ้นกับ CSS */
+  const triggerLabel = [userName, roleLabel].filter(Boolean).join(", ");
+
   return (
     <div className="account-menu" ref={containerRef}>
       <button
         ref={triggerRef}
         type="button"
         className="account-menu-trigger"
+        aria-label={triggerLabel}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={menuId}

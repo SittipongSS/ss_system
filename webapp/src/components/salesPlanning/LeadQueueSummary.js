@@ -17,6 +17,7 @@ import AlertBanner from "@/components/ui/AlertBanner";
 import Button from "@/components/ui/Button";
 import { AUTO_BOUNCE_AFTER_BUSINESS_DAYS } from "@/lib/sales/leadAutoBounce";
 import { leadQueueNotice, summarizeLeadQueue } from "@/lib/sales/leadDigest";
+import { LEAD_FOLLOW_FILTERS } from "@/lib/sales/leadListFilter";
 
 import styles from "./LeadQueueSummary.module.css";
 
@@ -74,13 +75,19 @@ export default function LeadQueueSummary({
           icon={TriangleAlert}
           action={(
             // พาไปเฉพาะใบที่แถบพูดถึง ไม่ใช่ทุกใบที่ติดต่อแล้ว
-            <Button size="sm" variant="quiet" onClick={() => onPick?.({ status: "contacted", follow: notice.kind === "late" ? "late" : "none" })}>ดูรายการ</Button>
+            <Button size="sm" variant="quiet" onClick={() => onPick?.({ follow: notice.kind === "late" ? "late" : "none" })}>ดูรายการ</Button>
           )}
         >
+          {/* ⚠️ เลขรวมใบนัดแล้วที่เลยวันติดตามหลังประชุมด้วย แต่ตีกลับอัตโนมัติไม่แตะใบนัดแล้ว
+              (leadAutoBounce) ⇒ ประโยค "ส่งกลับคิวคัดกรอง" ใช้ได้กับจำนวน `autoBounce` เท่านั้น */}
           {notice.kind === "late" ? (
             <>
               <strong>{notice.count} ใบเลยวันที่นัดลูกค้าไว้</strong>
-              {` — เงียบต่อจนครบ ${AUTO_BOUNCE_AFTER_BUSINESS_DAYS} วันทำการ ระบบจะส่งกลับคิวคัดกรองอัตโนมัติ`}
+              {notice.autoBounce === notice.count
+                ? ` — เงียบต่อจนครบ ${AUTO_BOUNCE_AFTER_BUSINESS_DAYS} วันทำการ ระบบจะส่งกลับคิวคัดกรองอัตโนมัติ`
+                : notice.autoBounce > 0
+                  ? ` — ${notice.autoBounce} ใบที่ยังไม่ได้นัดประชุม เงียบต่อจนครบ ${AUTO_BOUNCE_AFTER_BUSINESS_DAYS} วันทำการ ระบบจะส่งกลับคิวคัดกรองอัตโนมัติ`
+                  : " — นัดประชุมไปแล้ว ระบบไม่ส่งกลับคิวให้ ต้องเปิดใบแล้วบันทึกการติดตาม"}
             </>
           ) : (
             <>
@@ -164,19 +171,22 @@ export default function LeadQueueSummary({
             AE นัดลูกค้าไว้แม้วันเดียวก็คือผิดคำพูดแล้ว จึงใช้ late.count ไม่ใช่ oldest */}
         {summary.followUp.count > 0 && (
           <li className={rowFlag(summary.followUp.late.count > 0)}>
-            <button type="button" className={styles.stage} onClick={() => onPick?.({ status: "contacted" })}>
+            {/* ⭐ ขั้นนี้ = ใบที่มีนาฬิกาติดตาม (ติดต่อแล้วทุกใบ + นัดแล้วที่มีวันติดตาม · `leadFollowUpKey`)
+                ⇒ ทุกปุ่มในแถวเลือกด้วยมิติวันติดตาม ไม่ใช่สถานะ "ติดต่อแล้ว" — ไม่งั้นใบนัดแล้วที่นับอยู่ในเลข
+                หายจากตารางตอนกด (🐞 19/10) */}
+            <button type="button" className={styles.stage} onClick={() => onPick?.({ follow: LEAD_FOLLOW_FILTERS })}>
               <CalendarClock size={14} aria-hidden="true" /> ติดตามต่อ
               <span className={styles.count}>{summary.followUp.count}</span>
             </button>
             <span className={styles.detail}>
               {/* ⭐ ทุกป้ายที่มีตัวเลขกดได้ และพาไปเจอใบชุดนั้นพอดี (มิติ "วันติดตาม" ของตาราง) */}
               {summary.followUp.dueToday > 0 && (
-                <button type="button" className={`${styles.pill} ${styles.pillAction}`} onClick={() => onPick?.({ status: "contacted", follow: "today" })}>
+                <button type="button" className={`${styles.pill} ${styles.pillAction}`} onClick={() => onPick?.({ follow: "today" })}>
                   ถึงกำหนดวันนี้ {summary.followUp.dueToday}
                 </button>
               )}
               {!showOwners && summary.followUp.late.count > 0 && (
-                <button type="button" className={`${styles.pill} ${styles.pillAction} ${styles.pillLate}`} onClick={() => onPick?.({ status: "contacted", follow: "late" })}>
+                <button type="button" className={`${styles.pill} ${styles.pillAction} ${styles.pillLate}`} onClick={() => onPick?.({ follow: "late" })}>
                   เลยวันติดตาม {summary.followUp.late.count}
                 </button>
               )}
@@ -185,7 +195,7 @@ export default function LeadQueueSummary({
                   key={o.key}
                   type="button"
                   className={`${styles.pill} ${styles.pillAction} ${styles.pillLate}`}
-                  onClick={() => onPick?.({ status: "contacted", follow: "late", assigneeId: o.key })}
+                  onClick={() => onPick?.({ follow: "late", assigneeId: o.key })}
                   title={`ดูเฉพาะลีดที่เลยวันติดตามของ ${o.label} · นานสุด ${o.oldest} วันทำการ`}
                 >
                   เลยวันติดตาม · {o.label} {o.count}
@@ -194,7 +204,7 @@ export default function LeadQueueSummary({
               {/* 🔴 ใบที่ไม่มีวันติดตามเลย = ไม่มีนาฬิกาจับ ตีกลับอัตโนมัติก็ไม่แตะ
                   ต้องเห็นแยก ไม่งั้น "เลยวันติดตาม 0" อ่านเหมือนทุกอย่างเรียบร้อย */}
               {summary.followUp.noPlan > 0 && (
-                <button type="button" className={`${styles.pill} ${styles.pillAction} ${styles.pillWarn}`} onClick={() => onPick?.({ status: "contacted", follow: "none" })}>
+                <button type="button" className={`${styles.pill} ${styles.pillAction} ${styles.pillWarn}`} onClick={() => onPick?.({ follow: "none" })}>
                   ยังไม่มีวันติดตาม {summary.followUp.noPlan}
                 </button>
               )}

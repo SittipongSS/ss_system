@@ -7,11 +7,13 @@
 //   ④ รูป: token `su-img:<sha>` ตั้งต้น · แปลงครบ · ไม่มี `/api/` ในกระดาษ
 //   ⑤ กระดาษเดินตามแผนหน้า — หนึ่งแผ่นต่อหนึ่งหน้าของแผน ชนิดตรงกัน (หน้า "(ต่อ)" · ตารางแบ่ง · ภาคผนวกหลายหน้า)
 //   ⑥ 🔴 สีชื่อเอกสารเดินตามฉบับ (มติเจ้าของ 08/10/2026): ลูกค้า = สีใบเสนอราคา · ภายใน = สีใบสั่งขาย · ไม่มี teal
+//   ⑨ 🔴 งวด S3 (ประเมินจากแบบ): ใบลงหน้างานพิมพ์กระดาษของ main ทุกไบต์ (ทองคำ sha256) · ข้อความใหม่อยู่ในฉบับ/โหมดของมันเท่านั้น
 //
 // ⚠️ ความสูงจริง (ไม่ล้นขอบล่าง · ตรงกับแผน) วัดได้ใน Chrome เท่านั้น — เทสต์ท้ายไฟล์รันเมื่อมี `PUPPETEER_EXECUTABLE_PATH`
 //   (เครื่องนักพัฒนา) และข้ามเองใน CI · ของจริงพร้อมรูปใช้ `scripts/render-survey-report.mjs --assert`
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -27,9 +29,10 @@ import {
 } from './surveyReportDocument.js';
 import { SURVEY_REPORT_PX, paginateSurveyReport } from './surveyReportLayout.js';
 import { buildSurveyReportSnapshot } from './surveyReportSnapshot.js';
+import { surveyReportCustomerHtmlIssues, surveyReportSignatureHtmlIssues } from './surveyReportState.js';
 import {
-  fakeSha, fakeSignatureVersion, markedSurveyInputs, signedSurveyInputs, stressSurveyInputs, surveyReportInputsFromFixture,
-  surveySignCases, surveyStressCases, syntheticSurveyFixture, thaiText,
+  drawingSurveyFixture, fakeSha, fakeSignatureVersion, markedSurveyInputs, mixedSurveyFixture, signedSurveyInputs,
+  stressSurveyInputs, surveyReportInputsFromFixture, surveySignCases, surveyStressCases, syntheticSurveyFixture, thaiText,
 } from './surveyReportTestKit.mjs';
 import { surveyReportView } from './surveyReportView.js';
 
@@ -553,10 +556,15 @@ test('🔴 สีชื่อเอกสาร: ฉบับลูกค้า 
 });
 
 test('สีไปถึงกระดาษที่เดียวคือชื่อเอกสารหน้า 1 · รุ่นตัวเรนเดอร์ขยับแล้ว', () => {
-  // ผู้อ่านของ `--doc-accent` ใน CSS ของกระดาษ = `--accent` ตัวเดียว และผู้อ่านของ `--accent` = ชื่อเอกสารตัวเดียว
+  // ผู้อ่านของ `--doc-accent` ใน CSS ของกระดาษ = `--accent` ตัวเดียว และผู้อ่านของ `--accent` = ชื่อเอกสาร + เส้นซ้ายของกล่องหมายเหตุ
+  // (งวด S3 · กระดาน C1 — กล่องหมายเหตุมีเฉพาะใบที่มีพื้นที่จากแบบ ⇒ บนใบลงหน้างานสียังไปถึงชื่อเอกสารที่เดียว)
   assert.equal(count(SURVEY_REPORT_CSS, 'var(--doc-accent)'), 1);
-  assert.equal(count(SURVEY_REPORT_CSS, 'var(--accent)'), 1);
+  assert.equal(count(SURVEY_REPORT_CSS, 'var(--accent)'), 2);
+  assert.deepEqual([...SURVEY_REPORT_CSS.matchAll(/^([^{\n]+)\{[^}]*var\(--accent\)[^}]*\}/gm)].map((m) => m[1]), [
+    '.surveyReport .sheet .dh-title', '.surveyReport .sheet .dnote',
+  ]);
   assert.match(SURVEY_REPORT_CSS, /\.surveyReport \.sheet \.dh-title\{[^}]*color:var\(--accent\);\}/);
+  assert.match(SURVEY_REPORT_CSS, /\.surveyReport \.sheet \.dnote\{[^}]*border-left:2px solid var\(--accent\);[^}]*\}/);
   assert.equal(SURVEY_REPORT_INTERNAL_CSS.includes('--accent'), false, 'ชิ้นของฉบับภายในไม่ใช้สีชื่อเอกสาร');
   // ไม่มีค่าสีของเอกสารเขียนตายตัวใน CSS ของกระดาษ — สีมาจากเปลือกทางเดียว
   for (const css of [SURVEY_REPORT_CSS, SURVEY_REPORT_INTERNAL_CSS]) {
@@ -632,6 +640,18 @@ test('🔴 ผู้เรียกตัวเรนเดอร์ทุกต
 const CHROME = process.env.PUPPETEER_EXECUTABLE_PATH;
 const hasChrome = Boolean(CHROME && existsSync(CHROME));
 
+/* งวด S3: ใบจากแบบล้วนที่หัวหน้าหลายคนประเมินคนละพื้นที่ (ชื่อสมมติ) — ชื่อยาว ~220px ตกสองบรรทัดทั้งในกล่องการประเมินและที่นั่ง */
+const S3_LONG_HEADS = ['นายสมมติชัย ศรีสุวรรณวัฒนากุลพิพัฒน์', 'นางสาวสมมติพร เจริญรุ่งเรืองกิจไพศาล', 'นายทดสอบ ยาวมากมายหลายพยางค์ดีเยี่ยม'];
+function s3HeadsInputs(names) {
+  const inputs = stressSurveyInputs({ zones: names.map(() => ({})) });
+  inputs.zones.forEach((zone, i) => Object.assign(zone, {
+    method: 'drawing', methodChangedAt: '2026-09-26T02:50:00.000+00:00', methodChangedByName: names[i], methodReason: 'ลูกค้าส่งแบบมาแล้ว',
+  }));
+  inputs.visit = null;
+  inputs.request = { ...inputs.request, surveyConfirm: 'needed' };
+  return inputs;
+}
+
 test('🔴 วัดจริงใน Chrome (แฝดสังเคราะห์ + ชุดสุดขอบทุกกรณี): ไม่มีแผ่นไหนล้น · ขอบล่างจริงไม่เกินแผน · จุดอ้างอิงตรงแผน ±8px', {
   skip: hasChrome ? false : 'ไม่มี PUPPETEER_EXECUTABLE_PATH — ข้าม (CI) · ใช้ scripts/render-survey-report.mjs --assert บนเครื่อง',
 }, async () => {
@@ -648,6 +668,18 @@ test('🔴 วัดจริงใน Chrome (แฝดสังเคราะ
     ['twin-signed', signedSurveyInputs(twin()), 'freeze'],
     ['stress-signed', signedSurveyInputs(stressSurveyInputs(STRESS)), 'freeze'],
     ...surveySignCases().filter((c) => !c.known.length).map((c) => [c.name, signedSurveyInputs(c.inputs(), c.sign), c.mode]),
+    /* งวด S3 — ใบผสม / จากแบบล้วนของแฝด (กล่องการประเมินหลายบรรทัด · กล่องหมายเหตุ · บรรทัดย่อย · ป้ายหัวพื้นที่ · ไม่มีภาพกว้าง ·
+       ที่นั่งผู้ประเมินจากแบบหลายชื่อ ทั้งบรรทัดคำและรูป · ชื่อยาวที่ตกบรรทัด) + fixture ของ BRIEF §B */
+    ['s3-mixed', s3Inputs(), 'freeze'],
+    ['s3-mixed-nn', s3Inputs({ confirm: 'not_needed' }), 'freeze'],
+    ['s3-drawing', s3Inputs({ which: [0, 1] }), 'freeze'],
+    ['s3-drawing-signed', signedSurveyInputs(s3Inputs({ which: [0, 1] })), 'freeze'],
+    ['s3-drawing-other', signedSurveyInputs(s3Inputs({ which: [0, 1], switcher: 'หัวหน้า อีกคน' })), 'freeze'],
+    ['s3-heads-words', s3HeadsInputs(S3_LONG_HEADS), 'freeze'],
+    ['s3-heads-signed', signedSurveyInputs(s3HeadsInputs(S3_LONG_HEADS)), 'freeze'],
+    ['s3-heads5-signed', signedSurveyInputs(s3HeadsInputs(['Head Approver', 'หัวหน้า ข', 'หัวหน้า ค', 'หัวหน้า ง', 'หัวหน้า จ'])), 'freeze'],
+    ['fx-mixed', surveyReportInputsFromFixture(mixedSurveyFixture()), 'freeze'],
+    ['fx-drawing', surveyReportInputsFromFixture(drawingSurveyFixture()), 'freeze'],
   ];
   const browser = await launchBrowser();
   try {
@@ -672,8 +704,20 @@ test('🔴 วัดจริงใน Chrome (แฝดสังเคราะ
           if (m.marks.table) assert.ok(Math.abs(m.marks.table.top - page.tableTop) <= TOLERANCE, `${at}: ตารางบน ${m.marks.table.top} แผน ${page.tableTop}`);
           else assert.ok(page.table !== true, `${at}: แผนสั่งตารางแต่กระดาษไม่มี`);
           if (m.marks.plan) assert.ok(Math.abs(m.marks.plan.height - page.planHeight) <= TOLERANCE, `${at}: ผัง ${m.marks.plan.height} แผน ${page.planHeight}`);
-          if (m.marks.signoff) assert.ok(Math.abs(m.marks.signoff.height - SURVEY_REPORT_PX.signoff.height) <= TOLERANCE, `${at}: รับรอง ${m.marks.signoff.height}`);
-          if (m.marks.signs) assert.ok(Math.abs(m.marks.signs.height - SURVEY_REPORT_PX.appendix.signs) <= TOLERANCE, `${at}: ลงนาม ${m.marks.signs.height}`);
+          // งวด S3: ที่นั่งผู้ประเมินจากแบบหลายชื่อ — แผนพก `height` ของหน้าการรับรองผล / `height` ของบล็อก จ (ใบอื่นไม่มีคีย์ = ค่าเดิม)
+          const signoffPlan = page.height ?? SURVEY_REPORT_PX.signoff.height;
+          const signsPlan = (page.blocks || []).find((block) => block.type === 'signs')?.height ?? SURVEY_REPORT_PX.appendix.signs;
+          if (m.marks.signoff) assert.ok(Math.abs(m.marks.signoff.height - signoffPlan) <= TOLERANCE, `${at}: รับรอง ${m.marks.signoff.height} แผน ${signoffPlan}`);
+          if (m.marks.signs) assert.ok(Math.abs(m.marks.signs.height - signsPlan) <= TOLERANCE, `${at}: ลงนาม ${m.marks.signs.height} แผน ${signsPlan}`);
+          // งวด S3: กล่องหมายเหตุ = padding + บรรทัดของแผน · หัวพื้นที่ที่มีป้าย = หัวบรรทัดเดียว + ป้าย (ชื่อพื้นที่ของชุดนี้สั้น)
+          if (m.marks.notice) {
+            const s = SURVEY_REPORT_PX.summary;
+            assert.ok(Math.abs(m.marks.notice.height - (s.noticePad + page.notice.length * s.noticeLine)) <= 1.5, `${at}: หมายเหตุ ${m.marks.notice.height}`);
+          } else assert.ok(!page.notice, `${at}: แผนสั่งกล่องหมายเหตุแต่กระดาษไม่มี`);
+          if (m.marks.zhead) {
+            const z = SURVEY_REPORT_PX.zone;
+            assert.ok(Math.abs(m.marks.zhead.height - (z.head + z.tagLine)) <= 1.5, `${at}: หัวพื้นที่ ${m.marks.zhead.height}`);
+          }
         });
         if (label === 'twin') {
           const top = fit[0].marks.table.top;
@@ -832,7 +876,7 @@ test('🔴 CSS ของช่องลายเซ็น: สามกฎใน
   assert.equal(rules[2][1], 'height:45px;');
   assert.equal(SURVEY_REPORT_INTERNAL_CSS.includes('sig-img'), false);
   assert.equal(SURVEY_REPORT_CSS.includes('sign-last'), false, 'ก้อนร่วมห้ามเอ่ยชิ้นของฉบับภายใน — เทสต์รั่ว grep ทั้งไฟล์ของฉบับลูกค้า');
-  assert.equal(SURVEY_REPORT_RENDERER_VERSION, 'fm-ts-01@2026-10-09a');
+  assert.equal(SURVEY_REPORT_RENDERER_VERSION, 'fm-ts-01@2026-10-15a');
 });
 
 test('🔴 ไม่รั่ว: กระดาษสองฉบับไม่มีชื่อคลัง · ที่อยู่ไฟล์ · id ของฉบับลายเซ็น · sha ต้นฉบับ · id ของผู้ใช้ — ฉบับลูกค้ามีแค่ sha ของสองที่นั่งเพิ่มจากรูปของตัวเอง', () => {
@@ -874,3 +918,365 @@ test('ทองคำ (แฝดสังเคราะห์ + ลายเซ
   }
 });
 
+
+/* ══ ⑨ งวด S3 — ใบที่มีพื้นที่ประเมินจากแบบ (สเปก S3 §2.9 · §3 กลุ่ม B) ═══════════════════════════════
+ * 🔴 ใบลงหน้างานล้วนพิมพ์กระดาษของ main ทุกตัวอักษร (มติ O3 = ข) — ครึ่ง CI ของการพิสูจน์ (ครึ่ง harness = same-paper.mjs §5.3)
+ * ใบผสม / จากแบบล้วน: ทุกข้อความใหม่ของ §2.7 อยู่ในฉบับและโหมดของมันเท่านั้น · ฉบับลูกค้ามีคำว่า "จุด" ได้ที่กล่องหมายเหตุที่เดียว */
+
+/* sha256 ของ markup ของแผ่น (ตั้งแต่ `<article class="sheet su-page"` แรกถึง `</article>` สุดท้าย) ของแฝดสังเคราะห์
+   เลขที่ SU-26090001-0 · ออก 2026-09-26 · รูปเป็น token ตั้งต้น — **เรนเดอร์บน main `954861d8` ก่อนแก้ไฟล์แรกของงวด S3**
+   (สวิตช์ลายเซ็นปิด = แฝดล้วน · เปิด = อินพุตลงนามของกรณี `sign-closed` ของชุดทดสอบ)
+   ⚠️ ห้ามแก้ตัวเลขเพื่อให้เทสต์ผ่าน — ล้ม = กิ่งของงวด S3 รั่วเข้าทางของใบลงหน้างาน ต้องแก้กิ่งนั้น */
+const MAIN_ONSITE_PAGES_SHA256 = Object.freeze({
+  'customer-off': '9f16adcd4c39c72ed80372131d6c6d85637326004061e764b5bb833b504483f1',
+  'internal-off': '0649058609610c32cd71a3a8d6e9213d1f1e6e6933853eada74359d62984a439',
+  'customer-on': '6fd2d2b532aeebe09276b6a7253f28115c222db33888c1754e4abdee00466765',
+  'internal-on': '68f22e0b547799bebd906528aca5a9926cff6faa543cc669dbcb7b83ff6627ff',
+});
+const pagesMarkup = (html) => {
+  const open = '<article class="sheet su-page"';
+  const close = '</article>';
+  return html.slice(html.indexOf(open), html.lastIndexOf(close) + close.length);
+};
+const sha256 = (text) => createHash('sha256').update(text).digest('hex');
+
+const S3_SWITCH = '2026-09-26T02:50:00.000+00:00';   // หลังช่างบันทึกพื้นที่ทั้งสองของแฝด
+/** แฝดที่พื้นที่ `which` เป็นจากแบบ (หัวหน้าสลับหลังช่างบันทึก ไม่บันทึกใหม่) · ทุกพื้นที่จากแบบ = ไม่มีนัด */
+function s3Inputs({ which = [1], confirm = 'needed', switcher = 'Head Approver', reason = 'ลูกค้าส่งแบบมาแล้ว' } = {}) {
+  const inputs = twin();
+  for (const i of which) {
+    Object.assign(inputs.zones[i], { method: 'drawing', methodChangedAt: S3_SWITCH, methodChangedByName: switcher, methodReason: reason });
+  }
+  if (which.length === inputs.zones.length) inputs.visit = null;
+  inputs.request = { ...inputs.request, surveyConfirm: confirm };
+  return inputs;
+}
+const NOTICE_1 = 'พื้นที่ที่ระบุ “ประเมินจากแบบ” ประเมินจากแบบที่ได้รับ ยังไม่ได้วัดและตรวจจุดติดตั้งจากพื้นที่จริง';
+const NOTICE_2 = '· ขนาดและจำนวนอาจปรับเมื่อวัดหน้างาน';
+const S3_KEYS_ZONE = ['method', 'methodReason', 'methodChangedByName', 'methodChangedAt', 'drawingBy', 'drawingAt'];
+const zonePages = (html, layout, zoneIndex) => layout.pages
+  .filter((page) => page.zoneIndex === zoneIndex).map((page) => sheetHtml(html, page.no));
+
+test('🔴 S3 ทองคำใบลงหน้างาน (O3 = ข): markup ของแผ่นแฝดสังเคราะห์เท่ากับของ main 954861d8 ทุกไบต์ — สวิตช์ลายเซ็นปิด/เปิด × สองฉบับ', () => {
+  const closed = surveySignCases().find((c) => c.name === 'sign-closed');
+  const sets = { off: twin(), on: signedSurveyInputs(closed.inputs(), closed.sign) };
+  for (const [rule, inputs] of Object.entries(sets)) {
+    for (const version of ['customer', 'internal']) {
+      const { html } = paper(inputs, version);
+      assert.equal(sha256(pagesMarkup(html)), MAIN_ONSITE_PAGES_SHA256[`${version}-${rule}`], `${version} · ลายเซ็น${rule === 'on' ? 'เปิด' : 'ปิด'}`);
+    }
+  }
+});
+
+test('🔴 S3 ใบลงหน้างาน: ภาพนิ่งก่อนงวด S3 (ไม่มีคีย์ §2.5) · ใบที่สลับไปจากแบบแล้วกลับ — กระดาษเท่ากับใบลงหน้างานของงวด S3 ทุกตัวอักษร', () => {
+  for (const version of ['customer', 'internal']) {
+    // ภาพนิ่งที่ออกก่อนงวด S3: ไม่มี assessment · otherVisits · request.surveyConfirm · คีย์วิธีของพื้นที่
+    const built = buildSurveyReportSnapshot(twin(), { mode: 'freeze' });
+    const pre = structuredClone(built.snapshot);
+    delete pre.assessment;
+    delete pre.otherVisits;
+    delete pre.request.surveyConfirm;
+    for (const zone of pre.zones) for (const key of S3_KEYS_ZONE) delete zone[key];
+    const render = (snapshot) => {
+      const view = surveyReportView(snapshot, { version });
+      return renderSurveyReportHTML({ view, layout: paginateSurveyReport(view), docNo: DOC_NO, issuedAt: '2026-09-26' });
+    };
+    assert.equal(pagesMarkup(render(pre)), pagesMarkup(render(built.snapshot)), `${version}: ภาพนิ่งก่อนงวด S3`);
+
+    // พื้นที่ที่สลับไปจากแบบแล้วกลับเป็นลงหน้างาน = ใบเดียวกับที่ไม่มีคอลัมน์ method* เลย (ทั้งไฟล์ ไม่ใช่แค่แผ่น)
+    const back = twin();
+    Object.assign(back.zones[1], { method: 'onsite', methodChangedAt: S3_SWITCH, methodChangedByName: 'Head Approver', methodReason: 'ลูกค้าให้วัดจริง' });
+    assert.equal(paper(back, version).html, paper(twin(), version).html, `${version}: สลับแล้วกลับ`);
+  }
+});
+
+test('🔴 S3 ใบลงหน้างานทุกชุดที่มีบน main: ไม่มีแถว "วิธีประเมิน" ไม่มีแถว "วิธีประเมินรายพื้นที่" ไม่มีชิ้นใหม่ของงวด S3 สักชิ้น', () => {
+  const back = twin();
+  Object.assign(back.zones[0], { method: 'onsite', methodChangedAt: S3_SWITCH, methodChangedByName: 'Head Approver', methodReason: null });
+  const sets = [
+    ['แฝด', twin(), 'freeze'], ['สลับแล้วกลับ', back, 'freeze'], ['marked', markedSurveyInputs().inputs, 'freeze'],
+    ...surveyStressCases().map((c) => [c.name, stressSurveyInputs(c.spec), c.mode]),
+    ...surveySignCases().map((c) => [c.name, signedSurveyInputs(c.inputs(), c.sign), c.mode]),
+  ];
+  let onsite = 0;
+  for (const [label, inputs, mode] of sets) {
+    for (const version of ['customer', 'internal']) {
+      const got = paper(inputs, version, { mode });
+      if (['mixed', 'drawing'].includes(got.snapshot.assessment?.mode)) continue; // ชุดใหม่ของงวด S3 (กลุ่ม C) — ไม่ใช่ใบลงหน้างาน
+      onsite += 1;
+      const body = got.html.slice(got.html.indexOf('<body>'));
+      // markup กับคำของระบบเท่านั้น — ข้อความที่คนพิมพ์ (ข้อความเติมของชุดสุดขอบ) มีคำว่า "ประเมินจากแบบ" ได้ตามจริง
+      for (const piece of [
+        '<dt>วิธีประเมิน</dt>', '<th>วิธีประเมินรายพื้นที่</th>', '<th>ยืนยันหน้างานภายหลัง</th>', '<th>ผู้กรอกผลจากแบบ</th>',
+        '<th>นัดหน้างานของใบนี้</th>', 'class="dnote"', 'data-m="notice"', 'class="zsub"', 'class="zh-tag"', 'zh-tagged', 'class="zh-row"', 'data-m="zhead"',
+        'class="sp-list"', 'แบบที่ใช้ประเมิน<span> / DRAWING</span>', '<span class="ln">ประเมินจากแบบ', '<span class="ln">ลงหน้างาน',
+        '<h4>ผู้ประเมินจากแบบ</h4>', 'รับทราบผลประเมิน', 'เพิ่มโดย TS',
+      ]) assert.equal(body.includes(piece), false, `${label}/${version}: ${piece}`);
+    }
+  }
+  assert.ok(onsite >= 30, `ต้องตรวจใบลงหน้างานจริง ๆ (${onsite})`);
+});
+
+/* กระดาษสามสภาพของแฝด: ลงหน้างาน · ผสม (พื้นที่ 2 จากแบบ · ช่างบันทึกก่อนสลับ) · จากแบบล้วน */
+const s3Papers = () => ({
+  onsite: { customer: paper(twin(), 'customer'), internal: paper(twin(), 'internal') },
+  mixed: { customer: paper(s3Inputs(), 'customer'), internal: paper(s3Inputs(), 'internal') },
+  drawing: { customer: paper(s3Inputs({ which: [0, 1] }), 'customer'), internal: paper(s3Inputs({ which: [0, 1] }), 'internal') },
+});
+
+test('S3 ทุกข้อความใหม่ของ §2.7 อยู่ในฉบับและโหมดของมันเท่านั้น', () => {
+  const papers = s3Papers();
+  const ALL = ['onsite', 'mixed', 'drawing'];
+  const BOTH = ['customer', 'internal'];
+  // [ชิ้นที่พิมพ์, โหมดที่มี, ฉบับที่มี]
+  const table = [
+    ['<dt>วิธีประเมิน</dt>', ['mixed', 'drawing'], BOTH],
+    ['<dt>วิธีประเมิน</dt><dd><span class="ln">ลงหน้างาน 1 พื้นที่ ·</span><span class="ln">ประเมินจากแบบ 1 พื้นที่</span></dd>', ['mixed'], BOTH],
+    ['<dt>วิธีประเมิน</dt><dd><span class="ln">ประเมินจากแบบ</span></dd>', ['drawing'], BOTH],
+    ['<dt>ผู้ประเมิน</dt><dd><span class="ln">Lead Assessor</span><span class="ln">ประเมินจากแบบโดย</span><span class="ln">Head Approver</span></dd>', ['mixed'], BOTH],
+    ['<dt>ผู้ประเมิน</dt><dd><span class="ln">Head Approver</span></dd>', ['drawing'], BOTH],
+    ['<dt>เวลา</dt><dd>—</dd>', ['drawing'], BOTH],
+    [`<div class="dnote" data-m="notice"><span class="ln">${NOTICE_1}</span><span class="ln">${NOTICE_2}</span></div>`, ['mixed', 'drawing'], BOTH],
+    ['<div class="zsub"><span class="zsub-f">ชั้น GF</span> · <b>ประเมินจากแบบ</b></div>', ['mixed', 'drawing'], BOTH],
+    ['<div class="zh zh-tagged" data-m="zhead">', ['mixed', 'drawing'], BOTH],
+    // แถวของหัวลงหน้างานห่อใน `.zh-row` — ป้ายอยู่นอกแถว flex (ชื่อยาวไม่ดันชิปให้อยู่แถวโดด · แผนนับหัว + tagLine ได้ตรง)
+    ['<div class="zh zh-tagged" data-m="zhead">\n              <div class="zh-row">\n              <span class="chip-n">', ['mixed', 'drawing'], BOTH],
+    ['</span>\n              </div>\n              <div class="zh-tag" data-m="ztag">', ['mixed', 'drawing'], BOTH],
+    ['<div class="zh-tag" data-m="ztag"><b>ประเมินจากแบบ</b> · Head Approver · 26/09/2026</div>', ['mixed', 'drawing'], BOTH],
+    ['<h5 class="zs-h">แบบที่ใช้ประเมิน<span> / DRAWING</span></h5>', ['mixed', 'drawing'], BOTH],
+    ['alt="แบบที่ใช้ประเมิน ', ['mixed', 'drawing'], BOTH],
+    ['<h5 class="zs-h">ผังพื้นที่<span> / PLAN</span></h5>', ['onsite', 'mixed'], BOTH],
+    ['<h5 class="zs-h">ภาพกว้าง<span> / WIDE PHOTOS</span></h5>', ['onsite', 'mixed'], BOTH],
+    ['<h4>ผู้ประเมินจากแบบ</h4>', ['drawing'], BOTH],
+    ['ยืนยันข้อมูลหน้างาน <span class="nw">ไม่ใช่การสั่งซื้อ</span>', ['onsite'], BOTH],
+    ['รับทราบผลประเมิน <span class="nw">ไม่ใช่การสั่งซื้อ</span>', ['mixed'], BOTH],
+    ['รับทราบผลประเมินจากแบบ <span class="nw">ไม่ใช่การสั่งซื้อ</span>', ['drawing'], BOTH],
+    // ฉบับภายในเท่านั้น
+    ['<ul class="sp-list">', ['mixed', 'drawing'], ['internal']],
+    ['<h5 class="zs-h">จุดติดตั้งโดยประมาณจากแบบ — ยังไม่ยืนยันหน้างาน</h5>', ['mixed', 'drawing'], ['internal']],
+    ['<b>จุดที่ติดตั้งได้</b> คือตำแหน่งที่หน้างานรองรับการติดตั้ง · ตำแหน่งติดตั้งจริงกำหนดอีกครั้งตอนเข้าติดตั้ง · พื้นที่จากแบบ: ตำแหน่งโดยประมาณ ยังไม่ยืนยันหน้างาน</p>', ['mixed'], ['internal']],
+    ['<b>จุดที่ติดตั้งได้</b> พื้นที่จากแบบ: ตำแหน่งโดยประมาณ ยังไม่ยืนยันหน้างาน</p>', ['drawing'], ['internal']],
+    ['<dd>ประเมินจากแบบทั้งใบ</dd>', ['drawing'], ['internal']],
+    ['<dd>ผู้ประเมินจากแบบ Head Approver</dd>', ['drawing'], ['internal']],
+    ['<th>วิธีประเมินรายพื้นที่</th>', ['mixed', 'drawing'], ['internal']],
+    ['<tr><th>ยืนยันหน้างานภายหลัง</th><td>ต้องยืนยันหน้างาน</td></tr>', ['mixed', 'drawing'], ['internal']],
+    ['<th>ผู้กรอกผลจากแบบ</th>', ['mixed', 'drawing'], ['internal']],
+    ['ก่อนเปลี่ยนเป็นประเมินจากแบบ', ['mixed', 'drawing'], ['internal']],
+    ['<div class="sig-role">ประเมินจากแบบ</div>', ['drawing'], ['internal']],
+  ];
+  for (const [piece, modes, versions] of table) {
+    for (const mode of ALL) {
+      for (const version of BOTH) {
+        const want = modes.includes(mode) && versions.includes(version);
+        assert.equal(papers[mode][version].html.includes(piece), want, `${mode}/${version}: ${piece}`);
+      }
+    }
+  }
+  // ไม่ต้องยืนยันหน้างาน = กล่องหมายเหตุบรรทัดเดียว · แถวยืนยันพูดตามนั้น
+  const nn = paper(s3Inputs({ confirm: 'not_needed' }), 'internal').html;
+  assert.ok(nn.includes(`<div class="dnote" data-m="notice"><span class="ln">${NOTICE_1}</span></div>`));
+  assert.ok(nn.includes('<tr><th>ยืนยันหน้างานภายหลัง</th><td>ไม่ต้องยืนยันหน้างาน</td></tr>'));
+  assert.equal(nn.includes(NOTICE_2), false);
+});
+
+test('🔴 S3 ไม่มีกระดาษไหนพูด "ไม่ได้เข้าพื้นที่" · ฉบับลูกค้าไม่สัญญาว่า "จะเข้ายืนยัน" · หน้าพื้นที่จากแบบไม่มีส่วนภาพกว้าง', () => {
+  const sets = [
+    ['ผสม', s3Inputs()], ['จากแบบล้วน', s3Inputs({ which: [0, 1] })], ['ไม่ต้องยืนยัน', s3Inputs({ which: [0, 1], confirm: 'not_needed' })],
+    ['fixture ผสม', surveyReportInputsFromFixture(mixedSurveyFixture())],
+    ['fixture จากแบบ', surveyReportInputsFromFixture(drawingSurveyFixture())],
+  ];
+  for (const [label, inputs] of sets) {
+    for (const version of ['customer', 'internal']) {
+      const { html, layout, view } = paper(inputs, version);
+      assert.equal(html.includes('ไม่ได้เข้าพื้นที่'), false, `${label}/${version}`);
+      if (version === 'customer') assert.equal(html.includes('จะเข้ายืนยัน'), false, `${label}/${version}`);
+      view.zones.forEach((zone, i) => {
+        if (zone.method !== 'drawing') return;
+        const pages = zonePages(html, layout, i);
+        assert.ok(pages.length >= 1, `${label}/${version}: พื้นที่ ${zone.no}`);
+        for (const page of pages) {
+          for (const word of ['ภาพกว้าง', 'WIDE PHOTOS', 'ไม่มีภาพกว้าง', 'class="ph sp"']) {
+            assert.equal(page.includes(word), false, `${label}/${version} พื้นที่ ${zone.no}: ${word}`);
+          }
+        }
+        for (const page of layout.pages.filter((p) => p.zoneIndex === i)) assert.equal(page.wide, null);
+      });
+    }
+  }
+});
+
+test('🔴 S3 กันรั่วของฉบับลูกค้า: กล่องหมายเหตุไม่เกินหนึ่งกล่อง เนื้อความตรงประโยคที่อนุมัติทุกตัว — ตัดกล่องออกแล้วไม่มี "จุด" ไม่มีเครื่อง รุ่น ราคา ไม่มีชิ้นภายใน', () => {
+  const neutral = (inputs) => ({ ...inputs, zones: inputs.zones.map((zone) => ({ ...zone, note: zone.note ? 'หมายเหตุทดสอบของพื้นที่' : zone.note })) });
+  const sets = [
+    ['ลงหน้างาน', twin(), false], ['ผสม', s3Inputs(), true], ['ผสม ไม่ต้องยืนยัน', s3Inputs({ confirm: 'not_needed' }), true],
+    ['จากแบบล้วน', s3Inputs({ which: [0, 1] }), true], ['ร่างก่อนเลือก', s3Inputs({ which: [0, 1], confirm: null }), true],
+    ['fixture ผสม', surveyReportInputsFromFixture(mixedSurveyFixture()), true],
+    ['fixture จากแบบ', surveyReportInputsFromFixture(drawingSurveyFixture()), true],
+  ];
+  for (const [label, raw, drawing] of sets) {
+    const mode = raw.request?.surveyConfirm === null ? 'draft' : 'freeze';
+    const { html, snapshot, layout } = paper(neutral(raw), 'customer', { mode });
+    const blocks = [...html.matchAll(/<div class="dnote"[^>]*>(.*?)<\/div>/g)];
+    assert.equal(blocks.length, drawing ? 1 : 0, `${label}: จำนวนกล่องหมายเหตุ`);
+    assert.equal(count(html, 'class="dnote"'), drawing ? 1 : 0, `${label}: ไม่มีกล่องที่สองซ่อนรูปอื่น`);
+    let rest = html.slice(html.indexOf('<body>'));
+    if (blocks.length) {
+      const text = unescape(blocks[0][1].replace(/<[^>]+>/g, ''));
+      assert.ok(text === NOTICE_1 || text === `${NOTICE_1}${NOTICE_2}`, `${label}: ${text}`);
+      rest = rest.replace(blocks[0][0], '');
+    }
+    assert.equal(rest.includes('จุด'), false, `${label}: "จุด" นอกกล่องหมายเหตุ`);
+    for (const word of [...CUSTOMER_FORBIDDEN, ...CUSTOMER_FORBIDDEN_MARKUP, 'รุ่นเครื่อง', 'เครื่องกระจายกลิ่น', 'ราคา', 'บาท', 'sp-list']) {
+      assert.equal(rest.includes(word), false, `${label}: ${word}`);
+    }
+    assert.deepEqual(surveyReportCustomerHtmlIssues({ html, snapshot, layout }), [], label);
+  }
+});
+
+test('S3 พื้นที่ที่หัวหน้าเพิ่มบนใบงานโต๊ะ = "เพิ่มโดย TS" ไม่ใช่ "เพิ่มหน้างาน" · นัดของใบจากแบบล้วนอยู่ภาคผนวก ง เท่านั้น', () => {
+  const added = s3Inputs();
+  added.zones[1].status = 'added';
+  const { html } = paper(added, 'internal');
+  const scope = html.split('ข. ขอบเขตเทียบคำร้อง')[1].split('</table>')[0];
+  assert.ok(scope.includes('<td>เพิ่มโดย TS</td>'));
+  assert.equal(scope.includes('เพิ่มหน้างาน'), false);
+  assert.equal(paper(added, 'customer').html.includes('เพิ่มโดย TS'), false);
+
+  const desk = s3Inputs({ which: [0, 1] });
+  desk.otherVisits = [{ code: 'SV-26100011', status: 'done', date: '2026-10-13', planned: false }];
+  const internal = paper(desk, 'internal').html;
+  assert.ok(internal.includes('<tr><th>นัดหน้างานของใบนี้</th><td>นัด SV-26100011 เข้าแล้ว 13/10/2026 — ผลในเอกสารนี้ประเมินจากแบบ</td></tr>'));
+  const customer = paper(desk, 'customer').html;
+  for (const word of ['SV-26100011', 'นัดหน้างานของใบนี้']) assert.equal(customer.includes(word), false, word);
+});
+
+test('S3 จากแบบล้วน ฉบับร่างก่อนส่ง (answeredAt ว่าง · ยังไม่เลือก): ขีดที่หัวกระดาษ กล่องการประเมิน ที่นั่งที่ 1 · กล่องหมายเหตุบรรทัดเดียว · ภาคผนวกแถว 4 ขีด', () => {
+  const inputs = s3Inputs({ which: [0, 1], confirm: null });
+  inputs.request = { ...inputs.request, answeredAt: null };
+  for (const version of ['customer', 'internal']) {
+    const { html } = paper(inputs, version, { mode: 'draft', docNo: null, issuedAt: null });
+    assert.ok(html.includes('<dt>วันที่ประเมิน</dt><dd>—</dd>'), version);
+    assert.ok(html.includes('<dt>วันที่</dt><dd>—</dd>'), version);
+    const seat = html.split('<h4>ผู้ประเมินจากแบบ</h4>')[1].split('</div>\n            <div')[0];
+    assert.ok(seat.includes('<div class="sig-date">—</div>'), version);
+    assert.ok(html.includes(`<div class="dnote" data-m="notice"><span class="ln">${NOTICE_1}</span></div>`), version);
+    assert.equal(html.includes('1970'), false, version);
+    if (version === 'internal') assert.ok(html.includes('<tr><th>ยืนยันหน้างานภายหลัง</th><td>—</td></tr>'));
+  }
+});
+
+test('S3 ชื่อผู้ประเมินจากแบบหลายคน: กล่องการประเมินบรรทัดละชื่อตามแผน · ที่นั่งที่ 1 ชื่อละบรรทัด · ภาคผนวก จ ต่อกันบรรทัดเดียว', () => {
+  const inputs = s3Inputs({ which: [0, 1] });
+  inputs.zones[0].methodChangedByName = 'หัวหน้า ก';
+  for (const version of ['customer', 'internal']) {
+    const { html, layout, view } = paper(inputs, version);
+    assert.deepEqual(view.signoff.assessor.names, ['หัวหน้า ก', 'Head Approver']);
+    const box = html.split('<dt>ผู้ประเมิน</dt><dd>')[1].split('</dd>')[0];
+    assert.equal(box, layout.pages[0].survey.names.map((line) => `<span class="ln">${line}</span>`).join(''));
+    const seat = html.split('<h4>ผู้ประเมินจากแบบ</h4>')[1].split('<div class="sig-date">')[0];
+    assert.deepEqual([...seat.matchAll(/<div class="sig-name">([^<]*)<\/div>/g)].map((m) => m[1]), ['หัวหน้า ก', 'Head Approver']);
+    if (version === 'internal') {
+      const signs = signsHtml(html);
+      assert.ok(signs.includes('<div class="sig-name">หัวหน้า ก · Head Approver</div>'));
+    }
+  }
+  // สามชื่อ = ที่นั่งที่ 1 สามบรรทัด (แผนหน้านับความสูงของที่นั่งเอง — surveyReportLayout.test.mjs)
+  const three = structuredClone(paper(s3Inputs({ which: [0, 1] }), 'customer').view);
+  three.signoff.assessor.names = ['ก', 'ข', 'ค'];
+  const html3 = renderSurveyReportHTML({ view: three, layout: paginateSurveyReport(three) });
+  assert.equal(count(html3.split('<h4>ผู้ประเมินจากแบบ</h4>')[1].split('<div class="sig-date">')[0], '<div class="sig-name">'), 3);
+});
+
+test('S3 รายการจุดโดยประมาณ (ฉบับภายใน): 0 จุด = ประโยคว่างแถวเดียว · 1 จุด · 8 จุดข้ามหน้าได้ครบไม่ซ้ำ — ไม่มีการ์ดรูป ไม่มีกล่องรูป', () => {
+  const zoneSpots = (n) => {
+    const inputs = s3Inputs({ which: [0, 1] });
+    inputs.zones[1].spots = Array.from({ length: n }, (_, i) => ({
+      id: `S3-${i}`, label: `จุดโดยประมาณ ${i + 1}`, note: i % 2 ? `ข้างเคาน์เตอร์ ${i + 1}` : null, selected: true,
+    }));
+    if (n >= 8) inputs.zones[1].note = thaiText(900);
+    return paper(inputs, 'internal');
+  };
+  const listOf = (pages) => pages.flatMap((page) => [...page.matchAll(/<li( class="none")?>(.*?)<\/li>/g)].map((m) => [Boolean(m[1]), m[2]]));
+  const none = zoneSpots(0);
+  assert.deepEqual(listOf(zonePages(none.html, none.layout, 1)), [[true, 'ยังไม่ระบุจุดติดตั้ง — กำหนดเมื่อเข้าหน้างาน']]);
+  const one = zoneSpots(1);
+  assert.deepEqual(listOf(zonePages(one.html, one.layout, 1)), [[false, `<b>${one.view.zones[1].spots[0].no}</b> · จุดโดยประมาณ 1`]]);
+  const eight = zoneSpots(8);
+  const items = listOf(zonePages(eight.html, eight.layout, 1));
+  assert.equal(items.length, 8);
+  assert.deepEqual(items.map(([, text]) => text.split('</b> · ')[1]), eight.view.zones[1].spots.map((spot) => [spot.label, spot.note].filter(Boolean).join(' — ')));
+  assert.deepEqual(eight.layout.overflow, []);
+  for (const got of [none, one, eight]) {
+    for (const page of zonePages(got.html, got.layout, 1)) {
+      for (const piece of ['class="ph sp"', 'class="sp-b"', 'class="sp-note"', 'POSSIBLE INSTALL SPOTS']) assert.equal(page.includes(piece), false, piece);
+    }
+  }
+  // ฉบับลูกค้าไม่มีรายการ
+  assert.equal(paper(s3Inputs({ which: [0, 1] }), 'customer').html.includes('จุดติดตั้งโดยประมาณ'), false);
+});
+
+test('S3 สองฉบับจากภาพนิ่งเดียว: กล่องคู่ · กล่องหมายเหตุ · หัวพื้นที่ (พร้อมป้าย) · ที่นั่งรับรอง พิมพ์ตรงกันทุกตัวอักษร', () => {
+  for (const inputs of [s3Inputs(), s3Inputs({ which: [0, 1] }), surveyReportInputsFromFixture(drawingSurveyFixture())]) {
+    const customer = paper(inputs, 'customer').html;
+    const internal = paper(inputs, 'internal').html;
+    const pick = (html, open, close) => html.split(open)[1].split(close)[0];
+    assert.equal(pick(customer, '<section class="party">', '</section>'), pick(internal, '<section class="party">', '</section>'));
+    assert.equal(pick(customer, '<div class="dnote"', '</div>'), pick(internal, '<div class="dnote"', '</div>'));
+    assert.equal(pick(customer, '<section class="signoff"', '</section>'), pick(internal, '<section class="signoff"', '</section>'));
+    // หัวพื้นที่ (ชิป · ชื่อ · รหัส · ขนาด · ป้าย) ถึงส่วนแรกของพื้นที่ — พื้นที่จากแบบไม่มีส่วนภาพกว้าง ส่วนแรกคือส่วนผัง
+    const heads = (html) => [...html.matchAll(/<div class="zp" data-zone="\d+">([\s\S]*?)<section class="zs/g)].map((m) => m[1]);
+    assert.ok(heads(customer).some((head) => head.includes('data-m="ztag"')));
+    assert.deepEqual(heads(customer), heads(internal));
+  }
+});
+
+test('🔴 S3 ลายเซ็นของใบจากแบบล้วน: ที่นั่งที่ 1 คัดลอก = รูปเดียวกันสองช่อง (2 / 4) · ผู้ประเมินคนอื่น = บรรทัดคำข้างรูปที่นั่งที่ 2 (1 / 2) · ใบผสมลงนามครบ (2 / 4) — ยามลายเซ็นผ่าน', () => {
+  const copied = signedSurveyInputs(s3Inputs({ which: [0, 1] }));
+  const other = signedSurveyInputs(s3Inputs({ which: [0, 1], switcher: 'หัวหน้า อีกคน' }));
+  const mixed = signedSurveyInputs(s3Inputs());
+  for (const [label, inputs, images, words] of [['คัดลอก', copied, 2, 0], ['คนอื่น', other, 1, 1], ['ผสม', mixed, 2, 0]]) {
+    for (const [version, times] of [['customer', 1], ['internal', 2]]) {
+      const got = paper(inputs, version);
+      assert.equal(count(got.html, SIG_IMG), images * times, `${label}/${version}: รูป`);
+      assert.equal(count(got.html, SIG_WAIT), 0, `${label}/${version}: ไม่มีกรอบประบนกระดาษที่ออก`);
+      assert.equal(count(got.html, SIG_WORDS), words * times, `${label}/${version}: บรรทัดคำ`);
+      assert.deepEqual(surveyReportSignatureHtmlIssues({ html: got.html, snapshot: got.snapshot, version }), [], `${label}/${version}`);
+    }
+  }
+  // ที่นั่งที่ 1 กับ 2 ของใบที่คัดลอก = token เดียวกัน
+  const page = sheetHtml(paper(copied, 'customer').html, paper(copied, 'customer').layout.pageCount);
+  const tokens = [...page.matchAll(/<img class="sig-img" src="(su-img:[0-9a-f]{64})"/g)].map((m) => m[1]);
+  assert.equal(tokens.length, 2);
+  assert.equal(tokens[0], tokens[1]);
+  // ที่นั่งที่ 1 ของ "คนอื่น" = ชื่อหัวหน้าที่ประเมิน + บรรทัดคำ · ที่นั่งที่ 2 = รูปของผู้ส่งผล
+  const seat1 = paper(other, 'customer').html.split('<h4>ผู้ประเมินจากแบบ</h4>')[1].split('<h4>')[0];
+  assert.ok(seat1.includes(SIG_WORDS));
+  assert.ok(seat1.includes('<div class="sig-name">หัวหน้า อีกคน</div>'));
+});
+
+test('S3 บรรทัดย่อยของแถวจากแบบ: ไม่มีชั้น · ชั้นอยู่ในชื่อแล้ว = "ประเมินจากแบบ" อย่างเดียว · พื้นที่หลายส่วน = ตารางส่วนข้างภาพแบบ', () => {
+  // ชั้นมาได้สองทาง (แถวของใบ · ทะเบียนพื้นที่) — ล้างทั้งสอง
+  const noFloor = s3Inputs();
+  noFloor.zones[1].floor = null;
+  noFloor.zoneRegistry = noFloor.zoneRegistry.map((z) => (z.id === noFloor.zones[1].zoneId ? { ...z, floor: null } : z));
+  const inName = s3Inputs();
+  // ชั้นอยู่กลางชื่อ (ชื่อที่ลงท้ายด้วยชั้นถูกจัดเป็นหางชั้นของระบบ — บรรทัดย่อยได้ "ชั้น GF ·" ตามปกติ)
+  inName.zones[1].zoneName = 'ห้องชั้น GF ฝั่งทิศเหนือ';
+  for (const [label, inputs] of [['ไม่มีชั้น', noFloor], ['ชั้นในชื่อ', inName]]) {
+    const { html, view } = paper(inputs, 'customer');
+    assert.equal(view.table.rows[1].methodLine.floor, null, label);
+    assert.ok(html.includes('<div class="zsub"><b>ประเมินจากแบบ</b></div>'), label);
+    assert.equal(html.includes('zsub-f'), false, label);
+  }
+  const parts = stressSurveyInputs({ zones: [{ parts: 2, floor: '3' }, {}] });
+  Object.assign(parts.zones[0], { method: 'drawing', methodChangedAt: S3_SWITCH, methodChangedByName: 'Head Approver', methodReason: 'ลูกค้าส่งแบบมาแล้ว' });
+  parts.request = { ...parts.request, surveyConfirm: 'needed' };
+  for (const version of ['customer', 'internal']) {
+    const { html, layout } = paper(parts, version);
+    const [page] = zonePages(html, layout, 0);
+    const plan = page.split('<h5 class="zs-h">แบบที่ใช้ประเมิน<span> / DRAWING</span></h5>')[1];
+    assert.ok(plan && plan.trimStart().startsWith('<div class="zp-plan-row">'), version);
+    assert.ok(plan.includes('<table class="t cp">'), version);
+    assert.equal(page.includes('ภาพกว้าง'), false, version);
+  }
+});

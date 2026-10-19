@@ -878,7 +878,7 @@ const RAW_TAILWIND_TYPE_CAP = 148;
    ⇒ รูป `fontWeight: cond ? 700 : 500` หลุดทุกใบ · วัด 2026-09-02: style object มี
    `fontWeight` 282 จุด เป็นโทเคน --fw-* 274 · **หลุด 8 จุด และทั้ง 8 เป็น ternary**
      src/app/pm/tasks/page.js:1114                     isToday ? 700 : 500
-     src/app/sales-planning/deals/[id]/page.js:160     s.state === "current" ? 800 : 650
+     src/app/sales-planning/deals/[id]/page.js:161     s.state === "current" ? 800 : 650
      src/app/settings/signature-coverage/page.js:210   … ? 700 : 400
      src/app/settings/signature-coverage/page.js:213   … ? 700 : 400
      src/components/pm/ProjectDocumentView.js:470      weekend ? 400 : 500
@@ -2431,9 +2431,15 @@ for (const file of files.filter((f) => f.endsWith(".css"))) {
     /* `position: sticky` ก็ลอยทับเนื้อหาเหมือนกัน — เดิมกฎนี้ตรวจแค่ fixed หรือ
        z-index ≥ 1000 แถบปุ่มท้ายโมดัล (sticky + z-index 5) จึงหลุดไปใช้ --panel
        แล้วช่องกรอกที่เลื่อนผ่านทะลุขึ้นมาปนกับปุ่ม (ผู้ใช้ส่งภาพมา 2026-07-27)
-       ยกเว้นหัวตาราง/คอลัมน์ที่ตรึงไว้ ซึ่งใช้ --panel-2 อยู่แล้วจึงไม่เข้าเงื่อนไข */
+       ยกเว้นหัวตาราง/คอลัมน์ที่ตรึงไว้ ซึ่งใช้ --panel-2 อยู่แล้วจึงไม่เข้าเงื่อนไข
+       🐞 2026-10-19 เงื่อนไข "z-index เป็นเลข ≥ 1000" ไม่เคยจับเมนู position:absolute บนชั้นต่ำกว่า 1000
+       (เมนูบัญชี 125 · รายชื่อ @mention 40 — โปร่ง 6% ทุกหน้ามาตลอด) และตั้งแต่ z-index ย้ายไปใช้ชื่อ
+       --z-* (2026-07-29 · zIndexScale.test ห้ามเลขดิบ ≥30) เงื่อนไขเลขก็ไม่มีวันจริงอีกเลย
+       ⇒ กฎที่หยิบชั้นจากสเกลกลางคือของที่ลอยระดับหน้า นับเป็นแผงลอยทั้งหมด (เลข 0–10 ของตาราง/
+       gantt ไม่อยู่ในสเกลโดยเจตนา จึงไม่เข้าเงื่อนไข) · floatingPanelSurface.test.mjs ล็อกข้อนี้ */
     const floats = /position:\s*fixed/.test(body)
       || /position:\s*sticky/.test(body)
+      || /z-index:\s*var\(--z-/.test(body)
       || Number((body.match(/z-index:\s*(\d+)/) || [])[1] || 0) >= 1000;
     if (!floats) continue;
     if (!/background[^;]*var\(--panel\)/.test(body)) continue;

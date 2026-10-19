@@ -398,7 +398,11 @@ export function requestStepKey(kind) {
 // บนหัวข้อและบนแถวคำร้อง (ดู lib/requests/pins.js) · เขียนชื่อขั้นซ้ำไว้ที่นี่เมื่อไร
 // จะเป็นแหล่งความจริงที่สองที่ drift ได้ทันทีที่มีคนแก้ชื่อขั้นในแม่แบบ
 export function requestStepLabel(kind) {
-  const stepKey = requestStepKey(kind);
+  return stepKeyLabel(requestStepKey(kind));
+}
+
+// ป้ายของขั้นจาก `stepKey` ตรง ๆ — ป้ายตัวกรอง `?step=` ของหน้า /requests ไม่รู้หัวข้อ รู้แค่ขั้น
+export function stepKeyLabel(stepKey) {
   const parsed = /^(.+)-(\d+)$/.exec(stepKey || '');
   if (!parsed) return null;
   const type = parsed[1].toUpperCase();

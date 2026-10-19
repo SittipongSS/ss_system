@@ -127,6 +127,38 @@ function priorUnableOf(visits, visit) {
     .map((v) => ({ date: v.actualDate || v.scheduledDate || null, reason: v.unableReason || null }));
 }
 
+/* สถานะของนัดที่ "เข้าพื้นที่แล้วจริง" — วันของมันคือวันเข้าจริง (ไม่มี = วันนัด) · สถานะอื่นที่เหลือ = นัดที่ไม่ได้เกิด วันคือวันนัด */
+const TOOK_PLACE = ['done', 'partial'];
+
+/**
+ * นัดของใบประเมินจากแบบทั้งใบ (งวด S3 §2.2) — `[{ code, status, date, planned }]` เก่าก่อน · ภาคผนวกของฉบับภายในบอกว่านัดพวกนี้มีอยู่
+ * แต่ผลในเอกสารประเมินจากแบบ
+ *   · ทุกนัดของคำร้อง **ยกเว้น** `unable` (อยู่ใต้ "นัดที่ทำไม่ได้ก่อนหน้า" แล้ว) และ `draft` · บวกนัดที่การส่งผลนี้ปิด (`closed` · สถานะ `done`)
+ *     ไม่ซ้ำ id — แถวหลังปิดแทนแถวในฐาน
+ *   · `done` / `partial` / นัดที่การส่งผลนี้ปิด ⇒ `planned: false` · `date` = วันเข้าจริง ไม่มีค่อยวันนัด
+ *   · สถานะอื่น (ยกเลิก · เลื่อน · นัดไว้ · กำลังทำ) ⇒ `planned: true` · `date` = วันนัด (ไม่ใช่วันที่ยกเลิก — นัดไม่มีคอลัมน์นั้น)
+ *   `date` = `YYYY-MM-DD` หรือ `null`
+ */
+function otherVisitsOf(visits, closed) {
+  const byId = new Map();
+  let anon = 0;
+  const keyOf = (v) => cleanId(v?.id) ?? `#${(anon += 1)}`;
+  for (const v of visits) {
+    if (!v || v.status === 'unable' || v.status === 'draft') continue;
+    byId.set(keyOf(v), v);
+  }
+  if (closed) byId.set(keyOf(closed), { ...closed, status: 'done' });
+  return [...byId.values()].sort(oldestFirst).map((v) => {
+    const took = TOOK_PLACE.includes(v.status);
+    return {
+      code: v.code || null,
+      status: v.status || null,
+      date: day(took ? (v.actualDate || v.scheduledDate) : v.scheduledDate) || null,
+      planned: !took,
+    };
+  });
+}
+
 /**
  * 🔑 **อ่านอินพุตทั้งชุดของ `buildSurveyReportSnapshot`** — คืน `{ inputs, unknown: string[] }` · ไม่ throw
  *
@@ -142,12 +174,22 @@ function priorUnableOf(visits, visit) {
  * @param opts.signatureRule  กติกาลายเซ็นจริง: `'required'` | `'off'` | ไม่ส่ง = ตามสวิตช์ `SURVEY_REPORT_SIGNATURES` (`signatureRuleOn`)
  * @param opts.actor          ผู้ใช้ของคำขอนี้ (`{ id, role, department }` จากเซสชัน) — ใช้อย่างเดียว: เมื่อเขาคือผู้ส่งผลของใบที่ตอบแล้ว
  *                            สิทธิ์ส่งผลตัดสินจากเซสชันของเขา ไม่ต้องอ่านบัญชีซ้ำ (ขั้นออกเลขส่งมา — เส้นส่งผลจึงไม่มีคำสั่งอ่านเพิ่ม)
+ * @param opts.drawingMethodEnabled  ค่าของสวิตช์ประเมินจากแบบ (`true` ตรงตัว = เปิด · ค่าตั้งต้น `false`) — **ไฟล์นี้ไม่อ่านสวิตช์เอง**
+ *                            (กติกาของโมดูลสวิตช์: อ่านได้เฉพาะ route ใต้ `src/app/api/`) · ผู้เรียกส่งค่ามา แล้วอินพุตพกต่อเป็น
+ *                            `inputs.drawingMethodEnabled` — ผลเดียวของมันคือหางของบรรทัดไม่พบนัด (`SURVEY_REPORT_NO_VISIT_TAIL`)
+ *
+ * ⭐ **คีย์ของงวด S3** (มีทุกครั้ง ไม่ขึ้นกับกติกาลายเซ็น):
+ *   `drawingMethodEnabled` (boolean ตามตัวเลือก) · `otherVisits` — `null` = อ่านนัดไม่สำเร็จ (`visits` อยู่ใน `unknown` แล้ว) ·
+ *   `[]` = ใบไม่ใช่จากแบบล้วน หรือไม่มีนัดแบบนั้น · ใบจากแบบล้วน = ลิสต์ของ `otherVisitsOf` (ไม่มีคำสั่งอ่านเพิ่ม — แถวนัดชุดเดิม)
+ *   `answerPending: true` เมื่อทับผู้ส่งที่กำลังจะเขียน (`pendingAnswer` + `request`) — **ทั้งตอนกติกาลายเซ็นเปิดและปิด**: ด่าน
+ *   "ยังไม่ได้เลือกว่าต้องยืนยันหน้างานไหม" ข้ามรอบตรวจก่อนส่งด้วยคีย์นี้ (ถ้าคีย์มีแค่ตอนกติกาเปิด ใบที่มีพื้นที่จากแบบส่งผลไม่ได้เลย
+ *   ตอนกติกาปิด) · ภาพนิ่งไม่เก็บคีย์นี้
  *
  * ⭐ **กติกาลายเซ็นจริงเปิด** (PR-SIG §3.1) — อินพุตได้สี่คีย์เพิ่ม · ปิด = **ไม่มีคีย์ไหนเลย และไม่อ่านตารางลายเซ็นสักคำสั่ง**:
  *   `signatureRule: 'required'` · `signatures` `{ [userId]: null | { versionId, versionNumber, storagePath, sha256, width, height } }`
  *   ของผู้ประเมินกับผู้ส่งผล (ฉบับที่ใช้อยู่ · `null` = ยังไม่มีลายเซ็น) — **อ่านตารางอย่างเดียว ไม่แตะคลังไฟล์** (ไฟล์เป็นงานของ
  *   `prepareSurveyReportSignatures` ตอนกดส่ง/ออกเอกสาร) · อ่านไม่สำเร็จ หรือฉบับที่ใช้อยู่ไม่มีแถว = `unknown` เอ่ยชื่อ `signatures`
- *   (🔴 ไม่มีวันกลายเป็น "ยังไม่มีลายเซ็น") · `answerPending: true` เมื่อทับผู้ส่งที่กำลังจะเขียน ·
+ *   (🔴 ไม่มีวันกลายเป็น "ยังไม่มีลายเซ็น") · `answerPending` (ด้านบน — สายลายเซ็นอ่านคีย์เดียวกัน) ·
  *   `assigneeAccount` `'active' | 'disabled' | 'missing' | null` จากการอ่านบัญชีผู้ประเมินครั้งเดียวกับที่อ่านตำแหน่ง (ไม่มี query เพิ่ม)
  *   🔴 **`signerEligible` `{ assessor, approver }`** (`true` | `false` | `null` = ไม่รู้) — บัญชีของคนบนที่นั่ง "นั่งที่นั่งนั้นได้" ไหม:
  *     `assessor`  บัญชีที่ผูกกับนัด (`visit.assigneeId`) เป็นบัญชีฝ่ายบริการ (`canBeServiceAssignee`) — จากการอ่านบัญชีครั้งเดียวกับ
@@ -162,8 +204,8 @@ function priorUnableOf(visits, visit) {
  *   🔴 **ชื่อผู้ประเมินบนกระดาษ = ชื่อบนบัญชีที่ผูกกับนัด** — `visit.assigneeName` เป็นสำเนาที่ไม่มีอะไรบังคับให้ตรงกับ `assigneeId`
  *     (สองช่องนี้เขียนแยกกันได้) ⇒ เมื่อกติกาเปิดและอ่านบัญชีได้ ชื่อในอินพุตถูกแทนด้วยชื่อบนบัญชี: ลายเซ็นกับชื่อใต้ลายเซ็น
  *     เป็นของคนเดียวกันเสมอ · บัญชีไม่มีชื่อ · อ่านบัญชีไม่ได้ · นัดไม่มีชื่อ = ใช้ชื่อบนนัดตามเดิม (ข้อ "ไม่มีชื่อผู้ประเมิน" ของด่านยังทำงาน)
- *   ⭐ **ใบที่มีพื้นที่ประเมินจากแบบ** (ติดข้อกันเอกสาร) ไม่ถูกถามเรื่องลายเซ็นเลย: ไม่อ่านตารางลายเซ็น ไม่อ่านบัญชีของผู้ส่งผล
- *     ไม่แทนชื่อ — `signatures` เป็น `{}` และธงทั้งสองเป็น `null` (ฉบับร่างพิมพ์คำเดิม · `buildSurveyReportSnapshot`)
+ *   ⭐ **ใบที่มีพื้นที่ประเมินจากแบบ** ถูกถามเหมือนใบลงหน้างาน (งวด S3 §2.6): ใบผสมอ่านลายเซ็นของผู้ประเมินบนนัดกับผู้ส่งผล ·
+ *     ใบจากแบบล้วนไม่มีนัด ⇒ อ่านของผู้ส่งผลคนเดียว (ที่นั่งที่ 1 ใช้ลายเซ็นเดียวกันเมื่อ `surveyDrawingSeatSigner` บอกว่าเป็นคนเดียวกัน)
  *   ⚠️ ไม่ใช้ `loadActiveSignatureAsset` ของใบเสนอราคา: ตัวนั้นกลืน error เป็น "ไม่มี" และลากเครื่องยนต์ใบเสนอราคาเข้า GET ที่เบา
  *
  * `unknown` = ชื่อชิ้นที่อ่านไม่สำเร็จ (คีย์ของ `SURVEY_REPORT_INPUT_LABELS`) · ชุดเดียวกันอยู่ใน `inputs.unknown` ด้วย
@@ -179,6 +221,7 @@ function priorUnableOf(visits, visit) {
  */
 export async function loadSurveyReportInputs(supabase, {
   request, closedVisit = null, pendingAnswer = null, zones = null, filesByZone = null, sizes, takenAt = null, signatureRule, actor = null,
+  drawingMethodEnabled = false,
 } = {}) {
   const requestId = request?.id ?? null;
   const signRule = signatureRuleOn(signatureRule);
@@ -305,11 +348,10 @@ export async function loadSurveyReportInputs(supabase, {
     ]);
 
     /* ── กติกาลายเซ็นจริง: ผู้ประเมินบนกระดาษคือ **บัญชี** ที่ผูกกับนัด (หัวฟังก์ชัน 🔴 สองข้อ) ──────────────────
-       ⚠️ ใบที่มีพื้นที่ประเมินจากแบบไม่ถูกถามเรื่องลายเซ็น — ไม่ตั้งธง ไม่แทนชื่อ (อ่านผลวัดไม่สำเร็จ = ไม่รู้ว่าเป็นใบแบบนั้น ⇒ ถามตามปกติ) */
-    const sheetSigns = signRule && !(surveyRows && surveyMethodMix(surveyRows).drawing > 0);
+       ใบผสมเดินเหมือนใบลงหน้างาน · ใบจากแบบล้วนไม่มีนัด (`assigneeId` ว่าง) ⇒ ธงผู้ประเมินเป็น null เอง */
     let assessorEligible = null;
     let certified = visit || null;
-    if (sheetSigns && assigneeId) {
+    if (signRule && assigneeId) {
       if (assigneeUser) {
         assessorEligible = canBeServiceAssignee(seatAccount(assigneeUser));
         const onAccount = accountName(assigneeUser);
@@ -325,6 +367,8 @@ export async function loadSurveyReportInputs(supabase, {
       assessorEligible,
       // อ่านนัดไม่สำเร็จ = ไม่รู้ว่ามีนัดที่ทำไม่ได้ไหม (`null`) — ต่างจาก "ไม่มี" (`[]`) · ใบงานโต๊ะยังเก็บนัดที่ทำไม่ได้ครบทุกใบ
       priorUnable: rows ? priorUnableOf(rows, visit) : null,
+      // งวด S3 — นัดของใบจากแบบล้วนที่เอกสารไม่รับรอง (ผู้เรียกส่งนัดที่การส่งผลนี้ปิดมาด้วย แม้ตัวโหลดทิ้งมันจากการรับรอง)
+      otherVisits: !rows ? null : (desk ? otherVisitsOf(rows, closedVisit) : []),
       visitClosedBySend: closedBySend,
       helpers,
       assigneeRoleLabel,
@@ -336,12 +380,10 @@ export async function loadSurveyReportInputs(supabase, {
      + บัญชีของผู้ส่งผลของใบที่ตอบไปแล้ว (ตัดสินธง `signerEligible.approver` — หัวฟังก์ชัน) · คืน `{ signatures, approver }`
      🔴 error ของคำสั่งไหนก็ตาม หรือรากชี้ฉบับที่ไม่มีแถว = ทั้งชิ้นอ่านไม่สำเร็จ (`unknown`) — ห้ามตกไปเป็น `null` ("ยังไม่มีลายเซ็น")
         ไม่งั้นฐานสะดุดครั้งเดียวตีกลับการส่งผลด้วยประโยคที่ชี้ให้คนไปเพิ่มลายเซ็นที่มีอยู่แล้ว
-     ⭐ **ใบที่มีพื้นที่ประเมินจากแบบ = ไม่อ่านอะไรเลย** — ใบแบบนั้นไม่ถูกถามเรื่องลายเซ็น (ติดข้อกันเอกสาร) ⇒ ตารางลายเซ็นล่มต้องไม่ทำให้
-        ฉบับร่างของมันตอบ "อ่านลายเซ็นของผู้ลงนามไม่สำเร็จ" · อ่านผลวัดไม่สำเร็จ (`null`) = ไม่รู้ว่าเป็นใบแบบนั้น ⇒ อ่านตามปกติ
+     ⭐ ใบที่มีพื้นที่ประเมินจากแบบอ่านเหมือนใบลงหน้างาน (งวด S3) — ใบจากแบบล้วนไม่มีนัด ⇒ ถามแค่รหัสของผู้ส่งผล
      ⚠️ ลิสต์ id ยาวไม่เกินสอง (ผู้ประเมิน · ผู้ส่งผล) — เพดานของแต่ละคำสั่ง = จำนวน id ที่ถาม */
   const signChain = signRule ? (async () => {
-    const [{ visit }, surveyRows] = await Promise.all([visitChain, zoneRows]);
-    if (surveyRows && surveyMethodMix(surveyRows).drawing > 0) return { signatures: {}, approver: null };
+    const { visit } = await visitChain;
     const assigneeId = cleanId(visit?.assigneeId);
     const answererId = cleanId(answered?.answeredById);
     /* ผู้ส่งที่กำลังจะเขียน = คนที่กดส่งผลอยู่ตอนนี้ — เส้นส่งผลตรวจ `canSendSurveyResult` ของเขาก่อนอ่านอะไรทั้งนั้น */
@@ -448,6 +490,7 @@ export async function loadSurveyReportInputs(supabase, {
     assigneeRoleLabel: visitPart.assigneeRoleLabel,
     helpers: visitPart.helpers,
     priorUnable: visitPart.priorUnable,
+    otherVisits: visitPart.otherVisits,
     zones: zonePart.zones,
     zoneRegistry: zonePart.zoneRegistry,
     filesByZone: zonePart.filesByZone,
@@ -462,17 +505,22 @@ export async function loadSurveyReportInputs(supabase, {
     // `documentStandardToForm` คืนวันที่มีผลเป็น พ.ศ. แล้ว ("29/09/2569")
     form: form ? { code: form.code, revision: form.revision, effectiveDate: form.effectiveDate } : null,
     unknown,
-    /* กติกาลายเซ็นจริง — คีย์ทั้งชุดมีเฉพาะตอนเปิด (ปิด = อินพุตเท่าเดิมทุกคีย์ · ภาพนิ่งไม่มี `signatures`) */
+    // งวด S3 — ค่าสวิตช์ที่ผู้เรียกส่งมา (ไฟล์นี้ไม่อ่านสวิตช์) · รอบตรวจก่อนส่ง (ทั้งกติกาลายเซ็นเปิดและปิด)
+    drawingMethodEnabled: drawingMethodEnabled === true,
+    ...(pendingAnswer && request ? { answerPending: true } : {}),
+    /* กติกาลายเซ็นจริง — คีย์ทั้งชุดมีเฉพาะตอนเปิด (ปิด = ไม่มีคีย์ลายเซ็นสักตัว · ภาพนิ่งไม่มี `signatures`) */
     ...(signRule ? {
       signatureRule: SURVEY_SIGN_RULE,
       signatures: signPart?.signatures ?? null,
-      ...(pendingAnswer && request ? { answerPending: true } : {}),
       assigneeAccount,
       signerEligible: { assessor: visitPart.assessorEligible, approver: signPart?.approver ?? null },
     } : {}),
   };
   return { inputs, unknown };
 }
+
+/* คำตอบ "ต้องยืนยันหน้างานไหม" ที่รอบตรวจรับจากกล่องส่งผล — ค่าอื่นทุกค่า = ไม่ได้ให้มา */
+const SEND_CONFIRM_CHOICES = Object.freeze(['needed', 'not_needed']);
 
 /* ฉบับที่ต้องจัดหน้าได้ทั้งคู่ก่อนส่งผล — ป้ายนำหน้าเหตุ: เลขหน้าของสองฉบับไม่ตรงกัน (ฉบับภายในมีแผงกับภาคผนวก) */
 const VERSIONS = [['customer', 'ฉบับลูกค้า'], ['internal', 'ฉบับภายใน']];
@@ -502,25 +550,34 @@ const VERSIONS = [['customer', 'ฉบับลูกค้า'], ['internal', '
  * - `warnings` = `surveyReportSendWarnings` ของฉบับลูกค้าจากภาพนิ่งโหมด `draft` (ของขาดไม่ล้ม) — จอกางให้หัวหน้าอ่านแล้วส่งกลับ
  *    มาเป็น `seenWarnings` · server ตีกลับเฉพาะเมื่อเจอบรรทัดที่จอไม่ได้ส่งมา
  * - `unknown`  = ชิ้นที่อ่านไม่สำเร็จ — ไม่ว่าง = ผู้เรียกข้ามการตีกลับ (ปัญหาของระบบไม่ขวางการส่งผล)
- * - `signers`  = `surveyReportSignerVersions(inputs)` — ลายเซ็นฉบับที่จะพิมพ์ คนละแถว (กติกาลายเซ็นจริงเปิด + ทุกที่นั่งมีลายเซ็น +
- *    ใบไม่ติดข้อกันของใบจากแบบ) · ไม่งั้น `[]` · เส้นส่งผลเอาไปเตรียมไฟล์ลายเซ็น **ก่อนเขียน** แล้วส่งต่อให้ขั้นออกเลข
+ * - `signers`  = `surveyReportSignerVersions(inputs)` — ลายเซ็นฉบับที่จะพิมพ์ คนละแถว (กติกาลายเซ็นจริงเปิด + ทุกที่นั่งมีลายเซ็น ·
+ *    ใบจากแบบล้วนที่ผู้ส่งผลเป็นผู้ประเมินจากแบบคนเดียว = แถวเดียวสองที่นั่ง) · ไม่งั้น `[]` · เส้นส่งผลเอาไปเตรียมไฟล์ลายเซ็น **ก่อนเขียน** แล้วส่งต่อให้ขั้นออกเลข
  *    🔴 แถวพก `storagePath` — ผู้เรียกที่ประกอบ payload ต้องคัดเฉพาะ `seats` กับ `name` (`documentChecks` คัดคีย์ทีละตัวอยู่แล้ว)
  *    · บรรทัด "ยังไม่มีลายเซ็น" อยู่ใน `blockers` (ชนิด `content` + `sign: true` + `userId` · `surveyReportSignatureIssues`)
  * @param opts.signatureRule  ส่งต่อให้ตัวโหลด (`'required'` | `'off'` | ไม่ส่ง = ตามสวิตช์)
+ * @param opts.drawingMethodEnabled  ค่าสวิตช์ประเมินจากแบบ ส่งต่อให้ตัวโหลด (ค่าตั้งต้น `false` · ไฟล์นี้ไม่อ่านสวิตช์เอง)
+ * @param opts.surveyConfirm  คำตอบ "ต้องยืนยันหน้างานไหม" ที่หัวหน้าเลือกในกล่องส่งผล (`'needed'` | `'not_needed'` · ค่าอื่น = ไม่ได้ให้มา)
+ *                          ใบที่ยังไม่ส่ง: ใส่ลงผู้ส่งที่กำลังจะเขียน ⇒ ภาพนิ่งของรอบตรวจและแผนหน้ามีกล่องหมายเหตุจำนวนบรรทัดจริง
+ *                          (ตัวตรวจหน้าล้นวัดกระดาษที่จะออกจริง) · การ์ดของใบไม่ส่งมา (หัวหน้ายังไม่เลือก — แผนนับกล่องบรรทัดเดียว)
+ *    ⭐ บรรทัดไม่พบนัดถูกแทนด้วยเหตุของ `surveySendVisitStep` โดยเทียบ "ขึ้นต้นด้วย" `SURVEY_REPORT_NO_VISIT` (บรรทัดอาจมีหางของงวด S3)
  * ⚠️ ตัวโหลดไม่ throw · ตรรกะล้วนข้างล่าง throw ได้เมื่อข้อมูลผิดรูปจริง ๆ — ผู้เรียกห่อ try/catch แล้วไม่ตีกลับ (สเปก S5)
  */
 export async function surveyReportPrecheck(supabase, {
   request, user = null, zones = null, filesByZone = null, sizes, open = null, today = null, nowIso = null, signatureRule,
+  drawingMethodEnabled = false, surveyConfirm = null,
 } = {}) {
   const needsVisit = Array.isArray(zones) ? surveyNeedsVisit(zones) : true;
   const step = surveySendVisitStep(open, { today, needsVisit });
   const closing = step.action === 'close' ? { ...open, ...step.patch } : null;
   const pendingAnswer = request && !request.answeredAt
-    ? { answeredAt: nowIso, answeredById: user?.id ?? null, answeredByName: user?.name ?? null }
+    ? {
+      answeredAt: nowIso, answeredById: user?.id ?? null, answeredByName: user?.name ?? null,
+      ...(SEND_CONFIRM_CHOICES.includes(surveyConfirm) ? { surveyConfirm } : {}),
+    }
     : null;
 
   const { inputs, unknown } = await loadSurveyReportInputs(supabase, {
-    request, closedVisit: closing, pendingAnswer, zones, filesByZone, sizes, takenAt: nowIso, signatureRule,
+    request, closedVisit: closing, pendingAnswer, zones, filesByZone, sizes, takenAt: nowIso, signatureRule, drawingMethodEnabled,
     // คนดู/คนกดที่เป็นผู้ส่งผลของใบที่ตอบแล้ว = สิทธิ์ส่งผลจากเซสชันของเขา (ไม่อ่านบัญชีซ้ำทุกครั้งที่เขาเปิดใบของตัวเอง)
     actor: user,
   });
@@ -529,7 +586,7 @@ export async function surveyReportPrecheck(supabase, {
   if (step.action === 'block') {
     blockers = [
       { kind: 'content', text: step.error },
-      ...blockers.filter((issue) => issue.text !== SURVEY_REPORT_NO_VISIT),
+      ...blockers.filter((issue) => !String(issue.text ?? '').startsWith(SURVEY_REPORT_NO_VISIT)),
     ];
   }
 

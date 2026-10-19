@@ -21,6 +21,7 @@ import { CHART_LINE_TYPE, CHART_CATEGORICAL } from "@/lib/chartTheme";
 import { brandLabel } from "@/lib/master/brands";
 import { productIdentity } from "@/lib/master/productIdentity";
 import { NA, naText } from "@/lib/format";
+import { PENDING_APPROVAL_HREF } from "@/lib/master/pendingApprovalLinks";
 
 const teamsOf = (c) => (c?.teams?.length ? c.teams : c?.team ? [c.team] : []);
 
@@ -253,8 +254,9 @@ export default function DatabaseOverview() {
         <div className="kpi-grid" style={{ marginBottom: 0 }}>
           <KpiCard label="สินค้าทั้งหมด" value={productsFailed ? NA : pStats.total} hint={productsFailed ? "ดึงข้อมูลไม่ได้ — ดูข้อความด้านบน" : undefined} icon={Package} tone="accent" onClick={() => router.push("/database/products")} />
           <KpiCard label="ลูกค้าทั้งหมด" value={customersFailed ? NA : cStats.total} hint={customersFailed ? "ดึงข้อมูลไม่ได้ — ดูข้อความด้านบน" : undefined} icon={Building2} tone="info" onClick={() => router.push("/database/customers")} />
-          <KpiCard label="สินค้ารออนุมัติ" value={productsFailed ? NA : pStats.pending} hint={productsFailed ? "ดึงข้อมูลไม่ได้ — ดูข้อความด้านบน" : undefined} icon={Hourglass} tone="warning" onClick={() => router.push("/database/products")} />
-          <KpiCard label="ลูกค้ารออนุมัติ" value={customersFailed ? NA : cStats.pending} hint={customersFailed ? "ดึงข้อมูลไม่ได้ — ดูข้อความด้านบน" : undefined} icon={Hourglass} tone="danger" onClick={() => router.push("/database/customers")} />
+          {/* 🐞 สองใบนี้เคยเปิดทะเบียนทั้งกอง (H3) — "รออนุมัติ 3" ต้องเปิดเจอ 3 ใบ ⇒ ลิงก์ชุดเดียวกับป้ายบนเมนู */}
+          <KpiCard label="สินค้ารออนุมัติ" value={productsFailed ? NA : pStats.pending} hint={productsFailed ? "ดึงข้อมูลไม่ได้ — ดูข้อความด้านบน" : undefined} icon={Hourglass} tone="warning" onClick={() => router.push(PENDING_APPROVAL_HREF.products)} />
+          <KpiCard label="ลูกค้ารออนุมัติ" value={customersFailed ? NA : cStats.pending} hint={customersFailed ? "ดึงข้อมูลไม่ได้ — ดูข้อความด้านบน" : undefined} icon={Hourglass} tone="danger" onClick={() => router.push(PENDING_APPROVAL_HREF.customers)} />
         </div>
 
         {/* Charts Section 1 */}

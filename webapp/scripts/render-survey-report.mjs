@@ -11,6 +11,9 @@
  *   ② **สอบเทียบตัวจัดหน้า** — แผนหน้า (`surveyReportLayout.js`) ประเมินความสูงด้วยตัวเลข · ที่นี่วัดของจริงใน Chrome
  *      แล้วพิมพ์ตารางเทียบ (ขอบล่างตามแผน vs ที่วัดได้ · ตำแหน่งตารางหน้า 1 · ความสูงกล่องผัง) — ต่างกัน = แก้ค่าคงที่
  *   ③ `--assert` ล็อกผลของ fixture จริง: ลูกค้า 4 หน้า · ภายใน 6 หน้า · คอลัมน์ "หน้า" = 2, 3 · ยอดรวม · ไม่มีหน้าไหนล้น
+ *      (งวด S3: ตารางผลที่ล็อกรายชุด `SURVEY_GOLDEN` — `onsite` ข้างบน + ไม่มีแถว "วิธีประเมิน" · `mixed` · `drawing`)
+ *      · จุดอ้างอิงของงวด S3 เฉพาะกระดาษที่มีพื้นที่จากแบบ: กล่องหมายเหตุหน้า 1 (`notice`) · หัวพื้นที่ที่มีป้าย (`zhead`) —
+ *        ต้องมีเมื่อแผนมี ต้องไม่มีเมื่อแผนไม่มี (หน้าลงหน้างานไม่ถูกบังคับให้มี)
  *      · สีชื่อเอกสารตามฉบับ (มติเจ้าของ 08/10/2026): ลูกค้า = สีใบเสนอราคา #ad5d43 · ภายใน = สีใบสั่งขาย #1e6091
  *        — ตรวจทั้งค่าที่เปลือกประกาศใน HTML และสีที่ Chrome คำนวณได้จริงบนชื่อเอกสารหน้า 1 (ทุกชุดอินพุต)
  *      และล้มเมื่อ (ทุกชุดอินพุต): จุดอ้างอิงของแผน (ตารางบน · ความสูงผัง · การรับรอง · ลงนาม) ต่างจากที่วัดเกิน 8px ·
@@ -41,8 +44,14 @@
  *     --pipeline --out ~/ss-team/mockups/survey-report-doc/render-pr2 --assert
  *
  * ตัวเลือกอื่น:
- *   --synthetic          ใช้แฝดสังเคราะห์ของ fixture (ไม่มีชื่อลูกค้าจริง) แทน `--fixture` · รูปเป็นกล่องเทา
+ *   --synthetic [ชุด]    ใช้ fixture สังเคราะห์ (ไม่มีชื่อลูกค้าจริง) แทน `--fixture` · รูปเป็นกล่องเทา
  *                        (ใน `--pipeline` = JPEG สีพื้นที่สร้างด้วย sharp — ไฟล์ละสี sha จึงไม่ซ้ำ)
+ *                        ชุด: ไม่ใส่ / `onsite` = แฝดของ RQ-AS-26090186 · `mixed` = ใบผสม RQ-AS-26100352 · `drawing` = ใบประเมินจากแบบ
+ *                        ทั้งใบ RQ-AS-26100345 (งวด S3 · BRIEF §B) — `--assert` ล็อกผลของแต่ละชุดตามตาราง `SURVEY_GOLDEN`
+ *   --drawing-method on|off  ค่าสวิตช์ประเมินจากแบบที่ส่งให้ตัวโหลด/ขั้นออกเลขตรง ๆ (harness ไม่อ่านสวิตช์) — ไม่ใส่ = `on` เมื่อใบมี
+ *                        พื้นที่จากแบบ (แถวแบบนั้นเกิดได้เฉพาะตอนสวิตช์เปิด) · ผลเดียวของมันคือหางของบรรทัด "ไม่พบนัด"
+ *   --case <ชื่อ>        (`--pipeline`) กรณีของลายเซ็นที่มี `pipeline: true` (`sign-drawing` · `sign-drawing-other` · `sign-mixed`)
+ *                        — เดินสองขั้นของจริงด้วยอินพุตของกรณีนั้น (ยามลายเซ็นของ production ตรวจกระดาษที่ตรึงในไปป์ไลน์)
  *   --stress             ชุดสุดขอบทุกกรณีของ `surveyStressCases()` (12 พื้นที่ · รูปเยอะ/แนวตั้ง · หมายเหตุยาว · ประวัติ 14 แถว ·
  *                        ขนาดรวมสาม/สี่ขนาด · หน้า 1 ชิดเพดาน · ตีกลับ 10 × 300 · คำร้อง 4,000 ตัว · ไม่มีผัง) — กรณีแรกลง `--out`
  *                        กรณีที่เหลือลง `--out/cases/<ชื่อ>` · `--case <ชื่อ>` = กรณีเดียว (ใช้กับ `--pipeline` ไม่ได้)
@@ -69,6 +78,7 @@ import { pathToFileURL } from 'node:url';
 import { pdfFonts, pdfPageCount } from '../src/lib/documents/pdfInspect.js';
 import { listAttachments } from '../src/lib/master/attachments.js';
 import { ROLE_LABELS } from '../src/lib/permissions.js';
+import { surveyMethodMix } from '../src/lib/service/surveyMethod.js';
 import { renderSurveyReportHTML, resolveImageTokens, surveyReportImageShas } from '../src/lib/service/surveyReportDocument.js';
 import {
   prepareSurveyReportImages, prepareSurveyReportSignatures, surveyReportImagePath,
@@ -76,20 +86,21 @@ import {
 import { SURVEY_REPORT_STANDARD_KEY, loadSurveyReportInputs } from '../src/lib/service/surveyReportInputs.js';
 import { issueSurveyReport } from '../src/lib/service/surveyReportIssue.js';
 import {
-  SURVEY_REPORT_PX, paginateSurveyReport, surveyReportOverflowErrors,
+  SURVEY_REPORT_PX, paginateSurveyReport, surveyReportMixLines, surveyReportOverflowErrors,
 } from '../src/lib/service/surveyReportLayout.js';
 import {
   SURVEY_REPORT_VERSIONS, ensureSurveyReportPaper, measureSurveyReportPaper, surveyReportPdfPath, surveyReportPrintSession,
 } from '../src/lib/service/surveyReportPaper.js';
 import { SURVEY_REPORT_BUCKET, loadSurveyReports } from '../src/lib/service/surveyReportRows.js';
 import { makeSignaturePng, signatureTables, withSignatureStorage } from '../src/lib/service/surveyReportSignWorld.mjs';
-import { surveyReportSignerVersions } from '../src/lib/service/surveyReportSigners.js';
+import { surveyDrawingSeatSigner, surveyReportSignerVersions } from '../src/lib/service/surveyReportSigners.js';
 import { buildSurveyReportSnapshot, surveyReportImageFiles } from '../src/lib/service/surveyReportSnapshot.js';
 import {
   SURVEY_REPORT_FIT_MARGIN, surveyReportCustomerHtmlIssues, surveyReportSignatureHtmlIssues, surveyReportState,
 } from '../src/lib/service/surveyReportState.js';
 import {
-  signedSurveyInputs, stressSurveyInputs, surveyReportInputsFromFixture, surveySignCases, surveyStressCases, syntheticSurveyFixture,
+  drawingSurveyFixture, mixedSurveyFixture, signedSurveyInputs, stressSurveyInputs, surveyReportInputsFromFixture, surveySignCases,
+  surveyStressCases, syntheticSurveyFixture,
 } from '../src/lib/service/surveyReportTestKit.mjs';
 import { surveyReportSendWarnings, surveyReportView } from '../src/lib/service/surveyReportView.js';
 import { loadSurveyZones } from '../src/lib/service/surveyRepo.js';
@@ -111,8 +122,37 @@ export function parseArgs(argv) {
 
 const expand = (p) => resolve(String(p).replace(/^~(?=\/|$)/, homedir()));
 
-const USAGE = 'ใช้: render-survey-report.mjs (--fixture <json> [--photos <dir>] | --synthetic | --stress [--case <ชื่อ>]) --out <dir> '
-  + '[--doc-no SU-…] [--issued YYYY-MM-DD] [--assert] [--scale 2] [--no-spot-links] [--no-signatures] [--pipeline [--via send|issue_only]]';
+const USAGE = 'ใช้: render-survey-report.mjs (--fixture <json> [--photos <dir>] | --synthetic [onsite|mixed|drawing] | --stress [--case <ชื่อ>]) '
+  + '--out <dir> [--doc-no SU-…] [--issued YYYY-MM-DD] [--assert] [--scale 2] [--no-spot-links] [--no-signatures] '
+  + '[--drawing-method on|off] [--pipeline [--via send|issue_only] [--case <กรณีลายเซ็น>]]';
+
+/* fixture สังเคราะห์ของ `--synthetic <ชุด>` — ชื่อชุดคือแถวของตาราง `SURVEY_GOLDEN` ด้วย (ไม่ใส่ชื่อ = `onsite`) */
+const SYNTHETIC_FIXTURES = Object.freeze({
+  onsite: syntheticSurveyFixture, mixed: mixedSurveyFixture, drawing: drawingSurveyFixture,
+});
+
+/** `--synthetic` → `{ name, fixture() }` · ไม่ใส่ค่า = `onsite` (แฝดของวันนี้) · ชื่อที่ไม่รู้จัก = โยนพร้อมรายชื่อ */
+export function syntheticOf(value) {
+  const name = value === true || value === undefined ? 'onsite' : String(value);
+  if (!Object.hasOwn(SYNTHETIC_FIXTURES, name)) {
+    throw new Error(`--synthetic ไม่รู้จักชุด "${name}" — มี: ${Object.keys(SYNTHETIC_FIXTURES).join(' · ')}`);
+  }
+  return { name, fixture: SYNTHETIC_FIXTURES[name] };
+}
+
+/* ป้ายของรอบ (ชื่อโฟลเดอร์ในรายงาน) — ชุด `onsite` คงป้ายเดิม "synthetic" */
+const syntheticLabel = (name) => (name === 'onsite' ? 'synthetic' : `synthetic-${name}`);
+
+/**
+ * ค่าสวิตช์ประเมินจากแบบของรอบ — harness **ไม่อ่านสวิตช์** (`SURVEY_DRAWING_METHOD`) ส่งค่าตรงให้ตัวโหลด/ขั้นออกเลข
+ * `--drawing-method on|off` ชนะเสมอ · ไม่ใส่ = เปิดเมื่อใบมีพื้นที่จากแบบ (แถวแบบนั้นเกิดได้เฉพาะตอนสวิตช์เปิด — สเปก S3 §4)
+ */
+export function drawingMethodOf(args, zones) {
+  if (args['drawing-method'] === 'on') return true;
+  if (args['drawing-method'] === 'off') return false;
+  if (args['drawing-method'] !== undefined) throw new Error(`--drawing-method ต้องเป็น on หรือ off — ได้ ${args['drawing-method']}`);
+  return surveyMethodMix(zones).drawing > 0;
+}
 
 /* ── รูป ──────────────────────────────────────────────────────────────── */
 
@@ -386,8 +426,26 @@ function report(result) {
     };
     check('ตารางบน', m.marks?.table?.top, page.tableTop);
     check('ผัง', m.marks?.plan?.height, page.planHeight);
-    check('รับรอง', m.marks?.signoff?.height, m.marks?.signoff ? SURVEY_REPORT_PX.signoff.height : undefined);
-    check('ลงนาม', m.marks?.signs?.height, m.marks?.signs ? SURVEY_REPORT_PX.appendix.signs : undefined);
+    // การรับรองผล: ที่นั่งผู้ประเมินจากแบบหลายชื่อสูงกว่าเดิม — แผนพก `height` ของหน้านั้นเอง (งวด S3) · ไม่พก = ค่าคงที่เดิม
+    check('รับรอง', m.marks?.signoff?.height, m.marks?.signoff ? (page.height ?? SURVEY_REPORT_PX.signoff.height) : undefined);
+    // ภาคผนวก จ: ชื่อผู้ประเมินจากแบบหลายชื่อตกหลายบรรทัด — แผนพก `height` ที่บล็อก `signs` เอง (งวด S3) · ไม่พก = ค่าคงที่เดิม
+    const signsPlan = (page.blocks || []).find((block) => block?.type === 'signs')?.height ?? SURVEY_REPORT_PX.appendix.signs;
+    check('ลงนาม', m.marks?.signs?.height, m.marks?.signs ? signsPlan : undefined);
+    /* งวด S3 — สองจุดอ้างอิงที่มี **เฉพาะ** บนกระดาษของใบที่มีพื้นที่จากแบบ (ใบลงหน้างานได้ markup เท่า main ไม่มี data-m ใหม่):
+       `notice` กล่องหมายเหตุของหน้า 1 (แผน = padding + บรรทัดละ `noticeLine` · เว้นบนเป็น margin ไม่อยู่ในกล่อง)
+       `zhead`  หัวพื้นที่ที่มีป้าย "ประเมินจากแบบ · …" ทุกหน้าของพื้นที่จากแบบ (แผน = `page.headHeight` ที่ตัวจัดหน้าพกบนทุกหน้า
+                ของพื้นที่ที่มีป้าย — ชื่อหลายบรรทัดด้วย (ชุด `drawing-longname`) · ไม่พก = หัวบรรทัดเดียว + ป้าย ค่าสำรองของแผนรุ่นเก่า)
+       ต้องมีเมื่อแผนมี และต้องไม่มีเมื่อแผนไม่มี — หน้าลงหน้างานไม่ถูกบังคับให้มี */
+    const noticePlan = Array.isArray(page.notice)
+      ? SURVEY_REPORT_PX.summary.noticePad + page.notice.length * SURVEY_REPORT_PX.summary.noticeLine : undefined;
+    const tagged = (page.kind === 'zone' || page.kind === 'zoneCont') && Boolean(result.view?.zones?.[page.zoneIndex]?.tag);
+    const zheadPlan = tagged ? (page.headHeight ?? SURVEY_REPORT_PX.zone.head + SURVEY_REPORT_PX.zone.tagLine) : undefined;
+    check('หมายเหตุ', m.marks?.notice?.height, noticePlan);
+    check('หัวพื้นที่', m.marks?.zhead?.height, zheadPlan);
+    for (const [label, mark, planned] of [['กล่องหมายเหตุ (notice)', m.marks?.notice, noticePlan], ['หัวพื้นที่จากแบบ (zhead)', m.marks?.zhead, zheadPlan]]) {
+      if (planned !== undefined && !mark) issues.push(`${version} หน้า ${page.no} (${page.kind}) ต้องมีจุดอ้างอิง${label} — ไม่พบบนกระดาษ`);
+      if (planned === undefined && mark) issues.push(`${version} หน้า ${page.no} (${page.kind}) มีจุดอ้างอิง${label} ที่แผนไม่ได้คิด`);
+    }
     console.log(`  ${pad(page.no, 5)}${pad(page.kind, 13)}${pad(page.bottom, 7)}${pad(num(m.body), 8)}${pad(delta === null ? '—' : num(delta), 7)}${pad(num(m.rule), 9)}${pad(num(m.last), 9)}${pad(num(room), 7)}${marks.join(' · ')}`);
     if (room === null || room < FIT_MARGIN) issues.push(`${version} หน้า ${page.no} (${page.kind}) ล้นขอบล่าง — เหลือ ${num(room)}px ใต้ ${m.lastBlock}`);
     if (m.body !== undefined && m.body > page.limit + 0.5) issues.push(`${version} หน้า ${page.no} (${page.kind}) เนื้อหาจบที่ ${num(m.body)} เกินงบของแผน ${page.limit}`);
@@ -408,37 +466,131 @@ function report(result) {
   return { rows, issues };
 }
 
+/* กล่องหมายเหตุของใบที่มีพื้นที่จากแบบ (สองฉบับ) — บรรทัดแรกขึ้นต้นด้วยข้อความนี้ · บรรทัดที่สองมีเมื่อเลือก "ต้องยืนยันหน้างาน" */
+const NOTICE_HEAD = 'พื้นที่ที่ระบุ “ประเมินจากแบบ”';
+const NOTICE_TAIL = '· ขนาดและจำนวนอาจปรับเมื่อวัดหน้างาน';
+
 /**
- * ผลของ fixture จริง RQ-AS-26090186 (และแฝดสังเคราะห์ ซึ่งตัวเลขเท่ากันทุกตัว) — มติเจ้าของ + กระดานที่อนุมัติ
- * @param results `[{ version, view, layout, html, fit? }]` — `fit` ไม่มี (ไปป์ไลน์: ผลวัดอยู่ในขั้นกระดาษ) = ข้ามข้อของตารางหน้า 1
+ * 🔑 **ผลที่ล็อกของแต่ละ fixture** (`--assert` · สเปก S3 §3 กลุ่ม C) — มติเจ้าของ + กระดานที่อนุมัติ · หนึ่งแถวต่อ fixture
+ *   `onsite`   ของจริง RQ-AS-26090186 และแฝดสังเคราะห์ (ตัวเลขเท่ากันทุกตัว) — ข้อเดิมทุกข้อ + ไม่มีแถว "วิธีประเมิน" ทั้งสองฉบับ
+ *              (มติ O3 = ข: กระดาษของใบลงหน้างานไม่เปลี่ยนสักตัวอักษร — ตัวพิสูจน์จริงคือการเทียบกับกระดาษของ main §5.3 ขั้น 1)
+ *   `mixed`    Case B — กระดาน C4/C5 · `drawing` Case A — กระดาน C1–C3
+ *   ช่อง `null` = ไม่ล็อกข้อนั้นสำหรับ fixture นั้น
+ * ⚠️ จำนวนหน้าฉบับภายในของ `mixed` = 7 ตามกระดาน C5 · ของ `drawing` = **8** (มติเจ้าของ 19/10/2026 — สเปกเขียน 7 แต่ตารางหน้า 1
+ *    ของฉบับภายในต่อหน้า 2 (`summaryCont`) พื้นที่จึงอยู่หน้า 3, 4, 5 · ฉบับลูกค้ายัง 2, 3, 4) — `zonePage` รายฉบับเมื่อสองฉบับต่างกัน ·
+ *    harness ได้ค่าอื่น = หยุดแล้วรายงาน **ห้ามแก้ตัวเลขให้ผ่าน**
+ * ⚠️ ลำดับขนาดในแถวรวมเป็นของทะเบียนขนาด (`sortPackageSizes` วาง XS ก่อน) — กระดาน C1 วาด "SM 1 · ST 1 / XS 1" (ค่าตั้งต้นที่เจ้าของ
+ *    ไม่ได้ถูกถาม O2) · ห้ามแก้ `sortPackageSizes` ให้ตรงกระดาน
  */
-export function goldenFailures(results, docNo) {
+export const SURVEY_GOLDEN = Object.freeze({
+  onsite: Object.freeze({
+    pages: { customer: 4, internal: 6 }, kinds: { customer: null, internal: 'summary,zone,zone,signoff,appendix,appendix' },
+    zonePage: [2, 3], sqm: '173.31', cbm: '949.75', sizeMix: 'SM 1 · ST 1', mixLines: null, qty: null,
+    timeText: '12:00 น. (ตามนัด)', surveyDate: null, boxDate: null,
+    methodText: null, boxLines: null, notice: false, drawingZones: [],
+  }),
+  mixed: Object.freeze({
+    pages: { customer: 5, internal: 7 }, kinds: { customer: 'summary,zone,zone,zone,signoff', internal: null },
+    zonePage: [2, 3, 4], sqm: '273', cbm: '819', sizeMix: 'SM 2 · ST 1', mixLines: ['SM 2 · ST 1'], qty: '3',
+    timeText: null, surveyDate: '13/10/2026', boxDate: null,
+    methodText: 'ลงหน้างาน 2 พื้นที่ · ประเมินจากแบบ 1 พื้นที่',
+    boxLines: ['ลงหน้างาน 2 พื้นที่ ·', 'ประเมินจากแบบ 1 พื้นที่'], // ตัวคั่นจบบรรทัดบน (V17)
+    notice: true, drawingZones: [2],
+  }),
+  drawing: Object.freeze({
+    pages: { customer: 5, internal: 8 },
+    kinds: { customer: 'summary,zone,zone,zone,signoff', internal: 'summary,summaryCont,zone,zone,zone,signoff,appendix,appendix' },
+    zonePage: { customer: [2, 3, 4], internal: [3, 4, 5] }, sqm: '174', cbm: '642', sizeMix: 'XS 1 · SM 1 · ST 1', mixLines: ['XS 1 · SM 1 ·', 'ST 1'], qty: '3',
+    timeText: '—', surveyDate: '09/10/2026', boxDate: 'ศ. 09/10/2026',
+    methodText: 'ประเมินจากแบบ', boxLines: ['ประเมินจากแบบ'], notice: true, drawingZones: [0, 1, 2],
+  }),
+});
+
+/* แผ่นที่ i ของ HTML (นับจาก 0 ตามลำดับหน้าของแผน) — ข้อความระหว่าง `<article class="sheet` ตัวนั้นถึงตัวถัดไป */
+const sheetsOf = (html) => String(html ?? '').split('<article class="sheet').slice(1);
+const WIDE_MARKS = ['ภาพกว้าง<span> / WIDE PHOTOS</span>', 'ไม่มีภาพกว้าง'];
+
+/**
+ * ข้อที่ไม่ผ่านของ fixture ทองคำ (`SURVEY_GOLDEN[fixture]`) — `[]` = ผ่าน
+ * @param results `[{ version, view, layout, html, fit? }]` — `fit` ไม่มี (ไปป์ไลน์: ผลวัดอยู่ในขั้นกระดาษ) = ข้ามข้อของตารางหน้า 1
+ * @param docNo   เลขที่ที่หัววิ่งต้องพิมพ์
+ * @param fixture แถวของตาราง (ค่าตั้งต้น `onsite` — ผู้เรียกเดิมทุกตัว)
+ */
+export function goldenFailures(results, docNo, fixture = 'onsite') {
+  const g = SURVEY_GOLDEN[fixture];
+  if (!g) throw new Error(`ไม่มีผลที่ล็อกของ fixture "${fixture}" — มี: ${Object.keys(SURVEY_GOLDEN).join(' · ')}`);
   const failures = [];
   const expect = (ok, text) => { if (!ok) failures.push(text); };
-  const customer = results.find((r) => r.version === 'customer');
-  const internal = results.find((r) => r.version === 'internal');
-  expect(customer.layout.pageCount === 4, `ฉบับลูกค้าต้อง 4 หน้า — ได้ ${customer.layout.pageCount}`);
-  expect(internal.layout.pageCount === 6, `ฉบับภายในต้อง 6 หน้า — ได้ ${internal.layout.pageCount}`);
-  expect(internal.layout.pages.map((p) => p.kind).join(',') === 'summary,zone,zone,signoff,appendix,appendix',
-    `ลำดับหน้าฉบับภายในผิด — ${internal.layout.pages.map((p) => p.kind).join(',')}`);
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const kindsOf = (r) => r.layout.pages.map((p) => p.kind).join(',');
   for (const r of results) {
-    expect(JSON.stringify(Object.values(r.layout.zonePage)) === '[2,3]', `${r.version}: คอลัมน์ "หน้า" ต้องเป็น 2, 3 — ได้ ${JSON.stringify(r.layout.zonePage)}`);
-    expect(r.view.table.total.sqm === '173.31', `${r.version}: รวม ตร.ม. ต้อง 173.31 — ได้ ${r.view.table.total.sqm}`);
-    expect(r.view.table.total.cbm === '949.75', `${r.version}: รวม ลบ.ม. ต้อง 949.75 — ได้ ${r.view.table.total.cbm}`);
-    expect(r.view.table.total.sizeMix === 'SM 1 · ST 1', `${r.version}: ขนาดรวมต้อง "SM 1 · ST 1" — ได้ ${r.view.table.total.sizeMix}`);
-    expect(r.view.survey.timeText === '12:00 น. (ตามนัด)', `${r.version}: เวลาต้อง "12:00 น. (ตามนัด)" — ได้ ${r.view.survey.timeText}`);
+    const label = r.version === 'internal' ? 'ฉบับภายใน' : 'ฉบับลูกค้า';
+    expect(r.layout.pageCount === g.pages[r.version], `${label}ต้อง ${g.pages[r.version]} หน้า — ได้ ${r.layout.pageCount}`);
+    if (g.kinds[r.version]) expect(kindsOf(r) === g.kinds[r.version], `ลำดับหน้า${label}ผิด — ${kindsOf(r)}`);
+  }
+  for (const r of results) {
+    const total = r.view.table.total;
+    const zonePage = Array.isArray(g.zonePage) ? g.zonePage : g.zonePage[r.version]; // รายฉบับเมื่อสองฉบับต่างกัน (`drawing`)
+    expect(same(Object.values(r.layout.zonePage), zonePage),
+      `${r.version}: คอลัมน์ "หน้า" ต้องเป็น ${zonePage.join(', ')} — ได้ ${JSON.stringify(r.layout.zonePage)}`);
+    expect(total.sqm === g.sqm, `${r.version}: รวม ตร.ม. ต้อง ${g.sqm} — ได้ ${total.sqm}`);
+    expect(total.cbm === g.cbm, `${r.version}: รวม ลบ.ม. ต้อง ${g.cbm} — ได้ ${total.cbm}`);
+    expect(total.sizeMix === g.sizeMix, `${r.version}: ขนาดรวมต้อง "${g.sizeMix}" — ได้ ${total.sizeMix}`);
+    if (g.mixLines) {
+      const lines = surveyReportMixLines(total.sizeMix, SURVEY_REPORT_PX.summary.mixWidth, SURVEY_REPORT_PX.summary.font);
+      expect(same(lines, g.mixLines), `${r.version}: ขนาดรวมต้องตัดบรรทัดเป็น ${g.mixLines.join(' / ')} — ได้ ${lines.join(' / ')}`);
+    }
+    if (g.qty !== null) expect(total.qty === g.qty, `${r.version}: รวมแพ็ค/เดือนต้อง ${g.qty} — ได้ ${total.qty}`);
+    if (g.timeText !== null) expect(r.view.survey.timeText === g.timeText, `${r.version}: เวลาต้อง "${g.timeText}" — ได้ ${r.view.survey.timeText}`);
+    if (g.surveyDate !== null) {
+      expect(r.view.head?.surveyDate === g.surveyDate, `${r.version}: วันที่ประเมินบนหัวต้อง ${g.surveyDate} — ได้ ${r.view.head?.surveyDate}`);
+      expect(r.html.includes(`<dt>วันที่ประเมิน</dt><dd>${g.surveyDate}</dd>`), `${r.version}: หัวหน้า 1 ต้องพิมพ์วันที่ประเมิน ${g.surveyDate}`);
+    }
+    if (g.boxDate !== null) expect(r.view.survey.dateText === g.boxDate, `${r.version}: วันที่ในกล่องการประเมินต้อง "${g.boxDate}" — ได้ ${r.view.survey.dateText}`);
+
+    /* วิธีประเมิน (งวด S3) — ใบลงหน้างานไม่มีแถวนี้เลย (ค่าใน view เป็น null และ HTML ไม่มีหัวแถว) · ใบที่มีพื้นที่จากแบบมีครั้งเดียว */
+    const methodRows = r.html.split('<dt>วิธีประเมิน</dt>').length - 1;
+    expect(r.view.survey.methodText === g.methodText, `${r.version}: วิธีประเมินต้อง ${JSON.stringify(g.methodText)} — ได้ ${JSON.stringify(r.view.survey.methodText)}`);
+    expect(methodRows === (g.methodText === null ? 0 : 1), `${r.version}: แถว "วิธีประเมิน" ต้องมี ${g.methodText === null ? 0 : 1} แถว — พบ ${methodRows}`);
+    if (g.boxLines) {
+      const box = r.layout.pages[0]?.survey?.method;
+      expect(same(box, g.boxLines), `${r.version}: บรรทัดวิธีประเมินในกล่องต้องเป็น ${g.boxLines.join(' / ')} — ได้ ${JSON.stringify(box)}`);
+    }
+    const notice = r.view.notice?.lines ?? null;
+    if (g.notice) {
+      expect(Array.isArray(notice) && notice.length === 2 && notice[0].startsWith(NOTICE_HEAD) && notice[1] === NOTICE_TAIL,
+        `${r.version}: กล่องหมายเหตุต้องมีสองบรรทัด ("${NOTICE_HEAD} …" / "${NOTICE_TAIL}") — ได้ ${JSON.stringify(notice)}`);
+      for (const line of notice || []) expect(r.html.includes(line), `${r.version}: กระดาษไม่มีบรรทัดหมายเหตุ "${line}"`);
+    } else {
+      expect(notice === null, `${r.version}: ใบลงหน้างานต้องไม่มีกล่องหมายเหตุ — ได้ ${JSON.stringify(notice)}`);
+    }
+    /* พื้นที่จากแบบไม่มีส่วนภาพกว้างทุกหน้า (แผน `wide: null` + กระดาษไม่มีหัวส่วน/กล่อง "ไม่มีภาพกว้าง") */
+    const sheets = sheetsOf(r.html);
+    r.layout.pages.forEach((page, i) => {
+      if (!(page.kind === 'zone' || page.kind === 'zoneCont') || !g.drawingZones.includes(page.zoneIndex)) return;
+      expect(page.wide == null, `${r.version} หน้า ${i + 1}: พื้นที่จากแบบต้องไม่มีส่วนภาพกว้างในแผน — ได้ ${JSON.stringify(page.wide)}`);
+      expect(!WIDE_MARKS.some((mark) => (sheets[i] || '').includes(mark)), `${r.version} หน้า ${i + 1}: พื้นที่จากแบบต้องไม่มีส่วนภาพกว้างบนกระดาษ`);
+    });
+
     expect(r.html.includes(`<div class="rh-ref">${docNo}</div>`), `${r.version}: หัววิ่งต้องมีแค่เลขที่เอกสาร`);
     // สีชื่อเอกสารตามฉบับ (มติ 08/10/2026) — กระดาษที่ตรึงของไปป์ไลน์ก็ผ่านข้อนี้ (สีถูกตรึงไปกับ HTML)
     expect(paperAccentOf(r.html) === PAPER_ACCENT[r.version],
       `${r.version}: สีชื่อเอกสารต้องเป็น ${PAPER_ACCENT[r.version]} — ได้ ${paperAccentOf(r.html) || 'ไม่มี'}`);
   }
-  // ตำแหน่งบนสุดของตารางหน้า 1 — ค่าคงที่ของตัวจัดหน้าต้องไม่ต่ำกว่าที่วัดได้ (ประเมินต่ำ = ล้นจริงโดยแผนไม่รู้)
+  /* ตำแหน่งบนสุดของตารางหน้า 1 — แผนต้องไม่ต่ำกว่าที่วัดได้ (ประเมินต่ำ = ล้นจริงโดยแผนไม่รู้)
+     ใบลงหน้างาน: เทียบกับค่าคงที่ตามเดิม (ห่างไม่เกิน 4) · ใบที่มีพื้นที่จากแบบ: กล่องหมายเหตุ/กล่องที่โตดันตารางลง — เทียบกับแผนของหน้า 1 */
   for (const r of results) {
     if (!r.fit) continue;
     const top = r.fit[0]?.marks?.table?.top;
-    const planned = SURVEY_REPORT_PX.summary.tableTop[r.version];
-    expect(top !== undefined && top <= planned + 0.5 && planned - top <= 4,
-      `${r.version}: ตารางหน้า 1 เริ่มที่ ${num(top)} แต่ตัวจัดหน้าตั้งไว้ ${planned} — แก้ SURVEY_REPORT_PX.summary.tableTop`);
+    if (fixture === 'onsite') {
+      const planned = SURVEY_REPORT_PX.summary.tableTop[r.version];
+      expect(top !== undefined && top <= planned + 0.5 && planned - top <= 4,
+        `${r.version}: ตารางหน้า 1 เริ่มที่ ${num(top)} แต่ตัวจัดหน้าตั้งไว้ ${planned} — แก้ SURVEY_REPORT_PX.summary.tableTop`);
+    } else if (r.layout.pages[0]?.tableTop !== undefined) {
+      const planned = r.layout.pages[0].tableTop;
+      expect(top !== undefined && top <= planned + 0.5,
+        `${r.version}: ตารางหน้า 1 เริ่มที่ ${num(top)} ต่ำกว่าแผน ${num(planned)} — แผนประเมินกล่องการประเมิน/กล่องหมายเหตุต่ำไป`);
+    }
   }
   return failures;
 }
@@ -494,6 +646,8 @@ export const PIPELINE_USER = Object.freeze({ id: 'U-harness', name: 'Harness Pre
  * @param opts.signed `['assessor', 'approver']` (ค่าตั้งต้น) — ที่นั่งที่ไม่อยู่ในลิสต์ = คนนั้นยังไม่มีลายเซ็น (ไม่มีราก)
  * @returns `{ supabase, tables, objects, drive, rpcCalls, writes, signatures, request(), reports() }`
  *   · `signatures` = `{ vault, versions, signers: { assessor, approver } }` (`vault.downloads` = ที่อยู่ไฟล์ที่ถูกอ่านจากคลัง ตามลำดับ)
+ *     `signers` = บัญชีที่ **คาดว่า** แต่ละที่นั่งตรึงลายเซ็น — ใบจากแบบล้วน (ไม่มีนัด · งวด S3): ที่นั่งที่ 1 = ผู้ส่งผลเมื่อ
+ *     `surveyDrawingSeatSigner` บอกว่าเป็นคนเดียวกัน ไม่งั้น `null` (ที่นั่งพิมพ์ชื่อกับคำ)
  */
 export function surveyPipelineWorld(source, { files = new Map(), clock = () => new Date(), signed = ['assessor', 'approver'] } = {}) {
   const requestId = source.request.id;
@@ -506,6 +660,10 @@ export function surveyPipelineWorld(source, { files = new Map(), clock = () => n
     ...(approverId && approverId !== assessorId && signed.includes('approver')
       ? [{ userId: approverId, png: makeSignaturePng({ seed: 2 }), name: source.request.answeredByName }] : []),
   ]);
+  /* ที่นั่งที่ 1 ที่คาด (งวด S3 §2.6 · มติ O1) — ใบที่มีนัด = ผู้ประเมินบนนัด · ใบจากแบบล้วน (ไม่มีนัด) = ผู้ส่งผลเมื่อเขาเป็นผู้ประเมินจากแบบ
+     คนเดียวของทุกพื้นที่ (ลายเซ็นเดียวกันสองที่นั่ง) · ไม่ใช่ = ที่นั่งพิมพ์ชื่อกับคำ ไม่มีลายเซ็นให้ตรึง (`null`) */
+  const deskSeat = source.visit ? null : surveyDrawingSeatSigner({ zones: source.zones, request: { ...source.request, answeredById: approverId } });
+  const seatOne = source.visit ? assessorId : (deskSeat ? approverId : null);
   const assessorRole = Object.keys(ROLE_LABELS).find((role) => ROLE_LABELS[role] === source.assigneeRoleLabel) || null;
   /* บัญชีของผู้ลงนามเป็นของจริงตามบทบาท — ผู้ประเมิน = บัญชีฝ่ายบริการ · ผู้ส่งผล = ผู้ช่วยผู้จัดการฝ่ายบริการ
      (ตัวโหลดอ่านบัญชีสองคนนี้เพื่อตัดสินว่าลายเซ็นของเขาขึ้นที่นั่งนั้นได้ไหม — `signerEligible` ของ `surveyReportInputs`) */
@@ -738,7 +896,7 @@ export function surveyPipelineWorld(source, { files = new Map(), clock = () => n
 
   return {
     supabase, tables, objects, drive, rpcCalls, writes,
-    signatures: { vault: supabase.signatureVault, versions: signTables.versions, signers: { assessor: assessorId, approver: approverId } },
+    signatures: { vault: supabase.signatureVault, versions: signTables.versions, signers: { assessor: seatOne, approver: approverId } },
     request: () => tables.dept_requests[0],
     reports: () => tables.service_survey_reports,
   };
@@ -795,6 +953,8 @@ const plainIssue = (r) => ({
  * @param opts.signatureRule กติกาลายเซ็นจริงของรอบ — ค่าตั้งต้น `'required'` (ส่งตรงให้ตัวโหลด ไม่ผ่านสวิตช์) · `'off'` = กระดาษแบบคำ
  *                           ⭐ ทาง `send` จำลอง S5 ของเส้นส่งผลด้วย: เตรียมไฟล์ลายเซ็น **ก่อน** ออกเลข แล้วส่งต่อ (`signatures`) —
  *                              ขั้นออกเลขต้องใช้ของที่ส่งต่อ ไม่อ่านคลังซ้ำ
+ * @param opts.drawingMethodEnabled ค่าสวิตช์ประเมินจากแบบ (งวด S3) — ส่งตรงให้ตัวโหลดและขั้นออกเลขทั้งสองทาง (harness ไม่อ่านสวิตช์ ·
+ *                           ค่าตั้งต้น `false` เท่ากับของตัวโหลด) · ผลเดียวของมันคือหางของบรรทัด "ไม่พบนัด"
  * @returns `{ via, states, first, second, docNo, reportId, audits, lines }`
  *   · `states`  สถานะจากแถว (§1) ก่อนเริ่ม · หลังขั้นออกเลข · หลังขั้นกระดาษ — ที่คาด `['missing', 'issued', 'ready']`
  *   · `first` / `second`  `{ issue, paper }` ของแต่ละรอบ (`paper` เป็น `null` เมื่อขั้นออกเลขล้ม)
@@ -803,6 +963,7 @@ const plainIssue = (r) => ({
  */
 export async function runSurveyPipeline(world, {
   via = 'issue_only', user = PIPELINE_USER, clock = () => new Date(), loadRenderer = null, signatureRule = 'required',
+  drawingMethodEnabled = false,
 } = {}) {
   const { supabase } = world;
   const requestId = world.request().id;
@@ -833,7 +994,9 @@ export async function runSurveyPipeline(world, {
          ที่นี่ใบถูกตอบแล้วใน fixture จึงอ่านผู้ลงนามจากตัวโหลดตรง ๆ แล้วส่งต่อให้ขั้นออกเลขแบบเดียวกับ route */
       let signatures = null;
       if (signatureRule === 'required') {
-        const { inputs } = await loadSurveyReportInputs(supabase, { request: world.request(), takenAt: clock().toISOString(), signatureRule });
+        const { inputs } = await loadSurveyReportInputs(supabase, {
+          request: world.request(), takenAt: clock().toISOString(), signatureRule, drawingMethodEnabled,
+        });
         const signers = surveyReportSignerVersions(inputs);
         const ready = await prepareSurveyReportSignatures(supabase, signers, {
           ...signatureOptions, deadline: PIPELINE_SIGN_MS, storeAllowed: true,
@@ -841,12 +1004,13 @@ export async function runSurveyPipeline(world, {
         signatures = { signers, imageByVersionId: ready.imageByVersionId };
       }
       return issueSurveyReport(supabase, {
-        request: world.request(), user, closedVisit: null, via: 'send', prepared, signatures, signatureRule,
+        request: world.request(), user, closedVisit: null, via: 'send', prepared, signatures, signatureRule, drawingMethodEnabled,
         storeAllowed: true, audit, now: clock, imageOptions, signatureOptions,
       });
     }
     return issueSurveyReport(supabase, {
       requestId, user, via: 'issue_only', storeAllowed: true, audit, now: clock, imageOptions, signatureRule, signatureOptions,
+      drawingMethodEnabled,
       // งบของตัววัด = งบของทั้งคำขอ (แบบเดียวกับ route เอกสาร) ไม่ใช่งบเติมรูปที่ขั้นออกเลขส่งต่อมา
       measure: ({ customerHtml, internalHtml }) => measureSurveyReportPaper(supabase, {
         customerHtml, internalHtml, deadline: PIPELINE_BUDGET_MS, session, log,
@@ -981,8 +1145,13 @@ export function pipelineFailures(world, run) {
   } else {
     const seats = ['assessor', 'approver'].map((seat) => [seat, signs[seat]]);
     for (const [seat, hit] of seats) {
-      expect(!!hit?.img?.sha && hit.userId === world.signatures.signers[seat],
-        `ที่นั่ง ${seat} ต้องตรึงลายเซ็นของ ${world.signatures.signers[seat]} พร้อมรูป — ได้ ${JSON.stringify(hit)}`);
+      const want = world.signatures.signers[seat];
+      /* ใบจากแบบล้วนที่ผู้ประเมินจากแบบไม่ใช่ผู้ส่งผล (งวด S3 §2.6): ที่นั่งที่ 1 ไม่มีลายเซ็นให้ตรึง — พิมพ์ชื่อกับคำ */
+      if (want === null) {
+        expect(hit === null, `ที่นั่ง ${seat} ต้องไม่ตรึงลายเซ็น (ใบจากแบบล้วน · ผู้ประเมินจากแบบไม่ใช่ผู้ส่งผล) — ได้ ${JSON.stringify(hit)}`);
+        continue;
+      }
+      expect(!!hit?.img?.sha && hit.userId === want, `ที่นั่ง ${seat} ต้องตรึงลายเซ็นของ ${want} พร้อมรูป — ได้ ${JSON.stringify(hit)}`);
       expect(!hit?.img?.sha || images.some((img) => img.kind === 'sign' && img.sha === hit.img.sha && img.attId === null),
         `คอลัมน์ images ต้องมีแถวชนิด sign ของที่นั่ง ${seat}`);
     }
@@ -995,7 +1164,8 @@ export function pipelineFailures(world, run) {
       expect(found.length === 0, `${p.version}: ยามลายเซ็น — ${found.join(' | ')}`);
     }
     const issuedAudit = run.audits.find((a) => a.action === 'create');
-    expect(issuedAudit?.after?.signCount === 2 && issuedAudit.after.signatures?.every((s) => s.seat && s.userId && s.versionId),
+    const signedSeats = seats.filter(([seat]) => world.signatures.signers[seat] !== null).length;
+    expect(issuedAudit?.after?.signCount === signedSeats && issuedAudit.after.signatures?.every((s) => s.seat && s.userId && s.versionId),
       `audit ของการออกเลขต้องจดที่นั่ง ผู้ใช้ และฉบับของลายเซ็น — ได้ ${JSON.stringify(issuedAudit?.after?.signatures)}`);
     expect(!/data:image|base64|users\//.test(JSON.stringify(run.audits)), 'audit ต้องไม่พกรูปหรือที่อยู่ไฟล์ของลายเซ็น');
   }
@@ -1012,6 +1182,7 @@ export function pipelineFailures(world, run) {
 
 /**
  * ชุดที่จะเรนเดอร์ — `[{ label, inputs, bySha, mode, dir, golden, sign, seats, known }]`
+ *   · `golden` แถวของ `SURVEY_GOLDEN` ที่ `--assert` ตรวจ (`'onsite'` · `'mixed'` · `'drawing'`) — `null` = ชุดสุดขอบ (ไม่มีผลที่ล็อก)
  *   · `sign`  ตัวเลือกของลายเซ็น (`harnessSignatures`) — ไม่มี = ผู้ลงนามทั้งสองที่นั่งมีลายเซ็นและเตรียมรูปแล้ว
  *   · `seats` จำนวนรูป/กรอบประที่ต้องเห็นต่อบล็อกลงนาม — ไม่มี = รูป 2 ที่
  *   · `known` ข้อที่รู้ว่าจะฟ้อง (ข้อจำกัดที่ยังไม่แก้ · `surveySignCases`) — ไม่นับเป็นล้ม แต่ต้องฟ้องจริง
@@ -1020,7 +1191,10 @@ function loadRuns(args, outDir) {
   if (args.stress) {
     const wanted = typeof args.case === 'string' ? args.case : null;
     const all = [
-      ...surveyStressCases().map((c) => ({ name: c.name, mode: c.mode, inputs: () => stressSurveyInputs(c.spec) })),
+      // กรณีสุดขอบที่บอกลายเซ็นของตัวเองได้ (`sign` · `seats` · `known` — คีย์ชุดเดียวกับกรณีของลายเซ็น · งวด S3 `drawing-draft`)
+      ...surveyStressCases().map((c) => ({
+        name: c.name, mode: c.mode, inputs: () => stressSurveyInputs(c.spec), sign: c.sign, seats: c.seats, known: c.known,
+      })),
       // กรณีของลายเซ็น — อินพุตตั้งต้นของแต่ละกรณี + ตัวเลือกของลายเซ็น (กติกาปิดด้วย `--no-signatures` = เรนเดอร์อินพุตเดียวกันแบบคำ)
       ...surveySignCases().map((c) => ({ name: c.name, mode: c.mode, inputs: c.inputs, sign: c.sign, seats: c.seats, known: c.known })),
     ];
@@ -1028,19 +1202,21 @@ function loadRuns(args, outDir) {
     if (!cases.length) throw new Error(`ไม่มีกรณี "${wanted}" — มี: ${all.map((c) => c.name).join(' · ')}`);
     return cases.map((c, i) => ({
       label: c.name, inputs: c.inputs(), bySha: {}, mode: c.mode,
-      dir: i === 0 || wanted ? outDir : join(outDir, 'cases', c.name), golden: false,
+      dir: i === 0 || wanted ? outDir : join(outDir, 'cases', c.name), golden: null,
       sign: c.sign, seats: c.seats, known: c.known,
     }));
   }
   if (args.synthetic) {
-    return [{ label: 'synthetic', inputs: surveyReportInputsFromFixture(syntheticSurveyFixture()), bySha: {}, mode: 'freeze', dir: outDir, golden: true }];
+    const { name, fixture } = syntheticOf(args.synthetic);
+    return [{ label: syntheticLabel(name), inputs: surveyReportInputsFromFixture(fixture()), bySha: {}, mode: 'freeze', dir: outDir, golden: name }];
   }
   const fixture = JSON.parse(readFileSync(expand(args.fixture), 'utf8'));
   const { photos, bySha } = typeof args.photos === 'string' ? loadPhotos(expand(args.photos)) : { photos: null, bySha: {} };
   const inputs = surveyReportInputsFromFixture(fixture, {
     photos, spotLinks: args['no-spot-links'] ? null : 'order',
   });
-  return [{ label: fixture.request?.docNo || 'fixture', inputs, bySha, mode: 'freeze', dir: outDir, golden: true }];
+  // fixture จริง (RQ-AS-26090186) = แถว `onsite` ของตารางผลที่ล็อก
+  return [{ label: fixture.request?.docNo || 'fixture', inputs, bySha, mode: 'freeze', dir: outDir, golden: 'onsite' }];
 }
 
 async function mainRender(args, outDir) {
@@ -1124,13 +1300,27 @@ async function mainRender(args, outDir) {
       }
       const stale = known.filter((pattern) => !issues.some((text) => pattern.test(text)))
         .map((pattern) => `ข้อที่รู้อยู่แล้วไม่เกิดในรอบนี้ (${pattern}) — แก้รายการ known ของกรณี ${run.label}`);
-      const found = [...issues.filter((text) => !isKnown(text)), ...stale, ...(args.assert && run.golden ? goldenFailures(results, docNo) : [])];
+      const found = [...issues.filter((text) => !isKnown(text)), ...stale, ...(args.assert && run.golden ? goldenFailures(results, docNo, run.golden) : [])];
       failures.push(...found.map((text) => (runs.length > 1 ? `[${run.label}] ${text}` : text)));
     }
   } finally {
     await browser.close();
   }
   return failures;
+}
+
+/**
+ * กรณีของลายเซ็นที่เดินผ่านไปป์ไลน์ได้ (`pipeline: true` ของ `surveySignCases` · งวด S3) → อินพุตของโลกในหน่วยความจำ
+ *   อินพุตของกรณีไม่มีรูปที่เตรียมแล้ว (`imageByAttId` — ไปป์ไลน์ย่อรูปเองด้วย sharp) · ตัวเลือก `have` ของกรณี = ใครมีลายเซ็นในโลก
+ * @returns `{ label, source, signed }` · ชื่อที่ไม่มี/ไม่ได้ทำไว้ให้ไปป์ไลน์ = โยนพร้อมรายชื่อที่ใช้ได้
+ */
+export function pipelineSignCase(name) {
+  const cases = surveySignCases().filter((c) => c.pipeline === true);
+  const hit = cases.find((c) => c.name === name);
+  if (!hit) throw new Error(`--pipeline --case ใช้ได้กับ ${cases.map((c) => c.name).join(' · ')} — ได้ "${name}"`);
+  const source = { ...hit.inputs() };
+  delete source.imageByAttId;
+  return { label: hit.name, source, signed: hit.sign?.have || ['assessor', 'approver'] };
 }
 
 async function mainPipeline(args, outDir) {
@@ -1140,25 +1330,34 @@ async function mainPipeline(args, outDir) {
   let label;
   let source;
   let files;
-  if (args.synthetic) {
-    label = 'synthetic';
-    source = surveyReportInputsFromFixture(syntheticSurveyFixture(), { withImages: false, spotLinks });
+  let golden = null;
+  let signed;
+  if (typeof args.case === 'string') {
+    ({ label, source, signed } = pipelineSignCase(args.case));
+    files = syntheticDriveFiles(source);
+  } else if (args.synthetic) {
+    const { name, fixture } = syntheticOf(args.synthetic);
+    label = syntheticLabel(name);
+    golden = name;
+    source = surveyReportInputsFromFixture(fixture(), { withImages: false, spotLinks });
     files = syntheticDriveFiles(source);
   } else {
     const fixture = JSON.parse(readFileSync(expand(args.fixture), 'utf8'));
     label = fixture.request?.docNo || 'fixture';
     source = surveyReportInputsFromFixture(fixture, { withImages: false, spotLinks });
     files = typeof args.photos === 'string' ? driveFilesOfFixture(fixture, loadPhotos(expand(args.photos)).files) : syntheticDriveFiles(source);
+    golden = 'onsite';
   }
   // เที่ยงตามเวลาไทยของวันที่ขอ — เดือนในเลขที่กับวันที่ออกบนกระดาษนิ่ง ไม่ขึ้นกับว่ารันกี่โมง
   const fixed = typeof args.issued === 'string' ? new Date(`${args.issued}T12:00:00+07:00`) : null;
   if (fixed && Number.isNaN(fixed.getTime())) throw new Error(`--issued ต้องเป็น YYYY-MM-DD — ได้ ${args.issued}`);
   const clock = fixed ? () => new Date(fixed) : () => new Date();
 
-  const world = surveyPipelineWorld(source, { files, clock });
+  const world = surveyPipelineWorld(source, { files, clock, ...(signed ? { signed } : {}) });
   const started = performance.now();
   const signatureRule = args['no-signatures'] ? 'off' : 'required';
-  const run = await runSurveyPipeline(world, { via, clock, signatureRule });
+  const drawingMethodEnabled = drawingMethodOf(args, source.zones);
+  const run = await runSurveyPipeline(world, { via, clock, signatureRule, drawingMethodEnabled });
   const tookMs = Math.round(performance.now() - started);
 
   mkdirSync(outDir, { recursive: true });
@@ -1183,7 +1382,7 @@ async function mainPipeline(args, outDir) {
     printMs: sum('print'), storeMs: sum('store'),
   };
   writeFileSync(join(outDir, 'pipeline.json'), JSON.stringify({
-    label, via, docNo: run.docNo, states: run.states, first: run.first, second: run.second,
+    label, via, drawingMethodEnabled, docNo: run.docNo, states: run.states, first: run.first, second: run.second,
     pages: Object.fromEntries(papers.map((p) => [p.version, { planned: p.layout.pageCount, pdf: p.pdfPages, bytes: p.pdf?.length || 0, fonts: p.pdfFonts }])),
     images: (row?.images || []).map((img) => ({ sha: img.sha, kind: img.kind, w: img.w, h: img.h, bytes: img.bytes })),
     signatures: row?.snapshot?.signatures
@@ -1198,7 +1397,7 @@ async function mainPipeline(args, outDir) {
     timing,
   }, null, 2));
 
-  console.log(`\nไปป์ไลน์เอกสารประเมิน · ${label} · ทาง ${via} → ${outDir}`);
+  console.log(`\nไปป์ไลน์เอกสารประเมิน · ${label} · ทาง ${via} · สวิตช์ประเมินจากแบบ ${drawingMethodEnabled ? 'เปิด' : 'ปิด'} → ${outDir}`);
   console.log(`  สถานะ: ${run.states.join(' → ')}`);
   const say = (name, r) => {
     if (!r) { console.log(`  ${name}: (ไม่ได้เดิน — รอบแรกไม่ได้เลข)`); return; }
@@ -1225,14 +1424,15 @@ async function mainPipeline(args, outDir) {
   }
 
   const failures = pipelineFailures(world, run);
-  if (args.assert && papers.length === 2 && papers.every((p) => p.html)) failures.push(...goldenFailures(papers, run.docNo));
+  if (args.assert && golden && papers.length === 2 && papers.every((p) => p.html)) failures.push(...goldenFailures(papers, run.docNo, golden));
   return failures;
 }
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
 if (isMain) {
   const args = parseArgs(process.argv.slice(2));
-  if (!args.out || (!args.fixture && !args.synthetic && !args.stress)) {
+  // `--pipeline --case <กรณีลายเซ็น>` มีอินพุตของตัวเอง (ไม่ต้องมี --fixture / --synthetic)
+  if (!args.out || (!args.fixture && !args.synthetic && !args.stress && !(args.pipeline && typeof args.case === 'string'))) {
     console.error(USAGE);
     process.exit(2);
   }

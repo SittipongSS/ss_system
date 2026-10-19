@@ -99,10 +99,11 @@ import { loadSurveyRequestExtras } from '@/lib/service/surveyRequestExtras';
    ⇒ ห้ามลาก sharp / chromium / ตัวเรนเดอร์เข้ามาที่หัวไฟล์ (สเปก PR-2 มติ 24 · ด่าน `check-doc-tracing.mjs`) */
 import { surveyDocumentSummary, surveyReportVoided } from '@/lib/service/surveyReportRows';
 import {
-  SURVEY_DESK_COMMIT_FORBIDDEN, SURVEY_DESK_RESCHEDULE_FORBIDDEN, SURVEY_DESK_RESCHEDULE_REASON_ERROR,
-  createSurveyVisit, findSurveyVisit, moveSurveyVisit, surveyDeskCommitPatch, surveyDeskCommitSummary,
+  SURVEY_DESK_COMMIT_FORBIDDEN, SURVEY_DESK_FLIPPED_NO_VISIT, SURVEY_DESK_RESCHEDULE_FORBIDDEN,
+  SURVEY_DESK_RESCHEDULE_REASON_ERROR, createSurveyVisit, findSurveyVisit, moveSurveyVisit, surveyDeskCommitPatch, surveyDeskCommitSummary,
   surveyDeskReschedulePatch, surveyDeskRescheduleSummary, surveyDeskResultDate, surveyScheduleError,
 } from '@/lib/service/surveyVisit';
+import { REQUEST_SLOT_VISIT_STATES } from '@/lib/service/visitStatus';
 import { syncCostingPricingStatus } from '@/lib/costingAdmin';
 import { appendRequestEvent } from '@/lib/sales/documentThread';
 import { sanitizeMentions } from '@/lib/master/mentions';
@@ -1026,9 +1027,8 @@ export async function PATCH(request, { params }) {
             inspiration: row.inspiration,
             likedNotes: row.likedNotes,
             dislikedNotes: row.dislikedNotes,
-            scentotypes: row.scentotypes,
-            // ข้อความต่อท้าย Scentotype รายตัว (mig 0222 · ข้อ 2.1.4 บนกระดาษ)
-            scentotypeNotes: row.scentotypeNotes || {},
+            // ⛔ ไม่เขียน scentotypes/scentotypeNotes — 2.1.5 ถอดแล้ว (มติผู้ใช้ 2026-10-19) ⇒ บรีฟเก่า
+            //    ที่เคยติ๊กไว้ยังเก็บค่าเดิมในฐาน ไม่ถูกทับเป็นว่างตอนบันทึก
             performance: row.performance,
             updatedAt: nowIso,
           };
@@ -1656,13 +1656,18 @@ export async function PATCH(request, { params }) {
         // ⚠️ ถามหานัดที่ยังเปิดโดยตรง — ของที่ปิดจบแล้วห้ามถูกเขียนชื่อเจ้าหน้าที่ใหม่ทับ
         const visit = await findSurveyVisit(supabase, id, { openOnly: true });
         if (visit) {
-          const { error: assignError } = await supabase.from('service_visits').update({
+          /* 🔴 เขียนเฉพาะเมื่อนัดยังเปิด (รีวิว S2b ข้อ V17 ต่อ · 19/10) — นัดที่ปิด/ถูกยกเลิกคั่นระหว่างอ่านกับเขียน
+             ต้องไม่ได้ชื่อใหม่ (กติกาบรรทัดบน) · ไม่โดนแถว = บอกบนจอ ใบเปลี่ยนคนแล้วแต่นัดไม่ได้ตาม */
+          const { data: assigned, error: assignError } = await supabase.from('service_visits').update({
             assigneeId: patch.assigneeId || null,
             assigneeName: patch.assigneeName || null,
             updatedAt: nowIso,
-          }).eq('id', visit.id);
+          }).eq('id', visit.id).in('status', REQUEST_SLOT_VISIT_STATES).select('id').maybeSingle();
           if (assignError) {
             visitWarning = `ใบเปลี่ยนผู้รับผิดชอบแล้ว แต่นัด ${visit.code || ''} ยังเป็นชื่อเดิม`;
+          } else if (!assigned) {
+            /* ไม่โดนแถว = นัดเพิ่งปิด — ผลเดียวกับนัดที่ปิดก่อนอ่าน (นัดที่ปิดแล้วถือชื่อคนที่ไปจริง) ไม่มีอะไรให้ผู้ใช้ทำต่อ ⇒ ไม่เตือน */
+            console.info('[requests] เปลี่ยนผู้รับผิดชอบ: นัดเพิ่งปิดระหว่างคำขอ ไม่ได้แก้ชื่อบนนัด', visit.code || visit.id);
           }
         }
       } catch (e) {
@@ -1684,18 +1689,35 @@ export async function PATCH(request, { params }) {
         const assigneeId = patch.assigneeId ?? before.assigneeId ?? null;
         const assigneeName = patch.assigneeName ?? before.assigneeName ?? null;
 
+        /* 🔴 **ถามซ้ำก่อนสร้างนัดใหม่ว่าใบยังต้องลงหน้างานไหม** (รีวิว S2b ข้อ V17 ต่อ · 19/10) — `desk` อ่านไว้ตอนต้นคำขอ
+           แต่เส้นสร้างนัดอยู่หลังเขียนใบ/audit ⇒ หัวหน้าเปลี่ยนทุกพื้นที่เป็นจากแบบคั่นกลาง (นัดเดิมถูกยกเลิก) = ได้นัดลงหน้างาน
+           ของใบที่ไม่มีใครต้องไป · อ่านเฉพาะเมื่อจะสร้างจริง · ⚠️ อ่านพลาด = ใช้ค่าตอนต้นคำขอ (`desk` = false · พฤติกรรมเดิม) */
+        const deskSinceRead = async () => {
+          try {
+            return !surveyNeedsVisit(await loadSurveyZones(supabase, id));
+          } catch (e) {
+            console.error('[requests] อ่านวิธีประเมินซ้ำก่อนสร้างนัดไม่สำเร็จ:', e?.message);
+            return desk;
+          }
+        };
         const moved = await moveSurveyVisit(supabase, {
           requestId: id,
           date,
           time: 'committedDueTime' in patch ? patch.committedDueTime : undefined,
         });
-        if (moved.error) {
+        if (moved.error && moved.closedStatus === 'cancelled' && await deskSinceRead()) {
+          // นัดถูกยกเลิกเพราะหัวหน้าเปลี่ยนทั้งใบเป็นจากแบบ — ใบงานโต๊ะไม่มีปุ่ม "ลงคิวใหม่" ให้ชี้
+          visitWarning = SURVEY_DESK_FLIPPED_NO_VISIT;
+        } else if (moved.error) {
           visitWarning = `ใบลงวันแล้ว แต่ขยับนัดของเจ้าหน้าที่ไม่สำเร็จ: ${moved.error}`;
+        } else if (moved.needsNew && await deskSinceRead()) {
+          // 🔴 ใบเพิ่งกลายเป็นงานโต๊ะระหว่างคำขอ (หัวหน้าเปลี่ยนทุกพื้นที่เป็นประเมินจากแบบ ซึ่งยกเลิกนัดให้) — ห้ามสร้างนัดลงหน้างาน
+          visitWarning = SURVEY_DESK_FLIPPED_NO_VISIT;
         } else if (moved.needsNew) {
-          /* ⭐ **เส้นกู้** — ไม่มีนัด (สร้างไม่สำเร็จรอบก่อน · ถูกลบ) หรือนัดเดิมจบไปแล้ว
+          /* ⭐ **เส้นกู้** — ไม่มีนัด (ยังไม่เคยลงคิว · สร้างไม่สำเร็จรอบก่อน · ถูกลบ) หรือนัดเดิมจบไปแล้ว
              (ไปแล้วเข้าไม่ได้ · ยกเลิก) ⇒ สร้างใบใหม่ตรงนี้
-             🐞 ไม่มีเส้นนี้ = ใบค้างสถานะ "ลงวันแล้วแต่ไม่มีนัด" แบบกู้ไม่ได้ เพราะ
-                `commit-due` กดซ้ำไม่ได้อีกแล้วเมื่อใบมีวันอยู่ */
+             🐞 ไม่มีเส้นนี้ = ใบค้างสถานะ "ลงวันแล้วแต่ไม่มีนัด" — ทางกู้ที่เหลือคือปุ่ม "ลงคิวใหม่" (commit-due แบบ requeue
+                ใช้วันเดิมได้) หรือเลื่อนเป็นวันอื่น · ไม่ใช่ทางที่คนจะนึกออกเอง */
           const { site, error: siteError } = await loadSurveySite(supabase, before.siteId, null);
           if (siteError || !site) {
             visitWarning = 'ใบลงวันแล้ว แต่หาสถานที่ของใบไม่เจอ — นัดยังไม่ขึ้นตารางเจ้าหน้าที่';

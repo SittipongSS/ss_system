@@ -30,7 +30,6 @@ import {
   SURVEY_CONFIRM_ACTION_READY, SURVEY_CONFIRM_PENDING_NOTE, SURVEY_DESK_RAIL_LABELS, SURVEY_METHOD_CHIP, surveyProgressText,
   surveyZoneAddedLabel,
 } from './surveyMethodSwitch';
-import { SURVEY_SEND_PAPER_HOLD_EFFECT } from './surveySendClose';
 /* ประเมินจากแบบ งวด 4 (S4 C-4/C-5) — "ฝ่ายขายขออะไร" กับ "ผู้ขออยากให้เข้าวันไหน" มีตัวอ่านเดียว (pure · ไม่มีของ server) */
 import {
   SURVEY_NO_VISIT_WISH_LINE, SURVEY_NO_VISIT_WISH_TEXT, surveyFiledAsDrawing, surveySalesAskedLine, surveyWishedVisit,
@@ -1023,9 +1022,7 @@ export function surveyJobView({
         canDecide: viewer.canDecide === true,
       },
       pollStopped: refreshStalled === true,
-      /* งวด S2b: ใบที่มีพื้นที่จากแบบ (ตัวนับเดียวกับแถบแจ้งเหนือตารางผล) เอกสารยังถูกพักไว้จนถึงงวด S3 — บล็อกบอกเหตุนี้
-         แทนการชี้ให้ไปกด "ออกเอกสาร" ที่กดแล้วไม่ออก · ใบที่ไม่มีพื้นที่จากแบบ = `null` = บล็อกเดิมทุกตัวอักษร */
-      drawingHold: mix.drawing > 0 ? SURVEY_SEND_PAPER_HOLD_EFFECT : null,
+      /* ใบที่มีพื้นที่จากแบบได้บล็อกเดียวกับใบลงหน้างาน (งวด S3 ถอดข้อพักเอกสาร) — ไม่มีอาร์กิวเมนต์ของวิธีประเมิน */
     }),
     steps: timeline,
     index: Math.min(index, timeline.length),

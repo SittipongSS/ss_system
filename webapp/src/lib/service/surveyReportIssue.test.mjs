@@ -1534,15 +1534,27 @@ test('🔴 I3: ข้อลายเซ็น + ข้อของเนื้�
   assert.ok(c.reason.endsWith(' ไม่ได้ผูกกับบัญชีผู้ใช้ — ออกเอกสารไม่ได้ แจ้งผู้จัดคิวหรือผู้ดูแลระบบ · ถ้าต้องแก้ ให้ดึงผลกลับมาแก้แล้วส่งใหม่'), c.reason);
 });
 
-test('ใบที่มีพื้นที่ประเมินจากแบบ + กติกาเปิด: ยังติดแค่ข้อกันเอกสาร (hold) เหมือนเดิม — ไม่ถามลายเซ็น ไม่แตะคลัง', async () => {
-  const world = signWorld([]);
-  world.tables.service_survey_zones[1].method = 'drawing';
-  const { result } = await issue(world, SIGNED);
-  assert.equal(result.code, 'blocked');
-  assert.equal(result.hold, true);
-  assert.equal(result.retry, false);
-  assert.ok(!result.reason.includes('ลายเซ็น'));
-  assert.deepEqual(world.vault.downloads, []);
+test('งวด S3 §2.6: ใบที่มีพื้นที่ประเมินจากแบบ + กติกาเปิด ถูกถามเรื่องลายเซ็นเหมือนใบลงหน้างาน — ไม่มีข้อกันเอกสาร ไม่มีคีย์ `hold`', async () => {
+  // ใบผสม ไม่มีใครมีลายเซ็น = สองบรรทัดของวันนี้ (ผู้ประเมินบนนัด → ผู้ส่งผล) · กดซ้ำได้หลังเพิ่มลายเซ็น
+  const mixed = signWorld([], { request: { surveyConfirm: 'needed' } });
+  toDrawing(mixed, [1]);
+  const a = (await issue(mixed, SIGNED)).result;
+  assert.equal(a.code, 'blocked');
+  assert.equal(a.retry, true);
+  assert.equal(a.reasons.length, 2);
+  assert.match(a.reasons[0], /^ผู้ประเมิน Lead Assessor ยังไม่มีลายเซ็นในระบบ/);
+  assert.match(a.reasons[1], /^ผู้ตรวจสอบและอนุมัติ Head Approver \(ผู้ส่งผล\) ยังไม่มีลายเซ็นในระบบ/);
+  assert.equal('hold' in a, false);
+  assert.deepEqual(world0Writes(mixed), { rows: 0, lastNo: 0, rpc: 0 });
+
+  // ใบผสม ลายเซ็นครบสองคน = ออกได้ · สองที่นั่งคนละคน
+  const signedMixed = signWorld(['U-lead', 'U-head'], { request: { surveyConfirm: 'needed' } });
+  toDrawing(signedMixed, [1]);
+  const b = (await issue(signedMixed, SIGNED)).result;
+  assert.equal(b.state, 'issued', b.reason);
+  const mixedSnap = signedMixed.db.rpcLog[0].args.p_row.snapshot;
+  assert.equal(mixedSnap.assessment.mode, 'mixed');
+  assert.deepEqual([mixedSnap.signatures.assessor.userId, mixedSnap.signatures.approver.userId], ['U-lead', 'U-head']);
 });
 
 test('I2: อ่านลายเซ็นไม่สำเร็จ = blocked ที่กดซ้ำได้ ("อ่านลายเซ็นของผู้ลงนามไม่สำเร็จ") — ไม่กลายเป็น "ยังไม่มีลายเซ็น" · รอบถัดไปออกได้', async () => {
@@ -1706,6 +1718,224 @@ test('คนเดียวสองที่นั่ง: อ่านคลั
   assert.equal(world.vault.downloads.length, 1);
   assert.deepEqual(audit.rows[0].after.signatures.map((row) => [row.seat, row.userId]), [['assessor', 'U-lead'], ['approver', 'U-lead']]);
   assert.equal(audit.rows[0].after.signCount, 2);
+});
+
+/* ══ 9ค. งวด S3 — ใบที่มีพื้นที่ประเมินจากแบบออกเอกสารได้ (ถอดข้อกันเอกสาร · สเปก S3 §2.3–§2.6 · §4) ══════════════
+   ⭐ เส้นออกเลขเป็นการเขียนหลายขั้นเส้นเดียวของงวดนี้ ⇒ หยุดทีละขั้นบนใบจากแบบล้วนและใบผสม ทั้ง `issue_only` และ `send`
+      แล้วกดใหม่ต้องออกได้ — หยุดขั้นไหนก็ไม่มีแถว ไม่มีเลขถูกกิน
+   ⭐ ใบที่ถูกส่งตอนข้อกันยังอยู่ (ตอบแล้ว ไม่มีแถวเอกสาร) ออกได้ในการกด "ออกเอกสาร" ครั้งแรก */
+
+/** ตั้งพื้นที่ตามลำดับให้เป็นจากแบบ — ผู้สลับชื่อเดียวกับผู้ส่งผลบนแถว (สลับทั้งใบ ไม่บันทึกใหม่)
+ *  เวลาสลับ: หลังช่างบันทึกทั้งสองพื้นที่ (02:00 · 02:40) ก่อนส่งผล (03:01) ⇒ ผู้ประเมินจากแบบ = คนสลับ (ทาง ②)
+ *  (ประกาศเป็น function — เทสต์ลายเซ็นข้างบนเรียกใช้ด้วย) */
+function toDrawing(world, indexes) {
+  for (const i of indexes) {
+    Object.assign(world.tables.service_survey_zones[i], {
+      method: 'drawing', methodChangedAt: '2026-09-26T02:50:00.000+00:00', methodChangedByName: 'Head Approver',
+      methodReason: 'ลูกค้าส่งแบบมาแล้ว',
+    });
+  }
+  return world;
+}
+/**
+ * โลกของใบที่มีพื้นที่จากแบบ ที่ตอบแล้วและเลือกแล้วว่าต้องยืนยันหน้างานไหม
+ * @param mode `'drawing'` = จากแบบทั้งใบ (ไม่มีนัด) · `'mixed'` = พื้นที่ 2 จากแบบ นัด `done` ของแฝดสังเคราะห์ยังอยู่
+ */
+function deskWorld(mode, extra = {}) {
+  const world = twinWorld({ ...extra, request: { surveyConfirm: 'not_needed', ...(extra.request || {}) } });
+  toDrawing(world, mode === 'drawing' ? [0, 1] : [1]);
+  if (mode === 'drawing') world.tables.service_visits.length = 0;
+  return world;
+}
+/* ไม่มีอะไรถาวรเกิดขึ้น: แถวเอกสาร · เลขรัน · การเรียก RPC */
+function world0Writes(world) {
+  return { rows: world.reports().length, lastNo: lastNo(world), rpc: world.db.rpcLog.length };
+}
+
+/**
+ * ตัวเตรียมรูปที่ "จำของที่อัปแล้ว" แบบถังของเอกสาร — รูปที่เตรียมสำเร็จรอบก่อนถูกใช้ซ้ำในรอบถัดไป (ไม่ดึงซ้ำ)
+ * ⚠️ ของจริงอ้างรูปด้วยเนื้อไฟล์ใน bucket · ตัวปลอมนี้จำด้วย attId — พอให้ยืนยันว่ารอบกดใหม่ไม่ดึงรูปที่มีแล้ว
+ */
+function storingPrepare(fail = {}) {
+  const stored = new Map();
+  const inner = fakePrepare(fail);
+  const prepare = async (supabase, files, opts = {}) => {
+    const have = new Map(stored);
+    if (opts.have instanceof Map) for (const [k, v] of opts.have) have.set(k, v);
+    else for (const [k, v] of Object.entries(opts.have || {})) have.set(k, v);
+    const out = await inner(supabase, files, { ...opts, have });
+    for (const [attId, img] of Object.entries(out.imageByAttId)) stored.set(attId, img);
+    return out;
+  };
+  prepare.calls = inner.calls;
+  return prepare;
+}
+
+/* แต่ละแถว: รอบแรกหยุดด้วย `code` · `world(mode)` สร้างโลก · `first` / `retry` ตัวเลือกของสองรอบ · `onlyVia` = ขั้นที่มีแค่บางเส้น
+   (เส้นส่งผลใช้แถวคำร้องที่การเขียนคำตอบคืนมา — ไม่อ่านคำร้องเอง) */
+const S3_RESUME = [
+  {
+    name: 'อ่านคำร้องพลาด', code: 'read_failed', onlyVia: 'issue_only',
+    world: (mode) => deskWorld(mode, { options: { fail: { dept_requests: { times: 1 } } } }),
+  },
+  {
+    name: 'อ่านแถวเอกสารพลาด', code: 'read_failed',
+    world: (mode) => deskWorld(mode, { options: { fail: { service_survey_reports: { times: 1 } } } }),
+  },
+  {
+    name: 'ชิ้นอินพุตอ่านไม่สำเร็จ (ผลวัด)', code: 'blocked', retryFlag: true,
+    world: (mode) => deskWorld(mode, { options: { fail: { service_survey_zones: { times: 1 } } } }),
+  },
+  {
+    name: 'เตรียมรูปหมดเวลา', code: 'timeout', reuse: true,
+    world: (mode) => deskWorld(mode),
+    prepare: () => storingPrepare({ 'att-z2-p1': { times: 1, reason: SURVEY_IMAGE_FAILURE.TIMEOUT } }),
+  },
+  {
+    name: 'วัดกระดาษล้ม', code: 'paper_blocked',
+    world: (mode) => deskWorld(mode),
+    first: { measure: async () => { throw new Error('launch failed'); } },
+    retry: { measure: async () => ({ issues: [], error: null }) },
+  },
+  {
+    name: 'RPC ล้มก่อนทำอะไร', code: 'rpc_failed', rpcCalls: 1,
+    world: (mode) => deskWorld(mode, { options: { rpc: [{ error: { code: '57014', message: 'canceling statement due to statement timeout' } }] } }),
+  },
+];
+
+for (const mode of ['drawing', 'mixed']) {
+  for (const via of ['issue_only', 'send']) {
+    for (const row of S3_RESUME) {
+      if (row.onlyVia && row.onlyVia !== via) continue;
+      test(`🔴 งวด S3 เดินต่อ (${mode} · ${via}): หยุดที่ ${row.name} — ไม่มีแถว ไม่มีเลข · กดใหม่แล้วออกเลขเดียว`, async () => {
+        const world = row.world(mode);
+        const prepareImages = row.prepare ? row.prepare() : fakePrepare();
+        const base = via === 'issue_only' ? { via, requestId: world.request().id } : { via };
+
+        const first = await issue(world, { prepareImages, ...base, ...(row.first || {}) });
+        assert.equal(first.result.state, 'failed');
+        assert.equal(first.result.code, row.code, first.result.reason);
+        assert.equal('hold' in first.result, false);
+        if (row.retryFlag) assert.equal(first.result.retry, true);
+        assert.deepEqual(world0Writes(world), { rows: 0, lastNo: 0, rpc: row.rpcCalls ?? 0 }, 'ไม่มีแถว ไม่มีเลขถูกกิน');
+
+        const second = await issue(world, { prepareImages, via: 'issue_only', requestId: world.request().id, ...(row.retry || {}) });
+        assert.equal(second.result.state, 'issued', second.result.reason);
+        assert.equal(second.result.docNo, FIRST_NO);
+        assert.equal(second.result.reused, false);
+        assert.equal(world.reports().length, 1);
+        assert.equal(lastNo(world), 1, 'เลขเดียว');
+        if (row.reuse) {
+          // รอบกดใหม่ดึงเฉพาะรูปที่ค้าง — รูปที่อัปแล้วในรอบแรกถูกใช้ซ้ำ
+          assert.deepEqual(prepareImages.calls[1].fetched, ['att-z2-p1']);
+        }
+        const snapshot = world.reports()[0].snapshot;
+        assert.equal(snapshot.assessment.mode, mode);
+        assert.equal(snapshot.request.surveyConfirm, 'not_needed');
+      });
+    }
+  }
+}
+
+test('🔴 งวด S3: RPC ชนกัน (อีกคำขอออกไปก่อน) บนใบจากแบบ = อ่านซ้ำแล้วใช้ฉบับนั้น · อ่านแถวกลับไม่สำเร็จ = ยังออกแล้ว', async () => {
+  for (const mode of ['drawing', 'mixed']) {
+    const other = deskWorld(mode);
+    await issue(other, { user: { id: 'U-other', name: 'Other Head' } });
+    const theirs = other.reports()[0];
+    const world = deskWorld(mode, {
+      options: { rpc: [{ before: (db) => { db.tables.service_survey_reports.push({ ...theirs }); }, error: UNIQUE }] },
+    });
+    const { result } = await issue(world, { via: 'issue_only', requestId: world.request().id });
+    assert.equal(result.state, 'issued', result.reason);
+    assert.equal(result.reused, true, mode);
+    assert.equal(result.docNo, theirs.docNo);
+    assert.equal(lastNo(world), 0, 'ไม่มีเลขใหม่');
+
+    const back = deskWorld(mode, {
+      options: { fail: { service_survey_reports: { times: 1, throws: true, when: () => back.db.rpcLog.length > 0 } } },
+    });
+    const read = (await issue(back)).result;
+    assert.equal(read.state, 'issued', `${mode}: ${read.reason}`);
+    assert.equal(read.docNo, FIRST_NO);
+    assert.strictEqual(read.rev, 0);
+  }
+});
+
+test('⭐ งวด S3 ช่วงเปิดใช้: ใบจากแบบล้วนที่ถูกส่งตอนข้อกันยังอยู่ (ตอบแล้ว ไม่มีเอกสาร ไม่มีนัด เลือกแล้ว) ออกได้ในการกด "ออกเอกสาร" ครั้งแรก', async () => {
+  const world = deskWorld('drawing');
+  assert.equal(stateOf(world), 'missing');
+  const { result, prepareImages } = await issue(world, { via: 'issue_only', requestId: world.request().id });
+  assert.equal(result.state, 'issued', result.reason);
+  assert.equal(result.docNo, FIRST_NO);
+  assert.equal(result.reused, false);
+  assert.equal(stateOf(world), 'issued');
+  // กระดาษพิมพ์แค่ภาพแบบ — ไม่มีภาพกว้าง ไม่มีรูปจุด
+  assert.deepEqual(prepareImages.calls[0].files, ['att-z1-p1', 'att-z2-p1']);
+  const snapshot = world.reports()[0].snapshot;
+  assert.equal(snapshot.assessment.mode, 'drawing');
+  assert.deepEqual(snapshot.assessment.drawingBy, ['Head Approver']);
+  assert.equal(snapshot.assessment.drawingAt, '2026-09-26');
+  assert.equal(snapshot.visit.code, null, 'ไม่มีนัดให้รับรอง');
+  assert.deepEqual(snapshot.otherVisits, []);
+  assert.equal(snapshot.request.surveyConfirm, 'not_needed');
+});
+
+test('⭐ งวด S3 ช่วงเปิดใช้: ใบผสมที่การส่งผลปิดนัดให้ (นัด `done` · เธรด meta.closedBySend) ออกได้ในการกดครั้งแรก — นัดนั้นถูกรับรอง', async () => {
+  const thread = [{
+    id: 'EUP-visit-done', kind: 'done', body: 'ปิดพร้อมส่งผล โดย Head Approver', meta: { closedBySend: true },
+    entityType: 'service_visit', entityId: 'SVV-1', createdAt: '2026-09-26T03:01:26.000+00:00',
+  }];
+  const world = deskWorld('mixed', { request: { surveyConfirm: 'needed' } });
+  world.tables.entity_updates.push(...thread);
+  const { result } = await issue(world, { via: 'issue_only', requestId: world.request().id });
+  assert.equal(result.state, 'issued', result.reason);
+  assert.equal(result.docNo, FIRST_NO);
+  const snapshot = world.reports()[0].snapshot;
+  assert.equal(snapshot.assessment.mode, 'mixed');
+  assert.equal(snapshot.visit.code, 'SV-26090013');
+  assert.equal(snapshot.visit.closedBySend, true);
+  assert.equal(snapshot.request.surveyConfirm, 'needed');
+});
+
+test('งวด S3: ใบจากแบบที่ตอบแล้วแต่ไม่มีคำตอบ "ต้องยืนยันหน้างานไหม" (แถวที่ถูกแก้มือ) = blocked ชนิดเนื้อใบ — ไม่มีเลข', async () => {
+  for (const mode of ['drawing', 'mixed']) {
+    const world = deskWorld(mode, { request: { surveyConfirm: null } });
+    const { result } = await issue(world, { via: 'issue_only', requestId: world.request().id });
+    assert.equal(result.code, 'blocked', mode);
+    assert.deepEqual(result.reasons, ['ยังไม่ได้เลือกว่าต้องยืนยันหน้างานไหม']);
+    assert.equal(result.retry, false, 'ต้องดึงผลกลับมาแก้');
+    assert.deepEqual(world0Writes(world), { rows: 0, lastNo: 0, rpc: 0 });
+  }
+});
+
+test('งวด S3: `drawingMethodEnabled` เป็นตัวเลือกที่ส่งต่อให้ตัวโหลด — ใบผสมที่ไม่มีนัดได้หางของบรรทัดไม่พบนัดเฉพาะ `true` ตรงตัว', async () => {
+  const noVisit = 'ไม่พบนัดประเมินพื้นที่ของใบนี้';
+  const tail = ' — พื้นที่ที่ไม่ได้ลงหน้างานให้เปลี่ยนเป็น “ประเมินจากแบบ”';
+  for (const [flag, want] of [[true, noVisit + tail], [false, noVisit], [undefined, noVisit], ['on', noVisit]]) {
+    const world = deskWorld('mixed');
+    world.tables.service_visits.length = 0;
+    const { result } = await issue(world, { via: 'issue_only', requestId: world.request().id, drawingMethodEnabled: flag });
+    assert.equal(result.code, 'blocked');
+    assert.deepEqual(result.reasons, [want], String(flag));
+  }
+  // ซอร์ส: ไฟล์นี้ไม่อ่านสวิตช์เอง
+  assert.doesNotMatch(raw(SOURCE), /surveyDrawingFlag|surveyDrawingMethodEnabled|SURVEY_DRAWING_METHOD/);
+});
+
+test('งวด S3: ไม่มีผลไหนพกคีย์ `hold` — ไม่ว่าจะออกได้ ติดเหตุของระบบ หรือติดเหตุของเนื้อใบ', async () => {
+  const outcomes = [];
+  for (const mode of ['drawing', 'mixed']) {
+    outcomes.push((await issue(deskWorld(mode))).result);
+    const system = deskWorld(mode);
+    system.tables.document_standard_versions.length = 0;
+    const sys = (await issue(system)).result;
+    assert.equal(sys.reason, 'ออกเอกสารไม่ได้ — ไม่พบมาตรฐานเอกสารของรายงานการประเมินพื้นที่ · แก้แล้วกดออกเอกสารอีกครั้ง', mode);
+    assert.equal(sys.retry, true);
+    outcomes.push(sys);
+    outcomes.push((await issue(deskWorld(mode, { request: { surveyConfirm: null } }))).result);
+  }
+  for (const result of outcomes) assert.equal(keysDeep(result).has('hold'), false);
+  assert.doesNotMatch(code(SOURCE), /\bhold\b/);
 });
 
 /* ══ 10. ซอร์ส ═══════════════════════════════════════════════════════════════════ */

@@ -285,7 +285,7 @@ export const PDR_SECTIONS = [
       /* ⭐ **1.15 Archetype ของแบรนด์** (มติผู้ใช้ 2026-09-11 · mig 0352) — ไฟล์ PDR ของ AE
          วางไว้ที่ 2.1.6 ในกล่องบรีฟ แต่มันเป็นของ **แบรนด์** ไม่ใช่รายกลิ่น และใบพัฒนาสูตร
          ไม่มีบรีฟแล้ว ⇒ ต่อท้ายหมวด 1 (เลขเดิมไม่เลื่อน) ใช้ร่วมสองหัวข้อ
-         ติ๊กได้หลายตัว + เขียนต่อได้ (ท่าเดียวกับ Scentotype · มติผู้ใช้) */
+         ติ๊กได้หลายตัว + เขียนต่อได้ (มติผู้ใช้) */
       {
         key: 'archetypes', no: '1.15', column: 'pdrArchetypes', label: 'Archetype ของแบรนด์',
         type: 'multi', options: BRAND_ARCHETYPES, notes: 'archetypeNotes',
@@ -445,8 +445,10 @@ export const PDR_SECTIONS = [
 /* ── ป้าย + เลขข้อของบรีฟรายกลิ่น (ข้อ 2.1.x · พัฒนากลิ่นเท่านั้น) ──────────────
    ⭐ ที่เดียวของสามจอ (ฟอร์ม · จอสรุป · เอกสาร) — บรีฟอยู่คนละตาราง (mig 0213) จึงไม่อยู่ใน
    `PDR_SECTIONS` แต่คำต้องเป็นชุดเดียวกันด้วยเหตุผลเดียวกับทะเบียนช่องข้างบน
-   ⭐ **2.1.4 = Performance · 2.1.5 = Scentotype** ตามไฟล์ PDR ของ AE (มติผู้ใช้ 2026-09-11)
-   — สลับกับลำดับเดิม · Archetype (2.1.6 ในไฟล์นั้น) ย้ายไปเป็นข้อ 1.15 ระดับใบ
+   ⭐ **2.1.4 = Performance** ตามไฟล์ PDR ของ AE (มติผู้ใช้ 2026-09-11) · Archetype (2.1.6 ใน
+   ไฟล์นั้น) ย้ายไปเป็นข้อ 1.15 ระดับใบ
+   ⛔ **2.1.5 Scentotype ถอดแล้ว** (มติผู้ใช้ 2026-10-19) — ไม่มีในสามจอทุกใบ รวมใบเก่า
+   (ค่าเก่ายังอยู่ในฐาน ดู `scentBriefTypes.js`) · เลขข้ออื่นไม่เลื่อน เพราะเป็นข้อท้ายสุด
    `paper` = คำเต็มบนกระดาษเมื่อยาวกว่าป้ายบนจอ */
 export const PDR_BRIEF_LABELS = Object.freeze({
   label: { label: 'ชื่อเรียก' },
@@ -456,7 +458,6 @@ export const PDR_BRIEF_LABELS = Object.freeze({
   dislikedNotes: { no: '2.1.3', label: 'กลิ่นที่ End-user ไม่ชอบ' },
   researchTopic: { label: 'ให้ทำวิจัยเรื่อง', paper: 'หากต้องการให้ทำวิจัย ระบุ' },
   performance: { no: '2.1.4', label: 'Performance ของกลิ่น' },
-  scentotypes: { no: '2.1.5', label: 'Scentotype' },
 });
 
 // ทุกช่องที่มีคอลัมน์จริง — ใช้ตรวจว่าไม่มีคอลัมน์ไหนหลุดจากจอ
@@ -541,8 +542,8 @@ export function pdrFieldText(field, request = {}, context = {}) {
   if (field.type === 'multi') {
     const list = Array.isArray(raw) ? raw : [];
     if (!list.length) return null;
-    // ⭐ ช่องที่มีข้อความเขียนต่อ (1.15 Archetype) — พิมพ์ต่อท้ายตัวที่ติ๊ก ท่าเดียวกับ
-    // Scentotype บนกระดาษ ("☑ CAREGIVER — ดูแลแขกเหมือนคนในบ้าน")
+    // ⭐ ช่องที่มีข้อความเขียนต่อ (1.15 Archetype) — พิมพ์ต่อท้ายตัวที่ติ๊ก
+    // ("☑ CAREGIVER — ดูแลแขกเหมือนคนในบ้าน")
     const notes = field.notes ? (request[FIELD_COLUMN[field.notes]] || {}) : {};
     return list.map((v) => {
       const text = labelOf(field.options || [], v) || String(v);

@@ -11,7 +11,7 @@ import { externalDocKindLabel } from '@/lib/sales/contracts';
 import { HISTORICAL_APPROVER_LABEL, OPENING_INSTALLMENT_LABEL } from '@/lib/sales/historicalOrders';
 import {
   PACKS_ROUNDS_HEAD, historicalBillingDatesText, historicalContractFactText, historicalCoverageVerdictText, historicalOpeningFactText,
-  historicalPacksRoundsText, historicalRemainingFactText, historicalZoneSitesText,
+  historicalPacksRoundsText, historicalQuoteServiceMismatch, historicalRemainingFactText, historicalZoneSitesText,
 } from '@/lib/sales/historicalOrderCopy';
 import {
   HISTORICAL_SAVE_BUTTON_LABEL, HISTORICAL_SAVE_STAGES, HISTORICAL_WIZARD_STEPS, contractSpan, historicalOverdueWarningText,
@@ -34,7 +34,10 @@ export function historicalKeyerMode(role) {
  * คำเตือนของแผน → กลุ่ม (หนึ่งกลุ่มต่อหัวข้อ) — ขั้น ④ วางในแถวที่มันเกี่ยว · นับจำนวนกลุ่มไม่ใช่จำนวนบรรทัด
  * ⭐ อ่าน `warningItems` (หัวข้อที่แผนกำกับ) · แผนรุ่นที่ไม่มีหัวข้อ = ทุกข้อเป็น "คำเตือนอื่น" — ไม่มีข้อไหนหายเงียบ (บทเรียน #1685)
  * ⚠️ "ไม่มีงวดยกมา" ไม่ใช่คำเตือน — มันคือค่าของแถวงวดยกมาอยู่แล้ว
- * @returns `[{ topic, step, text }]` — topic: contractEnded | liveTerm | overdue | other
+ * ⭐ PR-5 D1(ก) (มติเจ้าของ 12/10 ข้อ A8): กลุ่ม `packService` ไม่ได้มาจาก `warningItems` — คิดจากบรรทัดของแผน (`plan.lines`): คู่เงินของบรรทัด
+ *   (เลขแพ็ค · จำนวน) ไม่เท่ากับคู่ของงานบริการ (รอบละกี่แพ็ค · จำนวนรอบบริการ) = เตือน ไม่กั้น · ประโยคเดียวกับหน้าต่างอนุมัติ
+ *   (`historicalQuoteServiceMismatch`) · แถวตรวจวางไว้ในแถวแพ็คต่อรอบ · บรรทัดใต้ปุ่มนับเป็นหนึ่งข้อ · ไม่ไหลลงแถว "คำเตือนอื่น"
+ * @returns `[{ topic, step, text }]` — topic: contractEnded | liveTerm | packService | overdue | other
  */
 export function historicalWarningGroups(plan, { todayIso = null } = {}) {
   const items = Array.isArray(plan?.warningItems)
@@ -58,6 +61,9 @@ export function historicalWarningGroups(plan, { todayIso = null } = {}) {
     const zoneCount = new Set(live.map((item) => (Number.isInteger(item.index) ? item.index : item))).size;
     groups.push({ topic: 'liveTerm', step: 'zones', text: `${fmtNumber(zoneCount)} โซนมีรอบขายของใบอื่นอยู่แล้ว — ${parts.join(' · ')} · ตรวจว่าไม่ซ้ำสัญญา` });
   }
+  /* PR-5 D1(ก) — ลำดับของกลุ่ม = ลำดับของแถวตรวจ (สัญญา → โซน → แพ็คต่อรอบ → งวด) */
+  const packService = historicalQuoteServiceMismatch(Array.isArray(plan?.lines) ? plan.lines : []).text;
+  if (packService) groups.push({ topic: 'packService', step: 'zones', text: packService });
   const overdue = items.filter((item) => item.topic === 'overdue');
   if (overdue.length) groups.push({ topic: 'overdue', step: 'money', text: historicalOverdueWarningText(overdue.length, todayIso) });
   for (const item of items) {
@@ -126,7 +132,8 @@ export function historicalReviewChecklist(plan, { contractFiles = {}, evidenceFi
     value: !packs.totals.zoneCount ? '—'
       : packsMissing ? `ยังไม่ครบ ${fmtNumber(packsMissing)} รายการ — กลับไปขั้น ②` : packs.total || '—',
     sub: packs.perZone || (packs.overflow ? 'ดูรายการด้านล่าง' : null),
-    tone: packsMissing ? 'warn' : null, step: 'zones', field: 'zones',
+    /* PR-5 D1(ก): คู่เงินของบรรทัดไม่ตรงกับคู่ของงานบริการ = คำเตือนใต้แถวนี้ (ไม่เปลี่ยนสีของแถว ไม่กั้น) · ตรงกัน/เทียบไม่ได้ = null */
+    tone: packsMissing ? 'warn' : null, warn: warnOf('packService'), step: 'zones', field: 'zones',
   });
 
   if (plan.zeroValue) {
@@ -229,6 +236,8 @@ export function historicalSaveStages({ stage = null, counts = {}, orderNumber = 
 }
 
 const RELOAD_CODES = new Set(['workflow_stale', 'historical_so_edit_state_invalid', 'historical_so_contract_state_invalid']);
+/* รหัสของเข็มขัดหลังบันทึกของ 0409 (ตั้งที่ historicalOrderCommit — มากับ 503 เสมอ) */
+const PACK_QTY_NOT_STORED_CODE = 'historical_pack_qty_not_stored';
 
 /**
  * ผลของการบันทึกที่ไม่ผ่าน → กล่องในแผงบันทึก · **ทางออกไม่เกินหนึ่งปุ่ม** และไม่มีปุ่มหลักตัวที่สอง
@@ -256,6 +265,11 @@ export function historicalSaveResultView(exit, { stage = null, orderNumber = nul
     return { title: 'ส่งไม่สำเร็จ — ใบของรอบนี้เกิดไปแล้ว', body: text(exit.hint), action: exit.existingOrderId ? { key: 'open', label: 'เปิดใบที่สร้างไว้ในฟอร์มแก้ไข', orderId: exit.existingOrderId } : null };
   }
   if (exit.kind === 'forbidden') return { title: 'ส่งไม่สำเร็จ', body: `ไม่มีสิทธิ์บันทึกใบนี้ — ${message}`, action: null };
+  /* 🔴 มติผู้นำงาน 12/10/2026 (งวด PR-5 · แผน IMPL_PLAN_PR5 §3.4 · ฉาก S21): 503 ของเข็มขัดหลังบันทึกของ 0409 = ประโยคของ server ตามที่มันเขียน
+     ไม่ห่อ — ใบร่างลงฐานไปแล้ว ("ระบบยังไม่พร้อม" อ่านเหมือนยังไม่มีอะไรถูกบันทึก) และประโยคของการส่งซ้ำบอกเองว่ากดบันทึกซ้ำไม่ช่วย
+     (ต่อท้ายด้วยคำชวนลองใหม่ = สองคำสั่งที่ขัดกันในกล่องเดียว) · ประโยคทั้งสองอยู่ที่ historicalOrderCopy — ไฟล์นี้ไม่ประกอบคำเอง
+     ⚠️ แคบเท่ารหัสนี้รหัสเดียว และต้องอยู่ **ก่อน** กิ่ง 503 ทั่วไปข้างล่าง (503 ตัวอื่นเท่าเดิมทุกไบต์ — เทสต์ยึดทั้งสองฝั่ง) */
+  if (text(exit.code) === PACK_QTY_NOT_STORED_CODE) return { title: 'ส่งไม่สำเร็จ', body: message, action: null };
   if (exit.kind === 'schema') return { title: 'ส่งไม่สำเร็จ', body: `ระบบยังไม่พร้อม — ${message} · ลองส่งอีกครั้งในไม่กี่นาที`, action: null };
   if (RELOAD_CODES.has(text(exit.code))) {
     return { title: 'ส่งไม่สำเร็จ — ใบถูกแก้จากที่อื่นหลังคุณเปิด', body: message, action: { key: 'reload', label: 'โหลดใบล่าสุด' } };

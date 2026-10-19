@@ -179,6 +179,7 @@ test('🔴 PATCH ถาม visitMoveDecision ด้วยวันไทย ห�
   const closed = patch.search(/if \(body\.stamp && isClosedVisit\(before\)\)/);
   assert.ok(closed > 0 && closed < call, 'ด่านใบที่ปิดแล้วเดิม (ปักไว้) ต้องมาก่อน');
   assert.ok(call < patch.indexOf("body.status = 'in_progress'"), 'ต้องตัดสินก่อน route ตั้งสถานะให้');
-  assert.ok(call < patch.indexOf('.update({ ...patch'), 'ต้องตัดสินก่อนเขียนแถว');
+  assert.ok(call < patch.indexOf('const written = changedVisitColumns(patch, before);'), 'ต้องตัดสินก่อนเขียนแถว');
+  assert.ok(patch.indexOf('const written = changedVisitColumns(patch, before);') < patch.indexOf('.update({ ...written'), 'ก้อนที่เขียนมาจากตัวตัด');
   assert.match(patch, /if \(startGate\?\.error\) return startGate\.forbidden \? forbidden\(startGate\.error\) : conflict\(startGate\.error\);/);
 });

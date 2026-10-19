@@ -123,7 +123,11 @@ const leadsPage = () => readFileSync(join(ROOT, 'src/app/sales-planning/leads/pa
 test('หน้าดีล: ขอบเขตกรองทั้ง KPI และตาราง ไม่ใช่ KPI อย่างเดียว', () => {
   const src = dealsPage();
   assert.match(src, /const kpiDeals = deals\.filter\(inScopeDeal\)/, 'KPI ต้องใช้ตัวกรองร่วม');
-  assert.match(src, /if \(!inScopeDeal\(deal\)\) return false;/, 'ตารางต้องใช้ตัวกรองร่วมด้วย');
+  // ตารางผ่านตัวตัดสินกลาง (lib/sales/dealListFilter.js · H5 2026-10-19) ซึ่งตรวจขอบเขตเป็นข้อแรก
+  assert.match(src, /inScope: inScopeDeal/, 'ตารางต้องใช้ตัวกรองร่วมด้วย');
+  assert.match(src, /deals\.filter\(\(deal\) => dealPassesListFilters\(deal, listFilters, listCtx\)\)/);
+  const listFilter = readFileSync(join(ROOT, 'src/lib/sales/dealListFilter.js'), 'utf8');
+  assert.match(listFilter, /if \(ctx\.inScope && !ctx\.inScope\(deal\)\) return false;/);
 });
 
 test('ทั้งสองหน้าตั้งต้นด้วย defaultScope ตัวกลาง', () => {

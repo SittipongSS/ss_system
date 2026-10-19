@@ -23,7 +23,9 @@ export function deleteRequestRowError(request, row) {
   /* ⭐ แถวงานของพัฒนาสูตร NPD **มาจากแบบฟอร์ม PDR** (ม-144) — ลบที่แถวแล้วบันทึกแบบฟอร์มครั้งหน้าระบบ
      จะงอกกลับมาเอง ⇒ ทางที่ถูกคือเอาสินค้าออกจากแบบฟอร์ม (ระบบถอนแถวให้ถ้ายังไม่มีใครแตะ)
      ⚠️ เฉพาะแถวต้นทาง — แถวรอบแก้ (`derivedFromItemId`) เกิดจากก้าวของแถว ลบตามกติกาเดิมได้ */
-  if (requestUsesDeliveredRows(request) && requestPdrRowsPickScent(request) && !row.derivedFromItemId) {
+  /* ⚠️ direction เพิ่ม (ม-157) เกิดจากการส่งของ RD ไม่ใช่จากแบบฟอร์ม ⇒ ลบตามกติกาเดิมได้เหมือนรอบแก้ */
+  if (requestUsesDeliveredRows(request) && requestPdrRowsPickScent(request)
+    && !row.derivedFromItemId && !row.directionOfItemId) {
     return 'รายการนี้มาจากแบบฟอร์ม PDR — เอาสินค้าออกจากแบบฟอร์มแทน (ระบบถอนรายการให้เองถ้ายังไม่ส่งสูตร)';
   }
   if (row.outcome) return 'รายการนี้ลูกค้าตอบมาแล้ว ลบไม่ได้ — ใช้ก้าวของแถวแทน';
@@ -39,6 +41,12 @@ export function deleteRequestRowError(request, row) {
   const children = (request.items || []).filter((i) => i?.derivedFromItemId === row.id);
   if (children.length) {
     return `รายการนี้มีรอบแก้ต่อจากมันอยู่ ${children.length} รายการ — ลบรอบแก้ก่อน`;
+  }
+  /* ⭐ แถวแรกของชุด direction (ม-157 · mig 0411) — direction เพิ่มชี้มันอยู่ (FK ไม่ cascade) ⇒ ลบแถวแรกก่อน = ฐานตีกลับ
+     · ตั้งใจไม่ให้ลบตามกันเงียบ ๆ: แต่ละ direction มีสูตรในทะเบียนของตัวเอง ต้องถูกตัดสินทีละตัว */
+  const directions = (request.items || []).filter((i) => i?.directionOfItemId === row.id);
+  if (directions.length) {
+    return `รายการนี้มี direction เพิ่มอยู่ ${directions.length} รายการ — ลบ direction เพิ่มก่อน`;
   }
   return null;
 }

@@ -26,7 +26,7 @@ import { canDoFieldWork, usesCrewShell } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { VISIT_KIND_LABELS, visitTimeText, visitWarnings } from "@/lib/service/rounds";
 import { VISIT_STATUS_LABELS, isClosedVisit } from "@/lib/service/visitStatus";
-import { closeVisitPayload, groupVisits, openCount, overdueDays } from "@/lib/service/myVisits";
+import { closeVisitPayload, groupVisits, openCount, overdueDays, todayPageVisitsQuery } from "@/lib/service/myVisits";
 import { accessWindowText } from "@/lib/service/sites";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
@@ -122,8 +122,9 @@ export default function TodayPage() {
     if (!opts?.background) setLoading(true);
     setLoadError("");
     try {
-      const assignee = viewingOther ? `&assignee=${encodeURIComponent(viewUserId)}` : "";
-      const res = await apiFetch(`/api/service/my-visits?scope=mine${assignee}`);
+      /* ช่วงวัน = ช่วงที่ป้ายเมนูนับ (ย้อน 14 วันถึงวันนี้ · `todayPageVisitsQuery`) — 🐞 เดิมไม่ส่งช่วง ⇒ ได้วันนี้วันเดียว
+         กลุ่ม "ค้างอยู่" ไม่เคยขึ้น ป้ายเมนู 5 แต่หน้าโชว์ "วันนี้ 2" (ตรวจตัวกรอง 08/10 · H12) */
+      const res = await apiFetch(`/api/service/my-visits?${todayPageVisitsQuery({ assignee: viewingOther ? viewUserId : "" })}`);
       const data = await res.json().catch(() => null);
       if (!isLatest()) return; // เปลี่ยนคนดูระหว่างรอ — คิวต้องตรงกับลิงก์ล่าสุด
       if (!res.ok) throw new Error(data?.error || "โหลดคิวงานไม่สำเร็จ");
@@ -196,6 +197,9 @@ export default function TodayPage() {
       await load();
     } catch (e) {
       setToast({ kind: "error", msg: e.message });
+      /* ⭐ ไม่ผ่านแล้วอ่านคิวใหม่เบื้องหลัง — นัดอาจเพิ่งถูกยกเลิก/เลื่อน (409 ของ route) ถ้าไม่อ่านใหม่ แถวยังขึ้นปุ่ม
+         "เริ่มงาน" ของสถานะเก่าให้กดซ้ำได้เรื่อย ๆ · เบื้องหลัง = ไม่ล้างจอ ไม่ทับข้อความ error ข้างบน */
+      load({ background: true });
     } finally {
       setStarting(null);
     }
@@ -270,11 +274,12 @@ export default function TodayPage() {
       /* ตัวเลขสรุปอยู่ขวาของหัวจอเป็นป้าย · ศูนย์ทั้งหมด = ไม่โชว์ (สถานะว่างบอกอยู่แล้ว)
          🐞 เดิมเป็นแถบ toolbar ลอยชิดซ้ายตัวเล็กเท่าคำบรรยาย ซ้ำกับหัวกลุ่มที่อยู่ถัดลงไป
          ⚠️ นับเฉพาะงานที่ยังไม่ปิด — เลขหัวกลุ่มข้างล่างต้องเป็นเลขเดียวกัน (ดู sectionRows) */
-      headerRight={(counts.overdue + counts.today + counts.tomorrow) > 0 ? (
+      /* ⚠️ ไม่มีป้าย "พรุ่งนี้" — หน้าโหลดถึงวันนี้เท่านั้น (ดู `todayPageVisitsQuery`) ป้ายพรุ่งนี้จึงเป็น 0 เสมอ
+         ค้าง + วันนี้ = เลขเดียวกับป้ายเมนู (`waitingOnMeVisitCount`) */
+      headerRight={(counts.overdue + counts.today) > 0 ? (
         <>
           {counts.overdue > 0 && <span className="ui-badge danger">ค้าง {counts.overdue}</span>}
           <span className="ui-badge">วันนี้ {counts.today}</span>
-          <span className="ui-badge">พรุ่งนี้ {counts.tomorrow}</span>
         </>
       ) : null}
     >

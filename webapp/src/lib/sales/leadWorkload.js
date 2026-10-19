@@ -9,7 +9,7 @@
 // (KPI ของลีดอยู่ที่ /api/sales-planning/leads/kpi ซึ่งผูกกับช่วงเวลาที่เลือก)
 // ที่นี่ตอบคำถามเดียว: "ตอนนี้ใครยังตามงานไหว"
 
-import { leadFollowUpState } from './leads';
+import { leadActiveFollowUpAt, leadFollowUpState } from './leads';
 
 /** สถานะที่ถือว่า "ใบยังอยู่ในมือ AE"
  *  ⚠️ ไม่รวม `qualified` — เปิดลูกค้าแล้วงานย้ายไปเป็นดีล ไม่ใช่ภาระของคิวลีดอีก
@@ -44,7 +44,10 @@ export function leadWorkloadFrom(rows = [], todayKey) {
     const slot = by[id] || (by[id] = { ...EMPTY_WORKLOAD });
     slot.holding += 1;
     if (row.status === 'assigned') slot.waitingContact += 1;
-    if (leadFollowUpState(row.followUpAt, todayKey) === 'late') slot.lateFollowUp += 1;
+    /* วันติดตามอ่านผ่าน `leadActiveFollowUpAt` ตัวเดียวกับตาราง/ตัวกรอง/การ์ดค้างคิว — "เลยติดตาม" ที่นี่
+       ต้องเป็นใบชุดเดียวกับที่ตัวกรอง "เลยวันติดตาม" ของคนนั้นโชว์ (ติดต่อแล้ว + นัดแล้วที่มีวันติดตาม) */
+    const due = leadActiveFollowUpAt(row);
+    if (due && leadFollowUpState(due, todayKey) === 'late') slot.lateFollowUp += 1;
   }
   return by;
 }

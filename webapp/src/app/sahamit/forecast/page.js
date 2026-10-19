@@ -15,8 +15,9 @@ import Tabs from "@/components/ui/Tabs";
 import Modal from "@/components/Modal";
 import { useApiList } from "@/lib/excise/useApiList";
 import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
-import { userTeams } from "@/lib/permissions";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
+import { isSahamitDealOwner } from "@/lib/sahamit/dealOwner";
+import { deliveryBeforePo, lastDayOfMonth } from "@/lib/sahamit/dealDates";
 import { fmtDate, fmtMoney, fmtNumber, NA } from "@/lib/format";
 import { roundTotal, roundSkuCount, roundMatrix, compareRounds } from "@/lib/sahamit/forecastClient";
 import { productMetaText } from "@/lib/sahamit/productMeta";
@@ -48,8 +49,8 @@ function ForecastPageInner() {
   // forecast line ที่ถูกสร้างเป็นโครงการไปแล้ว (กันสร้างซ้ำตั้งแต่ UI)
   const { data: mappedLineIds, loading: lMapped, error: mappedError, staleError: mappedStale, errorDetail: mappedDetail, loaded: mappedLoaded, reload: reloadMapped } = useApiList("/api/sahamit/forecast/mapped-lines");
   const mappedSet = useMemo(() => new Set((mappedLineIds || []).map(String)), [mappedLineIds]);
-  // ผู้ดูแลดีลสหมิตร = AE ทีม KA เท่านั้น (server เช็คซ้ำใน create-sales-deal)
-  const aeList = useMemo(() => (assignables || []).filter((u) => u.role === "ae" && userTeams(u).includes("KA")), [assignables]);
+  // ผู้ดูแลดีลสหมิตร = AE / Senior AE ทีม KA เท่านั้น — ด่านตัวเดียวกับ server (create-sales-deal)
+  const aeList = useMemo(() => (assignables || []).filter(isSahamitDealOwner), [assignables]);
   const canEdit = useCan("sahamit:edit");
 
   /* ── โหลดพัง ≠ ไม่มีรอบ · และลิสต์รองล้มต้องไม่กลายเป็น "ไม่มีหมวด / ฿0 / ยังไม่มีใครสร้างดีล / ไม่มี AE" ────────
@@ -161,9 +162,9 @@ function ForecastPageInner() {
   const dealPausedReason = dealBlocked.length
     ? `ยังสร้างแผนการขายไม่ได้ — ดึงข้อมูลไม่ได้: ${dealBlocked.map((s) => s.label).join(" · ")} (ดูข้อความด้านบน)`
     : dealPending ? "กำลังโหลดข้อมูลที่ใช้สร้างแผนการขาย…" : null;
-  // รายชื่อมาครบแล้วแต่ไม่มี AE ทีม KA สักคน = คำตอบจริง (ไม่ใช่ความล้ม) — ปุ่มยังพัก แต่ต้องบอกว่าเพราะอะไร
+  // รายชื่อมาครบแล้วแต่ไม่มี AE / Senior AE ทีม KA สักคน = คำตอบจริง (ไม่ใช่ความล้ม) — ปุ่มยังพัก แต่ต้องบอกว่าเพราะอะไร
   const submitPausedReason = dealPausedReason
-    || (usersLoaded && !aeList.length ? "ยังไม่มี AE ทีม KA ให้เลือกเป็นผู้ดูแล" : null);
+    || (usersLoaded && !aeList.length ? "ยังไม่มี AE / Senior AE ทีม KA ให้เลือกเป็นผู้ดูแล" : null);
   const router = useRouter();
   const searchParams = useSearchParams();
   const [selectedNo, setSelectedNo] = useState(null);
@@ -181,7 +182,7 @@ function ForecastPageInner() {
   // เลือก forecast line (ราย line = สินค้า×เดือน ของรอบที่ดู) → สร้าง "1 โครงการ" เข้าแผนการขาย
   const [selectedLines, setSelectedLines] = useState(() => new Set());
   const [dealMonth, setDealMonth] = useState(thisMonth()); // เดือนคาดได้รับ PO (Sales Forecast Month)
-  const [dealOwnerId, setDealOwnerId] = useState(""); // ผู้ดูแล (AE) (role=ae เท่านั้น)
+  const [dealOwnerId, setDealOwnerId] = useState(""); // ผู้ดูแล (AE / Senior AE ทีม KA)
   const [creating, setCreating] = useState(false);
   const [dealModalOpen, setDealModalOpen] = useState(false); // modal ยืนยันสร้างแผนการขาย
 
@@ -356,20 +357,26 @@ function ForecastPageInner() {
   // สรุป line ที่เลือก (จำนวน + มูลค่าราคาผลิต) สำหรับแถบสร้างโครงการ
   const selection = useMemo(() => {
     let qty = 0, value = 0, unpriced = 0;
+    const early = []; // เดือนส่งของมาก่อนเดือนคาดได้รับ PO ⇒ วันเริ่มจะเลยวันสิ้นสุด (server ตีกลับ)
     for (const r of lineList) {
       if (!selectedLines.has(r.id)) continue;
       qty += r.qty;
+      if (deliveryBeforePo({ poMonth: dealMonth, demandMonth: r.month })) early.push(r);
       if (r.price == null) { unpriced += 1; continue; }
       value += r.amount;
     }
-    return { count: selectedLines.size, qty, value, unpriced };
-  }, [selectedLines, lineList]);
+    return { count: selectedLines.size, qty, value, unpriced, early };
+  }, [selectedLines, lineList, dealMonth]);
+  const earlyReason = selection.early.length
+    ? `${selection.early.length} รายการมีเดือนส่งของก่อนเดือนคาดได้รับ PO ${dealMonth} (${[...new Set(selection.early.map((r) => String(r.month).slice(0, 7)))].sort().join(", ")}) — วันเริ่มจะเลยวันสิ้นสุด เลือกเดือนคาดได้รับ PO ใหม่ หรือเอารายการนั้นออก`
+    : null;
 
   const createDeal = async () => {
     if (!selectedRound || !selectedLines.size) return;
     // ปุ่มพักอยู่แล้ว — ด่านซ้ำตรงนี้กันทางเข้าอื่น (Enter/คลิกค้างก่อนสายล้ม) ไม่ให้ยิงด้วยข้อมูลครึ่งเดียว
     if (dealPaused) { notifyToast.error(dealPausedReason); return; }
     if (!dealOwnerId) { notifyToast.error("ต้องเลือกผู้ดูแล (AE)"); return; }
+    if (earlyReason) { notifyToast.error(earlyReason); return; }
     setCreating(true);
     try {
       const json = await sahamitFetch(`/api/sahamit/forecast/rounds/${selectedRound.id}/create-sales-deal`, {
@@ -802,7 +809,12 @@ function ForecastPageInner() {
             <Select className="premium-select" value={dealMonth} onChange={(e) => setDealMonth(e.target.value)}>
               {closeMonthOptions.map((m) => <option key={m} value={m}>{m}</option>)}
             </Select>
+            {/* มติ 2026-10-15 — สองวันนี้ลงดีลอัตโนมัติ (lib/sahamit/dealDates) ต้องบอกก่อนกด ไม่ใช่ไปเจอทีหลังในดีล */}
+            <small className="form-note">
+              วันที่เริ่ม {fmtDate(lastDayOfMonth(dealMonth))} (วันคาดได้ PO) · วันที่สิ้นสุด = สิ้นเดือนส่งของของแต่ละรายการ
+            </small>
           </label>
+          {earlyReason && <p className="form-note">{earlyReason}</p>}
 
           {/* ปุ่มสร้างพัก = บอกเหตุเสมอ (เดิมดับเงียบตอนไม่มี AE ให้เลือก) — สายที่ต้องใช้ไม่มาก่อน แล้วค่อยเรื่องผู้ดูแล */}
           {submitPausedReason && <p className="form-note">{submitPausedReason}</p>}

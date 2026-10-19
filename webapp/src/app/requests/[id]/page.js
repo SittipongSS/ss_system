@@ -91,6 +91,7 @@ import { rowPriceSlots } from "@/lib/requests/rowPriceTarget";
 import RegistryPriceModal from "@/components/database/RegistryPriceModal";
 import FormulaForm, { emptyFormulaForm } from "@/components/database/FormulaForm";
 import { formulaDeliveryPreview } from "@/lib/requests/formulaRework";
+import { addDirectionError, directionRowFrom, formulaConfirmPlan } from "@/lib/requests/formulaDirections";
 import { requestedLabel } from "@/lib/requests/rowLabel";
 
 // ป้ายรายการในหัวโมดัล/ข้อความ — พัฒนาสูตรตัดหาง "→ รหัส" ของป้ายเก่าในฐาน (2026-09-15 · รหัสตอนส่ง ไม่ใช่รหัสปัจจุบัน)
@@ -369,6 +370,9 @@ export default function RequestDetailPage() {
     : ["customerId", "scentId", "categoryCode"]);
   // ประโยคบอกผลก่อนกด (เก็บสูตรเดิม · ผูกของเดิม · ติดร่าง) — ต้องรู้ก่อนกด ไม่ใช่ไปเจอในทะเบียน
   const formulaReworkNote = (item) => formulaPreviewFor(item).note;
+  /* ⭐ **direction เพิ่ม (ม-157)** — แถวที่กำลังจะเกิดจากแถวนี้ (`directionRowFrom` ตัวเดียวกับ server) ⇒ ค่าตั้งต้น · ช่องล็อก ·
+     ประโยคก่อนกด ถามแผนเดียวกับแถวจริง (ต้นทางรอบแก้เดียวกัน · ตัวที่ใช้งานอยู่จะถูกแทนตอนคอนเฟิร์ม) */
+  const directionShapeOf = (item) => ({ ...directionRowFrom(item), id: null });
   /* ดึงทะเบียนสูตรใหม่หลังส่งสูตร — ทะเบียนบนจอโหลดครั้งเดียวตอนเปิดหน้า ⇒ รอบแก้ที่เกิดทีหลังในหน้าเดียวกันหา
      สูตรต้นทางไม่เจอ (ไม่เติมชื่อ · ช่องต้นทางที่ล็อกขึ้นว่าง · ประโยคไม่มีรหัส) (รีวิว ม-147) */
   const refreshFormulas = useCallback(() => {
@@ -718,13 +722,43 @@ export default function RequestDetailPage() {
   // ⚠️ **ไม่บังคับวันแล้ว** (มติผู้ใช้ 2026-08-19) — `dueAt` ตรงนี้เป็นวันของ *แถว*
   // ส่วนวันที่รับปากของใบมาจากปุ่ม "แจ้งกำหนดส่ง" ทางเดียว
   const ackPromotesRequest = hopDraft?.hop === "ack" && req?.status === "pending";
+  /* ⭐ แท็บ direction ของโมดัลส่งสูตร (ม-157) — ส่งงานแถวที่ยังไม่ส่ง (แท็บแรก = แถวนี้) หรือ "ส่ง direction เพิ่ม" จากแถวที่ส่งแล้ว
+     (ก้าวจำลอง `direction` ของจอ · ไม่มีใน ROW_HOPS — ยิง POST /items) */
+  const formulaTabs = !!hopDraft && hopDraft.item.lineKind === "product_dev"
+    && (hopDraft.hop === "direction" || hopDraft.hop === "ready");
+  const extraOffset = hopDraft?.hop === "ready" ? 1 : 0;
+  const extraTab = formulaTabs ? (hopDraft.tab || 0) - extraOffset : -1;
+  const directionLabel = (i) => `Direction ${(hopDraft?.directionBase || 0) + extraOffset + i + 1}`;
+  // ด่านของ direction เพิ่ม — ช่องฟอร์ม (ตัวเดียวกับ server) · รหัสซ้ำกันเองในโมดัล · แผนทะเบียนที่ server จะตีกลับ
+  const directionError = (() => {
+    if (!formulaTabs || !(hopDraft.extra || []).length) return null;
+    const codes = new Set(hopDraft.hop === "ready" ? [String(hopDraft.formula?.code || "").trim().toLowerCase()] : []);
+    for (const [i, draft] of hopDraft.extra.entries()) {
+      const { value, error } = normalizeFormulaDelivery({ formula: draft });
+      if (error) return `${directionLabel(i)}: ${error}`;
+      const key = value.code.toLowerCase();
+      if (codes.has(key)) return `${directionLabel(i)}: รหัสสูตร ${value.code} ซ้ำกับ direction อื่นในหน้าต่างนี้`;
+      codes.add(key);
+    }
+    const plan = formulaPreviewFor(directionShapeOf(hopDraft.item)).plan;
+    return plan.kind === "create" ? null : (plan.error || "ส่ง direction เพิ่มของกลิ่นนี้ไม่ได้");
+  })();
+  // ลูกค้าคอนเฟิร์มแถวพัฒนาสูตร — ทะเบียนกับแถวอื่นจะเปลี่ยนอย่างไร (แผนตัวเดียวกับ server · บอกก่อนกด #1223)
+  const confirmPreview = hopDraft?.hop === "outcome" && hopDraft.outcome === "confirmed"
+    && hopDraft.item.lineKind === "product_dev"
+    ? formulaConfirmPlan({
+      row: hopDraft.item, items: req?.items || [], formulas: registry.formulas, customerId: req?.customerId || null,
+    })
+    : null;
   const hopError = hopDraft
-    ? (hopValuesError(hopDraft.hop, hopDraft, { lineKind: hopDraft.item.lineKind })
+    ? (hopDraft.hop === "direction" ? directionError
+      : hopValuesError(hopDraft.hop, hopDraft, { lineKind: hopDraft.item.lineKind })
       // ⚠️ เรียกด่านของ **ใบ** ตัวเดียวกับ server ไม่เขียนเงื่อนไขเองที่นี่
       || (ackPromotesRequest ? acknowledgeRequestError(req) : null)
       || (hopDraft.hop === "ready" && hopDraft.item.lineKind === "product_dev"
-        ? normalizeFormulaDelivery(hopDraft).error
-        : null))
+        ? normalizeFormulaDelivery(hopDraft).error || directionError
+        : null)
+      || (confirmPreview?.kind === "blocked" ? confirmPreview.error : null))
     : null;
   const openHop = (item, hop, outcome = null) => setHopDraft({
     item,
@@ -733,6 +767,10 @@ export default function RequestDetailPage() {
     // ⭐ ส่งของของ "พัฒนาผลิตภัณฑ์" = สูตรเข้าทะเบียนในจังหวะเดียว (P4b)
     // **หมวดกับกลิ่นไม่ถามซ้ำ แต่โชว์เทาไว้** — อยู่บนแถวแล้วและเป็นตัวตนของสูตรพอดี
     formula: formulaDraftFor(item),
+    // direction เพิ่มที่ส่งพร้อมแถวนี้ (ม-157) — แท็บที่สองขึ้นไป · `tab` = แท็บที่เปิดอยู่
+    extra: [],
+    tab: 0,
+    directionBase: 0,
     // วันไทย ไม่ใช่วัน UTC — ก่อนเจ็ดโมงเช้า toISOString() ยังให้เมื่อวาน
     at: businessDate(),
     dueAt: "",
@@ -742,8 +780,32 @@ export default function RequestDetailPage() {
     docNumber: item.docNumber || "",
     docDueDate: item.docDueDate || "",
   });
+  /* ⭐ ส่ง direction เพิ่มจากแถวที่ส่งแล้ว (ม-157) — ติดด่าน (ลูกค้าตอบแล้ว/คอนเฟิร์มตัวอื่นแล้ว) = บอกเหตุตอนกด ไม่ซ่อนปุ่ม
+     · `directionBase` = จำนวน direction ที่ชุดนี้มีอยู่แล้ว (ป้ายแท็บต่อเลขจากของเดิม) */
+  const openDirection = (item) => {
+    const blocked = addDirectionError(req, item, req?.items || []);
+    if (blocked) { setToast({ kind: "error", msg: blocked }); return; }
+    const rootId = item.directionOfItemId || item.id;
+    const base = (req?.items || []).filter((i) => i.id === rootId || i.directionOfItemId === rootId).length;
+    setHopDraft({
+      item, hop: "direction", outcome: null, formula: null,
+      extra: [formulaDraftFor(directionShapeOf(item))], tab: 0, directionBase: base,
+      at: businessDate(), dueAt: "", confirmedQty: "", note: "", docNumber: "", docDueDate: "",
+    });
+  };
+  const postDirections = (item, extra, okMsg) => call("/items", {
+    method: "POST",
+    body: JSON.stringify({ anchorItemId: item.id, formulas: extra }),
+  }, okMsg);
   const submitHop = async () => {
     const { item, hop, outcome } = hopDraft;
+    const extra = hopDraft.extra || [];
+    if (hop === "direction") {
+      const done = await postDirections(item, extra, `ส่ง direction เพิ่ม ${extra.length} รายการ · สูตรเข้าทะเบียนแล้ว (กำลังพัฒนา)`);
+      if (done) { setHopDraft(null); refreshFormulas(); }
+      return;
+    }
+    const withExtra = hop === "ready" && item.lineKind === "product_dev" && extra.length > 0;
     const ok = await call(`/items/${item.id}`, {
       method: "PATCH",
       body: JSON.stringify({
@@ -765,16 +827,26 @@ export default function RequestDetailPage() {
         ...(["refuse", "unready"].includes(hop) ? { note: hopDraft.note } : {}),
         ...(outcome === "confirmed" ? { confirmedQty: hopDraft.confirmedQty } : {}),
       }),
-    }, outcome === "revise"
+    }, withExtra ? null : outcome === "revise"
       // บอกผลข้างเคียงที่มองไม่เห็นตอนกด — แถวใหม่ถูกสร้างให้เอง
       ? "บันทึกแล้ว · เปิดรายการใหม่สำหรับรอบแก้ให้แล้ว"
       : hop === "unready"
         // ก้าวถอยจบแล้วยังมีงานเหลือ — ไม่บอกว่าต้องกลับมากดส่งเอง คนจะนึกว่าจบ
         ? 'ดึงกลับแล้ว · รายการกลับไปขั้น "กำลังทำ" — แก้ไฟล์แล้วกด "ส่งงาน" อีกครั้ง'
         : `บันทึก "${hopLabel(hop, outcome)}" แล้ว`);
+    /* ⭐ direction ที่เหลือยิงต่อหลังแถวแรกส่งสำเร็จ (แถวแรกต้องส่งก่อน — ด่านของเส้น direction) · ล้ม = แถวแรกส่งแล้วจริง
+       ⇒ โมดัลกลายเป็น "ส่ง direction เพิ่ม" ค้างของที่กรอกไว้ให้กดใหม่ ไม่ใช่ปิดทิ้ง */
+    if (ok && withExtra) {
+      const more = await postDirections(item, extra, `ส่งงาน ${extra.length + 1} direction · สูตรเข้าทะเบียนแล้ว (กำลังพัฒนา)`);
+      refreshFormulas();
+      if (!more) {
+        setHopDraft({ ...hopDraft, hop: "direction", formula: null, tab: 0, directionBase: 1 });
+        return;
+      }
+    }
     if (ok) {
       setHopDraft(null);
-      if (hop === "ready" && item.lineKind === "product_dev") refreshFormulas();
+      if (item.lineKind === "product_dev" && (hop === "ready" || outcome === "confirmed")) refreshFormulas();
     }
   };
 
@@ -2215,6 +2287,8 @@ export default function RequestDetailPage() {
           busy: saving,
           onHop: (row, hop, outcome) => openHop(row, hop, outcome),
           onPrice: (row) => setPricing({ item: row }),
+          // ม-157 — ส่ง direction เพิ่มจากแถวพัฒนาสูตรที่ส่งแล้ว (เมนู ⋯ ของแถว · เฉพาะฝ่ายที่ตอบ)
+          onAddDirection: canAnswer ? openDirection : null,
         }}
         saving={saving}
         /* ⭐ หัวข้อที่แก้ของกลาง (ทะเบียนกลิ่น/สูตร) ได้จากในใบ ต้องบอกเปลือกให้
@@ -2696,15 +2770,58 @@ export default function RequestDetailPage() {
         open={!!hopDraft} onClose={() => setHopDraft(null)} dismissible={!saving}
         /* ฟอร์มสูตรเป็นฟอร์มเต็มสองคอลัมน์ (ตัวเดียวกับทะเบียน) — กว้างเท่าโมดัลก้าวอื่น
            ไม่พอ · ก้าวอื่นยังแคบเหมือนเดิม เพราะมันมีช่องเดียวสองช่อง */
-        size={hopDraft?.hop === "ready" && hopDraft?.item.lineKind === "product_dev" ? "md" : "sm"}
-        title={hopDraft ? `${hopLabelFor(hopDraft.item, hopDraft.hop, hopDraft.outcome)} — ${itemText(hopDraft.item)}` : ""}
+        size={formulaTabs ? "md" : "sm"}
+        title={hopDraft
+          ? `${hopDraft.hop === "direction" ? "ส่ง direction เพิ่ม" : hopLabelFor(hopDraft.item, hopDraft.hop, hopDraft.outcome)} — ${itemText(hopDraft.item)}`
+          : ""}
+        /* ⭐ **หนึ่ง direction = หนึ่งแท็บ** (ม-157) — ทรงเดียวกับโมดัลส่งงานพัฒนากลิ่น (ปุ่มเพิ่มอยู่แถวเดียวกับแท็บ ·
+           มติผู้ใช้ 2026-08-19) · แท็บแรกของการส่งงาน = แถวนี้เอง ลบไม่ได้ · แท็บที่เพิ่มเอง ลบได้ */
+        toolbar={formulaTabs ? (
+          <>
+            {(hopDraft.extra || []).length + extraOffset > 1 ? (
+              <Tabs
+                className={styles.deliveryTabs}
+                ariaLabel="direction ที่จะส่ง"
+                value={String(hopDraft.tab || 0)}
+                onChange={(key) => setHopDraft({ ...hopDraft, tab: Number(key) })}
+                tabs={[
+                  ...(extraOffset ? [{ key: "0", label: "Direction 1" }] : []),
+                  ...(hopDraft.extra || []).map((_, i) => ({ key: String(i + extraOffset), label: directionLabel(i) })),
+                ]}
+              />
+            ) : <span className={styles.deliveryTabSpacer} aria-hidden="true" />}
+            {extraTab >= 0 && (hopDraft.extra || []).length + extraOffset > 1 && (
+              <Button
+                variant="ghost" size="sm" tone="danger" disabled={saving}
+                onClick={() => setHopDraft({
+                  ...hopDraft,
+                  extra: hopDraft.extra.filter((_, j) => j !== extraTab),
+                  tab: Math.max(0, (hopDraft.tab || 0) - 1),
+                })}
+              >
+                <Trash2 size={13} aria-hidden="true" /> ลบ direction นี้
+              </Button>
+            )}
+            <Button
+              variant="ghost" size="sm" disabled={saving}
+              className={styles.deliveryAdd}
+              onClick={() => setHopDraft({
+                ...hopDraft,
+                extra: [...(hopDraft.extra || []), formulaDraftFor(directionShapeOf(hopDraft.item))],
+                tab: (hopDraft.extra || []).length + extraOffset,
+              })}
+            >
+              <Plus size={14} aria-hidden="true" /> เพิ่ม Direction
+            </Button>
+          </>
+        ) : undefined}
       >
         {hopDraft && (
           <>
             {/* ⭐ ก้าวส่ง (ready) ไม่มีช่องวัน (ม-92) — ระบบประทับวันที่กดให้เอง
                 ก้าวอื่นยังถาม: แก้ย้อนหลังได้ตั้งใจ — ของถูกส่งไปก่อนแล้วค่อยมา
                 บันทึกเป็นเรื่องปกติ (migration จึงไม่มี CHECK บังคับให้วันเรียงกัน) */}
-            {!["refuse", "ready", "unready"].includes(hopDraft.hop) && (
+            {!["refuse", "ready", "unready", "direction"].includes(hopDraft.hop) && (
             <div className="form-group">
               <label htmlFor="hop-at">{HOP_DATE_LABEL[hopDraft.hop]}</label>
               <DateInput
@@ -2801,19 +2918,52 @@ export default function RequestDetailPage() {
               </>
             )}
 
-            {hopDraft.hop === "ready" && hopDraft.item.lineKind === "product_dev" && (
+            {/* ⭐ direction เพิ่ม (ม-157) — แถวใหม่ของกลิ่นเดียวกัน เกิดตอนกดบันทึก · ไฟล์ประกอบแนบที่การ์ดของแถวนั้นหลังส่ง
+                (แถวยังไม่มีให้แนบตอนนี้ — ต่างจากแท็บแรกที่แถวมีอยู่แล้ว) */}
+            {formulaTabs && extraTab >= 0 && hopDraft.extra?.[extraTab] && (
+              <>
+                <div className={styles.formulaHints}>
+                  <p className={styles.fieldHint}>
+                    <strong>{directionLabel(extraTab)}</strong> = รายการใหม่ของ {itemText(hopDraft.item)} — เดินขั้น
+                    รับของ · ส่งลูกค้า · ผลลูกค้า แยกจาก direction อื่น · ลูกค้าคอนเฟิร์มตัวไหน ตัวนั้นใช้งาน ที่เหลือปิดให้เอง
+                    · ไฟล์ประกอบแนบที่การ์ดรายการหลังส่ง
+                  </p>
+                  {formulaReworkNote(directionShapeOf(hopDraft.item)) && (
+                    <p className={styles.fieldHint}>{formulaReworkNote(directionShapeOf(hopDraft.item))}</p>
+                  )}
+                </div>
+                <FormulaForm
+                  key={`direction-${extraTab}`}
+                  mode="create" canSetCode codeRequired
+                  value={hopDraft.extra[extraTab]} disabled={saving}
+                  customers={registry.customers}
+                  scents={registry.scents}
+                  formulas={registry.formulas}
+                  categories={productTypes}
+                  locked={formulaLockedFor(directionShapeOf(hopDraft.item))}
+                  onChange={(value) => setHopDraft({
+                    ...hopDraft,
+                    extra: hopDraft.extra.map((x, j) => (j === extraTab ? value : x)),
+                  })}
+                />
+              </>
+            )}
+
+            {hopDraft.hop === "ready" && hopDraft.item.lineKind === "product_dev" && extraTab < 0 && (
               <>
                 {/* ⚠️ ประโยค "สูตรเข้าทะเบียนทันที" จริงเฉพาะแผนสร้าง/รอบแก้ — แผนผูกของเดิม/ติดร่าง ประโยคบอกผลข้างล่างพูดแทน
                     (สองประโยคขัดกันบนจอเดียว = คนเชื่อตัวใหญ่ · รีวิว ม-147) */}
-                {["create", "revise"].includes(formulaPreviewFor(hopDraft.item).plan.kind) && (
-                  <p className={styles.fieldHint}>
-                    บันทึกแล้ว<strong>สูตรเข้าทะเบียนทันที</strong> — ฟอร์มเดียวกับหน้าทะเบียนสูตร
-                    · ลูกค้า · กลิ่น · หมวด ยกมาจากรายการนี้เอง ({itemText(hopDraft.item)}) จึงเทาไว้
-                  </p>
-                )}
-                {formulaReworkNote(hopDraft.item) && (
-                  <p className={styles.fieldHint}>{formulaReworkNote(hopDraft.item)}</p>
-                )}
+                <div className={styles.formulaHints}>
+                  {formulaPreviewFor(hopDraft.item).plan.kind === "create" && (
+                    <p className={styles.fieldHint}>
+                      บันทึกแล้ว<strong>สูตรเข้าทะเบียนทันที</strong> — ฟอร์มเดียวกับหน้าทะเบียนสูตร
+                      · ลูกค้า · กลิ่น · หมวด ยกมาจากรายการนี้เอง ({itemText(hopDraft.item)}) จึงเทาไว้
+                    </p>
+                  )}
+                  {formulaReworkNote(hopDraft.item) && (
+                    <p className={styles.fieldHint}>{formulaReworkNote(hopDraft.item)}</p>
+                  )}
+                </div>
                 <FormulaForm
                   mode="create" canSetCode codeRequired
                   value={hopDraft.formula} disabled={saving}
@@ -2871,6 +3021,11 @@ export default function RequestDetailPage() {
                   ใช้กระทบยอดกับใบสั่งขาย — ไม่มีจำนวนก็เทียบไม่ได้ว่าส่งครบหรือยัง
                 </p>
               </div>
+            )}
+
+            {/* ⭐ คอนเฟิร์มแถวพัฒนาสูตร = ทะเบียนเปลี่ยน + ปิดแถวอื่นของกลิ่นนี้ (ม-157) — บอกครบก่อนกด (กติกาโมดัลยืนยัน #1223) */}
+            {confirmPreview?.kind === "apply" && confirmPreview.note && (
+              <p className={styles.fieldHint}>{confirmPreview.note}</p>
             )}
 
             {hopDraft.hop === "outcome" && (

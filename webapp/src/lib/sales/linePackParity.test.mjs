@@ -8,7 +8,7 @@ import { createServer } from 'node:http';
 import {
   PACKED_COVERAGE, PARITY_COVERAGE, QUOTATION_AUDIT_ACTIONS, QUOTATION_AUDIT_SELECT, QUOTATION_LINE_MONEY_SELECT,
   SALES_ORDER_LINE_MONEY_SELECT, checkRuleDiffs, fingerprintDiffs, headerTotalDiffs, lineMoneyDiffs, loadQuotationAuditSince,
-  loadQuotationLineMoney, loadSalesOrderLineMoney, packCopyDiffs, packLossInAudit, packedCoverageGaps, packedLineCount, parityCoverageGaps,
+  loadQuotationLineMoney, loadSalesOrderLineMoney, packCopyDiffs, packLossAcrossSaves, packLossInAudit, packedCoverageGaps, packedLineCount, parityCoverageGaps,
   parseParityArgs, revisionPackLoss, sentWithoutPack,
 } from './linePackParity.js';
 import { quotationApprovalFingerprint } from './quotationApprovalFingerprint.js';
@@ -243,15 +243,17 @@ test('🔴 parityCoverageGaps: หัวข้อไหนเทียบ 0 ร�
 
 test('parseParityArgs: รู้จักสามตัวเลือก — ที่เหลือและรูปที่ผิดถูกรายงาน ไม่เดาแทน', () => {
   /* ⭐ ย้ายโดยเจตนา (รีวิวเงิน 09/10 · งวด PR-3 ประตูทางเดียว): ผลของตัวอ่านตัวเลือกมีสองช่องเวลาเพิ่ม (packLaunch · auditSince — null เมื่อไม่ใส่)
-     ช่องเดิมสามช่องและค่าของมันเท่าเดิมทุกกรณี */
-  assert.deepEqual(parseParityArgs([]), { beforeMigration: false, floors: {}, problems: [], packLaunch: null, auditSince: null });
-  assert.deepEqual(parseParityArgs(), { beforeMigration: false, floors: {}, problems: [], packLaunch: null, auditSince: null });
+     ช่องเดิมสามช่องและค่าของมันเท่าเดิมทุกกรณี
+     ⭐ ย้ายโดยเจตนาอีกรอบ (หัวข้อ ⑨ · รีวิว 19/10): ช่องเวลาที่สาม pairsSince (ตัวชี้ของ ⑨ เอง — null เมื่อไม่ใส่) · ช่องเดิมเท่าเดิม */
+  assert.deepEqual(parseParityArgs([]), { beforeMigration: false, floors: {}, problems: [], packLaunch: null, auditSince: null, pairsSince: null });
+  assert.deepEqual(parseParityArgs(), { beforeMigration: false, floors: {}, problems: [], packLaunch: null, auditSince: null, pairsSince: null });
   assert.deepEqual(parseParityArgs(['--before-migration', '--expect-min-lines=1202,445', '--expect-min-fingerprints=559,244']), {
     beforeMigration: true,
     floors: { quotationLines: 1202, salesOrderLines: 445, quotationFingerprints: 559, salesOrderFingerprints: 244 },
     problems: [],
     packLaunch: null,
     auditSince: null,
+    pairsSince: null,
   });
   for (const bad of ['--expect-min-lines', '--expect-min-lines=', '--expect-min-lines=12', '--expect-min-lines=1,2,3', '--expect-min-lines=a,b',
     '--expect-min-lines=-1,2', '--expect-min-lines=1.5,2', '--expect-min-fingerprints=1, 2', '--expect-min-lines=1,']) {
@@ -266,7 +268,8 @@ test('parseParityArgs: รู้จักสามตัวเลือก — �
    เลขแพ็คที่หายพร้อมยอดที่หดตาม (รุ่นก่อนงวด PR-1 บันทึกทับ · ลบด้วยมือ) เป็นแถวที่ถูกต้องในทุกหัวข้อของสคริปต์ — จำนวนนี้คือสิ่งเดียวที่มองเห็น */
 
 test('--expect-min-packed: ตัวอ่านตัวเลือกเก็บขั้นต่ำสองคีย์ของตัวเอง (ไม่ปนกับด่านความครบ) · รูปที่ผิดถูกรายงานเหมือนตัวเลือกอื่น', () => {
-  assert.deepEqual(parseParityArgs(['--expect-min-packed=3,2']), { beforeMigration: false, floors: { packedQuotationLines: 3, packedSalesOrderLines: 2 }, problems: [], packLaunch: null, auditSince: null });
+  /* ⭐ ย้ายโดยเจตนา (หัวข้อ ⑨): ผลมีช่อง pairsSince เพิ่ม (null) — ช่องเดิมเท่าเดิม */
+  assert.deepEqual(parseParityArgs(['--expect-min-packed=3,2']), { beforeMigration: false, floors: { packedQuotationLines: 3, packedSalesOrderLines: 2 }, problems: [], packLaunch: null, auditSince: null, pairsSince: null });
   assert.deepEqual(parseParityArgs(['--expect-min-packed=0,0']).floors, { packedQuotationLines: 0, packedSalesOrderLines: 0 }, '0,0 = วันที่ยังไม่มีใบไหนมีเลขแพ็ค');
   assert.deepEqual(parseParityArgs(['--expect-min-lines=1202,445', '--expect-min-fingerprints=559,244', '--expect-min-packed=7,4']).floors, {
     quotationLines: 1202, salesOrderLines: 445, quotationFingerprints: 559, salesOrderFingerprints: 244, packedQuotationLines: 7, packedSalesOrderLines: 4,
@@ -528,6 +531,274 @@ test('🔴 packLossInAudit: การบันทึกที่เขียน�
   assert.equal(loss.stripped[0].number, 'QT-26100001-0');
 });
 
+/* ═══ ⑨ เลขแพ็คหายข้ามสองการบันทึก (จุดบอดที่รู้ของยาม mig 0410 และของ ⑧) ═══════════════════════════════════════════════════════
+   การบันทึกแรกเอาบรรทัดที่มีเลขแพ็คของสินค้าออก (⑧ = removed ข้อมูล) → การบันทึกถัดไปเพิ่มสินค้านั้นกลับโดยไม่มีเลขแพ็ค (⑧ ไม่เทียบ: ก่อนบันทึกไม่มีเลขแล้ว)
+   ยามของ 0410 ผ่านทั้งสองครั้ง (ตัวจดของ T1 ตายพร้อมทรานแซกชัน) · ทำได้จากรุ่นก่อนงวด PR-1 และรุ่นของงวด PR-2 */
+const LAUNCH_AT = '2026-10-12T03:00:00.000Z';
+const hour = (h) => `2026-10-13T${String(h).padStart(2, '0')}:00:00.000Z`;
+const candleLine = (id, over = {}) => auditLine(id, { productId: 'P-CD', fgCode: CANDLE_FG, description: 'เทียนหอม', packQty: null, qty: 50, unitPrice: 250, lineTotal: 12500, ...over });
+const across = (entries, options = { since: LAUNCH_AT, launch: LAUNCH_AT }) => packLossAcrossSaves(entries, options);
+/* แถวผลของ ⑨: ค่าของบรรทัดที่ถูกเอาออก (เลขแพ็ค · ยอด · จำนวน · ราคา · ส่วนลด) + ค่าหลังการบันทึกที่สอง · wasRow null = ไม่มีค่าเดิม (ค่าเดิมทุกช่องเป็น null) */
+const nineRow = (row, wasRow, packQty, lineTotal, now, { qty = 12, unitPrice = 3500, nowQty = qty, nowPrice = unitPrice } = {}) => ({
+  row, wasRow, packQty, lineTotal,
+  qty: wasRow === null ? null : qty, unitPrice: wasRow === null ? null : unitPrice, discountAmount: wasRow === null ? null : 0,
+  now: { qty: nowQty, unitPrice: nowPrice, discountAmount: 0, lineTotal: now },
+});
+/* แถว audit ของใบอื่น (Q2 / ฉบับ Rev.) — auditEntry ตั้งหัวใบเป็น Q1 */
+const onQuote = (entry, id, quoteNumber) => ({
+  ...entry, entityId: id,
+  before: entry.before ? { ...entry.before, id, quoteNumber } : entry.before,
+  after: entry.after ? { ...entry.after, id, quoteNumber } : entry.after,
+});
+/* สองการบันทึกของใบ Q1: ① คนขายลบรายการ SDS (แพ็ค 2 · ฿84,000) ด้วยรุ่นปัจจุบัน · ② รุ่นเก่าเพิ่ม SDS กลับ ไม่มีเลขแพ็ค ยอด 12 × 3,500 = ฿42,000 */
+function twoSaves({ removedLine = auditLine('L1'), readdedLine = auditLine('N1', { packQty: null, lineTotal: 42000, sortOrder: 1 }), entityId = 'Q1', first = 11, second = 12, firstAt = hour(2), secondAt = hour(3) } = {}) {
+  const kept = candleLine('C1', { sortOrder: 1 });
+  return [
+    auditEntry(first, [removedLine, kept], [candleLine('C2', { sortOrder: 0 })], { entityId, createdAt: firstAt, actorName: 'ผู้ขาย ก' }),
+    auditEntry(second, [candleLine('C2', { sortOrder: 0 })], [candleLine('C3', { sortOrder: 0 }), readdedLine], { entityId, createdAt: secondAt, actorName: 'dev server เก่า' }),
+  ];
+}
+
+test('🔴 packLossAcrossSaves: เอาบรรทัดที่มีเลขแพ็คออก แล้วเพิ่มสินค้าเดิมกลับโดยไม่มีเลขแพ็คในการบันทึกถัดไป = คู่ (productId เดียวกัน) — บอกใบ · สินค้า · รายการ · ค่าเดิม (เลขแพ็ค · ยอด · จำนวน · ราคา · ส่วนลด) · ค่าหลังการบันทึกที่สอง · สองการบันทึก', () => {
+  const entries = twoSaves();
+  assert.deepEqual(across(entries), {
+    checked: 2, removals: 1, earlier: [],
+    pairs: [{
+      quotationId: 'Q1', number: 'QT-26100001-0',
+      product: { productId: 'P-SDS', fgCode: SDS_FG, description: 'SDS' },
+      removed: { auditId: 11, at: hour(2), actor: 'ผู้ขาย ก', how: 'ลบบรรทัด / เปลี่ยนสินค้าหรือหมวด', quotationId: 'Q1', number: 'QT-26100001-0' },
+      readded: { auditId: 12, at: hour(3), actor: 'dev server เก่า' },
+      rows: [nineRow(2, 1, 2, 84000, 42000)],
+    }],
+  });
+  /* จุดบอดที่ตัวนี้ปิด: ⑧ เห็นการบันทึกแรกเป็น "ลบตามปกติ" และไม่เทียบการบันทึกที่สองเลย */
+  const eight = packLossInAudit(entries);
+  assert.deepEqual([eight.compared, eight.stripped.length, eight.removed.length], [2, 0, 1]);
+  /* เลขแพ็ค 1 ที่หาย (ยอดไม่เปลี่ยน) ก็เป็นคู่ · สองรายการของสินค้าเดียวกัน (สองโซน) จับคู่ตามลำดับบนจอ */
+  const one = across(twoSaves({ removedLine: auditLine('L1', { packQty: 1, lineTotal: 42000 }) }));
+  assert.deepEqual(one.pairs[0].rows, [nineRow(2, 1, 1, 42000, 42000)]);
+  const zones = [
+    auditEntry(21, [auditLine('Z1'), auditLine('Z2', { packQty: 3, lineTotal: 126000, sortOrder: 1 })], [], { createdAt: hour(2) }),
+    auditEntry(22, [], [auditLine('Y1', { packQty: null, lineTotal: 42000 }), auditLine('Y2', { packQty: null, lineTotal: 42000, sortOrder: 1 })], { createdAt: hour(3) }),
+  ];
+  assert.deepEqual(across(zones).pairs.map((pair) => [pair.removed.auditId, pair.readded.auditId, pair.rows]),
+    [[21, 22, [nineRow(1, 1, 2, 84000, 42000), nineRow(2, 2, 3, 126000, 42000)]]]);
+  assert.equal(across(zones).removals, 1, 'สินค้าเดียวกันหลายรายการในการบันทึกเดียว = การเอาออกครั้งเดียว');
+  /* การยื่น/อนุมัติคั่นกลาง (after ไม่มีบรรทัด) ไม่ทำให้คู่หลุด */
+  const [first, second] = twoSaves();
+  const withSubmit = [first, auditEntry(90, [candleLine('C2', { sortOrder: 0 })], null, { createdAt: hour(2) }), { ...auditEntry(91, null, null, { createdAt: hour(2) }), after: { id: 'Q1' } }, second];
+  assert.deepEqual(across(withSubmit).pairs.map((pair) => [pair.removed.auditId, pair.readded.auditId]), [[11, 12]]);
+  /* ลำดับที่อ่านมาไม่ใช่ลำดับที่ฐานรับ — ตัวนี้เรียงเอง */
+  assert.deepEqual(across([second, first]).pairs.map((pair) => [pair.removed.auditId, pair.readded.auditId]), [[11, 12]]);
+  assert.deepEqual(packLossAcrossSaves(null), { checked: 0, removals: 0, pairs: [], earlier: [] });
+  assert.deepEqual(packLossAcrossSaves([]), { checked: 0, removals: 0, pairs: [], earlier: [] });
+});
+
+/* 🐞 รีวิว 19/10 (PROBE A · G): createdAt มาจากนาฬิกาของเครื่องที่รันแอป (audit.js) — คู่ที่พบบ่อยข้ามสองเครื่อง: เอาออกบน Vercel · เพิ่มกลับจาก dev server ในเครื่อง
+   นาฬิกาเครื่องช้า 20 วินาที = การเพิ่มกลับมีเวลาก่อนการเอาออก ⇒ เรียงตามเวลาแล้วไม่มีคู่ (การเอาออกค้างตลอดไป) · id ของ audit_logs (identity) = ลำดับที่ฐานรับจริง */
+test('🔴 packLossAcrossSaves: เรียงตาม id ของ audit_logs ไม่ใช่ createdAt — นาฬิกาของเครื่องที่เพิ่มกลับช้ากว่า ก็ยังเป็นคู่ · เวลาเท่ากันไม่ขึ้นกับลำดับที่อ่านมา', () => {
+  const skewed = twoSaves({ first: 101, second: 102, firstAt: '2026-10-13T03:00:20.000Z', secondAt: '2026-10-13T03:00:00.000Z' });
+  for (const order of [skewed, [...skewed].reverse()]) {
+    assert.deepEqual(across(order).pairs.map((pair) => [pair.removed.auditId, pair.readded.auditId, pair.rows]), [[101, 102, [nineRow(2, 1, 2, 84000, 42000)]]]);
+  }
+  const tied = twoSaves({ first: 101, second: 102, firstAt: hour(3), secondAt: hour(3) });
+  for (const order of [tied, [...tied].reverse()]) assert.equal(across(order).pairs.length, 1);
+  /* createdAt ยังเป็นตัวตัดช่วง: การเพิ่มกลับที่เวลาจดก่อน since ไม่หายเงียบ — ไปอยู่ใน earlier (สคริปต์พิมพ์เป็นข้อมูล) */
+  const cut = across(skewed, { since: '2026-10-13T03:00:10.000Z', launch: LAUNCH_AT });
+  assert.deepEqual([cut.pairs.length, cut.earlier.map((pair) => pair.readded.auditId)], [0, [102]]);
+});
+
+test('🔴 packLossAcrossSaves: สินค้าเดียวกันตาม fgCode (productId ต่าง/ว่าง) · บรรทัดพิมพ์เองตามรายละเอียด + หมวด 02-001', () => {
+  /* fgCode เดียวกัน — สินค้าถูกลบจากทะเบียน (productId ว่าง) หรือผูกใหม่กับ productId อื่นที่ถือรหัสเดิม */
+  for (const readded of [auditLine('N1', { productId: null, packQty: null, lineTotal: 42000, sortOrder: 1 }), auditLine('N1', { productId: 'P-SDS-NEW', packQty: null, lineTotal: 42000, sortOrder: 1 })]) {
+    const result = across(twoSaves({ readdedLine: readded }));
+    assert.equal(result.pairs.length, 1, `productId ${readded.productId}`);
+    assert.deepEqual(result.pairs[0].rows, [nineRow(2, 1, 2, 84000, 42000)]);
+  }
+  /* productId เดียวกัน รหัส FG ถูกเปลี่ยน (เปลี่ยนรหัส AR + FG — ยังหมวด 02-001) */
+  assert.equal(across(twoSaves({ readdedLine: auditLine('N1', { fgCode: 'FG-1058-02-001-0757', packQty: null, lineTotal: 42000, sortOrder: 1 }) })).pairs.length, 1);
+  /* บรรทัดพิมพ์เอง (ไม่มี productId / fgCode — หมวดอยู่ใน metadata): รายละเอียดเดียวกันหลังยุบช่องว่าง/ไม่สนตัวพิมพ์ + หมวด 02-001 ทั้งสองฝั่ง */
+  const typed = (id, over = {}) => auditLine(id, { productId: null, fgCode: null, description: 'ค่าบริการกลิ่น  Lobby', metadata: { categoryCode: '02-001' }, packQty: 3, qty: 6, unitPrice: 1200, lineTotal: 21600, ...over });
+  const typedPair = across(twoSaves({ removedLine: typed('T1'), readdedLine: typed('T9', { description: ' ค่าบริการกลิ่น lobby ', packQty: null, lineTotal: 7200, sortOrder: 1 }) }));
+  assert.deepEqual(typedPair.pairs.map((pair) => [pair.product, pair.rows]), [[{ productId: null, fgCode: null, description: 'ค่าบริการกลิ่น  Lobby' }, [nineRow(2, 1, 3, 21600, 7200, { qty: 6, unitPrice: 1200 })]]]);
+  /* บรรทัดพิมพ์เองที่รายละเอียดต่าง · หมวดอื่น · บรรทัดผูกสินค้าที่รายละเอียดตรงกัน = ไม่ใช่รายการเดียวกัน */
+  for (const [name, readded] of [
+    ['รายละเอียดต่าง', typed('T9', { description: 'ค่าบริการกลิ่น Hall', packQty: null, lineTotal: 7200, sortOrder: 1 })],
+    ['หมวดอื่น (ไม่ใช่บรรทัดที่ต้องมีเลขแพ็ค)', typed('T9', { metadata: { categoryCode: '01-003' }, packQty: null, lineTotal: 7200, sortOrder: 1 })],
+    ['บรรทัดผูกสินค้า', auditLine('T9', { description: 'ค่าบริการกลิ่น  Lobby', packQty: null, lineTotal: 42000, sortOrder: 1 })],
+  ]) assert.deepEqual(across(twoSaves({ removedLine: typed('T1'), readdedLine: readded })).pairs, [], name);
+  /* บรรทัดพิมพ์เองหมวดอื่นที่ถือเลขแพ็ค (แก้ฐานตรง) รายละเอียดเดียวกัน ไม่ใช่การคืนเลขให้รายการหมวด 02-001 — คู่ยังถูกรายงาน */
+  const [firstTyped, secondTyped] = twoSaves({ removedLine: typed('T1'), readdedLine: typed('T9', { packQty: null, lineTotal: 7200, sortOrder: 1 }) });
+  const strayPack = typed('S1', { metadata: { categoryCode: '01-003' }, packQty: 2, lineTotal: 14400, sortOrder: 2 });
+  assert.equal(across([firstTyped, { ...secondTyped, after: { ...secondTyped.after, lines: [...secondTyped.after.lines, strayPack] } }]).pairs.length, 1);
+});
+
+/* 🐞 รีวิว 19/10 (PROBE C · C2 · G): ค่าเดิมเคยถูกแต่งให้บรรทัดส่วนเกิน (บรรทัดที่สองได้ค่าของบรรทัดแรก) และการเอาออกถูกจดเป็นราย "สินค้าหมดจากใบ"
+   — โซน 1 ออกขณะโซน 2 ยังอยู่ = ไม่ถูกจด ⇒ เลขแพ็คของโซน 1 ไม่เคยถูกพิมพ์ · วันนี้จดเป็นรายบรรทัด และบรรทัดที่ไม่มีค่าเดิมได้ null */
+test('🔴 packLossAcrossSaves: ค่าเดิมมาจากบรรทัดที่ถูกเอาออกจริงเท่านั้น — เพิ่มกลับมากกว่าที่เอาออก = ค่าเดิม null · เอาออกทีละโซนข้ามการบันทึกก็ได้ค่าครบทุกโซน', () => {
+  /* C: เอา SDS แพ็ค 2 ออกหนึ่งบรรทัด แล้วเพิ่ม SDS ว่างกลับสองบรรทัด (12 เดือน · 6 เดือน) — บรรทัดที่สองไม่เคยมีเลขแพ็ค */
+  const c = [
+    auditEntry(71, [auditLine('L1'), candleLine('C1', { sortOrder: 1 })], [candleLine('C2')], { createdAt: hour(2) }),
+    auditEntry(72, [candleLine('C2')], [candleLine('C3'), auditLine('N1', { packQty: null, lineTotal: 42000, sortOrder: 1 }), auditLine('N2', { packQty: null, qty: 6, lineTotal: 21000, sortOrder: 2 })], { createdAt: hour(3) }),
+  ];
+  assert.deepEqual(across(c).pairs.map((pair) => [pair.removed.auditId, pair.rows]), [[71, [nineRow(2, 1, 2, 84000, 42000), nineRow(3, null, null, null, 21000, { nowQty: 6 })]]]);
+  /* บรรทัดที่เพิ่มกลับได้ค่าของรายการที่จำนวน/ราคาเท่ากันก่อน ไม่ใช่ตามลำดับบนจอ (6 เดือนขึ้นก่อน 12 เดือน) */
+  const swapped = [c[0], { ...c[1], after: { ...c[1].after, lines: [candleLine('C3'), auditLine('N2', { packQty: null, qty: 6, lineTotal: 21000, sortOrder: 1 }), auditLine('N1', { packQty: null, lineTotal: 42000, sortOrder: 2 })] } }];
+  assert.deepEqual(across(swapped).pairs[0].rows, [nineRow(2, null, null, null, 21000, { nowQty: 6 }), nineRow(3, 1, 2, 84000, 42000)]);
+  /* C2: สองโซนของ SDS — โซน 1 (แพ็ค 2) ออกก่อน ขณะโซน 2 (แพ็ค 3) ยังอยู่ (บันทึกที่ส่งบรรทัดมา = id ใหม่ทุกบรรทัด) · แล้วโซน 2 ออก · แล้วเพิ่ม SDS ว่างกลับสองบรรทัด */
+  const zoneTwo = auditLine('Z2b', { packQty: 3, lineTotal: 126000 });
+  const c2 = [
+    auditEntry(81, [auditLine('Z1'), auditLine('Z2', { packQty: 3, lineTotal: 126000, sortOrder: 1 })], [zoneTwo], { createdAt: hour(2) }),
+    auditEntry(82, [zoneTwo], [], { createdAt: hour(3) }),
+    auditEntry(83, [], [auditLine('Y1', { packQty: null, lineTotal: 42000 }), auditLine('Y2', { packQty: null, lineTotal: 42000, sortOrder: 1 })], { createdAt: hour(4) }),
+  ];
+  const zoned = across(c2);
+  assert.equal(zoned.removals, 2);
+  assert.deepEqual(zoned.pairs.map((pair) => [pair.removed.auditId, pair.readded.auditId, pair.rows]), [
+    [81, 83, [nineRow(1, 1, 2, 84000, 42000)]],
+    [82, 83, [nineRow(2, 1, 3, 126000, 42000)]],
+  ], 'เลขแพ็คทั้งสองโซนถูกพิมพ์ — การเอาออกแต่ละครั้งเป็นคู่ของตัวเอง');
+  /* เพิ่มกลับพร้อมเลขหนึ่งโซน + ว่างหนึ่งโซน: ตัดรายการค้างหนึ่งตัว (ตัวเก่าสุด) อีกตัวเป็นคู่ */
+  const half = [...c2.slice(0, 2), auditEntry(83, [], [auditLine('Y1', { packQty: 2, lineTotal: 84000 }), auditLine('Y2', { packQty: null, lineTotal: 42000, sortOrder: 1 })], { createdAt: hour(4) })];
+  assert.deepEqual(across(half).pairs.map((pair) => [pair.removed.auditId, pair.rows]), [[82, [nineRow(2, 1, 3, 126000, 42000)]]]);
+  /* เพิ่มกลับพร้อมเลขแพ็ค 3 (ค่าของโซน 2) + ว่างหนึ่งบรรทัด: ตัดรายการค้างที่เลขแพ็คเท่ากันก่อน ⇒ คู่คือโซน 1 (แพ็ค 2) */
+  const halfOther = [...c2.slice(0, 2), auditEntry(83, [], [auditLine('Y1', { packQty: 3, lineTotal: 126000 }), auditLine('Y2', { packQty: null, lineTotal: 42000, sortOrder: 1 })], { createdAt: hour(4) })];
+  assert.deepEqual(across(halfOther).pairs.map((pair) => [pair.removed.auditId, pair.rows]), [[81, [nineRow(2, 1, 2, 84000, 42000)]]]);
+  /* โซน 1 ออกแล้วเพิ่มกลับพร้อมเลข ก่อนโซน 2 ออกแล้วเพิ่มกลับว่าง = คู่ของโซน 2 เท่านั้น */
+  const zoneOneBack = auditLine('Z1c', { sortOrder: 1 });
+  const restoredFirst = [
+    c2[0],
+    auditEntry(82, [zoneTwo], [zoneTwo, zoneOneBack], { createdAt: hour(3) }),
+    auditEntry(83, [zoneTwo, zoneOneBack], [zoneOneBack], { createdAt: hour(4) }),
+    auditEntry(84, [zoneOneBack], [zoneOneBack, auditLine('Y2', { packQty: null, lineTotal: 42000, sortOrder: 2 })], { createdAt: hour(5) }),
+  ];
+  assert.deepEqual(across(restoredFirst).pairs.map((pair) => [pair.removed.auditId, pair.readded.auditId, pair.rows]), [[83, 84, [nineRow(2, 1, 3, 126000, 42000)]]]);
+});
+
+/* 🐞 รีวิว 19/10 (PROBE B): ฉบับ Rev. ได้รหัสใหม่ (genId) — เดิม ⑨ ไล่ทีละรหัส ⇒ เอาออกจากร่างฉบับเดิม แล้วเพิ่มกลับในฉบับ Rev. ไม่มีใครเห็น
+   (⑥ เห็นเมื่อต้นทางยังถือเลขแพ็ค · ⑦ เห็นเมื่อยื่น · ยาม 0410 ข้อ (ข) เทียบกับบรรทัดที่ต้นทางยังถือ) */
+test('🔴 packLossAcrossSaves: เอาบรรทัดที่มีเลขแพ็คออกจากร่างฉบับเดิม แล้วเพิ่มกลับโดยไม่มีเลขแพ็คในฉบับ Rev. = คู่ — ฉบับ Rev. รับรายการค้างของต้นทาง (⑥ ⑦ ยังไม่เห็น)', () => {
+  const removeOnQ1 = twoSaves()[0];
+  const approveQ1 = { ...auditEntry(13, null, null, { createdAt: hour(3) }), before: { id: 'Q1', approvalStatus: 'pending' }, after: { id: 'Q1', approvalStatus: 'approved' } };
+  /* ออก Rev.: แถว 'create' เก็บหัวใบที่เพิ่งแทรก (revise/route.js — after ไม่มีบรรทัด) · บรรทัดตั้งต้นของ Rev. = บรรทัดของต้นทางหลังการบันทึกล่าสุด */
+  const revise = { ...auditEntry(14, null, null, { action: 'create', entityId: 'Q2', createdAt: hour(4) }), after: { id: 'Q2', quoteNumber: 'QT-26100001-1', revisedFromId: 'Q1' } };
+  const readd = onQuote(auditEntry(15, [candleLine('R1')], [candleLine('R2'), auditLine('R3', { packQty: null, lineTotal: 42000, sortOrder: 1 })], { createdAt: hour(5), actorName: 'dev server เก่า' }), 'Q2', 'QT-26100001-1');
+  const result = across([removeOnQ1, approveQ1, revise, readd]);
+  assert.deepEqual(result.pairs.map((pair) => [pair.quotationId, pair.number, pair.removed.auditId, pair.removed.quotationId, pair.removed.number, pair.readded.auditId, pair.rows]),
+    [['Q2', 'QT-26100001-1', 11, 'Q1', 'QT-26100001-0', 15, [nineRow(2, 1, 2, 84000, 42000)]]]);
+  assert.equal(result.checked, 2, 'แถวสร้างใบ (ออก Rev.) ไม่นับเป็นการบันทึกที่เทียบ');
+  /* ตัวจับอื่นมองไม่เห็นใบนี้: ต้นทางไม่ถือเลขแพ็คแล้ว (⑥) · Rev. ยังเป็นร่าง (⑦) */
+  const q1 = { id: 'Q1', quoteNumber: 'QT-26100001-0', status: 'revised', approvalStatus: 'approved', approvedAt: hour(3), lines: [candleLine('C2')] };
+  const q2 = { id: 'Q2', quoteNumber: 'QT-26100001-1', revisedFromId: 'Q1', status: 'draft', approvalStatus: 'not_submitted', lines: readd.after.lines };
+  assert.deepEqual([revisionPackLoss([q1, q2]).diffs, sentWithoutPack([q1, q2], LAUNCH_AT).diffs], [[], []]);
+  /* ออก Rev. พร้อมบรรทัดที่แก้แล้ว (บรรทัดว่างมากับคำขอออก Rev. — ไม่อยู่ในแถว 'create') = เห็นตอนฉบับ Rev. ถูกบันทึกครั้งแรก */
+  const noteOnly = onQuote(auditEntry(15, [candleLine('R1'), auditLine('R3', { packQty: null, lineTotal: 42000, sortOrder: 1 })], [candleLine('R1'), auditLine('R3', { packQty: null, lineTotal: 42000, sortOrder: 1 })], { createdAt: hour(5) }), 'Q2', 'QT-26100001-1');
+  assert.deepEqual(across([removeOnQ1, revise, noteOnly]).pairs.map((pair) => [pair.removed.auditId, pair.readded.auditId]), [[11, 15]]);
+  /* ไม่ใช่คู่: เพิ่มกลับพร้อมเลขในฉบับ Rev. · ต้นทางเพิ่มกลับพร้อมเลขก่อนออก Rev. · Rev. ของใบอื่น */
+  const packedReadd = onQuote(auditEntry(15, [candleLine('R1')], [candleLine('R2'), auditLine('R3', { sortOrder: 1 })], { createdAt: hour(5) }), 'Q2', 'QT-26100001-1');
+  assert.deepEqual(across([removeOnQ1, revise, packedReadd]).pairs, []);
+  const backOnQ1 = auditEntry(12, [candleLine('C2')], [candleLine('C3'), auditLine('P1', { sortOrder: 1 })], { createdAt: hour(3) });
+  assert.deepEqual(across([removeOnQ1, backOnQ1, revise, readd]).pairs, []);
+  assert.deepEqual(across([removeOnQ1, { ...revise, after: { ...revise.after, revisedFromId: 'Q9' } }, readd]).pairs, []);
+});
+
+test('packLossAcrossSaves ไม่กล่าวหา: เพิ่มกลับพร้อมเลขแพ็ค · เอาออกแล้วไม่เพิ่มกลับ · เพิ่มสินค้าตัวอื่น · ย้ายออกจากหมวด 02-001 · ใบที่ไม่เคยมีเลขแพ็ค · แถวก่อนวันเปิดช่อง', () => {
+  const cases = {
+    'เพิ่มกลับพร้อมเลขแพ็ค (รุ่นปัจจุบัน)': twoSaves({ readdedLine: auditLine('N1', { packQty: 2, lineTotal: 84000, sortOrder: 1 }) }),
+    'เอาออกแล้วไม่เพิ่มกลับ (มีการบันทึกถัดไป)': [twoSaves()[0], auditEntry(12, [candleLine('C2', { sortOrder: 0 })], [candleLine('C3', { sortOrder: 0, qty: 60, lineTotal: 15000 })], { createdAt: hour(3) })],
+    'เพิ่มสินค้าหมวด 02-001 ตัวอื่น': twoSaves({ readdedLine: auditLine('N1', { productId: 'P-OTHER', fgCode: 'FG-278-02-001-0999', description: 'สินค้าอื่น', packQty: null, lineTotal: 42000, sortOrder: 1 }) }),
+    'ย้ายรหัสออกจากหมวด 02-001 แล้วอยู่นอกหมวด': [
+      auditEntry(11, [auditLine('L1')], [auditLine('M1', { fgCode: 'FG-278-01-003-0757', packQty: null, lineTotal: 42000 })], { createdAt: hour(2) }),
+      auditEntry(12, [auditLine('M1', { fgCode: 'FG-278-01-003-0757', packQty: null, lineTotal: 42000 })], [auditLine('M2', { fgCode: 'FG-278-01-003-0757', packQty: null, lineTotal: 42000 })], { createdAt: hour(3) }),
+    ],
+    'บรรทัดพิมพ์เองย้ายหมวดออกจาก 02-001 แล้วอยู่นอกหมวด': (() => {
+      const typed = (id, over = {}) => auditLine(id, { productId: null, fgCode: null, description: 'ค่าบริการ', metadata: { categoryCode: '02-001' }, packQty: 3, lineTotal: 126000, ...over });
+      const moved = (id) => typed(id, { metadata: { categoryCode: '01-003' }, packQty: null, lineTotal: 42000 });
+      return [auditEntry(11, [typed('T1')], [moved('T2')], { createdAt: hour(2) }), auditEntry(12, [moved('T2')], [moved('T3')], { createdAt: hour(3) })];
+    })(),
+    'ใบที่ไม่เคยมีเลขแพ็ค (ลบแล้วเพิ่มบรรทัดหมวด 02-001 ว่าง ๆ กลับ)': twoSaves({ removedLine: auditLine('L1', { packQty: null, lineTotal: 42000 }) }),
+  };
+  for (const [name, entries] of Object.entries(cases)) assert.deepEqual(across(entries).pairs, [], name);
+  assert.equal(across(cases['เอาออกแล้วไม่เพิ่มกลับ (มีการบันทึกถัดไป)']).removals, 1, 'การเอาออกถูกไล่ต่อ แต่ไม่มีคู่');
+  assert.equal(across(cases['ใบที่ไม่เคยมีเลขแพ็ค (ลบแล้วเพิ่มบรรทัดหมวด 02-001 ว่าง ๆ กลับ)']).removals, 0);
+  /* แถวก่อนวันเปิดช่องไม่นับเลย (การบันทึกแรกอยู่ก่อน launch = ไม่ใช่ครึ่งแรก) · ไม่ส่ง launch = นับทุกแถว */
+  const early = twoSaves({ firstAt: '2026-10-12T02:59:59.000Z' });
+  assert.deepEqual(across(early).pairs, []);
+  assert.equal(packLossAcrossSaves(early).pairs.length, 1);
+});
+
+test('🔴 packLossAcrossSaves: แต่ละคู่ถูกรายงานรอบเดียว (การบันทึกที่สองก่อน `since` = รอบที่พิมพ์ --pairs-since รายงานแล้ว — อยู่ใน earlier ไม่หายเงียบ · การบันทึกแรกอยู่ก่อน `since` ได้) · แถวของใบอื่นที่สลับกันไม่ปนคู่', () => {
+  const entries = twoSaves();
+  /* การบันทึกแรกอยู่ก่อน since (รอบก่อนผ่านไปแล้ว) แต่การบันทึกที่สองอยู่หลัง = ยังรายงาน — นี่คือเหตุที่สคริปต์อ่าน audit ตั้งแต่วันเปิดช่อง */
+  assert.equal(across(entries, { since: '2026-10-13T02:30:00.000Z', launch: LAUNCH_AT }).pairs.length, 1);
+  assert.equal(across(entries, { since: hour(3), launch: LAUNCH_AT }).pairs.length, 1, 'เวลาเท่ากับ since พอดี = นับ');
+  /* การบันทึกที่สองอยู่ก่อน since = รายงานไปแล้วในรอบก่อน — และการบันทึกถัด ๆ ไปที่บรรทัดนั้นยังว่าง (ไม่เขียนบรรทัด / เขียนบรรทัดใหม่) ไม่ถูกนับซ้ำ */
+  const later = [
+    ...entries,
+    auditEntry(13, [candleLine('C3', { sortOrder: 0 }), auditLine('N1', { packQty: null, lineTotal: 42000, sortOrder: 1 })], [candleLine('C3', { sortOrder: 0 }), auditLine('N1', { packQty: null, lineTotal: 42000, sortOrder: 1 })], { createdAt: hour(5) }),
+    auditEntry(14, [candleLine('C3', { sortOrder: 0 }), auditLine('N1', { packQty: null, lineTotal: 42000, sortOrder: 1 })], [candleLine('C4', { sortOrder: 0 }), auditLine('N2', { packQty: null, qty: 6, lineTotal: 21000, sortOrder: 1 })], { createdAt: hour(6) }),
+  ];
+  const settled = across(later, { since: hour(4), launch: LAUNCH_AT });
+  assert.deepEqual([settled.checked, settled.removals, settled.pairs], [2, 1, []]);
+  assert.deepEqual(settled.earlier.map((pair) => [pair.number, pair.removed.auditId, pair.readded.auditId]), [['QT-26100001-0', 11, 12]], 'คู่ก่อน since อยู่ใน earlier — สคริปต์พิมพ์เป็นข้อมูล');
+  assert.equal(across(later).pairs.length, 1, 'ช่วงเต็มตั้งแต่วันเปิดช่อง = คู่เดียว ไม่ใช่สามคู่');
+  /* ใบอื่นสลับกัน: Q2 เพิ่ม SDS ว่าง ๆ หลัง Q1 ลบ — ไม่ใช่คู่ของ Q1 · Q1 เพิ่มกลับทีหลังจึงเป็นคู่ */
+  const [removeQ1] = twoSaves();
+  const mixed = [
+    removeQ1,
+    auditEntry(40, [candleLine('X1', { quotationId: 'Q2' })], [candleLine('X2', { quotationId: 'Q2' }), auditLine('X3', { quotationId: 'Q2', packQty: null, lineTotal: 42000, sortOrder: 1 })],
+      { entityId: 'Q2', createdAt: hour(3), before: { id: 'Q2', quoteNumber: 'QT-26100002-0', lines: [candleLine('X1')] }, after: { id: 'Q2', quoteNumber: 'QT-26100002-0', lines: [candleLine('X2'), auditLine('X3', { packQty: null, lineTotal: 42000, sortOrder: 1 })] } }),
+    auditEntry(41, [candleLine('C2', { sortOrder: 0 })], [candleLine('C5', { sortOrder: 0, qty: 60, lineTotal: 15000 })], { createdAt: hour(4) }),
+    twoSaves({ second: 42, secondAt: hour(5) })[1],
+  ];
+  assert.deepEqual(across(mixed).pairs.map((pair) => [pair.quotationId, pair.number, pair.removed.auditId, pair.readded.auditId]), [['Q1', 'QT-26100001-0', 11, 42]]);
+});
+
+test('🔴 ⑧ กับ ⑨ ไม่รายงานเลขแพ็คที่หายตัวเดียวกันสองครั้ง: บรรทัดที่ ⑧ รายงานในการบันทึกไหน ⑨ ไม่จดเป็นครึ่งแรก · การบันทึกหนึ่งขึ้นทั้งสองหัวข้อได้เมื่อมีของหายสองรายการ', () => {
+  const stripped = auditEntry(51, [auditLine('L1'), candleLine('C1', { sortOrder: 1 })], [auditLine('N1', { packQty: null, lineTotal: 42000 }), candleLine('N2', { sortOrder: 1 })], { createdAt: hour(2) });
+  const bareNow = [auditLine('N1', { packQty: null, lineTotal: 42000 }), candleLine('N2', { sortOrder: 1 })];
+  const entries = [
+    stripped,
+    auditEntry(52, bareNow, bareNow.map((line) => ({ ...line })), { createdAt: hour(3) }),                                                    // บันทึกหมายเหตุ (ไม่เขียนบรรทัด)
+    auditEntry(53, bareNow, [auditLine('N3', { packQty: null, lineTotal: 42000 }), candleLine('N4', { sortOrder: 1 })], { createdAt: hour(4) }), // เขียนบรรทัดใหม่ ยังว่าง
+    auditEntry(54, [auditLine('N3', { packQty: null, lineTotal: 42000 }), candleLine('N4', { sortOrder: 1 })], [candleLine('N5')], { createdAt: hour(5) }), // ลบ SDS ที่ว่างอยู่แล้ว
+    auditEntry(55, [candleLine('N5')], [candleLine('N6'), auditLine('N7', { packQty: null, lineTotal: 42000, sortOrder: 1 })], { createdAt: hour(6) }), // เพิ่ม SDS ว่างกลับ
+  ];
+  const eight = packLossInAudit(entries);
+  assert.deepEqual(eight.stripped.map((entry) => [entry.auditId, entry.rows]), [[51, [{ row: 1, packQty: 2, lineTotal: 84000, now: 42000 }]]]);
+  assert.deepEqual(across(entries), { checked: 5, removals: 0, pairs: [], earlier: [] }, 'เลขหายที่ 51 — ⑧ รายงานแล้ว ไม่มีครึ่งแรกให้ ⑨');
+  /* เอาออก → เพิ่มกลับพร้อมเลข (คืนแล้ว) → ภายหลังเลขหายในการบันทึกเดียว: ⑧ รายงานการบันทึกที่สาม · ⑨ ต้องไม่จับคู่การเอาออกครั้งแรกกับมัน
+     — ทั้งเมื่อการคืนอยู่ใน audit (after ของการบันทึกที่สอง) และเมื่อคืนนอก audit (แก้ฐานตรง: before ของการบันทึกที่สามมีเลขแพ็คแล้ว) */
+  const [removeFirst] = twoSaves();
+  const packedBack = [candleLine('C3', { sortOrder: 0 }), auditLine('P1', { sortOrder: 1 })];
+  const stripLater = auditEntry(63, packedBack, [candleLine('C4', { sortOrder: 0 }), auditLine('P2', { packQty: null, lineTotal: 42000, sortOrder: 1 })], { createdAt: hour(4) });
+  for (const [name, history] of [
+    ['คืนใน audit', [removeFirst, auditEntry(62, [candleLine('C2', { sortOrder: 0 })], packedBack, { createdAt: hour(3) }), stripLater]],
+    ['คืนนอก audit', [removeFirst, stripLater]],
+  ]) {
+    assert.deepEqual(packLossInAudit(history).stripped.map((entry) => entry.auditId), [63], name);
+    assert.deepEqual(across(history).pairs, [], name);
+  }
+  /* 🐞 รีวิว 19/10 (PROBE D): รุ่นเก่าเปลี่ยนรายการ SDS (แพ็ค 2) เป็นสินค้าหมวด 02-001 ตัวอื่นที่ไม่มีเลขในการบันทึกเดียว (⑧) แล้วเปลี่ยนกลับเป็น SDS ไม่มีเลข
+     — เดิม ⑨ จดการบันทึกแรกเป็นครึ่งแรกด้วย ⇒ เลขแพ็คตัวเดียวเป็นจุดต่างสองจุด · วันนี้ ⑧ เป็นเจ้าของ */
+  const other = (id, over = {}) => auditLine(id, { productId: 'P-OTHER', fgCode: 'FG-278-02-001-0999', description: 'สินค้าอื่น', packQty: null, lineTotal: 42000, ...over });
+  const swapBack = [
+    auditEntry(501, [auditLine('L1')], [other('X1')], { createdAt: hour(2) }),
+    auditEntry(502, [other('X1')], [auditLine('S1', { packQty: null, lineTotal: 42000 })], { createdAt: hour(3) }),
+  ];
+  assert.deepEqual(packLossInAudit(swapBack).stripped.map((entry) => [entry.auditId, entry.rows]), [[501, [{ row: 1, packQty: 2, lineTotal: 84000, now: 42000 }]]]);
+  assert.deepEqual(across(swapBack).pairs, [], 'เลขแพ็คตัวเดียว = จุดต่างเดียว (⑧)');
+  /* PROBE E: ของหายสองรายการในการบันทึกเดียวกัน — 601 เอา SDS (แพ็ค 2) ออก · 602 รุ่นเก่าเขียนทับ R (แพ็ค 3) เป็นไม่มีเลข และเพิ่ม SDS ว่างกลับ
+     ⇒ ⑧ = R ที่ 602 (เลขรายการก่อนบันทึก) · ⑨ = SDS 601 → 602 (เลขรายการหลังบันทึก) — คนละรายการ ไม่ใช่การรายงานซ้ำ (สคริปต์บอกว่าการบันทึกนั้นขึ้นทั้งสองหัวข้อ) */
+  const rLine = (id, over = {}) => auditLine(id, { productId: 'P-R', fgCode: 'FG-278-02-001-0888', description: 'R', packQty: 3, lineTotal: 126000, ...over });
+  const twoLosses = [
+    auditEntry(601, [auditLine('L1'), rLine('R1', { sortOrder: 1 })], [rLine('R1', { sortOrder: 0 })], { createdAt: hour(2) }),
+    auditEntry(602, [rLine('R1', { sortOrder: 0 })], [auditLine('S1', { packQty: null, lineTotal: 42000 }), rLine('R2', { packQty: null, lineTotal: 42000, sortOrder: 1 })], { createdAt: hour(3) }),
+  ];
+  assert.deepEqual(packLossInAudit(twoLosses).stripped.map((entry) => [entry.auditId, entry.rows.map((row) => [row.row, row.packQty])]), [[602, [[1, 3]]]]);
+  assert.deepEqual(across(twoLosses).pairs.map((pair) => [pair.removed.auditId, pair.readded.auditId, pair.product.description, pair.rows.map((row) => [row.row, row.packQty])]), [[601, 602, 'SDS', [[1, 2]]]]);
+});
+
 test('🔴 revisionPackLoss: ฉบับ Rev. มีบรรทัดหมวด 02-001 ที่ขาดเลขแพ็ค ทั้งที่ต้นทางมี (รุ่นเก่าออก Rev. / บันทึกทับ) · Rev. ของใบเก่าที่ไม่เคยมีเลขแพ็คไม่ถูกกล่าวหา', () => {
   const source = { id: 'Q1', quoteNumber: 'QT-26100001-0', status: 'revised', lines: [auditLine('L1'), auditLine('L2', { packQty: 1, lineTotal: 42000, sortOrder: 1 })] };
   const goodRev = { id: 'Q2', quoteNumber: 'QT-26100001-1', revisedFromId: 'Q1', lines: [auditLine('R1'), auditLine('R2', { packQty: 1, lineTotal: 42000, sortOrder: 1 })] };
@@ -569,7 +840,9 @@ test('🔴 sentWithoutPack: ใบที่ยื่น/อนุมัติต
 
 test('ตัวอ่าน audit: อ่านอย่างเดียว · กรองชนิด/การกระทำ/เวลา · ไล่หน้าครบ · เอ่ยชื่อคอลัมน์ที่มีจริง (ด่าน check:columns)', async () => {
   assert.equal(QUOTATION_AUDIT_SELECT, 'id, action, "entityId", "actorName", summary, "createdAt", before, after');
-  assert.deepEqual([...QUOTATION_AUDIT_ACTIONS], ['update', 'delete']);
+  /* ⭐ ย้ายโดยเจตนา (หัวข้อ ⑨ · เลขแพ็คหายข้ามสองการบันทึก): เดิม ['update', 'delete'] — ⑨ ต้องเห็นแถว 'create' ของใบที่ถูกลบแล้วสร้างใหม่ด้วยรหัสเดิม
+     ⑧ (packLossInAudit) ข้ามแถว 'create' เหมือนเดิม — ผลของ ⑧ ไม่ขยับ (เทสต์ ⑧ ด้านบนไม่ได้แก้) */
+  assert.deepEqual([...QUOTATION_AUDIT_ACTIONS], ['create', 'update', 'delete']);
   assert.match(SOURCE, /fetchAllResult\(\s*\(\) => supabase\.from\('audit_logs'\)\.select\(QUOTATION_AUDIT_SELECT\)\.eq\('entityType', 'quotation'\)\.in\('action', QUOTATION_AUDIT_ACTIONS\)\.gte\('createdAt', sinceIso\)\.order\('id', \{ ascending: true \}\),\s*\{ pageSize: 100 \},\s*\);/);
   const calls = [];
   const rows = Array.from({ length: 230 }, (_, i) => ({ id: i + 1 }));
@@ -583,11 +856,14 @@ test('ตัวอ่าน audit: อ่านอย่างเดียว ·
   assert.equal(read.data.length, 230);
   assert.deepEqual(calls.map((c) => [c.from, c.to]), [[0, 99], [100, 199], [200, 299]]);
   assert.deepEqual([calls[0].table, calls[0].column, calls[0].value, calls[0].inColumn, [...calls[0].list], calls[0].gteColumn, calls[0].since],
-    ['audit_logs', 'entityType', 'quotation', 'action', ['update', 'delete'], 'createdAt', '2026-10-12T03:00:00.000Z']);
+    ['audit_logs', 'entityType', 'quotation', 'action', ['create', 'update', 'delete'], 'createdAt', '2026-10-12T03:00:00.000Z']);
+  /* ⑧ ไม่นับแถว 'create' (ไม่มี before ให้เทียบ) — ตัวอ่านที่ได้ action เพิ่มไม่ทำให้ ⑧ ร้องหรือนับเพิ่ม */
+  assert.deepEqual(packLossInAudit([auditEntry(1, null, [auditLine('C1', { packQty: null, lineTotal: 42000 })], { action: 'create' })]), { compared: 0, stripped: [], removed: [] });
 });
 
 test('parseParityArgs: --pack-launch / --audit-since ต้องเป็นเวลา ISO ที่มีเขตเวลา — วันที่ลอย ๆ ถูกปฏิเสธ (เที่ยงคืนไทยกับ UTC ห่างกัน 7 ชั่วโมงของการบันทึก)', () => {
-  assert.deepEqual(parseParityArgs(['--pack-launch=2026-10-12T10:00:00+07:00']), { beforeMigration: false, floors: {}, problems: [], packLaunch: '2026-10-12T03:00:00.000Z', auditSince: null });
+  /* ⭐ ย้ายโดยเจตนา (หัวข้อ ⑨): ผลมีช่อง pairsSince เพิ่ม (null) — ช่องเดิมเท่าเดิม */
+  assert.deepEqual(parseParityArgs(['--pack-launch=2026-10-12T10:00:00+07:00']), { beforeMigration: false, floors: {}, problems: [], packLaunch: '2026-10-12T03:00:00.000Z', auditSince: null, pairsSince: null });
   assert.equal(parseParityArgs(['--pack-launch=2026-10-12T03:00:00Z', '--audit-since=2026-10-13T08:30:15.123Z']).auditSince, '2026-10-13T08:30:15.123Z');
   for (const bad of ['--pack-launch', '--pack-launch=', '--pack-launch=2026-10-12', '--pack-launch=2026-10-12T10:00:00', '--pack-launch=12/10/2026', '--pack-launch=yesterday', '--pack-launch=2026-13-40T00:00:00Z']) {
     const parsed = parseParityArgs([bad]);
@@ -596,6 +872,12 @@ test('parseParityArgs: --pack-launch / --audit-since ต้องเป็นเ
   }
   assert.equal(parseParityArgs(['--audit-since=2026-10-13T00:00:00Z']).problems.length, 1, 'ต้องใส่คู่กับ --pack-launch');
   assert.equal(parseParityArgs(['--pack-launch=2026-10-12T03:00:00Z', '--audit-since=2026-10-11T00:00:00Z']).problems.length, 1, 'ไล่ audit ก่อนวันเปิดช่องไม่ได้');
+  /* --pairs-since (ตัวชี้ของ ⑨) กติกาเดียวกับ --audit-since: เวลา ISO มีเขตเวลา · คู่กับ --pack-launch · ไม่ก่อนวันเปิดช่อง · เป็นอิสระจาก --audit-since */
+  assert.deepEqual(parseParityArgs(['--pack-launch=2026-10-12T03:00:00Z', '--audit-since=2026-10-15T09:10:20.026Z', '--pairs-since=2026-10-19T02:00:00+07:00']),
+    { beforeMigration: false, floors: {}, problems: [], packLaunch: '2026-10-12T03:00:00.000Z', auditSince: '2026-10-15T09:10:20.026Z', pairsSince: '2026-10-18T19:00:00.000Z' });
+  for (const bad of [['--pairs-since=2026-10-13T00:00:00Z'], ['--pack-launch=2026-10-12T03:00:00Z', '--pairs-since=2026-10-11T00:00:00Z'], ['--pack-launch=2026-10-12T03:00:00Z', '--pairs-since=2026-10-13']]) {
+    assert.equal(parseParityArgs(bad).problems.length, 1, bad.join(' '));
+  }
 });
 
 test('🔴 สคริปต์ทั้งตัว + --pack-launch: ยอดหดเงียบจากรุ่นเก่าถูกชี้เป็นใบ/รายการ/ยอดเดิม แม้จำนวนบรรทัดที่มีเลขแพ็คไม่ลด · ลบบรรทัดตามปกติไม่ทำให้ exit 1', async () => {
@@ -642,7 +924,9 @@ test('🔴 สคริปต์ทั้งตัว + --pack-launch: ยอด
   const trimmed = { ...packedDatabase(), audit_logs: [auditEntry(5, [auditLine('A1'), auditLine('A2', { sortOrder: 1 })], [auditLine('B1')]), auditEntry(6, [auditLine('D1')], null, { action: 'delete', entityId: 'Q7', before: { id: 'Q7', quoteNumber: 'QT-26100007-0', lines: [auditLine('D1')] } })] };
   const legit = await runParityScript(trimmed, [LAUNCH, '--expect-min-packed=4,1']);
   assert.equal(legit.status, 0, `${legit.stdout}${legit.stderr}`);
-  assert.match(legit.stdout, /ℹ️ บรรทัดใบเสนอราคาที่มีเลขแพ็ค น้อยกว่ารอบก่อน: 2 \(รอบก่อน 4\) — หัวข้อ ⑥–⑧ ไม่พบเลขแพ็คที่หาย/);
+  /* ⭐ ย้ายโดยเจตนา (หัวข้อ ⑨): เดิม "หัวข้อ ⑥–⑧ ไม่พบ…" — ประโยคนี้วันนี้พูดได้เฉพาะเมื่อ ⑥–⑨ ไม่เจออะไร (เทสต์ ⑨ ของสคริปต์ทั้งตัวข้างล่าง) */
+  assert.match(legit.stdout, /ℹ️ บรรทัดใบเสนอราคาที่มีเลขแพ็ค น้อยกว่ารอบก่อน: 2 \(รอบก่อน 4\) — หัวข้อ ⑥–⑨ ไม่พบเลขแพ็คที่หาย/);
+  assert.match(legit.stdout, /✓ ⑨ การบันทึกใบเสนอราคาตั้งแต่ 2026-10-12T03:00:00\.000Z .*: ต่าง 0 จาก 1/);
   assert.match(legit.stdout, /บรรทัดที่มีเลขแพ็คถูกลบ\/ย้ายหมวดด้วยการทำงานปกติ 2 บรรทัด/);
   assert.match(legit.stdout, /"how":"ลบใบ"/);
   assert.ok(legit.stdout.includes(OK_LINE));
@@ -659,6 +943,123 @@ test('🔴 สคริปต์ทั้งตัว + --pack-launch: ยอด
   assert.match(revRun.stdout, /✗ ⑥ ฉบับ Rev\. พกเลขแพ็คครบ.*ต่าง 1 จาก 1.*"number":"QT-26100001-1".*"sourceNumber":"QT-26100001-0"/);
 });
 
+const REASSURE = 'ลดลงเพราะลบใบ/ลบบรรทัด/ย้ายหมวดตามปกติ';
+
+test('🔴 สคริปต์ทั้งตัว + ⑨: ลบรายการแล้วเพิ่มสินค้าเดิมกลับโดยไม่มีเลขแพ็คในการบันทึกถัดไป = exit 1 พร้อมค่าที่ต้องกู้ · จำนวนที่ลดไม่ถูกปลอบว่า "ตามปกติ" · รายงานรอบเดียว', async () => {
+  const LAUNCH = '--pack-launch=2026-10-12T03:00:00Z';
+  /* ฐานตอนนี้: บรรทัดที่มีเลขแพ็คลดจากรอบก่อน (3 → 2) · audit: Q1 ลบ SDS (แพ็ค 2 · ฿84,000) ด้วยรุ่นปัจจุบัน แล้วรุ่นเก่าเพิ่ม SDS กลับ ไม่มีเลข ฿42,000
+     ⇒ ⑧ เห็นการบันทึกแรกเป็น "ถูกลบ" และไม่เทียบการบันทึกที่สอง — ก่อนมี ⑨ สคริปต์จบ ✓ พร้อมประโยค "ลดลง…ตามปกติ" */
+  const db = { ...packedDatabase(), audit_logs: twoSaves() };
+  const run = await runParityScript(db, [LAUNCH, '--expect-min-packed=3,1']);
+  assert.equal(run.status, 1, `${run.stdout}${run.stderr}`);
+  assert.match(run.stdout, /✓ ⑧ การบันทึกใบเสนอราคาตั้งแต่ 2026-10-12T03:00:00\.000Z ไม่ทำเลขแพ็คของบรรทัดหมวด 02-001 หาย: ต่าง 0 จาก 2/);
+  assert.match(run.stdout, /✗ ⑨ การบันทึกใบเสนอราคาตั้งแต่ 2026-10-12T03:00:00\.000Z .*เลขแพ็คหายข้ามสองการบันทึก\): ต่าง 1 จาก 2/);
+  assert.match(run.stdout, /"number":"QT-26100001-0","product":\{"productId":"P-SDS","fgCode":"FG-278-02-001-0757","description":"SDS"\},"removed":\{"auditId":11,.*"readded":\{"auditId":12,.*"rows":\[\{"row":2,"wasRow":1,"packQty":2,"lineTotal":84000,"qty":12,"unitPrice":3500,"discountAmount":0,"now":\{"qty":12,"unitPrice":3500,"discountAmount":0,"lineTotal":42000\}\}\]/);
+  /* คำอธิบายค่าที่ต้องกู้ (รีวิว 19/10): เลขแพ็คเดิม · ยอดเดิมใช้ตรง ๆ ได้เฉพาะเมื่อจำนวน/ราคา/ส่วนลดไม่เปลี่ยน · now = หลังการบันทึกที่สอง ไม่ใช่วันนี้ · null = ไม่มีค่าเดิม */
+  assert.match(run.stderr, /rows\[\]\.packQty = เลขแพ็คเดิมที่ต้องกู้ให้รายการที่ rows\[\]\.row ของใบ/);
+  assert.match(run.stderr, /ใช้ตรง ๆ ได้เฉพาะเมื่อจำนวน · ราคา · ส่วนลดไม่เปลี่ยน/);
+  assert.match(run.stderr, /ค่าหลังการบันทึกที่สอง rows\[\]\.now — ไม่ใช่ค่าวันนี้/);
+  assert.match(run.stderr, /ค่าเดิม null = เพิ่มกลับมากกว่าที่เอาออก/);
+  assert.doesNotMatch(`${run.stdout}${run.stderr}`, /ยอดปัจจุบัน/, 'ไม่เรียกยอดหลังการบันทึกว่ายอดปัจจุบัน');
+  assert.match(run.stderr, /✗ ต้องดู · บรรทัดใบเสนอราคาที่มีเลขแพ็ค น้อยกว่ารอบก่อน: 2 \(รอบก่อน 3\) — หัวข้อ ⑨ พบเลขแพ็คหายข้ามสองการบันทึก ⇒ ดูหัวข้อ ⑨ ก่อน/);
+  assert.ok(!`${run.stdout}${run.stderr}`.includes(REASSURE), 'ห้ามบอกว่าลดลงตามปกติ ขณะที่ ⑨ เจอเลขแพ็คที่หาย');
+  assert.ok(!run.stdout.includes(OK_LINE));
+  assert.doesNotMatch(run.stdout, /--audit-since=/, 'รอบที่ไม่ผ่านไม่พิมพ์จุดเริ่มของรอบถัดไป');
+  assert.ok(run.requests.filter((r) => r.table === 'audit_logs').length >= 1 && run.requests.every((r) => r.method === 'GET'), 'อ่าน audit · มีแต่คำขอ GET');
+  /* การบันทึกแรกอยู่ก่อนตัวชี้ของ ⑨ (รอบก่อนผ่านไปแล้ว) แต่การบันทึกที่สองอยู่หลัง = ยังเจอ (สคริปต์อ่าน audit ตั้งแต่วันเปิดช่อง) */
+  const straddle = await runParityScript(db, [LAUNCH, '--audit-since=2026-10-13T02:30:00Z', '--pairs-since=2026-10-13T02:30:00Z']);
+  assert.equal(straddle.status, 1, `${straddle.stdout}${straddle.stderr}`);
+  assert.match(straddle.stdout, /✗ ⑨ การบันทึกใบเสนอราคาตั้งแต่ 2026-10-13T02:30:00\.000Z .*: ต่าง 1 จาก 1/);
+  /* 🐞 รีวิว 19/10: --audit-since ที่จดไว้ใน DEPLOY.md พิมพ์โดยรอบที่ยังไม่มี ⑨ (หลังการบันทึกทั้งสอง) — เดิม ⑨ ใช้ตัวนั้น ⇒ ใช้คู่ทิ้งเงียบ ต่าง 0 จาก 0 แล้วจบ ✓
+     พร้อมประโยค "ลดลง…ตามปกติ" และพิมพ์ตัวชี้ใหม่ = ไม่มีรอบไหนเห็นคู่นี้อีก · วันนี้ ⑨ ใช้ --pairs-since ของตัวเอง ไม่ใส่ = ไล่ตั้งแต่วันเปิดช่อง */
+  const oldCursor = await runParityScript(db, [LAUNCH, '--audit-since=2026-10-15T09:10:20.026Z', '--expect-min-packed=3,1']);
+  assert.equal(oldCursor.status, 1, `${oldCursor.stdout}${oldCursor.stderr}`);
+  assert.match(oldCursor.stdout, /✓ ⑧ การบันทึกใบเสนอราคาตั้งแต่ 2026-10-15T09:10:20\.026Z .*: ต่าง 0 จาก 0/);
+  assert.match(oldCursor.stdout, /✗ ⑨ การบันทึกใบเสนอราคาตั้งแต่ 2026-10-12T03:00:00\.000Z .*: ต่าง 1 จาก 2/);
+  assert.match(oldCursor.stdout, /⑨ ไล่คู่ตั้งแต่วันเปิดช่อง \(ไม่มี --pairs-since/);
+  assert.ok(!`${oldCursor.stdout}${oldCursor.stderr}`.includes(REASSURE));
+  /* รอบถัดไป (ตัวชี้ของ ⑨ หลังการบันทึกที่สอง): คู่เดิมไม่ถูกรายงานซ้ำ แต่ไม่หายเงียบ — พิมพ์เป็นข้อมูลพร้อมเลขใบ · จำนวนที่ลดกลับเป็นข้อมูลตามเดิม */
+  const next = await runParityScript(db, [LAUNCH, '--audit-since=2026-10-13T04:00:00Z', '--pairs-since=2026-10-13T04:00:00Z', '--expect-min-packed=3,1']);
+  assert.equal(next.status, 0, `${next.stdout}${next.stderr}`);
+  assert.match(next.stdout, /✓ ⑨ .*: ต่าง 0 จาก 0/);
+  assert.match(next.stdout, /คู่ที่การบันทึกที่สองอยู่ก่อน 2026-10-13T04:00:00\.000Z \(รอบก่อนรายงานแล้ว\) 1 — \[\{"number":"QT-26100001-0","removed":11,"readded":12\}\]/);
+  assert.ok(next.stdout.includes(REASSURE));
+  /* ตัวชี้ของรอบถัดไปพิมพ์ทั้งสองตัวด้วยเวลาเดียวกัน (เวลาที่รอบนี้เริ่มอ่าน) */
+  assert.match(next.stdout, /--pack-launch=2026-10-12T03:00:00\.000Z --audit-since=(\S+) --pairs-since=\1$/m);
+  /* เพิ่มกลับพร้อมเลขแพ็ค (รุ่นปัจจุบัน) = ไม่ใช่คู่ */
+  const restored = await runParityScript({ ...packedDatabase(), audit_logs: twoSaves({ readdedLine: auditLine('N1', { packQty: 2, lineTotal: 84000, sortOrder: 1 }) }) }, [LAUNCH]);
+  assert.equal(restored.status, 0, `${restored.stdout}${restored.stderr}`);
+  /* ไม่ใส่ --pack-launch: ⑨ ไม่ได้ตรวจ (เหมือน ⑦ ⑧) และบอกตรง ๆ · ไม่อ่าน audit */
+  const blind = await runParityScript(db);
+  assert.equal(blind.status, 0, `${blind.stdout}${blind.stderr}`);
+  assert.match(blind.stdout, /⑦ ⑧ ⑨ ไม่ได้ตรวจ — ใส่ --pack-launch=/);
+  assert.ok(blind.requests.every((r) => r.table !== 'audit_logs'));
+});
+
+/* 🐞 รีวิว 19/10: ⑧ ⑨ เคยพิมพ์แค่ 5 รายการแรก ทั้งที่เอกสารบอกให้กู้ค่าเดิมจากค่าที่พิมพ์ (ตัวที่หกขึ้นไปหายจากผล) ·
+   การบันทึกเดียวกันที่ขึ้นทั้ง ⑧ และ ⑨ (ของหายสองรายการ) นับเลขรายการคนละจังหวะ — สคริปต์ต้องบอกว่าเป็นคนละรายการ */
+test('🔴 สคริปต์ทั้งตัว: ⑧ ⑨ พิมพ์ทุกรายการ (ไม่ใช่ตัวอย่าง 5 รายการ) · การบันทึกที่ขึ้นทั้ง ⑧ และ ⑨ ถูกชี้ว่าเป็นคนละรายการ', async () => {
+  const LAUNCH = '--pack-launch=2026-10-12T03:00:00Z';
+  const packed = [auditLine('L1'), auditLine('L2', { packQty: 1, lineTotal: 42000, sortOrder: 1 })];
+  const overwritten = [auditLine('N1', { packQty: null, lineTotal: 42000 }), auditLine('N2', { packQty: null, lineTotal: 42000, sortOrder: 1 })];
+  const quotes = [1, 2, 3, 4, 5, 6].map((k) => `Q${k}`);
+  const audit = [
+    ...quotes.flatMap((id, k) => twoSaves({ entityId: id, first: 100 + 2 * k, second: 101 + 2 * k })),
+    ...quotes.map((id, k) => auditEntry(300 + k, packed, overwritten, { entityId: id, createdAt: hour(7) })),
+  ];
+  const run = await runParityScript({ ...packedDatabase(), audit_logs: audit }, [LAUNCH]);
+  assert.equal(run.status, 1, `${run.stdout}${run.stderr}`);
+  const eightLine = run.stdout.split('\n').find((line) => line.startsWith('✗ ⑧ '));
+  const nineLine = run.stdout.split('\n').find((line) => line.startsWith('✗ ⑨ '));
+  assert.match(eightLine, /ต่าง 6 จาก \d+ — ทุกรายการ /);
+  assert.match(nineLine, /ต่าง 6 จาก \d+ — ทุกรายการ /);
+  for (let k = 0; k < 6; k += 1) {
+    assert.ok(eightLine.includes(`"auditId":${300 + k},`), `⑧ รายการที่ ${k + 1}`);
+    assert.ok(nineLine.includes(`"readded":{"auditId":${101 + 2 * k},`), `⑨ รายการที่ ${k + 1}`);
+  }
+  assert.doesNotMatch(run.stderr, /ขึ้นทั้ง ⑧ และ ⑨/, 'คนละการบันทึก — ไม่ต้องชี้');
+  /* ของหายสองรายการในการบันทึกเดียว (601 เอา SDS ออก · 602 เขียนทับ R เป็นไม่มีเลข + เพิ่ม SDS ว่างกลับ) */
+  const rLine = (id, over = {}) => auditLine(id, { productId: 'P-R', fgCode: 'FG-278-02-001-0888', description: 'R', packQty: 3, lineTotal: 126000, ...over });
+  const twoLosses = [
+    auditEntry(601, [auditLine('L1'), rLine('R1', { sortOrder: 1 })], [rLine('R1', { sortOrder: 0 })], { createdAt: hour(2) }),
+    auditEntry(602, [rLine('R1', { sortOrder: 0 })], [auditLine('S1', { packQty: null, lineTotal: 42000 }), rLine('R2', { packQty: null, lineTotal: 42000, sortOrder: 1 })], { createdAt: hour(3) }),
+  ];
+  const both = await runParityScript({ ...packedDatabase(), audit_logs: twoLosses }, [LAUNCH]);
+  assert.equal(both.status, 1, `${both.stdout}${both.stderr}`);
+  assert.match(both.stdout, /✗ ⑧ .*: ต่าง 1 จาก 2/);
+  assert.match(both.stdout, /✗ ⑨ .*: ต่าง 1 จาก 2/);
+  assert.match(both.stderr, /การบันทึก auditId 602 ขึ้นทั้ง ⑧ และ ⑨ — คนละรายการ/);
+});
+
+/* ยามซอร์ส: ประโยคปลอบใจ "ลดลง…ตามปกติ" พูดได้เฉพาะเมื่อตัวจับ ⑥–⑨ ไม่เจออะไร — ⑨ ที่เจอต้องไปถึงกิ่งที่ชี้ ⑨ ก่อนเสมอ */
+test('🔴 สคริปต์: ประโยค "ลดลง…ตามปกติ" มีที่เดียว อยู่ในกิ่งสุดท้ายหลังกิ่ง ⑨ และกิ่ง "ตัวจับใดเจอ" · ผลของ ⑨ ป้อนทั้ง differences (section) และ lossFound · audit อ่านตั้งแต่วันเปิดช่อง', () => {
+  assert.equal(SCRIPT.split(REASSURE).length - 1, 1, 'ประโยคปลอบใจมีที่เดียว');
+  const loopAt = SCRIPT.indexOf('for (const gap of packedGaps) {');
+  const reassureAt = SCRIPT.indexOf(REASSURE);
+  assert.ok(loopAt >= 0 && reassureAt > loopAt, 'ประโยคอยู่ในลูปของจำนวนที่ลด');
+  const branches = SCRIPT.slice(loopAt, SCRIPT.indexOf('\n}', reassureAt));
+  const order = [
+    'if (packedDropBlocks) console.error(`✗ ต้องดู · ${line}`);',
+    "else if (lossMarks.includes('⑨')) console.error(`✗ ต้องดู · ${line} — หัวข้อ ⑨",
+    'else if (lossMarks.length) console.error(`✗ ต้องดู · ${line} — หัวข้อ ${lossMarks.join(\' \')} พบเลขแพ็คที่หาย',
+    'else console.log(`ℹ️ ${line} — หัวข้อ ⑥–⑨ ไม่พบเลขแพ็คที่หาย',
+  ].map((needle) => branches.indexOf(needle));
+  assert.ok(order.every((at, k) => at >= 0 && (k === 0 || at > order[k - 1])), `ลำดับกิ่ง: ถอยไม่ได้ → ⑨ → ตัวจับอื่น → ปลอบใจ — เจอ ${order}`);
+  assert.doesNotMatch(branches.slice(order[1], order[3]), /ตามปกติ/, 'กิ่งที่ตัวจับเจอไม่มีคำว่า "ตามปกติ"');
+  assert.match(SCRIPT, /const lossMarks = Object\.entries\(lossFound\)\.filter\(\(\[, count\]\) => count > 0\)\.map\(\(\[mark\]\) => mark\);/);
+  assert.match(SCRIPT, /const lossFound = \{ '⑥': revLoss\.diffs\.length, '⑦': 0, '⑧': 0, '⑨': 0 \};/);
+  for (const [mark, source] of [['⑦', 'unsent.diffs.length'], ['⑧', 'loss.stripped.length'], ['⑨', 'across.pairs.length']]) {
+    assert.ok(SCRIPT.includes(`lossFound['${mark}'] = ${source};`), `ผลของ ${mark} ต้องป้อน lossFound`);
+  }
+  /* ⑨ ใช้ตัวชี้ของตัวเอง (--pairs-since · ไม่ใส่ = วันเปิดช่อง) ไม่ใช่ --audit-since (รีวิว 19/10) */
+  assert.match(SCRIPT, /const pairsFrom = pairsSince \|\| packLaunch;/);
+  assert.match(SCRIPT, /const across = packLossAcrossSaves\(auditRows, \{ since: pairsFrom, launch: packLaunch \}\);/);
+  assert.match(SCRIPT, /section\(`⑨ [^`]*`, across\.pairs\.length, across\.checked, across\.pairs, \{ all: true \}\);/, '⑨ ผ่าน section ⇒ นับใน differences (exit 1) · พิมพ์ทุกรายการ');
+  assert.match(SCRIPT, /section\(`⑧ [^`]*`, loss\.stripped\.length, loss\.compared, loss\.stripped, \{ all: true \}\);/, '⑧ พิมพ์ทุกรายการ');
+  assert.match(SCRIPT, /loadQuotationAuditSince\(supabase, packLaunch\)/, 'audit อ่านตั้งแต่วันเปิดช่อง (คู่ของ ⑨ เริ่มก่อน --audit-since ได้)');
+  assert.ok(SCRIPT.indexOf("lossFound['⑨'] = across.pairs.length;") < loopAt, 'ผลของ ⑨ ต้องพร้อมก่อนลูปของจำนวนที่ลด');
+});
+
 /* ⭐ ย้ายความคาดหวังโดยเจตนา (งวด PR-3 · มติเจ้าของ 08/10 · แผน IMPL_PLAN_PR3 §3.6 + §10): บรรทัด exit ของสคริปต์ได้เงื่อนไขที่สาม
    (บรรทัดที่มีเลขแพ็คน้อยกว่ารอบก่อน) — สองเงื่อนไขเดิมอยู่ครบ ลำดับเดิม และด่านยังอยู่ก่อนบรรทัดที่บอกว่าไม่มีจุดต่าง */
 test('สคริปต์ต่อสายด่านความครบ: นับจากสิ่งที่อ่าน/เทียบจริงทั้งเจ็ดหัวข้อ และออกด้วย exit 1 เมื่อมีจุดต่าง · เทียบไม่ครบ · หรือบรรทัดที่มีเลขแพ็คน้อยกว่ารอบก่อน', () => {
@@ -671,8 +1072,8 @@ test('สคริปต์ต่อสายด่านความครบ: 
   assert.match(SCRIPT, /const packedDropBlocks = packedGaps\.length > 0 && !packLaunch;/);
   const EXIT = 'if (differences || gaps.length || packedDropBlocks) process.exit(1);';
   assert.equal(SCRIPT.split(EXIT).length - 1, 1, 'บรรทัด exit มีที่เดียว และมีครบสามเงื่อนไข');
-  /* หัวข้อ ⑥ ⑦ ⑧ ผ่าน `section` ตัวเดียวกับหัวข้ออื่น ⇒ จุดต่างของมันถูกนับใน differences */
-  for (const call of ['section(\'⑥ ', 'section(`⑦ ', 'section(`⑧ ']) assert.ok(SCRIPT.includes(call), `สคริปต์ต้องรายงานหัวข้อ ${call}`);
+  /* หัวข้อ ⑥ ⑦ ⑧ ⑨ ผ่าน `section` ตัวเดียวกับหัวข้ออื่น ⇒ จุดต่างของมันถูกนับใน differences */
+  for (const call of ['section(\'⑥ ', 'section(`⑦ ', 'section(`⑧ ', 'section(`⑨ ']) assert.ok(SCRIPT.includes(call), `สคริปต์ต้องรายงานหัวข้อ ${call}`);
   assert.match(SCRIPT, /const revLoss = revisionPackLoss\(quotations\);/);
   assert.match(SCRIPT, /const unsent = sentWithoutPack\(quotations, packLaunch\);/);
   assert.match(SCRIPT, /const loss = packLossInAudit\(auditRows, \{ since: scanFrom \}\);/);

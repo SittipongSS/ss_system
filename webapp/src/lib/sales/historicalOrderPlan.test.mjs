@@ -21,6 +21,9 @@ import { OPENING_INSTALLMENT_LABEL } from './historicalOrders.js';
 import { QUOTE_VAT_OPTIONS, quoteLineMoney, quoteTotals } from '../salesPlanning.js';
 import { normalizeManualLines } from './quoteLines.js';
 import { RULE_UNAVAILABLE_ERROR } from './billingRuleV4.js';
+import { LINE_PACK_TEXT, PACK_LINE_UNIT, PACK_QTY_MAX, PACK_QTY_MIN, packQtyValue } from './linePacks.js';
+import { PACK_COLUMN_LABEL } from './linePackView.js';
+import { previewPlanMoney } from './historicalOrderCommit.js';
 
 /* รุ่นแรกของตัวตัดสิน (โมดัล 0360 · จุดติดตั้งเป็นข้อความ · ยกเว้นด่านเงิน) และตัวตรวจงวดของทางคีย์งวดเพิ่ม
    ถูกลบพร้อมเทสต์ของมัน · ตัวแบ่งยอดตาม VAT (`splitHistoricalAmounts`) ถูกลบตามมติ 23/09 */
@@ -112,7 +115,11 @@ const v2Ctx = (extra = {}) => ({
 });
 /* แถวโซนแบบใบเสนอราคา — จำนวน × ราคา/หน่วย (ทะเบียน 1,200) · ไม่มีส่วนลด (ม็อกเดิม "6 แพ็ค × 12 เดือน" = จำนวน 72) */
 /* ⭐ PR-D (mig 0394 · มติ 26/09 A3/O9): บรรทัดโซนพก "แพ็คต่อรอบ" (packsPerRound) + รอบบริการบังคับ — คนละช่องกับจำนวน (เงิน) */
-const zoneRow = (zoneId, qty, extra = {}) => ({ zoneId, productId: 'P-PKG', qty, discountType: null, discountValue: 0, rounds: 12, packsPerRound: 2, ...extra });
+/* ⭐ งวด PR-5 (mig 0409 · มติเจ้าของ 08/10 ข้อ A1–A2 · แผน IMPL_PLAN_PR5 §5 แถว G16): บรรทัดโซนพกเลขแพ็คของบรรทัด (`packQty`) ด้วย — บังคับ
+     ⇒ ตัวสร้างแถวกลางใส่ `packQty: 1` (คูณ 1 = ยอดเดิมทุกสตางค์ — ไม่มียอดไหนในไฟล์นี้ถูกเปลี่ยนเพราะข้อนี้) · เลขแพ็คอื่นทดสอบที่เทสต์ของงวด PR-5 ท้ายไฟล์ */
+const zoneRow = (zoneId, qty, extra = {}) => ({
+  zoneId, productId: 'P-PKG', packQty: 1, qty, discountType: null, discountValue: 0, rounds: 12, packsPerRound: 2, ...extra,
+});
 const v2Input = (extra = {}) => ({
   customerId: 'CUS-SPW',
   ownerId: 'U-PIM',
@@ -166,12 +173,14 @@ test('v2 ⭐ ม็อก: + VAT 7% ท้ายใบ · 4 โซน จำน�
   assert.equal(plan.zeroValue, false);
 });
 
-/* ⭐⭐ มติเจ้าของ 23/09 — "3500 x 1 ชุด x 12 เดือน" คีย์เหมือนใบเสนอราคา: จำนวน 12 (แพ็คเกจ) × 3,500 = 42,000 */
+/* ⭐⭐ มติเจ้าของ 23/09 — "3500 x 1 ชุด x 12 เดือน" คีย์เหมือนใบเสนอราคา: จำนวน 12 (แพ็คเกจ) × 3,500 = 42,000
+   ⭐ งวด PR-5 (มติเจ้าของ 08/10 ข้อ A1 · แผน §5 แถว G16): ตัวอย่างเดิมวันนี้คีย์เป็น 1 แพ็ค × 12 เดือน × 3,500 — เลขแพ็ค 1 = ยอดเดิม 42,000 ทุกสตางค์
+     (ตัวอย่าง 2 แพ็ค = 84,000 อยู่ที่เทสต์ของงวด PR-5 ท้ายไฟล์ และ quoteLinePackRule.test.mjs) */
 const ownerExample = (vatRate, extra = {}) => {
   const total = vatRate ? 44940 : 42000;
   return planV2({
     vatRate,
-    zones: [{ zoneId: 'Z-1002-01', productId: 'P-SDS', qty: 12, discountType: null, discountValue: 0, rounds: 12, packsPerRound: 2 }],
+    zones: [{ zoneId: 'Z-1002-01', productId: 'P-SDS', packQty: 1, qty: 12, discountType: null, discountValue: 0, rounds: 12, packsPerRound: 2 }],
     opening: null,
     installments: [{ label: 'ทั้งสัญญา', amount: total, dueDate: '2026-10-01', coversFrom: '2026-01-01', coversTo: '2026-12-31' }],
     ...extra,
@@ -197,7 +206,7 @@ test('v2 ⭐⭐ ตัวอย่างเจ้าของ: 1 ชุด × 12
 test('v2 ⭐ ราคา/หน่วยมาจากทะเบียนเสมอ — unitPrice / lineAmount / lineTotal ที่จอส่งมาไม่ถูกอ่าน', () => {
   const base = ownerExample(7);
   const forged = ownerExample(7, {
-    zones: [{ zoneId: 'Z-1002-01', productId: 'P-SDS', qty: 12, discountType: null, discountValue: 0, rounds: 12, packsPerRound: 2,
+    zones: [{ zoneId: 'Z-1002-01', productId: 'P-SDS', packQty: 1, qty: 12, discountType: null, discountValue: 0, rounds: 12, packsPerRound: 2,
       unitPrice: 1, lineTotal: 12, lineAmount: 999999, grossAmount: 5 }],
   });
   assert.deepEqual(forged.errors, []);
@@ -210,7 +219,7 @@ test('v2 ส่วนลดรายการ = ตัวเลือกขอ�
   const lineOf = (discountType, discountValue, qty = 12) => {
     const total = historicalLinesMoney([{ qty, unitPrice: 3500, discountType, discountValue }], 7).totalAmount;
     const plan = planV2({
-      zones: [{ zoneId: 'Z-1002-01', productId: 'P-SDS', qty, discountType, discountValue, rounds: 12, packsPerRound: 2 }],
+      zones: [{ zoneId: 'Z-1002-01', productId: 'P-SDS', packQty: 1, qty, discountType, discountValue, rounds: 12, packsPerRound: 2 }],
       opening: null,
       notes: total ? null : 'ส่วนลดเต็มจำนวน',
       installments: total ? [{ label: 'ทั้งสัญญา', amount: total, dueDate: '2026-10-01', coversFrom: '2026-01-01', coversTo: '2026-12-31' }] : [],
@@ -291,7 +300,7 @@ test('v2 VAT ไม่มีค่าตั้งต้น: ไม่เลื�
 const discountPlan = (discount, { vatRate = 7, total = null, ...extra } = {}) => {
   const input = {
     vatRate,
-    zones: [{ zoneId: 'Z-1002-01', productId: 'P-SDS', qty: 12, discountType: null, discountValue: 0, rounds: 12, packsPerRound: 2 }],
+    zones: [{ zoneId: 'Z-1002-01', productId: 'P-SDS', packQty: 1, qty: 12, discountType: null, discountValue: 0, rounds: 12, packsPerRound: 2 }],
     opening: null,
     ...discount,
   };
@@ -335,7 +344,7 @@ test('v2 ⭐ ส่วนลดท้ายใบ: ไม่เลือก = 0 
   // ส่วนลดรายบรรทัด + ท้ายใบ: ท้ายใบคิดจากยอดหลังหักรายบรรทัด (42,000 − 5% = 39,900 → −10% = 3,990)
   const both = discountPlan({
     discountType: 'percent', discountValue: 10,
-    zones: [{ zoneId: 'Z-1002-01', productId: 'P-SDS', qty: 12, discountType: 'percent', discountValue: 5, rounds: 12, packsPerRound: 2 }],
+    zones: [{ zoneId: 'Z-1002-01', productId: 'P-SDS', packQty: 1, qty: 12, discountType: 'percent', discountValue: 5, rounds: 12, packsPerRound: 2 }],
   });
   assert.deepEqual(both.errors, []);
   assert.deepEqual(moneyOf(both), { subtotal: 39900, discountAmount: 3990, vatAmount: 2513.7, totalAmount: 38423.7, actualAmount: 35910 });
@@ -588,7 +597,8 @@ test('มติ 29/09: คำของใบย้อนหลัง = คำข
 });
 
 test('v2 PR-D 🪤 แท็บรุ่น 0374 (แพ็ค + ยอดที่พิมพ์เอง) ได้ข้อความเดียวต่อแถว — ไม่ซ้อน "ไม่มีช่องแพ็คต่อรอบ"', () => {
-  const stale = v2Input().zones.map(({ qty, discountType, discountValue, packsPerRound, ...z }) => ({ ...z, packs: 6, lineAmount: 86400 }));
+  /* แถวรุ่น 0374 ไม่มีทั้งแพ็คต่อรอบและเลขแพ็คของบรรทัด (งวด PR-5) — ยังได้ข้อความเดียวต่อแถว ไม่ซ้อน "ไม่มีช่อง…" ของสองช่องนั้น */
+  const stale = v2Input().zones.map(({ qty, discountType, discountValue, packsPerRound, packQty, ...z }) => ({ ...z, packs: 6, lineAmount: 86400 }));
   const plan = planV2({ zones: stale });
   for (const index of [0, 1, 2, 3]) {
     assert.deepEqual(plan.errors.filter((e) => e.field.startsWith(`zones.${index}`)).map((e) => e.field), [`zones.${index}`]);
@@ -620,7 +630,9 @@ test('v2 ⭐ error ของบรรทัดชี้ช่อง (zones.<i>.<
   // ⭐ มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ: หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ
   //   ⇒ ข้อของแพ็คมาก่อนข้อของจำนวนรอบบริการ — ลำดับเดียวกับช่องบนจอ (โซน · รอบละกี่แพ็ค · จำนวนรอบบริการ) · ของเดิมยึดรอบก่อนแพ็คตามมติ 29/09
   //   ⚠️ สลับแค่ลำดับของข้อ — กติกา · ข้อความ · ชื่อช่อง (`field`) · จำนวนข้อ เท่าเดิมทุกตัว
-  const blank = planV2({ zones: [{ zoneId: '', productId: '', qty: '', discountType: null, discountValue: 0, rounds: '2.5', packsPerRound: '' }] });
+  //   ⭐ งวด PR-5 (แผน §5 แถว G16 · R1): แถวเปล่าของฟอร์มพกคีย์ `packQty: ''` เสมอ — แถวที่ยังไม่เลือกแพ็คเกจไม่มีช่องเลขแพ็คบนจอ
+  //   ⇒ ไม่มีข้อของเลขแพ็ค (ข้อ productId หยุดแถวนั้นอยู่แล้ว) · รายการห้าข้อข้างล่างจึงเท่าเดิมทุกตัว (ไม่มีคีย์ = ข้อ "ฟอร์มรุ่นก่อน" — เทสต์ PR-5)
+  const blank = planV2({ zones: [{ zoneId: '', productId: '', packQty: '', qty: '', discountType: null, discountValue: 0, rounds: '2.5', packsPerRound: '' }] });
   const lineErrors = blank.errors.filter((e) => /^zones\./.test(e.field));
   assert.deepEqual(lineErrors, [
     { field: 'zones.0.zoneId', message: `รายการ 1: ${MISSING_ZONE}`, detail: MISSING_ZONE },
@@ -669,9 +681,10 @@ test('v2 ⭐ error ของบรรทัดชี้ช่อง (zones.<i>.<
    ⚠️ สะกดชื่อช่องต่างกันสองฝั่ง = ข้อความหายเงียบ (จอไม่รู้จะวางใต้ช่องไหน) — เทสต์นี้ยิงแผนจริงเข้าตัวแกะของจอ */
 test('v2 ⭐ error ของแผน → historicalIssuesWithRowKeys → historicalLineIssues: ได้ข้อความใต้ช่องของแถวที่ถูก (ไม่มีป้ายบรรทัด)', () => {
   const rows = [
-    emptyHistoricalZone({ zoneId: 'Z-1002-01', productId: 'P-PKG', qty: '72', rounds: '12', packsPerRound: '2' }),
+    /* งวด PR-5 (แผน §5 แถว G16): แถวที่มีแพ็คเกจพกเลขแพ็ค '1' (ข้อของช่องเลขแพ็คทดสอบแยกที่ historicalIntakeForm.test.mjs) */
+    emptyHistoricalZone({ zoneId: 'Z-1002-01', productId: 'P-PKG', packQty: '1', qty: '72', rounds: '12', packsPerRound: '2' }),
     emptyHistoricalZone(),                                                    // "เพิ่มรายการ" — บรรทัดเปล่า
-    emptyHistoricalZone({ zoneId: 'Z-1044-01', productId: 'P-PKG', qty: '1.5', rounds: '0', packsPerRound: '0' }),
+    emptyHistoricalZone({ zoneId: 'Z-1044-01', productId: 'P-PKG', packQty: '1', qty: '1.5', rounds: '0', packsPerRound: '0' }),
   ];
   const body = historicalWizardBody({ ...v2Input(), hasOpening: false, zones: rows });
   const plan = planHistoricalServiceOrder(body, v2Ctx());
@@ -688,7 +701,7 @@ test('v2 ⭐ error ของแผน → historicalIssuesWithRowKeys → histor
 });
 
 test('v2 🪤 แท็บรุ่นก่อน (แพ็ค + ยอดที่พิมพ์เอง ไม่มีจำนวน) = ตีกลับให้โหลดหน้าใหม่ — ห้ามเดาว่าแพ็คคือจำนวน', () => {
-  const stale = v2Input().zones.map(({ qty, discountType, discountValue, ...z }) => ({ ...z, packs: 6, lineAmount: 86400 }));
+  const stale = v2Input().zones.map(({ qty, discountType, discountValue, packQty, ...z }) => ({ ...z, packs: 6, lineAmount: 86400 }));
   const plan = planV2({ zones: stale });
   // ทั้งแถวมาจากฟอร์มรุ่นก่อน — ไม่มีช่องไหนให้ชี้ ⇒ อยู่ระดับแถว `zones.<i>` (จอวางใต้บรรทัด ไม่ใช่ใต้ช่อง)
   for (const index of [0, 1, 2, 3]) v2Has(plan, `zones.${index}`, /ฟอร์มรุ่นก่อน.*โหลดหน้าใหม่/);
@@ -977,8 +990,17 @@ const INSTALLMENT_KEY_READ = /(?:v_item|x\.i|e\.i)->>?'(\w+)'/g;
 /* ⭐ PR-D (mig 0394): คีย์ใหม่สองตัวที่ 0374/0379 ไม่รู้จัก — ฐานอ่านเฉพาะในนิยามที่ 0394 ปะแล้ว */
 const PR_D_KEYS = Object.freeze({ lines: ['packsPerRound'], installments: ['billingDate'] });
 const PR_D_SQL = '0394_historical_so_service_alignment.sql';
+/* ⭐ งวด PR-5 (mig 0409): คีย์ใหม่ของบรรทัดตัวเดียวที่ 0374/0379/0394 ไม่รู้จัก — ฐานอ่านเฉพาะในนิยามที่ 0409 ปะแล้ว
+   (`unit` ไม่ใช่คีย์ใหม่ของฐาน: ตัวเขียนของ 0379 อ่าน `e.l->>'unit'` มาตั้งแต่ต้น — แผนเพิ่งเริ่มส่ง) */
+const PR_5_KEYS = Object.freeze({ lines: ['packQty'] });
+const PR_5_SQL = '0409_historical_so_line_pack_qty.sql';
 
-test('v2 อาร์กิวเมนต์ RPC: คีย์ตรงกับที่ 0374 + 0379 อ่าน · งวดยกมาเป็นแถวแรก · หลักฐานส่งเฉพาะทางแก้ใบ', () => {
+/* ⭐ ย้ายความคาดหวังโดยเจตนา (งวด PR-5 · มติเจ้าของ 23/09 "ต้องไม่ควรแตกต่างจาก form ใบเสนอราคา" + 08/10 ข้อ A1–A2 · ข้อวินิจฉัย 6–7 ·
+   แผน IMPL_PLAN_PR5 §5 แถว G8): เดิมบรรทัดของ `p_lines` มี 10 คีย์ และทุกคีย์ต้องถูกอ่านโดย 0374 + 0379 (เว้นสองคีย์ของ PR-D) —
+   วันนี้ 12 คีย์: + `packQty` (เลขแพ็คของบรรทัด เป็นตัวเลข — ฐานอ่านใน 0409 เท่านั้น · เทสต์ถัดไปเฝ้า) + `unit` (หน่วยที่เก็บของบรรทัดที่มีเลขแพ็ค
+   = "เดือน" — 0379 อ่านอยู่แล้ว จึง **ไม่ได้รับข้อยกเว้น**) · ไม่ได้คลายด่าน: ทุกคีย์ที่ส่งยังต้องเป็นคีย์ที่ฐานอ่านจริง ข้อยกเว้นมีเฉพาะคีย์ที่ระบุชื่อ
+   และแต่ละตัวมีเทสต์ของตัวเองยืนยันว่า migration ของมันอ่าน · ยอด/จำนวนที่ตรึงไว้เท่าเดิมทุกตัว (เลขแพ็ค 1 = คูณ 1) */
+test('v2 อาร์กิวเมนต์ RPC (งวด PR-5 — 12 คีย์ต่อบรรทัด): คีย์ตรงกับที่ 0374 + 0379 อ่าน · งวดยกมาเป็นแถวแรก · หลักฐานส่งเฉพาะทางแก้ใบ', () => {
   const plan = planV2({ opening: { ...v2Input().opening, evidence: [{ storagePath: 'sales-orders/SOR-H1/payments/a.pdf' }] } });
   const create = historicalServiceRpcArgs(plan, 'create');
   assert.deepEqual(Object.keys(create).sort(), ['p_contract', 'p_header', 'p_installments', 'p_lines']);
@@ -990,15 +1012,22 @@ test('v2 อาร์กิวเมนต์ RPC: คีย์ตรงกั�
      ⚠️ ชนิด/ค่าส่วนลดอยู่ **ใน intake** ไม่ใช่คีย์ของ p_header — ฐานไม่อ่าน (ด่านคีย์ข้างล่างจะล้มถ้าย้ายออกมา) */
   assert.deepEqual(create.p_header.intake, { vatRate: 7, discountType: null, discountValue: 0 });
   /* ⭐ รูปเดียวกับบรรทัดใบเสนอราคาที่ถูกก๊อปลงใบสั่งขาย (0363) + โซน + รอบ — ไม่มี grossAmount แล้ว
-     ⭐ PR-D (0394/P5–P6): + แพ็คต่อรอบ (ตัวเลข) — ตัวเขียนสร้างแถวโซนของงานบริการหนึ่งแถวต่อบรรทัดจากคีย์นี้ */
+     ⭐ PR-D (0394/P5–P6): + แพ็คต่อรอบ (ตัวเลข) — ตัวเขียนสร้างแถวโซนของงานบริการหนึ่งแถวต่อบรรทัดจากคีย์นี้
+     ⭐ งวด PR-5 (0409/W0–W2): + เลขแพ็คของบรรทัด (ตัวเลข) + หน่วยที่เก็บ ("เดือน" ของบรรทัดที่มีเลขแพ็ค) */
   assert.deepEqual(Object.keys(create.p_lines[0]).sort(), [
-    'discountAmount', 'discountType', 'discountValue', 'lineTotal', 'packsPerRound', 'productId', 'qty', 'serviceRounds', 'unitPrice',
-    'zoneId',
+    'discountAmount', 'discountType', 'discountValue', 'lineTotal', 'packQty', 'packsPerRound', 'productId', 'qty', 'serviceRounds', 'unit',
+    'unitPrice', 'zoneId',
   ]);
   assert.deepEqual(create.p_lines[0], {
-    zoneId: 'Z-1002-01', productId: 'P-PKG', qty: 72, unitPrice: 1200, discountType: null, discountValue: 0,
+    zoneId: 'Z-1002-01', productId: 'P-PKG', packQty: 1, unit: 'เดือน', qty: 72, unitPrice: 1200, discountType: null, discountValue: 0,
     discountAmount: 0, lineTotal: 86400, serviceRounds: 12, packsPerRound: 2,
   });
+  // เลขแพ็คเป็นตัวเลขทุกบรรทัด (0409/W0 ตรวจ jsonb_typeof = 'number' — สตริง "1" ถูกฐานตีกลับ) · หน่วยที่ส่ง = ค่าคงที่กลางของบรรทัดที่มีเลขแพ็ค
+  for (const line of create.p_lines) {
+    assert.equal(typeof line.packQty, 'number');
+    assert.equal(line.unit, PACK_LINE_UNIT);
+  }
+  assert.deepEqual(plan.lines.map((l) => l.unit), ['แพ็คเกจ', 'แพ็คเกจ', 'แพ็คเกจ', 'แพ็คเกจ'], 'หน่วยของบรรทัดในแผนยังเป็นหน่วยขายของทะเบียน (D6)');
   // 0379 บังคับ discountAmount/discountValue เป็นตัวเลขเสมอ (jsonb_typeof = 'number')
   for (const line of create.p_lines) {
     assert.equal(typeof line.discountAmount, 'number');
@@ -1037,8 +1066,9 @@ test('v2 อาร์กิวเมนต์ RPC: คีย์ตรงกั�
   const fromPrD = (list, key) => PR_D_KEYS[list].includes(key);
   for (const key of Object.keys(update.p_header)) assert.ok(headerKeys.has(key), `p_header.${key} ฐานไม่อ่าน`);
   for (const key of Object.keys(update.p_lines[0])) {
-    if (!fromPrD('lines', key)) assert.ok(lineKeys.has(key), `p_lines.${key} ฐานไม่อ่าน`);
+    if (!fromPrD('lines', key) && !PR_5_KEYS.lines.includes(key)) assert.ok(lineKeys.has(key), `p_lines.${key} ฐานไม่อ่าน`);
   }
+  assert.ok(lineKeys.has('unit'), 'หน่วยไม่ต้องมีข้อยกเว้น — ตัวเขียนของ 0379 อ่านจาก payload ก่อนทะเบียน');
   /* ทุกแถวงวด (งวดยกมา + งวดที่ยังต้องเก็บ) — ของเดิมตรวจแค่แถวแรก ⇒ คีย์ของงวดที่ยังต้องเก็บหลุดยาม */
   for (const row of update.p_installments) {
     for (const key of Object.keys(row)) {
@@ -1070,6 +1100,25 @@ test('v2 PR-D คีย์ใหม่ของ RPC (packsPerRound · billingDat
   }
 });
 
+/* ⭐ งวด PR-5: คีย์ใหม่ของบรรทัดต้องเป็นของ **0409** เท่านั้น — 0374/0379/0394 ไม่อ่าน (ไม่งั้นชื่อชนกับของเดิม) · 0409 อ่านจริงทั้งสองรูป:
+   `v_item->>'packQty'` (ตัวตรวจบรรทัด H1/H2) และ `e.l->>'packQty'` (ตัวเขียน W0/W2) — สะกดผิดฝั่งเดียว = เลขแพ็คหายเงียบ (jsonb ไม่ฟ้อง)
+   ⚠️ ไฟล์ 0409 มาจากหน่วย SQL ของ PR เดียวกัน — ก่อนไฟล์เข้ารีโป เทสต์นี้แดง (ENOENT) โดยตั้งใจ (แบบเดียวกับเทสต์ของ PR-D ข้างบน) */
+test('v2 PR-5 คีย์ใหม่ของ RPC (packQty) = ของที่ 0409 อ่านทั้งตัวตรวจและตัวเขียน · 0374/0379/0394 ไม่รู้จัก', () => {
+  const plan = planV2({ zones: zonesWith(0, { packQty: 2 }) });
+  const args = historicalServiceRpcArgs(plan, 'update');
+  assert.ok(PR_5_KEYS.lines.every((key) => key in args.p_lines[0]));
+  const old = sqlText(['0374_historical_so_approval_flow.sql', '0379_historical_so_quote_lines.sql', PR_D_SQL]);
+  const pr5 = sqlText([PR_5_SQL]);
+  for (const key of PR_5_KEYS.lines) {
+    assert.ok(![...old.matchAll(LINE_KEY_READ)].some((m) => m[1] === key), `0374/0379/0394 อ่าน ${key} อยู่แล้ว?`);
+    assert.ok(pr5.includes(`v_item->>'${key}'`), `0409 ต้องอ่าน ${key} ในตัวตรวจบรรทัด (v_item->>)`);
+    assert.ok(pr5.includes(`e.l->>'${key}'`), `0409 ต้องอ่าน ${key} ในตัวเขียนบรรทัด (e.l->>)`);
+    assert.ok([...pr5.matchAll(LINE_KEY_READ)].some((m) => m[1] === key));
+  }
+  /* 0409 ไม่อ่านคีย์ของบรรทัดที่แผนไม่ได้ส่ง (ไฟล์ปะในที่ — คีย์เดียวที่มันรู้จักเพิ่มคือเลขแพ็ค) */
+  assert.deepEqual([...new Set([...pr5.matchAll(LINE_KEY_READ)].map((m) => m[1]))], ['packQty']);
+});
+
 test('v2 ลายนิ้วมือ: ไม่ขึ้นกับลำดับคีย์ · เปลี่ยนช่องเดียว = เปลี่ยน · หลักฐานไม่อยู่ในลายนิ้วมือ', () => {
   const base = historicalServiceFingerprintSource(planV2());
   const reorder = (value) => (Array.isArray(value) ? value.map(reorder)
@@ -1089,6 +1138,8 @@ test('v2 ลายนิ้วมือ: ไม่ขึ้นกับลำด
     { zones: zonesWith(0, { rounds: 13 }) },
     /* ⭐ PR-D: แพ็คต่อรอบ · วันวางบิล ลงฐานตอนสร้าง ⇒ อยู่ในลายนิ้วมือ (ส่งซ้ำข้ามรุ่นด้วยรหัสเดิม = intake_key_conflict — DD16) */
     { zones: zonesWith(0, { packsPerRound: 3 }) },
+    /* ⭐ งวด PR-5: เลขแพ็คของบรรทัดลงฐานตอนสร้าง ⇒ อยู่ในลายนิ้วมือ (เทสต์ของงวด PR-5 ข้างล่างยึด 2 กับ 3 แยกกัน) */
+    { zones: zonesWith(0, { packQty: 2 }) },
     { installments: [{ ...v2Input().installments[0], billingDate: '2026-10-05' }] },
     { opening: { ...v2Input().opening, paidOn: '2026-09-14' } },
     { installments: [{ ...v2Input().installments[0], label: 'งวดสุดท้าย' }] },
@@ -1198,4 +1249,199 @@ test('v2 PR-D review 29/09 วันวางบิล × กติกาลู�
   assert.match(HISTORICAL_NO_BILLING_ERROR, /^ลูกค้ารายนี้ไม่ต้องวางบิล — ล้างวันวางบิลของงวดนี้/);
   assert.match(HISTORICAL_NO_BILLING_ERROR, /แท็บการชำระ/);
   assert.doesNotMatch(HISTORICAL_NO_BILLING_ERROR, /ใช้ "งวดนี้ต้องวางบิล…"/, 'ประโยคดิบของด่านชี้เมนูที่วิซาร์ดไม่มี');
+});
+
+/* ══ งวด PR-5 — เลขแพ็คของบรรทัด (`packQty` · mig 0409 · มติเจ้าของ 08/10 ข้อ A1–A2 · ข้อวินิจฉัย 7 · แผน IMPL_PLAN_PR5 §3.2) ═══════════════
+   · บังคับทุกบรรทัด · ตัวอ่าน = `packQtyValue` ตัวเดียวกับใบเสนอราคา (ไม่ใช่ตัวอ่านของแพ็คต่อรอบ ซึ่งรับ "02" / "2.0" · ไม่ใช่ toMoney)
+   · ข้อของช่องชี้ `zones.<i>.packQty` · เลขแพ็คที่ยังไม่ใช่จำนวนเต็มที่ใช้ได้ = **ยังคิดเงินไม่ได้ทุกกรณี** (ไม่มียอดแบบคูณ 1)
+   · ไม่มีคีย์ = แท็บที่เปิดค้างจากก่อน deploy (บอกให้โหลดหน้าใหม่) · R1: ช่องว่างรายงานเฉพาะแถวที่สินค้าเป็นแพ็คเกจหมวด 02-001 */
+const moneyBlocked = (plan, label) => {
+  assert.deepEqual([plan.header.subtotal, plan.header.vatAmount, plan.header.totalAmount], [0, 0, 0], `${label}: ยอดเป็นศูนย์ทั้งก้อน (ยังคิดไม่ได้)`);
+  assert.equal(plan.zeroValue, false, `${label}: ยอดที่ยังคิดไม่ได้ ≠ ใบ ฿0`);
+  assert.equal(previewPlanMoney(plan), null, `${label}: พรีวิวไม่ส่งยอด — จอขึ้นขีดพร้อมเหตุ ไม่ใช่ยอดแบบคูณ 1`);
+  assert.ok(plan.lines.every((line) => line.lineTotal === 0), `${label}: ไม่มียอดบรรทัดไหนถูกคิด`);
+};
+
+test('v2 PR-5 ⭐ เลขแพ็คของบรรทัด: ไม่มีคีย์ = ฟอร์มรุ่นก่อน · ว่าง = ยังไม่ใส่ · "0" / "02" / "1.5" / "2.0" / 10000 / ตัวหนังสือ / true = ผิดรูป · "2" → 2 (ตัวเลข) — ทุกข้อยังคิดเงินไม่ได้', () => {
+  const at = (packQty) => planV2({ zones: zonesWith(0, { packQty }) });
+  const only = (plan) => plan.errors.filter((e) => e.field === 'zones.0.packQty');
+  const expect = (detail) => [{ field: 'zones.0.packQty', message: `รายการ 1 (ชั้น G ล็อบบี้): ${detail}`, detail }];
+
+  const { packQty: _pack, ...noKey } = v2Input().zones[0];
+  const stale = planV2({ zones: [noKey, ...v2Input().zones.slice(1)] });
+  assert.deepEqual(only(stale), expect(HISTORICAL_LINE_MESSAGES.packQtyStaleForm));
+  assert.equal(stale.lines[0].packQty, null);
+  moneyBlocked(stale, 'ไม่มีคีย์');
+
+  for (const blank of ['', '   ', null, undefined]) {
+    const plan = at(blank);
+    assert.deepEqual(only(plan), expect(HISTORICAL_LINE_MESSAGES.packQtyMissing), JSON.stringify(blank));
+    assert.equal(plan.lines[0].packQty, null);
+    moneyBlocked(plan, `ว่าง ${JSON.stringify(blank)}`);
+  }
+  for (const bad of ['0', '02', '1.5', '2.0', '10000', 'abc', '2 แพ็ค', '๒', '1,200', 0, -1, 2.5, 10000, true, false, Number.NaN, {}, [2]]) {
+    const plan = at(bad);
+    assert.deepEqual(only(plan), expect(HISTORICAL_LINE_MESSAGES.packQty), String(bad));
+    assert.equal(plan.lines[0].packQty, null, String(bad));
+    moneyBlocked(plan, `ผิดรูป ${String(bad)}`);
+  }
+  for (const [raw, value] of [['2', 2], [2, 2], [' 43 ', 43], [9999, 9999], ['9999', 9999], [1, 1], ['1', 1]]) {
+    const plan = at(raw);
+    assert.deepEqual(only(plan), [], JSON.stringify(raw));
+    assert.equal(plan.lines[0].packQty, value, JSON.stringify(raw));
+    assert.equal(plan.lines[0].lineTotal, value * 72 * 1200, `${JSON.stringify(raw)}: ยอดบรรทัด = เลขแพ็ค × จำนวน × ราคา`);
+    assert.equal(plan.header.subtotal, 244800 + (value - 1) * 86400, 'ยอดรวม = Σ บรรทัด');
+    const args = historicalServiceRpcArgs(plan, 'create');
+    assert.equal(args.p_lines[0].packQty, value);
+    assert.equal(typeof args.p_lines[0].packQty, 'number', 'ฐานรับเฉพาะ JSON number (0409/H1 · W0)');
+  }
+  /* ตัวตัดสิน = packQtyValue ตัวเดียวกับใบเสนอราคา — แผนรับค่าไหน ตัวอ่านกลางรับค่านั้น พอดีกัน */
+  for (const raw of ['', '0', '1', '02', '2', '2.0', '1.5', '9999', '10000', 0, 1, 2.5, 9999, 10000, true, null]) {
+    assert.equal(typeof at(raw).lines[0].packQty === 'number', typeof packQtyValue(raw) === 'number', JSON.stringify(raw));
+  }
+  assert.deepEqual([PACK_QTY_MIN, PACK_QTY_MAX], [1, 9999]);
+
+  /* ข้อความ — คำของหัวคอลัมน์มาจากค่าคงที่กลางตัวเดียว (ไม่พูด "แพ็คต่อรอบ" · ไม่ชนกับข้อความของช่องรอบละกี่แพ็ค) */
+  assert.equal(PACK_COLUMN_LABEL, 'แพ็ค/เดือน');
+  assert.equal(HISTORICAL_LINE_MESSAGES.packQtyMissing, 'ยังไม่ใส่ “แพ็ค/เดือน” (จำนวนเต็ม 1–9,999)');
+  assert.equal(HISTORICAL_LINE_MESSAGES.packQty, LINE_PACK_TEXT.invalid);
+  assert.equal(HISTORICAL_LINE_MESSAGES.packQty, '“แพ็ค/เดือน” ต้องเป็นจำนวนเต็ม 1–9,999');
+  assert.equal(HISTORICAL_LINE_MESSAGES.packQtyStaleForm,
+    'ฟอร์มรุ่นก่อน (ยังไม่มีช่อง “แพ็ค/เดือน”) — โหลดหน้าใหม่ แล้วใส่ “แพ็ค/เดือน” ให้ครบทุกรายการ');
+  assert.equal(HISTORICAL_LINE_MESSAGES.staleForm, 'ฟอร์มรุ่นก่อน (แพ็ค · ยอดที่พิมพ์เอง) — โหลดหน้าใหม่ แล้วคีย์รายการนี้ใหม่แบบใบเสนอราคา');
+  for (const key of ['packQtyMissing', 'packQty', 'packQtyStaleForm']) {
+    assert.notEqual(HISTORICAL_LINE_MESSAGES[key], HISTORICAL_LINE_MESSAGES[key.replace('packQty', 'packs')], key);
+    assert.doesNotMatch(HISTORICAL_LINE_MESSAGES[key], new RegExp(SERVICE_PACKS_LABEL), `${key}: คนละช่องกับรอบละกี่แพ็ค`);
+  }
+  /* ช่องอยู่ขั้น ② · ข้อของแพ็คต่อรอบ (งานบริการ) ยังเป็นคนละข้อ คนละช่อง และยังไม่แตะเงิน */
+  assert.equal(stepOfField('zones.0.packQty'), 'zones');
+  const both = planV2({ zones: zonesWith(0, { packQty: '', packsPerRound: '' }) });
+  assert.deepEqual(both.errors.filter((e) => /^zones\.0\./.test(e.field)).map((e) => e.field), ['zones.0.packQty', 'zones.0.packsPerRound']);
+  assert.deepEqual(planV2({ zones: zonesWith(0, { packsPerRound: '' }) }).header.totalAmount, planV2().header.totalAmount, 'แพ็คต่อรอบว่าง: ยอดยังคิดได้');
+
+  /* แถวรุ่น 0374 (แพ็ค + ยอดที่พิมพ์เอง ไม่มีจำนวน) ยังได้ข้อความเดียวของมัน — ไม่ซ้อนข้อของเลขแพ็ค */
+  const era0374 = planV2({ zones: [{ zoneId: 'Z-1002-01', productId: 'P-PKG', packs: 6, lineAmount: 86400, rounds: 12 }] });
+  assert.deepEqual(era0374.errors.filter((e) => e.field.startsWith('zones.0')).map((e) => [e.field, e.detail]),
+    [['zones.0', HISTORICAL_LINE_MESSAGES.staleForm]]);
+  moneyBlocked(era0374, 'แถวรุ่น 0374');
+});
+
+test('v2 PR-5 R1: ช่องเลขแพ็คว่าง รายงานเฉพาะแถวที่สินค้าเป็นแพ็คเกจหมวด 02-001 (แถวที่จอมีช่องนั้นจริง) — แถวอื่นติดข้อ productId ข้อเดียว · ยอดยังคิดไม่ได้ทุกกรณี', () => {
+  const fieldsOf = (plan) => plan.errors.filter((e) => /^zones\.0\./.test(e.field)).map((e) => e.field);
+  // ยังไม่เลือกแพ็คเกจ (บรรทัดใหม่จาก "เพิ่มรายการ") — จอยังไม่มีช่องเลขแพ็คของแถวนี้
+  const noProduct = planV2({ zones: zonesWith(0, { productId: '', packQty: '' }) });
+  assert.deepEqual(fieldsOf(noProduct), ['zones.0.productId']);
+  moneyBlocked(noProduct, 'ยังไม่เลือกแพ็คเกจ');
+  // แพ็คเกจที่ไม่อยู่ในทะเบียน
+  const ghost = planV2({ zones: zonesWith(0, { productId: 'P-NONE', packQty: '' }) });
+  assert.deepEqual(fieldsOf(ghost), ['zones.0.productId']);
+  moneyBlocked(ghost, 'ไม่พบแพ็คเกจ');
+  // สินค้าที่ไม่ใช่แพ็คเกจบริการ (หมวดอื่น)
+  const notPackage = planV2({ zones: zonesWith(0, { productId: 'P-OIL', packQty: '' }) });
+  assert.deepEqual(fieldsOf(notPackage), ['zones.0.productId']);
+  assert.match(notPackage.errors.find((e) => e.field === 'zones.0.productId').detail, /ไม่ใช่แพ็คเกจบริการ/);
+  moneyBlocked(notPackage, 'ไม่ใช่แพ็คเกจ');
+  // แพ็คเกจหมวด 02-001 (แม้ยังไม่ตั้งราคา) = จอมีช่อง ⇒ ถาม
+  const unpricedPackage = planV2({ zones: zonesWith(0, { productId: 'P-NOPRICE', packQty: '' }) });
+  assert.deepEqual(fieldsOf(unpricedPackage).sort(), ['zones.0.packQty', 'zones.0.productId']);
+  assert.equal(unpricedPackage.errors.find((e) => e.field === 'zones.0.packQty').detail, HISTORICAL_LINE_MESSAGES.packQtyMissing);
+  // ค่าที่พิมพ์มาแต่ใช้ไม่ได้ · และแถวที่ไม่มีคีย์ — รายงานเสมอ ไม่ว่าสินค้าเป็นอะไร
+  for (const productId of ['', 'P-NONE', 'P-OIL']) {
+    const typed = planV2({ zones: zonesWith(0, { productId, packQty: '1.5' }) });
+    assert.equal(typed.errors.find((e) => e.field === 'zones.0.packQty')?.detail, HISTORICAL_LINE_MESSAGES.packQty, `ผิดรูป · ${productId || 'ว่าง'}`);
+    const { packQty: _pack, ...noKey } = { ...v2Input().zones[0], productId };
+    const stale = planV2({ zones: [noKey, ...v2Input().zones.slice(1)] });
+    assert.equal(stale.errors.find((e) => e.field === 'zones.0.packQty')?.detail, HISTORICAL_LINE_MESSAGES.packQtyStaleForm, `ไม่มีคีย์ · ${productId || 'ว่าง'}`);
+  }
+  // เลขแพ็คที่ใช้ได้บนแถวที่ยังไม่เลือกแพ็คเกจ: ไม่มีข้อของเลขแพ็ค แต่ยอดยังคิดไม่ได้ (ไม่มีราคา)
+  const typedOk = planV2({ zones: zonesWith(0, { productId: '', packQty: '2' }) });
+  assert.deepEqual(fieldsOf(typedOk), ['zones.0.productId']);
+  moneyBlocked(typedOk, 'เลขแพ็คใช้ได้แต่ยังไม่มีแพ็คเกจ');
+});
+
+/* 🔴 รีวิว 12/10 (G1): แผนแยก "สร้าง" กับ "แก้ใบ" อยู่แล้ว (`editing` — ข้อสัญญาสิ้นสุดของมติข้อ 9 เป็น error ตอนสร้าง แต่เป็นคำเตือนตอนแก้) ⇒ ด่านเลขแพ็ค
+   ต้องถูกยึดบนทางแก้ใบด้วยตัวมันเอง ไม่ใช่ยึดแค่ทางสร้างแล้วเชื่อว่าสองทางเหมือนกัน · ตัวเขียนของฐานลบแล้วเขียนบรรทัดใหม่ทุกครั้งที่แก้ใบ:
+   แผนที่ผ่อนช่องว่าง/ค่าผิดรูปเป็น 1 เฉพาะตอนแก้ = บรรทัด 2 × 72 × 1,200 ที่เก็บไว้ถูกเขียนทับเป็น ×1 โดยไม่มีข้อความ และฐานรับ (เลข 1 เป็นตัวเลขที่ 0409/W0 ยอม) */
+test('v2 PR-5 🔴 ทางแก้ใบ (editing) = ด่านเลขแพ็คตัวเดียวกับทางสร้าง: ไม่มีคีย์ / ว่าง / ผิดรูป ยังเป็นข้อผิดที่ zones.<i>.packQty และยอดยังคิดไม่ได้ — ไม่มีการเติม 1 ให้ตอนแก้', () => {
+  const editing = { editing: true, selfOrderId: 'SOR-HEDIT0000000001' };
+  const only = (plan) => plan.errors.filter((e) => e.field === 'zones.0.packQty').map((e) => e.detail);
+  const { packQty: _pack, ...noKey } = v2Input().zones[0];
+  const cases = [
+    ['ไม่มีคีย์', [noKey, ...v2Input().zones.slice(1)], HISTORICAL_LINE_MESSAGES.packQtyStaleForm],
+    ...['', '   ', null].map((blank) => [`ว่าง ${JSON.stringify(blank)}`, zonesWith(0, { packQty: blank }), HISTORICAL_LINE_MESSAGES.packQtyMissing]),
+    ...['0', '02', '1.5', '10000', 0, 2.5, true].map((bad) => [`ผิดรูป ${String(bad)}`, zonesWith(0, { packQty: bad }), HISTORICAL_LINE_MESSAGES.packQty]),
+  ];
+  for (const [label, zones, detail] of cases) {
+    const created = planV2({ zones });
+    const edited = planV2({ zones }, editing);
+    assert.deepEqual(only(edited), [detail], `แก้ใบ · ${label}`);
+    assert.deepEqual(only(edited), only(created), `แก้ใบ · ${label}: ข้อเดียวกับทางสร้าง`);
+    assert.equal(edited.lines[0].packQty, null, `แก้ใบ · ${label}: บรรทัดของแผนไม่ได้เลข 1 มาแทน`);
+    moneyBlocked(edited, `แก้ใบ · ${label}`);
+  }
+  /* และเลขที่ใช้ได้บนทางแก้ใบคิดเงินเท่าทางสร้างทุกสตางค์ (ตัวคูณเดียวกัน) */
+  const ok = planV2({ zones: zonesWith(0, { packQty: '2' }) }, editing);
+  assert.deepEqual(ok.errors.filter((e) => /packQty/.test(e.field)), []);
+  assert.deepEqual([ok.lines[0].packQty, ok.lines[0].lineTotal, ok.header.subtotal],
+    [2, 2 * 72 * 1200, planV2({ zones: zonesWith(0, { packQty: '2' }) }).header.subtotal]);
+});
+
+test('v2 PR-5 ⭐⭐ ตัวอย่างเจ้าของ 08/10: 2 แพ็ค × 12 เดือน × 3,500 = 84,000 · ส่วนลด % คิดจากยอดที่คูณแพ็คแล้ว · ส่วนลดบาทไม่คูณแพ็ค (A5) · 1 แพ็ค = 42,000 เดิม', () => {
+  const owner = (packQty, discount = {}, vatRate = 7) => {
+    const total = historicalLinesMoney([{ packQty, qty: 12, unitPrice: 3500, ...discount }], vatRate).totalAmount;
+    return planV2({
+      vatRate,
+      zones: [{ zoneId: 'Z-1002-01', productId: 'P-SDS', packQty, qty: 12, discountType: null, discountValue: 0, rounds: 12, packsPerRound: 2, ...discount }],
+      opening: null,
+      installments: [{ label: 'ทั้งสัญญา', amount: total, dueDate: '2026-10-01', coversFrom: '2026-01-01', coversTo: '2026-12-31' }],
+    });
+  };
+  const two = owner(2);
+  assert.deepEqual(two.errors, []);
+  assert.deepEqual(
+    [two.lines[0].packQty, two.lines[0].qty, two.lines[0].unit, two.lines[0].unitPrice, two.lines[0].discountAmount, two.lines[0].lineTotal],
+    [2, 12, 'แพ็คเกจ', 3500, 0, 84000],
+  );
+  assert.deepEqual([two.header.subtotal, two.header.vatAmount, two.header.totalAmount, two.header.actualAmount], [84000, 5880, 89880, 84000]);
+  assert.deepEqual([owner(2, {}, 0).header.subtotal, owner(2, {}, 0).header.totalAmount], [84000, 84000]);
+  // 1 แพ็ค = ยอดของตัวอย่างเดิม "1 ชุด × 12 เดือน" ทุกสตางค์
+  assert.deepEqual([owner(1).header.subtotal, owner(1).header.vatAmount, owner(1).header.totalAmount], [42000, 2940, 44940]);
+  // ส่วนลดรายการ: % ของยอดที่คูณแพ็คแล้ว · บาท = ยอดทั้งรายการ ไม่คูณแพ็ค (มติ A5)
+  const percent = owner(2, { discountType: 'percent', discountValue: 10 });
+  assert.deepEqual(percent.errors, []);
+  assert.deepEqual([percent.lines[0].discountAmount, percent.lines[0].lineTotal], [8400, 75600]);
+  const baht = owner(2, { discountType: 'amount', discountValue: 14400 });
+  assert.deepEqual(baht.errors, []);
+  assert.deepEqual([baht.lines[0].discountAmount, baht.lines[0].lineTotal], [14400, 69600]);
+  // แพ็คต่อรอบของงานบริการ (2) ไม่คูณอะไร — เปลี่ยนเป็น 7 ยอดเท่าเดิม
+  assert.equal(planV2({
+    vatRate: 0,
+    zones: [{ zoneId: 'Z-1002-01', productId: 'P-SDS', packQty: 2, qty: 12, discountType: null, discountValue: 0, rounds: 12, packsPerRound: 7 }],
+    opening: null,
+    installments: [{ label: 'ทั้งสัญญา', amount: 84000, dueDate: '2026-10-01', coversFrom: '2026-01-01', coversTo: '2026-12-31' }],
+  }).header.totalAmount, 84000);
+  // อาร์กิวเมนต์ของฐาน: เลขแพ็คเป็นตัวเลข + หน่วยที่เก็บ "เดือน" · หน่วยของบรรทัดในแผนยังเป็นหน่วยขายของทะเบียน (D6)
+  const args = historicalServiceRpcArgs(two, 'create');
+  assert.deepEqual([args.p_lines[0].packQty, args.p_lines[0].unit, args.p_lines[0].qty, args.p_lines[0].lineTotal], [2, 'เดือน', 12, 84000]);
+  assert.equal(two.lines[0].unit, 'แพ็คเกจ');
+  assert.equal(args.p_header.subtotal, 84000);
+});
+
+test('v2 PR-5 ลายนิ้วมือ: เลขแพ็ค 2 กับ 3 ต่างกัน · ไม่ขึ้นกับลำดับคีย์ · หลักฐานยังไม่อยู่ในลายนิ้วมือ · สตริง "2" = ตัวเลข 2', () => {
+  const source = (extra) => historicalServiceFingerprintSource(planV2(extra));
+  const two = source({ zones: zonesWith(0, { packQty: 2 }) });
+  const three = source({ zones: zonesWith(0, { packQty: 3 }) });
+  assert.notEqual(two, three);
+  assert.notEqual(two, source({}), 'เลขแพ็ค 2 ≠ เลขแพ็ค 1 ของชุดตั้งต้น');
+  assert.equal(source({ zones: zonesWith(0, { packQty: '2' }) }), two, 'ช่องกรอกส่งข้อความ — แผนทำเป็นตัวเลขก่อนเข้าลายนิ้วมือ');
+  const reorder = (value) => (Array.isArray(value) ? value.map(reorder)
+    : value && typeof value === 'object'
+      ? Object.fromEntries(Object.entries(value).reverse().map(([k, v]) => [k, reorder(v)]))
+      : value);
+  assert.equal(historicalServiceFingerprintSource(planHistoricalServiceOrder(reorder(v2Input({ zones: zonesWith(0, { packQty: 2 }) })), v2Ctx())), two);
+  assert.equal(source({ zones: zonesWith(0, { packQty: 2 }), opening: { ...v2Input().opening, evidence: [{ storagePath: 'x' }] } }), two,
+    'หลักฐานเกิดหลังใบ — ไม่ใช่ส่วนของคำขอสร้าง');
+  // ลายนิ้วมือครอบสองคีย์ใหม่ของบรรทัด (เลขแพ็ค · หน่วยที่เก็บ)
+  const parsed = JSON.parse(two);
+  assert.deepEqual([parsed.p_lines[0].packQty, parsed.p_lines[0].unit], [2, 'เดือน']);
 });

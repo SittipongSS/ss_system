@@ -451,9 +451,7 @@ export async function POST(request) {
         inspiration: b.inspiration,
         likedNotes: b.likedNotes,
         dislikedNotes: b.dislikedNotes,
-        scentotypes: b.scentotypes,
-        // ข้อความต่อท้าย Scentotype รายตัว (mig 0222 · ข้อ 2.1.4 บนกระดาษ)
-        scentotypeNotes: b.scentotypeNotes || {},
+        // ⛔ ไม่มี scentotypes/scentotypeNotes — 2.1.5 ถอดแล้ว (มติผู้ใช้ 2026-10-19) · คอลัมน์ใช้ค่าตั้งต้น
         performance: b.performance,
       }));
     }

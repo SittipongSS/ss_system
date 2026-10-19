@@ -284,7 +284,8 @@ const INTERNAL_MARKUP = Object.freeze([
   ['ป้ายฉบับที่ท้ายกระดาษ', /<span><b>[^<]*<\/b> · หน้า \d/],
   ['แผงข้อมูลภายใน', /class="content i1"|class="i(?:panel|grid|strip)"/],
   ['บรรทัดอธิบายคอลัมน์จุด', /class="intro tnote"/],
-  ['ส่วนจุดติดตั้ง', /class="ph sp"|class="sp-(?:b|note)"/],
+  // งวด S3: รายการจุดโดยประมาณของพื้นที่จากแบบ (`<ul class="sp-list">`) อยู่กลุ่มเดียวกับการ์ดจุด
+  ['ส่วนจุดติดตั้ง', /class="ph sp"|class="sp-(?:b|note|list)"/],
   ['ภาคผนวกภายใน', /data-kind="appendix"|class="leadrow"|<table class="kv">|class="sign-last"|data-m="signs"/],
 ]);
 

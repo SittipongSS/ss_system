@@ -58,15 +58,35 @@ export function registrationAge(registration, todayIso) {
 }
 
 /**
- * ใบที่ "ค้างนาน" ในคิวของฝ่าย RA — ตัวเลขที่หน้าภาพรวมต้องกล้าโชว์
+ * ใบนี้ "ค้างนาน" ในคิวของฝ่าย RA ไหม — **ตัวตัดสินเดียว** ของแถบบนหน้าภาพรวม (`lateRegistrations`)
+ * และตัวกรอง `?late=1` ของคิวขึ้นทะเบียน (ตรวจตัวเลข H2 · 2026-10-19)
  * (สถานะอื่นไม่นับ: ฉบับร่างค้างเป็นเรื่องของฝ่ายขายเอง · อนุมัติแล้วจบงาน)
+ */
+export function isLateRegistration(row, todayIso, { minDays = AGE_LATE_DAYS } = {}) {
+  if (row?.status !== "pending_legal") return false;
+  const days = registrationAge(row, todayIso);
+  return Number.isFinite(days) && days >= minDays;
+}
+
+/**
+ * ใบที่ "ค้างนาน" ในคิวของฝ่าย RA — ตัวเลขที่หน้าภาพรวมต้องกล้าโชว์
  */
 export function lateRegistrations(rows = [], todayIso, { minDays = AGE_LATE_DAYS } = {}) {
   return (rows || [])
-    .filter((r) => r?.status === "pending_legal")
+    .filter((r) => isLateRegistration(r, todayIso, { minDays }))
     .map((r) => ({ row: r, days: registrationAge(r, todayIso) }))
-    .filter((x) => Number.isFinite(x.days) && x.days >= minDays)
     .sort((a, b) => b.days - a.days);
+}
+
+/* ── ลิงก์ของแถบ "ทะเบียนค้างรออนุมัติเกิน N วัน" ──────────────────────────
+ * 🐞 (ตรวจตัวเลข H2 · 2026-10-08) แถบบอก "· 9 ใบ" แต่กดแล้วคิวเปิด `?status=pending_legal` = รออนุมัติ
+ *    **ทั้งหมด 17 ใบ** — คิวไม่มีตัวกรองอายุ คนต้องไล่ดูคอลัมน์ "ค้างมา" เองว่าใบไหนคือเก้าใบนั้น
+ * ⇒ ส่ง `late=1` ไปด้วย · คิวกรองด้วย `isLateRegistration` ตัวเดียวกับที่แถบนับ */
+export const LATE_REGISTRATIONS_HREF = "/tax/registrations?status=pending_legal&late=1";
+
+/** คิวถูกเปิดมาจากแถบค้างนานไหม */
+export function wantsLateOnly(searchParams) {
+  return searchParams?.get?.("late") === "1";
 }
 
 /* ── ข้อมูลสินค้าที่คิวต้องเห็นทุกแถว ────────────────────────────────────────

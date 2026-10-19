@@ -884,3 +884,56 @@ test('สัญญา `rememberSendRefusal` → ตัวตัดสิน: ก
   const gone = sheet({ request: REQUEST, filesByZone: changed, document, documentLocal: kept });
   assert.equal(gone.notices.find((n) => n.key === 'send-refused'), undefined, 'ชุดไฟล์เปลี่ยน = หัวหน้าแก้แล้ว กล่องหายเอง');
 });
+
+/* ── สัญญา `hasDrawing` (งวด S3 ถอดข้อพักเอกสาร): การ์ด → ตัวตัดสินของส่วนเอกสาร ─────────────────────────────── */
+
+const DRAWING_ROW = { ...ZONE_ROW, method: 'drawing', spots: [] };
+const DRAWING_FILES = { z1: [{ id: 'F-plan', docType: 'survey_plan', fileName: 'plan.jpg', mimeType: 'image/jpeg' }] };
+/* ใบที่มีพื้นที่จากแบบ → ใบลงหน้างาน: แทนสองประโยคที่ต่างกันโดยตั้งใจ (`surveyDocumentView.test.mjs` ตรึงตัวอักษรไว้) */
+const asOnsite = (section) => JSON.parse(JSON.stringify(section)
+  .replaceAll('ดูตัวอย่างได้เมื่อมีขนาดครบทุกพื้นที่', 'ดูตัวอย่างได้เมื่อวัดครบทุกพื้นที่')
+  .replaceAll('ถ้าติดเรื่องภาพผัง/ภาพแบบ นัด', 'ถ้าติดเรื่องภาพผัง นัด'));
+const STATE_DOCS = {
+  'not_sent · สวิตช์เปิด': [REQUEST, { ...HEAD_DOC, send: { blockers: [], warnings: [], unknown: false } }],
+  'not_sent · สวิตช์ปิด': [REQUEST, { ...HEAD_DOC, issueAtSend: false }],
+  recalled: [REQUEST, { ...HEAD_DOC, state: 'recalled', history: [{ docNo: 'SU-26100001-0' }], nextDocNo: 'SU-26100001-1', send: { blockers: [], warnings: [], unknown: false } }],
+  issuing: [SENT, { ...HEAD_DOC, state: 'issuing' }],
+  missing: [SENT, { ...HEAD_DOC, state: 'missing', issue: { blockers: [], warnings: [], unknown: false } }],
+  issued: [SENT, { ...HEAD_DOC, state: 'issued', current: CURRENT }],
+};
+
+test('สัญญา `hasDrawing` → ตัวตัดสิน: ส่วนเอกสารของใบจากแบบเท่าใบลงหน้างานทุกสถานะ เว้นสองประโยค · พื้นที่จากแบบที่ถูกตัด = ใบลงหน้างานตรงตัว', () => {
+  for (const [name, [request, document]] of Object.entries(STATE_DOCS)) {
+    const onsite = sheet({ request, document });
+    const drawing = sheet({ request, document, zones: [DRAWING_ROW], filesByZone: DRAWING_FILES });
+    assert.deepEqual(asOnsite(drawing.document), onsite.document, name);
+    // พื้นที่จากแบบที่ถูกตัดไม่นับ (ตัวนับเดียวกับการ์ด) ⇒ ไม่มีคำของใบจากแบบเลย
+    const cut = sheet({ request, document, zones: [ZONE_ROW, { ...DRAWING_ROW, id: 'z2', zoneId: 'SZN-z2', status: 'cut' }] });
+    assert.deepEqual(cut.document, onsite.document, `${name} · ตัดแล้ว`);
+  }
+  // ตัวการ์ดส่งธงจริง — สองประโยคโผล่บนใบจากแบบ
+  const [request, offDoc] = STATE_DOCS['not_sent · สวิตช์ปิด'];
+  assert.match(sheet({ request, document: offDoc, zones: [DRAWING_ROW], filesByZone: DRAWING_FILES }).document.status.text, /ภาพผัง\/ภาพแบบ/);
+  const unsized = sheet({ request, document: offDoc, zones: [{ ...DRAWING_ROW, parts: [] }], filesByZone: DRAWING_FILES });
+  assert.equal(unsized.document.status.text, 'ดูตัวอย่างได้เมื่อมีขนาดครบทุกพื้นที่ (0/1)');
+  // หน้าไม่ถือกติกานี้เอง — วาดจาก `view.document` อย่างเดียว
+  assert.doesNotMatch(PAGE, /drawingHold|hasDrawing/);
+  assert.doesNotMatch(CARD, /drawingHold|hasDrawing/);
+});
+
+test('สัญญา `allDrawing` → ตัวตัดสิน: กล่องยืนยัน "ออกเอกสาร" ของใบจากแบบทั้งใบเอ่ยลายเซ็นของผู้ส่งผลคนเดียว · ใบผสม/ใบลงหน้างาน/พื้นที่ลงหน้างานที่ถูกตัด ตามสัดส่วนเดียวกับการ์ด (มติเจ้าของ 19/10/2026)', () => {
+  const signers = [{ seats: ['assessor', 'approver'], name: 'หัวหน้า ก' }];
+  const document = { ...HEAD_DOC, state: 'missing', issue: { blockers: [], warnings: [], unknown: false, signers } };
+  const lineOf = (zones, filesByZone) => sheet({ request: SENT, document, zones, filesByZone }).document.issue.confirm.effects
+    .find((line) => line.startsWith('พิมพ์ลายเซ็น'));
+  const OLD = 'พิมพ์ลายเซ็นที่บันทึกไว้ของ หัวหน้า ก ทั้งสองช่อง (ผู้ประเมิน และผู้ตรวจสอบและอนุมัติ) — เป็นลายเซ็นของผู้ประเมินและผู้ส่งผล ไม่ใช่ของผู้กดออกเอกสาร';
+  const SENDER = 'พิมพ์ลายเซ็นที่บันทึกไว้ของ หัวหน้า ก ทั้งสองช่อง (ผู้ประเมิน และผู้ตรวจสอบและอนุมัติ) — เป็นลายเซ็นของผู้ส่งผล ไม่ใช่ของผู้กดออกเอกสาร';
+  const second = { ...DRAWING_ROW, id: 'z2', zoneId: 'SZN-z2' };
+  assert.equal(lineOf([ZONE_ROW], FILES), OLD, 'ใบลงหน้างาน');
+  assert.equal(lineOf([DRAWING_ROW], DRAWING_FILES), SENDER, 'จากแบบทั้งใบ');
+  assert.equal(lineOf([{ ...ZONE_ROW, status: 'cut' }, second], { z2: DRAWING_FILES.z1 }), SENDER, 'จากแบบทั้งใบ + พื้นที่ลงหน้างานที่ถูกตัด');
+  assert.equal(lineOf([ZONE_ROW, second], { ...FILES, z2: DRAWING_FILES.z1 }), OLD, 'ผสม');
+  // หน้าไม่ถือกติกานี้เอง — วาดจาก `view.document` อย่างเดียว
+  assert.doesNotMatch(PAGE, /allDrawing/);
+  assert.doesNotMatch(CARD, /allDrawing/);
+});

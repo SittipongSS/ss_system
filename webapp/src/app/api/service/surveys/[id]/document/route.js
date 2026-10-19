@@ -38,6 +38,9 @@
 //     จึงไม่มีรูปลายเซ็นจริงก่อนออกเอกสาร · อ่านตารางลายเซ็นไม่สำเร็จ = ร่างไม่ออก (ชิ้น `signatures` ใน `unknown`)
 //   · กระดาษที่ออกก่อนเปิดสวิตช์ (ภาพนิ่งไม่มีคีย์ `signatures`) เสิร์ฟและตรึงด้วยคำเดิม — ไม่มีอะไรเขียนทับเอกสารที่ออกแล้ว
 //
+// ⭐ **สวิตช์ประเมินจากแบบ** (`surveyDrawingMethodEnabled` · งวด S3 §2.2) — ไฟล์นี้อ่านแล้วส่งเป็นตัวเลือกให้ตัวโหลดของฉบับร่าง
+//   และขั้นออกเลข (ตัวโหลดไม่อ่านสวิตช์เอง) · ผลเดียวคือหางของบรรทัด "ไม่พบนัด" — ใบที่มีพื้นที่จากแบบออกเอกสารได้ไม่ว่าสวิตช์จะเป็นอะไร
+//
 // ⚠️ proxy ปล่อย `service:edit|work` ถึง handler (ช่างและ Planner ผ่าน) ⇒ **ด่านจริงคือ handler นี้** — ห้ามถอดเพราะคิดว่า proxy กันให้
 // ⚠️ supabase ไม่ throw — ทุกคำสั่งอ่าน `{ data, error }` เอง · ขั้นออกเลขกับขั้นกระดาษไม่โยนเข้ามา (คืน `{ code, reasons }`)
 // ⚠️ ชื่อไฟล์ไทยห้ามอยู่ใน `filename="…"` — `Response` โยน TypeError (ByteString) ⇒ ชื่อ ASCII ใน `filename=` ชื่อเต็มใน `filename*`
@@ -48,7 +51,8 @@ import { appendUpdate } from '@/lib/master/updates';
 import { printPlaceholderHtml } from '@/lib/printTheme';
 import { surveyZoneSize } from '@/lib/service/survey';
 import { canOpenSurveyDocument, surveyDocAccess, surveyDocVersion } from '@/lib/service/surveyAccess';
-import { surveyNeedsVisit } from '@/lib/service/surveyMethod';
+import { surveyDrawingMethodEnabled } from '@/lib/service/surveyDrawingFlag';
+import { isDrawingZone, surveyNeedsVisit } from '@/lib/service/surveyMethod';
 import { renderSurveyReportHTML, resolveImageTokens, surveyReportImageShas } from '@/lib/service/surveyReportDocument';
 import { surveyReportImagePath } from '@/lib/service/surveyReportImages';
 import { loadSurveyReportInputs } from '@/lib/service/surveyReportInputs';
@@ -209,10 +213,13 @@ async function serveDraft({ supabase, req, user, request, reports, version, form
     return docError(req, TEXT.draftFailed, 500);
   }
   // ดูตัวอย่างได้เมื่อทุกพื้นที่ที่ยังอยู่ในใบ (ไม่ถูกตัด) วัดครบสามช่องทุกส่วน — กระดาน S-1
+  // ⭐ ใบที่มีพื้นที่ประเมินจากแบบ (ยังไม่ถูกตัด) ไม่มีใคร "วัด" — ประโยคพูดว่า "มีขนาดครบ" (งวด S3 · คำเดียวกับการ์ดของใบ)
+  //    ใบลงหน้างานล้วนได้ประโยคเดิมทุกตัวอักษร
   const active = zones.filter((zone) => !isCutZone(zone));
   const measured = active.filter((zone) => surveyZoneSize(zone.parts).complete);
   if (!active.length || measured.length !== active.length) {
-    return docError(req, `ดูตัวอย่างได้เมื่อวัดครบทุกพื้นที่ (${measured.length}/${active.length})`, 409);
+    const lead = active.some(isDrawingZone) ? 'ดูตัวอย่างได้เมื่อมีขนาดครบทุกพื้นที่' : 'ดูตัวอย่างได้เมื่อวัดครบทุกพื้นที่';
+    return docError(req, `${lead} (${measured.length}/${active.length})`, 409);
   }
 
   /* ใบที่ยังไม่ส่งผล = ร่างของ "สิ่งที่จะออกถ้ากดส่งตอนนี้" — ชุดเดียวกับรอบตรวจก่อนส่งผล (`surveyReportPrecheck`):
@@ -235,8 +242,9 @@ async function serveDraft({ supabase, req, user, request, reports, version, form
     }
   }
 
+  /* `drawingMethodEnabled` — ค่าสวิตช์ประเมินจากแบบ (route อ่าน ตัวโหลดไม่อ่านเอง · งวด S3 §2.2) */
   const { inputs, unknown } = await loadSurveyReportInputs(supabase, {
-    request, closedVisit: closing, pendingAnswer, zones, takenAt: nowIso,
+    request, closedVisit: closing, pendingAnswer, zones, takenAt: nowIso, drawingMethodEnabled: surveyDrawingMethodEnabled(),
   });
   /* 🔴 อ่านไม่สำเร็จ ≠ ไม่มี — ร่างที่ชื่อผู้ช่วย/ไซต์/บริษัทหายเพราะฐานสะดุดครั้งเดียว จะทำให้หัวหน้าเข้าใจว่าข้อมูลขาดจริง */
   if (unknown.length) {
@@ -515,6 +523,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       requestId: request.id,
       user,
       via: 'issue_only',
+      // ค่าสวิตช์ประเมินจากแบบ — ขั้นออกเลขส่งต่อให้ตัวโหลด (หางของบรรทัดไม่พบนัด · งวด S3 §2.2)
+      drawingMethodEnabled: surveyDrawingMethodEnabled(),
       measure: ({ customerHtml, internalHtml }) => measureSurveyReportPaper(supabase, {
         customerHtml, internalHtml, deadline, session,
       }),
@@ -524,8 +534,6 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       // `reason` เป็นประโยคเต็มพร้อมทางออกแล้ว (ดึงผลกลับ / กดอีกครั้ง) — ไม่ต่อท้ายซ้ำ
       return docError(req, issued.reason, ISSUE_STATUS[issued.code] || 500, {
         code: issued.code, reasons: issued.reasons, retry: issued.retry === true,
-        // ติดแค่ข้อกันเอกสารของใบที่มีพื้นที่ประเมินจากแบบ (mig 0408) — คีย์มีเฉพาะตอนนั้น ผลอื่นรูปเดิมทุกคีย์
-        ...(issued.hold === true ? { hold: true } : {}),
       });
     }
 

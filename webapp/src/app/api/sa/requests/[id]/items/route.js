@@ -1,6 +1,7 @@
 // ── RD ส่งของ = สร้างแถว + เข้าทะเบียนกลิ่นในจังหวะเดียว (P3b) ────────────
 //
-// POST { rows: [{ scent: {...}, categoryCode, formula?: {...}, briefId?, spec?, targetItemId? }] }
+// POST { rows: [{ scent: {...}, categoryCode, formula?: {...}, briefId?, spec?, targetItemId? }] }   — พัฒนากลิ่น
+// POST { anchorItemId, formulas: [{...FormulaForm}] }                                                  — พัฒนาสูตร (ม-157)
 //
 // ⭐ **หัวข้อ "พัฒนากลิ่น" ไม่มีตารางบรรทัดตอนเปิดใบ** — SA ไม่มีทางรู้ล่วงหน้าว่า
 // RD จะส่งกี่ direction ⇒ แถวเกิดตรงนี้ · 1 แถว = 1 direction = กลิ่น 1 ตัวในทะเบียน
@@ -24,7 +25,13 @@ import { requestActorSide } from '@/lib/requests/replyTurn';
 import { REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS } from '@/lib/requests/statuses';
 import { deliveryItemRow, normalizeDeliveryRows } from '@/lib/requests/delivery';
 import { findRequest } from '@/lib/materialPricesAdmin';
-import { createFormula, createScent, loadScents } from '@/lib/master/scentFormulaAdmin';
+import { createFormula, createScent, findScent, loadFormulas, loadScents } from '@/lib/master/scentFormulaAdmin';
+import { findFormulaByIdentity } from '@/lib/master/formulas';
+import { normalizeFormulaDelivery } from '@/lib/requests/delivery';
+import { formulaName, planFormulaDelivery } from '@/lib/requests/formulaRework';
+import { addDirectionError, directionRowFrom } from '@/lib/requests/formulaDirections';
+import { hopPatch } from '@/lib/requests/hops';
+import { requestedLabel } from '@/lib/requests/rowLabel';
 import { fetchAll } from '@/lib/supabaseFetchAll';
 import { appendUpdate } from '@/lib/master/updates';
 import { recordAudit } from '@/lib/audit';
@@ -50,6 +57,7 @@ export async function POST(request, { params }) {
   if (!canAnswerRequest(user, before)) {
     return Response.json({ error: `ส่งของได้เฉพาะฝ่าย ${before.dept}` }, { status: 403 });
   }
+  if (before.kind === 'formula_dev') return postFormulaDirections({ supabase, user, before, request });
   if (before.kind !== 'scent_dev') {
     return Response.json({ error: 'หัวข้อนี้ไม่ได้ส่งของเป็นรายการ' }, { status: 400 });
   }
@@ -332,6 +340,152 @@ export async function POST(request, { params }) {
     request,
   });
 
+  return Response.json({
+    ...(after || {}),
+    ...(statusWarning ? { _warning: statusWarning } : {}),
+  }, { status: 201 });
+}
+
+/* ── ส่ง direction เพิ่มของพัฒนาสูตร (ม-157 · IS-26100002) ──────────────────────────────────────────────
+   ⭐ RD ส่งสูตรของกลิ่นเดียวกันได้หลาย direction — แต่ละตัว = แถวพี่น้องของแถวแรก (`directionRowFrom`) + สูตรใหม่สถานะ
+   กำลังพัฒนา (ไม่จองตัวตน หมวด × กลิ่น · mig 0411) · แถวเกิดในขั้น "ส่งงานแล้ว" (ตราส่งของ RD คนกด) แล้วเดินก้าวรายแถว
+   ชุดเดิม (รับของ · ส่งลูกค้า · ผลลูกค้า) · ลูกค้าคอนเฟิร์มตัวไหน ก้าวผลลูกค้าจัดการทะเบียน + ปิดตัวอื่นเอง
+   ⚠️ แถวแรกต้องส่งแล้ว — แถวที่ยังไม่ส่ง โมดัลส่งงานส่งแถวแรก (PATCH) ก่อน แล้วค่อยยิงเส้นนี้ด้วย direction ที่เหลือ
+   ⚠️ ไม่มี transaction — "ตรวจทุกตัวก่อน → สร้างสูตรทีละตัว → แถวทั้งชุดทีเดียว" · แถวล้ม = ย้อนลบสูตรที่เพิ่งสร้าง
+     (กำลังพัฒนา ไม่มีใครอ้าง) แบบเดียวกับพัฒนากลิ่นข้างบน */
+async function postFormulaDirections({ supabase, user, before, request }) {
+  const body = await request.json().catch(() => ({}));
+  const id = before.id;
+  const items = before.items || [];
+  const anchor = items.find((i) => i.id === body.anchorItemId) || null;
+  const gate = addDirectionError(before, anchor, items);
+  if (gate) return Response.json({ error: gate }, { status: 409 });
+  const inputs = Array.isArray(body.formulas) ? body.formulas : [];
+  if (!inputs.length) return Response.json({ error: 'ไม่มี direction ที่จะส่ง' }, { status: 400 });
+  if (inputs.length > 10) return Response.json({ error: 'ส่งได้ครั้งละไม่เกิน 10 direction' }, { status: 400 });
+
+  // ── ตรวจทุกตัวก่อนแตะอะไร — ช่องฟอร์ม · รหัสซ้ำกันเอง/ซ้ำทะเบียน · แผนทะเบียน (ตัวเดียวกับพรีวิวบนจอ) ──
+  let registry;
+  try {
+    registry = await loadFormulas(supabase, { status: null });
+  } catch (e) {
+    return Response.json({ error: `อ่านทะเบียนสูตรไม่สำเร็จ: ${e.message}` }, { status: 500 });
+  }
+  const taken = new Set(registry.map((f) => String(f.code || '').trim().toLowerCase()).filter(Boolean));
+  const shape = { ...directionRowFrom(anchor), id: null };
+  const existing = findFormulaByIdentity(registry, { categoryCode: anchor.categoryCode, scentId: anchor.scentId });
+  const values = [];
+  for (const [n, input] of inputs.entries()) {
+    const label = `direction ที่ ${n + 1}`;
+    const { value, error } = normalizeFormulaDelivery({ formula: input });
+    if (error) return Response.json({ error: `${label}: ${error}` }, { status: 400 });
+    const key = value.code.toLowerCase();
+    if (taken.has(key)) return Response.json({ error: `${label}: รหัสสูตร ${value.code} ถูกใช้ไปแล้ว` }, { status: 400 });
+    taken.add(key);
+    const plan = planFormulaDelivery({
+      row: shape, items, existing, clientDerivedFrom: value.derivedFromFormulaId, customerId: before.customerId || null,
+    });
+    // direction เพิ่มไม่มีทางผูกของเดิม (`directionOfItemId` ⇒ ของลูกค้าอื่นเป็น blocked) — กันไว้อีกชั้น
+    if (plan.kind !== 'create') {
+      return Response.json({ error: plan.error || 'ส่ง direction เพิ่มของกลิ่นนี้ไม่ได้' }, { status: 409 });
+    }
+    values.push({ value, plan });
+  }
+
+  const nowIso = new Date().toISOString();
+  const today = businessDate();
+  const scent = anchor.scentId ? await findScent(supabase, anchor.scentId).catch(() => null) : null;
+  const created = [];
+  try {
+    for (const { value, plan } of values) {
+      const formula = await createFormula(supabase, {
+        name: value.name,
+        code: value.code,
+        formulaDate: value.formulaDate,
+        customerTradeName: value.customerTradeName,
+        derivedFromFormulaId: plan.derivedFromFormulaId,
+        note: value.note,
+        categoryCode: anchor.categoryCode,
+        scentId: anchor.scentId,
+        customerId: before.customerId || scent?.customerId || null,
+        dealId: before.dealId || null,
+      }, user, { accepted: true, developing: true });
+      created.push(formula);
+    }
+    const base = Math.max(0, ...items.map((i) => i.sortOrder || 0));
+    const rows = created.map((formula, n) => ({
+      id: `DRI-${randomUUID()}`,
+      ...directionRowFrom(anchor, { sortOrder: base + n + 1 }),
+      ...hopPatch('ready', {}, user, today, { lineKind: 'product_dev' }),
+      producedFormulaId: formula.id,
+      producedFormulaAction: 'create',
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    }));
+    const { error: insertError } = await supabase.from('dept_request_items').insert(rows);
+    if (insertError) throw insertError;
+    /* ⚠️ **คอนเฟิร์มแทรกระหว่างตรวจกับเขียน** (รีวิว ม-157) — ด่านอ่านสแนปช็อตครั้งเดียว · คู่นี้ถูกคอนเฟิร์มไปแล้ว = แถวใหม่ไม่มีวันถูก
+       คอนเฟิร์มได้อีก (ค้างถาวร) ⇒ อ่านสดหลังเขียน เจอ = ถอยแถวแล้วถอยสูตร (ผ่าน catch) */
+    const { data: settledNow, error: recheckError } = await supabase.from('dept_request_items')
+      .select('id').eq('requestId', id).eq('lineKind', 'product_dev')
+      .eq('categoryCode', anchor.categoryCode).eq('scentId', anchor.scentId)
+      .or('outcome.eq.confirmed,answerStatus.eq.done');
+    if (recheckError || settledNow?.length) {
+      const { error: rowUndoError } = await supabase.from('dept_request_items').delete().in('id', rows.map((r) => r.id));
+      if (rowUndoError) {
+        console.error('[request items] ถอยแถว direction ไม่สำเร็จ', rowUndoError.message);
+        created.length = 0; // แถวยังถือสูตรอยู่ — ห้ามลบสูตรตาม
+      }
+      throw new Error(recheckError
+        ? 'ตรวจรายการอื่นของกลิ่นนี้ไม่สำเร็จ — ยังไม่ได้ส่ง ลองกดอีกครั้ง'
+        : 'ลูกค้าเพิ่งคอนเฟิร์มสูตรของกลิ่นนี้ — ส่ง direction เพิ่มไม่ได้แล้ว โหลดหน้าใหม่');
+    }
+  } catch (e) {
+    for (const formula of created) {
+      const { error: undoError } = await supabase.from('formulas').delete().eq('id', formula.id).eq('status', 'developing');
+      if (undoError) console.error('[request items] ย้อนลบสูตร direction ไม่สำเร็จ', formula.id, undoError.message);
+    }
+    // mig 0411 ยังไม่รัน = ไม่มีคอลัมน์ directionOfItemId (42703/PGRST204) หรือดัชนีคู่ซ้ำเดิมตีกลับ (23505)
+    const notMigrated = ['42703', 'PGRST204'].includes(e?.code) || (e?.code === '23505' && /product_pair_uk/.test(e?.message || ''))
+      // ดัชนีตัวตนเดิม (ก่อน 0411) นับสูตรกำลังพัฒนา — `translateScentConflict` แปลเป็นข้อความนี้
+      || String(e?.message || '').startsWith('หมวดสินค้านี้กับกลิ่นนี้มีสูตรอยู่แล้ว');
+    return Response.json({
+      error: notMigrated
+        ? 'ระบบยังไม่พร้อมส่งหลาย direction (ฐานข้อมูลยังไม่อัปเดต mig 0411) — แจ้งผู้ดูแลระบบ'
+        : `ส่ง direction เพิ่มไม่สำเร็จ: ${e.message}`,
+    }, { status: notMigrated ? 503 : 400 });
+  }
+
+  // ใบตามแถว — แถวใหม่ยังไม่จบ ⇒ ตราปิดของใบ (ถ้ามี) ต้องหลุด · ตัวคิดตัวเดียวกับก้าวรายแถว
+  let statusWarning = null;
+  try {
+    const afterAdd = await findRequest(supabase, id);
+    const closurePatch = requestRowsClosurePatch(afterAdd, afterAdd?.items || [], nowIso, {
+      actorSide: requestActorSide(user, afterAdd),
+    });
+    if (Object.keys(closurePatch).length) {
+      const { error: closureError } = await supabase.from('dept_requests')
+        .update({ ...closurePatch, updatedAt: nowIso }).eq('id', id);
+      if (closureError) throw closureError;
+    }
+  } catch (e) {
+    console.error('[request items] ปรับสถานะใบหลังส่ง direction ไม่สำเร็จ', id, e.message);
+    statusWarning = `ส่ง direction แล้ว แต่ปรับสถานะใบไม่สำเร็จ (${e.message})`;
+  }
+
+  const names = created.map((f) => formulaName(f)).join(', ');
+  await appendUpdate(supabase, {
+    entityType: 'dept_request', entityId: id, kind: 'ready',
+    body: `ส่งงาน direction เพิ่ม ${created.length} รายการ — ${requestedLabel(anchor.label)} · สูตร ${names}`,
+    user,
+  }).catch(() => {});
+  const after = await findRequest(supabase, id).catch(() => null);
+  await recordAudit({
+    user, action: 'update', entityType: 'dept_request', entityId: id,
+    before, after,
+    summary: `ส่ง direction เพิ่ม ${created.length} รายการ (${names}) — ${requestedLabel(anchor.label)} (${before.docNo || id})`,
+    request,
+  });
   return Response.json({
     ...(after || {}),
     ...(statusWarning ? { _warning: statusWarning } : {}),

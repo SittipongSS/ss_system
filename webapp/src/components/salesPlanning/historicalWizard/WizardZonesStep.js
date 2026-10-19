@@ -15,16 +15,31 @@
 //      เป็นตัวหนังสือเปลี่ยนไม่ได้ · ถอนติ๊ก = บรรทัดหายพร้อมจำนวน/ส่วนลดไม่ถาม · error ข้อเดียวขึ้น 3–5 ที่ ·
 //      ช่องค้น + ปุ่มย่อ/ขยาย ("การแสดงผล") · ช่องแพ็คเกจทุกโซนที่เททับทุกบรรทัดเงียบ ๆ และไม่บันทึกอะไร
 //
-// ⭐ ของที่เพิ่มจากใบเสนอราคามีสองอย่างเท่านั้น (มติ 23/09): **ไซต์ · โซน** และ **จำนวนรอบบริการ** (คำตามมติ 29/09)
+// ⭐ งวด PR-5 (มติเจ้าของ 23/09 "ต้องไม่ควรแตกต่างจาก form ใบเสนอราคา" + 08/10 ข้อ A1–A2 · ข้อวินิจฉัย 7 · mig 0409): ตารางของขั้นนี้คือ
+//   ตารางของใบเสนอราคา **รวมคอลัมน์ "แพ็ค/เดือน"** — หัวและเซลล์เงินรับ prop คู่เดียวกับ `QuotationLineItems` ทุกตัวอักษร
+//   · ยอดของบรรทัด = เลขในคอลัมน์นั้น × จำนวน (เดือน) × ราคา/หน่วย − ส่วนลดรายการ · ยังคิดไม่ได้ = ขีด ไม่ใช่ยอดแบบคูณ 1
+//   · กฎฝั่งจอทั้งตารางมาจาก `historicalZonesPackView` (= `quoteLinesPackView` ของใบเสนอราคา + ไม่วาดสูตรใต้ยอดที่ยังเป็นขีด):
+//     คอลัมน์ขึ้นเมื่อมีแถวที่เลือกแพ็คเกจหมวด 02-001 · ช่องไม่มีค่าตั้งต้น เก็บทุกตัวอักษรที่พิมพ์ · หน่วยข้างจำนวนเป็น "เดือน" เมื่อเลขใช้ได้
+//   · แดงหลังกด "ถัดไป" เท่านั้น: โหมดแดงของคอลัมน์ = ยังมีข้อของแผนที่ชี้ช่องนั้น (`historicalPackErrorsShown` — ข้อที่ขั้นได้รับถูกกรองด้วย
+//     ขั้นที่เปิดเผยแล้ว) · ประโยคของแผนอยู่ในก้อนแดงหัวขั้นที่เดียว ใต้ช่องมีแค่คำสั้นของเซลล์ร่วม (ไม่วาดซ้ำ)
+//   · ระหว่างตรวจ/บันทึก (`busy`) ช่องนี้ปิดพร้อมช่องอื่นของแถว — `editable={!busy}` ถึงเซลล์ร่วม (ไม่งั้นแผนที่กลับมาเป็นของเลขเก่า)
+//   🔴 ตัวเขียนเลขนี้มีจุดเดียวทั้งแอป = `onPatch` ของเซลล์ร่วม (ลงแถวผ่าน `patchRow` ข้างล่าง) — ไฟล์นี้ไม่เขียนเอง และโค้ดของไฟล์นี้
+//      ไม่เอ่ยชื่อคีย์นั้นเลย (ยาม quoteLineCells.test · linePackReaders GE: ตัวเขียนตัวที่สองในขั้นนี้ = แดง)
+// ⭐ ของที่เพิ่มจากใบเสนอราคา (มติ 23/09 · 26/09): **ไซต์ · โซน** · **รอบละกี่แพ็ค** · **จำนวนรอบบริการ** (คำตามมติ 29/09)
 //   ⭐ PR-D (mig 0394 · r2 S12 · มติ 26/09 A3/O9): + **แพ็คต่อรอบ** ต่อโซน (ชิป "ประเมินไว้ n แพ็ค" [ใช้] · ช่องของตัวเอง —
-//     ไม่ใช่จำนวนของบรรทัด) · **รอบบริการบังคับ** (เลิก "เว้นว่างได้") · "รวมทั้งรายการ n แพ็ค" อ่านอย่างเดียว
+//     ไม่ใช่จำนวนของบรรทัด และไม่คูณเงิน) · **รอบบริการบังคับ** (เลิก "เว้นว่างได้") · "รวมทั้งรายการ n แพ็ค" อ่านอย่างเดียว
 //     (`HistoricalLineServiceFields`) · แดงหลังกด "ถัดไป" เหมือนช่องอื่นของบรรทัด
 //   ⭐ มติเจ้าของ 29/09 ("ลำดับนี้ใช้กับ SO ใหม่และ SO ย้อนหลัง") + มติเจ้าของ 08/10 รอบสอง (จอฝ่ายขายที่เหลือ — แพ็คก่อนจำนวนรอบบริการ):
 //     แถบผูกเรียง ไซต์ · โซน → **รอบละกี่แพ็ค *** → **จำนวนรอบบริการ *** (หน่วย "เดือน") → รวมทั้งรายการ n แพ็ค
 //     (คำ · ลำดับ · หน่วยเดียวกับตารางงานบริการของใบใหม่ #1878 · 1 บรรทัด = 1 โซนเหมือนเดิม · ค่าที่เก็บเท่าเดิม 1 เดือน = 1 รอบ)
+//   ⭐ PR-5 D1(ก) (มติเจ้าของ 12/10 ข้อ A8 "ปุ่มรับค่า + เตือน"): คู่เงินของแถว (เลขคอลัมน์ใหม่ · จำนวน) กับคู่งานบริการ (รอบละกี่แพ็ค ·
+//     จำนวนรอบบริการ) ยังเป็น **สี่ช่องแยกกัน** — ใต้สองช่องงานบริการมีชิป "ตาม … [ใช้]" (ข้อเสนอ ไม่ใช่ค่าตั้งต้น: ค่าเข้าแถวเมื่อกดเท่านั้น)
+//     และคู่ที่ไม่เท่ากันได้บรรทัดเตือนใต้แถบผูก (ไม่แดง ไม่กั้น "ถัดไป") · ตัวตัดสิน + ถ้อยคำอยู่ที่ `historicalLineQuoteLink`
 // ⚠️ ข้อยกเว้นจากตารางใบเสนอราคา (เหตุผลด้านข้อมูล — เจ้าของรับรองแล้ว 25/09):
-//   จำนวนเริ่มที่ว่าง (1 ชุด × 12 เดือน = 12 · ใส่ 1 ให้ = เดาผิดเกือบทุกใบ) · ไม่มีหมายเหตุรายบรรทัด (ใบย้อนหลังไม่พิมพ์) ·
+//   จำนวนเริ่มที่ว่าง (ใส่ 1 ให้ = เดาผิดเกือบทุกใบ — ใบเสนอราคานับจำนวนว่างเป็น 1 ใบนี้ยังไม่มียอด) · ไม่มีหมายเหตุรายบรรทัด (ใบย้อนหลังไม่พิมพ์) ·
 //   ไม่มีบรรทัดพิมพ์เอง (ทุกบรรทัดต้องเป็นแพ็คเกจ 02-001 ที่ผูกโซน) · ราคา/หน่วยปิดตั้งแต่ยังไม่เลือกแพ็คเกจ (ใบนี้ไม่ส่งราคา)
+//   ⚠️ งวด PR-5 ต่างจากใบเสนอราคาหลังกด "ถัดไป" สองข้อ (ยอมรับไว้ — ข้อวินิจฉัย 12/10 · เหตุอยู่ที่หัว `historicalPackErrorsShown`):
+//   ข้อของช่องเลขคอลัมน์ใหม่เป็นข้อของแผน จึงขึ้นช้าไปหนึ่งการกดเมื่อข้อที่จอตรวจเอง (เช่นยังไม่เลือก VAT) หยุดการกดไว้ก่อน · และไม่มีการพาไปหาช่อง
 //
 // ⭐ **โซนเลือกจากทะเบียน ไม่ใช่พิมพ์ชื่อเอง** (มติ 22/09 แทนข้อ 17 ของ 0360) — หนึ่งบรรทัด = หนึ่งโซน
 //   = หนึ่งรอบขายของโซน (service_zone_terms) ที่เกิดตอน AE Sup อนุมัติ ⇒ TS ไม่ต้องผูกโซนอีก
@@ -62,11 +77,12 @@ import { quoteLineFromProduct } from "@/lib/sales/quoteLines";
 import {
   HISTORICAL_NEXT_BUTTON_LABEL, HISTORICAL_SERVICE_TEXT, HISTORICAL_VAT_RATES, REGISTRY_LOAD_FAILED, emptyHistoricalZone,
   historicalAssessedByZone, historicalDownstreamReset, historicalFieldAnchorId, historicalIssueText, historicalLineIssues,
-  historicalLineServiceView, historicalLinesSummary, historicalMoneyView, historicalStepIssueNotice, historicalTotalsView,
-  historicalZoneBrowser, historicalZoneLineAmount, historicalZoneLines, historicalZonePickerOptions,
+  historicalLineQuoteLink, historicalLineServiceView, historicalLinesSummary, historicalMoneyView, historicalPackErrorsShown,
+  historicalStepIssueNotice, historicalTotalsView, historicalZoneBrowser, historicalZoneLineAmount, historicalZoneLines,
+  historicalZonePickerOptions, historicalZonesPackView,
 } from "@/lib/sales/historicalIntakeForm";
 import HistoricalBulkZonesModal from "./HistoricalBulkZonesModal";
-import HistoricalLineServiceFields, { HistoricalLineServiceTotal } from "./HistoricalLineServiceFields";
+import HistoricalLineServiceFields, { HistoricalLineServiceTotal, HistoricalSeedChip } from "./HistoricalLineServiceFields";
 import styles from "./HistoricalOrderWizard.module.css";
 
 const SITES_PATH = (customerId) => `/api/service/sites?customerId=${encodeURIComponent(customerId)}&includeInactive=0`;
@@ -199,6 +215,13 @@ export default function WizardZonesStep({
   }, [plan]);
   /* ⭐ ข้อความรายช่องของแต่ละแถว — ผูกกับ `key` ของแถว (ผู้เรียกผูกตอนได้คำตอบ · ดูหัว `historicalIssuesWithRowKeys`) */
   const lineIssues = useMemo(() => historicalLineIssues(issues), [issues]);
+  /* ⭐ งวด PR-5 — คอลัมน์ "แพ็ค/เดือน": กฎฝั่งจอทั้งตารางจาก lib (กฎเดียวกับตารางของใบเสนอราคา · ดูหัวไฟล์) แล้วส่งให้หัว/เซลล์ร่วมด้วย
+     prop คู่เดียวกับ `QuotationLineItems` · `packErrors` = ยังมีข้อของแผนที่เปิดเผยแล้วชี้ช่องนั้น ⇒ คำสั้นแดงใต้ช่อง (แดงหลังกด "ถัดไป")
+     ⚠️ ไม่มี hook ของใบเสนอราคา (แถบแจ้ง + พาไปหาช่องของมันเอง) และไม่ส่งบรรทัดที่เก็บไว้ — แถวของฟอร์มนี้ไม่มี "ยอดเดิม" ให้เทียบ */
+  const packErrors = historicalPackErrorsShown(issues);
+  const packView = useMemo(() => historicalZonesPackView(rows, products, { errorsShown: packErrors }), [rows, products, packErrors]);
+  const showPacks = packView.showColumn;
+  const packRequired = Boolean(packView?.rows.some((row) => row.required));
   const issueOf = (field) => issues.find((issue) => issue.field === field)?.message || null;
 
   /* กำพร้า/อ่านไม่ได้ (R10 · N1) — ตัวตัดสินอยู่ที่ lib · ⚠️ `ready` เท็จระหว่างโหลด = ยังตัดสินไม่ได้ */
@@ -361,7 +384,7 @@ export default function WizardZonesStep({
         <thead>
           <tr>
             <QuoteLineIndexHead />
-            <QuoteLineHeadCells />
+            <QuoteLineHeadCells showPacks={showPacks} packRequired={packRequired} />
             <QuoteLineActionsHead />
           </tr>
         </thead>
@@ -372,6 +395,8 @@ export default function WizardZonesStep({
             const warn = row.zoneId ? liveTermByZone.get(row.zoneId) || null : null;
             const bad = lineIssues.get(row.key) || {};
             const service = historicalLineServiceView(row, assessedReady);
+            /* PR-5 D1(ก): ชิปรับค่าของสองช่องงานบริการ + คำเตือนเมื่อคู่เงินกับคู่งานบริการไม่เท่ากัน (ข้อมูลล้วน — ไม่แตะแถว) */
+            const link = historicalLineQuoteLink(row, name);
             return (
               <tr key={row.key} className="premium-row">
                 <QuoteLineIndexCell index={index} />
@@ -430,6 +455,7 @@ export default function WizardZonesStep({
                       error={bad.packsPerRound || null}
                       disabled={busy}
                       onChange={(value) => patchRow(row.key, { packsPerRound: value })}
+                      seed={link.packsSeed}
                     />
                     <div className={styles.lineBindRounds}>
                       <QuoteLineServiceRounds
@@ -441,10 +467,14 @@ export default function WizardZonesStep({
                         invalid={!!bad.rounds}
                         note={HISTORICAL_SERVICE_TEXT.roundsNote}
                       />
+                      {/* PR-5 D1(ก): "ตามจำนวน: n เดือน" [ใช้] — กดแล้วค่าจึงลงช่องจำนวนรอบบริการ (ปิดระหว่างตรวจ/บันทึกเหมือนช่องที่มันเขียน) */}
+                      <HistoricalSeedChip seed={link.roundsSeed} onUse={(value) => patchRow(row.key, { rounds: value })} disabled={busy} />
                       {bad.rounds ? <span className={styles.cellBad}>{bad.rounds}</span> : null}
                     </div>
                     <HistoricalLineServiceTotal view={service} />
                   </div>
+                  {/* PR-5 D1(ก): คู่เงินกับคู่งานบริการไม่เท่ากัน = เตือนสีกลาง (ไม่ใช่ข้อผิด — ไม่แดง ไม่กั้น "ถัดไป"/บันทึก/อนุมัติ) */}
+                  {link.mismatch ? <span className={styles.cellSub}>⚠️ {link.mismatch}</span> : null}
                   {warn ? (
                     <span className={styles.cellSub}>
                       ⚠️ โซนนี้มีรอบขายของ {warn.orderNumber} อยู่แล้ว{warn.endDate ? ` (ถึง ${warn.endDate})` : ""}
@@ -463,6 +493,8 @@ export default function WizardZonesStep({
                   registryPriceOnly
                   /* ⭐ ข้อความใต้ช่องจำนวนมีที่เดียว: เหตุที่จอรู้เอง (1.5 / 0) ก่อน แล้วค่อยข้อที่แผนตีกลับ (เช่นยังว่าง) */
                   qtyNote={amount.qtyNote || bad.qty || null}
+                  showPacks={showPacks}
+                  packEdit={packView?.rows[index]}
                 />
                 {/* ปุ่มลบ = ลบบรรทัด · โซนที่ยังตัดสินไม่ได้ (ทะเบียนอ่านไม่ครบ/กำลังโหลด) ลบไม่ได้ พร้อมเหตุใน title (N1) */}
                 <QuoteLineRemoveCell
@@ -475,6 +507,7 @@ export default function WizardZonesStep({
             );
           })}
           {!lines.length && (
+            /* ตารางว่าง = ยังไม่มีคอลัมน์ "แพ็ค/เดือน" (ขึ้นพร้อมแถวแรกที่เลือกแพ็คเกจ) ⇒ เจ็ดช่องเหมือนตารางของใบเสนอราคา */
             <QuoteLinesEmptyRow colSpan={7}>ยังไม่มีรายการ — กด “เพิ่มรายการ” หรือ “เพิ่มหลายโซน”</QuoteLinesEmptyRow>
           )}
         </tbody>

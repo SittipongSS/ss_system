@@ -24,7 +24,7 @@
    ลบจริงไม่ใช่ปล่อยค้าง เพราะ `npm run audit:ui` จับ CSS ที่ไม่มีใครเรียกอยู่แล้ว
 
    ⚠️ **.tierChip / .tierChipOn อยู่ต่อ** — ชื่อมาจากชั้นจำนวน แต่ผู้ใช้จริงวันนี้คือ
-   ชิปตัวเลือกของ PDR (Scentotype · Performance · กลุ่มลูกค้า) ที่ PdrForm/PdrSummary
+   ชิปตัวเลือกของ PDR (Performance · Archetype · กลุ่มลูกค้า) ที่ PdrForm/PdrSummary
    ⇒ ลบตามชื่อไปด้วยจะทำให้ชิปบนฟอร์ม PDR หายสไตล์ทั้งแผง */
 .tierChip { cursor: pointer; }
 .tierChipOn {
@@ -494,16 +494,17 @@
   .pdrFact { grid-template-columns: 1fr; gap: var(--space-1); }
 }
 
-/* ช่องเขียนต่อของ Scentotype รายตัว (mig 0222) — โผล่ตามตัวที่ติ๊ก
-   ⚠️ ป้ายอยู่ซ้ายช่องเพื่อให้อ่านเป็นคู่ "ตัวไหน — เขียนว่าอะไร" เหมือนบนกระดาษ */
-.scentotypeNote {
+/* ช่องเขียนต่อรายตัวของชิปที่ติ๊ก (1.15 Archetype) — โผล่ตามตัวที่ติ๊ก
+   ⚠️ ป้ายอยู่ซ้ายช่องเพื่อให้อ่านเป็นคู่ "ตัวไหน — เขียนว่าอะไร" เหมือนบนกระดาษ
+   (ชื่อเดิม `.scentotypeNote` — 2.1.5 Scentotype ถอดแล้ว มติผู้ใช้ 2026-10-19) */
+.choiceNote {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   margin-top: var(--space-1-5);
 }
-.scentotypeNote label { min-width: 8rem; font-size: var(--fs-5); color: var(--text-2); }
-.scentotypeNote > :last-child { flex: 1; }
+.choiceNote label { min-width: 8rem; font-size: var(--fs-5); color: var(--text-2); }
+.choiceNote > :last-child { flex: 1; }
 
 /* ช่องที่ไม่ได้กรอกบนจอสรุป PDR — ต้องอ่านออกว่า "ถามแล้วไม่มีคำตอบ" ไม่ใช่ช่องว่าง
    ⚠️ ต้องตรงกับกระดาษ (pdrDocument.js พิมพ์ N/A ที่ช่องเดียวกัน) */

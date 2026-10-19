@@ -18,7 +18,8 @@ test('แถบบอกตำแหน่งเก็บแค่ id แล้�
 });
 
 test('ปล่อยจากการ์ดส่งแค่สถานะ ไม่ส่งทั้งฟอร์มจากสำเนา', () => {
-  assert.match(page, /body: JSON\.stringify\(\{ status: "scheduled" \}\)/);
+  // + `expectedStatus: "draft"` (รีวิว S2b ข้อ V17) — มีคนปล่อย/ยกเลิกไปก่อนระหว่างที่กล่องเปิด = 409 ไม่ปล่อยทับ
+  assert.match(page, /body: JSON\.stringify\(\{ status: "scheduled", expectedStatus: "draft" \}\)/);
   assert.doesNotMatch(page, /visitToForm\(row\.visit\)/);
 });
 
@@ -29,6 +30,13 @@ test('โหลดเบื้องหลังไม่ล้าง error ข�
 
 test('กลุ่มที่พับเป็นรายการเดียวในการแบ่งหน้า', () => {
   assert.match(page, /\? \[\{ head: true, groupKey: group\.key \}\]/);
+});
+
+test('🔴 ยอดของตัวแบ่งหน้านับใบ/นัด ไม่ใช่ช่อง — กลุ่มที่พับไม่ทำให้ยอดหด (ตรวจตัวกรอง 08/10 · H13)', () => {
+  // 🐞 เดิม `total={pagination.total}` (ช่อง: กลุ่มที่พับ = 1) ⇒ แท็บ "รอจัด 33" แต่ตัวแบ่งหน้า "ทั้งหมด 14 ใบ"
+  assert.match(page, /<Pager[\s\S]*?total=\{queueView\.listedCount\}[\s\S]*?ariaLabel="แบ่งหน้ารายการงาน"/);
+  assert.match(page, /count=\{queueReady \? `\$\{fmtNumber\(queueView\.listedCount\)\} \$\{QUEUE_BUCKET_UNITS\[bucket\]\}` : null\}/,
+    'ป้ายจำนวนของแผงกับยอดตัวแบ่งหน้าเป็นเลขเดียวกัน');
 });
 
 test('หน้านี้วาง ไม่สร้าง — ไม่มีปุ่มสีแบรนด์ และร่างไม่ถูกวาดลงกริด', () => {

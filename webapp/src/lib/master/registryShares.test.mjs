@@ -201,8 +201,8 @@ test('รอบแก้ทับสูตรของลูกค้าอื�
   const plan = planFormulaDelivery({ row, items: [source, row], existing: parent, customerId: 'CUS-B' });
   assert.equal(plan.kind, 'blocked');
   assert.match(plan.error, /เป็นของ บริษัท เอ \(แชร์มา\)/);
-  // ใบของเจ้าของเอง = รอบแก้ปกติ
-  assert.equal(planFormulaDelivery({ row, items: [source, row], existing: parent, customerId: 'CUS-A' }).kind, 'revise');
+  // ใบของเจ้าของเอง = รอบแก้ปกติ (ม-157: สร้างสูตรใหม่กำลังพัฒนา · ตัวต้นทางถูกแทนตอนลูกค้าคอนเฟิร์ม)
+  assert.equal(planFormulaDelivery({ row, items: [source, row], existing: parent, customerId: 'CUS-A' }).kind, 'create');
   const preview = formulaDeliveryPreview({ row, items: [source, row], formulas: [parent], customerId: 'CUS-B' });
   assert.equal(preview.plan.kind, 'blocked');
 });

@@ -22,7 +22,7 @@ import { fmtNumber, naText } from "@/lib/format";
 import { businessDate } from "@/lib/businessDate";
 import { PERIODS, withinPeriod } from "@/lib/tax/period";
 import {
-  AGE_LATE_DAYS, ageLabel, ageTone, lateRegistrations, registrationAge,
+  AGE_LATE_DAYS, LATE_REGISTRATIONS_HREF, ageLabel, ageTone, lateRegistrations, registrationAge,
 } from "@/lib/tax/registrationQueue";
 import { toneColor } from "@/lib/ui/tone";
 import styles from "./tax.module.css";
@@ -220,10 +220,12 @@ export default function TaxDashboard() {
 
         {/* ⭐ แถบค้างนาน — ขึ้นบนสุดเมื่อมีของค้าง เพราะเป็นสิ่งเดียวบนหน้านี้ที่
             "ต้องลงมือวันนี้" · ไม่มีของค้างก็ไม่ขึ้นเลย ไม่ใช่แถบเขียวกินที่ */}
+        {/* 🐞 กดแล้วเคยเปิด "รออนุมัติ" ทั้งกอง (H2) — ลิงก์พา `late=1` ไปด้วย ⇒ คิวกรองด้วย
+            `isLateRegistration` ตัวเดียวกับที่แถบนับ เลขบนแถบ = แถวที่เปิดได้ */}
         {late.length > 0 && (
           <button
             type="button"
-            onClick={() => goReg("pending_legal")}
+            onClick={() => router.push(LATE_REGISTRATIONS_HREF)}
             className={styles.alertBar}
           >
             <AlarmClock size={20} className={styles.alertIcon} />

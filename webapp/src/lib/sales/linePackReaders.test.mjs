@@ -6,7 +6,9 @@
 //   ⇒ ยามเดินทั้งแอป ตั้งต้นที่ "ปฏิเสธ": ไฟล์ไหนอ่าน `.qty` ต้องขึ้นทะเบียนว่าอ่านของตารางอะไร/ด้วยตัวช่วยตัวไหน
 //
 // ห้าด่าน: GA select ที่เลือก qty ต้องเลือก packQty · GB ห้ามคูณ จำนวน × ราคา เอง · GC ทะเบียนไฟล์ที่อ่าน qty ·
-//   GD ตัวโหลด ↔ ตัวอ่าน · GE ตัวเขียนของเลขแพ็คบนจอ (งวด PR-2: ไม่มีเลย · งวด PR-3: ช่องกรอกเดียว ไฟล์เดียว — ย้ายโดยเจตนา มติเจ้าของ 08/10)
+//   GD ตัวโหลด ↔ ตัวอ่าน · GE ตัวเขียนของเลขแพ็คบนจอ (งวด PR-2: ไม่มีเลย · งวด PR-3: ช่องกรอกเดียว ไฟล์เดียว — ย้ายโดยเจตนา มติเจ้าของ 08/10
+//   · งวด PR-5: ตัวเขียนของบรรทัดยังตัวเดียว + "ช่องตั้งต้นของแถวใหม่" หนึ่งช่องที่ขึ้นทะเบียนพร้อมรายชื่อผู้รับปิด + ขั้น ② ของฟอร์มใบสั่งขายย้อนหลัง
+//     เป็นผู้ส่ง prop คู่ของคอลัมน์ — ย้ายโดยเจตนา มติเจ้าของ 23/09 + 08/10 ข้อ A1–A2 · ข้อวินิจฉัย 7 · หกแถว "ยกเว้นจนงวด PR-5" ของ GC ได้ชนิดจริง)
 // 🕳️ ขอบของยาม (ตรวจ 09/10 — เขียนไว้ที่ docs/qt-pack-column.md ด้วย): ยามอ่านซอร์สด้วย regex ไม่ได้ตามข้อมูล
 //   · ไฟล์ที่ขึ้นทะเบียนว่าอ่านตารางอื่น/ยกเว้น/อยู่ใต้โดเมนของตัวเอง แล้ว **รับบรรทัดใบเสนอราคา/ใบสั่งขายมาจากตัวโหลดไฟล์อื่น** — ไม่เห็น
 //     (ที่เห็น: ไฟล์กลุ่มนี้แตะสองตารางบรรทัดเองไม่ได้ — GC ข้อสาม)
@@ -237,12 +239,53 @@ function inputTags(source) {
 
 /** ไฟล์นี้ **เขียน** คีย์ `packQty` ลงอ็อบเจกต์ไหม (`packQty: …`) */
 const writesPackKey = (source) => /\bpackQty\s*:/.test(source);
-/** ส่งเลขแพ็คเข้าตัวเขียน (แพตช์ของบรรทัด · คำขอ API) หรือผูกกับคอนโทรลกรอกค่าไหม — คืนรายการที่เจอ */
-const PACK_WRITERS = ['onPatch', 'setLine', 'onChange', 'apiFetch', 'apiJson'];
+/** ส่งเลขแพ็คเข้าตัวเขียน (แพตช์ของบรรทัด · คำขอ API) หรือผูกกับคอนโทรลกรอกค่าไหม — คืนรายการที่เจอ
+ *  งวด PR-5 (แผน §5 G3 ง · §11 F4): + `patchRow` / `setRows` — ตัวแก้แถวของขั้น ② ของฟอร์มใบสั่งขายย้อนหลัง · `patchRow(key, { packQty })` ที่ไหนก็ตามบนจอ
+ *  คือทางเขียนที่สอง (ตัวจับคีย์ `packQty:` ข้างบนมองไม่เห็นรูป shorthand — วันนี้ไม่มีไฟล์จอไหนส่งเลขแพ็คให้สองตัวนี้) */
+const PACK_WRITERS = ['onPatch', 'setLine', 'onChange', 'apiFetch', 'apiJson', 'patchRow', 'setRows'];
 const packWritePaths = (source) => [
   ...PACK_WRITERS.flatMap((name) => callArguments(source, name).filter((args) => /packQty/.test(args)).map((args) => `${name}(${args.slice(0, 60)})`)),
   ...inputTags(source).filter((tag) => /packQty/.test(tag)).map((tag) => tag.slice(0, 60)),
 ];
+
+/* คำที่ตามด้วยวงเล็บเปิดแล้ว **ไม่ใช่** การเรียกฟังก์ชัน */
+const NOT_CALLEES = new Set(['if', 'for', 'while', 'switch', 'catch', 'return', 'typeof', 'await', 'void', 'new', 'in', 'of', 'yield', 'delete', 'throw', 'else', 'do', 'case', 'function']);
+/** ชื่อผู้ถูกเรียกของวงเล็บเปิดที่ตำแหน่ง `open`: `f(` · `a.b(` · `f?.(` → `f` · `a.b` · `f` —
+ *  วงเล็บจัดกลุ่ม · พารามิเตอร์ของ arrow / function · `if (` / `return (` = null */
+function calleeOfParen(source, open) {
+  const before = source.slice(Math.max(0, open - 120), open);
+  if (/(?<![\w$])function\b\s*\*?\s*[\w$]*\s*$/.test(before)) return null;
+  const match = before.match(/((?:[A-Za-z_$][\w$]*\s*\??\.\s*)*[A-Za-z_$][\w$]*)\s*(?:\?\.)?\s*$/);
+  if (!match) return null;
+  const name = match[1].replace(/\s+/g, '').replace(/\?\./g, '.');
+  return NOT_CALLEES.has(name) ? null : name;
+}
+/**
+ * ทุกจุดที่ซอร์สเอ่ยตัวระบุ `word` พร้อม "อยู่ในวงเล็บของใคร" — `callees` เรียงจากชั้นในสุดออกไป (null = วงเล็บที่ไม่ใช่การเรียก)
+ *   `f(g(word))` → ['g', 'f'] · `value={word}` ใต้ `return (` → [null] · `const [word] = useState("")` → []
+ * วงเล็บในสตริง '…' / "…" ไม่นับ (จุดที่เอ่ย `word` ในสตริงยังถูกรายงาน) · `balanced` เท็จ = ยามอ่านวงเล็บของไฟล์ไม่ลง ⇒ ผู้เรียกต้องถือว่า **ไม่ผ่าน**
+ * งวด PR-5 (G3 ข): ใช้ถามว่า "ค่าของช่องตั้งต้นถูกส่งให้ใครบ้าง" — ดูชั้นในสุด (`T.qtyHint(historicalBulkQtyUnit(packQty, …))` = ส่งให้ตัวใน)
+ */
+function wordContexts(source, word) {
+  const starts = new Set([...source.matchAll(new RegExp(`(?<![\\w$])${word}(?![\\w$])`, 'g'))].map((match) => match.index));
+  const hits = []; const stack = []; let quote = null;
+  for (let i = 0; i < source.length; i += 1) {
+    if (starts.has(i)) hits.push({ index: i, callees: [...stack].reverse() });
+    const ch = source[i];
+    if (quote) {
+      if (ch === '\\') i += 1;
+      else if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === "'" || ch === '"') quote = ch;
+    else if (ch === '(') stack.push(calleeOfParen(source, i));
+    else if (ch === ')') {
+      if (!stack.length) return { hits, balanced: false };
+      stack.pop();
+    }
+  }
+  return { hits, balanced: stack.length === 0 && quote === null };
+}
 
 /* ═══ ทะเบียน ═══════════════════════════════════════════════════════════════════════════════════════ */
 
@@ -305,6 +348,8 @@ const LINE_TABLE_TOUCH_PINS = Object.freeze({
      rule            ตัวกฎ/ตัวช่วยของเลขแพ็คเอง (PR-1 + linePackView) — มีเทสต์ของตัวเองยึด
      units           นับหน่วยของบรรทัด ⇒ ต้องเรียก `lineUnitsTotal(`
      display         โชว์จำนวนของบรรทัด ⇒ ต้องเรียกตัวช่วยฝั่งโชว์ (`linePackQtyText(` · `linePackFormulaText(` · `linePackQty(` · `hasPackColumn(`)
+     edit            ตารางโหมดแก้ที่ไม่ได้โชว์เลขแพ็คเอง: รับกฎฝั่งจอทั้งตาราง (`quoteLinesPackView(` / ตัวห่อ `historicalZonesPackView(`) แล้วส่ง
+                     `showPacks=` + `packEdit=` ให้เซลล์ร่วมเป็นคนวาด/เขียน ⇒ ต้องมีทั้งการเรียกนั้นและ prop คู่ (งวด PR-5 — ขั้น ② ของฟอร์มใบสั่งขายย้อนหลัง)
      carry:pack      ส่งจำนวนของบรรทัดต่อ **พร้อมเลขแพ็ค** ⇒ ต้องเอ่ย `packQty` / `linePackQty(`
      carry:<ไฟล์>    โชว์/ส่งต่อค่าที่ตัวนับในไฟล์นั้นคิดไว้แล้ว (ไฟล์นั้นต้องขึ้นทะเบียนเป็น units)
      paper           กระดาษ QT/SO — เทสต์กระดาษเป็นเจ้าของ (ขึ้นทะเบียนอย่างเดียว)
@@ -348,15 +393,22 @@ const QTY_READERS = Object.freeze({
   'lib/sales/productSpecDocOrder.js': 'carry:pack',
   'lib/sales/productSpecDocView.js': 'carry:pack',
   'components/salesPlanning/SalesOrderServiceTab.js': 'carry:lib/service/terms.js',
+  // ── ใบสั่งขายย้อนหลัง ──
+  /* ⭐ ย้ายความคาดหวังโดยเจตนา (งวด PR-5 · มติเจ้าของ 23/09 "ต้องไม่ควรแตกต่างจาก form ใบเสนอราคา" + 08/10 ข้อ A1–A2 · ข้อวินิจฉัย 7 ·
+     แผน IMPL_PLAN_PR5 §5 แถว G4 · mig 0409): เดิมหกแถวนี้เป็น `waived:ใบสั่งขายย้อนหลัง — ไม่มี packQty จนงวด PR-5` (บรรทัดของใบย้อนหลังไม่มีเลขแพ็ค
+     จึงไม่มีอะไรให้อ่านผิด) — วันนี้ทุกบรรทัดของใบย้อนหลังถือเลขแพ็ค (ตัวเขียนของ 0409 บังคับ) ⇒ ทุกไฟล์ได้ **ชนิดจริงที่ถูกบังคับ** เหมือนตัวอ่านอื่น:
+       แผน · ฟอร์มฝั่ง lib · ตัวโหลดของเสริม = พกเลขแพ็คไปกับจำนวน (carry:pack) · ประโยคของหน้าต่างอนุมัติ · การ์ดโซน = โชว์ผ่านตัวช่วยกลาง (display)
+       · ขั้น ② = ตารางโหมดแก้ (edit — ชนิดใหม่ของงวดนี้)
+     ไม่ได้คลายด่าน: แถวยกเว้นหายไปหกแถว ไม่ได้เพิ่ม · ชนิดของแต่ละแถวถูกตรึงรายไฟล์ในด่าน GC ข้อสอง (เปลี่ยนกลับเป็น waived เงียบ ๆ = แดง) */
+  'lib/sales/historicalOrderPlan.js': 'carry:pack',
+  'lib/sales/historicalIntakeForm.js': 'carry:pack',
+  'lib/sales/historicalOrderWorkflow.js': 'carry:pack',
+  'lib/sales/historicalOrderCopy.js': 'display',
+  'components/salesPlanning/HistoricalZonesCard.js': 'display',
+  'components/salesPlanning/historicalWizard/WizardZonesStep.js': 'edit',
   // ── ยกเว้น (ไม่มีทางเจอบรรทัดที่มีเลขแพ็ค) ──
   'lib/requests/scentDesignOrders.js': 'waived:นับเฉพาะบรรทัดออกแบบกลิ่น (หมวด 03-xxx)',
   'lib/requests/soReconcile.js': 'waived:รับเฉพาะ scentDesignLines(…) (หมวด 03-xxx)',
-  'lib/sales/historicalOrderPlan.js': 'waived:ใบสั่งขายย้อนหลัง — ไม่มี packQty จนงวด PR-5',
-  'lib/sales/historicalIntakeForm.js': 'waived:ใบสั่งขายย้อนหลัง — ไม่มี packQty จนงวด PR-5',
-  'lib/sales/historicalOrderCopy.js': 'waived:ใบสั่งขายย้อนหลัง — ไม่มี packQty จนงวด PR-5',
-  'lib/sales/historicalOrderWorkflow.js': 'waived:ใบสั่งขายย้อนหลัง — ไม่มี packQty จนงวด PR-5',
-  'components/salesPlanning/HistoricalZonesCard.js': 'waived:ใบสั่งขายย้อนหลัง — ไม่มี packQty จนงวด PR-5',
-  'components/salesPlanning/historicalWizard/WizardZonesStep.js': 'waived:ใบสั่งขายย้อนหลัง — ไม่มี packQty จนงวด PR-5',
   // ── ตารางอื่น ──
   'lib/sales/dealValueItems.js': 'other:sales_deal_value_items',
   'lib/sales/dealValueItemsRepo.js': 'other:sales_deal_value_items',
@@ -367,6 +419,7 @@ const QTY_READERS = Object.freeze({
   'lib/salesPlanningReverse.js': 'other:sales_deal_forecast_lines',
   'app/api/sa/requests/route.js': 'other:dept_request_items',
   'lib/requests/formulaDevBoard.js': 'other:dept_request_items',
+  'lib/requests/formulaDirections.js': 'other:dept_request_items',
   'lib/requests/hops.js': 'other:dept_request_items',
   'lib/requests/lines.js': 'other:dept_request_items',
   'lib/requests/productDevLabel.js': 'other:dept_request_items',
@@ -402,6 +455,20 @@ const QTY_READERS = Object.freeze({
 });
 const DISPLAY_HELPERS = /(?<![\w$])(?:linePackQtyText|linePackFormulaText|linePackQty|hasPackColumn)\(/;
 const UNITS_HELPER = /(?<![\w$])lineUnitsTotal\(/;
+/* ชนิด edit: กฎฝั่งจอทั้งตาราง (ของใบเสนอราคา หรือตัวห่อของฟอร์มใบสั่งขายย้อนหลัง) + prop คู่ที่ส่งให้เซลล์ร่วม */
+const PACK_EDIT_VIEW = /(?<![\w$])(?:quoteLinesPackView|historicalZonesPackView)\(/;
+const PACK_EDIT_PROPS = [/(?<![\w$])showPacks=\{/, /(?<![\w$])packEdit=\{/];
+/* งวด PR-5 (G4): ชนิดของหกไฟล์ของใบสั่งขายย้อนหลัง — ตรึงรายแถว (คู่กับคอมเมนต์เหนือแถวใน QTY_READERS) */
+const HISTORICAL_READER_KINDS = Object.freeze([
+  ['lib/sales/historicalOrderPlan.js', 'carry:pack'],         // บรรทัดของแผน + p_lines พก packQty คู่กับ qty
+  ['lib/sales/historicalIntakeForm.js', 'carry:pack'],        // แถวของฟอร์ม · body · ด่านเงินของแถว
+  ['lib/sales/historicalOrderWorkflow.js', 'carry:pack'],     // lineZones[].packQty ของ GET ใบ
+  ['lib/sales/historicalOrderCopy.js', 'display'],            // ประโยค "รายการ:" ของหน้าต่างอนุมัติ (linePackQtyText)
+  ['components/salesPlanning/HistoricalZonesCard.js', 'display'], // ช่องจำนวนของการ์ดโซน (linePackQtyText)
+  ['components/salesPlanning/historicalWizard/WizardZonesStep.js', 'edit'],
+]);
+/* แถวยกเว้นที่เหลือ (ตัวนับกลิ่นของหมวด 03-xxx สองไฟล์) — แถวยกเว้นใหม่ต้องมาเติมที่นี่พร้อมเหตุ ไม่ใช่งอกเงียบ ๆ */
+const WAIVED_READERS = Object.freeze(['lib/requests/scentDesignOrders.js', 'lib/requests/soReconcile.js']);
 
 /* GD — ตัวโหลดที่ป้อนตัวนับ/ตัวโชว์: select ของตารางที่ระบุต้องมี qty คู่กับ packQty และตัวอ่านปลายทางต้องเรียกตัวช่วย */
 const LOADER_PINS = Object.freeze([
@@ -418,7 +485,8 @@ const LOADER_PINS = Object.freeze([
   ['lib/sales/handoffQueueData.js', 'sales_order_lines', 'lib/excise/soFiling.js', UNITS_HELPER],
 ]);
 
-/* GE — ตัวเขียนของเลขแพ็คบนจอ (งวด PR-2: ไม่มีเลย · งวด PR-3: ช่องกรอกเดียวในไฟล์เดียว) */
+/* GE — ตัวเขียนของเลขแพ็คบนจอ (งวด PR-2: ไม่มีเลย · งวด PR-3: ช่องกรอกเดียวในไฟล์เดียว ·
+   งวด PR-5: ตัวเขียนของบรรทัดยังตัวเดียว + ช่องตั้งต้นของแถวใหม่หนึ่งช่องที่ขึ้นทะเบียน + ขั้น ② ของฟอร์มใบสั่งขายย้อนหลังเป็นผู้ส่ง prop) */
 /* ไฟล์จอ (components/ · app/ นอก app/api/) ที่เขียนคีย์ `packQty:` ได้ — เฉพาะตัวส่งต่อรูปของ view พร้อมเหตุ */
 const PACK_CARRY_FILES = Object.freeze({
   'components/salesPlanning/serviceSetup/serviceSetupDraft.js': 'ctxLineOf: ส่งเลขแพ็คของบรรทัดจากก้อน GET ให้ตัวเทียบจำนวนในใบ (อ่านอย่างเดียว)',
@@ -428,14 +496,47 @@ const PACK_CARRY_FILES = Object.freeze({
    (รีวิว 09/10: ตัวกรองรายปุ่ม packInputText ถูกถอด — มันทิ้งปุ่มเงียบ ๆ จนตัวคูณเงินเป็นเลขที่ไม่มีใครพิมพ์ · ค่าที่ใช้ไม่ได้เป็นสถานะ invalid แทน) */
 const PACK_INPUT_FILE = 'components/salesPlanning/QuoteLineCells.js';
 const PACK_INPUT_WRITE = '{ packQty: text }';
-/* ไฟล์ของจอที่อยู่รอบช่องกรอก — ต้อง **ไม่** เขียนคีย์เอง (รับ/ส่งบรรทัดทั้งก้อน เลขแพ็คเดินทางไปกับ spread) */
+/* ฟอร์มใบสั่งขายย้อนหลัง (ขั้น ②) ใช้เซลล์ร่วมตัวเดียวกับตารางของใบเสนอราคา — งวด PR-5: ส่ง prop คู่ของคอลัมน์เหมือนใบเสนอราคาทุกตัวอักษร
+   แต่ **ไม่เขียนและไม่เอ่ยคีย์ของเลขแพ็คเอง** (ตัวเขียนคือ `onPatch` ของเซลล์ร่วม ซึ่งลงแถวผ่าน `patchRow` ของขั้น ②) */
+const WIZARD_ZONES_FILE = 'components/salesPlanning/historicalWizard/WizardZonesStep.js';
+const WIZARD_SERVICE_FIELDS_FILE = 'components/salesPlanning/historicalWizard/HistoricalLineServiceFields.js';
+/* prop คู่ที่ขั้น ② **ต้อง** ส่ง — ข้อความเดียวกับที่ `QuotationLineItems` ส่ง (ความเท่ากันของสองฟอร์มทั้งหัว/ชุด prop ยึดที่ quoteLineCells.test.mjs) */
+const WIZARD_PACK_PROPS = Object.freeze(['showPacks={showPacks}', 'packEdit={packView?.rows[index]}']);
+/* ตัวจับของงวด PR-3 (`WIZARD_FORBIDDEN` — เจ็ดชื่อ ทั้งไฟล์ดิบของขั้น ②) **ยังอยู่ ไม่ได้ถูกถอด**: สามชื่อในนั้น (showPacks · packRequired · packEdit)
+   กลายเป็น prop ที่ขั้น ② ส่งเอง จึงเหลือสี่ชื่อที่ **โค้ด (ตัดคอมเมนต์แล้ว)** ของขั้น ② และของช่องงานบริการของบรรทัดห้ามเอ่ย:
+   คีย์ของเลขแพ็ค · กฎรายบรรทัดของใบเสนอราคา · hook ของใบเสนอราคา · prop โหมดแดงของใบเสนอราคา
+   ⇒ ตัวเขียนตัวที่สองแบบ shorthand (`patchRow(row.key, { packQty })`) หรือการอ่าน `row.packQty` มาตัดสินเองในสองไฟล์นี้ = แดง
+   (ขอบเขตของตัวจับขยายเป็นทั้งโฟลเดอร์ของฟอร์มแล้ว — ดู `WIZARD_PACK_BAN_FILES` ข้างล่าง · รีวิว 12/10 G3) */
+const WIZARD_PACK_BAN = /\b(?:packQty|linePackEdit|useQuoteLinePackGate|packErrorsShown)\b/;
+/* ไฟล์ของจอที่อยู่รอบช่องกรอก — ต้อง **ไม่** เขียนคีย์เอง (รับ/ส่งบรรทัดทั้งก้อน เลขแพ็คเดินทางไปกับ spread) · งวด PR-5: + ขั้น ② ของฟอร์มใบสั่งขายย้อนหลัง */
 const PACK_NON_WRITERS = Object.freeze([
   'components/salesPlanning/QuotationLineItems.js', 'components/salesPlanning/useQuoteLinePackGate.js',
   'app/sales-planning/quotations/new/page.js', 'app/sales-planning/quotations/[id]/page.js',
+  WIZARD_ZONES_FILE,
 ]);
-/* ฟอร์มใบสั่งขายย้อนหลัง (ขั้น ②) ใช้เซลล์ร่วมตัวเดียวกัน แต่ต้อง **เหมือนเดิมทุกอย่าง** จนงวด PR-5 — ไม่เอ่ยชื่อของช่องกรอกสักชื่อ */
-const WIZARD_ZONES_FILE = 'components/salesPlanning/historicalWizard/WizardZonesStep.js';
-const WIZARD_FORBIDDEN = /\b(?:showPacks|packRequired|packEdit|packErrorsShown|packQty|linePackEdit|useQuoteLinePackGate)\b/;
+/* งวด PR-5 (มติ D8 · แผน §2.7 + §5 G3 ข · R8): ไฟล์จอไฟล์ที่สองที่มีคอนโทรลผูกกับเลขแพ็ค — **ขึ้นทะเบียนโดยเจตนา** ในฐานะ "ช่องตั้งต้นของแถวใหม่"
+   หน้าต่างเพิ่มหลายโซนของฟอร์มใบสั่งขายย้อนหลัง: เลขเดียวลงทุกบรรทัดที่จะเพิ่ม (ว่างได้ ไม่มีค่าตั้งต้น) — ไม่ใช่ตัวเขียนของบรรทัด:
+   ไฟล์ไม่เขียนคีย์ ไม่แตะแถวที่มีอยู่ และส่งค่าของช่องให้ได้แค่ตัวตั้งค่าของช่องเอง กับ **ผู้รับปิดห้าตัว** ใน lib ของฟอร์ม (สามตัวตัดสิน/พูดถึงค่า ·
+   สองตัวท้ายสร้างประโยคและแถว) — ผู้รับตัวที่หก = แดง · ตัวห่อสองตัวคือการเรียกที่ครอบผู้รับอยู่อีกชั้นตามที่แผนเขียน (คำใบ้หน่วย · ส่งแถวที่ lib สร้างขึ้นให้ขั้น ②) */
+const PACK_SEED_INPUT_FILE = 'components/salesPlanning/historicalWizard/HistoricalBulkZonesModal.js';
+const PACK_SEED_SINK_LIB = 'lib/sales/historicalIntakeForm.js';
+const PACK_SEED_SINKS = Object.freeze([
+  'historicalBulkPackIssue', 'historicalBulkFieldsIssue', 'historicalBulkQtyUnit', 'historicalBulkConsequence', 'historicalBulkAddRows',
+]);
+const PACK_SEED_WRAPPERS = Object.freeze(['T.qtyHint', 'onAdd']);
+const PACK_SEED_STATE = 'const [packQty, setPackQty] = useState("")';
+const PACK_SEED_VALUE = 'value={packQty}';
+const PACK_SEED_SETS = Object.freeze(['""', 'event.target.value']); // เปิดหน้าต่างใหม่ = ล้าง · พิมพ์ = ข้อความในช่องทั้งก้อน (ไม่มีตัวกรอง)
+/* 🔴 รีวิว 12/10 (G3) — ขอบเขตของตัวจับสี่ชื่อ = **ทุกไฟล์ .js ของโฟลเดอร์ฟอร์มใบสั่งขายย้อนหลัง** เว้นช่องตั้งต้นที่ขึ้นทะเบียนไฟล์เดียว
+   (อ่านจากโฟลเดอร์ ⇒ ไฟล์ใหม่ของฟอร์มถูกครอบเองโดยไม่ต้องมีใครจำมาเติมชื่อ) · เดิมสองไฟล์: ขั้น ② กับช่องงานบริการของบรรทัด
+   ทำไมต้องทั้งโฟลเดอร์: ก่อนงวด PR-5 เลขแพ็คที่หลงมาจากฟอร์มไม่มีผล (แผนไม่อ่าน) — วันนี้มันคูณเงิน และ **เปลือกของฟอร์ม** (`HistoricalOrderWizard.js`)
+   คือที่ประกอบ body ของทั้งพรีวิวและบันทึก: `const packQty = zone.packQty || "1"; return { ...zone, packQty };` ที่นั่น = ช่องว่างถูกส่งเป็น 1 ⇒ แผนไม่มีข้อผิด
+   ฟอร์มเชื่อยอดของแผน ขั้น ③ ④ โชว์ยอดคูณ 1 เหนือช่องที่ยังว่าง แล้วบันทึกเป็น ×1 (ฟอร์มไม่มีกฎช่องว่างของตัวเอง — แผนคือด่านเดียว)
+   ตัวจับอีกสองตัวมองไม่เห็นรูปนี้: shorthand ไม่มี `packQty:` (ตัวจับคีย์) และ body ถูกประกอบในคำสั่งของมันเอง อาร์กิวเมนต์ของ apiJson จึงไม่เอ่ยเลขแพ็ค (ตัวจับตัวเขียน)
+   — ตัวกลายพันธุ์สามตัวในเปลือก (ทางบันทึก · ทางพรีวิว · ทั้งคู่ผ่านตัวช่วยตัวเดียว) รอดทั้งชุดเทสต์ก่อนขยายขอบเขตนี้ · วันนี้ชื่อทั้งสี่ไม่มีในสิบไฟล์นั้นเลย (แม้ในคอมเมนต์) */
+const WIZARD_DIR = 'components/salesPlanning/historicalWizard/';
+const WIZARD_SHELL_FILE = `${WIZARD_DIR}HistoricalOrderWizard.js`;
+const WIZARD_PACK_BAN_FILES = Object.freeze(APP_FILES.filter((file) => file.startsWith(WIZARD_DIR) && file.endsWith('.js') && file !== PACK_SEED_INPUT_FILE));
 /* ไฟล์ใต้ app/api/ ที่เอ่ย `packQty`: ทางก๊อปของงวด PR-1 + ตัวโหลดของ GD + route ที่ส่งจำนวนผลิตต่อ */
 const API_PACK_FILES = Object.freeze([
   'app/api/sales-planning/quotations/[id]/revise/route.js', // PR-1: ออก Rev. ก๊อปเลขแพ็คของบรรทัด
@@ -455,7 +556,8 @@ test('G0 ตัวตั้ง: เดินไฟล์ของแอปได
     ...Object.keys(SELECT_WAIVERS), ...Object.values(SELECT_WAIVER_UNREAD).flat(), ...Object.keys(MULTIPLY_ALLOWED),
     ...Object.keys(QTY_READERS), ...LOADER_PINS.flatMap(([loader, , consumer]) => [loader, consumer]),
     ...Object.keys(PACK_CARRY_FILES), ...API_PACK_FILES, ...Object.keys(LINE_TABLE_TOUCH_PINS),
-    PACK_INPUT_FILE, ...PACK_NON_WRITERS, WIZARD_ZONES_FILE,
+    PACK_INPUT_FILE, ...PACK_NON_WRITERS, ...WIZARD_PACK_BAN_FILES, PACK_SEED_INPUT_FILE, PACK_SEED_SINK_LIB,
+    ...HISTORICAL_READER_KINDS.map(([file]) => file), ...WAIVED_READERS,
   ];
   for (const file of registered) assert.ok(APP_FILES.includes(file), `ทะเบียนชี้ไฟล์ที่ไม่มี: ${file}`);
   for (const [file, reason] of [...Object.entries(SELECT_WAIVERS), ...Object.entries(MULTIPLY_ALLOWED), ...Object.entries(PACK_CARRY_FILES)]) {
@@ -576,6 +678,47 @@ test('G0 ตัวจับทุกตัวจับของที่ต้�
   assert.equal(packWritePaths('<Select value={x} onChange={(e) => set(e.target.value > 1 ? a : b)}>{line.packQty}</Select>').length, 0, 'นอกแท็กเปิดไม่นับ');
   assert.equal(packWritePaths('onPatch?.({ qty: value ?? "" }); const pack = linePackQty(line);').length, 0);
   assert.equal(packWritePaths('<span role="group">{fmtNumber(pack)}</span>').length, 0);
+  /* งวด PR-5: ตัวแก้แถวของขั้น ② นับเป็นตัวเขียน — รวมรูป shorthand ที่ตัวจับคีย์ `packQty:` มองไม่เห็น */
+  assert.equal(writesPackKey('patchRow(row.key, { packQty })'), false, 'รูป shorthand ไม่มี `packQty:` — จึงต้องมีชื่อตัวแก้แถวในรายชื่อตัวเขียน');
+  assert.equal(packWritePaths('patchRow(row.key, { packQty })').length, 1);
+  assert.equal(packWritePaths('setRows(rows.map((row) => ({ ...row, packQty: seed })))').length, 1);
+  assert.equal(packWritePaths('patchRow(row.key, { packsPerRound: value }); setRows([...rows, ...newRows.map((row) => withPackage(row, productId))]);').length, 0);
+
+  /* งวด PR-5: "ค่าถูกส่งให้ใคร" — ผู้ถูกเรียกของวงเล็บที่ครอบตัวระบุ เรียงจากชั้นในสุด */
+  const calleesOf = (source, word = 'packQty') => wordContexts(source, word).hits.map((hit) => hit.callees);
+  assert.deepEqual(calleesOf('const issue = historicalBulkPackIssue(packQty);'), [['historicalBulkPackIssue']]);
+  assert.deepEqual(calleesOf('T.qtyHint(historicalBulkQtyUnit(packQty, product?.saleUnit))'), [['historicalBulkQtyUnit', 'T.qtyHint']], 'ชั้นในสุดมาก่อน');
+  assert.deepEqual(calleesOf('onAdd?.(historicalBulkAddRows({ zoneIds: planRows.map((row) => row.zoneId), rows, packQty, qty }), productId)'),
+    [['historicalBulkAddRows', 'onAdd']], 'วงเล็บที่ปิดไปแล้ว (planRows.map) ไม่นับ · `?.(` = การเรียก');
+  assert.deepEqual(calleesOf('const [packQty, setPackQty] = useState("");'), [[]], 'ประกาศ = ไม่อยู่ในวงเล็บของใคร · setPackQty ไม่ใช่ตัวระบุเดียวกัน');
+  assert.deepEqual(calleesOf('return (\n  <Input value={packQty} onChange={(event) => setPackQty(event.target.value)} />\n);'), [[null]], 'วงเล็บของ return ไม่ใช่การเรียก');
+  assert.deepEqual(calleesOf('if (packQty) send(a, (packQty));'), [[null], [null, 'send']], 'if ( · วงเล็บจัดกลุ่ม = null');
+  assert.deepEqual(calleesOf('const send = (packQty) => patchRow(key, { packQty });'), [[null], ['patchRow']], 'พารามิเตอร์ของ arrow ไม่ใช่การเรียก');
+  assert.deepEqual(calleesOf('function seed(packQty) { return packQty; }'), [[null], []], 'พารามิเตอร์ของ function ไม่ใช่การเรียก');
+  assert.deepEqual(calleesOf('note("แพ็ค (ทุกบรรทัด"); use(packQty); row["packQty"] = 1;'), [['use'], []], 'วงเล็บในสตริงไม่นับ · ชื่อในสตริงยังถูกรายงาน');
+  assert.deepEqual(calleesOf('f(packQtyNote, linePackQty, setPackQty, packQty$)'), [], 'ชื่อที่ยาวกว่าไม่ใช่ตัวระบุเดียวกัน');
+  assert.equal(wordContexts('f(packQty', 'packQty').balanced, false, 'วงเล็บไม่ปิด = อ่านไม่ลง');
+  assert.equal(wordContexts('f(packQty))', 'packQty').balanced, false);
+  assert.equal(wordContexts('f("a', 'packQty').balanced, false, 'สตริงไม่ปิด = อ่านไม่ลง');
+  assert.equal(wordContexts('f(g(packQty), "(")', 'packQty').balanced, true);
+
+  /* งวด PR-5: ตัวจับของขั้น ② (สี่ชื่อ) — จับตัวเขียนตัวที่สอง/กฎของใบเสนอราคา · ไม่จับของที่ขั้น ② ใช้จริง และไม่จับ "แพ็คต่อรอบ" ของโซน */
+  for (const caught of [
+    'patchRow(row.key, { packQty })', 'const packQty = String(n);', 'row.packQty', 'packErrorsShown={x}', 'useQuoteLinePackGate(',
+    'import { linePackEditView } from "@/lib/sales/linePackEdit";',
+    /* รีวิว 12/10 (G3): ค่าตั้งต้นแบบ shorthand ตอนประกอบ body ในเปลือกของฟอร์ม — ทั้งสองบรรทัดของมัน */
+    'state.zones.map((zone) => { const packQty = zone.packQty || "1"; return { ...zone, packQty }; })', 'return { ...zone, packQty };',
+  ]) assert.match(caught, WIZARD_PACK_BAN, `ตัวจับของขั้น ② ต้องจับ ${caught}`);
+  for (const allowed of [
+    'packsPerRound', 'packView', 'packEdit', 'showPacks', 'packRequired', 'historicalPackErrorsShown', 'historicalZonesPackView', 'link.packsSeed',
+    'packErrors', 'HistoricalSeedChip', 'historicalLineQuoteLink', 'showPacksPerRound · packsPerRound · SERVICE_PACKS_LABEL',
+  ]) assert.doesNotMatch(allowed, WIZARD_PACK_BAN, `ตัวจับของขั้น ② ต้องไม่จับ ${allowed}`);
+  assert.match('<QuoteLineMoneyCells showPacks={showPacks} packEdit={packView?.rows[index]} />', PACK_EDIT_PROPS[0]);
+  assert.match('<QuoteLineMoneyCells showPacks={showPacks} packEdit={packView?.rows[index]} />', PACK_EDIT_PROPS[1]);
+  assert.doesNotMatch('<QuoteLineServiceRounds showPacksPerRound={x} noPackEdit={y} />', new RegExp(PACK_EDIT_PROPS.map((re) => re.source).join('|')));
+  assert.match('const view = quoteLinesPackView(lines, products, {});', PACK_EDIT_VIEW);
+  assert.match('useMemo(() => historicalZonesPackView(rows, products, { errorsShown }), [rows])', PACK_EDIT_VIEW);
+  assert.doesNotMatch('import { quoteLinesPackView } from "@/lib/sales/linePackEdit"; xquoteLinesPackView(x);', PACK_EDIT_VIEW, 'import เฉย ๆ / ชื่อที่ยาวกว่า ไม่ใช่การเรียก');
 });
 
 /* ═══ GA select ═══════════════════════════════════════════════════════════════════════════════════ */
@@ -669,7 +812,7 @@ test('GC 🔴 ทุกไฟล์ที่อ่าน .qty ต้องขึ
   assert.ok(readers.length >= 120, `ยามเห็นไฟล์ที่อ่าน .qty แค่ ${readers.length} ไฟล์ — ตัวจับน่าจะเลิกเห็น`);
 });
 
-test('GC ชนิดของแต่ละแถวในทะเบียนถูกบังคับ: units เรียก lineUnitsTotal · display เรียกตัวช่วยฝั่งโชว์ · carry พกเลขแพ็ค · ยกเว้น/ตารางอื่นต้องบอกเหตุ', () => {
+test('GC ชนิดของแต่ละแถวในทะเบียนถูกบังคับ: units เรียก lineUnitsTotal · display เรียกตัวช่วยฝั่งโชว์ · edit รับกฎฝั่งจอทั้งตาราง + ส่ง prop คู่ · carry พกเลขแพ็ค · ยกเว้น/ตารางอื่นต้องบอกเหตุ', () => {
   const kinds = {};
   for (const [file, entry] of Object.entries(QTY_READERS)) {
     const source = code(file);
@@ -678,7 +821,12 @@ test('GC ชนิดของแต่ละแถวในทะเบีย�
     kinds[kind] = (kinds[kind] || 0) + 1;
     if (kind === 'units') assert.match(source, UNITS_HELPER, `${file}: ขึ้นทะเบียนเป็นตัวนับหน่วย แต่ไม่เรียก lineUnitsTotal(`);
     else if (kind === 'display') assert.match(source, DISPLAY_HELPERS, `${file}: ขึ้นทะเบียนเป็นตัวโชว์ แต่ไม่เรียกตัวช่วยของ linePackView`);
-    else if (kind === 'carry' && detail === 'pack') assert.match(source, /\bpackQty\b|(?<![\w$])linePackQty\(/, `${file}: ส่งจำนวนของบรรทัดต่อแต่ไม่พกเลขแพ็ค`);
+    else if (kind === 'edit') {
+      assert.equal(detail, '', `${file}: ชนิด edit ไม่มีรายละเอียดต่อท้าย`);
+      assert.ok(isScreenFile(file), `${file}: ชนิด edit ใช้กับไฟล์จอ (ตารางโหมดแก้) เท่านั้น`);
+      assert.match(source, PACK_EDIT_VIEW, `${file}: ขึ้นทะเบียนเป็นตารางโหมดแก้ แต่ไม่รับกฎฝั่งจอทั้งตาราง (quoteLinesPackView / historicalZonesPackView)`);
+      for (const prop of PACK_EDIT_PROPS) assert.match(source, prop, `${file}: ตารางโหมดแก้ต้องส่ง showPacks= และ packEdit= ให้เซลล์ร่วม — ไม่ส่ง = บรรทัดแพ็คถูกวาด/คิดเป็น ×1`);
+    } else if (kind === 'carry' && detail === 'pack') assert.match(source, /\bpackQty\b|(?<![\w$])linePackQty\(/, `${file}: ส่งจำนวนของบรรทัดต่อแต่ไม่พกเลขแพ็ค`);
     else if (kind === 'carry') {
       assert.ok(QTY_READERS[detail]?.startsWith('units'), `${file}: ต้นทาง ${detail} ต้องขึ้นทะเบียนเป็น units`);
       assert.doesNotMatch(source, /\.from\(\s*['"`](?:quotation_lines|sales_order_lines)['"`]/, `${file}: ตัวส่งต่อต้องไม่โหลดบรรทัดเอง`);
@@ -697,7 +845,16 @@ test('GC ชนิดของแต่ละแถวในทะเบีย�
   assert.match(code('lib/excise/soFiling.js'), UNITS_HELPER, 'ใบยื่นสรรพสามิตนับหน่วยรวมของบรรทัด');
   assert.equal(readsQty(code('lib/excise/soFiling.js')), false, 'soFiling.js ไม่อ่าน line.qty ตรง ๆ แล้ว');
   assert.equal(QTY_READERS['lib/sales/serviceSetup.js'], 'display', 'ตัวเทียบของตารางงานบริการยังอยู่ในทะเบียน');
-  assert.ok(kinds.units >= 3 && kinds.display >= 9 && kinds.carry >= 7 && kinds.other >= 30, JSON.stringify(kinds));
+  /* งวด PR-5 (G4): หกไฟล์ของใบสั่งขายย้อนหลังถือชนิดจริงรายแถว — เปลี่ยนกลับเป็น waived / other / ถอดแถว = แดงที่นี่ (ไม่ใช่เงียบ)
+     และแถวยกเว้นของทั้งทะเบียนเหลือสองไฟล์ที่รู้จัก (ตัวนับกลิ่นของหมวด 03-xxx) — "ยกเว้น" ไม่ใช่ทางลัดของไฟล์ที่อ่านบรรทัดใบสั่งขายย้อนหลังอีกต่อไป */
+  for (const [file, kind] of HISTORICAL_READER_KINDS) {
+    assert.equal(QTY_READERS[file], kind, `${file}: ชนิดของตัวอ่านใบสั่งขายย้อนหลังถูกตรึงตั้งแต่งวด PR-5 — บรรทัดของใบย้อนหลังมีเลขแพ็คทุกบรรทัด ห้ามกลับไปยกเว้น`);
+  }
+  const waived = Object.entries(QTY_READERS).filter(([, entry]) => entry.startsWith('waived:')).map(([file]) => file).sort();
+  assert.deepEqual(waived, [...WAIVED_READERS].sort(), 'แถวยกเว้นของทะเบียนเปลี่ยน — แถวใหม่ต้องพิสูจน์ว่าไม่มีทางเจอบรรทัดที่มีเลขแพ็ค แล้วมาเติม WAIVED_READERS พร้อมเหตุ');
+  for (const entry of Object.values(QTY_READERS)) assert.doesNotMatch(entry, /PR-5|ใบสั่งขายย้อนหลัง/, 'ไม่เหลือเหตุยกเว้น "จนงวด PR-5" ในทะเบียน');
+  assert.equal(kinds.edit, 1, `ตารางโหมดแก้ที่ขึ้นทะเบียนเป็น edit มีขั้น ② ของฟอร์มใบสั่งขายย้อนหลังไฟล์เดียว (ตารางของใบเสนอราคาเป็น display — โชว์เองด้วย) · ${JSON.stringify(kinds)}`);
+  assert.ok(kinds.units >= 3 && kinds.display >= 11 && kinds.carry >= 10 && kinds.other >= 30, JSON.stringify(kinds));
 });
 
 test('GC 🔴 ไฟล์ที่ขึ้นทะเบียนว่าไม่ได้อ่านบรรทัดที่มีเลขแพ็ค (ตารางอื่น · ยกเว้น · ใต้โดเมนของตัวเอง) แตะ quotation_lines / sales_order_lines เองไม่ได้', () => {
@@ -740,23 +897,34 @@ test('GD 🔴 ตัวโหลดที่ป้อนตัวนับ/ต�
     /<span className="mono">\{linePackFormulaText\(line\) \?\? <>\{line\.qty\} x \{money\(line\.unitPrice\)\}<\/>\}<\/span>/);
 });
 
-/* ═══ GE ช่องกรอกยังปิด ═══════════════════════════════════════════════════════════════════════════ */
+/* ═══ GE ตัวเขียนของเลขแพ็คบนจอ ═════════════════════════════════════════════════════════════════════ */
 
 /* ⭐ ย้ายความคาดหวังโดยเจตนา (งวด PR-3 · **มติเจ้าของ 08/10 ข้อ A2: "บังคับใส่"** · แผน IMPL_PLAN_PR3 §4 แถว 16 + §12 C9):
    เดิมด่านนี้ยึดว่า "สวิตช์ปิด · ไม่มีจอไหนเขียนคีย์ packQty · ไม่มีช่องกรอกที่ผูกกับเลขแพ็ค" — วันนี้ช่องกรอกเปิดใช้ ด่านจึงยึด
    "มีตัวเขียน **ตัวเดียว** ที่ขึ้นทะเบียนด้วยชื่อ" แทน: ไฟล์จอที่เขียนคีย์ = ตัวส่งต่อเดิม + เซลล์ร่วมของตารางรายการไฟล์เดียว ·
-   ในไฟล์นั้นเขียนคีย์จุดเดียว · หน้าและตัวห่อของตารางไม่เขียนเอง · ฟอร์มใบย้อนหลังไม่เอ่ยชื่อของช่องกรอกเลย (งวด PR-5 เป็นเจ้าของ)
+   ในไฟล์นั้นเขียนคีย์จุดเดียว · หน้าและตัวห่อของตารางไม่เขียนเอง
    ไม่ได้คลายด่าน: ไฟล์จอไฟล์ที่สองที่เขียนคีย์ · ตัวเขียนตัวที่สอง · ช่องเงิน (MoneyInput — รับทศนิยม) ที่ผูกกับเลขแพ็ค ยังแดงเหมือนเดิม */
-test('GE 🔴 งวด PR-3 ช่องกรอกเปิด: สวิตช์เปิด · จอที่เขียนคีย์ packQty = ตัวส่งต่อที่ขึ้นทะเบียน + เซลล์ร่วมของตารางรายการไฟล์เดียว · ตัวเขียนเดียว (onPatch หลังตัวกรอง) · ฟอร์มใบย้อนหลังไม่แตะ', () => {
+/* ⭐ ย้ายความคาดหวังโดยเจตนา (งวด PR-5 · มติเจ้าของ 23/09 "ต้องไม่ควรแตกต่างจาก form ใบเสนอราคา" + 08/10 ข้อ A1–A2 · ข้อวินิจฉัย 7 ·
+   แผน IMPL_PLAN_PR5 §5 แถว G3 ก–ค · จ + §11 F4 / F7): เดิม "ไฟล์จอที่มีตัวเขียน/คอนโทรลผูกกับเลขแพ็คมีไฟล์เดียว (เซลล์ร่วม)" และข้อท้ายของเทสต์นี้
+   ยึดว่าฟอร์มใบสั่งขายย้อนหลังไม่เอ่ยชื่อของช่องกรอกสักชื่อ — วันนี้ฟอร์มใบสั่งขายย้อนหลังมีคอลัมน์ "แพ็ค/เดือน" แล้ว (mig 0409) ด่านจึงยึด:
+     · ไฟล์จอที่เขียนคีย์ `packQty:` — **เท่าเดิม** (ตัวส่งต่อที่ขึ้นทะเบียน + เซลล์ร่วม)
+     · **ตัวเขียนของบรรทัดยังตัวเดียว** (`onPatch?.({ packQty: text })` ของเซลล์ร่วม) — ขั้น ② ใช้ตัวนี้ผ่าน prop ไม่มีตัวที่สอง
+     · ไฟล์จอที่มีคอนโทรลผูกกับเลขแพ็ค = เซลล์ร่วม + **ช่องตั้งต้นของแถวใหม่หนึ่งไฟล์ที่ขึ้นทะเบียนด้วยชื่อ** (หน้าต่างเพิ่มหลายโซน — เทสต์ถัดไปยึดว่ามันทำอะไรได้บ้าง)
+     · รายชื่อตัวเขียนที่ตัวจับมองหาเพิ่ม `patchRow` / `setRows` · ขั้น ② เข้ารายชื่อ "ไฟล์รอบช่องกรอกที่ห้ามเขียนคีย์เอง"
+   ไม่ได้คลายด่าน: ไฟล์จอไฟล์ที่สามที่ผูกคอนโทรลกับเลขแพ็ค · ไฟล์จอไฟล์ที่สองที่เขียนคีย์ · ตัวเขียนตัวที่สอง · ช่องเงิน/ตัวเลือกที่ผูกกับเลขแพ็ค ยังแดงเหมือนเดิม
+   · ข้อ "ฟอร์มใบสั่งขายย้อนหลังไม่เอ่ยชื่อของช่องกรอก" ย้ายไปเป็นเทสต์ของมันเองข้างล่าง (ตัวจับยังอยู่ — สี่ชื่อบนโค้ดของสองไฟล์) */
+test('GE 🔴 ช่องกรอกเปิด (งวด PR-3 → PR-5): สวิตช์เปิด · จอที่เขียนคีย์ packQty = ตัวส่งต่อที่ขึ้นทะเบียน + เซลล์ร่วมของตารางรายการไฟล์เดียว · ตัวเขียนของบรรทัดตัวเดียว (onPatch ของเซลล์ร่วม) · คอนโทรลที่ผูกเลขแพ็ค = เซลล์ร่วม + ช่องตั้งต้นที่ขึ้นทะเบียนไฟล์เดียว', () => {
   assert.equal(QUOTE_PACK_INPUT_OPEN, true);
   const screens = APP_FILES.filter(isScreenFile);
   assert.ok(screens.length > 300, `เจอไฟล์จอแค่ ${screens.length} ไฟล์`);
   const keyWriters = screens.filter((file) => writesPackKey(code(file))).sort();
   assert.deepEqual(keyWriters, [...Object.keys(PACK_CARRY_FILES), PACK_INPUT_FILE].sort(),
     'ไฟล์จอที่เขียนคีย์ packQty ต้องมีแค่ตัวส่งต่อที่ขึ้นทะเบียน กับเซลล์ร่วมของตารางรายการ — ช่องกรอกที่สอง (หรือหน้าที่ตั้งค่าเลขแพ็คเอง) ต้องไม่มี');
-  /* ทุกทางที่จอส่งเลขแพ็คเข้าตัวเขียน (onPatch / setLine / onChange / apiFetch / apiJson) หรือผูกกับคอนโทรลกรอกค่า — อยู่ในไฟล์เดียว */
+  /* ทุกทางที่จอส่งเลขแพ็คเข้าตัวเขียน (onPatch / setLine / onChange / apiFetch / apiJson / patchRow / setRows) หรือผูกกับคอนโทรลกรอกค่า —
+     อยู่ในสองไฟล์ที่ขึ้นทะเบียนด้วยชื่อ: เซลล์ร่วม (ตัวเขียนของบรรทัด) กับหน้าต่างเพิ่มหลายโซนของฟอร์มใบสั่งขายย้อนหลัง (ช่องตั้งต้นของแถวใหม่) */
   const writers = screens.flatMap((file) => packWritePaths(code(file)).map((hit) => [file, hit]));
-  assert.deepEqual([...new Set(writers.map(([file]) => file))], [PACK_INPUT_FILE], 'ตัวเขียน/ช่องกรอกของเลขแพ็คอยู่นอกเซลล์ร่วมของตารางรายการ');
+  assert.deepEqual([...new Set(writers.map(([file]) => file))].sort(), [PACK_INPUT_FILE, PACK_SEED_INPUT_FILE].sort(),
+    'ตัวเขียน/คอนโทรลของเลขแพ็คอยู่นอกสองไฟล์ที่ขึ้นทะเบียน — ช่องใหม่ต้องตัดสินตามมติแล้วมาขึ้นทะเบียนที่นี่พร้อมรายชื่อผู้รับ (ไม่ใช่เติมชื่อไฟล์เฉย ๆ)');
   const source = code(PACK_INPUT_FILE);
   // ตัวเขียน: `onPatch?.({ packQty: text })` ครั้งเดียว — ค่าที่เขียนคือข้อความในช่องตามที่คนพิมพ์ (ไม่มีตัวกรองรายปุ่ม — รีวิว 09/10 · ยามของ onChange อยู่ที่ quoteLineCells.test.mjs)
   assert.deepEqual(callArguments(source, 'onPatch').filter((args) => /packQty/.test(args)), [PACK_INPUT_WRITE]);
@@ -764,6 +932,9 @@ test('GE 🔴 งวด PR-3 ช่องกรอกเปิด: สวิต�
   for (const name of PACK_WRITERS.filter((writer) => writer !== 'onPatch')) {
     assert.deepEqual(callArguments(source, name).filter((args) => /packQty/.test(args)), [], `${PACK_INPUT_FILE}: ${name}(…packQty…) — ตัวเขียนที่สอง`);
   }
+  // ตัวเขียนของบรรทัดตัวเดียวทั้งจอ: นอกเซลล์ร่วมไม่มีไฟล์จอไหนเรียกตัวเขียนในรายชื่อด้วยเลขแพ็ค (ช่องตั้งต้นมีแต่แท็กของช่องเอง — เทสต์ถัดไป)
+  const callWriters = screens.filter((file) => PACK_WRITERS.some((name) => callArguments(code(file), name).some((args) => /packQty/.test(args))));
+  assert.deepEqual(callWriters, [PACK_INPUT_FILE], 'ตัวเขียนของบรรทัด (แพตช์ของแถว · คำขอ API) ที่พกเลขแพ็คมีได้ในเซลล์ร่วมไฟล์เดียว');
   // ช่องกรอก: คอนโทรลที่เอ่ยเลขแพ็คมีได้ไม่เกินหนึ่งแท็ก และต้องเป็น <Input> ธรรมดา — ไม่ใช่ช่องเงิน (รับทศนิยม) ไม่ใช่ตัวเลือก
   const packTags = inputTags(source).filter((tag) => /packQty/.test(tag));
   assert.ok(packTags.length <= 1, `${PACK_INPUT_FILE}: มีคอนโทรลที่ผูกกับเลขแพ็ค ${packTags.length} ตัว`);
@@ -773,17 +944,111 @@ test('GE 🔴 งวด PR-3 ช่องกรอกเปิด: สวิต�
       if (/^<(?:MoneyInput|Select|select|SearchableSelect|textarea|Textarea)\b/.test(tag)) assert.doesNotMatch(tag, /packQty|packEdit/, `${file}: ${tag.slice(0, 60)}`);
     }
   }
-  /* หน้าสร้าง · หน้าแก้ · ตัวห่อของตาราง · hook ของด่านฝั่งจอ: ไม่เขียนคีย์เอง (เลขแพ็คเดินทางไปกับบรรทัดทั้งก้อน — payload ของสองหน้าไม่ถูกแตะ) */
+  /* หน้าสร้าง · หน้าแก้ · ตัวห่อของตาราง · hook ของด่านฝั่งจอ · ขั้น ② ของฟอร์มใบสั่งขายย้อนหลัง: ไม่เขียนคีย์เอง
+     (เลขแพ็คเดินทางไปกับบรรทัดทั้งก้อน — payload ของสองหน้าไม่ถูกแตะ · แถวของขั้น ② รับแพตช์จากเซลล์ร่วม) */
   for (const file of PACK_NON_WRITERS) assert.doesNotMatch(code(file), /\bpackQty\s*:/, `${file}: ห้ามเขียนคีย์ packQty`);
   /* ตัวส่งต่อที่ขึ้นทะเบียน: พกค่าที่อ่านมาเท่านั้น (linePackQty(line)) ไม่ตั้งค่าเอง */
   for (const file of Object.keys(PACK_CARRY_FILES)) {
     for (const match of code(file).matchAll(/\bpackQty\s*:\s*([^,}\n]+)/g)) assert.equal(match[1].trim(), 'linePackQty(line)', `${file}: ${match[0]}`);
   }
-  /* ฟอร์มใบสั่งขายย้อนหลัง: ไม่เอ่ยชื่อของช่องกรอกสักชื่อ (ทั้งโค้ดและคอมเมนต์) — พฤติกรรมใหม่ของเซลล์ร่วมอยู่หลัง props ที่ค่าตั้งต้นปิด */
-  assert.doesNotMatch(read(WIZARD_ZONES_FILE), WIZARD_FORBIDDEN, `${WIZARD_ZONES_FILE}: ฟอร์มย้อนหลังต้องเหมือนเดิมจนงวด PR-5 — ห้ามส่ง/อ่านของของช่อง "แพ็ค/เดือน"`);
-  assert.match('<QuoteLineMoneyCells showPacks={showPacks} packEdit={view} />', WIZARD_FORBIDDEN, 'ตัวจับของฟอร์มย้อนหลังต้องจับของจริงได้');
-  assert.doesNotMatch('showPacksPerRound · packsPerRound · SERVICE_PACKS_LABEL', WIZARD_FORBIDDEN, 'และไม่จับ "แพ็คต่อรอบ" ของโซน ซึ่งเป็นคนละช่อง');
-  assert.equal(QTY_READERS[WIZARD_ZONES_FILE], 'waived:ใบสั่งขายย้อนหลัง — ไม่มี packQty จนงวด PR-5', 'แถวยกเว้นของฟอร์มย้อนหลังคงเหตุและเจ้าของเดิม (งวด PR-5)');
+});
+
+/* ⭐ ของใหม่ของงวด PR-5 (มติ D8 · แผน IMPL_PLAN_PR5 §2.7 + §5 แถว G3 ข · §11 F7 / R8 · มติเจ้าของ 08/10 ข้อ A2 + ข้อ 5 "ไม่มีค่าตั้งต้นเงียบ"):
+   หน้าต่าง "เพิ่มหลายโซน" ของฟอร์มใบสั่งขายย้อนหลังมีช่อง "แพ็ค/เดือน (ทุกบรรทัด)" — ช่องกรอกที่สองของทั้งแอปที่ผูกกับเลขแพ็ค ขึ้นทะเบียนโดยเจตนา
+   เพราะลูกค้ามี 43–247 โซน (กรอกทีละบรรทัดไม่ไหว) · สิ่งที่ทำให้มัน **ไม่ใช่ตัวเขียนตัวที่สอง** คือรายการข้างล่าง ซึ่งเทสต์นี้ยึดทุกข้อ:
+     · คอนโทรลเดียว เป็น <Input type="text" inputMode="numeric"> (เก็บทุกตัวอักษรเหมือนช่องในตาราง — ไม่ใช่ช่องเงิน/type="number"/maxLength)
+     · ไฟล์ไม่เขียนคีย์ของเลขแพ็ค และไม่เรียกตัวเขียนตัวไหนด้วยเลขแพ็ค
+     · ค่าของช่องไปได้แค่: ตัวตั้งค่าของช่องเอง (ล้างตอนเปิด · ข้อความที่พิมพ์ทั้งก้อน) กับผู้รับปิดห้าตัวของ lib ฟอร์ม — **ผู้รับตัวที่หก = แดง**
+       (ดูวงเล็บชั้นในสุดที่ครอบตัวระบุ: `T.qtyHint(historicalBulkQtyUnit(packQty, …))` = ส่งให้ตัวใน) · การเรียกชั้นนอกที่ครอบผู้รับอยู่มีได้สองตัวตามแผน
+     · แถวใหม่เกิดจาก `historicalBulkAddRows` ของ lib เท่านั้น แล้วเข้าขั้น ② ทาง `onAdd` (ต่อท้าย — ไม่แตะแถวที่มีอยู่) */
+test('GE 🔴 งวด PR-5 ช่องตั้งต้นของแถวใหม่ (หน้าต่างเพิ่มหลายโซนของฟอร์มใบสั่งขายย้อนหลัง): คอนโทรลเดียวเป็น Input ข้อความ · ไม่เขียนคีย์ ไม่เรียกตัวเขียน · ค่าของช่องไปได้แค่ตัวตั้งค่าของช่องกับผู้รับปิดห้าตัวของ lib (ตัวที่หก = แดง)', () => {
+  const source = code(PACK_SEED_INPUT_FILE);
+  /* คอนโทรลเดียว และเป็นช่องข้อความ */
+  const hits = packWritePaths(source);
+  assert.equal(hits.length, 1, `${PACK_SEED_INPUT_FILE}: ต้องมีแค่แท็กของช่องเอง — เจอ ${JSON.stringify(hits)}`);
+  const tags = inputTags(source).filter((tag) => /packQty/.test(tag));
+  assert.equal(tags.length, 1, `${PACK_SEED_INPUT_FILE}: คอนโทรลที่ผูกกับเลขแพ็คต้องมีตัวเดียว`);
+  const [tag] = tags;
+  assert.match(tag, /^<Input\b/, 'ช่องตั้งต้นต้องเป็น Input ธรรมดา (ไม่ใช่ MoneyInput / Select)');
+  assert.match(tag, /\stype="text"\s/);
+  assert.match(tag, /\sinputMode="numeric"\s/);
+  assert.doesNotMatch(tag, /type="number"|maxLength|\smax=|\smin=|placeholder=|defaultValue/, 'ห้ามสิ่งที่ตัด/เติมค่าก่อนโค้ดเห็น (รีวิว 09/10) และห้ามค่าตั้งต้น/placeholder ที่อ่านเป็นค่า');
+  assert.ok(tag.includes(PACK_SEED_VALUE), 'ช่องผูกกับ state ของตัวเอง');
+  assert.ok(tag.includes('onChange={(event) => setPackQty(event.target.value)}'), 'onChange เก็บข้อความในช่องทั้งก้อน — ไม่มีเงื่อนไข ไม่มีตัวแปลง');
+  /* ไม่เขียนคีย์ · ไม่เรียกตัวเขียน */
+  assert.equal(writesPackKey(source), false, `${PACK_SEED_INPUT_FILE}: ห้ามเขียนคีย์ packQty เอง (ส่งด้วย shorthand ให้ lib เท่านั้น)`);
+  for (const name of PACK_WRITERS) {
+    assert.deepEqual(callArguments(source, name).filter((args) => /packQty/.test(args)), [], `${PACK_SEED_INPUT_FILE}: ${name}(…packQty…) — ช่องตั้งต้นห้ามเป็นตัวเขียน`);
+  }
+  /* ค่าของช่องถูกส่งให้ใคร — ทุกจุดที่โค้ดเอ่ยตัวระบุ packQty */
+  const { hits: uses, balanced } = wordContexts(source, 'packQty');
+  assert.equal(balanced, true, 'ยามอ่านวงเล็บของไฟล์ไม่ลง — อ่านไม่ลง = ไม่ผ่าน (ไม่ใช่ผ่าน)');
+  const called = uses.filter((use) => use.callees[0]);
+  const bare = uses.filter((use) => !use.callees[0]);
+  assert.deepEqual([...new Set(called.map((use) => use.callees[0]))].sort(), [...PACK_SEED_SINKS].sort(),
+    'ผู้รับค่าของช่องตั้งต้น (วงเล็บชั้นในสุด) ต้องเป็นห้าตัวของ lib ฟอร์มพอดี — ตัวที่หก หรือผู้รับที่เลิกใช้แล้วค้างในทะเบียน = แดง');
+  assert.deepEqual([...new Set(uses.flatMap((use) => use.callees).filter(Boolean))].sort(), [...PACK_SEED_SINKS, ...PACK_SEED_WRAPPERS].sort(),
+    'การเรียกที่ครอบเลขแพ็คไม่ว่าชั้นไหน = ผู้รับห้าตัว + ตัวห่อสองตัวที่แผนเขียนไว้ (คำใบ้หน่วย · ส่งแถวที่ lib สร้างให้ขั้น ②)');
+  /* จุดที่ไม่ได้อยู่ในการเรียกใคร: ประกาศ state กับ value ของช่อง — สองจุดพอดี */
+  const labelOf = (use) => (source.startsWith(PACK_SEED_STATE, use.index - 'const ['.length) ? 'state'
+    : source.startsWith(PACK_SEED_VALUE, use.index - 'value={'.length) ? 'value'
+      : source.slice(Math.max(0, use.index - 20), use.index + 30));
+  assert.deepEqual(bare.map(labelOf), ['state', 'value'], 'นอกการเรียกผู้รับ ไฟล์เอ่ยเลขแพ็คได้สองที่: ประกาศ state · value ของช่อง');
+  assert.deepEqual(callArguments(source, 'setPackQty').sort(), [...PACK_SEED_SETS].sort(),
+    'ตัวตั้งค่าของช่องถูกเรียกสองแบบเท่านั้น: ล้างตอนเปิดหน้าต่าง · ข้อความที่พิมพ์ทั้งก้อน (ไม่มีค่าตั้งต้น ไม่มีตัวกรอง ไม่มีใครเติมค่าให้)');
+  /* ผู้รับทั้งห้ามีอยู่จริงใน lib ของฟอร์ม และไฟล์นี้ import จากที่นั่น — ไม่คุยกับกฎของเลขแพ็คโดยตรง (R8) */
+  for (const sink of PACK_SEED_SINKS) {
+    assert.match(code(PACK_SEED_SINK_LIB), new RegExp(`export function ${sink}\\(`), `${PACK_SEED_SINK_LIB}: ต้อง export ${sink}`);
+    assert.match(source, new RegExp(`import \\{[^}]*\\b${sink}\\b[^}]*\\} from "@/lib/sales/historicalIntakeForm";`), `${sink} ต้องมาจาก lib ของฟอร์ม`);
+  }
+  assert.doesNotMatch(source, /@\/lib\/sales\/linePack|@\/lib\/salesPlanning/, 'หน้าต่างไม่ import กฎของเลขแพ็ค/สูตรเงินเอง — ตัดสินและคิดที่ lib ของฟอร์มที่เดียว');
+});
+
+/* ⭐ ย้ายความคาดหวังโดยเจตนา (งวด PR-5 · มติเจ้าของ 23/09 "ต้องไม่ควรแตกต่างจาก form ใบเสนอราคา" + 08/10 ข้อ A1–A2 · ข้อวินิจฉัย 7 ·
+   แผน IMPL_PLAN_PR5 §5 แถว G3 ง + §11 F4): เดิม (ข้อท้ายของเทสต์ GE งวด PR-3) "ไฟล์ดิบของขั้น ② ไม่เอ่ยเจ็ดชื่อของช่องกรอก — ทั้งโค้ดและคอมเมนต์ ·
+   แถวของมันในทะเบียน GC เป็นแถวยกเว้นจนงวด PR-5" — วันนี้ขั้น ② **ต้อง** ส่ง prop คู่ของคอลัมน์ (ข้อความเดียวกับใบเสนอราคา) ด่านจึงยึด:
+     · มี prop คู่ครบ (ถอดตัวใดตัวหนึ่ง = ฟอร์มใบสั่งขายย้อนหลังกลับไปคิดยอด ×1 บนจอ)
+     · **ตัวจับยังอยู่**: สามชื่อจากเจ็ด (showPacks · packRequired · packEdit) เป็น prop ของขั้น ② เองแล้ว เหลือสี่ชื่อที่โค้ดของขั้น ②
+       และของช่องงานบริการของบรรทัดห้ามเอ่ย — ตัวอย่าง "ต้องจับ / ต้องไม่จับ" อยู่ที่ G0
+     · ขั้น ② ไม่มีคอนโทรลของตัวเองที่ผูกกับเลขแพ็ค ไม่เรียกตัวเขียนด้วยเลขแพ็ค · แถวของมันในทะเบียน GC เป็นชนิด edit (ถูกบังคับ)
+   ไม่ได้คลายด่าน: `patchRow(row.key, { packQty })` · `const packQty = …` · `row.packQty` · hook / โหมดแดงของใบเสนอราคา ในสองไฟล์นี้ ยังแดง
+   (เปลี่ยนจาก "ไฟล์ดิบ" เป็น "โค้ดที่ตัดคอมเมนต์แล้ว" เพราะคอมเมนต์ของขั้น ② ต้องอธิบายคอลัมน์นี้ได้ — ชื่อในโค้ดยังห้ามเหมือนเดิม) */
+test('GE 🔴 งวด PR-5 ขั้น ② ของฟอร์มใบสั่งขายย้อนหลัง: ส่ง prop คู่ของคอลัมน์ “แพ็ค/เดือน” เหมือนใบเสนอราคา · โค้ดของขั้น ② และของช่องงานบริการของบรรทัดไม่เขียน/ไม่เอ่ยคีย์ของเลขแพ็ค (ตัวเขียนตัวที่สองแบบ shorthand = แดง) · ทะเบียน GC = edit', () => {
+  const zones = code(WIZARD_ZONES_FILE);
+  /* แท็กของหัวคอลัมน์และของเซลล์เงินในขั้น ② — อย่างละแท็กเดียว (มากกว่า = มีตารางที่สองที่ยามนี้ไม่ได้ดู) */
+  const tagOf = (name) => {
+    const opens = [...zones.matchAll(new RegExp(`<${name}(?![\\w$])`, 'g'))];
+    assert.equal(opens.length, 1, `${WIZARD_ZONES_FILE}: ต้องมี <${name}> แท็กเดียว (เจอ ${opens.length})`);
+    return zones.slice(opens[0].index, zones.indexOf('/>', opens[0].index) + 2);
+  };
+  assert.ok(tagOf('QuoteLineHeadCells').includes(WIZARD_PACK_PROPS[0]), `${WIZARD_ZONES_FILE}: หัวตารางต้องรับ ${WIZARD_PACK_PROPS[0]} (ไม่ส่ง = ไม่มีหัวคอลัมน์ “แพ็ค/เดือน”)`);
+  for (const prop of WIZARD_PACK_PROPS) {
+    assert.ok(tagOf('QuoteLineMoneyCells').includes(prop), `${WIZARD_ZONES_FILE}: เซลล์เงินต้องรับ ${prop} — ไม่ส่ง = ไม่มีช่อง “แพ็ค/เดือน” และยอดบนจอคิด ×1`);
+    assert.ok(code('components/salesPlanning/QuotationLineItems.js').includes(prop), `ตารางของใบเสนอราคาส่ง ${prop} ข้อความเดียวกัน`);
+  }
+  /* ขอบเขตของตัวจับ (รีวิว 12/10 · G3): ทั้งโฟลเดอร์ของฟอร์ม เว้นช่องตั้งต้นที่ขึ้นทะเบียน — ตัวเดินโฟลเดอร์ต้องเห็นไฟล์จริง (รายการสั้นผิดปกติ = แดง ไม่ใช่ผ่านเงียบ)
+     และเปลือกที่ประกอบ body ของพรีวิวกับบันทึกต้องอยู่ในรายการ */
+  const wizardFiles = APP_FILES.filter((file) => file.startsWith(WIZARD_DIR) && file.endsWith('.js'));
+  assert.ok(wizardFiles.length >= 11, `โฟลเดอร์ฟอร์มใบสั่งขายย้อนหลังมีไฟล์ .js แค่ ${wizardFiles.length} — ตัวเดินโฟลเดอร์น่าจะพัง`);
+  assert.deepEqual([...WIZARD_PACK_BAN_FILES].sort(), wizardFiles.filter((file) => file !== PACK_SEED_INPUT_FILE).sort(),
+    'ตัวจับครอบทุกไฟล์ .js ของโฟลเดอร์ฟอร์ม เว้นช่องตั้งต้นที่ขึ้นทะเบียนไฟล์เดียว');
+  for (const file of [WIZARD_ZONES_FILE, WIZARD_SERVICE_FIELDS_FILE, WIZARD_SHELL_FILE]) assert.ok(WIZARD_PACK_BAN_FILES.includes(file), `${file} ต้องอยู่ในขอบเขตของตัวจับ`);
+  assert.equal(WIZARD_PACK_BAN_FILES.includes(PACK_SEED_INPUT_FILE), false);
+  assert.ok((code(WIZARD_SHELL_FILE).match(/historicalWizardBody\(/g) || []).length >= 2,
+    `${WIZARD_SHELL_FILE}: เปลือกคือที่ประกอบ body ของพรีวิวและของการบันทึก — ถ้าย้ายที่ประกอบ ไฟล์ปลายทางต้องอยู่ในขอบเขตนี้ด้วย`);
+  for (const file of WIZARD_PACK_BAN_FILES) {
+    assert.doesNotMatch(code(file), WIZARD_PACK_BAN,
+      `${file}: โค้ดห้ามเอ่ยคีย์ของเลขแพ็ค / กฎรายบรรทัด / hook / prop โหมดแดงของใบเสนอราคา — ตัวเขียนของเลขแพ็คคือ onPatch ของเซลล์ร่วมตัวเดียว`);
+    assert.deepEqual(packWritePaths(code(file)), [], `${file}: ไม่มีตัวเขียน/คอนโทรลของตัวเองที่ผูกกับเลขแพ็ค`);
+    assert.equal(writesPackKey(code(file)), false, `${file}: ห้ามเขียนคีย์ packQty`);
+  }
+  /* ตัวจับเห็นไฟล์จริง (กันตัวจับเงียบเพราะไฟล์ว่าง/ย้าย): ขั้น ② เรียกตัวแก้แถวของตัวเองจริง และช่องงานบริการ export ชิปรับค่าจริง */
+  assert.ok(callArguments(zones, 'patchRow').length >= 5, `${WIZARD_ZONES_FILE}: ตัวจับต้องเห็นการเรียก patchRow จริง`);
+  assert.ok(callArguments(zones, 'setRows').length >= 5, `${WIZARD_ZONES_FILE}: ตัวจับต้องเห็นการเรียก setRows จริง`);
+  assert.match(code(WIZARD_SERVICE_FIELDS_FILE), /export function HistoricalSeedChip\(/);
+  /* ทะเบียน GC: ขั้น ② เป็นตารางโหมดแก้ (ชนิดถูกบังคับในด่าน GC ข้อสอง) — ไม่ใช่แถวยกเว้นอีกต่อไป */
+  assert.equal(QTY_READERS[WIZARD_ZONES_FILE], 'edit', 'ขั้น ② ของฟอร์มใบสั่งขายย้อนหลังขึ้นทะเบียนเป็นตารางโหมดแก้ตั้งแต่งวด PR-5 (เดิมแถวยกเว้น)');
+  assert.equal(WIZARD_SERVICE_FIELDS_FILE in QTY_READERS, false, 'ช่องงานบริการของบรรทัดไม่อ่านจำนวนของบรรทัด (ถ้าเริ่มอ่าน ด่าน GC ข้อหนึ่งจะถามชนิด)');
 });
 
 /* งวด PR-3: รายการไม่ขยับ — ด่านใหม่ (ยื่น · อนุมัติ · ส่ง · บันทึก) เรียก linePackIssues กับบรรทัดทั้งก้อน ไม่เอ่ยชื่อคีย์ และไม่มี route ไหนอ่าน/ตั้ง/ล้างเลขแพ็คเอง */

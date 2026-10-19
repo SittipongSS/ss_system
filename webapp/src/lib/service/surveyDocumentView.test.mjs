@@ -7,7 +7,7 @@
 // ⚠️ ประโยคที่ซ้ำกับค่าคงที่ฝั่ง server (ไฟล์จอ import ไม่ได้) เทียบที่นี่ — เพี้ยนฝั่งไหน เทสต์แดง
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { surveyReportSendWarnings } from './surveyReportView.js';
 import { SURVEY_REPORT_NOT_PRODUCTION } from './surveyReportRows.js';
 import { SURVEY_SIGN_ACCOUNT, SURVEY_SIGN_SEAT_LABEL, surveyReportSignersText } from './surveyReportSigners.js';
@@ -1468,6 +1468,174 @@ test('หน้าคำร้อง · ดึงผลกลับแล้ว:
     assert.doesNotMatch(JSON.stringify([endedHead, endedSales]), /ฉบับใหม่ \(Rev ถัดไป\)|ส่งผลอีกครั้ง/);
     if (word === 'ยกเลิก') assert.doesNotMatch(JSON.stringify([endedHead, endedSales]), /ปิดแล้ว/);
   }
+});
+
+// ══ งวด S3 — ใบที่มีพื้นที่ประเมินจากแบบ (`hasDrawing`) ════════════════════════════
+//
+// ⭐ เอกสารของใบแบบนี้ไม่ถูกพักแล้ว ⇒ ส่วนเอกสารเดินตารางสถานะเดียวกับใบลงหน้างาน ต่างกันแค่สองประโยค (สเปก S3 กลุ่ม D):
+//   · เหตุของปุ่มร่างที่จาง: "มีขนาดครบ" แทน "วัดครบ" (ไม่มีใครวัดพื้นที่จากแบบ — คำเดียวกับคำตีกลับของ route ฉบับร่าง)
+//   · ประโยคก่อนส่งตอนสวิตช์ออกเอกสารตอนส่งผลปิด: "ภาพผัง/ภาพแบบ" แทน "ภาพผัง"
+// 🔴 ใบลงหน้างาน (ไม่ส่ง · `false` · ค่าที่ไม่ใช่ `true` ตรงตัว) = ผลเดิมทุกคีย์ทุกตัวอักษร
+
+const DRAFT_ONSITE = 'ดูตัวอย่างได้เมื่อวัดครบทุกพื้นที่';
+const DRAFT_DRAWING = 'ดูตัวอย่างได้เมื่อมีขนาดครบทุกพื้นที่';
+const FLAG_OFF_ONSITE = 'ส่งผลก่อน แล้วกด “ออกเอกสาร” ที่นี่ — ระบบตรวจเอกสารตอนกดออก (ถ้าติดเรื่องภาพผัง นัด หรือหน้าล้น ต้องดึงผลกลับมาแก้)';
+const FLAG_OFF_DRAWING = 'ส่งผลก่อน แล้วกด “ออกเอกสาร” ที่นี่ — ระบบตรวจเอกสารตอนกดออก (ถ้าติดเรื่องภาพผัง/ภาพแบบ นัด หรือหน้าล้น ต้องดึงผลกลับมาแก้)';
+/* ทุกแถวของตารางสถานะที่ส่วนนี้วาด — ห้าสถานะของสเปก (`not_sent` · `recalled` · `issuing` · `missing` · `issued`) + ตรึงแล้ว/ค้างผิดรอบ */
+const S3_CASES = {
+  'not_sent · วัดไม่ครบ': { document: headDoc({ send: OK_SEND }), zones: UNMEASURED },
+  'not_sent · พร้อม (สวิตช์เปิด)': { document: headDoc({ send: OK_SEND }) },
+  'not_sent · สวิตช์ปิด': { document: headDoc({ issueAtSend: false }) },
+  'not_sent · สวิตช์ปิด · วัดไม่ครบ': { document: headDoc({ issueAtSend: false }), zones: UNMEASURED },
+  'not_sent · มีเหตุ': { document: headDoc({ send: { ...OK_SEND, blockers: ['Lobby: ยังไม่มีภาพแบบที่ลงเอกสารได้ (ต้องเป็นรูป JPG/PNG)'] } }) },
+  'not_sent · ด่านอื่นติด': { document: headDoc({ send: OK_SEND }), failedGates: ['แพ็คเกจ'] },
+  'not_sent · ตรวจล่วงหน้าไม่สำเร็จ': { document: headDoc({ send: { ...OK_SEND, unknown: true } }) },
+  'recalled · สวิตช์เปิด': { document: headDoc({ state: 'recalled', history: HISTORY, nextDocNo: 'SU-26100001-1', send: OK_SEND }) },
+  'recalled · สวิตช์ปิด': { document: headDoc({ state: 'recalled', history: HISTORY, nextDocNo: 'SU-26100001-1', issueAtSend: false }) },
+  'recalled · วัดไม่ครบ': { document: headDoc({ state: 'recalled', history: HISTORY, send: OK_SEND }), zones: UNMEASURED },
+  'recalled · มีเหตุ': { document: headDoc({ state: 'recalled', history: HISTORY, send: { ...OK_SEND, blockers: ['นัด SV-26100011 ไม่มีวันเข้าพื้นที่'] } }) },
+  issuing: { document: headDoc({ state: 'issuing' }), request: sentRequest() },
+  'missing · กดออกได้': { document: headDoc({ state: 'missing', issue: OK_ISSUE, nextDocNo: 'SU-26100001-0' }), request: sentRequest() },
+  'missing · วัดไม่ครบ': { document: headDoc({ state: 'missing', issue: OK_ISSUE }), request: sentRequest(), zones: UNMEASURED },
+  'missing · เหตุระบบ': { document: headDoc({ state: 'missing', issue: { ...OK_ISSUE, blockers: [{ kind: 'system', text: 'ยังไม่มีข้อมูลบริษัทสำหรับหัวกระดาษ' }] } }), request: sentRequest() },
+  'missing · เหตุของเนื้อใบ': { document: headDoc({ state: 'missing', issue: { ...OK_ISSUE, blockers: [{ kind: 'content', text: 'Lobby: ยังไม่มีภาพแบบของพื้นที่' }] } }), request: sentRequest() },
+  'missing · ตรวจล่วงหน้าไม่สำเร็จ': { document: headDoc({ state: 'missing', issue: { ...OK_ISSUE, unknown: true } }), request: sentRequest() },
+  'missing · ไม่ใช่ production': { document: headDoc({ state: 'missing', issue: OK_ISSUE, storeAllowed: false }), request: sentRequest() },
+  'missing · ไม่มีสิทธิ์ออก': { document: headDoc({ access: HEAD_NO_ISSUE, state: 'missing' }), request: sentRequest() },
+  issued: { document: headDoc({ state: 'issued', current: currentRow() }), request: sentRequest() },
+  ready: { document: headDoc({ state: 'ready', current: currentRow({ frozenAt: ISSUED, ready: { customer: true, internal: true } }) }), request: sentRequest() },
+  stale: { document: headDoc({ state: 'stale', current: currentRow() }), request: sentRequest() },
+};
+/* ใบที่มีพื้นที่จากแบบ → ใบลงหน้างาน: แทนสองประโยคที่ต่างกันโดยตั้งใจ ที่เหลือต้องเท่ากันทุกคีย์ */
+const asOnsite = (view) => JSON.parse(JSON.stringify(view).replaceAll(DRAFT_DRAWING, DRAFT_ONSITE).replaceAll(FLAG_OFF_DRAWING, FLAG_OFF_ONSITE));
+
+test('🔴 S3 · ใบลงหน้างาน: `hasDrawing` ไม่ส่ง / false / ค่าที่ไม่ใช่ true ตรงตัว = ผลเดิมทุกคีย์ ทุกสถานะ', () => {
+  for (const [name, args] of Object.entries(S3_CASES)) {
+    const today = sheet(args);
+    assert.deepEqual(Object.keys(today), SHEET_KEYS, name);
+    for (const hasDrawing of [undefined, false, null, 0, 1, 'true', 'yes', {}]) {
+      assert.deepEqual(sheet({ ...args, hasDrawing }), today, `${name} · ${JSON.stringify(hasDrawing)}`);
+    }
+    // ใบลงหน้างานไม่เอ่ยคำของใบจากแบบ
+    assert.doesNotMatch(JSON.stringify(today), /มีขนาดครบ|ภาพผัง\/ภาพแบบ/, name);
+  }
+});
+
+test('⭐ S3 · ใบที่มีพื้นที่จากแบบ (`hasDrawing: true`): ทุกสถานะเท่าใบลงหน้างาน เว้นสองประโยค — ไม่มีประโยคพักเอกสาร ไม่มีคำบรรยายฉบับลูกค้าที่ตัดท่อน', () => {
+  const differs = [];
+  for (const [name, args] of Object.entries(S3_CASES)) {
+    const onsite = sheet(args);
+    const drawing = sheet({ ...args, hasDrawing: true });
+    assert.deepEqual(asOnsite(drawing), onsite, name);
+    assert.doesNotMatch(JSON.stringify(drawing), /ยังออกไม่ได้ — ระบบ|ผลถึงฝ่ายขายตามปกติ/, name);
+    // คำบรรยายของฉบับลูกค้าเต็มประโยคเสมอ ("ฝ่ายขายผู้ขอดาวน์โหลดได้ที่หน้าคำร้อง") — เดิมถูกตัดตอนเอกสารถูกพัก
+    const customer = drawing.versions.find((v) => v.key === 'customer');
+    if (customer) assert.equal(customer.note, 'ไม่มีจุดติดตั้งและข้อมูลภายใน · ฝ่ายขายผู้ขอดาวน์โหลดได้ที่หน้าคำร้อง', name);
+    if (JSON.stringify(drawing) !== JSON.stringify(onsite)) differs.push(name);
+  }
+  // สองประโยคที่ต่างกันโผล่ตรงที่ควรโผล่จริง (กันเทสต์บนเขียวเพราะไม่มีสถานะไหนพิมพ์ประโยคนั้นเลย)
+  assert.deepEqual(differs, [
+    'not_sent · วัดไม่ครบ', 'not_sent · สวิตช์ปิด', 'not_sent · สวิตช์ปิด · วัดไม่ครบ', 'recalled · วัดไม่ครบ', 'missing · วัดไม่ครบ',
+  ]);
+});
+
+test('S3 · ใบที่มีพื้นที่จากแบบ — ประโยคตรงตัวของแต่ละสถานะ: พร้อมแล้ว · สวิตช์ปิด · มีขนาดครบ · ดึงกลับสัญญา Rev ถัดไป · ส่งแล้วกดออกเอกสารได้', () => {
+  const at = (name) => sheet({ ...S3_CASES[name], hasDrawing: true });
+  assert.deepEqual(at('not_sent · วัดไม่ครบ').status, { tone: 'info', text: `${DRAFT_DRAWING} (1/2)`, items: [], foot: null, action: null });
+  assert.deepEqual(at('not_sent · พร้อม (สวิตช์เปิด)').status, { tone: 'info', text: 'พร้อมแล้ว — กดส่งผลเพื่อออกเลขที่เอกสาร', items: [], foot: null, action: null });
+  assert.deepEqual(at('not_sent · สวิตช์ปิด').status, { tone: 'info', text: FLAG_OFF_DRAWING, items: [], foot: null, action: null });
+  // สวิตช์ปิด + ยังกรอกไม่ครบ: ยังไม่ครบพูดก่อน (กติกาเดิมของใบลงหน้างาน)
+  assert.equal(at('not_sent · สวิตช์ปิด · วัดไม่ครบ').status.text, `${DRAFT_DRAWING} (1/2)`);
+  assert.equal(at('not_sent · มีเหตุ').status.text, 'เอกสารยังออกไม่ได้ — ติด 1 ข้อ');
+  assert.equal(at('recalled · สวิตช์เปิด').status.text, 'SU-26100001-0 ถูกแทนที่แล้ว — ส่งผลอีกครั้งเพื่อออก SU-26100001-1');
+  assert.equal(at('recalled · สวิตช์ปิด').status.text, 'SU-26100001-0 ถูกแทนที่แล้ว — ส่งผลอีกครั้ง แล้วกด “ออกเอกสาร” เพื่อออก SU-26100001-1');
+  assert.equal(at('recalled · วัดไม่ครบ').status.foot, `${DRAFT_DRAWING} (1/2)`);
+  const missing = at('missing · กดออกได้');
+  assert.equal(missing.status.text, 'ส่งผลแล้ว แต่ยังไม่มีเอกสาร — กด “ออกเอกสาร” เพื่อออก SU-26100001-0');
+  assert.equal(missing.issue.allowed, true, 'ใบที่ส่งระหว่างที่เอกสารถูกพัก (ไม่มีเลข) — หัวหน้ากดออกเอกสารได้ (สเปก S3 §4)');
+  assert.equal(at('missing · วัดไม่ครบ').status.foot, `${DRAFT_DRAWING} (1/2)`);
+  assert.equal(at('missing · ไม่มีสิทธิ์ออก').status.text, 'หัวหน้าฝ่ายบริการที่ตอบใบนี้ได้เป็นผู้กดออกเอกสาร');
+  assert.equal(buttons(at('issued')), 'view | download | none');
+});
+
+test('🔴 S3 · ธง `hold` บนเหตุของ server ไม่ถูกอ่านแล้ว — แถวที่พกคีย์นี้ (payload ของ server รุ่นก่อน) = เหตุระบบธรรมดา ชวนตรวจอีกครั้ง', () => {
+  const text = 'เหตุของระบบข้อหนึ่ง';
+  for (const hasDrawing of [false, true]) {
+    const plain = sheet({ hasDrawing, request: sentRequest(), document: headDoc({ state: 'missing', issue: { ...OK_ISSUE, blockers: [{ kind: 'system', text }] } }) });
+    const flagged = sheet({ hasDrawing, request: sentRequest(), document: headDoc({ state: 'missing', issue: { ...OK_ISSUE, blockers: [{ kind: 'system', text, hold: true }] } }) });
+    assert.deepEqual(flagged, plain, String(hasDrawing));
+    assert.equal(flagged.status.text, 'ส่งผลแล้ว แต่ยังออกเอกสารไม่ได้ — ติด 1 ข้อ');
+    assert.equal(flagged.status.foot, 'แก้ตามรายการแล้วกด “ตรวจอีกครั้ง” — ไม่ต้องดึงผลกลับ');
+    assert.deepEqual(flagged.status.action, { kind: 'reload', label: 'ตรวจอีกครั้ง' });
+  }
+});
+
+test('⭐ S3 · ลายเซ็นจริงบนใบจากแบบทั้งใบ: แถวสองที่นั่ง = "ทั้งสองช่อง" · แถวที่นั่งเดียว = ผู้ตรวจสอบและอนุมัติ — ทั้งโมดัลส่งผลและกล่องยืนยันออกเอกสาร', () => {
+  const BOTH = [{ seats: ['assessor', 'approver'], name: 'Arnon' }];
+  const ONE = [{ seats: ['approver'], name: 'Arnon' }];
+  const DRAWING = { mix: { onsite: 0, drawing: 3, mode: 'drawing' }, confirm: 'needed', openVisit: null };
+  // โมดัลยืนยันส่งผล (ข้อต่อจากข้อออกเอกสาร)
+  const sendLine = (signers) => surveySendConfirm({ docNo: 'RQ-AS-26100345', issuesDocument: true, method: DRAWING, signers })
+    .effects.find((line) => line.startsWith('เอกสารจะพิมพ์ลายเซ็น'));
+  assert.equal(sendLine(BOTH), 'เอกสารจะพิมพ์ลายเซ็นที่บันทึกไว้ของ Arnon ทั้งสองช่อง (ผู้ประเมิน และผู้ตรวจสอบและอนุมัติ)');
+  assert.equal(sendLine(ONE), 'เอกสารจะพิมพ์ลายเซ็นที่บันทึกไว้ของ Arnon (ผู้ตรวจสอบและอนุมัติ)');
+  // กล่องยืนยัน "ออกเอกสาร" ของใบที่ส่งแล้ว (ใบที่ถูกพักไว้ก่อนงวด S3 ออกเอกสารทางนี้) · ใบจากแบบทั้งใบเอ่ยเฉพาะผู้ส่งผล (มติเจ้าของ 19/10/2026)
+  const confirmLine = (signers) => sheet({
+    hasDrawing: true, allDrawing: true, request: sentRequest(), document: headDoc({ state: 'missing', issue: { ...OK_ISSUE, signers } }),
+  }).issue.confirm.effects.find((line) => line.startsWith('พิมพ์ลายเซ็น'));
+  assert.equal(confirmLine(BOTH),
+    'พิมพ์ลายเซ็นที่บันทึกไว้ของ Arnon ทั้งสองช่อง (ผู้ประเมิน และผู้ตรวจสอบและอนุมัติ) — เป็นลายเซ็นของผู้ส่งผล ไม่ใช่ของผู้กดออกเอกสาร');
+  assert.equal(confirmLine(ONE),
+    'พิมพ์ลายเซ็นที่บันทึกไว้ของ Arnon (ผู้ตรวจสอบและอนุมัติ) — เป็นลายเซ็นของผู้ส่งผล ไม่ใช่ของผู้กดออกเอกสาร');
+});
+
+test('⭐ S3 · กล่องยืนยัน "ออกเอกสาร" (มติเจ้าของ 19/10/2026): ใบจากแบบทั้งใบ (`allDrawing: true` ตรงตัว) เอ่ยเฉพาะผู้ส่งผล · ใบลงหน้างาน/ใบผสม = ประโยคเดิมตรงตัว · ต่างกันแค่บรรทัดนั้น', () => {
+  const OLD = (who) => `พิมพ์ลายเซ็นที่บันทึกไว้ของ ${who} — เป็นลายเซ็นของผู้ประเมินและผู้ส่งผล ไม่ใช่ของผู้กดออกเอกสาร`;
+  const SENDER = (who) => `พิมพ์ลายเซ็นที่บันทึกไว้ของ ${who} — เป็นลายเซ็นของผู้ส่งผล ไม่ใช่ของผู้กดออกเอกสาร`;
+  const TWO = [{ seats: ['assessor'], name: 'สมชาย' }, { seats: ['approver'], name: 'หัวหน้า ก' }];
+  const TWO_TEXT = 'สมชาย (ผู้ประเมิน) และ หัวหน้า ก (ผู้ตรวจสอบและอนุมัติ)';
+  const BOTH = [{ seats: ['assessor', 'approver'], name: 'Arnon' }];
+  const BOTH_TEXT = 'Arnon ทั้งสองช่อง (ผู้ประเมิน และผู้ตรวจสอบและอนุมัติ)';
+  const confirmOf = (extra, signers) => sheet({
+    ...extra, request: sentRequest(), document: headDoc({ state: 'missing', issue: { ...OK_ISSUE, signers }, nextDocNo: 'SU-26100001-0' }),
+  }).issue.confirm;
+  const lineOf = (confirm) => confirm.effects.find((line) => line.startsWith('พิมพ์ลายเซ็น'));
+  for (const [signers, who] of [[TWO, TWO_TEXT], [BOTH, BOTH_TEXT]]) {
+    // ใบลงหน้างาน (ไม่ส่งธง) · ใบผสม (`hasDrawing` อย่างเดียว) · ธงที่ไม่ใช่ `true` ตรงตัว = ประโยคเดิมทุกตัวอักษร
+    const onsite = confirmOf({}, signers);
+    assert.equal(lineOf(onsite), OLD(who));
+    for (const extra of [{ hasDrawing: true }, ...[undefined, false, null, 0, 1, 'true', 'yes', {}].map((allDrawing) => ({ hasDrawing: true, allDrawing }))]) {
+      assert.deepEqual(confirmOf(extra, signers), onsite, JSON.stringify(extra));
+    }
+    // ใบจากแบบทั้งใบ — บรรทัดลายเซ็นบรรทัดเดียวเปลี่ยน ที่เหลือของกล่องเท่าเดิมทุกคีย์
+    const desk = confirmOf({ hasDrawing: true, allDrawing: true }, signers);
+    assert.equal(lineOf(desk), SENDER(who));
+    assert.deepEqual({ ...desk, effects: desk.effects.map((line) => line.replace(SENDER(who), OLD(who))) }, onsite);
+  }
+  // ไม่มีรายชื่อผู้ลงนาม (กติกาปิด · ยังมีคนไม่มีลายเซ็น) = ไม่มีบรรทัดลายเซ็นเลย ไม่ว่าใบชนิดไหน
+  for (const extra of [{}, { hasDrawing: true }, { hasDrawing: true, allDrawing: true }]) {
+    assert.equal(lineOf(confirmOf(extra, undefined)), undefined, JSON.stringify(extra));
+  }
+  // `allDrawing` ไม่แตะส่วนอื่นของส่วนเอกสาร — ทุกสถานะของตาราง S3 (ไม่มีรายชื่อผู้ลงนาม) เท่ากับ `hasDrawing` อย่างเดียว
+  for (const [name, args] of Object.entries(S3_CASES)) {
+    assert.deepEqual(sheet({ ...args, hasDrawing: true, allDrawing: true }), sheet({ ...args, hasDrawing: true }), name);
+  }
+});
+
+test('🔴 S3 · ซอร์สทั้งแอปไม่เหลือข้อพักเอกสาร: สามคำนี้ไม่มีในไฟล์ใต้ src/ และ scripts/ (ยกเว้นไฟล์เทสต์ซึ่งเขียนคำค้นเพื่อยืนยันว่าไม่มี)', () => {
+  const root = new URL('../../../', import.meta.url);
+  const needles = ['ระบบกำลังปรับแบบเอกสาร', 'drawingHold', 'PAPER_HOLD'];
+  let scanned = 0;
+  for (const dir of ['src', 'scripts']) {
+    for (const rel of readdirSync(new URL(`${dir}/`, root), { recursive: true })) {
+      const file = String(rel);
+      if (!/\.(m|c)?jsx?$|\.tsx?$/.test(file) || /\.test\.mjs$/.test(file) || file.includes('node_modules')) continue;
+      const source = readFileSync(new URL(`${dir}/${file}`, root), 'utf8');
+      scanned += 1;
+      for (const needle of needles) assert.ok(!source.includes(needle), `${dir}/${file} ยังมี "${needle}"`);
+    }
+  }
+  assert.ok(scanned > 100, `สแกนได้ ${scanned} ไฟล์ — ที่อยู่รากผิด`);
 });
 
 // ══ ประโยคที่ซ้ำกับค่าคงที่ฝั่ง server ════════════════════════════════════

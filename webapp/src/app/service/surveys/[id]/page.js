@@ -484,6 +484,9 @@ export default function SurveySheetPage({ params }) {
       await load({ background: true });
     } catch (e) {
       setToast({ kind: "error", msg: e.message });
+      /* ⭐ ไม่ผ่านแล้วอ่านใบใหม่เบื้องหลัง — นัดอาจเพิ่งถูกยกเลิก (เช่น หัวหน้าเปลี่ยนทุกพื้นที่เป็นประเมินจากแบบ · 409 ของ
+         route) ถ้าไม่อ่านใหม่ จอยังขึ้นปุ่ม "เริ่มงาน" ของนัดที่ไม่มีแล้ว */
+      load({ background: true });
     } finally {
       setStartingVisit(false);
     }
@@ -500,6 +503,9 @@ export default function SurveySheetPage({ params }) {
     setSubmitOpen(false);
     setToast(res?.steppedBackRequest
       ? { kind: "success", msg: "ปิดว่าไปแล้วเข้าไม่ได้ · ใบกลับไปขั้นลงคิวแล้ว — TS จะลงวันใหม่ และฝ่ายขายได้รับแจ้งพร้อมเหตุผล" }
+      /* เข้าไม่ได้แต่ใบไม่ถอยขั้น (วันบนใบเป็นของการนัดรอบใหม่ · มีนัดอื่นเปิดอยู่) — ห้ามตกไปข้อความ "ส่งงานแล้ว … เคาะจุดติดตั้ง" */
+      : status === "unable"
+        ? { kind: "success", msg: res?.unableNotice ? "ปิดว่าไปแล้วเข้าไม่ได้ · ฝ่ายขายได้รับแจ้งพร้อมเหตุผล" : "ปิดว่าไปแล้วเข้าไม่ได้แล้ว" }
       : data?.canDecide === true
         /* Senior ที่ออกหน้างานเองคือคนเคาะต่อ — "หัวหน้าได้แจ้งเตือน" คือการแจ้งตัวเอง */
         ? { kind: "success", msg: "ส่งงานแล้ว — เคาะจุดติดตั้งและแพ็คเกจต่อได้ที่แท็บสรุปส่งผล" }

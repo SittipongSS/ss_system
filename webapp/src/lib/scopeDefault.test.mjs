@@ -132,11 +132,12 @@ test('สี่จอใช้ตัวกลางตัวเดียวก�
    ⇒ ค่าตั้งต้นแคบทำให้กดจากหน้าดีลแล้วเจอรายการว่างใต้หัวข้อ "คำร้องของดีล … เท่านั้น" */
 test('คิวคำร้อง: มาจากหน้าดีล (?dealId=) ต้องได้ขอบเขตกว้างสุด ไม่ใช่ defaultScope', () => {
   const src = readFileSync(join(ROOT, 'src/app/requests/page.js'), 'utf8');
-  assert.match(src, /if \(dealIdParam\) return allowed\[allowed\.length - 1\] \|\| "mine";/,
+  // ตัวอ่านลิงก์ย้ายไป lib/requests/dealLink.js (H1 · H16 2026-10-19 — รับ `&step=` / `?project=` ด้วย)
+  assert.match(src, /if \(dealLink\) return allowed\[allowed\.length - 1\] \|\| "mine";/,
     'ลิงก์จากหน้าดีลต้องถอยไปขอบเขตกว้างสุด');
-  const declAt = src.indexOf('const dealIdParam = searchParams.get("dealId")');
+  const declAt = src.indexOf('const dealLink = useMemo(() => readDealRequestsLink(searchParams)');
   const scopeAt = src.indexOf('const [scope, setScope] = useState(');
-  assert.ok(declAt > -1 && declAt < scopeAt, 'dealIdParam ต้องประกาศก่อน state ของขอบเขต');
+  assert.ok(declAt > -1 && declAt < scopeAt, 'dealLink ต้องประกาศก่อน state ของขอบเขต');
 });
 
 /* 🔴 ค่าตั้งต้นที่แคบลงทำให้จอแรกวิ่งผ่านสาขา "ของฉัน" ตั้งแต่ก่อน id ของผู้ใช้มาถึง —

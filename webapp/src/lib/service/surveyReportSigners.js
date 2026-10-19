@@ -21,9 +21,12 @@
 //      ลายเซ็น (เช่นผู้บริหารฝ่ายขาย) แล้วลายเซ็นจริงของคนนั้นขึ้นกระดาษที่ส่งลูกค้า โดยเจ้าตัวไม่รู้เรื่อง ·
 //      ใบที่ถูกตอบผ่านปุ่มทั่วไปก่อน 24/09 ก็พิมพ์ลายเซ็นของคนที่ไม่ใช่หัวหน้าใต้คำว่า "หัวหน้าฝ่ายบริการ" ได้เหมือนกัน
 //
-// ⚠️ ไม่ดูวิธีประเมินตอนหาที่นั่ง — ใบประเมินจากแบบทั้งใบไม่มีนัด จึงไม่มีที่นั่งผู้ประเมินเอง · **งวด S3 ต้องตัดสินว่าใครลงนามที่นั่งนั้น**
-//   ก่อนถอดข้อกันเอกสารของใบจากแบบ (`SURVEY_REPORT_DRAWING_HOLD`): วันนี้ใบที่มีพื้นที่จากแบบแม้พื้นที่เดียวไม่ถูกถามเรื่องลายเซ็นเลย
-import { surveyMethodMix } from './surveyMethod';
+// ⭐ **ใบที่มีพื้นที่ประเมินจากแบบ** (งวด S3 §2.6 · มติ O1) — ถูกถามเรื่องลายเซ็นเหมือนใบลงหน้างาน:
+//   ใบผสม     ผู้ประเมิน = คนบนนัด · ผู้ตรวจสอบและอนุมัติ = ผู้ส่งผล (กติกาเดียวกับใบลงหน้างานทุกข้อ)
+//   จากแบบล้วน ไม่มีนัด ⇒ ที่นั่งที่พิมพ์ชื่อมีแค่ผู้ส่งผล · ที่นั่งที่ 1 ("ผู้ประเมินจากแบบ") ได้ **ลายเซ็นของผู้ส่งผล**
+//             เฉพาะเมื่อ `surveyDrawingSeatSigner` บอกว่าผู้ประเมินจากแบบคนเดียวของทุกพื้นที่คือเขา — ไม่งั้นที่นั่งที่ 1 พิมพ์ชื่อกับคำ
+//             "ลายเซ็นอิเล็กทรอนิกส์" (`surveyReportView`) · ไม่มีการอ่านเพิ่ม ไม่มีประโยคใหม่
+import { surveyDrawingAssessor, surveyMethodMix } from './surveyMethod';
 
 /** ค่าของ `inputs.signatureRule` เมื่อกติกาเปิด — ค่าอื่นทุกค่า (รวมไม่มีคีย์) = ปิด */
 export const SURVEY_SIGN_RULE = 'required';
@@ -139,7 +142,7 @@ function people(inputs) {
  * ③ **ไม่รู้ว่าบัญชีนั่งได้ไหม** (`null`) — ชิ้นที่ตัดสินอ่านไม่สำเร็จ (`inputs.unknown`) = ด่านพูดว่า "อ่าน…ไม่สำเร็จ" แทนแล้ว ไม่พูดซ้ำ ·
  *   ไม่งั้น `{ kind: 'system', text }` (ไม่ตีกลับการส่งผล แต่ขั้นออกเลขไม่ออก) · ที่นั่งนั้นยังถูกถามเรื่องลายเซ็นตามข้อ ①
  *
- * ⚠️ ไม่ดูข้อกันเอกสารของใบจากแบบ และไม่ดูว่าอ่านลายเซ็นสำเร็จไหม — สองเรื่องนั้นเป็นของผู้เรียก (`surveyReportFreezeIssues`)
+ * ⚠️ ไม่ดูว่าอ่านลายเซ็นสำเร็จไหม — เรื่องนั้นเป็นของผู้เรียก (`surveyReportFreezeIssues`)
  */
 export function surveyReportSignatureIssues(inputs) {
   if (!ruleOn(inputs)) return [];
@@ -195,26 +198,57 @@ export function surveyReportSignatureIssues(inputs) {
 }
 
 /**
+ * 🔑 **ใครนั่งที่นั่งที่ 1 ของใบประเมินจากแบบทั้งใบ** (งวด S3 §2.6) — `{ userId, name }` ของผู้ส่งผล หรือ `null`
+ *   ไม่ใช่ `null` เมื่อครบทุกข้อ:
+ *     · ทุกพื้นที่ที่ยังอยู่ในใบเป็นจากแบบ (`surveyMethodMix(...).mode === 'drawing'`)
+ *     · ใบถูกตอบ (รอบตรวจก่อนส่งผล = ผู้ส่งที่กำลังจะเขียนที่ตัวโหลดทับมาแล้ว) และมี `answeredById` กับ `answeredByName`
+ *     · ทุกพื้นที่ที่ไม่ถูกตัด ผู้ประเมินจากแบบ (`surveyDrawingAssessor`) คือผู้ส่งผล:
+ *         แถวรู้บัญชี (`byId`) ⇒ บัญชีต้องตรง · แถวไม่รู้บัญชี (คนสลับวิธี — ไม่มีคอลัมน์ id) ⇒ ชื่อตรงกันตัวต่อตัว (ตัดช่องว่างหัวท้าย)
+ *   ⭐ ทางชื่อมีไว้ให้ใบที่ถูกสลับทั้งใบโดยไม่บันทึกใหม่ (ทุกพื้นที่ตกทาง ② ของ `surveyDrawingAssessor`) — ไม่งั้นหัวหน้าคนเดียว
+ *      ขึ้นสองที่นั่ง ที่นั่งหนึ่งเป็นคำ อีกที่นั่งเป็นรูป · ของที่คัดลอกคือ **ลายเซ็นของผู้ส่งผลเอง** ใต้ชื่อที่เท่ากับชื่อเขา และกล่องยืนยัน
+ *      บอกชื่อทั้งสองที่นั่งก่อนกด (`surveyReportSignersText`)
+ * ⚠️ ไม่ถามว่ากติกาลายเซ็นเปิดไหม — ตอบแค่เรื่องคน (ภาพนิ่งเก็บคำตอบเป็น `assessment.drawingById`)
+ */
+export function surveyDrawingSeatSigner(inputs) {
+  if (surveyMethodMix(inputs?.zones).mode !== 'drawing') return null;
+  const request = inputs?.request || null;
+  const id = idOf(request?.answeredById);
+  const name = text(request?.answeredByName);
+  if (!request?.answeredAt || !id || !name) return null;
+  for (const row of list(inputs.zones)) {
+    if (!row || (row.status || 'ok') === 'cut') continue;
+    const who = surveyDrawingAssessor(row, request);
+    const same = who?.byId ? who.byId === id : who?.name != null && who.name === name;
+    if (!same) return null;
+  }
+  return { userId: id, name };
+}
+
+/**
  * 🔑 **ลายเซ็นฉบับที่จะพิมพ์ คนละแถว** — `[{ seats, userId, name, version }]` · ป้อนตัวเตรียมไฟล์ลายเซ็น
  *   (`prepareSurveyReportSignatures`) และเป็นของที่เส้นส่งผลส่งต่อให้ขั้นออกเลข (ตรึงฉบับ ณ ตอนกดส่ง)
  *   `version` = `{ versionId, versionNumber, storagePath, sha256, width, height }` จาก `inputs.signatures`
  *
- * คืน `[]` เว้นแต่ **ครบทั้งสี่ข้อ**: กติกาเปิด · ใบไม่ติดข้อกันเอกสารของใบจากแบบ (ไม่มีพื้นที่จากแบบที่ยังอยู่ในใบ) ·
+ * คืน `[]` เว้นแต่ **ครบทั้งสามข้อ**: กติกาเปิด ·
  *   บัญชีของคนบนทุกที่นั่ง **นั่งที่นั่งนั้นได้** (`surveyReportSeatEligible` เป็น `true` ตรงตัว) · ทุกที่นั่งที่พิมพ์ชื่อมีลายเซ็น
  *   ⇒ "ไม่ว่าง" แปลว่าเอกสารของใบนี้พิมพ์ลายเซ็นได้ครบทุกที่นั่ง (จอใช้บอกชื่อผู้ลงนามในกล่องยืนยัน)
+ * ⭐ ใบจากแบบล้วนที่ `surveyDrawingSeatSigner` ไม่เป็น `null` — แถวของผู้ส่งผลได้ `seats: ['assessor', 'approver']`
+ *   (กล่องยืนยันพูดว่าลายเซ็นลงทั้งสองช่อง) · สิทธิ์ถามเฉพาะที่นั่ง `approver`: สิทธิ์นั่งที่นั่งที่ 1 ของใบนี้คือสิทธิ์ส่งผล
+ *   (ธง `assessor` มาจากบัญชีบนนัด ซึ่งใบนี้ไม่มี)
  * 🔴 `[]` = **ไม่มีใครไปอ่านไฟล์ลายเซ็นในคลัง** — บัญชีที่นั่งไม่ได้ (หรือยังไม่รู้) ไม่ถูกดึงไฟล์ แม้จะมีลายเซ็นอยู่
  * 🔴 `storagePath` อยู่ในแถวนี้ — **ห้ามส่งทั้งแถวออก payload** (ผู้เรียกฝั่งจอคัดแค่ `seats` กับ `name`)
  */
 export function surveyReportSignerVersions(inputs) {
   if (!ruleOn(inputs)) return [];
-  if (surveyMethodMix(inputs.zones).drawing > 0) return [];
+  const seat1 = surveyDrawingSeatSigner(inputs);
   const rows = people(inputs);
   const out = [];
   for (const person of rows) {
     if (!person.seats.every((seat) => surveyReportSeatEligible(inputs, seat) === true)) return [];
     const version = versionOf(inputs, person.userId);
     if (!version) return [];
-    out.push({ seats: [...person.seats], userId: person.userId, name: person.name, version });
+    const both = seat1 && person.userId === seat1.userId && person.seats.includes('approver') && !person.seats.includes('assessor');
+    out.push({ seats: both ? ['assessor', 'approver'] : [...person.seats], userId: person.userId, name: person.name, version });
   }
   return out;
 }

@@ -331,7 +331,7 @@ test('🔴 โมดัลส่งผล: ตัวตัดสินได้ 
   assert.match(PAGE, /const OPEN_VISIT_STATES = \["draft", "scheduled", "in_progress"\];/);
   assert.match(PAGE, /const sendMethod = view\.send\.confirm\.required\s*\? \{ mix: view\.mix, confirm: sendChoice, openVisit: sendOpenVisit \} : null;/,
     '`view.mix` (มี mode) ไม่ใช่ `view.send.confirm.mix`');
-  // ตัวตัดสินได้ทั้งสองอย่างในคำเรียกเดียว: `signers` (ลายเซ็นจริง · PR-SIG ของ main) แล้ว `method` (งวด S2b) — ตัวตัดสินไม่พิมพ์ข้อลายเซ็นบนใบที่มีพื้นที่จากแบบ (เอกสารถูกพักไว้)
+  // ตัวตัดสินได้ทั้งสองอย่างในคำเรียกเดียว: `signers` (ลายเซ็นจริง · PR-SIG ของ main) แล้ว `method` (งวด S2b) — งวด S3: ใบที่มีพื้นที่จากแบบได้ข้อลายเซ็นเหมือนใบลงหน้างาน (เอกสารไม่ถูกพักแล้ว)
   assert.match(PAGE, /documentUnknown: view\.send\.documentUnknown,\s*signers: view\.send\.signers,\s*method: sendMethod,\s*sendBackPending: view\.send\.sendBackPending,/);
   assert.equal((PAGE.match(/signers: view\.send\.signers,/g) || []).length, 1, 'ส่ง `signers` ครั้งเดียว');
   assert.equal((PAGE.match(/method: sendMethod,/g) || []).length, 1, 'ส่ง `method` ครั้งเดียว');

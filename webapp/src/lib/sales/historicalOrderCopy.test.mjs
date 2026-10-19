@@ -5,14 +5,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  HISTORICAL_APPROVE_TOAST, HISTORICAL_SETUP_ISSUE_TEXT, PACKS_ROUNDS_HEAD, historicalAfterSendRail, historicalApprovalFacts, historicalBillingDatesText,
-  historicalCancelEffect,
+  HISTORICAL_ALIGNMENT_MISSING_SAVED, HISTORICAL_APPROVE_TOAST, HISTORICAL_PACK_QTY_NOT_STORED_REPLAYED, HISTORICAL_PACK_QTY_NOT_STORED_SAVED,
+  HISTORICAL_QUOTE_SERVICE_SUFFIX, HISTORICAL_SETUP_ISSUE_TEXT, PACKS_ROUNDS_HEAD, historicalAfterSendRail, historicalApprovalFacts, historicalBillingDatesText,
+  historicalCancelEffect, historicalQuoteServiceDiff, historicalQuoteServiceMismatch,
   historicalCancelPrompt, historicalCancelToast, historicalCoverageSegments, historicalOpeningVoidSummary, historicalOpeningRejectNote, historicalOverrideNote, historicalRejectDetail,
   historicalPacksCellText, historicalPacksRoundsText, historicalRoundsCellText, historicalRoundsSoldText, historicalServiceTotals, historicalSetupIncompleteMessage,
   historicalServiceProgress, historicalStatusCopy, historicalWithdrawDetail, historicalWorkflowSteps,
   historicalZoneState, quoteLineText,
 } from './historicalOrderCopy.js';
 import { SERVICE_ROUNDS_UNIT } from './serviceOrders.js';
+import { PACK_COLUMN_LABEL, linePackQtyText } from './linePackView.js';
 import { HISTORICAL_CORRECTION_PATH, HISTORICAL_STATUS_NOTE } from './historicalOrders.js';
 import { historicalApprovalPrompt } from '../approvalPrompt.js';
 import { workflowStepsFromIndex } from '../documentControlModel.js';
@@ -53,8 +55,12 @@ const PACKS_ROW = 'รอบละกี่แพ็ค · จำนวนรอ
   + ' · ชั้น M ทางเชื่อม BTS 1 แพ็ค/รอบ × 12 เดือน · ห้องน้ำหญิง ชั้น 1 1 แพ็ค/รอบ × 12 เดือน · ทางเข้าหลัก 2 แพ็ค/รอบ × 12 เดือน';
 const PACKS_WARN = /^⚠️ ยังไม่ใส่รอบละกี่แพ็ค/;
 /* คำที่ยอมให้มี "แพ็ค" (มติ 26/09 — IMPL_PLAN_D §0.2 ข้อ 14 · ป้ายตามมติ 29/09): แพ็คเกจ · แต่ละครั้งกี่แพ็ค · แพ็ค/รอบ เท่านั้นในไฟล์นี้
-   · "แพ็คต่อรอบ" (ป้ายเดิมก่อนมติ 29/09) ไม่ยอมแล้ว */
-const LOOSE_PACK = /(?<!กี่)แพ็ค(?!เกจ|\/รอบ)/;
+   · "แพ็คต่อรอบ" (ป้ายเดิมก่อนมติ 29/09) ไม่ยอมแล้ว
+   ⭐ ย้ายความคาดหวังโดยเจตนา (งวด PR-5 · มติเจ้าของ 23/09 "ต้องไม่ควรแตกต่างจาก form ใบเสนอราคา" + 08/10 ข้อ A1–A2 · ข้อวินิจฉัย 7 ·
+     แผน IMPL_PLAN_PR5 §5 แถว G9): เดิมยอมสามรูป — วันนี้เพิ่มสองรูปของเลขแพ็คของบรรทัด: ชื่อหัวคอลัมน์ "แพ็ค/เดือน" และวลีของมติ A1
+     "n แพ็ค × m เดือน" (ตามด้วยจำนวนเดือนเสมอ ⇒ อ่านได้ความหมายเดียว) · ไม่ได้คลายด่าน: "N แพ็ค" เปล่า ๆ · "2 แพ็ค × 12" ที่ไม่มีหน่วยเดือน ·
+     "แพ็คต่อรอบ" ยังถูกจับเหมือนเดิม (ตัวจับทดสอบตัวเองที่ยามรวมท้ายไฟล์ — ห้ารูป) */
+const LOOSE_PACK = /(?<!กี่)แพ็ค(?!เกจ|\/รอบ|\/เดือน| × [\d,]+ เดือน)/;
 const CONTRACT = {
   id: 'CTR-H1', source: 'external', status: 'draft', kind: 'service', contractNo: null,
   externalDocKind: 'customer_po', externalRef: 'PO-SPW-2026-0118',
@@ -663,9 +669,10 @@ const SITES = [
   { id: 'ST-1044', code: 'ST-1044', name: 'สยามดิสคัฟเวอรี่', customerId: 'CUS-SPW', kind: 'customer', isActive: true },
 ];
 const ZONES = LINE_ZONES.map((z) => ({ id: z.zoneId, siteId: z.siteId, name: z.zoneName, code: z.zoneCode, isActive: true }));
-/* แพ็คต่อรอบเป็นข้อความแบบที่ฟอร์มส่ง (historicalWizardBody → text) · รอบบังคับแล้ว (mig 0394/P4) */
+/* แพ็คต่อรอบเป็นข้อความแบบที่ฟอร์มส่ง (historicalWizardBody → text) · รอบบังคับแล้ว (mig 0394/P4)
+   ⭐ งวด PR-5 (แผน IMPL_PLAN_PR5 §5 แถว G16): เลขแพ็คของบรรทัดบังคับ ⇒ แถวตั้งต้นพก `packQty: '1'` (ข้อความแบบที่ฟอร์มส่ง · คูณ 1 = ยอดเดิมทุกสตางค์) */
 const zoneRow = (zoneId, qty, extra = {}) => ({
-  zoneId, productId: 'P-PKG', qty, discountType: null, discountValue: 0, rounds: 12, packsPerRound: '2', ...extra,
+  zoneId, productId: 'P-PKG', packQty: '1', qty, discountType: null, discountValue: 0, rounds: 12, packsPerRound: '2', ...extra,
 });
 const planOf = (extra = {}, actor = PIM) => planHistoricalServiceOrder({
   customerId: 'CUS-SPW', ownerId: 'U-PIM',
@@ -746,12 +753,17 @@ test('ไฟล์ถ้อยคำ pure — ไม่อ่านนาฬิ�
   const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
   assert.doesNotMatch(code, /new Date\(|Date\.now\(|businessDate\(|supabase|\.from\(/);
   const imports = [...code.matchAll(/from '([^']+)'/g)].map((m) => m[1]).sort();
+  /* ⭐ ย้ายความคาดหวังโดยเจตนา (งวด PR-5 · มติเจ้าของ 08/10 ข้อ A1–A2 · ข้อวินิจฉัย 7 · แผน IMPL_PLAN_PR5 §5 แถว G11): เดิมเจ็ดไฟล์ — วันนี้แปด
+     · ไม่ได้คลายด่าน: รายการยังปิด (ไฟล์ที่เก้า = แดง) และไฟล์ที่เพิ่มเป็นไฟล์ล้วนฝั่ง client ที่ทุกตัวอ่านของเลขแพ็คใช้ร่วมกัน */
   assert.deepEqual(imports, [
     '@/lib/format', '@/lib/sales/contracts', '@/lib/sales/historicalDuplicates', '@/lib/sales/historicalOrders',
+    /* งวด PR-5: คำและตัวอ่านของเลขแพ็คของบรรทัด (PACK_COLUMN_LABEL · linePackQty · linePackQtyText) มาจากไฟล์กลางของตัวอ่าน ไม่พิมพ์ซ้ำที่นี่ */
+    '@/lib/sales/linePackView',
     '@/lib/sales/paymentCoverage', '@/lib/sales/salesOrderPayments',
     /* มติเจ้าของ 29/09: คำเรียกรอบ "จำนวนรอบบริการ" (SERVICE_ROUNDS_LABEL) มาจากตัวตัดสินงานบริการฝั่ง client ที่เดียว */
     '@/lib/sales/serviceOrders',
   ]);
+  /* ไฟล์ที่เพิ่มเองก็ล้วน: import แค่ format · หน่วย · linePacks (ยามของมันอยู่ที่ linePackView.test.mjs) */
 });
 
 /* 🐞 รีวิว 25/09: ส่วนลดท้ายใบ (มติเจ้าของ 25/09) ไปถึงโมดัลอนุมัติได้แล้ว แต่บรรทัดเงินเคยข้ามมัน ⇒ 42,000 + 2,800 ≠ 42,800
@@ -807,15 +819,196 @@ test('โมดัลอนุมัติ: ใบที่อาจซ้ำ �
   assert.deepEqual(clean.checklist, historicalApprovalFacts(ORDER, EXTRAS).checklist);
 });
 
+// ── งวด PR-5: เลขแพ็คของบรรทัด (mig 0409 · มติเจ้าของ 08/10 ข้อ A1–A2 · 12/10 ข้อ A8) ─────────────────────────────────────────
+/* บรรทัดที่มีเลขแพ็คพูดด้วยวลีของมติ A1 "2 แพ็ค × 12 เดือน × ฿3,500 = ฿84,000" · บรรทัดที่ไม่มีเลขแพ็ค (ทุกบรรทัดที่เก็บก่อนงวดนี้) = ประโยคเดิม
+   ทุกตัวอักษร (ของเดิมพูด "12 เดือน × ฿3,500.00 = ฿84,000.00" กับบรรทัดที่เก็บ 84,000 — เลขไม่ลงตัวบนจอของผู้อนุมัติ) */
+test('PR-5 ⭐ บรรทัดที่มีเลขแพ็ค: "2 แพ็ค × 12 เดือน × ราคา [− ส่วนลด] = ยอด" · บรรทัดที่ไม่มีเลขแพ็ค = ประโยคเดิมทุกตัวอักษร', () => {
+  const pack = { packQty: 2, qty: 12, unit: 'เดือน', unitPrice: 3500, discountAmount: 0, lineTotal: 84000 };
+  assert.equal(collect(quoteLineText(pack)), '2 แพ็ค × 12 เดือน × ฿3,500.00 = ฿84,000.00');
+  assert.equal(collect(quoteLineText({ ...pack, discountAmount: 14400, lineTotal: 69600 })),
+    '2 แพ็ค × 12 เดือน × ฿3,500.00 − ส่วนลด ฿14,400.00 = ฿69,600.00');
+  assert.equal(collect(quoteLineText({ ...pack, packQty: 1, lineTotal: 42000 })), '1 แพ็ค × 12 เดือน × ฿3,500.00 = ฿42,000.00');
+  // หน่วยของบรรทัดที่มีเลขแพ็คมาจากวลีกลาง (เดือน) ไม่ใช่จากช่องหน่วยของแถว — แถวของเสริมที่ยังพกหน่วยขายของทะเบียนก็พูดถูก
+  assert.equal(quoteLineText({ ...pack, unit: 'แพ็คเกจ' }), '2 แพ็ค × 12 เดือน × ฿3,500.00 = ฿84,000.00');
+  assert.equal(quoteLineText({ ...pack, packQty: '43', qty: 4, unitPrice: 2900, lineTotal: 498800 }), '43 แพ็ค × 4 เดือน × ฿2,900.00 = ฿498,800.00');
+  // บรรทัดที่ไม่มีเลขแพ็ค / เลขแพ็คที่เก็บไม่ได้ = ประโยคเดิมทุกตัวอักษร (ค่าที่ตรึงไว้ก่อนงวดนี้)
+  for (const packQty of [undefined, null, '', 0, '1.5', 10000]) {
+    assert.equal(quoteLineText({ packQty, qty: 12, unit: 'แพ็คเกจ', unitPrice: 3500, discountAmount: 0, lineTotal: 42000 }),
+      '12 แพ็คเกจ × ฿3,500.00 = ฿42,000.00', JSON.stringify(packQty));
+  }
+  assert.equal(quoteLineText({ qty: 12, unit: 'แพ็คเกจ', unitPrice: 3500, discountAmount: 2100, lineTotal: 39900 }),
+    '12 แพ็คเกจ × ฿3,500.00 − ส่วนลด ฿2,100.00 = ฿39,900.00');
+  for (const text of [quoteLineText(pack), quoteLineText({ ...pack, discountAmount: 14400, lineTotal: 69600 })]) assert.doesNotMatch(text, LOOSE_PACK);
+});
+
+test('PR-5 โมดัลอนุมัติ "รายการ:": บรรทัดที่มีเลขแพ็คพูดวลีของเลขแพ็ค · สองบรรทัดที่ต่างกันแค่เลขแพ็คเป็นสองกลุ่ม (ยอดต่างกัน) · เลขแพ็คเท่ากันรวมกลุ่มเหมือนเดิม', () => {
+  const line = (id, zone, packQty, extra = {}) => ({
+    id, serviceZoneId: zone, productId: 'P-SDS', fgCode: 'FG-SNS-02-001-0020', packQty, qty: 12, unit: 'เดือน', unitPrice: 3500,
+    discountAmount: 0, lineTotal: (packQty || 1) * 12 * 3500, ...extra,
+  });
+  const order = (lines) => ({ ...ORDER, lines, subtotal: lines.reduce((sum, l) => sum + l.lineTotal, 0), vatAmount: 0,
+    totalAmount: lines.reduce((sum, l) => sum + l.lineTotal, 0) });
+  const rowOf = (facts) => facts.checklist.find((l) => l.startsWith('รายการ:'));
+  // ต่างกันแค่เลขแพ็ค (1 กับ 2) — เดิมคีย์ของกลุ่มไม่มีเลขแพ็ค จึงรวมเป็นบรรทัดเดียวที่พูดยอดของตัวแรก "(2 โซน)"
+  const mixed = collect(historicalApprovalFacts(order([line('L1', 'Z-1002-01', 1), line('L2', 'Z-1002-02', 2)]), { ...EXTRAS, lineZones: [] }));
+  assert.equal(rowOf(mixed), 'รายการ: FG-SNS-02-001-0020 1 แพ็ค × 12 เดือน × ฿3,500.00 = ฿42,000.00'
+    + ' · FG-SNS-02-001-0020 2 แพ็ค × 12 เดือน × ฿3,500.00 = ฿84,000.00');
+  // เลขแพ็คเท่ากันทุกโซน = กลุ่มเดียวพร้อมจำนวนโซน (พฤติกรรมเดิมของการรวมกลุ่ม)
+  const same = collect(historicalApprovalFacts(order([line('L1', 'Z-1002-01', 2), line('L2', 'Z-1002-02', 2), line('L3', 'Z-1002-03', '2')]),
+    { ...EXTRAS, lineZones: [] }));
+  assert.equal(rowOf(same), 'รายการ: FG-SNS-02-001-0020 2 แพ็ค × 12 เดือน × ฿3,500.00 = ฿84,000.00 (3 โซน)');
+  // ใบที่มีทั้งบรรทัดเก่า (ไม่มีเลขแพ็ค) และบรรทัดที่มีเลขแพ็ค 1: ยอดเท่ากันแต่เป็นสองกลุ่ม — ประโยคของแต่ละตัวต่างกัน
+  const legacy = { ...line('L0', 'Z-1044-01', null), unit: 'แพ็คเกจ' };
+  const both = collect(historicalApprovalFacts(order([legacy, line('L1', 'Z-1002-01', 1)]), { ...EXTRAS, lineZones: [] }));
+  assert.equal(rowOf(both), 'รายการ: FG-SNS-02-001-0020 12 แพ็คเกจ × ฿3,500.00 = ฿42,000.00'
+    + ' · FG-SNS-02-001-0020 1 แพ็ค × 12 เดือน × ฿3,500.00 = ฿42,000.00');
+  for (const facts of [mixed, same, both]) assert.ok(!facts.checklist.some((l) => LOOSE_PACK.test(l)), facts.checklist.join('\n'));
+  // ใบที่ไม่พกบรรทัดมา = ถอยไปแถวโซนของเสริม ซึ่งพกเลขแพ็คด้วย (loadHistoricalOrderExtras)
+  const fromZones = collect(historicalApprovalFacts({ ...ORDER, lines: [] }, {
+    ...EXTRAS, lineZones: LINE_ZONES.slice(0, 1).map((zone) => ({ ...zone, packQty: 2, qty: 12, unit: 'เดือน', unitPrice: 3500, lineTotal: 84000, packsPerRound: 2 })),
+  }));
+  assert.equal(rowOf(fromZones), 'รายการ: FG-SNS-02-001-0012 2 แพ็ค × 12 เดือน × ฿3,500.00 = ฿84,000.00');
+});
+
+/* PR-5 D1(ก) (มติเจ้าของ 12/10 ข้อ A8 "ปุ่มรับค่า + เตือน"): คู่เงินของบรรทัด (เลขแพ็ค · จำนวน) กับคู่ของงานบริการ (รอบละกี่แพ็ค · จำนวนรอบบริการ)
+   เทียบ **แยกตัว** — ต่างกัน = เตือน ไม่กั้น · เทียบเฉพาะบรรทัดที่มีเลขแพ็ค (แบบเดียวกับตารางงานบริการของใบใหม่ · มติ A7) และเฉพาะคู่ที่สองข้าง
+   เป็นจำนวนเต็มบวก */
+test('PR-5 D1(ก) historicalQuoteServiceDiff: เทียบแยกตัว · ข้างที่เทียบไม่ได้ = ไม่ต่าง · บรรทัดที่ไม่มีเลขแพ็คไม่เทียบอะไรเลย', () => {
+  const diff = (row) => historicalQuoteServiceDiff(row);
+  const base = { packQty: 2, qty: 12, packsPerRound: 2, rounds: 12 };
+  assert.deepEqual(diff(base), { packs: false, months: false });
+  assert.deepEqual(diff({ ...base, packsPerRound: 1 }), { packs: true, months: false });
+  assert.deepEqual(diff({ ...base, rounds: 6 }), { packs: false, months: true });
+  assert.deepEqual(diff({ ...base, packsPerRound: 1, rounds: 6 }), { packs: true, months: true });
+  // บรรทัดของแผนใช้ชื่อ serviceRounds · แถวของฟอร์มเป็นข้อความ — กติกาเดียวกัน
+  assert.deepEqual(diff({ packQty: 2, qty: 12, packsPerRound: 2, serviceRounds: 6 }), { packs: false, months: true });
+  assert.deepEqual(diff({ packQty: '2', qty: '12', packsPerRound: '1', rounds: '6' }), { packs: true, months: true });
+  assert.deepEqual(diff({ packQty: ' 2 ', qty: '12', packsPerRound: '2', rounds: '12' }), { packs: false, months: false });
+  // ข้างใดข้างหนึ่งเทียบไม่ได้ (ว่าง · ไม่ใช่จำนวนเต็มบวก) = ไม่ต่าง — ช่องว่างมีด่านของมันเอง ไม่ใช่คำเตือนนี้
+  for (const blank of ['', null, undefined, 0, '0', '1.5', 'abc', true]) {
+    assert.deepEqual(diff({ ...base, packsPerRound: blank, rounds: 6 }), { packs: false, months: true }, `packsPerRound ${JSON.stringify(blank)}`);
+    assert.deepEqual(diff({ ...base, packsPerRound: 1, rounds: blank }), { packs: true, months: false }, `rounds ${JSON.stringify(blank)}`);
+    assert.deepEqual(diff({ ...base, packsPerRound: 1, qty: blank, rounds: 6 }), { packs: true, months: false }, `qty ${JSON.stringify(blank)}`);
+  }
+  // บรรทัดที่ไม่มีเลขแพ็ค (เก็บก่อนงวดนี้ — จำนวนเคยคีย์รวม เช่น 72) / เลขแพ็คที่ใช้ไม่ได้: ไม่เทียบอะไรเลย แม้จำนวน ≠ จำนวนรอบบริการ
+  for (const packQty of [undefined, null, '', 0, '0', '02', '1.5', 10000, 'abc']) {
+    assert.deepEqual(diff({ packQty, qty: 72, packsPerRound: 1, rounds: 12 }), { packs: false, months: false }, JSON.stringify(packQty));
+  }
+  assert.deepEqual(diff(), { packs: false, months: false });
+  assert.deepEqual(diff(null), { packs: false, months: false });
+  // ตัวนี้ไม่แตะแถว
+  const frozen = Object.freeze({ ...base, packsPerRound: 1 });
+  assert.deepEqual(diff(frozen), { packs: true, months: false });
+});
+
+test('PR-5 D1(ก) historicalQuoteServiceMismatch: ประโยคเดียวของทั้งใบ — เลขรายการ = ตำแหน่งในตาราง · สองคู่คั่นด้วยจุดกลาง · เกิน 5 รายการสรุปที่เหลือ · ตรงกัน = null', () => {
+  const row = (packsPerRound = 2, rounds = 12) => ({ packQty: 2, qty: 12, packsPerRound, rounds });
+  assert.deepEqual(historicalQuoteServiceMismatch([row(), row()]), { packs: [], months: [], text: null });
+  assert.deepEqual(historicalQuoteServiceMismatch([]), { packs: [], months: [], text: null });
+  assert.deepEqual(historicalQuoteServiceMismatch(null), { packs: [], months: [], text: null });
+  const one = collect(historicalQuoteServiceMismatch([row(1), row(2, 6), row(1)]));
+  assert.deepEqual([one.packs, one.months], [[1, 3], [2]]);
+  assert.equal(one.text, 'รายการ 1, 3: “แพ็ค/เดือน” ≠ รอบละกี่แพ็ค · รายการ 2: จำนวน ≠ จำนวนรอบบริการ — ตรวจอีกครั้ง (ไม่บังคับให้เท่า)');
+  assert.equal(collect(historicalQuoteServiceMismatch([row(), row(1)])).text, 'รายการ 2: “แพ็ค/เดือน” ≠ รอบละกี่แพ็ค — ตรวจอีกครั้ง (ไม่บังคับให้เท่า)');
+  assert.equal(collect(historicalQuoteServiceMismatch([row(2, 6)])).text, 'รายการ 1: จำนวน ≠ จำนวนรอบบริการ — ตรวจอีกครั้ง (ไม่บังคับให้เท่า)');
+  // แถวที่ว่าง/ไม่ใช่อ็อบเจกต์ยังกินตำแหน่ง — เลขรายการต้องตรงกับคอลัมน์ "#" ของตาราง
+  assert.deepEqual(historicalQuoteServiceMismatch([null, row(1)]).packs, [2]);
+  // เกิน maxRows (ค่าตั้งต้น 5) = บอกห้ารายการแรก + จำนวนที่เหลือ
+  const many = collect(historicalQuoteServiceMismatch(Array.from({ length: 17 }, () => row(1))));
+  assert.equal(many.packs.length, 17);
+  assert.equal(many.text, 'รายการ 1, 2, 3, 4, 5 และอีก 12 รายการ: “แพ็ค/เดือน” ≠ รอบละกี่แพ็ค — ตรวจอีกครั้ง (ไม่บังคับให้เท่า)');
+  assert.equal(historicalQuoteServiceMismatch(Array.from({ length: 3 }, () => row(1)), { maxRows: 2 }).text,
+    'รายการ 1, 2 และอีก 1 รายการ: “แพ็ค/เดือน” ≠ รอบละกี่แพ็ค — ตรวจอีกครั้ง (ไม่บังคับให้เท่า)');
+  // คำของท้ายประโยค = ค่าคงที่ที่ฟอร์มคีย์ใบอ่านด้วย (quoteLink.suffix) · ชื่อหัวคอลัมน์มาจากค่าคงที่กลาง
+  assert.equal(HISTORICAL_QUOTE_SERVICE_SUFFIX, 'ตรวจอีกครั้ง (ไม่บังคับให้เท่า)');
+  assert.ok(one.text.endsWith(` — ${HISTORICAL_QUOTE_SERVICE_SUFFIX}`));
+  assert.ok(one.text.includes(`“${PACK_COLUMN_LABEL}”`));
+  for (const text of [one.text, many.text]) assert.doesNotMatch(text, LOOSE_PACK);
+});
+
+test('PR-5 D1(ก) โมดัลอนุมัติ: คู่ไม่ตรง = บรรทัด ⚠️ ต่อจากแถวรอบละกี่แพ็ค (เตือน ไม่กั้น) · ตรงกัน = ไม่มีบรรทัด · ของเสริมโหลดไม่ขึ้น = ไม่มีบรรทัด · ใบเก่าที่ไม่มีเลขแพ็ค = รายการตรวจเดิม', () => {
+  const zones = (patch = () => ({})) => LINE_ZONES.map((zone, index) => ({ ...zone, packQty: zone.packsPerRound, qty: 12, unit: 'เดือน', ...patch(zone, index) }));
+  const warnOf = (facts) => facts.checklist.filter((l) => /≠/.test(l));
+  // ตรงกันทุกคู่ (เลขแพ็ค = รอบละกี่แพ็ค · จำนวน 12 = จำนวนรอบบริการ 12)
+  const agree = collect(historicalApprovalFacts(ORDER, { ...EXTRAS, lineZones: zones() }));
+  assert.deepEqual(warnOf(agree), []);
+  // ไม่ตรง: รายการ 2 เลขแพ็ค 3 ≠ รอบละกี่แพ็ค 1 · รายการ 4 จำนวน 6 ≠ จำนวนรอบบริการ 12
+  const differ = collect(historicalApprovalFacts(ORDER, {
+    ...EXTRAS, lineZones: zones((zone, index) => (index === 1 ? { packQty: 3 } : index === 3 ? { qty: 6 } : {})),
+  }));
+  const expected = '⚠️ รายการ 2: “แพ็ค/เดือน” ≠ รอบละกี่แพ็ค · รายการ 4: จำนวน ≠ จำนวนรอบบริการ — ตรวจอีกครั้ง (ไม่บังคับให้เท่า)';
+  assert.deepEqual(warnOf(differ), [expected]);
+  const at = differ.checklist.findIndex((l) => l.startsWith(`${PACKS_ROUNDS_HEAD}:`));
+  assert.equal(differ.checklist[at + 1], expected, 'ต่อจากแถวรอบละกี่แพ็ค · จำนวนรอบบริการ');
+  assert.ok(differ.checklist[at + 2].startsWith('รายการ:'), 'ก่อนแถวรายการ');
+  // เตือนอย่างเดียว: ผลลัพธ์ของการอนุมัติ (effects) ไม่เปลี่ยน และไม่มีคำว่า "ระบบจะไม่ยอมให้อนุมัติ" ในบรรทัดนี้
+  assert.deepEqual(differ.effects, agree.effects);
+  assert.doesNotMatch(expected, /ไม่ยอมให้อนุมัติ|ตีกลับ/);
+  // ของเสริมโหลดไม่ขึ้น: ไม่รู้ ≠ ไม่ตรง — แถว "โหลดไม่ขึ้น" บอกแล้ว ไม่มีบรรทัดคำเตือนนี้
+  const failed = collect(historicalApprovalFacts(ORDER, {
+    installments: [OPENING, REGULAR], extrasError: 'timeout', lineZones: zones(() => ({ packQty: 9 })),
+  }));
+  assert.deepEqual(warnOf(failed), []);
+  assert.ok(failed.checklist.includes('รอบละกี่แพ็ค · จำนวนรอบบริการ: โหลดไม่ขึ้น — ระบบตรวจซ้ำตอนกดอนุมัติ'));
+  // ใบเก่า (แถวโซนไม่มีเลขแพ็ค · จำนวน 72/48/36/48 ≠ จำนวนรอบบริการ 12): รายการตรวจเท่ากับชุดม็อกเดิมทุกบรรทัด — ไม่มีคำเตือนงอก
+  assert.deepEqual(warnOf(historicalApprovalFacts(ORDER, EXTRAS)), []);
+  assert.deepEqual(historicalApprovalFacts(ORDER, { ...EXTRAS, lineZones: LINE_ZONES.map((zone) => ({ ...zone, packQty: null })) }).checklist,
+    historicalApprovalFacts(ORDER, EXTRAS).checklist);
+  for (const facts of [agree, differ]) assert.ok(!facts.checklist.concat(facts.effects).some((l) => LOOSE_PACK.test(l)));
+});
+
+/* เข็มขัดหลังบันทึกของ 0409 (historicalOrderCommit — historicalPackQtyDropped) — สองประโยค (R9) · พฤติกรรมของ 503 ยึดที่ historicalOrderCommit.test.mjs */
+test('PR-5 ประโยคของเข็มขัด 0409: สองประโยคต่างกัน · เอ่ยชื่อหัวคอลัมน์จากค่าคงที่กลาง · ประโยคของการเขียนบอกทางออกจริง (ยกเลิก → รัน → คีย์ใหม่) ไม่ใช่ "บันทึกใหม่หลังรัน"', () => {
+  const saved = collect(HISTORICAL_PACK_QTY_NOT_STORED_SAVED);
+  const replayed = collect(HISTORICAL_PACK_QTY_NOT_STORED_REPLAYED);
+  assert.equal(saved, 'บันทึกใบร่างแล้ว แต่เลข “แพ็ค/เดือน” ไม่ถูกเก็บ (ฐานข้อมูลยังไม่ได้รัน migration 0409)'
+    + ' — หยุดคีย์ใบสั่งขายย้อนหลังไว้ก่อนแล้วแจ้งผู้ดูแลระบบ'
+    + ' · ใบร่างนี้ส่งอนุมัติไม่ได้ และต้องยกเลิกก่อนผู้ดูแลจึงรัน migration ได้ แล้วคีย์ใบนี้ใหม่หลังรัน');
+  assert.equal(replayed, 'ใบร่างของการคีย์รอบนี้ถูกเก็บไว้โดยไม่มีเลข “แพ็ค/เดือน” — กดบันทึกซ้ำไม่ช่วย'
+    + ' · แจ้งผู้ดูแลระบบ: ใบร่างนี้ส่งอนุมัติไม่ได้ ต้องยกเลิกแล้วคีย์ใหม่');
+  assert.notEqual(saved, replayed);
+  for (const sentence of [saved, replayed]) {
+    assert.ok(sentence.includes(`“${PACK_COLUMN_LABEL}”`));
+    assert.doesNotMatch(sentence, LOOSE_PACK);
+    assert.match(sentence, /ส่งอนุมัติไม่ได้/);
+    assert.match(sentence, /ยกเลิก/);
+    /* 🔴 ใบร่างที่ไม่มีเลขแพ็คคือสิ่งที่ทำให้ 0409 รันครั้งแรกไม่ผ่าน ⇒ ห้ามบอกให้เปิดใบร่างมาบันทึกใหม่หลังรัน (ประโยคของเข็มขัด 0394 พูดแบบนั้นได้
+       เพราะ 0394 รันไปแล้วบนฐานจริง — ประโยคนั้นไม่ถูกแตะ) */
+    assert.doesNotMatch(sentence, /บันทึกขั้น ② ใหม่หลังรัน|เปิดใบร่าง/);
+  }
+  assert.match(saved, /^บันทึกใบร่างแล้ว/, 'ใบร่างลงฐานไปแล้ว — ห้ามอ่านเหมือนไม่ได้บันทึก');
+  assert.match(saved, /migration 0409/);
+  assert.match(replayed, /กดบันทึกซ้ำไม่ช่วย/);
+  assert.doesNotMatch(replayed, /migration/, 'ประโยคของการส่งซ้ำไม่ตัดสินว่า migration รันแล้วหรือยัง');
+  assert.match(HISTORICAL_ALIGNMENT_MISSING_SAVED, /migration 0394/, 'ประโยคของเข็มขัด 0394 ยังเป็นของ 0394');
+  /* ซอร์ส: ประโยคประกอบจาก PACK_COLUMN_LABEL (ไม่พิมพ์ชื่อหัวคอลัมน์ซ้ำในไฟล์ถ้อยคำ) */
+  const source = readFileSync(new URL('./historicalOrderCopy.js', import.meta.url), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.doesNotMatch(source, /แพ็ค\/เดือน/, 'ชื่อหัวคอลัมน์มาจากค่าคงที่กลางเท่านั้น');
+  assert.equal((source.match(/\$\{PACK_COLUMN_LABEL\}/g) || []).length, 3, 'สองประโยคของเข็มขัด + คู่ของคำเตือน');
+});
+
 /* 🔴 ยามรวมของคำว่า "แพ็ค" (มติ 23/09 + 26/09 A3/O9 · IMPL_PLAN_D §0.2 ข้อ 14) — ต้องอยู่ท้ายไฟล์: อ่านทุกสตริงที่เทสต์ข้างบนเก็บไว้
    ⭐ ยอมแค่ "แพ็คเกจ" (หน่วยของบรรทัด) · "รอบละกี่แพ็ค" (ป้าย มติ 29/09) · "แพ็ค/รอบ" — "N แพ็ค" เปล่า ๆ อ่านได้สองความหมาย (1 ชุด × 12 เดือน) */
-test('🔴 ทุกประโยคที่ไฟล์ถ้อยคำคืน: "แพ็ค" มีได้แค่ แพ็คเกจ · รอบละกี่แพ็ค · แพ็ค/รอบ', () => {
+/* ⭐ ย้ายความคาดหวังโดยเจตนา (งวด PR-5 · แผน IMPL_PLAN_PR5 §5 แถว G9 — เหตุอยู่ที่หัวไฟล์ข้าง `LOOSE_PACK`): ยอมเพิ่มสองรูปของเลขแพ็คของบรรทัด
+   ("แพ็ค/เดือน" · "n แพ็ค × m เดือน") · ตัวจับยังจับรูปที่ห้ามได้ครบ — ทดสอบตัวเองห้ารูปข้างล่าง */
+test('🔴 ทุกประโยคที่ไฟล์ถ้อยคำคืน: "แพ็ค" มีได้แค่ แพ็คเกจ · รอบละกี่แพ็ค · แพ็ค/รอบ · แพ็ค/เดือน · "n แพ็ค × m เดือน" (งวด PR-5)', () => {
   assert.ok(OUTPUTS.some((s) => s.includes('แพ็ค/รอบ')), 'ต้องเก็บประโยคแพ็คต่อรอบมาตรวจด้วย');
   assert.ok(OUTPUTS.some((s) => s.includes('รอบละกี่แพ็ค')), 'ต้องเก็บประโยคที่มีป้ายมาตรวจด้วย');
+  assert.ok(OUTPUTS.some((s) => s.includes('“แพ็ค/เดือน”')), 'ต้องเก็บประโยคที่เอ่ยชื่อหัวคอลัมน์เลขแพ็คมาตรวจด้วย (งวด PR-5)');
+  assert.ok(OUTPUTS.some((s) => /\d แพ็ค × [\d,]+ เดือน × ฿/.test(s)), 'ต้องเก็บประโยคของบรรทัดที่มีเลขแพ็คมาตรวจด้วย (งวด PR-5)');
   assert.deepEqual(OUTPUTS.filter((s) => LOOSE_PACK.test(s)), []);
   assert.ok(LOOSE_PACK.test('12 แพ็ค'), 'ตัวจับต้องจับ "N แพ็ค" เปล่า ๆ ได้');
   assert.ok(LOOSE_PACK.test('ยังไม่ใส่แพ็คต่อรอบ'), 'ป้ายเดิมก่อนมติ 29/09 ต้องไม่กลับมา');
   assert.ok(!LOOSE_PACK.test('ยังไม่ใส่รอบละกี่แพ็ค'));
+  /* งวด PR-5 — สองรูปที่ยอมเพิ่ม และรูปที่ยังต้องจับ */
+  assert.ok(LOOSE_PACK.test('2 แพ็ค × 12'), 'วลีของเลขแพ็คที่ไม่มีหน่วยเดือนตามหลัง ยังอ่านได้สองความหมาย — ต้องจับ');
+  assert.ok(LOOSE_PACK.test('2 แพ็ค × 12 รอบ'), 'ตามด้วยหน่วยอื่นที่ไม่ใช่เดือน — ต้องจับ');
+  assert.ok(!LOOSE_PACK.test('2 แพ็ค × 12 เดือน × ฿3,500.00'), 'วลีของมติ A1');
+  assert.ok(!LOOSE_PACK.test('43 แพ็ค × 1,200 เดือน'), 'ตัวเลขมีจุลภาค');
+  assert.ok(!LOOSE_PACK.test('“แพ็ค/เดือน”'), 'ชื่อหัวคอลัมน์');
+  assert.ok(!LOOSE_PACK.test(linePackQtyText({ packQty: 2, qty: 12 })), 'วลีกลางของตัวอ่านเลขแพ็คผ่านยามนี้เสมอ');
+  assert.ok(LOOSE_PACK.test('“แพ็ค/เดือน” 2 แพ็ค'), 'ประโยคที่มีทั้งรูปที่ยอมและรูปที่ห้าม ยังถูกจับ');
 });
 
 /* 🔴 ยามรวมของหน่วย "รอบ" (มติเจ้าของ 08/10 รอบสอง — จอฝ่ายขายที่เหลือ: หน่วยเดือน + แพ็คก่อนจำนวนรอบบริการ) — ต้องอยู่ท้ายไฟล์เช่นกัน

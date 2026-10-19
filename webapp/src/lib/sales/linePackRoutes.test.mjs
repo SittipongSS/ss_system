@@ -742,6 +742,23 @@ test('PATCH: ฐานปฏิเสธด้วย CHECK ของ 0407 (ก�
   assert.deepEqual([plain.status, plain.body.error], [500, LINE_PACK_TEXT.moneyRule]);
 });
 
+/* ── ยามในฐานของ mig 0410 (งวด PR-G): ข้อความไทยของ trigger ตามตัวอักษรจากไฟล์ migration ('' → ' · %s เติมตามลำดับ) ──
+   ไม่มีโค้ดแอปที่ต้องแก้: route ส่ง error.message ต่อเมื่อรหัสไม่ใช่ 23514 (lineMoneyRuleMessage) — สองเทสต์นี้ยึดว่าจอได้ข้อความนั้นตรงตัว */
+const GUARD_MESSAGES = [...readFileSync(path.join(WEBAPP, 'supabase/migrations/0410_quotation_line_pack_guard.sql'), 'utf8')
+  .matchAll(/'(ไม่ได้บันทึก:(?:[^']|'')*)'/g)].map((m) => m[1].replaceAll("''", "'"));
+const guardMessage = (index, ...values) => values.reduce((text, value) => text.replace('%s', String(value)), GUARD_MESSAGES[index]);
+
+test('PATCH: ฐานปฏิเสธด้วยยาม 0410 (P0001 · บันทึกที่ทำเลขแพ็คหาย) = 500 ข้อความไทยของฐานตรงตัว — ไม่ถูกแปลงเป็นข้อความกฎเงิน · ไม่ลง audit', async () => {
+  assert.equal(GUARD_MESSAGES.length, 3);
+  const quote = quoteOf(PACK_LINES());
+  const message = guardMessage(0, quote.quoteNumber, 2);
+  assert.ok(message.startsWith(`ไม่ได้บันทึก: ใบเสนอราคา ${quote.quoteNumber} รายการที่ 2 (หมวด 02-001)`) && message.endsWith('[quotation_line_pack_lost]'));
+  const run = await patchQuote({ quote, body: { vatRate: 0 }, rpcError: { code: 'P0001', message, details: 'quotation_line_pack_lost reason=rewrite' } });
+  assert.equal(run.saves.length, 1, 'ใบนี้ผ่านด่านเลขแพ็คของเซิร์ฟเวอร์ไปถึง RPC (รุ่นปัจจุบันไม่ชนยาม — ฐานปฏิเสธแทนรุ่นเก่า)');
+  assert.deepEqual([run.status, run.body.error], [500, message]);
+  assert.deepEqual(T.audits, [], 'RPC ถอยทั้งก้อน — ไม่มีอะไรถูกบันทึก จึงไม่ลง audit');
+});
+
 /* ═══ POST …/revise — ออก Rev. ════════════════════════════════════════════════════════════════════════════ */
 
 test('⭐ ออก Rev. ของใบที่บรรทัดมีเลขแพ็ค 2 และ 1: แถวที่ INSERT พกเลขแพ็คครบทุกแถวรูปเดียวกัน · ยอด = แพ็ค × จำนวน × ราคา − ส่วนลด · หัวใบฉบับใหม่ = ผลรวมของแถวชุดนั้น', async () => {
@@ -828,6 +845,18 @@ test('ออก Rev. ของใบเก่า (ไม่มีเลขแพ
       assert.deepEqual(totalsOf(run.header), { subtotal: 111900, discountAmount: 0, vatAmount: 7833, totalAmount: 119733 }, label);
     }
   }
+});
+
+test('ออก Rev.: ฐานปฏิเสธบรรทัดด้วยยาม 0410 (P0001 · Rev. ที่เลขแพ็คของต้นทางหาย) = 500 ข้อความไทยของฐานตรงตัว + ถอนหัวใบฉบับใหม่ · ใบเดิมไม่ถูกเปลี่ยนเป็น revised', async () => {
+  const source = approved(PACK_LINES());
+  const message = guardMessage(1, 'QT-26100001-1', 1, source.quoteNumber);
+  assert.ok(message.includes(`ทั้งที่ฉบับต้นทาง ${source.quoteNumber} มีเลขแพ็คของรายการนี้`) && message.endsWith('[quotation_line_pack_lost]'));
+  const run = await reviseQuote({ quote: source, lineInsertError: { code: 'P0001', message } });
+  assert.deepEqual([run.status, run.body.error], [500, message]);
+  assert.equal(run.headerDeletes.length, 1);
+  assert.equal(filterOf(run.headerDeletes[0], 'eq', 'id'), run.header.id, 'ถอนใบที่เพิ่งสร้าง ไม่ใช่ใบเดิม');
+  assert.equal(run.sourceUpdate, null, 'ใบต้นทางไม่ถูกเปลี่ยนเป็น revised (การเปลี่ยนสถานะอยู่หลังบรรทัด)');
+  assert.deepEqual([T.side, T.audits], [[], []]);
 });
 
 test('ออก Rev.: ฐานปฏิเสธบรรทัดด้วย CHECK ของ 0407 = 500 ข้อความไทย + ถอนหัวใบฉบับใหม่ที่เพิ่งสร้าง · ใบเดิมไม่ถูกเปลี่ยนเป็น revised', async () => {

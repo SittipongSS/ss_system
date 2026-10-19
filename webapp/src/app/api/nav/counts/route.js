@@ -52,7 +52,7 @@ import { loadTerms } from '@/lib/service/termsRepo';
 import { planQueue } from '@/lib/service/intake';
 import { orderBusinessLineOf } from '@/lib/sales/serviceOrders';
 import { serviceBackfillNeeded } from '@/lib/sales/serviceSetup';
-import { waitingOnMeVisitCount } from '@/lib/service/myVisits';
+import { WAITING_ON_ME_BACK_DAYS, waitingOnMeVisitCount } from '@/lib/service/myVisits';
 import { listTasks } from '@/lib/mgmt/repo';
 import { isMyOpenTask } from '@/lib/mgmt/constants';
 import { businessDate } from '@/lib/businessDate';
@@ -499,8 +499,10 @@ export const GET = withUser(async ({ user, supabase }) => {
   /* ── เฟส 2: บริการ + งานบริหาร ─────────────────────────────────────────
      สองโมดูลนี้มี "คิวของคนคนเดียว" เป็นหน้าอยู่แล้ว ป้ายจึงชี้ตรงเข้าไปได้เลย */
 
-  /* นัดของเจ้าหน้าที่ — ช่วงวันเดียวกับที่หน้า "นัดของฉัน" โหลดเป็นค่าตั้งต้น (back/ahead 14)
+  /* นัดของเจ้าหน้าที่ — ย้อนหลังเท่าที่หน้า "งานวันนี้" โหลด (`WAITING_ON_ME_BACK_DAYS` · `todayPageVisitsQuery`)
      ⚠️ ต้องเท่ากัน ไม่งั้นป้ายนับนัดค้างที่เก่ากว่าที่หน้านั้นแสดง แล้วกดเข้าไปไม่เจอ
+     🐞 (H12 ตรวจตัวกรอง 08/10) คอมเมนต์นี้เคยเชื่อว่าหน้าโหลด back/ahead 14 เป็นค่าตั้งต้น — ที่จริงหน้าไม่ส่งช่วง
+        แล้ว route ตีเป็น 0/0 (วันนี้วันเดียว) ⇒ ป้าย 5 หน้า 2 · ตอนนี้หน้าส่งช่วงเองจากค่าคงที่ตัวเดียวกัน
 
      🐞 **ด่านนี้เคยเป็น `canEditService` ซึ่งแคบกว่าเมนู** (ตรวจ 2026-09-02) — เมนู
      "งานวันนี้" กั้นด้วย `canDoFieldWork` ⇒ เจ้าหน้าที่หน้างาน (role `ts` ถือ
@@ -515,8 +517,9 @@ export const GET = withUser(async ({ user, supabase }) => {
         d.setDate(d.getDate() + days);
         return toLocalISODate(d);
       };
+      // ⚠️ ย้อนเท่าที่หน้างานวันนี้โหลด (`todayPageVisitsQuery`) — ตัวเลขเดียวกันทั้งสองที่
       const visits = await loadVisits(supabase, {
-        from: shift(-14), to: shift(14), assigneeId: String(user.id),
+        from: shift(-WAITING_ON_ME_BACK_DAYS), to: shift(14), assigneeId: String(user.id),
       });
       return waitingOnMeVisitCount(visits, today);
     }));
