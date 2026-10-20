@@ -50,14 +50,14 @@ import { requestHeaderFacts, requestHeaderPeople } from "@/lib/requests/headerFa
 import { briefBoard, briefBoardTotals } from "@/lib/requests/briefBoard";
 import submitScope from "@/lib/requests/submitScope";
 import { scentBriefNameError } from "@/lib/requests/scentBriefs";
-import { submitRequestError } from "@/lib/requests/stages";
+import { deleteRequestError, submitRequestError } from "@/lib/requests/stages";
 import { npdWorkRowsError, npdWorkRowsScentError, planNpdWorkRows } from "@/lib/requests/npdWorkRows";
 import { npdUncoveredError, npdUncoveredPairs } from "@/lib/requests/npdPairs";
 import { bulkReadyRows, formulaDevBoard } from "@/lib/requests/formulaDevBoard";
 import { documentBoard } from "@/lib/requests/documentBoard";
 import {
   requestUsesPdr, requestKindMeta, requestNeedsRef, requestPdrRowsPickScent, requestVariantKey,
-  requestRequiredFiles, requestSubmitGapsError, requestVariantFieldLabel, requestVariantLabel,
+  requestRequiredFiles, requestSubmitGapsError, requestVariantChosen, requestVariantFieldLabel, requestVariantLabel,
   requestVariantLockAfterSubmit,
 } from "@/lib/master/requestTypes";
 import { PDR_SIGNER_FIELDS, pdrValuesFrom } from "@/lib/requests/pdrFields";
@@ -138,7 +138,7 @@ import { commitDueLabels, deskDueAction } from "@/lib/requests/commitDue";
 /* ชื่อขั้นของรางเมื่อใบประเมินเป็นงานโต๊ะ (ประเมินจากแบบทั้งใบ · งวด S2b กลุ่ม D-2) — ตัวแปลงคำล้วน ไม่มีของ server */
 import { surveyDeskRailSteps } from "@/lib/service/surveyMethodSwitch";
 /* ป้าย "จากแบบ" รายพื้นที่ของรายการอ่านอย่างเดียวในฟอร์มแก้ — view-model ตัวเดียวกับจอรายละเอียดรุ่นเก่า (จอไม่ตัดสินวิธีเอง) */
-import { surveyRequestDrawingSummary } from "@/lib/service/surveyJob";
+import { surveyIntakeSwitchNotes, surveyRequestDrawingSummary } from "@/lib/service/surveyJob";
 import { acknowledgeConfirmCopy } from "@/lib/requests/acknowledgeConfirm";
 
 const STATUS_TONE = {
@@ -966,9 +966,11 @@ export default function RequestDetailPage() {
            สวิตช์ปิด = ไม่มีใครเปลี่ยนวิธีได้ ประโยคนั้นจะไม่จริง
          ⚠️ หัวข้ออื่นได้สองประโยคเดิมทุกตัวอักษร (O12) */
       const variantLocks = requestVariantLockAfterSubmit(req.kind);
+      /* ⭐ **ประโยคของ S4 ขึ้นบรรทัดของตัวเอง** (UAT S4 รอบ 4 ข้อ 13b) — ต่อท้ายด้วย " · " แล้วประโยคเดิมขาดกลาง
+         "ไม่|ได้" ที่ 375px · `\n` เพราะรายละเอียดของกล่องยืนยันเป็น `pre-line` (`.confirm-dialog-detail`)
+         ⚠️ หัวข้ออื่นได้ประโยคเดิมทุกตัวอักษร (O12) — ไม่มีบรรทัดที่สอง */
       const switchNote = variantLocks && req.drawingMethodEnabled === true
-        /* ช่องว่างหน้า "·" ไม่ตัดบรรทัด (\u00A0) — จุดต้องค้างท้ายบรรทัดบน ไม่ขึ้นต้นบรรทัดใหม่เหมือนหัวข้อย่อย (UAT S4 T11c) */
-        ? `\u00A0· หลังส่งแล้วเปลี่ยน${requestVariantFieldLabel(req.kind)}ได้ที่ฝ่ายบริการ (หัวหน้า TS)`
+        ? `\nหลังส่งแล้วเปลี่ยน${requestVariantFieldLabel(req.kind)}ได้ที่ฝ่ายบริการ (หัวหน้า TS)`
         : "";
       return {
         title: "ส่งคำร้อง",
@@ -1865,8 +1867,11 @@ export default function RequestDetailPage() {
      · สิทธิ์แนบ = นิพจน์เดียวกับการ์ดไฟล์แนบของคำร้องข้างล่าง */
   const requiredFilesCard = requiredFilesSpec && !editing ? (
     <DetailCard icon={Paperclip} eyebrow="DRAWINGS" title={requiredFilesSpec.label}>
+      {/* ชื่อการ์ด = ป้ายของบล็อก ⇒ ไม่วาดซ้ำในการ์ด (`hideLabel` · UAT S4 รอบ 4 ข้อ 14) — คำบรรยายยังอยู่ ·
+          ฟอร์มแก้ยังวาดป้าย "(บังคับ)" ตามเดิม (บล็อกเดียวกัน ไม่มีชื่อการ์ดครอบ) */}
       <RequiredFilesBlock
         mode="saved"
+        hideLabel
         spec={requiredFilesSpec}
         requestId={req.id}
         canEdit={(req._mine || owner) && REQUEST_OPEN_STATUSES.concat("draft").includes(req.status)}
@@ -2053,6 +2058,15 @@ export default function RequestDetailPage() {
             attachmentsReloadKey={attachmentsReloadKey}
             variantsOff={surveyVariantsOff(req.drawingMethodEnabled)}
             variantAskedOnly={requestVariantAskedOnly(req)}
+            /* ── ของที่ใบที่บันทึกแล้วรู้ ฟอร์มรู้เองไม่ได้ (UAT S4 รอบ 4) ──
+               · วิธีที่บันทึกไว้ — ไทล์ของวิธีที่สวิตช์ปิดยังกดกลับได้ก่อนบันทึก (ข้อ 8 · server ยังตีกลับเหมือนเดิม)
+               · ราคาของการสลับ — ร่างที่หัวหน้าประเมินจากแบบไว้แล้ว สลับเป็นลงหน้างาน = ผลนั้นไม่ถูกใช้ (ข้อ 7 · O8)
+               · ร่างที่ยังไม่เคยส่ง = ลบแล้วเปิดใหม่ได้ (ด่านเดียวกับปุ่มลบ `deleteRequestError` · ข้อ 3)
+               · ยังไม่ถูกรับเรื่อง — คำใบ้ "หัวหน้า TS จะแจ้งวันส่งผลจริงหลังรับเรื่อง" จริงเฉพาะช่วงนี้ (ข้อ 10) */
+            savedVariant={requestVariantChosen(req)}
+            variantSwitchNotes={surveyIntakeSwitchNotes(req)}
+            freshDraft={!deleteRequestError(req)}
+            awaitingAck={["draft", "pending"].includes(req.status)}
             people={signerPeople}
             lockKind
             deferMentions

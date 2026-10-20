@@ -10,7 +10,7 @@
 // ⚠️ **ชื่อขั้นไม่ได้เขียนที่นี่** — มาจาก `requestRailSteps` (ทะเบียน `fieldRail`) ตัวเดียวกับการ์ดของ TS
 // ⚠️ ไฟล์นี้ต้อง **ไม่มี import ฝั่ง server** — จอ client เรียกตรง
 import { NA, fmtNumber, fmtTime, isoDateToWeekdayText } from '@/lib/format';
-import { requestKindMeta } from '@/lib/master/requestTypes';
+import { requestKindMeta, requestResultDateOnly, requestVariants } from '@/lib/master/requestTypes';
 import { requestAssignee } from '@/lib/requests/assign';
 import { requestClosure, requestClosureLine, requestClosureStarted } from '@/lib/requests/closure';
 import { committedVsRequested } from '@/lib/requests/headerFacts';
@@ -32,7 +32,8 @@ import {
 } from './surveyMethodSwitch';
 /* ประเมินจากแบบ งวด 4 (S4 C-4/C-5) — "ฝ่ายขายขออะไร" กับ "ผู้ขออยากให้เข้าวันไหน" มีตัวอ่านเดียว (pure · ไม่มีของ server) */
 import {
-  SURVEY_NO_VISIT_WISH_LINE, SURVEY_NO_VISIT_WISH_TEXT, surveyFiledAsDrawing, surveySalesAskedLine, surveyWishedVisit,
+  SURVEY_INTAKE_REMEASURE_CHIP, SURVEY_INTAKE_SWITCH_NOTE, SURVEY_INTAKE_SWITCH_REASON, SURVEY_NO_VISIT_WISH_LINE,
+  SURVEY_NO_VISIT_WISH_TEXT, surveyFiledAsDrawing, surveySalesAskedLine, surveyWishedVisit,
 } from './surveyIntake';
 import { VISIT_STATUS_LABELS, holdsRequestSlot, isClosedVisit } from './visitStatus';
 
@@ -220,6 +221,16 @@ export const SURVEY_ZONE_RESAVE_TEXT = 'กลับมาเป็นลงห�
 const zoneResaveOnly = (zone, facts) => surveyZoneNeedsResave(zone)
   && facts.missingCrew.length === 1 && facts.missingCrew[0].key === 'size' && facts.sizeComplete === true;
 
+/* ⭐ **ตัวเลขในแถวยังเป็นของหัวหน้า (จากแบบ) — ช่างยังไม่ได้วัดทับ** (ค่าตั้งต้น A ของคำถามเจ้าของ · UAT S4 รอบ 4 ข้อ 17)
+   ร่างที่ถูกตีกลับแล้วฝ่ายขายสลับเป็นลงหน้างาน (O8 = ข): แถวที่มีผลจากโต๊ะถูกตรา `methodReason` = `SURVEY_INTAKE_SWITCH_REASON`
+   แล้วกลายเป็นแถวลงหน้างานที่ถือตัวเลขเดิม ⇒ บนตารางอ่านเหมือนช่างวัดมาแล้ว · ป้ายบอกว่าเป็นตัวเลขจากแบบที่รอวัดใหม่
+   สามเงื่อนไขพร้อมกัน: ตอนนี้ลงหน้างาน · ตราของฝ่ายขาย (ไม่ใช่หัวหน้าสลับกลับ — แถวนั้นมีบรรทัด "กลับมาเป็นลงหน้างาน" ของตัวเอง) ·
+   ยังไม่ถูกบันทึกทับหลังตรา (`surveyZoneNeedsResave` — ผลที่บันทึกหลังเวลาตรา = ช่างวัดแล้ว ป้ายหายเอง) และมีผลอยู่จริง */
+const intakeRemeasure = (zone) => !isDrawingZone(zone)
+  && String(zone?.methodReason ?? '').trim() === SURVEY_INTAKE_SWITCH_REASON
+  && !!String(zone?.surveyedAt ?? '').trim()
+  && surveyZoneNeedsResave(zone);
+
 function zoneRows(zones, filesByZone, { sent, filesUnknown = false, dept = 'TS', allDrawing = false }) {
   return zones.map((zone) => {
     const facts = surveyZoneFacts(zone, filesByZone[zone.id] || []);
@@ -272,7 +283,7 @@ function zoneRows(zones, filesByZone, { sent, filesUnknown = false, dept = 'TS',
                       (แถวลงหน้างาน · แถวที่ถูกตัด · อ่านรูปไม่สำเร็จ — ไม่เดาว่า "แบบ 0")
          `addedLabel` พื้นที่ที่ถูกเพิ่มบนใบ — แถวจากแบบหัวหน้าเป็นคนเพิ่มที่โต๊ะ ไม่ได้ "เพิ่มหน้างาน" */
       method: zoneMethod(zone),
-      chip: drawing ? SURVEY_METHOD_CHIP.drawing : null,
+      chip: drawing ? SURVEY_METHOD_CHIP.drawing : (intakeRemeasure(zone) ? SURVEY_INTAKE_REMEASURE_CHIP : null),
       photosText: drawing && !facts.cut && !filesUnknown ? `แบบ ${facts.photos.plan}` : null,
       addedLabel: surveyZoneAddedLabel(zone, dept),
       /* ── ช่องของแถวจากแบบบนตารางที่ **ยังไม่ส่งผล** (มติเจ้าของ 12/10 · ทรงของตารางอยู่ที่ `surveyZoneTable`) ──
@@ -392,6 +403,22 @@ export function surveyRequestDrawingSummary(request) {
     banner: surveyDrawingBanner(request, { show: !!request.answeredAt && !cancelled, count: surveyMethodMix(zones).drawing, dept }),
     rows,
   };
+}
+
+/**
+ * ราคาของการสลับวิธีบนฟอร์มแก้ของร่าง — `{ [รูปแบบ]: ประโยค }` ให้ `RequestForm` (`variantSwitchNotes`) ต่อท้ายกล่องยืนยัน
+ * ⭐ O8 = ข (มติ 19/10 · UAT S4 รอบ 4 ข้อ 7): ร่างที่ถูกตีกลับหลังหัวหน้าบันทึกผลพื้นที่จากแบบไปแล้ว แล้วฝ่ายขายสลับเป็นวิธีที่มี
+ *    วันเข้าพื้นที่ (ลงหน้างาน) — server รับ แล้วตราแถวนั้นให้ช่างวัดใหม่ (`surveyIntakeSeed`) ⇒ ผลจากแบบไม่ถูกใช้ ต้องบอกก่อนกด
+ * ⚠️ แถวที่นับ = แถวที่ตัวตั้งวิธีจะตราจริง (จากแบบ + มี `surveyedAt`) · ใบที่ไม่ใช่ร่าง (ฟอร์มไม่วาดไทล์อยู่แล้ว) /
+ *    ไม่มีแถวแบบนั้น = `{}` ⇒ กล่องยืนยันเท่าเดิมทุกตัวอักษร · รูปแบบที่มีแต่วันรับผล (จากแบบ) ไม่ได้ประโยคนี้
+ */
+export function surveyIntakeSwitchNotes(request) {
+  if (!request || request.status !== 'draft') return {};
+  const zones = Array.isArray(request.surveyZones) ? request.surveyZones : [];
+  if (!zones.some((zone) => isDrawingZone(zone) && !!String(zone?.surveyedAt ?? '').trim())) return {};
+  return Object.fromEntries(Object.keys(requestVariants(request.kind) || {})
+    .filter((key) => !requestResultDateOnly({ kind: request.kind, variant: key }))
+    .map((key) => [key, SURVEY_INTAKE_SWITCH_NOTE]));
 }
 
 /* ── ข้อเท็จจริงรายวัน 6 ช่อง (การ์ดรายละเอียดคำร้อง) ───────────────────────────────────

@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { requestFormBlocker, requestPayload, uploadDraftFiles } from './requestCreate.js';
+import {
+  draftFilesLeft, draftUploadFailureText, requestFormBlocker, requestPayload, uploadDraftFiles,
+} from './requestCreate.js';
 
 /* ══ ประเมินจากแบบ งวด 4 (S4 B-5/B-6) — ไฟล์ของฟอร์มสร้าง · payload วันเดียว · ด่านรายวิธี ══════════
    🔴 **กดซ้ำต้องไม่อัปซ้ำ** (memory retry-must-not-reupload) — ไฟล์ที่ขึ้น Drive แล้วได้ ref กลับมาทันทีทีละไฟล์
@@ -152,4 +154,36 @@ test('requestFormBlocker: หัวข้ออื่นไม่ได้รั
   const fd = { dept: 'RD', kind: 'formula_dev', dealId: 'D-1', title: 'สูตร', requestedDueDate: '2026-10-20', items: [{ categoryCode: '01-001', scentId: 'SC-1' }] };
   assert.equal(requestFormBlocker(fd), null, 'พัฒนาสูตรไม่บังคับเลือกรูปแบบ (ว่าง = Standard)');
   assert.equal(requestFormBlocker({ ...fd, requestedDueDate: '' }), 'ต้องระบุวันที่ต้องการรับงาน');
+});
+
+/* ══ UAT S4 รอบ 4 ข้อ 15 — toast ของทางอัปล้มหลังร่างเกิด บอกว่าไฟล์ไหนยังไม่เข้า ══════════════════════════════
+   ตัวอัปหยุดที่ไฟล์แรกที่ล้ม ⇒ ไฟล์ที่ไม่เข้า = ตัวที่ล้ม + ทุกตัวที่ยังไม่ถึงคิว (ทั้งไฟล์แบบและไฟล์ทั่วไป) · นับจากชุดที่ขึ้นแล้วจริง */
+test('รอบ 4: ไฟล์ที่ยังไม่เข้า = ไม่มี ref และไม่ได้ขึ้นในรอบนี้ — ลำดับเดิม (ไฟล์แบบก่อน) · ชื่อเป็นของผู้ใช้ตามที่เป็น', async () => {
+  const [plan1, plan2, photo] = [file('ผัง ชั้น 1.pdf'), file('ผัง ชั้น 2.pdf'), file('หน้างาน.jpg', 'image/jpeg')];
+  const fake = fakeUploader({ failOn: ['ผัง ชั้น 2.pdf'] });
+  const uploaded = new Set();
+  const required = [plan1, plan2];
+  const general = [photo];
+  const error = await uploadDraftFiles('REQ-1', required, { docType: 'spec', upload: fake.upload, onUploaded: (f) => uploaded.add(f) })
+    || await uploadDraftFiles('REQ-1', general, { upload: fake.upload, onUploaded: (f) => uploaded.add(f) });
+  assert.equal(error, 'แนบ "ผัง ชั้น 2.pdf" ไม่สำเร็จ: Drive ไม่ตอบ');
+  assert.deepEqual(draftFilesLeft([...required, ...general], uploaded), ['ผัง ชั้น 2.pdf', 'หน้างาน.jpg']);
+  // รายการที่ถือ ref มาก่อน (ขึ้นรอบที่แล้ว) ไม่นับว่าค้าง · รูป `{ file, ref }` อ่านชื่อจากตัวไฟล์
+  assert.deepEqual(draftFilesLeft([{ file: plan1, ref: { id: 'ATT-1' } }, { file: plan2 }], new Set()), ['ผัง ชั้น 2.pdf']);
+  assert.deepEqual(draftFilesLeft([], new Set()), []);
+  assert.deepEqual(draftFilesLeft([{ size: 1 }], new Set()), ['ไฟล์ไม่มีชื่อ']);
+});
+
+test('รอบ 4: ข้อความ toast — จำนวน + ชื่อ (เกินสามชื่อ = "และอีก n ไฟล์") · ไม่รู้ว่าไฟล์ไหน = ท้ายประโยคเดิม', () => {
+  const head = 'แนบ "b.pdf" ไม่สำเร็จ: Drive ไม่ตอบ';
+  assert.equal(draftUploadFailureText(head, ['b.pdf', 'c.jpg']),
+    'แนบ "b.pdf" ไม่สำเร็จ: Drive ไม่ตอบ — ยังไม่เข้า 2 ไฟล์: b.pdf, c.jpg · แนบซ้ำได้ที่หน้ารายละเอียด');
+  assert.equal(draftUploadFailureText(head, ['a', 'b', 'c', 'd', 'e']),
+    'แนบ "b.pdf" ไม่สำเร็จ: Drive ไม่ตอบ — ยังไม่เข้า 5 ไฟล์: a, b, c และอีก 2 ไฟล์ · แนบซ้ำได้ที่หน้ารายละเอียด');
+  assert.equal(draftUploadFailureText(head, ['a', 'b', 'c']),
+    'แนบ "b.pdf" ไม่สำเร็จ: Drive ไม่ตอบ — ยังไม่เข้า 3 ไฟล์: a, b, c · แนบซ้ำได้ที่หน้ารายละเอียด');
+  // ไม่มีรายชื่อ = ประโยคของรอบก่อน (§15.4) ทุกตัวอักษร · ไม่มีเหตุ = "แนบไฟล์ไม่สำเร็จ"
+  assert.equal(draftUploadFailureText(head, []), `${head} — แนบซ้ำได้ที่หน้ารายละเอียด`);
+  assert.equal(draftUploadFailureText('', []), 'แนบไฟล์ไม่สำเร็จ — แนบซ้ำได้ที่หน้ารายละเอียด');
+  assert.equal(draftUploadFailureText(null, ['x.pdf']), 'แนบไฟล์ไม่สำเร็จ — ยังไม่เข้า 1 ไฟล์: x.pdf · แนบซ้ำได้ที่หน้ารายละเอียด');
 });

@@ -10,8 +10,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { surveyJobView } from './surveyJob.js';
-import { SURVEY_NO_VISIT_WISH_LINE, SURVEY_NO_VISIT_WISH_TEXT, SURVEY_SALES_ASKED } from './surveyIntake.js';
+import { surveyIntakeSwitchNotes, surveyJobView } from './surveyJob.js';
+import {
+  SURVEY_INTAKE_REMEASURE_CHIP, SURVEY_INTAKE_SWITCH_NOTE, SURVEY_INTAKE_SWITCH_REASON,
+  SURVEY_NO_VISIT_WISH_LINE, SURVEY_NO_VISIT_WISH_TEXT, SURVEY_SALES_ASKED,
+} from './surveyIntake.js';
 import { requestHeaderFacts } from '../requests/headerFacts.js';
 import { REQUEST_KIND_LIST } from '../master/requestTypes.js';
 
@@ -218,6 +221,9 @@ test('ยาม: บล็อกแบบ/ผังพื้นที่วา�
   assert.match(block, /<RequiredFilesBlock\b/);
   assert.match(block, /spec=\{requiredFilesSpec\}/);
   assert.match(block, /mode="saved"/);
+  // ชื่อการ์ด = ป้ายของบล็อก ⇒ บล็อกในการ์ดไม่วาดป้ายซ้ำ (UAT S4 รอบ 4 ข้อ 14) · คำบรรยายยังอยู่ (ตัวบล็อกตัดสิน)
+  assert.match(block, /<DetailCard icon=\{Paperclip\} eyebrow="DRAWINGS" title=\{requiredFilesSpec\.label\}>/);
+  assert.match(block, /mode="saved"\n\s+hideLabel\n/);
   assert.match(block, /requestId=\{req\.id\}/);
   assert.match(block, /onCountChange=\{setRequiredFileCount\}/);
   // canEdit เดียวกับการ์ดไฟล์แนบของคำร้อง
@@ -263,6 +269,63 @@ test('ยาม: confirmCopy ไม่เอ่ยชื่อหัวข้อ
   // หัวข้ออื่น: สองประโยคเดิมทุกตัวอักษร (O12)
   assert.match(copy, /`\$\{submitScope\(req\)\} → \$\{req\.dept\}`/);
   assert.match(copy, /`ระบบจะออกเลขที่และแจ้งฝ่ายปลายทางทันที — หลังส่งแล้วลบใบไม่ได้\$\{switchNote\}`/);
-  assert.match(copy, /const switchNote = variantLocks && req\.drawingMethodEnabled === true\n\s+\? `\\u00A0· หลังส่งแล้วเปลี่ยน\$\{requestVariantFieldLabel\(req\.kind\)\}ได้ที่ฝ่ายบริการ \(หัวหน้า TS\)`\n\s+: "";/);
+  /* ประโยคของ S4 ขึ้นบรรทัดของตัวเอง (`\n` · รายละเอียดของกล่องยืนยันเป็น pre-line) — ต่อท้ายด้วย " · " แล้วประโยคเดิมขาด
+     "ไม่|ได้" ที่ 375px (UAT S4 รอบ 4 ข้อ 13b) · หัวข้ออื่นได้ `switchNote` ว่าง ⇒ ประโยคเดิมทุกตัวอักษร (O12) */
+  assert.match(copy, /const switchNote = variantLocks && req\.drawingMethodEnabled === true\n\s+\? `\\nหลังส่งแล้วเปลี่ยน\$\{requestVariantFieldLabel\(req\.kind\)\}ได้ที่ฝ่ายบริการ \(หัวหน้า TS\)`\n\s+: "";/);
+  assert.doesNotMatch(copy, /u00A0· หลังส่งแล้ว/, 'ไม่ต่อท้ายบรรทัดเดิมแล้ว');
   assert.match(copy, /description: variantLocks\n\s+\? `\$\{submitScope\(req\)\} · \$\{requestVariantLabel\(req\)\} → \$\{req\.dept\}`/);
+});
+
+/* ══ UAT S4 รอบ 4 (20/10) ══════════════════════════════════════════════════════════════════════
+   ข้อ 7 ราคาของการสลับบนร่าง (O8) · ข้อ 17 ป้าย "จากแบบ · รอวัดใหม่" บนตารางพื้นที่ — ตัดสินที่ view-model ไม่ใช่ที่จอ */
+
+const DESK_RESULT = { method: 'drawing', surveyedAt: '2026-10-12T03:00:00Z', parts: [{ widthM: 10, lengthM: 4, heightM: 3 }] };
+
+test('รอบ 4 ข้อ 7: ร่างที่หัวหน้าประเมินจากแบบไว้แล้ว — สลับเป็นลงหน้างานมีราคา (ประโยคต่อท้ายกล่องยืนยัน) · จากแบบไม่มี', () => {
+  const bounced = {
+    ...row('drawing-desk', 'draft'), submittedAt: '2026-10-11T02:00:00Z', docNo: 'RQ-AS-26100401',
+    surveyZones: baseZones().map((z, i) => ({ ...z, method: 'drawing', ...(i === 0 ? DESK_RESULT : {}) })),
+  };
+  assert.deepEqual(surveyIntakeSwitchNotes(bounced), { standard: SURVEY_INTAKE_SWITCH_NOTE });
+  // ไม่มีแถวจากแบบที่มีผล = ไม่มีราคา (กล่องเดิม)
+  assert.deepEqual(surveyIntakeSwitchNotes(row('drawing-desk', 'draft')), {});
+  // แถวลงหน้างานที่มีผล ไม่ใช่ผลจากแบบ — ทิศนี้ (เป็นจากแบบ) ตีกลับที่ server อยู่แล้ว ไม่ใช่เรื่องของประโยคนี้
+  assert.deepEqual(surveyIntakeSwitchNotes({ ...row('standard', 'draft'),
+    surveyZones: baseZones().map((z) => ({ ...z, method: 'onsite', surveyedAt: '2026-10-12T03:00:00Z' })) }), {});
+  // ใบที่ไม่ใช่ร่าง — ฟอร์มไม่มีไทล์ให้กด ⇒ ไม่มีราคา
+  for (const status of ['pending', 'acknowledged', 'answered']) {
+    assert.deepEqual(surveyIntakeSwitchNotes({ ...bounced, ...STATUSES[status] }), {}, status);
+  }
+  assert.deepEqual(surveyIntakeSwitchNotes(null), {});
+});
+
+test('รอบ 4 ข้อ 17: แถวที่ฝ่ายขายตราให้วัดใหม่ (O8) ยังไม่ถูกวัดทับ = ป้าย "จากแบบ · รอวัดใหม่" · วัดทับแล้ว/หัวหน้าสลับ/จากแบบ = คำเดิม', () => {
+  const stamped = {
+    method: 'onsite', methodReason: SURVEY_INTAKE_SWITCH_REASON, methodChangedAt: '2026-10-14T03:00:00Z',
+    methodChangedByName: 'Lalida Chaiwanna', surveyedAt: '2026-10-12T03:00:00Z',
+  };
+  const zones = [
+    { id: 'z1', zoneName: 'Lobby', status: 'ok', parts: [], spots: [], ...stamped },
+    // ช่างบันทึกทับหลังเวลาตรา = ตัวเลขของหน้างานแล้ว
+    { id: 'z2', zoneName: 'ห้องประชุม', status: 'ok', parts: [], spots: [], ...stamped, surveyedAt: '2026-10-16T03:00:00Z' },
+    // หัวหน้าสลับกลับเป็นลงหน้างาน (เหตุผลของหัวหน้า) — มีคำของตัวเองอยู่แล้ว ("กลับมาเป็นลงหน้างาน — …")
+    { id: 'z3', zoneName: 'โถง', status: 'ok', parts: [], spots: [], ...stamped, methodReason: SWITCH_STAMP.methodReason },
+    { id: 'z4', zoneName: 'ร้าน', status: 'ok', parts: [], spots: [], ...DESK_RESULT },
+    { id: 'z5', zoneName: 'ทางเดิน', status: 'ok', parts: [], spots: [] },
+  ];
+  const request = { ...row('drawing-switched', 'acknowledged'), variant: 'standard', surveyZones: zones };
+  const chips = Object.fromEntries(job(request).zones.rows.map((r) => [r.id, r.chip]));
+  assert.deepEqual(chips, { z1: SURVEY_INTAKE_REMEASURE_CHIP, z2: null, z3: null, z4: 'จากแบบ', z5: null });
+  // ทองคำของใบลงหน้างาน (ไม่มีตรา) ไม่ขยับ — ตารางของวันนี้ไม่มีป้ายใดเลย
+  assert.ok(job(row('standard', 'acknowledged')).zones.rows.every((r) => r.chip === null));
+});
+
+test('รอบ 4 ข้อ 14: RequiredFilesBlock ซ่อนบรรทัดป้ายได้ (การ์ดที่วาดชื่อเอง) · คำบรรยายอยู่เสมอ · ฟอร์มไม่ส่ง = ป้าย "(บังคับ)" เดิม', () => {
+  const blockSrc = readFileSync(new URL('../../components/requests/RequiredFilesBlock.js', import.meta.url), 'utf8');
+  assert.match(blockSrc, /hideLabel = false,/);
+  assert.match(blockSrc, /\{!hideLabel && <span className=\{formStyles\.fieldLabel\}>\{spec\.label\} \(บังคับ\)<\/span>\}/);
+  assert.match(blockSrc, /<small className=\{formStyles\.hint\}>\{spec\.hint\}<\/small>/);
+  const form = readFileSync(new URL('../../components/requests/RequestForm.js', import.meta.url), 'utf8');
+  const call = form.slice(form.indexOf('<RequiredFilesBlock'), form.indexOf('/>', form.indexOf('<RequiredFilesBlock')));
+  assert.doesNotMatch(call, /hideLabel/, 'ฟอร์มแก้ยังวาดป้ายของบล็อก (ไม่มีชื่อการ์ดครอบ)');
 });

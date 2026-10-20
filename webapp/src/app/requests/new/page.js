@@ -23,7 +23,9 @@ import { DocumentControlCard, DocumentReadinessList } from "@/components/ui/Docu
 import { requiredChecks } from "@/lib/requests/formTabs";
 import Toast from "@/components/ui/Toast";
 import RequestForm, { emptyRequestForm } from "@/components/requests/RequestForm";
-import { createRequestDraft, requestFormBlocker, uploadDraftFiles } from "@/lib/master/requestCreate";
+import {
+  createRequestDraft, draftFilesLeft, draftUploadFailureText, requestFormBlocker, uploadDraftFiles,
+} from "@/lib/master/requestCreate";
 import { requestFormCopy, requestKindLabel, requestRequiredFiles, requestVariantChosen } from "@/lib/master/requestTypes";
 import { requestImpliedVariant } from "@/lib/requests/variantSwitch";
 import { surveyVariantsOff } from "@/lib/service/surveyIntake";
@@ -241,6 +243,11 @@ export default function NewRequestPage() {
     /* 🔴 id ของร่างที่เกิดแล้วอยู่นอก try (ผลรีวิวรอบแก้ S4) — อะไรก็ตามที่โยนหลังร่างเกิด (ขั้นอัปไฟล์ ·
        notifyToast) ต้องยังพาไปหน้ารายละเอียด ไม่ใช่ค้างหน้านี้ให้กดซ้ำแล้วได้ร่างใบที่สอง */
     let createdId = null;
+    /* ไฟล์ที่ขึ้นแล้วในรอบนี้ — `form` ข้างล่างเป็นภาพก่อนอัป (ref ที่ `remember` คืนลงตะกร้ายังไม่ถึง closure นี้)
+       ⇒ toast บอกชื่อไฟล์ที่ยังไม่เข้าจากชุดนี้ + รายการที่ถือ ref มาก่อน (UAT S4 รอบ 4 ข้อ 15) */
+    const uploaded = new Set();
+    const track = (key) => (file, ref) => { uploaded.add(file); remember(key)(file, ref); };
+    const leftNames = () => draftFilesLeft([...(form.requiredFiles || []), ...(form.files || [])], uploaded);
     try {
       const { id, error, warning } = await createRequestDraft(
         form, linksInstallment ? { linkInstallmentId } : {},
@@ -259,16 +266,17 @@ export default function NewRequestPage() {
          หรืออัปไบต์เดิมซ้ำ · ไฟล์ที่ไม่เข้าแนบต่อที่หน้ารายละเอียดทีละไฟล์ (ช่องไฟล์บังคับมีบล็อกเดียวกันที่นั่น)
          ⭐ ไฟล์แบบขึ้นก่อน (docType ของรูปแบบ) แล้วค่อยไฟล์ทั่วไป · ล้มที่ไหนหยุดที่นั่น (ข้อความบอกชื่อไฟล์) */
       if (id) {
-        const uploadError = await uploadDraftFiles(id, form.requiredFiles, { docType: requiredSpec?.docType, onUploaded: remember("requiredFiles") })
-          || await uploadDraftFiles(id, form.files, { onUploaded: remember("files") });
+        const uploadError = await uploadDraftFiles(id, form.requiredFiles, { docType: requiredSpec?.docType, onUploaded: track("requiredFiles") })
+          || await uploadDraftFiles(id, form.files, { onUploaded: track("files") });
         /* 🔴 ทักผ่านถาดกลาง (`notifyToast` อยู่ที่ layout) — Toast ของหน้านี้ตายไปพร้อมหน้าตอน router.push
-           ผู้ใช้เลยไม่เคยเห็นว่าไฟล์ไหนไม่เข้า (UAT S4 T07) · ค้าง 12 วิ ให้อ่านจบบนหน้ารายละเอียด */
-        if (uploadError) notifyToast.error(`${uploadError} — แนบซ้ำได้ที่หน้ารายละเอียด`, RESPONSE_WARNING_TOAST);
+           ผู้ใช้เลยไม่เคยเห็นว่าไฟล์ไหนไม่เข้า (UAT S4 T07) · ค้าง 12 วิ ให้อ่านจบบนหน้ารายละเอียด
+           ⭐ บอกจำนวน + ชื่อไฟล์ที่ยังไม่เข้า (UAT S4 รอบ 4 ข้อ 15) — ตัวอัปหยุดที่ไฟล์แรกที่ล้ม ไฟล์ที่ตามหลังก็ไม่เข้าด้วย */
+        if (uploadError) notifyToast.error(draftUploadFailureText(uploadError, leftNames()), RESPONSE_WARNING_TOAST);
         router.push(`/requests/${id}`);
       }
     } catch (e) {
       if (createdId) {
-        notifyToast.error(`${e?.message || "แนบไฟล์ไม่สำเร็จ"} — แนบซ้ำได้ที่หน้ารายละเอียด`, RESPONSE_WARNING_TOAST);
+        notifyToast.error(draftUploadFailureText(e?.message || "แนบไฟล์ไม่สำเร็จ", leftNames()), RESPONSE_WARNING_TOAST);
         router.push(`/requests/${createdId}`);
       } else {
         setToast({ kind: "error", msg: e?.message || "บันทึกร่างไม่สำเร็จ" });

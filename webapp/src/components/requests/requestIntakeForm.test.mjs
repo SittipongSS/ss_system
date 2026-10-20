@@ -50,8 +50,15 @@ test('🔴 O7(ก): วันเข้าพื้นที่ที่พิม
   assert.match(pick, /const dropsVisit = !!target\.resultDateOnly && !!\(value\.requestedDueDate \|\| value\.requestedDueTime\);/);
   // dropsVisit อยู่นอกเงื่อนไข `from` — ส่วน isEdit / ย้ายไฟล์ยังต้องเคยเลือกมาก่อน (กดครั้งแรกที่ไม่มีอะไรหายไม่ถาม)
   assert.match(pick, /if \(target\.switchConfirm && \(dropsVisit \|\| \(from && \(isEdit \|\| movesFiles\)\)\)\) \{/);
-  // คำถามมาก่อนการล้างเสมอ
-  assert.ok(pick.indexOf('target.switchConfirm.title') < pick.indexOf('requestedDueDate: "", requestedDueTime: ""'));
+  // คำถามมาก่อนการล้างเสมอ — ถ้อยคำมาจาก `requestVariantConfirm` (ครั้งแรก "เลือก" · สลับ "สลับ" · ราคาของการสลับจากหน้าคำร้อง)
+  // ⚠️ ทั้งสองตำแหน่งต้องมีจริง — indexOf ของสิ่งที่ไม่มี (-1) ทำให้การเทียบผ่านเองเงียบ ๆ (เคยเป็นแบบนั้นหลังเปลี่ยนถ้อยคำ)
+  const askAt = pick.indexOf('await confirmAction(requestVariantConfirm(kind, { from, to: next, note: variantSwitchNotes?.[next] }))');
+  const clearAt = pick.indexOf('requestedDueDate: "", requestedDueTime: ""');
+  assert.ok(askAt > -1 && clearAt > -1, 'ต้องเจอทั้งคำถามและการล้าง');
+  assert.ok(askAt < clearAt);
+  // ไม่เหลือถ้อยคำที่ประกอบเองในฟอร์ม (ปุ่ม "สลับ" ตายตัว = ครั้งแรกก็ขึ้น "สลับ")
+  assert.doesNotMatch(pick, /confirmLabel: "สลับ"/);
+  assert.doesNotMatch(pick, /target\.switchConfirm\.title/);
 });
 
 test('T16: แผ่นวิธีประเมินหักเป็นคอลัมน์เดียวเองที่จอแคบ — เฉพาะหัวข้อที่บังคับเลือก (พัฒนาสูตรเท่าเดิม)', () => {
@@ -126,11 +133,16 @@ test('🔴 saveDraft: ร่างเกิดแล้ว (มี id) = พา�
   assert.doesNotMatch(afterId, /\breturn\b/, 'ห้าม return ระหว่างอัปไฟล์กับการพาไปหน้ารายละเอียด');
   assert.doesNotMatch(afterId, /\bthrow\b/);
   // ไฟล์แบบอัปก่อน ด้วย docType ของรูปแบบ · ไฟล์ทั่วไปตามหลัง · ทุกไฟล์ที่ขึ้นแล้วได้ ref คืนทันที
-  assert.match(afterId, /uploadDraftFiles\(id, form\.requiredFiles, \{ docType: requiredSpec\?\.docType, onUploaded: remember\("requiredFiles"\) \}\)/);
-  assert.match(afterId, /uploadDraftFiles\(id, form\.files, \{ onUploaded: remember\("files"\) \}\)/);
+  // (`track` = `remember` + จดว่าขึ้นแล้วในรอบนี้ — toast บอกชื่อไฟล์ที่ยังไม่เข้า · UAT S4 รอบ 4 ข้อ 15)
+  assert.match(afterId, /uploadDraftFiles\(id, form\.requiredFiles, \{ docType: requiredSpec\?\.docType, onUploaded: track\("requiredFiles"\) \}\)/);
+  assert.match(afterId, /uploadDraftFiles\(id, form\.files, \{ onUploaded: track\("files"\) \}\)/);
   assert.ok(afterId.indexOf('form.requiredFiles') < afterId.indexOf('form.files'));
+  const tracked = page.slice(start, page.indexOf('try {', start));
+  assert.match(tracked, /const track = \(key\) => \(file, ref\) => \{ uploaded\.add\(file\); remember\(key\)\(file, ref\); \};/,
+    'ref ต้องยังคืนลงตะกร้าทันที (retry-must-not-reupload) — track ห่อ remember ไม่ใช่แทน');
+  assert.match(tracked, /draftFilesLeft\(\[\.\.\.\(form\.requiredFiles \|\| \[\]\), \.\.\.\(form\.files \|\| \[\]\)\], uploaded\)/);
   // 🔴 ไฟล์ไม่เข้าต้องทักผ่านถาดกลาง — Toast ของหน้านี้ตายตอน router.push (UAT S4 T07: ไม่เคยเห็นบนหน้ารายละเอียด)
-  assert.match(afterId, /if \(uploadError\) notifyToast\.error\(`\$\{uploadError\} — แนบซ้ำได้ที่หน้ารายละเอียด`, RESPONSE_WARNING_TOAST\);/);
+  assert.match(afterId, /if \(uploadError\) notifyToast\.error\(draftUploadFailureText\(uploadError, leftNames\(\)\), RESPONSE_WARNING_TOAST\);/);
   assert.doesNotMatch(afterId, /setToast\(/, 'หลังร่างเกิดห้ามใช้ Toast ของหน้า — หายไปพร้อมหน้า');
   // 🔴 ทางโยน: id ของร่างอยู่นอก try แล้วตั้งทันทีหลังสร้างผ่าน ⇒ catch ที่มี id ต้องพาไปหน้ารายละเอียดด้วย
   assert.ok(page.slice(start, page.indexOf('try {', start)).includes('let createdId = null;'), 'createdId ต้องประกาศก่อน try');
@@ -138,7 +150,7 @@ test('🔴 saveDraft: ร่างเกิดแล้ว (มี id) = พา�
   const catchEnd = page.indexOf('} finally {', end);
   const catchBody = page.slice(end, catchEnd);
   assert.match(catchBody, /if \(createdId\) \{[\s\S]*?router\.push\(`\/requests\/\$\{createdId\}`\);[\s\S]*?\} else \{/);
-  assert.match(catchBody, /if \(createdId\) \{\n\s*notifyToast\.error\(`\$\{e\?\.message \|\| "แนบไฟล์ไม่สำเร็จ"\} — แนบซ้ำได้ที่หน้ารายละเอียด`, RESPONSE_WARNING_TOAST\);\n\s*router\.push/);
+  assert.match(catchBody, /if \(createdId\) \{\n\s*notifyToast\.error\(draftUploadFailureText\(e\?\.message \|\| "แนบไฟล์ไม่สำเร็จ", leftNames\(\)\), RESPONSE_WARNING_TOAST\);\n\s*router\.push/);
 });
 
 test('หน้าเปิดคำร้อง: ทางเดียวที่ถูกเลือกไว้ให้ (สวิตช์ปิด) · ฟอร์มที่ไม่ได้แตะต้องไม่นับว่าแก้', () => {
@@ -212,7 +224,10 @@ test('ฟอร์มส่งคำของวิธีที่เลือ�
   const site = code('components/requests/SurveySiteFields.js');
   assert.match(site, /const wording = surveyZoneWording\(variant\);/);
   assert.match(site, /zonePickList\(restZones, takenZoneIds, \{ wording \}\)/);
-  assert.match(site, /SURVEY_ZONE_REPEAT_TEXT\[wording\]/);
+  /* บรรทัดรองของแถวที่ติ๊กแล้ว: "…ซ้ำ" เฉพาะพื้นที่ที่ทะเบียนบอกว่าเคยมีผล — ถามแถวทะเบียนตัวเดียวกับที่ไทล์ใช้
+     (UAT S4 รอบ 4 ข้อ 5 · ไทล์ "ยังไม่เคยวัด" แล้วแถวบอก "วัดซ้ำ" = ขัดกันเอง) */
+  assert.match(site, /surveyZoneRowText\(wording, siteZones\.find\(\(z\) => z\.id === row\.zoneId\)\)/);
+  assert.doesNotMatch(site, /SURVEY_ZONE_REPEAT_TEXT/, 'คำ "ซ้ำ" ต้องผ่านตัวตัดสินที่ดูผลเดิมเท่านั้น');
   assert.doesNotMatch(site, /วัดซ้ำพื้นที่เดิม/);
 });
 
@@ -232,7 +247,9 @@ test('ป้ายเก่าของช่องสถานที่ ("…�
   const hits = walk(new URL('.', SRC).pathname).filter((path) => readFileSync(path, 'utf8').includes(old));
   assert.deepEqual(hits, []);
   const site = read('components/requests/SurveySiteFields.js');
-  assert.equal((site.match(/สถานที่ที่จะให้ประเมิน/g) || []).length, 3, 'ป้าย + ariaLabel สองที่');
+  /* 4 = ป้ายโหมดกรอก + ariaLabel สองที่ + ป้ายโหมดอ่านอย่างเดียว (ฟอร์มแก้ · UAT S4 รอบ 4 ข้อ 4 — เดิม "สถานที่และพื้นที่…") */
+  assert.equal((site.match(/สถานที่ที่จะให้ประเมิน/g) || []).length, 4, 'ป้าย + ariaLabel สองที่ + ป้ายโหมดอ่านอย่างเดียว');
+  assert.doesNotMatch(code('components/requests/SurveySiteFields.js'), /สถานที่และพื้นที่ที่ต้องประเมิน/);
 });
 
 /* ── ฟอร์มแก้ของใบที่ส่งแล้ว (ทรง RQ-AS-26100312 · UAT S4 T11b) — ไม่มีอะไรบนฟอร์มขัดกับวิธีรายพื้นที่ ────────── */
@@ -241,7 +258,8 @@ test('หลังส่ง (variantAskedOnly): ไม่มีคำแนะ�
   // ใบที่ส่งแล้วซึ่งทุกพื้นที่ติดป้าย "จากแบบ" ไม่มีการเข้าพื้นที่ ⇒ ไม่มีคำอธิบายวันเข้า/วันรับผลที่อ้างถึงการเข้า
   // ⚠️ ต้องเป็น null / false ไม่ใช่ undefined — undefined = ค่าตั้งต้นของคอมโพเนนต์ ("ฝ่ายปลายทางจะรับปากวันจริง…")
   assert.match(form, /const deskZonesOnly = variantAskedOnly && Array\.isArray\(value\.zones\) && value\.zones\.length > 0\n\s*&& value\.zones\.every\(\(zone\) => !!zone\?\.methodTag\);/);
-  assert.match(form, /resultDueHint=\{resultDateOnly \? "หัวหน้า TS จะแจ้งวันส่งผลจริงหลังรับเรื่อง" : deskZonesOnly \? false : undefined\}/);
+  /* คำใบ้ของฟอร์มวันเดียวพูดถึงอนาคต "…หลังรับเรื่อง" ⇒ รับเรื่องแล้วไม่วาด (UAT S4 รอบ 4 ข้อ 10 · `awaitingAck`) */
+  assert.match(form, /resultDueHint=\{resultDateOnly\n\s*\? \(awaitingAck \? "หัวหน้า TS จะแจ้งวันส่งผลจริงหลังรับเรื่อง" : false\)\n\s*: deskZonesOnly \? false : undefined\}/);
   assert.match(form, /dueHint=\{needsSite\n\s*\? \(deskZonesOnly \? null : "เจ้าหน้าที่จะยืนยันวัน\/เวลาจริงตอนกด/);
   // ป้ายวิธีปัจจุบันมาจากหน้าคำร้อง เฉพาะใบที่ส่งแล้ว (ร่างสลับไทล์ได้ ป้ายค้างจะขัดกับไทล์) ผ่านตัวถามของโมดูลใบ
   const page = code('app/requests/[id]/page.js');
@@ -250,4 +268,88 @@ test('หลังส่ง (variantAskedOnly): ไม่มีคำแนะ�
   const fields = code('components/requests/SurveySiteFields.js');
   const readOnly = fields.slice(fields.indexOf('if (readOnly) {'), fields.indexOf('return (', fields.indexOf('if (readOnly) {') + 400));
   assert.match(readOnly, /<b>\{zoneName\(row\)\}<\/b>\n\s*<SurveyMethodChip label=\{row\.methodTag\} className=\{styles\.zoneTileMethod\} \/>/);
+});
+
+/* ══ UAT S4 รอบ 4 (20/10) — ฟอร์มเดียวสองโหมด: ของที่โหมดแก้เคยพูดผิด/ซ้ำ ══════════════════════════════════════
+   ⭐ ฟอร์มเรนเดอร์ในเทสต์ไม่ได้ (JSX) ⇒ ตรึงรูปของซอร์สตรงจุดที่แก้ · พฤติกรรมของตัวช่วยล้วนอยู่ที่เทสต์ของ lib */
+const PAGE = 'app/requests/[id]/page.js';
+
+test('รอบ 4 ข้อ 1: ก้อนของแท็บ "งาน" พกระยะของตัวเอง — เท่า gap ของเปลือกหน้าเปิดใบ (ฟอร์มสร้างหน้าตาเท่าเดิม)', () => {
+  const form = code(FORM);
+  assert.match(form, /\{activeTab === "work" && \(<div className=\{styles\.tabStack\}>/);
+  assert.doesNotMatch(form, /\{activeTab === "work" && \(<>/);
+  const css = read('components/requests/requestForm.module.css');
+  const stack = /\.tabStack \{\s*display: flex;\s*flex-direction: column;\s*gap: (var\(--[\w-]+\));\s*\}/.exec(css);
+  assert.ok(stack, 'ต้องมี .tabStack เป็นคอลัมน์ที่มี gap');
+  // gap ต้องเท่าของ `.form` บน /requests/new — ไม่งั้นฟอร์มสร้างได้ระยะระหว่างก้อนใหม่ (สัญญาของข้อนี้: แก้เฉพาะโหมดแก้)
+  const shell = read('app/requests/new/page.module.css');
+  const shellGap = /\.form \{[^}]*gap: (var\(--[\w-]+\));/.exec(shell);
+  assert.ok(shellGap);
+  assert.equal(stack[1], shellGap[1]);
+});
+
+test('รอบ 4 ข้อ 2: โหมดแก้วาดป้าย "ดีล" ครั้งเดียว (ป้ายของช่องเส้นประ) · ฟอร์มสร้างคงป้ายของตัวเลือก', () => {
+  const form = code(FORM);
+  assert.match(form, /\{!isEdit && <span className=\{styles\.fieldLabel\}>ดีล<\/span>\}/);
+  assert.match(form, /<DerivedField label="ดีล" from="ผูกไว้ตอนเปิดใบ" value=\{lockedRefs\.deal \|\| ""\} \/>/);
+  // ป้าย "ดีล" ตายตัวที่ไม่มีเงื่อนไขโหมดเหลือเฉพาะในช่องเส้นประของหัวข้อที่ดีลเติมจากใบอื่น (QT / SO)
+  assert.doesNotMatch(form, /\n\s*<span className=\{styles\.fieldLabel\}>ดีล<\/span>/);
+});
+
+test('รอบ 4 ข้อ 3: ประโยค "ลบร่างแล้วเปิดใหม่" เฉพาะร่างที่ยังไม่เคยส่ง — ใบที่ถือเลข RQ ได้ประโยคสั้นที่จริง', () => {
+  const form = code(FORM);
+  assert.match(form, /\{freshDraft\n\s*\? "เปลี่ยนดีลทางนี้ไม่ได้ — ใบร่างลบแล้วเปิดใหม่ได้ \(ยังไม่กินเลขที่\)"\n\s*: "เปลี่ยนดีลของคำร้องที่ส่งแล้วไม่ได้"\}/);
+  assert.match(form, /<SurveySiteFields[\s\S]{0,700}freshDraft=\{freshDraft\}/);
+  const site = code('components/requests/SurveySiteFields.js');
+  assert.match(site, /\{freshDraft\n\s*\? "สถานที่และพื้นที่แก้ที่นี่ไม่ได้ — ร่างที่ยังไม่ส่งลบแล้วเปิดใหม่ได้ \(ยังไม่กินเลขที่\)"\n\s*: "สถานที่และพื้นที่ของคำร้องที่ส่งแล้วแก้ที่นี่ไม่ได้"\}/);
+  // ค่าตั้งต้น = ร่างใหม่ (ฝั่งสร้างไม่ส่ง) · หน้าคำร้องถามด่านเดียวกับปุ่มลบ (ร่างที่ถูกตีกลับมี submittedAt ⇒ ลบไม่ได้)
+  assert.match(form, /freshDraft = true,/);
+  assert.match(site, /freshDraft = true,/);
+  assert.match(code(PAGE), /freshDraft=\{!deleteRequestError\(req\)\}/);
+});
+
+test('รอบ 4 ข้อ 8: ไทล์ของวิธีที่สวิตช์ปิดยังวาดตราบที่ใบที่บันทึกไว้ถืออยู่ — ไม่ใช่แค่ค่าที่ฟอร์มถืออยู่ตอนนี้', () => {
+  const form = code(FORM);
+  assert.match(form, /requestVariantChoices\(kind, \{\n\s*off: variantsOff, current: requestVariantChosen\(value\), saved: savedVariant,\n\s*\}\)/);
+  assert.match(form, /savedVariant = null,/);
+  assert.match(code(PAGE), /savedVariant=\{requestVariantChosen\(req\)\}/);
+  // ประโยค "เปลี่ยนวิธีได้ที่หัวหน้า TS" ยังนับเฉพาะทางที่สวิตช์เปิด — ค่าที่บันทึกไว้ไม่ทำให้มันโกหก
+  assert.match(form, /const variantSwitchOpen = requestVariantChoices\(kind, \{ off: variantsOff \}\)\.length >= 2;/);
+});
+
+test('รอบ 4 ข้อ 6–7: กล่องยืนยันของปุ่มวิธีมาจาก requestVariantConfirm · ราคาของการสลับมาจากหน้าคำร้อง', () => {
+  const form = code(FORM);
+  assert.match(form, /import \{ requestVariantChoices, requestVariantConfirm \} from "@\/lib\/requests\/variantSwitch";/);
+  assert.match(form, /variantSwitchNotes = null,/);
+  assert.match(code(PAGE), /variantSwitchNotes=\{surveyIntakeSwitchNotes\(req\)\}/);
+});
+
+test('รอบ 4 ข้อ 9: ปุ่ม "ยังขาด" พาไปถึงบล็อกไฟล์แบบ — เลื่อนหลังแท็บใหม่ลง DOM · เคารพการลดการเคลื่อนไหว', () => {
+  const form = code(FORM);
+  assert.match(form, /onClick=\{\(\) => jumpToMissing\(m\)\}/);
+  assert.doesNotMatch(form, /onClick=\{\(\) => setTab\(m\.tab\)\}/);
+  assert.match(form, /const REQUIRED_FILES_ANCHOR = "req-required-files";/);
+  assert.match(form, /<div className="form-group col-span-2" id=\{REQUIRED_FILES_ANCHOR\}>\s*<RequiredFilesBlock/);
+  const jump = form.slice(form.indexOf('const jumpToMissing = (m) => {'), form.indexOf('const requiredTotal'));
+  assert.match(jump, /setTab\(m\.tab\);/);
+  assert.match(jump, /setTimeout\(\(\) => \{/);
+  assert.match(jump, /window\.matchMedia\?\.\("\(prefers-reduced-motion: reduce\)"\)\.matches/);
+  assert.match(jump, /scrollIntoView\(\{ behavior: reduce \? "auto" : "smooth", block: "center" \}\)/);
+  assert.match(form, /const missingAnchorOf = \(m\) => \(requiredSpec && m\.label === requiredSpec\.label \? REQUIRED_FILES_ANCHOR : null\);/);
+});
+
+test('รอบ 4 ข้อ 10: หน้าคำร้องบอกฟอร์มว่าใบยังไม่ถูกรับเรื่อง (ร่าง · รอรับเรื่อง)', () => {
+  assert.match(code(FORM), /awaitingAck = true,/);
+  assert.match(code(PAGE), /awaitingAck=\{\["draft", "pending"\]\.includes\(req\.status\)\}/);
+});
+
+test('รอบ 4 ข้อ 13a: การ์ดหัวข้อห่อวลีที่ทะเบียนประกาศ (nowrap) — ไม่แทรกอักขระในตัวหนังสือ', () => {
+  const form = code(FORM);
+  assert.match(form, /description: keepPhrases\(requestKindMeta\(k\)\?\.summary, requestKindMeta\(k\)\?\.summaryKeep\) \|\| undefined,/);
+  const thai = read('components/ThaiText.js');
+  assert.match(thai, /run\.keep \? <span key=\{idx\} className=\{styles\.word\}>\{run\.text\}<\/span> : run\.text/);
+  // WORD JOINER ห้ามอยู่ในซอร์สของจอ/ทะเบียน — Ctrl+F ต้องยังหาคำเจอ (lib/thaiWrap.js หัวไฟล์)
+  for (const rel of [FORM, 'lib/requests/kinds/ts/siteSurvey.js', 'lib/requests/commitDue.js', PAGE]) {
+    assert.ok(!read(rel).includes('⁠'), rel);
+  }
 });

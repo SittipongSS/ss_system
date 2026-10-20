@@ -246,6 +246,29 @@ export async function uploadDraftFiles(id, files = [], {
   return null;
 }
 
+/* ── ไฟล์ที่ยังไม่เข้าใบ หลังอัปจากหน้าเปิดใบล้ม (UAT S4 รอบ 4 ข้อ 15) ───────────────────────────────────
+   `uploadDraftFiles` หยุดที่ไฟล์แรกที่ล้ม ⇒ ไฟล์ที่ไม่เข้า = ตัวที่ล้ม + ทุกตัวที่ยังไม่ถึงคิว (ทั้งไฟล์แบบและไฟล์ทั่วไป)
+   ⭐ นับจาก **ชุดที่ขึ้นแล้วจริง** (`uploaded` = ไฟล์ที่ `onUploaded` ถูกเรียก) + รายการที่ถือ `ref` อยู่แล้ว — ไม่เดาจากข้อความ error
+   ⚠️ ชื่อไฟล์เป็นของผู้ใช้ — โชว์ตามที่เป็น ไม่ตัด/แต่งข้างใน */
+const DRAFT_LEFT_NAMES_SHOWN = 3;
+
+export function draftFilesLeft(entries = [], uploaded = new Set()) {
+  return (entries || [])
+    .filter((entry) => entry && !entry.ref && !uploaded.has(entry?.file || entry))
+    .map((entry) => String((entry?.file || entry)?.name || '').trim() || 'ไฟล์ไม่มีชื่อ');
+}
+
+/* ข้อความ toast ของทางนี้ — "{เหตุ} — ยังไม่เข้า 2 ไฟล์: a.pdf, b.jpg · แนบซ้ำได้ที่หน้ารายละเอียด"
+   เกินสามชื่อ = "a, b, c และอีก n ไฟล์" (toast ค้าง 12 วิ ต้องอ่านจบ) · ไม่รู้ว่าไฟล์ไหน (รายการว่าง) = ท้ายประโยคเดิม */
+export function draftUploadFailureText(error, leftNames = []) {
+  const head = String(error ?? '').trim() || 'แนบไฟล์ไม่สำเร็จ';
+  const names = (leftNames || []).filter(Boolean);
+  if (!names.length) return `${head} — แนบซ้ำได้ที่หน้ารายละเอียด`;
+  const shown = names.slice(0, DRAFT_LEFT_NAMES_SHOWN).join(', ');
+  const more = names.length > DRAFT_LEFT_NAMES_SHOWN ? ` และอีก ${names.length - DRAFT_LEFT_NAMES_SHOWN} ไฟล์` : '';
+  return `${head} — ยังไม่เข้า ${names.length} ไฟล์: ${shown}${more} · แนบซ้ำได้ที่หน้ารายละเอียด`;
+}
+
 /**
  * ขั้นแรกอย่างเดียว: ค่าในฟอร์ม → **ร่าง** ที่ยังไม่กินเลขที่ — คืน { id, error, warning }
  *

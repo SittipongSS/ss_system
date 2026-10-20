@@ -61,7 +61,7 @@ export const VALID_ANSWER_VIA = ['survey_send'];
 const KIND_KEYS = [
   'key', 'label', 'dept', 'scope', 'legacy', 'needs', 'optionalRefs',
   'hasItems', 'lineShape', 'lineKind', 'lineNoun', 'deliversRows', 'hasPdr',
-  'cancelBeforeAckOnly', 'closeNeedsSoConfirm', 'stepKey', 'dealType', 'form', 'summary', 'hint',
+  'cancelBeforeAckOnly', 'closeNeedsSoConfirm', 'stepKey', 'dealType', 'form', 'summary', 'summaryKeep', 'hint',
   'variants', 'defaultVariant', 'pdrScents', 'answerVia', 'closeNeedsAnswer', 'fieldRail',
   // ประเมินจากแบบ งวด 4 — ฝ่ายขายเลือก "วิธี" ตอนยื่น (ใช้ได้เฉพาะหัวข้อที่มี variants · ด่านอยู่ใน assertKind)
   'variantLabel', 'variantRequired', 'variantRequiredError', 'variantLockAfterSubmit', 'variantLockText',
@@ -183,6 +183,16 @@ export function assertKind(kind, seen = new Set()) {
   }
   for (const key of Object.keys(kind)) {
     if (!KIND_KEYS.includes(key)) throw new Error(`${at}: คีย์ "${key}" ไม่ใช่คีย์ที่ทะเบียนรู้จัก`);
+  }
+  /* วลีของ `summary` ที่ห้ามขาดสองบรรทัด (การ์ดหัวข้อห่อ `nowrap` · `keepPhrases` · UAT S4 รอบ 4 ข้อ 13) —
+     ทุกวลีต้องอยู่ใน `summary` จริง ไม่งั้นแก้ข้อความแล้ววลีค้างเป็นของที่ไม่มีใครห่อเงียบ ๆ */
+  if ('summaryKeep' in kind) {
+    const keep = kind.summaryKeep;
+    if (!Array.isArray(keep) || !keep.length || !keep.every(isText)) {
+      throw new Error(`${at}: summaryKeep ต้องเป็นลิสต์ข้อความที่ไม่ว่าง`);
+    }
+    const missing = keep.filter((phrase) => !String(kind.summary || '').includes(phrase));
+    if (missing.length) throw new Error(`${at}: summaryKeep "${missing.join('", "')}" ไม่อยู่ใน summary`);
   }
   if (kind.fieldRail != null) {
     const labels = kind.fieldRail;

@@ -30,9 +30,11 @@ import {
   requestImpliedVariant,
   requestVariantAskedOnly,
   requestVariantChoices,
+  requestVariantConfirm,
   requestVariantLock,
   requestVariantSideLock,
 } from './variantSwitch.js';
+import { surveyVariantRefusal } from '../service/surveyIntake.js';
 
 const REQUIRED = 'ต้องเลือกวิธีประเมิน — ลงหน้างาน หรือ ประเมินจากแบบ';
 const LOCK = 'ส่งคำร้องแล้ว — เปลี่ยนวิธีประเมินได้ที่ฝ่ายบริการ (หัวหน้า TS)';
@@ -62,9 +64,12 @@ test('requestShapeError · ค่าวิธีที่ไม่มีใน�
   assert.match(shape({ ...SURVEY, variant: 'npd', requestedDueDate: '2026-10-20' }), /รูปแบบ "npd" ไม่มีในหัวข้อ "ประเมินพื้นที่"/);
 });
 
-test('requestShapeError · ลงหน้างานยังต้องมีวันที่ต้องการให้เข้าพื้นที่ (สองบรรทัดเดิมไม่เปลี่ยน)', () => {
-  assert.equal(shape({ ...SURVEY, variant: 'standard' }), 'ต้องระบุวันที่ต้องการรับงาน');
-  assert.equal(shape({ ...SURVEY, variant: 'standard', requestedDueDate: '20/10/2026' }), 'วันที่ต้องการรับงานไม่ถูกต้อง');
+/* ⭐ ประโยคใช้ป้ายของช่องจริง (UAT S4 รอบ 4 ข้อ 11) — ฟอร์มลงหน้างานป้ายช่องนี้ว่า "วันที่ต้องการให้เข้าพื้นที่"
+   เดิมสองบรรทัดนี้พูด "…รับงาน" (ป้ายกลางของหัวข้ออื่น) = ปุ่มจางสั่งให้กรอกช่องที่ไม่มีบนจอ */
+test('requestShapeError · ลงหน้างานยังต้องมีวันที่ต้องการให้เข้าพื้นที่ — ประโยคพูดป้ายของช่องนั้น', () => {
+  assert.equal(shape({ ...SURVEY, variant: 'standard' }), 'ต้องระบุวันที่ต้องการให้เข้าพื้นที่');
+  assert.equal(shape({ ...SURVEY, variant: 'standard', requestedDueDate: '20/10/2026' }), 'วันที่ต้องการให้เข้าพื้นที่ไม่ถูกต้อง');
+  assert.equal(requestFormCopy({ kind: 'site_survey', variant: 'standard' }).dueLabel, 'วันที่ต้องการให้เข้าพื้นที่');
   assert.equal(shape({ ...SURVEY, variant: 'standard', requestedDueDate: '2026-10-20' }), null);
   // standard ไม่เคยตอบ "ไม่มีรูปแบบให้เลือก" (ย้ายมาจาก variantSwitch.test — หัวข้อนี้มีรูปแบบแล้ว)
   assert.doesNotMatch(String(shape({ ...SURVEY, variant: 'standard' })), /ไม่มีรูปแบบให้เลือก/);
@@ -82,6 +87,27 @@ test('requestShapeError · ประเมินจากแบบถามแ�
   for (const body of [d, { ...d, requestedResultDate: '2026-10-20' }, { ...d, requestedResultDate: 'x' }]) {
     assert.doesNotMatch(String(shape(body)), /ต้องระบุวันที่ต้องการรับงาน|วันที่ต้องการรับงานไม่ถูกต้อง/);
   }
+});
+
+/* 🔴 คำที่ล็อกไว้ (มติผู้ใช้ 19/08) "ต้องระบุวันที่ต้องการรับงาน" — ทุกหัวข้อที่ไม่ได้ประกาศป้ายวันของตัวเองต้องได้ประโยคเดิม
+   ทุกตัวอักษร · ไล่ทุกหัวข้อในทะเบียน (ไม่ใช่ลิสต์ที่เขียนมือ) ⇒ หัวข้อใหม่ที่ตั้ง `dueLabel` เองจะโผล่ในรายการข้างล่างทันที */
+test('requestShapeError · ไม่มีวันที่: หัวข้อที่ใช้ป้ายกลาง ตอบ "ต้องระบุวันที่ต้องการรับงาน" ทุกตัวอักษร · มีแต่ประเมินพื้นที่ที่ป้ายต่าง', () => {
+  const own = [];
+  let reached = 0;
+  for (const kind of Object.keys(REQUEST_KINDS)) {
+    const label = requestFormCopy(kind).dueLabel;
+    if (label !== 'วันที่ต้องการรับงาน') { own.push(kind); continue; }
+    const body = {
+      title: 'ก', body: 'ข', dealId: 'D-1', projectId: 'P-1', salesOrderId: 'SO-1', quotationId: 'Q-1', billAmount: 100,
+      siteId: 'S-1', zones: [{ name: 'z' }], items: [], scentId: 'SC-1', formulaId: 'F-1', productTypeId: 'T-1',
+      variant: requestVariantKey(kind) || undefined, requestedDueDate: '',
+    };
+    const error = requestShapeError(kind, body);
+    // หัวข้อที่ตกด่านอื่นก่อนถึงข้อวัน (เช่นต้องมีรายการ) ไม่ใช่ประเด็นของเทสต์นี้ — ที่ถึงข้อวันต้องได้ประโยคเดิมเป๊ะ
+    if (/วันที่/.test(String(error))) { reached += 1; assert.equal(error, 'ต้องระบุวันที่ต้องการรับงาน', kind); }
+  }
+  assert.ok(reached >= 3, `ต้องมีหัวข้อที่เดินถึงข้อวันจริง (ได้ ${reached}) — ไม่งั้นเทสต์นี้ไม่ได้เฝ้าอะไร`);
+  assert.deepEqual(own, ['site_survey'], 'หัวข้อที่ประกาศป้ายวันของตัวเอง — เพิ่มใหม่ต้องตั้งใจ');
 });
 
 test('requestShapeError · หัวข้ออื่นตอบเหมือนเดิมทั้งมีและไม่มี variant: standard ค้างมา (รูปของ mig 0351)', () => {
@@ -228,6 +254,55 @@ test('requestVariantChoices — ซ่อนวิธีที่ปิด · �
   assert.deepEqual(requestVariantChoices('site_survey', { off: ['standard', 'drawing'] }), []);
   assert.deepEqual(requestVariantChoices('formula_dev'), ['standard', 'npd']);
   assert.deepEqual(requestVariantChoices('info'), []);
+});
+
+/* ⭐ UAT S4 รอบ 4 ข้อ 8: สวิตช์ปิด · ร่างจากแบบที่ค้างอยู่ · กด "ลงหน้างาน" ⇒ เดิมไทล์จากแบบหายทันที (ค่าที่ฟอร์มถือ = standard)
+   ทางกลับก่อนบันทึกเหลือแค่ "ยกเลิกการแก้" · `saved` = ค่าที่บันทึกไว้บนใบ ยังวาดจนกว่าจะบันทึกทับ */
+test('requestVariantChoices · saved: วิธีที่ปิดอยู่ยังวาดตราบที่ใบที่บันทึกไว้ถืออยู่ — server ยังตีกลับการบันทึกเหมือนเดิม', () => {
+  const OFF = ['drawing'];
+  // ร่างจากแบบ (บันทึกไว้) ที่ฟอร์มเพิ่งสลับเป็นลงหน้างาน — ไทล์จากแบบยังอยู่ให้กดกลับ
+  assert.deepEqual(requestVariantChoices('site_survey', { off: OFF, current: 'standard', saved: 'drawing' }), ['standard', 'drawing']);
+  // ใบที่บันทึกเป็นลงหน้างาน = ไม่ได้อะไรเพิ่ม (ไม่ปลดสวิตช์ให้ใบอื่น)
+  assert.deepEqual(requestVariantChoices('site_survey', { off: OFF, current: 'standard', saved: 'standard' }), ['standard']);
+  assert.deepEqual(requestVariantChoices('site_survey', { off: OFF, saved: null }), ['standard']);
+  // ไม่ส่ง saved = ผลเดิมทุกตัว (หน้าเปิดใบ)
+  assert.deepEqual(requestVariantChoices('site_survey', { off: OFF, current: 'standard' }), ['standard']);
+  // ด่าน server ไม่หลวม: ขอจากแบบตอนสวิตช์ปิดผ่านเฉพาะใบที่ถือค่านั้นอยู่จริง (ตัวเดียวกับเดิม — ไม่มี saved ที่ server)
+  assert.equal(surveyVariantRefusal({ variant: 'drawing', enabled: false, current: 'drawing' }), null);
+  assert.notEqual(surveyVariantRefusal({ variant: 'drawing', enabled: false, current: 'standard' }), null);
+});
+
+/* ⭐ UAT S4 รอบ 4 ข้อ 6–7: ถ้อยคำของกล่องยืนยันตอนกดไทล์วิธี */
+test('requestVariantConfirm — ครั้งแรก "เลือก …" / ปุ่ม "เลือก" · สลับ = ถ้อยคำของทะเบียน / ปุ่ม "สลับ" · ราคาของการสลับเป็นบรรทัดของตัวเอง', () => {
+  const variants = REQUEST_KINDS.site_survey.variants;
+  // ครั้งแรก (ยังไม่เคยเลือก) — ไม่มีอะไรให้ "สลับ" · ประโยคเดิมของทะเบียน
+  assert.deepEqual(requestVariantConfirm('site_survey', { from: null, to: 'drawing' }), {
+    title: 'เลือก ประเมินจากแบบ',
+    description: variants.drawing.switchConfirm.description,
+    confirmLabel: 'เลือก',
+    cancelLabel: 'ยกเลิก',
+  });
+  // สลับจริง — ถ้อยคำเดิมทุกตัวอักษร
+  assert.deepEqual(requestVariantConfirm('site_survey', { from: 'standard', to: 'drawing' }), {
+    title: 'สลับเป็น ประเมินจากแบบ',
+    description: 'วันที่ต้องการให้เข้าพื้นที่ที่กรอกไว้จะไม่ถูกใช้ และต้องแนบแบบ/ผังพื้นที่',
+    confirmLabel: 'สลับ',
+    cancelLabel: 'ยกเลิก',
+  });
+  // O8: ร่างที่หัวหน้าประเมินจากแบบไว้แล้ว สลับเป็นลงหน้างาน — ราคาเป็นบรรทัดของตัวเอง ประโยคหลักเท่าเดิม
+  const NOTE = 'ผลประเมินจากแบบของหัวหน้า TS ที่มีอยู่จะไม่ถูกใช้ — ทุกพื้นที่ต้องวัดที่หน้างานใหม่';
+  assert.deepEqual(requestVariantConfirm('site_survey', { from: 'drawing', to: 'standard', note: NOTE }), {
+    title: 'สลับเป็น ลงหน้างาน',
+    description: 'ต้องระบุวันที่ต้องการให้เข้าพื้นที่ · ไฟล์แบบที่แนบไว้ยังอยู่',
+    detail: NOTE,
+    confirmLabel: 'สลับ',
+    cancelLabel: 'ยกเลิก',
+  });
+  // ไม่มีราคา / ราคาว่าง = ไม่มีคีย์ detail (กล่องเดิม)
+  assert.equal('detail' in requestVariantConfirm('site_survey', { from: 'drawing', to: 'standard', note: '  ' }), false);
+  // ปลายทางไม่มี switchConfirm (พัฒนาสูตร) = ไม่มีกล่อง
+  assert.equal(requestVariantConfirm('formula_dev', { from: 'standard', to: 'npd' }), null);
+  assert.equal(requestVariantConfirm('info', { to: 'standard' }), null);
 });
 
 test('requestImpliedVariant — เหลือทางเดียวของหัวข้อที่บังคับเลือก = ค่านั้น · อื่น ๆ = null', () => {

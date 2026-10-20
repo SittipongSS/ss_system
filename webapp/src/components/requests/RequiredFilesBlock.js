@@ -37,6 +37,9 @@ export default function RequiredFilesBlock({
      `reloadKey` = ผู้เรียกขยับเมื่ออีกแผงแนบ/ลบ ⇒ โหลดใหม่ (ตัวนับของด่านส่งตามทัน) */
   onAttachmentsChange,
   reloadKey = 0,
+  /* ผู้เรียกวาดชื่อของบล็อกเองแล้ว (การ์ด DRAWINGS ของหน้าคำร้อง — ชื่อการ์ด = `spec.label`) ⇒ ไม่วาดบรรทัดป้ายซ้ำ
+     คำบรรยาย (`spec.hint`) ยังอยู่ · ฟอร์ม (สร้าง/แก้) ไม่ส่ง = ป้าย "… (บังคับ)" เหมือนเดิม (UAT S4 รอบ 4 ข้อ 14) */
+  hideLabel = false,
 }) {
   /* สองข้อความแยกกัน (ผลรีวิวรอบแก้ S4 · `requiredFilesPick`) — ไฟล์ใหญ่เกินถูกบอก **ก่อน** ไฟล์ที่เหลือมาถึง `pick`
      ในรอบเดียวกัน ⇒ ข้อความเดียวถูกล้างทิ้งทันที · `oversizeNow` = ชุดที่กำลังเข้ามีไฟล์ใหญ่ (คืนค่าหลังจบชุด) */
@@ -83,7 +86,7 @@ export default function RequiredFilesBlock({
 
   return (
     <div className={styles.block}>
-      <span className={formStyles.fieldLabel}>{spec.label} (บังคับ)</span>
+      {!hideLabel && <span className={formStyles.fieldLabel}>{spec.label} (บังคับ)</span>}
       <small className={formStyles.hint}>{spec.hint}</small>
       {mode === "saved" ? (
         <AttachmentsPanel

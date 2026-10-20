@@ -191,6 +191,8 @@ test('⭐ S4: ไม่มีแท็บไหนขาด ⟺ ด่านส�
   const rows = [
     // [ชื่อแถว, ฟอร์ม, ตัวเลือก, ผ่านไหม]
     ['ยังไม่เลือกวิธี', SURVEY_FULL, {}, false],
+    // รอบ 4 ข้อ 12: ยังไม่เลือกวิธี + ไม่มีวันเข้าพื้นที่ — ยังไม่ผ่าน (ขาดวิธี) · วันเข้ายังไม่นับจนกว่าเลือกลงหน้างาน
+    ['ยังไม่เลือกวิธี ไม่มีวันเข้าพื้นที่', { ...SURVEY_FULL, requestedDueDate: '' }, {}, false],
     ['ลงหน้างาน', { ...SURVEY_FULL, variant: 'standard' }, {}, true],
     ['ลงหน้างาน ไม่มีวันเข้าพื้นที่', { ...SURVEY_FULL, variant: 'standard', requestedDueDate: '' }, {}, false],
     ['จากแบบ 0 ไฟล์', { ...DRAWING_FULL, requiredFiles: [] }, {}, false],
@@ -217,6 +219,26 @@ test('S4: ใบที่ยังไม่เลือกวิธี — ข�
   const missing = missingRequiredByTab(SURVEY_FULL);
   assert.deepEqual(missing, [{ tab: 'work', label: 'วิธีประเมิน' }]);
   assert.equal(requestFormBlocker(SURVEY_FULL), 'ต้องเลือกวิธีประเมิน — ลงหน้างาน หรือ ประเมินจากแบบ');
+});
+
+/* ⭐ UAT S4 รอบ 4 ข้อ 12: ก่อนเลือกวิธี เกจเคยขึ้น 0/7 พร้อม "วันที่ต้องการให้เข้าพื้นที่ (บังคับ)" — แต่วิธีคือตัวตัดสินว่าช่องนั้นมีไหม
+   (จากแบบไม่มี) ⇒ ของขาดจริงข้อเดียวคือวิธี · วันเข้าเริ่มนับเมื่อเลือกวิธีที่ต้องใช้มัน (ลงหน้างาน) · ช่องยังกรอกได้ตามเดิม */
+test('S4 รอบ 4: ยังไม่เลือกวิธี = วันเข้าพื้นที่ยังไม่นับเป็นช่องบังคับ · เลือกลงหน้างานแล้วนับ · ด่าน server ไม่เปลี่ยน', () => {
+  const blank = { dept: 'TS', kind: 'site_survey', dealId: 'DEAL-1', siteId: 'SVS-1' };
+  const labels = (form) => requiredChecks(form).map((c) => c.label);
+  assert.ok(!labels(blank).includes('วันที่ต้องการให้เข้าพื้นที่'));
+  assert.ok(labels(blank).includes('วันที่ต้องการรับผลประเมิน'), 'วันรับผลบังคับทั้งสองวิธี — ยังนับ');
+  assert.equal(labels(blank)[0], 'วิธีประเมิน');
+  assert.ok(labels({ ...blank, variant: 'standard' }).includes('วันที่ต้องการให้เข้าพื้นที่'));
+  assert.ok(!labels({ ...blank, variant: 'drawing' }).includes('วันที่ต้องการให้เข้าพื้นที่'));
+  // วันที่พิมพ์ก่อนเลือกไม่ทำให้นับ (และไม่ทำให้เกจ "ครบ" ข้อนั้นทั้งที่ยังไม่มีข้อ)
+  assert.ok(!labels({ ...blank, requestedDueDate: '2026-10-20' }).includes('วันที่ต้องการให้เข้าพื้นที่'));
+  // ด่าน server/ปุ่ม: ยังไม่เลือก = ประโยคบังคับเลือกเหมือนเดิม (ถามก่อนข้อวันอยู่แล้ว)
+  assert.equal(requestFormBlocker({ ...SURVEY_FULL, requestedDueDate: '' }), 'ต้องเลือกวิธีประเมิน — ลงหน้างาน หรือ ประเมินจากแบบ');
+  // สวิตช์ปิด (หน้าเลือก "ลงหน้างาน" ไว้ให้) = นับวันเข้าเหมือนวันนี้
+  assert.ok(labels({ ...blank, variant: 'standard' }).includes('วันที่ต้องการให้เข้าพื้นที่'));
+  // หัวข้อที่ไม่บังคับเลือกวิธี (พัฒนาสูตร) ไม่เข้าข้อนี้ — ว่าง = รูปแบบตั้งต้น วันยังนับ
+  assert.ok(labels({ dept: 'RD', kind: 'formula_dev', dealId: 'D', projectId: 'P' }).includes('วันที่ต้องการรับงาน'));
 });
 
 test('S4: ใบจากแบบไม่มีไฟล์ — ด่านบอกชื่อช่องตามที่จอเขียน', () => {

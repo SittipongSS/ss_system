@@ -161,6 +161,34 @@ export function splitThai(text) {
 }
 
 /**
+ * ซอยข้อความตามวลีที่ **ผู้เรียกประกาศเอง** ว่าต้องอยู่บรรทัดเดียวกัน — `[{ text, keep }]` (ตัววาด `keepPhrases` ห่อ `nowrap`)
+ *
+ * ⭐ ต่างจาก `THAI_KEEP_TOGETHER` (ICU ตัดผิดที่ · ใช้ทั้งระบบ): ที่นี่ ICU ตัด **ถูกตามพจนานุกรม** แต่วลีเป็นชื่อของสิ่งเดียว
+ *    ที่อ่านไม่ออกเมื่อขาดสองบรรทัด — 🐞 UAT S4 รอบ 4 ข้อ 13: การ์ดหัวข้อที่ 375px ขึ้น "…— ลง" / "หน้างานหรือจากแบบ"
+ *    ("ลง|หน้างาน" เป็นสองคำจริง) ⇒ เป็นของ **ข้อความนั้น** ไม่ใช่ของทั้งระบบ (ทะเบียนหัวข้อประกาศ `summaryKeep`)
+ * 🔴 **ไม่ใช้ WORD JOINER (U+2060)** แม้ได้ผลเท่ากัน — อักขระซ่อนในคำทำให้ `Ctrl+F` หาคำนั้นไม่เจอ (เหตุผลเต็มที่หัวไฟล์)
+ *    ⇒ ตัวหนังสือไม่ถูกแตะสักตัว · วลีที่ไม่อยู่ในข้อความ = ไม่มีชิ้น `keep`
+ * ⚠️ วลีซ้อนกัน: ตัวยาวชนะ (เรียงยาว→สั้นก่อนไล่) · ไม่ห่อซ้ำในชิ้นเดียวกัน
+ * @returns {Array<{text: string, keep: boolean}>}
+ */
+export function phraseRuns(text, phrases = []) {
+  const source = String(text ?? '');
+  const list = [...new Set((phrases || []).map((p) => String(p ?? '')).filter(Boolean))].sort((a, b) => b.length - a.length);
+  const runs = [];
+  let plain = '';
+  let i = 0;
+  while (i < source.length) {
+    const hit = list.find((p) => source.startsWith(p, i));
+    if (!hit) { plain += source[i]; i += 1; continue; }
+    if (plain) { runs.push({ text: plain, keep: false }); plain = ''; }
+    runs.push({ text: hit, keep: true });
+    i += hit.length;
+  }
+  if (plain) runs.push({ text: plain, keep: false });
+  return runs;
+}
+
+/**
  * ข้อความเวอร์ชัน "ใส่ขอบคำแล้ว" แบบสตริงล้วน — สำหรับด่านตรวจ/เทสต์ที่ต้องยิงเข้า
  * `Intl.Segmenter` เท่านั้น
  * 🔴 **อย่าเอาไปวาดบนจอ** — มันไม่มี `nowrap` จึงยังตัดกลางคำได้ ใช้ `thaiWrap` แทน

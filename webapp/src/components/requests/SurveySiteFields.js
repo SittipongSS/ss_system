@@ -26,8 +26,8 @@ import { naText } from "@/lib/format";
 import { surveyZonePackageText } from "@/lib/service/survey";
 // คำของวิธีประเมิน ("จากแบบ") มาจากที่เดียว — ฟอร์มไม่พิมพ์เอง (ประเมินจากแบบ · งวด S2b)
 import { SURVEY_METHOD_CHIP } from "@/lib/service/surveyMethodSwitch";
-// คำของรายการพื้นที่ตามวิธีที่ฝ่ายขายเลือก ("วัดซ้ำ" / "ประเมินซ้ำ") — ไฟล์ล้วน ใช้ได้ทั้งจอและ server (ประเมินจากแบบ · งวด 4)
-import { SURVEY_ZONE_REPEAT_TEXT, surveyZoneWording } from "@/lib/service/surveyIntake";
+// คำของรายการพื้นที่ตามวิธีที่ฝ่ายขายเลือก ("วัดซ้ำ" / "ประเมินซ้ำ" / "พื้นที่เดิมในทะเบียน") — ไฟล์ล้วน ใช้ได้ทั้งจอและ server (ประเมินจากแบบ · งวด 4)
+import { surveyZoneRowText, surveyZoneWording } from "@/lib/service/surveyIntake";
 import { zoneNameKey } from "@/lib/service/surveyRequest";
 import { sitePickSummary, zonePickList } from "@/lib/service/zonePickState";
 import { floorLabel, normalizeFloor } from "@/lib/service/zoneCode";
@@ -47,6 +47,9 @@ export default function SurveySiteFields({
   /* โหมดอ่านอย่างเดียว (ทางแก้ใบ) — บล็อกนี้แสดงของที่ใบถืออยู่ แต่แก้ไม่ได้
      ⚠️ เหตุผลอยู่ที่ผู้เรียก (`RequestForm`) — ทางแก้ใบเขียนได้แค่หัวใบ */
   readOnly = false,
+  /* โหมดอ่านอย่างเดียว: ใบยังเป็นร่างที่ไม่เคยส่ง (ลบแล้วเปิดใหม่ได้ · ยังไม่กินเลขที่) — ผู้เรียกรู้จากแถวที่บันทึก
+     ⚠️ ใบที่ส่งแล้ว/ถูกตีกลับถือเลข RQ และลบไม่ได้ ⇒ ประโยคทางออกนั้นไม่จริง (UAT S4 รอบ 4 ข้อ 3) */
+  freshDraft = true,
   /* ⭐ วิธีประเมินที่ฟอร์มเลือกไว้ (`requestVariantChosen` ของใบ · ยังไม่เลือก = null) — ประเมินจากแบบ งวด 4 (S4 B-7b)
      ฟอร์มที่บอกว่า "ไม่มีการนัดเข้าพื้นที่" ต้องไม่ชวน "วัดซ้ำ" / "ไม่เคยวัด" ในรายการพื้นที่ของตัวเอง
      ⚠️ ชื่อพร็อพคือ `variant` ไม่ใช่ `method` — ยามของวิธีประเมิน (surveyMethodGuards) · ค่านี้คือ "สิ่งที่ฝ่ายขายขอ"
@@ -257,7 +260,8 @@ export default function SurveySiteFields({
     const picked = sites.find((row) => row.id === siteId) || null;
     return (
       <div className="form-group col-span-2">
-        <span className={styles.fieldLabel}>สถานที่และพื้นที่ที่ต้องประเมิน</span>
+        {/* ป้ายเดียวกับโหมดกรอก รายการความพร้อม และประโยค error (มติ O1 · UAT S4 รอบ 4 ข้อ 4 — เดิม "สถานที่และพื้นที่…") */}
+        <span className={styles.fieldLabel}>สถานที่ที่จะให้ประเมิน</span>
         <small className={styles.hint}>
           {loading ? "กำลังโหลด…" : naText([picked?.code, picked?.name].filter(Boolean).join(" · "))}
         </small>
@@ -281,7 +285,9 @@ export default function SurveySiteFields({
           </ol>
         )}
         <small className={styles.hint}>
-          สถานที่และพื้นที่แก้ที่นี่ไม่ได้ — ร่างที่ยังไม่ส่งลบแล้วเปิดใหม่ได้ (ยังไม่กินเลขที่)
+          {freshDraft
+            ? "สถานที่และพื้นที่แก้ที่นี่ไม่ได้ — ร่างที่ยังไม่ส่งลบแล้วเปิดใหม่ได้ (ยังไม่กินเลขที่)"
+            : "สถานที่และพื้นที่ของคำร้องที่ส่งแล้วแก้ที่นี่ไม่ได้"}
         </small>
       </div>
     );
@@ -399,8 +405,10 @@ export default function SurveySiteFields({
                   <span className={styles.zoneBody}>
                     <b>{zoneName(row)}</b>
                     <small className={styles.hint}>
+                      {/* "…ซ้ำพื้นที่เดิม" เฉพาะพื้นที่ที่ทะเบียนบอกว่าเคยมีผล — ข้อมูลเดียวกับที่ไทล์ใช้พิมพ์ "ยังไม่เคย…"
+                          ไม่งั้นไทล์บอก "ยังไม่เคยวัด" แล้วแถวที่เพิ่งติ๊กบอก "วัดซ้ำ" (UAT S4 รอบ 4 ข้อ 5) */}
                       {row.zoneId
-                        ? `${siteZones.find((z) => z.id === row.zoneId)?.code || row.zoneId} · ${SURVEY_ZONE_REPEAT_TEXT[wording]}`
+                        ? `${siteZones.find((z) => z.id === row.zoneId)?.code || row.zoneId} · ${surveyZoneRowText(wording, siteZones.find((z) => z.id === row.zoneId))}`
                         : `พื้นที่ใหม่ · ${floorLabel(row.floor) || "ยังไม่ระบุชั้น"} — ได้รหัส ZN ตอนกดส่งใบ`}
                       {row.note ? ` · ${row.note}` : ""}
                     </small>

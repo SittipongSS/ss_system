@@ -112,24 +112,24 @@ test('D-2 golden: ใบลงหน้างานไม่มี `variant` = �
   assert.doesNotMatch(today.haystack, /ฝ่ายขายขอ/);
 });
 
-test('D-2 จากแบบรอรับเรื่อง (งานโต๊ะ): การ์ดของ S2b ตามเดิม + บรรทัด "ฝ่ายขายขอ" ที่ค้นเจอ', () => {
+/* ⭐ UAT S4 รอบ 4 ข้อ 16: การ์ดงานโต๊ะพูดวิธีในต้นเรื่องแล้ว ("คำร้องประเมินพื้นที่ · ประเมินจากแบบ") ⇒ บรรทัด "ฝ่ายขายขอ:
+   ประเมินจากแบบ" ถัดมาเป็นคำซ้ำ — ขึ้นเฉพาะเมื่อสิ่งที่ขอต่างจากวิธีปัจจุบัน (การ์ดที่หัวหน้าสลับกลับเป็นลงหน้างาน · นัดหลุด) */
+test('D-2 จากแบบรอรับเรื่อง (งานโต๊ะ): การ์ดของ S2b ตามเดิม · ไม่มีบรรทัด "ฝ่ายขายขอ" ซ้ำกับต้นเรื่อง', () => {
   const row = surveyRequestRow(drawingPending, opts);
   assert.equal(row.step, 'acknowledge');
   assert.equal(row.methodChip, 'จากแบบ · ไม่ต้องลงคิว');
   assert.equal(row.dateLine, 'ต้องการผล พฤ. 22 ต.ค.', 'บรรทัดวันของงานโต๊ะ = วันต้องการผล (S2b) ไม่ใช่วันเข้า');
   assert.equal(row.timeLine, '');
   assert.equal(row.dayLoad, null);
-  assert.equal(row.asked, ASKED_LINE);
-  assert.match(row.haystack, /ฝ่ายขายขอ: ประเมินจากแบบ/);
-  // ไม่ขึ้นกับ variant: ใบเดียวกันที่ไม่มี variant ได้การ์ดเดิมทุกช่อง ยกเว้น `asked` + คำค้น
+  assert.equal(row.origin, 'คำร้องประเมินพื้นที่ · ประเมินจากแบบ', 'ต้นเรื่องบอกวิธีอยู่แล้ว');
+  assert.equal('asked' in row, false, 'สิ่งที่ขอ = วิธีปัจจุบัน ⇒ ไม่มีบรรทัด (และไม่มีคีย์)');
+  // ตาเห็นบนการ์ด = ค้นเจอ — คำของวิธียังอยู่ในคำค้นผ่านต้นเรื่อง/ป้าย · คำว่า "ฝ่ายขายขอ" ไม่อยู่บนการ์ดแล้วจึงไม่อยู่ในคำค้น
+  assert.match(row.haystack, /ประเมินจากแบบ/);
+  assert.doesNotMatch(row.haystack, /ฝ่ายขายขอ/);
+  // ไม่ขึ้นกับ variant: ใบเดียวกันที่ไม่มี variant ได้การ์ดเดียวกันทุกช่อง (รวมคำค้น)
   const plain = { ...drawingPending };
   delete plain.variant;
-  const before = withoutRequest(surveyRequestRow(plain, opts));
-  const { asked, haystack, ...rest } = withoutRequest(row);
-  const { asked: noAsk, haystack: noHay, ...restBefore } = before;
-  assert.equal(noAsk, undefined);
-  assert.deepEqual(rest, restBefore, 'ขั้น · ป้าย · คำสั่ง ของงานโต๊ะไม่ได้อ่าน variant');
-  assert.doesNotMatch(noHay, /ฝ่ายขายขอ/);
+  assert.deepEqual(withoutRequest(row), withoutRequest(surveyRequestRow(plain, opts)), 'ขั้น · ป้าย · คำสั่ง ของงานโต๊ะไม่ได้อ่าน variant');
 });
 
 test('D-2 จากแบบรับเรื่องแล้ว (งานโต๊ะ) = ไม่มีการ์ดบนหน้าจัดคิว', () => {
@@ -164,15 +164,26 @@ test('D-2 นัดหลุด: บรรทัดวันเป็นนั�
   assert.equal(drew.asked, ASKED_LINE);
 });
 
-test('D-2 ลำดับในกลุ่มคำร้อง: ใบที่ไม่รู้วันเข้า (ยื่นเป็นจากแบบ) ไปท้าย ไม่ใช่เรียงตามกระจกของวันรับผล', () => {
+/* ⭐ มติ 20/10 (UAT S4 รอบ 4 ข้อ 20 · แทน D-2 "ไม่รู้วันเข้า = ท้ายกลุ่ม"): การ์ดที่ไม่มีวันอยากให้เข้า เรียงด้วยวันที่ต้องการผล
+   — ใบที่ยื่นเป็นจากแบบแล้วหัวหน้าสลับกลับ ต้องการผลอีกไม่กี่วันก็มี ไปท้ายกลุ่ม = ถูกลืม · ท้ายกลุ่มเฉพาะใบที่ไม่มีวันไหนเลย
+   ⚠️ ยังไม่เรียงตามกระจกของวันรับผลในคอลัมน์วันเข้า (ค่าเดียวกันก็จริง แต่ที่อ่านคือ `requestedResultDate` ผ่านตัวอ่านวันอยากให้เข้า) */
+test('D-2 ลำดับในกลุ่มคำร้อง: ใบที่ไม่รู้วันเข้า (ยื่นเป็นจากแบบ) เรียงด้วยวันที่ต้องการผล · ไม่มีวันไหนเลยไปท้าย', () => {
   const later = { ...std, id: 'R-later', docNo: 'RQ-AS-26100104', requestedDueDate: '2026-10-25' };
-  const view = buildScheduleQueue({
+  const queue = (surveyRequests) => buildScheduleQueue({
     visits: [], sitesById, gateContext: {}, workload: {}, todayIso: TODAY, teamFilter: ALL_TEAMS,
     crewByUser: new Map(), crewPeople: crew, teamNames: new Map(), bucket: 'waiting',
-    surveyRequests: [drawingSwitched, later, std],
-  });
-  const group = view.groups.find((g) => g.key === 'requests');
-  assert.deepEqual(group.rows.map((r) => r.id), ['R-std', 'R-later', 'R-draw']);
+    surveyRequests,
+  }).groups.find((g) => g.key === 'requests').rows.map((r) => r.id);
+  // R-draw ต้องการผล 22 ต.ค. — อยู่ระหว่างใบที่ขอเข้า 20 กับ 25 ต.ค. (เดิมไปท้ายกลุ่มเพราะไม่มีวันเข้า)
+  assert.equal(drawingSwitched.requestedResultDate, '2026-10-22');
+  assert.deepEqual(queue([drawingSwitched, later, std]), ['R-std', 'R-draw', 'R-later']);
+  // ต้องการผลก่อนทุกใบ = ขึ้นหัวกลุ่ม · การ์ดยังบอก "ยังไม่ได้ระบุ" ไม่ใช่วันเข้า (ลำดับไม่เปลี่ยนคำบนการ์ด)
+  const urgent = { ...drawingSwitched, requestedResultDate: '2026-10-17', requestedDueDate: '2026-10-17' };
+  assert.deepEqual(queue([later, std, urgent]), ['R-draw', 'R-std', 'R-later']);
+  assert.equal(surveyRequestRow(urgent, opts).dateLine, NO_WISH_LINE);
+  // ไม่มีวันไหนเลย (ไม่มีวันอยากให้เข้า และไม่มีวันต้องการผล) = ท้ายกลุ่มเหมือนเดิม
+  const none = { ...drawingSwitched, requestedResultDate: null };
+  assert.deepEqual(queue([none, later, std]), ['R-std', 'R-later', 'R-draw']);
 });
 
 test('🔴 D-2 ลำดับ: งานโต๊ะที่ยื่นเป็นจากแบบเรียงด้วยวันที่ต้องการผล (วันที่การ์ดโชว์) ไม่ใช่ไปท้ายกลุ่ม', () => {

@@ -137,7 +137,9 @@ test('สร้าง (สวิตช์ปิด · หน้าเลือ�
   assert.equal(requestFormBlocker(form), null);
   assert.equal(requestShapeError('site_survey', requestPayload(form)), null);
   // ด่านเดิมของวันนี้ยังตอบประโยคเดิม (ป้ายสถานที่ = มติเจ้าของ 12/10 · O1)
-  assert.equal(requestFormBlocker({ ...form, requestedDueDate: '' }), 'ต้องระบุวันที่ต้องการรับงาน');
+  // ⭐ ยกเว้นประโยควันเข้า: พูดป้ายของช่องจริง "วันที่ต้องการให้เข้าพื้นที่" (UAT S4 รอบ 4 ข้อ 11 · เห็นทันทีที่ deploy แม้สวิตช์ปิด —
+  //    อยู่ในลิสต์ §15.2 ของแผน) · หัวข้ออื่นยัง "ต้องระบุวันที่ต้องการรับงาน" ทุกตัวอักษร (requestVariantIntake.test.mjs)
+  assert.equal(requestFormBlocker({ ...form, requestedDueDate: '' }), 'ต้องระบุวันที่ต้องการให้เข้าพื้นที่');
   assert.equal(requestFormBlocker({ ...form, siteId: '' }), 'ต้องเลือกสถานที่ที่จะให้ประเมิน — ไม่มีในทะเบียนให้กด “สร้างสถานที่ใหม่” ในฟอร์มนี้');
   // แท็บความพร้อม: ของวันนี้ + บรรทัดแรก "วิธีประเมิน" (ติ๊กแล้ว) · ไม่มีบรรทัดไฟล์แบบ
   assert.deepEqual(requiredChecks(form).map(({ tab, label, ok }) => [tab, label, ok]), [

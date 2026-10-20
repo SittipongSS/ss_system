@@ -329,3 +329,20 @@ test('S4 · ประเมินพื้นที่ = standard + drawing พ�
   // ตัวควบคุม: ใบเดียวกันที่ยื่นเป็นจากแบบพิมพ์บรรทัดนั้นจริง (ไม่งั้นข้อบนผ่านเพราะ view-model ไม่เคยพิมพ์อะไรเลย)
   assert.match(views({ ...base, variant: 'drawing' }), /ฝ่ายขายขอ/);
 });
+
+/* ⭐ UAT S4 รอบ 4 ข้อ 13a — วลีของ `summary` ที่ห้ามขาดสองบรรทัด (การ์ดหัวข้อห่อ nowrap · ตัวหนังสือไม่ถูกแตะ) */
+test('summaryKeep: ทุกวลีต้องอยู่ใน summary จริง · ลิสต์ข้อความไม่ว่าง · ประเมินพื้นที่ประกาศชื่อสองวิธี', () => {
+  const withSummary = { ...OK, summary: 'ให้ TS ประเมินพื้นที่ — ลงหน้างานหรือจากแบบ' };
+  assert.doesNotThrow(() => assertKind({ ...withSummary, summaryKeep: ['ลงหน้างาน', 'จากแบบ'] }));
+  for (const [why, keep] of [
+    ['วลีที่ไม่อยู่ใน summary (แก้ข้อความแล้วลืมวลี)', ['ลงพื้นที่']],
+    ['ลิสต์ว่าง', []],
+    ['ไม่ใช่ลิสต์', 'ลงหน้างาน'],
+    ['ข้อความว่าง', ['  ']],
+  ]) assert.throws(() => assertKind({ ...withSummary, summaryKeep: keep }), /summaryKeep/, why);
+  assert.throws(() => assertKind({ ...OK, summaryKeep: ['ก'] }), /summaryKeep/, 'ไม่มี summary ให้ห่อ');
+  assert.deepEqual([...REQUEST_KINDS.site_survey.summaryKeep], ['ลงหน้างาน', 'จากแบบ']);
+  // ข้อความของการ์ดไม่เปลี่ยนสักตัวอักษร (O9) — ไม่มีอักขระซ่อนในคำ
+  assert.equal(REQUEST_KINDS.site_survey.summary, 'ให้ TS ประเมินพื้นที่ — ลงหน้างานหรือจากแบบ');
+  assert.ok(!/[​⁠]/.test(REQUEST_KINDS.site_survey.summary));
+});

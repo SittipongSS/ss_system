@@ -116,11 +116,38 @@ export function requestEditVariant(request, asked) {
 /**
  * รูปแบบที่ฟอร์มวาดเป็นปุ่ม — ทุกตัวที่ประกาศ ยกเว้นที่อยู่ใน `off` (สวิตช์ปิด) ตามลำดับทะเบียน
  * ⚠️ **ค่าที่ใบถืออยู่ (`current`) ยังวาดแม้อยู่ใน `off`** — ใบที่ยื่นไปแล้วต้องอ่านได้ในวันที่สวิตช์ถูกปิดทีหลัง
+ * ⭐ `saved` = ค่าที่ **บันทึกไว้บนใบ** (โหมดแก้) — ยังวาดแม้ฟอร์มสลับไปตัวอื่นแล้ว (UAT S4 รอบ 4 ข้อ 8):
+ *    สวิตช์ปิด · ร่างจากแบบที่ค้างอยู่ · กด "ลงหน้างาน" ⇒ เดิมไทล์จากแบบหายทันทีก่อนบันทึก ทางกลับเหลือแค่ "ยกเลิกการแก้"
+ *    ⚠️ แค่ **วาด** ปุ่ม — server ยังตีกลับการบันทึกวิธีที่ปิดอยู่ตามเดิม (`surveyVariantRefusal` ยอมเฉพาะค่าที่ใบถืออยู่จริง)
  */
-export function requestVariantChoices(kind, { off = [], current = null } = {}) {
+export function requestVariantChoices(kind, { off = [], current = null, saved = null } = {}) {
   const variants = requestVariants(kind);
   if (!variants) return [];
-  return Object.keys(variants).filter((key) => !off.includes(key) || key === current);
+  return Object.keys(variants).filter((key) => !off.includes(key) || key === current || key === saved);
+}
+
+/**
+ * ถ้อยคำของกล่องยืนยันตอนกดปุ่มรูปแบบ — `{ title, description, detail, confirmLabel, cancelLabel }` หรือ null
+ * (ปลายทางไม่มี `switchConfirm`)
+ * ⭐ **ครั้งแรก ≠ สลับ** (UAT S4 รอบ 4 ข้อ 6) — ฟอร์มที่ยังไม่เลือกอะไร แล้วกด "ประเมินจากแบบ" ทั้งที่พิมพ์วันเข้าไว้
+ *    เดิมขึ้น "สลับเป็น …" + ปุ่ม "สลับ" ทั้งที่ไม่มีอะไรให้สลับ ⇒ `from` ว่าง = "เลือก {ป้าย}" + ปุ่ม "เลือก" · ประโยคเดิม
+ * ⭐ `note` = ราคาเพิ่มของการสลับครั้งนี้ที่ทะเบียนไม่รู้ (ผลจากแบบของหัวหน้าที่จะไม่ถูกใช้ · ข้อ 7) — ผู้เรียกบอกมา
+ *    ขึ้นเป็นบรรทัดของตัวเอง (`detail`) ใต้ประโยคหลัก — ต่อท้ายด้วย " · " แล้วยาวเกินอ่านในบรรทัดเดียวบนจอแคบ
+ * ⚠️ ทะเบียนตรวจ `switchConfirm` ตอนโหลดแล้ว (`title` · `description` ไม่ว่าง) — ที่นี่ไม่เดาข้อความแทน
+ */
+export function requestVariantConfirm(kind, { from = null, to, note = null } = {}) {
+  const target = requestVariants(kind)?.[to];
+  const copy = target?.switchConfirm;
+  if (!copy) return null;
+  const first = !from;
+  const detail = String(note ?? '').trim();
+  return {
+    title: first ? `เลือก ${target.label}` : copy.title,
+    description: copy.description,
+    ...(detail ? { detail } : {}),
+    confirmLabel: first ? 'เลือก' : 'สลับ',
+    cancelLabel: 'ยกเลิก',
+  };
 }
 
 // เหลือทางเดียวของหัวข้อที่บังคับเลือก ⇒ คีย์นั้น (สวิตช์ปิด = "ลงหน้างาน" ตัวเดียว) · อื่น ๆ = null

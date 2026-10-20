@@ -280,7 +280,8 @@ test('ร่าง จากแบบ → ลงหน้างาน แต่�
     const db = world({ req: drawingSurvey(), zones: drawingZones() });
     const res = await patch(db, editBody(drawingSurvey(), { variant: 'standard', requestedDueDate: '' }));
     assert.equal(res.status, 400);
-    assert.equal(res.json.error, 'ต้องระบุวันที่ต้องการรับงาน');
+    // ประโยคพูดป้ายของช่องจริงบนฟอร์มลงหน้างาน (UAT S4 รอบ 4 ข้อ 11) — ด่านเดิม คำใหม่
+    assert.equal(res.json.error, 'ต้องระบุวันที่ต้องการให้เข้าพื้นที่');
     assert.deepEqual(db.writes(), []);
   });
 });

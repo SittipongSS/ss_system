@@ -708,8 +708,13 @@ export function requestShapeError(kind, body = {}) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(result)) return `${label}ไม่ถูกต้อง`;
     return null;
   }
+  /* ⭐ **ประโยคใช้ป้ายของช่องจริง** (UAT S4 รอบ 4 ข้อ 11) — ฟอร์มลงหน้างานของประเมินพื้นที่ป้ายช่องนี้ว่า
+     "วันที่ต้องการให้เข้าพื้นที่" แต่ปุ่มจางบอก "ต้องระบุวันที่ต้องการรับงาน" = สั่งให้กรอกช่องที่ไม่มีบนจอ
+     ⚠️ หัวข้ออื่นทุกตัวใช้ป้ายกลางของทะเบียน (`FORM_DEFAULTS.dueLabel` = "วันที่ต้องการรับงาน") ⇒ ได้ประโยคที่ล็อกไว้
+        (มติ 19/08) ทุกตัวอักษร · เทสต์ไล่ทุกหัวข้อ (requestVariantIntake.test.mjs) */
+  const dueLabel = requestFormCopy({ kind, variant: body.variant }).dueLabel || 'วันที่ต้องการรับงาน';
   const due = String(body.requestedDueDate ?? '').trim();
-  if (!due) return 'ต้องระบุวันที่ต้องการรับงาน';
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) return 'วันที่ต้องการรับงานไม่ถูกต้อง';
+  if (!due) return `ต้องระบุ${dueLabel}`;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) return `${dueLabel}ไม่ถูกต้อง`;
   return null;
 }

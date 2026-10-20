@@ -32,6 +32,7 @@ import Input from "@/components/ui/Input";
 import DealPicker from "@/components/pm/DealPicker";
 import FormZone from "@/components/ui/FormZone";
 import StatusNotice from "@/components/ui/StatusNotice";
+import { keepPhrases } from "@/components/ThaiText";
 import { productIdentity } from "@/lib/master/productIdentity";
 import {
   RequestBillAmountFields, RequestDueUrgentFields, RequestLineFields, RequestTitleBodyFields,
@@ -55,7 +56,7 @@ import {
   requestVariantChosen, requestVariantFieldLabel, requestVariantLabel, requestVariantNotice,
   requestVariantRequired,
 } from "@/lib/master/requestTypes";
-import { requestVariantChoices } from "@/lib/requests/variantSwitch";
+import { requestVariantChoices, requestVariantConfirm } from "@/lib/requests/variantSwitch";
 import { requestFormBlocker } from "@/lib/master/requestCreate";
 import { requestFormTabs } from "@/lib/requests/formTabs";
 import {
@@ -89,6 +90,9 @@ function DerivedField({ label, value, from }) {
 // รายการที่ช่องคืนมาต้องได้รูปเดิมกลับ (`ref` ห้ามหลุด ไม่งั้นกดซ้ำแล้วไฟล์ขึ้นซ้ำ)
 const fileOfEntry = (entry) => entry?.file || entry;
 const keepFileRefs = (entries = [], next = []) => next.map((file) => entries.find((e) => fileOfEntry(e) === file) || file);
+
+// ที่หมายของปุ่ม "ยังขาด: {ไฟล์บังคับ}" — บล็อกอยู่ท้ายแท็บรายละเอียด (UAT S4 รอบ 4 ข้อ 9)
+const REQUIRED_FILES_ANCHOR = "req-required-files";
 
 // ค่าเริ่มต้น: **ไม่เดาหัวข้อให้** — หัวข้อขึ้นกับฝ่ายซึ่งยังไม่ได้เลือก
 //
@@ -244,6 +248,18 @@ export default function RequestForm({
   variantsPending = false,
   requestId = null,
   variantAskedOnly = false,
+  /* ── โหมดแก้: ของที่หน้าคำร้องรู้จากแถวที่บันทึกแล้ว ฟอร์มไม่มีทางรู้เอง (UAT S4 รอบ 4) — ฝั่งสร้างไม่ส่ง = ค่าตั้งต้น ──
+     `savedVariant`       วิธีที่ **บันทึกไว้บนใบ** — ไทล์ของวิธีที่สวิตช์ปิดยังวาดตราบที่ใบถืออยู่ แม้ฟอร์มสลับไปแล้ว
+                          (ทางกลับก่อนกดบันทึก · ข้อ 8) · server ยังตีกลับการบันทึกวิธีที่ปิดอยู่เหมือนเดิม
+     `variantSwitchNotes` `{ [รูปแบบ]: ประโยค }` ราคาเพิ่มของการสลับไปรูปแบบนั้นที่ทะเบียนไม่รู้ (ผลจากแบบของหัวหน้า · ข้อ 7)
+     `freshDraft`         ร่างที่ยังไม่เคยส่ง (ลบแล้วเปิดใหม่ได้ · ยังไม่กินเลขที่) — ประโยคล็อกดีล/สถานที่พูดทางออกนั้น
+                          เฉพาะตอนจริง (ข้อ 3) · ใบที่เคยส่งแล้ว (รวมร่างที่ถูกตีกลับ) ลบไม่ได้ ⇒ ประโยคสั้นที่จริง
+     `awaitingAck`        ใบยังไม่ถูกรับเรื่อง (ร่าง · รอรับเรื่อง) — คำใบ้ "หัวหน้า TS จะแจ้งวันส่งผลจริงหลังรับเรื่อง"
+                          จริงเฉพาะช่วงนี้ (ข้อ 10) */
+  savedVariant = null,
+  variantSwitchNotes = null,
+  freshDraft = true,
+  awaitingAck = true,
   /* ⭐ ค่าที่ server ประกอบให้แบบฟอร์ม PDR ของใบนี้ (`req.pdrContext`) — โหมดแก้เท่านั้น
      (ฝั่งสร้างยังไม่มีใบ จึงคำนวณพรีวิวจากทะเบียนที่โหลดมาเอง) */
   pdrContext: pdrContextOfRequest = null,
@@ -271,8 +287,11 @@ export default function RequestForm({
   /* ⭐ **หัวข้อที่บังคับเลือก** (ประเมินพื้นที่: ลงหน้างาน | ประเมินจากแบบ) — ฟอร์มใหม่ไม่มีปุ่มที่ถูกเลือกไว้ให้
      🔴 ถาม `requestVariantChosen` ไม่ใช่ `variantKey` — ตัวหลังตกไปรูปแบบตั้งต้นเมื่อว่าง ⇒ ฟอร์มใหม่จะขึ้น
         "ลงหน้างาน" ถูกเลือกไว้เงียบ ๆ และกดปุ่มนั้นครั้งแรกแล้วไม่เกิดอะไร (ทางออกก่อนเวลาของ pickVariant)
-     ⭐ ปุ่มที่วาด = ทุกรูปแบบที่ประกาศ ยกเว้นที่สวิตช์ปิด (ค่าที่ใบถืออยู่ยังวาดเสมอ) */
-  const variantChoices = requestVariantChoices(kind, { off: variantsOff, current: requestVariantChosen(value) });
+     ⭐ ปุ่มที่วาด = ทุกรูปแบบที่ประกาศ ยกเว้นที่สวิตช์ปิด (ค่าที่ฟอร์มถืออยู่ **และค่าที่บันทึกไว้บนใบ** ยังวาดเสมอ —
+        สลับออกจากวิธีที่ปิดแล้วต้องยังกดกลับได้ก่อนบันทึก · UAT S4 รอบ 4 ข้อ 8) */
+  const variantChoices = requestVariantChoices(kind, {
+    off: variantsOff, current: requestVariantChosen(value), saved: savedVariant,
+  });
   // ยังไม่รู้ค่าสวิตช์ และหัวข้อนี้มีรูปแบบที่อาจถูกปิด ⇒ ปุ่มหยุดรอ (พัฒนาสูตรไม่เข้าข่าย)
   const variantsWaiting = variantsPending && Object.keys(variants || {}).some((key) => variantsOff.includes(key));
   /* ประโยค "เปลี่ยนวิธีได้ที่หัวหน้า TS" จริงเฉพาะตอนสวิตช์เปิดให้มีมากกว่าหนึ่งทาง — นับ **ไม่รวม** ค่าที่ใบถืออยู่
@@ -309,7 +328,9 @@ export default function RequestForm({
        (วันเข้าพื้นที่ที่กรอกไว้ · ไฟล์แบบในตะกร้า) · โทนกลาง ไม่มีอะไรถูกลบ
        🔴 **กดครั้งแรกก็ถามเมื่อมีวันเข้าพื้นที่ที่พิมพ์ไว้** (ผลรีวิวรอบแก้ S4 · O7(ก) "ยืนยันก่อน แล้วค่อยล้างวัน/เวลา")
           — ฟอร์มที่ยังไม่เลือกวิธีวาดแท็บกำหนดส่งเป็นรูปลงหน้างาน ⇒ คนกรอกวันเข้าก่อนแล้วค่อยกด "ประเมินจากแบบ"
-          เดิมไม่ถามแล้วล้างทิ้งเงียบ ๆ · กดครั้งแรกที่ไม่มีอะไรหาย ยังไม่ถามเหมือนเดิม */
+          เดิมไม่ถามแล้วล้างทิ้งเงียบ ๆ · กดครั้งแรกที่ไม่มีอะไรหาย ยังไม่ถามเหมือนเดิม
+       ⭐ ถ้อยคำมาจาก `requestVariantConfirm` (UAT S4 รอบ 4) — ครั้งแรกพูด "เลือก" ไม่ใช่ "สลับ" (ข้อ 6) · ราคาที่ทะเบียนไม่รู้
+          (ผลจากแบบของหัวหน้าบนร่างที่ถูกตีกลับ · O8) ขึ้นบรรทัดของตัวเองจาก `variantSwitchNotes` ของหน้าคำร้อง (ข้อ 7) */
     const from = requestVariantChosen(value);
     const source = from ? variants?.[from] || {} : {};
     const target = variants?.[next] || {};
@@ -317,12 +338,7 @@ export default function RequestForm({
     const movesFiles = !!source.requiredFiles && !target.requiredFiles && pendingRequired.length > 0;
     const dropsVisit = !!target.resultDateOnly && !!(value.requestedDueDate || value.requestedDueTime);
     if (target.switchConfirm && (dropsVisit || (from && (isEdit || movesFiles)))) {
-      const ok = await confirmAction({
-        title: target.switchConfirm.title,
-        description: target.switchConfirm.description,
-        confirmLabel: "สลับ",
-        cancelLabel: "ยกเลิก",
-      });
+      const ok = await confirmAction(requestVariantConfirm(kind, { from, to: next, note: variantSwitchNotes?.[next] }));
       if (!ok) return;
     }
     /* ⚠️ **ไม่หว่านบล็อกบรีฟแล้ว** (มติผู้ใช้ 2026-09-11) — รอบแรกของงานนี้ NPD มีบรีฟ
@@ -464,6 +480,20 @@ export default function RequestForm({
   // หัวข้อเปลี่ยน = ชุดแท็บเปลี่ยน (แท็บ PDR หายไป) ⇒ ถอยไปแท็บแรกแทนจอว่าง
   const activeTab = formTabs.some((t) => t.key === tab) ? tab : (formTabs[0]?.key || "work");
   const missingAll = formTabs.flatMap((t) => t.required.missing.map((m) => ({ ...m, tabLabel: t.label })));
+  /* ⭐ **ปุ่ม "ยังขาด" พาไปถึงช่อง ไม่ใช่แค่แท็บ** (UAT S4 รอบ 4 ข้อ 9) — บล็อกไฟล์แบบอยู่ท้ายแท็บรายละเอียด
+     ใต้ชื่อเรื่อง/รายละเอียด/สถานที่ ⇒ สลับแท็บเฉย ๆ แล้วบล็อกยังอยู่ใต้ขอบจอ คนกดเห็นว่า "ไม่มีอะไรเกิดขึ้น"
+     ⚠️ `setTimeout(0)` ไม่ใช่ `requestAnimationFrame` — รอ React commit แท็บใหม่ลง DOM ก่อน (idiom เดียวกับปุ่ม "แก้ไข"
+        ของหน้าคำร้อง) · ผู้ใช้ที่ตั้งลดการเคลื่อนไหว = กระโดดทันที ไม่เลื่อนนุ่ม (แพตเทิร์นของ SystemMenuSheet) */
+  const missingAnchorOf = (m) => (requiredSpec && m.label === requiredSpec.label ? REQUIRED_FILES_ANCHOR : null);
+  const jumpToMissing = (m) => {
+    setTab(m.tab);
+    const anchor = missingAnchorOf(m);
+    if (!anchor) return;
+    setTimeout(() => {
+      const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      document.getElementById(anchor)?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
+    }, 0);
+  };
   const requiredTotal = formTabs.reduce((n, t) => n + t.required.total, 0);
   const requiredFilled = formTabs.reduce((n, t) => n + t.required.filled, 0);
   const railSections = hasPdr
@@ -637,7 +667,8 @@ export default function RequestForm({
                     options={kinds.map((k) => ({
                       value: k,
                       label: requestKindLabel(k),
-                      description: requestKindMeta(k)?.summary || undefined,
+                      /* วลีที่ทะเบียนประกาศว่าห้ามขาดสองบรรทัด (`summaryKeep` · UAT S4 รอบ 4 ข้อ 13) — ไม่ประกาศ = ข้อความเดิม */
+                      description: keepPhrases(requestKindMeta(k)?.summary, requestKindMeta(k)?.summaryKeep) || undefined,
                     }))}
                   />
                 </div>
@@ -714,7 +745,7 @@ export default function RequestForm({
           {missingAll.map((m) => (
             <button
               key={`${m.tab}-${m.label}`} type="button" className="tab-missing-jump"
-              onClick={() => setTab(m.tab)}
+              onClick={() => jumpToMissing(m)}
             >
               {m.label}
               {m.tab !== activeTab && <span className="tab-missing-where"> · {m.tabLabel}</span>}
@@ -724,8 +755,11 @@ export default function RequestForm({
       )}
 
       {/* ── แท็บ "งาน" — ของที่หัวข้อนั้นต้องอ้าง ─────────────────────────
-          → ช่องที่โผล่มาจากธง `needs` ที่เดียว ไม่ใช่ if เขียนตายตัวในฟอร์ม */}
-      {activeTab === "work" && (<>
+          → ช่องที่โผล่มาจากธง `needs` ที่เดียว ไม่ใช่ if เขียนตายตัวในฟอร์ม
+          ⭐ **ก้อนในแท็บนี้พกระยะห่างของตัวเอง** (`.tabStack` · UAT S4 รอบ 4 ข้อ 1) — แท็บนี้มีหลายกริดต่อกัน
+             (วิธีประเมิน → ดีล) · ฟอร์มสร้างได้ระยะจาก gap ของเปลือกหน้า (`.form` ของ /requests/new) แต่การ์ดแก้ของ
+             หน้าคำร้องเป็น block ⇒ กล่องแจ้งใต้ไทล์ชนป้าย "ดีล" 0px · ระยะเท่า gap เดิม ⇒ ฟอร์มสร้างหน้าตาเท่าเดิม */}
+      {activeTab === "work" && (<div className={styles.tabStack}>
       {/* ── รูปแบบงานของหัวข้อที่มีสองแบบ (พัฒนาสูตร: Standard | NPD) ────────
           ⭐ **อยู่ต้นแท็บแรก** เพราะมันเปลี่ยนรูปฟอร์มทั้งใบ (NPD = แบบฟอร์ม PDR
           แทนบรีฟสั้น · ไม่มีตารางรายการ) ⇒ ถามก่อนที่คนจะเริ่มกรอกของที่จะหาย
@@ -869,7 +903,9 @@ export default function RequestForm({
       {needsDeal && (
       <div className="form-grid cols-2">
       <div className="form-group col-span-2">
-        <span className={styles.fieldLabel}>ดีล</span>
+        {/* ป้ายของตัวเลือก — โหมดแก้ไม่วาด เพราะช่องเส้นประ (`DerivedField`) มีป้าย "ดีล" ของตัวเองอยู่แล้ว
+            (UAT S4 รอบ 4 ข้อ 2: ฟอร์มแก้ขึ้น "ดีล" สองบรรทัดซ้อนกัน) · ฟอร์มสร้างเท่าเดิม */}
+        {!isEdit && <span className={styles.fieldLabel}>ดีล</span>}
         {/* ตัวเลือกกลางของระบบ (มติผู้ใช้ 2026-08-06) — เดิมเป็นสองช่อง "โครงการ →
             ดีล" ที่บังคับให้รู้ก่อนว่าดีลอยู่โครงการไหน · โครงการของคำร้องมาจากดีล
             อยู่แล้ว จึงเก็บ projectId จากดีลที่เลือกแทนการให้ผู้ใช้กรอกซ้ำ
@@ -881,8 +917,12 @@ export default function RequestForm({
              ให้ตรงกับ POST ตลอดไป ⇒ ผูกผิดให้ลบร่างแล้วเปิดใหม่ */
           <>
             <DerivedField label="ดีล" from="ผูกไว้ตอนเปิดใบ" value={lockedRefs.deal || ""} />
+            {/* ทางออก "ลบร่างแล้วเปิดใหม่" จริงเฉพาะร่างที่ยังไม่เคยส่ง (`freshDraft` = ลบได้ · ยังไม่กินเลขที่) —
+                ใบที่ส่งแล้ว/ถูกตีกลับถือเลข RQ และลบไม่ได้ ⇒ ประโยคสั้นที่จริง (UAT S4 รอบ 4 ข้อ 3) */}
             <small className={styles.hint}>
-              เปลี่ยนดีลทางนี้ไม่ได้ — ใบร่างลบแล้วเปิดใหม่ได้ (ยังไม่กินเลขที่)
+              {freshDraft
+                ? "เปลี่ยนดีลทางนี้ไม่ได้ — ใบร่างลบแล้วเปิดใหม่ได้ (ยังไม่กินเลขที่)"
+                : "เปลี่ยนดีลของคำร้องที่ส่งแล้วไม่ได้"}
             </small>
           </>
         ) : (
@@ -1127,7 +1167,7 @@ export default function RequestForm({
         </div>
       )}
 
-      </>)}
+      </div>)}
 
       {/* ── แท็บ "เรื่องที่ขอ" — ชื่อเรื่อง + รายละเอียด (ทุกหัวข้อ) ─────────── */}
       {activeTab === "subject" && (
@@ -1159,6 +1199,8 @@ export default function RequestForm({
              ตรงนี้ ของที่กรอกจะหายเงียบตอนกดบันทึก และปุ่ม "สร้างสถานที่ใหม่" จะได้
              **ไซต์กำพร้า** ที่เกิดจริงในทะเบียนแต่ไม่มีใบไหนอ้าง */
           readOnly={isEdit}
+          /* ประโยคล็อกของโหมดอ่านอย่างเดียว — "ลบร่างแล้วเปิดใหม่" จริงเฉพาะร่างที่ยังไม่เคยส่ง (UAT S4 รอบ 4 ข้อ 3) */
+          freshDraft={freshDraft}
           canCreateSite={!isEdit && canCreateServiceSite(me)}
         />
       )}
@@ -1169,7 +1211,8 @@ export default function RequestForm({
           ⚠️ อยู่แท็บ subject ใต้บล็อกไซต์ — ตรงกับ `tab` ของรายการขาดใน lib/requests/formTabs.js
           ⚠️ โหมดแก้ที่ผู้เรียกยังไม่ส่ง `requestId` = ไม่วาด (ตัวนับคงเป็น null = ไม่ตีกลับ) */}
       {requiredSpec && (!isEdit || requestId) && (
-        <div className="form-group col-span-2">
+        /* `id` = ปลายทางของปุ่ม "ยังขาด" (`jumpToMissing`) — จอเดียวมีบล็อกเดียว (การ์ด DRAWINGS ของหน้าคำร้องไม่วาดตอนฟอร์มแก้เปิด) */
+        <div className="form-group col-span-2" id={REQUIRED_FILES_ANCHOR}>
           <RequiredFilesBlock
             spec={requiredSpec}
             mode={isEdit ? "saved" : "pending"}
@@ -1365,8 +1408,12 @@ export default function RequestForm({
           /* 🔴 ใบที่ส่งแล้วซึ่งหัวหน้า TS สลับ **ทุกพื้นที่** เป็นประเมินจากแบบ (ทรง RQ-AS-26100312 · UAT S4 T11b) —
              ไม่มีการเข้าพื้นที่แล้ว ⇒ คำอธิบายที่พูดถึงวันเข้า/การรับปากวันเข้า (ทั้งของเราและค่าตั้งต้นของคอมโพเนนต์)
              ขัดกับป้าย "จากแบบ" ของรายการพื้นที่ข้างบน ⇒ ไม่วาดคำอธิบาย (`null` / `false` — `undefined` = ค่าตั้งต้น)
-             ⚠️ ป้ายมีเฉพาะใบที่ส่งแล้ว (`methodTag` ใส่โดยหน้าคำร้อง) · ร่าง/ใบที่ยังมีพื้นที่ลงหน้างาน = คำเดิม */
-          resultDueHint={resultDateOnly ? "หัวหน้า TS จะแจ้งวันส่งผลจริงหลังรับเรื่อง" : deskZonesOnly ? false : undefined}
+             ⚠️ ป้ายมีเฉพาะใบที่ส่งแล้ว (`methodTag` ใส่โดยหน้าคำร้อง) · ร่าง/ใบที่ยังมีพื้นที่ลงหน้างาน = คำเดิม
+             ⭐ คำใบ้ของฟอร์มวันเดียว (จากแบบ) พูดถึงอนาคต "…หลังรับเรื่อง" ⇒ จริงเฉพาะก่อนรับเรื่อง (`awaitingAck`) —
+                รับเรื่องแล้วหัวหน้ารับปากวันไปแล้ว ประโยคค้างจะบอกว่ายังไม่มีวัน (UAT S4 รอบ 4 ข้อ 10) ⇒ ไม่วาด (`false`) */
+          resultDueHint={resultDateOnly
+            ? (awaitingAck ? "หัวหน้า TS จะแจ้งวันส่งผลจริงหลังรับเรื่อง" : false)
+            : deskZonesOnly ? false : undefined}
           dueHint={needsSite
             ? (deskZonesOnly ? null : "เจ้าหน้าที่จะยืนยันวัน/เวลาจริงตอนกด \"แจ้งกำหนดส่ง\" — ใส่ช่วงที่อาคารเข้าได้จะช่วยให้ตรงรอบเดียว")
             : undefined}

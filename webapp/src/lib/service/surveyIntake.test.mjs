@@ -7,6 +7,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+  SURVEY_INTAKE_REMEASURE_CHIP,
+  SURVEY_INTAKE_SWITCH_NOTE,
   SURVEY_INTAKE_SWITCH_REASON,
   SURVEY_NO_VISIT_WISH_LINE,
   SURVEY_NO_VISIT_WISH_TEXT,
@@ -14,14 +16,17 @@ import {
   SURVEY_RESEED_MISMATCH_ERROR,
   SURVEY_SALES_ASKED,
   SURVEY_VARIANT_DRAWING,
+  SURVEY_ZONE_KNOWN_TEXT,
   SURVEY_ZONE_REPEAT_TEXT,
   surveyFiledAsDrawing,
   surveySalesAskedLine,
   surveyVariantRefusal,
   surveyVariantsOff,
   surveyWishedVisit,
+  surveyZoneRowText,
   surveyZoneWording,
 } from './surveyIntake.js';
+import { zonePickState } from './zonePickState.js';
 import { SURVEY_METHOD_ERRORS, SURVEY_METHOD_REASON_CHIPS } from './surveyMethodSwitch.js';
 
 test('ข้อความคงที่ตรึงตัวอักษรต่อตัวอักษร', () => {
@@ -116,4 +121,35 @@ test('ไฟล์นี้ปลอดภัยฝั่งเบราว์�
   const imports = [...src.matchAll(/from\s+['"]([^'"]+)['"]/g)].map((m) => m[1]);
   assert.deepEqual(imports, ['@/lib/service/surveyMethodSwitch']);
   assert.doesNotMatch(src, /method\s*[:=]\s*['"]/);
+});
+
+/* ══ UAT S4 รอบ 4 (20/10) ══════════════════════════════════════════════════════════════════════ */
+
+test('รอบ 4: ถ้อยคำใหม่ตรึงตัวอักษร — ราคาของการสลับ (O8) · ป้ายรอวัดใหม่ · คำกลางของพื้นที่เดิมที่ยังไม่มีผล', () => {
+  assert.equal(SURVEY_INTAKE_SWITCH_NOTE, 'ผลประเมินจากแบบของหัวหน้า TS ที่มีอยู่จะไม่ถูกใช้ — ทุกพื้นที่ต้องวัดที่หน้างานใหม่');
+  assert.equal(SURVEY_INTAKE_REMEASURE_CHIP, 'จากแบบ · รอวัดใหม่');
+  assert.equal(SURVEY_ZONE_KNOWN_TEXT, 'พื้นที่เดิมในทะเบียน');
+});
+
+/* ⭐ ข้อ 5: ไทล์บอก "ยังไม่เคยวัด/ประเมิน" แล้วแถวที่เพิ่งติ๊กบอก "…ซ้ำพื้นที่เดิม" = ขัดกันเอง
+   ⇒ "ซ้ำ" ได้เฉพาะพื้นที่ที่ทะเบียนบอกว่าเคยมีผล — ข้อมูลชุดเดียวกับที่ไทล์ (`zonePickState`) ใช้ตัดสิน "ยังไม่เคย…" */
+test('surveyZoneRowText — "ซ้ำ" เฉพาะพื้นที่ที่เคยมีผล · ยังไม่เคย / ไม่รู้ = คำกลาง · ตรงกับคำของไทล์เสมอ', () => {
+  const never = { id: 'Z1', name: 'ก' };
+  const done = { id: 'Z2', name: 'ข', surveyedAt: '2026-08-01T03:00:00Z' };
+  assert.equal(surveyZoneRowText('measure', done), 'วัดซ้ำพื้นที่เดิม');
+  assert.equal(surveyZoneRowText('assess', done), 'ประเมินซ้ำพื้นที่เดิม');
+  assert.equal(surveyZoneRowText('measure', never), SURVEY_ZONE_KNOWN_TEXT);
+  assert.equal(surveyZoneRowText('assess', never), SURVEY_ZONE_KNOWN_TEXT);
+  // แถวทะเบียนยังไม่มา (โหลดไม่สำเร็จ) = ไม่รู้ ⇒ ไม่เดาว่า "ซ้ำ"
+  assert.equal(surveyZoneRowText('measure', undefined), SURVEY_ZONE_KNOWN_TEXT);
+  // คำที่ไม่รู้จัก = คำของวันนี้ (ลงหน้างาน)
+  assert.equal(surveyZoneRowText('x', done), 'วัดซ้ำพื้นที่เดิม');
+  // สองจอพูดตรงกัน: ไทล์ที่บอก "ยังไม่เคย…" ไม่มีวันได้แถวที่พูด "ซ้ำ"
+  for (const wording of ['measure', 'assess']) {
+    const tile = zonePickState(never, new Set(), { wording });
+    assert.match(tile.reason, /^ยังไม่เคย/);
+    assert.doesNotMatch(surveyZoneRowText(wording, never), /ซ้ำ/);
+    assert.equal(zonePickState(done, new Set(), { wording }).surveyState, 'done');
+    assert.match(surveyZoneRowText(wording, done), /ซ้ำ/);
+  }
 });

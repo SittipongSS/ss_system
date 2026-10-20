@@ -13,7 +13,7 @@
 //
 // ⚠️ import ได้ตัวเดียว: `surveyMethodSwitch.js` (pure) — ห้ามดึง `survey.js` หรือไฟล์กระดาษเข้ามา
 //    (`surveyReportSnapshot.js` import ไฟล์นี้ · วงจร import = ค่าเป็น undefined ตอนโหลดโดยไม่มี error)
-import { SURVEY_METHOD_ERRORS } from '@/lib/service/surveyMethodSwitch';
+import { SURVEY_METHOD_CHIP, SURVEY_METHOD_ERRORS } from '@/lib/service/surveyMethodSwitch';
 
 export const SURVEY_VARIANT_DRAWING = 'drawing';
 
@@ -38,12 +38,31 @@ export const SURVEY_RESEED_MISMATCH_ERROR = 'พื้นที่ของใ�
    (บรรทัด `หัวหน้าเปลี่ยนเป็นลงหน้างาน: …` ต้องไม่ขึ้นกับแถวที่หัวหน้าไม่ได้สลับ) · ≤ 300 ตัวอักษร (CHECK ของ mig 0408) */
 export const SURVEY_INTAKE_SWITCH_REASON = 'ฝ่ายขายเปลี่ยนวิธีประเมินเป็นลงหน้างานก่อนส่งคำร้อง';
 
+/* ราคาของการสลับข้างบน — ต่อท้ายกล่องยืนยันบนฟอร์ม เมื่อร่างมีพื้นที่ที่หัวหน้าประเมินจากแบบไว้แล้ว (UAT S4 รอบ 4 ข้อ 7)
+   ⚠️ ผลเดิมไม่ถูกลบ (ช่างวัดทับ) แต่ไม่ถูกใช้เป็นผลของใบอีก ⇒ บอกก่อนกด ไม่ใช่ให้ไปเจอที่ป้าย "รอวัดใหม่" ทีหลัง */
+export const SURVEY_INTAKE_SWITCH_NOTE = 'ผลประเมินจากแบบของหัวหน้า TS ที่มีอยู่จะไม่ถูกใช้ — ทุกพื้นที่ต้องวัดที่หน้างานใหม่';
+
+/* ป้ายของแถวที่ถูกตราข้างบน บนตารางพื้นที่ของหน้าคำร้อง — ตัวเลขในแถวยังเป็นของหัวหน้า (จากแบบ) จนกว่าช่างจะบันทึกทับ
+   (ค่าตั้งต้น A ของคำถามเจ้าของ · UAT S4 รอบ 4 ข้อ 17) · คำแรกเป็นคำเดียวกับป้ายวิธี ("จากแบบ") */
+export const SURVEY_INTAKE_REMEASURE_CHIP = `${SURVEY_METHOD_CHIP.drawing} · รอวัดใหม่`;
+
 /* คำของรายการพื้นที่บนฟอร์มฝ่ายขาย: 'measure' = ข้อความวันนี้ · 'assess' = ฟอร์มที่เลือกประเมินจากแบบ
    (ฟอร์มที่บอกว่าไม่มีใครไป ต้องไม่พูดว่า "วัดซ้ำ" / "ไม่เคยวัด") */
 export const SURVEY_ZONE_REPEAT_TEXT = Object.freeze({ measure: 'วัดซ้ำพื้นที่เดิม', assess: 'ประเมินซ้ำพื้นที่เดิม' });
+/* พื้นที่เดิมในทะเบียนที่ **ยังไม่เคยมีผล** — "…ซ้ำ" จะขัดกับไทล์ที่เพิ่งบอก "ยังไม่เคยวัด/ประเมิน" (UAT S4 รอบ 4 ข้อ 5) */
+export const SURVEY_ZONE_KNOWN_TEXT = 'พื้นที่เดิมในทะเบียน';
 
 export function surveyZoneWording(variant) {
   return variant === SURVEY_VARIANT_DRAWING ? 'assess' : 'measure';
+}
+
+/* บรรทัดรองของแถวพื้นที่เดิมที่ติ๊กแล้ว — "ซ้ำ" เฉพาะเมื่อทะเบียนบอกว่าพื้นที่นั้นเคยมีผล
+   ⭐ ข้อมูลชุดเดียวกับที่ไทล์ใช้พิมพ์ "ยังไม่เคย…" (`surveyedAt` ของแถวทะเบียน · `zonePickState`) ⇒ สองที่พูดตรงกันเสมอ
+   ⚠️ แถวทะเบียนยังไม่มา (โหลดไม่สำเร็จ) = ไม่รู้ ⇒ คำกลาง ไม่เดาว่า "ซ้ำ" */
+export function surveyZoneRowText(wording, registryZone) {
+  return registryZone?.surveyedAt
+    ? (SURVEY_ZONE_REPEAT_TEXT[wording] || SURVEY_ZONE_REPEAT_TEXT.measure)
+    : SURVEY_ZONE_KNOWN_TEXT;
 }
 
 /* ใบนี้ฝ่ายขายยื่นเป็น "ประเมินจากแบบ" ไหม — แถวที่ไม่มี `kind` ติดมา (แถวคิวของฝ่ายบริการ ซึ่งเป็น

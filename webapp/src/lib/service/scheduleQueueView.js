@@ -221,8 +221,11 @@ export function surveyRequestRow(request, { todayIso, sitesById = new Map(), liv
     ? DESK_REQUEST_ORIGIN_TEXT
     : backReason ? SURVEY_METHOD_BACK_ORIGIN(backReason) : REQUEST_ORIGIN_TEXT;
   /* บรรทัด "ฝ่ายขายขอ: ประเมินจากแบบ" (งวด 4) — สิ่งที่ฝ่ายขายขอ ไม่ใช่วิธีปัจจุบัน · ใบอื่น = null (ไม่มีบรรทัดคู่ของลงหน้างาน)
-     ⚠️ ไม่มีกิ่งไหนของการ์ดตัดสินจากตัวนี้ — ป้ายงานโต๊ะ/ขั้นคิวมาจากธงแถวพื้นที่ตามเดิม */
-  const asked = surveySalesAskedLine(request);
+     ⚠️ ไม่มีกิ่งไหนของการ์ดตัดสินจากตัวนี้ — ป้ายงานโต๊ะ/ขั้นคิวมาจากธงแถวพื้นที่ตามเดิม
+     ⭐ **ขึ้นเฉพาะเมื่อต่างจากวิธีปัจจุบัน** (UAT S4 รอบ 4 ข้อ 16) — การ์ดงานโต๊ะพูดวิธีในต้นเรื่องอยู่แล้ว
+        ("คำร้องประเมินพื้นที่ · ประเมินจากแบบ") ⇒ บรรทัดถัดมา "ฝ่ายขายขอ: ประเมินจากแบบ" เป็นคำซ้ำ · การ์ดที่หัวหน้าสลับกลับเป็น
+        ลงหน้างานยังได้บรรทัดนี้ (ที่นั่นมันคือข้อเท็จจริงที่ต่าง) */
+  const asked = desk ? null : surveySalesAskedLine(request);
 
   const row = {
     type: 'request',
@@ -295,11 +298,14 @@ export function surveyRequestRow(request, { todayIso, sitesById = new Map(), liv
       (ไม่เรียงตามกระจกของวันรับผล) */
 /* 🔴 งานโต๊ะที่ยื่นเป็นจากแบบ (ผลรีวิวรอบแก้ S4): บรรทัดวันของการ์ดคือ "ต้องการผล …" ⇒ เรียงด้วยวันนั้น ไม่ใช่ไปท้ายกลุ่ม
       (เดิมได้ 9999 ทุกใบ ⇒ ใบที่ต้องการผลพรุ่งนี้อยู่หลังใบที่ขอเข้าเดือนหน้า) · ⚠️ เฉพาะใบที่ยื่นเป็นจากแบบ — งานโต๊ะรูป
-      RQ-AS-26100312 (ยื่นลงหน้างาน หัวหน้าสลับทุกพื้นที่) มีอยู่แล้วบน production ⇒ ลำดับของมันเท่าวันนี้ (รั้วสวิตช์ปิด) */
+      RQ-AS-26100312 (ยื่นลงหน้างาน หัวหน้าสลับทุกพื้นที่) มีอยู่แล้วบน production ⇒ ลำดับของมันเท่าวันนี้ (รั้วสวิตช์ปิด)
+   ⭐ **การ์ดที่ไม่มีวันอยากให้เข้า เรียงด้วยวันที่ต้องการผล** (มติ 20/10 · UAT S4 รอบ 4 ข้อ 20 · แทน D-2 "ไม่รู้ = ท้ายกลุ่ม") —
+      ใบที่ยื่นเป็นจากแบบแล้วหัวหน้าสลับกลับเป็นลงหน้างาน ฝ่ายขายไม่เคยให้วันเข้า แต่ต้องการผลในอีกสามวันก็มี ⇒ ไปท้ายกลุ่ม =
+      ถูกลืม · ท้ายกลุ่มเฉพาะใบที่ไม่มีวันไหนเลย · ใบที่มีวันอยากให้เข้า (ทุกใบที่ยื่นลงหน้างาน) เรียงเท่าเดิม */
 const sortDateOf = (row) => {
   if (row.step === 'requeue') return row.request.committedDueDate;
   if (row.request.surveyNeedsVisit === false && surveyFiledAsDrawing(row.request)) return row.request.requestedResultDate;
-  return surveyWishedVisit(row.request).date;
+  return surveyWishedVisit(row.request).date || row.request.requestedResultDate;
 };
 const requestSortKey = (row) => [
   SURVEY_QUEUE_STEPS.indexOf(row.step),
