@@ -20,7 +20,7 @@
 // "ยังกรอกไม่ครบ" — เนื้อฟอร์ม หรือแถบปุ่มของผู้เรียก)
 // ⭐ **ช่องแนบไฟล์อยู่ทุกโหมด** (มติผู้ใช้ 2026-08-08: "อยากให้แนบไฟล์ได้ตั้งแต่หน้า
 // สร้างคำร้องเลย") — ไฟล์เก็บใน `value.files` แล้วผู้เรียกอัปหลังได้ id ของคำร้อง
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Plus, X, AtSign } from "lucide-react";
 import Tabs from "@/components/ui/Tabs";
 import SectionRail from "@/components/ui/SectionRail";
@@ -58,7 +58,8 @@ import {
 } from "@/lib/master/requestTypes";
 import { requestVariantChoices, requestVariantConfirm } from "@/lib/requests/variantSwitch";
 import { requestFormBlocker } from "@/lib/master/requestCreate";
-import { requestFormTabs } from "@/lib/requests/formTabs";
+import { requestDueRequired, requestFormTabs } from "@/lib/requests/formTabs";
+import { createMissingJump } from "@/lib/requests/missingJump";
 import {
   scentCountForOrder, scentDesignOrderOptions, scentDesignOrderSkipHint, scentDesignOrderSkips,
 } from "@/lib/requests/scentDesignOrders";
@@ -93,6 +94,11 @@ const keepFileRefs = (entries = [], next = []) => next.map((file) => entries.fin
 
 // ที่หมายของปุ่ม "ยังขาด: {ไฟล์บังคับ}" — บล็อกอยู่ท้ายแท็บรายละเอียด (UAT S4 รอบ 4 ข้อ 9)
 const REQUIRED_FILES_ANCHOR = "req-required-files";
+// เลื่อนไปที่หมายกลางจอ · ผู้ใช้ที่ตั้งลดการเคลื่อนไหว = กระโดดทันที ไม่เลื่อนนุ่ม (แพตเทิร์นของ SystemMenuSheet)
+const scrollToAnchor = (anchor) => {
+  const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  document.getElementById(anchor)?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
+};
 
 // ค่าเริ่มต้น: **ไม่เดาหัวข้อให้** — หัวข้อขึ้นกับฝ่ายซึ่งยังไม่ได้เลือก
 //
@@ -482,17 +488,25 @@ export default function RequestForm({
   const missingAll = formTabs.flatMap((t) => t.required.missing.map((m) => ({ ...m, tabLabel: t.label })));
   /* ⭐ **ปุ่ม "ยังขาด" พาไปถึงช่อง ไม่ใช่แค่แท็บ** (UAT S4 รอบ 4 ข้อ 9) — บล็อกไฟล์แบบอยู่ท้ายแท็บรายละเอียด
      ใต้ชื่อเรื่อง/รายละเอียด/สถานที่ ⇒ สลับแท็บเฉย ๆ แล้วบล็อกยังอยู่ใต้ขอบจอ คนกดเห็นว่า "ไม่มีอะไรเกิดขึ้น"
-     ⚠️ `setTimeout(0)` ไม่ใช่ `requestAnimationFrame` — รอ React commit แท็บใหม่ลง DOM ก่อน (idiom เดียวกับปุ่ม "แก้ไข"
-        ของหน้าคำร้อง) · ผู้ใช้ที่ตั้งลดการเคลื่อนไหว = กระโดดทันที ไม่เลื่อนนุ่ม (แพตเทิร์นของ SystemMenuSheet) */
+     🔴 **เลื่อนหลังบล็อกสถานที่โหลดจบ ไม่ใช่จังหวะถัดไปเฉย ๆ** (รีวิวรอบ 4) — แท็บรายละเอียดวาดเฉพาะตอนเปิด ⇒ กดจากแท็บอื่น
+        `SurveySiteFields` เกิดใหม่แล้วยิงลิสต์ไซต์ + ทะเบียนพื้นที่ใหม่ · เลื่อนก่อนไทล์สถานที่มา = ไทล์ดันบล็อกตกขอบจอ
+        ⇒ ตัวตัดสินจังหวะอยู่ `lib/requests/missingJump.js` (รอ `onSettledChange` · โหลดพังก็นับว่าจบ · ค้างเกินเพดาน = เลื่อนเลย)
+     ⚠️ `sitesSettled` เป็น ref ไม่ใช่ state — ถามในตัวจับเวลา ไม่ได้ใช้วาดอะไร · บล็อกถูกถอด = รายงาน `false` เอง (cleanup) */
   const missingAnchorOf = (m) => (requiredSpec && m.label === requiredSpec.label ? REQUIRED_FILES_ANCHOR : null);
+  const [missingJump] = useState(() => createMissingJump({ scroll: scrollToAnchor }));
+  const sitesSettled = useRef(false);
+  const onSitesSettled = (settled) => {
+    sitesSettled.current = settled;
+    if (settled) missingJump.settled();
+  };
   const jumpToMissing = (m) => {
     setTab(m.tab);
-    const anchor = missingAnchorOf(m);
-    if (!anchor) return;
-    setTimeout(() => {
-      const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-      document.getElementById(anchor)?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
-    }, 0);
+    missingJump.jump(missingAnchorOf(m), { ready: () => !needsSite || sitesSettled.current });
+  };
+  // คนสลับแท็บเอง = ทิ้งการเลื่อนที่ค้างรอ (ห้ามกระชากจอทีหลังเมื่อบล็อกสถานที่โหลดเสร็จ)
+  const pickTab = (next) => {
+    missingJump.cancel();
+    setTab(next);
   };
   const requiredTotal = formTabs.reduce((n, t) => n + t.required.total, 0);
   const requiredFilled = formTabs.reduce((n, t) => n + t.required.filled, 0);
@@ -722,7 +736,7 @@ export default function RequestForm({
           ช่องไหนอยู่แท็บไหน และกดแล้วกระโดดไปเลย · ไม่มีบรรทัดนี้เมื่อไร ผู้ใช้จะ
           เจอปุ่มส่งที่กดไม่ได้โดยไม่รู้ว่าต้องไปเปิดแท็บไหน */}
       <div className="tabbar-with-meter">
-        <Tabs tabs={tabItems} value={activeTab} onChange={setTab} ariaLabel="ส่วนของฟอร์มคำร้อง" />
+        <Tabs tabs={tabItems} value={activeTab} onChange={pickTab} ariaLabel="ส่วนของฟอร์มคำร้อง" />
         <span className="tab-overall">
           ช่องบังคับ {requiredFilled}/{requiredTotal}
           {/* ⭐ ขีดละ "หนึ่งช่องบังคับ" ไม่ใช่เปอร์เซ็นต์ — ทั้งใบมีช่องบังคับ 1–4 ช่อง
@@ -1202,6 +1216,8 @@ export default function RequestForm({
           /* ประโยคล็อกของโหมดอ่านอย่างเดียว — "ลบร่างแล้วเปิดใหม่" จริงเฉพาะร่างที่ยังไม่เคยส่ง (UAT S4 รอบ 4 ข้อ 3) */
           freshDraft={freshDraft}
           canCreateSite={!isEdit && canCreateServiceSite(me)}
+          /* โหลดของตัวเองจบ (ได้หรือพัง) — ปุ่ม "ยังขาด" รอจังหวะนี้ก่อนเลื่อนไปบล็อกไฟล์ที่อยู่ใต้บล็อกนี้ (รีวิวรอบ 4 ข้อ 9) */
+          onSettledChange={onSitesSettled}
         />
       )}
 
@@ -1399,6 +1415,9 @@ export default function RequestForm({
           value={value} onChange={onChange} disabled={disabled}
           /* ป้าย/คำอธิบายมาจากทะเบียนหัวข้อ — ทะเบียนเติมค่ากลางให้ครบทุกคีย์แล้ว */
           dueLabel={copy.dueLabel}
+          /* ป้าย "(บังคับ)" ของวันแรกถามตัวเดียวกับเกจ (`requestDueRequired`) — ยังไม่เลือกวิธี = ช่องยังกรอกได้แต่ยังไม่บังคับ
+             (รีวิว UAT S4 รอบ 4 ข้อ 12: เกจเลิกนับแล้ว แต่ป้ายยังเขียน "(บังคับ)" ข้างช่องว่าง = จอขัดกันเอง) */
+          dueRequired={requestDueRequired(value)}
           /* ⭐ รูปแบบที่มีแต่วันรับผล (ประเมินจากแบบ · S4 B-4) — ไม่มีการนัดเข้าพื้นที่ ⇒ ไม่มีวันเข้า/ช่วงเวลา
              server เขียนกระจกของวันรับผลลงคอลัมน์วันเข้าเอง (`requestNormalizeDates`) */
           hideDue={resultDateOnly}

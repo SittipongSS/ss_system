@@ -283,7 +283,10 @@ function zoneRows(zones, filesByZone, { sent, filesUnknown = false, dept = 'TS',
                       (แถวลงหน้างาน · แถวที่ถูกตัด · อ่านรูปไม่สำเร็จ — ไม่เดาว่า "แบบ 0")
          `addedLabel` พื้นที่ที่ถูกเพิ่มบนใบ — แถวจากแบบหัวหน้าเป็นคนเพิ่มที่โต๊ะ ไม่ได้ "เพิ่มหน้างาน" */
       method: zoneMethod(zone),
-      chip: drawing ? SURVEY_METHOD_CHIP.drawing : (intakeRemeasure(zone) ? SURVEY_INTAKE_REMEASURE_CHIP : null),
+      /* ⚠️ "รอวัดใหม่" ไม่ขึ้นบนแถวที่ถูกตัด (รีวิว UAT S4 รอบ 4) — ไม่มีใครวัดพื้นที่ที่ตัดออกแล้ว ⇒ ป้ายจะค้างตลอดไป
+         ข้าง "ตัดออก — {เหตุ}" (ทาง: หัวหน้าตัดแถวจากแบบตอนรอรับเรื่อง → ตีกลับ → ฝ่ายขายสลับเป็นลงหน้างาน = ตัวตั้งวิธีตราแถวนั้นด้วย)
+         · กติกาเดียวกับ `missingText` ของแถวที่ตัด (ไม่มีคำ "ยังต้องทำ") */
+      chip: drawing ? SURVEY_METHOD_CHIP.drawing : (!facts.cut && intakeRemeasure(zone) ? SURVEY_INTAKE_REMEASURE_CHIP : null),
       photosText: drawing && !facts.cut && !filesUnknown ? `แบบ ${facts.photos.plan}` : null,
       addedLabel: surveyZoneAddedLabel(zone, dept),
       /* ── ช่องของแถวจากแบบบนตารางที่ **ยังไม่ส่งผล** (มติเจ้าของ 12/10 · ทรงของตารางอยู่ที่ `surveyZoneTable`) ──

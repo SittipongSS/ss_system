@@ -7,8 +7,9 @@
 import {
   requestLineShape, requestUsesItems, requestUsesPdr, requestNeedsRef, requestShapeError,
   requestUsesScentBriefs, requestNormalizeDates, requestRequiredFiles, requestRequiredFilesError,
-  requestVariantChosen,
+  requestVariantChosen, requestResultDateOnly,
 } from '@/lib/master/requestTypes';
+import { normalizeSurveyRequestedResult } from '@/lib/service/surveyRequest';
 import { normalizeLinesFor } from '@/lib/requests/kinds/lineShapes';
 import { pdrArtworkError } from '@/lib/requests/pdrFields';
 import { requiredFileCountOf } from '@/lib/requests/formTabs';
@@ -45,6 +46,18 @@ export function requestFormBlocker(form, opts = {}) {
     items: requestUsesItems(form) ? form.items : undefined,
   });
   if (shape) return shape;
+
+  /* 🔴 **วันรับผลของใบที่มีวันเข้าพื้นที่ด้วย** (ลงหน้างาน · รีวิว UAT S4 รอบ 4) — `requestShapeError` ถามวันรับผลเฉพาะรูปแบบ
+     ที่มีแต่วันรับผล (จากแบบ) แต่ server ตีกลับใบลงหน้างานที่ไม่มีวันรับผลด้วย (`normalizeSurveyRequest` ตอนเปิด ·
+     `normalizeSurveyRequestedResult` ของ PATCH ซึ่งฟอร์มแก้ส่งช่องนี้มาเสมอ) และเกจนับช่องนี้อยู่แล้ว (`resultDueLabel`)
+     ⇒ ด่านจอเคยหลวมกว่า server: เกจขึ้น "ยังขาด" แต่ปุ่มบันทึกกดได้ แล้วไปโดน 400 · ตัวตรวจตัวเดียวกับ server
+     (ลำดับวัน "ผลต้องไม่มาก่อนวันเข้า" ด้วย) · ถามหลังวันเข้าพื้นที่ — ลำดับเดียวกับช่องบนแท็บกำหนดส่ง
+     ⚠️ ไม่ย้ายเข้า `requestShapeError` — ทางแก้ใบของ server เรียกตัวนั้นกับแถวเดิมที่ spread มา ⇒ ใบเก่าที่ไม่มีวันรับผล
+        จะแก้ช่องอื่นผ่านผู้เรียกที่ไม่ส่งช่องนี้ไม่ได้อีกเลย */
+  if (requestNeedsRef(form.kind, 'site') && !requestResultDateOnly(form)) {
+    const { error } = normalizeSurveyRequestedResult(form.requestedResultDate, form.requestedDueDate);
+    if (error) return error;
+  }
 
   // ⭐ ช่องไฟล์บังคับของรูปแบบ (ประเมินจากแบบ = แบบ/ผังพื้นที่) — ประโยคเดียวกับ route ส่งคำร้อง
   const filesError = requestRequiredFilesError(form, { count: requiredFileCountOf(form, opts) });

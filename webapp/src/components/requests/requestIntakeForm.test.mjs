@@ -330,12 +330,39 @@ test('รอบ 4 ข้อ 9: ปุ่ม "ยังขาด" พาไปถ
   assert.doesNotMatch(form, /onClick=\{\(\) => setTab\(m\.tab\)\}/);
   assert.match(form, /const REQUIRED_FILES_ANCHOR = "req-required-files";/);
   assert.match(form, /<div className="form-group col-span-2" id=\{REQUIRED_FILES_ANCHOR\}>\s*<RequiredFilesBlock/);
+  const scrollAt = form.indexOf('const scrollToAnchor = (anchor) => {');
+  assert.ok(scrollAt > -1, 'ต้องมีตัวเลื่อนไปที่หมาย');
+  const scroll = form.slice(scrollAt, form.indexOf('};', scrollAt) + 2);
+  assert.match(scroll, /window\.matchMedia\?\.\("\(prefers-reduced-motion: reduce\)"\)\.matches/);
+  assert.match(scroll, /scrollIntoView\(\{ behavior: reduce \? "auto" : "smooth", block: "center" \}\)/);
+  assert.match(form, /const missingAnchorOf = \(m\) => \(requiredSpec && m\.label === requiredSpec\.label \? REQUIRED_FILES_ANCHOR : null\);/);
+});
+
+/* 🔴 รีวิวรอบ 4 (ข้อ 9 ต่อ): กดจากแท็บอื่น แท็บรายละเอียดเกิดใหม่ — `SurveySiteFields` ยิงลิสต์ไซต์ + ทะเบียนพื้นที่ใหม่
+   ⇒ เลื่อนจังหวะถัดไปเฉย ๆ = เลื่อนก่อนไทล์สถานที่มา แล้วไทล์ดันบล็อกไฟล์ตกขอบจอ · จังหวะอยู่ที่ `lib/requests/missingJump.js`
+   (เทสต์พฤติกรรมของมันอยู่ที่นั่น) — ที่นี่คุมสายไฟ: ปุ่มรอบล็อกสถานที่ · บล็อกรายงานจบทั้งสองคำขอ (รวมพัง) · ถอดแล้วรายงาน false */
+test('รีวิวรอบ 4 ข้อ 9: ปุ่ม "ยังขาด" รอบล็อกสถานที่โหลดจบก่อนเลื่อน — ไม่เลื่อนใน setTimeout(0) ตรง ๆ แล้ว', () => {
+  const form = code(FORM);
   const jump = form.slice(form.indexOf('const jumpToMissing = (m) => {'), form.indexOf('const requiredTotal'));
   assert.match(jump, /setTab\(m\.tab\);/);
-  assert.match(jump, /setTimeout\(\(\) => \{/);
-  assert.match(jump, /window\.matchMedia\?\.\("\(prefers-reduced-motion: reduce\)"\)\.matches/);
-  assert.match(jump, /scrollIntoView\(\{ behavior: reduce \? "auto" : "smooth", block: "center" \}\)/);
-  assert.match(form, /const missingAnchorOf = \(m\) => \(requiredSpec && m\.label === requiredSpec\.label \? REQUIRED_FILES_ANCHOR : null\);/);
+  assert.match(jump, /missingJump\.jump\(missingAnchorOf\(m\), \{ ready: \(\) => !needsSite \|\| sitesSettled\.current \}\);/);
+  assert.doesNotMatch(jump, /setTimeout\(/, 'จังหวะเลื่อนต้องผ่านตัวตัดสินที่รอบล็อกสถานที่ ไม่ใช่ setTimeout(0) ตรง ๆ');
+  assert.match(form, /const \[missingJump\] = useState\(\(\) => createMissingJump\(\{ scroll: scrollToAnchor \}\)\);/);
+  assert.match(form, /const onSitesSettled = \(settled\) => \{\n\s*sitesSettled\.current = settled;\n\s*if \(settled\) missingJump\.settled\(\);\n\s*\};/);
+  assert.match(form, /<SurveySiteFields[\s\S]{0,1200}onSettledChange=\{onSitesSettled\}/);
+  // คนสลับแท็บเอง = ทิ้งการเลื่อนที่ค้าง (บล็อกโหลดเสร็จทีหลังต้องไม่กระชากจอ)
+  assert.match(form, /<Tabs tabs=\{tabItems\} value=\{activeTab\} onChange=\{pickTab\}/);
+  assert.match(form, /const pickTab = \(next\) => \{\n\s*missingJump\.cancel\(\);\n\s*setTab\(next\);/);
+
+  const site = code('components/requests/SurveySiteFields.js');
+  assert.match(site, /onSettledChange = null,/);
+  // "จบ" = ทั้งสองคำขอของลูกค้าคนนี้ — ได้หรือพังก็ตาม (`finally`) · ไม่มีลูกค้า = จบทันที
+  assert.match(site, /\.finally\(\(\) => \{ if \(alive\) \{ setLoading\(false\); setSitesFor\(customerId\); \} \}\);/);
+  assert.match(site, /\.finally\(\(\) => \{ if \(alive\) setRegistryFor\(customerId\); \}\);/);
+  assert.match(site, /const settled = !customerId \|\| \(sitesFor === customerId && registryFor === customerId\);/);
+  assert.match(site, /onSettledChange\?\.\(settled\);\n\s*return \(\) => onSettledChange\?\.\(false\);/);
+  // ⚠️ hook ต้องอยู่ก่อนทางออกของโหมดอ่านอย่างเดียว (กฎ hooks) — โหมดแก้ก็ใช้ปุ่มเดียวกัน
+  assert.ok(site.indexOf('onSettledChange?.(settled)') < site.indexOf('if (readOnly) {'), 'effect รายงานต้องอยู่เหนือ early return ของ readOnly');
 });
 
 test('รอบ 4 ข้อ 10: หน้าคำร้องบอกฟอร์มว่าใบยังไม่ถูกรับเรื่อง (ร่าง · รอรับเรื่อง)', () => {
@@ -352,4 +379,16 @@ test('รอบ 4 ข้อ 13a: การ์ดหัวข้อห่อว�
   for (const rel of [FORM, 'lib/requests/kinds/ts/siteSurvey.js', 'lib/requests/commitDue.js', PAGE]) {
     assert.ok(!read(rel).includes('⁠'), rel);
   }
+});
+
+/* 🔴 รีวิว UAT S4 รอบ 4 ข้อ 12 (ต่อ): ก่อนเลือกวิธี เกจไม่นับวันเข้าพื้นที่แล้ว — ป้ายของช่องต้องไม่เขียน "(บังคับ)" ข้างช่องว่าง
+   (ตัวตัดสินอยู่ formTabs `requestDueRequired` · เทสต์พฤติกรรมอยู่ที่นั่น) — ที่นี่คุมสายไฟของป้าย */
+test('รีวิวรอบ 4 ข้อ 12: ป้าย "(บังคับ)" ของวันแรกถามตัวเดียวกับเกจ — ไม่เขียนตายตัว', () => {
+  const form = code(FORM);
+  assert.match(form, /import \{ requestDueRequired, requestFormTabs \} from "@\/lib\/requests\/formTabs";/);
+  assert.match(form, /<RequestDueUrgentFields[\s\S]{0,600}dueRequired=\{requestDueRequired\(value\)\}/);
+  const fields = code('components/requests/RequestEditableFields.js');
+  assert.match(fields, /dueRequired = true,/, 'ค่าตั้งต้น = บังคับ (หัวข้ออื่นเท่าเดิม)');
+  assert.match(fields, /<label htmlFor=\{`\$\{idPrefix\}-due`\}>\{dueLabel\}\{dueRequired \? " \(บังคับ\)" : ""\}<\/label>/);
+  assert.doesNotMatch(fields, /\{dueLabel\} \(บังคับ\)/, 'ป้ายตายตัว = ขัดกับเกจก่อนเลือกวิธี');
 });

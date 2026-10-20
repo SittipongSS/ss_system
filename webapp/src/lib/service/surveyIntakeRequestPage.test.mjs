@@ -320,6 +320,27 @@ test('รอบ 4 ข้อ 17: แถวที่ฝ่ายขายตรา
   assert.ok(job(row('standard', 'acknowledged')).zones.rows.every((r) => r.chip === null));
 });
 
+/* 🔴 รีวิวรอบ 4: แถวที่ถูกตัดแล้วโดนตราด้วย — หัวหน้าตัดแถวจากแบบตอนรอรับเรื่อง (การตัดเขียน `surveyedAt`) → ตีกลับ →
+   ฝ่ายขายสลับเป็นลงหน้างาน ⇒ ตัวตั้งวิธีตราแถวนั้น (`methodChangedAt` ใหม่กว่า `surveyedAt`) · ไม่มีใครวัดพื้นที่ที่ตัดแล้ว
+   ⇒ "รอวัดใหม่" จะค้างข้าง "ตัดออก — {เหตุ}" ตลอดไป ทั้งตารางก่อนและหลังส่งผล */
+test('รีวิวรอบ 4 ข้อ 17: แถวที่ถูกตัดไม่มีป้าย "จากแบบ · รอวัดใหม่" — ทุกสถานะของใบ (ป้าย "ตัดออก" ยังอยู่)', () => {
+  const stamped = {
+    method: 'onsite', methodReason: SURVEY_INTAKE_SWITCH_REASON, methodChangedAt: '2026-10-14T03:00:00Z',
+    methodChangedByName: 'Lalida Chaiwanna', surveyedAt: '2026-10-12T03:00:00Z',
+  };
+  const zones = [
+    { id: 'z1', zoneName: 'Lobby', status: 'ok', parts: [], spots: [], ...stamped },
+    { id: 'z2', zoneName: 'คลัง', status: 'cut', cutReason: 'ลูกค้าไม่ทำโซนนี้แล้ว', parts: [], spots: [], ...stamped },
+  ];
+  for (const status of ['acknowledged', 'answered']) {
+    const view = job({ ...row('drawing-switched', status), variant: 'standard', surveyZones: zones });
+    const byId = Object.fromEntries(view.zones.rows.map((r) => [r.id, r]));
+    assert.equal(byId.z1.chip, SURVEY_INTAKE_REMEASURE_CHIP, `${status}: แถวที่ยังไม่ตัดยังได้ป้าย`);
+    assert.equal(byId.z2.cut, true, status);
+    assert.equal(byId.z2.chip, null, `${status}: แถวที่ตัดแล้วไม่มีใครไปวัด — ป้ายรอวัดใหม่ไม่จริง`);
+  }
+});
+
 test('รอบ 4 ข้อ 14: RequiredFilesBlock ซ่อนบรรทัดป้ายได้ (การ์ดที่วาดชื่อเอง) · คำบรรยายอยู่เสมอ · ฟอร์มไม่ส่ง = ป้าย "(บังคับ)" เดิม', () => {
   const blockSrc = readFileSync(new URL('../../components/requests/RequiredFilesBlock.js', import.meta.url), 'utf8');
   assert.match(blockSrc, /hideLabel = false,/);

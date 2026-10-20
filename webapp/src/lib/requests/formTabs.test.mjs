@@ -2,8 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { missingRequiredByTab, requestFormTabs, requiredChecks } from './formTabs.js';
+import { missingRequiredByTab, requestDueRequired, requestFormTabs, requiredChecks } from './formTabs.js';
 import { requestFormBlocker } from '../master/requestCreate.js';
+import { normalizeSurveyRequest } from '../service/surveyRequest.js';
 
 /* ⭐ เทสต์ที่สำคัญที่สุดของไฟล์นี้ — **เกจกับด่านส่งต้องเป็นความจริงเดียวกัน**
    เกจที่บอกว่าครบแล้วแต่ปุ่มยังกดไม่ได้ (หรือกลับกัน) แย่กว่าไม่มีเกจเลย
@@ -195,6 +196,8 @@ test('⭐ S4: ไม่มีแท็บไหนขาด ⟺ ด่านส�
     ['ยังไม่เลือกวิธี ไม่มีวันเข้าพื้นที่', { ...SURVEY_FULL, requestedDueDate: '' }, {}, false],
     ['ลงหน้างาน', { ...SURVEY_FULL, variant: 'standard' }, {}, true],
     ['ลงหน้างาน ไม่มีวันเข้าพื้นที่', { ...SURVEY_FULL, variant: 'standard', requestedDueDate: '' }, {}, false],
+    // รีวิวรอบ 4: เกจนับวันรับผลของทั้งสองวิธี (`resultDueLabel`) — ด่านจอเคยถามเฉพาะจากแบบ ⇒ ปุ่มกดได้แล้วไปโดน 400
+    ['ลงหน้างาน ไม่มีวันรับผล', { ...SURVEY_FULL, variant: 'standard', requestedResultDate: '' }, {}, false],
     ['จากแบบ 0 ไฟล์', { ...DRAWING_FULL, requiredFiles: [] }, {}, false],
     ['จากแบบ 1 ไฟล์', DRAWING_FULL, {}, true],
     ['จากแบบ ไฟล์ที่อัปแล้ว (ref)', { ...DRAWING_FULL, requiredFiles: [{ file: PLAN_FILE, ref: { id: 'ATT-1' } }] }, {}, true],
@@ -213,6 +216,30 @@ test('⭐ S4: ไม่มีแท็บไหนขาด ⟺ ด่านส�
     assert.equal(blocker == null, passes, `${name}: ด่าน ${blocker}`);
     assert.deepEqual(tabsMissing, missing, `${name}: แท็บกับรายการขาดต้องเป็นชุดเดียวกัน`);
   }
+});
+
+/* 🔴 รีวิว UAT S4 รอบ 4: ใบลงหน้างานที่ไม่มีวันรับผล — เกจขึ้น "ยังขาด: วันที่ต้องการรับผลประเมิน" แต่ด่านจอผ่าน (`requestShapeError`
+   ถามวันรับผลเฉพาะรูปแบบที่มีแต่วันรับผล) ⇒ ปุ่มบันทึกกดได้แล้ว server ตีกลับ 400 · ด่านจอต้องพูดประโยคเดียวกับ server
+   (`normalizeSurveyRequest` ตอนเปิด · `normalizeSurveyRequestedResult` ตอนแก้) และไม่หลวมกว่าเรื่องลำดับวันด้วย */
+test('รีวิวรอบ 4: ลงหน้างานไม่มีวันรับผล — ด่านจอตีกลับด้วยประโยคเดียวกับ server · ลำดับวันก็ตรวจ · จากแบบ/หัวข้ออื่นเท่าเดิม', () => {
+  // พื้นที่เดิมในทะเบียน (มีรหัส) — ตัวตรวจของ server ถามชั้นของพื้นที่ใหม่ก่อนถึงข้อวัน ⇒ ใช้แถวที่ผ่านข้อนั้นแล้ว
+  const onsite = { ...SURVEY_FULL, variant: 'standard', zones: [{ zoneId: 'ZN-1' }] };
+  const noResult = { ...onsite, requestedResultDate: '' };
+  assert.deepEqual(missingRequiredByTab(noResult), [{ tab: 'due', label: 'วันที่ต้องการรับผลประเมิน' }]);
+  assert.equal(requestFormBlocker(noResult), 'ต้องระบุวันที่ต้องการรับผลประเมิน');
+  assert.equal(requestFormBlocker(noResult), normalizeSurveyRequest(noResult).error, 'ประโยคเดียวกับที่ POST ตีกลับ');
+  // วันเข้าพื้นที่ยังถามก่อน (ช่องแรกของแท็บกำหนดส่ง) — ประโยคของข้อ 11 ไม่เปลี่ยน
+  assert.equal(requestFormBlocker({ ...noResult, requestedDueDate: '' }), 'ต้องระบุวันที่ต้องการให้เข้าพื้นที่');
+  // ผลมาก่อนวันเข้า = server ตีกลับ ⇒ ปุ่มต้องไม่กดได้ด้วย (ไม่ใช่ช่องขาด — เกจไม่นับ แต่ด่านพูดเหตุ)
+  const early = { ...onsite, requestedDueDate: '2026-09-20', requestedResultDate: '2026-09-19' };
+  assert.equal(requestFormBlocker(early), 'วันที่ต้องการรับผลประเมินต้องไม่มาก่อนวันที่ต้องการให้เข้าพื้นที่');
+  assert.equal(requestFormBlocker(early), normalizeSurveyRequest(early).error);
+  assert.equal(requestFormBlocker({ ...onsite, requestedResultDate: '2026-09-20', requestedDueDate: '2026-09-20' }), null, 'วันเดียวกันได้');
+  // ใบจากแบบ: ไม่มีวันเข้า ⇒ ไม่เทียบลำดับ (กระจกของวันรับผลไม่ใช่วันเข้าพื้นที่) · ประโยคเดิมของ requestShapeError
+  assert.equal(requestFormBlocker(DRAWING_FULL), null);
+  assert.equal(requestFormBlocker({ ...DRAWING_FULL, requestedResultDate: '' }), 'ต้องระบุวันที่ต้องการรับผลประเมิน');
+  // หัวข้อที่ไม่มีสถานที่ไม่เข้าข้อนี้ (ไม่มีวันรับผลบนจอ)
+  assert.equal(requestFormBlocker(base), null);
 });
 
 test('S4: ใบที่ยังไม่เลือกวิธี — ของขาดตัวแรกคือ "วิธีประเมิน" ที่แท็บงาน และด่านบอกประโยคเดียวกับ server', () => {
@@ -239,6 +266,32 @@ test('S4 รอบ 4: ยังไม่เลือกวิธี = วัน�
   assert.ok(labels({ ...blank, variant: 'standard' }).includes('วันที่ต้องการให้เข้าพื้นที่'));
   // หัวข้อที่ไม่บังคับเลือกวิธี (พัฒนาสูตร) ไม่เข้าข้อนี้ — ว่าง = รูปแบบตั้งต้น วันยังนับ
   assert.ok(labels({ dept: 'RD', kind: 'formula_dev', dealId: 'D', projectId: 'P' }).includes('วันที่ต้องการรับงาน'));
+});
+
+/* 🔴 รีวิว UAT S4 รอบ 4 ข้อ 12 (ต่อ): เกจเลิกนับวันเข้าก่อนเลือกวิธี แต่ป้ายของช่องบนแท็บเดียวกันยังเขียน "(บังคับ)" ข้างช่องว่าง
+   ⇒ วงแหวนเขียวคู่ช่องบังคับว่าง · ตัวตัดสินเดียว `requestDueRequired` — ป้าย (RequestForm → `dueRequired`) กับเกจถามตัวเดียวกัน */
+test('รีวิวรอบ 4 ข้อ 12: requestDueRequired = แถววันแรกของเกจเป๊ะ — ป้าย "(บังคับ)" กับวงแหวนพูดเรื่องเดียวกัน', () => {
+  const dueRow = (form) => requiredChecks(form).some((c) => c.tab === 'due' && c.label === (form.kind === 'site_survey' ? 'วันที่ต้องการให้เข้าพื้นที่' : 'วันที่ต้องการรับงาน'));
+  const forms = [
+    { dept: 'TS', kind: 'site_survey', dealId: 'DEAL-1', siteId: 'SVS-1', requestedResultDate: '2026-10-30' }, // ยังไม่เลือกวิธี
+    { dept: 'TS', kind: 'site_survey', variant: 'standard', dealId: 'DEAL-1' },
+    { dept: 'TS', kind: 'site_survey', variant: 'drawing', dealId: 'DEAL-1' },
+    { dept: 'TS', kind: 'site_survey', variant: 'constructor', dealId: 'DEAL-1' }, // ค่าที่ไม่มีในทะเบียน = ยังไม่เลือก
+    { dept: 'RD', kind: 'formula_dev', dealId: 'D', projectId: 'P' },
+    base,
+  ];
+  for (const form of forms) {
+    assert.equal(requestDueRequired(form), dueRow(form), `${form.kind}/${form.variant ?? '-'}`);
+  }
+  // ยังไม่เลือกวิธี: ไม่บังคับ (ป้ายไม่มี "(บังคับ)") · ลงหน้างาน: บังคับ · หัวข้ออื่นบังคับเหมือนเดิมทุกตัว (มติ 08/08)
+  assert.equal(requestDueRequired(forms[0]), false);
+  assert.equal(requestDueRequired(forms[1]), true);
+  assert.equal(requestDueRequired(forms[2]), false, 'จากแบบไม่มีช่องนี้บนจอ');
+  assert.equal(requestDueRequired(forms[4]), true);
+  assert.equal(requestDueRequired(base), true);
+  // วงแหวนของแท็บกำหนดส่ง "ครบ" ก่อนเลือกวิธี = ไม่มีช่องบังคับว่างบนแท็บนั้น (ป้ายของวันเข้าไม่บอกว่าบังคับ)
+  const due = requestFormTabs(forms[0], { optionalRefs: [] }).find((t) => t.key === 'due');
+  assert.deepEqual(due.required.missing, []);
 });
 
 test('S4: ใบจากแบบไม่มีไฟล์ — ด่านบอกชื่อช่องตามที่จอเขียน', () => {

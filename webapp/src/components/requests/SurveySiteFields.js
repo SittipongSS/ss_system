@@ -55,6 +55,10 @@ export default function SurveySiteFields({
      ⚠️ ชื่อพร็อพคือ `variant` ไม่ใช่ `method` — ยามของวิธีประเมิน (surveyMethodGuards) · ค่านี้คือ "สิ่งที่ฝ่ายขายขอ"
         ไม่ใช่วิธีของแถวพื้นที่ */
   variant = null,
+  /* ⭐ ของที่บล็อกนี้โหลดเอง (ลิสต์ไซต์ + ทะเบียนพื้นที่) **จบแล้วหรือยัง** — `onSettledChange(bool)` (รีวิว UAT S4 รอบ 4 ข้อ 9)
+     ฟอร์มเลื่อนปุ่ม "ยังขาด" ไปบล็อกไฟล์แบบที่อยู่ **ใต้** บล็อกนี้ — เลื่อนก่อนไทล์สถานที่มา = ไทล์ดันบล็อกนั้นตกขอบจอ
+     ⚠️ โหลดพังนับว่าจบ (บล็อกไม่ขยับอีกแล้ว) · ไม่มีลูกค้า = จบทันที (ไม่มีอะไรให้โหลด) · ถูกถอด = รายงาน `false` */
+  onSettledChange = null,
 }) {
   const siteId = value.siteId || "";
   const wording = surveyZoneWording(variant);
@@ -73,6 +77,11 @@ export default function SurveySiteFields({
 
   const set = (patch) => onChange({ ...value, ...patch });
 
+  /* ลูกค้าที่ลิสต์ไซต์ / ทะเบียนพื้นที่ **โหลดจบแล้ว** (ได้หรือพัง) — ตัวบอก `onSettledChange` ของผู้เรียก
+     ⚠️ เก็บเป็นรหัสลูกค้า ไม่ใช่ธง true/false — `loading` เริ่มที่ false ก่อน effect ยิง ⇒ แยก "ยังไม่เริ่ม" กับ "จบแล้ว" ไม่ได้ */
+  const [sitesFor, setSitesFor] = useState(null);
+  const [registryFor, setRegistryFor] = useState(null);
+
   // ทะเบียนไซต์ของลูกค้าเจ้าของดีล — เปลี่ยนดีลข้ามลูกค้าแล้วต้องล้างที่เลือกไว้
   // (ไม่ล้าง = ใบไปเกาะไซต์ของลูกค้าคนก่อน แล้วโดน handler ตีกลับตอนกดบันทึก)
   useEffect(() => {
@@ -82,7 +91,7 @@ export default function SurveySiteFields({
     apiJson(`/api/service/sites?customerId=${encodeURIComponent(customerId)}&includeInactive=0`)
       .then((rows) => { if (alive) setSites(Array.isArray(rows) ? rows : []); })
       .catch(() => { if (alive) setSites([]); })
-      .finally(() => { if (alive) setLoading(false); });
+      .finally(() => { if (alive) { setLoading(false); setSitesFor(customerId); } });
     return () => { alive = false; };
   }, [customerId]);
 
@@ -127,9 +136,19 @@ export default function SurveySiteFields({
         if (!alive) return;
         setRegistry(null);
         setRegistryError(e?.message || "ดึงพื้นที่เดิมไม่สำเร็จ");
-      });
+      })
+      .finally(() => { if (alive) setRegistryFor(customerId); });
     return () => { alive = false; };
   }, [customerId, registryTick]);
+
+  /* ⭐ บอกผู้เรียกว่าบล็อกนี้นิ่งแล้วหรือยัง (ดูหัวพร็อพ `onSettledChange`) — cleanup รายงาน `false` ก่อนค่าใหม่ทุกครั้ง
+     และตอนถูกถอด (แท็บรายละเอียดปิด) ⇒ ผู้เรียกไม่มีวันถือ `true` ค้างของบล็อกที่ไม่อยู่บนจอแล้ว */
+  const settled = !customerId || (sitesFor === customerId && registryFor === customerId);
+  useEffect(() => {
+    onSettledChange?.(settled);
+    return () => onSettledChange?.(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settled]);
 
   /* พื้นที่ของไซต์ที่เลือก — อ่านจากทะเบียนที่โหลดมาแล้ว ไม่ยิงซ้ำ
      ⚠️ ต้องคง `siteZones` ไว้เป็นรูปเดิม (id/name/code) เพราะยามชื่อซ้ำและป้ายบนแถว
