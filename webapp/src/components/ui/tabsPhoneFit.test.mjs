@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { REQUEST_KINDS } from "@/lib/requests/kinds/registry";
-import { requestOptionalRefs, requestVariants } from "@/lib/master/requestTypes";
+import { requestOptionalRefs, requestVariantRequired, requestVariants } from "@/lib/master/requestTypes";
 import { requestFormTabs } from "@/lib/requests/formTabs";
 
 /* แถบแท็บกลาง (`components/ui/Tabs.js` + `.tabs-header` / `.tab-btn`) บนจอมือถือ
@@ -106,7 +106,9 @@ const frame = (viewport) => viewport - 62;
 function everyFormStrip() {
   const out = [];
   for (const kind of Object.keys(REQUEST_KINDS)) {
-    for (const variant of Object.keys(requestVariants(kind) || { "": 1 })) {
+    /* หัวข้อที่บังคับเลือกรูปแบบ (ประเมินพื้นที่ · S4) เปิดฟอร์มมาโดยยังไม่เลือก ⇒ แถบตอนนั้นเป็นอีกทรงที่ต้องพอดีด้วย ("" = ยังไม่เลือก) */
+    const variants = Object.keys(requestVariants(kind) || {});
+    for (const variant of variants.length === 0 || requestVariantRequired(kind) ? ["", ...variants] : variants) {
       for (const extra of [{}, { dealId: "DEAL-1", urgent: true }]) {
         const form = { kind, ...(variant ? { variant } : {}), files: [], items: [], briefs: [], pdr: {}, productIds: [], ...extra };
         const tabs = requestFormTabs(form, { optionalRefs: requestOptionalRefs(kind) });

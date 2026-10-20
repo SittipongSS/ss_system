@@ -418,7 +418,8 @@ test('🐞 route ส่งผล: ถามด่านถาดตัวเด�
 
 test('🐞 route ปิดนัด (ส่งงาน): ถามด่านรูปจุดจากไฟล์ในฐาน ต่อจากด่านเดิม', () => {
   const route = src('../../app/api/service/visits/[id]/route.js');
-  assert.match(route, /surveyFieldSubmitError\(surveyField\.zones, surveyField\.filesByZone\)\s*\|\|\s*surveySpotSubmitError\(surveyField\.zones, surveyField\.filesByZone\)/);
+  // ประเมินจากแบบ งวด 4 (S4 D-6): อาร์กิวเมนต์ที่สาม `{ variant }` = สิ่งที่ฝ่ายขายขอ — ใช้แค่ข้อความ 409 ของใบที่ไม่มีพื้นที่
+  assert.match(route, /surveyFieldSubmitError\(surveyField\.zones, surveyField\.filesByZone, \{ variant: surveyField\.request\?\.variant \}\)\s*\|\|\s*surveySpotSubmitError\(surveyField\.zones, surveyField\.filesByZone\)/);
 });
 
 test('🐞 จอ: แถบส่งงานได้เหตุรูปจุด · การ์ดวาดเหตุของแถวด่าน · หน้าคำร้องได้ไฟล์ที่นับรูปจุดได้', () => {

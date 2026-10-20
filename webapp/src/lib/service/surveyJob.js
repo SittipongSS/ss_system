@@ -10,7 +10,7 @@
 // ⚠️ **ชื่อขั้นไม่ได้เขียนที่นี่** — มาจาก `requestRailSteps` (ทะเบียน `fieldRail`) ตัวเดียวกับการ์ดของ TS
 // ⚠️ ไฟล์นี้ต้อง **ไม่มี import ฝั่ง server** — จอ client เรียกตรง
 import { NA, fmtNumber, fmtTime, isoDateToWeekdayText } from '@/lib/format';
-import { requestKindMeta } from '@/lib/master/requestTypes';
+import { requestKindMeta, requestResultDateOnly, requestVariants } from '@/lib/master/requestTypes';
 import { requestAssignee } from '@/lib/requests/assign';
 import { requestClosure, requestClosureLine, requestClosureStarted } from '@/lib/requests/closure';
 import { committedVsRequested } from '@/lib/requests/headerFacts';
@@ -30,6 +30,11 @@ import {
   SURVEY_CONFIRM_ACTION_READY, SURVEY_CONFIRM_PENDING_NOTE, SURVEY_DESK_RAIL_LABELS, SURVEY_METHOD_CHIP, surveyProgressText,
   surveyZoneAddedLabel,
 } from './surveyMethodSwitch';
+/* ประเมินจากแบบ งวด 4 (S4 C-4/C-5) — "ฝ่ายขายขออะไร" กับ "ผู้ขออยากให้เข้าวันไหน" มีตัวอ่านเดียว (pure · ไม่มีของ server) */
+import {
+  SURVEY_INTAKE_REMEASURE_CHIP, SURVEY_INTAKE_SWITCH_NOTE, SURVEY_INTAKE_SWITCH_REASON, SURVEY_NO_VISIT_WISH_LINE,
+  SURVEY_NO_VISIT_WISH_TEXT, surveyFiledAsDrawing, surveySalesAskedLine, surveyWishedVisit,
+} from './surveyIntake';
 import { VISIT_STATUS_LABELS, holdsRequestSlot, isClosedVisit } from './visitStatus';
 
 const join = (...parts) => parts.flat().filter(Boolean).join(' · ');
@@ -216,6 +221,16 @@ export const SURVEY_ZONE_RESAVE_TEXT = 'กลับมาเป็นลงห�
 const zoneResaveOnly = (zone, facts) => surveyZoneNeedsResave(zone)
   && facts.missingCrew.length === 1 && facts.missingCrew[0].key === 'size' && facts.sizeComplete === true;
 
+/* ⭐ **ตัวเลขในแถวยังเป็นของหัวหน้า (จากแบบ) — ช่างยังไม่ได้วัดทับ** (ค่าตั้งต้น A ของคำถามเจ้าของ · UAT S4 รอบ 4 ข้อ 17)
+   ร่างที่ถูกตีกลับแล้วฝ่ายขายสลับเป็นลงหน้างาน (O8 = ข): แถวที่มีผลจากโต๊ะถูกตรา `methodReason` = `SURVEY_INTAKE_SWITCH_REASON`
+   แล้วกลายเป็นแถวลงหน้างานที่ถือตัวเลขเดิม ⇒ บนตารางอ่านเหมือนช่างวัดมาแล้ว · ป้ายบอกว่าเป็นตัวเลขจากแบบที่รอวัดใหม่
+   สามเงื่อนไขพร้อมกัน: ตอนนี้ลงหน้างาน · ตราของฝ่ายขาย (ไม่ใช่หัวหน้าสลับกลับ — แถวนั้นมีบรรทัด "กลับมาเป็นลงหน้างาน" ของตัวเอง) ·
+   ยังไม่ถูกบันทึกทับหลังตรา (`surveyZoneNeedsResave` — ผลที่บันทึกหลังเวลาตรา = ช่างวัดแล้ว ป้ายหายเอง) และมีผลอยู่จริง */
+const intakeRemeasure = (zone) => !isDrawingZone(zone)
+  && String(zone?.methodReason ?? '').trim() === SURVEY_INTAKE_SWITCH_REASON
+  && !!String(zone?.surveyedAt ?? '').trim()
+  && surveyZoneNeedsResave(zone);
+
 function zoneRows(zones, filesByZone, { sent, filesUnknown = false, dept = 'TS', allDrawing = false }) {
   return zones.map((zone) => {
     const facts = surveyZoneFacts(zone, filesByZone[zone.id] || []);
@@ -268,7 +283,10 @@ function zoneRows(zones, filesByZone, { sent, filesUnknown = false, dept = 'TS',
                       (แถวลงหน้างาน · แถวที่ถูกตัด · อ่านรูปไม่สำเร็จ — ไม่เดาว่า "แบบ 0")
          `addedLabel` พื้นที่ที่ถูกเพิ่มบนใบ — แถวจากแบบหัวหน้าเป็นคนเพิ่มที่โต๊ะ ไม่ได้ "เพิ่มหน้างาน" */
       method: zoneMethod(zone),
-      chip: drawing ? SURVEY_METHOD_CHIP.drawing : null,
+      /* ⚠️ "รอวัดใหม่" ไม่ขึ้นบนแถวที่ถูกตัด (รีวิว UAT S4 รอบ 4) — ไม่มีใครวัดพื้นที่ที่ตัดออกแล้ว ⇒ ป้ายจะค้างตลอดไป
+         ข้าง "ตัดออก — {เหตุ}" (ทาง: หัวหน้าตัดแถวจากแบบตอนรอรับเรื่อง → ตีกลับ → ฝ่ายขายสลับเป็นลงหน้างาน = ตัวตั้งวิธีตราแถวนั้นด้วย)
+         · กติกาเดียวกับ `missingText` ของแถวที่ตัด (ไม่มีคำ "ยังต้องทำ") */
+      chip: drawing ? SURVEY_METHOD_CHIP.drawing : (!facts.cut && intakeRemeasure(zone) ? SURVEY_INTAKE_REMEASURE_CHIP : null),
       photosText: drawing && !facts.cut && !filesUnknown ? `แบบ ${facts.photos.plan}` : null,
       addedLabel: surveyZoneAddedLabel(zone, dept),
       /* ── ช่องของแถวจากแบบบนตารางที่ **ยังไม่ส่งผล** (มติเจ้าของ 12/10 · ทรงของตารางอยู่ที่ `surveyZoneTable`) ──
@@ -390,6 +408,22 @@ export function surveyRequestDrawingSummary(request) {
   };
 }
 
+/**
+ * ราคาของการสลับวิธีบนฟอร์มแก้ของร่าง — `{ [รูปแบบ]: ประโยค }` ให้ `RequestForm` (`variantSwitchNotes`) ต่อท้ายกล่องยืนยัน
+ * ⭐ O8 = ข (มติ 19/10 · UAT S4 รอบ 4 ข้อ 7): ร่างที่ถูกตีกลับหลังหัวหน้าบันทึกผลพื้นที่จากแบบไปแล้ว แล้วฝ่ายขายสลับเป็นวิธีที่มี
+ *    วันเข้าพื้นที่ (ลงหน้างาน) — server รับ แล้วตราแถวนั้นให้ช่างวัดใหม่ (`surveyIntakeSeed`) ⇒ ผลจากแบบไม่ถูกใช้ ต้องบอกก่อนกด
+ * ⚠️ แถวที่นับ = แถวที่ตัวตั้งวิธีจะตราจริง (จากแบบ + มี `surveyedAt`) · ใบที่ไม่ใช่ร่าง (ฟอร์มไม่วาดไทล์อยู่แล้ว) /
+ *    ไม่มีแถวแบบนั้น = `{}` ⇒ กล่องยืนยันเท่าเดิมทุกตัวอักษร · รูปแบบที่มีแต่วันรับผล (จากแบบ) ไม่ได้ประโยคนี้
+ */
+export function surveyIntakeSwitchNotes(request) {
+  if (!request || request.status !== 'draft') return {};
+  const zones = Array.isArray(request.surveyZones) ? request.surveyZones : [];
+  if (!zones.some((zone) => isDrawingZone(zone) && !!String(zone?.surveyedAt ?? '').trim())) return {};
+  return Object.fromEntries(Object.keys(requestVariants(request.kind) || {})
+    .filter((key) => !requestResultDateOnly({ kind: request.kind, variant: key }))
+    .map((key) => [key, SURVEY_INTAKE_SWITCH_NOTE]));
+}
+
 /* ── ข้อเท็จจริงรายวัน 6 ช่อง (การ์ดรายละเอียดคำร้อง) ───────────────────────────────────
    ⭐ **งานโต๊ะเหลือ 4 ช่อง** (`deskJob`) — สองช่องวันเข้าพื้นที่ (ผู้ขอ: วันที่ต้องการให้เข้า · TS: วันนัด) ไม่ถูกส่งออก:
       ใบแบบนี้ไม่มีนัด และ `committedDueDate` ของมันคือวันส่งผลที่ถูกเขียนซ้ำไว้ (`surveyDeskCommitPatch`) ⇒ ปล่อยไว้ = ขึ้น
@@ -397,7 +431,11 @@ export function surveyRequestDrawingSummary(request) {
 function dateFacts(request, visit, today, assignee, { finished = false, deskJob = false } = {}) {
   const copy = requestKindMeta(request.kind)?.form || {};
   const dept = request.dept || 'TS';
-  const wanted = String(request.requestedDueDate || '').trim();
+  /* 🔴 **วันที่อยากให้เข้าพื้นที่อ่านผ่าน `surveyWishedVisit` เท่านั้น** (S4 C-5) — ใบที่ยื่นเป็นประเมินจากแบบเก็บ
+     `requestedDueDate` = กระจกของวันรับผล ⇒ อ่านคอลัมน์ตรง ๆ = ใบที่หัวหน้าสลับกลับเป็นลงหน้างานขึ้นวันรับผลเป็นวันที่ขอให้เข้า
+     · ไม่มีวันที่ขอ ⇒ บรรทัดเทียบ "ตรงกับที่ขอ / ช้ากว่าที่ขอ" ใต้วันนัดหายไปเอง */
+  const wish = surveyWishedVisit(request);
+  const wanted = wish.known ? String(wish.date).trim() : '';
   const committed = liveDueDate(request) || '';
   const wantedResult = String(request.requestedResultDate || '').trim();
   const committedResult = String(request.committedResultDate || '').trim();
@@ -434,7 +472,10 @@ function dateFacts(request, visit, today, assignee, { finished = false, deskJob 
     {
       key: 'requestedDue',
       label: `ผู้ขอ: ${copy.dueLabel || 'วันที่ต้องการ'}`,
-      value: wanted ? join(dayYear(wanted), clock(request.requestedDueTime)) : '',
+      // ยื่นเป็นประเมินจากแบบ = ไม่มีใครขอวันเข้า (ฟอร์มมีวันเดียว) — บอกตรง ๆ แทนช่องว่างที่อ่านเหมือนข้อมูลหาย
+      value: surveyFiledAsDrawing(request)
+        ? SURVEY_NO_VISIT_WISH_TEXT
+        : (wanted ? join(dayYear(wanted), clock(wish.time)) : ''),
       sub: null,
     },
     {
@@ -529,6 +570,9 @@ export function surveyJobView({
   /* นัดที่ไม่ได้เข้าพื้นที่และไม่มีชีวิตแล้ว (ทำไม่ได้ · ยกเลิก · เลื่อนแล้ว) — เป็น **ประวัติ** เสมอ */
   const visitDead = !!visit && !holdsRequestSlot(visit) && !reachedSite(visit);
   const dept = request.dept || 'TS';
+  /* 🔴 วันที่ผู้ขออยากให้เข้า — ตัวอ่านเดียว (`surveyWishedVisit` · S4 C-5) ห้ามอ่าน `requestedDueDate` ตรง ๆ ในไฟล์นี้:
+     ใบที่ยื่นเป็นประเมินจากแบบเก็บกระจกของวันรับผลไว้ในคอลัมน์นั้น */
+  const wish = surveyWishedVisit(request);
   const assignee = requestAssignee(request);
   const helpers = helperNames(visit, people, peopleLoading);
   const totals = surveyTotals(zones);
@@ -568,11 +612,14 @@ export function surveyJobView({
     id: 'draft',
     when: request.submittedAt ? stampText(request.submittedAt) : 'ยังไม่ได้ส่ง',
     people: [person(request.requestedByName, request.team ? `ทีม ${request.team}` : null)],
-    lines: [join(
+    /* ⭐ "ฝ่ายขายขอ: ประเมินจากแบบ" (S4 C-4) — สิ่งที่ผู้ขอยื่น ไม่ใช่วิธีปัจจุบัน (หัวหน้าสลับรายพื้นที่ได้) · ใบลงหน้างาน = null
+       ⇒ `steps` ของผลลัพธ์เท่าของวันนี้ (บรรทัดว่างถูกกรองที่ `timeline` อยู่แล้ว) */
+    lines: [surveySalesAskedLine(request), join(
       // งานโต๊ะไม่มีวันเข้าพื้นที่ (กติกาเดียวกับช่องวันของ `dateFacts`) — เหลือวันที่ต้องการผล
-      !deskJob && request.requestedDueDate && `ขอเข้า ${dayTime(request.requestedDueDate, request.requestedDueTime)}`,
+      // ยื่นเป็นประเมินจากแบบ = ไม่มีวันที่ขอให้เข้า (คอลัมน์ถือกระจกของวันรับผล · `surveyWishedVisit`)
+      !deskJob && wish.known && `ขอเข้า ${dayTime(wish.date, wish.time)}`,
       request.requestedResultDate && `ขอผล ${dayText(request.requestedResultDate)}`,
-    )],
+    )].filter(Boolean),
   });
   steps.push({
     id: 'pending',
@@ -600,7 +647,7 @@ export function surveyJobView({
       if (requeue) queueStep.badge = { label: 'ต้องลงคิวใหม่', tone: 'warning' };
     } else {
       const liveDue = liveDueDate(request);
-      const gap = liveDue && request.requestedDueDate ? committedVsRequested(liveDue, request.requestedDueDate) : null;
+      const gap = liveDue && wish.known ? committedVsRequested(liveDue, wish.date) : null;
       if (gap && stage !== 'overdue' && !finished) queueStep.lines.push({ text: gap.text, tone: gap.tone });
     }
   } else if (request.acknowledgedAt && !finished) {
@@ -782,9 +829,13 @@ export function surveyJobView({
   const deskSize = gates.find((gate) => gate.key === 'size') || null;
   const deskLateBy = stage === 'desk-overdue' ? daysBetween(deskResultDate, today) : 0;
   const nowByStage = {
+    /* 🔴 ร่างที่ทุกพื้นที่เกิดมาจากแบบ (S4 สร้างแถวพื้นที่ตอนเปิดใบ) = ไม่มีการลงคิวเข้าพื้นที่ ⇒ ใช้คำของงานโต๊ะ
+       (ตัดสินจากธงพื้นที่ `deskJob` ไม่ใช่ `variant` — กติกาเดียวกับราง/ขั้นรอรับเรื่อง) · ลงหน้างาน = ประโยคเดิมทุกตัวอักษร */
     draft: {
       headline: 'ยังไม่ส่งคำร้อง',
-      sub: `ส่งแล้ว ${dept} จะรับเรื่องและลงคิวเข้าพื้นที่`,
+      sub: deskJob
+        ? `ส่งแล้ว ${headWho} จะรับเรื่องแล้วแจ้งวันส่งผล — ใบนี้ประเมินจากแบบ ไม่มีการเข้าพื้นที่`
+        : `ส่งแล้ว ${dept} จะรับเรื่องและลงคิวเข้าพื้นที่`,
       next: 'กด “ส่งคำร้อง” เมื่อกรอกครบ',
       turn: { side: requesterLabel, who: requesterWho },
     },
@@ -828,7 +879,10 @@ export function surveyJobView({
       headline: 'รอลงคิวเข้าพื้นที่',
       sub: join(
         request.acknowledgedByName && `รับเรื่องแล้วโดย ${request.acknowledgedByName}`,
-        request.requestedDueDate && `ผู้ขออยากให้เข้า ${dayTime(request.requestedDueDate, request.requestedDueTime)}`,
+        // ยื่นเป็นประเมินจากแบบแล้วหัวหน้าสลับกลับเป็นลงหน้างาน = ไม่มีใครขอวันเข้า ⇒ บอกว่าไม่ได้ระบุ ไม่ใช่วันรับผล (S4 C-5)
+        wish.known
+          ? `ผู้ขออยากให้เข้า ${dayTime(wish.date, wish.time)}`
+          : (surveyFiledAsDrawing(request) && SURVEY_NO_VISIT_WISH_LINE),
       ),
       next: `${dept} เลือกวัน เวลา และเจ้าหน้าที่ แล้วกด “ลงคิวเข้าพื้นที่”`,
       turn: { side: dept, who: assignee.name || `ผู้วางคิว ${dept}` },

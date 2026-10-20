@@ -829,6 +829,16 @@ test('🐞 keepTogetherRuns — ช่วงเวลา (รวมวงเล�
   assert.deepEqual(keepTogetherRuns(''), []);
 });
 
+/* 🐞 UAT S4 รอบ 4 ข้อ 13c: บรรทัดผลของโมดัลรับปากวันส่งผล (งานโต๊ะ) ที่ 375px ตัด "…ฝ่าย" / "ขายจะเห็นวันส่งผลนี้" */
+test('keepTogetherRuns — "ฝ่ายขาย" เป็นก้อนเดียว · ตัวหนังสือไม่ถูกแตะ (ไม่ใช้ WORD JOINER)', () => {
+  const text = commitDueOutcome({ kind: 'site_survey', surveyNeedsVisit: false, status: 'acknowledged' }, { date: '2026-10-20' }, { viewerName: 'Arnon Aunsapwilai' }).text;
+  assert.equal(text, 'ใบนี้ไม่ลงคิว ไม่มีนัดบนตารางเจ้าหน้าที่ · ผู้รับผิดชอบ = Arnon Aunsapwilai · ฝ่ายขายจะเห็นวันส่งผลนี้');
+  const runs = keepTogetherRuns(text);
+  assert.deepEqual(runs.filter((r) => r.keep).map((r) => r.text), ['ฝ่ายขาย']);
+  assert.equal(runs.map((r) => r.text).join(''), text);
+  assert.ok(!text.includes('\u2060'));
+});
+
 /* 🐞 ร่างบนจอ 1440: ชิปสถานะ (ร่าง/ทำไม่ได้/เลื่อนแล้ว/ยกเลิก) อยู่ใต้แผงด่านดันหมายเหตุ/ความเคลื่อนไหวตกขอบ
    ⇒ ร่างพับชิปไว้ (ทางออกของร่างยังอยู่ครบ — กฎชุดปุ่มเท่าเดิม) · กางเองเมื่อเลือกสถานะอื่นแล้ว · นัดที่ขึ้นตารางกางเสมอ */
 test('🐞 สถานะของร่างพับไว้ใต้ "ปิดร่างนี้" · นัดที่ขึ้นตารางแล้วโชว์ชิปตามเดิม', () => {

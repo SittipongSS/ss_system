@@ -15,7 +15,8 @@
 // ส่วนของ PDR ที่กรอกไว้ **ไม่ถูกลบเลยแม้แต่ตอนสลับกลับ** — มันอยู่คนละคอลัมน์
 // และกลับมาโหมดเดิมแล้วได้คืนครบ
 import {
-  requestUsesItems, requestVariantError, requestVariantKey, requestVariants,
+  requestUsesItems, requestVariantError, requestVariantFieldLabel, requestVariantKey,
+  requestVariantLockAfterSubmit, requestVariantLockText, requestVariantRequired, requestVariants,
 } from '@/lib/master/requestTypes';
 
 // ขั้นที่ยังสลับรูปแบบได้ — ก่อนฝ่ายรับเรื่องเท่านั้น (เหตุผลอยู่หัวไฟล์)
@@ -30,8 +31,9 @@ export const VARIANT_SWITCHABLE_STATUSES = Object.freeze(['draft', 'pending']);
  * กรอกต่อเองก็ไม่ได้
  * @param isRequesterSide `canManageRequest(user, request)` (จอใช้ `_mine` ที่ server คำนวณมาให้)
  */
-export function requestVariantSideLock(isRequesterSide) {
-  return isRequesterSide ? null : 'สลับรูปแบบงานได้เฉพาะผู้เปิดคำร้องหรือคนในทีมเดียวกัน';
+/* ⚠️ ส่ง `kind` มาด้วยเพื่อให้ประโยคใช้ป้ายของหัวข้อ ("สลับวิธีประเมิน…") · ไม่ส่ง = ประโยคเดิมเป๊ะ (พัฒนาสูตร) */
+export function requestVariantSideLock(isRequesterSide, kind = null) {
+  return isRequesterSide ? null : `สลับ${requestVariantFieldLabel(kind)}ได้เฉพาะผู้เปิดคำร้องหรือคนในทีมเดียวกัน`;
 }
 
 /**
@@ -44,6 +46,12 @@ export function requestVariantSideLock(isRequesterSide) {
 export function requestVariantLock(request) {
   if (!request) return 'ไม่พบคำร้อง';
   if (request.status === 'cancelled') return 'คำร้องถูกยกเลิกแล้ว — สลับรูปแบบไม่ได้';
+  /* ⭐ **หัวข้อที่ล็อกวิธีทันทีหลังส่ง** (ประเมินพื้นที่ · S4 §2.4) — หลังส่ง `variant` คือ "สิ่งที่ผู้ขอขอ"
+     และการเปลี่ยนวิธีเป็นงานของหัวหน้า TS รายพื้นที่ (S2a) · ใบที่ถูกตีกลับเป็น `draft` อีกครั้ง ⇒ ผ่าน
+     ⚠️ `VARIANT_SWITCHABLE_STATUSES` ไม่เปลี่ยน — พัฒนาสูตรยังสลับได้ตอนรอรับเรื่อง */
+  if (requestVariantLockAfterSubmit(request.kind) && request.status !== 'draft') {
+    return requestVariantLockText(request.kind);
+  }
   if (!VARIANT_SWITCHABLE_STATUSES.includes(request.status)) {
     return 'รับเรื่องไปแล้ว — สลับรูปแบบไม่ได้ (งานเดินไปแล้ว)';
   }
@@ -101,4 +109,58 @@ export function requestEditVariant(request, asked) {
   if (!value || !request || !requestVariants(request.kind)) return { variant: undefined, error: null };
   const error = requestVariantError(request.kind, value);
   return error ? { variant: undefined, error } : { variant: value, error: null };
+}
+
+/* ── ตัวเลือกบนฟอร์ม (ประเมินจากแบบ งวด 4 · S4 §2.4) ─────────────────────────────────────── */
+
+/**
+ * รูปแบบที่ฟอร์มวาดเป็นปุ่ม — ทุกตัวที่ประกาศ ยกเว้นที่อยู่ใน `off` (สวิตช์ปิด) ตามลำดับทะเบียน
+ * ⚠️ **ค่าที่ใบถืออยู่ (`current`) ยังวาดแม้อยู่ใน `off`** — ใบที่ยื่นไปแล้วต้องอ่านได้ในวันที่สวิตช์ถูกปิดทีหลัง
+ * ⭐ `saved` = ค่าที่ **บันทึกไว้บนใบ** (โหมดแก้) — ยังวาดแม้ฟอร์มสลับไปตัวอื่นแล้ว (UAT S4 รอบ 4 ข้อ 8):
+ *    สวิตช์ปิด · ร่างจากแบบที่ค้างอยู่ · กด "ลงหน้างาน" ⇒ เดิมไทล์จากแบบหายทันทีก่อนบันทึก ทางกลับเหลือแค่ "ยกเลิกการแก้"
+ *    ⚠️ แค่ **วาด** ปุ่ม — server ยังตีกลับการบันทึกวิธีที่ปิดอยู่ตามเดิม (`surveyVariantRefusal` ยอมเฉพาะค่าที่ใบถืออยู่จริง)
+ */
+export function requestVariantChoices(kind, { off = [], current = null, saved = null } = {}) {
+  const variants = requestVariants(kind);
+  if (!variants) return [];
+  return Object.keys(variants).filter((key) => !off.includes(key) || key === current || key === saved);
+}
+
+/**
+ * ถ้อยคำของกล่องยืนยันตอนกดปุ่มรูปแบบ — `{ title, description, detail, confirmLabel, cancelLabel }` หรือ null
+ * (ปลายทางไม่มี `switchConfirm`)
+ * ⭐ **ครั้งแรก ≠ สลับ** (UAT S4 รอบ 4 ข้อ 6) — ฟอร์มที่ยังไม่เลือกอะไร แล้วกด "ประเมินจากแบบ" ทั้งที่พิมพ์วันเข้าไว้
+ *    เดิมขึ้น "สลับเป็น …" + ปุ่ม "สลับ" ทั้งที่ไม่มีอะไรให้สลับ ⇒ `from` ว่าง = "เลือก {ป้าย}" + ปุ่ม "เลือก" · ประโยคเดิม
+ * ⭐ `note` = ราคาเพิ่มของการสลับครั้งนี้ที่ทะเบียนไม่รู้ (ผลจากแบบของหัวหน้าที่จะไม่ถูกใช้ · ข้อ 7) — ผู้เรียกบอกมา
+ *    ขึ้นเป็นบรรทัดของตัวเอง (`detail`) ใต้ประโยคหลัก — ต่อท้ายด้วย " · " แล้วยาวเกินอ่านในบรรทัดเดียวบนจอแคบ
+ * ⚠️ ทะเบียนตรวจ `switchConfirm` ตอนโหลดแล้ว (`title` · `description` ไม่ว่าง) — ที่นี่ไม่เดาข้อความแทน
+ */
+export function requestVariantConfirm(kind, { from = null, to, note = null } = {}) {
+  const target = requestVariants(kind)?.[to];
+  const copy = target?.switchConfirm;
+  if (!copy) return null;
+  const first = !from;
+  const detail = String(note ?? '').trim();
+  return {
+    title: first ? `เลือก ${target.label}` : copy.title,
+    description: copy.description,
+    ...(detail ? { detail } : {}),
+    confirmLabel: first ? 'เลือก' : 'สลับ',
+    cancelLabel: 'ยกเลิก',
+  };
+}
+
+// เหลือทางเดียวของหัวข้อที่บังคับเลือก ⇒ คีย์นั้น (สวิตช์ปิด = "ลงหน้างาน" ตัวเดียว) · อื่น ๆ = null
+export function requestImpliedVariant(kind, { off = [] } = {}) {
+  if (!requestVariantRequired(kind)) return null;
+  const choices = requestVariantChoices(kind, { off });
+  return choices.length === 1 ? choices[0] : null;
+}
+
+/**
+ * หลังส่งแล้ว ฟอร์มต้อง **ไม่** วาดรูปแบบเป็นตัวเลือกหรือเป็น "วิธีปัจจุบัน" — วาดบรรทัดอ่านอย่างเดียว
+ * "วิธีที่ฝ่ายขายขอ" แทน (หัวหน้า TS อาจสลับวิธีรายพื้นที่ไปแล้ว) · ด่านสถานะอยู่ที่นี่ ไม่ใช่ที่จอ
+ */
+export function requestVariantAskedOnly(request) {
+  return !!request && requestVariantLockAfterSubmit(request.kind) && request.status !== 'draft';
 }

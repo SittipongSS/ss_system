@@ -28,6 +28,8 @@ import { businessDayKey, businessTimeKey } from '@/lib/datePeriods';
 import { fmtNumber, naText } from '@/lib/format';
 import { attachmentHref } from '@/lib/master/attachmentStorage';
 import { isPreviewableImage } from '@/lib/master/attachmentTypes';
+/* ผู้รับผิดชอบบนหัวงานจากแบบ = ตัวตัดสินกลางตัวเดียวกับหน้าคำร้อง (ยังไม่มอบหมาย → คนที่กดรับเรื่อง) — สองจอต้องเอ่ยชื่อเดียวกัน */
+import { requestAssignee } from '@/lib/requests/assign';
 import {
   SURVEY_DOC_PLAN,
   SURVEY_DOC_SPOT,
@@ -58,6 +60,8 @@ import { isDrawingZone, isJpgOrPngFile, surveyZoneNeedsResave, zoneMethod } from
 import {
   SURVEY_METHOD_CHIP, SURVEY_METHOD_LABEL, SURVEY_METHOD_RESULT_DATE_LABEL, surveyProgressText, surveyZoneAddedLabel,
 } from './surveyMethodSwitch';
+/* "ฝ่ายขายขอ: ประเมินจากแบบ" (งวด 4) — สิ่งที่ฝ่ายขายขอตอนยื่น ไม่ใช่วิธีปัจจุบัน (วิธีปัจจุบันคือข้อ "วิธีประเมิน" ของหัวงาน) */
+import { SURVEY_SALES_ASKED, surveySalesAskedLine } from './surveyIntake';
 import { SPOT_TRAY_LABEL, spotGapNote, surveySpotPhotoGaps, surveySpotSubmitError } from './surveySpotPhotos';
 import { accessWarnText, dayText, relDayText, thaiDayOf } from './queueWords';
 import { VISIT_STATUS_LABELS, isClosedVisit, isOpenVisit } from './visitStatus';
@@ -1714,6 +1718,9 @@ export function surveyJobHeaderView({
       value: `${SURVEY_METHOD_CHIP.onsite} ${fmtNumber(mixOnsite)} · ${SURVEY_METHOD_CHIP.drawing} ${fmtNumber(mixDrawing)}`,
     };
   }
+  /* ── ฝ่ายขายขอ (งวด 4) — เฉพาะใบที่ยื่นเป็นประเมินจากแบบ · ต่อจากข้อวิธีประเมินทันที (สิ่งที่ขอ คู่กับสิ่งที่เป็นอยู่)
+     ⚠️ ใบอื่น = ไม่มีข้อนี้และไม่มีคีย์ `asked` ใน `request` ⇒ หัวงานของใบวันนี้เท่าเดิมทุกคีย์ */
+  const asked = surveySalesAskedLine(request);
 
   return {
     site: {
@@ -1733,9 +1740,10 @@ export function surveyJobHeaderView({
     nav: mapUrl ? { href: mapUrl, label: 'นำทาง' } : null,
     facts: [
       ...(methodFact ? [methodFact] : []),
+      ...(asked ? [{ key: 'asked', label: SURVEY_SALES_ASKED.label, value: SURVEY_SALES_ASKED.value }] : []),
       ...(deskOnly
         ? [
-          { key: 'assignee', label: 'ผู้รับผิดชอบ', value: naText(String(request?.assigneeName ?? '').trim()) },
+          { key: 'assignee', label: 'ผู้รับผิดชอบ', value: naText(requestAssignee(request).name) },
           { key: 'wantedResult', label: 'ผู้ขอต้องการผล', value: naText(dayText(dayKey(request?.requestedResultDate))) },
           { key: 'resultDate', label: SURVEY_METHOD_RESULT_DATE_LABEL, value: naText(dayText(dayKey(request?.committedResultDate))) },
         ]
@@ -1761,6 +1769,8 @@ export function surveyJobHeaderView({
       customerText: customer
         ? [customer.arCode, customer.name].filter(Boolean).join(' · ') || naText(null)
         : (unknown?.customer === true ? SURVEY_UNKNOWN_TEXT : naText(null)),
+      /* บรรทัดฝ่ายขายขอ → "รายละเอียดคำร้อง" (`surveyAboutView` รับก้อนนี้เป็น `header`) · ใบอื่นไม่มีคีย์นี้ (ก้อนเดิมทุกคีย์) */
+      ...(asked ? { asked } : {}),
     },
   };
 }
@@ -1871,6 +1881,8 @@ export function surveyAboutView({
         { key: 'customer', label: 'ลูกค้า', value: customerText },
         { key: 'title', label: 'เรื่อง', value: naText(title) },
         { key: 'docNo', label: 'เลขคำร้อง', value: naText(docNo) },
+        /* ฝ่ายขายขอ (งวด 4) — มาจากหัวงาน (`request.asked`) ซึ่งมีเฉพาะใบที่ยื่นเป็นประเมินจากแบบ */
+        ...(header?.asked ? [{ key: 'asked', label: SURVEY_SALES_ASKED.label, value: SURVEY_SALES_ASKED.value }] : []),
       ],
     },
     link: canOpenRequest && id

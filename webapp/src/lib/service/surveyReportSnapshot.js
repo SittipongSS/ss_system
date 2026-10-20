@@ -60,6 +60,8 @@ import {
   surveyZoneName, surveyZoneSize,
 } from './survey';
 import { isDrawingZone, isJpgOrPngFile, surveyDrawingAssessor, surveyMethodMix, zoneMethod } from './surveyMethod';
+/* วันนัดที่ผู้ขอขอ (ประเมินจากแบบ งวด 4 · สเปก S4 D-7) — ตัวอ่านเดียวของ "วันที่อยากให้เข้า" · ไฟล์นั้นไม่ import ไฟล์กระดาษ (ไม่มีวงจร) */
+import { surveyWishedVisit } from './surveyIntake';
 import {
   SURVEY_SIGN_RULE, SURVEY_SIGN_SEATS, surveyDrawingSeatSigner, surveyReportSeatEligible, surveyReportSignatureIssues,
   surveyReportSigners,
@@ -405,12 +407,16 @@ export function surveyReportFreezeBlockers(inputs = {}) {
 /* ── ชิ้นส่วนของภาพนิ่ง ──────────────────────────────────────────────── */
 
 function requestPart(r = {}) {
+  /* ⭐ งวด 4: ใบที่ยื่นเป็นประเมินจากแบบเก็บ `requestedDueDate` = กระจกของวันรับผล ⇒ ไม่ตรึงเป็นวันนัดที่ขอ
+        (แถว "วันนัด ขอ / รับ" พิมพ์ "–" ผ่านขีดเดิมของ view) · ใบอื่น: `dayOnly`/`hhmm` ของ '' กับ null = null ⇒ ภาพนิ่งเท่าเดิมทุกตัว
+     ⚠️ รูปภาพนิ่งไม่เปลี่ยน — ห้ามขยับ SURVEY_REPORT_SNAPSHOT_VERSION */
+  const wish = surveyWishedVisit(r);
   return {
     id: r.id ?? null, docNo: text(r.docNo), title: text(r.title), body: text(r.body),
     requestedById: r.requestedById != null ? String(r.requestedById) : null,
     requestedByName: text(r.requestedByName), team: text(r.team),
     submittedAt: r.submittedAt || null, assignedByName: text(r.assignedByName),
-    requestedDueDate: dayOnly(r.requestedDueDate), requestedDueTime: hhmm(r.requestedDueTime),
+    requestedDueDate: dayOnly(wish.date), requestedDueTime: hhmm(wish.time),
     committedDueDate: dayOnly(r.committedDueDate), committedDueTime: hhmm(r.committedDueTime),
     requestedResultDate: dayOnly(r.requestedResultDate), committedResultDate: dayOnly(r.committedResultDate),
     answeredAt: r.answeredAt || null,

@@ -635,7 +635,8 @@ test('ป้ายชนิดเอกสาร: เปิดที่การ
   const from = page.indexOf('title="ไฟล์แนบของคำร้อง"');
   assert.notEqual(from, -1);
   assert.match(page.slice(from, page.indexOf('</DetailCard>', from)),
-    /<AttachmentsPanel\s+entityType="dept_request"[\s\S]*?\binlineUpload\s+typePills\s*\/>/);
+    /<AttachmentsPanel\s+entityType="dept_request"[\s\S]*?\binlineUpload\s+(?:\{\.\.\.\(requiredFilesSpec \? \{ onItemsChange: onAttachmentsChange, reloadKey: attachmentsReloadKey \} : \{\}\)\}\s+)?typePills\s*\/>/);
+  // ⤴ ช่องว่างระหว่าง inlineUpload กับ typePills = ตัวซิงก์กับบล็อกไฟล์บังคับของ S4 (ประเมินจากแบบ) เท่านั้น
 
   // ตัวอย่างฝั่งลบ: แผงดีลเป็นทางเขียนไฟล์ของดีลทางเดียว ⇒ ทุกรูปเป็นชนิดตั้งต้น "บรีฟจากลูกค้า"
   const deal = code(fs.readFileSync(path.join(SRC, 'components/salesPlanning/EntityDocumentsPanel.js'), 'utf8'));

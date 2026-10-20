@@ -2,8 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { missingRequiredByTab, requestFormTabs } from './formTabs.js';
+import { missingRequiredByTab, requestDueRequired, requestFormTabs, requiredChecks } from './formTabs.js';
 import { requestFormBlocker } from '../master/requestCreate.js';
+import { normalizeSurveyRequest } from '../service/surveyRequest.js';
 
 /* ⭐ เทสต์ที่สำคัญที่สุดของไฟล์นี้ — **เกจกับด่านส่งต้องเป็นความจริงเดียวกัน**
    เกจที่บอกว่าครบแล้วแต่ปุ่มยังกดไม่ได้ (หรือกลับกัน) แย่กว่าไม่มีเกจเลย
@@ -113,7 +114,8 @@ test('มีภาพประกอบแต่ยังไม่แนบไ�
    ด้วย เพราะสองที่นี้ต้องย้ายพร้อมกันเสมอ */
 test('🪤 ประเมินพื้นที่: ไซต์กับพื้นที่ต้องอยู่แท็บ "รายละเอียด" ทั้งเกจและฟอร์ม', () => {
   const survey = {
-    dept: 'TS', kind: 'site_survey', dealId: 'DEAL-1',
+    // ⭐ ต้องเลือกวิธีประเมินก่อน (ประเมินจากแบบ งวด 4 · S4) — เทสต์นี้คุมไซต์/พื้นที่ของใบลงหน้างาน
+    dept: 'TS', kind: 'site_survey', variant: 'standard', dealId: 'DEAL-1',
     title: 'ประเมินพื้นที่สาขา A', requestedDueDate: '2026-09-20',
     // รายละเอียดบังคับของหัวข้อนี้ (มติผู้ใช้ 2026-09-21) — ดูเทสต์ของตัวเองข้างล่าง
     body: 'ลูกค้าจะเปิดโซนใหม่ต้นเดือนหน้า · ติดต่อคุณเอ 081-000-0000',
@@ -166,4 +168,187 @@ test('🪤 บล็อกไซต์ในฟอร์มต้องอยู
   assert.ok(workAt > -1 && subjectAt > -1 && siteAt > -1);
   assert.ok(siteAt > subjectAt, 'SurveySiteFields ต้องอยู่หลังหัวแท็บ subject');
   assert.ok(subjectAt > workAt, 'ลำดับแท็บในไฟล์: work มาก่อน subject');
+  /* ⭐ ช่องไฟล์บังคับของประเมินจากแบบ (S4 B-3) อยู่แท็บ subject ใต้บล็อกไซต์ — เกจชี้ `subject`
+     (`requiredChecks`) ⇒ ย้ายช่องโดยไม่ย้ายเกจ = ปุ่ม "ยังขาด" พาไปแท็บที่ไม่มีช่องนั้น */
+  const filesAt = form.indexOf('<RequiredFilesBlock');
+  const dueAt = form.indexOf('activeTab === "due"');
+  assert.ok(filesAt > siteAt, 'RequiredFilesBlock ต้องอยู่หลัง SurveySiteFields (แท็บ subject)');
+  assert.ok(dueAt > filesAt, 'RequiredFilesBlock ต้องอยู่ก่อนหัวแท็บ due');
+});
+
+/* ══ ประเมินจากแบบ งวด 4 (S4 B-5) — วิธีประเมิน · ช่องไฟล์บังคับ · ฟอร์มวันเดียว ══════════════════════
+   ⭐ ตารางเดียวของ "ไม่มีแท็บไหนขาด ⟺ ด่านผ่าน" ขยายให้ครบทุกสถานะของวิธีประเมิน รวมแถวของโหมดแก้
+   (ฟอร์มแก้ไม่ถือไฟล์ใน `form.requiredFiles` — นับจากรายการไฟล์ที่บันทึกแล้ว `requiredFileCount`)
+   🔴 `requiredFileCount` มีสามสถานะ: ไม่ส่ง = โหมดสร้าง (นับตะกร้า) · `null` = ยังไม่รู้ ⇒ ไม่ถือว่าขาด · ตัวเลข = เทียบ */
+const SURVEY_FULL = {
+  dept: 'TS', kind: 'site_survey', dealId: 'DEAL-1', siteId: 'SVS-1', zones: [{ name: 'โซน 1' }],
+  title: 'ประเมินพื้นที่สาขา A', body: 'ลูกค้าจะเปิดโซนใหม่ต้นเดือนหน้า',
+  requestedDueDate: '2026-09-20', requestedResultDate: '2026-09-22',
+};
+const PLAN_FILE = { name: 'plan.pdf', type: 'application/pdf', size: 1024 };
+const DRAWING_FULL = { ...SURVEY_FULL, variant: 'drawing', requestedDueDate: '', requiredFiles: [PLAN_FILE] };
+
+test('⭐ S4: ไม่มีแท็บไหนขาด ⟺ ด่านส่งผ่าน — ทุกสถานะของวิธีประเมิน รวมแถวโหมดแก้', () => {
+  const rows = [
+    // [ชื่อแถว, ฟอร์ม, ตัวเลือก, ผ่านไหม]
+    ['ยังไม่เลือกวิธี', SURVEY_FULL, {}, false],
+    // รอบ 4 ข้อ 12: ยังไม่เลือกวิธี + ไม่มีวันเข้าพื้นที่ — ยังไม่ผ่าน (ขาดวิธี) · วันเข้ายังไม่นับจนกว่าเลือกลงหน้างาน
+    ['ยังไม่เลือกวิธี ไม่มีวันเข้าพื้นที่', { ...SURVEY_FULL, requestedDueDate: '' }, {}, false],
+    ['ลงหน้างาน', { ...SURVEY_FULL, variant: 'standard' }, {}, true],
+    ['ลงหน้างาน ไม่มีวันเข้าพื้นที่', { ...SURVEY_FULL, variant: 'standard', requestedDueDate: '' }, {}, false],
+    // รีวิวรอบ 4: เกจนับวันรับผลของทั้งสองวิธี (`resultDueLabel`) — ด่านจอเคยถามเฉพาะจากแบบ ⇒ ปุ่มกดได้แล้วไปโดน 400
+    ['ลงหน้างาน ไม่มีวันรับผล', { ...SURVEY_FULL, variant: 'standard', requestedResultDate: '' }, {}, false],
+    ['จากแบบ 0 ไฟล์', { ...DRAWING_FULL, requiredFiles: [] }, {}, false],
+    ['จากแบบ 1 ไฟล์', DRAWING_FULL, {}, true],
+    ['จากแบบ ไฟล์ที่อัปแล้ว (ref)', { ...DRAWING_FULL, requiredFiles: [{ file: PLAN_FILE, ref: { id: 'ATT-1' } }] }, {}, true],
+    ['จากแบบ ไม่มีวันรับผล', { ...DRAWING_FULL, requestedResultDate: '' }, {}, false],
+    // โหมดแก้ — ตะกร้าว่างเสมอ ตัวนับมาจากรายการไฟล์ที่บันทึกแล้ว
+    ['แก้: บันทึกไว้ 3 ไฟล์', { ...DRAWING_FULL, requiredFiles: [] }, { requiredFileCount: 3 }, true],
+    ['แก้: บันทึกไว้ 0 ไฟล์', { ...DRAWING_FULL, requiredFiles: [] }, { requiredFileCount: 0 }, false],
+    ['แก้: รายการไฟล์ยังโหลดไม่เสร็จ/โหลดพัง', { ...DRAWING_FULL, requiredFiles: [] }, { requiredFileCount: null }, true],
+  ];
+  for (const [name, form, opts, passes] of rows) {
+    const missing = missingRequiredByTab(form, opts);
+    const blocker = requestFormBlocker(form, opts);
+    const tabsMissing = requestFormTabs(form, { optionalRefs: [], ...opts })
+      .flatMap((t) => t.required.missing);
+    assert.equal(missing.length === 0, passes, `${name}: เกจ ${JSON.stringify(missing)}`);
+    assert.equal(blocker == null, passes, `${name}: ด่าน ${blocker}`);
+    assert.deepEqual(tabsMissing, missing, `${name}: แท็บกับรายการขาดต้องเป็นชุดเดียวกัน`);
+  }
+});
+
+/* 🔴 รีวิว UAT S4 รอบ 4: ใบลงหน้างานที่ไม่มีวันรับผล — เกจขึ้น "ยังขาด: วันที่ต้องการรับผลประเมิน" แต่ด่านจอผ่าน (`requestShapeError`
+   ถามวันรับผลเฉพาะรูปแบบที่มีแต่วันรับผล) ⇒ ปุ่มบันทึกกดได้แล้ว server ตีกลับ 400 · ด่านจอต้องพูดประโยคเดียวกับ server
+   (`normalizeSurveyRequest` ตอนเปิด · `normalizeSurveyRequestedResult` ตอนแก้) และไม่หลวมกว่าเรื่องลำดับวันด้วย */
+test('รีวิวรอบ 4: ลงหน้างานไม่มีวันรับผล — ด่านจอตีกลับด้วยประโยคเดียวกับ server · ลำดับวันก็ตรวจ · จากแบบ/หัวข้ออื่นเท่าเดิม', () => {
+  // พื้นที่เดิมในทะเบียน (มีรหัส) — ตัวตรวจของ server ถามชั้นของพื้นที่ใหม่ก่อนถึงข้อวัน ⇒ ใช้แถวที่ผ่านข้อนั้นแล้ว
+  const onsite = { ...SURVEY_FULL, variant: 'standard', zones: [{ zoneId: 'ZN-1' }] };
+  const noResult = { ...onsite, requestedResultDate: '' };
+  assert.deepEqual(missingRequiredByTab(noResult), [{ tab: 'due', label: 'วันที่ต้องการรับผลประเมิน' }]);
+  assert.equal(requestFormBlocker(noResult), 'ต้องระบุวันที่ต้องการรับผลประเมิน');
+  assert.equal(requestFormBlocker(noResult), normalizeSurveyRequest(noResult).error, 'ประโยคเดียวกับที่ POST ตีกลับ');
+  // วันเข้าพื้นที่ยังถามก่อน (ช่องแรกของแท็บกำหนดส่ง) — ประโยคของข้อ 11 ไม่เปลี่ยน
+  assert.equal(requestFormBlocker({ ...noResult, requestedDueDate: '' }), 'ต้องระบุวันที่ต้องการให้เข้าพื้นที่');
+  // ผลมาก่อนวันเข้า = server ตีกลับ ⇒ ปุ่มต้องไม่กดได้ด้วย (ไม่ใช่ช่องขาด — เกจไม่นับ แต่ด่านพูดเหตุ)
+  const early = { ...onsite, requestedDueDate: '2026-09-20', requestedResultDate: '2026-09-19' };
+  assert.equal(requestFormBlocker(early), 'วันที่ต้องการรับผลประเมินต้องไม่มาก่อนวันที่ต้องการให้เข้าพื้นที่');
+  assert.equal(requestFormBlocker(early), normalizeSurveyRequest(early).error);
+  assert.equal(requestFormBlocker({ ...onsite, requestedResultDate: '2026-09-20', requestedDueDate: '2026-09-20' }), null, 'วันเดียวกันได้');
+  // ใบจากแบบ: ไม่มีวันเข้า ⇒ ไม่เทียบลำดับ (กระจกของวันรับผลไม่ใช่วันเข้าพื้นที่) · ประโยคเดิมของ requestShapeError
+  assert.equal(requestFormBlocker(DRAWING_FULL), null);
+  assert.equal(requestFormBlocker({ ...DRAWING_FULL, requestedResultDate: '' }), 'ต้องระบุวันที่ต้องการรับผลประเมิน');
+  // หัวข้อที่ไม่มีสถานที่ไม่เข้าข้อนี้ (ไม่มีวันรับผลบนจอ)
+  assert.equal(requestFormBlocker(base), null);
+});
+
+test('S4: ใบที่ยังไม่เลือกวิธี — ของขาดตัวแรกคือ "วิธีประเมิน" ที่แท็บงาน และด่านบอกประโยคเดียวกับ server', () => {
+  const missing = missingRequiredByTab(SURVEY_FULL);
+  assert.deepEqual(missing, [{ tab: 'work', label: 'วิธีประเมิน' }]);
+  assert.equal(requestFormBlocker(SURVEY_FULL), 'ต้องเลือกวิธีประเมิน — ลงหน้างาน หรือ ประเมินจากแบบ');
+});
+
+/* ⭐ UAT S4 รอบ 4 ข้อ 12: ก่อนเลือกวิธี เกจเคยขึ้น 0/7 พร้อม "วันที่ต้องการให้เข้าพื้นที่ (บังคับ)" — แต่วิธีคือตัวตัดสินว่าช่องนั้นมีไหม
+   (จากแบบไม่มี) ⇒ ของขาดจริงข้อเดียวคือวิธี · วันเข้าเริ่มนับเมื่อเลือกวิธีที่ต้องใช้มัน (ลงหน้างาน) · ช่องยังกรอกได้ตามเดิม */
+test('S4 รอบ 4: ยังไม่เลือกวิธี = วันเข้าพื้นที่ยังไม่นับเป็นช่องบังคับ · เลือกลงหน้างานแล้วนับ · ด่าน server ไม่เปลี่ยน', () => {
+  const blank = { dept: 'TS', kind: 'site_survey', dealId: 'DEAL-1', siteId: 'SVS-1' };
+  const labels = (form) => requiredChecks(form).map((c) => c.label);
+  assert.ok(!labels(blank).includes('วันที่ต้องการให้เข้าพื้นที่'));
+  assert.ok(labels(blank).includes('วันที่ต้องการรับผลประเมิน'), 'วันรับผลบังคับทั้งสองวิธี — ยังนับ');
+  assert.equal(labels(blank)[0], 'วิธีประเมิน');
+  assert.ok(labels({ ...blank, variant: 'standard' }).includes('วันที่ต้องการให้เข้าพื้นที่'));
+  assert.ok(!labels({ ...blank, variant: 'drawing' }).includes('วันที่ต้องการให้เข้าพื้นที่'));
+  // วันที่พิมพ์ก่อนเลือกไม่ทำให้นับ (และไม่ทำให้เกจ "ครบ" ข้อนั้นทั้งที่ยังไม่มีข้อ)
+  assert.ok(!labels({ ...blank, requestedDueDate: '2026-10-20' }).includes('วันที่ต้องการให้เข้าพื้นที่'));
+  // ด่าน server/ปุ่ม: ยังไม่เลือก = ประโยคบังคับเลือกเหมือนเดิม (ถามก่อนข้อวันอยู่แล้ว)
+  assert.equal(requestFormBlocker({ ...SURVEY_FULL, requestedDueDate: '' }), 'ต้องเลือกวิธีประเมิน — ลงหน้างาน หรือ ประเมินจากแบบ');
+  // สวิตช์ปิด (หน้าเลือก "ลงหน้างาน" ไว้ให้) = นับวันเข้าเหมือนวันนี้
+  assert.ok(labels({ ...blank, variant: 'standard' }).includes('วันที่ต้องการให้เข้าพื้นที่'));
+  // หัวข้อที่ไม่บังคับเลือกวิธี (พัฒนาสูตร) ไม่เข้าข้อนี้ — ว่าง = รูปแบบตั้งต้น วันยังนับ
+  assert.ok(labels({ dept: 'RD', kind: 'formula_dev', dealId: 'D', projectId: 'P' }).includes('วันที่ต้องการรับงาน'));
+});
+
+/* 🔴 รีวิว UAT S4 รอบ 4 ข้อ 12 (ต่อ): เกจเลิกนับวันเข้าก่อนเลือกวิธี แต่ป้ายของช่องบนแท็บเดียวกันยังเขียน "(บังคับ)" ข้างช่องว่าง
+   ⇒ วงแหวนเขียวคู่ช่องบังคับว่าง · ตัวตัดสินเดียว `requestDueRequired` — ป้าย (RequestForm → `dueRequired`) กับเกจถามตัวเดียวกัน */
+test('รีวิวรอบ 4 ข้อ 12: requestDueRequired = แถววันแรกของเกจเป๊ะ — ป้าย "(บังคับ)" กับวงแหวนพูดเรื่องเดียวกัน', () => {
+  const dueRow = (form) => requiredChecks(form).some((c) => c.tab === 'due' && c.label === (form.kind === 'site_survey' ? 'วันที่ต้องการให้เข้าพื้นที่' : 'วันที่ต้องการรับงาน'));
+  const forms = [
+    { dept: 'TS', kind: 'site_survey', dealId: 'DEAL-1', siteId: 'SVS-1', requestedResultDate: '2026-10-30' }, // ยังไม่เลือกวิธี
+    { dept: 'TS', kind: 'site_survey', variant: 'standard', dealId: 'DEAL-1' },
+    { dept: 'TS', kind: 'site_survey', variant: 'drawing', dealId: 'DEAL-1' },
+    { dept: 'TS', kind: 'site_survey', variant: 'constructor', dealId: 'DEAL-1' }, // ค่าที่ไม่มีในทะเบียน = ยังไม่เลือก
+    { dept: 'RD', kind: 'formula_dev', dealId: 'D', projectId: 'P' },
+    base,
+  ];
+  for (const form of forms) {
+    assert.equal(requestDueRequired(form), dueRow(form), `${form.kind}/${form.variant ?? '-'}`);
+  }
+  // ยังไม่เลือกวิธี: ไม่บังคับ (ป้ายไม่มี "(บังคับ)") · ลงหน้างาน: บังคับ · หัวข้ออื่นบังคับเหมือนเดิมทุกตัว (มติ 08/08)
+  assert.equal(requestDueRequired(forms[0]), false);
+  assert.equal(requestDueRequired(forms[1]), true);
+  assert.equal(requestDueRequired(forms[2]), false, 'จากแบบไม่มีช่องนี้บนจอ');
+  assert.equal(requestDueRequired(forms[4]), true);
+  assert.equal(requestDueRequired(base), true);
+  // วงแหวนของแท็บกำหนดส่ง "ครบ" ก่อนเลือกวิธี = ไม่มีช่องบังคับว่างบนแท็บนั้น (ป้ายของวันเข้าไม่บอกว่าบังคับ)
+  const due = requestFormTabs(forms[0], { optionalRefs: [] }).find((t) => t.key === 'due');
+  assert.deepEqual(due.required.missing, []);
+});
+
+test('S4: ใบจากแบบไม่มีไฟล์ — ด่านบอกชื่อช่องตามที่จอเขียน', () => {
+  const form = { ...DRAWING_FULL, requiredFiles: [] };
+  assert.equal(
+    requestFormBlocker(form),
+    'ยังไม่ได้แนบไฟล์ในช่อง “แบบ / ผังพื้นที่ที่ให้ประเมิน” — ประเมินจากแบบต้องมีอย่างน้อย 1 ไฟล์',
+  );
+  assert.deepEqual(missingRequiredByTab(form), [{ tab: 'subject', label: 'แบบ / ผังพื้นที่ที่ให้ประเมิน' }]);
+});
+
+test('S4: รายการความพร้อมของใบจากแบบ — ลำดับตามที่ฟอร์มถาม · ไม่มีวันเข้าพื้นที่', () => {
+  const form = { dept: 'TS', kind: 'site_survey', variant: 'drawing', dealId: 'DEAL-1', siteId: 'SVS-1' };
+  assert.deepEqual(requiredChecks(form).map((c) => c.label), [
+    'วิธีประเมิน', 'ดีล', 'สถานที่ที่จะให้ประเมิน', 'พื้นที่ที่ต้องประเมินอย่างน้อย 1 รายการ',
+    'แบบ / ผังพื้นที่ที่ให้ประเมิน', 'ชื่อเรื่อง', 'รายละเอียดเพิ่มเติม', 'วันที่ต้องการรับผลประเมิน',
+  ]);
+  // ช่องไฟล์อยู่แท็บรายละเอียด (ใต้บล็อกไซต์) · วันรับผลอยู่แท็บกำหนด
+  const tabOf = Object.fromEntries(requiredChecks(form).map((c) => [c.label, c.tab]));
+  assert.equal(tabOf['แบบ / ผังพื้นที่ที่ให้ประเมิน'], 'subject');
+  assert.equal(tabOf['วันที่ต้องการรับผลประเมิน'], 'due');
+});
+
+test('S4: รายการความพร้อมของใบลงหน้างาน — เหมือนเดิม ยกเว้นป้ายสถานที่กับบรรทัดแรก', () => {
+  const form = { dept: 'TS', kind: 'site_survey', variant: 'standard', dealId: 'DEAL-1', siteId: 'SVS-1' };
+  assert.deepEqual(requiredChecks(form).map(({ tab, label }) => [tab, label]), [
+    ['work', 'วิธีประเมิน'],
+    ['work', 'ดีล'],
+    ['subject', 'สถานที่ที่จะให้ประเมิน'],
+    ['subject', 'พื้นที่ที่ต้องประเมินอย่างน้อย 1 รายการ'],
+    ['subject', 'ชื่อเรื่อง'],
+    ['subject', 'รายละเอียดเพิ่มเติม'],
+    ['due', 'วันที่ต้องการให้เข้าพื้นที่'],
+    ['due', 'วันที่ต้องการรับผลประเมิน'],
+  ]);
+  // ⚠️ ไฟล์ในตะกร้าของใบลงหน้างานไม่ได้เป็นช่องบังคับ — ไม่มีบรรทัดไฟล์แบบ
+  assert.equal(requiredChecks({ ...form, requiredFiles: [] }).some((c) => c.label.includes('แบบ / ผัง')), false);
+});
+
+test('S4: พัฒนาสูตร — รายการความพร้อมเท่าเดิมทุกตัวอักษร (ทั้ง Standard และ NPD)', () => {
+  const fd = { dept: 'RD', kind: 'formula_dev', dealId: 'D', projectId: 'P', title: '', requestedDueDate: '', items: [] };
+  const show = (form) => requiredChecks(form).map(({ tab, label, ok }) => [tab, label, ok]);
+  // ค่าที่ตรึงไว้ = ผลของโค้ดก่อน S4 (รันจริงก่อนแก้)
+  assert.deepEqual(show(fd), [
+    ['work', 'ดีล', true], ['subject', 'ชื่อเรื่อง', false],
+    ['subject', 'รายการที่กรอกครบอย่างน้อย 1 รายการ', false], ['due', 'วันที่ต้องการรับงาน', false],
+  ]);
+  assert.deepEqual(show({ ...fd, urgent: true }), [
+    ['work', 'ดีล', true], ['subject', 'ชื่อเรื่อง', false],
+    ['subject', 'รายการที่กรอกครบอย่างน้อย 1 รายการ', false], ['due', 'วันที่ต้องการรับงาน', false],
+    ['due', 'เหตุผลที่เป็นงานด่วน', false],
+  ]);
+  assert.deepEqual(show({ ...fd, variant: 'npd', pdr: { packagingArtwork: 'has' } }), [
+    ['work', 'ดีล', true], ['subject', 'ชื่อเรื่อง', false],
+    ['due', 'วันที่ต้องการรับงาน', false], ['due', 'ไฟล์ภาพประกอบบรรจุภัณฑ์', false],
+  ]);
+  // ตัวนับไฟล์ของโหมดแก้ไม่มีผลกับหัวข้อที่ไม่มีช่องไฟล์บังคับ
+  assert.deepEqual(show({ ...fd, variant: 'npd' }), requiredChecks({ ...fd, variant: 'npd' }, { requiredFileCount: 0 })
+    .map(({ tab, label, ok }) => [tab, label, ok]));
 });

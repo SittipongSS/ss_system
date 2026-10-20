@@ -459,7 +459,10 @@ test('🔴 ทุกหัวข้อ ทุกสถานะที่ยั�
   for (const key of REQUEST_KIND_LIST) {
     const k = REQUEST_KINDS[key];
     // หัวข้อที่ไม่มีแถวเลย (ไม่ hasItems และไม่ deliversRows) ทดสอบแค่ชุดว่าง — ชุดอื่นเป็นไปไม่ได้
-    const rowsFor = k.hasItems || k.deliversRows || k.variants
+    /* ⚠️ หัวข้อที่มีรูปแบบ: ถามธงของ **รูปแบบ** ไม่ใช่แค่ "มี variants" — ประเมินพื้นที่มีสองวิธีแล้ว (ประเมินจากแบบ
+       งวด 4) แต่ไม่มีแถวทั้งสองวิธี ⇒ ชุด "มีแถวค้าง" เป็นไปไม่ได้สำหรับมัน (ทางออกของใบไม่มีแถวคือปิด/ปิดโดยไม่ได้ประเมิน) */
+    const shapes = k.variants ? Object.values(k.variants) : [k];
+    const rowsFor = shapes.some((s) => s.hasItems || s.deliversRows)
       ? Object.entries(rowSets) : [['none', []]];
     for (const status of ['pending', 'acknowledged', 'answered']) {
       for (const [rowsName, rows] of rowsFor) {
@@ -476,7 +479,7 @@ test('🔴 ทุกหัวข้อ ทุกสถานะที่ยั�
             cancelRequestError(r, rows),
             closeUnassessedError(r, { reason: 'x'.repeat(10) }),
           ];
-          if (exits.every(Boolean)) dead.push(`${k.key}/${status}/${rowsName}/${soName}: ${exits[0]}`);
+          if (exits.every(Boolean)) dead.push(`${key}/${status}/${rowsName}/${soName}: ${exits[0]}`);
         }
       }
     }
