@@ -13,6 +13,8 @@ import { accessConflict } from './sites';
 import { dayLoad, overlaps, sortByTime } from './rounds';
 import { businessDate } from '@/lib/businessDate';
 import { isOpenVisit } from './visitStatus';
+/* ไฟล์เบา (ไม่ใช่ scheduleQueue.js) — หน้าภาพรวมต้องไม่ลากตัวตัดสินด่านเข้า bundle */
+import { isVisitToday } from './scheduleQueueLink';
 
 /* 🐞 เดิมประกาศ `OPEN_STATUSES = ['scheduled']` ที่นี่เอง = นิยาม "งานที่ยังรอลงมือ"
    ชุดที่สองของโมดูล (อีกชุดคือ isLive ใน rounds.js) ⇒ พอเพิ่ม in_progress เข้ามา
@@ -42,7 +44,9 @@ export function serviceCounts(visits = [], todayIso = businessDate()) {
     if (!isOpen(visit)) continue;
     const date = String(visit.scheduledDate || '');
     if (date && date < todayIso) overdue += 1;
-    else if (date === todayIso) today += 1;
+    /* ⭐ "นัดวันนี้" ใช้ตัวตัดสินเดียวกับช่วง "เฉพาะวันนี้" ของรายการงานที่การ์ดเปิด (H15 · มติเจ้าของ 19/10)
+       ⇒ เลขบนการ์ด = จำนวนแถวที่เปิดเจอ · แก้นิยามที่ `isVisitToday` ที่เดียว */
+    else if (isVisitToday(visit, todayIso)) today += 1;
     if (date >= todayIso && date <= weekEnd) {
       week += 1;
       // ไม่มีเจ้าหน้าที่ = ยังไม่มีใครรับผิดชอบ · นับเฉพาะในสัปดาห์นี้เพราะนัดไกล ๆ
@@ -171,7 +175,8 @@ export function refillTotals(sites = []) {
 // ⚠️ นัดที่ยังไม่มอบหมายรวมเป็นแถว "ยังไม่มอบหมาย" แถวเดียว ไม่ใช่ซ่อนหาย —
 //    ของที่ไม่มีเจ้าของคือของที่ต้องเห็นที่สุด
 export function todayByTechnician(visits = [], todayIso = businessDate()) {
-  const rows = visits.filter((v) => isOpen(v) && String(v.scheduledDate || '') === todayIso);
+  // ตัวตัดสินเดียวกับการ์ด "นัดวันนี้" ⇒ ป้าย "n นัด" ของแผงนี้ = เลขบนการ์ดเสมอ
+  const rows = visits.filter((v) => isVisitToday(v, todayIso));
   return dayLoad(rows)
     .map((entry) => ({ ...entry, visits: sortByTime(entry.visits) }))
     .sort((a, b) => {

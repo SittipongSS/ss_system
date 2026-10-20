@@ -89,3 +89,20 @@ test('ป้ายทีมถูกส่งต่อจาก meta ลงถ�
   const at = (label) => LEAD_REPORT_COLUMNS.findIndex((c) => c.label === label) + 1;
   assert.equal(sheet.getRow(3).getCell(at('ทีม')).value, 'ทีมภาคเหนือ');
 });
+
+/* ใบที่ปิดแล้วยังค้าง `followUpAt` รอบก่อนในฐาน (การปิดไม่ล้างคอลัมน์) — ตารางซ่อนแล้ว ไฟล์ต้องว่างด้วย
+   (มติเจ้าของ 19/10 · ตัวตัดสิน `leadActiveFollowUpAt` ตัวเดียวกับตาราง) · ใบที่ยังเดินต้องคงวันไว้ */
+test('วันติดตามต่อในไฟล์: ใบปิดแล้วช่องว่าง · ใบที่ยังเดินคงวัน', async () => {
+  const sheet = await reopen(await buildLeadReportBuffer([
+    { id: 'LEAD-d4', status: 'disqualified', followUpAt: '2026-08-01T00:00:00Z' },
+    { id: 'LEAD-e5', status: 'qualified', followUpAt: '2026-08-01T00:00:00Z' },
+    { id: 'LEAD-f6', status: 'contacted', followUpAt: '2026-08-01T00:00:00Z' },
+  ], {}));
+  const col = LEAD_REPORT_COLUMNS.findIndex((c) => c.label === 'วันติดตามต่อ') + 1;
+  assert.ok(col > 0, 'หาคอลัมน์ "วันติดตามต่อ" ไม่เจอ — เทสต์นี้ตาบอดแล้ว');
+  for (const r of [3, 4]) {
+    const v = sheet.getRow(r).getCell(col).value;
+    assert.ok(v === null || v === '', `แถว ${r} (ใบปิด) ต้องว่าง ได้ ${JSON.stringify(v)}`);
+  }
+  assert.equal(sheet.getRow(5).getCell(col).value, '2026-08-01');
+});
