@@ -288,10 +288,25 @@ test('รอบ 4 ข้อ 1: ก้อนของแท็บ "งาน" พ
   assert.equal(stack[1], shellGap[1]);
 });
 
+test('รอบ 4 fix2: การ์ดฟอร์มแก้ให้ระยะใต้แถบแท็บ+เกจ และใต้ "ยังขาด" เท่า gap ของเปลือกหน้าเปิดใบ', () => {
+  const css = read('app/requests/[id]/page.module.css');
+  const shell = read('app/requests/new/page.module.css');
+  const shellGap = /\.form \{[^}]*gap: (var\(--[\w-]+\));/.exec(shell);
+  assert.ok(shellGap);
+  for (const cls of ['tabbar-with-meter', 'tab-missing']) {
+    const rule = new RegExp(`\\.editCard :global\\(\\.${cls}\\) \\{ margin-bottom: (var\\(--[\\w-]+\\)); \\}`).exec(css);
+    assert.ok(rule, `ต้องมีระยะใต้ .${cls} ในการ์ดฟอร์มแก้`);
+    assert.equal(rule[1], shellGap[1]);
+  }
+});
+
 test('รอบ 4 ข้อ 2: โหมดแก้วาดป้าย "ดีล" ครั้งเดียว (ป้ายของช่องเส้นประ) · ฟอร์มสร้างคงป้ายของตัวเลือก', () => {
   const form = code(FORM);
   assert.match(form, /\{!isEdit && <span className=\{styles\.fieldLabel\}>ดีล<\/span>\}/);
-  assert.match(form, /<DerivedField label="ดีล" from="ผูกไว้ตอนเปิดใบ" value=\{lockedRefs\.deal \|\| ""\} \/>/);
+  assert.match(form, /<DerivedField\n\s*label="ดีล" from="ผูกไว้ตอนเปิดใบ" value=\{lockedRefs\.deal \|\| ""\}\n\s*hint=\{freshDraft\n/);
+  // ช่องเส้นประของดีลโหมดแก้อยู่ใน .form-group col-span-2 อยู่แล้ว ⇒ ต้องไม่ห่อกลุ่มซ้อน (margin ใต้ประโยคล็อกนับสองรอบ = 42px)
+  assert.match(form, /: "เปลี่ยนดีลของคำร้องที่ส่งแล้วไม่ได้"\}\n\s*bare\n\s*\/>/);
+  assert.match(form, /return bare \? body : <div className="form-group">\{body\}<\/div>;/);
   // ป้าย "ดีล" ตายตัวที่ไม่มีเงื่อนไขโหมดเหลือเฉพาะในช่องเส้นประของหัวข้อที่ดีลเติมจากใบอื่น (QT / SO)
   assert.doesNotMatch(form, /\n\s*<span className=\{styles\.fieldLabel\}>ดีล<\/span>/);
 });

@@ -222,7 +222,8 @@ test('ยาม: บล็อกแบบ/ผังพื้นที่วา�
   assert.match(block, /spec=\{requiredFilesSpec\}/);
   assert.match(block, /mode="saved"/);
   // ชื่อการ์ด = ป้ายของบล็อก ⇒ บล็อกในการ์ดไม่วาดป้ายซ้ำ (UAT S4 รอบ 4 ข้อ 14) · คำบรรยายยังอยู่ (ตัวบล็อกตัดสิน)
-  assert.match(block, /<DetailCard icon=\{Paperclip\} eyebrow="DRAWINGS" title=\{requiredFilesSpec\.label\}>/);
+  // "(บังคับ)" อยู่บนชื่อการ์ดเฉพาะร่าง (ยังต้องแนบก่อนส่ง) · ส่งแล้ว = ชื่อเปล่า (UAT S4 รอบ 4 ซ้ำ T08 · T15)
+  assert.match(block, /<DetailCard\n\s+icon=\{Paperclip\}\n\s+eyebrow="DRAWINGS"\n\s+title=\{req\.status === "draft" \? `\$\{requiredFilesSpec\.label\} \(บังคับ\)` : requiredFilesSpec\.label\}\n\s+>/);
   assert.match(block, /mode="saved"\n\s+hideLabel\n/);
   assert.match(block, /requestId=\{req\.id\}/);
   assert.match(block, /onCountChange=\{setRequiredFileCount\}/);

@@ -1055,7 +1055,9 @@ export default function RequestDetailPage() {
         confirmLabel: "ปิดเรื่อง",
       };
     }
-    if (req.status === "draft") {
+    /* ด่านเดียวกับ API (`deleteRequestError`) — ร่างที่ถูกตีกลับถือเลข RQ แล้ว (`submittedAt`) ⇒ "ยังไม่ถูกส่ง" ไม่จริง
+       และ server ตอบ 409 (UAT S4 รอบ 4 T09: ฟอร์มแก้บอก "ส่งแล้ว" แต่ปุ่มนี้บอก "ยังไม่ส่ง" ในหน้าเดียว) */
+    if (!deleteRequestError(req)) {
       return {
         title: "ลบคำร้องร่าง",
         description: "คำร้องนี้ยังไม่ถูกส่ง จึงลบทิ้งได้",
@@ -1702,13 +1704,13 @@ export default function RequestDetailPage() {
         id: "delete",
         // ผู้ดูแลระบบลบได้ทุกสถานะ (break-glass) — คนอื่นได้เฉพาะร่างของตัวเอง
         // ป้ายต้องบอกตรง ๆ ว่ากำลังใช้สิทธิ์อะไร ไม่ใช่เขียน "ลบร่าง" แล้วลบใบจริง
-        label: isAdmin && req.status !== "draft"
+        label: isAdmin && deleteRequestError(req)
           ? "ลบคำร้อง (ผู้ดูแลระบบ)"
           : "ลบคำร้องร่าง",
         kind: "delete",
         icon: Trash2,
         onClick: () => setConfirm({ kind: "delete" }),
-        visible: isAdmin || (req._mine && req.status === "draft"),
+        visible: isAdmin || (req._mine && !deleteRequestError(req)),
       },
       {
         // ⚠️ อยู่ในกลุ่ม danger เพราะมันผลักงานกลับไปหาคนอื่น แต่ **ไม่ใช่
@@ -1866,7 +1868,14 @@ export default function RequestDetailPage() {
      ⚠️ ไฟล์ที่แนบที่นี่ขึ้นในการ์ดไฟล์แนบทั่วไปด้วย (ป้ายชนิด "สเปก / แบบงาน / บรีฟ") — ยอมรับแล้ว (S4 V6)
      · สิทธิ์แนบ = นิพจน์เดียวกับการ์ดไฟล์แนบของคำร้องข้างล่าง */
   const requiredFilesCard = requiredFilesSpec && !editing ? (
-    <DetailCard icon={Paperclip} eyebrow="DRAWINGS" title={requiredFilesSpec.label}>
+    /* "(บังคับ)" ย้ายจากบรรทัดป้ายของบล็อกขึ้นชื่อการ์ด — **เฉพาะร่าง** (ยังไม่ส่ง หรือถูกตีกลับ) ที่ผู้ขอยังต้องแนบก่อนส่ง
+       🐞 UAT S4 รอบ 4 ซ้ำ (T08): ซ่อนบรรทัดป้ายแล้ว ร่างที่ยังไม่มีไฟล์ไม่มีอะไรบอกว่าไฟล์นี้บังคับ ·
+       ใบที่ส่งแล้วผ่านด่าน ≥ 1 ไฟล์มาแล้ว ⇒ ไม่มีอะไรบังคับคนดูอีก (UAT S4 T15: ผู้วางคิวเห็น "(บังคับ)" บนใบที่รับเรื่องแล้ว) */
+    <DetailCard
+      icon={Paperclip}
+      eyebrow="DRAWINGS"
+      title={req.status === "draft" ? `${requiredFilesSpec.label} (บังคับ)` : requiredFilesSpec.label}
+    >
       {/* ชื่อการ์ด = ป้ายของบล็อก ⇒ ไม่วาดซ้ำในการ์ด (`hideLabel` · UAT S4 รอบ 4 ข้อ 14) — คำบรรยายยังอยู่ ·
           ฟอร์มแก้ยังวาดป้าย "(บังคับ)" ตามเดิม (บล็อกเดียวกัน ไม่มีชื่อการ์ดครอบ) */}
       <RequiredFilesBlock
