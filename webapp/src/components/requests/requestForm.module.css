@@ -806,3 +806,5 @@
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
   grid-auto-rows: auto;
 }
+/* ข้อความของวิธีที่เลือก (ประเมินจากแบบ) ใต้แผ่นเลือก — `.field` ไม่มีระยะของตัวเอง ⇒ เคยชิดแผ่นราว 2px (UAT S4) */
+.variantNotice { margin-top: var(--space-2); }

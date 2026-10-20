@@ -137,6 +137,8 @@ import CommitDueDialog from "@/components/requests/CommitDueDialog";
 import { commitDueLabels, deskDueAction } from "@/lib/requests/commitDue";
 /* ชื่อขั้นของรางเมื่อใบประเมินเป็นงานโต๊ะ (ประเมินจากแบบทั้งใบ · งวด S2b กลุ่ม D-2) — ตัวแปลงคำล้วน ไม่มีของ server */
 import { surveyDeskRailSteps } from "@/lib/service/surveyMethodSwitch";
+/* ป้าย "จากแบบ" รายพื้นที่ของรายการอ่านอย่างเดียวในฟอร์มแก้ — view-model ตัวเดียวกับจอรายละเอียดรุ่นเก่า (จอไม่ตัดสินวิธีเอง) */
+import { surveyRequestDrawingSummary } from "@/lib/service/surveyJob";
 import { acknowledgeConfirmCopy } from "@/lib/requests/acknowledgeConfirm";
 
 const STATUS_TONE = {
@@ -965,7 +967,8 @@ export default function RequestDetailPage() {
          ⚠️ หัวข้ออื่นได้สองประโยคเดิมทุกตัวอักษร (O12) */
       const variantLocks = requestVariantLockAfterSubmit(req.kind);
       const switchNote = variantLocks && req.drawingMethodEnabled === true
-        ? ` · หลังส่งแล้วเปลี่ยน${requestVariantFieldLabel(req.kind)}ได้ที่ฝ่ายบริการ (หัวหน้า TS)`
+        /* ช่องว่างหน้า "·" ไม่ตัดบรรทัด (\u00A0) — จุดต้องค้างท้ายบรรทัดบน ไม่ขึ้นต้นบรรทัดใหม่เหมือนหัวข้อย่อย (UAT S4 T11c) */
+        ? `\u00A0· หลังส่งแล้วเปลี่ยน${requestVariantFieldLabel(req.kind)}ได้ที่ฝ่ายบริการ (หัวหน้า TS)`
         : "";
       return {
         title: "ส่งคำร้อง",
@@ -1500,6 +1503,11 @@ export default function RequestDetailPage() {
         kind: "edit",
         icon: Pencil,
         onClick: () => {
+          /* ป้ายวิธีปัจจุบันของพื้นที่ (S2b "จากแบบ") บนรายการอ่านอย่างเดียว — หลังส่งเท่านั้น (S4 T11b):
+             หัวหน้า TS สลับวิธีรายพื้นที่ได้ ⇒ บรรทัด "วิธีที่ฝ่ายขายขอ" ไม่ใช่วิธีปัจจุบัน ต้องมีตัวบอกที่รายการ
+             ⚠️ ร่างไม่ติดป้าย — ไทล์บนฟอร์มเดียวกันสลับได้ แล้วพื้นที่ถูกตั้งตามไทล์ตอนบันทึก (ป้ายค้างจะขัดกับไทล์)
+             server ไม่อ่าน `zones` ของทางแก้ (ใช้แถวจริงของใบ) ⇒ คีย์ `methodTag` ไม่ลงฐาน */
+          const drawingRows = requestVariantAskedOnly(req) ? surveyRequestDrawingSummary(req).rows : {};
           /* ⭐ **ค่าเดียวกับฟอร์มเปิดใบ** — `emptyRequestForm` เติมคีย์ที่เหลือให้ครบ
              (ฟอร์มเป็น controlled ล้วน · คีย์ที่ขาดกลายเป็น uncontrolled input) */
           setEditDraft(emptyRequestForm({
@@ -1528,6 +1536,7 @@ export default function RequestDetailPage() {
                 name: z.zoneId ? null : z.zoneName,
                 floor: z.floor || null,
                 note: z.note || null,
+                methodTag: drawingRows[z.id]?.chip || null,
               })),
               urgent: !!req.urgent,
               urgentReason: req.urgentReason || "",

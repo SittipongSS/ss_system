@@ -253,6 +253,15 @@ test('หัวงาน · จากแบบทั้งใบ ไม่มี
     visit: null, method: ALL_DRAWING, request: ask({ assigneeName: ' ', requestedResultDate: null, committedResultDate: 'ไม่ใช่วัน' }),
   }));
   assert.deepEqual(blank.facts.slice(1, 4).map((f) => f.value), ['—', '—', '—']);
+  // ยังไม่มอบหมาย = คนที่กดรับเรื่อง (requestAssignee ตัวเดียวกับหน้าคำร้อง) — หัวงานเคยขึ้นขีดขณะหน้าคำร้องขึ้นชื่อ (UAT S4 T14 head)
+  const unassigned = surveyJobHeaderView(headerInput({
+    visit: null, method: ALL_DRAWING, request: ask({ assigneeId: null, assigneeName: null, acknowledgedByName: 'Somchai Ackby' }),
+  }));
+  assert.deepEqual(unassigned.facts[1], { key: 'assignee', label: 'ผู้รับผิดชอบ', value: 'Somchai Ackby' });
+  const nobody = surveyJobHeaderView(headerInput({
+    visit: null, method: ALL_DRAWING, request: ask({ assigneeId: null, assigneeName: null, acknowledgedById: null, acknowledgedByName: null }),
+  }));
+  assert.equal(nobody.facts[1].value, '—');
 });
 
 test('หัวงาน · จากแบบทั้งใบ แต่ยังมีนัดเปิดอยู่ (ร่าง · นัดไว้ · กำลังทำ): ไม่พูดว่าไม่มีนัด และข้อของนัดอยู่ครบ', () => {

@@ -111,7 +111,7 @@ export function RequestDueUrgentFields({
      (วันที่ · ช่วงเวลา · คำอธิบาย) ไม่วาด เหลือวันรับผล + ความเร่งด่วน · ค่าตั้งต้น = หน้าตาเดิมทุกหัวข้อ
      ⚠️ ด่านจริงไม่ถามช่องนี้แล้ว (`requestShapeError` ของรูปแบบนั้น) — ซ่อนช่องอย่างเดียวไม่พอ ต้องคู่กับด่าน */
   hideDue = false,
-  // คำอธิบายใต้วันรับผล — ไม่ส่ง = ประโยคเดิม (ใบที่มีวันเข้าพื้นที่ด้วย)
+  // คำอธิบายใต้วันรับผล — ไม่ส่ง = ประโยคเดิม (ใบที่มีวันเข้าพื้นที่ด้วย) · `false` = ไม่มีคำอธิบาย (ไม่มีวันเข้าให้เทียบ)
   resultDueHint = null,
 }) {
   const set = (patch) => onChange?.({ ...value, ...patch });
@@ -142,7 +142,8 @@ export function RequestDueUrgentFields({
             />
           </div>
         )}
-        <small className={styles.hint}>{dueHint}</small>
+        {/* `null` / "" = ไม่มีคำอธิบาย (ใบที่ทุกพื้นที่ประเมินจากแบบแล้ว) · ไม่ส่ง = ค่าตั้งต้น */}
+        {dueHint && <small className={styles.hint}>{dueHint}</small>}
       </div>
       )}
       {/* ⭐ **วันส่งผล — ช่องของตัวเอง ไม่ใช่ข้อความในรายละเอียด** (มติผู้ใช้ 2026-09-21)
@@ -156,9 +157,11 @@ export function RequestDueUrgentFields({
             id={`${idPrefix}-result-due`} value={value.requestedResultDate || ""} disabled={disabled}
             onChange={(v) => set({ requestedResultDate: v })}
           />
-          <small className={styles.hint}>
-            {resultDueHint || "คนละวันกับวันที่เข้าพื้นที่ — วันนี้คือวันที่ต้องได้ตัวเลขไปเสนอราคา"}
-          </small>
+          {resultDueHint !== false && (
+            <small className={styles.hint}>
+              {resultDueHint || "คนละวันกับวันที่เข้าพื้นที่ — วันนี้คือวันที่ต้องได้ตัวเลขไปเสนอราคา"}
+            </small>
+          )}
         </div>
       )}
       <div className="form-group">

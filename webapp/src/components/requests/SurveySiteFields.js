@@ -268,6 +268,8 @@ export default function SurveySiteFields({
                 <span className={styles.zoneNo}>{index + 1}</span>
                 <span className={styles.zoneBody}>
                   <b>{zoneName(row)}</b>
+                  {/* ป้ายวิธีปัจจุบันของพื้นที่ — คำมาจากหน้าคำร้อง (`methodTag` ของใบที่ส่งแล้ว) · ไม่มีคำ = ไม่วาด */}
+                  <SurveyMethodChip label={row.methodTag} className={styles.zoneTileMethod} />
                   <small className={styles.hint}>
                     {row.zoneId
                       ? (siteZones.find((z) => z.id === row.zoneId)?.code || "พื้นที่เดิม")

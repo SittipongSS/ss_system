@@ -56,7 +56,7 @@ test('🔴 O7(ก): วันเข้าพื้นที่ที่พิม
 
 test('T16: แผ่นวิธีประเมินหักเป็นคอลัมน์เดียวเองที่จอแคบ — เฉพาะหัวข้อที่บังคับเลือก (พัฒนาสูตรเท่าเดิม)', () => {
   const form = code(FORM);
-  assert.match(form, /<div className=\{requestVariantRequired\(kind\) \? `field \$\{styles\.variantTiles\}` : "field"\}>\s*<label id="req-variant-label">/);
+  assert.match(form, /<div className=\{requestVariantRequired\(kind\) \? `field \$\{styles\.variantTiles\}` : "field"\}>\s*(?:\{\s*\}\s*)?<label id="req-variant-label" className=\{styles\.fieldLabel\}>/);
   const css = read('components/requests/requestForm.module.css');
   assert.match(css, /\.variantTiles :global\(\.option-tiles\) \{\s*grid-template-columns: repeat\(auto-fit, minmax\(min\(100%, 16rem\), 1fr\)\);\s*grid-auto-rows: auto;\s*\}/);
 });
@@ -94,7 +94,7 @@ test('🔴 หลังส่ง (variantAskedOnly) ไม่วาดปุ่�
 test('ข้อความใต้ปุ่มใช้กล่องแจ้งกลาง · ล็อกแล้วบอกเหตุแทน', () => {
   const form = code(FORM);
   assert.match(form, /import StatusNotice from "@\/components\/ui\/StatusNotice";/);
-  assert.match(form, /variantLock \? \([\s\S]{0,120}<small className=\{styles\.hint\}>\{variantLock\}<\/small>[\s\S]{0,80}\) : variantNotice \? \([\s\S]{0,80}<StatusNotice tone="info">\{variantNotice\}<\/StatusNotice>/);
+  assert.match(form, /variantLock \? \([\s\S]{0,120}<small className=\{styles\.hint\}>\{variantLock\}<\/small>[\s\S]{0,80}\) : variantNotice \? \([\s\S]{0,80}<StatusNotice tone="info" className=\{styles\.variantNotice\}>\{variantNotice\}<\/StatusNotice>/);
   // ปุ่มหยุดรอระหว่างที่หน้าเปิดคำร้องยังไม่รู้ค่าสวิตช์ — เฉพาะหัวข้อที่มีรูปแบบซึ่งสวิตช์ปิดได้ (พัฒนาสูตรกดได้ทันที)
   assert.match(form, /disabled=\{disabled \|\| !!variantLock \|\| variantsWaiting\}/);
   assert.match(form, /const variantsWaiting = variantsPending && Object\.keys\(variants \|\| \{\}\)\.some\(\(key\) => variantsOff\.includes\(key\)\);/);
@@ -129,12 +129,16 @@ test('🔴 saveDraft: ร่างเกิดแล้ว (มี id) = พา�
   assert.match(afterId, /uploadDraftFiles\(id, form\.requiredFiles, \{ docType: requiredSpec\?\.docType, onUploaded: remember\("requiredFiles"\) \}\)/);
   assert.match(afterId, /uploadDraftFiles\(id, form\.files, \{ onUploaded: remember\("files"\) \}\)/);
   assert.ok(afterId.indexOf('form.requiredFiles') < afterId.indexOf('form.files'));
+  // 🔴 ไฟล์ไม่เข้าต้องทักผ่านถาดกลาง — Toast ของหน้านี้ตายตอน router.push (UAT S4 T07: ไม่เคยเห็นบนหน้ารายละเอียด)
+  assert.match(afterId, /if \(uploadError\) notifyToast\.error\(`\$\{uploadError\} — แนบซ้ำได้ที่หน้ารายละเอียด`, RESPONSE_WARNING_TOAST\);/);
+  assert.doesNotMatch(afterId, /setToast\(/, 'หลังร่างเกิดห้ามใช้ Toast ของหน้า — หายไปพร้อมหน้า');
   // 🔴 ทางโยน: id ของร่างอยู่นอก try แล้วตั้งทันทีหลังสร้างผ่าน ⇒ catch ที่มี id ต้องพาไปหน้ารายละเอียดด้วย
   assert.ok(page.slice(start, page.indexOf('try {', start)).includes('let createdId = null;'), 'createdId ต้องประกาศก่อน try');
   assert.match(body, /if \(error\) \{ setToast\(\{ kind: "error", msg: error \}\); return; \}\n\s*createdId = id \|\| null;/);
   const catchEnd = page.indexOf('} finally {', end);
   const catchBody = page.slice(end, catchEnd);
   assert.match(catchBody, /if \(createdId\) \{[\s\S]*?router\.push\(`\/requests\/\$\{createdId\}`\);[\s\S]*?\} else \{/);
+  assert.match(catchBody, /if \(createdId\) \{\n\s*notifyToast\.error\(`\$\{e\?\.message \|\| "แนบไฟล์ไม่สำเร็จ"\} — แนบซ้ำได้ที่หน้ารายละเอียด`, RESPONSE_WARNING_TOAST\);\n\s*router\.push/);
 });
 
 test('หน้าเปิดคำร้อง: ทางเดียวที่ถูกเลือกไว้ให้ (สวิตช์ปิด) · ฟอร์มที่ไม่ได้แตะต้องไม่นับว่าแก้', () => {
@@ -229,4 +233,21 @@ test('ป้ายเก่าของช่องสถานที่ ("…�
   assert.deepEqual(hits, []);
   const site = read('components/requests/SurveySiteFields.js');
   assert.equal((site.match(/สถานที่ที่จะให้ประเมิน/g) || []).length, 3, 'ป้าย + ariaLabel สองที่');
+});
+
+/* ── ฟอร์มแก้ของใบที่ส่งแล้ว (ทรง RQ-AS-26100312 · UAT S4 T11b) — ไม่มีอะไรบนฟอร์มขัดกับวิธีรายพื้นที่ ────────── */
+test('หลังส่ง (variantAskedOnly): ไม่มีคำแนะนำ "จะยืนยันวัน/เวลาเข้า" · รายการพื้นที่อ่านอย่างเดียวติดป้าย "จากแบบ"', () => {
+  const form = code(FORM);
+  // ใบที่ส่งแล้วซึ่งทุกพื้นที่ติดป้าย "จากแบบ" ไม่มีการเข้าพื้นที่ ⇒ ไม่มีคำอธิบายวันเข้า/วันรับผลที่อ้างถึงการเข้า
+  // ⚠️ ต้องเป็น null / false ไม่ใช่ undefined — undefined = ค่าตั้งต้นของคอมโพเนนต์ ("ฝ่ายปลายทางจะรับปากวันจริง…")
+  assert.match(form, /const deskZonesOnly = variantAskedOnly && Array\.isArray\(value\.zones\) && value\.zones\.length > 0\n\s*&& value\.zones\.every\(\(zone\) => !!zone\?\.methodTag\);/);
+  assert.match(form, /resultDueHint=\{resultDateOnly \? "หัวหน้า TS จะแจ้งวันส่งผลจริงหลังรับเรื่อง" : deskZonesOnly \? false : undefined\}/);
+  assert.match(form, /dueHint=\{needsSite\n\s*\? \(deskZonesOnly \? null : "เจ้าหน้าที่จะยืนยันวัน\/เวลาจริงตอนกด/);
+  // ป้ายวิธีปัจจุบันมาจากหน้าคำร้อง เฉพาะใบที่ส่งแล้ว (ร่างสลับไทล์ได้ ป้ายค้างจะขัดกับไทล์) ผ่านตัวถามของโมดูลใบ
+  const page = code('app/requests/[id]/page.js');
+  assert.match(page, /const drawingRows = requestVariantAskedOnly\(req\) \? surveyRequestDrawingSummary\(req\)\.rows : \{\};/);
+  assert.match(page, /methodTag: drawingRows\[z\.id\]\?\.chip \|\| null,/);
+  const fields = code('components/requests/SurveySiteFields.js');
+  const readOnly = fields.slice(fields.indexOf('if (readOnly) {'), fields.indexOf('return (', fields.indexOf('if (readOnly) {') + 400));
+  assert.match(readOnly, /<b>\{zoneName\(row\)\}<\/b>\n\s*<SurveyMethodChip label=\{row\.methodTag\} className=\{styles\.zoneTileMethod\} \/>/);
 });

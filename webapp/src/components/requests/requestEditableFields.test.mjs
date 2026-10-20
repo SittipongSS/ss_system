@@ -145,6 +145,10 @@ test('S4: resultDueHint แทนประโยคเดิมใต้วั�
     src,
     /\{resultDueHint \|\| "คนละวันกับวันที่เข้าพื้นที่ — วันนี้คือวันที่ต้องได้ตัวเลขไปเสนอราคา"\}/,
   );
+  // `false` = ไม่มีคำอธิบาย (ใบที่ทุกพื้นที่ประเมินจากแบบแล้ว · UAT S4 T11b) · null/undefined = ประโยคเดิม
+  assert.match(src, /\{resultDueHint !== false && \(\n\s*<small className=\{styles\.hint\}>/);
+  // คำอธิบายวันเข้า: ค่าว่าง = ไม่วาด (ค่าตั้งต้นใช้เมื่อไม่ส่งเท่านั้น)
+  assert.match(src, /\{dueHint && <small className=\{styles\.hint\}>\{dueHint\}<\/small>\}/);
 });
 
 test('S4: placeholder ของรายละเอียดเดินตามวิธีที่เลือก — อ่าน requestFormCopy(ทั้งใบ) ไม่ใช่ meta.form ของหัวข้อ', () => {

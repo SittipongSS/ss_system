@@ -28,6 +28,8 @@ import { businessDayKey, businessTimeKey } from '@/lib/datePeriods';
 import { fmtNumber, naText } from '@/lib/format';
 import { attachmentHref } from '@/lib/master/attachmentStorage';
 import { isPreviewableImage } from '@/lib/master/attachmentTypes';
+/* ผู้รับผิดชอบบนหัวงานจากแบบ = ตัวตัดสินกลางตัวเดียวกับหน้าคำร้อง (ยังไม่มอบหมาย → คนที่กดรับเรื่อง) — สองจอต้องเอ่ยชื่อเดียวกัน */
+import { requestAssignee } from '@/lib/requests/assign';
 import {
   SURVEY_DOC_PLAN,
   SURVEY_DOC_SPOT,
@@ -1741,7 +1743,7 @@ export function surveyJobHeaderView({
       ...(asked ? [{ key: 'asked', label: SURVEY_SALES_ASKED.label, value: SURVEY_SALES_ASKED.value }] : []),
       ...(deskOnly
         ? [
-          { key: 'assignee', label: 'ผู้รับผิดชอบ', value: naText(String(request?.assigneeName ?? '').trim()) },
+          { key: 'assignee', label: 'ผู้รับผิดชอบ', value: naText(requestAssignee(request).name) },
           { key: 'wantedResult', label: 'ผู้ขอต้องการผล', value: naText(dayText(dayKey(request?.requestedResultDate))) },
           { key: 'resultDate', label: SURVEY_METHOD_RESULT_DATE_LABEL, value: naText(dayText(dayKey(request?.committedResultDate))) },
         ]

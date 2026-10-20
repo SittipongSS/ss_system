@@ -282,6 +282,9 @@ export default function RequestForm({
   // ช่องไฟล์บังคับของรูปแบบที่เลือก (`{ docType, label, hint, accept, rejectText }`) · ฟอร์มวันเดียว
   const requiredSpec = requestRequiredFiles(value);
   const resultDateOnly = requestResultDateOnly(value);
+  /* ใบที่ส่งแล้วซึ่งทุกพื้นที่ติดป้าย "จากแบบ" (ป้ายวิธีปัจจุบันจากหน้าคำร้อง · ติดเฉพาะพื้นที่จากแบบ) = ไม่มีใครเข้าพื้นที่ */
+  const deskZonesOnly = variantAskedOnly && Array.isArray(value.zones) && value.zones.length > 0
+    && value.zones.every((zone) => !!zone?.methodTag);
   /* ⚠️ **สลับรูปแบบต้องไม่ทิ้งของที่พิมพ์ไปแล้วเงียบ ๆ** — ถามด้วยโมดัลของบ้านก่อน
      แล้วบอกให้ตรงว่าอะไรจะหาย (แพตเทิร์นเดียวกับ `switchMode` ของ PdrForm)
      ⭐ **ล้างเฉพาะฝั่งที่รูปแบบใหม่ไม่มีที่ให้อยู่** (ตารางรายการ) — ของ PDR ไม่ถูกลบ
@@ -746,7 +749,8 @@ export default function RequestForm({
             </div>
           ) : (
           <div className={requestVariantRequired(kind) ? `field ${styles.variantTiles}` : "field"}>
-            <label id="req-variant-label">{requestVariantFieldLabel(kind)}</label>
+            {/* `.field` ไม่ใช่ `.form-group` ⇒ กฎป้ายกลางไม่ถึง — ใส่หน้าตาป้ายช่องเดียวกันเอง (UAT S4 T01: ป้ายเคยใหญ่/เข้มกว่าช่องอื่น) */}
+            <label id="req-variant-label" className={styles.fieldLabel}>{requestVariantFieldLabel(kind)}</label>
             <OptionTiles
               value={requestVariantRequired(kind) ? (requestVariantChosen(value) || "") : variantKey}
               onChange={pickVariant}
@@ -764,7 +768,7 @@ export default function RequestForm({
             {variantLock ? (
               <small className={styles.hint}>{variantLock}</small>
             ) : variantNotice ? (
-              <StatusNotice tone="info">{variantNotice}</StatusNotice>
+              <StatusNotice tone="info" className={styles.variantNotice}>{variantNotice}</StatusNotice>
             ) : null}
           </div>
           )}
@@ -1358,9 +1362,13 @@ export default function RequestForm({
           showTime={needsSite && !resultDateOnly}
           /* วันที่สอง (วันส่งผล) — ทะเบียนหัวข้อเป็นคนบอกว่ามีหรือไม่มี */
           resultDueLabel={copy.resultDueLabel}
-          resultDueHint={resultDateOnly ? "หัวหน้า TS จะแจ้งวันส่งผลจริงหลังรับเรื่อง" : undefined}
+          /* 🔴 ใบที่ส่งแล้วซึ่งหัวหน้า TS สลับ **ทุกพื้นที่** เป็นประเมินจากแบบ (ทรง RQ-AS-26100312 · UAT S4 T11b) —
+             ไม่มีการเข้าพื้นที่แล้ว ⇒ คำอธิบายที่พูดถึงวันเข้า/การรับปากวันเข้า (ทั้งของเราและค่าตั้งต้นของคอมโพเนนต์)
+             ขัดกับป้าย "จากแบบ" ของรายการพื้นที่ข้างบน ⇒ ไม่วาดคำอธิบาย (`null` / `false` — `undefined` = ค่าตั้งต้น)
+             ⚠️ ป้ายมีเฉพาะใบที่ส่งแล้ว (`methodTag` ใส่โดยหน้าคำร้อง) · ร่าง/ใบที่ยังมีพื้นที่ลงหน้างาน = คำเดิม */
+          resultDueHint={resultDateOnly ? "หัวหน้า TS จะแจ้งวันส่งผลจริงหลังรับเรื่อง" : deskZonesOnly ? false : undefined}
           dueHint={needsSite
-            ? "เจ้าหน้าที่จะยืนยันวัน/เวลาจริงตอนกด \"แจ้งกำหนดส่ง\" — ใส่ช่วงที่อาคารเข้าได้จะช่วยให้ตรงรอบเดียว"
+            ? (deskZonesOnly ? null : "เจ้าหน้าที่จะยืนยันวัน/เวลาจริงตอนกด \"แจ้งกำหนดส่ง\" — ใส่ช่วงที่อาคารเข้าได้จะช่วยให้ตรงรอบเดียว")
             : undefined}
         />
 

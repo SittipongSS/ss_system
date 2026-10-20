@@ -261,12 +261,14 @@ export default function NewRequestPage() {
       if (id) {
         const uploadError = await uploadDraftFiles(id, form.requiredFiles, { docType: requiredSpec?.docType, onUploaded: remember("requiredFiles") })
           || await uploadDraftFiles(id, form.files, { onUploaded: remember("files") });
-        if (uploadError) setToast({ kind: "error", msg: `${uploadError} — แนบซ้ำได้ที่หน้ารายละเอียด` });
+        /* 🔴 ทักผ่านถาดกลาง (`notifyToast` อยู่ที่ layout) — Toast ของหน้านี้ตายไปพร้อมหน้าตอน router.push
+           ผู้ใช้เลยไม่เคยเห็นว่าไฟล์ไหนไม่เข้า (UAT S4 T07) · ค้าง 12 วิ ให้อ่านจบบนหน้ารายละเอียด */
+        if (uploadError) notifyToast.error(`${uploadError} — แนบซ้ำได้ที่หน้ารายละเอียด`, RESPONSE_WARNING_TOAST);
         router.push(`/requests/${id}`);
       }
     } catch (e) {
       if (createdId) {
-        setToast({ kind: "error", msg: `${e?.message || "แนบไฟล์ไม่สำเร็จ"} — แนบซ้ำได้ที่หน้ารายละเอียด` });
+        notifyToast.error(`${e?.message || "แนบไฟล์ไม่สำเร็จ"} — แนบซ้ำได้ที่หน้ารายละเอียด`, RESPONSE_WARNING_TOAST);
         router.push(`/requests/${createdId}`);
       } else {
         setToast({ kind: "error", msg: e?.message || "บันทึกร่างไม่สำเร็จ" });

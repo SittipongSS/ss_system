@@ -263,6 +263,6 @@ test('ยาม: confirmCopy ไม่เอ่ยชื่อหัวข้อ
   // หัวข้ออื่น: สองประโยคเดิมทุกตัวอักษร (O12)
   assert.match(copy, /`\$\{submitScope\(req\)\} → \$\{req\.dept\}`/);
   assert.match(copy, /`ระบบจะออกเลขที่และแจ้งฝ่ายปลายทางทันที — หลังส่งแล้วลบใบไม่ได้\$\{switchNote\}`/);
-  assert.match(copy, /const switchNote = variantLocks && req\.drawingMethodEnabled === true\n\s+\? ` · หลังส่งแล้วเปลี่ยน\$\{requestVariantFieldLabel\(req\.kind\)\}ได้ที่ฝ่ายบริการ \(หัวหน้า TS\)`\n\s+: "";/);
+  assert.match(copy, /const switchNote = variantLocks && req\.drawingMethodEnabled === true\n\s+\? `\\u00A0· หลังส่งแล้วเปลี่ยน\$\{requestVariantFieldLabel\(req\.kind\)\}ได้ที่ฝ่ายบริการ \(หัวหน้า TS\)`\n\s+: "";/);
   assert.match(copy, /description: variantLocks\n\s+\? `\$\{submitScope\(req\)\} · \$\{requestVariantLabel\(req\)\} → \$\{req\.dept\}`/);
 });

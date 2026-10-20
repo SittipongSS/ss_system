@@ -100,10 +100,13 @@ export default function ScheduleQueueCard({
         {row.who.sub && <span className={styles.muted}> · {row.who.sub}</span>}
       </p>
 
-      <p className={styles.line}>
-        <span>{row.siteLoadText || naText(null)}</span>
-        {row.dayLoad && <span className={toneOf(row.dayLoad.tone)}> · {row.dayLoad.text}</span>}
-      </p>
+      {/* งานโต๊ะ (`methodChip` มีเฉพาะใบนี้) ไม่มีบรรทัดภาระเลย — วันส่งผลอยู่บรรทัดวันแล้ว ไม่มีใครต้องไปหน้างาน ⇒ ไม่วาดขีดลอย ๆ (UAT S4 T13) */}
+      {!row.methodChip && (
+        <p className={styles.line}>
+          <span>{row.siteLoadText || naText(null)}</span>
+          {row.dayLoad && <span className={toneOf(row.dayLoad.tone)}> · {row.dayLoad.text}</span>}
+        </p>
+      )}
 
       <div className={styles.todo}>
         {row.ready && (
