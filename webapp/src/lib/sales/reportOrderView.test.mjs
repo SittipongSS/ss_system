@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
+  EMPTY_ORDER_FILTERS,
   ORDER_SORT_DIR,
   filterOrders,
   financeStateOf,
@@ -164,4 +166,70 @@ test('ประเภทธุรกิจ/ประเภทดีล: กร�
   const byLine = groupOrders(rows, 'line', { lineLabel: (l) => `สาย ${l}` });
   assert.deepEqual(byLine.map((g) => g.label), ['สาย SERVICE', 'ยังไม่ระบุประเภทธุรกิจ', 'สาย PRODUCT']);
   assert.deepEqual(groupOrders(rows, 'dealType').map((g) => g.label), ['RE-ORDER', 'ยังไม่ระบุประเภทดีล', 'SCENT']);
+});
+
+/* ── M14 (ตรวจตัวเลข 2026-10-20): ปุ่ม "8 ใบ" ในแยกยอด กดแล้วรายการต้องเหลือ 8 ใบ ─────────────────
+   🐞 เดิม openDrill ตั้งแค่ drill · คำค้น/ตัวกรองที่ค้างจากรอบก่อนกรองซ้อน ⇒ เหลือน้อยกว่าเลขบนปุ่ม
+      และบรรทัดเทียบยอด ✓/✗ ถูกซ่อน (ซ่อนเมื่อมีตัวกรองอื่น) */
+test('M14: กดยอด = ล้างคำค้น + ตัวกรองทั้งชุด ⇒ แถวในรายการ = เลขบนปุ่ม · บรรทัดเทียบยอดขึ้น', () => {
+  const rows = [
+    o({ id: 1, orderNumber: 'A', month: '2026-08', ownerId: 'u1', team: 'KA', amount: 100, financeStatus: 'approved' }),
+    o({ id: 2, orderNumber: 'B', month: '2026-09', ownerId: 'u1', team: 'SV', amount: 200, financeStatus: null }),
+    o({ id: 3, orderNumber: 'C', month: '2026-08', ownerId: null, team: null, amount: 50, free: true }),
+    o({ id: 4, orderNumber: 'D', month: '2026-08', ownerId: 'u2', team: null, amount: 70, line: 'SERVICE', dealType: 'NPD' }),
+    o({ id: 5, orderNumber: 'E', month: '2026-09', ownerId: 'u2', team: 'KA', amount: 30, customerName: 'ลูกค้า ข' }),
+  ];
+  const DRILLS = [
+    { kind: 'month', month: '2026-08' },
+    { kind: 'month', month: '2026-09' },
+    { kind: 'total', months: ['2026-08', '2026-09'] },
+    { kind: 'team', team: 'KA', months: ['2026-08', '2026-09'] },
+    { kind: 'team', team: null, months: ['2026-08'] },
+    { kind: 'person', ownerId: 'u1', team: 'SV', months: ['2026-09'] },
+    { kind: 'person', ownerId: 'u2', team: null, months: ['2026-08'] },
+  ];
+  const STALE = [
+    { q: 'ลูกค้า ข' }, { owners: ['u2'] }, { teams: [NONE_VALUE] }, { finance: ['pending'] },
+    { months: ['2026-09'] }, { kinds: ['free'] }, { lines: ['SERVICE'] }, { dealTypes: ['NPD'] },
+  ];
+  // ชุดว่างครบทุกกลุ่มที่ filterOrders รู้จัก (เพิ่มกลุ่มใหม่แล้วลืมใส่ = ของค้างหลุดรอด)
+  assert.deepEqual(Object.keys(EMPTY_ORDER_FILTERS).sort(), ['dealTypes', 'finance', 'kinds', 'lines', 'months', 'owners', 'teams']);
+  assert.equal(Object.isFrozen(EMPTY_ORDER_FILTERS), true);
+  assert.equal(activeFilterCount(EMPTY_ORDER_FILTERS), 0);
+  let sawBug = false;
+  for (const drill of DRILLS) {
+    const drilled = ordersForDrill(rows, drill);
+    const buttonCount = drilled.length; // GroupLens orderCountOf · MonthLens orderCount
+    for (const stale of STALE) {
+      // ของเดิม: drill + ตัวกรองค้าง
+      if (filterOrders(drilled, { ...EMPTY_ORDER_FILTERS, ...stale }).length !== buttonCount) sawBug = true;
+      // ตอนนี้ openDrill: q = '' + EMPTY_ORDER_FILTERS (แทนที่ทั้งชุด)
+      const shown = filterOrders(drilled, { q: '', ...EMPTY_ORDER_FILTERS });
+      assert.equal(shown.length, buttonCount, `${JSON.stringify(drill)} หลัง ${JSON.stringify(stale)}`);
+    }
+    // ไม่มีตัวกรองอื่น ⇒ บรรทัดเทียบยอดคิดจากชุดเดียวกับปุ่ม
+    const expected = drilled.reduce((sum, r) => sum + r.amount, 0);
+    assert.equal(drillCheck(expected, drilled).ok, true);
+  }
+  assert.ok(sawBug, 'ชุดทดสอบต้องจับบั๊กเดิมได้');
+});
+
+test('M14: หน้าล้างคำค้น + ตัวกรองก่อนตั้ง drill · OrdersPanel ไม่ถือ state สองตัวนี้เอง', () => {
+  const page = readFileSync(new URL('../../app/sales-planning/targets/report/page.js', import.meta.url), 'utf8');
+  const start = page.indexOf('const openDrill = useCallback(');
+  assert.ok(start > 0);
+  const body = page.slice(start, page.indexOf('}, [setOrderQ, setOrderFilters]);', start));
+  const iq = body.indexOf('setOrderQ("")');
+  const ifl = body.indexOf('setOrderFilters(EMPTY_FILTERS)');
+  const idr = body.indexOf('setDrill(next)');
+  assert.ok(iq > 0 && ifl > 0 && idr > 0, 'openDrill ต้องล้างคำค้น + ตัวกรอง แล้วค่อยตั้ง drill');
+  assert.ok(iq < idr && ifl < idr);
+  assert.match(page, /const EMPTY_FILTERS = EMPTY_ORDER_FILTERS;/);
+  // คีย์จำค่าเดิม (ผูก pathname) — ย้ายที่ถือ state แล้วค่าที่จำไว้ต้องไม่หาย
+  assert.match(page, /useStickyState\("q", ""\)/);
+  assert.match(page, /useStickyState\("filters", EMPTY_FILTERS\)/);
+  const panel = page.slice(page.indexOf('function OrdersPanel('));
+  assert.doesNotMatch(panel.slice(0, panel.indexOf('\n}\n')), /useStickyState\("(q|filters)"/, 'OrdersPanel ห้ามถือคำค้น/ตัวกรองเอง (หน้าล้างไม่ถึง)');
+  // ทุกปุ่มยอดใน "แยกยอด" เดินผ่าน openDrill ตัวเดียว
+  assert.match(page, /onDrill=\{openDrill\}/);
 });

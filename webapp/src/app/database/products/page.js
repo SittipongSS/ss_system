@@ -28,8 +28,8 @@ import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/A
 import useApprovalDecision from "@/components/database/useApprovalDecision";
 import { categoryOf, categoryFlags, categoryInfoOf } from "@/lib/master/categoryOf";
 import { categoryNameBoth } from "@/lib/master/productCategoryOptions";
-import { filterProducts, productCategoryCode, productCategoryLabel } from "@/lib/master/productFilter";
-import { isPendingApproval, pendingApprovalCount } from "@/lib/master/pendingApprovalLinks";
+import { filterProducts, productCategoryCode, productCategoryLabel, productFilterFacets, productStatCounts } from "@/lib/master/productFilter";
+import { isPendingApproval } from "@/lib/master/pendingApprovalLinks";
 import { missingRetailPriceProducts } from "@/lib/tax/taxableProducts";
 import {
   CODE_MODE_AUTO, DEFAULT_CODE_MODE, customerCodeSegment, fgCodeError,
@@ -313,21 +313,22 @@ export default function ProductRegistry() {
   };
 
   const q = search.trim().toLowerCase();
-  const counts = {
-    // ⚠️ ตัวนับเดียวกับป้ายเมนู/การ์ดภาพรวม และเท่าแถวของตัวกรอง "รออนุมัติ" (รวมใบเลิกใช้ · H3)
-    pending: pendingApprovalCount(products),
-    approved: products.filter((p) => approvalStatusOf(p) === "approved").length,
-    taxable: products.filter((p) => p.isExciseTaxable !== false).length,
-    inactive: products.filter((p) => p.isActive === false).length,
-  };
+  /* แถบตัวเลขข้างทะเบียน — แต่ละเลข = แถวหลังตั้งตัวกรองที่ตรงกัน (ตรวจตัวเลข M20b · `productStatCounts`)
+     ⚠️ "รออนุมัติ" ตัวนับเดียวกับป้ายเมนู/การ์ดภาพรวม และเท่าแถวของตัวกรอง "รออนุมัติ" (รวมใบเลิกใช้ · H3)
+     🐞 เดิม "ทั้งหมด" = products.length และ "อนุมัติแล้ว" รวมใบเลิกใช้ที่ทะเบียนซ่อน · "ต้องเสียภาษี" ใช้
+        `isExciseTaxable !== false` ซึ่งนับหมวดที่ไม่เสียภาษีเข้ามาด้วย */
+  const counts = useMemo(() => productStatCounts(products, productTypes), [products, productTypes]);
+  // มีใบเลิกใช้ในทะเบียนไหม — ตัดสินว่าตัวเลือก "รวมสินค้าที่เลิกใช้" ขึ้นหรือไม่ (เลขบนตัวเลือกมาจาก facets)
+  const inactiveInRegistry = products.some((p) => p.isActive === false);
   // registrationStatus แนบมาจาก server เฉพาะผู้ที่เห็นระบบภาษี (history:view) —
   // การมี field เป็นสัญญาณเปิดตัวกรอง "การขึ้นทะเบียน"; role อื่นไม่เห็นตัวกรองเลย
   const hasRegData = products.some((p) => p.registrationStatus !== undefined);
   /* ⭐ "ขาดราคาขายปลีก" ย้ายมาจากแท็บในหน้า /tax/reports ที่ถูกยุบทิ้ง (มติผู้ใช้ 2026-08-29)
      — รายการนี้เป็นข้อมูลของ **สินค้า** ไม่ใช่ของทะเบียน (สินค้าพวกนี้ยังไม่มีทะเบียน
      ด้วยซ้ำ เพราะยื่นไม่ได้จนกว่าจะเติมราคา) และการแก้คือมากดที่หน้านี้อยู่แล้ว
-     ⚠️ นับด้วยกฎเดียวกับที่ Excel ของโมดูลภาษีใช้ (`lib/tax/taxableProducts`) */
-  const missingPriceCount = useMemo(
+     ⚠️ นับด้วยกฎเดียวกับที่ Excel ของโมดูลภาษีใช้ (`lib/tax/taxableProducts`)
+     ⚠️ ตัวนี้ (ทั้งทะเบียน) ตัดสินแค่ว่าตัวเลือกขึ้นหรือไม่ — เลขบนตัวเลือกมาจาก `facets` (นับพร้อมตัวกรองอื่น) */
+  const missingPriceInRegistry = useMemo(
     () => missingRetailPriceProducts(
       products.map((p) => ({ ...p, categoryCode: productCategoryCode(p) })), productTypes,
     ).length,
@@ -336,10 +337,14 @@ export default function ProductRegistry() {
   /* ⚠️ ตัวกรองอยู่ที่ lib/master/productFilter ตัวเดียว — ปุ่ม "ส่งออก Excel" ส่ง
      ตัวกรองชุดนี้ไปให้ server แล้วกรองด้วยฟังก์ชันเดียวกัน ไฟล์จึงมีแถวเท่าที่ตาเห็น
      ถ้าย้ายตรรกะกลับมาเขียนสดตรงนี้ ไฟล์กับตารางจะเดินหนีกันเงียบ ๆ */
-  const filteredProducts = filterProducts(products, {
+  const filterState = {
     search: q, statuses: statusFilter, registrations: regFilter, showInactive, productTypes,
     missingRetailPrice: missingPrice,
-  });
+  };
+  const filteredProducts = filterProducts(products, filterState);
+  /* เลขบนตัวเลือก "ขาดราคาขายปลีก (n)" / "รวมสินค้าที่เลิกใช้ (n)" = แถวหลังติ๊ก / แถวที่เพิ่มขึ้นเมื่อติ๊ก
+     นับพร้อมคำค้นและตัวกรองอื่นที่ติดอยู่ ด้วย `filterProducts` ตัวเดียวกับตาราง (ตรวจตัวเลข M21a) */
+  const facets = productFilterFacets(products, filterState);
 
   // Pending records this user may approve — surfaced at the top as a queue.
   const approvalQueue = products.filter(canDecideRow);
@@ -442,17 +447,18 @@ export default function ProductRegistry() {
             ],
             selected: regFilter, onChange: setRegFilter,
           }] : []),
-          /* ⚠️ ขึ้นเฉพาะตอนมีของค้างจริง — ตัวกรองที่กดแล้วได้ 0 เสมอคือขยะบนแถบ
-             ⭐ ไม่มีราคาขายปลีก = ภาษีคิดออกมา 0 ⇒ ขายแล้วยื่นจะยื่นขาดโดยไม่มีอะไรฟ้อง */
-          ...(missingPriceCount > 0 ? [{
+          /* ⚠️ ขึ้นเฉพาะตอนทะเบียนมีของค้างจริง (หรือติ๊กค้างอยู่ ให้เอาออกได้) — ตัวกรองที่กดแล้วได้ 0 เสมอคือขยะบนแถบ
+             ⭐ ไม่มีราคาขายปลีก = ภาษีคิดออกมา 0 ⇒ ขายแล้วยื่นจะยื่นขาดโดยไม่มีอะไรฟ้อง
+             เลขในวงเล็บ = แถวที่เห็นหลังติ๊ก ภายใต้คำค้น/ตัวกรองอื่นที่ติดอยู่ (`facets` · M21a) */
+          ...(missingPriceInRegistry > 0 || missingPrice ? [{
             key: "missingPrice", label: "ราคาขายปลีก", icon: CircleDollarSign,
-            options: [{ value: "missing", label: `ขาดราคาขายปลีก (${missingPriceCount})` }],
+            options: [{ value: "missing", label: `ขาดราคาขายปลีก (${facets.missingPrice})` }],
             selected: missingPrice ? ["missing"] : [],
             onChange: (vals) => setMissingPrice(vals.includes("missing")),
           }] : []),
-          ...(counts.inactive > 0 ? [{
+          ...(inactiveInRegistry || showInactive ? [{
             key: "inactive", label: "ที่เลิกใช้", icon: Archive,
-            options: [{ value: "show", label: `รวมสินค้าที่เลิกใช้ (${counts.inactive})` }],
+            options: [{ value: "show", label: `รวมสินค้าที่เลิกใช้ (${facets.inactive})` }],
             selected: showInactive ? ["show"] : [],
             onChange: (vals) => setShowInactive(vals.includes("show")),
           }] : []),
@@ -476,7 +482,7 @@ export default function ProductRegistry() {
         <>
           <StatCards
             items={[
-              { label: "ทั้งหมด", value: products.length },
+              { label: "ทั้งหมด", value: counts.total },
               { label: "รออนุมัติ", value: counts.pending, tone: counts.pending ? "warn" : undefined },
               { label: "อนุมัติแล้ว", value: counts.approved, tone: "success" },
               /* is-accent ไม่มีกฎ CSS รองรับ (โทนตาย ไม่เคยติดสี) — เลขจำแนกประเภท

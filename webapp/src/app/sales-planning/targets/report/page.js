@@ -35,6 +35,7 @@ import { BUSINESS_LINES, businessLineLabel } from "@/lib/master/businessLines";
 import { DEAL_TYPES } from "@/lib/salesPlanning";
 import { PENDING_APPROVAL_LABEL } from "@/lib/sales/salesOrderWorkflow";
 import {
+  EMPTY_ORDER_FILTERS,
   FINANCE_STATE_BADGE,
   FINANCE_STATE_OPTIONS,
   NONE_VALUE,
@@ -81,7 +82,7 @@ const LENSES = [
   { value: "person", label: "ตามคน" },
 ];
 
-const EMPTY_FILTERS = { owners: [], teams: [], finance: [], months: [], kinds: [], lines: [], dealTypes: [] };
+const EMPTY_FILTERS = EMPTY_ORDER_FILTERS;
 
 /* ประเภทธุรกิจ/ประเภทดีลของดีลของใบ (มติผู้ใช้ 2026-09-22) — ป้ายกลางชุดเดียวกับหน้ารวมดีล
    ⚠️ ค่าว่างต้องเป็นขีด — `dealTypeBadge(null)` ตีเป็น NPD (normalizeDealType) จะโกหกว่าดีลเป็น NPD */
@@ -123,6 +124,10 @@ export default function SalesReportPage() {
   const { period, query, today: todayTh, thisMonth, setMode: setPeriodMode, setRange } = periodState;
   const [lens, setLens] = useStickyState("lens", "month");
   const [drill, setDrill] = useState(null);
+  /* คำค้น + ตัวกรองของรายการใบอยู่ที่หน้า ไม่ใช่ใน OrdersPanel — กดยอดใน "แยกยอด" ต้องล้างสองตัวนี้ได้
+     (ตรวจตัวเลข M14 · 2026-10-20) · คีย์จำค่าเดิม ("q" / "filters" ผูก pathname) ค่าที่จำไว้จึงไม่หาย */
+  const [orderQ, setOrderQ] = useStickyState("q", "");
+  const [orderFilters, setOrderFilters] = useStickyState("filters", EMPTY_FILTERS);
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -170,13 +175,18 @@ export default function SalesReportPage() {
   const breakdownRef = useRef(null);
   const chipRef = useRef(null);
 
+  /* ⭐ กดยอด = รายการเหลือ **ใบของยอดนั้นพอดี** (หัวไฟล์: "กรองรายการใบให้เหลือใบของยอดนั้น")
+     🐞 เดิมตั้งแค่ drill ⇒ คำค้น/ตัวกรองที่ค้างจากรอบก่อนยังกรองซ้อน — ปุ่ม "8 ใบ" กดแล้วเหลือ 3 และบรรทัดเทียบยอด
+        ✓/✗ ถูกซ่อนเงียบ (ซ่อนเมื่อมีตัวกรองอื่น) ⇒ ล้างทั้งคู่ก่อนเจาะเสมอ (ตรวจตัวเลข M14 · 2026-10-20) */
   const openDrill = useCallback((next) => {
+    setOrderQ("");
+    setOrderFilters(EMPTY_FILTERS);
     setDrill(next);
     requestAnimationFrame(() => {
       ordersRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       chipRef.current?.focus({ preventScroll: true });
     });
-  }, []);
+  }, [setOrderQ, setOrderFilters]);
 
   const switchToRange = useCallback((from, to) => {
     setPeriodMode("range");
@@ -285,6 +295,10 @@ export default function SalesReportPage() {
             drill={drill}
             onClearDrill={() => setDrill(null)}
             chipRef={chipRef}
+            q={orderQ}
+            setQ={setOrderQ}
+            filters={orderFilters}
+            setFilters={setOrderFilters}
           />
         </div>
       </div>
@@ -932,10 +946,8 @@ function PendingPanel({ pendingApproval }) {
    ⭐ กางทันที แบ่งหน้า 10 แถว (แทนด่าน "กดค้นหาก่อน" ของ 2026-08-27) · ค้นหา/กรองมีผลทันที
    ⚠️ ใบทั้งงวดมากับ response อยู่แล้ว การกรองจึงทำในหน้า — ตัวเลขตรงกับสรุปด้านบนเสมอเพราะมาจากก้อนเดียวกัน
    ⭐ กดขายจริงในตาราง "แยกยอด" = ชิป "จากแยกยอด: …" + บรรทัดเทียบยอด ✓/✗ */
-function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDrill, chipRef }) {
+function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDrill, chipRef, q, setQ, filters, setFilters }) {
   const teamRegistry = useSalesTeams();
-  const [q, setQ] = useStickyState("q", "");
-  const [filters, setFilters] = useStickyState("filters", EMPTY_FILTERS);
   const [groupBy, setGroupBy] = useStickyState("groupBy", "none");
   const [sortKey, setSortKey] = useStickyState("sortKey", ORDER_SORT_DEFAULT);
   const [sortDir, setSortDir] = useStickyState("sortDir", ORDER_SORT_DIR[ORDER_SORT_DEFAULT]);

@@ -14,14 +14,21 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const route = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'route.js'), 'utf8');
+/* ⭐ นิยามขอบเขตย้ายไป `lib/pm/taskScope.js` (ตรวจตัวเลข M8b · 20/10/2026) — ป้าย "ค้าง n" บนหน้าดีลนับด้วยตัวโหลดเดียวกัน
+   ⇒ ยามของสาขา projectId/dealId ตามไปล็อกที่ไฟล์นั้น · route ต้องเรียกตัวโหลดนั้น ไม่ใช่เขียนขอบเขตเองอีกชุด */
+const scopeLib = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../../../lib/pm/taskScope.js'), 'utf8');
 
 test('my-work scope=team: ต้องดึงทั้งทาง projectId และ dealId', () => {
-  assert.match(route, /queries\.push\(\(q\) => q\.in\('projectId', teamProjIds\)\)/,
+  assert.match(scopeLib, /clauses\.push\(\['projectId', teamProjIds\]\)/,
     'งานของโครงการในทีมต้องยังติดมาเหมือนเดิม');
-  assert.match(route, /queries\.push\(\(q\) => q\.in\('dealId', teamDealIds\)\)/,
+  assert.match(scopeLib, /clauses\.push\(\['dealId', teamDealIds\]\)/,
     'งานลอยของดีลในทีมต้องติดมาด้วย');
-  assert.match(route, /whereTeamIn\(supabase\.from\('sales_deals'\)\.select\('id'\), user\)/,
-    'ลิสต์ดีลของทีมต้องมาจากตัวกรองทีมกลาง ไม่ใช่เงื่อนไขที่เขียนเองในไฟล์นี้');
+  assert.match(scopeLib, /whereTeamIn\(supabase\.from\('sales_deals'\)\.select\('id'\), user\)/,
+    'ลิสต์ดีลของทีมต้องมาจากตัวกรองทีมกลาง ไม่ใช่เงื่อนไขที่เขียนเอง');
+  assert.match(route, /const clauses = await loadTaskScopeClauses\(supabase, user, scope\);/,
+    'route ต้องโหลดขอบเขตจากตัวกลาง — ตัวเดียวกับป้าย "ค้าง n" บนหน้าดีล');
+  assert.match(route, /allPersonal\(supabase, whereForTaskClause\(clause\)\)/);
+  assert.doesNotMatch(route, /whereTeamIn\(/, 'ห้ามเขียนขอบเขตทีมซ้ำในไฟล์นี้ — สองสำเนาเพี้ยนหากันวันหนึ่ง');
 });
 
 test('my-work scope=team: ผลจากหลายสาขาต้อง dedupe ก่อนส่งออก', () => {

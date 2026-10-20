@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   poDeliveryOptions, poDisplayStatus, poMatchesDelivery, poRollupStatus, poStatusOptions, PO_STATUS_LABEL,
+  poMatchesSearch, poLineMatchesSearch, poTableLines, poLineDisplayStatus, poMatchesPoFilters,
 } from './po.js';
 
 const po = (poNumber, lineStatuses) => ({
@@ -121,4 +122,131 @@ test('🔴 หน้า /sahamit/po: ป้าย ตัวกรอง แล�
   assert.match(page, /const filterCount = statusSel\.length \+ deliverySel\.length \+ destSel\.length;/);
   assert.match(page, /setDeliverySel\(\[\]\)/);
   assert.match(page, /\$\{deliverySel\.join\(","\)\}/);
+});
+
+/* ── M24a (ตรวจตัวเลข 20/10): คำค้นตัวเดียวของสองมุมมอง ─────────────────────────────────────────────────
+   🐞 กองคำค้นของบรรทัด (มุมมองตาราง) ไม่มีสถานที่ส่ง ⇒ ค้น "บางปะกง" หัวบอก "แสดง N จาก 112 ใบ" แต่ตารางว่าง */
+
+const DEST = { bangpakong: 'บางปะกง', photharam: 'โพธาราม', khonkaen: 'ขอนแก่น' };
+const destLabel = (k) => DEST[k] || null;
+const prodIdx = new Map([['fg-001', { name: 'น้ำหอมลาเวนเดอร์' }], ['fg-002', { name: 'สเปรย์มะลิ' }]]);
+const searchOpts = { destLabel, prodIdx };
+const sPos = [
+  { id: 'A', poNumber: 'PO-2601', destination: 'bangpakong', lines: [
+    { id: 'A1', fgCode: 'FG-001', productName: 'Lavender', status: 'open' },
+    { id: 'A2', fgCode: 'FG-002', productName: null, status: 'produced' },
+  ] },
+  { id: 'B', poNumber: 'PO-2602', destination: 'photharam', lines: [
+    { id: 'B1', fgCode: 'FG-002', productName: 'Jasmine', status: 'delivered' },
+  ] },
+  { id: 'C', poNumber: 'PO-2603', destination: null, lines: [
+    { id: 'C1', fgCode: 'FG-009', productName: 'Rose', status: 'cancelled' },
+  ] },
+];
+// ทรงของหน้า: grouped = poMatchesSearch · ตาราง = poTableLines (ไม่มีตัวกรองอื่น)
+const groupedIds = (needle) => sPos.filter((p) => poMatchesSearch(p, needle, searchOpts)).map((p) => p.id);
+const tablePoIds = (needle) => [...new Set(poTableLines(sPos, { needle, ...searchOpts }).map((r) => r.po.id))];
+
+test('🔴 M24a: ทุกคำค้น (เลข PO · FG · สถานที่ส่ง · ชื่อสินค้า) — ใบที่หัวนับ = ใบที่มีแถวในตาราง', () => {
+  for (const needle of ['po-2601', 'fg-002', 'บางปะกง', 'โพธาราม', 'ลาเวนเดอร์', 'jasmine', 'rose', '26', 'ไม่มีคำนี้', '']) {
+    assert.deepEqual(tablePoIds(needle), groupedIds(needle), `คำค้น "${needle}"`);
+  }
+  // 🐞 ของเดิม: สถานที่ส่งอยู่แค่ในกองของใบ — ตารางว่างทั้งที่หัวบอก 1 ใบ
+  assert.deepEqual(groupedIds('บางปะกง'), ['A']);
+  assert.equal(poTableLines(sPos, { needle: 'บางปะกง', ...searchOpts }).length, 2, 'ทุกบรรทัดของใบปลายทางนั้น');
+});
+
+test('M24a: คำค้นระดับบรรทัดเลือกเฉพาะบรรทัดที่ตรง (ใบยังนับ เพราะมีอย่างน้อยหนึ่งบรรทัด)', () => {
+  const rows = poTableLines(sPos, { needle: 'ลาเวนเดอร์', ...searchOpts });
+  assert.deepEqual(rows.map((r) => r.line.id), ['A1']);
+  assert.ok(poLineMatchesSearch(sPos[0], sPos[0].lines[1], 'po-2601', searchOpts), 'เลขที่ใบอยู่ในกองของทุกบรรทัด');
+  assert.ok(!poLineMatchesSearch(sPos[0], sPos[0].lines[1], 'ลาเวนเดอร์', searchOpts));
+});
+
+/* ── M24a2: มุมมองตาราง — ป้าย ตัวกรอง และการเรียงใช้สถานะของบรรทัด ── */
+const sMat = new Map([
+  ['A1', { poLineId: 'A1', status: 'open', tracking: null }],
+  ['A2', { poLineId: 'A2', status: 'produced', tracking: { pmArrivedAt: '2026-10-01', rmArrivedAt: '2026-10-01' } }],
+  ['B1', { poLineId: 'B1', status: 'delivered', tracking: null }],
+]);
+const lineStatusOf = (l) => poLineDisplayStatus(l, sMat.get(l.id));
+
+test('🔴 M24a2: ป้ายของบรรทัด = ขั้นผลิตจากแถววัสดุ · ไม่มีแถววัสดุ = ขั้นที่กดเดินเอง หรือสถานะส่งของ', () => {
+  assert.deepEqual(Object.fromEntries(sPos.flatMap((p) => p.lines).map((l) => [l.id, lineStatusOf(l).label])), {
+    A1: 'รอวัสดุ', A2: 'ผลิตเสร็จ', B1: 'ส่งแล้ว', C1: 'ยกเลิก',
+  });
+  /* สายวัสดุล้ม (ไม่มีแถววัสดุ):
+     · 3 ขั้นที่กดเดินเอง (เก็บบนบรรทัด) ⇒ คำขั้นผลิตตัวเดียวกับตอนมีแถววัสดุ — ไม่ขึ้น "รอส่ง" ให้บรรทัดที่ปิดงานแล้ว
+       🐞 (รีวิว 20/10) รุ่นแรกของ M24a2 ถอยทุกค่าไป poRollupStatus ⇒ closed/produced = "รอส่ง"
+     · open/partial/cancelled ⇒ คำของ PO_STATUS_LABEL ตรงกับป้ายของใบบรรทัดเดียวที่ถอยแบบเดียวกัน */
+  const fallback = (status) => poLineDisplayStatus({ id: 'X', fgCode: 'FG-1', status }, null).label;
+  assert.deepEqual(Object.fromEntries(['open', 'partial', 'produced', 'delivered', 'closed', 'cancelled'].map((s) => [s, fallback(s)])), {
+    open: 'รอส่ง', partial: 'ส่งบางส่วน', produced: 'ผลิตเสร็จ', delivered: 'ส่งแล้ว', closed: 'ปิดงาน', cancelled: 'ยกเลิก',
+  });
+  for (const status of ['produced', 'delivered', 'closed']) {
+    const withMaterial = poLineDisplayStatus({ id: 'X', status }, { poLineId: 'X', status, tracking: null });
+    assert.deepEqual(poLineDisplayStatus({ id: 'X', status }, null), withMaterial, `${status}: คำไม่ขึ้นกับสายวัสดุ`);
+  }
+  for (const status of ['open', 'partial', 'cancelled']) {
+    const single = { id: 'P', poNumber: 'PO-1', lines: [{ id: 'X', fgCode: 'FG-1', status }] };
+    assert.equal(poLineDisplayStatus(single.lines[0], null).label, poDisplayStatus(single, []).label, status);
+  }
+});
+
+test('🔴 M24a2: สายวัสดุล้ม — มุมมองตารางยังได้แถวที่ป้ายเขียนคำที่เลือกทุกแถว', () => {
+  const blockedOf = (l) => poLineDisplayStatus(l, undefined);   // matByLineId ว่าง (ไม่เคยโหลดสำเร็จ)
+  const options = poStatusOptions(poTableLines(sPos, { lineStatusOf: blockedOf }).map((r) => r.status));
+  assert.deepEqual(options.map((o) => o.label), ['ผลิตเสร็จ', 'ส่งแล้ว', 'รอส่ง', 'ยกเลิก']);
+  for (const option of options) {
+    const rows = poTableLines(sPos, { statusSel: [option.value], lineStatusOf: blockedOf });
+    assert.ok(rows.length > 0, option.label);
+    assert.ok(rows.every((r) => r.status.label === option.label), `${option.label}: ทุกแถวต้องมีป้ายคำนั้น`);
+  }
+});
+
+test('🔴 M24a2: มุมมองตาราง เลือกคำไหน ได้แถวที่ป้ายเขียนคำนั้นทุกแถว (และไม่มีตัวเลือกที่ได้ 0 แถว)', () => {
+  const all = poTableLines(sPos, { lineStatusOf });
+  const options = poStatusOptions(all.map((r) => r.status));
+  assert.deepEqual(options.map((o) => o.label), ['รอวัสดุ', 'ผลิตเสร็จ', 'ส่งแล้ว', 'ยกเลิก']);
+  for (const option of options) {
+    const rows = poTableLines(sPos, { statusSel: [option.value], lineStatusOf });
+    assert.ok(rows.length > 0, option.label);
+    assert.ok(rows.every((r) => r.status.label === option.label), `${option.label}: ทุกแถวต้องมีป้ายคำนั้น`);
+  }
+  // 🐞 ของเดิม: กรองที่ระดับใบ (ใบ A = "รอวัสดุ") แล้ววาดทุกบรรทัด ⇒ บรรทัด A2 "ผลิตเสร็จ" ติดมาด้วย
+  assert.equal(poDisplayStatus(sPos[0], [...sMat.values()].filter((r) => r.poLineId.startsWith('A'))).label, 'รอวัสดุ');
+  assert.deepEqual(poTableLines(sPos, { statusSel: ['รอวัสดุ'], lineStatusOf }).map((r) => r.line.id), ['A1']);
+});
+
+test('M24a2: ตัวกรองระดับใบ (การส่งของ · สถานที่ส่ง) ใช้ตัวเดียวกันทั้งสองมุมมอง', () => {
+  assert.deepEqual(poTableLines(sPos, { destSel: ['photharam'], lineStatusOf }).map((r) => r.line.id), ['B1']);
+  assert.deepEqual(poTableLines(sPos, { deliverySel: ['cancelled'], lineStatusOf }).map((r) => r.line.id), ['C1']);
+  assert.ok(poMatchesPoFilters(sPos[0], {}), 'ไม่เลือกอะไร = ผ่าน');
+});
+
+test('🔴 หน้า /sahamit/po มุมมองตาราง: แถว/หัว/ป้ายมาจาก poTableLines + poLineDisplayStatus ตัวเดียว', () => {
+  const live = (source) => source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/^\s*\/\/.*$/gm, '');
+  const page = live(readFileSync(new URL('../../app/sahamit/po/page.js', import.meta.url), 'utf8'));
+  assert.match(page, /if \(!poMatchesSearch\(po, q, searchOpts\)\) return false;/, 'มุมมองรายใบค้นผ่าน poMatchesSearch');
+  assert.match(page, /poTableLines\(pos, \{ needle: q, statusSel, deliverySel, destSel, lineStatusOf, \.\.\.searchOpts \}\)/);
+  assert.match(page, /const lineStatusOf = useCallback\(\(l\) => poLineDisplayStatus\(l, matByLineId\.get\(l\.id\)\), \[matByLineId\]\);/);
+  assert.match(page, /<PoLinesTable lines=\{tableLines\}/, 'ตารางวาดจากชุดเดียวกับที่หัวนับ');
+  assert.match(page, /แสดง \$\{tablePoCount\} จาก \$\{pos\.length\} ใบ · \$\{tableLines\.length\} รายการ/);
+  assert.match(page, /\{r\.status\.label\}/, 'ป้ายในตารางเป็นคำของ poLineDisplayStatus');
+  assert.match(page, /status: PO_DISPLAY_STATUS_ORDER\.indexOf\(r\.status\.key\)/, 'การเรียงสถานะใช้คีย์เดียวกับป้าย');
+  assert.doesNotMatch(page, /const hay = \[/, 'ห้ามมีกองคำค้นชุดที่สองบนหน้า');
+  assert.doesNotMatch(page, /lineStatusLabel\(/, 'ห้ามกลับไปอ่าน l.status ดิบเป็นป้าย');
+});
+
+/* ── M23 (ตรวจตัวเลข 20/10): แถว "PO ที่ต้องการการติดตาม" ของภาพรวม /sahamit ──────────────────────────────
+   🐞 แถวพาไป `/sahamit/po?q=เลขที่` แต่หน้า PO ไม่อ่าน `?q=` เลย ⇒ กดแถวแล้วได้รายการทั้งหมด ไม่ใช่ใบที่กด
+   ⭐ แถวเดียว = ใบเดียว ⇒ พาไปหน้า PO ใบนั้น (href ของแถวกับลิงก์ในเซลล์ตรงกันตัวอักษร — ROW_MIRROR) */
+test('🔴 M23: แถวติดตามบนภาพรวม /sahamit เปิดหน้า PO ใบนั้น ไม่ใช่ ?q= ที่ปลายทางไม่อ่าน', () => {
+  const live = (source) => source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/^\s*\/\/.*$/gm, '');
+  const dashboard = live(readFileSync(new URL('../../app/sahamit/page.js', import.meta.url), 'utf8'));
+  assert.match(dashboard, /<DetailRow key=\{p\.id\} href=\{`\/sahamit\/po\/\$\{p\.id\}`\}/);
+  assert.match(dashboard, /<Link\s+href=\{`\/sahamit\/po\/\$\{p\.id\}`\}/);
+  assert.doesNotMatch(dashboard, /\/sahamit\/po\?q=/);
+  const poList = readFileSync(new URL('../../app/sahamit/po/page.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(poList, /useSearchParams/, 'ถ้าหน้า PO เริ่มอ่าน ?q= เมื่อไร ทบทวนมติข้อนี้ (q จับได้หลายใบ)');
 });

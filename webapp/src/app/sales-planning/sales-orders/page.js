@@ -376,6 +376,19 @@ export default function SalesOrdersPage() {
   const queueSortAuto = serviceSetupPendingOnly && sortKey === SORT_DEFAULT && !queueSortChosen;
   const activeSortKey = queueSortAuto ? SERVICE_QUEUE_SORT : sortKey;
   const activeSortDir = queueSortAuto ? sortDirOf(SERVICE_QUEUE_SORT) : sortDir;
+  /* ⭐ เปิดชิป "ยังไม่ตั้งงานบริการ n" = **ล้างตัวกรองอื่นทุกตัว รวม "รอฉันลงมือ"** (มติเจ้าของ 20/10 · ตรวจตัวเลข M15)
+     เลขบนชิปคงที่ (นับจาก `rows` ทั้งหมด · มติ 08/10) ⇒ กดแล้วตารางต้องเหลือเท่าเลขนั้นพอดี
+     🐞 เดิมสลับธงอย่างเดียว ⇒ มุมมองสินค้า · สถานะ=รออนุมัติ · ที่มา=ย้อนหลัง · คำค้นที่ค้าง ทำให้ได้ 0 แถวทั้งที่ชิปบอก 59
+     · ทุกใบของคิวนี้อนุมัติแล้วและอยู่สาย SERVICE (`serviceBackfillNeeded`) ⇒ มุมมอง "ทุกสาย"/"บริการ" เห็นครบ · "สินค้า" สลับไปบริการ
+     · อยากดูเฉพาะของตัวเอง = ติ๊ก "รอฉันลงมือ" ตามทีหลัง · ปิดชิป = ถอดธงเฉย ๆ (ไม่คืนตัวกรองเดิม) */
+  const toggleServiceSetupPending = () => {
+    setQueueSortChosen(false);
+    if (serviceSetupPendingOnly) { setServiceSetupPendingOnly(false); return; }
+    setQuery(""); setStatusFilter([]); setPaymentFilter([]); setInvoiceFilter([]); setOriginFilter([]);
+    setWaitingOnMeOnly(false);
+    if (lineView === "PRODUCT") setLineView("SERVICE");
+    setServiceSetupPendingOnly(true);
+  };
   const [collapsed, setCollapsed] = useState(() => new Set());
 
   const filtered = useMemo(() => {
@@ -710,7 +723,7 @@ export default function SalesOrdersPage() {
               onChange={setLineView}
             />
             {/* ⭐ ชิป "ยังไม่ตั้งงานบริการ n" (mig 0392 · D26 · ม็อก BackfillApproveModal) — ติดท้ายมุมมองสาย · ขึ้นเมื่อมีของ
-                หรือกำลังเปิดอยู่ (ซ่อนตอนเปิด = ปิดไม่ได้) · กดซ้ำ = ถอด · ปุ่มตัวกรองล้างให้ด้วย */}
+                หรือกำลังเปิดอยู่ (ซ่อนตอนเปิด = ปิดไม่ได้) · เปิด = ล้างตัวกรองอื่นทั้งหมด (M15) · กดซ้ำ = ถอด · ปุ่มตัวกรองล้างให้ด้วย */}
             {(serviceSetupPendingCount > 0 || serviceSetupPendingOnly) && (
               <Button
                 size="sm"
@@ -719,7 +732,7 @@ export default function SalesOrdersPage() {
                 icon={<Repeat size={14} aria-hidden="true" />}
                 aria-pressed={serviceSetupPendingOnly}
                 title="ใบที่อนุมัติแล้วแต่ยังไม่ได้ตั้งแพ็คเกจ · โซน · รอบ · ช่วงบริการ — ฝ่ายขายตั้งย้อนหลังที่หน้าใบ แล้วยื่นให้ผู้จัดการตรวจ"
-                onClick={() => { setServiceSetupPendingOnly((on) => !on); setQueueSortChosen(false); }}
+                onClick={toggleServiceSetupPending}
               >
                 ยังไม่ตั้งงานบริการ
                 <CountBadge count={serviceSetupPendingCount} label="ใบที่ยังไม่ตั้งงานบริการ" />

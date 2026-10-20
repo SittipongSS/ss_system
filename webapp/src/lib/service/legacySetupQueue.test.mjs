@@ -10,9 +10,11 @@ import {
   LEGACY_SETUP_SELECT_ERROR,
   legacySetupFilterCounts,
   legacySetupHaystack,
+  legacySetupMatchesFilter,
   legacySetupQueue,
   legacySetupStatusView,
 } from './legacySetupQueue.js';
+import { readFileSync } from 'node:fs';
 import { ORIGIN_HISTORICAL } from '../sales/historicalOrders.js';
 
 const dealsById = new Map([
@@ -496,4 +498,48 @@ test('0404: ผู้จัดการอนุมัติแล้ว (ปร
   const [later] = run({ orders: [so(deferredLater)], lines: [manual()] }).rows;
   assert.deepEqual([later.reopened, later.deferred?.stage], [null, 'approved']);
   assert.equal(legacySetupStatusView(later).label, 'ข้ามตอนยื่น · ยังไม่เริ่ม');
+});
+
+/* ── M24h (ตรวจตัวเลข 20/10): เลขบนตัวกรองสถานะ = แถวที่ขึ้นเมื่อกด (นับพร้อมคำค้น) ─────────────────────────────
+   🐞 เดิมเลขบนปุ่มนับจากแถวทั้งหมด (ก่อนค้นหา) ⇒ ค้นแล้วปุ่ม "ตีกลับ 5" กดแล้วขึ้น 1 ใบ · สลับแท็บแล้วคำค้น/ตัวกรองค้าง
+      ⇒ เลขบนแท็บ (ทุกใบ) ≠ แถวที่เห็น */
+const legacyRowsForCount = [
+  { code: 'SO-A', customerName: 'โออิชิ', state: 'not_started' },
+  { code: 'SO-B', customerName: 'โออิชิ', state: 'editing' },
+  { code: 'SO-C', customerName: 'เซ็นทรัล', state: 'editing' },
+  { code: 'SO-D', customerName: 'เซ็นทรัล', state: 'submitted', submitted: { zones: 1, sites: 1, packsPerRound: 2 } },
+  { code: 'SO-E', customerName: 'โออิชิ', state: 'rejected', rejected: { reason: 'ขาดโซน' } },
+  { code: 'SO-F', customerName: 'ไทยเบฟ', state: 'rejected', rejected: { reason: 'ขาดสาขา' } },
+];
+// ทางเดียวกับหน้า: ค้นครั้งเดียว (`legacySearched`) → ตัวนับ + แถวของปุ่ม ออกจากชุดเดียวกัน
+const searchLegacy = (rows, needle) => (needle ? rows.filter((row) => legacySetupHaystack(row).includes(needle)) : rows);
+
+test('🔴 M24h: ทุกคำค้น · ทุกปุ่มสถานะ — เลขบนปุ่ม = แถวที่ขึ้นเมื่อกดปุ่มนั้น', () => {
+  for (const needle of ['', 'โออิชิ', 'เซ็นทรัล', 'ตีกลับ', 'so-f', 'ไม่มีคำนี้']) {
+    const searched = searchLegacy(legacyRowsForCount, needle);
+    const counts = legacySetupFilterCounts(searched);
+    for (const key of LEGACY_SETUP_FILTERS) {
+      assert.equal(counts[key], searched.filter((row) => legacySetupMatchesFilter(row, key)).length, `"${needle}" → ${key}`);
+    }
+    assert.equal(counts.all, searched.length, `"${needle}": ทุกสถานะ = แถวทั้งหมดหลังค้นหา`);
+  }
+  // ของที่ตรวจเจอ: ค้น "โออิชิ" ⇒ ปุ่ม "ตีกลับ" เดิมบอก 2 (ทุกใบ) แต่กดแล้วขึ้น 1
+  assert.equal(legacySetupFilterCounts(legacyRowsForCount).rejected, 2);
+  assert.equal(legacySetupFilterCounts(searchLegacy(legacyRowsForCount, 'โออิชิ')).rejected, 1);
+  // ไม่ระบุตัวกรอง = ทุกแถว (ทรงเดียวกับ 'all')
+  assert.equal(legacySetupMatchesFilter({ state: 'editing' }, undefined), true);
+});
+
+test('🔴 M24h: หน้างานเข้าใหม่ — ตัวนับ/แถวออกจากชุดหลังค้นหาชุดเดียว · สลับแท็บล้างคำค้นและตัวกรองสถานะ', () => {
+  const live = (source) => source.replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const page = live(readFileSync(new URL('../../app/service/intake/page.js', import.meta.url), 'utf8'));
+  assert.match(page, /const legacySearched = useMemo\(\s*\(\) => \(needle \? legacyRows\.filter\(\(row\) => legacySetupHaystack\(row\)\.includes\(needle\)\) : legacyRows\),/);
+  assert.match(page, /const legacyCounts = useMemo\(\(\) => legacySetupFilterCounts\(legacySearched\), \[legacySearched\]\);/);
+  assert.match(page, /return legacySearched\.filter\(\(row\) => legacySetupMatchesFilter\(row, legacyFilter\)\);/);
+  assert.doesNotMatch(page, /legacySetupFilterCounts\(legacyRows\)/, 'ห้ามนับจากแถวก่อนค้นหา');
+  const pickTab = page.match(/const pickTab = useCallback\(\(key\) => \{[\s\S]*?\}, \[\]\);/)?.[0] || '';
+  assert.match(pickTab, /setTab\(key\);/);
+  assert.match(pickTab, /setSearch\(""\);/);
+  assert.match(pickTab, /setLegacyFilter\("all"\);/);
+  assert.match(page, /<Tabs\s+value=\{tab\}\s+onChange=\{pickTab\}/);
 });

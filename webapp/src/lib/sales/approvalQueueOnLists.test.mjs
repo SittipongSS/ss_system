@@ -6,8 +6,9 @@ import { fileURLToPath } from 'node:url';
 import { isQuotationAwaitingMyApproval, isQuotationWaitingOnMe } from './quotationWorkflow.js';
 import { isSalesOrderWaitingOnMe } from './salesOrderWorkflow.js';
 import { isSalesOrderSelfApproval } from './salesOrderApprovalOverride.js';
-import { serviceBackfillAwaitingReview } from './serviceSetup.js';
+import { serviceBackfillAwaitingReview, serviceBackfillNeeded } from './serviceSetup.js';
 import { SERVICE_BACKFILL_AGING_TEXT } from './serviceBackfillAging.js';
+import { EMPTY_QUOTATION_FILTERS } from './quotationListFilter.js';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (rel) => readFileSync(join(SRC, rel), 'utf8');
@@ -246,8 +247,11 @@ test('⭐ ชิป "ยังไม่ตั้งงานบริการ n
   assert.match(block, /<Button\b/);
   assert.match(block, /size="sm"/);
   /* ผลตรวจทาน 08/10 ("ตามงานค้าง"): เปิด/ปิดชิป = เข้า/ออกคิวงานบริการ ⇒ สลับค่าเดิม + ล้างธง "ผู้ใช้เลือกแบบเรียงเองระหว่างดูคิว"
-     (คิวเปิดมาเรียงค้างนานสุดก่อน — ยามของเรื่องนั้นอยู่ท้ายไฟล์) · การสลับยังเป็นนิพจน์เดิม */
-  assert.match(block, /onClick=\{\(\) => \{ setServiceSetupPendingOnly\(\(on\) => !on\); setQueueSortChosen\(false\); \}\}/);
+     (คิวเปิดมาเรียงค้างนานสุดก่อน — ยามของเรื่องนั้นอยู่ท้ายไฟล์) · ตั้งแต่ 20/10 (M15) เปิดชิปล้างตัวกรองอื่นด้วย — ยามอยู่เทสต์ M15 ถัดไป */
+  assert.match(block, /onClick=\{toggleServiceSetupPending\}/);
+  const toggle = slice(page, 'const toggleServiceSetupPending = () => {', '\n  };');
+  assert.match(toggle, /^\s*const toggleServiceSetupPending = \(\) => \{\s*setQueueSortChosen\(false\);/, 'เปิด/ปิด = เริ่มนับการเลือกแบบเรียงใหม่');
+  assert.match(toggle, /if \(serviceSetupPendingOnly\) \{ setServiceSetupPendingOnly\(false\); return; \}/, 'ปิด = ถอดธงเฉย ๆ');
   assert.match(block, /ยังไม่ตั้งงานบริการ/);
   assert.match(block, /<CountBadge count=\{serviceSetupPendingCount\}/);
   assert.match(page, /import CountBadge from "@\/components\/ui\/CountBadge";/);
@@ -390,3 +394,126 @@ function SORT_OPTIONS_DIR(value, page) {
   const options = slice(page, 'const SORT_OPTIONS = [', '];');
   return new RegExp(`value: "${value}"[^}]*dir: "(\\w+)"`).exec(options)?.[1] || null;
 }
+
+/* ══ M15 (ตรวจตัวเลข 2026-10-20 · มติเจ้าของ 20/10 ข้อ 1): ชิป "ยังไม่ตั้งงานบริการ 59" กดแล้วตารางต้องเหลือ 59 ═══════════════════
+   เลขบนชิปคงที่ (ทุกใบ · มติ 08/10) ⇒ เปิดชิป = ล้างตัวกรองอื่น **ทุกตัว** รวม "รอฉันลงมือ" · มุมมองสินค้าสลับเป็นบริการ
+   🐞 เดิมสลับธงอย่างเดียว — มุมมองสินค้า / สถานะ=รออนุมัติ / ที่มา=ย้อนหลัง / คำค้นที่ค้าง ⇒ 0 แถวทั้งที่ชิปบอก 59 */
+test('M15: เปิดชิป "ยังไม่ตั้งงานบริการ" ล้างทุก state ที่ตารางกรอง (รวม "รอฉันลงมือ") · สินค้า → บริการ', () => {
+  const page = read('app/sales-planning/sales-orders/page.js');
+  const toggle = slice(page, 'const toggleServiceSetupPending = () => {', '\n  };');
+  const onPath = toggle.slice(toggle.indexOf('return; }') + 'return; }'.length);
+  // ทุก state ที่ memo ของตารางอ่าน (dependency) ต้องถูกล้างบนทางเปิด — เพิ่มตัวกรองใหม่แล้วลืมล้าง = เลขบนชิปไม่ตรงอีก
+  const memo = slice(page, 'const filtered = useMemo(', '\n\n');
+  const deps = /\}, \[([^\]]*)\]\);/.exec(memo)[1].split(',').map((d) => d.trim()).filter(Boolean);
+  assert.deepEqual(deps.slice().sort(), ['invoiceFilter', 'lineView', 'originFilter', 'paymentFilter', 'query', 'rows', 'serviceSetupPendingOnly', 'statusFilter', 'waitingOnMeOnly'].sort(),
+    'ตัวกรองของตารางเปลี่ยน — ทบทวนว่าเปิดชิปล้างครบไหม แล้วแก้ชุดนี้');
+  const CLEARS = {
+    query: 'setQuery("")', statusFilter: 'setStatusFilter([])', paymentFilter: 'setPaymentFilter([])',
+    invoiceFilter: 'setInvoiceFilter([])', originFilter: 'setOriginFilter([])', waitingOnMeOnly: 'setWaitingOnMeOnly(false)',
+  };
+  for (const dep of deps) {
+    if (dep === 'rows' || dep === 'serviceSetupPendingOnly') continue;
+    if (dep === 'lineView') {
+      assert.ok(onPath.includes('if (lineView === "PRODUCT") setLineView("SERVICE");'), 'มุมมองสินค้าไม่มีใบของคิวนี้ ⇒ สลับไปบริการ');
+      continue;
+    }
+    assert.ok(onPath.includes(CLEARS[dep]), `เปิดชิปต้องเรียก ${CLEARS[dep]}`);
+  }
+  assert.ok(onPath.trim().endsWith('setServiceSetupPendingOnly(true);'), 'ตั้งธงหลังล้างตัวกรองเสร็จ');
+  // เลขบนชิป + บรรทัดสรุปยังนับจาก rows ทั้งหมด (มติ 08/10 · ไม่หดตาม "รอฉันลงมือ")
+  assert.match(page, /const serviceSetupPendingCount = useMemo\(\s*\(\) => rows\.filter\(\(row\) => row\._serviceSetupPending\)\.length,/);
+  assert.match(page, /serviceAgingSummaryText\(serviceSetupPendingCount, rows\.filter\(\(row\) => row\._serviceSetupPending\)/);
+});
+
+test('M15: ทุกใบที่ขึ้นชิปอนุมัติแล้วและอยู่สาย SERVICE ⇒ หลังเปิดชิป (ตัวกรองว่าง · ทุกสาย/บริการ) แถว = เลขบนชิป', () => {
+  const LINES = [[{}], [{ serviceKind: 'package' }], []];
+  const rows = [];
+  let id = 0;
+  for (const status of ['draft', 'pending_approval', 'approved', 'rejected', 'cancelled']) {
+    for (const businessLine of ['SERVICE', 'PRODUCT', null]) {
+      for (const lines of LINES) {
+        for (const supersededById of [null, 'X']) {
+          const order = { id: `o${id += 1}`, status, businessLine, lines, supersededById };
+          rows.push({ ...order, _serviceSetupPending: serviceBackfillNeeded(order), _waitingOnMe: id % 3 === 0 });
+        }
+      }
+    }
+  }
+  const chip = rows.filter((row) => row._serviceSetupPending);
+  assert.ok(chip.length > 0, 'ชุดทดสอบต้องมีใบที่ขึ้นชิป');
+  for (const row of chip) {
+    assert.equal(row.status, 'approved');
+    assert.equal(row.businessLine, 'SERVICE');
+  }
+  /* ตัวตัดสินของตาราง (ลำดับเดียวกับ memo `filtered`) หลังเปิดชิป: คำค้น/สถานะ/การชำระ/ใบกำกับ/ที่มา ว่าง · "รอฉันลงมือ" ปิด */
+  const tableAfterChip = (lineView) => rows.filter((row) => row._serviceSetupPending
+    && (lineView === 'all' || row.businessLine === lineView));
+  for (const before of ['all', 'PRODUCT', 'SERVICE']) {
+    const after = before === 'PRODUCT' ? 'SERVICE' : before;
+    assert.equal(tableAfterChip(after).length, chip.length, `มุมมอง ${before}`);
+  }
+  // 🐞 ของเดิม: คง "รอฉันลงมือ" / มุมมองสินค้าไว้ ⇒ น้อยกว่าเลขบนชิป
+  assert.ok(chip.filter((row) => row._waitingOnMe).length < chip.length);
+  assert.equal(tableAfterChip('PRODUCT').length, 0);
+});
+
+/* ══ M16 (ตรวจตัวเลข 2026-10-20): แถบ "ใบเสนอราคา Won n ใบยังไม่ได้ออก ใบสั่งขาย" บน /sa/quotations ═════════════════════════
+   a. "ดูเฉพาะใบที่ค้าง" ต้องเหลือ n แถว — ล้างคำค้น/ตัวกรองทุกตัว รวม "รอฉันลงมือ"
+   b. ตัวกรองนี้ต้องถอดได้จากแถบเครื่องมือ (แถบหายเมื่อใบค้างใบสุดท้ายออก SO แล้ว)
+   c. ยังไม่รู้รายการ SO (กำลังโหลด/โหลดพัง) = ไม่ตัดสิน — ไม่ใช่ "ทุกใบ Won ยังไม่มี SO" */
+test('M16a: หน้าใช้ตัวตัดสินจาก lib ตรง ๆ · "ดูเฉพาะใบที่ค้าง" ตั้ง QUOTATION_AWAITING_SO_PICK ทั้งชุด — ทุกมิติที่ตารางกรอง', () => {
+  /* พฤติกรรม (แถวหลังกด = เลขบนแถบ ทุกชุดตัวกรองที่ค้าง · ของเดิมได้ 0 แถวเมื่อมาจากป้ายเมนู) พิสูจน์กับตัวจริงใน
+     quotationListFilter.test.mjs · ยามนี้ผูกหน้าเข้ากับตัวนั้น: memo ของตารางเรียก `quotationPassesListFilters` · ทุกคีย์ของ
+     ตัวกรองมาจาก state หนึ่งตัว · `applyQuotationPick` ตั้ง state ทุกตัวนั้นจาก pick */
+  const page = read('app/sales-planning/quotations/page.js');
+  assert.match(page, /import \{ QUOTATION_AWAITING_SO_PICK, awaitingSalesOrderIdSet, quotationPassesListFilters \} from "@\/lib\/sales\/quotationListFilter";/);
+  const memo = slice(page, 'const filtered = useMemo(', '\n\n');
+  assert.match(memo, /return rows\.filter\(\(r\) => quotationPassesListFilters\(r, filters, ctx\)\);/);
+  assert.match(memo, /const ctx = \{ awaitingIds: awaitingSalesOrderIds, ownerNameOf \};/);
+  assert.doesNotMatch(memo, /\.has\(r\.id\)|\.includes\(q\)|toLowerCase/, 'ห้ามเขียนเงื่อนไขกรองซ้ำในหน้า');
+  // คีย์ของตัวกรองในหน้า = คีย์ของ EMPTY_QUOTATION_FILTERS ครบ (เพิ่มมิติใหม่แล้วลืมใส่ pick/ลืมล้าง = แดง)
+  const literal = slice(memo, 'const filters = {', '};');
+  const pairs = literal.slice('const filters = {'.length).split(',').map((part) => part.trim()).filter(Boolean)
+    .map((part) => { const [key, value] = part.split(':').map((x) => x.trim()); return [key, value || key]; });
+  assert.deepEqual(pairs.map(([key]) => key).sort(), Object.keys(EMPTY_QUOTATION_FILTERS).sort());
+  // ทุก state ที่ memo อ่าน (dependency) = state ของตัวกรอง + ข้อมูล/บริบท — ไม่มีตัวกรองแอบอยู่นอก filters
+  const deps = /\}, \[([^\]]*)\]\);/.exec(memo)[1].split(',').map((d) => d.trim());
+  assert.deepEqual(deps.filter((d) => !['rows', 'awaitingSalesOrderIds', 'ownerNameOf'].includes(d)).sort(), pairs.map(([, state]) => state).sort());
+  // applyQuotationPick ตั้ง state ทุกตัวจาก pick (pendingSoActive = ธง pendingSoOnly ที่ผ่านด่าน "รู้รายการ SO แล้ว")
+  const apply = slice(page, 'const applyQuotationPick = (pick) => {', '\n  };');
+  for (const [key, state] of pairs) {
+    const setter = state === 'pendingSoActive' ? 'setPendingSoOnly' : `set${state[0].toUpperCase()}${state.slice(1)}`;
+    assert.match(apply, new RegExp(`${setter}\\((\\[\\.\\.\\.)?pick\\.${key}\\]?\\)`), `applyQuotationPick ต้องตั้ง ${state} จาก pick.${key}`);
+  }
+  assert.match(page, /const showAwaitingSo = \(\) => applyQuotationPick\(QUOTATION_AWAITING_SO_PICK\);/);
+  assert.match(slice(page, '<StatusNotice\n            tone="warning"\n            title={`ใบเสนอราคา Won', '</StatusNotice>'),
+    /onClick=\{pendingSoActive \? \(\) => setPendingSoOnly\(false\) : showAwaitingSo\}/);
+  assert.doesNotMatch(page, /setPendingSoOnly\(\(on\) => !on\)/, 'ห้ามกลับไปสลับธงอย่างเดียว');
+  // ธง "รอฉันลงมือ" เปลี่ยนชุดแถว ⇒ กลับหน้า 1
+  assert.match(slice(page, 'usePagination(sorted', ';'), /\$\{waitingOnMeOnly\}/);
+});
+
+test('M16b: ตัวกรอง "Won ยังไม่ออก SO" ถอดได้จากแถบเครื่องมือ + ล้างตัวกรองล้างให้ · ไม่นับซ้ำในป้ายปุ่มตัวกรอง', () => {
+  const page = read('app/sales-planning/quotations/page.js');
+  const toolbar = slice(page, 'toolbar={(', '<GroupMenu');
+  const chip = slice(toolbar, '{pendingSoActive && (', '</Button>');
+  assert.match(chip, /onClick=\{\(\) => setPendingSoOnly\(false\)\}/);
+  assert.match(chip, /กรอง: Won ยังไม่ออก SO ×/);
+  assert.ok(toolbar.indexOf('กรอง: รอฉันลงมือ ×') < toolbar.indexOf('กรอง: Won ยังไม่ออก SO ×'), 'อยู่ข้างชิป "รอฉันลงมือ"');
+  assert.match(slice(toolbar, 'onClear={() => {', '}}'), /setPendingSoOnly\(false\)/);
+  assert.doesNotMatch(slice(toolbar, '<FilterPopover', 'onClear'), /pendingSo/, 'ชิปเห็นบนแถบเองอยู่แล้ว — ไม่นับซ้ำ');
+});
+
+test('M16c: ยังไม่รู้รายการ SO (null) = ไม่ตัดสิน — หน้าเก็บ null จนโหลดสำเร็จ · ชุดค้างมาจาก awaitingSalesOrderIdSet', () => {
+  // พฤติกรรม null/[]/บางส่วน พิสูจน์ใน quotationListFilter.test.mjs — ยามนี้ผูกหน้าให้ส่ง null จริงตอนยังไม่รู้
+  const page = read('app/sales-planning/quotations/page.js');
+  assert.match(page, /const \[salesOrders, setSalesOrders\] = useState\(null\);/, 'ตั้งต้น = ยังไม่รู้ ไม่ใช่ []');
+  assert.doesNotMatch(page, /salesOrdersReady/, 'สถานะ "รู้แล้ว" มาจาก salesOrders !== null ตัวเดียว');
+  const fetchBlock = slice(page, 'apiFetch("/api/sales-planning/sales-orders")', '.catch(');
+  assert.match(fetchBlock, /\(res\.ok \? res\.json\(\) : null\)/, 'โหลดพัง ≠ รายการว่าง');
+  assert.match(fetchBlock, /\.then\(\(data\) => \{ if \(alive && Array\.isArray\(data\)\) setSalesOrders\(data\); \}\)/);
+  assert.equal((page.match(/setSalesOrders\(/g) || []).length, 1, 'ตั้งรายการ SO ที่เดียว (หลังโหลดสำเร็จ)');
+  assert.match(page, /const awaitingSalesOrderIds = useMemo\(\s*\(\) => awaitingSalesOrderIdSet\(rows, salesOrders\),\s*\[rows, salesOrders\],\s*\);/);
+  assert.match(page, /const pendingSoActive = pendingSoOnly && salesOrders !== null;/);
+  assert.match(page, /\{awaitingSalesOrderIds\.size > 0 && \(/, 'แถบขึ้นจากชุดที่ผ่านด่าน "รู้รายการ SO แล้ว" เท่านั้น');
+});

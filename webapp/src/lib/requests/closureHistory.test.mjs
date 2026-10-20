@@ -254,7 +254,12 @@ test('ทุกหน้าที่มีแท็บประวัติ: เ
     assert.match(src, /setSort\(inHistory \? "closed" : "(urgency|created)"\)/, page);
     assert.match(src, /tab !== "history" && \(\s*<QueueCountStrip/, page);
     assert.match(src, /columns=\{tab === "history" \? "history" : "queue"\}/, page);
-    assert.match(src, /if \(next === "history"\) board\.setCountFilter\(null\);/, page);
+    /* ตรวจตัวเลข 20/10/2026 M3 M4 — ล้างตัวกรองตัวเลขทุกครั้งที่สลับแท็บ (ขยายจาก ม-145 ที่ล้างเฉพาะประวัติ)
+       เพราะบางกล่องมีได้แท็บเดียว ⇒ ตัวกรองที่ค้างมาให้ตารางว่างทั้งที่เลขบนแท็บบอกว่ามีใบ
+       ⚠️ ล้างในตัวจัดการ ไม่ใช่ใน effect ที่เฝ้า `tab` — แถบเตือนใบตีกลับตั้งตัวกรองต่อในจังหวะเดียวกัน */
+    assert.match(src, /const setTab = \(next\) => \{\s*board\.setCountFilter\(null\);/, page);
+    assert.doesNotMatch(src, /if \(next === "history"\) board\.setCountFilter\(null\);/, page);
+    assert.doesNotMatch(src, /useEffect\(\(\) => \{[^}]*setCountFilter\(null\)[^}]*\}, \[tab/, page);
   }
 });
 

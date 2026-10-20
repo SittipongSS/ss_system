@@ -171,7 +171,7 @@ export default function FinancePaymentsPage() {
   const capUser = useCapUser();
   const department = useDepartment();
   const canSetBillingRule = useCan("customers:view") && canConfirmPayment({ ...capUser, department });
-  const [data, setData] = useState({ rows: [], summary: null, totalRows: 0, undatedHidden: null, billingTally: null, dueTally: null });
+  const [data, setData] = useState({ rows: [], summary: null, totalRows: 0, undatedHidden: null, billingTally: null, dueTally: null, facetTally: null });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [downloading, setDownloading] = useState(false);
@@ -292,6 +292,8 @@ export default function FinancePaymentsPage() {
         billingTally: body.billingTally || null,
         // ตัวนับของกลุ่มตัวกรอง "ครบกำหนดชำระ" (คิดที่ API จากชุดที่ถอดตัวกรองนี้ออก — กติกาเดียวกับ billingTally)
         dueTally: body.dueTally || null,
+        // ตัวเลขของการ์ดที่กดแล้วแทนค่าตัวกรองของตัวเอง (คิดที่ API จากชุดที่ถอดตัวกรองของการ์ดออก — ตรวจตัวเลข M10b)
+        facetTally: body.facetTally || null,
         /* ⚠️ "วันนี้" มาจาก server (นาฬิกาไทย) ไม่ใช่จากเครื่องผู้ใช้ — คอลัมน์ "จ่ายถึง"
            เทียบกับค่านี้ ถ้าอ่านนาฬิกาเบราว์เซอร์ คนที่ตั้งโซนเวลาอื่นจะเห็นสีคนละแบบ */
         todayIso: body.todayIso || null,
@@ -309,6 +311,14 @@ export default function FinancePaymentsPage() {
   const undatedHidden = data.undatedHidden;
   const billingTally = data.billingTally;
   const dueTally = data.dueTally;
+  /* ⭐ การ์ดที่กดแล้ว **แทนค่า** ตัวกรองของตัวเอง อ่านเลขจากชุดที่ถอดตัวกรองนั้นออก (ตรวจตัวเลข M10 · M10b · 20/10/2026)
+     🐞 เดิมอ่าน `summary` (แถวที่ผ่านตัวกรองทุกตัวแล้ว) ⇒ ตัวกรองของการ์ดตั้งค่าอื่นค้างอยู่ = การ์ดบอก 0 แต่กดแล้วได้หลายงวด
+     ⚠️ การ์ดที่ "บวกเพิ่ม" (เลยกำหนด) ยังอ่าน `summary` ถูกแล้ว — แถวหลังกด = แถวที่กรองอยู่ ∩ ตัวกรองนั้น */
+  const facetTally = data.facetTally;
+  const awaitingCard = facetTally?.awaiting || { count: 0, amount: 0 };
+  const missingInvoiceCard = facetTally?.missingInvoice || { count: 0, amount: 0 };
+  const billing7dCount = billingTally?.counts?.["7d"] ?? 0;
+  const billing7dAmount = billingTally?.amounts?.["7d"] ?? 0;
   /* ตัวเลือกของเมนูรอบวางบิล — ชุดมาตรฐาน + วันตัดรอบเมื่อกรองอยู่ (v5 · ไม่อยู่ในเมนูตามปกติ ต้องมีวันประกอบ) */
   const billingOptions = ledgerBillingFilterOptions(billing, on);
   const billingOption = billingOptions.find((option) => option.value === billing) || null;
@@ -620,13 +630,15 @@ export default function FinancePaymentsPage() {
             แต่บัญชียังไม่คอนเฟิร์ม ไม่ใช่เงินที่เก็บได้ (กติกาจาก mig 0245) · รวมช่อง
             เดียวเมื่อไรเท่ากับให้ฝ่ายขายกดเองแล้วตัวเลขขึ้นเอง */}
         {summary && (
-          <MetricStrip aria-label="สรุปยอดของงวดที่กำลังแสดง">
+          /* ⚠️ การ์ดที่กดได้ไม่ใช่ "ยอดของแถวที่แสดง" ทุกใบ — สามใบที่แทนค่าตัวกรองของตัวเอง (รอบัญชีรับรอง · ยังไม่ออกใบกำกับ ·
+             ถึงรอบวางบิล) นับจากตัวกรองชุดเดียวกันแต่ถอดตัวกรองของการ์ดออก = แถวที่จะเห็นหลังกด (ตรวจตัวเลข M10 · M10b) */
+          <MetricStrip aria-label="สรุปยอดของงวดตามตัวกรอง — ตัวเลขบนการ์ดที่กดได้ = จำนวนงวดที่จะเห็นหลังกด">
             <Metric icon={<CircleDollarSign />} label="เก็บได้แล้ว" value={fmtMoney(summary.collectedAmount)} note="เฉพาะงวดที่บัญชีคอนเฟิร์ม" tone="good" />
             <Metric
               as="button" type="button"
-              icon={<Wallet />} label="รอบัญชีรับรอง" value={fmtMoney(summary.awaitingAmount)}
-              note={`${summary.awaitingCount} งวดที่ฝ่ายขายแจ้งแล้ว`}
-              tone={summary.awaitingCount ? "warning" : undefined}
+              icon={<Wallet />} label="รอบัญชีรับรอง" value={fmtMoney(awaitingCard.amount)}
+              note={`${awaitingCard.count} งวดที่ฝ่ายขายแจ้งแล้ว`}
+              tone={awaitingCard.count ? "warning" : undefined}
               onClick={() => setFilter("status", "reported")}
             />
             <Metric icon={<Wallet />} label="ค้างรับทั้งหมด" value={fmtMoney(summary.outstandingAmount)} note="ทุกงวดที่ยังไม่ถูกคอนเฟิร์ม" />
@@ -634,9 +646,9 @@ export default function FinancePaymentsPage() {
                 ⇒ ทุกงวดที่จ่ายแล้วต้องมีใบกำกับ) · กดแล้วกรองให้เลยเหมือนการ์ดอื่น */}
             <Metric
               as="button" type="button"
-              icon={<FileText />} label="ยังไม่ออกใบกำกับ" value={`${summary.missingInvoiceCount} งวด`}
-              note={fmtMoney(summary.missingInvoiceAmount)}
-              tone={summary.missingInvoiceCount ? "warning" : "good"}
+              icon={<FileText />} label="ยังไม่ออกใบกำกับ" value={`${missingInvoiceCard.count} งวด`}
+              note={fmtMoney(missingInvoiceCard.amount)}
+              tone={missingInvoiceCard.count ? "warning" : "good"}
               onClick={() => setFilter("taxInvoice", taxInvoice === "missing" ? "" : "missing")}
             />
             <Metric
@@ -651,9 +663,9 @@ export default function FinancePaymentsPage() {
             <Metric
               as="button" type="button"
               icon={<CalendarClock />} label={`ถึงรอบวางบิล ${LEDGER_BILLING_WINDOW_DAYS} วัน`}
-              value={`${summary.billingIn7DaysCount ?? 0} งวด`}
-              note={fmtMoney(summary.billingIn7DaysAmount ?? 0)}
-              tone={summary.billingIn7DaysCount ? "info" : undefined}
+              value={`${billing7dCount} งวด`}
+              note={fmtMoney(billing7dAmount)}
+              tone={billing7dCount ? "info" : undefined}
               active={billing === "7d"}
               aria-pressed={billing === "7d"}
               title={`งวดที่วันวางบิลอยู่ในวันนี้ถึงอีก ${LEDGER_BILLING_WINDOW_DAYS} วัน และยังไม่แจ้งชำระ — กดเพื่อกรอง`}
@@ -920,7 +932,7 @@ export default function FinancePaymentsPage() {
                      ไม่ใช่ของค้าง มันยังไม่มีเงินให้ออกใบ */
                   key: "taxInvoice", label: "ใบกำกับภาษี", icon: FileText,
                   options: [
-                    { value: "missing", label: `ยังไม่ออกใบ${summary?.missingInvoiceCount ? ` (${summary.missingInvoiceCount})` : ""}` },
+                    { value: "missing", label: `ยังไม่ออกใบ${missingInvoiceCard.count ? ` (${missingInvoiceCard.count})` : ""}` },
                     { value: "issued", label: "ออกใบแล้ว" },
                   ],
                   selected: taxInvoice ? [taxInvoice] : [],

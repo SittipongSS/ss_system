@@ -33,6 +33,7 @@ import Link from "next/link";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { requestsByStepKey, stepPinSummary } from "@/lib/deptRequests";
 import { stepPinHref } from "@/lib/requests/dealLink";
+import { EMPTY_STEP_FILTER, TIMELINE_STEP_STATUS_OPTIONS, timelineStepMatches } from "@/lib/pm/timelineFilter";
 import { requestKindLabel } from "@/lib/master/requestTypes";
 import { businessDate } from "@/lib/businessDate";
 import { apiFetch } from "@/lib/apiFetch";
@@ -137,6 +138,11 @@ export default function TimelineWorkspace({
   panelSubtitle = "ติดตามขั้นตอน ผู้รับผิดชอบ และวันตามแผนเทียบวันจริง",
   panelActions = null,
   toolbarStart = null,
+  /* ตัวกรองสถานะ/ฝ่ายแบบ controlled (ไม่ส่ง = แผงถือเอง เหมือนเดิม · หน้าดีลใช้แบบนั้น)
+     หน้าโครงการถือเองเพื่อให้เลขบนตัวเลือก "ดีลที่แสดง" นับด้วยตัวกรองเดียวกับแผง (ตรวจตัวเลข M18a)
+     รูป `{ statuses, depts }` — กติกาอยู่ที่ `lib/pm/timelineFilter.timelineStepMatches` */
+  stepFilter: controlledStepFilter = null,
+  onStepFilterChange,
   // โครงการที่ปิด/พักอยู่ — จางเฉพาะเนื้อแผง หัวแผงยังกดพิมพ์/ดูประวัติเวอร์ชันได้
   locked = false,
   onChanged,
@@ -168,11 +174,18 @@ export default function TimelineWorkspace({
   // 2026-07-18: ตัวกรองทั้งระบบเลือกหลายค่าได้) — ว่าง = ทั้งหมด; ขั้นที่ไม่ระบุฝ่าย/ALL
   // เกี่ยวกับทุกคน จึงติดมาด้วยเสมอ; ใช้กับมุมมอง list/table (เอกสารโชว์ครบทุกฝ่าย)
   const myDept = useDepartment();
-  const [statusFilter, setStatusFilter] = useState([]);
-  const [deptFilter, setDeptFilter] = useState([]);
-  const matchDept = (task) => !deptFilter.length || !task.role || task.role === "ALL" || deptFilter.includes(task.role);
-  const statusKeyOf = (task) => (task.status === "In Progress" ? "progress" : task.status === "Completed" ? "completed" : "pending");
-  const matchStatus = (task) => !statusFilter.length || statusFilter.includes(statusKeyOf(task));
+  /* ⭐ กติกาการกรองอยู่ที่ `timelineStepMatches` ตัวเดียว — หน้าโครงการนับเลขบนตัวเลือกดีลด้วยตัวเดียวกัน */
+  const [ownStepFilter, setOwnStepFilter] = useState(EMPTY_STEP_FILTER);
+  const stepFilter = controlledStepFilter || ownStepFilter;
+  const setStepFilter = (next) => {
+    if (!controlledStepFilter) setOwnStepFilter(next);
+    onStepFilterChange?.(next);
+  };
+  const statusFilter = stepFilter.statuses;
+  const deptFilter = stepFilter.depts;
+  const setStatusFilter = (statuses) => setStepFilter({ ...stepFilter, statuses });
+  const setDeptFilter = (depts) => setStepFilter({ ...stepFilter, depts });
+  const stepMatches = (task) => timelineStepMatches(task, stepFilter);
   const [collapsedPhases, setCollapsedPhases] = useState(new Set());
   const [drafts, setDrafts] = useState({});
   // ปฏิทินวันหยุดจริงจาก DB ต้องเข้า module-global ของ dateHelpers ก่อนพรีวิว recalc —
@@ -231,7 +244,7 @@ export default function TimelineWorkspace({
 
   const phases = useMemo(() => [...new Set(tasks.map((t) => t.phase).filter(Boolean))], [tasks]);
   const tableGroups = useMemo(() => groups.map((group) => {
-    const filtered = group.tasks.filter((task) => matchDept(task) && matchStatus(task));
+    const filtered = group.tasks.filter(stepMatches);
     const statusRank = { "In Progress": 0, Pending: 1, Completed: 2 };
     const sorted = [...filtered].sort((a, b) => {
       if (tableSort === "due") return String(a.finishDate || "9999").localeCompare(String(b.finishDate || "9999"));
@@ -240,8 +253,8 @@ export default function TimelineWorkspace({
       return (a.stepOrder ?? 0) - (b.stepOrder ?? 0);
     });
     return { ...group, tasks: sorted };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- matchDept/matchStatus ผันตาม statusFilter/deptFilter ที่อยู่ใน deps แล้ว
-  }).filter((group) => group.tasks.length), [groups, tableSort, statusFilter, deptFilter]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- stepMatches ผันตาม stepFilter ที่อยู่ใน deps แล้ว
+  }).filter((group) => group.tasks.length), [groups, tableSort, stepFilter]);
   // PredecessorPicker แสดงเลขขั้นจาก displayNumber — เติมจาก map เลข 1.1/1.2 ของตารางนี้
   const tasksWithNumbers = useMemo(
     () => tasks.map((t) => ({ ...t, displayNumber: numberOf.get(t.id) })),
@@ -403,11 +416,11 @@ export default function TimelineWorkspace({
   const filterControl = (
     <FilterPopover
       count={filterCount}
-      onClear={() => { setStatusFilter([]); setDeptFilter([]); }}
+      onClear={() => setStepFilter(EMPTY_STEP_FILTER)}
       groups={[
         {
           key: "status", label: "สถานะ",
-          options: [{ value: "pending", label: "รอดำเนินการ" }, { value: "progress", label: "กำลังทำ" }, { value: "completed", label: "เสร็จแล้ว" }],
+          options: TIMELINE_STEP_STATUS_OPTIONS,
           selected: statusFilter,
           onChange: setStatusFilter,
         },
@@ -517,7 +530,7 @@ export default function TimelineWorkspace({
 
               {!tasks.length && <EmptyState plain icon={ChartGantt}>ยังไม่มีขั้นตอนในไทม์ไลน์นี้</EmptyState>}
               {groups.map((group, groupIndex) => {
-                const phaseTasks = group.tasks.filter((task) => matchDept(task) && matchStatus(task));
+                const phaseTasks = group.tasks.filter(stepMatches);
                 if (!phaseTasks.length) return null;
                 const phaseKey = `${group.phase}|${groupIndex}`;
                 const collapsed = collapsedPhases.has(phaseKey);

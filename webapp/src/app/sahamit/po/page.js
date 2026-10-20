@@ -15,7 +15,7 @@ import { useApiList } from "@/lib/excise/useApiList";
 import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { fmtDate, fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
-import { poTotalQty, poLineCount, PO_STATUS_LABEL, lineStage, STAGE_LABEL, STAGE_COLOR, effectivePoQty, poDisplayStatus, poStatusOptions, PO_DISPLAY_STATUS_ORDER, poDeliveryOptions, poMatchesDelivery } from "@/lib/sahamit/po";
+import { poTotalQty, poLineCount, lineStage, STAGE_LABEL, STAGE_COLOR, effectivePoQty, poDisplayStatus, poStatusOptions, PO_DISPLAY_STATUS_ORDER, poDeliveryOptions, poMatchesDelivery, poLineDisplayStatus, poMatchesSearch, poTableLines } from "@/lib/sahamit/po";
 import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
 import { ppcOf, casesText } from "@/lib/sahamit/units";
 import { destinationLabel, DESTINATIONS } from "@/components/sahamit/destinations";
@@ -222,11 +222,20 @@ export default function PoPage() {
      🐞 H7 (ตรวจตัวกรอง 08/10): ตัวกรองเดิมใช้ `poRollupStatus` (รอส่ง/ส่งครบ) ส่วนป้ายเป็นขั้นผลิต (รอวัสดุ/ปิดงาน)
         ⇒ เลือก "รอส่ง" แล้วได้ 90 ใบที่ป้ายเขียน "รอวัสดุ" · ใบปิดงานแล้วถูกนับเป็น "รอส่ง" */
   const statusOf = useCallback((po) => poDisplayStatus(po, matByPo.get(po.poNumber)), [matByPo]);
+  /* ⭐ มุมมองตาราง (รายบรรทัด) — ป้าย ตัวกรอง และการเรียงอ่านสถานะของ **บรรทัด** (`poLineDisplayStatus`) ทรงเดียวกับใบ
+     🐞 M24a2 (ตรวจตัวเลข 20/10): ป้ายเดิมอ่าน `l.status` ดิบ ("รอส่ง") ขณะที่ตัวกรองเป็นคำของใบ ("รอวัสดุ")
+        ⇒ เลือกคำไหนได้แถวที่ป้ายเขียนอีกคำ และได้บรรทัด "ผลิตเสร็จ" ของใบ "รอวัสดุ" ติดมาด้วย
+     ⚠️ สายวัสดุไม่มีของในมือ ⇒ บรรทัดที่กดเดินเองแล้ว (ผลิตเสร็จ/ส่งแล้ว/ปิดงาน) ยังขึ้นคำขั้นนั้น (อยู่บนบรรทัดเอง) ·
+        open/partial ถอยไปสถานะส่งของ (รอส่ง/ส่งบางส่วน) — ป้ายหัวจอบอกเหตุไว้แล้ว */
+  const matByLineId = useMemo(() => new Map(material.map((r) => [r.poLineId, r])), [material]);
+  const lineStatusOf = useCallback((l) => poLineDisplayStatus(l, matByLineId.get(l.id)), [matByLineId]);
 
   /* ตัวเลือกตัวกรอง (สถานะ/สถานที่ส่ง) จำกัดเฉพาะที่มีจริงใน PO ปัจจุบัน · เรียงตามทางเดินของงาน
      ⚠️ ค่าของตัวเลือก = **คำบนป้าย** (ไม่ใช่คีย์) — สองแหล่งมีคำเดียวกันได้ ("ยกเลิก") ⇒ ตัวเลือกเดียว และ
         "ตัวเลือกที่เห็น = คำที่ป้ายเขียน" จริงตามตัวอักษร (sahamitPoStatus.test.mjs) */
   const statusOptions = useMemo(() => poStatusOptions(pos.map(statusOf)), [pos, statusOf]);
+  // ตัวเลือกของมุมมองตาราง = คำบนป้ายของบรรทัดที่มีจริง (คำชุดเดียวกัน แต่ต่อบรรทัด)
+  const lineStatusOptions = useMemo(() => poStatusOptions(pos.flatMap((po) => (po.lines || []).map(lineStatusOf))), [pos, lineStatusOf]);
   /* หมวด "การส่งของ" แยกจาก "สถานะ" — ใบส่งบางส่วนที่ป้ายเป็น "รอวัสดุ" ยังแยกได้ และเลขของภาพรวม /sahamit
      (PO ที่ต้องการการติดตาม = รอส่ง + ส่งบางส่วน) สร้างซ้ำที่นี่ได้ (รอบตรวจ 19/10 ของ H7 · sahamitPoStatus.test.mjs) */
   const deliveryOptions = useMemo(() => poDeliveryOptions(pos), [pos]);
@@ -235,29 +244,38 @@ export default function PoPage() {
     return DESTINATIONS.filter((d) => present.has(d.key)).map((d) => ({ value: d.key, label: d.label }));
   }, [pos]);
 
-  // PO ที่ผ่านคำค้น + ตัวกรอง. คำค้นครอบคลุม เลข PO, สถานที่ส่ง, และรหัส/ชื่อสินค้าในบรรทัด
+  /* PO ที่ผ่านคำค้น + ตัวกรอง (มุมมองรายใบ). คำค้นครอบคลุม เลข PO, สถานที่ส่ง, และรหัส/ชื่อสินค้าในบรรทัด
+     ⭐ คำค้นผ่าน `poMatchesSearch` ตัวเดียวกับที่มุมมองตารางใช้ระดับบรรทัด (`poTableLines` → `poLineMatchesSearch`)
+     🐞 M24a (ตรวจตัวเลข 20/10): เดิมกองคำค้นของบรรทัดไม่มีสถานที่ส่ง ⇒ มุมมองตาราง ค้น "บางปะกง" หัวบอก N ใบ แต่ตารางว่าง */
+  const searchOpts = useMemo(() => ({ prodIdx, destLabel: destinationLabel }), [prodIdx]);
   const filteredPos = useMemo(() => {
     if (!q && !statusSel.length && !deliverySel.length && !destSel.length) return pos;
     return pos.filter((po) => {
       if (statusSel.length && !statusSel.includes(statusOf(po).label)) return false;
       if (!poMatchesDelivery(po, deliverySel)) return false;
       if (destSel.length && !destSel.includes(po.destination)) return false;
-      if (q) {
-        /* ชื่อสินค้ามีสองแหล่ง: ชื่อที่บันทึกไว้กับบรรทัด PO (`l.productName` — มากับสาย PO เอง) และชื่อปัจจุบันจากรายการ
-           สินค้า · ต้องมีทั้งคู่ — รายการสินค้าล้มแล้วค้นด้วยชื่อเคยได้ "ไม่มี PO ตรงเงื่อนไข" (โทษคำค้น ทั้งที่ใบอยู่ครบ) */
-        const hay = [
-          po.poNumber,
-          destinationLabel(po.destination),
-          ...(po.lines || []).flatMap((l) => [l.fgCode, l.productName, prodIdx.get(String(l.fgCode).trim().toLowerCase())?.name]),
-        ].filter(Boolean).join(" ").toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
+      if (!poMatchesSearch(po, q, searchOpts)) return false;
       return true;
     });
-  }, [pos, q, statusSel, deliverySel, destSel, prodIdx, statusOf]);
+  }, [pos, q, statusSel, deliverySel, destSel, searchOpts, statusOf]);
+  /* แถวของมุมมองตาราง — ตัวกรองสถานะเทียบ **คำบนป้ายของบรรทัด** · เลขบนหัว ("แสดง N จาก M ใบ · R รายการ")
+     นับจากผลชุดนี้ตัวเดียวกับที่ตารางวาด (R = ยอดของ Pager) */
+  const tableLines = useMemo(
+    () => (view === "table" ? poTableLines(pos, { needle: q, statusSel, deliverySel, destSel, lineStatusOf, ...searchOpts }) : []),
+    [view, pos, q, statusSel, deliverySel, destSel, lineStatusOf, searchOpts],
+  );
+  const tablePoCount = useMemo(() => new Set(tableLines.map((r) => r.po.id)).size, [tableLines]);
 
   const filterCount = statusSel.length + deliverySel.length + destSel.length;
   const clearFilters = () => { setStatusSel([]); setDeliverySel([]); setDestSel([]); };
+  /* สลับมุมมอง: ตัวเลือก "สถานะ" ของสองมุมมองเป็นคำชุดเดียวกันแต่ไม่จำเป็นต้องครบเท่ากัน (เช่น "ส่งบางส่วน" ของใบ
+     ตอนสายวัสดุล้ม ไม่มีบนบรรทัดไหน) ⇒ ตัดคำที่มุมมองใหม่ไม่มีออก — ไม่ทิ้งตัวกรองที่มองไม่เห็นและเอาออกเองไม่ได้ค้างไว้ */
+  const switchView = (next) => {
+    const options = next === "table" ? lineStatusOptions : statusOptions;
+    setView(next);
+    setSortState({ sortKey: null, sortDir: "asc" });
+    setStatusSel((sel) => sel.filter((v) => options.some((o) => o.value === v)));
+  };
 
   // แบ่งหน้ามุมมอง "รายใบ" (รีเซ็ตกลับหน้า 1 เมื่อค้น/กรองเปลี่ยน)
   // เรียงมุมมองรายใบก่อนแบ่งหน้า (sort เดียวกับปุ่ม/หัวตาราง)
@@ -325,12 +343,18 @@ export default function PoPage() {
               count={filterCount}
               onClear={clearFilters}
               groups={[
-                { key: "status", label: "สถานะ", options: statusOptions, selected: statusSel, onChange: setStatusSel },
+                { key: "status", label: "สถานะ", options: view === "table" ? lineStatusOptions : statusOptions, selected: statusSel, onChange: setStatusSel },
                 { key: "delivery", label: "การส่งของ", options: deliveryOptions, selected: deliverySel, onChange: setDeliverySel },
                 { key: "dest", label: "สถานที่ส่ง", options: destOptions, selected: destSel, onChange: setDestSel },
               ]}
             />
-            {(filterCount > 0 || q) && <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>แสดง {filteredPos.length} จาก {pos.length} ใบ</span>}
+            {(filterCount > 0 || q) && (
+              <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
+                {view === "table"
+                  ? `แสดง ${tablePoCount} จาก ${pos.length} ใบ · ${tableLines.length} รายการ`
+                  : `แสดง ${filteredPos.length} จาก ${pos.length} ใบ`}
+              </span>
+            )}
             {(() => {
               const fields = view === "grouped"
                 ? [["po", "เลข PO"], ["doc", "วันที่เอกสาร"], ["recv", "วันรับ PO"], ["due", "กำหนดส่ง"], ["qty", "จำนวนรวม"], ["value", "มูลค่า"], ["status", "สถานะ"]]
@@ -349,8 +373,8 @@ export default function PoPage() {
               );
             })()}
             <div className="segmented" style={{ marginLeft: "auto" }} title="สลับมุมมอง">
-              <button className={view === "grouped" ? "active" : ""} onClick={() => { setView("grouped"); setSortState({ sortKey: null, sortDir: "asc" }); }}>รายใบ</button>
-              <button className={view === "table" ? "active" : ""} onClick={() => { setView("table"); setSortState({ sortKey: null, sortDir: "asc" }); }}>ตาราง</button>
+              <button className={view === "grouped" ? "active" : ""} onClick={() => switchView("grouped")}>รายใบ</button>
+              <button className={view === "table" ? "active" : ""} onClick={() => switchView("table")}>ตาราง</button>
             </div>
           </div>
 
@@ -384,7 +408,7 @@ export default function PoPage() {
               </table>
             </TableScroll>
           ) : (
-            <PoLinesTable pos={filteredPos} priceByFg={priceByFg} prodIdx={prodIdx} q={q} sort={sort} />
+            <PoLinesTable lines={tableLines} priceByFg={priceByFg} prodIdx={prodIdx} resetKey={`${q}|${statusSel.join(",")}|${deliverySel.join(",")}|${destSel.join(",")}`} sort={sort} />
           )}
           {view === "grouped" && (
             <Pager page={grouped.page} pageCount={grouped.pageCount} total={grouped.total} onPage={grouped.setPage} pageSize={grouped.pageSize} onPageSize={grouped.setPageSize} />
@@ -499,42 +523,32 @@ function PoGroup({ po, lines, priceByFg, prodIdx, isOpen, onToggle, onSaved, can
   );
 }
 
-// สถานะบรรทัด PO → ป้ายภาษาไทย (รวมสองชุด stage + rollup)
-const lineStatusLabel = (s) => STAGE_LABEL[s] || PO_STATUS_LABEL[s] || naText(s);
-const lineStatusColor = (s) => C[STAGE_COLOR[s]] || (s === "cancelled" ? C["text-3"] : "var(--text-3)");
-
 // มุมมอง "ตาราง (รายบรรทัด)": ทุกบรรทัดสินค้าในทุก PO = 1 แถว (สเปรดชีต) เรียง/รวมมูลค่าได้.
 // ราคา/มูลค่าอ่านอย่างเดียวจากราคาผลิต master (เหมือนหน้ารายละเอียด/รายการ).
-function PoLinesTable({ pos, priceByFg, prodIdx, q, sort }) {
+// `lines` = ผลของ `poTableLines` ที่หน้าคำนวณไว้แล้ว (คำค้น + ตัวกรอง) — ตัวเดียวกับที่หัวนับ "R รายการ" ⇒ ที่นี่ไม่กรองซ้ำ
+// ป้าย/การเรียง "สถานะ" ใช้ `status` ของแถว (`poLineDisplayStatus`) ตัวเดียวกับที่ตัวกรองเทียบ (M24a2)
+function PoLinesTable({ lines, priceByFg, prodIdx, resetKey, sort }) {
   const { sortKey, sortDir } = sort;   // sort = { sortKey, sortDir, sortBy } ทรงเดียวกับ useSortableTable
   const rows = useMemo(() => {
-    const out = [];
-    for (const po of pos) {
-      for (const l of po.lines || []) {
-        if (q) {
-          const name = prodIdx.get(String(l.fgCode).trim().toLowerCase())?.name;
-          const hay = [po.poNumber, l.fgCode, l.productName, name].filter(Boolean).join(" ").toLowerCase();
-          if (!hay.includes(q)) continue;
-        }
-        const cancelled = l.status === "cancelled";
-        const price = priceByFg.get(String(l.fgCode).trim().toLowerCase());
-        const value = !cancelled && price != null ? Number(l.qty || 0) * price : null;
-        out.push({ po, l, price, value, cancelled });
-      }
-    }
+    const out = lines.map(({ po, line: l, status }) => {
+      const cancelled = l.status === "cancelled";
+      const price = priceByFg.get(String(l.fgCode).trim().toLowerCase());
+      const value = !cancelled && price != null ? Number(l.qty || 0) * price : null;
+      return { po, l, status, price, value, cancelled };
+    });
     if (sortKey) {
       const s = sortDir === "asc" ? 1 : -1;
       const key = (r) => ({
         po: r.po.poNumber || "", fg: r.l.fgCode || "", qty: Number(r.l.qty || 0),
-        value: Number(r.value || 0), month: r.l.deliveryMonth || "", status: r.l.status || "",
+        value: Number(r.value || 0), month: r.l.deliveryMonth || "", status: PO_DISPLAY_STATUS_ORDER.indexOf(r.status.key),
       }[sortKey]);
       out.sort((a, b) => { const ka = key(a), kb = key(b); return (ka < kb ? -1 : ka > kb ? 1 : 0) * s; });
     }
     return out;
-  }, [pos, q, priceByFg, prodIdx, sortKey, sortDir]);
+  }, [lines, priceByFg, sortKey, sortDir]);
 
   const totalExVat = rows.reduce((s, r) => s + (r.value || 0), 0); // รวมทุกหน้า (ไม่ใช่เฉพาะหน้าปัจจุบัน)
-  const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } = usePagination(rows, { resetKey: `${q}|${sortKey}|${sortDir}` });
+  const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } = usePagination(rows, { resetKey: `${resetKey}|${sortKey}|${sortDir}` });
   /* 🪤 เดิมมีคอมโพเนนต์ `Th` ประกาศ **ซ้อนอยู่ตรงนี้** — ห้ามเอากลับมา: React เห็นเป็น
      type ใหม่ทุกเรนเดอร์ ⇒ remount <th> ทั้งช่องทุกครั้งที่ state ขยับ ซึ่งแปลว่า
      **โฟกัสบนปุ่มเรียงหลุดทันทีที่กด** = คีย์บอร์ดยังใช้งานจริงไม่ได้ทั้งที่มีปุ่มแล้ว
@@ -583,7 +597,7 @@ function PoLinesTable({ pos, priceByFg, prodIdx, q, sort }) {
                 </td>
                 <td style={{ textAlign: "right", color: r.price != null ? "var(--text-2)" : "var(--text-3)", whiteSpace: "nowrap" }}>{r.price != null ? baht(r.price) : NA}</td>
                 <td style={{ textAlign: "right", fontWeight: "var(--fw-semibold)", whiteSpace: "nowrap" }}>{r.cancelled ? "ยกเลิก" : (r.value != null ? baht(r.value) : NA)}</td>
-                <td><span className="ui-badge" style={{ color: lineStatusColor(r.l.status), borderColor: lineStatusColor(r.l.status) }}>{lineStatusLabel(r.l.status)}</span></td>
+                <td><span className="ui-badge" style={{ color: C[r.status.color] || C["text-3"], borderColor: C[r.status.color] || C["text-3"] }}>{r.status.label}</span></td>
               </DetailRow>
             );
           })}

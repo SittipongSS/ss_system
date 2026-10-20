@@ -181,7 +181,9 @@ export default function ProductionOverviewPage() {
               icon={ListChecks}
               tone="info"
               hint="มีไลน์และวันเริ่มครบแล้ว"
-              onClick={() => router.push("/production/board")}
+              /* 🐞 M24f (ตรวจตัวเลข 20/10): เดิมพาไปกระดาน (งานสัปดาห์นี้ + กำลังผลิต) ⇒ ไม่ใช่ N งานบนการ์ด
+                 ⇒ คิวที่กรองสถานะ "วางคิวแล้ว" ตัวเดียวกับตัวนับ · กระดานยังเข้าได้จากปุ่มหัวหน้า/เมนู */
+              onClick={() => router.push(productionJobsHref("planned"))}
             />
             <KpiCard
               label="กำลังผลิต"

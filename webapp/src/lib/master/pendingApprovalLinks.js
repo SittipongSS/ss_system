@@ -16,6 +16,7 @@
 //       และตารางต้องกรองด้วย `passesApprovalFilters` ตัวนี้ — เขียนเงื่อนไขสดที่หน้าไหนเมื่อไร เลขกับแถวเดินหนีกันเงียบ ๆ
 //    ⚠️ การ์ดภาพรวมนับจาก **ทะเบียนเต็ม** ไม่ผ่านตัวกรองทีม/ช่วงเวลาของหน้าภาพรวม — ลิงก์ส่งตัวกรองพวกนั้น
 //       ตามไปไม่ได้ ⇒ นับในตัวกรอง = เลขบนการ์ดไม่เท่าแถวที่เปิดเจอ (และไม่เท่าป้ายเมนูที่นับทุกทีม)
+//       · การ์ด "ทั้งหมด" ก็เช่นกัน (มติเจ้าของ 20/10 · M19a) — นับแถวของทะเบียนเปล่า (`registryDefaultCount`)
 import { approvalStatusOf } from './approvalStatus';
 
 export const PENDING_APPROVAL_HREF = Object.freeze({
@@ -49,4 +50,29 @@ export function passesApprovalFilters(record, { statuses = [], showInactive = fa
   if (statuses.length && !statuses.includes(approvalStatusOf(record))) return false;
   if (showInactive || record?.isActive !== false) return true;
   return statuses.includes('pending') && isPendingApproval(record);
+}
+
+/* ── เลขที่คู่กับ "ทะเบียนเปล่า ๆ" (ตรวจตัวเลข M19a/M20b · 20/10) ───────────────────────────────
+   🐞 การ์ด "สินค้าทั้งหมด / ลูกค้าทั้งหมด" บน /database และ StatCards "ทั้งหมด / อนุมัติแล้ว / ไม่อนุมัติ" ข้างทะเบียน
+      นับ `list.length` / `approvalStatusOf(x) === …` ทุกแถว **รวมใบเลิกใช้** — แต่ทะเบียนเปล่าซ่อนใบเลิกใช้
+      (`passesApprovalFilters`) ⇒ การ์ดบอก N กดแล้วเห็น N − เลิกใช้ · ติ๊ก "อนุมัติแล้ว" ได้น้อยกว่าเลขบนการ์ด
+   ⭐ แต่ละเลข = แถวหลังตั้งตัวกรองที่ตรงกับเลขนั้น (ไม่มีตัวกรองอื่น) — ใช้ตัวตัดสินเดียวกับตาราง
+   ⚠️ "รออนุมัติ" รวมใบเลิกใช้ตามมติเจ้าของ 19/10 ⇒ รออนุมัติ + อนุมัติแล้ว + ไม่อนุมัติ อาจมากกว่า "ทั้งหมด"
+      เท่าจำนวนใบเลิกใช้ที่ยังรออนุมัติ — แต่ละเลขยังเท่าแถวของมันเอง */
+
+/** จำนวนแถวที่ทะเบียนเปล่า ๆ (ไม่มีตัวกรอง) โชว์ — ใบเลิกใช้ซ่อน */
+export function registryDefaultCount(records = []) {
+  return (records || []).filter((r) => passesApprovalFilters(r)).length;
+}
+
+/** เลขแถบตัวเลขข้างทะเบียนสินค้า/ลูกค้า — `{ total, pending, approved, rejected }` */
+export function approvalStatCounts(records = []) {
+  const list = records || [];
+  const withStatus = (status) => list.filter((r) => passesApprovalFilters(r, { statuses: [status] })).length;
+  return {
+    total: registryDefaultCount(list),
+    pending: pendingApprovalCount(list),
+    approved: withStatus('approved'),
+    rejected: withStatus('rejected'),
+  };
 }

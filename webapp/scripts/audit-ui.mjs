@@ -877,8 +877,8 @@ const RAW_TAILWIND_TYPE_CAP = 148;
    เพราะ regex บังคับให้ตัวเลขตามหลัง `fontWeight:` ทันทีแล้วปิดท้ายด้วย `,` หรือ `}`
    ⇒ รูป `fontWeight: cond ? 700 : 500` หลุดทุกใบ · วัด 2026-09-02: style object มี
    `fontWeight` 282 จุด เป็นโทเคน --fw-* 274 · **หลุด 8 จุด และทั้ง 8 เป็น ternary**
-     src/app/pm/tasks/page.js:1114                     isToday ? 700 : 500
-     src/app/sales-planning/deals/[id]/page.js:161     s.state === "current" ? 800 : 650
+     src/app/pm/tasks/page.js:1235                     isToday ? 700 : 500
+     src/app/sales-planning/deals/[id]/page.js:162     s.state === "current" ? 800 : 650
      src/app/settings/signature-coverage/page.js:210   … ? 700 : 400
      src/app/settings/signature-coverage/page.js:213   … ? 700 : 400
      src/components/pm/ProjectDocumentView.js:470      weekend ? 400 : 500
@@ -890,7 +890,9 @@ const RAW_TAILWIND_TYPE_CAP = 148;
    ⚠️ ledger นี้ผูกกับ **เลขบรรทัด** ⇒ แก้อะไรเหนือจุดพวกนี้ในไฟล์เดียวกัน เลขจะเลื่อน
    และ inlineScaleSurface.test.mjs จะแดงทันที · แดงแบบนั้น = งานอัปเดตเลข ไม่ใช่จุดใหม่
    ให้ยืนยันว่า *โค้ดยังเป็นตัวเดิม* ก่อนแก้เลขเสมอ (2026-09-02: pm/tasks 1047 → 1061
-   เพราะรอบแถวตารางแทรกลิงก์เข้าไปด้านบน — โค้ดบรรทัดนั้นไม่ได้แตะเลย)
+   เพราะรอบแถวตารางแทรกลิงก์เข้าไปด้านบน — โค้ดบรรทัดนั้นไม่ได้แตะเลย ·
+   2026-10-20: pm/tasks 1114 → 1235 · deals/[id] 161 → 162 เพราะตรวจตัวเลข M8/M8b แทรกตัวกรองดีล/โครงการ
+   และ import ลิงก์คิวงานด้านบน — โค้ดสองบรรทัดนั้นไม่ได้แตะ)
 
    🐞 **บั๊กจริงที่เจอจากการวัด ไม่ใช่ข้อสงสัย**: deals/[id]/page.js:152 =
    `s.state === "current" ? 800 : 650` แต่ globals.css โหลด @font-face มาแค่ 400/500/600/700

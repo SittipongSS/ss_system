@@ -254,8 +254,14 @@ export default function SahamitOverview() {
                             เงื่อนไขของการยกเว้นคือด่าน ROW_MIRROR: ต้องมี `<Link>` ที่ href
                             **ตรงตัวอักษรต่อตัวอักษร** กับของแถวอยู่ในเซลล์ — ซึ่งเซลล์แรกมีอยู่แล้ว
                             จึงเปลี่ยนแค่แท็ก · `className` ของผู้เรียกถูกต่อท้าย `detail-row` ไม่ทับกัน
-                            🪤 `cursor: pointer` มาจาก `.detail-row` แล้ว ไม่ต้องเขียน inline อีก */
-                        <DetailRow key={p.id} href={`/sahamit/po?q=${p.poNumber}`} className="hover-row">
+                            🪤 `cursor: pointer` มาจาก `.detail-row` แล้ว ไม่ต้องเขียน inline อีก
+                            ── ปลายทาง = หน้า PO ใบนั้น ไม่ใช่ `/sahamit/po?q=เลขที่` (20/10/2026) ──
+                            หน้ารายการ PO ไม่เคยอ่าน `?q=` จาก URL (ช่องค้นหาเริ่มว่างเสมอ) ⇒ กดแถวแล้ว
+                            ได้รายการทั้งหมด ไม่ใช่ใบที่กด · และต่อให้อ่าน คำค้นก็จับแบบ "มีคำนี้อยู่ใน"
+                            เลขที่/FG/ปลายทาง ⇒ ได้หลายใบ · แถวเดียว = ใบเดียว จึงพาไปหน้ารายละเอียดตรง ๆ
+                            🔒 href สองที่ต้องตรงกันตัวอักษรต่อตัวอักษร (ROW_MIRROR) — ยามอยู่ที่
+                               `lib/sahamit/sahamitPoStatus.test.mjs` */
+                        <DetailRow key={p.id} href={`/sahamit/po/${p.id}`} className="hover-row">
                           {/* เลขที่ PO เป็น <Link> จริง = ทางเข้าของคีย์บอร์ด/โปรแกรมอ่านหน้าจอ/เปิดแท็บใหม่
                               onClick ของ <tr> เหลือไว้เป็นทางลัดของเมาส์
                               🪤 ถอด stopPropagation ทิ้งแล้ว — DetailRow ถาม `isInteractiveTarget`
@@ -263,9 +269,9 @@ export default function SahamitOverview() {
                                  (ท่าเดียวกับที่เรียกอื่น ๆ ของ DetailRow ใช้อยู่) */}
                           <td style={{ paddingLeft: "20px", fontWeight: "var(--fw-medium)" }}>
                             <Link
-                              href={`/sahamit/po?q=${p.poNumber}`}
+                              href={`/sahamit/po/${p.id}`}
                               className="linklike"
-                              title="เปิดรายการ PO ที่กรองด้วยเลขที่นี้"
+                              title="เปิดหน้า PO"
                             >
                               {p.poNumber}
                             </Link>

@@ -40,7 +40,7 @@ import { ROUNDS_SOLD_LABEL, VISIT_KIND_LABELS } from "@/lib/service/rounds";
 import { INTAKE_TABS, INTAKE_TAB_HINTS, INTAKE_TAB_LABELS, planRoundsSoldText } from "@/lib/service/intake";
 import { holidayGapText } from "@/lib/service/cadence";
 import {
-  LEGACY_SETUP_FILTERS, LEGACY_SETUP_FILTER_LABELS, legacySetupFilterCounts, legacySetupHaystack, legacySetupStatusView,
+  LEGACY_SETUP_FILTERS, LEGACY_SETUP_FILTER_LABELS, legacySetupFilterCounts, legacySetupHaystack, legacySetupMatchesFilter, legacySetupStatusView,
 } from "@/lib/service/legacySetupQueue";
 import { isHistoricalOrder } from "@/lib/sales/historicalOrders";
 import { SERVICE_SETUP_LINE_TEXT } from "@/lib/sales/serviceSetup";
@@ -272,7 +272,6 @@ export default function ServiceIntakePage() {
      ⇒ จอตั้ง/จอแคบเป็นการ์ด จอนอนเป็นตาราง (ทรงเดียวกับ /database/sites) สลับเองได้ที่หัวหน้า */
   const [view, setView] = useResponsiveView({ portrait: "cards", landscape: "table" });
   const legacyRows = useMemo(() => data?.bind || [], [data]);
-  const legacyCounts = useMemo(() => legacySetupFilterCounts(legacyRows), [legacyRows]);
   /* ใบเดิมที่ลูกค้ายังไม่มีไซต์ในทะเบียน — งานติดที่ TS (เพิ่มไซต์) ไม่ใช่ฝ่ายขาย ⇒ บอกจำนวนที่โน้ตของแท็บ */
   const legacyNoSite = useMemo(
     () => legacyRows.filter((row) => row.noSite && (row.state === "not_started" || row.state === "editing")).length,
@@ -285,13 +284,28 @@ export default function ServiceIntakePage() {
     [legacyRows],
   );
   const needle = search.trim().toLocaleLowerCase("th");
-  /* แท็บใบเดิม: ตัวกรองสถานะ + คำค้น (คำค้น = ทุกอย่างที่ตาเห็นบนแถว · legacySetupHaystack)
-     ⚠️ ป้ายเลขบนตัวกรองนับจากแถวทั้งหมด ไม่ใช่หลังค้นหา — เลขบนปุ่มคือ "มีกี่ใบในสถานะนี้" */
+  /* แท็บใบเดิม: คำค้น (= ทุกอย่างที่ตาเห็นบนแถว · legacySetupHaystack) ใช้ **ครั้งเดียว** แล้วทั้งเลขบนตัวกรองสถานะ
+     และแถวของแท็บออกจากชุดนี้ด้วยตัวตัดสินสถานะตัวเดียว (`legacySetupMatchesFilter`)
+     🐞 M24h (ตรวจตัวเลข 20/10): เดิมเลขบนปุ่มนับจากแถวทั้งหมด (ก่อนค้นหา) ⇒ ค้นแล้วปุ่ม "ตีกลับ 5" กดแล้วขึ้น 1 ใบ
+        ⇒ กติกาเจ้าของ "เลขบนตัวเลือกนับพร้อมตัวกรองอื่นที่เปิดอยู่" — เลขบนปุ่ม = แถวที่ขึ้นเมื่อกดปุ่มนั้น (คำค้นยังอยู่)
+     ⚠️ เลขบนแท็บ "รอฝ่ายขายตั้งงานบริการ" (`counts.bind`) กับบรรทัดสรุปงานค้าง/ใบรอไซต์ยังนับทั้งแท็บ — สลับแท็บล้างคำค้นและ
+        ตัวกรองสถานะ (ตัวรับของ <Tabs> ข้างล่าง) ⇒ กดแท็บแล้วได้ทุกใบตามเลขบนแท็บ */
+  const legacySearched = useMemo(
+    () => (needle ? legacyRows.filter((row) => legacySetupHaystack(row).includes(needle)) : legacyRows),
+    [legacyRows, needle],
+  );
+  const legacyCounts = useMemo(() => legacySetupFilterCounts(legacySearched), [legacySearched]);
   const tabRows = useMemo(() => {
     if (tab !== "bind") return data?.[tab] || [];
-    return legacyRows.filter((row) => (legacyFilter === "all" || row.state === legacyFilter)
-      && (!needle || legacySetupHaystack(row).includes(needle)));
-  }, [data, tab, legacyRows, legacyFilter, needle]);
+    return legacySearched.filter((row) => legacySetupMatchesFilter(row, legacyFilter));
+  }, [data, tab, legacySearched, legacyFilter]);
+  /* สลับแท็บ = ล้างคำค้นและตัวกรองสถานะของแท็บใบเดิม — เลขบนแท็บนับทุกใบ ⇒ กดแล้วต้องได้ทุกใบ
+     (<Tabs> ยิง onChange แม้กดแท็บที่เปิดอยู่ ⇒ กดแท็บเดิมซ้ำก็ล้างเหมือนกัน) */
+  const pickTab = useCallback((key) => {
+    setTab(key);
+    setSearch("");
+    setLegacyFilter("all");
+  }, []);
   const viewPageSize = view === "cards" ? CARD_PAGE_SIZE : DEFAULT_PAGE_SIZE;
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(tabRows, { resetKey: `${tab}|${legacyFilter}|${needle}`, defaultSize: viewPageSize });
@@ -339,7 +353,7 @@ export default function ServiceIntakePage() {
       <div className={styles.tabBlock} onFocus={revealFocusedTab}>
         <Tabs
           value={tab}
-          onChange={setTab}
+          onChange={pickTab}
           ariaLabel="คิวงานเข้าใหม่"
           tabs={INTAKE_TABS.map((key) => ({
             key,
@@ -423,7 +437,7 @@ export default function ServiceIntakePage() {
         loading={loading}
         toolbar={(
           <>
-            {/* แท็บใบเดิม: ค้นหา + ตัวกรองสถานะ (เลขบนปุ่ม = ใบในสถานะนั้นทั้งหมด) — แท็บอื่นไม่มี */}
+            {/* แท็บใบเดิม: ค้นหา + ตัวกรองสถานะ (เลขบนปุ่ม = ใบในสถานะนั้นที่ผ่านคำค้น = แถวที่ขึ้นเมื่อกด · M24h) — แท็บอื่นไม่มี */}
             {tab === "bind" && (
               <>
                 <div className={`search-glass ${styles.searchInput}`}>
