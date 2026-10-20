@@ -1840,6 +1840,11 @@ export default function RequestDetailPage() {
           entityId={req.id}
           canEdit={(req._mine || owner) && REQUEST_OPEN_STATUSES.concat("draft").includes(req.status)}
           inlineUpload
+          /* การ์ดนี้กองทุกชนิดของคำร้องไว้ด้วยกัน ⇒ ไฟล์ที่ติดชนิด "สเปก / แบบงาน / บรีฟ" มีป้ายบอก (layout-nits D4)
+             ⚠️ ป้ายขึ้นเฉพาะชนิดที่มีคนเลือก — สองทางที่แนบไฟล์ของคำร้องได้วันนี้ลงชนิดตั้งต้นทั้งคู่ (การ์ดนี้ → รูปอ้างอิง ·
+                /requests/new → อื่น ๆ) จึงไม่มีป้าย ⇒ ป้ายมีผลเมื่อมีทางเขียนที่ติดชนิด `spec` (วันนี้ยังไม่มีในโค้ด)
+             (กติกาอยู่ที่ `typePillOf` · เหตุที่ไม่เปิดทุกแผงอยู่ที่ prop `typePills` ของ AttachmentsPanel) */
+          typePills
         />
       </DetailCard>
     </>
