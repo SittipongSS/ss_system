@@ -291,6 +291,17 @@ export default function NewRequestPage() {
      ⇒ สามที่พูดตรงกันเสมอ (แผงบอกว่าครบ แต่ปุ่มกดไม่ได้ = สิ่งที่ทำให้คนเลิกเชื่อจอ)
      ⚠️ ปุ่มลบ/แก้ **ไม่ได้อยู่ที่นี่** — ร่างที่บันทึกแล้วมีชีวิตอยู่ที่หน้ารายละเอียด
      ซึ่งมีทั้งส่ง/ยกเลิก/ลบครบอยู่แล้ว · ทำซ้ำที่นี่ = สองที่ที่ต้องคอยให้ตรงกัน */
+  /* ⭐ **ขั้นเลือกหัวข้อ: เลือกครบแล้วหรือยัง** — เงื่อนไขเดียวกับด่าน `requestFormBlocker`
+     (ต้องมีทั้งฝ่ายและหัวข้อ) ⇒ ติ๊กในรายการความพร้อม · ปุ่ม "กรอกฟอร์ม…" · เหตุผลข้างปุ่มบันทึก
+     อ่านค่าตัวเดียวกัน สามที่จึงพูดตรงกันเสมอ */
+  const topicPicked = !!form.kind && !!form.dept;
+  /* ป้ายปุ่มที่กางฟอร์ม — ใช้ทั้งบนปุ่มเองและในเหตุผลของปุ่มบันทึก (ชื่อที่อ้างต้องตรงกับปุ่มบนจอทุกตัวอักษร) */
+  const openFormLabel = form.kind ? `กรอกฟอร์ม${requestKindLabel(form.kind)}` : "กรอกฟอร์ม";
+  /* เหตุผลที่ "บันทึกร่าง" ยังกดไม่ได้ระหว่างขั้นเลือกหัวข้อ
+     🐞 (UAT S4 · layout nits D3) เดิมขึ้น "เลือกฝ่ายและหัวข้อก่อน" ตลอดขั้นนี้ ⇒ เลือกครบแล้ว รายการความพร้อม
+        ติ๊กแล้ว แต่ข้อความยังสั่งให้เลือกอีก — ขัดกันเองบนการ์ดเดียว และไม่บอกก้าวจริงที่เหลือ (กดปุ่มกางฟอร์ม)
+     ⚠️ ยังเลือกไม่ครบ = คำเดิม (คำเดียวกับด่าน `requestFormBlocker` ของ lib/master/requestCreate.js) */
+  const topicStepReason = topicPicked ? `กด “${openFormLabel}” เพื่อเปิดฟอร์ม` : "เลือกฝ่ายและหัวข้อก่อน";
   // ป้ายช่องวันที่ของหัวข้อนี้ — ตัวเดียวกับที่ `requiredChecks` ตั้ง (ข้อความของทั้งใบ) ใช้หาแถวที่ต้องบอกเหตุ
   const dueLabel = requestFormCopy(form).dueLabel;
   const readinessItems = revealed
@@ -306,8 +317,8 @@ export default function NewRequestPage() {
     : [{
       id: "kind",
       label: "เลือกฝ่ายและหัวข้อ",
-      ready: !!form.kind,
-      detail: form.kind ? requestKindLabel(form.kind) : "เลือกก่อนจึงกางฟอร์มได้",
+      ready: topicPicked,
+      detail: topicPicked ? requestKindLabel(form.kind) : "เลือกก่อนจึงกางฟอร์มได้",
     }];
 
   const controlPanel = (
@@ -324,7 +335,7 @@ export default function NewRequestPage() {
         label: saving ? "กำลังบันทึก…" : "บันทึกร่าง",
         disabled: !revealed || !!blocker,
         // ⚠️ ปุ่มที่กดไม่ได้ต้องบอกเหตุผล — ด่านตัวเดียวกับที่ฟอร์มใช้
-        disabledReason: !revealed ? "เลือกฝ่ายและหัวข้อก่อน" : blocker || undefined,
+        disabledReason: !revealed ? topicStepReason : blocker || undefined,
         onClick: saveDraft,
       }}
       secondaryActions={[{
@@ -381,7 +392,7 @@ export default function NewRequestPage() {
           } : {
             // ⭐ ป้ายบอก **สิ่งที่จะได้** ไม่ใช่สิ่งที่ปุ่มทำ — "แสดงฟอร์ม" ไม่ได้บอกว่า
             // ฟอร์มอะไร · ใส่ชื่อหัวข้อลงไปเลยจะเห็นตั้งแต่ยังไม่กดว่ากำลังจะกรอกอะไร
-            label: form.kind ? `กรอกฟอร์ม${requestKindLabel(form.kind)}` : "กรอกฟอร์ม",
+            label: openFormLabel,
             // ⭐ **ปุ่มหลักของขั้นนี้** — ขั้นแรกยังไม่มีปุ่ม "บันทึกร่าง" (ยังไม่มีอะไร
             // ให้บันทึกนอกจากฝ่ายกับหัวข้อ) ⇒ นี่คือปุ่มเดียวที่พาไปต่อได้ทั้งหน้า
             // เดิมเป็น quiet ตัวเล็กลอยอยู่มุมขวา อ่านเหมือนข้อความจาง ไม่ใช่ปุ่ม
@@ -390,8 +401,8 @@ export default function NewRequestPage() {
             size: "md",
             // ⚠️ **ปุ่มที่กดไม่ได้ต้องบอกเหตุผล** (กฎเดียวกับ `requestFormBlocker`) —
             // จางเฉย ๆ คือสิ่งที่ทำให้คนคิดว่าระบบพัง แล้วไปหาสาเหตุผิดที่
-            disabled: !form.kind,
-            hint: form.kind ? null : "เลือกฝ่ายและหัวข้อก่อน",
+            disabled: !topicPicked,
+            hint: topicPicked ? null : "เลือกฝ่ายและหัวข้อก่อน",
             onClick: () => setRevealed(true),
           }}
         />

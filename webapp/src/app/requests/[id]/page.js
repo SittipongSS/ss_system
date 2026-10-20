@@ -1924,6 +1924,11 @@ export default function RequestDetailPage() {
           inlineUpload
           /* ซิงก์กับบล็อกไฟล์บังคับเฉพาะใบที่มีบล็อกนั้น — ใบอื่นไม่ส่งอะไรเพิ่ม (แผงเดิมทุกตัวอักษร) */
           {...(requiredFilesSpec ? { onItemsChange: onAttachmentsChange, reloadKey: attachmentsReloadKey } : {})}
+          /* การ์ดนี้กองทุกชนิดของคำร้องไว้ด้วยกัน ⇒ ไฟล์ที่ติดชนิด "สเปก / แบบงาน / บรีฟ" มีป้ายบอก (layout-nits D4)
+             ⚠️ ป้ายขึ้นเฉพาะชนิดที่มีคนเลือก — แนบจากการ์ดนี้ = รูปอ้างอิง · /requests/new = อื่น ๆ ⇒ ไม่มีป้าย ·
+                ไฟล์แบบ/ผังของบล็อกไฟล์บังคับ (ประเมินจากแบบ · S4) ลงชนิด `spec` ⇒ ขึ้นป้ายในการ์ดนี้ (ยอมรับแล้ว S4 V6)
+             (กติกาอยู่ที่ `typePillOf` · เหตุที่ไม่เปิดทุกแผงอยู่ที่ prop `typePills` ของ AttachmentsPanel) */
+          typePills
         />
       </DetailCard>
     </>

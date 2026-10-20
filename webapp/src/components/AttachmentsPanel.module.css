@@ -281,3 +281,99 @@ button.tile:focus-visible { outline: 2px solid var(--accent-ink); outline-offset
   min-width: 0;
   text-align: start;
 }
+
+/* ── ตะแกรงรูปของโหมด inline: ชื่อไฟล์ + ป้ายชนิดเอกสารใต้รูป (layout-nits D4) ──────────────────────
+   🐞 ชื่อไฟล์เคยอยู่แค่ alt/title ของรูป ⇒ มือถือไม่มี hover = ไม่รู้ว่ารูปไหนชื่ออะไร · ชนิดเอกสาร (สเปก / แบบงาน / บรีฟ)
+      ไม่ขึ้นเลยในโหมดนี้ ทั้งที่การ์ดคำร้องกองทุกชนิดไว้ด้วยกัน (ป้ายขึ้นเฉพาะแผงที่ผู้เรียกเปิด `typePills` และเฉพาะชนิด
+      ที่มีคนเลือก — ชนิดตั้งต้นไม่มีป้าย · กติกาอยู่ที่ `typePillOf`)
+   ⚠️ **หนึ่งบรรทัดเสมอ** (ยาวเกิน = "…" ชื่อเต็มอยู่ที่ title) — ทุกช่องในแถวของตะแกรงสูงเท่ากัน ไม่ดันแถวล่างเป็นฟันปลา
+   ⚠️ `line-height: var(--lh-thai)` คู่กับ `overflow: hidden` — กล่องบรรทัดเตี้ยกว่านี้ตัดสระบน/ล่างของไทยทิ้ง */
+.thumbCaption {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-0-5);
+  min-width: 0;
+  margin-top: var(--space-1);
+}
+.thumbName {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: var(--fs-3);
+  line-height: var(--lh-thai);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* ป้ายชนิดเอกสารแบบย่อ — ภาษาเดียวกับป้าย `.status-pill` กลาง (พื้นจางของสีตัวอักษร) แต่เตี้ยกว่า (ไม่มี min-height 24px)
+   เพราะอยู่ใต้รูปขนาด 148px ทุกช่อง · ยาวเกินช่อง = "…" (ชื่อเต็มอยู่ที่ title) */
+.typePill {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0 var(--space-1-5);
+  border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  color: var(--text-2);
+  font-size: var(--fs-2);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* ป้ายเดียวกันบนแถวไฟล์ — แถวเป็น `justify-between` ⇒ ไม่ดัน = ป้ายลอยกลางที่ว่างระหว่างชื่อกับปุ่ม
+   ⇒ `margin-inline-start: auto` ชิดกลุ่มปุ่มขวา · ไม่หด (`flex: none`) ชื่อไฟล์ (`truncate`) เป็นตัวที่ตัด "…" ก่อน
+   · เพดาน 10rem กันป้ายยาวกินชื่อไฟล์จนหมดที่จอ 375 (เกินเพดาน = "…" ชื่อเต็มอยู่ที่ title) */
+.rowPill {
+  flex: none;
+  max-width: 10rem;
+  margin-inline-start: auto;
+}
+
+/* ปุ่มลบของแถวไฟล์ — เป้ากด 24×24 (WCAG 2.2 SC 2.5.8 · layout-nits D4) · ไอคอน 13px เท่าเดิม
+   ⚠️ ขอบลบบน/ล่างเท่า `py-1` ของแถว ⇒ ช่องที่ปุ่มกินในแถวสูง 16px (ต่ำกว่าบรรทัดชื่อไฟล์) แถวจึงไม่สูงขึ้น
+      แต่พื้นที่กดยังเต็ม 24px (ลามเข้าระยะขอบของแถวตัวเอง ไม่ทับแถวข้าง)
+   ⚠️ `border-radius: 0` = พื้นที่กดเป็นจัตุรัสเต็ม 24×24 (ผ่าน 2.5.8 ด้วยขนาดเอง) — มุมโค้ง 8px เคยตัดมุมกล่องออก
+      (วัดในหน้า: กดได้ ~94% ของกล่อง) เหลือผ่านแค่ข้อยกเว้นระยะห่าง · กติกาเดียวกับ × มุมรูป (`.tileDelete`) */
+.rowDelete {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-6);
+  height: var(--space-6);
+  margin-block: calc(-1 * var(--space-1));
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.rowDelete:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -2px; }
+
+/* ปุ่มลบ × มุมรูปของตะแกรง/รายแถว — **เป้ากดสี่เหลี่ยมจัตุรัส** 24×24 (WCAG 2.2 SC 2.5.8 · layout-nits D4)
+   ตำแหน่ง/ขนาดอยู่ใน style object ของปุ่ม (เหตุผลอยู่ที่คอมเมนต์ใน `renderPhotoTile`) · ที่นี่ = พื้นโปร่ง + มุมไม่โค้ง
+   🐞 รอบแรก `border-radius: 50%` อยู่บนตัวปุ่ม ⇒ พื้นที่กด = วงกลม 24px · มุมกล่องตกไปโดนปุ่มเปิดรูปข้างใต้ = ไม่ผ่าน 2.5.8
+   ⚠️ `border-radius: 0` เขียนเองโดยเจตนา (ไม่พึ่ง preflight) — ขอบโค้งบนปุ่ม = พื้นที่กดหดตามขอบ */
+.tileDelete {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+  line-height: var(--lh-none);
+}
+.tileDelete:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 1px; }
+/* วงกลมสีกรมที่ตาเห็น — เต็มกล่องของปุ่ม (24px) หน้าตาเท่ารอบก่อน · เป็นของตกแต่งล้วน (`aria-hidden` · ไม่รับคลิกแยก) */
+.tileDeleteDot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--navy) 72%, transparent);
+  color: var(--navy-fg);
+  pointer-events: none;
+}
