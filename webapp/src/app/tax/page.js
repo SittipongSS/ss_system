@@ -20,7 +20,7 @@ import { RegsDonutChart, OrdersComposedChart } from "@/components/excise/TaxDash
 import { productDisplayName } from "@/lib/master/productIdentity";
 import { fmtNumber, naText } from "@/lib/format";
 import { businessDate } from "@/lib/businessDate";
-import { PERIODS, withinPeriod } from "@/lib/tax/period";
+import { PERIODS, taxQueueHref, withinPeriod } from "@/lib/tax/period";
 import {
   AGE_LATE_DAYS, LATE_REGISTRATIONS_HREF, ageLabel, ageTone, lateRegistrations, registrationAge,
 } from "@/lib/tax/registrationQueue";
@@ -146,8 +146,13 @@ export default function TaxDashboard() {
     return `${n} รายการ · ${tax}`;
   };
 
-  const goReg = (status) => router.push(`/tax/registrations?status=${status}`);
-  const goFil = (status) => router.push(`/tax/filings?status=${status}`);
+  /* ⭐ การ์ด KPI พาช่วงเวลาที่เลือกไปด้วย (ตรวจตัวเลข M7 · 20/10/2026) — การ์ดนับใบตามช่วง ("เดือนนี้/ไตรมาสนี้")
+     ⇒ กดแล้วคิวต้องกรองช่วงเดียวกัน (`?status=…&from=…&to=…` · ช่องจาก–ถึงของคิวขึ้นค่าให้เห็น) ไม่ใช่ทั้งกองตลอดกาล
+     🐞 เดิมส่งแค่ `?status=` ⇒ เลือก "เดือนนี้" การ์ด "ขึ้นทะเบียนแล้ว" บอก 2 กดแล้วได้ทุกใบที่เคยอนุมัติ
+     ⚠️ คิวตัดสินช่วงด้วย `withinDateRange` (วันไทย) ตัวเดียวกับ `withinPeriod` ข้างบน ⇒ เลขบนการ์ด = แถวที่เปิดได้
+     ⚠️ แถบ "ค้างเกินเกณฑ์" ไม่ใช้ตัวนี้ — มติ 19/10 นับทั้งกองไม่สนช่วง (`LATE_REGISTRATIONS_HREF`) */
+  const goReg = (status) => router.push(taxQueueHref("/tax/registrations", status, timeRange, todayIso));
+  const goFil = (status) => router.push(taxQueueHref("/tax/filings", status, timeRange, todayIso));
 
   // อายุของแถวในคิวงาน — ทะเบียนคิดจากจุดที่สถานะปัจจุบันเริ่ม · **ใบยื่น (`orders`)
   // มีแต่ `createdAt`** เพราะตารางนั้นไม่มีคอลัมน์ `updatedAt` เลย (ดูหัว

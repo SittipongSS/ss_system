@@ -15,13 +15,12 @@ import { useApiList } from "@/lib/excise/useApiList";
 import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
 import { useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
-import { approvalStatusOf } from "@/components/ApprovalStatus";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend, PieChart, Pie, Cell } from "recharts";
 import { CHART_LINE_TYPE, CHART_CATEGORICAL } from "@/lib/chartTheme";
 import { brandLabel } from "@/lib/master/brands";
 import { productIdentity } from "@/lib/master/productIdentity";
 import { NA, naText } from "@/lib/format";
-import { PENDING_APPROVAL_HREF, isPendingApproval, pendingApprovalCount } from "@/lib/master/pendingApprovalLinks";
+import { PENDING_APPROVAL_HREF, isPendingApproval, pendingApprovalCount, registryDefaultCount } from "@/lib/master/pendingApprovalLinks";
 
 const teamsOf = (c) => (c?.teams?.length ? c.teams : c?.team ? [c.team] : []);
 
@@ -164,13 +163,14 @@ export default function DatabaseOverview() {
       .sort((a, b) => b.value - a.value);
   }, [products]);
 
-  const countOf = (list) => ({
-    approved: list.filter((x) => approvalStatusOf(x) === "approved").length,
-    inactive: list.filter((x) => x.isActive === false).length,
-    total: list.length
-  });
-  const pStats = countOf(products);
-  const cStats = countOf(customers);
+  /* ⭐ การ์ด "ทั้งหมด" (มติเจ้าของ 20/10 · ตรวจตัวเลข M19a) = แถวที่ทะเบียนเปล่า ๆ โชว์ (`registryDefaultCount`
+     — ไม่รวมใบเลิกใช้) นับจากทะเบียนเต็ม **ไม่ผ่านตัวกรองทีม/ช่วงเวลาของหน้านี้** เหมือนการ์ดรออนุมัติ
+     🐞 เดิมนับ `list.length` ของชุดที่ผ่านตัวกรองแล้ว รวมใบเลิกใช้ ⇒ ไม่มีตัวกรอง: การ์ด N ทะเบียนโชว์ N − เลิกใช้ ·
+        กรองทีม X: การ์ดบอกเฉพาะทีม X แต่กดแล้วเปิดทุกทีม (ทะเบียนสินค้าไม่มีตัวกรองทีม · ทั้งสองไม่มีช่วงเวลา) */
+  const totalAll = {
+    products: registryDefaultCount(rawProducts || []),
+    customers: registryDefaultCount(rawCustomers || []),
+  };
   /* ⭐ การ์ด "รออนุมัติ" นับจากทะเบียนเต็ม **ไม่ผ่านตัวกรองทีม/ช่วงเวลาของหน้านี้** — ตัวนับเดียวกับป้ายเมนู
      และตาราง `?count=` ที่การ์ดเปิด (รวมใบเลิกใช้ · H3) ⇒ การ์ด = ป้าย = แถวที่เปิดเจอ ทุกสถานะตัวกรอง
      🐞 เดิมนับจากชุดที่ผ่านตัวกรองแล้ว แต่ลิงก์ส่งตัวกรองตามไปไม่ได้ (ทะเบียนสินค้าไม่มีตัวกรองทีม · ทั้งสองไม่มีช่วงเวลา)
@@ -180,6 +180,7 @@ export default function DatabaseOverview() {
     customers: pendingApprovalCount(rawCustomers || []),
   };
   const pageFiltered = timeframe.length + teamFilter.length > 0;
+  // ใช้ทั้งการ์ด "ทั้งหมด" และ "รออนุมัติ" — สี่การ์ดแถวบนไม่ตามตัวกรองของหน้า
   const pendingHint = pageFiltered ? "นับทุกใบ ไม่ขึ้นกับตัวกรอง" : undefined;
 
   const queue = useMemo(() => {
@@ -212,8 +213,9 @@ export default function DatabaseOverview() {
     return q;
   }, [products, customers, canApprove, role, myTeams, router]);
 
-  /* ตัวกรองนี้คุม **ทั้งหน้า** (KPI · กราฟ · คิวรออนุมัติ) ไม่ใช่รายการใดรายการหนึ่ง
-     — ยกเว้นการ์ด "รออนุมัติ" สองใบ (`pendingAll` ข้างบน: เลขต้องเท่าป้ายเมนูและตารางที่มันเปิด)
+  /* ตัวกรองนี้คุม **กราฟ · คิวรออนุมัติ** ไม่ใช่รายการใดรายการหนึ่ง
+     — ยกเว้นการ์ดสี่ใบแถวบน "ทั้งหมด" + "รออนุมัติ" (`totalAll` · `pendingAll` ข้างบน: เลขต้องเท่าแถวของทะเบียน
+     ที่การ์ดเปิด ซึ่งไม่รู้จักตัวกรองนี้ · มติเจ้าของ 20/10) — ตัวกรองติดอยู่ ใต้เลขบอก "นับทุกใบ ไม่ขึ้นกับตัวกรอง"
      ⇒ อยู่ที่ headerRight ของ Workspace ไม่ห่อ `.toolbar` (มติผู้ใช้ 2026-09-15 · ข้อเท็จจริง F3
      ของด่าน LIST_PANEL_SHAPE) · แผงเปิดผ่าน portal จึงไม่ล้นขอบขวา */
   const filter = (
@@ -264,8 +266,9 @@ export default function DatabaseOverview() {
             ใบของสายที่ล้ม = การ์ดสายที่ยังดีเลื่อนที่ แถวแหว่ง อ่านเป็น "จอเรนเดอร์ไม่ครบ" ไม่ใช่ "ไม่รู้ค่า"
             ⇒ คงการ์ดไว้ที่เดิม ค่าเป็นขีด และบรรทัดใต้ค่าชี้ขึ้นไปที่ป้าย */}
         <div className="kpi-grid" style={{ marginBottom: 0 }}>
-          <KpiCard label="สินค้าทั้งหมด" value={productsFailed ? NA : pStats.total} hint={productsFailed ? "ดึงข้อมูลไม่ได้ — ดูข้อความด้านบน" : undefined} icon={Package} tone="accent" onClick={() => router.push("/database/products")} />
-          <KpiCard label="ลูกค้าทั้งหมด" value={customersFailed ? NA : cStats.total} hint={customersFailed ? "ดึงข้อมูลไม่ได้ — ดูข้อความด้านบน" : undefined} icon={Building2} tone="info" onClick={() => router.push("/database/customers")} />
+          {/* "ทั้งหมด" = แถวของทะเบียนเปล่าที่การ์ดเปิด (ไม่รวมใบเลิกใช้ · ไม่ตามตัวกรองของหน้านี้ · M19a) */}
+          <KpiCard label="สินค้าทั้งหมด" value={productsFailed ? NA : totalAll.products} hint={productsFailed ? "ดึงข้อมูลไม่ได้ — ดูข้อความด้านบน" : pendingHint} icon={Package} tone="accent" onClick={() => router.push("/database/products")} />
+          <KpiCard label="ลูกค้าทั้งหมด" value={customersFailed ? NA : totalAll.customers} hint={customersFailed ? "ดึงข้อมูลไม่ได้ — ดูข้อความด้านบน" : pendingHint} icon={Building2} tone="info" onClick={() => router.push("/database/customers")} />
           {/* 🐞 สองใบนี้เคยเปิดทะเบียนทั้งกอง (H3) — "รออนุมัติ 3" ต้องเปิดเจอ 3 ใบ ⇒ ลิงก์ชุดเดียวกับป้ายบนเมนู */}
           <KpiCard label="สินค้ารออนุมัติ" value={productsFailed ? NA : pendingAll.products} hint={productsFailed ? "ดึงข้อมูลไม่ได้ — ดูข้อความด้านบน" : pendingHint} icon={Hourglass} tone="warning" onClick={() => router.push(PENDING_APPROVAL_HREF.products)} />
           <KpiCard label="ลูกค้ารออนุมัติ" value={customersFailed ? NA : pendingAll.customers} hint={customersFailed ? "ดึงข้อมูลไม่ได้ — ดูข้อความด้านบน" : pendingHint} icon={Hourglass} tone="danger" onClick={() => router.push(PENDING_APPROVAL_HREF.customers)} />

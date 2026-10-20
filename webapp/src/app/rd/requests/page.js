@@ -20,7 +20,8 @@ import RequestQueuePanel from "@/components/requests/RequestQueuePanel";
 import QueueCountStrip from "@/components/requests/QueueCountStrip";
 import { useQueueBoard } from "@/lib/requests/useQueueBoard";
 import { businessDate } from "@/lib/businessDate";
-import { DEPT_QUEUE_TAB_KEYS, deptQueueRows, deptQueueTabs, queueCounts } from "@/lib/requests/queueBoard";
+import { DEPT_QUEUE_TAB_KEYS, deptQueueRows, deptQueueTabs } from "@/lib/requests/queueBoard";
+import { filterQueueRows, queueStripCounts } from "@/lib/requests/queueFilter";
 import { isMonthKey, requestClosedInMonth } from "@/lib/requests/deptOverview";
 import Button from "@/components/ui/Button";
 import { fmtMonthYear } from "@/lib/format";
@@ -58,10 +59,13 @@ export default function RdRequestsPage() {
   const inHistory = tab === "history";
   const { setSort } = board;
   useEffect(() => { setSort(inHistory ? "closed" : "created"); }, [inHistory, setSort]);
-  /* ⚠️ เข้าประวัติแล้วล้างตัวกรองตัวเลข (ม-145) — แถบตัวเลขถูกซ่อนในประวัติ (ทุกช่อง
-     นับเฉพาะใบที่ยังเดินอยู่ = ศูนย์ทั้งแถบ) ⇒ ตัวกรองที่ค้างมาจะให้ตารางว่างเปล่า */
+  /* ⚠️ **สลับแท็บแล้วล้างตัวกรองตัวเลขทุกครั้ง** (ตรวจตัวเลข 20/10/2026 M3 · ขยายจาก ม-145 ที่ล้างเฉพาะ
+     ตอนเข้าประวัติ) — บางช่องมีได้แท็บเดียว: "กำลังดำเนินการ" เป็น 0 เสมอในแท็บรอผู้ขอ · "รอผู้ขอทำต่อ"
+     เป็น 0 เสมอในแท็บรอ RD · ประวัติไม่มีแถบเลย ⇒ ตัวกรองที่ค้างมาให้ตารางว่างทั้งที่เลขบนแท็บบอกว่ามีใบ
+     ⭐ กดแท็บที่เปิดอยู่ซ้ำ (Segmented ยิง onChange ด้วย) = "ทั้งแท็บ" · คำค้นกับแผงกรองยังตามไป เพราะเลขบน
+     แท็บนับพร้อมมันแล้ว (`tabCount`) */
   const setTab = (next) => {
-    if (next === "history") board.setCountFilter(null);
+    board.setCountFilter(null);
     router.replace(`/rd/requests?tab=${next}`, { scroll: false });
   };
 
@@ -92,6 +96,19 @@ export default function RdRequestsPage() {
     if (ownerParam) setFilter("owner", [ownerParam]);
   }, [ownerParam, setFilter]);
 
+  /* ⭐ **กดเมนู "คิวคำร้อง" ขณะอยู่หน้านี้ = เริ่มคิวใหม่** (ตรวจตัวเลข 20/10/2026 M3) — ป้ายบนเมนูนับแท็บ
+     "รอ RD ตอบ" ทั้งแท็บ (`deptRequestsTodoCount`) แต่เมนูเป็น <Link> ไป URL เปล่า และ Next ไม่ mount หน้าใหม่
+     (คีย์แคชของหน้าตัดพารามิเตอร์ทิ้ง) ⇒ คำค้น/ตัวกรองที่ค้างตามมา ป้ายบอก N ตารางขึ้นน้อยกว่า
+     ⇒ URL เปล่ามาได้จากเมนูทางเดียว (`setTab` · ปุ่มล้างเดือน เขียน `?tab=` เสมอ) = ล้างทุกชั้น แล้วเขียน
+     `?tab=todo` ทับ ⇒ กดเมนูครั้งถัดไป (URL เปล่าอีกรอบ) จับได้ · เปิดหน้าใหม่จาก URL เปล่า = ล้างของว่าง ไม่มีผล */
+  const bareUrl = searchParams.toString() === "";
+  const { setSearch, clearFilters } = board;
+  useEffect(() => {
+    if (!bareUrl) return;
+    setSearch(""); clearFilters(); setCountFilter(null);
+    router.replace("/rd/requests?tab=todo", { scroll: false });
+  }, [bareUrl, setSearch, clearFilters, setCountFilter, router]);
+
   /* ⭐ `?count=` มาจากปุ่มบนหน้าภาพรวม (ปฏิทินคำสัญญา → "ยังไม่ได้ให้วัน") —
      คีย์เดียวกับแถบตัวเลขในหน้านี้ (`QUEUE_COUNT_META`) ⇒ กดแล้วได้คิวที่กรองไว้แล้ว
      ⚠️ ตั้งครั้งเดียวตอนเปิดจากลิงก์ เหมือน `?owner=` — เฝ้าค่าตลอดแปลว่ากดล้างไม่ได้ */
@@ -101,7 +118,7 @@ export default function RdRequestsPage() {
   }, [countParam, setCountFilter]);
 
   /* ⚠️ เรียงความเร่งไว้เป็น **ลำดับตั้งต้นของข้อมูล** เท่านั้น — ตัวที่ตัดสินลำดับบนจอ
-     คือปุ่ม "เรียง" ในพาเนล (`sortRequestRows`) · ที่ยังเรียงตรงนี้เพราะ `queueCounts`
+     คือปุ่ม "เรียง" ในพาเนล (`sortRequestRows`) · ที่ยังเรียงตรงนี้เพราะ `queueStripCounts`
      และการ์ดอื่นที่กินชุดนี้คาดหวังลำดับความเร่ง */
   /* ⭐ `?closed=YYYY-MM` — ลิงก์จากการ์ด "ปิดเดือนนี้" บนหน้าภาพรวม (ตรวจตัวกรอง 08/10 · H11) · การ์ดนับใบที่
      ปิดครบในเดือนนั้น ⇒ กดแล้วต้องเจอใบชุดนั้น ไม่ใช่ประวัติตลอดกาลรวมใบยกเลิก · ตัวตัดสินตัวเดียวกับการ์ด
@@ -117,7 +134,16 @@ export default function RdRequestsPage() {
   );
   const closedMonthText = closedMonth ? fmtMonthYear(`${closedMonth}-01`, { locale: "th" }) : "";
 
-  const counts = queueCounts(rows, { todayIso: businessDate() });
+  /* ⭐ **ทุกตัวเลขบนหน้านับด้วยตัวตัดสินเดียวกับตาราง** (`queueFilter.js` · ตรวจตัวเลข 20/10/2026 M2 M3)
+     · แถบตัวเลข = แท็บนี้ + คำค้น + แผงกรอง (ไม่รวมช่องที่กดค้าง) ⇒ กดช่องไหนก็ได้แถวเท่าเลขช่องนั้น
+     · เลขบนแท็บ = แท็บนั้น + คำค้น + แผงกรอง (ไม่รวมตัวกรองตัวเลข เพราะ `setTab` ล้างมัน)
+     ⚠️ `filters` ชุดเดียวกับที่พาเนลใช้ (`tools` ตั้งต้น "full") — `?closed=` อยู่ใน `rows` แล้ว และหลุดเองตอนสลับแท็บ
+     ⇒ เลขบนแท็บประวัติไม่รวมเดือน = ตรงกับที่กดแล้วเห็น */
+  const queueState = {
+    countFilter: board.countFilter, search: board.search, filters: board.filters, todayIso: businessDate(),
+  };
+  const counts = queueStripCounts(rows, queueState);
+  const tabCount = (key) => filterQueueRows(deptQueueRows(requests, { dept: DEPT, tab: key }), queueState, { except: "count" }).length;
 
   return (
     <Workspace
@@ -142,9 +168,9 @@ export default function RdRequestsPage() {
           options={deptQueueTabs(DEPT).map((t) => ({
             value: t.key,
             label: t.label,
-            // นับจากชุดเดียวกับที่แท็บนั้นแสดงจริง — ตัวเลขบนแท็บกับตารางข้างล่าง
-            // ขัดกันไม่ได้ · ส่งเป็น `count` ไม่ใช่ต่อท้ายป้ายชื่อ (ดู Segmented.js)
-            count: deptQueueRows(requests, { dept: DEPT, tab: t.key }).length,
+            // นับจากชุดเดียวกับที่แท็บนั้นแสดงจริง (รวมคำค้น/แผงกรองที่ตามไป) — ตัวเลขบนแท็บกับตาราง
+            // ข้างล่างขัดกันไม่ได้ · ส่งเป็น `count` ไม่ใช่ต่อท้ายป้ายชื่อ (ดู Segmented.js)
+            count: tabCount(t.key),
           }))}
         />
       </div>
@@ -162,6 +188,8 @@ export default function RdRequestsPage() {
 
       <RequestQueuePanel
         scope="queue" dept={DEPT} rows={rows} board={board}
+        /* ป้ายตัวเลือกที่ติ๊กอยู่แต่ไม่มีในแท็บนี้ (เช่น `?owner=` หลังสลับแท็บ) อ่านจากทุกแท็บ */
+        labelRows={requests}
         /* หัวแผงรายการกลับมา (มติผู้ใช้ 2026-09-15 · D1 — แทนมติถอดหัวการ์ด 2026-09-07) */
         icon={<FlaskConical size={17} aria-hidden="true" />}
         sectionTitle="รายการคำร้องถึงฝ่ายวิจัยและพัฒนา"

@@ -100,9 +100,12 @@ test('ทุกค่าของ LEDGER_BILLING_FILTERS มี clause ใน fi
   const filter = slice(LIB, 'export function filterLedger(', '\nexport function ');
   const tally = slice(LIB, 'export function ledgerBillingTally(', '\nexport function ');
   const counts = slice(tally, 'counts: {', '},');
+  /* ยอดเงินรายตัวเลือก (ตรวจตัวเลข M10) — การ์ด "ถึงรอบวางบิล 7 วัน" อ่านยอดจากก้อนนี้ ⇒ ค่าใหม่ที่ลืมเติม = ยอดเป็น undefined */
+  const amounts = slice(tally, 'amounts: {', '},');
   for (const value of values) {
     assert.match(filter, new RegExp(`billingFilter === '${value}' && !r\\.\\w+\\) return false;`), `filterLedger ไม่กรอง billing=${value}`);
     assert.match(counts, new RegExp(`(^|[\\s{,])'?${value}'?: base\\.filter`, 'm'), `ledgerBillingTally ไม่นับ ${value}`);
+    assert.match(amounts, new RegExp(`(^|[\\s{,])'?${value}'?: amountOf\\(`, 'm'), `ledgerBillingTally ไม่มียอดของ ${value}`);
   }
 });
 

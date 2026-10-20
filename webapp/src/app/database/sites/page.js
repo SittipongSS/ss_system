@@ -33,6 +33,7 @@ import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
 import { compareSortValues } from "@/lib/useSortableTable";
 import { accessWindowText } from "@/lib/service/sites";
+import { filterSites, siteFilterFacets } from "@/lib/service/siteListFilter";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canEditService, canImportServiceData } from "@/lib/permissions";
 import styles from "./page.module.css";
@@ -165,20 +166,12 @@ export default function ServiceSitesPage() {
   }, [sites]);
 
   const q = search.trim().toLocaleLowerCase("th");
-  const filtered = useMemo(() => sites.filter((site) => {
-    if (!showInactive && site.isActive === false) return false;
-    if (provinceFilter.length && !provinceFilter.includes(site.province)) return false;
-    if (customerFilter.length && !customerFilter.includes(site.customerId)) return false;
-    if (zoneFilter.length && !zoneFilter.includes(site.routeZone)) return false;
-    if (q) {
-      // จังหวัดเข้าชุดค้นด้วย (mig 0315) — เป็นตัวตนถาวรของไซต์ คนถามหา "ไซต์ที่เชียงใหม่"
-      // รหัสลูกค้า (AR) โชว์บนแถวแล้ว ⇒ ต้องค้นเจอด้วย (ตาเห็นบนแถว = ค้นเจอ)
-      const hit = [site.name, site.customerName, site.customerArCode, site.routeZone, site.code, site.province]
-        .filter(Boolean).some((field) => String(field).toLocaleLowerCase("th").includes(q));
-      if (!hit) return false;
-    }
-    return true;
-  }), [sites, showInactive, provinceFilter, customerFilter, zoneFilter, q]);
+  /* ⭐ ตัวกรองอยู่ที่ `lib/service/siteListFilter` (ตรวจตัวเลข M21c) — ตารางกับเลขบนตัวเลือก "รวมไซต์ที่ปิดใช้งาน (n)"
+     ใช้ตัวเดียวกัน · คำค้นวิ่งไล่ชื่อ · ลูกค้า · AR · เขต · รหัส · จังหวัด (ตาเห็นบนแถว = ค้นเจอ) */
+  const { filtered, facets } = useMemo(() => {
+    const state = { search: q, provinces: provinceFilter, customers: customerFilter, zones: zoneFilter, showInactive };
+    return { filtered: filterSites(sites, state), facets: siteFilterFacets(sites, state) };
+  }, [sites, showInactive, provinceFilter, customerFilter, zoneFilter, q]);
 
   const [storedSortKey, setSortKey] = useStickyState("sortKey", SORT_DEFAULT);
   const [sortDir, setSortDir] = useStickyState("sortDir", sortDirOf(SORT_DEFAULT));
@@ -260,10 +253,11 @@ export default function ServiceSitesPage() {
             key: "routeZone", label: "เขตวิ่งงาน", icon: Navigation,
             options: zoneOptions, selected: zoneFilter, onChange: setZoneFilter,
           },
-          /* ⚠️ ขึ้นเฉพาะตอนมีของค้างจริง — ตัวกรองที่กดแล้วได้ 0 เสมอคือขยะบนแถบ */
-          ...(inactiveCount > 0 ? [{
+          /* ⚠️ ขึ้นเฉพาะตอนทะเบียนมีไซต์ปิดใช้งานจริง (หรือติ๊กค้างอยู่ ให้เอาออกได้) — ตัวกรองที่กดแล้วได้ 0 เสมอคือขยะบนแถบ
+             เลขในวงเล็บ = ไซต์ที่เพิ่มขึ้นเมื่อติ๊ก ภายใต้คำค้น/จังหวัด/ลูกค้า/เขตที่ติดอยู่ (`facets` · M21c) */
+          ...(inactiveCount > 0 || showInactive ? [{
             key: "inactive", label: "ที่ปิดใช้งาน", icon: Archive,
-            options: [{ value: "show", label: `รวมไซต์ที่ปิดใช้งาน (${inactiveCount})` }],
+            options: [{ value: "show", label: `รวมไซต์ที่ปิดใช้งาน (${facets.inactive})` }],
             selected: showInactive ? ["show"] : [],
             onChange: (vals) => setShowInactive(vals.includes("show")),
           }] : []),

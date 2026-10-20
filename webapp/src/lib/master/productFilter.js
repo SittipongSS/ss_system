@@ -8,8 +8,8 @@
 // ทุกฟังก์ชันบริสุทธิ์ ไม่มี React ไม่มี DB — เรียกได้ทั้งสองฝั่ง
 import { categoryOf, categoryFlags } from '@/lib/master/categoryOf';
 import { categoryNameBoth } from '@/lib/master/productCategoryOptions';
-import { passesApprovalFilters } from '@/lib/master/pendingApprovalLinks';
-import { isMissingRetailPrice } from '@/lib/tax/taxableProducts';
+import { approvalStatCounts, passesApprovalFilters } from '@/lib/master/pendingApprovalLinks';
+import { isMissingRetailPrice, isProductExciseTaxable } from '@/lib/tax/taxableProducts';
 
 /** รหัสหมวดของสินค้า — ใช้ค่าที่บันทึกไว้ก่อน ถอยไปถอดจาก fgCode ให้แถวเก่า */
 export function productCategoryCode(product) {
@@ -74,4 +74,42 @@ export function filterProducts(products = [], {
     if (!q) return true;
     return searchHaystack(p, productTypes).some((v) => (v || '').toLowerCase().includes(q));
   });
+}
+
+/**
+ * เลขบนตัวเลือกในปุ่มตัวกรอง — นับ **พร้อมตัวกรองอื่นที่ติดอยู่** (ตรวจตัวเลข M21a · 20/10)
+ *
+ * 🐞 เดิม "ขาดราคาขายปลีก (n)" นับทั้งทะเบียน (ไม่สนคำค้น/สถานะ/ทะเบียน/ใบเลิกใช้) และ
+ *    "รวมสินค้าที่เลิกใช้ (n)" นับใบเลิกใช้ทุกใบ ⇒ ค้นหา/กรองอยู่แล้วติ๊ก ได้แถวไม่เท่าเลขบนตัวเลือก
+ *    (สินค้าเลิกใช้ที่ขาดราคาถูกนับ แต่ตารางซ่อน)
+ *
+ * - `missingPrice` = แถวที่ตารางโชว์หลังติ๊ก "ขาดราคาขายปลีก"
+ * - `inactive`     = แถวที่ **เพิ่มขึ้น** เมื่อติ๊ก "รวม…ที่เลิกใช้" (ตัวเลือกแบบ "รวม" ไม่ใช่ "เฉพาะ")
+ *   ⚠️ ขณะกรอง "รออนุมัติ" ใบเลิกใช้ที่รออนุมัติขึ้นอยู่แล้ว (H3) ⇒ ไม่นับซ้ำ — ติ๊กแล้วไม่เพิ่มแถว
+ * @param state ชุดเดียวกับ `filterProducts` (search · statuses · registrations · showInactive · missingRetailPrice · productTypes)
+ */
+export function productFilterFacets(products = [], state = {}) {
+  const rows = (extra) => filterProducts(products, { ...state, ...extra }).length;
+  return {
+    missingPrice: rows({ missingRetailPrice: true }),
+    inactive: rows({ showInactive: true }) - rows({ showInactive: false }),
+  };
+}
+
+/**
+ * แถบตัวเลขข้างทะเบียนสินค้า (StatCards) — แต่ละเลข = แถวหลังตั้งตัวกรองที่ตรงกัน (ตรวจตัวเลข M20b)
+ * `total/pending/approved/rejected` จาก `approvalStatCounts` (ตัวตัดสินเดียวกับตาราง)
+ * `taxable` = แถวของทะเบียนเปล่าที่ต้องเสียภาษี ตามกฎเดียวของระบบ (`isProductExciseTaxable` — ธงรายตัวชนะหมวด)
+ *   🐞 เดิม `isExciseTaxable !== false` นับสินค้าในหมวดที่ไม่เสียภาษีเข้ามาด้วย (taxableProducts.js หัวไฟล์) และรวมใบเลิกใช้
+ *   ⚠️ ไม่มีตัวกรองคู่กัน (การ์ดกดไม่ได้) — นับจากชุดเดียวกับ "ทั้งหมด" จึงเทียบกันได้
+ */
+export function productStatCounts(products = [], productTypes = []) {
+  const list = products || [];
+  return {
+    ...approvalStatCounts(list),
+    taxable: list
+      .filter((p) => passesApprovalFilters(p))
+      .filter((p) => isProductExciseTaxable({ ...p, categoryCode: productCategoryCode(p) }, productTypes))
+      .length,
+  };
 }

@@ -329,3 +329,17 @@ test('⭐ หน้าจัดคิวส่งของที่โมดั�
   assert.match(tag, /rosterState=\{rosterState\}/);
   assert.match(live(page), /const rosterState = technicians\.length \? "ready"\s*: techStatus === "error" \? "error"\s*: techStatus === "idle" \|\| techStatus === "loading" \? "loading" : "ready";/);
 });
+
+/* ── บรรทัด "มีร่างที่เสนอวันใน… n ใบ — ดูในรายการงาน" (ตรวจตัวเลข 20/10 · M24e) ──
+   🐞 กดแล้วตั้งชิปสัปดาห์แต่ไม่ล้างคำค้น ⇒ n มาจาก `draftsInRange` (หลังกรองทีม ไม่ขึ้นกับคำค้น) แต่รายการตามคำค้นที่ค้างอยู่
+      (ค้น "SV-05" แล้วกด ⇒ ได้ 0 จาก 2) · ⭐ ทรงเดียวกับปุ่มตัวเลขคำร้อง (`showRequestCards`) ที่ล้างคำค้นอยู่แล้ว */
+test('🔴 M24e: ปุ่ม "ดูในรายการงาน" ของบรรทัดร่างสัปดาห์ล้างคำค้นพร้อมตั้งชิป — เลขบนบรรทัด = แถวที่ขึ้น', () => {
+  const src = live(page);
+  const handler = src.match(/setWithin\(\{ from: range7\.from, to: range7\.to \}\);[\s\S]*?scrollIntoView/);
+  assert.ok(handler, 'หาตัวรับคลิกของบรรทัดร่างสัปดาห์ไม่เจอ');
+  assert.match(handler[0], /setSearch\(""\);/, 'ต้องล้างคำค้น — n ไม่ขึ้นกับคำค้น');
+  assert.match(handler[0], /setQuery\(\{ tab: null, range: null \}\);/, 'ต้องพาไปถังรอจัด');
+  assert.match(src, /draftsInRange\(queue\.visits, range7, teamFilter, crewByUser\)/, 'n นับสัปดาห์เดียวกับชิป (range7) หลังกรองทีม');
+  // ปุ่มตัวเลขคำร้อง (ทรงต้นแบบ) ยังล้างคำค้นอยู่
+  assert.match(src.match(/const showRequestCards = \(\) => \{[\s\S]*?\n {2}\};/)[0], /setSearch\(""\);/);
+});

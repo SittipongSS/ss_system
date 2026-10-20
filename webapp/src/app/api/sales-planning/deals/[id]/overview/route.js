@@ -10,6 +10,10 @@ import { canViewUpdates } from '@/lib/master/updateAccess';
 import { customerNameIn } from '@/lib/master/customerName';
 import { canViewLeads, inLeadScope } from '@/lib/sales/leads';
 import { leadLinkError } from '@/lib/sales/dealLeadLink';
+import { can, pmTaskScopes } from '@/lib/permissions';
+import { dealTaskOrFilter } from '@/lib/pm/dealTaskLink';
+import { loadTaskScopeClauses } from '@/lib/pm/taskScope';
+import { dealQueueLanding, taskInScope, taskListRows } from '@/lib/pm/taskListFilter';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,10 +45,13 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     // เอง ถ้าดึงซ้ำที่นี่ก็เป็นการอ่านสองรอบแล้วทิ้งชุดหนึ่ง
     safe('stage history', supabase.from('sales_deal_stage_history').select('*').eq('dealId', deal.id).order('changedAt', { ascending: false }), []),
     safe('forecasts', supabase.from('sales_deal_forecasts').select('*').eq('dealId', deal.id).order('createdAt', { ascending: false }), []),
-    // งาน: ผูกดีลตรง (dealId) + งานเดิมที่ผูกผ่านไทม์ไลน์ (projectId) — ฟอร์มตัด
+    // งาน: ผูกดีลตรง (dealId) + งานเดิมที่ผูกผ่านไทม์ไลน์ (projectId · ไม่มี dealId) — ฟอร์มตัด
     // การผูกไทม์ไลน์ออกแล้ว แต่ข้อมูลเก่ายังมี ต้องไม่หายไปจากหน้าดีล
+    // 🐞 เดิม `projectId.eq.P` เฉย ๆ ⇒ งานของ **ดีลพี่น้อง** ในโครงการเดียวกันติดมาทั้งหมด (POST ประทับ projectId ให้ทุกงาน
+    //    ของดีลที่ผูกโครงการ) — การ์ด "x/y เสร็จ" · ตารางงาน · ฟีดอัปเดตงาน นับ/โชว์งานของดีลอื่น (ตรวจตัวเลข M8c)
+    //    ⇒ นิยามเดียวที่ `lib/pm/dealTaskLink.js` (ตัวกรองดีลของคิว /sa/tasks ใช้ตัวตัดสินคู่กันตัวเดียวกัน)
     safe('deal tasks', supabase.from('personal_tasks').select('*')
-      .or(deal.projectId ? `dealId.eq.${deal.id},projectId.eq.${deal.projectId}` : `dealId.eq.${deal.id}`)
+      .or(dealTaskOrFilter(deal))
       .order('createdAt', { ascending: false }), []),
     // ข้อสอบถามถึงฝ่ายอื่น (RD) ของดีลนี้ — "เก็บแยก โชว์รวม": merge เข้าฟีด
     // ความเคลื่อนไหวฝั่ง client แบบเดียวกับ stageHistory (อ่านอย่างเดียวในฟีด)
@@ -184,6 +191,31 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     assigneeName: task.assigneeId ? (users.get(task.assigneeId)?.name || null) : null,
   }));
 
+  /* ── ป้าย "ค้าง n" ข้างปุ่ม "เปิดคิวงาน" (มติเจ้าของ 20/10/2026 · ตรวจตัวเลข M8b ข้อ 1) ──────────────────
+     ปุ่มพาไป `/sa/tasks?dealId=X` ซึ่งเปิดที่ **ขอบเขตกว้างสุดที่คนนี้มีสิทธิ์** + มุมมอง "ทั้งหมดของฉัน" + งานค้าง
+     ⇒ นับด้วยตัวตัดสินเดียวกับคิวตอนเปิดมาถึง (`dealQueueLanding` + `taskListRows`) บนแถวที่ขอบเขตนั้นโหลดได้จริง
+     (`loadTaskScopeClauses` — ตัวโหลดตัวเดียวกับ /api/pm/my-work) · คนที่มีแค่ "ของฉัน" (WH/QC/PC …) จึงได้เลขเฉพาะ
+     งานที่คิวของเขาโชว์ได้ ไม่ใช่งานทุกคนของดีล (เลขของตาราง/การ์ด "x/y เสร็จ" ข้างบนยังนับทุกงานตามเดิม)
+     ⚠️ ไม่มีสิทธิ์ดูคิวงาน (pm:view) = `null` — ไม่มีเลขให้โชว์ เพราะกดแล้วคิวไม่เปิดให้
+     ⚠️ อ่านขอบเขตพลาด **หรืออ่านงานของดีลพลาด** = `null` (ไม่ใช่ 0) — ป้ายที่บอก 0 ตอนนับไม่ได้อ่านว่า "ไม่มีงานค้าง"
+        (`safe()` คืน `[]` พร้อม `dealTasks.warning` ⇒ นับจากลิสต์ว่างได้ "ค้าง 0" ทั้งที่ยังไม่รู้) */
+  let taskQueue = null;
+  if (can(user.role, 'pm:view') && !dealTasks.warning) {
+    try {
+      const landing = dealQueueLanding({
+        allowedScopes: pmTaskScopes(user.role),
+        meId: user.id,
+        dealIds: [deal.id],
+        dealProjectOf: (dealId) => (dealId === deal.id ? deal.projectId || null : null),
+      });
+      const clauses = await loadTaskScopeClauses(supabase, user, landing.scope);
+      const inScope = enrichedDealTasks.filter((task) => taskInScope(task, clauses));
+      taskQueue = { scope: landing.scope, open: taskListRows(inScope, landing).length };
+    } catch (scopeError) {
+      warnings.push(`task queue scope: ${scopeError.message}`);
+    }
+  }
+
   // ── ความคืบหน้าที่คนพิมพ์ไว้ในเธรดของ "งานที่ผูกดีล" ────────────────────
   //
   // เดิมดีลได้แค่ 3 จังหวะ (สร้าง/เสร็จ/เลยกำหนด) ส่วนเนื้อความจริง — "ลูกค้าขอเลื่อน
@@ -222,6 +254,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   return ok({
     taskUpdates,
     hiddenTaskFeeds,
+    taskQueue,
     /* แถวมูลค่ารายหมวดไปกับดีลเลย — หน้าเดียวใช้ทั้งโชว์และเปิดฟอร์มแก้
        ⚠️ อ่านไม่สำเร็จ = `null` ไม่ใช่ `[]` — ฟอร์มแก้ส่งรายการกลับไปทั้งชุดตอนบันทึก
        ลิสต์ว่างจึงแปลว่า "ลบทุกแถว" หน้าเว็บต้องแยกสองกรณีนี้ออกจากกันได้ */

@@ -24,8 +24,9 @@ import { useQueueBoard } from "@/lib/requests/useQueueBoard";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { REQUEST_SCOPES, canUseScope } from "@/lib/requests/scope";
 import {
-  QUEUE_TABS, queueCounts, queueTabRows, startHereRequest, visibleQueueRows, waitingOnMeRows,
+  QUEUE_TABS, matchesQueueCount, queueTabRows, startHereRequest, visibleQueueRows, waitingOnMeRows,
 } from "@/lib/requests/queueBoard";
+import { filterQueueRows, queueStripCounts } from "@/lib/requests/queueFilter";
 import StartHereCard from "@/components/requests/StartHereCard";
 import AlertBanner from "@/components/ui/AlertBanner";
 import { bouncedDaysText } from "@/lib/requests/queueBoard";
@@ -85,6 +86,14 @@ export default function RequestsPage() {
 
   // สถานะร่วมของหัวการ์ดกับตาราง (ตัวสลับมุมมอง · ตัวกรองตัวเลข · ค้นหา)
   const board = useQueueBoard();
+  // วันไทย (ไม่ใช่วัน UTC) — ตัดสิน "เลยกำหนด" ของตัวเลขทุกตัวบนหน้าและการ์ดเริ่มที่นี่
+  const today = businessDate();
+  /* ⭐ **สถานะตัวกรองชุดเดียวกับที่พาเนลกรองตาราง** (`queueFilter.js` · ตรวจตัวเลข 20/10/2026 M4) — เลขบนแท็บ ·
+     "ในคิว/ประวัติ" · ชิปฝ่าย · แถบตัวเลข นับผ่าน `filterQueueRows` ด้วยชุดนี้ ⇒ ตรงกับตารางที่กดแล้วเห็น
+     ⚠️ `filters` ต้องเป็นชุดที่พาเนลใช้จริง (`tools` ตั้งต้น "full" = ใช้ทั้งชุด) */
+  const queueState = useMemo(() => ({
+    countFilter: board.countFilter, search: board.search, filters: board.filters, todayIso: today,
+  }), [board.countFilter, board.search, board.filters, today]);
   const [rawRequests, setRequests] = useState([]);
   // ⚠️ เหลือ **ดีลอย่างเดียว** — ใช้เติมค่าตั้งต้นให้ปุ่ม "เปิดคำร้อง" ตอนมาจากหน้าดีล
   // (`?dealId=`) · ทะเบียนที่เหลือเคยโหลดไว้ส่งให้ `RequestQueuePanel` ซึ่ง **ไม่เคย
@@ -110,14 +119,16 @@ export default function RequestsPage() {
   const { setSort } = board;
   useEffect(() => { setSort(inHistory ? "closed" : "urgency"); }, [inHistory, setSort]);
 
-  /* ⚠️ เข้าประวัติแล้วล้างตัวกรองตัวเลข (ม-145) — แถบตัวเลขนับเฉพาะใบที่ยังเดินอยู่
-     ⇒ ในประวัติทุกช่องเป็นศูนย์และแถบถูกซ่อน · ตัวกรองที่ค้างมาจากคิวจะให้ตารางว่าง
-     พร้อมคำแนะนำ "กดตัวเลขซ้ำ" ที่ไม่มีตัวเลขให้กด */
+  /* ⚠️ **สลับแท็บแล้วล้างตัวกรองตัวเลขทุกครั้ง** (ตรวจตัวเลข 20/10/2026 M4 · ขยายจาก ม-145 ที่ล้างเฉพาะตอน
+     เข้าประวัติ) — แถบในแท็บ "รอฉันตอบ" ไม่มีกล่อง "ตีกลับ" · แท็บ "ที่ฉันเปิด" ไม่มีกล่อง "ยังไม่ได้ให้วัน" ·
+     ประวัติไม่มีแถบเลย ⇒ ตัวกรองที่ค้างมาให้ตารางว่างโดยไม่มีกล่องให้กดล้าง ทั้งที่เลขบนแท็บบอกว่ามีใบ
+     ⚠️ ล้าง **ในตัวจัดการนี้** ไม่ใช่ใน useEffect ที่เฝ้า `tab` — ปุ่ม "ดูใบที่ตีกลับ" เรียก `setTab` แล้วตั้ง
+     ตัวกรองต่อในจังหวะเดียวกัน (setState ตัวหลังชนะ) · ย้ายไป effect เมื่อไรตัวกรองของแถบเตือนจะถูกล้างทิ้ง */
   // `next` ว่าง = ถอด `?tab=` ออก — ใช้กับ "ในคิว" ของทีม/ทั้งหมด (เหตุผลอยู่ที่ตัวสลับ)
   /* ⚠️ **พาตัวกรองดีลไปด้วย** (ตรวจตัวเลข H1 2026-10-19) — เลขบนแท็บนับจากชุดที่กรองดีลแล้ว ถ้ากดแท็บแล้ว
      `?dealId=` หลุด ชุดจะกลายเป็นทั้งคิวเงียบ ๆ ทั้งที่เลขบนแท็บที่เพิ่งกดพูดถึงดีลเดียว · ถอดได้ที่ปุ่ม × เท่านั้น */
   const setTab = (next) => {
-    if (next === "history") board.setCountFilter(null);
+    board.setCountFilter(null);
     router.replace(requestsQueueHref({ tab: next, link: dealLink }), { scroll: false });
   };
 
@@ -225,13 +236,18 @@ export default function RequestsPage() {
   /* ⭐ **ตัวสลับ "ในคิว / ประวัติ" ของขอบเขตทีม/ทั้งหมด** (ม-145) — แท็บบทบาทยังซ่อน
      (ม-106) แต่ใบที่จบแล้วต้องออกจากคิวทุกขอบเขต ⇒ สองตัวเลือกที่อ่านจาก `?tab=`
      ตัวเดียวกับแท็บบทบาท (ไม่เพิ่มคีย์แท็บที่สี่ — R-4) */
+  /* ⚠️ นับพร้อมคำค้น/แผงกรองที่ตามไป แต่ไม่รวมตัวกรองตัวเลข — กดแล้ว `setTab` ล้างมัน (M4) */
   const openCount = useMemo(
-    () => visibleQueueRows(requests, { scope: activeScope, tab: defaultTab, myDepts }).length,
-    [requests, activeScope, defaultTab, myDepts],
+    () => filterQueueRows(
+      visibleQueueRows(requests, { scope: activeScope, tab: defaultTab, myDepts }), queueState, { except: "count" },
+    ).length,
+    [requests, activeScope, defaultTab, myDepts, queueState],
   );
   const historyCount = useMemo(
-    () => visibleQueueRows(requests, { scope: activeScope, tab: "history", myDepts }).length,
-    [requests, activeScope, myDepts],
+    () => filterQueueRows(
+      visibleQueueRows(requests, { scope: activeScope, tab: "history", myDepts }), queueState, { except: "count" },
+    ).length,
+    [requests, activeScope, myDepts, queueState],
   );
   // 🐞 subtitle ของหน้านี้บอกไว้ตั้งแต่ต้นว่า "เรื่องที่ยังไม่มีใครรับขึ้นก่อนเสมอ"
   // แต่ไม่มีใครเรียงจริง — API คืนมาเรียง createdAt ล้วน · ตัวเรียงมีอยู่แล้วใน lib
@@ -261,7 +277,6 @@ export default function RequestsPage() {
   // ⚠️ ยังบวกนอก `queueTabRows` เหมือนเดิม — ใบยังต้องอยู่แท็บ "ที่ฉันเปิด" ที่เดียว
   // ไม่งั้นนับซ้ำสองแท็บ · แต่ตัวบวกย้ายไป `waitingOnMeRows` (2026-08-12) เพื่อให้
   // **ป้ายตัวเลขบนเมนู** ใช้ชุดเดียวกับการ์ดนี้ — เดิมการ์ดบวกเองในหน้า ป้ายจึงไม่นับ
-  const today = businessDate();
   const startHere = useMemo(
     () => startHereRequest(waitingOnMeRows(requests, { myDepts }), { todayIso: today }),
     [requests, myDepts, today],
@@ -311,9 +326,11 @@ export default function RequestsPage() {
      `requestFacetOptions`) — ฝ่ายที่ไม่มีใบเลยคือปุ่มที่กดแล้วได้ตารางว่างเสมอ
      ⚠️ **ฝ่ายที่เลือกอยู่ต้องอยู่ในลิสต์เสมอ แม้เหลือศูนย์ใบ** — ไม่งั้นสลับแท็บแล้ว
      ปุ่มที่กดค้างไว้หายไปจากจอ พร้อมกับตารางที่ว่างโดยไม่มีอะไรบอกว่ายังกรองอยู่ */
+  /* ⚠️ **นับพร้อมทุกชั้นที่ตามไป** (ตรวจตัวเลข 20/10/2026 M4) — สลับฝ่ายไม่ล้างตัวกรองตัวเลข คำค้น หรือแผงกรอง
+     ⇒ เลขข้างชิปต้องผ่านทั้งสามชั้นเหมือนตาราง · 🐞 เดิมนับก่อนทุกชั้น ⇒ ค้น "ลอรีอัล" อยู่ ชิป "RD 12" กดแล้วได้ 2 */
   const deptCountBase = useMemo(
-    () => visibleQueueRows(linkedRequests, { scope: activeScope, tab, myDepts }),
-    [linkedRequests, activeScope, tab, myDepts],
+    () => filterQueueRows(visibleQueueRows(linkedRequests, { scope: activeScope, tab, myDepts }), queueState),
+    [linkedRequests, activeScope, tab, myDepts, queueState],
   );
   const deptOptions = useMemo(() => {
     /* ⭐ **ทุกฝ่ายในทะเบียนขึ้นครบเสมอ แม้เหลือศูนย์ใบ** (มติผู้ใช้ 2026-08-30) —
@@ -351,17 +368,31 @@ export default function RequestsPage() {
     : `${deptFilter}${REQUEST_DEPT_LABELS[deptFilter]?.name ? ` · ${REQUEST_DEPT_LABELS[deptFilter].name}` : ""}`;
 
   const rows = tabRows;
-  const counts = queueCounts(rows, { todayIso: today });
+  // แถบตัวเลข = ชุดของแท็บนี้ + คำค้น + แผงกรอง (ไม่รวมช่องที่กดค้าง) ⇒ กดช่องไหนก็ได้แถวเท่าเลขช่องนั้น (M4)
+  const counts = queueStripCounts(rows, queueState);
 
   /* ⭐ **แถบเตือนใบตีกลับ** (แบบ จ · 2026-08-11) — ตัวเลขบนแถบบอกว่ามีกี่ใบ แต่
      แถบตัวเลขคือของที่ตาเลื่อนผ่าน · ใบที่ฝ่ายส่งคืนมาแล้วค้างหลายวันคือของที่
      **ไม่มีใครกำลังทำอยู่เลย** (ฝ่ายปล่อยมือแล้ว ผู้ขอยังไม่รู้ตัว) ⇒ ต้องมีอะไร
      สักอย่างที่อ่านไม่ผ่าน · ปุ่มพาไปตัวกรองเลย ไม่ใช่บอกเฉย ๆ แล้วให้ไปหาเอง
-     ⚠️ นับจาก **ใบของตัวเอง** เท่านั้น — ใบตีกลับของเพื่อนร่วมทีมไม่ใช่ของค้างของเรา */
+     ⚠️ นับจาก **ใบของตัวเอง** เท่านั้น — ใบตีกลับของเพื่อนร่วมทีมไม่ใช่ของค้างของเรา
+     ⭐ **ตัวตัดสินเดียวกับกล่อง "ตีกลับ รอคุณแก้"** (`matchesQueueCount` ซึ่งดู `_mine` แล้ว · M5) — เดิมแถบนับ
+     ของเราแต่กล่องนับทั้งทีม ⇒ ขอบเขตทีม/ทั้งหมดแถบบอก 1 กดแล้วตารางขึ้น 2 */
   const bouncedRows = useMemo(
-    () => requests.filter((r) => r._mine && r.status === "draft" && r.bouncedAt),
+    () => requests.filter((r) => matchesQueueCount(r, "bounced")),
     [requests],
   );
+  /* ⭐ **กดแถบเตือน = ตารางเหลือเท่าเลขบนแถบเป๊ะ** (M5) — ล้างคำค้นกับแผงกรองที่ค้างอยู่ก่อน (แถบนับก่อนสองชั้นนั้น)
+     · ตัวกรองระดับหน้า (ดีล · ฝ่าย · ทีม) คงไว้ เพราะแถบนับหลังมันอยู่แล้ว
+     ⚠️ ขอบเขตทีม/ทั้งหมด **ไม่เขียน `?tab=mine`** — `?tab=todo|mine` บีบขอบเขตเป็น "ของฉัน" ตอนรีเฟรช (กับดัก
+     #1038 เดียวกับตัวสลับ "ในคิว") · ที่นั่นแท็บบทบาทไม่มีผลกับแถวอยู่แล้ว (`visibleQueueRows`) จึงถอด `?tab=` แทน
+     ⚠️ `setTab` ล้างตัวกรองตัวเลขก่อน แล้วบรรทัดท้ายตั้งใหม่ในจังหวะเดียวกัน (setState ตัวหลังชนะ) */
+  const showBounced = () => {
+    board.setSearch("");
+    board.clearFilters();
+    setTab(roleTabsApply ? "mine" : null);
+    board.setCountFilter("bounced");
+  };
   const bouncedWorst = useMemo(() => bouncedRows
     .map((r) => bouncedDaysText(r, { todayIso: today }))
     .filter(Boolean)
@@ -425,7 +456,8 @@ export default function RequestsPage() {
             // นับจากชุดเดียวกับที่แท็บนั้นจะแสดงจริง — ตัวเลขบนแท็บกับตารางข้างล่าง
             // ขัดกันไม่ได้ (เดิมนับคนละที่กัน)
             // ⚠️ ส่งเป็น `count` ไม่ใช่ต่อ "(6)" ท้ายป้ายชื่อ — เหตุผลอยู่ใน Segmented.js
-            count: queueTabRows(requests, { tab: t.key, myDepts }).length,
+            // ⭐ นับพร้อมคำค้น/แผงกรองที่ตามไป แต่ไม่รวมตัวกรองตัวเลข (`setTab` ล้างมัน · M4)
+            count: filterQueueRows(queueTabRows(requests, { tab: t.key, myDepts }), queueState, { except: "count" }).length,
           }))}
         />}
         {/* ⭐ ทีม/ทั้งหมด — แยกคิวกับประวัติ (ม-145) · ตำแหน่งเดียวกับแท็บบทบาท
@@ -492,7 +524,7 @@ export default function RequestsPage() {
           tone="danger"
           icon={Undo2}
           action={(
-            <Button size="sm" onClick={() => { setTab("mine"); board.setCountFilter("bounced"); }}>
+            <Button size="sm" onClick={showBounced}>
               ดูใบที่ตีกลับ
             </Button>
           )}
@@ -541,6 +573,8 @@ export default function RequestsPage() {
           />
         )}
         rows={rows} board={board}
+        /* ป้ายตัวเลือกที่ติ๊กอยู่แต่ไม่มีในมุมมองนี้ (สลับแท็บ/ฝ่าย) อ่านจากชุดทั้งขอบเขต */
+        labelRows={rawRequests}
         /* ประวัติโชว์ "วันที่ปิดเรื่อง" สองฝั่งแทนกำหนดส่ง (ม-145 · preset `history`) */
         columns={tab === "history" ? "history" : "queue"}
         /* กรองฝ่ายอยู่แล้วไม่เจอ = บอกว่าไม่มี **และบอกทางออก** — ข้อความตั้งต้นของ

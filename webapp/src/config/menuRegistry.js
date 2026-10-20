@@ -131,7 +131,7 @@ export const MENU_GROUPS = [
         // `SHARED_DOC_ITEMS` (ฝ่าย RD/FN มีเมนูตัวนี้ในบ้านตัวเอง)
         SHARED_DOC_ITEMS.requests,
         // (เมนู "ทะเบียนวัสดุ" ย้ายไปกลุ่ม "ฐานข้อมูล" — ดูหมายเหตุที่นั่น)
-        { href: '/sa/tasks', name: 'งานของฉัน', icon: ListTodo, caps: ['salesplan:view', 'pm:view'], visible: worksInSalesPipeline, match: (p) => p === '/sa/tasks' || p.startsWith('/sa/tasks/') || p === '/pm/tasks' || p.startsWith('/pm/tasks/') },
+        { href: '/sa/tasks', name: 'งานของฉัน', countHref: '/sa/tasks?count=tasks', icon: ListTodo, caps: ['salesplan:view', 'pm:view'], visible: worksInSalesPipeline, match: (p) => p === '/sa/tasks' || p.startsWith('/sa/tasks/') || p === '/pm/tasks' || p.startsWith('/pm/tasks/') },
         /* ── เครื่องมือ (utility) — ต้องอยู่ **ท้ายรายการและเรียงแบบนี้** ─────────────
            ⭐ มติผู้ใช้ 2026-08-26: ปฏิทินนัดมาก่อนวางเป้า และ **ลำดับต้องเหมือนกันทั้ง
            แถวบน · ลิ้นชัก · แถบล่างมือถือ**

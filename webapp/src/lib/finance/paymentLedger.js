@@ -856,6 +856,11 @@ export function ledgerBillingTally(rows = [], filters = {}) {
       && (String(r.billingEvent || '').trim() || r.billingMissing))
     : [];
   const cutoffOn = ledgerCutoffOn(filters.on);
+  /* ⭐ ยอดเงินรายตัวเลือก (ตรวจตัวเลข M10 · 20/10/2026) — การ์ด "ถึงรอบวางบิล 7 วัน" อ่านคู่ `counts['7d']`/`amounts['7d']`
+     🐞 เดิมการ์ดอ่าน `summary.billingIn7Days*` ซึ่งคิดจากแถวที่ **ผ่านตัวกรองรอบวางบิลที่ตั้งอยู่แล้ว** ⇒ กรอง "เลยรอบ" อยู่
+        การ์ดบอก 0 · กดแล้วตัวกรองถูกแทนเป็น 7d ได้ 5 งวด · ตัวเลือกในเมนูบอก 5 ⇒ สองตัวเลขของสิ่งเดียวกันคนละค่า
+     ⚠️ บวกแบบเดียวกับ `ledgerSummary` (เรียงตามลำดับแถว ไม่ปัดเศษ) ⇒ ยอดเท่ากับหัวสรุปหลังกดเป๊ะ */
+  const amountOf = (pick) => base.filter(pick).reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
   return {
     counts: {
       soon: base.filter((r) => r.billingSoon).length,
@@ -865,6 +870,14 @@ export function ledgerBillingTally(rows = [], filters = {}) {
       missing: base.filter((r) => r.billingMissing).length,
       // ตัวเลือกชั่วคราวของวันตัดรอบ (ขึ้นในเมนูเฉพาะตอนกรองอยู่) — ไม่มีวัน = 0
       cutoff: cutoffOn ? base.filter((r) => r.billingCutoffOn === cutoffOn).length : 0,
+    },
+    amounts: {
+      soon: amountOf((r) => r.billingSoon),
+      '7d': amountOf((r) => r.billingIn7Days),
+      month: amountOf((r) => r.billingThisMonth),
+      late: amountOf((r) => r.billingLate),
+      missing: amountOf((r) => r.billingMissing),
+      cutoff: cutoffOn ? amountOf((r) => r.billingCutoffOn === cutoffOn) : 0,
     },
     hidden: {
       count: undated.length,
@@ -881,6 +894,31 @@ export function ledgerBillingTally(rows = [], filters = {}) {
 export function ledgerDueTally(rows = [], filters = {}) {
   const base = filterLedger(rows, { ...filters, due: '' });
   return { counts: { soon: base.filter((r) => r.dueSoon).length } };
+}
+
+/**
+ * ตัวเลขของการ์ดที่ **กดแล้วแทนค่าตัวกรองของตัวเอง** (ตรวจตัวเลข M10b · 20/10/2026)
+ *
+ * กติกา: เลขบนการ์ด = จำนวนแถวที่เห็นหลังกดการ์ดนั้น ⇒ คิดจาก **ตัวกรองชุดเดียวกันแต่ถอดตัวกรองของการ์ดออก**
+ * (แพตเทิร์นเดียวกับ `ledgerBillingTally` / `ledgerDueTally`) แล้วนับด้วยตัวตัดสินเดียวกับที่ filterLedger ใช้ตอนกด
+ *   · `awaiting` — การ์ด "รอบัญชีรับรอง" กดแล้ว `status = reported` (แทนสถานะที่ติ๊กไว้ทั้งชุด)
+ *   · `missingInvoice` — การ์ด "ยังไม่ออกใบกำกับ" + ตัวเลือก "ยังไม่ออกใบ (n)" กดแล้ว `taxInvoice = missing`
+ * 🐞 เดิมทั้งสองอ่าน `ledgerSummary(แถวที่กรองแล้ว)` ⇒ ตั้ง "ออกใบแล้ว" อยู่ การ์ดบอก 0 กดแล้วได้ 2 งวด ·
+ *    ติ๊กสถานะ "รอชำระ" อยู่ การ์ด "รอบัญชีรับรอง" บอก 0 กดแล้วได้ 1 งวด
+ * ⚠️ การ์ด "เลยกำหนด" ไม่อยู่ที่นี่โดยตั้งใจ — ตัวกรองนั้น **บวกเพิ่ม** (และ) ไม่ได้แทนค่าใด ⇒ แถวหลังกด =
+ *    แถวที่กรองอยู่ ∩ เลยกำหนด = `ledgerSummary(filtered).overdueCount` อยู่แล้ว
+ * ⚠️ ยอดบวกแบบเดียวกับ `ledgerSummary` (ตามลำดับแถว ไม่ปัดเศษ) ⇒ เท่ากับหัวสรุปหลังกดเป๊ะ
+ * @returns {{awaiting: {count: number, amount: number}, missingInvoice: {count: number, amount: number}}}
+ */
+export function ledgerFacetTally(rows = [], filters = {}) {
+  const tally = (list) => ({
+    count: list.length,
+    amount: list.reduce((sum, r) => sum + (Number(r.amount) || 0), 0),
+  });
+  return {
+    awaiting: tally(filterLedger(rows, { ...filters, status: [] }).filter((r) => r.status === 'reported')),
+    missingInvoice: tally(filterLedger(rows, { ...filters, taxInvoice: '' }).filter(ledgerInvoicePending)),
+  };
 }
 
 /**

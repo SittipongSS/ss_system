@@ -4,9 +4,10 @@ import { Fragment, useCallback, useState, useEffect, useMemo, useRef } from "rea
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import useStickyState from "@/lib/ui/useStickyState";
+import arrivedByHistory from "@/lib/ui/historyArrival";
 import { SortTh } from "@/lib/useSortableTable";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, Flame, Calendar, Handshake, Tag, Star, UserPlus, ChevronLeft, ChevronRight, Pencil, BarChart3, HandHelping, MessageCircleQuestion, PauseCircle, CornerDownRight, Undo2, X } from "lucide-react";
 import Modal from "@/components/Modal";
 import TaskFormModal, { TASK_BLANK } from "@/components/pm/TaskFormModal";
@@ -32,16 +33,17 @@ import { isSuperuser, isRdRole, isTeamLead, assignableUsersFor, canPullTask, can
 import { useRole, useCan } from "@/lib/roleContext";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateNumeric as fmtDate, naText, NA } from "@/lib/format";
-import { daysToDue, isUrgent, taskUrgency } from "@/lib/pm/derived";
+import { daysToDue, taskUrgency } from "@/lib/pm/derived";
 import { DIFFICULTY_LABELS, PERSONAL_TASK_STATUSES, TASK_STATUS_BLOCKED, eisenhowerQuadrant, isWaitingStatus, QUADRANT_LABELS } from "@/lib/pm/tasks";
 import { daysWaiting } from "@/lib/pm/taskChain";
-import { MINE_TASK_VIEWS, matchesMineTaskView, taskRelationship } from "@/lib/pm/taskViews";
+import { MINE_TASK_VIEWS, taskRelationship } from "@/lib/pm/taskViews";
+import { TASKS_NAV_COUNT_PARAM, TASK_TODO_FILTER, TASK_TODO_FILTER_LABEL, dealQueueLanding, mineViewCounts as countMineViews, taskListRows, taskPoolRows, taskStatusPasses, tasksNavLanding } from "@/lib/pm/taskListFilter";
+import { TASK_CENTRAL_EXCLUDE, TASK_CENTRAL_ONLY, readTasksQueueLink } from "@/lib/pm/dealTaskLink";
 import { compactPersonName } from "@/lib/personName";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { RequestStatusBadge, requestDueTone } from "@/components/requests/requestUi";
 import Textarea from "@/components/ui/Textarea";
 import { liveDueDate } from "@/lib/requests/dueRound";
-import { REQUEST_OPEN_STATUSES } from "@/lib/requests/statuses";
 import { apiFetch } from "@/lib/apiFetch";
 
 // ระบบมอบหมาย/ติดตามงาน (Sales Task Management) — งานทั้งหมดมาจาก personal_tasks
@@ -94,17 +96,10 @@ const MODAL_STRONG = { color: "var(--text)" };
 const statusDot = (s) => s === "Completed" ? "var(--green)" : s === "In Progress" ? "var(--accent)" : isWaitingStatus(s) ? "var(--purple)" : "var(--text-3)";
 const statusIcon = (s, size = 18) => s === "Completed" ? <CheckCircle2 size={size} /> : s === "In Progress" ? <Clock size={size} /> : isWaitingStatus(s) ? <PauseCircle size={size} /> : <CircleDashed size={size} />;
 
-// ตัวกรองสถานะ — ตรงกับการ์ดสรุปด้านบน
+// ตัวกรองสถานะ — ตรงกับการ์ดสรุปด้านบน · ตรรกะย้ายไป `taskStatusPasses` (lib/pm/taskListFilter.js · ตรวจตัวเลข M8)
+// ให้ตาราง การ์ด แท็บบทบาท ป้ายเมนู และป้าย "ค้าง n" บนหน้าดีลเรียกตัวตัดสินตัวเดียวกัน
 // "ต้องรีบ" = งานที่ **อยู่ในมือเรา** และใกล้/เลยกำหนด — งานที่รอคนอื่นมีการ์ดของตัวเอง
 // (แยกยอดตามมติผู้ใช้ 2026-08-17 ไม่งั้นการ์ดสั่งให้รีบกับงานที่เร่งเองไม่ได้ปนกัน)
-const matchStatus = (t, filter) => {
-  if (filter === "all") return true;
-  if (filter === "progress") return t.status === "In Progress";
-  if (filter === "waiting") return isWaitingStatus(t.status);
-  if (filter === "urgent") return isUrgent(t) && !isWaitingStatus(t.status);
-  if (filter === "done") return t.status === "Completed";
-  return true;
-};
 
 const STATUS_ORDER = { "In Progress": 0, Blocked: 1, Pending: 2, Completed: 3 };
 const makeComparator = (sortKey, dir = "asc") => {
@@ -161,6 +156,15 @@ const MONTHS_TH = ["มกราคม", "กุมภาพันธ์", "ม�
 const sundayIndex = (jsDay) => jsDay;
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
+/* URL ของคิวหลังถอดพารามิเตอร์บางตัว — เขียนกลับจาก **พารามิเตอร์ทั้งชุด** (ตัวอื่นต้องไม่หายตาม)
+   ⚠️ ฐานเป็น `/sa/tasks` เสมอ — หน้านี้เสิร์ฟผ่าน rewrite (`/pm/tasks` redirect มาที่นี่) และเมนูลิงก์ที่นี่ */
+const tasksHrefWithout = (searchParams, keys) => {
+  const rest = new URLSearchParams(searchParams?.toString() || "");
+  keys.forEach((key) => rest.delete(key));
+  const query = rest.toString();
+  return query ? `/sa/tasks?${query}` : "/sa/tasks";
+};
+
 /* 🪤 ค่าตั้งต้นที่เป็น array ต้องเป็น **ตัวเดียวกันทุกเรนเดอร์** — `[]` เขียนสด
    ในวงเล็บจะเป็น array ใหม่ทุกครั้ง ซึ่งทำให้ตัวเทียบค่าคิดว่า "เปลี่ยนแล้ว" ตลอด */
 const EMPTY = [];
@@ -184,10 +188,14 @@ export default function TasksPage() {
      ⚠️ ส่งแค่ `{ role }` พอ — ผิว tasks ตัดสิน "ของฉัน" จากตำแหน่งอย่างเดียว
      ไม่ได้ถามทีม (ขอบเขต "ทีม" ของฝ่าย RD คือฝ่าย ไม่ใช่ทีมขาย) */
   const [scope, setScope] = useStickyState("scope", defaultScope(pmTaskScopes(role), { role }, "tasks"));
-  const [mineView, setMineView] = useState(MINE_TASK_VIEWS.RESPONSIBLE);
+  /* ⚠️ จำไว้แบบเดียวกับขอบเขต (คืนเฉพาะตอนกดย้อน) — ลิงก์จากดีล/โครงการตั้งมุมมอง "ทั้งหมดของฉัน" ให้ ⇒ กดเข้างานแล้ว
+     ย้อนกลับมาต้องได้มุมมองที่ทิ้งไว้ ไม่ใช่เด้งกลับ "ต้องทำ" ทั้งที่ขอบเขต/ชิปดีลยังอยู่ (รีวิว M8b 20/10/2026) */
+  const [mineView, setMineView] = useStickyState("mineView", MINE_TASK_VIEWS.RESPONSIBLE);
   const [allowedScopes, setAllowedScopes] = useState(["mine"]);
   const [personalTasks, setPersonalTasks] = useState([]);
   const [inquiries, setInquiries] = useState([]); // ข้อสอบถามค้างของฝ่าย (role rd)
+  // ลิงก์ "ดูทั้งหมด" + ป้าย "n รอตอบ" ของบล็อกคำร้อง — แท็บ "รอตอบ" ของคิวปลายทาง คิดที่ API (ตรวจตัวเลข M8d)
+  const [inquiryQueue, setInquiryQueue] = useState(null);
   const [todayISO, setTodayISO] = useState(null); // วันนี้ (client) — ป้ายเลยกำหนด SLA
   useEffect(() => {
     const d = new Date();
@@ -216,6 +224,28 @@ export default function TasksPage() {
      ไม่ได้กรองตามดีลที่กดมาเลย · ตอนนี้ "สร้างงาน" มีปุ่มของตัวเองอยู่ในหน้าดีล/
      โครงการแล้ว (โมดัลในหน้า) พารามิเตอร์นี้จึงเหลือความหมายเดียวคือกรอง */
   const [dealFilter, setDealFilter] = useState([]);
+  /* ⭐ กรองตามโครงการ — ตั้งจาก `?projectId=` ที่หน้าโครงการส่งมา (มติเจ้าของ 20/10/2026 · M8b) เมื่อไม่ได้เลือกดีล
+     ชุดเดียวกับแท็บงานของหน้าโครงการ (`isProjectTask`: projectId = P หรือ dealId เป็นดีลของโครงการ) · โชว์เป็นชิป "กรอง: โครงการ … ×" */
+  const [projectFacet, setProjectFacet] = useState(null);
+  /* ธง `?central=` ของลิงก์หน้าโครงการ (รีวิว M8b) — `none` คู่ชิปดีล = ไม่รวมงานกลางโครงการ · `only` คู่ชิปโครงการ = เฉพาะงานกลาง
+     ⇒ คิวได้ชุดเดียวกับตัวเลือก "ดีลที่แสดง" ของหน้าโครงการ (`projectSelectionPasses`) */
+  const [centralFacet, setCentralFacet] = useState(null);
+  /* ⭐ พารามิเตอร์จากลิงก์อ่านด้วย `useSearchParams` (ไม่ใช่ `window.location` ครั้งเดียวตอนเมานต์) — กดป้ายเมนู/ลิงก์ซ้ำ
+     ขณะอยู่หน้านี้ (คอมโพเนนต์ไม่เมานต์ใหม่) ต้องยังติด · แพตเทิร์นเดียวกับ `?count=` ของ /production/jobs (H8) */
+  const searchParams = useSearchParams();
+  const linkDealParam = searchParams.get("dealId") || "";
+  const linkProjectParam = searchParams.get("projectId") || "";
+  const linkCentralParam = searchParams.get("central") || "";
+  const countParam = searchParams.get("count") || "";
+  /* ดีล/โครงการจากลิงก์ส่งไปให้ API ด้วย — **ไม่ได้กรองงาน** แค่การันตีว่าแผนที่ดีล/โครงการมีตัวนั้น (พร้อม projectId
+     ของดีล) แม้ยังไม่มีงานผูกตรง ⇒ ตัวกรองดีลนับงานเดิมของโครงการได้ตรงกับป้าย "ค้าง n" บนหน้าดีล */
+  // ดีลมาก่อนโครงการ · ธง `central` ต้องคู่ถูก (คู่ผิด = ทิ้ง) — ตัวอ่านตัวเดียวกับที่เทสต์ใช้ไปกลับกับ `projectTasksQueueHref`
+  const { dealIds: linkDealIds, projectId: linkProjectId, central: linkCentral } = readTasksQueueLink({
+    dealId: linkDealParam, projectId: linkProjectParam, central: linkCentralParam,
+  });
+  const facetQuery = linkDealIds.length ? `&dealId=${linkDealIds.join(",")}` : linkProjectId ? `&projectId=${linkProjectId}` : "";
+  const facetQueryRef = useRef(facetQuery);
+  facetQueryRef.current = facetQuery;
   const [sortKey, setSortKey] = useStickyState("sortKey", "created");
   const [sortDir, setSortDir] = useStickyState("sortDir", "asc");
   const [groupBy, setGroupBy] = useStickyState("groupBy", "none");
@@ -242,11 +272,12 @@ export default function TasksPage() {
        จอมีของอยู่แล้วและผู้ใช้ไม่ได้สั่งอะไร คิวงานต้องไม่หายแล้วโผล่ใหม่ */
     if (!opts?.background) setLoading(true);
     try {
-      const res = await apiFetch(`/api/pm/my-work?scope=${sc}`);
+      const res = await apiFetch(`/api/pm/my-work?scope=${sc}${facetQueryRef.current}`);
       const d = res.ok ? await res.json() : {};
       if (!isLatest()) return;
       setPersonalTasks(d.personalTasks || []);
       setInquiries(d.inquiries || []);
+      setInquiryQueue(d.inquiryQueue || null);
       setProjectsMap(d.projects || {});
       setDealsMap(d.deals || {});
       if (d.me) setMe(d.me);
@@ -256,7 +287,8 @@ export default function TasksPage() {
     finally { if (isLatest()) setLoading(false); }
   };
 
-  useEffect(() => { loadWork(scope); }, [scope]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadWork(scope); }, [scope, facetQuery]);
   // ⚠️ ส่ง arrow ตรง ๆ ได้ — hook เก็บตัวล่าสุดไว้ใน ref อยู่แล้ว ไม่ต้องกลัว identity เปลี่ยน
   useRevalidateOnFocus(() => loadWork(scope, { background: true }));
   useEffect(() => {
@@ -368,49 +400,51 @@ export default function TasksPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [personalTasks, dealFilter, dealsMap, allDeals]);
 
-  const mineViewCounts = useMemo(() => {
-    const openTasks = personalTasks.filter((task) => task.status !== "Completed");
+  /* ⭐ **ตัวกรองทั้งชุดเป็นก้อนเดียว ส่งให้ตัวตัดสินกลาง** (`lib/pm/taskListFilter.js` · ตรวจตัวเลข M8 · 20/10/2026)
+     ตาราง · การ์ดสถานะ · เลขบนแท็บบทบาท อ่านจากก้อนนี้ตัวเดียว ⇒ เลขบนแท็บ = แถวที่ตารางแสดงหลังกดแท็บนั้น
+     🐞 เดิมเลขบนแท็บนับ "งานค้างของฉันทั้งหมด" ไม่สนคำค้น/หมวด/ดีล/การ์ดสถานะ ⇒ มาจากหน้าดีล แท็บบอก 23 ตารางขึ้น 2
+     ⚠️ ดีลตัดสินด้วย `isDealTask` (รวมงานเดิมของโครงการที่ไม่มี dealId — ชุดเดียวกับการ์ดบนหน้าดีล · M8c) ⇒ ต้องรู้
+        โครงการของดีล — มาจากแผนที่ดีลของ API (`projectId`) หรือทะเบียนดีลของฟอร์ม */
+  const listFilters = useMemo(() => ({
+    meId: me?.id || null,
+    scope,
+    mineView,
+    q,
+    assignees: assigneeFilter,
+    categories: categoryFilter,
+    deals: dealFilter,
+    project: projectFacet,
+    central: centralFacet,
+    status: statusFilter,
+    dealProjectOf: (id) => (dealsMap[id] || allDeals.find((d) => d.id === id))?.projectId || null,
+  }), [me?.id, scope, mineView, q, assigneeFilter, categoryFilter, dealFilter, projectFacet, centralFacet, statusFilter, dealsMap, allDeals]);
+
+  // เลขบนแท็บบทบาท — นับพร้อมตัวกรองอื่นทุกตัว (รวมสถานะ) = แถวที่เห็นหลังกดแท็บ
+  const mineViewCounts = useMemo(() => countMineViews(personalTasks, listFilters), [personalTasks, listFilters]);
+
+  // งานหลังกรองทุกตัว **ยกเว้นสถานะ** — ฐานของการ์ดสรุป (การ์ดเป็นตัวกรองสถานะเอง)
+  const pool = useMemo(() => taskPoolRows(personalTasks, listFilters), [personalTasks, listFilters]);
+
+  const stats = useMemo(() => {
+    // เลขบนการ์ด = แถวหลังกดการ์ด ⇒ นับด้วย `taskStatusPasses` ตัวเดียวกับตาราง
+    const count = (key) => pool.filter((t) => taskStatusPasses(t, key, me?.id)).length;
     return {
-      [MINE_TASK_VIEWS.RESPONSIBLE]: openTasks.filter((task) => matchesMineTaskView(task, me?.id, MINE_TASK_VIEWS.RESPONSIBLE)).length,
-      [MINE_TASK_VIEWS.DELEGATED]: openTasks.filter((task) => matchesMineTaskView(task, me?.id, MINE_TASK_VIEWS.DELEGATED)).length,
-      [MINE_TASK_VIEWS.ALL]: openTasks.length,
+      // "งานทั้งหมด" = งานที่ยังต้องทำ; งานเสร็จเก็บไว้ดูย้อนหลังในการ์ด "เสร็จแล้ว"
+      all: count("all"),
+      progress: count("progress"),
+      // แยกยอดตามมติผู้ใช้ 2026-08-17: งานที่รอคนอื่นไม่ปนกับ "ต้องรีบ" เพราะเร่งเองไม่ได้
+      // — แต่ยอดเลยกำหนดของมันยังต้องเห็น (ขึ้นเป็นบรรทัดรองบนการ์ด)
+      waiting: count("waiting"),
+      waitingOverdue: pool.filter((t) => isWaitingStatus(t.status) && (daysToDue(t) ?? 0) < 0).length,
+      urgent: count("urgent"),
+      done: count("done"),
     };
-  }, [personalTasks, me?.id]);
-
-  const roleFilteredTasks = useMemo(
-    () => scope === "mine"
-      ? personalTasks.filter((task) => matchesMineTaskView(task, me?.id, mineView))
-      : personalTasks,
-    [personalTasks, scope, me?.id, mineView],
-  );
-
-  // งานหลังกรอง ค้นหา/ผู้รับ/หมวด (ยังไม่กรองสถานะ — ใช้คำนวณการ์ดสรุป)
-  const pool = useMemo(() => roleFilteredTasks
-    .filter((t) => !q || [t.title, t.note, t.category].some((v) => (v || "").toLowerCase().includes(q)))
-    .filter((t) => !assigneeFilter.length || assigneeFilter.includes(t.assigneeId || t.ownerId))
-    .filter((t) => !categoryFilter.length || categoryFilter.includes(t.category))
-    .filter((t) => !dealFilter.length || dealFilter.includes(t.dealId)),
-    [roleFilteredTasks, q, assigneeFilter, categoryFilter, dealFilter]);
-
-  const stats = useMemo(() => ({
-    // "งานทั้งหมด" = งานที่ยังต้องทำ; งานเสร็จเก็บไว้ดูย้อนหลังในการ์ด "เสร็จแล้ว"
-    all: pool.filter((t) => t.status !== "Completed").length,
-    progress: pool.filter((t) => t.status === "In Progress").length,
-    // แยกยอดตามมติผู้ใช้ 2026-08-17: งานที่รอคนอื่นไม่ปนกับ "ต้องรีบ" เพราะเร่งเองไม่ได้
-    // — แต่ยอดเลยกำหนดของมันยังต้องเห็น (ขึ้นเป็นบรรทัดรองบนการ์ด)
-    waiting: pool.filter((t) => isWaitingStatus(t.status)).length,
-    waitingOverdue: pool.filter((t) => isWaitingStatus(t.status) && (daysToDue(t) ?? 0) < 0).length,
-    urgent: pool.filter((t) => isUrgent(t) && !isWaitingStatus(t.status)).length,
-    done: pool.filter((t) => t.status === "Completed").length,
-  }), [pool]);
+  }, [pool, me?.id]);
 
   const comparator = useMemo(() => makeComparator(sortKey, sortDir), [sortKey, sortDir]);
   const visible = useMemo(
-    () => pool
-      .filter((t) => statusFilter === "done" || t.status !== "Completed")
-      .filter((t) => matchStatus(t, statusFilter))
-      .sort(comparator),
-    [pool, statusFilter, comparator],
+    () => taskListRows(personalTasks, listFilters).sort(comparator),
+    [personalTasks, listFilters, comparator],
   );
 
   /* จัดกลุ่มเฉพาะมุมมองตาราง (ดู GROUP_OPTIONS) — จัดจากรายการที่เรียงแล้ว
@@ -436,7 +470,8 @@ export default function TasksPage() {
   // แบ่งหน้าเฉพาะมุมมองแบน (ตาราง/รายการ) — บอร์ด/เมทริกซ์/ปฏิทินแสดงครบตามเดิม
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(visible, {
-      resetKey: `${scope}|${mineView}|${q}|${statusFilter}|${assigneeFilter.join()}|${categoryFilter.join()}|${sortKey}|${sortDir}`,
+      // ⚠️ ดีล/โครงการต้องอยู่ในคีย์ด้วย — เปลี่ยนดีลแล้วค้างหน้า 3 ของชุดเดิม = ตารางว่างทั้งที่ป้ายบอกว่ามีงาน
+      resetKey: `${scope}|${mineView}|${q}|${statusFilter}|${assigneeFilter.join()}|${categoryFilter.join()}|${dealFilter.join()}|${projectFacet || ""}|${centralFacet || ""}|${sortKey}|${sortDir}`,
     });
 
   const handleSort = (key) => {
@@ -474,8 +509,8 @@ export default function TasksPage() {
     const params = new URLSearchParams(window.location.search);
     const inquiryId = params.get("inquiryId");
     const messageId = params.get("messageId");
-    const dealId = params.get("dealId");
-    if (deepLinkHandled.current || (!inquiryId && !dealId)) return;
+    // `?dealId=` / `?projectId=` ไม่ได้อยู่ที่นี่แล้ว — เป็นตัวกรองที่อ่านสดจาก URL (ดู effect ของลิงก์ข้างล่าง)
+    if (deepLinkHandled.current || !inquiryId) return;
     deepLinkHandled.current = true;
     if (inquiryId) {
       // ⚠️ ต้นทางคือ **คำร้องข้ามฝ่าย** (dept_requests) แล้ว — ระบบสอบถามเดิมถูก
@@ -517,11 +552,80 @@ export default function TasksPage() {
 
         setShowModal(true);
       })().catch((error) => setToast({ kind: "error", msg: error.message || "เปิดฟอร์มสร้างงานไม่สำเร็จ" }));
+    }
+  }, []);
+
+  /* ── ลิงก์จากหน้าดีล/หน้าโครงการ: `?dealId=a[,b]` · `?projectId=p` (มติเจ้าของ 20/10/2026 · ตรวจตัวเลข M8b ข้อ 1) ──
+     ⭐ `?dealId=` = **กรองคิวตามดีล** ไม่ใช่เปิดฟอร์มสร้าง (ดู `dealFilter` ข้างบน)
+     ⭐ เปิดที่ **ขอบเขตกว้างสุดที่มีสิทธิ์** + มุมมอง "ทั้งหมดของฉัน" + งานค้าง · ล้างคำค้น/หมวด/ผู้รับ/การ์ดสถานะที่ค้าง ·
+        คงชิปดีล — ตัวกรองทั้งชุดมาจาก `dealQueueLanding` ตัวเดียวกับที่ route ของหน้าดีลใช้นับป้าย "ค้าง n"
+        ⇒ ป้ายบนหน้าดีล = แถวที่เห็นตอนมาถึง (คนที่มีแค่ "ของฉัน" ได้เลขเฉพาะงานที่คิวของเขาโชว์ได้)
+     🐞 เดิมลงที่ "ของฉัน · ต้องทำ" ⇒ งานคนอื่นในดีลและงานเดิมของโครงการไม่โผล่เลย แม้ผู้ใช้ดูได้ทั้งระบบ
+     ⚠️ ลิงก์ถูกถอดจาก URL (กดเมนู/ล้างตัวกรอง) = ถอดตัวกรองที่ลิงก์ตั้งไว้ · ผู้ใช้เปลี่ยนตัวกรองดีลเองในแผง = ถอดลิงก์
+        ออกจาก URL ก่อน (`dropLinkParams`) ไม่งั้น URL บอกดีลหนึ่งแต่จอกรองอีกชุด
+     ⚠️ **มาถึงด้วยการกดย้อน/เดินหน้า/รีเฟรช = ตั้งแค่ชิปดีล/โครงการจาก URL** (รีวิว M8b 20/10/2026) — `useStickyState`
+        คืนตัวกรองที่ผู้ใช้ทิ้งไว้แล้ว (มติ 2026-08-25 "ย้อนกลับ = กลับไปที่เดิม") · ลงทั้งชุดซ้ำ = ทับคำค้น/การ์ดสถานะ/ขอบเขต
+        ที่ตั้งไว้ก่อนเปิดงาน · ตัดสินครั้งเดียวต่อการเมานต์ด้วยลายเซ็นลิงก์ตอนนั้น (ถามที่เดียวกับ useStickyState —
+        `arrivedByHistory` ตอบซ้ำได้ใน pathname เดิม) ⇒ ลิงก์ใหม่ระหว่างอยู่หน้านี้ยังลงทั้งชุดตามเดิม */
+  const pathname = usePathname();
+  const linkAppliedRef = useRef(false);
+  const linkArrivalRef = useRef(null); // { signature, byHistory } ของการเมานต์นี้
+  useEffect(() => {
+    if (!linkDealIds.length && !linkProjectId) {
+      if (linkAppliedRef.current) {
+        linkAppliedRef.current = false;
+        setDealFilter([]);
+        setProjectFacet(null);
+        setCentralFacet(null);
+      }
       return;
     }
-    // ⭐ `?dealId=` = **กรองคิวตามดีล** ไม่ใช่เปิดฟอร์มสร้าง (ดู `dealFilter` ข้างบน)
-    setDealFilter([dealId]);
-  }, []);
+    const signature = `${linkDealIds.join(",")}|${linkProjectId}|${linkCentral || ""}`;
+    if (!linkArrivalRef.current) linkArrivalRef.current = { signature, byHistory: arrivedByHistory(pathname) };
+    const restoreOnly = linkArrivalRef.current.byHistory && linkArrivalRef.current.signature === signature;
+    linkAppliedRef.current = true;
+    const landing = dealQueueLanding({ allowedScopes: pmTaskScopes(role), dealIds: linkDealIds, projectId: linkProjectId, central: linkCentral });
+    setDealFilter(landing.deals);
+    setProjectFacet(landing.project);
+    setCentralFacet(landing.central);
+    if (restoreOnly) return;
+    setScope(landing.scope);
+    setMineView(landing.mineView);
+    setStatusFilter(landing.status);
+    setSearch(landing.q);
+    setAssigneeFilter(landing.assignees);
+    setCategoryFilter(landing.categories);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkDealParam, linkProjectParam, linkCentral, role]);
+
+  /* ── ป้ายเมนู "งานของฉัน" → `?count=tasks` (ตรวจตัวเลข M9 · docs/task-waiting-and-chain.md §6) ──────────────
+     ป้ายนับ `myTasksTodoCount` (ไม่รวมงาน "รอคนอื่น") ⇒ เปิดที่ "ของฉัน · ต้องทำ" + ตัวกรองสถานะ `todo` และล้างตัวกรองอื่นทุกตัว
+     ⇒ ป้าย = เลขบนแท็บ "ต้องทำ" = แถวในตาราง (ตัวตัดสินเดียวกัน `isMyTodoTask`)
+     ⚠️ ถอด `count` ออกจาก URL ทันทีหลังตั้งค่า — กดป้ายซ้ำขณะอยู่หน้านี้ (URL เดิม) ต้องได้พารามิเตอร์ "ใหม่" ให้ effect
+        วิ่งอีกรอบ ไม่งั้นตัวกรองที่ผู้ใช้เปลี่ยนไปแล้วค้างอยู่ทั้งที่ป้ายบอกอีกเลข (บทเรียน H8 ของ /production/jobs) */
+  useEffect(() => {
+    if (countParam !== TASKS_NAV_COUNT_PARAM) return;
+    const landing = tasksNavLanding({});
+    linkAppliedRef.current = false;
+    setScope(landing.scope);
+    setMineView(landing.mineView);
+    setStatusFilter(landing.status);
+    setSearch(landing.q);
+    setAssigneeFilter(landing.assignees);
+    setCategoryFilter(landing.categories);
+    setDealFilter(landing.deals);
+    setProjectFacet(landing.project);
+    setCentralFacet(landing.central);
+    router.replace(tasksHrefWithout(searchParams, ["count", "dealId", "projectId", "central"]), { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countParam]);
+
+  // ถอดพารามิเตอร์ลิงก์ออกจาก URL โดยไม่ให้ effect ข้างบนล้างตัวกรองที่ผู้ใช้เพิ่งตั้งเอง
+  const dropLinkParams = () => {
+    if (!linkDealParam && !linkProjectParam && !linkCentralParam) return;
+    linkAppliedRef.current = false;
+    router.replace(tasksHrefWithout(searchParams, ["dealId", "projectId", "central"]), { scroll: false });
+  };
   // แก้ = ส่ง task ให้โมดัลไปเติมฟอร์มเอง (taskToForm) — ไม่ต้อง map ซ้ำที่นี่
   const openEdit = (t) => {
     setEditingId(t.id);
@@ -942,7 +1046,11 @@ export default function TasksPage() {
 
       {/* ── ข้อสอบถามค้างของฝ่าย (role rd) — คิวเดียวกับงาน: ตอบในเธรด ── */}
       {inquiries.length > 0 && (
-        <SaSection icon={<MessageCircleQuestion size={17} />} title="คำร้องจากฝ่ายขาย" subtitle="เรื่องที่ฝ่ายของคุณต้องตอบหรือติดตาม" actions={<><span className="ui-badge" style={{ color: "var(--amber)" }}>{inquiries.filter((q) => REQUEST_OPEN_STATUSES.includes(q.status)).length} รอตอบ</span><Link href="/requests" className="linklike">ดูทั้งหมด</Link></>}>
+        /* ⭐ ป้าย "n รอตอบ" + "ดูทั้งหมด" = แท็บ "รอตอบ" ของคิวที่ฝ่ายนี้ทำงานจริง (ตรวจตัวเลข M8d · 20/10/2026) —
+           API คิดทั้งลิงก์และเลข (`inquiryQueue` · lib/pm/inquiryQueueLink.js) ⇒ เลขบนป้าย = แถวที่เห็นหลังกด
+           🐞 เดิมนับใบเปิดของฝ่ายจากลิสต์ตัวอย่างข้างล่าง แล้วลิงก์ไป `/requests` ซึ่งไม่มีคิวของ RD เลย
+           ⚠️ API รุ่นเก่า (ไม่มี `inquiryQueue`) หรือนับไม่ได้ (`count: null`) = ไม่โชว์เลข ดีกว่าเลขที่กดแล้วไม่เจอ */
+        <SaSection icon={<MessageCircleQuestion size={17} />} title="คำร้องจากฝ่ายขาย" subtitle="เรื่องที่ฝ่ายของคุณต้องตอบหรือติดตาม" actions={<>{Number.isFinite(inquiryQueue?.count) && <span className="ui-badge" style={{ color: "var(--amber)" }}>{inquiryQueue.count} รอตอบ</span>}<Link href={inquiryQueue?.href || "/requests"} className="linklike">ดูทั้งหมด</Link></>}>
           {/* 🐞 **สามช่องนี้เคยเป็นชื่อของตาราง `inquiries` เก่า** (ตรวจย้อนหลัง 2026-08-26)
               — แหล่งข้อมูลย้ายมาเป็น `dept_requests` ตั้งแต่ mig 0174 แต่บล็อกนี้ไม่ได้
               ตามไปด้วย ⇒ `q.code` · `q.requesterName` · `q.dueDate` เป็น undefined ทั้งหมด
@@ -1004,20 +1112,33 @@ export default function TasksPage() {
         </div>
         {statusFilter !== "all" && (
           <button onClick={() => setStatusFilter("all")} className="btn sm">
-            กรอง: {STAT_CARDS.find((c) => c.key === statusFilter)?.label} <span style={{ fontWeight: "var(--fw-bold)" }}>×</span>
+            {/* `todo` มาจากป้ายเมนูเท่านั้น (ไม่มีการ์ดให้ยืมชื่อ — M9) */}
+            กรอง: {statusFilter === TASK_TODO_FILTER ? TASK_TODO_FILTER_LABEL : STAT_CARDS.find((c) => c.key === statusFilter)?.label} <span style={{ fontWeight: "var(--fw-bold)" }}>×</span>
           </button>
+        )}
+        {/* ชิปโครงการจากลิงก์หน้าโครงการ (M8b) — ตัวกรองที่มองไม่เห็นคือตัวกรองที่คนกล่าวหาว่าข้อมูลหาย */}
+        {projectFacet && (
+          <Button size="sm" onClick={() => { setProjectFacet(null); setCentralFacet(null); dropLinkParams(); }}>
+            กรอง: โครงการ {resolveProj(projectFacet)?.code || resolveProj(projectFacet)?.name || "ที่ลิงก์มา"}{centralFacet === TASK_CENTRAL_ONLY ? " · เฉพาะงานกลางโครงการ" : ""} ×
+          </Button>
+        )}
+        {/* ธงจากหน้าโครงการที่เลือกดีลโดยไม่เลือก "งานกลางโครงการ" — ตัดงานเดิมที่ไม่มีดีลออก (ชุดเดียวกับหน้าโครงการ) */}
+        {centralFacet === TASK_CENTRAL_EXCLUDE && dealFilter.length > 0 && (
+          <Button size="sm" onClick={() => { setCentralFacet(null); dropLinkParams(); }}>
+            กรอง: ไม่รวมงานกลางโครงการ ×
+          </Button>
         )}
         {/* หมวดหมู่/ผู้รับมอบหมาย = ตัวเลือกจากงานที่โหลดมา — ซ่อนหมวดที่มีค่าเดียว
             (กรองแล้วไม่เปลี่ยนอะไร) และซ่อนผู้รับมอบหมายในสโคป "ของฉัน" ตามเดิม */}
         {(categoryOptions.length > 1 || dealOptions.length > 1 || dealFilter.length > 0 || (scope !== "mine" && assigneeOptions.length > 1)) && (
           <FilterPopover
             count={categoryFilter.length + assigneeFilter.length + dealFilter.length}
-            onClear={() => { setCategoryFilter([]); setAssigneeFilter([]); setDealFilter([]); }}
+            onClear={() => { setCategoryFilter([]); setAssigneeFilter([]); setDealFilter([]); if (centralFacet === TASK_CENTRAL_EXCLUDE) setCentralFacet(null); dropLinkParams(); }}
             groups={[
               ...(dealOptions.length > 1 || dealFilter.length ? [{
                 key: "deal", label: "ดีล", icon: Handshake,
                 options: dealOptions.map((d) => ({ value: d.id, label: d.name })),
-                selected: dealFilter, onChange: setDealFilter,
+                selected: dealFilter, onChange: (values) => { setDealFilter(values); dropLinkParams(); },
               }] : []),
               ...(categoryOptions.length > 1 ? [{
                 key: "category", label: "หมวดหมู่", icon: Tag,
@@ -1138,7 +1259,7 @@ export default function TasksPage() {
         </div>
       ) : visible.length === 0 ? (
         <EmptyState plain icon={Plus} dashed onClick={canEdit ? openAdd : undefined}>
-          {statusFilter !== "all" || q || assigneeFilter.length || categoryFilter.length
+          {statusFilter !== "all" || q || assigneeFilter.length || categoryFilter.length || dealFilter.length || projectFacet
             ? "ไม่มีงานตรงกับตัวกรองนี้"
             : canEdit
               ? "ยังไม่มีงาน — กดเพื่อสร้าง/มอบหมายงาน (เช่น โทรตามลูกค้า, เตรียมใบเสนอราคา)"

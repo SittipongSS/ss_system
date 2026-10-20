@@ -18,6 +18,7 @@ import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { isSahamitDealOwner } from "@/lib/sahamit/dealOwner";
 import { deliveryBeforePo, lastDayOfMonth } from "@/lib/sahamit/dealDates";
+import { forecastSelectionOf, pruneSelection } from "@/lib/sahamit/forecastSelection";
 import { fmtDate, fmtMoney, fmtNumber, NA } from "@/lib/format";
 import { roundTotal, roundSkuCount, roundMatrix, compareRounds } from "@/lib/sahamit/forecastClient";
 import { productMetaText } from "@/lib/sahamit/productMeta";
@@ -353,26 +354,29 @@ function ForecastPageInner() {
   });
   const selectableLines = useMemo(() => lineList.filter((r) => !r.mapped), [lineList]);
   const allLinesSelected = selectableLines.length > 0 && selectableLines.every((r) => selectedLines.has(r.id));
+  /* ── รายการที่เลือก = ติ๊กอยู่ **และ** อยู่บนจอ (ผ่านคำค้น/หมวด · ยังไม่มีดีล) (ตรวจตัวเลข 20/10 · M24b) ──
+     🐞 เดิมเลขบนแถบ/ปุ่ม/โมดัลนับ `selectedLines.size` ทั้งก้อน ขณะที่จำนวนชิ้น/มูลค่า/ด่านเดือนส่งก่อน PO วนเฉพาะแถวบนจอ
+        ⇒ ติ๊ก 10 แล้วค้นจนเหลือ 3: แถบบอก "เลือก 10 รายการ" กับยอดของ 3 แถว และกดสร้างได้ 10 ดีล (รวม 7 ที่มองไม่เห็น
+        และไม่ผ่านด่านเดือน) · ร่วมสายกับ /tax ที่ล้างการเลือกเมื่อกรอง แต่ที่นี่ **ตัดเฉพาะที่หลุดจากจอ** (ที่ยังเห็นไม่หาย)
+     ⭐ ตัวนับ ยอด ด่าน และ lineIds ที่ส่งไปสร้างดีล ออกจากลูปเดียวกัน (`forecastSelectionOf` · `selection.ids`) — ตัดตาม
+        `selectableLines` ไม่ใช่ `lineList` (`pruneSelection`) ⇒ บรรทัดที่เพิ่งมีดีล (reloadMapped) ก็หลุดจากตัวนับด้วย
+        สูตรอยู่ lib/sahamit/forecastSelection.js (เทสต์รันของจริง: forecastSelection.test.mjs) */
+  useEffect(() => {
+    setSelectedLines((prev) => pruneSelection(prev, selectableLines));
+  }, [selectableLines]);
 
-  // สรุป line ที่เลือก (จำนวน + มูลค่าราคาผลิต) สำหรับแถบสร้างโครงการ
+  // สรุป line ที่เลือก (จำนวน + มูลค่าราคาผลิต) สำหรับแถบสร้างโครงการ — `ids` คือชุดที่ส่งไปสร้าง (ลูปเดียวกับตัวนับ/ยอด/ด่าน)
   const selection = useMemo(() => {
-    let qty = 0, value = 0, unpriced = 0;
-    const early = []; // เดือนส่งของมาก่อนเดือนคาดได้รับ PO ⇒ วันเริ่มจะเลยวันสิ้นสุด (server ตีกลับ)
-    for (const r of lineList) {
-      if (!selectedLines.has(r.id)) continue;
-      qty += r.qty;
-      if (deliveryBeforePo({ poMonth: dealMonth, demandMonth: r.month })) early.push(r);
-      if (r.price == null) { unpriced += 1; continue; }
-      value += r.amount;
-    }
-    return { count: selectedLines.size, qty, value, unpriced, early };
+    // ด่านเดือน: เดือนส่งของมาก่อนเดือนคาดได้รับ PO ⇒ วันเริ่มจะเลยวันสิ้นสุด (server ตีกลับ)
+    const isEarly = (r) => deliveryBeforePo({ poMonth: dealMonth, demandMonth: r.month });
+    return forecastSelectionOf(lineList, selectedLines, { isEarly });
   }, [selectedLines, lineList, dealMonth]);
   const earlyReason = selection.early.length
     ? `${selection.early.length} รายการมีเดือนส่งของก่อนเดือนคาดได้รับ PO ${dealMonth} (${[...new Set(selection.early.map((r) => String(r.month).slice(0, 7)))].sort().join(", ")}) — วันเริ่มจะเลยวันสิ้นสุด เลือกเดือนคาดได้รับ PO ใหม่ หรือเอารายการนั้นออก`
     : null;
 
   const createDeal = async () => {
-    if (!selectedRound || !selectedLines.size) return;
+    if (!selectedRound || !selection.count) return;
     // ปุ่มพักอยู่แล้ว — ด่านซ้ำตรงนี้กันทางเข้าอื่น (Enter/คลิกค้างก่อนสายล้ม) ไม่ให้ยิงด้วยข้อมูลครึ่งเดียว
     if (dealPaused) { notifyToast.error(dealPausedReason); return; }
     if (!dealOwnerId) { notifyToast.error("ต้องเลือกผู้ดูแล (AE)"); return; }
@@ -382,7 +386,7 @@ function ForecastPageInner() {
       const json = await sahamitFetch(`/api/sahamit/forecast/rounds/${selectedRound.id}/create-sales-deal`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lineIds: [...selectedLines], forecastMonth: dealMonth, ownerId: dealOwnerId }),
+        body: JSON.stringify({ lineIds: selection.ids, forecastMonth: dealMonth, ownerId: dealOwnerId }),
       });
       const skipMsg = json.skipped ? ` (ข้ามที่สร้างดีลแล้ว ${json.skipped} รายการ)` : "";
       const supMsg = json.superseded ? ` · เคลียร์ดีลรอบเก่าที่ยังไม่ปิด ${json.superseded} ดีล (FC อัพเดท)` : "";

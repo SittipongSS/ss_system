@@ -1410,7 +1410,12 @@ export default function ServiceSchedulePage() {
                     type="button"
                     className="text-action"
                     onClick={() => {
+                      /* ⭐ ล้างคำค้นด้วย (ตรวจตัวเลข 20/10 · M24e) — เลข n บนบรรทัดนี้ (`draftsInRange`) นับร่างของสัปดาห์
+                         หลังกรองทีม ไม่ขึ้นกับคำค้น ⇒ คำค้นที่ค้างอยู่ทำให้กดแล้วได้น้อยกว่า n (ค้น "SV-05" ได้ 0 จาก 2)
+                         ทรงเดียวกับปุ่มตัวเลขคำร้อง (`showRequestCards`) */
                       setWithin({ from: range7.from, to: range7.to });
+                      setSearch("");
+                      pagination.setPage(1);
                       setQuery({ tab: null, range: null });
                       document.getElementById("schedule-queue")?.scrollIntoView({ block: "start" });
                     }}
