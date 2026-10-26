@@ -216,3 +216,42 @@ test("🔴 เลขแพ็คว่าง = ใบยื่นเท่าก
   }
 });
 
+
+/* 🔴 ตรวจระบบ 2026-10-26 — สินค้าที่ยังไม่มีราคาขายปลีกได้อัตรา 0 ⇒ บรรทัดภาษี ฿0 เงียบ ๆ แล้วใบยื่นยื่นขาด
+   (SO อนุมัติแล้ว 22 ใบมีบรรทัดแบบนี้) ⇒ ต้องติดธงรายบรรทัด + คำเตือนแยกชนิด ไม่บล็อก */
+test("บรรทัดที่สินค้าไม่มีราคาขายปลีก = taxBaseMissing + คำเตือน missing_tax_base", () => {
+  const result = resolveSoFiling({
+    salesOrder,
+    productTypes,
+    products: [
+      { id: "P-1", fgCode: "FG-X-01-002-0001", exciseTax: 8, localTax: 0.8, retailPriceIncVat: 107 },
+      { id: "P-4", fgCode: "FG-X-01-002-0004", exciseTax: 0, localTax: 0, retailPriceIncVat: null },
+      { id: "P-5", fgCode: "FG-X-01-002-0005", exciseTax: 0, localTax: 0, retailPriceIncVat: 214 },
+    ],
+    lines: [
+      { id: "L-1", productId: "P-1", qty: 1 },
+      { id: "L-4", productId: "P-4", qty: 50 },
+      { id: "L-5", productId: "P-5", qty: 5 },
+    ],
+    registrations: [{ id: "R-1", productId: "P-1", customerId: "C-1", status: "approved" }],
+  });
+  assert.deepEqual(result.lines.map((line) => [line.salesOrderLineId, line.taxBaseMissing]), [["L-1", false], ["L-4", true], ["L-5", true]]);
+  const taxBase = result.warnings.filter((w) => w.code === "missing_tax_base");
+  assert.deepEqual(taxBase.map((w) => w.salesOrderLineId), ["L-4", "L-5"]);
+  assert.match(taxBase[0].message, /FG-X-01-002-0004.*ราคาขายปลีก.*฿0/);
+  assert.match(taxBase[1].message, /อัตราภาษีบนสินค้าเป็น 0/, "มีราคาแต่อัตราค้าง 0 ต้องบอกคนละเหตุ");
+  // ยังสร้างใบได้ — เตือน ไม่บล็อก (บล็อกต้องได้มติก่อน)
+  assert.equal(result.eligible, true);
+  assert.equal(result.totalTax, 8.8);
+});
+
+test("อัตราเล็กแต่ปัดแล้วไม่เป็น 0 ไม่ถูกนับว่าไม่มีฐานภาษี", () => {
+  const result = resolveSoFiling({
+    salesOrder,
+    productTypes,
+    products: [{ id: "P-1", fgCode: "FG-X-01-002-0001", exciseTax: 0.006, localTax: 0, retailPriceIncVat: 0.08 }],
+    lines: [{ id: "L-1", productId: "P-1", qty: 1 }],
+  });
+  assert.equal(result.lines[0].taxBaseMissing, false);
+  assert.equal(result.warnings.some((w) => w.code === "missing_tax_base"), false);
+});

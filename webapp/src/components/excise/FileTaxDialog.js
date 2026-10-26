@@ -10,12 +10,17 @@ import { uploadFileBytes } from "@/lib/master/uploadFile";
 import { notifyToast } from "@/components/ui/Toast";
 import { businessDate } from "@/lib/businessDate";
 import { apiFetch } from "@/lib/apiFetch";
+import StatusNotice from "@/components/ui/StatusNotice";
+import { isExemptFiling, untaxedFilingItems } from "@/lib/tax/exciseBilling";
 
 // RA records the excise payment and marks the order 'complete': receipt number,
 // actual paid amount, actual payment date (taxPaidDate, additive), ภส. form ref,
 // + optional receipt file. Exempt orders complete without a receipt.
+// "ยกเว้น" = ทุกรายการผูกทะเบียนที่ RA ยกเว้นไว้ (isExemptFiling) — ยอด 0 เพราะสินค้าไม่มีราคาขายปลีก
+// ไม่ใช่ยกเว้น ต้องผ่านด่านใบเสร็จเหมือนใบปกติ (ตรวจระบบ 2026-10-26)
 export default function FileTaxDialog({ open, onClose, onDone, order }) {
-  const isExempt = (order?.totalTax || 0) === 0;
+  const isExempt = isExemptFiling(order);
+  const untaxedCount = untaxedFilingItems(order).length;
   const [receiptNumber, setReceiptNumber] = useState("");
   const [paidAmount, setPaidAmount] = useState("");
   const [paidDate, setPaidDate] = useState("");
@@ -116,6 +121,11 @@ export default function FileTaxDialog({ open, onClose, onDone, order }) {
             <span className="font-mono font-bold" style={{ color: "var(--red)" }}>{isExempt ? "ยกเว้นภาษี" : fmtMoney(order.totalTax)}</span>
           </div>
 
+          {untaxedCount > 0 && (
+            <StatusNotice tone="warning">
+              มี {untaxedCount} รายการที่ภาษีเป็น ฿0 เพราะตอนสร้างใบ สินค้ายังไม่มีราคาขายปลีก — ยอดในใบนี้ขาดจากที่ต้องยื่นจริง
+            </StatusNotice>
+          )}
           {isExempt ? (
             <p style={{ fontSize: "var(--fs-6)", color: "var(--text-3)" }}>ออเดอร์นี้ได้รับยกเว้นภาษี — ยืนยันเพื่อปิดงานเป็น “ชำระแล้ว”</p>
           ) : (

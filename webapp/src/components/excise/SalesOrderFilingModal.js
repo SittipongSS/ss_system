@@ -114,6 +114,7 @@ export default function SalesOrderFilingModal({ open, onClose, onSaved }) {
     [customerId, salesOrders],
   );
   const selectedOrder = salesOrders.find((order) => order.id === salesOrderId) || null;
+  const warningCount = (code) => resolution.warnings.filter((warning) => warning.code === code).length;
 
   const create = async () => {
     if (!salesOrderId || !resolution.eligible) return;
@@ -224,6 +225,9 @@ export default function SalesOrderFilingModal({ open, onClose, onSaved }) {
                             {REGISTRATION_GAP[line.registrationState] || REGISTRATION_GAP.none}
                           </span>
                         )}
+                        {line.taxBaseMissing && (
+                          <span className={styles.lineGap}>ไม่มีราคาขายปลีก · ภาษี ฿0</span>
+                        )}
                       </td>
                       <td className="num mono">{naText(line.quantity)}</td>
                       <td className="num mono">{fmtMoney(Number(line.exciseRatePerUnit || 0) + Number(line.localTaxRatePerUnit || 0))}</td>
@@ -241,9 +245,22 @@ export default function SalesOrderFilingModal({ open, onClose, onSaved }) {
         {salesOrderId && !resolution.loading && !resolution.error && !resolution.eligible && (
           <StatusNotice tone="warning">ใบสั่งขายนี้ไม่มีรายการสินค้าสรรพสามิตที่พร้อมสร้างใบยื่น</StatusNotice>
         )}
-        {resolution.eligible && resolution.warnings.length > 0 && (
+        {/* คำเตือนแยกตามสาเหตุ — เดิมนับ warnings ทั้งก้อนเป็น "ยังไม่มีทะเบียน" ทั้งที่มีหลายชนิด
+            ⚠️ ภาษี ฿0 ขึ้นก่อน: เป็นเรื่องยอดเงินที่ยื่นขาด ส่วนทะเบียนเป็นเรื่องเอกสาร */}
+        {resolution.eligible && warningCount("missing_tax_base") > 0 && (
           <StatusNotice tone="warning">
-            มี {resolution.warnings.length} รายการที่ยังไม่มีทะเบียนสรรพสามิตอนุมัติ ระบบแจ้งเตือนแต่ไม่บล็อกการสร้างใบยื่น
+            มี {warningCount("missing_tax_base")} รายการที่สินค้ายังไม่มีราคาขายปลีก ภาษีจึงคิดออกมา ฿0 — ใบยื่นตรึงอัตราไว้ตอนสร้าง
+            เติมราคาขายปลีกในทะเบียนสินค้าก่อนสร้างใบ ไม่งั้นยอดที่ยื่นจะขาด
+          </StatusNotice>
+        )}
+        {resolution.eligible && warningCount("registration_missing") > 0 && (
+          <StatusNotice tone="warning">
+            มี {warningCount("registration_missing")} รายการที่ยังไม่มีทะเบียนสรรพสามิตอนุมัติ ระบบแจ้งเตือนแต่ไม่บล็อกการสร้างใบยื่น
+          </StatusNotice>
+        )}
+        {resolution.eligible && warningCount("missing_product") > 0 && (
+          <StatusNotice tone="warning">
+            มี {warningCount("missing_product")} รายการที่ไม่พบข้อมูลสินค้าหรือจำนวน — ไม่อยู่ในใบยื่นนี้
           </StatusNotice>
         )}
       </div>

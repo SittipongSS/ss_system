@@ -148,8 +148,9 @@ export default function OrderDetailModal({ order, open, onClose }) {
                     </td>
                     <td className="text-center font-mono font-semibold">{it.quantity}</td>
                     <td className="num font-mono font-bold text-[var(--text)]">
-                      {it.totalTax > 0 ? (
-                        fmtMoney(it.totalTax)
+                      {/* ยอด 0 ≠ ยกเว้น — ป้ายยกเว้นเฉพาะรายการที่ทะเบียนถูก RA ยกเว้นไว้ (isExemptFiling) */}
+                      {it.totalTax > 0 || it.registration?.isExciseTaxable !== false ? (
+                        fmtMoney(it.totalTax || 0)
                       ) : (
                         <span className="status-pill success text-[10px]">ไม่ต้องเสียภาษี</span>
                       )}

@@ -38,6 +38,7 @@ import {
 import { branchLabel } from "@/lib/master/thaiAddress";
 import { brandBothOf, brandBoth, hasBrandField } from "@/lib/master/brands";
 import { fmtPhone, fmtNationalId, productNameBoth, fmtMoney, fmtDate, naText, NA } from "@/lib/format";
+import { isExemptFiling } from "@/lib/tax/exciseBilling";
 import { productDisplayName } from "@/lib/master/productIdentity";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
 import { SCENT_STATUS_LABELS, SCENT_STATUS_TONES } from "@/lib/master/scents";
@@ -920,7 +921,7 @@ export default function CustomerDetails() {
               ) : isPortrait ? (
                 <div className="grid grid-cols-1 gap-3">
                   {orders.map((o) => {
-                    const isExempt = (o.totalTax || 0) === 0;
+                    const isExempt = isExemptFiling(o); // ยอด 0 ≠ ยกเว้น (สินค้าไม่มีราคาขายปลีก)
                     const itemCount = o.items?.length || 0;
                     return (
                       /* ── การ์ดนี้เป็น <button> ไม่ใช่ <Link> — ใบสั่งซื้อไม่มีหน้าเป็นของตัวเอง ──
@@ -964,7 +965,7 @@ export default function CustomerDetails() {
                     </thead>
                     <tbody>
                       {orders.map((o) => {
-                        const isExempt = (o.totalTax || 0) === 0;
+                        const isExempt = isExemptFiling(o); // ยอด 0 ≠ ยกเว้น (สินค้าไม่มีราคาขายปลีก)
                         const itemCount = o.items?.length || 0;
                         return (
                           /* ── แถวนี้ **ไม่มี** ทางลัดเมาส์บน <tr> โดยตั้งใจ (2026-09-03) ──────────────
