@@ -206,3 +206,143 @@ test('ใบประเมินพื้นที่ประกาศทั�
     assert.equal(kind.closeNeedsAnswer, undefined, key);
   }
 });
+
+/* ── ประเมินจากแบบ งวด 4 (S4 §2.1) — คีย์ใหม่ของ "วิธี" ที่ฝ่ายขายเลือกตอนยื่น ─────────────────
+   ⭐ ด่านใหม่ทุกตัวต้องยิงจริงบนตัวอย่างที่ผิด — ด่านที่ไม่เคยเห็นมันทำงานคือด่านที่อาจพังเงียบมานานแล้ว */
+const WITH_VARIANTS = {
+  ...OK,
+  defaultVariant: 'a',
+  form: { resultDueLabel: 'วันรับผล' },
+  variants: { a: { label: 'A' }, b: { label: 'B' } },
+};
+
+test('S4 · ทะเบียนรับคีย์ใหม่ระดับหัวข้อและระดับรูปแบบที่ประกาศถูก', () => {
+  assert.doesNotThrow(() => assertKind({
+    ...WITH_VARIANTS,
+    variantLabel: 'วิธี',
+    variantRequired: true,
+    variantRequiredError: 'ต้องเลือกวิธี',
+    variantLockAfterSubmit: true,
+    variantLockText: 'ส่งแล้ว',
+    variantAskedLabel: 'วิธีที่ขอ',
+    variants: {
+      a: { label: 'A', description: 'คำอธิบาย', switchConfirm: { title: 'ท', description: 'ด' } },
+      b: {
+        label: 'B',
+        notice: 'ประกาศ',
+        resultDateOnly: true,
+        form: { bodyPlaceholder: 'ช่องรายละเอียด' },
+        requiredFiles: { docType: 'spec', label: 'แบบ', hint: 'ไฟล์', accept: '.pdf', rejectText: 'ไม่รับ' },
+      },
+    },
+  }));
+});
+
+test('S4 · ด่านทะเบียนตีกลับคีย์ใหม่ที่ประกาศผิดทุกแบบ', () => {
+  const v = (b) => ({ ...WITH_VARIANTS, variants: { a: { label: 'A' }, b: { label: 'B', ...b } } });
+  const RF = { docType: 'spec', label: 'แบบ', hint: 'ไฟล์', accept: '.pdf', rejectText: 'ไม่รับ' };
+  const bad = [
+    ['variantRequired ไม่ใช่บูลีน', { ...WITH_VARIANTS, variantRequired: 'yes', variantRequiredError: 'x' }],
+    ['variantRequired โดยไม่มีข้อความ', { ...WITH_VARIANTS, variantRequired: true }],
+    ['variantRequiredError ว่าง', { ...WITH_VARIANTS, variantRequired: true, variantRequiredError: '  ' }],
+    ['variantLockAfterSubmit ไม่ใช่บูลีน', { ...WITH_VARIANTS, variantLockAfterSubmit: 1, variantLockText: 'x', variantAskedLabel: 'y' }],
+    ['variantLockAfterSubmit โดยไม่มีข้อความล็อก', { ...WITH_VARIANTS, variantLockAfterSubmit: true, variantAskedLabel: 'y' }],
+    ['variantLockAfterSubmit โดยไม่มีป้ายวิธีที่ขอ', { ...WITH_VARIANTS, variantLockAfterSubmit: true, variantLockText: 'x' }],
+    ['variantLabel ว่าง', { ...WITH_VARIANTS, variantLabel: '' }],
+    ['variantAskedLabel ไม่ใช่สตริง', { ...WITH_VARIANTS, variantAskedLabel: 3 }],
+    ['variantLabel บนหัวข้อที่ไม่มีรูปแบบ', { ...OK, variantLabel: 'วิธี' }],
+    ['variantRequired บนหัวข้อที่ไม่มีรูปแบบ', { ...OK, variantRequired: false }],
+    ['variantRequiredError บนหัวข้อที่ไม่มีรูปแบบ', { ...OK, variantRequiredError: 'x' }],
+    ['variantLockAfterSubmit บนหัวข้อที่ไม่มีรูปแบบ', { ...OK, variantLockAfterSubmit: false }],
+    ['variantLockText บนหัวข้อที่ไม่มีรูปแบบ', { ...OK, variantLockText: 'x' }],
+    ['variantAskedLabel บนหัวข้อที่ไม่มีรูปแบบ', { ...OK, variantAskedLabel: 'x' }],
+    ['resultDateOnly ไม่ใช่บูลีน', v({ resultDateOnly: 'yes' })],
+    ['resultDateOnly บนหัวข้อที่ไม่มีวันรับผล', { ...WITH_VARIANTS, form: {}, variants: { a: { label: 'A' }, b: { label: 'B', resultDateOnly: true } } }],
+    ['variant.form คีย์ที่ไม่รู้จัก', v({ form: { bodyPlaceholdr: 'x' } })],
+    ['variant.form ไม่ใช่ object', v({ form: 'x' })],
+    ['requiredFiles ขาด rejectText', v({ requiredFiles: { ...RF, rejectText: '' } })],
+    ['requiredFiles ขาด accept', v({ requiredFiles: { ...RF, accept: undefined } })],
+    ['requiredFiles docType ที่ไม่มีในคำร้อง', v({ requiredFiles: { ...RF, docType: 'plan' } })],
+    ['requiredFiles ไม่ใช่ object', v({ requiredFiles: 'spec' })],
+    ['switchConfirm ขาด description', v({ switchConfirm: { title: 'ท' } })],
+    ['description ว่าง', v({ description: '' })],
+    ['notice ไม่ใช่สตริง', v({ notice: true })],
+  ];
+  for (const [why, kind] of bad) assert.throws(() => assertKind(kind), undefined, why);
+});
+
+test('S4 · requiredFiles.docType ตรงกับคีย์เอกสารแนบของคำร้องจริง (ลิสต์ในทะเบียนไม่เพี้ยนจาก attachmentTypes)', async () => {
+  const { ATTACHMENT_TYPES } = await import('../../master/attachmentTypes.js');
+  const keys = ATTACHMENT_TYPES.dept_request.map((t) => t.key);
+  for (const key of keys) {
+    assert.doesNotThrow(() => assertKind({
+      ...WITH_VARIANTS,
+      variants: { a: { label: 'A' }, b: { label: 'B', requiredFiles: { docType: key, label: 'ก', hint: 'ข', accept: '.pdf', rejectText: 'ค' } } },
+    }), key);
+  }
+});
+
+test('S4 · ใบประเมินพื้นที่มีสองวิธี ไม่มีค่าที่เลือกไว้ให้ · พัฒนาสูตรไม่ได้คีย์ใหม่สักตัว', () => {
+  const s = REQUEST_KINDS.site_survey;
+  assert.deepEqual(Object.keys(s.variants), ['standard', 'drawing']);
+  assert.equal(s.variantLabel, 'วิธีประเมิน');
+  assert.equal(s.variantRequired, true);
+  assert.equal(s.variantLockAfterSubmit, true);
+  assert.equal(s.variantAskedLabel, 'วิธีที่ฝ่ายขายขอ');
+  assert.equal('hasItems' in s, false, 'hasItems ย้ายเข้าไปในรูปแบบแล้ว (ทะเบียนห้ามประกาศที่หัวข้อเมื่อมี variants)');
+  assert.equal(s.variants.standard.hasItems, false);
+  assert.equal(s.variants.drawing.hasItems, false);
+  assert.equal(s.variants.drawing.requiredFiles.docType, 'spec');
+  assert.ok(Object.isFrozen(s.variants.drawing.form), 'variant.form แช่แข็งตอนโหลด');
+  const f = REQUEST_KINDS.formula_dev;
+  for (const key of ['variantLabel', 'variantRequired', 'variantRequiredError', 'variantLockAfterSubmit', 'variantLockText', 'variantAskedLabel']) {
+    assert.equal(f[key], undefined, `formula_dev.${key}`);
+  }
+  for (const v of Object.values(f.variants)) {
+    for (const key of ['description', 'notice', 'form', 'resultDateOnly', 'requiredFiles', 'switchConfirm']) {
+      assert.equal(v[key], undefined, `formula_dev variant.${key}`);
+    }
+  }
+});
+
+/* ratchet ของงวด S4 (สเปก §3 Integrate ข้อ 3): ใบประเมินพื้นที่ประกาศสองวิธีพอดี · ใบ `standard` (ทุกใบที่มีอยู่) ไม่พิมพ์
+   บรรทัด "ฝ่ายขายขอ" ที่ view-model ไหนเลย — หน้าใบ (`surveyJobView`) · การ์ดหน้าจัดคิว (`surveyRequestRow`) · หัวใบประเมิน
+   (`surveyJobHeaderView`) · ตารางเต็มทุกสถานะอยู่ที่ `lib/service/surveyIntakeFlagOff.test.mjs` */
+test('S4 · ประเมินพื้นที่ = standard + drawing พอดี · ใบ standard ไม่มีบรรทัด "ฝ่ายขายขอ" บนสาม view-model', async () => {
+  assert.deepEqual(Object.keys(REQUEST_KINDS.site_survey.variants), ['standard', 'drawing']);
+  const { surveyJobView } = await import('../../service/surveyJob.js');
+  const { surveyRequestRow } = await import('../../service/scheduleQueueView.js');
+  const { surveyJobHeaderView } = await import('../../service/surveyFieldView.js');
+  const base = {
+    id: 'R1', kind: 'site_survey', dept: 'TS', docNo: 'RQ-AS-26100101', title: 'ประเมินล็อบบี้', siteId: 'S1',
+    status: 'acknowledged', submittedAt: '2026-10-13T02:00:00Z', acknowledgedAt: '2026-10-13T04:00:00Z',
+    requestedDueDate: '2026-10-20', requestedDueTime: '10:00:00', requestedResultDate: '2026-10-22',
+    surveyZones: [{ id: 'z1', zoneName: 'Lobby', status: 'ok', parts: [], spots: [] }], surveyNeedsVisit: true, surveyVisit: null,
+  };
+  const site = { id: 'S1', code: 'ST-1', name: 'ไซต์', routeZone: 'BKK-C' };
+  const views = (r) => JSON.stringify([
+    surveyJobView({ request: r, today: '2026-10-15', viewer: { isOpener: true, isRequesterSide: true } }),
+    surveyRequestRow(r, { todayIso: '2026-10-15', sitesById: new Map([['S1', site]]), live: [], peopleInView: [] }),
+    surveyJobHeaderView({ request: r, customer: { arCode: 'AR-1', name: 'ลูกค้า' }, site, visit: null, crew: [], unknown: {} }),
+  ]);
+  for (const r of [base, { ...base, variant: 'standard' }]) assert.doesNotMatch(views(r), /ฝ่ายขายขอ/);
+  // ตัวควบคุม: ใบเดียวกันที่ยื่นเป็นจากแบบพิมพ์บรรทัดนั้นจริง (ไม่งั้นข้อบนผ่านเพราะ view-model ไม่เคยพิมพ์อะไรเลย)
+  assert.match(views({ ...base, variant: 'drawing' }), /ฝ่ายขายขอ/);
+});
+
+/* ⭐ UAT S4 รอบ 4 ข้อ 13a — วลีของ `summary` ที่ห้ามขาดสองบรรทัด (การ์ดหัวข้อห่อ nowrap · ตัวหนังสือไม่ถูกแตะ) */
+test('summaryKeep: ทุกวลีต้องอยู่ใน summary จริง · ลิสต์ข้อความไม่ว่าง · ประเมินพื้นที่ประกาศชื่อสองวิธี', () => {
+  const withSummary = { ...OK, summary: 'ให้ TS ประเมินพื้นที่ — ลงหน้างานหรือจากแบบ' };
+  assert.doesNotThrow(() => assertKind({ ...withSummary, summaryKeep: ['ลงหน้างาน', 'จากแบบ'] }));
+  for (const [why, keep] of [
+    ['วลีที่ไม่อยู่ใน summary (แก้ข้อความแล้วลืมวลี)', ['ลงพื้นที่']],
+    ['ลิสต์ว่าง', []],
+    ['ไม่ใช่ลิสต์', 'ลงหน้างาน'],
+    ['ข้อความว่าง', ['  ']],
+  ]) assert.throws(() => assertKind({ ...withSummary, summaryKeep: keep }), /summaryKeep/, why);
+  assert.throws(() => assertKind({ ...OK, summaryKeep: ['ก'] }), /summaryKeep/, 'ไม่มี summary ให้ห่อ');
+  assert.deepEqual([...REQUEST_KINDS.site_survey.summaryKeep], ['ลงหน้างาน', 'จากแบบ']);
+  // ข้อความของการ์ดไม่เปลี่ยนสักตัวอักษร (O9) — ไม่มีอักขระซ่อนในคำ
+  assert.equal(REQUEST_KINDS.site_survey.summary, 'ให้ TS ประเมินพื้นที่ — ลงหน้างานหรือจากแบบ');
+  assert.ok(!/[​⁠]/.test(REQUEST_KINDS.site_survey.summary));
+});

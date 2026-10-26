@@ -67,7 +67,8 @@ export async function loadSurveyZones(supabase, requestId) {
 export async function loadSurveyFieldState(supabase, requestId) {
   const [{ data: request, error }, zones] = await Promise.all([
     supabase.from('dept_requests')
-      .select('id, "docNo", title, status, "answeredAt", "closedAt", "cancelledAt"')
+      // `variant` = สิ่งที่ฝ่ายขายขอ (ประเมินจากแบบ งวด 4) — ข้อความ 409 "ยังไม่มีพื้นที่" ของใบที่ยื่นเป็นประเมินจากแบบ
+      .select('id, "docNo", title, status, variant, "answeredAt", "closedAt", "cancelledAt"')
       .eq('id', requestId).maybeSingle(),
     loadSurveyZones(supabase, requestId),
   ]);
@@ -79,8 +80,12 @@ export async function loadSurveyFieldState(supabase, requestId) {
 
 /* ── ตอนสร้างร่าง: เขียนแถวของใบอย่างเดียว ─────────────────────────────
    `zoneName` เป็น snapshot ณ ตอนเปิดใบ — โซนถูกเปลี่ยนชื่อทีหลัง ใบเก่ายังอ่านได้
-   ว่าตอนนั้นเรียกอะไร (แพตเทิร์นเดียวกับ `customerName` บนเอกสาร) */
-export async function insertSurveyZones(supabase, { requestId, zones, existingZones = [] }) {
+   ว่าตอนนั้นเรียกอะไร (แพตเทิร์นเดียวกับ `customerName` บนเอกสาร)
+   ⭐ `seed` = คีย์ที่ต่อท้าย **ทุกแถว** (ประเมินจากแบบ งวด 4 · S4 A-3) — route ส่ง `surveyZoneSeedPatch(variant)`
+   จาก `surveyIntakeSeed.js` มา: ใบที่ยื่นเป็นประเมินจากแบบได้แถวที่ "เกิดมาจากแบบ" ในคำสั่ง insert เดียวกัน
+   (ไม่มีก้าวที่สอง = ไม่มีครึ่งสภาพ) · ใบลงหน้างานได้ `{}` ⇒ payload เท่าก่อนงวดนี้ทุกตัวอักษร
+   ⚠️ ไฟล์นี้ไม่รู้จักค่าของวิธีประเมิน — ด่าน S2a ห้ามเขียนคีย์ method ด้วยค่าตรง ๆ ที่นี่ */
+export async function insertSurveyZones(supabase, { requestId, zones, existingZones = [], seed = {} }) {
   const byId = new Map(existingZones.map((z) => [z.id, z]));
   const rows = zones.map((zone) => ({
     id: genId('SVZ'),
@@ -93,6 +98,7 @@ export async function insertSurveyZones(supabase, { requestId, zones, existingZo
     floor: zone.zoneId ? null : (zone.floor || null),
     note: zone.note || null,
     sortOrder: zone.sortOrder ?? 0,
+    ...seed,
   }));
   if (!rows.length) return { rows: [], error: null };
   const { error } = await supabase.from('service_survey_zones').insert(rows);

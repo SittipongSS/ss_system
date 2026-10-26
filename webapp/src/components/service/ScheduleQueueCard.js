@@ -100,10 +100,13 @@ export default function ScheduleQueueCard({
         {row.who.sub && <span className={styles.muted}> · {row.who.sub}</span>}
       </p>
 
-      <p className={styles.line}>
-        <span>{row.siteLoadText || naText(null)}</span>
-        {row.dayLoad && <span className={toneOf(row.dayLoad.tone)}> · {row.dayLoad.text}</span>}
-      </p>
+      {/* งานโต๊ะ (`methodChip` มีเฉพาะใบนี้) ไม่มีบรรทัดภาระเลย — วันส่งผลอยู่บรรทัดวันแล้ว ไม่มีใครต้องไปหน้างาน ⇒ ไม่วาดขีดลอย ๆ (UAT S4 T13) */}
+      {!row.methodChip && (
+        <p className={styles.line}>
+          <span>{row.siteLoadText || naText(null)}</span>
+          {row.dayLoad && <span className={toneOf(row.dayLoad.tone)}> · {row.dayLoad.text}</span>}
+        </p>
+      )}
 
       <div className={styles.todo}>
         {row.ready && (
@@ -146,6 +149,8 @@ export default function ScheduleQueueCard({
           </p>
         ))}
         <p className={styles.origin}>{row.origin}</p>
+        {/* "ฝ่ายขายขอ: ประเมินจากแบบ" (งวด 4) — มีเฉพาะใบที่ยื่นเป็นจากแบบ · คลาสเดียวกับต้นเรื่อง ไม่มี CSS ใหม่ */}
+        {row.asked && <p className={styles.origin}>{row.asked}</p>}
       </div>
 
       <div className={styles.actions}>

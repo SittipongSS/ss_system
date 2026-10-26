@@ -14,7 +14,8 @@
 // "ไม่มีแท็บไหนขาด ⟺ requestFormBlocker ผ่าน" ถ้าใครเพิ่มกฎข้างเดียวเทสต์จะแตก
 import {
   requestLineShape, requestUsesItems, requestUsesPdr, requestKindMeta, requestNeedsRef,
-  requestUsesScentBriefs,
+  requestUsesScentBriefs, requestFormCopy, requestRequiredFiles, requestResultDateOnly,
+  requestVariantChosen, requestVariantFieldLabel, requestVariantRequired,
 } from '@/lib/master/requestTypes';
 import { normalizeLinesFor } from '@/lib/requests/kinds/lineShapes';
 import { PDR_SECTIONS, pdrArtworkError, pdrFormProgress } from '@/lib/requests/pdrFields';
@@ -41,18 +42,48 @@ const TAB_LABELS = {
 const filled = (v) => v != null && String(v).trim() !== '';
 
 /**
+ * ช่องวันแรก (`requestedDueDate` · ประเมินพื้นที่ = "วันที่ต้องการให้เข้าพื้นที่") เป็นช่องบังคับของใบนี้ **ตอนนี้** ไหม
+ *
+ * ⭐ **ที่เดียวที่ตัดสิน — เกจและป้าย "(บังคับ)" บนช่องถามตัวนี้ทั้งคู่** (รีวิว UAT S4 รอบ 4 ข้อ 12) — เดิมเกจเลิกนับช่องนี้ก่อนเลือกวิธี
+ *    แต่ป้ายบนแท็บเดียวกันยังเขียน `… (บังคับ)` ข้างช่องว่าง ⇒ วงแหวนเขียวคู่กับช่องบังคับที่ว่าง = จอขัดกันเอง
+ *    · รูปแบบที่มีแต่วันรับผล (จากแบบ) — ไม่มีช่องนี้บนจอ (server เขียนกระจกของวันรับผลลงคอลัมน์นี้เอง)
+ *    · หัวข้อที่บังคับเลือกวิธี แต่ยังไม่เลือก — วิธีเป็นตัวตัดสินว่าช่องนี้มีไหม ⇒ ยังไม่นับ (ช่องยังโชว์ให้กรอกได้ ไม่มีป้ายบังคับ)
+ */
+export function requestDueRequired(form = {}) {
+  return !requestResultDateOnly(form) && !(requestVariantRequired(form.kind) && !requestVariantChosen(form));
+}
+
+/**
  * ช่องบังคับทั้งหมดของหัวข้อนี้ — `[{ tab, label, applies, ok }]`
  *
  * ⚠️ `applies` แยกจาก `ok` เพราะช่องบังคับบางตัว **มีเงื่อนไข**: เหตุผลงานด่วน
  * บังคับเฉพาะตอนติ๊กด่วน · โครงการบังคับเฉพาะเมื่อเลือกดีลแล้ว (ก่อนหน้านั้น
  * ของที่ขาดคือ "ดีล" ไม่ใช่ "โครงการ") ⇒ ตัวหารของเกจต้องนับเฉพาะตัวที่ applies
  * ไม่งั้นแท็บจะขึ้น 1/2 ค้างตลอดโดยไม่มีช่องที่สองให้กรอก
+ *
+ * ⭐ `requiredFileCount` (ประเมินจากแบบ งวด 4 · S4 B-5) — จำนวนไฟล์ในช่องไฟล์บังคับของรูปแบบ **สามสถานะ**:
+ *    · ไม่ส่ง (`undefined`) = โหมดสร้าง ⇒ นับตะกร้า `form.requiredFiles`
+ *    · `null` = โหมดแก้ที่รายการไฟล์ยังโหลดไม่เสร็จ/โหลดพัง ⇒ **ยังไม่รู้ = ไม่ถือว่าขาด**
+ *    · ตัวเลข = โหมดแก้ที่โหลดรายการแล้ว ⇒ เทียบตรง ๆ
+ *    🔴 ห้ามเขียน `?? ` — `null` ต้องไม่ตกไปนับตะกร้า (โหมดแก้ตะกร้าว่างเสมอ ⇒ ใบที่มีแบบสามไฟล์จะขึ้น "ยังขาด")
  */
-export function requiredChecks(form = {}) {
+export function requiredChecks(form = {}, opts = {}) {
   const kind = form.kind;
   if (!kind) return [];
   const hasDeal = filled(form.dealId);
+  // ⭐ ข้อความของ **ทั้งใบ** (หัวข้อ ทับด้วยรูปแบบที่เลือก) — ตัวเดียวกับที่ช่องจริงอ่าน
+  const copy = requestFormCopy(form);
+  const requiredFiles = requestRequiredFiles(form);
+  const fileCount = requiredFileCountOf(form, opts);
   return [
+    /* ⭐ **วิธีประเมินเป็นคำถามแรกของแท็บแรก** (ประเมินจากแบบ งวด 4) — หัวข้อที่ทะเบียนสั่งให้ "ต้องเลือก"
+       ไม่มีค่าที่เลือกไว้ให้ ⇒ ฟอร์มใหม่ขึ้น "ยังขาด: วิธีประเมิน" จนกว่าจะกด
+       ⚠️ ถาม `requestVariantChosen` ไม่ใช่ `requestVariantKey` (ตัวหลังเติมค่าตั้งต้นให้ ⇒ ไม่มีวันขาด)
+       ป้ายมาจากทะเบียน (`variantLabel`) — พัฒนาสูตรไม่บังคับเลือก จึงไม่มีบรรทัดนี้ */
+    {
+      tab: 'work', label: requestVariantFieldLabel(kind),
+      applies: requestVariantRequired(kind), ok: !!requestVariantChosen(form),
+    },
     // ── แท็บ "งาน": ของที่หัวข้อนั้นต้องอ้าง (มาจากธง `needs` ที่เดียว) ────
     {
       tab: 'work', label: 'ใบสั่งขาย',
@@ -89,15 +120,22 @@ export function requiredChecks(form = {}) {
        อยู่โซน ② แล้ว เพราะมันคือ "ขออะไร" (ไปวัดที่นี่ พื้นที่เหล่านี้) ไม่ใช่ "งานไหน"
        · แถวพื้นที่เป็น "รายการที่ขอ" ของหัวข้อนี้ด้วย (`lineNoun: 'พื้นที่'`)
        🪤 เกจพาไปเปิดแท็บที่ระบุตรงนี้ ⇒ ปล่อยเป็น `work` ไว้ ปุ่ม "ยังขาด: สถานที่…"
-       จะพาไปแท็บที่ไม่มีช่องนั้น (กับดักตัวเดียวกับยอดวางบิลข้างบน) */
+       จะพาไปแท็บที่ไม่มีช่องนั้น (กับดักตัวเดียวกับยอดวางบิลข้างบน)
+       ⭐ ป้ายเดียวทั้งสองวิธี "สถานที่ที่จะให้ประเมิน" (มติเจ้าของ 12/10 · S4 O1) — ใบจากแบบไม่มีใคร "เข้าไป" */
     {
-      tab: 'subject', label: 'สถานที่ที่จะให้เข้าไปประเมิน',
+      tab: 'subject', label: 'สถานที่ที่จะให้ประเมิน',
       applies: requestNeedsRef(kind, 'site'), ok: filled(form.siteId),
     },
     {
       tab: 'subject', label: 'พื้นที่ที่ต้องประเมินอย่างน้อย 1 รายการ',
       applies: requestNeedsRef(kind, 'site') && filled(form.siteId),
       ok: (form.zones || []).length > 0,
+    },
+    /* ⭐ **ช่องไฟล์บังคับของรูปแบบ** (ประเมินจากแบบ = แบบ/ผังพื้นที่ · S4 B-3) — อยู่แท็บ `subject` ใต้บล็อกไซต์
+       ⚠️ ด่านจริงคือ `requestRequiredFilesError` ตัวเดียวกับ `requestFormBlocker` และ route ส่งคำร้อง */
+    {
+      tab: 'subject', label: requiredFiles?.label,
+      applies: !!requiredFiles, ok: fileCount == null || fileCount > 0,
     },
     // ── แท็บ "เรื่องที่ขอ" ──────────────────────────────────────────────
     { tab: 'subject', label: 'ชื่อเรื่อง', applies: true, ok: filled(form.title) },
@@ -107,8 +145,8 @@ export function requiredChecks(form = {}) {
          บริบทของงานอยู่ · หัวข้ออื่นยังไม่บังคับเหมือนเดิม
          ⚠️ หัวข้อที่ใช้ PDR ไม่มีช่องนี้บนจอ — แบบฟอร์มแทนที่ไปแล้ว ⇒ ต้องไม่ applies
             ไม่งั้นเกจจะค้าง "ยังขาด" โดยไม่มีช่องให้กรอก */
-      tab: 'subject', label: requestKindMeta(kind)?.form?.bodyLabel || 'รายละเอียด',
-      applies: !!requestKindMeta(kind)?.form?.bodyRequired && !requestUsesPdr(form),
+      tab: 'subject', label: copy.bodyLabel || 'รายละเอียด',
+      applies: !!copy.bodyRequired && !requestUsesPdr(form),
       ok: filled(form.body),
     },
     {
@@ -124,15 +162,26 @@ export function requiredChecks(form = {}) {
     {
       // ป้ายเดินตามทะเบียนหัวข้อ — งานที่ฝ่ายต้องเดินทางไปทำเองไม่ได้ "รับงาน" ที่ไหน
       // (ตัวเดียวกับป้ายบนช่องจริง — `RequestDueUrgentFields` อ่าน `copy.dueLabel`)
-      tab: 'due', label: requestKindMeta(kind)?.form?.dueLabel || 'วันที่ต้องการรับงาน',
-      applies: true, ok: filled(form.requestedDueDate),
+      /* ⭐ **รูปแบบที่มีแต่วันรับผล** (ประเมินจากแบบ) ไม่มีช่องนี้บนจอ — ไม่มีการนัดเข้าพื้นที่
+         (server เขียนกระจกของวันรับผลลงคอลัมน์นี้เอง · `requestNormalizeDates`)
+         ⭐ **หัวข้อที่บังคับเลือกวิธี แต่ยังไม่เลือก = ยังไม่นับ** (UAT S4 รอบ 4 ข้อ 12) — วิธีเป็นตัวตัดสินว่าช่องนี้มีไหม
+            (จากแบบไม่มี) ⇒ ก่อนเลือก ของที่ขาดจริงมีข้อเดียวคือวิธี · เดิมเกจขึ้น 0/7 พร้อม "วันที่ต้องการให้เข้าพื้นที่"
+            ทั้งที่ยังไม่รู้ว่าจะมีช่องนั้น · ช่องยังโชว์ให้กรอกได้ (วันที่พิมพ์ก่อนเลือกถูกเก็บไว้ · O7 ถามก่อนล้าง)
+         ⚠️ ด่าน server ไม่เปลี่ยน — `requestShapeError` ตอบ "ต้องเลือกวิธีประเมิน…" ก่อนถึงข้อวันอยู่แล้ว
+            (ตาราง "ไม่มีแท็บไหนขาด ⟺ ด่านผ่าน" ยังจริง: ยังไม่เลือก = แท็บงานขาด "วิธีประเมิน") */
+      tab: 'due', label: copy.dueLabel || 'วันที่ต้องการรับงาน',
+      // ⚠️ ตัวเดียวกับป้าย "(บังคับ)" ของช่อง (`RequestForm` → `RequestDueUrgentFields dueRequired`) — ห้ามเขียนเงื่อนไขซ้ำที่นี่
+      applies: requestDueRequired(form),
+      ok: filled(form.requestedDueDate),
     },
     {
       /* ⭐ **วันที่สอง: วันส่งผล** (มติผู้ใช้ 2026-09-21 · mig 0368) — มีเฉพาะหัวข้อที่
          ทะเบียนประกาศป้ายไว้ · บังคับเท่ากับวันแรก (ใบที่ไม่บอกว่าต้องใช้ตัวเลขวันไหน
          ทำให้ฝ่ายปลายทางจัดลำดับงานไม่ได้) */
-      tab: 'due', label: requestKindMeta(kind)?.form?.resultDueLabel || 'วันที่ต้องการรับผล',
-      applies: !!requestKindMeta(kind)?.form?.resultDueLabel,
+      /* ⚠️ ทั้งสองวิธีของประเมินพื้นที่ (ป้ายอยู่ระดับหัวข้อ) — ด่านจอถามช่องนี้ของใบลงหน้างานด้วยตัวตรวจของ server
+         (`requestFormBlocker` · รีวิว UAT S4 รอบ 4) ⇒ ตาราง "ไม่มีแท็บไหนขาด ⟺ ด่านผ่าน" จริงทั้งสองวิธี */
+      tab: 'due', label: copy.resultDueLabel || 'วันที่ต้องการรับผล',
+      applies: !!copy.resultDueLabel,
       ok: filled(form.requestedResultDate),
     },
     {
@@ -149,9 +198,15 @@ export function requiredChecks(form = {}) {
   ].filter((c) => c.applies);
 }
 
-/** ช่องบังคับที่ยังขาด เรียงตามลำดับที่ฟอร์มถาม — `[{ tab, label }]` */
-export function missingRequiredByTab(form = {}) {
-  return requiredChecks(form).filter((c) => !c.ok).map(({ tab, label }) => ({ tab, label }));
+/** ช่องบังคับที่ยังขาด เรียงตามลำดับที่ฟอร์มถาม — `[{ tab, label }]` · `opts` เหมือน `requiredChecks` */
+export function missingRequiredByTab(form = {}, opts = {}) {
+  return requiredChecks(form, opts).filter((c) => !c.ok).map(({ tab, label }) => ({ tab, label }));
+}
+
+/* จำนวนไฟล์ของช่องไฟล์บังคับ — กติกาสามสถานะเดียวกับ `requestFormBlocker` (ดูหัว `requiredChecks`)
+   ⚠️ แยกเป็นฟังก์ชันเพื่อให้ไม่มีใครเผลอเขียน `opts.requiredFileCount ?? …` ที่กลืน `null` */
+export function requiredFileCountOf(form = {}, opts = {}) {
+  return opts.requiredFileCount === undefined ? (form.requiredFiles || []).length : opts.requiredFileCount;
 }
 
 /* ช่องไม่บังคับของแต่ละแท็บ — นับเพื่อบอก "กรอกไปเท่าไร" เท่านั้น
@@ -207,10 +262,11 @@ function optionalCounts(form, kind, optionalRefs) {
  * คืน `[{ key, label, required: {total, filled, missing[]}, optional: {total, filled} }]`
  * · `optionalRefs` ส่งเข้ามาเพราะมันเป็นของหัวข้อ (ดู `requestOptionalRefs`)
  *   แต่ผู้เรียกรู้อยู่แล้ว — รับเป็น argument ดีกว่า import วนกันไปมา
+ * · `requiredFileCount` = ตัวนับไฟล์ของโหมดแก้ (สามสถานะ — ดูหัว `requiredChecks`) · โหมดสร้างไม่ต้องส่ง
  */
-export function requestFormTabs(form = {}, { optionalRefs = [] } = {}) {
+export function requestFormTabs(form = {}, { optionalRefs = [], requiredFileCount } = {}) {
   const kind = form.kind;
-  const checks = requiredChecks(form);
+  const checks = requiredChecks(form, { requiredFileCount });
   const optional = optionalCounts(form, kind, optionalRefs);
   return REQUEST_TAB_KEYS
     .map((key) => {

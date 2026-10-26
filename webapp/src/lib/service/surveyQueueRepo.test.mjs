@@ -95,6 +95,8 @@ test('ตัวกรองคำร้อง: ฝ่าย TS · หัวข�
   assert.deepEqual(q.orders, [['submittedAt', true], ['id', true]]);
   assert.ok(q.ranged, 'ต้องไล่หน้าด้วย .range() (fetchAll)');
   assert.doesNotMatch(SURVEY_QUEUE_REQUEST_COLUMNS, /\*/);
+  // ประเมินจากแบบ งวด 4 (S4 D-1): การ์ดอ่าน `variant` (สิ่งที่ฝ่ายขายขอ) — คอลัมน์มีตั้งแต่ mig 0351 · ชื่อไม่มีตัวใหญ่จึงไม่ต้องครอบอัญประกาศ
+  assert.ok(SURVEY_QUEUE_REQUEST_COLUMNS.split(',').map((c) => c.trim()).includes('variant'));
 });
 
 test('⭐ ประวัตินัดถามเฉพาะใบที่รับเรื่องแล้ว + มีวัน + ไม่มีนัดที่ยังมีชีวิตในชุดของจอ', async () => {

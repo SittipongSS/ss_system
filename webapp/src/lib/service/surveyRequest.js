@@ -6,7 +6,7 @@
 // 🔴 **ยามชื่อซ้ำต้องอยู่ที่นี่ด้วย ไม่ใช่ปล่อยให้ DB ตีกลับ** — `service_zones` มี
 // `UNIQUE (siteId, lower(btrim(name)))` (mig 0297) ⇒ ปล่อยไปถึง insert จะได้ error ดิบ
 // จาก Postgres ที่ไม่บอกว่าต้องทำอะไรต่อ
-import { SITE_REQUIRED_ERROR } from '@/lib/master/requestTypes';
+import { SITE_REQUIRED_ERROR, requestResultDateOnly } from '@/lib/master/requestTypes';
 import { toHHMM } from '@/lib/service/sites';
 import { normalizeFloor } from '@/lib/service/zoneCode';
 
@@ -180,11 +180,15 @@ export function normalizeSurveyRequest(body = {}) {
   if (site.error) return { value: null, error: site.error };
   const zones = normalizeSurveyZones(body.zones);
   if (zones.error) return { value: null, error: zones.error };
-  const time = normalizeSurveyTime(body.requestedDueTime);
+  /* ⭐ **ใบที่มีแต่วันรับผล** (ประเมินจากแบบ งวด 4 · S4 A-4) — ไม่มีการนัดเข้าพื้นที่ ⇒ ไม่มีช่วงเวลา (`null`)
+     และวันรับผลไม่ต้องเทียบกับวันเข้าพื้นที่ (`requestedDueDate` ของใบแบบนี้คือกระจกของวันรับผลเอง)
+     ⚠️ ตัดสินจาก `kind` + `variant` ใน body (route ส่ง `kind` มาด้วย) · body ที่ไม่มี `kind` = ลงหน้างานเหมือนเดิม */
+  const resultOnly = requestResultDateOnly(body);
+  const time = resultOnly ? { value: null, error: null } : normalizeSurveyTime(body.requestedDueTime);
   if (time.error) return { value: null, error: time.error };
   /* ⚠️ เทียบกับ `requestedDueDate` ของ payload เดียวกัน ไม่ใช่ของที่อยู่ในฐาน —
      ด่าน "ต้องมีวันที่ต้องการรับงาน" อยู่ที่ `requestShapeError` ซึ่งวิ่งก่อนหน้านี้ */
-  const result = normalizeSurveyRequestedResult(body.requestedResultDate, body.requestedDueDate);
+  const result = normalizeSurveyRequestedResult(body.requestedResultDate, resultOnly ? null : body.requestedDueDate);
   if (result.error) return { value: null, error: result.error };
   return {
     value: {

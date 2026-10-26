@@ -61,9 +61,28 @@ export const VALID_ANSWER_VIA = ['survey_send'];
 const KIND_KEYS = [
   'key', 'label', 'dept', 'scope', 'legacy', 'needs', 'optionalRefs',
   'hasItems', 'lineShape', 'lineKind', 'lineNoun', 'deliversRows', 'hasPdr',
-  'cancelBeforeAckOnly', 'closeNeedsSoConfirm', 'stepKey', 'dealType', 'form', 'summary', 'hint',
+  'cancelBeforeAckOnly', 'closeNeedsSoConfirm', 'stepKey', 'dealType', 'form', 'summary', 'summaryKeep', 'hint',
   'variants', 'defaultVariant', 'pdrScents', 'answerVia', 'closeNeedsAnswer', 'fieldRail',
+  // ประเมินจากแบบ งวด 4 — ฝ่ายขายเลือก "วิธี" ตอนยื่น (ใช้ได้เฉพาะหัวข้อที่มี variants · ด่านอยู่ใน assertKind)
+  'variantLabel', 'variantRequired', 'variantRequiredError', 'variantLockAfterSubmit', 'variantLockText',
+  'variantAskedLabel',
 ];
+
+/* ⭐ **คีย์ของ "การเลือกรูปแบบ" ระดับหัวข้อ** (ประเมินจากแบบ งวด 4 · S4 §2.1) — มีความหมายเฉพาะหัวข้อที่มี
+   `variants` · ประกาศบนหัวข้อที่ไม่มีรูปแบบ = ธงที่ไม่มีใครอ่าน ⇒ ตีกลับตอนโหลด
+     variantLabel            ป้ายของช่องเลือก (ค่าตั้งต้น "รูปแบบงาน")
+     variantRequired         ต้องเลือกเองทุกครั้ง ไม่มีค่าที่เลือกไว้ให้ — ต้องมากับ variantRequiredError
+     variantLockAfterSubmit  ส่งแล้วสลับจากฝั่งผู้ขอไม่ได้อีก — ต้องมากับ variantLockText + variantAskedLabel
+     variantAskedLabel       ป้ายบรรทัดอ่านอย่างเดียวหลังส่ง ("สิ่งที่ผู้ขอขอ" ไม่ใช่วิธีปัจจุบัน) */
+const VARIANT_CHOICE_BOOLEANS = ['variantRequired', 'variantLockAfterSubmit'];
+const VARIANT_CHOICE_TEXTS = ['variantLabel', 'variantRequiredError', 'variantLockText', 'variantAskedLabel'];
+
+/* คีย์ docType ของไฟล์แนบระดับหัวคำร้อง — ⚠️ เขียนเป็นลิสต์ตรงนี้ ไม่ import `attachmentTypes.js` เพราะไฟล์นั้น
+   import `lib/service/survey.js` (ไฟล์ใหญ่ที่อ่านทะเบียนนี้ทางอ้อม) ⇒ วงจร import · เทสต์ตรึงว่าสองลิสต์ตรงกัน */
+const DEPT_REQUEST_DOC_TYPES = ['reference_image', 'spec', 'other'];
+const REQUIRED_FILES_KEYS = ['docType', 'label', 'hint', 'accept', 'rejectText'];
+
+const isText = (v) => typeof v === 'string' && v.trim() !== '';
 
 /* ⭐ **รางของงานหน้างาน** (`fieldRail` · มติเจ้าของ 25/09) — ชื่อขั้นต้องครบทั้งหกขั้นของราง
    ขาดขั้นเดียว = รางหน้าคำร้องมีชื่อสองชุดปนกัน (ชุดกลางกับชุดหน้างาน) โดยไม่มี error */
@@ -76,7 +95,16 @@ const FIELD_RAIL_STEPS = ['draft', 'pending', 'commitDue', 'acknowledged', 'answ
    ⚠️ ทำไมไม่แตกเป็นหัวข้อที่สอง: `kind` ฝังอยู่ใน `docNo` ซึ่ง DB ห้ามแก้
    (`guard_dept_request` · mig 0173) และผูก stepKey/ไทม์ไลน์ ⇒ สลับรูปแบบกลางคัน
    จะกลายเป็น "ลบใบเปิดใหม่" ซึ่งไม่ใช่สวิตช์ */
-const VARIANT_FLAGS = ['label', 'hasItems', 'lineShape', 'deliversRows', 'hasPdr', 'pdrScents', 'hint'];
+const VARIANT_FLAGS = [
+  'label', 'hasItems', 'lineShape', 'deliversRows', 'hasPdr', 'pdrScents', 'hint',
+  /* ประเมินจากแบบ งวด 4 (S4 §2.1):
+       description    บรรทัดรองใต้ปุ่มเลือก · notice  ข้อความใต้ปุ่มเมื่อเลือกรูปแบบนี้แล้ว
+       form           ข้อความฟอร์มที่รูปแบบนี้ทับของหัวข้อ (คีย์ต้องอยู่ใน FORM_DEFAULTS)
+       resultDateOnly ฟอร์มมีวันเดียว = วันรับผล (ไม่มีวันเข้าพื้นที่) — หัวข้อต้องมี resultDueLabel
+       requiredFiles  ช่องไฟล์บังคับ { docType, label, hint, accept, rejectText }
+       switchConfirm  โมดัลยืนยันตอนสลับมาที่รูปแบบนี้ { title, description } */
+  'description', 'notice', 'form', 'resultDateOnly', 'requiredFiles', 'switchConfirm',
+];
 
 /* ⭐ **กลิ่นของแบบฟอร์ม PDR มาจากไหน** (มติผู้ใช้ 2026-09-11) — ฟอร์มเดียวใช้ร่วมสองหัวข้อ
    ต่างกันแค่ที่มาของกลิ่น:
@@ -156,6 +184,16 @@ export function assertKind(kind, seen = new Set()) {
   for (const key of Object.keys(kind)) {
     if (!KIND_KEYS.includes(key)) throw new Error(`${at}: คีย์ "${key}" ไม่ใช่คีย์ที่ทะเบียนรู้จัก`);
   }
+  /* วลีของ `summary` ที่ห้ามขาดสองบรรทัด (การ์ดหัวข้อห่อ `nowrap` · `keepPhrases` · UAT S4 รอบ 4 ข้อ 13) —
+     ทุกวลีต้องอยู่ใน `summary` จริง ไม่งั้นแก้ข้อความแล้ววลีค้างเป็นของที่ไม่มีใครห่อเงียบ ๆ */
+  if ('summaryKeep' in kind) {
+    const keep = kind.summaryKeep;
+    if (!Array.isArray(keep) || !keep.length || !keep.every(isText)) {
+      throw new Error(`${at}: summaryKeep ต้องเป็นลิสต์ข้อความที่ไม่ว่าง`);
+    }
+    const missing = keep.filter((phrase) => !String(kind.summary || '').includes(phrase));
+    if (missing.length) throw new Error(`${at}: summaryKeep "${missing.join('", "')}" ไม่อยู่ใน summary`);
+  }
   if (kind.fieldRail != null) {
     const labels = kind.fieldRail;
     const keys = Object.keys(labels);
@@ -169,6 +207,26 @@ export function assertKind(kind, seen = new Set()) {
   /* ⭐ **กฎรูปทรงชุดเดียว ใช้ทั้งหัวข้อที่ไม่มีรูปแบบและทุกรูปแบบของหัวข้อที่มี** —
      ถ้าเขียนแยกสองชุด รูปแบบใหม่จะหลุดกฎที่หัวข้อธรรมดาโดนอยู่ (เช่น hasItems
      ที่ไม่มี lineShape ⇒ แถวที่ normalize ไม่ได้) */
+  for (const key of VARIANT_CHOICE_BOOLEANS) {
+    if (key in kind && typeof kind[key] !== 'boolean') throw new Error(`${at}: ธง "${key}" ต้องเป็น true/false`);
+  }
+  for (const key of VARIANT_CHOICE_TEXTS) {
+    if (key in kind && !isText(kind[key])) throw new Error(`${at}: "${key}" ต้องเป็นข้อความที่ไม่ว่าง`);
+  }
+  if (!kind.variants) {
+    for (const key of [...VARIANT_CHOICE_BOOLEANS, ...VARIANT_CHOICE_TEXTS]) {
+      if (key in kind) throw new Error(`${at}: "${key}" ใช้ได้เฉพาะหัวข้อที่มี variants`);
+    }
+  }
+  if (kind.variantRequired && !kind.variantRequiredError) {
+    throw new Error(`${at}: variantRequired ต้องมากับ variantRequiredError — ไม่งั้นฟอร์มตีกลับโดยไม่บอกเหตุ`);
+  }
+  if (kind.variantLockAfterSubmit && !kind.variantLockText) {
+    throw new Error(`${at}: variantLockAfterSubmit ต้องมากับ variantLockText — ปุ่มที่กดไม่ได้ต้องบอกเหตุ`);
+  }
+  if (kind.variantLockAfterSubmit && !kind.variantAskedLabel) {
+    throw new Error(`${at}: variantLockAfterSubmit ต้องมากับ variantAskedLabel — หลังส่งฟอร์มโชว์ "สิ่งที่ขอ" แทนปุ่มเลือก`);
+  }
   if (kind.variants) {
     for (const flag of ['hasItems', 'lineShape', 'deliversRows', 'hasPdr']) {
       if (flag in kind) {
@@ -193,10 +251,53 @@ export function assertKind(kind, seen = new Set()) {
           throw new Error(`${atVariant}: ธง "${flag}" ต้องเป็น true/false`);
         }
       }
+      assertVariantCopy(kind, variant, atVariant);
       assertShape(variant, atVariant);
     }
   } else {
     assertShape(kind, at);
+  }
+}
+
+/* ข้อความ/ช่องเฉพาะรูปแบบ (ประเมินจากแบบ งวด 4 · S4 §2.1) — ทุกคีย์ว่างได้ แต่ประกาศแล้วต้องครบ */
+function assertVariantCopy(kind, variant, at) {
+  for (const key of ['description', 'notice']) {
+    if (key in variant && !isText(variant[key])) throw new Error(`${at}: "${key}" ต้องเป็นข้อความที่ไม่ว่าง`);
+  }
+  if ('resultDateOnly' in variant && typeof variant.resultDateOnly !== 'boolean') {
+    throw new Error(`${at}: ธง "resultDateOnly" ต้องเป็น true/false`);
+  }
+  if ('form' in variant) {
+    if (!variant.form || typeof variant.form !== 'object' || Array.isArray(variant.form)) {
+      throw new Error(`${at}: form ต้องเป็น object`);
+    }
+    for (const key of Object.keys(variant.form)) {
+      if (!(key in FORM_DEFAULTS)) throw new Error(`${at}: form."${key}" ไม่ใช่คีย์ที่รู้จัก`);
+    }
+  }
+  /* 🔴 ฟอร์มที่มีแต่วันรับผล ต้องมีป้ายวันรับผลจริง — ไม่งั้นฟอร์มไม่มีช่องวันที่เลยสักช่อง */
+  if (variant.resultDateOnly) {
+    const label = { ...(kind.form || {}), ...(variant.form || {}) }.resultDueLabel;
+    if (!isText(label)) throw new Error(`${at}: resultDateOnly ต้องใช้กับหัวข้อที่มี form.resultDueLabel`);
+  }
+  if ('requiredFiles' in variant) {
+    const rf = variant.requiredFiles;
+    if (!rf || typeof rf !== 'object') throw new Error(`${at}: requiredFiles ต้องเป็น object`);
+    for (const key of REQUIRED_FILES_KEYS) {
+      if (!isText(rf[key])) throw new Error(`${at}: requiredFiles.${key} ต้องเป็นข้อความที่ไม่ว่าง`);
+    }
+    for (const key of Object.keys(rf)) {
+      if (!REQUIRED_FILES_KEYS.includes(key)) throw new Error(`${at}: requiredFiles."${key}" ไม่รู้จัก`);
+    }
+    if (!DEPT_REQUEST_DOC_TYPES.includes(rf.docType)) {
+      throw new Error(`${at}: requiredFiles.docType "${rf.docType}" ไม่มีในชนิดเอกสารแนบของคำร้อง`);
+    }
+  }
+  if ('switchConfirm' in variant) {
+    const sc = variant.switchConfirm;
+    if (!sc || !isText(sc.title) || !isText(sc.description)) {
+      throw new Error(`${at}: switchConfirm ต้องมี title และ description ที่ไม่ว่าง`);
+    }
   }
 }
 
@@ -267,6 +368,12 @@ for (const kind of ALL) {
   // = แหล่งความจริงที่สองที่ drift ได้ (เปลี่ยนคีย์แต่ลืมเปลี่ยน key ข้างใน)
   const { key, ...meta } = kind;
   byKey[key] = { ...meta, form: Object.freeze({ ...FORM_DEFAULTS, ...(kind.form || {}) }) };
+  /* ข้อความฟอร์มของรูปแบบแช่แข็งเหมือนของหัวข้อ (S4 §2.1) — สำเนา ไม่แตะ object ในไฟล์หัวข้อ */
+  if (kind.variants) {
+    byKey[key].variants = Object.fromEntries(Object.entries(kind.variants).map(([name, variant]) => [
+      name, variant?.form ? { ...variant, form: Object.freeze({ ...variant.form }) } : variant,
+    ]));
+  }
 }
 
 // ⚠️ อ่านอย่างเดียว — ของเดิมเป็น object เปล่าที่ใครก็เขียนทับได้ตอนรันไทม์

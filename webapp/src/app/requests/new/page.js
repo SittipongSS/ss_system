@@ -23,8 +23,12 @@ import { DocumentControlCard, DocumentReadinessList } from "@/components/ui/Docu
 import { requiredChecks } from "@/lib/requests/formTabs";
 import Toast from "@/components/ui/Toast";
 import RequestForm, { emptyRequestForm } from "@/components/requests/RequestForm";
-import { createRequestDraft, requestFormBlocker, uploadDraftFiles } from "@/lib/master/requestCreate";
-import { requestKindLabel, requestKindMeta } from "@/lib/master/requestTypes";
+import {
+  createRequestDraft, draftFilesLeft, draftUploadFailureText, requestFormBlocker, uploadDraftFiles,
+} from "@/lib/master/requestCreate";
+import { requestFormCopy, requestKindLabel, requestRequiredFiles, requestVariantChosen } from "@/lib/master/requestTypes";
+import { requestImpliedVariant } from "@/lib/requests/variantSwitch";
+import { surveyVariantsOff } from "@/lib/service/surveyIntake";
 import { scentCountForOrder } from "@/lib/requests/scentDesignOrders";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
@@ -33,7 +37,7 @@ import { formatBillingDate } from "@/lib/sales/billingRule";
 import { RESPONSE_WARNING_TOAST } from "@/lib/apiWarnings";
 import { notifyToast } from "@/components/ui/Toast";
 import styles from "./page.module.css";
-import { apiFetch } from "@/lib/apiFetch";
+import { apiFetch, apiJson } from "@/lib/apiFetch";
 
 const asArray = (d) => (Array.isArray(d) ? d : []);
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -104,6 +108,14 @@ export default function NewRequestPage() {
   const returnTo = back && /^\/(?![\/\\])/.test(back) ? back : "/requests";
 
   const [form, setForm] = useState(() => emptyRequestForm(defaults));
+  /* ⭐ **วิธีประเมินที่เปิดให้เลือก** (ประเมินจากแบบ งวด 4 · S4 B-6) — สวิตช์ `SURVEY_DRAWING_METHOD` อ่านที่ server
+     เท่านั้น ⇒ หน้านี้ถาม GET แล้วได้แค่บูลีน · `null` = ยังไม่ได้คำตอบ (ปุ่มวิธีหยุดรอ) · อ่านไม่ได้ = ถือว่าปิด
+     (server ตีกลับ "ประเมินจากแบบ" ตอนสวิตช์ปิดอยู่แล้ว — ที่นี่แค่ไม่ชวนให้กด) */
+  const [options, setOptions] = useState(null);
+  const variantsOff = useMemo(() => surveyVariantsOff(options?.drawingMethodEnabled), [options]);
+  /* ทางเดียวที่เหลือของหัวข้อที่บังคับเลือก (สวิตช์ปิด = "ลงหน้างาน") — เลือกไว้ให้ เพราะไม่มีอะไรให้ตัดสินใจ
+     (กติกา form-design-rules: default ได้เฉพาะเมื่อ flow ตัดสินให้แล้ว) · ยังไม่ได้คำตอบ = ยังไม่เดา */
+  const impliedVariant = options ? requestImpliedVariant(form.kind, { off: variantsOff }) : null;
   /* ⭐ **กันงานหายเมื่อออกจากหน้ากลางคัน** — หัวข้อ scent_dev มี PDR 41 ช่อง +
      บรีฟรายกลิ่น รวมทั้งฟอร์มเกิน 50 ช่อง แต่เดิมไม่มีตัวกันเลย
      ⚠️ ทางที่หายเงียบจริงคือ **กดเมนูซ้าย** ไม่ใช่ปิดแท็บ — `useUnsavedChanges`
@@ -111,7 +123,11 @@ export default function NewRequestPage() {
      beforeunload) · แพตเทิร์นเดียวกับใบเสนอราคา/ใบสั่งขาย
      ⚠️ เทียบกับค่าตั้งต้น **ที่คิดจาก `defaults` ชุดเดียวกัน** — มาจากลิงก์ที่เติม
      ดีล/SO มาให้แล้วต้องไม่นับว่าแก้ · ปิดตอน `saving` เพราะกำลังจะพาไปหน้าถัดไป */
-  const pristine = useMemo(() => JSON.stringify(emptyRequestForm(defaults)), [defaults]);
+  /* ⚠️ ค่าตั้งต้นคิดด้วย **วิธีที่เลือกไว้ให้ตัวเดียวกัน** — ไม่งั้นแค่เปิดหน้า (สวิตช์ปิด) ก็ขึ้น "ยังไม่ได้บันทึก" */
+  const defaultVariant = options ? requestImpliedVariant(defaults.kind, { off: variantsOff }) : null;
+  const pristine = useMemo(() => JSON.stringify(emptyRequestForm(
+    defaultVariant ? { ...defaults, variant: defaultVariant } : defaults,
+  )), [defaults, defaultVariant]);
   // ⭐ สองขั้น: เลือกฝ่าย+หัวข้อให้จบ → กดแล้วค่อยกางฟอร์มของหัวข้อนั้น
   // มาจากลิงก์ที่ระบุหัวข้อมาแล้ว (เช่นจากหน้าดีล) = ข้ามขั้นแรกไปเลย ไม่ต้องกดซ้ำ
   // สิ่งที่ผู้ใช้เพิ่งเลือกไว้แล้ว
@@ -158,7 +174,19 @@ export default function NewRequestPage() {
     cachedFetchJson("/api/product-types").then((d) => setProductTypes(d || [])).catch(() => {});
     cachedFetchJson("/api/customers").then((d) => setCustomers(d || [])).catch(() => {});
     apiFetch("/api/users/me").then((r) => (r.ok ? r.json() : null)).then(setMe).catch(() => {});
+    apiJson("/api/sa/requests/form-options", { cache: "no-store" })
+      .then((d) => setOptions({ drawingMethodEnabled: d?.drawingMethodEnabled === true }))
+      .catch(() => setOptions({ drawingMethodEnabled: false }));
   }, []);
+
+  /* เติมทางเดียวที่เหลือ เมื่อหัวข้อนั้นยังไม่มีวิธีที่เลือก — รวมหลังกด "เปลี่ยนฝ่าย/หัวข้อ" (ฟอร์มถูกล้าง)
+     ⚠️ ไม่ทับค่าที่ผู้ใช้เลือกแล้ว · เทียบหัวข้อของฟอร์มล่าสุดก่อนเขียน (ผู้ใช้อาจสลับหัวข้อระหว่างรอ) */
+  useEffect(() => {
+    if (!impliedVariant || requestVariantChosen(form)) return;
+    setForm((prev) => (prev.kind === form.kind && !requestVariantChosen(prev)
+      ? { ...prev, variant: impliedVariant }
+      : prev));
+  }, [impliedVariant, form]);
 
   // ⭐ บล็อกบรีฟของใบที่ prefill มา — ตอนเลือก SO เองในฟอร์ม `onChange` เป็นคนงอก
   // บล็อกให้ตามจำนวนกลิ่นที่ใบนั้นขาย (ม-38) · มาทางลิงก์ `?salesOrderId=` ไม่มีใครกด
@@ -188,6 +216,15 @@ export default function NewRequestPage() {
     && !!form.salesOrderId && form.salesOrderId === defaults.salesOrderId
     && form.quotationId === defaults.quotationId;
 
+  /* ⭐ ไฟล์ที่ขึ้น Drive แล้วได้ ref คืนลงตะกร้า **ทันทีทีละไฟล์** (memory retry-must-not-reupload) — รูป `{ file, ref }`
+     ที่ `uploadDraftFiles` รู้จักแล้วข้าม ⇒ ไม่มีวันอัปไฟล์เดิมซ้ำ แม้วันหนึ่งหน้านี้จะให้กดซ้ำได้ */
+  const remember = (key) => (file, ref) => setForm((prev) => ({
+    ...prev,
+    [key]: (prev[key] || []).map((entry) => (entry === file ? { file, ref } : entry)),
+  }));
+  // ช่องไฟล์บังคับของรูปแบบที่เลือก (ประเมินจากแบบ = แบบ/ผังพื้นที่ · docType `spec`)
+  const requiredSpec = requestRequiredFiles(form);
+
   // ⭐ **บันทึกร่างอย่างเดียว ไม่ส่ง** — เลขที่ออกตอนกดส่งที่หน้ารายละเอียด
   // สองขั้นนี้แยกกันเพราะการออกเลขที่ย้อนไม่ได้ (trigger ทำให้ `docNo` immutable)
   // (ไฟล์ที่แนบในฟอร์มถูกอัปเป็นขั้นสองหลังได้ id — ดู `uploadDraftFiles`)
@@ -203,11 +240,20 @@ export default function NewRequestPage() {
   // ไม่งั้นความผิดพลาดหนึ่งครั้งล็อกหน้าจอทิ้งจนกว่าจะรีเฟรช
   const saveDraft = async () => {
     setSaving(true);
+    /* 🔴 id ของร่างที่เกิดแล้วอยู่นอก try (ผลรีวิวรอบแก้ S4) — อะไรก็ตามที่โยนหลังร่างเกิด (ขั้นอัปไฟล์ ·
+       notifyToast) ต้องยังพาไปหน้ารายละเอียด ไม่ใช่ค้างหน้านี้ให้กดซ้ำแล้วได้ร่างใบที่สอง */
+    let createdId = null;
+    /* ไฟล์ที่ขึ้นแล้วในรอบนี้ — `form` ข้างล่างเป็นภาพก่อนอัป (ref ที่ `remember` คืนลงตะกร้ายังไม่ถึง closure นี้)
+       ⇒ toast บอกชื่อไฟล์ที่ยังไม่เข้าจากชุดนี้ + รายการที่ถือ ref มาก่อน (UAT S4 รอบ 4 ข้อ 15) */
+    const uploaded = new Set();
+    const track = (key) => (file, ref) => { uploaded.add(file); remember(key)(file, ref); };
+    const leftNames = () => draftFilesLeft([...(form.requiredFiles || []), ...(form.files || [])], uploaded);
     try {
       const { id, error, warning } = await createRequestDraft(
         form, linksInstallment ? { linkInstallmentId } : {},
       );
       if (error) { setToast({ kind: "error", msg: error }); return; }
+      createdId = id || null;
       /* ใบร่างเก็บแล้วแต่ผูกงวดไม่ได้ (server ตอบ 201 + `_warning`) — ทักโทนเตือนผ่านถาดกลาง
          (`notifyToast` อยู่ที่ layout ⇒ ไม่หายตอน router.push ต่างจาก Toast ของหน้านี้)
          ⚠️ `warning` ต้องมาจาก createRequestDraft (responseWarningText ของคำตอบ) — ไม่มี = เงียบ */
@@ -216,13 +262,25 @@ export default function NewRequestPage() {
       // ต้องมี id ก่อนถึงอัปได้ จึงมาหลัง create เสมอ
       // ⚠️ อัปพลาด **ไม่ rollback ร่าง** — ของที่อัปแล้วอยู่ครบ พาไปหน้ารายละเอียด
       // พร้อมบอกว่าไฟล์ไหนไม่เข้า ให้แนบต่อที่นั่น (แถวไฟล์แนบมีอยู่แล้ว)
+      /* 🔴 **ร่างเกิดแล้ว = พาไปหน้ารายละเอียดทุกทาง** (S4 B-6) — หน้านี้ไม่มีจังหวะให้กดซ้ำแล้วได้ร่างที่สอง
+         หรืออัปไบต์เดิมซ้ำ · ไฟล์ที่ไม่เข้าแนบต่อที่หน้ารายละเอียดทีละไฟล์ (ช่องไฟล์บังคับมีบล็อกเดียวกันที่นั่น)
+         ⭐ ไฟล์แบบขึ้นก่อน (docType ของรูปแบบ) แล้วค่อยไฟล์ทั่วไป · ล้มที่ไหนหยุดที่นั่น (ข้อความบอกชื่อไฟล์) */
       if (id) {
-        const uploadError = await uploadDraftFiles(id, form.files);
-        if (uploadError) setToast({ kind: "error", msg: `${uploadError} — แนบซ้ำได้ที่หน้ารายละเอียด` });
+        const uploadError = await uploadDraftFiles(id, form.requiredFiles, { docType: requiredSpec?.docType, onUploaded: track("requiredFiles") })
+          || await uploadDraftFiles(id, form.files, { onUploaded: track("files") });
+        /* 🔴 ทักผ่านถาดกลาง (`notifyToast` อยู่ที่ layout) — Toast ของหน้านี้ตายไปพร้อมหน้าตอน router.push
+           ผู้ใช้เลยไม่เคยเห็นว่าไฟล์ไหนไม่เข้า (UAT S4 T07) · ค้าง 12 วิ ให้อ่านจบบนหน้ารายละเอียด
+           ⭐ บอกจำนวน + ชื่อไฟล์ที่ยังไม่เข้า (UAT S4 รอบ 4 ข้อ 15) — ตัวอัปหยุดที่ไฟล์แรกที่ล้ม ไฟล์ที่ตามหลังก็ไม่เข้าด้วย */
+        if (uploadError) notifyToast.error(draftUploadFailureText(uploadError, leftNames()), RESPONSE_WARNING_TOAST);
         router.push(`/requests/${id}`);
       }
     } catch (e) {
-      setToast({ kind: "error", msg: e?.message || "บันทึกร่างไม่สำเร็จ" });
+      if (createdId) {
+        notifyToast.error(draftUploadFailureText(e?.message || "แนบไฟล์ไม่สำเร็จ", leftNames()), RESPONSE_WARNING_TOAST);
+        router.push(`/requests/${createdId}`);
+      } else {
+        setToast({ kind: "error", msg: e?.message || "บันทึกร่างไม่สำเร็จ" });
+      }
     } finally {
       setSaving(false);
     }
@@ -233,8 +291,19 @@ export default function NewRequestPage() {
      ⇒ สามที่พูดตรงกันเสมอ (แผงบอกว่าครบ แต่ปุ่มกดไม่ได้ = สิ่งที่ทำให้คนเลิกเชื่อจอ)
      ⚠️ ปุ่มลบ/แก้ **ไม่ได้อยู่ที่นี่** — ร่างที่บันทึกแล้วมีชีวิตอยู่ที่หน้ารายละเอียด
      ซึ่งมีทั้งส่ง/ยกเลิก/ลบครบอยู่แล้ว · ทำซ้ำที่นี่ = สองที่ที่ต้องคอยให้ตรงกัน */
-  // ป้ายช่องวันที่ของหัวข้อนี้ — ตัวเดียวกับที่ `requiredChecks` ตั้ง (ทะเบียนหัวข้อ) ใช้หาแถวที่ต้องบอกเหตุ
-  const dueLabel = requestKindMeta(form.kind)?.form?.dueLabel;
+  /* ⭐ **ขั้นเลือกหัวข้อ: เลือกครบแล้วหรือยัง** — เงื่อนไขเดียวกับด่าน `requestFormBlocker`
+     (ต้องมีทั้งฝ่ายและหัวข้อ) ⇒ ติ๊กในรายการความพร้อม · ปุ่ม "กรอกฟอร์ม…" · เหตุผลข้างปุ่มบันทึก
+     อ่านค่าตัวเดียวกัน สามที่จึงพูดตรงกันเสมอ */
+  const topicPicked = !!form.kind && !!form.dept;
+  /* ป้ายปุ่มที่กางฟอร์ม — ใช้ทั้งบนปุ่มเองและในเหตุผลของปุ่มบันทึก (ชื่อที่อ้างต้องตรงกับปุ่มบนจอทุกตัวอักษร) */
+  const openFormLabel = form.kind ? `กรอกฟอร์ม${requestKindLabel(form.kind)}` : "กรอกฟอร์ม";
+  /* เหตุผลที่ "บันทึกร่าง" ยังกดไม่ได้ระหว่างขั้นเลือกหัวข้อ
+     🐞 (UAT S4 · layout nits D3) เดิมขึ้น "เลือกฝ่ายและหัวข้อก่อน" ตลอดขั้นนี้ ⇒ เลือกครบแล้ว รายการความพร้อม
+        ติ๊กแล้ว แต่ข้อความยังสั่งให้เลือกอีก — ขัดกันเองบนการ์ดเดียว และไม่บอกก้าวจริงที่เหลือ (กดปุ่มกางฟอร์ม)
+     ⚠️ ยังเลือกไม่ครบ = คำเดิม (คำเดียวกับด่าน `requestFormBlocker` ของ lib/master/requestCreate.js) */
+  const topicStepReason = topicPicked ? `กด “${openFormLabel}” เพื่อเปิดฟอร์ม` : "เลือกฝ่ายและหัวข้อก่อน";
+  // ป้ายช่องวันที่ของหัวข้อนี้ — ตัวเดียวกับที่ `requiredChecks` ตั้ง (ข้อความของทั้งใบ) ใช้หาแถวที่ต้องบอกเหตุ
+  const dueLabel = requestFormCopy(form).dueLabel;
   const readinessItems = revealed
     ? requiredChecks(form).map((c) => ({
       id: `${c.tab}-${c.label}`,
@@ -248,8 +317,8 @@ export default function NewRequestPage() {
     : [{
       id: "kind",
       label: "เลือกฝ่ายและหัวข้อ",
-      ready: !!form.kind,
-      detail: form.kind ? requestKindLabel(form.kind) : "เลือกก่อนจึงกางฟอร์มได้",
+      ready: topicPicked,
+      detail: topicPicked ? requestKindLabel(form.kind) : "เลือกก่อนจึงกางฟอร์มได้",
     }];
 
   const controlPanel = (
@@ -266,7 +335,7 @@ export default function NewRequestPage() {
         label: saving ? "กำลังบันทึก…" : "บันทึกร่าง",
         disabled: !revealed || !!blocker,
         // ⚠️ ปุ่มที่กดไม่ได้ต้องบอกเหตุผล — ด่านตัวเดียวกับที่ฟอร์มใช้
-        disabledReason: !revealed ? "เลือกฝ่ายและหัวข้อก่อน" : blocker || undefined,
+        disabledReason: !revealed ? topicStepReason : blocker || undefined,
         onClick: saveDraft,
       }}
       secondaryActions={[{
@@ -300,6 +369,9 @@ export default function NewRequestPage() {
           quotations={quotations} products={products} me={me}
           scents={scents} formulas={formulas} productTypes={productTypes}
           mentionPeople={mentionPeople} people={people}
+          // วิธีประเมินที่เปิดให้เลือก — มาจากคำตอบของ server (สวิตช์) · ยังไม่ได้คำตอบ = ปุ่มหยุดรอ
+          variantsPending={options === null}
+          variantsOff={variantsOff}
           // @ อยู่ที่หน้ารายละเอียด (แจ้งเตือนออกตอนกดส่ง) · ช่องไฟล์อยู่ในฟอร์มแล้ว
           // — saveDraft อัปให้หลังได้ id (มติผู้ใช้ 2026-08-08)
           deferMentions
@@ -320,7 +392,7 @@ export default function NewRequestPage() {
           } : {
             // ⭐ ป้ายบอก **สิ่งที่จะได้** ไม่ใช่สิ่งที่ปุ่มทำ — "แสดงฟอร์ม" ไม่ได้บอกว่า
             // ฟอร์มอะไร · ใส่ชื่อหัวข้อลงไปเลยจะเห็นตั้งแต่ยังไม่กดว่ากำลังจะกรอกอะไร
-            label: form.kind ? `กรอกฟอร์ม${requestKindLabel(form.kind)}` : "กรอกฟอร์ม",
+            label: openFormLabel,
             // ⭐ **ปุ่มหลักของขั้นนี้** — ขั้นแรกยังไม่มีปุ่ม "บันทึกร่าง" (ยังไม่มีอะไร
             // ให้บันทึกนอกจากฝ่ายกับหัวข้อ) ⇒ นี่คือปุ่มเดียวที่พาไปต่อได้ทั้งหน้า
             // เดิมเป็น quiet ตัวเล็กลอยอยู่มุมขวา อ่านเหมือนข้อความจาง ไม่ใช่ปุ่ม
@@ -329,8 +401,8 @@ export default function NewRequestPage() {
             size: "md",
             // ⚠️ **ปุ่มที่กดไม่ได้ต้องบอกเหตุผล** (กฎเดียวกับ `requestFormBlocker`) —
             // จางเฉย ๆ คือสิ่งที่ทำให้คนคิดว่าระบบพัง แล้วไปหาสาเหตุผิดที่
-            disabled: !form.kind,
-            hint: form.kind ? null : "เลือกฝ่ายและหัวข้อก่อน",
+            disabled: !topicPicked,
+            hint: topicPicked ? null : "เลือกฝ่ายและหัวข้อก่อน",
             onClick: () => setRevealed(true),
           }}
         />

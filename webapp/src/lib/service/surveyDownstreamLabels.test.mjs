@@ -213,7 +213,9 @@ test('E-4 ไทล์พื้นที่เดิม: ป้ายใต้�
   assert.match(tile, /<b>\{tile\.name\}<\/b>\s*<SurveyMethodChip label=\{tile\.tag\} className=\{styles\.zoneTileMethod\} \/>/, 'ป้ายอยู่ใต้ชื่อพื้นที่');
   assert.match(tile, /<small className=\{styles\.tileWhy\}>\{tile\.reason\}<\/small>/);
   assert.equal((tile.match(/<button\b/g) || []).length, 1, 'ป้ายอยู่ในปุ่มไทล์ ไม่ใช่ปุ่มซ้อนปุ่ม');
-  assert.equal((form.match(/<SurveyMethodChip\b/g) || []).length, 1);
+  // ตัวที่สอง: รายการพื้นที่อ่านอย่างเดียวของฟอร์มแก้ (ใบที่ส่งแล้ว · UAT S4 T11b) — คำมาจาก `row.methodTag` ของหน้าคำร้อง
+  assert.equal((form.match(/<SurveyMethodChip\b/g) || []).length, 2);
+  assert.match(form, /<b>\{zoneName\(row\)\}<\/b>\s*<SurveyMethodChip label=\{row\.methodTag\} className=\{styles\.zoneTileMethod\} \/>/);
 
   const css = read('components/requests/requestForm.module.css');
   assert.match(css, /\.zoneTileMethod \{ align-self: flex-start; margin-block: var\(--space-0-5\); \}/, 'ไทล์เป็น flex แนวตั้ง — ไม่ตรึงชิดซ้ายป้ายจะยืดเต็มไทล์');
@@ -397,9 +399,10 @@ test('E-8 ห้าจอไม่ถามวิธีประเมินเ�
 
 test('E-8 ทุกจุดที่วาด SurveyMethodChip: ส่ง label จาก view-model · ไม่มี prop method / variant (ค่าตั้งต้น = หน้าตาของ "จากแบบ")', () => {
   const tags = SCREENS.flatMap((rel) => [...code(rel).matchAll(/<SurveyMethodChip\b[^>]*\/>/g)].map((m) => ({ rel, tag: m[0] })));
-  assert.deepEqual(tags.map((t) => t.rel), [CARD, FORM, PANEL], 'สามจอวาดป้าย · ตารางงานบริการกับหน้าต่างเพิ่มหลายโซนต่อคำท้ายตัวเลข');
+  // ฟอร์มวาดสองที่: ไทล์ของตัวเลือก (`tile.tag`) · รายการอ่านอย่างเดียวของฟอร์มแก้ใบที่ส่งแล้ว (`row.methodTag` · UAT S4 T11b)
+  assert.deepEqual(tags.map((t) => t.rel), [CARD, FORM, FORM, PANEL], 'สามจอวาดป้าย · ตารางงานบริการกับหน้าต่างเพิ่มหลายโซนต่อคำท้ายตัวเลข');
   for (const { rel, tag } of tags) {
-    assert.match(tag, /\blabel=\{(?:methodLabel|tile\.tag|zone\.confirmTag)\}/, `${rel}: ${tag}`);
+    assert.match(tag, /\blabel=\{(?:methodLabel|tile\.tag|row\.methodTag|zone\.confirmTag)\}/, `${rel}: ${tag}`);
     assert.doesNotMatch(tag, /\bmethod\s*=/, `${rel}: prop ชื่อ method ชนยามเขียนของงวด S2a`);
     assert.doesNotMatch(tag, /\bvariant\s*=/, `${rel}: จอนอกใบประเมินวาดได้หน้าตาเดียว`);
     assert.doesNotMatch(tag, /label=["']/, `${rel}: คำบนป้ายห้ามเป็นสตริงลอย`);

@@ -6,10 +6,13 @@
 // ส่ง scentId/formulaId ที่หัวข้อนั้นบังคับ → 400 ทุกครั้ง
 import {
   requestLineShape, requestUsesItems, requestUsesPdr, requestNeedsRef, requestShapeError,
-  requestUsesScentBriefs,
+  requestUsesScentBriefs, requestNormalizeDates, requestRequiredFiles, requestRequiredFilesError,
+  requestVariantChosen, requestResultDateOnly,
 } from '@/lib/master/requestTypes';
+import { normalizeSurveyRequestedResult } from '@/lib/service/surveyRequest';
 import { normalizeLinesFor } from '@/lib/requests/kinds/lineShapes';
 import { pdrArtworkError } from '@/lib/requests/pdrFields';
+import { requiredFileCountOf } from '@/lib/requests/formTabs';
 import { uploadAttachment } from '@/lib/master/attachmentUpload';
 import { apiFetch } from "@/lib/apiFetch";
 import { responseWarningText } from '@/lib/apiWarnings';
@@ -24,19 +27,41 @@ import { responseWarningText } from '@/lib/apiWarnings';
  *
  * ⚠️ ด่านของ server คือ `requestShapeError` + `normalizeLinesFor` — ตัวนี้เป็น
  * ด่านฝั่งจอที่ **ครอบ** ของ server ไว้ ห้ามหลวมกว่า
+ *
+ * ⭐ `opts.requiredFileCount` (ประเมินจากแบบ งวด 4 · S4 B-5) — ตัวนับไฟล์ของช่องไฟล์บังคับ กติกาสามสถานะเดียวกับ
+ *    `requiredChecks` (lib/requests/formTabs.js): ไม่ส่ง = โหมดสร้าง (นับ `form.requiredFiles`) · `null` = โหมดแก้ที่
+ *    ยังไม่รู้ ⇒ ไม่ตีกลับ · ตัวเลข = เทียบ — ⇒ "ไม่มีแท็บไหนขาด ⟺ ด่านผ่าน" ยังจริงทั้งสองโหมด
  */
-export function requestFormBlocker(form) {
+export function requestFormBlocker(form, opts = {}) {
   if (!form) return 'ยังไม่มีข้อมูล';
   if (!form.kind || !form.dept) return 'เลือกฝ่ายและหัวข้อก่อน';
 
   // ส่งทั้ง form เข้าไปเลย — `requestShapeError` อ่านเฉพาะช่องที่หัวข้อนั้นต้องใช้
   // (ก่อนหน้านี้เลือกช่องส่งเองทีละตัว → เพิ่มของที่ต้องผูกใหม่แล้วลืมเติมที่นี่
   //  ด่านฝั่งจอจะหลวมกว่า server เงียบ ๆ ทันที)
+  /* ⭐ ผ่าน `requestNormalizeDates` ก่อน — รูปเดียวกับที่ `requestPayload` ส่งจริง (ใบที่มีแต่วันรับผล:
+     วันเข้าพื้นที่ = กระจกของวันรับผล) ⇒ ด่านจอเห็นของเดียวกับที่ server จะได้ */
   const shape = requestShapeError(form.kind, {
-    ...form,
+    ...requestNormalizeDates(form),
     items: requestUsesItems(form) ? form.items : undefined,
   });
   if (shape) return shape;
+
+  /* 🔴 **วันรับผลของใบที่มีวันเข้าพื้นที่ด้วย** (ลงหน้างาน · รีวิว UAT S4 รอบ 4) — `requestShapeError` ถามวันรับผลเฉพาะรูปแบบ
+     ที่มีแต่วันรับผล (จากแบบ) แต่ server ตีกลับใบลงหน้างานที่ไม่มีวันรับผลด้วย (`normalizeSurveyRequest` ตอนเปิด ·
+     `normalizeSurveyRequestedResult` ของ PATCH ซึ่งฟอร์มแก้ส่งช่องนี้มาเสมอ) และเกจนับช่องนี้อยู่แล้ว (`resultDueLabel`)
+     ⇒ ด่านจอเคยหลวมกว่า server: เกจขึ้น "ยังขาด" แต่ปุ่มบันทึกกดได้ แล้วไปโดน 400 · ตัวตรวจตัวเดียวกับ server
+     (ลำดับวัน "ผลต้องไม่มาก่อนวันเข้า" ด้วย) · ถามหลังวันเข้าพื้นที่ — ลำดับเดียวกับช่องบนแท็บกำหนดส่ง
+     ⚠️ ไม่ย้ายเข้า `requestShapeError` — ทางแก้ใบของ server เรียกตัวนั้นกับแถวเดิมที่ spread มา ⇒ ใบเก่าที่ไม่มีวันรับผล
+        จะแก้ช่องอื่นผ่านผู้เรียกที่ไม่ส่งช่องนี้ไม่ได้อีกเลย */
+  if (requestNeedsRef(form.kind, 'site') && !requestResultDateOnly(form)) {
+    const { error } = normalizeSurveyRequestedResult(form.requestedResultDate, form.requestedDueDate);
+    if (error) return error;
+  }
+
+  // ⭐ ช่องไฟล์บังคับของรูปแบบ (ประเมินจากแบบ = แบบ/ผังพื้นที่) — ประโยคเดียวกับ route ส่งคำร้อง
+  const filesError = requestRequiredFilesError(form, { count: requiredFileCountOf(form, opts) });
+  if (filesError) return filesError;
 
   // ⭐ **แถวเปล่าไม่นับว่ามีรายการ** (มติผู้ใช้ 2026-08-09: "ต้องบังคับเพิ่มรายการ")
   // `requestShapeError` เช็คแค่ `items.length` ⇒ กด "เพิ่มรายการ" เฉย ๆ แล้วไม่เลือก
@@ -88,14 +113,19 @@ export function requestFormBlocker(form) {
 //
 // ⚠️ ไม่ส่ง projectId / customerId / customerName: server ดึงจากแถวดีลเสมอ (ดีล
 // บังคับแล้ว ลูกค้าจึงมีคำตอบเดียว) · ไม่ส่ง note: เลิกใช้ช่องนั้นแล้ว
-export function requestPayload(form, extra = {}) {
+export function requestPayload(input, extra = {}) {
+  /* ⭐ **ใบที่มีแต่วันรับผล** (ประเมินจากแบบ · S4) — วันเข้าพื้นที่ = กระจกของวันรับผล · ไม่มีช่วงเวลา
+     ⚠️ ค่าที่ค้างในฟอร์มตอนเคยเป็นลงหน้างานต้องไม่หลุดไปเป็นวันเข้าพื้นที่ ⇒ ประกอบจากรูปที่ normalize แล้วเสมอ
+     ⚠️ `requiredFiles` / `files` ไม่เคยอยู่ใน payload — ไฟล์อัปแยกหลังได้ id (`uploadDraftFiles`) */
+  const form = requestNormalizeDates(input);
   return {
     kind: form.kind,
     /* ⭐ **รูปแบบงานต้องอยู่ใน payload** (2026-09-09) — ลิสต์นี้เป็น whitelist:
        คีย์ที่ไม่ได้เขียนไว้ที่นี่ **ไม่เคยถึง API** และของที่มันคุมจะถูกทิ้งเงียบ ๆ
        (ดู 🐞 ของช่อง PDR ข้างล่าง — 21 ช่องหายไปเป็นสัปดาห์ด้วยเหตุนี้)
-       ⚠️ ว่าง = ให้ server ใช้รูปแบบตั้งต้นของหัวข้อ ไม่ใช่ error */
-    variant: form.variant || null,
+       ⚠️ ว่าง = ให้ server ใช้รูปแบบตั้งต้นของหัวข้อ ไม่ใช่ error (ประเมินพื้นที่: สวิตช์ปิด = ลงหน้างาน ·
+          เปิด = ตีกลับ "ต้องเลือกวิธีประเมิน") */
+    variant: requestVariantChosen(form) || form.variant || null,
     dept: form.dept || null,
     // ทีมเจ้าของคำร้อง — ว่าง = ทีมหลักของคนเปิด (server เติมให้ผ่าน attributionTeam)
     // ช่องนี้โผล่บนฟอร์มเฉพาะตอนคนเปิดอยู่หลายทีม (มติ 2026-08-11)
@@ -177,6 +207,11 @@ export async function createAndSendRequest(form, extra = {}) {
   const { id, error } = await createRequestDraft(form, extra);
   if (error) return { id, error };
 
+  // ไฟล์ของช่องไฟล์บังคับขึ้นก่อน (docType ของรูปแบบ) — แล้วค่อยไฟล์ทั่วไป
+  const requiredError = await uploadDraftFiles(id, form.requiredFiles, {
+    docType: requestRequiredFiles(form)?.docType,
+  });
+  if (requiredError) return { id, error: requiredError };
   const uploadError = await uploadDraftFiles(id, form.files);
   if (uploadError) return { id, error: uploadError };
 
@@ -192,15 +227,59 @@ export async function createAndSendRequest(form, extra = {}) {
  *
  * ⚠️ **ล้มกลางทางไม่ rollback ร่าง** — ไฟล์ที่อัปไปแล้วอยู่ครบ ผู้เรียกพาไปหน้า
  * รายละเอียดให้แนบตัวที่เหลือต่อได้ (กติกาเดียวกับสามสเต็ปของปุ่มส่ง)
+ *
+ * 🔴 **กดซ้ำต้องไม่อัปซ้ำ** (ประเมินจากแบบ งวด 4 · memory retry-must-not-reupload) — รายการเป็นได้ทั้ง `File`
+ *    และ `{ file, ref }` · ตัวที่ถือ `ref` ขึ้น Drive และมีแถวไฟล์แนบแล้ว ⇒ ข้าม · ผ่านแต่ละไฟล์เรียก
+ *    `onUploaded(file, ref)` **ทันที** (ไม่ใช่รอจบชุด) ให้ผู้เรียกเขียน `{ file, ref }` กลับลงตะกร้า ⇒ ล้มที่ไฟล์ 3
+ *    แล้วไฟล์ 1–2 ไม่ขึ้นซ้ำ
+ * ⚠️ `ref` = แถวที่ route เพิ่งสร้าง · อ่านคำตอบไม่ออก (`attachment: null`) ยังถือว่าขึ้นแล้ว ⇒ `{}` (ต้อง truthy)
+ * @param docType ชนิดเอกสารของไฟล์ชุดนี้ — ช่องไฟล์บังคับส่งของรูปแบบ (`spec`) · ไม่ส่ง = `other` เหมือนเดิม
+ * @param upload  ตัวอัป (เทสต์ส่งตัวจำลองเข้ามา — ห้ามแตะเครือข่าย/ฐานจริง)
  */
-export async function uploadDraftFiles(id, files = []) {
-  for (const file of files || []) {
-    const up = await uploadAttachment({
-      entityType: 'dept_request', entityId: id, file, docType: 'other',
-    });
-    if (!up.ok) return `แนบ "${file.name}" ไม่สำเร็จ: ${up.error}`;
+export async function uploadDraftFiles(id, files = [], {
+  docType = 'other', onUploaded, upload = uploadAttachment,
+} = {}) {
+  for (const entry of files || []) {
+    if (entry?.ref) continue;
+    const file = entry?.file || entry;
+    /* 🔴 ตัวอัปโยนได้จริง (ผลรีวิวรอบแก้ S4) — `uploadAttachment` จับแค่ขั้นขึ้น Drive · ขั้นสองบันทึกแถว
+       (`attachUploadedFile` → `apiFetch`) reject ตอนเน็ตหลุด ⇒ แปลงเป็นข้อความเหมือนล้มปกติ ไม่งั้นผู้เรียก
+       หลุดไป catch ที่ไม่รู้ว่าร่างเกิดแล้ว ⇒ ค้างหน้าสร้าง กดซ้ำได้ร่างใบที่สอง */
+    let up;
+    try {
+      up = await upload({
+        entityType: 'dept_request', entityId: id, file, docType,
+      });
+    } catch (err) {
+      return `แนบ "${file.name}" ไม่สำเร็จ: ${err?.message || 'อัปโหลดไฟล์ไม่สำเร็จ'}`;
+    }
+    if (!up?.ok) return `แนบ "${file.name}" ไม่สำเร็จ: ${up?.error || 'อัปโหลดไฟล์ไม่สำเร็จ'}`;
+    onUploaded?.(file, up.attachment || {});
   }
   return null;
+}
+
+/* ── ไฟล์ที่ยังไม่เข้าใบ หลังอัปจากหน้าเปิดใบล้ม (UAT S4 รอบ 4 ข้อ 15) ───────────────────────────────────
+   `uploadDraftFiles` หยุดที่ไฟล์แรกที่ล้ม ⇒ ไฟล์ที่ไม่เข้า = ตัวที่ล้ม + ทุกตัวที่ยังไม่ถึงคิว (ทั้งไฟล์แบบและไฟล์ทั่วไป)
+   ⭐ นับจาก **ชุดที่ขึ้นแล้วจริง** (`uploaded` = ไฟล์ที่ `onUploaded` ถูกเรียก) + รายการที่ถือ `ref` อยู่แล้ว — ไม่เดาจากข้อความ error
+   ⚠️ ชื่อไฟล์เป็นของผู้ใช้ — โชว์ตามที่เป็น ไม่ตัด/แต่งข้างใน */
+const DRAFT_LEFT_NAMES_SHOWN = 3;
+
+export function draftFilesLeft(entries = [], uploaded = new Set()) {
+  return (entries || [])
+    .filter((entry) => entry && !entry.ref && !uploaded.has(entry?.file || entry))
+    .map((entry) => String((entry?.file || entry)?.name || '').trim() || 'ไฟล์ไม่มีชื่อ');
+}
+
+/* ข้อความ toast ของทางนี้ — "{เหตุ} — ยังไม่เข้า 2 ไฟล์: a.pdf, b.jpg · แนบซ้ำได้ที่หน้ารายละเอียด"
+   เกินสามชื่อ = "a, b, c และอีก n ไฟล์" (toast ค้าง 12 วิ ต้องอ่านจบ) · ไม่รู้ว่าไฟล์ไหน (รายการว่าง) = ท้ายประโยคเดิม */
+export function draftUploadFailureText(error, leftNames = []) {
+  const head = String(error ?? '').trim() || 'แนบไฟล์ไม่สำเร็จ';
+  const names = (leftNames || []).filter(Boolean);
+  if (!names.length) return `${head} — แนบซ้ำได้ที่หน้ารายละเอียด`;
+  const shown = names.slice(0, DRAFT_LEFT_NAMES_SHOWN).join(', ');
+  const more = names.length > DRAFT_LEFT_NAMES_SHOWN ? ` และอีก ${names.length - DRAFT_LEFT_NAMES_SHOWN} ไฟล์` : '';
+  return `${head} — ยังไม่เข้า ${names.length} ไฟล์: ${shown}${more} · แนบซ้ำได้ที่หน้ารายละเอียด`;
 }
 
 /**

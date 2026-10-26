@@ -10,7 +10,7 @@ import Textarea from "@/components/ui/Textarea";
 import DocumentLines from "@/components/requests/DocumentLines";
 import ProductDevLines from "@/components/requests/ProductDevLines";
 import { BILLING_DOC_VOCABULARY } from "@/lib/requests/kinds/fn/billingDocTypes";
-import { requestLineShape, requestUsesPdr, requestKindMeta } from "@/lib/master/requestTypes";
+import { requestFormCopy, requestLineShape, requestUsesPdr, requestKindMeta } from "@/lib/master/requestTypes";
 import { billAmountFor, billFieldInit } from "@/lib/requests/billingQuotations";
 import { fmtNumber, fmtPercent } from "@/lib/format";
 import styles from "./requestForm.module.css";
@@ -46,8 +46,9 @@ import styles from "./requestForm.module.css";
 
 /** ชื่อเรื่อง + รายละเอียด — ช่องรายละเอียดหายไปเองเมื่อหัวข้อนั้นใช้ PDR */
 export function RequestTitleBodyFields({ value = {}, onChange, disabled = false, idPrefix = "req" }) {
-  const kind = value.kind || "";
-  const copy = requestKindMeta(kind)?.form || {};
+  /* ⭐ ข้อความของ **ทั้งใบ** (หัวข้อ ทับด้วยรูปแบบที่เลือก · ประเมินจากแบบ งวด 4) — placeholder ของรายละเอียด
+     เดินตามวิธีที่เลือก ("หน้างานจะเข้าได้ประมาณเมื่อไร · แบบที่แนบเป็นฉบับล่าสุดหรือยัง …") ไม่ใช่ของหัวข้อเฉย ๆ */
+  const copy = requestFormCopy(value);
   // ⚠️ ถาม **ทั้งใบ** ไม่ใช่ `kind` — พัฒนาสูตรมีสองรูปแบบ และรูปแบบ NPD คือตัวที่
   // แทนช่อง "รายละเอียด" ด้วยแบบฟอร์ม PDR (รูปแบบ standard ยังมีช่องนี้เหมือนเดิม)
   const hasPdr = requestUsesPdr(value);
@@ -96,6 +97,9 @@ export function RequestDueUrgentFields({
      ค่ากลางของทุกหัวข้อ แต่งานที่ฝ่ายต้องเดินทางไปทำเองไม่ได้ "รับงาน" ที่ไหน
      (ประเมินพื้นที่ = "วันที่ต้องการให้เข้าพื้นที่") */
   dueLabel = "วันที่ต้องการรับงาน",
+  /* ป้าย "(บังคับ)" ของวันแรก — ผู้เรียกถามตัวเดียวกับเกจ (`requestDueRequired` · lib/requests/formTabs.js) · ค่าตั้งต้น = บังคับ
+     (ทุกหัวข้อ · มติ 2026-08-08) · `false` เฉพาะหัวข้อที่ยังไม่เลือกวิธี ซึ่งวิธีเป็นตัวตัดสินว่าช่องนี้มีไหม (รีวิว UAT S4 รอบ 4 ข้อ 12) */
+  dueRequired = true,
   /* ⭐ **เวลามีเฉพาะหัวข้อที่ต้องนัดเข้าไปหาลูกค้า** (mig 0314) — วันเดียวกันแต่คนละ
      ช่วงคือคนละงานสำหรับเจ้าหน้าที่ที่ต้องวิ่งข้ามเมือง · หัวข้ออื่นไม่มีความหมาย จึงไม่ใช่
      ช่องกลางที่ทุกใบต้องมองข้าม */
@@ -106,18 +110,25 @@ export function RequestDueUrgentFields({
      ⚠️ ป้ายมาจากทะเบียนหัวข้อ (`form.resultDueLabel`) · **ไม่มีป้าย = หัวข้อนี้ไม่มี
         วันที่สอง** ⇒ ช่องไม่กาง (ห้ามเทียบชื่อหัวข้อที่นี่ — ratchet) */
   resultDueLabel = null,
+  /* ⭐ **รูปแบบที่มีแต่วันรับผล** (ประเมินจากแบบ งวด 4 · S4 B-4) — ไม่มีการนัดเข้าพื้นที่ ⇒ ก้อนแรกทั้งก้อน
+     (วันที่ · ช่วงเวลา · คำอธิบาย) ไม่วาด เหลือวันรับผล + ความเร่งด่วน · ค่าตั้งต้น = หน้าตาเดิมทุกหัวข้อ
+     ⚠️ ด่านจริงไม่ถามช่องนี้แล้ว (`requestShapeError` ของรูปแบบนั้น) — ซ่อนช่องอย่างเดียวไม่พอ ต้องคู่กับด่าน */
+  hideDue = false,
+  // คำอธิบายใต้วันรับผล — ไม่ส่ง = ประโยคเดิม (ใบที่มีวันเข้าพื้นที่ด้วย) · `false` = ไม่มีคำอธิบาย (ไม่มีวันเข้าให้เทียบ)
+  resultDueHint = null,
 }) {
   const set = (patch) => onChange?.({ ...value, ...patch });
 
   return (
     <>
+      {!hideDue && (
       <div className="form-group">
         {/* ⭐ บังคับทุกหัวข้อ (มติผู้ใช้ 2026-08-08) — ด่านจริงอยู่ `requestShapeError`
             ตัวเดียวกับ server · ป้ายแค่บอกล่วงหน้าว่าช่องนี้ข้ามไม่ได้ */}
         {/* ⚠️ **คำที่ล็อกไว้: "วันที่ต้องการรับงาน"** (มติผู้ใช้ 2026-08-19) — ของเดิม
             เขียนว่า "อยากได้คำตอบภายใน" ซึ่งจริงเฉพาะหัวข้อสอบถาม · หัวข้อที่ฝ่ายต้อง
             ส่งของ (กลิ่น · สูตร · เอกสาร) ไม่ได้รอคำตอบ แต่รองาน */}
-        <label htmlFor={`${idPrefix}-due`}>{dueLabel} (บังคับ)</label>
+        <label htmlFor={`${idPrefix}-due`}>{dueLabel}{dueRequired ? " (บังคับ)" : ""}</label>
         <DateInput
           id={`${idPrefix}-due`} value={value.requestedDueDate || ""} disabled={disabled}
           onChange={(v) => set({ requestedDueDate: v })}
@@ -134,8 +145,10 @@ export function RequestDueUrgentFields({
             />
           </div>
         )}
-        <small className={styles.hint}>{dueHint}</small>
+        {/* `null` / "" = ไม่มีคำอธิบาย (ใบที่ทุกพื้นที่ประเมินจากแบบแล้ว) · ไม่ส่ง = ค่าตั้งต้น */}
+        {dueHint && <small className={styles.hint}>{dueHint}</small>}
       </div>
+      )}
       {/* ⭐ **วันส่งผล — ช่องของตัวเอง ไม่ใช่ข้อความในรายละเอียด** (มติผู้ใช้ 2026-09-21)
           ⚠️ **บังคับเท่ากับวันแรก** — ใบที่บอกแค่ว่าอยากให้ไปวันไหน ไม่ได้บอกว่า
              ฝ่ายขายต้องใช้ตัวเลขวันไหน ซึ่งเป็นข้อมูลที่ฝ่ายปลายทางใช้จัดลำดับงาน
@@ -147,9 +160,11 @@ export function RequestDueUrgentFields({
             id={`${idPrefix}-result-due`} value={value.requestedResultDate || ""} disabled={disabled}
             onChange={(v) => set({ requestedResultDate: v })}
           />
-          <small className={styles.hint}>
-            คนละวันกับวันที่เข้าพื้นที่ — วันนี้คือวันที่ต้องได้ตัวเลขไปเสนอราคา
-          </small>
+          {resultDueHint !== false && (
+            <small className={styles.hint}>
+              {resultDueHint || "คนละวันกับวันที่เข้าพื้นที่ — วันนี้คือวันที่ต้องได้ตัวเลขไปเสนอราคา"}
+            </small>
+          )}
         </div>
       )}
       <div className="form-group">

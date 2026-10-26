@@ -971,3 +971,17 @@ test('ช่องรอบวางบิลของฝ่ายบัญช�
     assert.equal(apiWriteAllowed('PATCH', '/api/customers/C1/billing-rule', role, []), false, role);
   }
 });
+
+/* ── ประเมินจากแบบ งวด 4 (S4 A-1): ตัวเลือกของฟอร์มเปิดคำร้องใบใหม่ ─────────────────────────────
+   `/requests/new` ถาม `GET /api/sa/requests/form-options` ก่อนวาดปุ่มเลือกวิธีประเมิน (ค่าสวิตช์อยู่ฝั่ง server)
+   ⇒ ฝ่ายขาย (คนเปิดใบ) และฝ่ายบริการ (คนตอบ · เปิดใบแทนได้) ต้องผ่าน proxy ถึง handler · ด่านจริงคือ `canViewRequests`
+   ⚠️ เส้นนี้พังเงียบได้: จอถือว่า "ยังไม่รู้ = สวิตช์ปิด" ⇒ ไม่มี error ให้เห็น แค่ไม่มีไทล์ "ประเมินจากแบบ" */
+test('GET /api/sa/requests/form-options ผ่าน proxy สำหรับฝ่ายขายและฝ่ายบริการ', async () => {
+  const { canViewRequests } = await import('@/lib/permissions');
+  for (const role of ['ae', 'ac', 'senior_ae', 'ae_supervisor', 'ts_planner', 'ts_manager', 'admin']) {
+    const user = { role, extraCaps: [] };
+    assert.equal(lockedOut(user, '/api/sa/requests/form-options', 'GET', true), false, `${role} lockedOut`);
+    assert.equal(apiWriteAllowed('GET', '/api/sa/requests/form-options', role, []), true, role);
+    assert.equal(canViewRequests(user), true, `${role} ผ่านด่านของ handler`);
+  }
+});

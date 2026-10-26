@@ -11,14 +11,17 @@ import { fetchAllInChunks } from '@/lib/supabaseInChunks';
 import { SERVICE_DEPARTMENT } from '@/lib/permissions';
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { isDrawingZone, surveyNeedsVisit } from './surveyMethod';
+import { SURVEY_INTAKE_SWITCH_REASON } from './surveyIntake';
 import {
   SITE_REQUEST_KINDS, liveSurveyVisitsByRequest, pickSurveyVisit, surveyQueueStep,
 } from './surveyQueue';
 
 /* คอลัมน์ที่การ์ดใช้ — ทุกช่องต้องมีจริงบนฐาน (ด่าน `check:columns` อ่านค่าคงที่นี้)
-   ⚠️ ห้าม `select('*')` — ใบประเมินมีช่องข้อความยาว (รายละเอียด · หมายเหตุ) ที่การ์ดไม่ใช้ */
+   ⚠️ ห้าม `select('*')` — ใบประเมินมีช่องข้อความยาว (รายละเอียด · หมายเหตุ) ที่การ์ดไม่ใช้
+   ⭐ `variant` (ประเมินจากแบบ งวด 4 · mig 0351) = สิ่งที่ฝ่ายขายขอ — การ์ดอ่านแค่บรรทัด "ฝ่ายขายขอ" กับ "วันที่อยากให้เข้า"
+      (`surveyIntake.js`) · ⚠️ ขั้นคิวยังตัดสินจากแถวพื้นที่ (`surveyNeedsVisit`) เสมอ ไม่ใช่คอลัมน์นี้ */
 export const SURVEY_QUEUE_REQUEST_COLUMNS = [
-  'id', 'docNo', 'kind', 'dept', 'status', 'title',
+  'id', 'docNo', 'kind', 'dept', 'status', 'title', 'variant',
   'customerId', 'customerName', 'dealId', 'siteId',
   'requestedById', 'requestedByName', 'submittedAt',
   'requestedDueDate', 'requestedDueTime', 'requestedResultDate',
@@ -41,6 +44,8 @@ const isCutZone = (zone) => (zone?.status || 'ok') === 'cut';
  * 🔑 ที่มาของใบที่ **หัวหน้าสลับกลับเป็นลงหน้างาน** (แผน survey-desk-assessment §3.5 · งวด S2b) — `{ reason }` หรือ `null`
  *   เหตุผลมาจากพื้นที่ลงหน้างานที่ยังอยู่ในใบ ซึ่งถูกสลับ **ล่าสุด** และมีเหตุผล (`methodChangedAt` ไม่ว่าง + `methodReason` ไม่ว่าง)
  *   ⚠️ พื้นที่ที่ไม่เคยสลับ (`methodChangedAt` ว่าง — ทุกแถวเดิมของระบบ) ไม่นับ ⇒ ใบลงหน้างานของวันนี้ได้ `null` เสมอ
+ *   ⚠️ พื้นที่ที่ **ฝ่ายขาย** สลับเป็นลงหน้างานก่อนส่ง (`methodReason` = `SURVEY_INTAKE_SWITCH_REASON` · S4 O8 = ข) ไม่นับ —
+ *      หัวหน้าไม่ได้สลับ ⇒ บรรทัด "หัวหน้าเปลี่ยนเป็นลงหน้างาน: …" จะพูดเท็จ · การ์ดได้ต้นเรื่องของคำร้องธรรมดา
  *   ⚠️ ใบที่ไม่ต้องมีนัด (งานโต๊ะ) = `null` — ไม่มีการ์ดลงคิวให้บอกที่มา
  *   ⚠️ เทียบเวลาเป็นมิลลิวินาที ไม่เทียบสตริง (`…+00:00` กับ `…Z` คือขณะเดียวกัน) · เวลาที่อ่านไม่ออกไม่ถูกเลือก
  * @param zones แถวพื้นที่ของใบเดียว (คอลัมน์ `SURVEY_QUEUE_ZONE_COLUMNS`)
@@ -53,7 +58,7 @@ export function surveyQueueMethodBack(zones) {
     if (isCutZone(zone) || isDrawingZone(zone)) continue;
     const reason = String(zone.methodReason ?? '').trim();
     const at = Date.parse(String(zone.methodChangedAt ?? ''));
-    if (!reason || !Number.isFinite(at)) continue;
+    if (!reason || reason === SURVEY_INTAKE_SWITCH_REASON || !Number.isFinite(at)) continue;
     if (!latest || at > latest.at) latest = { at, reason };
   }
   return latest ? { reason: latest.reason } : null;

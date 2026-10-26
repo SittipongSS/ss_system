@@ -1183,13 +1183,18 @@ export default function ServiceSchedulePage() {
                 )}
                 <label className={`search-glass ${styles.search}`}>
                   <Search size={16} aria-hidden="true" />
+                  {/* 🐞 คำใบ้เดิม "ค้นหา รหัสนัด เลขคำร้อง ไซต์ ลูกค้า ผู้ขอ เจ้าหน้าที่ เหตุที่ติด" กว้าง 342px
+                      แต่ช่องนี้อยู่ในคอลัมน์รายการ (กว้างสุด 24rem) เหลือที่ 301px ที่จอ 1440 · 268px ที่ 375
+                      ⇒ ถูกตัดกลางตัวอักษรหลัง "เจ้าหน้าที่ เ" (UAT S4 T13) · ย่อคำใบ้อย่างเดียว ไม่แตะการค้น (haystack เดิมทุกคำ):
+                      "รหัส" = รหัสนัด และเลขคำร้องของการ์ดคำร้อง (ทั้งคู่คือ `row.code`) · "ชื่อคน" = ผู้ขอ เจ้าหน้าที่
+                      และ AE บนชิปใบสั่งขายของข้อด่าน · ไม่เหลือคำเฉพาะของคำร้องแล้ว ⇒ คนที่ไม่เห็นคำร้องใช้คำใบ้เดียวกัน
+                      ⚠️ ห้ามยาวกลับ — โน้ตบุ๊ก 1280 คอลัมน์รายการแคบลงเหลือ 20rem (ดู `.layoutGrid`) ช่องเหลือราว 237px (301 − 4rem)
+                      ยาวเกินเมื่อไรจะจบด้วย "…" (`.search input` ใน css) ไม่ใช่ตัดครึ่งตัว แต่ท้ายประโยคก็หายอยู่ดี */}
                   <input
                     type="search"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder={canSeeRequests
-                      ? "ค้นหา รหัสนัด เลขคำร้อง ไซต์ ลูกค้า ผู้ขอ เจ้าหน้าที่ เหตุที่ติด"
-                      : "ค้นหา รหัสนัด ไซต์ ลูกค้า เจ้าหน้าที่ เหตุที่ติด"}
+                    placeholder="ค้นหา รหัส ไซต์ ลูกค้า ชื่อคน เหตุที่ติด"
                     aria-label="ค้นหารายการงาน"
                     autoComplete="off"
                   />
@@ -1329,7 +1334,7 @@ export default function ServiceSchedulePage() {
                     <Button tone="neutral" variant="quiet" iconOnly aria-label="สัปดาห์ก่อนหน้า" onClick={() => shiftWeek(-1)} icon={<ChevronLeft size={16} aria-hidden="true" />} />
                     <strong className={styles.weekLabel}>{weekLabel}</strong>
                     <Button tone="neutral" variant="quiet" iconOnly aria-label="สัปดาห์ถัดไป" onClick={() => shiftWeek(1)} icon={<ChevronRight size={16} aria-hidden="true" />} />
-                    <Button tone="neutral" variant="quiet" size="sm" onClick={() => { setFocus(null); goToWeek(todayIso); }}>สัปดาห์นี้</Button>
+                    <Button tone="neutral" variant="quiet" size="sm" className={styles.thisWeek} onClick={() => { setFocus(null); goToWeek(todayIso); }}>สัปดาห์นี้</Button>
                   </div>
                   <div className="spacer" />
                   <Segmented

@@ -17,6 +17,8 @@ import { requestKindMeta } from '@/lib/master/requestTypes';
 import { requestSideText } from '@/lib/requests/replyTurn';
 import { liveDueDate } from '@/lib/requests/dueRound';
 import { requestClosure, requestClosureStarted } from '@/lib/requests/closure';
+/* ประเมินจากแบบ งวด 4 (S4 C-5) — วันที่ผู้ขออยากให้เข้าพื้นที่มีตัวอ่านเดียว (pure · ใช้ได้ทั้งเบราว์เซอร์และ server) */
+import { SURVEY_NO_VISIT_WISH_TEXT, surveyFiledAsDrawing, surveyWishedVisit } from '@/lib/service/surveyIntake';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -145,7 +147,11 @@ export function requestHeaderFacts(request, { hasItems = false, progress = null,
   }
 
   // ── สองวันกำหนด — อยู่คู่กันเสมอ ────────────────────────────────────
-  const wanted = String(request.requestedDueDate || '').trim();
+  /* 🔴 **ผ่าน `surveyWishedVisit` ไม่อ่านคอลัมน์ตรง ๆ** (S4 C-5) — ใบประเมินที่ยื่นเป็นประเมินจากแบบเก็บ `requestedDueDate`
+     = กระจกของวันรับผล (คอลัมน์ต้องมีค่า) ⇒ ตัวอ่านคืน "ไม่รู้" ให้ใบนั้นเสมอ · หัวข้ออื่น/ใบลงหน้างาน = ค่าคอลัมน์เดิม */
+  const noWish = surveyFiledAsDrawing(request);
+  const wish = surveyWishedVisit(request);
+  const wanted = wish.known ? String(wish.date).trim() : '';
   // ⚠️ วันของรอบก่อน = ยังไม่มีวันของรอบนี้ ⇒ การ์ดหัวใบต้องไม่ขัดกับรางใต้มัน
   const committed = liveDueDate(request) || '';
 
@@ -174,8 +180,10 @@ export function requestHeaderFacts(request, { hasItems = false, progress = null,
     facts.push({
       key: 'requestedDue',
       label: twoDates ? `ผู้ขอ: ${copy.dueLabel}` : 'ผู้ขอต้องการรับงาน',
-      value: wanted ? fmtDate(wanted) : '—',
-      sub: wanted ? (noCountdown ? null : countdownLabel(wanted, now)) : 'ใบเก่าที่เปิดก่อนกติกาบังคับวัน',
+      /* ⚠️ ยื่นเป็นประเมินจากแบบ (หัวหน้าสลับกลับเป็นลงหน้างานแล้วช่องนี้จึงขึ้น) — ไม่มีใครขอวันเข้า: บอกตรง ๆ และ
+         **sub เป็น null** · ทางสำรองของวันว่าง ("ใบเก่าที่เปิดก่อนกติกาบังคับวัน") จะเรียกใบที่เพิ่งยื่นว่าใบเก่า */
+      value: noWish ? SURVEY_NO_VISIT_WISH_TEXT : (wanted ? fmtDate(wanted) : '—'),
+      sub: noWish ? null : wanted ? (noCountdown ? null : countdownLabel(wanted, now)) : 'ใบเก่าที่เปิดก่อนกติกาบังคับวัน',
     });
 
     const gap = committed && wanted ? committedVsRequested(committed, wanted) : null;

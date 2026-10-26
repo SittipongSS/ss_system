@@ -28,6 +28,8 @@ import {
 import {
   SURVEY_METHOD_BACK_ORIGIN, SURVEY_METHOD_CHIP, SURVEY_METHOD_LABEL, SURVEY_QUEUE_DESK_CHIP,
 } from './surveyMethodSwitch';
+/* ใบที่ฝ่ายขายยื่นเป็น "ประเมินจากแบบ" (งวด 4) — `requestedDueDate` ของใบแบบนั้นคือกระจกของวันรับผล ⇒ วันที่อยากให้เข้าถามตัวนี้ตัวเดียว */
+import { SURVEY_NO_VISIT_WISH_LINE, surveyFiledAsDrawing, surveySalesAskedLine, surveyWishedVisit } from './surveyIntake';
 import { requestStatusView } from '@/lib/requests/statuses';
 import { acknowledgeRequestError } from '@/lib/requests/stages';
 import { commitDueLabels } from '@/lib/requests/commitDue';
@@ -153,14 +155,20 @@ export function surveyRequestRow(request, { todayIso, sitesById = new Map(), liv
   // ── วัน: ใบที่ยังไม่มีนัดบอก "วันที่ผู้ขอต้องการ" · ใบที่นัดหลุดบอกวันที่เคยรับปาก ──
   /* ⭐ งานโต๊ะไม่มีวันเข้าพื้นที่ ⇒ บรรทัดวันของการ์ดคือ **วันที่ผู้ขอต้องการผล** (คำเดิมของช่องภาระ "ต้องการผล …")
         ไม่มีช่วงเวลา · "เลยวันที่ต้องการ" นับจากวันนั้น */
-  const date = requeue ? request.committedDueDate : request.requestedDueDate;
-  const time = toHHMM(requeue ? request.committedDueTime : request.requestedDueTime);
+  /* ⭐ วันที่ผู้ขออยากให้เข้า = `surveyWishedVisit` (ประเมินจากแบบ งวด 4) — ใบที่ยื่นเป็นจากแบบไม่มีวันนี้ (คอลัมน์ถือกระจกของวันรับผล)
+        ⇒ ไม่มีวัน = ไม่มีบรรทัดเวลา ระยะห่าง และ "วันนั้นว่าง…" (ทุกตัวแขวนกับ `date`) · ใบอื่นได้ค่าเดิมทุกตัว */
+  const wish = surveyWishedVisit(request);
+  const date = requeue ? request.committedDueDate : wish.date;
+  const time = toHHMM(requeue ? request.committedDueTime : wish.time);
   const wishResult = request.requestedResultDate;
   const dateLine = desk
     ? (wishResult ? `ต้องการผล ${dayText(wishResult)}` : NO_WISH_DATE_TEXT)
     : requeue
       ? `นัดเดิม ${dayText(request.committedDueDate)}`
-      : (date ? `ต้องการเข้า ${dayText(date)}` : NO_WISH_DATE_TEXT);
+      : (wish.known
+        ? `ต้องการเข้า ${dayText(date)}`
+        /* ยื่นเป็นจากแบบ แล้วหัวหน้าสลับเป็นลงหน้างาน — ฝ่ายขายไม่เคยให้วันเข้า (ไม่ใช่ "ไม่ระบุ") ⇒ ชี้ไปเธรด */
+        : (surveyFiledAsDrawing(request) ? SURVEY_NO_VISIT_WISH_LINE : NO_WISH_DATE_TEXT));
   const timeLine = !desk && time ? `${requeue ? 'เวลา' : 'ช่วง'} ${time}` : '';
   const rel = desk
     ? relDayText(wishResult, todayIso, 'เลยวันที่ต้องการ')
@@ -213,6 +221,12 @@ export function surveyRequestRow(request, { todayIso, sitesById = new Map(), liv
   const origin = desk
     ? DESK_REQUEST_ORIGIN_TEXT
     : backReason ? SURVEY_METHOD_BACK_ORIGIN(backReason) : REQUEST_ORIGIN_TEXT;
+  /* บรรทัด "ฝ่ายขายขอ: ประเมินจากแบบ" (งวด 4) — สิ่งที่ฝ่ายขายขอ ไม่ใช่วิธีปัจจุบัน · ใบอื่น = null (ไม่มีบรรทัดคู่ของลงหน้างาน)
+     ⚠️ ไม่มีกิ่งไหนของการ์ดตัดสินจากตัวนี้ — ป้ายงานโต๊ะ/ขั้นคิวมาจากธงแถวพื้นที่ตามเดิม
+     ⭐ **ขึ้นเฉพาะเมื่อต่างจากวิธีปัจจุบัน** (UAT S4 รอบ 4 ข้อ 16) — การ์ดงานโต๊ะพูดวิธีในต้นเรื่องอยู่แล้ว
+        ("คำร้องประเมินพื้นที่ · ประเมินจากแบบ") ⇒ บรรทัดถัดมา "ฝ่ายขายขอ: ประเมินจากแบบ" เป็นคำซ้ำ · การ์ดที่หัวหน้าสลับกลับเป็น
+        ลงหน้างานยังได้บรรทัดนี้ (ที่นั่นมันคือข้อเท็จจริงที่ต่าง) */
+  const asked = desk ? null : surveySalesAskedLine(request);
 
   const row = {
     type: 'request',
@@ -246,6 +260,9 @@ export function surveyRequestRow(request, { todayIso, sitesById = new Map(), liv
     title: request.title || '',
     warns: [],
     origin,
+    /* บรรทัดใต้ต้นเรื่อง (`ScheduleQueueCard` วาดคลาสเดียวกับต้นเรื่อง) — มีคีย์เฉพาะใบที่ยื่นเป็นจากแบบ
+       ⚠️ ใบอื่นไม่มีคีย์นี้เลย (ไม่ใช่ `asked: null`) ⇒ แถวของใบวันนี้เท่าเดิมทุกคีย์ (golden ของ S2b ใน scheduleQueueView.test.mjs) */
+    ...(asked ? { asked } : {}),
     /* ป้ายวิธีประเมินข้างป้ายขั้น — มีเฉพาะงานโต๊ะ · null = การ์ดเดิม (การ์ดวาดผ่าน `SurveyMethodChip` ซึ่งไม่วาดอะไรเมื่อไม่มีคำ) */
     methodChip,
     actionLabel,
@@ -266,20 +283,34 @@ export function surveyRequestRow(request, { todayIso, sitesById = new Map(), liv
   };
   /* ⭐ ตาเห็นบนการ์ด = ต้องค้นเจอ (กฎ search haystack) — ป้ายวิธีประเมินอยู่ในคำค้นด้วย · งานโต๊ะเติมคำสั้น/คำเต็มของวิธี
      ("จากแบบ" · "ประเมินจากแบบ") เป็นคำพ้องเหมือนที่คำสถานะของใบเป็นคำพ้องของป้ายขั้น
-     ⚠️ ค่าว่าง (`null` ของการ์ดลงหน้างาน) ถูก `queueHaystack` กรองทิ้ง ⇒ คำค้นของการ์ดเดิมไม่ขยับสักตัวอักษร */
+     ⚠️ ค่าว่าง (`null` ของการ์ดลงหน้างาน) ถูก `queueHaystack` กรองทิ้ง ⇒ คำค้นของการ์ดเดิมไม่ขยับสักตัวอักษร
+     ⭐ บรรทัด "ฝ่ายขายขอ" (งวด 4) ต่อท้ายต้นเรื่อง — ลำดับเดียวกับบนการ์ด · ใบอื่นไม่มีคีย์ (undefined) จึงถูกกรองทิ้งเหมือนกัน */
   row.haystack = queueHaystack([
     row.code, row.kindLabel, tag.label, statusView.label, row.siteCode, row.siteName, row.customer,
     dateLine, timeLine, rel.text, who.text, who.sub, siteLoadText, dayLoad?.text,
-    status.label, status.text, row.title, row.origin, actionLabel, row.actionHint,
+    status.label, status.text, row.title, row.origin, row.asked, actionLabel, row.actionHint,
     row.methodChip, ...(desk ? [SURVEY_METHOD_CHIP.drawing, SURVEY_METHOD_LABEL.drawing] : []),
   ]);
   return row;
 }
 
-/* ลำดับในกลุ่มคำร้อง: นัดหลุด → รอรับเรื่อง → รอลงคิว · แล้ววันที่ต้องการ (ว่างไว้ท้าย) · แล้ววันส่ง */
+/* ลำดับในกลุ่มคำร้อง: นัดหลุด → รอรับเรื่อง → รอลงคิว · แล้ววันที่ต้องการ (ว่างไว้ท้าย) · แล้ววันส่ง
+   ⭐ วันที่ต้องการ = `surveyWishedVisit` ตัวเดียวกับบรรทัดวันของการ์ด — ใบที่ยื่นเป็นจากแบบไม่รู้วันเข้า ⇒ ไปท้าย
+      (ไม่เรียงตามกระจกของวันรับผล) */
+/* 🔴 งานโต๊ะที่ยื่นเป็นจากแบบ (ผลรีวิวรอบแก้ S4): บรรทัดวันของการ์ดคือ "ต้องการผล …" ⇒ เรียงด้วยวันนั้น ไม่ใช่ไปท้ายกลุ่ม
+      (เดิมได้ 9999 ทุกใบ ⇒ ใบที่ต้องการผลพรุ่งนี้อยู่หลังใบที่ขอเข้าเดือนหน้า) · ⚠️ เฉพาะใบที่ยื่นเป็นจากแบบ — งานโต๊ะรูป
+      RQ-AS-26100312 (ยื่นลงหน้างาน หัวหน้าสลับทุกพื้นที่) มีอยู่แล้วบน production ⇒ ลำดับของมันเท่าวันนี้ (รั้วสวิตช์ปิด)
+   ⭐ **การ์ดที่ไม่มีวันอยากให้เข้า เรียงด้วยวันที่ต้องการผล** (มติ 20/10 · UAT S4 รอบ 4 ข้อ 20 · แทน D-2 "ไม่รู้ = ท้ายกลุ่ม") —
+      ใบที่ยื่นเป็นจากแบบแล้วหัวหน้าสลับกลับเป็นลงหน้างาน ฝ่ายขายไม่เคยให้วันเข้า แต่ต้องการผลในอีกสามวันก็มี ⇒ ไปท้ายกลุ่ม =
+      ถูกลืม · ท้ายกลุ่มเฉพาะใบที่ไม่มีวันไหนเลย · ใบที่มีวันอยากให้เข้า (ทุกใบที่ยื่นลงหน้างาน) เรียงเท่าเดิม */
+const sortDateOf = (row) => {
+  if (row.step === 'requeue') return row.request.committedDueDate;
+  if (row.request.surveyNeedsVisit === false && surveyFiledAsDrawing(row.request)) return row.request.requestedResultDate;
+  return surveyWishedVisit(row.request).date || row.request.requestedResultDate;
+};
 const requestSortKey = (row) => [
   SURVEY_QUEUE_STEPS.indexOf(row.step),
-  String((row.step === 'requeue' ? row.request.committedDueDate : row.request.requestedDueDate) || '9999-99-99'),
+  String(sortDateOf(row) || '9999-99-99'),
   String(row.request.submittedAt || ''),
   String(row.code),
 ];
