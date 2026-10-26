@@ -62,22 +62,30 @@ function Mark({ mark }) {
  * @param escape   `surveyEscapeView(...)` — แถว "มาถึงแล้วแต่เข้าไม่ได้?" + ปุ่ม "ไปแล้วเข้าไม่ได้" ใต้รายการ (§10.5 S8)
  * @param onEscape เปิดกล่องส่งงานที่เลือก "ไปแล้วเข้าไม่ได้" ไว้ให้ · ไม่ส่ง/`show` เป็นเท็จ = ไม่มีแถว
  * @param before / children  ของที่ผู้เรียกวางเหนือ/ใต้รายการในบานเดียวกัน (การ์ดส่งกลับของช่าง · การ์ดจัดการผลบนสองบานที่ยังไม่มีราง)
+ * @param paneEmpty บานขวาของสองบานว่าง (ไม่ได้เปิดพื้นที่ไหน) — สถานะว่างของบานพูดบรรทัด `drawingNote` เองเมื่อช่างไม่เหลือพื้นที่ให้วัด
+ *                 (`emptyReason`) ⇒ รายการไม่พิมพ์ซ้ำ · ไม่ส่ง = พิมพ์ตามเดิม
  */
 export default function SurveyZoneList({
-  view, split = false, onOpen, onAdd, addLabel = null, addBlockedNote = null,
-  escape = null, onEscape, before = null, children = null,
+  view: listView, split = false, onOpen, onAdd, addLabel = null, addBlockedNote = null,
+  escape = null, onEscape, before = null, children = null, paneEmpty = false,
 }) {
+  /* ช่างไม่เหลือพื้นที่ให้วัด + บานขวาว่าง = สถานะว่างของบานพูดบรรทัด `drawingNote` อยู่แล้ว ⇒ รายการไม่พิมพ์ซ้ำ —
+     ประโยคขึ้นที่เดียวทุกขนาดจอ (S2b แก้หลังตรวจจอ crew-q6: 🐞 เดิมจอกว้างพิมพ์สองที่) · เปิดพื้นที่อยู่ / หน้าเดียว = รายการพิมพ์เอง */
+  const view = paneEmpty && listView?.emptyReason === "drawing" ? { ...listView, drawingNote: null } : listView;
   const rows = view?.rows || [];
   /* มีแถวจากแบบ = ข้อของแต่ละแถวพูดชื่อตัวเอง (ซ้อนแถว) — การจัดแบบคอลัมน์ต้องมีหัวคอลัมน์ชุดเดียวที่ตรงกับทุกแถว */
   const labelled = showsDrawingRow(rows);
   const layout = split ? "split" : (labelled ? "stack" : "pages");
+  /* ช่างบนใบที่ไม่เหลือพื้นที่ให้วัดเพราะที่เหลือเป็นจากแบบทั้งหมด (`emptyReason`) — หัวเป็น "พื้นที่" ไม่ใช่ "พื้นที่ที่ต้องวัด"
+     (S2b แก้หลังตรวจจอ crew-q6: 🐞 เดิมหัวกับคำว่า "อีก" ทำให้ดูเหมือนยังมีงานค้าง) */
+  const deskOnlyForCrew = view?.emptyReason === "drawing";
   return (
     <div className={styles.wrap} data-layout={layout}>
       {before}
       <section className={styles.panel} aria-labelledby={SURVEY_ZONE_LIST_TITLE_ID}>
         <header className={styles.head}>
           <h2 id={SURVEY_ZONE_LIST_TITLE_ID} className={styles.title} tabIndex={-1}>
-            {labelled ? "พื้นที่" : "พื้นที่ที่ต้องวัด"}
+            {labelled || deskOnlyForCrew ? "พื้นที่" : "พื้นที่ที่ต้องวัด"}
           </h2>
           <span className={styles.progress}>{view?.progressText || ""}</span>
         </header>

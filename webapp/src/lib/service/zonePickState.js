@@ -11,8 +11,6 @@
 //   `UNIQUE (siteId, ชื่อ)` ของ mig 0297 · ติ๊กให้ = สั่งช่างไปเสียเที่ยว
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { SURVEY_METHOD_DRAWING } from '@/lib/service/surveyMethod';
-// ไฟล์ล้วน (ข้อความของฟีเจอร์ประเมินจากแบบ) — คำของป้ายมาจากที่เดียวกับทะเบียน ห้ามพิมพ์ซ้ำที่นี่
-import { SURVEY_ZONE_TAG } from '@/lib/service/surveyMethodSwitch';
 
 /* ⭐ **กรณี ④ ต้องอยู่บนสุด** — "วัดแล้วยังไม่ขาย" คือของที่จ่ายค่าแรงไปแล้วแต่ยังไม่ได้เงิน
      ⇒ ชูขึ้นก่อนใครทั้งบนฟอร์มและบนหน้าลูกค้า (แผน §5A · ม็อก §12)
@@ -22,11 +20,13 @@ const ORDER = { hot: 0, debt: 1, plain: 2, locked: 3 };
 /* ── ผลล่าสุดมาจากแบบ (mig 0408 · ประเมินจากแบบ งวด S2a) ─────────────────────
    ⭐ **ตัวเลขจากแบบเสนอราคาได้เลย** (มติเจ้าของ) — ไทล์ยังเป็นกรณี ④ เหมือนเดิม ต่างกันที่คำบอกเหตุ:
      ฝ่ายขายต้องรู้ว่าตัวเลขนี้มาจากแบบ และถ้าใบตอบว่าต้องยืนยันหน้างาน ตัวเลขยังขยับได้
+   ⭐ เหตุไม่ขึ้นต้นด้วยคำของป้ายซ้ำ (S2b แก้หลังตรวจจอ sales-q4) — ไทล์ของสองคีย์นี้มีป้าย `tag` ("ประเมินจากแบบ" /
+      "ประเมินจากแบบ · รอยืนยันหน้างาน") อยู่เหนือบรรทัดเหตุเสมอ ⇒ เหตุเหลือแค่สิ่งที่ฝ่ายขายทำได้ (เดิมอ่านเหมือนพิมพ์ซ้ำ)
    ⚠️ คีย์ = `confirm` ของแถวทะเบียน (`zoneRegistryRow`) · `none` = ผลลงหน้างาน คำเดิมทุกตัวอักษร */
 const HOT_REASON = {
   none: 'วัดแล้วยังไม่ขาย — เสนอราคาได้เลย ไม่ต้องไปวัดใหม่',
-  drawing: `${SURVEY_ZONE_TAG.drawing} — เสนอราคาได้เลย`,
-  awaiting: `${SURVEY_ZONE_TAG.awaiting} — เสนอราคาได้ ตัวเลขอาจเปลี่ยนเมื่อวัดจริง`,
+  drawing: 'เสนอราคาได้เลย',
+  awaiting: 'เสนอราคาได้ ตัวเลขอาจเปลี่ยนเมื่อวัดจริง',
 };
 // ต่อท้ายเหตุของพื้นที่ที่ขายอยู่ / รอบจบแล้ว — เฉพาะตอนรอยืนยัน (ไม่ต้องยืนยัน = ผลสุดท้าย ไม่มีอะไรให้เตือน)
 const AWAITING_NOTE = ' · ตัวเลขจากแบบ รอยืนยันหน้างาน';
@@ -43,7 +43,14 @@ const PROMISE_TEXT = {
     never: 'ยังไม่เคยวัด',
     debt: 'ขายแล้วแต่ไม่เคยวัด — วัดเก็บไว้ได้ในรอบนี้',
     renew: 'เคยขาย รอบจบแล้ว — วัดซ้ำเพื่อต่ออายุได้',
+    /* ⭐ พื้นที่ที่มีผลแต่ **ไม่เคยวัดหน้างาน** (ผลมีแต่จากแบบ · `neverOnsite`) — "ซ้ำ" ไม่จริง (S2b แก้หลังตรวจจอ sales-q5)
+       ฝ่ายขายจะนึกว่าตัวเลขผ่านหน้างานมาแล้ว · `renewFirst` = เหตุของไทล์ · `pickedFirst` = บรรทัดรองของแถวที่ติ๊กแล้ว
+       (`zonePickedOnsiteText` · ฟอร์มต่อหลังรหัส ZN) */
+    renewFirst: 'เคยขาย รอบจบแล้ว — วัดใหม่เพื่อต่ออายุได้',
+    pickedFirst: 'วัดหน้างานพื้นที่เดิม',
   },
+  /* ⚠️ ชุด `assess` ไม่มี `renewFirst` / `pickedFirst` โดยตั้งใจ — ฟอร์มที่เลือกประเมินจากแบบใช้ "ประเมินซ้ำ…" ของ S4 ทุกพื้นที่
+     (มติ sales-q5: คำของ S4 ชนะบนฟอร์มจากแบบ) */
   assess: {
     never: 'ยังไม่เคยประเมิน',
     debt: 'ขายแล้วแต่ไม่เคยประเมิน — ประเมินเก็บไว้ได้ในรอบนี้',
@@ -136,6 +143,12 @@ function base(zone, { picked, surveyState, soldState }) {
 
 const onsiteRounds = (zone) => zone.onsiteSurveyCount ?? (zone.surveyCount || 0);
 
+/* ⭐ มีผลแล้ว แต่รอบวัดหน้างานเป็นศูนย์ **ที่รู้แน่** — ผลมีแต่จากแบบ (S2b แก้หลังตรวจจอ sales-q5)
+   ตัวนับเดียวกับ `onsiteRounds` (คีย์ `onsiteSurveyCount` · ไม่มี = ถอยไป `surveyCount` แบบเดิม) ⇒ แถวทะเบียนรุ่นเก่าที่วัดจริงมาแล้ว
+   (`surveyCount` ≥ 1) ได้คำเดิม · ⚠️ ไม่มีทั้งสองคีย์ = ไม่รู้ ⇒ คำเดิม (แถวที่ผู้เรียกประกอบเองไม่ถูกเรียกว่า "ไม่เคยวัดหน้างาน")
+   ⚠️ ไฟล์นี้ไม่รู้จักวิธีของใบ/ของแถว — ตัดสินจากตัวนับรอบที่ทะเบียนส่งมากับแถวเท่านั้น */
+const neverOnsite = (zone) => !!zone?.surveyedAt && (zone.onsiteSurveyCount ?? zone.surveyCount) === 0;
+
 function reasonOf(surveyState, soldState, zone, wording) {
   const awaiting = confirmOf(zone) === 'awaiting' ? AWAITING_NOTE : '';
   if (surveyState === 'done' && soldState === 'active') {
@@ -143,8 +156,25 @@ function reasonOf(surveyState, soldState, zone, wording) {
     const rounds = onsiteRounds(zone);
     return (rounds > 1 ? `มีเครื่องอยู่ · วัดมาแล้ว ${rounds} รอบ` : 'มีเครื่องอยู่') + awaiting;
   }
-  if (surveyState === 'done' && soldState === 'ended') return `${promiseOf(wording).renew}${awaiting}`;
+  if (surveyState === 'done' && soldState === 'ended') {
+    const text = promiseOf(wording);
+    // ไม่เคยวัดหน้างาน = "วัดใหม่" (คำชุด measure เท่านั้น — ชุด assess ไม่มีคีย์นี้ ⇒ คำของ S4)
+    return `${(neverOnsite(zone) && text.renewFirst) || text.renew}${awaiting}`;
+  }
   return promiseOf(wording).never;
+}
+
+/**
+ * บรรทัดรองของพื้นที่เดิมที่ติ๊กเข้าใบแล้ว เมื่อพื้นที่นั้น **ไม่เคยวัดหน้างาน** (ผลมีแต่จากแบบ) — `'วัดหน้างานพื้นที่เดิม'`
+ * (S2b แก้หลังตรวจจอ sales-q5) · กรณีอื่นทั้งหมด = `null` ⇒ ผู้เรียกใช้คำของ `surveyZoneRowText` (S4) ตามเดิม
+ * ⚠️ เฉพาะคำชุด `measure` (ฟอร์มลงหน้างาน / ยังไม่เลือกวิธี) — ชุด `assess` คืน `null` เสมอ (คำของ S4 "ประเมินซ้ำพื้นที่เดิม" ชนะ)
+ *
+ * @param zone     แถวทะเบียนของพื้นที่นั้น (`zoneRegistryRow`) · ยังไม่มา (โหลดไม่สำเร็จ) = `null`
+ * @param wording  คำของวิธีที่ฟอร์มเลือก (`surveyZoneWording`) — ดู `PROMISE_TEXT`
+ */
+export function zonePickedOnsiteText(zone, { wording = 'measure' } = {}) {
+  if (!zone || !neverOnsite(zone)) return null;
+  return promiseOf(wording).pickedFirst || null;
 }
 
 /** รายการพื้นที่เดิมของไซต์หนึ่ง เรียงตามความสำคัญที่ม็อกกำหนด · `wording` ส่งต่อให้ทุกไทล์ (ดู `PROMISE_TEXT`) */

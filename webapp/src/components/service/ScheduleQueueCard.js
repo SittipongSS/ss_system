@@ -136,7 +136,8 @@ export default function ScheduleQueueCard({
         ))}
         {row.status && (
           <p className={styles.gate}>
-            <StatusBadge size="sm" tone={row.status.tone} label={row.status.label} />
+            {/* การ์ดงานโต๊ะไม่มีป้ายขั้น (`status.label` ว่าง · S2b แก้หลังตรวจจอ planner-q4) — วาดแค่คำสั่ง ไม่วาดป้ายเปล่า */}
+            {row.status.label ? <StatusBadge size="sm" tone={row.status.tone} label={row.status.label} /> : null}
             {row.status.text && <span>{row.status.text}</span>}
           </p>
         )}

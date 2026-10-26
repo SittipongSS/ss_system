@@ -1201,12 +1201,15 @@ button, select, input, textarea {
   margin-top: var(--space-2);
 }
 .confirm-dialog > [role="alert"] { grid-column: 1 / -1; }
+/* แถวปุ่มของกล่องยืนยัน = เนื้อของโซน `.drawer-footer` (ConfirmDialog ส่งเป็น `footer` ของ Modal — ตรึงท้ายกล่อง เนื้อเลื่อน ·
+   S2b แก้หลังตรวจจอ head-r3-19) · โซนเป็นแถว flex อยู่แล้ว ⇒ ก้อนนี้กินเต็มกว้างของโซน ปุ่มชิดขวาตามเดิม และยืดเต็มแถวได้ที่จอ ≤680
+   (กฎ `flex: 1` ข้างล่าง) · ไม่ใช่ชิ้นของกริด `.confirm-dialog` แล้ว — ไม่มี `grid-column` / ระยะบน (ระยะเป็นของโซน) */
 .confirm-dialog-actions {
-  grid-column: 1 / -1;
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);
-  margin-top: var(--space-1-5);
 }
 @media (max-width: 680px) {
   .form-actions { bottom: max(8px, env(safe-area-inset-bottom)); align-items: stretch; flex-direction: column; }

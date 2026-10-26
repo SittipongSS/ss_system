@@ -186,7 +186,8 @@ test('GET ใบประเมิน: ไฟล์ในเธรดยิง�
      — สัดส่วนของใบคำนวณครั้งเดียว · ช่างไม่เข้าทั้งสองกิ่ง */
   assert.match(route, /const mix = surveyMethodMix\(zones\);\s*const wantsThreadFiles = \(canDecide && \(drawingMethodEnabled \|\| mix\.drawing > 0\)\) \|\| \(canEditAll && mix\.drawing > 0\);/);
   assert.equal((route.match(/surveyMethodMix\(zones\)/g) || []).length, 1);
-  assert.match(route, /const wantsSiteVisit = canDecide && drawingMethodEnabled && !request\.answeredAt;/, 'นัดที่เข้าพื้นที่แล้วยังเป็นของหัวหน้าเท่านั้น');
+  /* นัดที่เข้าพื้นที่แล้ว: หัวหน้า **หรือ** ผู้วางคิว (ผลรีวิวรอบสี่ head-r3-2 — พาดหัว "รอลงคิวเข้าพื้นที่" ของการ์ดไม่ผูกกับคนดู) · ช่างไม่เข้า */
+  assert.match(route, /const wantsSiteVisit = \(canDecide \|\| canEditAll\) && drawingMethodEnabled && !request\.answeredAt;/, 'หัวหน้า · ผู้วางคิว');
   assert.match(route, /canEditService: canEditAll,/);
   assert.match(route, /wantsThreadFiles \? loadSurveyThreadFiles\(supabase, request, user\) : NO_THREAD_FILES,/);
   assert.match(route, /if \(threadFiles\.unknown\) context\.unknown\.threadFiles = true;/);

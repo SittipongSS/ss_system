@@ -11,6 +11,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { commitDueGaps as gapsOf, commitDueOutcome as outcomeOf, deskRescheduleView as rescheduleOf } from '../../lib/requests/commitDue.js';
 
 const read = (url) => readFileSync(new URL(url, import.meta.url), 'utf8');
 const dialog = read('./CommitDueDialog.js');
@@ -159,4 +160,43 @@ test('ลำดับช่อง: ซ้าย งานนี้ → ด่า
   assert.match(lib, /กำลังโหลดรายชื่อเจ้าหน้าที่…/);
   assert.match(lib, /โหลดรายชื่อเจ้าหน้าที่ไม่สำเร็จ/);
   assert.match(lib, /ยังไม่มีบัญชีที่รับงานเข้าไซต์ได้ — เปิดบัญชีฝ่าย TS ก่อน/);
+});
+
+/* ═══ S2b แก้หลังตรวจจอ head-r3-4 — ติดด่าน = เหตุอยู่ใต้ปุ่มที่เดียว ไม่มี toast ซ้ำ ═══════════════════════════════
+   🐞 กดปุ่มหลักตอนยังกรอกไม่ครบ: เหตุขึ้นสองที่ (บรรทัดใต้ปุ่ม + toast) และ toast ทับชื่อกล่อง กากบาท และปุ่มท้าย (S18 รับปากวันส่งผล)
+   ⇒ เปลือกได้ปุ่มที่ไม่มี `blocker` (toast ของ `GatedAction` ยิงเฉพาะตอนมี `blocker`) · ติดด่าน = กดแล้วไม่ส่ง
+   ⚠️ ด่านยังประกาศที่ `primary.blocker` ตัวเดิม (ยามข้างบน: `blocker: gaps.join(" · ")`) — เปลี่ยนแค่ทางที่บอกเหตุ */
+
+test('head-r3-4: ปุ่มหลักของเปลือกไม่มี blocker (ไม่มี toast) · ติดด่าน = ไม่ส่ง · ผ่าน = ส่งทางเดิม', () => {
+  const live = code(dialog);
+  assert.match(live, /const primaryInBox = \{\s*\.\.\.primary,\s*blocker: "",\s*onClick: \(\) => \{ if \(!primary\.blocker\) primary\.onClick\(\); \},\s*\};/);
+  assert.match(live, /primary=\{primaryInBox\}/);
+  assert.doesNotMatch(live, /primary=\{primary\}/, 'ไม่มีทางที่ด่านของปุ่มไปถึง GatedAction ของเปลือก');
+  assert.doesNotMatch(live, /notifyToast|GatedAction/, 'โมดัลไม่ยิง toast เอง');
+  // เปลือกส่ง `blocker` ของ primary ให้ GatedAction ตรง ๆ และ GatedAction ยิง toast เฉพาะตอนมี blocker — ว่าง = เรียก onClick ของเรา
+  const shell = code(read('../service/ScheduleModalShell.js'));
+  assert.match(shell, /blocker=\{primary\.blocker \|\| ""\}\s*onClick=\{primary\.onClick\}/);
+  const gated = code(read('../ui/GatedAction.js'));
+  assert.match(gated, /if \(blocker\) \{[\s\S]*?notifyToast[\s\S]*?return;\s*\}\s*if \(onClick\) onClick\(event\);/);
+  // บรรทัดใต้ปุ่มคือ `outcome` ของเปลือก (ทับด้วย error เท่านั้น) — ตัวเดียวที่บอกเหตุ
+  assert.match(live, /outcome=\{outcome\}/);
+});
+
+test('head-r3-4: ทุกทรงที่ติดด่าน บรรทัดใต้ปุ่มพูดเหตุครบทุกข้อของปุ่ม — ลงคิว · รับปากวันส่งผล (งานโต๊ะ) · เลื่อนวันส่งผล · แจ้งกำหนดส่ง', () => {
+  const site = {
+    id: 'DR-1', docNo: 'AS-26090001', kind: 'site_survey', dept: 'TS', siteId: 'SVS-1', status: 'acknowledged',
+    acknowledgedAt: '2026-09-20T02:00:00.000Z', committedDueDate: null, committedResultDate: null, assigneeId: null,
+  };
+  const desk = { ...site, surveyNeedsVisit: false };
+  const rd = { id: 'DR-2', docNo: 'RQ-26090002', kind: 'formula_dev', dept: 'RD', status: 'acknowledged', items: [] };
+  for (const [name, request] of [['ลงคิว', site], ['รับปากวันส่งผล', desk], ['แจ้งกำหนดส่ง', rd]]) {
+    const gaps = gapsOf(request, {});
+    assert.ok(gaps.length > 0, `${name}: ฟอร์มว่างต้องติดด่าน`);
+    const line = outcomeOf(request, {});
+    assert.equal(line.tone, 'warn', name);
+    for (const gap of gaps) assert.ok(line.text.includes(gap), `${name}: บรรทัดใต้ปุ่มขาด "${gap}"`);
+  }
+  // เลื่อนวันส่งผล: บรรทัดใต้ปุ่มคือด่านชุดเดียวกับปุ่ม (`reschedule.gaps`) — ยามของการต่อสายอยู่ข้างบน (`const outcome = reschedule?.gaps.length …`)
+  const held = { ...desk, committedResultDate: '2026-10-15' };
+  assert.ok(rescheduleOf(held, { date: '2026-10-15', reason: '' }).gaps.length >= 2, 'วันเดิม + ไม่มีเหตุผล');
 });

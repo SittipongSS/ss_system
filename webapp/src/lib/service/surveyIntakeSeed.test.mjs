@@ -215,7 +215,7 @@ const assessedDrawing = (id, extra = {}) => zone(id, 'drawing', {
   ...extra,
 });
 const STAMP_KEYS = ['method', 'methodChangedAt', 'methodChangedByName', 'methodReason', 'spots', 'updatedAt'];
-const RESAVE = 'พื้นที่นี้เพิ่งกลับมาเป็นลงหน้างาน — ตรวจขนาดกับของจริงแล้วกดบันทึกอีกครั้ง';
+const RESAVE = 'พื้นที่นี้เพิ่งกลับมาเป็นลงหน้างาน — ตรวจขนาดและภาพกว้างแล้วกดบันทึกอีกครั้ง';
 
 test('⭐ O8 ข · แถวจากแบบที่มีผล + สลับเป็นลงหน้างาน = รับ · ประทับรายแถวในนามฝ่ายขาย (ผูกรุ่นที่อ่าน) · ปลดเลือกจุด', async () => {
   const rows = [assessedDrawing('Z1'), assessedDrawing('Z2', { updatedAt: null })];

@@ -27,7 +27,7 @@
 import { businessDayKey, businessTimeKey } from '@/lib/datePeriods';
 import { fmtNumber, naText } from '@/lib/format';
 import { attachmentHref } from '@/lib/master/attachmentStorage';
-import { isPreviewableImage } from '@/lib/master/attachmentTypes';
+import { isDrawableImage, isPreviewableImage } from '@/lib/master/attachmentTypes';
 /* ผู้รับผิดชอบบนหัวงานจากแบบ = ตัวตัดสินกลางตัวเดียวกับหน้าคำร้อง (ยังไม่มอบหมาย → คนที่กดรับเรื่อง) — สองจอต้องเอ่ยชื่อเดียวกัน */
 import { requestAssignee } from '@/lib/requests/assign';
 import {
@@ -258,14 +258,18 @@ function sentenceNames(rows) {
    ⚠️ ภาพกว้างนับจากไฟล์ชุดสด · ตร.ม./ลบ.ม./จุด มาจาก `surveyTotals` ตัวเดียวกับที่ server รวมตอนส่งผล
    ⭐ `onsiteOnly` = นับเฉพาะพื้นที่ลงหน้างาน (งวด S2a) — กล่องส่งงานคืองานของนัด: พื้นที่จากแบบไม่มีอะไรที่ช่างเก็บมา
      นับรวม = แถว "ภาพกว้าง 0 · จุด 0" ที่อ่านเหมือนงานที่ส่งไปแล้วได้ศูนย์ · ใบลงหน้างานล้วนได้ยอดเดิมไม่ว่าเปิดหรือปิด
-     🔴 จอช่างเปิดตัวนี้ **ทั้งสองที่** (บรรทัดท้ายแถบแท็บ + กล่องส่งงาน) — เปิดที่เดียวเมื่อไร สองที่บนจอเดียวบอกคนละเลข */
+     🔴 จอช่างเปิดตัวนี้ **ทั้งสองที่** (บรรทัดท้ายแถบแท็บ + กล่องส่งงาน) — เปิดที่เดียวเมื่อไร สองที่บนจอเดียวบอกคนละเลข
+   🔄 พื้นที่ที่เพิ่งสลับกลับมาเป็นลงหน้างานและยังไม่ถูกบันทึกหลังสลับ (`surveyZoneNeedsResave`) **ไม่เข้า ตร.ม./ลบ.ม.** จนกว่าจะบันทึกยืนยัน
+     — ตัวเลขบนแถวเป็นของตอนประเมินจากแบบ ด่านขนาดยังไม่รับ และรายการพื้นที่ก็ไม่โชว์มันแล้ว (S2b แก้หลังตรวจจอ crew-q4) ·
+     ภาพกว้าง/จุดยังนับเหมือนเดิม (มติ crew-q3: บันทึกครั้งเดียวยืนยันทั้งขนาดและภาพกว้าง) */
 function sheetTotals(rows, files, { onsiteOnly = false } = {}) {
   const active = list(rows).filter((z) => z?.id && !isCutRow(z) && !(onsiteOnly && isDrawingZone(z)));
   const sums = surveyTotals(active);
+  const sized = surveyTotals(active.filter((z) => !surveyZoneNeedsResave(z)));
   return {
     zones: active.length,
-    areaSqm: sums.areaSqm,
-    volumeCbm: sums.volumeCbm,
+    areaSqm: sized.areaSqm,
+    volumeCbm: sized.volumeCbm,
     wide: active.reduce((n, z) => n + surveyDocCounts(list(files[z.id])).wide, 0),
     spots: sums.spotsTotal,
   };
@@ -284,12 +288,37 @@ const VISIT_BADGE_TONES = {
  *   🐞 ป้ายนี้ต้องถาม `sent` — เดิมไม่ถาม ⇒ นัดที่เพิ่งตั้งบนใบที่ยังไม่มีใครแตะขึ้นสีเตือนทันทีที่เปิดจอ
  * @returns `{ label, tone }` หรือ `null` (ไม่มีนัด)
  */
+const VISIT_UNCLOSED_LABEL = 'นัดยังไม่ปิด';
 export function surveyVisitBadge(visit, { sent = false } = {}) {
   if (!visit?.status) return null;
   const dead = visit.status === 'cancelled' || visit.status === 'rescheduled';
-  if (sent && !isClosedVisit(visit) && !dead) return { label: 'นัดยังไม่ปิด', tone: 'warning' };
+  if (sent && !isClosedVisit(visit) && !dead) return { label: VISIT_UNCLOSED_LABEL, tone: 'warning' };
   const label = VISIT_STATUS_LABELS[visit.status];
   return label ? { label, tone: VISIT_BADGE_TONES[visit.status] || 'neutral' } : null;
+}
+
+/**
+ * ป้ายนัด (`surveyVisitBadge`) ขึ้นข้างรหัสคำร้องไหม — ใบงานโต๊ะ (`surveyJobHeaderView(...).deskOnly`) ไม่โชว์ป้ายสถานะนัดเก่า
+ * ("เข้าแล้ว" · "ทำไม่ได้") เพราะหัวใบบอกแล้วว่าไม่ลงคิว ไม่มีนัด (มติเจ้าของ head-r3-33)
+ * ⚠️ **ยกเว้น "นัดยังไม่ปิด"** สีอำพัน — ตัวกันไม่ให้นัดค้างเงียบ ต้องขึ้นเสมอ · ใบอื่น = ขึ้นตามเดิมทุกป้าย
+ */
+export function surveyVisitBadgeShown(badge, { deskOnly = false } = {}) {
+  if (!badge) return false;
+  return deskOnly !== true || badge.label === VISIT_UNCLOSED_LABEL;
+}
+
+/**
+ * ข้อ "นัด" ของบรรทัดใต้ชื่อโมดัลเปลี่ยนวิธีประเมิน — ข้อ `visit` ของหัวงาน + สถานะต่อท้ายเมื่อนัดไม่เปิดแล้ว
+ * ("SV-26100011 · พฤ. 8 ต.ค. 10:00 (ทำไม่ได้)") · S2b แก้หลังตรวจจอ head-r3-9: 🐞 เดิมนัดที่จบเป็น "ทำไม่ได้" อ่านเหมือนนัดที่ยังรออยู่
+ * ⚠️ "เปิด" = ร่าง · นัดไว้ · กำลังทำ (ชุดเดียวกับหัวงาน `HEADER_OPEN_VISIT`) — นัดพวกนั้นไม่มีวงเล็บ (บรรทัดเดิมทุกตัวอักษร)
+ * @param header ผลของ `surveyJobHeaderView` · @param visit นัดของใบ
+ * @returns ข้อ `{ key:'visit', value, … }` หรือ `null` (ไม่มีนัด / หัวงานไม่มีข้อนัด — ใบงานโต๊ะ)
+ */
+export function surveyMethodVisitFact(header = null, visit = null) {
+  const fact = visit ? list(header?.facts).find((f) => f?.key === 'visit') || null : null;
+  if (!fact?.value) return fact;
+  const label = HEADER_OPEN_VISIT.includes(visit.status) ? null : VISIT_STATUS_LABELS[visit.status];
+  return label ? { ...fact, value: `${fact.value} (${label})` } : fact;
 }
 
 /* ══ ข้อที่หัวหน้าส่งกลับ ↔ พื้นที่ ═══════════════════════════════════════════════
@@ -491,8 +520,10 @@ export function surveySendBackItemsView({
  *   · `method` = วิธีของแถว · คีย์ป้ายวิธี (ชื่อคีย์ตรงกับคำว่าชิปในภาษาอังกฤษ) = ชิปวิธี **เฉพาะเมื่อใบมีพื้นที่จากแบบที่ยังใช้อยู่** (ใบลงหน้างานล้วน = `null` ทุกแถว —
  *     จอของใบแบบเดิมไม่มีอะไรโผล่เพิ่ม)
  * @param hideDrawing    จอของช่าง (เขียนผลวัดได้ · ไม่ได้เคาะ) — พื้นที่จากแบบไม่ใช่งานของเขา ⇒ **ไม่อยู่ใน `rows`**
- *   (รวมแถวจากแบบที่ตัดไปแล้ว) · `index` นับเฉพาะแถวที่เห็น · จำนวนที่ซ่อนไปพูดด้วย `drawingNote` บรรทัดเดียว
- *   ⚠️ เลขจุดในหมายเหตุ ("จุด 3.2 ยังไม่มีรูป") ยังเป็น **ลำดับในใบ** — ตัวนับเดียวกับ route ปิดนัด ไม่เลื่อนตามแถวที่ซ่อน
+ *   (รวมแถวจากแบบที่ตัดไปแล้ว) · จำนวนที่ซ่อนไปพูดด้วย `drawingNote` บรรทัดเดียว
+ *   ⭐ `index` = **ลำดับในใบ** ตรงกับเลขจุด k.n — เลขอาจข้าม บรรทัด `drawingNote` บอกเหตุ (มติเจ้าของ S2b-O6 19/10:
+ *     🐞 เดิมนับเฉพาะแถวที่เห็น ⇒ แถวเลข 2 แต่หมายเหตุ "จุด 3.2 ยังไม่มีรูป" · เลข 3 ไม่มีที่ไหนบนจอช่าง)
+ *   ⚠️ เลขจุดในหมายเหตุ ("จุด 3.2 ยังไม่มีรูป") เป็น **ลำดับในใบ** — ตัวนับเดียวกับ route ปิดนัด ไม่เลื่อนตามแถวที่ซ่อน
  *   ⚠️ ชื่อในประโยค (`name`) สะกดจากทั้งใบเสมอ — แถบ · กล่องส่งงาน · "ถัดไป" ต้องเรียกพื้นที่เดียวกันด้วยคำเดียวกัน
  * @param dept           ฝ่ายของใบ (`request.dept`) — ใช้ในป้าย "เพิ่มโดย {ฝ่าย}" ของพื้นที่จากแบบที่ถูกเพิ่ม · ไม่ส่ง = TS
  * @returns เพิ่มจากเดิม `drawingCount` (พื้นที่จากแบบที่ยังอยู่ในใบ) · `drawingNote` (บรรทัดของช่าง หรือ `null`) ·
@@ -520,8 +551,12 @@ export function surveyZoneListView({
   const spotGaps = spotGapNotes(rows, files, { photos: isOpenVisit(visit), tray: canDecide || !locked });
   const progress = surveyFieldProgress(rows, files);
   const drawingCount = progress.drawing || 0;
+  /* ลำดับในใบ (ตัวกรองเดียวกับตัวนับ k ของ `surveySpotPhotoGaps` — ทุกแถวที่มี id รวมแถวจากแบบและแถวที่ตัด)
+     ⇒ เลขบนวงของแถวตรงกับ "จุด k.n" ของหมายเหตุ และตรงกับเลขที่หัวหน้า/ผู้วางคิวเห็น (มติ S2b-O6)
+     · ใบลงหน้างานล้วน / จอที่ไม่ซ่อนแถว = เลขเดิมทุกตัว */
+  const sheetIndex = new Map(rows.map((z, i) => [String(z.id), i + 1]));
 
-  const out = shown.map((zone, i) => {
+  const out = shown.map((zone) => {
     const id = String(zone.id);
     const facts = surveyZoneFacts(zone, list(files[zone.id]));
     const method = zoneMethod(zone);
@@ -541,7 +576,7 @@ export function surveyZoneListView({
     };
     return {
       id,
-      index: i + 1,
+      index: sheetIndex.get(id),
       code: zone.zoneCode ?? null,
       codeUnknown: zone.zoneCodeUnknown === true,
       /* ชื่อในประโยค ("ยังขาด …") — ตัวสะกดเดียวกับหัวแถว (ดู `sentenceNames`) */
@@ -578,6 +613,11 @@ export function surveyZoneListView({
   });
 
   const hidden = hideDrawing === true && drawingCount > 0;
+  /* ช่างไม่เหลือพื้นที่ลงหน้างานให้วัด (ที่เหลือเป็นจากแบบทั้งหมด · แถวที่ตัดไม่นับ) — สัญญาณเดียวของหัว "พื้นที่" · คำ "ทั้ง" ·
+     กติกาพิมพ์ที่เดียวบนสองบาน (`emptyReason`) ⇒ สามอย่างนี้ไม่แยกทางกัน (S2b แก้หลังตรวจจอ crew-q6 · รอบตรวจ:
+     🐞 เดิม "ทั้ง/อีก" ถาม `out.length` ซึ่งนับแถวที่ตัด ⇒ ใบที่มีแถวตัดหนึ่งแถวได้หัว "พื้นที่" แต่บานขวาว่างพิมพ์ "อีก n …"
+     โดยไม่มีอะไรนำหน้า) */
+  const nothingToMeasure = hidden && progress.total === 0;
   return {
     rows: out,
     progress,
@@ -591,9 +631,12 @@ export function surveyZoneListView({
       .filter((r, i) => !isDrawingZone(shown[i]) && r.state === 'todo' && r.marks.some((m) => !m.ok))
       .map((r) => r.name),
     drawingCount,
-    /* คำของแผน §3.4 — ใช้ประโยคเดียวกันแม้ช่างไม่เหลือแถวให้วัด (คำว่า "อีก" ตอนนั้นไม่มีอะไรนำหน้า — รอเจ้าของเคาะ สเปก S2a §7) */
-    drawingNote: hidden ? `อีก ${fmtNumber(drawingCount)} พื้นที่หัวหน้าประเมินจากแบบ — ไม่ต้องวัด` : null,
-    emptyReason: hidden && progress.total === 0 ? 'drawing' : null,
+    /* คำของแผน §3.4 · ช่างไม่เหลือพื้นที่ลงหน้างานให้วัด = "ทั้ง n …" (S2b แก้หลังตรวจจอ crew-q6: 🐞 เดิม "อีก" ไม่มีอะไรนำหน้า
+       อ่านเหมือนยังมีงานค้าง) · ยังมีพื้นที่ลงหน้างานให้วัด = "อีก n …" เดิม · แถวที่ตัดไม่ทำให้กลับเป็น "อีก" (`nothingToMeasure`) */
+    drawingNote: hidden
+      ? `${nothingToMeasure ? 'ทั้ง' : 'อีก'} ${fmtNumber(drawingCount)} พื้นที่หัวหน้าประเมินจากแบบ — ไม่ต้องวัด`
+      : null,
+    emptyReason: nothingToMeasure ? 'drawing' : null,
   };
 }
 
@@ -625,6 +668,9 @@ export function surveyDefaultZoneId(zones = [], filesByZone = {}, { editable = f
  * @returns `{ index, total, prev, next, dots:[{id, state, current}], ariaLabel, compactText }` — `index` นับจาก 1
  * ⭐ จุดของพื้นที่จากแบบ: ครบ = ขนาด + ภาพแบบ (`zonePageGapKeys`) · คำอ่านจอไม่นับมันเป็น "วัดแล้ว" — ต่อ " · จากแบบ k" แยกไว้
  * @param hideDrawing จอของช่าง — เลื่อนเฉพาะพื้นที่ที่อยู่ในรายการของเขา (ชุดเดียวกับ `surveyZoneListView`)
+ * ⚠️ พื้นที่ที่เปิดอยู่ไม่อยู่ในชุดที่เลื่อนได้ (ช่างตามลิงก์เข้าพื้นที่จากแบบ) = **ไม่มีตัวเลื่อน** (`total: 0` · ไม่มีจุด) —
+ *   S2b แก้หลังตรวจจอ crew-q8: 🐞 เดิมได้จุดกลวงของพื้นที่อื่นที่ไม่มีจุดไหนคือที่นี่ + ลูกศรกดไม่ได้ทั้งสองข้าง
+ *   (ตัวเลื่อนวาดเมื่อ `total > 1` เท่านั้น)
  */
 export function surveyZoneNeighbors(zones = [], zoneId = null, filesByZone = {}, { hideDrawing = false } = {}) {
   const files = filesMap(filesByZone);
@@ -640,7 +686,7 @@ export function surveyZoneNeighbors(zones = [], zoneId = null, filesByZone = {},
   });
   const i = dots.findIndex((d) => d.current);
   const total = rows.length;
-  if (i < 0) return { index: 0, total, prev: null, next: null, dots, ariaLabel: '', compactText: null };
+  if (i < 0) return { index: 0, total: 0, prev: null, next: null, dots: [], ariaLabel: '', compactText: null };
   const done = dots.filter((d, k) => d.state === 'done' && !isDrawingZone(rows[k])).length;
   const drawing = rows.filter((z) => !isCutRow(z) && isDrawingZone(z)).length;
   return {
@@ -661,6 +707,9 @@ export function surveyZoneNeighbors(zones = [], zoneId = null, filesByZone = {},
  *    🐞 เดิมหาตัวแรกของลิสต์เสมอ ⇒ ใบ 5 พื้นที่ที่ขาดที่ 1 กับ 5: ยืนที่ 5 กด "ถัดไป" เด้งขึ้นหัวใบ · เหลือสอง
  *       พื้นที่เมื่อไรสลับ 1↔5 ไม่จบ (page.js เดิม `nextGapZone`)
  * ② ไม่เหลือของขาดที่อื่น และคนดูส่งงานได้ = "ถัดไป: ส่งงาน" (ม็อก A-3)
+ * ②ข คนดูกรอกพื้นที่จากแบบได้ (`drawingEditable`) = พื้นที่จากแบบที่ **ยังขาดขนาด/ภาพแบบ** — หาแบบเดียวกับ ① (หลังที่นี่ก่อน แล้ววนกลับ)
+ *    S2b แก้หลังตรวจจอ head-rc-r2-3: 🐞 เดิมหาเฉพาะของช่าง ⇒ ท้ายพื้นที่สุดท้ายของใบจากแบบไม่มี "กลับไปที่ …" ทั้งที่ยังมีพื้นที่
+ *    ขาดภาพแบบ (มือถือไม่มีการ์ดพากลับ) · อยู่หลัง ① ② — งานของนัด (ช่างขาด · ส่งงาน) ยังมาก่อนงานโต๊ะของหัวหน้า
  * ③ นอกนั้น (หัวหน้าที่ไล่ดูใบที่ช่างครบแล้ว · AW-2) = พื้นที่ถัดไปตามลำดับ ไม่วน
  * ⚠️ ค่าค้าง = บอกเหตุ "บันทึกก่อน" แต่ **ยังบอกปลายทาง** (ม็อก: "ถัดไป: ส่งงาน / บันทึกก่อน")
  *
@@ -668,26 +717,39 @@ export function surveyZoneNeighbors(zones = [], zoneId = null, filesByZone = {},
  * @param hideDrawing จอของช่าง (ชุดเดียวกับ `surveyZoneListView`) — ทาง ③ ข้ามพื้นที่จากแบบ: มันไม่อยู่ในรายการของเขา
  *   🐞 UAT S22/S13 (12/10): ช่างที่นัดยังไม่เริ่มได้ปุ่ม "ถัดไป: คลังหลังร้าน" ที่พาเข้าพื้นที่จากแบบซึ่งรายการซ่อนไว้
  *   (ทาง ① ไม่ต้องกรอง — `missingCrew` ของพื้นที่จากแบบว่างเสมอ)
+ * @param drawingEditable คนดูกรอกพื้นที่จากแบบได้ (หัวหน้า · ใบยังไม่ล็อก) — เปิดทาง ②ข · "ยังขาด" = `zonePageGapKeys`
+ *   ตัวเดียวกับป้ายหัวและรายการ · ไม่ส่ง = `false` = ผลเดิม (ผู้วางคิว · ช่าง ไม่ถูกพาไปพื้นที่ที่ตัวเองกรอกไม่ได้)
  * @returns `{ target: {kind:'zone', id, name, back} | {kind:'submit'} | null, blocker, label }`
  */
 export function surveyNextStep({
   zones = [], filesByZone = {}, zoneId = null, dirty = false, canSubmit = false, hideDrawing = false,
+  drawingEditable = false,
 } = {}) {
   const files = filesMap(filesByZone);
   const rows = list(zones).filter((z) => z?.id);
   const here = rows.findIndex((z) => String(z.id) === idOf(zoneId));
   const withIndex = rows.map((z, i) => ({ z, i }));
   const names = sentenceNames(rows);
-  const gaps = withIndex.filter(({ z, i }) => i !== here && !isCutRow(z)
-    && surveyZoneFacts(z, list(files[z.id])).missingCrew.length > 0);
-
-  let target = null;
-  if (gaps.length) {
+  const gapsWhere = (missing) => withIndex.filter(({ z, i }) => i !== here && !isCutRow(z)
+    && missing(z, surveyZoneFacts(z, list(files[z.id]))));
+  /* ตัวแรกที่อยู่หลังที่นี่ · ไม่มีค่อยวนกลับต้นลิสต์ (`back`) — ทาง ① กับ ②ข หาแบบเดียวกัน */
+  const zoneTarget = (gaps) => {
     const ahead = gaps.find(({ i }) => i > here);
     const { z } = ahead || gaps[0];
-    target = { kind: 'zone', id: String(z.id), name: names.get(String(z.id)), back: !ahead };
+    return { kind: 'zone', id: String(z.id), name: names.get(String(z.id)), back: !ahead };
+  };
+  const crewGaps = gapsWhere((z, facts) => facts.missingCrew.length > 0);
+  const drawingGaps = drawingEditable === true
+    ? gapsWhere((z, facts) => isDrawingZone(z) && zonePageGapKeys(z, facts).size > 0)
+    : [];
+
+  let target = null;
+  if (crewGaps.length) {
+    target = zoneTarget(crewGaps);
   } else if (canSubmit) {
     target = { kind: 'submit' };
+  } else if (drawingGaps.length) {
+    target = zoneTarget(drawingGaps);
   } else {
     const after = withIndex.find(({ z, i }) => i > here && !isCutRow(z) && !(hideDrawing === true && isDrawingZone(z)));
     if (after) target = { kind: 'zone', id: String(after.z.id), name: names.get(String(after.z.id)), back: false };
@@ -1035,8 +1097,16 @@ export function surveyZoneFooterView({
   const drawn = isDrawingZone(zone);
   const gaps = zonePageGapKeys(zone, facts);
   const gapText = missingLine(zonePageMarks(zone), gaps);
+  /* พื้นที่จากแบบที่ยังไม่มีภาพแบบ: บรรทัดที่สองตอนพิมพ์/กำลังบันทึกคง "ขาด: ภาพแบบ" ไว้ (S2b แก้หลังตรวจจอ head-r3-34:
+     🐞 เดิมพอเริ่มพิมพ์ คำเตือนกลายเป็น "ภาพแบบขึ้นแล้ว 0" — หัวหน้าบันทึกได้โดยไม่รู้ว่ายังขาดภาพแบบ) · ภาพแบบไม่ต้องรอบันทึก
+     ⇒ ข้อนี้อ่านจากไฟล์ชุดสด ไม่ใช่จากค่าที่พิมพ์ · ลงหน้างาน = บรรทัดเดิม
+     ⚠️ รวมตอนค่าที่พิมพ์ยังติดด่าน (พิมพ์กว้างช่องแรก = "ส่วน A ยังขาดความยาว · ความสูง") — บรรทัดที่สองต่อ "ขาด: ภาพแบบ"
+        ไว้หน้าคำแนะนำเดิม (รอบตรวจ head-r3-34: 🐞 เดิมคำเตือนหายตั้งแต่ตัวอักษรแรก ทั้งที่ข้อนี้ไม่ขึ้นกับสิ่งที่พิมพ์) */
+  const planGap = drawn && gaps.has('plan') ? missingLine(DRAWING_MARKS, new Set(['plan'])) : null;
   const photoLine = drawn
-    ? `${PLAN_GATE.drawingShort}ขึ้นแล้ว ${facts.photos.plan}${sending} · รูปไม่ต้องรอบันทึก`
+    ? (planGap
+      ? `${planGap}${sending}`
+      : `${PLAN_GATE.drawingShort}ขึ้นแล้ว ${facts.photos.plan}${sending} · รูปไม่ต้องรอบันทึก`)
     : `ภาพกว้างขึ้นแล้ว ${facts.photos.wide}${sending} · รูปไม่ต้องรอบันทึก`;
   const saved = !!zone?.surveyedAt
     || list(zone?.parts).some((p) => !isBlankSurveyPart(p))
@@ -1065,7 +1135,7 @@ export function surveyZoneFooterView({
   } else if (dirty && saveBlocker) {
     tone = 'dirty';
     head = String(saveBlocker);
-    sub = 'แก้ให้ครบแล้วกดบันทึก · ออกจากพื้นที่นี้ก่อนบันทึก ระบบจะถามก่อนทิ้งค่าที่พิมพ์';
+    sub = [planGap, 'แก้ให้ครบแล้วกดบันทึก · ออกจากพื้นที่นี้ก่อนบันทึก ระบบจะถามก่อนทิ้งค่าที่พิมพ์'].filter(Boolean).join(' · ');
   } else if (dirty) {
     tone = 'dirty';
     head = draftSummary ? `กดบันทึกเพื่อเก็บ ${draftSummary}` : 'มีค่าที่ยังไม่บันทึก — กดบันทึกพื้นที่นี้';
@@ -1084,7 +1154,9 @@ export function surveyZoneFooterView({
           : 'ไม่มีค่าที่ยังไม่บันทึก');
   } else {
     tone = 'plain';
-    head = readOnly ? 'ยังไม่มีผลวัด' : 'ยังไม่ได้บันทึกค่าของพื้นที่นี้';
+    /* คนดูอย่างเดียว (ช่างที่ตามลิงก์ · ผู้วางคิว): พื้นที่จากแบบไม่มีใครไปวัด — คำเดียวกับป้าย "ประเมินจากแบบ"
+       (มติเจ้าของ crew-q5 · 🐞 เดิมกล่องบนบอก "ไม่ต้องวัดหน้างาน" แต่ท้ายหน้าเขียน "ยังไม่มีผลวัด") · ลงหน้างาน = คำเดิม */
+    head = readOnly ? (drawn ? 'ยังไม่มีผลประเมินจากแบบ' : 'ยังไม่มีผลวัด') : 'ยังไม่ได้บันทึกค่าของพื้นที่นี้';
     sub = gapText;
   }
 
@@ -1439,7 +1511,9 @@ export function surveySubmitView({
       name: names.get(String(zone.id)),
       title: surveyZoneTitle(zone),
       state,
-      figures: !facts.cut && facts.sizeComplete ? figuresText(facts.areaSqm, facts.volumeCbm) : null,
+      /* ขนาดที่ด่านยังไม่รับ (เพิ่งสลับกลับมา ยังไม่บันทึกยืนยัน) ไม่ขึ้นบนแถว — ตรงกับรายการพื้นที่และยอดรวมท้ายกล่อง (crew-q4) */
+      figures: !facts.cut && facts.sizeComplete && !surveyZoneNeedsResave(zone)
+        ? figuresText(facts.areaSqm, facts.volumeCbm) : null,
       counts: facts.cut ? null : `ภาพกว้าง ${facts.photos.wide} · จุด ${facts.spotsTotal}`,
       note: state === 'cut' ? 'ตัดออก — ไม่ต้องวัด'
         : state === 'miss' ? [crewMissingText(facts), spotNote].filter(Boolean).join(' · ')
@@ -1647,12 +1721,13 @@ const dayKey = (value) => {
  *   มีพื้นที่จากแบบ ⇒ ข้อแรกเป็น "วิธีประเมิน":
  *   · ผสม            `ลงหน้างาน a · จากแบบ k` — ข้อของนัดอยู่ครบ
  *   · จากแบบทั้งใบ    `ประเมินจากแบบ` + "ทั้งใบ n พื้นที่"
- *       ไม่มีนัดที่ยังเปิด ⇒ ต่อ "· ไม่ลงคิว ไม่มีนัดบนตารางเจ้าหน้าที่" และข้อของนัด (นัด · ทีม · คำเตือนช่วงให้เข้า) ถูกแทนด้วย
- *         ผู้รับผิดชอบ · ผู้ขอต้องการผล · วันที่จะส่งผลประเมิน (ไม่มีนัดและไม่มีทีมให้พูดถึง)
+ *       ไม่มีนัดที่ยังเปิด (`deskOnly`) ⇒ ต่อ "· ไม่ลงคิว ไม่มีนัดบนตารางเจ้าหน้าที่" และข้อของนัด (นัด · ทีม) ถูกแทนด้วย
+ *         ผู้ขอ · ผู้รับผิดชอบ · ผู้ขอต้องการผล · วันที่จะส่งผลประเมิน (ไม่มีนัดและไม่มีทีมให้พูดถึง) · ไม่มีปุ่มโทร/นำทาง และไม่มีข้อ
+ *         ให้เข้า · ฝากมา · ติดต่อ (มติ head-r3-33 — ของคนที่จะไปหน้างาน)
  *       ยังมีนัดเปิดอยู่ (ร่าง · นัดไว้ · กำลังทำ) ⇒ ข้อของนัดอยู่ครบ และ **ไม่** พูดว่าไม่มีนัด — เกิดได้จริง: ช่างอยู่หน้างานแล้ว
  *         หัวหน้าสลับห้องสุดท้ายเป็นจากแบบ (นัดที่กำลังทำไม่ถูกยกเลิก) หรือนัดที่ค้างบนใบ · หัวหน้ายังต้องเห็นเลขนัด ทีม และเวลา
  *   ⚠️ "ยังมีนัดเปิดไหม" ดูจากนัดที่ส่งมา ไม่ใช่จาก `needsVisit` — ตัวนั้นอ่านแถวพื้นที่อย่างเดียว บอกไม่ได้ว่านัดยังค้างอยู่
- * @returns `{ site:{code,name,title,href,address,unknown}, call, nav, facts:[{key,label,value,sub?,warn?,people?}], request }`
+ * @returns `{ site:{code,name,title,href,address,unknown}, call, nav, facts:[{key,label,value,sub?,warn?,people?}], deskOnly, request }`
  */
 export function surveyJobHeaderView({
   request = null, customer = null, site = null, visit = null, crew = [], unknown = {}, method = null,
@@ -1721,6 +1796,16 @@ export function surveyJobHeaderView({
   /* ── ฝ่ายขายขอ (งวด 4) — เฉพาะใบที่ยื่นเป็นประเมินจากแบบ · ต่อจากข้อวิธีประเมินทันที (สิ่งที่ขอ คู่กับสิ่งที่เป็นอยู่)
      ⚠️ ใบอื่น = ไม่มีข้อนี้และไม่มีคีย์ `asked` ใน `request` ⇒ หัวงานของใบวันนี้เท่าเดิมทุกคีย์ */
   const asked = surveySalesAskedLine(request);
+  /* ── ใบงานโต๊ะ (`deskOnly`) ไม่มีใครไปหน้างาน (มติเจ้าของ head-r3-33 · ทำตามม็อก) — ไม่มีปุ่มโทร/นำทาง และไม่มีข้อ ให้เข้า · ฝากมา ·
+     ติดต่อ (🐞 เดิมหัวเขียน "ไม่ลงคิว ไม่มีนัด" ข้างช่วงให้เข้า คำฝาก ปุ่มโทรสถานที่ — อ่านเหมือนยังมีคนจะไปหน้างาน)
+     · สงสัยเรื่องแบบต้องถามผู้ขอ ⇒ ข้อ "ผู้ขอ" (คำเดียวกับหน้าคำร้อง) ต่อจากวิธีประเมิน/ฝ่ายขายขอ ก่อนผู้รับผิดชอบ
+     · ชื่อไซต์ ลิงก์ทะเบียนไซต์ และที่อยู่ยังอยู่ · ใบที่มีนัดเปิด/ใบผสม/ใบลงหน้างาน = หัวเดิมทุกคีย์ */
+  const siteFacts = deskOnly ? [] : [
+    { key: 'access', label: 'ให้เข้า', value: siteValue(site ? accessWindowText(site) : ''), warn },
+    { key: 'note', label: 'ฝากมา', value: siteValue(site?.accessNote) },
+    /* ช่องเบอร์ที่ไม่มีเบอร์ให้กด ("โทรหา รปภ. หน้าตึก") = ไม่มีปุ่มโทร แต่ข้อความต้องไม่หายจากหัว (review 26/09) */
+    ...(phone && !dial ? [{ key: 'phone', label: 'ติดต่อ', value: [contact, phone].filter(Boolean).join(' · ') }] : []),
+  ];
 
   return {
     site: {
@@ -1734,15 +1819,16 @@ export function surveyJobHeaderView({
       unknown: siteUnknown,
     },
     /* หลายเบอร์ = ป้ายบอกว่ากดแล้วโทรเบอร์ไหน (ชื่อผู้ติดต่อบังเบอร์ไว้ ช่างไม่รู้ว่าปุ่มโทรเบอร์ไหน) */
-    call: dial
+    call: dial && !deskOnly
       ? { href: dial.href, label: `โทร ${dial.more ? [contact, dial.shown].filter(Boolean).join(' ') : (contact || phone)}` }
       : null,
-    nav: mapUrl ? { href: mapUrl, label: 'นำทาง' } : null,
+    nav: mapUrl && !deskOnly ? { href: mapUrl, label: 'นำทาง' } : null,
     facts: [
       ...(methodFact ? [methodFact] : []),
       ...(asked ? [{ key: 'asked', label: SURVEY_SALES_ASKED.label, value: SURVEY_SALES_ASKED.value }] : []),
       ...(deskOnly
         ? [
+          { key: 'requester', label: 'ผู้ขอ', value: naText(String(request?.requestedByName ?? '').trim()) },
           { key: 'assignee', label: 'ผู้รับผิดชอบ', value: naText(requestAssignee(request).name) },
           { key: 'wantedResult', label: 'ผู้ขอต้องการผล', value: naText(dayText(dayKey(request?.requestedResultDate))) },
           { key: 'resultDate', label: SURVEY_METHOD_RESULT_DATE_LABEL, value: naText(dayText(dayKey(request?.committedResultDate))) },
@@ -1758,11 +1844,10 @@ export function surveyJobHeaderView({
             people,
           },
         ]),
-      { key: 'access', label: 'ให้เข้า', value: siteValue(site ? accessWindowText(site) : ''), warn: deskOnly ? null : warn },
-      { key: 'note', label: 'ฝากมา', value: siteValue(site?.accessNote) },
-      /* ช่องเบอร์ที่ไม่มีเบอร์ให้กด ("โทรหา รปภ. หน้าตึก") = ไม่มีปุ่มโทร แต่ข้อความต้องไม่หายจากหัว (review 26/09) */
-      ...(phone && !dial ? [{ key: 'phone', label: 'ติดต่อ', value: [contact, phone].filter(Boolean).join(' · ') }] : []),
+      ...siteFacts,
     ],
+    /* ใบงานโต๊ะ — หน้าใช้ถามว่าป้ายสถานะนัดเก่าข้างรหัสคำร้องต้องหายไหม (`surveyVisitBadgeShown`) */
+    deskOnly,
     request: {
       docNo: request?.docNo || null,
       title: request?.title || null,
@@ -1862,11 +1947,14 @@ export function surveySheetNotices(view) {
  *   ไม่มีลิงก์ไปหน้าคำร้อง · ไม่มีไฟล์ = ไม่มีแถว · อ่านไม่สำเร็จ = แถวบอกว่าอ่านไม่ได้ (ไม่ใช่เงียบเหมือนไม่มีไฟล์)
  * @param header `surveyJobHeaderView(...).request` — คำชุดเดียวกับหัวงาน (รหัส · ชื่อเรื่อง · "AR · ลูกค้า")
  * @param requestFiles `requestFiles` ของ GET ใบประเมิน · @param filesUnknown `unknown.requestFiles`
+ * @param salesPanel หน้านี้วางแผง "แบบจากฝ่ายขาย" อยู่ (หัวหน้า · ผู้วางคิว บนใบที่มีพื้นที่จากแบบ) ⇒ **ไม่มีแถวไฟล์แนบของคำร้อง**
+ *   (`files: null`) — แผงลิสต์ไฟล์ชุดเดียวกันครบกว่า (รวมไฟล์จากเธรด) · S2b แก้หลังตรวจจอ planner-q11: 🐞 เดิมหน้าเดียวโชว์สองที่
+ *   ด้วยตัวเลขไม่เท่ากัน ("5 ไฟล์" กับ "3 ไฟล์") จนสงสัยว่าไฟล์หาย · ไม่ส่ง = แถวเดิม (ช่างไม่มีแผง จึงยังเห็นแถวนี้)
  * @returns `{ detail:{label,sub,facts}, link|null, result|null, files|null, line:{title,customer} }` (`line` = บรรทัดข้างรหัสบนแถวย้อน)
  */
 export function surveyAboutView({
   header = null, requestId = null, canDecide = false, canWrite = false, canOpenRequest = false,
-  requestFiles = [], filesUnknown = false,
+  requestFiles = [], filesUnknown = false, salesPanel = false,
 } = {}) {
   const docNo = String(header?.docNo ?? '').trim() || null;
   const title = String(header?.title ?? '').trim() || null;
@@ -1895,7 +1983,7 @@ export function surveyAboutView({
     /* ⭐ มติเจ้าของ 26/09 "ช่างเห็นแค่งานตัวเอง" — ช่าง (เขียนผลวัดได้ · ไม่ได้เคาะ) ไม่มีแถวไปสรุปส่งผลแล้ว
        (ตอบคำถามตัวเลขแพ็คเกจบนจอดูอย่างเดียวของช่างไปด้วย) · เหลือเฉพาะคนดูอย่างเดียว เช่นฝ่ายขาย */
     result: canDecide || canWrite ? null : { label: 'สรุปส่งผล', sub: 'ดูอย่างเดียว' },
-    files: surveyRequestFilesView(requestFiles, { unknown: filesUnknown }),
+    files: salesPanel === true ? null : surveyRequestFilesView(requestFiles, { unknown: filesUnknown }),
     line: { title, customer: customerKnown ? customerText : null },
   };
 }
@@ -1920,7 +2008,10 @@ export function surveyRequestFilesView(rows = [], { unknown = false } = {}) {
     const href = kind ? (String(row.fileUrl || '').trim() || null) : attachmentHref(row);
     if (!href) continue;
     const name = attachmentName(row);
-    if (!kind && isPreviewableImage(row)) {
+    /* ภาพย่อ = รูปที่เบราว์เซอร์วาดได้ (`isDrawableImage` ตัวเดียวกับแผงไฟล์แนบ/เธรด) — TIFF เป็นแถวไฟล์ที่เปิดแท็บใหม่
+       (S2b แก้หลังตรวจจอ head-rc-q8 · ตรวจครบแผน: แผนเดิมทำให้ `isPreviewableImage` แคบลง ซึ่งจะพาแถวนี้ไปด้วย —
+       ตัวตัดสินของจอแยกออกมาแล้ว ⇒ ที่นี่ต้องเปลี่ยนเอง · 🐞 ไม่เปลี่ยน = จอช่างได้ภาพย่อ "เปิดไม่ได้" ของไฟล์สแกน TIFF ที่ฝ่ายขายแนบ) */
+    if (!kind && isDrawableImage(row)) {
       photos.push({ id: row.id, href, name, ariaLabel: `ดูรูป ${name} (เปิดแท็บใหม่)` });
     } else {
       docs.push({ id: row.id, href, name, sub: kind, ariaLabel: `เปิด ${name} (เปิดแท็บใหม่)` });

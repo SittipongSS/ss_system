@@ -195,7 +195,8 @@ test('จุดโดยประมาณ: แถวชื่อ + บันท
   assert.match(DRAWING_SECTIONS, /<Section area="spots" id=\{sectionId\("spots"\)\} number=\{3\} title=\{drawing\.spots\.label\} state=\{sections\.spots\}>/);
   assert.match(DRAWING_SECTIONS, /\{spots\.map\(\(spot, i\) => <li key=\{spot\.id\}>\{spotRow\(spot, i\)\}<\/li>\)\}/,
     'แถวของจุดตัวเดียวกับหน้าลงหน้างาน (แก้ = ช่อง · อ่านอย่างเดียว = ตัวหนังสือ) — ไม่เขียนชุดที่สอง');
-  assert.match(DRAWING_SECTIONS, /\{spots\.length === 0 && !edit \? <p className=\{styles\.empty\}>\{naText\(null\)\}<\/p> : null\}/);
+  // ว่าง = ขีดตัวเดียวกับหมายเหตุที่ว่าง (S2b แก้หลังตรวจจอ planner-minor-4 · ยามละเอียดที่ surveyZonePageScreen.test.mjs)
+  assert.match(DRAWING_SECTIONS, /\{spots\.length === 0 && !edit \? EMPTY_DASH : null\}/);
   const row = slice(ZONE, 'const spotRow = ', 'const spotRelink = ');
   assert.match(row, /const noteShown = !!drawing \|\| /, 'พื้นที่จากแบบ: ช่องบันทึกกางไว้เลย (ไม่มีเมนูให้เปิด)');
   const remove = slice(ZONE, 'const removeSpot = ', 'const spotRow = ');
@@ -221,7 +222,8 @@ test('🔴 ของที่แก้ได้ทุกชิ้นของก
   const row = slice(ZONE, 'const spotRow = ', 'const spotRelink = ');
   assert.match(row, /<div className=\{styles\.spotMain\}>\s*\{edit \? \(\s*<>\s*<Input/);
   assert.match(row, /\{edit && drawing \? \(\s*<button type="button" className=\{styles\.iconBtn\} data-tone="danger" aria-label=\{`ลบจุดที่ \$\{i \+ 1\}`\}/);
-  assert.match(DRAWING_SECTIONS, /\{edit \? \(\s*<button type="button" className=\{styles\.addRow\} onClick=\{\(\) => setSpots\(\(rows\) => \[\.\.\.rows, emptySpot\(\)\]\)\}>/);
+  // ดับระหว่างบันทึก (S2b แก้หลังตรวจจอ head-r3-26 · ยามละเอียดที่ surveyZonePageScreen.test.mjs)
+  assert.match(DRAWING_SECTIONS, /\{edit \? \(\s*<button type="button" className=\{styles\.addRow\} onClick=\{\(\) => setSpots\(\(rows\) => \[\.\.\.rows, emptySpot\(\)\]\)\}\s*disabled=\{saving\}>/);
   // ② บรรทัดชี้ไปปุ่ม "ใช้รูปนี้…" (N18) — เฉพาะคนที่แนบได้ และมีแผงให้ชี้จริง
   assert.match(DRAWING_SECTIONS, /\{edit && drawing\.plan\.missing && salesReuseOffered \? \(/);
   // ไฟล์เดิม: เปิดดูได้ทุกคน · ลบเฉพาะคนที่แก้ได้
@@ -312,7 +314,9 @@ test('รายการ: หัว · แถบหัวคอลัมน์ �
   assert.match(LIST, /const \{ drawing: DRAWING_WORD \} = SURVEY_METHOD_CHIP;/);
   assert.match(LIST, /return methodLabel === DRAWING_WORD;/);
   assert.match(LIST, /const labelled = showsDrawingRow\(rows\);/);
-  assert.match(LIST, /\{labelled \? "พื้นที่" : "พื้นที่ที่ต้องวัด"\}/);
+  /* ช่างที่ใบเหลือแต่พื้นที่จากแบบ (`emptyReason === "drawing"`) ไม่มีพื้นที่ต้องวัด ⇒ หัวเป็น "พื้นที่" ด้วย (S2b แก้หลังตรวจจอ crew-q6) */
+  assert.match(LIST, /const deskOnlyForCrew = view\?\.emptyReason === "drawing";/);
+  assert.match(LIST, /\{labelled \|\| deskOnlyForCrew \? "พื้นที่" : "พื้นที่ที่ต้องวัด"\}/);
   assert.match(LIST, /\{rows\.length && !labelled \? \(\s*<div className=\{styles\.cols\} aria-hidden="true">/);
   assert.match(LIST, /const layout = split \? "split" : \(labelled \? "stack" : "pages"\);/,
     'มีแถวจากแบบ = ซ้อนแถว (ข้อพูดชื่อตัวเอง) — การจัดแบบคอลัมน์ต้องมีหัวคอลัมน์ชุดเดียวที่ตรงกับทุกแถว');
@@ -375,10 +379,12 @@ test('🔴 แผง: ปุ่ม "ใช้รูปนี้…" ขึ้น
   assert.equal(count(PANEL, 'reuse.reason'), 1);
   assert.ok(block.includes('{thaiText(reuse.reason)}'), 'เหตุเป็นตัวหนังสือเหนือปุ่ม (ไม่ใช่ tooltip)');
   assert.ok(block.indexOf('reuse.reason') < block.indexOf('<Button'), 'เหตุอยู่เหนือปุ่ม');
-  assert.match(block, /aria-disabled=\{blocked \|\| copying \? "true" : undefined\}/);
-  assert.match(block, /aria-describedby=\{blocked \? reasonId : undefined\}/);
-  assert.match(block, /disabled=\{!blocked && !copying && !!busyKey\}/, 'คัดลอกทีละไฟล์ — ปุ่มของไฟล์อื่นดับระหว่างรอ');
-  assert.match(block, /onClick=\{blocked \|\| copying \? undefined : \(\) => onReuse\(file\)\}/);
+  // S2b แก้หลังตรวจจอ head-r3-35: `held` = ติดด่าน หรือ ใช้กับพื้นที่นี้แล้ว (ยามละเอียดอยู่ที่ components/service/surveySalesDrawings.test.mjs)
+  assert.match(PANEL, /const held = blocked \|\| used;/);
+  assert.match(block, /aria-disabled=\{held \|\| copying \? "true" : undefined\}/);
+  assert.match(block, /aria-describedby=\{blocked \|\| showUsed \? reasonId : undefined\}/);
+  assert.match(block, /disabled=\{!held && !copying && !!busyKey\}/, 'คัดลอกทีละไฟล์ — ปุ่มของไฟล์อื่นดับระหว่างรอ');
+  assert.match(block, /onClick=\{used \? \(\) => setTold\(file\.key\) : blocked \|\| copying \? undefined : \(\) => onReuse\(file\)\}/);
   assert.match(block, /\{copying \? COPYING : reuse\.label\}/);
   assert.match(PANEL, /const copying = busyKey === file\.key;/);
   assert.match(PANEL, /const blocked = !!reuse && reuse\.enabled === false;/);
@@ -417,19 +423,22 @@ test('ตัวตัดสินของแผง: ปุ่มมีเฉพ
 });
 
 test('แผง: การ์ดพับได้แบบ controlled · ไม่มีของที่กดได้บนหัว · อ่านไม่สำเร็จกับไม่มีไฟล์ไม่ขึ้นพร้อมกัน · รูปขยายในหน้า ไฟล์อื่นเปิดแท็บใหม่', () => {
-  assert.match(PANEL, /const \[open, setOpen\] = useState\(true\);/);
+  // S2b แก้หลังตรวจจอ head-r3-31: กางตอนแรกตามที่หน้าส่ง (`defaultOpen`) · compact ก็เป็นการ์ดพับได้ตัวเดียวกัน (id ของตัวเอง)
+  assert.match(PANEL, /const \[open, setOpen\] = useState\(defaultOpen\);/);
   const [card] = jsxOpenTags(PANEL, /<CollapsibleCard\b/g);
-  assert.ok(card, 'ไม่ใช่ compact = การ์ดพับได้ของระบบ');
-  assert.match(card, /id=\{CARD_ID\}/);
+  assert.ok(card, 'ทุกที่วาง = การ์ดพับได้ของระบบ');
+  assert.match(card, /id=\{cardId\}/);
+  assert.match(PANEL, /const cardId = compact \? `\$\{CARD_ID\}-\$\{instanceId\.replace\(/);
   assert.match(PANEL, /const CARD_ID = "survey-sales-drawings";/);
   assert.match(card, /open=\{open\}/);
-  assert.match(card, /onToggle=\{\(\) => setOpen\(\(value\) => !value\)\}/);
+  // กด = สลับ แล้วบอกหน้าผ่าน `onOpenChange` (ไม่บังคับ) — หน้าจำค่าข้ามการถอดใส่ใหม่ของหน้าพื้นที่ (head-r3-31)
+  assert.match(card, /onToggle=\{\(\) => \{ const next = !open; setOpen\(next\); onOpenChange\?\.\(next\); \}\}/);
   assert.match(card, /title=\{view\.label\}/);
   assert.match(card, /badges=\{view\.countText \? <Tag label=\{view\.countText\} \/> : null\}/);
   assert.match(card, /tone="info"/);
   assert.doesNotMatch(card, /<a\b|<button\b|<Button\b|<Link\b|<input\b|href=|onClick=/,
     'ช่อง title/summary/badges เรนเดอร์ในปุ่มหัว — ปุ่มซ้อนปุ่มคือปุ่มที่กดโดนกันเองบนจอสัมผัส');
-  assert.match(PANEL, /if \(compact\) \{\s*return \(\s*<section className=\{styles\.block\} aria-labelledby=\{titleId\}>/, 'compact = บล็อกหัวธรรมดา ไม่พับ');
+  assert.doesNotMatch(PANEL, /if \(compact\)/, 'compact พับได้ด้วยหัวเดียวกัน — ไม่มีบล็อกหัวธรรมดาแล้ว (มติเจ้าของ head-r3-31)');
   // คำใหม่ของสเปก (N21–N25)
   assert.match(PANEL, /const HOW_TO = "กดรูปเพื่อขยาย · PDF เปิดในแท็บใหม่";/);
   assert.match(PANEL, /const NEW_TAB = "เปิดในแท็บใหม่";/);
@@ -439,7 +448,8 @@ test('แผง: การ์ดพับได้แบบ controlled · ไม
     'อ่านไม่สำเร็จชนะ — ไม่บอกว่า "ยังไม่มีไฟล์" ตอนที่จริง ๆ อ่านไม่ได้');
   assert.match(PANEL, /\{file\.image \? \(\s*<button type="button" className=\{styles\.media\} onClick=\{\(\) => setZoom\(file\)\}/);
   assert.match(PANEL, /<a className=\{styles\.media\} data-kind="doc" href=\{file\.href\} target="_blank" rel="noreferrer">/);
-  assert.match(PANEL, /<Modal open=\{!!zoom\} onClose=\{\(\) => setZoom\(null\)\} title=\{zoom\?\.name \|\| view\.label\} size="lg">/);
+  // กล่องขยายรูป — หน้าตาเดียวกับตัวดูภาพแบบ (S2b แก้หลังตรวจจอ planner-q12 · ยามละเอียดที่ surveySalesDrawings.test.mjs)
+  assert.match(PANEL, /<Modal\s+open=\{!!zoom\}\s+onClose=\{\(\) => setZoom\(null\)\}\s+title=\{zoom\?\.name \|\| view\.label\}\s+size="lg"\s+closeOnOverlay/);
   assert.match(PANEL, /\{file\.sourceLabel \? <Tag label=\{file\.sourceLabel\} className=\{styles\.source\} \/> : null\}/);
   assert.doesNotMatch(PANEL, /StatusBadge/, 'ที่มาของไฟล์และจำนวนเป็นคุณสมบัติ ไม่ใช่สถานะ');
 });
@@ -451,7 +461,7 @@ test('แผง: จำนวนคอลัมน์ตามความกว
   assert.match(PANEL_CSS, /\.reuse \.reuseBtn \{[^}]*min-height: var\(--ctl-h-touch\);/);
   assert.match(PANEL_CSS, /\.reuse \.reuseBtn \{[^}]*width: 100%;/);
   assert.match(PANEL_CSS, /\.reuse \.reuseBtn \{[^}]*white-space: normal;/, 'คำบนปุ่มยาว — ห่อได้ ไม่ล้นการ์ด');
-  assert.match(PANEL_CSS, /\.zoomLink \{[^}]*min-height: var\(--ctl-h-touch\);/);
+  assert.match(PANEL_CSS, /\.zoomBtn \{[^}]*min-height: var\(--ctl-h-touch\);/, 'ปุ่ม "เปิดไฟล์ต้นฉบับ" แทนลิงก์เล็กใต้รูป (planner-q12)');
   assert.match(PANEL_CSS, /@media \(max-width: 680px\) \{\s*\.file \{ grid-template-columns: minmax\(0, 1fr\); \}/);
   for (const [name, sheet] of [['รายการ', LIST_CSS], ['หน้าพื้นที่', ZONE_CSS], ['แผง', PANEL_CSS]]) {
     const cuts = [...sheet.matchAll(/@media\s*\(([^)]*)\)/g)].map((m) => m[1].replace(/\s+/g, ' '));

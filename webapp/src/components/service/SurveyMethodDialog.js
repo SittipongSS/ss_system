@@ -8,8 +8,13 @@
 //    ไฟล์นี้ไม่พิมพ์ซ้ำสักคำ (ยาม: `surveySheetDrawingScreen.test.mjs`)
 // 🔴 **ไม่อ่านคอลัมน์วิธีของแถวเอง** — ถามผ่าน `zoneMethod` · ค่าของวิธีมาจากค่าคงที่ของโมดูลใบ (`surveyMethod.js`)
 //
-// ⚠️ **ไม่มีอะไรถูกบันทึกจนกว่าจะกดปุ่มหลัก** (กฎจอตัดสินใจ: ไม่มี auto-save) · ปุ่มหลักเป็น `GatedAction` — ติดด่านข้อมูล = กดได้
-//    แล้วบอกเหตุ + ช่องที่ติดขึ้นขอบแดง **พร้อมประโยคของเหตุใต้ช่อง** (toast หายไปเอง ขอบแดงที่ไม่มีคำอธิบายอยู่ไม่ได้) ไม่ใช่ปุ่มจาง
+// ⚠️ **ไม่มีอะไรถูกบันทึกจนกว่าจะกดปุ่มหลัก** (กฎจอตัดสินใจ: ไม่มี auto-save) · ติดด่านข้อมูล = กดได้แล้วบอกเหตุ ไม่ใช่ปุ่มจาง:
+//    ช่องที่ติดขึ้นขอบแดง **พร้อมประโยคของเหตุใต้ช่อง** · เหตุที่ไม่ใช่ของช่องไหน ("ยังไม่ได้เปลี่ยน…") = ประโยคใต้ปุ่มหลัก
+//    🐞 (S2b แก้หลังตรวจจอ head-r3-4) ปุ่มหลักเคยเป็น `GatedAction` — เหตุขึ้นสองที่ (ใต้ช่อง + toast) และ toast ทับชื่อกล่อง / กากบาท / ปุ่มท้าย
+//       ⇒ ปุ่มธรรมดา บอกเหตุในกล่องที่เดียว (ท่าเดียวกับกล่อง "ตัดพื้นที่และยกเลิกนัด")
+// ⚠️ **ปุ่ม Esc ไม่ทิ้งของที่กรอก** (S2b แก้หลังตรวจจอ head-r3-52) — มีพื้นที่ที่เลือกเปลี่ยนหรือเหตุผลที่พิมพ์ไว้ = Esc ไม่ปิดกล่อง
+//    ปิดได้ด้วยการกดที่ตั้งใจเท่านั้น ("ปิด" ท้ายกล่อง · กากบาท) · คลิกพื้นหลังไม่ปิดอยู่แล้ว (`Modal` ค่าตั้งต้น `closeOnOverlay` = false)
+//    · กล่องดับแล้ว (`dead` — บันทึกจากกล่องนี้ไม่ได้อีก) = Esc ปิดได้ ไม่มีอะไรให้ถือไว้
 // 🔴 **กล่อง "กดแล้วเกิดขึ้นทันที" อยู่ในแถบท้ายที่นิ่ง ติดกับปุ่มหลัก — ไม่อยู่ในเนื้อที่เลื่อน** (UAT S2b S06):
 //    กล่องนี้คือที่เดียวที่บอกว่ากดแล้วนัดของช่างถูกยกเลิก / ใบออกจากคิว (ไม่มีกล่องยืนยันชั้นสอง) · เดิมอยู่ท้ายเนื้อ ใต้รายการพื้นที่
 //    ⇒ บนมือถือหัวหน้ากด "ทั้งใบ" → ตัวเลือกเหตุผล → ปุ่มหลัก ได้โดยไม่เคยเห็นสักบรรทัด · ลำดับที่ตาเห็นยังเป็นของม็อก B2
@@ -26,7 +31,6 @@ import Modal from "@/components/Modal";
 import thaiText from "@/components/ThaiText";
 import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
-import GatedAction from "@/components/ui/GatedAction";
 import Segmented from "@/components/ui/Segmented";
 import StatusNotice from "@/components/ui/StatusNotice";
 import Textarea from "@/components/ui/Textarea";
@@ -121,6 +125,37 @@ export function surveyMethodFailure(error) {
 }
 
 /**
+ * (S2b แก้หลังตรวจจอ head-r3-52) คำขอปิดกล่องครั้งนี้ต้องถูกเมิน — `true` เมื่อมาจากปุ่ม Esc **และ** กล่องถือของที่หัวหน้ากรอกไว้
+ *   🐞 เลือกพื้นที่และพิมพ์เหตุผลไว้แล้ว กด Esc พลาดครั้งเดียว กล่องปิดและของที่กรอกหายหมดโดยไม่ถาม
+ *   ⇒ ของค้างอยู่ = ปิดได้ด้วยการกดที่ตั้งใจเท่านั้น ("ปิด" · กากบาท) · ไม่มีอะไรค้าง = Esc ปิดได้ตามเดิม · ไม่มีกล่องถามซ้ำ (ไม่มีคำใหม่)
+ * ⚠️ ฟังก์ชันล้วน — เทสต์หยิบซอร์สไปรันตรง ๆ
+ */
+export function surveyMethodEscapeKeeps({ viaEscape = false, dirty = false } = {}) {
+  return viaEscape === true && dirty === true;
+}
+
+/**
+ * (S2b แก้หลังตรวจจอ head-r3-5) ระยะที่ต้องเลื่อนเนื้อลง (px) เมื่อช่องวันส่งผลเพิ่งโผล่ — เลื่อนเท่าที่ต้องให้ช่องขึ้นจอพร้อมที่ว่างด้านล่าง
+ * (`block: "nearest"` + `room`) แล้ว **ไม่เลื่อนจนขอบบนของแถวที่เพิ่งเปลี่ยนพ้นขอบบนของเนื้อ**
+ *   🐞 เดิมเลื่อนให้เห็นทั้งช่องเสมอ — บนมือถือแถวที่เพิ่งเปลี่ยนและปุ่มที่เพิ่งกดหลุดจากจอ หัวหน้ามองไม่เห็นผลของสิ่งที่เพิ่งกด
+ *      และช่องวันไปชิดขอบท้ายเนื้อ ⇒ แถวที่เพิ่งกดสำคัญกว่า (กล่อง "กดแล้วเกิดขึ้นทันที" ในแถบท้ายพูดวันส่งผลอยู่แล้ว)
+ *   🐞 (S2b แก้หลังตรวจจอ head-r3-5 · ตรวจรอบสอง) เลื่อนถึงเพดานแล้วช่องยังไม่ขึ้นจอ (มือถือ 375 กด "ทั้งใบ: ประเมินจากแบบ" — ช่องอยู่ใต้ขอบราว 500px)
+ *      = เลื่อนไปก็ไม่ได้อะไรสักอย่าง: ช่องไม่โผล่ ส่วนปุ่มที่เพิ่งกดกับแถวแรกหลุดจอ ⇒ ไม่เลื่อนเลย
+ *      (ช่องที่ยังว่างพาขึ้นจอเองตอนกดปุ่มหลัก · วันที่เติมให้ขึ้นในกล่อง "กดแล้วเกิดขึ้นทันที")
+ * @param view    `{ top, bottom }` ของเนื้อที่เลื่อน (`.drawer-body`) · @param target ช่องวัน · @param anchor แถวที่เพิ่งเปลี่ยน (`null` = ไม่ยึด)
+ * @param peek    ส่วนของช่องที่ต้องขึ้นจอจึงนับว่า "ช่องโผล่แล้ว" (ตัวช่องกรอกวันพร้อมค่าที่เติมให้) — ไม่ส่ง = ทั้งช่อง
+ * @param room    ที่ว่างใต้ช่อง (px — `scroll-margin-bottom` ของช่อง)
+ * ⚠️ ฟังก์ชันล้วน — เทสต์หยิบซอร์สไปรันตรง ๆ
+ */
+export function surveyRevealScroll({ view, target, peek = target, anchor = null, room = 0 }) {
+  const need = target.bottom + room - view.bottom;
+  if (!(need > 0)) return 0;
+  if (!anchor) return need;
+  const by = Math.max(0, Math.min(need, anchor.top - view.top));
+  return peek.bottom - by <= view.bottom ? by : 0;
+}
+
+/**
  * @param open       เปิดโมดัล — ปิดแล้วฟอร์มถูกล้าง (เปิดใหม่ = เริ่มจากวิธีที่บันทึกอยู่ · เลขการกดใหม่)
  * @param requestId  id ของใบประเมิน
  * @param request    แถวคำร้องของ GET (แผนอ่านวันส่งผลที่รับปากไว้ · เลขที่ใบ)
@@ -157,11 +192,17 @@ export default function SurveyMethodDialog({
   const footRef = useRef(null);
   const reasonBoxRef = useRef(null);
   const dateBoxRef = useRef(null);
+  /* รายการพื้นที่ (`<ol>`) และแถวที่หัวหน้าเพิ่งกด — ตัวยึดของการเลื่อนตอนช่องวันโผล่ (head-r3-5) */
+  const rowsNode = useRef(null);
+  const pressedRow = useRef(null);
+  /* คำขอปิดที่มาจากปุ่ม Esc — ตั้งก่อน `Modal` เห็นปุ่ม (ฟังช่วงจับ) แล้วล้างหลังจบเหตุการณ์นั้น (head-r3-52) */
+  const escapeRef = useRef(false);
   /* นับครั้งที่กดปุ่มหลักตอนยังติดด่าน — แต่ละครั้งพาช่องที่ติดขึ้นจอ (ดู effect ข้างล่าง) */
   const [blockedPress, setBlockedPress] = useState(0);
   const reasonId = useId();
   const reasonLabelId = useId();
   const dateId = useId();
+  const blockedId = useId();
 
   /* ปิดกล่อง = ล้างทั้งฟอร์ม (ล้างตอนปิด ไม่ใช่ตอนเปิด — เปิดรอบหน้าต้องสะอาดตั้งแต่เฟรมแรก) */
   useEffect(() => {
@@ -174,6 +215,7 @@ export default function SurveyMethodDialog({
     setBusy(false);
     setTried(false);
     setHeld(null);
+    pressedRow.current = null;
     sent.current = { key: null, id: null };
     prefilled.current = { reason: false, date: false };
   }, [open]);
@@ -210,11 +252,30 @@ export default function SurveyMethodDialog({
   }, [open, needsDate, defaultDate]);
 
   /* 🐞 UAT S2b S06 / S08: ช่อง "วันที่จะส่งผลประเมิน" โผล่ **ใต้ขอบล่างของเนื้อที่เลื่อน** (กล่องผลอยู่ในแถบท้ายที่นิ่ง เนื้อจึงเตี้ย)
-     — หัวหน้ากด "ทั้งใบ: ประเมินจากแบบ" แล้วบันทึกวันที่ระบบเติมให้ได้โดยไม่เคยเห็นช่อง ⇒ ช่องโผล่เมื่อไร เลื่อนเนื้อให้เห็นทั้งช่อง
-     (`nearest` = เลื่อนเท่าที่ต้องเลื่อน · ไม่ย้ายโฟกัส: หัวหน้ายังอยู่ที่ปุ่มที่เพิ่งกด) */
+     — หัวหน้ากด "ทั้งใบ: ประเมินจากแบบ" แล้วบันทึกวันที่ระบบเติมให้ได้โดยไม่เคยเห็นช่อง ⇒ ช่องโผล่เมื่อไร เลื่อนเนื้อให้ช่องขึ้นจอ
+     (ไม่ย้ายโฟกัส: หัวหน้ายังอยู่ที่ปุ่มที่เพิ่งกด)
+     🐞 (S2b แก้หลังตรวจจอ head-r3-5) เดิม `scrollIntoView({ block: "nearest" })` ทั้งช่อง — บนมือถือแถวที่เพิ่งเปลี่ยนกับปุ่มที่เพิ่งกดหลุดจากจอ
+        ⇒ เลื่อนเท่าที่ต้อง + ที่ว่างใต้ช่อง (`scroll-margin-bottom` ของช่อง) แต่ไม่พ้นแถวที่เพิ่งเปลี่ยน (`surveyRevealScroll`)
+        · ถึงเพดานแล้วตัวช่องกรอกวันยังไม่ขึ้นจอ = ไม่เลื่อนเลย
+        แถวยึด = แถวที่เพิ่งกด (ยังอยู่ในรายการ) · กดทางลัดทั้งใบ = แถวที่เปลี่ยน **แถวแรก**
+        🐞 (head-r3-5 · ตรวจรอบสอง) เดิมยึดแถวที่เปลี่ยนแถวสุดท้าย — ทางลัดเปลี่ยนทุกแถวในการกดเดียว ยึดแถวท้ายจึงพาปุ่มที่เพิ่งกดกับแถวแรก ๆ
+           หลุดจอ · ทุกแถวที่ทางลัดเปลี่ยนคือ "แถวที่เพิ่งเปลี่ยน" ⇒ เพดานต้องเป็นของแถวบนสุด */
   useEffect(() => {
     if (!open || !needsDate) return;
-    dateBoxRef.current?.scrollIntoView({ block: "nearest" });
+    const box = dateBoxRef.current;
+    const view = box?.closest(".drawer-body");
+    if (!box || !view) return;
+    const list = rowsNode.current;
+    const pressed = list && pressedRow.current && list.contains(pressedRow.current) ? pressedRow.current : null;
+    const anchor = pressed || list?.querySelector("li[data-changed]") || null;
+    const by = surveyRevealScroll({
+      view: view.getBoundingClientRect(),
+      target: box.getBoundingClientRect(),
+      peek: (box.querySelector(".date-input-wrap") || box).getBoundingClientRect(),
+      anchor: anchor ? anchor.getBoundingClientRect() : null,
+      room: parseFloat(getComputedStyle(box).scrollMarginBottom) || 0,
+    });
+    if (by > 0) view.scrollBy({ top: by });
   }, [open, needsDate]);
 
   /* กดปุ่มหลักตอนยังติดด่าน = พาช่องแรกที่ติดขึ้นจอและรับโฟกัส (เหตุผลก่อน แล้ววันส่งผล — ลำดับบนจอ)
@@ -243,8 +304,27 @@ export default function SurveyMethodDialog({
 
   /* โฟกัสแรก = ตัวเลือกของพื้นที่แรก (ไม่ใช่กากบาทปิด) — `Modal` อ่าน ref นี้ตอนเปิด · รายการถูกวาดก่อน effect ของมันเดิน */
   const rowsRef = useCallback((node) => {
+    rowsNode.current = node;
     firstTarget.current = node ? node.querySelector('button[role="radio"]:not([disabled])[tabindex="0"]') : null;
   }, []);
+  /* แถวที่หัวหน้าเพิ่งกด (เมาส์ / นิ้ว / ลูกศรของแถบเลือก) — จำไว้ให้ตัวเลื่อนของช่องวันยึด (head-r3-5)
+     กดนอกแถว (ทางลัดทั้งใบ) = ไม่มีแถว ⇒ ตัวเลื่อนยึดแถวที่เปลี่ยนแถวแรก */
+  const notePress = (event) => {
+    pressedRow.current = event.target instanceof Element ? event.target.closest("li") : null;
+  };
+
+  /* Esc ผ่าน `Modal` มาทาง `onClose` ทางเดียวกับกากบาท — แยกด้วยการฟัง keydown **ช่วงจับ** ที่ document (เดินก่อนตัวฟังของ `Modal`)
+     แล้วล้างหลังเหตุการณ์นั้นจบ (`setTimeout` — microtask ล้างก่อนตัวฟังของ `Modal` จะเดิน) · ไม่แก้ `Modal` ของกลาง (head-r3-52) */
+  useEffect(() => {
+    if (!open) return undefined;
+    const mark = (event) => {
+      if (event.key !== "Escape") return;
+      escapeRef.current = true;
+      setTimeout(() => { escapeRef.current = false; }, 0);
+    };
+    document.addEventListener("keydown", mark, true);
+    return () => document.removeEventListener("keydown", mark, true);
+  }, [open]);
 
   const pick = (zone, to) => setTargets((prev) => {
     const next = { ...prev };
@@ -257,7 +337,15 @@ export default function SurveyMethodDialog({
   );
   const fillReason = (word) => setReason((text) => surveyReasonWithPreset(text, word, SURVEY_METHOD_REASON_CHIPS));
 
-  const close = () => { if (!busy) onClose?.(); };
+  /* ของที่หัวหน้ากรอกค้างในกล่อง — พื้นที่ที่เลือกเปลี่ยน หรือเหตุผลที่พิมพ์ (เหตุผลที่ระบบเติมให้ของ "ยกเลิกนัดอย่างเดียว" ไม่นับ)
+     ⚠️ ใบไม่อยู่ในสภาพที่กล่องบอกแล้ว (`dead` — ทุกช่องดับ เหลือปุ่ม "ปิด") = ไม่มีอะไรให้ถือไว้ ⇒ Esc ปิดได้
+        (S2b แก้หลังตรวจจอ head-r3-52 · ตรวจรอบสอง: ของที่กรอกยังค้างในสถานะ แต่บันทึกจากกล่องนี้ไม่ได้อีกแล้ว — กด Esc แล้วเงียบ คนใช้แป้นต้องไล่ Tab หาปุ่ม) */
+  const dirty = !dead && (changes.length > 0 || (reason.trim() !== "" && reason !== defaultReason));
+  const close = () => {
+    if (busy) return;
+    if (surveyMethodEscapeKeeps({ viaEscape: escapeRef.current, dirty })) return;
+    onClose?.();
+  };
 
   const submit = async () => {
     if (locked) return;
@@ -289,20 +377,22 @@ export default function SurveyMethodDialog({
     }
   };
 
-  /* เหตุที่ปุ่มหลักยังไม่ไป = ของแผน (ยังไม่ได้เปลี่ยนพื้นที่ไหน · เหตุผลสั้น/ยาวเกิน · ยังไม่ระบุวัน) — กดแล้วบอกเป็น toast
+  /* เหตุที่ปุ่มหลักยังไม่ไป = ของแผน (ยังไม่ได้เปลี่ยนพื้นที่ไหน · เหตุผลสั้น/ยาวเกิน · ยังไม่ระบุวัน)
      ช่องไหนติดก็ถามจากลิสต์เดียวกัน (ค่าคงที่ตัวเดียวกับที่แผนใส่) ไม่เขียนกติกาซ้ำที่นี่ */
   const blocker = plan.disabledReason || plan.errors.join(" · ");
   const fieldErrors = surveyMethodErrorTexts(plan.errors);
-  /* กดปุ่มหลักตอนติดด่าน → นับ (ตัวฟังของปุ่มเอง — `GatedAction` ไม่เรียก `onClick` ตอนติดด่าน และ `onClickCapture` ของมันมีงานเดียว) */
-  const blockerRef = useRef("");
-  useEffect(() => { blockerRef.current = blocker; });
-  useEffect(() => {
-    const button = primaryRef.current;
-    if (!open || !button) return undefined;
-    const count = () => { if (blockerRef.current) setBlockedPress((n) => n + 1); };
-    button.addEventListener("click", count);
-    return () => button.removeEventListener("click", count);
-  }, [open, dead]);
+  /* (S2b แก้หลังตรวจจอ head-r3-4) กดปุ่มหลัก: ผ่าน = บันทึก · ติดด่าน = ไม่ยิง ไม่มี toast — เหตุอยู่ในกล่องที่เดียว
+     ช่องที่ติดขึ้นขอบแดง + ประโยคใต้ช่อง (และพาช่องขึ้นจอ — effect ของ `blockedPress`) · เหตุที่ไม่ใช่ของช่องไหน = ประโยคใต้ปุ่ม (`blockedNote`) */
+  const press = () => {
+    setTried(true);
+    if (blocker) {
+      setBlockedPress((n) => n + 1);
+      return;
+    }
+    submit();
+  };
+  /* ประโยคใต้ปุ่มหลัก — เฉพาะเหตุระดับแผน (ยังไม่ได้เปลี่ยนพื้นที่ไหน · ใบถูกแก้จากที่อื่น) หลังกดแล้ว · เหตุของช่องอยู่ใต้ช่องของมันแล้ว */
+  const blockedNote = tried && !dead ? plan.disabledReason : null;
   /* เหตุผลยาวเกิน = บอกทันที ไม่รอให้กดปุ่มหลัก: ตัวเลือกสำเร็จรูปเติมคำนำหน้าได้จนเกินเพดาน (ช่องเองพิมพ์เกินไม่ได้) —
      ไม่บอกตรงนี้ หัวหน้าจะเจอช่องที่ "พิมพ์เพิ่มไม่ได้ ลบได้อย่างเดียว" โดยไม่รู้เหตุ */
   const reasonOver = reason.trim().length > SURVEY_METHOD_REASON_MAX;
@@ -332,22 +422,23 @@ export default function SurveyMethodDialog({
           <Button ref={closeRef} tone="primary" onClick={close}>ปิด</Button>
         ) : (
           <>
-            <Button variant="quiet" onClick={close} disabled={busy}>ยกเลิก</Button>
-            <GatedAction
+            {/* (S2b แก้หลังตรวจจอ head-r3-1) ปุ่มปิดกล่องคือ "ปิด" ทุกรูปของกล่อง — "ยกเลิก" ติดกับปุ่มหลัก "ยกเลิกนัด" กดผิดปุ่มเดียว
+                นัดหายและช่างได้รับแจ้ง · คำเดียวกับปุ่มของสภาพ `dead` · ไม่สลับคำตามรูป (ปุ่มเดิมไม่เปลี่ยนชื่อไปมาตอนกดไทล์) */}
+            <Button variant="quiet" onClick={close} disabled={busy}>ปิด</Button>
+            <Button
               ref={primaryRef}
               tone="primary"
-              blocker={blocker}
-              /* กดทุกครั้ง (ผ่านหรือติดด่าน) = เริ่มโชว์ช่องที่ติด — `GatedAction` ไม่เรียก `onClick` ตอนติดด่าน */
-              onClickCapture={() => setTried(true)}
-              onClick={submit}
+              onClick={press}
               disabled={busy}
               aria-busy={busy || undefined}
+              aria-describedby={blockedNote ? blockedId : undefined}
             >
               {busy ? "กำลังบันทึก…" : plan.confirmLabel}
-            </GatedAction>
+            </Button>
           </>
         )}
       </div>
+      {blockedNote ? <p className={styles.blocked} id={blockedId} role="alert">{blockedNote}</p> : null}
     </div>
   );
 
@@ -365,7 +456,7 @@ export default function SurveyMethodDialog({
     >
       <div className={styles.body}>
         {/* ── พื้นที่ทุกแถวที่ยังอยู่ในใบ + ทางลัดทั้งใบ ── */}
-        <section className={styles.zones} aria-label={SURVEY_METHOD_MODAL_TITLE}>
+        <section className={styles.zones} aria-label={SURVEY_METHOD_MODAL_TITLE} onClickCapture={notePress} onKeyDownCapture={notePress}>
           <div className={styles.zonesHead}>
             <p className={styles.counts}>{countsText}</p>
             <div className={styles.shortcuts}>

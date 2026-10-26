@@ -23,10 +23,11 @@ import { uploadAttachment } from "@/lib/master/attachmentUpload";
 import { describeResponseError } from "@/lib/fetchError";
 import {
   Plus, Trash2, Download, Paperclip, X, CheckCircle2, Circle,
-  Eye, FileType, FileSpreadsheet, Link2, Lock, Camera, Check,
+  Eye, FileType, FileSpreadsheet, Link2, Lock, Camera, Check, ExternalLink,
 } from "lucide-react";
 import {
   PHOTO_DELETE_LABEL,
+  panelPhotoSplit,
   photoDeleteConfirm,
   photoTilesView,
   photoUploadsOf,
@@ -43,7 +44,9 @@ import {
   ATTACHMENT_META_FIELDS,
   attachmentTypeLabel,
   documentValidity,
-  isPreviewableImage,
+  isDrawableImage,
+  isUndrawnImage,
+  UNDRAWN_IMAGE_OPEN_TEXT,
   ISSUED_DATE_FIELD,
   MAX_UPLOAD_BYTES,
   MAX_UPLOAD_MB,
@@ -607,7 +610,8 @@ export default function AttachmentsPanel({
           <Lock size={14} className="shrink-0" />
           <span className="truncate">{it.fileName || "เอกสารส่วนบุคคล"}</span>
         </span>
-      ) : isPreviewableImage(it) ? (
+      ) : isDrawableImage(it) ? (
+        /* รูปที่เบราว์เซอร์วาดได้เท่านั้นที่ได้ภาพย่อ + กล่องดูรูปเต็ม — TIFF เป็นลิงก์ข้างล่าง (S2b แก้หลังตรวจจอ head-rc-q8) */
         <button
           type="button"
           onClick={() => setPreview(it)}
@@ -646,6 +650,15 @@ export default function AttachmentsPanel({
           <span className="truncate">{it.fileName || "ไฟล์แนบ"}</span>
           {!compact && it.sizeBytes != null && (
             <span className="text-[10px] text-[var(--text-3)] shrink-0">({formatSize(it.sizeBytes)})</span>
+          )}
+          {/* ⭐ รูปที่เบราว์เซอร์วาดไม่ขึ้น (TIFF) บอกว่ากดแล้วไปไหน — คำเดียวกับแผง "แบบจากฝ่ายขาย" ที่วาด TIFF เป็นแผ่นลิงก์
+              (S2b แก้หลังตรวจจอ head-rc-q8) · คนเห็นนามสกุลรูปแต่ไม่มีภาพย่อจะได้ไม่คิดว่าไฟล์พัง
+              ⚠️ อยู่ **ในลิงก์** — ชื่อที่โปรแกรมอ่านจอได้ยินเป็น "ชื่อไฟล์ เปิดในแท็บใหม่" · ไฟล์ชนิดอื่น (PDF ฯลฯ) หน้าตาเดิม */}
+          {isUndrawnImage(it) && (
+            <span className={styles.rowOpenNew}>
+              {UNDRAWN_IMAGE_OPEN_TEXT}
+              <ExternalLink size={12} aria-hidden="true" />
+            </span>
           )}
         </a>
       )}
@@ -936,10 +949,11 @@ export default function AttachmentsPanel({
   };
 
   /* โหมด `photoGroups`: กลุ่มของรูปคิดครั้งเดียวต่อการวาด — แถวรายกลุ่มกับกล่องดูรูปเต็มอ่านก้อนเดียวกัน
-     ⚠️ หยิบเฉพาะรูปของหัวข้อแผง (docType ตัวแรก) — โหมดนี้มีความหมายกับแผงที่ประกาศหัวข้อเดียวเท่านั้น */
+     ⚠️ หยิบเฉพาะรูปของหัวข้อแผง (docType ตัวแรก) — โหมดนี้มีความหมายกับแผงที่ประกาศหัวข้อเดียวเท่านั้น
+     ⚠️ ชุด "รูป" ของโหมดนี้คือชุดกว้าง (`grouped` — TIFF ยังอยู่ในแถวของจุด/ถาด) ให้ตรงกับ `isSpotPhoto` (เหตุผลที่ `panelPhotoSplit`) */
   const groupType = types[0]?.key || "other";
   const groupsView = tilesMode && typeof photoGroups === "function"
-    ? photoGroups(loading ? [] : items.filter((it) => it.docType === groupType && isPreviewableImage(it)))
+    ? photoGroups(loading ? [] : panelPhotoSplit(items.filter((it) => it.docType === groupType), { grouped: true }).photos)
     : null;
   /* ย้ายรูปจากกล่องดูรูปเต็ม — ผ่านแล้วปิดกล่อง (รูปไปอยู่แถวอื่นแล้ว ตัวเลือกในกล่องเป็นของตำแหน่งเก่า) */
   const previewRelink = groupsView && preview
@@ -1081,7 +1095,11 @@ export default function AttachmentsPanel({
          `inlineUpload` ใช้ทะเบียนของ entity ทั้งชุด กรองแล้วไฟล์ของเขาจะหาย
        (`scoped` · `inlineType` ประกาศไว้บนสุดของแผง — ป้ายชนิดเอกสาร `typePillOf` ถามตัวเดียวกัน) */
     const shown = scoped ? items.filter((it) => it.docType === inlineType) : items;
-    const tilePhotos = loading ? [] : shown.filter(isPreviewableImage);
+    /* รูป/ไฟล์ของโหมด inline แบ่งที่ตัวตัดสินเดียว (`panelPhotoSplit`) — แผ่นรูป · ตะแกรง · รายการรายแถว · แถวไฟล์อ่านก้อนเดียวกัน
+       ⇒ ไม่มีใบไหนอยู่สองที่หรือหายจากทั้งสองที่ · TIFF = แถวไฟล์ ไม่มีป้าย "ขึ้นแล้ว" (S2b แก้หลังตรวจจอ head-rc-q8)
+       ⚠️ โหมด `photoGroups` แบ่งด้วยชุดกว้างตัวเดียวกับแถวของจุด (`groupsView` ข้างบน) — ไม่งั้น TIFF ของจุดขึ้นซ้ำเป็นแถวไฟล์ */
+    const split = panelPhotoSplit(shown, { grouped: !!groupsView });
+    const tilePhotos = loading ? [] : split.photos;
 
     return (
       <div className="mt-1" {...(fileUploads ? intake.zoneProps : {})}>
@@ -1166,8 +1184,7 @@ export default function AttachmentsPanel({
         {tilesMode && !groupsView && renderPhotoTiles({ photos: tilePhotos, canAdd: canEdit && fileUploads, addType: inlineType })}
 
         {!loading && shown.length > 0 && (() => {
-          const photos = shown.filter(isPreviewableImage);
-          const files = shown.filter((it) => !isPreviewableImage(it));
+          const { photos, files } = split;
           const rowsOf = !tilesMode && typeof photoRows === "function" ? photoRows(photos) : null;
           return (
             <>

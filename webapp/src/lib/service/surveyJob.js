@@ -23,7 +23,7 @@ import {
   surveyChangeCounts, surveyChangeText, surveyGateChecklist, surveyPackageMixText, surveyTotals,
   surveyZonePackageText, surveyZoneSuggestedDiffText,
 } from './survey';
-import { surveyControlView, surveyPackagesLabel, surveySendBackAskText, surveyZoneFacts } from './surveyControl';
+import { surveyControlView, surveyPackagesLabel, surveyPlanGateShown, surveySendBackAskText, surveyZoneFacts } from './surveyControl';
 import { surveyRequestDocumentView } from './surveyDocumentView';
 import { isDrawingZone, surveyMethodMix, surveyNeedsVisit, surveyZoneNeedsResave, zoneMethod } from './surveyMethod';
 import {
@@ -104,7 +104,13 @@ function stageOf(request, visit, control, today, { filesUnknown = false, sendBac
     if (key === 'recalled') return key;
     const resultDate = String(request.committedResultDate ?? '').trim();
     if (!resultDate) return 'desk-queue';
-    return today && resultDate < today ? 'desk-overdue' : 'desk-working';
+    if (today && resultDate < today) return 'desk-overdue';
+    /* ⭐ **ด่านส่งผลผ่านครบ = "พร้อมส่งผลให้ฝ่ายขาย"** (S2b แก้หลังตรวจจอ head-rc-r2-22 · ผลรีวิวรอบสาม) — ไทม์ไลน์ของหน้านี้ชี้ขั้น "ส่งผล"
+       และติ๊ก "ประเมินจากแบบ" เสร็จแล้ว (`deskReady` ← ขั้นของการ์ดตัวเดียวกัน) ⇒ แถบตอนนี้ต้องไม่พูด "กำลังประเมินจากแบบ" ข้างกัน ·
+       พาดหัวคำเดียวกับใบผสมที่พร้อมส่ง (`nowByStage.ready` — ไม่เอ่ยนัดหรือช่าง)
+       ⚠️ หน้าคำร้องไม่ส่งเอกสารให้การ์ด ⇒ คีย์ `ready` ของการ์ด = ด่านของพื้นที่ผ่านครบ = `deskReady` ของราง (สองตัวมาจากก้อนเดียวกัน)
+       ⚠️ เลยวันส่งผลแล้วยังเป็น "เลยวันส่งผล" — โทนแดงของคำสัญญาที่พลาดสำคัญกว่า และบรรทัดรอง ("… ส่งผล หรือเลื่อนวันส่งผล") ก็ชี้ขั้นส่งผลอยู่แล้ว */
+    return key === 'ready' ? 'ready' : 'desk-working';
   }
   /* ⚠️ **งานหน้างานมาก่อนแถว "ดึงกลับ"** — ใบที่ถูกดึงกลับแล้วช่างกำลังวัดใหม่ (RQ-AS-26090188: ถูกดึงกลับ
      เพราะตอบด้วยปุ่มกลางตอนยังไม่มีผลวัด) ถ้าขึ้น "ดึงผลกลับมาแก้ — หัวหน้าแก้ผลแล้วส่งอีกครั้ง" คือชี้ผิดคน
@@ -184,7 +190,8 @@ function dueOf(request, today) {
     };
   }
   const rel = today ? relDayText(date, today, 'เลยกำหนด') : null;
-  const gap = committed && wanted ? committedVsRequested(committed, wanted) : null;
+  /* เลยวันที่รับปากแล้ว = ไม่มีบรรทัด "เร็วกว่าที่ขอ" (S2b แก้หลังตรวจจอ sales-minor-3 · กติกาอยู่ที่ `committedVsRequested`) */
+  const gap = committed && wanted ? committedVsRequested(committed, wanted, { today }) : null;
   return {
     label: committed ? 'ส่งผลภายใน' : 'ผู้ขอต้องการผล',
     value: dayYear(date),
@@ -216,8 +223,12 @@ const zonePlanText = (count) => {
   return count ? `แบบ ${count}` : NA;
 };
 
-/* คำของช่อง "หน้างาน" บนตารางพื้นที่ สำหรับแถวที่เหลือแค่บันทึกอีกครั้งหลังกลับมาเป็นลงหน้างาน (ย่อจากประโยคของด่านขนาด) */
-export const SURVEY_ZONE_RESAVE_TEXT = 'กลับมาเป็นลงหน้างาน — รอตรวจขนาดแล้วบันทึกอีกครั้ง';
+/* คำของช่อง "หน้างาน" บนตารางพื้นที่ สำหรับแถวที่เหลือแค่บันทึกอีกครั้งหลังกลับมาเป็นลงหน้างาน (ย่อจากประโยคของด่านขนาด)
+   🔄 S2b แก้หลังตรวจจอ (crew-q3 + head-rc-q2) — "ขนาดและภาพกว้าง" ตามประโยคของด่านขนาด (`survey.js`) */
+export const SURVEY_ZONE_RESAVE_TEXT = 'กลับมาเป็นลงหน้างาน — รอตรวจขนาดและภาพกว้างแล้วบันทึกอีกครั้ง';
+/* หมายเหตุของช่องจุดติดตั้งบนแถบตัวเลขของใบจากแบบทั้งใบที่ส่งผลแล้ว (S2b-O9 · มติเจ้าของ 19/10) — แทน "เลือก / ที่ติดตั้งได้"
+   ซึ่งอ่านว่ามีคนเลือกจุดและตรวจแล้วว่าติดตั้งได้ (ไม่จริงกับพื้นที่จากแบบ — จุดไม่บังคับ และไม่มีการเลือก) */
+export const SURVEY_DRAWING_SPOTS_NOTE = 'จุดโดยประมาณจากแบบ';
 const zoneResaveOnly = (zone, facts) => surveyZoneNeedsResave(zone)
   && facts.missingCrew.length === 1 && facts.missingCrew[0].key === 'size' && facts.sizeComplete === true;
 
@@ -461,7 +472,8 @@ function dateFacts(request, visit, today, assignee, { finished = false, deskJob 
         tone: early >= 0 ? 'ok' : 'late',
       };
     })()
-    : committedResult && wantedResult ? committedVsRequested(committedResult, wantedResult) : null;
+    /* เลยวันส่งผลที่รับปากแล้ว = ไม่เทียบกับวันที่ขอ (sales-minor-3 — หัวแดง "เลยวันที่จะส่งผล" ข้างคำเขียว "เร็วกว่าที่ขอ" อ่านไม่ออก) */
+    : committedResult && wantedResult ? committedVsRequested(committedResult, wantedResult, { today }) : null;
   const facts = [
     {
       key: 'submitted',
@@ -523,12 +535,10 @@ function dateFacts(request, visit, today, assignee, { finished = false, deskJob 
  * @param refreshStalled เปลือกอ่านใบเบื้องหลังพังติดกันจนเลิกตรวจซ้ำเองแล้ว (`refreshStalled` ของ `app/requests/[id]`)
  *                    — บล็อกเอกสารใช้เลิกสัญญาว่า "หน้านี้ตรวจให้เองทุก 15 วินาที" (`surveyRequestDocumentView`)
  */
-export function surveyJobView({
-  request = null, today = null, viewer = {}, people = [], peopleLoading = false, refreshStalled = false,
-} = {}) {
-  if (!request) return null;
+/* ── ก้อนของใบคำร้องที่ view ทั้งสองตัวข้างล่างอ่าน (แถวพื้นที่ · ไฟล์ · การ์ดควบคุมของหน้าคำร้อง) — ประกอบที่เดียว ──
+   ⚠️ การ์ดควบคุมของหน้าคำร้องประกอบด้วยค่าชุดนี้ชุดเดียว ⇒ `surveyJobView` กับ `surveyRequestDeskReady` ตอบขั้นเดียวกันเสมอ */
+function requestSurveyParts(request, { today = null, canDecide = false } = {}) {
   const visit = request.surveyVisit || null;
-  const visits = Array.isArray(request.surveyVisits) ? request.surveyVisits : (visit ? [visit] : []);
   const zones = Array.isArray(request.surveyZones) ? request.surveyZones : [];
   const unknown = request.surveyUnknown || {};
   const filesByZone = request.surveyFilesByZone && typeof request.surveyFilesByZone === 'object'
@@ -541,14 +551,45 @@ export function surveyJobView({
     recall: request.surveyRecall || null,
     sendBack: request.surveySendBack ?? null,
     unknown: { recall: unknown.recall, sendBack: unknown.sendBack },
-    viewer: { canWrite: false, canDecide: viewer.canDecide === true, canOpenRequest: true },
-    /* หน้าคำร้องไม่มีทะเบียนขนาดแพ็คเกจและไม่มีปุ่มส่งผล — ด่าน "ขนาดถูกลบ" ถามที่จอใบประเมินกับ route ส่งผล (PR-P §1) */
+    viewer: { canWrite: false, canDecide: canDecide === true, canOpenRequest: true },
+    /* หน้าคำร้องไม่มีทะเบียนขนาดแพ็คเกจและไม่มีปุ่มส่งผล — ด่าน "ขนาดถูกลบ" ถามที่จอใบประเมินกับ route ส่งผล (PR-P §1)
+       ⭐ ขั้นของงานโต๊ะ (`deskReady` · ขั้น "ส่งผล") ไม่ขึ้นกับด่านนี้ทั้งสองจอ (`deskGatesPass` ของการ์ด · head-rc-r2-22 ผลรีวิวรอบห้า)
+          ⇒ ทะเบียนที่หน้านี้ถามไม่ได้ไม่ทำให้รางของหน้านี้ชี้ขั้นต่างจากการ์ดของใบประเมิน (ขนาดถูกลบ = เหตุของขั้นส่งผล เหมือนเหตุของเอกสาร) */
     skipPackageRegistry: true,
     tab: 'result',
     today,
     /* ⚠️ **ไม่ส่ง `document`** — หน้านี้ไม่มีแถวด่าน "เอกสารประเมินออกได้" (GET คำร้องไม่ตรวจเนื้อเอกสาร · PR-3 §3.6)
        เอกสารของหน้านี้อยู่ที่คีย์ `document` ของผลลัพธ์ (`surveyRequestDocumentView`) */
   });
+  return { visit, zones, unknown, filesByZone, control };
+}
+
+/* งานโต๊ะที่ด่านส่งผลผ่านครบ ⇒ ขั้นปัจจุบันบนรางคือ "ส่งผล" (head-rc-r2-22) — ถามจากขั้นของการ์ดตัวเดียวกัน ไม่ตัดสินซ้ำ */
+const deskReadyOf = (needsVisit, control) => needsVisit === false && control?.step?.id === 'answered';
+
+/**
+ * งานโต๊ะ (ทุกพื้นที่ที่ใช้อยู่ประเมินจากแบบ) ที่ด่านส่งผลผ่านครบแล้วไหม — ค่าที่ไทม์ไลน์ของ `surveyJobView` ส่งให้ `requestRailSteps`
+ * ⭐ ส่งออกให้รางของการ์ด "จัดการคำร้อง" ในเปลือก `app/requests/[id]` (โหมดแก้ — `requestRailSteps(req, { hasItems, deskReady })`)
+ *    ชี้ขั้นเดียวกับไทม์ไลน์ของหน้าเดียวกันตอนไม่แก้ (S2b แก้หลังตรวจจอ head-rc-r2-22 · ผลรีวิวรอบสอง)
+ *    🐞 ไม่ส่ง = รางของการ์ดค้าง "ประเมินจากแบบ" (ขั้น 4) ขณะที่ไทม์ไลน์ของใบเดียวกันขึ้น "ส่งผล" (ขั้น 5) — สลับโหมดแก้แล้วขั้นถอยเอง
+ *    ⭐ ต่อสายแล้วตอนรวมงาน: `requestRailSteps(req, { hasItems, deskReady: deskJob && surveyRequestDeskReady(req, { today }) })`
+ *       (`app/requests/[id]/page.js` · ยามซอร์สที่ `surveyFixCard.test.mjs`)
+ * @param request ใบจาก GET คำร้อง (ก้อน `survey*` ชุดเดียวกับ `surveyJobView`) · @param today วันไทยวันนี้ (`null` = ไม่รู้)
+ * ⚠️ ใบที่ต้องมีนัด / ไม่ใช่ใบประเมิน / ไม่มีใบ = `false` (รางเดิมทุกค่า)
+ */
+export function surveyRequestDeskReady(request, { today = null } = {}) {
+  if (!request || !Array.isArray(request.surveyZones)) return false;
+  const needsVisit = surveyNeedsVisit(request.surveyZones);
+  if (needsVisit !== false) return false;
+  return deskReadyOf(needsVisit, requestSurveyParts(request, { today }).control);
+}
+
+export function surveyJobView({
+  request = null, today = null, viewer = {}, people = [], peopleLoading = false, refreshStalled = false,
+} = {}) {
+  if (!request) return null;
+  const { visit, zones, unknown, filesByZone, control } = requestSurveyParts(request, { today, canDecide: viewer.canDecide });
+  const visits = Array.isArray(request.surveyVisits) ? request.surveyVisits : (visit ? [visit] : []);
   const filesUnknown = unknown.files === true;
   /* 🔑 ใบนี้ต้องมีนัดเข้าพื้นที่ไหม — คำนวณจากแถวพื้นที่ของใบ (ตัวตัดสินเดียวของทั้งระบบ · `surveyMethod.js`)
      ขั้นของงานกับจุดบนรางถามค่าเดียวกัน ⇒ สองที่ชี้ขั้นเดียวกันเสมอ */
@@ -574,6 +615,15 @@ export function surveyJobView({
      ใบที่ยื่นเป็นประเมินจากแบบเก็บกระจกของวันรับผลไว้ในคอลัมน์นั้น */
   const wish = surveyWishedVisit(request);
   const assignee = requestAssignee(request);
+  const headWho = `หัวหน้า ${dept}`;
+  /* ⭐ เช็คลิสต์ด่านของใบ (ตัวเดียวกับการ์ดของใบประเมิน) — แถวผังของใบผสมนับพื้นที่ลงหน้างาน (`surveyPlanGateShown` · head-r3-53)
+     ⚠️ ของงานโต๊ะ: คนที่ถือใบ = ผู้รับผิดชอบบนใบ (หัวหน้าที่รับปากวันส่งผล) · ยังไม่มีชื่อ = "หัวหน้า TS"
+        ตัวนับคือ **ด่านขนาด** (พื้นที่ที่ยังใช้อยู่และมีขนาดครบ / พื้นที่ที่ยังใช้อยู่) · เขียน "กรอกขนาดจากแบบแล้ว" ไม่ใช่ "วัดแล้ว"
+        — แถบตอนนี้ กล่องขั้นตอน (sales-q2) และการ์ดด่านฝั่งหัวหน้าของใบผสม (head-rc-q11) อ่านคู่เดียวกัน */
+  const gates = surveyGateChecklist(zones, filesByZone).map((gate) => surveyPlanGateShown(gate, zones, filesByZone));
+  const deskHead = assignee.name || headWho;
+  const deskSize = gates.find((gate) => gate.key === 'size') || null;
+  const deskSizeText = deskSize?.total > 0 ? `กรอกขนาดจากแบบแล้ว ${deskSize.done} / ${deskSize.total} พื้นที่` : '';
   const helpers = helperNames(visit, people, peopleLoading);
   const totals = surveyTotals(zones);
   const progress = control.progress;
@@ -601,7 +651,10 @@ export function surveyJobView({
     : (mix.drawing ? progressText : '');
 
   /* ── หกขั้น — ชื่อจากราง (ทะเบียน) · เนื้อจากใบจริง ─────────────────────────── */
-  const rail = requestRailSteps(request, { visit, needsVisit });
+  /* งานโต๊ะที่ด่านส่งผลผ่านครบชี้ขั้น "ส่งผล" (head-rc-r2-22) — ถามจากขั้นของการ์ดตัวเดียวกัน ไม่ตัดสินซ้ำที่นี่ (สองจอชี้ขั้นเดียวกัน)
+     · ตัวเดียวกับ `surveyRequestDeskReady` ที่รางของการ์ด "จัดการคำร้อง" ในโหมดแก้อ่าน */
+  const deskReady = deskReadyOf(needsVisit, control);
+  const rail = requestRailSteps(request, { visit, needsVisit, deskReady });
   const index = stage === 'closed' || stage === 'closed-unassessed' ? rail.steps.length : rail.index;
   const byId = Object.fromEntries(rail.steps.map((step) => [step.id, step]));
   const person = (name, note = null) => (name ? { name, note } : null);
@@ -663,14 +716,17 @@ export function surveyJobView({
      · นัดของใบ (ถ้ามี) ยังอยู่ครบที่คีย์ `visit` ของผลลัพธ์ และรหัสนัดบนแถบตอนนี้ (`now.visitCode`)
      🔴 ไม่มีขั้นไหนของงานโต๊ะเขียน "ไม่เคยลงคิว" / "ไม่ได้เข้าพื้นที่" — พื้นที่จากแบบอาจมาหลังช่างเข้าไปจริงแล้วห้อง
         ยังไม่พร้อม (มติ D3) ประโยคหลังจึงไม่จริงทุกกรณี */
+  /* 🔄 S2b แก้หลังตรวจจอ sales-q2 — กล่องของสองขั้นนี้เคยว่าง (ขั้นปัจจุบันที่ไฮไลต์อยู่ดูเหมือนจอโหลดไม่ครบ) ⇒ ใส่ข้อเท็จจริงที่แถบหัวพูดอยู่แล้ว
+     · รับปากวันส่งผล = หัวหน้าที่ถือใบ (คนเดียวกับ "… รับผิดชอบ" ของแถบตอนนี้) + "จะส่งผล {วัน}" · ยังไม่รับปาก = ไม่มีของ (ขั้นยังไม่เกิด)
+     · ประเมินจากแบบ = "กรอกขนาดจากแบบแล้ว a / k พื้นที่" (ตัวนับเดียวกับแถบตอนนี้) · ไม่มีคำใหม่ */
   const deskPromiseStep = {
     id: 'commitDue',
     when: deskResultDate ? stampText(request.dueCommittedAt) : '',
-    people: [],
+    people: deskResultDate ? [person(deskHead)] : [],
     visitLink: null,
-    lines: [],
+    lines: deskResultDate ? [`จะส่งผล ${dayText(deskResultDate)}`] : [],
   };
-  const deskAssessStep = { id: 'acknowledged', when: '', people: [], lines: [] };
+  const deskAssessStep = { id: 'acknowledged', when: '', people: [], lines: deskResultDate && deskSizeText ? [deskSizeText] : [] };
   steps.push(deskJob ? deskPromiseStep : queueStep);
 
   const visitStep = { id: 'acknowledged', people: [], lines: [] };
@@ -690,9 +746,11 @@ export function surveyJobView({
     } else if (reachedSite(visit)) {
       visitStep.badge = { label: VISIT_STATUS_LABELS[visit.status], tone: visit.status === 'done' ? 'success' : 'warning' };
       visitStep.when = onSiteText(visit) || dayText(visit.actualDate || visit.scheduledDate);
+      /* ใบผสม: ต่อท้าย " · จากแบบ k" เหมือนบรรทัดระหว่างทำ (S2b แก้หลังตรวจจอ sales-q8 · แผน §2 แถว 9a) — "วัดครบ 2 / 2" บนใบสามพื้นที่
+         อ่านเหมือนพื้นที่หายไปหนึ่ง · ใบลงหน้างานล้วน (k = 0) = บรรทัดเดิมทุกตัวอักษร */
       visitStep.lines.push(join(
         visit.actualEndTime && `ส่งงาน ${clock(visit.actualEndTime)}`,
-        !filesUnknown && progress.total && `วัดครบ ${progress.done} / ${progress.total} พื้นที่`,
+        !filesUnknown && progress.total && `วัดครบ ${progress.done} / ${progress.total} พื้นที่${mix.drawing > 0 ? ` · จากแบบ ${mix.drawing}` : ''}`,
       ));
     } else if (finished) {
       /* ใบปิดไปแล้วแต่นัดยังค้าง (ปิดใบโดยไม่ได้ประเมินไม่ยกเลิกนัดให้) — บอกให้ไปเก็บ ไม่ใช่สั่งให้เริ่มงาน */
@@ -780,7 +838,8 @@ export function surveyJobView({
         🐞 ถามจากนัดต่อไป = ใบงานโต๊ะที่รับปากแล้วขึ้น "รับปากวันส่งผล (ข้าม)" และใบที่ส่งผลแล้วขึ้น "ประเมินจากแบบ (ข้าม)"
            ทุกใบ เพราะไม่มีนัด · ตำแหน่งขั้นปัจจุบัน (`index`) ยังเป็นของรางตัวเดิม — ที่นี่แค่ไม่ติ๊ก "ข้าม" ผิดใบ */
   const queueHappened = deskJob ? !!deskResultDate : !!visit;
-  const visitHappened = deskJob ? sent : (reachedSite(visit) || visit?.status === 'in_progress');
+  /* งานโต๊ะที่พร้อมส่ง (ขั้นปัจจุบัน = ส่งผล) — ขั้นประเมินจากแบบเกิดขึ้นแล้ว ไม่ใช่ "ข้าม" */
+  const visitHappened = deskJob ? (sent || deskReady) : (reachedSite(visit) || visit?.status === 'in_progress');
   const timeline = steps.map((step, i) => {
     let state = i < index ? 'done' : i === index ? 'current' : 'pending';
     if (cancelledAt != null) state = i < cancelledAt ? 'done' : 'pending';
@@ -817,16 +876,9 @@ export function surveyJobView({
   const leftGaps = (control.zoneGaps?.rows || []).filter((row) => row.crew.length);
   const gapText = leftGaps.length === 1 ? `ขาด: ${leftGaps[0].crew.join(' · ')}` : '';
   const sendBackAsk = surveySendBackAskText(request.surveySendBack?.sentBack);
-  const headWho = `หัวหน้า ${dept}`;
   const requesterWho = viewer.isOpener ? 'คุณ' : (request.requestedByName || requesterLabel);
-  /* ── ของงานโต๊ะ (แผน §3.1 ตาราง "While waiting") ──
-     คนที่ถือใบ = ผู้รับผิดชอบบนใบ (หัวหน้าที่รับปากวันส่งผล) · ยังไม่มีชื่อ = "หัวหน้า TS"
-     ⚠️ ตัวนับของงานโต๊ะคือ **ด่านขนาด** ของใบประเมิน (`surveyGateChecklist` — ตัวเดียวกับการ์ดของหัวหน้าข้างล่าง):
-        พื้นที่ที่ยังใช้อยู่และมีขนาดครบ / พื้นที่ที่ยังใช้อยู่ · เขียน "กรอกขนาดจากแบบแล้ว" ไม่ใช่ "วัดแล้ว"
+  /* ── ของงานโต๊ะ (แผน §3.1 ตาราง "While waiting") — คนที่ถือใบ (`deskHead`) กับตัวนับ (`deskSize`) คำนวณไว้ต้นฟังก์ชัน ──
      ⚠️ ไม่มีบรรทัด "ต่อไป" — แผนไม่ได้ให้ประโยคสำหรับงานโต๊ะ (ชุดของงานหน้างานพูดเรื่องลงคิว/ช่าง ซึ่งไม่จริงที่นี่) */
-  const gates = surveyGateChecklist(zones, filesByZone);
-  const deskHead = assignee.name || headWho;
-  const deskSize = gates.find((gate) => gate.key === 'size') || null;
   const deskLateBy = stage === 'desk-overdue' ? daysBetween(deskResultDate, today) : 0;
   const nowByStage = {
     /* 🔴 ร่างที่ทุกพื้นที่เกิดมาจากแบบ (S4 สร้างแถวพื้นที่ตอนเปิดใบ) = ไม่มีการลงคิวเข้าพื้นที่ ⇒ ใช้คำของงานโต๊ะ
@@ -862,10 +914,7 @@ export function surveyJobView({
     },
     'desk-working': {
       headline: `${STAGE_BADGE['desk-working'].label} — จะส่งผล ${dayText(deskResultDate)}`,
-      sub: join(
-        `${deskHead} รับผิดชอบ`,
-        deskSize?.total > 0 && `กรอกขนาดจากแบบแล้ว ${deskSize.done} / ${deskSize.total} พื้นที่`,
-      ),
+      sub: join(`${deskHead} รับผิดชอบ`, deskSizeText),
       next: null,
       turn: { side: dept, who: deskHead },
     },
@@ -961,7 +1010,9 @@ export function surveyJobView({
       headline: 'พร้อมส่งผลให้ฝ่ายขาย',
       sub: control.status?.sub || totalsText,
       next: `${headWho} กด “ส่งผลให้ฝ่ายขาย” ที่ใบประเมิน`,
-      turn: { side: dept, who: headWho },
+      /* งานโต๊ะที่พร้อมส่ง (head-rc-r2-22) — ตาของคนที่ถือใบคนเดิม (`deskHead` ตัวเดียวกับ "กำลังประเมินจากแบบ" / "เลยวันส่งผล")
+         🐞 ไม่แยก = ช่อง "ตาใคร" ของใบเดียวกันสลับ ชื่อหัวหน้า → "หัวหน้า TS" → ชื่อหัวหน้า ตามขั้น · ใบลงหน้างาน/ใบผสม = คำเดิม */
+      turn: { side: dept, who: deskJob ? deskHead : headWho },
     },
     recalled: {
       headline: 'ดึงผลกลับมาแก้',
@@ -1029,8 +1080,37 @@ export function surveyJobView({
   const crew = gateCard(gates, 'crew');
   const head = gateCard(gates, 'head');
   const crewStarted = visit?.status === 'in_progress' || reachedSite(visit);
-  /* การ์ดของหัวหน้า "เริ่มได้เมื่อช่างส่งงาน" — งานโต๊ะไม่มีช่างให้รอ ⇒ เปิดตั้งแต่แรก (ด่านของพื้นที่จากแบบเป็นของหัวหน้าทั้งหมด) */
-  const headOpen = deskJob || reachedSite(visit);
+  /* การ์ดของหัวหน้า "เริ่มได้เมื่อช่างส่งงาน" — งานโต๊ะไม่มีช่างให้รอ ⇒ เปิดตั้งแต่แรก (ด่านของพื้นที่จากแบบเป็นของหัวหน้าทั้งหมด)
+     🔄 **ใบผสมก็เปิดตั้งแต่แรก** (S2b แก้หลังตรวจจอ head-rc-q11) — พื้นที่จากแบบเป็นงานของหัวหน้าตั้งแต่ต้น ป้าย "ยังไม่เริ่ม" กับ
+        "เริ่มได้เมื่อช่างส่งงาน" อ่านว่ายังไม่มีใครทำอะไร · บรรทัดของการ์ดนำด้วยตัวนับของพื้นที่จากแบบ ("กรอกขนาดจากแบบแล้ว a / k พื้นที่")
+        แล้วตามด้วยข้อของหัวหน้าคำเดิม · ใบลงหน้างานล้วน = ทางเดิมทุกตัวอักษร */
+  const mixedSheet = mix.mode === 'mixed';
+  /* ⭐ **ส่วนของพื้นที่จากแบบเอ่ยทั้งขนาดและภาพแบบ** (มติ head-rc-q11 "เอ่ยขนาดกับภาพแบบของพื้นที่จากแบบ" · ผลรีวิวรอบสาม) —
+     เช็คลิสต์ของพื้นที่จากแบบล้วน (ชื่อข้อผังเป็น "ภาพแบบ" เอง — `drawingShort` ของทะเบียนด่าน) ⇒ "กรอกขนาดจากแบบแล้ว a / k พื้นที่ · ภาพแบบ b/k"
+     และแถว "ภาพผัง" ของการ์ดนี้นับพื้นที่ลงหน้างานล้วน (เช็คลิสต์ของพื้นที่ลงหน้างาน) — ภาพแบบมีที่ของตัวเองแล้ว
+     🐞 เดิมภาพแบบโผล่แค่ในตัวนับ "ภาพผัง x/y" และเฉพาะตอนขาด ⇒ "ภาพผัง 1/2" เรียกภาพแบบของพื้นที่จากแบบว่าภาพผัง · มีครบก็ไม่มีคำไหนเอ่ยถึง
+     ⚠️ จอเท่านั้น — การ์ดควบคุมของใบประเมิน (`surveyPlanGateShown` · head-r3-53) ไม่มีส่วนภาพแบบแยก จึงยังนับพื้นที่จากแบบที่ขาดในแถวผังของมัน */
+  const mixedDrawingGates = mixedSheet ? surveyGateChecklist(zones.filter(isDrawingZone), filesByZone) : [];
+  const mixedDrawingSize = mixedDrawingGates.find((g) => g.key === 'size') || null;
+  const mixedDrawingPlan = mixedDrawingGates.find((g) => g.key === 'plan') || null;
+  const mixedDrawingText = join(
+    mixedDrawingSize?.total > 0 && `กรอกขนาดจากแบบแล้ว ${mixedDrawingSize.done} / ${mixedDrawingSize.total} พื้นที่`,
+    mixedDrawingPlan?.total > 0 && `${mixedDrawingPlan.short || mixedDrawingPlan.label} ${mixedDrawingPlan.done}/${mixedDrawingPlan.total}`,
+  );
+  const mixedOnsitePlan = mixedSheet
+    ? surveyGateChecklist(zones.filter((z) => !isDrawingZone(z)), filesByZone).find((g) => g.key === 'plan') || null
+    : null;
+  const headItems = mixedOnsitePlan
+    ? head.items.map((item) => (item.key === 'plan'
+      ? { ...item, ok: mixedOnsitePlan.ok, done: mixedOnsitePlan.done, total: mixedOnsitePlan.total, zones: mixedOnsitePlan.zones }
+      : item))
+    : head.items;
+  /* ⚠️ "ครบ" ของการ์ดหัวหน้าในใบผสมต้องรวมส่วนของพื้นที่จากแบบที่การ์ดพิมพ์นำหน้า — ด่านขนาดของใบผสมประกาศเป็นของช่าง (`gateCard` ไม่เห็น)
+     🐞 ไม่รวม = ป้ายเขียว "ครบ" ข้าง "กรอกขนาดจากแบบแล้ว 0 / 1 พื้นที่" (มีภาพแบบ + แพ็คเกจแล้วแต่ยังไม่มีขนาด) และแถวรวมขึ้น "หัวหน้าเคาะแล้ว"
+        (S2b แก้หลังตรวจจอ head-rc-q11 · ผลรีวิวรอบสอง) · ภาพแบบที่ขาดทำให้ `head.ok` เท็จอยู่แล้ว (แถวผังของ `gates` นับพื้นที่จากแบบที่ขาด) — ถามซ้ำ
+        เพื่อให้ป้ายกับส่วน "ภาพแบบ b/k" ที่พิมพ์อยู่ไปด้วยกันตรง ๆ · ใบลงหน้างานล้วน / ใบจากแบบทั้งใบ = `head.ok` ตัวเดิม */
+  const headOk = head.ok && (!mixedDrawingSize || mixedDrawingSize.ok) && (!mixedDrawingPlan || mixedDrawingPlan.ok);
+  const headOpen = deskJob || mixedSheet || reachedSite(visit);
   const changeCounts = surveyChangeCounts(zones);
   const photos = filesUnknown ? { wide: null, plan: null }
     : rows.filter((r) => !r.cut).reduce((acc, r) => ({ wide: acc.wide + r.photosWide, plan: acc.plan + r.photosPlan }), { wide: 0, plan: 0 });
@@ -1062,6 +1142,9 @@ export function surveyJobView({
       /* รหัสนัดข้างขั้นปัจจุบัน — จอทำเป็นลิงก์ (ที่เดียวที่กดไปนัดได้ ⇒ ลำดับโฟกัสตรงกับที่ตาเห็นทุกขนาดจอ) */
       visitCode: visit?.code && !visitDead && current && !['draft', 'pending'].includes(current.id) ? visit.code : null,
       headline: nowBase.headline,
+      /* วันที่ในพาดหัวของงานโต๊ะ ("กำลังประเมินจากแบบ — จะส่งผล จ. 12 ต.ค.") — จอห่อท่อนนี้ไม่ให้ขาดกลางวันที่บนมือถือ
+         (S2b แก้หลังตรวจจอ sales-q10c) · คีย์มีเฉพาะขั้นนั้น — ขั้นอื่นทุกขั้นรูปเดิม */
+      ...(stage === 'desk-working' && deskResultDate ? { headlineKeep: [dayText(deskResultDate)] } : {}),
       sub: nowBase.sub || '',
       tone: stage === 'overdue' ? 'danger' : (STAGE_BADGE[stage]?.tone || 'neutral'),
       progress: showMeter ? { done: sent ? progress.total : progress.done, total: progress.total, complete: sent || progress.complete } : null,
@@ -1109,6 +1192,10 @@ export function surveyJobView({
       unchanged: !changeCounts.cut && !changeCounts.added,
       /* แถบแจ้งเหนือตารางผล — เฉพาะใบที่ส่งผลแล้วและมีพื้นที่จากแบบ · `null` = ไม่มีแถบ (`surveyDrawingBanner`) */
       drawingBanner: surveyDrawingBanner(request, { show: sent && stage !== 'cancelled', count: mix.drawing, dept }),
+      /* ⭐ ใบที่ส่งผลแล้วและทุกพื้นที่ที่ยังใช้อยู่ประเมินจากแบบ (เงื่อนไขเดียวกับหัวคอลัมน์ของตารางสรุปส่งผล `drawnHead` · `mix.mode`)
+         ⇒ ช่องจุดของตารางผลเป็น "จุดติดตั้งโดยประมาณ · {n} จุด" ไม่ใช่ "เลือก / ทั้งหมด" (S2b-O9 · มติเจ้าของ 19/10) — จอไม่นับเอง
+         ⚠️ คีย์มีเฉพาะใบแบบนั้น — ใบลงหน้างาน/ใบผสมรูปเดิมทุกคีย์ */
+      ...(sent && mix.mode === 'drawing' ? { drawingOnly: true } : {}),
       crewGate: {
         ...crew,
         /* ใบจากแบบทั้งใบไม่มีพื้นที่ของช่างเลย — การ์ดนี้เหลือแค่ป้าย "ไม่มีพื้นที่" ⇒ จอถอดทั้งการ์ดได้
@@ -1130,12 +1217,14 @@ export function surveyJobView({
       },
       headGate: {
         ...head,
+        items: headItems,
+        ok: headOk,
         badge: !head.hasActive ? { label: 'ไม่มีพื้นที่', tone: 'neutral' }
           : filesUnknown ? { label: 'ไม่ทราบ', tone: 'neutral' }
-            : head.ok ? { label: 'ครบ', tone: 'success' } : headOpen ? { label: 'รอเคาะ', tone: 'info' } : { label: 'ยังไม่เริ่ม', tone: 'neutral' },
+            : headOk ? { label: 'ครบ', tone: 'success' } : headOpen ? { label: 'รอเคาะ', tone: 'info' } : { label: 'ยังไม่เริ่ม', tone: 'neutral' },
         text: filesUnknown ? 'อ่านรูปรายพื้นที่ไม่สำเร็จ — ไม่ทราบว่าครบไหม'
-          : headOpen || head.ok
-            ? head.items.map((g) => `${g.label} ${g.done}/${g.total}`).join(' · ')
+          : headOpen || headOk
+            ? join(mixedDrawingText, headItems.map((g) => `${g.label} ${g.done}/${g.total}`))
             : 'เริ่มได้เมื่อช่างส่งงาน',
       },
       unknownFiles: unknown.files === true,

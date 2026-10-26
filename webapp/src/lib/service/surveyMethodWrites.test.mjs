@@ -521,7 +521,9 @@ test('การกดใหม่ที่เนื้อหาเหมือ�
   assert.equal(state.thread.length, 3);
   assert.deepEqual(state.thread.map((t) => t.meta.key), [KEY, 'U-HEAD|back-0001', KEY2]);
   assert.equal(state.thread[0].body, state.thread[2].body, 'เนื้อหาเหมือนกันทุกตัวอักษร แต่เป็นสองเหตุการณ์');
-  assert.deepEqual(state.bells.map((b) => b[3]), [KEY, KEY2], 'กระดิ่งช่างสองครั้ง คนละกุญแจ');
+  /* กระดิ่งช่างสามครั้ง คนละกุญแจ — ครั้งกลาง (กลับเป็นลงหน้างานขณะนัดยังอยู่) บอกช่างว่าต้องวัดเพิ่ม (S2b แก้หลังตรวจจอ head-r3-54) */
+  assert.deepEqual(state.bells.map((b) => b[3]), [KEY, 'U-HEAD|back-0001', KEY2]);
+  assert.deepEqual(state.bells[1], ['crew', 'zones', 'หัวหน้าเปลี่ยน “ห้องประชุม” กลับเป็นลงหน้างาน — ต้องวัดพื้นที่นี้เพิ่ม', 'U-HEAD|back-0001', 'U-TECH']);
 });
 
 test('🔴 กดซ้ำหลังเสร็จครบแล้ว = ไม่มีขั้นไหนวิ่งซ้ำ — วันส่งผลที่ถูกเลื่อนทีหลังไม่ถูกเขียนทับ · แถวที่ถูกสลับกลับไม่ถูกสลับอีก', async () => {

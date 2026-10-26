@@ -61,18 +61,25 @@ const plan = (over = {}) => surveyMethodSwitchPlan({
 const NO_WRITES = { cancelVisitId: null, drawingIds: [], onsiteIds: [], unselectSpotRows: [], cutMarkIds: [], dates: null };
 const writes = (over = {}) => ({ ...NO_WRITES, ...over });
 
-/* ข้อความที่สเปคกำหนด — พิมพ์ซ้ำในเทสต์โดยตั้งใจ: แก้คำในซอร์สแล้วเทสต์ต้องแดง */
+/* ข้อความที่สเปคกำหนด — พิมพ์ซ้ำในเทสต์โดยตั้งใจ: แก้คำในซอร์สแล้วเทสต์ต้องแดง
+   (S2b แก้หลังตรวจจอ head-r3-21) วันบนจอเป็นรูป "อ. 13 ต.ค." ทุกบรรทัดของกล่อง — เธรดยังเป็น 12/10/2026 (ข้อความเก็บถาวร)
+   (S2b แก้หลังตรวจจอ head-r3-10) "พื้นที่นี้" / "พื้นที่เหล่านี้" ตามจำนวนที่สลับ · ท่อน "ใบออกจากคิวของผู้วางคิว" เฉพาะตอนใบอยู่ในคิวจริง */
 const L1 = (n) => `${n} พื้นที่จะประเมินจากแบบ — ไม่ต้องมีภาพกว้าง จุดติดตั้ง และรูปจุด · ข้อมูลที่กรอกไว้ยังอยู่ครบ`;
-const L2 = 'ไม่เหลือพื้นที่ที่ต้องลงหน้างาน — ใบออกจากคิวของผู้วางคิว · หัวหน้ารับปากส่งผล 12/10/2026';
+const L2 = 'ไม่เหลือพื้นที่ที่ต้องลงหน้างาน — ใบออกจากคิวของผู้วางคิว · หัวหน้ารับปากส่งผล จ. 12 ต.ค.';
 const L2_NO_DATE = 'ไม่เหลือพื้นที่ที่ต้องลงหน้างาน — ใบออกจากคิวของผู้วางคิว';
-const L3 = 'นัด SV-26100011 วันที่ 13/10/2026 ของ Phuwadol Aoonnankad จะถูกยกเลิก — งานหายจากงานของช่าง และช่างได้รับแจ้ง';
-const L4 = 'ช่างกดเริ่มงานของนัด SV-26100011 แล้ว — นัดไม่ถูกยกเลิก · ช่างได้รับแจ้งว่าไม่ต้องวัดพื้นที่นี้ แล้วกด “ส่งงาน” ได้เลย';
+// ใบไม่ได้อยู่ในคิวรอลงคิว (ช่างกำลังทำนัด · นัดเข้าพื้นที่จบแล้ว) ⇒ ไม่มีท่อน "ใบออกจากคิว…"
+const L2_OFF_QUEUE = 'ไม่เหลือพื้นที่ที่ต้องลงหน้างาน — หัวหน้ารับปากส่งผล จ. 12 ต.ค.';
+const L2_OFF_QUEUE_NO_DATE = 'ไม่เหลือพื้นที่ที่ต้องลงหน้างาน';
+const L3 = 'นัด SV-26100011 วันที่ อ. 13 ต.ค. ของ Phuwadol Aoonnankad จะถูกยกเลิก — งานหายจากงานของช่าง และช่างได้รับแจ้ง';
+const L4 = (these = 'พื้นที่นี้') => `ช่างกดเริ่มงานของนัด SV-26100011 แล้ว — นัดไม่ถูกยกเลิก · ช่างได้รับแจ้งว่าไม่ต้องวัด${these} แล้วกด “ส่งงาน” ได้เลย`;
 // การตัดพื้นที่ไม่มีกระดิ่งช่าง (ไม่มีแถวไหนสลับเป็นจากแบบ) ⇒ บรรทัดเดียวกันโดยไม่มีท่อน "ช่างได้รับแจ้ง…"
 const L4_CUT = 'ช่างกดเริ่มงานของนัด SV-26100011 แล้ว — นัดไม่ถูกยกเลิก';
-const L5 = (label) => `นัด SV-26100011 (${label}) คงอยู่เป็นประวัติ — ผลของพื้นที่นี้จะระบุว่าประเมินจากแบบ`;
-const L6 = 'นัด SV-26100011 วันที่ 13/10/2026 ของ Phuwadol Aoonnankad ยังอยู่ — ยังมีพื้นที่ที่ต้องวัด · ช่างได้รับแจ้งว่าไม่ต้องวัดพื้นที่นี้';
+const L5 = (label, these = 'พื้นที่นี้') => `นัด SV-26100011 (${label}) คงอยู่เป็นประวัติ — ผลของ${these}จะระบุว่าประเมินจากแบบ`;
+const L6 = (these = 'พื้นที่นี้') => `นัด SV-26100011 วันที่ อ. 13 ต.ค. ของ Phuwadol Aoonnankad ยังอยู่ — ยังมีพื้นที่ที่ต้องวัด · ช่างได้รับแจ้งว่าไม่ต้องวัด${these}`;
+// (S2b แก้หลังตรวจจอ head-r3-54) นัดยังอยู่ + มีพื้นที่กลับเป็นลงหน้างาน — ช่างได้กระดิ่งว่าต้องวัดเพิ่ม และกล่องบอกเรื่องเดียวกัน
+const L6_BACK = (names) => `นัด SV-26100011 วันที่ อ. 13 ต.ค. ของ Phuwadol Aoonnankad ยังอยู่ — ช่างได้รับแจ้งว่าต้องวัด “${names}” เพิ่ม`;
 const L8 = (n) => `${n} พื้นที่กลับเป็นลงหน้างาน — ต้องวัดขนาดจริงแล้วบันทึกอีกครั้ง มีภาพกว้าง จุดติดตั้ง และรูปจุดตามปกติ · จุดที่มาร์กจากแบบยังอยู่ แต่ต้องเลือกจุดใหม่หลังเข้าพื้นที่`;
-const L9 = 'ใบกลับไปขั้น “รอลงคิว” — วันส่งผลที่รับปากไว้ (15/10/2026) ถูกล้าง · ผู้วางคิวลงวันเข้าพื้นที่และวันส่งผลใหม่';
+const L9 = 'ใบกลับไปขั้น “รอลงคิว” — วันส่งผลที่รับปากไว้ (พฤ. 15 ต.ค.) ถูกล้าง · ผู้วางคิวลงวันเข้าพื้นที่และวันส่งผลใหม่';
 const L_STAYS = 'ใบอยู่ขั้นเดิม — ใช้ผลจากรอบที่เข้าพื้นที่แล้วได้ · วันส่งผลที่รับปากไว้คงเดิม';
 // กรณี `keep`: บรรทัด "กลับเป็นลงหน้างาน" ไม่พูดถึงการเข้าพื้นที่รอบใหม่ (ไม่มีใครนัด)
 const L8_KEEP = (n) => `${n} พื้นที่กลับเป็นลงหน้างาน — ตรวจขนาดกับผลจากรอบที่เข้าพื้นที่แล้วบันทึกอีกครั้ง มีภาพกว้าง จุดติดตั้ง และรูปจุดตามปกติ · จุดที่มาร์กจากแบบยังอยู่ แต่ต้องเลือกจุดใหม่`;
@@ -80,9 +87,10 @@ const L8_KEEP = (n) => `${n} พื้นที่กลับเป็นลง
 const L_STAYS_REQUEUE = (label) => `วันส่งผลที่รับปากไว้คงเดิม — ใช้ผลจากรอบที่เข้าพื้นที่แล้วได้ · นัดล่าสุด SV-26100011 (${label}) ไม่ได้เข้าพื้นที่ ใบจึงขึ้น “ต้องลงคิวใหม่” ให้ผู้วางคิวลงนัดใหม่ได้`;
 // คอลัมน์วันเข้าพื้นที่ตามนัดของ fixture — ไม่มี `committedResultDate`
 const VISIT_SYNC = { committedDueDate: '2026-10-13', committedDueTime: '10:00', assigneeId: 'U-TECH', assigneeName: 'Phuwadol Aoonnankad' };
-const L_CANCEL_ONLY = 'นัด SV-26100011 วันที่ 13/10/2026 ของ Phuwadol Aoonnankad จะถูกยกเลิก — ใบนี้ไม่มีพื้นที่ที่ต้องลงหน้างานแล้ว';
+const L_CANCEL_ONLY = 'นัด SV-26100011 วันที่ อ. 13 ต.ค. ของ Phuwadol Aoonnankad จะถูกยกเลิก — ใบนี้ไม่มีพื้นที่ที่ต้องลงหน้างานแล้ว';
 const BELL_CANCEL = { kind: 'cancel', title: 'ยกเลิกนัด SV-26100011 — ใบนี้เปลี่ยนเป็นประเมินจากแบบ' };
-const BELL_ZONES = (names) => ({ kind: 'zones', title: `หัวหน้าเปลี่ยน “${names}” เป็นประเมินจากแบบ — ไม่ต้องวัดพื้นที่นี้` });
+const BELL_ZONES = (names, these = 'พื้นที่นี้') => ({ kind: 'zones', title: `หัวหน้าเปลี่ยน “${names}” เป็นประเมินจากแบบ — ไม่ต้องวัด${these}` });
+const BELL_BACK = (names, these = 'พื้นที่นี้') => ({ kind: 'zones', title: `หัวหน้าเปลี่ยน “${names}” กลับเป็นลงหน้างาน — ต้องวัด${these}เพิ่ม` });
 const BELL_HEAD = { title: 'คำร้องประเมินจากแบบ RQ-AS-26100312 — รอหัวหน้าประเมิน' };
 const T_DRAWING = (n, names) => `เปลี่ยนวิธีประเมินเป็น “ประเมินจากแบบ” ${n} พื้นที่ (${names}) — ${REASON}`;
 const T_ONSITE = (n, names) => `เปลี่ยนวิธีประเมินเป็น “ลงหน้างาน” ${n} พื้นที่ (${names}) — ${REASON}`;
@@ -127,7 +135,7 @@ test('ค่าคงที่ของฟีเจอร์ตรงสเป�
   assert.deepEqual(SURVEY_METHOD_ERRORS, {
     off: 'ยังไม่เปิดใช้การประเมินจากแบบ',
     role: 'เปลี่ยนวิธีประเมินได้เฉพาะหัวหน้าฝ่ายบริการ',
-    notAcknowledged: 'กด “รับเรื่อง” ก่อน แล้วค่อยเปลี่ยนวิธีประเมิน',
+    notAcknowledged: 'ไปกด “รับเรื่อง” ที่หน้าคำร้องก่อน แล้วค่อยเปลี่ยนวิธีประเมิน',
     sentButton: 'ส่งผลไปแล้ว — ดึงผลกลับมาแก้ก่อน แล้วค่อยเปลี่ยนวิธีประเมิน',
     sentRoute: 'ส่งผลไปแล้ว — เปลี่ยนวิธีประเมินไม่ได้ โหลดหน้าใหม่',
     reason: 'ต้องบอกเหตุผลอย่างน้อย 10 ตัวอักษร',
@@ -148,7 +156,7 @@ test('① พื้นที่เดียวเป็นจากแบบ ใ
     expectPlan(got, {
       kind: 'switch',
       visitAction: stays ? 'stays' : 'none',
-      lines: stays ? [L1(1), L6] : [L1(1)],
+      lines: stays ? [L1(1), L6()] : [L1(1)],
       thread: T_DRAWING(1, 'ห้องน้ำ'),
       bells: stays ? { crew: BELL_ZONES('ห้องน้ำ') } : {},
       writes: { drawingIds: ['Z3'] },
@@ -163,14 +171,17 @@ test('① พื้นที่เดียวเป็นจากแบบ ใ
 
 /* ── 2) ทั้งใบเป็นจากแบบ ─────────────────────────────────────────────────── */
 test('② ทั้งใบเป็นจากแบบ × สถานะนัดเจ็ดแบบ: ออกจากคิว · ยกเลิกนัดเฉพาะร่าง/นัดไว้ · เริ่มงานแล้วนัดอยู่ · ปิดแล้วเป็นประวัติ', () => {
+  /* สามพื้นที่ ⇒ "พื้นที่เหล่านี้" (head-r3-10) · ท่อน "ใบออกจากคิวของผู้วางคิว" เฉพาะใบที่อยู่ในคิวจริง:
+     ไม่มีนัด · นัดที่การกดนี้ยกเลิก · นัดเป็นประวัติที่ไม่เคยถึงไซต์ (ทำไม่ได้ / ยกเลิก — ใบรอลงคิวใหม่) — ช่างกำลังทำ / เข้าแล้ว = ไม่มีท่อนนี้ */
+  const MANY = 'พื้นที่เหล่านี้';
   const table = {
-    null: { visitAction: 'none', extra: [], tail: '', bells: {} },
-    draft: { visitAction: 'cancel', extra: [L3], tail: ' · ยกเลิกนัด SV-26100011', bells: { crew: BELL_CANCEL }, cancel: 'V1' },
-    scheduled: { visitAction: 'cancel', extra: [L3], tail: ' · ยกเลิกนัด SV-26100011', bells: { crew: BELL_CANCEL }, cancel: 'V1' },
-    in_progress: { visitAction: 'keep-open', extra: [L4], tail: '', bells: { crew: BELL_ZONES(ALL) } },
-    done: { visitAction: 'history', extra: [L5('เข้าแล้ว')], tail: '', bells: {} },
-    unable: { visitAction: 'history', extra: [L5('ทำไม่ได้')], tail: '', bells: {} },
-    cancelled: { visitAction: 'history', extra: [L5('ยกเลิก')], tail: '', bells: {} },
+    null: { visitAction: 'none', l2: L2, extra: [], tail: '', bells: {} },
+    draft: { visitAction: 'cancel', l2: L2, extra: [L3], tail: ' · ยกเลิกนัด SV-26100011', bells: { crew: BELL_CANCEL }, cancel: 'V1' },
+    scheduled: { visitAction: 'cancel', l2: L2, extra: [L3], tail: ' · ยกเลิกนัด SV-26100011', bells: { crew: BELL_CANCEL }, cancel: 'V1' },
+    in_progress: { visitAction: 'keep-open', l2: L2_OFF_QUEUE, extra: [L4(MANY)], tail: '', bells: { crew: BELL_ZONES(ALL, MANY) } },
+    done: { visitAction: 'history', l2: L2_OFF_QUEUE, extra: [L5('เข้าแล้ว', MANY)], tail: '', bells: {} },
+    unable: { visitAction: 'history', l2: L2, extra: [L5('ทำไม่ได้', MANY)], tail: '', bells: {} },
+    cancelled: { visitAction: 'history', l2: L2, extra: [L5('ยกเลิก', MANY)], tail: '', bells: {} },
   };
   for (const status of VISIT_STATES) {
     const row = table[String(status)];
@@ -180,7 +191,7 @@ test('② ทั้งใบเป็นจากแบบ × สถานะน
       flip: 'to-desk',
       visitAction: row.visitAction,
       datesAction: 'set',
-      lines: [L1(3), L2, ...row.extra],
+      lines: [L1(3), row.l2, ...row.extra],
       thread: `${T_DRAWING(3, ALL)}${row.tail} · ส่งผล 12/10/2026`,
       bells: { ...row.bells, head: BELL_HEAD },
       writes: { cancelVisitId: row.cancel || null, drawingIds: ['Z1', 'Z2', 'Z3'], dates: DESK_PATCH },
@@ -239,7 +250,8 @@ test('④ ใบจากแบบทั้งใบ พื้นที่แร
     const got = plan({ ...base, visit: visitOf(status) });
     assert.equal(got.dates.action, want, String(status));
     assert.equal(got.flip, 'to-visit', String(status));
-    assert.equal(got.visit.action, 'none', String(status));
+    // (S2b · มติเจ้าของ 26/10 head-r3-54 ข้างเคียง) นัดที่ช่างถืออยู่ (นัดไว้ / กำลังทำ) = `stays` เหมือนใบที่ไม่พลิก — ที่เหลือไม่มีนัดให้แจ้ง
+    assert.equal(got.visit.action, status === 'scheduled' || status === 'in_progress' ? 'stays' : 'none', String(status));
     // "รอลงคิว" พูดเฉพาะตอนล้างวันจริง — กล่อง เธรด และสิ่งที่เขียน ไปด้วยกันเสมอ
     const queued = got.lines.some((line) => line.includes('รอลงคิว')) || got.thread.includes('รอลงคิว');
     assert.equal(queued, want === 'clear', `${status}: รอลงคิว`);
@@ -314,13 +326,16 @@ test('④ ใบจากแบบทั้งใบ พื้นที่แร
   assert.deepEqual(mixedBack.lines, [L8(1)]);
 
   // (ข) นัดกำลังทำ คนละวัน มีเวลา มีช่าง → sync: วัน เวลา ช่าง กลับขึ้นใบ · วันส่งผลไม่ถูกแตะ
+  //     (มติ 26/10 head-r3-54 ข้างเคียง) ช่างของนัดได้กระดิ่งว่าต้องวัดพื้นที่ที่กลับเพิ่ม — บรรทัดของนัดใช้วันของนัดนั้น (อ. 20 ต.ค.)
   const inProgress = plan({ ...base, visit: visit('in_progress', { scheduledDate: '2026-10-20', startTime: '09:30:00' }) });
   expectPlan(inProgress, {
     kind: 'switch',
     flip: 'to-visit',
+    visitAction: 'stays',
     datesAction: 'sync',
-    lines: [L8(1)],
+    lines: ['นัด SV-26100011 วันที่ อ. 20 ต.ค. ของ Phuwadol Aoonnankad ยังอยู่ — ช่างได้รับแจ้งว่าต้องวัด “ล็อบบี้” เพิ่ม', L8(1)],
     thread: T_ONSITE(1, 'ล็อบบี้'),
+    bells: { crew: BELL_BACK('ล็อบบี้') },
     writes: {
       onsiteIds: ['Z1'], unselectSpotRows: unselect,
       dates: { committedDueDate: '2026-10-20', committedDueTime: '09:30', assigneeId: 'U-TECH', assigneeName: 'Phuwadol Aoonnankad' },
@@ -350,9 +365,10 @@ test('⑤ สลับสองทิศในการกดครั้งเ�
   expectPlan(got, {
     kind: 'switch',
     visitAction: 'stays',
-    lines: [L1(1), L6, L8(1)],
+    // head-r3-54: นัดยังอยู่ ⇒ บรรทัดของนัดต่อท้ายพื้นที่ที่กลับ · กระดิ่งเดียวเอ่ยทั้งสองทิศ
+    lines: [L1(1), `${L6()} · ต้องวัด “ห้องประชุม” เพิ่ม`, L8(1)],
     thread: `${T_DRAWING(1, 'ล็อบบี้')} | ${T_ONSITE(1, 'ห้องประชุม')}`,
-    bells: { crew: BELL_ZONES('ล็อบบี้') },
+    bells: { crew: { kind: 'zones', title: `${BELL_ZONES('ล็อบบี้').title} · “ห้องประชุม” กลับเป็นลงหน้างาน — ต้องวัดพื้นที่นี้เพิ่ม` } },
     writes: { drawingIds: ['Z1'], onsiteIds: ['Z2'], unselectSpotRows: [{ id: 'Z2', updatedAt: '2026-10-08T02:00:00+00:00', spots: [] }] },
   }, 'สองทิศ');
 });
@@ -437,11 +453,12 @@ test('⑦ กดยืนยันการตัดซ้ำ (แถวถู�
       visitAction: 'cancel', lines: [L2, L3], thread: `${T_CUT} · ยกเลิกนัด SV-26100011 · ส่งผล 12/10/2026`,
       bells: { crew: BELL_CANCEL, head: BELL_HEAD },
     }],
+    // ใบไม่ได้อยู่ในคิวรอลงคิว (ช่างกำลังทำนัด · นัดเข้าพื้นที่จบแล้ว) ⇒ ไม่มีท่อน "ใบออกจากคิว…" (head-r3-10)
     ['ช่างกดเริ่มงานไปก่อน', visit('in_progress'), {
-      visitAction: 'keep-open', lines: [L2, L4_CUT], thread: `${T_CUT} · ส่งผล 12/10/2026`, bells: { head: BELL_HEAD },
+      visitAction: 'keep-open', lines: [L2_OFF_QUEUE, L4_CUT], thread: `${T_CUT} · ส่งผล 12/10/2026`, bells: { head: BELL_HEAD },
     }],
     ['นัดปิดไปแล้ว', visit('done'), {
-      visitAction: 'history', lines: [L2, L5('เข้าแล้ว')], thread: `${T_CUT} · ส่งผล 12/10/2026`, bells: { head: BELL_HEAD },
+      visitAction: 'history', lines: [L2_OFF_QUEUE, L5('เข้าแล้ว')], thread: `${T_CUT} · ส่งผล 12/10/2026`, bells: { head: BELL_HEAD },
     }],
   ];
   for (const [name, v, want] of table) {
@@ -611,8 +628,8 @@ test('⑫ ชื่อพื้นที่: สามชื่อแรก ท�
   const rows = [...caseB(), zone('Z4', '   ')];
   const got = plan({ rows, changes: toDrawing('Z1', 'Z2', 'Z3', 'Z4'), visit: visit('in_progress') });
   assert.equal(got.thread, `เปลี่ยนวิธีประเมินเป็น “ประเมินจากแบบ” 4 พื้นที่ (${ALL} และอีก 1 พื้นที่) — ${REASON} · ส่งผล 12/10/2026`);
-  // กระดิ่งช่างเอ่ยครบทุกชื่อ (กระดิ่งเดียวต่อการกดหนึ่งครั้ง)
-  assert.deepEqual(got.bells.crew, BELL_ZONES(`${ALL} · พื้นที่ไม่มีชื่อ`));
+  // กระดิ่งช่างเอ่ยครบทุกชื่อ (กระดิ่งเดียวต่อการกดหนึ่งครั้ง) · สี่พื้นที่ = "พื้นที่เหล่านี้" (head-r3-10)
+  assert.deepEqual(got.bells.crew, BELL_ZONES(`${ALL} · พื้นที่ไม่มีชื่อ`, 'พื้นที่เหล่านี้'));
 });
 
 /* ── 13) ปุ่ม "เปลี่ยนวิธีประเมิน" ───────────────────────────────────────── */
@@ -685,10 +702,12 @@ test('⑭ surveyProgressText: ใบลงหน้างานล้วนไ�
 });
 
 /* ── 15) ยามซอร์ส ────────────────────────────────────────────────────────── */
-test('⑮ 🔴 surveyMethodSwitch.js ดึงได้สี่โมดูลเท่านั้น — ไฟล์นี้จะถูกดึงเข้า bundle ของจอ', () => {
+test('⑮ 🔴 surveyMethodSwitch.js ดึงได้ห้าโมดูลเท่านั้น — ไฟล์นี้จะถูกดึงเข้า bundle ของจอ', () => {
   const src = readFileSync(new URL('./surveyMethodSwitch.js', import.meta.url), 'utf8');
   const from = [...src.matchAll(/^import\s[^;]*?from\s+['"]([^'"]+)['"]/gms)].map((m) => m[1]).sort();
-  assert.deepEqual(from, ['@/lib/format', '@/lib/service/survey', '@/lib/service/surveyMethod', '@/lib/service/visitStatus']);
+  // `queueWords` (head-r3-21 · ตัวจัดรูปวันบนจอ) เป็นไฟล์ใบ — ไม่ดึงอะไรจากโมดูลประเมินพื้นที่ จึงไม่มีวงกลม
+  assert.deepEqual(from, ['@/lib/format', '@/lib/service/queueWords', '@/lib/service/survey', '@/lib/service/surveyMethod', '@/lib/service/visitStatus']);
+  assert.doesNotMatch(readFileSync(new URL('./queueWords.js', import.meta.url), 'utf8'), /surveyMethod|\/survey['"]|surveyQueue/, 'queueWords ต้องเป็นไฟล์ใบ');
   const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   assert.doesNotMatch(code, /\bimport\s*\(/, 'ห้ามดึงแบบเรียกฟังก์ชัน');
   assert.doesNotMatch(code, /\brequire\s*\(/);
@@ -784,4 +803,191 @@ test('surveyZoneAddedLabel: ไม่ได้ถูกเพิ่ม = null ·
   assert.equal(surveyZoneAddedLabel({ status: 'added', method: 'drawing' }, 'OP'), 'เพิ่มโดย OP');
   assert.equal(surveyZoneAddedLabel({ status: 'added', method: 'drawing' }), 'เพิ่มโดย TS');
   assert.equal(surveyZoneAddedLabel({ status: 'added', method: 'drawing' }, '  '), 'เพิ่มโดย TS');
+});
+
+/* ── S2b แก้หลังตรวจจอ (19/10) — กล่องผลลัพธ์และกระดิ่งพูดตรงกับเรื่องที่เกิดจริง ──────────────────────── */
+test('head-r3-10: "พื้นที่นี้" / "พื้นที่เหล่านี้" ตามจำนวนที่สลับ · ท่อน "ใบออกจากคิวของผู้วางคิว" เฉพาะใบที่อยู่ในคิวรอลงคิวจริง', () => {
+  const MANY = 'พื้นที่เหล่านี้';
+  // stays สองพื้นที่ (ใบยังผสม) — บรรทัดของนัดและกระดิ่งช่างเป็นพหูพจน์ทั้งคู่
+  const stays = plan({ changes: toDrawing('Z1', 'Z2'), visit: visit('scheduled') });
+  assert.deepEqual(stays.lines, [L1(2), L6(MANY)]);
+  assert.deepEqual(stays.bells.crew, BELL_ZONES('ล็อบบี้ · ห้องประชุม', MANY));
+  // หนึ่งพื้นที่ = คำเดิมทุกตัวอักษร
+  assert.deepEqual(plan({ changes: toDrawing('Z3'), visit: visit('in_progress') }).bells.crew, BELL_ZONES('ห้องน้ำ'));
+
+  // พื้นที่สุดท้ายเป็นจากแบบขณะช่างกำลังทำนัด (หนึ่งพื้นที่) — ใบไม่ได้อยู่ในคิวรอลงคิว ⇒ ไม่มีท่อน "ใบออกจากคิว…"
+  const lastOne = { rows: caseB({ Z1: stamp, Z2: stamp }), changes: toDrawing('Z3') };
+  const keepOpen = plan({ ...lastOne, visit: visit('in_progress') });
+  assert.equal(keepOpen.visit.action, 'keep-open');
+  assert.deepEqual(keepOpen.lines, [L1(1), L2_OFF_QUEUE, L4()]);
+  assert.deepEqual(keepOpen.bells.crew, BELL_ZONES('ห้องน้ำ'));
+  assert.deepEqual(plan({ ...lastOne, visit: visit('in_progress'), resultDate: '' }).lines, [L1(1), L2_OFF_QUEUE_NO_DATE, L4()],
+    'ยังไม่มีวัน = เหลือแค่ "ไม่เหลือพื้นที่ที่ต้องลงหน้างาน"');
+  // นัดที่เป็นประวัติ: ถึงไซต์แล้ว (เข้าแล้ว / ทำไม่ครบ) = ไม่อยู่ในคิว · ไม่เคยถึงไซต์ (ทำไม่ได้ / ยกเลิก) = รอลงคิวใหม่อยู่ ⇒ คงท่อนเดิม
+  for (const [status, label, l2] of [
+    ['done', 'เข้าแล้ว', L2_OFF_QUEUE], ['partial', 'ทำไม่ครบ', L2_OFF_QUEUE], ['unable', 'ทำไม่ได้', L2], ['cancelled', 'ยกเลิก', L2],
+  ]) {
+    const got = plan({ ...lastOne, visit: visit(status) });
+    assert.equal(got.visit.action, 'history', status);
+    assert.deepEqual(got.lines, [L1(1), l2, L5(label)], status);
+  }
+  assert.deepEqual(plan({ ...lastOne, visit: visit('done'), resultDate: '' }).lines[1], L2_OFF_QUEUE_NO_DATE);
+  assert.deepEqual(plan({ ...lastOne, visit: visit('unable'), resultDate: '' }).lines[1], L2_NO_DATE);
+  // ไม่มีนัด · นัดที่การกดนี้ยกเลิก = ใบอยู่ในคิวจริง ⇒ คงท่อนเดิม (ทั้งมีวันและไม่มีวัน)
+  assert.deepEqual(plan({ ...lastOne, visit: null }).lines, [L1(1), L2]);
+  assert.deepEqual(plan({ ...lastOne, visit: visit('scheduled') }).lines, [L1(1), L2, L3]);
+  assert.deepEqual(plan({ ...lastOne, visit: visit('draft'), resultDate: '' }).lines, [L1(1), L2_NO_DATE, L3]);
+  // เธรดเป็นข้อความเก็บถาวร — ไม่มีท่อนคิว และวันยังมีปี (head-r3-21)
+  assert.equal(keepOpen.thread, `${T_DRAWING(1, 'ห้องน้ำ')} · ส่งผล 12/10/2026`);
+});
+
+test('head-r3-54: นัดยังอยู่ + พื้นที่กลับเป็นลงหน้างาน = กระดิ่งช่างว่าต้องวัดเพิ่ม และบรรทัดในกล่อง · นัดร่าง / ไม่มีนัด = ไม่มีทั้งคู่', () => {
+  const MANY = 'พื้นที่เหล่านี้';
+  const mixed = caseB({ Z2: stamp, Z3: stamp }); // ล็อบบี้ลงหน้างาน · ห้องประชุม ห้องน้ำ จากแบบ
+  const unselect = (...ids) => ids.map((id) => ({ id, updatedAt: `2026-10-08T0${id.slice(-1)}:00:00+00:00`, spots: [] }));
+  for (const status of ['scheduled', 'in_progress']) {
+    expectPlan(plan({ rows: mixed, changes: toOnsite('Z2'), visit: visit(status) }), {
+      kind: 'switch',
+      visitAction: 'stays',
+      lines: [L6_BACK('ห้องประชุม'), L8(1)],
+      thread: T_ONSITE(1, 'ห้องประชุม'),
+      bells: { crew: BELL_BACK('ห้องประชุม') },
+      writes: { onsiteIds: ['Z2'], unselectSpotRows: unselect('Z2') },
+    }, status);
+  }
+  // หลายพื้นที่กลับ = "พื้นที่เหล่านี้" (ทรงเดียวกับ head-r3-10) · ชื่อครบทุกชื่อทั้งกระดิ่งและบรรทัด
+  const many = plan({ rows: mixed, changes: toOnsite('Z2', 'Z3'), visit: visit('scheduled') });
+  assert.deepEqual(many.lines, [L6_BACK('ห้องประชุม · ห้องน้ำ'), L8(2)]);
+  assert.deepEqual(many.bells.crew, BELL_BACK('ห้องประชุม · ห้องน้ำ', MANY));
+  // สองทิศในการกดเดียว — กระดิ่งเดียว: ประโยคฝั่งจากแบบ + ท่อนทิศกลับ · บรรทัด stays เดิมต่อท้าย "ต้องวัด … เพิ่ม"
+  const both = plan({ rows: mixed, changes: [...toDrawing('Z1'), ...toOnsite('Z2', 'Z3')], visit: visit('in_progress') });
+  assert.equal(both.visit.action, 'stays');
+  assert.deepEqual(both.lines, [L1(1), `${L6()} · ต้องวัด “ห้องประชุม · ห้องน้ำ” เพิ่ม`, L8(2)]);
+  assert.deepEqual(both.bells.crew, {
+    kind: 'zones',
+    title: 'หัวหน้าเปลี่ยน “ล็อบบี้” เป็นประเมินจากแบบ — ไม่ต้องวัดพื้นที่นี้ · “ห้องประชุม · ห้องน้ำ” กลับเป็นลงหน้างาน — ต้องวัดพื้นที่เหล่านี้เพิ่ม',
+  });
+  // ไม่มีกระดิ่ง = ไม่มีบรรทัด (ไม่สัญญาสิ่งที่ไม่ได้ส่ง): นัดร่าง · ไม่มีนัด · นัดปิดแล้ว · นัดยกเลิก
+  for (const status of [null, 'draft', 'done', 'unable', 'cancelled']) {
+    const got = plan({ rows: mixed, changes: toOnsite('Z2'), visit: visitOf(status) });
+    assert.equal(got.visit.action, 'none', String(status));
+    assert.equal(got.bells.crew, null, String(status));
+    assert.deepEqual(got.lines, [L8(1)], String(status));
+  }
+  // กติกาเดียวทุกสถานะ: กระดิ่งเอ่ยทิศกลับ ⇔ กล่องเอ่ยว่าต้องวัดเพิ่ม
+  for (const status of VISIT_STATES) {
+    const got = plan({ rows: mixed, changes: toOnsite('Z2'), visit: visitOf(status) });
+    assert.equal(!!got.bells.crew?.title.includes('กลับเป็นลงหน้างาน'), got.lines.some((line) => line.includes('ต้องวัด “')), String(status));
+  }
+});
+
+/* (S2b · มติเจ้าของ 26/10 — head-r3-54 กรณีข้างเคียง) นัดที่ค้าง "กำลังทำ" เพราะการกด keep-open รอบก่อน (ทุกพื้นที่เป็นจากแบบขณะช่างทำงานอยู่)
+   แล้วหัวหน้าสลับพื้นที่กลับเป็นลงหน้างาน — ใบ **พลิกกลับมาต้องมีนัด** (`to-visit`) ไม่ใช่ใบผสมที่ไม่พลิก ⇒ เดิมได้ `visitAction none`:
+   ช่างชุดที่ยืนอยู่หน้างานไม่ได้กระดิ่ง และกล่องของหัวหน้าไม่มีบรรทัดของนัด ทั้งที่ห้องนั้นต้องวัด
+   มติ: ทำเหมือน `stays` + ทิศกลับของ head-r3-54 ทุกตัวอักษร (ตัวสร้างประโยคเดิม — ไม่มีคำใหม่) · นัดร่าง / ไม่มีนัด = ไม่มีทั้งคู่ (กติกาเดิม) */
+test('head-r3-54 ข้างเคียง (มติ 26/10): นัดค้างจาก keep-open + พื้นที่กลับเป็นลงหน้างาน = กระดิ่งช่าง "ต้องวัดเพิ่ม" + บรรทัดของนัด · นัดร่าง / ไม่มีนัด = ไม่มีทั้งคู่', () => {
+  const MANY = 'พื้นที่เหล่านี้';
+  /* แถวหลังตัวเขียนลงแผน — เดินตาม `writes` ของแผนก่อนหน้า (ตัวเขียนจริงอ่านแต่ `writes` เหมือนกัน) */
+  const apply = (rows, p) => rows.map((r) => {
+    if (p.writes.drawingIds.includes(r.id)) return { ...r, method: 'drawing', methodReason: p.reason, methodChangedByName: actor.name };
+    if (p.writes.onsiteIds.includes(r.id)) return { ...r, method: 'onsite', methodReason: p.reason, methodChangedByName: actor.name };
+    return r;
+  });
+  const unselect = (...ids) => ids.map((id) => ({ id, updatedAt: `2026-10-08T0${id.slice(-1)}:00:00+00:00`, spots: [] }));
+
+  // รอบก่อน: ทุกพื้นที่เป็นจากแบบขณะช่างกดเริ่มงานแล้ว — นัดไม่ถูกยกเลิก (keep-open) ใบเป็นงานโต๊ะที่ยังมีนัด "กำลังทำ"
+  const keepOpen = plan({ changes: toDrawing('Z1', 'Z2', 'Z3'), visit: visit('in_progress') });
+  assert.equal(keepOpen.visit.action, 'keep-open');
+  const desk = apply(caseB(), keepOpen);
+  assert.equal(plan({ rows: desk, changes: toOnsite('Z1') }).flip, 'to-visit', 'ฉากนี้คือใบที่พลิกกลับมาต้องมีนัด ไม่ใช่ใบผสม');
+
+  // หนึ่งพื้นที่กลับ — นัดที่ช่างถือ (กำลังทำ · นัดไว้) = กระดิ่งทิศกลับของ head-r3-54 + บรรทัดของนัด · คอลัมน์วันกลับไปตามนัด (sync เดิม)
+  for (const status of ['in_progress', 'scheduled']) {
+    expectPlan(plan({ rows: desk, changes: toOnsite('Z1'), visit: visit(status) }), {
+      kind: 'switch',
+      flip: 'to-visit',
+      visitAction: 'stays',
+      datesAction: 'sync',
+      lines: [L6_BACK('ล็อบบี้'), L8(1)],
+      thread: T_ONSITE(1, 'ล็อบบี้'),
+      bells: { crew: BELL_BACK('ล็อบบี้') },
+      writes: { onsiteIds: ['Z1'], unselectSpotRows: unselect('Z1'), dates: VISIT_SYNC },
+    }, `หนึ่งพื้นที่ · นัด ${status}`);
+  }
+
+  // สองพื้นที่กลับ = "พื้นที่เหล่านี้" · ชื่อครบทั้งกระดิ่งและบรรทัด
+  expectPlan(plan({ rows: desk, changes: toOnsite('Z1', 'Z2'), visit: visit('in_progress') }), {
+    kind: 'switch',
+    flip: 'to-visit',
+    visitAction: 'stays',
+    datesAction: 'sync',
+    lines: [L6_BACK('ล็อบบี้ · ห้องประชุม'), L8(2)],
+    thread: T_ONSITE(2, 'ล็อบบี้ · ห้องประชุม'),
+    bells: { crew: BELL_BACK('ล็อบบี้ · ห้องประชุม', MANY) },
+    writes: { onsiteIds: ['Z1', 'Z2'], unselectSpotRows: unselect('Z1', 'Z2'), dates: VISIT_SYNC },
+  }, 'สองพื้นที่');
+
+  /* สองทิศบนนัดเดียวกัน — การกดที่มีทิศเป็นจากแบบพลิกใบกลับมาต้องมีนัดไม่ได้ (แถวที่จะเป็นจากแบบคือลงหน้างานใน "ก่อน" ⇒ ใบต้องมีนัดอยู่แล้ว)
+     ⇒ ทางเดียวที่ถึงคือกดถัดจากการกลับรอบแรก (ใบผสม · ไม่พลิก): รูปผสมเดิมของ head-r3-54 — กระดิ่งเดียวเอ่ยสองทิศ · บรรทัด stays ต่อท้าย */
+  const back = plan({ rows: desk, changes: toOnsite('Z1'), visit: visit('in_progress') });
+  const both = plan({ rows: apply(desk, back), changes: [...toDrawing('Z1'), ...toOnsite('Z2', 'Z3')], visit: visit('in_progress') });
+  expectPlan(both, {
+    kind: 'switch',
+    visitAction: 'stays',
+    lines: [L1(1), `${L6()} · ต้องวัด “ห้องประชุม · ห้องน้ำ” เพิ่ม`, L8(2)],
+    thread: `${T_DRAWING(1, 'ล็อบบี้')} | ${T_ONSITE(2, 'ห้องประชุม · ห้องน้ำ')}`,
+    bells: { crew: { kind: 'zones', title: `${BELL_ZONES('ล็อบบี้').title} · “ห้องประชุม · ห้องน้ำ” กลับเป็นลงหน้างาน — ต้องวัด${MANY}เพิ่ม` } },
+    writes: { drawingIds: ['Z1'], onsiteIds: ['Z2', 'Z3'], unselectSpotRows: unselect('Z2', 'Z3') },
+  }, 'สองทิศหลังกลับรอบแรก');
+
+  // นัดร่าง = ไม่มีช่างถือ ⇒ ไม่มีกระดิ่ง ไม่มีบรรทัด (sync เดิม) · ไม่มีนัด = ล้างวันกลับไปรอลงคิว (เดิม)
+  expectPlan(plan({ rows: desk, changes: toOnsite('Z1'), visit: visit('draft') }), {
+    kind: 'switch',
+    flip: 'to-visit',
+    datesAction: 'sync',
+    lines: [L8(1)],
+    thread: T_ONSITE(1, 'ล็อบบี้'),
+    writes: { onsiteIds: ['Z1'], unselectSpotRows: unselect('Z1'), dates: VISIT_SYNC },
+  }, 'นัดร่าง');
+  expectPlan(plan({ rows: desk, changes: toOnsite('Z1'), visit: null }), {
+    kind: 'switch',
+    flip: 'to-visit',
+    datesAction: 'clear',
+    lines: [L8(1), L9],
+    thread: `${T_ONSITE(1, 'ล็อบบี้')} · ใบกลับไปรอลงคิว · ฝ่ายขายแจ้งวันที่หน้างานเข้าได้ในเธรดนี้`,
+    writes: {
+      onsiteIds: ['Z1'], unselectSpotRows: unselect('Z1'),
+      dates: { committedDueDate: null, committedDueTime: null, committedResultDate: null },
+    },
+  }, 'ไม่มีนัด');
+
+  // กติกาเดียวกับ head-r3-54 ทุกสถานะของนัด: กระดิ่งเอ่ยทิศกลับ ⇔ กล่องเอ่ยว่าต้องวัดเพิ่ม ⇔ นัดที่ช่างถือ · ใบพลิกไม่ยิงกระดิ่งหัวหน้า
+  for (const status of VISIT_STATES) {
+    const got = plan({ rows: desk, changes: toOnsite('Z1'), visit: visitOf(status) });
+    const held = status === 'scheduled' || status === 'in_progress';
+    assert.equal(!!got.bells.crew?.title.includes('กลับเป็นลงหน้างาน'), held, String(status));
+    assert.equal(got.lines.some((line) => line.includes('ต้องวัด “')), held, String(status));
+    assert.equal(got.bells.head, null, String(status));
+  }
+});
+
+test('head-r3-21: วันในกล่องผลลัพธ์เป็นรูปเดียวกับหัวใบ ("อ. 13 ต.ค.") ทุกบรรทัด · เธรดและเหตุผลบนนัดไม่เปลี่ยนรูป', () => {
+  const dmy = /\d{2}\/\d{2}\/\d{4}/;
+  const plans = [
+    plan({ changes: toDrawing('Z1', 'Z2', 'Z3'), visit: visit('scheduled') }),
+    plan({ changes: toDrawing('Z3'), visit: visit('scheduled') }),
+    plan({ rows: caseA(), changes: toOnsite('Z1'), visit: null }),
+    plan({ rows: caseA(), changes: [], reason: SURVEY_METHOD_CANCEL_ONLY_REASON, visit: visit('scheduled') }),
+    cutPlan(),
+  ];
+  for (const p of plans) {
+    assert.ok(p.lines.length > 0);
+    for (const line of p.lines) assert.doesNotMatch(line, dmy, line);
+  }
+  assert.ok(plans[0].lines.includes(L3) && plans[0].lines.includes(L2));
+  assert.ok(plans[2].lines.includes(L9));
+  assert.deepEqual(plans[3].lines, [L_CANCEL_ONLY]);
+  // เธรด (ข้อความเก็บถาวร อ่านข้ามปี) คงรูปที่มีปี
+  assert.match(plans[0].thread, / · ส่งผล 12\/10\/2026$/);
+  assert.match(plans[4].thread, / · ส่งผล 12\/10\/2026$/);
 });

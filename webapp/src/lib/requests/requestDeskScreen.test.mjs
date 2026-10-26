@@ -377,7 +377,8 @@ test('🔴 D-3 ตารางที่ยังไม่ส่งผล (มต
   assert.equal((ZONES_TABLE.match(/table\.wideColumn/g) || []).length, 3);
   // หัวคอลัมน์สุดท้าย + ป้ายของเซลล์บนจอแคบ (`data-label` — ตาราง ≤ 680px ไม่มีหัว) อ่านคำเดียวกัน
   assert.equal((ZONES_TABLE.match(/table\.lastLabel/g) || []).length, 2);
-  assert.match(VIEW, /<td data-label=\{label\} className=\{isNum \? "num" : undefined\}>/, 'Cell ส่ง label ลง data-label');
+  // (S2b แก้หลังตรวจจอ head-r3-12) `data-long-label` = ป้ายยาวขึ้นบรรทัดของตัวเองบนจอแคบ — ป้ายยังมาจาก `label` ตัวเดียว
+  assert.match(VIEW, /<td data-label=\{label\} data-long-label=\{longLabel \? "1" : undefined\} className=\{isNum \? "num" : undefined\}>/, 'Cell ส่ง label ลง data-label');
   // ช่องสุดท้ายของแถวที่ยังไม่ส่งผล: จำนวนภาพแบบของแถวจากแบบต่อจากป้ายสถานะ — แถวลงหน้างานได้ null = ไม่วาดอะไรเพิ่ม
   assert.match(ZONES_TABLE, /\{row\.missingText \? <span className=\{styles\.miss\}>\{row\.missingText\}<\/span> : null\}\s*\{row\.planText\}\s*<\/>/);
   assert.equal((ZONES_TABLE.match(/row\.planText/g) || []).length, 1);

@@ -18,7 +18,7 @@
 //                        ตามจังหวะ poll อยู่แล้ว แต่ผู้ใช้ที่เพิ่งกดปุ่มต้องเห็นผลของ
 //                        ตัวเองเดี๋ยวนั้น ไม่ใช่รออีกหลายวินาที (พบตอน UAT 2026-08-30)
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Send, Paperclip, X, Pencil, Reply, Trash2, Check, Eye, EyeOff } from "lucide-react";
+import { Send, Paperclip, X, Pencil, Reply, Trash2, Check, Eye, EyeOff, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
@@ -33,7 +33,7 @@ import {
   kindAcceptsDueDate, MAX_UPDATE_ATTACHMENTS, updateKindMeta,
 } from "@/lib/master/updateTypes";
 import {
-  isPreviewableImage, MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR,
+  isDrawableImage, isUndrawnImage, MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UNDRAWN_IMAGE_OPEN_TEXT, UPLOAD_ACCEPT_ATTR,
 } from "@/lib/master/attachmentTypes";
 import { groupThreadItems } from "@/lib/master/updateGrouping";
 import { canQuoteItem, quotedIdOf, quoteView } from "@/lib/master/updateQuote";
@@ -790,11 +790,14 @@ function QuoteBlock({ quoted }) {
 
 // รูป = ตารางภาพย่อ · ไฟล์อื่น = ลิงก์ (ภาพย่อของ PDF ไม่บอกอะไร) — กติกาเดียวกับ
 // AttachmentsPanel เพื่อให้ไฟล์แนบทั้งระบบหน้าตาเหมือนกัน
+// ⭐ "รูป" = ชนิดที่เบราว์เซอร์วาดได้ (`isDrawableImage` — ตัวเดียวกับที่แผงใช้แบ่ง) · TIFF เป็นลิงก์ชื่อไฟล์ + "เปิดในแท็บใหม่"
+//   🐞 เดิม TIFF ได้กล่องภาพย่อที่ขึ้น "เปิดรูปไม่ได้" ไม่มีชื่อไฟล์ (ชื่ออยู่แค่ตอนชี้เมาส์) และไม่มีทางเปิด
+//      (S2b แก้หลังตรวจจอ sales-minor-7a — ฝ่ายขายแนบแบบเป็นไฟล์สแกนบ่อย)
 function ThreadAttachments({ row, onOpen }) {
   const list = Array.isArray(row.attachments) ? row.attachments : [];
   if (!list.length) return null;
-  const photos = list.map((a, i) => ({ a, i })).filter(({ a }) => isPreviewableImage(a));
-  const files = list.map((a, i) => ({ a, i })).filter(({ a }) => !isPreviewableImage(a));
+  const photos = list.map((a, i) => ({ a, i })).filter(({ a }) => isDrawableImage(a));
+  const files = list.map((a, i) => ({ a, i })).filter(({ a }) => !isDrawableImage(a));
   return (
     <>
       {photos.length > 0 && (
@@ -817,6 +820,13 @@ function ThreadAttachments({ row, onOpen }) {
           {files.map(({ a, i }) => (
             <a key={i} className={styles.fileLink} href={fileHref(row, i)} target="_blank" rel="noreferrer">
               <Paperclip size={13} /> <span className="truncate">{a.fileName || "ไฟล์แนบ"}</span>
+              {/* คำเดียวกับแถวไฟล์ของแผงไฟล์แนบ — เฉพาะรูปที่วาดไม่ขึ้น (TIFF) · ไม่หด ไม่ขาดกลางวลี ชื่อไฟล์ตัด "…" ก่อน */}
+              {isUndrawnImage(a) && (
+                <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-[var(--text-3)]">
+                  {UNDRAWN_IMAGE_OPEN_TEXT}
+                  <ExternalLink size={12} aria-hidden="true" />
+                </span>
+              )}
             </a>
           ))}
         </div>

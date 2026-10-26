@@ -153,6 +153,8 @@
   flex-direction: column;
   gap: var(--space-1-5);
   min-width: 0;
+  /* ที่ว่างใต้ช่องตอนถูกพาขึ้นจอ (ช่องวันที่เพิ่งโผล่ · ช่องที่ติดด่านตอนกดปุ่มหลัก) — ไม่ชิดขอบท้ายเนื้อ (S2b แก้หลังตรวจจอ head-r3-5) */
+  scroll-margin-bottom: var(--space-4);
 }
 
 .label {
@@ -244,6 +246,16 @@
   gap: var(--space-2);
 }
 
+/* ประโยคใต้ปุ่มหลักเมื่อกดตอนติดด่านที่ไม่ใช่ของช่องไหน ("ยังไม่ได้เปลี่ยน…") — แทน toast ที่ทับหัวกล่อง (S2b แก้หลังตรวจจอ head-r3-4)
+   สีเดียวกับประโยคใต้ช่อง (`.fieldError`) · ชิดขวาใต้ปุ่มบนจอกว้าง ชิดซ้ายเมื่อปุ่มเต็มกว้าง (ท่าเดียวกับบรรทัดใต้ปุ่มของ `ScheduleModalShell`) */
+.blocked {
+  margin: 0;
+  color: var(--red);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+  text-align: end;
+}
+
 /* จอสัมผัส: ทุกของที่กดได้สูงเต็มนิ้ว */
 @media (pointer: coarse) {
   .seg:global(.segmented) > button,
@@ -275,6 +287,8 @@
     min-width: 0;
     min-height: var(--ctl-h-touch);
   }
+
+  .blocked { text-align: start; }
 }
 
 /* ช่องวัน (`DateInput` ของกลาง) บนจอสัมผัส / จอแคบ: ช่องสูงเต็มนิ้ว และปุ่มปฏิทินกว้าง-สูงเต็มนิ้ว (ของกลางเป็น 40px กับ 34×38)

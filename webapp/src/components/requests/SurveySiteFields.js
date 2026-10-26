@@ -21,6 +21,7 @@ import OptionTiles from "@/components/ui/OptionTiles";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import ServiceSiteModal from "@/components/service/ServiceSiteModal";
 import SurveyMethodChip from "@/components/service/SurveyMethodChip";
+import { keepPhrases } from "@/components/ThaiText";
 import { apiJson } from "@/lib/apiFetch";
 import { naText } from "@/lib/format";
 import { surveyZonePackageText } from "@/lib/service/survey";
@@ -29,7 +30,7 @@ import { SURVEY_METHOD_CHIP } from "@/lib/service/surveyMethodSwitch";
 // คำของรายการพื้นที่ตามวิธีที่ฝ่ายขายเลือก ("วัดซ้ำ" / "ประเมินซ้ำ" / "พื้นที่เดิมในทะเบียน") — ไฟล์ล้วน ใช้ได้ทั้งจอและ server (ประเมินจากแบบ · งวด 4)
 import { surveyZoneRowText, surveyZoneWording } from "@/lib/service/surveyIntake";
 import { zoneNameKey } from "@/lib/service/surveyRequest";
-import { sitePickSummary, zonePickList } from "@/lib/service/zonePickState";
+import { sitePickSummary, zonePickedOnsiteText, zonePickList } from "@/lib/service/zonePickState";
 import { floorLabel, normalizeFloor } from "@/lib/service/zoneCode";
 import styles from "./requestForm.module.css";
 
@@ -217,6 +218,12 @@ export default function SurveySiteFields({
   const zoneName = (row) => row.name
     || siteZones.find((z) => z.id === row.zoneId)?.name
     || row.zoneId;
+  /* บรรทัดรองของพื้นที่เดิมที่ติ๊กแล้ว (หลังรหัส ZN) — "…ซ้ำพื้นที่เดิม" / "พื้นที่เดิมในทะเบียน" ตัดสินที่ `surveyZoneRowText` (S4 รอบ 4 ข้อ 5)
+     ⭐ คำชุดวัด (`measure`) ของพื้นที่ที่ผลมีแต่จากแบบ (ไม่เคยวัดหน้างาน) = "วัดหน้างานพื้นที่เดิม" — "วัดซ้ำ" ทำให้ฝ่ายขายนึกว่า
+        ตัวเลขผ่านหน้างานมาแล้ว (S2b แก้หลังตรวจจอ sales-q5) · `zonePickedOnsiteText` ตอบก่อน · กรณีอื่น `null` ⇒ คำของ S4 ทุกตัวอักษร
+     ⚠️ แถวทะเบียนตัวเดียวกับที่ไทล์ใช้พิมพ์เหตุ (`siteZones`) ⇒ ไทล์ "…วัดใหม่เพื่อต่ออายุได้" กับแถวที่เพิ่งติ๊กพูดตรงกัน */
+  const knownZoneText = (registryZone) => zonePickedOnsiteText(registryZone, { wording })
+    || surveyZoneRowText(wording, registryZone);
 
   const submitDraft = () => {
     const name = draft.name.trim().replace(/\s+/g, " ");
@@ -247,10 +254,11 @@ export default function SurveySiteFields({
      ⭐ ทำให้คนเลือกไซต์ได้ถูกตั้งแต่ก่อนกด ไม่ต้องกดเข้าไปดูทีละใบ
      ⭐ สถานที่ที่มีพื้นที่ซึ่งผลล่าสุดมาจากแบบ (ประเมินจากแบบ · งวด S2b · แผน §5): ท่อนกลางแยกเป็น
         "วัดหน้างาน n · จากแบบ k" (n ไม่นับ k — `sitePickSummary` แยกสองช่องมาให้แล้ว) — พื้นที่จากแบบไม่ถูกเรียกว่า "วัดแล้ว"
-        ⚠️ ไม่มีพื้นที่จากแบบ (`sum.drawing` เป็น 0) = ประโยคเดิมทุกตัวอักษร */
-  const summaryOf = (siteRow) => {
+        ⚠️ ไม่มีพื้นที่จากแบบ (`sum.drawing` เป็น 0) = ประโยคเดิมทุกตัวอักษร
+     ⭐ คืนเป็น **รายการท่อน** (คู่ "คำ ตัวเลข" ทีละท่อน) ไม่ใช่สตริงที่ต่อแล้ว — ตัววาดต้องรู้ขอบของแต่ละคู่ (ดู `siteOptions`) */
+  const summaryPartsOf = (siteRow) => {
     const entry = (registry?.sites || []).find((x) => x.id === siteRow.id);
-    if (!entry || !entry.zoneCount) return null;
+    if (!entry || !entry.zoneCount) return [];
     const sum = sitePickSummary(entry);
     const assessed = sum.drawing > 0
       ? [sum.measured ? `วัดหน้างาน ${sum.measured}` : null, `${SURVEY_METHOD_CHIP.drawing} ${sum.drawing}`]
@@ -260,17 +268,25 @@ export default function SurveySiteFields({
       ...assessed,
       sum.sold ? `ขายแล้ว ${sum.sold}` : null,
       sum.pending ? `มีใบสั่งวัดค้าง ${sum.pending}` : null,
-    ].filter(Boolean).join(" · ");
+    ].filter(Boolean);
   };
 
-  const siteOptions = sites.map((s) => ({
-    value: s.id,
-    label: s.name || s.code || s.id,
-    description: [[s.code, s.address].filter(Boolean).join(" · "), summaryOf(s)]
-      .filter(Boolean).join(" — ") || undefined,
-    // ค้นด้วยรหัส SS หรือที่อยู่ได้ด้วย — คนจำสาขาจากถนน ไม่ใช่จากชื่อในทะเบียน
-    search: [s.name, s.code, s.address, s.routeZone].filter(Boolean).join(" "),
-  }));
+  const siteOptions = sites.map((s) => {
+    const summary = summaryPartsOf(s);
+    return {
+      value: s.id,
+      label: s.name || s.code || s.id,
+      /* 🐞 บนมือถือสรุปเคยตัดบรรทัดได้ทุกช่องว่าง ⇒ "วัดหน้างาน" อยู่บรรทัดหนึ่ง "2 · จากแบบ 1" อยู่อีกบรรทัด อ่านไม่ออกว่า 2 คืออะไร
+         (S2b แก้หลังตรวจจอ sales-minor-5) ⇒ ห่อ `nowrap` ทีละคู่ "คำ ตัวเลข" (`keepPhrases` · ตัวหนังสือไม่ถูกแตะ ไม่มีอักขระซ่อน
+         — `Ctrl+F` ยังเจอ) ⇒ ตัดบรรทัดได้แค่ที่ " · " ระหว่างคู่ · ไม่มีสรุป = ข้อความเดิม (รหัส · ที่อยู่) */
+      description: keepPhrases(
+        [[s.code, s.address].filter(Boolean).join(" · "), summary.join(" · ")].filter(Boolean).join(" — "),
+        summary,
+      ) || undefined,
+      // ค้นด้วยรหัส SS หรือที่อยู่ได้ด้วย — คนจำสาขาจากถนน ไม่ใช่จากชื่อในทะเบียน
+      search: [s.name, s.code, s.address, s.routeZone].filter(Boolean).join(" "),
+    };
+  });
 
   /* ── โหมดอ่านอย่างเดียว ─────────────────────────────────────────────────
      ⭐ แสดง **ของจริงที่ใบถืออยู่** ไม่ใช่ช่องเปล่า — ช่องเปล่าอ่านว่า "ยังไม่ได้เลือก"
@@ -427,7 +443,7 @@ export default function SurveySiteFields({
                       {/* "…ซ้ำพื้นที่เดิม" เฉพาะพื้นที่ที่ทะเบียนบอกว่าเคยมีผล — ข้อมูลเดียวกับที่ไทล์ใช้พิมพ์ "ยังไม่เคย…"
                           ไม่งั้นไทล์บอก "ยังไม่เคยวัด" แล้วแถวที่เพิ่งติ๊กบอก "วัดซ้ำ" (UAT S4 รอบ 4 ข้อ 5) */}
                       {row.zoneId
-                        ? `${siteZones.find((z) => z.id === row.zoneId)?.code || row.zoneId} · ${surveyZoneRowText(wording, siteZones.find((z) => z.id === row.zoneId))}`
+                        ? `${siteZones.find((z) => z.id === row.zoneId)?.code || row.zoneId} · ${knownZoneText(siteZones.find((z) => z.id === row.zoneId))}`
                         : `พื้นที่ใหม่ · ${floorLabel(row.floor) || "ยังไม่ระบุชั้น"} — ได้รหัส ZN ตอนกดส่งใบ`}
                       {row.note ? ` · ${row.note}` : ""}
                     </small>

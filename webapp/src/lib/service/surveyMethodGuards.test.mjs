@@ -519,10 +519,11 @@ test('🔑 แถวรายการของการ์ด (surveyZoneFacts)
 const importsOf = (code) => [...code.matchAll(/\b(?:import|export)\b[^;'"`]*?\bfrom\s*['"]([^'"]+)['"]|\bimport\s*\(?\s*['"]([^'"]+)['"]/g)]
   .map((m) => m[1] || m[2]);
 
-test('🔴 ⑦ surveyMethodSwitch.js ดึงได้สี่โมดูลเท่านั้น และสามโมดูลต้นน้ำไม่ดึงมันกลับ (กันวงกลม + กันของ server หลุดเข้า bundle)', () => {
+test('🔴 ⑦ surveyMethodSwitch.js ดึงได้ห้าโมดูลเท่านั้น และสามโมดูลต้นน้ำไม่ดึงมันกลับ (กันวงกลม + กันของ server หลุดเข้า bundle)', () => {
   const code = stripComments(read(SWITCH));
   assert.deepEqual(importsOf(code).sort(), [
     '@/lib/format',
+    '@/lib/service/queueWords', // S2b แก้หลังตรวจจอ head-r3-21: ตัวจัดรูปวันบนจอ (ไฟล์ใบ — ไม่มีวงกลม)
     '@/lib/service/survey',
     '@/lib/service/surveyMethod',
     '@/lib/service/visitStatus',

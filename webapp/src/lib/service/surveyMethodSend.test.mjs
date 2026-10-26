@@ -523,7 +523,8 @@ test('ซอร์ส: การ์ดและ route ส่ง needsVisit จ�
   const control = code('src/lib/service/surveyControl.js');
   assert.match(control, /surveySendVisitStep\(visit, \{ today, needsVisit: surveyNeedsVisit\(rows\) \}\)/);
   // รางของการ์ดได้ค่าตัวเดียวกัน (ขั้นของใบงานโต๊ะไม่เดินตามนัด — กติกาอยู่ที่ `requestRail`)
-  assert.match(control, /requestRailSteps\(request \|\| \{\}, \{ visit: visit \|\| null, needsVisit \}\)/);
+  // (S2b แก้หลังตรวจจอ head-rc-r2-22) งานโต๊ะที่ด่านผ่านครบส่ง `deskReady` ต่อท้าย — needsVisit ยังเป็นตัวเดียวกัน
+  assert.match(control, /requestRailSteps\(request \|\| \{\}, \{ visit: visit \|\| null, needsVisit(, deskReady)? \}\)/);
   assert.match(control, /step: stepOf\(request, \{[^}]*\bvisit, needsVisit: surveyNeedsVisit\(rows\) \}\)/);
 
   const route = code('src/app/api/service/surveys/[id]/send/route.js');

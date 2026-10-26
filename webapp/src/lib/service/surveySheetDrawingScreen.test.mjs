@@ -238,9 +238,11 @@ test('🔴 แผงแบบจากฝ่ายขาย: เฉพาะห�
 
   const tags = jsxOpenTags(PAGE, /<SurveySalesDrawings\b/g);
   assert.deepEqual(tags, [
-    '<SurveySalesDrawings view={drawingsView} {...reuseProps} />',
-    '<SurveySalesDrawings view={drawingsView} compact {...reuseProps} />',
-    '<SurveySalesDrawings view={drawingsView} compact />',
+    /* พับ/กางตอนเปิดหน้า (มติเจ้าของ head-r3-31): หัวหน้าบนจอแยกบาน = กางเมื่อไม่เกิน 3 ไฟล์ · จอไม่แยกบาน + ผู้วางคิว = พับ ·
+       อ่านรายชื่อไฟล์ไม่สำเร็จ = กางทุกที่ (กล่องเตือนอยู่ในแผง · planner-q11 ถอดแถวไฟล์แนบของคำร้องไปแล้ว) */
+    '<SurveySalesDrawings view={drawingsView} defaultOpen={(canDecide && drawingsView.files.length <= 3) || drawingsView.unknown} {...reuseProps} />',
+    '<SurveySalesDrawings view={drawingsView} compact defaultOpen={zoneDrawingsOpen ?? drawingsView.unknown} onOpenChange={setZoneDrawingsOpen} {...reuseProps} />',
+    '<SurveySalesDrawings view={drawingsView} compact defaultOpen={drawingsView.unknown} />',
   ], 'สามที่วาง — ตัวสุดท้าย (เหนือรายการของหน้าเดียว) ไม่มีปุ่มเสมอ: ไม่มีพื้นที่ไหนเปิดอยู่');
   assert.match(PAGE, /const drawingsAbovePanes = showDrawings && split\s*\?/);
   assert.match(PAGE, /const drawingsInZone = showDrawings && !split && shownDrawing\s*\?/);
@@ -419,7 +421,10 @@ test('🔴 กล่อง "ตัดพื้นที่และยกเล�
     /tone="warning"/, /title=\{flipBox\?\.title\}/, /message=\{flipBox\?\.message\}/,
     /confirmLabel=\{flipBox\?\.dead \? "ปิด" : flipBox\?\.confirmLabel\}/, /hideCancel=\{flipBox\?\.dead === true\}/, /busy=\{flipBusy\}/,
     /onConfirm=\{flipBox && !flipBox\.dead \? confirmFlipCut : undefined\}/, /onClose=\{\(\) => !flipBusy && closeFlipBox\(\)\}/,
+    // มติเจ้าของ head-r3-1: ปุ่มเงียบข้าง "ตัดพื้นที่และยกเลิกนัด" = "ปิด" (ค่าตั้งต้นของ ConfirmDialog คือ "ยกเลิก" — กดผิดปุ่มเดียวนัดหาย)
+    /cancelLabel="ปิด"/,
   ]) assert.match(dialog, prop);
+  assert.doesNotMatch(dialog, /cancelLabel=\{|cancelLabel="ยกเลิก"/, 'ไม่สลับคำตามรูปของกล่อง (head-r3-1)');
   assert.match(dialog, /<p className=\{styles\.effectsTitle\}>กดแล้วเกิดขึ้นทันที<\/p>\s*<ul className=\{styles\.effectList\}>\s*\{flipBox\.lines\.map\(\(line\) => <li key=\{line\}>\{thaiText\(line\)\}<\/li>\)\}/,
     'บอกผลทุกข้อก่อนกด — ชุดคลาสเดียวกับโมดัลส่งผล');
   assert.match(dialog, /\{flipBox\.needsDate \? \(/);
@@ -490,7 +495,8 @@ test('บันทึกการเคาะล้ม: รหัสของค
 
 test('🔴 ปุ่ม "เปลี่ยนวิธีประเมิน": กดได้เสมอ ติดด่าน = เหตุของตัวตัดสิน · โมดัลถูกเมานต์เฉพาะคนที่มีปุ่ม · เปิดแล้วอ่านใบใหม่ · สำเร็จ = toast + อ่านใบใหม่', () => {
   assert.match(PAGE, /onSwitchMethod=\{switchMethod\}\s*deskDue=\{deskDue\}/);
-  assert.match(PAGE, /const switchMethod = \(\) => \(view\.method\.allowed\s*\? openMethodDialog\(\)\s*: setToast\(\{ kind: "warning", msg: view\.method\.reason \}\)\);/);
+  assert.match(PAGE, /const switchMethod = \(\) => \(view\.method\.allowed\s*\? openMethodDialog\(\)\s*: setToast\(\{\s*kind: "warning", msg: view\.method\.reason,\s*\.\.\.\(view\.method\.reason === SURVEY_METHOD_ERRORS\.notAcknowledged && view\.flags\.canOpenRequest\s*\? \{ action: \{ label: "เปิดหน้าคำร้อง", onClick: \(\) => router\.push\(`\/requests\/\$\{id\}`\) \} \} : \{\}\),\s*\}\)\);/,
+    'head-r3-8: ยังไม่รับเรื่อง = toast มีปุ่มพาไปหน้าคำร้อง (เฉพาะคนที่ server ให้เปิดหน้าคำร้องได้) · เหตุอื่นไม่มีปุ่ม');
   assert.match(PAGE, /const openMethodDialog = \(\) => \{\s*setMethodOpen\(true\);\s*load\(\{ background: true \}\);\s*\};/);
   assert.equal(count(PAGE, 'setMethodOpen(true)'), 1, 'เปิดได้ทางเดียว — ผ่าน `view.method.allowed`');
   assert.equal(count(PAGE, 'openMethodDialog()'), 1);
@@ -623,11 +629,14 @@ test('🔴 โมดัลเปลี่ยนวิธี: ผลบนจอ�
 
 test('โมดัลเปลี่ยนวิธี: ปุ่มหลักบอกเหตุของแผนตอนกด + ช่องที่ติดขึ้นขอบแดง · ตัวเลือกวิธีเป็น radiogroup · ตัวเลือกเหตุผลเป็นปุ่มกดค้าง · ใบถูกแก้จากที่อื่น = ปุ่มเดียว', () => {
   assert.match(DIALOG, /const blocker = plan\.disabledReason \|\| plan\.errors\.join\(" · "\);/);
-  const [primary] = jsxOpenTags(DIALOG, /<GatedAction\b/g);
-  for (const prop of [/tone="primary"/, /blocker=\{blocker\}/, /onClickCapture=\{\(\) => setTried\(true\)\}/, /onClick=\{submit\}/, /disabled=\{busy\}/]) {
+  /* (S2b แก้หลังตรวจจอ head-r3-4) ปุ่มหลักเป็นปุ่มธรรมดา — ติดด่าน = ไม่ยิง · เหตุอยู่ใต้ช่อง / ใต้ปุ่ม ไม่มี toast ซ้ำ
+     ยามละเอียดของข้อนี้อยู่ที่ `components/service/surveyMethodDialog.test.mjs` */
+  const [primary] = jsxOpenTags(DIALOG, /<Button\s+ref=\{primaryRef\}/g);
+  for (const prop of [/tone="primary"/, /onClick=\{press\}/, /disabled=\{busy\}/]) {
     assert.match(primary, prop);
   }
-  assert.equal(jsxOpenTags(DIALOG, /<GatedAction\b/g).length, 1);
+  assert.doesNotMatch(DIALOG, /<GatedAction\b/);
+  assert.match(DIALOG, /const press = \(\) => \{\s*setTried\(true\);\s*if \(blocker\) \{[\s\S]*?return;\s*\}\s*submit\(\);\s*\};/);
   assert.equal((DIALOG.match(/tone="primary"/g) || []).length, 2, 'ปุ่มหลักปุ่มเดียวต่อสภาพ: บันทึก (ปกติ) / ปิด (ใบถูกแก้จากที่อื่น)');
   assert.match(DIALOG, /\{dead \? \(\s*<Button ref=\{closeRef\} tone="primary" onClick=\{close\}>ปิด<\/Button>\s*\) : \(/);
   /* 🐞 review S2b — ช่องที่ขึ้นขอบแดงต้องตรงกับที่ toast พูด: วันที่ผิดรูปเคยถูกนับเป็น "เหตุผลขาด" (นับจำนวน error) */

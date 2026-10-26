@@ -66,8 +66,14 @@ export function countdownLabel(dueDate, now = new Date()) {
  * ⭐ ผู้ใช้ขอให้เห็นสองวันนี้พร้อมกันเสมอ (ม-101) — ของเดิมสลับกันใช้ช่องเดียว
  * พอฝ่ายรับปากวันแล้ว วันที่ผู้ขอขอจะหายไป ⇒ เทียบไม่ได้ว่าตรงกับที่ขอไหม
  * ทั้งที่นั่นคือสิ่งเดียวที่ผู้ขอต้องดู
+ * @param today วันไทยวันนี้ `YYYY-MM-DD` — ส่งมา = วันที่รับปากผ่านไปแล้วคืน `null` (ไม่มีบรรทัดเทียบ) · ไม่ส่ง = เทียบเสมอ (ผู้เรียกเดิม)
  */
-export function committedVsRequested(committedDate, requestedDate) {
+export function committedVsRequested(committedDate, requestedDate, { today = null } = {}) {
+  /* ⭐ **เลยวันที่รับปากแล้ว = ไม่เทียบกับวันที่ขอ** (S2b แก้หลังตรวจจอ sales-minor-3) — "เร็วกว่าที่ขอ 5 วัน" สีเขียวใต้วันที่พลาดไปแล้ว
+     ข้างหัวแดง "เลยวันที่จะส่งผลมา 2 วัน" อ่านไม่ออกว่าช้าหรือเร็ว · กติกาเดียวกับขั้นลงคิวที่ซ่อนบรรทัดนี้ตอนเลยวันนัดอยู่แล้ว
+     ⚠️ เทียบวันไทยแบบสตริง (`YYYY-MM-DD` ทั้งคู่ — ผู้เรียกส่ง "วันนี้" ของ `businessDate()`) · ไม่ส่ง `today` = พฤติกรรมเดิมทุกผู้เรียก */
+  const due = String(committedDate ?? '').trim();
+  if (today && due && due < String(today).trim()) return null;
   const days = dayDiff(committedDate, requestedDate);
   if (days === null) return null;
   if (days === 0) return { text: 'ตรงกับที่ขอ', tone: 'ok' };

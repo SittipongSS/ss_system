@@ -138,7 +138,7 @@ import { commitDueLabels, deskDueAction } from "@/lib/requests/commitDue";
 /* ชื่อขั้นของรางเมื่อใบประเมินเป็นงานโต๊ะ (ประเมินจากแบบทั้งใบ · งวด S2b กลุ่ม D-2) — ตัวแปลงคำล้วน ไม่มีของ server */
 import { surveyDeskRailSteps } from "@/lib/service/surveyMethodSwitch";
 /* ป้าย "จากแบบ" รายพื้นที่ของรายการอ่านอย่างเดียวในฟอร์มแก้ — view-model ตัวเดียวกับจอรายละเอียดรุ่นเก่า (จอไม่ตัดสินวิธีเอง) */
-import { surveyIntakeSwitchNotes, surveyRequestDrawingSummary } from "@/lib/service/surveyJob";
+import { surveyIntakeSwitchNotes, surveyRequestDeskReady, surveyRequestDrawingSummary } from "@/lib/service/surveyJob";
 import { acknowledgeConfirmCopy } from "@/lib/requests/acknowledgeConfirm";
 
 const STATUS_TONE = {
@@ -1134,7 +1134,11 @@ export default function RequestDetailPage() {
 
   // ⭐ ตรรกะการประกอบรางอยู่ที่ lib — เทสต์ครอบได้ (บั๊กป้ายซ้ำ/ไฮไลต์ผิดขั้นเกิดตอน
   // มันฝังอยู่ใน JSX ซึ่ง CI มองไม่เห็น)
-  const { steps: railSteps, index: workflowIndex } = requestRailSteps(req, { hasItems });
+  /* งานโต๊ะที่ด่านส่งผลผ่านครบ = ขั้น 5 "ส่งผล" เหมือนไทม์ไลน์ของหน้าเดียวกัน (ตัวตัดสินเดียวกับการ์ดควบคุม · S2b แก้หลังตรวจจอ
+     head-rc-r2-22 — เดิมโหมดแก้ชี้ขั้น 4 ขณะไทม์ไลน์ชี้ขั้น 5) · ใบอื่น = `false` รางเดิมทุกขั้น */
+  const { steps: railSteps, index: workflowIndex } = requestRailSteps(req, {
+    hasItems, deskReady: deskJob && surveyRequestDeskReady(req, { today }),
+  });
   /* งานโต๊ะ: ชื่อขั้นเป็นชุดของงานประเมินจากแบบ (ส่งคำร้อง → รับเรื่อง → รับปากวันส่งผล → ประเมินจากแบบ → ส่งผล → ปิดเรื่อง)
      ชุดเดียวกับรางบนใบประเมิน · เปลี่ยนแค่คำ — ลำดับ รหัสขั้น และตัวชี้ขั้นปัจจุบันไม่ขยับ */
   const railShown = deskJob ? surveyDeskRailSteps(railSteps) : railSteps;
@@ -2098,6 +2102,12 @@ export default function RequestDetailPage() {
             variantSwitchNotes={surveyIntakeSwitchNotes(req)}
             freshDraft={!deleteRequestError(req)}
             awaitingAck={["draft", "pending"].includes(req.status)}
+            /* ⭐ ใบประเมินที่พื้นที่ที่ยังใช้อยู่ทุกพื้นที่ประเมินจากแบบ — `deskJob` (`surveyNeedsVisit === false` ของตัวโหลด · ค่าเดียวกับที่ทำให้
+               ขั้นงานขึ้น "ประเมินจากแบบ") ⇒ คำใบ้ใต้วันเข้าพื้นที่บอกว่าวันที่กรอกไว้ไม่ถูกใช้ (มติเจ้าของ sales-q3 · S2b แก้หลังตรวจจอ)
+               ⚠️ ใบปน / ใบที่ยังต้องลงหน้างาน / หัวข้ออื่น = `false` ⇒ ประโยคเดิม
+               ⚠️ ร่างก็ได้ `true` ได้ (แถวพื้นที่ของร่างจากแบบ) — ฟอร์มรับไปใช้เฉพาะใบที่ส่งแล้ว (`variantAskedOnly` · `noVisitHint`)
+                  เพราะไทล์ของร่างยังสลับเป็นลงหน้างานได้ */
+            noVisit={deskJob}
             people={signerPeople}
             lockKind
             deferMentions

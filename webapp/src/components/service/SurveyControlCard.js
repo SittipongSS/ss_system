@@ -29,7 +29,7 @@ import Link from "next/link";
 import {
   ArrowDown, ArrowLeftRight, CalendarDays, Check, ChevronDown, Eye, FileText, ListChecks, Lock, X,
 } from "lucide-react";
-import thaiText from "@/components/ThaiText";
+import plainThaiText, { keepPhrases } from "@/components/ThaiText";
 import Button from "@/components/ui/Button";
 import Segmented from "@/components/ui/Segmented";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -42,6 +42,21 @@ import { SURVEY_METHOD_BUTTON } from "@/lib/service/surveyMethodSwitch";
 import { toneColor } from "@/lib/ui/tone";
 import useMediaQuery from "@/lib/ui/useMediaQuery";
 import styles from "./SurveyControlCard.module.css";
+import { surveyCardUnitNames, surveyCardUnits } from "./surveyControlCardUnits";
+
+/* ⭐ **ร้อยแก้วของการ์ดวาดเป็นชิ้นที่ไม่ตัดบรรทัดข้างใน** (S2b แก้หลังตรวจจอ head-r3-12) — ป้ายใน “…” · วงเล็บสั้น "(SM 3)" · "ฝ่ายขาย" ·
+   ชื่อพื้นที่ ห่อด้วย `keepPhrases` ของ `ThaiText` (nowrap ทั้งชิ้น · ตัวหนังสือไม่ถูกแตะ) · ท่อนระหว่างชิ้นผ่าน `thaiText` กลางตามเดิม
+   (คำทับศัพท์ · เลขที่เอกสาร "SV-26100011" ยังไม่ขาด) ⇒ บรรทัดตัดได้ที่ " · " และช่องว่างระหว่างชิ้นเท่านั้น
+   ⚠️ ข้อความที่ไม่มีชิ้นไหนเลย = ผลของ `thaiText` กลางเป๊ะ (เหมือนก่อนแก้ทุกตัวอักษร) · ชิ้นไหนเป็นชิ้น ตัดสินที่ `surveyControlCardUnits.js` */
+function keepUnits(text, names) {
+  if (typeof text !== "string" || text.length < 2) return text;
+  const kept = keepPhrases(text, surveyCardUnits(text, names));
+  if (kept === text) return plainThaiText(text);
+  /* key ของชิ้นที่ห่อเป็นเลขลำดับจาก `keepPhrases` — ท่อนข้อความขึ้นต้นด้วย "t" จึงไม่ชนกัน (ลิสต์เกิดจากสตริงเดียว ไม่สลับลำดับ) */
+  return kept.map((part, index) => (typeof part === "string"
+    ? <Fragment key={`t${index}`}>{plainThaiText(part)}</Fragment>
+    : part));
+}
 
 /* ปุ่มพาไปจุดที่แก้ได้จริง — `target` มาจากตัวตัดสิน ไม่ได้คิดที่นี่ (กฎ "ไปไหนถึงจะ
    แก้ข้อนี้ได้" มีชุดเดียว อยู่ใน `surveyControl.js`) · การ์ดแค่แปลงเป็นปุ่ม */
@@ -58,7 +73,9 @@ function JumpButton({ target, onOpenZone, onGoTab, onReload, onSwitchMethod, cla
   };
   return (
     <button type="button" className={`text-action ${className || ""}`.trim()} onClick={go}>
-      {target.label}
+      {/* ป้ายของปุ่มพาไปเป็นชิ้นเดียว (S2b แก้หลังตรวจจอ head-r3-12) — "เปิด ห้องประชุมชั้น 3" ไม่ขาดเป็น "เปิด ห้อง" / "ประชุมชั้น 3"
+          ในบรรทัดเหตุที่แคบ: ทั้งปุ่มขึ้นบรรทัดใหม่แทน · ป้ายที่ยาวเกินเพดานของชิ้น (`surveyControlCardUnits.js`) ตัดได้ตามปกติ */}
+      {keepUnits(target.label, [target.label])}
     </button>
   );
 }
@@ -111,7 +128,16 @@ export default function SurveyControlCard({
   const uid = useId();
   if (!view) return null;
 
-  const { status, progress, gates, send, recallAction, sendBackAction, notices, zoneGaps, step, flags } = view;
+  const { progress, gates, send, sendBackAction, notices, zoneGaps, step, flags } = view;
+  /* ตัววาดร้อยแก้วของการ์ดทุกจุด = `thaiText` กลาง + ชิ้นที่ไม่ตัดบรรทัด (`keepUnits` ข้างบน · S2b แก้หลังตรวจจอ head-r3-12)
+     ⚠️ ตั้งชื่อ `thaiText` ตามเดิมโดยตั้งใจ — ทุกจุดที่เคยเรียกตัวกลางได้ชิ้นพร้อมกัน และยามของการ์ด (surveyDocumentSheet ฯลฯ) ที่ตรึงว่า
+        "ร้อยแก้วผ่าน `thaiText(...)`" ยังตรึงสิ่งเดียวกัน · ตัวกลางของระบบ import ในชื่อ `plainThaiText` */
+  const unitNames = surveyCardUnitNames(view);
+  const thaiText = (text) => keepUnits(text, unitNames);
+  /* สองบรรทัดที่ตัวตัดสินส่งมาเป็นสตริงดิบแล้วการ์ดวาดตรง ๆ — บรรทัดรองของสถานะ ("3 แพ็คเกจ (SM 3)" · "เหลือ ห้องประชุมชั้น 3")
+     กับคำใต้ปุ่มดึงกลับ ("ฝ่ายขายได้แจ้งเตือน…") ⇒ วาดผ่านตัวเดียวกัน · ค่าที่ใช้ **คิด** อ่านสตริงดิบจาก `view` (ดู `mixedSaid`) */
+  const status = { ...view.status, sub: thaiText(view.status.sub) };
+  const recallAction = { ...view.recallAction, hint: thaiText(view.recallAction.hint) };
   const extraId = `${uid}-extra`;
   const gatesId = `${uid}-gates`;
   const gapsId = `${uid}-gaps`;
@@ -158,7 +184,7 @@ export default function SurveyControlCard({
   /* 🐞 UAT S2b S05 / S06 / S08 รอบ 2: ใบผสมที่กำลังทำ บรรทัดรองของสถานะขึ้นต้นด้วยประโยคเดียวกันนี้อยู่แล้ว ("วัดแล้ว 0 / 2 พื้นที่ ·
      จากแบบ 1 (หัวหน้ากรอกเอง) · เหลือ …") ⇒ ใต้แถบซ้ำอีกรอบห่างกันสามบรรทัด · พูดแล้วข้างบน = ใต้แถบไม่พูดซ้ำ (ชื่อของแถบยังเป็นประโยคนี้)
      ใบผสมที่พร้อมส่ง (บรรทัดรองเป็นยอดรวม) ยังได้คำใต้แถบตามสเปก C-2 */
-  const mixedSaid = !!mixedText && typeof status.sub === "string" && status.sub.startsWith(mixedText);
+  const mixedSaid = !!mixedText && typeof view.status.sub === "string" && view.status.sub.startsWith(mixedText);
   const meter = flags.cancelled
     ? null
     : deskMeter
@@ -193,7 +219,7 @@ export default function SurveyControlCard({
               </ul>
               <span className={styles.noticeLine}>{thaiText(notice.text)}</span>
             </>
-          ) : notice.text}
+          ) : thaiText(notice.text)}
           {notice.meta ? <small className={styles.noticeMeta}>{notice.meta}</small> : null}
         </StatusNotice>
       ))}
@@ -336,7 +362,7 @@ export default function SurveyControlCard({
             ) : !gate.ok && gate.reason
               ? <small>{thaiText(gate.reason)}</small>
               : !gate.ok && gate.zones?.length
-                ? <small>{`ขาด ${gate.zones.join(" · ")}`}</small>
+                ? <small>{thaiText(`ขาด ${gate.zones.join(" · ")}`)}</small>
                 : null}
           </span>
         </li>
@@ -351,7 +377,7 @@ export default function SurveyControlCard({
       <span className={styles.mark} aria-hidden="true"><X size={12} /></span>
       <div>
         <p className={styles.gapName}>
-          <b>{row.zoneName}</b>
+          <b>{thaiText(row.zoneName)}</b>
           <small>{row.zoneCodeUnknown ? "ไม่ทราบรหัส" : naText(row.zoneCode)}</small>
         </p>
         {row.crewText ? <small>{row.crewText}</small> : null}
@@ -740,14 +766,14 @@ export default function SurveyControlCard({
       tabletSplit={!inPane}
       eyebrow="SURVEY CONTROL"
       title="จัดการผลประเมิน"
-      status={status.headline}
+      status={thaiText(status.headline)}
       statusColor={toneColor(status.tone)}
       statusSub={(
         <>
           {/* บรรทัดรองว่างได้ (ใบงานโต๊ะที่ยังไม่ได้กรอกอะไร: พาดหัว "ยังไม่ได้กรอกขนาด" พูดครบแล้ว) — ไม่วาดบรรทัดเปล่า */}
           {status.sub ? <span className={styles.statusSub}>{status.sub}</span> : null}
           {/* กำหนดส่งผล (ม็อก AW-2) — เดิมเป็นช่อง "TS จะส่งผล" ของหัวใบที่ถอดไปในชุด S9 · คำมาจาก `surveyDueLine` */}
-          {dueLine ? <span className={styles.due} data-late={dueLine.late ? "" : undefined}>{dueLine.text}</span> : null}
+          {dueLine ? <span className={styles.due} data-late={dueLine.late ? "" : undefined}>{thaiText(dueLine.text)}</span> : null}
           {meter}
           {/* ⭐ แถววันส่งผลของงานโต๊ะ (ประเมินจากแบบ · ม็อก B1) — วันที่ผู้ขอต้องการ + ปุ่มรับปาก/เลื่อนวัน อยู่ใต้กำหนดส่งผลของการ์ด
               เพราะเป็นเรื่องเดียวกัน (วันที่ใบนี้สัญญากับฝ่ายขาย) · ใบที่ต้องลงคิวไม่มีแถวนี้ — วันของมันมาจากการลงคิว

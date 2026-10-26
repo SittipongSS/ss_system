@@ -29,8 +29,8 @@ import { TableScroll } from "@/components/ui/Table";
 import { REQUEST_STATUS_LABELS, REQUEST_STATUS_TONES } from "@/lib/requests/statuses";
 import { siteRefillBadge } from "@/lib/service/refill";
 import { surveyZonePackageText } from "@/lib/service/survey";
-// คำของวิธีประเมิน ("ประเมินจากแบบ") มาจากที่เดียว — แท็บนี้ไม่พิมพ์เอง (ประเมินจากแบบ · งวด S2b)
-import { SURVEY_METHOD_LABEL } from "@/lib/service/surveyMethodSwitch";
+// คำของวิธีประเมิน ("ประเมินจากแบบ" · "จากแบบ") มาจากที่เดียว — แท็บนี้ไม่พิมพ์เอง (ประเมินจากแบบ · งวด S2b)
+import { SURVEY_METHOD_CHIP, SURVEY_METHOD_LABEL } from "@/lib/service/surveyMethodSwitch";
 import { floorLabel } from "@/lib/service/zoneCode";
 import { fmtDate, fmtNumber, naText } from "@/lib/format";
 import SurveyMethodChip from "./SurveyMethodChip";
@@ -78,14 +78,30 @@ function roundsText(zone) {
   return onsite > 1 ? `ประเมินมาแล้ว ${onsite} รอบ` : null;
 }
 
+/* ตัวเลขของช่อง "ประเมินแล้วยังไม่ขาย" กับจำนวนในหมายเหตุของมัน — นับจาก **รายการพื้นที่ชุดเดียวกัน**
+   `unsold`   พื้นที่ที่มีผลแล้ว (สูตร "ประเมินแล้ว" ตัวเดียวกับ `registryTotals` ของทะเบียน) และยังไม่มีรอบขาย (`termState` none)
+   `awaiting` ในชุดนั้น ตัวที่ตัวเลขมาจากแบบและยังรอยืนยันหน้างาน (`confirm` — คีย์ที่ทะเบียนเตรียมไว้ · แท็บไม่ถามวิธีประเมินเอง)
+   🐞 เดิมหมายเหตุนับ `registry.awaitingConfirm` (รอยืนยันทุกพื้นที่ รวมที่ขายแล้ว/รอบจบแล้ว) และช่องคิดเลข ประเมินแล้ว − ขายแล้ว − รอบจบ
+      — พื้นที่ที่ขายแล้วแต่ไม่เคยวัด (มีในข้อมูลนำเข้า) ถูกหักออกทั้งที่ไม่เคยอยู่ในตัวตั้ง ⇒ ช่องนับขาด และหมายเหตุมากกว่าตัวเลขของช่องได้
+      (S2b แก้หลังตรวจจอ sales-q6 · ตรวจรอบสอง) ⇒ สองค่านับจากรายการเดียว — `awaiting` ไม่มีวันเกิน `unsold`
+   ⚠️ ยอดระดับลูกค้าของทะเบียนรวมจาก `sites[].zones` ชุดเดียวกันนี้ (`customerZoneRegistry`) ⇒ ไม่มีพื้นที่ตกหล่น
+   ⚠️ ฟังก์ชันล้วน ไม่อ้างชื่ออื่นในไฟล์ — เทสต์หยิบไปรันตรง ๆ (surveyFixSales.test.mjs) */
+function unsoldCounts(registry) {
+  const zones = (Array.isArray(registry?.sites) ? registry.sites : [])
+    .flatMap((site) => (Array.isArray(site?.zones) ? site.zones : []))
+    .filter((zone) => zone && (zone.surveyedAt || zone.volumeCbm !== null) && (zone.termState || "none") === "none");
+  return { unsold: zones.length, awaiting: zones.filter((zone) => zone.confirm === "awaiting").length };
+}
+
 /* คำใต้ตัวเลข "ประเมินแล้วยังไม่ขาย" — มีพื้นที่ที่ตัวเลขมาจากแบบและยังรอยืนยันหน้างาน = บอกจำนวนไว้ด้วย
    (เสนอราคาได้เหมือนเดิม — มติเจ้าของ D1 — แต่ฝ่ายขายต้องรู้ว่าตัวเลขชุดไหนยังขยับได้)
-   ⚠️ `awaitingConfirm` มาจากยอดรวมของทะเบียน (`registryTotals`) · ไม่มี / เป็น 0 = ประโยคเดิม */
-function unsoldNote(registry, unsold) {
+   ⭐ ประโยคสั้นบรรทัดเดียว (มติเจ้าของ sales-q7 · S2b แก้หลังตรวจจอ) — "มีตัวเลขครบแล้ว" กับ "ประเมิน" ซ้ำไม่ได้บอกอะไรเพิ่ม
+      และทำให้แถวตัวเลขทั้งแถวสูงกว่าลูกค้ารายอื่นหนึ่งบรรทัด · คำ "จากแบบ" เป็นค่าคงที่ตัวเดียวกับป้ายวิธี (`SURVEY_METHOD_CHIP`)
+   ⚠️ รับค่าจาก `unsoldCounts` (ยังไม่ขายเท่านั้น · sales-q6) · ไม่มี / เป็น 0 = ประโยคเดิมทุกตัวอักษร */
+function unsoldNote({ unsold, awaiting }) {
   if (!(unsold > 0)) return undefined;
-  const awaiting = Number(registry.awaitingConfirm) || 0;
   return awaiting > 0
-    ? `มีตัวเลขครบแล้ว เสนอราคาได้ · ${fmtNumber(awaiting)} พื้นที่${SURVEY_METHOD_LABEL.drawing} รอยืนยันหน้างาน`
+    ? `เสนอราคาได้ · ${fmtNumber(awaiting)} พื้นที่${SURVEY_METHOD_CHIP.drawing} รอยืนยันหน้างาน`
     : "มีตัวเลขครบแล้ว เสนอราคาได้โดยไม่ต้องกลับไปวัดใหม่";
 }
 
@@ -109,7 +125,9 @@ export default function CustomerZonesPanel({
      ⚠️ ไม่ย้ายมาคำนวณใหม่ในเส้นทะเบียน — ตรรกะ "ครั้งหน้าเมื่อไร / น้ำหอมใกล้หมด"
         มีที่อยู่ของมันแล้ว เขียนซ้ำเมื่อไรสองจอจะตอบคนละอย่าง */
   const opsById = new Map((sitesOps || []).map((s) => [s.id, s]));
-  const unsold = (registry.measuredCount || 0) - (registry.soldCount || 0) - (registry.endedCount || 0);
+  // ช่อง "ประเมินแล้วยังไม่ขาย" + หมายเหตุ — รายการเดียวกัน (sales-q6 · ดู `unsoldCounts`)
+  const unsoldSet = unsoldCounts(registry);
+  const { unsold } = unsoldSet;
   const history = registry.history || [];
   const canOpenSite = registry.canOpenSiteRegistry === true;
 
@@ -126,9 +144,11 @@ export default function CustomerZonesPanel({
         {/* ⭐ กรณี ④ ของเมทริกซ์: วัดแล้วยังไม่ขาย = ของที่จ่ายค่าแรงไปแล้วแต่ยังไม่ได้เงิน
             ⇒ ต้องชูขึ้นก่อนใคร (แผน §5A · ม็อก §12) */}
         <Metric icon={<TriangleAlert size={16} aria-hidden="true" />} tone={unsold > 0 ? "warning" : undefined}
-          className={unsold > 0 && Number(registry.awaitingConfirm) > 0 ? styles.noteWrap : undefined}
-          label="ประเมินแล้วยังไม่ขาย" value={Math.max(0, unsold)}
-          note={unsoldNote(registry, unsold)} />
+          /* ตัดบรรทัดแทนจุดไข่ปลาเมื่อเป็นประโยคที่มีจำนวน — k สองหลัก / จอแคบ ห้ามตัดท่อน "รอยืนยันหน้างาน" ทิ้ง (sales-q7)
+             เงื่อนไขชุดเดียวกับที่ `unsoldNote` เลือกประโยคนั้น (sales-q6) */
+          className={unsold > 0 && unsoldSet.awaiting > 0 ? styles.noteWrap : undefined}
+          label="ประเมินแล้วยังไม่ขาย" value={unsold}
+          note={unsoldNote(unsoldSet)} />
       </MetricStrip>
 
       {sites.map((site) => {
