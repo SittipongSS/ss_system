@@ -201,7 +201,10 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
                     {reg && (
                       <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", marginLeft: 2 }} className="font-mono flex gap-4 flex-wrap">
                         <span>ราคาขาย/ชิ้น: {priceOf(reg) > 0 ? fmtMoney(priceOf(reg)) : NA}</span>
-                        <span>ภาษี/ชิ้น: {regTax(reg) > 0 ? fmtMoney(regTax(reg)) : "ยกเว้น"}</span>
+                        {/* ภาษี 0 ≠ ยกเว้น — "ยกเว้น" เฉพาะทะเบียนที่ RA ตัดสินไว้ · ที่เหลือคือสินค้ายังไม่มีราคาขายปลีก */}
+                        <span>ภาษี/ชิ้น: {reg.isExciseTaxable === false
+                          ? "ยกเว้น"
+                          : regTax(reg) > 0 ? fmtMoney(regTax(reg)) : `${fmtMoney(0)} (ไม่มีราคาขายปลีก)`}</span>
                       </div>
                     )}
                   </div>

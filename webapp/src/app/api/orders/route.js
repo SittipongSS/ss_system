@@ -2,7 +2,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { caretakerTeamsOf } from '@/lib/permissions';
 import { applyExciseListScope } from '@/lib/excise/listScope';
-import { ORDER_SELECT, attachRegistrations, insertOrder, insertOrderItems } from '@/lib/tax/orders';
+import { ORDER_SELECT, attachRegistrations, insertOrder, insertOrderItems, stampExemptFlags } from '@/lib/tax/orders';
 import { billedTaxTotals, exciseTaxLineForRegistration, exciseTaxTotals } from '@/lib/tax/exciseBilling';
 import { recordAudit } from '@/lib/audit';
 import { customerNameIn, customerSnapshotName } from '@/lib/master/customerName';
@@ -24,8 +24,10 @@ export const dynamic = 'force-dynamic';
 // จะนับรอบล่าสุดได้ต้องมีคอลัมน์จริงก่อน — เรื่องของ migration ไม่ใช่ของ select
 // ตั้งแต่ 2026-09-23 ด่าน `npm run check:columns` แกะค่าคงที่แบบนี้ได้แล้ว ⇒ ใส่กลับมา
 // เมื่อไรด่านแดงทันที ไม่ต้องรอให้ใครไปเปิดหน้า /tax แล้วเห็นคิวว่าง
+// ⭐ รายการฝังมาแค่สามคอลัมน์ (ไม่ใช่ `count`) — ใช้นับจำนวน และให้ server ตัดสินธง `taxExempt`
+// (`stampExemptFlags`) ซึ่งต้องรู้ว่าทุกรายการผูกทะเบียนที่ RA ยกเว้นไว้หรือไม่ · ตัดทิ้งก่อนส่งจอ
 const ORDER_SELECT_SLIM =
-  'id, status, createdAt, totalTax, quotationRef, customerName, rejectionReason, team, items:order_items(count)';
+  'id, status, createdAt, totalTax, quotationRef, customerName, rejectionReason, team, items:order_items(registrationId, totalTax, quantity)';
 
 export async function GET(request) {
   const supabase = getSupabaseAdmin();
@@ -51,8 +53,13 @@ export async function GET(request) {
   const { data, error } = await query;
   if (error) return Response.json({ error: error.message }, { status: 500 });
   if (slim) {
-    // count embed คืน items: [{ count: n }] — แปลงเป็น itemCount ตัวเลขเดียว
-    return Response.json((data || []).map(({ items, ...row }) => ({ ...row, itemCount: items?.[0]?.count ?? 0 })));
+    // ยอด 0 ≠ ยกเว้นภาษี — ธงคิดที่ server แล้วตัดรายการทิ้ง เหลือ itemCount ตัวเลขเดียว
+    try {
+      const stamped = await stampExemptFlags(supabase, data || []);
+      return Response.json(stamped.map(({ items, ...row }) => ({ ...row, itemCount: items?.length ?? 0 })));
+    } catch (e) {
+      return Response.json({ error: e?.message || 'อ่านทะเบียนของใบยื่นไม่สำเร็จ' }, { status: 500 });
+    }
   }
   await attachRegistrations(supabase, data);
   return Response.json(data);

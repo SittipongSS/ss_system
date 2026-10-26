@@ -28,18 +28,21 @@ import StartFilingDialog from "@/components/excise/StartFilingDialog";
 import FileTaxDialog from "@/components/excise/FileTaxDialog";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { openBillPrintWindow } from "@/lib/tax/billPrint";
-import { orderAmountToCollect } from "@/lib/tax/exciseBilling";
+import { isExemptFiling, orderAmountToCollect, untaxedFilingItems } from "@/lib/tax/exciseBilling";
 import { productDisplayName } from "@/lib/master/productIdentity";
 import { statusMeta } from "@/lib/excise/workflow";
 import { useCustomerRecord } from "@/lib/master/useCustomerRecord";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import { toneColor } from "@/lib/ui/tone";
 import { apiFetch } from "@/lib/apiFetch";
+import styles from "./page.module.css";
 
-const taxText = (o) => ((o.totalTax || 0) === 0 ? "ยกเว้นภาษี" : fmtMoney(o.totalTax));
+/* "ยกเว้นภาษี" ตัดสินที่ isExemptFiling (ทุกรายการผูกทะเบียนที่ RA ยกเว้น) — ยอด 0 เพราะสินค้าไม่มีราคาขายปลีก
+   ต้องโชว์ ฿0.00 ตามจริง ไม่ใช่ป้ายยกเว้น (ตรวจระบบ 2026-10-26) */
+const taxText = (o) => (isExemptFiling(o) ? "ยกเว้นภาษี" : fmtMoney(o.totalTax || 0));
 // ยอดเรียกเก็บ = ค่าภาษี + VAT 7% ตรงกับ "ยอดแจ้งชำระสุทธิ" บนเอกสารที่พิมพ์เสมอ
 // (มติผู้ใช้ 2026-07-26) — คิดจาก lib/tax/exciseBilling ที่เดียว
-const amountToCollectText = (o) => ((o.totalTax || 0) === 0
+const amountToCollectText = (o) => (isExemptFiling(o)
   ? "ยกเว้นภาษี"
   : fmtMoney(orderAmountToCollect(o)));
 const ORDER = ["draft", "pending", "received", "filing", "complete", "delivered"];
@@ -60,7 +63,9 @@ export default function FilingDetailPage() {
   const { data: products, loading: lProducts, error: productsError, staleError: productsStale, errorDetail: productsDetail, loaded: productsLoaded, reload: reloadProducts } = useApiList("/api/products");
 
   const o = useMemo(() => orders.find((x) => x.id === id) || null, [orders, id]);
-  const isExempt = (o?.totalTax || 0) === 0;
+  const isExempt = isExemptFiling(o);
+  // รายการภาษี ฿0 ที่ไม่ได้รับยกเว้น = ตอนสร้างใบสินค้ายังไม่มีราคาขายปลีก — ยอดใบนี้ขาด
+  const untaxedIds = new Set(untaxedFilingItems(o).map((item) => item.id));
   const unregisteredItemCount = (o?.items || []).filter((item) => !item.registrationId).length;
   // ลิสต์ customers ข้างบนมีไว้ให้ picker ของ OrderFormModal — ลูกค้าของใบยื่นใบนี้
   // ต้องอ่านรายตัว ไม่ใช่ find จากลิสต์ที่กรองทีม (ดู lib/master/useCustomerRecord.js)
@@ -390,6 +395,11 @@ export default function FilingDetailPage() {
 
           <div className="glass-panel" style={{ padding: 16 }}>
             <div className="drawer-section-title" style={{ marginBottom: 10 }}>รายการสินค้า ({o.items?.length || 0})</div>
+            {untaxedIds.size > 0 && (
+              <StatusNotice tone="warning">
+                มี {untaxedIds.size} รายการที่ภาษีเป็น ฿0 เพราะตอนสร้างใบ สินค้ายังไม่มีราคาขายปลีก — ยอดในใบนี้ขาดจากที่ต้องยื่นจริง
+              </StatusNotice>
+            )}
             <TableScroll surface="embedded"><table style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--fs-7)" }}>
               <thead>
                 <tr style={{ color: "var(--text-3)", fontSize: "var(--fs-5)", borderBottom: "1px solid var(--border)" }}>
@@ -406,6 +416,9 @@ export default function FilingDetailPage() {
                       <td style={{ padding: "8px 0", verticalAlign: "top" }}>
                         <div className="font-mono" style={{ fontSize: "var(--fs-4)", color: "var(--text-3)" }}>{naText(p.fgCode)}</div>
                         <div>{productDisplayName(p)}</div>
+                        {untaxedIds.has(it.id) && (
+                          <div className={styles.untaxed}>ไม่มีราคาขายปลีก · ภาษี ฿0</div>
+                        )}
                       </td>
                       <td className="font-mono" style={{ padding: "8px", textAlign: "right", verticalAlign: "top", whiteSpace: "nowrap" }}>{fmtNumber((it.quantity || 0))}</td>
                       <td className="font-mono" style={{ padding: "8px 0", textAlign: "right", verticalAlign: "top", whiteSpace: "nowrap" }}>{fmtMoney(it.totalTax || 0)}</td>

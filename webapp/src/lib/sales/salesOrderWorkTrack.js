@@ -281,10 +281,27 @@ function registrationSegment(excise) {
   };
 }
 
+/* บรรทัดที่ภาษีคิดออกมา ฿0 เพราะสินค้ายังไม่มีราคาขายปลีก (`taxBaseMissing` จาก resolveSoFiling)
+   🔴 ต้องเห็นก่อนกดสร้างใบยื่น — ใบยื่นตรึงอัตราไว้ตอนสร้าง กดไปแล้วยอดที่ยื่นขาดถาวร (ตรวจระบบ 2026-10-26)
+   รูปเดียวกับ registrationNotes (หัวกลุ่ม + รหัส) ให้ตัวเรนเดอร์ชุดเดียวจัดบรรทัด */
+function taxBaseNotes(lines) {
+  const group = lines.filter((line) => line.taxBaseMissing);
+  if (!group.length) return [];
+  const codes = fgCodes(group);
+  return [{
+    state: 'no_tax_base',
+    label: 'ไม่มีราคาขายปลีก ภาษี ฿0',
+    count: group.length,
+    codes: codes.slice(0, FG_LIST_LIMIT),
+    more: Math.max(0, codes.length - FG_LIST_LIMIT),
+  }];
+}
+
 function filingSegment(excise, { approved }) {
   if (!excise || excise.loading || excise.schemaReady === false) return null;
   const lines = excise.lines || [];
   if (!lines.length && !excise.filing) return null;
+  const notes = taxBaseNotes(lines);
 
   if (excise.filing) {
     const index = Math.max(0, FILING_STEPS.indexOf(excise.filing.status));
@@ -311,6 +328,7 @@ function filingSegment(excise, { approved }) {
       state: 'todo',
       connect: { message: approved ? 'ใบนี้ยังไม่มีรายการที่พร้อมสร้างใบยื่น' : 'สร้างใบยื่นได้หลังใบนี้อนุมัติ' },
       meta: `${lines.length} FG`,
+      ...(notes.length ? { notes } : {}),
     };
   }
 
@@ -326,6 +344,7 @@ function filingSegment(excise, { approved }) {
       disabledReason: excise.createDisabledReason || null,
     },
     meta: excise.amountToCollect ? `เรียกเก็บ ${fmtMoney(excise.amountToCollect)}` : null,
+    ...(notes.length ? { notes } : {}),
   };
 }
 

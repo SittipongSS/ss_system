@@ -352,3 +352,28 @@ test('current ชี้ช่วงขึ้นทะเบียนเมื่
   });
   assert.equal(track.current.key, 'registration');
 });
+
+/* 🔴 ตรวจระบบ 2026-10-26 — ใบยื่นตรึงอัตราไว้ตอนสร้าง ⇒ บรรทัดที่ภาษี ฿0 เพราะยังไม่มีราคาขายปลีก
+   ต้องเห็นบนเส้นเดินงาน **ก่อน** กดปุ่มสร้าง ไม่งั้นยอดที่ยื่นขาดถาวร */
+test('ก่อนสร้างใบยื่น — บรรทัดไม่มีราคาขายปลีกขึ้นเป็นกลุ่มบนช่วงยื่นชำระ', () => {
+  const track = salesOrderWorkTrack({
+    scent: { hasDesignLines: false }, readiness: readinessReady, plan: planRunning, dealType: NPD,
+    excise: excise({
+      lines: [exciseLine('FG-1', 'approved'), { ...exciseLine('FG-2', 'approved'), taxBaseMissing: true }],
+      eligible: true, amountToCollect: 9.42, onCreateFiling: () => {},
+    }),
+    approved: true,
+  });
+  const filing = track.segments.at(-1);
+  assert.equal(filing.connect.actionLabel, 'สร้างใบยื่นชำระ', 'เตือน ไม่บล็อก');
+  assert.deepEqual(filing.notes.map((n) => [n.state, n.count, n.codes]), [['no_tax_base', 1, ['FG-2']]]);
+});
+
+test('ไม่มีบรรทัดขาดราคา = ไม่มีกลุ่มเตือนบนช่วงยื่นชำระ', () => {
+  const track = salesOrderWorkTrack({
+    scent: { hasDesignLines: false }, readiness: readinessReady, plan: planRunning, dealType: NPD,
+    excise: excise({ lines: [exciseLine('FG-1', 'approved')], eligible: true, amountToCollect: 856, onCreateFiling: () => {} }),
+    approved: true,
+  });
+  assert.equal(track.segments.at(-1).notes, undefined);
+});

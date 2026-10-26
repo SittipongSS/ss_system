@@ -135,6 +135,35 @@ export function billedTaxTotals(items = []) {
   return { totalTax, vat, amountToCollect: round2(totalTax + vat) };
 }
 
+// ── ใบยื่น "ยกเว้นภาษี" ไหม — ตัดสินจากคำตัดสินของฝ่าย RA ไม่ใช่จากยอด 0 ──────────
+//
+// 🐞 ตรวจระบบ 2026-10-26: ทุกจอเคยถือว่า `totalTax === 0` = ยกเว้น ⇒ ใบที่ภาษีเป็น 0
+// เพราะสินค้า **ยังไม่มีราคาขายปลีก** (ฐานภาษีว่าง) ถูกพาเข้าทางลัดของใบยกเว้น — ข้าม
+// เลขใบเสร็จของ S&S · ข้ามขั้น "กำลังยื่น" · ปิดงานโดยไม่มีใบเสร็จสรรพสามิต · ป้ายบนจอ
+// ก็เขียนว่า "ยกเว้นภาษี" ทั้งที่ของจริงคือยื่นขาด (SO อนุมัติแล้ว 21 ใบเป็นแบบนี้ทั้งใบ)
+//
+// ยกเว้นจริงมีทางเดียว: **ทุกรายการผูกทะเบียนที่ฝ่าย RA ตัดสินว่าไม่เสียภาษี**
+// (`registration.isExciseTaxable === false`) และยอดรวมเป็น 0 จริง — ยอด 0 เป็นเงื่อนไข
+// ที่ต้องมี แต่ไม่พอ · รายการที่ไม่มีทะเบียน (ใบยื่นจาก SO ยอมให้มี) ไม่มีใครตัดสินให้ยกเว้น
+//
+// ⚠️ ต้องมี `item.registration` ที่ผูกแล้ว (attachRegistrations) — แถวโหมด slim ไม่มี
+// รายการ จึงอ่านธง `taxExempt` ที่ server คิดด้วยฟังก์ชันนี้มาให้แทน
+export function isExemptFiling(order) {
+  if (!order) return false;
+  if (!Array.isArray(order.items)) return order.taxExempt === true;
+  if (!order.items.length || round2(order.totalTax) !== 0) return false;
+  return order.items.every((item) => item?.registration?.isExciseTaxable === false);
+}
+
+// รายการของใบยื่นที่ภาษีเป็น 0 ทั้งที่ไม่ได้รับยกเว้น = ตอนสร้างใบ สินค้ายังไม่มีฐานภาษี
+// (ราคาขายปลีก) · ใบยื่นตรึงอัตราไว้ที่รายการ ⇒ เติมราคาทีหลัง ยอดในใบนี้ไม่ขยับตาม
+export function untaxedFilingItems(order) {
+  return (Array.isArray(order?.items) ? order.items : []).filter((item) =>
+    item?.registration?.isExciseTaxable !== false
+    && (Number(item?.quantity) || 0) > 0
+    && round2(item?.totalTax) === 0);
+}
+
 // ยอดที่เรียกเก็บของใบยื่นใบหนึ่ง: ค่าที่ตรึงไว้บนใบมาก่อน แล้วจึงคิดจากรายการ
 // (ใบที่สร้างก่อนมติ 2026-07-26 เก็บยอดไม่รวม VAT ไว้ — คิดใหม่จากรายการให้ตรงเอกสาร)
 export function orderAmountToCollect(order) {

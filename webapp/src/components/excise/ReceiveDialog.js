@@ -7,11 +7,15 @@ import { describeResponseError } from "@/lib/fetchError";
 import { uploadFileBytes } from "@/lib/master/uploadFile";
 import { notifyToast } from "@/components/ui/Toast";
 import { apiFetch } from "@/lib/apiFetch";
+import StatusNotice from "@/components/ui/StatusNotice";
+import { isExemptFiling, untaxedFilingItems } from "@/lib/tax/exciseBilling";
 
 // SA "เงินเข้าแล้ว" — records the S&S invoice/receipt number and moves the order
 // to 'received'. Exempt orders confirm without a receipt. PATCH unchanged.
+// "ยกเว้น" ตัดสินที่ isExemptFiling (ทะเบียนที่ RA ยกเว้น) ไม่ใช่ยอด 0 — ดูเหตุผลที่ FileTaxDialog
 export default function ReceiveDialog({ open, onClose, onDone, order }) {
-  const isExempt = (order?.totalTax || 0) === 0;
+  const isExempt = isExemptFiling(order);
+  const untaxedCount = untaxedFilingItems(order).length;
   const [receiptNumber, setReceiptNumber] = useState("");
   const [file, setFile] = useState(null);   // หลักฐานการชำระจากลูกค้า
   const [busy, setBusy] = useState(false);
@@ -68,6 +72,11 @@ export default function ReceiveDialog({ open, onClose, onDone, order }) {
             <span style={{ color: "var(--text-3)" }}>ยอดภาษีรวม</span>
             <span className="font-mono font-bold" style={{ color: "var(--red)" }}>{isExempt ? "ยกเว้นภาษี" : fmtMoney(order.totalTax)}</span>
           </div>
+          {untaxedCount > 0 && (
+            <StatusNotice tone="warning">
+              มี {untaxedCount} รายการที่ภาษีเป็น ฿0 เพราะตอนสร้างใบ สินค้ายังไม่มีราคาขายปลีก — ยอดเรียกเก็บในใบนี้ขาดจากที่ต้องเก็บจริง
+            </StatusNotice>
+          )}
           {isExempt ? (
             <p style={{ fontSize: "var(--fs-6)", color: "var(--text-3)" }}>ออเดอร์นี้ได้รับยกเว้นภาษี — ยืนยันว่ารับเงินจากลูกค้าแล้ว เพื่อส่งต่อให้ฝ่าย RA</p>
           ) : (
