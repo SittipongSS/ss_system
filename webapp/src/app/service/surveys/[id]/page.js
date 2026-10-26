@@ -29,7 +29,8 @@
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, MapPinPlus, Search } from "lucide-react";
-import thaiText from "@/components/ThaiText";
+import thaiText, { keepPhrases } from "@/components/ThaiText";
+import { surveyCardUnits } from "@/components/service/surveyControlCardUnits";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import SurveyAboutRequest from "@/components/service/SurveyAboutRequest";
@@ -125,6 +126,8 @@ const DOC_ISSUED_STATES = ["issued", "frozen", "ready"];
    (`SURVEY_DOCUMENT_POLL_MAX_FAILS` ใน app/requests/[id]/page.js) · นับ **รอบที่พังติดกัน** ไม่ใช่เวลาที่ผ่านไป:
    เครื่องที่พับจอแล้วเปิดใหม่ต้องยังได้ลองจนเน็ตกลับมา */
 const DOC_POLL_MAX_FAILS = 8;
+/* ชื่อที่คำกำกับไทล์ "ต้องเข้ายืนยันหน้างานภายหลังไหม" เอ่ยถึง — เป็นชิ้นเดียว ไม่ตัดกลาง (ป้ายในคำพูดกับ "ฝ่ายขาย" มาจาก `surveyCardUnits` เอง) */
+const SEND_TILE_UNITS = ["ใบยืนยันหน้างาน", "ขอยืนยันหน้างาน"];
 /* เวลาสองค่าเป็นจุดเดียวกันไหม — เทียบเป็นมิลลิวินาที ไม่เทียบสตริง (PostgREST คืน `+00:00` · `toISOString()` ลงท้าย `Z`) */
 const sameInstant = (a, b) => {
   if (!a || !b) return false;
@@ -1231,7 +1234,8 @@ export default function SurveySheetPage({ params }) {
      · เลือกแล้วเหตุ "ยังไม่ได้เลือก…" หายทันที */
   const sendTitle = sendConfirm.title ? { title: sendConfirm.title } : null;
   const sendChoiceOptions = sendConfirm.choice
-    ? sendConfirm.choice.options.map(({ value, label, hint }) => ({ value, label, description: hint }))
+    /* คำกำกับใต้ไทล์ห้ามขาดกลางป้าย/ชื่อ (UAT S2b รอบสอง S05 · 375: "“รอ" / "ยืนยันหน้างาน”" · "ฝ่าย" / "ขาย" · "ใบยืนยันหน้า" / "งาน") — ชิ้นชุดเดียวกับการ์ด */
+    ? sendConfirm.choice.options.map(({ value, label, hint }) => ({ value, label, description: keepPhrases(hint, surveyCardUnits(hint, SEND_TILE_UNITS)) }))
     : [];
   const pickSendChoice = (value) => {
     setSendChoice(value);

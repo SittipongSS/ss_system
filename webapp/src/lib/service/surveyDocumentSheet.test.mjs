@@ -742,7 +742,11 @@ test('ผังสองคอลัมน์ของการ์ดกลา�
   assert.match(PANEL, /\{footer \? <div className=\{styles\.footer\}>\{footer\}<\/div> : null\}\s*<\/div>\s*<\/DetailCard>/);
   const narrow = PANEL_CSS.slice(PANEL_CSS.lastIndexOf('@media (max-width: 680px)'));
   assert.match(narrow, /\.bodySplit > \.footer \{\s*align-self: stretch;\s*\}/);
-  assert.equal(count(PANEL_CSS, 'align-self: stretch'), 1);
+  /* 🐞 UAT 26/10 (S18 ที่ 375): บล็อกสถานะหดด้วย `align-items: start` เหมือนส่วนรอง — สถานะสั้นของใบงานโต๊ะทำแถบวัด/แถววันส่งผลจบสั้นกว่าปุ่ม 21px
+     ⇒ ยืดสองชิ้นนี้เท่านั้น — ปุ่มระดับใบ (`.actionStack`) ไม่มีกฎยืด (การตัดสินใจเชิงดีไซน์ของการ์ด) */
+  assert.match(narrow, /\.bodySplit > \.controlStatus \{\s*align-self: stretch;\s*\}/);
+  assert.equal(count(PANEL_CSS, 'align-self: stretch'), 2);
+  assert.doesNotMatch(narrow, /\.actionStack \{[^}]*align-self/, 'ความกว้างของปุ่มระดับใบบนมือถือไม่แตะ');
   /* 🐞 บันทึกของผู้สร้างเคยเขียนว่า "มีแต่การ์ดใบประเมินที่ใช้ `tabletSplit`" — ไม่จริง (มีผู้เรียกอีกสามหน้า ซึ่งวันนี้ยังไม่ส่ง `footer`)
      ⇒ คำกำกับเหนือกฎต้องบอกขอบเขตจริง: หน้าไหนเพิ่ม `footer` วันหน้าก็ได้กฎนี้ทันที */
   const raw = read('../../components/ui/DocumentControlPanel.module.css');

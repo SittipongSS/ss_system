@@ -36,7 +36,7 @@ import {
   Trash2, Undo2,
 } from "lucide-react";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
-import thaiText from "@/components/ThaiText";
+import thaiText, { keepPhrases } from "@/components/ThaiText";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
@@ -907,7 +907,8 @@ export default function SurveyZonePage({
             ) : null}
             {/* อีกทางหนึ่งของคนที่แนบได้ — มีแผงให้ชี้เมื่อไรถึงพูด (สองบาน: แผงอยู่เหนือบาน · หน้าเต็มจอ: แผงอยู่ใต้บรรทัดนี้) */}
             {edit && drawing.plan.missing && salesReuseOffered ? (
-              <p className={styles.hint}>หรือกด “ใช้รูปนี้เป็นภาพแบบของพื้นที่นี้” ที่ไฟล์ในแผง “แบบจากฝ่ายขาย”</p>
+              /* ป้ายในเครื่องหมายคำพูดสองชิ้นห้ามขาดกลาง (UAT S2b รอบสอง S01 · 768/375: "“แบบจากฝ่าย" / "ขาย”") */
+              <p className={styles.hint}>{keepPhrases("หรือกด “ใช้รูปนี้เป็นภาพแบบของพื้นที่นี้” ที่ไฟล์ในแผง “แบบจากฝ่ายขาย”", ["“ใช้รูปนี้เป็นภาพแบบของพื้นที่นี้”", "“แบบจากฝ่ายขาย”"])}</p>
             ) : null}
             {layout === "page" && drawings ? drawings : null}
             {/* ภาพกว้าง/ภาพจุดที่ค้างมาจากตอนพื้นที่นี้ยังลงหน้างาน — ไม่ลงเอกสาร ไม่นับในด่าน · พับไว้ (ไม่ใช่งานหลักของหน้า)
@@ -916,7 +917,8 @@ export default function SurveyZonePage({
               <details className={styles.old}>
                 <summary className={styles.oldHead}>
                   <ChevronRight size={16} className={styles.oldChev} aria-hidden="true" />
-                  <span>{thaiText(drawing.oldFiles.label)}</span>
+                  {/* "— ไม่ลงเอกสาร" ห้ามขาดกลาง (UAT S2b แก้หลังตรวจจอ 26/10 · S22 375: "ไม่ลง" / "เอกสาร") — ป้ายไม่มีคำทับศัพท์ที่ `thaiText` ต้องห่อ */}
+                  <span>{keepPhrases(drawing.oldFiles.label, ["— ไม่ลงเอกสาร"])}</span>
                 </summary>
                 <ul className={styles.oldList}>
                   {drawing.oldFiles.files.map((file) => (
@@ -1021,7 +1023,9 @@ export default function SurveyZonePage({
               onClick={() => onNext?.(footer.next.target)}
             >
               <span className={styles.btnText}>
-                <span>{footer.next.label}</span>
+                {/* ชื่อพื้นที่เป็นชิ้นเดียว — 🐞 UAT 26/10 (S01 375): ตอนมีค่าค้าง "บันทึกก่อน" กินที่ ⇒ "กลับไปที่ โซนขายหน้า / ร้าน"
+                    ⇒ ตัดได้ที่ช่องว่างหน้าชื่อเท่านั้น (แบบเดียวกับปุ่มพาไปของการ์ด head-r3-12) · ชื่อยาวเกิน 30 ตัวตัดได้ตามปกติ (ไม่ล้นปุ่ม) */}
+                <span>{keepPhrases(footer.next.label, String(footer.next.target?.name || "").length <= 30 ? [footer.next.target?.name] : [])}</span>
                 {footer.next.blocker ? <small>{footer.next.blocker}</small> : null}
               </span>
               <ChevronRight size={16} aria-hidden="true" />

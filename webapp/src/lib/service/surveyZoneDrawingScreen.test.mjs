@@ -204,6 +204,8 @@ test('จุดโดยประมาณ: แถวชื่อ + บันท
   assert.match(DRAWING_SECTIONS, />\s*เพิ่มจุด\s*</);
   assert.doesNotMatch(DRAWING_SECTIONS, /เพิ่มจุดที่ติดตั้งได้|หัวหน้าเป็นคนเลือก|รูปของจุดขึ้นระบบทันที/, 'คำกำกับของช่างไม่ขึ้นในพื้นที่จากแบบ');
   assert.match(ZONE, /หรือกด “ใช้รูปนี้เป็นภาพแบบของพื้นที่นี้” ที่ไฟล์ในแผง “แบบจากฝ่ายขาย”/);
+  // UAT S2b รอบสอง (S01 · 768/375): ป้ายในเครื่องหมายคำพูดทั้งสองชิ้นห้ามขาดกลางบรรทัด
+  assert.ok(ZONE.includes('{keepPhrases("หรือกด “ใช้รูปนี้เป็นภาพแบบของพื้นที่นี้” ที่ไฟล์ในแผง “แบบจากฝ่ายขาย”", ["“ใช้รูปนี้เป็นภาพแบบของพื้นที่นี้”", "“แบบจากฝ่ายขาย”"])}'));
   const view = surveyDrawingZoneView({ zone: zone('1', DRAWING), files: [], canDecide: true });
   assert.equal(view.spots.photos, false);
   assert.equal(view.spots.label, 'จุดติดตั้งโดยประมาณ (ไม่บังคับ)');
@@ -276,7 +278,8 @@ test('ตัวตัดสินของพื้นที่จากแบ�
 
 test('ไฟล์เดิม: ลิสต์พับ (ไม่ใช่การ์ดพับได้ของระบบ) · เปิดแท็บใหม่ด้วยปุ่ม · ลบถามก่อนแล้วรายงานรายการใหม่ขึ้นหน้า', () => {
   assert.match(DRAWING_SECTIONS, /<details className=\{styles\.old\}>\s*<summary className=\{styles\.oldHead\}>/);
-  assert.match(DRAWING_SECTIONS, /\{thaiText\(drawing\.oldFiles\.label\)\}/);
+  // UAT S2b แก้หลังตรวจจอ 26/10 (S22 · 375): ท้ายป้าย "— ไม่ลงเอกสาร" เป็นหน่วยเดียว (เคยขาดเป็น "ไม่ลง" / "เอกสาร")
+  assert.match(DRAWING_SECTIONS, /\{keepPhrases\(drawing\.oldFiles\.label, \["— ไม่ลงเอกสาร"\]\)\}/);
   assert.match(DRAWING_SECTIONS, /<button type="button" className=\{styles\.oldOpen\} onClick=\{\(\) => openFile\(file\)\}>/);
   assert.match(ZONE, /const openFile = \(file\) => window\.open\(file\.href, "_blank", "noopener,noreferrer"\);/,
     'หน้าพื้นที่ห้ามมีลิงก์ (ตัวเฝ้าค่าค้าง) — แท็บใหม่ผ่านปุ่ม');

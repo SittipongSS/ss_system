@@ -37,6 +37,7 @@ import ReadableText from "@/components/ui/ReadableText";
 import thaiText, { keepPhrases } from "@/components/ThaiText";
 import SurveyMethodChip from "@/components/service/SurveyMethodChip";
 import { DRAWING_SPOT_LABEL } from "@/components/service/SurveyResultTable";
+import { surveyCardUnitNames, surveyCardUnits } from "@/components/service/surveyControlCardUnits";
 import { fmtNumber, naText } from "@/lib/format";
 import { requestKindLabel } from "@/lib/master/requestTypes";
 import { SURVEY_DRAWING_SPOTS_NOTE, surveyJobView } from "@/lib/service/surveyJob";
@@ -617,8 +618,11 @@ export default function SurveyRequestView({
                 className={styles.bandAction}
               />
             ) : null}
+            {/* 🐞 UAT 26/10 (S18 request-mixed-in-work 1440 · head-r3-53): เหตุของใบผสมตัด "หัวหน้าต้อง" / "ทำ: ห้องประชุมชั้น 3" ที่หน้าคำร้อง
+                (การ์ดของใบประเมินแก้แล้ว — ประโยคเดียวกันมาจาก `surveyControlView.send`) ⇒ ชิ้นชุดเดียวกับการ์ด: ป้ายท่อน · ชื่อพื้นที่ · “…” · (…)
+                ⚠️ ห่อ span ตัวเดียว — `.blocked` เป็น flex: ชิ้นที่วางตรง ๆ จะกลายเป็นคอลัมน์แยกกัน (แบบเดียวกับ `.wait` ข้างล่าง) */}
             {sendBlocker ? (
-              <p className={styles.blocked} role="status"><Lock size={13} aria-hidden="true" />{sendBlocker}</p>
+              <p className={styles.blocked} role="status"><Lock size={13} aria-hidden="true" /><span>{keepPhrases(sendBlocker, surveyCardUnits(sendBlocker, surveyCardUnitNames(job.control)))}</span></p>
             ) : null}
             {bandPrimary?.disabled && typeof bandPrimary.disabledReason === "string" ? (
               <p className={styles.blocked} role="status"><Lock size={13} aria-hidden="true" />{bandPrimary.disabledReason}</p>

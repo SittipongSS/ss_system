@@ -110,7 +110,8 @@ function stageOf(request, visit, control, today, { filesUnknown = false, sendBac
        พาดหัวคำเดียวกับใบผสมที่พร้อมส่ง (`nowByStage.ready` — ไม่เอ่ยนัดหรือช่าง)
        ⚠️ หน้าคำร้องไม่ส่งเอกสารให้การ์ด ⇒ คีย์ `ready` ของการ์ด = ด่านของพื้นที่ผ่านครบ = `deskReady` ของราง (สองตัวมาจากก้อนเดียวกัน)
        ⚠️ เลยวันส่งผลแล้วยังเป็น "เลยวันส่งผล" — โทนแดงของคำสัญญาที่พลาดสำคัญกว่า และบรรทัดรอง ("… ส่งผล หรือเลื่อนวันส่งผล") ก็ชี้ขั้นส่งผลอยู่แล้ว */
-    return key === 'ready' ? 'ready' : 'desk-working';
+    /* นัดค้างบนงานโต๊ะที่ครบแล้ว (`desk-visit-open` ของการ์ด — UAT S2b รอบสอง S09) = ขั้นส่งผลเหมือนกัน · เหตุอยู่ใต้ปุ่มของการ์ด */
+    return key === 'ready' || key === 'desk-visit-open' ? 'ready' : 'desk-working';
   }
   /* ⚠️ **งานหน้างานมาก่อนแถว "ดึงกลับ"** — ใบที่ถูกดึงกลับแล้วช่างกำลังวัดใหม่ (RQ-AS-26090188: ถูกดึงกลับ
      เพราะตอบด้วยปุ่มกลางตอนยังไม่มีผลวัด) ถ้าขึ้น "ดึงผลกลับมาแก้ — หัวหน้าแก้ผลแล้วส่งอีกครั้ง" คือชี้ผิดคน
@@ -537,6 +538,19 @@ function dateFacts(request, visit, today, assignee, { finished = false, deskJob 
  */
 /* ── ก้อนของใบคำร้องที่ view ทั้งสองตัวข้างล่างอ่าน (แถวพื้นที่ · ไฟล์ · การ์ดควบคุมของหน้าคำร้อง) — ประกอบที่เดียว ──
    ⚠️ การ์ดควบคุมของหน้าคำร้องประกอบด้วยค่าชุดนี้ชุดเดียว ⇒ `surveyJobView` กับ `surveyRequestDeskReady` ตอบขั้นเดียวกันเสมอ */
+/* ⭐ **"ใบนี้มีนัดที่เข้าพื้นที่แล้วไหม" ของหน้าคำร้อง** — คำถามเดียวกับ `siteVisitReached` ของ GET ใบประเมิน (`loadSiteVisitReached`:
+   นัดของใบที่ `done` / `partial` สักนัด) แต่ตอบจากนัดทุกรอบที่ GET คำร้องอ่านมาแล้ว (`surveyVisits` — ไม่มีคำขอเพิ่ม)
+   · ถามใต้เงื่อนไขเดียวกับ GET ใบประเมิน (`wantsSiteVisit`: สวิตช์เปิด · ใบยังไม่ส่งผล) ⇒ สวิตช์ปิด / ส่งผลแล้ว / ไม่มีลิสต์นัด = `null`
+     (สองจอพูดตรงกันทุกสภาพของสวิตช์ — ไม่ผูกกับคนดู: นัดอ่านได้ทุกคนที่เปิดหน้านี้)
+   · ผู้ใช้ตัวเดียว: การ์ดควบคุมถามว่าใครบันทึกพื้นที่ที่สลับกลับเป็นลงหน้างาน (`resaveByHead` · มติเจ้าของ 26/10 S2b-O3-sub)
+     — หน้านี้ไม่ส่งสวิตช์ให้การ์ด ⇒ แถว 17a / "รอลงคิวเข้าพื้นที่" ของการ์ดไม่ถูกแตะ
+   ⚠️ เพดาน 20 รอบของ GET คำร้อง — นัดที่เข้าพื้นที่ซึ่งเก่ากว่านั้นอ่านไม่เห็น ⇒ `false` = ทางเดิม (ช่างเป็นคนเก็บ) ไม่ใช่ทางที่ผิดกว่า */
+function requestSiteVisitReached(request) {
+  if (request.drawingMethodEnabled !== true || request.answeredAt) return null;
+  if (!Array.isArray(request.surveyVisits)) return null;
+  return request.surveyVisits.some(reachedSite);
+}
+
 function requestSurveyParts(request, { today = null, canDecide = false } = {}) {
   const visit = request.surveyVisit || null;
   const zones = Array.isArray(request.surveyZones) ? request.surveyZones : [];
@@ -558,6 +572,7 @@ function requestSurveyParts(request, { today = null, canDecide = false } = {}) {
     skipPackageRegistry: true,
     tab: 'result',
     today,
+    siteVisitReached: requestSiteVisitReached(request),
     /* ⚠️ **ไม่ส่ง `document`** — หน้านี้ไม่มีแถวด่าน "เอกสารประเมินออกได้" (GET คำร้องไม่ตรวจเนื้อเอกสาร · PR-3 §3.6)
        เอกสารของหน้านี้อยู่ที่คีย์ `document` ของผลลัพธ์ (`surveyRequestDocumentView`) */
   });
@@ -1203,7 +1218,9 @@ export function surveyJobView({
         hidden: mix.mode === 'drawing',
         /* 🔄 `control.status.resave` (มติ O3) — เหลือแค่พื้นที่ที่กลับมาเป็นลงหน้างานหลังนัดปิดแล้ว: ไม่มีช่างคนไหนทำอยู่
            งานที่ค้างคือหัวหน้าตรวจขนาดแล้วบันทึกอีกครั้ง ⇒ การ์ดนี้ห้ามขึ้น "กำลังทำ · เหลือ …" สวนกับแถบ "ตาใคร: หัวหน้า"
-           (🐞 UAT S2b S06 `o3-desk-back-after-visit`) — พูดประโยคเดียวกับพาดหัวของใบ */
+           (🐞 UAT S2b S06 `o3-desk-back-after-visit`) — พูดประโยคเดียวกับพาดหัวของใบ
+           🔄 มติ 26/10 (S2b-O3-sub): นัดล่าสุดยกเลิก/ทำไม่ได้หลังมีนัดที่เข้าพื้นที่แล้ว ก็เข้าทางนี้ (`requestSiteVisitReached`) — ขั้นของใบยัง
+              "ต้องลงคิวใหม่" (`stageOf` อ่านนัดล่าสุด) แต่คนที่บันทึกขนาดคือหัวหน้า ไม่ใช่ช่าง ("ยังไม่เริ่ม" อ่านว่ารอช่าง) */
         badge: !crew.hasActive ? { label: 'ไม่มีพื้นที่', tone: 'neutral' }
           : filesUnknown ? { label: 'ไม่ทราบ', tone: 'neutral' }
             : crew.ok ? { label: 'ครบ', tone: 'success' }

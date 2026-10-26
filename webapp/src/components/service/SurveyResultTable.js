@@ -45,6 +45,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import Link from "next/link";
 import { AlertTriangle, Check, Circle, CircleCheck, ClipboardList, Lightbulb, Link2, Minus, Pencil, Plus, Undo2 } from "lucide-react";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import { KeepTogether } from "@/components/service/ScheduleModalParts";
 import Button from "@/components/ui/Button";
 import { DetailCard } from "@/components/ui/DetailPage";
 import PhotoThumb from "@/components/ui/PhotoThumb";
@@ -446,8 +447,9 @@ export default function SurveyResultTable({
                     </span>
                     {/* ชื่อ + ชั้นครั้งเดียว — ตัวเดียวกับรายการ/หน้าพื้นที่ (🐞 ชื่อที่มีชั้นอยู่แล้วเคยขึ้น "ชั้น 5 · ชั้น 05") */}
                     <b className={styles.zoneName}>{surveyZoneTitle(zone)}</b>
-                    {/* แถวจากแบบ: ใครประเมิน เมื่อไร ("จากแบบ · ชื่อ วันที่") — ขึ้นต้นด้วยคำของวิธีอยู่แล้ว จึงไม่มีป้ายวิธีแยกอีกชิ้น */}
-                    {m.source ? <span className={styles.source}>{m.source}</span> : null}
+                    {/* แถวจากแบบ: ใครประเมิน เมื่อไร ("จากแบบ · ชื่อ วันที่") — ขึ้นต้นด้วยคำของวิธีอยู่แล้ว จึงไม่มีป้ายวิธีแยกอีกชิ้น
+                        🐞 UAT 26/10 (head-r3-21): ช่อง 182px (1440) / 104px (768) ตัดวันเป็น "พฤ. 8" / "ต.ค." ⇒ วันไทยเป็นก้อนเดียว (`KeepTogether`) */}
+                    {m.source ? <span className={styles.source}><KeepTogether text={m.source} /></span> : null}
                     {tags ? <span className={styles.sub}>{tags}</span> : null}
                     {!cut && (cell.figures || cell.dims) ? (
                       <span className={styles.figures}>

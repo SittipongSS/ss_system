@@ -605,6 +605,10 @@ test('head-rc-r2-22 (รีวิวรอบสาม): หน้าคำร�
   const ready = job(withZones([drawingReady('z1', 'Lobby'), drawingReady('z2', 'Lounge')], promised));
   assert.deepEqual([ready.stage, ready.current.id, ready.now.headline], ['ready', 'answered', 'พร้อมส่งผลให้ฝ่ายขาย']);
   assert.match(ready.now.next, /กด “ส่งผลให้ฝ่ายขาย” ที่ใบประเมิน$/);
+  /* นัดค้างบนงานโต๊ะที่ครบ (UAT S2b รอบสอง S09): การ์ดพาดหัว "ประเมินจากแบบครบแล้ว — นัด … ยังเปิดอยู่" (`desk-visit-open`)
+     ⇒ หน้าคำร้องยังอยู่ขั้นส่งผล ไม่ถอยไป "กำลังประเมินจากแบบ" ข้างรางที่ชี้ขั้นส่งผล */
+  const stray = job(withZones([drawingReady('z1', 'Lobby'), drawingReady('z2', 'Lounge')], { ...promised, surveyVisit: visitOf('scheduled') }));
+  assert.deepEqual([stray.stage, stray.current.id, stray.now.headline], ['ready', 'answered', 'พร้อมส่งผลให้ฝ่ายขาย']);
   assert.equal(ready.now.headlineKeep, undefined, 'พาดหัวไม่มีวันที่ให้ห่อ');
   assert.equal(ready.now.progress, null, 'ไม่มีมาตรวัดของช่าง (พื้นที่จากแบบไม่นับ)');
   assert.doesNotMatch(`${ready.now.sub} ${ready.now.next}`, /นัด|ช่าง|เข้าพื้นที่|ลงคิว/, 'ไม่มีคำของงานหน้างาน');
@@ -755,4 +759,107 @@ test('C-1 (ตารางผล): ภาพกว้างที่เป็น
   assert.equal(cell.photos.wide, 2);
   assert.deepEqual(cell.thumbs.map((t) => t.file.id), ['F-wide']);
   assert.equal(cell.moreThumbs, 0);
+});
+
+// ══ head-r3-53 ที่หน้าคำร้อง — เหตุ "ยังส่งไม่ได้" ของใบผสมไม่ตัดกลางป้ายท่อน ═══════════════════════════════
+
+test('head-r3-53 (หน้าคำร้อง): บรรทัดเหตุใต้ "ไปส่งผลที่ใบประเมิน" ห่อป้าย "รอช่าง:" · "หัวหน้าต้องทำ:" และชื่อพื้นที่ด้วยชิ้นชุดเดียวกับการ์ด', async () => {
+  /* 🐞 UAT 26/10 (S18 request-mixed-in-work ที่ 1440): "… ห้องอาหาร · หัวหน้าต้อง" / "ทำ: ห้องประชุมชั้น 3" — การ์ดของใบประเมินแก้แล้ว
+     แต่หน้าคำร้องวาดประโยคเดียวกัน (`surveyControlView.send.reason.text`) เป็นสตริงดิบ */
+  const { surveyCardUnits } = await import('../../components/service/surveyControlCardUnits.js');
+  const text = 'ยังส่งไม่ได้ — ติด 6 ข้อ · รอช่าง: ล็อบบี้ · ห้องอาหาร · หัวหน้าต้องทำ: ห้องประชุมชั้น 3';
+  const units = surveyCardUnits(text, ['ล็อบบี้', 'ห้องอาหาร', 'ห้องประชุมชั้น 3']);
+  for (const unit of ['รอช่าง:', 'หัวหน้าต้องทำ:', 'ห้องประชุมชั้น 3']) assert.ok(units.includes(unit), `ขาดชิ้น ${unit}`);
+  const view = read('components/requests/details/SurveyRequestView.js');
+  assert.match(view, /<p className=\{styles\.blocked\} role="status"><Lock size=\{13\} aria-hidden="true" \/><span>\{keepPhrases\(sendBlocker, surveyCardUnits\(sendBlocker, surveyCardUnitNames\(job\.control\)\)\)\}<\/span><\/p>/,
+    'เหตุของปุ่มส่งผลผ่าน keepPhrases + ชิ้นของการ์ด · ห่อ span ตัวเดียว (`.blocked` เป็น flex)');
+  assert.doesNotMatch(view, /aria-hidden="true" \/>\{sendBlocker\}<\/p>/, 'ไม่วาดเหตุเป็นสตริงดิบอีก');
+});
+
+// ══ S2b-O3-sub ต่อ (มติเจ้าของ 26/10) — ใครบันทึกขนาดอีกครั้ง เมื่อใบเคยเข้าพื้นที่แล้วแต่นัดล่าสุดไม่ได้เข้า ═══════════════
+//   นัดก่อนหน้าเข้าพื้นที่แล้ว · นัดล่าสุดยกเลิก/ทำไม่ได้ · หัวหน้าสลับพื้นที่กลับเป็นลงหน้างาน — ใบยัง "ต้องลงคิวใหม่" (มติที่รับไว้ก่อน)
+//   แต่ **หัวหน้า** บันทึกขนาดจากรอบที่เข้าพื้นที่แล้วได้ (คำของกล่องผลลัพธ์ "… ใช้ผลจากรอบที่เข้าพื้นที่แล้วได้ …" + แถบของพื้นที่)
+//   ⇒ การ์ดเอ่ยหัวหน้า คำเดียวกับเคสที่นัดล่าสุดเข้าพื้นที่แล้ว (`o3-desk-back-after-visit`) ไม่ใช่ "รอช่าง:" / "ช่างต้องเก็บ: ขนาด"
+//   🐞 UAT S2b S06 o3-sub-latest-cancelled / -unable (26/10): "ยังส่งไม่ได้ — ติด 2 ข้อ · รอช่าง: ล็อบบี้" ทั้งที่ไม่มีนัดเปิดให้ช่างคนไหน
+
+const RESAVED = { surveyedAt: '2026-10-09T03:05:00.000Z' };
+const LATEST = (status) => visitOf(status, { id: 'SVV-2', code: 'SV-26100012', scheduledDate: '2026-10-13', actualDate: null });
+const REACHED_FIRST = visitOf('done', { id: 'SVV-1', code: 'SV-26100011' });
+
+test('S2b-O3-sub (มติ 26/10): นัดล่าสุดยกเลิก/ทำไม่ได้หลังมีนัดที่เข้าพื้นที่แล้ว — การ์ดเอ่ย "หัวหน้าต้องทำ" เหมือนเคสนัดล่าสุดเข้าแล้ว · พาดหัวยัง "ต้องลงคิวใหม่" · บันทึกแล้วด่านขนาดผ่าน', () => {
+  const zones = [switchedBack('z1', 'Studio 01'), drawingReady('z2', 'Lobby')];
+  const reached = card(zones, { ...METHOD_ON, siteVisitReached: true, visit: REACHED_FIRST });
+  for (const status of ['cancelled', 'unable', 'rescheduled']) {
+    const v = card(zones, { ...METHOD_ON, siteVisitReached: true, visit: LATEST(status) });
+    assert.deepEqual([v.status.key, v.status.headline], ['requeue', 'ต้องลงคิวใหม่'], `${status}: ผู้วางคิวยังลงนัดใหม่ได้ ถ้าอยากวัดจริง`);
+    assert.equal(v.send.reason.text, 'ยังส่งไม่ได้ — ติด 1 ข้อ · หัวหน้าต้องทำ: Studio 01', status);
+    assert.equal(v.send.reason.key, 'head-gaps', status);
+    assert.deepEqual(v.send.reason.target, { kind: 'zone', zoneId: 'z1', label: 'เปิด Studio 01' }, status);
+    assert.deepEqual(v.zoneGaps.rows.map((r) => [r.zoneId, r.crewText, r.headText, r.targets]), [
+      ['z1', null, 'หัวหน้าต้องทำ: ขนาด', [{ kind: 'zone', zoneId: 'z1', label: 'เปิด Studio 01' }]],
+    ], status);
+    assert.equal(v.zoneGaps.crewPending, false, `${status}: ไม่มีของช่างค้าง`);
+    assert.doesNotMatch(`${v.send.reason.text} ${v.zoneGaps.rows.map((r) => r.crewText).join(' ')}`, /รอช่าง|ช่างต้องเก็บ/, status);
+    // คำเดียวกับเคสที่นัดล่าสุดเข้าพื้นที่แล้ว (แถวด่าน · เหตุใต้ปุ่ม)
+    assert.deepEqual([v.send.reason.text, v.zoneGaps.rows], [reached.send.reason.text, reached.zoneGaps.rows], status);
+
+    // หัวหน้ากดบันทึกพื้นที่หลังสลับ = ด่านขนาดผ่านเหมือนเคสนัดล่าสุดเข้าแล้ว · การ์ดไม่เอ่ยพื้นที่นี้อีก
+    const after = card([switchedBack('z1', 'Studio 01', RESAVED), drawingReady('z2', 'Lobby')],
+      { ...METHOD_ON, siteVisitReached: true, visit: LATEST(status) });
+    assert.equal(after.gates.find((g) => g.key === 'size').ok, true, status);
+    assert.deepEqual(after.zoneGaps.rows, [], status);
+    assert.notEqual(after.status.key, 'requeue', `${status}: ไม่มีพื้นที่ไหนรอบันทึกแล้ว`);
+  }
+});
+
+test('S2b-O3-sub (มติ 26/10) · ทางเดิม: ไม่มีนัดไหนเข้าพื้นที่ · ไม่ทราบ (ช่าง / สวิตช์ปิด — GET ไม่อ่าน) · นัดล่าสุดยังเปิด = ช่างเป็นคนเก็บ', () => {
+  const zones = [switchedBack('z1', 'Studio 01'), drawingReady('z2', 'Lobby')];
+  const crewPath = (v, why) => {
+    assert.deepEqual(v.zoneGaps.rows.map((r) => [r.crewText, r.headText]), [['ช่างต้องเก็บ: ขนาด', null]], why);
+    assert.equal(v.send.reason.text, 'ยังส่งไม่ได้ — ติด 1 ข้อ · รอช่าง: Studio 01', why);
+    assert.equal(v.send.reason.key, 'crew-gaps', why);
+  };
+  for (const status of ['cancelled', 'unable']) {
+    crewPath(card(zones, { ...METHOD_ON, siteVisitReached: false, visit: LATEST(status) }), `${status} · ไม่เคยเข้าพื้นที่`);
+    crewPath(card(zones, { ...METHOD_ON, siteVisitReached: null, visit: LATEST(status) }), `${status} · ไม่ทราบ`);
+    crewPath(card(zones, { siteVisitReached: null, visit: LATEST(status) }), `${status} · สวิตช์ปิด (GET ไม่อ่าน)`);
+    assert.equal(card(zones, { siteVisitReached: null, visit: LATEST(status) }).status.headline, 'กำลังวัดหน้างาน', `${status} · สวิตช์ปิด พาดหัวเดิม`);
+  }
+  // นัดล่าสุดยังเปิด (ร่าง · นัดไว้ · กำลังทำ) — ช่างของนัดนั้นเป็นคนเก็บ แม้ใบเคยเข้าพื้นที่แล้ว
+  for (const status of ['draft', 'scheduled', 'in_progress']) {
+    crewPath(card(zones, { ...METHOD_ON, siteVisitReached: true, visit: LATEST(status) }), `${status} · นัดเปิด`);
+  }
+  // ช่างที่ดูใบ: GET ไม่ส่ง `siteVisitReached` ให้ (null) — ไม่มีแถวของหัวหน้าให้เขาเห็นอยู่แล้ว
+  const crew = card(zones, { ...METHOD_ON, siteVisitReached: null, visit: LATEST('cancelled'), viewer: { canWrite: true, canDecide: false } });
+  assert.deepEqual(crew.zoneGaps.rows.map((r) => [r.crewText, r.headText]), [['ช่างต้องเก็บ: ขนาด', null]]);
+});
+
+test('S2b-O3-sub (มติ 26/10) · หน้าคำร้อง: การ์ดฝั่งช่าง · เหตุใต้ "ไปส่งผลที่ใบประเมิน" เอ่ยหัวหน้า — ขั้นยัง "ต้องลงคิวใหม่" ตาผู้วางคิว · สวิตช์ปิด/ไม่เคยเข้า = เดิม', () => {
+  const zones = [switchedBack('z1', 'Studio 01'), drawingReady('z2', 'Lobby')];
+  const latest = LATEST('cancelled');
+  const req = (over = {}) => withZones(zones, {
+    committedDueDate: '2026-10-13', committedResultDate: '2026-10-14',
+    surveyVisit: latest, surveyVisits: [latest, REACHED_FIRST], drawingMethodEnabled: true, ...over,
+  });
+  const v = job(req(), { canDecide: true, canWork: true });
+  assert.deepEqual([v.stage, v.now.headline], ['requeue', 'ต้องลงคิวใหม่'], 'ขั้นของใบไม่เปลี่ยน');
+  assert.equal(v.now.turn.who, 'Arnon Aunsapwilai', 'ตาของคนลงคิว (ผู้รับผิดชอบ) เหมือนเดิม');
+  assert.deepEqual(v.zones.crewGate.badge, { label: 'รอหัวหน้า', tone: 'warning' });
+  assert.equal(v.zones.crewGate.text, SURVEY_RESAVE_HEADLINE);
+  assert.equal(v.control.send.reason.text, 'ยังส่งไม่ได้ — ติด 1 ข้อ · หัวหน้าต้องทำ: Studio 01');
+  assert.equal(v.zones.rows.find((r) => r.id === 'z1').missingText, SURVEY_ZONE_RESAVE_TEXT);
+  // ฝ่ายขายเห็นการ์ดฝั่งช่างคำเดียวกัน (ไม่ผูกกับคนดู — ข้อเท็จจริงของใบ)
+  assert.deepEqual(job(req(), { isRequesterSide: true }).zones.crewGate.badge, { label: 'รอหัวหน้า', tone: 'warning' });
+
+  // ทางเดิม: สวิตช์ปิด (GET ใบประเมินก็ไม่อ่านนัดที่เข้าพื้นที่) · ไม่มีนัดไหนเข้าพื้นที่ · ใบที่ส่งผลแล้วไม่ถาม
+  for (const [why, over] of [
+    ['สวิตช์ปิด', { drawingMethodEnabled: false }],
+    ['ไม่ส่งสวิตช์', { drawingMethodEnabled: undefined }],
+    ['ไม่เคยเข้าพื้นที่', { surveyVisits: [latest] }],
+  ]) {
+    const old = job(req(over), { canDecide: true, canWork: true });
+    assert.deepEqual(old.zones.crewGate.badge, { label: 'ยังไม่เริ่ม', tone: 'neutral' }, why);
+    assert.equal(old.control.send.reason.text, 'ยังส่งไม่ได้ — ติด 1 ข้อ · รอช่าง: Studio 01', why);
+    assert.equal(old.stage, 'requeue', why);
+  }
 });

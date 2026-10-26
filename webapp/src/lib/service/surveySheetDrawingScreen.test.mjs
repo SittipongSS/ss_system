@@ -347,7 +347,9 @@ test('🔴 โมดัลส่งผล: ตัวตัดสินได้ 
   assert.match(dialog, /^title="ส่งผลประเมินให้ฝ่ายขาย"\s*\{\.\.\.sendTitle\}\s*size=\{sendConfirm\.choice \? "md" : "sm"\}/);
   assert.match(PAGE, /const sendTitle = sendConfirm\.title \? \{ title: sendConfirm\.title \} : null;/, 'ไม่มีหัวของใบจากแบบ = ไม่ทับหัวตั้งต้น');
   assert.match(dialog, /onConfirm=\{view\.send\.allowed \? confirmSend : undefined\}/);
-  assert.match(PAGE, /const sendChoiceOptions = sendConfirm\.choice\s*\? sendConfirm\.choice\.options\.map\(\(\{ value, label, hint \}\) => \(\{ value, label, description: hint \}\)\)\s*: \[\];/);
+  assert.match(PAGE, /const sendChoiceOptions = sendConfirm\.choice\s*(?:\/\*[^*]*\*\/\s*)?\? sendConfirm\.choice\.options\.map\(\(\{ value, label, hint \}\) => \(\{ value, label, description: keepPhrases\(hint, surveyCardUnits\(hint, SEND_TILE_UNITS\)\) \}\)\)\s*: \[\];/);
+  // UAT S2b รอบสอง (S05 · 375): คำกำกับไทล์ขาดกลาง "“รอ / ยืนยันหน้างาน”" · "ฝ่าย / ขาย" · "ใบยืนยันหน้า / งาน" ⇒ ห่อชิ้น
+  assert.match(PAGE, /const SEND_TILE_UNITS = \["ใบยืนยันหน้างาน", "ขอยืนยันหน้างาน"\];/);
   const [tiles] = jsxOpenTags(dialog, /<OptionTiles\b/g);
   assert.ok(tiles, 'ชุดเล็กตายตัว = ไทล์ ไม่ใช่ดรอปดาวน์');
   for (const prop of [
@@ -703,7 +705,7 @@ test('โมดัลเปลี่ยนวิธี: ปุ่มหลัก
     assert.ok(foot.indexOf('<StatusNotice tone="error"') < foot.indexOf('styles.footBtns'));
     assert.equal(DIALOG.slice(DIALOG.indexOf('return (\n    <Modal')).includes('styles.outcome'), false, 'ไม่อยู่ในเนื้อที่เลื่อน');
   }
-  assert.match(DIALOG, /\{plan\.lines\.map\(\(line\) => <li key=\{line\}>\{thaiText\(line\)\}<\/li>\)\}/);
+  assert.match(DIALOG, /\{plan\.lines\.map\(\(line\) => <li key=\{line\}>\{outcomeText\(line\)\}<\/li>\)\}/);
   // ค่าตั้งต้นสองช่อง: ครั้งเดียวต่อการเปิดหนึ่งรอบ และเฉพาะตอนช่องยังว่าง
   assert.match(DIALOG, /if \(!open \|\| planKind !== "cancel-only" \|\| prefilled\.current\.reason\) return;\s*prefilled\.current\.reason = true;\s*setReason\(\(text\) => \(text === "" \? defaultReason : text\)\);/);
   assert.match(DIALOG, /if \(!open \|\| !needsDate \|\| prefilled\.current\.date\) return;\s*prefilled\.current\.date = true;\s*setResultDate\(\(value\) => \(value === "" \? defaultDate : value\)\);/);

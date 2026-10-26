@@ -25,10 +25,10 @@
 //    ถ้าโมดัลวาดจากแถวชุดใหม่หลัง "บันทึกไม่ครบ" พื้นที่ที่เขียนไปแล้วจะหายจากรายการที่เปลี่ยน ⇒ body ของการกดซ้ำไม่เหมือนเดิม
 //    ⇒ ได้เลขการกดใหม่ และบรรทัดเธรด/วันส่งผลของรอบแรกหล่นหาย · ก่อนกดส่ง โมดัลเดินตามแถวสดตามปกติ
 // ⚠️ คำตอบที่ไม่สำเร็จแยกด้วย `code` / สถานะ ไม่เทียบประโยค (`surveyMethodFailure`) · ข้อความขึ้นในแถบท้ายที่นิ่ง (`role="alert"`)
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useId, useRef, useState } from "react";
 import { PencilLine } from "lucide-react";
 import Modal from "@/components/Modal";
-import thaiText from "@/components/ThaiText";
+import thaiText, { keepPhrases } from "@/components/ThaiText";
 import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
 import Segmented from "@/components/ui/Segmented";
@@ -44,6 +44,7 @@ import {
   surveyMethodErrorTexts, surveyMethodSwitchPlan,
 } from "@/lib/service/surveyMethodSwitch";
 import styles from "./SurveyMethodDialog.module.css";
+import { surveyCardUnits } from "./surveyControlCardUnits";
 
 const SAVE_FAILED = "บันทึกวิธีประเมินไม่สำเร็จ";
 
@@ -55,6 +56,20 @@ const TARGET_OPTIONS = [
 const LOCKED_OPTIONS = TARGET_OPTIONS.map((option) => ({ ...option, disabled: true }));
 
 const isCutRow = (zone) => (zone?.status || "ok") === "cut";
+
+/* ⭐ **บรรทัดผลของการกดวาดเป็นชิ้นที่ไม่ตัดบรรทัดข้างใน** — ตัวเลือกชิ้นตัวเดียวกับการ์ด (`surveyCardUnits`: ป้ายใน “…” · วงเล็บสั้น · "ฝ่ายขาย")
+   + วันไทย "อ. 13 ต.ค." + คำของบรรทัดชุดนี้ที่ ICU ตัดกลาง
+   🐞 UAT 26/10 (S06 · S08 · S09 · S10 ที่ 375): "แล้วกด “ส่ง / งาน”" · "ผู้วาง / คิว" · "รับปากส่งผล อ. / 13 ต.ค." · "ต้องลงหน้า / งานแล้ว" ·
+      "จุดที่มาร์ / กจากแบบ" (ICU ตัด `มาร์|ก` = ไม่ใช่คำ) · "จุดติด / ตั้ง" — head-r3-12 แก้ชนิดนี้ไว้ที่การ์ดอย่างเดียว
+   ⚠️ ตัวหนังสือไม่ถูกแตะ (nowrap ทั้งชิ้น) · ท่อนระหว่างชิ้นผ่าน `thaiText` กลางตามเดิม */
+const OUTCOME_DAY = /(?:อา|จ|อ|พ|พฤ|ศ|ส)\. \d{1,2} [\u0E00-\u0E7F]{1,3}\.[\u0E00-\u0E7F]{1,2}\./gu;
+const OUTCOME_WORDS = ["ผู้วางคิว", SURVEY_METHOD_LABEL.onsite, "จุดติดตั้ง", "มาร์ก"];
+function outcomeText(line) {
+  if (typeof line !== "string" || line.length < 2) return line;
+  const kept = keepPhrases(line, surveyCardUnits(line, [...(line.match(OUTCOME_DAY) || []), ...OUTCOME_WORDS]));
+  if (kept === line) return thaiText(line);
+  return kept.map((part, index) => (typeof part === "string" ? <Fragment key={`t${index}`}>{thaiText(part)}</Fragment> : part));
+}
 const keyOf = (zone) => String(zone.id);
 
 /**
@@ -411,7 +426,7 @@ export default function SurveyMethodDialog({
           <div className={styles.outcome}>
             <p className={styles.outcomeTitle}>กดแล้วเกิดขึ้นทันที</p>
             <ul className={styles.outcomeList}>
-              {plan.lines.map((line) => <li key={line}>{thaiText(line)}</li>)}
+              {plan.lines.map((line) => <li key={line}>{outcomeText(line)}</li>)}
             </ul>
           </div>
         ) : null}

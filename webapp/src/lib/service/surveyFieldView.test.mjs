@@ -392,6 +392,9 @@ test('ของค้างเป็นคำสั้น: "ขนาด 2 ส�
   assert.equal(ask.message, `${T('ห้อง Treatment · ชั้น 05')}: ขนาด 2 ส่วน · จุด 2 จุด ยังไม่ได้บันทึก — รูปที่ถ่ายไว้ขึ้นระบบแล้ว ไม่หาย`);
   assert.equal(ask.cancelLabel, 'กลับไปบันทึก');
   assert.equal(ask.confirmLabel, 'ทิ้งแล้วไปต่อ');
+  // 🐞 UAT 26/10 (S01): พื้นที่จากแบบไม่มีใครถ่ายรูป — ภาพของมันคือภาพแบบที่แนบไว้ (B-2: ไม่มีคำหน้างาน)
+  const drawn = surveyDiscardConfirm({ zone: { ...treatment(), method: 'drawing' }, summary: 'จุด 3 จุด' });
+  assert.equal(drawn.message, `${T('ห้อง Treatment · ชั้น 05')}: จุด 3 จุด ยังไม่ได้บันทึก — ภาพแบบที่แนบไว้ขึ้นระบบแล้ว ไม่หาย`);
 });
 
 /* 🔄 PR-S (มติ 28–30/09) — หัวข้อ "ภาพจุดติดตั้ง" รวมเข้าแถวของจุด ⇒ ไม่มีป้าย `spotPhotos` แล้ว ·

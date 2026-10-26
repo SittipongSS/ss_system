@@ -89,7 +89,8 @@ test('ตารางถามตัวตัดสินรายแถว (sur
 
 test('แถวจากแบบ: บรรทัดที่มาใต้ชื่อพื้นที่ · ไม่มีแถบ "รูปจากช่าง" และไม่มีตัวนับภาพกว้าง/ภาพจุด', () => {
   const zoneCell = between(TABLE, '<td data-label="พื้นที่"', '{cut ? (');
-  assert.match(zoneCell, /\{m\.source \? <span className=\{styles\.source\}>\{m\.source\}<\/span> : null\}/);
+  // 🐞 UAT 26/10 (head-r3-21): วันไทย "พฤ. 8 ต.ค." ขาดเป็น "พฤ. 8" / "ต.ค." ในช่อง 182px ⇒ วาดผ่าน `KeepTogether` (วันเป็นก้อนเดียว)
+  assert.match(zoneCell, /\{m\.source \? <span className=\{styles\.source\}><KeepTogether text=\{m\.source\} \/><\/span> : null\}/);
   assert.ok(zoneCell.indexOf('surveyZoneTitle(zone)') < zoneCell.indexOf('styles.source'), 'อยู่ใต้ชื่อพื้นที่');
   assert.ok(zoneCell.indexOf('styles.source') < zoneCell.indexOf('cell.figures'), 'อยู่เหนือตัวเลขผลวัด');
   // แถบรูป + ตัวนับ อยู่ในก้อนเดียวที่แขวนกับ "ไม่ใช่แถวจากแบบ" — มีที่เดียวในตาราง

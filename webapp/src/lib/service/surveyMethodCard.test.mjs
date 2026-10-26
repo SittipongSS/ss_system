@@ -309,12 +309,18 @@ test('🔴 แถว 17: ใบจากแบบทั้งใบ + นัด�
     assert.equal(on.send.allowed, false);
     assert.equal(on.send.show, true);
     assert.equal(on.send.closesVisit, null);
-    assert.equal(on.status.key, 'ready', 'ด่านครบ — ที่ขวางคือนัด');
+    /* ด่านของพื้นที่ครบ — ที่ขวางคือนัด ⇒ พาดหัวไม่พูด "พร้อมส่งผลให้ฝ่ายขาย" ข้างปุ่มที่ถูกตีกลับ (UAT S2b รอบสอง S09 ready-blocked)
+       รูปเดียวกับงานโต๊ะที่ครบแต่ติดเรื่องนอกพื้นที่ · รางยังอยู่ขั้นส่งผล (`deskReady`) */
+    assert.deepEqual(on.status, {
+      key: 'desk-visit-open', tone: 'warning', headline: 'ประเมินจากแบบครบแล้ว — นัด SV-26100011 ยังเปิดอยู่', sub: '',
+    }, status);
+    assert.equal(on.step.id, 'answered', 'รางยังชี้ขั้นส่งผล');
 
-    // สวิตช์ปิด: ประโยคเดิม ไม่มีปุ่ม (นัดยกเลิกที่หน้าจัดคิว)
+    // สวิตช์ปิด: ประโยคเดิม ไม่มีปุ่ม (นัดยกเลิกที่หน้าจัดคิว) · พาดหัวพูดเรื่องนัดเหมือนกัน (ส่งไม่ได้ทั้งสองแบบ)
     for (const off of [card(zones, { visit }), card(zones, { visit, drawingMethodEnabled: false })]) {
       assert.deepEqual(off.send.reason, { key: 'visit-open-desk', text, detail: text, target: null }, status);
       assert.equal(off.send.allowed, false);
+      assert.equal(off.status.key, 'desk-visit-open');
     }
   }
   // ด่านของพื้นที่ยังพูดก่อนเรื่องนัด (ลำดับเดียวกับ route)
@@ -327,6 +333,29 @@ test('🔴 แถว 17: ใบจากแบบทั้งใบ + นัด�
   assert.equal(draft.send.reason.key, 'visit-draft');
   assert.equal(draft.send.reason.target, null);
   assert.match(draft.send.reason.text, /ยังเป็นร่าง/);
+});
+
+test('⭐ S2b-O3-sub: นัดก่อนหน้าเข้าพื้นที่แล้ว นัดล่าสุดยกเลิก/ทำไม่ได้ + พื้นที่ที่สลับกลับยังไม่ครบ = "ต้องลงคิวใหม่" (คำของหน้าคำร้อง) ไม่ใช่ "กำลังวัดหน้างาน"', () => {
+  // UAT S2b รอบสอง S06 o3-sub-latest-cancelled / -unable: พาดหัว "กำลังวัดหน้างาน" ข้างบรรทัดขั้น "SV-… ยกเลิก — รอ TS ลงคิวใหม่"
+  const back = onsiteReady('z1', 'ล็อบบี้', { parts: [], methodChangedAt: '2026-10-08T02:30:00.000Z' });
+  const zones = [back, drawingReady('z2', 'ห้องอาหาร'), drawingReady('z3', 'ห้องประชุมชั้น 3')];
+  for (const status of ['cancelled', 'unable', 'rescheduled']) {
+    const visit = scheduled({ status, code: 'SV-26100012' });
+    const on = card(zones, { visit, drawingMethodEnabled: true, siteVisitReached: true });
+    assert.equal(on.status.key, 'requeue', status);
+    assert.equal(on.status.headline, 'ต้องลงคิวใหม่', status);
+    assert.equal(on.status.tone, 'warning');
+    assert.match(on.status.sub, /เหลือ ล็อบบี้/);
+    assert.equal(on.progress.complete, false);
+    // สวิตช์ปิด = พาดหัวเดิมทุกตัวอักษร
+    assert.equal(card(zones, { visit, siteVisitReached: true }).status.headline, 'กำลังวัดหน้างาน', `${status} · สวิตช์ปิด`);
+  }
+  // ไม่มีนัดไหนเข้าพื้นที่เลย = "รอลงคิวเข้าพื้นที่" ตามเดิม (head-r3-2 ข) · นัดล่าสุดเข้าแล้ว = งานของหัวหน้า (ไม่ใช่ requeue)
+  assert.equal(card(zones, { visit: scheduled({ status: 'cancelled' }), drawingMethodEnabled: true, siteVisitReached: false }).status.key, 'queue');
+  assert.notEqual(card(zones, { visit: scheduled({ status: 'done' }), drawingMethodEnabled: true, siteVisitReached: true }).status.key, 'requeue');
+  // ใบลงหน้างานล้วนที่ไม่เคยสลับ = ทางเดิม แม้สวิตช์เปิด
+  const plain = [onsiteReady('z1', 'ล็อบบี้', { parts: [] })];
+  assert.equal(card(plain, { visit: scheduled({ status: 'cancelled' }), drawingMethodEnabled: true, siteVisitReached: true }).status.headline, 'กำลังวัดหน้างาน');
 });
 
 // ══ 4. แถว 17a — พื้นที่ลงหน้างานยังไม่มีนัดที่เข้าพื้นที่ ══════════════════
@@ -745,7 +774,12 @@ test('🔴 ก่อนส่งผล: "พร้อมแล้ว" · แถ�
     assert.equal(gate.ok, true, kind);
     assert.deepEqual(gate, onsite.gates.find((g) => g.key === 'document'), kind);
     // กล่องคำเตือน (การส่งรอบนี้ออกฉบับลูกค้าแล้ว) — ก้อนเดียวกับใบลงหน้างาน · คำเตือนชุดดิบกลับไปกับคำขอ
-    assert.deepEqual(notice(v, 'document-warnings'), notice(onsite, 'document-warnings'), kind);
+    /* 🐞 UAT 26/10 (S05 send-warnings): บรรทัดปิดท้ายบอกชื่อแท็บที่มีอยู่บนจอจริง — ใบที่มีพื้นที่จากแบบแท็บแรกชื่อ "ข้อมูลพื้นที่" */
+    const { text: deskWhere, ...deskNotice } = notice(v, 'document-warnings');
+    const { text: onsiteWhere, ...onsiteNotice } = notice(onsite, 'document-warnings');
+    assert.deepEqual(deskNotice, onsiteNotice, kind);
+    assert.equal(deskWhere, 'หมายเหตุพื้นที่แก้ได้ที่หน้าพื้นที่ (แท็บข้อมูลพื้นที่) · หรือส่งตามนี้ได้', kind);
+    assert.equal(onsiteWhere, 'หมายเหตุพื้นที่แก้ได้ที่หน้าพื้นที่ (แท็บหน้างาน) · หรือส่งตามนี้ได้', kind);
     assert.deepEqual(notice(v, 'document-warnings').items, [warn], kind);
     assert.deepEqual(v.send.seenWarnings, [warn], kind);
     assert.equal(v.send.issuesDocument, true, kind);

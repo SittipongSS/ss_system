@@ -864,10 +864,12 @@ export function surveyDraftSummary(draft = {}, zone = {}) {
  */
 export function surveyDiscardConfirm({ zone = {}, summary = '', unlinkPhotos = 0 } = {}) {
   const what = String(summary || '').trim();
+  /* 🐞 UAT 26/10 (S01): พื้นที่จากแบบไม่มีใครถ่ายรูป — ภาพของมันคือภาพแบบที่แนบไว้ (B-2: ไม่มีคำหน้างานบนพื้นที่จากแบบ) */
+  const kept = isDrawingZone(zone) ? ' — ภาพแบบที่แนบไว้ขึ้นระบบแล้ว ไม่หาย' : ' — รูปที่ถ่ายไว้ขึ้นระบบแล้ว ไม่หาย';
   return {
     title: 'ทิ้งค่าที่ยังไม่บันทึก?',
     message: `${surveyZoneTitle(zone)}: ${what ? `${what} ยังไม่ได้บันทึก` : 'มีค่าที่ยังไม่ได้บันทึก'}`
-      + ' — รูปที่ถ่ายไว้ขึ้นระบบแล้ว ไม่หาย' + spotUnlinkTail(unlinkPhotos),
+      + kept + spotUnlinkTail(unlinkPhotos),
     cancelLabel: 'กลับไปบันทึก',
     confirmLabel: 'ทิ้งแล้วไปต่อ',
   };

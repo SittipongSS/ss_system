@@ -57,7 +57,7 @@ import {
   surveySendDocumentRefusal, surveySendDocumentRefusalList, surveySendSiteVisitError, surveySendVisitStep,
 } from '@/lib/service/surveySendClose';
 import { spotPhotoGroups, surveySpotGates } from '@/lib/service/surveySpotPhotos';
-import { VISIT_STATUS_LABELS, isClosedVisit } from '@/lib/service/visitStatus';
+import { VISIT_STATUS_LABELS, holdsRequestSlot, isClosedVisit } from '@/lib/service/visitStatus';
 
 /** ค่าที่จอต้องเขียนเมื่ออ่านข้อมูลชิ้นนั้นไม่สำเร็จ — ไม่ใช่ขีด ไม่ใช่ 0 */
 export const SURVEY_UNKNOWN_TEXT = 'ไม่ทราบ';
@@ -592,6 +592,7 @@ const FIELD_TAB_LABELS = { onsite: 'หน้างาน', mixed: 'ข้อม
  * @param siteVisitReached คีย์ `siteVisitReached` ของ GET ใบประเมิน — ใบมีนัดที่เข้าพื้นที่แล้วไหม (`true` / `false`)
  *                       · `null` = ยังไม่ได้อ่าน หรืออ่านไม่สำเร็จ ⇒ การ์ดไม่ขึ้นบรรทัดแถว 17a (ไม่ทราบ ≠ ไม่มีนัด)
  *                       route ส่งผลยังเป็นคนตัดสินตอนกด
+ *                       · `true` + นัดล่าสุดไม่ถือคิวแล้ว = หัวหน้าเป็นคนบันทึกพื้นที่ที่สลับกลับเป็นลงหน้างาน (มติ 26/10 · `resaveByHead`)
  */
 export function surveyControlView({
   request = null,
@@ -675,11 +676,19 @@ export function surveyControlView({
   /* 🔄 **พื้นที่ที่กลับมาเป็นลงหน้างานหลังนัดที่เข้าพื้นที่แล้วปิดไปแล้ว** (มติเจ้าของ O3 · 12/10: ใบอยู่ขั้นเดิม ใช้ผลจากรอบที่เข้าพื้นที่แล้ว)
      — ของที่ขาดมีข้อเดียวคือ "บันทึกพื้นที่นี้อีกครั้งหลังสลับ" และไม่มีนัดเปิดให้ช่างคนไหนกลับไป ⇒ เป็นงานของหัวหน้า ไม่ใช่ "รอช่างเก็บงาน"
      🐞 UAT S2b S06 (o3-desk-back-after-visit): การ์ดขึ้น "กำลังวัดหน้างาน · รอช่างเก็บงาน · ช่างต้องเก็บ: ขนาด" ทั้งที่ไม่มีใครวัดอยู่
-     ⚠️ เฉพาะแถวที่ขนาดครบสามช่องแล้ว และขาดของฝั่งช่างแค่ข้อขนาด · นัดยังเปิด / ไม่มีนัด / นัดทำไม่ได้ = ทางเดิม (ช่างเป็นคนเก็บ)
-     ⚠️ แถวที่ไม่เคยสลับวิธี (`methodChangedAt` ว่าง = ทุกแถวเดิม) ไม่เข้าทางนี้ ⇒ ใบลงหน้างานล้วนเท่าเดิมทุกตัวอักษร */
+     ⚠️ เฉพาะแถวที่ขนาดครบสามช่องแล้ว และขาดของฝั่งช่างแค่ข้อขนาด · นัดยังเปิด / ไม่มีนัดไหนเข้าพื้นที่ = ทางเดิม (ช่างเป็นคนเก็บ)
+     ⚠️ แถวที่ไม่เคยสลับวิธี (`methodChangedAt` ว่าง = ทุกแถวเดิม) ไม่เข้าทางนี้ ⇒ ใบลงหน้างานล้วนเท่าเดิมทุกตัวอักษร
+     🔄 **มติเจ้าของ 26/10 (S2b-O3-sub ต่อ) — ถามข้อเท็จจริงของใบ ไม่ใช่นัดล่าสุดอย่างเดียว**: นัดก่อนหน้าเข้าพื้นที่แล้ว (`siteVisitReached === true`
+        ของ GET — ตัวเดียวกับกติกาคงบรรทัด "ต้องลงคิวใหม่" ของ `staysRequeueLine` · surveyMethodSwitch.js) แต่นัดล่าสุดยกเลิก/ทำไม่ได้/เลื่อน
+        (ไม่ถือคิวแล้ว — `holdsRequestSlot` เท็จ) ⇒ หัวหน้าบันทึกจากรอบที่เข้าพื้นที่แล้วได้ — ประโยคเดียวกับกล่องผลลัพธ์ ("… ใช้ผลจากรอบที่
+        เข้าพื้นที่แล้วได้ …") และแถบของพื้นที่ · พาดหัวยังเป็น "ต้องลงคิวใหม่" (สาขา `requeue` ข้างล่าง — ผู้วางคิวลงนัดใหม่ได้ถ้าอยากวัดจริง)
+        🐞 UAT S2b S06 o3-sub-latest-cancelled / -unable: การ์ดขึ้น "รอช่าง: ล็อบบี้" · "ช่างต้องเก็บ: ขนาด" ทั้งที่ไม่มีนัดเปิดให้ช่างคนไหน
+        ⚠️ `false` (ไม่เคยเข้า) · `null` (ช่าง/คนดูอื่น · สวิตช์ปิด — GET ไม่อ่าน · อ่านไม่สำเร็จ) · นัดล่าสุดยังเปิด = ทางเดิม
+        ⚠️ หน้าคำร้องส่งค่านี้จากนัดทุกรอบของใบ ใต้เงื่อนไขเดียวกับ GET ใบประเมิน (`requestSiteVisitReached` · surveyJob.js) */
   const visitReachedClosed = isClosedVisit(visit) && visit?.status !== 'unable';
+  const headResaves = visitReachedClosed || (siteVisitReached === true && !holdsRequestSlot(visit));
   const resaveByHead = (row) => {
-    if (!visitReachedClosed || !surveyZoneNeedsResave(row)) return false;
+    if (!headResaves || !surveyZoneNeedsResave(row)) return false;
     const missing = surveyZoneFacts(row, files[row.id] || []).missingCrew;
     return missing.length === 1 && missing[0].key === 'size' && surveyZoneSize(row.parts).complete;
   };
@@ -1036,9 +1045,26 @@ export function surveyControlView({
           : `กำลังประเมินจากแบบ — ${deskFacts.length - deskLeft.length}/${mix.drawing} พื้นที่`,
         sub: deskLeft.length ? `เหลือ ${surveyNameList(deskLeft)}` : deskStepLeft ? deskStepLeft.sub : '',
       };
+    } else if (visitStep.action === 'block') {
+      /* ⭐ **ใบจากแบบทั้งใบที่ทุกพื้นที่ครบ แต่นัดจากตอนลงหน้างานยังเปิดค้าง** (แถว 17 · เหตุใต้ปุ่ม `visit-open-desk` · UAT S2b รอบสอง S09 ready-blocked)
+         — route ตีกลับการส่ง ⇒ พาดหัวพูด "พร้อมส่งผลให้ฝ่ายขาย" ไม่ได้ · ใช้รูปเดียวกับงานโต๊ะที่ครบแต่ติดเรื่องนอกพื้นที่ ("ประเมินจากแบบครบแล้ว — …")
+         และวลีนัดค้างของกล่องตัดพื้นที่ (N13 "นัด {SV-…} ยังเปิดอยู่") · ทางออกคือเหตุใต้ปุ่ม (ปุ่ม "เปลี่ยนวิธีประเมิน")
+         ⚠️ คีย์ของตัวเอง — หน้าคำร้องแปลเป็นขั้น `ready` (`stageOf` · รางทั้งสองจออยู่ขั้นส่งผล) ไม่ใช่ "กำลังประเมินจากแบบ" */
+      status = {
+        key: 'desk-visit-open', tone: 'warning',
+        headline: `ประเมินจากแบบครบแล้ว — นัด ${visit?.code || visit?.id} ยังเปิดอยู่`,
+        sub: '',
+      };
     } else {
       status = readyStatus();
     }
+  } else if (methodOn && methodTouched && request?.status === 'acknowledged' && needsVisit && mix.onsite > 0
+    && !!visit && !holdsRequestSlot(visit) && !visitReachedClosed && !progress.complete) {
+    /* ⭐ **นัดล่าสุดยกเลิก/ทำไม่ได้ หลังมีนัดก่อนหน้าเข้าพื้นที่แล้ว และพื้นที่ที่สลับกลับยังไม่ครบ** (S2b-O3-sub · มติเจ้าของ "รับ ต้องลงคิวใหม่")
+       ไม่มีใครวัดอยู่ ⇒ ไม่ใช่ "กำลังวัดหน้างาน" · คำเดียวกับขั้น `requeue` ของหน้าคำร้องและหน้าจัดคิว (`surveyJob.js` · อ่านนัดล่าสุดตัวเดียวกัน)
+       🐞 UAT S2b รอบสอง S06 o3-sub-latest-cancelled/unable: พาดหัว "กำลังวัดหน้างาน" ข้างบรรทัดขั้น "SV-… ยกเลิก — รอ TS ลงคิวใหม่"
+       ⚠️ ไม่มีนัดไหนเข้าพื้นที่เลย = "รอลงคิวเข้าพื้นที่" (`awaitingQueue` ข้างบน มาก่อน) · ใบที่ไม่เคยแตะวิธี/สวิตช์ปิด = ทางเดิมทุกตัวอักษร */
+    status = { key: 'requeue', tone: 'warning', headline: 'ต้องลงคิวใหม่', sub: measuredSub };
   } else if (visitNotStarted && (allGates.some((g) => !g.ok) || spotCrewFailed)) {
     /* ยังไม่กดเริ่มงาน = ยังไม่มีใครไปหน้างาน **ไม่ว่าจะกรอกล่วงหน้าไปแล้วเท่าไร** · 🐞 เดิมขึ้น
        "กำลังวัดหน้างาน"/"กด ส่งงาน" ข้างแถบที่มีแค่ปุ่ม "เริ่มงาน" บนจอเดียวกัน
@@ -1133,7 +1159,8 @@ export function surveyControlView({
     const facts = surveyZoneFacts(row, files[row.id] || []);
     const name = surveyZoneName(row);
     const spotHere = spotFailed.filter((g) => g.zoneIds.includes(row.id));
-    /* 🔄 แถวที่เหลือแค่ "บันทึกอีกครั้งหลังกลับมาเป็นลงหน้างาน" และนัดปิดไปแล้ว — ข้อขนาดย้ายไปฝั่งหัวหน้า (`resaveByHead`) */
+    /* 🔄 แถวที่เหลือแค่ "บันทึกอีกครั้งหลังกลับมาเป็นลงหน้างาน" และไม่มีนัดเปิด (นัดล่าสุดเข้าแล้ว · หรือใบเคยเข้าพื้นที่แล้ว มติ 26/10)
+       — ข้อขนาดย้ายไปฝั่งหัวหน้า (`resaveByHead`) */
     const resave = resaveByHead(row);
     const crew = [...(resave ? [] : facts.missingCrew.filter((g) => gateKeys.has(g.key))), ...spotHere.filter((g) => g.owner === 'crew')];
     /* ⭐ ของหัวหน้าขึ้นเฉพาะคนที่ส่งผลได้ (ประเมินจากแบบ) — ข้อ "ขนาด" ของพื้นที่จากแบบเป็นของหัวหน้า แต่คีย์ของมันอยู่ในชุดข้อของช่างด้วย
@@ -1462,7 +1489,8 @@ export function surveyControlView({
     const kinds = surveyWarningKinds(warningItems);
     const where = [
       kinds.note && (canWrite
-        ? 'หมายเหตุพื้นที่แก้ได้ที่หน้าพื้นที่ (แท็บหน้างาน)'
+        /* 🐞 UAT 26/10: ใบที่มีพื้นที่จากแบบ แท็บแรกชื่อ "ข้อมูลพื้นที่" ⇒ ชื่อแท็บมาจากคีย์เดียวกับแท็บจริง (`fieldTabLabel`) */
+        ? `หมายเหตุพื้นที่แก้ได้ที่หน้าพื้นที่ (แท็บ${mix.drawing > 0 ? FIELD_TAB_LABELS.mixed : FIELD_TAB_LABELS.onsite})`
         : 'หมายเหตุพื้นที่ คุณแก้เองไม่ได้ — ให้หัวหน้าฝ่ายบริการหรือช่างแก้'),
       kinds.other && 'ช่องอื่นแก้ที่ต้นทางของช่องที่ระบุ (เช่น ทะเบียนลูกค้า ทะเบียนไซต์ ชื่อพื้นที่)',
     ].filter(Boolean);
