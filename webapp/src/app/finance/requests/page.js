@@ -19,7 +19,8 @@ import RequestQueuePanel from "@/components/requests/RequestQueuePanel";
 import QueueCountStrip from "@/components/requests/QueueCountStrip";
 import { useQueueBoard } from "@/lib/requests/useQueueBoard";
 import { businessDate } from "@/lib/businessDate";
-import { DEPT_QUEUE_TAB_KEYS, deptQueueRows, deptQueueTabs, queueCounts } from "@/lib/requests/queueBoard";
+import { DEPT_QUEUE_TAB_KEYS, deptQueueRows, deptQueueTabs } from "@/lib/requests/queueBoard";
+import { filterQueueRows, queueStripCounts } from "@/lib/requests/queueFilter";
 import { compareRequestUrgency } from "@/lib/deptRequests";
 import { apiFetch } from "@/lib/apiFetch";
 
@@ -49,10 +50,12 @@ export default function FinanceRequestsPage() {
   const inHistory = tab === "history";
   const { setSort } = board;
   useEffect(() => { setSort(inHistory ? "closed" : "urgency"); }, [inHistory, setSort]);
-  /* ⚠️ เข้าประวัติแล้วล้างตัวกรองตัวเลข (ม-145) — แถบตัวเลขถูกซ่อนในประวัติ (ทุกช่อง
-     นับเฉพาะใบที่ยังเดินอยู่ = ศูนย์ทั้งแถบ) ⇒ ตัวกรองที่ค้างมาจะให้ตารางว่างเปล่า */
+  /* ⚠️ **สลับแท็บแล้วล้างตัวกรองตัวเลขทุกครั้ง** (ตรวจตัวเลข 20/10/2026 M3 · ขยายจาก ม-145 ที่ล้างเฉพาะ
+     ตอนเข้าประวัติ) — บางช่องมีได้แท็บเดียว ("กำลังดำเนินการ" เป็น 0 เสมอในแท็บรอผู้ขอ · "รอผู้ขอทำต่อ"
+     เป็น 0 เสมอในแท็บรอฝ่าย · ประวัติไม่มีแถบเลย) ⇒ ตัวกรองที่ค้างมาให้ตารางว่างทั้งที่เลขบนแท็บบอกว่ามีใบ
+     ⭐ กดแท็บที่เปิดอยู่ซ้ำ = "ทั้งแท็บ" · คำค้นกับแผงกรองยังตามไป เพราะเลขบนแท็บนับพร้อมมันแล้ว (`tabCount`) */
   const setTab = (next) => {
-    if (next === "history") board.setCountFilter(null);
+    board.setCountFilter(null);
     router.replace(`/finance/requests?tab=${next}`, { scroll: false });
   };
 
@@ -84,12 +87,32 @@ export default function FinanceRequestsPage() {
     if (countParam) setCountFilter(countParam);
   }, [countParam, setCountFilter]);
 
+  /* ⭐ **กดเมนูคิวคำร้องขณะอยู่หน้านี้ = เริ่มคิวใหม่** (ตรวจตัวเลข 20/10/2026 M3 · เหตุผลเต็มที่ `/rd/requests`)
+     — ป้ายบนเมนูนับแท็บ "รอ FN ตอบ" ทั้งแท็บ แต่เมนูเป็น <Link> ไป URL เปล่าซึ่งไม่ mount หน้าใหม่ ⇒ คำค้น/
+     ตัวกรองที่ค้างตามมา · URL เปล่ามาจากเมนูทางเดียว (`setTab` เขียน `?tab=` เสมอ) ⇒ ล้างทุกชั้นแล้วเขียน
+     `?tab=todo` ทับ ให้กดเมนูครั้งถัดไปจับได้ */
+  const bareUrl = searchParams.toString() === "";
+  const { setSearch, clearFilters } = board;
+  useEffect(() => {
+    if (!bareUrl) return;
+    setSearch(""); clearFilters(); setCountFilter(null);
+    router.replace("/finance/requests?tab=todo", { scroll: false });
+  }, [bareUrl, setSearch, clearFilters, setCountFilter, router]);
+
   const rows = useMemo(
     () => deptQueueRows(requests, { dept: DEPT, tab }).slice().sort(compareRequestUrgency),
     [requests, tab],
   );
 
-  const counts = queueCounts(rows, { todayIso: businessDate() });
+  /* ⭐ **ทุกตัวเลขบนหน้านับด้วยตัวตัดสินเดียวกับตาราง** (`queueFilter.js` · ตรวจตัวเลข 20/10/2026 M2 M3)
+     · แถบตัวเลข = แท็บนี้ + คำค้น + แผงกรอง (ไม่รวมช่องที่กดค้าง) ⇒ กดช่องไหนก็ได้แถวเท่าเลขช่องนั้น
+     · เลขบนแท็บ = แท็บนั้น + คำค้น + แผงกรอง (ไม่รวมตัวกรองตัวเลข เพราะ `setTab` ล้างมัน)
+     ⚠️ `filters` ชุดเดียวกับที่พาเนลใช้ (`tools` ตั้งต้น "full") */
+  const queueState = {
+    countFilter: board.countFilter, search: board.search, filters: board.filters, todayIso: businessDate(),
+  };
+  const counts = queueStripCounts(rows, queueState);
+  const tabCount = (key) => filterQueueRows(deptQueueRows(requests, { dept: DEPT, tab: key }), queueState, { except: "count" }).length;
 
   return (
     <Workspace
@@ -111,8 +134,8 @@ export default function FinanceRequestsPage() {
           options={deptQueueTabs(DEPT).map((t) => ({
             value: t.key,
             label: t.label,
-            // นับจากชุดเดียวกับที่แท็บนั้นแสดงจริง — ตัวเลขบนแท็บกับตารางข้างล่างขัดกันไม่ได้
-            count: deptQueueRows(requests, { dept: DEPT, tab: t.key }).length,
+            // นับจากชุดเดียวกับที่แท็บนั้นแสดงจริง (รวมคำค้น/แผงกรองที่ตามไป) — ตัวเลขบนแท็บกับตารางข้างล่างขัดกันไม่ได้
+            count: tabCount(t.key),
           }))}
         />
       </div>
@@ -130,6 +153,8 @@ export default function FinanceRequestsPage() {
 
       <RequestQueuePanel
         scope="queue" dept={DEPT} rows={rows} board={board}
+        /* ป้ายตัวเลือกที่ติ๊กอยู่แต่ไม่มีในแท็บนี้ (เช่น `?owner=` หลังสลับแท็บ) อ่านจากทุกแท็บ */
+        labelRows={requests}
         /* หัวแผงรายการกลับมา (มติผู้ใช้ 2026-09-15 · D1 — แทนมติถอดหัวการ์ด 2026-09-07) */
         icon={<Receipt size={17} aria-hidden="true" />}
         sectionTitle="รายการคำร้องถึงฝ่ายบัญชีและการเงิน"

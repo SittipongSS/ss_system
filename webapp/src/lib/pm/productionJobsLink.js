@@ -15,6 +15,10 @@ const NAV_COUNT_KEY = 'productionJobs';
 export const PRODUCTION_JOB_FILTERS = Object.freeze({
   // "รอฉันลงมือ" ของคิว = งานร่างที่ยังไม่ถูกวางคิว (ตัวเดียวกับป้ายเมนู)
   draft: Object.freeze({ label: 'รอวางคิว', match: isJobWaitingToSchedule }),
+  /* 🐞 M24f (ตรวจตัวเลข 20/10): การ์ด "วางคิวแล้ว N" เดิมพาไปกระดาน `/production/board` ซึ่งโหลด planned + in_progress
+     ที่เริ่มไม่เกินสิ้นสัปดาห์ ⇒ งาน planned ที่เริ่มหลังสัปดาห์นี้ไม่อยู่ แต่งานที่กำลังเดินอยู่บนกระดาน — ไม่ใช่ N งาน
+     ⇒ พาไปคิวที่กรองสถานะ planned ตัวเดียวกับตัวนับ (`productionCounts().planned`) */
+  planned: Object.freeze({ label: 'วางคิวแล้ว', match: (job) => job?.status === 'planned' }),
   running: Object.freeze({ label: 'กำลังผลิต', match: (job) => job?.status === 'in_progress' }),
 });
 

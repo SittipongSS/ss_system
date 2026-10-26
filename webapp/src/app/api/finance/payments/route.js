@@ -12,7 +12,7 @@ import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { canAccessFinance } from '@/lib/permissions';
 import {
-  filterLedger, ledgerBillingTally, ledgerCustomerOutlook, ledgerDueTally, ledgerReport, ledgerRow, ledgerSummary,
+  filterLedger, ledgerBillingTally, ledgerCustomerOutlook, ledgerDueTally, ledgerFacetTally, ledgerReport, ledgerRow, ledgerSummary,
   ledgerVoidInstallment, orderStateIndex, sortLedger, stampConfirmOutlook, stampOrderInstallmentCount, stampOrderPaidThrough,
   stampOrderReplanned, undatedHiddenBy,
 } from '@/lib/finance/paymentLedger';
@@ -325,6 +325,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     const billingTally = ledgerBillingTally(all, filters);
     // ตัวนับบนตัวเลือกของกลุ่ม "ครบกำหนดชำระ" — ถอดตัวกรองนี้เองออกก่อนนับ (กติกาเดียวกับ billingTally)
     const dueTally = ledgerDueTally(all, filters);
+    /* ตัวเลขของการ์ดที่กดแล้วแทนค่าตัวกรองของตัวเอง ("รอบัญชีรับรอง" · "ยังไม่ออกใบกำกับ") — ถอดตัวกรองของการ์ดออกก่อนนับ
+       (กติกาเดียวกับ billingTally · ตรวจตัวเลข M10b) ⇒ เลขบนการ์ด = แถวที่เห็นหลังกด แม้ตัวกรองนั้นตั้งค่าอื่นค้างอยู่ */
+    const facetTally = ledgerFacetTally(all, filters);
 
     if (url.searchParams.get('format') === 'xlsx') {
       /* ⚠️ ไฟล์ที่ดาวน์โหลด = **สิ่งที่กรองไว้บนจอ** ไม่ใช่ทั้งทะเบียนเสมอ —
@@ -349,6 +352,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       undatedHidden,
       billingTally,
       dueTally,
+      facetTally,
       todayIso,
     });
   } catch (loadError) {

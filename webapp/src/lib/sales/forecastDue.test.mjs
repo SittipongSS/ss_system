@@ -78,7 +78,16 @@ const cell = () => readFileSync(join(ROOT, 'src/components/salesPlanning/Forecas
 test('ป้ายในแถว · ตัวกรอง · แถบเตือน อ่านจาก forecastDueState ตัวเดียวกัน', () => {
   assert.match(cell(), /forecastDueState\(deal, currentMonth\)/, 'ป้ายในแถว');
   const src = page();
-  assert.match(src, /forecastDueState\(deal, currentMonth\)/, 'ตัวกรอง + ตัวนับ');
+  /* ตัวกรอง · เลขท้ายตัวเลือก · เลขบนแถบ ผ่านตัวตัดสินของตาราง (lib/sales/dealListFilter.js · M11/M12 2026-10-20)
+     ซึ่งจัดช่องเดือน FC ด้วย forecastDueState ตัวเดียวกับป้ายในแถว */
+  const listFilter = readFileSync(join(ROOT, 'src/lib/sales/dealListFilter.js'), 'utf8');
+  assert.match(listFilter, /forecastDueState\(deal, currentMonth\)/, 'ตัวกรอง + ตัวนับ');
+  assert.match(src, /dealFacetCounts\(deals, listFilters, listCtx\)/, 'เลขท้ายตัวเลือกเดือน FC');
+  assert.match(src, /dealPickRows\(deals, overduePick, pickCtx\)\.length/, 'เลขบนแถบนับถอยหลัง');
+  assert.match(src, /onShowOverdue=\{showOverdue\}/, 'ปุ่มบนแถบตั้งตัวกรองทั้งชุด');
+  // 🐞 ตัวนับแยกของหน้า (ขอบเขตอย่างเดียว · ไม่สนตัวกรองอื่น) ต้องไม่กลับมา
+  assert.doesNotMatch(src, /dueCounts/);
+  assert.doesNotMatch(src, /onShowOverdue=\{\(\) => setDueFilter/);
   assert.match(src, /forecastReviewWindow\(today\)/, 'แถบนับถอยหลัง');
 });
 

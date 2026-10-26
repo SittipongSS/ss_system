@@ -13,6 +13,7 @@ import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
 import { deptOf, isTaxWaitingOnMe, ownedStages, FILING_FILTERS } from "@/lib/excise/workflow";
 import { customerNameIn } from "@/lib/master/customerName";
 import { queueExportIds, queueStatusParam } from "@/lib/tax/exportUrl";
+import { dayParam, withinDateRange } from "@/lib/tax/period";
 import ReportExportActions from "@/components/excise/ReportExportActions";
 import DateInput from "@/components/ui/DateInput";
 import FilterPopover from "@/components/ui/FilterPopover";
@@ -44,6 +45,11 @@ export default function FilingsPage() {
     const params = new URLSearchParams(window.location.search);
     const s = params.get("status");
     if (s && FILING_FILTERS.some((f) => f.key === s)) setFilter(s);
+    /* ⭐ ช่วงวันจากการ์ดบนภาพรวม (`?from=&to=` · ตรวจตัวเลข M7) — ลงช่องจาก–ถึงที่มองเห็นและล้างได้ · ค่าผิดรูปถูกเมิน */
+    const fromParam = dayParam(params.get("from"));
+    const toParam = dayParam(params.get("to"));
+    if (fromParam) setFrom(fromParam);
+    if (toParam) setTo(toParam);
     const openId = params.get("open");
     if (openId) router.replace(`/tax/filings/${openId}`);
   }, [router]);
@@ -127,9 +133,8 @@ export default function FilingsPage() {
         if (!isTaxWaitingOnMe(o, "payment", myDept)) return false;
       } else if (filter !== "all" && o.status !== filter) return false;
       if (customerIds.length && !customerIds.includes(o.customerId)) return false;
-      const day = (o.createdAt || "").slice(0, 10);
-      if (from && day && day < from) return false;
-      if (to && day && day > to) return false;
+      // วันไทยของวันที่สร้าง — ตัวตัดสินเดียวกับการ์ดบนภาพรวมและไฟล์ที่โหลด (ตรวจตัวเลข M7 · ดูหน้าคิวขึ้นทะเบียน)
+      if (!withinDateRange(o.createdAt, from, to)) return false;
       if (!q) return true;
       return [o.quotationRef, o.poReference, o.customerName, o.exciseReceiptNumber].some((v) => (v || "").toLowerCase().includes(q));
     });

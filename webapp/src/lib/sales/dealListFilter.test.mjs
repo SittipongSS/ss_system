@@ -3,8 +3,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  DEAL_REVIEW_LIST_URL, dealDueKey, dealPassesListFilters, isNeedsReviewDeal, reviewOptionCount, wantsReviewOnly,
+  DEAL_REVIEW_LIST_URL, EMPTY_DEAL_FILTERS, dealDueKey, dealFacetCounts, dealListPick, dealPassesListFilters,
+  dealPickRows, isNeedsReviewDeal, reviewOptionCount, wantsReviewOnly,
 } from './dealListFilter.js';
+import { dealMissingDelivery } from './dealPeriod.js';
 
 const deal = (over = {}) => ({
   id: 'D', stage: 'timeline_proposed', ownerId: 'me', team: 'SV', title: 'ดีล',
@@ -80,4 +82,102 @@ test('ลิงก์ชุดรอเติมข้อมูล: API อ่�
   assert.match(page, /deals\.filter\(\(deal\) => dealPassesListFilters\(deal, listFilters, listCtx\)\)/);
   // 🐞 ตัวนับเดิมต้องไม่กลับมา
   assert.doesNotMatch(page, /deals\.filter\(\(d\) => d\.metadata\?\.needsReview\)\.length/);
+});
+
+
+// ── M11 · M12 (ตรวจตัวเลข 2026-10-20): แถบเตือน/เลขท้ายตัวเลือก = แถวที่กดแล้วได้ ─────────────────────
+const MONTH = '2026-10';
+/* ชุดคละทุกมิติ: เลยกำหนด/ไม่ระบุเดือน/ตรงกำหนด × มี/ไม่มีวันรับของ × Won/Lost/เปิด × ประเภท × เจ้าของ × รอเติมข้อมูล */
+const MIX = [
+  deal({ id: 'od-open-scent', forecastMonth: '2026-08', stage: 'proposal', dealType: 'SCENT' }),
+  deal({ id: 'od-open-npd-deliv', forecastMonth: '2026-07', stage: 'proposal', dealType: 'NPD', endDate: '2026-11-30' }),
+  deal({ id: 'od-other-owner', forecastMonth: '2026-08', ownerId: 'x' }),
+  deal({ id: 'won-old-month', forecastMonth: '2026-08', stage: 'won', dealType: 'SCENT' }),
+  deal({ id: 'won-deliv', forecastMonth: '2026-10', stage: 'won', endDate: '2026-12-01' }),
+  deal({ id: 'lost-no-deliv', forecastMonth: '2026-09', stage: 'lost' }),
+  deal({ id: 'lost-deliv', stage: 'lost', endDate: '2026-12-31' }),
+  deal({ id: 'missing-month', stage: 'proposal', dealType: 'NPD' }),
+  deal({ id: 'ontime-alpha', title: 'alpha', forecastMonth: '2026-11', stage: 'proposal', metadata: { demandMonth: '2026-12' } }),
+  review({ id: 'rv-overdue', forecastMonth: '2026-06' }),
+  review({ id: 'rv-won', stage: 'won' }),
+];
+const scopeMine = (d) => d.ownerId === 'me';
+const pickCtx = { inScope: scopeMine, currentMonth: MONTH };
+const searchCtx = (q) => ({ ...pickCtx, matchesSearch: (d) => !q || `${d.id} ${d.title}`.includes(q) });
+/* แถวที่ตารางโชว์ = ตัวตัดสินเดียวกับหน้า */
+const tableRows = (filters, ctx) => MIX.filter((d) => dealPassesListFilters(d, filters, ctx));
+
+test('M11: ปุ่มบนแถบ = ตัวกรองทั้งชุด (แทนที่ ไม่ใช่เติม) · ตัวกรองค้าง (Won · ประเภท · คำค้น) ไม่ทำเลขเพี้ยน', () => {
+  assert.deepEqual(dealListPick({ due: 'overdue' }), { ...EMPTY_DEAL_FILTERS, due: ['overdue'] });
+  assert.deepEqual(dealListPick({ delivery: 'missing' }), { ...EMPTY_DEAL_FILTERS, delivery: ['missing'] });
+  assert.deepEqual(dealListPick(), { ...EMPTY_DEAL_FILTERS });
+  assert.equal(Object.isFrozen(EMPTY_DEAL_FILTERS), true);
+
+  const STALE = [
+    { stage: ['won'] }, { type: ['NPD'] }, { due: ['ontime'] }, { delivery: ['known'] },
+    { stage: ['won'], type: ['SCENT'], due: ['missing'], delivery: ['missing'] },
+  ];
+  for (const pickArgs of [{ due: 'overdue' }, { delivery: 'missing' }]) {
+    const pick = dealListPick(pickArgs);
+    const bannerRows = dealPickRows(MIX, pick, pickCtx);
+    assert.ok(bannerRows.length > 0, `${JSON.stringify(pickArgs)}: ชุดทดสอบต้องมีแถว`);
+    for (const stale of STALE) {
+      // กดแถบตอนมีตัวกรองค้าง: `pick` ระบุครบทุกมิติ ⇒ ทับของค้างได้หมด · หน้าล้างคำค้นด้วย (applyDealPick)
+      const after = tableRows({ ...stale, ...pick }, searchCtx(''));
+      assert.deepEqual(after.map((d) => d.id), bannerRows.map((d) => d.id), `${JSON.stringify(pickArgs)} หลัง ${JSON.stringify(stale)}`);
+    }
+    // ทุกมิติของตัวตัดสินอยู่ในชุด (เพิ่มมิติใหม่แล้วลืมใส่ = ของค้างหลุดรอด)
+    assert.deepEqual(Object.keys(pick).sort(), ['delivery', 'due', 'review', 'stage', 'type']);
+    // 🐞 ของเดิม: ตั้งแค่มิติเดียวแล้วคงสถานะ Won ที่ค้างไว้ ⇒ ตารางเหลือน้อยกว่าเลขบนแถบ
+    const merged = tableRows({ stage: ['won'], ...('due' in pickArgs ? { due: ['overdue'] } : { delivery: ['missing'] }) }, searchCtx(''));
+    assert.ok(merged.length < bannerRows.length, 'แบบเติม (ของเดิม) ต้องไม่เท่า — ยืนยันว่าเทสต์จับบั๊กได้');
+  }
+});
+
+test('M11/M12b: แถบวันรับของนับด้วยตัวเดียวกับ dealMissingDelivery (ไม่นับดีลแพ้) · มูลค่ารวมจากชุดเดียวกัน', () => {
+  const rows = dealPickRows(MIX, dealListPick({ delivery: 'missing' }), pickCtx);
+  const legacy = MIX.filter((d) => scopeMine(d) && dealMissingDelivery(d));
+  assert.deepEqual(rows.map((d) => d.id), legacy.map((d) => d.id));
+  assert.ok(!rows.some((d) => d.stage === 'lost'));
+  // ขอบเขต: ดีลของคนอื่นไม่เข้า
+  assert.ok(!dealPickRows(MIX, dealListPick({ due: 'overdue' }), pickCtx).some((d) => d.ownerId !== 'me'));
+});
+
+test('M12a/M12b: เลขท้ายตัวเลือกเดือน FC / วันรับของ = แถวหลังติ๊กเพิ่มตัวนั้น (ทุกชุดตัวกรองที่ติดอยู่)', () => {
+  const DUE = ['overdue', 'missing', 'ontime'];
+  const DELIVERY = ['missing', 'known'];
+  const subsets = (values) => values.reduce((acc, v) => acc.concat(acc.map((s) => [...s, v])), [[]]);
+  const combos = [];
+  for (const stage of [[], ['won'], ['proposal'], ['won', 'lost']]) {
+    for (const type of [[], ['NPD']]) {
+      for (const review of [false, true]) {
+        for (const due of subsets(['overdue', 'ontime'])) {
+          for (const delivery of [[], ['missing'], ['known']]) {
+            for (const q of ['', 'alp', 'rv-']) combos.push({ filters: { stage, type, review, due, delivery }, q });
+          }
+        }
+      }
+    }
+  }
+  for (const { filters, q } of combos) {
+    const ctx = searchCtx(q);
+    const facets = dealFacetCounts(MIX, filters, ctx);
+    for (const value of DUE) {
+      // ติ๊ก "ค่านั้นค่าเดียว" ในมิติเดือน FC (มิติอื่นคงเดิม) ⇒ แถวที่ได้ = เลขท้ายตัวเลือก
+      const rows = tableRows({ ...filters, due: [value] }, ctx);
+      assert.equal(facets.due[value], rows.length, `due=${value} ${JSON.stringify(filters)} q=${q}`);
+    }
+    for (const value of DELIVERY) {
+      const rows = tableRows({ ...filters, delivery: [value] }, ctx);
+      assert.equal(facets.delivery[value], rows.length, `delivery=${value} ${JSON.stringify(filters)} q=${q}`);
+    }
+  }
+  // 🐞 ตัวอย่างในรายงาน: ติ๊ก Won อยู่ — "เลยกำหนด" ต้องเป็น 0 (ดีลปิดแล้วไม่มีวันเลยกำหนด) ไม่ใช่ยอดตามขอบเขต
+  const won = dealFacetCounts(MIX, { stage: ['won'] }, searchCtx(''));
+  assert.equal(won.due.overdue, 0);
+  assert.equal(won.due.ontime, 3, 'Won ของฉันสามใบ (รวมใบรอเติมข้อมูล — ยังไม่ได้ติ๊กมิตินั้น)');
+  // โหมดรอเติมข้อมูล: ไม่นับดีลที่ไม่ได้รอเติมข้อมูล
+  const rv = dealFacetCounts(MIX, { review: true }, searchCtx(''));
+  assert.equal(rv.due.overdue + rv.due.missing + rv.due.ontime, 2);
+  assert.equal(rv.delivery.missing, 2);
 });

@@ -198,3 +198,34 @@ test('🔴 ยามอ่านซอร์ส: หน้าจัดคิว�
   // แถบเลือกช่วงยังเป็นสามช่วงเดิม (today ไม่ใช่ปุ่มบนแถบ)
   assert.match(page, /const rangeOptions = QUEUE_RANGES\.map\(/);
 });
+
+/* ── M24g (ตรวจตัวเลข 20/10): การ์ด "นัดค้าง" นับชุดเดียวกับแท็บ "ค้าง" ──────────────────────────────────
+   🐞 หน้าภาพรวมดึง `/api/service/visits?from=วันนี้-120&to=วันนี้+6` ⇒ นัดที่ค้างเกิน 120 วันไม่ถูกนับ แต่แท็บ "ค้าง"
+      (`loadQueueVisits`) ไม่มีขอบล่าง ⇒ กดการ์ดแล้วเจอมากกว่าเลข · ตัวตัดสินตรงกันอยู่แล้ว (เทสต์ข้างบน) — ช่องโหว่คือ **ชุดข้อมูล**
+   ⭐ หน้าภาพรวมดึง `visits/queue?view=load` ตัวเดียวกับแท็บ ⇒ ยามซอร์ส + เทสต์ตรรกะด้วยนัดค้างเก่ากว่า 120 วัน */
+test('🔴 M24g: หน้าภาพรวมดึงนัดจาก visits/queue?view=load — ไม่มีช่วงวัน/LOOKBACK · ข้ามวันยังโหลดใหม่', () => {
+  const page = live(readFileSync(new URL('../../app/service/page.js', import.meta.url), 'utf8'));
+  assert.match(page, /apiFetch\("\/api\/service\/visits\/queue\?view=load"\)/);
+  assert.doesNotMatch(page, /\/api\/service\/visits\?from=/, 'ห้ามกลับไปดึงเป็นช่วงวัน — นัดค้างเก่าหายจากการ์ด');
+  assert.doesNotMatch(page, /LOOKBACK/);
+  // ตัวโหลดไม่อ่านวันแล้ว ⇒ วันต้องอยู่ใน deps ของ effect ไม่งั้นทางข้ามวันของ useRevalidateOnFocus แค่เลื่อนวัน ไม่โหลดใหม่
+  assert.match(page, /useEffect\(\(\) => \{ load\(\); \}, \[load, todayIso\]\);/);
+  // การ์ด/แผงนับจากชุดในกรอบของหน้า (ไม่มีขอบล่าง · ขอบบนวันนี้ + 6)
+  assert.match(page, /const counts = useMemo\(\(\) => serviceCounts\(windowVisits, todayIso\), \[windowVisits, todayIso\]\);/);
+  assert.match(page, /return visits\.filter\(\(v\) => String\(v\.scheduledDate \|\| ""\) <= until\);/);
+  // ผู้เรียกที่สองของ view=load ถูกจดไว้ที่ queueRouteMode
+  const queueSrc = readFileSync(new URL('./scheduleQueue.js', import.meta.url), 'utf8');
+  assert.match(queueSrc, /ผู้เรียกที่สอง: \*\*หน้าภาพรวมบริการ\*\*/);
+});
+
+test('🔴 M24g: นัดค้างเก่ากว่า 120 วัน — การ์ดนับ และแท็บ "ค้าง" เปิดเจอ (เลขเดียวกัน)', () => {
+  const ancient = { id: 'old', status: 'scheduled', scheduledDate: '2026-04-01', assigneeId: null };
+  const rows = [...fixture, ancient];
+  const counts = serviceCounts(rows, TODAY);
+  const overdue = openFromCard(scheduleQueueHref({ tab: 'overdue' }), rows, TODAY).view;
+  assert.equal(overdue.listedCount, counts.overdue);
+  assert.ok(overdue.rows.some((r) => r.id === 'old' && r.bucket === 'overdue'), 'แท็บค้างไม่มีขอบล่าง');
+  // 🐞 ชุดของเดิม (ย้อน 120 วัน) ทำการ์ดขาดไปหนึ่งใบ — ช่องโหว่อยู่ที่ชุดข้อมูล ไม่ใช่ตัวตัดสิน
+  const lookback120 = rows.filter((v) => v.scheduledDate >= '2026-06-21');
+  assert.equal(serviceCounts(lookback120, TODAY).overdue, overdue.listedCount - 1);
+});

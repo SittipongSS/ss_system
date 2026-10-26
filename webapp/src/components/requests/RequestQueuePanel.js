@@ -23,18 +23,19 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import EmptyState from "@/components/ui/EmptyState";
 import Button from "@/components/ui/Button";
 import { ListPanel } from "@/components/ui/Workspace";
-import { matchesQueueSearch, useQueueBoard } from "@/lib/requests/useQueueBoard";
+import { useQueueBoard } from "@/lib/requests/useQueueBoard";
+import { filterQueueRows, queueFacetOptions } from "@/lib/requests/queueFilter";
 import { fmtDate, fmtNumber, fmtTime, NA } from "@/lib/format";
 import styles from "./requestForm.module.css";
 import { requestProgress } from "@/lib/deptRequests";
 import {
-  QUEUE_COUNT_META, bouncedDaysText, groupQueueRows, matchesQueueCount, queueCounts,
+  QUEUE_COUNT_META, bouncedDaysText, groupQueueRows,
   requestDueText, requestQueueStatus, requestSettled,
 } from "@/lib/requests/queueBoard";
 import { businessDate } from "@/lib/businessDate";
 import {
-  REQUEST_GROUP_OPTIONS, REQUEST_SORT_OPTIONS, filterRequestRows, groupRequestRows,
-  requestFacetOptions, requestFilterCount, sortRequestRows,
+  REQUEST_GROUP_OPTIONS, REQUEST_SORT_OPTIONS, groupRequestRows,
+  requestFilterCount, sortRequestRows,
 } from "@/lib/requests/queueList";
 import { REQUEST_COLUMNS, requestColumns } from "@/lib/requests/queueColumns";
 import { priceLineText, requestPriceSummary } from "@/lib/requests/rowPrices";
@@ -97,6 +98,10 @@ export default function RequestQueuePanel({
      ของหน้าลงมาอยู่แถบเดียวกับตัวกรองที่มันทำงานด้วย
      ⚠️ วาดเฉพาะตอนมีแถบเครื่องมือ (`tools` ไม่ใช่ "none") — การ์ดฝังที่ไม่มีแถบใช้ `headerActions` */
   toolbarEnd = null,
+  /* ชุดแถวกว้างสุดที่หน้าแม่โหลดมา (ทุกแท็บ) — ใช้ **ตั้งชื่อ** ตัวเลือกที่ติ๊กอยู่แต่ไม่มีใบในมุมมองนี้
+     (เช่น `?owner=` ที่ตามมาตอนสลับแท็บ) ⇒ ตัวเลือกนั้นยังเขียนชื่อคนได้ ไม่ใช่ "ไม่มีในมุมมองนี้"
+     ⚠️ ไม่ใช่ชุดที่นับ — ตัวเลขทุกตัวนับจาก `rows` (ชุดของแท็บนี้) เท่านั้น */
+  labelRows = null,
 }) {
   const router = useRouter();
   // วันไทย ไม่ใช่วัน UTC — ก่อนเจ็ดโมงเช้า toISOString() ยังให้เมื่อวาน แล้ว
@@ -126,17 +131,17 @@ export default function RequestQueuePanel({
   // แต่เดิมตอบได้แค่ว่ามีกี่ใบ ไม่ได้บอกว่าใบไหน ⇒ ต้องไล่กวาดตาทั้งตารางเอง
   // ⚠️ กรองที่จอได้ **เพราะชุดข้อมูลนี้ผ่านด่านขอบเขตของ API มาแล้ว** — ต่างจาก
   // ตัวสลับขอบเขตบนหน้าแม่ที่ต้องกรองฝั่ง server (กับดักข้อ 9 ของแผน)
+  /* ⭐ **ตัวตัดสินเดียวกับทุกตัวเลขบนหน้า** (`passesQueueFilters` · ตรวจตัวเลข 20/10/2026 M1) — แถบตัวเลข ·
+     เลขบนแท็บ · ตัวเลือกในแผงกรอง เรียก `filterQueueRows` ด้วยสถานะชุดนี้เป๊ะ ๆ ต่างกันแค่ชั้นที่ข้าม
+     ⚠️ หน้าแม่ที่นับเลขเองต้องส่ง `filters` ชุดเดียวกับที่นี่ใช้ (`showTools ? filters : {}`) — ทุกหน้า
+     คิวเต็มส่ง `tools="full"` อยู่ ⇒ ตรงกัน · การ์ดฝัง (`tools` อื่น) ไม่มีแผงกรอง จึงไม่กรองด้วยมัน */
+  const queueState = useMemo(
+    () => ({ countFilter, search, filters: showTools ? filters : {}, todayIso: today }),
+    [countFilter, search, filters, showTools, today],
+  );
   const visibleRows = useMemo(
-    () => sortRequestRows(
-      filterRequestRows(
-        rows
-          .filter((r) => (countFilter ? matchesQueueCount(r, countFilter, { todayIso: today }) : true))
-          .filter((r) => matchesQueueSearch(r, search, { kindLabel: requestKindLabelFull })),
-        showTools ? filters : {},
-      ),
-      { key: sortKey, dir: sortDir },
-    ),
-    [rows, countFilter, search, today, filters, sortKey, sortDir, showTools],
+    () => sortRequestRows(filterQueueRows(rows, queueState), { key: sortKey, dir: sortDir }),
+    [rows, queueState, sortKey, sortDir],
   );
 
   /* ⭐ **"ไม่จัดกลุ่ม" = ไม่มีหัวกลุ่มจริง ๆ** (มติผู้ใช้ 2026-08-15) — ของเดิมพอเลือก
@@ -204,8 +209,11 @@ export default function RequestQueuePanel({
   const flatMode = groups.length === 1 && groups[0]?.flat;
   const showGroupHeads = !flatMode && (showTools || groups.length > 1);
   const filterCount = requestFilterCount(filters);
-  // ⚠️ ตัวเลือกในแผงกรองสร้างจาก `rows` (ทั้งก้อนก่อนกรอง) ไม่ใช่ `visibleRows` —
-  // ไม่งั้นพอเลือก "RD" แล้วตัวเลือก "PC" หายจากแผง = ยกเลิกตัวเลือกตัวเองไม่ได้
+  /* ⭐ **ตัวเลขท้ายตัวเลือก = ติ๊กตัวนั้นแล้วตารางจะเหลือกี่ใบ** (ตรวจตัวเลข 20/10/2026 M1) — นับแบบแยกมิติ
+     (`queueFacetOptions`): ตัวเลือกของมิติหนึ่งคิดจากใบที่ผ่าน **ทุกชั้นยกเว้นมิตินั้น** (ตัวเลขบนแถบ ·
+     คำค้น · มิติอื่นในแผง) 🐞 เดิมนับจาก `rows` ทั้งแท็บ ⇒ ติ๊กลูกค้า X อยู่ ผู้รับเรื่อง "Anan (2)" ติ๊กแล้วได้ 1
+     ⚠️ ยังไม่ใช่ `visibleRows` ตรง ๆ — ไม่งั้นพอเลือก "RD" แล้วตัวเลือก "PC" หายจากแผง = ยกเลิกตัวเลือก
+     ตัวเองไม่ได้ (เหตุผลเดิม) · ตัวที่ติ๊กอยู่แต่เหลือ 0 ใบยังอยู่ในลิสต์เสมอ (ป้ายจาก `labelRows`) */
   /* ⚠️ **ไม่มีหมวด "ฝ่ายที่ขอไป" ในแผงนี้แล้ว** (มติผู้ใช้ 2026-08-30) — คิวรวม
      (`/requests`) ยกฝ่ายขึ้นไปเป็น **ปุ่มสลับที่เห็นได้บนแถวขอบเขต** เพราะเป็นคำถาม
      ที่ถามทุกวันและมีคำตอบอย่างมาก 4 ตัว · ปล่อยไว้ที่นี่ด้วยจะได้ตัวคุมมิติเดียวกัน
@@ -220,10 +228,10 @@ export default function RequestQueuePanel({
     { key: "owner", label: "ผู้รับเรื่อง", icon: User },
   ].map((g) => ({
     ...g,
-    options: requestFacetOptions(rows, g.key),
+    options: queueFacetOptions(rows, queueState, g.key, { labelRows: labelRows || rows }),
     selected: filters[g.key] || [],
     onChange: (values) => setFilter?.(g.key, values),
-  })), [rows, filters, setFilter]);
+  })), [rows, queueState, labelRows, filters, setFilter]);
 
   /* ── คอลัมน์: ทะเบียนบอกว่ามีอะไร ที่นี่บอกว่าวาดยังไง ──────────────────
      ⚠️ **ทุกคีย์ในทะเบียนต้องมีตัววาดที่นี่** — `queueColumns.test.mjs` สแกนไฟล์นี้

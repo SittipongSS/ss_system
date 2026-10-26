@@ -49,7 +49,8 @@ import { DetailPageLayout } from "@/components/ui/DetailPage";
 import { customerHeadline } from "@/lib/master/customerAr";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { detailTabFromSearch, PROJECT_DETAIL_TABS, PROJECT_TAB_ALIASES } from "@/lib/salesDetailTabs";
-import { TIMELINE_CENTRAL, filterTimelineTasks, singleSelectedDeal } from "@/lib/pm/timelineFilter";
+import { EMPTY_STEP_FILTER, TIMELINE_CENTRAL, countTimelineSteps, filterTimelineTasks, singleSelectedDeal } from "@/lib/pm/timelineFilter";
+import { projectSelectionPasses, projectTasksQueueHref } from "@/lib/pm/dealTaskLink";
 import TaskCreateButton from "@/components/pm/TaskCreateButton";
 import RequestCreateButton from "@/components/requests/RequestCreateButton";
 import { brandDisplayFromList } from "@/lib/master/brands";
@@ -145,6 +146,15 @@ export default function ProjectDetailPage() {
      ⚠️ ผลข้างเคียงที่ตั้งใจ: กรองไว้ที่แท็บงานแล้วข้ามไปไทม์ไลน์ จะยังกรองอยู่ —
      แถบหัวไทม์ไลน์บอกจำนวนขั้นที่แสดงไว้แล้ว และการเพิ่ม/เรียงขั้นตอนถูกล็อกตามเดิม */
   const [dealFilters, setDealFilters] = useState([]);
+  /* ตัวกรองสถานะ/ฝ่ายของแผงไทม์ไลน์ — หน้านี้ถือเอง (controlled) เพื่อให้เลข "n ขั้นตอน" บนตัวเลือก
+     "ดีลที่แสดง" นับด้วยตัวกรองเดียวกับแผง (ตรวจตัวเลข M18a) · กติกาอยู่ที่ `timelineStepMatches` (นับผ่าน `countTimelineSteps`) */
+  const [stepFilter, setStepFilter] = useState(EMPTY_STEP_FILTER);
+  /* การ์ดไทม์ไลน์ของภาพรวมนับทั้งโครงการ ⇒ ปุ่มของการ์ดเปิดไทม์ไลน์แบบไม่มีตัวกรองค้าง (M18c) */
+  const openWholeTimeline = () => {
+    setDealFilters([]);
+    setStepFilter(EMPTY_STEP_FILTER);
+    switchTab("timeline");
+  };
   // เฟส 2: document revision control — ออก Revise = freeze เอกสารทั้งชุดเป็นเวอร์ชัน + เลข Rev
   const [showRevisions, setShowRevisions] = useState(false);
   const [revisions, setRevisions] = useState([]);
@@ -510,15 +520,20 @@ export default function ProjectDetailPage() {
   const projectPersonalTasks = p.personalTasks || [];
   /* ตัวเลือกชุดเดียวของตัวกรอง — นับทั้ง "ขั้นตอน" (ไทม์ไลน์) และ "งาน" (/sa/tasks)
      ในบรรทัดเดียว เพราะตัวกรองตัวเดียวกันคุมทั้งสองที่ · ตัวเลือก "งานกลางโครงการ"
-     หมายถึงของที่ไม่ผูกดีล — ฝั่งไทม์ไลน์คือ task.dealId ว่าง ฝั่งงานก็ว่างเหมือนกัน */
+     หมายถึงของที่ไม่ผูกดีล — ฝั่งไทม์ไลน์คือ task.dealId ว่าง ฝั่งงานก็ว่างเหมือนกัน
+     ⭐ "n ขั้นตอน" = ขั้นที่แผงไทม์ไลน์จะโชว์เมื่อเลือกตัวเลือกนั้น — `countTimelineSteps` ตัวเดียวกับที่เทสต์
+        เทียบกับแผง: ดีลนั้น (`filterTimelineTasks`) × ตัวกรองสถานะ/ฝ่ายของแผง (มุมมองเอกสารไม่กรอง ⇒ นับทั้งหมด)
+        🐞 เดิมนับทุกขั้นของดีล ⇒ ตัวเลือกบอก 24 แผงโชว์ "2 / 24"
+     ⚠️ ร่างที่แก้สถานะค้างยังไม่บันทึกถูกกรองในแผงแต่ไม่ถูกนับที่นี่ — ยอมได้ขณะแถบบันทึกยังโชว์อยู่ */
+  const stepCountOf = (selection) => countTimelineSteps(allTasks, { deals: [selection], stepFilter, documentView: view === "document" });
   const dealFilterOptions = [
     ...(p.deals || []).map((deal) => ({
       value: deal.id,
-      label: `${deal.title} (${allTasks.filter((task) => task.dealId === deal.id).length} ขั้นตอน · ${projectPersonalTasks.filter((task) => task.dealId === deal.id).length} งาน)`,
+      label: `${deal.title} (${stepCountOf(deal.id)} ขั้นตอน · ${projectPersonalTasks.filter((task) => task.dealId === deal.id).length} งาน)`,
     })),
     ...(allTasks.some((task) => !task.dealId) || projectPersonalTasks.some((task) => !task.dealId) ? [{
       value: TIMELINE_CENTRAL,
-      label: `งานกลางโครงการ (${allTasks.filter((task) => !task.dealId).length} ขั้นตอน · ${projectPersonalTasks.filter((task) => !task.dealId).length} งาน)`,
+      label: `งานกลางโครงการ (${stepCountOf(TIMELINE_CENTRAL)} ขั้นตอน · ${projectPersonalTasks.filter((task) => !task.dealId).length} งาน)`,
     }] : []),
   ];
   /* ตัวกรองดีลตัวเดียวของทั้งแท็บไทม์ไลน์และแท็บงาน — เป็น FilterPopover (เมนู portal + fixed)
@@ -544,18 +559,20 @@ export default function ProjectDetailPage() {
   );
   // 🐞 ของเดิมเทียบ `dealFilters.includes(task.dealId)` ตรง ๆ — พอตัวกรองรวมเป็นตัวเดียว
   //    การเลือก "งานกลางโครงการ" จะไม่ตรงกับงานที่ dealId ว่างเลย แล้วตารางว่างเงียบ
-  const shownPersonalTasks = dealFilters.length
-    ? projectPersonalTasks.filter((task) => dealFilters.includes(task.dealId || TIMELINE_CENTRAL))
-    : projectPersonalTasks;
+  // ⭐ ตัวตัดสินอยู่ที่ `projectSelectionPasses` — ชุดเดียวกับที่ลิงก์ "เปิดหน้างาน" (`projectTasksQueueHref`) พาคิวไปลง
+  //    (ธง `central` บอกคิวว่ารวม/ตัด/เหลือแต่งานกลาง · ตรวจตัวเลข M8b รีวิว 20/10/2026) — เทสต์เทียบทุกตัวเลือก
+  const shownPersonalTasks = projectPersonalTasks.filter((task) => projectSelectionPasses(task, dealFilters, TIMELINE_CENTRAL));
   const completedPersonalTasks = shownPersonalTasks.filter((task) => task.status === "Completed").length;
 
   /* ตัวเลขบนแท็บ — จำเป็นหลังจากภาพรวมไม่ได้กองของทุกแท็บไว้แล้ว: ถ้าไม่บอกจำนวน
      คนจะไม่รู้ว่าแท็บไหนมีของ แล้วต้องไล่กดทีละแท็บ (ปัญหาที่การกองรวมเคยกลบไว้)
-     นับ "ของทั้งหมด" ไม่ใช่ของที่ผ่านตัวกรอง — ป้ายบนแท็บที่ยังไม่ได้เปิดต้องไม่ขยับ
-     ตามตัวกรองที่อยู่ในแท็บอื่น */
+     ⭐ เลขบนแท็บ = แถวที่เห็นหลังกดแท็บ (ตรวจตัวเลข M18b) — ตัวกรอง "ดีลที่แสดง" เป็นตัวเดียวของแท็บ
+        ไทม์ไลน์กับแท็บงาน และค้างข้ามแท็บโดยเจตนา (มติผู้ใช้ 2026-08-05) ⇒ ป้าย "งาน" นับงานหลังกรองดีล
+        (`shownPersonalTasks`) + คำร้องทั้งหมด (ตารางคำร้องท้ายแท็บไม่กรองดีล) 🐞 เดิมนับงานทั้งหมด ⇒ ป้าย 5
+        กดแล้วเห็น 3 · แท็บเอกสารไม่มีตัวกรองดีล ⇒ นับทั้งหมดตามเดิม */
   const tabCounts = {
     documents: (p.quotations || []).length + (p.salesOrders || []).length,
-    tasks: projectPersonalTasks.length + (p.inquiries || []).length,
+    tasks: shownPersonalTasks.length + (p.inquiries || []).length,
   };
   const projectTabs = PROJECT_DETAIL_TABS.map((entry) => (tabCounts[entry.key]
     ? { ...entry, label: <>{entry.label} <span className="ui-badge" style={{ marginLeft: 4 }}>{tabCounts[entry.key]}</span></> }
@@ -781,6 +798,8 @@ export default function ProjectDetailPage() {
           projectId={p.id}
           view={view}
           onViewChange={setView}
+          stepFilter={stepFilter}
+          onStepFilterChange={setStepFilter}
           showViewSwitcher={false}
           /* โครงการพัก/ยกเลิก/เสร็จ = จางเฉพาะเนื้อแผง · ปุ่ม Rev/พิมพ์/ประวัติบนหัวแผงยังกดได้ */
           locked={isLocked}
@@ -917,9 +936,12 @@ export default function ProjectDetailPage() {
             </div>
             {/* ตัวเลือก "ดีลที่แสดง" ของการ์ดนี้ถูกถอดออก (มติผู้ใช้ 2026-08-05) — ตัวกรอง
                 ตัวเดียวกันมีให้เลือกอยู่แล้วในแท็บไทม์ไลน์และหัวตารางงาน ซึ่งเป็นที่ที่
-                *เห็นผลทันที* · ตรงนี้กรองแล้วมีผลแค่ตัวเลขบนแถบเดียวกันนี้ */}
+                *เห็นผลทันที* · ตรงนี้กรองแล้วมีผลแค่ตัวเลขบนแถบเดียวกันนี้
+                ⭐ ปุ่มของการ์ด = ล้างตัวกรองดีล + สถานะ/ฝ่ายก่อนเปิดแท็บ (ตรวจตัวเลข M18c) — การ์ดบอก
+                   "done/total ขั้นตอน" ของทั้งโครงการ กดแล้วต้องเห็นครบทุกขั้นเท่าเลขนั้น ไม่ใช่ตัวกรองที่ค้าง
+                   จากรอบก่อน (แผงซ่อนด้วย display จึงจำตัวกรองไว้) · กดที่แท็บเองยังคงตัวกรองไว้ตามมติ 2026-08-05 */}
             <div className="project-timeline-card-actions">
-              <button type="button" className="btn btn-primary" onClick={() => switchTab("timeline")} style={{ whiteSpace: "nowrap" }}>
+              <button type="button" className="btn btn-primary" onClick={openWholeTimeline} style={{ whiteSpace: "nowrap" }}>
                 <GanttChart size={14} /> เปิดไทม์ไลน์
               </button>
             </div>
@@ -955,9 +977,12 @@ export default function ProjectDetailPage() {
           count={`${shownPersonalTasks.length} งาน · เสร็จ ${completedPersonalTasks}`}
           /* 🐞 ของเดิมเป็น `dealFilters.length === 1 ? dealFilters[0]` ตรง ๆ ⇒ เลือก
               "งานเดิมของโครงการ" ตัวเดียวแล้วกด จะยิง `?dealId=__central__` (ค่าหมุด
-              ของตัวกรอง ไม่ใช่ id ดีล) ออกไป · `singleSelectedDeal` ตัดหมุดตัวนั้นทิ้ง
-              อยู่แล้วและถูกใช้กับไทม์ไลน์ข้างบน — จุดนี้เป็นที่เดียวที่ข้ามมันไป */
-          actions={<Link className="btn ghost sm" href={singleSelectedDeal(dealFilters) ? `/sa/tasks?dealId=${singleSelectedDeal(dealFilters)}` : "/sa/tasks"}><ExternalLink size={13} /> เปิดหน้างาน</Link>}
+              ของตัวกรอง ไม่ใช่ id ดีล) ออกไป — หมุดถูกตัดทิ้งที่ `projectTasksQueueHref`
+              🐞 (ตรวจตัวเลข M8b · มติเจ้าของ 20/10/2026) เลือกศูนย์ดีลหรือหลายดีลเคยพาไป `/sa/tasks` เปล่า = งานของคนกด
+              ทั้งระบบ · ตอนนี้พาชุดดีลที่เลือก (`?dealId=a,b`) หรือทั้งโครงการ (`?projectId=`) ไปด้วยเสมอ
+              🐞 (รีวิว M8b) `?dealId=A` ลงตัวกรอง `isDealTask` ที่รวมงานกลางของโครงการ ⇒ เลือกดีล A อย่างเดียวที่นี่เห็น 2
+              กดแล้วคิวขึ้น 3 · ลิงก์จึงพาธง `central` ไปด้วย ⇒ คิวได้ชุดเดียวกับ `shownPersonalTasks` (ก่อนตัดขอบเขต/งานเสร็จของคิว) */
+          actions={<Link className="btn ghost sm" href={projectTasksQueueHref(p.id, dealFilters, TIMELINE_CENTRAL)}><ExternalLink size={13} /> เปิดหน้างาน</Link>}
           toolbar={dealFilterOptions.length > 1 || canEdit ? (
             <>
               {dealFilterOptions.length > 1 && dealFilterControl}

@@ -3,13 +3,12 @@
 // กติกาข้อเดียวที่ห้ามพลาด: **กดเข้าไปแล้วต้องเจอของเท่าที่เมนูบอก** เลขที่กด
 // แล้วไม่มีอะไรให้ทำ คนจะเลิกเชื่อมันภายในสัปดาห์เดียว แล้วเมนูก็เหลือแค่ของประดับ
 // ⇒ ตัวนับทุกตัวในไฟล์นี้ใช้ helper **ตัวเดียวกับที่หน้าปลายทางใช้กรองแถว**
-// (waitingOnMeRows · deptQueueRows · matchesMineTaskView) ห้ามเขียนเงื่อนไขใหม่ที่นี่
+// (waitingOnMeRows · deptQueueRows · isMyTodoTask) ห้ามเขียนเงื่อนไขใหม่ที่นี่
 //
 // ฟังก์ชันในไฟล์นี้เป็น logic ล้วน — รับแถวที่โหลดมาแล้ว ไม่แตะ DB
 // (ตัว query อยู่ที่ app/api/nav/counts/route.js · แยกเพื่อให้เทสต์เข้าถึงได้)
 import { waitingOnMeRows, deptQueueRows } from '@/lib/requests/queueBoard';
-import { MINE_TASK_VIEWS, matchesMineTaskView } from '@/lib/pm/taskViews';
-import { isWaitingStatus } from '@/lib/pm/tasks';
+import { isMyTodoTask } from '@/lib/pm/taskListFilter';
 
 /** เมนู "คำร้อง" — ใบที่รอฝ่ายฉันตอบ · รอฉันในฐานะผู้ขอลงมือต่อ · และใบของฉันที่ถูกตีกลับ
  *
@@ -41,14 +40,17 @@ export const DEPT_QUEUE_COUNT_KEYS = {
   TS: 'serviceRequests',
 };
 
-/** เมนู "งานของฉัน" — งานที่ยังไม่เสร็จและฉันเป็นผู้รับผิดชอบ
- *  ชุดเดียวกับตัวเลขบนแท็บ "ต้องทำ" ที่ /sa/tasks */
+/** เมนู "งานของฉัน" — งานที่ยังไม่เสร็จ · ไม่ได้รอคนอื่น · ฉันเป็นผู้รับผิดชอบ
+ *
+ *  ⚠️ **ไม่ใช่** เลขบนแท็บ "ต้องทำ" เฉย ๆ — แท็บนั้นรวมงาน "รอคนอื่น" ด้วย ⇒ ป้ายพาไปที่
+ *  `/sa/tasks?count=tasks` (menuRegistry `countHref`) ซึ่งเปิดคิวที่ขอบเขต "ของฉัน" · แท็บ "ต้องทำ" ·
+ *  ตัวกรองสถานะ `todo` และล้างตัวกรองอื่น ⇒ ป้าย = เลขบนแท็บ "ต้องทำ" ตอนนั้น = แถวในตาราง (ตรวจตัวเลข M9 ·
+ *  docs/task-waiting-and-chain.md §6) · ตัวตัดสิน `isMyTodoTask` ตัวเดียวกับตัวกรอง `todo` ของคิว */
 export function myTasksTodoCount(tasks = [], userId) {
   // ⚠️ ไม่นับงานที่ "รอคนอื่น" (mig 0266) — ป้ายบนเมนูคือ **งานที่รอฉันทำ** ส่วนงานที่
   // ติดอยู่ที่ฝ่ายอื่น/ลูกค้า กดเข้าไปก็ทำอะไรไม่ได้ (เหตุผลเดียวกับที่ป้ายลีดไม่นับ
   // 'new'/'screened' ด้านล่าง) · ยอดของมันดูได้ที่การ์ด "รอคนอื่น" ในหน้างาน
-  return tasks.filter((task) => task.status !== 'Completed' && !isWaitingStatus(task.status)
-    && matchesMineTaskView(task, userId, MINE_TASK_VIEWS.RESPONSIBLE)).length;
+  return tasks.filter((task) => isMyTodoTask(task, userId)).length;
 }
 
 /* เมนู "ลีด" — ลีดที่มอบหมายแล้วแต่ยังไม่มีใครติดต่อกลับ (SLA 1 วันทำการ)

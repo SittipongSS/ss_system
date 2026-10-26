@@ -259,12 +259,19 @@ export function legacySetupStatusView(row) {
   return { tone, label: `${prefix}${base}`, sub: [deferredSub, noSite ? LEGACY_SETUP_NO_SITE_SUB : null].filter(Boolean).join(' · ') || null };
 }
 
-/* จำนวนของแต่ละตัวกรอง — ป้ายเลขบน Segmented · 'all' = ทุกแถว */
+/** แถวผ่านตัวกรองสถานะไหม — 'all' (หรือไม่ระบุ) = ทุกแถว · **ตัวเดียว** ที่ตัวนับข้างล่างและแถวของแท็บใช้ */
+export function legacySetupMatchesFilter(row, filter) {
+  if (!filter || filter === 'all') return true;
+  return row?.state === filter;
+}
+
+/* จำนวนของแต่ละตัวกรอง — ป้ายเลขบน Segmented · 'all' = ทุกแถว
+   ⭐ (ตรวจตัวเลข 20/10 · M24h) ผู้เรียกส่ง **แถวหลังค้นหา** — เลขบนปุ่ม = แถวที่ขึ้นเมื่อกดปุ่มนั้น (คำค้นยังอยู่)
+      นับด้วย `legacySetupMatchesFilter` ตัวเดียวกับที่หน้ากรองแถว */
 export function legacySetupFilterCounts(rows = []) {
   const counts = Object.fromEntries(LEGACY_SETUP_FILTERS.map((key) => [key, 0]));
   for (const row of Array.isArray(rows) ? rows : []) {
-    counts.all += 1;
-    if (hasOwn(counts, row?.state) && row.state !== 'all') counts[row.state] += 1;
+    for (const key of LEGACY_SETUP_FILTERS) if (legacySetupMatchesFilter(row, key)) counts[key] += 1;
   }
   return counts;
 }

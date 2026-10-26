@@ -25,7 +25,7 @@ import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
 import { openQuotePrintWindowPreferIssued, prepareQuotePrintWindow, showQuotePrintError } from "@/lib/sales/quotePrint";
-import { quotesAwaitingSalesOrder } from "@/lib/sales/handoffQueue";
+import { QUOTATION_AWAITING_SO_PICK, awaitingSalesOrderIdSet, quotationPassesListFilters } from "@/lib/sales/quotationListFilter";
 import { isEditableQuotation } from "@/lib/sales/quotationWorkflow";
 import { allBucketsCollapsed, bucketList, toggleBucketKey } from "@/lib/listGrouping";
 import { usePagination } from "@/lib/usePagination";
@@ -102,7 +102,10 @@ export default function QuotationsPage() {
     [directory],
   );
   // รอยต่อ Won → Sale Order: เดิมไม่มีที่ไหนบอกว่าใบไหนปิดได้แล้วแต่ยังไม่ได้ออก SO
-  const [salesOrders, setSalesOrders] = useState([]);
+  /* `null` = ยังไม่รู้รายการ SO (กำลังโหลด/พัง/ได้ของที่ไม่ใช่รายการ) ⇒ ห้ามตัดสินว่าใบ Won ไหน "ยังไม่มี SO"
+     🐞 เดิมตั้งต้น `[]` แล้วตัดสินเลย ⇒ แถบนับใบ Won ทุกใบ (วูบทุกครั้งที่เปิดหน้า · ค้างถาวรเมื่อโหลด SO พัง) (ตรวจตัวเลข M16c)
+     ตั้งเป็นอาร์เรย์เมื่อโหลดสำเร็จเท่านั้น — `awaitingSalesOrderIdSet` อ่าน null เป็นชุดว่าง */
+  const [salesOrders, setSalesOrders] = useState(null);
   const navCountParam = useSearchParams().get("count") || "";
   const [pendingSoOnly, setPendingSoOnly] = useState(false);
   /* ⭐ `?count=quotations` — ลิงก์จากป้ายตัวเลขบนเมนู (ม-114) · ป้ายนับ "ใบที่รอฉันลงมือ"
@@ -136,8 +139,8 @@ export default function QuotationsPage() {
   useEffect(() => {
     let alive = true;
     apiFetch("/api/sales-planning/sales-orders")
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data) => { if (alive) setSalesOrders(Array.isArray(data) ? data : []); })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (alive && Array.isArray(data)) setSalesOrders(data); })
       .catch(() => {});
     return () => { alive = false; };
   }, []);
@@ -161,27 +164,34 @@ export default function QuotationsPage() {
 
   // ใบ Won ที่ยังไม่มี SO ที่ใช้งานอยู่ — ตัวตัดสินกลางตัวเดียวกับ migration 0169
   // และการ์ดคิวบนแดชบอร์ด (lib/sales/handoffQueue) ห้ามเขียนเงื่อนไขซ้ำที่นี่
-  const awaitingSalesOrderIds = useMemo(() => new Set(
-    quotesAwaitingSalesOrder({ quotations: rows, salesOrders }).map((r) => r.id),
-  ), [rows, salesOrders]);
+  // ⚠️ ยังไม่รู้รายการ SO (`null`) = ชุดว่าง (แถบไม่ขึ้น · ตัวกรองไม่มีผล) — ไม่ใช่ "ทุกใบ Won ยังไม่มี SO" (M16c)
+  const awaitingSalesOrderIds = useMemo(
+    () => awaitingSalesOrderIdSet(rows, salesOrders),
+    [rows, salesOrders],
+  );
+  const pendingSoActive = pendingSoOnly && salesOrders !== null;
+  /* ⭐ "ดูเฉพาะใบที่ค้าง" = ตัวกรองชุด `QUOTATION_AWAITING_SO_PICK` **ทั้งชุด** — ล้างคำค้น + ตัวกรองทุกตัว รวม "รอฉันลงมือ"
+     (ตรวจตัวเลข M16a · 2026-10-20) เลขบนแถบนับใบ Won ที่ยังไม่มี SO ทุกใบในขอบเขต ⇒ กดแล้วตารางต้องเหลือเท่านั้นพอดี
+     🐞 เดิมสลับธงอย่างเดียว — มาจากป้ายเมนู (`?count=quotations` = "รอฉันลงมือ") แล้วกด ได้ 0 แถว **ทุกครั้ง**
+        (ใบ accepted ไม่มีวันรอใครอนุมัติ/ถูกตีกลับ) · สถานะ/ประเภท/ผู้ดูแล/คำค้นที่ค้างก็ทำให้เหลือน้อยกว่าเลขบนแถบ
+     · กติกาเดียวกับ "ดูเฉพาะดีลกลุ่มนี้" ของหน้าดีล (`applyDealPick`) · ปิด = ถอดธงเฉย ๆ
+     ⚠️ ทุก state ที่ตารางกรองต้องถูกตั้งจาก pick ที่นี่ — เพิ่มตัวกรองใหม่ = เพิ่มทั้งใน pick และในบรรทัดนี้ */
+  const applyQuotationPick = (pick) => {
+    setQuery(pick.query); setStatusFilter([...pick.status]); setTypeFilter([...pick.type]); setOwnerFilter([...pick.owner]);
+    setWaitingOnMeOnly(pick.waitingOnMe); setPendingSoOnly(pick.pendingSo);
+  };
+  const showAwaitingSo = () => applyQuotationPick(QUOTATION_AWAITING_SO_PICK);
 
+  /* ตัวตัดสินของตาราง = `quotationPassesListFilters` (lib/sales/quotationListFilter) — ตัวเดียวกับที่เทสต์ใช้พิสูจน์ว่า
+     แถวหลังกดแถบ = เลขบนแถบ · ห้ามเขียนเงื่อนไขกรองซ้ำในหน้า */
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return rows.filter((r) => {
-      if (waitingOnMeOnly && !r._waitingOnMe) return false;
-      if (pendingSoOnly && !awaitingSalesOrderIds.has(r.id)) return false;
-      if (statusFilter.length && !statusFilter.includes(r.status)) return false;
-      if (typeFilter.length && !typeFilter.includes(dealTypeOf(r.deal))) return false;
-      if (ownerFilter.length && !ownerFilter.includes(r.deal?.ownerId || "")) return false;
-      if (!q) return true;
-      /* ⚠️ ค้นจากสิ่งที่ตาเห็นบนแถว — รหัส AR โผล่บนจอแล้ว จึงต้องค้นเจอด้วย
-         ⭐ ข้อยกเว้นเดียว: `referenceNote` (เอกสารอ้างอิง · mig 0267) ไม่ได้อยู่บนแถว
-         แต่ต้องค้นเจอ — มันคือที่ที่เลข PO ของลูกค้าถูกพิมพ์ลงไป และคำถามที่เข้ามาจริง
-         คือ "อ้างถึง PO นี้ ใบไหน" (กติกาเดียวกับตารางรายการ SO · IS-26080017) */
-      return [r.quoteNumber, r.customerName, r.customerArCode, r.deal?.title, ownerNameOf(r), r.referenceNote]
-        .some((v) => (v || "").toLowerCase().includes(q));
-    });
-  }, [rows, query, statusFilter, typeFilter, ownerFilter, pendingSoOnly, waitingOnMeOnly, awaitingSalesOrderIds, ownerNameOf]);
+    const filters = {
+      query, status: statusFilter, type: typeFilter, owner: ownerFilter,
+      waitingOnMe: waitingOnMeOnly, pendingSo: pendingSoActive,
+    };
+    const ctx = { awaitingIds: awaitingSalesOrderIds, ownerNameOf };
+    return rows.filter((r) => quotationPassesListFilters(r, filters, ctx));
+  }, [rows, query, statusFilter, typeFilter, ownerFilter, pendingSoActive, waitingOnMeOnly, awaitingSalesOrderIds, ownerNameOf]);
 
   /* ผู้ดูแลที่มีใบจริงในระบบ (ตัวเลือกกรอง) — ดึงจากแถวที่โหลดมา ไม่ต้องยิง API เพิ่ม
      🐞 เดิมรวมกลุ่มด้วย **ชื่อ** ที่ค้างอยู่ในแถว → คนเดียวที่เปลี่ยนชื่อกลางทาง
@@ -235,7 +245,7 @@ export default function QuotationsPage() {
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(sorted, {
-      resetKey: `${query}|${statusFilter.join()}|${typeFilter.join()}|${ownerFilter.join()}|${pendingSoOnly}|${sortKey}|${sortDir}`,
+      resetKey: `${query}|${statusFilter.join()}|${typeFilter.join()}|${ownerFilter.join()}|${pendingSoActive}|${waitingOnMeOnly}|${sortKey}|${sortDir}`,
     });
   // ใบที่ **รอคนที่กำลังดูอยู่อนุมัติ** — ธงมาจาก server (helper ตัวเดียวกับป้ายบนเมนู)
   const approvalQueue = useMemo(() => rows.filter((q) => q._awaitingMyApproval), [rows]);
@@ -352,8 +362,8 @@ export default function QuotationsPage() {
                  StatusNotice ออกแบบมารับ `.btn` โดยตรง (`.action :global(.btn)`
                  แจก --ctl-h-touch บนจอแคบ · ปุ่มกว้างตามป้าย ไม่ยืดเต็มแถวแล้ว) และเพื่อนบ้านทุกจุด
                  ในสล็อตนี้เป็น <Button size="sm"> อยู่แล้ว */
-              <Button size="sm" variant="ghost" onClick={() => setPendingSoOnly((on) => !on)}>
-                {pendingSoOnly ? "แสดงทุกใบ" : "ดูเฉพาะใบที่ค้าง"}
+              <Button size="sm" variant="ghost" onClick={pendingSoActive ? () => setPendingSoOnly(false) : showAwaitingSo}>
+                {pendingSoActive ? "แสดงทุกใบ" : "ดูเฉพาะใบที่ค้าง"}
               </Button>
             )}
           >
@@ -406,9 +416,17 @@ export default function QuotationsPage() {
                 กรอง: รอฉันลงมือ ×
               </Button>
             )}
+            {/* ตัวกรองจากแถบ "Won ยังไม่ออกใบสั่งขาย" ต้องถอดได้จากแถบเครื่องมือเสมอ (ตรวจตัวเลข M16b) —
+                🐞 เดิมปิดได้ทางเดียวคือปุ่มบนแถบ ซึ่งหายไปเมื่อใบค้างใบสุดท้ายออก SO แล้ว ⇒ ตารางว่างค้าง
+                ไม่นับในป้ายของปุ่มตัวกรอง (เห็นบนแถบเองอยู่แล้ว · ทรงเดียวกับชิปของทะเบียน SO) */}
+            {pendingSoActive && (
+              <Button size="sm" onClick={() => setPendingSoOnly(false)}>
+                กรอง: Won ยังไม่ออก SO ×
+              </Button>
+            )}
             <FilterPopover
               count={statusFilter.length + typeFilter.length + ownerFilter.length}
-              onClear={() => { setStatusFilter([]); setTypeFilter([]); setOwnerFilter([]); }}
+              onClear={() => { setStatusFilter([]); setTypeFilter([]); setOwnerFilter([]); setPendingSoOnly(false); }}
               groups={[
                 {
                   key: "status", label: "สถานะ", icon: Flag,
@@ -495,7 +513,8 @@ export default function QuotationsPage() {
                   );
                 }) : pageRows.map(quoteRow)}
                 {!filtered.length && !loading && (
-                  <tr><td colSpan={7} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีใบเสนอราคา {canEdit ? "— เริ่มจากปุ่มสร้างด้านบน" : ""}</td></tr>
+                  /* มีใบแต่กรองแล้วว่าง ≠ ยังไม่มีใบ — คำว่า "ยังไม่มีใบเสนอราคา" ตอนตัวกรองค้างอ่านเหมือนข้อมูลหาย (M16a) */
+                  <tr><td colSpan={7} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>{rows.length ? "ไม่พบใบที่ตรงกับคำค้น/ตัวกรอง" : `ยังไม่มีใบเสนอราคา ${canEdit ? "— เริ่มจากปุ่มสร้างด้านบน" : ""}`}</td></tr>
                 )}
               </tbody>
             </table></TableScroll>
