@@ -6,7 +6,13 @@ import { recordAudit } from '@/lib/audit';
 import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { orderStatusUpdate } from '@/lib/master/recordUpdates';
-import { exciseTaxLineForRegistration, exciseTaxTotals } from '@/lib/tax/exciseBilling';
+import { billedTaxTotals, exciseTaxLineForRegistration, exciseTaxTotals } from '@/lib/tax/exciseBilling';
+import { FILING_EDITABLE_STATUSES } from '@/lib/excise/workflow';
+import { filingItemRows, filingTotalsOf, resolveSalesOrderFiling } from '@/lib/excise/soFilingItems';
+import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
+import { genId } from '@/lib/id';
+import { loadScoped } from '@/lib/scopedRow';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { customerTaxSiblingIds } from '@/lib/master/customerTaxSiblings';
 
 export const dynamic = 'force-dynamic';
@@ -136,10 +142,54 @@ export async function PATCH(request, { params }) {
   }
 
   // ── Line-item edit (sales-owned) ──
-  // Only while the order is still editable (pending or rejected/resubmit).
+  // Only while the order is still editable (FILING_EDITABLE_STATUSES — ชุดเดียวกับปุ่มบนจอ).
   // Replaces all line items and recomputes the tax rollups.
+  const lineEditable = isSales && FILING_EDITABLE_STATUSES.includes(order.status);
   let newItemRows = null;
-  if (Array.isArray(body.items) && isSales && (order.status === 'pending' || order.status === 'rejected')) {
+
+  /* ⭐ ใบยื่นจากใบสั่งขาย: แก้รายการได้ทางเดียว = **คิดใหม่จาก SO** (ตรวจระบบ 2026-10-26 ข้อ 3)
+     🐞 เดิมฟอร์มเลือกทะเบียนส่ง `items` มา แล้วด่านข้างล่างทิ้งบรรทัดที่ `registrationId` ว่างเงียบ ๆ ⇒ ยอดหด ·
+        ทุกบรรทัดไม่มีทะเบียน = 400 ส่งกลับไม่ได้เลย · แถวใหม่ยังทิ้ง `salesOrderLineId`
+     มติ 2026-07-22 ข้อ 4: ทะเบียนเป็นแค่คำเตือนของใบจาก SO ⇒ ต้องคิดผ่าน resolver ตัวเดียวกับตอนสร้าง
+     (อัตราของสินค้า ณ ตอนนี้ · จำนวนจากบรรทัด SO) ไม่ใช่ด่าน "ทะเบียนต้องอนุมัติ" ของใบยื่นมือ */
+  if (order.salesOrderId && Array.isArray(body.items)) {
+    return Response.json({
+      error: 'ใบยื่นนี้สร้างจากใบสั่งขาย — แก้รายการด้วย "คิดภาษีใหม่จากใบสั่งขาย" ไม่ใช่เลือกทะเบียนทีละรายการ',
+    }, { status: 400 });
+  }
+  if (body.recalcFromSalesOrder === true) {
+    if (!order.salesOrderId) {
+      return Response.json({ error: 'ใบยื่นนี้ไม่ได้สร้างจากใบสั่งขาย' }, { status: 400 });
+    }
+    if (!lineEditable) {
+      return Response.json({ error: 'คิดภาษีใหม่ได้เฉพาะใบที่ยังไม่ยืนยันรับเงิน หรือใบที่ถูกตีกลับ (ฝ่ายขาย)' }, { status: 403 });
+    }
+    // ด่านเดียวกับตอนสร้างใบจาก SO (POST from-sales-order: inSalesEditScope ของดีลแม่) — โหลดกับตรวจในจังหวะเดียว
+    const scoped = await loadScoped(supabase, 'sales_orders', order.salesOrderId, user, 'edit');
+    if (scoped.response) return scoped.response;
+    // select('*') ของบรรทัด = มี packQty เสมอ (จำนวนที่ยื่น = แพ็ค × จำนวน · ด่าน linePackReaders)
+    const { data: soLines, error: linesErr } = await fetchAllResult(() => supabase
+      .from('sales_order_lines').select('*').eq('salesOrderId', order.salesOrderId)
+      .order('id', { ascending: true }));
+    if (linesErr) return Response.json({ error: linesErr.message }, { status: 500 });
+    const salesOrder = { ...scoped.row, lines: soLines || [] };
+    if (isHistoricalOrder(salesOrder)) {
+      return Response.json({ error: 'ใบสั่งขายย้อนหลังไม่ใช้คิดภาษีในระบบ' }, { status: 400 });
+    }
+    let resolved;
+    try {
+      resolved = await resolveSalesOrderFiling(supabase, salesOrder);
+    } catch (e) {
+      return Response.json({ error: `คิดภาษีจากใบสั่งขายไม่สำเร็จ: ${e?.message || 'ระบบขัดข้อง'}` }, { status: 500 });
+    }
+    if (!resolved.lines.length) {
+      return Response.json({ error: 'ใบสั่งขายต้นทางไม่มีรายการสินค้าสรรพสามิตให้คิดภาษีแล้ว' }, { status: 400 });
+    }
+    newItemRows = filingItemRows(id, resolved.lines);
+    Object.assign(updates, filingTotalsOf(resolved));
+  }
+
+  if (Array.isArray(body.items) && lineEditable) {
     const items = body.items.filter((it) => it.registrationId && it.quantity);
     if (items.length === 0) {
       return Response.json({ error: 'ต้องมีรายการสินค้าอย่างน้อย 1 รายการ' }, { status: 400 });
@@ -190,7 +240,8 @@ export async function PATCH(request, { params }) {
       }
       const taxLine = exciseTaxLineForRegistration({ registration: reg, product, quantity: qty });
       newItemRows.push({
-        id: `OIT-${id.slice(3)}-${i + 1}`,
+        // id ใหม่ทุกครั้ง — ชุดใหม่ถูกใส่ **ก่อน** ลบชุดเดิม (ดูขั้นสลับรายการข้างล่าง) จึงห้ามชนแถวเดิม
+        id: genId('OIT'),
         orderId: id,
         registrationId: reg.id,
         productId: reg.productId,
@@ -202,18 +253,31 @@ export async function PATCH(request, { params }) {
     updates.totalExciseTax = rollup.totalExciseTax;
     updates.totalLocalTax = rollup.totalLocalTax;
     updates.totalTax = rollup.totalTax;
+    // 🐞 เดิมไม่คิดยอดเรียกเก็บใหม่ ⇒ หัวใบค้างยอดก่อนแก้ (สูตรเดียวกับตอนสร้าง: ภาษี + VAT 7%)
+    updates.amountToCollect = billedTaxTotals(newItemRows).amountToCollect;
+  }
+
+  /* สลับรายการ **ก่อน** หัวใบ: ใส่ชุดใหม่ → ลบชุดเดิม → แล้วค่อยเขียนยอดลงหัวใบ
+     🐞 เดิมเขียนหัวใบก่อน แล้ว "ลบชุดเดิมก่อนใส่ชุดใหม่" (id ชุดใหม่ซ้ำกับชุดเดิม) — ใส่ไม่ผ่านเมื่อไร
+        ใบเหลือ **ไม่มีรายการเลย** แต่หัวใบถือยอดใหม่ไปแล้ว · ลำดับนี้: ใส่ไม่ผ่าน = ไม่มีอะไรเปลี่ยน ·
+        ลบชุดเดิมไม่ผ่าน = ถอนชุดใหม่ออกแล้วตอบ error (ใบกลับเป็นเหมือนเดิม) */
+  if (newItemRows) {
+    const { data: oldItems, error: oldErr } = await supabase.from('order_items').select('id').eq('orderId', id);
+    if (oldErr) return Response.json({ error: oldErr.message }, { status: 500 });
+    const { error: itemsErr } = await insertOrderItems(supabase, newItemRows);
+    if (itemsErr) return Response.json({ error: itemsErr.message }, { status: 500 });
+    const oldIds = (oldItems || []).map((row) => row.id);
+    if (oldIds.length) {
+      const { error: delErr } = await supabase.from('order_items').delete().in('id', oldIds);
+      if (delErr) {
+        await supabase.from('order_items').delete().in('id', newItemRows.map((row) => row.id));
+        return Response.json({ error: `สลับรายการไม่สำเร็จ ใบยื่นยังเป็นรายการเดิม: ${delErr.message}` }, { status: 500 });
+      }
+    }
   }
 
   const { error: updErr } = await updateOrderResilient(supabase, id, updates);
   if (updErr) return Response.json({ error: updErr.message }, { status: 500 });
-
-  // Swap line items after the header update succeeds. ids reuse the order
-  // suffix so we must delete the old set before inserting the new one.
-  if (newItemRows) {
-    await supabase.from('order_items').delete().eq('orderId', id);
-    const { error: itemsErr } = await insertOrderItems(supabase, newItemRows);
-    if (itemsErr) return Response.json({ error: itemsErr.message }, { status: 500 });
-  }
 
   const { data, error } = await supabase
     .from('orders')

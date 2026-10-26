@@ -63,6 +63,11 @@ export const TRACKS = {
   },
 };
 
+/* สถานะที่ฝ่ายขายยังแก้รายการ/หัวใบยื่นได้ — ก่อนยืนยันรับเงิน + รอบแก้หลังถูกตีกลับ
+   ⚠️ ชุดเดียวของปุ่ม "แก้ไขข้อมูล" บนหน้าใบยื่นและด่านใน PATCH /api/orders/[id] — สองที่ต้องตรงกัน
+   (`draft` เพิ่ม 2026-10-26: ใบจาก SO เกิดเป็นร่าง และเป็นจังหวะที่ควรคิดภาษีใหม่หลังเติมราคาขายปลีก) */
+export const FILING_EDITABLE_STATUSES = ["draft", "pending", "rejected"];
+
 // Map a role to its department code for stage-ownership + action gating.
 //   SA = sales lane, RA = regulatory lane, AD = admin (sees both, owns nothing)
 export function deptOf(role) {

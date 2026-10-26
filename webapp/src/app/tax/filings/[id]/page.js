@@ -30,7 +30,7 @@ import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { openBillPrintWindow } from "@/lib/tax/billPrint";
 import { isExemptFiling, orderAmountToCollect, untaxedFilingItems } from "@/lib/tax/exciseBilling";
 import { productDisplayName } from "@/lib/master/productIdentity";
-import { statusMeta } from "@/lib/excise/workflow";
+import { FILING_EDITABLE_STATUSES, statusMeta } from "@/lib/excise/workflow";
 import { useCustomerRecord } from "@/lib/master/useCustomerRecord";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import { toneColor } from "@/lib/ui/tone";
@@ -98,7 +98,8 @@ export default function FilingDetailPage() {
         คือเหตุผลปลอมของสิ่งที่ไม่มีอยู่ (และผิดกติกา "ไม่มีสิทธิ์ = ไม่โชว์") · ของบนหน้าที่เหลือไม่ได้อ่านสามลิสต์นี้ ⇒ ไม่มีอะไรต้องเตือน
      ⭐ `pending` = สายรองที่ไม่เคยโหลดสำเร็จและยังโหลดอยู่ — ฟอร์มที่เปิดตอนนี้ได้ตัวเลือกว่าง/ภาษีจากราคา 0 เหมือนตอนล้ม
         ⇒ ปุ่มแก้ไขพักรอ พร้อมเหตุผล "กำลังโหลด…" (ไม่ใช่ป้ายแดง — ยังไม่มีอะไรล้ม) */
-  const editAvailable = canAct && ["pending", "rejected"].includes(o?.status);
+  // ชุดสถานะเดียวกับด่านใน PATCH /api/orders/[id] (FILING_EDITABLE_STATUSES) — รวมร่างของใบจาก SO
+  const editAvailable = canAct && FILING_EDITABLE_STATUSES.includes(o?.status);
   const sources = [
     {
       label: "ใบยื่นชำระ", error: ordersError || ordersStale, empty: !o && !!ordersError, detail: ordersDetail, reload, blocks: "page",
@@ -309,7 +310,7 @@ export default function FilingDetailPage() {
                   {
                     id: "edit", label: "แก้ไขข้อมูล", kind: "edit", icon: Pencil,
                     onClick: () => setFormOpen(true),
-                    visible: canAct && ["pending", "rejected"].includes(o.status),
+                    visible: editAvailable,
                     disabled: editPaused, disabledReason: editPausedReason,
                   },
                   {
@@ -398,6 +399,7 @@ export default function FilingDetailPage() {
             {untaxedIds.size > 0 && (
               <StatusNotice tone="warning">
                 มี {untaxedIds.size} รายการที่ภาษีเป็น ฿0 เพราะตอนสร้างใบ สินค้ายังไม่มีราคาขายปลีก — ยอดในใบนี้ขาดจากที่ต้องยื่นจริง
+                {o.salesOrderId && editAvailable && " · เติมราคาขายปลีกแล้วกด \"แก้ไขข้อมูล\" → \"คิดภาษีใหม่จากใบสั่งขาย\""}
               </StatusNotice>
             )}
             <TableScroll surface="embedded"><table style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--fs-7)" }}>
