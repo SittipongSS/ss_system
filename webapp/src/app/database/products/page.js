@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import Button from "@/components/ui/Button";
 import useStickyState from "@/lib/ui/useStickyState";
-import { Package, Plus, Search, LayoutGrid, Table2, ChevronRight, ClipboardCheck, Archive, CircleDollarSign, FileCheck2, Download } from "lucide-react";
+import { Package, Plus, Search, LayoutGrid, Table2, ChevronRight, ClipboardCheck, Archive, CircleDollarSign, FileCheck2, Download, ReceiptText } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
@@ -28,7 +28,7 @@ import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/A
 import useApprovalDecision from "@/components/database/useApprovalDecision";
 import { categoryOf, categoryFlags, categoryInfoOf } from "@/lib/master/categoryOf";
 import { categoryNameBoth } from "@/lib/master/productCategoryOptions";
-import { filterProducts, productCategoryCode, productCategoryLabel, productFilterFacets, productStatCounts } from "@/lib/master/productFilter";
+import { filterProducts, isProductTaxable, productCategoryCode, productCategoryLabel, productFilterFacets, productStatCounts } from "@/lib/master/productFilter";
 import { isPendingApproval } from "@/lib/master/pendingApprovalLinks";
 import { missingRetailPriceProducts } from "@/lib/tax/taxableProducts";
 import {
@@ -100,6 +100,9 @@ export default function ProductRegistry() {
   const [regFilter, setRegFilter] = useStickyState("regFilter", EMPTY);
   const [showInactive, setShowInactive] = useState(false);
   const [missingPrice, setMissingPrice] = useState(false);
+  /* ⭐ "ต้องเสียสรรพสามิต" — ตัวกรองคู่ของการ์ดชื่อเดียวกัน (ตรวจตัวเลข 26/10 · L16b) · ตัวตัดสิน `isProductTaxable`
+     ตัวเดียวกับเลขบนการ์ด (`productStatCounts`) และป้าย "ภาษีสรรพสามิต" บนแถว */
+  const [taxableOnly, setTaxableOnly] = useState(false);
   const [view, setView] = useResponsiveView({ portrait: "cards", landscape: "table" });
 
   const emptyForm = EMPTY_PRODUCT;
@@ -339,12 +342,26 @@ export default function ProductRegistry() {
      ถ้าย้ายตรรกะกลับมาเขียนสดตรงนี้ ไฟล์กับตารางจะเดินหนีกันเงียบ ๆ */
   const filterState = {
     search: q, statuses: statusFilter, registrations: regFilter, showInactive, productTypes,
-    missingRetailPrice: missingPrice,
+    missingRetailPrice: missingPrice, taxable: taxableOnly,
   };
   const filteredProducts = filterProducts(products, filterState);
   /* เลขบนตัวเลือก "ขาดราคาขายปลีก (n)" / "รวมสินค้าที่เลิกใช้ (n)" = แถวหลังติ๊ก / แถวที่เพิ่มขึ้นเมื่อติ๊ก
      นับพร้อมคำค้นและตัวกรองอื่นที่ติดอยู่ ด้วย `filterProducts` ตัวเดียวกับตาราง (ตรวจตัวเลข M21a) */
   const facets = productFilterFacets(products, filterState);
+  // มีสินค้าที่ต้องเสียสรรพสามิตในทะเบียนไหม — ตัดสินว่าตัวเลือกขึ้นหรือไม่ (เลขบนตัวเลือกมาจาก facets)
+  const taxableInRegistry = useMemo(
+    () => products.some((p) => isProductTaxable(p, productTypes)),
+    [products, productTypes],
+  );
+  /* การ์ด "ต้องเสียสรรพสามิต" (L16b) — กดแล้วตั้งตัวกรอง **ทั้งชุด**: ติ๊ก taxable + ล้างคำค้น/สถานะ/ทะเบียน/ขาดราคา/เลิกใช้
+     ⇒ ตาราง = `filterProducts(products, { taxable: true })` = ชุดเดียวกับเลขบนการ์ด (`productStatCounts`) เสมอ
+     · กดอยู่ (ตารางกำลังโชว์ชุดนั้นพอดี) กดซ้ำ = ถอดตัวกรองกลับทะเบียนเปล่า (= การ์ด "ทั้งหมด") */
+  const taxableCardPressed = taxableOnly && !q && !statusFilter.length && !regFilter.length && !showInactive && !missingPrice;
+  const onTaxableCard = () => {
+    if (taxableCardPressed) { setTaxableOnly(false); return; }
+    setSearch(""); setStatusFilter(EMPTY); setRegFilter(EMPTY); setShowInactive(false); setMissingPrice(false);
+    setTaxableOnly(true);
+  };
 
   // Pending records this user may approve — surfaced at the top as a queue.
   const approvalQueue = products.filter(canDecideRow);
@@ -363,7 +380,7 @@ export default function ProductRegistry() {
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(sort.sorted, {
-      resetKey: `${q}|${statusFilter.join(",")}|${regFilter.join(",")}|${showInactive}|${sort.sortKey}|${sort.sortDir}`,
+      resetKey: `${q}|${statusFilter.join(",")}|${regFilter.join(",")}|${showInactive}|${missingPrice}|${taxableOnly}|${sort.sortKey}|${sort.sortDir}`,
     });
 
   /* ── ปลายทางของระเบียนนี้ยกเป็นตัวเดียว (2026-09-02) ────────────────────────
@@ -387,9 +404,10 @@ export default function ProductRegistry() {
     if (regFilter.length) params.set("reg", regFilter.join(","));
     if (showInactive) params.set("inactive", "1");
     if (missingPrice) params.set("missingPrice", "1");
+    if (taxableOnly) params.set("taxable", "1");
     const qs = params.toString();
     return `/api/products/export${qs ? `?${qs}` : ""}`;
-  }, [q, statusFilter, regFilter, showInactive, missingPrice]);
+  }, [q, statusFilter, regFilter, showInactive, missingPrice, taxableOnly]);
 
   /* ป้ายจำนวนย้ายไปอยู่หัวแผงรายการ (มติผู้ใช้ 2026-09-15 · ด่าน LP9) — เลขรวมทั้งทะเบียน
      ยังอยู่ที่ StatCards "ทั้งหมด" ใน rail · ปุ่มส่งออก/เพิ่มเป็นของระดับหน้า อยู่ที่นี่ต่อ */
@@ -424,8 +442,8 @@ export default function ProductRegistry() {
       {/* ปุ่มกรองอยู่ติดช่องค้นหา (ซ้าย) แบบเดียวกับหน้า list ฝั่งขาย — popover เปิด
           ชิดซ้ายของปุ่ม (left:0 กว้าง 420px) ถ้าวางชิดขวาแผงจะล้นขอบจอ */}
       <FilterPopover
-        count={statusFilter.length + regFilter.length + (showInactive ? 1 : 0) + (missingPrice ? 1 : 0)}
-        onClear={() => { setStatusFilter([]); setRegFilter([]); setShowInactive(false); setMissingPrice(false); }}
+        count={statusFilter.length + regFilter.length + (showInactive ? 1 : 0) + (missingPrice ? 1 : 0) + (taxableOnly ? 1 : 0)}
+        onClear={() => { setStatusFilter([]); setRegFilter([]); setShowInactive(false); setMissingPrice(false); setTaxableOnly(false); }}
         groups={[
           {
             key: "status", label: "สถานะอนุมัติ", icon: ClipboardCheck,
@@ -455,6 +473,14 @@ export default function ProductRegistry() {
             options: [{ value: "missing", label: `ขาดราคาขายปลีก (${facets.missingPrice})` }],
             selected: missingPrice ? ["missing"] : [],
             onChange: (vals) => setMissingPrice(vals.includes("missing")),
+          }] : []),
+          /* ⭐ ตัวกรองคู่ของการ์ด "ต้องเสียสรรพสามิต" (L16b) — กฎเดียวของระบบ (ธงรายตัวของ RA ชนะหมวด) ไม่ใช่มิติ
+             "การขึ้นทะเบียน" ข้างบนที่ดูหมวดอย่างเดียว · เลขในวงเล็บ = แถวหลังติ๊ก ภายใต้ตัวกรองอื่นที่ติดอยู่ (`facets`) */
+          ...(taxableInRegistry || taxableOnly ? [{
+            key: "taxable", label: "ภาษีสรรพสามิต", icon: ReceiptText,
+            options: [{ value: "taxable", label: `ต้องเสียสรรพสามิต (${facets.taxable})` }],
+            selected: taxableOnly ? ["taxable"] : [],
+            onChange: (vals) => setTaxableOnly(vals.includes("taxable")),
           }] : []),
           ...(inactiveInRegistry || showInactive ? [{
             key: "inactive", label: "ที่เลิกใช้", icon: Archive,
@@ -486,8 +512,14 @@ export default function ProductRegistry() {
               { label: "รออนุมัติ", value: counts.pending, tone: counts.pending ? "warn" : undefined },
               { label: "อนุมัติแล้ว", value: counts.approved, tone: "success" },
               /* is-accent ไม่มีกฎ CSS รองรับ (โทนตาย ไม่เคยติดสี) — เลขจำแนกประเภท
-                 ใช้ info · accent สงวนให้ปุ่ม/จุดกดตามกติกา L1 */
-              { label: "ต้องเสียภาษี", value: counts.taxable, tone: "info" },
+                 ใช้ info · accent สงวนให้ปุ่ม/จุดกดตามกติกา L1
+                 ⭐ กดได้ (L16b) — ตั้งตัวกรอง "ต้องเสียสรรพสามิต" ทั้งชุด ⇒ ตารางได้แถวเท่าเลขนี้ · ชื่อพูดชนิดภาษีให้ตรง
+                 (เดิม "ต้องเสียภาษี" กดไม่ได้ และไม่มีรายการไหนให้เห็นชุดที่นับ) */
+              {
+                label: "ต้องเสียสรรพสามิต", value: counts.taxable, tone: "info",
+                onClick: onTaxableCard, pressed: taxableCardPressed,
+                title: taxableCardPressed ? "กดอีกครั้งเพื่อกลับไปดูทั้งทะเบียน" : "ดูเฉพาะสินค้าที่ต้องเสียภาษีสรรพสามิต",
+              },
             ]}
           />
           <ApprovalQueue
@@ -512,13 +544,16 @@ export default function ProductRegistry() {
       >
       {sort.sorted.length === 0 ? (
         <EmptyState plain icon={Package}>
-          {q || statusFilter.length || regFilter.length ? "ไม่พบสินค้าที่ค้นหา" : "ยังไม่มีสินค้าในระบบ"}
+          {q || statusFilter.length || regFilter.length || missingPrice || taxableOnly ? "ไม่พบสินค้าที่ค้นหา" : "ยังไม่มีสินค้าในระบบ"}
         </EmptyState>
       ) : view === "cards" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {pageRows.map((p) => {
             const flags = categoryFlags(p.categoryCode || categoryOf(p.fgCode), productTypes);
-            const isExciseCat = flags.isExcise;
+            /* ป้าย "ภาษีสรรพสามิต" / ภาษีต่อชิ้น ถามตัวตัดสินเดียวกับการ์ด+ตัวกรอง (L16b) — ไม่ใช่ธงหมวดล้วน
+               ⇒ ทุกแถวในรายการ "ต้องเสียสรรพสามิต" มีป้าย · หมวดเสียภาษีที่ RA ยกเว้นขึ้น "ยกเว้นสรรพสามิต" แทน */
+            const taxable = isProductTaxable(p, productTypes);
+            const exempt = flags.isExcise && p.isExciseTaxable === false;
             const status = approvalStatusOf(p);
             const showActions = canDecideRow(p);
             // จางเฉพาะใบเลิกใช้ที่ไม่มีปุ่มอนุมัติ — เหตุผลเดียวกับแถวในมุมมองตาราง (H3)
@@ -562,11 +597,12 @@ export default function ProductRegistry() {
                   <span className="text-[var(--text-3)]">ราคาขายปลีก</span>
                   <div className="text-right">
                     <div className="font-mono text-[var(--text-2)]">{fmtMoneyOrDash(p.retailPriceIncVat)}</div>
-                    {/* ป้ายเฉพาะหมวดที่ติ๊กธง (ส่วนน้อยที่ต้องขึ้นทะเบียน+ชำระสรรพสามิต / จดแจ้ง อย.) — เรื่องยกเว้นดูที่การ์ดภาษีในหน้ารายละเอียด */}
-                    {(isExciseCat || flags.requiresFdaNotice) && (
+                    {/* ป้ายเฉพาะสินค้าที่ต้องเสียสรรพสามิต (กฎเดียวของระบบ) / หมวดที่ติ๊กจดแจ้ง อย. — รายละเอียดการยกเว้นดูที่การ์ดภาษีในหน้ารายละเอียด */}
+                    {(taxable || exempt || flags.requiresFdaNotice) && (
                       <div className="mt-0.5 flex items-center justify-end gap-1.5">
-                        {isExciseCat && taxPerUnit(p) > 0 && <span className="text-[10px] text-[var(--text-3)]">ภาษี/ชิ้น: {fmtMoney(taxPerUnit(p))}</span>}
-                        {isExciseCat && <span className="status-pill warning text-[10px]">ภาษีสรรพสามิต</span>}
+                        {taxable && taxPerUnit(p) > 0 && <span className="text-[10px] text-[var(--text-3)]">ภาษี/ชิ้น: {fmtMoney(taxPerUnit(p))}</span>}
+                        {/* ป้ายเดียวสองความหมาย (ไม่เขียนสองป้าย = ขนาดดิบไม่เพิ่มในด่าน audit:ui) */}
+                        {(taxable || exempt) && <span className={`status-pill text-[10px]${taxable ? " warning" : ""}`}>{taxable ? "ภาษีสรรพสามิต" : "ยกเว้นสรรพสามิต"}</span>}
                         {flags.requiresFdaNotice && <span className="status-pill info text-[10px]">จดแจ้ง อย.</span>}
                       </div>
                     )}
@@ -604,7 +640,9 @@ export default function ProductRegistry() {
             <tbody>
               {pageRows.map((p) => {
                 const flags = categoryFlags(p.categoryCode || categoryOf(p.fgCode), productTypes);
-                const isExciseCat = flags.isExcise;
+                // ตัวตัดสินเดียวกับการ์ด/ตัวกรอง "ต้องเสียสรรพสามิต" (L16b) — เหตุผลเดียวกับมุมมองการ์ด
+                const taxable = isProductTaxable(p, productTypes);
+                const exempt = flags.isExcise && p.isExciseTaxable === false;
                 const cat = categoryLabelOf(p);
                 /* href ตัวเดียวส่งให้ทั้งแถวและลิงก์ในเซลล์ — ด่าน ROW_MIRROR เทียบ *ข้อความนิพจน์*
                    ตรงตัว ไม่ใช่แค่ "ไปหน้าเดียวกัน" (เขียนคนละรูปเมื่อไหร่โดนฟ้องทันที)
@@ -648,10 +686,10 @@ export default function ProductRegistry() {
                     )}
                     <td className="num mono text-[var(--text-2)]">
                       {fmtMoneyOrDash(p.retailPriceIncVat)}
-                      {(isExciseCat || flags.requiresFdaNotice) && (
+                      {(taxable || exempt || flags.requiresFdaNotice) && (
                         <div className="mt-0.5 flex items-center justify-end gap-1.5">
-                          {isExciseCat && taxPerUnit(p) > 0 && <span className="text-[11px] text-[var(--text-3)] font-normal">ภาษี/ชิ้น: {fmtMoney(taxPerUnit(p))}</span>}
-                          {isExciseCat && <span className="status-pill warning text-[10px]">ภาษีสรรพสามิต</span>}
+                          {taxable && taxPerUnit(p) > 0 && <span className="text-[11px] text-[var(--text-3)] font-normal">ภาษี/ชิ้น: {fmtMoney(taxPerUnit(p))}</span>}
+                          {(taxable || exempt) && <span className={`status-pill text-[10px]${taxable ? " warning" : ""}`}>{taxable ? "ภาษีสรรพสามิต" : "ยกเว้นสรรพสามิต"}</span>}
                           {flags.requiresFdaNotice && <span className="status-pill info text-[10px]">จดแจ้ง อย.</span>}
                         </div>
                       )}

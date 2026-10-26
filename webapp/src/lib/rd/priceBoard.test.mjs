@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   awaitingPriceCount, awaitingPriceItems, compareBoardRows, priceBoardGroups, priceBoardRows, priceBoardTotals,
-  waitingDays,
+  usablePriceNote, waitingDays,
 } from './priceBoard.js';
 import { rowsSlotPricesLive } from '../master/scentFormulaAdmin.js';
 
@@ -118,7 +118,55 @@ test('จัดกลุ่มตามใบ — ใบที่รอนาน
   assert.equal(groups[0].maxDays, 29);
   assert.equal(groups[1].total, 2);
   const totals = priceBoardTotals(rows, { todayIso: TODAY });
-  assert.deepEqual(totals, { rows: 3, requests: 2, maxDays: 29, usable: 3 });
+  assert.deepEqual(totals, { rows: 3, requests: 2, maxDays: 29, usable: 3, blocked: 0 });
+});
+
+test('🔴 L15: "ใช้ราคาในทะเบียนได้เลย" = แถวที่ปุ่มกดแล้วผ่าน · ราคาหมดอายุ/วัสดุปิด = blocked · สองตัวรวม = แถวที่เห็นปุ่ม', () => {
+  const reqs = [request({
+    items: ['A', 'B', 'C', 'D', 'E'].map((id, i) => confirmed({ id, sortOrder: i })),
+  })];
+  const pairs = awaitingPriceItems(reqs);
+  const withState = (state) => liveCtx({ current: [{ ...ready('FB', 436), price: { ...ready('FB', 436).price, state } }] });
+  const rows = priceBoardRows(pairs, [
+    liveCtx(),                                  // A พร้อมใช้
+    withState('expired'),                       // B หมดอายุ — มีปุ่ม แต่บอกเหตุ
+    withState('archived'),                      // C วัสดุเก็บเข้ากรุ — มีปุ่ม แต่บอกเหตุ
+    liveCtx({ current: [{ key: 'FB', price: null }] }), // D ไม่มีราคาในทะเบียน — ไม่มีปุ่ม
+    undefined,                                  // E ไม่รู้ช่องสด — ไม่มีปุ่ม
+  ]);
+  const totals = priceBoardTotals(rows, { todayIso: TODAY });
+  assert.equal(totals.usable, 1);
+  assert.equal(totals.blocked, 2);
+  // แถวที่จอวางปุ่ม "ใช้ราคา … นี้" (`row.useCurrent ?`) — ตัวตัดสินเดียวกับการ์ด
+  const withButton = rows.filter((r) => r.useCurrent);
+  assert.equal(totals.usable + totals.blocked, withButton.length);
+  assert.equal(totals.usable, withButton.filter((r) => !r.useCurrentBlocker).length);
+  assert.equal(totals.rows, 5);
+});
+
+test('🔴 L15 ด่านซอร์ส: การ์ดไม่อ้าง "มีราคาในทะเบียนแล้ว" · หมายเหตุบอกยอดที่มีราคาแต่ใช้ไม่ได้ · ปุ่มยังวางตาม useCurrent', () => {
+  const page = src('../../app/rd/prices/page.js');
+  assert.doesNotMatch(page, /label="มีราคาในทะเบียนแล้ว"/);
+  assert.match(page, /label="ใช้ราคาในทะเบียนได้เลย" value=\{`\$\{totals\.usable\} รายการ`\}/);
+  // หมายเหตุเลือกตามสิทธิ์คนดู — ตัวเดียวกับที่วางปุ่ม (`canPrice ?` ในช่องจัดการ)
+  assert.match(page, /note=\{usablePriceNote\(totals, \{ canPrice \}\)\}/);
+  assert.match(page, /\{canPrice \? \(\s*<div className=\{styles\.actions\}>/);
+  assert.match(page, /\{row\.useCurrent \? \(\s*<GatedAction\s+blocker=\{row\.useCurrentBlocker\}/);
+});
+
+test('🔴 L15: หมายเหตุการ์ดพูดถึง "ปุ่ม"/"กด" เฉพาะคนที่มีปุ่ม (canPrice) · ยอดที่ใช้ไม่ได้บอกทุกคน', () => {
+  // คนที่ใส่ราคาได้ — เห็นปุ่ม ⇒ หมายเหตุชี้ที่ปุ่มได้
+  assert.equal(usablePriceNote({ blocked: 2 }, { canPrice: true }), 'อีก 2 รายการมีราคาแต่ใช้ไม่ได้ (หมดอายุ/วัสดุยังไม่เปิดใช้) — ปุ่มบอกเหตุ');
+  assert.equal(usablePriceNote({ blocked: 0 }, { canPrice: true }), 'กด "ใช้ราคา … นี้" ไม่ต้องพิมพ์ซ้ำ');
+  // คนที่ไม่มีสิทธิ์ — ช่องจัดการเป็น "—" ไม่มีปุ่มให้กด ⇒ ห้ามมีคำว่าปุ่ม/กด
+  for (const blocked of [0, 3]) {
+    const note = usablePriceNote({ blocked }, { canPrice: false });
+    assert.doesNotMatch(note, /ปุ่ม|กด/, `blocked=${blocked}: ${note}`);
+  }
+  assert.equal(usablePriceNote({ blocked: 3 }, { canPrice: false }), 'อีก 3 รายการมีราคาแต่ใช้ไม่ได้ (หมดอายุ/วัสดุยังไม่เปิดใช้)');
+  assert.equal(usablePriceNote({ blocked: 0 }, { canPrice: false }), 'RD ผูกราคาในทะเบียนได้โดยไม่พิมพ์ซ้ำ');
+  // ไม่ส่งสิทธิ์ = ถือว่าไม่มีปุ่ม (ปลอดภัยกว่าพูดถึงปุ่มที่ไม่มี)
+  assert.doesNotMatch(usablePriceNote({ blocked: 1 }), /ปุ่ม|กด/);
 });
 
 test('วันรอ: นับจากวันที่ลูกค้าคอนเฟิร์ม · ไม่มีวัน = null (ไม่ใช่ 0) · วันอนาคตไม่ติดลบ', () => {

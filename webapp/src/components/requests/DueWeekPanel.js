@@ -22,7 +22,7 @@ import { CalendarClock, ChevronLeft, ChevronRight } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { WorkspaceSection } from "@/components/ui/Workspace";
 import { fmtDate, fmtDayMonth } from "@/lib/format";
-import { dueCalendar, weekRangeText, weekStart } from "@/lib/requests/dueCalendar";
+import { dueCalendar, weekOffsetLabel, weekRangeText, weekStart } from "@/lib/requests/dueCalendar";
 import { deptCalendarMarks, deptTurnCountHref } from "@/lib/requests/deptOverview";
 import styles from "./dueWeek.module.css";
 
@@ -56,7 +56,9 @@ export default function DueWeekPanel({
       subtitle="วันที่ฝ่ายแจ้งไว้เอง — ดูก่อนแจ้งวันส่งใบใหม่ว่าวันไหนกองหนักแล้ว"
       actions={(
         <div className="flex gap-2 items-center flex-wrap">
-          <span className="ui-badge">{calendar.inWeek} ใบในสัปดาห์นี้</span>
+          {/* ป้ายนับใบบนช่องรายวันของสัปดาห์ที่กำลังดู (ใบชุดเดียวกับตารางข้างล่าง) — ชื่อสัปดาห์ตามลูกศร
+              🐞 เดิมเขียน "สัปดาห์นี้" ตายตัว ⇒ เลื่อนไปสัปดาห์ก่อน/หน้าแล้วเลขเปลี่ยนแต่คำยังบอกสัปดาห์นี้ (L9) */}
+          <span className="ui-badge">{calendar.inWeek} ใบใน{weekOffsetLabel(offset)}</span>
           {/* ⚠️ ปุ่มกดไปคิว **ที่กรองไว้แล้ว** ไม่ใช่คิวทั้งกอง — ของที่ยังไม่มีวันคือ
               กองที่ต้องไปให้วัน ไม่ใช่กองที่ต้องไปหาเอง
               ⭐ ปุ่มหลัก = ตาฝ่ายเท่านั้น (แท็บรอฝ่ายตอบ) · ใบตาผู้ขอเป็นปุ่มรอง (quiet) ไปแท็บรอผู้ขอ + ตัวกรองเดียวกัน
@@ -100,9 +102,17 @@ export default function DueWeekPanel({
         </span>
         {/* ใบที่สายจนหลุดสัปดาห์ไปแล้วไม่โผล่ในตาราง — บอกไว้ ไม่ให้หายเงียบ
             ⭐ ตาฝ่ายเท่านั้น = เลขเดียวกับหัวแถบเตือน "เลยวันที่รับปากไว้" ของหน้า (มติเจ้าของ 19/10) · ใบตาผู้ขอ
-            ที่เลยวันมีปุ่มของมันบนแถบเตือนแล้ว ไม่พูดซ้ำที่นี่ */}
+            ที่เลยวันมีปุ่มของมันบนแถบเตือนแล้ว ไม่พูดซ้ำที่นี่
+            ⭐ กดได้ — พาไปชุดเดียวกับปุ่ม "รอ RD" ของแถบเตือน (`deptTurnCountHref("dept", "overdue")`) ⇒ เลข = แถวที่เปิดเจอ
+            🐞 เดิมเป็นข้อความเฉย ๆ ทั้งที่นับทุกสัปดาห์ (ไม่ใช่สัปดาห์ที่ดูอยู่) และไม่มีทางไปดูใบชุดนั้น (L9b) */}
         {overdue.dept > 0 && (
-          <span className={styles.overdueNote}>เลยกำหนดแล้ว {overdue.dept} ใบ</span>
+          <Button
+            size="sm" tone="danger" variant="ghost" className={styles.overdueNote}
+            title="ทุกสัปดาห์ · เฉพาะใบที่ถึงตาฝ่าย"
+            onClick={() => router.push(deptTurnCountHref("dept", "overdue", { queueHref }))}
+          >
+            เลยกำหนดแล้ว {overdue.dept} ใบ
+          </Button>
         )}
         {/* ใบเส้นประบนช่องรายวันต้องมีคำอธิบาย — ไม่งั้นใบตาผู้ขอที่เลยวันแต่ไม่แดงอ่านเหมือนสีผิด */}
         {weekHasRequesterTurn && (

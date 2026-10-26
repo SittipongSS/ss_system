@@ -180,6 +180,8 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
           brandOptions={brandOptionList}
           factoryPrice="readonly"
           currentCostPrice={product.costPrice}
+          /* ธงภาษีที่บันทึกไว้ — ตัวเดียวกับคำเตือนขาดราคาบนหน้ารายละเอียด (isMissingRetailPrice) ⇒ ของที่ RA บังคับในหมวดอื่นมีช่องราคาให้เติม (L16c) */
+          taxable={product.isExciseTaxable === true}
           onCustomerChange={handleCustomerChange}
           fgLocked={isAutoFgCode(product.fgCode)}
           selfId={product.id}

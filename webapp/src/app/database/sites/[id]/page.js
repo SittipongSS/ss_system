@@ -37,13 +37,17 @@ import { cadenceText } from "@/lib/service/cadence";
 import { refillStatus } from "@/lib/service/refill";
 import {
   ALL_BUILDINGS,
+  MODEL_SUMMARY_PREFIX,
   assetBuildingKey,
   assetModelSummary,
+  assetPanelSummary,
   buildingChipOptions,
   filterSiteAssets,
   filterZones,
+  isUnzonedOnSiteAsset,
   sortSiteAssets,
   sortZones,
+  zoneAssetCounts,
   zoneBuildingKey,
 } from "@/lib/service/siteDetailLists";
 import { usePagination } from "@/lib/usePagination";
@@ -358,11 +362,10 @@ export default function ServiceSiteDetailPage({ params }) {
   const rollup = useMemo(() => assetRollup(assets), [assets]);
   const accessText = site ? accessWindowText(site) : "";
   const zonesById = useMemo(() => new Map(zones.map((z) => [z.id, z])), [zones]);
-  // เครื่องที่ยังใช้งานแต่ไม่สังกัดโซน — แถบ backfill: ของเก่าเกิดก่อนมีโซน (mig 0298)
-  const unzonedActive = useMemo(
-    () => assets.filter((a) => a.status !== "removed" && !a.zoneId).length,
-    [assets],
-  );
+  /* เครื่องที่อยู่หน้างานแต่ไม่สังกัดโซน — แถบ backfill: ของเก่าเกิดก่อนมีโซน (mig 0298)
+     ⭐ ตัวตัดสินเดียวกับตัวกรอง "ยังไม่ระบุโซน" ของตาราง (`isUnzonedOnSiteAsset` · ตรวจตัวเลข L7 26/10) ⇒ กด "ดู N รายการ"
+        แล้วป้ายจำนวนแผงขึ้น N · 🐞 เดิม `status !== "removed"` นับเครื่อง "ว่าง" ที่ไม่ได้อยู่หน้างานด้วย และกดไม่ได้ */
+  const unzonedActive = useMemo(() => assets.filter(isUnzonedOnSiteAsset).length, [assets]);
 
   /* ── ตารางโซน/อุปกรณ์ — ค้นหา · ชิปอาคาร · แบ่งหน้า (ผู้ใช้ทัก "มันยาวไปมั้ย" 25/09/2026) ──────────
      🐞 The Empire ลงจาก Excel แล้วมี 247 โซน · 292 เครื่อง ⇒ สองตารางยาวต่อกัน 539 แถวไม่มีเครื่องมือเลย
@@ -376,16 +379,13 @@ export default function ServiceSiteDetailPage({ params }) {
   const [assetBuilding, setAssetBuilding] = useState(ALL_BUILDINGS);
   const [assetModels, setAssetModels] = useState([]);
   const [assetStatuses, setAssetStatuses] = useState([]);
+  // ตัวกรองจากปุ่ม "ดู N รายการ" ของแถบยังไม่ระบุโซน — ขึ้นเป็นป้าย "กรอง: ยังไม่ระบุโซน ×" บนแถบเครื่องมือ
+  const [assetUnzoned, setAssetUnzoned] = useState(false);
 
   const buildingNames = useMemo(() => zones.map((z) => z.building), [zones]);
   // นับเครื่องต่อโซนครั้งเดียว — เดิม filter ทั้งกองต่อแถว (247 โซน × 292 เครื่องทุกเรนเดอร์)
-  const assetCountByZone = useMemo(() => {
-    const counts = new Map();
-    for (const a of assets) {
-      if (a.zoneId && a.status !== "removed") counts.set(a.zoneId, (counts.get(a.zoneId) || 0) + 1);
-    }
-    return counts;
-  }, [assets]);
+  // ⭐ ตัวตัดสินเดียวกับ "อุปกรณ์ในโซน M ตัว" ของหน้าโซนที่แถวพาไป (`countsAsZoneAsset` · ไม่นับปลดระวาง · L7b)
+  const assetCountByZone = useMemo(() => zoneAssetCounts(assets), [assets]);
   const zonesByQuery = useMemo(() => filterZones(sortZones(zones), { query: zoneQuery }), [zones, zoneQuery]);
   const zoneBuildingOptions = useMemo(
     () => buildingChipOptions(zonesByQuery.map(zoneBuildingKey), buildingNames),
@@ -404,8 +404,10 @@ export default function ServiceSiteDetailPage({ params }) {
     [assets],
   );
   const assetsByFilters = useMemo(
-    () => filterSiteAssets(sortSiteAssets(assets, zones), zonesById, { query: assetQuery, models: assetModels, statuses: assetStatuses }),
-    [assets, zones, zonesById, assetQuery, assetModels, assetStatuses],
+    () => filterSiteAssets(sortSiteAssets(assets, zones), zonesById, {
+      query: assetQuery, models: assetModels, statuses: assetStatuses, unzoned: assetUnzoned,
+    }),
+    [assets, zones, zonesById, assetQuery, assetModels, assetStatuses, assetUnzoned],
   );
   const assetBuildingOptions = useMemo(
     () => buildingChipOptions(
@@ -421,8 +423,16 @@ export default function ServiceSiteDetailPage({ params }) {
     [assetsByFilters, zonesById, assetBuildingShown],
   );
   const assetPaging = usePagination(shownAssets, {
-    resetKey: JSON.stringify([assetQuery, assetBuildingShown, assetModels, assetStatuses]),
+    resetKey: JSON.stringify([assetQuery, assetBuildingShown, assetModels, assetStatuses, assetUnzoned]),
   });
+  /* ปุ่ม "ดู N รายการ" ของแถบยังไม่ระบุโซน = ตั้งตัวกรองทั้งชุด (ล้างคำค้น/อาคาร/รุ่น/สถานะที่ค้าง) ⇒ ตารางเท่าเลขบนแถบ */
+  const showUnzonedAssets = () => {
+    setAssetQuery("");
+    setAssetBuilding(ALL_BUILDINGS);
+    setAssetModels([]);
+    setAssetStatuses([]);
+    setAssetUnzoned(true);
+  };
   // รุ่น/สถานะมีตัวเลือกเดียว = ไม่มีอะไรให้กรอง ⇒ ไม่วาดกลุ่มนั้น (ทั้งปุ่มหายเมื่อไม่เหลือกลุ่มไหน)
   const assetFilterGroups = [
     ...(modelSummary.length > 1 ? [{
@@ -777,14 +787,9 @@ export default function ServiceSiteDetailPage({ params }) {
         icon={<AirVent size={17} aria-hidden="true" />}
         title="อุปกรณ์ในไซต์"
         /* ⚠️ ต้องครบทุกกอง ไม่งั้นตัวเลขไม่รวมกันเป็น total แล้วคนอ่านเห็นเป็นบั๊ก
-           (mig 0332 เพิ่ม in_stock เข้ามา) · กองที่เป็นศูนย์ตัดทิ้งเพื่อไม่ให้แถวยาวเปล่า ๆ */
-        subtitle={[
-          `ใช้งาน ${rollup.active}`,
-          rollup.inStock ? `อยู่ในคลัง ${rollup.inStock}` : null,
-          `ส่งซ่อม ${rollup.repair}`,
-          rollup.removed ? `ปลดระวาง ${rollup.removed}` : null,
-          rollup.broken ? `ชำรุด ${rollup.broken}` : null,
-        ].filter(Boolean).join(" · ")}
+           (mig 0332 เพิ่ม in_stock เข้ามา) · กองที่เป็นศูนย์ตัดทิ้งเพื่อไม่ให้แถวยาวเปล่า ๆ
+           ⭐ คำบนหัวแผง = คำของตัวเลือก "สถานะ" และป้ายบนแถว (`assetPanelSummary` · L7b) ⇒ "ว่าง 2" หาเจอในตัวกรอง */
+        subtitle={assetPanelSummary(assets).map((part) => `${part.label} ${fmtNumber(part.count)}`).join(" · ")}
         count={`${fmtNumber(shownAssets.length)} เครื่อง`}
         actions={canEdit ? (
           <Button tone="neutral" onClick={() => setFormAsset(null)} icon={<Plus size={15} aria-hidden="true" />}>
@@ -801,11 +806,17 @@ export default function ServiceSiteDetailPage({ params }) {
             {assetBuildingOptions.length > 0 && (
               <Segmented ariaLabel="กรองอุปกรณ์ตามอาคาร" value={assetBuildingShown} onChange={setAssetBuilding} options={assetBuildingOptions} />
             )}
+            {/* ตัวกรองจากแถบยังไม่ระบุโซนเป็นปุ่มกดล้าง — ตัวกรองที่มองไม่เห็นคือตัวกรองที่ผู้ใช้กล่าวหาว่าข้อมูลหาย */}
+            {assetUnzoned && (
+              <Button size="sm" onClick={() => setAssetUnzoned(false)}>
+                กรอง: ยังไม่ระบุโซน ×
+              </Button>
+            )}
             {assetFilterGroups.length > 0 && (
               <FilterPopover
                 groups={assetFilterGroups}
                 count={assetModels.length + assetStatuses.length}
-                onClear={() => { setAssetModels([]); setAssetStatuses([]); }}
+                onClear={() => { setAssetModels([]); setAssetStatuses([]); setAssetUnzoned(false); }}
               />
             )}
           </>
@@ -815,14 +826,22 @@ export default function ServiceSiteDetailPage({ params }) {
             โชว์เฉพาะเมื่อไซต์เริ่มมีโซนแล้ว (ไซต์ที่ยังไม่ใช้โซนไม่ต้องโดนทวง) */}
         {zones.length > 0 && unzonedActive > 0 && (
           <p className={styles.backfillNote} role="status">
-            อุปกรณ์ {unzonedActive} รายการยังไม่ระบุโซน — กดแก้ไขรายตัวเพื่อเลือกโซน
-            แล้วการใช้ต่อรอบจะเริ่มนับเป็นของโซนนั้น
+            อุปกรณ์ {fmtNumber(unzonedActive)} รายการยังไม่ระบุโซน — กดแก้ไขรายตัวเพื่อเลือกโซน
+            แล้วการใช้ต่อรอบจะเริ่มนับเป็นของโซนนั้น{" "}
+            {/* ⭐ เลขบนแถบกดได้ = ตัวกรองชุดเดียวกัน (ตรวจตัวเลข L7) · เปิดอยู่แล้วไม่ต้องมีปุ่มซ้ำ — ป้าย "กรอง: … ×" ล้างให้ */}
+            {!assetUnzoned && (
+              <Button size="sm" variant="quiet" onClick={showUnzonedAssets}>
+                ดู {fmtNumber(unzonedActive)} รายการ
+              </Button>
+            )}
           </p>
         )}
         {/* สรุปตามรุ่น/สีทั้งไซต์ (ไม่นับปลดระวาง · ไม่ขยับตามตัวกรอง) — ตอบ "ไซต์นี้มีอะไรกี่ตัว"
-            โดยไม่ต้องไล่ทุกหน้า · ตัวเลขชิ้นเดียวกับตัวเลือก "รุ่น" ในตัวกรอง */}
+            โดยไม่ต้องไล่ทุกหน้า
+            ⚠️ ตัวเลือก "รุ่น" ในตัวกรองเห็นปลดระวางด้วย ⇒ กดรุ่นแล้วอาจเห็นมากกว่าเลข ⇒ บรรทัดขึ้นต้นบอกว่าไม่นับปลดระวาง (L7b) */}
         {modelSummary.length > 0 && (
           <p className={styles.modelSummary}>
+            {MODEL_SUMMARY_PREFIX}{" "}
             {modelSummary.map((item, index) => (
               <span key={item.key} className={styles.nowrap}>
                 {index > 0 ? " · " : ""}{item.label} <strong>{fmtNumber(item.count)}</strong>

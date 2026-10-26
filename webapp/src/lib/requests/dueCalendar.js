@@ -31,6 +31,21 @@ export function weekStart(todayIso, offset = 0) {
   return start ? addDays(start, Number(offset || 0) * 7) : null;
 }
 
+/**
+ * ชื่อสัปดาห์ที่กำลังดูอยู่ ตาม `offset` ของ `weekStart` — ใช้บนป้าย "N ใบใน…" ของปฏิทิน
+ *
+ * 🐞 เดิมป้ายเขียน "ใบในสัปดาห์นี้" ตายตัว ⇒ กดลูกศรไปสัปดาห์ก่อน/หน้า เลขเป็นของสัปดาห์นั้น
+ *    แต่คำยังบอกว่าสัปดาห์นี้ (ตรวจตัวเลข 26/10 · L9) · ไกลกว่าหนึ่งสัปดาห์ = "สัปดาห์ที่เลือก"
+ *    (แถวช่วงวันใต้หัวบอกวันจริงอยู่แล้ว)
+ */
+export function weekOffsetLabel(offset = 0) {
+  const n = Number(offset || 0);
+  if (n === 0) return 'สัปดาห์นี้';
+  if (n === -1) return 'สัปดาห์ก่อน';
+  if (n === 1) return 'สัปดาห์หน้า';
+  return 'สัปดาห์ที่เลือก';
+}
+
 /** เจ็ดวันของสัปดาห์ — `{ iso, label, weekend, today }` */
 export function weekDays(startIso, { todayIso = null } = {}) {
   const start = String(startIso || '').slice(0, 10);
@@ -93,7 +108,8 @@ export function dueCalendar(rows = [], { startIso, todayIso = null } = {}) {
     start,
     end: days.at(-1)?.iso || start,
     days,
-    // จำนวนใบที่ตกอยู่ในสัปดาห์นี้จริง ๆ — ใช้บนหัวข้อ ไม่ใช่ `dated` ทั้งคิว
+    // จำนวนใบที่ตกอยู่ในสัปดาห์ที่กำลังดูจริง ๆ — ใช้บนหัวข้อ ไม่ใช่ `dated` ทั้งคิว
+    // ⚠️ ป้ายบนจอต้องพูดชื่อสัปดาห์ตาม offset (`weekOffsetLabel`) ไม่ใช่ "สัปดาห์นี้" ตายตัว
     inWeek: days.reduce((n, day) => n + day.items.length, 0),
     dated,
     // ⚠️ สองตัวนี้รวมทั้งตาฝ่ายและตาผู้ขอ — ไม่มีจอไหนอ่านแล้ว (ปุ่มบนปฏิทินใช้ `deptCountByTurn`)

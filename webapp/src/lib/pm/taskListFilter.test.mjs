@@ -10,7 +10,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import {
-  TASK_STATUS_FILTER_KEYS, dealQueueLanding, isMyTodoTask, mineTaskClauses, mineViewCounts, taskInScope, taskListRows,
+  TASK_STATUS_FILTER_KEYS, TASK_WAITING_OVERDUE_FILTER, TASK_WAITING_OVERDUE_FILTER_LABEL, dealQueueLanding, isMyTodoTask,
+  isWaitingOverdueTask, mineTaskClauses, mineViewCounts, taskInScope, taskListRows,
   taskPoolRows, taskStatusPasses, tasksNavLanding, widestTaskScope,
 } from './taskListFilter.js';
 import { MINE_TASK_VIEWS } from './taskViews.js';
@@ -92,6 +93,62 @@ test('การ์ดสถานะ: เลขบนการ์ด = แถว
       }
     }
   }
+});
+
+/* ⭐ L3 (ตรวจตัวเลข 26/10/2026): บรรทัดรอง "ในนี้เลยกำหนด n งาน" ของการ์ด "รอคนอื่น" = แถวหลังกดบรรทัดนั้น
+   🐞 เดิมหน้านับด้วยเงื่อนไขของตัวเอง (`isWaitingStatus && daysToDue < 0`) นอกตัวตัดสินกลาง และกดได้แค่ทั้งการ์ด
+   ⇒ บรรทัดบอก 2 แต่ตารางขึ้นงานรอคนอื่นทุกใบ (ไม่มีรายการไหนแสดง 2 ใบนั้น) */
+const WAITING_EXTRA = [
+  task({ status: 'Blocked', dueDate: OVERDUE, blockedReason: 'รอลูกค้าเซ็น', dealId: 'deal-X', projectId: 'proj-1' }), // รอ · เลย
+  task({ ownerId: 'u2', assigneeId: 'u2', status: 'Blocked', dueDate: OVERDUE, category: 'ประสานงานภายใน' }), // รอ · เลย · คนอื่น
+  task({ status: 'Blocked', dueDate: null, blockedReason: 'รอ RD' }), // รอ · ไม่มีกำหนด = ไม่เลย
+  task({ status: 'Completed', dueDate: OVERDUE }), // เสร็จแล้ว · ไม่นับ
+  task({ status: 'In Progress', dueDate: OVERDUE }), // เลยแต่อยู่ในมือเรา = "ต้องรีบ" ไม่ใช่ "รอคนอื่น"
+];
+const WITH_WAITING = [...ALL_TASKS, ...WAITING_EXTRA];
+
+test('⭐ L3: บรรทัดรอง "ในนี้เลยกำหนด n งาน" = แถวหลังกดบรรทัดนั้น ทุกตัวกรอง × ทุกสถานะที่ติดอยู่', () => {
+  let nonZero = 0;
+  for (const facet of FACETS) {
+    for (const current of TASK_STATUS_FILTER_KEYS) {
+      const f = { meId: ME, scope: 'all', status: current, dealProjectOf, ...facet };
+      const pool = taskPoolRows(WITH_WAITING, f);
+      // ตัวนับของหน้า = `count(TASK_WAITING_OVERDUE_FILTER)` บน pool (ไม่ตัดสถานะ)
+      const note = pool.filter((t) => taskStatusPasses(t, TASK_WAITING_OVERDUE_FILTER, ME)).length;
+      const shown = taskListRows(WITH_WAITING, { ...f, status: TASK_WAITING_OVERDUE_FILTER });
+      assert.equal(note, shown.length, `${current} · ${JSON.stringify(facet)}`);
+      // ชุดย่อยของการ์ด "รอคนอื่น" เสมอ — "ในนี้" ต้องเป็นคำจริง
+      const waiting = taskListRows(WITH_WAITING, { ...f, status: 'waiting' });
+      assert.ok(shown.every((t) => waiting.includes(t)), 'แถวเลยกำหนดต้องอยู่ในการ์ด "รอคนอื่น"');
+      assert.ok(shown.every((t) => t.status === 'Blocked' && t.dueDate === OVERDUE));
+      if (note > 0) nonZero += 1;
+    }
+  }
+  assert.ok(nonZero > 0, 'ฟิกซ์เจอร์ต้องมีงานรอคนอื่นที่เลยกำหนดจริง');
+  // ทั้งระบบไม่กรอง: สองใบที่เลยกำหนด — ไม่รวมใบไม่มีกำหนด · ใบเสร็จ · ใบเลยกำหนดที่อยู่ในมือเรา
+  assert.equal(taskListRows(WITH_WAITING, { meId: ME, scope: 'all', status: TASK_WAITING_OVERDUE_FILTER, dealProjectOf }).length, 2);
+  assert.equal(isWaitingOverdueTask({ status: 'Blocked', dueDate: null }), false);
+  assert.equal(isWaitingOverdueTask({ status: 'Blocked', dueDate: FAR }), false);
+  assert.equal(isWaitingOverdueTask({ status: 'Blocked', dueDate: OVERDUE }), true);
+  assert.equal(isWaitingOverdueTask({ status: 'Pending', dueDate: OVERDUE }), false);
+  assert.equal(TASK_WAITING_OVERDUE_FILTER_LABEL, 'รอคนอื่น · เลยกำหนดแล้ว');
+});
+
+test('ยาม L3: หน้าคิวนับบรรทัดรองด้วยตัวกรอง waiting_overdue และกดบรรทัดรองแล้วตั้งตัวกรองนั้น', () => {
+  const read = (rel) => readFileSync(new URL(rel, import.meta.url), 'utf8');
+  const page = read('../../app/pm/tasks/page.js');
+  assert.match(page, /waitingOverdue: count\(TASK_WAITING_OVERDUE_FILTER\),/);
+  assert.doesNotMatch(page, /isWaitingStatus\(t\.status\) && \(daysToDue\(t\)/, 'ห้ามมีเงื่อนไขเลยกำหนดสำเนาที่สองในหน้า');
+  assert.doesNotMatch(page, /overrideNote/, 'บรรทัดรองต้องไม่ทับคำ "กำลังใช้ตัวกรองนี้" อีก');
+  assert.match(page, /note=\{active \? "กำลังใช้ตัวกรองนี้" : "กดเพื่อกรองรายการ"\}/);
+  assert.match(page, /onClick: \(\) => setStatusFilter\(noteActive \? "all" : c\.noteFilter\.key\)/);
+  assert.match(page, /statusFilter === TASK_WAITING_OVERDUE_FILTER \? TASK_WAITING_OVERDUE_FILTER_LABEL/);
+  // การ์ดกับบรรทัดรองเป็นปุ่มสองตัวเรียงกัน — ไม่ซ้อนปุ่มในปุ่ม
+  const metric = read('../../components/ui/Workspace.js');
+  assert.match(metric, /<div className=\{`ui-metric-wrap/);
+  assert.match(metric, /className=\{`text-action ui-metric-note-action/);
+  assert.match(metric, /aria-pressed=\{pressed\}/);
+  assert.match(metric, /if \(!noteAction\) return card;/);
 });
 
 test('สถานะ: งานเสร็จโผล่เฉพาะตัวกรอง "เสร็จแล้ว" · "ต้องรีบ" ไม่รวมงานรอคนอื่น · todo = ของฉันที่ลงมือได้', () => {

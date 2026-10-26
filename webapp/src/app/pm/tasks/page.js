@@ -37,7 +37,7 @@ import { daysToDue, taskUrgency } from "@/lib/pm/derived";
 import { DIFFICULTY_LABELS, PERSONAL_TASK_STATUSES, TASK_STATUS_BLOCKED, eisenhowerQuadrant, isWaitingStatus, QUADRANT_LABELS } from "@/lib/pm/tasks";
 import { daysWaiting } from "@/lib/pm/taskChain";
 import { MINE_TASK_VIEWS, taskRelationship } from "@/lib/pm/taskViews";
-import { TASKS_NAV_COUNT_PARAM, TASK_TODO_FILTER, TASK_TODO_FILTER_LABEL, dealQueueLanding, mineViewCounts as countMineViews, taskListRows, taskPoolRows, taskStatusPasses, tasksNavLanding } from "@/lib/pm/taskListFilter";
+import { TASKS_NAV_COUNT_PARAM, TASK_TODO_FILTER, TASK_TODO_FILTER_LABEL, TASK_WAITING_OVERDUE_FILTER, TASK_WAITING_OVERDUE_FILTER_LABEL, dealQueueLanding, mineViewCounts as countMineViews, taskListRows, taskPoolRows, taskStatusPasses, tasksNavLanding } from "@/lib/pm/taskListFilter";
 import { TASK_CENTRAL_EXCLUDE, TASK_CENTRAL_ONLY, readTasksQueueLink } from "@/lib/pm/dealTaskLink";
 import { compactPersonName } from "@/lib/personName";
 import { cachedFetchJson } from "@/lib/apiCache";
@@ -211,7 +211,7 @@ export default function TasksPage() {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useResponsiveView({ portrait: "list", landscape: "table" });
   const [search, setSearch] = useStickyState("search", "");
-  const [statusFilter, setStatusFilter] = useStickyState("statusFilter", "all"); // all | progress | urgent | done
+  const [statusFilter, setStatusFilter] = useStickyState("statusFilter", "all"); // คีย์ใน TASK_STATUS_FILTER_KEYS (lib/pm/taskListFilter.js)
   // ผู้รับมอบหมาย + หมวดหมู่ รวมใน FilterPopover เดียว (มาตรฐานทั้งระบบ มติ 2026-07-18)
   // — multi-select ทั้งคู่, ว่าง = ทั้งหมด. สถานะไม่อยู่ในแผงนี้เพราะเป็น drill-down
   // ของการ์ด KPI ด้านบน (มาตรฐาน: KPI/สโคป/เรียงลำดับ อยู่นอกปุ่มกรอง)
@@ -433,9 +433,9 @@ export default function TasksPage() {
       all: count("all"),
       progress: count("progress"),
       // แยกยอดตามมติผู้ใช้ 2026-08-17: งานที่รอคนอื่นไม่ปนกับ "ต้องรีบ" เพราะเร่งเองไม่ได้
-      // — แต่ยอดเลยกำหนดของมันยังต้องเห็น (ขึ้นเป็นบรรทัดรองบนการ์ด)
+      // — แต่ยอดเลยกำหนดของมันยังต้องเห็น (บรรทัดรองบนการ์ด · กดได้ = ตัวกรอง `waiting_overdue` ตัวเดียวกัน · L3 🐞 เดิมนับเองนอกตัวตัดสิน)
       waiting: count("waiting"),
-      waitingOverdue: pool.filter((t) => isWaitingStatus(t.status) && (daysToDue(t) ?? 0) < 0).length,
+      waitingOverdue: count(TASK_WAITING_OVERDUE_FILTER),
       urgent: count("urgent"),
       done: count("done"),
     };
@@ -781,12 +781,12 @@ export default function TasksPage() {
   const STAT_CARDS = [
     { key: "all", label: "งานทั้งหมด", count: stats.all, color: "var(--accent)", icon: <ListTodo size={18} /> },
     { key: "progress", label: "กำลังทำ", count: stats.progress, color: "var(--blue)", icon: <Clock size={18} /> },
-    // ต้องรีบ = งานที่อยู่ในมือเรา · รอคนอื่น = งานที่เร่งเองไม่ได้ (บรรทัดรองบอกว่า
-    // ในนั้นเลยกำหนดไปกี่ใบ — ต้องเห็น ไม่งั้นงานที่รอเงียบ ๆ จนเลยเดดไลน์ไม่มีใครทวง)
+    // ต้องรีบ = งานที่อยู่ในมือเรา · รอคนอื่น = งานที่เร่งเองไม่ได้ (บรรทัดรองบอกว่าในนั้นเลยกำหนดไปกี่ใบ — ต้องเห็น ไม่งั้นงานที่รอ
+    // เงียบ ๆ จนเลยเดดไลน์ไม่มีใครทวง) · ⭐ บรรทัดรองเป็นปุ่มของตัวเอง (`noteAction` · L3) กดแล้วเหลือ n ใบนั้น · โชว์ต่อขณะกรองค้างแม้เป็น 0
     { key: "urgent", label: "ต้องรีบ", count: stats.urgent, color: "var(--red)", icon: <Flame size={18} /> },
     {
       key: "waiting", label: "รอคนอื่น", count: stats.waiting, color: "var(--purple)", icon: <PauseCircle size={18} />,
-      overrideNote: stats.waitingOverdue > 0 ? `เลยกำหนดแล้ว ${stats.waitingOverdue} งาน` : null,
+      noteFilter: stats.waitingOverdue > 0 || statusFilter === TASK_WAITING_OVERDUE_FILTER ? { key: TASK_WAITING_OVERDUE_FILTER, label: `ในนี้เลยกำหนด ${stats.waitingOverdue} งาน` } : null,
     },
     { key: "done", label: "เสร็จแล้ว", count: stats.done, color: "var(--green)", icon: <CheckCircle2 size={18} /> },
   ];
@@ -1084,11 +1084,11 @@ export default function TasksPage() {
       {/* ── สรุปภาพรวม (คลิกเพื่อกรอง) ── */}
       <SaMetricStrip>
         {STAT_CARDS.map((c) => {
-          const active = statusFilter === c.key;
+          const active = statusFilter === c.key, noteActive = !!c.noteFilter && statusFilter === c.noteFilter.key;
           return (
-            /* บรรทัดรอง: การ์ดที่มีตัวเลขซ่อนอยู่ข้างใน (เช่น "รอคนอื่น" ที่เลยกำหนดแล้ว)
-               ต้องพูดออกมา — สำคัญกว่าคำใบ้ว่ากดได้ ซึ่งการ์ดอื่นบอกอยู่แล้ว */
-            <SaMetric key={c.key} as="button" type="button" onClick={() => setStatusFilter(active && c.key !== "all" ? "all" : c.key)} active={active} icon={c.icon} label={c.label} value={c.count} note={c.overrideNote || (active ? "กำลังใช้ตัวกรองนี้" : "กดเพื่อกรองรายการ")} tone={c.key === "done" ? "good" : c.key === "urgent" ? "danger" : c.key === "waiting" ? "warning" : undefined} aria-pressed={active} />
+            /* ตัวเลขที่ซ่อนอยู่ในการ์ด (เช่น "รอคนอื่น" ที่เลยกำหนดแล้ว) เป็นปุ่มรองของการ์ด (`noteAction`) —
+               🐞 เดิมเป็นข้อความทับ "กดเพื่อกรองรายการ/กำลังใช้ตัวกรองนี้" และกดแล้วได้งานรอคนอื่นทุกใบ ไม่ใช่ n ใบนั้น (L3) */
+            <SaMetric key={c.key} as="button" type="button" onClick={() => setStatusFilter(active && c.key !== "all" ? "all" : c.key)} active={active} icon={c.icon} label={c.label} value={c.count} note={active ? "กำลังใช้ตัวกรองนี้" : "กดเพื่อกรองรายการ"} tone={c.key === "done" ? "good" : c.key === "urgent" ? "danger" : c.key === "waiting" ? "warning" : undefined} aria-pressed={active} noteAction={c.noteFilter ? { label: c.noteFilter.label, active: noteActive, onClick: () => setStatusFilter(noteActive ? "all" : c.noteFilter.key) } : null} />
           );
         })}
       </SaMetricStrip>
@@ -1112,8 +1112,8 @@ export default function TasksPage() {
         </div>
         {statusFilter !== "all" && (
           <button onClick={() => setStatusFilter("all")} className="btn sm">
-            {/* `todo` มาจากป้ายเมนูเท่านั้น (ไม่มีการ์ดให้ยืมชื่อ — M9) */}
-            กรอง: {statusFilter === TASK_TODO_FILTER ? TASK_TODO_FILTER_LABEL : STAT_CARDS.find((c) => c.key === statusFilter)?.label} <span style={{ fontWeight: "var(--fw-bold)" }}>×</span>
+            {/* `todo` มาจากป้ายเมนูเท่านั้น (ไม่มีการ์ดให้ยืมชื่อ — M9) · `waiting_overdue` มาจากบรรทัดรองของการ์ด "รอคนอื่น" (L3) */}
+            กรอง: {statusFilter === TASK_TODO_FILTER ? TASK_TODO_FILTER_LABEL : statusFilter === TASK_WAITING_OVERDUE_FILTER ? TASK_WAITING_OVERDUE_FILTER_LABEL : STAT_CARDS.find((c) => c.key === statusFilter)?.label} <span style={{ fontWeight: "var(--fw-bold)" }}>×</span>
           </button>
         )}
         {/* ชิปโครงการจากลิงก์หน้าโครงการ (M8b) — ตัวกรองที่มองไม่เห็นคือตัวกรองที่คนกล่าวหาว่าข้อมูลหาย */}

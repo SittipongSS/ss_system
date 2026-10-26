@@ -5,20 +5,27 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   ALL_BUILDINGS,
+  MODEL_SUMMARY_PREFIX,
   NO_BUILDING,
+  assetBuildingKey,
   assetHaystack,
   assetModelSummary,
+  assetPanelSummary,
   buildingChipOptions,
+  countsAsZoneAsset,
   filterSiteAssets,
   filterZones,
+  isUnzonedOnSiteAsset,
   matchesQuery,
   naturalCompare,
   shortBuildingLabels,
   sortSiteAssets,
   sortZones,
+  zoneAssetCounts,
   zoneBuildingKey,
   zoneHaystack,
 } from './siteDetailLists.js';
+import { ASSET_STATUS_LABELS } from './sites.js';
 
 const zone = (id, name, building, floor, extra = {}) => ({ id, code: `ZN-1023-${id}`, name, building, floor, spots: [], ...extra });
 const asset = (id, zoneId, model, colour, extra = {}) => ({ id, code: `MC-${id}`, label: model, kind: 'diffuser', model, colour, status: 'active', zoneId, ...extra });
@@ -161,4 +168,130 @@ test('หน้าไซต์: ตารางโซนกับอุปกร
 
 test('หน้าไซต์: แถวเครื่องขึ้นรหัส MC บรรทัดบน (รหัสบน · ชื่อล่าง) ไม่ใช่ชื่อรุ่นซ้ำทุกแถว', () => {
   assert.match(PAGE, /asset\.code \|\| asset\.label/);
+});
+
+/* ══ ตัวเลขบนหน้าไซต์ = แถวที่เห็น (ตรวจตัวเลข L7 · L7b · 26/10/2026) ══════════════════════════════════════ */
+const ONSITE = 'S1';
+const NO_BUILDING_ZONE = zone('20001', 'ห้องเก็บของ', null, '01');
+const ZONES_L7 = [...ZONES, NO_BUILDING_ZONE];
+const BY_ID_L7 = new Map(ZONES_L7.map((z) => [z.id, z]));
+const FLEET = [
+  asset('U1', null, 'M240', 'ขาว', { siteId: ONSITE }),                                   // ใช้งานอยู่ ไม่มีโซน → นับ
+  asset('U2', null, 'M240', 'ขาว', { siteId: ONSITE, status: 'repair' }),                 // ซ่อม อยู่ที่ไซต์ ไม่มีโซน → นับ
+  asset('U3', null, 'OV-05', 'เทา', { siteId: ONSITE, status: 'removed' }),               // ปลดระวาง ไม่มีโซน → ไม่นับ
+  asset('U4', null, 'OV-05', 'เทา', { siteId: ONSITE, status: 'in_stock' }),              // ว่าง (ไม่อยู่หน้างาน) → ไม่นับ
+  asset('Z1', NO_BUILDING_ZONE.id, 'OV-08', 'ดำ', { siteId: ONSITE }),                    // อยู่ในโซนที่ไม่กรอกอาคาร → ไม่นับ
+  asset('Z2', '10026', 'OV-05', 'เทา', { siteId: ONSITE, condition: 'broken' }),
+  asset('Z3', '10026', 'OV-05', 'เทา', { siteId: ONSITE, status: 'removed' }),            // ปลดระวางแต่ยังจำโซนเดิม
+  asset('Z4', '10026', 'OV-05', 'เทา', { siteId: ONSITE, status: 'in_stock' }),
+];
+
+/* จำลองหน้าไซต์: ตัวกรองสองขั้น (ทุกอย่างยกเว้นอาคาร → อาคาร) แบบเดียวกับ assetsByFilters → shownAssets */
+const shownOnPage = ({ query = '', models = [], statuses = [], unzoned = false, building = ALL_BUILDINGS } = {}) => {
+  const byFilters = filterSiteAssets(sortSiteAssets(FLEET, ZONES_L7), BY_ID_L7, { query, models, statuses, unzoned });
+  return { byFilters, shown: filterSiteAssets(byFilters, BY_ID_L7, { building }) };
+};
+
+test('L7 🔴 แถบ "ยังไม่ระบุโซน N" = แถวหลังกด "ดู N รายการ" — ไม่นับปลดระวาง/ว่าง/โซนที่ไม่มีอาคาร', () => {
+  const n = FLEET.filter(isUnzonedOnSiteAsset).length;
+  assert.equal(n, 2);
+  // ก่อนกด: มีคำค้น/รุ่น/สถานะ/อาคารค้างอยู่ — ปุ่มล้างทั้งชุดแล้วตั้ง unzoned
+  const before = shownOnPage({ query: 'tower1', models: ['OV-05|เทา'], statuses: ['removed'], building: 'The Empire Tower1' });
+  assert.notEqual(before.shown.length, n);
+  const after = shownOnPage({ unzoned: true });
+  assert.deepEqual(after.shown.map((a) => a.id).sort(), ['U1', 'U2']);
+  assert.equal(after.shown.length, n, 'ป้ายจำนวนแผง (shownAssets.length) = เลขบนแถบ');
+  // ชิป "ไม่ระบุอาคาร" ไม่ใช่ชุดเดียวกัน (รวมโซนไม่กรอกอาคาร + ปลดระวาง + ว่าง) ⇒ ต้องมีตัวกรองของตัวเอง
+  assert.notEqual(filterSiteAssets(FLEET, BY_ID_L7, { building: NO_BUILDING }).length, n);
+});
+
+test('L7 ชิปอาคารนับตามตัวกรอง "ยังไม่ระบุโซน" ด้วย (ใช้ที่ขั้น assetsByFilters)', () => {
+  const { byFilters } = shownOnPage({ unzoned: true });
+  const chips = buildingChipOptions(byFilters.map((a) => assetBuildingKey(a, BY_ID_L7)), [...ZONES_L7.map((z) => z.building), null]);
+  const noBuilding = chips.find((c) => c.value === NO_BUILDING);
+  assert.equal(noBuilding.count, 2);
+  for (const chip of chips.filter((c) => c.value !== ALL_BUILDINGS && c.value !== NO_BUILDING)) assert.equal(chip.count, 0, chip.label);
+  assert.equal(shownOnPage({ unzoned: true, building: NO_BUILDING }).shown.length, noBuilding.count);
+});
+
+test('L7b(a) หัวแผงใช้คำของตัวเลือก "สถานะ" · เลขแต่ละคำ = แถวจากตัวเลือกชื่อเดียวกัน · ชำรุดนำหน้าด้วย "สภาพ"', () => {
+  const parts = assetPanelSummary(FLEET);
+  assert.deepEqual(parts.map((p) => `${p.label} ${p.count}`), ['ใช้งานอยู่ 3', 'ว่าง 2', 'ซ่อม 1', 'ปลดระวาง 2', 'สภาพชำรุด 1']);
+  for (const part of parts.filter((p) => p.status)) {
+    assert.equal(part.label, ASSET_STATUS_LABELS[part.status]);
+    assert.equal(shownOnPage({ statuses: [part.status] }).shown.length, part.count, part.label);
+  }
+  // กองสถานะครบ ⇒ รวมกันเท่าจำนวนเครื่อง (สภาพเป็นแกนที่สอง ไม่บวกรวม)
+  assert.equal(parts.filter((p) => p.status).reduce((n, p) => n + p.count, 0), FLEET.length);
+  // ใช้งานอยู่/ซ่อมขึ้นเสมอแม้เป็นศูนย์ (แบบเดิม) · กองอื่นที่เป็นศูนย์ตัดทิ้ง
+  assert.deepEqual(assetPanelSummary([]).map((p) => `${p.label} ${p.count}`), ['ใช้งานอยู่ 0', 'ซ่อม 0']);
+});
+
+test('L7b(b) สรุปรุ่นไม่นับปลดระวาง — ตัวเลือก "รุ่น" รวม ⇒ บรรทัดบนจอต้องบอกด้วยคำนำหน้า', () => {
+  const ov05 = assetModelSummary(FLEET).find((s) => s.key === 'OV-05|เทา');
+  assert.equal(ov05.count, 3);
+  assert.equal(shownOnPage({ models: ['OV-05|เทา'] }).shown.length, 5, 'ตัวเลือกรุ่นเห็นปลดระวางด้วย — เลขไม่ใช่ปลายทางของการกด');
+  assert.equal(MODEL_SUMMARY_PREFIX, 'ไม่นับปลดระวาง:');
+});
+
+test('L7b(c) 🔴 "N เครื่อง" บนแถวโซน = "อุปกรณ์ในโซน M ตัว" ของหน้าโซน แม้มีเครื่องปลดระวางค้างโซนเดิม', () => {
+  const counts = zoneAssetCounts(FLEET);
+  // หน้าโซน: เครื่องที่ zoneId ตรง (ทุกสถานะ) → นับด้วยตัวตัดสินเดียวกัน
+  const zonePageCount = (zoneId) => FLEET.filter((a) => a.zoneId === zoneId).filter(countsAsZoneAsset).length;
+  assert.equal(FLEET.filter((a) => a.zoneId === '10026').length, 3, 'ฐานข้อมูลยังจำโซนของเครื่องปลดระวาง');
+  assert.equal(counts.get('10026'), 2);
+  for (const z of ZONES_L7) assert.equal(counts.get(z.id) || 0, zonePageCount(z.id), z.name);
+});
+
+test('L7b(c) 🔴 การ์ดโซนของหน้าเครื่อง "เครื่องในโซน N ตัว" = หน้าโซนที่การ์ดพาไป — รวมตอนดูเครื่องที่ปลดระวางเอง', () => {
+  const zonePageCount = (zoneId) => FLEET.filter((a) => a.zoneId === zoneId).filter(countsAsZoneAsset).length;
+  /* จำลอง assetDetail.js: zoneAssets = เครื่องของไซต์ที่ zoneId ตรง (loadAssets ไม่กรองสถานะ) → การ์ดนับด้วยตัวตัดสินเดียวกัน */
+  const assetCardCount = (viewed) => FLEET.filter((a) => a.zoneId && a.zoneId === viewed.zoneId).filter(countsAsZoneAsset).length;
+  for (const viewed of FLEET.filter((a) => a.zoneId)) {
+    assert.equal(assetCardCount(viewed), zonePageCount(viewed.zoneId), viewed.id);
+  }
+  const retired = FLEET.find((a) => a.id === 'Z3');
+  assert.equal(FLEET.filter((a) => a.zoneId === retired.zoneId).length, 3, 'นับดิบ = 3 (รวมปลดระวาง) — เลขที่เคยขึ้นบนการ์ด');
+  assert.equal(assetCardCount(retired), 2);
+});
+
+/* ── ยามรูปโค้ด: สองหน้าถามตัวตัดสินเดียวกัน ไม่เทียบสถานะเอง ── */
+const ZONE_PAGE = fs.readFileSync(path.resolve(import.meta.dirname, '../../app/database/sites/[id]/zones/[zoneId]/page.js'), 'utf8');
+const liveSrc = (source) => source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/^\s*\/\/.*$/gm, '');
+
+test('หน้าไซต์/หน้าโซน: เลขทุกตัวของ L7/L7b มาจาก lib ตัวเดียว', () => {
+  const page = liveSrc(PAGE);
+  assert.match(page, /assets\.filter\(isUnzonedOnSiteAsset\)\.length/);
+  assert.match(page, /unzoned: assetUnzoned/);
+  assert.match(page, /resetKey: JSON\.stringify\(\[[^\]]*assetUnzoned\]\)/);
+  assert.match(page, /กรอง: ยังไม่ระบุโซน ×/);
+  assert.match(page, /onClick=\{showUnzonedAssets\}/);
+  const show = page.match(/const showUnzonedAssets = [\s\S]*?\n {2}\};/)?.[0] || '';
+  for (const call of ['setAssetQuery("")', 'setAssetBuilding(ALL_BUILDINGS)', 'setAssetModels([])', 'setAssetStatuses([])', 'setAssetUnzoned(true)']) {
+    assert.ok(show.includes(call), call);
+  }
+  assert.match(page, /zoneAssetCounts\(assets\)/);
+  assert.match(page, /assetPanelSummary\(assets\)/);
+  assert.match(page, /\{MODEL_SUMMARY_PREFIX\}/);
+  assert.doesNotMatch(page, /status !== "removed"/, 'ห้ามเทียบสถานะเองบนหน้าไซต์');
+  assert.doesNotMatch(page, /อยู่ในคลัง \$\{|ส่งซ่อม \$\{/, 'คำบนหัวแผงต้องมาจาก ASSET_STATUS_LABELS');
+  const zonePage = liveSrc(ZONE_PAGE);
+  assert.match(zonePage, /zoneAssetsEver\.filter\(countsAsZoneAsset\)/);
+  assert.match(zonePage, /\$\{fmtNumber\(zoneAssets\.length\)\} ตัว/);
+  // การ์ดข้าง: หัวเป็นจำนวนเต็ม ⇒ ตัดลิสต์เมื่อไรต้องบอกบนการ์ด (ทรงเดียวกับการ์ดจุดติดตั้ง)
+  assert.match(zonePage, /const ASSET_PREVIEW = 6;/);
+  assert.match(zonePage, /zoneAssets\.slice\(0, ASSET_PREVIEW\)/);
+  assert.match(zonePage, /subtitle=\{zoneAssets\.length > ASSET_PREVIEW \? `แสดง \$\{ASSET_PREVIEW\} ตัวแรก — /);
+  assert.doesNotMatch(zonePage, /zoneAssets\.slice\(0, 6\)/, 'ห้ามตัดลิสต์เงียบ');
+});
+
+/* หน้าเครื่องเป็นทางที่สองที่พาเข้าหน้าโซน (การ์ด "โซน" ทั้งใบเป็นลิงก์) ⇒ เลขบนการ์ดต้องถามตัวตัดสินเดียวกัน
+   🐞 ตรวจตัวเลข L7b(c) รอบสอง 26/10: แก้หน้าโซนให้ไม่นับปลดระวางแล้ว แต่การ์ดยังนับ `data.zoneAssets` ดิบ
+      ⇒ ความไม่ตรงย้ายจากแถวโซนของหน้าไซต์ไปอยู่ที่การ์ดของหน้าเครื่อง ("4 ตัว" → หน้าโซน "3 ตัว") */
+const ASSET_PAGE = fs.readFileSync(path.resolve(import.meta.dirname, '../../app/database/assets/[id]/page.js'), 'utf8');
+
+test('หน้าเครื่อง: การ์ดโซน "เครื่องในโซน" นับด้วย countsAsZoneAsset (เลขเดียวกับหน้าโซนที่การ์ดพาไป)', () => {
+  const page = liveSrc(ASSET_PAGE);
+  assert.match(page, /import \{[^}]*\bcountsAsZoneAsset\b[^}]*\} from "@\/lib\/service\/siteDetailLists"/);
+  assert.match(page, /zoneAssets \|\| \[\]\)\.filter\(countsAsZoneAsset\)\.length/);
 });

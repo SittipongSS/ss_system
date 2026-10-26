@@ -152,11 +152,12 @@ test('ทะเบียน SO: การ์ด KPI คิดจาก rows ช�
   assert.match(page, /const amounts = splitSalesOrderAmounts\(rows\);/, 'ฐานเดียวกับการ์ดอื่นทั้งแถบ (rows ไม่ใช่ filtered)');
   assert.match(page, /pendingApproval: amounts\.pendingApproval,/);
   assert.match(page, /actual: amounts\.actual,/);
-  // การ์ด Actual ไม่ถูกแตะ — อ่าน summary.actual ตัวเดิม
-  assert.match(page, /label="Actual ก่อน VAT" value=\{fmtMoney\(summary\.actual\)\} note="รวมเฉพาะ SO ที่อนุมัติแล้ว"/);
-  // ยอดรออนุมัติอยู่ใต้การ์ด "รอตรวจอนุมัติ" พร้อมบอกว่ายังไม่นับ
+  // การ์ด Actual อ่าน summary.actual ตัวเดิม · หมายเหตุบอกชุดตรง ๆ (ตรวจตัวเลข L11b: ใบจากใบเสนอราคาเท่านั้น)
+  assert.match(page, /label="Actual ก่อน VAT" value=\{fmtMoney\(summary\.actual\)\} note="รวมเฉพาะใบจากใบเสนอราคาที่อนุมัติแล้ว"/);
+  // ยอดรออนุมัติอยู่ใต้การ์ด "รอตรวจอนุมัติ" พร้อมบอกว่ายังไม่นับ — และบอกว่าเป็นใบจากใบเสนอราคา (L11a)
   assert.match(page, /label="รอตรวจอนุมัติ"/);
-  assert.match(page, /`\$\{fmtMoney\(summary\.pendingApproval\)\} ก่อน VAT · ยังไม่นับ Actual`/);
+  assert.match(page, /`ใบจากใบเสนอราคา · \$\{fmtMoney\(summary\.pendingApproval\)\} ก่อน VAT · ยังไม่นับ Actual`/);
+  assert.match(page, /label="อนุมัติแล้ว"\s+value=\{summary\.approved\}\s+note="ใบจากใบเสนอราคา · นับเป็น Actual"/);
   // 🛑 กับดักหลัก: status !== 'approved' ดึงร่าง/ตีกลับ/ยกเลิกมาปน
   assert.doesNotMatch(page, /status\s*!==?\s*["']approved["']/);
   assert.doesNotMatch(page, /status\s*===?\s*["']approved["']\s*\?\s*Number\(row\.actualAmount\)/,
@@ -171,6 +172,15 @@ test('ทะเบียน SO: หัวกลุ่มแยกสองกอ
   assert.match(page, /splitSalesOrderAmounts\(bucket\.items\)/, 'รออนุมัติของหัวกลุ่มคิดจากแถวในถังชุดเดียวกัน');
   assert.match(page, /<PendingApprovalAmount[\s\S]{0,200}amount=\{pendingOfBucket\.pendingApproval\}/);
   assert.match(page, /total=\{bucketTotal\}/);
+  /* L11c (26/10): ป้าย "n ใบ" ของหัวกลุ่มนับรวมใบย้อนหลัง แต่ยอดรออนุมัติไม่นับ ⇒ หัวกลุ่มบอกจำนวนใบย้อนหลังที่รออนุมัติแยก */
+  assert.match(page, /const historicalPending = historicalPendingCount\(bucket\.items\);/);
+  assert.equal((page.match(/historicalPendingNote\(historicalPending\)/g) || []).length, 2, 'ทั้งกลุ่มที่มี/ไม่มีใบรออนุมัติจากใบเสนอราคา');
+  // "· 1 ใบ" ใช้คลาสของชิ้นกลาง (`.so-pending-approval` › `.so-pending-approval-count`) — ไม่ใช่สตริงเปล่าในฟอนต์ยอดกลุ่ม (รีวิว L11c)
+  assert.match(page, /\{historicalPending && pendingOfBucket\.pendingApprovalCount === 1\s*\? <span className="so-pending-approval"><span className="so-pending-approval-count"> · 1 ใบ<\/span><\/span>\s*: null\}/);
+  assert.doesNotMatch(page, /\? " · 1 ใบ" : null/, 'ห้ามกลับเป็นสตริงเปล่า');
+  const chip = raw('components/salesPlanning/PendingApprovalAmount.js');
+  assert.match(chip, /<span className="so-pending-approval-count"> · \{orders\} ใบ<\/span>/, 'คลาสต้องตรงกับชิ้นกลาง');
+  assert.match(page, /totalTitle="[^"]*ใบย้อนหลังไม่นับยอด"/);
 
   // เซลล์ยอด: ตัดสินด้วยตัวกลาง · ใบรออนุมัติบอกคำว่า "รออนุมัติ" (amber) ไม่ใช่คำกลาง ๆ
   assert.match(page, /const amountKind = salesOrderAmountKind\(row\);/);

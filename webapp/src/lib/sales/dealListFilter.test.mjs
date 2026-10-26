@@ -175,9 +175,43 @@ test('M12a/M12b: เลขท้ายตัวเลือกเดือน FC
   // 🐞 ตัวอย่างในรายงาน: ติ๊ก Won อยู่ — "เลยกำหนด" ต้องเป็น 0 (ดีลปิดแล้วไม่มีวันเลยกำหนด) ไม่ใช่ยอดตามขอบเขต
   const won = dealFacetCounts(MIX, { stage: ['won'] }, searchCtx(''));
   assert.equal(won.due.overdue, 0);
-  assert.equal(won.due.ontime, 3, 'Won ของฉันสามใบ (รวมใบรอเติมข้อมูล — ยังไม่ได้ติ๊กมิตินั้น)');
-  // โหมดรอเติมข้อมูล: ไม่นับดีลที่ไม่ได้รอเติมข้อมูล
+  // L10 (26/10): ดีลปิดแล้วไม่อยู่กลุ่มไหนของเดือน FC ⇒ ติ๊ก Won อยู่ "ตรงกำหนด" = 0 (เดิมนับ Won ทั้งสามใบ)
+  assert.equal(won.due.ontime, 0, 'Won ไม่ใช่ "ตรงกำหนด" — ไม่มีเดือน FC ให้ตามแล้ว');
+  assert.equal(won.due.missing, 0);
+  // โหมดรอเติมข้อมูล: ไม่นับดีลที่ไม่ได้รอเติมข้อมูล · rv-won ปิดแล้ว ⇒ ไม่อยู่กลุ่มไหน
   const rv = dealFacetCounts(MIX, { review: true }, searchCtx(''));
-  assert.equal(rv.due.overdue + rv.due.missing + rv.due.ontime, 2);
+  assert.equal(rv.due.overdue + rv.due.missing + rv.due.ontime, 1);
   assert.equal(rv.delivery.missing, 2);
+});
+
+/* ── ตรวจตัวเลข L10 (26/10): "ตรงกำหนด" ต้องเป็นคำจริง — ดีลที่ปิดแล้วไม่อยู่กลุ่มไหนของเดือน FC ── */
+test('🔴 L10: Won · เข้าโครงการ · Lost = ไม่อยู่กลุ่มเดือน FC (null) · ไม่ขึ้นเมื่อติ๊กตัวเลือกใด · ไม่ถูกนับ', () => {
+  const closed = [
+    deal({ id: 'won-2025', stage: 'won', forecastMonth: '2025-01' }),
+    deal({ id: 'lost-none', stage: 'lost', forecastMonth: null }),
+    deal({ id: 'proj-future', stage: 'in_project', forecastMonth: '2026-12' }),
+  ];
+  const open = [
+    deal({ id: 'open-future', stage: 'proposal', forecastMonth: '2026-12' }),
+    deal({ id: 'open-this', stage: 'proposal', forecastMonth: MONTH }),
+    deal({ id: 'open-past', stage: 'proposal', forecastMonth: '2026-01' }),
+    deal({ id: 'open-none', stage: 'proposal', forecastMonth: null }),
+  ];
+  for (const d of closed) {
+    assert.equal(dealDueKey(d, MONTH), null, d.id);
+    for (const due of [['ontime'], ['overdue'], ['missing'], ['overdue', 'missing', 'ontime']]) {
+      assert.equal(dealPassesListFilters(d, { due }, { currentMonth: MONTH }), false, `${d.id} due=${due}`);
+    }
+    // ไม่ติ๊กเดือน FC = ยังอยู่ในตาราง (มิตินี้ไม่ซ่อนดีลปิดเมื่อไม่ได้ใช้)
+    assert.equal(dealPassesListFilters(d, {}, { currentMonth: MONTH }), true, d.id);
+  }
+  assert.deepEqual(open.map((d) => dealDueKey(d, MONTH)), ['ontime', 'ontime', 'overdue', 'missing']);
+  const facets = dealFacetCounts([...closed, ...open], {}, { currentMonth: MONTH });
+  assert.deepEqual(facets.due, { overdue: 1, missing: 1, ontime: 2 }, 'เดิม ontime = 5 (นับดีลปิดสามใบด้วย)');
+  // ตัวเลือก = แถวหลังติ๊ก (ชุดผสม)
+  for (const value of ['overdue', 'missing', 'ontime']) {
+    const rows = [...closed, ...open].filter((d) => dealPassesListFilters(d, { due: [value] }, { currentMonth: MONTH }));
+    assert.equal(rows.length, facets.due[value], value);
+    assert.ok(rows.every((d) => !['won', 'in_project', 'lost'].includes(d.stage)), `${value}: ไม่มีดีลปิด`);
+  }
 });

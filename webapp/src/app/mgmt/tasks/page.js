@@ -4,23 +4,29 @@ import Select from "@/components/ui/Select";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ListTodo, Plus, RotateCcw, Search } from "lucide-react";
 import { useRole, useCan } from "@/lib/roleContext";
 import TaskFormModal from "@/components/mgmt/TaskFormModal";
 import TaskDrawer from "@/components/mgmt/TaskDrawer";
-import { TASK_STATUSES, TASK_STATUS_LABELS, TASK_PRIORITIES, TASK_PRIORITY_LABELS } from "@/lib/mgmt/constants";
+import {
+  TASK_STATUSES, TASK_STATUS_LABELS, TASK_PRIORITIES, TASK_PRIORITY_LABELS,
+  MGMT_TASKS_URGENT_OPEN_LABEL, mgmtTaskLinkRows, mgmtTasksHref, readMgmtTasksLink,
+} from "@/lib/mgmt/constants";
 import { cachedFetchJson } from "@/lib/apiCache";
 import EmptyState from "@/components/ui/EmptyState";
 import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
 import { naText, NA } from "@/lib/format";
 import { apiFetch } from "@/lib/apiFetch";
+import { businessDate } from "@/lib/businessDate";
 
-const nowYear = new Date().getFullYear();
+// ปีตั้งต้น = ปีของ **วันไทย** — ตัวเดียวกับที่ป้ายเมนู `mgmtTasks` นับ (api/nav/counts ใช้ businessDate)
+const nowYear = Number(businessDate().slice(0, 4));
 const YEAR_OPTIONS = [nowYear + 1, nowYear, nowYear - 1, nowYear - 2, nowYear - 3];
 const STATUS_CLASS = { done: "ok", in_progress: "", todo: "", cancelled: "danger" };
-const EMPTY_FILTERS = { q: "", deptCode: "", status: "", priority: "" };
+// ⚠️ ปี · สถานะ · มุมมองจากลิงก์ **ไม่อยู่ในนี้** — อยู่ใน URL (`readMgmtTasksLink` · ตรวจตัวเลข L4)
+const EMPTY_FILTERS = { q: "", deptCode: "", priority: "" };
 const fmt = (d) => {
   if (!d) return "—";
   const dt = new Date(d + "T00:00:00");
@@ -33,7 +39,22 @@ export default function MgmtTasksPage() {
   const canEdit = useCan("mgmt:edit");
   const canMgmt = useCan("mgmt:view");
 
-  const [year, setYear] = useState(nowYear);
+  /* ⭐ **URL เป็นแหล่งเดียวของปี · สถานะ · มุมมองงานด่วน** (ตรวจตัวเลข L4 · 2026-10-26 · กติกาที่แทน ม-115 "อ่านครั้งเดียว")
+     การ์ด KPI ของ /mgmt พามาพร้อม `?year=` ของหน้านั้น + `?status=` หรือ `?view=urgentOpen` ⇒ แถว = เลขบนการ์ด
+     🐞 เดิมหน้านี้เปิดที่ปีปัจจุบันเสมอและอ่าน `?count=` ครั้งเดียวตอนเมานต์ ⇒ ลิงก์ "งานด่วน — ยังไม่เสร็จ"
+        ได้งานทุกใบของปีนี้ · อยู่บนหน้าแล้วกดป้ายเมนูไม่มีอะไรเปลี่ยน · "ล้าง" ไม่ล้างชิป "รอฉันลงมือ"
+     ⚠️ ตัวเลือกปี/สถานะ · ปุ่ม × · "ล้าง" = เขียน URL ใหม่ (`router.replace`) ไม่ใช่ setState
+     ⚠️ `?view=urgentOpen` มาจาก /mgmt ทางเดียว (คนละหน้า ⇒ เมานต์ใหม่ทุกครั้ง ตัวกรองในหน้าว่างอยู่แล้ว) ⇒ อยู่ใน URL ได้
+        ต่างจาก `?count=` ของป้ายเมนูที่กดซ้ำได้ขณะอยู่บนหน้านี้ — ดูข้างล่าง */
+  const searchParams = useSearchParams();
+  const link = readMgmtTasksLink(searchParams, { defaultYear: nowYear });
+  const { year, urgentOpen: urgentOpenOnly } = link;
+  const statusFilter = link.status;
+  // `?count=` ไม่ถูกเขียนกลับ (ธงป้ายเมนูเป็น state · ดูข้างล่าง)
+  const writeLink = (patch) => router.replace(
+    mgmtTasksHref({ year: link.year, status: link.status, urgentOpen: link.urgentOpen, ...patch }), { scroll: false });
+  // ปีจากลิงก์ที่ไม่อยู่ในตัวเลือก (เช่น ปีเก่ากว่า 3 ปีจาก /mgmt) ต้องยังเลือกค้างได้ ไม่ใช่ตัวเลือกว่าง
+  const yearOptions = YEAR_OPTIONS.includes(year) ? YEAR_OPTIONS : [...YEAR_OPTIONS, year].sort((a, b) => b - a);
   const [tasks, setTasks] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [users, setUsers] = useState([]);
@@ -43,10 +64,19 @@ export default function MgmtTasksPage() {
      มอบหมายให้ฉัน ⇒ กดแล้วต้องเจอเท่านั้น ไม่ใช่งานทั้งปีของทุกฝ่าย
      ⚠️ ธง `_waitingOnMe` มาจาก server ด้วย helper ตัวเดียวกับที่ป้ายใช้นับ — หน้านี้ไม่รู้
      ว่าใครล็อกอินอยู่ (มีแต่ role) คำนวณเองไม่ได้
-     ⚠️ อ่านครั้งเดียวตอนเปิดหน้า ไม่เฝ้าค่า — ไม่งั้นกดล้างตัวกรองไม่ได้ */
-  const [waitingOnMeOnly, setWaitingOnMeOnly] = useState(
-    () => new URLSearchParams(window.location.search).get("count") === "mgmtTasks",
-  );
+     ⭐ แพตเทิร์น M9 (/sa/tasks): ธงเป็น state · พอเห็น `?count=` ⇒ ติดธง + ล้างคำค้น/แผนก/ลำดับ แล้ว **ถอด `count`
+        ออกจาก URL ทันที** (คงปี/สถานะ/มุมมองของลิงก์ป้าย = ค่าตั้งต้น) ⇒ กดป้ายซ้ำขณะอยู่บนหน้านี้ = URL เปลี่ยนจริง
+        effect วิ่งใหม่ทุกครั้ง · 🐞 รุ่นก่อนล้างเฉพาะตอนธง "เพิ่งติด" ⇒ อยู่ที่ `?count=` แล้วพิมพ์ค้น → กดป้ายซ้ำ
+        (URL เดิม ไม่มีอะไรเปลี่ยน) คำค้นค้าง แถวน้อยกว่าเลขบนป้าย (รีวิว L4 · 26/10) */
+  const badgeParam = link.waitingOnMe;
+  const [waitingOnMeOnly, setWaitingOnMeOnly] = useState(badgeParam);
+  useEffect(() => {
+    if (!badgeParam) return;
+    setWaitingOnMeOnly(true);
+    setFilters(EMPTY_FILTERS);
+    router.replace(mgmtTasksHref({ year: link.year, status: link.status, urgentOpen: link.urgentOpen }), { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [badgeParam]);
 
   const [formOpen, setFormOpen] = useState(false);
   const [formTask, setFormTask] = useState(null);
@@ -68,7 +98,7 @@ export default function MgmtTasksPage() {
     if (!opts?.background) setLoading(true);
     const p = new URLSearchParams({ year: String(year) });
     if (filters.deptCode) p.set("deptCode", filters.deptCode);
-    if (filters.status) p.set("status", filters.status);
+    if (statusFilter) p.set("status", statusFilter);
     if (filters.priority) p.set("priority", filters.priority);
     try {
       const res = await apiFetch(`/api/mgmt/tasks?${p}`);
@@ -77,22 +107,23 @@ export default function MgmtTasksPage() {
       setTasks(rows);
     } catch { if (isLatest() && !opts?.background) setTasks([]); }
     if (isLatest()) setLoading(false);
-  }, [year, filters.deptCode, filters.status, filters.priority, startRun]);
+  }, [year, filters.deptCode, statusFilter, filters.priority, startRun]);
 
   useEffect(() => { loadTasks(); }, [loadTasks]);
   useRevalidateOnFocus(loadTasks);
 
   const rows = useMemo(() => {
     const q = filters.q.trim().toLowerCase();
-    const base = waitingOnMeOnly ? tasks.filter((t) => t._waitingOnMe) : tasks;
+    // ธงจากลิงก์ — `isUrgentOpenTask` ตัวเดียวกับที่ /api/mgmt/overview นับการ์ด "งานด่วนที่ยังไม่เสร็จ"
+    const base = mgmtTaskLinkRows(tasks, { urgentOpen: urgentOpenOnly, waitingOnMe: waitingOnMeOnly });
     if (!q) return base;
     return base.filter((t) =>
       (t.title || "").toLowerCase().includes(q) ||
       (t.assigneeName || "").toLowerCase().includes(q) ||
       (t.deptCode || "").toLowerCase().includes(q));
-  }, [tasks, filters.q, waitingOnMeOnly]);
+  }, [tasks, filters.q, waitingOnMeOnly, urgentOpenOnly]);
   // มีตัวกรองอยู่ = "ไม่พบ" ไม่ใช่ "ยังไม่มีงาน" — สองคำนี้พาคนอ่านไปคนละทาง
-  const filtering = !!(filters.q.trim() || filters.deptCode || filters.status || filters.priority || waitingOnMeOnly);
+  const filtering = !!(filters.q.trim() || filters.deptCode || statusFilter || filters.priority || waitingOnMeOnly || urgentOpenOnly);
 
   const upsertRow = (row) => setTasks((prev) => {
     const i = prev.findIndex((t) => t.id === row.id);
@@ -134,14 +165,14 @@ export default function MgmtTasksPage() {
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
               <input autoComplete="off" value={filters.q} placeholder="ชื่องาน, แผนก, ผู้รับผิดชอบ" aria-label="ค้นหางาน" onChange={(e) => setFilters((f) => ({ ...f, q: e.target.value }))} />
             </div>
-            <Select value={year} onChange={(e) => setYear(Number(e.target.value))} aria-label="ปีของรายการงาน">
-              {YEAR_OPTIONS.map((y) => <option key={y} value={y}>ปี {y}</option>)}
+            <Select value={year} onChange={(e) => writeLink({ year: Number(e.target.value) })} aria-label="ปีของรายการงาน">
+              {yearOptions.map((y) => <option key={y} value={y}>ปี {y}</option>)}
             </Select>
             <Select value={filters.deptCode} onChange={(e) => setFilters((f) => ({ ...f, deptCode: e.target.value }))} aria-label="กรองตามแผนก">
               <option value="">ทุกแผนก</option>
               {departments.map((d) => <option key={d.code} value={d.code}>{d.label}</option>)}
             </Select>
-            <Select value={filters.status} onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))} aria-label="กรองตามสถานะ">
+            <Select value={statusFilter} onChange={(e) => writeLink({ status: e.target.value })} aria-label="กรองตามสถานะ">
               <option value="">ทุกสถานะ</option>
               {TASK_STATUSES.map((s) => <option key={s} value={s}>{TASK_STATUS_LABELS[s]}</option>)}
             </Select>
@@ -150,11 +181,15 @@ export default function MgmtTasksPage() {
               {TASK_PRIORITIES.map((p) => <option key={p} value={p}>{TASK_PRIORITY_LABELS[p]}</option>)}
             </Select>
             {waitingOnMeOnly && (
-              /* ตัวกรองที่ใช้อยู่เป็นปุ่มกดล้าง — ต้นแบบเดียวกับคิวคำร้อง */
+              /* ตัวกรองที่ใช้อยู่เป็นปุ่มกดล้าง — ต้นแบบเดียวกับคิวคำร้อง · ธงนี้เป็น state (`count` ถูกถอดจาก URL ไปแล้ว) */
               <Button size="sm" onClick={() => setWaitingOnMeOnly(false)}>กรอง: รอฉันลงมือ ×</Button>
             )}
+            {urgentOpenOnly && (
+              <Button size="sm" onClick={() => writeLink({ urgentOpen: false })}>กรอง: {MGMT_TASKS_URGENT_OPEN_LABEL} ×</Button>
+            )}
             <div className="spacer" />
-            <Button icon={<RotateCcw size={14} />} onClick={() => setFilters(EMPTY_FILTERS)}>ล้าง</Button>
+            {/* "ล้าง" = ตัวกรองทุกตัวรวมชิปจากลิงก์และสถานะ (คงปีไว้ — ปีเป็นชุดข้อมูล ไม่ใช่ตัวกรอง) · 🐞 เดิมชิป "รอฉันลงมือ" ค้าง */}
+            <Button icon={<RotateCcw size={14} />} onClick={() => { setFilters(EMPTY_FILTERS); setWaitingOnMeOnly(false); router.replace(mgmtTasksHref({ year }), { scroll: false }); }}>ล้าง</Button>
           </>
         )}
       >

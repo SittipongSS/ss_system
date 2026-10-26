@@ -70,6 +70,8 @@ export async function GET(request) {
     // ⭐ "ขาดราคาขายปลีก" ย้ายมาจากแท็บของ /tax/reports (มติผู้ใช้ 2026-08-29)
     // — ต้องรับที่นี่ด้วย ไม่งั้นไฟล์กับตารางเดินหนีกันทันทีที่ผู้ใช้ติ๊กตัวกรองนี้
     missingRetailPrice: url.searchParams.get('missingPrice') === '1',
+    // ⭐ "ต้องเสียสรรพสามิต" (การ์ด/ตัวกรองคู่กัน · ตรวจตัวเลข 26/10 L16b) — เหตุผลเดียวกับบรรทัดบน
+    taxable: url.searchParams.get('taxable') === '1',
     productTypes: productTypes || [],
   }).sort((a, b) => String(a.fgCode || '').localeCompare(String(b.fgCode || ''), 'th'));
 

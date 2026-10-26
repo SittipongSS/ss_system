@@ -9,11 +9,13 @@ import EmptyState from "@/components/ui/EmptyState";
 import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
 import FilterPopover from "@/components/ui/FilterPopover";
+import KpiCard from "@/components/ui/KpiCard";
 import { useApiList } from "@/lib/excise/useApiList";
 import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
 import { lineStage, STAGE_LABEL } from "@/lib/sahamit/po";
+import { LEAD_OUT_FC, MATERIAL_CARD_FILTERS, materialCardCounts, materialRowMatches } from "@/lib/sahamit/material";
 import { ppcOf, casesText } from "@/lib/sahamit/units";
 import { fmtDate, fmtNumber, naText, NA } from "@/lib/format";
 import { useCan } from "@/lib/roleContext";
@@ -210,38 +212,25 @@ export default function MaterialPage() {
     return Object.keys(STAGE_LABEL).filter((k) => present.has(k)).map((k) => ({ value: k, label: STAGE_LABEL[k] }));
   }, [rows]);
 
-  const filteredRows = useMemo(() => {
-    if (!q && !fcSel.length && !stageSel.length && !issueSel.length) return rows;
-    return rows.filter((r) => {
-      if (q && !String(r.fgCode).toLowerCase().includes(q)
-        && !String(r.productName || "").toLowerCase().includes(q)
-        && !String(r.poNumber || "").toLowerCase().includes(q)) return false;
-      if (fcSel.length && !fcSel.includes(r.inForecast ? "in" : "out")) return false;
-      if (stageSel.length && !stageSel.includes(rowStage(r))) return false;
-      if (issueSel.length) {
-        const hit = (issueSel.includes("late") && r.lateVsDue) || (issueSel.includes("slip") && r.ourSlip);
-        if (!hit) return false;
-      }
-      return true;
-    });
-  }, [rows, q, fcSel, stageSel, issueSel]);
+  /* ⭐ ตัวตัดสินเดียวของตารางกับการ์ด (`materialRowMatches` · lib/sahamit/material.js — ตรวจตัวเลข L6 26/10) */
+  const filteredRows = useMemo(
+    () => rows.filter((r) => materialRowMatches(r, { q, fc: fcSel, stages: stageSel, issues: issueSel }, rowStage)),
+    [rows, q, fcSel, stageSel, issueSel],
+  );
 
   const filterCount = fcSel.length + stageSel.length + issueSel.length;
   const clearFilters = () => { setFcSel([]); setStageSel([]); setIssueSel([]); };
 
-  const stats = useMemo(() => ({
-    total: rows.length,
-    outFc: rows.filter((r) => !r.inForecast).length,
-    lateDue: rows.filter((r) => r.lateVsDue).length,
-    slip: rows.filter((r) => r.ourSlip).length,
-  }), [rows]);
-
-  const Stat = ({ n, label, color }) => (
-    <div className="glass-panel" style={{ padding: "12px 16px", minWidth: 120 }}>
-      <div style={{ fontSize: "var(--fs-13)", fontWeight: "var(--fw-bold)", color: color || "var(--text)" }}>{n}</div>
-      <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>{label}</div>
-    </div>
-  );
+  /* การ์ดสี่ใบ = ปุ่มตั้งตัวกรองทั้งชุด (ล้างคำค้นและตัวกรองที่ค้างอยู่) · เลข = แถวที่ตารางวาดหลังกด
+     🐞 เดิมเป็น <div> กดไม่ได้ นับจากทุกแถว ⇒ มีคำค้น/สถานะค้างอยู่ ตารางกับเลขบนการ์ดไม่ตรงกัน */
+  const stats = useMemo(() => materialCardCounts(rows, rowStage), [rows]);
+  const pickCard = (key) => {
+    const set = MATERIAL_CARD_FILTERS[key];
+    setSearch("");
+    setFcSel([...set.fc]);
+    setStageSel([...set.stages]);
+    setIssueSel([...set.issues]);
+  };
 
   return (
     <Workspace
@@ -269,11 +258,12 @@ export default function MaterialPage() {
         </div>
       ) : (
         <>
-          <div style={{ display: "flex", gap: 12, marginBottom: 18, flexWrap: "wrap" }}>
-            <Stat n={stats.total} label="บรรทัด PO ทั้งหมด" />
-            <Stat n={stats.outFc} label="นอก FC (90 วัน)" color="var(--violet)" />
-            <Stat n={stats.lateDue} label="เกินกำหนด (PO/lead)" color="var(--amber)" />
-            <Stat n={stats.slip} label="เราส่งช้า" color="var(--red)" />
+          {/* ⚠️ ป้าย "นอก FC" บอกหน่วยของ lead time ตรง ๆ — LEAD_OUT_FC เป็น **วันทำการ** (เดิม "(90 วัน)" อ่านเป็น "90 วันที่ผ่านมา") */}
+          <div className="kpi-grid">
+            <KpiCard label="บรรทัด PO ทั้งหมด" value={stats.all} tone="accent" onClick={() => pickCard("all")} />
+            <KpiCard label={`นอก FC (lead ${LEAD_OUT_FC} วันทำการ)`} value={stats.outFc} color="var(--violet)" hint="ไม่มี FC ของเดือนส่ง — ต้องสั่ง PM + RM" onClick={() => pickCard("outFc")} />
+            <KpiCard label="เกินกำหนด (PO/lead)" value={stats.late} tone="warning" hint="วันส่งแนะนำเลยวันกำหนด" onClick={() => pickCard("late")} />
+            <KpiCard label="เราส่งช้า" value={stats.slip} tone="danger" hint="ส่งจริงหลังวันส่งแนะนำ" onClick={() => pickCard("slip")} />
           </div>
 
           <div className="toolbar">

@@ -353,6 +353,11 @@ test('🔴 ปฏิทิน: "ยังไม่ได้ให้วัน" /
   assert.match(dueWeekPanel, /ยังไม่ได้ให้วัน \{undated\.requester\}/);
   assert.match(dueWeekPanel, /เลยกำหนดแล้ว \{overdue\.dept\} ใบ/);
   assert.doesNotMatch(dueWeekPanel, /\?tab=todo&count=undated/, 'ลิงก์มาจาก deptTurnCountHref ไม่ประกอบเอง');
+  /* L9b (ตรวจตัวเลข 26/10) — "เลยกำหนดแล้ว N ใบ" นับทุกสัปดาห์ ⇒ ต้องกดไปชุดเดียวกับปุ่ม "รอ RD" ของแถบเตือนได้
+     (ข้อความเฉย ๆ = เลขที่ไม่มีทางไปดูใบชุดนั้น) */
+  assert.match(dueWeekPanel, /router\.push\(deptTurnCountHref\("dept", "overdue", \{ queueHref \}\)\)/);
+  assert.doesNotMatch(dueWeekPanel, /<span[^>]*>เลยกำหนดแล้ว/, 'ห้ามกลับไปเป็นข้อความที่กดไม่ได้');
+  assert.doesNotMatch(dueWeekPanel, /\?tab=todo&count=overdue/);
 });
 
 test('🔴 ปฏิทิน: สีแดงบนช่องรายวันมาจาก deptCalendarMarks ไม่ใช่ item.overdue ของ dueCalendar (ทุกตา)', () => {

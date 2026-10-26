@@ -13,7 +13,7 @@
 // ⭐ **หนึ่งคนหนึ่งเด้งต่อวัน** (กติกาผู้รับ mig 0185) — ไม่ใช่หนึ่งใบหนึ่งเด้ง
 //    คนที่มีใบค้าง 6 ใบต้องได้ข้อความเดียวที่บอกว่า 6 ใบ ไม่ใช่กระดิ่ง 6 อัน
 import {
-  SIGNATURE_LATE_DAYS, daysAwaitingSignature, isContractWaitingOnMe, isExternalContract,
+  daysAwaitingSignature, isContractWaitingOnMe, isExternalContract, isSignatureLate,
 } from '@/lib/sales/contracts';
 
 export const CONTRACT_OVERDUE_KIND = 'contract_signature_overdue';
@@ -30,7 +30,7 @@ export const overdueSignatureDedupeKey = (dayKey, userId) => `CTLATE-${dayKey}-$
  * @param now       เวลาอ้างอิง (ฉีดเข้ามาเพื่อให้เทสต์ไม่อ่านนาฬิกาจริง)
  * @param dayKey    วันตามนาฬิกาไทย (`businessDayKey`) — ใช้เป็นกุญแจกันยิงซ้ำ
  *
- * ⚠️ เกณฑ์ "สาย" ใช้ `SIGNATURE_LATE_DAYS` ตัวเดียวกับการ์ดสรุป · ราง · ป้ายบนใบ
+ * ⚠️ เกณฑ์ "สาย" = `isSignatureLate` (เกิน `SIGNATURE_LATE_DAYS`) ตัวเดียวกับการ์ดสรุป · ตัวกรองทะเบียน · ราง · ป้ายบนใบ
  *    เทียบด้วย `>` เหมือนกันหมด — ถ้าที่นี่ใช้ `>=` คนจะได้กระดิ่งก่อนที่การ์ดจะนับให้
  * ⚠️ **ผู้รับคือเจ้าของใบ ไม่ใช่ทั้งทีม** — ไม่มีทั้ง `ownerId` และ `createdBy` = ไม่ยิง
  *    (ส่งหาทุกคนคือสิ่งที่ทำให้กระดิ่งกลายเป็นกองที่ไม่มีใครอ่าน)
@@ -38,8 +38,8 @@ export const overdueSignatureDedupeKey = (dayKey, userId) => `CTLATE-${dayKey}-$
 export function overdueSignatureNotices(contracts = [], { now = new Date(), dayKey = null } = {}) {
   const late = [];
   for (const contract of contracts || []) {
+    if (!isSignatureLate(contract, now)) continue;
     const days = daysAwaitingSignature(contract, now);
-    if (days === null || days <= SIGNATURE_LATE_DAYS) continue;
     const userId = contract.ownerId || contract.createdBy;
     if (!userId) continue;
     late.push({ contract, days, userId: String(userId) });

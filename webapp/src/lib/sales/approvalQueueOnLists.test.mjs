@@ -228,7 +228,10 @@ test('⭐ ชิป "ยังไม่ตั้งงานบริการ n
   assert.match(page, /const serviceSetupPendingCount = useMemo\(\s*\(\) => rows\.filter\(\(row\) => row\._serviceSetupPending\)\.length,\s*\[rows\],?\s*\);/);
 
   const memo = slice(page, 'const filtered = useMemo(', '\n\n');
-  assert.match(memo, /if \(serviceSetupPendingOnly && !row\._serviceSetupPending\) return false;/);
+  /* ตรวจตัวเลข L11 (26/10): เงื่อนไขของมิติย้ายไปตัวตัดสินกลาง (lib/sales/salesOrderListFilter) — หน้าส่งธงเข้าไป */
+  assert.match(memo, /serviceSetupPending: serviceSetupPendingOnly,/);
+  assert.match(memo, /return rows\.filter\(\(row\) => salesOrderPassesListFilters\(row, filters, \{ matchesSearch \}\)\);/);
+  assert.match(read('lib/sales/salesOrderListFilter.js'), /if \(f\.serviceSetupPending && !row\._serviceSetupPending\) return false;/);
   assert.match(memo, /\}, \[[^\]]*\bserviceSetupPendingOnly\b[^\]]*\]\);/, 'ต้องอยู่ใน dependency ของ memo ด้วย');
   assert.match(slice(page, 'usePagination(sorted', ';'), /\$\{serviceSetupPendingOnly\}/);
   assert.match(slice(page, 'onClear={() => {', '}}'), /setServiceSetupPendingOnly\(false\)/);
