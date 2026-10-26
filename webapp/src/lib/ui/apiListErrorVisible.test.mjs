@@ -906,7 +906,11 @@ test("PO (รายการ): สายรองล้มไม่ซ่อน�
   // รอบแรกรอสายรองด้วย — `firstLoad = loading` เฉย ๆ = วาบ "฿0.00 · n รายการไม่มีราคา" ก่อนรายการสินค้ามาถึง
   assert.ok(ast.readsIn("firstLoad").has("sources"), "firstLoad ต้องรอ pending ของทุกสาย (ก้อน sources) ไม่ใช่ loading ของสาย PO อย่างเดียว");
   // ค้นด้วยชื่อสินค้าต้องอ่านชื่อที่บันทึกกับบรรทัด PO ด้วย — รายการสินค้าล้มแล้ว "ไม่มี PO ตรงเงื่อนไข" ทั้งที่ใบอยู่ครบ
-  assert.ok(ast.membersIn("filteredPos").has("productName"), "คำค้นของ filteredPos ต้องรวม productName ของบรรทัด PO (ไม่พึ่งรายการสินค้าอย่างเดียว)");
+  // ⭐ M24a (ตรวจตัวเลข 20/10): คำค้นย้ายไปตัวกลาง `poMatchesSearch` ของ lib/sahamit/po.js (มุมมองรายใบ + ตาราง ใช้ตัวเดียวกัน)
+  //    ⇒ ถามสองข้อ: filteredPos ค้นผ่านตัวกลาง · กองคำค้นของบรรทัด (`poLineSearchText`) อ่าน productName ที่บันทึกกับบรรทัด PO
+  assert.ok(ast.calls("poMatchesSearch").some((p) => ast.within(p, "filteredPos")), "filteredPos ต้องค้นผ่าน poMatchesSearch (ตัวกลางของสองมุมมอง)");
+  assert.match(read("lib/sahamit/po.js").replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, ""), /export function poLineSearchText[\s\S]*?line\?\.productName/,
+    "คำค้นของบรรทัด PO ต้องรวม productName ที่บันทึกกับบรรทัด (ไม่พึ่งรายการสินค้าอย่างเดียว)");
 });
 
 test("PO (ใหม่): รายการสินค้าไม่เคยโหลดขึ้น = ฟอร์มไม่เปิด (ป้ายแทนฟอร์ม) ไม่ใช่ picker ว่างที่อ่านว่าไม่มีสินค้า", () => {
@@ -1031,7 +1035,8 @@ test("วัสดุ: รายการสินค้าล้มไม่ซ
   elseOf(rel, "ยังไม่มีบรรทัด PO ให้ติดตาม", "pageBlocked");
   // ตัวแปรทุกตัวของฮุกรายการสินค้า — ตาราง/การ์ดห้ามถูกคุมด้วยตัวไหนเลย (บันทึก PM/RM ไม่ได้อ่านรายการสินค้า)
   const productNames = Object.values(hookFor(ast, '"/api/sahamit/products"').b).map((b) => b.identifier.name);
-  for (const tag of ["MaterialRow", "Stat"]) assertGates(rel, { tag }, { must: ["pageBlocked"], mustNot: productNames }, `<${tag}>`);
+  // การ์ดนับเป็น KpiCard ที่กดตั้งตัวกรองได้แล้ว (ตรวจตัวเลข L6 · 26/10) — เดิมเป็น <Stat> div ในหน้า
+  for (const tag of ["MaterialRow", "KpiCard"]) assertGates(rel, { tag }, { must: ["pageBlocked"], mustNot: productNames }, `<${tag}>`);
 });
 
 test("FC: รอบ FC ไม่ขึ้นห้ามตอบ 'ยังไม่มีรอบ' · สายรองล้มไม่ซ่อนแท็บ — ติ๊กเลือก/สร้างดีล/ลัง/ตัวกรอง พักพร้อมเหตุ · picker AE บอกในโมดัล", () => {

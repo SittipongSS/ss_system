@@ -12,7 +12,7 @@
 // ⚠️ **ตรรกะอยู่ที่นี่ ไม่ใช่ในหน้าเว็บ** — `components/ui/StepTrack` วาดอย่างเดียว
 //    (แพตเทิร์นเดียวกับ `salesOrderListTrack.js` และ `requests/queueTrack.js`)
 import {
-  daysAwaitingSignature, isExternalContract, isSubstituteContract, SIGNATURE_LATE_DAYS,
+  daysAwaitingSignature, isExternalContract, isSignatureLate, isSubstituteContract,
 } from '@/lib/sales/contracts';
 
 const step = (key, label, state, note = null) => ({ key, label, state, note });
@@ -22,6 +22,7 @@ const step = (key, label, state, note = null) => ({ key, label, state, note });
  *
  * @param contract แถวจาก `/api/sales-planning/contracts` — ใช้ `status` · `contractNo`
  *                 · `issuedAt` · `signedDate` · `_quotationClosure`
+ * @param now      เวลาอ้างอิงของ "ค้างเกินเกณฑ์" — ทะเบียนส่ง asOf ตัวเดียวกับการ์ด/ตาราง (ตรวจตัวเลข L2)
  * @returns {{closed: boolean, steps: Array<{key,label,state,note}>}}
  *          `closed: true` = ใบยกเลิก/ถูกแทนด้วยฉบับแก้ไข → **ไม่มีรางให้เดิน**
  *          หน้าเว็บโชว์ป้ายแทน (ลากรางที่ตายแล้วมาวาดทำให้อ่านเหมือนใบยังเดินอยู่)
@@ -68,7 +69,7 @@ function externalTrack(status, { substitute = false, docReady = false } = {}) {
   };
 }
 
-export function contractListTrack(contract = {}) {
+export function contractListTrack(contract = {}, { now = new Date() } = {}) {
   const status = contract?.status || 'draft';
   if (status === 'cancelled' || status === 'revised') return { closed: true, steps: [] };
   if (isExternalContract(contract)) {
@@ -94,8 +95,10 @@ export function contractListTrack(contract = {}) {
 
   /* ⚠️ "รอลงนาม" ค้างนานคือตัวทวง ไม่ใช่ความผิดพลาดของใบ — แต่ต้องเห็นจากรางโดยไม่ต้อง
      อ่านตัวเลข ⇒ เกิน 14 วันย้อมเป็นธงแดงพร้อมโน้ตจำนวนวัน (เกณฑ์เดียวกับการ์ดสรุป) */
-  const waiting = daysAwaitingSignature(contract);
-  const late = status === 'awaiting_signature' && Number(waiting) > SIGNATURE_LATE_DAYS;
+  const waiting = daysAwaitingSignature(contract, now);
+  /* ตัวตัดสินเดียวกับการ์ด/ตัวกรองของทะเบียน (ตรวจตัวเลข L2) · `now` = เวลาอ้างอิงของหน้า (asOf) —
+     ไม่ส่งมา = อ่านนาฬิกาตอนนี้ (การ์ดสัญญาในหน้าดีล) */
+  const late = isSignatureLate(contract, now);
   const issueStep = (signed || awaitingApproval)
     ? step('issue', 'รอลงนาม', 'done')
     : issued

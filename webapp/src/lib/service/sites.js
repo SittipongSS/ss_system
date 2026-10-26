@@ -53,6 +53,27 @@ export function isAssetOnSite(asset) {
   return asset?.status !== 'removed' && asset?.status !== 'in_stock' && !!asset?.siteId;
 }
 
+/* ── "อยู่ที่ไหน" ของทะเบียนเครื่อง (/database/assets) — ตัวเลขสรุปกับตัวกรองถามตัวเดียวกัน (ตรวจตัวเลข M22 · 20/10) ──
+   🐞 ตัวเลข "ที่ไซต์ลูกค้า" นับด้วย `isAssetOnSite` (ไม่ดูชนิดไซต์) แต่ตัวกรอง "อยู่ที่ไหน: ที่ไซต์ลูกค้า" ดูแค่
+      `siteId`/`siteKind` (ไม่ดูสถานะ) ⇒ เครื่องปลดระวางที่ยังจำไซต์สุดท้ายไว้ (mig 0344 ตั้งใจเก็บไว้ · การปลดไม่ล้างไซต์)
+      ขึ้นในตัวกรองแต่ไม่อยู่ในตัวเลข · เครื่องซ่อมที่อยู่ไซต์คลังนับในตัวเลขแต่ตัวกรองบอก "ยังไม่ได้ติดตั้ง"
+   ⭐ สามค่าแบ่งเครื่องทุกตัวไม่ซ้อนกัน:
+      'retired' = ปลดระวางแล้ว (ไม่ว่าจะจำไซต์ไว้หรือไม่)
+      'site'    = อยู่หน้างานลูกค้าจริง (`isAssetOnSite` + ไม่ใช่ไซต์คลัง)
+      'stock'   = ที่เหลือ — ยังไม่มีที่อยู่ · ว่าง · อยู่ไซต์คลัง
+   ⚠️ ตัวนี้เป็นของจอทะเบียนเครื่องเท่านั้น — **ไม่แตะ `isAssetOnSite`** ที่เติมน้ำหอม/ภาระคิวช่าง/นำเข้า/ประวัติใช้อยู่ */
+export const ASSET_LOCATIONS = ['site', 'stock', 'retired'];
+export const ASSET_LOCATION_LABELS = {
+  site: 'ที่ไซต์ลูกค้า',
+  stock: 'ยังไม่ได้ติดตั้ง',
+  retired: 'ปลดระวางแล้ว',
+};
+export function assetLocationOf(asset) {
+  if (asset?.status === 'removed') return 'retired';
+  if (isAssetOnSite(asset) && asset?.siteKind !== 'warehouse') return 'site';
+  return 'stock';
+}
+
 // 0 = อาทิตย์ … 6 = เสาร์ (ตรงกับ Date.getDay() — ห้ามใช้ระบบเลขของตัวเอง
 // เพราะทุกที่ในโค้ดที่คำนวณวันใช้ getDay() อยู่แล้ว)
 export const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6];

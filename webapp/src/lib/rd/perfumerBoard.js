@@ -46,6 +46,7 @@ export function perfumerBoardRows(requests = []) {
         status: request.status || null,
         // กำหนดที่ฝ่ายรับปากไว้ ถ้ายังไม่แจ้งวันให้ถอยไปวันที่ผู้ขอต้องการ — ตารางนี้
         // ต้องเรียงตาม "ต้องเสร็จเมื่อไร" ได้เสมอ ไม่ใช่ว่างเปล่าจนกว่าจะมีคนแจ้งวัน
+        // ⚠️ วันที่ถอยมา (ผู้ขอต้องการ) ใช้**เรียง**เท่านั้น ไม่ใช่ตัดสิน "เลยกำหนด" — ดู `isOverdue` / `committed`
         // ⚠️ ผ่าน `liveDueDate` — วันของรอบที่ส่งไปแล้วไม่ใช่คำสัญญาของรอบนี้ (กติกา dueReaders)
         dueDate: liveDueDate(request) || request.requestedDueDate || null,
         committed: !!liveDueDate(request),
@@ -103,9 +104,13 @@ export function perfumerGroups(rows = [], { todayIso = null } = {}) {
 
 /* เลยกำหนดแล้วหรือยัง — เทียบวันไทยที่ผู้เรียกส่งมา
    ⚠️ ตัวสร้างแถวไม่มีสิทธิ์รู้ว่า "วันนี้" คือวันไหน (กติกาเดียวกับ `rowIdleStamps`)
-   ⚠️ กลิ่นที่ส่งไปแล้วไม่เลยกำหนด แม้วันจะผ่านมานานแค่ไหน — งานจบไปแล้ว */
+   ⚠️ กลิ่นที่ส่งไปแล้วไม่เลยกำหนด แม้วันจะผ่านมานานแค่ไหน — งานจบไปแล้ว
+   ⭐ **นับเฉพาะวันที่ RD รับปากไว้ (`committed`)** — มติเจ้าของ 26/10 (ตรวจตัวเลข L14 · แบบ A) ความหมายเดียวกับ
+   คิวคำร้องและหน้าภาพรวม RD ("เลยกำหนดนับเฉพาะใบที่รับปากวันไว้แล้ว" — queueBoard) · แถวที่ยังไม่มีใครให้วัน
+   ยังโชว์วันที่ผู้ขอต้องการพร้อมป้ายกำกับ แต่ไม่แดง และไม่เข้ายอด "เลยกำหนด" ของแถบ/หัวกอง
+   🐞 เดิมไม่ดู `committed` ⇒ กลิ่นที่ฝ่ายยังไม่ให้วันแต่เลยวันที่ฝ่ายขายขอมา ถูกนับว่าเลยกำหนด */
 export function isOverdue(row, todayIso) {
-  if (!row?.dueDate || !todayIso || row.sent || row.closureStarted) return false;
+  if (!row?.committed || !row?.dueDate || !todayIso || row.sent || row.closureStarted) return false;
   return String(row.dueDate).slice(0, 10) < String(todayIso).slice(0, 10);
 }
 

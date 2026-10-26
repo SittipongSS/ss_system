@@ -153,3 +153,85 @@ export function poDeliveryOptions(pos = []) {
 export function poMatchesDelivery(po, selected = []) {
   return !selected?.length || selected.includes(poRollupStatus(po));
 }
+
+// ── สถานะของ "บรรทัด" ในมุมมองตาราง (รายบรรทัด) ของ /sahamit/po (ตรวจตัวเลข 20/10 · M24a2) ──
+//
+// 🐞 ตัวกรอง "สถานะ" ของหน้า PO ใช้คำบนป้ายของใบ (ขั้นผลิต · H7) แต่ป้ายในมุมมองตารางอ่าน `l.status` ดิบ
+//    (บรรทัด open ขึ้น "รอส่ง") และการเรียงก็ใช้ค่าดิบ ⇒ เลือก "รอวัสดุ" แล้วได้แถวป้าย "รอส่ง" และได้บรรทัด
+//    "ผลิตเสร็จ" ของใบที่ป้ายใบเป็น "รอวัสดุ" ติดมาด้วย — ผิดกติกาของ H7 เอง (เลือกคำไหน ได้แถวที่ป้ายเขียนคำนั้นทุกแถว)
+// ⭐ ทรงเดียวกับ `poDisplayStatus` แต่ระดับบรรทัด: มีแถววัสดุของบรรทัดนั้น (`/api/sahamit/material` · poLineId)
+//    ⇒ ขั้นผลิต · ไม่มี (บรรทัดยกเลิก · สายวัสดุโหลดไม่ขึ้น) ⇒ แยกสองกรณี
+//    · 3 ขั้นหลังที่กดเดินเอง (ผลิตเสร็จ/ส่งแล้ว/ปิดงาน — เก็บใน `sahamit_po_lines.status`) รู้ได้จากบรรทัดเอง ⇒ คำขั้นผลิต
+//      ตัวเดียวกับที่ได้ตอนมีแถววัสดุ (`lineStage` ไม่อ่านวัสดุสำหรับสามค่านี้)
+//      🐞 (รีวิว 20/10) เดิมถอยทุกค่าไป `poRollupStatus` ⇒ สายวัสดุล้ม บรรทัด `closed`/`produced` ขึ้น "รอส่ง" — คำที่ผิด
+//    · open/partial ต้องรู้ว่า PM/RM มาแล้วจริงไหม (อยู่ในแถววัสดุ) ⇒ ถอยไปสถานะส่งของ ด้วยกติกาเดียวกับใบ (`poRollupStatus`)
+const LINE_MANUAL_STAGES = new Set(['produced', 'delivered', 'closed']);
+export function poLineDisplayStatus(line, materialRow) {
+  if (materialRow) {
+    const stage = lineStage(materialRow.status, !!materialRow.tracking?.pmArrivedAt, !!materialRow.tracking?.rmArrivedAt);
+    return { key: `stage:${stage}`, label: STAGE_LABEL[stage], color: STAGE_COLOR[stage] };
+  }
+  if (LINE_MANUAL_STAGES.has(line?.status)) {
+    const stage = lineStage(line.status, false, false);
+    return { key: `stage:${stage}`, label: STAGE_LABEL[stage], color: STAGE_COLOR[stage] };
+  }
+  const status = poRollupStatus({ lines: line ? [line] : [] });
+  return { key: `po:${status}`, label: PO_STATUS_LABEL[status], color: 'text-3' };
+}
+
+// ── คำค้นของหน้า PO: ตัวเดียวที่มุมมองรายใบ + มุมมองตาราง + เลข "แสดง N จาก M ใบ" ใช้ร่วมกัน (M24a) ──
+//
+// 🐞 เดิมมีกองคำค้นสองชุด: ระดับใบรวมสถานที่ส่ง (`destinationLabel`) แต่ระดับบรรทัดไม่รวม ⇒ มุมมองตาราง พิมพ์ "บางปะกง"
+//    หัวบอก "แสดง N จาก 112 ใบ" แต่ตารางว่าง "ไม่มีรายการตรงเงื่อนไข"
+// ⭐ กองของบรรทัด = กองของใบ (เลขที่ + สถานที่ส่ง) + ช่องของบรรทัดนั้น ⇒ ใบที่ผ่านคำค้นมีบรรทัดที่ผ่านอย่างน้อยหนึ่งบรรทัดเสมอ
+//    (ใบที่มีบรรทัด) · `destLabel` รับเป็นพารามิเตอร์ — ตัวแปลงชื่อสถานที่ส่งอยู่ในไฟล์ "use client" ที่ import lucide-react
+//    ไฟล์นี้ใช้ทั้งฝั่ง server/client จึง import ตรงไม่ได้ · `needle` = คำค้นที่ trim + ตัวเล็กแล้ว (ว่าง = ผ่าน)
+export function poSearchText(po, { destLabel } = {}) {
+  return [po?.poNumber, destLabel ? destLabel(po?.destination) : null].filter(Boolean).join(' ').toLowerCase();
+}
+
+export function poLineSearchText(line, { prodIdx } = {}) {
+  /* ชื่อสินค้ามีสองแหล่ง: ชื่อที่บันทึกไว้กับบรรทัด PO (`productName` — มากับสาย PO เอง) และชื่อปัจจุบันจากรายการสินค้า ·
+     ต้องมีทั้งคู่ — รายการสินค้าล้มแล้วค้นด้วยชื่อเคยได้ "ไม่มี PO ตรงเงื่อนไข" (โทษคำค้น ทั้งที่ใบอยู่ครบ) */
+  const name = prodIdx?.get?.(String(line?.fgCode ?? '').trim().toLowerCase())?.name;
+  return [line?.fgCode, line?.productName, name].filter(Boolean).join(' ').toLowerCase();
+}
+
+export function poLineMatchesSearch(po, line, needle, opts = {}) {
+  if (!needle) return true;
+  return `${poSearchText(po, opts)} ${poLineSearchText(line, opts)}`.includes(needle);
+}
+
+export function poMatchesSearch(po, needle, opts = {}) {
+  if (!needle) return true;
+  if (poSearchText(po, opts).includes(needle)) return true;
+  return (po?.lines || []).some((l) => poLineMatchesSearch(po, l, needle, opts));
+}
+
+/** ตัวกรองระดับใบที่สองมุมมองใช้ร่วมกัน: การส่งของ + สถานที่ส่ง */
+export function poMatchesPoFilters(po, { deliverySel = [], destSel = [] } = {}) {
+  if (!poMatchesDelivery(po, deliverySel)) return false;
+  if (destSel?.length && !destSel.includes(po?.destination)) return false;
+  return true;
+}
+
+/**
+ * แถวของมุมมอง "ตาราง" — `{ po, line, status }` ต่อบรรทัดที่ผ่าน (ไม่เรียง)
+ * ใบผ่านตัวกรองระดับใบ (`poMatchesPoFilters`) · บรรทัดผ่านคำค้น (`poLineMatchesSearch`) และตัวกรองสถานะด้วย
+ * **คำบนป้ายของบรรทัดเอง** (`lineStatusOf(line).label`) ⇒ เลือกคำไหน ได้แถวที่ป้ายเขียนคำนั้นทุกแถว
+ * ตัวเลข "แสดง N จาก M ใบ · R รายการ" ของมุมมองนี้นับจากผลของฟังก์ชันนี้ตัวเดียวกับที่ตารางวาด
+ */
+export function poTableLines(pos, { needle = '', statusSel = [], deliverySel = [], destSel = [], lineStatusOf, ...searchOpts } = {}) {
+  const statusOf = lineStatusOf || ((l) => poLineDisplayStatus(l, null));
+  const out = [];
+  for (const po of pos || []) {
+    if (!poMatchesPoFilters(po, { deliverySel, destSel })) continue;
+    for (const line of po?.lines || []) {
+      if (!poLineMatchesSearch(po, line, needle, searchOpts)) continue;
+      const status = statusOf(line);
+      if (statusSel?.length && !statusSel.includes(status.label)) continue;
+      out.push({ po, line, status });
+    }
+  }
+  return out;
+}

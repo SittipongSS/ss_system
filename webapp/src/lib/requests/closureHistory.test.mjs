@@ -254,7 +254,12 @@ test('ทุกหน้าที่มีแท็บประวัติ: เ
     assert.match(src, /setSort\(inHistory \? "closed" : "(urgency|created)"\)/, page);
     assert.match(src, /tab !== "history" && \(\s*<QueueCountStrip/, page);
     assert.match(src, /columns=\{tab === "history" \? "history" : "queue"\}/, page);
-    assert.match(src, /if \(next === "history"\) board\.setCountFilter\(null\);/, page);
+    /* ตรวจตัวเลข 20/10/2026 M3 M4 — ล้างตัวกรองตัวเลขทุกครั้งที่สลับแท็บ (ขยายจาก ม-145 ที่ล้างเฉพาะประวัติ)
+       เพราะบางกล่องมีได้แท็บเดียว ⇒ ตัวกรองที่ค้างมาให้ตารางว่างทั้งที่เลขบนแท็บบอกว่ามีใบ
+       ⚠️ ล้างในตัวจัดการ ไม่ใช่ใน effect ที่เฝ้า `tab` — แถบเตือนใบตีกลับตั้งตัวกรองต่อในจังหวะเดียวกัน */
+    assert.match(src, /const setTab = \(next\) => \{\s*board\.setCountFilter\(null\);/, page);
+    assert.doesNotMatch(src, /if \(next === "history"\) board\.setCountFilter\(null\);/, page);
+    assert.doesNotMatch(src, /useEffect\(\(\) => \{[^}]*setCountFilter\(null\)[^}]*\}, \[tab/, page);
   }
 });
 
@@ -395,8 +400,9 @@ test('วันปิดตัวเดียวทุกที่: tooltip ห�
 
 test('ตารางแจกงานผู้ปรุง: ใบที่มีฝั่งปิดแล้วไม่ "เลยกำหนด"', async () => {
   const { isOverdue } = await import('../rd/perfumerBoard.js');
-  assert.equal(isOverdue({ dueDate: '2026-08-20', sent: false, closureStarted: true }, '2026-09-11'), false);
-  assert.equal(isOverdue({ dueDate: '2026-08-20', sent: false, closureStarted: false }, '2026-09-11'), true);
+  // `committed: true` — "เลยกำหนด" นับเฉพาะวันที่ RD รับปากไว้ (มติเจ้าของ 26/10 · L14)
+  assert.equal(isOverdue({ dueDate: '2026-08-20', committed: true, sent: false, closureStarted: true }, '2026-09-11'), false);
+  assert.equal(isOverdue({ dueDate: '2026-08-20', committed: true, sent: false, closureStarted: false }, '2026-09-11'), true);
 });
 
 test('ตารางว่างเพราะคำค้น/ตัวกรอง ต้องไม่ใช้ข้อความ "ไม่มีใบ" ของผู้เรียก', () => {

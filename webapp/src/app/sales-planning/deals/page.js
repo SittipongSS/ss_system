@@ -14,7 +14,7 @@ import DateInput from "@/components/ui/DateInput";
 import SaWorkspace, { ListPanel, Metric as SaMetric, MetricStrip as SaMetricStrip } from "@/components/ui/Workspace";
 import { useCan, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canSeeDealKpi, defaultScope, hasTeam, isSuperuser, salesDealScopes } from "@/lib/permissions";
-import { forecastDueState, forecastReviewWindow } from "@/lib/sales/forecastDue";
+import { forecastReviewWindow } from "@/lib/sales/forecastDue";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { offerDeleteEmptyProject } from "@/lib/sales/emptyProjectCleanup";
 import { createClient } from "@/lib/supabaseBrowser";
@@ -64,7 +64,7 @@ import { DEAL_DELETE_LEAD_NOTE, canLinkLeadRole, dealLeadLinkBlocker } from "@/l
 import LeadSourcePicker from "@/components/salesPlanning/LeadSourcePicker";
 import { missingDealFieldsMessage } from "@/lib/sales/dealRequiredFields";
 import { canExportForecastReport } from "@/lib/sales/forecastBreakdown";
-import { DEAL_REVIEW_LIST_URL, dealPassesListFilters, reviewOptionCount } from "@/lib/sales/dealListFilter";
+import { DEAL_REVIEW_LIST_URL, dealFacetCounts, dealListPick, dealPassesListFilters, dealPickRows, reviewOptionCount } from "@/lib/sales/dealListFilter";
 /* มูลค่าที่ขึ้นจอของดีลหนึ่งใบ — Won ใช้ยอด Actual (SO อนุมัติแล้ว) นอกนั้นใช้ยอดคาดการณ์
    ตัวเดียวกันทั้งคอลัมน์มูลค่า · การเรียง · ยอดหัวกลุ่ม · KPI (lib/sales/dealAmountDisplay)
    ⭐ ยอด SO "รออนุมัติ" วางเป็นชิ้นแยก (PendingApprovalAmount) เสมอ — ไม่บวกเข้าตัวเลขหลัก
@@ -413,32 +413,45 @@ export default function SalesPlanningPipelinePage() {
     () => reviewOptionCount(reviewOnly ? deals : reviewDeals, listFilters, listCtx),
     [reviewOnly, deals, reviewDeals, listFilters, listCtx],
   );
+  /* ⭐ แถบเตือนสองแถบ (วันรับของ · เดือน FC เลยกำหนด) = **ชุดตัวกรองทั้งชุด** (ตรวจตัวเลข M11 · 2026-10-20)
+     ตัวเลขบนแถบนับด้วยตัวตัดสินเดียวกับตาราง (`dealPickRows`) จากขอบเขตที่ดูอยู่ · ไม่มีคำค้น ·
+     ปุ่มบนแถบตั้งชุดเดียวกันแทนที่ตัวกรองทั้งหมด + ล้างคำค้น (`applyDealPick`) ⇒ กดแล้วตารางเหลือเท่าเลขบนแถบพอดี
+     🐞 เดิมปุ่มเดือน FC ตั้งแค่ `setDueFilter` ⇒ สถานะ=Won / คำค้นที่ค้างไว้ทำให้ตารางเหลือน้อยกว่าเลขบนแถบ */
+  const pickCtx = useMemo(() => ({ inScope: inScopeDeal, currentMonth }), [inScopeDeal, currentMonth]);
+  const missingDeliveryPick = useMemo(() => dealListPick({ delivery: "missing" }), []);
+  const overduePick = useMemo(() => dealListPick({ due: "overdue" }), []);
   /* ดีลที่ยังไม่มีวันรับของในงวด+ขอบเขตที่ดูอยู่ (ไม่นับดีลแพ้) — แถบเตือนให้ AE กรอก · ไฟล์ FC แกนรับของกองไว้ "ยังไม่ระบุวันรับของ" */
   const noDelivery = useMemo(() => {
-    const list = deals.filter((d) => inScopeDeal(d) && dealMissingDelivery(d));
+    const list = dealPickRows(deals, missingDeliveryPick, pickCtx);
     return { count: list.length, value: list.reduce((sum, d) => sum + Number(d.projectValue || 0), 0) };
-  }, [deals, inScopeDeal]);
+  }, [deals, missingDeliveryPick, pickCtx]);
+  /* ดีลที่เดือน FC เลยกำหนดในขอบเขตที่ดูอยู่ — เลขของแถบนับถอยหลังปลายเดือน
+     นับจาก **ดีลที่ผู้ใช้เห็นตามขอบเขตที่เลือก** ไม่ใช่ทั้งตาราง — แถบบอกว่า "ของคุณค้างกี่ใบ" */
+  const overdueCount = useMemo(
+    () => dealPickRows(deals, overduePick, pickCtx).length,
+    [deals, overduePick, pickCtx],
+  );
+  const applyDealPick = (pick) => {
+    setStageFilter([...pick.stage]); setTypeFilter([...pick.type]); setDueFilter([...pick.due]);
+    setDeliveryFilter([...pick.delivery]); setReviewFilter(pick.review ? ["needsReview"] : []); setQuery("");
+  };
   /* "ดูเฉพาะดีลกลุ่มนี้" = ล้างตัวกรอง/ค้นหาอื่นก่อน — จำนวนบนแถบเตือนนับจากขอบเขตอย่างเดียว
      🐞 ถ้าคงสถานะ=Won หรือคำค้นที่ค้างไว้ แถบบอก 34 แต่ตารางโชว์น้อยกว่า (บั๊กตระกูลเดียวกับ 34 vs 36) */
-  const showMissingDelivery = () => {
-    setStageFilter([]); setTypeFilter([]); setDueFilter([]); setReviewFilter([]); setQuery("");
-    setDeliveryFilter(["missing"]);
-  };
+  const showMissingDelivery = () => applyDealPick(missingDeliveryPick);
+  const showOverdue = () => applyDealPick(overduePick);
 
-  /* นับจาก **ดีลที่ผู้ใช้เห็นตามขอบเขตที่เลือก** ไม่ใช่ทั้งตาราง — แถบเตือนบอกว่า
-     "ของคุณค้างกี่ใบ" ไม่ใช่ยอดทั้งบริษัทที่เขาทำอะไรไม่ได้ */
-  const dueCounts = useMemo(() => {
-    const c = { overdue: 0, missing: 0, ontime: 0 };
-    for (const deal of deals.filter(inScopeDeal)) {
-      const due = forecastDueState(deal, currentMonth);
-      c[due.overdue ? "overdue" : (due.missing ? "missing" : "ontime")] += 1;
-    }
-    return c;
-  }, [deals, inScopeDeal, currentMonth]);
+  /* เลขท้ายตัวเลือก "เดือน FC" / "วันรับของ" = ติ๊กตัวนั้นแล้วตารางเหลือกี่แถว (ตรวจตัวเลข M12 · 2026-10-20)
+     นับแยกมิติจากชุดเดียวกับตาราง ผ่านตัวกรองอื่นทุกตัว (ขอบเขต · คำค้น · สถานะ · ประเภท · รอเติมข้อมูล)
+     🐞 เดิมนับจากขอบเขตอย่างเดียว ⇒ ติ๊ก Won อยู่ "เลยกำหนด (N)" ติ๊กแล้วได้ 0 แถว */
+  const facets = useMemo(
+    () => dealFacetCounts(deals, listFilters, listCtx),
+    [deals, listFilters, listCtx],
+  );
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(filteredDeals, {
-      resetKey: `${query}|${stageFilter.join()}|${typeFilter.join()}|${deliveryFilter.join()}|${reviewOnly}|${sortKey}|${sortDir}|${axisQuery}|${groupBy}`,
+      /* ทุกอย่างที่เปลี่ยนชุดแถวต้องพาไปหน้า 1 — กดแถบตอนอยู่หน้า 3 แล้วค้างหน้า 3 = เห็นแถวไม่ครบ */
+      resetKey: `${query}|${stageFilter.join()}|${typeFilter.join()}|${dueFilter.join()}|${deliveryFilter.join()}|${reviewOnly}|${activeScope}|${teamFilter.selected.join()}|${sortKey}|${sortDir}|${axisQuery}|${groupBy}`,
     });
 
   const openNewDeal = () => setCreateModal(true);
@@ -1012,11 +1025,13 @@ export default function SalesPlanningPipelinePage() {
           {/* ⏳ 7 วันสุดท้ายของเดือน: เตือนให้เคลียร์เดือน FC ก่อนตัวเลขปิดงวด
               (มติผู้ใช้ 2026-08-05) นับถอยหลังทุกวัน · โผล่เฉพาะเมื่อมีของค้างจริง
               ปุ่มพาไปที่ตัวกรองเลย ไม่ใช่บอกเฉย ๆ แล้วให้ไปหาเอง */}
-          {reviewWindow.active && dueCounts.overdue > 0 && (
+          {/* ⚠️ โหมดรอเติมข้อมูลโหลดดีลทุกงวด — เลขทุกงวดไม่ใช่ "ค้างก่อนปิดงวดนี้" และกดแล้วหลุดโหมด ⇒ ซ่อน
+              (กติกาเดียวกับแถบวันรับของ) */}
+          {!reviewOnly && reviewWindow.active && overdueCount > 0 && (
             <ForecastReviewBanner
               daysLeft={reviewWindow.daysLeft}
-              overdueCount={dueCounts.overdue}
-              onShowOverdue={() => setDueFilter(["overdue"])}
+              overdueCount={overdueCount}
+              onShowOverdue={showOverdue}
             />
           )}
 
@@ -1050,17 +1065,17 @@ export default function SalesPlanningPipelinePage() {
                 {
                   key: "due", label: "เดือน FC", icon: CalendarClock,
                   options: [
-                    { value: "overdue", label: `เลยกำหนด — ต้องเลื่อนเดือน (${dueCounts.overdue})` },
-                    { value: "missing", label: `ยังไม่ระบุเดือน (${dueCounts.missing})` },
-                    { value: "ontime", label: `ตรงกำหนด (${dueCounts.ontime})` },
+                    { value: "overdue", label: `เลยกำหนด — ต้องเลื่อนเดือน (${facets.due.overdue})` },
+                    { value: "missing", label: `ยังไม่ระบุเดือน (${facets.due.missing})` },
+                    { value: "ontime", label: `ตรงกำหนด (${facets.due.ontime})` },
                   ],
                   selected: dueFilter, onChange: setDueFilter,
                 },
                 {
                   key: "delivery", label: "วันรับของ", icon: Truck,
                   options: [
-                    { value: "missing", label: `ยังไม่ระบุวันรับของ (${noDelivery.count})` },
-                    { value: "known", label: "ระบุแล้ว" },
+                    { value: "missing", label: `ยังไม่ระบุวันรับของ (${facets.delivery.missing})` },
+                    { value: "known", label: `ระบุแล้ว (${facets.delivery.known})` },
                   ],
                   selected: deliveryFilter, onChange: setDeliveryFilter,
                 },

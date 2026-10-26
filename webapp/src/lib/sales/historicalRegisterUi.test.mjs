@@ -33,6 +33,7 @@ const code = (rel) => read(rel)
   .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 
 const REGISTER = 'app/sales-planning/sales-orders/page.js';
+const FILTER_LIB = 'lib/sales/salesOrderListFilter.js';
 const WIZARD = 'components/salesPlanning/historicalWizard/HistoricalOrderWizard.js';
 const NEW_PAGE = 'app/sales-planning/sales-orders/historical/new/page.js';
 const EDIT_PAGE = 'app/sales-planning/sales-orders/historical/[id]/edit/page.js';
@@ -106,7 +107,9 @@ test('🪤 ตัวกรองที่มาของใบถูกร้อ
   const page = code(REGISTER);
   assert.match(page, /const \[originFilter, setOriginFilter\] = useStickyState\("originFilter", EMPTY\);/,
     'ค่าตั้งต้นต้องเป็น EMPTY ตัวเดิม ไม่ใช่ [] เขียนสด');
-  assert.match(page, /if \(originFilter\.length && !originFilter\.some\(\(key\) => ORIGIN_FILTERS\[key\]\?\.match\(row\)\)\) return false;/);
+  /* ตรวจตัวเลข L11 (26/10): มิติของตารางอยู่ที่ตัวตัดสินกลาง (lib/sales/salesOrderListFilter) — หน้าส่ง originFilter เข้าไป */
+  assert.match(page, /origin: originFilter,/);
+  assert.match(code(FILTER_LIB), /if \(f\.origin\.length && !f\.origin\.some\(\(key\) => ORIGIN_FILTERS\[key\]\?\.match\(row\)\)\) return false;/);
   assert.match(page, /filterCount = statusFilter\.length \+ paymentFilter\.length \+ invoiceFilter\.length \+ originFilter\.length/);
   assert.match(slice(page, 'onClear={() => {', '}}'), /setOriginFilter\(\[\]\)/);
   assert.match(slice(page, 'usePagination(sorted', ';'), /\$\{originFilter\.join\(\)\}/);
@@ -117,9 +120,12 @@ test('🪤 ตัวกรองที่มาของใบถูกร้อ
    ⇒ ค่าของตัวเลือกต้องมาจากค่าคงที่ และตัวตัดสินต้องเป็น isHistoricalOrder ตัวเดียวกับที่
    รายงานเงินใช้กรองออก — ไม่งั้นชิปบนจอกับตัวเลขในรายงานพูดคนละเรื่อง */
 test('ตัวเลือกที่มาของใบใช้ค่าคงที่กลางและ isHistoricalOrder ตัวเดียวกับตัวกรองเงิน', () => {
-  const group = slice(code(REGISTER), 'const ORIGIN_FILTERS', '};');
-  assert.match(group, /\[ORIGIN_PIPELINE\]: \{ label: "ใบจากใบเสนอราคา", match: \(row\) => !isHistoricalOrder\(row\) \}/);
-  assert.match(group, /\[ORIGIN_HISTORICAL\]: \{ label: "ใบย้อนหลัง", match: \(row\) => isHistoricalOrder\(row\) \}/);
+  // ตัวเลือก + ตัวตัดสินย้ายไป lib/sales/salesOrderListFilter (ตรวจตัวเลข L11) — หน้า import ไปใช้
+  const group = slice(code(FILTER_LIB), 'export const ORIGIN_FILTERS', '};');
+  assert.match(group, /\[ORIGIN_PIPELINE\]: \{ label: 'ใบจากใบเสนอราคา', match: \(row\) => !isHistoricalOrder\(row\) \}/);
+  assert.match(group, /\[ORIGIN_HISTORICAL\]: \{ label: 'ใบย้อนหลัง', match: \(row\) => isHistoricalOrder\(row\) \}/);
+  assert.match(code(REGISTER), /EMPTY_SALES_ORDER_FILTERS, INVOICE_FILTERS, ORIGIN_FILTERS, PAYMENT_FILTERS, SALES_ORDER_CARD_PICKS,/);
+  assert.doesNotMatch(code(REGISTER), /const ORIGIN_FILTERS/, 'นิยามเดียวที่ lib');
 });
 
 // ── 4. ด่านสิทธิ์ของปุ่มคีย์ ─────────────────────────────────────────────────────────

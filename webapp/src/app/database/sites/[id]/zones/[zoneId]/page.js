@@ -33,12 +33,16 @@ import { VISIT_KIND_LABELS, VISIT_STATUS_LABELS } from "@/lib/service/rounds";
 import { isClosedVisit } from "@/lib/service/visitStatus";
 import { fmtNumber, naText } from "@/lib/format";
 import { floorLabel } from "@/lib/service/zoneCode";
+import { countsAsZoneAsset } from "@/lib/service/siteDetailLists";
 import { currentMonth } from "@/lib/datePeriods";
 import { canViewVisitReport } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import styles from "./page.module.css";
 
 const SPOT_PREVIEW = 12;
+/* การ์ดข้าง "อุปกรณ์ในโซน" เล่าได้ไม่เกินนี้ — เกินแล้วต้องบอกบนการ์ดว่าตัด (หัวการ์ดเป็นจำนวนเต็ม)
+   🐞 เดิม `slice(0, 6)` เงียบ ⇒ หัว "8 ตัว" แต่ลิสต์ 6 แถว (ตรวจตัวเลข L7b · 26/10/2026) */
+const ASSET_PREVIEW = 6;
 import { apiFetch } from "@/lib/apiFetch";
 
 /* แถวประวัติการเข้า — ลิงก์ไปใบส่งงานเมื่อคนดูเปิดใบได้ · ไม่ได้ = กล่องหน้าตาเดียวกันที่กดไม่ได้
@@ -120,22 +124,27 @@ export default function ServiceZonePage({ params }) {
     ? ZONE_STANDARD_PARTIAL(zoneStd.missing, zoneStd.live)
     : zoneStd.live > 1 ? ZONE_STANDARD_SUM(zoneStd.live) : undefined;
 
-  const zoneAssets = useMemo(
+  /* เครื่องทุกตัวที่ zoneId ตรง (รวมปลดระวาง — การปลดไม่ล้างที่อยู่เดิม) = ฐานของประวัติการเข้า/ยอดใช้
+     ⚠️ ของที่ปลดระวางแล้วเคยถูกเติมในโซนนี้จริง ⇒ ประวัติต้องยังเห็น */
+  const zoneAssetsEver = useMemo(
     () => (data?.assets || []).filter((a) => a.zoneId === zoneId),
     [data?.assets, zoneId],
   );
+  /* ⭐ "อุปกรณ์ในโซน M ตัว" (หัวใบ + การ์ดข้าง) = ตัวตัดสินเดียวกับคอลัมน์ "อุปกรณ์" ของแถวโซนบนหน้าไซต์ที่พามาที่นี่
+     (`countsAsZoneAsset` · ไม่นับปลดระวาง · ตรวจตัวเลข L7b 26/10) · 🐞 เดิมนับรวมปลดระวาง ⇒ กด "3 เครื่อง" มาเจอ "4 ตัว" */
+  const zoneAssets = useMemo(() => zoneAssetsEver.filter(countsAsZoneAsset), [zoneAssetsEver]);
 
-  /* ประวัติการเข้าของโซน = นัดที่ปิดแล้วซึ่ง "แตะเครื่องในโซนนี้"
+  /* ประวัติการเข้าของโซน = นัดที่ปิดแล้วซึ่ง "แตะเครื่องในโซนนี้" (เครื่องทุกสถานะ — `zoneAssetsEver`)
      ⚠️ ไม่ใช่ทุกนัดของไซต์ — ไซต์เดียวมีหลายโซน เจ้าหน้าที่เข้าทีเดียวแต่ทำไม่ครบทุกโซน */
   const zoneVisits = useMemo(() => {
-    const assetIds = new Set(zoneAssets.map((a) => a.id));
+    const assetIds = new Set(zoneAssetsEver.map((a) => a.id));
     const touched = new Set(
       (data?.items || []).filter((i) => i.assetId && assetIds.has(i.assetId)).map((i) => i.visitId),
     );
     return (data?.visits || [])
       .filter((v) => isClosedVisit(v) && touched.has(v.id))
       .sort((a, b) => String(b.actualDate || "").localeCompare(String(a.actualDate || "")));
-  }, [data?.items, data?.visits, zoneAssets]);
+  }, [data?.items, data?.visits, zoneAssetsEver]);
 
   const usage = useMemo(() => usageVsStandard({
     zoneId,
@@ -183,7 +192,7 @@ export default function ServiceZonePage({ params }) {
 
   const { zone, site } = data;
   const itemsOfVisit = (visitId) => (data.items || [])
-    .filter((i) => i.visitId === visitId && i.assetId && zoneAssets.some((a) => a.id === i.assetId));
+    .filter((i) => i.visitId === visitId && i.assetId && zoneAssetsEver.some((a) => a.id === i.assetId));
 
   const zoneSpots = Array.isArray(zone.spots) ? zone.spots : [];
   // รอบที่ใช้เล่าค่าขาย — รอบที่ขายอยู่ตอนนี้ก่อน (ชุดเดียวกับที่ใช้คิดมาตรฐาน) · แล้วรอบที่มีผล · ไม่มีค่อยถอยไปรอบล่าสุด
@@ -257,9 +266,12 @@ export default function ServiceZonePage({ params }) {
             {zoneAssets.length > 0 && (
               <ContextCard
                 icon={AirVent} eyebrow="อุปกรณ์ในโซน" title={`${fmtNumber(zoneAssets.length)} ตัว`}
+                /* ทรงเดียวกับการ์ดจุดติดตั้ง — ตัดลิสต์เมื่อไรต้องบอก และบอกว่าตัวที่เหลืออยู่ที่ไหน
+                   (haystack ของตารางเครื่องบนหน้าไซต์มีชื่อโซน ⇒ ค้นด้วยชื่อโซนเจอครบ) */
+                subtitle={zoneAssets.length > ASSET_PREVIEW ? `แสดง ${ASSET_PREVIEW} ตัวแรก — ทั้งหมดอยู่ในตาราง "อุปกรณ์ในไซต์" ของหน้าไซต์ (ค้นด้วยชื่อโซนได้)` : undefined}
                 /* ⭐ รหัสเครื่องเป็นป้าย (ตัวตน) — ชื่อของเครื่องที่เพิ่มจากทะเบียนคือชื่อรุ่น ⇒ ป้ายชื่อซ้ำกันทุกตัว
                    ในโซนเดียวกัน · จุดติดตั้งบอกว่าตัวไหนอยู่ตรงไหน · เครื่องเก่าที่ไม่มีรหัสใช้ชื่อแทน */
-                facts={zoneAssets.slice(0, 6).map((a) => ({
+                facts={zoneAssets.slice(0, ASSET_PREVIEW).map((a) => ({
                   label: a.code || a.label,
                   value: [a.code ? a.label : null, ASSET_KIND_LABELS[a.kind] || a.kind, a.spot, a.serial].filter(Boolean).join(" · "),
                 }))}
@@ -322,7 +334,8 @@ export default function ServiceZonePage({ params }) {
           meta="ยอดมาจากของที่เจ้าหน้าที่บันทึกตอนปิดงาน ผูกกับเครื่องในโซนนี้เท่านั้น">
           {/* ไม่เคยขายและไม่มีเครื่อง = ยังไม่มีอะไรให้เทียบ — บอกตรง ๆ แทนตารางขีดหกแถว
               ⚠️ มีรอบขายหรือมีเครื่องแล้วต้องขึ้นตาราง — แถว "ไม่ได้เข้า" ตอนนั้นคือคำตอบ */}
-          {!latestTerm && zoneAssets.length === 0 ? (
+          {/* ⚠️ เครื่องทุกสถานะ (`zoneAssetsEver`) — ยอดใช้ของเครื่องที่ปลดระวางแล้วยังเป็นยอดของโซนนี้ */}
+          {!latestTerm && zoneAssetsEver.length === 0 ? (
             <EmptyState icon={Package} plain>ยังไม่มียอดใช้ — โซนนี้ยังไม่มีรอบขายหรืออุปกรณ์</EmptyState>
           ) : (
             <>

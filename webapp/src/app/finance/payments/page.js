@@ -18,7 +18,7 @@
 //
 // ⚠️ ตัวกรองเก็บใน URL — บัญชีส่งลิงก์ "งวดที่เลยกำหนดของเดือนนี้" ให้กันได้ และ
 // ปุ่มดาวน์โหลดใช้ query ชุดเดียวกัน ⇒ ไฟล์ที่ได้ตรงกับที่เห็นบนจอเสมอ
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import Link from "next/link";
@@ -74,6 +74,19 @@ import { apiFetch } from "@/lib/apiFetch";
 /* ⭐ `on` (v5) = วันของตัวกรอง `billing=cutoff` (ลิงก์ของกระดิ่งวันตัดรอบ) — ส่งขึ้น API/ล้างพร้อมตัวกรองอื่น แต่ **นับบนปุ่มรวมกับ billing**
    (สองพารามิเตอร์ของตัวกรองเดียว) · ค่าที่ใช้ได้เฉพาะตอน billing = cutoff (`ledgerBillingFilter` ตัดสิน) */
 const FILTER_KEYS = ["status", "orderState", "line", "from", "to", "q", "overdue", "taxInvoice", "billing", "due", "on"];
+/* ⭐ คีย์ที่ "ล้างทั้งหมด (n)" ในปุ่มตัวกรองล้าง = ชุดในปุ่มเท่านั้น (ตรวจตัวเลข L19 · 26/10/2026)
+   🐞 เดิมปุ่มในป๊อปโอเวอร์เรียก `clearFilters` (ทุกคีย์) ⇒ ตัวเลข (n) นับแค่หมวดในปุ่ม แต่กดแล้วคำค้นกับช่วงวันหายด้วย
+   = เลขบอกน้อยกว่าของที่ล้าง · คำค้น/ช่วงวันอยู่นอกปุ่ม (ไม่นับบนปุ่ม) ⇒ ไม่ล้างจากในปุ่ม — กติกาเดียวกับป๊อปโอเวอร์ทุกหน้า
+   ⚠️ แกะจาก FILTER_KEYS ไม่ใช่เขียนลิสต์ใหม่ — ตัวกรองใหม่ที่เพิ่มเข้าชุดถูกล้างจากในปุ่มเองอัตโนมัติ
+   · `on` อยู่ในชุดนี้ (สองพารามิเตอร์ของตัวกรองรอบวางบิล นับที่ billing แล้ว) */
+const OUTSIDE_POPOVER_KEYS = ["q", "from", "to"];
+const POPOVER_FILTER_KEYS = FILTER_KEYS.filter((key) => !OUTSIDE_POPOVER_KEYS.includes(key));
+
+/* ⭐ การ์ดที่กดค้างอยู่ต้องบอกด้วยตาเห็น (ม-81 ข้อ 3 · ตรวจตัวเลข L18b · 26/10/2026) — พื้นของ `.is-active` เท่ากับตอนชี้เมาส์
+   (globals.css) และ title ไม่ขึ้นบนจอสัมผัส ⇒ หมายเหตุ "กำลังใช้ตัวกรองนี้" คือสิ่งเดียวที่บอก · ขึ้นต้นหมายเหตุเสมอ
+   (จอแคบตัดท้ายด้วย ellipsis ⇒ ตัดยอดเงิน ไม่ตัดคำบอกสถานะ) */
+const CARD_ON_NOTE = "กำลังใช้ตัวกรองนี้";
+const CARD_ON_TITLE = "กำลังกรองอยู่ — กดอีกครั้งเพื่อถอด";
 
 /* ── เซลล์ "วางบิลถัดไป" (mig 0389 · ม็อก D) ─────────────────────────────────────────────────────────
    วันวางบิล · "งวด n · ระยะ" — ค่าระดับใบมาจาก `groupLedgerByOrder` (nextBilling ฯลฯ)
@@ -171,7 +184,7 @@ export default function FinancePaymentsPage() {
   const capUser = useCapUser();
   const department = useDepartment();
   const canSetBillingRule = useCan("customers:view") && canConfirmPayment({ ...capUser, department });
-  const [data, setData] = useState({ rows: [], summary: null, totalRows: 0, undatedHidden: null, billingTally: null, dueTally: null });
+  const [data, setData] = useState({ rows: [], summary: null, totalRows: 0, undatedHidden: null, billingTally: null, dueTally: null, facetTally: null });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [downloading, setDownloading] = useState(false);
@@ -271,6 +284,26 @@ export default function FinancePaymentsPage() {
     FILTER_KEYS.forEach((key) => sp.delete(key));
     router.replace(`/finance/payments${sp.size ? `?${sp}` : ""}`, { scroll: false });
   }, [params, router]);
+  /* "ล้างทั้งหมด (n)" ในปุ่มตัวกรอง — ล้างเฉพาะหมวดในปุ่ม (= ของที่ n นับ) · คำค้น/ช่วงวันคงไว้ (ดู POPOVER_FILTER_KEYS)
+     ⚠️ replace เดียว — เหตุผลเดียวกับ clearDateRange */
+  const clearPopoverFilters = useCallback(() => {
+    const sp = new URLSearchParams(params.toString());
+    POPOVER_FILTER_KEYS.forEach((key) => sp.delete(key));
+    router.replace(`/finance/payments${sp.size ? `?${sp}` : ""}`, { scroll: false });
+  }, [params, router]);
+
+  /* ⭐ ช่องค้นหาเดินตาม `q` ใน URL (ตรวจตัวเลข L19 · 26/10/2026)
+     🐞 ช่องเป็น uncontrolled (`defaultValue={q}`) ⇒ ค่าตั้งต้นใช้แค่ตอน mount · กด "ล้างตัวกรอง" / เมนูหรือป้ายเลขบนเมนู /
+       ลิงก์จากกระดิ่ง (หน้าเดิม เปลี่ยนแค่ query — Next ไม่ mount ใหม่) ⇒ `q` หายจาก URL แต่ช่องยังค้างคำเดิม
+       ตารางไม่ได้กรองแล้ว และกด Backspace ครั้งเดียวคำเกือบเต็มกลับมากรองใหม่
+     ⚠️ ไม่ทำเป็น controlled — ค่าที่ป้อนกลับจาก `router.replace` (async) ทำตัวอักษรหล่นและพัง IME ภาษาไทย
+     ⚠️ ไม่เขียนทับตอนช่องมีโฟกัส (กำลังพิมพ์ = ช่องคือต้นทางของ q) · ซิงก์จาก `q` ไม่ใช่ remount key ใน clearFilters
+       เพราะทางที่ทำ q หายมีมากกว่าปุ่มล้าง */
+  const searchRef = useRef(null);
+  useEffect(() => {
+    const el = searchRef.current;
+    if (el && el.value !== q && document.activeElement !== el) el.value = q;
+  }, [q]);
 
   // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
   const startRun = useLatestRun();
@@ -292,6 +325,8 @@ export default function FinancePaymentsPage() {
         billingTally: body.billingTally || null,
         // ตัวนับของกลุ่มตัวกรอง "ครบกำหนดชำระ" (คิดที่ API จากชุดที่ถอดตัวกรองนี้ออก — กติกาเดียวกับ billingTally)
         dueTally: body.dueTally || null,
+        // ตัวเลขของการ์ดที่กดแล้วแทนค่าตัวกรองของตัวเอง (คิดที่ API จากชุดที่ถอดตัวกรองของการ์ดออก — ตรวจตัวเลข M10b)
+        facetTally: body.facetTally || null,
         /* ⚠️ "วันนี้" มาจาก server (นาฬิกาไทย) ไม่ใช่จากเครื่องผู้ใช้ — คอลัมน์ "จ่ายถึง"
            เทียบกับค่านี้ ถ้าอ่านนาฬิกาเบราว์เซอร์ คนที่ตั้งโซนเวลาอื่นจะเห็นสีคนละแบบ */
         todayIso: body.todayIso || null,
@@ -309,6 +344,21 @@ export default function FinancePaymentsPage() {
   const undatedHidden = data.undatedHidden;
   const billingTally = data.billingTally;
   const dueTally = data.dueTally;
+  /* ⭐ การ์ดที่กดแล้ว **แทนค่า** ตัวกรองของตัวเอง อ่านเลขจากชุดที่ถอดตัวกรองนั้นออก (ตรวจตัวเลข M10 · M10b · 20/10/2026)
+     🐞 เดิมอ่าน `summary` (แถวที่ผ่านตัวกรองทุกตัวแล้ว) ⇒ ตัวกรองของการ์ดตั้งค่าอื่นค้างอยู่ = การ์ดบอก 0 แต่กดแล้วได้หลายงวด
+     ⚠️ การ์ดที่ "บวกเพิ่ม" (เลยกำหนด) ยังอ่าน `summary` ถูกแล้ว — แถวหลังกด = แถวที่กรองอยู่ ∩ ตัวกรองนั้น */
+  const facetTally = data.facetTally;
+  const awaitingCard = facetTally?.awaiting || { count: 0, amount: 0 };
+  const missingInvoiceCard = facetTally?.missingInvoice || { count: 0, amount: 0 };
+  const billing7dCount = billingTally?.counts?.["7d"] ?? 0;
+  const billing7dAmount = billingTally?.amounts?.["7d"] ?? 0;
+  /* สถานะ "กดค้าง" ของการ์ดที่กดได้ — เขียนที่เดียว ใช้ทั้ง active · aria-pressed · หมายเหตุ · title · ทางถอด (L18b)
+     ⚠️ "รอบัญชีรับรอง" ติดก็ต่อเมื่อสถานะงวดเป็น reported **อย่างเดียว** — ติ๊กสถานะอื่นร่วมด้วย = ไม่ใช่ชุดที่การ์ดตั้ง
+       กดแล้วแทนค่าเป็น reported อย่างเดียว (เลขของการ์ดนับชุดนั้น) */
+  const awaitingOn = statusFilter.length === 1 && statusFilter[0] === "reported";
+  const missingInvoiceOn = taxInvoice === "missing";
+  const overdueOn = overdue;
+  const billing7dOn = billing === "7d";
   /* ตัวเลือกของเมนูรอบวางบิล — ชุดมาตรฐาน + วันตัดรอบเมื่อกรองอยู่ (v5 · ไม่อยู่ในเมนูตามปกติ ต้องมีวันประกอบ) */
   const billingOptions = ledgerBillingFilterOptions(billing, on);
   const billingOption = billingOptions.find((option) => option.value === billing) || null;
@@ -620,44 +670,70 @@ export default function FinancePaymentsPage() {
             แต่บัญชียังไม่คอนเฟิร์ม ไม่ใช่เงินที่เก็บได้ (กติกาจาก mig 0245) · รวมช่อง
             เดียวเมื่อไรเท่ากับให้ฝ่ายขายกดเองแล้วตัวเลขขึ้นเอง */}
         {summary && (
-          <MetricStrip aria-label="สรุปยอดของงวดที่กำลังแสดง">
-            <Metric icon={<CircleDollarSign />} label="เก็บได้แล้ว" value={fmtMoney(summary.collectedAmount)} note="เฉพาะงวดที่บัญชีคอนเฟิร์ม" tone="good" />
+          /* ⚠️ การ์ดที่กดได้ไม่ใช่ "ยอดของแถวที่แสดง" ทุกใบ — สามใบที่แทนค่าตัวกรองของตัวเอง (รอบัญชีรับรอง · ยังไม่ออกใบกำกับ ·
+             ถึงรอบวางบิล) นับจากตัวกรองชุดเดียวกันแต่ถอดตัวกรองของการ์ดออก = แถวที่จะเห็นหลังกด (ตรวจตัวเลข M10 · M10b)
+             ⭐ การ์ดที่กดได้ทั้งสี่ใบกดซ้ำ = ถอด (L18b) — ตอนกดค้าง เลขบนการ์ด = งวดที่เห็นอยู่ตอนนี้ และหมายเหตุขึ้นต้น
+             "กำลังใช้ตัวกรองนี้" (ม-81 ข้อ 3) · การ์ดที่กดไม่ได้สองใบบอกตรง ๆ ว่านับเฉพาะที่ตรงตัวกรองตอนกำลังกรอง (L18c) */
+          <MetricStrip aria-label="สรุปยอดของงวดตามตัวกรอง — ตัวเลขบนการ์ดที่กดได้ = จำนวนงวดที่จะเห็นหลังกด · การ์ดที่กดค้างอยู่ = งวดที่เห็นตอนนี้ กดอีกครั้งเพื่อถอด">
+            {/* ⭐ การ์ดที่กดไม่ได้อ่าน `summary` (แถวที่ผ่านตัวกรองแล้ว) — ป้าย "ทั้งหมด/ทุกงวด" จริงเฉพาะตอนไม่กรอง (L18c · 26/10/2026)
+                🐞 เดิมติ๊ก "รอชำระ" แล้ว "ค้างรับทั้งหมด" หดเหลือยอดรอชำระ ขณะที่ "รอบัญชีรับรอง" ข้าง ๆ (ถอดสถานะออกตอนนับ)
+                  ใหญ่กว่า "ทั้งหมด" ได้ · ไม่กรอง = คำเดิมทุกตัวอักษร (ตรงกับหน้าภาพรวม /finance)
+                ⚠️ คำกำกับขึ้นต้นหมายเหตุ — การ์ดหกใบต่อแถวตัดท้ายหมายเหตุด้วย "…" ที่ 1024–1440 */}
+            <Metric
+              icon={<CircleDollarSign />} label="เก็บได้แล้ว" value={fmtMoney(summary.collectedAmount)}
+              note={filtering ? "เฉพาะที่ตรงตัวกรอง · งวดที่บัญชีคอนเฟิร์ม" : "เฉพาะงวดที่บัญชีคอนเฟิร์ม"}
+              tone="good"
+            />
             <Metric
               as="button" type="button"
-              icon={<Wallet />} label="รอบัญชีรับรอง" value={fmtMoney(summary.awaitingAmount)}
-              note={`${summary.awaitingCount} งวดที่ฝ่ายขายแจ้งแล้ว`}
-              tone={summary.awaitingCount ? "warning" : undefined}
-              onClick={() => setFilter("status", "reported")}
+              icon={<Wallet />} label="รอบัญชีรับรอง" value={fmtMoney(awaitingCard.amount)}
+              note={awaitingOn ? `${CARD_ON_NOTE} · ${awaitingCard.count} งวด` : `${awaitingCard.count} งวดที่ฝ่ายขายแจ้งแล้ว`}
+              tone={awaitingCard.count ? "warning" : undefined}
+              active={awaitingOn}
+              aria-pressed={awaitingOn}
+              title={awaitingOn ? CARD_ON_TITLE : undefined}
+              onClick={() => setFilter("status", awaitingOn ? "" : "reported")}
             />
-            <Metric icon={<Wallet />} label="ค้างรับทั้งหมด" value={fmtMoney(summary.outstandingAmount)} note="ทุกงวดที่ยังไม่ถูกคอนเฟิร์ม" />
+            <Metric
+              icon={<Wallet />} label={filtering ? "ค้างรับ" : "ค้างรับทั้งหมด"} value={fmtMoney(summary.outstandingAmount)}
+              note={filtering ? "เฉพาะที่ตรงตัวกรอง · งวดที่ยังไม่ถูกคอนเฟิร์ม" : "ทุกงวดที่ยังไม่ถูกคอนเฟิร์ม"}
+            />
             {/* ⭐ ของค้างของ **เอกสาร** ไม่ใช่ของเงิน (มติผู้ใช้ 2026-09-07 — เก็บ VAT
                 ⇒ ทุกงวดที่จ่ายแล้วต้องมีใบกำกับ) · กดแล้วกรองให้เลยเหมือนการ์ดอื่น */}
             <Metric
               as="button" type="button"
-              icon={<FileText />} label="ยังไม่ออกใบกำกับ" value={`${summary.missingInvoiceCount} งวด`}
-              note={fmtMoney(summary.missingInvoiceAmount)}
-              tone={summary.missingInvoiceCount ? "warning" : "good"}
-              onClick={() => setFilter("taxInvoice", taxInvoice === "missing" ? "" : "missing")}
+              icon={<FileText />} label="ยังไม่ออกใบกำกับ" value={`${missingInvoiceCard.count} งวด`}
+              note={missingInvoiceOn ? `${CARD_ON_NOTE} · ${fmtMoney(missingInvoiceCard.amount)}` : fmtMoney(missingInvoiceCard.amount)}
+              tone={missingInvoiceCard.count ? "warning" : "good"}
+              active={missingInvoiceOn}
+              aria-pressed={missingInvoiceOn}
+              title={missingInvoiceOn ? CARD_ON_TITLE : undefined}
+              onClick={() => setFilter("taxInvoice", missingInvoiceOn ? "" : "missing")}
             />
             <Metric
               as="button" type="button"
               icon={<AlarmClock />} label="เลยกำหนด" value={`${summary.overdueCount} งวด`}
-              note={fmtMoney(summary.overdueAmount)}
+              note={overdueOn ? `${CARD_ON_NOTE} · ${fmtMoney(summary.overdueAmount)}` : fmtMoney(summary.overdueAmount)}
               tone={summary.overdueCount ? "danger" : "good"}
-              onClick={() => setFilter("overdue", overdue ? "" : "1")}
+              active={overdueOn}
+              aria-pressed={overdueOn}
+              title={overdueOn ? CARD_ON_TITLE : undefined}
+              onClick={() => setFilter("overdue", overdueOn ? "" : "1")}
             />
             {/* ⭐ ถึงรอบวางบิล 7 วัน (mig 0389 · ม็อก D) — การ์ดใบที่หก (แถบรองรับสูงสุด 6 · globals.css)
                 กดแล้วกรองแบบเดียวกับการ์ด "เลยกำหนด" · กดซ้ำ = ถอด · ⚠️ โทน info ไม่ใช่ danger — ยังไม่มีอะไรเลย */}
             <Metric
               as="button" type="button"
               icon={<CalendarClock />} label={`ถึงรอบวางบิล ${LEDGER_BILLING_WINDOW_DAYS} วัน`}
-              value={`${summary.billingIn7DaysCount ?? 0} งวด`}
-              note={fmtMoney(summary.billingIn7DaysAmount ?? 0)}
-              tone={summary.billingIn7DaysCount ? "info" : undefined}
-              active={billing === "7d"}
-              aria-pressed={billing === "7d"}
-              title={`งวดที่วันวางบิลอยู่ในวันนี้ถึงอีก ${LEDGER_BILLING_WINDOW_DAYS} วัน และยังไม่แจ้งชำระ — กดเพื่อกรอง`}
-              onClick={() => setFilter("billing", billing === "7d" ? "" : "7d")}
+              value={`${billing7dCount} งวด`}
+              note={billing7dOn ? `${CARD_ON_NOTE} · ${fmtMoney(billing7dAmount)}` : fmtMoney(billing7dAmount)}
+              tone={billing7dCount ? "info" : undefined}
+              active={billing7dOn}
+              aria-pressed={billing7dOn}
+              title={billing7dOn
+                ? CARD_ON_TITLE
+                : `งวดที่วันวางบิลอยู่ในวันนี้ถึงอีก ${LEDGER_BILLING_WINDOW_DAYS} วัน และยังไม่แจ้งชำระ — กดเพื่อกรอง`}
+              onClick={() => setFilter("billing", billing7dOn ? "" : "7d")}
             />
           </MetricStrip>
         )}
@@ -881,15 +957,17 @@ export default function FinancePaymentsPage() {
             <div className="search-glass">
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
               <input autoComplete="off"
+                ref={searchRef}
                 defaultValue={q}
                 onChange={(e) => setFilter("q", e.target.value)}
                 placeholder="ค้นหาเลข SO / QT / เอกสารอ้างอิง / ลูกค้า / ชื่องวด / เลขใบกำกับ / รอบวางบิล"
                 aria-label="ค้นหางวดชำระ"
               />
             </div>
+            {/* "ล้างทั้งหมด (n)" ในปุ่ม = ล้างเฉพาะหมวดในปุ่มที่ n นับ (L19) · ปุ่ม "ล้างตัวกรอง ×" ข้างนอกยังล้างทุกอย่างรวมคำค้น/ช่วงวัน */}
             <FilterPopover
               count={filterCount}
-              onClear={clearFilters}
+              onClear={clearPopoverFilters}
               groups={[
                 {
                   key: "orderState", label: "สถานะของใบ", icon: Receipt,
@@ -920,7 +998,7 @@ export default function FinancePaymentsPage() {
                      ไม่ใช่ของค้าง มันยังไม่มีเงินให้ออกใบ */
                   key: "taxInvoice", label: "ใบกำกับภาษี", icon: FileText,
                   options: [
-                    { value: "missing", label: `ยังไม่ออกใบ${summary?.missingInvoiceCount ? ` (${summary.missingInvoiceCount})` : ""}` },
+                    { value: "missing", label: `ยังไม่ออกใบ${missingInvoiceCard.count ? ` (${missingInvoiceCard.count})` : ""}` },
                     { value: "issued", label: "ออกใบแล้ว" },
                   ],
                   selected: taxInvoice ? [taxInvoice] : [],

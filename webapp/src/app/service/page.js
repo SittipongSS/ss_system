@@ -27,6 +27,7 @@ import Workspace, { ListPanel, WorkspaceSection } from "@/components/ui/Workspac
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import { VISIT_KIND_LABELS, visitTimeText } from "@/lib/service/rounds";
 import {
+  attentionView,
   refillTotals,
   refillWatchView,
   serviceAttention,
@@ -41,9 +42,16 @@ import { businessDate } from "@/lib/businessDate";
 import { fmtDayMonth, naText, NA } from "@/lib/format";
 import { apiFetch } from "@/lib/apiFetch";
 
-// ⚠️ ต้องย้อนหลังพอที่จะเห็น **นัดค้าง** ทั้งหมด ไม่ใช่แค่สัปดาห์ที่แล้ว —
-// นัดที่ค้างมา 2 เดือนคือนัดที่เจ็บที่สุด ถ้าช่วงที่ดึงสั้นไปมันจะหายไปเงียบ ๆ
-const LOOKBACK_DAYS = 120;
+/* ── นัดของหน้านี้มาจาก API ของรายการงาน (`/api/service/visits/queue?view=load`) ไม่ใช่ช่วงวัน (ตรวจตัวเลข 20/10 · M24g) ──
+   🐞 เดิมดึง `/api/service/visits?from=วันนี้-120&to=วันนี้+6` ⇒ การ์ด "นัดค้าง N" ไม่นับนัดที่ค้างเกิน 120 วัน แต่แท็บ
+      "ค้าง" ของหน้าจัดคิวที่การ์ดพาไปโหลดนัดเปิด **ไม่มีขอบล่าง** ⇒ กดการ์ดแล้วเจอมากกว่าเลข (และ "ต้องจัดการก่อน"
+      ไม่เห็นนัดค้างเก่าสุดซึ่งเจ็บที่สุด)
+   ⭐ ชุดเดียวกับที่แท็บ "ค้าง" อ่าน (`loadQueueVisits` · ด่าน requireService ตัวเดียวกัน) · `view=load` = ไม่มีร่าง ไม่มีบริบทด่าน
+      ไม่มีคำร้อง — การ์ด/แผงทุกตัวของหน้านี้อ่านแค่นัดที่ยังเปิด (`isOpenVisit`) อยู่แล้ว
+   ⚠️ ขอบบนคงเดิม (วันนี้ + 6) — ชุดของรายการงานมีนัดเปิดทุกวันข้างหน้า แต่ "ต้องจัดการก่อน" เตือนแค่ใน 7 วันข้างหน้า
+      (ชนช่วงเข้าไซต์/เวลาทับของนัดเดือนหน้ายังไม่ใช่ของที่ต้องจัดการเช้านี้) ⇒ ตัดที่ `WINDOW_AHEAD_DAYS` ฝั่งจอ
+      · หน้าต่างเลื่อน 7 วัน ไม่ใช่สัปดาห์ อา.–ส. (มติ 26/09) — คำบนจอจึงเป็น "7 วันข้างหน้า" ทุกที่ (มติเจ้าของ 26/10 · L21) */
+const WINDOW_AHEAD_DAYS = 6;
 const ATTENTION_LIMIT = 8;
 const WATCHLIST_LIMIT = 8;
 const WATCHLIST_ID = "refill-watchlist";
@@ -78,10 +86,6 @@ export default function ServiceOverviewPage() {
      🐞 เดิม `useMemo(() => businessDate(), [])` ⇒ แท็บที่เปิดค้างข้ามเที่ยงคืน ดึงนัดใหม่แต่ยังนับ "นัดวันนี้" ของเมื่อวาน
         (= นัดที่กลายเป็นค้างไปแล้ว) ขณะที่การ์ดพาไป `range=today` ของวันใหม่ ⇒ เลขบนการ์ด ≠ แถวที่เปิดเจอ (H15 · รีวิว 19/10) */
   const [todayIso, setTodayIso] = useState(() => businessDate());
-  const range = useMemo(
-    () => ({ from: shiftDays(todayIso, -LOOKBACK_DAYS), to: shiftDays(todayIso, 6) }),
-    [todayIso],
-  );
 
   // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
   const startRun = useLatestRun();
@@ -93,7 +97,7 @@ export default function ServiceOverviewPage() {
     setLoadError("");
     try {
       const [visitRes, siteRes] = await Promise.all([
-        apiFetch(`/api/service/visits?from=${range.from}&to=${range.to}`),
+        apiFetch("/api/service/visits/queue?view=load"),
         apiFetch("/api/service/sites?withSchedule=1"),
       ]);
       const visitData = await visitRes.json().catch(() => null);
@@ -101,7 +105,7 @@ export default function ServiceOverviewPage() {
       const siteData = await siteRes.json().catch(() => null);
       if (!siteRes.ok) throw new Error(siteData?.error || "โหลดไซต์บริการไม่สำเร็จ");
 
-      if (!isLatest()) return; // เลื่อนช่วงวันที่ระหว่างรอ — ทั้งแผงต้องมาจากรอบเดียวกัน
+      if (!isLatest()) return; // มีรอบใหม่ระหว่างรอ (ข้ามวัน/กลับมามองแท็บ) — ทั้งแผงต้องมาจากรอบเดียวกัน
       setVisits(Array.isArray(visitData?.visits) ? visitData.visits : []);
       setVisitSites(Array.isArray(visitData?.sites) ? visitData.sites : []);
       setSites(Array.isArray(siteData) ? siteData : []);
@@ -112,9 +116,11 @@ export default function ServiceOverviewPage() {
     } finally {
       if (isLatest()) setLoading(false);
     }
-  }, [range.from, range.to, startRun]);
-  useEffect(() => { load(); }, [load]);
-  /* กลับมามองแท็บ: อ่านนาฬิกาไทยใหม่ก่อน — ข้ามวันแล้ว = เลื่อน "วันนี้" (ช่วงที่ดึงขยับตาม ⇒ effect ข้างบนโหลดใหม่ทั้งแผง
+  }, [startRun]);
+  /* `todayIso` อยู่ใน deps ของ effect (ไม่ใช่ของ useCallback — ตัวโหลดไม่ได้อ่านมัน) ⇒ ข้ามวันแล้วโหลดใหม่ทั้งแผงเหมือนตอนที่
+     ช่วงวันยังขยับตาม · 🪤 ถอด todayIso ออกเมื่อไร ทางข้ามวันของ useRevalidateOnFocus ข้างล่างจะเลื่อนแค่วัน ไม่โหลดใหม่ */
+  useEffect(() => { load(); }, [load, todayIso]);
+  /* กลับมามองแท็บ: อ่านนาฬิกาไทยใหม่ก่อน — ข้ามวันแล้ว = เลื่อน "วันนี้" (effect ข้างบนโหลดใหม่ทั้งแผง
      และการ์ด/คำใบ้/แผงวันนี้นับด้วยวันเดียวกับรายการที่การ์ดเปิด) · วันเดิม = ดึงเบื้องหลังตามปกติ */
   useRevalidateOnFocus((opts) => {
     const nowIso = businessDate();
@@ -124,10 +130,15 @@ export default function ServiceOverviewPage() {
 
   const sitesById = useMemo(() => new Map(visitSites.map((s) => [s.id, s])), [visitSites]);
 
-  const counts = useMemo(() => serviceCounts(visits, todayIso), [visits, todayIso]);
+  /* นัดในกรอบของหน้า = ทุกวันก่อนหน้า (ไม่มีขอบล่าง — นัดค้างเก่าแค่ไหนก็นับ) ถึงวันนี้ + WINDOW_AHEAD_DAYS */
+  const windowVisits = useMemo(() => {
+    const until = shiftDays(todayIso, WINDOW_AHEAD_DAYS);
+    return visits.filter((v) => String(v.scheduledDate || "") <= until);
+  }, [visits, todayIso]);
+  const counts = useMemo(() => serviceCounts(windowVisits, todayIso), [windowVisits, todayIso]);
   const refill = useMemo(() => refillTotals(sites), [sites]);
-  const attention = useMemo(() => serviceAttention(visits, sitesById, todayIso), [visits, sitesById, todayIso]);
-  const today = useMemo(() => todayByTechnician(visits, todayIso), [visits, todayIso]);
+  const attention = useMemo(() => serviceAttention(windowVisits, sitesById, todayIso), [windowVisits, sitesById, todayIso]);
+  const today = useMemo(() => todayByTechnician(windowVisits, todayIso), [windowVisits, todayIso]);
   /* แผงไซต์ที่น้ำหอมกำลังจะหมด = ปลายทางของการ์ด "เครื่องที่ต้องเข้าเติม" — การ์ดกดแล้วเปิดแผงนี้ครบทุกไซต์
      (H14 ตรวจตัวกรอง 08/10 · ดู `refillWatchView`) · ตั้งต้นย่อเหลือ WATCHLIST_LIMIT */
   const [watchAll, setWatchAll] = useState(false);
@@ -140,7 +151,14 @@ export default function ServiceOverviewPage() {
     document.getElementById(WATCHLIST_ID)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
 
-  const queueItems = useMemo(() => attention.slice(0, ATTENTION_LIMIT).map((row) => {
+  /* แผง "ต้องจัดการก่อน" ตั้งต้นย่อเหลือ ATTENTION_LIMIT · ปุ่ม "ดูทั้งหมด" ขยายในแผงเดียวกัน (ตรวจตัวเลข L8 · 26/10)
+     🐞 เดิมตัดเหลือ 8 แล้วชี้ "ที่เหลืออยู่ในตารางเข้าบริการ" — ชื่อเก่าของหน้าจัดคิว ซึ่งไม่มีตัวกรองชุดนี้ ⇒ หา N ที่เหลือไม่เจอ */
+  const [attentionAll, setAttentionAll] = useState(false);
+  const attentionShown = useMemo(
+    () => attentionView(attention, { all: attentionAll, limit: ATTENTION_LIMIT }),
+    [attention, attentionAll],
+  );
+  const queueItems = useMemo(() => attentionShown.rows.map((row) => {
     const worst = row.reasons.find((r) => REASON_TONE[r.kind] === "danger") || row.reasons[0];
     const siteName = row.site?.name || row.visit.siteName || "ไซต์ไม่ทราบชื่อ";
     return {
@@ -154,7 +172,7 @@ export default function ServiceOverviewPage() {
       cta: "เปิดนัด",
       onClick: () => router.push(`/service/schedule?visit=${encodeURIComponent(row.visit.id)}`),
     };
-  }), [attention, router]);
+  }), [attentionShown, router]);
 
   return (
     <Workspace
@@ -188,7 +206,7 @@ export default function ServiceOverviewPage() {
               🐞 H15 (ตรวจตัวกรอง 08/10): "นัดวันนี้ 3" เคยลงที่ช่วง 7 วัน (12 แถว · กลุ่ม "วันนี้" ขึ้นก่อน) เพราะรายการงาน
                  ไม่มีช่วง "เฉพาะวันนี้" ⇒ มติเจ้าของ 19/10: เปิดรายการ **วันนี้วันเดียว** (`range=today` · ป้าย "กรอง: นัดวันนี้ … ×")
                  เลขบนการ์ดกับตัวกรองใช้ตัวตัดสินเดียว (`isVisitToday`) และ "วันนี้" จากนาฬิกาไทยทั้งสองฝั่ง (`businessDate`)
-              ⚠️ นัดค้างย้อนดูแค่ LOOKBACK_DAYS — นัดที่ค้างเกินนั้นมีในรายการงานแต่ไม่ถูกนับบนการ์ด */}
+              ⭐ นัดค้างไม่มีขอบล่าง — โหลดชุดเดียวกับแท็บ "ค้าง" (`visits/queue?view=load` · M24g) ⇒ เลขบนการ์ด = แถวที่เปิดเจอ */}
           <div className={styles.kpiGrid}>
             <KpiCard
               label="นัดค้าง"
@@ -208,9 +226,11 @@ export default function ServiceOverviewPage() {
             />
             {/* ⚠️ คำใบ้ "ยังไม่มอบหมาย" อยู่ **ใน** ปุ่มการ์ด (KpiCard ทั้งใบเป็น <button> เดียว) ⇒ ทำเป็น
                 ลิงก์ของตัวเองไม่ได้ (ห้ามปุ่มซ้อนปุ่ม) · การ์ดจึงไป 7 วันตามเลขบนการ์ด — ที่นั่นมีช่วง
-                "ยังไม่มีเจ้าหน้าที่" อีกคลิกเดียว · ห้ามสลับปลายทางตามคำใบ้ = กดเลข 12 แล้วเจอ 2 แถว */}
+                "ยังไม่มีเจ้าหน้าที่" อีกคลิกเดียว · ห้ามสลับปลายทางตามคำใบ้ = กดเลข 12 แล้วเจอ 2 แถว
+                ⚠️ ชื่อ "7 วันข้างหน้า" ไม่ใช่ "สัปดาห์นี้" — นับวันนี้ … วันนี้ + 6 (หน้าต่างเลื่อน) ตรงกับชิป "7 วัน" ของปลายทาง
+                   ไม่ใช่ อา.–ส. (มติ 26/09) · มติเจ้าของ 26/10 (L21) เลือกเปลี่ยนชื่อ ไม่เปลี่ยนวิธีนับ */}
             <KpiCard
-              label="นัดสัปดาห์นี้"
+              label="นัด 7 วันข้างหน้า"
               value={counts.week}
               icon={CalendarDays}
               tone="info"
@@ -236,9 +256,15 @@ export default function ServiceOverviewPage() {
           <WorkspaceSection
             icon={<AlertTriangle size={17} aria-hidden="true" />}
             title="ต้องจัดการก่อน"
-            subtitle={attention.length > ATTENTION_LIMIT
-              ? `แสดง ${ATTENTION_LIMIT} จาก ${attention.length} รายการ — ที่เหลืออยู่ในตารางเข้าบริการ`
-              : "นัดที่ค้าง เวลาทับกัน ชนช่วงเข้าไซต์ หรือยังไม่มอบหมายเจ้าหน้าที่"}
+            /* ⚠️ ขอบเขตบอกบนจอ: นัดในกรอบของหน้า = ทุกนัดที่ค้าง + นัดถึงวันนี้ + 6 (`WINDOW_AHEAD_DAYS`) */
+            subtitle={attentionShown.truncated
+              ? `แสดง ${ATTENTION_LIMIT} จาก ${attentionShown.total} รายการ — กด “ดูทั้งหมด” เพื่อดูครบ`
+              : `${attentionShown.total > ATTENTION_LIMIT ? `ครบ ${attentionShown.total} รายการ — ` : ""}นัดที่ค้าง เวลาทับกัน ชนช่วงเข้าไซต์ หรือยังไม่มอบหมายเจ้าหน้าที่ — นัดถึง 7 วันข้างหน้า`}
+            actions={attentionShown.total > ATTENTION_LIMIT ? (
+              <Button size="sm" onClick={() => setAttentionAll((v) => !v)} aria-expanded={attentionAll}>
+                {attentionAll ? "ย่อ" : "ดูทั้งหมด"}
+              </Button>
+            ) : null}
           >
             <ActionQueue items={queueItems} empty="ไม่มีนัดที่ติดปัญหาตอนนี้ 🎉" />
           </WorkspaceSection>

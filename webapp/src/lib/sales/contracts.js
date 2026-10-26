@@ -546,6 +546,62 @@ export function daysAwaitingSignature(contract, now = new Date()) {
   return Math.max(0, Math.floor((now - issued) / 86400000));
 }
 
+/* ⭐ **ตัวตัดสิน "รอลงนามเกินเกณฑ์" ตัวเดียว** (ตรวจตัวเลข L2 · 26/10) — การ์ด "ค้างเกิน 14 วัน" · ตัวกรองของทะเบียน ·
+   ราง · ป้ายบนหน้าใบ · กระดิ่ง เรียกตัวนี้ทั้งหมด (เดิมสี่ที่เขียน `> SIGNATURE_LATE_DAYS` เอง)
+   ⚠️ `>` ไม่ใช่ `>=` — เท่าเกณฑ์พอดียังไม่สาย (ล็อกด้วยเทสต์) */
+export function isSignatureLate(contract, now = new Date()) {
+  return (daysAwaitingSignature(contract, now) ?? 0) > SIGNATURE_LATE_DAYS;
+}
+
+/* ── ตัวกรองของทะเบียนสัญญา (/sa/contracts) — ตรวจตัวเลข L2 (26/10) ─────────────────────────────────────────
+   🐞 การ์ด "ค้างเกิน 14 วัน · n" กดไม่ได้ และตารางไม่มีมิติ "เกินเกณฑ์" ⇒ เห็นเลขแต่เรียก n ใบนั้นขึ้นจอไม่ได้
+      (ตัวเลือกที่ใกล้สุดคือสถานะ = รอลงนาม ซึ่งได้ทุกใบที่รอ)
+   ⭐ ตารางกับการ์ดใช้ตัวตัดสินตัวเดียว (`contractPassesListFilters`) · การ์ดทั้งสี่ตั้งตัวกรองทั้งชุด (`CONTRACT_CARD_PICKS` ·
+      แทนที่ ไม่ใช่เติม · ล้างคำค้น/สถานะ/ชนิด/ที่มา/"รอฉันลงมือ") ⇒ เลขบนการ์ด = แถวหลังกด (เทสต์ล็อกไว้)
+      · การ์ดอื่นของแถบกดได้ด้วย (ทั้งหมด · รอลงนาม · ลงนามแล้ว) — ไม่ให้การ์ดเดียวในแถบเป็นของแปลก */
+export const EMPTY_CONTRACT_FILTERS = Object.freeze({
+  query: '', status: Object.freeze([]), kind: Object.freeze([]), source: Object.freeze([]),
+  waitingOnMe: false, late: false,
+});
+
+/** การ์ดบนแถบ → ตัวกรองชุดใหม่ทั้งชุด · total = ทุกใบ (rows.length) · awaiting/signed = สถานะเดียว · late = รอลงนามเกินเกณฑ์ */
+export const CONTRACT_CARD_PICKS = Object.freeze({
+  total: EMPTY_CONTRACT_FILTERS,
+  awaiting: Object.freeze({ ...EMPTY_CONTRACT_FILTERS, status: Object.freeze(['awaiting_signature']) }),
+  late: Object.freeze({ ...EMPTY_CONTRACT_FILTERS, late: true }),
+  signed: Object.freeze({ ...EMPTY_CONTRACT_FILTERS, status: Object.freeze(['signed']) }),
+});
+
+/** ตัวกรองที่ใช้อยู่ตรงกับการ์ดนี้ทุกมิติไหม (aria-pressed · กดซ้ำ = ล้าง) */
+export function contractPickActive(filters, pick) {
+  const f = { ...EMPTY_CONTRACT_FILTERS, ...(filters || {}) };
+  const same = (a = [], b = []) => a.length === b.length && a.every((value) => b.includes(value));
+  return String(f.query || '').trim() === String(pick.query || '')
+    && same(f.status, pick.status) && same(f.kind, pick.kind) && same(f.source, pick.source)
+    && !!f.waitingOnMe === !!pick.waitingOnMe && !!f.late === !!pick.late;
+}
+
+/**
+ * แถวนี้ผ่านตัวกรองของทะเบียนไหม — ลำดับและเงื่อนไขเดียวกับที่ตารางใช้ (หน้าเรียกตัวนี้ตรง ๆ)
+ * @param filters { query, status[], kind[], source[], waitingOnMe, late } — ว่าง = ไม่กรองมิตินั้น
+ * @param now     เวลาอ้างอิงของมิติ late (ฉีดได้ในเทสต์)
+ */
+export function contractPassesListFilters(row, filters = EMPTY_CONTRACT_FILTERS, { now = new Date() } = {}) {
+  const f = { ...EMPTY_CONTRACT_FILTERS, ...(filters || {}) };
+  if (f.waitingOnMe && !row?._waitingOnMe) return false;
+  if (f.late && !isSignatureLate(row, now)) return false;
+  if (f.status.length && !f.status.includes(row?.status)) return false;
+  if (f.kind.length && !f.kind.includes(row?.kind)) return false;
+  if (f.source.length && !f.source.includes(contractSourceOf(row))) return false;
+  const q = String(f.query || '').trim().toLowerCase();
+  if (!q) return true;
+  /* ⭐ `externalRef` = เลขที่อ้างอิงของเอกสารภายนอกที่ใช้แทนสัญญา (mig 0322 ·
+     PO / อีเมล / สัญญาเก่า) — ใบพวกนี้ **ไม่มีเลขที่สัญญาของเรา** ให้ค้น
+     ⇒ ไม่ใส่ในชุดค้น = ใบภายนอกทั้งกองหาไม่เจอด้วยเลขเดียวที่มันมี */
+  return [row?.contractNo, row?.customerName, row?.deal?.title, row?.ownerName, row?.externalRef]
+    .some((value) => (value || '').toLowerCase().includes(q));
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
    อนุมัติให้ "เอกสารภายนอก" ใช้แทนสัญญา (mig 0322 · มติผู้ใช้ 2026-08-30)
    ══════════════════════════════════════════════════════════════════════════

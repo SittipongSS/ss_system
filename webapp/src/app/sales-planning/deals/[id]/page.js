@@ -42,6 +42,7 @@ import { quotationDealBlocker } from "@/lib/sales/quotationSourcePicker";
 import TimelineWorkspace from "@/components/pm/TimelineWorkspace";
 import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
+import { tasksQueueHref } from "@/lib/pm/dealTaskLink";
 import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
 import DealContractsCard from "@/components/salesPlanning/DealContractsCard";
 import EntityDocumentsPanel from "@/components/salesPlanning/EntityDocumentsPanel";
@@ -1251,10 +1252,22 @@ export default function DealOverviewPage() {
               ทั้งที่ป้ายกับไอคอนบอกว่าจะไปดูรายการ · ตอนนี้พารามิเตอร์นั้นเป็นตัวกรอง
               ตามที่ป้ายสัญญาไว้ ส่วนการสร้างมีปุ่มของตัวเองที่ไม่ต้องออกจากหน้า */}
           {(tab === "tasks" || tab === "overview") && (
+          /* ⭐ ป้าย "ค้าง n" ข้างปุ่ม "เปิดคิวงาน" (มติเจ้าของ 20/10/2026 · ตรวจตัวเลข M8b ข้อ 1) — server นับด้วยตัวตัดสิน
+             เดียวกับคิวตอนเปิดจากลิงก์นี้ (ขอบเขตกว้างสุดที่มีสิทธิ์ · "ทั้งหมดของฉัน" · งานค้าง · ดีลนี้) ⇒ เลข = แถวที่เห็นหลังกด
+             · คนที่มีแค่ขอบเขต "ของฉัน" ได้เลขเฉพาะงานของตัวเอง (ป้ายเขียนว่า "ของคุณค้าง") · `x/y เสร็จ` ที่หัวการ์ดยังนับ
+             ตารางข้างล่าง (ทุกงานของดีล รวมที่เสร็จแล้ว) · ไม่มีสิทธิ์ดูคิว/นับไม่ได้ = ไม่มีป้าย (ไม่ใช่ 0) */
           <DetailCard icon={ListTodo} eyebrow="Linked tasks" title="งานของดีล" meta={`${dealTaskSummary.done}/${dealTaskSummary.total} เสร็จ`} actions={(
             <>
               <TaskCreateButton dealId={deal.id} canEdit={canEdit} onSaved={load} />
-              <a className="btn ghost" href={`/sa/tasks?dealId=${deal.id}`}><ExternalLink size={14} aria-hidden="true" /> เปิดคิวงาน</a>
+              {data.taskQueue && (
+                <UiStatusBadge
+                  tone={data.taskQueue.open ? "warning" : "neutral"}
+                  title={data.taskQueue.scope === "mine" ? "งานค้างของดีลนี้ที่คิวงานของคุณแสดง" : "งานค้างของดีลนี้ที่จะเห็นเมื่อกดเปิดคิวงาน"}
+                >
+                  {data.taskQueue.scope === "mine" ? "ของคุณค้าง" : "ค้าง"} {data.taskQueue.open}
+                </UiStatusBadge>
+              )}
+              <a className="btn ghost" href={tasksQueueHref({ dealIds: [deal.id] })}><ExternalLink size={14} aria-hidden="true" /> เปิดคิวงาน</a>
             </>
           )}>
             {(data.dealTasks || []).length ? (

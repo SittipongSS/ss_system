@@ -302,7 +302,9 @@ test('⭐ requestCount = จำนวนการ์ดคำร้อง (อ�
   assert.equal(view.requestCount, 3);
   assert.equal(view.requestCount, view.groups.find((g) => g.key === 'requests').rows.length);
   const searched = build({ bucket: 'waiting', surveyRequests, search: 'AS-26090011' });
-  assert.equal(searched.requestCount, 3, 'ตัวเลขบนแถบไม่ขยับตามคำค้น (กติกาเดียวกับเม็ดถัง)');
+  /* ตัวเลขบนแถบต้นทางงานไม่ขยับตามคำค้น — ปุ่มของมัน (`showRequestCards`) ล้างคำค้นก่อนพาไป ⇒ เลข = การ์ดที่เห็นหลังกด
+     ⚠️ ไม่ใช่ "กติกาเดียวกับเม็ดถัง" อีกแล้ว — เม็ดถังนับตามคำค้น เพราะกดเม็ดแล้วคำค้นยังอยู่ (M24c · 20/10) */
+  assert.equal(searched.requestCount, 3, 'ตัวเลขบนแถบไม่ขยับตามคำค้น (ปุ่มล้างคำค้นก่อนพาไป)');
   assert.equal(searched.groups.find((g) => g.key === 'requests').rows.length, 1);
   assert.equal(build({ bucket: 'waiting' }).requestCount, 0);
   assert.equal(build({ bucket: 'waiting', surveyRequests: null }).requestCount, 0, 'null = ไม่มีสิทธิ์/โหลดไม่ได้');
@@ -817,4 +819,73 @@ test('🔴 ยอดรายการของแท็บรอจัด = เ
   const slots = view.groups.flatMap((g) => (g.collapsible ? [{ head: true }] : g.rows));
   assert.equal(slots.length, view.counts.waiting - others.rows.length + 1);
   assert.notEqual(slots.length, view.counts.waiting);
+});
+
+/* ── เลขบนเม็ดถัง/ชิปช่วง = แถวที่เห็นหลังกด (ตรวจตัวเลข 20/10 · M24c · M24d) ─────────────────────────────
+   🐞 เดิมนับ "หลังกรองทีม ก่อนค้นหา" และไม่นับร่างไกลเลย:
+      · ค้น "SV-09" ⇒ แท็บ "จัดแล้ว 4" · ชิป "7 วัน 4" แต่รายการขึ้น 1 ใบ
+      · เปิด "แสดง" ร่างไกล ⇒ แท็บ "รอจัด 3" แต่แผง/ตัวแบ่งหน้าบอก 4 ใบ
+   ⭐ สถานะ "หลังกด" ของหน้า: กดเม็ดถัง = ล้างชิปสัปดาห์ + ช่วง (คำค้น/farOn อยู่ต่อ) · กดชิปช่วง = เปลี่ยนแค่ช่วง */
+const STATES = [
+  {},
+  { search: 'SV-09' },
+  { search: 'SV-03' },
+  { search: 'สมชาย' },
+  { search: 'ไม่มีคำนี้แน่ ๆ' },
+  { farOn: true },
+  { farOn: true, search: 'SV-0' },
+  { within: { from: '2026-09-20', to: '2026-09-26' } },
+  { within: { from: '2026-09-20', to: '2026-09-26' }, search: 'SV-02' },
+  { range: '7d' },
+  { range: 'unassigned', search: 'SV-1' },
+  { teamFilter: 'SOUTH', search: 'SV' },
+  { surveyRequests, search: 'AS-26090011' },
+];
+const BUCKETS = ['waiting', 'overdue', 'scheduled', 'closed'];
+
+test('🔴 M24c/M24d: เลขบนเม็ดถังทุกใบ = listedCount หลังกดเม็ดนั้น (คำค้น · farOn อยู่ต่อ · ชิปสัปดาห์/ช่วงถูกล้าง)', () => {
+  for (const state of STATES) {
+    for (const current of BUCKETS) {
+      const view = build({ ...state, bucket: current });
+      for (const b of BUCKETS) {
+        const after = build({ ...state, bucket: b, range: 'all', within: null });
+        assert.equal(view.counts[b], after.listedCount, `${JSON.stringify(state)} อยู่ที่ ${current} → เม็ด ${b}`);
+      }
+    }
+  }
+});
+
+test('🔴 M24c: เลขบนชิปช่วงทุกตัว = listedCount หลังกดชิปนั้น (ตามคำค้น)', () => {
+  for (const state of STATES) {
+    const view = build({ ...state, bucket: 'scheduled' });
+    for (const r of ['all', '7d', 'unassigned']) {
+      assert.equal(view.rangeCounts[r], build({ ...state, bucket: 'scheduled', range: r }).listedCount, `${JSON.stringify(state)} → ช่วง ${r}`);
+    }
+  }
+});
+
+test('🔴 M24c: ของจริงที่ตรวจเจอ — ค้น SV-09 แท็บ/ชิปลงเหลือ 1 · ค่าตั้งต้นไม่เปลี่ยน', () => {
+  const searched = build({ bucket: 'scheduled', range: '7d', search: 'SV-09' });
+  assert.equal(searched.listedCount, 1);
+  assert.equal(searched.counts.scheduled, 1, 'เดิม 4');
+  assert.equal(searched.rangeCounts['7d'], 1, 'เดิม 4');
+  assert.equal(searched.counts.waiting, 0);
+  // ค่าตั้งต้น (ไม่ค้น · ไม่เปิดร่างไกล) = เลขชุดเดิมทุกตัว
+  assert.deepEqual(build().counts, { waiting: 3, overdue: 2, scheduled: 4, closed: 2 });
+  assert.deepEqual(build({ bucket: 'scheduled' }).rangeCounts, { all: 4, '7d': 4, unassigned: 1 });
+});
+
+test('🔴 M24d: เปิดแสดงร่างไกล ⇒ แท็บ "รอจัด" นับร่างไกลด้วย (= ยอดของแผง) · farCount ไม่ขึ้นกับสถานะ', () => {
+  const withFar = build({ bucket: 'waiting', farOn: true });
+  assert.equal(withFar.listedCount, 4);
+  assert.equal(withFar.counts.waiting, withFar.listedCount, 'เดิม 3 ขณะที่แผงบอก 4 ใบ');
+  assert.equal(withFar.farCount, 1);
+  assert.equal(build({ bucket: 'waiting' }).counts.waiting, 3, 'ไม่เปิด = ร่างไกลยังไม่นับ (เลขลงถึง 0 ได้)');
+  assert.equal(build({ bucket: 'waiting', search: 'SV-03' }).counts.waiting, 1, 'ค้นเจอร่างไกล = นับ (คำค้นบังคับโชว์ร่างไกล)');
+});
+
+test('M24c: ชิปสัปดาห์ (within) ไม่เข้าเลขบนเม็ด — กดเม็ดแล้วชิปถูกล้าง แต่ยอดของแผงยังตามชิป', () => {
+  const week = build({ bucket: 'waiting', surveyRequests, within: { from: '2026-09-20', to: '2026-09-26' } });
+  assert.equal(week.listedCount, 2);
+  assert.equal(week.counts.waiting, build({ bucket: 'waiting', surveyRequests }).listedCount);
 });

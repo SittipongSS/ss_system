@@ -20,6 +20,10 @@ import { usePagination } from "@/lib/usePagination";
 import { useCan, useRole, useShellSystem } from "@/lib/roleContext";
 import { fmtDate, fmtMoney, fmtName, naText, NA } from "@/lib/format";
 import { salesOrderPaymentNote, salesOrderTaxInvoiceNote } from "@/lib/sales/salesOrderPayments";
+import {
+  EMPTY_SALES_ORDER_FILTERS, INVOICE_FILTERS, ORIGIN_FILTERS, PAYMENT_FILTERS, SALES_ORDER_CARD_PICKS,
+  historicalPendingCount, historicalPendingNote, salesOrderPassesListFilters, salesOrderPickActive,
+} from "@/lib/sales/salesOrderListFilter";
 import { salesOrderListTrack } from "@/lib/sales/salesOrderListTrack";
 import {
   PENDING_APPROVAL_LABEL, SALES_ORDER_STATUS_LABELS, salesOrderActual, salesOrderAmountKind, splitSalesOrderAmounts,
@@ -30,8 +34,7 @@ import Segmented from "@/components/ui/Segmented";
 import { BUSINESS_LINE_LABELS } from "@/lib/master/businessLines";
 import { apiFetch } from "@/lib/apiFetch";
 import {
-  HISTORICAL_NEW_PATH, ORIGIN_HISTORICAL, ORIGIN_PIPELINE, canKeyHistoricalSalesOrder, historicalRefsOf,
-  isHistoricalOrder,
+  HISTORICAL_NEW_PATH, canKeyHistoricalSalesOrder, historicalRefsOf, isHistoricalOrder,
 } from "@/lib/sales/historicalOrders";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ServiceAgingChip from "@/components/salesPlanning/ServiceAgingChip";
@@ -221,46 +224,8 @@ const GROUP_OPTIONS = [
   { value: "status", label: "สถานะเอกสาร" },
 ];
 
-/* สถานะการชำระของใบ — คำถามที่ตารางสถานะเอกสารตอบไม่ได้ ("ใบไหนเงินยังไม่ครบ")
-   ⚠️ `tracked` เท็จ = ยังไม่เริ่มติดตาม ไม่ใช่ "ยังไม่จ่าย" — คนละเรื่องกัน */
-const PAYMENT_FILTERS = {
-  complete: { label: "เก็บเงินครบแล้ว", match: (row) => row.payment?.complete },
-  overdue: { label: "มีงวดเลยกำหนด", match: (row) => (row.payment?.overdue || 0) > 0 },
-  rejected: { label: "มีงวดถูกตีกลับ", match: (row) => (row.payment?.rejected || 0) > 0 },
-  untracked: { label: "ยังไม่เริ่มติดตาม", match: (row) => !row.payment?.tracked },
-};
-
-/* ── ตัวกรองใบกำกับภาษี (mig 0348 · มติผู้ใช้ 2026-09-09) ──────────────────
-   ⭐ **กลุ่มของตัวเอง ไม่ใช่ตัวเลือกที่ห้าของ "การชำระ"** — ตัวเลือกในกลุ่มเดียวกัน
-   เป็น OR กัน (`.some`) ⇒ ยัดรวมเมื่อไร "เก็บเงินครบแล้ว + ยังไม่ออกใบกำกับ" จะกลาย
-   เป็น "อย่างใดอย่างหนึ่ง" ซึ่งตรงข้ามกับที่คนกดคาดหวัง · คนละกลุ่ม = AND กัน
-   (เงินกับเอกสารเป็นคนละแกน — เหตุผลเดียวกับที่แยกคอลัมน์ออกมาใน #1677)
-
-   ⚠️ **อ่านจาก `salesOrderTaxInvoiceNote` ตัวเดียวกับที่คอลัมน์ใช้** ไม่คิดเงื่อนไขเอง —
-   ตัวส่วนคือ "งวดที่จ่ายแล้ว" ซึ่งเป็นกติกาที่เขียนไว้ที่นั่นแล้ว · เขียนซ้ำที่นี่
-   เมื่อไร วันหนึ่งชิปตัวกรองกับตัวเลขในคอลัมน์จะไม่ตรงกันโดยไม่มีใครรู้ */
-const INVOICE_FILTERS = {
-  missing: {
-    label: "ยังไม่ออกใบกำกับ",
-    match: (row) => salesOrderTaxInvoiceNote(row.payment)?.tone === "warning",
-  },
-  complete: {
-    label: "ออกใบกำกับครบ",
-    match: (row) => salesOrderTaxInvoiceNote(row.payment)?.tone === "success",
-  },
-};
-
-/* ── ที่มาของใบ (mig 0360 · มติผู้ใช้ 16/09/2026) ─────────────────────────
-   ⭐ **กลุ่มของตัวเอง ไม่ใช่ตัวเลือกของ "สถานะเอกสาร"** — ใบย้อนหลังเกิดเป็น "อนุมัติแล้ว"
-   ทุกใบ ⇒ ยัดรวมกันเมื่อไร "อนุมัติแล้ว + ใบย้อนหลัง" จะกลายเป็น "อย่างใดอย่างหนึ่ง"
-   ซึ่งตรงข้ามกับที่คนกดคาดหวัง (เหตุผลเดียวกับที่ใบกำกับภาษีแยกกลุ่มออกมา)
-   ⚠️ ค่าของตัวเลือกใช้ค่าคงที่จาก `lib/sales/historicalOrders` — literal 'historical'
-   มีบ้านเดียว (ยาม historicalMoneyGuards) และตัวตัดสินคือ `isHistoricalOrder` ตัวเดียว
-   กับที่รายงานเงินใช้กรองออก ⇒ สิ่งที่เห็นบนจอตรงกับที่ระบบคิด */
-const ORIGIN_FILTERS = {
-  [ORIGIN_PIPELINE]: { label: "ใบจากใบเสนอราคา", match: (row) => !isHistoricalOrder(row) },
-  [ORIGIN_HISTORICAL]: { label: "ใบย้อนหลัง", match: (row) => isHistoricalOrder(row) },
-};
+/* ตัวกรองการชำระ · ใบกำกับภาษี · ที่มาของใบ (ตัวเลือก + ตัวตัดสิน) อยู่ที่ `lib/sales/salesOrderListFilter`
+   พร้อมเหตุผลของแต่ละกลุ่ม — ตารางกับการ์ดบนแถบกรองด้วย `salesOrderPassesListFilters` ตัวเดียว (ตรวจตัวเลข L11) */
 
 /* ⚠️ **ใบที่ยังไม่มีกำหนดชำระอยู่ท้ายเสมอ ไม่ว่าเรียงขึ้นหรือลง** — กติกาเดียวกับ
    ทะเบียนการชำระ: ยังไม่ถูกนัดวัน = ยังไม่ใช่งานของสัปดาห์นี้
@@ -376,19 +341,45 @@ export default function SalesOrdersPage() {
   const queueSortAuto = serviceSetupPendingOnly && sortKey === SORT_DEFAULT && !queueSortChosen;
   const activeSortKey = queueSortAuto ? SERVICE_QUEUE_SORT : sortKey;
   const activeSortDir = queueSortAuto ? sortDirOf(SERVICE_QUEUE_SORT) : sortDir;
+  /* ⭐ เปิดชิป "ยังไม่ตั้งงานบริการ n" = **ล้างตัวกรองอื่นทุกตัว รวม "รอฉันลงมือ"** (มติเจ้าของ 20/10 · ตรวจตัวเลข M15)
+     เลขบนชิปคงที่ (นับจาก `rows` ทั้งหมด · มติ 08/10) ⇒ กดแล้วตารางต้องเหลือเท่าเลขนั้นพอดี
+     🐞 เดิมสลับธงอย่างเดียว ⇒ มุมมองสินค้า · สถานะ=รออนุมัติ · ที่มา=ย้อนหลัง · คำค้นที่ค้าง ทำให้ได้ 0 แถวทั้งที่ชิปบอก 59
+     · ทุกใบของคิวนี้อนุมัติแล้วและอยู่สาย SERVICE (`serviceBackfillNeeded`) ⇒ มุมมอง "ทุกสาย"/"บริการ" เห็นครบ · "สินค้า" สลับไปบริการ
+     · อยากดูเฉพาะของตัวเอง = ติ๊ก "รอฉันลงมือ" ตามทีหลัง · ปิดชิป = ถอดธงเฉย ๆ (ไม่คืนตัวกรองเดิม) */
+  const toggleServiceSetupPending = () => {
+    setQueueSortChosen(false);
+    if (serviceSetupPendingOnly) { setServiceSetupPendingOnly(false); return; }
+    setQuery(""); setStatusFilter([]); setPaymentFilter([]); setInvoiceFilter([]); setOriginFilter([]);
+    setWaitingOnMeOnly(false);
+    if (lineView === "PRODUCT") setLineView("SERVICE");
+    setServiceSetupPendingOnly(true);
+  };
+  /* ⭐ การ์ดบนแถบ = ตัวกรองชุดใหม่ **ทั้งชุด** (ตรวจตัวเลข L11 · `SALES_ORDER_CARD_PICKS`) — ตั้ง state ทุกตัวที่ตารางกรองจาก pick
+     (แบบเดียวกับ applyQuotationPick) ⇒ "รอตรวจอนุมัติ n" กดแล้วตารางเหลือ n ใบพอดี · กดการ์ดที่ใช้อยู่ซ้ำ = ล้างตัวกรองทั้งชุด
+     ⚠️ เลขบนการ์ดนับจาก `rows` ทั้งหมดและตัดใบย้อนหลัง (`splitSalesOrderAmounts` · mig 0360) ⇒ pick ตั้งที่มา = ใบจากใบเสนอราคา */
+  const applyOrderPick = (pick) => {
+    setQuery(pick.query); setStatusFilter([...pick.status]); setPaymentFilter([...pick.payment]); setInvoiceFilter([...pick.invoice]);
+    setOriginFilter([...pick.origin]); setLineView(pick.lineView); setWaitingOnMeOnly(pick.waitingOnMe);
+    setServiceSetupPendingOnly(pick.serviceSetupPending);
+    // ไม่ต้องล้าง queueSortChosen — การ์ดไม่เปิดคิวงานบริการ (ทางเข้าคิวทางเดียวคือชิป ซึ่งล้างธงนั้นเองตอนเปิด)
+  };
+  const activeFilters = {
+    query, status: statusFilter, payment: paymentFilter, invoice: invoiceFilter, origin: originFilter,
+    lineView, waitingOnMe: waitingOnMeOnly, serviceSetupPending: serviceSetupPendingOnly,
+  };
+  const cardActive = (key) => salesOrderPickActive(activeFilters, SALES_ORDER_CARD_PICKS[key]);
+  const pickCard = (key) => applyOrderPick(cardActive(key) ? EMPTY_SALES_ORDER_FILTERS : SALES_ORDER_CARD_PICKS[key]);
   const [collapsed, setCollapsed] = useState(() => new Set());
 
+  /* ตัวตัดสินของตาราง = `salesOrderPassesListFilters` (lib/sales/salesOrderListFilter) — ตัวเดียวกับที่เทสต์ใช้พิสูจน์ว่า
+     แถวหลังกดการ์ดบนแถบ = เลขบนการ์ด · มิติทั้งหมดอยู่ที่ lib · **ชุดค้นเป็นของหน้า** (สิ่งที่ตาเห็นบนแถว) ส่งเป็น matchesSearch */
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return rows.filter((row) => {
-      if (waitingOnMeOnly && !row._waitingOnMe) return false;
-      if (serviceSetupPendingOnly && !row._serviceSetupPending) return false;
-      if (lineView !== "all" && row.businessLine !== lineView) return false;
-      if (statusFilter.length && !statusFilter.includes(row.status)) return false;
-      // หลายหมวดการชำระ = "อย่างใดอย่างหนึ่ง" (เลยกำหนด **หรือ** ถูกตีกลับ = ใบที่ต้องตาม)
-      if (paymentFilter.length && !paymentFilter.some((key) => PAYMENT_FILTERS[key]?.match(row))) return false;
-      if (invoiceFilter.length && !invoiceFilter.some((key) => INVOICE_FILTERS[key]?.match(row))) return false;
-      if (originFilter.length && !originFilter.some((key) => ORIGIN_FILTERS[key]?.match(row))) return false;
+    const filters = {
+      status: statusFilter, payment: paymentFilter, invoice: invoiceFilter, origin: originFilter,
+      lineView, waitingOnMe: waitingOnMeOnly, serviceSetupPending: serviceSetupPendingOnly,
+    };
+    const matchesSearch = (row) => {
       // ⭐ เอกสารอ้างอิงอยู่ในชุดค้นด้วย (IS-26080017) — เหตุผลหลักที่ช่องนี้เกิดคือ
       // "ลูกค้าถามถึง PO เลขนี้ ใบไหน" ซึ่งตอบไม่ได้ตอนที่เลขไปกองอยู่ในหมายเหตุ
       // ⚠️ รหัส AR ขึ้นเป็นชิปบนทุกแถวแล้ว (ดูเซลล์ลูกค้าข้างล่าง) จึงต้องค้นเจอด้วย
@@ -401,7 +392,8 @@ export default function SalesOrdersPage() {
       return !q || [row.orderNumber, row.customerName, row.customerArCode, row.deal?.title, row.deal?.ownerName, row.quotation?.quoteNumber, row.referenceDoc, ...historicalRefsOf(row)]
         .concat(row.serviceAging?.label, row.serviceAging ? SERVICE_BACKFILL_AGING_TEXT.rowLabel[row.serviceAging.waitingOn] : null)
         .some((value) => String(value || "").toLowerCase().includes(q));
-    });
+    };
+    return rows.filter((row) => salesOrderPassesListFilters(row, filters, { matchesSearch }));
   }, [query, rows, statusFilter, paymentFilter, invoiceFilter, originFilter, waitingOnMeOnly, serviceSetupPendingOnly, lineView]);
 
   /* `recent` = ลำดับที่ API ส่งมา (ล่าสุดก่อน) — ไม่คิดใหม่ที่นี่ ไม่งั้นมีกติกา
@@ -643,21 +635,47 @@ export default function SalesOrdersPage() {
         )}
 
         <SaMetricStrip>
-          <SaMetric icon={<ClipboardList />} label="ใบสั่งขายทั้งหมด" value={summary.total} note="เอกสารในขอบเขตที่คุณดูได้" />
+          {/* ⭐ การ์ดทั้งสี่เป็นปุ่มตัวกรอง (ตรวจตัวเลข L11 · 26/10) — กด = ตัวกรองชุดใหม่ทั้งชุด (`pickCard`) ⇒ ตารางเหลือเท่าเลขบนการ์ด
+              · การ์ดเงินนับเฉพาะ **ใบจากใบเสนอราคา** (ใบย้อนหลังไม่นับ Actual · mig 0360) — หมายเหตุใต้เลขบอกชุดตรง ๆ
+                เพราะตัวเลือกสถานะคำเดียวกัน ("รออนุมัติ" · "อนุมัติแล้ว") รวมใบย้อนหลังด้วย */}
+          <SaMetric
+            as="button" type="button"
+            icon={<ClipboardList />}
+            label="ใบสั่งขายทั้งหมด"
+            value={summary.total}
+            note="เอกสารในขอบเขตที่คุณดูได้"
+            active={cardActive("total")} aria-pressed={cardActive("total")} onClick={() => pickCard("total")}
+          />
           {/* ⭐ ยอดของใบรออนุมัติอยู่ใต้จำนวนใบ (มติผู้ใช้ 2026-09-11 · mig 0353) — ก่อนนี้
               993,000 บาทของ 8 ใบหายจากทั้งแถบ · ยอดก่อน VAT ฐานเดียวกับ Actual ข้าง ๆ
               แต่ **ไม่รวมเข้าการ์ด Actual** — คนละกองเสมอ */}
           <SaMetric
+            as="button" type="button"
             icon={<ClipboardCheck />}
             label="รอตรวจอนุมัติ"
             value={summary.pending}
             note={summary.pending
-              ? `${fmtMoney(summary.pendingApproval)} ก่อน VAT · ยังไม่นับ Actual`
+              ? `ใบจากใบเสนอราคา · ${fmtMoney(summary.pendingApproval)} ก่อน VAT · ยังไม่นับ Actual`
               : "รอ AE Supervisor ดำเนินการ"}
             tone={summary.pending ? "warning" : "good"}
+            active={cardActive("pending")} aria-pressed={cardActive("pending")} onClick={() => pickCard("pending")}
           />
-          <SaMetric icon={<BadgeCheck />} label="อนุมัติแล้ว" value={summary.approved} note="เอกสารที่ถูกนับเป็น Actual" tone="good" />
-          <SaMetric icon={<CircleDollarSign />} label="Actual ก่อน VAT" value={fmtMoney(summary.actual)} note="รวมเฉพาะ SO ที่อนุมัติแล้ว" tone="good" />
+          <SaMetric
+            as="button" type="button"
+            icon={<BadgeCheck />}
+            label="อนุมัติแล้ว"
+            value={summary.approved}
+            note="ใบจากใบเสนอราคา · นับเป็น Actual"
+            tone="good"
+            active={cardActive("approved")} aria-pressed={cardActive("approved")} onClick={() => pickCard("approved")}
+          />
+          <SaMetric
+            as="button" type="button"
+            icon={<CircleDollarSign />}
+            label="Actual ก่อน VAT" value={fmtMoney(summary.actual)} note="รวมเฉพาะใบจากใบเสนอราคาที่อนุมัติแล้ว"
+            tone="good"
+            active={cardActive("approved")} aria-pressed={cardActive("approved")} onClick={() => pickCard("approved")}
+          />
         </SaMetricStrip>
 
         {/* คิว "รออนุมัติจากคุณ" — เหตุผลและทรงเดียวกับทะเบียนใบเสนอราคา/ลูกค้า/สินค้า
@@ -710,7 +728,7 @@ export default function SalesOrdersPage() {
               onChange={setLineView}
             />
             {/* ⭐ ชิป "ยังไม่ตั้งงานบริการ n" (mig 0392 · D26 · ม็อก BackfillApproveModal) — ติดท้ายมุมมองสาย · ขึ้นเมื่อมีของ
-                หรือกำลังเปิดอยู่ (ซ่อนตอนเปิด = ปิดไม่ได้) · กดซ้ำ = ถอด · ปุ่มตัวกรองล้างให้ด้วย */}
+                หรือกำลังเปิดอยู่ (ซ่อนตอนเปิด = ปิดไม่ได้) · เปิด = ล้างตัวกรองอื่นทั้งหมด (M15) · กดซ้ำ = ถอด · ปุ่มตัวกรองล้างให้ด้วย */}
             {(serviceSetupPendingCount > 0 || serviceSetupPendingOnly) && (
               <Button
                 size="sm"
@@ -719,7 +737,7 @@ export default function SalesOrdersPage() {
                 icon={<Repeat size={14} aria-hidden="true" />}
                 aria-pressed={serviceSetupPendingOnly}
                 title="ใบที่อนุมัติแล้วแต่ยังไม่ได้ตั้งแพ็คเกจ · โซน · รอบ · ช่วงบริการ — ฝ่ายขายตั้งย้อนหลังที่หน้าใบ แล้วยื่นให้ผู้จัดการตรวจ"
-                onClick={() => { setServiceSetupPendingOnly((on) => !on); setQueueSortChosen(false); }}
+                onClick={toggleServiceSetupPending}
               >
                 ยังไม่ตั้งงานบริการ
                 <CountBadge count={serviceSetupPendingCount} label="ใบที่ยังไม่ตั้งงานบริการ" />
@@ -852,6 +870,9 @@ export default function SalesOrdersPage() {
                      ⇒ ถัง "รออนุมัติ" ของโหมดจัดตามสถานะไม่ขึ้น ฿0.00 เฉย ๆ อีก
                      ไม่มีใบรออนุมัติ = หน้าตาเดิมทุก px · มีแต่ใบรออนุมัติ = ไม่พิมพ์ "Actual ฿0.00" นำ */
                   const pendingOfBucket = splitSalesOrderAmounts(bucket.items);
+                  /* ⭐ ใบย้อนหลังที่รออนุมัติในกลุ่ม (ตรวจตัวเลข L11c) — ป้าย "n ใบ" นับรวม แต่ยอดรออนุมัติไม่นับ ⇒ บอกแยก
+                     "(ไม่นับยอด)" · มีใบย้อนหลังด้วย = บอก "· 1 ใบ" ของกองรออนุมัติแม้มีใบเดียว (ชิ้นกลางโชว์เลขใบเมื่อเกิน 1) */
+                  const historicalPending = historicalPendingCount(bucket.items);
                   const bucketTotal = pendingOfBucket.pendingApprovalCount
                     ? (
                       <>
@@ -862,9 +883,14 @@ export default function SalesOrdersPage() {
                           count={pendingOfBucket.pendingApprovalCount}
                           prefix={bucket.total > 0 ? " · " : ""}
                         />
+                        {/* คลาสเดียวกับ "· n ใบ" ของชิ้นกลาง (fs-5 · text-3) — ใบเดียวต้องหน้าตาเดียวกับหลายใบ (รีวิว L11c) */}
+                        {historicalPending && pendingOfBucket.pendingApprovalCount === 1
+                          ? <span className="so-pending-approval"><span className="so-pending-approval-count"> · 1 ใบ</span></span>
+                          : null}
+                        {historicalPendingNote(historicalPending) || null}
                       </>
                     )
-                    : fmtMoney(bucket.total);
+                    : `${fmtMoney(bucket.total)}${historicalPendingNote(historicalPending)}`;
                   return (
                     <Fragment key={bucket.key}>
                       <TableGroupRow
@@ -873,7 +899,7 @@ export default function SalesOrdersPage() {
                         sub={bucket.sub}
                         badge={`${bucket.count} ใบ`}
                         total={bucketTotal}
-                        totalTitle="Actual รวมของกลุ่ม (นับเฉพาะใบที่อนุมัติแล้ว) · ยอดรออนุมัติแยกไว้ ไม่นับเป็น Actual"
+                        totalTitle="Actual รวมของกลุ่ม (นับเฉพาะใบที่อนุมัติแล้ว) · ยอดรออนุมัติแยกไว้ ไม่นับเป็น Actual · ใบย้อนหลังไม่นับยอด"
                         collapsed={bucketCollapsed}
                         onToggle={() => toggleBucket(bucket.key)}
                       />

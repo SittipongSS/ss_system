@@ -22,15 +22,13 @@ import { productBrandName, productDisplayName } from '@/lib/master/productIdenti
 import { fmtNumber } from '@/lib/format';
 import { EXCISE_VAT_RATE, round2 } from '@/lib/tax/exciseBilling';
 import { missingRetailPriceProducts } from '@/lib/tax/taxableProducts';
+import { withinDateRange } from '@/lib/tax/period';
 
-const inRange = (value, from, to) => {
-  if (!value) return false;
-  const t = new Date(value).getTime();
-  if (isNaN(t)) return false;
-  if (from && t < new Date(from).getTime()) return false;
-  if (to && t > new Date(to).getTime() + 86399999) return false;
-  return true;
-};
+/* ⭐ ช่วงวันของรายงาน = ตัวตัดสินเดียวกับตารางคิว (`withinDateRange` · วันไทยของ createdAt) — ตรวจตัวเลข M7 20/10/2026
+   🐞 เดิมแปลง from เป็น Date ตรง ๆ = เที่ยงคืน **UTC** (เครื่อง Vercel) ⇒ ใบที่สร้างตี 1–7 โมงเช้าวันแรกของช่วงหลุดจากไฟล์
+      ทั้งที่การ์ด "เดือนนี้" บนภาพรวมนับมัน · และแถวที่ไม่มีวันที่สร้างหลุดจากไฟล์ ขณะที่ตารางยังโชว์
+   ⇒ คิวส่ง from/to ชุดเดียวกับที่ตารางกรอง (ไม่ส่ง ids เมื่อไม่ได้ค้น/ติ๊ก) ไฟล์จึงต้องได้แถวชุดเดียวกับจอ (มติ §3.1) */
+const inRange = (value, from, to) => withinDateRange(value, from, to);
 const sum = (arr, pick) => arr.reduce((s, x) => s + (Number(pick(x)) || 0), 0);
 const money = (v) => '฿' + fmtNumber(v, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const statusLabel = (s) => statusMeta(s).label;
@@ -84,7 +82,7 @@ export async function registrationReport(filter = {}) {
   const idSet = ids && ids.length ? new Set(ids) : null;
   const statuses = asList(status);
   const regs = (await fetchRegistrations(filter)).filter(
-    (r) => (!from && !to ? true : inRange(r.createdAt, from, to))
+    (r) => inRange(r.createdAt, from, to)
       && (!statuses.length || statuses.includes(r.status))
       && (!idSet || idSet.has(r.id)),
   );
@@ -147,7 +145,7 @@ export async function filingReport(filter = {}) {
   const idSet = ids && ids.length ? new Set(ids) : null;
   const statuses = asList(status);
   const orders = (await fetchOrders(filter)).filter(
-    (o) => (!from && !to ? true : inRange(o.createdAt, from, to)) && (!statuses.length || statuses.includes(o.status)),
+    (o) => inRange(o.createdAt, from, to) && (!statuses.length || statuses.includes(o.status)),
   );
   const rows = [];
   for (const o of orders) {

@@ -1,8 +1,9 @@
 // ── ปฏิทินคำสัญญาของฝ่าย (แบบ ข) ─────────────────────────────────────────
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
-  dueCalendar, weekDays, weekRangeText, weekStart,
+  dueCalendar, weekDays, weekOffsetLabel, weekRangeText, weekStart,
 } from './dueCalendar.js';
 import { fmtDate, fmtDayMonth } from '../format.js';
 
@@ -89,6 +90,35 @@ test('เลื่อนสัปดาห์ — ใบของสัปดา
   assert.equal(next.start, '2026-08-16');
   assert.equal(next.end, '2026-08-22');
   assert.equal(next.days.filter((d) => d.today).length, 0, 'สัปดาห์หน้าไม่มีวันนี้');
+});
+
+test('🔴 L9: ป้าย "N ใบใน…" พูดชื่อสัปดาห์ตามลูกศร — เลขกับคำเป็นของสัปดาห์เดียวกัน', () => {
+  assert.equal(weekOffsetLabel(0), 'สัปดาห์นี้');
+  assert.equal(weekOffsetLabel(), 'สัปดาห์นี้');
+  assert.equal(weekOffsetLabel(-1), 'สัปดาห์ก่อน');
+  assert.equal(weekOffsetLabel(1), 'สัปดาห์หน้า');
+  // ไกลกว่าหนึ่งสัปดาห์ — แถวช่วงวันใต้หัวบอกวันจริงอยู่แล้ว
+  assert.equal(weekOffsetLabel(2), 'สัปดาห์ที่เลือก');
+  assert.equal(weekOffsetLabel(-5), 'สัปดาห์ที่เลือก');
+  // เลขบนป้าย = ใบบนช่องรายวันของสัปดาห์ที่ offset ชี้ (ชุดเดียวกับตาราง) — ไม่ใช่ของสัปดาห์นี้
+  const rows = [
+    req({ id: 'นี้', committedDueDate: '2026-08-12' }),
+    req({ id: 'หน้า1', committedDueDate: '2026-08-17' }),
+    req({ id: 'หน้า2', committedDueDate: '2026-08-20' }),
+  ];
+  for (const [offset, expected] of [[0, 1], [1, 2], [-1, 0]]) {
+    const cal = dueCalendar(rows, { startIso: weekStart(todayIso, offset), todayIso });
+    assert.equal(cal.inWeek, cal.days.reduce((n, d) => n + d.items.length, 0));
+    assert.equal(cal.inWeek, expected, `offset ${offset} (${weekOffsetLabel(offset)})`);
+  }
+});
+
+test('🔴 L9 ด่านซอร์ส: ป้ายปฏิทินไม่เขียน "ใบในสัปดาห์นี้" ตายตัว · ปุ่มกลับมาสัปดาห์นี้ยังอยู่', () => {
+  const panel = readFileSync(new URL('../../components/requests/DueWeekPanel.js', import.meta.url), 'utf8')
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.doesNotMatch(panel, /ใบในสัปดาห์นี้/);
+  assert.match(panel, /\{calendar\.inWeek\} ใบใน\{weekOffsetLabel\(offset\)\}/);
+  assert.match(panel, />\s*สัปดาห์นี้\s*<\/Button>/, 'ปุ่มรีเซ็ตกลับมาสัปดาห์นี้ไม่เปลี่ยน');
 });
 
 test('ข้อความช่วงวัน — ใช้ตัวจัดรูปแบบกลาง ไม่ประกอบเดือนเอง (ratchet ม-105)', () => {

@@ -10,6 +10,7 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import { useRole, useCan } from "@/lib/roleContext";
 import { fmtDate, fmtMoney, fmtNumber, NA, naText } from "@/lib/format";
 import { businessDate } from "@/lib/businessDate";
+import { dayParam, withinDateRange } from "@/lib/tax/period";
 import { useApiList } from "@/lib/excise/useApiList";
 import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
 import { deptOf, isTaxWaitingOnMe, ownedStages, REGISTRATION_FILTERS } from "@/lib/excise/workflow";
@@ -92,6 +93,12 @@ export default function RegistrationsPage() {
     const s = params.get("status");
     if (s && REGISTRATION_FILTERS.some((f) => f.key === s)) setFilter(s);
     if (wantsLateOnly(params)) setLateOnly(true);
+    /* ⭐ ช่วงวันจากการ์ดบนภาพรวม (`?from=&to=` · ตรวจตัวเลข M7) — การ์ดนับตาม "เดือนนี้/ไตรมาสนี้" ⇒ ลงช่องจาก–ถึง
+       ที่มองเห็นและล้างได้ ไม่ใช่ตัวกรองซ่อน · ค่าผิดรูปถูกเมิน (คิวไม่ว่างเงียบเพราะลิงก์พิมพ์ผิด) */
+    const fromParam = dayParam(params.get("from"));
+    const toParam = dayParam(params.get("to"));
+    if (fromParam) setFrom(fromParam);
+    if (toParam) setTo(toParam);
     // Legacy ?open=<id> deep-link → go straight to the detail page.
     const openId = params.get("open");
     if (openId) router.replace(`/tax/registrations/${openId}`);
@@ -201,10 +208,10 @@ export default function RegistrationsPage() {
       } else if (filter !== "all" && r.status !== filter) return false;
       if (lateOnly && !isLateRegistration(r, todayIso)) return false;
       if (customerIds.length && !customerIds.includes(r.customerId)) return false;
-      // ช่วงวันที่นับจาก **วันที่สร้าง** เหมือนที่รายงานเดิมใช้ (ตัดเป็นวันก่อนเทียบ)
-      const day = (r.createdAt || "").slice(0, 10);
-      if (from && day && day < from) return false;
-      if (to && day && day > to) return false;
+      /* ช่วงวันที่นับจาก **วันที่สร้าง** ตามวันไทย — ตัวตัดสินเดียวกับการ์ดบนภาพรวม (`withinPeriod`) และไฟล์ที่โหลด
+         (`lib/tax/reports.js`) · 🐞 เดิมตัด 10 ตัวแรกของ timestamp = วันตาม UTC ⇒ ใบที่สร้างตี 1–7 โมงเช้าวันที่ 1
+         ถูกการ์ด "เดือนนี้" นับ แต่หลุดจากคิวที่กรองเดือนเดียวกัน (ตรวจตัวเลข M7) */
+      if (!withinDateRange(r.createdAt, from, to)) return false;
       if (!q) return true;
       return [r.fgCode, r.productName, r.brandName, r.customerName, r.taxId, r.approvalNumber, r.assignee,
         r.metadata?.productNameTh, r.metadata?.productNameEn,

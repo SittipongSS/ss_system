@@ -43,7 +43,9 @@ export const SHARED_DOC_ITEMS = {
   // ⚠️ `canViewRequests` กว้างกว่าโดยตั้งใจ — การกันข้อมูลอยู่ที่ **แถว**
   // (lib/requests/access.js) ไม่ใช่ที่เมนู
   // ⚠️ ไม่มี cap ชื่อ `requests:view` — ด่านคือ **สองสาขาของ `canViewRequests`**
-  requests: { href: '/requests', name: 'คำร้อง', icon: MessageCircleQuestion, caps: ['costing:view', 'requests:answer'], visible: canViewRequests, shared: true, match: (p) => p.startsWith('/requests') },
+  // ⭐ `countHref` (ตรวจตัวเลข L20 · ม-115 แบบ A) — ป้ายนับ "รอฉันตอบ" + ใบตีกลับของตัวเอง (ม-112) ซึ่งไม่ใช่แท็บตั้งต้นของหน้า
+  //    ⇒ ลงที่มุมมอง "รอฉันลงมือ (รวมใบตีกลับ)" ขอบเขต "ของฉัน" (`requestsNavLanding` · lib/requests/queueBoard.js)
+  requests: { href: '/requests', name: 'คำร้อง', countHref: '/requests?count=requests', icon: MessageCircleQuestion, caps: ['costing:view', 'requests:answer'], visible: canViewRequests, shared: true, match: (p) => p.startsWith('/requests') },
 };
 
 /* กลุ่มเมนูของทุกระบบ — หนึ่งกลุ่มต่อหนึ่งระบบใน `SYSTEM_CATALOG`
@@ -131,7 +133,7 @@ export const MENU_GROUPS = [
         // `SHARED_DOC_ITEMS` (ฝ่าย RD/FN มีเมนูตัวนี้ในบ้านตัวเอง)
         SHARED_DOC_ITEMS.requests,
         // (เมนู "ทะเบียนวัสดุ" ย้ายไปกลุ่ม "ฐานข้อมูล" — ดูหมายเหตุที่นั่น)
-        { href: '/sa/tasks', name: 'งานของฉัน', icon: ListTodo, caps: ['salesplan:view', 'pm:view'], visible: worksInSalesPipeline, match: (p) => p === '/sa/tasks' || p.startsWith('/sa/tasks/') || p === '/pm/tasks' || p.startsWith('/pm/tasks/') },
+        { href: '/sa/tasks', name: 'งานของฉัน', countHref: '/sa/tasks?count=tasks', icon: ListTodo, caps: ['salesplan:view', 'pm:view'], visible: worksInSalesPipeline, match: (p) => p === '/sa/tasks' || p.startsWith('/sa/tasks/') || p === '/pm/tasks' || p.startsWith('/pm/tasks/') },
         /* ── เครื่องมือ (utility) — ต้องอยู่ **ท้ายรายการและเรียงแบบนี้** ─────────────
            ⭐ มติผู้ใช้ 2026-08-26: ปฏิทินนัดมาก่อนวางเป้า และ **ลำดับต้องเหมือนกันทั้ง
            แถวบน · ลิ้นชัก · แถบล่างมือถือ**

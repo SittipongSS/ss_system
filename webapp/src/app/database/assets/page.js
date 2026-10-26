@@ -34,7 +34,7 @@ import { useResponsiveView } from "@/lib/useResponsiveView";
 import { usePagination } from "@/lib/usePagination";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import {
-  ASSET_CONDITION_LABELS, ASSET_STATUS_LABELS, isAssetOnSite,
+  ASSET_CONDITION_LABELS, ASSET_LOCATIONS, ASSET_LOCATION_LABELS, ASSET_STATUS_LABELS, assetLocationOf,
 } from "@/lib/service/sites";
 import { ASSET_KIND_LABELS } from "@/lib/service/assetKinds";
 import { fmtDate, naText } from "@/lib/format";
@@ -176,11 +176,14 @@ export default function ServiceAssetsPage() {
   };
 
   // ── ตัวเลขสรุป ──────────────────────────────────────────────────────────
+  /* ⭐ "ที่ไซต์ลูกค้า" = แถวของตัวกรอง "อยู่ที่ไหน: ที่ไซต์ลูกค้า" — ถาม `assetLocationOf` ตัวเดียวกัน (ตรวจตัวเลข M22)
+     🐞 เดิมตัวเลขใช้ `isAssetOnSite` (ไม่ดูไซต์คลัง) แต่ตัวกรองดูแค่ไซต์ (ไม่ดูปลดระวาง) ⇒ เลขเท่ากันได้แต่คนละเครื่อง
+     · "ว่าง" = สถานะว่าง (= ตัวกรองสถานะ "ว่าง") · "สภาพชำรุด" = ตัวกรองสภาพ "ชำรุด" */
   const stats = useMemo(() => {
     let onSite = 0; let inStock = 0; let broken = 0;
     for (const a of assets) {
       if (a.status === "in_stock") inStock += 1;
-      else if (isAssetOnSite(a)) onSite += 1;
+      if (assetLocationOf(a) === "site") onSite += 1;
       if (a.condition === "broken") broken += 1;
     }
     return { total: assets.length, onSite, inStock, broken };
@@ -209,12 +212,9 @@ export default function ServiceAssetsPage() {
   const q = search.trim().toLocaleLowerCase("th");
   const filtered = useMemo(() => assets.filter((a) => {
     /* "อยู่ที่ไหน" อ่านจาก `siteKind` ของไซต์ที่เครื่องอยู่ ไม่ใช่เดาจากลูกค้า —
-       บริษัทตัวเองมีทั้งไซต์ลูกค้าจริงและคลัง (mig 0332) */
-    if (locationFilter.length) {
-      // ยังไม่ติดตั้ง = ไม่มีไซต์ (mig 0344) · คลังเก่ายังนับเป็น "ยังไม่ติดตั้ง" เหมือนกัน
-      const loc = (!a.siteId || a.siteKind === "warehouse") ? "stock" : "site";
-      if (!locationFilter.includes(loc)) return false;
-    }
+       บริษัทตัวเองมีทั้งไซต์ลูกค้าจริงและคลัง (mig 0332) · ยังไม่ติดตั้ง = ไม่มีไซต์ (mig 0344) / คลัง
+       ⭐ ตัวตัดสินเดียวกับตัวเลข "ที่ไซต์ลูกค้า" (`assetLocationOf` · M22) — ปลดระวางแยกเป็นค่าที่สาม */
+    if (locationFilter.length && !locationFilter.includes(assetLocationOf(a))) return false;
     if (modelFilter.length && !modelFilter.includes(a.model)) return false;
     if (statusFilter.length && !statusFilter.includes(a.status)) return false;
     if (conditionFilter.length && !conditionFilter.includes(a.condition)) return false;
@@ -301,10 +301,8 @@ export default function ServiceAssetsPage() {
         groups={[
           {
             key: "location", label: "อยู่ที่ไหน", icon: MapPin,
-            options: [
-              { value: "site", label: "ที่ไซต์ลูกค้า" },
-              { value: "stock", label: "ยังไม่ได้ติดตั้ง" },
-            ],
+            // สามค่าแบ่งเครื่องทุกตัวไม่ซ้อนกัน (ที่ไซต์ลูกค้า · ยังไม่ได้ติดตั้ง · ปลดระวางแล้ว)
+            options: ASSET_LOCATIONS.map((value) => ({ value, label: ASSET_LOCATION_LABELS[value] })),
             selected: locationFilter, onChange: setLocationFilter,
           },
           {

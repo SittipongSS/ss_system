@@ -24,6 +24,9 @@ import { fmtDate, fmtMoney, naText } from "@/lib/format";
 import { apiFetch } from "@/lib/apiFetch";
 import { LEDGER_BILLING_WINDOW_DAYS, LEDGER_STRANDED_TITLE } from "@/lib/finance/paymentLedger";
 
+/* แผง "ใบที่รอบัญชีปิด" บนหน้านี้ = ปลายทางของการ์ด "ใบรอปิด" (ตรวจตัวเลข L18d · 26/10/2026) */
+const AWAITING_CLOSE_ID = "finance-awaiting-close";
+
 export default function FinanceOverviewPage() {
   const router = useRouter();
   const [ledger, setLedger] = useState(null);
@@ -68,6 +71,23 @@ export default function FinanceOverviewPage() {
 
   const summary = ledger?.summary;
 
+  /* ⭐ การ์ด "ใบรอปิด" พาลงแผง "ใบที่รอบัญชีปิด" ของหน้านี้ ไม่ใช่ไปหน้ารายการ SO (ตรวจตัวเลข L18d · 26/10/2026)
+     🐞 เดิม `router.push("/sa/sales-orders")` — คิวบนสุดของหน้านั้นเดินตามเปลือกของคนดู (มติ 2026-08-25):
+       ฝ่าย FN ได้ "รอบัญชีปิด" (ชุดเดียวกับเลข) แต่แอดมินที่เข้า /finance ได้ไม่มีเปลือก finance ⇒ ลงที่ "รอฉันอนุมัติ"
+       = คนละชุดกับ "ใบรอปิด N ใบ" ที่เพิ่งกด · แผงข้างล่างนับ `awaitingReview` ตัวเดียวกับการ์ด ⇒ เท่ากันทุกคนดู
+       และทุกแถวยังพาไปใบ SO ได้
+     ⚠️ ย้ายโฟกัสไปหัวแผงด้วย — คนใช้คีย์บอร์ด/โปรแกรมอ่านจอต้องรู้ว่าหน้าเลื่อนไปไหน (ไม่ใช่แค่ตาเห็นหน้าขยับ) */
+  const showAwaitingClose = useCallback(() => {
+    const panel = document.getElementById(AWAITING_CLOSE_ID);
+    if (!panel) return;
+    panel.scrollIntoView({ block: "start" });
+    const heading = panel.querySelector("h2");
+    if (heading) {
+      heading.tabIndex = -1;
+      heading.focus({ preventScroll: true });
+    }
+  }, []);
+
   return (
     <Workspace
       icon={<Wallet size={22} />}
@@ -93,7 +113,8 @@ export default function FinanceOverviewPage() {
               icon={<ClipboardCheck />} label="ใบรอปิด" value={`${awaitingReview.length} ใบ`}
               note="เก็บเงินครบทุกงวดแล้ว รอบัญชีกดปิดใบ"
               tone={awaitingReview.length ? "warning" : "good"}
-              onClick={() => router.push("/sa/sales-orders")}
+              title="ดูรายชื่อใบในแผง “ใบที่รอบัญชีปิด” ด้านล่าง"
+              onClick={showAwaitingClose}
             />
             <Metric
               as="button" type="button"
@@ -139,6 +160,7 @@ export default function FinanceOverviewPage() {
         {/* ทะเบียนใบบนหน้าภาพรวม = แผงรายการไม่มีแถบเครื่องมือ (มติผู้ใช้ 2026-09-15) · ลิงก์ไปทะเบียนเต็ม
             อยู่ใน actions ซ้ายของป้าย · ป้ายเป็นขีดระหว่างโหลด/โหลดพลาด — "0 ใบ" ตอนนั้นเป็นเลขที่โกหก */}
         <ListPanel
+          id={AWAITING_CLOSE_ID}
           icon={<ClipboardCheck size={17} aria-hidden="true" />}
           title="ใบที่รอบัญชีปิด"
           subtitle="เก็บครบทุกงวดแล้ว — ตรวจข้อมูลลูกค้า เงื่อนไขชำระ ยอดและ VAT ครั้งสุดท้ายแล้วปิดใบ · ยอด Actual ไม่เปลี่ยนจากขั้นนี้"
