@@ -145,10 +145,12 @@ export default function RdPerfumersPage() {
               tone={totals.unassigned > 0 ? "warning" : undefined}
               note="กองที่ต้องจัดคนก่อนอย่างอื่น"
             />
+            {/* "เลยกำหนด" = เลยวันที่ RD รับปากไว้เท่านั้น (มติเจ้าของ 26/10 · L14 · `isOverdue`) — ตัวเดียวกับ
+                ป้ายหัวกองและวันที่สีแดงในตาราง · วันที่ผู้ขอต้องการ (ยังไม่มีใครให้วัน) ไม่นับ */}
             <Metric
               label="เลยกำหนด" value={`${totals.overdue} กลิ่น`}
               tone={totals.overdue > 0 ? "danger" : undefined}
-              note="นับเฉพาะกลิ่นที่ยังไม่ได้ส่ง"
+              note="นับเฉพาะกลิ่นที่ยังไม่ส่ง และฝ่ายให้วันไว้แล้ว"
             />
             <Metric label="ส่งแล้ว" value={`${totals.sent} กลิ่น`} note="เปลี่ยนผู้ปรุงไม่ได้แล้ว" />
           </MetricStrip>

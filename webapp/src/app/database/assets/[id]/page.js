@@ -37,6 +37,7 @@ import { refillStatus } from "@/lib/service/refill";
 import { VISIT_KIND_LABELS } from "@/lib/service/rounds";
 import { isClosedVisit } from "@/lib/service/visitStatus";
 import { fmtDate, fmtNumber, naText } from "@/lib/format";
+import { countsAsZoneAsset } from "@/lib/service/siteDetailLists";
 import styles from "./page.module.css";
 import { apiFetch, apiJson } from "@/lib/apiFetch";
 
@@ -380,13 +381,15 @@ export default function ServiceAssetPage({ params }) {
               ]}
             />
             {/* ⚠️ ContextCard รับ `href` ทั้งใบ ไม่มี footer — การ์ดทั้งใบเป็นลิงก์
-                ไปหน้าโซน (รอบขาย · ยอดใช้จริง · ประวัติของโซนนั้น) */}
+                ไปหน้าโซน (รอบขาย · ยอดใช้จริง · ประวัติของโซนนั้น)
+                เลข "เครื่องในโซน" = countsAsZoneAsset ตัวเดียวกับหน้าโซนที่การ์ดพาไป (ไม่นับปลดระวาง · ตรวจตัวเลข L7b 26/10)
+                — data.zoneAssets ดิบยังใช้กับ assetsById/settingOutlier */}
             {zone && (
               <ContextCard
                 href={`/database/sites/${data.site?.id}/zones/${zone.id}`}
                 icon={Layers} eyebrow="โซน" title={zone.name}
                 subtitle="ดูรอบขายและยอดใช้จริงของโซนนี้"
-                facts={[{ label: "เครื่องในโซน", value: `${fmtNumber((data.zoneAssets || []).length)} ตัว` }]}
+                facts={[{ label: "เครื่องในโซน", value: `${fmtNumber((data.zoneAssets || []).filter(countsAsZoneAsset).length)} ตัว` }]}
               />
             )}
           </>

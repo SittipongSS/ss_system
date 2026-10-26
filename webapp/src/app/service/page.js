@@ -27,6 +27,7 @@ import Workspace, { ListPanel, WorkspaceSection } from "@/components/ui/Workspac
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import { VISIT_KIND_LABELS, visitTimeText } from "@/lib/service/rounds";
 import {
+  attentionView,
   refillTotals,
   refillWatchView,
   serviceAttention,
@@ -47,8 +48,9 @@ import { apiFetch } from "@/lib/apiFetch";
       ไม่เห็นนัดค้างเก่าสุดซึ่งเจ็บที่สุด)
    ⭐ ชุดเดียวกับที่แท็บ "ค้าง" อ่าน (`loadQueueVisits` · ด่าน requireService ตัวเดียวกัน) · `view=load` = ไม่มีร่าง ไม่มีบริบทด่าน
       ไม่มีคำร้อง — การ์ด/แผงทุกตัวของหน้านี้อ่านแค่นัดที่ยังเปิด (`isOpenVisit`) อยู่แล้ว
-   ⚠️ ขอบบนคงเดิม (วันนี้ + 6) — ชุดของรายการงานมีนัดเปิดทุกวันข้างหน้า แต่ "ต้องจัดการก่อน" เคยเตือนแค่ถึงสิ้นสัปดาห์นี้
-      (ชนช่วงเข้าไซต์/เวลาทับของนัดเดือนหน้ายังไม่ใช่ของที่ต้องจัดการเช้านี้) ⇒ ตัดที่ `WINDOW_AHEAD_DAYS` ฝั่งจอ */
+   ⚠️ ขอบบนคงเดิม (วันนี้ + 6) — ชุดของรายการงานมีนัดเปิดทุกวันข้างหน้า แต่ "ต้องจัดการก่อน" เตือนแค่ใน 7 วันข้างหน้า
+      (ชนช่วงเข้าไซต์/เวลาทับของนัดเดือนหน้ายังไม่ใช่ของที่ต้องจัดการเช้านี้) ⇒ ตัดที่ `WINDOW_AHEAD_DAYS` ฝั่งจอ
+      · หน้าต่างเลื่อน 7 วัน ไม่ใช่สัปดาห์ อา.–ส. (มติ 26/09) — คำบนจอจึงเป็น "7 วันข้างหน้า" ทุกที่ (มติเจ้าของ 26/10 · L21) */
 const WINDOW_AHEAD_DAYS = 6;
 const ATTENTION_LIMIT = 8;
 const WATCHLIST_LIMIT = 8;
@@ -149,7 +151,14 @@ export default function ServiceOverviewPage() {
     document.getElementById(WATCHLIST_ID)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
 
-  const queueItems = useMemo(() => attention.slice(0, ATTENTION_LIMIT).map((row) => {
+  /* แผง "ต้องจัดการก่อน" ตั้งต้นย่อเหลือ ATTENTION_LIMIT · ปุ่ม "ดูทั้งหมด" ขยายในแผงเดียวกัน (ตรวจตัวเลข L8 · 26/10)
+     🐞 เดิมตัดเหลือ 8 แล้วชี้ "ที่เหลืออยู่ในตารางเข้าบริการ" — ชื่อเก่าของหน้าจัดคิว ซึ่งไม่มีตัวกรองชุดนี้ ⇒ หา N ที่เหลือไม่เจอ */
+  const [attentionAll, setAttentionAll] = useState(false);
+  const attentionShown = useMemo(
+    () => attentionView(attention, { all: attentionAll, limit: ATTENTION_LIMIT }),
+    [attention, attentionAll],
+  );
+  const queueItems = useMemo(() => attentionShown.rows.map((row) => {
     const worst = row.reasons.find((r) => REASON_TONE[r.kind] === "danger") || row.reasons[0];
     const siteName = row.site?.name || row.visit.siteName || "ไซต์ไม่ทราบชื่อ";
     return {
@@ -163,7 +172,7 @@ export default function ServiceOverviewPage() {
       cta: "เปิดนัด",
       onClick: () => router.push(`/service/schedule?visit=${encodeURIComponent(row.visit.id)}`),
     };
-  }), [attention, router]);
+  }), [attentionShown, router]);
 
   return (
     <Workspace
@@ -217,9 +226,11 @@ export default function ServiceOverviewPage() {
             />
             {/* ⚠️ คำใบ้ "ยังไม่มอบหมาย" อยู่ **ใน** ปุ่มการ์ด (KpiCard ทั้งใบเป็น <button> เดียว) ⇒ ทำเป็น
                 ลิงก์ของตัวเองไม่ได้ (ห้ามปุ่มซ้อนปุ่ม) · การ์ดจึงไป 7 วันตามเลขบนการ์ด — ที่นั่นมีช่วง
-                "ยังไม่มีเจ้าหน้าที่" อีกคลิกเดียว · ห้ามสลับปลายทางตามคำใบ้ = กดเลข 12 แล้วเจอ 2 แถว */}
+                "ยังไม่มีเจ้าหน้าที่" อีกคลิกเดียว · ห้ามสลับปลายทางตามคำใบ้ = กดเลข 12 แล้วเจอ 2 แถว
+                ⚠️ ชื่อ "7 วันข้างหน้า" ไม่ใช่ "สัปดาห์นี้" — นับวันนี้ … วันนี้ + 6 (หน้าต่างเลื่อน) ตรงกับชิป "7 วัน" ของปลายทาง
+                   ไม่ใช่ อา.–ส. (มติ 26/09) · มติเจ้าของ 26/10 (L21) เลือกเปลี่ยนชื่อ ไม่เปลี่ยนวิธีนับ */}
             <KpiCard
-              label="นัดสัปดาห์นี้"
+              label="นัด 7 วันข้างหน้า"
               value={counts.week}
               icon={CalendarDays}
               tone="info"
@@ -245,9 +256,15 @@ export default function ServiceOverviewPage() {
           <WorkspaceSection
             icon={<AlertTriangle size={17} aria-hidden="true" />}
             title="ต้องจัดการก่อน"
-            subtitle={attention.length > ATTENTION_LIMIT
-              ? `แสดง ${ATTENTION_LIMIT} จาก ${attention.length} รายการ — ที่เหลืออยู่ในตารางเข้าบริการ`
-              : "นัดที่ค้าง เวลาทับกัน ชนช่วงเข้าไซต์ หรือยังไม่มอบหมายเจ้าหน้าที่"}
+            /* ⚠️ ขอบเขตบอกบนจอ: นัดในกรอบของหน้า = ทุกนัดที่ค้าง + นัดถึงวันนี้ + 6 (`WINDOW_AHEAD_DAYS`) */
+            subtitle={attentionShown.truncated
+              ? `แสดง ${ATTENTION_LIMIT} จาก ${attentionShown.total} รายการ — กด “ดูทั้งหมด” เพื่อดูครบ`
+              : `${attentionShown.total > ATTENTION_LIMIT ? `ครบ ${attentionShown.total} รายการ — ` : ""}นัดที่ค้าง เวลาทับกัน ชนช่วงเข้าไซต์ หรือยังไม่มอบหมายเจ้าหน้าที่ — นัดถึง 7 วันข้างหน้า`}
+            actions={attentionShown.total > ATTENTION_LIMIT ? (
+              <Button size="sm" onClick={() => setAttentionAll((v) => !v)} aria-expanded={attentionAll}>
+                {attentionAll ? "ย่อ" : "ดูทั้งหมด"}
+              </Button>
+            ) : null}
           >
             <ActionQueue items={queueItems} empty="ไม่มีนัดที่ติดปัญหาตอนนี้ 🎉" />
           </WorkspaceSection>

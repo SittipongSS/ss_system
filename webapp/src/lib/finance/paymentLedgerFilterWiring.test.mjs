@@ -78,7 +78,9 @@ test('รอบวางบิล: ตัวนับ/ส่วนที่ซ�
   assert.match(ROUTE, /const billingTally = ledgerBillingTally\(all, filters\);/);
   assert.match(slice(ROUTE, 'return ok({', '});'), /\bbillingTally,/);
   assert.match(PAGE, /billingTally: body\.billingTally \|\| null,/);
-  assert.match(PAGE, /onClick=\{\(\) => setFilter\("billing", billing === "7d" \? "" : "7d"\)\}/);
+  // สถานะกดค้างเขียนที่เดียว (L18b) — กดซ้ำ = ถอด
+  assert.match(PAGE, /const billing7dOn = billing === "7d";/);
+  assert.match(PAGE, /onClick=\{\(\) => setFilter\("billing", billing7dOn \? "" : "7d"\)\}/);
   assert.match(slice(PAGE, 'key: "billing"', 'onChange'), /single: true,/);
   // คำร้องที่งวดผูกอยู่ต้องถึง ledgerRow — ไม่ส่ง = ทุกงวด "ยังไม่ขอ" แล้วเลยรอบนับเกินจริงเงียบ ๆ
   assert.match(ROUTE, /billingRequest: billingRequestById\.get\(installment\.billingRequestId\) \|\| null,/);
@@ -121,4 +123,47 @@ test('วันตัดรอบ: `on` อ่านเฉพาะตอน bil
   assert.match(ROUTE, /cutoffOn: cutoffOnById\.get\(installment\.id\) \|\| null,/);
   assert.ok(ROUTE.indexOf('const cutoffOnById') < ROUTE.indexOf('const ledger = rows'), 'ธงต้องคิดจากงวดครบก่อนสร้างแถว');
   assert.match(LIB, /if \(billingFilter === LEDGER_BILLING_CUTOFF && r\.billingCutoffOn !== cutoffOn\) return false;/);
+});
+
+/* ⭐ ช่องค้นหา + ปุ่มล้างในป๊อปโอเวอร์ (ตรวจตัวเลข L19 · 26/10/2026)
+   🐞 ช่องค้นหาเป็น uncontrolled (`defaultValue={q}`) ⇒ กด "ล้างตัวกรอง" / เมนูหรือป้ายเลขบนเมนู / ลิงก์จากกระดิ่ง แล้ว q หายจาก URL
+     แต่ช่องยังค้างคำเดิม (ตารางไม่กรองแล้ว · Backspace ครั้งเดียวกรองใหม่) ⇒ ช่องต้องเดินตาม q โดยไม่เขียนทับตอนกำลังพิมพ์
+   🐞 "ล้างทั้งหมด (n)" ในป๊อปโอเวอร์เคยเรียก clearFilters (ทุกคีย์) ⇒ n นับแค่หมวดในปุ่ม แต่กดแล้วคำค้น/ช่วงวันหายด้วย */
+test('ช่องค้นหา: ref + เอฟเฟกต์ที่ deps = [q] เขียนค่าในช่องตาม URL · ไม่เขียนทับตอนช่องมีโฟกัส · ยังเป็น uncontrolled', () => {
+  const input = slice(PAGE, '<input autoComplete="off"', '/>');
+  assert.match(input, /ref=\{searchRef\}/, 'ช่องค้นหาไม่ได้ผูก ref — เอฟเฟกต์ซิงก์เขียนค่าไม่ถึงช่อง');
+  assert.match(input, /defaultValue=\{q\}/, 'ช่องต้องยังเป็น uncontrolled (controlled จาก router.replace ทำตัวอักษรหล่น/พัง IME ไทย)');
+  assert.doesNotMatch(input, /\bvalue=\{/, 'ห้ามเป็น controlled');
+  assert.match(PAGE, /const searchRef = useRef\(null\);/);
+  const effect = slice(PAGE, 'const searchRef = useRef(null);', '}, [q]);');
+  assert.match(effect, /useEffect\(\(\) => \{/);
+  assert.match(effect, /el\.value = q;/, 'เอฟเฟกต์ไม่เขียนค่าในช่องตาม q');
+  assert.match(effect, /document\.activeElement !== el/, 'เขียนทับตอนกำลังพิมพ์ = ตัวอักษรหล่น');
+  // ช่องค้นหาของหน้านี้มีช่องเดียว (หลายช่องเมื่อไร ref ตัวเดียวคุมไม่ครบ)
+  assert.equal((PAGE.match(/defaultValue=\{q\}/g) || []).length, 1);
+});
+
+test('ป๊อปโอเวอร์: "ล้างทั้งหมด (n)" ล้างเฉพาะหมวดที่ n นับ — ไม่ใช่ clearFilters · ชุดคีย์แกะจาก FILTER_KEYS', () => {
+  const popover = slice(PAGE, '<FilterPopover', 'groups={[');
+  assert.match(popover, /count=\{filterCount\}/);
+  assert.match(popover, /onClear=\{clearPopoverFilters\}/);
+  assert.doesNotMatch(popover, /onClear=\{clearFilters\}/, 'ล้างทุกคีย์จากในปุ่ม = ล้างคำค้น/ช่วงวันที่ n ไม่ได้นับ');
+  assert.match(PAGE, /const POPOVER_FILTER_KEYS = FILTER_KEYS\.filter\(\(key\) => !OUTSIDE_POPOVER_KEYS\.includes\(key\)\);/,
+    'ชุดคีย์ของปุ่มต้องแกะจาก FILTER_KEYS — ตัวกรองใหม่ถูกล้างจากในปุ่มเองอัตโนมัติ');
+  const clear = slice(PAGE, 'const clearPopoverFilters = useCallback(', '}, [params, router]);');
+  assert.match(clear, /POPOVER_FILTER_KEYS\.forEach\(\(key\) => sp\.delete\(key\)\);/);
+  assert.equal((clear.match(/router\.replace\(/g) || []).length, 1, 'ล้างหลายคีย์ต้องเป็น replace เดียว');
+
+  // ⭐ ของที่ล้าง = ของที่ n นับ: ชุดคีย์ของปุ่ม = FILTER_KEYS − คีย์ที่ไม่นับ + `on` (นับรวมที่ billing)
+  const outside = JSON.parse(/const OUTSIDE_POPOVER_KEYS = (\[[^\]]*\]);/.exec(PAGE)?.[1] || 'null');
+  assert.ok(Array.isArray(outside), 'แกะ OUTSIDE_POPOVER_KEYS ไม่ออก');
+  const popoverKeys = FILTER_KEYS.filter((key) => !outside.includes(key));
+  const counted = FILTER_KEYS.filter((key) => !NOT_COUNTED.has(key));
+  assert.deepEqual([...popoverKeys].sort(), [...counted, 'on'].sort());
+  // กดล้างในปุ่มแล้ว: คำค้น · ช่วงวัน · มุมมอง (group/sort/dir) คงอยู่ · ตัวกรองในปุ่มหายหมด
+  const sp = new URLSearchParams('status=pending,reported&overdue=1&billing=cutoff&on=2026-10-21&taxInvoice=missing&q=AR-267&from=2026-10-01&to=2026-10-31&group=customer&sort=amount');
+  popoverKeys.forEach((key) => sp.delete(key));
+  assert.equal(sp.toString(), 'q=AR-267&from=2026-10-01&to=2026-10-31&group=customer&sort=amount');
+  // ปุ่ม "ล้างตัวกรอง ×" ข้างนอกและปุ่มในตารางว่างยังล้างทุกอย่าง (ป้ายบอกว่าล้างตัวกรองทั้งหมด)
+  assert.equal((PAGE.match(/onClick=\{clearFilters\}/g) || []).length, 2);
 });

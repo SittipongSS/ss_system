@@ -39,9 +39,9 @@ import { contractKindBadge, contractStatusBadge } from "@/components/salesPlanni
 import { contractListTrack } from "@/lib/sales/contractListTrack";
 import { apiFetch } from "@/lib/apiFetch";
 import {
-  CONTRACT_KINDS, CONTRACT_KIND_LABELS, CONTRACT_LIST_STATUSES, CONTRACT_SOURCES, CONTRACT_SOURCE_LABELS,
-  CONTRACT_STATUS_LABELS,
-  contractSourceOf, daysAwaitingSignature, contractStatusLabel, isExternalContract,
+  CONTRACT_CARD_PICKS, CONTRACT_KINDS, CONTRACT_KIND_LABELS, CONTRACT_LIST_STATUSES, CONTRACT_SOURCES, CONTRACT_SOURCE_LABELS,
+  CONTRACT_STATUS_LABELS, EMPTY_CONTRACT_FILTERS,
+  contractPassesListFilters, contractPickActive, contractStatusLabel, isExternalContract, isSignatureLate,
   SIGNATURE_LATE_DAYS,
 } from "@/lib/sales/contracts";
 
@@ -66,6 +66,13 @@ export default function ContractsPage() {
   const [sourceFilter, setSourceFilter] = useStickyState("sourceFilter", EMPTY);
   // ?waiting=1 มาจากลิงก์บนหน้าอื่น (การ์ดคิว) — ตัวกรองที่ "ติดมาจากลิงก์" ต้องมีปุ่มล้าง
   const [waitingOnMeOnly, setWaitingOnMeOnly] = useState(params.get("waiting") === "1");
+  /* ⭐ "ค้างเกิน n วัน" (ตรวจตัวเลข L2) — ตั้งจากการ์ดบนแถบ (หรือ ?late=1) · ไม่จำข้ามการเปิดหน้า (ทรงเดียวกับ "รอฉันลงมือ")
+     ตัวตัดสินคือ `isSignatureLate` ตัวเดียวกับเลขบนการ์ด · ติดอยู่ = มีชิป "กรอง: … ×" ให้ถอด */
+  const [lateOnly, setLateOnly] = useState(params.get("late") === "1");
+  /* ⭐ เวลาอ้างอิงเดียวต่อการโหลด (ตรวจตัวเลข L2) — การ์ด · ตาราง · รางอ่านนาฬิกาตัวเดียวกัน
+     🐞 เดิมการ์ดใช้เวลาตอนโหลด ส่วนตารางอ่าน `new Date()` ใหม่ทุกครั้งที่กด ⇒ ใบที่ข้ามเกณฑ์ระหว่างเปิดหน้าค้างไว้
+        ขึ้นในตาราง (และรางแดง) แต่การ์ดไม่นับ · โหลดใหม่ = ขยับเวลาอ้างอิงไปพร้อมแถว */
+  const [asOf, setAsOf] = useState(() => new Date());
   const router = useRouter();
   // ของค้างของคนที่กำลังดูอยู่ — ธงจาก server (ตัวเดียวกับตัวกรองและป้ายเลขบนเมนู)
   const workQueue = useMemo(() => rows.filter((row) => row._waitingOnMe), [rows]);
@@ -77,6 +84,7 @@ export default function ContractsPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "โหลดทะเบียนสัญญาไม่สำเร็จ");
       setRows(Array.isArray(data) ? data : []);
+      setAsOf(new Date());
       setError("");
     } catch (err) {
       setError(err.message);
@@ -87,33 +95,39 @@ export default function ContractsPage() {
 
   useEffect(() => { if (canView) load(); }, [canView, load]);
 
+  /* ตัวตัดสินของตาราง = `contractPassesListFilters` (lib/sales/contracts) — ตัวเดียวกับที่เทสต์ใช้พิสูจน์ว่า
+     แถวหลังกดการ์ด "ค้างเกิน n วัน" = เลขบนการ์ด · ห้ามเขียนเงื่อนไขกรองซ้ำในหน้า */
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return rows.filter((row) => {
-      if (waitingOnMeOnly && !row._waitingOnMe) return false;
-      if (statusFilter.length && !statusFilter.includes(row.status)) return false;
-      if (kindFilter.length && !kindFilter.includes(row.kind)) return false;
-      if (sourceFilter.length && !sourceFilter.includes(contractSourceOf(row))) return false;
-      if (!q) return true;
-      /* ⭐ `externalRef` = เลขที่อ้างอิงของเอกสารภายนอกที่ใช้แทนสัญญา (mig 0322 ·
-         PO / อีเมล / สัญญาเก่า) — ใบพวกนี้ **ไม่มีเลขที่สัญญาของเรา** ให้ค้น
-         ⇒ ไม่ใส่ในชุดค้น = ใบภายนอกทั้งกองหาไม่เจอด้วยเลขเดียวที่มันมี */
-      return [row.contractNo, row.customerName, row.deal?.title, row.ownerName, row.externalRef]
-        .some((value) => (value || "").toLowerCase().includes(q));
-    });
-  }, [rows, query, statusFilter, kindFilter, sourceFilter, waitingOnMeOnly]);
+    const filters = {
+      query, status: statusFilter, kind: kindFilter, source: sourceFilter,
+      waitingOnMe: waitingOnMeOnly, late: lateOnly,
+    };
+    return rows.filter((row) => contractPassesListFilters(row, filters, { now: asOf }));
+  }, [rows, asOf, query, statusFilter, kindFilter, sourceFilter, waitingOnMeOnly, lateOnly]);
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } = usePagination(filtered, {
-    resetKey: `${query}|${statusFilter.join()}|${kindFilter.join()}|${sourceFilter.join()}|${waitingOnMeOnly}`,
+    resetKey: `${query}|${statusFilter.join()}|${kindFilter.join()}|${sourceFilter.join()}|${waitingOnMeOnly}|${lateOnly}`,
   });
 
   const summary = useMemo(() => ({
     total: rows.length,
     awaiting: rows.filter((row) => row.status === "awaiting_signature").length,
     signed: rows.filter((row) => row.status === "signed").length,
-    // ค้างเกินเกณฑ์ = ตัวเลขที่ทำให้ต้องโทรตาม ไม่ใช่แค่จำนวนใบ (เกณฑ์อยู่ที่ lib/sales/contracts)
-    overdue: rows.filter((row) => (daysAwaitingSignature(row) ?? 0) > SIGNATURE_LATE_DAYS).length,
-  }), [rows]);
+    // ค้างเกินเกณฑ์ = ตัวเลขที่ทำให้ต้องโทรตาม ไม่ใช่แค่จำนวนใบ (เกณฑ์ + ตัวตัดสินอยู่ที่ lib/sales/contracts)
+    overdue: rows.filter((row) => isSignatureLate(row, asOf)).length,
+  }), [rows, asOf]);
+
+  /* การ์ดบนแถบ = ตัวกรองชุดใหม่ **ทั้งชุด** (`CONTRACT_CARD_PICKS` · ล้างคำค้น/สถานะ/ชนิด/ที่มา/"รอฉันลงมือ" · ตรวจตัวเลข L2)
+     ⇒ ตารางเหลือเท่าเลขบนการ์ดพอดี · กดการ์ดที่ใช้อยู่ซ้ำ = ล้างตัวกรองทั้งชุด */
+  const applyContractPick = (pick) => {
+    setQuery(pick.query); setStatusFilter([...pick.status]); setKindFilter([...pick.kind]); setSourceFilter([...pick.source]);
+    setWaitingOnMeOnly(pick.waitingOnMe); setLateOnly(pick.late);
+  };
+  const activeFilters = {
+    query, status: statusFilter, kind: kindFilter, source: sourceFilter, waitingOnMe: waitingOnMeOnly, late: lateOnly,
+  };
+  const cardActive = (key) => contractPickActive(activeFilters, CONTRACT_CARD_PICKS[key]);
+  const pickCard = (key) => applyContractPick(cardActive(key) ? EMPTY_CONTRACT_FILTERS : CONTRACT_CARD_PICKS[key]);
 
   /* ── แท็บ: ทะเบียนเอกสาร | ต่อสัญญา (มติผู้ใช้ 2026-08-31) ────────────────
      ⭐ **สองแท็บคนละ entity โดยตั้งใจ** — ทะเบียนคือ *เอกสารสัญญา* (`sales_contracts`)
@@ -189,10 +203,25 @@ export default function ContractsPage() {
 
         {tab === "contracts" && <>
         <SaMetricStrip>
-          <SaMetric icon={<FileSignature />} label="ทั้งหมด" value={summary.total} note="สัญญาในขอบเขตที่มองเห็น" />
-          <SaMetric icon={<Clock3 />} label="รอลงนาม" value={summary.awaiting} note="ออกเลขแล้ว รอฉบับเซ็นกลับ" tone={summary.awaiting ? "warning" : "good"} />
-          <SaMetric icon={<ShieldCheck />} label={`ค้างเกิน ${SIGNATURE_LATE_DAYS} วัน`} value={summary.overdue} note="ใบที่ควรโทรตาม" tone={summary.overdue ? "warning" : "good"} />
-          <SaMetric icon={<CheckCircle2 />} label="ลงนามแล้ว" value={summary.signed} note="มีไฟล์ฉบับเซ็นครบ" tone="good" />
+          {/* ⭐ การ์ดทั้งสี่เป็นปุ่มตัวกรอง (ตรวจตัวเลข L2) — กด = ตารางเหลือเท่าเลขบนการ์ด · "ค้างเกิน n วัน" = ใบรอลงนามที่เกินเกณฑ์ */}
+          <SaMetric
+            as="button" type="button" icon={<FileSignature />} label="ทั้งหมด" value={summary.total} note="สัญญาในขอบเขตที่มองเห็น"
+            active={cardActive("total")} aria-pressed={cardActive("total")} onClick={() => pickCard("total")}
+          />
+          <SaMetric
+            as="button" type="button" icon={<Clock3 />} label="รอลงนาม" value={summary.awaiting} note="ออกเลขแล้ว รอฉบับเซ็นกลับ"
+            tone={summary.awaiting ? "warning" : "good"}
+            active={cardActive("awaiting")} aria-pressed={cardActive("awaiting")} onClick={() => pickCard("awaiting")}
+          />
+          <SaMetric
+            as="button" type="button" icon={<ShieldCheck />} label={`ค้างเกิน ${SIGNATURE_LATE_DAYS} วัน`} value={summary.overdue}
+            note="ใบรอลงนามที่ควรโทรตาม" tone={summary.overdue ? "warning" : "good"}
+            active={cardActive("late")} aria-pressed={cardActive("late")} onClick={() => pickCard("late")}
+          />
+          <SaMetric
+            as="button" type="button" icon={<CheckCircle2 />} label="ลงนามแล้ว" value={summary.signed} note="มีไฟล์ฉบับเซ็นครบ" tone="good"
+            active={cardActive("signed")} aria-pressed={cardActive("signed")} onClick={() => pickCard("signed")}
+          />
         </SaMetricStrip>
 
         {/* ⭐ ของค้างขึ้นหัวตาราง — ทรงเดียวกับทะเบียนใบเสนอราคา/ใบสั่งขาย/ลูกค้า/สินค้า
@@ -229,9 +258,12 @@ export default function ContractsPage() {
             {waitingOnMeOnly && (
               <Button size="sm" onClick={() => setWaitingOnMeOnly(false)}>กรอง: รอฉันลงมือ ×</Button>
             )}
+            {lateOnly && (
+              <Button size="sm" onClick={() => setLateOnly(false)}>กรอง: รอลงนามเกิน {SIGNATURE_LATE_DAYS} วัน ×</Button>
+            )}
             <FilterPopover
               count={statusFilter.length + kindFilter.length + sourceFilter.length}
-              onClear={() => { setStatusFilter([]); setKindFilter([]); setSourceFilter([]); }}
+              onClear={() => { setStatusFilter([]); setKindFilter([]); setSourceFilter([]); setLateOnly(false); }}
               groups={[
                 {
                   key: "status", label: "สถานะ", icon: Flag,
@@ -279,7 +311,7 @@ export default function ContractsPage() {
               </thead>
               <tbody>
                 {pageRows.map((row) => {
-                  const track = contractListTrack(row);
+                  const track = contractListTrack(row, { now: asOf });
                   return (
                     <DetailRow key={row.id} href={`/sa/contracts/${row.id}`} className="premium-row">
                       <td>

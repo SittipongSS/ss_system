@@ -9,7 +9,7 @@
 //    `lib/sales/leadListFilter.js` #1877) ⇒ "รอเติมข้อมูล (n)" = ติ๊กแล้วตารางเหลือ n แถว
 import { forecastDueState } from '@/lib/sales/forecastDue';
 import { dealDeliveryState } from '@/lib/sales/dealPeriod';
-import { dealTypeOf } from '@/lib/salesPlanning';
+import { dealTypeOf, isClosedStage } from '@/lib/salesPlanning';
 
 /** ดีลที่ผู้ดูแลยังต้องเติมมูลค่า/เดือน (ธงจากงาน backfill โครงการ PM เก่า · ปลดเองเมื่อเติมมูลค่า) */
 export const isNeedsReviewDeal = (deal) => !!deal?.metadata?.needsReview;
@@ -20,8 +20,13 @@ export const DEAL_REVIEW_LIST_URL = '/api/sales-planning/deals?review=1';
 /** API: คำขอนี้ขอเฉพาะดีลรอเติมข้อมูลไหม */
 export const wantsReviewOnly = (searchParams) => searchParams?.get?.('review') === '1';
 
-/** ช่องของมิติ "เดือน FC" — ตัวเดียวกับป้ายในแถว (`forecastDueState`) */
+/** ช่องของมิติ "เดือน FC" — ตัวเดียวกับป้ายในแถว (`forecastDueState`)
+ *  ⭐ ดีลที่ปิดแล้ว (Won · เข้าโครงการ · Lost) = `null` — ไม่อยู่กลุ่มไหนเลย (ตรวจตัวเลข L10 · 26/10)
+ *  🐞 เดิมตกเป็น 'ontime' ทุกใบ ⇒ ติ๊ก "ตรงกำหนด" ได้ดีล Won/Lost ที่เดือน FC ผ่านไปนานแล้วหรือไม่เคยระบุ
+ *     ภายใต้คำว่า "ตรงกำหนด" · ดีลปิดแล้วไม่มีเดือน FC ให้ตามอีก (แบบเดียวกับดีลแพ้ในมิติวันรับของ)
+ *  ⇒ "ตรงกำหนด" = ดีลที่ยังเปิดและเดือน FC เป็นเดือนนี้หรือหลังจากนี้ */
 export function dealDueKey(deal, currentMonth) {
+  if (isClosedStage(deal?.stage)) return null;
   const due = forecastDueState(deal, currentMonth);
   return due.overdue ? 'overdue' : (due.missing ? 'missing' : 'ontime');
 }
@@ -36,6 +41,7 @@ export function dealDueKey(deal, currentMonth) {
 export function dealPassesListFilters(deal, filters = {}, ctx = {}, { except = null } = {}) {
   if (ctx.inScope && !ctx.inScope(deal)) return false;
   if (except !== 'review' && filters.review && !isNeedsReviewDeal(deal)) return false;
+  /* เดือน FC: ดีลที่ปิดแล้วไม่อยู่กลุ่มไหน (dealDueKey = null) ⇒ ติ๊กตัวเลือกใดก็ไม่ขึ้น */
   if (except !== 'due' && filters.due?.length && !filters.due.includes(dealDueKey(deal, ctx.currentMonth))) return false;
   /* วันรับของ: ดีลแพ้ที่ไม่มีวันรับของไม่อยู่ทั้งสองกลุ่ม (dealDeliveryState = null) */
   if (except !== 'delivery' && filters.delivery?.length && !filters.delivery.includes(dealDeliveryState(deal))) return false;
@@ -105,7 +111,9 @@ export function dealFacetCounts(deals = [], filters = {}, ctx = {}) {
   };
   for (const deal of deals || []) {
     if (dealPassesListFilters(deal, filters, ctx, { except: 'due' })) {
-      counts.due[dealDueKey(deal, ctx.currentMonth)] += 1;
+      /* ดีลที่ปิดแล้วไม่อยู่กลุ่มไหน (null) — ติ๊กกลุ่มไหนก็ไม่ขึ้น จึงไม่นับ */
+      const key = dealDueKey(deal, ctx.currentMonth);
+      if (key) counts.due[key] += 1;
     }
     if (dealPassesListFilters(deal, filters, ctx, { except: 'delivery' })) {
       /* ดีลแพ้ที่ไม่มีวันรับของไม่อยู่ทั้งสองกลุ่ม (null) — ติ๊กกลุ่มไหนก็ไม่ขึ้น จึงไม่นับ */

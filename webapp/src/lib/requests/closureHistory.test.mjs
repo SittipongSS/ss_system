@@ -400,8 +400,9 @@ test('วันปิดตัวเดียวทุกที่: tooltip ห�
 
 test('ตารางแจกงานผู้ปรุง: ใบที่มีฝั่งปิดแล้วไม่ "เลยกำหนด"', async () => {
   const { isOverdue } = await import('../rd/perfumerBoard.js');
-  assert.equal(isOverdue({ dueDate: '2026-08-20', sent: false, closureStarted: true }, '2026-09-11'), false);
-  assert.equal(isOverdue({ dueDate: '2026-08-20', sent: false, closureStarted: false }, '2026-09-11'), true);
+  // `committed: true` — "เลยกำหนด" นับเฉพาะวันที่ RD รับปากไว้ (มติเจ้าของ 26/10 · L14)
+  assert.equal(isOverdue({ dueDate: '2026-08-20', committed: true, sent: false, closureStarted: true }, '2026-09-11'), false);
+  assert.equal(isOverdue({ dueDate: '2026-08-20', committed: true, sent: false, closureStarted: false }, '2026-09-11'), true);
 });
 
 test('ตารางว่างเพราะคำค้น/ตัวกรอง ต้องไม่ใช้ข้อความ "ไม่มีใบ" ของผู้เรียก', () => {

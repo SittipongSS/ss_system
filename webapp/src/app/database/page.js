@@ -21,8 +21,7 @@ import { brandLabel } from "@/lib/master/brands";
 import { productIdentity } from "@/lib/master/productIdentity";
 import { NA, naText } from "@/lib/format";
 import { PENDING_APPROVAL_HREF, isPendingApproval, pendingApprovalCount, registryDefaultCount } from "@/lib/master/pendingApprovalLinks";
-
-const teamsOf = (c) => (c?.teams?.length ? c.teams : c?.team ? [c.team] : []);
+import { customersById, matchesOverviewTeams, overviewTeamOptions, teamsOf } from "@/lib/master/overviewTeamFilter";
 
 /* ชุดจำแนกประเภทกลาง (ดู chartTheme.js) — เดิมเป็นลิสต์เฉพาะหน้าเริ่มด้วย accent
    ซึ่งชนสีปุ่ม · ลำดับ segment ของ v1 ขยับตามชุดกลางโดยเจตนา */
@@ -89,22 +88,18 @@ export default function DatabaseOverview() {
   const [timeframe, setTimeframe] = useState([]);
   const [teamFilter, setTeamFilter] = useState([]);
 
-  // Extract unique teams for the filter dropdown
-  const allTeams = useMemo(() => {
-    const teams = new Set();
-    (rawProducts || []).forEach(p => p.team && teams.add(p.team));
-    (rawCustomers || []).forEach(c => teamsOf(c).forEach(t => teams.add(t)));
-    return Array.from(teams).sort();
-  }, [rawProducts, rawCustomers]);
+  /* ⭐ ตัวกรอง "ทีมดูแล" (ตรวจตัวเลข 26/10 · L17 · `lib/master/overviewTeamFilter.js`) — สินค้าตามทีมดูแลของ
+     **ลูกค้าเจ้าของ** ไม่ใช่ `p.team` (ทีมของคนที่เปิดสินค้า · มติ 2026-07-20: เจ้าของสินค้าคือลูกค้า)
+     🐞 เดิมสายสินค้ากรองด้วย `p.team` ⇒ เลือกทีม X กราฟ/คิวฝั่งสินค้าได้สินค้าที่คนของ X เปิดให้ลูกค้าทีมอื่น
+        ขณะที่ฝั่งลูกค้าได้ลูกค้าที่ X ดูแล — ป้ายเดียวสองความหมาย · ตัวเลือกจึงมาจากทีมของลูกค้าเท่านั้น */
+  const customerIndex = useMemo(() => customersById(rawCustomers || []), [rawCustomers]);
+  const allTeams = useMemo(() => overviewTeamOptions(rawCustomers || []), [rawCustomers]);
 
   // Filter Data
   const { products, customers } = useMemo(() => {
     const now = new Date();
-    const filterFn = (item) => {
-      if (teamFilter.length) {
-        const itemTeams = item.teams?.length ? item.teams : (item.team ? [item.team] : []);
-        if (!itemTeams.some((t) => teamFilter.includes(t))) return false;
-      }
+    const filterFn = (kind) => (item) => {
+      if (!matchesOverviewTeams(item, kind, teamFilter, customerIndex)) return false;
       if (!timeframe.length) return true;
       const d = new Date(item.createdAt);
       if (isNaN(d)) return true;
@@ -115,10 +110,10 @@ export default function DatabaseOverview() {
       );
     };
     return {
-      products: (rawProducts || []).filter(filterFn),
-      customers: (rawCustomers || []).filter(filterFn)
+      products: (rawProducts || []).filter(filterFn("product")),
+      customers: (rawCustomers || []).filter(filterFn("customer")),
     };
-  }, [rawProducts, rawCustomers, timeframe, teamFilter]);
+  }, [rawProducts, rawCustomers, customerIndex, timeframe, teamFilter]);
 
   // Process data for charts
   const trendData = useMemo(() => {

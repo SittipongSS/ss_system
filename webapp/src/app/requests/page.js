@@ -24,7 +24,8 @@ import { useQueueBoard } from "@/lib/requests/useQueueBoard";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { REQUEST_SCOPES, canUseScope } from "@/lib/requests/scope";
 import {
-  QUEUE_TABS, matchesQueueCount, queueTabRows, startHereRequest, visibleQueueRows, waitingOnMeRows,
+  QUEUE_TABS, REQUESTS_NAV_COUNT_PARAM, REQUESTS_NAV_LANDING_LABEL, matchesQueueCount, queueTabRows, requestsNavLanding,
+  startHereRequest, visibleQueueRows, waitingOnMeRows,
 } from "@/lib/requests/queueBoard";
 import { filterQueueRows, queueStripCounts } from "@/lib/requests/queueFilter";
 import StartHereCard from "@/components/requests/StartHereCard";
@@ -50,6 +51,9 @@ import {
 
 // คิวมีได้ฝ่ายละแท็บ — ปกติคนหนึ่งอยู่ฝ่ายเดียวจึงเห็นแท็บเดียว แต่ admin ตอบแทน
 // ได้ทั้งสองฝ่าย (break-glass) ต้องเห็นครบทั้งคู่ ไม่ใช่เห็นแต่ RD แล้วคิว PC หายไปเฉย ๆ
+
+// มุมมองลงจากป้ายเมนู (`?count=requests` · L20) — บอกว่าเป็นชุดเดียวกับเลขบนเมนู ไม่ใช่แท็บ "รอฉันตอบ" เฉย ๆ
+const NAV_LANDING_BLURB = "เรื่องที่รอคุณหรือฝ่ายของคุณทำต่อ รวมใบตีกลับที่รอคุณแก้ — ชุดเดียวกับตัวเลขบนเมนู \"คำร้อง\"";
 
 // ⚠️ "ที่ยังไม่จบ" (ม-145) — ใบที่ปิดครบ/ยกเลิกแล้วย้ายไปแท็บประวัติ ไม่ปนในแท็บนี้อีก
 const MINE_BLURB = "คำร้องที่คุณเปิดถึงฝ่ายอื่นและยังไม่จบ — ใบที่ปิดครบแล้วอยู่แท็บ \"ประวัติ\"";
@@ -108,6 +112,19 @@ export default function RequestsPage() {
   const tabKeys = QUEUE_TABS.map((t) => t.key);
   const defaultTab = myDepts.length ? "todo" : "mine";
   const urlTab = searchParams.get("tab");
+  /* ⭐ **ป้ายเมนู "คำร้อง" → `?count=requests`** (ตรวจตัวเลข L20 · 2026-10-26 · ม-115 แบบ A) — ป้ายนับ `waitingOnMeRows`
+     ที่ขอบเขต "ของฉัน" (แท็บ "รอฉันตอบ" + ใบตีกลับของตัวเอง · ม-112) ⇒ ลงที่ **มุมมองลงจอด** ซึ่งแถว = ตัวตัดสินเดียวกับป้าย
+     🐞 เดิมเมนูพาไป `/requests` เปล่า: แท็บตั้งต้นไม่มีใบตีกลับ (ม-102 ข้อ 4) · superuser ที่ไม่ใช่ AC ลงขอบเขต "ทั้งหมด"
+        ⇒ ป้าย 3 ตารางขึ้นอีกเลข
+     ⚠️ มุมมองนี้ **ไม่ใช่แท็บที่สี่** (R-4) — เลขบนแท็บ/ใบตีกลับในแท็บ "ที่ฉันเปิด" เท่าเดิม · กดแท็บ/ขอบเขต/ชิป × = ออก
+     ⚠️ ถอด `count` ออกจาก URL ทันทีหลังตั้งค่า (แพตเทิร์น M9 ของงานของฉัน) — กดป้ายซ้ำขณะอยู่หน้านี้ต้องลงใหม่ทุกครั้ง */
+  const countParam = searchParams.get("count") || "";
+  const [navLanding, setNavLanding] = useState(() => countParam === REQUESTS_NAV_COUNT_PARAM);
+  /* ลงจอดครั้งที่เท่าไร — ใส่ใน `key` ของแผงรายการ ⇒ **ทุกครั้งที่กดป้าย** แผงเริ่มหน้า 1 (รีวิว L20 · 26/10)
+     🐞 ไม่มีตัวนี้: อยู่แท็บ "รอฉันตอบ" หน้า 2 ไม่มีตัวกรอง → กดป้าย = คีย์รีเซ็ตหน้าของแผง (ขอบเขต/คอลัมน์/คำค้น/ตัวกรอง)
+        เท่าเดิมทุกตัว ⇒ ลงหน้า 2 ของมุมมองลงจอด · ใบเร่งที่สุด (รวมใบตีกลับที่มุมมองนี้มีไว้โชว์) อยู่หน้า 1 มองไม่เห็น
+        · กดป้ายซ้ำขณะอยู่ในมุมมองแล้วก็เหมือนกัน (`navLanding` true อยู่แล้ว) จึงต้องนับรอบ ไม่ใช่ใช้ธงอย่างเดียว */
+  const [navLandingSeq, setNavLandingSeq] = useState(0);
   // ⚠️ ลิงก์เก่ายังชี้ `queue-RD` / `queue` อยู่หลายที่ (การ์ดคำร้องบนหน้าดีล ·
   // แจ้งเตือน · /go/DR-…) — เด้งเข้าแท็บที่กลืนมันไป ไม่ใช่ตกลง "ที่ฉันเปิด" เงียบ ๆ
   const wanted = String(urlTab || "").startsWith("queue") ? "todo" : urlTab;
@@ -129,6 +146,7 @@ export default function RequestsPage() {
      `?dealId=` หลุด ชุดจะกลายเป็นทั้งคิวเงียบ ๆ ทั้งที่เลขบนแท็บที่เพิ่งกดพูดถึงดีลเดียว · ถอดได้ที่ปุ่ม × เท่านั้น */
   const setTab = (next) => {
     board.setCountFilter(null);
+    setNavLanding(false); // กดแท็บ = ออกจากมุมมองลงจอดของป้ายเมนู (L20)
     router.replace(requestsQueueHref({ tab: next, link: dealLink }), { scroll: false });
   };
 
@@ -167,6 +185,8 @@ export default function RequestsPage() {
        (`visibleQueueRows`) ⇒ เหตุผลเดิม ("แท็บถูกซ่อนแล้วพารามิเตอร์ถูกเมิน") ไม่จริง
        สำหรับประวัติอีก · ปล่อยให้ได้ขอบเขตตั้งต้นของคนนั้น แอดมินที่กดกลับจากใบที่
        ปิดแล้วจึงเห็นประวัติของทั้งระบบ ไม่ใช่ "ของฉัน" ที่แทบว่าง (กับดัก #1038) */
+    // ลงจากป้ายเมนู = ขอบเขตเดียวกับที่ป้ายนับ ("ของฉัน") — ตั้งตั้งแต่เมานต์ ไม่ยิงขอบเขตตั้งต้นทิ้งหนึ่งรอบ (L20)
+    if (countParam === REQUESTS_NAV_COUNT_PARAM) return requestsNavLanding().scope;
     if (tabKeys.includes(wanted) && wanted !== "history") return "mine";
     const allowed = REQUEST_SCOPES.filter((s) => canUseScope(me, s));
     if (dealLink) return allowed[allowed.length - 1] || "mine";
@@ -229,6 +249,23 @@ export default function RequestsPage() {
     [scopedRequests, dealLink],
   );
   const [deptFilter, setDeptFilter] = useState("all");
+  /* ⭐ ลงจากป้ายเมนู (L20) — ตั้ง **ทุกชั้นที่ตัดแถว** จาก `requestsNavLanding` แล้วถอด `?count=` (และลิงก์ดีล/แท็บ) ออกจาก URL
+     ⇒ แถว = `waitingOnMeRows` ของชุด "ของฉัน" ทั้งก้อน = เลขบนป้าย · ตัวสลับฝ่าย/คำค้นที่กดต่อจากนี้แคบลงได้ตามปกติ */
+  useEffect(() => {
+    if (countParam !== REQUESTS_NAV_COUNT_PARAM) return;
+    const landing = requestsNavLanding();
+    setScope(landing.scope);
+    board.setSearch(landing.search);
+    board.clearFilters();
+    board.setCountFilter(landing.countFilter);
+    setDeptFilter(landing.deptFilter);
+    setNavLanding(true);
+    setNavLandingSeq((n) => n + 1);
+    router.replace(requestsQueueHref({ tab: null, link: landing.link }), { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countParam]);
+  // ลิงก์ที่ระบุแท็บ/ดีลมาเองระหว่างอยู่ในมุมมองลงจอด (แจ้งเตือน · หน้าดีล) = ออกจากมุมมองนั้น
+  useEffect(() => { if (urlTab || dealLink) setNavLanding(false); }, [urlTab, dealLink]);
   const requests = useMemo(
     () => (deptFilter === "all" ? linkedRequests : linkedRequests.filter((r) => r.dept === deptFilter)),
     [linkedRequests, deptFilter],
@@ -258,10 +295,13 @@ export default function RequestsPage() {
      🐞 ของเดิมกรองด้วยแท็บเสมอ ⇒ ใบที่ขอบเขตทีม/ทั้งหมดโหลดมาไม่มีแท็บไหนรับ
      หน้าจึงว่างเปล่าทั้งที่ API ส่งมา 15 ใบ (ผู้ใช้ส่งภาพมา) */
   const roleTabsApply = activeScope === "mine";
+  /* มุมมองลงจอดของป้ายเมนู (L20) = `waitingOnMeRows` ตัวเดียวกับ `requestsTodoCount` — ไม่ใช่แท็บบทบาทตัวไหน */
   const tabRows = useMemo(
-    () => visibleQueueRows(requests, { scope: activeScope, tab, myDepts })
+    () => (navLanding
+      ? waitingOnMeRows(requests, { myDepts })
+      : visibleQueueRows(requests, { scope: activeScope, tab, myDepts }))
       .slice().sort(compareRequestUrgency),
-    [requests, activeScope, tab, myDepts],
+    [requests, activeScope, tab, myDepts, navLanding],
   );
 
   // ── การ์ด "เริ่มที่นี่" ────────────────────────────────────────────────
@@ -329,8 +369,10 @@ export default function RequestsPage() {
   /* ⚠️ **นับพร้อมทุกชั้นที่ตามไป** (ตรวจตัวเลข 20/10/2026 M4) — สลับฝ่ายไม่ล้างตัวกรองตัวเลข คำค้น หรือแผงกรอง
      ⇒ เลขข้างชิปต้องผ่านทั้งสามชั้นเหมือนตาราง · 🐞 เดิมนับก่อนทุกชั้น ⇒ ค้น "ลอรีอัล" อยู่ ชิป "RD 12" กดแล้วได้ 2 */
   const deptCountBase = useMemo(
-    () => filterQueueRows(visibleQueueRows(linkedRequests, { scope: activeScope, tab, myDepts }), queueState),
-    [linkedRequests, activeScope, tab, myDepts, queueState],
+    () => (navLanding
+      ? filterQueueRows(waitingOnMeRows(linkedRequests, { myDepts }), queueState)
+      : filterQueueRows(visibleQueueRows(linkedRequests, { scope: activeScope, tab, myDepts }), queueState)),
+    [linkedRequests, activeScope, tab, myDepts, queueState, navLanding],
   );
   const deptOptions = useMemo(() => {
     /* ⭐ **ทุกฝ่ายในทะเบียนขึ้นครบเสมอ แม้เหลือศูนย์ใบ** (มติผู้ใช้ 2026-08-30) —
@@ -402,7 +444,7 @@ export default function RequestsPage() {
     <Workspace
       icon={<MessageCircleQuestion size={22} />}
       title="คำร้องข้ามฝ่าย"
-      subtitle={!roleTabsApply
+      subtitle={navLanding ? NAV_LANDING_BLURB : !roleTabsApply
         ? (tab === "history"
           ? `ใบที่ปิดครบสองฝั่งหรือยกเลิกแล้วใน${SCOPE_LABELS[activeScope]} — ปิดล่าสุดอยู่บนสุด`
           : `ใบที่ยังไม่จบใน${SCOPE_LABELS[activeScope]} — เรื่องที่ยังไม่มีใครรับขึ้นก่อนเสมอ`)
@@ -437,7 +479,8 @@ export default function RequestsPage() {
           ariaLabel="ขอบเขตของคิวคำร้อง"
           className="scope-toggle"
           value={activeScope}
-          onChange={setScope}
+          // เปลี่ยนขอบเขต = ออกจากมุมมองลงจอดของป้ายเมนู (L20 · ป้ายนับเฉพาะ "ของฉัน")
+          onChange={(next) => { if (next !== activeScope) setNavLanding(false); setScope(next); }}
           options={REQUEST_SCOPES.map((s) => ({
             value: s, label: SCOPE_LABELS[s], disabled: !canUseScope(me, s),
           }))}
@@ -448,7 +491,8 @@ export default function RequestsPage() {
         {roleTabsApply && <Segmented
           ariaLabel="มุมมองหน้าคำร้อง"
           className="scope-toggle"
-          value={tab}
+          /* มุมมองลงจอดไม่ใช่แท็บไหน (L20) ⇒ ไม่มีแท็บถูกเลือก · ชิป "กรอง: รอฉันลงมือ (รวมใบตีกลับ) ×" บอกแทน */
+          value={navLanding ? null : tab}
           onChange={setTab}
           options={QUEUE_TABS.map((t) => ({
             value: t.key,
@@ -501,6 +545,12 @@ export default function RequestsPage() {
         {/* ⭐ ตัวกรองดีล/ขั้นที่มากับลิงก์ — ป้ายที่กดล้างได้ (ทรงเดียวกับ "กรอง: รอฉันลงมือ ×" ของทะเบียน QT)
             อยู่แถวเดียวกับขอบเขต เพราะคุมทั้งหน้า ไม่ใช่แค่ตาราง · ตัวกรองที่มองไม่เห็นคือตัวกรองที่ผู้ใช้
             กล่าวหาว่าข้อมูลหาย (ของเดิมบอกแค่ในคำโปรยของแท็บ "ที่ฉันเปิด" ขอบเขตอื่นไม่บอกเลย) */}
+        {/* มุมมองลงจอดของป้ายเมนู (L20) — ตัวกรองที่มองไม่เห็นคือตัวกรองที่คนกล่าวหาว่าข้อมูลหาย · × = กลับแท็บตั้งต้น */}
+        {navLanding && (
+          <Button size="sm" onClick={() => setNavLanding(false)} title="ล้างตัวกรองนี้ แล้วกลับแท็บตั้งต้นของคุณ">
+            กรอง: {REQUESTS_NAV_LANDING_LABEL} ×
+          </Button>
+        )}
         {dealLink && (
           <Button
             size="sm"
@@ -555,13 +605,16 @@ export default function RequestsPage() {
           filter activeKey={board.countFilter}
           note="กดเพื่อกรองรายการ"
           ariaLabel="ตัวเลขสรุปคิวคำร้อง — กดเพื่อกรอง"
-          /* ตีกลับเป็นงานของผู้ขอ — แท็บคิวฝ่ายไม่ต้องมีกล่องที่เป็น 0 ตลอด */
-          scope={tab === "todo" ? "dept" : "requester"}
+          /* ตีกลับเป็นงานของผู้ขอ — แท็บคิวฝ่ายไม่ต้องมีกล่องที่เป็น 0 ตลอด · มุมมองลงจอดรวมใบตีกลับ ⇒ มีกล่องนั้น (L20) */
+          scope={tab === "todo" && !navLanding ? "dept" : "requester"}
           onSelect={(key, on) => board.setCountFilter(on ? null : key)}
         />
       )}
 
       <RequestQueuePanel
+        /* เข้า/ออกมุมมองลงจอด หรือกดป้ายซ้ำ = แผงใหม่ (หน้า 1 · แถวต่อหน้ากลับ 25) — คีย์รีเซ็ตหน้าในแผงไม่รู้จักมุมมองนี้ (L20)
+           ⚠️ state อื่นของแผง (มุมมอง/เรียง/จัดกลุ่ม/พับกลุ่ม) อยู่ใน `board` ของหน้านี้ ไม่หายตอนแผงเมานต์ใหม่ */
+        key={navLanding ? `nav-landing-${navLandingSeq}` : "queue"}
         scope={tab === "mine" ? "mine" : "queue"} dept={null}
         /* หัวแผงรายการกลับมา (มติผู้ใช้ 2026-09-15 · D1 — แทนมติถอดหัวการ์ด 2026-09-07) */
         icon={<MessageCircleQuestion size={17} aria-hidden="true" />}
@@ -581,6 +634,8 @@ export default function RequestsPage() {
            พาเนลพูดถึงคิวทั้งก้อน ซึ่งอ่านเหมือนระบบว่างทั้งที่แค่กรองอยู่ */
         emptyText={deptLabel
           ? `ไม่มีคำร้องถึงฝ่าย ${deptLabel} ในมุมมองนี้ — กด "ทุกฝ่าย" เพื่อดูทั้งหมด`
+          : navLanding
+            ? "ไม่มีเรื่องรอคุณลงมือตอนนี้ — กดป้าย \"กรอง\" ด้านบนเพื่อกลับแท็บตั้งต้น"
           : dealLink
             ? `ไม่มีคำร้องตามตัวกรอง "${dealLinkLabel}" ในมุมมองนี้ — กดป้าย "กรอง" ด้านบนเพื่อดูทั้งหมด`
           : tab === "history"

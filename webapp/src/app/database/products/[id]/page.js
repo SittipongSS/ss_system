@@ -32,7 +32,9 @@ import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import { approvalControlView, canApproveMasterRecord } from "@/lib/master/approvalControl";
 import useApprovalDecision from "@/components/database/useApprovalDecision";
 import { useTeams } from "@/lib/roleContext";
-import { categoryOf, categoryFlags, showsRetailPrice } from "@/lib/master/categoryOf";
+import { categoryOf, categoryFlags } from "@/lib/master/categoryOf";
+import { isMissingRetailPrice } from "@/lib/tax/taxableProducts";
+import { isProductTaxable, productExciseBadge, productShowsRetailPrice } from "@/lib/master/productFilter";
 import { isAutoFgCode, isReusableCode } from "@/lib/master/masterCodes";
 import { exciseRecommendationState } from "@/lib/excise/recommendation";
 import { statusMeta } from "@/lib/excise/workflow";
@@ -273,17 +275,23 @@ export default function ProductDetails() {
   const unit = product.saleUnit || DEFAULT_SALE_UNIT;
   // ราคาขายปลีกใช้กติกาเดียวกับฟอร์ม (กลุ่ม 01 หรือหมวดที่ติ๊กสรรพสามิต) — เดิมหน้านี้
   // ผูกกับ isExcise อย่างเดียว ⇒ ของที่กรอกไปตามกติกาฟอร์มจะหายจากจอ
-  const showRetailPrice = showsRetailPrice(product.fgCode, productTypes)
-    || product.retailPriceIncVat != null;
+  // ⭐ + สินค้าที่ต้องเสียภาษี (RA บังคับในหมวดอื่นได้) — คู่ของคำเตือนขาดราคาข้างล่าง ไม่งั้นเตือนแต่ไม่มีแถวราคา (L16c)
+  const showRetailPrice = productShowsRetailPrice(product, productTypes);
+  // ต้องเสียภาษีตามกฎเดียวของระบบ (ธงรายตัวของ RA ชนะหมวด) — ป้ายหัว/คำกำกับราคาพูดตามตัวนี้ ไม่ใช่ธงหมวดล้วน
+  const isTaxable = isProductTaxable(product, productTypes);
+  const exciseBadge = productExciseBadge(product, productTypes);
 
   /* ⚠️ **สินค้าที่ต้องเสียภาษีแต่ยังไม่มีราคาขายปลีก = ภาษีคิดออกมา 0**
      ภาษีสรรพสามิตคิดจากราคาขายปลีก (ถอด VAT × 8.8%) ⇒ ไม่มีราคา = ยื่นภาษีขาด
      · ราคานี้กรอกตั้งแต่ตอนเปิดสินค้าไม่ได้ มันมาทีหลัง ระบบจึงบล็อกที่ "ยื่นขึ้นทะเบียน"
      (lib/tax/requirements.js) — ที่นี่คือให้คนที่เปิดสินค้ามาเห็นก่อนว่าต้องเติม
-     ⚠️ ขึ้นเฉพาะหมวดที่ต้องเสียภาษีจริง และไม่ขึ้นถ้าฝ่าย RA ยกเว้นรายตัวไว้ */
-  const needsRetailPrice = catFlags.isExcise
-    && product.isExciseTaxable !== false
-    && !(Number(product.retailPriceIncVat) > 0);
+     ⚠️ ขึ้นเฉพาะสินค้าที่ต้องเสียภาษีจริง (กฎเดียวของระบบ — ธงรายตัวของ RA ชนะหมวด) · ไม่ขึ้นถ้า RA ยกเว้นรายตัวไว้
+     ⭐ ตัวเดียวกับตัวกรอง "ขาดราคาขายปลีก" ของทะเบียน (`isMissingRetailPrice`) ⇒ ใบที่ตัวกรองนับ เปิดมาต้องเห็นคำเตือน
+     🐞 เดิมดูธงหมวดก่อน (`catFlags.isExcise && isExciseTaxable !== false`) ⇒ สินค้าที่ RA บังคับเสียภาษีในหมวดอื่น
+        ถูกนับในตัวกรองแต่หน้าใบไม่เตือน (ตรวจตัวเลข 26/10 · L16c) */
+  const needsRetailPrice = isMissingRetailPrice(
+    { ...product, categoryCode: product.categoryCode || categoryOf(product.fgCode) }, productTypes,
+  );
 
   // แบนเนอร์แนะนำขึ้นทะเบียนสรรพสามิต — เฉพาะผู้เห็นระบบภาษี; helper คืน null เอง
   // เมื่อไม่เข้าข่าย (หมวดอื่น/พักใช้/ยกเว้นรายตัว/approved แล้ว — rail ขวาโชว์อยู่)
@@ -533,7 +541,14 @@ export default function ProductDetails() {
         description={<>{showBrand && <span>แบรนด์ {naText(brandBoth(product.brandName, product.brandNameEn))}</span>}<span>สร้างเมื่อ {fmtDate(product.createdAt)}</span></>}
         badges={<>
           <SalesStateBadge label={product.isActive === false ? "พักใช้งาน" : "ใช้งานอยู่"} color={product.isActive === false ? "var(--text-3)" : "var(--green)"} />
-          {isExciseCat && <SalesStateBadge label="ภาษีสรรพสามิต" color="var(--amber)" />}
+          {/* ป้ายเดียวกับแถวในทะเบียนสินค้า/หน้าลูกค้า (`productExciseBadge`) — RA ยกเว้น = "ยกเว้นสรรพสามิต" ·
+              RA บังคับในหมวดอื่น = "ภาษีสรรพสามิต" (เดิมดูธงหมวดล้วน · ตรวจตัวเลข 26/10 · L16b) */}
+          {exciseBadge && (
+            <SalesStateBadge
+              label={exciseBadge === "taxable" ? "ภาษีสรรพสามิต" : "ยกเว้นสรรพสามิต"}
+              color={exciseBadge === "taxable" ? "var(--amber)" : "var(--text-3)"}
+            />
+          )}
           {/* เฟสแรกของ "ต้องจดแจ้ง อย." (มติ 2026-07-20): ป้าย + เตือนตอนสร้าง เท่านั้น */}
           {catFlags.requiresFdaNotice && <SalesStateBadge label="ต้องจดแจ้ง อย." color="var(--blue)" />}
         </>}
@@ -764,7 +779,8 @@ export default function ProductDetails() {
               {showRetailPrice && (
                 <div>
                   <span className="text-[var(--text-3)] block mb-1">
-                    ราคาขายปลีก{isExciseCat ? " (ฐานคำนวณสรรพสามิต)" : ""}
+                    {/* "ฐานคำนวณ" เฉพาะของที่ต้องเสียจริง — RA ยกเว้นไม่มีภาษีให้คิด · RA บังคับในหมวดอื่นคิดจากราคานี้ */}
+                    ราคาขายปลีก{isTaxable ? " (ฐานคำนวณสรรพสามิต)" : ""}
                   </span>
                   <span className="font-semibold font-mono text-[var(--text)] text-sm">{fmtMoneyOrDash(product.retailPriceIncVat)}</span>
                 </div>

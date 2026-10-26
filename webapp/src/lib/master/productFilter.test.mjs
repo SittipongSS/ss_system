@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { filterProducts, productCategoryLabel, productFilterFacets, productStatCounts } from './productFilter.js';
+import {
+  filterProducts, isProductTaxable, productCategoryCode, productCategoryLabel, productExciseBadge, productFilterFacets,
+  productShowsRetailPrice, productStatCounts,
+} from './productFilter.js';
 import { isProductExciseTaxable } from '../tax/taxableProducts.js';
 
 const TYPES = [
@@ -134,4 +137,173 @@ test('ด่านซอร์ส M21a/M20b: หน้าสินค้าเ�
   assert.match(page, /\.\.\.\(inactiveInRegistry \|\| showInactive \?/);
   assert.match(page, /productStatCounts\(products, productTypes\)/);
   assert.doesNotMatch(page, /isExciseTaxable !== false\)\.length/, '"ต้องเสียภาษี" ต้องใช้ isProductExciseTaxable');
+});
+
+/* ── L16b (ตรวจตัวเลข 26/10): การ์ด "ต้องเสียสรรพสามิต" กดได้ · ตัวกรองคู่กัน · ป้ายบนแถวถามตัวเดียวกัน ─────────── */
+test('🔴 L16b: กดการ์ด (ตั้ง taxable + ล้างตัวกรองอื่นทั้งหมด) = แถวเท่าเลขบนการ์ด · รวมใบที่ RA บังคับ · ไม่รวมใบที่ RA ยกเว้น', () => {
+  // แถวเก่าไม่มี categoryCode — หมวดถอดจาก fgCode (ตัวเดียวกับการ์ด)
+  const rows = [...FACET_ROWS, P({ fgCode: 'FG-108-01-002-2009', approvalStatus: 'approved' })];
+  const stats = productStatCounts(rows, TYPES);
+  const afterCard = filterProducts(rows, { taxable: true, productTypes: TYPES });
+  assert.equal(afterCard.length, stats.taxable);
+  const codes = afterCard.map((r) => r.fgCode);
+  assert.ok(codes.includes('C3'), 'RA บังคับในหมวดที่ไม่เสียภาษี = นับและอยู่ในรายการ');
+  assert.ok(!codes.includes('D1'), 'RA ยกเว้นในหมวดเสียภาษี = ไม่นับและไม่อยู่ในรายการ');
+  assert.ok(codes.includes('FG-108-01-002-2009'), 'แถวเก่าถอดหมวดจาก fgCode');
+  assert.equal(stats.taxable, 5);
+  // ทุกแถวในรายการคือแถวที่จอติดป้าย "ภาษีสรรพสามิต" (ตัวตัดสินเดียวกัน)
+  assert.ok(afterCard.every((r) => isProductTaxable(r, TYPES)));
+  assert.ok(!filterProducts(rows, { productTypes: TYPES }).filter((r) => !afterCard.includes(r)).some((r) => isProductTaxable(r, TYPES)));
+});
+
+test('🔴 L16b: "ต้องเสียสรรพสามิต (n)" บนตัวเลือก = แถวหลังติ๊ก ทุกคำค้น × สถานะ × ทะเบียน × ติ๊กค้าง', () => {
+  let checked = 0;
+  for (const search of ['', 'ร้อน', 'C', 'ไม่มี']) {
+    for (const statuses of subsets(['pending', 'approved', 'rejected'])) {
+      for (const registrations of [[], ['none']]) {
+        for (const showInactive of [false, true]) {
+          for (const missingRetailPrice of [false, true]) {
+            for (const taxable of [false, true]) {
+              const state = { search, statuses, registrations, showInactive, missingRetailPrice, taxable, productTypes: TYPES };
+              const facets = productFilterFacets(FACET_ROWS, state);
+              assert.equal(facets.taxable, filterProducts(FACET_ROWS, { ...state, taxable: true }).length, JSON.stringify(state));
+              checked += 1;
+            }
+          }
+        }
+      }
+    }
+  }
+  assert.ok(checked > 300);
+});
+
+test('🔴 L16b ด่านซอร์ส: การ์ดกดได้และตั้งตัวกรองทั้งชุด · ตัวกรอง/ส่งออก/ป้ายบนแถวถาม isProductTaxable', () => {
+  const page = readFileSync(new URL('../../app/database/products/page.js', import.meta.url), 'utf8');
+  const live = page.replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.match(live, /missingRetailPrice: missingPrice, taxable: taxableOnly,/);
+  assert.match(live, /label: "ต้องเสียสรรพสามิต", value: counts\.taxable, tone: "info",\s*onClick: onTaxableCard, pressed: taxableCardPressed,/);
+  assert.doesNotMatch(live, /label: "ต้องเสียภาษี"/, 'ชื่อการ์ดต้องบอกชนิดภาษี');
+  // กดการ์ด = ล้างคำค้น/สถานะ/ทะเบียน/เลิกใช้/ขาดราคา แล้วติ๊ก taxable — ตารางจึงได้ชุดเดียวกับเลข
+  assert.match(live, /setSearch\(""\); setStatusFilter\(EMPTY\); setRegFilter\(EMPTY\); setShowInactive\(false\); setMissingPrice\(false\);\s*setTaxableOnly\(true\);/);
+  assert.match(live, /const taxableCardPressed = taxableOnly && !q && !statusFilter\.length && !regFilter\.length && !showInactive && !missingPrice;/);
+  assert.match(live, /label: `ต้องเสียสรรพสามิต \(\$\{facets\.taxable\}\)`/);
+  assert.match(live, /\(taxableOnly \? 1 : 0\)/, 'นับเข้าเลขบนปุ่มตัวกรอง');
+  assert.match(live, /setTaxableOnly\(false\); \}\}/, 'ล้างทั้งหมดต้องล้างตัวนี้ด้วย');
+  assert.match(live, /if \(taxableOnly\) params\.set\("taxable", "1"\);/);
+  // ป้ายบนแถว (สองมุมมอง) ถามตัวเดียวกับการ์ด — ไม่ใช่ธงหมวดล้วนอีก
+  assert.equal((live.match(/const taxable = isProductTaxable\(p, productTypes\);/g) || []).length, 2);
+  assert.doesNotMatch(live, /isExciseCat && <span className="status-pill warning/);
+  assert.doesNotMatch(live, /const isExciseCat = flags\.isExcise;/);
+  const route = readFileSync(new URL('../../app/api/products/export/route.js', import.meta.url), 'utf8');
+  assert.match(route, /taxable: url\.searchParams\.get\('taxable'\) === '1',/);
+  // การ์ดที่มี onClick เป็นปุ่มจริงพร้อม aria-pressed
+  const cards = readFileSync(new URL('../../components/database/StatCards.js', import.meta.url), 'utf8');
+  assert.match(cards, /const Card = clickable \? "button" : "div";/);
+  assert.match(cards, /type: "button", onClick: it\.onClick, "aria-pressed": !!it\.pressed/);
+});
+
+/* ── L16c (ตรวจตัวเลข 26/10): กฎเก่า `isExciseTaxable !== false` ห้ามเหลือบนจอของโมดูลฐานข้อมูล ───────────────
+   กฎนั้นนับสินค้าธงว่างในหมวดที่ไม่เสียภาษีเป็น "ต้องเสีย" และพลาดสินค้าที่ RA บังคับ ⇒ หน้าลูกค้าโชว์การ์ดภาระภาษี 0.00 ·
+   หน้าสินค้าไม่เตือนขาดราคาขายปลีก ทั้งที่ตัวกรองของทะเบียนนับใบนั้น */
+test('🔴 L16c ด่านซอร์ส: จอใต้ app/database ไม่ใช้กฎ isExciseTaxable !== false · สองหน้ารายละเอียดถามตัวกลาง', async () => {
+  const { readdirSync } = await import('node:fs');
+  const root = new URL('../../app/database/', import.meta.url);
+  const pages = readdirSync(root, { recursive: true }).filter((f) => /(^|[\\/])page\.js$/.test(String(f)));
+  assert.ok(pages.length >= 5, 'ต้องเจอหน้าของโมดูลฐานข้อมูล');
+  const code = (rel) => readFileSync(new URL(rel, root), 'utf8')
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  for (const rel of pages) {
+    assert.doesNotMatch(code(String(rel).replace(/\\/g, '/')), /isExciseTaxable\s*!==\s*false/, `${rel}: ใช้ isProductExciseTaxable / isMissingRetailPrice`);
+  }
+  assert.match(code('customers/[id]/page.js'), /hasTaxObligation = totalTaxAccrued > 0 \|\| products\.some\(\(p\) => isProductTaxable\(p, productTypes\)\);/);
+  assert.match(code('products/[id]/page.js'), /const needsRetailPrice = isMissingRetailPrice\(/);
+});
+
+test('L16c: ตัวตัดสินกลางที่สองหน้าใช้ — RA บังคับในหมวดอื่น = ต้องเสีย/ขาดราคา · ธงว่างในหมวดไม่เสีย = ไม่ต้องเสีย', async () => {
+  const { isMissingRetailPrice } = await import('../tax/taxableProducts.js');
+  const forced = { categoryCode: '03-001', isExciseTaxable: true, retailPriceIncVat: null };
+  const legacyBlank = { categoryCode: '03-001', isExciseTaxable: null };
+  const exempt = { categoryCode: '01-002', isExciseTaxable: false, retailPriceIncVat: null };
+  assert.equal(isProductExciseTaxable(forced, TYPES), true);
+  assert.equal(isMissingRetailPrice(forced, TYPES), true, 'หน้าสินค้าต้องเตือน (เดิมไม่เตือน)');
+  assert.equal(isProductExciseTaxable(legacyBlank, TYPES), false, 'หน้าลูกค้าไม่ต้องโชว์การ์ดภาระภาษี (เดิมโชว์ 0.00)');
+  assert.equal(legacyBlank.isExciseTaxable !== false, true, 'กฎเก่าตอบผิดบนแถวนี้');
+  assert.equal(isMissingRetailPrice(exempt, TYPES), false);
+});
+
+/* ── L16c ต่อ (รีวิว 26/10): คำเตือน "ยังไม่มีราคาขายปลีก" ต้องมีแถวราคาให้เห็นคู่กันเสมอ ─────────────────────────
+   สินค้าที่ RA บังคับเสียภาษีในหมวด 03-001 (ไม่ใช่กลุ่ม 01 · ไม่ได้ติ๊กสรรพสามิต) เคยถูกเตือนให้เติมราคา
+   แต่หน้ารายละเอียดซ่อนแถวราคา = สั่งกรอกช่องที่จอซ่อนไว้ (ทางตัน) */
+test('🔴 L16c: ทุกใบที่ถูกเตือนขาดราคาขายปลีก หน้ารายละเอียดโชว์แถวราคา — รวมของที่ RA บังคับในหมวดอื่น', async () => {
+  const { isMissingRetailPrice } = await import('../tax/taxableProducts.js');
+  const forced = P({ fgCode: 'FG-AAA-03-001-0001', categoryCode: '03-001', isExciseTaxable: true, retailPriceIncVat: null });
+  assert.equal(isMissingRetailPrice(forced, TYPES), true, 'แบนเนอร์ขึ้น');
+  assert.equal(productShowsRetailPrice(forced, TYPES), true, 'แถวราคาขายปลีกต้องโผล่ (เดิมซ่อน)');
+  // กวาดทั้งชุด: เซตที่ถูกเตือน ⊂ เซตที่เห็นแถวราคา
+  const rows = [
+    forced,
+    P({ fgCode: 'FG-AAA-03-001-0002', categoryCode: '03-001', isExciseTaxable: null }),              // ไม่เกี่ยวภาษี
+    P({ fgCode: 'FG-AAA-03-001-0003', categoryCode: '03-001', isExciseTaxable: false, retailPriceIncVat: 50 }), // ราคาค้าง
+    P({ fgCode: 'FG-AAA-01-002-0001', categoryCode: '01-002', isExciseTaxable: null }),              // หมวดเสียภาษี ขาดราคา
+    P({ fgCode: 'FG-AAA-01-002-0002', categoryCode: '01-002', isExciseTaxable: false }),             // RA ยกเว้น
+    P({ fgCode: 'FG-1', categoryCode: '03-001', isExciseTaxable: true, retailPriceIncVat: 0 }),       // แถวเก่า fgCode ไม่มีหมวด
+  ];
+  for (const r of rows.filter((x) => isMissingRetailPrice(x, TYPES))) {
+    assert.equal(productShowsRetailPrice(r, TYPES), true, `${r.fgCode}: เตือนแล้วต้องเห็นแถวราคา`);
+  }
+  // ของที่ไม่เกี่ยวภาษี ไม่ใช่กลุ่ม 01 และไม่มีราคาค้าง — ยังซ่อนเหมือนเดิม (ไม่ขยายแถวเกินจำเป็น)
+  assert.equal(productShowsRetailPrice(rows[1], TYPES), false);
+  assert.equal(productShowsRetailPrice(rows[2], TYPES), true, 'ราคาค้างโชว์เสมอ (กติกาเดิม)');
+});
+
+test('🔴 L16b/L16c: ป้ายภาษีของสินค้า (หน้าลูกค้า/หัวหน้าสินค้า) = กติกาเดียวกับแถวในทะเบียน + การ์ดภาระภาษี', async () => {
+  const { categoryFlags } = await import('./categoryOf.js');
+  const rows = [
+    P({ fgCode: 'A', categoryCode: '01-002', isExciseTaxable: null }),  // หมวดเสียภาษี ธงว่าง → ต้องเสีย
+    P({ fgCode: 'B', categoryCode: '01-002', isExciseTaxable: false }), // RA ยกเว้น → ยกเว้น (เดิมหน้าลูกค้าขึ้น "ภาษีสรรพสามิต")
+    P({ fgCode: 'C', categoryCode: '03-001', isExciseTaxable: true }),  // RA บังคับในหมวดอื่น → ต้องเสีย (เดิมไม่มีป้าย)
+    P({ fgCode: 'D', categoryCode: '03-001', isExciseTaxable: null }),  // ไม่เกี่ยว → ไม่มีป้าย
+    P({ fgCode: 'E', categoryCode: '03-001', isExciseTaxable: false }), // หมวดไม่เสียอยู่แล้ว → ไม่มีป้าย (ไม่ใช่ "ยกเว้น")
+    P({ fgCode: 'FG-AAA-01-002-0009', isExciseTaxable: null }),         // แถวเก่าไม่มี categoryCode → ถอดจาก fgCode
+  ];
+  assert.deepEqual(rows.map((r) => productExciseBadge(r, TYPES)), ['taxable', 'exempt', 'taxable', null, null, 'taxable']);
+  // ตรงกับตัวตัดสินในทะเบียนสินค้าทุกแถว: taxable = isProductTaxable · exempt = หมวดเสียภาษี && ธง false
+  for (const r of rows) {
+    // ตัวเดียวกับ products/page.js: `categoryFlags(p.categoryCode || categoryOf(p.fgCode), productTypes)`
+    const flags = categoryFlags(productCategoryCode(r), TYPES);
+    const registry = isProductTaxable(r, TYPES) ? 'taxable' : (flags.isExcise && r.isExciseTaxable === false ? 'exempt' : null);
+    assert.equal(productExciseBadge(r, TYPES), registry, r.fgCode);
+  }
+  // ป้าย "ภาษีสรรพสามิต" บนหน้าลูกค้า = ชุดที่ทำให้การ์ด "ภาระภาษีสรรพสามิต" ขึ้น (ไม่มีภาษีสะสม)
+  const taxableRows = rows.filter((r) => productExciseBadge(r, TYPES) === 'taxable');
+  assert.deepEqual(taxableRows.map((r) => r.fgCode), rows.filter((r) => isProductTaxable(r, TYPES)).map((r) => r.fgCode));
+});
+
+test('🔴 L16b/L16c ด่านซอร์ส: ป้าย "ภาษีสรรพสามิต" ของสินค้าในจอฐานข้อมูลไม่ตัดสินจากธงหมวดล้วน', async () => {
+  const { readdirSync } = await import('node:fs');
+  const root = new URL('../../app/database/', import.meta.url);
+  const strip = (s) => s.replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  const code = (rel) => strip(readFileSync(new URL(rel, root), 'utf8'));
+  const pages = readdirSync(root, { recursive: true }).map((f) => String(f).replace(/\\/g, '/')).filter((f) => /(^|\/)page\.js$/.test(f));
+  // ยกเว้นหน้าหมวดสินค้า — ป้ายที่นั่นบอกธงของ **หมวด** (row.isExcise) ไม่ใช่ของสินค้า
+  for (const rel of pages.filter((f) => f !== 'product-categories/page.js')) {
+    assert.doesNotMatch(code(rel), />ภาษีสรรพสามิต</, `${rel}: ป้ายตายตัวไม่มีทาง "ยกเว้น" — ใช้ productExciseBadge / isProductTaxable`);
+    assert.doesNotMatch(code(rel), /label="ภาษีสรรพสามิต"/, `${rel}: ป้ายตายตัว`);
+  }
+  const customer = code('customers/[id]/page.js');
+  assert.equal((customer.match(/const exciseBadge = productExciseBadge\(p, productTypes\);/g) || []).length, 2, 'การ์ด + ตาราง');
+  assert.equal((customer.match(/exciseBadge === "taxable" \? "ภาษีสรรพสามิต" : "ยกเว้นสรรพสามิต"/g) || []).length, 2);
+  assert.doesNotMatch(customer, /isExciseCategory\(/, 'หน้าลูกค้าไม่ตัดสินภาษีจากหมวดล้วนอีก');
+  const product = code('products/[id]/page.js');
+  assert.match(product, /const showRetailPrice = productShowsRetailPrice\(product, productTypes\);/);
+  assert.match(product, /const exciseBadge = productExciseBadge\(product, productTypes\);/);
+  assert.match(product, /label=\{exciseBadge === "taxable" \? "ภาษีสรรพสามิต" : "ยกเว้นสรรพสามิต"\}/);
+  assert.match(product, /ราคาขายปลีก\{isTaxable \? " \(ฐานคำนวณสรรพสามิต\)" : ""\}/);
+});
+
+test('🔴 L16c: ฟอร์มแก้สินค้าโผล่ช่องราคาขายปลีกให้ของที่ต้องเสียภาษี (คู่ของแบนเนอร์ขาดราคา)', () => {
+  const form = readFileSync(new URL('../../components/database/ProductForm.js', import.meta.url), 'utf8');
+  assert.match(form, /const showRetail = inRetailCategory \|\| hasRetailValue \|\| taxable;/);
+  const modal = readFileSync(new URL('../../components/EditProductModal.js', import.meta.url), 'utf8');
+  assert.match(modal, /taxable=\{product\.isExciseTaxable === true\}/);
 });

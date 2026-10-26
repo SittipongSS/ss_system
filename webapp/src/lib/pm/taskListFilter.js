@@ -14,14 +14,29 @@
 //        และการ์ดบอก "ค้าง n" ด้วยตัวตัดสินตัวเดียวกับคิวตอนเปิดมาถึง
 import { MINE_TASK_VIEWS, matchesMineTaskView, responsibleTaskUserId } from './taskViews';
 import { isWaitingStatus } from './tasks';
-import { isUrgent } from './derived';
+import { daysToDue, isUrgent } from './derived';
 import { TASK_CENTRAL_EXCLUDE, TASK_CENTRAL_ONLY, isDealTask, isProjectTask } from './dealTaskLink';
 
-/** สถานะของตัวกรองสถานะ — ห้าตัวแรกเป็นการ์ดบนหน้า · `todo` มาจากป้ายเมนูเท่านั้น (ไม่มีการ์ด) */
-export const TASK_STATUS_FILTER_KEYS = ['all', 'progress', 'urgent', 'waiting', 'done', 'todo'];
+/** สถานะของตัวกรองสถานะ — ห้าตัวแรกเป็นการ์ดบนหน้า · `todo` มาจากป้ายเมนูเท่านั้น (ไม่มีการ์ด) ·
+ *  `waiting_overdue` มาจากบรรทัดรองของการ์ด "รอคนอื่น" (ตรวจตัวเลข L3) */
+export const TASK_STATUS_FILTER_KEYS = ['all', 'progress', 'urgent', 'waiting', 'done', 'todo', 'waiting_overdue'];
 export const TASK_TODO_FILTER = 'todo';
 /** ป้ายของตัวกรอง `todo` บนชิป "กรอง: … ×" — ไม่มีการ์ดของตัวเองให้ยืมชื่อ */
 export const TASK_TODO_FILTER_LABEL = 'รอฉันลงมือ (ไม่รวมรอคนอื่น)';
+/** งาน "รอคนอื่น" ที่เลยกำหนดแล้ว — บรรทัดรองของการ์ด "รอคนอื่น" (กดได้ · ไม่มีการ์ดของตัวเอง) */
+export const TASK_WAITING_OVERDUE_FILTER = 'waiting_overdue';
+export const TASK_WAITING_OVERDUE_FILTER_LABEL = 'รอคนอื่น · เลยกำหนดแล้ว';
+
+/**
+ * งานที่ **รอคนอื่นอยู่และเลยกำหนดแล้ว** — ตัวนับของบรรทัดรอง "ในนี้เลยกำหนด n งาน" กับตัวกรอง `waiting_overdue`
+ * เรียกตัวนี้ตัวเดียว (ตรวจตัวเลข L3 · docs/task-waiting-and-chain.md §3.2)
+ * 🐞 เดิมหน้า /sa/tasks นับด้วยเงื่อนไขของตัวเองนอก `taskStatusPasses` ⇒ บรรทัดรองบอก n แต่ไม่มีรายการไหนแสดง n ใบนั้น
+ * ⚠️ "เลยกำหนด" = `daysToDue < 0` ตัวเดียวกับป้าย "เลยกำหนด X วัน · รอคนอื่น" ของแถว (`taskUrgency`) · ไม่มีกำหนด = ไม่เลย
+ */
+export function isWaitingOverdueTask(task) {
+  if (!task || task.status === 'Completed' || !isWaitingStatus(task.status)) return false;
+  return (daysToDue(task) ?? 0) < 0;
+}
 /** คีย์ `?count=` ของป้ายเมนู "งานของฉัน" (menuRegistry `countHref`) */
 export const TASKS_NAV_COUNT_PARAM = 'tasks';
 
@@ -45,6 +60,7 @@ export function taskStatusPasses(task, status = 'all', meId = null) {
   if (task.status === 'Completed') return false;
   if (status === 'progress') return task.status === 'In Progress';
   if (status === 'waiting') return isWaitingStatus(task.status);
+  if (status === TASK_WAITING_OVERDUE_FILTER) return isWaitingOverdueTask(task);
   if (status === 'urgent') return isUrgent(task) && !isWaitingStatus(task.status);
   if (status === TASK_TODO_FILTER) return isMyTodoTask(task, meId);
   return true;

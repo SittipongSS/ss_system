@@ -391,3 +391,89 @@ test('⭐ นับใบไม่ซ้ำ: admin ที่เป็นทั�
   // ไม่มีเลนไหนรับ = 0 · เลนบัญชีที่ยังไม่พร้อมไม่นับ
   assert.equal(salesOrderIdsWaitingOnMe({ financeRows: [order], financeWaiting: () => false }, { userId: 'U-FN' }).size, 0);
 });
+
+/* ── ตรวจตัวเลข L20 (26/10/2026): ป้ายเมนู "คำร้อง" = แถวที่ `/requests?count=requests` เปิดเจอ ───────────────────────
+   🐞 เดิมเมนูไม่มี `countHref` ⇒ กดป้ายแล้วได้ `/requests` เปล่า: แท็บตั้งต้น "รอฉันตอบ" ไม่มีใบตีกลับ (ม-102 ข้อ 4) ·
+      คนที่ไม่มีฝ่ายรับคำร้องลง "ที่ฉันเปิด" · superuser ที่ไม่ใช่ AC ลงขอบเขต "ทั้งหมด" (แท็บบทบาทซ่อน) ⇒ แถวไม่เท่าป้าย
+   ⇒ จำลองหน้า: ทุกชั้นที่ตัดแถว (ขอบเขต → ลิงก์ดีล → ฝ่าย → มุมมอง → ตัวกรองของพาเนล) ตั้งจาก `requestsNavLanding` */
+test('⭐ L20: ป้ายเมนูคำร้อง = แถวของมุมมองลงจอด (มี/ไม่มีฝ่าย · ใบตีกลับ · superuser ที่ไม่ใช่ AC)', async () => {
+  const { requestsNavLanding, waitingOnMeRows, queueTabRows, visibleQueueRows } = await import('../requests/queueBoard.js');
+  const { filterByDealRequestsLink } = await import('../requests/dealLink.js');
+  const { filterQueueRows } = await import('../requests/queueFilter.js');
+
+  const bounced = req({ id: 'b1', status: 'draft', _mine: true, dept: 'RD', bouncedAt: '2026-10-20T03:00:00Z' });
+  const ALL = [
+    req({ id: 'p1', dept: 'PC' }), // รอฝ่าย PC
+    req({ id: 'p2', dept: 'PC', dealId: 'deal-X' }), // รอฝ่าย PC · ของดีล X
+    req({ id: 'r1', dept: 'RD' }), // รอฝ่าย RD
+    req({ id: 'm1', dept: 'RD', status: 'acknowledged', _mine: true, reopenWaitSide: 'requester' }), // ตาฉันในฐานะผู้ขอ
+    req({ id: 'd1', dept: 'RD', status: 'draft', _mine: true }), // ร่างที่ยังไม่ส่ง — ไม่ใช่ของค้าง
+    bounced,
+    req({ id: 'b2', status: 'draft', _mine: false, dept: 'RD', bouncedAt: '2026-10-20T03:00:00Z' }), // ตีกลับของเพื่อน
+  ];
+  /* แต่ละคน: แถวที่ขอบเขต "ของฉัน" โหลด (= ป้ายกับหน้าเรียก `loadVisibleRequests` scope 'mine' ตัวเดียวกัน) · ฝ่ายที่ตอบได้ ·
+     แถวที่ขอบเขตตั้งต้นของหน้าโหลด (ทางเดิมของเมนู) */
+  const people = [
+    { who: 'ฝ่าย PC', mine: ALL.filter((r) => r._mine || r.dept === 'PC'), myDepts: ['PC'], defaultScope: 'mine', defaultTab: 'todo' },
+    { who: 'ผู้ขอไม่มีฝ่าย', mine: ALL.filter((r) => r._mine), myDepts: [], defaultScope: 'mine', defaultTab: 'mine' },
+    // superuser: "ของฉัน" = ใบที่ตัวเองเปิดเท่านั้น · ตอบได้ทุกฝ่ายในคิวรวม · เปิดเปล่า ๆ ได้ขอบเขต "ทั้งหมด"
+    { who: 'superuser ไม่ใช่ AC', mine: ALL.filter((r) => r._mine), myDepts: ['PC', 'TS'], defaultScope: 'all', defaultTab: 'todo' },
+  ];
+  const landing = requestsNavLanding();
+  assert.deepEqual(landing, { scope: 'mine', search: '', filters: {}, countFilter: null, deptFilter: 'all', link: null });
+
+  let mismatchBefore = 0;
+  for (const { who, mine, myDepts, defaultScope, defaultTab } of people) {
+    const badge = requestsTodoCount(mine, myDepts);
+    // หน้า: ขอบเขต landing.scope ⇒ แถวชุดเดียวกับป้าย → ลิงก์ดีลถอดแล้ว → ทุกฝ่าย → มุมมองลงจอด → พาเนล (ล้างตัวกรองแล้ว)
+    const linked = filterByDealRequestsLink(mine, landing.link);
+    const requests = landing.deptFilter === 'all' ? linked : linked.filter((r) => r.dept === landing.deptFilter);
+    const tabRows = waitingOnMeRows(requests, { myDepts });
+    const shown = filterQueueRows(tabRows, { countFilter: landing.countFilter, search: landing.search, filters: landing.filters, todayIso: '2026-10-26' });
+    assert.equal(shown.length, badge, who);
+    assert.ok(shown.some((r) => r.id === 'b1'), `${who}: ใบตีกลับของตัวเองต้องอยู่ในมุมมองลงจอด`);
+    assert.ok(!shown.some((r) => r.id === 'd1' || r.id === 'b2'), `${who}: ร่างที่ไม่เคยส่ง/ใบตีกลับของเพื่อนไม่นับ`);
+    // ม-102 ข้อ 4 ยังอยู่: ใบตีกลับไม่ไหลเข้าแท็บ "รอฉันตอบ"
+    assert.ok(!queueTabRows(mine, { tab: 'todo', myDepts }).some((r) => r.id === 'b1'));
+    // ทางเดิม (เปิด /requests เปล่า) ได้อีกเลข — ยืนยันว่าเทสต์นี้จับบั๊กจริง
+    const before = defaultScope === 'mine'
+      ? queueTabRows(mine, { tab: defaultTab, myDepts }).length
+      : visibleQueueRows(ALL, { scope: defaultScope, tab: defaultTab, myDepts }).length;
+    if (before !== badge) mismatchBefore += 1;
+  }
+  assert.equal(mismatchBefore, people.length, 'ทุกคนในฟิกซ์เจอร์เคยได้แถวไม่เท่าป้าย');
+});
+
+test('ยาม L20: เมนูคำร้องมี countHref · หน้าอ่าน ?count=requests แล้วตั้งทุกชั้นจาก requestsNavLanding', async () => {
+  const { dirname, join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const { REQUESTS_NAV_COUNT_PARAM } = await import('../requests/queueBoard.js');
+  const SRC = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+  const menu = readFileSync(join(SRC, 'config', 'menuRegistry.js'), 'utf8');
+  assert.match(menu, new RegExp(`href: '/requests', name: 'คำร้อง', countHref: '/requests\\?count=${REQUESTS_NAV_COUNT_PARAM}'`));
+  const page = readFileSync(join(SRC, 'app', 'requests', 'page.js'), 'utf8');
+  assert.match(page, /const countParam = searchParams\.get\("count"\) \|\| "";/);
+  assert.match(page, /if \(countParam === REQUESTS_NAV_COUNT_PARAM\) return requestsNavLanding\(\)\.scope;/);
+  const start = page.indexOf('if (countParam !== REQUESTS_NAV_COUNT_PARAM) return;');
+  assert.ok(start > 0, 'หา effect ของป้ายเมนูไม่เจอ');
+  const effect = page.slice(start, page.indexOf('}, [countParam]);', start));
+  for (const step of [
+    'setScope(landing.scope);', 'board.setSearch(landing.search);', 'board.clearFilters();',
+    'board.setCountFilter(landing.countFilter);', 'setDeptFilter(landing.deptFilter);', 'setNavLanding(true);',
+    'router.replace(requestsQueueHref({ tab: null, link: landing.link }), { scroll: false });',
+  ]) {
+    assert.ok(effect.includes(step), `ลงจากป้ายต้อง ${step}`);
+  }
+  // แถวของมุมมองลงจอด = ตัวตัดสินเดียวกับป้าย · ตัวสลับฝ่ายนับจากชุดเดียวกัน
+  assert.match(page, /\(navLanding\s*\? waitingOnMeRows\(requests, \{ myDepts \}\)/);
+  assert.match(page, /\? filterQueueRows\(waitingOnMeRows\(linkedRequests, \{ myDepts \}\), queueState\)/);
+  // ออกจากมุมมอง: แท็บ · ขอบเขต · ชิป ×
+  assert.match(page, /board\.setCountFilter\(null\);\s*setNavLanding\(false\);/);
+  assert.match(page, /if \(next !== activeScope\) setNavLanding\(false\); setScope\(next\);/);
+  assert.match(page, /onClick=\{\(\) => setNavLanding\(false\)\}[^\n]*>\s*กรอง: \{REQUESTS_NAV_LANDING_LABEL\} ×/);
+  /* รีวิว L20 (26/10): ลงจอดทุกครั้ง = แผงเริ่มหน้า 1 — คีย์รีเซ็ตหน้าของ RequestQueuePanel ไม่รู้จักมุมมองนี้
+     🐞 แท็บ "รอฉันตอบ" หน้า 2 ไม่มีตัวกรอง → กดป้าย = ทุกช่องของคีย์เท่าเดิม ⇒ ลงหน้า 2 ใบเร่งสุด (รวมใบตีกลับ) อยู่หน้า 1
+     · กดป้ายซ้ำขณะอยู่ในมุมมองแล้ว `navLanding` ไม่เปลี่ยน ⇒ ต้องนับรอบใน effect ด้วย */
+  assert.ok(effect.includes('setNavLandingSeq((n) => n + 1);'), 'ลงจากป้ายต้องนับรอบ (กดซ้ำ = แผงใหม่)');
+  assert.match(page, /<RequestQueuePanel\s+(?:\/\*[\s\S]*?\*\/\s+)?key=\{navLanding \? `nav-landing-\$\{navLandingSeq\}` : "queue"\}/);
+});

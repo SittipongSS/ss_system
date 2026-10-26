@@ -31,6 +31,47 @@ export const isMyOpenTask = (task, userId) => Boolean(userId)
   && isOpenStatus(task?.status)
   && task?.assigneeId === userId;
 
+/* "งานด่วนที่ยังไม่เสร็จ" — การ์ด KPI + กล่องงานด่วนของ /mgmt (`/api/mgmt/overview` → `urgent`) และมุมมอง
+   `?view=urgentOpen` ของ /mgmt/tasks เรียกตัวนี้ตัวเดียว (ตรวจตัวเลข L4 · 2026-10-26)
+   🐞 เดิม route นับเงื่อนไขของตัวเอง ส่วนลิงก์ "งานด่วน — ยังไม่เสร็จ" พาไป /mgmt/tasks เปล่า = งานทุกใบของปีปัจจุบัน */
+export const isUrgentOpenTask = (task) => task?.priority === 'urgent' && isOpenStatus(task?.status);
+
+/* ── ลิงก์ /mgmt/tasks ที่กรองไว้แล้ว (ตรวจตัวเลข L4) ──────────────────────────────────────────────
+   ⭐ **URL เป็นแหล่งเดียวของปี · สถานะ · มุมมอง** (กติกาที่แทน ม-115 "อ่านครั้งเดียว" · docs/requests-rd-decision-log.md)
+   — การ์ด KPI ของ /mgmt พาไปพร้อมปีที่เลือกอยู่ (เดิมหน้ารายการเปิดที่ปีปัจจุบันเสมอ) · × / "ล้าง" = เขียน URL ใหม่
+   `waitingOnMe` = `?count=mgmtTasks` ของป้ายเมนู (ม-116 · menuRegistry `countHref`) */
+export const MGMT_TASKS_COUNT_PARAM = 'mgmtTasks';
+export const MGMT_TASKS_URGENT_OPEN_VIEW = 'urgentOpen';
+export const MGMT_TASKS_URGENT_OPEN_LABEL = 'งานด่วนที่ยังไม่เสร็จ';
+
+export function mgmtTasksHref({ year = null, status = '', urgentOpen = false, waitingOnMe = false } = {}) {
+  const q = new URLSearchParams();
+  if (Number.isFinite(Number(year)) && Number(year) > 0) q.set('year', String(Number(year)));
+  if (TASK_STATUSES.includes(status)) q.set('status', status);
+  if (urgentOpen) q.set('view', MGMT_TASKS_URGENT_OPEN_VIEW);
+  if (waitingOnMe) q.set('count', MGMT_TASKS_COUNT_PARAM);
+  const s = q.toString();
+  return s ? `/mgmt/tasks?${s}` : '/mgmt/tasks';
+}
+
+/** อ่านลิงก์กลับ — ค่าที่ไม่รู้จักทิ้ง (ปีที่อ่านไม่ออก = ปีตั้งต้น · สถานะแปลก = ทุกสถานะ) */
+export function readMgmtTasksLink(searchParams, { defaultYear } = {}) {
+  const get = (key) => (searchParams && typeof searchParams.get === 'function' ? searchParams.get(key) : null);
+  const year = Number(get('year'));
+  const status = get('status') || '';
+  return {
+    year: Number.isInteger(year) && year >= 2000 && year <= 2100 ? year : defaultYear,
+    status: TASK_STATUSES.includes(status) ? status : '',
+    urgentOpen: get('view') === MGMT_TASKS_URGENT_OPEN_VIEW,
+    waitingOnMe: get('count') === MGMT_TASKS_COUNT_PARAM,
+  };
+}
+
+/** แถวของ /mgmt/tasks หลังธงจากลิงก์ (ก่อนคำค้น) — ธงทั้งสองตัดเพิ่ม ไม่ใช่สลับกัน */
+export function mgmtTaskLinkRows(tasks = [], { urgentOpen = false, waitingOnMe = false } = {}) {
+  return (tasks || []).filter((t) => (!waitingOnMe || t._waitingOnMe) && (!urgentOpen || isUrgentOpenTask(t)));
+}
+
 /* %เสร็จ (live badge) = สัดส่วนงานที่ done จากงานที่ไม่ถูกยกเลิก.
    ⚠️ **คืนค่าดิบ ไม่ปัด** — จอเป็นคนจัดรูปแบบด้วย `fmtPercent` (ทศนิยม 2 ตำแหน่ง
    ตามมติ "เปอร์เซ็นต์บนจอทุกตัว = ทศนิยม 2 ตำแหน่ง") · ถ้าปัดที่นี่ ทศนิยมหายไป

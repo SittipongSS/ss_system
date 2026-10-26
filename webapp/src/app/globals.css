@@ -6613,6 +6613,41 @@ button.ui-metric { width: 100%; cursor: pointer; appearance: none; }
 button.ui-metric:hover,
 .ui-metric.is-active { background: color-mix(in srgb, var(--accent) 5%, var(--panel-solid)); }
 button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--accent-ink); outline-offset: -2px; }
+/* ── การ์ดที่มีตัวเลขรองกดได้เอง (`Metric noteAction` · ตรวจตัวเลข L3 · 2026-10-26) ──
+   กล่องนี้เป็นลูกของแถบแทนตัวการ์ด ⇒ ต้องทึบ (`--panel-solid`) เหมือนช่อง ไม่งั้นพื้นสีเส้นของแถบทะลุขึ้นมา
+   ปุ่มรองเป็นปุ่มของตัวเองใต้การ์ด (ไม่ซ้อนปุ่มในปุ่ม) · เยื้องตรงคอลัมน์ข้อความ = padding ช่อง + กรอบไอคอน + ช่องไฟ
+   (`--space-3` = 12px แทน gap 11px ดิบของ .ui-metric — ต่างกัน 1px · เลขดิบเพิ่มไม่ได้ เพดาน RAW_SPACING_CAP)
+   ⚠️ เส้นประ = `.text-action` (กดแล้วเกิดอะไรขึ้นตรงนี้) · กดค้าง = ตัวหนา + เส้นทึบ คู่กับ aria-pressed
+   ⚠️ เป้ากดของปุ่มรองต้องสูง ≥ 24px (WCAG 2.5.8 — ท่าเดียวกับจุดบอกหน้า/หัวตารางข้างบน)
+      ตัวหนังสือ --fs-1 × --lh-text สูงแค่ ~16px ⇒ `min-height: --space-6` (ปุ่มจัดข้อความกลางแนวตั้งให้เอง
+      ตามสเปก HTML · ไม่ใช้ inline-flex เพราะ text-overflow: ellipsis ใช้กับกล่อง flex ไม่ได้)
+      🐞 รุ่นแรกดึงปุ่มรองขึ้นไปทับ padding ล่างของการ์ด (margin-top ติดลบ) ⇒ เป้าเล็ก + ทับเป้าการ์ด
+         = แตะพลาดนิดเดียวได้งานรอคนอื่นทุกใบแทน n ใบที่ตัวเลขบอก · ตอนนี้หด padding ล่างของการ์ดแทน
+         ⇒ สองปุ่มชิดกันแต่ไม่ทับกัน */
+.ui-metric-wrap {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--panel-solid);
+}
+.ui-metric-wrap > .ui-metric { flex: 1 1 auto; padding-bottom: var(--space-1); }
+.ui-metric-note-action {
+  align-self: flex-start;
+  max-width: calc(100% - 2 * var(--space-4));
+  min-height: var(--space-6);
+  margin: 0 var(--space-4) var(--space-2);
+  overflow: hidden;
+  font-size: var(--fs-1);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-metric-wrap.has-icon > .ui-metric-note-action {
+  /* max-width ต้องหักเยื้องไอคอนด้วย ไม่งั้นป้ายยาวล้นขอบขวาของช่องก่อน ellipsis จะทำงาน */
+  max-width: calc(100% - 2 * var(--space-4) - var(--icon-box-md) - var(--space-3));
+  margin-left: calc(var(--space-4) + var(--icon-box-md) + var(--space-3));
+}
+.ui-metric-note-action.is-active { color: var(--text); font-weight: var(--fw-bold); text-decoration-style: solid; }
 .ui-metric-icon {
   width: var(--icon-box-md);
   height: var(--icon-box-md);
@@ -6716,6 +6751,12 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   .ui-section-body { padding: var(--space-3-5); }
   .ui-metric { padding: var(--space-3); }
   .ui-metric strong { font-size: var(--fs-10); }
+  /* ปุ่มรองของการ์ดเยื้องตาม padding ช่องที่แคบลง (ไม่งั้นหลุดคอลัมน์ข้อความ) */
+  .ui-metric-note-action { max-width: calc(100% - 2 * var(--space-3)); margin-right: var(--space-3); margin-left: var(--space-3); }
+  .ui-metric-wrap.has-icon > .ui-metric-note-action {
+    max-width: calc(100% - 3 * var(--space-3) - var(--icon-box-md));
+    margin-left: calc(var(--space-3) + var(--icon-box-md) + var(--space-3));
+  }
 }
 
 /* Expanding glass search box */

@@ -1,7 +1,7 @@
 import { canUser } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden } from '@/lib/http';
 import { listTasks, listDepartments } from '@/lib/mgmt/repo';
-import { statusCounts, completionPercent, isOpenStatus } from '@/lib/mgmt/constants';
+import { statusCounts, completionPercent, isUrgentOpenTask } from '@/lib/mgmt/constants';
 import { naText } from "@/lib/format";
 
 export const dynamic = 'force-dynamic';
@@ -34,8 +34,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       .sort((a, b) => (deptOrder.get(a.code) ?? 999) - (deptOrder.get(b.code) ?? 999));
 
     // งานด่วน — ยังไม่เสร็จ (priority urgent + สถานะเปิด), เรียงตามกำหนดส่ง.
+    // ⚠️ ตัวตัดสินเดียวกับมุมมอง `?view=urgentOpen` ของ /mgmt/tasks (การ์ด KPI "งานด่วนที่ยังไม่เสร็จ" พาไปที่นั่น · L4)
     const urgent = tasks
-      .filter((t) => t.priority === 'urgent' && isOpenStatus(t.status))
+      .filter(isUrgentOpenTask)
       .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
 
     return ok({

@@ -30,7 +30,7 @@ import { useCapUser, useDepartment } from "@/lib/roleContext";
 import { canAnswerRequest } from "@/lib/deptRequests";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
-import { priceBoardGroups, priceBoardTotals, waitingDays } from "@/lib/rd/priceBoard";
+import { priceBoardGroups, priceBoardTotals, usablePriceNote, waitingDays } from "@/lib/rd/priceBoard";
 import styles from "./page.module.css";
 
 const COLS = 5;
@@ -126,7 +126,14 @@ export default function RdPricesPage() {
               label="รอนานสุด" value={totals.maxDays != null ? `${totals.maxDays} วัน` : NA}
               note="นับจากวันที่ลูกค้าคอนเฟิร์ม"
             />
-            <Metric label="มีราคาในทะเบียนแล้ว" value={`${totals.usable} รายการ`} note={'กด "ใช้ราคานี้" ได้เลย ไม่ต้องพิมพ์ซ้ำ'} />
+            {/* ⭐ นับเฉพาะแถวที่ปุ่ม "ใช้ราคา … นี้" กดแล้วผ่าน (`usable`) · แถวที่มีปุ่มแต่ราคาใช้ไม่ได้ (`blocked`)
+                บอกไว้ในหมายเหตุ ⇒ สองเลขรวมกัน = แถวที่เห็นปุ่ม (ตรวจตัวเลข 26/10 · L15)
+                🐞 เดิม "มีราคาในทะเบียนแล้ว" ไม่นับราคาหมดอายุ ทั้งที่มันมีราคาในทะเบียนและมีปุ่ม
+                ⚠️ หมายเหตุเลือกตาม `canPrice` — คนที่ไม่มีปุ่ม (ช่องจัดการเป็น "—") ต้องไม่ได้ยินคำว่า "ปุ่ม"/"กด" */}
+            <Metric
+              label="ใช้ราคาในทะเบียนได้เลย" value={`${totals.usable} รายการ`}
+              note={usablePriceNote(totals, { canPrice })}
+            />
           </MetricStrip>
         ) : null}
 

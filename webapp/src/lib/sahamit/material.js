@@ -46,3 +46,38 @@ export function materialView(line, fcQty, receivedDate, holidays) {
 
   return { inForecast, leadDays, readyDate, lateVsDue, ourSlip };
 }
+
+/* ── ตัวกรองของจอ /sahamit/material — การ์ดนับกับตารางถามตัวเดียวกัน (ตรวจตัวเลข L6 · 26/10/2026) ─────────
+   🐞 การ์ดสี่ใบ (บรรทัด PO ทั้งหมด · นอก FC · เกินกำหนด · เราส่งช้า) เป็น <div> กดไม่ได้ และนับจากทุกแถว
+      ขณะที่ตารางกรองด้วยคำค้น/ตัวกรองที่ค้างอยู่ ⇒ ชุดตรงกับการ์ดมีอยู่ในแผงกรองแล้ว แต่ต้องประกอบเองทีละช่อง
+      และคำค้นที่ค้างไว้ทำให้เห็นไม่เท่าเลข
+   ⭐ การ์ดแต่ละใบ = ตัวกรอง **ทั้งชุด** (`MATERIAL_CARD_FILTERS` · ล้างคำค้นกับสถานะที่ค้างด้วย — กติกาเดียวกับแถบลีด)
+      เลขบนการ์ด = `materialRowMatches` ด้วยชุดนั้น = จำนวนแถวที่ตารางวาดหลังกด (ตารางเรียกตัวเดียวกัน)
+   ⚠️ `stageOf` มากับผู้เรียก — stage ของบรรทัดคิดจาก lineStage (po.js) + สถานะวัสดุ ซึ่งจอเป็นเจ้าของ */
+export const MATERIAL_CARD_FILTERS = Object.freeze({
+  all: Object.freeze({ fc: [], stages: [], issues: [] }),
+  outFc: Object.freeze({ fc: ['out'], stages: [], issues: [] }),
+  late: Object.freeze({ fc: [], stages: [], issues: ['late'] }),
+  slip: Object.freeze({ fc: [], stages: [], issues: ['slip'] }),
+});
+
+const hasText = (value, needle) => String(value ?? '').toLowerCase().includes(needle);
+
+/** แถววัสดุผ่านตัวกรองชุดนี้ไหม — คำค้น (รหัส · ชื่อสินค้า · เลข PO) · ในแผน (in/out) · สถานะ · ปัญหา (late/slip) */
+export function materialRowMatches(row, { q = '', fc = [], stages = [], issues = [] } = {}, stageOf = () => null) {
+  const needle = String(q || '').trim().toLowerCase();
+  if (needle && !hasText(row?.fgCode, needle) && !hasText(row?.productName, needle) && !hasText(row?.poNumber, needle)) return false;
+  if (fc.length && !fc.includes(row?.inForecast ? 'in' : 'out')) return false;
+  if (stages.length && !stages.includes(stageOf(row))) return false;
+  if (issues.length && !((issues.includes('late') && row?.lateVsDue) || (issues.includes('slip') && row?.ourSlip))) return false;
+  return true;
+}
+
+/** เลขบนการ์ดสี่ใบ — นับด้วยชุดตัวกรองของการ์ดใบนั้นเอง (ไม่ใช่ตัวกรองที่ค้างบนจอ) */
+export function materialCardCounts(rows = [], stageOf = () => null) {
+  const counts = {};
+  for (const [key, filters] of Object.entries(MATERIAL_CARD_FILTERS)) {
+    counts[key] = rows.filter((row) => materialRowMatches(row, filters, stageOf)).length;
+  }
+  return counts;
+}

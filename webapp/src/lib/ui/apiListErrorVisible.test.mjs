@@ -1035,7 +1035,8 @@ test("วัสดุ: รายการสินค้าล้มไม่ซ
   elseOf(rel, "ยังไม่มีบรรทัด PO ให้ติดตาม", "pageBlocked");
   // ตัวแปรทุกตัวของฮุกรายการสินค้า — ตาราง/การ์ดห้ามถูกคุมด้วยตัวไหนเลย (บันทึก PM/RM ไม่ได้อ่านรายการสินค้า)
   const productNames = Object.values(hookFor(ast, '"/api/sahamit/products"').b).map((b) => b.identifier.name);
-  for (const tag of ["MaterialRow", "Stat"]) assertGates(rel, { tag }, { must: ["pageBlocked"], mustNot: productNames }, `<${tag}>`);
+  // การ์ดนับเป็น KpiCard ที่กดตั้งตัวกรองได้แล้ว (ตรวจตัวเลข L6 · 26/10) — เดิมเป็น <Stat> div ในหน้า
+  for (const tag of ["MaterialRow", "KpiCard"]) assertGates(rel, { tag }, { must: ["pageBlocked"], mustNot: productNames }, `<${tag}>`);
 });
 
 test("FC: รอบ FC ไม่ขึ้นห้ามตอบ 'ยังไม่มีรอบ' · สายรองล้มไม่ซ่อนแท็บ — ติ๊กเลือก/สร้างดีล/ลัง/ตัวกรอง พักพร้อมเหตุ · picker AE บอกในโมดัล", () => {

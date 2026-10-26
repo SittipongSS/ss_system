@@ -141,3 +141,101 @@ test('ยามต่อสาย: route คืน facetTally · หน้าอ
     assert.ok(!PAGE.includes(stale), `หน้ายังอ่าน ${stale} — เลขของการ์ดที่แทนค่าตัวกรองต้องมาจากตัวนับที่ถอดตัวกรองนั้น`);
   }
 });
+
+// ── การ์ดที่กดค้าง (ตรวจตัวเลข L18b · 26/10/2026) ─────────────────────────────────────────────────────────────
+// ⭐ การ์ดที่กดได้ทั้งสี่ใบกดซ้ำ = ถอด ⇒ ตอนกดค้าง เลขบนการ์ดต้องเท่ากับ **งวดที่เห็นอยู่ตอนนี้** (หมายเหตุ "กำลังใช้ตัวกรองนี้"
+//    บอกว่าเป็นชุดปัจจุบัน) · ชุดทดสอบเพิ่มงวดเลยกำหนดสองงวด (การ์ด "เลยกำหนด" บวกตัวกรอง — อ่าน summary ของแถวที่กรองแล้ว)
+const withOverdue = () => [
+  ...fixture(),
+  make({ id: 'p8', seq: 8, dueDate: '2026-09-01', amount: 800.8 }), // เลยกำหนด · รอชำระ
+  make({ id: 'p9', seq: 9, dueDate: '2026-09-02', amount: 900.9, status: 'reported', paidOn: '2026-09-20' }), // เลยกำหนด · รอรับรอง
+];
+
+test('การ์ดที่กดค้าง: เลข/ยอดบนการ์ด = งวดที่เห็นอยู่ตอนนี้ (ทั้งสี่ใบ · ทุกค่าของตัวกรองอื่นที่ค้างอยู่)', () => {
+  const all = withOverdue();
+  assert.ok(all.some((r) => r.overdue), 'ชุดทดสอบต้องมีงวดเลยกำหนด');
+  let checked = 0;
+  for (const base of combos()) {
+    for (const overdueOnly of [false, true]) {
+      const f = { ...base, overdueOnly };
+
+      const awaitingOn = { ...f, status: ['reported'] };
+      const awaitingRows = filterLedger(all, awaitingOn);
+      assert.equal(ledgerFacetTally(all, awaitingOn).awaiting.count, awaitingRows.length, `รอบัญชีรับรอง ${JSON.stringify(f)}`);
+      assert.equal(ledgerFacetTally(all, awaitingOn).awaiting.amount, ledgerSummary(awaitingRows).totalAmount);
+
+      const invoiceOn = { ...f, taxInvoice: 'missing' };
+      const invoiceRows = filterLedger(all, invoiceOn);
+      assert.equal(ledgerFacetTally(all, invoiceOn).missingInvoice.count, invoiceRows.length, `ยังไม่ออกใบกำกับ ${JSON.stringify(f)}`);
+      assert.equal(ledgerFacetTally(all, invoiceOn).missingInvoice.amount, ledgerSummary(invoiceRows).totalAmount);
+
+      const billingOn = { ...f, billing: '7d', on: '' };
+      const billingRows = filterLedger(all, billingOn);
+      assert.equal(ledgerBillingTally(all, billingOn).counts['7d'], billingRows.length, `ถึงรอบวางบิล ${JSON.stringify(f)}`);
+      assert.equal(ledgerBillingTally(all, billingOn).amounts['7d'], ledgerSummary(billingRows).totalAmount);
+
+      // "เลยกำหนด" บวกตัวกรอง: ไม่กด = แถวหลังกด · กดค้าง = แถวที่เห็นอยู่
+      const overdueRowsNow = filterLedger(all, { ...f, overdueOnly: true });
+      assert.equal(ledgerSummary(filterLedger(all, f)).overdueCount, overdueRowsNow.length, `เลยกำหนด ${JSON.stringify(f)}`);
+      assert.equal(ledgerSummary(filterLedger(all, f)).overdueAmount, ledgerSummary(overdueRowsNow).totalAmount);
+      checked += 1;
+    }
+  }
+  assert.ok(checked > 200);
+});
+
+// ── การ์ดที่กดไม่ได้ขณะกรอง (ตรวจตัวเลข L18c · 26/10/2026) ─────────────────────────────────────────────────────
+test('🔴 ของจริงที่พัง: ติ๊ก "รอชำระ" อยู่ "ค้างรับทั้งหมด" (summary ของแถวที่กรองแล้ว) เล็กกว่า "รอบัญชีรับรอง" ข้าง ๆ — คำว่า "ทั้งหมด" ไม่จริงตอนกรอง', () => {
+  const all = fixture();
+  const pending = { status: ['pending'] };
+  const outstandingShown = ledgerSummary(filterLedger(all, pending)).outstandingAmount;
+  const awaitingShown = ledgerFacetTally(all, pending).awaiting.amount;
+  assert.ok(awaitingShown > outstandingShown, '"ส่วน" ใหญ่กว่า "ทั้งหมด" — ป้ายต้องบอกว่านับเฉพาะที่ตรงตัวกรอง');
+  // ไม่กรอง = "ทั้งหมด" จริง (ค้างรับรวมรอรับรองไว้แล้ว) ⇒ คำเดิมคงไว้ตอนไม่กรอง
+  const s = ledgerSummary(filterLedger(all, {}));
+  assert.ok(s.outstandingAmount >= ledgerFacetTally(all, {}).awaiting.amount);
+  assert.equal(s.outstandingAmount, ledgerSummary(all).outstandingAmount);
+});
+
+// ── ยามต่อสายของแถบการ์ด (L18b · L18c) ───────────────────────────────────────────────────────────────────────
+function stripCards() {
+  const PAGE = code('app/finance/payments/page.js');
+  const start = PAGE.indexOf('<MetricStrip');
+  const end = PAGE.indexOf('</MetricStrip>', start);
+  assert.ok(start > 0 && end > start, 'หาแถบการ์ดของทะเบียนการชำระไม่เจอ');
+  return { PAGE, cards: PAGE.slice(start, end).split(/<Metric\b(?!Strip)/).slice(1) };
+}
+
+test('ยาม L18b: การ์ดที่กดได้ทุกใบมี active + aria-pressed ตัวเดียวกัน · หมายเหตุขึ้นต้น "กำลังใช้ตัวกรองนี้" · title บอกทางถอด · กดซ้ำ = ถอด', () => {
+  const { PAGE, cards } = stripCards();
+  assert.match(PAGE, /const CARD_ON_NOTE = "กำลังใช้ตัวกรองนี้";/);
+  assert.match(PAGE, /const CARD_ON_TITLE = "กำลังกรองอยู่ — กดอีกครั้งเพื่อถอด";/);
+  assert.match(PAGE, /const awaitingOn = statusFilter\.length === 1 && statusFilter\[0\] === "reported";/);
+  const buttons = cards.filter((card) => /as="button"/.test(card));
+  assert.equal(buttons.length, 4, 'การ์ดที่กดได้ในแถบต้องมีสี่ใบ (รอบัญชีรับรอง · ยังไม่ออกใบกำกับ · เลยกำหนด · ถึงรอบวางบิล)');
+  for (const card of buttons) {
+    const label = /label=\{?["`]([^"`]+)/.exec(card)?.[1] || card.slice(0, 80);
+    const on = /aria-pressed=\{(\w+)\}/.exec(card)?.[1];
+    assert.ok(on, `การ์ด "${label}" ไม่มี aria-pressed — กดค้างอยู่ก็ไม่มีใครรู้`);
+    assert.match(card, new RegExp(`active=\\{${on}\\}`), `การ์ด "${label}" active ไม่ใช่ตัวเดียวกับ aria-pressed`);
+    assert.match(card, new RegExp(`note=\\{${on} \\? \`\\$\\{CARD_ON_NOTE\\} · `), `การ์ด "${label}" หมายเหตุตอนกดค้างไม่ขึ้นต้นด้วยคำบอกสถานะ`);
+    assert.match(card, new RegExp(`title=\\{${on}\\s*\\? CARD_ON_TITLE`), `การ์ด "${label}" title ตอนกดค้างไม่บอกทางถอด`);
+    assert.match(card, new RegExp(`onClick=\\{\\(\\) => setFilter\\("\\w+", ${on} \\? "" : "\\w+"\\)\\}`), `การ์ด "${label}" กดซ้ำไม่ถอดตัวกรอง`);
+  }
+});
+
+test('ยาม L18c: การ์ดที่กดไม่ได้ที่พูดว่า "ทั้งหมด/ทุกงวด/เฉพาะงวด" ต้องแตกคำตาม `filtering`', () => {
+  const { cards } = stripCards();
+  const statics = cards.filter((card) => !/as="button"/.test(card));
+  assert.equal(statics.length, 2, 'การ์ดที่กดไม่ได้ต้องมีสองใบ (เก็บได้แล้ว · ค้างรับ)');
+  const collected = statics.find((card) => card.includes('label="เก็บได้แล้ว"'));
+  assert.ok(collected, 'หาการ์ด "เก็บได้แล้ว" ไม่เจอ');
+  assert.match(collected, /note=\{filtering \? "เฉพาะที่ตรงตัวกรอง · งวดที่บัญชีคอนเฟิร์ม" : "เฉพาะงวดที่บัญชีคอนเฟิร์ม"\}/);
+  const outstanding = statics.find((card) => card.includes('summary.outstandingAmount'));
+  assert.ok(outstanding, 'หาการ์ดค้างรับไม่เจอ');
+  assert.match(outstanding, /label=\{filtering \? "ค้างรับ" : "ค้างรับทั้งหมด"\}/);
+  assert.match(outstanding, /note=\{filtering \? "เฉพาะที่ตรงตัวกรอง · งวดที่ยังไม่ถูกคอนเฟิร์ม" : "ทุกงวดที่ยังไม่ถูกคอนเฟิร์ม"\}/);
+  for (const card of statics) {
+    if (/ทั้งหมด|ทุกงวด|เฉพาะงวด/.test(card)) assert.match(card, /filtering \?/, `การ์ดกดไม่ได้พูดว่า "ทั้งหมด" โดยไม่ดูว่ากำลังกรอง: ${card.slice(0, 120)}`);
+  }
+});
