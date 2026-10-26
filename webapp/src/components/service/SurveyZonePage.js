@@ -723,7 +723,8 @@ export default function SurveyZonePage({
             {/* พื้นที่จากแบบ: ตัวเลขมาจากแบบ ไม่ได้มาจากตลับเมตร — บอกคนกรอกว่าอ่านจากไหน (คนที่แก้ไม่ได้ไม่ต้องอ่านคำสั่ง) */}
             {drawing && edit ? <p className={styles.hint}>{drawing.size.hint}</p> : null}
             {/* 🔄 เพิ่งสลับกลับมาเป็นลงหน้างาน — ประโยคของด่านขนาดอยู่ที่หัวข้อที่ต้องตรวจ (มือถือซ่อนบรรทัดสถานะของท้ายหน้า) */}
-            {edit && sections.size.note ? <StatusNotice tone="warning">{sections.size.note}</StatusNotice> : null}
+            {/* "กดบันทึกอีกครั้ง" ไม่ตัดกลาง — บานสองคอลัมน์ของช่าง (1440) เคยเหลือ "ครั้ง" คำเดียวบรรทัดสอง (ตรวจจอ crew 26/10) */}
+            {edit && sections.size.note ? <StatusNotice tone="warning">{keepPhrases(sections.size.note, ["กดบันทึกอีกครั้ง"])}</StatusNotice> : null}
             {partsView.rows.map((row, i) => {
               const part = parts[i];
               const open = labelOpen.has(part.id);

@@ -28,7 +28,7 @@
 //      `surveyZoneRouteStep` (ของล้วน · เทสต์ทุกแถว) ต่อสายโดย `useSurveyZoneRoute`
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, MapPinPlus, Search } from "lucide-react";
+import { ArrowLeft, MapPinPlus, PencilRuler, Search } from "lucide-react";
 import thaiText, { keepPhrases } from "@/components/ThaiText";
 import { surveyCardUnits } from "@/components/service/surveyControlCardUnits";
 import EmptyState from "@/components/ui/EmptyState";
@@ -128,6 +128,9 @@ const DOC_ISSUED_STATES = ["issued", "frozen", "ready"];
 const DOC_POLL_MAX_FAILS = 8;
 /* ชื่อที่คำกำกับไทล์ "ต้องเข้ายืนยันหน้างานภายหลังไหม" เอ่ยถึง — เป็นชิ้นเดียว ไม่ตัดกลาง (ป้ายในคำพูดกับ "ฝ่ายขาย" มาจาก `surveyCardUnits` เอง) */
 const SEND_TILE_UNITS = ["ใบยืนยันหน้างาน", "ขอยืนยันหน้างาน"];
+/* ไอคอนของบานขวาว่าง ตามเหตุที่รายการว่าง (`listView.emptyReason` ของตัวตัดสิน) — เหตุ "ที่เหลือเป็นจากแบบทั้งหมด" ได้ไอคอนเดียวกับ
+   บรรทัดเดียวกันบนรายการ (`SurveyZoneList`) · เหตุอื่น/ไม่มีเหตุ = แว่นขยายเดิม (ตรวจจอ crew 26/10) */
+const EMPTY_PANE_ICON = Object.freeze({ drawing: PencilRuler });
 /* เวลาสองค่าเป็นจุดเดียวกันไหม — เทียบเป็นมิลลิวินาที ไม่เทียบสตริง (PostgREST คืน `+00:00` · `toISOString()` ลงท้าย `Z`) */
 const sameInstant = (a, b) => {
   if (!a || !b) return false;
@@ -1782,7 +1785,9 @@ export default function SurveySheetPage({ params }) {
           onTrayShown={trayShown}
         />
       ) : split ? (
-        <EmptyState icon={Search}>
+        /* ไอคอนตามเหตุ (`EMPTY_PANE_ICON`) — บรรทัด "หัวหน้าประเมินจากแบบ" ได้ไม้บรรทัด+ดินสอตัวเดียวกับบรรทัดเดียวกันในรายการ (จอแคบ)
+           · แว่นขยายเหลือเฉพาะ "ไม่มีพื้นที่ให้วัด" (แว่นบนบรรทัดจากแบบเคยชวนให้คิดว่ามีอะไรให้ค้น — ตรวจจอ crew 26/10) */
+        <EmptyState icon={EMPTY_PANE_ICON[listView.emptyReason] || Search}>
           {/* ช่างไม่เหลือพื้นที่ให้วัดเพราะที่เหลือเป็นจากแบบทั้งหมด = บรรทัดของตัวตัดสิน — สองประโยคเดิมเป็นเท็จทั้งคู่ในกรณีนี้
               · ขึ้นที่นี่ที่เดียว: รายการได้ `paneEmpty` แล้วไม่พิมพ์ซ้ำ (crew-q6) */}
           {listView.emptyReason === "drawing" ? listView.drawingNote
