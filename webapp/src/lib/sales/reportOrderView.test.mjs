@@ -260,7 +260,8 @@ test('orderRowsLabel: แถวหนึ่งคือใบหนึ่ง = "
   assert.equal(orderRowsLabel([]), '0 ใบ');
   const page = readFileSync(new URL('../../app/sales-planning/targets/report/page.js', import.meta.url), 'utf8');
   for (const pattern of [
-    /count=\{loading \|\| error \? null : orderRowsLabel\(filtered\)\}/,
+    // ตอนติ๊กเลือกชุดเอกสาร ป้ายนับ **ใบ** ที่ไม่ซ้ำ (visibleIds) ไม่ใช่แถว — ไม่ติ๊ก = orderRowsLabel เหมือนเดิม
+    /count=\{loading \|\| error \? null\s*: selected\.size \? `เลือก \$\{selected\.size\}\/\$\{visibleIds\.length\} ใบ` : orderRowsLabel\(filtered\)\}/,
     /badge=\{orderRowsLabel\(group\.allOrders \|\| group\.orders\)\}/,
     /<td>รวม \{orderRowsLabel\(filtered\)\}/,
     /itemLabel=\{orderRowsUnit\(filtered\)\}/,

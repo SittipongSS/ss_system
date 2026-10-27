@@ -16,7 +16,7 @@ test('ลำดับกลุ่ม: แนบเพิ่ม → ยืนย�
   const res = buildSalesOrderDocuments({ order: { id: 'SO-9' } });
   assert.deepEqual(res.groups.map((g) => g.rows.length), [0, 0, 0, 0]);
   assert.equal(res.total, 0);
-  assert.deepEqual(buildSalesOrderDocuments({}), { groups: [], total: 0 });
+  assert.deepEqual(buildSalesOrderDocuments({}), { groups: [], total: 0, installments: [] });
 });
 
 test('ไฟล์แนบเพิ่มเปิดผ่าน proxy กลาง · เอกสาร Google เปิดที่ Google', () => {
