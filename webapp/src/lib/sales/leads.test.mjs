@@ -9,7 +9,7 @@ import {
   canEditLead, canDeleteLead, canWorkLead, canCreateLead,
   LEAD_EDIT_LOCKED_STATUSES, LEAD_DELETE_LOCKED_STATUSES,
   meetingTimesSinceBounce, pickNextMeetingAt, inLeadScope, chunkLeadIds,
-  sourceLeadIdOf, slaStage, slaPendingTone, channelRollup, withAssigneePending,
+  sourceLeadIdOf, slaStage, slaPendingTone, channelRollup, withAssigneePending, assigneeRollup,
   LEAD_SLA_STAGES, leadSlaNote, leadBouncePatch,
 } from './leads';
 import { bangkokDate } from './handoffQueue';
@@ -196,6 +196,40 @@ test('channelRollup: เรียงจากช่องทางที่เ�
   assert.equal(out[0].count, 2);
   assert.deepEqual(channelRollup([]), []);
   assert.deepEqual(channelRollup(undefined), []);
+});
+
+/* 🐞 ต.ค. 2026 ตาราง AE ขึ้น "SLA ทัน 45/58" ขณะที่การ์ด SLA ติดต่อกลับบนจอเดียวกันขึ้น 45/57
+   ใบที่ต่างคือใบที่ auto_bounce แล้วมอบใหม่ — ประวัติจำว่า "เคยติดต่อ" แต่ firstContactAt
+   ของรอบนี้ถูกล้าง ตารางเดิมใช้ `contacted` เป็นตัวหารจึงนับใบนั้นเป็น "ไม่ทัน" */
+test('assigneeRollup: ตัวหาร SLA = ใบที่วัดได้รอบนี้ ไม่ใช่ใบที่เคยติดต่อ · รวมแล้วเท่าการ์ด', () => {
+  const rows = [
+    // ทัน — มอบจันทร์เช้า ติดต่อบ่ายวันเดียวกัน
+    { id: 'hit', assigneeId: 'a', assigneeName: 'AE ก', team: 'ODM',
+      assignedAt: '2026-10-12T02:00:00Z', firstContactAt: '2026-10-12T06:00:00Z' },
+    // ตีกลับแล้วมอบใหม่ ยังไม่ได้ติดต่อรอบนี้ — "ค้าง" ไม่ใช่ "พลาด"
+    { id: 'bounced', assigneeId: 'a', assigneeName: 'AE ก', team: 'ODM',
+      assignedAt: '2026-10-26T06:41:00Z', firstContactAt: null },
+    // ไม่ทัน — ติดต่อหลังมอบสามวันทำการ
+    { id: 'late', assigneeId: 'a', assigneeName: 'AE ก', team: 'ODM',
+      assignedAt: '2026-10-13T02:00:00Z', firstContactAt: '2026-10-16T02:00:00Z' },
+    // ยังไม่มีผู้รับมอบ — ไม่อยู่ในตาราง AE
+    { id: 'unassigned', assigneeId: null },
+  ];
+  const outcomeOf = new Map([
+    ['hit', { reachedContact: true, reachedMeeting: true, won: false }],
+    ['bounced', { reachedContact: true, reachedMeeting: false, won: false }],
+    ['late', { reachedContact: true, reachedMeeting: false, won: true }],
+    ['unassigned', { reachedContact: false }],
+  ]);
+  const [a, ...rest] = assigneeRollup(rows, outcomeOf, new Set());
+  assert.equal(rest.length, 0, 'ใบที่ไม่มีผู้รับมอบไม่สร้างแถว');
+  assert.deepEqual(a, {
+    assigneeId: 'a', name: 'AE ก', team: 'ODM',
+    assigned: 3, contacted: 3, slaChecked: 2, slaHit: 1, meetings: 1, qualified: 1,
+  });
+  const card = slaStage(rows, 'assignedAt', 'firstContactAt', new Set());
+  assert.deepEqual([a.slaHit, a.slaChecked], [card.hit, card.checked], 'ตาราง AE รวมแล้วต้องเท่าการ์ด SLA ติดต่อกลับ');
+  assert.deepEqual(assigneeRollup([], new Map(), new Set()), []);
 });
 
 test('withAssigneePending: AE ที่เดือนนี้ไม่มีลีดใหม่แต่ยังกองของเก่า ต้องไม่หายจากตาราง', () => {
@@ -605,9 +639,12 @@ test('KPI tab: funnel โชว์ "-" เมื่อค่าเป็น null
   assert.match(tabSource, /teamLabelNow\(a\.team\)/, 'คอลัมน์ทีมต้องอ่านชื่อจากทะเบียน');
   assert.doesNotMatch(tabSource, /\bTEAM_LABELS\b/, 'ห้ามกลับไปอ่านค่าคงที่');
   /* % ที่ไม่มีตัวหารกำกับ = คนที่ติดต่อไป 2 ใบจาก 11 ใบขึ้น 100.00% ได้หน้าตาเฉย
-     (การ์ด SLA ข้างบนโชว์ "ทัน x/y" อยู่แล้ว — สองที่บนจอเดียวกันต้องเชื่อถือได้เท่ากัน) */
-  assert.match(tabSource, /\{a\.slaHit\}\/\{a\.contacted\}/,
+     (การ์ด SLA ข้างบนโชว์ "ทัน x/y" อยู่แล้ว — สองที่บนจอเดียวกันต้องเชื่อถือได้เท่ากัน)
+     ตัวหารคือ `slaChecked` ไม่ใช่ `contacted` — ดูเทสต์ assigneeRollup */
+  assert.match(tabSource, /\{a\.slaHit\}\/\{a\.slaChecked\}/,
     'คอลัมน์ SLA ของ AE ต้องโชว์ตัวหารคู่กับเปอร์เซ็นต์เสมอ');
+  assert.doesNotMatch(tabSource, /pct\((a|aeTotals)\.slaHit, \1\.contacted\)/,
+    'ตัวหาร SLA ต้องเป็นใบที่วัดได้รอบนี้ — ใบที่ตีกลับแล้วยังไม่ติดต่อไม่ใช่ "ไม่ทัน"');
 });
 
 /* ── ป้าย SLA ต้องมาจากลิสต์เดียวทั้งสองจอ ──────────────────────────────────
