@@ -283,7 +283,8 @@ test('🔴 D-3 แถบแจ้งเหนือตาราง: วาดจ
   assert.match(banner, /action=\{confirm \? \(/, 'ไม่มี confirm = ไม่มีปุ่มเลย (ไม่ใช่ปุ่มจาง)');
   assert.equal((VIEW.match(/\.action\?\.ready/g) || []).length, 1);
   assert.match(banner, /<StatusNotice\s+tone="info"/);
-  assert.match(banner, /\{thaiText\(banner\.text\)\}/);
+  // วลีที่ห้ามตัดกลางมาจาก lib (`banner.keep`) · ไม่มี = ทางเดิม (S2b แก้หลังตรวจจอ sales รอบ 27/10)
+  assert.match(banner, /\{banner\.keep\?\.length \? keepPhrases\(banner\.text, banner\.keep\) : thaiText\(banner\.text\)\}/);
   assert.match(banner, /\{banner\.note \? <span className=\{styles\.bannerNote\}>\{thaiText\(banner\.note\)\}<\/span> : null\}/);
   // ไม่มีจอไหนของกลุ่มนี้พิมพ์ประโยค N26 หรือชื่อปุ่มของงวด S5 เอง
   for (const [name, src] of SCREENS) {

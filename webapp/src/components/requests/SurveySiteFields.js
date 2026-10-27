@@ -592,7 +592,8 @@ export default function SurveySiteFields({
                   <small className={styles.hint}>
                     {[tile.code, floorLabel(tile.floor)].filter(Boolean).join(" · ")}
                   </small>
-                  <small className={styles.tileWhy}>{tile.reason}</small>
+                  {/* "รอยืนยันหน้างาน" ท้ายเหตุห้ามขาดเป็น "รอ" / "ยืนยันหน้างาน" (S2b แก้หลังตรวจจอ · UAT sales 27/10 ที่ 375) */}
+                  <small className={styles.tileWhy}>{keepPhrases(tile.reason, ["รอยืนยันหน้างาน"])}</small>
                   {tile.surveyState === "done" && (
                     <small className={styles.hint}>
                       {[

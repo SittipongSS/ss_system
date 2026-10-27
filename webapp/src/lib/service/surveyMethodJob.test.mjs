@@ -488,12 +488,16 @@ test('⭐ แถบแจ้ง · ใบที่ส่งผลแล้วแ
   for (const [who, viewer] of VIEWERS) {
     assert.deepEqual(job(ask({ ...SENT, surveyConfirm: 'needed' }), viewer).zones.drawingBanner, {
       text: NEEDED_TEXT,
+      // ชื่อปุ่มใน “…” ไม่ขาดสองบรรทัด (S2b แก้หลังตรวจจอ sales รอบ 27/10 · 375)
+      keep: ['“ขอยืนยันหน้างาน”'],
       // งวด S2b: ประโยคข้างบนเอ่ยถึงปุ่มที่ยังไม่มีจนถึงงวด S5 — จอพิมพ์ประโยคนี้ต่อท้าย (สวิตช์ `SURVEY_CONFIRM_ACTION_READY`)
       note: 'ปุ่ม “ขอยืนยันหน้างาน” ของฝ่ายขายจะเปิดใช้ในรอบถัดไป — ระหว่างนี้ฝ่ายขายเปิดคำร้องประเมินพื้นที่แบบลงหน้างานของพื้นที่เดิมได้',
       action: { label: 'ขอยืนยันหน้างาน', ready: false },
     }, who);
     assert.deepEqual(job(ask({ ...SENT, surveyConfirm: 'not_needed' }), viewer).zones.drawingBanner, {
       text: NOT_NEEDED_TEXT,
+      // "ไม่" ไม่ขาดจากกริยา — บรรทัดล่าง "ต้องยืนยันหน้างาน…" อ่านกลับความ (S2b แก้หลังตรวจจอ sales รอบ 27/10 · 375)
+      keep: ['ไม่ต้องยืนยันหน้างาน'],
       action: null,
     }, who);
     // ข้อมูลเก่า / ยังไม่เลือก / ค่าที่ไม่รู้จัก = ไม่มีแถบ (ไม่เดาว่าต้องยืนยัน)

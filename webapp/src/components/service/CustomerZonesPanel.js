@@ -23,6 +23,7 @@ import Link from "next/link";
 import { CheckCircle2, Layers, MapPin, MessageCircleQuestion, TriangleAlert } from "lucide-react";
 import RegistryBadge from "@/components/ui/StatusBadge";
 import { Metric, MetricStrip } from "@/components/ui/Workspace";
+import { keepPhrases } from "@/components/ThaiText";
 import { DetailCard } from "@/components/ui/DetailPage";
 import EmptyState from "@/components/ui/EmptyState";
 import { TableScroll } from "@/components/ui/Table";
@@ -30,7 +31,7 @@ import { REQUEST_STATUS_LABELS, REQUEST_STATUS_TONES } from "@/lib/requests/stat
 import { siteRefillBadge } from "@/lib/service/refill";
 import { surveyZonePackageText } from "@/lib/service/survey";
 // คำของวิธีประเมิน ("ประเมินจากแบบ" · "จากแบบ") มาจากที่เดียว — แท็บนี้ไม่พิมพ์เอง (ประเมินจากแบบ · งวด S2b)
-import { SURVEY_METHOD_CHIP, SURVEY_METHOD_LABEL } from "@/lib/service/surveyMethodSwitch";
+import { SURVEY_METHOD_LABEL } from "@/lib/service/surveyMethodSwitch";
 import { floorLabel } from "@/lib/service/zoneCode";
 import { fmtDate, fmtNumber, naText } from "@/lib/format";
 import SurveyMethodChip from "./SurveyMethodChip";
@@ -96,12 +97,14 @@ function unsoldCounts(registry) {
 /* คำใต้ตัวเลข "ประเมินแล้วยังไม่ขาย" — มีพื้นที่ที่ตัวเลขมาจากแบบและยังรอยืนยันหน้างาน = บอกจำนวนไว้ด้วย
    (เสนอราคาได้เหมือนเดิม — มติเจ้าของ D1 — แต่ฝ่ายขายต้องรู้ว่าตัวเลขชุดไหนยังขยับได้)
    ⭐ ประโยคสั้นบรรทัดเดียว (มติเจ้าของ sales-q7 · S2b แก้หลังตรวจจอ) — "มีตัวเลขครบแล้ว" กับ "ประเมิน" ซ้ำไม่ได้บอกอะไรเพิ่ม
-      และทำให้แถวตัวเลขทั้งแถวสูงกว่าลูกค้ารายอื่นหนึ่งบรรทัด · คำ "จากแบบ" เป็นค่าคงที่ตัวเดียวกับป้ายวิธี (`SURVEY_METHOD_CHIP`)
+      และทำให้แถวตัวเลขทั้งแถวสูงกว่าลูกค้ารายอื่นหนึ่งบรรทัด
+   🔄 ทางสำรองของมติเดียวกัน (UAT sales 27/10): "… พื้นที่จากแบบ รอยืนยันหน้างาน" ยังขึ้นสองบรรทัดที่ 1440 กับ k หลักเดียว (ช่อง 183px)
+      ⇒ ตัด "จากแบบ" ออก — ป้ายบนแถว "ประเมินจากแบบ · รอยืนยันหน้างาน" บอกที่มาอยู่แล้ว
    ⚠️ รับค่าจาก `unsoldCounts` (ยังไม่ขายเท่านั้น · sales-q6) · ไม่มี / เป็น 0 = ประโยคเดิมทุกตัวอักษร */
 function unsoldNote({ unsold, awaiting }) {
   if (!(unsold > 0)) return undefined;
   return awaiting > 0
-    ? `เสนอราคาได้ · ${fmtNumber(awaiting)} พื้นที่${SURVEY_METHOD_CHIP.drawing} รอยืนยันหน้างาน`
+    ? `เสนอราคาได้ · ${fmtNumber(awaiting)} พื้นที่รอยืนยันหน้างาน`
     : "มีตัวเลขครบแล้ว เสนอราคาได้โดยไม่ต้องกลับไปวัดใหม่";
 }
 
@@ -148,7 +151,8 @@ export default function CustomerZonesPanel({
              เงื่อนไขชุดเดียวกับที่ `unsoldNote` เลือกประโยคนั้น (sales-q6) */
           className={unsold > 0 && unsoldSet.awaiting > 0 ? styles.noteWrap : undefined}
           label="ประเมินแล้วยังไม่ขาย" value={unsold}
-          note={unsoldNote(unsoldSet)} />
+          /* "รอยืนยันหน้างาน" ห้ามขาดเป็น "รอยืนยัน" / "หน้างาน" เมื่อจอแคบตัดบรรทัด (UAT sales 27/10 ที่ 375) — ตัดได้หลัง "พื้นที่" */
+          note={keepPhrases(unsoldNote(unsoldSet), ["รอยืนยันหน้างาน"])} />
       </MetricStrip>
 
       {sites.map((site) => {

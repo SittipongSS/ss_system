@@ -118,7 +118,7 @@ test('sales-q3 สายไฟ: หน้าคำร้องส่ง noVisit=
   /* ด่านร่าง: ใช้ `variantAskedOnly` ตัวเดียวกับ `deskZonesOnly` ของ S4 (ใบที่ส่งแล้ว · ไทล์อ่านอย่างเดียว) — ถอดออก = ร่างที่
      สลับไทล์เป็นลงหน้างานได้คำใบ้ "…จะไม่ถูกใช้" ทั้งที่วันนั้นจะถูกใช้ (ตรวจรอบสอง) */
   assert.match(FORM, /const noVisitHint = isEdit && noVisit && variantAskedOnly;/);
-  assert.match(FORM, /dueHint=\{needsSite \? siteDueHint\(noVisitHint\) : undefined\}/);
+  assert.match(FORM, /dueHint=\{needsSite \? keepPhrases\(siteDueHint\(noVisitHint\), \["จะไม่ถูกใช้"\]\) : undefined\}/);
   assert.equal((FORM.match(/siteDueHint\(/g) || []).length, 2, 'ประกาศหนึ่ง · เรียกที่ช่องเดียว');
   assert.equal((FORM.match(/วันที่ที่กรอกไว้จะไม่ถูกใช้/g) || []).length, 1);
   assert.equal((FORM.match(/เจ้าหน้าที่จะยืนยันวัน\/เวลาจริงตอนกด/g) || []).length, 1, 'ประโยคเดิมมีที่เดียว (ใน siteDueHint)');
@@ -313,7 +313,7 @@ test('sales-q6 + sales-q7 สายไฟ: ตัวเลขของช่อ�
   assert.match(PANEL, /const unsoldSet = unsoldCounts\(registry\);\s*const \{ unsold \} = unsoldSet;/);
   assert.match(PANEL, /className=\{unsold > 0 && unsoldSet\.awaiting > 0 \? styles\.noteWrap : undefined\}/);
   assert.match(PANEL, /label="ประเมินแล้วยังไม่ขาย" value=\{unsold\}/);
-  assert.match(PANEL, /note=\{unsoldNote\(unsoldSet\)\}/);
+  assert.match(PANEL, /note=\{keepPhrases\(unsoldNote\(unsoldSet\), \["รอยืนยันหน้างาน"\]\)\}/);
   assert.match(PANEL, /function unsoldNote\(\{ unsold, awaiting \}\) \{/);
   assert.doesNotMatch(PANEL, /registry\.awaitingConfirm/);
   assert.doesNotMatch(PANEL, /registry\.(?:soldCount|endedCount)\s*\|\|/, 'สูตรลบของช่องเดิมไม่เหลือ');
@@ -321,7 +321,8 @@ test('sales-q6 + sales-q7 สายไฟ: ตัวเลขของช่อ�
   assert.match(code(read('./zoneRegistry.js')), /zones\.filter\(\(z\) => z\.surveyedAt \|\| z\.volumeCbm !== null\)/);
   assert.match(PANEL, /zone\.surveyedAt \|\| zone\.volumeCbm !== null/);
   // ประโยคบรรทัดเดียวของมติ sales-q7 — คำ "จากแบบ" มาจากค่าคงที่ตัวเดียวกับป้ายวิธี
-  assert.equal(`เสนอราคาได้ · ${12} พื้นที่${SURVEY_METHOD_CHIP.drawing} รอยืนยันหน้างาน`, 'เสนอราคาได้ · 12 พื้นที่จากแบบ รอยืนยันหน้างาน');
+  // ทางสำรองของมติ (UAT sales 27/10 — ประโยคที่มี "จากแบบ" ยังขึ้นสองบรรทัดที่ 1440): ป้ายบนแถวบอกที่มาอยู่แล้ว
+  assert.match(PANEL, /\? `เสนอราคาได้ · \$\{fmtNumber\(awaiting\)\} พื้นที่รอยืนยันหน้างาน`/);
   // คลาสตัดบรรทัดยังอยู่ (k สองหลัก / จอแคบ ห้ามตัดท่อน "รอยืนยันหน้างาน" ทิ้ง)
   assert.match(read('../../components/service/CustomerZonesPanel.module.css'), /\.wrap \.noteWrap em \{\s*overflow: visible;\s*white-space: normal;/);
 });

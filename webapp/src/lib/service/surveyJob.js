@@ -230,6 +230,9 @@ export const SURVEY_ZONE_RESAVE_TEXT = 'กลับมาเป็นลงห�
 /* หมายเหตุของช่องจุดติดตั้งบนแถบตัวเลขของใบจากแบบทั้งใบที่ส่งผลแล้ว (S2b-O9 · มติเจ้าของ 19/10) — แทน "เลือก / ที่ติดตั้งได้"
    ซึ่งอ่านว่ามีคนเลือกจุดและตรวจแล้วว่าติดตั้งได้ (ไม่จริงกับพื้นที่จากแบบ — จุดไม่บังคับ และไม่มีการเลือก) */
 export const SURVEY_DRAWING_SPOTS_NOTE = 'จุดโดยประมาณจากแบบ';
+
+/* ท่อนในบรรทัดของขั้นบนไทม์ไลน์ที่ห้ามขาดกลางบรรทัด — คำของวิธีกับจำนวนเป็นหน่วยเดียว ("… · จากแบบ 1") (S2b แก้หลังตรวจจอ sales-q8) */
+const STEP_LINE_KEEP = /จากแบบ \d[\d,]*/g;
 const zoneResaveOnly = (zone, facts) => surveyZoneNeedsResave(zone)
   && facts.missingCrew.length === 1 && facts.missingCrew[0].key === 'size' && facts.sizeComplete === true;
 
@@ -367,13 +370,16 @@ function surveyDrawingBanner(request, { show = false, count = 0, dept = 'TS' } =
   if (request.surveyConfirm === 'needed') {
     return {
       text: `${lead} — ใช้ตัวเลขเสนอราคาได้เลย · เมื่อพื้นที่พร้อม กด “${CONFIRM_ACTION_LABEL}” เพื่อให้ ${dept} เข้าวัดจริง`,
+      /* `keep` = วลีที่จอห้ามตัดกลาง — ชื่อปุ่มในเครื่องหมายคำพูด (375 เคยขึ้น "“ขอยืนยัน" / "หน้างาน”") · S2b แก้หลังตรวจจอ sales รอบ 27/10 */
+      keep: [`“${CONFIRM_ACTION_LABEL}”`],
       /* งวด S2b: ประโยคข้างบนเอ่ยถึงปุ่มที่ยังไม่มีจนถึงงวด S5 ⇒ จอพิมพ์ `note` ต่อท้าย (สวิตช์เดียวกับกล่องส่งผลของหัวหน้า) */
       note: SURVEY_CONFIRM_ACTION_READY ? null : SURVEY_CONFIRM_PENDING_NOTE,
       action: { label: CONFIRM_ACTION_LABEL, ready: SURVEY_CONFIRM_ACTION_READY },
     };
   }
   if (request.surveyConfirm === 'not_needed') {
-    return { text: `${lead} — ${dept} แจ้งว่าไม่ต้องยืนยันหน้างาน ใช้ผลนี้เป็นผลสุดท้าย`, action: null };
+    /* `keep` — "ไม่" ห้ามขาดจากกริยา: 375 เคยขึ้น "…แจ้งว่าไม่" / "ต้องยืนยันหน้างาน…" บรรทัดล่างอ่านกลับความ (S2b แก้หลังตรวจจอ sales รอบ 27/10) */
+    return { text: `${lead} — ${dept} แจ้งว่าไม่ต้องยืนยันหน้างาน ใช้ผลนี้เป็นผลสุดท้าย`, keep: ['ไม่ต้องยืนยันหน้างาน'], action: null };
   }
   return null;
 }
@@ -645,11 +651,13 @@ export function surveyJobView({
   const closure = requestClosure(request);
   const closureLine = requestClosureLine(request);
   const requesterLabel = requestSideLabel(request, 'requester');
-  const totalsText = join(
+  /* สามท่อนของยอด — แต่ละท่อน (ตัวเลข + หน่วย) ห้ามขาดกลางบรรทัดในพาดหัว "ได้รับผลแล้ว — …" (`headlineKeep` ของขั้น sent) */
+  const totalsParts = [
     `${fmtNumber(totals.zones)} พื้นที่`,
     `${num(totals.areaSqm)} ตร.ม.`,
     surveyPackagesLabel(totals),
-  );
+  ];
+  const totalsText = join(...totalsParts);
   const visitWhen = visit ? dayTime(visit.scheduledDate, visit.startTime) : '';
   const lateBy = stage === 'overdue' ? daysBetween(visit.scheduledDate, today) : 0;
   const unableRounds = visits.filter((v) => v.status === 'unable').length;
@@ -877,7 +885,10 @@ export function surveyJobView({
       state,
       people: (step.people || []).filter(Boolean),
       lines: (step.lines || []).filter((line) => (typeof line === 'string' ? line : line?.text))
-        .map((line) => (typeof line === 'string' ? { text: line, tone: null } : line)),
+        .map((line) => (typeof line === 'string' ? { text: line, tone: null } : line))
+        /* คู่ "จากแบบ k" ห้ามขาดกลางบรรทัด — จอห่อด้วย `keepPhrases` (S2b แก้หลังตรวจจอ sales-q8 · ราง 1440 ขาดเป็น "จาก" / "แบบ 1")
+           · บรรทัดที่ไม่มีคู่นี้ไม่มีคีย์ `keep` (รูปเดิม) */
+        .map((line) => { const keep = line.text.match(STEP_LINE_KEEP); return keep ? { ...line, keep } : line; }),
     };
   });
   const current = timeline.find((step) => step.state === 'current') || null;
@@ -1160,7 +1171,15 @@ export function surveyJobView({
       /* วันที่ในพาดหัวของงานโต๊ะ ("กำลังประเมินจากแบบ — จะส่งผล จ. 12 ต.ค.") — จอห่อท่อนนี้ไม่ให้ขาดกลางวันที่บนมือถือ
          (S2b แก้หลังตรวจจอ sales-q10c) · คีย์มีเฉพาะขั้นนั้น — ขั้นอื่นทุกขั้นรูปเดิม */
       ...(stage === 'desk-working' && deskResultDate ? { headlineKeep: [dayText(deskResultDate)] } : {}),
+      /* พาดหัวของผลที่ส่งแล้ว ("ได้รับผลแล้ว — 3 พื้นที่ · 125 ตร.ม. · 3 แพ็คเกจ (SM 3)") — ตัดบรรทัดได้ที่ " · " เท่านั้น ไม่ให้ "3" / "แพ็คเกจ"
+         แยกบรรทัด (S2b แก้หลังตรวจจอ sales รอบ 27/10 · 768 / 375) · เฉพาะใบที่มีพื้นที่จากแบบ — ใบลงหน้างานล้วนต้องได้รูปก่อนงวด S1
+         ทุกตัวอักษร (surveyMethodGolden) */
+      ...(stage === 'sent' && mix.drawing > 0 ? { headlineKeep: totalsParts.filter(Boolean) } : {}),
       sub: nowBase.sub || '',
+      /* บรรทัดรองตัดได้ที่ " · " / ช่องว่างระหว่างท่อน แต่ไม่แยกตัวเลขจากหน่วยหรือป้าย (S2b แก้หลังตรวจจอ sales รอบ 27/10 · 768 / 375):
+         "2 / 3" กับ "พื้นที่" ของงานโต๊ะ · "ปิดแล้ว" กับ "1/2" ของผลที่ส่งแล้ว · เฉพาะใบที่มีพื้นที่จากแบบ — ใบลงหน้างานล้วนรูปเดิม (surveyMethodGolden) */
+      ...(stage === 'desk-working' && deskSize?.total > 0 ? { subKeep: [`${deskSize.done} / ${deskSize.total} พื้นที่`] } : {}),
+      ...(stage === 'sent' && mix.drawing > 0 ? { subKeep: [`ปิดแล้ว ${closureLine?.done ?? 1}/2`] } : {}),
       tone: stage === 'overdue' ? 'danger' : (STAGE_BADGE[stage]?.tone || 'neutral'),
       progress: showMeter ? { done: sent ? progress.total : progress.done, total: progress.total, complete: sent || progress.complete } : null,
       next: nowBase.next || null,

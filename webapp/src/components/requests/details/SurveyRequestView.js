@@ -130,7 +130,7 @@ function Timeline({ steps }) {
             <span className={styles.stepLine}>นัด {step.visitLink.code}</span>
           ) : null}
           {step.lines.map((line, i) => (
-            <span key={i} className={styles.stepLine} data-tone={line.tone || undefined}>{line.text}</span>
+            <span key={i} className={styles.stepLine} data-tone={line.tone || undefined}>{keepPhrases(line.text, line.keep)}</span>
           ))}
         </li>
       ))}
@@ -192,7 +192,8 @@ export function SurveyDrawingBanner({ banner, onConfirm }) {
         <Button variant="outline" onClick={onConfirm} className={`${styles.action} ${styles.bannerAction}`}>{confirm.label}</Button>
       ) : null}
     >
-      {thaiText(banner.text)}
+      {/* `banner.keep` = วลีที่ห้ามตัดกลาง ("ไม่ต้องยืนยันหน้างาน" · ชื่อปุ่มใน “…”) — lib ประกาศ · ไม่มี = ทางเดิม (S2b แก้หลังตรวจจอ sales รอบ 27/10) */}
+      {banner.keep?.length ? keepPhrases(banner.text, banner.keep) : thaiText(banner.text)}
       {banner.note ? <span className={styles.bannerNote}>{thaiText(banner.note)}</span> : null}
     </StatusNotice>
   );
@@ -580,7 +581,8 @@ export default function SurveyRequestView({
                 · ขั้นอื่นไม่มีคีย์นี้ = ข้อความเดิม (`keepPhrases` คืนสตริงเดิมเมื่อไม่มีท่อน) */}
             <p className={styles.nowHeadline}>{keepPhrases(job.now.headline, job.now.headlineKeep)}</p>
             {job.now.progress ? <Meter {...job.now.progress} /> : null}
-            {job.now.sub ? <p className={styles.nowSub}>{job.now.sub}</p> : null}
+            {/* `now.subKeep` — ตัวเลขไม่ขาดจากหน่วย/ป้าย ("2 / 3 พื้นที่" · "ปิดแล้ว 1/2") · เฉพาะใบที่มีพื้นที่จากแบบ · ไม่มีคีย์ = สตริงเดิม */}
+            {job.now.sub ? <p className={styles.nowSub}>{keepPhrases(job.now.sub, job.now.subKeep)}</p> : null}
             {job.now.next ? (
               <p className={styles.nowNext}><span>ต่อไป</span>{job.now.next}</p>
             ) : null}

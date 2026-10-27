@@ -218,7 +218,7 @@ test('E-4 ไทล์พื้นที่เดิม: ป้ายใต้�
   assert.match(form, /import SurveyMethodChip from "@\/components\/service\/SurveyMethodChip";/);
   const tile = form.slice(form.indexOf('{pickTiles.map((tile) => ('), form.indexOf('</button>', form.indexOf('{pickTiles.map((tile) => (')));
   assert.match(tile, /<b>\{tile\.name\}<\/b>\s*<SurveyMethodChip label=\{tile\.tag\} className=\{styles\.zoneTileMethod\} \/>/, 'ป้ายอยู่ใต้ชื่อพื้นที่');
-  assert.match(tile, /<small className=\{styles\.tileWhy\}>\{tile\.reason\}<\/small>/);
+  assert.match(tile, /<small className=\{styles\.tileWhy\}>\{keepPhrases\(tile\.reason, \["รอยืนยันหน้างาน"\]\)\}<\/small>/);
   assert.equal((tile.match(/<button\b/g) || []).length, 1, 'ป้ายอยู่ในปุ่มไทล์ ไม่ใช่ปุ่มซ้อนปุ่ม');
   // ตัวที่สอง: รายการพื้นที่อ่านอย่างเดียวของฟอร์มแก้ (ใบที่ส่งแล้ว · UAT S4 T11b) — คำมาจาก `row.methodTag` ของหน้าคำร้อง
   assert.equal((form.match(/<SurveyMethodChip\b/g) || []).length, 2);
@@ -248,7 +248,7 @@ test('E-5 ค่าที่แท็บอ่าน: awaitingConfirm อยู�
 test('E-5 แท็บ: ป้ายในช่องพื้นที่ · ป้ายกำกับ "ประเมินจากแบบเมื่อ" เหนือวันที่ · บรรทัดรอบ · คำใต้ตัวเลขยังไม่ขาย — ทุกจุดแขวนกับคีย์ของทะเบียน', () => {
   const panel = code(PANEL);
   assert.match(panel, /import SurveyMethodChip from "\.\/SurveyMethodChip";/);
-  assert.match(panel, /import \{ SURVEY_METHOD_CHIP, SURVEY_METHOD_LABEL \} from "@\/lib\/service\/surveyMethodSwitch";/);
+  assert.match(panel, /import \{ SURVEY_METHOD_LABEL \} from "@\/lib\/service\/surveyMethodSwitch";/);
   // ① ป้ายของแถว — ใต้รหัสพื้นที่ ในช่องเดียวกับชื่อ
   assert.match(panel, /<b>\{naText\(zone\.name\)\}<\/b>[\s\S]*?<\/small>\s*<SurveyMethodChip label=\{zone\.confirmTag\} className=\{styles\.zoneTag\} \/>\s*<\/td>/);
   assert.equal((panel.match(/<SurveyMethodChip\b/g) || []).length, 1);
@@ -264,12 +264,12 @@ test('E-5 แท็บ: ป้ายในช่องพื้นที่ · �
   assert.match(panel, /const onsite = Number\(zone\.onsiteSurveyCount\) \|\| 0;\s*return onsite > 1 \? `ประเมินมาแล้ว \$\{onsite\} รอบ` : null;/);
   assert.match(panel, /const rounds = roundsText\(zone\);/);
   // ④ คำใต้ตัวเลข "ประเมินแล้วยังไม่ขาย" — ประโยคสั้นบรรทัดเดียว (มติเจ้าของ sales-q7) · นับเฉพาะที่ยังไม่ขาย (sales-q6 · surveyFixSales.test.mjs)
-  assert.match(panel, /note=\{unsoldNote\(unsoldSet\)\}/);
+  assert.match(panel, /note=\{keepPhrases\(unsoldNote\(unsoldSet\), \["รอยืนยันหน้างาน"\]\)\}/);
   assert.match(panel, /if \(!\(unsold > 0\)\) return undefined;/);
   assert.match(panel, /function unsoldNote\(\{ unsold, awaiting \}\) \{/);
-  assert.match(panel, /\? `เสนอราคาได้ · \$\{fmtNumber\(awaiting\)\} พื้นที่\$\{SURVEY_METHOD_CHIP\.drawing\} รอยืนยันหน้างาน`\s*: "มีตัวเลขครบแล้ว เสนอราคาได้โดยไม่ต้องกลับไปวัดใหม่";/);
-  assert.equal(`เสนอราคาได้ · ${1} พื้นที่${SURVEY_METHOD_CHIP.drawing} รอยืนยันหน้างาน`,
-    'เสนอราคาได้ · 1 พื้นที่จากแบบ รอยืนยันหน้างาน');
+  // ทางสำรองของมติ sales-q7 (UAT sales 27/10): ประโยคที่มี "จากแบบ" ยังขึ้นสองบรรทัดที่ 1440 ⇒ "เสนอราคาได้ · {k} พื้นที่รอยืนยันหน้างาน"
+  assert.match(panel, /\? `เสนอราคาได้ · \$\{fmtNumber\(awaiting\)\} พื้นที่รอยืนยันหน้างาน`\s*: "มีตัวเลขครบแล้ว เสนอราคาได้โดยไม่ต้องกลับไปวัดใหม่";/);
+  assert.doesNotMatch(panel, /พื้นที่\$\{SURVEY_METHOD_CHIP\.drawing\} รอยืนยันหน้างาน/, 'ประโยคหลักของมติ (ยังสองบรรทัดที่ 1440) ไม่เหลือ');
   assert.doesNotMatch(panel, /มีตัวเลขครบแล้ว เสนอราคาได้ ·/, 'ประโยคสองบรรทัดเดิมไม่เหลือ');
   // ตัดบรรทัดแทนจุดไข่ปลา (.noteWrap) — เงื่อนไขชุดเดียวกับที่เลือกประโยคที่มีจำนวน
   assert.match(panel, /className=\{unsold > 0 && unsoldSet\.awaiting > 0 \? styles\.noteWrap : undefined\}/);

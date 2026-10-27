@@ -267,7 +267,7 @@ test('หลังส่ง (variantAskedOnly): ไม่มีคำแนะ�
      (`noVisit` ของหน้าคำร้อง · ด่าน `variantAskedOnly` ตัวเดียวกับ `deskZonesOnly` — ร่างสลับไทล์ได้ ⇒ ประโยคเดิม)
      ได้ประโยคบอกว่าวันที่กรอกไว้ไม่ถูกใช้ · ที่เหลือประโยคเดิม (พฤติกรรมเต็มอยู่ที่ lib/service/surveyFixSales.test.mjs) */
   assert.match(form, /const noVisitHint = isEdit && noVisit && variantAskedOnly;/);
-  assert.match(form, /dueHint=\{needsSite \? siteDueHint\(noVisitHint\) : undefined\}/);
+  assert.match(form, /dueHint=\{needsSite \? keepPhrases\(siteDueHint\(noVisitHint\), \["จะไม่ถูกใช้"\]\) : undefined\}/);
   assert.doesNotMatch(form, /deskZonesOnly \? null/);
   // ป้ายวิธีปัจจุบันมาจากหน้าคำร้อง เฉพาะใบที่ส่งแล้ว (ร่างสลับไทล์ได้ ป้ายค้างจะขัดกับไทล์) ผ่านตัวถามของโมดูลใบ
   const page = code('app/requests/[id]/page.js');

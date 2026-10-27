@@ -410,6 +410,11 @@ test('sales-q8: ขั้นเข้าพื้นที่ของใบผ�
   assert.deepEqual(visitStep.lines.map((l) => l.text), ['ส่งงาน 11:40 · วัดครบ 2 / 2 พื้นที่ · จากแบบ 1']);
   const onsite = job(withZones([onsiteReady('z1', 'Studio 01'), onsiteReady('z2', 'Studio 02')], { surveyVisit: reached }));
   assert.deepEqual(onsite.steps.find((s) => s.id === 'acknowledged').lines.map((l) => l.text), ['ส่งงาน 11:40 · วัดครบ 2 / 2 พื้นที่']);
+  // UAT sales 27/10: ราง 1440 ขาดเป็น "… · จาก" / "แบบ 1" ⇒ บรรทัดพก `keep` ของคู่ "จากแบบ k" · บรรทัดที่ไม่มีคู่นี้ไม่มีคีย์
+  assert.deepEqual(visitStep.lines[0].keep, ['จากแบบ 1']);
+  assert.equal(Object.hasOwn(onsite.steps.find((s) => s.id === 'acknowledged').lines[0], 'keep'), false);
+  const view = read('components/requests/details/SurveyRequestView.js');
+  assert.match(view, /<span key=\{i\} className=\{styles\.stepLine\} data-tone=\{line\.tone \|\| undefined\}>\{keepPhrases\(line\.text, line\.keep\)\}<\/span>/);
 });
 
 test('head-rc-q11: การ์ดด่านฝั่งหัวหน้าของใบผสมเปิดตั้งแต่ก่อนช่างส่งงาน · ใบลงหน้างานล้วนรอช่างตามเดิม', () => {
@@ -664,6 +669,18 @@ const SENT = {
   committedDueDate: '2026-10-15', committedResultDate: '2026-10-15',
 };
 
+test('UAT sales 27/10: พาดหัวผลที่ส่งแล้วส่งท่อนยอด (ตัวเลข + หน่วย) ที่ห้ามขาด — ตัดได้ที่ " · " เท่านั้น · ขั้นอื่นรูปเดิม', () => {
+  const sent = job(withZones([onsiteReady('z1', 'Studio 01'), drawingReady('z2', 'Lobby')], SENT));
+  assert.equal(sent.stage, 'sent');
+  assert.ok(sent.now.headlineKeep.length >= 2);
+  for (const part of sent.now.headlineKeep) assert.ok(sent.now.headline.includes(part), part);
+  assert.match(sent.now.headlineKeep[0], /^\d+ พื้นที่$/);
+  assert.match(sent.now.headlineKeep[1], /ตร\.ม\.$/);
+  assert.equal(Object.hasOwn(job(withZones([onsiteReady('z1', 'Studio 01')])).now, 'headlineKeep'), false);
+  // ใบลงหน้างานล้วนที่ส่งแล้ว = รูปก่อนงวด S1 (ไม่มีคีย์ · surveyMethodGolden)
+  assert.equal(Object.hasOwn(job(withZones([onsiteReady('z1', 'Studio 01')], SENT)).now, 'headlineKeep'), false);
+});
+
 test('S2b-O9: view-model บอก `zones.drawingOnly` เฉพาะใบที่ส่งผลแล้วและทุกพื้นที่ที่ใช้อยู่เป็นจากแบบ', () => {
   const spots = [{ id: 's1', label: 'มุมซ้าย', selected: false }, { id: 's2', label: 'หน้าลิฟต์', selected: false }];
   const desk = job(withZones([drawingReady('z1', 'Lobby', { spots }), drawingReady('z2', 'Lounge')], SENT));
@@ -722,6 +739,24 @@ test('sales-q10c: พาดหัว "กำลังประเมินจา
   const view = read('components/requests/details/SurveyRequestView.js');
   assert.match(view, /<p className=\{styles\.nowHeadline\}>\{keepPhrases\(job\.now\.headline, job\.now\.headlineKeep\)\}<\/p>/);
   assert.match(view, /import thaiText, \{ keepPhrases \} from "@\/components\/ThaiText";/);
+});
+
+test('UAT sales 27/10: บรรทัดรองของแถบ "ตอนนี้" ส่งท่อนที่ห้ามขาด (`subKeep`) — "a / k พื้นที่" ของงานโต๊ะ · "ปิดแล้ว n/2" ของผลที่ส่งแล้ว · ใบลงหน้างานล้วนรูปเดิม', () => {
+  const working = job(withZones([drawingReady('z1', 'Lobby'), drawingEmpty('z2', 'Lounge')], {
+    committedResultDate: '2026-10-12', committedDueDate: '2026-10-12',
+  }));
+  assert.deepEqual(working.now.subKeep, ['1 / 2 พื้นที่']);
+  assert.ok(working.now.sub.endsWith('กรอกขนาดจากแบบแล้ว 1 / 2 พื้นที่'), working.now.sub);
+  const sent = job(withZones([onsiteReady('z1', 'Studio 01'), drawingReady('z2', 'Lobby')], SENT));
+  assert.equal(sent.now.subKeep.length, 1);
+  assert.match(sent.now.subKeep[0], /^ปิดแล้ว \d\/2$/);
+  assert.ok(sent.now.sub.includes(sent.now.subKeep[0]), sent.now.sub);
+  // ใบลงหน้างานล้วน (ส่งแล้ว/ยังไม่ส่ง) · งานโต๊ะขั้นอื่น = ไม่มีคีย์ (surveyMethodGolden)
+  for (const view of [job(withZones([onsiteReady('z1', 'Studio 01')], SENT)), job(withZones([onsiteReady('z1', 'Studio 01')])), job(withZones([drawingReady('z1', 'Lobby')]))]) {
+    assert.equal(Object.hasOwn(view.now, 'subKeep'), false);
+  }
+  const view = read('components/requests/details/SurveyRequestView.js');
+  assert.match(view, /<p className=\{styles\.nowSub\}>\{keepPhrases\(job\.now\.sub, job\.now\.subKeep\)\}<\/p>/);
 });
 
 // ══ head-r3-20 · head-r3-12 (ตาราง) — CSS ของตารางสรุปส่งผลบนมือถือ ═══════════════════════════
