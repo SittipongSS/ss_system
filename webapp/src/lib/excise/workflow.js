@@ -68,6 +68,65 @@ export const TRACKS = {
    (`draft` เพิ่ม 2026-10-26: ใบจาก SO เกิดเป็นร่าง และเป็นจังหวะที่ควรคิดภาษีใหม่หลังเติมราคาขายปลีก) */
 export const FILING_EDITABLE_STATUSES = ["draft", "pending", "rejected"];
 
+/* ── ทางเดินสถานะของใบยื่น: ตารางเดียวของ PATCH /api/orders/[id] และปุ่มบนหน้าใบยื่น ─────────
+   🐞 ตรวจระบบ 2026-10-26 (ข้อ 4): route เดิมเช็กสถานะต้นทางแค่ 3 ปลายทาง (pending · received ·
+   delivered) ⇒ ฝ่าย RA สั่ง "กำลังยื่น"/"ชำระแล้ว" จากร่างหรือรอรับเงินได้ตรง ๆ (ข้ามขั้นรับเงินจาก
+   ลูกค้า) · ตีกลับใบที่ชำระแล้วได้ · เลขใบเสร็จบังคับแค่ในโมดัล — ยิง API ตรงปิดงานได้โดยไม่มีใบเสร็จ
+   ⇒ ทุกปลายทางประกาศ "มาจากไหน · ใครทำ · ต้องมีอะไร" ที่นี่ที่เดียว
+     by          SA = ฝ่ายขาย (sales:act) · RA = ฝ่าย RA (ra:approve)
+     from        สถานะต้นทางที่ยอม
+     exemptFrom  ต้นทางเพิ่มเติมเฉพาะใบยกเว้นภาษี (isExemptFiling) — ใบยกเว้นไม่มีขั้น "กำลังยื่น"
+     taxableOnly ใบยกเว้นห้ามเข้า (ไม่มีภาษีให้ยื่น)
+     requires    ช่องที่ต้องมีค่า (จาก body หรือที่เก็บไว้แล้ว) — ใบยกเว้นไม่ต้อง ยกเว้น alwaysRequires */
+export const FILING_TRANSITIONS = {
+  pending: { by: "SA", from: ["draft"] },
+  received: { by: "SA", from: ["pending", "rejected"], requires: [["receiptNumber", "เลขที่ Invoice/Receipt ของ S&S"]] },
+  filing: { by: "RA", from: ["received"], taxableOnly: true, requires: [["taxInvoiceNumber", "เลขที่ใบกำกับภาษี"]] },
+  complete: { by: "RA", from: ["filing"], exemptFrom: ["received"], requires: [["exciseReceiptNumber", "เลขที่ใบเสร็จสรรพสามิต"]] },
+  delivered: { by: "SA", from: ["complete"] },
+  rejected: { by: "RA", from: ["received", "filing"], alwaysRequires: [["rejectionReason", "เหตุผลที่ตีกลับ"]] },
+};
+
+const filled = (value) => String(value ?? "").trim() !== "";
+
+/**
+ * ตัดสินการเปลี่ยนสถานะใบยื่นหนึ่งครั้ง — คืน `{ status, error }` เมื่อไม่ผ่าน หรือ null เมื่อผ่าน
+ * @param from    สถานะปัจจุบันของใบ
+ * @param to      สถานะปลายทาง
+ * @param caps    `{ sales, ra }` — ถือ sales:act / ra:approve ไหม (แอดมินถือทั้งคู่)
+ * @param exempt  ใบยกเว้นภาษีไหม (`isExemptFiling` — ไม่ใช่ยอด 0)
+ * @param fields  ค่าหลังรวมของที่ส่งมากับที่เก็บไว้ `{ receiptNumber, taxInvoiceNumber, exciseReceiptNumber, rejectionReason }`
+ */
+export function filingTransitionError({ from, to, caps = {}, exempt = false, fields = {} } = {}) {
+  const rule = FILING_TRANSITIONS[to];
+  if (!rule) return { status: 400, error: `ไม่รู้จักสถานะ "${to}"` };
+  const allowedBy = rule.by === "SA" ? caps.sales : caps.ra;
+  if (!allowedBy) return { status: 403, error: "ไม่อนุญาตให้เปลี่ยนสถานะนี้" };
+  const fromOk = rule.from.includes(from) || (exempt && (rule.exemptFrom || []).includes(from));
+  if (!fromOk) {
+    const label = (key) => statusMeta(key).label;
+    return {
+      status: 400,
+      error: `เปลี่ยนเป็น "${label(to)}" จาก "${label(from)}" ไม่ได้ — ต้องมาจาก ${rule.from.map((key) => `"${label(key)}"`).join(" หรือ ")}`,
+    };
+  }
+  if (exempt && rule.taxableOnly) {
+    return { status: 400, error: "ใบนี้ได้รับยกเว้นภาษี ไม่ต้องยื่น — ยืนยันชำระได้เลย" };
+  }
+  const required = [...(rule.alwaysRequires || []), ...(exempt ? [] : rule.requires || [])];
+  const missing = required.filter(([key]) => !filled(fields[key])).map(([, label]) => label);
+  if (missing.length) return { status: 400, error: `กรุณาระบุ${missing.join(" และ ")}` };
+  return null;
+}
+
+/** ปลายทางที่ใบในสถานะนี้ไปได้ (ตามตาราง ไม่ดูสิทธิ์/ช่องบังคับ) — ปุ่มบนจออ่านจากตัวนี้ */
+export function canTransitionFiling(from, to, { exempt = false } = {}) {
+  const rule = FILING_TRANSITIONS[to];
+  if (!rule) return false;
+  if (exempt && rule.taxableOnly) return false;
+  return rule.from.includes(from) || (exempt && (rule.exemptFrom || []).includes(from));
+}
+
 // Map a role to its department code for stage-ownership + action gating.
 //   SA = sales lane, RA = regulatory lane, AD = admin (sees both, owns nothing)
 export function deptOf(role) {

@@ -1,13 +1,13 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { can, canViewRecord, canEditRecord, canDeleteRecord, allowedEditFields, isSalesManager } from '@/lib/permissions';
-import { ORDER_SELECT, attachRegistrations, insertOrderItems, updateOrderResilient } from '@/lib/tax/orders';
+import { ORDER_SELECT, attachRegistrations, insertOrderItems, stampExemptFlags, updateOrderResilient } from '@/lib/tax/orders';
 import { recordAudit } from '@/lib/audit';
 import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { orderStatusUpdate } from '@/lib/master/recordUpdates';
 import { billedTaxTotals, exciseTaxLineForRegistration, exciseTaxTotals } from '@/lib/tax/exciseBilling';
-import { FILING_EDITABLE_STATUSES } from '@/lib/excise/workflow';
+import { FILING_EDITABLE_STATUSES, filingTransitionError } from '@/lib/excise/workflow';
 import { filingItemRows, filingTotalsOf, resolveSalesOrderFiling } from '@/lib/excise/soFilingItems';
 import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
 import { genId } from '@/lib/id';
@@ -83,37 +83,40 @@ export async function PATCH(request, { params }) {
   }
 
   // ── Status transition gate ──
-  // sales:act  : draft → pending → received, rejected → received, complete → delivered
-  // ra:approve : received → filing → complete, + rejected, + revert to received
+  /* ⭐ ตารางเดียว (FILING_TRANSITIONS · lib/excise/workflow) ตัดสิน "มาจากไหน · ใครทำ · ต้องมีอะไร"
+     ของทุกปลายทาง — ตรวจระบบ 2026-10-26 ข้อ 4: เดิมเช็กต้นทางแค่ 3 ปลายทาง ⇒ RA ปิดงาน "ชำระแล้ว"
+     จากร่าง/รอรับเงินได้ (ข้ามการรับเงินจากลูกค้า) · ตีกลับใบที่ชำระแล้วได้ · เลขใบเสร็จบังคับแค่บนจอ
+     ⚠️ "ยกเว้นภาษี" ตัดสินจากทะเบียนของรายการ (`stampExemptFlags` → isExemptFiling) ไม่ใช่ยอด 0 —
+        ใบยกเว้นไม่ต้องมีเลขใบเสร็จ และข้ามขั้นกำลังยื่นได้ (รับเงินแล้ว → ชำระแล้ว) */
   if (body.status !== undefined && body.status !== order.status) {
     const target = body.status;
-    const salesTargets = ['pending', 'received', 'delivered'];
-    const legalTargets = ['received', 'filing', 'complete', 'rejected'];
-    const ok = (isSales && salesTargets.includes(target)) || (isLegal && legalTargets.includes(target));
-    if (!ok) {
-      return Response.json({ error: 'ไม่อนุญาตให้เปลี่ยนสถานะนี้' }, { status: 403 });
-    }
-    updates.status = target;
-    if (target === 'pending' && order.status !== 'draft') {
-      return Response.json({ error: 'ส่งเข้าคิวเก็บเงินได้จากฉบับร่างเท่านั้น' }, { status: 400 });
-    }
-    if (target === 'received' && !['pending', 'rejected'].includes(order.status)) {
-      return Response.json({ error: 'ยืนยันรับเงินได้จากรายการรอรับเงินหรือรายการที่แก้ไขแล้วเท่านั้น' }, { status: 400 });
-    }
-    if (target === 'delivered' && order.status !== 'complete') {
-      return Response.json({ error: 'ยืนยันส่งเอกสารได้หลังชำระภาษีแล้วเท่านั้น' }, { status: 400 });
-    }
-    // เริ่มยื่น (received → filing): RA must record the เลขที่ใบกำกับภาษี first.
-    // Accept it from this request or an already-stored value. Exempt orders skip
-    // 'filing' entirely (received → complete) so they're never gated here.
-    if (target === 'filing' && order.status === 'received') {
-      const invoiceNo = String(
-        updates.taxInvoiceNumber !== undefined ? updates.taxInvoiceNumber : order.taxInvoiceNumber || '',
-      ).trim();
-      if (!invoiceNo) {
-        return Response.json({ error: 'กรุณาระบุเลขที่ใบกำกับภาษีก่อนเริ่มยื่น' }, { status: 400 });
+    let exempt = false;
+    if (['received', 'filing', 'complete'].includes(target)) {
+      const { data: exemptItems, error: exemptErr } = await fetchAllResult(() => supabase
+        .from('order_items').select('id, registrationId, totalTax, quantity').eq('orderId', id)
+        .order('id', { ascending: true }));
+      if (exemptErr) return Response.json({ error: exemptErr.message }, { status: 500 });
+      try {
+        [{ taxExempt: exempt }] = await stampExemptFlags(supabase, [{ ...order, items: exemptItems || [] }]);
+      } catch (e) {
+        return Response.json({ error: `ตรวจทะเบียนของรายการไม่สำเร็จ: ${e?.message || 'ระบบขัดข้อง'}` }, { status: 500 });
       }
-      updates.taxInvoiceNumber = invoiceNo;
+    }
+    // ช่องบังคับนับทั้งค่าที่ส่งมากับคำขอนี้ และค่าที่เก็บไว้บนใบแล้ว (ส่งเลขมารอบก่อนก็ผ่าน)
+    const fields = {
+      receiptNumber: updates.receiptNumber !== undefined ? updates.receiptNumber : order.receiptNumber,
+      taxInvoiceNumber: updates.taxInvoiceNumber !== undefined ? updates.taxInvoiceNumber : order.taxInvoiceNumber,
+      exciseReceiptNumber: updates.exciseReceiptNumber !== undefined ? updates.exciseReceiptNumber : order.exciseReceiptNumber,
+      rejectionReason: body.rejectionReason,
+    };
+    const blocked = filingTransitionError({
+      from: order.status, to: target, caps: { sales: isSales, ra: isLegal }, exempt, fields,
+    });
+    if (blocked) return Response.json({ error: blocked.error }, { status: blocked.status });
+    updates.status = target;
+    // ตัดช่องว่างหัวท้ายของเลขเอกสารที่ส่งมาในจังหวะเปลี่ยนสถานะ — ค่าที่ผ่านด่านคือค่าที่ลงฐาน
+    for (const key of ['receiptNumber', 'taxInvoiceNumber', 'exciseReceiptNumber']) {
+      if (typeof updates[key] === 'string') updates[key] = updates[key].trim();
     }
     if (target === 'complete') {
       // Filing done: stamp who/when + the clearance timestamp.
@@ -129,11 +132,6 @@ export async function PATCH(request, { params }) {
     if (target === 'delivered') {
       updates.docsDeliveredAt = new Date().toISOString();
       updates.docsDeliveredBy = user?.id ?? null;
-    }
-    if (target === 'rejected') {
-      if (!body.rejectionReason || !String(body.rejectionReason).trim()) {
-        return Response.json({ error: 'กรุณาระบุเหตุผลที่ตีกลับ' }, { status: 400 });
-      }
     }
     // Resubmit: Sales fixed a rejected order and sends it back to RA's queue.
     if (target === 'received' && order.status === 'rejected') {
