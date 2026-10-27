@@ -6692,12 +6692,30 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   overflow-clip-margin: var(--space-0-5);
   margin-top: 1px;
   color: var(--text);
-  font-size: var(--fs-11);
+  font-size: clamp(var(--fs-4), calc(100cqi / (var(--metric-len, 8) * 0.54)), var(--metric-value-fs, var(--fs-11)));
   line-height: var(--lh-thai);
   text-overflow: ellipsis;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+/* ⭐ **ยอดเงินบนการ์ดไม่ถูกตัดด้วย "…"** — ตัวเลขย่อตามความกว้างจริงของกล่องข้อความ (สูตรเดียวกับ `.ui-kpi-value`)
+   🐞 /finance/payments จอ 390: "฿10,648,762.…" · "฿27,934,367.…" (กติกา = เงินเต็มหลักเสมอ) — ช่อง 2 คอลัมน์เหลือที่ให้ตัวเลข ~111px
+   · กล่องข้อความเป็น container (กินที่เหลือทั้งหมดข้างกรอบไอคอน) · `data-len` มาจาก `metricValueLen` (Workspace.js) ·
+     ไม่มี = ค่าสั้น ได้ขั้นเต็มเหมือนเดิม · 0.54 = ความกว้างต่อตัวอักษรของฟอนต์ตัวเลข (วัดจริง 27/10: "฿10,648,762.25" = 0.508em/ตัว)
+   · ปลายล่าง `--fs-4` (11.5px) — แถบหกใบที่จอ 1024 เหลือช่องละ 85px ค่า 14 ตัวอักษรต้อง ≤ 11.9px ·
+     ปลายบน = ขั้นเดิมของแต่ละจอ (`--metric-value-fs`) · วัด 27/10 /finance/payments: 360 · 390 · 1024 · 1440 ไม่มีตัวเลขโดนตัด
+   ⚠️ ค่ายาวเกิน 18 ตัวอักษร (หายาก) ยังตัดด้วย … ตามเดิม */
+.ui-metric > span:not(.ui-metric-icon) { flex: 1 1 0; container-type: inline-size; }
+.ui-metric strong[data-len="9"] { --metric-len: 9; }
+.ui-metric strong[data-len="10"] { --metric-len: 10; }
+.ui-metric strong[data-len="11"] { --metric-len: 11; }
+.ui-metric strong[data-len="12"] { --metric-len: 12; }
+.ui-metric strong[data-len="13"] { --metric-len: 13; }
+.ui-metric strong[data-len="14"] { --metric-len: 14; }
+.ui-metric strong[data-len="15"] { --metric-len: 15; }
+.ui-metric strong[data-len="16"] { --metric-len: 16; }
+.ui-metric strong[data-len="17"] { --metric-len: 17; }
+.ui-metric strong[data-len="18"] { --metric-len: 18; }
 .ui-metric em { display: block; overflow: hidden; margin-top: var(--space-0-5); color: var(--text-3); font-size: var(--fs-1); font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
 .ui-metric.is-danger strong { color: var(--red); }
 .ui-metric.is-good strong,
@@ -6768,7 +6786,7 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   .ui-list-panel-toolbar > .segmented > button { flex: none; white-space: nowrap; }
   .ui-section-body { padding: var(--space-3-5); }
   .ui-metric { padding: var(--space-3); }
-  .ui-metric strong { font-size: var(--fs-10); }
+  .ui-metric { --metric-value-fs: var(--fs-10); }
   /* ปุ่มรองของการ์ดเยื้องตาม padding ช่องที่แคบลง (ไม่งั้นหลุดคอลัมน์ข้อความ) */
   .ui-metric-note-action { max-width: calc(100% - 2 * var(--space-3)); margin-right: var(--space-3); margin-left: var(--space-3); }
   .ui-metric-wrap.has-icon > .ui-metric-note-action {

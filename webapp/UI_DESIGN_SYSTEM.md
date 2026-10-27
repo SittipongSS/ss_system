@@ -96,6 +96,10 @@ compatibility alias เฉพาะโมดูลถูกถอดแล้ว
      ทุกจำนวนช่องและทุกจุดตัดบรรทัด ไม่ต้องมีกฎ `nth-child` มาซ่อม (ของเดิมผูกกับ "สี่ใบ" ตายตัว)
    - ≤900px บีบเหลือ 2 คอลัมน์เสมอ · **หมายเหตุยาวได้จำกัด** — `.ui-metric em` เป็น nowrap + ellipsis
      ยิ่งช่องเยอะยิ่งสั้นลง เขียนแบบ `ทัน 35/41 · ค้างตอนนี้ 23` พอ ยาวกว่านั้นโดนตัดกลางคัน
+   - **ตัวเลขบนการ์ดย่อตามความกว้างช่องเอง ไม่ตัดด้วย "…"** (27/10/2026) — `Metric` ส่งความยาวค่าเป็น `data-len`
+     (`lib/ui/metricValueLen.js`) แล้ว `.ui-metric strong` คิดขนาดจากกล่องข้อความ ÷ ความยาว (ปลายล่าง `--fs-4` · ปลายบน = ขั้นเดิม)
+     ⇒ ยอดเงินเต็มหลักทุกจอ · ค่าสั้น (≤ 8 ตัวอักษร) หน้าตาเท่าเดิม · ห้ามทับ `font-size` ของ `strong` ตายตัวในจอแคบ —
+     ปรับปลายบนผ่าน `--metric-value-fs` แทน (ล็อกที่ `lib/ui/metricValueFit.test.mjs`)
 3. ใช้ `KpiCard`, `Tabs`, `Select`, `SearchableSelect`, `FilterPopover`, `EmptyState`, `SkeletonRows`, `Toast` และ `FormActions` จาก `components/ui`
    — ในรายการใช้ `EmptyState plain` และ prop `loading` ของ `ListPanel` (ไม่ใช่ `SkeletonRows` แทนทั้งแผง)
 4. ครอบตารางทุกชนิดด้วย `TableScroll` และระบุ `family="editable"` หรือ `family="matrix"` เมื่อไม่ใช่ list table
