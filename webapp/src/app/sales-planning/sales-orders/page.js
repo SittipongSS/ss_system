@@ -38,6 +38,7 @@ import {
 } from "@/lib/sales/historicalOrders";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ServiceAgingChip from "@/components/salesPlanning/ServiceAgingChip";
+import SalesOrderBundleButton from "@/components/salesPlanning/SalesOrderBundleButton";
 import { isInstallmentActualOrder } from "@/lib/sales/salesOrderActualMode";
 import { installmentActualSubLine } from "@/lib/sales/dealAmountDisplay";
 import InstallmentActualSubLine from "@/components/salesPlanning/InstallmentActualSubLine";
@@ -466,7 +467,23 @@ export default function SalesOrdersPage() {
   /* ⚠️ colSpan ต้องเดินตามจำนวนคอลัมน์จริง ไม่ใช่เลข 4 ที่พิมพ์ค้างไว้ — หัวกลุ่ม/แถวว่าง
      ที่ colSpan สั้นกว่าตารางจะเปิดช่องว่างท้ายแถวให้เห็นเลย */
   const serviceView = lineView === "SERVICE";
-  const columnCount = serviceView ? 8 : 5;
+  const columnCount = (serviceView ? 8 : 5) + 1; // +1 = ช่องติ๊กของชุดเอกสาร
+
+  /* ── ติ๊กเลือกใบ → ชุดเอกสาร QT · SO · การชำระ (มติเจ้าของ 27/10/2569) ──────────────
+     ⭐ ติ๊กหัวตาราง = ทุกใบหลังค้นหา/กรอง **ทุกหน้า** (ชุดเดียวกับป้ายจำนวน) · ตัวกรองขยับ = ล้างที่เลือก
+       (ทรงเดียวกับ /tax/registrations) ไม่งั้นโหลดใบที่มองไม่เห็นออกไปโดยไม่รู้ตัว
+     ⭐ ใบในชุดเรียงตามลำดับที่ตารางเรียงอยู่ (`sorted`) */
+  const [selected, setSelected] = useState(() => new Set());
+  const [bundleNotice, setBundleNotice] = useState(null);
+  useEffect(() => { setSelected(new Set()); }, [filtered]);
+  const visibleIds = useMemo(() => filtered.map((row) => row.id), [filtered]);
+  const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
+  const selectedRows = useMemo(() => sorted.filter((row) => selected.has(row.id)), [sorted, selected]);
+  const toggleSelected = (id) => setSelected((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
 
   const toggleBucket = useCallback((key) => setCollapsed((current) => toggleBucketKey(current, key)), []);
   const allCollapsed = allBucketsCollapsed(buckets, collapsed);
@@ -555,6 +572,15 @@ export default function SalesOrdersPage() {
     const oldRefs = historical ? historicalRefsOf(row).join(" · ") : "";
     return (
                 <DetailRow key={row.id} href={queueHref(row)} className="premium-row">
+                  {/* ช่องติ๊ก — DetailRow ไม่พาไปหน้าใบเมื่อกดโดน input (isInteractiveTarget) */}
+                  <td className="w-9 text-center">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(row.id)}
+                      onChange={() => toggleSelected(row.id)}
+                      aria-label={`เลือก ${row.orderNumber || row.id}`}
+                    />
+                  </td>
                   <td>
                     <Link prefetch={false} href={queueHref(row)} className="linklike mono"><strong>{row.orderNumber}</strong></Link>
                     {/* อ้างอิง QT อยู่บรรทัดรอง — เป็น "ที่มาของใบ" ไม่ใช่ตัวใบเอง
@@ -770,7 +796,8 @@ export default function SalesOrdersPage() {
           icon={<ClipboardList size={17} aria-hidden="true" />}
           title="รายการใบสั่งขาย"
           subtitle={serviceSetupPendingOnly && serviceAgingSummary ? serviceAgingSummary : "ค้นหา ตรวจเอกสาร และติดตามขั้นตอนอนุมัติจากจุดเดียว"}
-          count={`${filtered.length} ใบ`}
+          count={selected.size ? `เลือก ${selected.size}/${filtered.length} ใบ` : `${filtered.length} ใบ`}
+          actions={<SalesOrderBundleButton orders={selectedRows} onNotice={setBundleNotice} />}
           toolbar={(
           <>
             <Segmented
@@ -881,6 +908,16 @@ export default function SalesOrdersPage() {
               {error}
             </StatusNotice>
           )}
+          {bundleNotice && (
+            <StatusNotice
+              tone={bundleNotice.tone}
+              title={bundleNotice.title}
+              className="mb-4"
+              action={<Button size="sm" variant="ghost" onClick={() => setBundleNotice(null)}>ปิด</Button>}
+            >
+              {bundleNotice.text}
+            </StatusNotice>
+          )}
           {/* ── ตารางรายการ: รื้อใหม่แบบ ข (มติผู้ใช้ 2026-08-13) ──────────────
               9 → 5 คอลัมน์ · **ตัดคอลัมน์ที่ไม่มีข้อมูลจริงทิ้ง**:
                 · "เอกสารอ้างอิง" เป็น `-` แทบทุกแถว ⇒ ย้ายไปเป็นบรรทัดรองใต้เลข SO
@@ -889,12 +926,20 @@ export default function SalesOrdersPage() {
                 · "สถานะ" ป้ายเดียวบอกได้แค่จุดปัจจุบัน ⇒ แทนด้วย **รางสามขั้น**
               ⚠️ รางไม่ใช่การตกแต่ง — สามขั้นคือสามแกนคนละคอลัมน์ใน DB ที่เดินไม่พร้อมกัน
               (`status` · `financeStatus` · งวดชำระ) ตรรกะอยู่ใน `salesOrderListTrack` พร้อมเทสต์ */}
-          <TableScroll surface="embedded" cells="stacked" minWidth={serviceView ? 1220 : 980} aria-busy={loading}>
+          <TableScroll surface="embedded" cells="stacked" minWidth={serviceView ? 1256 : 1016} aria-busy={loading}>
             <table className="w-full text-sm">
               {/* ⚠️ **4 คอลัมน์** — "กำหนดชำระ" ยุบเข้าเซลล์ "งวดชำระ" (มติผู้ใช้ 2026-08-18)
                   ทั้งคู่เป็นเรื่องการชำระของใบเดียวกัน และวันครบกำหนดคือคุณสมบัติของงวด
                   ไม่ใช่แกนแยก ⇒ คอลัมน์ของมันว่างครึ่งคอลัมน์และกินความกว้างที่รางต้องการ */}
               <thead><tr>
+                <th className="w-9 text-center">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={() => setSelected(allSelected ? new Set() : new Set(visibleIds))}
+                    aria-label="เลือกทุกใบที่แสดงอยู่"
+                  />
+                </th>
                 <th>เอกสาร / ความคืบหน้า</th><th>ลูกค้า</th>
                 {/* ⭐ "ยอดก่อน VAT" ไม่ใช่ "Actual ก่อน VAT" (มติผู้ใช้ 2026-09-11) — คอลัมน์นี้
                     โชว์ยอดของใบทุกสถานะ (รออนุมัติ/ร่าง/ตีกลับ) · แถวไหนเป็น Actual หรือไม่
