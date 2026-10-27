@@ -2,7 +2,7 @@ import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { holidaySet } from '@/lib/master/holidays';
 import { canSeeLeadKpi } from '@/lib/permissions';
 import {
-  slaHit, slaStage, channelRollup, withAssigneePending, lostReasonRollup,
+  slaStage, channelRollup, assigneeRollup, withAssigneePending, lostReasonRollup,
   leadOutcomesFor, leadOutcomeTotals, chunkLeadIds, LEAD_OUTCOME_EVENT_KINDS,
 } from '@/lib/sales/leads';
 import { monthKey } from '@/lib/salesPlanning';
@@ -220,26 +220,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     pendingContactByAssignee(supabase, team),
   ]);
 
-  // SLA ติดต่อกลับ รายผู้รับมอบ (AE KPI)
-  /* ⚠️ นิยาม "ไปถึงไหน" มาจาก `leadOutcome` ที่เดียว เหมือน funnel และ channelRollup
-     เดิมสามที่นี้เขียนเงื่อนไขเดียวกันซ้ำสามชุด (`l.meetingAt` · `l.firstContactAt` ·
-     `status === 'qualified'`) แก้ที่หนึ่งลืมอีกสองที่ = ตัวเลขบนจอเดียวกันขัดกันเอง
-     ⚠️ `slaHit` ยังคำนวณตรงนี้เพราะเป็นคำถามคนละอัน — "ทันไหม" ไม่ใช่ "ไปถึงไหน" */
-  const byAssignee = {};
-  for (const l of rows) {
-    if (!l.assigneeId) continue;
-    const k = l.assigneeId;
-    if (!byAssignee[k]) byAssignee[k] = { assigneeId: k, name: l.assigneeName || 'ไม่ระบุ', team: l.team || null, assigned: 0, contacted: 0, slaHit: 0, meetings: 0, qualified: 0 };
-    const b = byAssignee[k];
-    const outcome = outcomeOf.get(l.id);
-    b.assigned += 1;
-    if (outcome.reachedContact) {
-      b.contacted += 1;
-      if (slaHit(l.assignedAt, l.firstContactAt, holidays) === true) b.slaHit += 1;
-    }
-    if (outcome.reachedMeeting) b.meetings += 1;
-    if (outcome.won) b.qualified += 1;
-  }
+  // SLA ติดต่อกลับ รายผู้รับมอบ (AE KPI) — กติกาการนับอยู่ที่ `assigneeRollup` ที่เดียว
+  /* ⚠️ ตัวหาร "SLA ทัน" ต้องเป็น `slaChecked` (slaStage ชุดเดียวกับการ์ด `contact` ข้างบน)
+     ไม่ใช่ `contacted` — ดูเหตุผลที่หัวฟังก์ชัน */
+  const byAssignee = assigneeRollup(rows, outcomeOf, holidays);
 
   /* ⚠️ ไม่มี "ตีกลับ" ในก้อนนี้แล้ว — มติผู้ใช้ 2026-08-11 เอาออกจากผัง แล้วไม่มีหน้าจอไหน
      อ่าน `funnel.bounced` อีกเลย แต่ route ยังไล่ยิง count query ใส่ `lead_events` เป็นก้อน ๆ
@@ -292,7 +276,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     /* เรียงตาม "ค้างตอนนี้" มากสุดก่อน ไม่ใช่ตามจำนวนที่รับมอบ — ตารางนี้ตอบคำถาม
        "ตอนนี้ต้องไปตามใคร" · withAssigneePending เติมแถวให้คนที่เดือนนี้ไม่มีลีดใหม่
        แต่ยังกองของเก่าไว้ด้วย ไม่งั้นคนที่ต้องตามที่สุดจะหายจากตาราง */
-    byAssignee: withAssigneePending(Object.values(byAssignee), aePending.counts, aePending.meta),
+    byAssignee: withAssigneePending(byAssignee, aePending.counts, aePending.meta),
     byDay,
     /* รายชื่อวันของงวดที่เลือก — **รวมวันที่ไม่มีลีดด้วย** (`byDay` มีเฉพาะวันที่มีลีด)
        กราฟรายวันต้องวาดวันว่างเป็นแท่งเปล่า ไม่ใช่ยุบทิ้ง เพราะ "วันที่ยิงแอดแล้วไม่มี

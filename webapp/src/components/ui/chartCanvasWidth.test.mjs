@@ -51,3 +51,33 @@ test("TableScroll เป็นพื้นข้อมูลเองเมื�
   assert.match(TABLE, /data-surface=\{surface\}/);
   assert.match(TABLE_CSS, /\[data-surface="auto"\][\s\S]{0,200}background: var\(--panel\)/);
 });
+
+/* 🐞 2026-10-27 กราฟทั้งสี่ของแท็บ "KPI ลีด" หายพร้อมกันบน production เหลือแต่คำอธิบายสี
+   แท็บนั้นส่งคลาสความสูงเป็น `className` ของ ChartCanvas — `.canvas { height: 100% }` กับ
+   `.funnelChart { height: 210px }` เป็นคลาสเดี่ยวน้ำหนักเท่ากัน ใครชนะขึ้นกับว่าไฟล์ CSS
+   ก้อนไหนโหลดทีหลัง ซึ่ง build ไม่รับประกันลำดับ (วันที่พัง ChartCard ขึ้นทีหลัง) ⇒ ความสูง
+   ต้องอยู่ที่ div ที่ครอบ ChartCanvas เหมือนทุกจุดที่เหลือในระบบ */
+test("ห้ามตั้งความสูงผ่าน className ของ ChartCanvas — ลำดับไฟล์ CSS ตัดสินผลแทน", async () => {
+  const { readdirSync } = await import("node:fs");
+  const { join, dirname } = await import("node:path");
+  const { fileURLToPath } = await import("node:url");
+  const SRC = join(dirname(fileURLToPath(import.meta.url)), "../..");
+  const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (
+    e.isDirectory() ? walk(join(dir, e.name)) : /\.(js|jsx)$/.test(e.name) ? [join(dir, e.name)] : []
+  ));
+  const offenders = [];
+  for (const file of walk(SRC)) {
+    const code = readFileSync(file, "utf8");
+    if (!code.includes("<ChartCanvas")) continue;
+    for (const [, cls] of code.matchAll(/<ChartCanvas\b[^>]*?className=\{styles\.(\w+)\}/g)) {
+      const cssPath = code.match(/import\s+styles\s+from\s+["']([^"']+\.module\.css)["']/)?.[1];
+      const css = cssPath ? readFileSync(join(dirname(file), cssPath), "utf8").replace(/\/\*[\s\S]*?\*\//g, "") : "";
+      const sized = css.split("}").some((block) => {
+        const [selector, body = ""] = block.split("{");
+        return new RegExp(`\\.${cls}(?![\\w-])`).test(selector) && /(^|[;\s])(min-|max-)?height\s*:/.test(body);
+      });
+      if (sized) offenders.push(`${file.slice(SRC.length + 1)} → .${cls}`);
+    }
+  }
+  assert.deepEqual(offenders, [], "ย้ายคลาสความสูงไปที่ div ที่ครอบ ChartCanvas");
+});
