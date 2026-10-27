@@ -66,6 +66,9 @@ function paymentRows(order, installments) {
     (Array.isArray(inst.evidence) ? inst.evidence : []).forEach((att, i) => {
       rows.push({
         id: `pay:${inst.id}:${i}`,
+        // seq · kind = ที่ตั้งชื่อไฟล์ในชุดเอกสาร (salesOrderBundle.js) — แท็บเอกสารไม่ได้อ่าน
+        seq: inst.seq ?? null,
+        kind: 'evidence',
         title: att?.fileName || `หลักฐาน ${i + 1}`,
         note: join(name, 'หลักฐานการชำระ'),
         href: `${base}&i=${i}`,
@@ -76,6 +79,9 @@ function paymentRows(order, installments) {
     if (inst.taxInvoiceFile?.storagePath) {
       rows.push({
         id: `tax:${inst.id}`,
+        seq: inst.seq ?? null,
+        kind: 'tax_invoice',
+        taxInvoiceNo: inst.taxInvoiceNo || null,
         title: inst.taxInvoiceFile.fileName || 'ไฟล์ใบกำกับภาษี',
         note: join(name, inst.taxInvoiceNo ? `ใบกำกับภาษี ${inst.taxInvoiceNo}` : 'ใบกำกับภาษี'),
         href: `${base}&doc=tax_invoice`,
