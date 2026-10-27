@@ -8,7 +8,8 @@ import { canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from "@/lib/
 import { insertOrder, insertOrderItems } from "@/lib/tax/orders";
 import { billedTaxTotals } from "@/lib/tax/exciseBilling";
 import { resolveSoFiling } from "@/lib/excise/soFiling";
-import { customerTaxSiblingIdMap, customerTaxSiblingIds } from "@/lib/master/customerTaxSiblings";
+import { customerTaxSiblingIdMap } from "@/lib/master/customerTaxSiblings";
+import { filingItemRows, resolveSalesOrderFiling } from "@/lib/excise/soFilingItems";
 import { dealTypeOf } from "@/lib/salesPlanning";
 import { NA } from "@/lib/format";
 import { isHistoricalOrder, pipelineRowsOnly } from "@/lib/sales/historicalOrders";
@@ -187,33 +188,8 @@ async function listAvailableSalesOrders(supabase, user, customerId) {
   };
 }
 
-async function resolveContext(supabase, salesOrder) {
-  const productIds = [...new Set((salesOrder.lines || []).map((line) => line.productId).filter(Boolean))];
-  // ใบลูกค้าทุกใบของนิติบุคคลนี้ — ทะเบียนอยู่ใต้ใบที่เป็นเจ้าของ FG ซึ่งอาจไม่ใช่ใบที่ขาย
-  const ownerCustomerIds = salesOrder.customerId
-    ? await customerTaxSiblingIds(supabase, salesOrder.customerId)
-    : [];
-  const [{ data: products, error: productError }, { data: productTypes, error: typeError }, registrationResult] = await Promise.all([
-    productIds.length
-      ? supabase.from("products").select("*").in("id", productIds)
-      : Promise.resolve({ data: [], error: null }),
-    supabase.from("product_types").select("mainCategoryCode, typeCode, isExcise, requiresFdaNotice"),
-    productIds.length && ownerCustomerIds.length
-      ? supabase.from("excise_registrations").select("id, productId, customerId, status").in("customerId", ownerCustomerIds).in("productId", productIds)
-      : Promise.resolve({ data: [], error: null }),
-  ]);
-  if (productError) throw productError;
-  if (typeError) throw typeError;
-  if (registrationResult.error) throw registrationResult.error;
-  return resolveSoFiling({
-    salesOrder,
-    lines: salesOrder.lines || [],
-    products: products || [],
-    productTypes: productTypes || [],
-    registrations: registrationResult.data || [],
-    ownerCustomerIds,
-  });
-}
+// ตัวคิดย้ายไป lib/excise/soFilingItems ให้ทางคิดภาษีใหม่จากใบสั่งขาย (PATCH /api/orders/[id]) ใช้ตัวเดียวกัน
+const resolveContext = (supabase, salesOrder) => resolveSalesOrderFiling(supabase, salesOrder);
 
 export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
@@ -337,19 +313,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     status: "draft",
     createdAt: now,
   };
-  const itemRows = resolved.lines.map((line) => ({
-    id: genId("TXI"),
-    orderId,
-    salesOrderLineId: line.salesOrderLineId,
-    registrationId: line.registrationId,
-    productId: line.productId,
-    quantity: line.quantity,
-    exciseRatePerUnit: line.exciseRatePerUnit,
-    localTaxRatePerUnit: line.localTaxRatePerUnit,
-    totalExciseTax: line.totalExciseTax,
-    totalLocalTax: line.totalLocalTax,
-    totalTax: line.totalTax,
-  }));
+  // แถวหน้าตาเดียวกับทางคิดใหม่จากใบสั่งขาย (lib/excise/soFilingItems) — ลิงก์ salesOrderLineId ติดไปเสมอ
+  const itemRows = filingItemRows(orderId, resolved.lines);
 
   const { error: orderError } = await insertOrder(supabase, filing);
   if (orderError?.code === "23505") {

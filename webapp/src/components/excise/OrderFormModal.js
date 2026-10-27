@@ -8,11 +8,16 @@ import DateInput from "@/components/ui/DateInput";
 import { fmtMoney, naText, NA } from "@/lib/format";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { productSelectOptions } from "@/components/master/productOption";
-import { exciseTaxLineForRegistration, exciseTaxTotals } from "@/lib/tax/exciseBilling";
+import { exciseTaxLineForRegistration, exciseTaxTotals, untaxedFilingItems } from "@/lib/tax/exciseBilling";
 import Textarea from "@/components/ui/Textarea";
+import StatusNotice from "@/components/ui/StatusNotice";
+import Button from "@/components/ui/Button";
 import { customerSelectOptions } from "@/components/master/customerOption";
 import { taxSiblingIdsFromRows } from "@/lib/master/customerTaxSiblings";
 import { apiFetch } from "@/lib/apiFetch";
+import { TableScroll } from "@/components/ui/Table";
+import { productDisplayName } from "@/lib/master/productIdentity";
+import styles from "./OrderFormModal.module.css";
 
 const blankItem = () => ({ registrationId: "", quantity: "" });
 
@@ -20,9 +25,17 @@ const blankItem = () => ({ registrationId: "", quantity: "" });
 // approved registration of the chosen customer + quantity. The excise tax is
 // ad valorem and snapshotted at registration time (from the product retail
 // price) — the per-unit tax comes from the registration, so the filing form does
-// not ask for a sale price. Backend POST/PATCH contracts unchanged.
+// not ask for a sale price.
+//
+// ⭐ โหมด "ใบยื่นจากใบสั่งขาย" (`order.salesOrderId` · ตรวจระบบ 2026-10-26 ข้อ 3) — ฟอร์มตัวเดียวกัน
+// แต่รายการ **อ่านอย่างเดียว** และแก้ได้ทางเดียวคือ "คิดภาษีใหม่จากใบสั่งขาย" (PATCH
+// `recalcFromSalesOrder`) · 🐞 เดิมใช้ช่องเลือกทะเบียนแบบใบยื่นมือ ⇒ บรรทัดที่ยังไม่มีทะเบียน
+// (มติ 2026-07-22 ข้อ 4 ยอมให้มี) ถูกทิ้งตอนบันทึก ยอดภาษีหดเงียบ ๆ · ทุกบรรทัดไม่มีทะเบียน = ส่งกลับไม่ได้
 export default function OrderFormModal({ open, onClose, onSaved, order, registrations = [], customers = [], products = [], userName }) {
   const editing = !!order;
+  const fromSalesOrder = editing && !!order.salesOrderId;
+  // ผลคิดใหม่จากใบสั่งขายที่ผู้ใช้กดดูแล้ว — มีค่า = ตอนบันทึกจะแทนรายการเดิมด้วยชุดนี้
+  const [recalc, setRecalc] = useState(null);
   const [customerId, setCustomerId] = useState("");
   const [form, setForm] = useState({ quotationRef: "", poReference: "", deliveryDate: "", remarks: "" });
   const [items, setItems] = useState([blankItem()]);
@@ -47,6 +60,7 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
       setForm({ quotationRef: "", poReference: "", deliveryDate: "", remarks: "" });
       setItems([blankItem()]);
     }
+    setRecalc(null);
     setError(null);
   }, [open, order?.id]);
 
@@ -85,8 +99,43 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
     return regTaxLine(r, parseInt(it.quantity) || 0);
   })).totalTax;
 
+  /* ตัวอย่างผลคิดใหม่ — GET ตัวเดียวกับที่หน้า SO ใช้ (resolver เดียวกับตอนสร้างใบ) จึงเห็นเลขเดียวกับที่ server
+     จะเขียนตอนบันทึก · ไม่เขียนอะไรจนกว่าจะกดบันทึก */
+  const previewRecalc = async () => {
+    setRecalc({ loading: true });
+    try {
+      const res = await apiFetch(`/api/tax/orders/from-sales-order?salesOrderId=${encodeURIComponent(order.salesOrderId)}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "คิดภาษีจากใบสั่งขายไม่สำเร็จ");
+      if (!data.lines?.length) throw new Error("ใบสั่งขายต้นทางไม่มีรายการสินค้าสรรพสามิตให้คิดภาษีแล้ว");
+      setRecalc({ lines: data.lines, totalTax: Number(data.totalTax || 0), warnings: data.warnings || [] });
+    } catch (err) {
+      setRecalc({ error: err.message });
+    }
+  };
+  const recalcReady = !!recalc?.lines;
+  const shownTotal = fromSalesOrder ? (recalcReady ? recalc.totalTax : Number(order.totalTax || 0)) : totalTax;
+
   const submit = async (e) => {
     e.preventDefault();
+    if (fromSalesOrder) {
+      setBusy(true);
+      setError(null);
+      try {
+        const body = { ...form };
+        if (recalcReady) body.recalcFromSalesOrder = true;
+        if (order.status === "rejected") body.status = "received"; // resubmit
+        const res = await apiFetch(`/api/orders/${order.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "บันทึกไม่สำเร็จ");
+        onSaved?.();
+        onClose();
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     if (!customerId) { setError("กรุณาเลือกลูกค้า"); return; }
     const clean = items
       .filter((it) => it.registrationId && it.quantity)
@@ -167,6 +216,15 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
             </div>
           </div>
 
+          {fromSalesOrder ? (
+            <SalesOrderLines
+              order={order}
+              recalc={recalc}
+              onPreview={previewRecalc}
+              onDiscard={() => setRecalc(null)}
+              busy={busy}
+            />
+          ) : (
           <div>
             <div className="flex items-center justify-between mb-2">
               <label style={{ margin: 0 }}>รายการสินค้า <span style={{ color: "var(--red)" }}>*</span></label>
@@ -212,10 +270,11 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
               })}
             </div>
           </div>
+          )}
 
           <div className="flex justify-end" style={{ fontSize: "var(--fs-7)" }}>
             <span style={{ color: "var(--text-3)" }}>ยอดชำระภาษีสรรพสามิตรวม (ไม่รวมภาษีมูลค่าเพิ่ม):&nbsp;</span>
-            <span className="font-mono font-bold" style={{ color: "var(--red)" }}>{fmtMoney(totalTax)}</span>
+            <span className="font-mono font-bold" style={{ color: "var(--red)" }}>{fmtMoney(shownTotal)}</span>
           </div>
 
           {error && <div style={{ fontSize: "var(--fs-7)", color: "var(--red)" }} className="bg-[var(--red-soft)] rounded p-2">{error}</div>}
@@ -229,5 +288,86 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
         </div>
       </form>
     </Modal>
+  );
+}
+
+/* รายการของใบยื่นจากใบสั่งขาย — อ่านอย่างเดียว (จำนวนมาจากบรรทัด SO · อัตรามาจากสินค้า)
+   ปุ่มเดียวที่เปลี่ยนรายการได้คือ "คิดภาษีใหม่จากใบสั่งขาย" ⇒ ใช้หลังเติมราคาขายปลีก/ทะเบียนแก้แล้ว
+   ⚠️ บรรทัดที่ยังไม่มีทะเบียนอยู่ครบทั้งก่อนและหลังคิดใหม่ — ทะเบียนเป็นคำเตือน ไม่ใช่เงื่อนไข (มติ 2026-07-22 ข้อ 4) */
+function SalesOrderLines({ order, recalc, onPreview, onDiscard, busy }) {
+  const ready = !!recalc?.lines;
+  // รายการ ฿0 ที่ไม่ได้รับยกเว้น — ตัวตัดสินเดียวกับหน้ารายละเอียดใบยื่น (ไม่เดาจากยอด 0 เอง)
+  const untaxed = new Set(untaxedFilingItems(order).map((item) => item.id));
+  const rows = ready
+    ? recalc.lines.map((line) => ({
+      key: line.salesOrderLineId || line.productId,
+      fgCode: line.fgCode,
+      name: line.description,
+      quantity: line.quantity,
+      perUnit: Number(line.exciseRatePerUnit || 0) + Number(line.localTaxRatePerUnit || 0),
+      total: line.totalTax,
+      noRegistration: !line.registrationId,
+      noTaxBase: !!line.taxBaseMissing,
+    }))
+    : (order.items || []).map((item) => ({
+      key: item.id,
+      fgCode: item.product?.fgCode || item.registration?.fgCode,
+      name: productDisplayName(item.product || item.registration || {}),
+      quantity: item.quantity,
+      perUnit: Number(item.exciseRatePerUnit || 0) + Number(item.localTaxRatePerUnit || 0),
+      total: item.totalTax,
+      noRegistration: !item.registrationId,
+      noTaxBase: untaxed.has(item.id),
+    }));
+  const taxBaseWarnings = ready ? recalc.warnings.filter((w) => w.code === "missing_tax_base").length : 0;
+  return (
+    <div>
+      <div className={styles.soLinesHead}>
+        <label>รายการสินค้า (จากใบสั่งขาย){ready ? " — ชุดที่คิดใหม่" : ""}</label>
+        {ready ? (
+          <Button onClick={onDiscard} disabled={busy}>ใช้รายการเดิม</Button>
+        ) : (
+          <Button tone="neutral" onClick={onPreview} disabled={busy || recalc?.loading}>
+            {recalc?.loading ? "กำลังคิด…" : "คิดภาษีใหม่จากใบสั่งขาย"}
+          </Button>
+        )}
+      </div>
+      <p className={styles.hint}>
+        {ready
+          ? <>บันทึกแล้วรายการทั้งหมดจะถูกแทนด้วยชุดนี้ (อัตราภาษีล่าสุดของสินค้า) · ยอดเดิม {fmtMoney(order.totalTax || 0)} → <span className={styles.changed}>{fmtMoney(recalc.totalTax)}</span></>
+          : "จำนวนมาจากใบสั่งขาย แก้ที่นี่ไม่ได้ · เติมราคาขายปลีก/แก้ทะเบียนแล้ว กด \"คิดภาษีใหม่จากใบสั่งขาย\" ให้ใบนี้ใช้อัตราล่าสุด"}
+      </p>
+      {recalc?.error && <StatusNotice tone="error">{recalc.error}</StatusNotice>}
+      {taxBaseWarnings > 0 && (
+        <StatusNotice tone="warning">ยังมี {taxBaseWarnings} รายการที่สินค้าไม่มีราคาขายปลีก — คิดใหม่แล้วก็ยังเป็น ฿0</StatusNotice>
+      )}
+      <TableScroll family="list" surface="embedded" minWidth={420}>
+        <table className={styles.lineTable}>
+          <thead>
+            <tr>
+              <th>รหัส / รายการ</th>
+              <th className="num">จำนวน</th>
+              <th className="num">ภาษี/ชิ้น</th>
+              <th className="num">ภาษีรวม</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.key}>
+                <td>
+                  <span className={styles.lineCode}>{naText(row.fgCode)}</span>
+                  <div className={styles.lineName}>{naText(row.name)}</div>
+                  {row.noRegistration && <span className={styles.lineGap}>ยังไม่มีทะเบียนอนุมัติ (เตือน ไม่บล็อก)</span>}
+                  {row.noTaxBase && <span className={styles.lineGap}>ไม่มีราคาขายปลีก · ภาษี ฿0</span>}
+                </td>
+                <td className="num mono">{naText(row.quantity)}</td>
+                <td className="num mono">{fmtMoney(row.perUnit)}</td>
+                <td className="num mono">{fmtMoney(row.total || 0)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </TableScroll>
+    </div>
   );
 }
