@@ -490,9 +490,10 @@ test('⭐ แถบแจ้ง · ใบที่ส่งผลแล้วแ
       text: NEEDED_TEXT,
       // ชื่อปุ่มใน “…” ไม่ขาดสองบรรทัด (S2b แก้หลังตรวจจอ sales รอบ 27/10 · 375)
       keep: ['“ขอยืนยันหน้างาน”'],
-      // งวด S2b: ประโยคข้างบนเอ่ยถึงปุ่มที่ยังไม่มีจนถึงงวด S5 — จอพิมพ์ประโยคนี้ต่อท้าย (สวิตช์ `SURVEY_CONFIRM_ACTION_READY`)
-      note: 'ปุ่ม “ขอยืนยันหน้างาน” ของฝ่ายขายจะเปิดใช้ในรอบถัดไป — ระหว่างนี้ฝ่ายขายเปิดคำร้องประเมินพื้นที่แบบลงหน้างานของพื้นที่เดิมได้',
-      action: { label: 'ขอยืนยันหน้างาน', ready: false },
+      // งวด S5 เปิดสวิตช์ `SURVEY_CONFIRM_ACTION_READY` ⇒ ไม่มีประโยค "ปุ่มจะเปิดใช้ในรอบถัดไป" ต่อท้ายแล้ว
+      // (ไม่มีก้อน `surveyConfirmLink` = แถว 0: `action` ไม่มี `state` ⇒ จอไม่วาดปุ่ม — ปุ่มจริงมาจากก้อนที่ GET หน้าคำร้องแนบ)
+      note: null,
+      action: { label: 'ขอยืนยันหน้างาน', ready: true },
     }, who);
     assert.deepEqual(job(ask({ ...SENT, surveyConfirm: 'not_needed' }), viewer).zones.drawingBanner, {
       text: NOT_NEEDED_TEXT,

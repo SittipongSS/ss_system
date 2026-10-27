@@ -461,7 +461,23 @@
   line-height: var(--lh-thai);
 }
 
-/* ปุ่มบนแถบแจ้ง (ยังไม่ถูกวาดจนกว่าเส้นของปุ่มจะมี — งวด S5) — เป้ากด 40px · จอสัมผัส/จอแคบ 44px */
+/* บรรทัดลิงก์ของใบยืนยันหน้างาน (งวด S5 D-2 b) — บรรทัดรองเงียบ ๆ ตัวเท่าหมายเหตุของแถบแจ้ง · เลขที่เป็นลิงก์ (`linklike` มีวงโฟกัสของตัวเอง)
+   ⚠️ เลขที่ยาวไม่มีช่องว่างให้ตัด — `overflow-wrap: anywhere` กันแถวดันจอ 375 กว้างเกิน */
+.confirmLinks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.confirmLink {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+}
+
+/* ปุ่มบนแถบแจ้ง (วาดเมื่อเส้นของปุ่มมีจริง — งวด S5) — เป้ากด 40px · จอสัมผัส/จอแคบ 44px */
 .bannerAction {
   min-height: var(--ctl-h);
 }

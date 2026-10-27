@@ -370,7 +370,8 @@ test('E-7 หน้าต่าง: บรรทัดเตือนเป็�
   assert.match(foot, /role=\{blocked \? "alert" : undefined\}/);
   // ตัวคิด: นับจากคีย์ `confirm` ของแถวทะเบียน และไม่ผูกกับ error
   const plan = code(PLAN);
-  assert.match(plan, /: rows\.filter\(\(row\) => row\.packsPerRound !== null && zoneOf\(row\.zoneId\)\?\.confirm === 'awaiting'\)\.length;/);
+  // งวด S5 (F17): รอยืนยัน + กำลังยืนยัน — ถามผ่าน `surveyConfirmPending` ของโมดูลใบ ไม่เทียบค่าเอง
+  assert.match(plan, /: rows\.filter\(\(row\) => row\.packsPerRound !== null && surveyConfirmPending\(zoneOf\(row\.zoneId\)\?\.confirm\)\)\.length;/);
   assert.match(plan, /export const zoneAssessedSourceNote = \(zone\) => \(zone\?\.confirmTag \? ` \(\$\{SURVEY_METHOD_CHIP\.drawing\}\)` : ''\);/);
   assert.match(plan, /return count > 0 \? `\$\{count\} โซนใช้ตัวเลขที่\$\{SURVEY_METHOD_LABEL\.drawing\} ยังไม่ยืนยันหน้างาน` : null;/);
 
@@ -401,7 +402,8 @@ test('E-8 ห้าจอไม่ถามวิธีประเมินเ�
   assert.match(code(FORM), /sum\.drawing/);
   assert.match(code(PANEL), /zone\.confirmTag/);
   // หมายเหตุใต้ "ประเมินแล้วยังไม่ขาย" นับจากคีย์ `confirm` ในรายการที่ยังไม่ขาย (`unsoldCounts` · sales-q6)
-  assert.match(code(PANEL), /\(zone\.termState \|\| "none"\) === "none"\);\s*return \{ unsold: zones\.length, awaiting: zones\.filter\(\(zone\) => zone\.confirm === "awaiting"\)\.length \};/);
+  // งวด S5 (R7): + กำลังยืนยัน — เทียบสองค่าในบรรทัดเดียว (ฟังก์ชันล้วนที่เทสต์หยิบไปรันเอง ดึงชื่ออื่นไม่ได้)
+  assert.match(code(PANEL), /\(zone\.termState \|\| "none"\) === "none"\);\s*return \{ unsold: zones\.length, awaiting: zones\.filter\(\(zone\) => zone\.confirm === "awaiting" \|\| zone\.confirm === "confirming"\)\.length \};/);
   assert.match(code(PANEL), /zone\.onsiteSurveyCount/);
   assert.match(code(GRID), /zoneAssessedSourceNote\(zone\)/);
   assert.match(code(BULK), /zoneAssessedSourceNote\(zone\)/);

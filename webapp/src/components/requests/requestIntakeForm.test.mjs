@@ -310,7 +310,8 @@ test('รอบ 4 fix2: การ์ดฟอร์มแก้ให้ระ�
 
 test('รอบ 4 ข้อ 2: โหมดแก้วาดป้าย "ดีล" ครั้งเดียว (ป้ายของช่องเส้นประ) · ฟอร์มสร้างคงป้ายของตัวเลือก', () => {
   const form = code(FORM);
-  assert.match(form, /\{!isEdit && <span className=\{styles\.fieldLabel\}>ดีล<\/span>\}/);
+  /* งวด S5 (F2): ฟอร์มล็อกของใบยืนยันหน้างานก็ไม่วาดป้ายของตัวเลือก — ช่องเส้นประของดีลมีป้ายของตัวเอง */
+  assert.match(form, /\{!isEdit && !confirmLock && <span className=\{styles\.fieldLabel\}>ดีล<\/span>\}/);
   assert.match(form, /<DerivedField\n\s*label="ดีล" from="ผูกไว้ตอนเปิดใบ" value=\{lockedRefs\.deal \|\| ""\}\n\s*hint=\{freshDraft\n/);
   // ช่องเส้นประของดีลโหมดแก้อยู่ใน .form-group col-span-2 อยู่แล้ว ⇒ ต้องไม่ห่อกลุ่มซ้อน (margin ใต้ประโยคล็อกนับสองรอบ = 42px)
   assert.match(form, /: "เปลี่ยนดีลของคำร้องที่ส่งแล้วไม่ได้"\}\n\s*bare\n\s*\/>/);
@@ -414,4 +415,36 @@ test('รีวิวรอบ 4 ข้อ 12: ป้าย "(บังคับ
   assert.match(fields, /dueRequired = true,/, 'ค่าตั้งต้น = บังคับ (หัวข้ออื่นเท่าเดิม)');
   assert.match(fields, /<label htmlFor=\{`\$\{idPrefix\}-due`\}>\{dueLabel\}\{dueRequired \? " \(บังคับ\)" : ""\}<\/label>/);
   assert.doesNotMatch(fields, /\{dueLabel\} \(บังคับ\)/, 'ป้ายตายตัว = ขัดกับเกจก่อนเลือกวิธี');
+});
+
+/* ══ ประเมินจากแบบ งวด S5 (กลุ่ม D · F2) — โหมดล็อกของใบยืนยันหน้างานเป็นกิ่งของตัวเอง ═══════════════════════════════════
+   ⭐ นิพจน์ที่ S4 ตรึงไว้ข้างบน (ป้ายดีล · ช่องดีลโหมดแก้ · สองประโยค `freshDraft` · ป้ายสถานที่ 4 ที่ · แถวพื้นที่อ่านอย่างเดียว)
+      ยังเขียวโดยไม่แก้ — โหมดล็อกแทรกเป็นกิ่งก่อนหน้า ไม่ใช่แก้กิ่งเดิม (พฤติกรรม + ข้อความอยู่ที่ lib/requests/surveyConfirmScreen.test.mjs) */
+test('S5 F2: กิ่งดีลของโหมดล็อกมาก่อนกิ่งโหมดแก้ · ป้ายที่มามาจากค่าคงที่ของงวด', () => {
+  const form = code(FORM);
+  assert.match(form, /const dealLock = !!confirmLock && !confirmLock\.original\?\.missing;/);
+  const lockAt = form.indexOf('{dealLock ? (');
+  const editAt = form.indexOf(') : isEdit ? (', lockAt);
+  assert.ok(lockAt > -1 && editAt > lockAt, 'dealLock ? … : isEdit ? … : <DealPicker>');
+  const lock = form.slice(lockAt, editAt);
+  assert.match(lock, /from=\{SURVEY_CONFIRM_FROM_ORIGINAL\}/);
+  assert.match(lock, /hint=\{surveyConfirmDealHint\(confirmLock\.original\)\}/);
+  assert.match(lock, /\n\s*bare\n/);
+  assert.ok(form.indexOf('<DealPicker', editAt) > editAt, 'ตัวเลือกดีลยังเป็นกิ่งสุดท้าย');
+});
+
+test('S5 F2 · R3: โหมดล็อกไม่วาดบล็อกไทล์ของ S4 ทั้งสองกิ่ง — ช่องวิธีเส้นประขึ้นเฉพาะฟอร์มสร้าง/ร่าง', () => {
+  const form = code(FORM);
+  assert.match(form, /\{variants && !confirmLock && \(/);
+  assert.equal((form.match(/\{variants && \(/g) || []).length, 0, 'ไม่มีทางเข้าบล็อกไทล์ที่ไม่ถามโหมดล็อก');
+  assert.match(form, /\{\(confirmLock\.mode === "create" \|\| confirmLock\.showMethod\) && \(/);
+});
+
+test('S5 F2: SurveySiteFields — ประโยคล็อกของงวดเป็นกิ่งก่อนนิพจน์ freshDraft ที่ไม่ถูกแตะ', () => {
+  const site = code('components/requests/SurveySiteFields.js');
+  const lockAt = site.indexOf('{confirmLock && !confirmLock.original?.missing ? (');
+  const freshAt = site.indexOf('{freshDraft\n', lockAt);
+  assert.ok(lockAt > -1 && freshAt > lockAt, 'กิ่ง N19 มาก่อนประโยคของ S4');
+  assert.match(site.slice(lockAt, freshAt), /<small className=\{styles\.hint\}>\{surveyConfirmZonesLockText\(confirmLock\.original\)\}<\/small>/);
+  assert.match(site, /confirmLock = null,/);
 });

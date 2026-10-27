@@ -985,3 +985,29 @@ test('GET /api/sa/requests/form-options ผ่าน proxy สำหรับฝ
     assert.equal(canViewRequests(user), true, `${role} ผ่านด่านของ handler`);
   }
 });
+
+/* ── ประเมินจากแบบ งวด S5 (A-1): ค่าตั้งต้นของฟอร์ม "ขอยืนยันหน้างาน" ─────────────────────────────
+   `/requests/new?confirms=` ถาม `GET /api/sa/requests/[id]/confirm-plan` ก่อนวาดฟอร์มล็อก — เส้นลูกใต้ prefix เดียวกับ
+   ใบแม่ (`/api/sa/requests`) ⇒ ทุก role ต้องได้ผลจาก proxy **เท่ากับ** `GET /api/sa/requests/[id]` ทุกตัว
+   (บทเรียน api-rd-proxy-gap: เพิ่มเส้นแล้วด่าน proxy ตัดสินต่างจากใบแม่ = จอโชว์ปุ่มแต่กดแล้ว 403 / เด้งหน้า)
+   ⚠️ ด่านจริงอยู่ใน handler (`canViewRequests` ตัวเดียวกับใบแม่ + `canManageRequest` ของใบต้นทาง) — proxy เห็นแค่ path */
+test('GET /api/sa/requests/[id]/confirm-plan ผ่าน proxy เท่ากับใบแม่ — ฝ่ายบริการ · ฝ่ายขาย · role ที่ไม่ถือทั้งสองสิทธิ์', async () => {
+  const { canViewRequests } = await import('@/lib/permissions');
+  const PARENT = '/api/sa/requests/DR-1';
+  const CHILD = '/api/sa/requests/DR-1/confirm-plan';
+  const neither = ROLES.filter((role) => !can(role, 'costing:edit') && !can(role, 'costing:quote') && !can(role, 'requests:answer'));
+  assert.ok(neither.includes('viewer'), 'viewer ต้องไม่ถือทั้งสิทธิ์ฝ่ายขายและสิทธิ์ตอบคำร้อง');
+  assert.ok(can('ts_planner', 'requests:answer') && !can('ts_planner', 'costing:edit'), 'ts_planner = ฝ่ายบริการที่ตอบคำร้องได้');
+  assert.ok(can('ae', 'costing:edit'), 'ae = ฝ่ายขาย');
+  for (const role of new Set(['ts', 'ts_planner', 'ae', 'viewer', ...neither, ...ROLES])) {
+    const user = { role, extraCaps: [] };
+    assert.equal(lockedOut(user, CHILD, 'GET', true), lockedOut(user, PARENT, 'GET', true), `${role} lockedOut`);
+    assert.equal(apiWriteAllowed('GET', CHILD, role, []), apiWriteAllowed('GET', PARENT, role, []), `${role} apiWriteAllowed`);
+  }
+  // ค่าของวันนี้: ฝ่ายขาย (คนกดปุ่ม) ผ่าน proxy ถึง handler และผ่านด่านแรกของ handler
+  assert.equal(lockedOut({ role: 'ae', extraCaps: [] }, CHILD, 'GET', true), false);
+  assert.equal(apiWriteAllowed('GET', CHILD, 'ae', []), true);
+  assert.equal(canViewRequests({ role: 'ae', extraCaps: [] }), true);
+  // role ที่ไม่ถือทั้งสองสิทธิ์ ถูกตัดที่ด่านแรกของ handler (`canViewRequests`) เหมือนใบแม่ — ไม่ใช่ที่ proxy
+  assert.equal(canViewRequests({ role: 'viewer', extraCaps: [] }), false);
+});

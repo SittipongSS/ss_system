@@ -120,7 +120,10 @@ test('ค่าคงที่ของฟีเจอร์ตรงสเป�
   assert.deepEqual(SURVEY_METHOD_CHIP, { onsite: 'ลงหน้างาน', drawing: 'จากแบบ' });
   assert.deepEqual(SURVEY_CONFIRM_LABEL, { needed: 'ต้องยืนยันหน้างาน', not_needed: 'ไม่ต้องยืนยันหน้างาน' });
   assert.equal(SURVEY_CONFIRM_MISSING, 'ยังไม่ได้เลือกว่าต้องยืนยันหน้างานไหม');
-  assert.deepEqual(SURVEY_ZONE_TAG, { awaiting: 'ประเมินจากแบบ · รอยืนยันหน้างาน', drawing: 'ประเมินจากแบบ' });
+  // งวด S5 (R6): + `confirming` — ไม่มีเลขใบในป้าย (เลขของใบยืนยันพิมพ์ข้างชิปแล้ว)
+  assert.deepEqual(SURVEY_ZONE_TAG, {
+    awaiting: 'ประเมินจากแบบ · รอยืนยันหน้างาน', drawing: 'ประเมินจากแบบ', confirming: 'ประเมินจากแบบ · กำลังยืนยันหน้างาน',
+  });
   assert.equal(SURVEY_METHOD_BUTTON, 'เปลี่ยนวิธีประเมิน');
   assert.equal(SURVEY_METHOD_MODAL_TITLE, 'วิธีประเมินรายพื้นที่');
   assert.equal(SURVEY_METHOD_REASON_LABEL, 'เหตุผล (ฝ่ายขายจะเห็น)');

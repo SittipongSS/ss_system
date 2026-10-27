@@ -21,6 +21,9 @@ import { surveyPackagesText, surveyRecallError, surveyTotals } from '@/lib/servi
 /* ⚠️ เอกสารประเมิน: import ได้เฉพาะตัวอ่านแถว (`surveyReportRows`) — เส้นนี้ต้องไม่ลาก sharp / chromium เข้ามา
    (สเปก PR-2 มติ 24 · ด่าน `check-doc-tracing.mjs` ตรวจผล build) */
 import { surveyReportVoided } from '@/lib/service/surveyReportRows';
+/* ใบยืนยันหน้างาน (ประเมินจากแบบ งวด S5 กลุ่ม B · B-4) — ตัวอ่าน/เขียนของงวดไม่ throw · ตัวสร้างประโยคล้วน */
+import { appendSurveyConfirmLines, loadSurveyConfirmOriginal } from '@/lib/service/surveyConfirmRepo';
+import { surveyConfirmEndedText } from '@/lib/service/surveyConfirmLink';
 
 export const dynamic = 'force-dynamic';
 
@@ -102,7 +105,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
           ล่าสุด: เอกสารของรอบส่งก่อนหน้า หรือแถวที่ยังเป็นฉบับใช้อยู่ (ทริกเกอร์ไม่ยิง · ลง log) = `null`
           ⇒ เธรดไม่อ้างสิ่งที่ฐานไม่ได้ทำ
        ⚠️ **หลัง update เหลือแต่ของที่ไม่โยน** — ตัวอ่านนี้ไม่โยน (อ่านพลาด = `null`) · `appendUpdate` กับ `recordAudit` กลืน
-          error ของตัวเอง ⇒ การดึงกลับที่ commit แล้วไม่จบที่ 500 ก่อนถึงแถวเธรดกับ audit · เพิ่มการอ่านที่โยนได้ไว้ตรงนี้ไม่ได้ */
+          error ของตัวเอง ⇒ การดึงกลับที่ commit แล้วไม่จบที่ 500 ก่อนถึงแถวเธรดกับ audit · เพิ่มการอ่านที่โยนได้ไว้ตรงนี้ไม่ได้
+          (บล็อกใบยืนยันหน้างานของงวด S5 อยู่ **หลัง** audit และห่อ try/catch ของตัวเอง) */
     const voidedDocNo = await surveyReportVoided(supabase, { requestId: id, answeredAt: request.answeredAt });
     const voidedNote = voidedDocNo
       ? ` · เอกสาร ${voidedDocNo} ใช้ไม่ได้แล้ว ห้ามใช้ฉบับที่ส่งลูกค้าไปแล้ว`
@@ -140,6 +144,33 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
         + voidedNote,
       request: req,
     });
+    /* ⭐ **ใบยืนยันหน้างานที่ถูกดึงผลกลับ** (งวด S5 B-4 · R12 · F13) — บอกใบต้นทางว่าผลยืนยันที่แจ้งไว้ยังไม่นิ่ง
+       ⚠️ เขียนเฉพาะเมื่อเธรดของใบต้นทางเคยประกาศผลของใบนี้ (`sent:{id}:`) — ทาง O17 / ลิงก์ลอย ไม่เคยประกาศ ⇒ ไม่มีอะไรให้ถอน
+       🔴 **ไม่มีด่านใหม่** — การดึงกลับของใบไหนก็ไม่ถูกปฏิเสธเพราะใบยืนยัน · บล็อกนี้อยู่หลัง audit และห่อ try/catch: ล้มแล้ว
+          ยังตอบ 200 (การดึงกลับ commit ไปแล้ว) · `request` คือแถว `select('*')` ก่อน update (มีลิงก์และ `answeredAt` เดิม) */
+    if (request.surveyConfirmOfId && request.answeredAt) {
+      try {
+        const { original, error: originalError } = await loadSurveyConfirmOriginal(supabase, request.surveyConfirmOfId);
+        if (originalError) {
+          console.error('[surveyConfirm] อ่านใบต้นทางไม่สำเร็จ — ไม่เขียนบรรทัด', id, request.surveyConfirmOfId, originalError);
+        } else if (original) {
+          const written = await appendSurveyConfirmLines(supabase, {
+            originalId: original.id,
+            key: `ended:${id}:reopened:${nowIso}`,
+            event: 'reopened',
+            child: data,
+            lines: [surveyConfirmEndedText(data, 'reopened')],
+            user,
+            onlyIfKeyPrefix: `sent:${id}:`,
+          });
+          if (written.error) {
+            console.error('[surveyConfirm] เขียนบรรทัดบนเธรดของใบต้นทางไม่สำเร็จ', id, original.id, written.error);
+          }
+        }
+      } catch (e) {
+        console.error('[surveyConfirm] บรรทัดบนเธรดของใบต้นทางล้ม', id, request.surveyConfirmOfId, e?.message || e);
+      }
+    }
     /* `supersededReport` = เลขที่เอกสารที่เพิ่งใช้ไม่ได้ (`'SU-…-n'`) หรือ `null` — เลขอย่างเดียว ไม่ใช่แถว:
        id ของแถวเอกสารคือที่อยู่ไฟล์ PDF (มติ 16) ห้ามออก payload */
     return ok({ request: data, totals, supersededReport: voidedDocNo });

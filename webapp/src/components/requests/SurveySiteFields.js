@@ -32,6 +32,8 @@ import { surveyZoneRowText, surveyZoneWording } from "@/lib/service/surveyIntake
 import { zoneNameKey } from "@/lib/service/surveyRequest";
 import { sitePickSummary, zonePickedOnsiteText, zonePickList } from "@/lib/service/zonePickState";
 import { floorLabel, normalizeFloor } from "@/lib/service/zoneCode";
+// ประโยคล็อกของใบยืนยันหน้างาน (ประเมินจากแบบ งวด S5 D-6) — ไฟล์ล้วนไฟล์เดียวของงวด (F1) บล็อกนี้ไม่พิมพ์เอง
+import { surveyConfirmZonesLockText } from "@/lib/service/surveyConfirmLink";
 import styles from "./requestForm.module.css";
 
 // เกินเท่านี้แล้วแผ่นเลือกยาวกว่าหน้าจอ — ค่อยเปลี่ยนเป็นช่องค้นหา
@@ -60,6 +62,12 @@ export default function SurveySiteFields({
      ฟอร์มเลื่อนปุ่ม "ยังขาด" ไปบล็อกไฟล์แบบที่อยู่ **ใต้** บล็อกนี้ — เลื่อนก่อนไทล์สถานที่มา = ไทล์ดันบล็อกนั้นตกขอบจอ
      ⚠️ โหลดพังนับว่าจบ (บล็อกไม่ขยับอีกแล้ว) · ไม่มีลูกค้า = จบทันที (ไม่มีอะไรให้โหลด) · ถูกถอด = รายงาน `false` */
   onSettledChange = null,
+  /* ⭐ ใบยืนยันหน้างาน (งวด S5 D-6) — `{ mode, original, zones }` จาก `RequestForm` · มีผลเฉพาะโหมดอ่านอย่างเดียว
+     create  บล็อกไม่พึ่งลิสต์ที่โหลดเอง (ผู้เรียกส่ง `customerId` ว่าง ⇒ ไม่ยิงอะไร · นิ่งทันที) — สถานที่จาก `original.siteLabel`
+             แต่ละแถวได้ "{รหัส} · {ชั้น}" กับรอบจากแบบ (`previous`) จาก `zones` ของ GET confirm-plan
+     edit    บล็อกอ่านอย่างเดียวของวันนี้ทุกบรรทัด (ป้าย "จากแบบ" รายพื้นที่ยังบอกการสลับของหัวหน้า)
+     ทั้งสองโหมด ประโยคปิดท้ายเป็นประโยคล็อกของงวดแทนของ S4 (ฟอร์มพูด "แก้ไม่ได้" ครั้งเดียว) — ใบต้นทางถูกลบ = ของ S4 ตามเดิม */
+  confirmLock = null,
 }) {
   const siteId = value.siteId || "";
   const wording = surveyZoneWording(variant);
@@ -293,12 +301,16 @@ export default function SurveySiteFields({
         ทั้งที่ใบมีสถานที่อยู่ และถ้ากดบันทึกทับจะดูเหมือนของหาย */
   if (readOnly) {
     const picked = sites.find((row) => row.id === siteId) || null;
+    const fromPlan = confirmLock?.mode === "create";
+    const planOf = (row) => (confirmLock?.zones || []).find((z) => z.zoneId === row.zoneId) || null;
     return (
       <div className="form-group col-span-2">
         {/* ป้ายเดียวกับโหมดกรอก รายการความพร้อม และประโยค error (มติ O1 · UAT S4 รอบ 4 ข้อ 4 — เดิม "สถานที่และพื้นที่…") */}
         <span className={styles.fieldLabel}>สถานที่ที่จะให้ประเมิน</span>
         <small className={styles.hint}>
-          {loading ? "กำลังโหลด…" : naText([picked?.code, picked?.name].filter(Boolean).join(" · "))}
+          {/* ใบยืนยันหน้างานโหมดสร้าง: ป้ายสถานที่ของใบต้นทาง (ไม่มีลิสต์ให้รอ) */}
+          {fromPlan ? naText(confirmLock.original?.siteLabel)
+            : loading ? "กำลังโหลด…" : naText([picked?.code, picked?.name].filter(Boolean).join(" · "))}
         </small>
         {zones.length > 0 && (
           <ol className={styles.zoneList}>
@@ -309,21 +321,38 @@ export default function SurveySiteFields({
                   <b>{zoneName(row)}</b>
                   {/* ป้ายวิธีปัจจุบันของพื้นที่ — คำมาจากหน้าคำร้อง (`methodTag` ของใบที่ส่งแล้ว) · ไม่มีคำ = ไม่วาด */}
                   <SurveyMethodChip label={row.methodTag} className={styles.zoneTileMethod} />
-                  <small className={styles.hint}>
-                    {row.zoneId
-                      ? (siteZones.find((z) => z.id === row.zoneId)?.code || "พื้นที่เดิม")
-                      : `พื้นที่ใหม่ · ${floorLabel(row.floor) || "ยังไม่ระบุชั้น"}`}
-                  </small>
+                  {fromPlan ? (
+                    /* ใบยืนยันหน้างานโหมดสร้าง: "{รหัส} · {ชั้น}" จากแผน (ส่วนที่ขาดทิ้งพร้อมตัวคั่น — ไม่ใช้คำสำรอง "พื้นที่เดิม")
+                       แล้วรอบจากแบบของใบต้นทางเป็นบรรทัดที่สอง (มีเมื่อแผนส่งมา) */
+                    <>
+                      <small className={styles.hint}>
+                        {[planOf(row)?.code, floorLabel(planOf(row)?.floor)].filter(Boolean).join(" · ")}
+                      </small>
+                      {planOf(row)?.previous ? <small className={styles.hint}>{planOf(row).previous}</small> : null}
+                    </>
+                  ) : (
+                    <small className={styles.hint}>
+                      {row.zoneId
+                        ? (siteZones.find((z) => z.id === row.zoneId)?.code || "พื้นที่เดิม")
+                        : `พื้นที่ใหม่ · ${floorLabel(row.floor) || "ยังไม่ระบุชั้น"}`}
+                    </small>
+                  )}
                 </span>
               </li>
             ))}
           </ol>
         )}
-        <small className={styles.hint}>
-          {freshDraft
-            ? "สถานที่และพื้นที่แก้ที่นี่ไม่ได้ — ร่างที่ยังไม่ส่งลบแล้วเปิดใหม่ได้ (ยังไม่กินเลขที่)"
-            : "สถานที่และพื้นที่ของคำร้องที่ส่งแล้วแก้ที่นี่ไม่ได้"}
-        </small>
+        {/* ประโยคปิดท้ายประโยคเดียว — ใบยืนยันหน้างาน (ใบต้นทางยังอยู่) พูดประโยคล็อกของงวด S5 แทนของ S4
+            (ฟอร์มสร้างยังไม่มีร่างให้ "ลบแล้วเปิดใหม่") · ที่เหลือประโยคของ S4 ตามเดิม */}
+        {confirmLock && !confirmLock.original?.missing ? (
+          <small className={styles.hint}>{surveyConfirmZonesLockText(confirmLock.original)}</small>
+        ) : (
+          <small className={styles.hint}>
+            {freshDraft
+              ? "สถานที่และพื้นที่แก้ที่นี่ไม่ได้ — ร่างที่ยังไม่ส่งลบแล้วเปิดใหม่ได้ (ยังไม่กินเลขที่)"
+              : "สถานที่และพื้นที่ของคำร้องที่ส่งแล้วแก้ที่นี่ไม่ได้"}
+          </small>
+        )}
       </div>
     );
   }

@@ -1410,6 +1410,9 @@ export default function SurveySheetPage({ params }) {
   /* หัวงาน + "เกี่ยวกับคำร้อง" — คำชุดเดียวกัน (รหัส · ชื่อเรื่อง · ลูกค้า) จากตัวตัดสินตัวเดียว */
   const headerView = surveyJobHeaderView({
     request: data?.request || null, customer: data?.customer || null, site, visit, crew: data?.crew || [],
+    /* ใบยืนยันหน้างาน (งวด S5) — ข้อใบต้นทาง (เลขที่ลิงก์ไปหน้าคำร้อง) · คีย์มีเฉพาะใบที่ผูกและคนดูเป็นหัวหน้า/ผู้วางคิว (ช่างไม่มีข้อนี้)
+       ⚠️ อยู่ก่อน unknown — คู่ unknown → method ปิดท้ายการเรียกถูกตรึงไว้ (surveySheetDrawingScreen.test.mjs) */
+    confirmOf: data?.confirmOf || null,
     unknown: data?.unknown || {},
     /* ใบที่มีพื้นที่จากแบบ: ข้อแรกของหัวงานเป็น "วิธีประเมิน" (งวด S2b) — ใบลงหน้างานล้วน = หัวงานเดิมทุกข้อ (ตัวตัดสินดู `mix.drawing`) */
     method: { mix: view.mix, needsVisit: view.needsVisit },
@@ -1675,6 +1678,8 @@ export default function SurveySheetPage({ params }) {
           mix={view.mix}
           request={req}
           locked={view.flags.locked}
+          /* ใบยืนยันหน้างาน (งวด S5) — ตัวเลขรอบจากแบบของใบต้นทางรายพื้นที่ · ใบอื่น/ไม่มีคีย์ = null (ตารางเดิม) */
+          previousRounds={data?.confirmOf?.previousByZone || null}
           /* ⭐ **บรรทัดนี้คือของที่ฝ่ายขายจะได้ไปพร้อมกระดิ่ง** — TS ตัด/เพิ่มเองได้
              โดยไม่ต้องขออนุมัติ (มติข้อ 6) ⇒ ที่นี่คือจุดที่เขาเห็นก่อนกดส่งว่าตัวเอง
              เปลี่ยนอะไรไปบ้างจากที่ฝ่ายขายขอมา · ขึ้นเสมอ ไม่ใช่เฉพาะตอนมีการเปลี่ยน */

@@ -15,13 +15,18 @@ import {
   SURVEY_REPORT_NO_VISIT,
   SURVEY_REPORT_SNAPSHOT_VERSION,
   buildSurveyReportSnapshot,
+  surveyReportConfirmsDocNo,
   surveyReportFreezeBlockers,
   surveyReportFreezeIssues,
   surveyReportImageFiles,
 } from './surveyReportSnapshot.js';
 import { surveyReportView } from './surveyReportView.js';
+import { SURVEY_CONFIRM_OF_LABEL } from './surveyConfirmLink.js';
+import { loadSurveyReportInputs, surveyReportPrecheck } from './surveyReportInputs.js';
 import {
+  CONFIRM_ORIGINAL,
   PACKAGE_SIZE_SEED,
+  confirmSurveyFixture,
   fakeSha,
   markedSurveyInputs,
   signedSurveyInputs,
@@ -554,6 +559,8 @@ const unreadCases = [
   ['visitThread', () => {}],
   // กติกาลายเซ็นจริงเปิด + อ่านลายเซ็นไม่สำเร็จ: ต้องไม่กลายเป็น "ยังไม่มีลายเซ็น" (ชนิด content ที่ตีกลับการส่งผล)
   ['signatures', (i) => { i.signatureRule = 'required'; i.signatures = null; }],
+  // งวด S5 — อ่านใบต้นทางของใบยืนยันไม่สำเร็จ: ไม่มีคีย์ `confirmsDocNo` (เหมือนใบไม่ผูก) แต่ต้องไม่ออกเอกสารที่ขาดแถว "ยืนยันผลจากแบบของ"
+  ['confirms', (i) => { delete i.confirmsDocNo; }],
 ];
 
 test('ตารางชิ้นที่อ่านไม่สำเร็จครอบทุกชื่อที่มีป้าย', () => {
@@ -1130,3 +1137,182 @@ test('🔴 งวด S3 §2.9: ใบลงหน้างานล้วน —
     assert.deepEqual(buildSurveyReportSnapshot(row.inputs(), { mode: row.mode }).snapshot, snapshot, `${row.name}: รันซ้ำ`);
   }
 });
+
+/* ══ งวด S5 กลุ่ม F — ใบยืนยันหน้างาน: `request.confirmsDocNo` (เพิ่มคีย์ · ยัง v1) ═══════════════════════════════
+ * ตัวโหลดถาม `loadSurveyReportConfirms` (ไม่ยิงคำสั่งเมื่อใบไม่ผูก) แล้วประกอบข้อความด้วย `surveyReportConfirmsDocNo`
+ * 🔴 คีย์มีเฉพาะเมื่อเป็นสตริง (R-KEYS) — ใบที่ไม่ผูก/ใบต้นทางหาย ได้ภาพนิ่งเท่าของงวด S3 ทุกไบต์
+ * 🔴 อ่านไม่สำเร็จ ≠ ไม่ผูก — ชื่อ `confirms` เข้า `unknown` ⇒ ขั้นออกเลขไม่ออก (กระดาษที่ตรึงแล้วเติมแถวทีหลังไม่ได้) */
+
+const CONFIRM_TEXT_FULL = `${CONFIRM_ORIGINAL.requestDocNo} (${CONFIRM_ORIGINAL.reportDocNo})`;
+const ORIGINAL_ID = 'DR-drawing-0345';
+const ORIGINAL_SENT = '2026-10-09T07:20:00.000+00:00';
+const originalRow = (over = {}) => ({
+  id: ORIGINAL_ID, docNo: CONFIRM_ORIGINAL.requestDocNo, kind: 'site_survey', status: 'answered', answeredAt: ORIGINAL_SENT, ...over,
+});
+const reportRow = (over = {}) => ({
+  id: 'SSR-1', requestId: ORIGINAL_ID, baseNo: 'SU-26100003', rev: 0, docNo: CONFIRM_ORIGINAL.reportDocNo, status: 'current',
+  approvedAt: ORIGINAL_SENT, ...over,
+});
+
+/* ฐานปลอมของตัวโหลดอินพุต — กรองตาม eq/in · `fail[ตาราง]` = 'error' | 'throw' (ทุกครั้งที่อ่านตารางนั้น) · `read` = ตารางที่ถูกอ่านตามลำดับ */
+function confirmsDb(tables = {}, { fail = {} } = {}) {
+  const read = [];
+  const from = (table) => {
+    const filters = [];
+    read.push(table);
+    const run = () => {
+      if (fail[table] === 'throw') throw new Error(`${table} ล่ม`);
+      if (fail[table] === 'error') return { data: null, error: { message: `${table} ล่ม` } };
+      const rows = (tables[table] || [])
+        .filter((row) => filters.every(([op, col, val]) => (op === 'in' ? val.includes(row[col]) : row[col] === val)));
+      return { data: rows.map((row) => ({ ...row })), error: null };
+    };
+    const chain = {
+      select: () => chain, order: () => chain, limit: () => chain,
+      eq: (col, val) => { filters.push(['eq', col, val]); return chain; },
+      in: (col, val) => { filters.push(['in', col, val]); return chain; },
+      maybeSingle: () => Promise.resolve().then(run).then(({ data, error }) => ({ data: error ? null : (data[0] || null), error })),
+      then: (ok, ko) => Promise.resolve().then(run).then(ok, ko),
+    };
+    return chain;
+  };
+  const auth = { admin: { getUserById: async () => ({ data: { user: null }, error: { status: 404, message: 'User not found' } }) } };
+  return { read, from, auth };
+}
+
+/* ใบยืนยัน = แฝด ② + ลิงก์ไปใบต้นทาง (คอลัมน์ของ mig 0408) · ผลวัด/ไฟล์/ทะเบียนขนาดส่งให้ตัวโหลด — คำสั่งที่เหลือเป็นของงวดนี้ */
+const linkedRequest = (linkTo = ORIGINAL_ID) => ({ ...twin().request, surveyConfirmOfId: linkTo });
+const loadConfirms = (db, request) => {
+  const source = twin();
+  return loadSurveyReportInputs(db, {
+    request, zones: source.zones, filesByZone: source.filesByZone, sizes: source.sizes, takenAt: source.takenAt,
+  });
+};
+/* อินพุตของแฝดที่รับคีย์ `confirmsDocNo` และ `unknown` จากตัวโหลด — ภาพนิ่ง/กระดาษเทียบกับแฝดได้ทั้งก้อน */
+const withLoaded = (loaded) => ({
+  ...twin(),
+  ...(Object.hasOwn(loaded.inputs, 'confirmsDocNo') ? { confirmsDocNo: loaded.inputs.confirmsDocNo } : {}),
+  unknown: loaded.unknown,
+});
+const unreadConfirms = `อ่าน${SURVEY_REPORT_INPUT_LABELS.confirms}ไม่สำเร็จ`;
+
+test('S5 F: surveyReportConfirmsDocNo — "RQ (SU)" · RQ อย่างเดียวเมื่อใบต้นทางไม่มีฉบับปัจจุบัน · ไม่ผูก/ไม่มีเลข = null', () => {
+  assert.equal(surveyReportConfirmsDocNo(CONFIRM_ORIGINAL), CONFIRM_TEXT_FULL);
+  assert.equal(surveyReportConfirmsDocNo({ requestDocNo: 'RQ-AS-26100345', reportDocNo: null }), 'RQ-AS-26100345');
+  assert.equal(surveyReportConfirmsDocNo({ requestDocNo: ' RQ-AS-26100345 ', reportDocNo: '  ' }), 'RQ-AS-26100345');
+  for (const none of [null, undefined, {}, { requestDocNo: '' }, { requestDocNo: null, reportDocNo: 'SU-26100003-0' }, 'RQ-AS-1', []]) {
+    assert.equal(surveyReportConfirmsDocNo(none), null, JSON.stringify(none));
+  }
+  // ป้ายของแถวมาจากโมดูลของงวด (ไม่ก๊อปเป็นลิเทอรัลในไฟล์กระดาษ) · ป้ายของชิ้นที่อ่านไม่สำเร็จมีจริง
+  assert.equal(SURVEY_CONFIRM_OF_LABEL, 'ยืนยันผลจากแบบของ');
+  assert.equal(unreadConfirms, 'อ่านใบต้นทางของใบยืนยันหน้างานไม่สำเร็จ');
+});
+
+test('🔴 S5 F: ภาพนิ่งได้ request.confirmsDocNo เฉพาะเมื่อเป็นสตริง — นอกนั้นไม่มีคีย์ และภาพนิ่งเท่ากับแฝดทุกค่า', () => {
+  assert.equal(SURVEY_REPORT_SNAPSHOT_VERSION, 1, 'เพิ่มคีย์อย่างเดียว — ไม่ขึ้นรุ่น');
+  const plain = buildSurveyReportSnapshot(twin(), { mode: 'freeze' }).snapshot;
+  assert.equal('confirmsDocNo' in plain.request, false, 'แฝด (ไม่ผูก) ไม่มีคีย์');
+
+  const full = buildSurveyReportSnapshot(surveyReportInputsFromFixture(confirmSurveyFixture()), { mode: 'freeze' });
+  assert.equal(full.errors, undefined);
+  assert.equal(full.snapshot.request.confirmsDocNo, CONFIRM_TEXT_FULL);
+  const rqOnly = buildSurveyReportSnapshot(surveyReportInputsFromFixture(confirmSurveyFixture({ reportDocNo: null })), { mode: 'freeze' });
+  assert.equal(rqOnly.snapshot.request.confirmsDocNo, CONFIRM_ORIGINAL.requestDocNo);
+
+  // ต่างจากแฝดแค่คีย์เดียว — ไม่มีคีย์ที่ชั้นอื่น ไม่มีรูปเพิ่ม
+  const stripped = clone(full.snapshot);
+  delete stripped.request.confirmsDocNo;
+  assert.deepEqual(stripped, plain);
+  assert.deepEqual(full.images, buildSurveyReportSnapshot(twin(), { mode: 'freeze' }).images);
+
+  // ค่าที่ไม่ใช่สตริงที่มีเนื้อ = ไม่มีคีย์ (ไม่ใช่ null)
+  for (const bad of [null, '', '   ', 7, {}, ['RQ-AS-1'], true]) {
+    const built = buildSurveyReportSnapshot({ ...twin(), confirmsDocNo: bad }, { mode: 'freeze' });
+    assert.equal('confirmsDocNo' in built.snapshot.request, false, JSON.stringify(bad));
+    assert.deepEqual(built.snapshot, plain, JSON.stringify(bad));
+  }
+  // สตริงถูกตัดช่องว่างหัวท้าย · โหมดร่างก็ได้คีย์ (ฉบับร่างของหัวหน้าเห็นแถวเดียวกับที่จะตรึง)
+  assert.equal(buildSurveyReportSnapshot({ ...twin(), confirmsDocNo: '  RQ-AS-26100345  ' }).snapshot.request.confirmsDocNo, 'RQ-AS-26100345');
+  assert.equal(buildSurveyReportSnapshot({ ...twin(), confirmsDocNo: CONFIRM_TEXT_FULL }, { mode: 'draft' }).snapshot.request.confirmsDocNo, CONFIRM_TEXT_FULL);
+});
+
+test('S5 F: ตัวโหลด — ไม่ผูก = ไม่มีคำสั่งเพิ่ม · ผูก = "RQ (SU)" ของฉบับปัจจุบัน · ไม่มีฉบับปัจจุบัน/ฉบับค้าง = RQ อย่างเดียว · ใบต้นทางหาย = ไม่มีคีย์', async () => {
+  const tables = { dept_requests: [originalRow()], service_survey_reports: [reportRow()] };
+
+  // ใบไม่ผูก: ไม่อ่านสองตารางของงวดนี้เลย · ไม่มีคีย์ · ไม่มีชิ้นที่ไม่ทราบ
+  const unlinkedDb = confirmsDb(tables);
+  const unlinked = await loadConfirms(unlinkedDb, twin().request);
+  assert.deepEqual(unlinked.unknown, []);
+  assert.equal(Object.hasOwn(unlinked.inputs, 'confirmsDocNo'), false);
+  assert.equal(unlinkedDb.read.includes('dept_requests'), false);
+  assert.equal(unlinkedDb.read.includes('service_survey_reports'), false);
+
+  const cases = [
+    ['ฉบับปัจจุบันของผลรอบนี้', tables, CONFIRM_TEXT_FULL],
+    ['ฉบับถูกแทนที่หมด (ดึงผลกลับแล้ว)', { ...tables, service_survey_reports: [reportRow({ status: 'superseded' })] }, CONFIRM_ORIGINAL.requestDocNo],
+    ['ยังไม่มีเอกสาร', { ...tables, service_survey_reports: [] }, CONFIRM_ORIGINAL.requestDocNo],
+    ['ฉบับปัจจุบันค้าง (ไม่ใช่ของผลรอบนี้)', { ...tables, service_survey_reports: [reportRow({ approvedAt: '2026-10-01T00:00:00.000+00:00' })] }, CONFIRM_ORIGINAL.requestDocNo],
+    ['Rev ล่าสุดที่เป็นปัจจุบัน', {
+      ...tables,
+      dept_requests: [originalRow({ answeredAt: '2026-10-12T03:00:00.000+00:00' })],
+      service_survey_reports: [reportRow({ status: 'superseded' }), reportRow({ id: 'SSR-2', rev: 1, docNo: 'SU-26100003-1', approvedAt: '2026-10-12T03:00:00.000+00:00' })],
+    }, 'RQ-AS-26100345 (SU-26100003-1)'],
+  ];
+  for (const [label, world, want] of cases) {
+    const loaded = await loadConfirms(confirmsDb(world), linkedRequest());
+    assert.deepEqual(loaded.unknown, [], label);
+    assert.equal(loaded.inputs.confirmsDocNo, want, label);
+    const built = buildSurveyReportSnapshot(withLoaded(loaded), { mode: 'freeze' });
+    assert.equal(built.errors, undefined, label);
+    assert.equal(built.snapshot.request.confirmsDocNo, want, label);
+  }
+
+  // ใบต้นทางถูกลบ (ลิงก์ค้าง): อ่านได้ แต่ไม่มีแถว ⇒ ไม่มีคีย์ ไม่มีแถวบนกระดาษ — ไม่ใช่ "อ่านไม่สำเร็จ"
+  const dangling = await loadConfirms(confirmsDb(tables), linkedRequest('DR-gone'));
+  assert.deepEqual(dangling.unknown, []);
+  assert.equal(Object.hasOwn(dangling.inputs, 'confirmsDocNo'), false);
+  const plain = buildSurveyReportSnapshot(twin(), { mode: 'freeze' }).snapshot;
+  for (const loaded of [unlinked, dangling]) {
+    const built = buildSurveyReportSnapshot(withLoaded(loaded), { mode: 'freeze' });
+    assert.deepEqual(built.snapshot, plain, 'ภาพนิ่งเท่าแฝดทุกค่า (ไม่มีคีย์)');
+    for (const version of ['customer', 'internal']) {
+      assert.equal(JSON.stringify(surveyReportView(built.snapshot, { version })).includes(SURVEY_CONFIRM_OF_LABEL), false, version);
+    }
+  }
+});
+
+for (const [table, how] of [
+  ['dept_requests', 'error'], ['dept_requests', 'throw'], ['service_survey_reports', 'error'], ['service_survey_reports', 'throw'],
+]) {
+  test(`🔴 S5 F: อ่าน ${table} ไม่สำเร็จ (${how}) = unknown 'confirms' — ไม่มีคีย์ · ตรึง/ตรวจไม่ออก · รอบตรวจก่อนส่งบอกว่าอ่านไม่สำเร็จ`, async () => {
+    const world = { dept_requests: [originalRow()], service_survey_reports: [reportRow()] };
+    const loaded = await loadConfirms(confirmsDb(world, { fail: { [table]: how } }), linkedRequest());
+    assert.deepEqual(loaded.unknown, ['confirms']);
+    assert.deepEqual(loaded.inputs.unknown, ['confirms']);
+    assert.equal(Object.hasOwn(loaded.inputs, 'confirmsDocNo'), false, 'อ่านพลาด ≠ ได้ค่า');
+
+    // ขั้นออกเลข: เหตุชนิด system บรรทัดเดียว · โหมดตรึง/ตรวจไม่ออกภาพนิ่ง (กระดาษที่ขาดแถวไม่มีวันถูกตรึง)
+    const inputs = withLoaded(loaded);
+    assert.deepEqual(surveyReportFreezeIssues(inputs), [{ kind: 'system', text: unreadConfirms }]);
+    assert.deepEqual(buildSurveyReportSnapshot(inputs, { mode: 'freeze' }), { errors: [unreadConfirms] });
+    assert.deepEqual(buildSurveyReportSnapshot(inputs, { mode: 'check' }), { errors: [unreadConfirms] });
+    const draft = buildSurveyReportSnapshot(inputs, { mode: 'draft' });
+    assert.ok(draft.warnings.includes(unreadConfirms));
+    assert.equal('confirmsDocNo' in draft.snapshot.request, false);
+
+    // รอบตรวจก่อนส่งผล: ชิ้นไม่ทราบถูกส่งออก (ผู้เรียกข้ามการตีกลับ) และแถวด่านบอกว่าอ่านไม่สำเร็จ (ชนิด system — ไม่ตีกลับการส่งผล)
+    const source = twin();
+    const check = await surveyReportPrecheck(confirmsDb(world, { fail: { [table]: how } }), {
+      request: linkedRequest(), user: { id: 'U-head', name: 'Head Approver' }, zones: source.zones, filesByZone: source.filesByZone,
+      sizes: source.sizes, open: null, today: '2026-09-26', nowIso: '2026-09-26T03:00:00.000+00:00',
+    });
+    assert.ok(check.unknown.includes('confirms'), check.unknown.join(','));
+    assert.ok(check.blockers.some((b) => b.kind === 'system' && b.text === unreadConfirms), JSON.stringify(check.blockers));
+    assert.equal(check.blockers.some((b) => b.kind === 'content' && b.text === unreadConfirms), false);
+
+    // รอบถัดไปอ่านได้ = ได้ค่ากลับมา
+    const again = await loadConfirms(confirmsDb(world), linkedRequest());
+    assert.deepEqual(again.unknown, []);
+    assert.equal(again.inputs.confirmsDocNo, CONFIRM_TEXT_FULL);
+  });
+}

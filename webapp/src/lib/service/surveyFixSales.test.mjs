@@ -24,6 +24,7 @@ import { requestResultDateOnly } from '../master/requestTypes.js';
 import { requestDueRequired } from '../requests/formTabs.js';
 import { SURVEY_METHOD_CHIP } from './surveyMethodSwitch.js';
 import { phraseRuns } from '../thaiWrap.js';
+import { fmtNumber } from '../format.js';
 
 const read = (rel) => readFileSync(new URL(rel, import.meta.url), 'utf8');
 /* ตัดคอมเมนต์ทิ้ง (คอมเมนต์ JSX ทั้งปีกกา · บล็อก · ทั้งบรรทัด) — คอมเมนต์เล่าที่มาได้โดยไม่ทำให้ยามเข้าใจผิด */
@@ -32,8 +33,9 @@ const code = (src) => src
   .replace(/\/\*[\s\S]*?\*\//g, '')
   .replace(/^\s*\/\/.*$/gm, '');
 
-/** ฟังก์ชันล้วน (`function ชื่อ(`) ในไฟล์จอ → ฟังก์ชันที่รันได้ — นับปีกกาหาท้ายตัวฟังก์ชัน · ต้องไม่อ้างชื่ออื่นในไฟล์ */
-const pureFunction = (src, name) => {
+/** ฟังก์ชันล้วน (`function ชื่อ(`) ในไฟล์จอ → ฟังก์ชันที่รันได้ — นับปีกกาหาท้ายตัวฟังก์ชัน · ต้องไม่อ้างชื่ออื่นในไฟล์
+ *  `scope` = ชื่อที่ฟังก์ชันอ้างจาก import ของไฟล์จอ (เช่น `fmtNumber`) ส่งตัวจริงเข้าไป · ไม่ส่ง = ห้ามอ้างชื่ออื่นเลย */
+const pureFunction = (src, name, scope = {}) => {
   const start = src.indexOf(`function ${name}(`);
   assert.ok(start !== -1, `ไม่มี ${name}`);
   const open = src.indexOf('{', src.indexOf(')', start));
@@ -42,7 +44,7 @@ const pureFunction = (src, name) => {
     if (src[i] === '{') depth += 1;
     else if (src[i] === '}') {
       depth -= 1;
-      if (depth === 0) return new Function(`${src.slice(start, i + 1)}\nreturn ${name};`)();
+      if (depth === 0) return new Function(...Object.keys(scope), `${src.slice(start, i + 1)}\nreturn ${name};`)(...Object.values(scope));
     }
   }
   throw new Error(`หาท้ายของ ${name} ไม่เจอ`);
@@ -307,6 +309,48 @@ test('sales-q6 (ตรวจรอบสอง) พื้นที่ที่�
     const { unsold, awaiting } = unsoldCounts(fixture);
     assert.ok(awaiting <= unsold, JSON.stringify({ unsold, awaiting }));
   }
+});
+
+/* งวด S5 (R7): พื้นที่ที่มีใบยืนยันหน้างานเปิดอยู่ (`'confirming'`) ยังเป็นตัวเลขจากแบบที่ยังไม่ยืนยัน — นับในหมายเหตุเหมือน `'awaiting'`
+   ⚠️ `unsoldCounts` เทียบสองค่าในบรรทัดเดียว (ฟังก์ชันล้วน อ้างชื่ออื่นไม่ได้ ⇒ ดึง `surveyConfirmPending` ไม่ได้) */
+test('งวด S5: พื้นที่กำลังยืนยันหน้างานที่ยังไม่ขาย นับใน awaiting — หมายเหตุยังเป็น "เสนอราคาได้ · k พื้นที่รอยืนยันหน้างาน"', () => {
+  const unsoldNote = pureFunction(PANEL, 'unsoldNote', { fmtNumber });
+  const reg = customerZoneRegistry({
+    sites: [{ id: 'ST1', name: 'สำนักงานใหญ่' }],
+    zones: [
+      { id: 'ZC', siteId: 'ST1', name: 'กำลังยืนยัน ยังไม่ขาย' },
+      { id: 'ZA', siteId: 'ST1', name: 'รอยืนยัน ยังไม่ขาย' },
+      { id: 'ZS', siteId: 'ST1', name: 'กำลังยืนยัน ขายแล้ว' },
+    ],
+    surveys: [
+      ...['ZC', 'ZA', 'ZS'].map((zoneId) => ({
+        id: `S-${zoneId}`, zoneId, requestId: 'RD', status: 'ok', method: 'drawing',
+        createdAt: '2026-10-01T03:00:01Z', surveyedAt: '2026-10-01T05:00:00Z', parts: SURVEY_PARTS,
+      })),
+      // ใบยืนยันหน้างาน (ผูกกับ RD · รับเรื่องแล้ว) ถือ ZC กับ ZS
+      ...['ZC', 'ZS'].map((zoneId) => ({ id: `C-${zoneId}`, zoneId, requestId: 'RC', status: 'ok', method: 'onsite', createdAt: '2026-10-20T03:00:01Z' })),
+    ],
+    requests: [
+      { id: 'RD', status: 'answered', createdAt: '2026-10-01T03:00:00Z', answeredAt: '2026-10-02T03:00:00Z', surveyConfirm: 'needed' },
+      { id: 'RC', docNo: 'RQ-AS-26100031', status: 'acknowledged', createdAt: '2026-10-20T03:00:00Z', surveyConfirmOfId: 'RD' },
+    ],
+    terms: [{ id: 'T-S', zoneId: 'ZS', salesOrderId: 'SO1' }],
+    orders: [{ id: 'SO1', status: 'approved', orderNumber: 'SO-1' }],
+    todayIso: '2026-10-25',
+  });
+  const confirmOf = (id) => reg.sites[0].zones.find((z) => z.id === id).confirm;
+  assert.deepEqual(['ZC', 'ZA', 'ZS'].map(confirmOf), ['confirming', 'awaiting', 'confirming']);
+  assert.deepEqual(unsoldCounts(reg), { unsold: 2, awaiting: 2 }, 'ช่อง = ZC + ZA · หมายเหตุ = ZC + ZA (ZS ขายแล้ว)');
+  assert.equal(unsoldNote(unsoldCounts(reg)), 'เสนอราคาได้ · 2 พื้นที่รอยืนยันหน้างาน');
+  // กำลังยืนยันอย่างเดียว / ขายแล้วอย่างเดียว
+  assert.equal(unsoldCounts({ sites: [{ zones: [{ confirm: 'confirming', surveyedAt: '2026-10-01' }] }] }).awaiting, 1);
+  assert.equal(unsoldNote(unsoldCounts({ sites: [{ zones: [{ confirm: 'confirming', surveyedAt: '2026-10-01' }] }] })),
+    'เสนอราคาได้ · 1 พื้นที่รอยืนยันหน้างาน');
+  assert.equal(unsoldCounts({ sites: [{ zones: [{ confirm: 'confirming', termState: 'active', surveyedAt: '2026-10-01' }] }] }).awaiting, 0);
+  // ค่าอื่นไม่ถูกนับ (ไม่เดา)
+  assert.equal(unsoldCounts({ sites: [{ zones: [{ confirm: 'drawing', surveyedAt: '2026-10-01' }, { confirm: 'none', surveyedAt: '2026-10-01' }] }] }).awaiting, 0);
+  // สองค่าอยู่บนบรรทัดเดียวของตัวนับ
+  assert.match(PANEL, /awaiting: zones\.filter\(\(zone\) => zone\.confirm === "awaiting" \|\| zone\.confirm === "confirming"\)\.length \}/);
 });
 
 test('sales-q6 + sales-q7 สายไฟ: ตัวเลขของช่อง · ประโยคที่มีจำนวน · คลาสตัดบรรทัด อ่านรายการเดียวกัน · ไม่อ่านยอดรวม/สูตรลบของทะเบียนแล้ว', () => {

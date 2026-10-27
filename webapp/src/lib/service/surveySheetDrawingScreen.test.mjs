@@ -385,7 +385,7 @@ test('ตัวตัดสินของโมดัลส่งผล: ใบ
   assert.equal(blank.choice.missing, SURVEY_CONFIRM_MISSING);
   assert.deepEqual(blank.choice.options.map((o) => o.value), ['needed', 'not_needed']);
   for (const option of blank.choice.options) assert.ok(option.label && option.hint, 'ไทล์มีคำกำกับ');
-  assert.ok(blank.choice.pendingNote, 'จนกว่าปุ่มของฝ่ายขายจะมีจริง — บรรทัดใต้ไทล์กันหัวหน้ารับปากแทน');
+  assert.equal(blank.choice.pendingNote, null, 'งวด S5: ปุ่มของฝ่ายขายมีจริงแล้ว — ไม่มีบรรทัดใต้ไทล์');
   const needed = ask('needed');
   const final = ask('not_needed');
   assert.equal(needed.effects.length, blank.effects.length + 1, 'ข้อป้ายบนทะเบียนขึ้นหลังเลือกเท่านั้น');
