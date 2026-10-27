@@ -1,6 +1,8 @@
 "use client";
 
-/* ปุ่ม "โหลดชุดเอกสาร" ของทะเบียนใบสั่งขาย (มติเจ้าของ 27/10/2569) — ใบที่ติ๊กไว้ → ZIP โฟลเดอร์ละใบ
+/* ปุ่ม "โหลดชุดเอกสาร" (มติเจ้าของ 27/10/2569) — ใบที่ติ๊กไว้ → ZIP โฟลเดอร์ละใบ
+ * อยู่สองที่: ทะเบียนใบสั่งขาย · รายงานยอดขาย (แผงใบสั่งขายที่อนุมัติแล้ว) — แถวรายงานของใบ Actual รายงวดมีหลายแถวต่อใบ
+ * ⇒ นับ/ส่งเป็นใบที่ไม่ซ้ำ (`uniqueSalesOrders`)
  * (QT · SO · หลักฐานการชำระ · ใบกำกับภาษี) · ตรรกะทั้งหมดอยู่ `lib/sales/salesOrderBundle.js` ที่นี่แค่ต่อสาย
  *
  * ⭐ **ปุ่มขึ้นเสมอ บอกเหตุตอนกด** (กฎปุ่มกดไม่ได้ของระบบ) — ยังไม่ติ๊ก / เกินเพดาน = บอกผ่าน `onNotice`
@@ -13,13 +15,21 @@ import { FolderDown } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { apiFetch, apiJson } from "@/lib/apiFetch";
 import { businessDate } from "@/lib/businessDate";
-import { BUNDLE_MISSING_FILE, SALES_ORDER_BUNDLE_MAX, buildSalesOrderBundle } from "@/lib/sales/salesOrderBundle";
+import {
+  BUNDLE_MISSING_FILE, SALES_ORDER_BUNDLE_MAX, buildSalesOrderBundle, uniqueSalesOrders,
+} from "@/lib/sales/salesOrderBundle";
 
 const enc = encodeURIComponent;
 
-/* ไบต์ของไฟล์หนึ่งไฟล์ผ่าน proxy ของบ้านนั้น — 401/403 ของระบบตอบคำอังกฤษ ⇒ แปลเป็นไทยก่อนลง ไฟล์ที่ขาด.txt */
+/* ไบต์ของไฟล์หนึ่งไฟล์ผ่าน proxy ของบ้านนั้น — 401/403 ของระบบตอบคำอังกฤษ ⇒ แปลเป็นไทยก่อนลง ไฟล์ที่ขาด.txt
+   ⭐ 5xx = ลองอีกครั้งเดียว (GET ทุกเส้นที่นี่อ่านอย่างเดียว · เส้น PDF สร้างไฟล์แบบ idempotent) — 🐞 27/10 PDF ใบสั่งขายล้มด้วย
+   `spawn ETXTBSY` ครั้งเดียวแล้วหายจากชุดทั้งที่ลองใหม่ก็ได้ */
 async function fetchFile(href) {
-  const res = await apiFetch(href, { cache: "no-store" });
+  let res = await apiFetch(href, { cache: "no-store" });
+  if (res.status >= 500) {
+    await new Promise((resolve) => { setTimeout(resolve, 1500); });
+    res = await apiFetch(href, { cache: "no-store" });
+  }
   if (!res.ok) {
     if (res.status === 401) throw new Error("เซสชันหมดอายุ — เข้าสู่ระบบใหม่แล้วโหลดอีกครั้ง");
     if (res.status === 403) throw new Error("ไม่มีสิทธิ์เปิดไฟล์นี้");
@@ -44,7 +54,8 @@ function saveBlob(blob, fileName) {
   URL.revokeObjectURL(url);
 }
 
-export default function SalesOrderBundleButton({ orders = [], onNotice }) {
+export default function SalesOrderBundleButton({ orders: rows = [], onNotice }) {
+  const orders = uniqueSalesOrders(rows);
   const [progress, setProgress] = useState(null);
   const busy = progress !== null;
 
@@ -69,13 +80,22 @@ export default function SalesOrderBundleButton({ orders = [], onNotice }) {
         loadDocuments, fetchFile, JSZip, onProgress: setProgress,
       });
       saveBlob(blob, `ชุดเอกสาร SO ${orders.length} ใบ ${businessDate()}.zip`);
+      /* ดึงไม่ได้ (failed) = เตือน — ต้องมีคนทำอะไรต่อ · ยังไม่มีในระบบ (absent · งวดที่ยังไม่จ่าย ฯลฯ) = เรื่องปกติ บอกจำนวนพอ */
+      const failed = missing.filter((m) => !m.absent).length;
+      const absent = missing.length - failed;
+      const title = `โหลดแล้ว ${orders.length} ใบ ${fileCount} ไฟล์${failed ? ` · ดึงไม่ได้ ${failed} ไฟล์` : ""}`;
+      const absentText = absent ? `ยังไม่มีในระบบ ${absent} รายการ (เช่นงวดที่ยังไม่ชำระยังไม่มีสลิป)` : "";
       onNotice?.(missing.length
         ? {
-          tone: "warning",
-          title: `โหลดแล้ว ${orders.length} ใบ ${fileCount} ไฟล์ · ขาด ${missing.length} ไฟล์`,
-          text: `รายการที่ขาดและเหตุอยู่ใน "${BUNDLE_MISSING_FILE}" ในไฟล์ ZIP — ใบที่ยังไม่อนุมัติไม่มี PDF ฉบับที่ออกจริง`,
+          tone: failed ? "warning" : "success",
+          title,
+          text: [
+            failed ? "ลองโหลดใบที่ขาดอีกครั้ง" : "",
+            absentText,
+            `รายละเอียดอยู่ใน "${BUNDLE_MISSING_FILE}" ในไฟล์ ZIP`,
+          ].filter(Boolean).join(" · "),
         }
-        : { tone: "success", title: `โหลดแล้ว ${orders.length} ใบ ${fileCount} ไฟล์`, text: "ใบละหนึ่งโฟลเดอร์ ครบทุกไฟล์" });
+        : { tone: "success", title, text: "ใบละหนึ่งโฟลเดอร์ ครบทุกไฟล์" });
     } catch (error) {
       onNotice?.({ tone: "error", title: "สร้างชุดเอกสารไม่สำเร็จ", text: error?.message || "ลองใหม่อีกครั้ง" });
     } finally {

@@ -21,6 +21,8 @@ import ExcelDownloadButton from "@/components/ui/ExcelDownloadButton";
 import { businessLineBadge, dealTypeBadge } from "@/components/salesPlanning/ui";
 import { CollapseAllButton, GroupMenu, SortDirButton, SortMenu } from "@/components/ui/ViewMenus";
 import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
+import SalesOrderBundleButton from "@/components/salesPlanning/SalesOrderBundleButton";
+import { keepVisibleSelection } from "@/lib/sales/salesOrderBundle";
 import { salesTeamLabel, useSalesTeams } from "@/lib/master/salesTeamRegistry";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
@@ -1042,6 +1044,22 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
       .filter((g) => g.orders.length);
   }, [grouped, groups, pager.pageRows]);
 
+  /* ── ติ๊กเลือกใบ → ชุดเอกสาร QT · SO · การชำระ (มติเจ้าของ 27/10/2569 · ตัวเดียวกับทะเบียนใบสั่งขาย) ──────
+     ⭐ เลือกเป็น **ใบ** (คีย์ = id ของใบ) — ใบ Actual รายงวดมีหลายแถว ติ๊กแถวไหนก็ติ๊กทั้งใบ · ปุ่มยุบเป็นโฟลเดอร์เดียว
+     ⭐ ติ๊กหัวตาราง = ทุกใบหลังเจาะ/ค้นหา/กรอง **ทุกหน้า** · ชุดแถวขยับ = ตัดใบที่หลุดออก (ไม่โหลดใบที่มองไม่เห็น)
+       ⚠️ หน้านี้โหลดใหม่ตอนกลับมาที่แท็บ — ล้างทั้งชุดทุกครั้งที่ `filtered` เปลี่ยนตัว = ที่ติ๊กหายเอง (ดู keepVisibleSelection) */
+  const [selected, setSelected] = useState(() => new Set());
+  const [bundleNotice, setBundleNotice] = useState(null);
+  const visibleIds = useMemo(() => [...new Set(filtered.map((o) => o.id))], [filtered]);
+  useEffect(() => { setSelected((prev) => keepVisibleSelection(prev, visibleIds)); }, [visibleIds]);
+  const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
+  const selectedRows = useMemo(() => ordered.filter((o) => selected.has(o.id)), [ordered, selected]);
+  const toggleSelected = (id) => setSelected((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
   const filterCount = activeFilterCount(f);
   const extraFilters = filterCount > 0 || q.trim();
   const searchRef = useRef(null);
@@ -1066,6 +1084,14 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
     const badge = FINANCE_STATE_BADGE[financeStateOf(o)];
     return (
       <tr key={o.rowKey || o.id}>
+        <td className="w-9 text-center">
+          <input
+            type="checkbox"
+            checked={selected.has(o.id)}
+            onChange={() => toggleSelected(o.id)}
+            aria-label={`เลือก ${o.orderNumber || o.id}`}
+          />
+        </td>
         <td>
           <Link className={`table-row-link ${styles.docNo}`} href={`/sa/sales-orders/${o.id}`}>{o.orderNumber}</Link>
           {/* แถวงวดของใบ "Actual รายงวด" (mig 0412) — ยอด/เงินในแถวเป็นของงวดที่นับในเดือนนี้เท่านั้น */}
@@ -1111,7 +1137,9 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
       title="ใบสั่งขายที่อนุมัติแล้ว"
       subtitle="อนุมัติในช่วงที่เลือก · งวดคิดจากวันที่อนุมัติ เวลาไทย · ยอดที่นับ = ยอดหน้าใบ − VAT ท้ายใบ · ยอดเก็บจริง = งวดที่บัญชีรับรองแล้ว (รวม VAT) · ยอดค้างชำระ = ยอดหน้าใบ − ยอดเก็บจริง"
       /* นับแถว (= แถวที่เห็นหลังกด · M10b) แต่ใบรายงวดที่แตกหลายเดือนบอก "n แถว · m ใบ" (orderRowsLabel · review รอบสอง 26/10) */
-      count={loading || error ? null : orderRowsLabel(filtered)}
+      count={loading || error ? null
+        : selected.size ? `เลือก ${selected.size}/${visibleIds.length} ใบ` : orderRowsLabel(filtered)}
+      actions={<SalesOrderBundleButton orders={selectedRows} onNotice={setBundleNotice} />}
       loading={loading}
       toolbar={(
         /* ลำดับตามกติกากลางของ ViewMenus: ค้นหา · ตัวกรอง · จัดกลุ่ม · spacer · เรียง */
@@ -1187,6 +1215,16 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
         </EmptyState>
       ) : (
         <>
+          {bundleNotice && (
+            <StatusNotice
+              tone={bundleNotice.tone}
+              title={bundleNotice.title}
+              className="mb-4"
+              action={<Button size="sm" variant="ghost" onClick={() => setBundleNotice(null)}>ปิด</Button>}
+            >
+              {bundleNotice.text}
+            </StatusNotice>
+          )}
           {/* ประกาศเฉพาะผลเทียบยอดตอนเจาะ — ป้ายจำนวนของแผงกับ Pager ประกาศจำนวนอยู่แล้ว ไม่ต้องซ้ำทุกตัวอักษรที่พิมพ์ */}
           <div className={styles.resultNote} role={check ? "status" : undefined}>
             {check ? (
@@ -1218,6 +1256,14 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
             <table>
               <thead>
                 <tr>
+                  <th className="w-9 text-center">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={() => setSelected(allSelected ? new Set() : new Set(visibleIds))}
+                      aria-label="เลือกทุกใบที่แสดงอยู่"
+                    />
+                  </th>
                   <th>ใบสั่งขาย</th>
                   <th className="num">ยอดที่นับ</th>
                   <th className={styles.colCustomer}>ลูกค้า</th>
@@ -1239,7 +1285,7 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
                   <tbody key={group.key}>
                     {group.label && (
                       <TableGroupRow
-                        colSpan={13}
+                        colSpan={14}
                         label={group.label}
                         badge={orderRowsLabel(group.allOrders || group.orders)}
                         total={money(group.total)}
@@ -1257,6 +1303,7 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
               })}
               <tfoot>
                 <tr>
+                  <td />
                   <td>รวม {orderRowsLabel(filtered)}{pager.pageCount > 1 ? " (ทุกหน้า)" : ""}</td>
                   <td className="num"><Money value={totals.amount} /></td>
                   <td colSpan={7} />

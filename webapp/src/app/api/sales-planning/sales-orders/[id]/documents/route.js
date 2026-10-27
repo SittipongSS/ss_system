@@ -60,7 +60,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     const contract = contractRes.row && canViewSalesAttachment(contractRes.row, user) ? contractRes.row : null;
     const contractFiles = contract ? await listAttachments('contract', contract.id, supabase) : [];
 
-    const { groups, total } = buildSalesOrderDocuments({
+    const { groups, total, installments: installmentFiles } = buildSalesOrderDocuments({
       order,
       quotation: quotationRes.row,
       installments,
@@ -68,7 +68,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       contract,
       contractFiles,
     });
-    return ok({ groups, total, attach: attachState(order, user) });
+    return ok({ groups, total, installments: installmentFiles, attach: attachState(order, user) });
   } catch (error) {
     // `listAttachments` / `loadInstallments` โยนเมื่ออ่านไม่สำเร็จ — ตอบ 500 ให้จอบอก ไม่ใช่กลุ่มว่าง
     return fail(`อ่านเอกสารของใบนี้ไม่สำเร็จ: ${error?.message || error}`, 500);

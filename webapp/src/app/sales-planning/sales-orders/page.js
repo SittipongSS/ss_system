@@ -39,6 +39,7 @@ import {
 import StatusBadge from "@/components/ui/StatusBadge";
 import ServiceAgingChip from "@/components/salesPlanning/ServiceAgingChip";
 import SalesOrderBundleButton from "@/components/salesPlanning/SalesOrderBundleButton";
+import { keepVisibleSelection } from "@/lib/sales/salesOrderBundle";
 import { isInstallmentActualOrder } from "@/lib/sales/salesOrderActualMode";
 import { installmentActualSubLine } from "@/lib/sales/dealAmountDisplay";
 import InstallmentActualSubLine from "@/components/salesPlanning/InstallmentActualSubLine";
@@ -470,13 +471,13 @@ export default function SalesOrdersPage() {
   const columnCount = (serviceView ? 8 : 5) + 1; // +1 = ช่องติ๊กของชุดเอกสาร
 
   /* ── ติ๊กเลือกใบ → ชุดเอกสาร QT · SO · การชำระ (มติเจ้าของ 27/10/2569) ──────────────
-     ⭐ ติ๊กหัวตาราง = ทุกใบหลังค้นหา/กรอง **ทุกหน้า** (ชุดเดียวกับป้ายจำนวน) · ตัวกรองขยับ = ล้างที่เลือก
-       (ทรงเดียวกับ /tax/registrations) ไม่งั้นโหลดใบที่มองไม่เห็นออกไปโดยไม่รู้ตัว
+     ⭐ ติ๊กหัวตาราง = ทุกใบหลังค้นหา/กรอง **ทุกหน้า** (ชุดเดียวกับป้ายจำนวน) · ตัวกรองขยับ = ตัดใบที่หลุดจากรายการออก
+       ไม่งั้นโหลดใบที่มองไม่เห็นออกไปโดยไม่รู้ตัว · ไม่ล้างทั้งชุด — โหลดรายการใหม่แล้วใบเดิมยังอยู่ = ที่ติ๊กต้องอยู่ (keepVisibleSelection)
      ⭐ ใบในชุดเรียงตามลำดับที่ตารางเรียงอยู่ (`sorted`) */
   const [selected, setSelected] = useState(() => new Set());
   const [bundleNotice, setBundleNotice] = useState(null);
-  useEffect(() => { setSelected(new Set()); }, [filtered]);
   const visibleIds = useMemo(() => filtered.map((row) => row.id), [filtered]);
+  useEffect(() => { setSelected((prev) => keepVisibleSelection(prev, visibleIds)); }, [visibleIds]);
   const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
   const selectedRows = useMemo(() => sorted.filter((row) => selected.has(row.id)), [sorted, selected]);
   const toggleSelected = (id) => setSelected((prev) => {
