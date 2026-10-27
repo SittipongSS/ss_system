@@ -6,6 +6,10 @@ import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthor
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
 import { closedProjectBlock } from '@/lib/sales/closedProjectGate';
 import { isSalesOrderReviewer, isSalesOrderWaitingOnMe } from '@/lib/sales/salesOrderWorkflow';
+/* นับ Actual รายงวด (mig 0412) — เลนงวดรออนุมัติ/งวดที่ยื่นได้ ตัวเดียวกับป้ายบนเมนู (nav/counts → salesOrderIdsWaitingOnMe) */
+import {
+  installmentActualAwaitingReview, installmentActualReadyForOwner, isInstallmentActualOrder,
+} from '@/lib/sales/salesOrderActualMode';
 import { isSalesOrderSelfApproval } from '@/lib/sales/salesOrderApprovalOverride';
 import { awaitsFinanceReview } from '@/lib/sales/salesOrderFinanceApproval';
 import { canConfirmPayment } from '@/lib/permissions';
@@ -272,6 +276,9 @@ export const GET = withUser(async ({ user, supabase }) => {
   /* ⭐ ค่า 'submitted' บนใบที่สายของโครงการ/ดีลเปลี่ยนไปแล้ว (ยื่นตอนเป็นบริการ แล้วแก้สายระหว่างรอตรวจ) — ไม่ใช่งานของผู้ตรวจ:
      RPC อนุมัติปฏิเสธ และหน้าใบไม่มีการ์ดงานบริการ ⇒ ขึ้นคิวแล้วเคลียร์ไม่ได้ · ค่าคงไว้ สายกลับเป็นบริการแล้วกลับมารอตรวจเอง */
   const staleServiceReview = (row) => serviceBackfillAwaitingReview(row) && businessLineById.get(row.id) !== 'SERVICE';
+  /* งวดของใบ "Actual รายงวด" (mig 0412) ให้สองเลนของ `_waitingOnMe` / `_awaitingMyApproval` — ใบอื่น = null (เลนไม่นับ · ไม่เดา)
+     ⚠️ งวดอ่านไม่ขึ้น (installmentError ข้างบน) = [] ⇒ เลนนี้ไม่นับ (ตรงกับคอลัมน์งวดที่ว่าง) — ป้ายบนเมนูโยน error ของมันเอง */
+  const actualInstallmentsOf = (row) => (isInstallmentActualOrder(row) ? (installmentsByOrder.get(row.id) || []) : null);
 
   const visible = (orders || [])
     .map((row) => ({
@@ -304,16 +311,34 @@ export const GET = withUser(async ({ user, supabase }) => {
       /* ⚠️ แนบ deal ให้ helper — ใบที่ถูกย้อนอนุมัติตัดสินจากเจ้าของดีล (มติ 24/09) · แถวดิบไม่มี deal = ลิสต์กับป้ายไม่ตรงกัน */
       /* ⭐ เลนงานบริการย้อนหลัง (mig 0392 · D26): ผู้จัดการตรวจ (ตัวตัดสินอ่านจากแถว) + เจ้าของดีลตั้ง — เลนหลังต้องรู้ว่า
          ใบนี้ **ต้องตั้งจริง** (`serviceBackfillNeeded` ใช้บรรทัด + สายธุรกิจ) ⇒ ผู้เรียกคิดส่งเข้าไป · ป้ายบนเมนูคิดแบบเดียวกัน */
+      /* ⭐ เลนนับ Actual รายงวด (mig 0412): ผู้อนุมัติ = มีงวดยื่นรอที่ไม่ใช่ของตัวเอง · เจ้าของดีล = มีงวดที่ยื่นขอนับได้แล้ว
+         — ส่งงวดของใบ (`id, seq, status, actualStatus, actualSubmittedById` จาก loadListInstallments) เฉพาะใบรายงวด · ใบอื่น = null */
       _waitingOnMe: isSalesOrderWaitingOnMe({ ...row, deal: dealById.get(row.dealId) || null }, {
         userId: user.id, reviewer: reviewer && !staleServiceReview(row), role: user.role,
         serviceBackfillNeeded: setupPendingIds.has(row.id),
+        actualInstallments: actualInstallmentsOf(row),
       })
         || (canConfirmPayment(user) && awaitsFinanceReview(row, installmentsByOrder.get(row.id) || [])),
       /* ⭐ ชุดย่อย "รอฉันอนุมัติ" — ตัดใบที่ตัวเองสร้าง/ยื่นออก เพราะอนุมัติเองไม่ได้
-         (admin ใช้สิทธิ์ฉุกเฉินได้ แต่ต้องไปทำที่หน้าใบพร้อมเหตุผล ไม่ใช่จากคิว) */
-      _awaitingMyApproval: isSalesOrderReviewer(user.role)
+         (admin ใช้สิทธิ์ฉุกเฉินได้ แต่ต้องไปทำที่หน้าใบพร้อมเหตุผล ไม่ใช่จากคิว)
+         ⭐ + ใบรายงวดที่มี **งวดยื่นรออนุมัตินับ Actual** ที่ไม่ใช่ของตัวเอง (mig 0412 · คิว "งวดรออนุมัติ" ของมติ 26/10) —
+           ตัวตัดสินเดียวกับเลนผู้อนุมัติของ `_waitingOnMe` (installmentActualAwaitingReview · role ผู้อนุมัติเหมือน RPC) */
+      _awaitingMyApproval: (isSalesOrderReviewer(user.role)
         && row.status === 'pending_approval'
-        && !isSalesOrderSelfApproval(row, user.id),
+        && !isSalesOrderSelfApproval(row, user.id))
+        || installmentActualAwaitingReview(row, actualInstallmentsOf(row) || [], { userId: user.id, role: user.role }),
+      /* 🐞 review รอบสอง 26/10: เลนเจ้าของดีลของใบรายงวด (มีงวดยื่นขอนับได้แล้ว — ตัวตัดสินเดียวกับ `_waitingOnMe`) แยกเป็นธงของแถว
+         ⇒ จอพาแถวนี้ไปแท็บการชำระ (ปุ่ม "ยื่นขอนับงวดนี้" อยู่ที่นั่นที่เดียว) · ไม่ใช้ `_waitingOnMe` ตรง ๆ เพราะใบอนุมัติแล้วอาจอยู่เลน
+         งานบริการย้อนหลังของเจ้าของดีลด้วย (ต้องไปภาพรวม #service-setup) */
+      ...(isInstallmentActualOrder(row) && installmentActualReadyForOwner({ ...row, deal: dealById.get(row.dealId) || null },
+        actualInstallmentsOf(row) || [], { userId: user.id })
+        ? { _installmentReadyForMe: true }
+        : {}),
+      /* จำนวนงวดที่ยื่นรอ AE Sup ของใบรายงวด — `splitSalesOrderAmounts` นับ "รออนุมัติ n ใบ/งวด" จากค่านี้ (แถวใบไม่มีคอลัมน์นับ)
+         · ใบอื่น = ไม่มีคีย์ (ตัวคิดถอยไปตามกติกาเดิม) */
+      ...(isInstallmentActualOrder(row)
+        ? { actualSubmittedCount: (actualInstallmentsOf(row) || []).filter((r) => r.actualStatus === 'submitted').length }
+        : {}),
       /* ⭐ **แกนที่สองของใบเดียวกัน: ขั้นบัญชีตรวจ** (mig 0250 · `financeStatus`)
          ทะเบียนใบสั่งขายอยู่ในเมนูของฝ่ายบัญชีตั้งแต่มติ 2026-08-22 และหน้าสวมเปลือก
          ตามคนดู ⇒ คิวบนหัวหน้าต้องพูดงานของคนที่ยืนอยู่ ไม่ใช่ของสายขายเสมอ
@@ -524,8 +549,20 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 });
 
 /* งวดของใบในหน้ารายการ — `taxInvoiceNo` = ตัวนับ "ใบกำกับ x/y" (mig 0348 · เอาแค่ "มีหรือยัง" ไม่ลากไฟล์มา) ·
-   `refundedAt` = งวดที่คืนเงินแล้ว (0378) · ⚠️ ก่อนรัน 0378 = 42703 ⇒ อ่านชุดเดิม (ไม่มีงวดคืนเงินในฐานอยู่แล้ว) */
+   `refundedAt` = งวดที่คืนเงินแล้ว (0378) · ⚠️ ก่อนรัน 0378 = 42703 ⇒ อ่านชุดเดิม (ไม่มีงวดคืนเงินในฐานอยู่แล้ว)
+   ⭐ `id, seq, "actualStatus", "actualSubmittedById"` (mig 0412) = สองเลนของ Actual รายงวด (`_waitingOnMe` · `_awaitingMyApproval`) +
+     จำนวนงวดที่ยื่นรอ (`actualSubmittedCount`) — ชุดเดียวกับที่ป้ายบนเมนูอ่าน · `"actualApprovedVia"` = สัญญาณ "กดนับที่เหลือทั้งหมดแล้ว"
+     (มติข้อ 10 — ใบแบบนั้นไม่มีงวดให้ยื่น ⇒ เลนเจ้าของดีลไม่ชี้งวดที่ยื่นไม่ได้) · `"frozenAt"` = งวดยังไม่ตรึง (review รอบสี่ —
+     ยื่นไม่ได้จน AE Sup กดปุ่มกู้ ⇒ เลนเจ้าของดีลไม่นับ · ป้ายเมนูอ่านชุดเดียวกัน) · ⚠️ ก่อนรัน 0412 = 42703 ⇒ ถอยเป็นชุดของ 0378
+     (ใบยังไม่มี "actualMode" ⇒ ทุกใบเป็นทั้งใบ · เลนไม่นับ) */
 async function loadListInstallments(supabase, orderIds) {
+  const withActual = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
+    .from('sales_order_installments')
+    .select('id, salesOrderId, seq, status, kind, "dueDate", "coversFrom", "coversTo", "taxInvoiceNo", "refundedAt", "actualStatus", "actualSubmittedById", "actualApprovedVia", "frozenAt"')
+    .in('salesOrderId', chunk)
+    .order('salesOrderId', { ascending: true })
+    .order('id', { ascending: true })));
+  if (withActual.error?.code !== '42703') return withActual;
   const withRefund = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
     .from('sales_order_installments')
     .select('salesOrderId, status, kind, "dueDate", "coversFrom", "coversTo", "taxInvoiceNo", "refundedAt"')

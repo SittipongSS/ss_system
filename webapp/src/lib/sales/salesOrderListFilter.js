@@ -78,7 +78,8 @@ export function salesOrderPassesListFilters(row, filters = EMPTY_SALES_ORDER_FIL
 
 /* ── การ์ดบนแถบ → ตัวกรองชุดใหม่ทั้งชุด (แทนที่ ไม่ใช่เติม) ─────────────────────────────────────────────
    total    "ใบสั่งขายทั้งหมด" = ทุกใบในขอบเขต (rows.length) ⇒ ล้างทุกมิติ
-   pending  "รอตรวจอนุมัติ"   = ใบจากใบเสนอราคา + รออนุมัติ (= pendingApprovalCount)
+   pending  "รอตรวจอนุมัติ"   = ใบจากใบเสนอราคา + รออนุมัติ (= pendingOrderCount — **ใบ** pending_approval ล้วน · งวดที่ยื่นของใบรายงวด
+                                อนุมัติแล้วไม่อยู่ในเลขนี้ (คนละสถานะ — กดแล้วไม่มีทางขึ้น) · หมายเหตุใต้เลขบอกแยก · review รอบสาม 26/10)
    approved "อนุมัติแล้ว" · "Actual ก่อน VAT" = ใบจากใบเสนอราคา + อนุมัติแล้ว (= actualCount · Σ salesOrderActual = actual)
    ⚠️ ที่มา = ใบจากใบเสนอราคาเสมอ — ใบย้อนหลังไม่อยู่ในกองของการ์ด (salesOrderAmountKind = 'excluded') */
 export const SALES_ORDER_CARD_PICKS = Object.freeze({

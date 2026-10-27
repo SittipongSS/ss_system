@@ -2,8 +2,9 @@
 import { fmtMoney, fmtNumber } from "@/lib/format";
 import { MONTH_LABELS } from "@/components/salesPlanning/ui";
 import { PENDING_APPROVAL_LABEL } from "@/lib/sales/salesOrderWorkflow";
-import { WON_AWAITING_SO_LABEL } from "@/lib/sales/dashboardMetrics";
+import { INSTALLMENT_REMAINING_LABEL, WON_AWAITING_SO_LABEL } from "@/lib/sales/dashboardMetrics";
 import { projectionGap } from "@/lib/sales/performanceMath";
+import instStyles from "./instRemaining.module.css";
 
 // ชิ้นส่วนเล็กที่ใช้ร่วมกันในแท็บผลงานขาย — เก็บที่เดียวให้แถบคุมงวด/แถบความคืบหน้า/
 // ตารางติดตาม/แผงทบยอด พูดถึงงวดเดียวกันด้วยคำเดียวกันและฟอร์แมตตัวเลขเหมือนกัน
@@ -58,7 +59,8 @@ export function periodOptions(kind, year) {
    กติกา `statusOf` ยังอยู่ที่ lib/sales/performanceMath.js พร้อมเทสต์ ถ้าจะเอาป้าย
    กลับมาให้เรียกจากที่นั่น อย่าเขียนกติกาสถานะขึ้นใหม่ */
 
-// แถบงวด: เขียว = Actual · เขียวจางลายเฉียง = รออนุมัติ · ส้มลายเฉียง = Won รอยื่น SO · ส้ม = FC คงเหลือ · ขีดเข้ม = ต้องปิด
+// แถบงวด: เขียว = Actual · เขียวจางลายเฉียง = รออนุมัติ · เขียวจางลายตั้ง = รอนับรายงวด (mig 0412) ·
+// ส้มลายเฉียง = Won รอยื่น SO · ส้ม = FC คงเหลือ · ขีดเข้ม = ต้องปิด
 // สเกลครอบผลรวมทุกส่วน · ช่องว่างถึงขีด = คาดขาด · % ข้างแถบเป็น Actual ล้วน (2026-09-14 · ดู barTotal ใต้ไฟล์)
 // `showProjection` = งวดยังไม่จบ — งวดที่จบแล้วไม่พูด "คาดจบงวด/คาดขาด" (กติกาเดียวกับแถบบนสุด)
 export function ProgressBar({ stat, height = 8, showProjection = true }) {
@@ -76,6 +78,7 @@ export function ProgressBar({ stat, height = 8, showProjection = true }) {
           display: "flex", overflow: "hidden", height,
           borderRadius: height / 2, background: "var(--panel-2)",
           border: "1px solid var(--border)", "--perf-pending-w": w(stat.pendingApproval || 0),
+          "--perf-inst-w": w(nonNegative(stat.instRemaining)),
           "--perf-won-w": w(nonNegative(stat.wonAwaitingSo)),
         }}
       >
@@ -84,6 +87,9 @@ export function ProgressBar({ stat, height = 8, showProjection = true }) {
             แต่จาง + ลายเฉียง (.perf-seg-pending) ไม่ใช่ Actual · ความกว้างมาทางตัวแปร CSS
             ของรางด้านบน · ตัวเลข % ข้างแถบยังเป็น Actual ล้วน */}
         {stat.pendingApproval > 0 && <i className="perf-seg-pending" title={`${PENDING_APPROVAL_LABEL} ${money(stat.pendingApproval)}`} />}
+        {/* รอนับรายงวด (mig 0412) — งวดของใบรายงวดที่ยังไม่ยื่น · เขียวจางลายตั้ง ต่อจากรออนุมัติ (ใบอนุมัติแล้ว
+            แน่นอนกว่า Won รอยื่น SO) · ความกว้างมาทาง --perf-inst-w */}
+        {stat.instRemaining > 0 && <i className={instStyles.seg} title={`${INSTALLMENT_REMAINING_LABEL} ${money(stat.instRemaining)}`} />}
         {/* Won รอยื่น SO (มติผู้ใช้ 2026-09-14) — ดีล Won ที่ยังไม่ยื่น SO · ส้มลายเฉียง (.perf-seg-won)
             คั่นระหว่างรออนุมัติกับ FC คงเหลือ ตามลำดับความแน่นอน · ความกว้างมาทาง --perf-won-w */}
         {stat.wonAwaitingSo > 0 && <i className="perf-seg-won" title={`${WON_AWAITING_SO_LABEL} ${money(stat.wonAwaitingSo)}`} />}
@@ -128,7 +134,7 @@ export function SeriesLegend({ items }) {
 }
 
 /* ── ภาษาของ "ยอดคาด" (มติผู้ใช้ 2026-09-14) ─────────────────────────────────────
-   ⭐ ยอดคาดจบงวด = Actual + รออนุมัติ + Won รอยื่น SO + FC คงเหลือ (`windowStat().projected`)
+   ⭐ ยอดคาดจบงวด = Actual + รออนุมัติ + Won รอยื่น SO + FC คงเหลือ + รอนับรายงวด (`windowStat().projected` · 0412)
       ทุกส่วนเป็น **มูลค่าดีลเต็ม** — FC คงเหลือไม่ได้ถ่วงโอกาสปิด ⇒ ทุกจุดที่พูดยอดคาดต้องบอกฐานนี้
    ⭐ ป้ายส่วนส้มทึบคือ "FC คงเหลือ" คำเดียวทั้งแท็บ (เดิมแถบบนสุดเรียก "Forecast" ส่วนตารางเรียก
       "FC คงเหลือ" ทั้งที่เป็นเลขตัวเดียวกัน)
@@ -136,14 +142,18 @@ export function SeriesLegend({ items }) {
 export const PROJECTION_LABEL = "คาดจบงวด";
 export const FC_REMAINING_LABEL = "FC คงเหลือ";
 export const PROJECTION_BASIS =
-  `${PROJECTION_LABEL} = Actual + ${PENDING_APPROVAL_LABEL} + ${WON_AWAITING_SO_LABEL} + ${FC_REMAINING_LABEL} (มูลค่าดีลเต็ม ไม่ถ่วงโอกาสปิด)`;
+  `${PROJECTION_LABEL} = Actual + ${PENDING_APPROVAL_LABEL} + ${INSTALLMENT_REMAINING_LABEL} + ${WON_AWAITING_SO_LABEL} + ${FC_REMAINING_LABEL} (มูลค่าดีลเต็ม ไม่ถ่วงโอกาสปิด)`;
+/* "นับอะไร" ของกอง "รอนับรายงวด" — ข้อความเดียวทุกจุด (title · หมายเหตุใต้ตาราง · ลิ้นชัก) */
+export const INSTALLMENT_REMAINING_NOTE =
+  "งวดของใบสั่งขายแบบ Actual รายงวดที่ยังไม่ยื่นขอนับ (หรือถูกตีกลับ) — ลงเดือนครบกำหนดของงวด · ไม่มีวันครบกำหนดหรือเลยกำหนดแล้วนับที่เดือนนี้ · ยังไม่ใช่ Actual นับแค่ในยอดคาดจบงวด (งวดที่ยื่นแล้วอยู่ในรออนุมัติ)";
 
 const nonNegative = (v) => Math.max(0, Number(v) || 0);
 
 /** ผลรวมทุกส่วนที่แถบวาด — สเกลของแถบต้องครอบทั้งหมด ไม่งั้นส่วนท้ายถูกตัดทิ้งเงียบ ๆ
  *  (แถว "ยังไม่ได้แยกทีม" มีเส้นติดลบได้ ส่วนที่ติดลบไม่ถูกวาดจึงไม่นับเข้าสเกล) */
 export const barTotal = (stat) =>
-  nonNegative(stat?.actual) + nonNegative(stat?.pendingApproval) + nonNegative(stat?.wonAwaitingSo) + nonNegative(stat?.forecast);
+  nonNegative(stat?.actual) + nonNegative(stat?.pendingApproval) + nonNegative(stat?.instRemaining)
+  + nonNegative(stat?.wonAwaitingSo) + nonNegative(stat?.forecast);
 
 /** "คาดขาด ฿X" / "คาดถึงเป้า" / "ยังไม่มีเป้าให้เทียบ" — คำตัดสินจาก projectionGap ตัวเดียว */
 export function projectionVerdict(stat) {
@@ -164,9 +174,11 @@ const nonZero = (v) => Math.abs(Number(v) || 0) > 1e-9;
 export function barBreakdown(stat) {
   const hasPending = nonZero(stat?.pendingApproval) || nonZero(stat?.pendingApprovalCount);
   const hasWonAwaiting = nonZero(stat?.wonAwaitingSo) || nonZero(stat?.wonAwaitingSoCount);
+  const hasInstRemaining = nonZero(stat?.instRemaining) || nonZero(stat?.instRemainingCount);
   return [
     `Actual ${money(stat?.actual)}`,
     ...(hasPending ? [`${PENDING_APPROVAL_LABEL} ${money(stat.pendingApproval)}`] : []),
+    ...(hasInstRemaining ? [`${INSTALLMENT_REMAINING_LABEL} ${money(stat.instRemaining)}`] : []),
     ...(hasWonAwaiting ? [`${WON_AWAITING_SO_LABEL} ${money(stat.wonAwaitingSo)}`] : []),
     `${FC_REMAINING_LABEL} ${money(stat?.forecast)}`,
   ].join(" · ");
@@ -199,3 +211,28 @@ export function WonAwaitingSoAmount({ amount, count, inline = false }) {
     </span>
   );
 }
+
+/* ยอด "รอนับรายงวด" (mig 0412 · มติเจ้าของ 26/10/2026 ข้อ 5) — หน้าตาคู่กับ WonAwaitingSoAmount
+   ⭐ คำกำกับมาก่อนตัวเลขเสมอ (สีไม่ใช่สัญญาณเดียว) + title บอกว่านับอะไร (INSTALLMENT_REMAINING_NOTE)
+   ⭐ "· N ดีล" โชว์ทุกครั้งที่มีดีล · ไม่มีดีล = ไม่เรนเดอร์
+   props: amount · count · inline (true = ต่อท้ายในบรรทัดเดียวกัน ขนาดตามบรรทัดนั้น)
+          · className (ไม่บังคับ) = ปรับขนาดตามที่วาง — หมายเหตุการ์ด "ยอดปิดได้" ของแดชบอร์ดของฉันส่ง .metricInst (ขนาดเท่าหมายเหตุ ·
+            UAT 27/10 ข้อ 7: .sub fs-5 ใหญ่กว่าบรรทัด "ขาดอีก"/"รออนุมัติ" ข้าง ๆ) · ท่าเดียวกับ PendingApprovalAmount */
+export function InstRemainingAmount({ amount, count, inline = false, className = "" }) {
+  const value = Number(amount) || 0;
+  const deals = Math.max(0, Math.trunc(Number(count) || 0));
+  if (value <= 0 && deals <= 0) return null;
+  return (
+    <span className={[inline ? instStyles.inline : instStyles.sub, className].filter(Boolean).join(" ")} title={INSTALLMENT_REMAINING_NOTE}>
+      <span className={instStyles.main}>
+        <span className={instStyles.tag}>{INSTALLMENT_REMAINING_LABEL}</span>{" "}
+        {money(value)}
+      </span>
+      {deals > 0 ? <span className={instStyles.count}> · {deals} ดีล</span> : null}
+    </span>
+  );
+}
+
+/** คลาสตัวอย่างสีของ legend + คลาสส่วนของแถบ (ใช้กับแถบใหญ่ด้านบนที่มีแอนิเมชัน) */
+export const INST_REMAINING_SWATCH_CLASS = instStyles.swatch;
+export const INST_REMAINING_SEG_CLASS = `${instStyles.seg} ${instStyles.animated}`;

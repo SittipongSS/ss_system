@@ -114,7 +114,7 @@ const PER_ID_GUARDED = new Map([
    🐞 ของเดิมยกเว้นทั้งไฟล์ ⇒ เพิ่มยอด "ใบอนุมัติทั้งทะเบียน" ใหม่ในทะเบียนการชำระ/ทะเบียน SO แล้วเขียวต่อ
    (ใบย้อนหลัง approvedAt = เวลาคีย์ ⇒ ~220 ใบโผล่เป็นยอดเดือนนี้) · เลขตรึงไว้ ⇒ คำสั่งใหม่ต้องจัดชั้นใหม่เสมอ */
 const SEES_HISTORICAL = new Map([
-  ['app/api/nav/counts/route.js', { count: 7, reason: 'เลนอนุมัติ = รออนุมัติ/ตีกลับ รวมใบย้อนหลังโดยตั้งใจ (AE Sup อนุมัติ · ตีกลับให้ผู้คีย์ · 0374) — นับจำนวนใบ ไม่รวมยอด · เลนร่างของใบย้อนหลัง (ผู้คีย์บันทึกค้าง · historicalRowsOnly) · เลนย้อนการอนุมัติรอเจ้าของดีลออก Rev. (มติ 24/09 · pipelineRowsOnly — ใบย้อนหลังย้อนอนุมัติไม่ได้) นับจำนวนใบ ไม่รวมยอด · เลนบัญชีต้อง financeStatus pending (ใบย้อนหลัง NULL) · ป้ายงานเข้าใหม่ของ TS นับถังตั้งรอบ (ใบย้อนหลังผูกโซนตอน AE Sup อนุมัติ ⇒ มาเข้าถังตั้งรอบตรง ๆ · มติ 22/09 · ถังผูกโซนถอดแล้วใน 0392) — นับแถว ไม่รวมยอด · เลนตั้งงานบริการย้อนหลัง (เจ้าของดีล · ผู้จัดการตรวจ) ผ่าน pipelineRowsOnly — นับจำนวนใบ ไม่รวมยอด' }],
+  ['app/api/nav/counts/route.js', { count: 8, reason: 'เลนอนุมัติ = รออนุมัติ/ตีกลับ รวมใบย้อนหลังโดยตั้งใจ (AE Sup อนุมัติ · ตีกลับให้ผู้คีย์ · 0374) — นับจำนวนใบ ไม่รวมยอด · เลนร่างของใบย้อนหลัง (ผู้คีย์บันทึกค้าง · historicalRowsOnly) · เลนย้อนการอนุมัติรอเจ้าของดีลออก Rev. (มติ 24/09 · pipelineRowsOnly — ใบย้อนหลังย้อนอนุมัติไม่ได้) นับจำนวนใบ ไม่รวมยอด · เลนบัญชีต้อง financeStatus pending (ใบย้อนหลัง NULL) · ป้ายงานเข้าใหม่ของ TS นับถังตั้งรอบ (ใบย้อนหลังผูกโซนตอน AE Sup อนุมัติ ⇒ มาเข้าถังตั้งรอบตรง ๆ · มติ 22/09 · ถังผูกโซนถอดแล้วใน 0392) — นับแถว ไม่รวมยอด · เลนตั้งงานบริการย้อนหลัง (เจ้าของดีล · ผู้จัดการตรวจ) ผ่าน pipelineRowsOnly — นับจำนวนใบ ไม่รวมยอด · เลนนับ Actual รายงวด (mig 0412 · ใบ approved + actualMode installment ของเลนผู้อนุมัติ/เจ้าของดีล) ผ่าน pipelineRowsOnly — ใบย้อนหลังเป็นรายงวดไม่ได้ (CHECK ของ 0412) · นับจำนวนใบ ไม่รวมยอด' }],
   ['app/api/service/intake/route.js', { count: 1, reason: 'คิวงานเข้าใหม่ของ TS — ใบย้อนหลังที่อนุมัติแล้วมาพร้อมโซนที่ผูกตอนอนุมัติ (ถังตั้งรอบ · มติ 22/09) · ยอดใช้ตัดสินใบ ฿0 เท่านั้น (paymentNotRequired) ไม่ออกไปกับ response' }],
   ['lib/service/gateContext.js', { count: 1, reason: 'บริบทด่านเข้าไซต์ — ใบของรอบขาย (ใบย้อนหลังที่อนุมัติแล้วด้วยโดยตั้งใจ) · ยอดใช้ตัดสินใบ ฿0 ของข้อ② เท่านั้น (paymentNotRequired) ส่งออกเป็น 0/null ไม่รวมยอด (มติ 22/09)' }],
   ['app/api/finance/payments/route.js', { count: 1, reason: 'ทะเบียนการชำระ — งวดที่ยังต้องเก็บของใบย้อนหลังเป็นเงินจริง (คำตอบข้อ 2) · แถวพก origin' }],
@@ -240,6 +240,10 @@ test('ตัวแยกคำสั่งเห็นตัวห่อบร�
 const DEAL_KPI_FROM_METRICS = new Set([
   'isWonDeal', 'wonAmountOf', 'wonMonthOf', 'isWonAwaitingSo', 'wonAwaitingSoAmountOf', 'wonAwaitingSoCountOf',
   'forecastAccuracyRollup',
+  /* ตัวอ่าน Actual รายเดือน / งวดรออนุมัติ / กอง "รอนับรายงวด" ของดีล (mig 0412 · docs/so-installment-actual.md) — อ่าน cache
+     ชุดเดียวกับ wonAmountOf ⇒ ผู้เรียกต้องตัดดีลภาชนะเหมือนกัน (ดีลภาชนะไม่มีคีย์พวกนี้วันนี้ แต่ wonValue ของมันมีได้ → fallback) */
+  'actualByMonthOf', 'actualInMonths', 'installmentPendingAmountOf', 'installmentPendingCountOf',
+  'installmentRemainingByMonthOf', 'installmentRemainingAmountOf', 'dealClosedValueOf',
 ]);
 function dealKpiImports(text) {
   const names = [];
@@ -259,6 +263,7 @@ const DEAL_KPI_ALLOWLIST = new Map([
   ['lib/sales/wonAwaitingSoRollup.js', 'ตัวรวมล้วน — isWonAwaitingSo ตัดดีลภาชนะเองอีกชั้น'],
   ['lib/sales/reportPendingApproval.js', 'ดีลมาจากใบรออนุมัติที่รายงานกรอง pipeline แล้ว — ใบย้อนหลังไม่มีสถานะรออนุมัติ'],
   ['lib/sales/projectRollup.js', 'ดีลของโครงการ — ดีลภาชนะไม่มีโครงการ (CHECK "projectId" IS NULL)'],
+  ['lib/pm/projectPendingApproval.js', 'ดีลของโครงการ (แถวดีล/KPI หน้าโครงการ) — ดีลภาชนะไม่มีโครงการ (CHECK "projectId" IS NULL) · กติกาเดียวกับ projectRollup'],
   ['app/sales-planning/leads/[id]/page.js', 'ดีลของลีดใบเดียว — ดีลภาชนะไม่มีลีด (CHECK "leadId" IS NULL)'],
   ['app/sales-planning/deals/[id]/page.js', 'หน้าดีลใบเดียว — ยอดผ่าน splitSalesOrderAmounts (ใบย้อนหลัง excluded) · คำใต้การ์ดจาก wonDealForecastHint (kind historical)'],
 ]);
@@ -457,8 +462,9 @@ test('เส้นคีย์/ส่ง/อนุมัติใบย้อน
 // ── 13. จอ ────────────────────────────────────────────────────────────────────────────────────
 test('หน้าใบสั่งขาย: ป้าย Actual เดินตามกองของยอด · ไม่เสนอย้อน Won/คืนร่าง · ไม่ลิงก์ใบเสนอราคาที่ไม่มี', () => {
   const page = code('app/sales-planning/sales-orders/[id]/page.js');
-  assert.match(page, /hint: amountKind === "actual" \? fmtMoney\(order\.actualAmount\)/);
-  assert.match(page, /value: amountKind === "actual" \? fmtMoney\(order\.actualAmount\)/);
+  /* ⭐ ใบ "Actual รายงวด" (mig 0412) แทรกกิ่งของตัวเอง (นับแล้ว x/y งวด) — กิ่งของใบทั้งใบยังเดินตามกองของยอดตัวอักษรเดิม */
+  assert.match(page, /hint: amountKind === "actual" \? \(instProgress \? [^\n]+ : fmtMoney\(order\.actualAmount\)\)/);
+  assert.match(page, /value: amountKind === "actual" && instActual\s*\?[\s\S]{0,1200}?: amountKind === "actual" \? fmtMoney\(order\.actualAmount\)/);
   assert.doesNotMatch(page, /(hint|value): approved \?/);
   assert.match(page, /const showReversal = [^;]*!isHistoricalOrder\(order\)/);
   assert.match(page, /\{ id: "restore",[^\n]*!isHistoricalOrder\(order\)/);

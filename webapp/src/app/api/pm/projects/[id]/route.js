@@ -148,8 +148,9 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       supabase.from('quotations')
         .select('id, dealId, quoteNumber, status, approvalStatus, totalAmount, revisionNo, quoteDate, createdAt')
         .in('dealId', dealIds).order('createdAt', { ascending: false }),
+      // `actualMode` + cache สองช่อง (mig 0412) — ยอด Actual/รออนุมัติของใบ "Actual รายงวด" ผ่านตัวกลาง (projectPendingApproval · salesOrderActual)
       supabase.from('sales_orders')
-        .select('id, dealId, quotationId, orderNumber, status, orderDate, actualAmount, totalAmount')
+        .select('id, dealId, quotationId, orderNumber, status, orderDate, actualAmount, totalAmount, origin, "actualMode", "actualCountedAmount", "actualSubmittedAmount"')
         .in('dealId', dealIds).order('orderDate', { ascending: false }),
       // mig 0169: ฟีดดีลอยู่ในเธรดกลางแล้ว (dealId → entityId, dueDate/activityAt/
       // meetingMode → meta) · normalize กลับเป็นรูปเดิมด้านล่างเพื่อไม่ให้ ProjectDealsHub

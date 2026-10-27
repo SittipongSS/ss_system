@@ -4,7 +4,8 @@ import { bumpStamp, cachedJson } from '@/lib/serverCache';
 import { DASHBOARD_CACHE_PREFIX, dashboardCacheKey, loadDashboardStamp } from '@/lib/sales/dashboardStamp';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { currentMonth } from '@/lib/datePeriods';
-import { forecastAccuracyRollup, isWonDeal, isOpenDeal, isRealLostDeal, wonAmountOf, wonMonthOf } from '@/lib/sales/dashboardMetrics';
+import { dealClosedValueOf, forecastAccuracyRollup, isWonDeal, isOpenDeal, isRealLostDeal, wonMonthOf } from '@/lib/sales/dashboardMetrics';
+import { instRemainingFields, rollupInstRemaining, rollupMonthActual } from '@/lib/sales/actualMonthRollup';
 import { isEmptyDashboardBucket, pendingApprovalFields, rollupPendingApproval } from '@/lib/sales/pendingApprovalRollup';
 import { addWonAwaitingSo, rollupWonAwaitingSo, wonAwaitingSoFields } from '@/lib/sales/wonAwaitingSoRollup';
 import { buildOwnerResolver } from '@/lib/sales/ownerIdentity';
@@ -23,7 +24,11 @@ const DASHBOARD_TTL_MS = 5 * 60 * 1000;
 
 // เฉพาะคอลัมน์ที่ตัวรวมยอดแตะจริง — select('*') ลากทุกคอลัมน์ของทุกดีลมา parse ทิ้ง
 // ทุกครั้งที่ cache หมดอายุ เปลือง CPU + origin transfer โดยไม่มีใครใช้
-const DEAL_COLUMNS = 'stage, projectValue, probability, forecastMonth, wonValue, metadata, confirmedAt, dealType, ownerId, ownerName, team';
+// ⭐ `metadata` พา actualByMonth · soInstPending* · soInstRemainingByDue (mig 0412) มาด้วย — Actual รายเดือนอ่านจากตรงนั้น
+// ⭐ `id` = กุญแจของ `instRemainingDealIds` (rollupInstRemaining) — "รอนับรายงวด · N ดีล" ช่วงไตรมาส/ทั้งปีนับดีลไม่ซ้ำจากช่องนี้
+//   🐞 review รอบสอง 26/10: ไม่มี id = ทุกถังได้ [] ⇒ ผู้อ่านถอยไปบวกจำนวนรายเดือน (ดีลเดียว 12 งวด = "11 ดีล") · `.order('id')` ไม่พา id มาให้
+//   ⚠️ ยาม: performanceMath.test.mjs ("DEAL_COLUMNS ของแดชบอร์ดพา id")
+const DEAL_COLUMNS = 'id, stage, projectValue, probability, forecastMonth, wonValue, metadata, confirmedAt, dealType, ownerId, ownerName, team';
 
 export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
@@ -115,9 +120,12 @@ function aggregateMonth(visibleDeals, targets, month, resolveOwner = () => null,
   // กติกา Won/open/ยอด/เดือน — ใช้ชุดกลางร่วมกับ drill-down modal (lib/sales/dashboardMetrics)
   const isWon = isWonDeal;
   const isOpen = isOpenDeal;
-  // Actual อ่านผ่าน cache wonValue เฉพาะเมื่อ DB ยืนยันว่า cache มาจาก Approved SO.
+  // Actual อ่านผ่าน cache ของดีลเฉพาะเมื่อ DB ยืนยันว่า cache มาจาก Approved SO (actualSource).
   // projectValue ยังคงเป็นค่าคาดการณ์ของดีลและใช้คิด variance เท่านั้น.
-  const wonAmt = wonAmountOf;
+  /* ⭐ Actual ของเดือน = แผนที่รายเดือนของดีล (actualByMonth · mig 0412) — **รอบแยกข้างล่าง** ไม่ขี่ลูป Won:
+     ใบ "Actual รายงวด" ลงยอดงวดในเดือนที่ AE Sup อนุมัติงวด ซึ่งไม่ใช่ wonMonth (เดือนอนุมัติใบ) ⇒ ดีลเดียวมี Actual
+     ได้หลายเดือน · wonCount / FC Total / Won รอยื่น SO ยังอยู่ที่ wonMonth (ลูป Won เดิม)
+     ใบทั้งใบล้วน (ทุกดีลวันนี้): actualByMonth = { wonMonth: wonValue } ⇒ ตัวเลขเท่าเดิมทุกสตางค์ */
   const forecastAmt = (d) => Number(d.projectValue ?? 0);
   const wonMonth = wonMonthOf;
   const openDeals = visibleDeals.filter((d) => isOpen(d) && monthKey(d.forecastMonth) === month);
@@ -129,10 +137,12 @@ function aggregateMonth(visibleDeals, targets, month, resolveOwner = () => null,
   const accuracy = forecastAccuracyRollup(openDeals, wonDeals, lostDeals);
   const pipelineValue = accuracy.remainingForecast;
   const weightedForecast = openDeals.reduce((sum, d) => sum + forecastAmount(d), 0);
-  const wonValue = accuracy.wonValue;
   // variance = ผลต่างคาดการณ์ vs ปิดจริง ของดีลที่ Won (บวก = ปิดต่ำกว่าคาด)
+  /* ⭐ เทียบกับ "ยอดปิดเต็ม" ของดีลที่ Won เดือนนี้ (dealClosedValueOf = Actual + งวดยื่นแล้ว + รอนับรายงวด · mig 0412)
+     ไม่ใช่ Actual ของเดือน — ใบรายงวดที่นับไปบางงวดต้องไม่ฟ้อง "ปิดต่ำกว่าคาด" เท่างวดที่ยังไม่ถึงคิว
+     (ใบทั้งใบ: ยอดปิดเต็ม = wonValue เท่าเดิม) */
   const wonForecastValue = accuracy.wonForecastValue;
-  const wonVariance = wonForecastValue - wonValue;
+  const wonVariance = wonForecastValue - wonDeals.reduce((sum, d) => sum + dealClosedValueOf(d), 0);
   // มูลค่าคาดการณ์ของดีลที่ "แพ้" ในเดือนนี้ — ใช้คิด FC คงเหลือ = FC Total − AT − Lost
   const lostForecast = accuracy.lostForecast;
   // FC Total is the original forecast footprint for accuracy review: Open + Won + Lost.
@@ -172,11 +182,12 @@ function aggregateMonth(visibleDeals, targets, month, resolveOwner = () => null,
      เหมือนดีล Won ที่ลูปรวมอยู่แล้ว (ต่างจากรออนุมัติที่ต้องเป็นรอบแยกเพราะเดือนคนละกติกา)
      ⛔ ช่องแยก wonAwaitingSo/wonAwaitingSoCount เท่านั้น — ไม่แตะ won/actual/fcTotal/gap/pending
      (กติกา + เหตุผลเต็มอยู่ที่ lib/sales/wonAwaitingSoRollup) */
-  const typeMap = Object.fromEntries(DEAL_TYPES.map((t) => [t, { type: t, fcTotal: 0, actual: 0, fcRemaining: 0, openCount: 0, wonCount: 0, lostCount: 0, ...pendingApprovalFields(), ...wonAwaitingSoFields() }]));
+  const typeMap = Object.fromEntries(DEAL_TYPES.map((t) => [t, { type: t, fcTotal: 0, actual: 0, fcRemaining: 0, openCount: 0, wonCount: 0, lostCount: 0, ...pendingApprovalFields(), ...wonAwaitingSoFields(), ...instRemainingFields() }]));
   for (const d of monthDeals) {
     const b = typeMap[dealTypeOf(d)];
     if (isWon(d)) {
-      b.actual += wonAmt(d); b.fcTotal += forecastAmt(d); b.wonCount += 1;
+      // Actual ไม่บวกที่นี่ — มาจากรอบ Actual รายเดือน (rollupMonthActual) ข้างล่าง
+      b.fcTotal += forecastAmt(d); b.wonCount += 1;
       addWonAwaitingSo(b, d);
     }
     else if (d.stage === 'lost') { b.fcTotal += forecastAmt(d); b.lostCount += 1; }
@@ -206,7 +217,7 @@ function aggregateMonth(visibleDeals, targets, month, resolveOwner = () => null,
     const acc = resolveOwner(id, name);
     const key = ownerBucketKey({ acc, id, name, team });
     if (!ownerMap[key]) {
-      ownerMap[key] = { ownerId: acc?.id || id || null, ownerName: acc?.name || name || 'ไม่ระบุ', team: team || null, target: 0, won: 0, weighted: 0, fcTotal: 0, lost: 0, openCount: 0, wonCount: 0, fc: { 20: 0, 50: 0, 80: 0, 100: 0 }, ...pendingApprovalFields(), ...wonAwaitingSoFields() };
+      ownerMap[key] = { ownerId: acc?.id || id || null, ownerName: acc?.name || name || 'ไม่ระบุ', team: team || null, target: 0, won: 0, weighted: 0, fcTotal: 0, lost: 0, openCount: 0, wonCount: 0, fc: { 20: 0, 50: 0, 80: 0, 100: 0 }, ...pendingApprovalFields(), ...wonAwaitingSoFields(), ...instRemainingFields() };
     } else {
       ownerMap[key].ownerId ||= id || null;
       ownerMap[key].ownerName = ownerMap[key].ownerName === 'ไม่ระบุ' && name ? name : ownerMap[key].ownerName;
@@ -220,7 +231,7 @@ function aggregateMonth(visibleDeals, targets, month, resolveOwner = () => null,
   for (const d of [...openDeals, ...wonDeals, ...lostDeals]) {
     const b = ownerBucket(d.ownerId, d.ownerName, d.team);
     if (isWon(d)) {
-      b.won += wonAmt(d); b.fcTotal += forecastAmt(d); b.wonCount += 1;
+      b.fcTotal += forecastAmt(d); b.wonCount += 1;
       addWonAwaitingSo(b, d);
     }
     else if (d.stage === 'lost') { b.lost += forecastAmt(d); b.fcTotal += forecastAmt(d); }
@@ -233,7 +244,7 @@ function aggregateMonth(visibleDeals, targets, month, resolveOwner = () => null,
   const teamKey = (team) => team || 'ไม่ระบุ';
   const teamBucket = (team) => {
     const key = teamKey(team);
-    if (!teamMap[key]) teamMap[key] = { team: team || null, target: 0, targetPersonSum: 0, won: 0, weighted: 0, fcTotal: 0, lost: 0, openCount: 0, wonCount: 0, fc: { 20: 0, 50: 0, 80: 0, 100: 0 }, ...pendingApprovalFields(), ...wonAwaitingSoFields() };
+    if (!teamMap[key]) teamMap[key] = { team: team || null, target: 0, targetPersonSum: 0, won: 0, weighted: 0, fcTotal: 0, lost: 0, openCount: 0, wonCount: 0, fc: { 20: 0, 50: 0, 80: 0, 100: 0 }, ...pendingApprovalFields(), ...wonAwaitingSoFields(), ...instRemainingFields() };
     return teamMap[key];
   };
   // เป้าระดับ SA (team=null) = "ยอดรวมบริษัท" คร่อมทุกทีม — แยกไว้ต่างหาก ไม่ใช่ทีมหนึ่ง
@@ -259,12 +270,27 @@ function aggregateMonth(visibleDeals, targets, month, resolveOwner = () => null,
   for (const d of [...openDeals, ...wonDeals, ...lostDeals]) {
     const b = teamBucket(d.team);
     if (isWon(d)) {
-      b.won += wonAmt(d); b.fcTotal += forecastAmt(d); b.wonCount += 1;
+      b.fcTotal += forecastAmt(d); b.wonCount += 1;
       addWonAwaitingSo(b, d);
     }
     else if (d.stage === 'lost') { b.lost += forecastAmt(d); b.fcTotal += forecastAmt(d); }
     else if (isOpen(d)) { b.weighted += forecastAmount(d); b.fcTotal += forecastAmt(d); b.openCount += 1; b.fc[snapFc(d.probability)] += forecastAmount(d); }
   }
+
+  /* ── Actual ของเดือน (mig 0412 · มติเจ้าของ 26/10/2026) ──────────────────────────────
+     **รอบแยก ไม่ขี่ลูป Won ข้างบน** — วนดีล Won ทุกใบที่แดชบอร์ดเห็น แล้วบวกเฉพาะ actualByMonth[เดือนนี้]
+     ⇒ งวดของใบรายงวดที่อนุมัติเดือนหลังลงเดือนของมันเอง (ดีล Won เดือนก่อนก็ตาม) · ไม่ลากงวดเก่าไปเดือนใหม่
+     ⭐ ลงถังคน/ทีม/หมวดชุดเดียวกับลูป Won (ตัวหาถังตัวเดียวกัน) ⇒ ถังที่มี wonCount ได้ Actual ของดีลนั้นครบ
+     ⭐ ใบทั้งใบล้วน: ดีลชุดเดียวกับ wonDeals · ลำดับบวกเดียวกัน ⇒ won/actual/wonValue เท่าเดิมทุกสตางค์
+     ⛔ ไม่บวกรออนุมัติ / รอนับรายงวด / Won รอยื่น SO เข้า won/actual/wonValue — หน้าเติมยอดจากระบบคัดลอกสามช่องนี้
+        ไปเก็บ sales_history ถาวร (ยอดของแต่ละเดือนต้องเป็นส่วนของเดือนนั้นพอดี ไม่ใช่ทั้งก้อน ไม่ซ้ำสองเดือน) */
+  const wonValue = rollupMonthActual(visibleDeals, month, {
+    attribute: [
+      (d, amount) => { ownerBucket(d.ownerId, d.ownerName, d.team).won += amount; },
+      (d, amount) => { teamBucket(d.team).won += amount; },
+      (d, amount) => { typeMap[dealTypeOf(d)].actual += amount; },
+    ],
+  });
 
   /* ── ยอด SO "รออนุมัติ" (มติผู้ใช้ 2026-09-11 · mig 0353) ─────────────────────
      **รอบแยก ไม่ขี่ลูป Won ข้างบน** — ยอดนี้ลงเดือนปัจจุบันเวลาไทยเสมอ ส่วน Won ลงเดือน
@@ -274,6 +300,21 @@ function aggregateMonth(visibleDeals, targets, month, resolveOwner = () => null,
         fcTotal/gap/variance (หน้าเติมยอดจากระบบคัดลอก won/wonValue ไปเก็บ sales_history ถาวร)
      ⚠️ ต้องอยู่ก่อนกรองถังผีด้านล่าง — คนที่เดือนนี้มีแต่ใบรออนุมัติต้องยังมีแถว */
   const pendingApprovalTotals = rollupPendingApproval(visibleDeals, month, {
+    now,
+    attribute: [
+      (d) => ownerBucket(d.ownerId, d.ownerName, d.team),
+      (d) => teamBucket(d.team),
+      (d) => typeMap[dealTypeOf(d)],
+    ],
+  });
+
+  /* ── กอง "รอนับรายงวด" (`instRemaining` · mig 0412 · มติข้อ 5) ────────────────────────
+     งวดของใบรายงวดที่ยังไม่ยื่น/ถูกตีกลับ — ลงเดือนครบกำหนด · ไม่มีวันครบกำหนด/เลยกำหนด = เดือนปัจจุบันเวลาไทย
+     (นาฬิกา `now` ตัวเดียวกับคีย์ cache — ข้ามเดือนแล้ว cache ใหม่ พับเดือนใหม่เอง)
+     **รอบแยก** เหมือนรออนุมัติ (เดือนของกองนี้ไม่ใช่ wonMonth) · ลงถังชุดเดียวกับ Actual ของดีลนั้น
+     ⛔ ช่องแยก instRemaining/instRemainingCount เท่านั้น — เข้าได้แค่ยอดคาดการณ์ (projected) บนแท็บผลงานขาย
+     ⚠️ ต้องอยู่ก่อนกรองถังผีด้านล่างเหมือนรออนุมัติ */
+  const instRemainingTotals = rollupInstRemaining(visibleDeals, month, {
     now,
     attribute: [
       (d) => ownerBucket(d.ownerId, d.ownerName, d.team),
@@ -333,6 +374,11 @@ function aggregateMonth(visibleDeals, targets, month, resolveOwner = () => null,
       // ดีล "Won รอยื่น SO" (มูลค่าดีล · จำนวนดีล) — ช่องแยก ใช้ได้แค่ยอดคาดการณ์ ไม่ใช่ Actual/เป้า/ขาด-เกิน
       wonAwaitingSo: wonAwaitingSoTotals.wonAwaitingSo,
       wonAwaitingSoCount: wonAwaitingSoTotals.wonAwaitingSoCount,
+      // กอง "รอนับรายงวด" (ยอดประมาณก่อน VAT · จำนวนดีล · mig 0412) — ช่องแยก ใช้ได้แค่ยอดคาดการณ์
+      instRemaining: instRemainingTotals.instRemaining,
+      instRemainingCount: instRemainingTotals.instRemainingCount,
+      // id ของดีลในกองนี้ของเดือน — ช่วงหลายเดือนนับดีลไม่ซ้ำ (performanceMath.windowStat · review 26/10)
+      instRemainingDealIds: instRemainingTotals.instRemainingDealIds,
     },
     byStage: Object.values(byStage),
     byForecast,

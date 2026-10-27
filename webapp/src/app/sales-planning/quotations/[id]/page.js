@@ -30,7 +30,8 @@ import SignatureReadyNotice from "@/components/account/SignatureReadyNotice";
 import ContractCreateModal from "@/components/salesPlanning/ContractCreateModal";
 import QuotationWonDialog from "@/components/salesPlanning/QuotationWonDialog";
 import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
-import { SALES_ORDER_STATUS_LABELS, salesOrderAmountKind } from "@/lib/sales/salesOrderWorkflow";
+import { SALES_ORDER_STATUS_LABELS, salesOrderActual, salesOrderAmountKind } from "@/lib/sales/salesOrderWorkflow";
+import { isInstallmentActualOrder } from "@/lib/sales/salesOrderActualMode";
 import { isLiveSalesOrder } from "@/lib/sales/handoffQueue";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { CONFIRM_DOC_TYPE_LABELS } from "@/lib/sales/orderConfirmationDocs";
@@ -1151,8 +1152,12 @@ export default function QuotationEditorPage() {
                         รออนุมัติ  = รออนุมัติ ฿X · ยังไม่นับ Actual (ชิ้นกลาง — ห้ามเรียกว่า Actual)
                         ที่เหลือ   = ยอดก่อน VAT ฿X · ยังไม่นับ Actual */}
                   <span style={{ color: "var(--text-2)" }}>
+                    {/* ⭐ ใบ "Actual รายงวด" (mig 0412) = นับเฉพาะงวดที่ AE Sup อนุมัติแล้ว (`salesOrderActual` ตัวกลาง) จากยอดเต็มของใบ
+                        — select ของ route พก `actualMode` + cache สองช่องมาแล้ว · ใบทั้งใบ = ประโยคเดิม */}
                     {salesOrderAmountKind(quote.salesOrder) === "actual"
-                      ? `Actual ก่อน VAT ${fmtMoney(quote.salesOrder.actualAmount)}`
+                      ? isInstallmentActualOrder(quote.salesOrder)
+                        ? `Actual รายงวด · นับแล้ว ${fmtMoney(salesOrderActual(quote.salesOrder))} จาก ${fmtMoney(quote.salesOrder.actualAmount)} ก่อน VAT`
+                        : `Actual ก่อน VAT ${fmtMoney(quote.salesOrder.actualAmount)}`
                       : salesOrderAmountKind(quote.salesOrder) === "pending_approval"
                         ? <><PendingApprovalAmount inline amount={quote.salesOrder.actualAmount} count={1} /> ก่อน VAT · ยังไม่นับ Actual</>
                         : `ยอดก่อน VAT ${fmtMoney(quote.salesOrder.actualAmount)} · ยังไม่นับ Actual`}

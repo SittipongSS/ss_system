@@ -69,9 +69,11 @@ async function loadQuote(supabase, id) {
        ⭐ เลือก **ใบที่ยังมีชีวิต** (`isLiveSalesOrder` — นิยามเดียวกับด่าน 0169) ก่อน · ไม่มีเลย
           ถอยไปใบล่าสุด = พฤติกรรมเดิมของ QT ที่มี SO ใบเดียว (ใบยกเลิกยังโชว์ป้าย "ยกเลิก")
        ⚠️ อ่านไม่ขึ้น ≠ ไม่มีใบ — โยนเหมือน query ใบเสนอราคาข้างบน ไม่งั้นจอชวนกด "สร้างใบสั่งขาย" ซ้ำ */
+    /* `origin` + `actualMode` + `actualCountedAmount` + `actualSubmittedAmount` (mig 0412) — ยอด Actual ของการ์ดใบสั่งขายผ่านตัวกลาง
+       (salesOrderActual / splitSalesOrderAmounts): ใบ "Actual รายงวด" นับเฉพาะงวดที่อนุมัติแล้ว · ขาด `actualMode` = ถือเป็นทั้งใบ (ยอดเกินจริง) */
     const { data: salesOrders, error: salesOrderError } = await fetchAllResult(() => supabase
       .from('sales_orders')
-      .select('id, orderNumber, status, orderDate, actualAmount, supersededById, createdAt')
+      .select('id, orderNumber, status, orderDate, actualAmount, supersededById, createdAt, origin, "actualMode", "actualCountedAmount", "actualSubmittedAmount"')
       .eq('quotationId', data.id)
       .order('createdAt', { ascending: false })
       .order('id', { ascending: true }));

@@ -131,9 +131,14 @@ test('โมดัลของแผงงวดและคิวบัญช�
 // ── 6. ทะเบียนบัญชี: งวดโมฆะของใบที่ตายแล้วไม่เข้าทะเบียน ─────────────────────────────────────
 test('ทะเบียนการชำระตัดงวดโมฆะ (ledgerVoidInstallment) ก่อนจัดรูปแถว', () => {
   const route = code(LEDGER_ROUTE);
-  const cut = route.indexOf('if (ledgerVoidInstallment(installment, order)) return null;');
+  /* UAT FN 27/10 ข้อ 2: ตัวตัดสินรวมเป็น `ledgerIncludes` (ใบหาย · ใบยอด 0 · งวดโมฆะ · งวดยังไม่ตรึง) — ป้ายบนเมนูถามตัวเดียวกัน */
+  const cut = route.indexOf('if (!ledgerIncludes(installment, order)) return null;');
   assert.ok(cut > 0, 'ยอดค้างรับเทียม ฿577,667.32 บนใบที่ยกเลิก (23/09)');
   assert.ok(cut < route.indexOf('return ledgerRow({'));
+  const lib = code('lib/finance/paymentLedger.js');
+  const includes = lib.slice(lib.indexOf('export function ledgerIncludes('), lib.indexOf('export function ledgerInConfirmQueue('));
+  assert.match(includes, /return !ledgerVoidInstallment\(installment, order\);/);
+  assert.match(includes, /if \(paymentNotRequired\(order\.totalAmount\)\) return false;/);
   // select ของใบต้องมี status (ตัวตัดสินอ่านจากตรงนั้น) — ลืม = ไม่มีใบไหนตายเลยเงียบ ๆ
   assert.match(route, /\.select\('id, "orderNumber", "quotationId", "referenceDoc", "dealId", "projectId", "customerId", "customerName", status,/);
 });

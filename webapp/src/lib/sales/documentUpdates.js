@@ -20,6 +20,7 @@
 // แล้ว การโยน error ตรงนั้นจะทำให้ action ที่สำเร็จแล้วตอบ 500
 
 import { LEGACY_REOPEN_NOTE, reopenStatusLabel } from '@/lib/sales/quotationUnaccept';
+import { fmtMoney } from '@/lib/format';
 
 const clip = (s, n = 1000) => String(s ?? '').trim().slice(0, n) || null;
 
@@ -57,7 +58,17 @@ const DEAL_MIRROR_KIND = {
   restore: 'doc_withdraw',
   // ใบพี่น้องเปิดกลับตอนย้อนการรับ (มติ 25/09 · mig 0388) — ชนิด quiet: มาคู่กับแถว `unaccept` ของใบหลักเสมอ
   reopen: 'doc_reopen',
+  /* ⭐ นับ Actual รายงวด (mig 0412 · docs/so-installment-actual.md) — งานของงวดในใบรายงวด · ใบสั่งขายเท่านั้น
+     ใช้ชนิดเดิมของดีลทั้งหมด (ไม่เพิ่มชนิดใหม่ในทะเบียน): นับ = อนุมัติ · ยื่น = ยื่น · ตีกลับ = ตีกลับ · ดึงกลับ = ดึงกลับ
+     · `actual_start` = นับงวดตอนคลิกอนุมัติใบ/ปุ่มกู้ "นับงวด 1" · `actual_count_rest` = "นับที่เหลือทั้งหมด" (เหตุผลบังคับ) */
+  actual_start: 'doc_approve',
+  actual_submit: 'doc_submit',
+  actual_withdraw: 'doc_withdraw',
+  actual_approve: 'doc_approve',
+  actual_reject: 'doc_return',
+  actual_count_rest: 'doc_approve',
 };
+const isInstallmentActualAction = (action) => String(action || '').startsWith('actual_');
 const DOC_LABEL = { quotation: 'ใบเสนอราคา', sales_order: 'ใบสั่งขาย' };
 
 export function dealDocumentUpdate(docType, action, doc, opts = {}) {
@@ -66,17 +77,27 @@ export function dealDocumentUpdate(docType, action, doc, opts = {}) {
   if (!kind || !label || !doc) return null;
   // ⛔ เปิดใบพี่น้องกลับมีแต่ฝั่งใบเสนอราคา — ยกเลิก SO พร้อมย้อน Won ไม่เปิดใบพี่น้อง (มติ 25/09 ข้อ 4)
   if (action === 'reopen' && docType !== 'quotation') return null;
+  // ⛔ นับ Actual รายงวดมีแต่ฝั่งใบสั่งขาย (mig 0412)
+  if (isInstallmentActualAction(action) && docType !== 'sales_order') return null;
 
   const number = clip(doc.quoteNumber || doc.orderNumber) || '';
   const head = `${label}${number ? ` ${number}` : ''}`;
   const {
     reason = null, note = null, overrideReason = null, toRevisionNo = null,
     toStatus = null, approvalStatus = null, byQuoteNumber = null, inferred = false,
+    seq = null, seqs = null, amount = null,
   } = opts;
   // ⚠️ `withdraw` อยู่ในชุดนี้ด้วย — เหตุผลตอนดึงกลับไม่มีที่เก็บอื่นแล้ว
-  const tail = ['reject', 'revise', 'cancel', 'revoke', 'unaccept', 'withdraw'].includes(action)
+  // ⭐ ตีกลับงวด / นับที่เหลือทั้งหมด (0412) บังคับเหตุผล 10–500 ⇒ ต้องอยู่ในข้อความเหมือนกัน
+  const tail = ['reject', 'revise', 'cancel', 'revoke', 'unaccept', 'withdraw', 'actual_reject', 'actual_count_rest'].includes(action)
     ? REASON_SUFFIX(reason)
     : '';
+  /* งวดของงานรายงวด — งวดเดียว (`seq`) หรือหลายงวด (`seqs` · นับตอนอนุมัติใบ/นับที่เหลือ) · ยอดก่อน VAT ที่เข้า Actual */
+  const seqList = Array.isArray(seqs) ? seqs.filter((n) => n !== null && n !== undefined && n !== '') : [];
+  const seqText = seq !== null && seq !== undefined && seq !== ''
+    ? `งวดที่ ${seq}`
+    : (seqList.length ? `งวดที่ ${seqList.join(', ')}` : 'งวด');
+  const amountText = amount === null || amount === undefined || amount === '' ? '' : ` ${fmtMoney(amount)} (ก่อน VAT)`;
 
   // หมายเหตุของผู้อนุมัติไม่บังคับกรอก — มีก็ต้องไม่ตกหล่น (เดิมอยู่แต่ในเธรดของใบ)
   const approveNote = clip(overrideReason)
@@ -100,6 +121,13 @@ export function dealDocumentUpdate(docType, action, doc, opts = {}) {
        ใบรุ่นเก่า (ปิดก่อน 0388) สถานะเป็นค่าที่เดาจากผลอนุมัติ ⇒ ต่อท้ายให้รู้ว่าไม่ใช่ค่าที่จำไว้ */
     reopen: `${head} เปิดกลับ${toStatus ? `เป็น “${reopenStatusLabel({ status: toStatus, approvalStatus })}”` : ''}`
       + `${clip(byQuoteNumber) ? ` — ย้อนการรับ ${clip(byQuoteNumber)}` : ''}${inferred ? ` (${LEGACY_REOPEN_NOTE})` : ''}`,
+    /* ── นับ Actual รายงวด (0412) — เลขที่ใบอยู่ในข้อความเสมอ (ลิงก์ /go/<รหัส>) · คำศัพท์ล็อก: ตีกลับ / ดึงกลับ ── */
+    actual_start: `นับ Actual รายงวด ${head} — ${seqText}${amountText} เข้า Actual แล้ว`,
+    actual_submit: `ยื่นขอนับ Actual ${seqText} ของ ${head}`,
+    actual_withdraw: `คำขอนับ Actual ${seqText} ของ ${head} ถูกดึงกลับ`,
+    actual_approve: `อนุมัตินับ Actual ${seqText} ของ ${head}${amountText ? ` —${amountText}` : ''}`,
+    actual_reject: `คำขอนับ Actual ${seqText} ของ ${head} ถูกตีกลับ`,
+    actual_count_rest: `นับ Actual ที่เหลือทั้งหมดของ ${head} (${seqText}${amountText})`,
   }[action];
 
   return {
@@ -113,6 +141,9 @@ export function dealDocumentUpdate(docType, action, doc, opts = {}) {
       // ธงอ่านด้วยเครื่องได้ ไม่ต้อง parse ข้อความ (รายงาน "อนุมัติแบบ override" ในอนาคต)
       ...(action === 'approve' ? { override: !!clip(overrideReason) } : {}),
       ...(action === 'reopen' ? { toStatus, byQuoteNumber: clip(byQuoteNumber), inferred: !!inferred } : {}),
+      ...(isInstallmentActualAction(action)
+        ? { seq: seq ?? null, seqs: seqList.length ? seqList : null, amount: amount ?? null }
+        : {}),
     },
   };
 }

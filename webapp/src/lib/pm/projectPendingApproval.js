@@ -19,6 +19,7 @@ import {
   salesOrderPendingApprovalAmount,
 } from '@/lib/sales/salesOrderWorkflow';
 import { forecastAmt, isWonDeal, wonAmt } from '@/lib/sales/projectRollup';
+import { installmentRemainingAmountOf } from '@/lib/sales/dashboardMetrics';
 
 const num = (value) => Number(value) || 0;
 
@@ -31,15 +32,20 @@ export function hasPendingApproval(bucket) {
 
 // KPI รวมของโครงการที่กรองอยู่บนหน้า /sa/projects — บวกจาก dealsRollup ต่อโครงการ
 // (นิยามเดียวกับต่อแถว) · รออนุมัติเป็นกองที่สาม ไม่ปนกับ actual
-// ⭐ คีย์ที่ไม่มี = 0 — payload จาก server รุ่นก่อนไม่มีสองคีย์นี้
+// ⭐ "รอนับรายงวด" (mig 0412 · มติข้อ 5 · review รอบสี่) เป็นกองแยกอีกกอง — งวดของใบ Actual รายงวดที่ยังไม่ยื่น · ไม่ปนกับ actual
+// ⭐ คีย์ที่ไม่มี = 0 — payload จาก server รุ่นก่อนไม่มีคีย์เหล่านี้
 export function sumProjectRollups(projects = []) {
-  const totals = { fcTotal: 0, actual: 0, pendingApproval: 0, pendingApprovalCount: 0, fcRemaining: 0, deals: 0 };
+  const totals = {
+    fcTotal: 0, actual: 0, pendingApproval: 0, pendingApprovalCount: 0, instRemaining: 0, instRemainingCount: 0, fcRemaining: 0, deals: 0,
+  };
   for (const project of projects || []) {
     const r = project?.dealsRollup || {};
     totals.fcTotal += num(r.fcTotal);
     totals.actual += num(r.actual);
     totals.pendingApproval += num(r.pendingApproval);
     totals.pendingApprovalCount += num(r.pendingApprovalCount);
+    totals.instRemaining += num(r.instRemaining);
+    totals.instRemainingCount += num(r.instRemainingCount);
     totals.fcRemaining += num(r.fcRemaining);
     totals.deals += num(r.dealCount);
   }
@@ -50,8 +56,8 @@ export function sumProjectRollups(projects = []) {
    🐞 เดิมอ่าน `deal.wonValue ?? deal.projectValue` ดิบ ๆ — ข้ามด่าน actualSource ของ
       wonAmt จนแถวกับ KPI ข้างบนพูดคนละเลข และ `??` ไม่เคยถอยจริงเพราะ trigger เขียน
       wonValue เป็น 0 ไม่ใช่ null ⇒ ดีล Won ที่ SO รออนุมัติขึ้น ฿0.00 "ปิดจริง"
-   ⭐ Won = Actual (wonAmt ตัวเดียวกับ rollup) + ยอดรออนุมัติแยกอีกช่อง
-   ⭐ เปิด/แพ้ = FC ของดีลตามเดิม · ไม่มียอดรออนุมัติ (ดีลเปิดมีอยู่ใน FC คงเหลือแล้ว) */
+   ⭐ Won = Actual (wonAmt ตัวเดียวกับ rollup) + ยอดรออนุมัติแยกอีกช่อง + กอง "รอนับรายงวด" (mig 0412 · review รอบสี่)
+   ⭐ เปิด/แพ้ = FC ของดีลตามเดิม · ไม่มียอดรออนุมัติ/รอนับรายงวด (ดีลเปิดมีอยู่ใน FC คงเหลือแล้ว) */
 export function projectDealValue(deal) {
   if (isWonDeal(deal)) {
     return {
@@ -59,9 +65,10 @@ export function projectDealValue(deal) {
       value: wonAmt(deal),
       pendingApproval: dealPendingApprovalAmount(deal),
       pendingApprovalCount: dealPendingApprovalCount(deal),
+      instRemaining: installmentRemainingAmountOf(deal),
     };
   }
-  return { closed: false, value: forecastAmt(deal), pendingApproval: 0, pendingApprovalCount: 0 };
+  return { closed: false, value: forecastAmt(deal), pendingApproval: 0, pendingApprovalCount: 0, instRemaining: 0 };
 }
 
 /* เซลล์ยอดของแถวในการ์ด "ใบสั่งขาย" ของโครงการ — สามทาง
