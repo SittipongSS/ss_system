@@ -18,6 +18,8 @@
 //   (🐞 27/10 เจ้าของถาม "ไฟล์หลักฐานการชำระแต่ละงวดไม่มีหรอ" — งวด 2 ยังไม่จ่าย แต่ ZIP ไม่บอก)
 // ⚠️ ไฟล์นี้ไม่แตะ DB/เครือข่ายเอง — ตัวโหลดส่งเข้ามา (`loadDocuments` · `fetchFile` · `JSZip`) ⇒ เทสต์ได้โดยไม่ต่ออะไร
 
+import { SALES_ORDER_STATUS_LABELS } from '@/lib/sales/salesOrderWorkflow';
+
 export const SALES_ORDER_BUNDLE_MAX = 50;
 export const BUNDLE_MISSING_FILE = 'ไฟล์ที่ขาด.txt';
 
@@ -49,6 +51,18 @@ export function bundleFolderName(order) {
 }
 
 const pad = (n) => String(n).padStart(2, '0');
+
+/* PDF ใบสั่งขายฉบับที่ออกจริงมีเฉพาะใบที่ **อนุมัติอยู่** (เส้น issued/pdf ตอบ 404 ยังไม่เคยออก · 409 เปลี่ยนสถานะหลังอนุมัติ)
+   ⇒ รู้จากสถานะของแถวได้ตั้งแต่ก่อนดึง = รายการ "ยังไม่มีในระบบ" ไม่ใช่ "ดึงไม่ได้" (🐞 27/10 ใบรออนุมัติขึ้นกล่องเตือน
+   "ลองโหลดใหม่" ทั้งที่ลองกี่ครั้งก็ไม่ได้) · แถวที่ไม่บอกสถานะ (เช่นแถวรายงานซึ่งเป็นใบอนุมัติแล้วทั้งหมด) = ดึงตามปกติ */
+export function salesOrderPdfAbsentReason(status) {
+  if (!status || status === 'approved') return null;
+  const label = SALES_ORDER_STATUS_LABELS[status] || status;
+  if (status === 'cancelled') return `ใบถูกยกเลิก — ไม่มี PDF ฉบับที่ใช้แทนเอกสารที่ยังมีผล (สถานะใบ: ${label})`;
+  if (status === 'revised') return `ใบนี้ออกฉบับแก้ไขแล้ว — ใช้ใบ Rev. ล่าสุดแทน (สถานะใบ: ${label})`;
+  if (status === 'approval_revoked') return `ใบถูกย้อนการอนุมัติ — ยังไม่มีฉบับที่ออกจริงที่ใช้ได้ (สถานะใบ: ${label})`;
+  return `ใบยังไม่อนุมัติ — ยังไม่มีฉบับที่ออกจริง (สถานะใบ: ${label})`;
+}
 
 /* ที่ติ๊กไว้หลังรายการขยับ — **ตัดเฉพาะใบที่หลุดจากรายการ** ไม่ล้างทั้งชุด · ไม่มีอะไรหลุด = คืนชุดเดิม (ตัวเดิม ไม่เรนเดอร์ซ้ำ)
    🐞 รุ่นแรกล้างทุกครั้งที่ `filtered` เปลี่ยนตัว — รายงานยอดขายโหลดใหม่ตอนกลับมาที่แท็บ (useRevalidateOnFocus) ⇒ ติ๊ก 10 ใบ
@@ -85,12 +99,15 @@ export function planSalesOrderBundle(order, documents, { documentsError = null }
       label: `ใบเสนอราคา ${quoteNumber || ''}`.trim(),
     }
     : { stem: null, href: null, absent: true, label: 'ใบเสนอราคา', reason: 'ใบนี้ไม่ได้สร้างจากใบเสนอราคาในระบบ (ใบย้อนหลัง)' });
-  items.push({
-    stem: `${pad(2)} ${bundleSafeName(`ใบสั่งขาย ${order?.orderNumber || ''}`.trim())}`,
-    sourceName: 'sales-order.pdf',
-    href: `/api/sales-planning/sales-orders/${enc(order?.id)}/issued/pdf`,
-    label: `ใบสั่งขาย ${order?.orderNumber || ''}`.trim(),
-  });
+  const orderPdfAbsent = salesOrderPdfAbsentReason(order?.status);
+  items.push(orderPdfAbsent
+    ? { stem: null, href: null, absent: true, label: `ใบสั่งขาย ${order?.orderNumber || ''}`.trim(), reason: orderPdfAbsent }
+    : {
+      stem: `${pad(2)} ${bundleSafeName(`ใบสั่งขาย ${order?.orderNumber || ''}`.trim())}`,
+      sourceName: 'sales-order.pdf',
+      href: `/api/sales-planning/sales-orders/${enc(order?.id)}/issued/pdf`,
+      label: `ใบสั่งขาย ${order?.orderNumber || ''}`.trim(),
+    });
 
   if (documentsError || !documents) {
     items.push({ stem: null, href: null, label: 'หลักฐานการชำระ · ใบกำกับภาษี', reason: documentsError || 'อ่านรายการเอกสารของใบไม่สำเร็จ' });
