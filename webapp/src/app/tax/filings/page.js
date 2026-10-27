@@ -8,6 +8,7 @@ import Button from "@/components/ui/Button";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { useRole, useCan } from "@/lib/roleContext";
 import { fmtMoney, naText } from "@/lib/format";
+import { isExemptFiling } from "@/lib/tax/exciseBilling";
 import { useApiList } from "@/lib/excise/useApiList";
 import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
 import { deptOf, isTaxWaitingOnMe, ownedStages, FILING_FILTERS } from "@/lib/excise/workflow";
@@ -24,7 +25,8 @@ import FilterBar from "@/components/excise/FilterBar";
 import StatusBadge from "@/components/excise/StatusBadge";
 import SalesOrderFilingModal from "@/components/excise/SalesOrderFilingModal";
 
-const taxText = (o) => ((o.totalTax || 0) === 0 ? "ยกเว้นภาษี" : fmtMoney(o.totalTax));
+// ยอด 0 ≠ ยกเว้น — ใบที่สินค้าไม่มีราคาขายปลีกต้องเห็น ฿0.00 ตามจริง (isExemptFiling · ตรวจระบบ 2026-10-26)
+const taxText = (o) => (isExemptFiling(o) ? "ยกเว้นภาษี" : fmtMoney(o.totalTax || 0));
 
 export default function FilingsPage() {
   const role = useRole();

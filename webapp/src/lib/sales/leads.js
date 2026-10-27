@@ -1040,6 +1040,44 @@ export function channelRollup(rows, outcomeOf = null) {
   return [...map.values()].sort((a, b) => b.count - a.count || a.channel.localeCompare(b.channel));
 }
 
+/** ผลงานรายผู้รับมอบ (ตาราง AE KPI) ของลีดชุดหนึ่ง
+ *
+ *  ⚠️ นิยาม "ไปถึงไหน" (`contacted` · `meetings` · `qualified`) มาจาก `leadOutcome` ที่เดียว
+ *  เหมือน funnel และ channelRollup — เดิมเขียนเงื่อนไขซ้ำสามชุด แก้ที่หนึ่งลืมอีกสองที่
+ *  = ตัวเลขบนจอเดียวกันขัดกันเอง
+ *
+ *  ⚠️ "ทันไหม" (`slaChecked` · `slaHit`) เป็นคำถามคนละอัน — นับด้วย `slaStage` ชุดเดียวกับ
+ *  การ์ด "SLA ติดต่อกลับ" (assignedAt → firstContactAt) ไม่ใช่ใช้ `contacted` เป็นตัวหาร
+ *  🐞 เดิมตัวหารคือ `contacted` (เคยติดต่อ **ตลอดกาล** จากประวัติ) แต่ SLA วัดด้วยคอลัมน์
+ *  ของ **รอบปัจจุบัน** ที่ตีกลับล้างทิ้ง ⇒ ใบที่ถูกตีกลับแล้วมอบใหม่ยังไม่ได้ติดต่อรอบนี้
+ *  ถูกนับเป็น "ไม่ทัน" ทั้งที่รอบแรกติดต่อทันในวันเดียว · ต.ค. 2026 ตาราง AE รวมได้ 45/58
+ *  ขณะที่การ์ดบนจอเดียวกันขึ้น 45/57 (ใบของ Supisara ที่ auto_bounce 26/10)
+ *  ใบแบบนั้นคือ "ค้าง" ของรอบใหม่ ไม่ใช่ "พลาด" — กติกาเดียวกับที่ slaStage เขียนไว้
+ *
+ *  @param outcomeOf Map id → ผลจาก `leadOutcome` (ชุดเดียวกับที่ route ส่งให้ channelRollup)
+ */
+export function assigneeRollup(rows = [], outcomeOf = new Map(), holidays) {
+  const byAssignee = new Map();
+  for (const l of rows || []) {
+    if (!l?.assigneeId) continue;
+    if (!byAssignee.has(l.assigneeId)) byAssignee.set(l.assigneeId, { name: l.assigneeName || 'ไม่ระบุ', team: l.team || null, rows: [] });
+    byAssignee.get(l.assigneeId).rows.push(l);
+  }
+  return [...byAssignee.entries()].map(([assigneeId, { name, team, rows: mine }]) => {
+    const outcomes = mine.map((l) => outcomeOf.get(l.id) || {});
+    const sla = slaStage(mine, 'assignedAt', 'firstContactAt', holidays);
+    return {
+      assigneeId, name, team,
+      assigned: mine.length,
+      contacted: outcomes.filter((o) => o.reachedContact).length,
+      slaChecked: sla.checked,
+      slaHit: sla.hit,
+      meetings: outcomes.filter((o) => o.reachedMeeting).length,
+      qualified: outcomes.filter((o) => o.won).length,
+    };
+  });
+}
+
 /** รวม "ค้างตอนนี้" รายคนเข้ากับสรุปผลงานรายเดือนของ AE
  *
  *  ⚠️ สองชุดนี้ **คนละขอบเขตเวลา** โดยเจตนา:
@@ -1065,7 +1103,7 @@ export function withAssigneePending(monthly, pendingByAssignee, metaOf = {}) {
       // ชื่อ/ทีมมาจากใบที่เขาถือค้างอยู่ — คนกลุ่มนี้ไม่มีแถวของเดือนให้อ่าน
       name: meta[assigneeId]?.name || 'ไม่ระบุ',
       team: meta[assigneeId]?.team || null,
-      assigned: 0, contacted: 0, slaHit: 0, meetings: 0, qualified: 0,
+      assigned: 0, contacted: 0, slaChecked: 0, slaHit: 0, meetings: 0, qualified: 0,
       pending: count,
     });
   }

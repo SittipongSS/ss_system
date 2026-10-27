@@ -111,6 +111,13 @@ export function resolveSoFiling({
       localTaxRatePerUnit: product.localTax,
       quantity,
     });
+    /* 🔴 **ภาษีต่อชิ้น 0 บนสินค้าที่ต้องเสียภาษี = ไม่มีฐานภาษี ไม่ใช่ยกเว้น** (ตรวจระบบ 2026-10-26)
+       อัตราบนสินค้าคิดจากราคาขายปลีก (productTaxRates) — ไม่มีราคา ⇒ 0 ⇒ ยื่นขาดเงียบ ๆ
+       (SO อนุมัติแล้ว 22 ใบมีบรรทัดแบบนี้ · 21 ใบเป็น 0 ทั้งใบ) · ด่านราคาขายปลีกที่ "ยื่นขึ้นทะเบียน"
+       ไม่ช่วย เพราะใบยื่นจาก SO ไม่บังคับทะเบียน ⇒ เตือนรายบรรทัดที่นี่ ไม่บล็อก (บล็อกต้องได้มติก่อน)
+       ⚠️ ตัดสินจาก **อัตราที่ปัดแล้ว** (ตัวที่จะลงใบจริง) ไม่ใช่ราคาดิบ — ราคามีแต่อัตราค้าง 0 ก็ยื่นขาดเท่ากัน */
+    const taxBaseMissing = taxLine.exciseRatePerUnit + taxLine.localTaxRatePerUnit === 0;
+    const retailMissing = !(Number(product.retailPriceIncVat) > 0);
     const registration = approvedRegistrationByProduct.get(product.id) || null;
     const needsRegistration = !registration;
     const productRegistrations = registrationsByProduct.get(product.id) || [];
@@ -128,7 +135,19 @@ export function resolveSoFiling({
       description: line.description || product.name || product.productName || fgCode,
       ...taxLine,
       needsRegistration,
+      taxBaseMissing,
     });
+    if (taxBaseMissing) {
+      warnings.push({
+        code: "missing_tax_base",
+        salesOrderLineId: line.id,
+        productId: product.id,
+        fgCode,
+        message: retailMissing
+          ? `${fgCode || line.description} ยังไม่มีราคาขายปลีก (ฐานภาษี) — ภาษีคิดออกมา ฿0`
+          : `${fgCode || line.description} อัตราภาษีบนสินค้าเป็น 0 ทั้งที่มีราคาขายปลีก — ตรวจทะเบียนสินค้าก่อนยื่น`,
+      });
+    }
     if (needsRegistration) {
       warnings.push({
         code: "registration_missing",

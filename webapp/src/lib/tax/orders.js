@@ -8,6 +8,9 @@
 // has a real FK (migration 0002) — so we keep it and only join registrations
 // here, in JS. See memory [[no-real-fk-constraints]].
 
+import { fetchInChunks } from '@/lib/supabaseInChunks';
+import { isExemptFiling, round2 } from '@/lib/tax/exciseBilling';
+
 // Embeddable part of the orders select: header + items + product (real FKs).
 // Registrations are attached afterwards by attachRegistrations().
 export const ORDER_SELECT =
@@ -82,7 +85,10 @@ export async function attachRegistrations(supabase, orders) {
     ),
   ];
   if (regIds.length === 0) {
-    for (const o of list) for (const it of o.items || []) it.registration = null;
+    for (const o of list) {
+      for (const it of o.items || []) it.registration = null;
+      o.taxExempt = isExemptFiling(o);
+    }
     return orders;
   }
   const { data: regs, error } = await supabase
@@ -95,6 +101,29 @@ export async function attachRegistrations(supabase, orders) {
     for (const it of o.items || []) {
       it.registration = it.registrationId ? regMap.get(it.registrationId) || null : null;
     }
+    o.taxExempt = isExemptFiling(o);
   }
   return orders;
+}
+
+/* ธง "ยกเว้นภาษี" ของแถวโหมด slim (`/api/orders?slim=1`) — แถวพวกนั้นไม่ฝังรายการลงไปให้จอ
+   จึงต้องคิดที่นี่ด้วยกฎตัวเดียวกับ attachRegistrations (`isExemptFiling`) ไม่ใช่ให้จอเดาจากยอด 0
+   · อ่านทะเบียนเฉพาะคอลัมน์ที่ตัดสินใช้ และเฉพาะใบที่ยอดเป็น 0 (ใบที่มียอดไม่มีทางยกเว้น)
+   @param rows แถวที่ฝัง `items: [{ registrationId, totalTax, quantity }]` มาแล้ว — คืนแถวเดิมพร้อม `taxExempt` */
+export async function stampExemptFlags(supabase, rows) {
+  const zeroRows = rows.filter((o) => round2(o.totalTax) === 0 && (o.items || []).length);
+  const regIds = [...new Set(zeroRows.flatMap((o) => o.items.map((it) => it.registrationId)).filter(Boolean))];
+  const { data: regs, error } = regIds.length
+    ? await fetchInChunks(regIds, (chunk) => supabase.from('excise_registrations')
+      .select('id, "isExciseTaxable"').in('id', chunk).limit(chunk.length))
+    : { data: [], error: null };
+  if (error) throw error;
+  const regMap = new Map((regs || []).map((r) => [r.id, r]));
+  return rows.map((o) => ({
+    ...o,
+    taxExempt: isExemptFiling({
+      ...o,
+      items: (o.items || []).map((it) => ({ ...it, registration: regMap.get(it.registrationId) || null })),
+    }),
+  }));
 }
